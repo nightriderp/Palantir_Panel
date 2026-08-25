@@ -131,7 +131,6 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
 | `AGENT_UNAUTHORIZED` | 401 | Pre-Shared-Token des Agents fehlt oder ist falsch (§2.2) |
 | `AGENT_PROTOCOL_VERSION_MISMATCH` | 400 | Agent und Backend sprechen unterschiedliche Protokollversionen (§2.2) |
-| `AGENT_COMMAND_UNKNOWN` | 400 | Befehlsname steht nicht im Katalog aus §5.3 |
 | `AGENT_COMMAND_INVALID` | 400 | Befehls-Frame verletzt das vereinbarte Format (§5.3) |
 | `AGENT_COMMAND_FAILED` | 500 | Ausführung des Befehls in der Container-Runtime fehlgeschlagen (§5.3) |
 

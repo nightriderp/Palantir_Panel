@@ -94,11 +94,6 @@ export const ERROR_CATALOG = {
     httpStatus: 400,
     defaultMessage: 'Agent und Backend nutzen unterschiedliche Protokollversionen.',
   },
-  /** Befehlsname steht nicht in `AGENT_COMMANDS`. 400: fehlerhafte Anfrage. */
-  AGENT_COMMAND_UNKNOWN: {
-    httpStatus: 400,
-    defaultMessage: 'Unbekannter Agent-Befehl.',
-  },
   /** Befehls-Frame verletzt das Schema (fehlende Korrelations-ID, falscher Typ, ...). 400. */
   AGENT_COMMAND_INVALID: {
     httpStatus: 400,
