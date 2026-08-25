@@ -14,4 +14,5 @@
  *   ausführen und die erzeugte Migration mit committen
  */
 
+export * from './schema/users.js';
 export * from './schema/rbac.js';
