@@ -8,6 +8,7 @@
 
 import { type Permission } from '@palantir/contracts';
 import { boolean, index, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { users } from './users.js';
 
 /**
  * Rolle: frei definierbares Bündel von Permissions (Pflichtenheft §8).
@@ -45,15 +46,15 @@ export const roles = pgTable(
  * Ein Nutzer kann mehrere Rollen haben; die effektiven Rechte sind die
  * Vereinigung (Pflichtenheft §8).
  *
- * **Offen (B1):** `user_id` trägt bewusst noch keinen Fremdschlüssel, weil die
- * Tabelle `users` zum Zeitpunkt dieser Migration noch nicht existiert (B1 –
- * Auth & Identity). B1 ergänzt den Fremdschlüssel mit `ON DELETE CASCADE` in
- * seiner eigenen Migration; vermerkt unter „Gefundene Punkte" in WORK_STATUS.md.
+ * Beide Fremdschlüssel löschen mit: wird ein Konto oder eine Rolle entfernt,
+ * verschwindet die Zuordnung mit – ein verwaister Eintrag hätte keine Bedeutung.
  */
 export const userRoles = pgTable(
   'user_roles',
   {
-    userId: uuid('user_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
     roleId: uuid('role_id')
       .notNull()
       .references(() => roles.id, { onDelete: 'cascade' }),
