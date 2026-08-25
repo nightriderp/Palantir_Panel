@@ -56,6 +56,8 @@
   - Wo vom Spiel unterstützt: Read-only-Root-Filesystem, beschreibbare Daten nur im gemounteten Volume
   - Restriktives Seccomp-Profil
   - Feste CPU-/RAM-Limits je Container
+- Umsetzung im Agent (Arbeitspaket A2, `apps/agent/src/runtime/hardening.ts`): Die Haertung wird an genau einer Stelle gebaut, an der jede Container-Erzeugung vorbeimuss. Zusaetzlich zu den obigen Punkten werden alle Linux-Capabilities entzogen (`CapDrop: ALL`), Swap deaktiviert (sonst waere das RAM-Limit ueber die Auslagerungsdatei umgehbar), ein PID-Limit gegen Fork-Bomben gesetzt, das Container-Log rotiert und Ports an ein festes Interface statt an `0.0.0.0` gebunden. Die Neustart-Regel der Engine steht bewusst auf `no`: Neustarts nach Absturz steuert Palantir selbst mit Crash-Loop-Schutz (§9).
+- **Seccomp-Profil:** Das Profil ist ueber die Variable `AGENT_SECCOMP_PROFILE_PATH` konfigurierbar (Pfad zu einer JSON-Datei auf dem Homeserver). Ist sie gesetzt, gibt der Agent genau dieses Profil bei jedem Container mit. Ist sie leer, greift das Standardprofil der Container-Engine, das bereits rund vier Dutzend gefaehrliche Syscalls sperrt. Bewusste Entscheidung: ein handgepflegtes Whitelist-Profil ist fehleranfaellig und bricht erfahrungsgemaess einzelne Spiele-Images; `seccomp=unconfined` ist an keiner Stelle vorgesehen.
 
 ### 2.4 Game-Traffic-Proxy (VPS)
 - TCP/UDP-Proxy-Schicht, die öffentliche Ports auf die passenden internen Container-Adressen im Tunnel-Netz umleitet
@@ -129,6 +131,8 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
 
 Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den Envelope – Backend-Routen formen ihn nicht selbst.
+
+**Agent-interner Fehlerkatalog:** Der Agent liefert keine HTTP-Antworten und fuehrt deshalb einen eigenen, ebenfalls benannten Katalog in `apps/agent/src/runtime/errors.ts` (`RUNTIME_ERROR_CATALOG`, z. B. `CONTAINER_NOT_FOUND`, `IMAGE_NOT_FOUND`, `INVALID_PATH`, `RUNTIME_UNAVAILABLE`). Auch dort gilt: kein Freitext-Fehler. Die Zuordnung dieser Codes auf Codes des HTTP-Katalogs oben erfolgt in der Server-Orchestrierung (B3), nicht im Agent.
 
 ### 5.2 DTO-Prinzip
 - Jede Ressource wird **immer vollständig** ausgeliefert (kein Zuschneiden auf einzelne Frontend-Ansichten); das Frontend entscheidet, was angezeigt wird
