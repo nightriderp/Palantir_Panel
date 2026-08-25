@@ -23,6 +23,7 @@ Ergänzend:
 
 - [WORK_STATUS.md](WORK_STATUS.md) – laufend aktueller Stand aller Arbeitspakete
 - [SITZUNGS_PROMPTS.md](SITZUNGS_PROMPTS.md) – fertige Start-Prompts für parallele Sitzungen
+- [SETUP.md](SETUP.md) – Einrichtung (bisher nur der Datenbank-Abschnitt ausgearbeitet)
 
 ---
 
@@ -142,8 +143,8 @@ Fertige Start-Prompts für alle 22 Arbeitspakete liegen in
 
 ## Ausstehend
 
-- `SETUP.md` – Schritt-für-Schritt-Anleitung für VPS, Homeserver, OAuth-Apps und WireGuard
-  ([PFLICHTENHEFT.md §12.3](PFLICHTENHEFT.md))
+- `SETUP.md` – VPS, Homeserver, OAuth-Apps und WireGuard fehlen noch; der Datenbank-Teil
+  steht ([PFLICHTENHEFT.md §12.3](PFLICHTENHEFT.md))
 - `docker-compose.yml` für VPS- und Homeserver-Seite
 - Datenbank-Schema und Migrationen (Drizzle Kit)
 - Inhalte von `packages/contracts` und `packages/validation`
