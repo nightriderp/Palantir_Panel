@@ -39,6 +39,14 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     }
   });
 
+  it('enthält die Codes des Agent-Protokolls (Pflichtenheft §2.2)', () => {
+    expect(httpStatusForErrorCode('AGENT_UNAUTHORIZED')).toBe(401);
+    expect(httpStatusForErrorCode('AGENT_PROTOCOL_VERSION_MISMATCH')).toBe(400);
+    expect(httpStatusForErrorCode('AGENT_COMMAND_UNKNOWN')).toBe(400);
+    expect(httpStatusForErrorCode('AGENT_COMMAND_INVALID')).toBe(400);
+    expect(httpStatusForErrorCode('AGENT_COMMAND_FAILED')).toBe(500);
+  });
+
   it('isErrorCode() erkennt unbekannte Codes', () => {
     expect(isErrorCode('SUBDOMAIN_TAKEN')).toBe(true);
     expect(isErrorCode('NICHT_IM_KATALOG')).toBe(false);

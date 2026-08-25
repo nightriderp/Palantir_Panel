@@ -74,6 +74,41 @@ export const ERROR_CATALOG = {
     httpStatus: 403,
     defaultMessage: 'Diese Systemrolle ist geschützt und kann nicht geändert oder gelöscht werden.',
   },
+
+  // -- Agent-Protokoll (Pflichtenheft §2.2 / §5.3) ---------------------------
+  // Der Agent-Kanal ist kein REST-Endpunkt; die HTTP-Status-Zuordnung gilt hier
+  // für den WebSocket-Handshake bzw. dient dem Backend als Vorlage, wenn es
+  // einen Agent-Fehler an eine REST-Antwort weiterreicht.
+
+  /** Pre-Shared-Token fehlt oder ist falsch (Pflichtenheft §2.2). 401: nicht authentifiziert. */
+  AGENT_UNAUTHORIZED: {
+    httpStatus: 401,
+    defaultMessage: 'Der Agent konnte sich nicht gegenüber dem Backend authentifizieren.',
+  },
+  /**
+   * Agent und Backend sprechen unterschiedliche Protokollversionen
+   * (`AGENT_PROTOCOL_VERSION`). 400: Die Gegenseite müsste den Frame ändern,
+   * ein Retry mit demselben Inhalt hilft nicht.
+   */
+  AGENT_PROTOCOL_VERSION_MISMATCH: {
+    httpStatus: 400,
+    defaultMessage: 'Agent und Backend nutzen unterschiedliche Protokollversionen.',
+  },
+  /** Befehlsname steht nicht in `AGENT_COMMANDS`. 400: fehlerhafte Anfrage. */
+  AGENT_COMMAND_UNKNOWN: {
+    httpStatus: 400,
+    defaultMessage: 'Unbekannter Agent-Befehl.',
+  },
+  /** Befehls-Frame verletzt das Schema (fehlende Korrelations-ID, falscher Typ, ...). 400. */
+  AGENT_COMMAND_INVALID: {
+    httpStatus: 400,
+    defaultMessage: 'Der Agent-Befehl entspricht nicht dem vereinbarten Format.',
+  },
+  /** Ausführung des Befehls in der Container-Runtime ist fehlgeschlagen. 500. */
+  AGENT_COMMAND_FAILED: {
+    httpStatus: 500,
+    defaultMessage: 'Die Ausführung des Befehls auf dem Homeserver ist fehlgeschlagen.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */

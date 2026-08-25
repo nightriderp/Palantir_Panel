@@ -129,6 +129,13 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `ROLE_NOT_FOUND` | 404 | Rolle existiert nicht (§8) |
 | `ROLE_NAME_TAKEN` | 409 | Rollenname bereits vergeben (§8) |
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
+| `AGENT_UNAUTHORIZED` | 401 | Pre-Shared-Token des Agents fehlt oder ist falsch (§2.2) |
+| `AGENT_PROTOCOL_VERSION_MISMATCH` | 400 | Agent und Backend sprechen unterschiedliche Protokollversionen (§2.2) |
+| `AGENT_COMMAND_UNKNOWN` | 400 | Befehlsname steht nicht im Katalog aus §5.3 |
+| `AGENT_COMMAND_INVALID` | 400 | Befehls-Frame verletzt das vereinbarte Format (§5.3) |
+| `AGENT_COMMAND_FAILED` | 500 | Ausführung des Befehls in der Container-Runtime fehlgeschlagen (§5.3) |
+
+Die `AGENT_*`-Codes gelten für den WebSocket-Kanal zum Agent, der kein REST-Endpunkt ist. Die HTTP-Status-Zuordnung greift dort beim Handshake und dient dem Backend als Vorlage, wenn es einen Agent-Fehler an eine REST-Antwort weiterreicht.
 
 Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den Envelope – Backend-Routen formen ihn nicht selbst.
 
@@ -142,6 +149,15 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - REST für klassische CRUD-Operationen
 - WebSocket-Kanäle für Live-Daten: Konsole/Logs, Live-Stats, Chat, Benachrichtigungen
 - Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
+
+**Ort des Agent-Protokolls:** `packages/contracts/src/agent-protocol.ts` (`AGENT_COMMANDS`, `AGENT_EVENTS`, Frame-Typen, `AGENT_PROTOCOL_VERSION`), Zod-Gegenstück in `packages/validation/src/agent-protocol.ts`. Befehle und Ereignisse werden ausschließlich dort additiv ergänzt.
+
+Über dieselbe Verbindung laufen neben Befehl (`command`) und Ergebnis (`commandResult`) auch der Handshake (`hello`/`welcome`), der vollständige Ist-Zustands-Bericht (`stateReport`, angefordert über `stateRequest`) und unaufgeforderte Ereignisse (`event`). Festlegungen dieser Sitzung, die das Pflichtenheft offen ließ:
+
+- **Korrelations-ID-Format:** UUID (Version 4), erzeugt vom Backend – dasselbe Format wie alle Entitäts-IDs
+- **Token-Übergabe:** Das Pre-Shared-Token wird im `Authorization: Bearer …`-Header des WebSocket-Handshakes übergeben, nicht als Feld in einem Frame; so taucht es nicht in Nachrichten-Logs auf und die Verbindung wird abgelehnt, bevor ein Frame fließt
+- **Duplikat-Antwort:** Ein Befehl mit bereits verarbeiteter Korrelations-ID wird nicht erneut ausgeführt; das gespeicherte Ergebnis wird mit `duplicate: true` erneut geschickt, da der Retry meist gerade deshalb entsteht, weil das erste Ergebnis das Backend nicht erreicht hat
+- **Befehlsergebnisse** nutzen den Response-Envelope aus §5.1, Fehler also benannte Codes aus dem Katalog statt Freitext
 
 ---
 
