@@ -19,6 +19,15 @@ const envSchema = z.object({
   AGENT_TOKEN: z.string().min(1).optional(),
   /** Docker-Socket-Proxy – der Agent spricht nie direkt mit dem Docker-Socket. */
   DOCKER_SOCKET_PROXY_URL: z.string().url().default('http://127.0.0.1:2375'),
+  /** Basisverzeichnis der Server-Datenordner; Bind-Mounts sind darauf begrenzt. */
+  AGENT_DATA_DIR: z.string().min(1).default('/srv/palantir/servers'),
+  /** Basisverzeichnis der Backups; für Restore-Mounts ebenfalls zugelassen. */
+  AGENT_BACKUP_DIR: z.string().min(1).default('/srv/palantir/backups'),
+  /**
+   * Optionaler Pfad zu einem eigenen Seccomp-Profil (Pflichtenheft §2.3).
+   * Ohne Angabe greift das Standardprofil der Container-Engine.
+   */
+  AGENT_SECCOMP_PROFILE_PATH: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
