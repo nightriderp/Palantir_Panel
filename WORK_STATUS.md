@@ -58,7 +58,7 @@ Commit-Präfix ist das Arbeitspaket in eckigen Klammern, z. B. `[auth] Argon2id-
 | Arbeitspaket                                                                    | Branch               | Status | Zuletzt aktualisiert | Notiz                                                   |
 | ------------------------------------------------------------------------------- | -------------------- | ------ | -------------------- | ------------------------------------------------------- |
 | F1 – Auth & Onboarding (`apps/frontend/src/app/(auth)`)                         | `f1/auth-onboarding` | offen  | 2026-08-25           | –                                                       |
-| F2 – Shared UI / Design-System (`apps/frontend/src/components/shared`)          | `f2/shared-ui`       | offen  | 2026-08-25           | **Priorität** – Grundlage für F3–F11.                   |
+| F2 – Shared UI / Design-System (`apps/frontend/src/components/shared`)          | `f2/shared-ui`       | in Bearbeitung | 2026-08-26   | **Priorität** – Grundlage für F3–F11. Reihenfolge: Contracts-Typen → Design-Tokens → Basis-Komponenten → ServerCard → Modals/Toasts → Layout/PhaseLockedPlaceholder. |
 | F3 – Server-Übersicht & Lifecycle (`apps/frontend/src/app/(dashboard)/servers`) | `f3/servers`         | offen  | 2026-08-25           | –                                                       |
 | F4 – Meine Backups (`apps/frontend/src/app/(dashboard)/my-backups`)             | `f4/my-backups`      | offen  | 2026-08-25           | –                                                       |
 | F5 – Nachrichten/Chat (`apps/frontend/src/app/(dashboard)/messages`)            | `f5/messages`        | offen  | 2026-08-25           | –                                                       |
