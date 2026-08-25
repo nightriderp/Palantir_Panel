@@ -115,6 +115,16 @@
 ```
 Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENTIALS`, `RESOURCE_LIMIT_EXCEEDED`, `SUBDOMAIN_TAKEN`), jeweils mit definierter HTTP-Status-Zuordnung.
 
+**Ort des Katalogs:** `packages/contracts/src/errors.ts` (`ERROR_CATALOG`) – dort steht jeder Code zusammen mit seinem HTTP-Status und einer Fallback-Meldung. Neue Fehlerfälle werden ausschließlich dort additiv ergänzt, nie als Freitext-String am Aufrufort. Aktueller Stand:
+
+| Code | HTTP-Status | Anlass |
+|---|---|---|
+| `AUTH_INVALID_CREDENTIALS` | 401 | Login mit falschen Zugangsdaten (§7) |
+| `RESOURCE_LIMIT_EXCEEDED` | 403 | Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (§10) |
+| `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
+
+Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den Envelope – Backend-Routen formen ihn nicht selbst.
+
 ### 5.2 DTO-Prinzip
 - Jede Ressource wird **immer vollständig** ausgeliefert (kein Zuschneiden auf einzelne Frontend-Ansichten); das Frontend entscheidet, was angezeigt wird
 - Jedes DTO enthält ein serverseitig berechnetes `permissions`-Objekt (z. B. `{ canStart, canDelete, canManageMembers }`), damit Berechtigungslogik ausschließlich im Backend lebt
@@ -242,6 +252,7 @@ Ein Skript (`scripts/setup.sh`), das:
 ## 14. Notification-Engine
 
 - Internes Event-System (`server.started`, `server.stopped`, `server.crashed`, `backup.failed`, `autoShutdown.triggered`, `resource.low`, `user.registered`, `message.reported`, ...)
+- **Benennungsschema:** `<domäne>.<vorgang>`, beide Segmente lowerCamelCase, genau ein Punkt als Trenner. Als Typ festgehalten in `packages/contracts/src/events.ts` (`WEBSOCKET_EVENTS`, `WebSocketEventName`); neue Events werden dort und in dieser Liste additiv ergänzt.
 - `NotificationChannel` (aktuell: Discord-Webhook) getrennt von `NotificationRule` (Event → Kanal → Empfängerkreis), beides über Admin-Oberfläche konfigurierbar
 
 ---

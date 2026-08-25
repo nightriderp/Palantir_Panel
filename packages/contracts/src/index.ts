@@ -3,13 +3,41 @@
  *
  * Vertragsgrenze zwischen Backend, Frontend und Agent (Pflichtenheft §4, CLAUDE.md §3).
  *
- * Dieses Package ist im Grundgerüst bewusst leer. Inhalte (Response-Envelope,
- * DTOs inkl. `permissions`-Objekt, Fehlercode-Katalog, WebSocket-Event-Namen,
- * Agent-Protokoll-Befehle) kommen ausschließlich über eigene, kleine PRs –
- * niemals nebenbei in einem Feature-PR (CLAUDE.md §6).
+ * Enthalten ist bisher nur die paket-übergreifende Basis: Response-Envelope,
+ * Fehlercode-Katalog und das Benennungsschema der WebSocket-Events. Fachliche
+ * DTOs (inkl. `permissions`-Objekt aus B2) und die Agent-Protokoll-Befehle
+ * kommen aus den jeweiligen Arbeitspaketen – jeweils über einen eigenen,
+ * kleinen PR, niemals nebenbei in einem Feature-PR (CLAUDE.md §6).
  *
  * Änderungen sind bevorzugt additiv (neue optionale Felder). Breaking Changes
  * an bestehenden Feldern werden im Commit und PR explizit gekennzeichnet.
  */
 
-export {};
+export {
+  type ApiErrorBody,
+  type ApiErrorResponse,
+  type ApiResponse,
+  type ApiSuccessResponse,
+  fail,
+  httpStatusForResponse,
+  isFail,
+  isOk,
+  ok,
+} from './envelope.js';
+
+export {
+  ERROR_CATALOG,
+  ERROR_CODES,
+  type ErrorCode,
+  type ErrorDefinition,
+  defaultMessageForErrorCode,
+  httpStatusForErrorCode,
+  isErrorCode,
+} from './errors.js';
+
+export {
+  WEBSOCKET_EVENTS,
+  type EventNameScheme,
+  type WebSocketEventName,
+  isWebSocketEventName,
+} from './events.js';
