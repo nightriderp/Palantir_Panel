@@ -160,6 +160,36 @@ zurückstellen – funktioniert auch, öffnet die Datenbank aber währenddessen 
 lokalen Prozess. Nur auf einem Entwicklungsrechner, nie auf der VPS, und die Originaldatei
 vorher kopieren.
 
+### 2.3 Migrationen (Drizzle Kit)
+
+Das Datenbank-Schema wird ausschließlich über Migrationen geändert, nie von Hand an der
+laufenden Datenbank ([CLAUDE.md §4](CLAUDE.md)). Alle Kommandos laufen im Repo-Root, auf
+der Maschine, auf der auch das Backend liegt (VPS bzw. Entwicklungsrechner). Die
+`DATABASE_URL` kommt aus der zentralen `.env`.
+
+**Migration anwenden** – der übliche Schritt bei Deployment und nach jedem `git pull`:
+
+```bash
+pnpm --filter @palantir/backend db:migrate
+```
+
+**Migration erzeugen** – nur nach einer Änderung an `apps/backend/src/db/schema.ts`. Die
+erzeugte Datei unter `apps/backend/drizzle/` gehört mit in den Commit:
+
+```bash
+pnpm --filter @palantir/backend db:generate
+```
+
+**Migrationskette prüfen** – meldet Lücken oder Konflikte, etwa nach einem Merge, bei dem
+zwei Arbeitspakete parallel eine Migration mitgebracht haben:
+
+```bash
+pnpm --filter @palantir/backend db:check
+```
+
+Bereits angewendete Migrationen werden nicht nachträglich verändert – Drizzle prüft sie
+über einen Hash. Korrekturen laufen immer als neue Migration.
+
 ---
 
 ## 3. Noch zu ergänzen
