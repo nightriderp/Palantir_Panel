@@ -3,11 +3,11 @@
  *
  * Vertragsgrenze zwischen Backend, Frontend und Agent (Pflichtenheft §4, CLAUDE.md §3).
  *
- * Enthalten ist bisher nur die paket-übergreifende Basis: Response-Envelope,
- * Fehlercode-Katalog und das Benennungsschema der WebSocket-Events. Fachliche
- * DTOs (inkl. `permissions`-Objekt aus B2) und die Agent-Protokoll-Befehle
- * kommen aus den jeweiligen Arbeitspaketen – jeweils über einen eigenen,
- * kleinen PR, niemals nebenbei in einem Feature-PR (CLAUDE.md §6).
+ * Enthalten ist die paket-übergreifende Basis (Response-Envelope, Fehlercode-Katalog,
+ * Benennungsschema der WebSocket-Events) sowie die fachlichen DTOs, die bereits
+ * gebraucht werden. Weitere DTOs und die Agent-Protokoll-Befehle kommen aus den
+ * jeweiligen Arbeitspaketen – jeweils über einen eigenen, kleinen PR, niemals
+ * nebenbei in einem Feature-PR (CLAUDE.md §6).
  *
  * Änderungen sind bevorzugt additiv (neue optionale Felder). Breaking Changes
  * an bestehenden Feldern werden im Commit und PR explizit gekennzeichnet.
@@ -41,3 +41,6 @@ export {
   type WebSocketEventName,
   isWebSocketEventName,
 } from './events.js';
+
+export * from './server-lifecycle.js';
+export * from './game-server.js';
