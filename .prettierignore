@@ -15,3 +15,7 @@ CLAUDE.md
 
 # Mockup bleibt unveraendert (Referenzentwurf)
 docs/mockup/
+
+# Von Drizzle Kit erzeugte Migrations-Metadaten – werden bei jedem
+# `db:generate` neu geschrieben und dürfen nicht umformatiert werden.
+apps/backend/drizzle/meta/
