@@ -103,6 +103,7 @@ export const AGENT_CONTAINER_STATUSES = [
   'running',
   'restarting',
   'paused',
+  'removing',
   'exited',
   'dead',
   /** Container ist bekannt, sein Zustand aber gerade nicht ermittelbar. */
