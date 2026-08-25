@@ -197,6 +197,9 @@ export interface GlobalPermissions {
   canManageAddresses: boolean;
   canViewAuditLog: boolean;
   canModerateMessages: boolean;
-  /** In Version 1 immer `false` – kein UI-Pfad (Pflichtenheft §8). */
+  /**
+   * Wird bereits berechnet, hat in Version 1 aber keinen UI-Pfad: die
+   * Admin-Spiele-Verwaltung (F11) ist durchgehend Platzhalter (Pflichtenheft §8).
+   */
   canManageGameTypes: boolean;
 }
