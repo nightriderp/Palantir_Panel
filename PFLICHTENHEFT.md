@@ -169,6 +169,10 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 | `ArcadeScore` | userId, gameId, score, createdAt |
 | `UserResourceLimit` | userId, maxRamMb, maxCpuCores, maxDiskMb, maxConcurrentServers *(alle nullable)* |
 
+**Owner-Eindeutigkeit:** „Genau ein Konto trägt diesen Status" (Lastenheft §2) ist nicht nur eine Anwendungsregel, sondern über einen partiellen Unique-Index in der Datenbank abgesichert (`users_single_owner_idx` auf `users(is_owner) WHERE is_owner`). Ein zweiter Owner wird dadurch bereits beim Schreiben abgelehnt.
+
+**Fremdschlüssel `user_roles`:** Beide Spalten löschen mit (`ON DELETE CASCADE`) – wird ein Konto oder eine Rolle entfernt, verschwindet die Zuordnung mit; ein verwaister Eintrag hätte keine Bedeutung.
+
 **Audit-Log-Aufbewahrung:** Einträge werden nie durch Admin-Aktionen verändert oder gelöscht (append-only). Ein separater, rein additiver Archivierungsprozess exportiert Einträge, die älter als 24 Monate sind, in eine komprimierte Archivdatei und entfernt sie anschließend aus der aktiven Tabelle – so bleibt das Datenbankwachstum kontrollierbar, ohne dass die Unveränderlichkeit während laufender Vorgänge aufgeweicht wird.
 
 ---
