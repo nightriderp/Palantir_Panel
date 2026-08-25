@@ -1,17 +1,19 @@
+import { type ApiResponse, ok } from '@palantir/contracts';
 import type { FastifyInstance } from 'fastify';
+
+interface HealthPayload {
+  status: 'ok';
+  service: 'backend';
+}
 
 /**
  * Minimaler Health-Endpunkt für Reverse-Proxy und Container-Healthcheck.
  *
- * Das Antwortformat folgt dem Response-Envelope aus Pflichtenheft §5.1.
- * TODO(contracts): Sobald `@palantir/contracts` den Envelope-Typ und den
- * Fehlercode-Katalog bereitstellt, wird hier der Typ von dort importiert statt
- * lokal geformt (CLAUDE.md §3 – keine Parallelstrukturen).
+ * Das Antwortformat kommt aus `@palantir/contracts` (Pflichtenheft §5.1) –
+ * kein lokal geformter Envelope (CLAUDE.md §3).
  */
 export async function registerHealthRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/health', async () => ({
-    success: true,
-    data: { status: 'ok', service: 'backend' },
-    error: null,
-  }));
+  app.get('/health', async (): Promise<ApiResponse<HealthPayload>> =>
+    ok({ status: 'ok', service: 'backend' }),
+  );
 }
