@@ -6,3 +6,9 @@ build
 coverage
 pnpm-lock.yaml
 *.zip
+
+# Verbindliche Referenzdokumente - Formatierung bleibt unveraendert
+LASTENHEFT.md
+PFLICHTENHEFT.md
+STRUKTUR.md
+CLAUDE.md
