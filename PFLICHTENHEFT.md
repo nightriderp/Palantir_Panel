@@ -133,8 +133,20 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AGENT_PROTOCOL_VERSION_MISMATCH` | 400 | Agent und Backend sprechen unterschiedliche Protokollversionen (§2.2) |
 | `AGENT_COMMAND_INVALID` | 400 | Befehls-Frame verletzt das vereinbarte Format (§5.3) |
 | `AGENT_COMMAND_FAILED` | 500 | Ausführung des Befehls in der Container-Runtime fehlgeschlagen (§5.3) |
+| `AGENT_COMMAND_NOT_IMPLEMENTED` | 501 | Befehl steht im Protokoll, ist auf dem Agent aber noch nicht gebaut (§5.3) |
+| `AGENT_CONTAINER_NOT_FOUND` | 404 | Container existiert auf dem Homeserver nicht (mehr) |
+| `AGENT_CONTAINER_NOT_RUNNING` | 409 | Vorgang setzt einen laufenden Container voraus (Konsole, Dateizugriff) |
+| `AGENT_CONTAINER_STATE_CONFLICT` | 409 | Container ist für den Vorgang im falschen Zustand |
+| `AGENT_CONTAINER_NAME_CONFLICT` | 409 | Container mit diesem Namen existiert bereits |
+| `AGENT_IMAGE_NOT_FOUND` | 404 | Container-Image liegt auf dem Homeserver nicht vor |
+| `AGENT_INVALID_PATH` | 400 | Pfad ungültig oder außerhalb des erlaubten Bereichs |
+| `AGENT_FILE_NOT_FOUND` | 404 | Datei im Container nicht gefunden |
+| `AGENT_FILE_TOO_LARGE` | 413 | Datei überschreitet das Größenlimit (§12.1) |
+| `AGENT_RUNTIME_UNAVAILABLE` | 503 | Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar |
 
 Die `AGENT_*`-Codes gelten für den WebSocket-Kanal zum Agent, der kein REST-Endpunkt ist. Die HTTP-Status-Zuordnung greift dort beim Handshake und dient dem Backend als Vorlage, wenn es einen Agent-Fehler an eine REST-Antwort weiterreicht.
+
+Die Container-Runtime des Agents führt zusätzlich einen eigenen, agent-internen Katalog ohne HTTP-Status (`RUNTIME_ERROR_CATALOG` in `apps/agent/src/runtime/errors.ts`). Die Übersetzung dieser Codes auf die `AGENT_*`-Codes oben passiert an genau einer Stelle: `apps/agent/src/connection/runtime-adapter.ts`. Ein Test dort hält die Zuordnung vollständig.
 
 Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den Envelope – Backend-Routen formen ihn nicht selbst.
 
@@ -157,6 +169,8 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - **Token-Übergabe:** Das Pre-Shared-Token wird im `Authorization: Bearer …`-Header des WebSocket-Handshakes übergeben, nicht als Feld in einem Frame; so taucht es nicht in Nachrichten-Logs auf und die Verbindung wird abgelehnt, bevor ein Frame fließt
 - **Duplikat-Antwort:** Ein Befehl mit bereits verarbeiteter Korrelations-ID wird nicht erneut ausgeführt; das gespeicherte Ergebnis wird mit `duplicate: true` erneut geschickt, da der Retry meist gerade deshalb entsteht, weil das erste Ergebnis das Backend nicht erreicht hat
 - **Befehlsergebnisse** nutzen den Response-Envelope aus §5.1, Fehler also benannte Codes aus dem Katalog statt Freitext
+
+**Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
 
 ---
 
