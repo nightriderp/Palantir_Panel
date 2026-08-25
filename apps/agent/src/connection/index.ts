@@ -20,13 +20,12 @@ export {
   type ConnectionLogger,
   type ConnectionState,
 } from './agent-connection.js';
-export {
-  createUnavailableRuntimePort,
-  type AgentRuntimePort,
-  type CommandExecution,
-  type CommandExecutor,
-  type ContainerStateSource,
-  type OutboundEvent,
+export type {
+  AgentRuntimePort,
+  CommandExecution,
+  CommandExecutor,
+  ContainerStateSource,
+  OutboundEvent,
 } from './ports.js';
 export type {
   Transport,
@@ -39,6 +38,17 @@ export {
   createWebSocketTransportFactory,
   type WebSocketTransportOptions,
 } from './websocket-transport.js';
+
+export {
+  ContainerRuntimeAdapter,
+  RUNTIME_ERROR_TO_API_CODE,
+  toAgentContainerState,
+  toContainerSpec,
+  toErrorResponse,
+  toOutboundEvent,
+  type OutboundEventSink,
+  type RuntimeAdapterOptions,
+} from './runtime-adapter.js';
 
 import { AgentConnection, type AgentConnectionOptions } from './agent-connection.js';
 import type { AgentRuntimePort } from './ports.js';
