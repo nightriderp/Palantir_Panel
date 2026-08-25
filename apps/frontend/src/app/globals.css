@@ -1,3 +1,104 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/**
+ * Globale Grundlagen des Design-Systems (Arbeitspaket F2).
+ *
+ * Hier stehen nur Dinge, die sich nicht als Utility-Klasse an einer Komponente
+ * ausdrücken lassen: Grundfarben des Dokuments, Fokus-Ring, Formular-Elemente,
+ * Scrollbalken. Alles andere gehört als Token in `tailwind.config.ts`.
+ */
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    /* Die Skala in tailwind.config.ts ist bereits kompakt gehalten. */
+    font-size: 100%;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-base text-ink antialiased;
+  }
+
+  /* Sichtbarer, einheitlicher Fokus-Ring – Bedienung per Tastatur muss erkennbar sein. */
+  :focus-visible {
+    @apply outline outline-2 outline-offset-1 outline-brand;
+  }
+
+  a {
+    @apply text-brand;
+  }
+
+  a:hover {
+    @apply text-brand-bright;
+  }
+
+  button {
+    -webkit-tap-highlight-color: transparent;
+    @apply font-sans transition-transform duration-100;
+  }
+
+  button:not(:disabled):active {
+    transform: scale(0.97);
+  }
+
+  /* Select: eigener Pfeil, weil das Systemsteuerelement nicht zum dunklen Thema passt. */
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><path d='M1 2l3 3 3-3' stroke='%239aa2b2' fill='none' stroke-width='1.4'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+  }
+
+  select option,
+  select optgroup {
+    @apply bg-surface text-ink;
+  }
+
+  input[type='number'] {
+    appearance: textfield;
+  }
+
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: #7c5cff;
+  }
+
+  ::placeholder {
+    color: #5a6172;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #272c38;
+    border-radius: 6px;
+    border: 2px solid #0a0b0f;
+  }
+
+  /* Nutzer, die Bewegung reduzieren wollen, bekommen keine Animationen. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
