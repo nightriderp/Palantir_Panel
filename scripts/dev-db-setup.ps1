@@ -54,8 +54,12 @@ if (-not $PsqlPath) {
         $PsqlPath = $cmd.Source
     }
     else {
-        $found = Get-ChildItem 'C:\Program Files\PostgreSQL' -Recurse -Filter psql.exe -ErrorAction SilentlyContinue |
+        # Die Server-Installation unter <version>\bin bevorzugen - unter
+        # "pgAdmin 4\runtime" liegt eine zweite psql.exe, die hier nicht gemeint ist.
+        $kandidaten = Get-ChildItem 'C:\Program Files\PostgreSQL' -Recurse -Filter psql.exe -ErrorAction SilentlyContinue
+        $found = $kandidaten | Where-Object { $_.FullName -match '\\\d+\\bin\\psql\.exe$' } |
             Sort-Object FullName -Descending | Select-Object -First 1
+        if (-not $found) { $found = $kandidaten | Sort-Object FullName -Descending | Select-Object -First 1 }
         if ($found) { $PsqlPath = $found.FullName }
     }
 }
