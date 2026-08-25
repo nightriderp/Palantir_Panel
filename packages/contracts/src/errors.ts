@@ -38,6 +38,42 @@ export const ERROR_CATALOG = {
     httpStatus: 409,
     defaultMessage: 'Diese Subdomain ist bereits vergeben.',
   },
+  /**
+   * Zugriff ohne gültige Sitzung (Pflichtenheft §7, §8).
+   * 401: nicht authentifiziert – ein erneuter Versuch nach Anmeldung kann erfolgreich sein.
+   */
+  AUTH_REQUIRED: {
+    httpStatus: 401,
+    defaultMessage: 'Für diesen Zugriff ist eine Anmeldung erforderlich.',
+  },
+  /**
+   * Angemeldet, aber die nötige Permission fehlt (Pflichtenheft §8).
+   * 403: bewusst getrennt von `AUTH_REQUIRED`, damit das Frontend zwischen
+   * „neu anmelden" und „fehlende Berechtigung" unterscheiden kann.
+   */
+  PERMISSION_DENIED: {
+    httpStatus: 403,
+    defaultMessage: 'Für diese Aktion fehlt die nötige Berechtigung.',
+  },
+  /** Rolle existiert nicht (Pflichtenheft §8). 404: Zielobjekt nicht vorhanden. */
+  ROLE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Rolle existiert nicht.',
+  },
+  /** Rollenname bereits vergeben (Pflichtenheft §8). 409: Konflikt mit vorhandenem Zustand. */
+  ROLE_NAME_TAKEN: {
+    httpStatus: 409,
+    defaultMessage: 'Eine Rolle mit diesem Namen existiert bereits.',
+  },
+  /**
+   * Änderung an einer geschützten Systemrolle („Gast", Pflichtenheft §8).
+   * 403: die Aktion ist grundsätzlich unzulässig, unabhängig von Berechtigungen –
+   * auch der Owner darf sie nicht ausführen (Schutz vor Selbst-Aussperrung).
+   */
+  ROLE_PROTECTED: {
+    httpStatus: 403,
+    defaultMessage: 'Diese Systemrolle ist geschützt und kann nicht geändert oder gelöscht werden.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */

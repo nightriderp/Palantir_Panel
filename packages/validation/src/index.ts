@@ -12,3 +12,13 @@
 
 export { type Id, idSchema } from './common.js';
 export { apiErrorBodySchema, apiResponseSchema, errorCodeSchema } from './envelope.js';
+export {
+  type CreateRoleInput,
+  type UpdateRoleInput,
+  createRoleInputSchema,
+  permissionSchema,
+  roleDescriptionSchema,
+  roleNameSchema,
+  rolePermissionsBundleSchema,
+  updateRoleInputSchema,
+} from './rbac.js';

@@ -120,7 +120,12 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | Code | HTTP-Status | Anlass |
 |---|---|---|
 | `AUTH_INVALID_CREDENTIALS` | 401 | Login mit falschen Zugangsdaten (§7) |
+| `AUTH_REQUIRED` | 401 | Zugriff ohne gültige Sitzung (§7, §8) |
+| `PERMISSION_DENIED` | 403 | Angemeldet, aber die nötige Permission fehlt (§8) |
 | `RESOURCE_LIMIT_EXCEEDED` | 403 | Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (§10) |
+| `ROLE_PROTECTED` | 403 | Änderung an einer geschützten Systemrolle („Gast", §8) |
+| `ROLE_NOT_FOUND` | 404 | Rolle existiert nicht (§8) |
+| `ROLE_NAME_TAKEN` | 409 | Rollenname bereits vergeben (§8) |
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
 
 Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den Envelope – Backend-Routen formen ihn nicht selbst.
@@ -185,6 +190,14 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - Rollen sind frei definierbare Bündel dieser Permissions; ein Nutzer kann mehrere Rollen haben, effektive Rechte = Vereinigung
 - Seed-Rollen bei Ersteinrichtung: **Admin**, **Moderator**, **Nutzer** (vollständig editierbar); **Gast** als geschützte Systemrolle ohne jede Permission
 - `User.isOwner`-Flag: unabhängig vom Rollensystem immer alle Permissions – verhindert Selbst-Aussperrung
+
+**Ort des Katalogs:** `packages/contracts/src/permissions.ts` (`PERMISSION_CATALOG`) – dort steht jede Permission zusammen mit Beschreibung (für den Rollen-Editor) und Geltungsbereich (`own` / `any` / `global`). Neue Permissions werden ausschließlich dort additiv ergänzt und zusätzlich in der obigen Aufzählung nachgetragen.
+
+**Auswertung von `.own`/`.any`:** Wer `<basis>.any` besitzt, darf den Vorgang bei jeder Ressource; wer nur `<basis>.own` besitzt, ausschließlich bei eigenen (bzw. solchen, bei denen er Mitglied ist). Die Paare sind in `SCOPED_PERMISSION_BASES` festgehalten, die Auswertung liegt an genau einer Stelle im Backend-Modul `apps/backend/src/modules/rbac`.
+
+**Feldbenennung im Rollen-DTO (Abweichung von §6):** §6 nennt das Permission-Bündel der Entität `Role` schlicht `permissions`. Im DTO ist `permissions` jedoch durchgängig für das serverseitig berechnete Flags-Objekt aus §5.2 reserviert, damit sich das Frontend über alle DTOs hinweg darauf verlassen kann. Das Bündel heißt im `RoleDto` deshalb `grantedPermissions`; die Datenbankspalte bleibt `permissions`.
+
+**Kontobezogenes `permissions`-Objekt:** Neben den ressourcenbezogenen Flags gibt es `GlobalPermissions` (`packages/contracts/src/permissions.ts`) für die instanzweiten Rechte des angemeldeten Nutzers (Navigation, Admin-Bereiche). Es hängt am Session-/Konto-DTO aus §7; das Frontend leitet nie selbst etwas aus Rollen ab.
 
 ---
 
