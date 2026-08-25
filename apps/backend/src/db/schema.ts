@@ -1,0 +1,18 @@
+/**
+ * Datenbank-Schema (Drizzle ORM).
+ *
+ * **Bewusst leer.** Die Kernentitäten aus Pflichtenheft §6 gehören jeweils in
+ * das Arbeitspaket, das sie fachlich verantwortet (B1 `User`/`AuthMethod`/
+ * `Session`, B2 `Role`/`UserRole`, B3 `GameServer`/`ServerMember`, ...). Jedes
+ * Paket bringt seine Tabellen zusammen mit einer eigenen Migration mit
+ * (CLAUDE.md §4: Schema-Änderungen ausschließlich über Migrationen).
+ *
+ * Konvention für neue Tabellen:
+ * - eine Datei je Themenbereich unter `src/db/schema/`, hier re-exportiert,
+ *   sobald mehr als eine Datei existiert
+ * - `id` als UUID (siehe `idSchema` in `@palantir/validation`)
+ * - nach jeder Schema-Änderung `pnpm --filter @palantir/backend db:generate`
+ *   ausführen und die erzeugte Migration mit committen
+ */
+
+export {};

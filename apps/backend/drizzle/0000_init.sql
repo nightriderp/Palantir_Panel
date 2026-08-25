@@ -1,0 +1,4 @@
+-- Leere Initial-Migration: startet die Migrationskette, legt bewusst keine Tabelle an.
+-- Die Kernentitaeten aus Pflichtenheft 6 bringt jedes Arbeitspaket als eigene
+-- Migration mit (CLAUDE.md 4). Nicht nachtraeglich veraendern - Drizzle prueft
+-- angewendete Migrationen ueber einen Hash.

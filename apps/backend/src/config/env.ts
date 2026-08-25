@@ -17,6 +17,17 @@ const envSchema = z.object({
   BACKEND_HOST: z.string().default('0.0.0.0'),
   BACKEND_PORT: z.coerce.number().int().positive().default(4000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+
+  /**
+   * Verbindungs-URL für PostgreSQL (Pflichtenheft §3, .env.example Abschnitt 3).
+   *
+   * Bewusst optional: das Backend startet aktuell noch ohne Datenbank, weil
+   * noch kein fachliches Modul sie am Request-Pfad braucht. Der Datenbank-
+   * Client (`src/db/client.ts`) bricht beim ersten Zugriff mit einer
+   * verständlichen Meldung ab, wenn der Wert fehlt. Sobald das erste Modul
+   * die Datenbank benötigt, wird der Wert hier auf Pflicht hochgestuft.
+   */
+  DATABASE_URL: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
