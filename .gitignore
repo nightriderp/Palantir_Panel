@@ -1,0 +1,36 @@
+# Abhängigkeiten
+node_modules/
+.pnpm-store/
+
+# Build-Artefakte
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Umgebung / Secrets – niemals ins Repository (Pflichtenheft §12.1)
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+wireguard/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test-Ausgaben
+coverage/
