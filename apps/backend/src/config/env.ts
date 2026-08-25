@@ -1,0 +1,30 @@
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { config as loadDotenv } from 'dotenv';
+import { z } from 'zod';
+
+/**
+ * Zentrale `.env` im Repo-Root (Pflichtenheft §12.1): dieselbe Datei wird auf
+ * VPS und Homeserver eingesetzt, jede Komponente liest nur die für sie
+ * relevanten Variablen. Hier werden daher ausschließlich die Variablen
+ * geprüft, die das Backend zum Start benötigt.
+ */
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+loadDotenv({ path: path.join(repoRoot, '.env') });
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  BACKEND_HOST: z.string().default('0.0.0.0'),
+  BACKEND_PORT: z.coerce.number().int().positive().default(4000),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+});
+
+const parsed = envSchema.safeParse(process.env);
+
+if (!parsed.success) {
+  const details = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
+  throw new Error(`Ungültige Umgebungskonfiguration für das Backend:\n${details}`);
+}
+
+export const env = parsed.data;
+export type Env = typeof env;
