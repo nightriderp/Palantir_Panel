@@ -48,7 +48,7 @@ Commit-Präfix ist das Arbeitspaket in eckigen Klammern, z. B. `[auth] Argon2id-
 | Arbeitspaket                                       | Branch                 | Status | Zuletzt aktualisiert | Notiz                   |
 | -------------------------------------------------- | ---------------------- | ------ | -------------------- | ----------------------- |
 | A1 – Core-Verbindung (`apps/agent/src/connection`) | `a1/connection`        | offen  | 2026-08-25           | –                       |
-| A2 – Container-Runtime (`apps/agent/src/runtime`)  | `a2/container-runtime` | offen  | 2026-08-25           | Eng gekoppelt mit B3.   |
+| A2 – Container-Runtime (`apps/agent/src/runtime`)  | `a2/container-runtime` | in Bearbeitung | 2026-08-26 | Eng gekoppelt mit B3. Start: `ContainerRuntime`-Interface, Docker-Implementierung über den Socket-Proxy, Fake für Tests. |
 | A3 – Jobs & Scheduler (`apps/agent/src/jobs`)      | `a3/jobs`              | offen  | 2026-08-25           | Setzt A1 und A2 voraus. |
 
 ---
