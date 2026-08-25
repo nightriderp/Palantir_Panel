@@ -82,6 +82,17 @@ docker compose up -d db
 pnpm --filter @palantir/backend db:migrate
 ```
 
+**Schritt 4 – Seed-Rollen anlegen** (einmalig bei der Ersteinrichtung, im Repo-Root
+`/opt/palantir` auf der **VPS**):
+
+```bash
+pnpm --filter @palantir/backend db:seed
+```
+
+Legt die Rollen **Admin**, **Moderator**, **Nutzer** und die geschützte Systemrolle
+**Gast** an ([PFLICHTENHEFT.md §8](PFLICHTENHEFT.md)). Der Lauf ist idempotent – siehe
+Abschnitt 2.4.
+
 **Wichtig:**
 
 - Der Datenbank-Port wird **nicht** nach außen veröffentlicht. Die Datenbank ist nur im
@@ -189,6 +200,38 @@ pnpm --filter @palantir/backend db:check
 
 Bereits angewendete Migrationen werden nicht nachträglich verändert – Drizzle prüft sie
 über einen Hash. Korrekturen laufen immer als neue Migration.
+
+### 2.4 Seed-Rollen (Ersteinrichtung)
+
+Eine frisch migrierte Datenbank enthält **keine** Rollen. Der Seed-Lauf legt die vier
+Rollen aus [PFLICHTENHEFT.md §8](PFLICHTENHEFT.md) an. Er gehört einmalig in die
+Ersteinrichtung, direkt nach `db:migrate`, und läuft im Repo-Root auf derselben Maschine
+wie das Backend – auf der **VPS** unter `/opt/palantir`, auf dem
+**Entwicklungsrechner** im geklonten Repository:
+
+```bash
+pnpm --filter @palantir/backend db:seed
+```
+
+| Rolle         | Berechtigungen                                                                     | Geschützt |
+| ------------- | ---------------------------------------------------------------------------------- | --------- |
+| **Admin**     | vollständiger Permission-Katalog                                                   | nein      |
+| **Moderator** | wie Nutzer, zusätzlich `message.moderate`                                          | nein      |
+| **Nutzer**    | eigene Server und Backups verwalten, Nodes einsehen                                | nein      |
+| **Gast**      | keine – Standardrolle nach jeder Registrierung ([LASTENHEFT.md §2](LASTENHEFT.md)) | **ja**    |
+
+Admin, Moderator und Nutzer sind danach über die Rollenverwaltung frei editierbar. Die
+Rolle **Gast** ist eine geschützte Systemrolle und lässt sich weder bearbeiten noch löschen
+– auch nicht vom Owner. Das ist Absicht: sie ist die Auffangrolle jeder neuen
+Registrierung.
+
+Der Lauf ist **idempotent** und kann jederzeit wiederholt werden. Vorhandene Rollen bleiben
+dabei unverändert – auch dann, wenn ihre Berechtigungen inzwischen angepasst wurden. Ein
+erneuter Lauf legt lediglich fehlende Rollen wieder an und stellt so sicher, dass die
+Gast-Rolle nie dauerhaft fehlt.
+
+> Der Owner-Account (`User.isOwner`) wird hiervon **nicht** angelegt – er steht außerhalb
+> des Rollensystems und kommt aus der Ersteinrichtung des Kontos (siehe offene Punkte).
 
 ---
 

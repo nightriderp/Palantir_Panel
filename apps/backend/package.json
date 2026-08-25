@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
     "db:check": "drizzle-kit check",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src drizzle.config.ts",
