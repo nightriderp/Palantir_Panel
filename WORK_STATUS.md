@@ -21,9 +21,10 @@ Commit-Präfix ist das Arbeitspaket in eckigen Klammern, z. B. `[auth] Argon2id-
 
 ## Grundgerüst
 
-| Arbeitspaket                                                  | Branch | Status | Zuletzt aktualisiert | Notiz                                                                                                                            |
-| ------------------------------------------------------------- | ------ | ------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Grundgerüst (Monorepo, Tooling, .env.example, setup.sh, Doku) | `main` | fertig | 2026-08-25           | pnpm-Workspaces, Turborepo, Fastify-Backend, Next.js-Frontend, Agent, leere Contracts-/Validation-Packages. Keine Feature-Logik. |
+| Arbeitspaket                                                  | Branch         | Status | Zuletzt aktualisiert | Notiz                                                                                                                                          |
+| ------------------------------------------------------------- | -------------- | ------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grundgerüst (Monorepo, Tooling, .env.example, setup.sh, Doku) | `main`         | fertig | 2026-08-25           | pnpm-Workspaces, Turborepo, Fastify-Backend, Next.js-Frontend, Agent, leere Contracts-/Validation-Packages. Keine Feature-Logik.               |
+| F0 – Fundament (Contracts-Basis & Drizzle)                    | `f0/fundament` | offen  | 2026-08-25           | Vorarbeit, nicht in STRUKTUR.md. Schließt „Gefundene Punkte" 1 und 3. Muss vor Welle 1 (B2/A1/A2) gemergt sein. Prompt in SITZUNGS_PROMPTS.md. |
 
 ---
 
