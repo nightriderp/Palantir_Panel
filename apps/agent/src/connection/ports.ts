@@ -19,7 +19,6 @@ import type {
   ApiResponse,
   CorrelationId,
 } from '@palantir/contracts';
-import { fail } from '@palantir/contracts';
 
 /** Ein vom Backend eingegangener, bereits geprüfter und entduplizierter Befehl. */
 export interface CommandExecution {
@@ -63,24 +62,3 @@ export interface ContainerStateSource {
 
 /** Alles, was die Verbindung von der Runtime braucht. */
 export interface AgentRuntimePort extends CommandExecutor, ContainerStateSource {}
-
-/**
- * Platzhalter, solange A2 (Container-Runtime) noch nicht angebunden ist.
- *
- * Bewusst ehrlich statt bequem: Befehle werden mit `AGENT_COMMAND_FAILED`
- * beantwortet und die Zustandsabfrage lehnt ab. So sieht das Backend den echten
- * Stand, statt aus stillschweigenden Erfolgsmeldungen oder einer leeren
- * Container-Liste falsche Schlüsse zu ziehen.
- */
-export function createUnavailableRuntimePort(): AgentRuntimePort {
-  const grund = 'Die Container-Runtime (Arbeitspaket A2) ist noch nicht angebunden.';
-
-  return {
-    execute(execution: CommandExecution): Promise<ApiResponse<unknown>> {
-      return Promise.resolve(fail('AGENT_COMMAND_FAILED', `${execution.command}: ${grund}`));
-    },
-    listContainerStates(): Promise<readonly AgentContainerState[]> {
-      return Promise.reject(new Error(grund));
-    },
-  };
-}

@@ -1,14 +1,21 @@
-import { createAgentConnection, createUnavailableRuntimePort } from './connection/index.js';
+import {
+  AgentConnection,
+  ContainerRuntimeAdapter,
+  createWebSocketTransportFactory,
+} from './connection/index.js';
+import { createContainerRuntimeFromEnv } from './runtime/index.js';
 import { env } from './config/env.js';
 
 /**
  * Einstiegspunkt des Homeserver-Agents.
  *
- * Mit A1 (Core-Verbindung) hält der Agent hier die persistente, ausgehende
- * WebSocket-Verbindung zum Backend offen (Pflichtenheft §2.2). Die weiteren
- * Arbeitspakete hängen sich daran:
- *   - A2 Container-Runtime → src/runtime  (ersetzt den Platzhalter-Port unten)
- *   - A3 Jobs & Scheduler  → src/jobs     (meldet Ereignisse über sendEvent)
+ * Hier werden die Arbeitspakete zusammengesteckt:
+ *   - A1 Core-Verbindung   → src/connection (persistente, ausgehende Verbindung)
+ *   - A2 Container-Runtime → src/runtime    (Docker über den Socket-Proxy)
+ *   - A3 Jobs & Scheduler  → src/jobs       (noch offen)
+ *
+ * Der Adapter dazwischen übersetzt Protokoll-Befehle auf Runtime-Aufrufe und
+ * Runtime-Ereignisse zurück ins Protokoll.
  */
 function main(): void {
   console.info('[agent] Start', {
@@ -27,21 +34,43 @@ function main(): void {
     return;
   }
 
-  const connection = createAgentConnection({
-    backendWsUrl: env.AGENT_BACKEND_WS_URL,
-    token: env.AGENT_TOKEN,
+  const runtime = createContainerRuntimeFromEnv(env);
+
+  // Adapter und Verbindung brauchen einander gegenseitig. Der Adapter bekommt
+  // die Ereignis-Senke deshalb erst bei start() – so kommt beides ohne
+  // Zwischenvariable aus.
+  const adapter = new ContainerRuntimeAdapter({ runtime });
+
+  const connection = new AgentConnection({
+    transportFactory: createWebSocketTransportFactory({
+      url: env.AGENT_BACKEND_WS_URL,
+      token: env.AGENT_TOKEN,
+    }),
     agentVersion: AGENT_VERSION,
-    // Platzhalter, bis A2 die Container-Runtime anbindet: Befehle werden ehrlich
-    // mit einem Fehler beantwortet, statt Erfolg vorzutäuschen.
-    runtime: createUnavailableRuntimePort(),
+    runtime: adapter,
   });
+
+  void runtime
+    .connect()
+    .then(() => {
+      adapter.start((event) => connection.sendEvent(event));
+      console.info('[agent] Container-Runtime verbunden');
+    })
+    .catch((fehler: unknown) => {
+      // Kein Abbruch: Der Agent hält die Backend-Verbindung offen und beantwortet
+      // Befehle ehrlich mit AGENT_RUNTIME_UNAVAILABLE, statt stumm zu bleiben.
+      console.error('[agent] Container-Runtime nicht erreichbar', {
+        fehler: fehler instanceof Error ? fehler.message : String(fehler),
+      });
+    });
 
   connection.start();
 
   const shutdown = (signal: string): void => {
     console.info(`[agent] Beende auf ${signal}`);
+    adapter.stop();
     connection.stop();
-    process.exit(0);
+    void runtime.dispose().finally(() => process.exit(0));
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
