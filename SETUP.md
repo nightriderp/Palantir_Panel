@@ -120,13 +120,45 @@ Von Hand geht es genauso:
 
 Danach `POSTGRES_PASSWORD` und `DATABASE_URL` in der `.env` auf denselben Wert setzen.
 
-**Postgres-Superuser-Passwort unbekannt?** Dann hilft nur die offizielle
-Wiederherstellungsprozedur: Authentifizierungsmethode in `pg_hba.conf` vorübergehend auf
-`trust` setzen, Dienst neu starten, Passwort per `ALTER ROLE postgres PASSWORD '...'`
-setzen, `pg_hba.conf` **sofort** wieder auf `scram-sha-256` zurückstellen und erneut neu
-starten. Während dieses Fensters kann sich jeder lokale Prozess ohne Passwort verbinden –
-deshalb nur auf einem Entwicklungsrechner, nie auf der VPS, und die Datei danach
-zuverlässig zurücksetzen (vorher kopieren).
+#### Fallstrick: Welches Datenverzeichnis benutzt der Server wirklich?
+
+`pg_hba.conf` liegt **nicht** zwingend unter `C:\Program Files\PostgreSQL\<version>\data`.
+Wird der Cluster mit einem eigenen Datenverzeichnis betrieben, existiert dort trotzdem eine
+ungenutzte `pg_hba.conf` – Änderungen daran bleiben wirkungslos, ohne dass es eine
+Fehlermeldung gibt. Das tatsächlich benutzte Verzeichnis steht als `-D` im Startbefehl des
+Dienstes:
+
+```powershell
+Get-CimInstance Win32_Service -Filter "Name='postgresql-x64-18'" | Select-Object -ExpandProperty PathName
+```
+
+#### Postgres-Superuser-Passwort unbekannt?
+
+Auf einem Entwicklungsrechner ist der saubere Weg, den Cluster **neu zu initialisieren**,
+statt an der Authentifizierung zu drehen. Dienst stoppen, altes Datenverzeichnis umbenennen
+(nicht löschen – so bleibt es wiederherstellbar), neu aufsetzen:
+
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\initdb.exe" -D "C:\PalantirDev\pgdata" -U postgres --pwfile=<Datei mit dem Passwort> -E UTF8 --auth-host=scram-sha-256 --auth-local=scram-sha-256
+```
+
+Das Passwort über `--pwfile` übergeben, nie als Kommandozeilenargument – sonst steht es in
+der Prozessliste und in der Shell-History. Die Datei danach löschen.
+
+Anschließend braucht das Dienstkonto Zugriff auf das neue Verzeichnis (bei der
+Standardinstallation `NT AUTHORITY\NetworkService`):
+
+```powershell
+icacls "C:\PalantirDev\pgdata" /grant "NT AUTHORITY\NETWORKSERVICE:(OI)(CI)F" /T
+```
+
+Dann Dienst starten und `dev-db-setup.ps1` ausführen.
+
+Die Alternative – `pg_hba.conf` vorübergehend auf `trust` setzen, Passwort per
+`ALTER ROLE postgres PASSWORD '...'` neu setzen, danach **sofort** auf `scram-sha-256`
+zurückstellen – funktioniert auch, öffnet die Datenbank aber währenddessen für jeden
+lokalen Prozess. Nur auf einem Entwicklungsrechner, nie auf der VPS, und die Originaldatei
+vorher kopieren.
 
 ---
 
