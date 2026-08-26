@@ -322,6 +322,127 @@ export const ERROR_CATALOG = {
     httpStatus: 503,
     defaultMessage: 'Die Container-Engine auf dem Homeserver ist nicht erreichbar.',
   },
+
+  // -- Admin-Funktionen (Lastenheft §3.7 und §3.8) ---------------------------
+  // Arbeitspaket B8: Nodes, öffentlicher Port-Pool (Pflichtenheft §2.4),
+  // Audit-Log (§6), Storage-Explorer (§16) und Freischalt-Warteliste.
+
+  /** Node-Name oder WireGuard-Adresse bereits vergeben. 409: Konflikt mit vorhandenem Zustand. */
+  NODE_ADDRESS_TAKEN: {
+    httpStatus: 409,
+    defaultMessage: 'Name oder WireGuard-Adresse sind bereits für eine andere Node vergeben.',
+  },
+  /**
+   * Node soll entfernt werden, trägt aber noch Gameserver. 409: erst die Server
+   * löschen – sonst blieben Container ohne zuständige Node zurück.
+   */
+  NODE_IN_USE: {
+    httpStatus: 409,
+    defaultMessage: 'Auf dieser Node liegen noch Gameserver.',
+  },
+  /** Port-Bereich existiert nicht. 404. */
+  PORT_RANGE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieser Port-Bereich existiert nicht.',
+  },
+  /**
+   * Bereichsgrenzen sind unzulässig (Anfang größer als Ende, außerhalb des
+   * erlaubten Fensters). 400: der Aufrufer müsste die Eingabe ändern.
+   */
+  PORT_RANGE_INVALID: {
+    httpStatus: 400,
+    defaultMessage: 'Der Port-Bereich ist ungültig.',
+  },
+  /**
+   * Überschneidung mit einem bestehenden Bereich desselben Protokolls. 409:
+   * sonst wäre nicht eindeutig, aus welchem Bereich ein Port stammt.
+   */
+  PORT_RANGE_OVERLAP: {
+    httpStatus: 409,
+    defaultMessage: 'Der Port-Bereich überschneidet sich mit einem bestehenden Bereich.',
+  },
+  /**
+   * Bereich soll gelöscht oder verkleinert werden, obwohl daraus noch Ports
+   * vergeben sind. 409: laufende Server verlören sonst ihre Adresse.
+   */
+  PORT_RANGE_IN_USE: {
+    httpStatus: 409,
+    defaultMessage: 'Aus diesem Port-Bereich sind noch Ports vergeben.',
+  },
+  /**
+   * Im Pool ist kein freier Port mehr übrig (Pflichtenheft §2.4). 409: bewusst
+   * getrennt von RESOURCE_LIMIT_EXCEEDED – hier fehlt kein Nutzer-Kontingent,
+   * sondern der öffentliche Adressraum der VPS.
+   */
+  PORT_POOL_EXHAUSTED: {
+    httpStatus: 409,
+    defaultMessage: 'Im öffentlichen Port-Bereich ist kein freier Port mehr verfügbar.',
+  },
+  /** Port-Zuordnung existiert nicht. 404. */
+  PORT_ALLOCATION_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Port-Zuordnung existiert nicht.',
+  },
+  /**
+   * Für diese Node liegt noch keine Speicherübersicht vor (Pflichtenheft §16:
+   * Scan on demand). 409: erst einen Scan anstoßen, dann erneut abrufen.
+   */
+  STORAGE_SCAN_MISSING: {
+    httpStatus: 409,
+    defaultMessage: 'Für diese Node liegt noch keine Speicherübersicht vor.',
+  },
+  /** Eintrag steht nicht in der zwischengespeicherten Speicherübersicht. 404. */
+  STORAGE_ENTRY_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieser Eintrag steht nicht in der Speicherübersicht.',
+  },
+  /**
+   * Eintrag ist über den Storage-Explorer nicht löschbar – insbesondere der
+   * Datenordner eines aktiven Servers (Lastenheft §3.8). 403: die Aktion ist
+   * grundsätzlich unzulässig, unabhängig von Berechtigungen; auch der Owner
+   * darf sie nicht. Server-Datenordner verschwinden ausschließlich über den
+   * dedizierten Server-Löschen-Vorgang.
+   */
+  STORAGE_ENTRY_NOT_DELETABLE: {
+    httpStatus: 403,
+    defaultMessage:
+      'Dieser Eintrag kann über die Speicherverwaltung nicht gelöscht werden. Aktive Server-Datenordner werden ausschließlich über den Server-Löschen-Vorgang entfernt.',
+  },
+  /**
+   * Versuch, einen Audit-Eintrag zu ändern oder zu löschen. 403: das Log ist
+   * append-only (Pflichtenheft §6 und §18) – für niemanden, auch nicht
+   * vorübergehend. Einträge verlassen die aktive Tabelle einzig über den
+   * Archivierungsprozess.
+   */
+  AUDIT_ENTRY_IMMUTABLE: {
+    httpStatus: 403,
+    defaultMessage: 'Einträge im Audit-Log können nicht geändert oder gelöscht werden.',
+  },
+  /**
+   * Der Archivierungslauf konnte die Archivdatei nicht schreiben. 500: die
+   * aktive Tabelle bleibt in diesem Fall unverändert.
+   */
+  AUDIT_ARCHIVE_FAILED: {
+    httpStatus: 500,
+    defaultMessage: 'Das Archiv des Audit-Logs konnte nicht geschrieben werden.',
+  },
+  /**
+   * Aktion am Owner-Konto, die dieses aussperren würde (sperren, Rollen
+   * entziehen). 403: der Owner-Sonderstatus schützt genau davor
+   * (Lastenheft §2, Pflichtenheft §8).
+   */
+  OWNER_PROTECTED: {
+    httpStatus: 403,
+    defaultMessage: 'Das Owner-Konto kann nicht gesperrt oder herabgestuft werden.',
+  },
+  /**
+   * Wartelisten-Aktion passt nicht zum Zustand des Kontos, etwa die Freigabe
+   * eines bereits freigegebenen Kontos. 409: Konflikt mit vorhandenem Zustand.
+   */
+  REGISTRATION_REQUEST_INVALID_STATE: {
+    httpStatus: 409,
+    defaultMessage: 'Das Konto ist für diese Aktion im falschen Zustand.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */

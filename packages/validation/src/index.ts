@@ -78,6 +78,55 @@ export {
   updateBackupScheduleInputSchema,
 } from './backups.js';
 export {
+  type CreateHostNodeInput,
+  type UpdateHostNodeInput,
+  createHostNodeInputSchema,
+  hostNodeNameSchema,
+  hostNodeStatusSchema,
+  updateHostNodeInputSchema,
+  wireguardIpSchema,
+} from './host-node.js';
+export {
+  type CreatePortRangeInput,
+  type UpdatePortRangeInput,
+  createPortRangeInputSchema,
+  portProtocolSchema,
+  portRangeLabelSchema,
+  publicPortSchema,
+  updatePortRangeInputSchema,
+} from './address.js';
+export {
+  type AppendAuditEntryInput,
+  type AuditLogQuery,
+  appendAuditEntryInputSchema,
+  auditActionSchema,
+  auditLogQuerySchema,
+  auditMetadataSchema,
+  auditTargetTypeSchema,
+} from './audit.js';
+export {
+  type AgentStorageEntryInput,
+  type DeleteStorageEntryInput,
+  type GetStorageBreakdownResult,
+  type StartStorageScanInput,
+  agentStorageEntryKindSchema,
+  agentStorageEntrySchema,
+  deleteStorageEntryInputSchema,
+  getStorageBreakdownPayloadSchema,
+  getStorageBreakdownResultSchema,
+  startStorageScanInputSchema,
+  storageEntryKindSchema,
+} from './storage.js';
+export {
+  type ApproveRegistrationRequestInput,
+  type BlockRegistrationRequestInput,
+  type RegistrationRequestQuery,
+  approveRegistrationRequestInputSchema,
+  blockRegistrationRequestInputSchema,
+  registrationRequestQuerySchema,
+  registrationRequestStatusSchema,
+} from './registration-request.js';
+export {
   AGENT_COMMAND_PAYLOAD_SCHEMAS,
   createBackupCommandPayloadSchema,
   createBackupCommandResultSchema,
