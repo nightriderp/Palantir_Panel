@@ -28,6 +28,23 @@ const envSchema = z.object({
    * Ohne Angabe greift das Standardprofil der Container-Engine.
    */
   AGENT_SECCOMP_PROFILE_PATH: z.string().min(1).optional(),
+  /**
+   * Abstand der periodischen Server-Abfrage, wenn das Backend im Befehl
+   * `SET_SERVER_QUERY` keinen eigenen mitgibt (Pflichtenheft §9).
+   */
+  AGENT_QUERY_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3_600).default(60),
+  /** Frist einer einzelnen Server-Abfrage, bevor sie als fehlgeschlagen gilt. */
+  AGENT_QUERY_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
+  /**
+   * Obergrenze eines `DOWNLOAD_BACKUP`-Blocks. Deckelt den vom Backend
+   * angeforderten `maxBytes`, damit ein zu großer Wert den Agent nicht
+   * umbringt (Lastenheft §3.3).
+   */
+  AGENT_DOWNLOAD_BLOCK_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(8 * 1024 * 1024),
 });
 
 const parsed = envSchema.safeParse(process.env);
