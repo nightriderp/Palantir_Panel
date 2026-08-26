@@ -51,15 +51,11 @@ RUN pnpm install --frozen-lockfile --prod --filter @palantir/agent...
 FROM base AS runtime
 ENV NODE_ENV=production
 
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=prod-deps /app/apps/agent/node_modules ./apps/agent/node_modules
-COPY --from=prod-deps /app/packages/contracts/node_modules ./packages/contracts/node_modules
-COPY --from=prod-deps /app/packages/validation/node_modules ./packages/validation/node_modules
-
-COPY pnpm-workspace.yaml package.json ./
-COPY apps/agent/package.json ./apps/agent/
-COPY packages/contracts/package.json ./packages/contracts/
-COPY packages/validation/package.json ./packages/validation/
+# Die ganze Stufe auf einmal: sie enthält bereits die Manifeste und die
+# node_modules auf allen Ebenen. Einzeln benannte Pfade wären fehleranfällig -
+# `packages/contracts` etwa hat gar keine Produktionsabhängigkeiten und damit
+# auch kein eigenes node_modules.
+COPY --from=prod-deps /app ./
 
 COPY --from=build /app/apps/agent/dist ./apps/agent/dist
 COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
