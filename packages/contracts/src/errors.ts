@@ -74,6 +74,100 @@ export const ERROR_CATALOG = {
     httpStatus: 403,
     defaultMessage: 'Diese Systemrolle ist geschützt und kann nicht geändert oder gelöscht werden.',
   },
+
+  // -- Agent-Protokoll (Pflichtenheft §2.2 / §5.3) ---------------------------
+  // Der Agent-Kanal ist kein REST-Endpunkt; die HTTP-Status-Zuordnung gilt hier
+  // für den WebSocket-Handshake bzw. dient dem Backend als Vorlage, wenn es
+  // einen Agent-Fehler an eine REST-Antwort weiterreicht.
+
+  /** Pre-Shared-Token fehlt oder ist falsch (Pflichtenheft §2.2). 401: nicht authentifiziert. */
+  AGENT_UNAUTHORIZED: {
+    httpStatus: 401,
+    defaultMessage: 'Der Agent konnte sich nicht gegenüber dem Backend authentifizieren.',
+  },
+  /**
+   * Agent und Backend sprechen unterschiedliche Protokollversionen
+   * (`AGENT_PROTOCOL_VERSION`). 400: Die Gegenseite müsste den Frame ändern,
+   * ein Retry mit demselben Inhalt hilft nicht.
+   */
+  AGENT_PROTOCOL_VERSION_MISMATCH: {
+    httpStatus: 400,
+    defaultMessage: 'Agent und Backend nutzen unterschiedliche Protokollversionen.',
+  },
+  /** Befehls-Frame verletzt das Schema (fehlende Korrelations-ID, falscher Typ, ...). 400. */
+  AGENT_COMMAND_INVALID: {
+    httpStatus: 400,
+    defaultMessage: 'Der Agent-Befehl entspricht nicht dem vereinbarten Format.',
+  },
+  /** Ausführung des Befehls in der Container-Runtime ist fehlgeschlagen. 500. */
+  AGENT_COMMAND_FAILED: {
+    httpStatus: 500,
+    defaultMessage: 'Die Ausführung des Befehls auf dem Homeserver ist fehlgeschlagen.',
+  },
+  /**
+   * Befehl steht im Protokoll, ist auf dem Agent aber noch nicht gebaut
+   * (aktuell: `CREATE_BACKUP`, `RESTORE_BACKUP`, `GET_STORAGE_BREAKDOWN` – A3).
+   * 501: bewusst getrennt von einem Ausführungsfehler, damit das Backend
+   * „noch nicht gebaut" von „hat nicht funktioniert" unterscheiden kann.
+   */
+  AGENT_COMMAND_NOT_IMPLEMENTED: {
+    httpStatus: 501,
+    defaultMessage: 'Dieser Befehl wird vom Agent noch nicht unterstützt.',
+  },
+
+  // -- Zuordnung der Runtime-Fehler auf den API-Katalog ----------------------
+  // Die Container-Runtime (A2) führt einen eigenen, agent-internen Katalog
+  // (`RUNTIME_ERROR_CATALOG`) ohne HTTP-Status, weil sie keine HTTP-Antworten
+  // liefert. Die Übersetzung auf die Codes hier passiert an genau einer Stelle:
+  // `apps/agent/src/connection/runtime-adapter.ts`. Ohne diese Codes bliebe
+  // jeder Runtime-Fehler ein pauschales AGENT_COMMAND_FAILED, und das Backend
+  // könnte „Container weg" nicht von „Engine nicht erreichbar" unterscheiden.
+
+  /** Container existiert nicht (mehr). 404: Zielobjekt nicht vorhanden. */
+  AGENT_CONTAINER_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Der Container existiert auf dem Homeserver nicht.',
+  },
+  /** Vorgang setzt einen laufenden Container voraus (Konsole, Dateizugriff). 409. */
+  AGENT_CONTAINER_NOT_RUNNING: {
+    httpStatus: 409,
+    defaultMessage: 'Der Server läuft nicht.',
+  },
+  /** Container ist für diesen Vorgang im falschen Zustand. 409: Konflikt mit vorhandenem Zustand. */
+  AGENT_CONTAINER_STATE_CONFLICT: {
+    httpStatus: 409,
+    defaultMessage: 'Der Server ist für diesen Vorgang im falschen Zustand.',
+  },
+  /** Es existiert bereits ein Container mit diesem Namen. 409. */
+  AGENT_CONTAINER_NAME_CONFLICT: {
+    httpStatus: 409,
+    defaultMessage: 'Auf dem Homeserver existiert bereits ein Container mit diesem Namen.',
+  },
+  /** Das angeforderte Container-Image liegt auf dem Homeserver nicht vor. 404. */
+  AGENT_IMAGE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Das Container-Image ist auf dem Homeserver nicht vorhanden.',
+  },
+  /** Pfad ist ungültig oder zeigt aus dem erlaubten Bereich heraus. 400. */
+  AGENT_INVALID_PATH: {
+    httpStatus: 400,
+    defaultMessage: 'Der Pfad ist ungültig oder liegt außerhalb des erlaubten Bereichs.',
+  },
+  /** Datei oder Verzeichnis im Container nicht gefunden. 404. */
+  AGENT_FILE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Die Datei existiert auf dem Server nicht.',
+  },
+  /** Datei überschreitet die zulässige Größe (Pflichtenheft §12.1). 413. */
+  AGENT_FILE_TOO_LARGE: {
+    httpStatus: 413,
+    defaultMessage: 'Die Datei ist größer als das erlaubte Limit.',
+  },
+  /** Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar. 503: vorübergehend, ein Retry kann klappen. */
+  AGENT_RUNTIME_UNAVAILABLE: {
+    httpStatus: 503,
+    defaultMessage: 'Die Container-Engine auf dem Homeserver ist nicht erreichbar.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */

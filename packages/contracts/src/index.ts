@@ -3,11 +3,13 @@
  *
  * Vertragsgrenze zwischen Backend, Frontend und Agent (Pflichtenheft §4, CLAUDE.md §3).
  *
- * Enthalten ist die paket-übergreifende Basis (Response-Envelope, Fehlercode-Katalog,
- * Benennungsschema der WebSocket-Events) sowie die fachlichen DTOs, die bereits
- * gebraucht werden. Weitere DTOs und die Agent-Protokoll-Befehle kommen aus den
- * jeweiligen Arbeitspaketen – jeweils über einen eigenen, kleinen PR, niemals
- * nebenbei in einem Feature-PR (CLAUDE.md §6).
+ * Enthalten sind die paket-übergreifende Basis (Response-Envelope,
+ * Fehlercode-Katalog, Benennungsschema der WebSocket-Events), die bereits
+ * gebrauchten fachlichen DTOs und das Agent-Protokoll (Befehle, Ereignisse,
+ * Frames, Korrelations-ID-Format). Weitere DTOs (inkl. `permissions`-Objekt aus
+ * B2) und die Nutzdaten der einzelnen Agent-Befehle kommen aus den jeweiligen
+ * Arbeitspaketen – jeweils über einen eigenen, kleinen PR, niemals nebenbei in
+ * einem Feature-PR (CLAUDE.md §6).
  *
  * Änderungen sind bevorzugt additiv (neue optionale Felder). Breaking Changes
  * an bestehenden Feldern werden im Commit und PR explizit gekennzeichnet.
@@ -46,3 +48,62 @@ export * from './server-lifecycle.js';
 export * from './game-server.js';
 export * from './permissions.js';
 export * from './role.js';
+
+export {
+  AGENT_COMMANDS,
+  AGENT_CONTAINER_STATUSES,
+  AGENT_EVENTS,
+  AGENT_PROTOCOL_VERSION,
+  type AgentCommandName,
+  type AgentCommandResultFrame,
+  type AgentContainerState,
+  type AgentContainerStatus,
+  type AgentEventFrame,
+  type AgentEventName,
+  type AgentFrameKind,
+  type AgentHelloFrame,
+  type AgentStateReportFrame,
+  type AgentStateReportReason,
+  type AgentToBackendFrame,
+  type BackendCommandFrame,
+  type BackendStateRequestFrame,
+  type BackendToAgentFrame,
+  type BackendWelcomeFrame,
+  type CorrelationId,
+  isAgentCommandName,
+  isAgentContainerStatus,
+  isAgentEventName,
+} from './agent-protocol.js';
+
+export {
+  IMPLEMENTED_AGENT_COMMANDS,
+  type AgentCommandPayloads,
+  type AgentCommandResults,
+  type AgentContainerStats,
+  type AgentFileEntry,
+  type AgentFileEntryType,
+  type AgentLogLine,
+  type AgentLogStreamName,
+  type AgentPortMapping,
+  type AgentPortProtocol,
+  type AgentResourceLimits,
+  type AgentVolumeMount,
+  type CreateCommandPayload,
+  type CreateCommandResult,
+  type DeleteCommandPayload,
+  type ExecConsoleCommandPayload,
+  type ExecConsoleCommandResult,
+  type FileListCommandPayload,
+  type FileListCommandResult,
+  type FileReadCommandPayload,
+  type FileReadCommandResult,
+  type FileWriteCommandPayload,
+  type GetLogsCommandPayload,
+  type GetLogsCommandResult,
+  type GetStatsCommandPayload,
+  type ImplementedAgentCommandName,
+  type RestartCommandPayload,
+  type StartCommandPayload,
+  type StopCommandPayload,
+  isImplementedAgentCommand,
+} from './agent-commands.js';
