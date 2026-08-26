@@ -23,6 +23,31 @@ export {
   updateRoleInputSchema,
 } from './rbac.js';
 export {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  type LoginInput,
+  type RegisterInput,
+  type TwoFactorInput,
+  accountDtoSchema,
+  accountRoleSummarySchema,
+  altchaChallengeSchema,
+  altchaSolutionPayloadSchema,
+  authMethodTypeSchema,
+  authenticatedResultSchema,
+  displayNameSchema,
+  globalPermissionsSchema,
+  linkedAuthMethodSchema,
+  loginInputSchema,
+  loginResultSchema,
+  loginResultStatusSchema,
+  oauthProviderSchema,
+  passwordSchema,
+  registerInputSchema,
+  twoFactorCodeSchema,
+  twoFactorInputSchema,
+  usernameSchema,
+} from './auth.js';
+export {
   agentCommandNameSchema,
   agentCommandResultFrameSchema,
   agentContainerStateSchema,
@@ -40,12 +65,24 @@ export {
   isoTimestampSchema,
 } from './agent-protocol.js';
 export {
+  type BackupOverviewQuery,
+  type CreateBackupInput,
+  type CreateServerExportInput,
+  type UpdateBackupScheduleInput,
+  backupOverviewQuerySchema,
+  backupStatusSchema,
+  backupTypeSchema,
+  createBackupInputSchema,
+  createServerExportInputSchema,
+  cronExpressionSchema,
+  updateBackupScheduleInputSchema,
+} from './backups.js';
+export {
   type CreateHostNodeInput,
   type UpdateHostNodeInput,
   createHostNodeInputSchema,
   hostNodeNameSchema,
   hostNodeStatusSchema,
-  nodeResourcesSchema,
   updateHostNodeInputSchema,
   wireguardIpSchema,
 } from './host-node.js';
@@ -91,6 +128,16 @@ export {
 } from './registration-request.js';
 export {
   AGENT_COMMAND_PAYLOAD_SCHEMAS,
+  createBackupCommandPayloadSchema,
+  createBackupCommandResultSchema,
+  deleteBackupCommandPayloadSchema,
+  deleteBackupCommandResultSchema,
+  downloadBackupCommandPayloadSchema,
+  downloadBackupCommandResultSchema,
+  hostPathSchema,
+  restoreBackupCommandPayloadSchema,
+  restoreBackupCommandResultSchema,
+  sha256Schema,
   agentPortMappingSchema,
   agentResourceLimitsSchema,
   agentServerIdSchema,
@@ -109,3 +156,14 @@ export {
   startCommandPayloadSchema,
   stopCommandPayloadSchema,
 } from './agent-commands.js';
+export {
+  type NodeResourcesInput,
+  type UserResourceLimitsInput,
+  cpuCoresSchema,
+  megabytesSchema,
+  nodeResourcesSchema,
+  resourceWarningThresholdsSchema,
+  serverCountSchema,
+  thresholdPercentSchema,
+  userResourceLimitsInputSchema,
+} from './resources.js';

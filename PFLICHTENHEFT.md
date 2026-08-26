@@ -123,12 +123,28 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 |---|---|---|
 | `AUTH_INVALID_CREDENTIALS` | 401 | Login mit falschen Zugangsdaten (§7) |
 | `AUTH_REQUIRED` | 401 | Zugriff ohne gültige Sitzung (§7, §8) |
+| `AUTH_ACCOUNT_BANNED` | 403 | Konto ist gesperrt (Lastenheft §3.1) |
+| `AUTH_RATE_LIMITED` | 429 | IP-Rate-Limit auf Anmeldung/Registrierung greift (§7) |
+| `AUTH_TWO_FACTOR_INVALID` | 401 | Falscher TOTP- oder Backup-Code im zweiten Anmeldeschritt (§7) |
+| `AUTH_TWO_FACTOR_EXPIRED` | 401 | Zwischen-Token des zweiten Anmeldeschritts abgelaufen (§7) |
+| `AUTH_CAPTCHA_INVALID` | 400 | ALTCHA-Prüfung der Registrierung fehlgeschlagen (§3, §7) |
+| `AUTH_USERNAME_TAKEN` | 409 | Benutzername bei der Registrierung bereits vergeben (§7) |
+| `AUTH_PASSWORD_TOO_WEAK` | 400 | Passwort erfüllt die Mindestanforderungen aus §7 nicht |
+| `AUTH_PROVIDER_ERROR` | 502 | Anmeldung über Discord/Twitch/Steam fehlgeschlagen (Lastenheft §3.1) |
 | `PERMISSION_DENIED` | 403 | Angemeldet, aber die nötige Permission fehlt (§8) |
 | `RESOURCE_LIMIT_EXCEEDED` | 403 | Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (§10) |
 | `ROLE_PROTECTED` | 403 | Änderung an einer geschützten Systemrolle („Gast", §8) |
+| `USER_NOT_FOUND` | 404 | Konto existiert nicht (§6, §10) |
+| `NODE_NOT_FOUND` | 404 | Node existiert nicht (§6, §10) |
 | `ROLE_NOT_FOUND` | 404 | Rolle existiert nicht (§8) |
 | `ROLE_NAME_TAKEN` | 409 | Rollenname bereits vergeben (§8) |
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
+| `VALIDATION_FAILED` | 400 | Pfad-, Query- oder Körperwert verletzt das vereinbarte Schema (§5.2) |
+| `SERVER_NOT_FOUND` | 404 | Gameserver existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
+| `BACKUP_NOT_FOUND` | 404 | Backup existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
+| `BACKUP_NOT_READY` | 409 | Vorgang setzt ein abgeschlossenes Backup voraus (Restore, Download, Löschen) |
+| `BACKUP_ALREADY_RUNNING` | 409 | Für diesen Server läuft bereits ein Backup |
+| `SCHEDULE_INVALID_CRON` | 400 | Cron-Ausdruck einer geplanten Aufgabe ist ungültig (§6) |
 | `AGENT_UNAUTHORIZED` | 401 | Pre-Shared-Token des Agents fehlt oder ist falsch (§2.2) |
 | `AGENT_PROTOCOL_VERSION_MISMATCH` | 400 | Agent und Backend sprechen unterschiedliche Protokollversionen (§2.2) |
 | `AGENT_COMMAND_INVALID` | 400 | Befehls-Frame verletzt das vereinbarte Format (§5.3) |
@@ -143,8 +159,6 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AGENT_FILE_NOT_FOUND` | 404 | Datei im Container nicht gefunden |
 | `AGENT_FILE_TOO_LARGE` | 413 | Datei überschreitet das Größenlimit (§12.1) |
 | `AGENT_RUNTIME_UNAVAILABLE` | 503 | Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar |
-| `VALIDATION_FAILED` | 400 | Eingabe verletzt das Zod-Schema aus `packages/validation` (§3) |
-| `NODE_NOT_FOUND` | 404 | Node existiert nicht (§6) |
 | `NODE_ADDRESS_TAKEN` | 409 | Node-Name oder WireGuard-Adresse bereits vergeben (§2.1) |
 | `NODE_IN_USE` | 409 | Node trägt noch Gameserver und kann nicht entfernt werden |
 | `PORT_RANGE_NOT_FOUND` | 404 | Port-Bereich existiert nicht (§2.4) |
@@ -158,7 +172,6 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `STORAGE_ENTRY_NOT_DELETABLE` | 403 | Eintrag ist über den Storage-Explorer nicht löschbar, insbesondere aktive Server-Datenordner (§16) |
 | `AUDIT_ENTRY_IMMUTABLE` | 403 | Versuch, einen Audit-Eintrag zu ändern oder zu löschen (§6) |
 | `AUDIT_ARCHIVE_FAILED` | 500 | Archivdatei des Audit-Logs konnte nicht geschrieben werden (§6) |
-| `USER_NOT_FOUND` | 404 | Konto existiert nicht (§7) |
 | `OWNER_PROTECTED` | 403 | Aktion würde das Owner-Konto aussperren (§8) |
 | `REGISTRATION_REQUEST_INVALID_STATE` | 409 | Wartelisten-Aktion passt nicht zum Zustand des Kontos (§7) |
 
@@ -177,7 +190,7 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 ### 5.3 Kommunikationskanäle
 - REST für klassische CRUD-Operationen
 - WebSocket-Kanäle für Live-Daten: Konsole/Logs, Live-Stats, Chat, Benachrichtigungen
-- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
+- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
 
 **Ort des Agent-Protokolls:** `packages/contracts/src/agent-protocol.ts` (`AGENT_COMMANDS`, `AGENT_EVENTS`, Frame-Typen, `AGENT_PROTOCOL_VERSION`), Zod-Gegenstück in `packages/validation/src/agent-protocol.ts`. Befehle und Ereignisse werden ausschließlich dort additiv ergänzt.
 
@@ -188,7 +201,11 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - **Duplikat-Antwort:** Ein Befehl mit bereits verarbeiteter Korrelations-ID wird nicht erneut ausgeführt; das gespeicherte Ergebnis wird mit `duplicate: true` erneut geschickt, da der Retry meist gerade deshalb entsteht, weil das erste Ergebnis das Backend nicht erreicht hat
 - **Befehlsergebnisse** nutzen den Response-Envelope aus §5.1, Fehler also benannte Codes aus dem Katalog statt Freitext
 
-**Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+**Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+
+**`DOWNLOAD_BACKUP` (Ergänzung aus B5):** Der vollständige Export der Serverdaten (Lastenheft §3.3) verlangt, dass das Archiv eines Backups vom Homeserver zum Nutzer gelangt. Der Agent öffnet grundsätzlich keinen eigenen Listener (§18), es gibt also keinen zweiten Weg für diese Bytes. Der Befehl liest deshalb **blockweise**: das Backend fragt `{ offset, maxBytes }` an, bekommt `{ contentBase64, bytesRead, totalBytes, eof }` zurück und schreibt jeden Block sofort in die HTTP-Antwort. Damit braucht es weder einen neuen Frame-Typ noch ein mehrere Gigabyte großes Archiv im Speicher. Die Base64-Kodierung kostet rund ein Drittel Übertragungsvolumen; das ist bei einem selten genutzten Vorgang innerhalb des WireGuard-Tunnels vertretbar und wiegt leichter als ein zweiter Transportweg mit eigener Authentifizierung.
+
+**`DELETE_BACKUP` (Ergänzung aus B5):** Die Aufbewahrungsregel aus Lastenheft §3.3 und das Löschen über den Storage-Explorer (§16) müssen das Archiv tatsächlich von der Platte bekommen; ohne diesen Befehl gäbe die Regel keinen Speicher frei. Der Befehl ist bewusst **idempotent** – ein bereits fehlendes Archiv wird als `removed: false` gemeldet, nicht als Fehler. Sonst bliebe nach einem Abbruch mitten in der Aufbewahrungsprüfung ein Datensatz zurück, der sich nie wieder löschen ließe.
 
 `GET_STORAGE_BREAKDOWN` hat seit Arbeitspaket B8 bereits ein festgelegtes Wire-Format (`GetStorageBreakdownCommandPayload`/`-Result`, Zod-Gegenstück `getStorageBreakdownResultSchema` in `packages/validation/src/storage.ts`), weil das Backend die Antwort entgegennehmen, zwischenspeichern und ausliefern muss (§16). Ausgeführt wird der Befehl weiterhin von niemandem: Er steht unverändert **nicht** in `IMPLEMENTED_AGENT_COMMANDS`, der Agent antwortet also weiter mit `AGENT_COMMAND_NOT_IMPLEMENTED`, bis A3 den Scanner baut.
 
@@ -237,6 +254,12 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - Access-Token: kurzlebiges JWT; Refresh-Token: opak, **gehasht in der `Session`-Tabelle gespeichert** (nicht im Klartext), in httpOnly-Secure-Cookie mit `SameSite=Lax` (bewusst nicht `Strict`: das würde den Cookie-Versand beim Rückkehr-Redirect von Discord/Steam/Twitch-OAuth verhindern und den Login-Flow brechen); zustandsändernde Requests zusätzlich per CSRF-Token abgesichert
 - Aktive Sitzungen einsehbar/einzeln widerrufbar über die `Session`-Tabelle
 - ALTCHA-Verifikation + IP-basiertes Rate-Limiting auf Registrierung und Login
+
+**Ort der Auth-DTOs:** `packages/contracts/src/auth.ts` (`AccountDto`, `LoginResult`, `AltchaChallenge`, `AUTH_METHOD_TYPES`, `OAUTH_PROVIDERS`), Zod-Gegenstück in `packages/validation/src/auth.ts` (Eingabe-Schemas für Login, Registrierung und 2FA sowie die Antwort-Schemas). Festlegungen dieser Sitzung, die das Pflichtenheft offen ließ:
+
+- **2FA als Zwischenschritt, nicht als Fehler:** Der Login antwortet mit `status: 'two_factor_required'` und einem kurzlebigen `twoFactorToken` (kein Access-Token). Erst der zweite Schritt legt die Sitzung an. Ein *falscher* Code ist dagegen ein Fehler (`AUTH_TWO_FACTOR_INVALID`), ein abgelaufener Zwischen-Token ebenfalls (`AUTH_TWO_FACTOR_EXPIRED`).
+- **Wartezustand als eigenes Feld:** `AccountDto.awaitingApproval` sagt, ob das Konto noch auf die Freischaltung durch einen Admin wartet (Lastenheft §3.1). Bewusst ein serverseitig gesetztes Feld statt eines Rückschlusses aus Rollenname oder leerem `permissions`-Objekt – sonst läge die Auslegung im Frontend (§5.2).
+- **Passwortlänge:** Mindestens 12 Zeichen (siehe oben), höchstens 200 – die Obergrenze begrenzt nur die Rechenzeit von Argon2id und ist kein Sicherheitsmerkmal.
 
 ---
 

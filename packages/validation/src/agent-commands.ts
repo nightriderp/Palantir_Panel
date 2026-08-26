@@ -119,6 +119,92 @@ export const fileWriteCommandPayloadSchema = z.object({
     .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
 });
 
+// ---------------------------------------------------------------------------
+// Backup-Befehle (Lastenheft §3.3, Arbeitspaket A3)
+// ---------------------------------------------------------------------------
+//
+// Diese Befehle führt der Agent noch nicht aus; sie stehen deshalb bewusst
+// **nicht** in AGENT_COMMAND_PAYLOAD_SCHEMAS weiter unten. Die Schemas
+// existieren trotzdem schon, weil das Backend (B5) sie in beiden Richtungen
+// braucht: zum Prüfen der eigenen Nutzdaten und – vor allem – zum Prüfen der
+// Ergebnisse, die als `unknown` im Envelope zurückkommen.
+
+/** Absoluter Pfad auf dem Homeserver (nicht im Container). */
+export const hostPathSchema = z
+  .string()
+  .min(1)
+  .startsWith('/', { message: 'Pfad muss absolut sein (mit / beginnen).' });
+
+export const createBackupCommandPayloadSchema = z.object({
+  backupId: idSchema,
+  serverId: idSchema,
+  sourcePath: hostPathSchema,
+  containerId: containerIdSchema.optional(),
+  stopContainer: z.boolean().optional(),
+  stopTimeoutSeconds: z.number().int().nonnegative().optional(),
+});
+
+export const restoreBackupCommandPayloadSchema = z.object({
+  backupId: idSchema,
+  serverId: idSchema,
+  storagePath: hostPathSchema,
+  targetPath: hostPathSchema,
+  containerId: containerIdSchema.optional(),
+  stopTimeoutSeconds: z.number().int().nonnegative().optional(),
+});
+
+export const downloadBackupCommandPayloadSchema = z.object({
+  backupId: idSchema,
+  storagePath: hostPathSchema,
+  offset: z.number().int().nonnegative(),
+  maxBytes: z.number().int().positive(),
+});
+
+export const deleteBackupCommandPayloadSchema = z.object({
+  backupId: idSchema,
+  storagePath: hostPathSchema,
+});
+
+/** SHA-256 als 64 Hex-Zeichen in Kleinbuchstaben. */
+export const sha256Schema = z
+  .string()
+  .regex(/^[0-9a-f]{64}$/, { message: 'checksumSha256 ist keine SHA-256-Prüfsumme.' });
+
+export const createBackupCommandResultSchema = z.object({
+  backupId: idSchema,
+  storagePath: hostPathSchema,
+  sizeBytes: z.number().int().nonnegative(),
+  checksumSha256: sha256Schema,
+  containerStopped: z.boolean(),
+  startedAt: isoTimestampSchema,
+  completedAt: isoTimestampSchema,
+});
+
+export const restoreBackupCommandResultSchema = z.object({
+  backupId: idSchema,
+  restoredBytes: z.number().int().nonnegative(),
+  containerStopped: z.boolean(),
+  startedAt: isoTimestampSchema,
+  completedAt: isoTimestampSchema,
+});
+
+export const deleteBackupCommandResultSchema = z.object({
+  backupId: idSchema,
+  removed: z.boolean(),
+  freedBytes: z.number().int().nonnegative(),
+});
+
+export const downloadBackupCommandResultSchema = z.object({
+  backupId: idSchema,
+  offset: z.number().int().nonnegative(),
+  contentBase64: z
+    .string()
+    .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
+  bytesRead: z.number().int().nonnegative(),
+  totalBytes: z.number().int().nonnegative(),
+  eof: z.boolean(),
+});
+
 /**
  * Nachschlagetabelle Befehl → Schema.
  *

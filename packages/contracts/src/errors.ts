@@ -25,6 +25,63 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Benutzername oder Passwort ist falsch.',
   },
   /**
+   * Konto ist gesperrt (Lastenheft §3.1, „Ban").
+   * 403: Zugangsdaten stimmen, der Zugriff ist trotzdem dauerhaft untersagt –
+   * bewusst getrennt von `AUTH_INVALID_CREDENTIALS`, damit die Oberfläche nicht
+   * zum wiederholten Eingeben des Passworts einlädt.
+   */
+  AUTH_ACCOUNT_BANNED: {
+    httpStatus: 403,
+    defaultMessage: 'Dieses Konto ist gesperrt. Bitte wende dich an einen Administrator.',
+  },
+  /**
+   * IP-basiertes Rate-Limit auf Anmeldung oder Registrierung greift
+   * (Pflichtenheft §7). 429: derselbe Versuch kann später erfolgreich sein.
+   */
+  AUTH_RATE_LIMITED: {
+    httpStatus: 429,
+    defaultMessage: 'Zu viele Versuche. Bitte warte einen Moment und versuche es erneut.',
+  },
+  /** Falscher TOTP- oder Backup-Code im zweiten Anmeldeschritt (Pflichtenheft §7). 401. */
+  AUTH_TWO_FACTOR_INVALID: {
+    httpStatus: 401,
+    defaultMessage: 'Der eingegebene Code ist nicht gültig.',
+  },
+  /**
+   * Der kurzlebige Zwischen-Token des zweiten Anmeldeschritts ist abgelaufen
+   * (Pflichtenheft §7). 401: die Anmeldung muss von vorn beginnen – bewusst
+   * getrennt vom falschen Code, damit die Oberfläche zurück zum ersten Schritt
+   * führen kann statt eine erneute Code-Eingabe anzubieten.
+   */
+  AUTH_TWO_FACTOR_EXPIRED: {
+    httpStatus: 401,
+    defaultMessage: 'Die Anmeldung ist abgelaufen. Bitte melde dich erneut an.',
+  },
+  /** ALTCHA-Prüfung der Registrierung fehlgeschlagen (Pflichtenheft §3, §7). 400. */
+  AUTH_CAPTCHA_INVALID: {
+    httpStatus: 400,
+    defaultMessage: 'Die Sicherheitsprüfung ist fehlgeschlagen. Bitte versuche es erneut.',
+  },
+  /** Benutzername bei der Registrierung bereits vergeben. 409: Konflikt mit vorhandenem Zustand. */
+  AUTH_USERNAME_TAKEN: {
+    httpStatus: 409,
+    defaultMessage: 'Dieser Benutzername ist bereits vergeben.',
+  },
+  /** Passwort erfüllt die Mindestanforderungen aus Pflichtenheft §7 nicht. 400. */
+  AUTH_PASSWORD_TOO_WEAK: {
+    httpStatus: 400,
+    defaultMessage: 'Das Passwort muss mindestens 12 Zeichen lang sein.',
+  },
+  /**
+   * Anmeldung über Discord, Twitch oder Steam ist fehlgeschlagen – abgebrochen,
+   * ungültige Rückgabe oder Provider nicht erreichbar (Lastenheft §3.1).
+   * 502: der Fehler liegt bei der vorgelagerten Gegenstelle, nicht bei der Eingabe.
+   */
+  AUTH_PROVIDER_ERROR: {
+    httpStatus: 502,
+    defaultMessage: 'Die Anmeldung über den externen Dienst ist fehlgeschlagen.',
+  },
+  /**
    * Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (Pflichtenheft §10).
    * 403: Request ist verstanden und authentifiziert, wird aber wegen eines
    * Limits abgelehnt – ein Retry ohne Änderung hilft nicht.
@@ -55,6 +112,24 @@ export const ERROR_CATALOG = {
     httpStatus: 403,
     defaultMessage: 'Für diese Aktion fehlt die nötige Berechtigung.',
   },
+  /**
+   * Konto existiert nicht (Pflichtenheft §6, Entität `User`).
+   * 404: Zielobjekt nicht vorhanden – z. B. beim Setzen eines Kontingents (§10)
+   * für ein inzwischen gelöschtes Konto.
+   */
+  USER_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieses Konto existiert nicht.',
+  },
+  /**
+   * Node existiert nicht (Pflichtenheft §6, Entität `HostNode`).
+   * 404: Zielobjekt nicht vorhanden – z. B. bei der Kapazitätsprüfung (§10) für
+   * eine Node, die zwischenzeitlich entfernt wurde.
+   */
+  NODE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Node existiert nicht.',
+  },
   /** Rolle existiert nicht (Pflichtenheft §8). 404: Zielobjekt nicht vorhanden. */
   ROLE_NOT_FOUND: {
     httpStatus: 404,
@@ -73,6 +148,57 @@ export const ERROR_CATALOG = {
   ROLE_PROTECTED: {
     httpStatus: 403,
     defaultMessage: 'Diese Systemrolle ist geschützt und kann nicht geändert oder gelöscht werden.',
+  },
+
+  /**
+   * Eingabe verletzt das vereinbarte Schema (Pfad-, Query- oder Körperwert).
+   * 400: Der Aufrufer müsste die Anfrage ändern, ein Retry mit demselben
+   * Inhalt hilft nicht. Die Meldung nennt das beanstandete Feld; der Code
+   * bleibt derselbe, damit Freitext-Fehler gar nicht erst entstehen.
+   */
+  VALIDATION_FAILED: {
+    httpStatus: 400,
+    defaultMessage: 'Die Anfrage enthält ungültige Werte.',
+  },
+
+  // -- Server & Backups (Pflichtenheft §6, Lastenheft §3.3) ------------------
+
+  /**
+   * Gameserver existiert nicht (Pflichtenheft §6). 404: Zielobjekt nicht vorhanden.
+   *
+   * Bewusst derselbe Code, egal ob der Server nie existierte oder der Aufrufer
+   * ihn nicht sehen darf – sonst verriete die Antwort die Existenz fremder Server.
+   */
+  SERVER_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieser Server existiert nicht.',
+  },
+  /** Backup existiert nicht (Pflichtenheft §6). 404, aus demselben Grund wie `SERVER_NOT_FOUND`. */
+  BACKUP_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Sicherung existiert nicht.',
+  },
+  /**
+   * Vorgang setzt ein abgeschlossenes Backup voraus (Wiederherstellen,
+   * Herunterladen, Löschen). 409: Der Zustand passt gerade nicht, später kann
+   * derselbe Aufruf klappen.
+   */
+  BACKUP_NOT_READY: {
+    httpStatus: 409,
+    defaultMessage: 'Diese Sicherung ist noch nicht abgeschlossen.',
+  },
+  /**
+   * Für diesen Server läuft bereits ein Backup. 409: zwei gleichzeitige Läufe
+   * würden denselben Datenordner lesen, während er sich ändert.
+   */
+  BACKUP_ALREADY_RUNNING: {
+    httpStatus: 409,
+    defaultMessage: 'Für diesen Server läuft bereits eine Sicherung.',
+  },
+  /** Cron-Ausdruck einer geplanten Aufgabe ist ungültig (Pflichtenheft §6). 400. */
+  SCHEDULE_INVALID_CRON: {
+    httpStatus: 400,
+    defaultMessage: 'Der Zeitplan ist kein gültiger Cron-Ausdruck.',
   },
 
   // -- Agent-Protokoll (Pflichtenheft §2.2 / §5.3) ---------------------------
@@ -106,7 +232,8 @@ export const ERROR_CATALOG = {
   },
   /**
    * Befehl steht im Protokoll, ist auf dem Agent aber noch nicht gebaut
-   * (aktuell: `CREATE_BACKUP`, `RESTORE_BACKUP`, `GET_STORAGE_BREAKDOWN` – A3).
+   * (aktuell: `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`,
+   * `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN` – A3).
    * 501: bewusst getrennt von einem Ausführungsfehler, damit das Backend
    * „noch nicht gebaut" von „hat nicht funktioniert" unterscheiden kann.
    */
@@ -169,26 +296,10 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Die Container-Engine auf dem Homeserver ist nicht erreichbar.',
   },
 
-  /**
-   * Eingabe verletzt das Zod-Schema aus `@palantir/validation`. 400: Der
-   * Aufrufer müsste den Request ändern, ein Retry mit demselben Inhalt hilft
-   * nicht. Die Einzelheiten stehen in der Meldung – der Code bleibt derselbe,
-   * damit das Frontend nicht je Feld einen eigenen Code auswerten muss.
-   */
-  VALIDATION_FAILED: {
-    httpStatus: 400,
-    defaultMessage: 'Die übermittelten Daten sind ungültig.',
-  },
-
   // -- Admin-Funktionen (Lastenheft §3.7 und §3.8) ---------------------------
   // Arbeitspaket B8: Nodes, öffentlicher Port-Pool (Pflichtenheft §2.4),
   // Audit-Log (§6), Storage-Explorer (§16) und Freischalt-Warteliste.
 
-  /** Node existiert nicht. 404: Zielobjekt nicht vorhanden. */
-  NODE_NOT_FOUND: {
-    httpStatus: 404,
-    defaultMessage: 'Diese Node existiert nicht.',
-  },
   /** Node-Name oder WireGuard-Adresse bereits vergeben. 409: Konflikt mit vorhandenem Zustand. */
   NODE_ADDRESS_TAKEN: {
     httpStatus: 409,
@@ -287,11 +398,6 @@ export const ERROR_CATALOG = {
   AUDIT_ARCHIVE_FAILED: {
     httpStatus: 500,
     defaultMessage: 'Das Archiv des Audit-Logs konnte nicht geschrieben werden.',
-  },
-  /** Konto existiert nicht. 404. */
-  USER_NOT_FOUND: {
-    httpStatus: 404,
-    defaultMessage: 'Dieses Konto existiert nicht.',
   },
   /**
    * Aktion am Owner-Konto, die dieses aussperren würde (sperren, Rollen
