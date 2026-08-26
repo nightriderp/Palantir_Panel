@@ -1,6 +1,9 @@
-import { type SubdomainAvailabilityDto, type UserResourceLimitDto } from '@palantir/contracts';
+import {
+  type HostNodeDto,
+  type SubdomainAvailabilityDto,
+  type UserResourceLimitDto,
+} from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
-import { type HostNodeOptionDto } from '@/lib/api/servers';
 import {
   INITIAL_WIZARD_STATE,
   type WizardContext,
@@ -15,32 +18,35 @@ import {
 } from './wizardSteps';
 import { gameType } from './testFixtures';
 
-const NODE: HostNodeOptionDto = {
+const NODE: HostNodeDto = {
   id: '22222222-2222-4222-8222-222222222222',
   name: 'Node Alpha',
+  wireguardIp: '10.10.0.2',
   status: 'online',
-  total: { ramMb: 32768, cpuCores: 16, diskMb: 1024000 },
-  usage: {
-    runningRamMb: 16384,
-    runningCpuCores: 8,
-    allocatedDiskMb: 512000,
-    runningServers: 4,
-    totalServers: 6,
+  statusMessage: null,
+  capacity: {
+    total: { ramMb: 32768, cpuCores: 16, diskMb: 1024000 },
+    allocated: { ramMb: 16384, cpuCores: 8, diskMb: 512000 },
+    available: { ramMb: 16384, cpuCores: 8, diskMb: 512000 },
   },
+  usage: null,
+  serverCount: 6,
+  lastSeenAt: null,
+  createdAt: '2026-08-01T10:00:00.000Z',
+  permissions: { canView: true, canManage: false, canManageStorage: false },
 };
 
 /** Node mit genau den angegebenen freien Werten. */
-function nodeWithFree(free: {
-  ramMb?: number;
-  cpuCores?: number;
-  diskMb?: number;
-}): HostNodeOptionDto {
+function nodeWithFree(free: { ramMb?: number; cpuCores?: number; diskMb?: number }): HostNodeDto {
   return {
     ...NODE,
-    total: {
-      ramMb: NODE.usage.runningRamMb + (free.ramMb ?? 16384),
-      cpuCores: NODE.usage.runningCpuCores + (free.cpuCores ?? 8),
-      diskMb: NODE.usage.allocatedDiskMb + (free.diskMb ?? 512000),
+    capacity: {
+      ...NODE.capacity,
+      available: {
+        ramMb: free.ramMb ?? NODE.capacity.available.ramMb,
+        cpuCores: free.cpuCores ?? NODE.capacity.available.cpuCores,
+        diskMb: free.diskMb ?? NODE.capacity.available.diskMb,
+      },
     },
   };
 }

@@ -3,12 +3,12 @@ import {
   type GameConfigValue,
   type GameConfigValues,
   type GameTypeDto,
+  type HostNodeDto,
   type SubdomainAvailabilityDto,
   type UserResourceLimitDto,
 } from '@palantir/contracts';
 import { serverNameSchema, subdomainSchema } from '@palantir/validation';
 import { formatMegabytes } from '@/components/shared';
-import { type HostNodeOptionDto, freeNodeResources } from '@/lib/api/servers';
 
 /**
  * Ablauflogik des „Server erstellen"-Wizards (Lastenheft §3.3).
@@ -138,7 +138,7 @@ export function quotaBlockReason(
  * Zweite Prüfung aus Pflichtenheft §10 – sie greift unabhängig davon, ob das
  * Nutzer-Kontingent noch Luft hätte.
  */
-export function nodeBlockReason(node: HostNodeOptionDto | null, state: WizardState): string | null {
+export function nodeBlockReason(node: HostNodeDto | null, state: WizardState): string | null {
   if (!node) return null;
   if (node.status !== 'online') {
     return node.status === 'maintenance'
@@ -146,7 +146,8 @@ export function nodeBlockReason(node: HostNodeOptionDto | null, state: WizardSta
       : `„${node.name}" ist gerade nicht erreichbar.`;
   }
 
-  const free = freeNodeResources(node);
+  // Die freie Kapazität rechnet B8 bereits aus (`capacity.available`).
+  const free = node.capacity.available;
   if (state.ramMb > free.ramMb) {
     return `Auf „${node.name}" sind nur noch ${formatMegabytes(free.ramMb)} Arbeitsspeicher frei.`;
   }
@@ -161,7 +162,7 @@ export function nodeBlockReason(node: HostNodeOptionDto | null, state: WizardSta
 
 export interface WizardContext {
   gameType: GameTypeDto | null;
-  node: HostNodeOptionDto | null;
+  node: HostNodeDto | null;
   quota: UserResourceLimitDto | null;
   /** Ergebnis der Verfügbarkeitsprüfung; `null`, solange sie noch läuft. */
   subdomainCheck: SubdomainAvailabilityDto | null;
