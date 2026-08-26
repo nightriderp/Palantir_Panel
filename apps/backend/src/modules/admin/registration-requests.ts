@@ -1,0 +1,279 @@
+/**
+ * Freischalt-Warteliste („Anfragen", Lastenheft §3.1 und §3.7).
+ *
+ * Jedes neu registrierte Konto bekommt die geschützte Systemrolle „Gast" und
+ * hat bis zur Freischaltung keinerlei Zugriff (Pflichtenheft §7). Diese Liste
+ * zeigt genau diese Konten – mit den Profilangaben der verknüpften
+ * Login-Methoden, damit ein Admin die Person wiedererkennt.
+ *
+ * **Abgrenzung zu B1 (Auth & Identity):** Registrierung, `AuthMethod` und das
+ * Abholen der Profildaten beim Provider gehören zu B1. B8 liefert die
+ * Admin-Sicht darauf und die Aktionen. Die Tabelle `auth_methods` existiert
+ * noch nicht; die Drizzle-Implementierung des Repositories liefert deshalb
+ * vorerst eine leere Profilliste. Sobald B1 sie mitbringt, wird sie dort
+ * dazugelesen – der DTO ändert sich dadurch nicht (vermerkt in WORK_STATUS.md
+ * unter „Gefundene Punkte").
+ *
+ * **Freigabe** heißt: Gast-Rolle entziehen und die gewünschten Rollen zuweisen
+ * (ohne Angabe die Seed-Rolle „Nutzer"). **Sperren** setzt `User.banned` –
+ * jederzeit möglich, unabhängig von der Rolle, mit einer Ausnahme: Das
+ * Owner-Konto lässt sich nicht sperren (Lastenheft §2).
+ */
+
+import {
+  GUEST_ROLE_NAME,
+  type LinkedAccountProfileDto,
+  type RegistrationRequestDto,
+  type RegistrationRequestPermissions,
+  type RegistrationRequestStatus,
+} from '@palantir/contracts';
+import type {
+  ApproveRegistrationRequestInput,
+  BlockRegistrationRequestInput,
+  RegistrationRequestQuery,
+} from '@palantir/validation';
+import { type PermissionActor, type RoleService, hasPermission } from '../rbac/index.js';
+import { type AuditService, entryFor } from './audit.js';
+import type { AdminContext } from './context.js';
+import { AdminError } from './errors.js';
+
+/** Rolle eines Kontos, soweit die Warteliste sie braucht. */
+export interface WaitlistRole {
+  readonly id: string;
+  readonly name: string;
+  readonly isProtected: boolean;
+}
+
+/** Konto, wie es in der Warteliste erscheint. */
+export interface WaitlistUserRecord {
+  readonly id: string;
+  readonly displayName: string;
+  readonly isOwner: boolean;
+  readonly banned: boolean;
+  readonly createdAt: Date;
+  readonly roles: readonly WaitlistRole[];
+  /** Profilangaben der verknüpften Login-Methoden; leer, solange B1 fehlt. */
+  readonly profiles: readonly LinkedAccountProfileDto[];
+}
+
+export interface WaitlistPage {
+  readonly rows: readonly WaitlistUserRecord[];
+  readonly total: number;
+}
+
+export interface RegistrationRequestRepository {
+  list(query: RegistrationRequestQuery): Promise<WaitlistPage>;
+  findByUserId(userId: string): Promise<WaitlistUserRecord | null>;
+  setBanned(userId: string, banned: boolean): Promise<void>;
+}
+
+/**
+ * Zustand eines Kontos in der Warteliste.
+ *
+ * Gesperrt schlägt alles: Ein gesperrtes Konto ist keine offene Anfrage mehr,
+ * auch wenn es noch die Gast-Rolle trägt.
+ */
+export function statusOf(user: WaitlistUserRecord): RegistrationRequestStatus {
+  if (user.banned) {
+    return 'blocked';
+  }
+
+  const hasOnlyGuestRole = user.roles.every((role) => role.name === GUEST_ROLE_NAME);
+
+  return hasOnlyGuestRole ? 'pending' : 'approved';
+}
+
+export function computeRegistrationRequestPermissions(
+  actor: PermissionActor,
+  user: WaitlistUserRecord,
+): RegistrationRequestPermissions {
+  const canManage = hasPermission(actor, 'user.manage');
+  const status = statusOf(user);
+
+  return {
+    canView: canManage,
+    canApprove: canManage && status === 'pending',
+    // Der Owner steht außerhalb des Rollensystems und darf sich nicht
+    // aussperren lassen (Lastenheft §2).
+    canBlock: canManage && !user.isOwner && !user.banned,
+    canUnblock: canManage && user.banned,
+  };
+}
+
+export function toRegistrationRequestDto(
+  actor: PermissionActor,
+  user: WaitlistUserRecord,
+): RegistrationRequestDto {
+  return {
+    userId: user.id,
+    displayName: user.displayName,
+    status: statusOf(user),
+    banned: user.banned,
+    profiles: [...user.profiles],
+    roleNames: user.roles.map((role) => role.name),
+    registeredAt: user.createdAt.toISOString(),
+    permissions: computeRegistrationRequestPermissions(actor, user),
+  };
+}
+
+export interface RegistrationRequestService {
+  list(ctx: AdminContext, query: RegistrationRequestQuery): Promise<RegistrationRequestDto[]>;
+  approve(
+    ctx: AdminContext,
+    userId: string,
+    input: ApproveRegistrationRequestInput,
+  ): Promise<RegistrationRequestDto>;
+  block(
+    ctx: AdminContext,
+    userId: string,
+    input: BlockRegistrationRequestInput,
+  ): Promise<RegistrationRequestDto>;
+  unblock(ctx: AdminContext, userId: string): Promise<RegistrationRequestDto>;
+}
+
+export interface RegistrationRequestDependencies {
+  readonly repository: RegistrationRequestRepository;
+  /** Rollenverwaltung aus B2 – die Zuweisung läuft nicht an ihr vorbei. */
+  readonly roles: RoleService;
+  readonly audit: AuditService;
+  /** Rolle, die eine Freigabe ohne eigene Auswahl vergibt. */
+  readonly defaultRoleName?: string;
+}
+
+function requireUserManage(actor: PermissionActor): void {
+  if (!hasPermission(actor, 'user.manage')) {
+    throw new AdminError('PERMISSION_DENIED');
+  }
+}
+
+export function createRegistrationRequestService(
+  deps: RegistrationRequestDependencies,
+): RegistrationRequestService {
+  const defaultRoleName = deps.defaultRoleName ?? 'Nutzer';
+
+  async function requireUser(userId: string): Promise<WaitlistUserRecord> {
+    const user = await deps.repository.findByUserId(userId);
+
+    if (!user) {
+      throw new AdminError('USER_NOT_FOUND');
+    }
+
+    return user;
+  }
+
+  async function reload(ctx: AdminContext, userId: string): Promise<RegistrationRequestDto> {
+    return toRegistrationRequestDto(ctx.actor, await requireUser(userId));
+  }
+
+  return {
+    async list(ctx, query) {
+      requireUserManage(ctx.actor);
+
+      const page = await deps.repository.list(query);
+
+      return page.rows.map((row) => toRegistrationRequestDto(ctx.actor, row));
+    },
+
+    async approve(ctx, userId, input) {
+      requireUserManage(ctx.actor);
+
+      const user = await requireUser(userId);
+
+      if (statusOf(user) !== 'pending') {
+        throw new AdminError('REGISTRATION_REQUEST_INVALID_STATE');
+      }
+
+      const roleIds = input.roleIds?.length
+        ? input.roleIds
+        : [await resolveDefaultRoleId(ctx.actor, deps.roles, defaultRoleName)];
+
+      for (const roleId of roleIds) {
+        await deps.roles.assignToUser(ctx.actor, user.id, roleId);
+      }
+
+      // Erst zuweisen, dann die Gast-Rolle entziehen: Ein Konto ist nie ohne
+      // Rolle, falls zwischendrin etwas schiefgeht.
+      for (const role of user.roles) {
+        if (role.name === GUEST_ROLE_NAME) {
+          await deps.roles.removeFromUser(ctx.actor, user.id, role.id);
+        }
+      }
+
+      await deps.audit.record(
+        entryFor(ctx, {
+          action: 'user.approved',
+          targetType: 'user',
+          targetId: user.id,
+          metadata: { roleIds: [...roleIds] },
+        }),
+      );
+
+      return reload(ctx, user.id);
+    },
+
+    async block(ctx, userId, input) {
+      requireUserManage(ctx.actor);
+
+      const user = await requireUser(userId);
+
+      if (user.isOwner) {
+        throw new AdminError('OWNER_PROTECTED');
+      }
+
+      if (user.banned) {
+        throw new AdminError('REGISTRATION_REQUEST_INVALID_STATE');
+      }
+
+      await deps.repository.setBanned(user.id, true);
+      await deps.audit.record(
+        entryFor(ctx, {
+          action: 'user.banned',
+          targetType: 'user',
+          targetId: user.id,
+          metadata: input.reason ? { reason: input.reason } : {},
+        }),
+      );
+
+      return reload(ctx, user.id);
+    },
+
+    async unblock(ctx, userId) {
+      requireUserManage(ctx.actor);
+
+      const user = await requireUser(userId);
+
+      if (!user.banned) {
+        throw new AdminError('REGISTRATION_REQUEST_INVALID_STATE');
+      }
+
+      await deps.repository.setBanned(user.id, false);
+      await deps.audit.record(
+        entryFor(ctx, {
+          action: 'user.unbanned',
+          targetType: 'user',
+          targetId: user.id,
+        }),
+      );
+
+      return reload(ctx, user.id);
+    },
+  };
+}
+
+async function resolveDefaultRoleId(
+  actor: PermissionActor,
+  roles: RoleService,
+  name: string,
+): Promise<string> {
+  const all = await roles.list(actor);
+  const match = all.find((role) => role.name.toLowerCase() === name.toLowerCase());
+
+  if (!match) {
+    throw new AdminError(
+      'ROLE_NOT_FOUND',
+      `Die Standardrolle „${name}" fehlt. Bitte zuerst die Seed-Rollen anlegen (pnpm --filter @palantir/backend db:seed).`,
+    );
+  }
+
+  return match.id;
+}

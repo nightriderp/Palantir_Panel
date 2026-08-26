@@ -233,6 +233,54 @@ Gast-Rolle nie dauerhaft fehlt.
 > Der Owner-Account (`User.isOwner`) wird hiervon **nicht** angelegt – er steht außerhalb
 > des Rollensystems und kommt aus der Ersteinrichtung des Kontos (siehe offene Punkte).
 
+### 2.5 Archivierung des Audit-Logs (laufender Betrieb)
+
+Das Audit-Log ist append-only ([PFLICHTENHEFT.md §6](PFLICHTENHEFT.md)). Damit die Tabelle
+nicht unbegrenzt wächst, exportiert ein Wartungslauf Einträge, die älter als 24 Monate
+sind, in eine komprimierte Archivdatei und entfernt sie **erst danach** aus der aktiven
+Tabelle. Schlägt der Export fehl, bleibt die Tabelle unverändert.
+
+Vorher in der zentralen `.env` (Abschnitt 13) das Archivverzeichnis eintragen. Es liegt auf
+der **VPS**, Vorgabe:
+
+```
+AUDIT_ARCHIVE_DIR=/opt/palantir/data/audit-archive
+```
+
+Das Verzeichnis anlegen und restriktiv berechtigen – dort liegen Sicherheitsprotokolle:
+
+```bash
+sudo mkdir -p /opt/palantir/data/audit-archive
+sudo chown palantir:palantir /opt/palantir/data/audit-archive
+sudo chmod 700 /opt/palantir/data/audit-archive
+```
+
+Der Lauf selbst, im Repo-Root auf der **VPS** (`/opt/palantir`):
+
+```bash
+pnpm --filter @palantir/backend audit:archive
+```
+
+Er ist gefahrlos wiederholbar: Gibt es nichts zu archivieren, passiert nichts. Wer ihn
+regelmäßig will, hängt ihn auf der VPS in einen Cronjob, z. B. monatlich am 1. um 4 Uhr
+(`sudo crontab -e -u palantir`):
+
+```
+0 4 1 * * cd /opt/palantir && pnpm --filter @palantir/backend audit:archive
+```
+
+Dieselbe Aktion steht Admins mit `audit.view` auch in der Oberfläche zur Verfügung.
+Einzelne Einträge lassen sich **auf keinem Weg** ändern oder löschen – auch nicht vom
+Owner und auch nicht direkt über `psql`: Ein Trigger in der Datenbank lehnt UPDATE, DELETE
+und TRUNCATE auf `audit_log` ab.
+
+Die Archivdateien gehören in die Systemsicherung. Sie enthalten das vollständige Protokoll
+als gzip-komprimiertes JSON Lines und lassen sich ohne Werkzeug lesen:
+
+```bash
+zcat /opt/palantir/data/audit-archive/audit-log-bis-2024-08-26.jsonl.gz | head
+```
+
 ---
 
 ## 3. Noch zu ergänzen
