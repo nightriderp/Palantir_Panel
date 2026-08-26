@@ -13,6 +13,8 @@
  *   on-demand-Scan (Pflichtenheft §16)
  * - **Freischalt-Warteliste** (`registration-requests.ts`) – Anfragen neuer
  *   Registrierungen freigeben oder sperren
+ * - **Rollenverwaltung** (`roles.ts`) – Admin-Sicht auf den `RoleService` aus B2,
+ *   ergänzt um das Audit-Log
  *
  * Für andere Arbeitspakete besonders relevant:
  * - `AuditService.record()` – jede sicherheitsrelevante Aktion protokollieren
@@ -113,11 +115,19 @@ export {
 } from './registration-requests.js';
 
 export {
+  type RoleAdminService,
+  type RoleAdminServiceDependencies,
+  type RoleMemberLookup,
+  createRoleAdminService,
+} from './roles.js';
+
+export {
   createDrizzleAuditArchiveRepository,
   createDrizzleAuditLogRepository,
   createDrizzleHostNodeRepository,
   createDrizzlePortPoolRepository,
   createDrizzleRegistrationRequestRepository,
+  createDrizzleRoleMemberLookup,
   createDrizzleStorageRepository,
 } from './repositories.js';
 
