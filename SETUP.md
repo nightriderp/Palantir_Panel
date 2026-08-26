@@ -77,18 +77,22 @@ Datenbank an:
 docker compose up -d db
 ```
 
-**Schritt 3 – Migrationen anwenden** (Drizzle Kit, im Repo-Root auf der VPS):
+**Schritt 3 – Migrationen.** Nichts zu tun: der Dienst `migrate` in der Compose-Datei
+wendet sie bei jedem Start an, bevor Backend und Frontend hochfahren.
+
+**Schritt 4 – Ersteinrichtung ausführen** (einmalig, aus `/opt/palantir/deploy/vps`
+auf der **VPS**):
 
 ```bash
-pnpm --filter @palantir/backend db:migrate
+docker compose --env-file ../../.env run --rm seed
 ```
 
-**Schritt 4 – Seed-Rollen anlegen** (einmalig bei der Ersteinrichtung, im Repo-Root
-`/opt/palantir` auf der **VPS**):
-
-```bash
-pnpm --filter @palantir/backend db:seed
-```
+> Achtung, häufiger Irrtum: Auf der VPS gibt es **weder Node noch pnpm** - dort läuft nur
+> Docker. Ein `pnpm --filter @palantir/backend db:seed` ist dort nicht ausführbar. Der
+> Aufruf oben nutzt denselben kompilierten Stand aus dem Backend-Image.
+>
+> Ohne diesen Lauf existiert nach dem ersten Start **keine einzige Rolle** - niemand kann
+> dann irgendetwas, auch der Owner nicht.
 
 Legt die Rollen **Admin**, **Moderator**, **Nutzer** und die geschützte Systemrolle
 **Gast** an ([PFLICHTENHEFT.md §8](PFLICHTENHEFT.md)). Der Lauf ist idempotent – siehe
@@ -177,9 +181,12 @@ vorher kopieren.
 ### 2.3 Migrationen (Drizzle Kit)
 
 Das Datenbank-Schema wird ausschließlich über Migrationen geändert, nie von Hand an der
-laufenden Datenbank ([CLAUDE.md §4](CLAUDE.md)). Alle Kommandos laufen im Repo-Root, auf
-der Maschine, auf der auch das Backend liegt (VPS bzw. Entwicklungsrechner). Die
-`DATABASE_URL` kommt aus der zentralen `.env`.
+laufenden Datenbank ([CLAUDE.md §4](CLAUDE.md)).
+
+Die folgenden Kommandos gelten für den **Entwicklungsrechner** und laufen dort im
+Repo-Root. Auf der **VPS** gibt es weder Node noch pnpm - dort erledigt das der Dienst
+`migrate` beim Start (Abschnitt 2.1). Die `DATABASE_URL` kommt jeweils aus der zentralen
+`.env`.
 
 **Migration anwenden** – der übliche Schritt bei Deployment und nach jedem `git pull`:
 
@@ -207,10 +214,16 @@ Bereits angewendete Migrationen werden nicht nachträglich verändert – Drizzl
 ### 2.4 Seed-Rollen (Ersteinrichtung)
 
 Eine frisch migrierte Datenbank enthält **keine** Rollen. Der Seed-Lauf legt die vier
-Rollen aus [PFLICHTENHEFT.md §8](PFLICHTENHEFT.md) an. Er gehört einmalig in die
-Ersteinrichtung, direkt nach `db:migrate`, und läuft im Repo-Root auf derselben Maschine
-wie das Backend – auf der **VPS** unter `/opt/palantir`, auf dem
-**Entwicklungsrechner** im geklonten Repository:
+Rollen aus [PFLICHTENHEFT.md §8](PFLICHTENHEFT.md) an und dazu die erste Node. Er gehört
+einmalig in die Ersteinrichtung.
+
+Auf der **VPS** (aus `/opt/palantir/deploy/vps`, siehe Abschnitt 2.1 Schritt 4):
+
+```bash
+docker compose --env-file ../../.env run --rm seed
+```
+
+Auf dem **Entwicklungsrechner** im Repo-Root:
 
 ```bash
 pnpm --filter @palantir/backend db:seed
@@ -254,22 +267,30 @@ Das Verzeichnis anlegen und restriktiv berechtigen – dort liegen Sicherheitspr
 
 ```bash
 sudo mkdir -p /opt/palantir/data/audit-archive
-sudo chown palantir:palantir /opt/palantir/data/audit-archive
+sudo chown 1000:1000 /opt/palantir/data/audit-archive
 sudo chmod 700 /opt/palantir/data/audit-archive
 ```
 
-Der Lauf selbst, im Repo-Root auf der **VPS** (`/opt/palantir`):
+> Die Zahl 1000 ist kein Tippfehler: In das Verzeichnis schreibt der
+> **Backend-Container**, und der läuft als Benutzer `node` mit dieser UID. Ein
+> Verzeichnis, das dem Deploy-Benutzer des Hosts gehört, wäre für ihn nicht
+> beschreibbar.
+
+Der Lauf selbst, aus `/opt/palantir/deploy/vps` auf der **VPS**:
 
 ```bash
-pnpm --filter @palantir/backend audit:archive
+docker compose --env-file ../../.env run --rm archive
 ```
+
+Auch hier gilt: Auf der VPS gibt es weder Node noch pnpm. Der Aufruf nutzt denselben
+kompilierten Stand aus dem Backend-Image.
 
 Er ist gefahrlos wiederholbar: Gibt es nichts zu archivieren, passiert nichts. Wer ihn
 regelmäßig will, hängt ihn auf der VPS in einen Cronjob, z. B. monatlich am 1. um 4 Uhr
-(`sudo crontab -e -u palantir`):
+(`sudo crontab -e -u palantir-deploy` – der Benutzer muss in der Gruppe `docker` sein):
 
 ```
-0 4 1 * * cd /opt/palantir && pnpm --filter @palantir/backend audit:archive
+0 4 1 * * cd /opt/palantir/deploy/vps && docker compose --env-file ../../.env run --rm archive
 ```
 
 Dieselbe Aktion steht Admins mit `audit.view` auch in der Oberfläche zur Verfügung.
