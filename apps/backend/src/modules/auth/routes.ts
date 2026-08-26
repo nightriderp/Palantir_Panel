@@ -36,7 +36,12 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 import { replyWithErrorCode, requirePermission } from '../rbac/index.js';
-import { type AltchaOptions, createAltchaChallenge, verifyAltchaSolution } from './altcha.js';
+import {
+  type AltchaOptions,
+  type AltchaSolutionLedger,
+  createAltchaChallenge,
+  verifyAltchaSolution,
+} from './altcha.js';
 import {
   type CookieSettings,
   OAUTH_STATE_COOKIE_NAME,
@@ -60,6 +65,12 @@ export interface AuthRouteOptions {
   readonly service: AuthService;
   readonly cookies: CookieSettings;
   readonly altcha: AltchaOptions;
+  /**
+   * Verzeichnis eingelöster Nachweise – von Registrierung und Login geteilt,
+   * damit derselbe Proof-of-Work an keiner der beiden Routen ein zweites Mal
+   * zählt (Pflichtenheft §7).
+   */
+  readonly altchaLedger: AltchaSolutionLedger;
   readonly loginLimiter: RateLimiter;
   readonly registerLimiter: RateLimiter;
   readonly jwtSecret: string;
@@ -145,18 +156,29 @@ async function issueCookies(
   setCsrfCookie(reply, createCsrfToken(), options.cookies);
 }
 
-/** Validiert einen Request-Body und wirft bei Fehlern einen benannten Code. */
+/**
+ * Validiert einen Request-Body und wirft bei Fehlern einen benannten Code.
+ *
+ * `fieldCodes` erlaubt, einzelne Felder abweichend zu beantworten: ein
+ * fehlender ALTCHA-Nachweis beim Login ist kein Zugangsdaten-Fehler, sondern
+ * `AUTH_CAPTCHA_INVALID` – sonst bekäme das Formular eine Meldung, die auf das
+ * falsche Feld zeigt.
+ */
 function parseBody<TSchema extends z.ZodTypeAny>(
   schema: TSchema,
   body: unknown,
   code: ErrorCode = 'AUTH_PASSWORD_TOO_WEAK',
+  fieldCodes: Record<string, ErrorCode> = {},
 ): z.infer<TSchema> {
   const parsed = schema.safeParse(body);
 
   if (!parsed.success) {
     // Die erste Meldung des Schemas ist bereits auf Deutsch und für die
     // Oberfläche gedacht; der Code kommt aus dem Katalog.
-    throw new AuthError(code, parsed.error.issues[0]?.message);
+    const issue = parsed.error.issues[0];
+    const field = typeof issue?.path[0] === 'string' ? issue.path[0] : null;
+
+    throw new AuthError((field !== null ? fieldCodes[field] : undefined) ?? code, issue?.message);
   }
 
   return parsed.data as z.infer<TSchema>;
@@ -169,6 +191,7 @@ function guardPublicAttempt(
   scope: string,
   altchaPayload: string,
   altcha: AltchaOptions,
+  ledger: AltchaSolutionLedger,
 ): void {
   const decision = limiter.consume(rateLimitKey(scope, request.ip));
 
@@ -179,7 +202,9 @@ function guardPublicAttempt(
     );
   }
 
-  if (!verifyAltchaSolution(altchaPayload, altcha)) {
+  // Prüft und löst den Nachweis zugleich ein: ein bereits verwendeter zählt
+  // nicht erneut und ist von einem gefälschten nicht zu unterscheiden.
+  if (!verifyAltchaSolution(altchaPayload, altcha, ledger)) {
     throw new AuthError('AUTH_CAPTCHA_INVALID');
   }
 }
@@ -303,6 +328,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
         'register',
         input.altcha,
         options.altcha,
+        options.altchaLedger,
       );
 
       const { account, session } = await service.register(input, contextOf(request));
@@ -315,18 +341,20 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
   app.post('/auth/login', async (request, reply) => {
     await handle(reply, async () => {
-      const input = parseBody(loginInputSchema, request.body, 'AUTH_INVALID_CREDENTIALS');
+      const input = parseBody(loginInputSchema, request.body, 'AUTH_INVALID_CREDENTIALS', {
+        altcha: 'AUTH_CAPTCHA_INVALID',
+      });
 
-      // Pflichtenheft §7 und §18 verlangen den Spam-Schutz auch beim Login.
-      // Im Vertrag ist das Feld optional typisiert, weil F1 es zunächst nicht
-      // mitschickte; fehlt es, gilt der Nachweis als nicht erbracht – ein
-      // stilles Durchwinken wäre ein Bypass (CLAUDE.md §2).
+      // Pflichtenheft §7 und §18 verlangen den Spam-Schutz auch beim Login,
+      // nicht nur bei der Registrierung. Ein fehlendes Feld fängt bereits das
+      // Schema oben ab; hier wird der Nachweis selbst geprüft und eingelöst.
       guardPublicAttempt(
         request,
         options.loginLimiter,
         'login',
-        input.altcha ?? '',
+        input.altcha,
         options.altcha,
+        options.altchaLedger,
       );
 
       const outcome = await service.login(input, contextOf(request));
