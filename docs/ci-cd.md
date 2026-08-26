@@ -3,10 +3,10 @@
 Ergänzt [PFLICHTENHEFT.md §12](../PFLICHTENHEFT.md) um den Weg vom Commit bis auf die
 Zielmaschinen. Verhaltensregeln für die Entwicklung stehen in [CLAUDE.md](../CLAUDE.md).
 
-> **Stand:** CI ist umgesetzt (`.github/workflows/ci.yml`) und `main` ist durch ein
-> Ruleset geschützt (Abschnitt 8). Der CD-Teil ist beschlossen,
-> aber noch nicht gebaut – es fehlen `docker-compose.yml` und die Dockerfiles der drei
-> Apps. Siehe „Was noch fehlt" am Ende.
+> **Stand:** CI läuft, `main` ist durch ein Ruleset geschützt (Abschnitt 8), Images werden
+> gebaut und veröffentlicht (Abschnitt 9), Deploy-Skript und Gamenode-Updater liegen vor
+> (Abschnitt 10). Offen ist die Freigabestrecke: Environment, Deploy-Zugang und der
+> Workflow, der beides verbindet. Siehe „Was noch fehlt" am Ende.
 
 ---
 
@@ -259,13 +259,72 @@ Cache macht den größten Teil der Laufzeit aus.
 
 ---
 
-## 10. Was noch fehlt
+## 10. Deployment ausführen
 
-- `docker-compose.yml` für VPS- und Gamenode-Seite
-- Dockerfiles für Backend, Frontend und Agent
-- Das Deploy-Skript auf der VPS und der Updater-Timer auf der Gamenode
+### 10.1 VPS – `deploy/vps/deploy.sh`
+
+Wird nicht von Hand aufgerufen, sondern über SSH aus der Pipeline. In der
+`authorized_keys` des Deploy-Benutzers steht das Skript als **erzwungenes Kommando**:
+
+```
+command="/opt/palantir/deploy/vps/deploy.sh",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc ssh-ed25519 AAAA...
+```
+
+Ein abhandengekommener Schlüssel kann damit genau eines: dieses Skript ausführen. Keine
+Shell, keine Portweiterleitung.
+
+Der gewünschte Commit kommt über `SSH_ORIGINAL_COMMAND` – also über das Netz. Er wird
+deshalb **streng geprüft statt nur zitiert**: ausschließlich 40 hexadezimale Zeichen.
+Alles andere fällt durch, auch Git-eigene Optionen wie `--upload-pack=`, mit denen sich
+sonst ein beliebiges Programm starten ließe.
+
+Ablauf: Sperre setzen (zwei Deployments gleichzeitig würden sich beim Auschecken in die
+Quere kommen) → Commit holen und auschecken → Images ziehen → `up -d` → warten, bis alle
+Dienste `healthy` melden.
+
+Der letzte Schritt ist der wichtige. Ohne ihn meldet die Pipeline Erfolg, sobald die
+Container gestartet sind – auch wenn das Backend gleich darauf in einer Absturzschleife
+hängt.
+
+**Die `.env` wird nicht angefasst.** Sie enthält alle Geheimnisse und wird von Hand
+gepflegt (Pflichtenheft §12.1). Die Fassung kommt stattdessen als Umgebungsvariable
+`PALANTIR_VERSION=prod`; in `docker compose` hat die Vorrang vor der `--env-file`.
+
+### 10.2 Gamenode – `deploy/gamenode/update.sh` samt systemd-Timer
+
+Hier wird **gezogen statt geschickt**, weil Pflichtenheft §1 eingehende Verbindungen zum
+Homeserver ausschließt – auch aus dem Tunnel. Ein Deployment per SSH wie auf der VPS ist
+dort nicht möglich.
+
+Der Timer läuft alle fünf Minuten. Ändert sich nichts, bricht das Skript nach einem
+`git fetch` ab, ohne die Container anzufassen – ein laufender Gameserver wird also nicht
+alle fünf Minuten gestört. `Persistent=true` holt einen verpassten Lauf nach, falls die
+VM während einer Freigabe aus war.
+
+Den freigegebenen Stand findet die Node im Git-Zweig **`prod`**: den setzt die Pipeline
+nach der Freigabe auf denselben Commit, auf den auch das Image-Tag `prod` zeigt.
+
+Neu gestartet werden nur Agent und Socket-Proxy. Die Gameserver-Container gehören nicht zu
+diesem Compose-Projekt und laufen unberührt weiter – ein Update des Agents darf keine
+laufende Spielrunde beenden.
+
+### 10.3 Rückfall
+
+Das Tag `prod` in GHCR auf den vorherigen SHA umhängen und das Deploy-Skript mit ebendiesem
+SHA erneut aufrufen. Es wird nichts neu gebaut.
+
+Achtung: Migrationen sind vorwärtsgerichtet. Ein Rückfall der Anwendung setzt voraus, dass
+die Migrationen abwärtskompatibel geschrieben wurden – siehe Abschnitt 7.
+
+---
+
+## 11. Was noch fehlt
+
 - GitHub-Environment `production` mit Pflicht-Reviewer
-- Deploy-Benutzer und Schlüssel auf der VPS
+- Deploy-Benutzer und Schlüssel auf der VPS (siehe Abschnitt 10.1)
+- Der Workflow, der nach der Freigabe das Tag `prod` umhängt und das Deploy-Skript aufruft
 
-Diese Punkte gehören zusammen in ein Deployment-Arbeitspaket und stehen als Nr. 2 unter
-„Gefundene Punkte" in [WORK_STATUS.md](../WORK_STATUS.md).
+Die drei verbliebenen Punkte hängen zusammen und brauchen jeweils einen Eingriff des
+Betreibers: das Environment mit Pflicht-Reviewer, den Deploy-Benutzer samt Schlüsselpaar
+und erst danach den Workflow, der beides nutzt. Sie stehen als Nr. 2 unter „Gefundene
+Punkte" in [WORK_STATUS.md](../WORK_STATUS.md).
