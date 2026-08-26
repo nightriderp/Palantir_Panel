@@ -13,7 +13,9 @@ import {
   DangerConfirmDialog,
   EmptyState,
   Panel,
+  ToggleRow,
   type Tone,
+  formatDateTime,
   useToast,
 } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
@@ -25,8 +27,7 @@ import {
   restoreBackup,
 } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { ToggleRow } from '../form/Fields';
-import { formatBytes, formatDateTime } from '../formatDetail';
+import { formatBytes } from '../formatDetail';
 
 /**
  * Reiter „Backups" der Detailansicht (Lastenheft §3.3).

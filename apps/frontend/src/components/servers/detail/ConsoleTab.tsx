@@ -3,9 +3,8 @@
 import { type GameServerDto, type ServerConsoleLine } from '@palantir/contracts';
 import { consoleCommandSchema } from '@palantir/validation';
 import { useEffect, useRef, useState } from 'react';
-import { Button, Panel, cn, useToast } from '@/components/shared';
+import { Button, Panel, cn, formatTime, useToast } from '@/components/shared';
 import { type LiveConnectionState } from '@/lib/live/LiveChannelProvider';
-import { formatTime } from '../formatDetail';
 
 /**
  * Reiter „Konsole" der Detailansicht (Lastenheft §3.3).

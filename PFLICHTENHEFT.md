@@ -190,6 +190,7 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AUDIT_ENTRY_IMMUTABLE` | 403 | Versuch, einen Audit-Eintrag zu ändern oder zu löschen (§6) |
 | `AUDIT_ARCHIVE_FAILED` | 500 | Archivdatei des Audit-Logs konnte nicht geschrieben werden (§6) |
 | `OWNER_PROTECTED` | 403 | Aktion würde das Owner-Konto aussperren (§8) |
+| `OWNER_ALREADY_EXISTS` | 409 | Owner-Status soll vergeben werden, obwohl bereits ein Owner existiert (Lastenheft §2, §12.3) |
 | `REGISTRATION_REQUEST_INVALID_STATE` | 409 | Wartelisten-Aktion passt nicht zum Zustand des Kontos (§7) |
 | `SERVER_NOT_FOUND` | 404 | Gameserver existiert nicht oder ist nicht sichtbar (§9) |
 | `SERVER_STATE_CONFLICT` | 409 | Lifecycle-Übergang im aktuellen Zustand unzulässig (§9) |
@@ -211,6 +212,15 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `NOTIFICATION_NOT_FOUND` | 404 | Meldung existiert nicht oder gehört zu einem anderen Konto (§14) |
 | `NOTIFICATION_DELIVERY_FAILED` | 502 | Zustellung an den externen Kanal gescheitert – nur bei der vom Admin ausgelösten Testnachricht (§14) |
 | `ANNOUNCEMENT_NOT_FOUND` | 404 | Systemweite Ankündigung existiert nicht (Lastenheft §3.6) |
+| `CONVERSATION_NOT_FOUND` | 404 | Konversation existiert nicht oder der Aufrufer nimmt nicht an ihr teil (§15) |
+| `CONVERSATION_RECIPIENT_INVALID` | 400 | Empfänger einer Direktnachricht unzulässig, etwa das eigene Konto (§15) |
+| `CONVERSATION_RECIPIENT_NOT_ALLOWED` | 403 | Empfänger ist nicht freigeschaltet oder gesperrt (Lastenheft §3.6) |
+| `MESSAGE_NOT_FOUND` | 404 | Nachricht existiert nicht oder liegt in einer fremden Konversation (§15) |
+| `MESSAGE_ALREADY_DELETED` | 409 | Nachricht ist bereits gelöscht (§15) |
+| `MESSAGE_REPORT_NOT_FOUND` | 404 | Meldung existiert nicht (§15) |
+| `MESSAGE_REPORT_DUPLICATE` | 409 | Dieselbe Nachricht wurde von demselben Konto bereits gemeldet (§15) |
+| `MESSAGE_REPORT_NOT_ALLOWED` | 403 | Melden an dieser Stelle nicht vorgesehen, etwa beim eigenen Beitrag (§15) |
+| `MESSAGE_REPORT_ALREADY_RESOLVED` | 409 | Über die Meldung wurde bereits entschieden (§15) |
 
 Die `AGENT_*`-Codes gelten für den WebSocket-Kanal zum Agent, der kein REST-Endpunkt ist. Die HTTP-Status-Zuordnung greift dort beim Handshake und dient dem Backend als Vorlage, wenn es einen Agent-Fehler an eine REST-Antwort weiterreicht.
 
@@ -284,6 +294,8 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 
 **Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin`):** Die Unveränderlichkeit ist dreifach abgesichert. `AuditLogRepository` und `AuditService` kennen weder eine Update- noch eine allgemeine Delete-Operation – auch nicht für den Owner. Zusätzlich lehnt der Trigger `audit_log_append_only` (Migration `0005_admin_ports_audit_storage`) UPDATE, DELETE und TRUNCATE auf `audit_log` **in der Datenbank** ab; auch ein direkter `psql`-Zugriff kommt daran nicht vorbei. Einzige Ausnahme ist der Archivierungsprozess: Er weist sich über die Sitzungsvariable `palantir.audit_archive` aus (per `SET LOCAL`, gilt also nur innerhalb seiner Transaktion) und darf auch dann ausschließlich Einträge älter als 24 Monate entfernen – nachdem die Archivdatei geschrieben ist. Schlägt der Export fehl, bleibt die aktive Tabelle unverändert (`AUDIT_ARCHIVE_FAILED`). Angestoßen wird der Lauf über die Admin-Oberfläche oder `pnpm --filter @palantir/backend audit:archive`; der Ablageort steht in `AUDIT_ARCHIVE_DIR`.
 
+**Handelnder eines Eintrags (festgelegt in R1):** `AuditLog.userId` und der mitgeschriebene Anzeigename kommen aus der Sitzung. Der `PermissionActor` aus §8 trägt bewusst keine Identität – für die Rechteberechnung braucht er sie nicht –, deshalb setzt das Auth-Modul die Identität beim Auflösen der Sitzung als `request.adminIdentity` und `contextFrom()` in `modules/admin/routes.ts` liest sie dort. Der Anzeigename wird als **Kopie** zum Zeitpunkt der Aktion festgehalten, damit der Eintrag lesbar bleibt, wenn das Konto später umbenannt wird oder verschwindet. Aufrufe ohne Sitzung – die Wartungs-Kommandos auf der VPS, die bereits Systemzugang voraussetzen – bleiben Systemeinträge mit `actorId: null`.
+
 **Katalog der protokollierten Aktionen:** `packages/contracts/src/audit.ts` (`AUDIT_ACTIONS`), Benennungsschema wie bei den Events (`<domäne>.<vorgang>`, §14). Jedes Arbeitspaket ergänzt dort additiv die sicherheitsrelevanten Aktionen, die es selbst protokolliert – nie als Freitext am Aufrufort.
 
 ---
@@ -330,6 +342,8 @@ Festlegungen des Backend-Arbeitspakets B1, die darauf aufbauen (Modul `apps/back
 - Rollen sind frei definierbare Bündel dieser Permissions; ein Nutzer kann mehrere Rollen haben, effektive Rechte = Vereinigung
 - Seed-Rollen bei Ersteinrichtung: **Admin**, **Moderator**, **Nutzer** (vollständig editierbar); **Gast** als geschützte Systemrolle ohne jede Permission. Angelegt werden sie einmalig über `pnpm --filter @palantir/backend db:seed` direkt nach den Migrationen (siehe SETUP.md §2.4) – bewusst als eigenes Kommando statt beim Backend-Start, damit der Zeitpunkt für den Betreiber sichtbar bleibt. Der Lauf ist idempotent und verändert vorhandene Rollen nie.
 - `User.isOwner`-Flag: unabhängig vom Rollensystem immer alle Permissions – verhindert Selbst-Aussperrung
+
+**Vergabe des Owner-Status (Ersteinrichtung, festgelegt in R1):** Der Betreiber registriert sich über die reguläre Oberfläche und hebt dieses Konto anschließend einmalig über `pnpm --filter @palantir/backend db:owner <benutzername>` zum Owner (SETUP.md §2.5). Bewusst **nicht** „das erste registrierte Konto gewinnt": Die Registrierung ist offen (Lastenheft §3.1) und das Panel ab dem ersten Start erreichbar – ein Sicherheitsmerkmal, das an der Reihenfolge zweier HTTP-Requests hängt, ist keines. Bewusst auch kein Owner-Konto im Seed-Lauf: der bräuchte ein Passwort aus der `.env` oder aus der Konsolenausgabe und wäre ein zweiter Weg, ein Konto anzulegen, der an Registrierung, Passwortregeln und `AuthMethod` vorbeiliefe. Der Nachweis ist stattdessen der Systemzugang zur Maschine, auf der das Backend läuft – dasselbe Muster wie bei `db:migrate`, `db:seed` und `audit:archive`. Der Lauf ist idempotent, protokolliert `user.ownerGranted` im Audit-Log und lehnt ein zweites Owner-Konto mit `OWNER_ALREADY_EXISTS` ab; die eigentliche Zusicherung hält der partielle Unique-Index `users_single_owner_idx` (§6). Ein Weg, den Status wieder zu entziehen oder zu übertragen, existiert in Version 1 bewusst nicht.
 
 **Ort des Katalogs:** `packages/contracts/src/permissions.ts` (`PERMISSION_CATALOG`) – dort steht jede Permission zusammen mit Beschreibung (für den Rollen-Editor) und Geltungsbereich (`own` / `any` / `global`). Neue Permissions werden ausschließlich dort additiv ergänzt und zusätzlich in der obigen Aufzählung nachgetragen.
 
@@ -403,7 +417,7 @@ Ein Skript (`scripts/setup.sh`), das:
 
 ### 12.3 Dokumentation im Repository
 - `README.md`: Projektüberblick, Architekturdiagramm, Quick-Start
-- `SETUP.md`: Schritt-für-Schritt-Anleitung – VPS vorbereiten, `.env` ausfüllen, OAuth-Apps bei Discord/Twitch/Steam anlegen (inkl. Redirect-URI-Konfiguration passend zur Domain), WireGuard zwischen VPS und Homeserver einrichten, Homeserver-VM vorbereiten, `docker compose up` auf beiden Seiten, Ersteinrichtung des Owner-Accounts
+- `SETUP.md`: Schritt-für-Schritt-Anleitung – VPS vorbereiten, `.env` ausfüllen, OAuth-Apps bei Discord/Twitch/Steam anlegen (inkl. Redirect-URI-Konfiguration passend zur Domain), WireGuard zwischen VPS und Homeserver einrichten, Homeserver-VM vorbereiten, `docker compose up` auf beiden Seiten, Ersteinrichtung des Owner-Accounts (§8, umgesetzt in SETUP.md §2.5)
 
 ---
 
@@ -423,6 +437,7 @@ Ein Skript (`scripts/setup.sh`), das:
 - Internes Event-System (`server.started`, `server.stopped`, `server.crashed`, `backup.failed`, `autoShutdown.triggered`, `resource.low`, `user.registered`, `message.reported`, ...)
 - Reine Live-Ereignisse des Browser-Kanals (§5.3), die **keine** Benachrichtigung auslösen, sondern nur eine offene Ansicht aktuell halten: `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed`. Sie stehen im selben Katalog `WEBSOCKET_EVENTS`, sind aber bewusst kein Anlass für eine `NotificationRule`.
 - **Ergaenzungen aus B3 (Server-Orchestrierung, §9):** `server.created`, `server.deleted`, `server.restarted`, `server.failed` (Zustand `error` erreicht - im Gegensatz zu `server.crashed`, das ein automatisch behebbarer Einzelabsturz ist) und `server.cloned`. Den Zustandswechsel meldet weiterhin `server.statusChanged`, den Fortschritt beim Klonen `serverClone.progressed` - beide aus F3.
+- **Ergänzungen aus B7 (Chat & Moderation, §15):** `message.sent`, `message.deleted` und `conversation.created`. Sie fließen ausschließlich über den Chat-Kanal des Browsers (`packages/contracts/src/chat.ts`) und halten eine offene Ansicht aktuell – wie die Live-Ereignisse der Server-Ansicht sind sie bewusst **kein** Anlass für eine `NotificationRule`. Anlass für eine Benachrichtigung bleibt allein `message.reported`.
 - **Benennungsschema:** `<domäne>.<vorgang>`, beide Segmente lowerCamelCase, genau ein Punkt als Trenner. Als Typ festgehalten in `packages/contracts/src/events.ts` (`WEBSOCKET_EVENTS`, `WebSocketEventName`); neue Events werden dort und in dieser Liste additiv ergänzt.
 - `NotificationChannel` (aktuell: Discord-Webhook) getrennt von `NotificationRule` (Event → Kanal → Empfängerkreis), beides über Admin-Oberfläche konfigurierbar
 
@@ -453,6 +468,17 @@ Ein Skript (`scripts/setup.sh`), das:
 - Server-Chat entsteht automatisch mit dem Server, Teilnehmerkreis folgt `ServerMember`
 - Moderation ausschließlich reaktiv über Meldungen, kein genereller Admin-Zugriff auf private Nachrichteninhalte
 - Moderationsaktionen werden im Audit-Log erfasst
+
+**Vertrag (Arbeitspaket B7, `packages/contracts/src/chat.ts`):** DTOs für Konversation, Nachricht und Meldung, die Grenzwerte (`MESSAGE_MAX_LENGTH`), die beiden Moderationsentscheidungen (`MESSAGE_MODERATION_ACTIONS`) und die Frames des Chat-Kanals; Zod-Gegenstück in `packages/validation/src/chat.ts`.
+
+Festlegungen dieser Sitzung, die das Pflichtenheft offen ließ:
+
+- **Was ein Moderator sieht,** steht abschließend in `ReportedMessageDto`: genau die gemeldete Nachricht mit Absender und Zeitstempel, dazu Art der Konversation (`dm`/`server_chat`) und – nur beim Server-Chat – die `serverId`. Kein Verlauf davor oder danach, keine Teilnehmerliste einer DM, keine Suche über Nachrichten. Es gibt bewusst keinen DTO und keinen Endpunkt, über den mehr erreichbar wäre.
+- **Moderationsentscheidungen** sind `dismiss` (Meldung verwerfen) und `deleteMessage` (Nachricht entfernen). Eine Kontosperre gehört nicht dazu: Sie ist Nutzerverwaltung und läuft über `user.manage` (§8), sonst käme `message.moderate` an das Rechtekonzept heran.
+- **Gelöschte Nachrichten** bleiben mit `deletedAt` im Verlauf stehen und werden mit leerem Inhalt ausgeliefert; der Inhalt zum Zeitpunkt der Meldung bleibt allein an der Meldung erhalten, damit eine getroffene Entscheidung nachvollziehbar bleibt.
+- **Live-Kanal:** eigener WebSocket-Endpunkt je angemeldetem Konto, ohne `subscribe`-Frame – das Backend stellt die Ereignisse aller Konversationen zu, an denen das Konto teilnimmt. Ein Abonnement je Konversation ginge nicht: Eine neu entstandene DM ließe sich nicht abonnieren, bevor man von ihr weiß.
+- **Gesendet wird über REST**, zugestellt über den Kanal. Zwei Wege für denselben zustandsändernden Vorgang hätten zwangsläufig zwei Regelsätze.
+- **Der Server-Chat entsteht beim ersten Zugriff** auf den Server-Chat eines Servers, nicht beim Anlegen des Servers – fachlich derselbe Effekt („entsteht automatisch mit dem Server"), aber ohne Eingriff in die Server-Orchestrierung (B3). `ChatService.ensureServerConversation()` steht bereit, falls B3 ihn später beim Anlegen aufrufen will.
 
 ---
 

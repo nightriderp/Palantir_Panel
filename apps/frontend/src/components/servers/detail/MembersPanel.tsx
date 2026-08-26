@@ -14,13 +14,14 @@ import {
   DangerConfirmDialog,
   FormModal,
   Panel,
+  SelectField,
+  TextField,
+  formatDateTime,
   useToast,
 } from '@/components/shared';
 import { addOrUpdateMember, fetchMembers, removeMember } from '@/lib/api/servers';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { SelectField, TextField } from '../form/Fields';
-import { formatDateTime } from '../formatDetail';
 
 /**
  * Mitgliederverwaltung eines Servers (Lastenheft §3.3).

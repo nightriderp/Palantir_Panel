@@ -15,13 +15,16 @@ import {
   EmptyState,
   FormModal,
   Panel,
+  SelectField,
+  TextField,
+  Toggle,
+  formatDateTime,
   useToast,
 } from '@/components/shared';
 import { createSchedule, deleteSchedule, fetchSchedules, updateSchedule } from '@/lib/api/servers';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { SelectField, TextField, Toggle } from '../form/Fields';
-import { describeCron, formatDateTime } from '../formatDetail';
+import { describeCron } from '../formatDetail';
 
 /**
  * Reiter „Aufgaben" der Detailansicht (Lastenheft §3.3).
