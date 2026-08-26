@@ -43,6 +43,13 @@
       "when": 1787736938032,
       "tag": "0005_admin_ports_audit_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787737884610,
+      "tag": "0006_auth_identity",
+      "breakpoints": true
     }
   ]
 }
