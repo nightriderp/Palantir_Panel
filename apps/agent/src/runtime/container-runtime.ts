@@ -31,11 +31,17 @@
  * `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` aus derselben
  * Liste sind Dateisystem- und Job-Aufgaben und gehoeren zu A3, nicht zur
  * Container-Ansteuerung.
+ *
+ * `listImages()`/`removeImage()` sind die einzige Ergaenzung aus A3: Der
+ * Storage-Explorer (Pflichtenheft §16) braucht Image-Groessen und Nutzungsstatus,
+ * und die kommen von der Container-Engine. Sie stehen deshalb hier und nicht im
+ * Storage-Job - dieser Weg ist der einzige erlaubte (CLAUDE.md §4).
  */
 
 import { type ContainerRuntimeEventListener, type Unsubscribe } from './events.js';
 import {
   type ContainerHandle,
+  type ContainerImage,
   type ContainerSpec,
   type ContainerState,
   type ContainerStats,
@@ -43,6 +49,7 @@ import {
   type FileEntry,
   type GetLogsOptions,
   type LogLine,
+  type RemoveImageOptions,
   type RemoveOptions,
   type StopOptions,
   type WatchOptions,
@@ -79,6 +86,29 @@ export interface ContainerRuntime {
 
   /** Alle von Palantir verwalteten Container - vollstaendiger Ist-Zustand fuer den Reconnect-Abgleich. */
   list(): Promise<readonly ContainerState[]>;
+
+  /**
+   * Alle Container-Images des Hosts samt Groesse und Nutzungsstatus
+   * (Pflichtenheft §16, Arbeitspaket A3).
+   *
+   * Ergaenzung aus A3: Der Storage-Explorer braucht die Image-Groessen, und
+   * Agent-Code darf die Engine nur ueber dieses Interface ansprechen
+   * (CLAUDE.md §4). Der Aufruf ist teurer als die Ordnergroessen - deshalb ist
+   * er im Scan abschaltbar (`GetStorageBreakdownCommandPayload.includeImages`).
+   */
+  listImages(): Promise<readonly ContainerImage[]>;
+
+  /**
+   * Ein Image entfernen (Lastenheft §3.8: ungenutzte Images sind loeschbar).
+   *
+   * Bewusst **idempotent**: Ein bereits fehlendes Image ist kein Fehler,
+   * sondern `false`. Ein noch benutztes Image lehnt die Engine dagegen ab
+   * (`CONTAINER_STATE_CONFLICT`) - dann ist die Voraussetzung des Aufrufers
+   * falsch, und das soll auffallen.
+   *
+   * @returns `true`, wenn tatsaechlich etwas entfernt wurde.
+   */
+  removeImage(imageId: string, options?: RemoveImageOptions): Promise<boolean>;
 
   /** `GET_STATS`: einmalige Momentaufnahme der Auslastung. */
   getStats(containerId: string): Promise<ContainerStats>;
