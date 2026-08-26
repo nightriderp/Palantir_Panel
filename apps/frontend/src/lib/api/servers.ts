@@ -7,7 +7,6 @@ import {
   type GameTypeDto,
   type ScheduleDto,
   type ServerCloneJobDto,
-  type ServerExportJobDto,
   type ServerFileContentDto,
   type ServerFileListDto,
   type ServerMemberDto,
@@ -17,6 +16,8 @@ import {
 } from '@palantir/contracts';
 import {
   type CloneServerInput,
+  type CreateBackupInput,
+  type CreateServerExportInput,
   type CreateServerInput,
   type ScheduleInput,
   type ServerMemberInput,
@@ -66,7 +67,7 @@ export function freeNodeResources(node: HostNodeOptionDto): NodeResources {
   };
 }
 
-const SERVERS = '/api/servers';
+const SERVERS = '/servers';
 
 function serverPath(serverId: string, suffix = ''): string {
   return `${SERVERS}/${encodeURIComponent(serverId)}${suffix}`;
@@ -126,11 +127,11 @@ export function deleteServer(serverId: string): Promise<ApiResult<null>> {
 // ---------------------------------------------------------------------------
 
 export function fetchGameTypes(signal?: AbortSignal): Promise<ApiResult<GameTypeDto[]>> {
-  return apiRequest<GameTypeDto[]>('/api/game-types', { signal });
+  return apiRequest<GameTypeDto[]>('/game-types', { signal });
 }
 
 export function fetchHostNodes(signal?: AbortSignal): Promise<ApiResult<HostNodeOptionDto[]>> {
-  return apiRequest<HostNodeOptionDto[]>('/api/nodes/available', { signal });
+  return apiRequest<HostNodeOptionDto[]>('/nodes/available', { signal });
 }
 
 /**
@@ -140,7 +141,7 @@ export function fetchHostNodes(signal?: AbortSignal): Promise<ApiResult<HostNode
  * Belegung – der Wizard braucht beides, um „passt noch" zu beantworten.
  */
 export function fetchResourceQuota(signal?: AbortSignal): Promise<ApiResult<UserResourceLimitDto>> {
-  return apiRequest<UserResourceLimitDto>('/api/me/resource-quota', { signal });
+  return apiRequest<UserResourceLimitDto>('/me/resource-quota', { signal });
 }
 
 /**
@@ -153,7 +154,7 @@ export function checkSubdomain(
   subdomain: string,
   signal?: AbortSignal,
 ): Promise<ApiResult<SubdomainAvailabilityDto>> {
-  return apiRequest<SubdomainAvailabilityDto>('/api/subdomains/check', {
+  return apiRequest<SubdomainAvailabilityDto>('/subdomains/check', {
     query: { subdomain },
     signal,
   });
@@ -167,7 +168,7 @@ export function checkSubdomain(
 export function uploadWorldArchive(file: File): Promise<ApiResult<{ uploadId: string }>> {
   const form = new FormData();
   form.set('file', file);
-  return apiRequest<{ uploadId: string }>('/api/uploads/world-archives', {
+  return apiRequest<{ uploadId: string }>('/uploads/world-archives', {
     method: 'POST',
     body: form,
   });
@@ -194,22 +195,6 @@ export function fetchCloneJob(
 ): Promise<ApiResult<ServerCloneJobDto>> {
   return apiRequest<ServerCloneJobDto>(
     serverPath(serverId, `/clone/${encodeURIComponent(jobId)}`),
-    { signal },
-  );
-}
-
-/** Vollständigen Export anstoßen (Lastenheft §4: Datenmitnahme). */
-export function startExport(serverId: string): Promise<ApiResult<ServerExportJobDto>> {
-  return apiRequest<ServerExportJobDto>(serverPath(serverId, '/export'), { method: 'POST' });
-}
-
-export function fetchExportJob(
-  serverId: string,
-  jobId: string,
-  signal?: AbortSignal,
-): Promise<ApiResult<ServerExportJobDto>> {
-  return apiRequest<ServerExportJobDto>(
-    serverPath(serverId, `/export/${encodeURIComponent(jobId)}`),
     { signal },
   );
 }
@@ -252,8 +237,18 @@ export function removeMember(serverId: string, userId: string): Promise<ApiResul
 }
 
 // ---------------------------------------------------------------------------
-// Backups (Arbeitspaket B5)
+// Backups und vollständiger Export (Arbeitspaket B5)
 // ---------------------------------------------------------------------------
+//
+// Die Pfade entsprechen den Routen, die B5 bereits gebaut hat
+// (`apps/backend/src/modules/backups/routes.ts`): eine Sicherung wird unter dem
+// Server angelegt, danach aber über ihre eigene Id angesprochen. Der
+// vollständige Export ist dort kein eigener Auftragstyp, sondern ein
+// `BackupDto` mit `isExport: true`.
+
+function backupPath(backupId: string, suffix = ''): string {
+  return `/backups/${encodeURIComponent(backupId)}${suffix}`;
+}
 
 export function fetchBackups(
   serverId: string,
@@ -262,26 +257,47 @@ export function fetchBackups(
   return apiRequest<BackupDto[]>(serverPath(serverId, '/backups'), { signal });
 }
 
-export function createBackup(serverId: string): Promise<ApiResult<BackupDto>> {
-  return apiRequest<BackupDto>(serverPath(serverId, '/backups'), { method: 'POST' });
+/**
+ * Sicherung anstoßen.
+ *
+ * `stopServer` hält den Server für die Dauer der Sicherung an – das ergibt ein
+ * garantiert widerspruchsfreies Archiv, unterbricht aber das Spiel.
+ */
+export function createBackup(
+  serverId: string,
+  input: CreateBackupInput,
+): Promise<ApiResult<BackupDto>> {
+  return apiRequest<BackupDto>(serverPath(serverId, '/backups'), { method: 'POST', json: input });
 }
 
-export function restoreBackup(serverId: string, backupId: string): Promise<ApiResult<null>> {
-  return apiRequest<null>(
-    serverPath(serverId, `/backups/${encodeURIComponent(backupId)}/restore`),
-    { method: 'POST' },
-  );
+export function restoreBackup(backupId: string): Promise<ApiResult<BackupDto>> {
+  return apiRequest<BackupDto>(backupPath(backupId, '/restore'), { method: 'POST' });
 }
 
-export function deleteBackup(serverId: string, backupId: string): Promise<ApiResult<null>> {
-  return apiRequest<null>(serverPath(serverId, `/backups/${encodeURIComponent(backupId)}`), {
-    method: 'DELETE',
-  });
+export function deleteBackup(backupId: string): Promise<ApiResult<null>> {
+  return apiRequest<null>(backupPath(backupId), { method: 'DELETE' });
 }
 
-/** Adresse zum Herunterladen einer Sicherung – wird als Link geöffnet. */
-export function backupDownloadUrl(serverId: string, backupId: string): string {
-  return `${API_BASE_URL}${serverPath(serverId, `/backups/${encodeURIComponent(backupId)}/download`)}`;
+/** Adresse zum Herunterladen eines Archivs – wird als Link geöffnet. */
+export function backupDownloadUrl(backupId: string): string {
+  return `${API_BASE_URL}${backupPath(backupId, '/download')}`;
+}
+
+/**
+ * Vollständigen Export anstoßen (Lastenheft §3.3: Datenmitnahme).
+ *
+ * Ergebnis ist ein `BackupDto` mit `isExport: true`; Fortschritt und Download
+ * laufen danach über dieselben Wege wie bei jeder anderen Sicherung.
+ */
+export function startExport(
+  serverId: string,
+  input: CreateServerExportInput,
+): Promise<ApiResult<BackupDto>> {
+  return apiRequest<BackupDto>(serverPath(serverId, '/export'), { method: 'POST', json: input });
+}
+
+export function fetchBackup(backupId: string, signal?: AbortSignal): Promise<ApiResult<BackupDto>> {
+  return apiRequest<BackupDto>(backupPath(backupId), { signal });
 }
 
 // ---------------------------------------------------------------------------

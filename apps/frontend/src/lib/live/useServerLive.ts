@@ -3,7 +3,6 @@
 import {
   type ServerCloneJobDto,
   type ServerConsoleLine,
-  type ServerExportJobDto,
   type ServerLiveStats,
   type ServerStatus,
 } from '@palantir/contracts';
@@ -27,7 +26,6 @@ export interface ServerLiveData {
   stats: ServerLiveStats | null;
   consoleLines: ServerConsoleLine[];
   cloneJob: ServerCloneJobDto | null;
-  exportJob: ServerExportJobDto | null;
   /** Konsolenbefehl senden; `false`, wenn die Verbindung gerade fehlt. */
   sendConsoleCommand: (command: string) => boolean;
   clearConsole: () => void;
@@ -41,7 +39,6 @@ export function useServerLive(serverId: string | null): ServerLiveData {
   const [stats, setStats] = useState<ServerLiveStats | null>(null);
   const [consoleLines, setConsoleLines] = useState<ServerConsoleLine[]>([]);
   const [cloneJob, setCloneJob] = useState<ServerCloneJobDto | null>(null);
-  const [exportJob, setExportJob] = useState<ServerExportJobDto | null>(null);
 
   // Beim Wechsel auf einen anderen Server nichts vom vorigen stehen lassen.
   useEffect(() => {
@@ -50,7 +47,6 @@ export function useServerLive(serverId: string | null): ServerLiveData {
     setStats(null);
     setConsoleLines([]);
     setCloneJob(null);
-    setExportJob(null);
   }, [serverId]);
 
   useEffect(() => {
@@ -70,9 +66,6 @@ export function useServerLive(serverId: string | null): ServerLiveData {
           break;
         case 'serverClone.progressed':
           setCloneJob(frame.data.job);
-          break;
-        case 'serverExport.progressed':
-          setExportJob(frame.data.job);
           break;
       }
     });
@@ -100,7 +93,6 @@ export function useServerLive(serverId: string | null): ServerLiveData {
       stats,
       consoleLines,
       cloneJob,
-      exportJob,
       sendConsoleCommand,
       clearConsole,
     }),
@@ -111,7 +103,6 @@ export function useServerLive(serverId: string | null): ServerLiveData {
       stats,
       consoleLines,
       cloneJob,
-      exportJob,
       sendConsoleCommand,
       clearConsole,
     ],

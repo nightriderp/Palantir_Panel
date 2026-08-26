@@ -5,7 +5,7 @@ import {
   type GameServerDto,
   type GameTypeDto,
   type ServerCloneJobDto,
-  type ServerExportJobDto,
+  type BackupDto,
 } from '@palantir/contracts';
 import {
   type CloneServerInput,
@@ -16,16 +16,20 @@ import {
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
+  Badge,
   Button,
   DangerConfirmDialog,
   FormModal,
   Panel,
+  type Tone,
   formatMegabytes,
   useToast,
 } from '@/components/shared';
 import {
+  backupDownloadUrl,
   cloneServer,
   deleteServer,
+  fetchBackup,
   fetchGameTypes,
   startExport,
   updateServerSettings,
@@ -36,7 +40,7 @@ import { useApiResource } from '@/lib/api/useApiResource';
 import { ConfigFields } from '../form/ConfigFields';
 import { NumberField, TextField, ToggleRow } from '../form/Fields';
 import { ResourceFields } from '../form/ResourceFields';
-import { formatDateTime } from '../formatDetail';
+import { formatBytes, formatDateTime } from '../formatDetail';
 import { useSubdomainCheck } from '../useSubdomainCheck';
 import { JobProgress } from './JobProgress';
 import { MembersPanel } from './MembersPanel';
@@ -49,6 +53,21 @@ import { MembersPanel } from './MembersPanel';
  * erscheint nur, wenn das passende Flag im `permissions`-Objekt gesetzt ist
  * (Pflichtenheft §5.2).
  */
+
+/** Anzeige des Export-Fortschritts – der Export ist bei B5 eine Sicherung. */
+const EXPORT_STATUS_LABELS: Record<BackupDto['status'], string> = {
+  pending: 'Wartet',
+  running: 'Läuft …',
+  completed: 'Fertig',
+  failed: 'Fehlgeschlagen',
+};
+
+const EXPORT_STATUS_TONE: Record<BackupDto['status'], Tone> = {
+  pending: 'warning',
+  running: 'warning',
+  completed: 'success',
+  failed: 'danger',
+};
 
 function toDraft(server: GameServerDto): UpdateServerSettingsInput {
   return {
@@ -66,10 +85,9 @@ export interface SettingsTabProps {
   onServerUpdated: (server: GameServerDto) => void;
   /** Klon-Auftrag aus dem Live-Kanal, solange einer läuft. */
   cloneJob: ServerCloneJobDto | null;
-  exportJob: ServerExportJobDto | null;
 }
 
-export function SettingsTab({ server, onServerUpdated, cloneJob, exportJob }: SettingsTabProps) {
+export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabProps) {
   const router = useRouter();
   const toast = useToast();
 
@@ -86,7 +104,8 @@ export function SettingsTab({ server, onServerUpdated, cloneJob, exportJob }: Se
   const [cloneError, setCloneError] = useState<string | null>(null);
   const [cloneBusy, setCloneBusy] = useState(false);
   const [localCloneJob, setLocalCloneJob] = useState<ServerCloneJobDto | null>(null);
-  const [localExportJob, setLocalExportJob] = useState<ServerExportJobDto | null>(null);
+  const [exportBackup, setExportBackup] = useState<BackupDto | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -102,7 +121,6 @@ export function SettingsTab({ server, onServerUpdated, cloneJob, exportJob }: Se
   }, [server]);
 
   const activeCloneJob = cloneJob ?? localCloneJob;
-  const activeExportJob = exportJob ?? localExportJob;
   const canEdit = server.permissions.canManageSettings;
 
   async function save() {
@@ -158,15 +176,35 @@ export function SettingsTab({ server, onServerUpdated, cloneJob, exportJob }: Se
   }
 
   async function exportAll() {
-    const result = await startExport(server.id);
+    setExporting(true);
+    const result = await startExport(server.id, { stopServer: false });
+    setExporting(false);
+
     if (!result.success) {
       toast.error(errorText(result));
       return;
     }
-    setLocalExportJob(result.data);
+    setExportBackup(result.data);
     toast.success(
       'Der Export wurde angestoßen. Der Download erscheint hier, sobald er fertig ist.',
     );
+  }
+
+  /**
+   * Stand des Exports nachschlagen.
+   *
+   * Der Export ist bei B5 eine Sicherung mit `isExport`; ein eigenes
+   * Fortschritts-Ereignis gibt es dafür nicht. Der Stand wird deshalb auf
+   * ausdrücklichen Klick geholt, statt fortlaufend abgefragt zu werden.
+   */
+  async function refreshExport() {
+    if (!exportBackup) return;
+    const result = await fetchBackup(exportBackup.id);
+    if (!result.success) {
+      toast.error(errorText(result));
+      return;
+    }
+    setExportBackup(result.data);
   }
 
   async function remove() {
@@ -326,32 +364,41 @@ export function SettingsTab({ server, onServerUpdated, cloneJob, exportJob }: Se
           Deine Daten bleiben jederzeit mitnehmbar.
         </p>
 
-        {activeExportJob ? (
-          <JobProgress
-            job={activeExportJob}
-            title="Export"
-            bytes={{ copied: null, total: activeExportJob.sizeBytes }}
-          />
+        {exportBackup ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-fill p-3.5">
+            <Badge
+              tone={EXPORT_STATUS_TONE[exportBackup.status]}
+              withDot
+              pulse={exportBackup.status === 'pending' || exportBackup.status === 'running'}
+            >
+              {EXPORT_STATUS_LABELS[exportBackup.status]}
+            </Badge>
+            <span className="font-mono text-xs text-ink-faint">
+              {exportBackup.status === 'completed' ? formatBytes(exportBackup.sizeBytes) : '—'}
+            </span>
+            <span className="text-xs text-ink-faint">
+              Angestoßen am {formatDateTime(exportBackup.createdAt)}
+            </span>
+
+            {exportBackup.status === 'completed' ? (
+              <a
+                href={backupDownloadUrl(exportBackup.id)}
+                download
+                className="ml-auto inline-flex items-center gap-2 rounded-md border border-line-strong bg-fill px-4 py-2.5 text-base font-semibold text-ink"
+              >
+                Archiv herunterladen
+              </a>
+            ) : (
+              <Button size="sm" className="ml-auto" onClick={() => void refreshExport()}>
+                Stand aktualisieren
+              </Button>
+            )}
+          </div>
         ) : null}
 
-        {activeExportJob?.status === 'completed' && activeExportJob.downloadUrl ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <a
-              href={activeExportJob.downloadUrl}
-              download
-              className="inline-flex items-center gap-2 rounded-md border border-line-strong bg-fill px-4 py-2.5 text-base font-semibold text-ink"
-            >
-              Archiv herunterladen
-            </a>
-            {activeExportJob.downloadExpiresAt ? (
-              <span className="text-xs text-ink-faint">
-                Gültig bis {formatDateTime(activeExportJob.downloadExpiresAt)}
-              </span>
-            ) : null}
-          </div>
-        ) : (
-          <Button onClick={() => void exportAll()} disabled={activeExportJob?.status === 'running'}>
-            Export starten
+        {exportBackup?.status === 'completed' ? null : (
+          <Button onClick={() => void exportAll()} disabled={exporting}>
+            {exporting ? 'Wird angestoßen …' : 'Export starten'}
           </Button>
         )}
       </Panel>
