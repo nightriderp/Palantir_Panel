@@ -141,6 +141,9 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `ROLE_NOT_FOUND` | 404 | Rolle existiert nicht (§8) |
 | `ROLE_NAME_TAKEN` | 409 | Rollenname bereits vergeben (§8) |
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
+| `SUBDOMAIN_INVALID` | 400 | Subdomain verletzt das erlaubte Format (§13) |
+| `SERVER_STATE_CONFLICT` | 409 | Lifecycle-Befehl passt nicht zum aktuellen Zustand (§9) |
+| `FILE_TOO_LARGE` | 413 | Upload überschreitet `MAX_UPLOAD_SIZE_BYTES` (§12.1) |
 | `VALIDATION_FAILED` | 400 | Pfad-, Query- oder Körperwert verletzt das vereinbarte Schema (§5.2) |
 | `SERVER_NOT_FOUND` | 404 | Gameserver existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
 | `BACKUP_NOT_FOUND` | 404 | Backup existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
@@ -194,6 +197,8 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - WebSocket-Kanäle für Live-Daten: Konsole/Logs, Live-Stats, Chat, Benachrichtigungen
 - Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
 
+**Live-Kanal Browser ↔ Backend:** Die Frames dieses Kanals legt das Pflichtenheft nicht fest; sie stehen als `LiveClientFrame` und `LiveServerEventFrame` in `packages/contracts/src/server-live.ts`. Der Browser abonniert eine Ressource (`{ resource: 'server', id }`) und empfängt darauf die Ereignisse `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed` (§14). Konsolenbefehle laufen als `consoleCommand`-Frame über dieselbe Verbindung. Nicht zu verwechseln mit dem Agent-Protokoll unten: das verbindet Backend und Homeserver.
+
 **Ort des Agent-Protokolls:** `packages/contracts/src/agent-protocol.ts` (`AGENT_COMMANDS`, `AGENT_EVENTS`, Frame-Typen, `AGENT_PROTOCOL_VERSION`), Zod-Gegenstück in `packages/validation/src/agent-protocol.ts`. Befehle und Ereignisse werden ausschließlich dort additiv ergänzt.
 
 Über dieselbe Verbindung laufen neben Befehl (`command`) und Ergebnis (`commandResult`) auch der Handshake (`hello`/`welcome`), der vollständige Ist-Zustands-Bericht (`stateReport`, angefordert über `stateRequest`) und unaufgeforderte Ereignisse (`event`). Festlegungen dieser Sitzung, die das Pflichtenheft offen ließ:
@@ -223,9 +228,9 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 | `Role` | id, name, permissions[], isProtected |
 | `UserRole` | userId, roleId |
 | `GameServer` | id, ownerId, gameType, name, status, dockerContainerId, hostId, subdomain, assignedPorts, resourceLimits, configJson, autoShutdownEnabled, createdAt |
-| `ServerMember` | serverId, userId, permissionLevel |
+| `ServerMember` | serverId, userId, permissionLevel *(`viewer` / `operator` / `manager`, siehe §8)* |
 | `Backup` | id, serverId, createdAt, sizeBytes, storagePath, type |
-| `Schedule` | serverId, cronExpression, action, payload |
+| `Schedule` | serverId, cronExpression, action, payload *(Backup-Zeitplan als `BackupScheduleDto`, allgemeine Aufgabenliste als `ServerTaskDto` – siehe §6-Hinweis unten)* |
 | `AuditLog` | id, userId, action, targetType, targetId, timestamp, metadata *(append-only, keine Update-/Delete-Operation zulässig)* |
 | `GameTypeDefinition` | id, dockerImage, defaultEnv, defaultPorts, configSchema, resourceDefaults, queryType, iconUrl, supportsVirtualHostRouting |
 | `HostNode` | id, wireguardIp, totalResources, status |
@@ -240,6 +245,8 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 **Owner-Eindeutigkeit:** „Genau ein Konto trägt diesen Status" (Lastenheft §2) ist nicht nur eine Anwendungsregel, sondern über einen partiellen Unique-Index in der Datenbank abgesichert (`users_single_owner_idx` auf `users(is_owner) WHERE is_owner`). Ein zweiter Owner wird dadurch bereits beim Schreiben abgelehnt.
 
 **Fremdschlüssel `user_roles`:** Beide Spalten löschen mit (`ON DELETE CASCADE`) – wird ein Konto oder eine Rolle entfernt, verschwindet die Zuordnung mit; ein verwaister Eintrag hätte keine Bedeutung.
+
+**Zwei Sichten auf `Schedule`:** Die Entität trägt beide Fälle aus Lastenheft §3.3. B5 führt den **Backup-Zeitplan** als `BackupScheduleDto` (`packages/contracts/src/schedule.ts`) – genau ein Datensatz je Server, ohne Namen, weil die Backup-Verwaltung nur diesen einen kennt. F3 zeigt im Reiter „Aufgaben" die **allgemeine Liste** benannter Aufgaben (nächtlicher Neustart, Konsolenbefehl) als `ServerTaskDto` (`packages/contracts/src/server-task.ts`). Beide nutzen denselben Aktionssatz `SCHEDULE_ACTIONS` und dasselbe `cronExpressionSchema`. Ob die beiden Sichten später zu einer zusammengeführt werden, entscheidet B3 beim Anschluss der Orchestrierung – bis dahin ist die Trennung bewusst und dokumentiert.
 
 **Audit-Log-Aufbewahrung:** Einträge werden nie durch Admin-Aktionen verändert oder gelöscht (append-only). Ein separater, rein additiver Archivierungsprozess exportiert Einträge, die älter als 24 Monate sind, in eine komprimierte Archivdatei und entfernt sie anschließend aus der aktiven Tabelle – so bleibt das Datenbankwachstum kontrollierbar, ohne dass die Unveränderlichkeit während laufender Vorgänge aufgeweicht wird.
 
@@ -282,6 +289,16 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 **Auswertung von `.own`/`.any`:** Wer `<basis>.any` besitzt, darf den Vorgang bei jeder Ressource; wer nur `<basis>.own` besitzt, ausschließlich bei eigenen (bzw. solchen, bei denen er Mitglied ist). Die Paare sind in `SCOPED_PERMISSION_BASES` festgehalten, die Auswertung liegt an genau einer Stelle im Backend-Modul `apps/backend/src/modules/rbac`.
 
 **Feldbenennung im Rollen-DTO (Abweichung von §6):** §6 nennt das Permission-Bündel der Entität `Role` schlicht `permissions`. Im DTO ist `permissions` jedoch durchgängig für das serverseitig berechnete Flags-Objekt aus §5.2 reserviert, damit sich das Frontend über alle DTOs hinweg darauf verlassen kann. Das Bündel heißt im `RoleDto` deshalb `grantedPermissions`; die Datenbankspalte bleibt `permissions`.
+
+**Stufen der Mitgliederverwaltung (`ServerMember.permissionLevel`, §6):** Das Rollensystem gilt instanzweit; zusätzlich kann der Besitzer eines Servers einzelne Nutzer als Mitverwalter freigeben (Lastenheft §3.3). Die Stufen stehen als `SERVER_MEMBER_LEVELS` in `packages/contracts/src/server-member.ts` und sind bewusst grob geschnitten:
+
+| Stufe | Bedeutung |
+|---|---|
+| `viewer` | Server sehen, Adresse sehen, Konsolenausgabe lesen – keine Aktionen |
+| `operator` | zusätzlich starten, stoppen, neu starten und Konsolenbefehle senden |
+| `manager` | zusätzlich Einstellungen, Dateien, Backups und Aufgaben – nicht löschen, klonen oder Mitglieder verwalten |
+
+Löschen, Klonen, Exportieren und die Mitgliederverwaltung bleiben dem Besitzer und Konten mit der passenden `.any`-Permission vorbehalten. Die Stufe wird nie ins Frontend durchgereicht, um dort Rechte abzuleiten – das Backend übersetzt sie zusammen mit den Rollen-Permissions in die Flags aus `GameServerPermissions` (§5.2).
 
 **Kontobezogenes `permissions`-Objekt:** Neben den ressourcenbezogenen Flags gibt es `GlobalPermissions` (`packages/contracts/src/permissions.ts`) für die instanzweiten Rechte des angemeldeten Nutzers (Navigation, Admin-Bereiche). Es hängt am Session-/Konto-DTO aus §7; das Frontend leitet nie selbst etwas aus Rollen ab.
 
@@ -351,6 +368,7 @@ Ein Skript (`scripts/setup.sh`), das:
 ## 14. Notification-Engine
 
 - Internes Event-System (`server.started`, `server.stopped`, `server.crashed`, `backup.failed`, `autoShutdown.triggered`, `resource.low`, `user.registered`, `message.reported`, ...)
+- Reine Live-Ereignisse des Browser-Kanals (§5.3), die **keine** Benachrichtigung auslösen, sondern nur eine offene Ansicht aktuell halten: `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed`. Sie stehen im selben Katalog `WEBSOCKET_EVENTS`, sind aber bewusst kein Anlass für eine `NotificationRule`.
 - **Benennungsschema:** `<domäne>.<vorgang>`, beide Segmente lowerCamelCase, genau ein Punkt als Trenner. Als Typ festgehalten in `packages/contracts/src/events.ts` (`WEBSOCKET_EVENTS`, `WebSocketEventName`); neue Events werden dort und in dieser Liste additiv ergänzt.
 - `NotificationChannel` (aktuell: Discord-Webhook) getrennt von `NotificationRule` (Event → Kanal → Empfängerkreis), beides über Admin-Oberfläche konfigurierbar
 
