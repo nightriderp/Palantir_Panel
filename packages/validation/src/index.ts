@@ -195,6 +195,25 @@ export {
   worldImportInputSchema,
 } from './servers.js';
 export {
+  type CreateDirectConversationInput,
+  type MessagePageQuery,
+  type MessageReportQuery,
+  type ReportMessageInput,
+  type ResolveMessageReportInput,
+  type SendMessageInput,
+  conversationTypeSchema,
+  createDirectConversationInputSchema,
+  messageContentSchema,
+  messageModerationActionSchema,
+  messagePageQuerySchema,
+  messageReportQuerySchema,
+  messageReportReasonSchema,
+  messageReportStatusSchema,
+  reportMessageInputSchema,
+  resolveMessageReportInputSchema,
+  sendMessageInputSchema,
+} from './chat.js';
+export {
   type NodeResourcesInput,
   type UserResourceLimitsInput,
   cpuCoresSchema,

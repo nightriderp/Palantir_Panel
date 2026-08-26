@@ -202,6 +202,15 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `DNS_UPDATE_FAILED` | 502 | DNS-Eintrag konnte bei Cloudflare nicht gesetzt werden (§13) |
 | `AGENT_NOT_CONNECTED` | 503 | Für die Ziel-Node ist kein Agent verbunden (§2.2) |
 | `AGENT_COMMAND_TIMEOUT` | 504 | Agent hat den Befehl nicht innerhalb der Frist beantwortet (§5.3) |
+| `CONVERSATION_NOT_FOUND` | 404 | Konversation existiert nicht oder der Aufrufer nimmt nicht an ihr teil (§15) |
+| `CONVERSATION_RECIPIENT_INVALID` | 400 | Empfänger einer Direktnachricht unzulässig, etwa das eigene Konto (§15) |
+| `CONVERSATION_RECIPIENT_NOT_ALLOWED` | 403 | Empfänger ist nicht freigeschaltet oder gesperrt (Lastenheft §3.6) |
+| `MESSAGE_NOT_FOUND` | 404 | Nachricht existiert nicht oder liegt in einer fremden Konversation (§15) |
+| `MESSAGE_ALREADY_DELETED` | 409 | Nachricht ist bereits gelöscht (§15) |
+| `MESSAGE_REPORT_NOT_FOUND` | 404 | Meldung existiert nicht (§15) |
+| `MESSAGE_REPORT_DUPLICATE` | 409 | Dieselbe Nachricht wurde von demselben Konto bereits gemeldet (§15) |
+| `MESSAGE_REPORT_NOT_ALLOWED` | 403 | Melden an dieser Stelle nicht vorgesehen, etwa beim eigenen Beitrag (§15) |
+| `MESSAGE_REPORT_ALREADY_RESOLVED` | 409 | Über die Meldung wurde bereits entschieden (§15) |
 
 Die `AGENT_*`-Codes gelten für den WebSocket-Kanal zum Agent, der kein REST-Endpunkt ist. Die HTTP-Status-Zuordnung greift dort beim Handshake und dient dem Backend als Vorlage, wenn es einen Agent-Fehler an eine REST-Antwort weiterreicht.
 
@@ -414,6 +423,7 @@ Ein Skript (`scripts/setup.sh`), das:
 - Internes Event-System (`server.started`, `server.stopped`, `server.crashed`, `backup.failed`, `autoShutdown.triggered`, `resource.low`, `user.registered`, `message.reported`, ...)
 - Reine Live-Ereignisse des Browser-Kanals (§5.3), die **keine** Benachrichtigung auslösen, sondern nur eine offene Ansicht aktuell halten: `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed`. Sie stehen im selben Katalog `WEBSOCKET_EVENTS`, sind aber bewusst kein Anlass für eine `NotificationRule`.
 - **Ergaenzungen aus B3 (Server-Orchestrierung, §9):** `server.created`, `server.deleted`, `server.restarted`, `server.failed` (Zustand `error` erreicht - im Gegensatz zu `server.crashed`, das ein automatisch behebbarer Einzelabsturz ist) und `server.cloned`. Den Zustandswechsel meldet weiterhin `server.statusChanged`, den Fortschritt beim Klonen `serverClone.progressed` - beide aus F3.
+- **Ergänzungen aus B7 (Chat & Moderation, §15):** `message.sent`, `message.deleted` und `conversation.created`. Sie fließen ausschließlich über den Chat-Kanal des Browsers (`packages/contracts/src/chat.ts`) und halten eine offene Ansicht aktuell – wie die Live-Ereignisse der Server-Ansicht sind sie bewusst **kein** Anlass für eine `NotificationRule`. Anlass für eine Benachrichtigung bleibt allein `message.reported`.
 - **Benennungsschema:** `<domäne>.<vorgang>`, beide Segmente lowerCamelCase, genau ein Punkt als Trenner. Als Typ festgehalten in `packages/contracts/src/events.ts` (`WEBSOCKET_EVENTS`, `WebSocketEventName`); neue Events werden dort und in dieser Liste additiv ergänzt.
 - `NotificationChannel` (aktuell: Discord-Webhook) getrennt von `NotificationRule` (Event → Kanal → Empfängerkreis), beides über Admin-Oberfläche konfigurierbar
 
@@ -425,6 +435,17 @@ Ein Skript (`scripts/setup.sh`), das:
 - Server-Chat entsteht automatisch mit dem Server, Teilnehmerkreis folgt `ServerMember`
 - Moderation ausschließlich reaktiv über Meldungen, kein genereller Admin-Zugriff auf private Nachrichteninhalte
 - Moderationsaktionen werden im Audit-Log erfasst
+
+**Vertrag (Arbeitspaket B7, `packages/contracts/src/chat.ts`):** DTOs für Konversation, Nachricht und Meldung, die Grenzwerte (`MESSAGE_MAX_LENGTH`), die beiden Moderationsentscheidungen (`MESSAGE_MODERATION_ACTIONS`) und die Frames des Chat-Kanals; Zod-Gegenstück in `packages/validation/src/chat.ts`.
+
+Festlegungen dieser Sitzung, die das Pflichtenheft offen ließ:
+
+- **Was ein Moderator sieht,** steht abschließend in `ReportedMessageDto`: genau die gemeldete Nachricht mit Absender und Zeitstempel, dazu Art der Konversation (`dm`/`server_chat`) und – nur beim Server-Chat – die `serverId`. Kein Verlauf davor oder danach, keine Teilnehmerliste einer DM, keine Suche über Nachrichten. Es gibt bewusst keinen DTO und keinen Endpunkt, über den mehr erreichbar wäre.
+- **Moderationsentscheidungen** sind `dismiss` (Meldung verwerfen) und `deleteMessage` (Nachricht entfernen). Eine Kontosperre gehört nicht dazu: Sie ist Nutzerverwaltung und läuft über `user.manage` (§8), sonst käme `message.moderate` an das Rechtekonzept heran.
+- **Gelöschte Nachrichten** bleiben mit `deletedAt` im Verlauf stehen und werden mit leerem Inhalt ausgeliefert; der Inhalt zum Zeitpunkt der Meldung bleibt allein an der Meldung erhalten, damit eine getroffene Entscheidung nachvollziehbar bleibt.
+- **Live-Kanal:** eigener WebSocket-Endpunkt je angemeldetem Konto, ohne `subscribe`-Frame – das Backend stellt die Ereignisse aller Konversationen zu, an denen das Konto teilnimmt. Ein Abonnement je Konversation ginge nicht: Eine neu entstandene DM ließe sich nicht abonnieren, bevor man von ihr weiß.
+- **Gesendet wird über REST**, zugestellt über den Kanal. Zwei Wege für denselben zustandsändernden Vorgang hätten zwangsläufig zwei Regelsätze.
+- **Der Server-Chat entsteht beim ersten Zugriff** auf den Server-Chat eines Servers, nicht beim Anlegen des Servers – fachlich derselbe Effekt („entsteht automatisch mit dem Server"), aber ohne Eingriff in die Server-Orchestrierung (B3). `ChatService.ensureServerConversation()` steht bereit, falls B3 ihn später beim Anlegen aufrufen will.
 
 ---
 

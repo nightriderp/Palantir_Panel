@@ -619,6 +619,78 @@ export const ERROR_CATALOG = {
     httpStatus: 409,
     defaultMessage: 'Das Konto ist für diese Aktion im falschen Zustand.',
   },
+
+  // -- Chat & Moderation (B7, Pflichtenheft §15) ------------------------------
+
+  /**
+   * Konversation existiert nicht **oder** der Aufrufer nimmt nicht an ihr teil.
+   * 404 und bewusst nicht 403: Dass es zwischen zwei anderen Konten eine
+   * Unterhaltung gibt, ist selbst schon eine Information (Pflichtenheft §15).
+   */
+  CONVERSATION_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Unterhaltung existiert nicht.',
+  },
+  /**
+   * Empfänger einer Direktnachricht ist unzulässig – etwa das eigene Konto.
+   * 400: die Anfrage selbst ergibt keinen Sinn.
+   */
+  CONVERSATION_RECIPIENT_INVALID: {
+    httpStatus: 400,
+    defaultMessage: 'Mit diesem Konto lässt sich keine Unterhaltung beginnen.',
+  },
+  /**
+   * Empfänger ist nicht freigeschaltet oder gesperrt (Lastenheft §3.6:
+   * Direktnachrichten „zwischen freigeschalteten Nutzern"). 403: das Konto
+   * existiert, darf aber nicht angeschrieben werden.
+   */
+  CONVERSATION_RECIPIENT_NOT_ALLOWED: {
+    httpStatus: 403,
+    defaultMessage: 'Dieses Konto ist für Direktnachrichten nicht freigeschaltet.',
+  },
+  /**
+   * Nachricht existiert nicht oder liegt in einer Konversation, an der der
+   * Aufrufer nicht teilnimmt. 404, aus demselben Grund wie
+   * `CONVERSATION_NOT_FOUND`.
+   */
+  MESSAGE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Nachricht existiert nicht.',
+  },
+  /** Nachricht ist bereits gelöscht. 409: Konflikt mit vorhandenem Zustand. */
+  MESSAGE_ALREADY_DELETED: {
+    httpStatus: 409,
+    defaultMessage: 'Diese Nachricht wurde bereits gelöscht.',
+  },
+  /**
+   * Meldung existiert nicht. 404 – auch für Aufrufer mit `message.moderate`,
+   * denn eine fremde Meldung ohne Berechtigung gibt es aus deren Sicht nicht.
+   */
+  MESSAGE_REPORT_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Meldung existiert nicht.',
+  },
+  /**
+   * Dieselbe Nachricht wurde von demselben Konto bereits gemeldet. 409:
+   * eine zweite Meldung bringt der Moderation nichts.
+   */
+  MESSAGE_REPORT_DUPLICATE: {
+    httpStatus: 409,
+    defaultMessage: 'Diese Nachricht hast du bereits gemeldet.',
+  },
+  /**
+   * Melden ist an dieser Stelle nicht vorgesehen – etwa beim eigenen Beitrag.
+   * 403: Die Nachricht ist sichtbar, die Meldung ergäbe trotzdem keinen Sinn.
+   */
+  MESSAGE_REPORT_NOT_ALLOWED: {
+    httpStatus: 403,
+    defaultMessage: 'Diese Nachricht lässt sich nicht melden.',
+  },
+  /** Über die Meldung wurde bereits entschieden. 409: Konflikt mit vorhandenem Zustand. */
+  MESSAGE_REPORT_ALREADY_RESOLVED: {
+    httpStatus: 409,
+    defaultMessage: 'Über diese Meldung wurde bereits entschieden.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */
