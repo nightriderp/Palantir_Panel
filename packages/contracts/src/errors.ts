@@ -25,6 +25,63 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Benutzername oder Passwort ist falsch.',
   },
   /**
+   * Konto ist gesperrt (Lastenheft §3.1, „Ban").
+   * 403: Zugangsdaten stimmen, der Zugriff ist trotzdem dauerhaft untersagt –
+   * bewusst getrennt von `AUTH_INVALID_CREDENTIALS`, damit die Oberfläche nicht
+   * zum wiederholten Eingeben des Passworts einlädt.
+   */
+  AUTH_ACCOUNT_BANNED: {
+    httpStatus: 403,
+    defaultMessage: 'Dieses Konto ist gesperrt. Bitte wende dich an einen Administrator.',
+  },
+  /**
+   * IP-basiertes Rate-Limit auf Anmeldung oder Registrierung greift
+   * (Pflichtenheft §7). 429: derselbe Versuch kann später erfolgreich sein.
+   */
+  AUTH_RATE_LIMITED: {
+    httpStatus: 429,
+    defaultMessage: 'Zu viele Versuche. Bitte warte einen Moment und versuche es erneut.',
+  },
+  /** Falscher TOTP- oder Backup-Code im zweiten Anmeldeschritt (Pflichtenheft §7). 401. */
+  AUTH_TWO_FACTOR_INVALID: {
+    httpStatus: 401,
+    defaultMessage: 'Der eingegebene Code ist nicht gültig.',
+  },
+  /**
+   * Der kurzlebige Zwischen-Token des zweiten Anmeldeschritts ist abgelaufen
+   * (Pflichtenheft §7). 401: die Anmeldung muss von vorn beginnen – bewusst
+   * getrennt vom falschen Code, damit die Oberfläche zurück zum ersten Schritt
+   * führen kann statt eine erneute Code-Eingabe anzubieten.
+   */
+  AUTH_TWO_FACTOR_EXPIRED: {
+    httpStatus: 401,
+    defaultMessage: 'Die Anmeldung ist abgelaufen. Bitte melde dich erneut an.',
+  },
+  /** ALTCHA-Prüfung der Registrierung fehlgeschlagen (Pflichtenheft §3, §7). 400. */
+  AUTH_CAPTCHA_INVALID: {
+    httpStatus: 400,
+    defaultMessage: 'Die Sicherheitsprüfung ist fehlgeschlagen. Bitte versuche es erneut.',
+  },
+  /** Benutzername bei der Registrierung bereits vergeben. 409: Konflikt mit vorhandenem Zustand. */
+  AUTH_USERNAME_TAKEN: {
+    httpStatus: 409,
+    defaultMessage: 'Dieser Benutzername ist bereits vergeben.',
+  },
+  /** Passwort erfüllt die Mindestanforderungen aus Pflichtenheft §7 nicht. 400. */
+  AUTH_PASSWORD_TOO_WEAK: {
+    httpStatus: 400,
+    defaultMessage: 'Das Passwort muss mindestens 12 Zeichen lang sein.',
+  },
+  /**
+   * Anmeldung über Discord, Twitch oder Steam ist fehlgeschlagen – abgebrochen,
+   * ungültige Rückgabe oder Provider nicht erreichbar (Lastenheft §3.1).
+   * 502: der Fehler liegt bei der vorgelagerten Gegenstelle, nicht bei der Eingabe.
+   */
+  AUTH_PROVIDER_ERROR: {
+    httpStatus: 502,
+    defaultMessage: 'Die Anmeldung über den externen Dienst ist fehlgeschlagen.',
+  },
+  /**
    * Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (Pflichtenheft §10).
    * 403: Request ist verstanden und authentifiziert, wird aber wegen eines
    * Limits abgelehnt – ein Retry ohne Änderung hilft nicht.
@@ -54,6 +111,24 @@ export const ERROR_CATALOG = {
   PERMISSION_DENIED: {
     httpStatus: 403,
     defaultMessage: 'Für diese Aktion fehlt die nötige Berechtigung.',
+  },
+  /**
+   * Konto existiert nicht (Pflichtenheft §6, Entität `User`).
+   * 404: Zielobjekt nicht vorhanden – z. B. beim Setzen eines Kontingents (§10)
+   * für ein inzwischen gelöschtes Konto.
+   */
+  USER_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieses Konto existiert nicht.',
+  },
+  /**
+   * Node existiert nicht (Pflichtenheft §6, Entität `HostNode`).
+   * 404: Zielobjekt nicht vorhanden – z. B. bei der Kapazitätsprüfung (§10) für
+   * eine Node, die zwischenzeitlich entfernt wurde.
+   */
+  NODE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Node existiert nicht.',
   },
   /** Rolle existiert nicht (Pflichtenheft §8). 404: Zielobjekt nicht vorhanden. */
   ROLE_NOT_FOUND: {
