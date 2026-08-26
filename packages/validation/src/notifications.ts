@@ -216,12 +216,8 @@ export const notificationClientFrameSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('ping') }),
 ]);
 
-export type CreateNotificationChannelInput = z.infer<
-  typeof createNotificationChannelInputSchema
->;
-export type UpdateNotificationChannelInput = z.infer<
-  typeof updateNotificationChannelInputSchema
->;
+export type CreateNotificationChannelInput = z.infer<typeof createNotificationChannelInputSchema>;
+export type UpdateNotificationChannelInput = z.infer<typeof updateNotificationChannelInputSchema>;
 export type CreateNotificationRuleInput = z.infer<typeof createNotificationRuleInputSchema>;
 export type UpdateNotificationRuleInput = z.infer<typeof updateNotificationRuleInputSchema>;
 export type NotificationQuery = z.infer<typeof notificationQuerySchema>;
