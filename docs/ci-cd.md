@@ -3,7 +3,8 @@
 Ergänzt [PFLICHTENHEFT.md §12](../PFLICHTENHEFT.md) um den Weg vom Commit bis auf die
 Zielmaschinen. Verhaltensregeln für die Entwicklung stehen in [CLAUDE.md](../CLAUDE.md).
 
-> **Stand:** CI ist umgesetzt (`.github/workflows/ci.yml`). Der CD-Teil ist beschlossen,
+> **Stand:** CI ist umgesetzt (`.github/workflows/ci.yml`) und `main` ist durch ein
+> Ruleset geschützt (Abschnitt 8). Der CD-Teil ist beschlossen,
 > aber noch nicht gebaut – es fehlen `docker-compose.yml` und die Dockerfiles der drei
 > Apps. Siehe „Was noch fehlt" am Ende.
 
@@ -200,7 +201,39 @@ zu scheitern. Gehört nach `packages/contracts` und in A1, nicht in die Pipeline
 
 ---
 
-## 8. Was noch fehlt
+## 8. Schutz von `main`
+
+Seit dem 2026-08-26 ist auf `main` ein Ruleset aktiv (`main schuetzen`). Es macht
+verbindlich, was [CLAUDE.md §6](../CLAUDE.md) bisher nur verlangt hat:
+
+| Regel                                        | Wirkung                                         |
+| -------------------------------------------- | ----------------------------------------------- |
+| Pull Request erforderlich                    | Direkt-Push auf `main` wird abgelehnt (`GH013`) |
+| Statusprüfung `Build, Typecheck, Lint, Test` | Ohne grünen CI-Lauf kein Merge                  |
+| Kein Force-Push                              | Historie auf `main` bleibt nachvollziehbar      |
+| Kein Löschen                                 | `main` kann nicht versehentlich entfernt werden |
+
+Drei Entscheidungen dahinter, die nicht selbsterklärend sind:
+
+**Keine Bypass-Akteure – auch nicht der Eigentümer.** Die parallelen Sitzungen
+authentifizieren sich über dasselbe Konto wie der Betreiber. Eine Ausnahme für den
+Eigentümer wäre damit automatisch eine Ausnahme für jede Sitzung, und die Regel liefe ins
+Leere. Für einen Notfall lässt sich das Ruleset in den Repository-Einstellungen kurz auf
+`disabled` setzen.
+
+**Null erforderliche Freigaben.** GitHub lässt niemanden den eigenen Pull Request
+freigeben. Bei einer einzelnen Person am Projekt würde jede Pflicht-Freigabe alles
+blockieren. Die Qualitätsschwelle ist hier die Statusprüfung, nicht ein zweites
+Augenpaar.
+
+**Branches müssen nicht auf dem neuesten Stand sein.** Bei acht parallel laufenden
+Arbeitspaketen würde jeder Merge sämtliche offenen Pull Requests entwerten und eine
+Rebase-Kaskade auslösen. Integrationsfehler fängt stattdessen der CI-Lauf auf `main` ab –
+der läuft nach jedem Merge.
+
+---
+
+## 9. Was noch fehlt
 
 - `docker-compose.yml` für VPS- und Gamenode-Seite
 - Dockerfiles für Backend, Frontend und Agent
