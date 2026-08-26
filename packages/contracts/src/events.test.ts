@@ -11,7 +11,6 @@ describe('WebSocket-Event-Namen (Pflichtenheft §14)', () => {
       'server.statsUpdated',
       'server.consoleLineAppended',
       'serverClone.progressed',
-      'serverExport.progressed',
       'backup.failed',
       'autoShutdown.triggered',
       'resource.low',

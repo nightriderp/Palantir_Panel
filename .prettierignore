@@ -19,3 +19,6 @@ docs/mockup/
 # Von Drizzle Kit erzeugte Migrations-Metadaten – werden bei jedem
 # `db:generate` neu geschrieben und dürfen nicht umformatiert werden.
 apps/backend/drizzle/meta/
+
+# Arbeitsverzeichnisse paralleler Sitzungen (Worktrees) - nicht Teil des Repos
+.claude/

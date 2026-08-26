@@ -140,9 +140,14 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `ROLE_NAME_TAKEN` | 409 | Rollenname bereits vergeben (§8) |
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
 | `SUBDOMAIN_INVALID` | 400 | Subdomain verletzt das erlaubte Format (§13) |
-| `SERVER_NOT_FOUND` | 404 | Server existiert nicht oder ist nicht sichtbar (§9) |
 | `SERVER_STATE_CONFLICT` | 409 | Lifecycle-Befehl passt nicht zum aktuellen Zustand (§9) |
 | `FILE_TOO_LARGE` | 413 | Upload überschreitet `MAX_UPLOAD_SIZE_BYTES` (§12.1) |
+| `VALIDATION_FAILED` | 400 | Pfad-, Query- oder Körperwert verletzt das vereinbarte Schema (§5.2) |
+| `SERVER_NOT_FOUND` | 404 | Gameserver existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
+| `BACKUP_NOT_FOUND` | 404 | Backup existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
+| `BACKUP_NOT_READY` | 409 | Vorgang setzt ein abgeschlossenes Backup voraus (Restore, Download, Löschen) |
+| `BACKUP_ALREADY_RUNNING` | 409 | Für diesen Server läuft bereits ein Backup |
+| `SCHEDULE_INVALID_CRON` | 400 | Cron-Ausdruck einer geplanten Aufgabe ist ungültig (§6) |
 | `AGENT_UNAUTHORIZED` | 401 | Pre-Shared-Token des Agents fehlt oder ist falsch (§2.2) |
 | `AGENT_PROTOCOL_VERSION_MISMATCH` | 400 | Agent und Backend sprechen unterschiedliche Protokollversionen (§2.2) |
 | `AGENT_COMMAND_INVALID` | 400 | Befehls-Frame verletzt das vereinbarte Format (§5.3) |
@@ -173,9 +178,9 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 ### 5.3 Kommunikationskanäle
 - REST für klassische CRUD-Operationen
 - WebSocket-Kanäle für Live-Daten: Konsole/Logs, Live-Stats, Chat, Benachrichtigungen
-- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
+- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
 
-**Live-Kanal Browser ↔ Backend:** Die Frames dieses Kanals legt das Pflichtenheft nicht fest; sie stehen als `LiveClientFrame` und `LiveServerEventFrame` in `packages/contracts/src/server-live.ts`. Der Browser abonniert eine Ressource (`{ resource: 'server', id }`) und empfängt darauf die Ereignisse `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed` und `serverExport.progressed` (§14). Konsolenbefehle laufen als `consoleCommand`-Frame über dieselbe Verbindung. Nicht zu verwechseln mit dem Agent-Protokoll unten: das verbindet Backend und Homeserver.
+**Live-Kanal Browser ↔ Backend:** Die Frames dieses Kanals legt das Pflichtenheft nicht fest; sie stehen als `LiveClientFrame` und `LiveServerEventFrame` in `packages/contracts/src/server-live.ts`. Der Browser abonniert eine Ressource (`{ resource: 'server', id }`) und empfängt darauf die Ereignisse `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed` (§14). Konsolenbefehle laufen als `consoleCommand`-Frame über dieselbe Verbindung. Nicht zu verwechseln mit dem Agent-Protokoll unten: das verbindet Backend und Homeserver.
 
 **Ort des Agent-Protokolls:** `packages/contracts/src/agent-protocol.ts` (`AGENT_COMMANDS`, `AGENT_EVENTS`, Frame-Typen, `AGENT_PROTOCOL_VERSION`), Zod-Gegenstück in `packages/validation/src/agent-protocol.ts`. Befehle und Ereignisse werden ausschließlich dort additiv ergänzt.
 
@@ -186,7 +191,11 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - **Duplikat-Antwort:** Ein Befehl mit bereits verarbeiteter Korrelations-ID wird nicht erneut ausgeführt; das gespeicherte Ergebnis wird mit `duplicate: true` erneut geschickt, da der Retry meist gerade deshalb entsteht, weil das erste Ergebnis das Backend nicht erreicht hat
 - **Befehlsergebnisse** nutzen den Response-Envelope aus §5.1, Fehler also benannte Codes aus dem Katalog statt Freitext
 
-**Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+**Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+
+**`DOWNLOAD_BACKUP` (Ergänzung aus B5):** Der vollständige Export der Serverdaten (Lastenheft §3.3) verlangt, dass das Archiv eines Backups vom Homeserver zum Nutzer gelangt. Der Agent öffnet grundsätzlich keinen eigenen Listener (§18), es gibt also keinen zweiten Weg für diese Bytes. Der Befehl liest deshalb **blockweise**: das Backend fragt `{ offset, maxBytes }` an, bekommt `{ contentBase64, bytesRead, totalBytes, eof }` zurück und schreibt jeden Block sofort in die HTTP-Antwort. Damit braucht es weder einen neuen Frame-Typ noch ein mehrere Gigabyte großes Archiv im Speicher. Die Base64-Kodierung kostet rund ein Drittel Übertragungsvolumen; das ist bei einem selten genutzten Vorgang innerhalb des WireGuard-Tunnels vertretbar und wiegt leichter als ein zweiter Transportweg mit eigener Authentifizierung.
+
+**`DELETE_BACKUP` (Ergänzung aus B5):** Die Aufbewahrungsregel aus Lastenheft §3.3 und das Löschen über den Storage-Explorer (§16) müssen das Archiv tatsächlich von der Platte bekommen; ohne diesen Befehl gäbe die Regel keinen Speicher frei. Der Befehl ist bewusst **idempotent** – ein bereits fehlendes Archiv wird als `removed: false` gemeldet, nicht als Fehler. Sonst bliebe nach einem Abbruch mitten in der Aufbewahrungsprüfung ein Datensatz zurück, der sich nie wieder löschen ließe.
 
 ---
 
@@ -202,7 +211,7 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 | `GameServer` | id, ownerId, gameType, name, status, dockerContainerId, hostId, subdomain, assignedPorts, resourceLimits, configJson, autoShutdownEnabled, createdAt |
 | `ServerMember` | serverId, userId, permissionLevel *(`viewer` / `operator` / `manager`, siehe §8)* |
 | `Backup` | id, serverId, createdAt, sizeBytes, storagePath, type |
-| `Schedule` | serverId, cronExpression, action, payload |
+| `Schedule` | serverId, cronExpression, action, payload *(Backup-Zeitplan als `BackupScheduleDto`, allgemeine Aufgabenliste als `ServerTaskDto` – siehe §6-Hinweis unten)* |
 | `AuditLog` | id, userId, action, targetType, targetId, timestamp, metadata *(append-only, keine Update-/Delete-Operation zulässig)* |
 | `GameTypeDefinition` | id, dockerImage, defaultEnv, defaultPorts, configSchema, resourceDefaults, queryType, iconUrl, supportsVirtualHostRouting |
 | `HostNode` | id, wireguardIp, totalResources, status |
@@ -217,6 +226,8 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 **Owner-Eindeutigkeit:** „Genau ein Konto trägt diesen Status" (Lastenheft §2) ist nicht nur eine Anwendungsregel, sondern über einen partiellen Unique-Index in der Datenbank abgesichert (`users_single_owner_idx` auf `users(is_owner) WHERE is_owner`). Ein zweiter Owner wird dadurch bereits beim Schreiben abgelehnt.
 
 **Fremdschlüssel `user_roles`:** Beide Spalten löschen mit (`ON DELETE CASCADE`) – wird ein Konto oder eine Rolle entfernt, verschwindet die Zuordnung mit; ein verwaister Eintrag hätte keine Bedeutung.
+
+**Zwei Sichten auf `Schedule`:** Die Entität trägt beide Fälle aus Lastenheft §3.3. B5 führt den **Backup-Zeitplan** als `BackupScheduleDto` (`packages/contracts/src/schedule.ts`) – genau ein Datensatz je Server, ohne Namen, weil die Backup-Verwaltung nur diesen einen kennt. F3 zeigt im Reiter „Aufgaben" die **allgemeine Liste** benannter Aufgaben (nächtlicher Neustart, Konsolenbefehl) als `ServerTaskDto` (`packages/contracts/src/server-task.ts`). Beide nutzen denselben Aktionssatz `SCHEDULE_ACTIONS` und dasselbe `cronExpressionSchema`. Ob die beiden Sichten später zu einer zusammengeführt werden, entscheidet B3 beim Anschluss der Orchestrierung – bis dahin ist die Trennung bewusst und dokumentiert.
 
 **Audit-Log-Aufbewahrung:** Einträge werden nie durch Admin-Aktionen verändert oder gelöscht (append-only). Ein separater, rein additiver Archivierungsprozess exportiert Einträge, die älter als 24 Monate sind, in eine komprimierte Archivdatei und entfernt sie anschließend aus der aktiven Tabelle – so bleibt das Datenbankwachstum kontrollierbar, ohne dass die Unveränderlichkeit während laufender Vorgänge aufgeweicht wird.
 
@@ -334,7 +345,7 @@ Ein Skript (`scripts/setup.sh`), das:
 ## 14. Notification-Engine
 
 - Internes Event-System (`server.started`, `server.stopped`, `server.crashed`, `backup.failed`, `autoShutdown.triggered`, `resource.low`, `user.registered`, `message.reported`, ...)
-- Reine Live-Ereignisse des Browser-Kanals (§5.3), die **keine** Benachrichtigung auslösen, sondern nur eine offene Ansicht aktuell halten: `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed`, `serverExport.progressed`. Sie stehen im selben Katalog `WEBSOCKET_EVENTS`, sind aber bewusst kein Anlass für eine `NotificationRule`.
+- Reine Live-Ereignisse des Browser-Kanals (§5.3), die **keine** Benachrichtigung auslösen, sondern nur eine offene Ansicht aktuell halten: `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed`. Sie stehen im selben Katalog `WEBSOCKET_EVENTS`, sind aber bewusst kein Anlass für eine `NotificationRule`.
 - **Benennungsschema:** `<domäne>.<vorgang>`, beide Segmente lowerCamelCase, genau ein Punkt als Trenner. Als Typ festgehalten in `packages/contracts/src/events.ts` (`WEBSOCKET_EVENTS`, `WebSocketEventName`); neue Events werden dort und in dieser Liste additiv ergänzt.
 - `NotificationChannel` (aktuell: Discord-Webhook) getrennt von `NotificationRule` (Event → Kanal → Empfängerkreis), beides über Admin-Oberfläche konfigurierbar
 

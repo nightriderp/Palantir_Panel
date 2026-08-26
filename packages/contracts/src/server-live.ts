@@ -1,6 +1,6 @@
 import { type WebSocketEventName } from './events.js';
 import { type ServerLiveStats } from './game-server.js';
-import { type ServerCloneJobDto, type ServerExportJobDto } from './server-jobs.js';
+import { type ServerCloneJobDto } from './server-jobs.js';
 import { type ServerStatus } from './server-lifecycle.js';
 
 /**
@@ -76,7 +76,6 @@ export const LIVE_SERVER_EVENTS = [
   'server.statsUpdated',
   'server.consoleLineAppended',
   'serverClone.progressed',
-  'serverExport.progressed',
 ] as const satisfies readonly WebSocketEventName[];
 
 export type LiveServerEventName = (typeof LIVE_SERVER_EVENTS)[number];
@@ -95,7 +94,6 @@ export type LiveServerEventPayloads = {
   'server.statsUpdated': { serverId: string; stats: ServerLiveStats };
   'server.consoleLineAppended': { serverId: string; line: ServerConsoleLine };
   'serverClone.progressed': { serverId: string; job: ServerCloneJobDto };
-  'serverExport.progressed': { serverId: string; job: ServerExportJobDto };
 };
 
 /** Frame, das der Browser vom Backend empfängt. */
