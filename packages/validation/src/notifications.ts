@@ -105,7 +105,8 @@ export const createNotificationRuleInputSchema = z
     recipientScope: notificationRecipientScopeSchema,
     recipientRoleId: idSchema.nullable().default(null),
     inboxEnabled: z.boolean().default(true),
-    severity: notificationSeveritySchema.default('info'),
+    /** `null` = die Dringlichkeit des Ereignisses übernehmen (Standard). */
+    severity: notificationSeveritySchema.nullable().default(null),
     enabled: z.boolean().default(true),
   })
   .refine((value) => value.recipientScope !== 'role' || value.recipientRoleId !== null, {
@@ -128,7 +129,7 @@ export const updateNotificationRuleInputSchema = z
     recipientScope: notificationRecipientScopeSchema.optional(),
     recipientRoleId: idSchema.nullable().optional(),
     inboxEnabled: z.boolean().optional(),
-    severity: notificationSeveritySchema.optional(),
+    severity: notificationSeveritySchema.nullable().optional(),
     enabled: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
