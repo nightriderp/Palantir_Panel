@@ -28,6 +28,19 @@ const envSchema = z.object({
    * die Datenbank benötigt, wird der Wert hier auf Pflicht hochgestuft.
    */
   DATABASE_URL: z.string().min(1).optional(),
+
+  /**
+   * Schwellwerte der Ressourcen-Warnungen (Pflichtenheft §10, Event
+   * `resource.low`; .env.example Abschnitt 13).
+   *
+   * `RESOURCE_WARN_NODE_PERCENT` misst die Auslastung der Ziel-VM,
+   * `RESOURCE_WARN_SERVER_PERCENT` den Verbrauch eines einzelnen Servers gegen
+   * sein eigenes Limit. Beide bewusst getrennt: eine Node darf länger gut
+   * gefüllt laufen, ein einzelner Server nahe an seinem RAM-Limit ist dagegen
+   * kurz vor dem Absturz.
+   */
+  RESOURCE_WARN_NODE_PERCENT: z.coerce.number().min(1).max(100).default(85),
+  RESOURCE_WARN_SERVER_PERCENT: z.coerce.number().min(1).max(100).default(90),
 });
 
 const parsed = envSchema.safeParse(process.env);
