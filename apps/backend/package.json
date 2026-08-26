@@ -18,7 +18,8 @@
     "lint": "eslint src drizzle.config.ts",
     "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist .turbo",
-    "db:migrate:prod": "node dist/db/migrate.js"
+    "db:migrate:prod": "node dist/db/migrate.js",
+    "db:seed:prod": "node dist/db/seed.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
