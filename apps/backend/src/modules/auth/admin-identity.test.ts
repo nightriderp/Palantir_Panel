@@ -115,7 +115,9 @@ async function solveAltcha(): Promise<string> {
 }
 
 /** Registriert ein Konto, gibt ihm die genannte Rolle und liefert die Cookies. */
-async function registerWithRole(roleName: string): Promise<{ jar: CookieJar; account: AccountDto }> {
+async function registerWithRole(
+  roleName: string,
+): Promise<{ jar: CookieJar; account: AccountDto }> {
   const response = await app.inject({
     method: 'POST',
     url: '/auth/register',
