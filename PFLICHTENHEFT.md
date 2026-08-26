@@ -201,6 +201,16 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `DNS_UPDATE_FAILED` | 502 | DNS-Eintrag konnte bei Cloudflare nicht gesetzt werden (§13) |
 | `AGENT_NOT_CONNECTED` | 503 | Für die Ziel-Node ist kein Agent verbunden (§2.2) |
 | `AGENT_COMMAND_TIMEOUT` | 504 | Agent hat den Befehl nicht innerhalb der Frist beantwortet (§5.3) |
+| `NOTIFICATION_CHANNEL_NOT_FOUND` | 404 | Benachrichtigungskanal existiert nicht (§14) |
+| `NOTIFICATION_CHANNEL_NAME_TAKEN` | 409 | Kanalname bereits vergeben (§14) |
+| `NOTIFICATION_CHANNEL_NOT_CONFIGURED` | 409 | Kanal nutzt die `.env`-Vorgabe, `DISCORD_WEBHOOK_URL` ist nicht gesetzt (§12.1, §14) |
+| `NOTIFICATION_CHANNEL_IN_USE` | 409 | Kanal wird noch von mindestens einer Regel genutzt (§14) |
+| `NOTIFICATION_RULE_NOT_FOUND` | 404 | Benachrichtigungsregel existiert nicht (§14) |
+| `NOTIFICATION_RULE_DUPLICATE` | 409 | Regel mit identischem Ereignis, Kanal und Empfängerkreis existiert bereits (§14) |
+| `NOTIFICATION_EVENT_NOT_NOTIFIABLE` | 400 | Regel auf ein reines Live-Ereignis, das keine Benachrichtigung auslöst (§14) |
+| `NOTIFICATION_NOT_FOUND` | 404 | Meldung existiert nicht oder gehört zu einem anderen Konto (§14) |
+| `NOTIFICATION_DELIVERY_FAILED` | 502 | Zustellung an den externen Kanal gescheitert – nur bei der vom Admin ausgelösten Testnachricht (§14) |
+| `ANNOUNCEMENT_NOT_FOUND` | 404 | Systemweite Ankündigung existiert nicht (Lastenheft §3.6) |
 
 Die `AGENT_*`-Codes gelten für den WebSocket-Kanal zum Agent, der kein REST-Endpunkt ist. Die HTTP-Status-Zuordnung greift dort beim Handshake und dient dem Backend als Vorlage, wenn es einen Agent-Fehler an eine REST-Antwort weiterreicht.
 
@@ -415,6 +425,10 @@ Ein Skript (`scripts/setup.sh`), das:
 - **Ergaenzungen aus B3 (Server-Orchestrierung, §9):** `server.created`, `server.deleted`, `server.restarted`, `server.failed` (Zustand `error` erreicht - im Gegensatz zu `server.crashed`, das ein automatisch behebbarer Einzelabsturz ist) und `server.cloned`. Den Zustandswechsel meldet weiterhin `server.statusChanged`, den Fortschritt beim Klonen `serverClone.progressed` - beide aus F3.
 - **Benennungsschema:** `<domäne>.<vorgang>`, beide Segmente lowerCamelCase, genau ein Punkt als Trenner. Als Typ festgehalten in `packages/contracts/src/events.ts` (`WEBSOCKET_EVENTS`, `WebSocketEventName`); neue Events werden dort und in dieser Liste additiv ergänzt.
 - `NotificationChannel` (aktuell: Discord-Webhook) getrennt von `NotificationRule` (Event → Kanal → Empfängerkreis), beides über Admin-Oberfläche konfigurierbar
+
+**Ergänzungen aus B6 (Notification-Engine):** `announcement.published` (systemweite Ankündigung durch einen Admin, Lastenheft §3.6) als auslösendes Ereignis und `notification.created` als reines Live-Ereignis des Inbox-Kanals. Letzteres ist bewusst **kein** Anlass für eine `NotificationRule` – sonst löste jede Zustellung die nächste aus.
+
+**Auslösende Ereignisse gegen reine Live-Ereignisse:** Welche Namen des Katalogs eine Regel auslösen dürfen, steht als Liste `NOTIFIABLE_EVENTS` in `packages/contracts/src/notifications.ts`. Ein Test dort hält beide Mengen überschneidungsfrei; das Backend lehnt eine Regel auf ein Live-Ereignis mit `NOTIFICATION_EVENT_NOT_NOTIFIABLE` ab.
 
 ---
 
