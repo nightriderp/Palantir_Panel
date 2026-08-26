@@ -190,6 +190,7 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AUDIT_ENTRY_IMMUTABLE` | 403 | Versuch, einen Audit-Eintrag zu ändern oder zu löschen (§6) |
 | `AUDIT_ARCHIVE_FAILED` | 500 | Archivdatei des Audit-Logs konnte nicht geschrieben werden (§6) |
 | `OWNER_PROTECTED` | 403 | Aktion würde das Owner-Konto aussperren (§8) |
+| `OWNER_ALREADY_EXISTS` | 409 | Owner-Status soll vergeben werden, obwohl bereits ein Owner existiert (Lastenheft §2, §12.3) |
 | `REGISTRATION_REQUEST_INVALID_STATE` | 409 | Wartelisten-Aktion passt nicht zum Zustand des Kontos (§7) |
 | `SERVER_NOT_FOUND` | 404 | Gameserver existiert nicht oder ist nicht sichtbar (§9) |
 | `SERVER_STATE_CONFLICT` | 409 | Lifecycle-Übergang im aktuellen Zustand unzulässig (§9) |
