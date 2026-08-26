@@ -98,6 +98,12 @@ export {
 } from './storage.js';
 
 export {
+  type LinkedMethodRow,
+  profileUrlFor,
+  toLinkedAccountProfile,
+} from './linked-profiles.js';
+
+export {
   type RegistrationRequestDependencies,
   type RegistrationRequestRepository,
   type RegistrationRequestService,

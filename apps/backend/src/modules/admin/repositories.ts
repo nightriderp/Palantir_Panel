@@ -7,11 +7,14 @@
  * liegt in den Services daneben. Genauso wie im RBAC-Modul aus B2.
  */
 
-import type { AgentStorageEntry } from '@palantir/contracts';
+import type { AgentStorageEntry, LinkedAccountProfileDto } from '@palantir/contracts';
 import type { AuditLogQuery, RegistrationRequestQuery } from '@palantir/validation';
 import { and, asc, count, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index.js';
 import { auditLog, portAllocations, portRanges, storageSnapshots } from '../../db/schema/admin.js';
+// `auth_methods` gehört zu B1 (Pflichtenheft §7); die Warteliste liest die
+// Profilangaben der verknüpften Anmeldeverfahren daraus mit (Lastenheft §3.1).
+import { authMethods } from '../../db/schema/auth.js';
 // `host_nodes` gehört zu B4 (Kapazitätsprüfung, Pflichtenheft §10); B8 verwaltet
 // dieselbe Tabelle, statt eine zweite daneben anzulegen.
 import { hostNodes } from '../../db/schema/resources.js';
@@ -19,6 +22,7 @@ import { roles, userRoles } from '../../db/schema/rbac.js';
 import { users } from '../../db/schema/users.js';
 import type { AuditArchiveRepository, AuditEntryRecord, AuditLogRepository } from './audit.js';
 import { AdminError } from './errors.js';
+import { toLinkedAccountProfile } from './linked-profiles.js';
 import type { HostNodeRecord, HostNodeRepository } from './nodes.js';
 import type { PortAllocationRecord, PortPoolRepository, PortRangeRecord } from './ports.js';
 import type {
@@ -450,10 +454,10 @@ export function createDrizzleStorageRepository(db: Database): StorageRepository 
  * bedient einen Freundeskreis (Lastenheft §1.2) – die Kontenzahl bleibt klein.
  * Wird sie es einmal nicht, gehört daraus eine SQL-Abfrage gemacht.
  *
- * **Profilangaben** (Discord-Tag/Avatar, Steam-Profilname, Twitch-Name) bleiben
- * vorerst leer: Die Tabelle `auth_methods` gehört zu B1 und existiert noch
- * nicht. Sobald sie da ist, wird sie hier dazugelesen – der DTO ändert sich
- * dadurch nicht.
+ * **Profilangaben** (Discord-Tag/Avatar, Steam-Profilname, Twitch-Name) kommen
+ * aus `auth_methods` (B1, Pflichtenheft §7). Sie werden für alle geladenen
+ * Konten in einer zweiten Abfrage auf einmal geholt statt je Konto einzeln;
+ * die Abbildung auf `LinkedAccountProfileDto` steht in `linked-profiles.ts`.
  */
 export function createDrizzleRegistrationRequestRepository(
   db: Database,
@@ -493,6 +497,34 @@ export function createDrizzleRegistrationRequestRepository(
       rolesByUser.set(row.userId, list);
     }
 
+    // Verknüpfte Anmeldeverfahren mit ihren Profilangaben (Lastenheft §3.1).
+    // Älteste zuerst, damit die Reihenfolge in der Oberfläche stabil bleibt.
+    const methodRows = await db
+      .select({
+        userId: authMethods.userId,
+        type: authMethods.type,
+        providerUserId: authMethods.providerUserId,
+        providerDisplayName: authMethods.providerDisplayName,
+        providerAvatarUrl: authMethods.providerAvatarUrl,
+        createdAt: authMethods.createdAt,
+      })
+      .from(authMethods)
+      .where(
+        inArray(
+          authMethods.userId,
+          userRows.map((row) => row.id),
+        ),
+      )
+      .orderBy(asc(authMethods.createdAt));
+
+    const profilesByUser = new Map<string, LinkedAccountProfileDto[]>();
+
+    for (const row of methodRows) {
+      const list = profilesByUser.get(row.userId) ?? [];
+      list.push(toLinkedAccountProfile(row));
+      profilesByUser.set(row.userId, list);
+    }
+
     return userRows.map((row) => ({
       id: row.id,
       displayName: row.displayName,
@@ -500,7 +532,7 @@ export function createDrizzleRegistrationRequestRepository(
       banned: row.banned,
       createdAt: row.createdAt,
       roles: rolesByUser.get(row.id) ?? [],
-      profiles: [],
+      profiles: profilesByUser.get(row.id) ?? [],
     }));
   }
 
