@@ -46,6 +46,19 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     expect(httpStatusForErrorCode('AGENT_COMMAND_FAILED')).toBe(500);
   });
 
+  it('enthält die Codes der Server-Orchestrierung (B3, Pflichtenheft §9, §11, §13)', () => {
+    expect(httpStatusForErrorCode('SERVER_NOT_FOUND')).toBe(404);
+    expect(httpStatusForErrorCode('SERVER_STATE_CONFLICT')).toBe(409);
+    expect(httpStatusForErrorCode('SERVER_CRASH_LOOP')).toBe(409);
+    expect(httpStatusForErrorCode('SERVER_HEALTH_CHECK_FAILED')).toBe(504);
+    expect(httpStatusForErrorCode('GAME_TYPE_NOT_FOUND')).toBe(404);
+    expect(httpStatusForErrorCode('GAME_TYPE_NOT_AVAILABLE')).toBe(409);
+    expect(httpStatusForErrorCode('SUBDOMAIN_INVALID')).toBe(400);
+    expect(httpStatusForErrorCode('DNS_UPDATE_FAILED')).toBe(502);
+    expect(httpStatusForErrorCode('AGENT_NOT_CONNECTED')).toBe(503);
+    expect(httpStatusForErrorCode('AGENT_COMMAND_TIMEOUT')).toBe(504);
+  });
+
   it('isErrorCode() erkennt unbekannte Codes', () => {
     expect(isErrorCode('SUBDOMAIN_TAKEN')).toBe(true);
     expect(isErrorCode('NICHT_IM_KATALOG')).toBe(false);
