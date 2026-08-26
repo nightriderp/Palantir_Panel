@@ -155,6 +155,22 @@ export interface GameTypeDefinition {
   readonly defaultEnv: Readonly<Record<string, string>>;
   readonly ports: readonly GameTypePort[];
   readonly configFields: readonly GameConfigField[];
+  /**
+   * Konfigurationsfelder, die beim Anlegen des Containers in eine
+   * Umgebungsvariable geschrieben werden: Schlüssel aus `configFields` → Name
+   * der Variable.
+   *
+   * Bewusst hier und nicht als Feld an `GameConfigField`: Ob ein Wert als
+   * Umgebungsvariable ankommt, ist eine Eigenschaft des Images, nicht des
+   * Formulars – und `GameConfigField` geht als DTO an das Frontend, das damit
+   * nichts anfangen kann.
+   */
+  readonly envMapping?: Readonly<Record<string, string>>;
+  /**
+   * Schlüssel aus `configFields`, deren Änderung erst nach einem Neustart wirkt
+   * (Lastenheft §3.3). Das Backend setzt daraufhin `pendingRestart` am Server.
+   */
+  readonly restartRequiredFields?: readonly string[];
   readonly resourceDefaults: ServerResourceLimits;
   readonly query: GameQuerySpec;
   readonly iconUrl: string | null;
