@@ -143,6 +143,23 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AGENT_FILE_NOT_FOUND` | 404 | Datei im Container nicht gefunden |
 | `AGENT_FILE_TOO_LARGE` | 413 | Datei überschreitet das Größenlimit (§12.1) |
 | `AGENT_RUNTIME_UNAVAILABLE` | 503 | Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar |
+| `NODE_NOT_FOUND` | 404 | Node existiert nicht (§6) |
+| `NODE_ADDRESS_TAKEN` | 409 | Node-Name oder WireGuard-Adresse bereits vergeben (§2.1) |
+| `NODE_IN_USE` | 409 | Node trägt noch Gameserver und kann nicht entfernt werden |
+| `PORT_RANGE_NOT_FOUND` | 404 | Port-Bereich existiert nicht (§2.4) |
+| `PORT_RANGE_INVALID` | 400 | Bereichsgrenzen unzulässig (§2.4) |
+| `PORT_RANGE_OVERLAP` | 409 | Bereich überschneidet einen bestehenden Bereich desselben Protokolls |
+| `PORT_RANGE_IN_USE` | 409 | Aus dem Bereich sind noch Ports vergeben |
+| `PORT_POOL_EXHAUSTED` | 409 | Kein freier öffentlicher Port mehr im Pool (§2.4) |
+| `PORT_ALLOCATION_NOT_FOUND` | 404 | Port-Zuordnung existiert nicht |
+| `STORAGE_SCAN_MISSING` | 409 | Für die Node liegt noch keine Speicherübersicht vor (§16) |
+| `STORAGE_ENTRY_NOT_FOUND` | 404 | Eintrag steht nicht in der zwischengespeicherten Übersicht (§16) |
+| `STORAGE_ENTRY_NOT_DELETABLE` | 403 | Eintrag ist über den Storage-Explorer nicht löschbar, insbesondere aktive Server-Datenordner (§16) |
+| `AUDIT_ENTRY_IMMUTABLE` | 403 | Versuch, einen Audit-Eintrag zu ändern oder zu löschen (§6) |
+| `AUDIT_ARCHIVE_FAILED` | 500 | Archivdatei des Audit-Logs konnte nicht geschrieben werden (§6) |
+| `USER_NOT_FOUND` | 404 | Konto existiert nicht (§7) |
+| `OWNER_PROTECTED` | 403 | Aktion würde das Owner-Konto aussperren (§8) |
+| `REGISTRATION_REQUEST_INVALID_STATE` | 409 | Wartelisten-Aktion passt nicht zum Zustand des Kontos (§7) |
 
 Die `AGENT_*`-Codes gelten für den WebSocket-Kanal zum Agent, der kein REST-Endpunkt ist. Die HTTP-Status-Zuordnung greift dort beim Handshake und dient dem Backend als Vorlage, wenn es einen Agent-Fehler an eine REST-Antwort weiterreicht.
 
@@ -171,6 +188,8 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - **Befehlsergebnisse** nutzen den Response-Envelope aus §5.1, Fehler also benannte Codes aus dem Katalog statt Freitext
 
 **Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+
+`GET_STORAGE_BREAKDOWN` hat seit Arbeitspaket B8 bereits ein festgelegtes Wire-Format (`GetStorageBreakdownCommandPayload`/`-Result`, Zod-Gegenstück `getStorageBreakdownResultSchema` in `packages/validation/src/storage.ts`), weil das Backend die Antwort entgegennehmen, zwischenspeichern und ausliefern muss (§16). Ausgeführt wird der Befehl weiterhin von niemandem: Er steht unverändert **nicht** in `IMPLEMENTED_AGENT_COMMANDS`, der Agent antwortet also weiter mit `AGENT_COMMAND_NOT_IMPLEMENTED`, bis A3 den Scanner baut.
 
 ---
 

@@ -49,6 +49,14 @@ export * from './game-server.js';
 export * from './permissions.js';
 export * from './role.js';
 
+// Admin-Funktionen (Arbeitspaket B8): Nodes, öffentlicher Port-Pool,
+// Audit-Log, Speicherverwaltung und Freischalt-Warteliste.
+export * from './host-node.js';
+export * from './address.js';
+export * from './audit.js';
+export * from './storage.js';
+export * from './registration-request.js';
+
 export {
   AGENT_COMMANDS,
   AGENT_CONTAINER_STATUSES,
@@ -87,7 +95,11 @@ export {
   type AgentPortMapping,
   type AgentPortProtocol,
   type AgentResourceLimits,
+  type AgentStorageEntry,
+  type AgentStorageEntryKind,
   type AgentVolumeMount,
+  type GetStorageBreakdownCommandPayload,
+  type GetStorageBreakdownCommandResult,
   type CreateCommandPayload,
   type CreateCommandResult,
   type DeleteCommandPayload,
