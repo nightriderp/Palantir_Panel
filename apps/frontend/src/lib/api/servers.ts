@@ -1,0 +1,376 @@
+import {
+  type BackupDto,
+  type GameServerDto,
+  type GameTypeDto,
+  type ScheduleDto,
+  type ServerCloneJobDto,
+  type ServerExportJobDto,
+  type ServerFileContentDto,
+  type ServerFileListDto,
+  type ServerMemberDto,
+  type ServerStatsHistoryDto,
+  type SubdomainAvailabilityDto,
+} from '@palantir/contracts';
+import {
+  type CloneServerInput,
+  type CreateServerInput,
+  type ScheduleInput,
+  type ServerMemberInput,
+  type UpdateServerSettingsInput,
+} from '@palantir/validation';
+import { API_BASE_URL, type ApiResult, apiRequest } from './client';
+
+/**
+ * REST-Endpunkte rund um Gameserver (Lastenheft §3.3).
+ *
+ * Alle Pfade an einer Stelle, damit keine Ansicht eine URL selbst zusammenbaut.
+ * Die Endpunkte entstehen im Arbeitspaket B3 (Server-Orchestrierung) und B5
+ * (Backups); die Namen folgen der Ressourcen-Schreibweise der bereits
+ * bestehenden Routen.
+ *
+ * Ergebnisse sind immer der Response-Envelope aus Pflichtenheft §5.1 – hier
+ * wird nichts ausgepackt und nichts geworfen.
+ */
+
+/** Node der Ziel-Auswahl im Wizard. Kommt aus B4/B8 (`HostNode`). */
+export interface HostNodeOptionDto {
+  id: string;
+  name: string;
+  online: boolean;
+  /** Freier Arbeitsspeicher in MB; `null`, wenn unbekannt. */
+  freeRamMb: number | null;
+  freeDiskMb: number | null;
+  freeCpuCores: number | null;
+}
+
+/** Kontingent des angemeldeten Nutzers (Pflichtenheft §10, `UserResourceLimit`). */
+export interface ResourceQuotaDto {
+  /** `null` bedeutet: kein Limit gesetzt. */
+  maxRamMb: number | null;
+  maxCpuCores: number | null;
+  maxDiskMb: number | null;
+  maxConcurrentServers: number | null;
+  usedRamMb: number;
+  usedCpuCores: number;
+  usedDiskMb: number;
+  usedServers: number;
+}
+
+const SERVERS = '/api/servers';
+
+function serverPath(serverId: string, suffix = ''): string {
+  return `${SERVERS}/${encodeURIComponent(serverId)}${suffix}`;
+}
+
+// ---------------------------------------------------------------------------
+// Übersicht und Detail
+// ---------------------------------------------------------------------------
+
+export function fetchServers(signal?: AbortSignal): Promise<ApiResult<GameServerDto[]>> {
+  return apiRequest<GameServerDto[]>(SERVERS, { signal });
+}
+
+export function fetchServer(
+  serverId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(serverPath(serverId), { signal });
+}
+
+/**
+ * Verlauf der Messwerte für die Verlaufsdarstellung (Lastenheft §3.3).
+ *
+ * Die laufenden Werte kommen über den Live-Kanal; dieser Aufruf holt nur den
+ * Rückblick beim Öffnen der Ansicht.
+ */
+export function fetchStatsHistory(
+  serverId: string,
+  windowMinutes: number,
+  signal?: AbortSignal,
+): Promise<ApiResult<ServerStatsHistoryDto>> {
+  return apiRequest<ServerStatsHistoryDto>(serverPath(serverId, '/stats/history'), {
+    query: { windowMinutes },
+    signal,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle (Pflichtenheft §9)
+// ---------------------------------------------------------------------------
+
+export type LifecycleAction = 'start' | 'stop' | 'restart';
+
+export function runLifecycleAction(
+  serverId: string,
+  action: LifecycleAction,
+): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(serverPath(serverId, `/${action}`), { method: 'POST' });
+}
+
+export function deleteServer(serverId: string): Promise<ApiResult<null>> {
+  return apiRequest<null>(serverPath(serverId), { method: 'DELETE' });
+}
+
+// ---------------------------------------------------------------------------
+// Anlegen, Klonen, Exportieren
+// ---------------------------------------------------------------------------
+
+export function fetchGameTypes(signal?: AbortSignal): Promise<ApiResult<GameTypeDto[]>> {
+  return apiRequest<GameTypeDto[]>('/api/game-types', { signal });
+}
+
+export function fetchHostNodes(signal?: AbortSignal): Promise<ApiResult<HostNodeOptionDto[]>> {
+  return apiRequest<HostNodeOptionDto[]>('/api/nodes/available', { signal });
+}
+
+export function fetchResourceQuota(signal?: AbortSignal): Promise<ApiResult<ResourceQuotaDto>> {
+  return apiRequest<ResourceQuotaDto>('/api/me/resource-quota', { signal });
+}
+
+/**
+ * Verfügbarkeit einer Subdomain prüfen (Pflichtenheft §13).
+ *
+ * Format und Sperrliste prüft das Backend erneut – die Sofortmeldung im
+ * Formular ersetzt die verbindliche Prüfung nicht.
+ */
+export function checkSubdomain(
+  subdomain: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<SubdomainAvailabilityDto>> {
+  return apiRequest<SubdomainAvailabilityDto>('/api/subdomains/check', {
+    query: { subdomain },
+    signal,
+  });
+}
+
+/**
+ * Weltdaten-Archiv für die Übernahme hochladen (Lastenheft §3.3).
+ *
+ * Liefert die `uploadId`, die der Wizard anschließend in `worldImport` mitgibt.
+ */
+export function uploadWorldArchive(file: File): Promise<ApiResult<{ uploadId: string }>> {
+  const form = new FormData();
+  form.set('file', file);
+  return apiRequest<{ uploadId: string }>('/api/uploads/world-archives', {
+    method: 'POST',
+    body: form,
+  });
+}
+
+export function createServer(input: CreateServerInput): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(SERVERS, { method: 'POST', json: input });
+}
+
+export function cloneServer(
+  serverId: string,
+  input: CloneServerInput,
+): Promise<ApiResult<ServerCloneJobDto>> {
+  return apiRequest<ServerCloneJobDto>(serverPath(serverId, '/clone'), {
+    method: 'POST',
+    json: input,
+  });
+}
+
+export function fetchCloneJob(
+  serverId: string,
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<ServerCloneJobDto>> {
+  return apiRequest<ServerCloneJobDto>(
+    serverPath(serverId, `/clone/${encodeURIComponent(jobId)}`),
+    { signal },
+  );
+}
+
+/** Vollständigen Export anstoßen (Lastenheft §4: Datenmitnahme). */
+export function startExport(serverId: string): Promise<ApiResult<ServerExportJobDto>> {
+  return apiRequest<ServerExportJobDto>(serverPath(serverId, '/export'), { method: 'POST' });
+}
+
+export function fetchExportJob(
+  serverId: string,
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<ServerExportJobDto>> {
+  return apiRequest<ServerExportJobDto>(
+    serverPath(serverId, `/export/${encodeURIComponent(jobId)}`),
+    { signal },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Einstellungen und Mitglieder
+// ---------------------------------------------------------------------------
+
+export function updateServerSettings(
+  serverId: string,
+  input: UpdateServerSettingsInput,
+): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(serverPath(serverId, '/settings'), {
+    method: 'PATCH',
+    json: input,
+  });
+}
+
+export function fetchMembers(
+  serverId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<ServerMemberDto[]>> {
+  return apiRequest<ServerMemberDto[]>(serverPath(serverId, '/members'), { signal });
+}
+
+export function addOrUpdateMember(
+  serverId: string,
+  input: ServerMemberInput,
+): Promise<ApiResult<ServerMemberDto>> {
+  return apiRequest<ServerMemberDto>(serverPath(serverId, '/members'), {
+    method: 'PUT',
+    json: input,
+  });
+}
+
+export function removeMember(serverId: string, userId: string): Promise<ApiResult<null>> {
+  return apiRequest<null>(serverPath(serverId, `/members/${encodeURIComponent(userId)}`), {
+    method: 'DELETE',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Backups (Arbeitspaket B5)
+// ---------------------------------------------------------------------------
+
+export function fetchBackups(
+  serverId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<BackupDto[]>> {
+  return apiRequest<BackupDto[]>(serverPath(serverId, '/backups'), { signal });
+}
+
+export function createBackup(serverId: string): Promise<ApiResult<BackupDto>> {
+  return apiRequest<BackupDto>(serverPath(serverId, '/backups'), { method: 'POST' });
+}
+
+export function restoreBackup(serverId: string, backupId: string): Promise<ApiResult<null>> {
+  return apiRequest<null>(
+    serverPath(serverId, `/backups/${encodeURIComponent(backupId)}/restore`),
+    { method: 'POST' },
+  );
+}
+
+export function deleteBackup(serverId: string, backupId: string): Promise<ApiResult<null>> {
+  return apiRequest<null>(serverPath(serverId, `/backups/${encodeURIComponent(backupId)}`), {
+    method: 'DELETE',
+  });
+}
+
+/** Adresse zum Herunterladen einer Sicherung – wird als Link geöffnet. */
+export function backupDownloadUrl(serverId: string, backupId: string): string {
+  return `${API_BASE_URL}${serverPath(serverId, `/backups/${encodeURIComponent(backupId)}/download`)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Geplante Aufgaben
+// ---------------------------------------------------------------------------
+
+export function fetchSchedules(
+  serverId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<ScheduleDto[]>> {
+  return apiRequest<ScheduleDto[]>(serverPath(serverId, '/schedules'), { signal });
+}
+
+export function createSchedule(
+  serverId: string,
+  input: ScheduleInput,
+): Promise<ApiResult<ScheduleDto>> {
+  return apiRequest<ScheduleDto>(serverPath(serverId, '/schedules'), {
+    method: 'POST',
+    json: input,
+  });
+}
+
+export function updateSchedule(
+  serverId: string,
+  scheduleId: string,
+  input: ScheduleInput,
+): Promise<ApiResult<ScheduleDto>> {
+  return apiRequest<ScheduleDto>(
+    serverPath(serverId, `/schedules/${encodeURIComponent(scheduleId)}`),
+    { method: 'PATCH', json: input },
+  );
+}
+
+export function deleteSchedule(serverId: string, scheduleId: string): Promise<ApiResult<null>> {
+  return apiRequest<null>(serverPath(serverId, `/schedules/${encodeURIComponent(scheduleId)}`), {
+    method: 'DELETE',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Datei-Manager
+// ---------------------------------------------------------------------------
+
+export function fetchFileList(
+  serverId: string,
+  path: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<ServerFileListDto>> {
+  return apiRequest<ServerFileListDto>(serverPath(serverId, '/files'), {
+    query: { path },
+    signal,
+  });
+}
+
+export function fetchFileContent(
+  serverId: string,
+  path: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<ServerFileContentDto>> {
+  return apiRequest<ServerFileContentDto>(serverPath(serverId, '/files/content'), {
+    query: { path },
+    signal,
+  });
+}
+
+export function saveFileContent(
+  serverId: string,
+  path: string,
+  content: string,
+): Promise<ApiResult<ServerFileContentDto>> {
+  return apiRequest<ServerFileContentDto>(serverPath(serverId, '/files/content'), {
+    method: 'PUT',
+    json: { path, content },
+  });
+}
+
+/**
+ * Datei hochladen.
+ *
+ * Die Größengrenze steht als `maxUploadBytes` in `ServerFileListDto` und kommt
+ * damit vom Backend (Pflichtenheft §12.1) – sie wird nie im Frontend gesetzt.
+ */
+export function uploadFile(
+  serverId: string,
+  path: string,
+  file: File,
+): Promise<ApiResult<ServerFileListDto>> {
+  const form = new FormData();
+  form.set('path', path);
+  form.set('file', file);
+  return apiRequest<ServerFileListDto>(serverPath(serverId, '/files'), {
+    method: 'POST',
+    body: form,
+  });
+}
+
+export function deleteFile(serverId: string, path: string): Promise<ApiResult<null>> {
+  return apiRequest<null>(serverPath(serverId, '/files'), {
+    method: 'DELETE',
+    json: { path },
+  });
+}
+
+/** Adresse zum Herunterladen einer einzelnen Datei – wird als Link geöffnet. */
+export function fileDownloadUrl(serverId: string, path: string): string {
+  return `${API_BASE_URL}${serverPath(serverId, '/files/download')}?path=${encodeURIComponent(path)}`;
+}
