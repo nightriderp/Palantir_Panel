@@ -10,10 +10,11 @@
  * (Pflichtenheft §8) sonst dauerhaft ohne Fremdschlüssel bleiben müsste. Das
  * ist in WORK_STATUS.md unter „Gefundene Punkte" Nr. 11 vermerkt.
  *
- * Bewusst **nicht** hier festgelegt, weil es zu B1 gehört:
- * - Eindeutigkeit von `displayName` (bei OAuth-Konten kollidieren Anzeigenamen
- *   leicht – ob und wie dedupliziert wird, entscheidet der Registrierungsablauf)
- * - Passwort-/Token-Felder (liegen in `AuthMethod` bzw. `Session`)
+ * **Ergänzt in B1:** die Spalte `username` als Anmeldekennung des
+ * Passwort-Verfahrens (Migration `0004_auth_identity`, dokumentiert in
+ * Pflichtenheft §7). Sie ist eindeutig, `display_name` bewusst nicht – der
+ * Vertrag aus F1 (`AccountDto`) trennt beide sauber. Die Passwort- und
+ * Token-Felder liegen in `AuthMethod` bzw. `Session` (`schema/auth.ts`).
  */
 
 import { sql } from 'drizzle-orm';
@@ -23,6 +24,20 @@ export const users = pgTable(
   'users',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    /**
+     * Anmeldekennung des Passwort-Verfahrens (B1, Pflichtenheft §7).
+     *
+     * `null` bei Konten, die ausschließlich über einen externen Provider
+     * angelegt wurden und noch kein Passwort haben – genau das sagt auch
+     * `AccountDto.username` aus F1 zu. Sobald ein Passwort verknüpft wird,
+     * kommt hier ein Wert hinein.
+     */
+    username: text('username'),
+    /**
+     * Frei wählbarer Anzeigename. Bewusst **nicht** eindeutig: bei Konten aus
+     * Discord, Steam und Twitch kollidieren Anzeigenamen leicht, und der Name
+     * dient nur der Darstellung. Eindeutig sein muss allein `username`.
+     */
     displayName: text('display_name').notNull(),
     /**
      * Owner-Sonderstatus außerhalb des Rollensystems (Lastenheft §2,
@@ -42,6 +57,15 @@ export const users = pgTable(
     uniqueIndex('users_single_owner_idx')
       .on(table.isOwner)
       .where(sql`${table.isOwner}`),
+    /**
+     * Eindeutigkeit der Anmeldekennung ohne Rücksicht auf Groß-/Kleinschreibung
+     * (B1, Pflichtenheft §7): „Spieler" und „spieler" dürfen nicht nebeneinander
+     * existieren, sonst wäre der Login mehrdeutig. Partiell, weil reine
+     * Provider-Konten keine Kennung haben und `null` sich nicht sperren soll.
+     */
+    uniqueIndex('users_username_lower_idx')
+      .on(sql`lower(${table.username})`)
+      .where(sql`${table.username} is not null`),
   ],
 );
 

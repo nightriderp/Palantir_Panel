@@ -1,8 +1,13 @@
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from './config/env.js';
 import { getDb } from './db/index.js';
 import { createAdminModule, registerAdminRoutes } from './modules/admin/index.js';
+import {
+  type AuthModuleOptions,
+  type AuthService,
+  registerAuthModule,
+} from './modules/auth/index.js';
 import {
   type PermissionActor,
   createDrizzleRoleRepository,
@@ -13,12 +18,20 @@ import { registerHealthRoutes } from './routes/health.js';
 
 export interface BuildServerOptions {
   /**
-   * Ermittelt den Handelnden zum Request – das liefert die Sitzungsauflösung
-   * aus B1 (Auth & Identity).
+   * Auth-Modul einhängen (Arbeitspaket B1).
    *
-   * Ohne Angabe gilt jeder Request als nicht angemeldet: Geschützte Routen
-   * antworten dann mit `AUTH_REQUIRED`. Das ist die sichere Vorgabe, solange
-   * das Auth-Modul fehlt – geöffnet wird nichts.
+   * Standard `true`. Auf `false` gesetzt bleibt das Backend ohne Datenbank und
+   * ohne die Geheimnisse aus der zentralen `.env` startbar – das nutzen die
+   * Tests des Grundgerüsts und der Health-Endpunkt.
+   */
+  readonly auth?: boolean | AuthModuleOptions;
+  /**
+   * Ermittelt den Handelnden zum Request, wenn das Auth-Modul **nicht** läuft.
+   *
+   * Mit eingehängtem Auth-Modul kommt der Handelnde aus der Sitzung (B1) und
+   * diese Funktion greift nicht. Fehlt beides, gilt jeder Request als nicht
+   * angemeldet: Geschützte Routen antworten dann mit `AUTH_REQUIRED`. Das ist
+   * die sichere Vorgabe – geöffnet wird dadurch nichts.
    */
   resolveActor?: (
     request: FastifyRequest,
@@ -39,10 +52,41 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     trustProxy: true,
   });
 
-  await app.register(cors, { origin: false });
+  /**
+   * CORS (angepasst in B1): Sitzungs-Cookies gehen nur mit `credentials` über
+   * die Grenze, und `credentials` verträgt keine Herkunft `*`. Ist
+   * `PUBLIC_WEB_URL` gesetzt – Frontend und API laufen üblicherweise auf
+   * verschiedenen Subdomains (Pflichtenheft §12.1) –, wird genau diese eine
+   * Herkunft erlaubt. Ohne die Variable bleibt es beim bisherigen
+   * `origin: false`, also gar keine fremde Herkunft.
+   */
+  await app.register(
+    cors,
+    env.PUBLIC_WEB_URL ? { origin: [env.PUBLIC_WEB_URL], credentials: true } : { origin: false },
+  );
+
+  /*
+   * Reihenfolge ist wichtig: Das Auth-Modul hängt seine `onRequest`-Hooks vor
+   * dem RBAC-Hook ein, damit `request.authUser` schon gesetzt ist, wenn der
+   * Handelnde aufgelöst wird.
+   */
+  const auth = options.auth ?? true;
+  let authService: AuthService | null = null;
+
+  if (auth !== false) {
+    authService = await registerAuthModule(app, auth === true ? {} : auth);
+  }
 
   // Muss vor den Routen laufen: der Guard aus B2 liest `request.permissionActor`.
-  registerRbac(app, { resolveActor: options.resolveActor ?? (() => null) });
+  registerRbac(app, {
+    async resolveActor(request): Promise<PermissionActor | null> {
+      if (authService && request.authUser) {
+        return authService.buildActor(request.authUser);
+      }
+
+      return options.resolveActor?.(request) ?? null;
+    },
+  });
 
   await app.register(registerHealthRoutes);
 
