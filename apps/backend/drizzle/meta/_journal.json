@@ -50,6 +50,13 @@
       "when": 1787737884610,
       "tag": "0006_auth_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787751472443,
+      "tag": "0007_server_orchestration",
+      "breakpoints": true
     }
   ]
 }
