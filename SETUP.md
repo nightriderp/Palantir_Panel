@@ -278,7 +278,7 @@ Oberfläche die neuen Rechte sieht.
 
 **Warum ein eigener Schritt und nicht automatisch?** Die Registrierung ist offen
 ([LASTENHEFT.md §3.1](LASTENHEFT.md)) und das Panel erreichbar, sobald es läuft. Würde das
-*erste* registrierte Konto automatisch Owner, könnte ein Fremder die Instanz im Zeitfenster
+_erste_ registrierte Konto automatisch Owner, könnte ein Fremder die Instanz im Zeitfenster
 zwischen Start und eigener Registrierung übernehmen – ohne Zugangsdaten, allein durch
 schnelleres Ausfüllen des Formulars. Der Nachweis ist hier stattdessen der Systemzugang zur
 Maschine; ein zusätzliches Geheimnis in der `.env` braucht es dafür nicht.

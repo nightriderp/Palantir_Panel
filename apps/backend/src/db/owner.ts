@@ -1,8 +1,9 @@
+import { createDrizzleAuditLogRepository, createAuditService } from '../modules/admin/index.js';
 import {
-  createDrizzleAuditLogRepository,
-  createAuditService,
-} from '../modules/admin/index.js';
-import { createDrizzleAuthRepository, grantOwnerByUsername, isAuthError } from '../modules/auth/index.js';
+  createDrizzleAuthRepository,
+  grantOwnerByUsername,
+  isAuthError,
+} from '../modules/auth/index.js';
 import { closeDb, getDb } from './client.js';
 
 /**
@@ -67,16 +68,17 @@ async function main(): Promise<void> {
   });
 
   console.log(`Owner-Status vergeben an „${result.user.displayName}" (${result.user.id}).`);
-  console.log(
-    'Das Konto hat ab sofort unabhängig vom Rollensystem alle Rechte (Lastenheft §2).',
-  );
+  console.log('Das Konto hat ab sofort unabhängig vom Rollensystem alle Rechte (Lastenheft §2).');
 }
 
 try {
   await main();
 } catch (error: unknown) {
   if (isAuthError(error)) {
-    console.error(`Ersteinrichtung des Owner-Kontos fehlgeschlagen [${error.code}]:`, error.message);
+    console.error(
+      `Ersteinrichtung des Owner-Kontos fehlgeschlagen [${error.code}]:`,
+      error.message,
+    );
   } else {
     console.error('Ersteinrichtung des Owner-Kontos fehlgeschlagen:', error);
   }
