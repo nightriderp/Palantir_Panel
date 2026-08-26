@@ -63,6 +63,16 @@ describe('Regel anlegen (Lastenheft §3.6)', () => {
     expect(result.inboxEnabled).toBe(true);
   });
 
+  /** Ohne eigene Angabe erbt die Meldung die Dringlichkeit des Ereignisses. */
+  it('übernimmt die Dringlichkeit des Ereignisses, solange keine gewählt ist', () => {
+    const result = createNotificationRuleInputSchema.parse({
+      event: 'backup.failed',
+      recipientScope: 'resourceOwner',
+    });
+
+    expect(result.severity).toBeNull();
+  });
+
   it('verlangt beim Empfängerkreis „Rolle“ eine Rolle', () => {
     expect(
       createNotificationRuleInputSchema.safeParse({
