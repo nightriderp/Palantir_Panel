@@ -1,0 +1,92 @@
+name: CI
+
+# Läuft auf jedem Pull Request nach main und auf main selbst.
+# Mehrere Sitzungen arbeiten parallel an eigenen Arbeitspaketen (siehe STRUKTUR.md);
+# dieser Workflow ist die gemeinsame Schwelle, die verhindert, dass main kaputtgeht.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Ein neuer Push auf denselben Branch bricht den vorherigen Lauf ab.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Build, Typecheck, Lint, Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # Wegwerf-Datenbank nur für diesen Lauf. Die Zugangsdaten sind bewusst
+      # trivial – der Container ist nach dem Job weg und von außen nicht erreichbar.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: palantir
+          POSTGRES_PASSWORD: palantir
+          POSTGRES_DB: palantir
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U palantir -d palantir"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # In CI gibt es keine .env (Pflichtenheft §12.1 – sie liegt nie im Repository).
+      # Alles, was das Backend zum Start braucht, hat Vorgabewerte; nur DATABASE_URL
+      # wird hier gesetzt, damit datenbanknahe Tests laufen können.
+      DATABASE_URL: postgresql://palantir:palantir@127.0.0.1:5432/palantir
+      TURBO_TELEMETRY_DISABLED: 1
+      DO_NOT_TRACK: 1
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: pnpm einrichten
+        # Version kommt aus dem Feld "packageManager" in der package.json.
+        uses: pnpm/action-setup@v4
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Abhängigkeiten installieren
+        # --frozen-lockfile: schlägt fehl, wenn die pnpm-lock.yaml nicht zum
+        # Stand der package.json passt. Fängt vergessene Lockfile-Commits ab.
+        run: pnpm install --frozen-lockfile
+
+      - name: Turborepo-Cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Tests
+        run: pnpm test
+
+      - name: Formatierung
+        run: pnpm format:check
