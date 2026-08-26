@@ -32,6 +32,26 @@ export const WEBSOCKET_EVENTS = [
   'resource.low',
   'user.registered',
   'message.reported',
+
+  // -- Server-Orchestrierung (B3, Pflichtenheft §9 und §13) -------------------
+
+  /** Server-Datensatz angelegt und Container auf dem Homeserver erzeugt. */
+  'server.created',
+  /** Server samt Container, DNS-Eintrag und Portzuweisung entfernt. */
+  'server.deleted',
+  /** Neustart abgeschlossen – der Server ist wieder erreichbar. */
+  'server.restarted',
+  /**
+   * Server ist in den Zustand `error` gelaufen: Start endgültig gescheitert
+   * oder Crash-Loop-Schutz hat abgeschaltet (Pflichtenheft §9). Bewusst
+   * getrennt von `server.crashed` – ein einzelner Absturz wird automatisch
+   * behoben, dieses Ereignis verlangt, dass jemand hinsieht.
+   */
+  'server.failed',
+  /** Klonen abgeschlossen; der geklonte Server ist angelegt. */
+  'server.cloned',
+  // Den Zustandswechsel meldet bereits `server.statusChanged` weiter oben, den
+  // Fortschritt beim Klonen `serverClone.progressed` – beide aus F3.
 ] as const satisfies readonly EventNameScheme[];
 
 /** Alle aktuell definierten Event-Namen. */

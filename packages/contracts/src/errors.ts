@@ -323,6 +323,57 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Der Zeitplan ist kein gültiger Cron-Ausdruck.',
   },
 
+  // -- Server-Orchestrierung (Pflichtenheft §9, §11, §13) --------------------
+  // Arbeitspaket B3. Die Codes decken den Lifecycle, die Spiele-Registry und
+  // die Subdomain-/DNS-Vergabe ab. Bereits weiter oben stehen und werden von B3
+  // unverändert benutzt: `SERVER_NOT_FOUND` und `SUBDOMAIN_TAKEN` (B5),
+  // `SERVER_STATE_CONFLICT` und `SUBDOMAIN_INVALID` (F3), `PORT_POOL_EXHAUSTED`
+  // (B8). `RESOURCE_LIMIT_EXCEEDED` gehört zur Prüfung aus B4 (§10).
+
+  /**
+   * Der Crash-Loop-Schutz hat abgeschaltet: zu viele Abstürze im Zeitfenster
+   * (Pflichtenheft §9). 409, nicht 503 – der Server bleibt bewusst aus, bis
+   * jemand hinsieht; automatisches Wiederholen ist genau das, was verhindert
+   * werden soll.
+   */
+  SERVER_CRASH_LOOP: {
+    httpStatus: 409,
+    defaultMessage: 'Der Server ist zu oft hintereinander abgestürzt und wurde deshalb angehalten.',
+  },
+  /**
+   * Der Server wurde gestartet, war aber innerhalb der Startfrist nicht
+   * erreichbar (Health-Check, Pflichtenheft §9). 504: Zeitüberschreitung
+   * gegenüber einem nachgelagerten System.
+   */
+  SERVER_HEALTH_CHECK_FAILED: {
+    httpStatus: 504,
+    defaultMessage: 'Der Server war nach dem Start nicht erreichbar.',
+  },
+  /** Spiele-Definition existiert nicht (Pflichtenheft §11). 404. */
+  GAME_TYPE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieser Spiel-Typ existiert nicht.',
+  },
+  /**
+   * Spiele-Definition existiert, ist in dieser Ausbaustufe aber noch nicht
+   * nutzbar (Lastenheft §3.5). 409 statt 404, damit das Frontend „gibt es
+   * nicht" von „kommt später" unterscheiden kann.
+   */
+  GAME_TYPE_NOT_AVAILABLE: {
+    httpStatus: 409,
+    defaultMessage: 'Dieser Spiel-Typ steht in dieser Ausbaustufe noch nicht zur Verfügung.',
+  },
+  /**
+   * Der DNS-Eintrag konnte bei Cloudflare nicht angelegt oder entfernt werden
+   * (Pflichtenheft §13). 502: der Fehler liegt beim nachgelagerten Dienst.
+   */
+  DNS_UPDATE_FAILED: {
+    httpStatus: 502,
+    defaultMessage: 'Der DNS-Eintrag konnte nicht aktualisiert werden.',
+  },
+  // `PORT_POOL_EXHAUSTED` steht weiter unten bei den Admin-Funktionen (B8) –
+  // dort liegt der Port-Pool. B3 benutzt den Code beim Anlegen eines Servers.
+
   // -- Agent-Protokoll (Pflichtenheft §2.2 / §5.3) ---------------------------
   // Der Agent-Kanal ist kein REST-Endpunkt; die HTTP-Status-Zuordnung gilt hier
   // für den WebSocket-Handshake bzw. dient dem Backend als Vorlage, wenn es
@@ -411,6 +462,24 @@ export const ERROR_CATALOG = {
   AGENT_FILE_TOO_LARGE: {
     httpStatus: 413,
     defaultMessage: 'Die Datei ist größer als das erlaubte Limit.',
+  },
+  /**
+   * Für die Ziel-Node ist derzeit kein Agent verbunden (Pflichtenheft §2.2).
+   * 503: sobald der Agent sich wieder meldet, kann derselbe Aufruf klappen.
+   */
+  AGENT_NOT_CONNECTED: {
+    httpStatus: 503,
+    defaultMessage: 'Der Homeserver ist derzeit nicht verbunden.',
+  },
+  /**
+   * Der Agent hat einen Befehl nicht innerhalb der Frist beantwortet
+   * (Pflichtenheft §5.3). 504: Zeitüberschreitung gegenüber einem
+   * nachgelagerten System – bewusst getrennt von `AGENT_COMMAND_FAILED`, denn
+   * der Befehl kann auf dem Homeserver trotzdem noch laufen.
+   */
+  AGENT_COMMAND_TIMEOUT: {
+    httpStatus: 504,
+    defaultMessage: 'Der Homeserver hat auf den Befehl nicht rechtzeitig geantwortet.',
   },
   /** Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar. 503: vorübergehend, ein Retry kann klappen. */
   AGENT_RUNTIME_UNAVAILABLE: {
