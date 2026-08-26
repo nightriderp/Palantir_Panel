@@ -184,6 +184,38 @@ services:
     networks:
       - palantir
 
+  # --- Owner-Konto erheben ----------------------------------------------------
+  # Hebt ein bereits registriertes Konto zum Owner (Lastenheft §2). Einmalig bei
+  # der Ersteinrichtung, NACH der eigenen Registrierung über die Oberfläche:
+  #
+  #   docker compose --env-file ../../.env run --rm owner <benutzername>
+  #
+  # Warum `entrypoint` statt `command`: Bei `docker compose run SERVICE ARG`
+  # ersetzt ARG das `command`, hängt sich aber an den `entrypoint` an. Nur so
+  # landet der Benutzername als Argument beim Skript, statt es zu überschreiben.
+  #
+  # Der Nachweis ist der Systemzugang zur VPS, nicht ein weiteres Geheimnis -
+  # deshalb ein sichtbarer Einrichtungsschritt statt Automatik (Pflichtenheft
+  # §12.3). Die Begründung gegen "erstes Konto gewinnt" steht ausführlich in
+  # apps/backend/src/modules/auth/owner.ts.
+  owner:
+    profiles: ['setup']
+    image: ghcr.io/nightriderp/palantir-backend:${PALANTIR_VERSION}
+    container_name: palantir-owner
+    restart: 'no'
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${MIGRATE_MEM_LIMIT:-512m}
+    pids_limit: 256
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../../.env
+    entrypoint: ['node', 'apps/backend/dist/db/owner.js']
+    networks:
+      - palantir
+
   # --- Audit-Archivierung -----------------------------------------------------
   # Exportiert Audit-Einträge älter als 24 Monate in eine komprimierte Datei und
   # entfernt sie danach aus der aktiven Tabelle (Pflichtenheft §6). Gefahrlos
