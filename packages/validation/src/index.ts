@@ -56,6 +56,8 @@ export {
   AGENT_COMMAND_PAYLOAD_SCHEMAS,
   createBackupCommandPayloadSchema,
   createBackupCommandResultSchema,
+  deleteBackupCommandPayloadSchema,
+  deleteBackupCommandResultSchema,
   downloadBackupCommandPayloadSchema,
   downloadBackupCommandResultSchema,
   hostPathSchema,

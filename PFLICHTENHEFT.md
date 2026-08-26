@@ -164,7 +164,7 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 ### 5.3 Kommunikationskanäle
 - REST für klassische CRUD-Operationen
 - WebSocket-Kanäle für Live-Daten: Konsole/Logs, Live-Stats, Chat, Benachrichtigungen
-- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
+- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
 
 **Ort des Agent-Protokolls:** `packages/contracts/src/agent-protocol.ts` (`AGENT_COMMANDS`, `AGENT_EVENTS`, Frame-Typen, `AGENT_PROTOCOL_VERSION`), Zod-Gegenstück in `packages/validation/src/agent-protocol.ts`. Befehle und Ereignisse werden ausschließlich dort additiv ergänzt.
 
@@ -175,9 +175,11 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - **Duplikat-Antwort:** Ein Befehl mit bereits verarbeiteter Korrelations-ID wird nicht erneut ausgeführt; das gespeicherte Ergebnis wird mit `duplicate: true` erneut geschickt, da der Retry meist gerade deshalb entsteht, weil das erste Ergebnis das Backend nicht erreicht hat
 - **Befehlsergebnisse** nutzen den Response-Envelope aus §5.1, Fehler also benannte Codes aus dem Katalog statt Freitext
 
-**Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+**Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
 
 **`DOWNLOAD_BACKUP` (Ergänzung aus B5):** Der vollständige Export der Serverdaten (Lastenheft §3.3) verlangt, dass das Archiv eines Backups vom Homeserver zum Nutzer gelangt. Der Agent öffnet grundsätzlich keinen eigenen Listener (§18), es gibt also keinen zweiten Weg für diese Bytes. Der Befehl liest deshalb **blockweise**: das Backend fragt `{ offset, maxBytes }` an, bekommt `{ contentBase64, bytesRead, totalBytes, eof }` zurück und schreibt jeden Block sofort in die HTTP-Antwort. Damit braucht es weder einen neuen Frame-Typ noch ein mehrere Gigabyte großes Archiv im Speicher. Die Base64-Kodierung kostet rund ein Drittel Übertragungsvolumen; das ist bei einem selten genutzten Vorgang innerhalb des WireGuard-Tunnels vertretbar und wiegt leichter als ein zweiter Transportweg mit eigener Authentifizierung.
+
+**`DELETE_BACKUP` (Ergänzung aus B5):** Die Aufbewahrungsregel aus Lastenheft §3.3 und das Löschen über den Storage-Explorer (§16) müssen das Archiv tatsächlich von der Platte bekommen; ohne diesen Befehl gäbe die Regel keinen Speicher frei. Der Befehl ist bewusst **idempotent** – ein bereits fehlendes Archiv wird als `removed: false` gemeldet, nicht als Fehler. Sonst bliebe nach einem Abbruch mitten in der Aufbewahrungsprüfung ein Datensatz zurück, der sich nie wieder löschen ließe.
 
 ---
 

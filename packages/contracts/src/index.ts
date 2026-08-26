@@ -94,6 +94,8 @@ export {
   type CreateBackupCommandResult,
   type CreateCommandPayload,
   type CreateCommandResult,
+  type DeleteBackupCommandPayload,
+  type DeleteBackupCommandResult,
   type DeleteCommandPayload,
   type DownloadBackupCommandPayload,
   type DownloadBackupCommandResult,
