@@ -37,10 +37,18 @@ RUN pnpm --filter @palantir/backend... build
 
 
 # --- Produktionsabhängigkeiten ------------------------------------------------
-# Eigene Stufe, damit die Laufzeit weder devDependencies noch Quellcode enthält.
-# Die Workspace-Struktur bleibt erhalten, weil @palantir/contracts und
-# @palantir/validation als Verweise in node_modules aufgelöst werden.
-FROM deps AS prod-deps
+# Setzt bewusst auf `base` auf und NICHT auf `deps`: dort liegt bereits der
+# vollständige Baum aller Workspaces. Ein nachträgliches `--prod` entfernt zwar
+# die Verweise, räumt den virtuellen Store unter node_modules/.pnpm aber nicht
+# nach - das Backend-Image trug dadurch Next.js samt SWC-Binärdateien, Turbo und
+# TypeScript mit sich herum, rund 1 GB ohne jeden Nutzen.
+FROM base AS prod-deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+COPY apps/backend/package.json apps/backend/
+COPY apps/frontend/package.json apps/frontend/
+COPY apps/agent/package.json apps/agent/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/validation/package.json packages/validation/
 RUN pnpm install --frozen-lockfile --prod --filter @palantir/backend...
 
 

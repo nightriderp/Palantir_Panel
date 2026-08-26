@@ -33,7 +33,17 @@ RUN pnpm --filter @palantir/agent... build
 
 
 # --- Produktionsabhängigkeiten ------------------------------------------------
-FROM deps AS prod-deps
+# Setzt bewusst auf `base` auf und NICHT auf `deps`: dort liegt bereits der
+# vollständige Baum aller Workspaces. Ein nachträgliches `--prod` entfernt zwar
+# die Verweise, räumt den virtuellen Store unter node_modules/.pnpm aber nicht
+# nach - das Image trüge sonst Next.js, Turbo und TypeScript ohne Nutzen mit.
+FROM base AS prod-deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+COPY apps/backend/package.json apps/backend/
+COPY apps/frontend/package.json apps/frontend/
+COPY apps/agent/package.json apps/agent/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/validation/package.json packages/validation/
 RUN pnpm install --frozen-lockfile --prod --filter @palantir/agent...
 
 
