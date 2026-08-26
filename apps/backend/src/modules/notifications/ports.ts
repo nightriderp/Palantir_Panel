@@ -14,7 +14,7 @@
  * - {@link NotificationAuditSink} – B8 (Audit-Log, Pflichtenheft §6)
  */
 
-import type { ErrorCode, NotificationChannelType } from '@palantir/contracts';
+import type { ErrorCode, NotificationChannelType, NotificationDto } from '@palantir/contracts';
 
 /**
  * Nachschlagen von Empfängern (Entitäten `User`, `UserRole`, Pflichtenheft §6).
@@ -103,7 +103,8 @@ export function isNotificationTransportError(
 
 /** Eine Meldung, wie sie über den Live-Kanal an eine offene Inbox geht. */
 export interface LiveNotificationPayload {
-  notification: unknown;
+  notification: NotificationDto;
+  /** Stand des Zählers in der Navigation nach dieser Meldung. */
   unreadCount: number;
 }
 

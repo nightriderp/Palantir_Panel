@@ -9,6 +9,7 @@ import {
   type AuthService,
   registerAuthModule,
 } from './modules/auth/index.js';
+import { registerNotifications } from './modules/notifications/index.js';
 import {
   type PermissionActor,
   createDrizzleRoleRepository,
@@ -120,11 +121,32 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      */
     await app.register(websocket);
 
+    /*
+     * Notification-Engine (B6, Pflichtenheft §14) inklusive des
+     * WebSocket-Kanals `/live/notifications` für die Inbox.
+     *
+     * Muss **vor** der Server-Orchestrierung stehen: B3 bekommt die
+     * Ereignissenke beim Aufbau gereicht und kennt B6 sonst nicht.
+     */
+    const notifications = await registerNotifications(app, {
+      db: getDb(),
+      resolveUserId: (request) => request.authUser?.id ?? null,
+      defaultWebhookUrl: env.DISCORD_WEBHOOK_URL ?? null,
+      deliveryTimeoutMs: env.NOTIFICATION_DELIVERY_TIMEOUT_MS,
+      // Änderungen an Kanälen, Regeln und Ankündigungen sind
+      // sicherheitsrelevant und gehören ins Audit-Log (Pflichtenheft §6).
+      audit: admin.services.audit,
+      log: app.log,
+    });
+
     registerServerOrchestration(app, {
       db: getDb(),
       resolveViewerId: (request) => request.authUser?.id ?? null,
       // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
       portPool: admin.services.ports,
+      // Ereignissenke aus B6: Ohne sie würden die Lifecycle-Ereignisse nur
+      // protokolliert (WORK_STATUS.md, Gefundener Punkt 62).
+      events: notifications.eventSink,
     });
   }
 

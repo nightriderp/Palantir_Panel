@@ -1,5 +1,5 @@
 {
-  "id": "049c3a78-8375-4fd3-be8a-0bad23bb3792",
+  "id": "c8b67fa8-8bb4-49f0-800f-db001e30549f",
   "prevId": "6d6569cf-f2f9-4e82-945a-235403bc7118",
   "version": "7",
   "dialect": "postgresql",
@@ -1544,8 +1544,7 @@
           "name": "severity",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'info'"
+          "notNull": false
         },
         "enabled": {
           "name": "enabled",
