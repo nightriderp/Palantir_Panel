@@ -20,6 +20,14 @@ const nextConfig = {
   eslint: {
     dirs: ['src'],
   },
+  // Erzeugt unter `.next/standalone` einen eigenständigen Server samt der
+  // tatsächlich benötigten Abhängigkeiten. Ohne das müsste das Laufzeit-Image
+  // den kompletten node_modules-Baum mitschleppen.
+  output: 'standalone',
+  // Im Monorepo muss die Wurzel ausdrücklich benannt werden, sonst verfolgt
+  // Next.js die Dateien nur ab `apps/frontend` und lässt die Workspace-Packages
+  // aus `packages/` weg.
+  outputFileTracingRoot: repoRoot,
   env: {
     // NEXT_PUBLIC_-Variablen werden zur Bauzeit eingesetzt und müssen daher
     // hier aufgelöst werden – zur Laufzeit ist die zentrale `.env` im Browser
