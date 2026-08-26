@@ -6,6 +6,17 @@ import { getDb } from './db/index.js';
 import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
 import { createChatModule, registerChatRoutes } from './modules/chat/index.js';
 import {
+  createBackupScheduleService,
+  createBackupService,
+  createDrizzleBackupRepository,
+  createDrizzleUserDirectory,
+  registerBackupRoutes,
+} from './modules/backups/index.js';
+import {
+  createDrizzleHostNodeRepository as createResourceHostNodeRepository,
+  createNodeUsageSource,
+} from './modules/resources/index.js';
+import {
   type AuthModuleOptions,
   type AuthService,
   registerAuthModule,
@@ -16,8 +27,20 @@ import {
   createRoleService,
   registerRbac,
 } from './modules/rbac/index.js';
-import { registerServerOrchestration } from './modules/server-orchestration/index.js';
+import {
+  AgentRegistry,
+  createAgentBackupGateway,
+  createAgentStorageScanGateway,
+  createDrizzleBackupServerDirectory,
+  createDrizzleServerRepository,
+  createDrizzleServerUsageRepository,
+  createServerKnownServerSource,
+  createServerNameSource,
+  createServerNodePlacementSource,
+  registerServerOrchestration,
+} from './modules/server-orchestration/index.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { autoShutdownTask, backupScheduleTask, startScheduler } from './scheduler.js';
 
 export interface BuildServerOptions {
   /**
@@ -107,10 +130,40 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   // Verbindungsfehler zu antworten – das Backend bleibt sonst unverändert
   // lauffähig (siehe Kommentar zu DATABASE_URL in `config/env.ts`).
   if (env.DATABASE_URL) {
-    const roles = createRoleService(createDrizzleRoleRepository(getDb()));
+    const db = getDb();
+    const roles = createRoleService(createDrizzleRoleRepository(db));
+
+    /*
+     * Die offenen Agent-Verbindungen entstehen hier und nicht im Modul (R2):
+     * Drei Pakete sprechen über denselben Kanal (Pflichtenheft §5.3) – B3 für
+     * die Lifecycle-Befehle, B5 für die Backup-Befehle und B8 für den
+     * Speicher-Scan. Zwei Registries wären zwei getrennte Sichten auf denselben
+     * Agent.
+     */
+    const agents = new AgentRegistry();
+    const serverRepository = createDrizzleServerRepository(db);
+    const serverUsage = createDrizzleServerUsageRepository(db);
+
+    /*
+     * Die Anschlusspunkte, die B8 offen gelassen hat (R2, Gefundene Punkte 40
+     * und 42). Alle vier lesen entweder `game_servers` oder sprechen über den
+     * Agent-Kanal – beides gehört zu B3 bzw. B4, nicht zu B8.
+     *
+     * `nodeUsage` kommt aus derselben Zählung wie die harte Kapazitätsprüfung
+     * vor jedem Start (Pflichtenheft §10) – bewusst eine Quelle, nicht zwei
+     * (siehe `modules/resources/node-usage.ts`).
+     */
     const admin = createAdminModule({
-      db: getDb(),
+      db,
       roles,
+      nodePlacements: createServerNodePlacementSource(db),
+      nodeUsage: createNodeUsageSource({
+        nodes: createResourceHostNodeRepository(db),
+        usage: serverUsage,
+      }),
+      storageGateway: createAgentStorageScanGateway(agents),
+      knownServers: createServerKnownServerSource(db),
+      serverNames: createServerNameSource(db),
       ...(env.AUDIT_ARCHIVE_DIR ? { auditArchiveDir: env.AUDIT_ARCHIVE_DIR } : {}),
     });
 
@@ -130,8 +183,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      */
     await app.register(websocket);
 
-    registerServerOrchestration(app, {
-      db: getDb(),
+    const orchestration = registerServerOrchestration(app, {
+      db,
+      agents,
       resolveViewerId: (request) => request.authUser?.id ?? null,
       // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
       portPool: admin.services.ports,
@@ -159,6 +213,57 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             ? { id: request.authUser.id, displayName: request.authUser.displayName }
             : null,
       });
+    });
+
+    /*
+     * Backup-Verwaltung (B5, R2/Gefundener Punkt 33).
+     *
+     * B5 kennt weder `game_servers` noch den Agent-Kanal und spricht nur über
+     * `ServerDirectory` und `BackupAgentGateway`. Beide werden von B3 gestellt
+     * (`modules/server-orchestration/backup-ports.ts`) – ohne sie ließen sich
+     * die Routen hier gar nicht registrieren.
+     *
+     * Die Ereignis-Senke bleibt vorerst die wirkungslose Vorgabe aus B5: Die
+     * Notification-Engine (B6) fehlt noch, und ein fehlgeschlagenes Backup darf
+     * nicht daran scheitern, dass niemand zuhört.
+     */
+    const backups = createBackupService({
+      repository: createDrizzleBackupRepository(db),
+      servers: createDrizzleBackupServerDirectory(db),
+      users: createDrizzleUserDirectory(db),
+      agent: createAgentBackupGateway({ agents, repository: serverRepository }),
+    });
+
+    const backupSchedules = createBackupScheduleService({
+      repository: createDrizzleBackupRepository(db),
+      servers: createDrizzleBackupServerDirectory(db),
+      backups,
+    });
+
+    await app.register(
+      registerBackupRoutes({
+        backups,
+        schedules: backupSchedules,
+        resolveUserId: (request) => request.authUser?.id ?? null,
+      }),
+    );
+
+    /*
+     * Der Zeitgeber (R2/Gefundener Punkt 63) – eine Stelle für beide
+     * periodischen Abläufe. Intervall und Verhalten bei Überschneidung sind im
+     * Kopf von `scheduler.ts` begründet.
+     */
+    const scheduler = startScheduler({
+      intervalMs: env.SCHEDULER_INTERVAL_MS,
+      log: app.log,
+      tasks: [
+        autoShutdownTask(orchestration, agents, app.log),
+        backupScheduleTask(backupSchedules, app.log),
+      ],
+    });
+
+    app.addHook('onClose', async (): Promise<void> => {
+      scheduler.stop();
     });
   }
 
