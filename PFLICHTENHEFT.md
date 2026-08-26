@@ -64,6 +64,8 @@
 - Zuordnung Port ↔ Zielserver liegt in der Datenbank, wird bei Erstellung/Löschung eines Servers automatisch aktualisiert
 - Für Spiele mit `supportsVirtualHostRouting = true` (initial: Minecraft) läuft stattdessen ein Hostname-basierter Reverse-Proxy (z. B. Infrared) auf einem einzigen öffentlichen Port für alle Instanzen dieses Spiels
 
+**Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin/ports.ts`):** Der Admin pflegt ausschließlich die **Bereiche** (`port_ranges`), aus denen vergeben werden darf – Standardwerte dafür stehen als `GAME_PORT_RANGE_START`/`_END` in der zentralen `.env`. Die einzelne Zuordnung (`port_allocations`) entsteht und verschwindet mit dem Server: B3 ruft dafür `allocateForServer()` bzw. `releaseForServer()` auf. Eine Zuordnung mit noch existierendem Server lässt sich deshalb nicht von Hand freigeben, und ein Bereich, aus dem Ports vergeben sind, weder löschen noch so verkleinern, dass ein vergebener Port herausfällt (`PORT_RANGE_IN_USE`). Dass derselbe Port je Protokoll nur einmal vergeben ist, sichert zusätzlich ein Unique-Index in der Datenbank ab.
+
 ### 2.5 Testbarkeit
 - Die Docker-Ansteuerung im Agent liegt hinter einer abstrahierten Schnittstelle (`ContainerRuntime`), damit Unit-/Integrationstests mit einer Fake-Implementierung laufen können, ohne echten Docker-Host zu benötigen
 
@@ -162,6 +164,21 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AGENT_FILE_NOT_FOUND` | 404 | Datei im Container nicht gefunden |
 | `AGENT_FILE_TOO_LARGE` | 413 | Datei überschreitet das Größenlimit (§12.1) |
 | `AGENT_RUNTIME_UNAVAILABLE` | 503 | Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar |
+| `NODE_ADDRESS_TAKEN` | 409 | Node-Name oder WireGuard-Adresse bereits vergeben (§2.1) |
+| `NODE_IN_USE` | 409 | Node trägt noch Gameserver und kann nicht entfernt werden |
+| `PORT_RANGE_NOT_FOUND` | 404 | Port-Bereich existiert nicht (§2.4) |
+| `PORT_RANGE_INVALID` | 400 | Bereichsgrenzen unzulässig (§2.4) |
+| `PORT_RANGE_OVERLAP` | 409 | Bereich überschneidet einen bestehenden Bereich desselben Protokolls |
+| `PORT_RANGE_IN_USE` | 409 | Aus dem Bereich sind noch Ports vergeben |
+| `PORT_POOL_EXHAUSTED` | 409 | Kein freier öffentlicher Port mehr im Pool (§2.4) |
+| `PORT_ALLOCATION_NOT_FOUND` | 404 | Port-Zuordnung existiert nicht |
+| `STORAGE_SCAN_MISSING` | 409 | Für die Node liegt noch keine Speicherübersicht vor (§16) |
+| `STORAGE_ENTRY_NOT_FOUND` | 404 | Eintrag steht nicht in der zwischengespeicherten Übersicht (§16) |
+| `STORAGE_ENTRY_NOT_DELETABLE` | 403 | Eintrag ist über den Storage-Explorer nicht löschbar, insbesondere aktive Server-Datenordner (§16) |
+| `AUDIT_ENTRY_IMMUTABLE` | 403 | Versuch, einen Audit-Eintrag zu ändern oder zu löschen (§6) |
+| `AUDIT_ARCHIVE_FAILED` | 500 | Archivdatei des Audit-Logs konnte nicht geschrieben werden (§6) |
+| `OWNER_PROTECTED` | 403 | Aktion würde das Owner-Konto aussperren (§8) |
+| `REGISTRATION_REQUEST_INVALID_STATE` | 409 | Wartelisten-Aktion passt nicht zum Zustand des Kontos (§7) |
 
 Die `AGENT_*`-Codes gelten für den WebSocket-Kanal zum Agent, der kein REST-Endpunkt ist. Die HTTP-Status-Zuordnung greift dort beim Handshake und dient dem Backend als Vorlage, wenn es einen Agent-Fehler an eine REST-Antwort weiterreicht.
 
@@ -197,6 +214,8 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 
 **`DELETE_BACKUP` (Ergänzung aus B5):** Die Aufbewahrungsregel aus Lastenheft §3.3 und das Löschen über den Storage-Explorer (§16) müssen das Archiv tatsächlich von der Platte bekommen; ohne diesen Befehl gäbe die Regel keinen Speicher frei. Der Befehl ist bewusst **idempotent** – ein bereits fehlendes Archiv wird als `removed: false` gemeldet, nicht als Fehler. Sonst bliebe nach einem Abbruch mitten in der Aufbewahrungsprüfung ein Datensatz zurück, der sich nie wieder löschen ließe.
 
+`GET_STORAGE_BREAKDOWN` hat seit Arbeitspaket B8 bereits ein festgelegtes Wire-Format (`GetStorageBreakdownCommandPayload`/`-Result`, Zod-Gegenstück `getStorageBreakdownResultSchema` in `packages/validation/src/storage.ts`), weil das Backend die Antwort entgegennehmen, zwischenspeichern und ausliefern muss (§16). Ausgeführt wird der Befehl weiterhin von niemandem: Er steht unverändert **nicht** in `IMPLEMENTED_AGENT_COMMANDS`, der Agent antwortet also weiter mit `AGENT_COMMAND_NOT_IMPLEMENTED`, bis A3 den Scanner baut.
+
 ---
 
 ## 6. Datenmodell (Kernentitäten)
@@ -230,6 +249,10 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 **Zwei Sichten auf `Schedule`:** Die Entität trägt beide Fälle aus Lastenheft §3.3. B5 führt den **Backup-Zeitplan** als `BackupScheduleDto` (`packages/contracts/src/schedule.ts`) – genau ein Datensatz je Server, ohne Namen, weil die Backup-Verwaltung nur diesen einen kennt. F3 zeigt im Reiter „Aufgaben" die **allgemeine Liste** benannter Aufgaben (nächtlicher Neustart, Konsolenbefehl) als `ServerTaskDto` (`packages/contracts/src/server-task.ts`). Beide nutzen denselben Aktionssatz `SCHEDULE_ACTIONS` und dasselbe `cronExpressionSchema`. Ob die beiden Sichten später zu einer zusammengeführt werden, entscheidet B3 beim Anschluss der Orchestrierung – bis dahin ist die Trennung bewusst und dokumentiert.
 
 **Audit-Log-Aufbewahrung:** Einträge werden nie durch Admin-Aktionen verändert oder gelöscht (append-only). Ein separater, rein additiver Archivierungsprozess exportiert Einträge, die älter als 24 Monate sind, in eine komprimierte Archivdatei und entfernt sie anschließend aus der aktiven Tabelle – so bleibt das Datenbankwachstum kontrollierbar, ohne dass die Unveränderlichkeit während laufender Vorgänge aufgeweicht wird.
+
+**Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin`):** Die Unveränderlichkeit ist dreifach abgesichert. `AuditLogRepository` und `AuditService` kennen weder eine Update- noch eine allgemeine Delete-Operation – auch nicht für den Owner. Zusätzlich lehnt der Trigger `audit_log_append_only` (Migration `0005_admin_ports_audit_storage`) UPDATE, DELETE und TRUNCATE auf `audit_log` **in der Datenbank** ab; auch ein direkter `psql`-Zugriff kommt daran nicht vorbei. Einzige Ausnahme ist der Archivierungsprozess: Er weist sich über die Sitzungsvariable `palantir.audit_archive` aus (per `SET LOCAL`, gilt also nur innerhalb seiner Transaktion) und darf auch dann ausschließlich Einträge älter als 24 Monate entfernen – nachdem die Archivdatei geschrieben ist. Schlägt der Export fehl, bleibt die aktive Tabelle unverändert (`AUDIT_ARCHIVE_FAILED`). Angestoßen wird der Lauf über die Admin-Oberfläche oder `pnpm --filter @palantir/backend audit:archive`; der Ablageort steht in `AUDIT_ARCHIVE_DIR`.
+
+**Katalog der protokollierten Aktionen:** `packages/contracts/src/audit.ts` (`AUDIT_ACTIONS`), Benennungsschema wie bei den Events (`<domäne>.<vorgang>`, §14). Jedes Arbeitspaket ergänzt dort additiv die sicherheitsrelevanten Aktionen, die es selbst protokolliert – nie als Freitext am Aufrufort.
 
 ---
 
@@ -366,6 +389,10 @@ Ein Skript (`scripts/setup.sh`), das:
 - Scan erfolgt on-demand (nicht dauerhaft im Hintergrund), Ergebnis wird mit Zeitstempel zwischengespeichert
 - Löschbar über die Oberfläche: Backups, ungenutzte Docker-Images, eindeutig verwaiste Daten
 - Aktive Server-Datenordner sind hierüber nicht löschbar (nur über den dedizierten Server-Löschen-Vorgang)
+
+**Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin/storage.ts`):** Der Agent meldet nur, was auf der Platte liegt und ob es benutzt wird; ob ein Posten gelöscht werden darf, entscheidet ausschließlich das Backend – an genau einer Stelle (`classifyEntry()`) – und liefert das Ergebnis als `permissions.canDelete` samt benanntem `deleteBlockedReason` mit. Der zwischengespeicherte Scan enthält bewusst die **rohe** Antwort des Agents: Die Bewertung passiert bei jedem Abruf neu, weil sie vom aktuellen Datenbestand abhängt und nicht vom Zeitpunkt des Scans.
+
+Die Regel ist restriktiv ausgelegt: Ein Datenordner, dessen Server das Backend nicht kennt, gilt **nicht** automatisch als verwaist, sondern landet in der Kategorie `other` und bleibt gesperrt (`notClearlyOrphaned`). Verwaist ist nur, was der Agent selbst als verwaist meldet. Ohne diese Auslegung wäre bei unvollständiger Serverliste jeder Datenordner löschbar.
 
 ---
 

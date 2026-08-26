@@ -13,6 +13,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:check": "drizzle-kit check",
+    "audit:archive": "tsx src/db/archive-audit.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src drizzle.config.ts",
     "test": "vitest run --passWithNoTests",
