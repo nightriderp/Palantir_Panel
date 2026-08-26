@@ -191,6 +191,16 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AUDIT_ARCHIVE_FAILED` | 500 | Archivdatei des Audit-Logs konnte nicht geschrieben werden (§6) |
 | `OWNER_PROTECTED` | 403 | Aktion würde das Owner-Konto aussperren (§8) |
 | `REGISTRATION_REQUEST_INVALID_STATE` | 409 | Wartelisten-Aktion passt nicht zum Zustand des Kontos (§7) |
+| `SERVER_NOT_FOUND` | 404 | Gameserver existiert nicht oder ist nicht sichtbar (§9) |
+| `SERVER_STATE_CONFLICT` | 409 | Lifecycle-Übergang im aktuellen Zustand unzulässig (§9) |
+| `SERVER_CRASH_LOOP` | 409 | Crash-Loop-Schutz hat abgeschaltet (§9) |
+| `SERVER_HEALTH_CHECK_FAILED` | 504 | Server war nach dem Start nicht erreichbar (§9) |
+| `GAME_TYPE_NOT_FOUND` | 404 | Spiele-Definition existiert nicht (§11) |
+| `GAME_TYPE_NOT_AVAILABLE` | 409 | Spiele-Definition existiert, ist in dieser Phase aber nicht nutzbar (§11) |
+| `SUBDOMAIN_INVALID` | 400 | Subdomain verletzt die Formatregel (§13) |
+| `DNS_UPDATE_FAILED` | 502 | DNS-Eintrag konnte bei Cloudflare nicht gesetzt werden (§13) |
+| `AGENT_NOT_CONNECTED` | 503 | Für die Ziel-Node ist kein Agent verbunden (§2.2) |
+| `AGENT_COMMAND_TIMEOUT` | 504 | Agent hat den Befehl nicht innerhalb der Frist beantwortet (§5.3) |
 
 Die `AGENT_*`-Codes gelten für den WebSocket-Kanal zum Agent, der kein REST-Endpunkt ist. Die HTTP-Status-Zuordnung greift dort beim Handshake und dient dem Backend als Vorlage, wenn es einen Agent-Fehler an eine REST-Antwort weiterreicht.
 
@@ -335,6 +345,10 @@ Löschen, Klonen, Exportieren und die Mitgliederverwaltung bleiben dem Besitzer 
 
 **Zustände:** `creating → stopped → starting → running → stopping → stopped`, zusätzlich `error` und `crashed`
 
+**Ort der Zustände und Übergänge:** `packages/contracts/src/server-lifecycle.ts` (`SERVER_STATUSES`, `SERVER_STATUS_TRANSITIONS`). Die Tabelle der erlaubten Übergänge steht bewusst in den Contracts, damit Backend (State Machine in B3) und Frontend (Bedienelemente ausgrauen, F3) dieselbe Auslegung sehen; verboten ist alles, was dort nicht steht. Der Agent meldet demgegenüber die beobachtbaren **Container**-Zustände (`AGENT_CONTAINER_STATUSES`) – die Zuordnung auf den Lifecycle-Zustand macht der Soll/Ist-Abgleich in B3.
+
+**Mitgliedsstufen je Server** (Lastenheft §3.3, Entität `ServerMember`): `viewer` (sehen), `operator` (starten/stoppen/neu starten, Konsolenbefehle), `manager` (zusätzlich Einstellungen, Dateien, Backups, geplante Aufgaben). Löschen und Mitgliederverwaltung bleiben beim Besitzer. Festgehalten in `packages/contracts/src/server-member.ts`; die Stufe ergänzt das Rollensystem aus §8, ersetzt es nicht.
+
 - `starting → running` erfolgt erst nach erfolgreichem Health-Check (Query via `gamedig` bzw. generischer Port-Connect-Test beim Test-Typ) – ein gestarteter Prozess allein reicht nicht
 - Bei `crashed`: automatischer Neustart-Versuch mit begrenzter Anzahl an Wiederholungen innerhalb eines Zeitfensters (Crash-Loop-Schutz), danach `error` mit Benachrichtigung
 - Auto-Shutdown: periodische Spielerabfrage durch den Agent; Schonfrist nach Start, konfigurierbarer Inaktivitäts-Timeout, pro Server deaktivierbar
@@ -354,6 +368,7 @@ Löschen, Klonen, Exportieren und die Mitgliederverwaltung bleiben dem Besitzer 
 ## 11. Spiele-Registry
 
 - `GameTypeDefinition` kapselt alles Spielspezifische: Docker-Image, Standard-Umgebungsvariablen, editierbares Config-Schema fürs Frontend, Standard-Ports, Ressourcen-Empfehlung, Query-Typ (für `gamedig`), Icon, Flag für Hostname-Routing-Fähigkeit
+- **Ort des Typs:** `packages/contracts/src/game-type.ts` (`GameTypeDefinition`, `GameTypeDto`, `GameQuerySpec`, `GameConfigField`). Die konkreten Definitionen liegen als Registry im Backend (`apps/backend/src/modules/server-orchestration/game-registry.ts`) – neue Spiele werden dort per Code ergänzt. `GameTypeDto` liefert dem Frontend bewusst nicht `dockerImage`, `defaultCommand`, `defaultEnv` und `dataVolumeContainerPath`: das sind Betriebsinterna des Homeservers.
 - Phase 1 nutzt einen minimalen Test-Typ (einfacher Container, der auf einem Port lauscht) zur Validierung der gesamten Orchestrierungs-Pipeline ohne echtes Spiel
 - Neue Spiele werden in Version 1 per Code/Deployment ergänzt, nicht über eine Admin-Oberfläche
 
@@ -385,6 +400,7 @@ Ein Skript (`scripts/setup.sh`), das:
 ## 13. Domain- & Subdomain-Routing
 
 - Nutzer wählt beim Erstellen eines Servers eine eigene Subdomain (Verfügbarkeitsprüfung, Formatvalidierung, gesperrte reservierte Namen wie `www`, `api`, `admin`, `vpn`, `mail`)
+- **Ort der Regeln:** `packages/contracts/src/subdomain.ts` (`SUBDOMAIN_PATTERN`, Längengrenzen, `RESERVED_SUBDOMAINS`), Zod-Gegenstück `subdomainSchema` in `packages/validation/src/server.ts`. Format und Sperrliste prüfen Frontend und Backend mit demselben Schema; die Verfügbarkeit gegen die Datenbank prüft ausschließlich das Backend (`SUBDOMAIN_TAKEN`). Die Sperrliste geht über die fünf im Absatz genannten Namen hinaus und enthält zusätzlich die von dieser Installation selbst belegten Namen sowie die Namen, die Mail- und Zertifikatsprüfungen erwarten (`autodiscover`, `mx`, `ns1`, …) – ein Nutzer, der sich einen davon sichert, würde sonst den Mailversand der Domain stören.
 - Backend legt automatisch den passenden DNS-Eintrag über die Cloudflare-API an (Token beschränkt auf DNS-Bearbeitungsrecht)
 - Minecraft: DNS-Eintrag zeigt auf den Hostname-Routing-Proxy (ein öffentlicher Port für alle Instanzen)
 - Andere Spiele: DNS-Eintrag zeigt auf die VPS-IP, Port bleibt für den Spieler sichtbar/einzugeben
@@ -396,6 +412,7 @@ Ein Skript (`scripts/setup.sh`), das:
 
 - Internes Event-System (`server.started`, `server.stopped`, `server.crashed`, `backup.failed`, `autoShutdown.triggered`, `resource.low`, `user.registered`, `message.reported`, ...)
 - Reine Live-Ereignisse des Browser-Kanals (§5.3), die **keine** Benachrichtigung auslösen, sondern nur eine offene Ansicht aktuell halten: `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed`. Sie stehen im selben Katalog `WEBSOCKET_EVENTS`, sind aber bewusst kein Anlass für eine `NotificationRule`.
+- **Ergaenzungen aus B3 (Server-Orchestrierung, §9):** `server.created`, `server.deleted`, `server.restarted`, `server.failed` (Zustand `error` erreicht - im Gegensatz zu `server.crashed`, das ein automatisch behebbarer Einzelabsturz ist) und `server.cloned`. Den Zustandswechsel meldet weiterhin `server.statusChanged`, den Fortschritt beim Klonen `serverClone.progressed` - beide aus F3.
 - **Benennungsschema:** `<domäne>.<vorgang>`, beide Segmente lowerCamelCase, genau ein Punkt als Trenner. Als Typ festgehalten in `packages/contracts/src/events.ts` (`WEBSOCKET_EVENTS`, `WebSocketEventName`); neue Events werden dort und in dieser Liste additiv ergänzt.
 - `NotificationChannel` (aktuell: Discord-Webhook) getrennt von `NotificationRule` (Event → Kanal → Empfängerkreis), beides über Admin-Oberfläche konfigurierbar
 
