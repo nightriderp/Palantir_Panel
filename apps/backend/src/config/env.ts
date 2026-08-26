@@ -162,10 +162,23 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((value) => value === 'true'),
-  /** Öffentliche Adresse des Frontends – Ziel des Rücksprungs nach OAuth. */
-  PUBLIC_WEB_URL: z.string().url().optional(),
-  /** Basis-Domain; dient dem Authenticator als Aussteller-Bezeichnung. */
+  /**
+   * Basis-Domain der Instanz – die **einzige** Stelle, an der der Domainname
+   * gepflegt wird. Alle folgenden Adressen werden daraus abgeleitet, sofern
+   * sie nicht ausdrücklich gesetzt sind (siehe `adressenAbleiten`).
+   * Dient zusätzlich dem Authenticator als Aussteller-Bezeichnung.
+   */
   PALANTIR_DOMAIN: z.string().min(1).default('palantir.local'),
+  /**
+   * Öffentliche Adresse des Frontends – Ziel des Rücksprungs nach OAuth.
+   * Ohne Angabe: `https://<PALANTIR_DOMAIN>`.
+   */
+  PUBLIC_WEB_URL: z.string().url().optional(),
+  /**
+   * Öffentliche Adresse der Backend-API.
+   * Ohne Angabe: `https://api.<PALANTIR_DOMAIN>`.
+   */
+  PUBLIC_API_URL: z.string().url().optional(),
 
   /** HMAC-Schlüssel der ALTCHA-Challenges (Pflichtenheft §7). */
   ALTCHA_HMAC_KEY: z.string().min(1).optional(),
@@ -194,7 +207,25 @@ const envSchema = z.object({
   STEAM_RETURN_URL: z.string().optional(),
 });
 
-const parsed = envSchema.safeParse(process.env);
+/**
+ * In einer `.env` bedeutet `SCHLUESSEL=` „nicht gesetzt", nicht „leerer Wert".
+ * `dotenv` liefert dafür aber einen leeren String. Ohne diese Normalisierung
+ * würden Vorgabewerte nicht greifen, abgeleitete Adressen leer bleiben und
+ * Prüfungen wie `.url()` an einem leeren String scheitern – die Anwendung käme
+ * also gar nicht erst hoch, obwohl die Vorlage genau so ausgeliefert wird.
+ */
+export function leereWerteAlsUngesetzt(
+  werte: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  return Object.fromEntries(
+    Object.entries(werte).map(([schlüssel, wert]) => [
+      schlüssel,
+      typeof wert === 'string' && wert.trim() === '' ? undefined : wert,
+    ]),
+  );
+}
+
+const parsed = envSchema.safeParse(leereWerteAlsUngesetzt(process.env));
 
 if (!parsed.success) {
   const details = parsed.error.issues
@@ -203,7 +234,40 @@ if (!parsed.success) {
   throw new Error(`Ungültige Umgebungskonfiguration für das Backend:\n${details}`);
 }
 
-export const env = parsed.data;
+/**
+ * Leitet alle domainabhängigen Adressen aus `PALANTIR_DOMAIN` ab.
+ *
+ * Hintergrund: Der Domainname kam bisher an neun Stellen der `.env` vor. Ein
+ * Wechsel hätte jede einzelne davon betroffen – mit der Gefahr, eine zu
+ * übersehen (etwa eine OAuth-Redirect-URI, was den Login stillschweigend
+ * bricht). Maßgeblich ist deshalb nur noch `PALANTIR_DOMAIN`.
+ *
+ * Jeder abgeleitete Wert bleibt einzeln überschreibbar. Das ist für die
+ * Entwicklung nötig, wo Frontend und API auf `localhost` mit unterschiedlichen
+ * Ports liegen und sich nicht aus einer Domain ergeben.
+ *
+ * Die Callback-Pfade entsprechen der in `modules/auth/routes.ts` registrierten
+ * Route `/auth/:provider/callback` – sie sind nicht frei gewählt.
+ */
+export function adressenAbleiten(werte: z.infer<typeof envSchema>) {
+  const ohneSchrägstrich = (url: string): string => url.replace(/\/+$/, '');
+  const domain = werte.PALANTIR_DOMAIN;
+
+  const webUrl = ohneSchrägstrich(werte.PUBLIC_WEB_URL ?? `https://${domain}`);
+  const apiUrl = ohneSchrägstrich(werte.PUBLIC_API_URL ?? `https://api.${domain}`);
+
+  return {
+    ...werte,
+    PUBLIC_WEB_URL: webUrl,
+    PUBLIC_API_URL: apiUrl,
+    COOKIE_DOMAIN: werte.COOKIE_DOMAIN ?? domain,
+    DISCORD_REDIRECT_URI: werte.DISCORD_REDIRECT_URI ?? `${apiUrl}/auth/discord/callback`,
+    TWITCH_REDIRECT_URI: werte.TWITCH_REDIRECT_URI ?? `${apiUrl}/auth/twitch/callback`,
+    STEAM_RETURN_URL: werte.STEAM_RETURN_URL ?? `${apiUrl}/auth/steam/callback`,
+  };
+}
+
+export const env = adressenAbleiten(parsed.data);
 export type Env = typeof env;
 
 /** Geheimnisse, ohne die das Auth-Modul nicht arbeiten kann. */
