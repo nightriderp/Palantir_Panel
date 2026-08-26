@@ -1,0 +1,40 @@
+# Selbstaktualisierung der Gamenode - einmaliger Lauf, angestoßen vom Timer daneben.
+#
+# Ablageort auf dem Homeserver (in der Gameserver-VM):
+#   /etc/systemd/system/palantir-update.service
+#
+# Einrichten:
+#   sudo cp /opt/palantir/deploy/gamenode/palantir-update.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now palantir-update.timer
+
+[Unit]
+Description=Palantir Gamenode aktualisieren
+Documentation=file:///opt/palantir/docs/ci-cd.md
+# Ohne Netz und ohne Docker hat der Lauf keinen Zweck.
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/palantir/deploy/gamenode/update.sh
+
+# Hängt der Lauf (Registry antwortet nicht), soll er abbrechen statt den Timer
+# dauerhaft zu blockieren.
+TimeoutStartSec=900
+
+# Härtung. Das Skript braucht Docker, Git und Schreibrechte im Repo-Verzeichnis -
+# sonst nichts.
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/palantir
+
+StandardOutput=journal
+StandardError=journal
