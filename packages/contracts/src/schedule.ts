@@ -64,3 +64,53 @@ export interface BackupScheduleDto {
   updatedAt: string;
   permissions: BackupSchedulePermissions;
 }
+
+// ---------------------------------------------------------------------------
+// Allgemeine Aufgabenliste (Reiter „Aufgaben" in F3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Zweite Sicht auf dieselbe Entität `Schedule` (Pflichtenheft §6).
+ *
+ * `BackupScheduleDto` oben ist der **eine** Backup-Zeitplan je Server, den die
+ * Backup-Verwaltung (B5) auswertet. Hier steht die **allgemeine, benannte
+ * Liste**, die Lastenheft §3.3 verlangt: „täglicher Neustart oder Konsolenbefehl
+ * zu festem Zeitpunkt". Beides sind Zeilen derselben Tabelle `schedules` –
+ * bewusst keine zweite Tabelle und kein zweiter Aktionskatalog.
+ */
+
+/** Ausgang des letzten Laufs. */
+export const SCHEDULE_RUN_RESULTS = ['success', 'failed', 'skipped'] as const;
+
+export type ScheduleRunResult = (typeof SCHEDULE_RUN_RESULTS)[number];
+
+export interface SchedulePermissions {
+  canEdit: boolean;
+  canDelete: boolean;
+  /** Aufgabe pausieren und wieder aktivieren, ohne sie zu löschen. */
+  canToggle: boolean;
+}
+
+export interface ScheduleDto {
+  id: string;
+  serverId: string;
+  /** Frei wählbarer Name, z. B. „Nächtlicher Neustart". */
+  name: string;
+  action: ScheduleAction;
+  /**
+   * Konsolenbefehl bei `action === 'command'`; sonst `null`. Entspricht dem
+   * Feld `payload` der Entität aus Pflichtenheft §6.
+   */
+  command: string | null;
+  /** Cron-Ausdruck mit fünf Feldern, ausgewertet in `timezone`. */
+  cronExpression: string;
+  /** IANA-Zeitzone, in der der Ausdruck gilt, z. B. `Europe/Berlin`. */
+  timezone: string;
+  enabled: boolean;
+  /** ISO-8601-Zeitstempel des letzten Laufs; `null`, wenn nie gelaufen. */
+  lastRunAt: string | null;
+  lastRunResult: ScheduleRunResult | null;
+  /** ISO-8601-Zeitstempel des nächsten Laufs; `null`, wenn deaktiviert. */
+  nextRunAt: string | null;
+  permissions: SchedulePermissions;
+}
