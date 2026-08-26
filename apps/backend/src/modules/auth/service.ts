@@ -269,7 +269,14 @@ export class AuthService {
     code: string,
     context: RequestContext,
   ): Promise<TwoFactorOutcome> {
-    const userId = await verifyTwoFactorToken(twoFactorToken, { secret: this.jwtSecret });
+    // Dieselbe Zeitquelle wie beim Ausstellen (`signTwoFactorToken`) – sonst
+    // prüft `jose` gegen die Systemuhr und der Token gilt fälschlich als
+    // abgelaufen.
+    const userId = await verifyTwoFactorToken(
+      twoFactorToken,
+      { secret: this.jwtSecret },
+      this.now().getTime(),
+    );
 
     if (!userId) {
       throw new AuthError('AUTH_TWO_FACTOR_EXPIRED');
