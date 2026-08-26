@@ -379,6 +379,8 @@ Löschen, Klonen, Exportieren und die Mitgliederverwaltung bleiben dem Besitzer 
 - Ein automatischer Neustart nach Absturz zählt im Sinne der Auto-Shutdown-Schonfrist als regulärer Serverstart – verhindert, dass ein gerade wiederhergestellter Server sofort fälschlich als inaktiv erkannt und erneut abgeschaltet wird
 - Klonen: erzeugt einen neuen `GameServer`-Datensatz mit kopierter Konfiguration und zwingend neuer, eigener Subdomain (gleiche Prüf-/Formatregeln wie bei Neuerstellung); Weltdaten werden optional synchron mitkopiert, Fortschritt wird im Frontend angezeigt
 
+**Zeitgeber des Backends (Ergänzung aus R2):** Der Auto-Shutdown-Sweep und die fälligen Backup-Zeitpläne (Lastenheft §3.3) brauchen einen Takt. Beide Module bringen bewusst **keinen** eigenen Timer mit – sie bleiben dadurch ohne Wartezeit prüfbar, und ein Wartungs-Kommando kann denselben Ablauf anstoßen. Der Takt steht deshalb an genau einer Stelle: `apps/backend/src/scheduler.ts`. Intervall `SCHEDULER_INTERVAL_MS` (Vorgabe 60 Sekunden), weil beide Fälligkeiten minutengenau sind: Ein Cron-Ausdruck löst frühestens jede Minute aus, Inaktivitäts- und Schonfrist sind in Minuten konfiguriert. Dauert ein Durchlauf länger als das Intervall, wird der nächste **übersprungen** und nicht eingereiht – beide Aufgaben arbeiten nach Fälligkeitszeitpunkt, eingereihte Läufe würden sich bei einem hängenden Homeserver aufstauen und danach dieselben Befehle mehrfach schicken. Der Sweep läuft nur über Nodes mit offener Agent-Verbindung; ohne Verbindung ließe sich ohnehin kein Container stoppen.
+
 ---
 
 ## 10. Ressourcen- & Kapazitätsmanagement
@@ -386,6 +388,8 @@ Löschen, Klonen, Exportieren und die Mitgliederverwaltung bleiben dem Besitzer 
 - `UserResourceLimit` optional pro Nutzer (nullable = kein Limit)
 - Vor jedem Start: harte Prüfung der tatsächlich freien Ressourcen der Ziel-VM gegen die angeforderten Limits des Servers – unabhängig vom Nutzer-Kontingent
 - Ressourcen-Warnungen (Event `resource.low`) bei konfigurierbaren Schwellwerten (Server- und Node-Ebene)
+
+**Eine Quelle für die Belegung (Ergänzung aus R2):** Die Belegung einer Node wird an genau einer Stelle gezählt – `ServerUsageRepository` (Schnittstelle in `modules/resources/ports.ts`, Umsetzung über `game_servers` in `modules/server-orchestration/usage-repository.ts`). Aus derselben Zählung wird auch `HostNodeDto.usage` der Node-Übersicht gefüllt (`modules/resources/node-usage.ts`), damit Anzeige und Startprüfung nicht auseinanderlaufen können. **Abweichung, bewusst:** `HostNodeUsage` ist in Lastenheft §3.7 als *gemessene* Auslastung beschrieben; geliefert wird die *reservierte*. Ein echter Messwert müsste vom Agent kommen, und §5.3 kennt bislang nur `GET_STATS` je Container, keinen node-weiten Wert. Bis zu einer Protokoll-Erweiterung gilt die Reservierung als obere Schranke – sie überschätzt eher, und das ist bei einer Auslastungsanzeige die richtige Richtung. Vermerkt in WORK_STATUS.md unter „Gefundene Punkte" (68).
 
 ---
 
