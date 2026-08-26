@@ -123,9 +123,19 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 |---|---|---|
 | `AUTH_INVALID_CREDENTIALS` | 401 | Login mit falschen Zugangsdaten (§7) |
 | `AUTH_REQUIRED` | 401 | Zugriff ohne gültige Sitzung (§7, §8) |
+| `AUTH_ACCOUNT_BANNED` | 403 | Konto ist gesperrt (Lastenheft §3.1) |
+| `AUTH_RATE_LIMITED` | 429 | IP-Rate-Limit auf Anmeldung/Registrierung greift (§7) |
+| `AUTH_TWO_FACTOR_INVALID` | 401 | Falscher TOTP- oder Backup-Code im zweiten Anmeldeschritt (§7) |
+| `AUTH_TWO_FACTOR_EXPIRED` | 401 | Zwischen-Token des zweiten Anmeldeschritts abgelaufen (§7) |
+| `AUTH_CAPTCHA_INVALID` | 400 | ALTCHA-Prüfung der Registrierung fehlgeschlagen (§3, §7) |
+| `AUTH_USERNAME_TAKEN` | 409 | Benutzername bei der Registrierung bereits vergeben (§7) |
+| `AUTH_PASSWORD_TOO_WEAK` | 400 | Passwort erfüllt die Mindestanforderungen aus §7 nicht |
+| `AUTH_PROVIDER_ERROR` | 502 | Anmeldung über Discord/Twitch/Steam fehlgeschlagen (Lastenheft §3.1) |
 | `PERMISSION_DENIED` | 403 | Angemeldet, aber die nötige Permission fehlt (§8) |
 | `RESOURCE_LIMIT_EXCEEDED` | 403 | Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (§10) |
 | `ROLE_PROTECTED` | 403 | Änderung an einer geschützten Systemrolle („Gast", §8) |
+| `USER_NOT_FOUND` | 404 | Konto existiert nicht (§6, §10) |
+| `NODE_NOT_FOUND` | 404 | Node existiert nicht (§6, §10) |
 | `ROLE_NOT_FOUND` | 404 | Rolle existiert nicht (§8) |
 | `ROLE_NAME_TAKEN` | 409 | Rollenname bereits vergeben (§8) |
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
@@ -227,6 +237,12 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - Access-Token: kurzlebiges JWT; Refresh-Token: opak, **gehasht in der `Session`-Tabelle gespeichert** (nicht im Klartext), in httpOnly-Secure-Cookie mit `SameSite=Lax` (bewusst nicht `Strict`: das würde den Cookie-Versand beim Rückkehr-Redirect von Discord/Steam/Twitch-OAuth verhindern und den Login-Flow brechen); zustandsändernde Requests zusätzlich per CSRF-Token abgesichert
 - Aktive Sitzungen einsehbar/einzeln widerrufbar über die `Session`-Tabelle
 - ALTCHA-Verifikation + IP-basiertes Rate-Limiting auf Registrierung und Login
+
+**Ort der Auth-DTOs:** `packages/contracts/src/auth.ts` (`AccountDto`, `LoginResult`, `AltchaChallenge`, `AUTH_METHOD_TYPES`, `OAUTH_PROVIDERS`), Zod-Gegenstück in `packages/validation/src/auth.ts` (Eingabe-Schemas für Login, Registrierung und 2FA sowie die Antwort-Schemas). Festlegungen dieser Sitzung, die das Pflichtenheft offen ließ:
+
+- **2FA als Zwischenschritt, nicht als Fehler:** Der Login antwortet mit `status: 'two_factor_required'` und einem kurzlebigen `twoFactorToken` (kein Access-Token). Erst der zweite Schritt legt die Sitzung an. Ein *falscher* Code ist dagegen ein Fehler (`AUTH_TWO_FACTOR_INVALID`), ein abgelaufener Zwischen-Token ebenfalls (`AUTH_TWO_FACTOR_EXPIRED`).
+- **Wartezustand als eigenes Feld:** `AccountDto.awaitingApproval` sagt, ob das Konto noch auf die Freischaltung durch einen Admin wartet (Lastenheft §3.1). Bewusst ein serverseitig gesetztes Feld statt eines Rückschlusses aus Rollenname oder leerem `permissions`-Objekt – sonst läge die Auslegung im Frontend (§5.2).
+- **Passwortlänge:** Mindestens 12 Zeichen (siehe oben), höchstens 200 – die Obergrenze begrenzt nur die Rechenzeit von Argon2id und ist kein Sicherheitsmerkmal.
 
 ---
 
