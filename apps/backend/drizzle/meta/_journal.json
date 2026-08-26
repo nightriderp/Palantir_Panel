@@ -57,6 +57,13 @@
       "when": 1787751472443,
       "tag": "0007_server_orchestration",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787779528049,
+      "tag": "0008_notifications",
+      "breakpoints": true
     }
   ]
 }
