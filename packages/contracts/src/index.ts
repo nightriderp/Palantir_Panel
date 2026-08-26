@@ -49,6 +49,7 @@ export * from './game-server.js';
 export * from './permissions.js';
 export * from './resources.js';
 export * from './role.js';
+export * from './auth.js';
 
 export {
   AGENT_COMMANDS,
