@@ -30,14 +30,31 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
   });
 
   it('lässt die A3-Befehle bewusst als noch nicht umgesetzt stehen', () => {
-    // Die vier Backup-Befehle und GET_STORAGE_BREAKDOWN sind Dateisystem-
-    // und Job-Aufgaben (A3), nicht Container-Ansteuerung.
-    expect(isImplementedAgentCommand('CREATE_BACKUP')).toBe(false);
-    expect(isImplementedAgentCommand('RESTORE_BACKUP')).toBe(false);
-    expect(isImplementedAgentCommand('DOWNLOAD_BACKUP')).toBe(false);
-    expect(isImplementedAgentCommand('DELETE_BACKUP')).toBe(false);
-    expect(isImplementedAgentCommand('GET_STORAGE_BREAKDOWN')).toBe(false);
-    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length - 5);
+    // Dateisystem- und Job-Aufgaben (A3), nicht Container-Ansteuerung. Die
+    // Liste steht ausgeschrieben da: Wandert ein Befehl nach A3 hinüber, soll
+    // das hier auffallen und nicht nur eine Zahl verschieben.
+    const offen = [
+      'CREATE_BACKUP',
+      'RESTORE_BACKUP',
+      'DOWNLOAD_BACKUP',
+      'DELETE_BACKUP',
+      'GET_STORAGE_BREAKDOWN',
+      'SET_SERVER_QUERY',
+      'REMOVE_STORAGE_ENTRY',
+    ] as const;
+
+    for (const command of offen) {
+      expect(isImplementedAgentCommand(command)).toBe(false);
+    }
+
+    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command)).sort()).toEqual(
+      [...offen].sort(),
+    );
+  });
+
+  it('kennt die beiden von A3 ergänzten Befehle', () => {
+    expect([...AGENT_COMMANDS]).toContain('SET_SERVER_QUERY');
+    expect([...AGENT_COMMANDS]).toContain('REMOVE_STORAGE_ENTRY');
   });
 
   it('isImplementedAgentCommand() erkennt Befehle außerhalb des Protokolls', () => {
