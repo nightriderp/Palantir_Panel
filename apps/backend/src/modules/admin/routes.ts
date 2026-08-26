@@ -85,10 +85,14 @@ export function ipHintOf(request: FastifyRequest): string | null {
 /**
  * Baut den Aufrufkontext.
  *
- * `userId` und `displayName` liefert B1 über die Sitzung. Solange das
- * Auth-Modul fehlt, bleiben beide `null` – der Eintrag im Audit-Log ist dann
- * ein Systemeintrag statt eines namentlichen. Die Route selbst kommt in dem
- * Zustand ohnehin nicht bis hierher, weil ohne Sitzung kein Actor existiert.
+ * `userId` und `displayName` liefert B1 über die Sitzung: Der Hook, der das
+ * Access-Token prüft und die Sitzung auflöst, hängt sie als
+ * `request.adminIdentity` an den Request (R1, `modules/auth/plugin.ts`).
+ *
+ * Läuft das Auth-Modul nicht – etwa in Tests des Grundgerüsts –, bleiben beide
+ * `null` und der Eintrag im Audit-Log ist ein Systemeintrag statt eines
+ * namentlichen. Die Route selbst kommt in dem Zustand ohnehin nicht bis hierher,
+ * weil ohne Sitzung kein Actor existiert.
  */
 export function contextFrom(request: FastifyRequest): AdminContext {
   return {
@@ -102,8 +106,11 @@ export function contextFrom(request: FastifyRequest): AdminContext {
 declare module 'fastify' {
   interface FastifyRequest {
     /**
-     * Identität des angemeldeten Kontos für das Audit-Log. Wird von B1 gesetzt,
-     * sobald das Auth-Modul steht; bis dahin bleibt sie leer.
+     * Identität des angemeldeten Kontos für das Audit-Log.
+     *
+     * Gesetzt vom Auth-Modul (B1) beim Auflösen der Sitzung; `null`, solange
+     * niemand angemeldet ist oder das Modul gar nicht läuft. Der Anzeigename
+     * ist eine Kopie zum Zeitpunkt der Aktion (Pflichtenheft §6).
      */
     adminIdentity?: { userId: string; displayName: string } | null;
   }
