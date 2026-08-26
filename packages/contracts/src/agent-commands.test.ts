@@ -29,27 +29,12 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
     }
   });
 
-  it('lässt die A3-Befehle bewusst als noch nicht umgesetzt stehen', () => {
-    // Dateisystem- und Job-Aufgaben (A3), nicht Container-Ansteuerung. Die
-    // Liste steht ausgeschrieben da: Wandert ein Befehl nach A3 hinüber, soll
-    // das hier auffallen und nicht nur eine Zahl verschieben.
-    const offen = [
-      'CREATE_BACKUP',
-      'RESTORE_BACKUP',
-      'DOWNLOAD_BACKUP',
-      'DELETE_BACKUP',
-      'GET_STORAGE_BREAKDOWN',
-      'SET_SERVER_QUERY',
-      'REMOVE_STORAGE_ENTRY',
-    ] as const;
-
-    for (const command of offen) {
-      expect(isImplementedAgentCommand(command)).toBe(false);
-    }
-
-    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command)).sort()).toEqual(
-      [...offen].sort(),
-    );
+  it('führt seit A3 jeden Befehl des Protokolls als umgesetzt', () => {
+    // Vor A3 fehlten hier die vier Backup-Befehle und der Storage-Scanner –
+    // Dateisystem- und Job-Aufgaben, keine Container-Ansteuerung. Mit dem
+    // Job-Modul sind sie gebaut; bleibt einer übrig, soll das auffallen.
+    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual([]);
+    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length);
   });
 
   it('kennt die beiden von A3 ergänzten Befehle', () => {

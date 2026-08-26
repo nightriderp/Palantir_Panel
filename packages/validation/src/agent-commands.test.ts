@@ -1,5 +1,6 @@
 import { IMPLEMENTED_AGENT_COMMANDS } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
+import { getStorageBreakdownPayloadSchema } from './storage.js';
 import {
   AGENT_COMMAND_PAYLOAD_SCHEMAS,
   createCommandPayloadSchema,
@@ -118,13 +119,39 @@ describe('Optionale Felder', () => {
   });
 
   it('verlangt bei jedem container-bezogenen Befehl eine containerId', () => {
+    // Ausgenommen sind CREATE (die ID entsteht erst und kommt im Ergebnis
+    // zurück) und die Befehle, die keinen Container betreffen: die
+    // Backup-Befehle arbeiten auf Pfaden, GET_STORAGE_BREAKDOWN ist node-weit.
+    const ohneContainer = new Set([
+      'CREATE',
+      'CREATE_BACKUP',
+      'RESTORE_BACKUP',
+      'DOWNLOAD_BACKUP',
+      'DELETE_BACKUP',
+      'GET_STORAGE_BREAKDOWN',
+      'SET_SERVER_QUERY',
+      'REMOVE_STORAGE_ENTRY',
+    ]);
+
     for (const [command, schema] of Object.entries(AGENT_COMMAND_PAYLOAD_SCHEMAS)) {
-      if (command === 'CREATE') {
-        // Bei CREATE entsteht die ID erst – sie kommt im Ergebnis zurück.
+      if (ohneContainer.has(command)) {
         continue;
       }
       expect(schema.safeParse({}).success, command).toBe(false);
     }
+  });
+
+  it('deckt die Schema-Tabelle genau die umgesetzten Befehle ab', () => {
+    // Ein Befehl in IMPLEMENTED_AGENT_COMMANDS ohne Schema würde ungeprüft
+    // durchgereicht – der Adapter schlägt dann erst beim Zugriff fehl.
+    expect(Object.keys(AGENT_COMMAND_PAYLOAD_SCHEMAS).sort()).toEqual(
+      [...IMPLEMENTED_AGENT_COMMANDS].sort(),
+    );
+  });
+
+  it('lässt GET_STORAGE_BREAKDOWN ohne Nutzdaten zu', () => {
+    // Node-weiter Befehl; includeImages ist optional und ohne Angabe true.
+    expect(getStorageBreakdownPayloadSchema.safeParse({}).success).toBe(true);
   });
 });
 

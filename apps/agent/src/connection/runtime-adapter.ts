@@ -19,6 +19,13 @@
 import {
   type AgentCommandName,
   type AgentContainerState,
+  type CreateBackupCommandPayload,
+  type DeleteBackupCommandPayload,
+  type DownloadBackupCommandPayload,
+  type GetStorageBreakdownCommandPayload,
+  type RemoveStorageEntryCommandPayload,
+  type RestoreBackupCommandPayload,
+  type SetServerQueryCommandPayload,
   type AgentContainerStatus,
   type ApiResponse,
   type ErrorCode,
@@ -28,6 +35,7 @@ import {
   ok,
 } from '@palantir/contracts';
 import { AGENT_COMMAND_PAYLOAD_SCHEMAS } from '@palantir/validation';
+import type { AgentJobs } from '../jobs/index.js';
 import {
   type ContainerRuntime,
   type ContainerRuntimeErrorCode,
@@ -81,6 +89,13 @@ const CONTAINER_STATUS_MAP: Record<ContainerState['status'], AgentContainerStatu
 
 export interface RuntimeAdapterOptions {
   readonly runtime: ContainerRuntime;
+  /**
+   * Job-Modul (A3). Ohne Angabe beantwortet der Adapter die Job-Befehle
+   * (Backups, Speicherübersicht, Server-Abfrage) mit
+   * `AGENT_COMMAND_NOT_IMPLEMENTED` – so bleibt der Adapter ohne Dateisystem
+   * testbar, und ein Agent-Aufbau ohne Jobs sagt ehrlich, was er nicht kann.
+   */
+  readonly jobs?: AgentJobs;
 }
 
 /**
@@ -103,10 +118,12 @@ export type OutboundEventSink = (event: OutboundEvent) => void;
  */
 export class ContainerRuntimeAdapter implements AgentRuntimePort {
   private readonly runtime: ContainerRuntime;
+  private readonly jobs: AgentJobs | undefined;
   private unsubscribe: Unsubscribe | null = null;
 
   constructor(options: RuntimeAdapterOptions) {
     this.runtime = options.runtime;
+    this.jobs = options.jobs;
   }
 
   /**
@@ -132,11 +149,19 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
     const { command } = execution;
 
     if (!isImplementedAgentCommand(command)) {
-      // Der Befehl steht im Protokoll, ist hier aber noch nicht gebaut
-      // (CREATE_BACKUP, RESTORE_BACKUP, GET_STORAGE_BREAKDOWN → A3).
+      // Der Befehl steht im Protokoll, ist hier aber nicht gebaut.
       return fail(
         'AGENT_COMMAND_NOT_IMPLEMENTED',
         `${command} wird vom Agent noch nicht unterstützt.`,
+      );
+    }
+
+    if (JOB_COMMANDS.has(command) && this.jobs === undefined) {
+      // Ein Agent ohne Job-Modul sagt das ehrlich, statt den Befehl mit einem
+      // Laufzeitfehler scheitern zu lassen.
+      return fail(
+        'AGENT_COMMAND_NOT_IMPLEMENTED',
+        `${command} braucht das Job-Modul (A3), das in diesem Agent nicht eingehängt ist.`,
       );
     }
 
@@ -263,9 +288,55 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         await this.runtime.writeFile(p.containerId, p.path, Buffer.from(p.contentBase64, 'base64'));
         return null;
       }
+
+      // ------------------------------------------------------------- Jobs (A3)
+      // Die Zweige unten laufen nur mit eingehängtem Job-Modul; execute() hat
+      // das vorher geprüft.
+
+      case 'CREATE_BACKUP':
+        return this.requireJobs().backups.createBackup(payload as CreateBackupCommandPayload);
+      case 'RESTORE_BACKUP':
+        return this.requireJobs().backups.restoreBackup(payload as RestoreBackupCommandPayload);
+      case 'DOWNLOAD_BACKUP':
+        return this.requireJobs().backups.downloadBackup(payload as DownloadBackupCommandPayload);
+      case 'DELETE_BACKUP':
+        return this.requireJobs().backups.deleteBackup(payload as DeleteBackupCommandPayload);
+      case 'GET_STORAGE_BREAKDOWN':
+        return this.requireJobs().storage.scan(payload as GetStorageBreakdownCommandPayload);
+      case 'REMOVE_STORAGE_ENTRY':
+        return this.requireJobs().storage.remove(payload as RemoveStorageEntryCommandPayload);
+      case 'SET_SERVER_QUERY': {
+        const p = payload as SetServerQueryCommandPayload;
+        return this.requireJobs().query.setTarget(p.serverId, p.target);
+      }
     }
   }
+
+  private requireJobs(): AgentJobs {
+    if (this.jobs === undefined) {
+      // Kann nur passieren, wenn JOB_COMMANDS und dieser Zweig auseinanderlaufen
+      // – ein Test hält beide zusammen.
+      throw new Error('Das Job-Modul (A3) ist nicht eingehängt.');
+    }
+    return this.jobs;
+  }
 }
+
+/**
+ * Befehle, die das Job-Modul (A3) brauchen.
+ *
+ * Steht als eigene Liste da und nicht als Negation der Runtime-Befehle: So
+ * fällt beim Ergänzen eines Befehls auf, auf welcher Seite er landet.
+ */
+export const JOB_COMMANDS: ReadonlySet<AgentCommandName> = new Set([
+  'CREATE_BACKUP',
+  'RESTORE_BACKUP',
+  'DOWNLOAD_BACKUP',
+  'DELETE_BACKUP',
+  'GET_STORAGE_BREAKDOWN',
+  'SET_SERVER_QUERY',
+  'REMOVE_STORAGE_ENTRY',
+]);
 
 /** Nutzdaten von `CREATE`, wie sie das Schema liefert. */
 type CreatePayload = {

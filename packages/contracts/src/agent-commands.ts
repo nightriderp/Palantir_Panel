@@ -612,6 +612,12 @@ export interface AgentCommandResults {
  * Alles außerhalb dieser Liste steht zwar im Protokoll (Pflichtenheft §5.3),
  * wird aber mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet – das Backend
  * erfährt den Unterschied zwischen „unbekannt" und „noch nicht gebaut".
+ *
+ * Seit Arbeitspaket A3 ist die Liste vollständig: Die Backup-Befehle, der
+ * Storage-Scanner und die beiden A3-Ergänzungen werden ausgeführt. Sollte der
+ * Agent ohne Job-Modul gebaut werden, antwortet er für diese Befehle weiterhin
+ * mit `AGENT_COMMAND_NOT_IMPLEMENTED` – die Entscheidung fällt dann im
+ * Adapter, nicht in dieser Liste.
  */
 export const IMPLEMENTED_AGENT_COMMANDS = [
   'CREATE',
@@ -625,6 +631,13 @@ export const IMPLEMENTED_AGENT_COMMANDS = [
   'FILE_LIST',
   'FILE_READ',
   'FILE_WRITE',
+  'CREATE_BACKUP',
+  'RESTORE_BACKUP',
+  'DOWNLOAD_BACKUP',
+  'DELETE_BACKUP',
+  'GET_STORAGE_BREAKDOWN',
+  'SET_SERVER_QUERY',
+  'REMOVE_STORAGE_ENTRY',
 ] as const;
 
 export type ImplementedAgentCommandName = (typeof IMPLEMENTED_AGENT_COMMANDS)[number];
