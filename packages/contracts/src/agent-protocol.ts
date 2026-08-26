@@ -74,6 +74,16 @@ export const AGENT_COMMANDS = [
    * den Speicher zu laden.
    */
   'DOWNLOAD_BACKUP',
+  /**
+   * Archiv eines Backups auf dem Homeserver entfernen (Lastenheft §3.3
+   * Aufbewahrungsregel, §3.8 Speicherverwaltung).
+   *
+   * Ergänzung dieser Sitzung (B5) zum Katalog aus Pflichtenheft §5.3, dort
+   * nachgetragen. Ohne diesen Befehl könnte das Backend zwar den Datensatz
+   * löschen, das Archiv bliebe aber für immer auf der Platte liegen – die
+   * Aufbewahrungsregel würde also gar keinen Speicher freigeben.
+   */
+  'DELETE_BACKUP',
   'GET_STORAGE_BREAKDOWN',
 ] as const;
 

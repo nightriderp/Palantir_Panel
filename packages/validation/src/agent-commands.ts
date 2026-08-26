@@ -160,6 +160,11 @@ export const downloadBackupCommandPayloadSchema = z.object({
   maxBytes: z.number().int().positive(),
 });
 
+export const deleteBackupCommandPayloadSchema = z.object({
+  backupId: idSchema,
+  storagePath: hostPathSchema,
+});
+
 /** SHA-256 als 64 Hex-Zeichen in Kleinbuchstaben. */
 export const sha256Schema = z
   .string()
@@ -181,6 +186,12 @@ export const restoreBackupCommandResultSchema = z.object({
   containerStopped: z.boolean(),
   startedAt: isoTimestampSchema,
   completedAt: isoTimestampSchema,
+});
+
+export const deleteBackupCommandResultSchema = z.object({
+  backupId: idSchema,
+  removed: z.boolean(),
+  freedBytes: z.number().int().nonnegative(),
 });
 
 export const downloadBackupCommandResultSchema = z.object({

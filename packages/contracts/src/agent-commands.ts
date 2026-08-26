@@ -234,6 +234,18 @@ export interface DownloadBackupCommandPayload {
   readonly maxBytes: number;
 }
 
+/**
+ * `DELETE_BACKUP` – Archiv eines Backups vom Homeserver entfernen.
+ *
+ * Bewusst idempotent: Ein bereits fehlendes Archiv ist kein Fehler. Sonst
+ * bliebe nach einem Abbruch mitten in der Aufbewahrungsprüfung ein Datensatz
+ * zurück, der sich nie wieder löschen ließe.
+ */
+export interface DeleteBackupCommandPayload {
+  readonly backupId: string;
+  readonly storagePath: string;
+}
+
 // ---------------------------------------------------------------------------
 // Ergebnisse je Befehl (das `data`-Feld im Envelope)
 // ---------------------------------------------------------------------------
@@ -350,6 +362,15 @@ export interface DownloadBackupCommandResult {
   readonly eof: boolean;
 }
 
+/** Ergebnis von `DELETE_BACKUP`. */
+export interface DeleteBackupCommandResult {
+  readonly backupId: string;
+  /** `false`, wenn das Archiv schon vorher nicht mehr da war. */
+  readonly removed: boolean;
+  /** Freigegebener Speicher in Byte; `0`, wenn nichts zu entfernen war. */
+  readonly freedBytes: number;
+}
+
 // ---------------------------------------------------------------------------
 // Zuordnung Befehl → Nutzdaten/Ergebnis
 // ---------------------------------------------------------------------------
@@ -357,7 +378,7 @@ export interface DownloadBackupCommandResult {
 /**
  * Nutzdaten je Befehlsname.
  *
- * `CREATE_BACKUP`, `RESTORE_BACKUP` und `DOWNLOAD_BACKUP` sind mit B5
+ * `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP` und `DELETE_BACKUP` sind mit B5
  * ausdefiniert, damit das Backend die Backup-Verwaltung dagegen bauen kann. Die
  * **Ausführung** bleibt Dateisystem- und Job-Arbeit des Agents (A3): bis dahin
  * beantwortet er sie mit `AGENT_COMMAND_NOT_IMPLEMENTED`, weil sie nicht in
@@ -381,6 +402,7 @@ export interface AgentCommandPayloads {
   readonly CREATE_BACKUP: CreateBackupCommandPayload;
   readonly RESTORE_BACKUP: RestoreBackupCommandPayload;
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandPayload;
+  readonly DELETE_BACKUP: DeleteBackupCommandPayload;
   readonly GET_STORAGE_BREAKDOWN: never;
 }
 
@@ -400,6 +422,7 @@ export interface AgentCommandResults {
   readonly CREATE_BACKUP: CreateBackupCommandResult;
   readonly RESTORE_BACKUP: RestoreBackupCommandResult;
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandResult;
+  readonly DELETE_BACKUP: DeleteBackupCommandResult;
   readonly GET_STORAGE_BREAKDOWN: never;
 }
 

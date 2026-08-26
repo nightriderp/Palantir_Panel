@@ -147,7 +147,7 @@ export const ERROR_CATALOG = {
   /**
    * Befehl steht im Protokoll, ist auf dem Agent aber noch nicht gebaut
    * (aktuell: `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`,
-   * `GET_STORAGE_BREAKDOWN` – A3).
+   * `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN` – A3).
    * 501: bewusst getrennt von einem Ausführungsfehler, damit das Backend
    * „noch nicht gebaut" von „hat nicht funktioniert" unterscheiden kann.
    */
