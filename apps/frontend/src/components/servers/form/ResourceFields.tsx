@@ -1,7 +1,6 @@
 'use client';
 
-import { formatMegabytes } from '@/components/shared';
-import { NumberField, SliderField } from './Fields';
+import { NumberField, SliderField, formatMegabytes } from '@/components/shared';
 
 /**
  * Ressourcen-Konfiguration eines Servers (Lastenheft §3.3, Pflichtenheft §10).

@@ -10,8 +10,14 @@ import { type AccountDto } from '@palantir/contracts';
  * **Zwischenstand:** Von den Ansichten aus STRUKTUR.md existiert bisher nur die
  * Serverübersicht (F3). Die übrigen Einträge stehen trotzdem hier, damit der
  * Aufbau dem Mockup entspricht – sie führen aber noch nirgendwo hin und melden
- * das beim Antippen, statt in eine 404-Seite zu laufen. Jedes Arbeitspaket
- * ersetzt beim Fertigstellen seinen Eintrag durch ein `href` (eine Zeile).
+ * das beim Antippen, statt in eine 404-Seite zu laufen.
+ *
+ * **Für F4–F11:** Ein fertiges Arbeitspaket ändert an dieser Datei genau eine
+ * Zeile – `pending` raus, `href` rein – und legt die Seite unter
+ * `src/app/(dashboard)/<pfad>/page.tsx` an. Die ausführliche Anleitung samt der
+ * Dinge, die dabei ausdrücklich **nicht** zu tun sind, steht unter „Navigation
+ * im eingeloggten Bereich" in `components/shared/README.md` (Arbeitspaket R4,
+ * „Gefundener Punkt" 48).
  *
  * Welche Einträge überhaupt erscheinen, entscheidet ausschließlich das
  * `permissions`-Objekt des Kontos (Pflichtenheft §5.2, §8).
