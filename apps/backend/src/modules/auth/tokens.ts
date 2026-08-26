@@ -144,16 +144,24 @@ export async function signTwoFactorToken(
  *
  * Gibt `null` zurück, wenn er fehlerhaft, abgelaufen oder für einen anderen
  * Zweck ausgestellt ist – ein Access-Token wird hier also nicht akzeptiert.
+ *
+ * `nowMs` muss dieselbe Zeitquelle sein, mit der `signTwoFactorToken` den Token
+ * ausgestellt hat. Ohne diesen Parameter prüfte `jose` das `exp` gegen die echte
+ * Systemuhr, während der Aufrufer mit einer eingespeisten Uhr signiert – der
+ * Token galt dann je nach tatsächlicher Tageszeit als abgelaufen. Im Betrieb
+ * ändert sich nichts: der Vorgabewert ist die Systemuhr.
  */
 export async function verifyTwoFactorToken(
   token: string,
   options: { secret: string },
+  nowMs: number = Date.now(),
 ): Promise<string | null> {
   let payload: JWTPayload;
 
   try {
     ({ payload } = await jwtVerify(token, new TextEncoder().encode(options.secret), {
       algorithms: ['HS256'],
+      currentDate: new Date(nowMs),
     }));
   } catch {
     return null;
