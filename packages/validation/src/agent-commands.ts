@@ -15,6 +15,7 @@
 import { z } from 'zod';
 import { idSchema } from './common.js';
 import { isoTimestampSchema } from './agent-protocol.js';
+import { getStorageBreakdownPayloadSchema } from './storage.js';
 
 /** Container-ID der Runtime. Kein festes Format – die vergibt die Engine. */
 export const containerIdSchema = z
@@ -299,10 +300,13 @@ export const agentServerQueryPayloadSchema = z.object({
 /**
  * Nachschlagetabelle Befehl → Schema.
  *
- * Nur die Befehle, die der Agent tatsächlich ausführt
- * (`IMPLEMENTED_AGENT_COMMANDS` in `@palantir/contracts`). Für die übrigen
- * antwortet er mit `AGENT_COMMAND_NOT_IMPLEMENTED`, ohne die Nutzdaten zu
- * prüfen – es gibt noch nichts, wogegen zu prüfen wäre.
+ * Deckungsgleich mit `IMPLEMENTED_AGENT_COMMANDS` in `@palantir/contracts` –
+ * ein Test hält beide Listen zusammen. Seit A3 sind das alle Befehle des
+ * Protokolls.
+ *
+ * `getStorageBreakdownPayloadSchema` steht in `storage.ts`, weil es dort
+ * zusammen mit dem Ergebnis-Schema geführt wird (B8); hier wird es nur
+ * eingehängt.
  */
 export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   CREATE: createCommandPayloadSchema,
@@ -316,6 +320,13 @@ export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   FILE_LIST: fileListCommandPayloadSchema,
   FILE_READ: fileReadCommandPayloadSchema,
   FILE_WRITE: fileWriteCommandPayloadSchema,
+  CREATE_BACKUP: createBackupCommandPayloadSchema,
+  RESTORE_BACKUP: restoreBackupCommandPayloadSchema,
+  DOWNLOAD_BACKUP: downloadBackupCommandPayloadSchema,
+  DELETE_BACKUP: deleteBackupCommandPayloadSchema,
+  GET_STORAGE_BREAKDOWN: getStorageBreakdownPayloadSchema,
+  SET_SERVER_QUERY: setServerQueryCommandPayloadSchema,
+  REMOVE_STORAGE_ENTRY: removeStorageEntryCommandPayloadSchema,
 } as const;
 
 /**
