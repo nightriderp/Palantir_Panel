@@ -30,6 +30,7 @@ import {
   startExport,
   updateServerSettings,
 } from '@/lib/api/servers';
+import { errorText } from '@/lib/api/client';
 import { BASE_DOMAIN } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { ConfigFields } from '../form/ConfigFields';
@@ -117,7 +118,7 @@ export function SettingsTab({ server, onServerUpdated, cloneJob, exportJob }: Se
     setSaving(false);
 
     if (!result.success) {
-      setSaveError(result.error.message);
+      setSaveError(errorText(result));
       return;
     }
     onServerUpdated(result.data);
@@ -144,7 +145,7 @@ export function SettingsTab({ server, onServerUpdated, cloneJob, exportJob }: Se
     setCloneBusy(false);
 
     if (!result.success) {
-      setCloneError(result.error.message);
+      setCloneError(errorText(result));
       return;
     }
     setLocalCloneJob(result.data);
@@ -159,7 +160,7 @@ export function SettingsTab({ server, onServerUpdated, cloneJob, exportJob }: Se
   async function exportAll() {
     const result = await startExport(server.id);
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     setLocalExportJob(result.data);
@@ -174,7 +175,7 @@ export function SettingsTab({ server, onServerUpdated, cloneJob, exportJob }: Se
     setDeleting(false);
 
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     toast.success(`„${server.name}" wurde gelöscht.`);

@@ -1,6 +1,6 @@
-import { type SubdomainAvailabilityDto } from '@palantir/contracts';
+import { type SubdomainAvailabilityDto, type UserResourceLimitDto } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
-import { type HostNodeOptionDto, type ResourceQuotaDto } from '@/lib/api/servers';
+import { type HostNodeOptionDto } from '@/lib/api/servers';
 import {
   INITIAL_WIZARD_STATE,
   type WizardContext,
@@ -18,11 +18,32 @@ import { gameType } from './testFixtures';
 const NODE: HostNodeOptionDto = {
   id: '22222222-2222-4222-8222-222222222222',
   name: 'Node Alpha',
-  online: true,
-  freeRamMb: 16384,
-  freeDiskMb: 512000,
-  freeCpuCores: 8,
+  status: 'online',
+  total: { ramMb: 32768, cpuCores: 16, diskMb: 1024000 },
+  usage: {
+    runningRamMb: 16384,
+    runningCpuCores: 8,
+    allocatedDiskMb: 512000,
+    runningServers: 4,
+    totalServers: 6,
+  },
 };
+
+/** Node mit genau den angegebenen freien Werten. */
+function nodeWithFree(free: {
+  ramMb?: number;
+  cpuCores?: number;
+  diskMb?: number;
+}): HostNodeOptionDto {
+  return {
+    ...NODE,
+    total: {
+      ramMb: NODE.usage.runningRamMb + (free.ramMb ?? 16384),
+      cpuCores: NODE.usage.runningCpuCores + (free.cpuCores ?? 8),
+      diskMb: NODE.usage.allocatedDiskMb + (free.diskMb ?? 512000),
+    },
+  };
+}
 
 const AVAILABLE: SubdomainAvailabilityDto = {
   subdomain: 'survival',
@@ -157,17 +178,30 @@ describe('missingConfigFields', () => {
 });
 
 describe('quotaBlockReason', () => {
-  function quota(overrides: Partial<ResourceQuotaDto> = {}): ResourceQuotaDto {
+  function quota(
+    limits: Partial<UserResourceLimitDto['limits']> = {},
+    usage: Partial<UserResourceLimitDto['usage']> = {},
+  ): UserResourceLimitDto {
     return {
-      maxRamMb: null,
-      maxCpuCores: null,
-      maxDiskMb: null,
-      maxConcurrentServers: null,
-      usedRamMb: 0,
-      usedCpuCores: 0,
-      usedDiskMb: 0,
-      usedServers: 0,
-      ...overrides,
+      userId: '33333333-3333-4333-8333-333333333333',
+      userDisplayName: 'Alex',
+      limits: {
+        maxRamMb: null,
+        maxCpuCores: null,
+        maxDiskMb: null,
+        maxConcurrentServers: null,
+        ...limits,
+      },
+      usage: {
+        runningRamMb: 0,
+        runningCpuCores: 0,
+        allocatedDiskMb: 0,
+        runningServers: 0,
+        totalServers: 0,
+        ...usage,
+      },
+      updatedAt: null,
+      permissions: { canView: true, canEdit: false },
     };
   }
 
@@ -177,22 +211,28 @@ describe('quotaBlockReason', () => {
   });
 
   it('meldet ein ausgeschöpftes Server-Kontingent', () => {
-    const reason = quotaBlockReason(quota({ maxConcurrentServers: 2, usedServers: 2 }), state());
+    const reason = quotaBlockReason(
+      quota({ maxConcurrentServers: 2 }, { totalServers: 2 }),
+      state(),
+    );
     expect(reason).toContain('2 Server');
   });
 
   it('rechnet die bereits belegten Ressourcen mit ein', () => {
-    const almostFull = quota({ maxRamMb: 8192, usedRamMb: 7168 });
+    const almostFull = quota({ maxRamMb: 8192 }, { runningRamMb: 7168 });
     expect(quotaBlockReason(almostFull, state({ ramMb: 1024 }))).toBeNull();
     expect(quotaBlockReason(almostFull, state({ ramMb: 2048 }))).toContain('RAM-Kontingent');
   });
 
   it('prüft CPU und Speicherplatz ebenfalls', () => {
     expect(
-      quotaBlockReason(quota({ maxCpuCores: 2, usedCpuCores: 1 }), state({ cpuCores: 2 })),
+      quotaBlockReason(quota({ maxCpuCores: 2 }, { runningCpuCores: 1 }), state({ cpuCores: 2 })),
     ).toContain('CPU-Kontingent');
     expect(
-      quotaBlockReason(quota({ maxDiskMb: 20480, usedDiskMb: 10240 }), state({ diskMb: 20480 })),
+      quotaBlockReason(
+        quota({ maxDiskMb: 20480 }, { allocatedDiskMb: 10240 }),
+        state({ diskMb: 20480 }),
+      ),
     ).toContain('Speicher-Kontingent');
   });
 });
@@ -202,25 +242,26 @@ describe('nodeBlockReason', () => {
     expect(nodeBlockReason(NODE, state())).toBeNull();
   });
 
-  it('meldet eine nicht erreichbare Node', () => {
-    expect(nodeBlockReason({ ...NODE, online: false }, state())).toContain('nicht erreichbar');
+  it('unterscheidet Wartung von Nichterreichbarkeit', () => {
+    expect(nodeBlockReason({ ...NODE, status: 'offline' }, state())).toContain('nicht erreichbar');
+    expect(nodeBlockReason({ ...NODE, status: 'maintenance' }, state())).toContain('Wartung');
   });
 
   it('meldet zu wenig freien Arbeitsspeicher, CPU oder Platte', () => {
-    expect(nodeBlockReason({ ...NODE, freeRamMb: 1024 }, state({ ramMb: 4096 }))).toContain(
+    expect(nodeBlockReason(nodeWithFree({ ramMb: 1024 }), state({ ramMb: 4096 }))).toContain(
       'Arbeitsspeicher',
     );
-    expect(nodeBlockReason({ ...NODE, freeDiskMb: 1024 }, state({ diskMb: 20480 }))).toContain(
+    expect(nodeBlockReason(nodeWithFree({ diskMb: 1024 }), state({ diskMb: 20480 }))).toContain(
       'Speicherplatz',
     );
-    expect(nodeBlockReason({ ...NODE, freeCpuCores: 1 }, state({ cpuCores: 4 }))).toContain(
+    expect(nodeBlockReason(nodeWithFree({ cpuCores: 1 }), state({ cpuCores: 4 }))).toContain(
       'CPU-Kerne',
     );
   });
 
-  it('meldet nichts, wenn die freien Werte unbekannt sind', () => {
-    const unknown = { ...NODE, freeRamMb: null, freeDiskMb: null, freeCpuCores: null };
-    expect(nodeBlockReason(unknown, state({ ramMb: 262144 }))).toBeNull();
+  it('lässt Gleichstand zu – erst darüber wird abgelehnt', () => {
+    expect(nodeBlockReason(nodeWithFree({ ramMb: 4096 }), state({ ramMb: 4096 }))).toBeNull();
+    expect(nodeBlockReason(nodeWithFree({ ramMb: 4095 }), state({ ramMb: 4096 }))).not.toBeNull();
   });
 });
 

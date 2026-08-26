@@ -13,6 +13,7 @@ import {
   useToast,
 } from '@/components/shared';
 import { type LifecycleAction, deleteServer, fetchServer } from '@/lib/api/servers';
+import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { useServerLive } from '@/lib/live/useServerLive';
 import { buildServerTabs, resolveServerTab, type ServerTabKey } from '../serverTabs';
@@ -94,7 +95,7 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
     setDeleteOpen(false);
 
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     toast.success('Server gelöscht.');

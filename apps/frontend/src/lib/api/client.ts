@@ -1,4 +1,11 @@
 import { type ApiResponse, isErrorCode } from '@palantir/contracts';
+import {
+  CSRF_HEADER_NAME,
+  apiBaseUrl,
+  apiUrl,
+  readCsrfToken as readCsrfTokenFrom,
+} from '@/lib/auth/api';
+import { messageForErrorCode } from '@/lib/auth/errors';
 
 /**
  * Zugriff auf die REST-API des Backends (Pflichtenheft §5.1).
@@ -16,18 +23,13 @@ import { type ApiResponse, isErrorCode } from '@palantir/contracts';
  * Freitext-Fehler gibt es auch hier keine (CLAUDE.md §5).
  */
 
-/** Basis-Adresse der API, z. B. `https://api.example.tld`. */
-export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
-
 /**
- * Name des Cookies mit dem CSRF-Token (Pflichtenheft §7).
+ * Basis-Adresse der API, z. B. `https://api.example.tld`.
  *
- * Zustandsändernde Requests schicken den Wert zusätzlich als Kopfzeile, weil
- * das Sitzungs-Cookie `SameSite=Lax` trägt und damit allein nicht schützt.
- * Ausgestellt wird das Cookie von B1; F3 liest es nur.
+ * Kommt aus `lib/auth/api.ts` (F1) – die Adresse wird nicht zweimal aus der
+ * Umgebung gelesen.
  */
-const CSRF_COOKIE_NAME = 'palantir_csrf';
-const CSRF_HEADER_NAME = 'X-CSRF-Token';
+export const API_BASE_URL = apiBaseUrl();
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -77,18 +79,19 @@ export interface ApiRequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
 }
 
+/**
+ * CSRF-Token aus dem Cookie lesen (Pflichtenheft §7).
+ *
+ * Cookie-Name, Kopfzeile und Leselogik kommen aus `lib/auth/api.ts` (F1) –
+ * beide Wege dürfen sich nicht unterscheiden.
+ */
 function readCsrfToken(): string | null {
   if (typeof document === 'undefined') return null;
-  const prefix = `${CSRF_COOKIE_NAME}=`;
-  const match = document.cookie
-    .split(';')
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(prefix));
-  return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+  return readCsrfTokenFrom(document.cookie);
 }
 
 function buildUrl(path: string, query: ApiRequestOptions['query']): string {
-  const url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  const url = apiUrl(path.startsWith('/') ? path : `/${path}`);
   if (!query) return url;
 
   const params = new URLSearchParams();
@@ -179,7 +182,16 @@ export async function apiRequest<T>(
   return parsed as ApiResult<T>;
 }
 
-/** Anzeigetext eines fehlgeschlagenen Aufrufs (Lastenheft §4: Deutsch). */
-export function errorMessage<T>(result: ApiResult<T>): string {
-  return result.success ? '' : result.error.message;
+/**
+ * Anzeigetext eines fehlgeschlagenen Aufrufs (Lastenheft §4: Deutsch).
+ *
+ * Übersetzt wird **anhand des Fehlercodes**, nicht anhand des Freitexts aus dem
+ * Envelope – derselbe Grundsatz wie in `lib/auth/errors.ts` (F1). Der
+ * `message`-Anteil ist für Log und Fehlersuche gedacht und kann technische
+ * Details enthalten. Transportfehler bringen ihren eigenen deutschen Satz mit.
+ */
+export function errorText<T>(result: ApiResult<T>): string {
+  if (result.success) return '';
+  if (isTransportFailure(result)) return result.error.message;
+  return messageForErrorCode(result.error.code);
 }
