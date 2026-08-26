@@ -47,9 +47,9 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
       expect(isImplementedAgentCommand(command)).toBe(false);
     }
 
-    expect(
-      AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command)).sort(),
-    ).toEqual([...offen].sort());
+    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command)).sort()).toEqual(
+      [...offen].sort(),
+    );
   });
 
   it('kennt die beiden von A3 ergänzten Befehle', () => {
