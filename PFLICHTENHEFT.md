@@ -143,6 +143,7 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AGENT_FILE_NOT_FOUND` | 404 | Datei im Container nicht gefunden |
 | `AGENT_FILE_TOO_LARGE` | 413 | Datei überschreitet das Größenlimit (§12.1) |
 | `AGENT_RUNTIME_UNAVAILABLE` | 503 | Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar |
+| `VALIDATION_FAILED` | 400 | Eingabe verletzt das Zod-Schema aus `packages/validation` (§3) |
 | `NODE_NOT_FOUND` | 404 | Node existiert nicht (§6) |
 | `NODE_ADDRESS_TAKEN` | 409 | Node-Name oder WireGuard-Adresse bereits vergeben (§2.1) |
 | `NODE_IN_USE` | 409 | Node trägt noch Gameserver und kann nicht entfernt werden |
