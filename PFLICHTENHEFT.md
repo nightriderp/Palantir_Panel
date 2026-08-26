@@ -428,6 +428,8 @@ Ein Skript (`scripts/setup.sh`), das:
 
 **Ergänzungen aus B6 (Notification-Engine):** `announcement.published` (systemweite Ankündigung durch einen Admin, Lastenheft §3.6) als auslösendes Ereignis und `notification.created` als reines Live-Ereignis des Inbox-Kanals. Letzteres ist bewusst **kein** Anlass für eine `NotificationRule` – sonst löste jede Zustellung die nächste aus.
 
+**Dringlichkeit:** `NotificationRuleDto.severity` ist `null`-fähig und bedeutet dann „die des Ereignisses" (`backup.failed` → `error`, `server.started` → `info`). Ein fester Vorgabewert an der Regel würde ein fehlgeschlagenes Backup still auf „Information" herabstufen; eine gesetzte Dringlichkeit ist deshalb ein bewusstes Überschreiben.
+
 **Auslösende Ereignisse gegen reine Live-Ereignisse:** Welche Namen des Katalogs eine Regel auslösen dürfen, steht als Liste `NOTIFIABLE_EVENTS` in `packages/contracts/src/notifications.ts`. Ein Test dort hält beide Mengen überschneidungsfrei; das Backend lehnt eine Regel auf ein Live-Ereignis mit `NOTIFICATION_EVENT_NOT_NOTIFIABLE` ab.
 
 ---
