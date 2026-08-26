@@ -1,0 +1,33 @@
+# Taktgeber für die Selbstaktualisierung der Gamenode.
+#
+# Ablageort auf dem Homeserver (in der Gameserver-VM):
+#   /etc/systemd/system/palantir-update.timer
+#
+# Fünf Minuten sind ein bewusster Kompromiss: Ein neuer Stand ist damit
+# spätestens nach fünf Minuten draußen, und der Lauf kostet fast nichts, wenn
+# sich nichts geändert hat - update.sh bricht dann nach einem `git fetch` ab,
+# ohne die Container anzufassen.
+#
+# Häufiger wäre sinnlos (Deployments sind seltene Ereignisse), seltener würde die
+# Node nach einer Freigabe unnötig lange hinterherhinken.
+
+[Unit]
+Description=Palantir Gamenode regelmäßig aktualisieren
+Documentation=file:///opt/palantir/docs/ci-cd.md
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+# Streut den Startzeitpunkt, damit bei mehreren Nodes nicht alle gleichzeitig
+# an der Registry ziehen.
+RandomizedDelaySec=30s
+
+# Nach einem Neustart der VM einen verpassten Lauf nachholen - sonst bliebe die
+# Node auf einem alten Stand, wenn sie während einer Freigabe aus war.
+Persistent=true
+
+Unit=palantir-update.service
+
+[Install]
+WantedBy=timers.target

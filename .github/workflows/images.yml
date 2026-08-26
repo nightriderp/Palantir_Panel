@@ -1,0 +1,79 @@
+name: Images
+
+# Baut die drei Anwendungs-Images und legt sie in der GitHub Container Registry ab.
+#
+# Läuft NUR auf main - also erst, nachdem ein Pull Request die Prüfungen aus ci.yml
+# bestanden hat. Ein Image entsteht damit ausschließlich aus einem Stand, der bereits
+# gebaut, typgeprüft, gelintet und getestet wurde.
+#
+# Getaggt wird mit dem vollständigen Commit-SHA. Das ist die eigentliche Wahrheit:
+# unveränderlich und eindeutig einem Stand zuzuordnen. Das Tag `prod` wird davon
+# getrennt vergeben - erst nach der Freigabe, und ohne neuen Bau (siehe docs/ci-cd.md).
+
+on:
+  push:
+    branches: [main]
+  # Für einen erneuten Anlauf, wenn ein Bau an etwas Äußerem gescheitert ist
+  # (Registry nicht erreichbar, abgebrochener Runner).
+  workflow_dispatch:
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      # Kein fail-fast: schlägt ein Image fehl, sollen die anderen trotzdem
+      # fertig werden - sonst fehlt beim nächsten Anlauf auch deren Cache.
+      fail-fast: false
+      matrix:
+        app: [backend, frontend, agent]
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Buildx einrichten
+        uses: docker/setup-buildx-action@v3
+
+      - name: An GHCR anmelden
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Kein eigenes Secret nötig: das Token des Laufs reicht, weil der
+          # Workflow `packages: write` besitzt.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bauen und veröffentlichen
+        uses: docker/build-push-action@v6
+        with:
+          # Build-Kontext ist das Repo-Root, nicht das App-Verzeichnis: im
+          # Monorepo werden Lockfile und die Workspace-Packages gebraucht.
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/palantir-${{ matrix.app }}:${{ github.sha }}
+          build-args: |
+            PALANTIR_DOMAIN=${{ vars.PALANTIR_DOMAIN }}
+          # Cache über die Actions-Cache-Schicht. Ohne ihn baut jeder Lauf die
+          # pnpm-Installation neu, was den größten Teil der Zeit ausmacht.
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,scope=${{ matrix.app }},mode=max
+          provenance: false
+
+      - name: Ergebnis melden
+        run: |
+          echo "### palantir-${{ matrix.app }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "ghcr.io/${{ github.repository_owner }}/palantir-${{ matrix.app }}:${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
