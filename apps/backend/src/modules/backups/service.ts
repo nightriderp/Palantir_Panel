@@ -54,7 +54,12 @@ import {
   computeBackupPermissions,
   isOwnServer,
 } from './permissions.js';
-import type { BackupFilter, BackupRecord, BackupRepository } from './repository.js';
+import type {
+  BackupFilter,
+  BackupRecord,
+  BackupRepository,
+  StorageAggregate,
+} from './repository.js';
 import { isRetentionProtected, retentionExpiresAt, selectExpiredBackups } from './retention.js';
 
 /**
@@ -142,6 +147,17 @@ function agentErrorCode(code: string | undefined): ErrorCode {
   return code !== undefined && isErrorCode(code) ? code : 'AGENT_COMMAND_FAILED';
 }
 
+/**
+ * Gruppenschlüssel für die Aufbewahrungsregel.
+ *
+ * Normalerweise der Server. Ist er gelöscht (`serverId === null`), bildet das
+ * Backup seine eigene Gruppe – sonst gälten alle server-losen Backups aller
+ * Nutzer als Geschwister.
+ */
+function groupKey(record: BackupRecord): string {
+  return record.serverId ?? `backup:${record.id}`;
+}
+
 export function createBackupService(options: BackupServiceOptions): BackupService {
   const { repository, servers, users, agent } = options;
   const events = options.events ?? noopEventPublisher;
@@ -176,7 +192,10 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       throw new BackupError('BACKUP_NOT_FOUND');
     }
 
-    const server = await servers.findById(backup.serverId);
+    // `serverId === null` heißt: Der gesicherte Server ist gelöscht
+    // (`ON DELETE SET NULL`). Das Backup bleibt trotzdem verwaltbar – dann
+    // entscheidet `ownerId` über `.own`/`.any`.
+    const server = backup.serverId === null ? null : await servers.findById(backup.serverId);
     const isOwn =
       server === null ? backup.ownerId === actorUserId : isOwnServer(actorUserId, server);
 
@@ -199,7 +218,12 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       displayNames?: ReadonlyMap<string, string>;
     } = {},
   ): Promise<BackupDto> {
-    const siblings = context.siblings ?? (await repository.listByServer(backup.serverId));
+    // Ein Backup ohne Server steht bei der Aufbewahrungsregel für sich allein:
+    // Alle server-losen Backups zusammenzufassen würde „neuestes automatisches
+    // Backup bleibt“ (Lastenheft §3.3) über fremde Server hinweg rechnen.
+    const siblings =
+      context.siblings ??
+      (backup.serverId === null ? [backup] : await repository.listByServer(backup.serverId));
     const displayNames =
       context.displayNames ??
       (await users.findDisplayNames(
@@ -249,9 +273,10 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     const bySer = new Map<string, BackupRecord[]>();
 
     for (const record of records) {
-      const list = bySer.get(record.serverId) ?? [];
+      const key = groupKey(record);
+      const list = bySer.get(key) ?? [];
       list.push(record);
-      bySer.set(record.serverId, list);
+      bySer.set(key, list);
     }
 
     const userIds = new Set<string>();
@@ -267,14 +292,19 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     const displayNames = await users.findDisplayNames([...userIds]);
 
     return Promise.all(
-      records.map((record) =>
-        toDto(actor, actorUserId, record, {
-          serverName: serverNames.get(record.serverId) ?? null,
-          isOwn: isOwnByServer.get(record.serverId) ?? record.ownerId === actorUserId,
-          siblings: bySer.get(record.serverId) ?? [record],
+      records.map((record) => {
+        const serverId = record.serverId;
+
+        return toDto(actor, actorUserId, record, {
+          serverName: serverId === null ? null : (serverNames.get(serverId) ?? null),
+          isOwn:
+            serverId === null
+              ? record.ownerId === actorUserId
+              : (isOwnByServer.get(serverId) ?? record.ownerId === actorUserId),
+          siblings: bySer.get(groupKey(record)) ?? [record],
           displayNames,
-        }),
-      ),
+        });
+      }),
     );
   }
 
@@ -479,7 +509,11 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       }
 
       const records = await repository.listByOwner(ownerId);
-      const serverIds = [...new Set(records.map((record) => record.serverId))];
+      const serverIds = [
+        ...new Set(
+          records.map((record) => record.serverId).filter((id): id is string => id !== null),
+        ),
+      ];
       const serverRecords = await servers.findManyByIds(serverIds);
 
       return toDtoList(
@@ -581,6 +615,12 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
 
       if (backup.status !== 'completed' || backup.storagePath === null) {
         throw new BackupError('BACKUP_NOT_READY');
+      }
+
+      if (backup.serverId === null) {
+        // Der gesicherte Server ist gelöscht: Das Archiv bleibt erhalten und
+        // lässt sich herunterladen, eine Wiederherstellung braucht aber ein Ziel.
+        throw new BackupError('SERVER_NOT_FOUND');
       }
 
       const server = await loadServerOrFail(backup.serverId);
@@ -696,18 +736,23 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       ]);
 
       const [displayNames, serverRecords] = await Promise.all([
-        users.findDisplayNames(byOwner.map((entry) => entry.key)),
-        servers.findManyByIds(byServer.map((entry) => entry.key)),
+        users.findDisplayNames(
+          byOwner.map((entry) => entry.key).filter((key): key is string => key !== null),
+        ),
+        // `key === null`: Backups gelöschter Server – dafür gibt es keinen Namen.
+        servers.findManyByIds(
+          byServer.map((entry) => entry.key).filter((key): key is string => key !== null),
+        ),
       ]);
 
       const serverNames = new Map(serverRecords.map((server) => [server.id, server.name]));
 
       const toBucket = (
-        entry: { key: string; backupCount: number; totalSizeBytes: number },
+        entry: StorageAggregate,
         names: ReadonlyMap<string, string>,
       ): BackupStorageBucket => ({
         id: entry.key,
-        name: names.get(entry.key) ?? null,
+        name: entry.key === null ? null : (names.get(entry.key) ?? null),
         backupCount: entry.backupCount,
         totalSizeBytes: entry.totalSizeBytes,
       });

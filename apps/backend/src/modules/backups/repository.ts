@@ -17,7 +17,8 @@ import type { UserDirectory } from './ports.js';
 /** Backup, wie es in der Datenbank steht (Entität `Backup`, Pflichtenheft §6). */
 export interface BackupRecord {
   readonly id: string;
-  readonly serverId: string;
+  /** Gesicherter Server; `null`, sobald er gelöscht wurde (`ON DELETE SET NULL`). */
+  readonly serverId: string | null;
   readonly ownerId: string;
   readonly type: BackupType;
   readonly status: BackupStatus;
@@ -82,7 +83,8 @@ export interface UpsertBackupScheduleData {
 
 /** Zwischenergebnis der globalen Übersicht: Summen je Gruppe. */
 export interface StorageAggregate {
-  readonly key: string;
+  /** Gruppenschlüssel; in `sumByServer` `null` für Backups gelöschter Server. */
+  readonly key: string | null;
   readonly backupCount: number;
   readonly totalSizeBytes: number;
 }
@@ -134,7 +136,7 @@ export interface BackupRepository {
 
 interface BackupRow {
   id: string;
-  serverId: string;
+  serverId: string | null;
   ownerId: string;
   type: BackupType;
   status: BackupStatus;
