@@ -20,8 +20,12 @@ import {
   Button,
   DangerConfirmDialog,
   FormModal,
+  NumberField,
   Panel,
+  TextField,
+  ToggleRow,
   type Tone,
+  formatDateTime,
   formatMegabytes,
   useToast,
 } from '@/components/shared';
@@ -38,9 +42,8 @@ import { errorText } from '@/lib/api/client';
 import { BASE_DOMAIN } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { ConfigFields } from '../form/ConfigFields';
-import { NumberField, TextField, ToggleRow } from '../form/Fields';
 import { ResourceFields } from '../form/ResourceFields';
-import { formatBytes, formatDateTime } from '../formatDetail';
+import { formatBytes } from '../formatDetail';
 import { useSubdomainCheck } from '../useSubdomainCheck';
 import { JobProgress } from './JobProgress';
 import { MembersPanel } from './MembersPanel';

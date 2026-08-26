@@ -1,18 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeCron, formatBytes, formatDateTime, formatDuration } from './formatDetail';
-
-describe('formatDateTime', () => {
-  it('meldet „—" bei fehlender oder unlesbarer Angabe', () => {
-    expect(formatDateTime(null)).toBe('—');
-    expect(formatDateTime(undefined)).toBe('—');
-    expect(formatDateTime('kein Datum')).toBe('—');
-  });
-
-  it('gibt Datum und Uhrzeit in deutscher Schreibweise aus', () => {
-    const formatted = formatDateTime('2026-08-26T12:05:00.000Z');
-    expect(formatted).toMatch(/^\d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}$/);
-  });
-});
+import { describeCron, formatBytes, formatDuration } from './formatDetail';
 
 describe('formatBytes', () => {
   it('meldet „—" statt „0 B" bei fehlender Angabe', () => {

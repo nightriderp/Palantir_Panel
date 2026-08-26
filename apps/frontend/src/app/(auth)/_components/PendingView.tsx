@@ -4,12 +4,11 @@ import { type AccountDto, type AuthMethodType } from '@palantir/contracts';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
-import { Badge, Button, Icon, LogoMark, Panel } from '@/components/shared';
+import { Badge, Button, FormMessage, Icon, LogoMark, Panel, formatDate } from '@/components/shared';
 import { fetchSession, logout } from '@/lib/auth/api';
 import { AuthRequestError, messageForThrown } from '@/lib/auth/errors';
 import { AUTH_ROUTES, belongsOnPendingScreen, landingPathForAccount } from '@/lib/auth/routes';
 
-import { AuthFormMessage } from './AuthFormMessage';
 import { AuthHeading } from './AuthHeading';
 
 /**
@@ -32,21 +31,6 @@ const AUTH_METHOD_LABEL: Record<AuthMethodType, string> = {
   twitch: 'Twitch',
   steam: 'Steam',
 };
-
-/**
- * Deutsches Datumsformat.
- *
- * F2 führt bisher keinen Datums-Helfer (`utils/format.ts` deckt Zahlen,
- * Prozente und Adressen ab). Sobald es einen gibt, wird hier darauf umgestellt;
- * die Lücke ist unter „Gefundene Punkte" in WORK_STATUS.md vermerkt.
- */
-function formatRegisteredAt(isoTimestamp: string): string {
-  const date = new Date(isoTimestamp);
-  if (Number.isNaN(date.getTime())) {
-    return '—';
-  }
-  return new Intl.DateTimeFormat('de-DE', { dateStyle: 'long' }).format(date);
-}
 
 type LoadState =
   { kind: 'loading' } | { kind: 'ready'; account: AccountDto } | { kind: 'error'; message: string };
@@ -111,7 +95,7 @@ export function PendingView() {
           title="Konto konnte nicht geladen werden"
           description="Der Stand deines Kontos ließ sich gerade nicht abrufen."
         />
-        <AuthFormMessage>{state.message}</AuthFormMessage>
+        <FormMessage>{state.message}</FormMessage>
         <div className="mt-3.5 flex flex-col gap-2.5">
           <Button variant="primary" fullWidth onClick={() => void checkAgain()} disabled={checking}>
             {checking ? 'Wird geprüft …' : 'Erneut versuchen'}
@@ -156,7 +140,7 @@ export function PendingView() {
           </div>
           <div className="flex items-center justify-between gap-3">
             <dt className="text-ink-muted">Registriert am</dt>
-            <dd>{formatRegisteredAt(account.createdAt)}</dd>
+            <dd>{formatDate(account.createdAt)}</dd>
           </div>
           <div className="flex items-center justify-between gap-3">
             <dt className="text-ink-muted">Rollen</dt>

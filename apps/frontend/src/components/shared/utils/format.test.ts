@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampPercent,
+  formatDate,
+  formatDateTime,
   formatMegabytes,
   formatPercent,
   formatPing,
   formatPlayers,
   formatServerAddress,
+  formatTime,
   serverInitials,
 } from './format';
 
@@ -82,5 +85,29 @@ describe('serverInitials', () => {
 
   it('fällt auf ?? zurück, wenn der Name keine Buchstaben enthält', () => {
     expect(serverInitials('--- ***')).toBe('??');
+  });
+});
+
+describe('Datums- und Zeitformate', () => {
+  const iso = '2026-08-26T12:05:00.000Z';
+
+  it('meldet „—“ bei fehlender oder unlesbarer Angabe', () => {
+    for (const format of [formatDate, formatDateTime, formatTime]) {
+      expect(format(null)).toBe('—');
+      expect(format(undefined)).toBe('—');
+      expect(format('kein Datum')).toBe('—');
+    }
+  });
+
+  it('schreibt das Datum aus', () => {
+    expect(formatDate(iso)).toMatch(/^\d{1,2}\. \p{L}+ \d{4}$/u);
+  });
+
+  it('gibt Datum und Uhrzeit in deutscher Schreibweise aus', () => {
+    expect(formatDateTime(iso)).toMatch(/^\d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}$/);
+  });
+
+  it('gibt die Uhrzeit ohne Datum aus', () => {
+    expect(formatTime(iso)).toMatch(/^\d{2}:\d{2}$/);
   });
 });
