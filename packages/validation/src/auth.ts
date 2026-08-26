@@ -14,6 +14,10 @@ import {
   type GlobalPermissions,
   LOGIN_RESULT_STATUSES,
   OAUTH_PROVIDERS,
+  type PasswordResetResultDto,
+  type SessionDto,
+  type SessionPermissions,
+  type TwoFactorSetupDto,
 } from '@palantir/contracts';
 import { z } from 'zod';
 
@@ -88,6 +92,17 @@ export const altchaSolutionPayloadSchema = z
 export const loginInputSchema = z.object({
   username: z.string().trim().min(1, { message: 'Bitte gib deinen Benutzernamen ein.' }),
   password: z.string().min(1, { message: 'Bitte gib dein Passwort ein.' }),
+  /**
+   * Gelöste ALTCHA-Challenge (ergänzt in B1).
+   *
+   * Pflichtenheft §7 und §18 verlangen den Spam-Schutz ausdrücklich auch beim
+   * **Login**, nicht nur bei der Registrierung – sonst steht das Passwortfeld
+   * für automatisiertes Durchprobieren offen und es bliebe allein das
+   * IP-Rate-Limit. Hier optional typisiert, damit bestehende Aufrufer
+   * unverändert übersetzen; das Backend lehnt einen Login ohne gültigen
+   * Nachweis mit `AUTH_CAPTCHA_INVALID` ab.
+   */
+  altcha: altchaSolutionPayloadSchema.optional(),
 });
 
 /** Registrierung eines Passwort-Kontos (Lastenheft §3.1). */
@@ -202,3 +217,111 @@ export const altchaChallengeSchema = z.object({
 export type LoginInput = z.infer<typeof loginInputSchema>;
 export type RegisterInput = z.infer<typeof registerInputSchema>;
 export type TwoFactorInput = z.infer<typeof twoFactorInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Ergänzungen aus Arbeitspaket B1 (Backend, Pflichtenheft §7)
+// ---------------------------------------------------------------------------
+// Rein additiv zu den Schemas oben, die aus F1 stammen. Alles hier gehört zu
+// Vorgängen, die es im Frontend-Paket F1 noch nicht gab: Passwort ändern und
+// verknüpfen, 2FA einrichten und abschalten, Konto löschen, Sitzungsübersicht.
+
+/**
+ * TOTP-Code nach RFC 6238: genau sechs Ziffern.
+ *
+ * Enger gefasst als {@link twoFactorCodeSchema}, das zusätzlich längere Codes
+ * durchlässt. Beim Einrichten und Abschalten von 2FA ist ausschließlich ein
+ * echter TOTP-Code zulässig – Wiederherstellungscodes gibt es bewusst nicht
+ * (Pflichtenheft §7: die Wiederherstellung läuft über einen Admin).
+ */
+export const totpCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^[0-9]{6}$/, { message: 'Der Bestätigungscode besteht aus 6 Ziffern.' });
+
+/** Passwortwechsel im eingeloggten Zustand (Pflichtenheft §7). */
+export const changePasswordInputSchema = z
+  .object({
+    currentPassword: z.string().min(1, { message: 'Bitte gib dein aktuelles Passwort ein.' }),
+    newPassword: passwordSchema,
+  })
+  .refine((input) => input.currentPassword !== input.newPassword, {
+    message: 'Das neue Passwort muss sich vom bisherigen unterscheiden.',
+    path: ['newPassword'],
+  });
+
+/**
+ * Passwort als weiteres Anmeldeverfahren zu einem Provider-Konto hinzufügen
+ * (Lastenheft §3.1). Nur im eingeloggten Zustand (Pflichtenheft §7).
+ */
+export const linkPasswordInputSchema = z.object({
+  username: usernameSchema,
+  password: passwordSchema,
+});
+
+/** Bestätigung der 2FA-Einrichtung mit einem gültigen Code (Pflichtenheft §7). */
+export const confirmTwoFactorInputSchema = z.object({
+  code: totpCodeSchema,
+});
+
+/**
+ * 2FA abschalten: verlangt Passwort **und** gültigen Code.
+ *
+ * Beides, damit weder ein übernommenes Gerät noch ein abgegriffenes Passwort
+ * allein reicht, um den zweiten Faktor zu entfernen.
+ */
+export const disableTwoFactorInputSchema = z.object({
+  password: z.string().min(1, { message: 'Bitte gib dein Passwort ein.' }),
+  code: totpCodeSchema,
+});
+
+/**
+ * Selbstständige Konto-Löschung (Lastenheft §3.1).
+ *
+ * Der Anmeldename muss zur Bestätigung abgetippt werden; bei Konten mit
+ * Passwort-Verfahren kommt das Passwort dazu. Ob es verlangt wird, entscheidet
+ * das Backend anhand der verknüpften Verfahren – reine Provider-Konten haben
+ * keins.
+ */
+export const deleteAccountInputSchema = z.object({
+  confirmName: z
+    .string()
+    .trim()
+    .min(1, { message: 'Bitte tippe deinen Namen zur Bestätigung ab.' }),
+  password: z.string().min(1).optional(),
+});
+
+// -- Antwort-Schemas ---------------------------------------------------------
+
+export const sessionPermissionsSchema: z.ZodType<SessionPermissions> = z.object({
+  canRevoke: z.boolean(),
+});
+
+/** Eine aktive Sitzung der Geräteübersicht (Lastenheft §3.1). */
+export const sessionDtoSchema: z.ZodType<SessionDto> = z.object({
+  id: idSchema,
+  deviceInfo: z.string().nullable(),
+  ipHint: z.string().nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  lastUsedAt: z.string().datetime({ offset: true }),
+  expiresAt: z.string().datetime({ offset: true }),
+  current: z.boolean(),
+  permissions: sessionPermissionsSchema,
+});
+
+/** Einmalige Ausgabe beim Einrichten von 2FA (Pflichtenheft §7). */
+export const twoFactorSetupSchema: z.ZodType<TwoFactorSetupDto> = z.object({
+  secret: z.string().min(1),
+  otpauthUri: z.string().startsWith('otpauth://'),
+});
+
+/** Ergebnis eines vom Admin ausgelösten Passwort-Resets (Lastenheft §3.1). */
+export const passwordResetResultSchema: z.ZodType<PasswordResetResultDto> = z.object({
+  userId: idSchema,
+  temporaryPassword: z.string().min(1),
+});
+
+export type ChangePasswordInput = z.infer<typeof changePasswordInputSchema>;
+export type LinkPasswordInput = z.infer<typeof linkPasswordInputSchema>;
+export type ConfirmTwoFactorInput = z.infer<typeof confirmTwoFactorInputSchema>;
+export type DisableTwoFactorInput = z.infer<typeof disableTwoFactorInputSchema>;
+export type DeleteAccountInput = z.infer<typeof deleteAccountInputSchema>;

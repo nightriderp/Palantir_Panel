@@ -45,6 +45,23 @@ export function isOAuthProvider(value: string): value is OAuthProvider {
 export interface LinkedAuthMethod {
   type: AuthMethodType;
   /**
+   * Kennung beim Provider; `null` bei `password`.
+   *
+   * Ergänzt in B1 und optional, damit bestehende Aufrufer unverändert bleiben:
+   * die Admin-Warteliste (Lastenheft §3.1) braucht die Kennung, um ein Konto
+   * eindeutig einem Discord-/Steam-/Twitch-Profil zuzuordnen.
+   */
+  providerUserId?: string | null;
+  /** Avatar beim Provider – ebenfalls für die Wiedererkennung. Ergänzt in B1. */
+  providerAvatarUrl?: string | null;
+  /**
+   * Ob dieses Verfahren getrennt werden darf (Pflichtenheft §5.2).
+   *
+   * Bei der letzten verbliebenen Methode immer `false` – sonst hätte das Konto
+   * keinen Weg mehr hinein (Lastenheft §3.1). Ergänzt in B1.
+   */
+  canUnlink?: boolean;
+  /**
    * Anzeigename beim Provider – Discord-Tag, Steam-Profilname, Twitch-Name.
    * Dient der Wiedererkennung in der Admin-Warteliste (Lastenheft §3.1) und in
    * der Kontoübersicht. Bei `password` immer `null`.
@@ -99,6 +116,12 @@ export interface AccountDto {
   twoFactorEnabled: boolean;
   roles: AccountRoleSummary[];
   authMethods: LinkedAuthMethod[];
+  /**
+   * Ein Admin hat das Passwort zurückgesetzt; bis zur Änderung lehnt das
+   * Backend zustandsändernde Requests mit `AUTH_PASSWORD_CHANGE_REQUIRED` ab
+   * (Lastenheft §3.1). Ergänzt in B1, optional für bestehende Aufrufer.
+   */
+  mustChangePassword?: boolean;
   /** ISO-8601-Zeitstempel. */
   createdAt: string;
   /** Instanzweite Rechte des Kontos (Pflichtenheft §5.2 und §8). */
@@ -180,4 +203,87 @@ export interface AltchaSolution {
   number: number;
   /** Dauer der Suche in Millisekunden – rein informativ für das Backend-Log. */
   took?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Ergänzungen aus Arbeitspaket B1 (Backend, Pflichtenheft §7)
+// ---------------------------------------------------------------------------
+// Rein additiv zu den Typen oben, die aus F1 stammen. Alles hier beschreibt
+// Vorgänge, die es im Frontend-Paket F1 noch nicht gab: Sitzungsverwaltung,
+// 2FA-Einrichtung, Admin-Passwort-Reset und die Namen der CSRF-Träger.
+
+/**
+ * Name des Cookies, in dem das CSRF-Token liegt (Pflichtenheft §7 und §18).
+ *
+ * Bewusst **nicht** httpOnly – das Frontend muss den Wert lesen können, um ihn
+ * in den Header zu schreiben (Double-Submit). Das ist unbedenklich, weil das
+ * Token allein keine Sitzung darstellt: die hängt am httpOnly-Refresh-Cookie.
+ *
+ * Der Wert stimmt mit `apps/frontend/src/lib/auth/api.ts` überein; die
+ * Konstanten stehen jetzt hier, damit beide Seiten dieselbe Quelle nutzen.
+ */
+export const CSRF_COOKIE_NAME = 'palantir_csrf';
+
+/** Header, in dem zustandsändernde Requests dasselbe Token mitschicken. */
+export const CSRF_HEADER_NAME = 'x-csrf-token';
+
+/** Länge des TOTP-Codes (RFC 6238). */
+export const TOTP_CODE_LENGTH = 6;
+
+/** Was der angemeldete Nutzer mit einer seiner Sitzungen tun darf. */
+export interface SessionPermissions {
+  /** Einzelner Remote-Logout (Lastenheft §3.1). */
+  canRevoke: boolean;
+}
+
+/**
+ * Eine aktive Sitzung in der Geräteübersicht (Pflichtenheft §6, Entität
+ * `Session`, und §7; Lastenheft §3.1).
+ *
+ * Der Refresh-Token taucht hier in keiner Form auf – er liegt nur gehasht in
+ * der Datenbank und im httpOnly-Cookie des jeweiligen Geräts.
+ */
+export interface SessionDto {
+  id: string;
+  /** Grobe Gerätekennung aus dem User-Agent, z. B. „Firefox auf Windows". */
+  deviceInfo: string | null;
+  /**
+   * Gekürzte Herkunfts-IP als Wiedererkennungshilfe (z. B. `203.0.113.x`).
+   * Bewusst nicht die vollständige Adresse – für die Anzeige wird sie nicht
+   * gebraucht (Datenschutz-Prinzip, Pflichtenheft §18).
+   */
+  ipHint: string | null;
+  /** ISO-8601-Zeitstempel. */
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  /** Die Sitzung, aus der der aktuelle Request stammt. */
+  current: boolean;
+  permissions: SessionPermissions;
+}
+
+/**
+ * Einmalige Ausgabe beim Einrichten von 2FA (Pflichtenheft §7).
+ *
+ * Das Geheimnis wird nur hier ein einziges Mal ausgeliefert und danach nie
+ * wieder; aktiv wird 2FA erst nach Bestätigung mit einem gültigen Code.
+ */
+export interface TwoFactorSetupDto {
+  /** Base32-kodiertes TOTP-Geheimnis zum Abtippen. */
+  secret: string;
+  /** `otpauth://`-URI für den QR-Code. */
+  otpauthUri: string;
+}
+
+/**
+ * Ergebnis eines vom Admin ausgelösten Passwort-Resets (Lastenheft §3.1 –
+ * bewusst ohne E-Mail-Versand, Ablauf in Pflichtenheft §7).
+ *
+ * Das Einmal-Passwort erzeugt der Server, zeigt es dem Admin genau einmal in
+ * dieser Antwort und speichert es nirgends im Klartext. Das Konto steht danach
+ * auf `mustChangePassword`.
+ */
+export interface PasswordResetResultDto {
+  userId: string;
+  temporaryPassword: string;
 }
