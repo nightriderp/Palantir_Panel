@@ -233,11 +233,36 @@ der läuft nach jedem Merge.
 
 ---
 
-## 9. Was noch fehlt
+## 9. Images bauen und veröffentlichen
+
+`.github/workflows/images.yml` läuft **nur auf `main`** - also erst, nachdem ein Pull
+Request die Prüfungen aus `ci.yml` bestanden hat. Ein Image entsteht damit
+ausschließlich aus einem Stand, der bereits gebaut, typgeprüft, gelintet und getestet
+wurde.
+
+Getaggt wird mit dem **vollständigen Commit-SHA**. Das Tag `prod` wird davon getrennt
+vergeben - erst nach der Freigabe und ohne neuen Bau (Abschnitt 4).
+
+Drei Dinge, die nicht selbsterklärend sind:
+
+**Kein eigenes Registry-Secret.** Der Workflow meldet sich mit dem `GITHUB_TOKEN` des
+Laufs an GHCR an; dafuer genügt die Berechtigung `packages: write`. Ein zusaetzliches
+Personal Access Token wäre ein weiteres langlebiges Geheimnis ohne Gegenwert.
+
+**`PALANTIR_DOMAIN` ist eine Repository-Variable, kein Secret.** Der Frontend-Build
+braucht sie, weil Next.js `NEXT_PUBLIC_`-Werte zur Bauzeit einsetzt (Abschnitt 6). Der
+Domainname steht ohnehin im DNS - ihn als Secret zu fuehren, wäre Scheinsicherheit.
+
+**`fail-fast: false` in der Matrix.** Schlägt ein Image fehl, sollen die anderen
+trotzdem fertig werden - sonst fehlt beim nächsten Anlauf auch deren Cache, und der
+Cache macht den größten Teil der Laufzeit aus.
+
+---
+
+## 10. Was noch fehlt
 
 - `docker-compose.yml` für VPS- und Gamenode-Seite
 - Dockerfiles für Backend, Frontend und Agent
-- Der Build-und-Push-Workflow nach GHCR
 - Das Deploy-Skript auf der VPS und der Updater-Timer auf der Gamenode
 - GitHub-Environment `production` mit Pflicht-Reviewer
 - Deploy-Benutzer und Schlüssel auf der VPS
