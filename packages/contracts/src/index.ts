@@ -55,7 +55,9 @@ export * from './server-jobs.js';
 export * from './server-live.js';
 export * from './subdomain.js';
 export * from './permissions.js';
+export * from './resources.js';
 export * from './role.js';
+export * from './auth.js';
 
 export {
   AGENT_COMMANDS,
