@@ -10,20 +10,6 @@ CREATE TABLE "audit_log" (
 	"timestamp" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "host_nodes" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"name" text NOT NULL,
-	"wireguard_ip" text NOT NULL,
-	"total_resources" jsonb NOT NULL,
-	"status" text DEFAULT 'offline' NOT NULL,
-	"status_message" text,
-	"last_seen_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "host_nodes_name_unique" UNIQUE("name"),
-	CONSTRAINT "host_nodes_wireguard_ip_unique" UNIQUE("wireguard_ip")
-);
---> statement-breakpoint
 CREATE TABLE "port_allocations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"range_id" uuid NOT NULL,
@@ -54,6 +40,8 @@ CREATE TABLE "storage_snapshots" (
 	"entries" jsonb NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "host_nodes" ADD COLUMN "status_message" text;--> statement-breakpoint
+ALTER TABLE "host_nodes" ADD COLUMN "last_seen_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "port_allocations" ADD CONSTRAINT "port_allocations_range_id_port_ranges_id_fk" FOREIGN KEY ("range_id") REFERENCES "public"."port_ranges"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "port_ranges" ADD CONSTRAINT "port_ranges_node_id_host_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."host_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -62,7 +50,6 @@ CREATE INDEX "audit_log_timestamp_idx" ON "audit_log" USING btree ("timestamp");
 CREATE INDEX "audit_log_action_idx" ON "audit_log" USING btree ("action");--> statement-breakpoint
 CREATE INDEX "audit_log_actor_id_idx" ON "audit_log" USING btree ("actor_id");--> statement-breakpoint
 CREATE INDEX "audit_log_target_idx" ON "audit_log" USING btree ("target_type","target_id");--> statement-breakpoint
-CREATE INDEX "host_nodes_status_idx" ON "host_nodes" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "port_allocations_port_protocol_idx" ON "port_allocations" USING btree ("port","protocol");--> statement-breakpoint
 CREATE INDEX "port_allocations_server_id_idx" ON "port_allocations" USING btree ("server_id");--> statement-breakpoint
 CREATE INDEX "port_allocations_range_id_idx" ON "port_allocations" USING btree ("range_id");--> statement-breakpoint

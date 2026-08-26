@@ -47,7 +47,9 @@ export {
 export * from './server-lifecycle.js';
 export * from './game-server.js';
 export * from './permissions.js';
+export * from './resources.js';
 export * from './role.js';
+export * from './auth.js';
 
 // Admin-Funktionen (Arbeitspaket B8): Nodes, öffentlicher Port-Pool,
 // Audit-Log, Speicherverwaltung und Freischalt-Warteliste.

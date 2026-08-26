@@ -24,7 +24,7 @@ import { closeDb, getDb } from './client.js';
 async function main(): Promise<void> {
   if (!env.AUDIT_ARCHIVE_DIR) {
     throw new Error(
-      'AUDIT_ARCHIVE_DIR ist nicht gesetzt. Bitte die zentrale .env im Repo-Root ausfüllen (siehe .env.example Abschnitt 13).',
+      'AUDIT_ARCHIVE_DIR ist nicht gesetzt. Bitte die zentrale .env im Repo-Root ausfüllen (siehe .env.example Abschnitt 14).',
     );
   }
 

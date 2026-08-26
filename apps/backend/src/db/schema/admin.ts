@@ -2,12 +2,17 @@
  * Tabellen des Arbeitspakets B8 – Admin-Funktionen (Pflichtenheft §6).
  *
  * Enthält:
- * - `host_nodes` – die Homeserver (Entität `HostNode`)
  * - `port_ranges` / `port_allocations` – der öffentliche Port-Bereich der VPS
  *   und die Zuordnung Port ↔ Zielserver (Pflichtenheft §2.4)
  * - `audit_log` – append-only Protokoll aller sicherheitsrelevanten Aktionen
  * - `storage_snapshots` – zwischengespeichertes Ergebnis des Agent-Befehls
  *   `GET_STORAGE_BREAKDOWN` (Pflichtenheft §16)
+ *
+ * **`host_nodes` liegt bewusst nicht hier.** Die Tabelle kam aus B4
+ * (`schema/resources.ts`), weil die harte Kapazitätsprüfung aus Pflichtenheft §10
+ * ohne sie keine Datenquelle hätte. B8 verwaltet dieselbe Tabelle und hat sie
+ * dort **additiv** um `status_message` und `last_seen_at` erweitert – keine
+ * zweite Node-Tabelle daneben (CLAUDE.md §3).
  *
  * **`audit_log` ist append-only.** Das ist nicht nur eine Regel im
  * Anwendungscode: Die zugehörige Migration legt zusätzlich einen Trigger an,
@@ -22,7 +27,6 @@ import {
   type AgentStorageEntry,
   type AuditAction,
   type AuditTargetType,
-  type HostNodeStatus,
   type PortProtocol,
 } from '@palantir/contracts';
 import {
@@ -37,39 +41,8 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { hostNodes } from './resources.js';
 import { users } from './users.js';
-
-/**
- * Ressourcenmenge einer Node, wie sie in `total_resources` liegt.
- *
- * Bewusst als JSON-Spalte statt drei Einzelspalten: Die Menge wird immer
- * zusammen gelesen und geschrieben, und der Typ ist über `NodeResources` aus
- * `@palantir/contracts` festgenagelt.
- */
-interface NodeResourcesColumn {
-  ramMb: number;
-  cpuCores: number;
-  diskMb: number;
-}
-
-/** Homeserver, auf dem Gameserver-Container laufen (Entität `HostNode`). */
-export const hostNodes = pgTable(
-  'host_nodes',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    name: text('name').notNull().unique(),
-    /** Feste interne Adresse im Tunnel-Netz (Pflichtenheft §2.1). */
-    wireguardIp: text('wireguard_ip').notNull().unique(),
-    totalResources: jsonb('total_resources').$type<NodeResourcesColumn>().notNull(),
-    status: text('status').$type<HostNodeStatus>().notNull().default('offline'),
-    statusMessage: text('status_message'),
-    /** Letzter Kontakt des Agents; `null`, solange nie verbunden. */
-    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [index('host_nodes_status_idx').on(table.status)],
-);
 
 /**
  * Zusammenhängender Bereich öffentlicher Ports auf der VPS (Pflichtenheft §2.4).
@@ -195,8 +168,6 @@ export const storageSnapshots = pgTable('storage_snapshots', {
   entries: jsonb('entries').$type<AgentStorageEntry[]>().notNull(),
 });
 
-export type HostNodeRow = typeof hostNodes.$inferSelect;
-export type NewHostNodeRow = typeof hostNodes.$inferInsert;
 export type PortRangeRow = typeof portRanges.$inferSelect;
 export type PortAllocationRow = typeof portAllocations.$inferSelect;
 export type AuditLogRow = typeof auditLog.$inferSelect;

@@ -4,10 +4,15 @@
  * Gegenstück zu `HostNodeDto` aus `@palantir/contracts`. Backend
  * (Request-Validierung) und Frontend (Node-Formular in F10) nutzen dieselben
  * Regeln – kein zweiter, abweichender Regelsatz.
+ *
+ * `nodeResourcesSchema` stammt aus `resources.ts` (B4) und wird hier nur
+ * wiederverwendet: Die Ressourcenmenge einer Node ist dieselbe, egal ob sie
+ * geprüft oder verwaltet wird (CLAUDE.md §3).
  */
 
 import { HOST_NODE_STATUSES } from '@palantir/contracts';
 import { z } from 'zod';
+import { nodeResourcesSchema } from './resources.js';
 
 export const hostNodeStatusSchema = z.enum(HOST_NODE_STATUSES);
 
@@ -27,13 +32,6 @@ export const wireguardIpSchema = z
   .string()
   .trim()
   .ip({ version: 'v4', message: 'Erwartet wird eine IPv4-Adresse aus dem Tunnel-Netz.' });
-
-/** Ressourcenmenge einer Node (`NodeResources`). */
-export const nodeResourcesSchema = z.object({
-  ramMb: z.number().int().positive(),
-  cpuCores: z.number().positive(),
-  diskMb: z.number().int().positive(),
-});
 
 /** Eingabe zum Anlegen einer Node (F10 → Backend). */
 export const createHostNodeInputSchema = z.object({
