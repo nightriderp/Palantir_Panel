@@ -35,6 +35,7 @@ describe('Fehlercodes der Backup-Verwaltung (Pflichtenheft §5.1)', () => {
     expect(ERROR_CATALOG.BACKUP_NOT_READY.httpStatus).toBe(409);
     expect(ERROR_CATALOG.BACKUP_ALREADY_RUNNING.httpStatus).toBe(409);
     expect(ERROR_CATALOG.SCHEDULE_INVALID_CRON.httpStatus).toBe(400);
+    expect(ERROR_CATALOG.VALIDATION_FAILED.httpStatus).toBe(400);
   });
 
   it('meldet den Fehlschlag über das bereits vereinbarte Event', () => {
