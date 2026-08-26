@@ -78,3 +78,115 @@ export interface GameTypeDto {
   /** Grund, wenn `available === false`, z. B. „Kommt in Phase 2". */
   unavailableReason: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Vollständige Definition (ergänzt in B3)
+// ---------------------------------------------------------------------------
+// Der DTO oben ist die Sicht des Frontends. Die vollständige Definition steht
+// hier, weil der Vertrag beschreiben muss, was ein Spiel ausmacht – die
+// konkreten Definitionen liegen als Registry im Backend
+// (`apps/backend/src/modules/server-orchestration/game-registry.ts`), denn neue
+// Spiele werden in Version 1 per Code ergänzt, nicht über eine Oberfläche
+// (Pflichtenheft §11).
+
+/**
+ * Art der Erreichbarkeitsprüfung (Pflichtenheft §9: „Query via `gamedig` bzw.
+ * generischer Port-Connect-Test beim Test-Typ").
+ *
+ * `portConnect` prüft nur, ob sich eine TCP-Verbindung aufbauen lässt, und
+ * liefert deshalb keine Spielerzahlen. `gamedig` fragt das Spieleprotokoll ab
+ * und liefert zusätzlich Spielerzahl und Ping.
+ */
+export const GAME_QUERY_KINDS = ['portConnect', 'gamedig'] as const;
+
+export type GameQueryKind = (typeof GAME_QUERY_KINDS)[number];
+
+/** Generischer Port-Connect-Test (Phase 1, Test-Typ). */
+export interface PortConnectQuerySpec {
+  readonly kind: 'portConnect';
+  /** Container-Port, auf dem geprüft wird; muss in `ports` vorkommen. */
+  readonly containerPort: number;
+}
+
+/**
+ * Abfrage über `gamedig` (Phase 2+).
+ *
+ * `protocol` ist der Bezeichner der `gamedig`-Bibliothek, z. B. `minecraft`.
+ * Bewusst ein freier String: Die Liste unterstützter Protokolle gehört der
+ * Bibliothek, nicht diesem Vertrag.
+ */
+export interface GamedigQuerySpec {
+  readonly kind: 'gamedig';
+  readonly protocol: string;
+  readonly containerPort: number;
+}
+
+export type GameQuerySpec = PortConnectQuerySpec | GamedigQuerySpec;
+
+export type GameTypePortProtocol = 'tcp' | 'udp';
+
+/** Ein Standard-Port einer Spiele-Definition. */
+export interface GameTypePort {
+  readonly containerPort: number;
+  readonly protocol: GameTypePortProtocol;
+  /**
+   * `true` beim Port, den der Spieler benutzt. Genau einer je Definition; er
+   * landet als sichtbarer Port in der Verbindungsadresse (Pflichtenheft §13).
+   */
+  readonly primary: boolean;
+  /** Beschriftung für die Oberfläche, z. B. „Spiel-Port" oder „RCON". */
+  readonly label: string;
+}
+
+/**
+ * Vollständige Spiele-Definition (Pflichtenheft §11).
+ *
+ * Änderungen sind bevorzugt additiv (neue optionale Felder).
+ */
+export interface GameTypeDefinition {
+  /** Stabile Kennung, wie sie in `GameServer.gameType` steht, z. B. `test-echo`. */
+  readonly id: string;
+  /** Anzeigename, z. B. „Minecraft (Paper)". */
+  readonly name: string;
+  readonly description: string;
+  readonly dockerImage: string;
+  /** Startbefehl; ohne Angabe gilt der Entrypoint des Images. */
+  readonly defaultCommand?: readonly string[];
+  readonly defaultEnv: Readonly<Record<string, string>>;
+  readonly ports: readonly GameTypePort[];
+  readonly configFields: readonly GameConfigField[];
+  readonly resourceDefaults: ServerResourceLimits;
+  readonly query: GameQuerySpec;
+  readonly iconUrl: string | null;
+  readonly coverImageUrl: string | null;
+  /**
+   * Hostname-basiertes Routing über einen einzigen öffentlichen Port
+   * (Pflichtenheft §2.4, §13 – initial nur Minecraft). Bei `true` bekommt der
+   * Spieler keinen Port zu sehen.
+   */
+  readonly supportsVirtualHostRouting: boolean;
+  /** Kann der Wizard bestehende Weltdaten übernehmen (Lastenheft §3.3)? */
+  readonly supportsWorldImport: boolean;
+  /** Beschreibbarer Datenordner im Container – der einzige dauerhaft beschreibbare Ort. */
+  readonly dataVolumeContainerPath: string;
+  /**
+   * Read-only-Root-Filesystem. Pflichtenheft §2.3 verlangt das „wo vom Spiel
+   * unterstützt" – die Entscheidung trifft diese Definition, nicht der Agent.
+   */
+  readonly readOnlyRootFilesystem?: boolean;
+  /** Zusätzliche beschreibbare tmpfs-Pfade bei read-only Root (z. B. `/tmp`). */
+  readonly tmpfsPaths?: readonly string[];
+  /** Kulanzzeit für SIGTERM vor SIGKILL. */
+  readonly stopTimeoutSeconds?: number;
+  /**
+   * Wie lange nach dem Start auf einen erfolgreichen Health-Check gewartet wird,
+   * bevor der Start als gescheitert gilt (Pflichtenheft §9). Ein Spiel, das
+   * seine Welt erst generieren muss, braucht hier mehr Zeit als ein Test-Typ.
+   */
+  readonly startupTimeoutSeconds: number;
+  /**
+   * Ausbaustufe, ab der dieses Spiel fachlich existiert (Lastenheft §3.5).
+   * Definitionen späterer Phasen sind sichtbar, aber nicht auswählbar.
+   */
+  readonly phase: 1 | 2 | 3;
+}
