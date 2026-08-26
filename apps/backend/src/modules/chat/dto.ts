@@ -23,11 +23,7 @@ import {
   computeMessagePermissions,
   computeMessageReportPermissions,
 } from './permissions.js';
-import {
-  type ConversationRecord,
-  type MessageRecord,
-  type MessageReportRecord,
-} from './types.js';
+import { type ConversationRecord, type MessageRecord, type MessageReportRecord } from './types.js';
 import { type ConversationAudience, titleFor } from './visibility.js';
 
 /** Anzeigename oder ein neutraler Platzhalter, wenn das Konto nicht mehr existiert. */

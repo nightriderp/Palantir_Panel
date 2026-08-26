@@ -112,11 +112,7 @@ export {
   noopChatDelivery,
 } from './live.js';
 
-export {
-  type ChatService,
-  type ChatServiceDependencies,
-  createChatService,
-} from './service.js';
+export { type ChatService, type ChatServiceDependencies, createChatService } from './service.js';
 
 export {
   type ChatEventPublisher,

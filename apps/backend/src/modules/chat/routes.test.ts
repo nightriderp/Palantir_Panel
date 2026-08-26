@@ -182,12 +182,9 @@ describe('Moderationsweg', () => {
       content: 'Etwas Unschönes',
     });
 
-    const gemeldet = await anfrage(
-      'POST',
-      `/api/chat/messages/${nachricht.id}/report`,
-      'bea',
-      { reason: 'Beleidigung' },
-    );
+    const gemeldet = await anfrage('POST', `/api/chat/messages/${nachricht.id}/report`, 'bea', {
+      reason: 'Beleidigung',
+    });
 
     expect(gemeldet.statusCode).toBe(201);
 
