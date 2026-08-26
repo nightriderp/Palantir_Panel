@@ -55,6 +55,24 @@ export const ERROR_CATALOG = {
     httpStatus: 403,
     defaultMessage: 'Für diese Aktion fehlt die nötige Berechtigung.',
   },
+  /**
+   * Konto existiert nicht (Pflichtenheft §6, Entität `User`).
+   * 404: Zielobjekt nicht vorhanden – z. B. beim Setzen eines Kontingents (§10)
+   * für ein inzwischen gelöschtes Konto.
+   */
+  USER_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieses Konto existiert nicht.',
+  },
+  /**
+   * Node existiert nicht (Pflichtenheft §6, Entität `HostNode`).
+   * 404: Zielobjekt nicht vorhanden – z. B. bei der Kapazitätsprüfung (§10) für
+   * eine Node, die zwischenzeitlich entfernt wurde.
+   */
+  NODE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Node existiert nicht.',
+  },
   /** Rolle existiert nicht (Pflichtenheft §8). 404: Zielobjekt nicht vorhanden. */
   ROLE_NOT_FOUND: {
     httpStatus: 404,
