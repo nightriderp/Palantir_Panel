@@ -1,20 +1,45 @@
 'use client';
 
-import { useId, type ReactNode } from 'react';
-import { cn } from '@/components/shared';
+import { useId, type InputHTMLAttributes, type ReactNode } from 'react';
+
+import { cn } from '../utils/cn';
 
 /**
- * Formularfelder für die Ansichten des Arbeitspakets F3.
+ * Formular-Bausteine des Design-Systems (Arbeitspaket R4, „Gefundene Punkte“ 26 und 47).
  *
- * **Vorläufig hier statt in F2:** Das Design-System bringt bisher keine
- * Eingabefelder mit (siehe „Gefundene Punkte" in WORK_STATUS.md). Sobald F2 sie
- * hat, werden diese Bausteine dorthin gezogen und hier entfernt – die Optik
- * folgt deshalb ausschließlich den Tokens aus `tailwind.config.ts`, ohne einen
- * einzigen literalen Farb- oder Radiuswert.
+ * Vorlage war die Fassung, die F3 unter `components/servers/form/Fields.tsx`
+ * vorläufig gebaut hatte; ergänzt wurde, was F1 zusätzlich brauchte:
+ * Fehlerrahmen am Eingabefeld, `aria-invalid`/`aria-describedby`, freie
+ * Eingabe-Attribute (`autoComplete`, `inputMode`, …) und eine zweite
+ * Beschriftungsvariante. F1 und F3 nutzen seitdem ausschließlich diese Datei.
+ *
+ * Regeln wie im übrigen Design-System: rein darstellend, Werte per Props,
+ * Änderungen per Callback nach oben, Oberflächensprache Deutsch, Mobile-First
+ * und **keine literalen Farb- oder Radiuswerte** – nur Tokens aus
+ * `tailwind.config.ts`.
  */
 
-const CONTROL_CLASSES =
-  'w-full rounded-md border border-line-strong bg-fill px-3 py-2.5 text-base text-ink outline-none focus-visible:border-brand disabled:cursor-not-allowed disabled:text-ink-disabled';
+/** Grundoptik aller Eingabe-Elemente (Text, Zahl, Auswahl). */
+const CONTROL_BASE =
+  'w-full rounded-md border bg-fill px-3 py-2.5 text-base text-ink outline-none placeholder:text-ink-disabled focus-visible:border-brand disabled:cursor-not-allowed disabled:text-ink-disabled';
+
+/** Rahmenfarbe abhängig davon, ob zum Feld ein Fehler gemeldet ist. */
+function controlClasses(error: string | null | undefined, extra?: string): string {
+  return cn(CONTROL_BASE, error ? 'border-danger-line' : 'border-line-strong', extra);
+}
+
+/**
+ * Beschriftungsvarianten.
+ *
+ * - `plain` – Standard in den Dashboard-Formularen (Wizard, Einstellungen).
+ * - `caps` – Versalien-Variante der Anmelde-Ansichten (F1).
+ */
+export type FieldLabelVariant = 'plain' | 'caps';
+
+const LABEL_CLASSES: Record<FieldLabelVariant, string> = {
+  plain: 'text-sm text-ink-muted',
+  caps: 'text-xs uppercase tracking-[0.08em] text-ink-muted',
+};
 
 export interface FieldShellProps {
   label: string;
@@ -24,7 +49,12 @@ export interface FieldShellProps {
   error?: string | null;
   /** Zusatz rechts neben der Beschriftung, z. B. der aktuelle Wert. */
   labelAside?: ReactNode;
+  labelVariant?: FieldLabelVariant;
   htmlFor?: string;
+  /** ID des Hinweistextes – die Feldkomponenten verdrahten damit `aria-describedby`. */
+  hintId?: string;
+  /** ID der Fehlermeldung – dito. */
+  errorId?: string;
   children: ReactNode;
   className?: string;
 }
@@ -35,39 +65,85 @@ export function FieldShell({
   hint,
   error,
   labelAside,
+  labelVariant = 'plain',
   htmlFor,
+  hintId,
+  errorId,
   children,
   className,
 }: FieldShellProps) {
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={htmlFor} className="text-sm text-ink-muted">
+        <label htmlFor={htmlFor} className={LABEL_CLASSES[labelVariant]}>
           {label}
         </label>
         {labelAside ? <span className="font-mono text-xs text-ink-faint">{labelAside}</span> : null}
       </div>
       {children}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p id={errorId} role="alert" className="text-xs text-danger">
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-ink-faint">{hint}</p>
+        <p id={hintId} className="text-xs text-ink-faint">
+          {hint}
+        </p>
       ) : null}
     </div>
   );
 }
 
-export interface TextFieldProps extends Omit<FieldShellProps, 'children' | 'htmlFor'> {
+/** Gemeinsame Props aller Felder: der Rahmen ohne die von der Feldkomponente gesetzten Teile. */
+type FieldProps = Omit<FieldShellProps, 'children' | 'htmlFor' | 'hintId' | 'errorId'>;
+
+/** IDs für Feld, Hinweis und Fehlermeldung samt fertigem `aria-describedby`. */
+function useFieldIds(hint: ReactNode, error: string | null | undefined) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  const errorId = `${id}-error`;
+  return {
+    id,
+    hintId,
+    errorId,
+    // Der Rahmen zeigt entweder Fehler oder Hinweis – beschrieben wird genau das Sichtbare.
+    describedBy: error ? errorId : hint ? hintId : undefined,
+  };
+}
+
+/** Eingabe-Attribute, die eine Feldkomponente selbst setzt und deshalb nicht durchreicht. */
+type PassthroughInputProps = Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  | 'id'
+  | 'type'
+  | 'value'
+  | 'onChange'
+  | 'disabled'
+  | 'className'
+  | 'placeholder'
+  | 'autoComplete'
+  | 'autoFocus'
+>;
+
+export interface TextFieldProps extends FieldProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  type?: 'text' | 'password';
+  type?: 'text' | 'password' | 'email';
   disabled?: boolean;
   /** Inhalt rechts im Feld, z. B. die Basis-Domain hinter der Subdomain. */
   suffix?: ReactNode;
   autoFocus?: boolean;
+  /**
+   * Standard `off`. Anmelde-Ansichten setzen hier die passende Angabe
+   * (`username`, `current-password`, `one-time-code`, …), damit Passwortspeicher
+   * das Feld erkennen.
+   */
+  autoComplete?: string;
+  /** Zusätzliche Klassen nur für das Eingabefeld, z. B. der zentrierte 2FA-Code. */
+  inputClassName?: string;
+  /** Restliche Eingabe-Attribute wie `inputMode`, `maxLength`, `spellCheck`. */
+  inputProps?: PassthroughInputProps;
 }
 
 export function TextField({
@@ -78,25 +154,34 @@ export function TextField({
   disabled,
   suffix,
   autoFocus,
+  autoComplete = 'off',
+  inputClassName,
+  inputProps,
   ...shell
 }: TextFieldProps) {
-  const id = useId();
+  const { id, hintId, errorId, describedBy } = useFieldIds(shell.hint, shell.error);
   const input = (
     <input
+      {...inputProps}
       id={id}
       type={type}
       value={value}
       placeholder={placeholder}
       disabled={disabled}
       autoFocus={autoFocus}
-      autoComplete="off"
+      autoComplete={autoComplete}
+      aria-invalid={shell.error ? true : undefined}
+      aria-describedby={describedBy}
       onChange={(event) => onChange(event.target.value)}
-      className={cn(CONTROL_CLASSES, suffix ? 'rounded-r-none border-r-0' : undefined)}
+      className={controlClasses(
+        shell.error,
+        cn(suffix ? 'rounded-r-none border-r-0' : undefined, inputClassName),
+      )}
     />
   );
 
   return (
-    <FieldShell {...shell} htmlFor={id}>
+    <FieldShell {...shell} htmlFor={id} hintId={hintId} errorId={errorId}>
       {suffix ? (
         <div className="flex">
           {input}
@@ -111,7 +196,7 @@ export function TextField({
   );
 }
 
-export interface NumberFieldProps extends Omit<FieldShellProps, 'children' | 'htmlFor'> {
+export interface NumberFieldProps extends FieldProps {
   value: number;
   onChange: (value: number) => void;
   min?: number;
@@ -129,9 +214,9 @@ export function NumberField({
   disabled,
   ...shell
 }: NumberFieldProps) {
-  const id = useId();
+  const { id, hintId, errorId, describedBy } = useFieldIds(shell.hint, shell.error);
   return (
-    <FieldShell {...shell} htmlFor={id}>
+    <FieldShell {...shell} htmlFor={id} hintId={hintId} errorId={errorId}>
       <input
         id={id}
         type="number"
@@ -140,18 +225,20 @@ export function NumberField({
         max={max}
         step={step}
         disabled={disabled}
+        aria-invalid={shell.error ? true : undefined}
+        aria-describedby={describedBy}
         onChange={(event) => onChange(Number(event.target.value))}
-        className={CONTROL_CLASSES}
+        className={controlClasses(shell.error)}
       />
     </FieldShell>
   );
 }
 
-export interface SelectFieldProps extends Omit<FieldShellProps, 'children' | 'htmlFor'> {
+export interface SelectFieldProps extends FieldProps {
   value: string;
   onChange: (value: string) => void;
   options: ReadonlyArray<{ value: string; label: string; disabled?: boolean }>;
-  /** Erster Eintrag ohne Wert, z. B. „Node wählen …". */
+  /** Erster Eintrag ohne Wert, z. B. „Node wählen …“. */
   placeholder?: string;
   disabled?: boolean;
 }
@@ -164,15 +251,17 @@ export function SelectField({
   disabled,
   ...shell
 }: SelectFieldProps) {
-  const id = useId();
+  const { id, hintId, errorId, describedBy } = useFieldIds(shell.hint, shell.error);
   return (
-    <FieldShell {...shell} htmlFor={id}>
+    <FieldShell {...shell} htmlFor={id} hintId={hintId} errorId={errorId}>
       <select
         id={id}
         value={value}
         disabled={disabled}
+        aria-invalid={shell.error ? true : undefined}
+        aria-describedby={describedBy}
         onChange={(event) => onChange(event.target.value)}
-        className={CONTROL_CLASSES}
+        className={controlClasses(shell.error)}
       >
         {placeholder ? <option value="">{placeholder}</option> : null}
         {options.map((option) => (
@@ -185,7 +274,7 @@ export function SelectField({
   );
 }
 
-export interface SliderFieldProps extends Omit<FieldShellProps, 'children' | 'htmlFor'> {
+export interface SliderFieldProps extends FieldProps {
   value: number;
   onChange: (value: number) => void;
   min: number;
@@ -204,9 +293,9 @@ export function SliderField({
   disabled,
   ...shell
 }: SliderFieldProps) {
-  const id = useId();
+  const { id, hintId, errorId, describedBy } = useFieldIds(shell.hint, shell.error);
   return (
-    <FieldShell {...shell} htmlFor={id}>
+    <FieldShell {...shell} htmlFor={id} hintId={hintId} errorId={errorId}>
       <input
         id={id}
         type="range"
@@ -215,6 +304,7 @@ export function SliderField({
         max={max}
         step={step}
         disabled={disabled}
+        aria-describedby={describedBy}
         onChange={(event) => onChange(Number(event.target.value))}
         className="h-6 w-full accent-brand"
       />
