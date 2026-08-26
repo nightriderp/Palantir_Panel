@@ -28,6 +28,18 @@ const envSchema = z.object({
    * die Datenbank benötigt, wird der Wert hier auf Pflicht hochgestuft.
    */
   DATABASE_URL: z.string().min(1).optional(),
+
+  /**
+   * Ablageort der Audit-Log-Archive auf der VPS (Pflichtenheft §6,
+   * .env.example Abschnitt 13).
+   *
+   * Der Archivierungsprozess exportiert Einträge älter als 24 Monate dorthin,
+   * bevor er sie aus der aktiven Tabelle entfernt. Ohne gesetzten Wert läuft
+   * das Backend normal weiter, der Archivierungslauf lehnt aber ab: Ein
+   * unklarer Ablageort für Sicherheitsprotokolle ist schlechter als gar keine
+   * Archivierung.
+   */
+  AUDIT_ARCHIVE_DIR: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

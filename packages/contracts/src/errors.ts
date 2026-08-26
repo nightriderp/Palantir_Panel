@@ -169,6 +169,17 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Die Container-Engine auf dem Homeserver ist nicht erreichbar.',
   },
 
+  /**
+   * Eingabe verletzt das Zod-Schema aus `@palantir/validation`. 400: Der
+   * Aufrufer müsste den Request ändern, ein Retry mit demselben Inhalt hilft
+   * nicht. Die Einzelheiten stehen in der Meldung – der Code bleibt derselbe,
+   * damit das Frontend nicht je Feld einen eigenen Code auswerten muss.
+   */
+  VALIDATION_FAILED: {
+    httpStatus: 400,
+    defaultMessage: 'Die übermittelten Daten sind ungültig.',
+  },
+
   // -- Admin-Funktionen (Lastenheft §3.7 und §3.8) ---------------------------
   // Arbeitspaket B8: Nodes, öffentlicher Port-Pool (Pflichtenheft §2.4),
   // Audit-Log (§6), Storage-Explorer (§16) und Freischalt-Warteliste.
