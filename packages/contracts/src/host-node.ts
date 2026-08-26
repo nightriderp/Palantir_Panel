@@ -5,6 +5,13 @@
  * betreibt genau eine Node; das Datenmodell ist bewusst für mehrere vorbereitet
  * (Lastenheft §6).
  *
+ * **Abgrenzung zu `resources.ts` (B4):** Dort stehen `HostNodeStatus`,
+ * `NodeResources` und `NodeResourceUsage` – die Bausteine, die die harte
+ * Kapazitätsprüfung aus Pflichtenheft §10 braucht. Diese Datei nutzt sie und
+ * legt darüber die **Verwaltungssicht** aus Lastenheft §3.7: der vollständige
+ * DTO mit `permissions`, Kapazität und Auslastung. Keine zweite Definition der
+ * Bausteine (CLAUDE.md §3).
+ *
  * **Ergänzungen gegenüber Pflichtenheft §6:** Dort stehen nur `id`,
  * `wireguardIp`, `totalResources` und `status`. Zusätzlich stehen hier `name`
  * (die Serverliste zeigt laut `GameServerDto.hostName` einen Anzeigenamen),
@@ -14,38 +21,7 @@
  * Ergänzungen sind additiv.
  */
 
-/**
- * Betriebszustand einer Node.
- *
- * `online` setzt eine bestehende Agent-Verbindung voraus (Pflichtenheft §2.2);
- * `degraded` meldet der Agent, wenn er erreichbar ist, die Container-Engine
- * aber nicht. `maintenance` setzt ein Admin von Hand – auf einer Node in
- * Wartung werden keine neuen Server platziert.
- */
-export type HostNodeStatus = 'online' | 'offline' | 'degraded' | 'maintenance';
-
-export const HOST_NODE_STATUSES = [
-  'online',
-  'offline',
-  'degraded',
-  'maintenance',
-] as const satisfies readonly HostNodeStatus[];
-
-export function isHostNodeStatus(value: string): value is HostNodeStatus {
-  return (HOST_NODE_STATUSES as readonly string[]).includes(value);
-}
-
-/**
- * Ressourcenmenge einer Node (Pflichtenheft §6, `HostNode.totalResources`).
- *
- * Einheiten wie bei `ServerResourceLimits`, damit beide Seiten derselben
- * Kapazitätsrechnung dieselbe Skala nutzen (Pflichtenheft §10).
- */
-export interface NodeResources {
-  ramMb: number;
-  cpuCores: number;
-  diskMb: number;
-}
+import { type HostNodeStatus, type NodeResources } from './resources.js';
 
 /**
  * Kapazität einer Node (Lastenheft §3.7).
@@ -54,8 +30,8 @@ export interface NodeResources {
  * angelegten Server – also der reservierte, nicht der tatsächlich genutzte
  * Anteil. `available` ist `total - allocated`, nie kleiner als 0.
  *
- * Die harte Prüfung vor jedem Serverstart (Pflichtenheft §10) arbeitet
- * zusätzlich mit {@link HostNodeUsage}, also den echten Messwerten.
+ * Gefüllt wird `allocated` aus der Belegung, die B4 als `NodeResourceUsage`
+ * berechnet – dieselbe Zahl, hier nur in der Form der Übersicht.
  */
 export interface HostNodeCapacity {
   total: NodeResources;
