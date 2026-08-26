@@ -1,14 +1,14 @@
 import { RESERVED_SUBDOMAINS } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
+import { cronExpressionSchema } from './backups.js';
 import {
   cloneServerInputSchema,
   consoleCommandSchema,
   createServerInputSchema,
-  cronExpressionSchema,
-  scheduleInputSchema,
   serverFilePathSchema,
   serverNameSchema,
   serverResourceLimitsSchema,
+  serverTaskInputSchema,
   subdomainSchema,
 } from './servers.js';
 
@@ -142,7 +142,7 @@ describe('cloneServerInputSchema', () => {
   });
 });
 
-describe('cronExpressionSchema', () => {
+describe('cronExpressionSchema (aus B5, hier für Aufgaben mitgenutzt)', () => {
   it('nimmt gebräuchliche Ausdrücke an', () => {
     for (const expression of ['0 4 * * *', '*/15 * * * *', '30 2 1,15 * 0', '0 0-6/2 * * 1-5']) {
       expect(cronExpressionSchema.safeParse(expression).success).toBe(true);
@@ -156,7 +156,7 @@ describe('cronExpressionSchema', () => {
   });
 });
 
-describe('scheduleInputSchema', () => {
+describe('serverTaskInputSchema', () => {
   const base = {
     name: 'Nächtlicher Neustart',
     action: 'restart' as const,
@@ -167,11 +167,11 @@ describe('scheduleInputSchema', () => {
   };
 
   it('nimmt eine Aufgabe ohne Befehl an', () => {
-    expect(scheduleInputSchema.parse(base).action).toBe('restart');
+    expect(serverTaskInputSchema.parse(base).action).toBe('restart');
   });
 
   it('verlangt bei „command" einen Befehl', () => {
-    const result = scheduleInputSchema.safeParse({ ...base, action: 'command' });
+    const result = serverTaskInputSchema.safeParse({ ...base, action: 'command' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0]?.path).toEqual(['command']);
@@ -180,7 +180,7 @@ describe('scheduleInputSchema', () => {
 
   it('nimmt „command" mit Befehl an', () => {
     expect(
-      scheduleInputSchema.parse({
+      serverTaskInputSchema.parse({
         ...base,
         action: 'command',
         command: 'say Neustart in 5 Minuten',
