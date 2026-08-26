@@ -12,13 +12,15 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
+    "db:owner": "tsx src/db/owner.ts",
     "db:check": "drizzle-kit check",
     "audit:archive": "tsx src/db/archive-audit.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src drizzle.config.ts",
     "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist .turbo",
-    "db:migrate:prod": "node dist/db/migrate.js"
+    "db:migrate:prod": "node dist/db/migrate.js",
+    "db:seed:prod": "node dist/db/seed.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

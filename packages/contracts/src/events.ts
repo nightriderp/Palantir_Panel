@@ -68,6 +68,19 @@ export const WEBSOCKET_EVENTS = [
    * sonst löste jede Zustellung die nächste aus.
    */
   'notification.created',
+
+  // -- Chat & Moderation (B7, Pflichtenheft §15, siehe `chat.ts`) -------------
+  // Reine Live-Ereignisse des Chat-Kanals: Sie halten eine offene Ansicht
+  // aktuell und sind – wie die Live-Ereignisse der Server-Ansicht – bewusst
+  // kein Anlass für eine `NotificationRule`. Anlass für eine Benachrichtigung
+  // ist allein `message.reported` weiter oben.
+
+  /** Neue Nachricht in einer Konversation, an der der Empfänger teilnimmt. */
+  'message.sent',
+  /** Nachricht entfernt – vom Absender selbst oder als Folge einer Meldung. */
+  'message.deleted',
+  /** Konversation ist für den Empfänger neu sichtbar (erste DM, neuer Server-Chat). */
+  'conversation.created',
 ] as const satisfies readonly EventNameScheme[];
 
 /** Alle aktuell definierten Event-Namen. */

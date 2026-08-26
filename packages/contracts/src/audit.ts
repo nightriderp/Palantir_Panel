@@ -55,6 +55,12 @@ export const AUDIT_ACTIONS = [
   'user.limitsChanged',
   'user.roleAssigned',
   'user.roleRemoved',
+  /**
+   * Owner-Sonderstatus bei der Ersteinrichtung vergeben (Lastenheft §2,
+   * Pflichtenheft §12.3). Kommt vom Wartungs-Kommando auf der VPS und steht
+   * deshalb ohne Handelnden im Log – der Systemzugang ist dort der Nachweis.
+   */
+  'user.ownerGranted',
 
   // Rollen (B2)
   'role.created',

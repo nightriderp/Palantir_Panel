@@ -77,8 +77,16 @@ export interface BackupPermissions {
 /** Backup (Pflichtenheft §6, Entität `Backup`). */
 export interface BackupDto {
   id: string;
-  serverId: string;
-  /** Anzeigename des Servers; `null`, wenn für den Aufrufer nicht auflösbar. */
+  /**
+   * Gesicherter Server.
+   *
+   * `null`, sobald der Server gelöscht wurde: Der Fremdschlüssel auf
+   * `game_servers` löscht bewusst **nicht** mit, sondern setzt die Spalte auf
+   * `NULL` (`ON DELETE SET NULL`) – ein Backup soll seinen Server überleben
+   * (Lastenheft §3.3). Maßgeblich für `.own`/`.any` ist dann `ownerId`.
+   */
+  serverId: string | null;
+  /** Anzeigename des Servers; `null`, wenn für den Aufrufer nicht auflösbar oder der Server gelöscht ist. */
   serverName: string | null;
   /** Besitzer des gesicherten Servers – maßgeblich für `.own`/`.any`. */
   ownerId: string;
@@ -140,8 +148,14 @@ export interface BackupDto {
  * verwaisten Daten. Beide Sichten ergänzen sich; keine ersetzt die andere.
  */
 export interface BackupStorageBucket {
-  /** Nutzer- bzw. Server-Id. */
-  id: string;
+  /**
+   * Nutzer- bzw. Server-Id.
+   *
+   * In `perServer` `null` für die Sammelgruppe der Backups, deren Server bereits
+   * gelöscht ist (`BackupDto.serverId === null`). In `perUser` nie `null` –
+   * `owner_id` hängt am Konto und bleibt erhalten.
+   */
+  id: string | null;
   /** Anzeigename; `null`, wenn nicht auflösbar. */
   name: string | null;
   backupCount: number;

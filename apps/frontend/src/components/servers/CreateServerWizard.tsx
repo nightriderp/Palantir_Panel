@@ -15,6 +15,9 @@ import {
   Icon,
   PageHeader,
   Panel,
+  SelectField,
+  TextField,
+  ToggleRow,
   cn,
   formatMegabytes,
   useToast,
@@ -42,7 +45,6 @@ import {
   stepBlockReason,
 } from './wizardSteps';
 import { ConfigFields } from './form/ConfigFields';
-import { SelectField, TextField, ToggleRow } from './form/Fields';
 import { ResourceFields } from './form/ResourceFields';
 import { useSubdomainCheck } from './useSubdomainCheck';
 

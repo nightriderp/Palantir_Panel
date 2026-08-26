@@ -76,6 +76,15 @@ jobs:
           restore-keys: |
             turbo-${{ runner.os }}-
 
+      - name: Migrationskette prüfen
+        # Drizzle nummeriert Migrationen fortlaufend. Arbeiten mehrere Sitzungen
+        # parallel, erzeugen zwei davon leicht dieselbe Nummer - und der Konflikt
+        # fällt sonst erst beim Merge auf, im schlimmsten Fall erst auf main.
+        # `drizzle-kit check` vergleicht Journal und Momentaufnahmen und meldet
+        # Lücken, Dopplungen und widersprüchliche Stände. Braucht keine
+        # Datenbankverbindung, nur den Ordner - läuft deshalb vor dem Build.
+        run: pnpm --filter @palantir/backend db:check
+
       - name: Build
         run: pnpm build
 
