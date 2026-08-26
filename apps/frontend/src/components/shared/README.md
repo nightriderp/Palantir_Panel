@@ -6,7 +6,7 @@ bevor eine eigene Variante entsteht, bitte zuerst hier nachsehen ([CLAUDE.md §6
 Import immer über den Sammelpunkt:
 
 ```tsx
-import { ServerCard, ConfirmDialog, useToast } from '@/components/shared';
+import { ServerCard, TextField, ConfirmDialog, useToast } from '@/components/shared';
 ```
 
 ## Grundregeln
@@ -106,6 +106,54 @@ toast.success('Adresse kopiert.');
 />;
 ```
 
+### Formulare
+
+Die Bausteine, aus denen jedes Formular im Panel besteht. Sie sind der Grund, warum kein
+Arbeitspaket mehr eigene Eingabefelder baut – F1 und F3 hatten das getan, jeweils leicht
+anders, und stellen seit R4 auf diese Fassung um.
+
+| Baustein      | Zweck                                                                      |
+| ------------- | -------------------------------------------------------------------------- |
+| `FieldShell`  | Rahmen aus Beschriftung, Feld und Hinweis- bzw. Fehlerzeile                |
+| `TextField`   | Einzeiliges Feld (`text`, `password`, `email`), optional mit Zusatz rechts |
+| `NumberField` | Zahlenfeld mit `min`/`max`/`step` – meldet eine Zahl, keinen Text          |
+| `SelectField` | Auswahlliste, optional mit vorangestelltem Platzhalter-Eintrag             |
+| `SliderField` | Schieberegler für Ressourcen – auf dem Smartphone gut zu treffen           |
+| `Toggle`      | Schalter (`role="switch"`), wenn daneben schon Text steht                  |
+| `ToggleRow`   | Zeile aus Titel, Erläuterung und Schalter                                  |
+| `FormMessage` | Meldungszeile **im** Formular – nicht Toast, nicht Modal                   |
+
+Alle Felder arbeiten kontrolliert: Wert per Prop hinein, neuer Wert per `onChange` hinaus.
+`onChange` bekommt bereits den fertigen Wert (`string` bzw. `number`), nicht das Ereignis.
+
+```tsx
+<TextField
+  label="Benutzername"
+  value={username}
+  onChange={setUsername}
+  error={fieldErrors.username} // ersetzt den Hinweis, färbt den Rahmen, wird vorgelesen
+  hint="Später nicht mehr änderbar."
+  autoComplete="username"
+  placeholder="z. B. alex"
+/>
+```
+
+Wissenswertes:
+
+- **Fehler statt Hinweis.** `error` verdrängt `hint`; das Feld bekommt `aria-invalid` und
+  über `aria-describedby` einen Verweis auf die Meldung. Nie beides gleichzeitig zeigen.
+- **`labelVariant`.** `plain` (Standard) für Dashboard-Formulare, `caps` für die
+  Anmelde-Ansichten – dort steht die Beschriftung in Versalien über dem Feld.
+- **`inputProps` und `inputClassName`** am `TextField` sind für Sonderfälle gedacht
+  (`inputMode`, `maxLength`, zentrierter 2FA-Code). Alles, was mehr als eine Ansicht
+  braucht, gehört stattdessen als benannte Prop in die Komponente.
+- **`FormMessage` ist kein Toast.** Sie gehört zum Formular und bleibt stehen, solange der
+  Zustand gilt. Für eine Rückmeldung zu einer abgeschlossenen Aktion ist `useToast()`
+  zuständig, für eine Rückfrage `ConfirmDialog`.
+- **Kein Formularzustand.** Die Bausteine halten nichts – Werte, Fehler und Absenden
+  liegen im aufrufenden Arbeitspaket. Feldfehler kommen aus dem Fehlercode der Antwort,
+  nie aus dem technischen Freitext (Pflichtenheft §5.1).
+
 ### Layout
 
 | Komponente         | Zweck                                                                     |
@@ -125,7 +173,7 @@ toast.success('Adresse kopiert.');
 | `Panel`, `MetricTile`              | Flächen für Karten, Popover und Kennzahlen               |
 | `EmptyState`                       | Leerzustand mit optionaler Aktion                        |
 | `Icon`, `LogoMark`                 | Icon-Set (24×24, `currentColor`) und Palantir-Signet     |
-| `cn`, `utils/format.ts`            | Klassen-Helfer und deutsche Anzeigeformate – getestet    |
+| `cn`, `utils/format.ts`            | Klassen-Helfer, deutsche Zahlen- und Datumsformate       |
 
 ### Phase-2/3-Platzhalter
 
@@ -144,6 +192,64 @@ F9 (Skins) und F11 (Templates, Bilder, Sticker, Arcade-Musik) genutzt:
 Für „hier ist gerade nichts“ (leere Liste, kein Suchtreffer) ist stattdessen `EmptyState`
 zuständig.
 
+## Navigation im eingeloggten Bereich
+
+Das Layout unter `src/app/(dashboard)` (`layout.tsx`, `DashboardShell`, `DashboardNav`,
+`SessionProvider`) gehört keinem Arbeitspaket aus [STRUKTUR.md](../../../../../STRUKTUR.md);
+F3 hat es angelegt, weil die Serverübersicht die erste Ansicht darunter war. Damit F4–F11
+das nicht jedes Mal neu herausfinden müssen, gilt folgende Regel.
+
+**Die Seitenleiste kennt alle geplanten Einträge von Anfang an.** In
+[`DashboardNav.tsx`](<../../app/(dashboard)/DashboardNav.tsx>) stehen sie als
+`PlannedEntry`. Ein Eintrag ohne `href` führt nirgendwo hin und meldet beim Antippen, dass
+die Ansicht noch entsteht – statt in eine 404-Seite zu laufen.
+
+**Ein fertiges Arbeitspaket ändert genau eine Zeile:** `pending` raus, `href` rein.
+
+```ts
+// vorher
+{ key: 'my-backups', label: 'Meine Backups', icon: 'database', pending: 'F4' },
+// nachher
+{ key: 'my-backups', label: 'Meine Backups', icon: 'database', href: '/my-backups' },
+```
+
+Dazu gehört die Seite selbst unter `src/app/(dashboard)/<pfad>/page.tsx`; die
+Platzhalter-Ordner mit `.gitkeep` liegen bereits dort.
+
+Was dabei **nicht** zu tun ist:
+
+- **Keine neue Navigationsleiste.** Wer einen Bereich mit Unterseiten baut, nutzt `Tabs`
+  innerhalb der Seite, nicht eine zweite Seitenleiste.
+- **Keine Berechtigungslogik.** Ob ein Eintrag erscheint, entscheidet allein das Feld aus
+  `AccountDto.permissions`, das in `requires` steht (Pflichtenheft §5.2, §8). Nie aus einer
+  Rolle herleiten und nie eine eigene Prüfung danebenstellen. Ein Eintrag ohne `requires`
+  ist für alle eingeloggten Konten sichtbar.
+- **Kein Umsortieren.** Die Reihenfolge folgt dem Mockup (`docs/mockup/`).
+- **Kein Entfernen fremder Einträge**, auch nicht vorübergehend – sie gehören anderen
+  Sitzungen.
+
+Ein neues Symbol für einen Eintrag kommt nach `icons/Icon.tsx` (24×24, reine Kontur).
+
+## Tests
+
+Zwei Arten, getrennt gehalten (siehe [`vitest.config.ts`](../../../vitest.config.ts)):
+
+| Datei        | Umgebung | Wofür                                                     |
+| ------------ | -------- | --------------------------------------------------------- |
+| `*.test.ts`  | Node     | Reine Logik: Zuordnungen, Formatierungen, Zustandswechsel |
+| `*.test.tsx` | jsdom    | Gerenderte Komponenten mit Testing Library                |
+
+jsdom wird nur für `.tsx` hochgefahren, damit die Logiktests schnell bleiben. Aufräumen
+nach jedem Test übernimmt [`vitest.setup.ts`](../../../vitest.setup.ts).
+
+```bash
+pnpm --filter @palantir/frontend test
+```
+
+Was ein Komponententest prüfen soll: was der Nutzer sieht und auslöst – also
+`getByRole` / `getByLabelText` statt Klassennamen oder Testkennungen. Beispiele stehen in
+`form/Fields.test.tsx`.
+
 ## Etwas ergänzen
 
 1. Zuerst prüfen, ob ein vorhandener Baustein per Prop passt.
@@ -151,3 +257,5 @@ zuständig.
 3. Neue Farb-/Größenwerte als Token in `tailwind.config.ts`, nie literal in der Komponente.
 4. Neue Datei anlegen, in `index.ts` exportieren und hier in der Tabelle eintragen.
 5. Reine Logik (Zuordnungen, Formatierungen) gehört in eine `.ts`-Datei mit Test daneben.
+6. Für eine neue Komponente einen `.test.tsx` daneben legen – seit R4 gibt es dafür die
+   Umgebung (siehe [Tests](#tests)), ein Baustein ohne Test hat hier nichts verloren.

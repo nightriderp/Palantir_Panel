@@ -1,37 +1,15 @@
 /**
  * Anzeigeformate der Server-Detailansicht.
  *
- * Ergänzt `utils/format.ts` aus F2 um das, was erst hier gebraucht wird:
- * Zeitpunkte, Byte-Größen und die Klartext-Beschreibung eines Cron-Ausdrucks.
+ * Ergänzt `components/shared/utils/format.ts` um das, was nur hier gebraucht
+ * wird: Byte-Größen, Dauern und die Klartext-Beschreibung eines Cron-Ausdrucks.
+ * Datum und Uhrzeit stehen seit R4 im Design-System (`formatDate`,
+ * `formatDateTime`, `formatTime`) – hier steht bewusst keine zweite Fassung.
  * Reine Funktionen, deshalb daneben getestet. Sprache ist Deutsch
  * (Lastenheft §4).
  */
 
-const DATE_TIME_FORMAT = new Intl.DateTimeFormat('de-DE', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-
-const TIME_FORMAT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
-
 const NUMBER_FORMAT = new Intl.NumberFormat('de-DE');
-
-/** Zeitpunkt als `26.08.2026, 14:05`; `—`, wenn keiner vorliegt. */
-export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '—' : DATE_TIME_FORMAT.format(date);
-}
-
-/** Nur die Uhrzeit, z. B. `14:05`. */
-export function formatTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '—' : TIME_FORMAT.format(date);
-}
 
 const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 

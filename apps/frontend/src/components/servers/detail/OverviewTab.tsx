@@ -7,6 +7,7 @@ import {
   MetricTile,
   Panel,
   clampPercent,
+  formatDateTime,
   formatMegabytes,
   formatPercent,
   formatPing,
@@ -17,7 +18,7 @@ import {
 import { fetchStatsHistory } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { type ServerStatsHistoryDto } from '@palantir/contracts';
-import { formatBytes, formatDateTime } from '../formatDetail';
+import { formatBytes } from '../formatDetail';
 import { StatsHistoryChart } from './StatsHistoryChart';
 
 /**

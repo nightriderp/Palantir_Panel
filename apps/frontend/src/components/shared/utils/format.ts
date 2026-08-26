@@ -79,3 +79,51 @@ export function serverInitials(name: string): string {
   if (cleaned.length === 0) return '??';
   return cleaned.slice(0, 2).toUpperCase();
 }
+
+/**
+ * Datums- und Zeitformate (Arbeitspaket R4, „Gefundene Punkte“ 26).
+ *
+ * Vorher hatte jede Ansicht ihre eigene Fassung: F1 im Wartebildschirm, F3 in
+ * `components/servers/formatDetail.ts`. Beide nutzen jetzt diese hier.
+ *
+ * Eingabe ist immer der ISO-Zeitstempel aus dem DTO; fehlende oder unlesbare
+ * Angaben ergeben `—`, damit eine Lücke nicht wie ein echter Wert aussieht.
+ * Ausgegeben wird in der Zeitzone des Browsers – das Backend liefert UTC.
+ */
+
+const DATE_FORMAT = new Intl.DateTimeFormat('de-DE', { dateStyle: 'long' });
+
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat('de-DE', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const TIME_FORMAT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+/** Wandelt einen ISO-Zeitstempel in ein `Date`; `null`, wenn er nicht taugt. */
+function toDate(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** Datum ausgeschrieben, z. B. `26. August 2026`. */
+export function formatDate(iso: string | null | undefined): string {
+  const date = toDate(iso);
+  return date ? DATE_FORMAT.format(date) : '—';
+}
+
+/** Datum und Uhrzeit, z. B. `26.08.2026, 14:05`. */
+export function formatDateTime(iso: string | null | undefined): string {
+  const date = toDate(iso);
+  return date ? DATE_TIME_FORMAT.format(date) : '—';
+}
+
+/** Nur die Uhrzeit, z. B. `14:05`. */
+export function formatTime(iso: string | null | undefined): string {
+  const date = toDate(iso);
+  return date ? TIME_FORMAT.format(date) : '—';
+}
