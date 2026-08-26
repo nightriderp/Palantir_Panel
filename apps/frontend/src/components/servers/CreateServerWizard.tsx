@@ -1,6 +1,10 @@
 'use client';
 
-import { type GameConfigValue, type GameTypeDto } from '@palantir/contracts';
+import {
+  type GameConfigValue,
+  type GameTypeDto,
+  type UserResourceLimitDto,
+} from '@palantir/contracts';
 import { type CreateServerInput } from '@palantir/validation';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -16,13 +20,14 @@ import {
 } from '@/components/shared';
 import {
   type HostNodeOptionDto,
-  type ResourceQuotaDto,
   createServer,
   fetchGameTypes,
   fetchHostNodes,
   fetchResourceQuota,
+  freeNodeResources,
   uploadWorldArchive,
 } from '@/lib/api/servers';
+import { errorText } from '@/lib/api/client';
 import { BASE_DOMAIN } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
 import {
@@ -152,7 +157,7 @@ export function CreateServerWizard() {
 
   const gameTypes = useApiResource<GameTypeDto[]>((signal) => fetchGameTypes(signal), []);
   const nodes = useApiResource<HostNodeOptionDto[]>((signal) => fetchHostNodes(signal), []);
-  const quota = useApiResource<ResourceQuotaDto>((signal) => fetchResourceQuota(signal), []);
+  const quota = useApiResource<UserResourceLimitDto>((signal) => fetchResourceQuota(signal), []);
 
   const subdomain = useSubdomainCheck(state.subdomain);
 
@@ -192,7 +197,7 @@ export function CreateServerWizard() {
     setUploading(false);
 
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     patch({ worldImport: { uploadId: result.data.uploadId, fileName: file.name } });
@@ -220,7 +225,7 @@ export function CreateServerWizard() {
     setSubmitting(false);
 
     if (!result.success) {
-      setSubmitError(result.error.message);
+      setSubmitError(errorText(result));
       return;
     }
 
@@ -298,10 +303,11 @@ export function CreateServerWizard() {
               onChange={(value) => patch({ hostId: value || null })}
               options={(nodes.data ?? []).map((node) => ({
                 value: node.id,
-                label: node.online
-                  ? `${node.name} · ${formatMegabytes(node.freeRamMb)} frei`
-                  : `${node.name} · nicht erreichbar`,
-                disabled: !node.online,
+                label:
+                  node.status === 'online'
+                    ? `${node.name} · ${formatMegabytes(freeNodeResources(node).ramMb)} frei`
+                    : `${node.name} · ${node.status === 'maintenance' ? 'in Wartung' : 'nicht erreichbar'}`,
+                disabled: node.status !== 'online',
               }))}
               hint={
                 nodes.data && nodes.data.length === 0

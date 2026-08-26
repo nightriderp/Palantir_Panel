@@ -1,8 +1,9 @@
 'use client';
 
 import { createContext, useContext, type ReactNode } from 'react';
+import { type AccountDto } from '@palantir/contracts';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { type CurrentUserDto, fetchCurrentUser } from '@/lib/api/session';
+import { loadAccount } from '@/lib/api/session';
 
 /**
  * Das angemeldete Konto, einmal für den gesamten eingeloggten Bereich geladen.
@@ -17,17 +18,14 @@ import { type CurrentUserDto, fetchCurrentUser } from '@/lib/api/session';
  */
 
 export interface SessionValue {
-  user: CurrentUserDto | null;
+  user: AccountDto | null;
   loading: boolean;
 }
 
 const SessionContext = createContext<SessionValue>({ user: null, loading: true });
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const { data, loading } = useApiResource<CurrentUserDto>(
-    (signal) => fetchCurrentUser(signal),
-    [],
-  );
+  const { data, loading } = useApiResource<AccountDto>(() => loadAccount(), []);
 
   return (
     <SessionContext.Provider value={{ user: data, loading }}>{children}</SessionContext.Provider>

@@ -8,7 +8,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import { type ApiResult, isAborted } from './client';
+import { type ApiResult, errorText, isAborted } from './client';
 
 /**
  * Eine Ressource per REST laden, samt Lade- und Fehlerzustand.
@@ -72,7 +72,7 @@ export function useApiResource<T>(
         setData(result.data);
         setError(null);
       } else {
-        setError(result.error.message);
+        setError(errorText(result));
       }
       setLoading(false);
     });

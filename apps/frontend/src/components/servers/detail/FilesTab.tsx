@@ -24,6 +24,7 @@ import {
   saveFileContent,
   uploadFile,
 } from '@/lib/api/servers';
+import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { formatBytes, formatDateTime } from '../formatDetail';
 
@@ -92,7 +93,7 @@ export function FilesTab({ server }: FilesTabProps) {
 
     const result = await fetchFileContent(server.id, entry.path);
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     setEditing(result.data);
@@ -107,7 +108,7 @@ export function FilesTab({ server }: FilesTabProps) {
     setSaving(false);
 
     if (!result.success) {
-      setEditError(result.error.message);
+      setEditError(errorText(result));
       return;
     }
     toast.success('Datei gespeichert.');
@@ -128,7 +129,7 @@ export function FilesTab({ server }: FilesTabProps) {
     setBusy(false);
 
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     toast.success(`„${file.name}" hochgeladen.`);
@@ -142,7 +143,7 @@ export function FilesTab({ server }: FilesTabProps) {
     setPendingDelete(null);
 
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     toast.success(`„${entry.name}" gelöscht.`);

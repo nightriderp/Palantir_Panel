@@ -4,10 +4,11 @@ import {
   type GameConfigValues,
   type GameTypeDto,
   type SubdomainAvailabilityDto,
+  type UserResourceLimitDto,
 } from '@palantir/contracts';
 import { serverNameSchema, subdomainSchema } from '@palantir/validation';
 import { formatMegabytes } from '@/components/shared';
-import { type HostNodeOptionDto, type ResourceQuotaDto } from '@/lib/api/servers';
+import { type HostNodeOptionDto, freeNodeResources } from '@/lib/api/servers';
 
 /**
  * Ablauflogik des „Server erstellen"-Wizards (Lastenheft §3.3).
@@ -102,40 +103,58 @@ export function missingConfigFields(
   });
 }
 
-/** Überschreiten die gewünschten Werte das Kontingent des Nutzers? */
+/**
+ * Überschreiten die gewünschten Werte das Kontingent des Nutzers?
+ *
+ * Erste der beiden Prüfungen aus Pflichtenheft §10. `null` in einem Limit heißt
+ * „für diese Ressource gilt kein Limit" (Lastenheft §3.4). Verbindlich prüft
+ * das Backend erneut (`RESOURCE_LIMIT_EXCEEDED`).
+ */
 export function quotaBlockReason(
-  quota: ResourceQuotaDto | null,
+  quota: UserResourceLimitDto | null,
   state: WizardState,
 ): string | null {
   if (!quota) return null;
+  const { limits, usage } = quota;
 
-  if (quota.maxConcurrentServers !== null && quota.usedServers >= quota.maxConcurrentServers) {
-    return `Dein Kontingent erlaubt höchstens ${quota.maxConcurrentServers} Server gleichzeitig.`;
+  if (limits.maxConcurrentServers !== null && usage.totalServers >= limits.maxConcurrentServers) {
+    return `Dein Kontingent erlaubt höchstens ${limits.maxConcurrentServers} Server gleichzeitig.`;
   }
-  if (quota.maxRamMb !== null && quota.usedRamMb + state.ramMb > quota.maxRamMb) {
-    return `Dein RAM-Kontingent von ${formatMegabytes(quota.maxRamMb)} reicht dafür nicht aus.`;
+  if (limits.maxRamMb !== null && usage.runningRamMb + state.ramMb > limits.maxRamMb) {
+    return `Dein RAM-Kontingent von ${formatMegabytes(limits.maxRamMb)} reicht dafür nicht aus.`;
   }
-  if (quota.maxCpuCores !== null && quota.usedCpuCores + state.cpuCores > quota.maxCpuCores) {
-    return `Dein CPU-Kontingent von ${quota.maxCpuCores} Kernen reicht dafür nicht aus.`;
+  if (limits.maxCpuCores !== null && usage.runningCpuCores + state.cpuCores > limits.maxCpuCores) {
+    return `Dein CPU-Kontingent von ${limits.maxCpuCores} Kernen reicht dafür nicht aus.`;
   }
-  if (quota.maxDiskMb !== null && quota.usedDiskMb + state.diskMb > quota.maxDiskMb) {
-    return `Dein Speicher-Kontingent von ${formatMegabytes(quota.maxDiskMb)} reicht dafür nicht aus.`;
+  if (limits.maxDiskMb !== null && usage.allocatedDiskMb + state.diskMb > limits.maxDiskMb) {
+    return `Dein Speicher-Kontingent von ${formatMegabytes(limits.maxDiskMb)} reicht dafür nicht aus.`;
   }
   return null;
 }
 
-/** Reicht der freie Platz auf der gewählten Node? */
+/**
+ * Reicht der freie Platz auf der gewählten Node?
+ *
+ * Zweite Prüfung aus Pflichtenheft §10 – sie greift unabhängig davon, ob das
+ * Nutzer-Kontingent noch Luft hätte.
+ */
 export function nodeBlockReason(node: HostNodeOptionDto | null, state: WizardState): string | null {
   if (!node) return null;
-  if (!node.online) return `„${node.name}" ist gerade nicht erreichbar.`;
-  if (node.freeRamMb !== null && state.ramMb > node.freeRamMb) {
-    return `Auf „${node.name}" sind nur noch ${formatMegabytes(node.freeRamMb)} Arbeitsspeicher frei.`;
+  if (node.status !== 'online') {
+    return node.status === 'maintenance'
+      ? `„${node.name}" ist gerade in Wartung.`
+      : `„${node.name}" ist gerade nicht erreichbar.`;
   }
-  if (node.freeDiskMb !== null && state.diskMb > node.freeDiskMb) {
-    return `Auf „${node.name}" sind nur noch ${formatMegabytes(node.freeDiskMb)} Speicherplatz frei.`;
+
+  const free = freeNodeResources(node);
+  if (state.ramMb > free.ramMb) {
+    return `Auf „${node.name}" sind nur noch ${formatMegabytes(free.ramMb)} Arbeitsspeicher frei.`;
   }
-  if (node.freeCpuCores !== null && state.cpuCores > node.freeCpuCores) {
-    return `Auf „${node.name}" sind nur noch ${node.freeCpuCores} CPU-Kerne frei.`;
+  if (state.diskMb > free.diskMb) {
+    return `Auf „${node.name}" sind nur noch ${formatMegabytes(free.diskMb)} Speicherplatz frei.`;
+  }
+  if (state.cpuCores > free.cpuCores) {
+    return `Auf „${node.name}" sind nur noch ${free.cpuCores} CPU-Kerne frei.`;
   }
   return null;
 }
@@ -143,7 +162,7 @@ export function nodeBlockReason(node: HostNodeOptionDto | null, state: WizardSta
 export interface WizardContext {
   gameType: GameTypeDto | null;
   node: HostNodeOptionDto | null;
-  quota: ResourceQuotaDto | null;
+  quota: UserResourceLimitDto | null;
   /** Ergebnis der Verfügbarkeitsprüfung; `null`, solange sie noch läuft. */
   subdomainCheck: SubdomainAvailabilityDto | null;
   /** Läuft die Verfügbarkeitsprüfung gerade? */

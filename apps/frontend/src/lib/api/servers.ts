@@ -1,6 +1,9 @@
 import {
   type BackupDto,
   type GameServerDto,
+  type HostNodeStatus,
+  type NodeResourceUsage,
+  type NodeResources,
   type GameTypeDto,
   type ScheduleDto,
   type ServerCloneJobDto,
@@ -10,6 +13,7 @@ import {
   type ServerMemberDto,
   type ServerStatsHistoryDto,
   type SubdomainAvailabilityDto,
+  type UserResourceLimitDto,
 } from '@palantir/contracts';
 import {
   type CloneServerInput,
@@ -32,28 +36,34 @@ import { API_BASE_URL, type ApiResult, apiRequest } from './client';
  * wird nichts ausgepackt und nichts geworfen.
  */
 
-/** Node der Ziel-Auswahl im Wizard. Kommt aus B4/B8 (`HostNode`). */
+/**
+ * Node der Ziel-Auswahl im Wizard (Entität `HostNode`, Pflichtenheft §6).
+ *
+ * Aufgebaut aus den Typen von B4 (`HostNodeStatus`, `NodeResources`,
+ * `NodeResourceUsage`) statt aus eigenen Zahlenfeldern. Einen vollständigen
+ * `HostNodeDto` gibt es in den Contracts noch nicht; sobald B8 ihn dort anlegt,
+ * ersetzt er diese Zwischenform (siehe „Gefundene Punkte").
+ */
 export interface HostNodeOptionDto {
   id: string;
   name: string;
-  online: boolean;
-  /** Freier Arbeitsspeicher in MB; `null`, wenn unbekannt. */
-  freeRamMb: number | null;
-  freeDiskMb: number | null;
-  freeCpuCores: number | null;
+  status: HostNodeStatus;
+  total: NodeResources;
+  usage: NodeResourceUsage;
 }
 
-/** Kontingent des angemeldeten Nutzers (Pflichtenheft §10, `UserResourceLimit`). */
-export interface ResourceQuotaDto {
-  /** `null` bedeutet: kein Limit gesetzt. */
-  maxRamMb: number | null;
-  maxCpuCores: number | null;
-  maxDiskMb: number | null;
-  maxConcurrentServers: number | null;
-  usedRamMb: number;
-  usedCpuCores: number;
-  usedDiskMb: number;
-  usedServers: number;
+/**
+ * Freie Ressourcen einer Node.
+ *
+ * RAM und CPU zählen nur laufende Server, Speicherplatz alle – dieselbe
+ * Zählweise wie in `NodeResourceUsage` (Pflichtenheft §10).
+ */
+export function freeNodeResources(node: HostNodeOptionDto): NodeResources {
+  return {
+    ramMb: Math.max(0, node.total.ramMb - node.usage.runningRamMb),
+    cpuCores: Math.max(0, node.total.cpuCores - node.usage.runningCpuCores),
+    diskMb: Math.max(0, node.total.diskMb - node.usage.allocatedDiskMb),
+  };
 }
 
 const SERVERS = '/api/servers';
@@ -123,8 +133,14 @@ export function fetchHostNodes(signal?: AbortSignal): Promise<ApiResult<HostNode
   return apiRequest<HostNodeOptionDto[]>('/api/nodes/available', { signal });
 }
 
-export function fetchResourceQuota(signal?: AbortSignal): Promise<ApiResult<ResourceQuotaDto>> {
-  return apiRequest<ResourceQuotaDto>('/api/me/resource-quota', { signal });
+/**
+ * Kontingent und Belegung des angemeldeten Kontos (Pflichtenheft §10).
+ *
+ * Der DTO stammt aus B4 und enthält neben den Grenzen immer auch die aktuelle
+ * Belegung – der Wizard braucht beides, um „passt noch" zu beantworten.
+ */
+export function fetchResourceQuota(signal?: AbortSignal): Promise<ApiResult<UserResourceLimitDto>> {
+  return apiRequest<UserResourceLimitDto>('/api/me/resource-quota', { signal });
 }
 
 /**

@@ -23,6 +23,31 @@ export {
   updateRoleInputSchema,
 } from './rbac.js';
 export {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  type LoginInput,
+  type RegisterInput,
+  type TwoFactorInput,
+  accountDtoSchema,
+  accountRoleSummarySchema,
+  altchaChallengeSchema,
+  altchaSolutionPayloadSchema,
+  authMethodTypeSchema,
+  authenticatedResultSchema,
+  displayNameSchema,
+  globalPermissionsSchema,
+  linkedAuthMethodSchema,
+  loginInputSchema,
+  loginResultSchema,
+  loginResultStatusSchema,
+  oauthProviderSchema,
+  passwordSchema,
+  registerInputSchema,
+  twoFactorCodeSchema,
+  twoFactorInputSchema,
+  usernameSchema,
+} from './auth.js';
+export {
   agentCommandNameSchema,
   agentCommandResultFrameSchema,
   agentContainerStateSchema,
@@ -83,3 +108,14 @@ export {
   updateServerSettingsInputSchema,
   worldImportInputSchema,
 } from './servers.js';
+export {
+  type NodeResourcesInput,
+  type UserResourceLimitsInput,
+  cpuCoresSchema,
+  megabytesSchema,
+  nodeResourcesSchema,
+  resourceWarningThresholdsSchema,
+  serverCountSchema,
+  thresholdPercentSchema,
+  userResourceLimitsInputSchema,
+} from './resources.js';

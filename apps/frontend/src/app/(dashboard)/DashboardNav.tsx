@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { SideNavSection, type SideNavItem, useToast } from '@/components/shared';
-import { type CurrentUserDto } from '@/lib/api/session';
+import { type AccountDto } from '@palantir/contracts';
 
 /**
  * Seitenleiste des eingeloggten Bereichs.
@@ -26,7 +26,7 @@ interface PlannedEntry {
   /** Arbeitspaket, das den Eintrag fertigstellt – erscheint im Hinweis. */
   pending?: string;
   /** Nur zeigen, wenn dieses Flag am Konto gesetzt ist. */
-  requires?: keyof CurrentUserDto['permissions'];
+  requires?: keyof AccountDto['permissions'];
 }
 
 const MAIN_ENTRIES: PlannedEntry[] = [
@@ -71,7 +71,7 @@ const ADMIN_ENTRIES: PlannedEntry[] = [
 ];
 
 export interface DashboardNavProps {
-  user: CurrentUserDto | null;
+  user: AccountDto | null;
 }
 
 export function DashboardNav({ user }: DashboardNavProps) {

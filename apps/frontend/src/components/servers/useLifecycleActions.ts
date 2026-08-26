@@ -4,6 +4,7 @@ import { type GameServerDto } from '@palantir/contracts';
 import { useCallback, useState } from 'react';
 import { useToast } from '@/components/shared';
 import { type LifecycleAction, runLifecycleAction } from '@/lib/api/servers';
+import { errorText } from '@/lib/api/client';
 
 /**
  * Start, Stopp und Neustart eines Servers (Pflichtenheft §9).
@@ -43,7 +44,7 @@ export function useLifecycleActions(
       toast.dismiss(toastId);
 
       if (!result.success) {
-        toast.error(result.error.message);
+        toast.error(errorText(result));
         return null;
       }
 

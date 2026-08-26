@@ -55,8 +55,12 @@ export interface RoleDto {
  * Name der geschützten Systemrolle, die jedes neu registrierte Konto erhält
  * (Lastenheft §2, Pflichtenheft §7 und §8).
  *
- * Der Name ist Teil des Vertrags, weil das Frontend den Gast-Wartebildschirm
- * (F1) daran erkennt und die Rollenverwaltung (F10) ihn nicht zum Umbenennen
- * anbietet.
+ * Der Name ist Teil des Vertrags, weil die Rollenverwaltung (F10) ihn nicht
+ * zum Umbenennen anbietet und die Oberfläche ihn benennen können muss.
+ *
+ * **Nicht** zur Erkennung des Wartezustands verwenden: ob ein Konto noch auf
+ * Freischaltung wartet, sagt das Backend über `AccountDto.awaitingApproval`
+ * (`auth.ts`). Ein Rückschluss aus dem Rollennamen wäre eine Rechteableitung im
+ * Frontend (Pflichtenheft §5.2, CLAUDE.md §3).
  */
 export const GUEST_ROLE_NAME = 'Gast';

@@ -4,7 +4,7 @@ import { type SubdomainAvailabilityDto } from '@palantir/contracts';
 import { subdomainSchema } from '@palantir/validation';
 import { useEffect, useState } from 'react';
 import { checkSubdomain } from '@/lib/api/servers';
-import { isAborted } from '@/lib/api/client';
+import { errorText, isAborted } from '@/lib/api/client';
 
 /**
  * Verfügbarkeitsprüfung der Subdomain (Pflichtenheft §13).
@@ -60,7 +60,7 @@ export function useSubdomainCheck(subdomain: string): SubdomainCheck {
           subdomain: normalized,
           available: false,
           reason: response.error.code === 'SUBDOMAIN_TAKEN' ? 'taken' : 'invalid',
-          message: response.error.message,
+          message: errorText(response),
           fullHostname: '',
         });
       });

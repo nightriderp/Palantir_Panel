@@ -15,6 +15,7 @@ import {
 } from '@palantir/contracts';
 import { z } from 'zod';
 import { idSchema } from './common.js';
+import { cpuCoresSchema, megabytesSchema } from './resources.js';
 
 /**
  * Steuerzeichen (C0-Bereich und DEL).
@@ -67,23 +68,23 @@ export const subdomainSchema = z
 /**
  * Ressourcen-Limits eines Servers (Pflichtenheft §6 und §10).
  *
- * Die Grenzen hier sind reine Formatgrenzen. Ob die Werte tatsächlich vergeben
- * werden dürfen, entscheidet immer das Backend gegen Nutzer-Kontingent und
- * freie Node-Kapazität (`RESOURCE_LIMIT_EXCEEDED`).
+ * Baut auf `megabytesSchema` und `cpuCoresSchema` aus `resources.js` (B4) auf –
+ * dieselbe Zählweise, dieselbe Nachkommastellen-Regel. Ergänzt werden nur die
+ * **Untergrenzen**: ein Kontingent von 0 ist eine gültige Verwaltungsaussage,
+ * ein Server mit 0 MB Arbeitsspeicher wäre dagegen nicht startfähig.
+ *
+ * Ob die Werte tatsächlich vergeben werden dürfen, entscheidet immer das
+ * Backend gegen Nutzer-Kontingent und freie Node-Kapazität
+ * (`RESOURCE_LIMIT_EXCEEDED`).
  */
 export const serverResourceLimitsSchema = z.object({
-  ramMb: z
-    .number()
-    .int({ message: 'Arbeitsspeicher wird in ganzen MB angegeben.' })
+  ramMb: megabytesSchema
     .min(512, { message: 'Mindestens 512 MB Arbeitsspeicher.' })
     .max(262144, { message: 'Höchstens 256 GB Arbeitsspeicher.' }),
-  cpuCores: z
-    .number()
-    .min(0.5, { message: 'Mindestens ein halber CPU-Kern.' })
-    .max(64, { message: 'Höchstens 64 CPU-Kerne.' }),
-  diskMb: z
-    .number()
-    .int({ message: 'Speicherplatz wird in ganzen MB angegeben.' })
+  cpuCores: cpuCoresSchema.refine((value) => value >= 0.5 && value <= 64, {
+    message: 'Zwischen einem halben und 64 CPU-Kernen.',
+  }),
+  diskMb: megabytesSchema
     .min(1024, { message: 'Mindestens 1 GB Speicherplatz.' })
     .max(4194304, { message: 'Höchstens 4 TB Speicherplatz.' }),
 });

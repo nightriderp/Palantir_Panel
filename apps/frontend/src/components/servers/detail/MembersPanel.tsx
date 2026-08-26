@@ -17,6 +17,7 @@ import {
   useToast,
 } from '@/components/shared';
 import { addOrUpdateMember, fetchMembers, removeMember } from '@/lib/api/servers';
+import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { SelectField, TextField } from '../form/Fields';
 import { formatDateTime } from '../formatDetail';
@@ -74,7 +75,7 @@ export function MembersPanel({ server }: MembersPanelProps) {
     setBusy(false);
 
     if (!result.success) {
-      setFormError(result.error.message);
+      setFormError(errorText(result));
       return;
     }
 
@@ -93,7 +94,7 @@ export function MembersPanel({ server }: MembersPanelProps) {
   async function changeLevel(member: ServerMemberDto, next: ServerMemberLevel) {
     const result = await addOrUpdateMember(server.id, { userId: member.userId, level: next });
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     members.setData((current) =>
@@ -108,7 +109,7 @@ export function MembersPanel({ server }: MembersPanelProps) {
     setPendingRemove(null);
 
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     members.setData((current) => (current ?? []).filter((entry) => entry.userId !== member.userId));

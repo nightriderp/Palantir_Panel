@@ -19,6 +19,7 @@ import {
   fetchBackups,
   restoreBackup,
 } from '@/lib/api/servers';
+import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { formatBytes, formatDateTime } from '../formatDetail';
 
@@ -65,7 +66,7 @@ export function BackupsTab({ server }: BackupsTabProps) {
     setBusy(false);
 
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     toast.success('Die Sicherung wurde angestoßen.');
@@ -79,7 +80,7 @@ export function BackupsTab({ server }: BackupsTabProps) {
     setPendingRestore(null);
 
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     toast.success('Die Wiederherstellung läuft. Der Server startet danach neu.');
@@ -92,7 +93,7 @@ export function BackupsTab({ server }: BackupsTabProps) {
     setPendingDelete(null);
 
     if (!result.success) {
-      toast.error(result.error.message);
+      toast.error(errorText(result));
       return;
     }
     toast.success('Sicherung gelöscht.');
