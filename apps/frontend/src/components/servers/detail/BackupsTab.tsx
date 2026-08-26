@@ -1,6 +1,10 @@
 'use client';
 
-import { type BackupDto, type GameServerDto } from '@palantir/contracts';
+import {
+  AUTOMATIC_BACKUP_RETENTION_DAYS,
+  type BackupDto,
+  type GameServerDto,
+} from '@palantir/contracts';
 import { useState } from 'react';
 import {
   Badge,
@@ -12,6 +16,7 @@ import {
   type Tone,
   useToast,
 } from '@/components/shared';
+import { errorText } from '@/lib/api/client';
 import {
   backupDownloadUrl,
   createBackup,
@@ -19,8 +24,8 @@ import {
   fetchBackups,
   restoreBackup,
 } from '@/lib/api/servers';
-import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
+import { ToggleRow } from '../form/Fields';
 import { formatBytes, formatDateTime } from '../formatDetail';
 
 /**
@@ -28,13 +33,15 @@ import { formatBytes, formatDateTime } from '../formatDetail';
  *
  * Liste, manuelles Sichern, Wiederherstellen und Löschen. Die
  * Aufbewahrungsregel – automatische Sicherungen verfallen nach sieben Tagen,
- * manuelle nie – wertet das Backend aus; hier steht nur das Ergebnis als
- * `expiresAt`.
+ * die neueste und alle manuellen bleiben – wertet das Backend aus (B5); hier
+ * steht nur ihr Ergebnis als `expiresAt` und `retentionProtected`.
+ *
+ * Exporte (`isExport`) erscheinen bewusst nicht in dieser Liste: sie gehören
+ * zur Datenmitnahme und stehen im Reiter „Einstellungen".
  */
 
-const TRIGGER_LABELS: Record<BackupDto['trigger'], string> = {
+const TYPE_LABELS: Record<BackupDto['type'], string> = {
   manual: 'Manuell',
-  scheduled: 'Geplant',
   automatic: 'Automatisch',
 };
 
@@ -52,6 +59,7 @@ export interface BackupsTabProps {
 export function BackupsTab({ server }: BackupsTabProps) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [stopServer, setStopServer] = useState(false);
   const [pendingRestore, setPendingRestore] = useState<BackupDto | null>(null);
   const [pendingDelete, setPendingDelete] = useState<BackupDto | null>(null);
 
@@ -62,7 +70,7 @@ export function BackupsTab({ server }: BackupsTabProps) {
 
   async function createNow() {
     setBusy(true);
-    const result = await createBackup(server.id);
+    const result = await createBackup(server.id, { stopServer });
     setBusy(false);
 
     if (!result.success) {
@@ -75,7 +83,7 @@ export function BackupsTab({ server }: BackupsTabProps) {
 
   async function restore(backup: BackupDto) {
     setBusy(true);
-    const result = await restoreBackup(server.id, backup.id);
+    const result = await restoreBackup(backup.id);
     setBusy(false);
     setPendingRestore(null);
 
@@ -88,7 +96,7 @@ export function BackupsTab({ server }: BackupsTabProps) {
 
   async function remove(backup: BackupDto) {
     setBusy(true);
-    const result = await deleteBackup(server.id, backup.id);
+    const result = await deleteBackup(backup.id);
     setBusy(false);
     setPendingDelete(null);
 
@@ -100,21 +108,29 @@ export function BackupsTab({ server }: BackupsTabProps) {
     backups.setData((current) => (current ?? []).filter((entry) => entry.id !== backup.id));
   }
 
-  const list = backups.data ?? [];
+  const list = (backups.data ?? []).filter((backup) => !backup.isExport);
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-ink-faint">
-          Automatische Sicherungen werden nach sieben Tagen gelöscht, die neueste bleibt erhalten.
-          Manuell erstellte Sicherungen bleiben, bis du sie entfernst.
-        </p>
-        {server.permissions.canManageBackups ? (
+      <p className="text-sm text-ink-faint">
+        Automatische Sicherungen werden nach {AUTOMATIC_BACKUP_RETENTION_DAYS} Tagen gelöscht, die
+        neueste bleibt erhalten. Manuell erstellte Sicherungen bleiben, bis du sie entfernst.
+      </p>
+
+      {server.permissions.canManageBackups ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <ToggleRow
+            title="Server während der Sicherung anhalten"
+            description="Ergibt ein garantiert widerspruchsfreies Archiv, unterbricht aber das Spiel."
+            checked={stopServer}
+            onChange={setStopServer}
+            disabled={busy}
+          />
           <Button variant="primary" disabled={busy} onClick={() => void createNow()}>
             Jetzt sichern
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {backups.loading && backups.data === null ? (
         <Panel variant="outline" className="text-center text-base text-ink-muted">
@@ -141,6 +157,8 @@ export function BackupsTab({ server }: BackupsTabProps) {
         <ul className="flex flex-col gap-2">
           {list.map((backup) => {
             const status = STATUS_META[backup.status];
+            const done = backup.status === 'completed';
+
             return (
               <li key={backup.id}>
                 <Panel variant="plain" padding="sm" className="flex flex-col gap-2">
@@ -148,25 +166,25 @@ export function BackupsTab({ server }: BackupsTabProps) {
                     <span className="font-mono text-sm text-ink">
                       {formatDateTime(backup.createdAt)}
                     </span>
-                    <Badge tone="neutral">{TRIGGER_LABELS[backup.trigger]}</Badge>
+                    <Badge tone="neutral">{TYPE_LABELS[backup.type]}</Badge>
                     <Badge tone={status.tone} withDot pulse={backup.status === 'running'}>
                       {status.label}
                     </Badge>
                     <span className="font-mono text-xs text-ink-faint">
-                      {formatBytes(backup.sizeBytes)}
+                      {done ? formatBytes(backup.sizeBytes) : '—'}
                     </span>
 
-                    <span className="ml-auto flex flex-wrap gap-2">
-                      {backup.permissions.canDownload && backup.status === 'completed' ? (
+                    <span className="ml-auto flex flex-wrap items-center gap-2">
+                      {backup.permissions.canDownload && done ? (
                         <a
-                          href={backupDownloadUrl(server.id, backup.id)}
+                          href={backupDownloadUrl(backup.id)}
                           download
                           className="text-xs text-brand"
                         >
                           Herunterladen
                         </a>
                       ) : null}
-                      {backup.permissions.canRestore && backup.status === 'completed' ? (
+                      {backup.permissions.canRestore && done ? (
                         <Button size="sm" onClick={() => setPendingRestore(backup)}>
                           Wiederherstellen
                         </Button>
@@ -180,11 +198,14 @@ export function BackupsTab({ server }: BackupsTabProps) {
                   </div>
 
                   <p className="text-xs text-ink-faint">
-                    {backup.status === 'failed' && backup.statusMessage
-                      ? backup.statusMessage
-                      : backup.expiresAt
-                        ? `Wird automatisch gelöscht am ${formatDateTime(backup.expiresAt)}.`
-                        : 'Bleibt erhalten, bis du sie löschst.'}
+                    {backup.status === 'failed'
+                      ? (backup.failureMessage ?? 'Die Sicherung ist fehlgeschlagen.')
+                      : backup.retentionProtected || backup.expiresAt === null
+                        ? 'Bleibt erhalten, bis du sie löschst.'
+                        : `Wird automatisch gelöscht am ${formatDateTime(backup.expiresAt)}.`}
+                    {backup.createdByDisplayName
+                      ? ` · Ausgelöst von ${backup.createdByDisplayName}`
+                      : ''}
                   </p>
                 </Panel>
               </li>

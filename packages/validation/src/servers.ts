@@ -15,6 +15,7 @@ import {
 } from '@palantir/contracts';
 import { z } from 'zod';
 import { idSchema } from './common.js';
+import { cronExpressionSchema } from './backups.js';
 import { cpuCoresSchema, megabytesSchema } from './resources.js';
 
 /**
@@ -191,25 +192,15 @@ export const cloneServerInputSchema = z.object({
 
 export type CloneServerInput = z.infer<typeof cloneServerInputSchema>;
 
-/**
- * Cron-Ausdruck mit fünf Feldern (Minute, Stunde, Tag, Monat, Wochentag).
- *
- * Geprüft wird die Form, nicht die fachliche Sinnhaftigkeit; den nächsten
- * Ausführungszeitpunkt berechnet das Backend und liefert ihn als `nextRunAt`
- * zurück.
- */
-const CRON_FIELD = String.raw`(\*|\d+|\d+-\d+)(\/\d+)?(,(\d+|\d+-\d+)(\/\d+)?)*`;
-
-export const cronExpressionSchema = z
-  .string()
-  .trim()
-  .regex(new RegExp(`^${CRON_FIELD}( ${CRON_FIELD}){4}$`), {
-    message: 'Erwartet wird ein Cron-Ausdruck mit fünf Feldern, z. B. „0 4 * * *".',
-  });
-
 export const scheduleActionSchema = z.enum(SCHEDULE_ACTIONS);
 
-/** Anlegen und Ändern einer geplanten Aufgabe (Lastenheft §3.3). */
+/**
+ * Anlegen und Ändern einer geplanten Aufgabe (Entität `Schedule`,
+ * Pflichtenheft §6, Lastenheft §3.3).
+ *
+ * Der Cron-Ausdruck wird mit `cronExpressionSchema` aus `backups.js` (B5)
+ * geprüft – dieselbe Regel für den Backup-Zeitplan und für jede andere Aufgabe.
+ */
 export const scheduleInputSchema = z
   .object({
     name: z

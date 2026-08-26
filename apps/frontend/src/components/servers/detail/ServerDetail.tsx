@@ -164,7 +164,6 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
               server={server}
               onServerUpdated={(updated) => resource.setData(updated)}
               cloneJob={live.cloneJob}
-              exportJob={live.exportJob}
             />
           ) : null}
         </>

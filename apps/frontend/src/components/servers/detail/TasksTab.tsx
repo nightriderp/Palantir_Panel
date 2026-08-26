@@ -32,10 +32,8 @@ import { describeCron, formatDateTime } from '../formatDetail';
  */
 
 const ACTION_LABELS: Record<ScheduleAction, string> = {
-  start: 'Server starten',
-  stop: 'Server stoppen',
-  restart: 'Server neu starten',
   backup: 'Sicherung erstellen',
+  restart: 'Server neu starten',
   command: 'Konsolenbefehl senden',
 };
 

@@ -2,10 +2,13 @@
  * Länger laufende Server-Vorgänge mit Fortschritt (Pflichtenheft §9,
  * Lastenheft §3.3).
  *
- * Klonen **mit** Weltdaten und der vollständige Export kopieren je nach Welt
- * viele Gigabyte. Beide laufen deshalb als Auftrag im Hintergrund; das Frontend
- * zeigt den Fortschritt an und pollt nicht, sondern hört auf die Events
- * `serverClone.progressed` bzw. `serverExport.progressed`.
+ * Klonen **mit** Weltdaten kopiert je nach Welt viele Gigabyte und läuft
+ * deshalb als Auftrag im Hintergrund; das Frontend zeigt den Fortschritt an und
+ * pollt nicht, sondern hört auf das Ereignis `serverClone.progressed`.
+ *
+ * Der **vollständige Export** (Lastenheft §3.3) ist bewusst kein eigener
+ * Auftragstyp: B5 führt ihn als `BackupDto` mit `isExport: true`, samt
+ * Fortschritt über `status` und Download über den Backup-Endpunkt.
  */
 
 export const SERVER_JOB_STATUSES = [
@@ -46,13 +49,4 @@ export interface ServerCloneJobDto extends ServerJobBase {
   /** Bereits kopierte Bytes; `null`, wenn ohne Weltdaten geklont wird. */
   copiedBytes: number | null;
   totalBytes: number | null;
-}
-
-/** Export-Auftrag für die vollständige Datenmitnahme (Lastenheft §4). */
-export interface ServerExportJobDto extends ServerJobBase {
-  /** Download-Adresse, sobald das Archiv bereitliegt; sonst `null`. */
-  downloadUrl: string | null;
-  /** ISO-8601-Zeitstempel, bis wann der Download gültig ist. */
-  downloadExpiresAt: string | null;
-  sizeBytes: number | null;
 }

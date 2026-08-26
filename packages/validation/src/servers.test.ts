@@ -1,14 +1,14 @@
 import { RESERVED_SUBDOMAINS } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
+import { cronExpressionSchema } from './backups.js';
 import {
   cloneServerInputSchema,
   consoleCommandSchema,
   createServerInputSchema,
-  cronExpressionSchema,
-  scheduleInputSchema,
   serverFilePathSchema,
   serverNameSchema,
   serverResourceLimitsSchema,
+  scheduleInputSchema,
   subdomainSchema,
 } from './servers.js';
 
@@ -142,7 +142,7 @@ describe('cloneServerInputSchema', () => {
   });
 });
 
-describe('cronExpressionSchema', () => {
+describe('cronExpressionSchema (aus B5, hier für Aufgaben mitgenutzt)', () => {
   it('nimmt gebräuchliche Ausdrücke an', () => {
     for (const expression of ['0 4 * * *', '*/15 * * * *', '30 2 1,15 * 0', '0 0-6/2 * * 1-5']) {
       expect(cronExpressionSchema.safeParse(expression).success).toBe(true);

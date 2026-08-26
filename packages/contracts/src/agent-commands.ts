@@ -171,6 +171,81 @@ export interface FileWriteCommandPayload {
   readonly contentBase64: string;
 }
 
+/**
+ * `CREATE_BACKUP` – Datenordner eines Servers auf dem Homeserver sichern
+ * (Lastenheft §3.3, Arbeitspaket A3).
+ *
+ * Das Backend legt den Datensatz vorher an und gibt seine `backupId` mit, damit
+ * Ergebnis und Datensatz auch dann zusammenfinden, wenn die Verbindung während
+ * des Laufs abreißt und der Befehl wiederholt wird.
+ *
+ * `containerId` ist gesetzt, wenn zum Server ein Container existiert. Nur dann
+ * kann der Agent ihn für einen sauberen Stand kurz anhalten – ob er das darf,
+ * entscheidet das Backend über `stopContainer`.
+ */
+export interface CreateBackupCommandPayload {
+  /** Id des `Backup`-Datensatzes im Backend (Pflichtenheft §6). */
+  readonly backupId: string;
+  readonly serverId: string;
+  /** Zu sichernder Datenordner auf dem Homeserver (`CreateCommandPayload.dataVolume.hostPath`). */
+  readonly sourcePath: string;
+  readonly containerId?: string;
+  /**
+   * Container vor dem Sichern anhalten und danach wieder in den vorherigen
+   * Zustand bringen. Ohne Anhalten entsteht die Sicherung im laufenden Betrieb
+   * und kann einen halb geschriebenen Spielstand enthalten.
+   */
+  readonly stopContainer?: boolean;
+  /** Kulanzzeit für das Anhalten; ohne Angabe gilt der Wert aus `CREATE`. */
+  readonly stopTimeoutSeconds?: number;
+}
+
+/**
+ * `RESTORE_BACKUP` – Datenordner eines Servers aus einem Archiv zurückspielen.
+ *
+ * Der Agent hält den Container dafür an; das Backend stellt vorher sicher, dass
+ * der Server nicht mitten im Lifecycle-Übergang steckt (Pflichtenheft §9).
+ */
+export interface RestoreBackupCommandPayload {
+  readonly backupId: string;
+  readonly serverId: string;
+  /** Archiv auf dem Homeserver (`CreateBackupCommandResult.storagePath`). */
+  readonly storagePath: string;
+  /** Zielordner – derselbe Datenordner wie beim Sichern. */
+  readonly targetPath: string;
+  readonly containerId?: string;
+  readonly stopTimeoutSeconds?: number;
+}
+
+/**
+ * `DOWNLOAD_BACKUP` – einen Block aus dem Archiv lesen.
+ *
+ * Bewusst blockweise und vom Backend getrieben: Ein Backup kann mehrere
+ * Gigabyte groß sein, und der Agent darf keinen eigenen Listener öffnen
+ * (Pflichtenheft §18). Das Backend fragt so lange nach, bis `eof` gesetzt ist,
+ * und schreibt jeden Block direkt in die HTTP-Antwort.
+ */
+export interface DownloadBackupCommandPayload {
+  readonly backupId: string;
+  readonly storagePath: string;
+  /** Leseposition in Byte, beginnend bei 0. */
+  readonly offset: number;
+  /** Größte gewünschte Blockgröße in Byte. Der Agent darf weniger liefern. */
+  readonly maxBytes: number;
+}
+
+/**
+ * `DELETE_BACKUP` – Archiv eines Backups vom Homeserver entfernen.
+ *
+ * Bewusst idempotent: Ein bereits fehlendes Archiv ist kein Fehler. Sonst
+ * bliebe nach einem Abbruch mitten in der Aufbewahrungsprüfung ein Datensatz
+ * zurück, der sich nie wieder löschen ließe.
+ */
+export interface DeleteBackupCommandPayload {
+  readonly backupId: string;
+  readonly storagePath: string;
+}
+
 // ---------------------------------------------------------------------------
 // Ergebnisse je Befehl (das `data`-Feld im Envelope)
 // ---------------------------------------------------------------------------
@@ -250,6 +325,52 @@ export interface FileReadCommandResult {
   readonly sizeBytes: number;
 }
 
+/** Ergebnis von `CREATE_BACKUP`. */
+export interface CreateBackupCommandResult {
+  readonly backupId: string;
+  /** Ablageort des fertigen Archivs auf dem Homeserver. */
+  readonly storagePath: string;
+  readonly sizeBytes: number;
+  /** SHA-256 des Archivs in Kleinbuchstaben – Grundlage der Integritätsprüfung. */
+  readonly checksumSha256: string;
+  /** War der Container während des Sicherns angehalten? Bestimmt die Verlässlichkeit des Spielstands. */
+  readonly containerStopped: boolean;
+  readonly startedAt: string;
+  readonly completedAt: string;
+}
+
+/** Ergebnis von `RESTORE_BACKUP`. */
+export interface RestoreBackupCommandResult {
+  readonly backupId: string;
+  readonly restoredBytes: number;
+  /** War der Container zum Zeitpunkt des Zurückspielens angehalten? */
+  readonly containerStopped: boolean;
+  readonly startedAt: string;
+  readonly completedAt: string;
+}
+
+/** Ergebnis von `DOWNLOAD_BACKUP` – ein Block, Base64-kodiert wie bei `FILE_READ`. */
+export interface DownloadBackupCommandResult {
+  readonly backupId: string;
+  readonly offset: number;
+  readonly contentBase64: string;
+  /** Tatsächlich gelesene Byte-Anzahl (vor der Base64-Kodierung). */
+  readonly bytesRead: number;
+  /** Gesamtgröße des Archivs – erlaubt dem Backend ein `Content-Length`. */
+  readonly totalBytes: number;
+  /** `true`, wenn mit diesem Block das Dateiende erreicht ist. */
+  readonly eof: boolean;
+}
+
+/** Ergebnis von `DELETE_BACKUP`. */
+export interface DeleteBackupCommandResult {
+  readonly backupId: string;
+  /** `false`, wenn das Archiv schon vorher nicht mehr da war. */
+  readonly removed: boolean;
+  /** Freigegebener Speicher in Byte; `0`, wenn nichts zu entfernen war. */
+  readonly freedBytes: number;
+}
+
 // ---------------------------------------------------------------------------
 // Zuordnung Befehl → Nutzdaten/Ergebnis
 // ---------------------------------------------------------------------------
@@ -257,11 +378,14 @@ export interface FileReadCommandResult {
 /**
  * Nutzdaten je Befehlsname.
  *
- * `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` stehen bewusst
- * noch auf `never`: Sie sind Dateisystem- und Job-Aufgaben und gehören zu A3
- * (Jobs & Scheduler), nicht zur Container-Ansteuerung. Der Agent beantwortet
- * sie bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED`. Sobald A3 sie umsetzt,
- * werden die Einträge hier additiv ersetzt.
+ * `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP` und `DELETE_BACKUP` sind mit B5
+ * ausdefiniert, damit das Backend die Backup-Verwaltung dagegen bauen kann. Die
+ * **Ausführung** bleibt Dateisystem- und Job-Arbeit des Agents (A3): bis dahin
+ * beantwortet er sie mit `AGENT_COMMAND_NOT_IMPLEMENTED`, weil sie nicht in
+ * `IMPLEMENTED_AGENT_COMMANDS` stehen.
+ *
+ * `GET_STORAGE_BREAKDOWN` steht weiterhin auf `never` – die Nutzdaten dazu
+ * bringt der Storage-Explorer (B8, Pflichtenheft §16) additiv mit.
  */
 export interface AgentCommandPayloads {
   readonly CREATE: CreateCommandPayload;
@@ -275,8 +399,10 @@ export interface AgentCommandPayloads {
   readonly FILE_LIST: FileListCommandPayload;
   readonly FILE_READ: FileReadCommandPayload;
   readonly FILE_WRITE: FileWriteCommandPayload;
-  readonly CREATE_BACKUP: never;
-  readonly RESTORE_BACKUP: never;
+  readonly CREATE_BACKUP: CreateBackupCommandPayload;
+  readonly RESTORE_BACKUP: RestoreBackupCommandPayload;
+  readonly DOWNLOAD_BACKUP: DownloadBackupCommandPayload;
+  readonly DELETE_BACKUP: DeleteBackupCommandPayload;
   readonly GET_STORAGE_BREAKDOWN: never;
 }
 
@@ -293,8 +419,10 @@ export interface AgentCommandResults {
   readonly FILE_LIST: FileListCommandResult;
   readonly FILE_READ: FileReadCommandResult;
   readonly FILE_WRITE: null;
-  readonly CREATE_BACKUP: never;
-  readonly RESTORE_BACKUP: never;
+  readonly CREATE_BACKUP: CreateBackupCommandResult;
+  readonly RESTORE_BACKUP: RestoreBackupCommandResult;
+  readonly DOWNLOAD_BACKUP: DownloadBackupCommandResult;
+  readonly DELETE_BACKUP: DeleteBackupCommandResult;
   readonly GET_STORAGE_BREAKDOWN: never;
 }
 
