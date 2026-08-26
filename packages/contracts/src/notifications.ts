@@ -362,8 +362,15 @@ export interface NotificationRuleDto extends WithPermissions<NotificationRulePer
   recipientRoleName: string | null;
   /** In die Inbox des Panels zustellen (Standard). */
   inboxEnabled: boolean;
-  /** Dringlichkeit, mit der Meldungen dieser Regel entstehen. */
-  severity: NotificationSeverity;
+  /**
+   * Dringlichkeit, mit der Meldungen dieser Regel entstehen.
+   *
+   * `null` bedeutet „die des Ereignisses" – ein fehlgeschlagenes Backup ist
+   * dann `error`, ein Serverstart `info`. Ein fester Vorgabewert an der Regel
+   * würde `backup.failed` still auf `info` herabstufen; die Angabe ist deshalb
+   * ein bewusstes Überschreiben und nicht der Normalfall.
+   */
+  severity: NotificationSeverity | null;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
