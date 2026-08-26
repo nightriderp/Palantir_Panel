@@ -13,7 +13,7 @@
  *    Delete-Operation. Es gibt also gar keinen Weg, den man aufrufen könnte.
  * 2. `AuditService` bietet nur `record()` und `list()` an – auch dem Owner.
  * 3. Ein Trigger in der Datenbank lehnt UPDATE, DELETE und TRUNCATE auf
- *    `audit_log` ab (Migration `0003_admin_nodes_ports_audit_storage`). Selbst
+ *    `audit_log` ab (Migration `0004_admin_ports_audit_storage`). Selbst
  *    ein direkter `psql`-Zugriff kommt daran nicht vorbei.
  *
  * Die einzige Ausnahme ist der Archivierungsprozess in `audit-archive.ts`, der

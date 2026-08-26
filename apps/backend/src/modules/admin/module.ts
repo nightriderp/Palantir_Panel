@@ -136,7 +136,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     archiveAuditLog: async () => {
       if (!auditArchive) {
         throw new Error(
-          'AUDIT_ARCHIVE_DIR ist nicht gesetzt. Bitte die zentrale .env im Repo-Root ausfüllen (siehe .env.example Abschnitt 13).',
+          'AUDIT_ARCHIVE_DIR ist nicht gesetzt. Bitte die zentrale .env im Repo-Root ausfüllen (siehe .env.example Abschnitt 14).',
         );
       }
 

@@ -30,8 +30,21 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1).optional(),
 
   /**
+   * Schwellwerte der Ressourcen-Warnungen (Pflichtenheft §10, Event
+   * `resource.low`; .env.example Abschnitt 13).
+   *
+   * `RESOURCE_WARN_NODE_PERCENT` misst die Auslastung der Ziel-VM,
+   * `RESOURCE_WARN_SERVER_PERCENT` den Verbrauch eines einzelnen Servers gegen
+   * sein eigenes Limit. Beide bewusst getrennt: eine Node darf länger gut
+   * gefüllt laufen, ein einzelner Server nahe an seinem RAM-Limit ist dagegen
+   * kurz vor dem Absturz.
+   */
+  RESOURCE_WARN_NODE_PERCENT: z.coerce.number().min(1).max(100).default(85),
+  RESOURCE_WARN_SERVER_PERCENT: z.coerce.number().min(1).max(100).default(90),
+
+  /**
    * Ablageort der Audit-Log-Archive auf der VPS (Pflichtenheft §6,
-   * .env.example Abschnitt 13).
+   * .env.example Abschnitt 14).
    *
    * Der Archivierungsprozess exportiert Einträge älter als 24 Monate dorthin,
    * bevor er sie aus der aktiven Tabelle entfernt. Ohne gesetzten Wert läuft

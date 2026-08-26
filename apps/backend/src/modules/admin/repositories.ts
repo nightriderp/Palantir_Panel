@@ -11,13 +11,10 @@ import type { AgentStorageEntry } from '@palantir/contracts';
 import type { AuditLogQuery, RegistrationRequestQuery } from '@palantir/validation';
 import { and, asc, count, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index.js';
-import {
-  auditLog,
-  hostNodes,
-  portAllocations,
-  portRanges,
-  storageSnapshots,
-} from '../../db/schema/admin.js';
+import { auditLog, portAllocations, portRanges, storageSnapshots } from '../../db/schema/admin.js';
+// `host_nodes` gehört zu B4 (Kapazitätsprüfung, Pflichtenheft §10); B8 verwaltet
+// dieselbe Tabelle, statt eine zweite daneben anzulegen.
+import { hostNodes } from '../../db/schema/resources.js';
 import { roles, userRoles } from '../../db/schema/rbac.js';
 import { users } from '../../db/schema/users.js';
 import type { AuditArchiveRepository, AuditEntryRecord, AuditLogRepository } from './audit.js';
@@ -36,12 +33,21 @@ import type { StorageRepository, StorageSnapshotRecord } from './storage.js';
 // Nodes
 // ---------------------------------------------------------------------------
 
+/**
+ * Die Gesamt-Ressourcen liegen in drei Spalten statt als JSON – so hat B4 die
+ * Tabelle angelegt, damit die Kapazitätsprüfung in SQL damit rechnen kann. Die
+ * Zusammenfassung zum Objekt `NodeResources` passiert hier.
+ */
 function toNodeRecord(row: typeof hostNodes.$inferSelect): HostNodeRecord {
   return {
     id: row.id,
     name: row.name,
     wireguardIp: row.wireguardIp,
-    totalResources: row.totalResources,
+    totalResources: {
+      ramMb: row.totalRamMb,
+      cpuCores: row.totalCpuCores,
+      diskMb: row.totalDiskMb,
+    },
     status: row.status,
     statusMessage: row.statusMessage,
     lastSeenAt: row.lastSeenAt,
@@ -90,7 +96,9 @@ export function createDrizzleHostNodeRepository(db: Database): HostNodeRepositor
         .values({
           name: data.name,
           wireguardIp: data.wireguardIp,
-          totalResources: data.totalResources,
+          totalRamMb: data.totalResources.ramMb,
+          totalCpuCores: data.totalResources.cpuCores,
+          totalDiskMb: data.totalResources.diskMb,
         })
         .returning();
 
@@ -107,7 +115,13 @@ export function createDrizzleHostNodeRepository(db: Database): HostNodeRepositor
         .set({
           ...(data.name !== undefined ? { name: data.name } : {}),
           ...(data.wireguardIp !== undefined ? { wireguardIp: data.wireguardIp } : {}),
-          ...(data.totalResources !== undefined ? { totalResources: data.totalResources } : {}),
+          ...(data.totalResources !== undefined
+            ? {
+                totalRamMb: data.totalResources.ramMb,
+                totalCpuCores: data.totalResources.cpuCores,
+                totalDiskMb: data.totalResources.diskMb,
+              }
+            : {}),
           ...(data.status !== undefined ? { status: data.status } : {}),
           ...(data.statusMessage !== undefined ? { statusMessage: data.statusMessage } : {}),
           updatedAt: new Date(),

@@ -240,7 +240,7 @@ nicht unbegrenzt wächst, exportiert ein Wartungslauf Einträge, die älter als 
 sind, in eine komprimierte Archivdatei und entfernt sie **erst danach** aus der aktiven
 Tabelle. Schlägt der Export fehl, bleibt die Tabelle unverändert.
 
-Vorher in der zentralen `.env` (Abschnitt 13) das Archivverzeichnis eintragen. Es liegt auf
+Vorher in der zentralen `.env` (Abschnitt 14) das Archivverzeichnis eintragen. Es liegt auf
 der **VPS**, Vorgabe:
 
 ```
