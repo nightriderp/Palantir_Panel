@@ -12,6 +12,20 @@ import { z } from 'zod';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 loadDotenv({ path: path.join(repoRoot, '.env') });
 
+/**
+ * Optionaler Wert, bei dem eine **leere** Variable als „nicht gesetzt" gilt.
+ *
+ * `.env.example` führt jede Variable auf, auch die optionalen – die stehen dort
+ * mit leerem Wert (`CLOUDFLARE_API_TOKEN=`). Ohne diese Umsetzung wäre eine aus
+ * der Vorlage erzeugte `.env` ungültig, sobald eine optionale Variable
+ * unausgefüllt bleibt, und genau das ist der Normalfall.
+ */
+const optionalEnvString = (): z.ZodType<string | undefined> =>
+  z
+    .string()
+    .optional()
+    .transform((value) => (value === undefined || value.trim().length === 0 ? undefined : value));
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   BACKEND_HOST: z.string().default('0.0.0.0'),
@@ -27,7 +41,65 @@ const envSchema = z.object({
    * verständlichen Meldung ab, wenn der Wert fehlt. Sobald das erste Modul
    * die Datenbank benötigt, wird der Wert hier auf Pflicht hochgestuft.
    */
-  DATABASE_URL: z.string().min(1).optional(),
+  DATABASE_URL: optionalEnvString(),
+
+  // -- Server-Orchestrierung (B3, Pflichtenheft §2.2, §9, §11, §13) -----------
+  // `PALANTIR_DOMAIN` steht weiter unten bei B1 – dieselbe Variable, hier als
+  // Basis der Gameserver-Subdomains (§13) benutzt.
+
+  /** Öffentliche IPv4 der VPS – Ziel der `A`-Einträge (§13). */
+  VPS_PUBLIC_IP: z.string().min(1).default('127.0.0.1'),
+  /** Interne Tunnel-Adresse des Homeservers – Ziel des Health-Checks (§2.1, §9). */
+  WIREGUARD_HOME_IP: z.string().min(1).default('10.10.0.2'),
+
+  /**
+   * Pre-Shared-Token des Agents (§2.2).
+   *
+   * Bewusst optional: Das Backend startet auch ohne. Der WebSocket-Endpunkt
+   * `/agent` lehnt dann aber **jede** Verbindung ab – ein offener Agent-Kanal
+   * wäre vollständiger Zugriff auf den Homeserver (§18).
+   */
+  AGENT_TOKEN: optionalEnvString(),
+  /** Frist, in der ein Agent-Befehl beantwortet sein muss (§5.3). */
+  AGENT_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+
+  /** DNS-Automatisierung über Cloudflare (§13); ohne beide Werte passiert nichts. */
+  CLOUDFLARE_API_TOKEN: optionalEnvString(),
+  CLOUDFLARE_ZONE_ID: optionalEnvString(),
+
+  /** Öffentlicher Portbereich für Gameserver (§2.4). */
+  GAME_PORT_RANGE_START: z.coerce.number().int().min(1).max(65_535).default(27_000),
+  GAME_PORT_RANGE_END: z.coerce.number().int().min(1).max(65_535).default(27_999),
+  /** Hostname des Hostname-Routing-Proxys – Ziel der `CNAME`-Einträge (§2.4, §13). */
+  GAME_ROUTER_HOSTNAME: optionalEnvString(),
+  /** Einzelner öffentlicher Port für Spiele mit Hostname-Routing (§2.4). */
+  MINECRAFT_ROUTER_PORT: z.coerce.number().int().min(1).max(65_535).default(25_565),
+
+  /** Crash-Loop-Schutz: erlaubte automatische Neustarts im Zeitfenster (§9). */
+  CRASH_LOOP_MAX_RESTARTS: z.coerce.number().int().min(0).max(50).default(3),
+  CRASH_LOOP_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1_440).default(10),
+
+  /** Health-Check beim Start (§9): Abstand und Frist eines einzelnen Versuchs. */
+  HEALTH_CHECK_INTERVAL_MS: z.coerce.number().int().positive().default(3_000),
+  HEALTH_CHECK_ATTEMPT_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
+
+  /** Vorgabewerte des Auto-Shutdown für neue Server (§9). */
+  AUTO_SHUTDOWN_DEFAULT_IDLE_MINUTES: z.coerce.number().int().min(1).max(1_440).default(30),
+  AUTO_SHUTDOWN_DEFAULT_GRACE_MINUTES: z.coerce.number().int().min(0).max(1_440).default(15),
+
+  /**
+   * Ausbaustufe der Installation (Lastenheft §3.5).
+   *
+   * Steuert, welche Spiele-Definitionen auswählbar sind. Phase 1 = nur der
+   * Test-Typ.
+   */
+  INSTALLATION_PHASE: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(3)
+    .default(1)
+    .transform((value) => value as 1 | 2 | 3),
 
   /**
    * Schwellwerte der Ressourcen-Warnungen (Pflichtenheft §10, Event

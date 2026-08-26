@@ -1,4 +1,5 @@
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from './config/env.js';
 import { getDb } from './db/index.js';
@@ -14,6 +15,7 @@ import {
   createRoleService,
   registerRbac,
 } from './modules/rbac/index.js';
+import { registerServerOrchestration } from './modules/server-orchestration/index.js';
 import { registerHealthRoutes } from './routes/health.js';
 
 export interface BuildServerOptions {
@@ -104,6 +106,25 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
     await app.register(async (instance) => {
       await registerAdminRoutes(instance, admin.services);
+    });
+
+    /*
+     * Server-Orchestrierung (B3) inklusive des WebSocket-Endpunkts `/agent`
+     * (Pflichtenheft §2.2).
+     *
+     * Das Konto des Aufrufers kommt aus derselben Sitzung wie der Handelnde
+     * oben: Läuft das Auth-Modul (B1), steht es in `request.authUser`; sonst
+     * gilt jeder Request als nicht angemeldet und die Server-Routen antworten
+     * mit `AUTH_REQUIRED`. Der Agent-Endpunkt ist davon unabhängig, er
+     * authentifiziert über das Pre-Shared-Token.
+     */
+    await app.register(websocket);
+
+    registerServerOrchestration(app, {
+      db: getDb(),
+      resolveViewerId: (request) => request.authUser?.id ?? null,
+      // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
+      portPool: admin.services.ports,
     });
   }
 
