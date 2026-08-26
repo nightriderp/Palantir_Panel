@@ -44,7 +44,7 @@ CREATE TABLE "notification_rules" (
 	"recipient_scope" text NOT NULL,
 	"recipient_role_id" uuid,
 	"inbox_enabled" boolean DEFAULT true NOT NULL,
-	"severity" text DEFAULT 'info' NOT NULL,
+	"severity" text,
 	"enabled" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL

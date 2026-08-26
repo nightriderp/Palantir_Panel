@@ -63,7 +63,8 @@ export interface NotificationRuleRecord {
   readonly recipientScope: NotificationRecipientScope;
   readonly recipientRoleId: string | null;
   readonly inboxEnabled: boolean;
-  readonly severity: NotificationSeverity;
+  /** `null` = die Dringlichkeit des Ereignisses übernehmen. */
+  readonly severity: NotificationSeverity | null;
   readonly enabled: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -136,7 +137,7 @@ export interface CreateRuleData {
   readonly recipientScope: NotificationRecipientScope;
   readonly recipientRoleId: string | null;
   readonly inboxEnabled: boolean;
-  readonly severity: NotificationSeverity;
+  readonly severity: NotificationSeverity | null;
   readonly enabled: boolean;
 }
 
@@ -145,7 +146,7 @@ export interface UpdateRuleData {
   readonly recipientScope?: NotificationRecipientScope;
   readonly recipientRoleId?: string | null;
   readonly inboxEnabled?: boolean;
-  readonly severity?: NotificationSeverity;
+  readonly severity?: NotificationSeverity | null;
   readonly enabled?: boolean;
 }
 
@@ -216,6 +217,19 @@ export interface NotificationRepository {
     data: UpdateChannelData,
   ): Promise<NotificationChannelRecord | null>;
   deleteChannel(channelId: string): Promise<void>;
+  /**
+   * Hält den Zustellstand am Kanal fest (`lastDeliveryAt`, `lastFailureCode`).
+   *
+   * Bewusst getrennt von {@link NotificationRepository.updateChannel}: Das ist
+   * kein Bearbeiten durch einen Admin, sondern eine Beobachtung des Betriebs –
+   * sie soll `updatedAt` nicht anfassen und keinen Namenskonflikt auslösen.
+   */
+  recordChannelOutcome(
+    channelId: string,
+    outcome:
+      | { status: 'delivered'; at: Date }
+      | { status: 'failed'; code: ErrorCode; message: string },
+  ): Promise<void>;
   /** Anzahl Regeln je Kanal – trägt `NotificationChannelDto.ruleCount`. */
   countRulesPerChannel(): Promise<ReadonlyMap<string, number>>;
 
@@ -405,6 +419,17 @@ export function createDrizzleNotificationRepository(db: Database): NotificationR
 
     async deleteChannel(channelId) {
       await db.delete(notificationChannels).where(eq(notificationChannels.id, channelId));
+    },
+
+    async recordChannelOutcome(channelId, outcome) {
+      await db
+        .update(notificationChannels)
+        .set(
+          outcome.status === 'delivered'
+            ? { lastDeliveryAt: outcome.at, lastFailureCode: null, lastFailureMessage: null }
+            : { lastFailureCode: outcome.code, lastFailureMessage: outcome.message },
+        )
+        .where(eq(notificationChannels.id, channelId));
     },
 
     async countRulesPerChannel() {

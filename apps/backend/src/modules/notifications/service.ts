@@ -22,7 +22,6 @@ import {
   type AnnouncementDto,
   type NotifiableEventName,
   type NotificationDeliveryDto,
-  type NotificationDto,
   type NotificationEvent,
   type NotificationPageDto,
   type NotificationRuleDto,
@@ -278,16 +277,17 @@ export function createNotificationService(
       attempts += 1;
 
       try {
+        const at = now();
+
         await transport.send(target, message);
         await repository.finishDelivery(delivery.id, {
           status: 'delivered',
           attempts,
           failureCode: null,
           failureMessage: null,
-          deliveredAt: now(),
+          deliveredAt: at,
         });
-        await repository.updateChannel(channel.id, {});
-        await repository.updateChannel(channel.id, {});
+        await repository.recordChannelOutcome(channel.id, { status: 'delivered', at });
 
         return;
       } catch (error) {
@@ -300,14 +300,22 @@ export function createNotificationService(
           continue;
         }
 
+        const code = transportError?.code ?? 'NOTIFICATION_DELIVERY_FAILED';
+        const failureMessage =
+          transportError?.message ??
+          (error instanceof Error ? error.message : 'Unbekannter Fehler beim Versand.');
+
         await repository.finishDelivery(delivery.id, {
           status: 'failed',
           attempts,
-          failureCode: transportError?.code ?? 'NOTIFICATION_DELIVERY_FAILED',
-          failureMessage:
-            transportError?.message ??
-            (error instanceof Error ? error.message : 'Unbekannter Fehler beim Versand.'),
+          failureCode: code,
+          failureMessage,
           deliveredAt: null,
+        });
+        await repository.recordChannelOutcome(channel.id, {
+          status: 'failed',
+          code,
+          message: failureMessage,
         });
 
         throw error;
@@ -325,10 +333,6 @@ export function createNotificationService(
     jobs(async () => {
       try {
         await deliver(channel, target, message, context);
-        await repository.updateChannel(channel.id, {
-          lastFailureCode: null,
-          lastFailureMessage: null,
-        });
       } catch (error) {
         log.warn(
           {
@@ -389,6 +393,16 @@ export function createNotificationService(
       const severity: NotificationSeverity = rule.severity ?? rendered.severity;
 
       if (rule.inboxEnabled) {
+        /*
+         * Eine Ankündigung erreicht jedes Konto ohnehin schon direkt
+         * (`publishAnnouncement`). Eine Regel darüber trägt den externen Kanal
+         * – ihre Inbox-Meldungen müssen sich mit den direkten decken, sonst
+         * stünde derselbe Wartungshinweis zweimal in der Inbox. Die Zuordnung
+         * hier greift den Unique-Index `notifications_announcement_user_idx`
+         * auf, der die zweite Zeile dann verwirft.
+         */
+        const announcementId =
+          input.event === 'announcement.published' ? input.payload.announcementId : null;
         const recipients = await resolveRecipients(
           input,
           rule.recipientScope,
@@ -408,7 +422,7 @@ export function createNotificationService(
             subjectName: rendered.subject?.displayName ?? null,
             data: { ...input.payload } as Record<string, unknown>,
             ruleId: rule.id,
-            announcementId: null,
+            announcementId,
           })),
         );
       }
@@ -445,26 +459,24 @@ export function createNotificationService(
   // Öffentliche Schnittstelle
   // -------------------------------------------------------------------------
 
+  /**
+   * Die Zusicherung aus Pflichtenheft §14: Der auslösende Vorgang läuft weiter,
+   * egal was hier passiert. Das schließt Datenbankfehler ein – ein Serverstart
+   * soll nicht daran scheitern, dass die Inbox nicht beschreibbar war.
+   */
+  async function publishSafe(input: NotificationEvent): Promise<void> {
+    try {
+      await publishInternal(input);
+    } catch (error) {
+      log.error(
+        { event: input.event, reason: error instanceof Error ? error.message : String(error) },
+        'Benachrichtigung konnte nicht verarbeitet werden',
+      );
+    }
+  }
+
   return {
-    async publish(input) {
-      try {
-        await publishInternal(input);
-      } catch (error) {
-        /*
-         * Die Zusicherung aus Pflichtenheft §14: Der auslösende Vorgang läuft
-         * weiter, egal was hier passiert. Das schließt Datenbankfehler ein –
-         * ein Serverstart soll nicht daran scheitern, dass die Inbox nicht
-         * beschreibbar war.
-         */
-        log.error(
-          {
-            event: input.event,
-            reason: error instanceof Error ? error.message : String(error),
-          },
-          'Benachrichtigung konnte nicht verarbeitet werden',
-        );
-      }
-    },
+    publish: publishSafe,
 
     async listChannels(actor) {
       const [channels, ruleCounts] = await Promise.all([
@@ -609,8 +621,8 @@ export function createNotificationService(
           { event: 'announcement.published', ruleId: null },
         );
       } catch (error) {
-        await repository.updateChannel(channel.id, {});
-
+        // `deliver()` hat den Fehlschlag bereits protokolliert und am Kanal
+        // festgehalten; hier wird er nur noch in den Envelope übersetzt.
         throw new NotificationError(
           'NOTIFICATION_DELIVERY_FAILED',
           error instanceof Error ? error.message : undefined,
@@ -883,7 +895,7 @@ export function createNotificationService(
         })),
       );
 
-      await this.publish({
+      await publishSafe({
         event: 'announcement.published',
         payload: {
           at: announcement.publishedAt.toISOString(),

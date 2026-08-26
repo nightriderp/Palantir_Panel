@@ -104,7 +104,13 @@ export const notificationRules = pgTable(
     /** Rolle bei `recipient_scope = 'role'`, sonst `null`. Löscht die Rolle, verschwindet die Regel mit. */
     recipientRoleId: uuid('recipient_role_id').references(() => roles.id, { onDelete: 'cascade' }),
     inboxEnabled: boolean('inbox_enabled').notNull().default(true),
-    severity: text('severity').$type<NotificationSeverity>().notNull().default('info'),
+    /**
+     * `null` = die Dringlichkeit des Ereignisses übernehmen (Standard).
+     *
+     * Bewusst nullable statt mit Vorgabewert: Ein festes `'info'` würde ein
+     * fehlgeschlagenes Backup still herabstufen.
+     */
+    severity: text('severity').$type<NotificationSeverity>(),
     enabled: boolean('enabled').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
