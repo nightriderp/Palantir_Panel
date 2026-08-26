@@ -1,0 +1,229 @@
+# Palantir - Stack auf der VPS (Reverse Proxy, Frontend, Backend, Datenbank).
+#
+# Ablageort im Betrieb: /opt/palantir (Auscheckung dieses Repositories).
+# Aufruf aus diesem Verzeichnis heraus:
+#
+#   docker compose --env-file ../../.env up -d
+#
+# Die zentrale .env liegt im Repo-Root (Pflichtenheft §12.1) und wird nie
+# mitausgeliefert. Fassungen der Images stehen darin bewusst OHNE Vorgabewert:
+# ein fehlender Wert soll den Start abbrechen, statt still `:latest` zu ziehen.
+
+services:
+  # --- Docker-Socket-Proxy für Traefik ---------------------------------------
+  # Traefik muss die Labels der anderen Container lesen und braucht dafür Zugang
+  # zur Docker-API. Direkt eingehängt hätte der einzige aus dem Internet
+  # erreichbare Container vollen Zugriff auf die API - und damit faktisch Root
+  # auf dem Host, denn darüber lassen sich Container mit Host-Mounts starten.
+  # Das ":ro" am Socket schützt nur die Datei, nicht die API.
+  #
+  # Derselbe Grundsatz wie beim Agent (Pflichtenheft §2.3): nur die tatsächlich
+  # benötigten Endpunkte werden freigegeben, alles andere bleibt gesperrt.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:${SOCKET_PROXY_VERSION}
+    container_name: palantir-socket-proxy
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    mem_limit: ${SOCKET_PROXY_MEM_LIMIT:-64m}
+    pids_limit: 64
+    environment:
+      # Genau das, was Traefiks Docker-Provider braucht - nicht mehr.
+      CONTAINERS: 1
+      EVENTS: 1
+      PING: 1
+      # Alles Übrige ausdrücklich verboten. Die Liste steht vollständig da,
+      # damit sichtbar bleibt, was gesperrt ist.
+      POST: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      EXEC: 0
+      IMAGES: 0
+      INFO: 0
+      NETWORKS: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      VOLUMES: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - palantir
+
+  # --- Reverse Proxy ----------------------------------------------------------
+  traefik:
+    image: traefik:${TRAEFIK_VERSION}
+    container_name: palantir-traefik
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${TRAEFIK_MEM_LIMIT:-256m}
+    pids_limit: 256
+    depends_on:
+      - socket-proxy
+    command:
+      # Kein Socket-Mount mehr, sondern der Proxy als Gegenstelle.
+      - '--providers.docker=true'
+      - '--providers.docker.endpoint=tcp://socket-proxy:2375'
+      # Ohne diese Zeile bekäme JEDER Container auf dem Host eine Route.
+      - '--providers.docker.exposedbydefault=false'
+      - '--providers.docker.network=palantir'
+      - '--entrypoints.web.address=:80'
+      - '--entrypoints.web.http.redirections.entrypoint.to=websecure'
+      - '--entrypoints.web.http.redirections.entrypoint.scheme=https'
+      - '--entrypoints.websecure.address=:443'
+      - '--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}'
+      - '--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json'
+      # HTTP-Challenge statt TLS-Challenge: Läuft die Web-Domain hinter dem
+      # Cloudflare-Proxy (Pflichtenheft §13), beendet Cloudflare das TLS selbst
+      # und eine TLS-Challenge erreicht Traefik nie. Die HTTP-Challenge
+      # funktioniert in beiden Fällen.
+      - '--certificatesresolvers.letsencrypt.acme.httpchallenge=true'
+      - '--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web'
+      - '--accesslog=true'
+      - '--log.level=INFO'
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./letsencrypt:/letsencrypt
+    networks:
+      - palantir
+
+  # --- Datenbank --------------------------------------------------------------
+  postgres:
+    image: postgres:${POSTGRES_VERSION}
+    container_name: palantir-postgres
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    # Großzügig bemessen: PostgreSQL soll unter Last nicht vom OOM-Killer
+    # getroffen werden.
+    mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
+    pids_limit: 512
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # ACHTUNG PostgreSQL 18: Der Mount geht auf /var/lib/postgresql, NICHT auf
+      # /var/lib/postgresql/data wie bei älteren Fassungen. Mit dem alten Pfad
+      # landet der Container in einer Absturzschleife.
+      - ./postgres-data:/var/lib/postgresql
+    ports:
+      # Nur auf Loopback, für pg_dump und psql von Hand auf dem Host. Backend
+      # und Migrationen sprechen die Datenbank über das Docker-Netz an.
+      - '127.0.0.1:5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - palantir
+
+  # --- Migrationen ------------------------------------------------------------
+  # Läuft einmal bis zum Ende und beendet sich. Backend und Frontend warten über
+  # `service_completed_successfully` darauf - so startet die Anwendung nie gegen
+  # ein veraltetes Schema (CLAUDE.md §4: Änderungen nur über Migrationen).
+  migrate:
+    image: ghcr.io/nightriderp/palantir-backend:${PALANTIR_VERSION}
+    container_name: palantir-migrate
+    restart: 'no'
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${MIGRATE_MEM_LIMIT:-512m}
+    pids_limit: 256
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../../.env
+    command: ['node', 'apps/backend/dist/db/migrate.js']
+    networks:
+      - palantir
+
+  # --- Backend-API ------------------------------------------------------------
+  backend:
+    image: ghcr.io/nightriderp/palantir-backend:${PALANTIR_VERSION}
+    container_name: palantir-backend
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${BACKEND_MEM_LIMIT:-512m}
+    pids_limit: 512
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - ../../.env
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.palantir-api.rule=Host(`api.${PALANTIR_DOMAIN}`)'
+      - 'traefik.http.routers.palantir-api.entrypoints=websecure'
+      - 'traefik.http.routers.palantir-api.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.palantir-api.loadbalancer.server.port=4000'
+    healthcheck:
+      # curl und wget fehlen im Image (bewusst schlank) - node ist vorhanden.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - palantir
+
+  # --- Frontend ---------------------------------------------------------------
+  frontend:
+    image: ghcr.io/nightriderp/palantir-frontend:${PALANTIR_VERSION}
+    container_name: palantir-frontend
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${FRONTEND_MEM_LIMIT:-512m}
+    pids_limit: 512
+    depends_on:
+      backend:
+        condition: service_healthy
+    env_file:
+      - ../../.env
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.palantir-web.rule=Host(`${PALANTIR_DOMAIN}`)'
+      - 'traefik.http.routers.palantir-web.entrypoints=websecure'
+      - 'traefik.http.routers.palantir-web.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.palantir-web.loadbalancer.server.port=3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - palantir
+
+networks:
+  palantir:
+    name: palantir
