@@ -129,7 +129,7 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AUTH_RATE_LIMITED` | 429 | IP-Rate-Limit auf Anmeldung/Registrierung greift (§7) |
 | `AUTH_TWO_FACTOR_INVALID` | 401 | Falscher TOTP- oder Backup-Code im zweiten Anmeldeschritt (§7) |
 | `AUTH_TWO_FACTOR_EXPIRED` | 401 | Zwischen-Token des zweiten Anmeldeschritts abgelaufen (§7) |
-| `AUTH_CAPTCHA_INVALID` | 400 | ALTCHA-Prüfung der Registrierung fehlgeschlagen (§3, §7) |
+| `AUTH_CAPTCHA_INVALID` | 400 | ALTCHA-Prüfung von Registrierung oder Login fehlgeschlagen – fehlender, ungültiger, abgelaufener oder bereits eingelöster Nachweis (§3, §7) |
 | `AUTH_USERNAME_TAKEN` | 409 | Benutzername bei der Registrierung bereits vergeben (§7) |
 | `AUTH_PASSWORD_TOO_WEAK` | 400 | Passwort erfüllt die Mindestanforderungen aus §7 nicht |
 | `AUTH_PROVIDER_ERROR` | 502 | Anmeldung über Discord/Twitch/Steam fehlgeschlagen (Lastenheft §3.1) |
@@ -326,6 +326,12 @@ Festlegungen des Backend-Arbeitspakets B1, die darauf aufbauen (Modul `apps/back
 - **Passwort-Reset durch den Admin:** das Backend erzeugt ein kryptografisch zufälliges Einmal-Passwort, liefert es genau einmal in der Antwort an den Admin aus und speichert es nirgends im Klartext. Das Konto steht danach auf `mustChangePassword`; bis zur Änderung lehnt das Backend zustandsändernde Requests mit `AUTH_PASSWORD_CHANGE_REQUIRED` ab. Alle Sitzungen des Kontos werden dabei widerrufen.
 - **TOTP-Geheimnis:** liegt unverschlüsselt an der Passwort-`AuthMethod`. Es ist kein zweiter Passwort-Ersatz: Wer Lesezugriff auf die Datenbank hat, kommt damit an den zweiten Faktor, aber nicht am Argon2id-Passwort-Hash vorbei. Eine zusätzliche Verschlüsselung mit einem Schlüssel aus derselben `.env` würde denselben Angreifer nicht aufhalten und nur Komplexität hinzufügen.
 - **Konto-Löschung:** löscht den Datensatz samt `AuthMethod`-, `Session`- und `UserRole`-Einträgen (`ON DELETE CASCADE`). Das Owner-Konto kann sich nicht selbst löschen (`AUTH_OWNER_PROTECTED`, Lastenheft §2).
+
+Nachgezogen im Arbeitspaket R5 (ALTCHA beim Login):
+
+- **ALTCHA auch am Login-Formular:** `LoginView` bindet dasselbe `AltchaWidget` ein wie die Registrierung; `loginInputSchema` verlangt das Feld `altcha` seither verpflichtend (Breaking Change an `packages/validation`, zuvor `optional()`). Fehlt es, antwortet der Login mit `AUTH_CAPTCHA_INVALID` statt mit `AUTH_INVALID_CREDENTIALS` – die Meldung soll auf das richtige Feld zeigen.
+- **Jeder Nachweis zählt genau einmal:** Der Server führt über eingelöste Lösungen ein Verzeichnis im Arbeitsspeicher (`AltchaSolutionLedger`), Schlüssel ist die Challenge, Ablage bis zum Ablauf der Challenge. Ohne diese Sperre könnte eine einmal geleistete Rechenarbeit bis zum Ablauf an beliebig viele weitere Anmeldeversuche gehängt werden – der Proof-of-Work würde dann nur den ersten Versuch verteuern. Registrierung und Login teilen sich ein Verzeichnis. Wie beim IP-Rate-Limit bewusst ohne Datenbank/Redis: eine Backend-Instanz auf einer VPS (§1); ein Neustart verliert die Einträge, die offenen Challenges laufen ohnehin binnen `ALTCHA_EXPIRY_SECONDS` ab.
+- **Kein ALTCHA am zweiten Anmeldeschritt:** `/auth/login/2fa` bleibt beim IP-Rate-Limit. Dorthin kommt nur, wer im ersten Schritt bereits einen Nachweis eingelöst **und** gültige Zugangsdaten gezeigt hat; eine zweite Aufgabe würde dort nichts zusätzlich absichern.
 
 ---
 
