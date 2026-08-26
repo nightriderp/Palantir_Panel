@@ -3,6 +3,7 @@
 import {
   type GameConfigValue,
   type GameTypeDto,
+  type HostNodeDto,
   type UserResourceLimitDto,
 } from '@palantir/contracts';
 import { type CreateServerInput } from '@palantir/validation';
@@ -19,12 +20,10 @@ import {
   useToast,
 } from '@/components/shared';
 import {
-  type HostNodeOptionDto,
   createServer,
   fetchGameTypes,
   fetchHostNodes,
   fetchResourceQuota,
-  freeNodeResources,
   uploadWorldArchive,
 } from '@/lib/api/servers';
 import { errorText } from '@/lib/api/client';
@@ -156,7 +155,7 @@ export function CreateServerWizard() {
   const [uploading, setUploading] = useState(false);
 
   const gameTypes = useApiResource<GameTypeDto[]>((signal) => fetchGameTypes(signal), []);
-  const nodes = useApiResource<HostNodeOptionDto[]>((signal) => fetchHostNodes(signal), []);
+  const nodes = useApiResource<HostNodeDto[]>((signal) => fetchHostNodes(signal), []);
   const quota = useApiResource<UserResourceLimitDto>((signal) => fetchResourceQuota(signal), []);
 
   const subdomain = useSubdomainCheck(state.subdomain);
@@ -305,7 +304,7 @@ export function CreateServerWizard() {
                 value: node.id,
                 label:
                   node.status === 'online'
-                    ? `${node.name} · ${formatMegabytes(freeNodeResources(node).ramMb)} frei`
+                    ? `${node.name} · ${formatMegabytes(node.capacity.available.ramMb)} frei`
                     : `${node.name} · ${node.status === 'maintenance' ? 'in Wartung' : 'nicht erreichbar'}`,
                 disabled: node.status !== 'online',
               }))}

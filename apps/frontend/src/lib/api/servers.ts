@@ -1,9 +1,7 @@
 import {
   type BackupDto,
   type GameServerDto,
-  type HostNodeStatus,
-  type NodeResourceUsage,
-  type NodeResources,
+  type HostNodeDto,
   type GameTypeDto,
   type ScheduleDto,
   type ServerCloneJobDto,
@@ -36,36 +34,6 @@ import { API_BASE_URL, type ApiResult, apiRequest } from './client';
  * Ergebnisse sind immer der Response-Envelope aus Pflichtenheft §5.1 – hier
  * wird nichts ausgepackt und nichts geworfen.
  */
-
-/**
- * Node der Ziel-Auswahl im Wizard (Entität `HostNode`, Pflichtenheft §6).
- *
- * Aufgebaut aus den Typen von B4 (`HostNodeStatus`, `NodeResources`,
- * `NodeResourceUsage`) statt aus eigenen Zahlenfeldern. Einen vollständigen
- * `HostNodeDto` gibt es in den Contracts noch nicht; sobald B8 ihn dort anlegt,
- * ersetzt er diese Zwischenform (siehe „Gefundene Punkte").
- */
-export interface HostNodeOptionDto {
-  id: string;
-  name: string;
-  status: HostNodeStatus;
-  total: NodeResources;
-  usage: NodeResourceUsage;
-}
-
-/**
- * Freie Ressourcen einer Node.
- *
- * RAM und CPU zählen nur laufende Server, Speicherplatz alle – dieselbe
- * Zählweise wie in `NodeResourceUsage` (Pflichtenheft §10).
- */
-export function freeNodeResources(node: HostNodeOptionDto): NodeResources {
-  return {
-    ramMb: Math.max(0, node.total.ramMb - node.usage.runningRamMb),
-    cpuCores: Math.max(0, node.total.cpuCores - node.usage.runningCpuCores),
-    diskMb: Math.max(0, node.total.diskMb - node.usage.allocatedDiskMb),
-  };
-}
 
 const SERVERS = '/servers';
 
@@ -130,8 +98,14 @@ export function fetchGameTypes(signal?: AbortSignal): Promise<ApiResult<GameType
   return apiRequest<GameTypeDto[]>('/game-types', { signal });
 }
 
-export function fetchHostNodes(signal?: AbortSignal): Promise<ApiResult<HostNodeOptionDto[]>> {
-  return apiRequest<HostNodeOptionDto[]>('/nodes/available', { signal });
+/**
+ * Nodes, auf denen ein neuer Server angelegt werden kann.
+ *
+ * Der DTO stammt aus B8; die freie Kapazität steht dort fertig gerechnet in
+ * `capacity.available` – F3 rechnet sie nicht selbst aus.
+ */
+export function fetchHostNodes(signal?: AbortSignal): Promise<ApiResult<HostNodeDto[]>> {
+  return apiRequest<HostNodeDto[]>('/nodes/available', { signal });
 }
 
 /**

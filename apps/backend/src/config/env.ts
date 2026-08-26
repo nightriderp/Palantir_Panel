@@ -41,6 +41,18 @@ const envSchema = z.object({
    */
   RESOURCE_WARN_NODE_PERCENT: z.coerce.number().min(1).max(100).default(85),
   RESOURCE_WARN_SERVER_PERCENT: z.coerce.number().min(1).max(100).default(90),
+
+  /**
+   * Ablageort der Audit-Log-Archive auf der VPS (Pflichtenheft §6,
+   * .env.example Abschnitt 14).
+   *
+   * Der Archivierungsprozess exportiert Einträge älter als 24 Monate dorthin,
+   * bevor er sie aus der aktiven Tabelle entfernt. Ohne gesetzten Wert läuft
+   * das Backend normal weiter, der Archivierungslauf lehnt aber ab: Ein
+   * unklarer Ablageort für Sicherheitsprotokolle ist schlechter als gar keine
+   * Archivierung.
+   */
+  AUDIT_ARCHIVE_DIR: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
