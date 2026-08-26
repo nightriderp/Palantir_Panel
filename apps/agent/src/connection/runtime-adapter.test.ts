@@ -193,17 +193,14 @@ describe('Nutzdaten-Prüfung', () => {
 });
 
 describe('Job-Befehle ohne eingehängtes Job-Modul (A3)', () => {
-  it.each([...JOB_COMMANDS])(
-    '%s wird als noch nicht unterstützt gemeldet',
-    async (command) => {
-      // Dieser Adapter ist ohne `jobs` gebaut. Bewusst nicht
-      // AGENT_COMMAND_FAILED: Das Backend soll "nicht gebaut" von "hat nicht
-      // funktioniert" unterscheiden können.
-      const antwort = await befehl(command, {});
+  it.each([...JOB_COMMANDS])('%s wird als noch nicht unterstützt gemeldet', async (command) => {
+    // Dieser Adapter ist ohne `jobs` gebaut. Bewusst nicht
+    // AGENT_COMMAND_FAILED: Das Backend soll "nicht gebaut" von "hat nicht
+    // funktioniert" unterscheiden können.
+    const antwort = await befehl(command, {});
 
-      expect(antwort.error?.code).toBe('AGENT_COMMAND_NOT_IMPLEMENTED');
-    },
-  );
+    expect(antwort.error?.code).toBe('AGENT_COMMAND_NOT_IMPLEMENTED');
+  });
 
   it('nennt in der Meldung das fehlende Job-Modul', async () => {
     const antwort = await befehl('CREATE_BACKUP', {});

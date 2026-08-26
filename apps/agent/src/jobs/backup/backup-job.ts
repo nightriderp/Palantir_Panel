@@ -61,8 +61,7 @@ export class BackupJob {
     this.#runtime = options.runtime;
     this.#dataDir = options.dataDir;
     this.#backupDir = options.backupDir;
-    this.#maxDownloadBlockBytes =
-      options.maxDownloadBlockBytes ?? DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES;
+    this.#maxDownloadBlockBytes = options.maxDownloadBlockBytes ?? DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES;
     this.#now = options.now ?? (() => new Date());
   }
 
@@ -87,9 +86,7 @@ export class BackupJob {
    * Ob tatsächlich angehalten wurde, meldet `containerStopped` – daran hängt
    * die Verlässlichkeit des Spielstands, das darf nicht geraten werden.
    */
-  async createBackup(
-    payload: CreateBackupCommandPayload,
-  ): Promise<CreateBackupCommandResult> {
+  async createBackup(payload: CreateBackupCommandPayload): Promise<CreateBackupCommandResult> {
     const startedAt = this.#now().toISOString();
     const quelle = resolveWithinDirectory(this.#dataDir, payload.sourcePath);
     await this.#erwarteVerzeichnis(quelle, payload.sourcePath);
@@ -139,9 +136,7 @@ export class BackupJob {
    * bestehenden Stand hinterließe sonst Dateien, die es im Backup nicht mehr
    * gibt – der wiederhergestellte Stand wäre dann keiner.
    */
-  async restoreBackup(
-    payload: RestoreBackupCommandPayload,
-  ): Promise<RestoreBackupCommandResult> {
+  async restoreBackup(payload: RestoreBackupCommandPayload): Promise<RestoreBackupCommandResult> {
     const startedAt = this.#now().toISOString();
     const archiv = resolveWithinDirectory(this.#backupDir, payload.storagePath);
     await this.#erwarteDatei(archiv, payload.storagePath);
@@ -258,10 +253,7 @@ export class BackupJob {
     const lief = zustand.status === 'running' || zustand.status === 'restarting';
 
     if (lief) {
-      await this.#runtime.stop(
-        containerId,
-        timeoutSeconds === undefined ? {} : { timeoutSeconds },
-      );
+      await this.#runtime.stop(containerId, timeoutSeconds === undefined ? {} : { timeoutSeconds });
     }
 
     return lief;
@@ -314,10 +306,7 @@ export class BackupJob {
     }
   }
 
-  async #erwarteDatei(
-    pfad: string,
-    gemeldet: string,
-  ): Promise<Stats> {
+  async #erwarteDatei(pfad: string, gemeldet: string): Promise<Stats> {
     const stat = await this.#statOderNull(pfad);
     if (stat === null || !stat.isFile()) {
       throw new ContainerRuntimeError('FILE_NOT_FOUND', {

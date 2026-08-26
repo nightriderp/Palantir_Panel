@@ -252,9 +252,10 @@ describe('REMOVE_STORAGE_ENTRY', () => {
   it('entfernt ein ungenutztes Image über die Runtime', async () => {
     runtime.seedImage({ imageId: 'sha256:bbb', tag: 'alt/ungenutzt:2', sizeBytes: 80 });
 
-    await expect(
-      scanner.remove({ kind: 'dockerImage', imageId: 'sha256:bbb' }),
-    ).resolves.toEqual({ removed: true, freedBytes: 80 });
+    await expect(scanner.remove({ kind: 'dockerImage', imageId: 'sha256:bbb' })).resolves.toEqual({
+      removed: true,
+      freedBytes: 80,
+    });
     await expect(runtime.listImages()).resolves.toEqual([]);
   });
 
@@ -268,9 +269,10 @@ describe('REMOVE_STORAGE_ENTRY', () => {
   });
 
   it('meldet ein bereits entferntes Image als "nichts entfernt"', async () => {
-    await expect(
-      scanner.remove({ kind: 'dockerImage', imageId: 'sha256:weg' }),
-    ).resolves.toEqual({ removed: false, freedBytes: 0 });
+    await expect(scanner.remove({ kind: 'dockerImage', imageId: 'sha256:weg' })).resolves.toEqual({
+      removed: false,
+      freedBytes: 0,
+    });
   });
 
   it('verlangt bei einem Image eine imageId', async () => {

@@ -179,9 +179,9 @@ describe('RESTORE_BACKUP', () => {
     });
 
     expect(ergebnis.restoredBytes).toBeGreaterThan(0);
-    await expect(
-      fs.readFile(path.join(datenordner, 'server.properties'), 'utf8'),
-    ).resolves.toBe('max-players=20\n');
+    await expect(fs.readFile(path.join(datenordner, 'server.properties'), 'utf8')).resolves.toBe(
+      'max-players=20\n',
+    );
   });
 
   it('räumt Dateien weg, die es im Backup nicht mehr gibt', async () => {
