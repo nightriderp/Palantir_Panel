@@ -22,16 +22,23 @@ import {
   blockRegistrationRequestInputSchema,
   createHostNodeInputSchema,
   createPortRangeInputSchema,
+  createRoleInputSchema,
   deleteStorageEntryInputSchema,
   idSchema,
   registrationRequestQuerySchema,
   startStorageScanInputSchema,
   updateHostNodeInputSchema,
   updatePortRangeInputSchema,
+  updateRoleInputSchema,
 } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { requireActor, requireAnyPermission, requirePermission } from '../rbac/index.js';
+import {
+  isRbacError,
+  requireActor,
+  requireAnyPermission,
+  requirePermission,
+} from '../rbac/index.js';
 import { archiveAuditEntries, type AuditArchiveDependencies } from './audit-archive.js';
 import type { AuditService } from './audit.js';
 import type { AdminContext } from './context.js';
@@ -39,6 +46,7 @@ import { AdminError, isAdminError } from './errors.js';
 import type { HostNodeService } from './nodes.js';
 import type { PortPoolService } from './ports.js';
 import type { RegistrationRequestService } from './registration-requests.js';
+import type { RoleAdminService } from './roles.js';
 import type { StorageExplorerService } from './storage.js';
 
 export interface AdminRouteServices {
@@ -47,6 +55,11 @@ export interface AdminRouteServices {
   readonly audit: AuditService;
   readonly storage: StorageExplorerService;
   readonly registrationRequests: RegistrationRequestService;
+  /**
+   * Rollenverwaltung mit Audit-Log (`roles.ts`). Die Regeln selbst liegen im
+   * `RoleService` aus B2.
+   */
+  readonly roles: RoleAdminService;
   /**
    * Abhängigkeiten des Archivierungslaufs. Fehlen sie, antwortet der Endpunkt
    * mit `AUDIT_ARCHIVE_FAILED` – der Lauf braucht ein Archivverzeichnis.
@@ -58,6 +71,8 @@ const nodeIdParamsSchema = z.object({ nodeId: idSchema });
 const rangeIdParamsSchema = z.object({ rangeId: idSchema });
 const allocationIdParamsSchema = z.object({ allocationId: idSchema });
 const userIdParamsSchema = z.object({ userId: idSchema });
+const roleIdParamsSchema = z.object({ roleId: idSchema });
+const roleMemberParamsSchema = z.object({ roleId: idSchema, userId: idSchema });
 
 /**
  * Grobe Herkunft des Requests (Pflichtenheft §6, `Session.ipHint`).
@@ -125,9 +140,18 @@ function describeValidationError(error: z.ZodError): string {
     .join('; ');
 }
 
-/** Wandelt einen Fehler in den Envelope aus Pflichtenheft §5.1. */
+/**
+ * Wandelt einen Fehler in den Envelope aus Pflichtenheft §5.1.
+ *
+ * Neben {@link AdminError} auch {@link RbacError}: Die Rollen-Routen reichen an
+ * den `RoleService` aus B2 weiter, und der wirft seine eigenen benannten Codes
+ * (`ROLE_NOT_FOUND`, `ROLE_NAME_TAKEN`, `ROLE_PROTECTED`, `PERMISSION_DENIED`).
+ * Ohne diesen Zweig kämen sie als unerwarteter Fehler mit Status 500 zurück,
+ * obwohl sie fachliche Antworten sind. Beide Klassen tragen denselben
+ * Code-Katalog, die Zuordnung auf den HTTP-Status ist also dieselbe.
+ */
 async function replyWithError(reply: FastifyReply, error: unknown): Promise<void> {
-  if (isAdminError(error)) {
+  if (isAdminError(error) || isRbacError(error)) {
     await reply.status(httpStatusForErrorCode(error.code)).send(fail(error.code, error.message));
 
     return;
@@ -362,6 +386,96 @@ export async function registerAdminRoutes(
         const { entryId } = deleteStorageEntryInputSchema.parse(request.body);
 
         return services.storage.deleteEntry(contextFrom(request), nodeId, entryId);
+      }),
+  );
+
+  // -- Rollenverwaltung (Lastenheft §3.2 und §3.7, Pflichtenheft §8) --------
+  //
+  // Lesen erlaubt `role.manage` **und** `user.manage`: Wer Konten freischaltet,
+  // muss die Rollen zur Auswahl auflisten können, ohne sie bearbeiten zu dürfen.
+  // Ändern verlangt `role.manage`. Dieselbe Auslegung prüft der `RoleService`
+  // noch einmal selbst – der Guard hier lehnt nur früher ab.
+
+  app.get(
+    '/admin/roles',
+    { preHandler: requireAnyPermission('role.manage', 'user.manage') },
+    async (request, reply) => handle(reply, () => services.roles.list(contextFrom(request))),
+  );
+
+  app.get(
+    '/admin/roles/:roleId',
+    { preHandler: requireAnyPermission('role.manage', 'user.manage') },
+    async (request, reply) =>
+      handle(reply, async () => {
+        const { roleId } = roleIdParamsSchema.parse(request.params);
+
+        return services.roles.get(contextFrom(request), roleId);
+      }),
+  );
+
+  app.post(
+    '/admin/roles',
+    { preHandler: requirePermission('role.manage') },
+    async (request, reply) =>
+      handle(reply, async () => {
+        const input = createRoleInputSchema.parse(request.body);
+
+        return services.roles.create(contextFrom(request), input);
+      }),
+  );
+
+  app.patch(
+    '/admin/roles/:roleId',
+    { preHandler: requirePermission('role.manage') },
+    async (request, reply) =>
+      handle(reply, async () => {
+        const { roleId } = roleIdParamsSchema.parse(request.params);
+        const input = updateRoleInputSchema.parse(request.body);
+
+        return services.roles.update(contextFrom(request), roleId, input);
+      }),
+  );
+
+  app.delete(
+    '/admin/roles/:roleId',
+    { preHandler: requirePermission('role.manage') },
+    async (request, reply) =>
+      handle(reply, async () => {
+        const { roleId } = roleIdParamsSchema.parse(request.params);
+        await services.roles.remove(contextFrom(request), roleId);
+
+        return null;
+      }),
+  );
+
+  /*
+   * Zuweisen und Entziehen einer Rolle.
+   *
+   * `PUT` statt `POST`, weil der Vorgang idempotent ist: Eine bereits
+   * bestehende Zuweisung führt zum selben Zielzustand, nicht zu einem Fehler
+   * (der Unique-Index auf `user_roles` fängt die Doppelung ab). Beide Routen
+   * antworten mit der Rolle samt aktualisierter Mitgliederzahl, damit die
+   * Oberfläche nicht sofort nachladen muss (Pflichtenheft §5.2).
+   */
+  app.put(
+    '/admin/roles/:roleId/members/:userId',
+    { preHandler: requireAnyPermission('role.manage', 'user.manage') },
+    async (request, reply) =>
+      handle(reply, async () => {
+        const { roleId, userId } = roleMemberParamsSchema.parse(request.params);
+
+        return services.roles.assignToUser(contextFrom(request), roleId, userId);
+      }),
+  );
+
+  app.delete(
+    '/admin/roles/:roleId/members/:userId',
+    { preHandler: requireAnyPermission('role.manage', 'user.manage') },
+    async (request, reply) =>
+      handle(reply, async () => {
+        const { roleId, userId } = roleMemberParamsSchema.parse(request.params);
+
+        return services.roles.removeFromUser(contextFrom(request), roleId, userId);
       }),
   );
 

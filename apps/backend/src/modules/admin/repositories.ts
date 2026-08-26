@@ -23,6 +23,7 @@ import { users } from '../../db/schema/users.js';
 import type { AuditArchiveRepository, AuditEntryRecord, AuditLogRepository } from './audit.js';
 import { AdminError } from './errors.js';
 import { toLinkedAccountProfile } from './linked-profiles.js';
+import type { RoleMemberLookup } from './roles.js';
 import type { HostNodeRecord, HostNodeRepository } from './nodes.js';
 import type { PortAllocationRecord, PortPoolRepository, PortRangeRecord } from './ports.js';
 import type {
@@ -437,6 +438,31 @@ export function createDrizzleStorageRepository(db: Database): StorageRepository 
             entries,
           },
         });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rollenverwaltung
+// ---------------------------------------------------------------------------
+
+/**
+ * Nachschlagen eines Kontos für die Rollenverwaltung.
+ *
+ * Bewusst nur die Existenzfrage: Mehr braucht das Zuweisen und Entziehen
+ * nicht, und die Abfrage bleibt damit ein Index-Treffer auf den
+ * Primärschlüssel.
+ */
+export function createDrizzleRoleMemberLookup(db: Database): RoleMemberLookup {
+  return {
+    async exists(userId) {
+      const [row] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      return row !== undefined;
     },
   };
 }
