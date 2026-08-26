@@ -67,6 +67,10 @@ export * from './audit.js';
 export * from './storage.js';
 export * from './registration-request.js';
 
+// Chat & Moderation (Arbeitspaket B7): Konversationen, Nachrichten, Meldungen
+// und der Live-Kanal des Chats.
+export * from './chat.js';
+
 export {
   AGENT_COMMANDS,
   AGENT_CONTAINER_STATUSES,
