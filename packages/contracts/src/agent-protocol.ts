@@ -61,6 +61,19 @@ export const AGENT_COMMANDS = [
   'FILE_WRITE',
   'CREATE_BACKUP',
   'RESTORE_BACKUP',
+  /**
+   * Archiv eines Backups blockweise vom Homeserver holen (Lastenheft §3.3,
+   * „vollständiger Export/Download aller Serverdaten").
+   *
+   * Ergänzung dieser Sitzung (B5) zum Katalog aus Pflichtenheft §5.3, dort
+   * nachgetragen. Begründung: Der Agent öffnet nie einen eigenen Listener
+   * (Pflichtenheft §18), es gibt also keinen zweiten Weg für die Bytes. Ein
+   * blockweises Ziehen über diese Verbindung kommt ohne neuen Frame-Typ aus –
+   * das Backend fordert Block für Block an und reicht ihn direkt an den
+   * HTTP-Download weiter, statt ein mehrere Gigabyte großes Archiv am Stück in
+   * den Speicher zu laden.
+   */
+  'DOWNLOAD_BACKUP',
   'GET_STORAGE_BREAKDOWN',
 ] as const;
 

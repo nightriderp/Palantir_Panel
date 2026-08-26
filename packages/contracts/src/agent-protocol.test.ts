@@ -11,6 +11,8 @@ import {
 
 describe('Agent-Protokoll – Befehle (Pflichtenheft §5.3)', () => {
   it('enthält genau die im Pflichtenheft genannten Befehle', () => {
+    // DOWNLOAD_BACKUP ist die Ergänzung aus B5 (Lastenheft §3.3, Download aller
+    // Serverdaten) und in Pflichtenheft §5.3 nachgetragen.
     expect([...AGENT_COMMANDS]).toEqual([
       'CREATE',
       'START',
@@ -25,6 +27,7 @@ describe('Agent-Protokoll – Befehle (Pflichtenheft §5.3)', () => {
       'FILE_WRITE',
       'CREATE_BACKUP',
       'RESTORE_BACKUP',
+      'DOWNLOAD_BACKUP',
       'GET_STORAGE_BREAKDOWN',
     ]);
   });

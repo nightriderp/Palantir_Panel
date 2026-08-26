@@ -45,6 +45,8 @@ export {
 } from './events.js';
 
 export * from './server-lifecycle.js';
+export * from './backup.js';
+export * from './schedule.js';
 export * from './game-server.js';
 export * from './permissions.js';
 export * from './role.js';
@@ -88,9 +90,13 @@ export {
   type AgentPortProtocol,
   type AgentResourceLimits,
   type AgentVolumeMount,
+  type CreateBackupCommandPayload,
+  type CreateBackupCommandResult,
   type CreateCommandPayload,
   type CreateCommandResult,
   type DeleteCommandPayload,
+  type DownloadBackupCommandPayload,
+  type DownloadBackupCommandResult,
   type ExecConsoleCommandPayload,
   type ExecConsoleCommandResult,
   type FileListCommandPayload,
@@ -103,6 +109,8 @@ export {
   type GetStatsCommandPayload,
   type ImplementedAgentCommandName,
   type RestartCommandPayload,
+  type RestoreBackupCommandPayload,
+  type RestoreBackupCommandResult,
   type StartCommandPayload,
   type StopCommandPayload,
   isImplementedAgentCommand,
