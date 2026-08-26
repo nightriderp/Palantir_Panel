@@ -110,9 +110,7 @@ describe('Port-Connect-Sonde (Pflichtenheft §9)', () => {
     socket.emit('error', new Error('ECONNREFUSED'));
 
     const ergebnis = await laeuft;
-    expect(ergebnis).toEqual(
-      unreachable('Der Server war nicht erreichbar (ECONNREFUSED).'),
-    );
+    expect(ergebnis).toEqual(unreachable('Der Server war nicht erreichbar (ECONNREFUSED).'));
   });
 
   it('löst die Zusage nur einmal auf, auch bei mehreren Ereignissen', async () => {

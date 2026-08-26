@@ -239,9 +239,7 @@ export class StorageScanner {
       return { removed: false, freedBytes: 0 };
     }
 
-    const freedBytes = stat.isDirectory()
-      ? (await this.#baumgroesse(pfad)).sizeBytes
-      : stat.size;
+    const freedBytes = stat.isDirectory() ? (await this.#baumgroesse(pfad)).sizeBytes : stat.size;
 
     await fs.rm(pfad, { recursive: true, force: true });
     return { removed: true, freedBytes };

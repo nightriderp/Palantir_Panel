@@ -128,10 +128,7 @@ export interface CreateAgentJobsOptions {
  * injiziert und bleiben ohne `.env` testbar – dieselbe Aufteilung wie in
  * `runtime/factory.ts`.
  */
-export function createAgentJobs(
-  env: JobsEnv,
-  options: CreateAgentJobsOptions,
-): AgentJobs {
+export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): AgentJobs {
   const scheduler = new JobScheduler({
     ...(options.timers === undefined ? {} : { timers: options.timers }),
     ...(options.onJobError === undefined ? {} : { onError: options.onJobError }),

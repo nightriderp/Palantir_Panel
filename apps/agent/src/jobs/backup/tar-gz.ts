@@ -375,18 +375,13 @@ export interface UnpackResult {
  * Das Zielverzeichnis muss bereits leer bzw. angelegt sein – das Aufräumen
  * davor gehört zum Backup-Job, nicht zum Codec.
  */
-export async function unpackArchive(
-  archivePath: string,
-  targetDir: string,
-): Promise<UnpackResult> {
+export async function unpackArchive(archivePath: string, targetDir: string): Promise<UnpackResult> {
   await fs.mkdir(targetDir, { recursive: true });
   const wurzel = path.resolve(targetDir);
 
   const quelle = createReadStream(archivePath, { highWaterMark: CHUNK });
   const strom = quelle.pipe(createGunzip());
-  const leser = new BlockLeser(
-    strom[Symbol.asyncIterator]() as unknown as AsyncIterator<Buffer>,
-  );
+  const leser = new BlockLeser(strom[Symbol.asyncIterator]() as unknown as AsyncIterator<Buffer>);
 
   let restoredBytes = 0;
   let fileCount = 0;

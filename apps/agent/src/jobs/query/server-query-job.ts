@@ -82,10 +82,7 @@ export class ServerQueryJob {
    * zweites anzulegen. Das Backend kann den Befehl deshalb nach jedem
    * Verbindungsaufbau für alle laufenden Server wiederholen.
    */
-  setTarget(
-    serverId: string,
-    target: AgentServerQueryTarget | null,
-  ): SetServerQueryCommandResult {
+  setTarget(serverId: string, target: AgentServerQueryTarget | null): SetServerQueryCommandResult {
     if (target === null) {
       this.#scheduler.cancel(queryJobName(serverId));
       this.#ziele.delete(serverId);
