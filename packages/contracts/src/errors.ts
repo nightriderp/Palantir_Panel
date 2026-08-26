@@ -39,6 +39,38 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Diese Subdomain ist bereits vergeben.',
   },
   /**
+   * Subdomain verletzt das Format (Pflichtenheft §13).
+   * 400: bewusst getrennt von `SUBDOMAIN_TAKEN`, damit der Wizard „so nicht
+   * erlaubt" von „schon vergeben" unterscheiden und passend zurückmelden kann.
+   */
+  SUBDOMAIN_INVALID: {
+    httpStatus: 400,
+    defaultMessage: 'Diese Subdomain entspricht nicht dem erlaubten Format.',
+  },
+  /** Server existiert nicht oder ist für den Aufrufer nicht sichtbar (§9). 404: Zielobjekt nicht vorhanden. */
+  SERVER_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieser Server existiert nicht.',
+  },
+  /**
+   * Lifecycle-Befehl passt nicht zum aktuellen Zustand, z. B. Start auf einem
+   * bereits laufenden Server (Pflichtenheft §9). 409: Konflikt mit dem
+   * vorhandenen Zustand – erst nach Zustandswechsel sinnvoll wiederholbar.
+   */
+  SERVER_STATE_CONFLICT: {
+    httpStatus: 409,
+    defaultMessage: 'Der Server ist für diesen Vorgang im falschen Zustand.',
+  },
+  /**
+   * Hochgeladene Datei überschreitet `MAX_UPLOAD_SIZE_BYTES` (Pflichtenheft
+   * §12.1). 413: Gegenstück zu `AGENT_FILE_TOO_LARGE`, aber für den
+   * REST-Upload des Datei-Managers statt für den Agent-Kanal.
+   */
+  FILE_TOO_LARGE: {
+    httpStatus: 413,
+    defaultMessage: 'Die Datei überschreitet die zulässige Upload-Größe.',
+  },
+  /**
    * Zugriff ohne gültige Sitzung (Pflichtenheft §7, §8).
    * 401: nicht authentifiziert – ein erneuter Versuch nach Anmeldung kann erfolgreich sein.
    */
