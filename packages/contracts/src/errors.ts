@@ -75,6 +75,17 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Diese Systemrolle ist geschützt und kann nicht geändert oder gelöscht werden.',
   },
 
+  /**
+   * Eingabe verletzt das vereinbarte Schema (Pfad-, Query- oder Körperwert).
+   * 400: Der Aufrufer müsste die Anfrage ändern, ein Retry mit demselben
+   * Inhalt hilft nicht. Die Meldung nennt das beanstandete Feld; der Code
+   * bleibt derselbe, damit Freitext-Fehler gar nicht erst entstehen.
+   */
+  VALIDATION_FAILED: {
+    httpStatus: 400,
+    defaultMessage: 'Die Anfrage enthält ungültige Werte.',
+  },
+
   // -- Server & Backups (Pflichtenheft §6, Lastenheft §3.3) ------------------
 
   /**
