@@ -8,7 +8,7 @@ import {
   serverFilePathSchema,
   serverNameSchema,
   serverResourceLimitsSchema,
-  serverTaskInputSchema,
+  scheduleInputSchema,
   subdomainSchema,
 } from './servers.js';
 
@@ -156,7 +156,7 @@ describe('cronExpressionSchema (aus B5, hier für Aufgaben mitgenutzt)', () => {
   });
 });
 
-describe('serverTaskInputSchema', () => {
+describe('scheduleInputSchema', () => {
   const base = {
     name: 'Nächtlicher Neustart',
     action: 'restart' as const,
@@ -167,11 +167,11 @@ describe('serverTaskInputSchema', () => {
   };
 
   it('nimmt eine Aufgabe ohne Befehl an', () => {
-    expect(serverTaskInputSchema.parse(base).action).toBe('restart');
+    expect(scheduleInputSchema.parse(base).action).toBe('restart');
   });
 
   it('verlangt bei „command" einen Befehl', () => {
-    const result = serverTaskInputSchema.safeParse({ ...base, action: 'command' });
+    const result = scheduleInputSchema.safeParse({ ...base, action: 'command' });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0]?.path).toEqual(['command']);
@@ -180,7 +180,7 @@ describe('serverTaskInputSchema', () => {
 
   it('nimmt „command" mit Befehl an', () => {
     expect(
-      serverTaskInputSchema.parse({
+      scheduleInputSchema.parse({
         ...base,
         action: 'command',
         command: 'say Neustart in 5 Minuten',

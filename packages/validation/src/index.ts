@@ -159,7 +159,7 @@ export {
 export {
   type CloneServerInput,
   type CreateServerInput,
-  type ServerTaskInput,
+  type ScheduleInput,
   type ServerMemberInput,
   type UpdateServerSettingsInput,
   cloneServerInputSchema,
@@ -168,7 +168,7 @@ export {
   gameConfigValueSchema,
   gameConfigValuesSchema,
   scheduleActionSchema,
-  serverTaskInputSchema,
+  scheduleInputSchema,
   serverFilePathSchema,
   serverMemberInputSchema,
   serverMemberLevelSchema,

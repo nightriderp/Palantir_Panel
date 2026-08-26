@@ -201,7 +201,7 @@ export const scheduleActionSchema = z.enum(SCHEDULE_ACTIONS);
  * Der Cron-Ausdruck wird mit `cronExpressionSchema` aus `backups.js` (B5)
  * geprüft – dieselbe Regel für den Backup-Zeitplan und für jede andere Aufgabe.
  */
-export const serverTaskInputSchema = z
+export const scheduleInputSchema = z
   .object({
     name: z
       .string()
@@ -220,7 +220,7 @@ export const serverTaskInputSchema = z
     path: ['command'],
   });
 
-export type ServerTaskInput = z.infer<typeof serverTaskInputSchema>;
+export type ScheduleInput = z.infer<typeof scheduleInputSchema>;
 
 export const serverMemberLevelSchema = z.enum(SERVER_MEMBER_LEVELS);
 
