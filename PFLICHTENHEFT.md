@@ -275,6 +275,8 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 
 **Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin`):** Die Unveränderlichkeit ist dreifach abgesichert. `AuditLogRepository` und `AuditService` kennen weder eine Update- noch eine allgemeine Delete-Operation – auch nicht für den Owner. Zusätzlich lehnt der Trigger `audit_log_append_only` (Migration `0005_admin_ports_audit_storage`) UPDATE, DELETE und TRUNCATE auf `audit_log` **in der Datenbank** ab; auch ein direkter `psql`-Zugriff kommt daran nicht vorbei. Einzige Ausnahme ist der Archivierungsprozess: Er weist sich über die Sitzungsvariable `palantir.audit_archive` aus (per `SET LOCAL`, gilt also nur innerhalb seiner Transaktion) und darf auch dann ausschließlich Einträge älter als 24 Monate entfernen – nachdem die Archivdatei geschrieben ist. Schlägt der Export fehl, bleibt die aktive Tabelle unverändert (`AUDIT_ARCHIVE_FAILED`). Angestoßen wird der Lauf über die Admin-Oberfläche oder `pnpm --filter @palantir/backend audit:archive`; der Ablageort steht in `AUDIT_ARCHIVE_DIR`.
 
+**Handelnder eines Eintrags (festgelegt in R1):** `AuditLog.userId` und der mitgeschriebene Anzeigename kommen aus der Sitzung. Der `PermissionActor` aus §8 trägt bewusst keine Identität – für die Rechteberechnung braucht er sie nicht –, deshalb setzt das Auth-Modul die Identität beim Auflösen der Sitzung als `request.adminIdentity` und `contextFrom()` in `modules/admin/routes.ts` liest sie dort. Der Anzeigename wird als **Kopie** zum Zeitpunkt der Aktion festgehalten, damit der Eintrag lesbar bleibt, wenn das Konto später umbenannt wird oder verschwindet. Aufrufe ohne Sitzung – die Wartungs-Kommandos auf der VPS, die bereits Systemzugang voraussetzen – bleiben Systemeinträge mit `actorId: null`.
+
 **Katalog der protokollierten Aktionen:** `packages/contracts/src/audit.ts` (`AUDIT_ACTIONS`), Benennungsschema wie bei den Events (`<domäne>.<vorgang>`, §14). Jedes Arbeitspaket ergänzt dort additiv die sicherheitsrelevanten Aktionen, die es selbst protokolliert – nie als Freitext am Aufrufort.
 
 ---
@@ -321,6 +323,8 @@ Festlegungen des Backend-Arbeitspakets B1, die darauf aufbauen (Modul `apps/back
 - Rollen sind frei definierbare Bündel dieser Permissions; ein Nutzer kann mehrere Rollen haben, effektive Rechte = Vereinigung
 - Seed-Rollen bei Ersteinrichtung: **Admin**, **Moderator**, **Nutzer** (vollständig editierbar); **Gast** als geschützte Systemrolle ohne jede Permission. Angelegt werden sie einmalig über `pnpm --filter @palantir/backend db:seed` direkt nach den Migrationen (siehe SETUP.md §2.4) – bewusst als eigenes Kommando statt beim Backend-Start, damit der Zeitpunkt für den Betreiber sichtbar bleibt. Der Lauf ist idempotent und verändert vorhandene Rollen nie.
 - `User.isOwner`-Flag: unabhängig vom Rollensystem immer alle Permissions – verhindert Selbst-Aussperrung
+
+**Vergabe des Owner-Status (Ersteinrichtung, festgelegt in R1):** Der Betreiber registriert sich über die reguläre Oberfläche und hebt dieses Konto anschließend einmalig über `pnpm --filter @palantir/backend db:owner <benutzername>` zum Owner (SETUP.md §2.5). Bewusst **nicht** „das erste registrierte Konto gewinnt": Die Registrierung ist offen (Lastenheft §3.1) und das Panel ab dem ersten Start erreichbar – ein Sicherheitsmerkmal, das an der Reihenfolge zweier HTTP-Requests hängt, ist keines. Bewusst auch kein Owner-Konto im Seed-Lauf: der bräuchte ein Passwort aus der `.env` oder aus der Konsolenausgabe und wäre ein zweiter Weg, ein Konto anzulegen, der an Registrierung, Passwortregeln und `AuthMethod` vorbeiliefe. Der Nachweis ist stattdessen der Systemzugang zur Maschine, auf der das Backend läuft – dasselbe Muster wie bei `db:migrate`, `db:seed` und `audit:archive`. Der Lauf ist idempotent, protokolliert `user.ownerGranted` im Audit-Log und lehnt ein zweites Owner-Konto mit `OWNER_ALREADY_EXISTS` ab; die eigentliche Zusicherung hält der partielle Unique-Index `users_single_owner_idx` (§6). Ein Weg, den Status wieder zu entziehen oder zu übertragen, existiert in Version 1 bewusst nicht.
 
 **Ort des Katalogs:** `packages/contracts/src/permissions.ts` (`PERMISSION_CATALOG`) – dort steht jede Permission zusammen mit Beschreibung (für den Rollen-Editor) und Geltungsbereich (`own` / `any` / `global`). Neue Permissions werden ausschließlich dort additiv ergänzt und zusätzlich in der obigen Aufzählung nachgetragen.
 
@@ -394,7 +398,7 @@ Ein Skript (`scripts/setup.sh`), das:
 
 ### 12.3 Dokumentation im Repository
 - `README.md`: Projektüberblick, Architekturdiagramm, Quick-Start
-- `SETUP.md`: Schritt-für-Schritt-Anleitung – VPS vorbereiten, `.env` ausfüllen, OAuth-Apps bei Discord/Twitch/Steam anlegen (inkl. Redirect-URI-Konfiguration passend zur Domain), WireGuard zwischen VPS und Homeserver einrichten, Homeserver-VM vorbereiten, `docker compose up` auf beiden Seiten, Ersteinrichtung des Owner-Accounts
+- `SETUP.md`: Schritt-für-Schritt-Anleitung – VPS vorbereiten, `.env` ausfüllen, OAuth-Apps bei Discord/Twitch/Steam anlegen (inkl. Redirect-URI-Konfiguration passend zur Domain), WireGuard zwischen VPS und Homeserver einrichten, Homeserver-VM vorbereiten, `docker compose up` auf beiden Seiten, Ersteinrichtung des Owner-Accounts (§8, umgesetzt in SETUP.md §2.5)
 
 ---
 

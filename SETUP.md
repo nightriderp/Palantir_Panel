@@ -94,6 +94,16 @@ Legt die Rollen **Admin**, **Moderator**, **Nutzer** und die geschützte Systemr
 **Gast** an ([PFLICHTENHEFT.md §8](PFLICHTENHEFT.md)). Der Lauf ist idempotent – siehe
 Abschnitt 2.4.
 
+**Schritt 5 – Owner-Konto einrichten** (einmalig, nachdem das Panel erreichbar ist):
+über die Oberfläche registrieren, dann im Repo-Root `/opt/palantir` auf der **VPS**:
+
+```bash
+pnpm --filter @palantir/backend db:owner <benutzername>
+```
+
+Ohne diesen Schritt hat niemand die Rechte, den ersten Admin freizuschalten – die
+vollständige Anleitung samt Begründung steht in Abschnitt 2.5.
+
 **Wichtig:**
 
 - Der Datenbank-Port wird **nicht** nach außen veröffentlicht. Die Datenbank ist nur im
@@ -234,9 +244,59 @@ erneuter Lauf legt lediglich fehlende Rollen wieder an und stellt so sicher, das
 Gast-Rolle nie dauerhaft fehlt.
 
 > Der Owner-Account (`User.isOwner`) wird hiervon **nicht** angelegt – er steht außerhalb
-> des Rollensystems und kommt aus der Ersteinrichtung des Kontos (siehe offene Punkte).
+> des Rollensystems und bekommt einen eigenen Schritt (§2.5).
 
-### 2.5 Archivierung des Audit-Logs (laufender Betrieb)
+### 2.5 Owner-Konto (Ersteinrichtung)
+
+Der Owner ist der Ersteinrichter der Instanz. Sein Sonderstatus liegt **außerhalb** des
+Rollensystems ([LASTENHEFT.md §2](LASTENHEFT.md), [PFLICHTENHEFT.md §8](PFLICHTENHEFT.md)):
+ein einzelnes Flag am Konto, das immer alle Berechtigungen garantiert – der Schutz davor,
+sich durch eine unbedachte Rollenänderung selbst auszusperren. **Genau ein Konto** trägt
+ihn.
+
+Ohne diesen Schritt lässt sich die Instanz nicht in Betrieb nehmen: Jedes neu registrierte
+Konto bekommt die Rolle „Gast" und damit keinerlei Rechte – ohne Owner ist niemand da, der
+den ersten Admin freischalten könnte.
+
+**Schritt 1 – ganz normal registrieren.** Im Browser auf `https://<deine-domain>/register`
+ein Konto mit Benutzername und Passwort anlegen. Bewusst der reguläre Weg: dieselben
+Passwortregeln, dasselbe CAPTCHA, dieselbe `AuthMethod` wie bei jedem anderen Konto. Der
+Wartebildschirm nach der Registrierung ist erwartet – Schritt 2 löst ihn auf.
+
+**Schritt 2 – dieses Konto zum Owner heben.** Im Repo-Root auf derselben Maschine wie das
+Backend – auf der **VPS** unter `/opt/palantir`, auf dem **Entwicklungsrechner** im
+geklonten Repository:
+
+```bash
+pnpm --filter @palantir/backend db:owner <benutzername>
+```
+
+Der Benutzername ist die Anmeldekennung aus Schritt 1. Nach einer erfolgreichen Ausführung
+meldet das Kommando den Anzeigenamen und die Konto-Id; der Vorgang landet als
+`user.ownerGranted` im Audit-Log. Danach einmal ab- und wieder anmelden, damit die
+Oberfläche die neuen Rechte sieht.
+
+**Warum ein eigener Schritt und nicht automatisch?** Die Registrierung ist offen
+([LASTENHEFT.md §3.1](LASTENHEFT.md)) und das Panel erreichbar, sobald es läuft. Würde das
+*erste* registrierte Konto automatisch Owner, könnte ein Fremder die Instanz im Zeitfenster
+zwischen Start und eigener Registrierung übernehmen – ohne Zugangsdaten, allein durch
+schnelleres Ausfüllen des Formulars. Der Nachweis ist hier stattdessen der Systemzugang zur
+Maschine; ein zusätzliches Geheimnis in der `.env` braucht es dafür nicht.
+
+Der Lauf ist **wiederholbar**: Trägt das genannte Konto den Status schon, passiert nichts.
+Trägt ihn ein **anderes** Konto, bricht der Lauf mit `OWNER_ALREADY_EXISTS` ab. Ein zweiter
+Owner ist zusätzlich in der Datenbank ausgeschlossen (partieller Unique-Index
+`users_single_owner_idx`).
+
+> Einen Weg, den Owner-Status wieder zu entziehen oder auf ein anderes Konto zu übertragen,
+> gibt es in Version 1 bewusst nicht – er ist der Schutz davor, dass sich niemand mehr
+> anmelden kann. Das Owner-Konto lässt sich aus demselben Grund weder sperren noch selbst
+> löschen.
+
+**Ab hier läuft alles über die Oberfläche:** Der Owner sieht die Freischalt-Warteliste
+(„Anfragen") und gibt dort weitere Konten mit der passenden Rolle frei.
+
+### 2.6 Archivierung des Audit-Logs (laufender Betrieb)
 
 Das Audit-Log ist append-only ([PFLICHTENHEFT.md §6](PFLICHTENHEFT.md)). Damit die Tabelle
 nicht unbegrenzt wächst, exportiert ein Wartungslauf Einträge, die älter als 24 Monate
@@ -446,6 +506,5 @@ geschrieben:
 - **WireGuard einrichten** – fertige `wg0.conf` für VPS (`/etc/wireguard/wg0.conf`) und
   Homeserver (`/etc/wireguard/wg0.conf` in der Gameserver-VM), Keepalive, AllowedIPs
 - **Homeserver-VM vorbereiten** – Docker, Docker-Socket-Proxy, Datenverzeichnisse
-- **Ersteinrichtung des Owner-Accounts**
 - **DNS/Cloudflare** – Zone, API-Token mit ausschließlich DNS-Bearbeitungsrecht,
   „DNS only" für Spiele-Subdomains
