@@ -1,3 +1,4 @@
+import { type GameConfigValues } from './game-type.js';
 import { type ServerStatus } from './server-lifecycle.js';
 
 /**
@@ -59,6 +60,13 @@ export interface ServerLiveStats {
   pingMs: number | null;
   playersOnline: number | null;
   playersMax: number | null;
+  /**
+   * Übertragene Bytes seit dem letzten Start des Servers – die Container-Runtime
+   * zählt ab dem Start neu (`AgentContainerStats`). `null`, wenn die Runtime
+   * für diesen Container nichts liefert.
+   */
+  networkRxBytes: number | null;
+  networkTxBytes: number | null;
   /** ISO-8601-Zeitstempel der Messung. */
   updatedAt: string;
 }
@@ -93,6 +101,25 @@ export interface GameServerDto {
   assignedPorts: number[];
   resourceLimits: ServerResourceLimits;
   autoShutdownEnabled: boolean;
+  /**
+   * Inaktivitäts-Timeout in Minuten (Pflichtenheft §9). `null` bedeutet: es gilt
+   * der Standardwert der Instanz, der Server hat keinen eigenen.
+   */
+  autoShutdownTimeoutMinutes: number | null;
+  /** Startparameter (Lastenheft §3.3); leer, wenn das Spiel keine kennt. */
+  startupParameters: string;
+  /** Spielspezifische Konfiguration (`GameServer.configJson`, Pflichtenheft §6). */
+  config: GameConfigValues;
+  /** Container-Id auf dem Homeserver; `null`, solange keiner existiert. */
+  dockerContainerId: string | null;
+  /** Geänderte Einstellungen greifen erst beim nächsten Neustart. */
+  pendingRestart: boolean;
+  /** Für das Image des Spieltyps liegt eine neuere Fassung vor. */
+  updateAvailable: boolean;
+  /** Anzahl der Mitverwalter (`ServerMember`, Pflichtenheft §6). */
+  memberCount: number;
+  /** Letzter erfolgreicher Start als ISO-8601; `null`, wenn nie gestartet. */
+  lastStartedAt: string | null;
   /** ISO-8601-Zeitstempel. */
   createdAt: string;
   permissions: GameServerPermissions;
