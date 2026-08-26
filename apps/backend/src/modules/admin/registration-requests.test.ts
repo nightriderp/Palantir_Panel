@@ -145,6 +145,13 @@ describe('Zustand eines Wartelisten-Eintrags (Lastenheft §3.1)', () => {
     expect(statusOf(waitlistUser({ banned: true }))).toBe('blocked');
     expect(statusOf(waitlistUser({ roles: [USER_ROLE], banned: true }))).toBe('blocked');
   });
+
+  it('gilt für den Owner nie als offene Anfrage (Lastenheft §2)', () => {
+    // Der Owner-Sonderstatus liegt außerhalb des Rollensystems und gibt alle
+    // Rechte – auch mit ausschließlich der Gast-Rolle. Dieselbe Auslegung wie
+    // `isAwaitingApproval()` im Auth-Modul (B1).
+    expect(statusOf(waitlistUser({ isOwner: true }))).toBe('approved');
+  });
 });
 
 describe('Freischalt-Warteliste', () => {

@@ -30,10 +30,19 @@ export interface BuildServerOptions {
   /**
    * Ermittelt den Handelnden zum Request, wenn das Auth-Modul **nicht** läuft.
    *
-   * Mit eingehängtem Auth-Modul kommt der Handelnde aus der Sitzung (B1) und
-   * diese Funktion greift nicht. Fehlt beides, gilt jeder Request als nicht
-   * angemeldet: Geschützte Routen antworten dann mit `AUTH_REQUIRED`. Das ist
-   * die sichere Vorgabe – geöffnet wird dadurch nichts.
+   * Mit eingehängtem Auth-Modul kommt der Handelnde aus der Sitzung (B1): Das
+   * Access-Token wird geprüft, die Sitzung gegen die Datenbank aufgelöst und
+   * daraus `request.authUser` gesetzt – der `resolveActor` unten baut den Actor
+   * genau daraus. Diese Funktion greift dann nicht.
+   *
+   * Fehlt beides, gilt jeder Request als nicht angemeldet: Geschützte Routen
+   * antworten dann mit `AUTH_REQUIRED`. Das ist die sichere Vorgabe – geöffnet
+   * wird dadurch nichts.
+   *
+   * Sie liefert bewusst nur den {@link PermissionActor} und keine Identität:
+   * Der Handelnde des Audit-Logs hängt an der Sitzung und wird als
+   * `request.adminIdentity` gesetzt (Pflichtenheft §6). Aufrufe ohne Sitzung
+   * bleiben Systemeinträge.
    */
   resolveActor?: (
     request: FastifyRequest,

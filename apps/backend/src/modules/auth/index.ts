@@ -10,6 +10,8 @@
  *   Account-Linking, 2FA, Konto-Löschung, Admin-Eingriffe)
  * - `AuthRepository` – Persistenz-Schnittstelle; `createDrizzleAuthRepository()`
  *   ist die Umsetzung darauf
+ * - `grantOwnerByUsername()` – Ersteinrichtung des Owner-Kontos (Lastenheft §2,
+ *   Pflichtenheft §12.3); genutzt vom Kommando `db:owner`
  * - Bausteine, die auch andere Pakete brauchen können: TOTP, ALTCHA,
  *   Rate-Limit, Token-Erzeugung, Passwort-Hashing
  *
@@ -43,6 +45,8 @@ export {
 } from './types.js';
 
 export { createDrizzleAuthRepository } from './repository.js';
+
+export { type GrantOwnerResult, grantOwner, grantOwnerByUsername } from './owner.js';
 
 export {
   isAwaitingApproval,
