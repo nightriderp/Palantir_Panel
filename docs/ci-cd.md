@@ -3,10 +3,9 @@
 Ergänzt [PFLICHTENHEFT.md §12](../PFLICHTENHEFT.md) um den Weg vom Commit bis auf die
 Zielmaschinen. Verhaltensregeln für die Entwicklung stehen in [CLAUDE.md](../CLAUDE.md).
 
-> **Stand:** CI läuft, `main` ist durch ein Ruleset geschützt (Abschnitt 8), Images werden
-> gebaut und veröffentlicht (Abschnitt 9), Deploy-Skript und Gamenode-Updater liegen vor
-> (Abschnitt 10). Offen ist die Freigabestrecke: Environment, Deploy-Zugang und der
-> Workflow, der beides verbindet. Siehe „Was noch fehlt" am Ende.
+> **Stand:** Die Strecke steht vollständig – CI (Abschnitt 3), Schutz von `main`
+> (Abschnitt 8), Images (Abschnitt 9), Freigabe und Ausrollen (Abschnitt 10). Was fehlt,
+> ist der erste echte Produktivstart und die Gamenode, die es als Maschine noch nicht gibt.
 
 ---
 
@@ -261,6 +260,58 @@ Cache macht den größten Teil der Laufzeit aus.
 
 ## 10. Deployment ausführen
 
+Ausgelöst wird alles vom Workflow `.github/workflows/deploy.yml`. Er läuft
+**ausschließlich von Hand** (`workflow_dispatch`) und ist damit selbst die Freigabestelle:
+nichts geht nach Produktion, ohne dass jemand mit Schreibrecht am Repository ihn bewusst
+startet.
+
+**Gebaut wird dabei nichts.** Der Lauf hängt nur das Tag `prod` auf ein bereits gebautes
+und geprüftes Image um. Was nach Produktion geht, ist bitgleich mit dem, was auf `main`
+geprüft wurde – nicht ein zweiter Bau desselben Standes, der zufällig auch durchläuft.
+
+Reihenfolge im Workflow, und jeder Schritt hat seinen Grund:
+
+1. **Commit prüfen.** Nur Stände, die auf `main` liegen (`git merge-base --is-ancestor`).
+   Sonst ließe sich ein beliebiger Commit ausrollen, der nie einen Pull Request und nie
+   die Prüfungen aus `ci.yml` gesehen hat.
+2. **Images umhängen.** Vorher wird geprüft, dass es sie für diesen Commit überhaupt gibt –
+   das fängt den Fall ab, dass `images.yml` für den Stand nie gelaufen oder gescheitert ist.
+3. **VPS ausrollen** über das erzwungene Kommando (Abschnitt 10.1), inklusive der
+   Gesundheitsprüfung dort.
+4. **Zweig `prod` nachziehen** – aber erst jetzt. Scheitert Schritt 3, bleibt die Gamenode
+   auf ihrem bisherigen Stand, statt zu einem Backend zu wandern, das gar nicht läuft.
+
+Zwei Dinge zur Sicherheit, die leicht übersehen werden:
+
+**Die Eingabe kommt über die Umgebung, nicht über `${{ }}` mitten im Skript.** Direkt
+eingesetzt könnte ein Wert wie `'; rm -rf /; '` aus dem String ausbrechen und im Runner
+eigenen Code ausführen – dieselbe Lücke, gegen die `deploy.sh` auf der Gegenseite
+abgesichert ist.
+
+**Der Host-Schlüssel der VPS wird geprüft**, nicht beim ersten Verbinden übernommen. Ein
+Runner ist bei jedem Lauf frisch; `StrictHostKeyChecking=accept-new` würde dort also
+_jedes Mal_ alles akzeptieren und wäre keine Prüfung, sondern deren Gegenteil. Der
+öffentliche Host-Schlüssel liegt als Repository-Variable `VPS_HOST_KEY` – er ist kein
+Geheimnis.
+
+### Zur Freigabe durch einen Reviewer
+
+Der Job gibt `environment: production` an. Auf dem Free-Plan lässt sich dort bei einem
+**privaten** Repository kein Pflicht-Reviewer hinterlegen – GitHub lehnt das mit
+`Please ensure the billing plan supports the required reviewers protection rule` ab. Das
+ist eine Tarif-, keine Konfigurationsfrage.
+
+Bis dahin ist der manuelle Start die Freigabe. Wer den Workflow auslösen will, braucht
+Schreibrecht am Repository – das ist eine echte Hürde, nur eben eine, die man selbst
+passiert, statt sie sich vorlegen zu lassen.
+
+Der Unterschied ist real und soll nicht kleingeredet werden: Mit Freigaberegel wäre der
+SSH-Schlüssel erst **nach** der Zustimmung lesbar. Ohne sie kann ihn jeder Workflow-Lauf
+lesen, der `environment: production` angibt.
+
+Sobald ein Tarif mit Freigaberegeln aktiv ist und im Environment ein Reviewer eingetragen
+wird, greift die Freigabe **ohne Änderung an dieser Datei**.
+
 ### 10.1 VPS – `deploy/vps/deploy.sh`
 
 Wird nicht von Hand aufgerufen, sondern über SSH aus der Pipeline. In der
@@ -320,11 +371,8 @@ die Migrationen abwärtskompatibel geschrieben wurden – siehe Abschnitt 7.
 
 ## 11. Was noch fehlt
 
-- GitHub-Environment `production` mit Pflicht-Reviewer
-- Deploy-Benutzer und Schlüssel auf der VPS (siehe Abschnitt 10.1)
-- Der Workflow, der nach der Freigabe das Tag `prod` umhängt und das Deploy-Skript aufruft
+- Der erste echte Produktivstart – bis dahin ist nichts unter der Domain erreichbar
+- Gamenode: Auscheckung und Timer (SETUP.md 3.4); die Gameserver-VM existiert noch nicht
 
-Die drei verbliebenen Punkte hängen zusammen und brauchen jeweils einen Eingriff des
-Betreibers: das Environment mit Pflicht-Reviewer, den Deploy-Benutzer samt Schlüsselpaar
-und erst danach den Workflow, der beides nutzt. Sie stehen als Nr. 2 unter „Gefundene
-Punkte" in [WORK_STATUS.md](../WORK_STATUS.md).
+Die Strecke vom Commit bis auf die VPS ist damit vollständig. Was bleibt, ist der
+erstmalige Produktivstart und die Gamenode, sobald es sie gibt.
