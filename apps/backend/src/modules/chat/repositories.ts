@@ -137,15 +137,16 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
           .returning();
 
         if (!row) {
-          throw new ChatError('CONVERSATION_NOT_FOUND', 'Die Unterhaltung konnte nicht angelegt werden.');
+          throw new ChatError(
+            'CONVERSATION_NOT_FOUND',
+            'Die Unterhaltung konnte nicht angelegt werden.',
+          );
         }
 
         if (data.participantIds.length > 0) {
           await tx
             .insert(conversationParticipants)
-            .values(
-              data.participantIds.map((userId) => ({ conversationId: row.id, userId })),
-            );
+            .values(data.participantIds.map((userId) => ({ conversationId: row.id, userId })));
         }
 
         return toConversationRecord(row);
@@ -283,10 +284,7 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
       deletedById: string,
       deletedAt: Date,
     ): Promise<void> {
-      await db
-        .update(messages)
-        .set({ deletedAt, deletedById })
-        .where(eq(messages.id, messageId));
+      await db.update(messages).set({ deletedAt, deletedById }).where(eq(messages.id, messageId));
     },
 
     async createReport(data: CreateReportData): Promise<MessageReportRecord> {
@@ -301,7 +299,10 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
         .returning();
 
       if (!row) {
-        throw new ChatError('MESSAGE_REPORT_NOT_FOUND', 'Die Meldung konnte nicht gespeichert werden.');
+        throw new ChatError(
+          'MESSAGE_REPORT_NOT_FOUND',
+          'Die Meldung konnte nicht gespeichert werden.',
+        );
       }
 
       return toReportRecord(row);
@@ -496,4 +497,3 @@ export function createDrizzleServerMembershipSource(db: Database): ServerMembers
     },
   };
 }
-

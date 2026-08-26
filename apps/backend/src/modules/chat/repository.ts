@@ -16,11 +16,7 @@
  */
 
 import { type MessageReportQuery } from '@palantir/validation';
-import {
-  type ConversationRecord,
-  type MessageRecord,
-  type MessageReportRecord,
-} from './types.js';
+import { type ConversationRecord, type MessageRecord, type MessageReportRecord } from './types.js';
 
 export interface CreateConversationData {
   readonly type: 'dm' | 'server_chat';

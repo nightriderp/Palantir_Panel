@@ -80,9 +80,9 @@ describe('Direktnachrichten öffnen', () => {
   });
 
   it('lehnt ein unbekanntes Konto mit USER_NOT_FOUND ab', async () => {
-    await expect(chat.openDirectConversation(ctxFor(ALEX), CHRIS.replace('c3', 'ff'))).rejects.toThrowError(
-      new ChatError('USER_NOT_FOUND'),
-    );
+    await expect(
+      chat.openDirectConversation(ctxFor(ALEX), CHRIS.replace('c3', 'ff')),
+    ).rejects.toThrowError(new ChatError('USER_NOT_FOUND'));
   });
 
   it('lehnt ein noch nicht freigeschaltetes Konto ab', async () => {
@@ -148,9 +148,9 @@ describe('Nachrichten lesen und schreiben', () => {
       await expect(chat.getConversation(ctx, conversationId)).rejects.toThrowError(
         new ChatError('CONVERSATION_NOT_FOUND'),
       );
-      await expect(chat.sendMessage(ctx, conversationId, { content: 'hallo' })).rejects.toThrowError(
-        new ChatError('CONVERSATION_NOT_FOUND'),
-      );
+      await expect(
+        chat.sendMessage(ctx, conversationId, { content: 'hallo' }),
+      ).rejects.toThrowError(new ChatError('CONVERSATION_NOT_FOUND'));
     }
   });
 

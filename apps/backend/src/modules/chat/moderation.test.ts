@@ -100,9 +100,9 @@ describe('Melden', () => {
       moderation.reportMessage(ctxFor(CHRIS), nachricht.id, 'Neugier'),
     ).rejects.toThrowError(new ChatError('CONVERSATION_NOT_FOUND'));
 
-    await expect(
-      moderation.reportMessage(MODERATOR, nachricht.id, 'Neugier'),
-    ).rejects.toThrowError(new ChatError('CONVERSATION_NOT_FOUND'));
+    await expect(moderation.reportMessage(MODERATOR, nachricht.id, 'Neugier')).rejects.toThrowError(
+      new ChatError('CONVERSATION_NOT_FOUND'),
+    );
   });
 
   it('lehnt die eigene Nachricht ab', async () => {

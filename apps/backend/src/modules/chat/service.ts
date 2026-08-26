@@ -13,11 +13,7 @@
  * (`moderation.ts`), damit die beiden Zugriffswege nicht ineinanderlaufen.
  */
 
-import {
-  type ConversationDto,
-  type MessageDto,
-  type MessagePageDto,
-} from '@palantir/contracts';
+import { type ConversationDto, type MessageDto, type MessagePageDto } from '@palantir/contracts';
 import { type MessagePageQuery, type SendMessageInput } from '@palantir/validation';
 import { type ChatContext, requireUserId } from './context.js';
 import {
@@ -215,7 +211,9 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
        * genutzten Chat würde die Liste sonst mit leeren Einträgen füllen.
        */
       const serverConversations = (
-        await Promise.all(serverIds.map((serverId) => repository.findConversationByServerId(serverId)))
+        await Promise.all(
+          serverIds.map((serverId) => repository.findConversationByServerId(serverId)),
+        )
       ).filter((conversation) => conversation !== null);
 
       const audiences = await Promise.all(
@@ -224,9 +222,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
         ),
       );
 
-      const visible = audiences.filter((audience) =>
-        audience.participantIds.includes(viewerId),
-      );
+      const visible = audiences.filter((audience) => audience.participantIds.includes(viewerId));
 
       const lastMessages = await repository.lastMessages(
         visible.map((audience) => audience.conversation.id),
@@ -234,7 +230,11 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
       const dtos = await Promise.all(
         visible.map((audience) =>
-          conversationDtoFor(audience, viewerId, lastMessages.get(audience.conversation.id) ?? null),
+          conversationDtoFor(
+            audience,
+            viewerId,
+            lastMessages.get(audience.conversation.id) ?? null,
+          ),
         ),
       );
 
@@ -373,10 +373,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
         delivery.deliver(
           recipientId,
-          messageSentFrame(
-            { conversationId, message: toMessageDto(message, context) },
-            sentAt,
-          ),
+          messageSentFrame({ conversationId, message: toMessageDto(message, context) }, sentAt),
         );
       }
 

@@ -49,7 +49,9 @@ export const CHRIS = testId('c3');
 export const MOD = testId('d4');
 export const SERVER_ID = testId('5e');
 
-export function actorWith(...permissions: Parameters<typeof buildPermissionActor>[0]['roles'][number]['grantedPermissions']): PermissionActor {
+export function actorWith(
+  ...permissions: Parameters<typeof buildPermissionActor>[0]['roles'][number]['grantedPermissions']
+): PermissionActor {
   return buildPermissionActor({ isOwner: false, roles: [{ grantedPermissions: permissions }] });
 }
 
