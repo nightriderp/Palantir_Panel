@@ -1,0 +1,93 @@
+# Palantir - Stack auf der Gamenode (Agent und Docker-Socket-Proxy).
+#
+# Läuft in der Gameserver-VM unter Proxmox.
+# Ablageort im Betrieb: /opt/palantir (Auscheckung dieses Repositories).
+#
+#   docker compose --env-file ../../.env up -d
+#
+# GRUNDSATZ (Pflichtenheft §1): Auf dieser Maschine wird KEIN Port
+# veröffentlicht und keine eingehende Verbindung angenommen - weder vom Router
+# noch aus dem WireGuard-Tunnel. Der Agent baut die Verbindung zum Backend
+# selbst auf. Wer hier ein `ports:` ergänzt, hebt die Sicherheitsarchitektur auf.
+
+services:
+  # --- Docker-Socket-Proxy ----------------------------------------------------
+  # Der Agent spricht NIE direkt mit dem Docker-Socket (Pflichtenheft §2.3),
+  # sondern ausschließlich hierüber. Anders als beim Traefik-Proxy auf der VPS
+  # braucht er schreibende Endpunkte, denn er erstellt, startet und stoppt die
+  # Gameserver-Container.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:${SOCKET_PROXY_VERSION}
+    container_name: palantir-socket-proxy
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    mem_limit: ${SOCKET_PROXY_MEM_LIMIT:-64m}
+    pids_limit: 64
+    environment:
+      # Was der Agent für den Server-Lebenszyklus braucht.
+      CONTAINERS: 1
+      IMAGES: 1
+      EVENTS: 1
+      PING: 1
+      VOLUMES: 1
+      NETWORKS: 1
+      INFO: 1
+      # Zustandsändernde Aufrufe (Container erstellen, starten, stoppen,
+      # löschen) laufen über POST. Ohne das könnte der Agent nichts orchestrieren.
+      POST: 1
+      # EXEC gibt Konsolenbefehle an laufende Container weiter
+      # (Agent-Befehl EXEC_CONSOLE, Pflichtenheft §5.3).
+      EXEC: 1
+      # Ausdrücklich gesperrt: nichts davon gehört zum Auftrag des Agents.
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - palantir
+
+  # --- Agent ------------------------------------------------------------------
+  agent:
+    image: ghcr.io/nightriderp/palantir-agent:${PALANTIR_VERSION}
+    container_name: palantir-agent
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${AGENT_MEM_LIMIT:-512m}
+    pids_limit: 512
+    depends_on:
+      - socket-proxy
+    env_file:
+      - ../../.env
+    environment:
+      # Übersteuert den Wert aus der .env: innerhalb des Compose-Netzes heißt
+      # der Proxy `socket-proxy`, nicht 127.0.0.1.
+      DOCKER_SOCKET_PROXY_URL: http://socket-proxy:2375
+    volumes:
+      # Server-Datenordner und Backups liegen auf dem Host, damit sie einen
+      # Neustart des Agents überdauern. Die Pfade kommen aus der zentralen .env
+      # (AGENT_DATA_DIR, AGENT_BACKUP_DIR) und müssen dort und hier
+      # übereinstimmen - der Agent reicht sie als Volume-Angaben an Docker
+      # weiter, und die werden vom Docker-Daemon auf dem HOST aufgelöst, nicht
+      # im Container des Agents.
+      - ${AGENT_DATA_DIR:-/srv/palantir/servers}:${AGENT_DATA_DIR:-/srv/palantir/servers}
+      - ${AGENT_BACKUP_DIR:-/srv/palantir/backups}:${AGENT_BACKUP_DIR:-/srv/palantir/backups}
+    # Kein `ports:` - siehe Grundsatz oben.
+    networks:
+      - palantir
+
+networks:
+  palantir:
+    name: palantir
