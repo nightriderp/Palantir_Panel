@@ -211,8 +211,10 @@ describe('REMOVE_STORAGE_ENTRY (Lastenheft §3.8)', () => {
       false,
     );
     expect(
-      removeStorageEntryCommandPayloadSchema.safeParse({ kind: 'dockerImage', imageId: 'sha256:ab' })
-        .success,
+      removeStorageEntryCommandPayloadSchema.safeParse({
+        kind: 'dockerImage',
+        imageId: 'sha256:ab',
+      }).success,
     ).toBe(true);
   });
 
