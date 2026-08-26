@@ -73,7 +73,13 @@ Da mehrere Sitzungen gleichzeitig an unterschiedlichen Arbeitspaketen arbeiten (
 
 ## 7. Arbeitsweise / Selbstkontrolle
 
-- Vor einer "erledigt"-Meldung: Build und Tests tatsächlich ausführen, nicht nur Code schreiben und annehmen, dass er funktioniert.
+- Vor einer "erledigt"-Meldung: die Prüfungen tatsächlich ausführen, nicht nur Code schreiben und annehmen, dass er funktioniert. Es sind **genau die Schritte, die auch die CI ausführt** (`.github/workflows/ci.yml`), in dieser Reihenfolge:
+
+  ```bash
+  pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm format:check
+  ```
+
+  `pnpm format:check` (Prettier) wird leicht übersehen, lässt die CI aber genauso scheitern wie ein fehlgeschlagener Test – neue Dateien sind selten von sich aus formatiert. Bei Migrationen kommt `pnpm --filter @palantir/backend db:check` dazu.
 - Kleine, nachvollziehbare Änderungen bevorzugt vor großen, schwer prüfbaren Umbauten.
 - Bei Unsicherheit, ob eine andere Sitzung gerade an derselben Datei/demselben Contract arbeitet: `WORK_STATUS.md` prüfen, im Zweifel nachfragen statt zu überschreiben.
 
