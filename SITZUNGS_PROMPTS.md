@@ -12,6 +12,7 @@ Jeder Prompt ist eigenständig – es muss nichts ergänzt werden.
 - Backend: [B1](#b1--auth--identity) · [B2](#b2--rbac--permissions) · [B3](#b3--server-orchestrierung) · [B4](#b4--ressourcen--kapazität) · [B5](#b5--backup-verwaltung) · [B6](#b6--notification-engine) · [B7](#b7--chat--moderation) · [B8](#b8--admin-funktionen)
 - Agent: [A1](#a1--core-verbindung) · [A2](#a2--container-runtime) · [A3](#a3--jobs--scheduler)
 - Frontend: [F1](#f1--auth--onboarding) · [F2](#f2--shared-ui--design-system) · [F3](#f3--server-übersicht--lifecycle) · [F4](#f4--meine-backups) · [F5](#f5--nachrichtenchat) · [F6](#f6--benachrichtigungen) · [F7](#f7--nodes-nutzeransicht) · [F8](#f8--arcade) · [F9](#f9--skins) · [F10](#f10--admin-kernbereich) · [F11](#f11--admin-spiele-verwaltung)
+- Integration (Welle 2.5): [R1](#r1--ersteinrichtung--identität) · [R2](#r2--verdrahtung-im-backend) · [R3](#r3--datenbank-integrität) · [R4](#r4--frontend-fundament) · [R5](#r5--altcha-beim-login)
 
 ---
 
@@ -24,7 +25,8 @@ Abgeleitet aus den Abhängigkeiten in [STRUKTUR.md](STRUKTUR.md).
 | **0 – Fundament**       | **F0** ‖ **F2**                                                                | –                                                   |
 | **1 – Verträge & Kern** | **B2** ‖ **A1** ‖ **A2**                                                       | F0 gemergt                                          |
 | **2 – Backend-Breite**  | **B1** ‖ **B3** ‖ **B4** ‖ **B5** ‖ **B8** (+ **F1**, **F3**, sobald F2 steht) | Welle 1 gemergt                                     |
-| **3 – Rest**            | **B6** ‖ **B7** ‖ **A3** ‖ **F4** ‖ **F5** ‖ **F6** ‖ **F7** ‖ **F10**         | A3 braucht A1 + A2                                  |
+| **2.5 – Integration**   | **R1** ‖ **R2** ‖ **R3** ‖ **R4** ‖ **R5**                                     | Welle 2 gemergt                                     |
+| **3 – Rest**            | **B6** ‖ **B7** ‖ **A3** ‖ **F4** ‖ **F5** ‖ **F6** ‖ **F7** ‖ **F10**         | A3 braucht A1 + A2; **F4–F11 brauchen R4**          |
 | **4 – Nachzügler**      | **F8** ‖ **F9** ‖ **F11**                                                      | F9 und F11 brauchen `PhaseLockedPlaceholder` aus F2 |
 
 **F2 startet in Welle 0 und läuft weiter**, weil es zehn Frontend-Pakete blockiert und das
@@ -1461,4 +1463,350 @@ Verbindliche Vorgaben:
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
 dann pushen und über Pull Request zusammenführen.
+```
+
+---
+
+# Integration (Welle 2.5)
+
+> Diese fünf Pakete stehen **nicht** in STRUKTUR.md. Sie sind das Ergebnis der Sichtung
+> aller „Gefundenen Punkte" am 2026-08-26: Zwölf Einträge waren Nachlass von
+> Arbeitspaketen, die auf `fertig` stehen. Sie hatten ihre Anschlussstellen offen
+> gelassen, weil das Gegenstück damals nicht existierte – inzwischen existiert es, aber
+> niemand ist mehr zuständig. Die Teile sind gebaut, nur nicht verbunden.
+>
+> **R1 und R4 sind die dringenden:** ohne R1 lässt sich die Instanz nicht in Betrieb
+> nehmen, ohne R4 baut jedes der Pakete F4–F11 dieselben Formularteile erneut.
+> Alle fünf können parallel laufen.
+
+## R1 – Ersteinrichtung & Identität
+
+```
+Du arbeitest am Projekt Palantir (Monorepo, pnpm Workspaces + Turborepo).
+
+Lies zuerst vollständig und behandle sie als verbindlich:
+- CLAUDE.md        (Verhaltensregeln für jede Sitzung)
+- PFLICHTENHEFT.md (besonders §7 Auth, §8 RBAC, §12.3 Ersteinrichtung)
+- STRUKTUR.md      (Aufteilung der Arbeitspakete)
+- LASTENHEFT.md    (besonders §2 Rollenkonzept und §3.1)
+
+Dein Arbeitspaket: R1 - Ersteinrichtung & Identität
+Dieses Paket steht nicht in STRUKTUR.md. Es schließt die Gefundenen Punkte 13, 45 und 39
+aus WORK_STATUS.md - Nachlass der Pakete B1 und B8, die beide auf "fertig" stehen.
+
+Bevor du irgendetwas am Code änderst:
+1. Lies WORK_STATUS.md. Prüfe, ob R1 bereits in Bearbeitung ist. Falls ja: melde das und
+   arbeite nicht weiter.
+2. Lege einen eigenen Branch an: git checkout -b r1/ersteinrichtung (vom aktuellen main).
+   Niemals direkt auf main arbeiten - main ist geschützt, ein Direkt-Push wird abgelehnt.
+3. Setze die Zeile "R1 - Ersteinrichtung & Identität" in WORK_STATUS.md auf
+   "in Bearbeitung", trage Branch und Datum ein, und committe das als ersten Commit.
+
+Halte WORK_STATUS.md laufend aktuell und setze die drei genannten Punkte am Ende auf
+"erledigt", nicht nur deine eigene Zeile.
+
+Inhalt des Arbeitspakets:
+
+A) Owner-Konto (Punkt 13, Lastenheft §2, Pflichtenheft §8 und §12.3)
+   Aktuell setzt NICHTS im Code User.isOwner auf true - der Wert wird ausschließlich
+   gelesen. Damit gibt es keinen Weg, die Instanz überhaupt in Betrieb zu nehmen: ohne
+   Owner hat niemand die Rechte, den ersten Admin freizuschalten.
+   - Genau ein Konto trägt das Flag. Das ist im Schema bereits über einen Unique-Index
+     abgesichert (apps/backend/src/db/schema/users.ts) - prüfe das und verlasse dich
+     nicht allein auf Anwendungslogik.
+   - Entscheide begründet, wie der Owner entsteht: erstes registriertes Konto, eigener
+     Aufruf in db:seed, oder ein einmaliger Einrichtungsschritt. Der Weg gehört in
+     SETUP.md dokumentiert - Pflichtenheft §12.3 verlangt die "Ersteinrichtung des
+     Owner-Accounts" ausdrücklich als Schritt.
+   - Der Owner steht laut Lastenheft §2 AUSSERHALB des Rollensystems und hat immer alle
+     Rechte. Die Berechnung dafür existiert schon in B2 - keine zweite Stelle bauen.
+
+B) Sitzungsauflösung für geschützte Routen (Punkt 45)
+   buildServer({ resolveActor }) ist der vorgesehene Platz. Ohne ihn antwortet jede
+   Admin-Route mit AUTH_REQUIRED - das ist die sichere Vorgabe von B8 und wird jetzt
+   aufgelöst, nicht umgangen.
+   - request.adminIdentity ({ userId, displayName }) wird in modules/admin/routes.ts
+     gelesen, aber von niemandem gesetzt. Ohne das bleiben Audit-Einträge namenlos - und
+     ein Audit-Log ohne Handelnden ist wertlos (Pflichtenheft §6: append-only, alle
+     sicherheitsrelevanten Aktionen).
+   - Die Auflösung nutzt die vorhandene Sitzungsprüfung aus B1, keine zweite Variante.
+
+C) Profilangaben in der Freischalt-Warteliste (Punkt 39)
+   createDrizzleRegistrationRequestRepository() liefert das Feld profiles derzeit leer,
+   weil auth_methods bei Entstehung von B8 noch nicht existierte. Die Tabelle gibt es
+   inzwischen. Je verknüpfter Login-Methode ein LinkedAccountProfileDto füllen
+   (Discord-Tag/Avatar, Steam-Profilname, Twitch-Name - Lastenheft §3.1). Der DTO ändert
+   sich dadurch nicht.
+
+Verbindliche Vorgaben:
+- Keine Secrets im Code, keine Auth-Bypässe, keine Standardwerte für Geheimnisse.
+- Response-Envelope aus Pflichtenheft §5.1; neue Fehlerfälle als benannter Code im
+  Katalog, nicht als Freitext.
+- Datenbank-Schema-Änderungen ausschließlich über Drizzle-Migrationen.
+- Tests sind für Auth-Flows zwingend (CLAUDE.md §4). Besonders: dass genau ein Owner
+  existieren kann, und dass ein Audit-Eintrag den Handelnden trägt.
+- Bei sicherheitsrelevanten Unsicherheiten nachfragen statt raten.
+
+Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test ausführen.
+Zum Abschluss main holen (pull/rebase), Konflikte lösen, pushen, Pull Request öffnen und
+den grünen CI-Lauf abwarten - ohne ihn lässt sich nicht mergen.
+```
+
+## R2 – Verdrahtung im Backend
+
+```
+Du arbeitest am Projekt Palantir (Monorepo, pnpm Workspaces + Turborepo).
+
+Lies zuerst vollständig und behandle sie als verbindlich:
+- CLAUDE.md        (Verhaltensregeln für jede Sitzung)
+- PFLICHTENHEFT.md (besonders §5.3, §9 Lifecycle, §10 Kapazität, §16 Storage)
+- STRUKTUR.md      (Aufteilung der Arbeitspakete)
+- LASTENHEFT.md    (besonders §3.3, §3.4, §3.7)
+
+Dein Arbeitspaket: R2 - Verdrahtung im Backend
+Dieses Paket steht nicht in STRUKTUR.md. Es schließt die Gefundenen Punkte 33, 40, 42
+und 63 aus WORK_STATUS.md - Nachlass der Pakete B3, B4 und B5, die alle auf "fertig"
+stehen. Es geht ausschließlich um das Verbinden vorhandener Teile, nicht um neue
+Funktionen.
+
+Bevor du irgendetwas am Code änderst:
+1. Lies WORK_STATUS.md. Prüfe, ob R2 bereits in Bearbeitung ist. Falls ja: melde das und
+   arbeite nicht weiter.
+2. Lege einen eigenen Branch an: git checkout -b r2/verdrahtung (vom aktuellen main).
+   Niemals direkt auf main arbeiten - main ist geschützt.
+3. Setze die Zeile "R2 - Verdrahtung im Backend" in WORK_STATUS.md auf "in Bearbeitung",
+   trage Branch und Datum ein, und committe das als ersten Commit.
+
+Halte WORK_STATUS.md laufend aktuell und setze die vier genannten Punkte am Ende auf
+"erledigt".
+
+Inhalt des Arbeitspakets:
+
+A) Backup-Modul anschließen (Punkt 33)
+   B5 spricht nur über Schnittstellen in modules/backups/ports.ts:
+   - ServerDirectory - Server auflösen, inklusive dataHostPath und memberUserIds
+   - BackupAgentGateway - die vier Backup-Befehle über den Agent-Kanal
+   Beide sind deklariert, aber nirgends umgesetzt. Solange das so ist, lassen sich die
+   Routen aus registerBackupRoutes() nicht registrieren - Backups sind über die API
+   schlicht nicht erreichbar. Die Umsetzung gehört in die Server-Orchestrierung, weil
+   dort game_servers liegt.
+
+B) Admin-Anschlusspunkte einhängen (Punkt 40)
+   modules/admin/module.ts lässt vier optionale Anschlüsse offen, jeder mit ehrlicher
+   Vorgabe: nodePlacements, knownServers, serverNames, storageGateway. Solange sie leer
+   bleiben, zeigt der Storage-Explorer jeden Ordner als unbekannt und die Port-Übersicht
+   keine Servernamen.
+   Ebenfalls hier: B3 ruft bei Server-Erstellung und -Löschung
+   PortPoolService.allocateForServer() bzw. .releaseForServer() auf (Pflichtenheft §2.4).
+
+C) Node-Auslastung liefern (Punkt 42)
+   NodeUsageSource ist typisiert, emptyNodeUsageSource() liefert nichts, usage bleibt
+   null. Dieselben Zahlen braucht die harte Kapazitätsprüfung vor jedem Start
+   (Pflichtenheft §10) - eine Quelle, nicht zwei.
+
+D) Zeitgeber anschließen (Punkt 63)
+   Zwei fertige, getestete Abläufe werden von niemandem aufgerufen:
+   - runAutoShutdownSweep() in der Server-Orchestrierung - ohne Aufruf schaltet sich kein
+     Server jemals wegen Inaktivität ab (Lastenheft §3.3, Pflichtenheft §9)
+   - BackupScheduleService.tick() - ohne Aufruf laufen geplante Backups nie
+   Beide Module haben bewusst keinen eigenen Timer. Bau EINE Stelle, die periodisch
+   auslöst, und begründe Intervall und Verhalten bei Überschneidung im Kommentar.
+
+Verbindliche Vorgaben:
+- Nichts an den bestehenden Schnittstellen ändern, ohne es zu begründen - sie sind die
+  vereinbarte Grenze zwischen den Paketen.
+- Die Kommunikation mit dem Agent läuft ausschließlich über packages/contracts.
+- Response-Envelope aus Pflichtenheft §5.1 einhalten.
+- Schema-Änderungen nur über Migrationen. Prüfe vorher, ob R3 (Fremdschlüssel) parallel
+  läuft - dann stimmt euch über die Migrationsnummern ab.
+- Tests: dass der Zeitgeber tatsächlich auslöst, und dass ein Server nicht versehentlich
+  abgeschaltet wird, solange die Schonfrist läuft.
+
+Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test ausführen.
+Zum Abschluss main holen (pull/rebase), pushen, Pull Request, grünen CI-Lauf abwarten.
+```
+
+## R3 – Datenbank-Integrität
+
+```
+Du arbeitest am Projekt Palantir (Monorepo, pnpm Workspaces + Turborepo).
+
+Lies zuerst vollständig und behandle sie als verbindlich:
+- CLAUDE.md        (Verhaltensregeln, besonders §4: Schema nur über Migrationen)
+- PFLICHTENHEFT.md (besonders §6 Datenmodell)
+- STRUKTUR.md
+- LASTENHEFT.md    (besonders §3.3 zu Backups)
+
+Dein Arbeitspaket: R3 - Datenbank-Integrität
+Dieses Paket steht nicht in STRUKTUR.md. Es schließt die Gefundenen Punkte 32 und 41 aus
+WORK_STATUS.md. Klein und abgegrenzt: im Kern eine Migration.
+
+Bevor du irgendetwas am Code änderst:
+1. Lies WORK_STATUS.md. Prüfe, ob R3 bereits in Bearbeitung ist. Falls ja: melde das.
+2. Lege einen eigenen Branch an: git checkout -b r3/fremdschluessel (vom aktuellen main).
+   Niemals direkt auf main arbeiten - main ist geschützt.
+3. Setze die Zeile "R3 - Datenbank-Integrität" in WORK_STATUS.md auf "in Bearbeitung",
+   trage Branch und Datum ein, und committe das als ersten Commit.
+
+Inhalt des Arbeitspakets:
+
+Drei Spalten verweisen fachlich auf game_servers, tragen aber keinen Fremdschlüssel, weil
+die Tabelle bei ihrer Entstehung noch nicht existierte. Inzwischen gibt es sie (B3).
+
+Die Löschregeln sind in den Gefundenen Punkten bereits durchdacht - übernimm sie und
+denke sie nicht neu:
+
+- schedules.server_id -> ON DELETE CASCADE.
+  Eine geplante Aufgabe ohne Server hat keine Bedeutung.
+
+- port_allocations.server_id -> ON DELETE CASCADE.
+  Bis dahin räumt nur releaseForServer() auf; ein Server-Löschen daran vorbei hinterlässt
+  eine verwaiste Zuordnung, und der Port bleibt dauerhaft belegt.
+
+- backups.server_id -> ausdrücklich KEIN Cascade.
+  Ein Backup soll seinen Server überleben, damit sich ein gelöschter Server aus einer
+  Sicherung wiederherstellen lässt (Lastenheft §3.3). Prüfe, ob ON DELETE SET NULL passt -
+  dann muss die Spalte nullable sein und der Code damit umgehen können.
+  backups.owner_id hängt bewusst am Konto, nicht am Server.
+
+Verbindliche Vorgaben:
+- Ausschließlich über eine Drizzle-Migration, nie manuell an der laufenden Datenbank.
+- Prüfe, ob bereits verwaiste Datensätze existieren - eine Migration, die an bestehenden
+  Daten scheitert, ist im Betrieb schlimmer als keine. Räume sie in derselben Migration
+  auf oder begründe, warum es keine geben kann.
+- Prüfe, ob R2 parallel läuft - dann stimmt euch über die Migrationsnummern ab, sonst
+  bricht die Migrationskette (pnpm --filter @palantir/backend db:check).
+- Die Migration gegen die Dev-Datenbank tatsächlich ausführen, nicht nur erzeugen.
+
+Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test ausführen.
+Zum Abschluss main holen (pull/rebase), pushen, Pull Request, grünen CI-Lauf abwarten.
+```
+
+## R4 – Frontend-Fundament
+
+```
+Du arbeitest am Projekt Palantir (Monorepo, pnpm Workspaces + Turborepo).
+
+Lies zuerst vollständig und behandle sie als verbindlich:
+- CLAUDE.md        (Verhaltensregeln für jede Sitzung)
+- PFLICHTENHEFT.md (besonders §5.2 permissions-Objekt)
+- STRUKTUR.md      (F2 ist Grundlage für F3-F11)
+- LASTENHEFT.md    (besonders §4: Deutsch, Mobile-First)
+
+Dein Arbeitspaket: R4 - Frontend-Fundament
+Dieses Paket steht nicht in STRUKTUR.md. Es schließt die Gefundenen Punkte 26, 47, 30
+und 48 aus WORK_STATUS.md.
+
+WICHTIG: Dieses Paket ist Voraussetzung für F4-F11. Solange es fehlt, baut jedes dieser
+Pakete dieselben Formularteile erneut - F1 und F3 haben es bereits getan, jeweils lokal
+und leicht unterschiedlich.
+
+Bevor du irgendetwas am Code änderst:
+1. Lies WORK_STATUS.md. Prüfe, ob R4 bereits in Bearbeitung ist. Falls ja: melde das.
+2. Lege einen eigenen Branch an: git checkout -b r4/frontend-fundament (vom aktuellen
+   main). Niemals direkt auf main arbeiten - main ist geschützt.
+3. Setze die Zeile "R4 - Frontend-Fundament" in WORK_STATUS.md auf "in Bearbeitung",
+   trage Branch und Datum ein, und committe das als ersten Commit.
+
+Inhalt des Arbeitspakets:
+
+A) Formular-Bausteine nach F2 heben (Punkte 26 und 47)
+   F3 hat sie in apps/frontend/src/components/servers/form/Fields.tsx bereits gebaut -
+   ausschließlich mit Tokens, ohne literale Farb- oder Radiuswerte: FieldShell, TextField,
+   NumberField, SelectField, SliderField, Toggle, ToggleRow.
+   F1 hat unter src/app/(auth)/_components eigene Teile: AuthField, AuthFormMessage,
+   AuthHeading.
+   - Nimm die F3-Fassung als Vorlage, hebe sie nach components/shared und ergänze, was F1
+     zusätzlich braucht: eine Meldungszeile im Formular (nicht Toast, nicht Modal) und
+     einen Datums-Format-Helfer in utils/format.ts.
+   - Stelle danach F1 UND F3 auf die gemeinsame Fassung um. Zwei Parallelvarianten stehen
+     zu lassen wäre schlechter als der jetzige Zustand.
+   - Prüfe vorher, was in components/shared schon existiert, statt daneben zu bauen.
+
+B) Testumgebung für Komponenten (Punkt 30)
+   vitest läuft im Frontend nur mit Node-Umgebung; jsdom und Testing Library fehlen.
+   Deshalb hat F1 ausschließlich die Logik unter src/lib getestet, keine Ansicht.
+   - Richte die Umgebung ein und belege sie mit mindestens einem echten Test je neuem
+     Formular-Baustein - sonst ist es nur Konfiguration.
+   - Neue Abhängigkeiten benennen und begründen (CLAUDE.md §1).
+   - Achte darauf, dass pnpm test im Monorepo weiterhin für alle Workspaces durchläuft
+     und die CI-Laufzeit nicht unnötig steigt.
+
+C) Konvention für die Navigation festhalten (Punkt 48)
+   Das Layout des eingeloggten Bereichs (layout.tsx, DashboardShell, DashboardNav,
+   SessionProvider) hat F3 angelegt, weil STRUKTUR.md es keinem Paket zuweist.
+   Jedes weitere Frontend-Paket ergänzt in DashboardNav.tsx nur seinen eigenen Eintrag um
+   ein href; bis dahin meldet der Eintrag beim Antippen, dass die Ansicht noch entsteht,
+   statt in eine 404-Seite zu laufen.
+   - Halte das als kurze Anleitung fest (README im shared-Ordner oder Kommentar in
+     DashboardNav.tsx), damit F4-F11 es nicht jeweils neu herausfinden.
+
+Verbindliche Vorgaben:
+- Oberflächensprache ausschließlich Deutsch (Lastenheft §4).
+- Mobile-First.
+- Nur Tokens, keine literalen Farb- oder Radiuswerte - das ist der Grund, warum es F2 gibt.
+- Keine Berechtigungslogik im Frontend; gezeigt wird anhand des permissions-Objekts aus
+  dem DTO (Pflichtenheft §5.2).
+- Ein Mockup liegt entpackt unter docs/mockup - daran orientieren.
+- Dokumentiere im shared-Ordner, welche Bausteine es gibt und wie sie zu verwenden sind.
+
+Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test ausführen.
+Zum Abschluss main holen (pull/rebase), pushen, Pull Request, grünen CI-Lauf abwarten.
+```
+
+## R5 – ALTCHA beim Login
+
+```
+Du arbeitest am Projekt Palantir (Monorepo, pnpm Workspaces + Turborepo).
+
+Lies zuerst vollständig und behandle sie als verbindlich:
+- CLAUDE.md        (Verhaltensregeln, besonders §2: Sicherheit ist nicht verhandelbar)
+- PFLICHTENHEFT.md (besonders §7 Auth und §18 Sicherheitskonzept)
+- STRUKTUR.md
+- LASTENHEFT.md    (besonders §3.1)
+
+Dein Arbeitspaket: R5 - ALTCHA beim Login
+Dieses Paket steht nicht in STRUKTUR.md. Es schließt den Gefundenen Punkt 52 aus
+WORK_STATUS.md. Das ist keine Aufräumarbeit, sondern eine offene Sicherheitsanforderung.
+
+Bevor du irgendetwas am Code änderst:
+1. Lies WORK_STATUS.md. Prüfe, ob R5 bereits in Bearbeitung ist. Falls ja: melde das.
+2. Lege einen eigenen Branch an: git checkout -b r5/altcha-login (vom aktuellen main).
+   Niemals direkt auf main arbeiten - main ist geschützt.
+3. Setze die Zeile "R5 - ALTCHA beim Login" in WORK_STATUS.md auf "in Bearbeitung",
+   trage Branch und Datum ein, und committe das als ersten Commit.
+
+Der Befund:
+
+Pflichtenheft §7 verlangt "ALTCHA-Verifikation + IP-basiertes Rate-Limiting auf
+Registrierung UND Login". Umgesetzt ist es nur für die Registrierung:
+- packages/validation/src/auth.ts: loginInputSchema führt altcha als optional(),
+  das Registrierungs-Schema verlangt es.
+- LoginView.tsx enthält keinen einzigen Verweis auf ALTCHA, RegisterView.tsx elf.
+
+Das IP-Rate-Limit auf dem Login existiert bereits (AUTH_RATE_LIMIT_LOGIN_MAX), Brute
+Force ist also nicht ungeschützt - aber die zweite, vorgeschriebene Schicht fehlt.
+
+Inhalt des Arbeitspakets:
+- Frontend: das vorhandene AltchaWidget in den Login einbinden, so wie es die
+  Registrierung bereits tut. Keine zweite Variante bauen.
+- Validierung: altcha im loginInputSchema von optional() auf verpflichtend umstellen.
+- Backend: die Prüfung im Login-Pfad tatsächlich auswerten, mit demselben Verfahren wie
+  bei der Registrierung.
+- Prüfe dabei, ob eine bereits eingelöste Challenge ein zweites Mal gelten würde - ein
+  Proof-of-Work, der mehrfach verwendbar ist, schützt nicht.
+
+Verbindliche Vorgaben:
+- Kein Auth-Bypass, auch nicht für lokale Entwicklung oder Tests. Nutze stattdessen
+  Testdoubles, wie B1 es bereits tut.
+- Response-Envelope aus Pflichtenheft §5.1; der Fehlercode für eine fehlgeschlagene
+  Prüfung existiert bereits im Katalog - keinen neuen erfinden.
+- Die Umstellung des Schemas auf verpflichtend ist ein Breaking Change an
+  packages/validation. Kennzeichne ihn im Commit und im PR ausdrücklich als solchen
+  (CLAUDE.md §3) und prüfe, wer das Schema sonst noch nutzt.
+- Tests: dass ein Login ohne gültigen Nachweis abgelehnt wird, und dass derselbe Nachweis
+  nicht zweimal zählt.
+
+Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test ausführen.
+Zum Abschluss main holen (pull/rebase), pushen, Pull Request, grünen CI-Lauf abwarten.
 ```
