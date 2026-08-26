@@ -1,0 +1,41 @@
+# Was nie in einen Build-Kontext gehört.
+# Wichtigster Punkt: die .env (Pflichtenheft §12.1) - sie liegt auf der Maschine,
+# niemals in einem Image. Secrets in Image-Schichten bleiben auch dann lesbar,
+# wenn eine spätere Schicht sie löscht.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+wireguard/
+
+# Abhängigkeiten und Build-Ergebnisse werden im Image selbst erzeugt.
+node_modules
+**/node_modules
+dist
+**/dist
+.next
+**/.next
+.turbo
+**/.turbo
+coverage
+**/coverage
+*.tsbuildinfo
+
+# Versionsverwaltung und Arbeitsverzeichnisse paralleler Sitzungen
+.git
+.gitignore
+.github
+.claude
+
+# Dokumentation und Entwurfsmaterial - vergrößern nur den Kontext
+docs
+*.md
+!README.md
+MockUp.zip
+
+# Editor / Betriebssystem
+.vscode
+.idea
+.DS_Store
+Thumbs.db
