@@ -20,9 +20,7 @@ import type {
 } from '@palantir/contracts';
 import { type PermissionActor, computePermissionFlags } from '../rbac/index.js';
 
-export function computeChannelPermissions(
-  actor: PermissionActor,
-): NotificationChannelPermissions {
+export function computeChannelPermissions(actor: PermissionActor): NotificationChannelPermissions {
   return computePermissionFlags<keyof NotificationChannelPermissions>(actor, {
     canView: 'notification.manage',
     canEdit: 'notification.manage',
@@ -39,9 +37,7 @@ export function computeRulePermissions(actor: PermissionActor): NotificationRule
   });
 }
 
-export function computeAnnouncementPermissions(
-  actor: PermissionActor,
-): AnnouncementPermissions {
+export function computeAnnouncementPermissions(actor: PermissionActor): AnnouncementPermissions {
   return computePermissionFlags<keyof AnnouncementPermissions>(actor, {
     canEdit: 'notification.manage',
     canDelete: 'notification.manage',

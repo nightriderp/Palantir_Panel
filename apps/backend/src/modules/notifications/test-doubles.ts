@@ -237,9 +237,7 @@ export function fakeRepository(
     listChannels: () => Promise.resolve([...channels]),
     findChannelById: (id) => Promise.resolve(channels.find((c) => c.id === id) ?? null),
     findChannelByName: (name) =>
-      Promise.resolve(
-        channels.find((c) => c.name.toLowerCase() === name.toLowerCase()) ?? null,
-      ),
+      Promise.resolve(channels.find((c) => c.name.toLowerCase() === name.toLowerCase()) ?? null),
 
     createChannel: (data: CreateChannelData) => {
       const record = testChannel({ ...data, id: testId('4') });
@@ -361,8 +359,7 @@ export function fakeRepository(
           entry.announcementId !== null &&
           notifications.some(
             (existing) =>
-              existing.announcementId === entry.announcementId &&
-              existing.userId === entry.userId,
+              existing.announcementId === entry.announcementId && existing.userId === entry.userId,
           );
 
         if (duplicate) {

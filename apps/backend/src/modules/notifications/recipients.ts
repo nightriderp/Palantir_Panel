@@ -8,10 +8,7 @@
  * damit sie ohne Datenbank prüfbar bleibt (CLAUDE.md §4).
  */
 
-import type {
-  NotificationEvent,
-  NotificationRecipientScope,
-} from '@palantir/contracts';
+import type { NotificationEvent, NotificationRecipientScope } from '@palantir/contracts';
 import type { RecipientDirectory } from './ports.js';
 
 /**

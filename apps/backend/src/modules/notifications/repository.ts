@@ -227,8 +227,7 @@ export interface NotificationRepository {
   recordChannelOutcome(
     channelId: string,
     outcome:
-      | { status: 'delivered'; at: Date }
-      | { status: 'failed'; code: ErrorCode; message: string },
+      { status: 'delivered'; at: Date } | { status: 'failed'; code: ErrorCode; message: string },
   ): Promise<void>;
   /** Anzahl Regeln je Kanal – trägt `NotificationChannelDto.ruleCount`. */
   countRulesPerChannel(): Promise<ReadonlyMap<string, number>>;

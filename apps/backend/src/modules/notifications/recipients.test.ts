@@ -82,9 +82,10 @@ describe('Auflösung über das Verzeichnis', () => {
   it('holt bei „Rolle" die Träger der Rolle', async () => {
     const directory = fakeDirectory({ roleMembers: { 'role-1': [MEMBER_A, MEMBER_B] } });
 
-    await expect(
-      resolveRecipients(registration, 'role', 'role-1', directory),
-    ).resolves.toEqual([MEMBER_A, MEMBER_B]);
+    await expect(resolveRecipients(registration, 'role', 'role-1', directory)).resolves.toEqual([
+      MEMBER_A,
+      MEMBER_B,
+    ]);
   });
 
   /**
@@ -92,9 +93,9 @@ describe('Auflösung über das Verzeichnis', () => {
    * würde den auslösenden Vorgang gefährden.
    */
   it('trifft bei „Rolle" ohne Rolle niemanden, ohne zu scheitern', async () => {
-    await expect(
-      resolveRecipients(registration, 'role', null, fakeDirectory()),
-    ).resolves.toEqual([]);
+    await expect(resolveRecipients(registration, 'role', null, fakeDirectory())).resolves.toEqual(
+      [],
+    );
   });
 
   it('stellt niemandem dieselbe Meldung zweimal zu', async () => {
@@ -103,8 +104,8 @@ describe('Auflösung über das Verzeichnis', () => {
       memberUserIds: [OWNER, MEMBER_A],
     });
 
-    await expect(
-      resolveRecipients(event, 'serverMembers', null, fakeDirectory()),
-    ).resolves.toEqual([OWNER, MEMBER_A]);
+    await expect(resolveRecipients(event, 'serverMembers', null, fakeDirectory())).resolves.toEqual(
+      [OWNER, MEMBER_A],
+    );
   });
 });
