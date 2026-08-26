@@ -347,6 +347,22 @@ Nachgezogen im Arbeitspaket R5 (ALTCHA beim Login):
 
 **Ort des Katalogs:** `packages/contracts/src/permissions.ts` (`PERMISSION_CATALOG`) – dort steht jede Permission zusammen mit Beschreibung (für den Rollen-Editor) und Geltungsbereich (`own` / `any` / `global`). Neue Permissions werden ausschließlich dort additiv ergänzt und zusätzlich in der obigen Aufzählung nachgetragen.
 
+**REST-Oberfläche der Rollenverwaltung (festgelegt in R6):** Die Routen liegen unter `/admin/roles` im Admin-Modul (B8), die Regeln bleiben im `RoleService` (B2):
+
+| Route | Methode | Verlangt |
+|---|---|---|
+| `/admin/roles` | `GET` | `role.manage` **oder** `user.manage` |
+| `/admin/roles/:roleId` | `GET` | `role.manage` **oder** `user.manage` |
+| `/admin/roles` | `POST` | `role.manage` |
+| `/admin/roles/:roleId` | `PATCH` | `role.manage` |
+| `/admin/roles/:roleId` | `DELETE` | `role.manage` |
+| `/admin/roles/:roleId/members/:userId` | `PUT` | `role.manage` **oder** `user.manage` |
+| `/admin/roles/:roleId/members/:userId` | `DELETE` | `role.manage` **oder** `user.manage` |
+
+Lesen und Zuweisen erlauben bewusst auch `user.manage`: Wer Konten freischaltet, muss die Rollen zur Auswahl auflisten und vergeben können, ohne sie bearbeiten zu dürfen. `PUT` statt `POST` beim Zuweisen, weil der Vorgang idempotent ist – eine bestehende Zuweisung führt zum selben Zielzustand, nicht zu einem Fehler; beide Mitglieder-Routen antworten mit der Rolle samt aktualisierter Mitgliederzahl (§5.2).
+
+Rollenänderungen sind sicherheitsrelevant und landen im Audit-Log (§6): `role.created`, `role.updated` (mit dem Stand vor und nach der Änderung), `role.deleted` (mit Name, Rechtebündel und Mitgliederzahl – der Datensatz ist danach weg), `user.roleAssigned` und `user.roleRemoved`. Geschrieben werden sie im Admin-Modul und nicht im `RoleService`: Das Audit-Log gehört zu B8, und die Gegenrichtung B2 → B8 gäbe es sonst nirgends. Dieselbe Aufteilung nutzt die Freischalt-Warteliste.
+
 **Auswertung von `.own`/`.any`:** Wer `<basis>.any` besitzt, darf den Vorgang bei jeder Ressource; wer nur `<basis>.own` besitzt, ausschließlich bei eigenen (bzw. solchen, bei denen er Mitglied ist). Die Paare sind in `SCOPED_PERMISSION_BASES` festgehalten, die Auswertung liegt an genau einer Stelle im Backend-Modul `apps/backend/src/modules/rbac`.
 
 **Feldbenennung im Rollen-DTO (Abweichung von §6):** §6 nennt das Permission-Bündel der Entität `Role` schlicht `permissions`. Im DTO ist `permissions` jedoch durchgängig für das serverseitig berechnete Flags-Objekt aus §5.2 reserviert, damit sich das Frontend über alle DTOs hinweg darauf verlassen kann. Das Bündel heißt im `RoleDto` deshalb `grantedPermissions`; die Datenbankspalte bleibt `permissions`.
