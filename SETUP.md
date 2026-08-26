@@ -1,9 +1,10 @@
 # SETUP – Palantir einrichten
 
-> **Status:** unvollständig. Vollständig ausgearbeitet ist bisher nur der Abschnitt
-> **Datenbank**. Die übrigen Abschnitte sind laut
-> [PFLICHTENHEFT.md §12.3](PFLICHTENHEFT.md) noch zu ergänzen und unten als offen
-> markiert (siehe „Gefundene Punkte" Nr. 2 in [WORK_STATUS.md](WORK_STATUS.md)).
+> **Status:** unvollständig. Ausgearbeitet sind **Datenbank** (Abschnitt 2) und
+> **Deployment** (Abschnitt 3). Was noch fehlt – VPS-Grundinstallation, OAuth-Apps,
+> WireGuard, Owner-Ersteinrichtung – steht laut [PFLICHTENHEFT.md §12.3](PFLICHTENHEFT.md)
+> noch aus und ist unten als offen markiert (siehe „Gefundene Punkte" Nr. 2 in
+> [WORK_STATUS.md](WORK_STATUS.md)).
 
 Palantir läuft auf zwei Maschinen:
 
@@ -102,7 +103,9 @@ Abschnitt 2.4.
 - Schema-Änderungen laufen ausschließlich über Migrationen, nie manuell an der laufenden
   Datenbank ([CLAUDE.md §4](CLAUDE.md)).
 
-> `docker-compose.yml` existiert noch nicht – siehe offene Punkte unten.
+> Die Compose-Dateien liegen unter `deploy/vps/` und `deploy/gamenode/`. Aus dem
+> VPS-Verzeichnis heraus aufrufen:
+> `docker compose --env-file ../../.env up -d`
 
 ### 2.2 Entwicklungsrechner
 
@@ -283,7 +286,156 @@ zcat /opt/palantir/data/audit-archive/audit-log-bis-2024-08-26.jsonl.gz | head
 
 ---
 
-## 3. Noch zu ergänzen
+---
+
+## 3. Deployment einrichten
+
+Diese Schritte führt der **Betreiber** aus. Sie sind bewusst nicht automatisiert: jeder
+davon legt Zugangsdaten an oder vergibt Rechte, und beides gehört in die Hand einer
+Person, nicht in ein Skript.
+
+Konzept und Begründungen stehen in [docs/ci-cd.md](docs/ci-cd.md).
+
+### 3.1 Deploy-Benutzer auf der VPS
+
+Ein eigener Benutzer, **nicht `root`**. Er darf genau zwei Dinge: das Repository unter
+`/opt/palantir` aktualisieren und Docker ansprechen.
+
+Alle Befehle auf der **VPS** als `root`:
+
+```bash
+adduser --system --group --shell /bin/bash --home /home/palantir-deploy palantir-deploy
+```
+
+```bash
+usermod -aG docker palantir-deploy
+```
+
+> Die Mitgliedschaft in der Gruppe `docker` entspricht faktisch Root-Rechten auf dem
+> Host – wer Container starten darf, kann Host-Verzeichnisse einhängen. Das ist der
+> Grund, warum der Schlüssel im nächsten Schritt auf ein einziges Kommando festgenagelt
+> wird.
+
+Repository auschecken und übergeben:
+
+```bash
+git clone https://github.com/nightriderp/Palantir_Panel.git /opt/palantir && chown -R palantir-deploy:palantir-deploy /opt/palantir
+```
+
+Für ein privates Repository braucht der Klon Zugangsdaten. Am saubersten ist ein
+**Deploy-Key mit Leserecht**: Schlüsselpaar auf der VPS erzeugen, den öffentlichen Teil
+unter _Settings → Deploy keys_ im Repository hinterlegen (ohne Schreibrecht), dann über
+SSH klonen statt über HTTPS.
+
+Die zentrale `.env` anlegen (siehe Abschnitt 1) und übergeben:
+
+```bash
+chown palantir-deploy:palantir-deploy /opt/palantir/.env && chmod 600 /opt/palantir/.env
+```
+
+### 3.2 Schlüsselpaar für die Pipeline
+
+Auf dem **Entwicklungsrechner** oder der VPS erzeugen – der private Teil geht gleich nach
+GitHub, der öffentliche bleibt auf der VPS:
+
+```bash
+ssh-keygen -t ed25519 -f palantir-ci -N "" -C "github-actions-deploy"
+```
+
+Auf der **VPS** den öffentlichen Teil hinterlegen. Entscheidend ist das erzwungene
+Kommando davor – ohne das wäre der Schlüssel ein vollwertiger Shell-Zugang:
+
+```bash
+install -d -m 700 -o palantir-deploy -g palantir-deploy /home/palantir-deploy/.ssh
+```
+
+Dann in `/home/palantir-deploy/.ssh/authorized_keys` **eine einzige Zeile** eintragen:
+
+```
+command="/opt/palantir/deploy/vps/deploy.sh",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc ssh-ed25519 AAAA... github-actions-deploy
+```
+
+Der Teil ab `ssh-ed25519` ist der Inhalt von `palantir-ci.pub`. Rechte setzen:
+
+```bash
+chown palantir-deploy:palantir-deploy /home/palantir-deploy/.ssh/authorized_keys && chmod 600 /home/palantir-deploy/.ssh/authorized_keys
+```
+
+Probe vom Entwicklungsrechner – der Versuch, eine Shell zu bekommen, muss **scheitern**:
+
+```bash
+ssh -i palantir-ci palantir-deploy@49.13.199.77 "whoami"
+```
+
+Erwartet wird nicht `palantir-deploy`, sondern die Fehlermeldung des Deploy-Skripts
+(`Kein gültiger Commit-SHA`). Genau das ist der Beweis, dass das erzwungene Kommando
+greift. Kommt stattdessen `palantir-deploy` zurück, fehlt der `command=`-Teil.
+
+### 3.3 GitHub-Environment `production`
+
+Im Repository unter _Settings → Environments → New environment_, Name `production`.
+
+- **Required reviewers**: dich selbst eintragen. Das ist die Freigabestelle – ohne sie
+  läuft kein Deployment.
+- **Deployment branches**: auf `main` beschränken.
+
+Dann unter _Environment secrets_ anlegen:
+
+| Name          | Inhalt                                                        |
+| ------------- | ------------------------------------------------------------- |
+| `VPS_SSH_KEY` | vollständiger Inhalt von `palantir-ci` (der **private** Teil) |
+| `VPS_HOST`    | IP oder Hostname der VPS                                      |
+| `VPS_USER`    | `palantir-deploy`                                             |
+
+Wichtig: als **Environment**-Secret, nicht als Repository-Secret. Nur dann ist der
+Schlüssel ausschließlich für Jobs verfügbar, die dieses Environment ansprechen – und die
+brauchen deine Freigabe. Als Repository-Secret wäre er für jeden Workflow-Lauf lesbar,
+auch ohne Freigabe.
+
+Den privaten Schlüssel danach vom Entwicklungsrechner löschen. Er liegt jetzt an genau
+zwei Stellen, an denen er sein soll: im GitHub-Environment und – als öffentlicher
+Gegenpart – in der `authorized_keys`.
+
+### 3.4 Gamenode vorbereiten
+
+In der **Gameserver-VM** auf dem Homeserver:
+
+```bash
+git clone https://github.com/nightriderp/Palantir_Panel.git /opt/palantir
+```
+
+Auch hier ist für ein privates Repository ein **Deploy-Key mit Leserecht** nötig – die
+Node holt sich ihren Stand selbst und braucht dauerhaften Lesezugriff.
+
+Datenverzeichnisse anlegen (Pfade müssen zu `AGENT_DATA_DIR` und `AGENT_BACKUP_DIR` in
+der `.env` passen):
+
+```bash
+mkdir -p /srv/palantir/servers /srv/palantir/backups
+```
+
+Timer einrichten:
+
+```bash
+cp /opt/palantir/deploy/gamenode/palantir-update.{service,timer} /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now palantir-update.timer
+```
+
+Prüfen:
+
+```bash
+systemctl list-timers palantir-update.timer
+```
+
+### 3.5 Reihenfolge
+
+3.1 und 3.2 gehören zusammen und müssen vor 3.3 fertig sein – sonst liegt im Environment
+ein Schlüssel, zu dem es keinen Gegenpart gibt. 3.4 ist unabhängig und kann jederzeit
+erfolgen; der Timer läuft dann eben ins Leere, bis der Zweig `prod` das erste Mal gesetzt
+wird.
+
+---
+
+## 4. Noch zu ergänzen
 
 Diese Abschnitte fordert [PFLICHTENHEFT.md §12.3](PFLICHTENHEFT.md), sie sind noch nicht
 geschrieben:
@@ -294,7 +446,6 @@ geschrieben:
 - **WireGuard einrichten** – fertige `wg0.conf` für VPS (`/etc/wireguard/wg0.conf`) und
   Homeserver (`/etc/wireguard/wg0.conf` in der Gameserver-VM), Keepalive, AllowedIPs
 - **Homeserver-VM vorbereiten** – Docker, Docker-Socket-Proxy, Datenverzeichnisse
-- **`docker compose up`** auf beiden Seiten
 - **Ersteinrichtung des Owner-Accounts**
 - **DNS/Cloudflare** – Zone, API-Token mit ausschließlich DNS-Bearbeitungsrecht,
   „DNS only" für Spiele-Subdomains
