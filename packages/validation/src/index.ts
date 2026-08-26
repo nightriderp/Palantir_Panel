@@ -59,3 +59,14 @@ export {
   startCommandPayloadSchema,
   stopCommandPayloadSchema,
 } from './agent-commands.js';
+export {
+  type NodeResourcesInput,
+  type UserResourceLimitsInput,
+  cpuCoresSchema,
+  megabytesSchema,
+  nodeResourcesSchema,
+  resourceWarningThresholdsSchema,
+  serverCountSchema,
+  thresholdPercentSchema,
+  userResourceLimitsInputSchema,
+} from './resources.js';

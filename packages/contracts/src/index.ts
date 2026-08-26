@@ -47,6 +47,7 @@ export {
 export * from './server-lifecycle.js';
 export * from './game-server.js';
 export * from './permissions.js';
+export * from './resources.js';
 export * from './role.js';
 
 export {
