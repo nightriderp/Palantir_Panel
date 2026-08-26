@@ -85,6 +85,39 @@ export const AGENT_COMMANDS = [
    */
   'DELETE_BACKUP',
   'GET_STORAGE_BREAKDOWN',
+  /**
+   * Periodische Server-Abfrage eines Servers ein- bzw. ausschalten
+   * (Pflichtenheft §9, Lastenheft §3.3).
+   *
+   * Ergänzung dieser Sitzung (A3) zum Katalog aus Pflichtenheft §5.3, dort
+   * nachgetragen. Begründung: Der Auto-Shutdown verlangt eine „periodische
+   * Spielerabfrage durch den Agent" und der Übergang `starting → running` einen
+   * bestandenen Health-Check. Beides braucht die Abfrage **auf dem
+   * Homeserver** – nur dort ist der Spiel-Port ohne Umweg erreichbar, und nur
+   * dort kann eine spätere `gamedig`-Abfrage per UDP hin. Was abgefragt wird
+   * (Port und Abfrageart), weiß aber ausschließlich das Backend: Es kennt die
+   * `GameTypeDefinition` und die Portvergabe, der Agent kennt keine Spiele.
+   * Dieser Befehl ist die Übergabe dieser Angaben – bewusst als eigener,
+   * wiederholbarer Befehl und nicht als Anhängsel an `START`, damit das Backend
+   * die Ziele nach einem Verbindungsabriss ohne Serverneustart wieder setzen
+   * kann.
+   */
+  'SET_SERVER_QUERY',
+  /**
+   * Einen Posten der Speicherübersicht tatsächlich von der Platte entfernen
+   * (Lastenheft §3.8, Pflichtenheft §16).
+   *
+   * Ergänzung dieser Sitzung (A3) zum Katalog aus Pflichtenheft §5.3, dort
+   * nachgetragen. `GET_STORAGE_BREAKDOWN` meldet nur, was belegt ist; ohne
+   * diesen Befehl gäbe es keinen Weg, ungenutzte Images oder verwaiste Daten
+   * wieder freizugeben – der Storage-Explorer könnte nur zusehen.
+   *
+   * **Ob** gelöscht werden darf, entscheidet weiterhin ausschließlich das
+   * Backend (`classifyEntry()` in B8). Der Agent führt aus und lehnt nur das
+   * ab, was er selbst als unzulässig erkennt: Datenordner aktiver Server sind
+   * hierüber grundsätzlich nicht löschbar (Lastenheft §3.8).
+   */
+  'REMOVE_STORAGE_ENTRY',
 ] as const;
 
 /** Alle gültigen Befehlsnamen – verhindert Freitext-Befehle. */
@@ -224,6 +257,38 @@ export interface AgentCommandResultFrame {
    */
   readonly duplicate: boolean;
   readonly completedAt: string;
+}
+
+/**
+ * Nutzlast von `STATS_UPDATE`, wenn sie aus der **periodischen Server-Abfrage**
+ * des Agents stammt (Arbeitspaket A3, Pflichtenheft §9).
+ *
+ * Bewusst kein eigenes Ereignis: Das Backend zieht den Aktivitätszeitpunkt für
+ * den Auto-Shutdown bereits aus `STATS_UPDATE` nach
+ * (`handleStatsUpdate()` in B3). Ein zweites Ereignis mit derselben Bedeutung
+ * müsste dort erst verdrahtet werden und hätte bis dahin gar keine Wirkung.
+ *
+ * `STATS_UPDATE` trägt damit zwei Arten von Nutzlast: die Container-Messwerte
+ * der Runtime (`AgentContainerStats`) und dieses Abfrageergebnis. Sie sind am
+ * Feld `source` unterscheidbar.
+ */
+export interface AgentServerQueryPayload {
+  readonly source: 'serverQuery';
+  readonly containerId: string;
+  /** Hat der Server auf die Abfrage geantwortet? */
+  readonly reachable: boolean;
+  /**
+   * Verbundene Spieler. `null`, wenn die Abfrageart keine Spielerzahl liefert
+   * (reiner Port-Connect-Test) oder der Server nicht geantwortet hat.
+   */
+  readonly playersOnline: number | null;
+  readonly playersMax: number | null;
+  /** Antwortzeit in Millisekunden; `null`, wenn nicht erreichbar. */
+  readonly pingMs: number | null;
+  /** Grund des Fehlschlags; `null`, wenn erreichbar. */
+  readonly reason: string | null;
+  /** Zeitpunkt der Abfrage als ISO-8601. */
+  readonly at: string;
 }
 
 export type AgentToBackendFrame =
