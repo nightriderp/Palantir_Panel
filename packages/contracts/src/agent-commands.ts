@@ -171,6 +171,27 @@ export interface FileWriteCommandPayload {
   readonly contentBase64: string;
 }
 
+/**
+ * `GET_STORAGE_BREAKDOWN` – Speicherbelegung des Homeservers erheben
+ * (Pflichtenheft §16).
+ *
+ * Node-weiter Befehl ohne `containerId`. Der Scan läuft **on demand**, nicht
+ * dauerhaft im Hintergrund; das Backend speichert das Ergebnis mit Zeitstempel
+ * zwischen (Arbeitspaket B8).
+ *
+ * Der Agent ist bewusst der unwissende Teil: Er meldet, was auf der Platte
+ * liegt und ob es gerade benutzt wird. Ob ein Datenordner zu einem noch
+ * existierenden Server gehört und ob ein Eintrag gelöscht werden darf,
+ * entscheidet ausschließlich das Backend (`StorageEntryDto` in `storage.ts`).
+ */
+export interface GetStorageBreakdownCommandPayload {
+  /**
+   * Container-Images mit erheben. Ohne Angabe `true`. Ein Image-Scan ist
+   * deutlich teurer als die Ordnergrößen – deshalb abschaltbar.
+   */
+  readonly includeImages?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Ergebnisse je Befehl (das `data`-Feld im Envelope)
 // ---------------------------------------------------------------------------
@@ -250,6 +271,51 @@ export interface FileReadCommandResult {
   readonly sizeBytes: number;
 }
 
+/**
+ * Art eines Postens in der Speicherübersicht, so wie der Agent sie erkennen
+ * kann (Pflichtenheft §16).
+ *
+ * `orphaned` vergibt der Agent nur, wenn ein Verzeichnis in seinen
+ * Datenbereichen liegt, aber keinem bekannten Container zugeordnet ist. Ob es
+ * wirklich verwaist ist, entscheidet erst das Backend anhand der Datenbank –
+ * deshalb gibt es dort zusätzlich die Kategorie `other`.
+ */
+export type AgentStorageEntryKind = 'serverData' | 'backup' | 'dockerImage' | 'orphaned';
+
+/** Ein Posten der Speicherübersicht, wie der Agent ihn meldet. */
+export interface AgentStorageEntry {
+  readonly kind: AgentStorageEntryKind;
+  /** Absoluter Pfad auf dem Homeserver; `null` bei Container-Images. */
+  readonly path: string | null;
+  readonly sizeBytes: number;
+  /**
+   * `serverId` aus dem Container-Label `palantir.serverId` bzw. dem
+   * Ordnernamen; `null`, wenn nicht zuordenbar.
+   */
+  readonly serverId: string | null;
+  /** Dateiname des Backup-Archivs bei `backup`, sonst `null`. */
+  readonly backupFileName: string | null;
+  /** Image-Id bei `dockerImage`, sonst `null`. */
+  readonly imageId: string | null;
+  /** Image-Tag bei `dockerImage`, sonst `null`. */
+  readonly imageTag: string | null;
+  /** Ob der Posten benutzt wird: laufender Container bzw. von einem Container referenziertes Image. */
+  readonly inUse: boolean;
+  /** Letzte Änderung als ISO-8601; `null`, wenn nicht ermittelbar. */
+  readonly lastModifiedAt: string | null;
+}
+
+/** Ergebnis von `GET_STORAGE_BREAKDOWN` (Pflichtenheft §16). */
+export interface GetStorageBreakdownCommandResult {
+  /** Zeitpunkt des Scans als ISO-8601 – nicht der Abrufzeitpunkt. */
+  readonly scannedAt: string;
+  /** Gesamtgröße des Datenträgers, auf dem die Gameserver-Daten liegen. */
+  readonly totalBytes: number;
+  readonly usedBytes: number;
+  readonly freeBytes: number;
+  readonly entries: readonly AgentStorageEntry[];
+}
+
 // ---------------------------------------------------------------------------
 // Zuordnung Befehl → Nutzdaten/Ergebnis
 // ---------------------------------------------------------------------------
@@ -257,11 +323,18 @@ export interface FileReadCommandResult {
 /**
  * Nutzdaten je Befehlsname.
  *
- * `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` stehen bewusst
- * noch auf `never`: Sie sind Dateisystem- und Job-Aufgaben und gehören zu A3
- * (Jobs & Scheduler), nicht zur Container-Ansteuerung. Der Agent beantwortet
- * sie bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED`. Sobald A3 sie umsetzt,
- * werden die Einträge hier additiv ersetzt.
+ * `CREATE_BACKUP` und `RESTORE_BACKUP` stehen bewusst noch auf `never`: Sie
+ * sind Dateisystem- und Job-Aufgaben und gehören zu A3 (Jobs & Scheduler),
+ * nicht zur Container-Ansteuerung. Der Agent beantwortet sie bis dahin mit
+ * `AGENT_COMMAND_NOT_IMPLEMENTED`. Sobald A3 sie umsetzt, werden die Einträge
+ * hier additiv ersetzt.
+ *
+ * `GET_STORAGE_BREAKDOWN` hat seit B8 eine Nutzlast und ein Ergebnis: Das
+ * Backend muss die Antwort entgegennehmen, zwischenspeichern und ausliefern
+ * (Pflichtenheft §16), und dafür braucht es das Wire-Format. Ausgeführt wird
+ * der Befehl weiterhin von niemandem – er steht nach wie vor **nicht** in
+ * `IMPLEMENTED_AGENT_COMMANDS`, der Agent antwortet also unverändert mit
+ * `AGENT_COMMAND_NOT_IMPLEMENTED`, bis A3 den Scanner baut.
  */
 export interface AgentCommandPayloads {
   readonly CREATE: CreateCommandPayload;
@@ -277,7 +350,7 @@ export interface AgentCommandPayloads {
   readonly FILE_WRITE: FileWriteCommandPayload;
   readonly CREATE_BACKUP: never;
   readonly RESTORE_BACKUP: never;
-  readonly GET_STORAGE_BREAKDOWN: never;
+  readonly GET_STORAGE_BREAKDOWN: GetStorageBreakdownCommandPayload;
 }
 
 /** Ergebnis je Befehlsname; `null` bei Befehlen ohne Rückgabe. */
@@ -295,7 +368,7 @@ export interface AgentCommandResults {
   readonly FILE_WRITE: null;
   readonly CREATE_BACKUP: never;
   readonly RESTORE_BACKUP: never;
-  readonly GET_STORAGE_BREAKDOWN: never;
+  readonly GET_STORAGE_BREAKDOWN: GetStorageBreakdownCommandResult;
 }
 
 /**
