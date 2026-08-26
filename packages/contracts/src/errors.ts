@@ -600,6 +600,18 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Das Owner-Konto kann nicht gesperrt oder herabgestuft werden.',
   },
   /**
+   * Es gibt bereits ein Owner-Konto und ein zweites soll den Status bekommen
+   * (Lastenheft §2: genau ein Konto trägt ihn). 409: Konflikt mit vorhandenem
+   * Zustand – der Vorgang ist nicht wiederholbar erfolgreich, solange der
+   * bestehende Owner steht. Bewusst getrennt von `OWNER_PROTECTED`: dort geht
+   * es um Aktionen *gegen* den Owner, hier um die Vergabe des Status selbst
+   * (Ersteinrichtung, Pflichtenheft §12.3).
+   */
+  OWNER_ALREADY_EXISTS: {
+    httpStatus: 409,
+    defaultMessage: 'Es gibt bereits ein Owner-Konto. Genau ein Konto trägt diesen Status.',
+  },
+  /**
    * Wartelisten-Aktion passt nicht zum Zustand des Kontos, etwa die Freigabe
    * eines bereits freigegebenen Kontos. 409: Konflikt mit vorhandenem Zustand.
    */
