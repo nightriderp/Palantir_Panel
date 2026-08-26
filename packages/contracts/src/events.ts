@@ -52,6 +52,22 @@ export const WEBSOCKET_EVENTS = [
   'server.cloned',
   // Den Zustandswechsel meldet bereits `server.statusChanged` weiter oben, den
   // Fortschritt beim Klonen `serverClone.progressed` – beide aus F3.
+
+  // -- Notification-Engine (B6, Pflichtenheft §14) ---------------------------
+
+  /**
+   * Systemweite Ankündigung durch einen Admin veröffentlicht, z. B. ein
+   * Wartungshinweis (Lastenheft §3.6). Ein Auslöser wie jeder andere: Die
+   * Regeln entscheiden über Inbox und externen Kanal.
+   */
+  'announcement.published',
+  /**
+   * Neue Meldung in der Inbox eines Kontos. Reines Live-Ereignis des
+   * Browser-Kanals (§5.3, `notifications.ts`) – es hält eine offene Inbox
+   * aktuell und ist selbst **kein** Anlass für eine `NotificationRule`,
+   * sonst löste jede Zustellung die nächste aus.
+   */
+  'notification.created',
 ] as const satisfies readonly EventNameScheme[];
 
 /** Alle aktuell definierten Event-Namen. */
