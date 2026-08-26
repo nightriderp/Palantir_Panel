@@ -4,10 +4,10 @@
  * Zod-Schemas, die Backend (Request-Validierung) und Frontend (Formular-/
  * Typprüfung) gemeinsam nutzen – Pflichtenheft §3 und §4.
  *
- * Enthalten ist bisher nur die paket-übergreifende Basis: ID-Format und das
- * Schema zum Response-Envelope. Fachliche Schemas werden zusammen mit den
- * zugehörigen Typen aus `@palantir/contracts` über eigene, kleine PRs ergänzt
- * (CLAUDE.md §3 und §6).
+ * Enthalten sind bisher die paket-übergreifende Basis (ID-Format, Schema zum
+ * Response-Envelope) und die Frame-Schemas des Agent-Protokolls. Fachliche
+ * Schemas werden zusammen mit den zugehörigen Typen aus `@palantir/contracts`
+ * über eigene, kleine PRs ergänzt (CLAUDE.md §3 und §6).
  */
 
 export { type Id, idSchema } from './common.js';
@@ -22,3 +22,40 @@ export {
   rolePermissionsBundleSchema,
   updateRoleInputSchema,
 } from './rbac.js';
+export {
+  agentCommandNameSchema,
+  agentCommandResultFrameSchema,
+  agentContainerStateSchema,
+  agentContainerStatusSchema,
+  agentEventFrameSchema,
+  agentEventNameSchema,
+  agentHelloFrameSchema,
+  agentStateReportFrameSchema,
+  agentToBackendFrameSchema,
+  backendCommandFrameSchema,
+  backendStateRequestFrameSchema,
+  backendToAgentFrameSchema,
+  backendWelcomeFrameSchema,
+  correlationIdSchema,
+  isoTimestampSchema,
+} from './agent-protocol.js';
+export {
+  AGENT_COMMAND_PAYLOAD_SCHEMAS,
+  agentPortMappingSchema,
+  agentResourceLimitsSchema,
+  agentServerIdSchema,
+  agentVolumeMountSchema,
+  containerIdSchema,
+  containerPathSchema,
+  createCommandPayloadSchema,
+  deleteCommandPayloadSchema,
+  execConsoleCommandPayloadSchema,
+  fileListCommandPayloadSchema,
+  fileReadCommandPayloadSchema,
+  fileWriteCommandPayloadSchema,
+  getLogsCommandPayloadSchema,
+  getStatsCommandPayloadSchema,
+  restartCommandPayloadSchema,
+  startCommandPayloadSchema,
+  stopCommandPayloadSchema,
+} from './agent-commands.js';
