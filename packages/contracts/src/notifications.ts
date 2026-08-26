@@ -282,8 +282,7 @@ export interface NotificationChannelPermissions {
 }
 
 /** Kanal (Pflichtenheft §6, Entität `NotificationChannel`). */
-export interface NotificationChannelDto
-  extends WithPermissions<NotificationChannelPermissions> {
+export interface NotificationChannelDto extends WithPermissions<NotificationChannelPermissions> {
   id: string;
   name: string;
   type: NotificationChannelType;
