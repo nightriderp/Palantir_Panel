@@ -74,6 +74,16 @@ export interface ServerOrchestrationOptions {
   readonly portPool: PortPoolPort;
   /** Ereignissenke aus B6; ohne Angabe wird nur protokolliert. */
   readonly events?: OrchestrationEventSink;
+  /**
+   * Registry der offenen Agent-Verbindungen.
+   *
+   * Ohne Angabe legt das Modul eine eigene an – das ist der Normalfall. Der
+   * Aufrufer reicht sie herein, wenn **andere** Module denselben Kanal
+   * brauchen: die Backup-Befehle aus B5 und der Speicher-Scan aus B8 laufen
+   * über dieselbe Verbindung (Pflichtenheft §5.3), und zwei Registries im
+   * selben Prozess wären zwei getrennte Sichten auf denselben Agent.
+   */
+  readonly agents?: AgentRegistry;
   /** Nur für Tests: eigener DNS-Anbieter. */
   readonly dns?: DnsProvider;
 }
@@ -102,7 +112,7 @@ export function registerServerOrchestration(
 
   const repository = createDrizzleServerRepository(options.db);
   const registry = createGameRegistry(env.INSTALLATION_PHASE);
-  const agents = new AgentRegistry();
+  const agents = options.agents ?? new AgentRegistry();
 
   const dns =
     options.dns ??
@@ -260,6 +270,20 @@ export {
 export { createDrizzleServerUsageRepository } from './usage-repository.js';
 
 export {
+  type BackupAgentGatewayOptions,
+  type BackupHostResolver,
+  createAgentBackupGateway,
+  createDrizzleBackupServerDirectory,
+} from './backup-ports.js';
+
+export {
+  createAgentStorageScanGateway,
+  createServerKnownServerSource,
+  createServerNameSource,
+  createServerNodePlacementSource,
+} from './admin-ports.js';
+
+export {
   type AgentSessionHandlers,
   type AgentSocket,
   AgentRegistry,
@@ -291,6 +315,7 @@ export {
   type OrchestrationEventSink,
   ServerOrchestrationService,
   containerNameFor,
+  dataHostPathFor,
 } from './service.js';
 export { type DnsProvider, type DnsRecord, createNoopDnsProvider } from './dns/types.js';
 export { buildServerDnsRecord, createCloudflareDnsProvider } from './dns/cloudflare.js';
