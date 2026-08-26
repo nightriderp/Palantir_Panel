@@ -20,6 +20,13 @@ export const WEBSOCKET_EVENTS = [
   'server.started',
   'server.stopped',
   'server.crashed',
+  // Live-Kanal Browser <-> Backend (F3, siehe `server-live.ts`). Anders als die
+  // Meldungen darüber lösen diese Ereignisse keine Benachrichtigung aus – sie
+  // halten nur eine offene Ansicht aktuell.
+  'server.statusChanged',
+  'server.statsUpdated',
+  'server.consoleLineAppended',
+  'serverClone.progressed',
   'backup.failed',
   'autoShutdown.triggered',
   'resource.low',
