@@ -64,6 +64,8 @@
 - Zuordnung Port ↔ Zielserver liegt in der Datenbank, wird bei Erstellung/Löschung eines Servers automatisch aktualisiert
 - Für Spiele mit `supportsVirtualHostRouting = true` (initial: Minecraft) läuft stattdessen ein Hostname-basierter Reverse-Proxy (z. B. Infrared) auf einem einzigen öffentlichen Port für alle Instanzen dieses Spiels
 
+**Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin/ports.ts`):** Der Admin pflegt ausschließlich die **Bereiche** (`port_ranges`), aus denen vergeben werden darf – Standardwerte dafür stehen als `GAME_PORT_RANGE_START`/`_END` in der zentralen `.env`. Die einzelne Zuordnung (`port_allocations`) entsteht und verschwindet mit dem Server: B3 ruft dafür `allocateForServer()` bzw. `releaseForServer()` auf. Eine Zuordnung mit noch existierendem Server lässt sich deshalb nicht von Hand freigeben, und ein Bereich, aus dem Ports vergeben sind, weder löschen noch so verkleinern, dass ein vergebener Port herausfällt (`PORT_RANGE_IN_USE`). Dass derselbe Port je Protokoll nur einmal vergeben ist, sichert zusätzlich ein Unique-Index in der Datenbank ab.
+
 ### 2.5 Testbarkeit
 - Die Docker-Ansteuerung im Agent liegt hinter einer abstrahierten Schnittstelle (`ContainerRuntime`), damit Unit-/Integrationstests mit einer Fake-Implementierung laufen können, ohne echten Docker-Host zu benötigen
 
@@ -241,6 +243,10 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 
 **Audit-Log-Aufbewahrung:** Einträge werden nie durch Admin-Aktionen verändert oder gelöscht (append-only). Ein separater, rein additiver Archivierungsprozess exportiert Einträge, die älter als 24 Monate sind, in eine komprimierte Archivdatei und entfernt sie anschließend aus der aktiven Tabelle – so bleibt das Datenbankwachstum kontrollierbar, ohne dass die Unveränderlichkeit während laufender Vorgänge aufgeweicht wird.
 
+**Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin`):** Die Unveränderlichkeit ist dreifach abgesichert. `AuditLogRepository` und `AuditService` kennen weder eine Update- noch eine allgemeine Delete-Operation – auch nicht für den Owner. Zusätzlich lehnt der Trigger `audit_log_append_only` (Migration `0005_admin_ports_audit_storage`) UPDATE, DELETE und TRUNCATE auf `audit_log` **in der Datenbank** ab; auch ein direkter `psql`-Zugriff kommt daran nicht vorbei. Einzige Ausnahme ist der Archivierungsprozess: Er weist sich über die Sitzungsvariable `palantir.audit_archive` aus (per `SET LOCAL`, gilt also nur innerhalb seiner Transaktion) und darf auch dann ausschließlich Einträge älter als 24 Monate entfernen – nachdem die Archivdatei geschrieben ist. Schlägt der Export fehl, bleibt die aktive Tabelle unverändert (`AUDIT_ARCHIVE_FAILED`). Angestoßen wird der Lauf über die Admin-Oberfläche oder `pnpm --filter @palantir/backend audit:archive`; der Ablageort steht in `AUDIT_ARCHIVE_DIR`.
+
+**Katalog der protokollierten Aktionen:** `packages/contracts/src/audit.ts` (`AUDIT_ACTIONS`), Benennungsschema wie bei den Events (`<domäne>.<vorgang>`, §14). Jedes Arbeitspaket ergänzt dort additiv die sicherheitsrelevanten Aktionen, die es selbst protokolliert – nie als Freitext am Aufrufort.
+
 ---
 
 ## 7. Auth & Identity
@@ -365,6 +371,10 @@ Ein Skript (`scripts/setup.sh`), das:
 - Scan erfolgt on-demand (nicht dauerhaft im Hintergrund), Ergebnis wird mit Zeitstempel zwischengespeichert
 - Löschbar über die Oberfläche: Backups, ungenutzte Docker-Images, eindeutig verwaiste Daten
 - Aktive Server-Datenordner sind hierüber nicht löschbar (nur über den dedizierten Server-Löschen-Vorgang)
+
+**Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin/storage.ts`):** Der Agent meldet nur, was auf der Platte liegt und ob es benutzt wird; ob ein Posten gelöscht werden darf, entscheidet ausschließlich das Backend – an genau einer Stelle (`classifyEntry()`) – und liefert das Ergebnis als `permissions.canDelete` samt benanntem `deleteBlockedReason` mit. Der zwischengespeicherte Scan enthält bewusst die **rohe** Antwort des Agents: Die Bewertung passiert bei jedem Abruf neu, weil sie vom aktuellen Datenbestand abhängt und nicht vom Zeitpunkt des Scans.
+
+Die Regel ist restriktiv ausgelegt: Ein Datenordner, dessen Server das Backend nicht kennt, gilt **nicht** automatisch als verwaist, sondern landet in der Kategorie `other` und bleibt gesperrt (`notClearlyOrphaned`). Verwaist ist nur, was der Agent selbst als verwaist meldet. Ohne diese Auslegung wäre bei unvollständiger Serverliste jeder Datenordner löschbar.
 
 ---
 

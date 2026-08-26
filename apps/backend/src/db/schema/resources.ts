@@ -57,6 +57,21 @@ export const hostNodes = pgTable(
     /** Nachkommastellen erlaubt, deshalb `double precision` und nicht `integer`. */
     totalCpuCores: doublePrecision('total_cpu_cores').notNull(),
     totalDiskMb: integer('total_disk_mb').notNull(),
+    /**
+     * Erläuterung zum Status, z. B. der Grund einer Wartung.
+     *
+     * Additive Ergänzung aus B8 (Node-Verwaltung), wie in der Notiz oben
+     * vorgesehen. Die Kapazitätsprüfung aus B4 wertet das Feld nicht aus – sie
+     * schaut ausschließlich auf `status`.
+     */
+    statusMessage: text('status_message'),
+    /**
+     * Letzter Kontakt des Agents; `null`, solange die Node nie verbunden war.
+     *
+     * Ebenfalls additiv aus B8: Die Node-Übersicht zeigt, wie aktuell der
+     * gemeldete Zustand ist. Gesetzt wird das Feld vom Agent-Kanal (B3).
+     */
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
