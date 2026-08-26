@@ -95,9 +95,7 @@ export class NotificationTransportError extends Error {
   }
 }
 
-export function isNotificationTransportError(
-  error: unknown,
-): error is NotificationTransportError {
+export function isNotificationTransportError(error: unknown): error is NotificationTransportError {
   return error instanceof NotificationTransportError;
 }
 
@@ -134,7 +132,10 @@ export const noopLivePublisher: LiveNotificationPublisher = {
  */
 export interface NotificationAuditSink {
   record(entry: {
-    action: 'notification.channelChanged' | 'notification.ruleChanged' | 'notification.announcementChanged';
+    action:
+      | 'notification.channelChanged'
+      | 'notification.ruleChanged'
+      | 'notification.announcementChanged';
     actorId: string | null;
     targetType: 'notificationChannel' | 'notificationRule' | 'announcement';
     targetId: string;

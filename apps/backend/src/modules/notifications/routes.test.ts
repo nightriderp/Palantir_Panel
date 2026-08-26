@@ -27,9 +27,11 @@ const FREMDER_ID = testId('c');
  * B5): Sie bestimmt Rechte **und** Konto-Id – die Inbox braucht die Identität,
  * die Verwaltung die Permission.
  */
-async function buildTestApp(seed?: {
-  repository?: FakeRepository;
-}): Promise<{ app: FastifyInstance; notifications: NotificationService; repository: FakeRepository }> {
+async function buildTestApp(seed?: { repository?: FakeRepository }): Promise<{
+  app: FastifyInstance;
+  notifications: NotificationService;
+  repository: FakeRepository;
+}> {
   const repository = seed?.repository ?? fakeRepository();
   const notifications = createNotificationService({
     repository,

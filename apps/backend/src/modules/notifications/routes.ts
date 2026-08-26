@@ -97,20 +97,17 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
 
     // -- Inbox des angemeldeten Kontos --------------------------------------
 
-    app.get(
-      '/notifications',
-      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
-        try {
-          const query = notificationQuerySchema.parse(request.query ?? {});
+    app.get('/notifications', async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
+      try {
+        const query = notificationQuerySchema.parse(request.query ?? {});
 
-          return ok(await notifications.listInbox(userIdOf(request), query));
-        } catch (error) {
-          await handleError(reply, error);
+        return ok(await notifications.listInbox(userIdOf(request), query));
+      } catch (error) {
+        await handleError(reply, error);
 
-          return undefined;
-        }
-      },
-    );
+        return undefined;
+      }
+    });
 
     app.post(
       '/notifications/read',

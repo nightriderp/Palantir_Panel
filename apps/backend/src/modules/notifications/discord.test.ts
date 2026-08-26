@@ -108,7 +108,9 @@ describe('Versand', () => {
   /** Die Webhook-URL ist ein Geheimnis – sie darf nicht ins Protokoll geraten. */
   it('nennt die Webhook-Adresse in keiner Fehlermeldung', async () => {
     const transport = createDiscordTransport({
-      fetchImpl: vi.fn().mockRejectedValue(new Error('connect ECONNREFUSED')) as unknown as typeof fetch,
+      fetchImpl: vi
+        .fn()
+        .mockRejectedValue(new Error('connect ECONNREFUSED')) as unknown as typeof fetch,
     });
 
     await expect(transport.send(target, message)).rejects.toSatisfy(

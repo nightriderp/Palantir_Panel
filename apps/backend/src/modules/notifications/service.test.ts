@@ -515,8 +515,7 @@ describe('Inbox', () => {
     const foreignId = repository.notifications[0]?.id ?? '';
 
     await expect(service.deleteNotification(MEMBER, foreignId)).rejects.toSatisfy(
-      (error: unknown) =>
-        isNotificationError(error) && error.code === 'NOTIFICATION_NOT_FOUND',
+      (error: unknown) => isNotificationError(error) && error.code === 'NOTIFICATION_NOT_FOUND',
     );
     expect(repository.notifications).toHaveLength(1);
   });
@@ -644,9 +643,7 @@ describe('Systemweite Ankündigungen (Lastenheft §3.6)', () => {
   it('meldet eine unbekannte Ankündigung als nicht vorhanden', async () => {
     const { service } = build();
 
-    await expect(
-      service.deleteAnnouncement(adminActor(), ADMIN, testId('7')),
-    ).rejects.toSatisfy(
+    await expect(service.deleteAnnouncement(adminActor(), ADMIN, testId('7'))).rejects.toSatisfy(
       (error: unknown) => isNotificationError(error) && error.code === 'ANNOUNCEMENT_NOT_FOUND',
     );
   });

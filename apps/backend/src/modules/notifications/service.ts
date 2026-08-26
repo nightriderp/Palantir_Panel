@@ -448,10 +448,15 @@ export function createNotificationService(
         continue;
       }
 
-      deliverInBackground({ ...channel }, target, { ...message, severity }, {
-        event: input.event,
-        ruleId: rule.id,
-      });
+      deliverInBackground(
+        { ...channel },
+        target,
+        { ...message, severity },
+        {
+          event: input.event,
+          ruleId: rule.id,
+        },
+      );
     }
   }
 
@@ -770,8 +775,7 @@ export function createNotificationService(
 
       return toRuleDto(updated, {
         actor,
-        channelName:
-          updated.channelId === null ? null : (channels.get(updated.channelId) ?? null),
+        channelName: updated.channelId === null ? null : (channels.get(updated.channelId) ?? null),
         roleName: null,
       });
     },

@@ -49,9 +49,7 @@ export interface NotificationEventSink {
   publish(event: string, payload: Record<string, unknown>): void;
 }
 
-export function createNotificationEventSink(
-  service: NotificationService,
-): NotificationEventSink {
+export function createNotificationEventSink(service: NotificationService): NotificationEventSink {
   function forward(event: string, payload: Record<string, unknown>): void {
     if (!isNotifiableEventName(event)) {
       return;
@@ -108,9 +106,7 @@ export interface NotificationModule {
   readonly hub: ReturnType<typeof createNotificationHub>;
 }
 
-export function createNotificationModule(
-  options: NotificationModuleOptions,
-): NotificationModule {
+export function createNotificationModule(options: NotificationModuleOptions): NotificationModule {
   const hub = createNotificationHub();
   const service = createNotificationService({
     repository: createDrizzleNotificationRepository(options.db),
@@ -147,10 +143,12 @@ export async function registerNotifications(
 ): Promise<NotificationModule> {
   const module = createNotificationModule(options);
 
-  await app.register(registerNotificationRoutes({
-    notifications: module.service,
-    resolveUserId: options.resolveUserId,
-  }));
+  await app.register(
+    registerNotificationRoutes({
+      notifications: module.service,
+      resolveUserId: options.resolveUserId,
+    }),
+  );
 
   registerNotificationLiveRoute(app, {
     hub: module.hub,
