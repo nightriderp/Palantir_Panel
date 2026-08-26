@@ -110,6 +110,30 @@ export function createDrizzleAuthRepository(db: Database): AuthRepository {
       return toUser(row);
     },
 
+    async findOwner() {
+      const [row] = await db.select().from(users).where(eq(users.isOwner, true)).limit(1);
+
+      return row ? toUser(row) : null;
+    },
+
+    async setOwner(id) {
+      // Das zweite Owner-Konto verhindert der partielle Unique-Index
+      // `users_single_owner_idx` (Lastenheft §2). Die fachliche Prüfung mit
+      // benanntem Fehler liegt im Service; hier bleibt die Datenbank die
+      // letzte Instanz, auch bei gleichzeitigen Läufen.
+      const [row] = await db
+        .update(users)
+        .set({ isOwner: true })
+        .where(eq(users.id, id))
+        .returning();
+
+      if (!row) {
+        throw new Error('Konto konnte nicht aktualisiert werden.');
+      }
+
+      return toUser(row);
+    },
+
     async setUsername(id, username) {
       const [row] = await db.update(users).set({ username }).where(eq(users.id, id)).returning();
 

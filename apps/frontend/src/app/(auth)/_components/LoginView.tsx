@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
-import { Button } from '@/components/shared';
+import { Button, FormMessage, TextField } from '@/components/shared';
 import { login, verifyTwoFactor } from '@/lib/auth/api';
 import {
   AuthRequestError,
@@ -17,8 +17,6 @@ import {
 } from '@/lib/auth/errors';
 import { AUTH_ROUTES, landingPathForAccount } from '@/lib/auth/routes';
 
-import { AuthField } from './AuthField';
-import { AuthFormMessage } from './AuthFormMessage';
 import { AuthHeading } from './AuthHeading';
 import { AuthDivider, OAuthButtons } from './OAuthButtons';
 
@@ -155,21 +153,21 @@ export function LoginView() {
         />
 
         <form onSubmit={submitTwoFactor} className="flex flex-col gap-3.5" noValidate>
-          <AuthField
+          <TextField
             label="Code"
+            labelVariant="caps"
             value={code}
-            onChange={(event) => setCode(event.target.value)}
+            onChange={setCode}
             error={fieldErrors.code}
-            inputMode="numeric"
             autoComplete="one-time-code"
             autoFocus
             placeholder="123456"
-            maxLength={32}
-            inputClassName="text-center font-mono text-3xl tracking-[0.3em] py-3.5"
+            inputClassName="py-3.5 text-center font-mono text-3xl tracking-[0.3em]"
+            inputProps={{ inputMode: 'numeric', maxLength: 32 }}
           />
 
           {formError ? (
-            <AuthFormMessage tone={blocking ? 'warning' : 'error'}>{formError}</AuthFormMessage>
+            <FormMessage tone={blocking ? 'warning' : 'error'}>{formError}</FormMessage>
           ) : null}
 
           <Button type="submit" variant="primary" fullWidth disabled={busy}>
@@ -195,31 +193,32 @@ export function LoginView() {
         description="Melde dich an, um deine Gameserver zu verwalten."
       />
 
-      {providerError ? <AuthFormMessage className="mb-3.5">{providerError}</AuthFormMessage> : null}
+      {providerError ? <FormMessage className="mb-3.5">{providerError}</FormMessage> : null}
 
       <form onSubmit={submitCredentials} className="flex flex-col gap-3.5" noValidate>
-        <AuthField
+        <TextField
           label="Benutzername"
+          labelVariant="caps"
           value={username}
-          onChange={(event) => setUsername(event.target.value)}
+          onChange={setUsername}
           error={fieldErrors.username}
           autoComplete="username"
-          autoCapitalize="none"
-          spellCheck={false}
           placeholder="z. B. alex"
+          inputProps={{ autoCapitalize: 'none', spellCheck: false }}
         />
-        <AuthField
+        <TextField
           label="Passwort"
+          labelVariant="caps"
           type="password"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={setPassword}
           error={fieldErrors.password}
           autoComplete="current-password"
           placeholder="••••••••"
         />
 
         {formError ? (
-          <AuthFormMessage tone={blocking ? 'warning' : 'error'}>{formError}</AuthFormMessage>
+          <FormMessage tone={blocking ? 'warning' : 'error'}>{formError}</FormMessage>
         ) : null}
 
         <Button type="submit" variant="primary" fullWidth disabled={busy}>

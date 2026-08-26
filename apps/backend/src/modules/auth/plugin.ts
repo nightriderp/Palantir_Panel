@@ -134,6 +134,14 @@ export async function registerAuthModule(
 
   app.decorateRequest('authUser', null);
   app.decorateRequest('authSessionId', null);
+  /*
+   * Identität des Handelnden für das Audit-Log (B8, `contextFrom()` in
+   * `modules/admin/routes.ts`). Die Deklaration steht dort, weil das Audit-Log
+   * der einzige Leser ist; gesetzt wird sie hier, weil hier die Sitzung
+   * aufgelöst wird (Pflichtenheft §6: ein Eintrag ohne Handelnden ist für die
+   * Nachvollziehbarkeit wertlos).
+   */
+  app.decorateRequest('adminIdentity', null);
 
   // 1. Sitzung auflösen.
   app.addHook('onRequest', async (request): Promise<void> => {
@@ -159,6 +167,10 @@ export async function registerAuthModule(
 
       request.authUser = user;
       request.authSessionId = session.id;
+      // Anzeigename als **Kopie** zum Zeitpunkt der Aktion: Der Audit-Eintrag
+      // bleibt lesbar, auch wenn das Konto später umbenannt wird oder
+      // verschwindet (Pflichtenheft §6, `AuditLog.actorDisplayName`).
+      request.adminIdentity = { userId: user.id, displayName: user.displayName };
     } catch {
       // Abgelaufene, widerrufene oder gesperrte Sitzung: der Request gilt als
       // nicht angemeldet. Die betroffenen Routen antworten dann mit

@@ -5,7 +5,7 @@ import {
   type GameConfigValue,
   type GameConfigValues,
 } from '@palantir/contracts';
-import { FieldShell, NumberField, SelectField, TextField, Toggle } from './Fields';
+import { FieldShell, NumberField, SelectField, TextField, Toggle } from '@/components/shared';
 
 /**
  * Formular aus dem Config-Schema eines Spieltyps (Pflichtenheft §11).

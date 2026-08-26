@@ -6,14 +6,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useState, type FormEvent } from 'react';
 
-import { Button } from '@/components/shared';
+import { Button, FormMessage, TextField } from '@/components/shared';
 import { register } from '@/lib/auth/api';
 import { AuthRequestError, isBlockingError, messageForThrown } from '@/lib/auth/errors';
 import { AUTH_ROUTES, landingPathForAccount } from '@/lib/auth/routes';
 
 import { AltchaWidget } from './AltchaWidget';
-import { AuthField } from './AuthField';
-import { AuthFormMessage } from './AuthFormMessage';
 import { AuthHeading } from './AuthHeading';
 import { AuthDivider, OAuthButtons } from './OAuthButtons';
 
@@ -103,30 +101,32 @@ export function RegisterView() {
       />
 
       <form onSubmit={submit} className="flex flex-col gap-3.5" noValidate>
-        <AuthField
+        <TextField
           label="Benutzername"
+          labelVariant="caps"
           value={username}
-          onChange={(event) => setUsername(event.target.value)}
+          onChange={setUsername}
           error={fieldErrors.username}
           autoComplete="username"
-          autoCapitalize="none"
-          spellCheck={false}
           placeholder="z. B. alex"
+          inputProps={{ autoCapitalize: 'none', spellCheck: false }}
         />
-        <AuthField
+        <TextField
           label="Passwort"
+          labelVariant="caps"
           type="password"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={setPassword}
           error={fieldErrors.password}
           autoComplete="new-password"
           placeholder="••••••••"
           hint={`Mindestens ${PASSWORD_MIN_LENGTH} Zeichen.`}
         />
-        <AuthField
+        <TextField
           label="Anzeigename (optional)"
+          labelVariant="caps"
           value={displayName}
-          onChange={(event) => setDisplayName(event.target.value)}
+          onChange={setDisplayName}
           error={fieldErrors.displayName}
           autoComplete="nickname"
           placeholder="Wird sonst aus dem Benutzernamen abgeleitet"
@@ -138,7 +138,7 @@ export function RegisterView() {
         ) : null}
 
         {formError ? (
-          <AuthFormMessage tone={blocking ? 'warning' : 'error'}>{formError}</AuthFormMessage>
+          <FormMessage tone={blocking ? 'warning' : 'error'}>{formError}</FormMessage>
         ) : null}
 
         <Button type="submit" variant="primary" fullWidth disabled={busy}>

@@ -59,6 +59,13 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     expect(httpStatusForErrorCode('AGENT_COMMAND_TIMEOUT')).toBe(504);
   });
 
+  it('trennt die beiden Owner-Faelle (Lastenheft §2, Pflichtenheft §12.3)', () => {
+    // OWNER_PROTECTED wehrt Aktionen gegen den bestehenden Owner ab;
+    // OWNER_ALREADY_EXISTS die Vergabe des Status an ein zweites Konto.
+    expect(httpStatusForErrorCode('OWNER_PROTECTED')).toBe(403);
+    expect(httpStatusForErrorCode('OWNER_ALREADY_EXISTS')).toBe(409);
+  });
+
   it('isErrorCode() erkennt unbekannte Codes', () => {
     expect(isErrorCode('SUBDOMAIN_TAKEN')).toBe(true);
     expect(isErrorCode('NICHT_IM_KATALOG')).toBe(false);

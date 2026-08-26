@@ -72,24 +72,24 @@ Gestaltung und eigenen (englischen) Texten wäre dafür nicht zu rechtfertigen.
 ## Bausteine
 
 Alles Gemeinsame kommt aus **F2** (`@/components/shared`): `Button`, `Panel`,
-`Badge`, `Icon`, `LogoMark`, `cn`. Lokal zu F1 sind nur die Teile, die F2 (noch)
-nicht führt:
+`Badge`, `Icon`, `LogoMark`, `cn` sowie seit R4 die Formular-Bausteine
+`TextField` (hier mit `labelVariant="caps"`), `FormMessage` und der
+Datums-Helfer `formatDate`. Die früheren lokalen Fassungen `AuthField` und
+`AuthFormMessage` gibt es nicht mehr – die Lücke, die sie geschlossen haben, ist
+mit R4 im Design-System geschlossen.
+
+Lokal zu F1 bleiben nur die Teile, die kein anderes Paket braucht:
 
 | Datei             | Warum lokal                                                            |
 | ----------------- | ---------------------------------------------------------------------- |
-| `AuthField`       | F2 hat bisher keine Formular-Bausteine (Label/Eingabe/Feldfehler)      |
-| `AuthFormMessage` | Meldungszeile im Formular – F2 kennt nur Toasts und Modal-Fehlerzeilen |
 | `AuthHeading`     | `PageHeader` aus F2 ist für Dashboard-Seiten mit Aktionsleiste gedacht |
 | `AuthBrandColumn` | Nur hier verwendet                                                     |
-
-Beide Lücken sind unter „Gefundene Punkte" in
-[WORK_STATUS.md](../../../../../WORK_STATUS.md) vermerkt; sobald F2 passende
-Bausteine hat, wird hier darauf umgestellt.
+| `AltchaWidget`    | Proof-of-Work der Registrierung, nirgends sonst nötig                  |
 
 ## Tests
 
 Reine Logik liegt in `src/lib/auth/` und ist getestet
 (`pnpm --filter @palantir/frontend test`): Fehlercode-Übersetzung, Zielroute nach
 der Anmeldung, ALTCHA-Lösung und -Kodierung, CSRF-Cookie. Die Ansichten selbst
-sind ungetestet – für Komponententests fehlt im Frontend bisher eine
-Test-Umgebung (ebenfalls unter „Gefundene Punkte" vermerkt).
+werden über die Bausteine aus F2 abgedeckt, die seit R4 mit jsdom und Testing
+Library geprüft werden (siehe `components/shared/README.md`).
