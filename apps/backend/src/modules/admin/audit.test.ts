@@ -15,7 +15,7 @@ import {
 
 const migrationPath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../drizzle/0004_admin_ports_audit_storage.sql',
+  '../../../drizzle/0005_admin_ports_audit_storage.sql',
 );
 
 /**

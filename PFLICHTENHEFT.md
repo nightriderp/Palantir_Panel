@@ -141,6 +141,12 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `ROLE_NOT_FOUND` | 404 | Rolle existiert nicht (§8) |
 | `ROLE_NAME_TAKEN` | 409 | Rollenname bereits vergeben (§8) |
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
+| `VALIDATION_FAILED` | 400 | Pfad-, Query- oder Körperwert verletzt das vereinbarte Schema (§5.2) |
+| `SERVER_NOT_FOUND` | 404 | Gameserver existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
+| `BACKUP_NOT_FOUND` | 404 | Backup existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
+| `BACKUP_NOT_READY` | 409 | Vorgang setzt ein abgeschlossenes Backup voraus (Restore, Download, Löschen) |
+| `BACKUP_ALREADY_RUNNING` | 409 | Für diesen Server läuft bereits ein Backup |
+| `SCHEDULE_INVALID_CRON` | 400 | Cron-Ausdruck einer geplanten Aufgabe ist ungültig (§6) |
 | `AGENT_UNAUTHORIZED` | 401 | Pre-Shared-Token des Agents fehlt oder ist falsch (§2.2) |
 | `AGENT_PROTOCOL_VERSION_MISMATCH` | 400 | Agent und Backend sprechen unterschiedliche Protokollversionen (§2.2) |
 | `AGENT_COMMAND_INVALID` | 400 | Befehls-Frame verletzt das vereinbarte Format (§5.3) |
@@ -155,8 +161,6 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AGENT_FILE_NOT_FOUND` | 404 | Datei im Container nicht gefunden |
 | `AGENT_FILE_TOO_LARGE` | 413 | Datei überschreitet das Größenlimit (§12.1) |
 | `AGENT_RUNTIME_UNAVAILABLE` | 503 | Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar |
-| `VALIDATION_FAILED` | 400 | Eingabe verletzt das Zod-Schema aus `packages/validation` (§3) |
-| `NODE_NOT_FOUND` | 404 | Node existiert nicht (§6) |
 | `NODE_ADDRESS_TAKEN` | 409 | Node-Name oder WireGuard-Adresse bereits vergeben (§2.1) |
 | `NODE_IN_USE` | 409 | Node trägt noch Gameserver und kann nicht entfernt werden |
 | `PORT_RANGE_NOT_FOUND` | 404 | Port-Bereich existiert nicht (§2.4) |
@@ -170,7 +174,6 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `STORAGE_ENTRY_NOT_DELETABLE` | 403 | Eintrag ist über den Storage-Explorer nicht löschbar, insbesondere aktive Server-Datenordner (§16) |
 | `AUDIT_ENTRY_IMMUTABLE` | 403 | Versuch, einen Audit-Eintrag zu ändern oder zu löschen (§6) |
 | `AUDIT_ARCHIVE_FAILED` | 500 | Archivdatei des Audit-Logs konnte nicht geschrieben werden (§6) |
-| `USER_NOT_FOUND` | 404 | Konto existiert nicht (§7) |
 | `OWNER_PROTECTED` | 403 | Aktion würde das Owner-Konto aussperren (§8) |
 | `REGISTRATION_REQUEST_INVALID_STATE` | 409 | Wartelisten-Aktion passt nicht zum Zustand des Kontos (§7) |
 
@@ -189,7 +192,7 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 ### 5.3 Kommunikationskanäle
 - REST für klassische CRUD-Operationen
 - WebSocket-Kanäle für Live-Daten: Konsole/Logs, Live-Stats, Chat, Benachrichtigungen
-- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
+- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
 
 **Ort des Agent-Protokolls:** `packages/contracts/src/agent-protocol.ts` (`AGENT_COMMANDS`, `AGENT_EVENTS`, Frame-Typen, `AGENT_PROTOCOL_VERSION`), Zod-Gegenstück in `packages/validation/src/agent-protocol.ts`. Befehle und Ereignisse werden ausschließlich dort additiv ergänzt.
 
@@ -200,7 +203,11 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - **Duplikat-Antwort:** Ein Befehl mit bereits verarbeiteter Korrelations-ID wird nicht erneut ausgeführt; das gespeicherte Ergebnis wird mit `duplicate: true` erneut geschickt, da der Retry meist gerade deshalb entsteht, weil das erste Ergebnis das Backend nicht erreicht hat
 - **Befehlsergebnisse** nutzen den Response-Envelope aus §5.1, Fehler also benannte Codes aus dem Katalog statt Freitext
 
-**Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+**Nutzdaten und Ergebnisse je Befehl:** `packages/contracts/src/agent-commands.ts` (`AgentCommandPayloads`, `AgentCommandResults`), Zod-Gegenstück in `packages/validation/src/agent-commands.ts`. Container-bezogene Befehle tragen die `containerId` in den Nutzdaten – das Backend kennt sie als `GameServer.dockerContainerId` (§6); einzige Ausnahme ist `CREATE`, dort entsteht sie erst und kommt im Ergebnis zurück. `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP` und `GET_STORAGE_BREAKDOWN` sind Dateisystem- und Job-Aufgaben (Arbeitspaket A3) und werden bis dahin mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+
+**`DOWNLOAD_BACKUP` (Ergänzung aus B5):** Der vollständige Export der Serverdaten (Lastenheft §3.3) verlangt, dass das Archiv eines Backups vom Homeserver zum Nutzer gelangt. Der Agent öffnet grundsätzlich keinen eigenen Listener (§18), es gibt also keinen zweiten Weg für diese Bytes. Der Befehl liest deshalb **blockweise**: das Backend fragt `{ offset, maxBytes }` an, bekommt `{ contentBase64, bytesRead, totalBytes, eof }` zurück und schreibt jeden Block sofort in die HTTP-Antwort. Damit braucht es weder einen neuen Frame-Typ noch ein mehrere Gigabyte großes Archiv im Speicher. Die Base64-Kodierung kostet rund ein Drittel Übertragungsvolumen; das ist bei einem selten genutzten Vorgang innerhalb des WireGuard-Tunnels vertretbar und wiegt leichter als ein zweiter Transportweg mit eigener Authentifizierung.
+
+**`DELETE_BACKUP` (Ergänzung aus B5):** Die Aufbewahrungsregel aus Lastenheft §3.3 und das Löschen über den Storage-Explorer (§16) müssen das Archiv tatsächlich von der Platte bekommen; ohne diesen Befehl gäbe die Regel keinen Speicher frei. Der Befehl ist bewusst **idempotent** – ein bereits fehlendes Archiv wird als `removed: false` gemeldet, nicht als Fehler. Sonst bliebe nach einem Abbruch mitten in der Aufbewahrungsprüfung ein Datensatz zurück, der sich nie wieder löschen ließe.
 
 `GET_STORAGE_BREAKDOWN` hat seit Arbeitspaket B8 bereits ein festgelegtes Wire-Format (`GetStorageBreakdownCommandPayload`/`-Result`, Zod-Gegenstück `getStorageBreakdownResultSchema` in `packages/validation/src/storage.ts`), weil das Backend die Antwort entgegennehmen, zwischenspeichern und ausliefern muss (§16). Ausgeführt wird der Befehl weiterhin von niemandem: Er steht unverändert **nicht** in `IMPLEMENTED_AGENT_COMMANDS`, der Agent antwortet also weiter mit `AGENT_COMMAND_NOT_IMPLEMENTED`, bis A3 den Scanner baut.
 
@@ -236,7 +243,7 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 
 **Audit-Log-Aufbewahrung:** Einträge werden nie durch Admin-Aktionen verändert oder gelöscht (append-only). Ein separater, rein additiver Archivierungsprozess exportiert Einträge, die älter als 24 Monate sind, in eine komprimierte Archivdatei und entfernt sie anschließend aus der aktiven Tabelle – so bleibt das Datenbankwachstum kontrollierbar, ohne dass die Unveränderlichkeit während laufender Vorgänge aufgeweicht wird.
 
-**Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin`):** Die Unveränderlichkeit ist dreifach abgesichert. `AuditLogRepository` und `AuditService` kennen weder eine Update- noch eine allgemeine Delete-Operation – auch nicht für den Owner. Zusätzlich lehnt der Trigger `audit_log_append_only` (Migration `0004_admin_ports_audit_storage`) UPDATE, DELETE und TRUNCATE auf `audit_log` **in der Datenbank** ab; auch ein direkter `psql`-Zugriff kommt daran nicht vorbei. Einzige Ausnahme ist der Archivierungsprozess: Er weist sich über die Sitzungsvariable `palantir.audit_archive` aus (per `SET LOCAL`, gilt also nur innerhalb seiner Transaktion) und darf auch dann ausschließlich Einträge älter als 24 Monate entfernen – nachdem die Archivdatei geschrieben ist. Schlägt der Export fehl, bleibt die aktive Tabelle unverändert (`AUDIT_ARCHIVE_FAILED`). Angestoßen wird der Lauf über die Admin-Oberfläche oder `pnpm --filter @palantir/backend audit:archive`; der Ablageort steht in `AUDIT_ARCHIVE_DIR`.
+**Umsetzung im Backend (Arbeitspaket B8, `apps/backend/src/modules/admin`):** Die Unveränderlichkeit ist dreifach abgesichert. `AuditLogRepository` und `AuditService` kennen weder eine Update- noch eine allgemeine Delete-Operation – auch nicht für den Owner. Zusätzlich lehnt der Trigger `audit_log_append_only` (Migration `0005_admin_ports_audit_storage`) UPDATE, DELETE und TRUNCATE auf `audit_log` **in der Datenbank** ab; auch ein direkter `psql`-Zugriff kommt daran nicht vorbei. Einzige Ausnahme ist der Archivierungsprozess: Er weist sich über die Sitzungsvariable `palantir.audit_archive` aus (per `SET LOCAL`, gilt also nur innerhalb seiner Transaktion) und darf auch dann ausschließlich Einträge älter als 24 Monate entfernen – nachdem die Archivdatei geschrieben ist. Schlägt der Export fehl, bleibt die aktive Tabelle unverändert (`AUDIT_ARCHIVE_FAILED`). Angestoßen wird der Lauf über die Admin-Oberfläche oder `pnpm --filter @palantir/backend audit:archive`; der Ablageort steht in `AUDIT_ARCHIVE_DIR`.
 
 **Katalog der protokollierten Aktionen:** `packages/contracts/src/audit.ts` (`AUDIT_ACTIONS`), Benennungsschema wie bei den Events (`<domäne>.<vorgang>`, §14). Jedes Arbeitspaket ergänzt dort additiv die sicherheitsrelevanten Aktionen, die es selbst protokolliert – nie als Freitext am Aufrufort.
 

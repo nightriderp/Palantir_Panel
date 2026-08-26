@@ -65,6 +65,19 @@ export {
   isoTimestampSchema,
 } from './agent-protocol.js';
 export {
+  type BackupOverviewQuery,
+  type CreateBackupInput,
+  type CreateServerExportInput,
+  type UpdateBackupScheduleInput,
+  backupOverviewQuerySchema,
+  backupStatusSchema,
+  backupTypeSchema,
+  createBackupInputSchema,
+  createServerExportInputSchema,
+  cronExpressionSchema,
+  updateBackupScheduleInputSchema,
+} from './backups.js';
+export {
   type CreateHostNodeInput,
   type UpdateHostNodeInput,
   createHostNodeInputSchema,
@@ -115,6 +128,16 @@ export {
 } from './registration-request.js';
 export {
   AGENT_COMMAND_PAYLOAD_SCHEMAS,
+  createBackupCommandPayloadSchema,
+  createBackupCommandResultSchema,
+  deleteBackupCommandPayloadSchema,
+  deleteBackupCommandResultSchema,
+  downloadBackupCommandPayloadSchema,
+  downloadBackupCommandResultSchema,
+  hostPathSchema,
+  restoreBackupCommandPayloadSchema,
+  restoreBackupCommandResultSchema,
+  sha256Schema,
   agentPortMappingSchema,
   agentResourceLimitsSchema,
   agentServerIdSchema,

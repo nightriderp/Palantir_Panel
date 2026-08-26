@@ -150,6 +150,57 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Diese Systemrolle ist geschützt und kann nicht geändert oder gelöscht werden.',
   },
 
+  /**
+   * Eingabe verletzt das vereinbarte Schema (Pfad-, Query- oder Körperwert).
+   * 400: Der Aufrufer müsste die Anfrage ändern, ein Retry mit demselben
+   * Inhalt hilft nicht. Die Meldung nennt das beanstandete Feld; der Code
+   * bleibt derselbe, damit Freitext-Fehler gar nicht erst entstehen.
+   */
+  VALIDATION_FAILED: {
+    httpStatus: 400,
+    defaultMessage: 'Die Anfrage enthält ungültige Werte.',
+  },
+
+  // -- Server & Backups (Pflichtenheft §6, Lastenheft §3.3) ------------------
+
+  /**
+   * Gameserver existiert nicht (Pflichtenheft §6). 404: Zielobjekt nicht vorhanden.
+   *
+   * Bewusst derselbe Code, egal ob der Server nie existierte oder der Aufrufer
+   * ihn nicht sehen darf – sonst verriete die Antwort die Existenz fremder Server.
+   */
+  SERVER_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieser Server existiert nicht.',
+  },
+  /** Backup existiert nicht (Pflichtenheft §6). 404, aus demselben Grund wie `SERVER_NOT_FOUND`. */
+  BACKUP_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Sicherung existiert nicht.',
+  },
+  /**
+   * Vorgang setzt ein abgeschlossenes Backup voraus (Wiederherstellen,
+   * Herunterladen, Löschen). 409: Der Zustand passt gerade nicht, später kann
+   * derselbe Aufruf klappen.
+   */
+  BACKUP_NOT_READY: {
+    httpStatus: 409,
+    defaultMessage: 'Diese Sicherung ist noch nicht abgeschlossen.',
+  },
+  /**
+   * Für diesen Server läuft bereits ein Backup. 409: zwei gleichzeitige Läufe
+   * würden denselben Datenordner lesen, während er sich ändert.
+   */
+  BACKUP_ALREADY_RUNNING: {
+    httpStatus: 409,
+    defaultMessage: 'Für diesen Server läuft bereits eine Sicherung.',
+  },
+  /** Cron-Ausdruck einer geplanten Aufgabe ist ungültig (Pflichtenheft §6). 400. */
+  SCHEDULE_INVALID_CRON: {
+    httpStatus: 400,
+    defaultMessage: 'Der Zeitplan ist kein gültiger Cron-Ausdruck.',
+  },
+
   // -- Agent-Protokoll (Pflichtenheft §2.2 / §5.3) ---------------------------
   // Der Agent-Kanal ist kein REST-Endpunkt; die HTTP-Status-Zuordnung gilt hier
   // für den WebSocket-Handshake bzw. dient dem Backend als Vorlage, wenn es
@@ -181,7 +232,8 @@ export const ERROR_CATALOG = {
   },
   /**
    * Befehl steht im Protokoll, ist auf dem Agent aber noch nicht gebaut
-   * (aktuell: `CREATE_BACKUP`, `RESTORE_BACKUP`, `GET_STORAGE_BREAKDOWN` – A3).
+   * (aktuell: `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`,
+   * `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN` – A3).
    * 501: bewusst getrennt von einem Ausführungsfehler, damit das Backend
    * „noch nicht gebaut" von „hat nicht funktioniert" unterscheiden kann.
    */
@@ -242,17 +294,6 @@ export const ERROR_CATALOG = {
   AGENT_RUNTIME_UNAVAILABLE: {
     httpStatus: 503,
     defaultMessage: 'Die Container-Engine auf dem Homeserver ist nicht erreichbar.',
-  },
-
-  /**
-   * Eingabe verletzt das Zod-Schema aus `@palantir/validation`. 400: Der
-   * Aufrufer müsste den Request ändern, ein Retry mit demselben Inhalt hilft
-   * nicht. Die Einzelheiten stehen in der Meldung – der Code bleibt derselbe,
-   * damit das Frontend nicht je Feld einen eigenen Code auswerten muss.
-   */
-  VALIDATION_FAILED: {
-    httpStatus: 400,
-    defaultMessage: 'Die übermittelten Daten sind ungültig.',
   },
 
   // -- Admin-Funktionen (Lastenheft §3.7 und §3.8) ---------------------------
