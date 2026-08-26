@@ -5,7 +5,9 @@ import {
   hashRefreshToken,
   parseDurationMs,
   signAccessToken,
+  signTwoFactorToken,
   verifyAccessToken,
+  verifyTwoFactorToken,
 } from './tokens.js';
 
 const secret = 'test-jwt-secret-mit-ausreichender-laenge';
@@ -87,6 +89,43 @@ describe('Access-Token (Pflichtenheft §7)', () => {
   it('lehnt Unsinn ab, ohne zu scheitern', async () => {
     expect(await verifyAccessToken('kein-jwt', { secret })).toBeNull();
     expect(await verifyAccessToken('', { secret })).toBeNull();
+  });
+});
+
+describe('2FA-Zwischen-Token (Pflichtenheft §7)', () => {
+  const TTL = 300_000; // 5 Minuten, wie TWO_FACTOR_TOKEN_TTL
+
+  it('gilt unabhängig von der echten Uhrzeit, wenn dieselbe Zeitquelle geprüft wird', async () => {
+    // Der eigentliche Punkt dieses Tests: `NOW` liegt Jahre in der
+    // Vergangenheit. Würde beim Prüfen die Systemuhr herangezogen, wäre der
+    // Token immer abgelaufen – genau dieser Fehler ließ den zweiten
+    // Anmeldeschritt ab einer bestimmten Tageszeit dauerhaft scheitern.
+    const { token } = await signTwoFactorToken('u-1', { secret, ttlMs: TTL }, NOW);
+
+    expect(await verifyTwoFactorToken(token, { secret }, NOW + 60_000)).toBe('u-1');
+  });
+
+  it('lehnt ihn nach Ablauf der Frist ab', async () => {
+    const { token } = await signTwoFactorToken('u-1', { secret, ttlMs: TTL }, NOW);
+
+    expect(await verifyTwoFactorToken(token, { secret }, NOW + TTL + 1000)).toBeNull();
+  });
+
+  it('prüft ohne Zeitangabe weiterhin gegen die Systemuhr', async () => {
+    // Im Betrieb gibt es keine eingespeiste Uhr – der Vorgabewert muss also
+    // ein altes Token weiterhin zurückweisen.
+    const { token } = await signTwoFactorToken('u-1', { secret, ttlMs: TTL }, NOW);
+
+    expect(await verifyTwoFactorToken(token, { secret })).toBeNull();
+  });
+
+  it('akzeptiert kein Access-Token an dieser Stelle', async () => {
+    const fremd = await signAccessToken(
+      { userId: 'u-1', sessionId: 's-1' },
+      { secret, ttlMs: TTL },
+    );
+
+    expect(await verifyTwoFactorToken(fremd, { secret })).toBeNull();
   });
 });
 
