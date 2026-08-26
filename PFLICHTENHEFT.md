@@ -134,6 +134,8 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `PERMISSION_DENIED` | 403 | Angemeldet, aber die nötige Permission fehlt (§8) |
 | `RESOURCE_LIMIT_EXCEEDED` | 403 | Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (§10) |
 | `ROLE_PROTECTED` | 403 | Änderung an einer geschützten Systemrolle („Gast", §8) |
+| `USER_NOT_FOUND` | 404 | Konto existiert nicht (§6, §10) |
+| `NODE_NOT_FOUND` | 404 | Node existiert nicht (§6, §10) |
 | `ROLE_NOT_FOUND` | 404 | Rolle existiert nicht (§8) |
 | `ROLE_NAME_TAKEN` | 409 | Rollenname bereits vergeben (§8) |
 | `SUBDOMAIN_TAKEN` | 409 | Subdomain belegt oder reserviert (§13) |
