@@ -17,7 +17,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src drizzle.config.ts",
     "test": "vitest run --passWithNoTests",
-    "clean": "rimraf dist .turbo"
+    "clean": "rimraf dist .turbo",
+    "db:migrate:prod": "node dist/db/migrate.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
