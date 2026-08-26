@@ -14,6 +14,7 @@ import {
   Icon,
   Modal,
   Panel,
+  formatDateTime,
   useToast,
 } from '@/components/shared';
 import {
@@ -26,7 +27,7 @@ import {
 } from '@/lib/api/servers';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { formatBytes, formatDateTime } from '../formatDetail';
+import { formatBytes } from '../formatDetail';
 
 /**
  * Reiter „Dateien" der Detailansicht (Lastenheft §3.3).

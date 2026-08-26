@@ -1,6 +1,7 @@
 'use client';
 
 import { type FormEvent, type ReactNode } from 'react';
+import { FormMessage } from '../form/FormMessage';
 import { Button } from '../primitives/Button';
 import { Modal } from './Modal';
 
@@ -53,14 +54,7 @@ export function FormModal({
       <form onSubmit={handleSubmit} className="pb-6">
         <div className="flex flex-col gap-4">{children}</div>
 
-        {error ? (
-          <p
-            role="alert"
-            className="mt-4 rounded border border-danger-line bg-danger-soft px-2.5 py-2 text-sm text-danger"
-          >
-            {error}
-          </p>
-        ) : null}
+        {error ? <FormMessage className="mt-4">{error}</FormMessage> : null}
 
         <div className="mt-5.5 flex flex-wrap justify-end gap-2.5">
           <Button onClick={onClose} disabled={busy}>

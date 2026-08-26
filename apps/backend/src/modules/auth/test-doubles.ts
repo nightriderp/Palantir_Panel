@@ -70,6 +70,28 @@ export function createFakeAuthRepository(): FakeAuthRepository {
       return Promise.resolve(user);
     },
 
+    findOwner: () => Promise.resolve(users.find((user) => user.isOwner) ?? null),
+
+    setOwner: (id) => {
+      const index = users.findIndex((user) => user.id === id);
+      const current = users[index];
+
+      if (!current) {
+        return Promise.reject(new Error('Konto nicht gefunden.'));
+      }
+
+      if (users.some((user) => user.isOwner && user.id !== id)) {
+        // Bildet den partiellen Unique-Index `users_single_owner_idx` nach:
+        // die Datenbank lässt kein zweites Owner-Konto zu (Lastenheft §2).
+        return Promise.reject(new Error('Es gibt bereits ein Owner-Konto.'));
+      }
+
+      const updated: UserRecord = { ...current, isOwner: true };
+      users[index] = updated;
+
+      return Promise.resolve(updated);
+    },
+
     setUsername: (id, username) => {
       const index = users.findIndex((user) => user.id === id);
       const current = users[index];

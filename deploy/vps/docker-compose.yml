@@ -151,6 +151,70 @@ services:
     networks:
       - palantir
 
+  # --- Ersteinrichtung --------------------------------------------------------
+  # Legt die Seed-Rollen (Admin, Moderator, Nutzer, geschützte Systemrolle Gast -
+  # Pflichtenheft §8) und die erste Node an. Einmalig bei der Ersteinrichtung;
+  # der Lauf ist idempotent und kann gefahrlos wiederholt werden.
+  #
+  #   docker compose --env-file ../../.env run --rm seed
+  #
+  # `profiles` hält den Dienst aus `up -d` heraus: Seeding ist ein bewusster
+  # Schritt, kein Nebeneffekt jedes Deployments. `run` aktiviert das Profil von
+  # selbst, ein zusätzliches `--profile setup` ist nicht nötig.
+  #
+  # Warum überhaupt ein Dienst: Auf der VPS gibt es weder Node noch pnpm, dort
+  # läuft nur Docker. Der in SETUP.md zuvor genannte Aufruf
+  # `pnpm --filter @palantir/backend db:seed` ist dort nicht ausführbar - und
+  # ohne Seed existiert nach dem ersten Start keine einzige Rolle.
+  seed:
+    profiles: ['setup']
+    image: ghcr.io/nightriderp/palantir-backend:${PALANTIR_VERSION}
+    container_name: palantir-seed
+    restart: 'no'
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${MIGRATE_MEM_LIMIT:-512m}
+    pids_limit: 256
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../../.env
+    command: ['node', 'apps/backend/dist/db/seed.js']
+    networks:
+      - palantir
+
+  # --- Audit-Archivierung -----------------------------------------------------
+  # Exportiert Audit-Einträge älter als 24 Monate in eine komprimierte Datei und
+  # entfernt sie danach aus der aktiven Tabelle (Pflichtenheft §6). Gefahrlos
+  # wiederholbar: Gibt es nichts zu archivieren, passiert nichts.
+  #
+  #   docker compose --env-file ../../.env run --rm archive
+  #
+  # Auch hier ein Profil - der Lauf gehört in einen Zeitplan oder wird bewusst
+  # angestoßen, nicht bei jedem Deployment mitgenommen.
+  archive:
+    profiles: ['wartung']
+    image: ghcr.io/nightriderp/palantir-backend:${PALANTIR_VERSION}
+    container_name: palantir-archive
+    restart: 'no'
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${MIGRATE_MEM_LIMIT:-512m}
+    pids_limit: 256
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../../.env
+    environment:
+      AUDIT_ARCHIVE_DIR: /data/audit-archive
+    volumes:
+      - ../../data/audit-archive:/data/audit-archive
+    command: ['node', 'apps/backend/dist/db/archive-audit.js']
+    networks:
+      - palantir
+
   # --- Backend-API ------------------------------------------------------------
   backend:
     image: ghcr.io/nightriderp/palantir-backend:${PALANTIR_VERSION}
@@ -167,6 +231,18 @@ services:
         condition: service_completed_successfully
     env_file:
       - ../../.env
+    environment:
+      # Übersteuert den Wert aus der .env: dort steht ein Pfad des HOSTS, im
+      # Container gilt der Einhängepunkt. So bleibt der Ablageort auf dem Host
+      # frei wählbar, ohne dass die Einhängung nachgezogen werden muss.
+      AUDIT_ARCHIVE_DIR: /data/audit-archive
+    volumes:
+      # Archive des Audit-Logs (Pflichtenheft §6). Ohne diese Einhängung
+      # schriebe der Archivierungslauf in das Dateisystem des Containers - und
+      # die Sicherheitsprotokolle wären beim nächsten Neustart verschwunden.
+      # Das Verzeichnis muss dem Benutzer `node` (UID 1000) aus dem Image
+      # gehören, siehe SETUP.md.
+      - ../../data/audit-archive:/data/audit-archive
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.palantir-api.rule=Host(`api.${PALANTIR_DOMAIN}`)'

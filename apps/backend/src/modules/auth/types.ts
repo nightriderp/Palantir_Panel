@@ -94,6 +94,22 @@ export interface AuthRepository {
   findUserByUsername(username: string): Promise<UserRecord | null>;
   usernameExists(username: string): Promise<boolean>;
   createUser(data: { username: string | null; displayName: string }): Promise<UserRecord>;
+  /**
+   * Konto mit Owner-Sonderstatus, falls es eines gibt (Lastenheft §2).
+   *
+   * Genau ein Konto kann ihn tragen; abgesichert ist das über den partiellen
+   * Unique-Index `users_single_owner_idx`.
+   */
+  findOwner(): Promise<UserRecord | null>;
+  /**
+   * Vergibt den Owner-Sonderstatus an ein Konto (Ersteinrichtung,
+   * Pflichtenheft §12.3).
+   *
+   * Bewusst ohne Gegenstück zum Entziehen: Der Status ist der Schutz davor,
+   * dass sich niemand mehr anmelden kann (Lastenheft §2). Ein Wechsel des
+   * Owners ist kein Vorgang der Version 1.
+   */
+  setOwner(id: string): Promise<UserRecord>;
   /** Setzt die Anmeldekennung nach, wenn ein Provider-Konto ein Passwort bekommt. */
   setUsername(id: string, username: string): Promise<UserRecord>;
   deleteUser(id: string): Promise<void>;

@@ -8,11 +8,10 @@
  *
  * **Abgrenzung zu B1 (Auth & Identity):** Registrierung, `AuthMethod` und das
  * Abholen der Profildaten beim Provider gehören zu B1. B8 liefert die
- * Admin-Sicht darauf und die Aktionen. Die Tabelle `auth_methods` existiert
- * noch nicht; die Drizzle-Implementierung des Repositories liefert deshalb
- * vorerst eine leere Profilliste. Sobald B1 sie mitbringt, wird sie dort
- * dazugelesen – der DTO ändert sich dadurch nicht (vermerkt in WORK_STATUS.md
- * unter „Gefundene Punkte").
+ * Admin-Sicht darauf und die Aktionen. Die Profilangaben liest die
+ * Drizzle-Implementierung des Repositories aus `auth_methods` mit; die
+ * Abbildung auf `LinkedAccountProfileDto` steht in `linked-profiles.ts`
+ * (R1, Gefundener Punkt 39).
  *
  * **Freigabe** heißt: Gast-Rolle entziehen und die gewünschten Rollen zuweisen
  * (ohne Angabe die Seed-Rolle „Nutzer"). **Sperren** setzt `User.banned` –
@@ -52,7 +51,10 @@ export interface WaitlistUserRecord {
   readonly banned: boolean;
   readonly createdAt: Date;
   readonly roles: readonly WaitlistRole[];
-  /** Profilangaben der verknüpften Login-Methoden; leer, solange B1 fehlt. */
+  /**
+   * Profilangaben der verknüpften Login-Methoden (Lastenheft §3.1) – gefüllt
+   * aus `auth_methods`. Leer bei Konten ohne verknüpftes Verfahren.
+   */
   readonly profiles: readonly LinkedAccountProfileDto[];
 }
 
@@ -72,10 +74,20 @@ export interface RegistrationRequestRepository {
  *
  * Gesperrt schlägt alles: Ein gesperrtes Konto ist keine offene Anfrage mehr,
  * auch wenn es noch die Gast-Rolle trägt.
+ *
+ * Der Owner wartet nie (Lastenheft §2): Sein Sonderstatus liegt außerhalb des
+ * Rollensystems und gibt ihm unabhängig von seinen Rollen alle Rechte – als
+ * offene Anfrage in der Warteliste zu stehen wäre schlicht falsch. Dieselbe
+ * Auslegung wie `isAwaitingApproval()` im Auth-Modul (B1); gesperrt werden kann
+ * er ohnehin nicht.
  */
 export function statusOf(user: WaitlistUserRecord): RegistrationRequestStatus {
   if (user.banned) {
     return 'blocked';
+  }
+
+  if (user.isOwner) {
+    return 'approved';
   }
 
   const hasOnlyGuestRole = user.roles.every((role) => role.name === GUEST_ROLE_NAME);

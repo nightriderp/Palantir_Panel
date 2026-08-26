@@ -34,6 +34,10 @@ describe('Audit-Log-Contract (Pflichtenheft §6)', () => {
     );
   });
 
+  it('kennt die Vergabe des Owner-Status (Lastenheft §2, Pflichtenheft §12.3)', () => {
+    expect(isAuditAction('user.ownerGranted')).toBe(true);
+  });
+
   it('erkennt unbekannte Aktionen und Zielarten', () => {
     expect(isAuditAction('user.approved')).toBe(true);
     expect(isAuditAction('user.geloescht')).toBe(false);
