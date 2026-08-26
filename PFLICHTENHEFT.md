@@ -137,6 +137,18 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `RESOURCE_LIMIT_EXCEEDED` | 403 | Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (§10) |
 | `ROLE_PROTECTED` | 403 | Änderung an einer geschützten Systemrolle („Gast", §8) |
 | `USER_NOT_FOUND` | 404 | Konto existiert nicht (§6, §10) |
+| `AUTH_CSRF_INVALID` | 403 | Zustandsändernder Request ohne gültiges CSRF-Token (§7) |
+| `AUTH_SESSION_EXPIRED` | 401 | Refresh-Token abgelaufen, widerrufen oder unbekannt (§7) |
+| `AUTH_SESSION_NOT_FOUND` | 404 | Sitzung existiert nicht oder gehört zu einem anderen Konto (§7) |
+| `AUTH_TWO_FACTOR_ALREADY_ENABLED` | 409 | 2FA ist für dieses Konto bereits aktiv (§7) |
+| `AUTH_TWO_FACTOR_NOT_ENABLED` | 409 | Vorgang setzt aktive 2FA voraus (§7) |
+| `AUTH_METHOD_ALREADY_LINKED` | 409 | Anmeldeverfahren ist bereits mit einem Konto verknüpft (§7) |
+| `AUTH_METHOD_NOT_FOUND` | 404 | Anmeldeverfahren ist mit diesem Konto nicht verknüpft (§7) |
+| `AUTH_METHOD_LAST_REMAINING` | 409 | Letztes verbliebenes Anmeldeverfahren soll getrennt werden (§7) |
+| `AUTH_OAUTH_STATE_INVALID` | 400 | Rückkehr vom Provider ohne gültigen `state` (§7) |
+| `AUTH_PROVIDER_NOT_CONFIGURED` | 501 | Für diesen Provider fehlen die Zugangsdaten in der `.env` (§12.1) |
+| `AUTH_PASSWORD_CHANGE_REQUIRED` | 403 | Admin hat das Passwort zurückgesetzt, Änderung steht aus (Lastenheft §3.1) |
+| `AUTH_OWNER_PROTECTED` | 403 | Vorgang würde den Owner aussperren, z. B. Selbst-Löschung (Lastenheft §2) |
 | `NODE_NOT_FOUND` | 404 | Node existiert nicht (§6, §10) |
 | `ROLE_NOT_FOUND` | 404 | Rolle existiert nicht (§8) |
 | `ROLE_NAME_TAKEN` | 409 | Rollenname bereits vergeben (§8) |
@@ -223,8 +235,8 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 | Entität | Wesentliche Felder |
 |---|---|
 | `User` | id, displayName, isOwner, banned, createdAt |
-| `AuthMethod` | userId, type (password/discord/steam/twitch), providerUserId, passwordHash |
-| `Session` | userId, refreshTokenHash, deviceInfo, ipHint, createdAt, lastUsedAt, revokedAt |
+| `AuthMethod` | userId, type (password/discord/steam/twitch), providerUserId, passwordHash, *(ergänzt in B1:)* providerDisplayName, providerAvatarUrl, mustChangePassword, totpSecret, totpConfirmedAt, createdAt, lastUsedAt |
+| `Session` | userId, refreshTokenHash, deviceInfo, ipHint, createdAt, lastUsedAt, revokedAt, *(ergänzt in B1:)* previousRefreshTokenHash, expiresAt |
 | `Role` | id, name, permissions[], isProtected |
 | `UserRole` | userId, roleId |
 | `GameServer` | id, ownerId, gameType, name, status, dockerContainerId, hostId, subdomain, assignedPorts, resourceLimits, configJson, autoShutdownEnabled, createdAt |
@@ -273,6 +285,21 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 - **2FA als Zwischenschritt, nicht als Fehler:** Der Login antwortet mit `status: 'two_factor_required'` und einem kurzlebigen `twoFactorToken` (kein Access-Token). Erst der zweite Schritt legt die Sitzung an. Ein *falscher* Code ist dagegen ein Fehler (`AUTH_TWO_FACTOR_INVALID`), ein abgelaufener Zwischen-Token ebenfalls (`AUTH_TWO_FACTOR_EXPIRED`).
 - **Wartezustand als eigenes Feld:** `AccountDto.awaitingApproval` sagt, ob das Konto noch auf die Freischaltung durch einen Admin wartet (Lastenheft §3.1). Bewusst ein serverseitig gesetztes Feld statt eines Rückschlusses aus Rollenname oder leerem `permissions`-Objekt – sonst läge die Auslegung im Frontend (§5.2).
 - **Passwortlänge:** Mindestens 12 Zeichen (siehe oben), höchstens 200 – die Obergrenze begrenzt nur die Rechenzeit von Argon2id und ist kein Sicherheitsmerkmal.
+
+Festlegungen des Backend-Arbeitspakets B1, die darauf aufbauen (Modul `apps/backend/src/modules/auth`):
+
+- **Benutzername und Anzeigename getrennt:** `users.username` ist die Anmeldekennung des Passwort-Verfahrens und über einen partiellen Unique-Index auf `lower(username)` eindeutig; bei reinen Provider-Konten ist sie `null`. `users.display_name` bleibt frei wählbar und muss nicht eindeutig sein. Kollidiert ein vom Provider gelieferter Anzeigename, bleibt er trotzdem stehen – eindeutig sein muss nur der Benutzername.
+- **Token-Lebensdauern:** aus der zentralen `.env` (`JWT_ACCESS_TOKEN_TTL`, Standard 15 Minuten; `REFRESH_TOKEN_TTL`, Standard 30 Tage). Das Access-JWT wird mit HS256 gegen `JWT_SECRET` signiert und trägt nur `sub`, `sid` (Sitzung), `iat` und `exp` – keine Rollen oder Permissions, damit ein Rechteentzug nicht bis zum Ablauf des Tokens nachwirkt. Jeder Request prüft die Sitzung zusätzlich gegen die Datenbank; erst dadurch wirkt ein Remote-Logout sofort.
+- **2FA-Zwischen-Token:** derselbe HS256-Schlüssel, aber ein eigener Verwendungszweck im Token (`purpose`) und eine Lebensdauer von 5 Minuten. Er erlaubt ausschließlich den zweiten Anmeldeschritt und taugt an keiner anderen Route als Nachweis.
+- **Refresh-Token:** 32 zufällige Bytes, Base64url-kodiert, in der `Session`-Tabelle ausschließlich als SHA-256-Hash. Bewusst SHA-256 statt Argon2id: der Token hat volle Zufalls-Entropie, dort schützt ein langsamer Hash vor nichts, und die Prüfung liegt auf jedem Refresh-Request. Bei jedem Refresh wird der Token ersetzt (Rotation); der ersetzte Hash bleibt als `previousRefreshTokenHash` stehen, damit ein bereits ersetzter Token wiedererkennbar bleibt. Taucht er erneut auf, werden **alle** Sitzungen des Kontos widerrufen – das ist das typische Bild eines gestohlenen Tokens.
+- **Cookies:** `palantir_access` (httpOnly, Pfad `/`), `palantir_refresh` (httpOnly, Pfad `/auth` – außerhalb der Anmelde-Routen wird er gar nicht erst mitgeschickt) und `palantir_csrf` (lesbar, Pfad `/`). Alle drei `Secure` und `SameSite=Lax`; das `Secure`-Flag ist über `COOKIE_SECURE` abschaltbar, ausschließlich für lokale Entwicklung ohne TLS.
+- **CSRF-Verfahren:** Double-Submit. Der Wert aus `palantir_csrf` muss bei jedem zustandsändernden Request im Header `x-csrf-token` stehen; verglichen wird in konstanter Zeit. Ausgenommen sind `/auth/register` und `/auth/login` – dort existiert noch keine Sitzung, die sich missbrauchen ließe. Die Namen stehen als `CSRF_COOKIE_NAME`/`CSRF_HEADER_NAME` im Vertrag.
+- **OAuth-`state`:** vom Backend erzeugter Zufallswert, abgelegt in einem kurzlebigen, signierten httpOnly-Cookie (10 Minuten) und beim Rückkehr-Aufruf gegen den Parameter verglichen; danach wird das Cookie gelöscht. Der Zwischenzustand gilt nur für den Provider, für den er gesetzt wurde. Für Discord und Twitch kommt PKCE (S256) dazu, der Verifier liegt im selben Cookie. Steam nutzt OpenID 2.0 und kennt kein PKCE – dort hängt der `state` am `openid.return_to`, wird von Steam mitsigniert und die Rückkehr zusätzlich über `check_authentication` bestätigt.
+- **Minimale Scopes:** Discord bekommt ausschließlich `identify` (Id, Name, Avatar – keine E-Mail, keine Gilden), Twitch wird ohne Scope angefragt (`/helix/users` liefert das eigene Konto auch dann), Steam kennt über OpenID gar keine Scopes; Profilname und Avatar holt ein rein lesender Aufruf mit dem Web-API-Key.
+- **2FA-Wiederherstellung:** bewusst **keine** Einmal-Wiederherstellungscodes. Verliert ein Nutzer seinen Authenticator, schaltet ein Konto mit `user.manage` die 2FA im Nutzerpanel ab – derselbe Weg wie beim Passwort-Reset (Lastenheft §3.1, bewusst ohne E-Mail-Versand). Das erspart einen zweiten Weg an der 2FA vorbei und Codes, die verloren gehen können. Das Zod-Schema `twoFactorCodeSchema` lässt längere Codes bereits zu; das Backend nimmt in Version 1 ausschließlich sechsstellige TOTP-Codes an (`totpCodeSchema`).
+- **Passwort-Reset durch den Admin:** das Backend erzeugt ein kryptografisch zufälliges Einmal-Passwort, liefert es genau einmal in der Antwort an den Admin aus und speichert es nirgends im Klartext. Das Konto steht danach auf `mustChangePassword`; bis zur Änderung lehnt das Backend zustandsändernde Requests mit `AUTH_PASSWORD_CHANGE_REQUIRED` ab. Alle Sitzungen des Kontos werden dabei widerrufen.
+- **TOTP-Geheimnis:** liegt unverschlüsselt an der Passwort-`AuthMethod`. Es ist kein zweiter Passwort-Ersatz: Wer Lesezugriff auf die Datenbank hat, kommt damit an den zweiten Faktor, aber nicht am Argon2id-Passwort-Hash vorbei. Eine zusätzliche Verschlüsselung mit einem Schlüssel aus derselben `.env` würde denselben Angreifer nicht aufhalten und nur Komplexität hinzufügen.
+- **Konto-Löschung:** löscht den Datensatz samt `AuthMethod`-, `Session`- und `UserRole`-Einträgen (`ON DELETE CASCADE`). Das Owner-Konto kann sich nicht selbst löschen (`AUTH_OWNER_PROTECTED`, Lastenheft §2).
 
 ---
 

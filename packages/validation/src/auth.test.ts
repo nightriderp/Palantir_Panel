@@ -3,11 +3,18 @@ import { describe, expect, it } from 'vitest';
 import {
   PASSWORD_MIN_LENGTH,
   altchaChallengeSchema,
+  changePasswordInputSchema,
+  deleteAccountInputSchema,
+  disableTwoFactorInputSchema,
+  linkPasswordInputSchema,
   loginInputSchema,
   loginResultSchema,
   passwordSchema,
   registerInputSchema,
+  sessionDtoSchema,
+  totpCodeSchema,
   twoFactorCodeSchema,
+  twoFactorSetupSchema,
   usernameSchema,
 } from './auth.js';
 
@@ -163,5 +170,78 @@ describe('ALTCHA-Challenge (Pflichtenheft §3)', () => {
       false,
     );
     expect(altchaChallengeSchema.safeParse({ ...challenge, challenge: 'zzz' }).success).toBe(false);
+  });
+});
+
+describe('Ergänzungen aus B1 (Pflichtenheft §7)', () => {
+  const password = 'ein-sehr-langes-passwort';
+
+  it('lässt beim Einrichten von 2FA nur echte TOTP-Codes zu', () => {
+    // `twoFactorCodeSchema` oben lässt auch längere Codes durch; beim
+    // Einrichten und Abschalten ist ausschließlich ein TOTP-Code zulässig –
+    // Wiederherstellungscodes gibt es bewusst nicht (Pflichtenheft §7).
+    expect(totpCodeSchema.parse(' 123456 ')).toBe('123456');
+    expect(totpCodeSchema.safeParse('12345').success).toBe(false);
+    expect(totpCodeSchema.safeParse('ABCD1234').success).toBe(false);
+  });
+
+  it('verlangt beim Passwortwechsel ein anderes neues Passwort', () => {
+    expect(
+      changePasswordInputSchema.safeParse({ currentPassword: password, newPassword: password })
+        .success,
+    ).toBe(false);
+    expect(
+      changePasswordInputSchema.safeParse({
+        currentPassword: password,
+        newPassword: `${password}-neu`,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('verlangt zum Abschalten von 2FA Passwort und Code zusammen', () => {
+    expect(disableTwoFactorInputSchema.safeParse({ password, code: '123456' }).success).toBe(true);
+    expect(disableTwoFactorInputSchema.safeParse({ code: '123456' }).success).toBe(false);
+    expect(disableTwoFactorInputSchema.safeParse({ password }).success).toBe(false);
+  });
+
+  it('verlangt beim Verknüpfen eines Passworts auch einen Benutzernamen', () => {
+    // Ein reines Provider-Konto hat noch keinen – ohne ihn gäbe es nichts,
+    // womit man sich anschließend per Passwort anmelden könnte.
+    expect(linkPasswordInputSchema.safeParse({ username: 'spieler', password }).success).toBe(true);
+    expect(linkPasswordInputSchema.safeParse({ password }).success).toBe(false);
+  });
+
+  it('lässt die Konto-Löschung ohne Passwort zu, den Namen aber nie weg', () => {
+    // Reine Provider-Konten haben kein Passwort; ob es verlangt wird,
+    // entscheidet das Backend anhand der verknüpften Verfahren.
+    expect(deleteAccountInputSchema.safeParse({ confirmName: 'spieler' }).success).toBe(true);
+    expect(deleteAccountInputSchema.safeParse({ password }).success).toBe(false);
+  });
+
+  it('prüft das Sitzungs-DTO der Geräteübersicht', () => {
+    const session = {
+      id: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+      deviceInfo: 'Firefox auf Windows',
+      ipHint: '203.0.113.x',
+      createdAt: '2026-08-26T10:00:00.000Z',
+      lastUsedAt: '2026-08-26T11:00:00.000Z',
+      expiresAt: '2026-09-25T10:00:00.000Z',
+      current: true,
+      permissions: { canRevoke: true },
+    };
+
+    expect(sessionDtoSchema.safeParse(session).success).toBe(true);
+    // Der Refresh-Token gehört in keine Antwort – ein Feld dafür gibt es nicht.
+    expect(sessionDtoSchema.parse(session)).not.toHaveProperty('refreshTokenHash');
+  });
+
+  it('verlangt beim 2FA-Setup eine otpauth-URI', () => {
+    expect(
+      twoFactorSetupSchema.safeParse({ secret: 'ABCDEF', otpauthUri: 'otpauth://totp/x' }).success,
+    ).toBe(true);
+    expect(
+      twoFactorSetupSchema.safeParse({ secret: 'ABCDEF', otpauthUri: 'https://example.tld' })
+        .success,
+    ).toBe(false);
   });
 });

@@ -81,6 +81,101 @@ export const ERROR_CATALOG = {
     httpStatus: 502,
     defaultMessage: 'Die Anmeldung über den externen Dienst ist fehlgeschlagen.',
   },
+
+  // -- Ergänzt in B1 (Backend, Pflichtenheft §7) -----------------------------
+  // Die Codes oben stammen aus F1 und decken Login, Registrierung und 2FA ab.
+  // Hier kommen die Fälle dazu, die erst im Backend entstehen: Sitzungen,
+  // Methoden-Verknüpfung, CSRF und die Admin-Eingriffe.
+
+  /**
+   * Zustandsändernder Request ohne gültiges CSRF-Token (Pflichtenheft §7, §18).
+   * 403: die Sitzung ist gültig, der Request wird trotzdem abgelehnt.
+   */
+  AUTH_CSRF_INVALID: {
+    httpStatus: 403,
+    defaultMessage: 'Das Sicherheitstoken des Requests ist ungültig oder fehlt.',
+  },
+  /**
+   * Refresh-Token abgelaufen, widerrufen oder unbekannt (Pflichtenheft §7).
+   * 401: bewusst getrennt von `AUTH_REQUIRED`, damit das Frontend eine
+   * abgelaufene Sitzung von einem nie angemeldeten Zugriff unterscheiden kann.
+   */
+  AUTH_SESSION_EXPIRED: {
+    httpStatus: 401,
+    defaultMessage: 'Die Sitzung ist abgelaufen. Bitte erneut anmelden.',
+  },
+  /** Sitzung existiert nicht oder gehört zu einem anderen Konto. 404. */
+  AUTH_SESSION_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Sitzung existiert nicht.',
+  },
+  /** Für dieses Konto ist 2FA bereits aktiv (Pflichtenheft §7). 409. */
+  AUTH_TWO_FACTOR_ALREADY_ENABLED: {
+    httpStatus: 409,
+    defaultMessage: 'Die Zwei-Faktor-Authentifizierung ist für dieses Konto bereits aktiv.',
+  },
+  /** Vorgang setzt aktive 2FA voraus, das Konto hat aber keine. 409. */
+  AUTH_TWO_FACTOR_NOT_ENABLED: {
+    httpStatus: 409,
+    defaultMessage: 'Für dieses Konto ist keine Zwei-Faktor-Authentifizierung eingerichtet.',
+  },
+  /**
+   * Dieses Anmeldeverfahren ist bereits mit einem Konto verknüpft – dem eigenen
+   * oder einem fremden (Lastenheft §3.1). 409.
+   */
+  AUTH_METHOD_ALREADY_LINKED: {
+    httpStatus: 409,
+    defaultMessage: 'Dieses Anmeldeverfahren ist bereits mit einem Konto verknüpft.',
+  },
+  /** Das angeforderte Verfahren ist mit diesem Konto nicht verknüpft. 404. */
+  AUTH_METHOD_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieses Anmeldeverfahren ist mit dem Konto nicht verknüpft.',
+  },
+  /**
+   * Letztes verbliebenes Anmeldeverfahren soll getrennt werden. 409: das Konto
+   * hätte danach keinen Weg mehr hinein – wer es loswerden will, löscht es
+   * (Lastenheft §3.1).
+   */
+  AUTH_METHOD_LAST_REMAINING: {
+    httpStatus: 409,
+    defaultMessage:
+      'Das letzte verbleibende Anmeldeverfahren kann nicht getrennt werden. Verknüpfe zuerst ein weiteres.',
+  },
+  /**
+   * Rückkehr vom Provider ohne gültigen `state` (Pflichtenheft §7 –
+   * Absicherung gegen untergeschobene Logins). 400.
+   */
+  AUTH_OAUTH_STATE_INVALID: {
+    httpStatus: 400,
+    defaultMessage: 'Der Login-Vorgang ist ungültig oder abgelaufen. Bitte erneut starten.',
+  },
+  /**
+   * Für diesen Provider fehlen die Zugangsdaten in der zentralen `.env`
+   * (Pflichtenheft §12.1). 501: die Instanz bietet diesen Weg nicht an.
+   */
+  AUTH_PROVIDER_NOT_CONFIGURED: {
+    httpStatus: 501,
+    defaultMessage: 'Dieser Anmelde-Anbieter ist auf dieser Instanz nicht eingerichtet.',
+  },
+  /**
+   * Ein Admin hat das Passwort zurückgesetzt; bis zur Änderung sind andere
+   * Vorgänge gesperrt (Lastenheft §3.1). 403.
+   */
+  AUTH_PASSWORD_CHANGE_REQUIRED: {
+    httpStatus: 403,
+    defaultMessage: 'Das Passwort muss zuerst geändert werden.',
+  },
+  /**
+   * Vorgang würde den Owner aussperren – etwa die Selbst-Löschung des
+   * Owner-Kontos (Lastenheft §2: genau ein Konto trägt diesen Status). 403:
+   * unabhängig von Berechtigungen unzulässig.
+   */
+  AUTH_OWNER_PROTECTED: {
+    httpStatus: 403,
+    defaultMessage:
+      'Das Owner-Konto ist geschützt: Es kann sich nicht selbst löschen oder aussperren.',
+  },
   /**
    * Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (Pflichtenheft §10).
    * 403: Request ist verstanden und authentifiziert, wird aber wegen eines
