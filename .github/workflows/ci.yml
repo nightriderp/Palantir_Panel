@@ -88,6 +88,26 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Migrationen anwenden
+        # `db:check` oben vergleicht nur Journal und Momentaufnahmen auf der
+        # Platte - es fuehrt die Kette nie aus. Ein Fehler, der erst beim
+        # Anwenden auftritt (eine Migration, die an bestehenden Daten oder an
+        # einer bereits vorhandenen Tabelle scheitert), faellt dort nicht auf
+        # und schlaegt erst beim Deployment zu.
+        #
+        # Die Wegwerf-Datenbank dieses Laufs ist leer, die Kette laeuft also
+        # von 0000 an durch - genau wie bei einer neuen Instanz.
+        #
+        # Laeuft nach dem Build, weil das Skript ueber die Workspace-Pakete
+        # geht; `db:check` braucht sie nicht und bleibt deshalb vorne.
+        run: pnpm --filter @palantir/backend db:migrate
+
+      - name: Migrationen sind wiederholbar
+        # Zweiter Lauf gegen dieselbe Datenbank: Er darf nichts mehr tun.
+        # Faengt Migrationen ab, die ein zweites Mal scheitern - im Betrieb
+        # laeuft `db:migrate` bei jedem Deployment erneut.
+        run: pnpm --filter @palantir/backend db:migrate
+
       - name: Typecheck
         run: pnpm typecheck
 

@@ -63,7 +63,7 @@ Den Wert an **beiden** Stellen eintragen – sie müssen identisch sein:
 
 ```
 POSTGRES_PASSWORD=<erzeugter Wert>
-DATABASE_URL=postgresql://palantir:<erzeugter Wert>@db:5432/palantir
+DATABASE_URL=postgresql://palantir:<erzeugter Wert>@postgres:5432/palantir
 ```
 
 Nur alphanumerische Zeichen verwenden. Sonderzeichen müssten in `DATABASE_URL`
@@ -74,7 +74,7 @@ Start aus `POSTGRES_USER`, `POSTGRES_PASSWORD` und `POSTGRES_DB` automatisch Rol
 Datenbank an:
 
 ```bash
-docker compose up -d db
+docker compose --env-file ../../.env up -d postgres
 ```
 
 **Schritt 3 – Migrationen.** Nichts zu tun: der Dienst `migrate` in der Compose-Datei
@@ -112,7 +112,7 @@ vollständige Anleitung samt Begründung steht in Abschnitt 2.5.
 **Wichtig:**
 
 - Der Datenbank-Port wird **nicht** nach außen veröffentlicht. Die Datenbank ist nur im
-  Docker-Netz erreichbar – deshalb `@db:5432` in der `DATABASE_URL` und nicht `127.0.0.1`.
+  Docker-Netz erreichbar – deshalb `@postgres:5432` in der `DATABASE_URL` und nicht `127.0.0.1`.
 - Das Passwort wird nur aus der `.env` gelesen, steht nie in einem Kommando und nie in der
   Shell-History.
 - Schema-Änderungen laufen ausschließlich über Migrationen, nie manuell an der laufenden
@@ -277,14 +277,20 @@ ein Konto mit Benutzername und Passwort anlegen. Bewusst der reguläre Weg: dies
 Passwortregeln, dasselbe CAPTCHA, dieselbe `AuthMethod` wie bei jedem anderen Konto. Der
 Wartebildschirm nach der Registrierung ist erwartet – Schritt 2 löst ihn auf.
 
-**Schritt 2 – dieses Konto zum Owner heben.** Auf der **VPS** aus
-`/opt/palantir/deploy/vps`:
+**Schritt 2 – dieses Konto zum Owner heben.** Auf der **VPS** über den Compose-Dienst
+`owner`, aus `/opt/palantir/deploy/vps`:
 
 ```bash
 docker compose --env-file ../../.env run --rm owner <benutzername>
 ```
 
-Auf dem **Entwicklungsrechner** geht es direkt über pnpm, dort ist Node vorhanden:
+> Wie beim Seed-Lauf: Auf der VPS gibt es **weder Node noch pnpm**, dort läuft nur Docker.
+> Der Dienst nutzt denselben kompilierten Stand aus dem Backend-Image. Er trägt den
+> Benutzernamen bewusst als `entrypoint`-Argument – ein `command` würde von
+> `docker compose run` ersetzt, und der Name käme nie beim Skript an.
+
+Auf dem **Entwicklungsrechner** läuft derselbe Schritt direkt über pnpm, im Repo-Root des
+geklonten Repositories:
 
 ```bash
 pnpm --filter @palantir/backend db:owner <benutzername>
@@ -485,14 +491,67 @@ Gegenpart – in der `authorized_keys`.
 
 ### 3.4 Gamenode vorbereiten
 
-In der **Gameserver-VM** auf dem Homeserver:
+Alle Schritte in diesem Abschnitt laufen in der **Gameserver-VM** auf dem Homeserver.
+
+#### Wo die Zugangsdaten liegen – und warum nicht in `/root`
+
+Der Update-Dienst läuft als `root`, aber mit `ProtectHome=true`: `/root` und `/home` sind
+für ihn ausgeblendet. Zugangsdaten, die dort liegen, sieht er nicht – ein `docker login`
+als root schriebe nach `/root/.docker/config.json`, und der Pull des privaten Agent-Images
+scheiterte im Timer mit `unauthorized`, obwohl er von Hand funktioniert. Beides gehört
+deshalb nach `/etc/palantir`:
 
 ```bash
-git clone https://github.com/nightriderp/Palantir_Panel.git /opt/palantir
+mkdir -p /etc/palantir/docker && chmod 700 /etc/palantir
 ```
 
-Auch hier ist für ein privates Repository ein **Deploy-Key mit Leserecht** nötig – die
-Node holt sich ihren Stand selbst und braucht dauerhaften Lesezugriff.
+#### Deploy-Key und Auscheckung
+
+Das Repository ist privat, die Node braucht dauerhaften Lesezugriff. Der Schlüssel der VPS
+lässt sich nicht mitbenutzen: GitHub nimmt denselben Deploy-Key nur bei genau einem
+Repository an, und ein zweiter Rechner braucht ohnehin ein eigenes Schlüsselpaar.
+
+```bash
+ssh-keygen -t ed25519 -N '' -C 'palantir-gamenode-readonly' -f /etc/palantir/repo_readonly
+```
+
+Den **öffentlichen** Teil (`/etc/palantir/repo_readonly.pub`) im Repository unter
+_Settings → Deploy keys → Add deploy key_ eintragen, **ohne** Schreibrecht.
+
+Vor dem ersten Klonen muss der Host-Key von GitHub bekannt sein, sonst bricht `git` mit
+`Host key verification failed` ab. Er gehört aus demselben Grund wie die übrigen
+Zugangsdaten nach `/etc/palantir`: unter `/root/.ssh/known_hosts` wäre er für den
+Update-Dienst unsichtbar, und dessen `git fetch` scheiterte später an derselben Stelle.
+
+```bash
+printf 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n' > /etc/palantir/known_hosts
+```
+
+Den Eintrag gegen den von GitHub veröffentlichten Fingerabdruck prüfen – blindes
+Bestätigen der Rückfrage ist genau die Lücke, die der Host-Key schließen soll. Erwartet
+wird `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`, abrufbar über
+`https://api.github.com/meta`:
+
+```bash
+ssh-keygen -lf /etc/palantir/known_hosts
+```
+
+```bash
+GIT_SSH_COMMAND='ssh -i /etc/palantir/repo_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/etc/palantir/known_hosts' git clone git@github.com:nightriderp/Palantir_Panel.git /opt/palantir
+```
+
+Damit der Timer denselben Schlüssel und dieselbe `known_hosts` benutzt, wird beides fest in
+der Auscheckung hinterlegt – als Umgebungsvariable ginge es beim Dienststart verloren:
+
+```bash
+git -C /opt/palantir config core.sshCommand 'ssh -i /etc/palantir/repo_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/etc/palantir/known_hosts'
+```
+
+Auscheckung auf den freigegebenen Stand setzen – dorthin zeigt auch das Image-Tag `prod`:
+
+```bash
+git -C /opt/palantir checkout --detach origin/prod
+```
 
 Datenverzeichnisse anlegen (Pfade müssen zu `AGENT_DATA_DIR` und `AGENT_BACKUP_DIR` in
 der `.env` passen):
@@ -500,6 +559,98 @@ der `.env` passen):
 ```bash
 mkdir -p /srv/palantir/servers /srv/palantir/backups
 ```
+
+#### Agent-Kanal auf der VPS freigeben
+
+Der WebSocket-Kanal `/agent` läuft **nicht** über Traefik, sondern durch den
+WireGuard-Tunnel (Pflichtenheft §2.2). Damit der Agent das Backend erreicht, veröffentlicht
+`deploy/vps/docker-compose.yml` den Backend-Port an der Tunnel-Adresse:
+
+```yaml
+ports:
+  - '${WIREGUARD_VPS_IP:-10.10.0.1}:4000:4000'
+```
+
+Die IP-Angabe davor ist kein Schönheitsfehler, sondern sicherheitsrelevant: ohne sie bindet
+Docker an `0.0.0.0` und der Agent-Kanal steht im offenen Internet. Voraussetzung ist, dass
+`wg-quick@wg0` **vor** Docker läuft – sonst existiert `10.10.0.1` beim Containerstart noch
+nicht und die Bindung scheitert:
+
+```bash
+systemctl is-enabled wg-quick@wg0
+```
+
+Prüfen lässt sich die Freigabe **auf der VPS**:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://10.10.0.1:4000/health
+```
+
+`200` heißt: erreichbar. `000` heißt: der Port ist nicht veröffentlicht.
+
+#### `.env` auf der Gamenode
+
+Die `.env` liegt nie im Repository und wird **auf dem Homeserver** von Hand angelegt:
+`/opt/palantir/.env` (in der Gameserver-VM). Sie braucht nicht den vollen Satz der VPS –
+diese Werte genügen:
+
+| Variable               | Wert                                         |
+| ---------------------- | -------------------------------------------- |
+| `NODE_ENV`             | `production`                                 |
+| `LOG_LEVEL`            | `info`                                       |
+| `PALANTIR_VERSION`     | `prod`                                       |
+| `SOCKET_PROXY_VERSION` | derselbe Wert wie auf der VPS                |
+| `AGENT_TOKEN`          | **identisch mit dem Wert in der VPS-`.env`** |
+| `AGENT_BACKEND_WS_URL` | `ws://10.10.0.1:4000/agent`                  |
+| `AGENT_DATA_DIR`       | `/srv/palantir/servers`                      |
+| `AGENT_BACKUP_DIR`     | `/srv/palantir/backups`                      |
+
+`AGENT_TOKEN` ist der einzige Wert, der zwischen den Maschinen wandern muss. Auslesen
+**auf der VPS**:
+
+```bash
+grep '^AGENT_TOKEN=' /opt/palantir/.env
+```
+
+Stimmen die beiden Werte nicht überein, weist das Backend die Verbindung im Handshake ab
+(Log: „Agent-Verbindung ohne gültiges Pre-Shared-Token abgelehnt"). Der Agent versucht es
+dann in exponentiell wachsenden Abständen weiter – es sieht also nicht nach einem Fehler
+aus, es passiert nur nichts.
+
+#### Registry-Login
+
+Das Agent-Image liegt in einem **privaten** GHCR-Repository. Ohne Anmeldung schlägt der
+Pull mit `unauthorized` fehl – dieselbe Hürde wie auf der VPS. Nötig ist ein Personal
+Access Token (classic) mit **`read:packages`**. Die Anmeldung muss nach `/etc/palantir/docker`
+schreiben, nicht in das Standardverzeichnis unter `/root` (Begründung oben):
+
+```bash
+read -rsp 'Token: ' T; echo; echo "$T" | DOCKER_CONFIG=/etc/palantir/docker docker login ghcr.io -u nightriderp --password-stdin; unset T
+```
+
+Das `read -rsp` ist Absicht: `docker login -p` schriebe das Token in die Shell-History.
+
+#### Stack starten
+
+Auch von Hand gilt `DOCKER_CONFIG` – sonst sucht Docker die Anmeldung wieder unter `/root`:
+
+```bash
+export DOCKER_CONFIG=/etc/palantir/docker && cd /opt/palantir/deploy/gamenode && docker compose --env-file ../../.env up -d
+```
+
+Prüfen:
+
+```bash
+docker compose --env-file ../../.env logs -f agent
+```
+
+Erwartet wird eine Zeile über die aufgebaute Verbindung. Gegenprobe **auf der VPS**:
+
+```bash
+docker logs palantir-backend 2>&1 | grep -i 'Agent verbunden'
+```
+
+Im Panel wechselt die Node danach von `offline` auf `online`, und `last_seen_at` füllt sich.
 
 Timer einrichten:
 
@@ -516,9 +667,12 @@ systemctl list-timers palantir-update.timer
 ### 3.5 Reihenfolge
 
 3.1 und 3.2 gehören zusammen und müssen vor 3.3 fertig sein – sonst liegt im Environment
-ein Schlüssel, zu dem es keinen Gegenpart gibt. 3.4 ist unabhängig und kann jederzeit
-erfolgen; der Timer läuft dann eben ins Leere, bis der Zweig `prod` das erste Mal gesetzt
-wird.
+ein Schlüssel, zu dem es keinen Gegenpart gibt.
+
+3.4 setzt zweierlei voraus: den stehenden WireGuard-Tunnel und ein Deployment, das die
+Portfreigabe an der Tunnel-Adresse bereits enthält. Der Agent-Stack lässt sich zwar früher
+starten, findet dann aber kein Backend und wartet im Reconnect-Backoff. Der Timer selbst
+ist unabhängig und läuft ins Leere, bis der Zweig `prod` das erste Mal gesetzt wird.
 
 ---
 

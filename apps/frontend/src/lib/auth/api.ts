@@ -48,10 +48,11 @@ export const AUTH_ENDPOINTS = {
 /**
  * Basisadresse der Backend-API.
  *
- * `NEXT_PUBLIC_API_URL` muss denselben Wert wie `PUBLIC_API_URL` aus der
- * zentralen `.env` tragen (Pflichtenheft §12.1); nur `NEXT_PUBLIC_`-Variablen
- * erreichen den Browser. Ohne gesetzten Wert wird relativ aufgerufen – dann
- * liegt die API hinter demselben Reverse Proxy wie das Frontend.
+ * `NEXT_PUBLIC_API_URL` trägt denselben Wert wie `PUBLIC_API_URL` aus der
+ * zentralen `.env` (Pflichtenheft §12.1); nur `NEXT_PUBLIC_`-Variablen erreichen
+ * den Browser. Gesetzt wird die Variable nicht von Hand, sondern in
+ * `next.config.mjs` aus `PUBLIC_API_URL` bzw. `PALANTIR_DOMAIN` abgeleitet –
+ * dort steht auch, warum der Wert absolut sein muss.
  */
 export function apiBaseUrl(): string {
   return (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/+$/, '');

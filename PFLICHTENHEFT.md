@@ -202,6 +202,16 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `DNS_UPDATE_FAILED` | 502 | DNS-Eintrag konnte bei Cloudflare nicht gesetzt werden (§13) |
 | `AGENT_NOT_CONNECTED` | 503 | Für die Ziel-Node ist kein Agent verbunden (§2.2) |
 | `AGENT_COMMAND_TIMEOUT` | 504 | Agent hat den Befehl nicht innerhalb der Frist beantwortet (§5.3) |
+| `NOTIFICATION_CHANNEL_NOT_FOUND` | 404 | Benachrichtigungskanal existiert nicht (§14) |
+| `NOTIFICATION_CHANNEL_NAME_TAKEN` | 409 | Kanalname bereits vergeben (§14) |
+| `NOTIFICATION_CHANNEL_NOT_CONFIGURED` | 409 | Kanal nutzt die `.env`-Vorgabe, `DISCORD_WEBHOOK_URL` ist nicht gesetzt (§12.1, §14) |
+| `NOTIFICATION_CHANNEL_IN_USE` | 409 | Kanal wird noch von mindestens einer Regel genutzt (§14) |
+| `NOTIFICATION_RULE_NOT_FOUND` | 404 | Benachrichtigungsregel existiert nicht (§14) |
+| `NOTIFICATION_RULE_DUPLICATE` | 409 | Regel mit identischem Ereignis, Kanal und Empfängerkreis existiert bereits (§14) |
+| `NOTIFICATION_EVENT_NOT_NOTIFIABLE` | 400 | Regel auf ein reines Live-Ereignis, das keine Benachrichtigung auslöst (§14) |
+| `NOTIFICATION_NOT_FOUND` | 404 | Meldung existiert nicht oder gehört zu einem anderen Konto (§14) |
+| `NOTIFICATION_DELIVERY_FAILED` | 502 | Zustellung an den externen Kanal gescheitert – nur bei der vom Admin ausgelösten Testnachricht (§14) |
+| `ANNOUNCEMENT_NOT_FOUND` | 404 | Systemweite Ankündigung existiert nicht (Lastenheft §3.6) |
 | `CONVERSATION_NOT_FOUND` | 404 | Konversation existiert nicht oder der Aufrufer nimmt nicht an ihr teil (§15) |
 | `CONVERSATION_RECIPIENT_INVALID` | 400 | Empfänger einer Direktnachricht unzulässig, etwa das eigene Konto (§15) |
 | `CONVERSATION_RECIPIENT_NOT_ALLOWED` | 403 | Empfänger ist nicht freigeschaltet oder gesperrt (Lastenheft §3.6) |
@@ -343,7 +353,7 @@ Nachgezogen im Arbeitspaket R5 (ALTCHA beim Login):
 - Seed-Rollen bei Ersteinrichtung: **Admin**, **Moderator**, **Nutzer** (vollständig editierbar); **Gast** als geschützte Systemrolle ohne jede Permission. Angelegt werden sie einmalig über `pnpm --filter @palantir/backend db:seed` direkt nach den Migrationen (siehe SETUP.md §2.4) – bewusst als eigenes Kommando statt beim Backend-Start, damit der Zeitpunkt für den Betreiber sichtbar bleibt. Der Lauf ist idempotent und verändert vorhandene Rollen nie.
 - `User.isOwner`-Flag: unabhängig vom Rollensystem immer alle Permissions – verhindert Selbst-Aussperrung
 
-**Vergabe des Owner-Status (Ersteinrichtung, festgelegt in R1):** Der Betreiber registriert sich über die reguläre Oberfläche und hebt dieses Konto anschließend einmalig über `pnpm --filter @palantir/backend db:owner <benutzername>` zum Owner (SETUP.md §2.5). Bewusst **nicht** „das erste registrierte Konto gewinnt": Die Registrierung ist offen (Lastenheft §3.1) und das Panel ab dem ersten Start erreichbar – ein Sicherheitsmerkmal, das an der Reihenfolge zweier HTTP-Requests hängt, ist keines. Bewusst auch kein Owner-Konto im Seed-Lauf: der bräuchte ein Passwort aus der `.env` oder aus der Konsolenausgabe und wäre ein zweiter Weg, ein Konto anzulegen, der an Registrierung, Passwortregeln und `AuthMethod` vorbeiliefe. Der Nachweis ist stattdessen der Systemzugang zur Maschine, auf der das Backend läuft – dasselbe Muster wie bei `db:migrate`, `db:seed` und `audit:archive`. Der Lauf ist idempotent, protokolliert `user.ownerGranted` im Audit-Log und lehnt ein zweites Owner-Konto mit `OWNER_ALREADY_EXISTS` ab; die eigentliche Zusicherung hält der partielle Unique-Index `users_single_owner_idx` (§6). Ein Weg, den Status wieder zu entziehen oder zu übertragen, existiert in Version 1 bewusst nicht.
+**Vergabe des Owner-Status (Ersteinrichtung, festgelegt in R1):** Der Betreiber registriert sich über die reguläre Oberfläche und hebt dieses Konto anschließend einmalig über das Kommando `db:owner` zum Owner – auf der VPS als Compose-Dienst, lokal über pnpm (SETUP.md §2.5). Bewusst **nicht** „das erste registrierte Konto gewinnt": Die Registrierung ist offen (Lastenheft §3.1) und das Panel ab dem ersten Start erreichbar – ein Sicherheitsmerkmal, das an der Reihenfolge zweier HTTP-Requests hängt, ist keines. Bewusst auch kein Owner-Konto im Seed-Lauf: der bräuchte ein Passwort aus der `.env` oder aus der Konsolenausgabe und wäre ein zweiter Weg, ein Konto anzulegen, der an Registrierung, Passwortregeln und `AuthMethod` vorbeiliefe. Der Nachweis ist stattdessen der Systemzugang zur Maschine, auf der das Backend läuft – dasselbe Muster wie bei `db:migrate`, `db:seed` und `audit:archive`. Der Lauf ist idempotent, protokolliert `user.ownerGranted` im Audit-Log und lehnt ein zweites Owner-Konto mit `OWNER_ALREADY_EXISTS` ab; die eigentliche Zusicherung hält der partielle Unique-Index `users_single_owner_idx` (§6). Ein Weg, den Status wieder zu entziehen oder zu übertragen, existiert in Version 1 bewusst nicht.
 
 **Ort des Katalogs:** `packages/contracts/src/permissions.ts` (`PERMISSION_CATALOG`) – dort steht jede Permission zusammen mit Beschreibung (für den Rollen-Editor) und Geltungsbereich (`own` / `any` / `global`). Neue Permissions werden ausschließlich dort additiv ergänzt und zusätzlich in der obigen Aufzählung nachgetragen.
 
@@ -395,6 +405,8 @@ Löschen, Klonen, Exportieren und die Mitgliederverwaltung bleiben dem Besitzer 
 - Ein automatischer Neustart nach Absturz zählt im Sinne der Auto-Shutdown-Schonfrist als regulärer Serverstart – verhindert, dass ein gerade wiederhergestellter Server sofort fälschlich als inaktiv erkannt und erneut abgeschaltet wird
 - Klonen: erzeugt einen neuen `GameServer`-Datensatz mit kopierter Konfiguration und zwingend neuer, eigener Subdomain (gleiche Prüf-/Formatregeln wie bei Neuerstellung); Weltdaten werden optional synchron mitkopiert, Fortschritt wird im Frontend angezeigt
 
+**Zeitgeber des Backends (Ergänzung aus R2):** Der Auto-Shutdown-Sweep und die fälligen Backup-Zeitpläne (Lastenheft §3.3) brauchen einen Takt. Beide Module bringen bewusst **keinen** eigenen Timer mit – sie bleiben dadurch ohne Wartezeit prüfbar, und ein Wartungs-Kommando kann denselben Ablauf anstoßen. Der Takt steht deshalb an genau einer Stelle: `apps/backend/src/scheduler.ts`. Intervall `SCHEDULER_INTERVAL_MS` (Vorgabe 60 Sekunden), weil beide Fälligkeiten minutengenau sind: Ein Cron-Ausdruck löst frühestens jede Minute aus, Inaktivitäts- und Schonfrist sind in Minuten konfiguriert. Dauert ein Durchlauf länger als das Intervall, wird der nächste **übersprungen** und nicht eingereiht – beide Aufgaben arbeiten nach Fälligkeitszeitpunkt, eingereihte Läufe würden sich bei einem hängenden Homeserver aufstauen und danach dieselben Befehle mehrfach schicken. Der Sweep läuft nur über Nodes mit offener Agent-Verbindung; ohne Verbindung ließe sich ohnehin kein Container stoppen.
+
 ---
 
 ## 10. Ressourcen- & Kapazitätsmanagement
@@ -402,6 +414,8 @@ Löschen, Klonen, Exportieren und die Mitgliederverwaltung bleiben dem Besitzer 
 - `UserResourceLimit` optional pro Nutzer (nullable = kein Limit)
 - Vor jedem Start: harte Prüfung der tatsächlich freien Ressourcen der Ziel-VM gegen die angeforderten Limits des Servers – unabhängig vom Nutzer-Kontingent
 - Ressourcen-Warnungen (Event `resource.low`) bei konfigurierbaren Schwellwerten (Server- und Node-Ebene)
+
+**Eine Quelle für die Belegung (Ergänzung aus R2):** Die Belegung einer Node wird an genau einer Stelle gezählt – `ServerUsageRepository` (Schnittstelle in `modules/resources/ports.ts`, Umsetzung über `game_servers` in `modules/server-orchestration/usage-repository.ts`). Aus derselben Zählung wird auch `HostNodeDto.usage` der Node-Übersicht gefüllt (`modules/resources/node-usage.ts`), damit Anzeige und Startprüfung nicht auseinanderlaufen können. **Abweichung, bewusst:** `HostNodeUsage` ist in Lastenheft §3.7 als *gemessene* Auslastung beschrieben; geliefert wird die *reservierte*. Ein echter Messwert müsste vom Agent kommen, und §5.3 kennt bislang nur `GET_STATS` je Container, keinen node-weiten Wert. Bis zu einer Protokoll-Erweiterung gilt die Reservierung als obere Schranke – sie überschätzt eher, und das ist bei einer Auslastungsanzeige die richtige Richtung. Vermerkt in WORK_STATUS.md unter „Gefundene Punkte" (68).
 
 ---
 
@@ -456,6 +470,25 @@ Ein Skript (`scripts/setup.sh`), das:
 - **Ergänzungen aus B7 (Chat & Moderation, §15):** `message.sent`, `message.deleted` und `conversation.created`. Sie fließen ausschließlich über den Chat-Kanal des Browsers (`packages/contracts/src/chat.ts`) und halten eine offene Ansicht aktuell – wie die Live-Ereignisse der Server-Ansicht sind sie bewusst **kein** Anlass für eine `NotificationRule`. Anlass für eine Benachrichtigung bleibt allein `message.reported`.
 - **Benennungsschema:** `<domäne>.<vorgang>`, beide Segmente lowerCamelCase, genau ein Punkt als Trenner. Als Typ festgehalten in `packages/contracts/src/events.ts` (`WEBSOCKET_EVENTS`, `WebSocketEventName`); neue Events werden dort und in dieser Liste additiv ergänzt.
 - `NotificationChannel` (aktuell: Discord-Webhook) getrennt von `NotificationRule` (Event → Kanal → Empfängerkreis), beides über Admin-Oberfläche konfigurierbar
+
+**Ergänzungen aus B6 (Notification-Engine):** `announcement.published` (systemweite Ankündigung durch einen Admin, Lastenheft §3.6) als auslösendes Ereignis und `notification.created` als reines Live-Ereignis des Inbox-Kanals. Letzteres ist bewusst **kein** Anlass für eine `NotificationRule` – sonst löste jede Zustellung die nächste aus.
+
+**Dringlichkeit:** `NotificationRuleDto.severity` ist `null`-fähig und bedeutet dann „die des Ereignisses" (`backup.failed` → `error`, `server.started` → `info`). Ein fester Vorgabewert an der Regel würde ein fehlgeschlagenes Backup still auf „Information" herabstufen; eine gesetzte Dringlichkeit ist deshalb ein bewusstes Überschreiben.
+
+**Auslösende Ereignisse gegen reine Live-Ereignisse:** Welche Namen des Katalogs eine Regel auslösen dürfen, steht als Liste `NOTIFIABLE_EVENTS` in `packages/contracts/src/notifications.ts`. Ein Test dort hält beide Mengen überschneidungsfrei; das Backend lehnt eine Regel auf ein Live-Ereignis mit `NOTIFICATION_EVENT_NOT_NOTIFIABLE` ab.
+
+**Umsetzung im Backend (Arbeitspaket B6, `apps/backend/src/modules/notifications`).** Festlegungen dieser Sitzung, die das Pflichtenheft offen ließ:
+
+- **Kanal ist Ergänzung, nicht Voraussetzung:** Die Zustellung in die Inbox des Panels hängt nicht am Kanal. Eine Regel mit `channelId: null` schreibt ausschließlich in die Inbox, eine Regel mit Kanal zusätzlich nach außen. Ohne diese Trennung erreichte ein Ereignis niemanden, solange kein Discord-Webhook eingerichtet ist.
+- **Empfängerkreis** als feste Aufzählung `NOTIFICATION_RECIPIENT_SCOPES`: `resourceOwner` (Besitzer der betroffenen Ressource), `serverMembers` (Besitzer und Mitverwalter aus `ServerMember`), `role` (alle Träger einer Rolle – so entsteht „alle Admins“ ohne einen zweiten Admin-Begriff neben §8) und `allUsers`.
+- **Webhook-URL bleibt Geheimnis:** Der Standardkanal einer Instanz nutzt `DISCORD_WEBHOOK_URL` aus der zentralen `.env` (§12.1) und speichert nichts in der Datenbank. Trägt ein Admin für einen weiteren Kanal eine eigene URL ein, wird sie gespeichert, aber **nie** in einem DTO ausgeliefert – ausgeliefert wird nur eine gekürzte, nicht wiederherstellbare Kurzform (`NotificationChannelTarget.hint`).
+- **Fehlgeschlagene Zustellung ist ein Endzustand, kein Fehler:** Ein nicht erreichbarer Webhook lässt den auslösenden Vorgang (Serverstart, Backup) nie scheitern. Der Versuch wird stattdessen in `notification_deliveries` protokolliert (`NotificationDeliveryDto`), damit die Fehlzustellung nicht still bleibt. `NOTIFICATION_DELIVERY_FAILED` erscheint ausschließlich dort, wo jemand die Zustellung selbst angestoßen hat: bei der Testnachricht eines Admins.
+- **Live-Kanal der Inbox:** eigener WebSocket-Kanal (§5.3 nennt „Kanäle“ im Plural), Frames als `NotificationClientFrame`/`NotificationServerFrame` in `packages/contracts/src/notifications.ts`. Bewusst getrennt vom Server-Kanal aus `server-live.ts`: Der abonniert eine einzelne Ressource, die Inbox hängt am angemeldeten Konto und soll unabhängig von der angezeigten Seite offen sein. Der Empfänger kommt aus der Sitzung, nicht aus einem Frame-Feld – eine fremde Inbox lässt sich damit nicht abonnieren.
+- **Systemweite Ankündigungen erreichen jedes Konto ohne Regel:** `publishAnnouncement()` schreibt direkt in die Inbox aller freigeschalteten Konten. Eine Wartungsmeldung, die niemanden erreicht, weil ein Admin keine Regel angelegt hat, wäre genau der stille Ausfall, den Lastenheft §3.6 nicht meint. Regeln auf `announcement.published` laufen zusätzlich und tragen den externen Kanal; doppelte Inbox-Meldungen verhindert der Unique-Index `notifications_announcement_user_idx`.
+- **Die Inbox gehört dem Empfänger.** Ihre Routen (`GET /notifications`, `POST /notifications/read`, `DELETE /notifications/:id`) verlangen eine Sitzung, aber keine Permission; die Zuordnung macht die Konto-Id. Auch ein Admin markiert oder löscht keine fremde Meldung – dieselbe Zurückhaltung wie bei privaten Nachrichten (Lastenheft §3.6). Die Verwaltung (`/admin/notification-channels`, `/admin/notification-rules`, `/admin/announcements`, `/admin/notification-deliveries`) hängt dagegen an `notification.manage` (§8).
+- **Live-Kanal:** `GET /live/notifications` (WebSocket). Eine Verbindung ohne gültige Sitzung wird mit Close-Code 4401 beendet – wie beim Agent-Kanal (§2.2), damit das Frontend „nicht angemeldet" von „Backend gerade weg" unterscheiden kann.
+- **Neue Tabellen:** `notification_channels`, `notification_rules`, `notifications`, `announcements`, `notification_deliveries` (Migration `0010_notifications`).
+- **Neue Konfigurationswerte** (.env.example Abschnitt 10): `DISCORD_WEBHOOK_URL` (bereits vorhanden, jetzt vom Backend gelesen) und `NOTIFICATION_DELIVERY_TIMEOUT_MS`.
 
 ---
 

@@ -22,7 +22,10 @@ services:
     restart: always
     security_opt:
       - no-new-privileges:true
-    read_only: true
+    # Kein read_only: Das Startskript des Images erzeugt die haproxy-Konfiguration
+    # erst zur Laufzeit unter /usr/local/etc/haproxy. Ein tmpfs an dieser Stelle
+    # hilft nicht - dort liegen auch die Vorlage und die Fehlerseiten, die sonst
+    # verdeckt würden. Die übrige Härtung (no-new-privileges, Grenzen) bleibt.
     mem_limit: ${SOCKET_PROXY_MEM_LIMIT:-64m}
     pids_limit: 64
     environment:
