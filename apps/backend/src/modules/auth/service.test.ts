@@ -253,13 +253,17 @@ describe('2FA (Pflichtenheft §7)', () => {
 
   it('lehnt einen abgelaufenen Zwischen-Token ab', async () => {
     const secret = await enableTwoFactor();
-    // `jose` prüft `exp` gegen die echte Uhr, nicht gegen die eingespeiste
-    // Zeit – der Token wird deshalb mit einem Ausstellungszeitpunkt weit in der
-    // Vergangenheit erzeugt.
+    // Ausstellung 24 h vor der eingefrorenen Testuhr `now`. Der
+    // Ausstellungszeitpunkt muss aus **derselben** Uhr stammen, gegen die
+    // `completeTwoFactorLogin` prüft (`this.now()` → `currentDate` in
+    // `verifyTwoFactorToken`) – sonst hängt das Ergebnis an der realen
+    // Wanduhr: Sobald `Date.now()` mehr als einen Tag hinter `now` zurückfällt,
+    // liegt `exp` wieder vor `now` und der eigentlich abgelaufene Token gilt
+    // fälschlich als gültig.
     const { token } = await signTwoFactorToken(
       userId,
       { secret: JWT_SECRET, ttlMs: TWO_FACTOR_TTL_MS },
-      Date.now() - 86_400_000,
+      now.getTime() - 86_400_000,
     );
 
     await expectErrorCode(
