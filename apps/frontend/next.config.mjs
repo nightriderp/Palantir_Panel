@@ -12,6 +12,17 @@ loadDotenv({ path: path.join(repoRoot, '.env') });
 // wie im Backend (`apps/backend/src/config/env.ts`, `adressenAbleiten`).
 const domain = process.env.PALANTIR_DOMAIN ?? 'palantir.local';
 
+// Adresse der Backend-API, wie der Browser sie sieht. Frontend und API liegen
+// auf getrennten Subdomains (`<domain>` bzw. `api.<domain>`), deshalb muss der
+// Wert absolut sein – ein relativer Aufruf landet beim Frontend selbst und endet
+// in einem 404. Die Reihenfolge entspricht der des Backends
+// (`apps/backend/src/config/env.ts`, `adressenAbleiten`): ein ausdrücklich
+// gesetztes PUBLIC_API_URL gewinnt, sonst wird aus der Domain abgeleitet. Damit
+// trifft es die Entwicklungsumgebung (`http://localhost:4000`) genauso wie die
+// VPS, wo nur PALANTIR_DOMAIN gepflegt wird.
+const apiUrl =
+  process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || `https://api.${domain}`;
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -33,6 +44,7 @@ const nextConfig = {
     // hier aufgelöst werden – zur Laufzeit ist die zentrale `.env` im Browser
     // nicht verfügbar.
     NEXT_PUBLIC_BASE_DOMAIN: process.env.NEXT_PUBLIC_BASE_DOMAIN || domain,
+    NEXT_PUBLIC_API_URL: apiUrl,
   },
 };
 
