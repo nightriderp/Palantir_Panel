@@ -99,10 +99,7 @@ export function RequestsView() {
 
   const requests = useMemo(() => resource.data ?? [], [resource.data]);
 
-  async function run(
-    call: () => Promise<ApiResult<RegistrationRequestDto>>,
-    success: string,
-  ) {
+  async function run(call: () => Promise<ApiResult<RegistrationRequestDto>>, success: string) {
     setBusy(true);
     const result = await call();
     setBusy(false);
@@ -162,7 +159,9 @@ export function RequestsView() {
                       {serverInitials(request.displayName)}
                     </span>
                     <div className="flex flex-col">
-                      <span className="text-base font-semibold text-ink">{request.displayName}</span>
+                      <span className="text-base font-semibold text-ink">
+                        {request.displayName}
+                      </span>
                       <span className="text-sm text-ink-faint">
                         Registriert am {formatDate(request.registeredAt)}
                       </span>
@@ -176,7 +175,10 @@ export function RequestsView() {
                 {request.profiles.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {request.profiles.map((profile) => (
-                      <ProfileBadge key={`${profile.provider}-${profile.linkedAt}`} profile={profile} />
+                      <ProfileBadge
+                        key={`${profile.provider}-${profile.linkedAt}`}
+                        profile={profile}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -288,9 +290,7 @@ function ApproveDialog({
   const assignable = (roles.data ?? []).filter((role) => !role.isProtected);
 
   function toggle(roleId: string, on: boolean) {
-    setSelected((current) =>
-      on ? [...current, roleId] : current.filter((id) => id !== roleId),
-    );
+    setSelected((current) => (on ? [...current, roleId] : current.filter((id) => id !== roleId)));
   }
 
   return (
@@ -348,8 +348,7 @@ function BlockDialog({
       message={
         <div className={cn('flex flex-col gap-3')}>
           <p>
-            Das Konto verliert sofort jeden Zugriff. Die Sperre lässt sich später wieder
-            aufheben.
+            Das Konto verliert sofort jeden Zugriff. Die Sperre lässt sich später wieder aufheben.
           </p>
           <TextField
             label="Grund (optional)"

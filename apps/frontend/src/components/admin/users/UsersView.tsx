@@ -334,7 +334,9 @@ function RolesDialog({
 
   async function toggle(role: RoleDto, on: boolean) {
     setPending(role.id);
-    const result = on ? await assignRole(role.id, user.userId) : await removeRole(role.id, user.userId);
+    const result = on
+      ? await assignRole(role.id, user.userId)
+      : await removeRole(role.id, user.userId);
     setPending(null);
     if (result.success) {
       setAssigned((current) => {
@@ -371,13 +373,7 @@ function RolesDialog({
 }
 
 /** Server eines Nutzers einsehen (Lastenheft §3.7). */
-function ServersDialog({
-  user,
-  onClose,
-}: {
-  user: RegistrationRequestDto;
-  onClose: () => void;
-}) {
+function ServersDialog({ user, onClose }: { user: RegistrationRequestDto; onClose: () => void }) {
   const servers = useApiResource<GameServerDto[]>((signal) => fetchAllServers(signal), []);
   const own = (servers.data ?? []).filter((server) => server.ownerId === user.userId);
 

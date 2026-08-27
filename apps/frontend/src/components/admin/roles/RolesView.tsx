@@ -30,10 +30,7 @@ import { PermissionPicker } from './PermissionPicker';
  * taucht hier deshalb nicht auf.
  */
 
-type Editor =
-  | { mode: 'create' }
-  | { mode: 'edit'; role: RoleDto }
-  | null;
+type Editor = { mode: 'create' } | { mode: 'edit'; role: RoleDto } | null;
 
 export function RolesView() {
   const { user } = useSession();
@@ -44,10 +41,7 @@ export function RolesView() {
   const [toDelete, setToDelete] = useState<RoleDto | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const resource = useApiResource<RoleDto[]>(
-    (signal) => fetchRoles(signal),
-    canManage ? [] : null,
-  );
+  const resource = useApiResource<RoleDto[]>((signal) => fetchRoles(signal), canManage ? [] : null);
 
   const roles = useMemo(() => resource.data ?? [], [resource.data]);
 
@@ -191,9 +185,7 @@ function RoleEditor({
   const initial = editor.mode === 'edit' ? editor.role : null;
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
-  const [permissions, setPermissions] = useState<Permission[]>(
-    initial?.grantedPermissions ?? [],
-  );
+  const [permissions, setPermissions] = useState<Permission[]>(initial?.grantedPermissions ?? []);
   const [error, setError] = useState<string | null>(null);
 
   const trimmedName = name.trim();

@@ -59,7 +59,10 @@ export function AddressesView() {
   const toast = useToast();
   const canManage = user?.permissions.canManageAddresses ?? false;
 
-  const pool = useApiResource<PortPoolDto>((signal) => fetchPortPool(signal), canManage ? [] : null);
+  const pool = useApiResource<PortPoolDto>(
+    (signal) => fetchPortPool(signal),
+    canManage ? [] : null,
+  );
   const allocations = useApiResource<PortAllocationDto[]>(
     (signal) => fetchPortAllocations(signal),
     canManage ? [] : null,
@@ -228,7 +231,9 @@ export function AddressesView() {
                       <Td className="font-mono text-ink">{allocation.port}</Td>
                       <Td>{allocation.protocol.toUpperCase()}</Td>
                       <Td>{allocation.serverName ?? '—'}</Td>
-                      <Td className="whitespace-nowrap">{formatDateTime(allocation.allocatedAt)}</Td>
+                      <Td className="whitespace-nowrap">
+                        {formatDateTime(allocation.allocatedAt)}
+                      </Td>
                       <Td className="text-right">
                         <Button
                           variant="secondary"
@@ -356,7 +361,9 @@ function RangeEditor({
           onChange={setEndPort}
           min={MIN_PUBLIC_PORT}
           max={65535}
-          error={!boundsValid ? 'Der erste Port muss kleiner oder gleich dem letzten sein.' : undefined}
+          error={
+            !boundsValid ? 'Der erste Port muss kleiner oder gleich dem letzten sein.' : undefined
+          }
         />
       </div>
       {editor.mode === 'create' ? (

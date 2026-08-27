@@ -127,9 +127,7 @@ export function BackupsView() {
             buckets={overview.perServer}
           />
 
-          <p className="text-sm text-ink-faint">
-            Stand: {formatDateTime(overview.generatedAt)}
-          </p>
+          <p className="text-sm text-ink-faint">Stand: {formatDateTime(overview.generatedAt)}</p>
         </>
       ) : null}
     </div>

@@ -2,6 +2,14 @@ import { type ReactNode } from 'react';
 import { DashboardShell } from '@/app/(dashboard)/DashboardShell';
 
 /**
+ * Der Admin-Kernbereich wird nicht statisch vorgerendert: Jede Ansicht hängt an
+ * der Sitzung und lädt ihre Daten erst im Browser (`permissions`-Objekt,
+ * Pflichtenheft §5.2). Ein statischer HTML-Schnappschuss hätte keinen Wert und
+ * die Seiten dürfen ohnehin nie zwischengespeichert ausgeliefert werden.
+ */
+export const dynamic = 'force-dynamic';
+
+/**
  * Rahmen des Admin-Kernbereichs (Arbeitspaket F10).
  *
  * Bewusst derselbe Rahmen wie im eingeloggten Bereich: Das Mockup zeigt die

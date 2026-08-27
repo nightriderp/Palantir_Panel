@@ -43,9 +43,7 @@ import {
 
 const PAGE_SIZE = 50;
 
-type ResolveDialog =
-  | { report: MessageReportDto; action: MessageModerationAction }
-  | null;
+type ResolveDialog = { report: MessageReportDto; action: MessageModerationAction } | null;
 
 export function ModerationView() {
   const { user } = useSession();
@@ -68,9 +66,7 @@ export function ModerationView() {
     const result = await resolveMessageReport(report.id, { action });
     setBusy(false);
     if (result.success) {
-      toast.success(
-        action === 'deleteMessage' ? 'Nachricht gelöscht.' : 'Meldung verworfen.',
-      );
+      toast.success(action === 'deleteMessage' ? 'Nachricht gelöscht.' : 'Meldung verworfen.');
       setDialog(null);
       resource.reload();
     } else {
@@ -154,9 +150,8 @@ export function ModerationView() {
 
                   <div className="flex flex-col gap-1 text-sm text-ink-muted">
                     <span>
-                      Gemeldet von{' '}
-                      <span className="text-ink">{report.reportedByDisplayName}</span> ·{' '}
-                      {formatDateTime(report.createdAt)}
+                      Gemeldet von <span className="text-ink">{report.reportedByDisplayName}</span>{' '}
+                      · {formatDateTime(report.createdAt)}
                     </span>
                     <span>
                       Grund: <span className="text-ink">{report.reason}</span>
@@ -164,7 +159,9 @@ export function ModerationView() {
                     {report.status !== 'open' ? (
                       <span className="text-ink-faint">
                         {report.actionTaken ? moderationActionLabel(report.actionTaken) : '—'}
-                        {report.resolvedByDisplayName ? ` durch ${report.resolvedByDisplayName}` : ''}
+                        {report.resolvedByDisplayName
+                          ? ` durch ${report.resolvedByDisplayName}`
+                          : ''}
                         {report.resolvedAt ? ` · ${formatDateTime(report.resolvedAt)}` : ''}
                       </span>
                     ) : null}
