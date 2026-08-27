@@ -70,6 +70,8 @@ export {
 
 export { resourceWarningThresholdsFromEnv } from './config.js';
 
+export { type NodeUsageSourceDependencies, createNodeUsageSource } from './node-usage.js';
+
 /**
  * Fertig verdrahteter Service auf der gemeinsamen Drizzle-Instanz.
  *
