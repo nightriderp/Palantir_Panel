@@ -88,6 +88,16 @@ const envSchema = z.object({
   AUTO_SHUTDOWN_DEFAULT_GRACE_MINUTES: z.coerce.number().int().min(0).max(1_440).default(15),
 
   /**
+   * Takt des zentralen Zeitgebers in Millisekunden (`src/scheduler.ts`).
+   *
+   * Eine Minute: Beide Aufgaben – Auto-Shutdown-Sweep (§9) und fällige
+   * Backup-Zeitpläne – sind minutengenau fällig. Größer würde Cron-Minuten
+   * überspringen, kleiner nur dieselbe leere Menge häufiger laden. Die
+   * Begründung steht ausführlich im Kopf von `src/scheduler.ts`.
+   */
+  SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(1_000).default(60_000),
+
+  /**
    * Ausbaustufe der Installation (Lastenheft §3.5).
    *
    * Steuert, welche Spiele-Definitionen auswählbar sind. Phase 1 = nur der
