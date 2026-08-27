@@ -3,6 +3,7 @@ import {
   type AuditTargetType,
   type BackupStatus,
   type BackupType,
+  type ConversationType,
   type HostNodeStatus,
   type MessageModerationAction,
   type MessageReportStatus,
@@ -311,4 +312,13 @@ const MODERATION_ACTION_LABELS: Record<MessageModerationAction, string> = {
 
 export function moderationActionLabel(action: MessageModerationAction): string {
   return MODERATION_ACTION_LABELS[action];
+}
+
+const CONVERSATION_TYPE_LABELS: Record<ConversationType, string> = {
+  dm: 'Direktnachricht',
+  server_chat: 'Server-Chat',
+};
+
+export function conversationTypeLabel(type: ConversationType): string {
+  return CONVERSATION_TYPE_LABELS[type];
 }
