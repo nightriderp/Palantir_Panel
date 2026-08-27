@@ -19,6 +19,7 @@ export * from './schema/rbac.js';
 export * from './schema/resources.js';
 export * from './schema/server-orchestration.js';
 export * from './schema/backups.js';
+export * from './schema/notifications.js';
 
 export * from './schema/admin.js';
 export * from './schema/auth.js';

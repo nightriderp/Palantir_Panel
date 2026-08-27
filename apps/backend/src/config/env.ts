@@ -135,6 +135,27 @@ const envSchema = z.object({
    * Archivierung.
    */
   AUDIT_ARCHIVE_DIR: z.string().min(1).optional(),
+
+  // -- Notification-Engine (B6, Pflichtenheft §14; .env.example Abschnitt 10) --
+
+  /**
+   * Standard-Discord-Webhook der Instanz.
+   *
+   * Kanäle ohne eigene URL greifen darauf zurück; so kommt der Standardkanal
+   * ohne ein Geheimnis in der Datenbank aus (CLAUDE.md §2). Bewusst optional:
+   * Ohne den Wert läuft das Backend unverändert, solche Kanäle sind dann aber
+   * nicht versandfähig (`deliverable: false` am DTO) und werden beim Auslösen
+   * übersprungen. Die Zustellung in die Inbox im Panel hängt nicht daran.
+   */
+  DISCORD_WEBHOOK_URL: optionalEnvString(),
+  /**
+   * Frist eines einzelnen Versandversuchs an einen externen Kanal.
+   *
+   * Der Versand läuft im Hintergrund und kann den auslösenden Vorgang nicht
+   * aufhalten; die Frist begrenzt, wie lange ein hängender Aufruf Verbindungen
+   * und Speicher hält.
+   */
+  NOTIFICATION_DELIVERY_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   // -- Auth & Identity (Arbeitspaket B1, Pflichtenheft §7) --------------------
   // Alle Werte kommen aus derselben zentralen `.env` (Pflichtenheft §12.1).
   // Die Geheimnisse sind bewusst **optional** typisiert, aber praktisch Pflicht:
