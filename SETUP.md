@@ -491,14 +491,43 @@ Gegenpart – in der `authorized_keys`.
 
 ### 3.4 Gamenode vorbereiten
 
-In der **Gameserver-VM** auf dem Homeserver:
+Alle Schritte in diesem Abschnitt laufen in der **Gameserver-VM** auf dem Homeserver.
+
+#### Wo die Zugangsdaten liegen – und warum nicht in `/root`
+
+Der Update-Dienst läuft als `root`, aber mit `ProtectHome=true`: `/root` und `/home` sind
+für ihn ausgeblendet. Zugangsdaten, die dort liegen, sieht er nicht – ein `docker login`
+als root schriebe nach `/root/.docker/config.json`, und der Pull des privaten Agent-Images
+scheiterte im Timer mit `unauthorized`, obwohl er von Hand funktioniert. Beides gehört
+deshalb nach `/etc/palantir`:
 
 ```bash
-git clone https://github.com/nightriderp/Palantir_Panel.git /opt/palantir
+mkdir -p /etc/palantir/docker && chmod 700 /etc/palantir
 ```
 
-Auch hier ist für ein privates Repository ein **Deploy-Key mit Leserecht** nötig – die
-Node holt sich ihren Stand selbst und braucht dauerhaften Lesezugriff.
+#### Deploy-Key und Auscheckung
+
+Das Repository ist privat, die Node braucht dauerhaften Lesezugriff. Der Schlüssel der VPS
+lässt sich nicht mitbenutzen: GitHub nimmt denselben Deploy-Key nur bei genau einem
+Repository an, und ein zweiter Rechner braucht ohnehin ein eigenes Schlüsselpaar.
+
+```bash
+ssh-keygen -t ed25519 -N '' -C 'palantir-gamenode-readonly' -f /etc/palantir/repo_readonly
+```
+
+Den **öffentlichen** Teil (`/etc/palantir/repo_readonly.pub`) im Repository unter
+_Settings → Deploy keys → Add deploy key_ eintragen, **ohne** Schreibrecht.
+
+```bash
+GIT_SSH_COMMAND='ssh -i /etc/palantir/repo_readonly -o IdentitiesOnly=yes' git clone git@github.com:nightriderp/Palantir_Panel.git /opt/palantir
+```
+
+Damit der Timer denselben Schlüssel benutzt, wird er fest in der Auscheckung hinterlegt –
+als Umgebungsvariable ginge er beim Dienststart verloren:
+
+```bash
+git -C /opt/palantir config core.sshCommand 'ssh -i /etc/palantir/repo_readonly -o IdentitiesOnly=yes'
+```
 
 Datenverzeichnisse anlegen (Pfade müssen zu `AGENT_DATA_DIR` und `AGENT_BACKUP_DIR` in
 der `.env` passen):
@@ -568,20 +597,21 @@ aus, es passiert nur nichts.
 
 Das Agent-Image liegt in einem **privaten** GHCR-Repository. Ohne Anmeldung schlägt der
 Pull mit `unauthorized` fehl – dieselbe Hürde wie auf der VPS. Nötig ist ein Personal
-Access Token (classic) mit **`read:packages`**, danach **auf dem Homeserver**:
+Access Token (classic) mit **`read:packages`**. Die Anmeldung muss nach `/etc/palantir/docker`
+schreiben, nicht in das Standardverzeichnis unter `/root` (Begründung oben):
 
 ```bash
-read -rsp 'Token: ' T; echo; echo "$T" | docker login ghcr.io -u nightriderp --password-stdin; unset T
+read -rsp 'Token: ' T; echo; echo "$T" | DOCKER_CONFIG=/etc/palantir/docker docker login ghcr.io -u nightriderp --password-stdin; unset T
 ```
 
 Das `read -rsp` ist Absicht: `docker login -p` schriebe das Token in die Shell-History.
 
 #### Stack starten
 
-**Auf dem Homeserver**, in der Gameserver-VM:
+Auch von Hand gilt `DOCKER_CONFIG` – sonst sucht Docker die Anmeldung wieder unter `/root`:
 
 ```bash
-cd /opt/palantir/deploy/gamenode && docker compose --env-file ../../.env up -d
+export DOCKER_CONFIG=/etc/palantir/docker && cd /opt/palantir/deploy/gamenode && docker compose --env-file ../../.env up -d
 ```
 
 Prüfen:
