@@ -282,6 +282,19 @@ services:
       # Das Verzeichnis muss dem Benutzer `node` (UID 1000) aus dem Image
       # gehören, siehe SETUP.md.
       - ../../data/audit-archive:/data/audit-archive
+    ports:
+      # Der Agent-Kanal (WebSocket `/agent`, Pflichtenheft §2.2) läuft NICHT
+      # über Traefik, sondern durch den WireGuard-Tunnel. Dafür muss der Port
+      # auf dem Host erreichbar sein - aber ausschließlich an der Tunnel-Adresse.
+      # Die Angabe der IP ist hier sicherheitsrelevant: ohne sie bindet Docker
+      # an 0.0.0.0 und stellt den Agent-Kanal ins offene Internet, wo ihn nur
+      # noch das Pre-Shared-Token schützt. Alles andere (Web, API) erreicht das
+      # Backend weiterhin allein über Traefik.
+      #
+      # Voraussetzung: `wg-quick@wg0` läuft, bevor Docker den Container startet -
+      # sonst existiert die Adresse noch nicht und die Bindung scheitert. Auf der
+      # VPS ist der Dienst dafür aktiviert (siehe SETUP.md §3.4).
+      - '${WIREGUARD_VPS_IP:-10.10.0.1}:4000:4000'
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.palantir-api.rule=Host(`api.${PALANTIR_DOMAIN}`)'

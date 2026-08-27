@@ -507,6 +507,97 @@ der `.env` passen):
 mkdir -p /srv/palantir/servers /srv/palantir/backups
 ```
 
+#### Agent-Kanal auf der VPS freigeben
+
+Der WebSocket-Kanal `/agent` läuft **nicht** über Traefik, sondern durch den
+WireGuard-Tunnel (Pflichtenheft §2.2). Damit der Agent das Backend erreicht, veröffentlicht
+`deploy/vps/docker-compose.yml` den Backend-Port an der Tunnel-Adresse:
+
+```yaml
+ports:
+  - '${WIREGUARD_VPS_IP:-10.10.0.1}:4000:4000'
+```
+
+Die IP-Angabe davor ist kein Schönheitsfehler, sondern sicherheitsrelevant: ohne sie bindet
+Docker an `0.0.0.0` und der Agent-Kanal steht im offenen Internet. Voraussetzung ist, dass
+`wg-quick@wg0` **vor** Docker läuft – sonst existiert `10.10.0.1` beim Containerstart noch
+nicht und die Bindung scheitert:
+
+```bash
+systemctl is-enabled wg-quick@wg0
+```
+
+Prüfen lässt sich die Freigabe **auf der VPS**:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://10.10.0.1:4000/health
+```
+
+`200` heißt: erreichbar. `000` heißt: der Port ist nicht veröffentlicht.
+
+#### `.env` auf der Gamenode
+
+Die `.env` liegt nie im Repository und wird **auf dem Homeserver** von Hand angelegt:
+`/opt/palantir/.env` (in der Gameserver-VM). Sie braucht nicht den vollen Satz der VPS –
+diese Werte genügen:
+
+| Variable               | Wert                                         |
+| ---------------------- | -------------------------------------------- |
+| `NODE_ENV`             | `production`                                 |
+| `LOG_LEVEL`            | `info`                                       |
+| `PALANTIR_VERSION`     | `prod`                                       |
+| `SOCKET_PROXY_VERSION` | derselbe Wert wie auf der VPS                |
+| `AGENT_TOKEN`          | **identisch mit dem Wert in der VPS-`.env`** |
+| `AGENT_BACKEND_WS_URL` | `ws://10.10.0.1:4000/agent`                  |
+| `AGENT_DATA_DIR`       | `/srv/palantir/servers`                      |
+| `AGENT_BACKUP_DIR`     | `/srv/palantir/backups`                      |
+
+`AGENT_TOKEN` ist der einzige Wert, der zwischen den Maschinen wandern muss. Auslesen
+**auf der VPS**:
+
+```bash
+grep '^AGENT_TOKEN=' /opt/palantir/.env
+```
+
+Stimmen die beiden Werte nicht überein, weist das Backend die Verbindung im Handshake ab
+(Log: „Agent-Verbindung ohne gültiges Pre-Shared-Token abgelehnt"). Der Agent versucht es
+dann in exponentiell wachsenden Abständen weiter – es sieht also nicht nach einem Fehler
+aus, es passiert nur nichts.
+
+#### Registry-Login
+
+Das Agent-Image liegt in einem **privaten** GHCR-Repository. Ohne Anmeldung schlägt der
+Pull mit `unauthorized` fehl – dieselbe Hürde wie auf der VPS. Nötig ist ein Personal
+Access Token (classic) mit **`read:packages`**, danach **auf dem Homeserver**:
+
+```bash
+read -rsp 'Token: ' T; echo; echo "$T" | docker login ghcr.io -u nightriderp --password-stdin; unset T
+```
+
+Das `read -rsp` ist Absicht: `docker login -p` schriebe das Token in die Shell-History.
+
+#### Stack starten
+
+**Auf dem Homeserver**, in der Gameserver-VM:
+
+```bash
+cd /opt/palantir/deploy/gamenode && docker compose --env-file ../../.env up -d
+```
+
+Prüfen:
+
+```bash
+docker compose --env-file ../../.env logs -f agent
+```
+
+Erwartet wird eine Zeile über die aufgebaute Verbindung. Gegenprobe **auf der VPS**:
+
+```bash
+docker logs palantir-backend 2>&1 | grep -i 'Agent verbunden'
+```
+
+Im Panel wechselt die Node danach von `offline` auf `online`, und `last_seen_at` füllt sich.
+
 Timer einrichten:
 
 ```bash
@@ -522,9 +613,12 @@ systemctl list-timers palantir-update.timer
 ### 3.5 Reihenfolge
 
 3.1 und 3.2 gehören zusammen und müssen vor 3.3 fertig sein – sonst liegt im Environment
-ein Schlüssel, zu dem es keinen Gegenpart gibt. 3.4 ist unabhängig und kann jederzeit
-erfolgen; der Timer läuft dann eben ins Leere, bis der Zweig `prod` das erste Mal gesetzt
-wird.
+ein Schlüssel, zu dem es keinen Gegenpart gibt.
+
+3.4 setzt zweierlei voraus: den stehenden WireGuard-Tunnel und ein Deployment, das die
+Portfreigabe an der Tunnel-Adresse bereits enthält. Der Agent-Stack lässt sich zwar früher
+starten, findet dann aber kein Backend und wartet im Reconnect-Backoff. Der Timer selbst
+ist unabhängig und läuft ins Leere, bis der Zweig `prod` das erste Mal gesetzt wird.
 
 ---
 
