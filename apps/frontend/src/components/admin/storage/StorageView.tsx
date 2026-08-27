@@ -42,7 +42,10 @@ import { storageBlockReasonLabel, storageKindLabel } from '../labels';
  * `entry.permissions.canDelete`/`deleteBlockedReason`, nicht die Ansicht.
  */
 
-const KIND_TONES: Record<StorageEntryKind, 'brand' | 'success' | 'warning' | 'caution' | 'neutral'> = {
+const KIND_TONES: Record<
+  StorageEntryKind,
+  'brand' | 'success' | 'warning' | 'caution' | 'neutral'
+> = {
   serverData: 'brand',
   backup: 'success',
   dockerImage: 'neutral',
@@ -261,7 +264,11 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
                     <Td>{entry.inUse ? 'In Benutzung' : 'Ungenutzt'}</Td>
                     <Td className="text-right">
                       {entry.permissions.canDelete ? (
-                        <Button variant="danger" iconLeft="trash" onClick={() => setToDelete(entry)}>
+                        <Button
+                          variant="danger"
+                          iconLeft="trash"
+                          onClick={() => setToDelete(entry)}
+                        >
                           Löschen
                         </Button>
                       ) : (

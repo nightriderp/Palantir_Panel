@@ -80,10 +80,13 @@ export function approveRegistrationRequest(
   userId: string,
   input: ApproveRegistrationRequestInput,
 ): Promise<ApiResult<RegistrationRequestDto>> {
-  return apiRequest<RegistrationRequestDto>(`/admin/requests/${encodeURIComponent(userId)}/approve`, {
-    method: 'POST',
-    json: input,
-  });
+  return apiRequest<RegistrationRequestDto>(
+    `/admin/requests/${encodeURIComponent(userId)}/approve`,
+    {
+      method: 'POST',
+      json: input,
+    },
+  );
 }
 
 export function blockRegistrationRequest(
@@ -366,10 +369,10 @@ export function updateAnnouncement(
   announcementId: string,
   input: UpdateAnnouncementInput,
 ): Promise<ApiResult<AnnouncementDto>> {
-  return apiRequest<AnnouncementDto>(
-    `/admin/announcements/${encodeURIComponent(announcementId)}`,
-    { method: 'PATCH', json: input },
-  );
+  return apiRequest<AnnouncementDto>(`/admin/announcements/${encodeURIComponent(announcementId)}`, {
+    method: 'PATCH',
+    json: input,
+  });
 }
 
 export function deleteAnnouncement(announcementId: string): Promise<ApiResult<null>> {

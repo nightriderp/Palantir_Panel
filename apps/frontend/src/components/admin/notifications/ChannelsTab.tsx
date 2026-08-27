@@ -101,7 +101,9 @@ export function ChannelsTab() {
                       <span className="text-base font-semibold text-ink">{channel.name}</span>
                       <Badge tone="neutral">Discord</Badge>
                       {!channel.enabled ? <Badge tone="warning">Deaktiviert</Badge> : null}
-                      {!channel.deliverable ? <Badge tone="danger">Nicht versandfähig</Badge> : null}
+                      {!channel.deliverable ? (
+                        <Badge tone="danger">Nicht versandfähig</Badge>
+                      ) : null}
                     </div>
                     <span className="text-sm text-ink-muted">
                       {channel.target.usesEnvDefault

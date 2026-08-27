@@ -55,9 +55,7 @@ function endOfDayIso(date: string): string {
 function summarizeMetadata(metadata: Record<string, unknown>): string {
   const keys = Object.keys(metadata);
   if (keys.length === 0) return '—';
-  return keys
-    .map((key) => `${key}: ${formatMetaValue(metadata[key])}`)
-    .join(' · ');
+  return keys.map((key) => `${key}: ${formatMetaValue(metadata[key])}`).join(' · ');
 }
 
 function formatMetaValue(value: unknown): string {
@@ -151,8 +149,17 @@ export function AuditLogView() {
               label: auditTargetTypeLabel(value),
             }))}
           />
-          <DateField label="Ab" value={from} max={to || undefined} onChange={(value) => withFirstPage(() => setFrom(value))} />
-          <DateField label="Bis" value={to} onChange={(value) => withFirstPage(() => setTo(value))} />
+          <DateField
+            label="Ab"
+            value={from}
+            max={to || undefined}
+            onChange={(value) => withFirstPage(() => setFrom(value))}
+          />
+          <DateField
+            label="Bis"
+            value={to}
+            onChange={(value) => withFirstPage(() => setTo(value))}
+          />
         </div>
         <div className="flex items-center justify-between">
           <span className="text-sm text-ink-faint">
@@ -210,7 +217,10 @@ export function AuditLogView() {
                   <Td className="whitespace-nowrap font-mono text-sm text-ink-faint">
                     {entry.ipHint ?? '—'}
                   </Td>
-                  <Td className="max-w-[280px] truncate text-sm text-ink-faint" title={summarizeMetadata(entry.metadata)}>
+                  <Td
+                    className="max-w-[280px] truncate text-sm text-ink-faint"
+                    title={summarizeMetadata(entry.metadata)}
+                  >
                     {summarizeMetadata(entry.metadata)}
                   </Td>
                 </tr>

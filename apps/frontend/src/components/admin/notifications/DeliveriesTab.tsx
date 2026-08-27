@@ -28,9 +28,7 @@ export function DeliveriesTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-ink-faint">
-          Letzte {formatNumber(LIMIT)} Zustellungen
-        </span>
+        <span className="text-sm text-ink-faint">Letzte {formatNumber(LIMIT)} Zustellungen</span>
         <Button variant="ghost" iconLeft="restart" onClick={resource.reload}>
           Aktualisieren
         </Button>
@@ -70,7 +68,10 @@ export function DeliveriesTab() {
                   </Badge>
                 </Td>
                 <Td className="text-right">{formatNumber(delivery.attempts)}</Td>
-                <Td className="max-w-[240px] truncate text-sm text-ink-faint" title={delivery.failureMessage ?? undefined}>
+                <Td
+                  className="max-w-[240px] truncate text-sm text-ink-faint"
+                  title={delivery.failureMessage ?? undefined}
+                >
                   {delivery.failureMessage ?? delivery.failureCode ?? '—'}
                 </Td>
               </tr>

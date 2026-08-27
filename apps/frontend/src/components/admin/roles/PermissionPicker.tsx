@@ -1,10 +1,6 @@
 'use client';
 
-import {
-  PERMISSION_CATALOG,
-  PERMISSIONS,
-  type Permission,
-} from '@palantir/contracts';
+import { PERMISSION_CATALOG, PERMISSIONS, type Permission } from '@palantir/contracts';
 import { useMemo } from 'react';
 import { ToggleRow } from '@/components/shared';
 import { permissionAreaLabel } from '../labels';

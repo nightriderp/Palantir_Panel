@@ -34,12 +34,7 @@ import {
 import { type ApiResult, errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminError, AdminLoading } from '../common';
-import {
-  notifiableEventLabel,
-  recipientScopeLabel,
-  severityLabel,
-  severityTone,
-} from '../labels';
+import { notifiableEventLabel, recipientScopeLabel, severityLabel, severityTone } from '../labels';
 
 /**
  * Benachrichtigungs-Regeln: Ereignis → Kanal → Empfängerkreis (Lastenheft §3.6).
@@ -129,7 +124,9 @@ export function RulesTab() {
                       {rule.recipientScope === 'role'
                         ? ` (${
                             rule.recipientRoleName ??
-                            (rule.recipientRoleId ? roleName.get(rule.recipientRoleId) : undefined) ??
+                            (rule.recipientRoleId
+                              ? roleName.get(rule.recipientRoleId)
+                              : undefined) ??
                             'unbekannte Rolle'
                           })`
                         : ''}
@@ -150,11 +147,7 @@ export function RulesTab() {
                       </Button>
                     ) : null}
                     {rule.permissions.canDelete ? (
-                      <Button
-                        variant="danger"
-                        iconLeft="trash"
-                        onClick={() => setToDelete(rule)}
-                      >
+                      <Button variant="danger" iconLeft="trash" onClick={() => setToDelete(rule)}>
                         Löschen
                       </Button>
                     ) : null}
@@ -312,12 +305,16 @@ function RuleEditor({
           onChange={setRoleId}
           placeholder="Rolle wählen"
           options={assignableRoles.map((role) => ({ value: role.id, label: role.name }))}
-          error={roleMissing ? 'Für den Empfängerkreis „Rolle" muss eine Rolle gewählt werden.' : undefined}
+          error={
+            roleMissing
+              ? 'Für den Empfängerkreis „Rolle" muss eine Rolle gewählt werden.'
+              : undefined
+          }
         />
       ) : null}
       {scope === 'allUsers' ? (
         <FormMessage tone="warning">
-          „Alle Konten" erreicht bei einem häufigen Ereignis sehr viele Empfänger – nur für
+          „Alle Konten“ erreicht bei einem häufigen Ereignis sehr viele Empfänger – nur für
           Wartungshinweise gedacht.
         </FormMessage>
       ) : null}
