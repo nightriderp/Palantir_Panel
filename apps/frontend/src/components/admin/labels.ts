@@ -104,6 +104,28 @@ export function auditTargetTypeLabel(target: AuditTargetType): string {
 }
 
 // ---------------------------------------------------------------------------
+// Berechtigungen (Rollen-Editor)
+// ---------------------------------------------------------------------------
+
+const PERMISSION_AREA_LABELS: Record<string, string> = {
+  server: 'Server',
+  backup: 'Backups',
+  user: 'Nutzer',
+  role: 'Rollen',
+  notification: 'Benachrichtigungen',
+  node: 'Nodes',
+  address: 'Adressen',
+  audit: 'Audit-Log',
+  message: 'Moderation',
+  gametype: 'Spiele-Definitionen',
+};
+
+/** Deutsche Überschrift für die Gruppe eines Permission-Bereichs (Präfix vor dem ersten Punkt). */
+export function permissionAreaLabel(area: string): string {
+  return PERMISSION_AREA_LABELS[area] ?? area;
+}
+
+// ---------------------------------------------------------------------------
 // Speicherverwaltung
 // ---------------------------------------------------------------------------
 
