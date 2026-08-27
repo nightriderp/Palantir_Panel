@@ -27,10 +27,12 @@
  *
  * Der Betreiber registriert sich über die normale Oberfläche – mit denselben
  * Passwortregeln, demselben ALTCHA und derselben `AuthMethod` wie jeder andere.
- * Danach hebt er genau dieses Konto per Kommando auf der **VPS** zum Owner:
+ * Danach hebt er genau dieses Konto per Kommando auf der **VPS** zum Owner
+ * (dort läuft nur Docker, deshalb über den Compose-Dienst `owner`; lokal über
+ * `pnpm --filter @palantir/backend db:owner`):
  *
  * ```
- * pnpm --filter @palantir/backend db:owner <benutzername>
+ * docker compose --env-file ../../.env run --rm owner <benutzername>
  * ```
  *
  * Der Nachweis ist der Systemzugang zur VPS, nicht ein weiteres Geheimnis. Das
