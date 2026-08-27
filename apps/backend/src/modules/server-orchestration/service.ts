@@ -101,6 +101,18 @@ export function containerNameFor(serverId: string): string {
   return `palantir-${serverId}`;
 }
 
+/**
+ * Datenordner eines Servers auf dem Homeserver.
+ *
+ * Steht hier und nicht nur im `CREATE`-Befehl, weil die Backup-Verwaltung (B5)
+ * denselben Pfad braucht (`BackupServerRecord.dataHostPath`). Zwei getrennt
+ * gepflegte Ableitungen desselben Pfades wären die Sorte Fehler, die erst beim
+ * Zurückspielen einer Sicherung auffällt.
+ */
+export function dataHostPathFor(serverId: string): string {
+  return `/srv/palantir/servers/${serverId}`;
+}
+
 export class ServerOrchestrationService {
   private readonly deps: OrchestrationDependencies;
   private readonly now: () => Date;
@@ -239,7 +251,7 @@ export class ServerOrchestrationService {
           cpuCores: server.resourceLimits.cpuCores,
         },
         dataVolume: {
-          hostPath: `/srv/palantir/servers/${server.id}`,
+          hostPath: dataHostPathFor(server.id),
           containerPath: definition.dataVolumeContainerPath,
         },
         readOnlyRootFilesystem: definition.readOnlyRootFilesystem,
