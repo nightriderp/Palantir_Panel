@@ -21,6 +21,7 @@ import {
   type AuthService,
   registerAuthModule,
 } from './modules/auth/index.js';
+import { registerNotifications } from './modules/notifications/index.js';
 import {
   type PermissionActor,
   createDrizzleRoleRepository,
@@ -183,12 +184,32 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      */
     await app.register(websocket);
 
+    /*
+     * Notification-Engine (B6, Pflichtenheft §14) inklusive des
+     * WebSocket-Kanals `/live/notifications` für die Inbox.
+     *
+     * Steht bewusst vor den auslösenden Modulen: B3, B5 und B7 bekommen ihre
+     * Ereignis-Senke beim Aufbau gereicht und kennen B6 selbst nicht
+     * (WORK_STATUS.md, Gefundene Punkte 34, 62 und 71).
+     */
+    const notifications = await registerNotifications(app, {
+      db,
+      resolveUserId: (request) => request.authUser?.id ?? null,
+      defaultWebhookUrl: env.DISCORD_WEBHOOK_URL ?? null,
+      deliveryTimeoutMs: env.NOTIFICATION_DELIVERY_TIMEOUT_MS,
+      // Änderungen an Kanälen, Regeln und Ankündigungen sind
+      // sicherheitsrelevant und gehören ins Audit-Log (Pflichtenheft §6).
+      audit: admin.services.audit,
+      log: app.log,
+    });
+
     const orchestration = registerServerOrchestration(app, {
       db,
       agents,
       resolveViewerId: (request) => request.authUser?.id ?? null,
       // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
       portPool: admin.services.ports,
+      events: notifications.eventSink,
     });
 
     /*
@@ -200,7 +221,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * angemeldet und die Routen antworten mit `AUTH_REQUIRED` – die sichere
      * Vorgabe, geöffnet wird dadurch nichts.
      */
-    const chat = createChatModule({ db: getDb(), audit: admin.services.audit });
+    const chat = createChatModule({
+      db,
+      audit: admin.services.audit,
+      events: notifications.eventSink,
+    });
 
     await app.register(async (instance) => {
       registerChatRoutes(instance, {
@@ -223,15 +248,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * (`modules/server-orchestration/backup-ports.ts`) – ohne sie ließen sich
      * die Routen hier gar nicht registrieren.
      *
-     * Die Ereignis-Senke bleibt vorerst die wirkungslose Vorgabe aus B5: Die
-     * Notification-Engine (B6) fehlt noch, und ein fehlgeschlagenes Backup darf
-     * nicht daran scheitern, dass niemand zuhört.
+     * Die Ereignis-Senke kommt aus B6 (Gefundener Punkt 34). Ein
+     * fehlgeschlagenes Backup scheitert dadurch nicht an der Zustellung:
+     * `publish()` wirft nie, ein nicht erreichbarer Kanal landet nur im
+     * Zustellungsprotokoll (Pflichtenheft §14).
      */
     const backups = createBackupService({
       repository: createDrizzleBackupRepository(db),
       servers: createDrizzleBackupServerDirectory(db),
       users: createDrizzleUserDirectory(db),
       agent: createAgentBackupGateway({ agents, repository: serverRepository }),
+      events: notifications.eventSink,
     });
 
     const backupSchedules = createBackupScheduleService({
