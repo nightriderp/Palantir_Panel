@@ -53,6 +53,20 @@ export interface BuildServerOptions {
    */
   readonly auth?: boolean | AuthModuleOptions;
   /**
+   * Die datenbankgestützten Module einhängen (Admin, Benachrichtigungen,
+   * Server-Orchestrierung, Chat, Zeitgeber).
+   *
+   * Standard: eingehängt, sobald `DATABASE_URL` gesetzt ist. Ohne die
+   * Variable bleiben sie außen vor, statt bei jedem Aufruf mit einem
+   * Verbindungsfehler zu antworten.
+   *
+   * Ausdrücklich `false` setzen Tests, die einzelne dieser Routen mit
+   * Attrappen selbst registrieren. Ohne die Option hinge ihr Ergebnis daran,
+   * ob auf der Maschine eine `.env` liegt: mit `DATABASE_URL` kämen die
+   * echten Routen dazu und die Registrierung liefe doppelt.
+   */
+  readonly database?: boolean;
+  /**
    * Ermittelt den Handelnden zum Request, wenn das Auth-Modul **nicht** läuft.
    *
    * Mit eingehängtem Auth-Modul kommt der Handelnde aus der Sitzung (B1): Das
@@ -126,11 +140,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   await app.register(registerHealthRoutes);
 
-  // Die Admin-Routen brauchen eine Datenbank. Ohne `DATABASE_URL` werden sie
-  // gar nicht erst registriert, statt bei jedem Aufruf mit einem
-  // Verbindungsfehler zu antworten – das Backend bleibt sonst unverändert
-  // lauffähig (siehe Kommentar zu DATABASE_URL in `config/env.ts`).
-  if (env.DATABASE_URL) {
+  /*
+   * Die fachlichen Module brauchen eine Datenbank. Ohne `DATABASE_URL` werden
+   * sie gar nicht erst registriert, statt bei jedem Aufruf mit einem
+   * Verbindungsfehler zu antworten – das Backend bleibt sonst unverändert
+   * lauffähig (siehe Kommentar zu DATABASE_URL in `config/env.ts`).
+   *
+   * `options.database` sticht die Umgebung, damit Tests den Zustand selbst
+   * festlegen können statt ihn von der Maschine zu erben.
+   */
+  const withDatabase = options.database ?? env.DATABASE_URL !== undefined;
+
+  if (withDatabase) {
     const db = getDb();
     const roles = createRoleService(createDrizzleRoleRepository(db));
 
