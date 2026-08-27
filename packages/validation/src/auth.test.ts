@@ -47,15 +47,24 @@ describe('Passwort (Pflichtenheft §7)', () => {
 });
 
 describe('Login-Eingabe', () => {
+  const valid = { username: 'alex', password: 'kurz', altcha: 'eyJhbGciOiJTSEEtMjU2In0=' };
+
   it('prüft das Passwort beim Login nicht auf Länge', () => {
     // Bestandskonten können älteren Regeln folgen; eine Längenmeldung würde
     // außerdem verraten, wie das hinterlegte Passwort aussieht.
-    expect(loginInputSchema.safeParse({ username: 'alex', password: 'kurz' }).success).toBe(true);
+    expect(loginInputSchema.safeParse(valid).success).toBe(true);
   });
 
   it('verlangt beide Felder', () => {
-    expect(loginInputSchema.safeParse({ username: '', password: 'x' }).success).toBe(false);
-    expect(loginInputSchema.safeParse({ username: 'alex', password: '' }).success).toBe(false);
+    expect(loginInputSchema.safeParse({ ...valid, username: '' }).success).toBe(false);
+    expect(loginInputSchema.safeParse({ ...valid, password: '' }).success).toBe(false);
+  });
+
+  it('verlangt einen ALTCHA-Nachweis (Pflichtenheft §7, §18)', () => {
+    // Der Spam-Schutz gilt für Registrierung **und** Login; ohne Nachweis
+    // bliebe allein das IP-Rate-Limit.
+    expect(loginInputSchema.safeParse({ username: 'alex', password: 'kurz' }).success).toBe(false);
+    expect(loginInputSchema.safeParse({ ...valid, altcha: '' }).success).toBe(false);
   });
 });
 

@@ -209,3 +209,34 @@ export interface WatchOptions {
   /** Nur Logzeilen ab diesem Zeitpunkt (ISO-8601). */
   readonly logsSince?: string;
 }
+
+/**
+ * Ein Container-Image auf dem Homeserver (Pflichtenheft §16).
+ *
+ * Ergaenzung aus A3: Der Storage-Explorer verlangt die Groessen der Images
+ * "inkl. Nutzungsstatus". Der Weg dorthin fuehrt ueber die Container-Engine,
+ * und Agent-Code spricht mit ihr ausschliesslich ueber `ContainerRuntime`
+ * (CLAUDE.md §4) - deshalb steht der Typ hier und nicht im Storage-Job.
+ */
+export interface ContainerImage {
+  /** Image-ID der Engine, z. B. `sha256:abc...`. */
+  readonly imageId: string;
+  /** Erster Tag, z. B. `palantir/testserver:1`; `null` bei taglosen Images. */
+  readonly tag: string | null;
+  readonly sizeBytes: number;
+  /** Erstellzeitpunkt als ISO-8601-String; `null`, wenn die Engine keinen liefert. */
+  readonly createdAt: string | null;
+  /**
+   * Wird das Image von mindestens einem Container benutzt?
+   *
+   * Bewusst ueber **alle** Container der Engine ermittelt, nicht nur ueber die
+   * von Palantir verwalteten: Ein Image, das ein fremder Container benutzt,
+   * darf der Storage-Explorer nicht als ungenutzt anbieten.
+   */
+  readonly inUse: boolean;
+}
+
+export interface RemoveImageOptions {
+  /** Image auch entfernen, wenn es noch von einem Tag referenziert wird. */
+  readonly force?: boolean;
+}

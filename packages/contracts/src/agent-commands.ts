@@ -267,6 +267,95 @@ export interface GetStorageBreakdownCommandPayload {
   readonly includeImages?: boolean;
 }
 
+/**
+ * Art der Erreichbarkeitsprüfung, wie der Agent sie kennt (Pflichtenheft §9).
+ *
+ * Bewusst nicht `GameQuerySpec` aus `game-type.ts`: Dort steht der
+ * **Container**-Port, weil die Spiele-Definition den Container beschreibt. Der
+ * Agent prüft dagegen den Host-Port, auf den die Portvergabe abgebildet hat –
+ * er kennt weder Spiele noch Container-Ports. Das Backend leitet diese Angabe
+ * aus `GameTypeDefinition.query` ab; die Abbildung passiert dort an einer
+ * Stelle.
+ */
+export type AgentQueryKind = 'portConnect' | 'gamedig';
+
+/** Generischer Port-Connect-Test (Phase 1, Test-Typ) – liefert keine Spielerzahl. */
+export interface AgentPortConnectQuery {
+  readonly kind: 'portConnect';
+}
+
+/**
+ * Abfrage über `gamedig` (Phase 2+) – liefert zusätzlich Spielerzahl und Ping.
+ *
+ * `protocol` ist der Bezeichner der `gamedig`-Bibliothek, z. B. `minecraft`.
+ */
+export interface AgentGamedigQuery {
+  readonly kind: 'gamedig';
+  readonly protocol: string;
+}
+
+export type AgentQuerySpec = AgentPortConnectQuery | AgentGamedigQuery;
+
+/** Was der Agent für die periodische Abfrage eines Servers wissen muss. */
+export interface AgentServerQueryTarget {
+  readonly containerId: string;
+  /**
+   * Adresse, unter der der Server auf dem Homeserver erreichbar ist. Ohne
+   * Angabe prüft der Agent `127.0.0.1` – die Portbindung liegt auf dem
+   * Homeserver selbst (Pflichtenheft §18: kein Listener im LAN).
+   */
+  readonly host?: string;
+  /** Host-Port aus der Portvergabe, nicht der Container-Port. */
+  readonly hostPort: number;
+  readonly query: AgentQuerySpec;
+  /**
+   * Abstand zwischen zwei Abfragen. Ohne Angabe gilt der Wert aus der
+   * Agent-Konfiguration (`AGENT_QUERY_INTERVAL_SECONDS`).
+   */
+  readonly intervalSeconds?: number;
+}
+
+/**
+ * `SET_SERVER_QUERY` – periodische Abfrage eines Servers setzen oder beenden.
+ *
+ * Bewusst idempotent: Derselbe Befehl mit denselben Angaben ersetzt das
+ * bestehende Ziel, statt ein zweites anzulegen. Das Backend kann ihn deshalb
+ * nach jedem Verbindungsaufbau für alle laufenden Server wiederholen, ohne
+ * vorher aufräumen zu müssen.
+ */
+export interface SetServerQueryCommandPayload {
+  readonly serverId: string;
+  /** `null` beendet die Abfrage für diesen Server. */
+  readonly target: AgentServerQueryTarget | null;
+}
+
+/**
+ * Posten, den `REMOVE_STORAGE_ENTRY` entfernen darf.
+ *
+ * `serverData` fehlt hier bewusst: Datenordner aktiver Server sind über den
+ * Storage-Explorer grundsätzlich nicht löschbar, sondern nur über den
+ * dedizierten Server-Löschen-Vorgang (Lastenheft §3.8). Dass die Kategorie
+ * schon im Typ fehlt, macht daraus einen Fehler beim Übersetzen statt einer
+ * Prüfung, die man vergessen kann.
+ */
+export type RemovableStorageEntryKind = 'backup' | 'dockerImage' | 'orphaned';
+
+/**
+ * `REMOVE_STORAGE_ENTRY` – einen Posten der Speicherübersicht entfernen
+ * (Lastenheft §3.8, Pflichtenheft §16).
+ *
+ * Bewusst idempotent wie `DELETE_BACKUP`: Ein bereits verschwundener Posten
+ * wird als `removed: false` gemeldet, nicht als Fehler – sonst bliebe nach
+ * einem Abbruch ein Eintrag zurück, der sich nie wieder löschen ließe.
+ */
+export interface RemoveStorageEntryCommandPayload {
+  readonly kind: RemovableStorageEntryKind;
+  /** Absoluter Pfad auf dem Homeserver; bei `dockerImage` nicht gesetzt. */
+  readonly path?: string;
+  /** Image-Id bei `dockerImage`; sonst nicht gesetzt. */
+  readonly imageId?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Ergebnisse je Befehl (das `data`-Feld im Envelope)
 // ---------------------------------------------------------------------------
@@ -437,6 +526,23 @@ export interface GetStorageBreakdownCommandResult {
   readonly entries: readonly AgentStorageEntry[];
 }
 
+/** Ergebnis von `SET_SERVER_QUERY`. */
+export interface SetServerQueryCommandResult {
+  readonly serverId: string;
+  /** `true`, wenn der Agent den Server jetzt periodisch abfragt. */
+  readonly active: boolean;
+  /** Tatsächlich verwendeter Abstand in Sekunden; `null`, wenn nicht abgefragt wird. */
+  readonly intervalSeconds: number | null;
+}
+
+/** Ergebnis von `REMOVE_STORAGE_ENTRY`. */
+export interface RemoveStorageEntryCommandResult {
+  /** `false`, wenn der Posten schon vorher nicht mehr da war. */
+  readonly removed: boolean;
+  /** Freigegebener Speicher in Byte; `0`, wenn nichts zu entfernen war. */
+  readonly freedBytes: number;
+}
+
 // ---------------------------------------------------------------------------
 // Zuordnung Befehl → Nutzdaten/Ergebnis
 // ---------------------------------------------------------------------------
@@ -474,6 +580,8 @@ export interface AgentCommandPayloads {
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandPayload;
   readonly DELETE_BACKUP: DeleteBackupCommandPayload;
   readonly GET_STORAGE_BREAKDOWN: GetStorageBreakdownCommandPayload;
+  readonly SET_SERVER_QUERY: SetServerQueryCommandPayload;
+  readonly REMOVE_STORAGE_ENTRY: RemoveStorageEntryCommandPayload;
 }
 
 /** Ergebnis je Befehlsname; `null` bei Befehlen ohne Rückgabe. */
@@ -494,6 +602,8 @@ export interface AgentCommandResults {
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandResult;
   readonly DELETE_BACKUP: DeleteBackupCommandResult;
   readonly GET_STORAGE_BREAKDOWN: GetStorageBreakdownCommandResult;
+  readonly SET_SERVER_QUERY: SetServerQueryCommandResult;
+  readonly REMOVE_STORAGE_ENTRY: RemoveStorageEntryCommandResult;
 }
 
 /**
@@ -502,6 +612,12 @@ export interface AgentCommandResults {
  * Alles außerhalb dieser Liste steht zwar im Protokoll (Pflichtenheft §5.3),
  * wird aber mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet – das Backend
  * erfährt den Unterschied zwischen „unbekannt" und „noch nicht gebaut".
+ *
+ * Seit Arbeitspaket A3 ist die Liste vollständig: Die Backup-Befehle, der
+ * Storage-Scanner und die beiden A3-Ergänzungen werden ausgeführt. Sollte der
+ * Agent ohne Job-Modul gebaut werden, antwortet er für diese Befehle weiterhin
+ * mit `AGENT_COMMAND_NOT_IMPLEMENTED` – die Entscheidung fällt dann im
+ * Adapter, nicht in dieser Liste.
  */
 export const IMPLEMENTED_AGENT_COMMANDS = [
   'CREATE',
@@ -515,6 +631,13 @@ export const IMPLEMENTED_AGENT_COMMANDS = [
   'FILE_LIST',
   'FILE_READ',
   'FILE_WRITE',
+  'CREATE_BACKUP',
+  'RESTORE_BACKUP',
+  'DOWNLOAD_BACKUP',
+  'DELETE_BACKUP',
+  'GET_STORAGE_BREAKDOWN',
+  'SET_SERVER_QUERY',
+  'REMOVE_STORAGE_ENTRY',
 ] as const;
 
 export type ImplementedAgentCommandName = (typeof IMPLEMENTED_AGENT_COMMANDS)[number];

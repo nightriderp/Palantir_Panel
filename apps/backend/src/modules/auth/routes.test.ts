@@ -278,6 +278,74 @@ describe('Login über HTTP', () => {
     );
     expect(response.cookies.some((cookie) => cookie.name === ACCESS_COOKIE_NAME)).toBe(false);
   });
+
+  it('lehnt einen Login ohne ALTCHA-Nachweis ab', async () => {
+    // Pflichtenheft §7 und §18 verlangen den Spam-Schutz auch beim Login. Ein
+    // stilles Durchwinken wäre ein Auth-Bypass (CLAUDE.md §2).
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'spieler', password: PASSWORD },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('AUTH_CAPTCHA_INVALID');
+    expect(response.cookies.some((cookie) => cookie.name === ACCESS_COOKIE_NAME)).toBe(false);
+  });
+
+  it('lehnt einen Login mit gefälschtem ALTCHA-Nachweis ab', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'spieler', password: PASSWORD, altcha: 'gefaelscht' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('AUTH_CAPTCHA_INVALID');
+    expect(response.cookies.some((cookie) => cookie.name === ACCESS_COOKIE_NAME)).toBe(false);
+  });
+
+  it('lässt denselben ALTCHA-Nachweis kein zweites Mal gelten', async () => {
+    const solved = await solveAltcha();
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'spieler', password: PASSWORD, altcha: solved },
+    });
+    expect(first.statusCode).toBe(200);
+
+    // Wäre der Nachweis mehrfach verwendbar, würde eine einmal geleistete
+    // Arbeit für beliebig viele weitere Versuche reichen.
+    const second = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'spieler', password: PASSWORD, altcha: solved },
+    });
+
+    expect(second.statusCode).toBe(400);
+    expect(second.json<{ error: { code: string } }>().error.code).toBe('AUTH_CAPTCHA_INVALID');
+  });
+
+  it('lässt einen bei der Registrierung eingelösten Nachweis nicht beim Login gelten', async () => {
+    const solved = await solveAltcha();
+
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { username: 'zweitkonto', password: PASSWORD, altcha: solved },
+    });
+    expect(registered.statusCode).toBe(201);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'zweitkonto', password: PASSWORD, altcha: solved },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('AUTH_CAPTCHA_INVALID');
+  });
 });
 
 describe('Sitzung und CSRF (Pflichtenheft §7, §18)', () => {

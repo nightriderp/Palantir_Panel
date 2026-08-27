@@ -15,6 +15,7 @@
 import { z } from 'zod';
 import { idSchema } from './common.js';
 import { isoTimestampSchema } from './agent-protocol.js';
+import { getStorageBreakdownPayloadSchema } from './storage.js';
 
 /** Container-ID der Runtime. Kein festes Format – die vergibt die Engine. */
 export const containerIdSchema = z
@@ -205,13 +206,107 @@ export const downloadBackupCommandResultSchema = z.object({
   eof: z.boolean(),
 });
 
+// ---------------------------------------------------------------------------
+// Periodische Server-Abfrage und Speicher-Aufräumen (Arbeitspaket A3)
+// ---------------------------------------------------------------------------
+
+export const agentQuerySpecSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('portConnect') }),
+  z.object({ kind: z.literal('gamedig'), protocol: z.string().min(1) }),
+]);
+
+export const agentServerQueryTargetSchema = z.object({
+  containerId: containerIdSchema,
+  host: z.string().min(1).optional(),
+  hostPort: portNumberSchema,
+  query: agentQuerySpecSchema,
+  // Untergrenze bewusst im Schema und nicht erst im Job: Ein Intervall von
+  // Sekundenbruchteilen wäre für den abgefragten Spielserver eine Last, keine
+  // Messung.
+  intervalSeconds: z.number().int().min(5).max(3_600).optional(),
+});
+
+export const setServerQueryCommandPayloadSchema = z.object({
+  serverId: idSchema,
+  target: agentServerQueryTargetSchema.nullable(),
+});
+
+export const setServerQueryCommandResultSchema = z.object({
+  serverId: idSchema,
+  active: z.boolean(),
+  intervalSeconds: z.number().int().positive().nullable(),
+});
+
+/**
+ * Zu entfernender Speicher-Posten.
+ *
+ * `serverData` fehlt bewusst – Datenordner aktiver Server sind über den
+ * Storage-Explorer nicht löschbar (Lastenheft §3.8). Die Prüfung steht hier
+ * zusätzlich zum Typ, weil die Nutzlast über die Leitung kommt und der Typ
+ * dort nichts mehr ausrichtet.
+ */
+export const removableStorageEntryKindSchema = z.enum(['backup', 'dockerImage', 'orphaned']);
+
+export const removeStorageEntryCommandPayloadSchema = z
+  .object({
+    kind: removableStorageEntryKindSchema,
+    path: hostPathSchema.optional(),
+    imageId: z.string().min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.kind === 'dockerImage') {
+      if (value.imageId === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['imageId'],
+          message: 'Bei kind "dockerImage" wird imageId benötigt.',
+        });
+      }
+
+      return;
+    }
+
+    if (value.path === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['path'],
+        message: `Bei kind "${value.kind}" wird path benötigt.`,
+      });
+    }
+  });
+
+export const removeStorageEntryCommandResultSchema = z.object({
+  removed: z.boolean(),
+  freedBytes: z.number().int().nonnegative(),
+});
+
+/**
+ * Nutzlast von `STATS_UPDATE` aus der periodischen Server-Abfrage.
+ *
+ * Steht hier und nicht in `agent-protocol.ts`, weil sie inhaltlich zur Abfrage
+ * gehört; das Frame-Schema lässt `payload` bewusst offen.
+ */
+export const agentServerQueryPayloadSchema = z.object({
+  source: z.literal('serverQuery'),
+  containerId: containerIdSchema,
+  reachable: z.boolean(),
+  playersOnline: z.number().int().nonnegative().nullable(),
+  playersMax: z.number().int().nonnegative().nullable(),
+  pingMs: z.number().int().nonnegative().nullable(),
+  reason: z.string().min(1).nullable(),
+  at: isoTimestampSchema,
+});
+
 /**
  * Nachschlagetabelle Befehl → Schema.
  *
- * Nur die Befehle, die der Agent tatsächlich ausführt
- * (`IMPLEMENTED_AGENT_COMMANDS` in `@palantir/contracts`). Für die übrigen
- * antwortet er mit `AGENT_COMMAND_NOT_IMPLEMENTED`, ohne die Nutzdaten zu
- * prüfen – es gibt noch nichts, wogegen zu prüfen wäre.
+ * Deckungsgleich mit `IMPLEMENTED_AGENT_COMMANDS` in `@palantir/contracts` –
+ * ein Test hält beide Listen zusammen. Seit A3 sind das alle Befehle des
+ * Protokolls.
+ *
+ * `getStorageBreakdownPayloadSchema` steht in `storage.ts`, weil es dort
+ * zusammen mit dem Ergebnis-Schema geführt wird (B8); hier wird es nur
+ * eingehängt.
  */
 export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   CREATE: createCommandPayloadSchema,
@@ -225,6 +320,13 @@ export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   FILE_LIST: fileListCommandPayloadSchema,
   FILE_READ: fileReadCommandPayloadSchema,
   FILE_WRITE: fileWriteCommandPayloadSchema,
+  CREATE_BACKUP: createBackupCommandPayloadSchema,
+  RESTORE_BACKUP: restoreBackupCommandPayloadSchema,
+  DOWNLOAD_BACKUP: downloadBackupCommandPayloadSchema,
+  DELETE_BACKUP: deleteBackupCommandPayloadSchema,
+  GET_STORAGE_BREAKDOWN: getStorageBreakdownPayloadSchema,
+  SET_SERVER_QUERY: setServerQueryCommandPayloadSchema,
+  REMOVE_STORAGE_ENTRY: removeStorageEntryCommandPayloadSchema,
 } as const;
 
 /**

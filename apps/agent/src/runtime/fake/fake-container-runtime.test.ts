@@ -160,4 +160,43 @@ describe('FakeContainerRuntime – Testhilfen', () => {
     expect(id).toBe('fake-container-1');
     expect(zweite.containerId).toBe('fake-container-2');
   });
+  describe('Images (Pflichtenheft §16, Ergaenzung aus A3)', () => {
+    it('meldet geseedete Images mit Groesse und Tag', async () => {
+      runtime.seedImage({ imageId: 'sha256:aaa', tag: 'palantir/test:1', sizeBytes: 120 });
+
+      await expect(runtime.listImages()).resolves.toEqual([
+        expect.objectContaining({ imageId: 'sha256:aaa', tag: 'palantir/test:1', sizeBytes: 120 }),
+      ]);
+    });
+
+    it('meldet ein von einem Container benutztes Image als inUse', async () => {
+      runtime.seedImage({ imageId: 'sha256:aaa', tag: 'palantir/testserver:1' });
+      runtime.seedImage({ imageId: 'sha256:bbb', tag: 'alt/ungenutzt:2' });
+
+      const images = await runtime.listImages();
+      expect(images.find((i) => i.imageId === 'sha256:aaa')?.inUse).toBe(true);
+      expect(images.find((i) => i.imageId === 'sha256:bbb')?.inUse).toBe(false);
+    });
+
+    it('entfernt ein ungenutztes Image', async () => {
+      runtime.seedImage({ imageId: 'sha256:bbb', tag: 'alt/ungenutzt:2' });
+
+      await expect(runtime.removeImage('sha256:bbb')).resolves.toBe(true);
+      await expect(runtime.listImages()).resolves.toEqual([]);
+    });
+
+    it('lehnt das Entfernen eines benutzten Images ab', async () => {
+      runtime.seedImage({ imageId: 'sha256:aaa', tag: 'palantir/testserver:1' });
+
+      await expect(runtime.removeImage('sha256:aaa')).rejects.toMatchObject({
+        code: 'RUNTIME_ERROR',
+      });
+    });
+
+    it('entfernt ein benutztes Image mit force', async () => {
+      runtime.seedImage({ imageId: 'sha256:aaa', tag: 'palantir/testserver:1' });
+
+      await expect(runtime.removeImage('sha256:aaa', { force: true })).resolves.toBe(true);
+    });
+  });
 });

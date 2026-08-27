@@ -99,10 +99,11 @@ Legt die Rollen **Admin**, **Moderator**, **Nutzer** und die geschützte Systemr
 Abschnitt 2.4.
 
 **Schritt 5 – Owner-Konto einrichten** (einmalig, nachdem das Panel erreichbar ist):
-über die Oberfläche registrieren, dann im Repo-Root `/opt/palantir` auf der **VPS**:
+zuerst über die Oberfläche registrieren, dann aus `/opt/palantir/deploy/vps` auf der
+**VPS**:
 
 ```bash
-pnpm --filter @palantir/backend db:owner <benutzername>
+docker compose --env-file ../../.env run --rm owner <benutzername>
 ```
 
 Ohne diesen Schritt hat niemand die Rechte, den ersten Admin freizuschalten – die
@@ -276,9 +277,14 @@ ein Konto mit Benutzername und Passwort anlegen. Bewusst der reguläre Weg: dies
 Passwortregeln, dasselbe CAPTCHA, dieselbe `AuthMethod` wie bei jedem anderen Konto. Der
 Wartebildschirm nach der Registrierung ist erwartet – Schritt 2 löst ihn auf.
 
-**Schritt 2 – dieses Konto zum Owner heben.** Im Repo-Root auf derselben Maschine wie das
-Backend – auf der **VPS** unter `/opt/palantir`, auf dem **Entwicklungsrechner** im
-geklonten Repository:
+**Schritt 2 – dieses Konto zum Owner heben.** Auf der **VPS** aus
+`/opt/palantir/deploy/vps`:
+
+```bash
+docker compose --env-file ../../.env run --rm owner <benutzername>
+```
+
+Auf dem **Entwicklungsrechner** geht es direkt über pnpm, dort ist Node vorhanden:
 
 ```bash
 pnpm --filter @palantir/backend db:owner <benutzername>

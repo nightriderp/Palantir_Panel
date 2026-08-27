@@ -29,15 +29,17 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
     }
   });
 
-  it('lässt die A3-Befehle bewusst als noch nicht umgesetzt stehen', () => {
-    // Die vier Backup-Befehle und GET_STORAGE_BREAKDOWN sind Dateisystem-
-    // und Job-Aufgaben (A3), nicht Container-Ansteuerung.
-    expect(isImplementedAgentCommand('CREATE_BACKUP')).toBe(false);
-    expect(isImplementedAgentCommand('RESTORE_BACKUP')).toBe(false);
-    expect(isImplementedAgentCommand('DOWNLOAD_BACKUP')).toBe(false);
-    expect(isImplementedAgentCommand('DELETE_BACKUP')).toBe(false);
-    expect(isImplementedAgentCommand('GET_STORAGE_BREAKDOWN')).toBe(false);
-    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length - 5);
+  it('führt seit A3 jeden Befehl des Protokolls als umgesetzt', () => {
+    // Vor A3 fehlten hier die vier Backup-Befehle und der Storage-Scanner –
+    // Dateisystem- und Job-Aufgaben, keine Container-Ansteuerung. Mit dem
+    // Job-Modul sind sie gebaut; bleibt einer übrig, soll das auffallen.
+    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual([]);
+    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length);
+  });
+
+  it('kennt die beiden von A3 ergänzten Befehle', () => {
+    expect([...AGENT_COMMANDS]).toContain('SET_SERVER_QUERY');
+    expect([...AGENT_COMMANDS]).toContain('REMOVE_STORAGE_ENTRY');
   });
 
   it('isImplementedAgentCommand() erkennt Befehle außerhalb des Protokolls', () => {

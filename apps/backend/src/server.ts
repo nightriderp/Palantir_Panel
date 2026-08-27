@@ -3,7 +3,8 @@ import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from './config/env.js';
 import { getDb } from './db/index.js';
-import { createAdminModule, registerAdminRoutes } from './modules/admin/index.js';
+import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
+import { createChatModule, registerChatRoutes } from './modules/chat/index.js';
 import {
   type AuthModuleOptions,
   type AuthService,
@@ -134,6 +135,30 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       resolveViewerId: (request) => request.authUser?.id ?? null,
       // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
       portPool: admin.services.ports,
+    });
+
+    /*
+     * Chat & Moderation (B7, Pflichtenheft §15) inklusive des Live-Kanals
+     * `/api/chat/live`.
+     *
+     * Sichtbarkeit hängt hier an der Teilnahme, nicht an einer Permission:
+     * Ohne Auth-Modul bleibt `authUser` leer, jeder Aufruf gilt als nicht
+     * angemeldet und die Routen antworten mit `AUTH_REQUIRED` – die sichere
+     * Vorgabe, geöffnet wird dadurch nichts.
+     */
+    const chat = createChatModule({ db: getDb(), audit: admin.services.audit });
+
+    await app.register(async (instance) => {
+      registerChatRoutes(instance, {
+        chat: chat.chat,
+        moderation: chat.moderation,
+        live: chat.live,
+        ipHintOf,
+        resolveViewer: (request) =>
+          request.authUser
+            ? { id: request.authUser.id, displayName: request.authUser.displayName }
+            : null,
+      });
     });
   }
 
