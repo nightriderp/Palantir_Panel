@@ -41,11 +41,17 @@ interface Aufbau {
  * beobachtbar durchlaufen.
  */
 function aufbau(
-  options: { server?: BackupServerRecord; bestand?: readonly BackupRecord[] } = {},
+  options: {
+    server?: BackupServerRecord;
+    /** Bestand; als Funktion, wenn er die erst hier erzeugte Besitzer-Id braucht. */
+    bestand?: readonly BackupRecord[] | ((besitzerId: string) => readonly BackupRecord[]);
+  } = {},
 ): Aufbau & { fertig(): Promise<void> } {
   const besitzerId = testId('2');
   const server = options.server ?? testServer({ ownerId: besitzerId });
-  const repository = inMemoryBackupRepository(options.bestand ?? []);
+  const bestand =
+    typeof options.bestand === 'function' ? options.bestand(besitzerId) : (options.bestand ?? []);
+  const repository = inMemoryBackupRepository(bestand);
   const agent = fakeAgent();
   const events = recordingEventPublisher();
   const offeneJobs: (() => Promise<void>)[] = [];
@@ -515,5 +521,81 @@ describe('Globale Übersicht (Lastenheft §3.7)', () => {
     ]);
     expect(uebersicht.permissions.canManageAny).toBe(true);
     expect(dto.id).toBeTruthy();
+  });
+});
+
+describe('Backup ohne Server (ON DELETE SET NULL, Lastenheft §3.3)', () => {
+  // Der Fremdschlüssel `backups.server_id -> game_servers.id` löscht bewusst
+  // nicht mit, sondern setzt die Spalte auf NULL (R3): Ein Backup überlebt
+  // seinen Server. Ab da trägt `ownerId` allein die `.own`-Prüfung.
+  function mitVerwaistem() {
+    let verwaist!: BackupRecord;
+    const t = aufbau({
+      bestand: (besitzerId) => {
+        verwaist = testBackup({ serverId: null, ownerId: besitzerId, type: 'manual' });
+
+        return [verwaist];
+      },
+    });
+
+    return { t, verwaist };
+  }
+
+  it('bleibt für den Besitzer sichtbar und meldet keinen Servernamen', async () => {
+    const { t, verwaist } = mitVerwaistem();
+
+    const dto = await t.service.get(actorMit('backup.manage.own'), t.besitzerId, verwaist.id);
+
+    expect(dto.serverId).toBeNull();
+    expect(dto.serverName).toBeNull();
+    expect(dto.permissions.canDownload).toBe(true);
+  });
+
+  it('lässt sich löschen – Datensatz und Archiv verschwinden gemeinsam', async () => {
+    const { t, verwaist } = mitVerwaistem();
+
+    await t.service.remove(actorMit('backup.manage.own'), t.besitzerId, verwaist.id);
+
+    expect(t.agent.deletedStoragePaths).toEqual([verwaist.storagePath]);
+    expect(await t.repository.findById(verwaist.id)).toBeNull();
+  });
+
+  it('verweigert das Wiederherstellen, weil das Ziel fehlt', async () => {
+    const { t, verwaist } = mitVerwaistem();
+
+    await expect(
+      t.service.restore(actorMit('backup.manage.own'), t.besitzerId, verwaist.id),
+    ).rejects.toMatchObject({ code: 'SERVER_NOT_FOUND' });
+  });
+
+  it('rechnet die Aufbewahrung nicht über fremde Server hinweg', async () => {
+    // Zwei automatische Backups zweier verschiedener, inzwischen gelöschter
+    // Server. Würden sie als Geschwister gelten, wäre nur das neuere geschützt –
+    // „neuestes automatisches Backup bleibt" gilt aber je Server.
+    const t = aufbau({
+      bestand: (besitzerId) => [
+        testBackup({
+          serverId: null,
+          ownerId: besitzerId,
+          type: 'automatic',
+          createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        }),
+        testBackup({
+          serverId: null,
+          ownerId: besitzerId,
+          type: 'automatic',
+          createdAt: new Date('2026-08-20T00:00:00.000Z'),
+        }),
+      ],
+    });
+
+    const liste = await t.service.listForOwner(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.besitzerId,
+    );
+
+    expect(liste).toHaveLength(2);
+    expect(liste.map((dto) => dto.retentionProtected)).toEqual([true, true]);
   });
 });

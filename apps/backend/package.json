@@ -20,7 +20,8 @@
     "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist .turbo",
     "db:migrate:prod": "node dist/db/migrate.js",
-    "db:seed:prod": "node dist/db/seed.js"
+    "db:seed:prod": "node dist/db/seed.js",
+    "db:owner:prod": "node dist/db/owner.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

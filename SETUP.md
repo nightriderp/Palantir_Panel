@@ -277,14 +277,20 @@ ein Konto mit Benutzername und Passwort anlegen. Bewusst der reguläre Weg: dies
 Passwortregeln, dasselbe CAPTCHA, dieselbe `AuthMethod` wie bei jedem anderen Konto. Der
 Wartebildschirm nach der Registrierung ist erwartet – Schritt 2 löst ihn auf.
 
-**Schritt 2 – dieses Konto zum Owner heben.** Auf der **VPS** aus
-`/opt/palantir/deploy/vps`:
+**Schritt 2 – dieses Konto zum Owner heben.** Auf der **VPS** über den Compose-Dienst
+`owner`, aus `/opt/palantir/deploy/vps`:
 
 ```bash
 docker compose --env-file ../../.env run --rm owner <benutzername>
 ```
 
-Auf dem **Entwicklungsrechner** geht es direkt über pnpm, dort ist Node vorhanden:
+> Wie beim Seed-Lauf: Auf der VPS gibt es **weder Node noch pnpm**, dort läuft nur Docker.
+> Der Dienst nutzt denselben kompilierten Stand aus dem Backend-Image. Er trägt den
+> Benutzernamen bewusst als `entrypoint`-Argument – ein `command` würde von
+> `docker compose run` ersetzt, und der Name käme nie beim Skript an.
+
+Auf dem **Entwicklungsrechner** läuft derselbe Schritt direkt über pnpm, im Repo-Root des
+geklonten Repositories:
 
 ```bash
 pnpm --filter @palantir/backend db:owner <benutzername>
