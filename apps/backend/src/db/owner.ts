@@ -7,18 +7,29 @@ import {
 import { closeDb, getDb } from './client.js';
 
 /**
- * Ersteinrichtung des Owner-Kontos
- * (`pnpm --filter @palantir/backend db:owner <benutzername>`).
+ * Ersteinrichtung des Owner-Kontos.
  *
  * Hebt ein **bereits registriertes** Konto zum Owner (Lastenheft §2,
  * Pflichtenheft §8 und §12.3). Ohne diesen Schritt hat auf einer frisch
  * aufgesetzten Instanz niemand die Rechte, den ersten Admin freizuschalten.
  *
- * Läuft im Repo-Root auf derselben Maschine wie das Backend – auf der **VPS**
- * unter `/opt/palantir`, auf dem **Entwicklungsrechner** im geklonten
- * Repository. Der Nachweis ist der Systemzugang zu dieser Maschine, nicht ein
- * weiteres Geheimnis; die Begründung für diesen Weg steht in
- * `modules/auth/owner.ts`, die Anleitung in SETUP.md §2.5.
+ * Aufruf auf der **VPS** über den Compose-Dienst `owner`, aus
+ * `/opt/palantir/deploy/vps` – dort gibt es weder Node noch pnpm, nur Docker:
+ *
+ * ```
+ * docker compose --env-file ../../.env run --rm owner <benutzername>
+ * ```
+ *
+ * Auf dem **Entwicklungsrechner** direkt im Repo-Root des geklonten
+ * Repositories:
+ *
+ * ```
+ * pnpm --filter @palantir/backend db:owner <benutzername>
+ * ```
+ *
+ * Der Nachweis ist der Systemzugang zu dieser Maschine, nicht ein weiteres
+ * Geheimnis; die Begründung für diesen Weg steht in `modules/auth/owner.ts`,
+ * die Anleitung in SETUP.md §2.5.
  *
  * Bewusst ein eigenes Kommando statt Automatik beim Backend-Start – wie
  * `db:migrate`, `db:seed` und `audit:archive` bleibt der Zeitpunkt für den
@@ -33,9 +44,9 @@ async function main(): Promise<void> {
 
   if (!username) {
     throw new Error(
-      'Aufruf: pnpm --filter @palantir/backend db:owner <benutzername>\n' +
-        'Der Benutzername ist die Anmeldekennung des bereits registrierten Kontos, ' +
-        'das den Owner-Status bekommen soll.',
+      'Es fehlt der Benutzername des Kontos, das den Owner-Status bekommen soll.\n' +
+        'Auf der VPS:  docker compose --env-file ../../.env run --rm owner <benutzername>\n' +
+        'Lokal:        pnpm --filter @palantir/backend db:owner <benutzername>',
     );
   }
 
