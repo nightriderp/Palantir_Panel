@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampPercent,
+  formatBytes,
   formatDate,
   formatDateTime,
+  formatDuration,
   formatMegabytes,
   formatPercent,
   formatPing,
@@ -109,5 +111,40 @@ describe('Datums- und Zeitformate', () => {
 
   it('gibt die Uhrzeit ohne Datum aus', () => {
     expect(formatTime(iso)).toMatch(/^\d{2}:\d{2}$/);
+  });
+});
+
+describe('formatBytes', () => {
+  it('liefert — für fehlende Angaben', () => {
+    expect(formatBytes(null)).toBe('—');
+    expect(formatBytes(undefined)).toBe('—');
+  });
+
+  it('rechnet mit Basis 1024 und rundet auf eine Nachkommastelle', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(1024)).toBe('1 KB');
+    expect(formatBytes(1536)).toBe('1,5 KB');
+    expect(formatBytes(1024 * 1024)).toBe('1 MB');
+    expect(formatBytes(1024 ** 3)).toBe('1 GB');
+    expect(formatBytes(1024 ** 4)).toBe('1 TB');
+  });
+
+  it('bleibt bei sehr großen Werten in TB', () => {
+    expect(formatBytes(5 * 1024 ** 4)).toBe('5 TB');
+  });
+});
+
+describe('formatDuration', () => {
+  it('liefert — bei fehlender oder negativer Angabe', () => {
+    expect(formatDuration(null)).toBe('—');
+    expect(formatDuration(-5)).toBe('—');
+  });
+
+  it('staffelt Sekunden, Minuten, Stunden und Tage', () => {
+    expect(formatDuration(45)).toBe('45 s');
+    expect(formatDuration(120)).toBe('2 min');
+    expect(formatDuration(3600 * 2 + 60 * 15)).toBe('2 h 15 min');
+    expect(formatDuration(86400 * 3 + 3600 * 4)).toBe('3 d 4 h');
   });
 });
