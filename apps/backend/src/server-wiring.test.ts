@@ -77,3 +77,47 @@ describe('buildServer() mit Datenbank', () => {
     expect(routen.filter(([method, url]) => !vorhanden(method, url))).toEqual([]);
   });
 });
+
+/**
+ * Gegenprobe zum Block oben (Gefundener Punkt 78).
+ *
+ * `buildServer({ database: false })` muss die fachlichen Module weglassen –
+ * **auch** wenn `DATABASE_URL` gesetzt ist, wie in dieser Datei. Genau darauf
+ * bauen Tests, die einzelne dieser Routen mit Attrappen selbst registrieren
+ * (`modules/auth/admin-identity.test.ts`).
+ *
+ * Ohne diese Zusicherung hing deren Ergebnis daran, ob auf der Maschine eine
+ * `.env` liegt: Die CI hat keine und blieb grün, während `pnpm test` lokal mit
+ * `Method 'GET' already declared for route '/admin/nodes'` scheiterte – also
+ * genau die Prüfung, die CLAUDE.md §7 vor jeder „erledigt"-Meldung verlangt.
+ */
+describe('buildServer({ database: false }) trotz gesetzter DATABASE_URL', () => {
+  it('lässt die datenbankgestützten Routen weg, damit Tests sie mit Attrappen einhängen können', async () => {
+    const app = await buildServer({ auth: false, database: false });
+
+    await app.ready();
+
+    const routen: [HTTPMethods, string][] = [
+      ['GET', '/admin/nodes'],
+      ['GET', '/admin/backups'],
+      ['GET', '/api/servers'],
+    ];
+    const registriert = routen.filter(([method, url]) => app.hasRoute({ method, url }));
+
+    await app.close();
+
+    expect(registriert).toEqual([]);
+  });
+
+  it('lässt den Health-Endpunkt unberührt – das Backend bleibt ohne Datenbank lauffähig', async () => {
+    const app = await buildServer({ auth: false, database: false });
+
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: '/health' });
+
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+  });
+});
