@@ -198,6 +198,14 @@ class FakeRepository implements ServerRepository {
   findHost(hostId: string): Promise<HostNodeRecord | null> {
     return Promise.resolve(hostId === HOST.id ? HOST : null);
   }
+
+  markHostConnected(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  markHostDisconnected(): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 /** Socket, der jeden Befehl sofort beantwortet – wie ein sehr schneller Agent. */

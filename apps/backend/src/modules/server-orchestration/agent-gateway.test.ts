@@ -55,10 +55,14 @@ function makeSession(overrides: { correlationIds?: string[] } = {}): {
   socket: FakeSocket;
   stateReports: AgentStateReportFrame[];
   events: AgentEventFrame[];
+  connected: string[];
+  disconnected: string[];
 } {
   const socket = new FakeSocket();
   const stateReports: AgentStateReportFrame[] = [];
   const events: AgentEventFrame[] = [];
+  const connected: string[] = [];
+  const disconnected: string[] = [];
   const ids = overrides.correlationIds ?? ['00000000-0000-4000-8000-000000000001'];
   let index = 0;
 
@@ -72,6 +76,12 @@ function makeSession(overrides: { correlationIds?: string[] } = {}): {
       onEvent: (_hostId, frame) => {
         events.push(frame);
       },
+      onConnected: (hostId) => {
+        connected.push(hostId);
+      },
+      onDisconnected: (hostId) => {
+        disconnected.push(hostId);
+      },
     },
     log: silentLog,
     commandTimeoutMs: 1_000,
@@ -79,7 +89,7 @@ function makeSession(overrides: { correlationIds?: string[] } = {}): {
     newCorrelationId: () => ids[index++] ?? `id-${String(index)}`,
   });
 
-  return { session, socket, stateReports, events };
+  return { session, socket, stateReports, events, connected, disconnected };
 }
 
 function hello(protocolVersion = AGENT_PROTOCOL_VERSION): string {
@@ -120,6 +130,38 @@ describe('Handshake (Pflichtenheft §2.2)', () => {
     await expect(
       session.sendCommand('START', SERVER_ID, { containerId: 'c1' }),
     ).rejects.toMatchObject({ code: 'AGENT_NOT_CONNECTED' });
+  });
+});
+
+describe('Verbindungszustand der Node (Gefundener Punkt 86)', () => {
+  it('meldet onConnected mit der hostId, sobald der Handshake durchläuft', () => {
+    const { session, connected } = makeSession();
+
+    session.handleMessage(hello());
+
+    expect(connected).toEqual(['host-1']);
+  });
+
+  it('meldet onDisconnected genau einmal beim Schließen einer verbundenen Sitzung', () => {
+    const { session, disconnected } = makeSession();
+    session.handleMessage(hello());
+
+    session.handleSocketClosed(1000, 'normal');
+    // Ein zweiter Aufruf (z. B. Race zwischen close-Event und closeAll) darf
+    // nicht erneut melden.
+    session.handleSocketClosed(1000, 'normal');
+
+    expect(disconnected).toEqual(['host-1']);
+  });
+
+  it('meldet weder connected noch disconnected, wenn der Handshake nie gelang', () => {
+    const { session, connected, disconnected } = makeSession();
+
+    // Abweichende Protokollversion schließt vor dem `hello`.
+    session.handleMessage(hello(AGENT_PROTOCOL_VERSION + 1));
+
+    expect(connected).toEqual([]);
+    expect(disconnected).toEqual([]);
   });
 });
 
