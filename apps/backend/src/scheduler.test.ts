@@ -335,6 +335,14 @@ class SweepRepository implements ServerRepository {
     return Promise.resolve(HOST);
   }
 
+  markHostConnected(): Promise<void> {
+    return this.nichtGebraucht('markHostConnected');
+  }
+
+  markHostDisconnected(): Promise<void> {
+    return this.nichtGebraucht('markHostDisconnected');
+  }
+
   private nichtGebraucht(methode: string): never {
     throw new Error(`Der Auto-Shutdown-Sweep sollte ${methode}() nicht aufrufen.`);
   }

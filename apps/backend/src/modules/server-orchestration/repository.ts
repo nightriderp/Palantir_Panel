@@ -14,7 +14,7 @@ import {
   type ServerStatus,
 } from '@palantir/contracts';
 import { type ServerAutoShutdown, type ServerPortAssignment } from './types.js';
-import { and, eq, inArray, ne, or } from 'drizzle-orm';
+import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { type Database } from '../../db/client.js';
 import { gameServers, hostNodes, serverMembers, users } from '../../db/schema.js';
 
@@ -124,6 +124,19 @@ export interface ServerRepository {
    */
   defaultHost(): Promise<HostNodeRecord | null>;
   findHost(hostId: string): Promise<HostNodeRecord | null>;
+  /**
+   * Hält den Verbindungszustand einer Node fest, wenn ihr Agent den Handshake
+   * abschließt bzw. die Verbindung abbricht (Pflichtenheft §6, `HostNode.status`).
+   *
+   * `maintenance` wird dabei **nie** überschrieben: Das ist eine ausdrückliche
+   * Entscheidung eines Admins über die Node-Verwaltung (B8) und darf nicht
+   * dadurch verschwinden, dass der Agent sich neu verbindet oder kurz wegfällt.
+   * Deshalb wechselt der Status ausschließlich zwischen `online` und `offline`.
+   * `lastSeenAt` trägt den Zeitpunkt der letzten belegten Verbindung und wird
+   * nur beim Verbinden gesetzt.
+   */
+  markHostConnected(hostId: string): Promise<void>;
+  markHostDisconnected(hostId: string): Promise<void>;
 }
 
 function toIso(value: Date | null): string | null {
@@ -390,6 +403,31 @@ export function createDrizzleServerRepository(db: Database): ServerRepository {
         .limit(1);
 
       return rows[0] ?? null;
+    },
+
+    async markHostConnected(hostId: string): Promise<void> {
+      const jetzt = new Date();
+
+      await db
+        .update(hostNodes)
+        .set({
+          // Nur ein offline gemeldeter Knoten wird online gesetzt; maintenance
+          // bleibt unangetastet (siehe Kommentar an der Schnittstelle).
+          status: sql`case when ${hostNodes.status} = 'offline' then 'online' else ${hostNodes.status} end`,
+          lastSeenAt: jetzt,
+          updatedAt: jetzt,
+        })
+        .where(eq(hostNodes.id, hostId));
+    },
+
+    async markHostDisconnected(hostId: string): Promise<void> {
+      await db
+        .update(hostNodes)
+        .set({
+          status: sql`case when ${hostNodes.status} = 'online' then 'offline' else ${hostNodes.status} end`,
+          updatedAt: new Date(),
+        })
+        .where(eq(hostNodes.id, hostId));
     },
   };
 }

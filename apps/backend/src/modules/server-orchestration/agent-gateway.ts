@@ -73,6 +73,14 @@ export interface AgentSessionHandlers {
   onStateReport(hostId: string, frame: AgentStateReportFrame): Promise<void> | void;
   /** Unaufgefordertes Ereignis (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`). */
   onEvent(hostId: string, frame: AgentEventFrame): Promise<void> | void;
+  /**
+   * Der Handshake ist abgeschlossen, die Node gilt ab jetzt als verbunden.
+   * Optional, damit Tests ohne Persistenz auskommen; ein Fehler hier darf die
+   * Verbindung nicht abreißen (siehe Verdrahtung in `index.ts`).
+   */
+  onConnected?(hostId: string): Promise<void> | void;
+  /** Die Verbindung ist beendet – Gegenstück zu {@link onConnected}. */
+  onDisconnected?(hostId: string): Promise<void> | void;
 }
 
 export interface AgentSessionOptions {
@@ -205,6 +213,7 @@ export class AgentSession {
 
     this.helloReceived = true;
     this.log.info({ hostId: this.hostId, agentVersion }, 'Agent verbunden');
+    void this.handlers.onConnected?.(this.hostId);
 
     const welcome: BackendWelcomeFrame = {
       kind: 'welcome',
@@ -333,6 +342,13 @@ export class AgentSession {
     }
 
     this.closed = true;
+
+    // Nur melden, wenn der Handshake überhaupt durchlief – sonst wurde die Node
+    // nie als verbunden geführt und dürfte auch nicht als getrennt gemeldet
+    // werden (z. B. bei abgelehnter Protokollversion vor dem `hello`).
+    if (this.helloReceived) {
+      void this.handlers.onDisconnected?.(this.hostId);
+    }
 
     for (const [correlationId, pending] of this.pending) {
       clearTimeout(pending.timer);
