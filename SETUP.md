@@ -518,15 +518,39 @@ ssh-keygen -t ed25519 -N '' -C 'palantir-gamenode-readonly' -f /etc/palantir/rep
 Den **öffentlichen** Teil (`/etc/palantir/repo_readonly.pub`) im Repository unter
 _Settings → Deploy keys → Add deploy key_ eintragen, **ohne** Schreibrecht.
 
+Vor dem ersten Klonen muss der Host-Key von GitHub bekannt sein, sonst bricht `git` mit
+`Host key verification failed` ab. Er gehört aus demselben Grund wie die übrigen
+Zugangsdaten nach `/etc/palantir`: unter `/root/.ssh/known_hosts` wäre er für den
+Update-Dienst unsichtbar, und dessen `git fetch` scheiterte später an derselben Stelle.
+
 ```bash
-GIT_SSH_COMMAND='ssh -i /etc/palantir/repo_readonly -o IdentitiesOnly=yes' git clone git@github.com:nightriderp/Palantir_Panel.git /opt/palantir
+printf 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n' > /etc/palantir/known_hosts
 ```
 
-Damit der Timer denselben Schlüssel benutzt, wird er fest in der Auscheckung hinterlegt –
-als Umgebungsvariable ginge er beim Dienststart verloren:
+Den Eintrag gegen den von GitHub veröffentlichten Fingerabdruck prüfen – blindes
+Bestätigen der Rückfrage ist genau die Lücke, die der Host-Key schließen soll. Erwartet
+wird `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`, abrufbar über
+`https://api.github.com/meta`:
 
 ```bash
-git -C /opt/palantir config core.sshCommand 'ssh -i /etc/palantir/repo_readonly -o IdentitiesOnly=yes'
+ssh-keygen -lf /etc/palantir/known_hosts
+```
+
+```bash
+GIT_SSH_COMMAND='ssh -i /etc/palantir/repo_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/etc/palantir/known_hosts' git clone git@github.com:nightriderp/Palantir_Panel.git /opt/palantir
+```
+
+Damit der Timer denselben Schlüssel und dieselbe `known_hosts` benutzt, wird beides fest in
+der Auscheckung hinterlegt – als Umgebungsvariable ginge es beim Dienststart verloren:
+
+```bash
+git -C /opt/palantir config core.sshCommand 'ssh -i /etc/palantir/repo_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/etc/palantir/known_hosts'
+```
+
+Auscheckung auf den freigegebenen Stand setzen – dorthin zeigt auch das Image-Tag `prod`:
+
+```bash
+git -C /opt/palantir checkout --detach origin/prod
 ```
 
 Datenverzeichnisse anlegen (Pfade müssen zu `AGENT_DATA_DIR` und `AGENT_BACKUP_DIR` in
