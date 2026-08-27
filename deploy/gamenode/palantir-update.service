@@ -25,10 +25,11 @@ Type=oneshot
 # und der Pull des privaten Agent-Images scheiterte mit `unauthorized`. Deshalb
 # zeigt DOCKER_CONFIG auf einen Pfad außerhalb, den ProtectHome nicht verdeckt.
 #
-# Der SSH-Deploy-Key für `git fetch` hat dasselbe Problem, wird aber anders
-# gelöst: er steht als `core.sshCommand` in /opt/palantir/.git/config und
-# braucht deshalb keine Umgebungsvariable. Beides ist in SETUP.md §3.4
-# beschrieben.
+# Der SSH-Deploy-Key für `git fetch` hat dasselbe Problem, ebenso die
+# `known_hosts` mit dem Host-Key von GitHub - ohne sie bricht `git fetch` mit
+# `Host key verification failed` ab. Beides wird anders gelöst: als
+# `core.sshCommand` in /opt/palantir/.git/config, das deshalb keine
+# Umgebungsvariable braucht. Alles beschrieben in SETUP.md §3.4.
 Environment=DOCKER_CONFIG=/etc/palantir/docker
 ExecStart=/opt/palantir/deploy/gamenode/update.sh
 
