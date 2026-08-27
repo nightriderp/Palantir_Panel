@@ -39,7 +39,7 @@ const MAIN_ENTRIES: PlannedEntry[] = [
   { key: 'servers', label: 'Übersicht', icon: 'grid', href: '/servers' },
   { key: 'my-backups', label: 'Meine Backups', icon: 'database', pending: 'F4' },
   { key: 'messages', label: 'Nachrichten', icon: 'chat', pending: 'F5' },
-  { key: 'notifications', label: 'Benachrichtigungen', icon: 'bell', pending: 'F6' },
+  { key: 'notifications', label: 'Benachrichtigungen', icon: 'bell', href: '/notifications' },
   { key: 'nodes', label: 'Nodes', icon: 'server', href: '/nodes', requires: 'canViewNodes' },
   { key: 'arcade', label: 'Arcade', icon: 'gamepad', pending: 'F8' },
   { key: 'skins', label: 'Skins', icon: 'palette', pending: 'F9' },
