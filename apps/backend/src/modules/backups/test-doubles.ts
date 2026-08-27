@@ -378,9 +378,9 @@ export function inMemoryBackupRepository(seed: readonly BackupRecord[] = []): Ba
 
 function groupSums(
   records: readonly BackupRecord[],
-  keyOf: (record: BackupRecord) => string,
-): { key: string; backupCount: number; totalSizeBytes: number }[] {
-  const groups = new Map<string, { backupCount: number; totalSizeBytes: number }>();
+  keyOf: (record: BackupRecord) => string | null,
+): { key: string | null; backupCount: number; totalSizeBytes: number }[] {
+  const groups = new Map<string | null, { backupCount: number; totalSizeBytes: number }>();
 
   for (const record of records) {
     const key = keyOf(record);

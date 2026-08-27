@@ -98,6 +98,8 @@ export const AUDIT_ACTIONS = [
   // Benachrichtigungen und Moderation (B6/B7)
   'notification.channelChanged',
   'notification.ruleChanged',
+  /** Systemweite Ankündigung veröffentlicht, geändert oder zurückgezogen (Lastenheft §3.6). */
+  'notification.announcementChanged',
   'message.moderated',
 ] as const;
 
@@ -126,6 +128,7 @@ export const AUDIT_TARGET_TYPES = [
   'auditLog',
   'notificationChannel',
   'notificationRule',
+  'announcement',
   'message',
 ] as const;
 

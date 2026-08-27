@@ -27,20 +27,22 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { gameServers } from './server-orchestration.js';
 import { users } from './users.js';
 
 /**
  * Geplante Aufgabe (Pflichtenheft §6, Entität `Schedule`).
  *
- * `server_id` trägt bewusst noch **keinen** Fremdschlüssel: die Tabelle
- * `game_servers` gehört zu B3 und existiert noch nicht. Der Fremdschlüssel wird
- * dort nachgetragen (vermerkt in WORK_STATUS.md unter „Gefundene Punkte").
+ * `server_id` löscht mit (`ON DELETE CASCADE`, nachgetragen in R3): Eine
+ * geplante Aufgabe ohne Server hat keine Bedeutung.
  */
 export const schedules = pgTable(
   'schedules',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    serverId: uuid('server_id').notNull(),
+    serverId: uuid('server_id')
+      .notNull()
+      .references(() => gameServers.id, { onDelete: 'cascade' }),
     action: text('action').$type<ScheduleAction>().notNull(),
     /** Cron-Ausdruck mit fünf Feldern; ausgewertet in `modules/backups/cron.ts`. */
     cronExpression: text('cron_expression').notNull(),
@@ -79,13 +81,22 @@ export const schedules = pgTable(
  * Ableitung: die `.own`/`.any`-Prüfung (Pflichtenheft §8) und die globale
  * Übersicht mit Speicherverbrauch je Nutzer (Lastenheft §3.7) müssen auch dann
  * funktionieren, wenn der zugehörige Server längst gelöscht ist – ein Backup
- * überlebt seinen Server bewusst.
+ * überlebt seinen Server bewusst. Der Fremdschlüssel auf `game_servers` setzt
+ * `server_id` beim Löschen des Servers deshalb auf `NULL` (R3), statt das Backup
+ * mit zu löschen.
  */
 export const backups = pgTable(
   'backups',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    serverId: uuid('server_id').notNull(),
+    /**
+     * Gesicherter Server; `null`, sobald er gelöscht wurde.
+     *
+     * `ON DELETE SET NULL` statt `CASCADE` – ein Backup überlebt seinen Server
+     * bewusst (Lastenheft §3.3). `RESTRICT` scheidet aus: Das Löschen eines
+     * Servers darf nicht daran scheitern, dass es noch Sicherungen gibt.
+     */
+    serverId: uuid('server_id').references(() => gameServers.id, { onDelete: 'set null' }),
     ownerId: uuid('owner_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
