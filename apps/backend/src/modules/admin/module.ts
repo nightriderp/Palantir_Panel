@@ -37,8 +37,10 @@ import {
   createDrizzleHostNodeRepository,
   createDrizzlePortPoolRepository,
   createDrizzleRegistrationRequestRepository,
+  createDrizzleRoleMemberLookup,
   createDrizzleStorageRepository,
 } from './repositories.js';
+import { type RoleAdminService, createRoleAdminService } from './roles.js';
 import type { AdminRouteServices } from './routes.js';
 import {
   type KnownServerSource,
@@ -75,6 +77,7 @@ export interface AdminModule {
   readonly audit: AuditService;
   readonly storage: StorageExplorerService;
   readonly registrationRequests: RegistrationRequestService;
+  readonly roles: RoleAdminService;
   /** Archivierungslauf ohne HTTP – genutzt vom Kommando `audit:archive`. */
   readonly archiveAuditLog: () => ReturnType<typeof archiveAuditEntries>;
 }
@@ -111,6 +114,14 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     audit,
   });
 
+  // Rollenverwaltung: Die Regeln liegen im RoleService aus B2, hier kommen
+  // nur das Audit-Log und die Existenzprüfung des Kontos dazu (roles.ts).
+  const roleAdmin = createRoleAdminService({
+    roles: options.roles,
+    audit,
+    users: createDrizzleRoleMemberLookup(db),
+  });
+
   const auditArchive: AuditArchiveDependencies | undefined = options.auditArchiveDir
     ? {
         repository: createDrizzleAuditArchiveRepository(db),
@@ -126,6 +137,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
       audit,
       storage,
       registrationRequests,
+      roles: roleAdmin,
       ...(auditArchive ? { auditArchive } : {}),
     },
     nodes,
@@ -133,6 +145,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     audit,
     storage,
     registrationRequests,
+    roles: roleAdmin,
     archiveAuditLog: async () => {
       if (!auditArchive) {
         throw new Error(

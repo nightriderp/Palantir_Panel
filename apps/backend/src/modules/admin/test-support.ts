@@ -8,23 +8,35 @@
  * Sie gehört zum Modul und ändert sich mit ihm.
  */
 
-import type { AgentStorageEntry } from '@palantir/contracts';
+import type { AgentStorageEntry, Permission } from '@palantir/contracts';
 import type { AuditLogQuery } from '@palantir/validation';
-import { type PermissionActor, buildPermissionActor } from '../rbac/index.js';
+import {
+  type PermissionActor,
+  type RoleRecord,
+  type RoleRepository,
+  buildPermissionActor,
+  createRoleService,
+} from '../rbac/index.js';
 import type {
   AppendAuditEntry,
   AuditArchiveRepository,
   AuditEntryRecord,
   AuditLogRepository,
+  AuditService,
 } from './audit.js';
 import { type AdminContext, contextOf } from './context.js';
 import type { HostNodeRecord, HostNodeRepository } from './nodes.js';
 import type { PortAllocationRecord, PortPoolRepository, PortRangeRecord } from './ports.js';
+import { type RoleAdminService, createRoleAdminService } from './roles.js';
 import type { StorageRepository, StorageSnapshotRecord } from './storage.js';
 
 export const NODE_ID = '11111111-1111-4111-8111-111111111111';
 export const SERVER_ID = '22222222-2222-4222-8222-222222222222';
 export const USER_ID = '33333333-3333-4333-8333-333333333333';
+// Rollen-Ids sind echte UUIDs: Die Routen prüfen den Pfadparameter gegen
+// `idSchema`, ein Platzhalter wie „role-1" käme dort nie durch.
+export const ROLE_ID = '55555555-5555-4555-8555-555555555555';
+export const GUEST_ROLE_ID = '66666666-6666-4666-8666-666666666666';
 
 /** Handelnder mit genau den genannten Rechten. */
 export function actorWith(
@@ -368,3 +380,152 @@ export function snapshotRecord(
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Rollenverwaltung
+// ---------------------------------------------------------------------------
+
+export function roleRecord(overrides: Partial<RoleRecord> = {}): RoleRecord {
+  return {
+    id: ROLE_ID,
+    name: 'Nutzer',
+    description: 'Darf eigene Server verwalten.',
+    permissions: ['server.create'],
+    isProtected: false,
+    createdAt: new Date('2026-08-01T00:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+/**
+ * Ablage der Rollen im Arbeitsspeicher.
+ *
+ * Bildet die Zusicherungen der Tabelle nach, auf die der Service baut: die
+ * Eindeutigkeit des Namens ohne Rücksicht auf Groß-/Kleinschreibung, die
+ * Eindeutigkeit einer Zuweisung und ON DELETE CASCADE auf `user_roles`.
+ */
+export function createFakeRoleRepository(
+  seed: RoleRecord[] = [],
+): RoleRepository & { rows: RoleRecord[]; assignments: { userId: string; roleId: string }[] } {
+  const rows: RoleRecord[] = [...seed];
+  const assignments: { userId: string; roleId: string }[] = [];
+  let nextId = seed.length + 1;
+
+  return {
+    rows,
+    assignments,
+
+    async listAll() {
+      return [...rows].sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    async findById(id) {
+      return rows.find((row) => row.id === id) ?? null;
+    },
+
+    async findByName(name) {
+      return rows.find((row) => row.name.toLowerCase() === name.toLowerCase()) ?? null;
+    },
+
+    async create(data) {
+      const role = roleRecord({
+        // Ebenfalls UUID-förmig, damit angelegte Rollen über die Routen
+        // wieder adressierbar sind.
+        id: `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`,
+        name: data.name,
+        description: data.description,
+        permissions: [...data.permissions],
+        isProtected: data.isProtected,
+      });
+      rows.push(role);
+
+      return role;
+    },
+
+    async update(id, data) {
+      const index = rows.findIndex((row) => row.id === id);
+      const current = rows[index];
+
+      if (!current) {
+        throw new Error('Rolle nicht gefunden');
+      }
+
+      const updated: RoleRecord = {
+        ...current,
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.permissions !== undefined ? { permissions: [...data.permissions] } : {}),
+      };
+      rows[index] = updated;
+
+      return updated;
+    },
+
+    async remove(id) {
+      const index = rows.findIndex((row) => row.id === id);
+
+      if (index >= 0) {
+        rows.splice(index, 1);
+      }
+
+      // Bildet ON DELETE CASCADE auf `user_roles` nach (Pflichtenheft §6).
+      for (let i = assignments.length - 1; i >= 0; i -= 1) {
+        if (assignments[i]?.roleId === id) {
+          assignments.splice(i, 1);
+        }
+      }
+    },
+
+    async countMembers() {
+      const counts = new Map<string, number>();
+
+      for (const assignment of assignments) {
+        counts.set(assignment.roleId, (counts.get(assignment.roleId) ?? 0) + 1);
+      }
+
+      return counts;
+    },
+
+    async listRolesForUser(userId) {
+      return assignments
+        .filter((assignment) => assignment.userId === userId)
+        .flatMap((assignment) => rows.filter((row) => row.id === assignment.roleId));
+    },
+
+    async assignToUser(userId, roleId) {
+      // Doppelte Zuweisung ist kein Fehler – derselbe Zielzustand.
+      if (!assignments.some((a) => a.userId === userId && a.roleId === roleId)) {
+        assignments.push({ userId, roleId });
+      }
+    },
+
+    async removeFromUser(userId, roleId) {
+      const index = assignments.findIndex((a) => a.userId === userId && a.roleId === roleId);
+
+      if (index >= 0) {
+        assignments.splice(index, 1);
+      }
+    },
+  };
+}
+
+/**
+ * Rollenverwaltung mit Attrappen – darunter der echte `RoleService` aus B2,
+ * damit in den Tests dieselben Regeln greifen wie im Betrieb.
+ */
+export function createTestRoleAdminService(options: {
+  repository: RoleRepository;
+  audit: AuditService;
+  knownUserIds?: readonly string[];
+}): RoleAdminService {
+  const known = options.knownUserIds ?? [USER_ID];
+
+  return createRoleAdminService({
+    roles: createRoleService(options.repository),
+    audit: options.audit,
+    users: { exists: (userId) => Promise.resolve(known.includes(userId)) },
+  });
+}
+
+/** Rechtebündel, wie es der Rollen-Editor aus F10 schicken würde. */
+export const ROLE_PERMISSION_BUNDLE: readonly Permission[] = ['server.create', 'node.view'];
