@@ -30,7 +30,9 @@ import {
   createFakeAuditRepository,
   createFakeHostNodeRepository,
   createFakePortPoolRepository,
+  createFakeRoleRepository as createFakeAdminRoleRepository,
   createFakeStorageRepository,
+  createTestRoleAdminService,
 } from '../admin/test-support.js';
 import { buildServer } from '../../server.js';
 import {
@@ -183,6 +185,7 @@ beforeEach(async () => {
       roles: {} as never,
       audit,
     }),
+    roles: createTestRoleAdminService({ repository: createFakeAdminRoleRepository(), audit }),
   });
 });
 

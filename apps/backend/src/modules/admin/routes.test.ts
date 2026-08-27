@@ -18,9 +18,12 @@ import {
   createFakeAuditRepository,
   createFakeHostNodeRepository,
   createFakePortPoolRepository,
+  createFakeRoleRepository,
   createFakeStorageRepository,
+  createTestRoleAdminService,
   nodeRecord,
   ownerActor,
+  roleRecord,
   portRange,
   snapshotRecord,
 } from './test-support.js';
@@ -41,6 +44,7 @@ async function buildTestApp(): Promise<FastifyInstance> {
     addressAdmin: actorWith('address.manage'),
     auditor: actorWith('audit.view'),
     userAdmin: actorWith('user.manage'),
+    roleAdmin: actorWith('role.manage'),
   };
 
   const app = Fastify({ logger: false });
@@ -77,7 +81,17 @@ async function buildTestApp(): Promise<FastifyInstance> {
     audit,
   });
 
-  await registerAdminRoutes(app, { nodes, ports, audit, storage, registrationRequests });
+  const roleRepository = createFakeRoleRepository([roleRecord()]);
+  const roles = createTestRoleAdminService({ repository: roleRepository, audit });
+
+  await registerAdminRoutes(app, {
+    nodes,
+    ports,
+    audit,
+    storage,
+    registrationRequests,
+    roles,
+  });
   await app.ready();
 
   return app;
