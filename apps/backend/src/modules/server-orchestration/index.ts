@@ -172,6 +172,30 @@ export function registerServerOrchestration(
     handlers: {
       onStateReport: (hostId, frame) => service.reconcile(hostId, frame),
       onEvent: (hostId, frame) => service.handleAgentEvent(hostId, frame),
+      // Verbindungszustand der Node fortschreiben (Pflichtenheft §6). Bewusst
+      // in einem eigenen try/catch: Scheitert das Schreiben, bleibt die Node in
+      // der Anzeige veraltet – das ist hinnehmbar, ein Abbruch der gerade
+      // aufgebauten Agent-Verbindung wäre es nicht.
+      onConnected: async (hostId): Promise<void> => {
+        try {
+          await repository.markHostConnected(hostId);
+        } catch (error) {
+          log.error(
+            { hostId, error: error instanceof Error ? error.message : String(error) },
+            'Node-Status konnte nicht auf online gesetzt werden',
+          );
+        }
+      },
+      onDisconnected: async (hostId): Promise<void> => {
+        try {
+          await repository.markHostDisconnected(hostId);
+        } catch (error) {
+          log.error(
+            { hostId, error: error instanceof Error ? error.message : String(error) },
+            'Node-Status konnte nicht auf offline gesetzt werden',
+          );
+        }
+      },
     },
     log,
     token: env.AGENT_TOKEN,
