@@ -620,6 +620,82 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Das Konto ist für diese Aktion im falschen Zustand.',
   },
 
+  // -- Notification-Engine (B6, Pflichtenheft §14) ----------------------------
+
+  /** Benachrichtigungskanal existiert nicht. 404. */
+  NOTIFICATION_CHANNEL_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Dieser Benachrichtigungskanal existiert nicht.',
+  },
+  /** Kanalname bereits vergeben. 409: Namen tragen die Auswahl im Regel-Editor. */
+  NOTIFICATION_CHANNEL_NAME_TAKEN: {
+    httpStatus: 409,
+    defaultMessage: 'Ein Kanal mit diesem Namen existiert bereits.',
+  },
+  /**
+   * Kanal ist nicht versandfähig: Er nutzt die Vorgabe aus der zentralen
+   * `.env`, und `DISCORD_WEBHOOK_URL` ist dort nicht gesetzt (Pflichtenheft
+   * §12.1). 409: Der Datensatz stimmt, die Umgebung nicht.
+   */
+  NOTIFICATION_CHANNEL_NOT_CONFIGURED: {
+    httpStatus: 409,
+    defaultMessage: 'Für diesen Kanal ist kein Ziel hinterlegt.',
+  },
+  /**
+   * Kanal wird noch von mindestens einer Regel genutzt. 409: erst die Regeln
+   * lösen, dann den Kanal entfernen – sonst verlöre eine Regel still ihr Ziel.
+   */
+  NOTIFICATION_CHANNEL_IN_USE: {
+    httpStatus: 409,
+    defaultMessage: 'Dieser Kanal wird noch von Benachrichtigungsregeln genutzt.',
+  },
+  /** Benachrichtigungsregel existiert nicht. 404. */
+  NOTIFICATION_RULE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Benachrichtigungsregel existiert nicht.',
+  },
+  /**
+   * Es gibt bereits eine Regel mit derselben Kombination aus Ereignis, Kanal
+   * und Empfängerkreis. 409: Die zweite Regel würde nur Doppelmeldungen
+   * erzeugen.
+   */
+  NOTIFICATION_RULE_DUPLICATE: {
+    httpStatus: 409,
+    defaultMessage: 'Für diese Kombination existiert bereits eine Regel.',
+  },
+  /**
+   * Regel soll auf ein Ereignis hören, das keine Benachrichtigung auslöst –
+   * etwa `server.statsUpdated` (Pflichtenheft §14, `NOTIFIABLE_EVENTS`). 400.
+   */
+  NOTIFICATION_EVENT_NOT_NOTIFIABLE: {
+    httpStatus: 400,
+    defaultMessage: 'Dieses Ereignis kann keine Benachrichtigung auslösen.',
+  },
+  /** Meldung existiert nicht oder gehört zu einem anderen Konto. 404. */
+  NOTIFICATION_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Benachrichtigung existiert nicht.',
+  },
+  /**
+   * Zustellung an den externen Kanal ist gescheitert (Discord nicht erreichbar
+   * oder hat abgelehnt). 502: Der Fehler liegt beim nachgelagerten Dienst.
+   *
+   * Dieser Code erscheint ausschließlich dort, wo jemand die Zustellung
+   * **selbst** angestoßen hat – bei der Testnachricht eines Admins. Beim
+   * Zustellen zu einem ausgelösten Ereignis wird er nur protokolliert und
+   * niemals weitergeworfen: Ein nicht erreichbarer Webhook darf einen
+   * Serverstart oder ein Backup nicht scheitern lassen (Pflichtenheft §14).
+   */
+  NOTIFICATION_DELIVERY_FAILED: {
+    httpStatus: 502,
+    defaultMessage: 'Die Nachricht konnte nicht zugestellt werden.',
+  },
+  /** Systemweite Ankündigung existiert nicht. 404. */
+  ANNOUNCEMENT_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Ankündigung existiert nicht.',
+  },
+
   // -- Chat & Moderation (B7, Pflichtenheft §15) ------------------------------
 
   /**
