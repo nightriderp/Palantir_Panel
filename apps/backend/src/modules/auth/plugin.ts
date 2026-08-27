@@ -32,6 +32,7 @@ import {
   createDrizzleRoleRepository,
   replyWithErrorCode,
 } from '../rbac/index.js';
+import { createAltchaSolutionLedger } from './altcha.js';
 import { ACCESS_COOKIE_NAME, type CookieSettings } from './cookies.js';
 import { csrfTokenMatches, isSafeMethod } from './csrf.js';
 import { type FetchLike, type ProviderRegistry, createProviderRegistry } from './providers.js';
@@ -214,6 +215,9 @@ export async function registerAuthModule(
       complexity: env.ALTCHA_COMPLEXITY,
       expirySeconds: env.ALTCHA_EXPIRY_SECONDS,
     },
+    // Ein Verzeichnis für beide Routen: ein einmal eingelöster Nachweis gilt
+    // weder bei der Registrierung noch beim Login ein zweites Mal.
+    altchaLedger: createAltchaSolutionLedger(),
     loginLimiter: createRateLimiter({
       windowSeconds: env.AUTH_RATE_LIMIT_WINDOW_SECONDS,
       maxAttempts: env.AUTH_RATE_LIMIT_LOGIN_MAX,

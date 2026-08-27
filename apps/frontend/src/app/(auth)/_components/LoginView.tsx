@@ -4,7 +4,7 @@ import { type ErrorCode } from '@palantir/contracts';
 import { loginInputSchema, twoFactorInputSchema } from '@palantir/validation';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useCallback, useState, type FormEvent } from 'react';
 
 import { Button, FormMessage, TextField } from '@/components/shared';
 import { login, verifyTwoFactor } from '@/lib/auth/api';
@@ -17,6 +17,7 @@ import {
 } from '@/lib/auth/errors';
 import { AUTH_ROUTES, landingPathForAccount } from '@/lib/auth/routes';
 
+import { AltchaWidget } from './AltchaWidget';
 import { AuthHeading } from './AuthHeading';
 import { AuthDivider, OAuthButtons } from './OAuthButtons';
 
@@ -27,6 +28,11 @@ import { AuthDivider, OAuthButtons } from './OAuthButtons';
  * Die 2FA-Eingabe ist ein zweiter Schritt derselben Ansicht, keine eigene Route:
  * der Zwischen-Token lebt nur im Speicher und würde einen Seitenwechsel nicht
  * überstehen (Pflichtenheft §7).
+ *
+ * Der Anmeldeversuch trägt – wie die Registrierung – einen ALTCHA-Nachweis:
+ * Pflichtenheft §7 und §18 verlangen den Spam-Schutz für **beide** Formulare,
+ * damit hinter dem IP-Rate-Limit eine zweite Schicht steht. Dasselbe Widget wie
+ * dort, keine zweite Fassung.
  */
 
 type Step = 'credentials' | 'two-factor';
@@ -35,6 +41,7 @@ interface FieldErrors {
   username?: string;
   password?: string;
   code?: string;
+  altcha?: string;
 }
 
 export function LoginView() {
@@ -46,6 +53,15 @@ export function LoginView() {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
+  const [altcha, setAltcha] = useState<string | null>(null);
+  /**
+   * Zählt jeden abgeschlossenen Anmeldeversuch hoch und dient dem Widget als
+   * `key`: Ein Nachweis gilt serverseitig genau einmal, nach einem Fehlschlag
+   * ist der vorhandene also verbraucht. Der Schlüsselwechsel setzt das Widget
+   * neu auf, es holt eine frische Aufgabe und löst sie – ohne dass es dafür
+   * eine zweite Widget-Variante mit Rücksetz-Eingang bräuchte.
+   */
+  const [altchaAttempt, setAltchaAttempt] = useState(0);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   /**
@@ -63,6 +79,13 @@ export function LoginView() {
    * `/login?error=<CODE>` zurück – ein Fehlercode aus dem Katalog, kein
    * Freitext (Pflichtenheft §5.1).
    */
+  const handleSolved = useCallback((payload: string | null) => {
+    setAltcha(payload);
+    if (payload !== null) {
+      setFieldErrors((current) => ({ ...current, altcha: undefined }));
+    }
+  }, []);
+
   const providerErrorCode = searchParams.get('error');
   const providerError = providerErrorCode ? messageForErrorCode(providerErrorCode) : null;
 
@@ -84,10 +107,14 @@ export function LoginView() {
     setFormError(null);
     setBlocking(false);
 
-    const parsed = loginInputSchema.safeParse({ username, password });
+    const parsed = loginInputSchema.safeParse({ username, password, altcha: altcha ?? '' });
     if (!parsed.success) {
       const flat = parsed.error.flatten().fieldErrors;
-      setFieldErrors({ username: flat.username?.[0], password: flat.password?.[0] });
+      setFieldErrors({
+        username: flat.username?.[0],
+        password: flat.password?.[0],
+        altcha: flat.altcha?.[0],
+      });
       return;
     }
     setFieldErrors({});
@@ -105,6 +132,11 @@ export function LoginView() {
       handleFailure(thrown);
     } finally {
       setBusy(false);
+      // Der mitgeschickte Nachweis ist verbraucht – gleich einen neuen holen.
+      // Auch im Erfolgsfall: bis der Seitenwechsel greift, bleibt die Ansicht
+      // stehen, und ein zweiter Versuch soll nicht am alten Nachweis scheitern.
+      setAltcha(null);
+      setAltchaAttempt((value) => value + 1);
     }
   }
 
@@ -216,6 +248,11 @@ export function LoginView() {
           autoComplete="current-password"
           placeholder="••••••••"
         />
+
+        <AltchaWidget key={altchaAttempt} onSolved={handleSolved} />
+        {fieldErrors.altcha ? (
+          <p className="-mt-1.5 text-sm text-danger">{fieldErrors.altcha}</p>
+        ) : null}
 
         {formError ? (
           <FormMessage tone={blocking ? 'warning' : 'error'}>{formError}</FormMessage>

@@ -93,7 +93,13 @@ export {
   verifyTotp,
 } from './totp.js';
 
-export { type AltchaOptions, createAltchaChallenge, verifyAltchaSolution } from './altcha.js';
+export {
+  type AltchaOptions,
+  type AltchaSolutionLedger,
+  createAltchaChallenge,
+  createAltchaSolutionLedger,
+  verifyAltchaSolution,
+} from './altcha.js';
 
 export {
   type RateLimitDecision,

@@ -221,6 +221,19 @@ export function runContainerRuntimeConformance(
       });
     });
 
+    describe('Images (Pflichtenheft §16)', () => {
+      it('liefert eine Liste - auch wenn der Host keine Images kennt', async () => {
+        await expect(runtime.listImages()).resolves.toBeInstanceOf(Array);
+      });
+
+      it('meldet das Entfernen eines unbekannten Images als "nichts entfernt"', async () => {
+        // Idempotenz wie bei DELETE_BACKUP: ein bereits fehlendes Image ist
+        // kein Fehler, sonst bliebe ein Eintrag zurueck, der sich nie wieder
+        // loeschen liesse (Lastenheft §3.8).
+        await expect(runtime.removeImage('sha256:gibtesnicht')).resolves.toBe(false);
+      });
+    });
+
     describe('Abbau', () => {
       it('stellt nach dispose() keine Events mehr zu', async () => {
         const id = await angelegt();
