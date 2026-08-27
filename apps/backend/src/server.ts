@@ -6,18 +6,42 @@ import { getDb } from './db/index.js';
 import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
 import { createChatModule, registerChatRoutes } from './modules/chat/index.js';
 import {
+  createBackupScheduleService,
+  createBackupService,
+  createDrizzleBackupRepository,
+  createDrizzleUserDirectory,
+  registerBackupRoutes,
+} from './modules/backups/index.js';
+import {
+  createDrizzleHostNodeRepository as createResourceHostNodeRepository,
+  createNodeUsageSource,
+} from './modules/resources/index.js';
+import {
   type AuthModuleOptions,
   type AuthService,
   registerAuthModule,
 } from './modules/auth/index.js';
+import { registerNotifications } from './modules/notifications/index.js';
 import {
   type PermissionActor,
   createDrizzleRoleRepository,
   createRoleService,
   registerRbac,
 } from './modules/rbac/index.js';
-import { registerServerOrchestration } from './modules/server-orchestration/index.js';
+import {
+  AgentRegistry,
+  createAgentBackupGateway,
+  createAgentStorageScanGateway,
+  createDrizzleBackupServerDirectory,
+  createDrizzleServerRepository,
+  createDrizzleServerUsageRepository,
+  createServerKnownServerSource,
+  createServerNameSource,
+  createServerNodePlacementSource,
+  registerServerOrchestration,
+} from './modules/server-orchestration/index.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { autoShutdownTask, backupScheduleTask, startScheduler } from './scheduler.js';
 
 export interface BuildServerOptions {
   /**
@@ -28,6 +52,20 @@ export interface BuildServerOptions {
    * Tests des Grundgerüsts und der Health-Endpunkt.
    */
   readonly auth?: boolean | AuthModuleOptions;
+  /**
+   * Die datenbankgestützten Module einhängen (Admin, Benachrichtigungen,
+   * Server-Orchestrierung, Chat, Zeitgeber).
+   *
+   * Standard: eingehängt, sobald `DATABASE_URL` gesetzt ist. Ohne die
+   * Variable bleiben sie außen vor, statt bei jedem Aufruf mit einem
+   * Verbindungsfehler zu antworten.
+   *
+   * Ausdrücklich `false` setzen Tests, die einzelne dieser Routen mit
+   * Attrappen selbst registrieren. Ohne die Option hinge ihr Ergebnis daran,
+   * ob auf der Maschine eine `.env` liegt: mit `DATABASE_URL` kämen die
+   * echten Routen dazu und die Registrierung liefe doppelt.
+   */
+  readonly database?: boolean;
   /**
    * Ermittelt den Handelnden zum Request, wenn das Auth-Modul **nicht** läuft.
    *
@@ -102,15 +140,52 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   await app.register(registerHealthRoutes);
 
-  // Die Admin-Routen brauchen eine Datenbank. Ohne `DATABASE_URL` werden sie
-  // gar nicht erst registriert, statt bei jedem Aufruf mit einem
-  // Verbindungsfehler zu antworten – das Backend bleibt sonst unverändert
-  // lauffähig (siehe Kommentar zu DATABASE_URL in `config/env.ts`).
-  if (env.DATABASE_URL) {
-    const roles = createRoleService(createDrizzleRoleRepository(getDb()));
+  /*
+   * Die fachlichen Module brauchen eine Datenbank. Ohne `DATABASE_URL` werden
+   * sie gar nicht erst registriert, statt bei jedem Aufruf mit einem
+   * Verbindungsfehler zu antworten – das Backend bleibt sonst unverändert
+   * lauffähig (siehe Kommentar zu DATABASE_URL in `config/env.ts`).
+   *
+   * `options.database` sticht die Umgebung, damit Tests den Zustand selbst
+   * festlegen können statt ihn von der Maschine zu erben.
+   */
+  const withDatabase = options.database ?? env.DATABASE_URL !== undefined;
+
+  if (withDatabase) {
+    const db = getDb();
+    const roles = createRoleService(createDrizzleRoleRepository(db));
+
+    /*
+     * Die offenen Agent-Verbindungen entstehen hier und nicht im Modul (R2):
+     * Drei Pakete sprechen über denselben Kanal (Pflichtenheft §5.3) – B3 für
+     * die Lifecycle-Befehle, B5 für die Backup-Befehle und B8 für den
+     * Speicher-Scan. Zwei Registries wären zwei getrennte Sichten auf denselben
+     * Agent.
+     */
+    const agents = new AgentRegistry();
+    const serverRepository = createDrizzleServerRepository(db);
+    const serverUsage = createDrizzleServerUsageRepository(db);
+
+    /*
+     * Die Anschlusspunkte, die B8 offen gelassen hat (R2, Gefundene Punkte 40
+     * und 42). Alle vier lesen entweder `game_servers` oder sprechen über den
+     * Agent-Kanal – beides gehört zu B3 bzw. B4, nicht zu B8.
+     *
+     * `nodeUsage` kommt aus derselben Zählung wie die harte Kapazitätsprüfung
+     * vor jedem Start (Pflichtenheft §10) – bewusst eine Quelle, nicht zwei
+     * (siehe `modules/resources/node-usage.ts`).
+     */
     const admin = createAdminModule({
-      db: getDb(),
+      db,
       roles,
+      nodePlacements: createServerNodePlacementSource(db),
+      nodeUsage: createNodeUsageSource({
+        nodes: createResourceHostNodeRepository(db),
+        usage: serverUsage,
+      }),
+      storageGateway: createAgentStorageScanGateway(agents),
+      knownServers: createServerKnownServerSource(db),
+      serverNames: createServerNameSource(db),
       ...(env.AUDIT_ARCHIVE_DIR ? { auditArchiveDir: env.AUDIT_ARCHIVE_DIR } : {}),
     });
 
@@ -130,11 +205,32 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      */
     await app.register(websocket);
 
-    registerServerOrchestration(app, {
-      db: getDb(),
+    /*
+     * Notification-Engine (B6, Pflichtenheft §14) inklusive des
+     * WebSocket-Kanals `/live/notifications` für die Inbox.
+     *
+     * Steht bewusst vor den auslösenden Modulen: B3, B5 und B7 bekommen ihre
+     * Ereignis-Senke beim Aufbau gereicht und kennen B6 selbst nicht
+     * (WORK_STATUS.md, Gefundene Punkte 34, 62 und 71).
+     */
+    const notifications = await registerNotifications(app, {
+      db,
+      resolveUserId: (request) => request.authUser?.id ?? null,
+      defaultWebhookUrl: env.DISCORD_WEBHOOK_URL ?? null,
+      deliveryTimeoutMs: env.NOTIFICATION_DELIVERY_TIMEOUT_MS,
+      // Änderungen an Kanälen, Regeln und Ankündigungen sind
+      // sicherheitsrelevant und gehören ins Audit-Log (Pflichtenheft §6).
+      audit: admin.services.audit,
+      log: app.log,
+    });
+
+    const orchestration = registerServerOrchestration(app, {
+      db,
+      agents,
       resolveViewerId: (request) => request.authUser?.id ?? null,
       // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
       portPool: admin.services.ports,
+      events: notifications.eventSink,
     });
 
     /*
@@ -146,7 +242,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * angemeldet und die Routen antworten mit `AUTH_REQUIRED` – die sichere
      * Vorgabe, geöffnet wird dadurch nichts.
      */
-    const chat = createChatModule({ db: getDb(), audit: admin.services.audit });
+    const chat = createChatModule({
+      db,
+      audit: admin.services.audit,
+      events: notifications.eventSink,
+    });
 
     await app.register(async (instance) => {
       registerChatRoutes(instance, {
@@ -159,6 +259,59 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             ? { id: request.authUser.id, displayName: request.authUser.displayName }
             : null,
       });
+    });
+
+    /*
+     * Backup-Verwaltung (B5, R2/Gefundener Punkt 33).
+     *
+     * B5 kennt weder `game_servers` noch den Agent-Kanal und spricht nur über
+     * `ServerDirectory` und `BackupAgentGateway`. Beide werden von B3 gestellt
+     * (`modules/server-orchestration/backup-ports.ts`) – ohne sie ließen sich
+     * die Routen hier gar nicht registrieren.
+     *
+     * Die Ereignis-Senke kommt aus B6 (Gefundener Punkt 34). Ein
+     * fehlgeschlagenes Backup scheitert dadurch nicht an der Zustellung:
+     * `publish()` wirft nie, ein nicht erreichbarer Kanal landet nur im
+     * Zustellungsprotokoll (Pflichtenheft §14).
+     */
+    const backups = createBackupService({
+      repository: createDrizzleBackupRepository(db),
+      servers: createDrizzleBackupServerDirectory(db),
+      users: createDrizzleUserDirectory(db),
+      agent: createAgentBackupGateway({ agents, repository: serverRepository }),
+      events: notifications.eventSink,
+    });
+
+    const backupSchedules = createBackupScheduleService({
+      repository: createDrizzleBackupRepository(db),
+      servers: createDrizzleBackupServerDirectory(db),
+      backups,
+    });
+
+    await app.register(
+      registerBackupRoutes({
+        backups,
+        schedules: backupSchedules,
+        resolveUserId: (request) => request.authUser?.id ?? null,
+      }),
+    );
+
+    /*
+     * Der Zeitgeber (R2/Gefundener Punkt 63) – eine Stelle für beide
+     * periodischen Abläufe. Intervall und Verhalten bei Überschneidung sind im
+     * Kopf von `scheduler.ts` begründet.
+     */
+    const scheduler = startScheduler({
+      intervalMs: env.SCHEDULER_INTERVAL_MS,
+      log: app.log,
+      tasks: [
+        autoShutdownTask(orchestration, agents, app.log),
+        backupScheduleTask(backupSchedules, app.log),
+      ],
+    });
+
+    app.addHook('onClose', async (): Promise<void> => {
+      scheduler.stop();
     });
   }
 

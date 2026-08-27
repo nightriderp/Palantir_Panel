@@ -42,6 +42,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { hostNodes } from './resources.js';
+import { gameServers } from './server-orchestration.js';
 import { users } from './users.js';
 
 /**
@@ -75,11 +76,10 @@ export const portRanges = pgTable(
  * Entsteht bei der Erstellung eines Servers und verschwindet mit seiner
  * Löschung – nie von Hand gepflegt.
  *
- * `server_id` trägt bewusst **noch keinen** Fremdschlüssel: Die Tabelle
- * `game_servers` gehört zu B3 und existiert noch nicht. Sobald sie da ist,
- * ergänzt B3 den Fremdschlüssel mit `ON DELETE CASCADE` – bis dahin räumt der
- * Port-Service verwaiste Einträge über `releaseForServer()` auf. Vermerkt in
- * WORK_STATUS.md unter „Gefundene Punkte".
+ * `server_id` löscht mit (`ON DELETE CASCADE`, nachgetragen in R3): Ohne den
+ * Fremdschlüssel räumte allein `releaseForServer()` auf, und ein Server-Löschen
+ * an dieser Methode vorbei hinterließ eine verwaiste Zuordnung – der Port bliebe
+ * dauerhaft belegt.
  */
 export const portAllocations = pgTable(
   'port_allocations',
@@ -90,7 +90,7 @@ export const portAllocations = pgTable(
       .references(() => portRanges.id, { onDelete: 'restrict' }),
     port: integer('port').notNull(),
     protocol: text('protocol').$type<PortProtocol>().notNull(),
-    serverId: uuid('server_id'),
+    serverId: uuid('server_id').references(() => gameServers.id, { onDelete: 'cascade' }),
     allocatedAt: timestamp('allocated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

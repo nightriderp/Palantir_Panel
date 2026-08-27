@@ -25,7 +25,10 @@ services:
     restart: always
     security_opt:
       - no-new-privileges:true
-    read_only: true
+    # Kein read_only: Das Startskript des Images erzeugt die haproxy-Konfiguration
+    # erst zur Laufzeit unter /usr/local/etc/haproxy. Ein tmpfs an dieser Stelle
+    # hilft nicht - dort liegen auch die Vorlage und die Fehlerseiten, die sonst
+    # verdeckt würden. Die übrige Härtung (no-new-privileges, Grenzen) bleibt.
     mem_limit: ${SOCKET_PROXY_MEM_LIMIT:-64m}
     pids_limit: 64
     environment:
@@ -185,18 +188,22 @@ services:
       - palantir
 
   # --- Owner-Konto erheben ----------------------------------------------------
-  # Hebt ein bereits registriertes Konto zum Owner (Lastenheft §2). Einmalig bei
-  # der Ersteinrichtung, NACH der eigenen Registrierung über die Oberfläche:
+  # Hebt ein bereits über die Oberfläche registriertes Konto zum Owner
+  # (Lastenheft §2, Pflichtenheft §8 und §12.3). Ohne diesen Schritt hat niemand
+  # die Rechte, den ersten Admin freizuschalten.
   #
   #   docker compose --env-file ../../.env run --rm owner <benutzername>
   #
-  # Warum `entrypoint` statt `command`: Bei `docker compose run SERVICE ARG`
-  # ersetzt ARG das `command`, hängt sich aber an den `entrypoint` an. Nur so
-  # landet der Benutzername als Argument beim Skript, statt es zu überschreiben.
+  # Bewusst `entrypoint` statt `command`: `docker compose run` hängt weitere
+  # Argumente an den Entrypoint an, während ein `command` dadurch komplett
+  # ersetzt würde - der Benutzername käme sonst nie beim Skript an.
+  #
+  # Gefahrlos wiederholbar: Trägt das Konto den Status schon, passiert nichts;
+  # trägt ihn ein anderes, bricht der Lauf mit OWNER_ALREADY_EXISTS ab.
   #
   # Der Nachweis ist der Systemzugang zur VPS, nicht ein weiteres Geheimnis -
-  # deshalb ein sichtbarer Einrichtungsschritt statt Automatik (Pflichtenheft
-  # §12.3). Die Begründung gegen "erstes Konto gewinnt" steht ausführlich in
+  # deshalb ein sichtbarer Einrichtungsschritt statt Automatik. Die Begründung
+  # gegen "erstes Konto gewinnt" steht ausführlich in
   # apps/backend/src/modules/auth/owner.ts.
   owner:
     profiles: ['setup']
@@ -275,6 +282,19 @@ services:
       # Das Verzeichnis muss dem Benutzer `node` (UID 1000) aus dem Image
       # gehören, siehe SETUP.md.
       - ../../data/audit-archive:/data/audit-archive
+    ports:
+      # Der Agent-Kanal (WebSocket `/agent`, Pflichtenheft §2.2) läuft NICHT
+      # über Traefik, sondern durch den WireGuard-Tunnel. Dafür muss der Port
+      # auf dem Host erreichbar sein - aber ausschließlich an der Tunnel-Adresse.
+      # Die Angabe der IP ist hier sicherheitsrelevant: ohne sie bindet Docker
+      # an 0.0.0.0 und stellt den Agent-Kanal ins offene Internet, wo ihn nur
+      # noch das Pre-Shared-Token schützt. Alles andere (Web, API) erreicht das
+      # Backend weiterhin allein über Traefik.
+      #
+      # Voraussetzung: `wg-quick@wg0` läuft, bevor Docker den Container startet -
+      # sonst existiert die Adresse noch nicht und die Bindung scheitert. Auf der
+      # VPS ist der Dienst dafür aktiviert (siehe SETUP.md §3.4).
+      - '${WIREGUARD_VPS_IP:-10.10.0.1}:4000:4000'
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.palantir-api.rule=Host(`api.${PALANTIR_DOMAIN}`)'

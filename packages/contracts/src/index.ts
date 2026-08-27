@@ -59,6 +59,10 @@ export * from './resources.js';
 export * from './role.js';
 export * from './auth.js';
 
+// Notification-Engine (Arbeitspaket B6): Ereignis-Nutzdaten, Kanäle, Regeln,
+// Inbox, systemweite Ankündigungen und der Live-Kanal der Inbox.
+export * from './notifications.js';
+
 // Admin-Funktionen (Arbeitspaket B8): Nodes, öffentlicher Port-Pool,
 // Audit-Log, Speicherverwaltung und Freischalt-Warteliste.
 export * from './host-node.js';

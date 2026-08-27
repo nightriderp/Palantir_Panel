@@ -144,6 +144,13 @@ beforeEach(async () => {
   repository = createFakeAuthRepository();
   roles = createFakeRoleRepository([{ name: 'Admin', permissions: ['node.manage'] }]);
   app = await buildServer({
+    /*
+     * Die echten, datenbankgestützten Module bleiben draußen: Unten kommen
+     * die Admin-Routen mit Attrappen dazu. Ohne das Abschalten hinge der
+     * Test daran, ob auf der Maschine eine `.env` mit `DATABASE_URL` liegt –
+     * dann registrierte `buildServer()` dieselben Routen bereits selbst.
+     */
+    database: false,
     auth: {
       repository,
       roles,
@@ -153,9 +160,9 @@ beforeEach(async () => {
   });
 
   /*
-   * Die Admin-Routen hängt `buildServer()` im Betrieb nur mit gesetzter
-   * `DATABASE_URL` ein. Hier kommen sie mit Attrappen dazu – vor dem ersten
-   * `inject()`, also noch vor `ready()`.
+   * Die Admin-Routen kommen hier mit Attrappen dazu – vor dem ersten
+   * `inject()`, also noch vor `ready()`. Dass `buildServer()` sie oben nicht
+   * selbst registriert hat, stellt `database: false` sicher.
    */
   auditRepository = createFakeAuditRepository();
   const audit = createAuditService(auditRepository);
