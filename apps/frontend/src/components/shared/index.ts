@@ -99,8 +99,10 @@ export {
 export { cn } from './utils/cn';
 export {
   clampPercent,
+  formatBytes,
   formatDate,
   formatDateTime,
+  formatDuration,
   formatMegabytes,
   formatNumber,
   formatPercent,

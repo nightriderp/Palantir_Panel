@@ -30,6 +30,47 @@ export function formatMegabytes(valueMb: number | null | undefined): string {
   return `${NUMBER_FORMAT.format(Math.round((gb / 1024) * 100) / 100)} TB`;
 }
 
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+
+/**
+ * Byte-Größe lesbar machen, Basis 1024 – wie überall sonst im Projekt.
+ *
+ * Verzeichnisse und unbekannte Größen liefern `—` statt „0 B", damit eine
+ * fehlende Angabe nicht wie eine leere Datei aussieht.
+ *
+ * Herkunft: bis R6 lag diese Funktion bei F3 (`components/servers/formatDetail.ts`),
+ * weil nur die Server-Detailansicht Byte-Größen zeigte. Mit F10 (globale Backups,
+ * Storage-Explorer) kam der zweite Anzeigeort dazu – deshalb hier im
+ * Design-System, statt einer zweiten Fassung daneben („Gefundener Punkt" 67).
+ */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || Number.isNaN(bytes)) return '—';
+  if (bytes < 1024) return `${NUMBER_FORMAT.format(Math.round(bytes))} B`;
+
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${NUMBER_FORMAT.format(Math.round(value * 10) / 10)} ${BYTE_UNITS[unit]}`;
+}
+
+/** Dauer in Sekunden als `2 h 15 min`; `—` bei fehlender oder negativer Angabe. */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return '—';
+
+  const total = Math.floor(seconds);
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+
+  if (days > 0) return `${days} d ${hours} h`;
+  if (hours > 0) return `${hours} h ${minutes} min`;
+  if (minutes > 0) return `${minutes} min`;
+  return `${total} s`;
+}
+
 /** Prozentwert, auf ganze Prozent gerundet und auf 0–100 begrenzt. */
 export function formatPercent(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return '—';
