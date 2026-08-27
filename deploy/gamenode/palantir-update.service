@@ -18,6 +18,18 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
+
+# Zugangsdaten liegen bewusst NICHT unter /root oder /home: `ProtectHome=true`
+# weiter unten blendet beide Bäume für diesen Dienst aus. Ein `docker login` als
+# root schreibt nach /root/.docker/config.json - der Dienst sähe die Datei nicht
+# und der Pull des privaten Agent-Images scheiterte mit `unauthorized`. Deshalb
+# zeigt DOCKER_CONFIG auf einen Pfad außerhalb, den ProtectHome nicht verdeckt.
+#
+# Der SSH-Deploy-Key für `git fetch` hat dasselbe Problem, wird aber anders
+# gelöst: er steht als `core.sshCommand` in /opt/palantir/.git/config und
+# braucht deshalb keine Umgebungsvariable. Beides ist in SETUP.md §3.4
+# beschrieben.
+Environment=DOCKER_CONFIG=/etc/palantir/docker
 ExecStart=/opt/palantir/deploy/gamenode/update.sh
 
 # Hängt der Lauf (Registry antwortet nicht), soll er abbrechen statt den Timer
