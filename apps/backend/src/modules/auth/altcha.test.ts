@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
-import { type AltchaOptions, createAltchaChallenge, verifyAltchaSolution } from './altcha.js';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  type AltchaOptions,
+  type AltchaSolutionLedger,
+  createAltchaChallenge,
+  createAltchaSolutionLedger,
+  verifyAltchaSolution,
+} from './altcha.js';
 
 const options: AltchaOptions = {
   hmacKey: 'test-hmac-schluessel',
@@ -9,6 +15,16 @@ const options: AltchaOptions = {
 };
 
 const NOW = 1_700_000_000_000;
+
+/**
+ * Frisches Verzeichnis je Test – sonst würde ein in einem früheren Test
+ * eingelöster Nachweis den nächsten beeinflussen.
+ */
+let ledger: AltchaSolutionLedger;
+
+beforeEach(() => {
+  ledger = createAltchaSolutionLedger();
+});
 
 /** Löst eine Challenge so, wie es das ALTCHA-Widget im Browser tut. */
 function solve(challenge: ReturnType<typeof createAltchaChallenge>): string {
@@ -61,20 +77,20 @@ describe('ALTCHA-Prüfung', () => {
   it('akzeptiert eine korrekt gelöste Challenge', () => {
     const challenge = createAltchaChallenge(options, NOW);
 
-    expect(verifyAltchaSolution(solve(challenge), options, NOW + 1000)).toBe(true);
+    expect(verifyAltchaSolution(solve(challenge), options, ledger, NOW + 1000)).toBe(true);
   });
 
   it('lehnt eine abgelaufene Challenge ab', () => {
     const challenge = createAltchaChallenge(options, NOW);
     const afterExpiry = NOW + (options.expirySeconds + 1) * 1000;
 
-    expect(verifyAltchaSolution(solve(challenge), options, afterExpiry)).toBe(false);
+    expect(verifyAltchaSolution(solve(challenge), options, ledger, afterExpiry)).toBe(false);
   });
 
   it('lehnt eine Challenge mit fremdem HMAC-Schlüssel ab', () => {
     const challenge = createAltchaChallenge({ ...options, hmacKey: 'anderer-schluessel' }, NOW);
 
-    expect(verifyAltchaSolution(solve(challenge), options, NOW)).toBe(false);
+    expect(verifyAltchaSolution(solve(challenge), options, ledger, NOW)).toBe(false);
   });
 
   it('lehnt eine falsche Zahl ab, auch bei gültiger Signatur', () => {
@@ -89,13 +105,15 @@ describe('ALTCHA-Prüfung', () => {
       }),
     ).toString('base64');
 
-    expect(verifyAltchaSolution(tampered, options, NOW)).toBe(false);
+    expect(verifyAltchaSolution(tampered, options, ledger, NOW)).toBe(false);
   });
 
   it('lehnt unbrauchbare Nutzdaten ab, ohne zu scheitern', () => {
-    expect(verifyAltchaSolution('kein-base64-json', options, NOW)).toBe(false);
-    expect(verifyAltchaSolution(Buffer.from('{}').toString('base64'), options, NOW)).toBe(false);
-    expect(verifyAltchaSolution('', options, NOW)).toBe(false);
+    expect(verifyAltchaSolution('kein-base64-json', options, ledger, NOW)).toBe(false);
+    expect(verifyAltchaSolution(Buffer.from('{}').toString('base64'), options, ledger, NOW)).toBe(
+      false,
+    );
+    expect(verifyAltchaSolution('', options, ledger, NOW)).toBe(false);
   });
 
   it('lehnt einen anderen Algorithmus ab', () => {
@@ -106,7 +124,55 @@ describe('ALTCHA-Prüfung', () => {
     solved.algorithm = 'SHA-1';
 
     expect(
-      verifyAltchaSolution(Buffer.from(JSON.stringify(solved)).toString('base64'), options, NOW),
+      verifyAltchaSolution(
+        Buffer.from(JSON.stringify(solved)).toString('base64'),
+        options,
+        ledger,
+        NOW,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('Einmaligkeit eines Nachweises (Pflichtenheft §7)', () => {
+  it('lehnt denselben Nachweis beim zweiten Mal ab', () => {
+    const solved = solve(createAltchaChallenge(options, NOW));
+
+    expect(verifyAltchaSolution(solved, options, ledger, NOW + 1000)).toBe(true);
+    // Ein Proof-of-Work, der beliebig oft gilt, verteuert nur den ersten Versuch.
+    expect(verifyAltchaSolution(solved, options, ledger, NOW + 2000)).toBe(false);
+  });
+
+  it('trennt zwei unterschiedliche Nachweise voneinander', () => {
+    const first = solve(createAltchaChallenge(options, NOW));
+    const second = solve(createAltchaChallenge(options, NOW));
+
+    expect(verifyAltchaSolution(first, options, ledger, NOW)).toBe(true);
+    expect(verifyAltchaSolution(second, options, ledger, NOW)).toBe(true);
+  });
+
+  it('bucht einen ungültigen Nachweis nicht ein', () => {
+    const challenge = createAltchaChallenge(options, NOW);
+    const solved = solve(challenge);
+
+    // Abgelaufen: scheitert vor dem Einbuchen. Sonst könnte ein wertloser
+    // Versuch die gültige Challenge im Verzeichnis verbrennen.
+    expect(
+      verifyAltchaSolution(solved, options, ledger, NOW + (options.expirySeconds + 1) * 1000),
+    ).toBe(false);
+    expect(verifyAltchaSolution(solved, options, ledger, NOW + 1000)).toBe(true);
+  });
+
+  it('vergisst abgelaufene Einträge wieder', () => {
+    const solved = solve(createAltchaChallenge(options, NOW));
+
+    expect(verifyAltchaSolution(solved, options, ledger, NOW)).toBe(true);
+
+    // Nach dem Ablauf braucht es den Eintrag nicht mehr – die Ablaufprüfung
+    // lehnt den Nachweis ohnehin ab, das Verzeichnis darf also aufräumen.
+    ledger.sweep(NOW + (options.expirySeconds + 1) * 1000);
+    expect(
+      verifyAltchaSolution(solved, options, ledger, NOW + (options.expirySeconds + 1) * 1000),
     ).toBe(false);
   });
 });

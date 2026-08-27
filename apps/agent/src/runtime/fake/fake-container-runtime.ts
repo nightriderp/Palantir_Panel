@@ -37,6 +37,7 @@ import {
   DEFAULT_LOG_TAIL,
   type ContainerHandle,
   type ContainerSpec,
+  type ContainerImage,
   type ContainerState,
   type ContainerStats,
   type ContainerStatus,
@@ -45,6 +46,7 @@ import {
   type GetLogsOptions,
   type LogLine,
   type LogStreamName,
+  type RemoveImageOptions,
   type RemoveOptions,
   type StopOptions,
   type WatchOptions,
@@ -60,6 +62,13 @@ export interface FakeContainerRuntimeOptions {
   readonly now?: () => Date;
   /** Groessenlimit fuer `readFile`/`writeFile`. */
   readonly maxFileBytes?: number;
+}
+
+interface FakeImage {
+  readonly imageId: string;
+  readonly tag: string | null;
+  readonly sizeBytes: number;
+  readonly createdAt: string | null;
 }
 
 interface FakeDatei {
@@ -100,7 +109,9 @@ export type FakeFailableMethod =
   | 'listFiles'
   | 'readFile'
   | 'writeFile'
-  | 'watch';
+  | 'watch'
+  | 'listImages'
+  | 'removeImage';
 
 export type FakeExecHandler = (
   containerId: string,
@@ -123,6 +134,8 @@ const LEERE_STATS = (containerId: string, sampledAt: string): ContainerStats => 
 export class FakeContainerRuntime implements ContainerRuntime {
   readonly #emitter = new RuntimeEventEmitter();
   readonly #container = new Map<string, FakeContainer>();
+  /** Images des virtuellen Hosts - ueber `seedImage()` befuellt. */
+  readonly #images = new Map<string, FakeImage>();
   readonly #fehlerfaelle = new Map<FakeFailableMethod, ContainerRuntimeError>();
   readonly #hardening: HardeningOptions;
   readonly #now: () => Date;
@@ -259,6 +272,53 @@ export class FakeContainerRuntime implements ContainerRuntime {
   async list(): Promise<readonly ContainerState[]> {
     this.#pruefeFehlerfall('list');
     return [...this.#container.values()].map((container) => this.#zuState(container));
+  }
+
+  // ---------------------------------------------------------------- Images (A3)
+
+  async listImages(): Promise<readonly ContainerImage[]> {
+    this.#pruefeFehlerfall('listImages');
+
+    // Wie in der Docker-Variante zaehlt jeder Container, nicht nur die von
+    // Palantir verwalteten.
+    const benutzt = new Set<string>();
+    for (const container of this.#container.values()) {
+      benutzt.add(container.spec.image);
+    }
+
+    return [...this.#images.values()].map((image) => ({
+      imageId: image.imageId,
+      tag: image.tag,
+      sizeBytes: image.sizeBytes,
+      createdAt: image.createdAt,
+      inUse: benutzt.has(image.imageId) || (image.tag !== null && benutzt.has(image.tag)),
+    }));
+  }
+
+  async removeImage(imageId: string, options: RemoveImageOptions = {}): Promise<boolean> {
+    this.#pruefeFehlerfall('removeImage');
+
+    const image = this.#images.get(imageId);
+    if (image === undefined) {
+      // Idempotent wie die Docker-Variante.
+      return false;
+    }
+
+    const benutzt = [...this.#container.values()].some(
+      (container) =>
+        container.spec.image === image.imageId ||
+        (image.tag !== null && container.spec.image === image.tag),
+    );
+
+    if (benutzt && options.force !== true) {
+      throw new ContainerRuntimeError('RUNTIME_ERROR', {
+        message: 'Das Image wird von mindestens einem Container benutzt.',
+        details: { imageId },
+      });
+    }
+
+    this.#images.delete(imageId);
+    return true;
   }
 
   // ---------------------------------------------------------------- Beobachtung
@@ -474,6 +534,21 @@ export class FakeContainerRuntime implements ContainerRuntime {
   /** Simuliert ein regulaeres Ende des Prozesses (kein `CRASHED`). */
   simulateExit(containerId: string, exitCode = 0): void {
     this.#beende(this.#hole(containerId), exitCode, false);
+  }
+
+  /** Image auf den virtuellen Host legen (Testvorbereitung fuer den Storage-Scanner). */
+  seedImage(image: {
+    imageId: string;
+    tag?: string | null;
+    sizeBytes?: number;
+    createdAt?: string | null;
+  }): void {
+    this.#images.set(image.imageId, {
+      imageId: image.imageId,
+      tag: image.tag ?? null,
+      sizeBytes: image.sizeBytes ?? 0,
+      createdAt: image.createdAt ?? this.#jetzt(),
+    });
   }
 
   /** Datei direkt in den virtuellen Container legen (Testvorbereitung). */

@@ -93,16 +93,19 @@ export const loginInputSchema = z.object({
   username: z.string().trim().min(1, { message: 'Bitte gib deinen Benutzernamen ein.' }),
   password: z.string().min(1, { message: 'Bitte gib dein Passwort ein.' }),
   /**
-   * Gelöste ALTCHA-Challenge (ergänzt in B1).
+   * Gelöste ALTCHA-Challenge – **Pflichtfeld** (Breaking Change aus R5).
    *
    * Pflichtenheft §7 und §18 verlangen den Spam-Schutz ausdrücklich auch beim
    * **Login**, nicht nur bei der Registrierung – sonst steht das Passwortfeld
    * für automatisiertes Durchprobieren offen und es bliebe allein das
-   * IP-Rate-Limit. Hier optional typisiert, damit bestehende Aufrufer
-   * unverändert übersetzen; das Backend lehnt einen Login ohne gültigen
-   * Nachweis mit `AUTH_CAPTCHA_INVALID` ab.
+   * IP-Rate-Limit. B1 hat das Feld zunächst als `optional()` eingeführt, weil
+   * das Frontend es noch nicht mitschickte; abgelehnt hat das Backend einen
+   * Login ohne gültigen Nachweis trotzdem immer. Seit R5 schickt `LoginView`
+   * ihn mit, deshalb steht die Pflicht jetzt auch im Schema: ein fehlender
+   * Nachweis soll schon im Formular auffallen und nicht erst als
+   * `AUTH_CAPTCHA_INVALID` aus dem Backend zurückkommen.
    */
-  altcha: altchaSolutionPayloadSchema.optional(),
+  altcha: altchaSolutionPayloadSchema,
 });
 
 /** Registrierung eines Passwort-Kontos (Lastenheft §3.1). */

@@ -26,6 +26,7 @@ import {
   DEFAULT_LOG_TAIL,
   type ContainerHandle,
   type ContainerSpec,
+  type ContainerImage,
   type ContainerState,
   type ContainerStats,
   type ContainerStatus,
@@ -33,6 +34,7 @@ import {
   type FileEntry,
   type GetLogsOptions,
   type LogLine,
+  type RemoveImageOptions,
   type RemoveOptions,
   type StopOptions,
   type WatchOptions,
@@ -75,6 +77,21 @@ interface DockerEngineEvent {
 
 interface Abonnement {
   readonly cancel: () => void;
+}
+
+/** Antwortform von `GET /images/json` - nur die tatsaechlich gelesenen Felder. */
+interface DockerImageListEntry {
+  readonly Id: string;
+  readonly RepoTags?: string[];
+  readonly Size?: number;
+  /** Unix-Zeit in Sekunden. */
+  readonly Created?: number;
+}
+
+/** Antwortform von `GET /containers/json` - nur die Felder fuer den Nutzungsstatus. */
+interface DockerContainerListEntry {
+  readonly Image?: string;
+  readonly ImageID?: string;
 }
 
 const PALANTIR_LABEL_FILTER = JSON.stringify({
@@ -241,6 +258,70 @@ export class DockerContainerRuntime implements ContainerRuntime {
     // Ist-/Soll-Abgleich nach Reconnect (Pflichtenheft §2.2) braucht das Backend
     // aber genau die. Deshalb je Container ein Inspect.
     return Promise.all(eintraege.map((eintrag) => this.inspect(eintrag.Id)));
+  }
+
+  // ---------------------------------------------------------------- Images (A3)
+
+  async listImages(): Promise<readonly ContainerImage[]> {
+    const images = await this.#client.requestJson<DockerImageListEntry[]>('GET', '/images/json', {
+      query: { all: false },
+    });
+
+    // Der Nutzungsstatus kommt aus der Containerliste, nicht aus `Containers`
+    // der Image-Antwort: Dieses Feld liefert die Engine nur bei `all=true` und
+    // meldet sonst -1. Ausserdem sollen ausdruecklich **alle** Container zaehlen
+    // und nicht nur die von Palantir - ein Image, das ein fremder Container
+    // benutzt, darf der Storage-Explorer nicht als ungenutzt anbieten.
+    const benutzt = await this.#benutzteImages();
+
+    return images.map((eintrag) => {
+      const tags = eintrag.RepoTags?.filter((tag) => tag !== '<none>:<none>') ?? [];
+      return {
+        imageId: eintrag.Id,
+        tag: tags[0] ?? null,
+        sizeBytes: eintrag.Size ?? 0,
+        createdAt:
+          typeof eintrag.Created === 'number'
+            ? new Date(eintrag.Created * 1000).toISOString()
+            : null,
+        inUse: benutzt.has(eintrag.Id) || tags.some((tag) => benutzt.has(tag)),
+      };
+    });
+  }
+
+  async removeImage(imageId: string, options: RemoveImageOptions = {}): Promise<boolean> {
+    try {
+      await this.#client.requestVoid('DELETE', `/images/${encodeURIComponent(imageId)}`, {
+        query: { force: options.force ?? false, noprune: false },
+        notFoundCode: 'IMAGE_NOT_FOUND',
+      });
+    } catch (fehler) {
+      // Idempotenz (Lastenheft §3.8, wie bei DELETE_BACKUP): Ein bereits
+      // entferntes Image ist kein Fehler, sonst bliebe nach einem Abbruch ein
+      // Eintrag zurueck, der sich nie wieder loeschen liesse.
+      if (fehler instanceof ContainerRuntimeError && fehler.code === 'IMAGE_NOT_FOUND') {
+        return false;
+      }
+      throw fehler;
+    }
+
+    return true;
+  }
+
+  /** Image-IDs und -Tags, die aktuell von irgendeinem Container benutzt werden. */
+  async #benutzteImages(): Promise<Set<string>> {
+    const container = await this.#client.requestJson<DockerContainerListEntry[]>(
+      'GET',
+      '/containers/json',
+      { query: { all: true } },
+    );
+
+    const benutzt = new Set<string>();
+    for (const eintrag of container) {
+      if (eintrag.ImageID !== undefined) benutzt.add(eintrag.ImageID);
+      if (eintrag.Image !== undefined) benutzt.add(eintrag.Image);
+    }
+    return benutzt;
   }
 
   // ---------------------------------------------------------------- Beobachtung
