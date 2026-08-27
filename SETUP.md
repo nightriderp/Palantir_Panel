@@ -63,7 +63,7 @@ Den Wert an **beiden** Stellen eintragen – sie müssen identisch sein:
 
 ```
 POSTGRES_PASSWORD=<erzeugter Wert>
-DATABASE_URL=postgresql://palantir:<erzeugter Wert>@db:5432/palantir
+DATABASE_URL=postgresql://palantir:<erzeugter Wert>@postgres:5432/palantir
 ```
 
 Nur alphanumerische Zeichen verwenden. Sonderzeichen müssten in `DATABASE_URL`
@@ -74,7 +74,7 @@ Start aus `POSTGRES_USER`, `POSTGRES_PASSWORD` und `POSTGRES_DB` automatisch Rol
 Datenbank an:
 
 ```bash
-docker compose up -d db
+docker compose --env-file ../../.env up -d postgres
 ```
 
 **Schritt 3 – Migrationen.** Nichts zu tun: der Dienst `migrate` in der Compose-Datei
@@ -112,7 +112,7 @@ vollständige Anleitung samt Begründung steht in Abschnitt 2.5.
 **Wichtig:**
 
 - Der Datenbank-Port wird **nicht** nach außen veröffentlicht. Die Datenbank ist nur im
-  Docker-Netz erreichbar – deshalb `@db:5432` in der `DATABASE_URL` und nicht `127.0.0.1`.
+  Docker-Netz erreichbar – deshalb `@postgres:5432` in der `DATABASE_URL` und nicht `127.0.0.1`.
 - Das Passwort wird nur aus der `.env` gelesen, steht nie in einem Kommando und nie in der
   Shell-History.
 - Schema-Änderungen laufen ausschließlich über Migrationen, nie manuell an der laufenden
