@@ -11,9 +11,11 @@
  *    Server prüft die Signatur (also: die Challenge stammt wirklich von ihm) und
  *    rechnet den Hash einmal nach.
  *
- * Der Server speichert dabei **nichts**: Herkunft und Ablaufzeit stecken im
- * signierten `salt` (Parameter `expires`). Ohne den HMAC-Schlüssel lässt sich
- * keine Challenge fälschen.
+ * Herkunft und Ablaufzeit stecken im signierten `salt` (Parameter `expires`);
+ * ohne den HMAC-Schlüssel lässt sich keine Challenge fälschen. Über offene
+ * Challenges führt der Server deshalb keine Liste. Über **eingelöste** schon:
+ * {@link AltchaSolutionLedger} sorgt dafür, dass jeder Nachweis genau einmal
+ * zählt (siehe {@link verifyAltchaSolution}).
  *
  * Bewusst ohne zusätzliche Abhängigkeit umgesetzt (CLAUDE.md §1) – es sind zwei
  * Hashes und ein HMAC aus `node:crypto`.
@@ -70,6 +72,70 @@ export function createAltchaChallenge(
     salt,
     signature: hmacHex(options.hmacKey, challenge),
     maxnumber: options.complexity,
+  };
+}
+
+/**
+ * Verzeichnis bereits eingelöster Nachweise.
+ *
+ * Ein Proof-of-Work, der beliebig oft gilt, verteuert nur den *ersten* Versuch:
+ * Wer eine Challenge einmal löst, könnte denselben Payload bis zum Ablauf an
+ * jeden weiteren Anmeldeversuch hängen und wäre damit wieder so schnell wie
+ * ohne CAPTCHA. Deshalb merkt sich der Server jeden angenommenen Nachweis für
+ * den Rest seiner Gültigkeit.
+ *
+ * Gespeichert wird nur die Challenge (ein SHA-256-Hex) und ihre Ablaufzeit.
+ * Danach greift ohnehin die Ablaufprüfung, der Eintrag kann also weg – die
+ * Ablage wächst damit höchstens auf die Zahl der gelösten Challenges eines
+ * Zeitfensters (`ALTCHA_EXPIRY_SECONDS`, Standard 5 Minuten).
+ *
+ * Im Arbeitsspeicher und ohne zusätzliche Abhängigkeit, aus demselben Grund
+ * wie beim Rate-Limit (`rate-limit.ts`): Palantir läuft als eine
+ * Backend-Instanz auf einer VPS (Pflichtenheft §1). Ein Neustart verliert die
+ * Einträge – dann sind die offenen Challenges ohnehin gleich abgelaufen.
+ */
+export interface AltchaSolutionLedger {
+  /**
+   * Bucht einen Nachweis ein.
+   *
+   * `true`, wenn er zum ersten Mal gezählt hat; `false`, wenn derselbe schon
+   * einmal angenommen wurde und damit verbraucht ist.
+   */
+  claim(challenge: string, expiresAtMs: number, nowMs?: number): boolean;
+  /** Entfernt abgelaufene Einträge; verhindert unbegrenztes Wachstum. */
+  sweep(nowMs?: number): void;
+}
+
+export function createAltchaSolutionLedger(): AltchaSolutionLedger {
+  const claimed = new Map<string, number>();
+
+  function removeExpired(nowMs: number): void {
+    for (const [challenge, expiresAtMs] of claimed) {
+      if (expiresAtMs <= nowMs) {
+        claimed.delete(challenge);
+      }
+    }
+  }
+
+  return {
+    claim(challenge, expiresAtMs, nowMs = Date.now()) {
+      // Vor jeder Buchung aufräumen: einen Eintrag bekommt nur, wer die Arbeit
+      // tatsächlich geleistet hat, die Ablage bleibt dadurch klein genug, dass
+      // ein Durchlauf nicht ins Gewicht fällt. So braucht es keinen Zeitgeber.
+      removeExpired(nowMs);
+
+      if (claimed.has(challenge)) {
+        return false;
+      }
+
+      claimed.set(challenge, expiresAtMs);
+
+      return true;
+    },
+
+    sweep(nowMs = Date.now()) {
+      removeExpired(nowMs);
+    },
   };
 }
 
@@ -138,21 +204,26 @@ function expiryFromSalt(salt: string): number | null {
 }
 
 /**
- * Prüft eine gelöste Challenge.
+ * Prüft eine gelöste Challenge und löst sie ein.
  *
  * Reihenfolge der Prüfungen ist Absicht: zuerst die Signatur (billig und
  * entscheidet, ob die Challenge überhaupt von uns stammt), dann die Ablaufzeit,
  * erst danach der Hash. So kostet ein gefälschter Nachweis keine Rechenzeit.
+ * Eingebucht wird ganz zuletzt – sonst könnte ein beliebiger, nie geprüfter
+ * Wert das Verzeichnis füllen.
  *
- * Der Nachweis ist **nicht** einmalig: derselbe Payload würde erneut
- * durchgehen, solange er nicht abgelaufen ist. Das ist bewusst so – ALTCHA
- * verteuert Massenanfragen, den Schutz gegen wiederholte Versuche übernimmt das
- * IP-Rate-Limit (`rate-limit.ts`), das ohnehin daneben steht. Eine Liste
- * verbrauchter Nachweise wäre zusätzlicher Zustand ohne zusätzlichen Nutzen.
+ * Jeder Nachweis zählt **genau einmal**: derselbe Payload wird ab dem zweiten
+ * Mal abgelehnt, auch wenn er noch nicht abgelaufen ist. Registrierung und
+ * Login teilen sich dasselbe Verzeichnis – eine für die Registrierung gelöste
+ * Aufgabe taugt also auch nicht als Nachweis für einen Anmeldeversuch.
+ *
+ * Das Verzeichnis wird ausdrücklich übergeben und ist nicht optional: ein
+ * vergessener Parameter wäre ein still wiederverwendbarer Proof-of-Work.
  */
 export function verifyAltchaSolution(
   payload: string,
   options: AltchaOptions,
+  ledger: AltchaSolutionLedger,
   nowMs: number = Date.now(),
 ): boolean {
   const solution = parseSolution(payload);
@@ -175,8 +246,14 @@ export function verifyAltchaSolution(
     return false;
   }
 
-  return equalsInConstantTime(
-    solution.challenge,
-    sha256Hex(`${solution.salt}${String(solution.number)}`),
-  );
+  if (
+    !equalsInConstantTime(
+      solution.challenge,
+      sha256Hex(`${solution.salt}${String(solution.number)}`),
+    )
+  ) {
+    return false;
+  }
+
+  return ledger.claim(solution.challenge, expiresAtSeconds * 1000, nowMs);
 }

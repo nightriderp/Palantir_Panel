@@ -1,16 +1,25 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { ERROR_CATALOG, isFail, isOk } from '@palantir/contracts';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createAgentJobs, type AgentJobs } from '../jobs/index.js';
 import {
   ContainerRuntimeError,
   FakeContainerRuntime,
   RUNTIME_ERROR_CODES,
   type ContainerRuntimeErrorCode,
 } from '../runtime/index.js';
-import { ContainerRuntimeAdapter, RUNTIME_ERROR_TO_API_CODE } from './runtime-adapter.js';
+import {
+  ContainerRuntimeAdapter,
+  JOB_COMMANDS,
+  RUNTIME_ERROR_TO_API_CODE,
+} from './runtime-adapter.js';
 import type { OutboundEvent } from './ports.js';
 
 const SERVER_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 const CORRELATION_ID = '9c858901-8a57-4791-81fe-4c455b099bc9';
+const BACKUP_ID = '11111111-2222-4333-8444-555555555555';
 
 const CREATE_PAYLOAD = {
   name: `palantir-${SERVER_ID}`,
@@ -183,17 +192,143 @@ describe('Nutzdaten-Prüfung', () => {
   });
 });
 
-describe('Noch nicht gebaute Befehle', () => {
-  it.each(['CREATE_BACKUP', 'RESTORE_BACKUP', 'GET_STORAGE_BREAKDOWN'])(
-    '%s wird als noch nicht unterstützt gemeldet',
-    async (command) => {
-      const antwort = await befehl(command, {});
+describe('Job-Befehle ohne eingehängtes Job-Modul (A3)', () => {
+  it.each([...JOB_COMMANDS])('%s wird als noch nicht unterstützt gemeldet', async (command) => {
+    // Dieser Adapter ist ohne `jobs` gebaut. Bewusst nicht
+    // AGENT_COMMAND_FAILED: Das Backend soll "nicht gebaut" von "hat nicht
+    // funktioniert" unterscheiden können.
+    const antwort = await befehl(command, {});
 
-      // Bewusst nicht AGENT_COMMAND_FAILED: Das Backend soll "noch nicht gebaut"
-      // von "hat nicht funktioniert" unterscheiden können.
-      expect(antwort.error?.code).toBe('AGENT_COMMAND_NOT_IMPLEMENTED');
-    },
-  );
+    expect(antwort.error?.code).toBe('AGENT_COMMAND_NOT_IMPLEMENTED');
+  });
+
+  it('nennt in der Meldung das fehlende Job-Modul', async () => {
+    const antwort = await befehl('CREATE_BACKUP', {});
+    expect(antwort.error?.message).toContain('Job-Modul');
+  });
+
+  it('deckt JOB_COMMANDS genau die Befehle ab, die das Job-Modul bedient', () => {
+    // Läuft die Liste mit den Zweigen in dispatch() auseinander, endet ein
+    // Befehl in einem Laufzeitfehler statt in einer ehrlichen Antwort.
+    expect([...JOB_COMMANDS].sort()).toEqual(
+      [
+        'CREATE_BACKUP',
+        'DELETE_BACKUP',
+        'DOWNLOAD_BACKUP',
+        'GET_STORAGE_BREAKDOWN',
+        'REMOVE_STORAGE_ENTRY',
+        'RESTORE_BACKUP',
+        'SET_SERVER_QUERY',
+      ].sort(),
+    );
+  });
+});
+
+describe('Job-Befehle mit eingehängtem Job-Modul (A3)', () => {
+  let wurzel: string;
+  let jobs: AgentJobs;
+  let mitJobs: ContainerRuntimeAdapter;
+  let jobEreignisse: OutboundEvent[];
+
+  beforeEach(async () => {
+    wurzel = await fs.mkdtemp(path.join(os.tmpdir(), 'palantir-adapter-'));
+    jobEreignisse = [];
+    jobs = createAgentJobs(
+      {
+        AGENT_DATA_DIR: path.join(wurzel, 'servers'),
+        AGENT_BACKUP_DIR: path.join(wurzel, 'backups'),
+        AGENT_QUERY_INTERVAL_SECONDS: 60,
+        AGENT_QUERY_TIMEOUT_MS: 1_000,
+        AGENT_DOWNLOAD_BLOCK_MAX_BYTES: 1_048_576,
+      },
+      { runtime, emit: (event) => jobEreignisse.push(event) },
+    );
+    mitJobs = new ContainerRuntimeAdapter({ runtime, jobs });
+    await fs.mkdir(path.join(wurzel, 'servers', SERVER_ID), { recursive: true });
+    await fs.writeFile(path.join(wurzel, 'servers', SERVER_ID, 'a.txt'), 'Inhalt');
+  });
+
+  afterEach(async () => {
+    jobs.stop();
+    await fs.rm(wurzel, { recursive: true, force: true });
+  });
+
+  function jobBefehl(command: string, payload: unknown) {
+    return mitJobs.execute({
+      correlationId: CORRELATION_ID,
+      command: command as Parameters<ContainerRuntimeAdapter['execute']>[0]['command'],
+      serverId: SERVER_ID,
+      payload,
+    });
+  }
+
+  it('reicht CREATE_BACKUP an den Backup-Job durch', async () => {
+    // Geprüft wird hier die Weiterleitung, nicht das Sichern selbst: Der
+    // Nutzdaten-Vertrag verlangt einen POSIX-Pfad (der Homeserver ist Linux),
+    // die Testverzeichnisse liegen aber im temporären Ordner des jeweiligen
+    // Betriebssystems. Das vollständige Sichern deckt backup-job.test.ts ab.
+    const antwort = await jobBefehl('CREATE_BACKUP', {
+      backupId: BACKUP_ID,
+      serverId: SERVER_ID,
+      sourcePath: '/srv/palantir/servers/gibt-es-hier-nicht',
+    });
+
+    expect(isFail(antwort)).toBe(true);
+    // Entscheidend: kein AGENT_COMMAND_NOT_IMPLEMENTED mehr, sondern eine
+    // Antwort aus dem Job.
+    expect(antwort.error?.code).toBe('AGENT_INVALID_PATH');
+  });
+
+  it('führt GET_STORAGE_BREAKDOWN aus', async () => {
+    const antwort = await jobBefehl('GET_STORAGE_BREAKDOWN', { includeImages: false });
+
+    expect(isOk(antwort)).toBe(true);
+    expect(antwort.data).toMatchObject({ entries: expect.any(Array) });
+  });
+
+  it('setzt und beendet die Server-Abfrage über SET_SERVER_QUERY', async () => {
+    const gesetzt = await jobBefehl('SET_SERVER_QUERY', {
+      serverId: SERVER_ID,
+      target: { containerId: 'c1', hostPort: 30_000, query: { kind: 'portConnect' } },
+    });
+
+    expect(gesetzt.data).toEqual({ serverId: SERVER_ID, active: true, intervalSeconds: 60 });
+    expect(jobs.query.activeServerIds).toEqual([SERVER_ID]);
+
+    const beendet = await jobBefehl('SET_SERVER_QUERY', { serverId: SERVER_ID, target: null });
+    expect(beendet.data).toEqual({ serverId: SERVER_ID, active: false, intervalSeconds: null });
+    expect(jobs.query.activeServerIds).toEqual([]);
+  });
+
+  it('prüft die Nutzdaten der Job-Befehle gegen das Schema', async () => {
+    const antwort = await jobBefehl('SET_SERVER_QUERY', { serverId: 'keine-uuid', target: null });
+
+    expect(isFail(antwort)).toBe(true);
+    expect(antwort.error?.code).toBe('AGENT_COMMAND_INVALID');
+  });
+
+  it('lehnt das Entfernen eines Server-Datenordners schon am Schema ab', async () => {
+    // Lastenheft §3.8: Datenordner sind über den Storage-Explorer nicht
+    // löschbar – die Kategorie steht deshalb gar nicht erst im Vertrag.
+    const antwort = await jobBefehl('REMOVE_STORAGE_ENTRY', {
+      kind: 'serverData',
+      path: path.join(wurzel, 'servers', SERVER_ID),
+    });
+
+    expect(antwort.error?.code).toBe('AGENT_COMMAND_INVALID');
+  });
+
+  it('führt DELETE_BACKUP aus und antwortet idempotent', async () => {
+    const antwort = await jobBefehl('DELETE_BACKUP', {
+      backupId: BACKUP_ID,
+      storagePath: '/srv/palantir/backups/weg.tar.gz',
+    });
+
+    // Der Pfad liegt außerhalb des konfigurierten Backup-Verzeichnisses des
+    // Tests – der Job lehnt ihn mit einem Code aus dem Katalog ab, statt mit
+    // einem pauschalen AGENT_COMMAND_FAILED.
+    expect(antwort.error?.code).toBe('AGENT_INVALID_PATH');
+  });
 });
 
 describe('Fehlerzuordnung Runtime → API-Katalog', () => {

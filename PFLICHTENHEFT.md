@@ -129,7 +129,7 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `AUTH_RATE_LIMITED` | 429 | IP-Rate-Limit auf Anmeldung/Registrierung greift (§7) |
 | `AUTH_TWO_FACTOR_INVALID` | 401 | Falscher TOTP- oder Backup-Code im zweiten Anmeldeschritt (§7) |
 | `AUTH_TWO_FACTOR_EXPIRED` | 401 | Zwischen-Token des zweiten Anmeldeschritts abgelaufen (§7) |
-| `AUTH_CAPTCHA_INVALID` | 400 | ALTCHA-Prüfung der Registrierung fehlgeschlagen (§3, §7) |
+| `AUTH_CAPTCHA_INVALID` | 400 | ALTCHA-Prüfung von Registrierung oder Login fehlgeschlagen – fehlender, ungültiger, abgelaufener oder bereits eingelöster Nachweis (§3, §7) |
 | `AUTH_USERNAME_TAKEN` | 409 | Benutzername bei der Registrierung bereits vergeben (§7) |
 | `AUTH_PASSWORD_TOO_WEAK` | 400 | Passwort erfüllt die Mindestanforderungen aus §7 nicht |
 | `AUTH_PROVIDER_ERROR` | 502 | Anmeldung über Discord/Twitch/Steam fehlgeschlagen (Lastenheft §3.1) |
@@ -237,7 +237,7 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 ### 5.3 Kommunikationskanäle
 - REST für klassische CRUD-Operationen
 - WebSocket-Kanäle für Live-Daten: Konsole/Logs, Live-Stats, Chat, Benachrichtigungen
-- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
+- Agent-Protokoll: Befehle mit Korrelations-ID (`CREATE`, `START`, `STOP`, `RESTART`, `DELETE`, `GET_STATS`, `GET_LOGS`, `EXEC_CONSOLE`, `FILE_LIST/READ/WRITE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`, `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN`, `SET_SERVER_QUERY`, `REMOVE_STORAGE_ENTRY`); Events vom Agent zurück (`STATUS_CHANGED`, `STATS_UPDATE`, `LOG_LINE`, `CRASHED`)
 
 **Live-Kanal Browser ↔ Backend:** Die Frames dieses Kanals legt das Pflichtenheft nicht fest; sie stehen als `LiveClientFrame` und `LiveServerEventFrame` in `packages/contracts/src/server-live.ts`. Der Browser abonniert eine Ressource (`{ resource: 'server', id }`) und empfängt darauf die Ereignisse `server.statusChanged`, `server.statsUpdated`, `server.consoleLineAppended`, `serverClone.progressed` (§14). Konsolenbefehle laufen als `consoleCommand`-Frame über dieselbe Verbindung. Nicht zu verwechseln mit dem Agent-Protokoll unten: das verbindet Backend und Homeserver.
 
@@ -257,6 +257,10 @@ Die Hilfsfunktionen `ok()` und `fail()` aus `@palantir/contracts` erzeugen den E
 **`DELETE_BACKUP` (Ergänzung aus B5):** Die Aufbewahrungsregel aus Lastenheft §3.3 und das Löschen über den Storage-Explorer (§16) müssen das Archiv tatsächlich von der Platte bekommen; ohne diesen Befehl gäbe die Regel keinen Speicher frei. Der Befehl ist bewusst **idempotent** – ein bereits fehlendes Archiv wird als `removed: false` gemeldet, nicht als Fehler. Sonst bliebe nach einem Abbruch mitten in der Aufbewahrungsprüfung ein Datensatz zurück, der sich nie wieder löschen ließe.
 
 `GET_STORAGE_BREAKDOWN` hat seit Arbeitspaket B8 bereits ein festgelegtes Wire-Format (`GetStorageBreakdownCommandPayload`/`-Result`, Zod-Gegenstück `getStorageBreakdownResultSchema` in `packages/validation/src/storage.ts`), weil das Backend die Antwort entgegennehmen, zwischenspeichern und ausliefern muss (§16). Ausgeführt wird der Befehl weiterhin von niemandem: Er steht unverändert **nicht** in `IMPLEMENTED_AGENT_COMMANDS`, der Agent antwortet also weiter mit `AGENT_COMMAND_NOT_IMPLEMENTED`, bis A3 den Scanner baut.
+
+**`SET_SERVER_QUERY` (Ergänzung aus A3):** §9 verlangt eine „periodische Spielerabfrage durch den Agent" und einen bestandenen Health-Check vor `starting → running`. Beides braucht die Abfrage **auf dem Homeserver**: Nur dort ist der Spiel-Port ohne Umweg erreichbar, und eine spätere `gamedig`-Abfrage läuft je nach Spiel über UDP. Was abgefragt wird – Host-Port und Abfrageart – weiß dagegen ausschließlich das Backend (`GameTypeDefinition.query` aus §11, Portvergabe aus §2.4); der Agent kennt keine Spiele. Dieser Befehl übergibt diese Angaben je Server und ist **idempotent**: `target: null` beendet die Abfrage, ein erneuter Aufruf ersetzt das bestehende Ziel. Bewusst ein eigener Befehl und kein Anhängsel an `START`, damit das Backend die Ziele nach einem Verbindungsabriss ohne Serverneustart wieder setzen kann. Das Ergebnis meldet der Agent als `STATS_UPDATE` mit der Nutzlast `AgentServerQueryPayload` (`source: 'serverQuery'`) – kein eigenes Ereignis, weil das Backend den Aktivitätszeitpunkt für den Auto-Shutdown bereits aus `STATS_UPDATE` nachzieht.
+
+**`REMOVE_STORAGE_ENTRY` (Ergänzung aus A3):** `GET_STORAGE_BREAKDOWN` meldet nur, was belegt ist. Ohne einen Befehl zum Entfernen gäbe es keinen Weg, ungenutzte Images oder verwaiste Daten wieder freizugeben – der Storage-Explorer aus §16 könnte nur zusehen. **Ob** ein Posten gelöscht werden darf, entscheidet unverändert allein das Backend (`classifyEntry()` in B8); der Agent führt aus. Datenordner von Servern sind hierüber grundsätzlich nicht löschbar (Lastenheft §3.8) – die Kategorie `serverData` fehlt schon im Nutzdaten-Typ. Der Befehl ist wie `DELETE_BACKUP` **idempotent**: Ein bereits verschwundener Posten wird als `removed: false` gemeldet, nicht als Fehler.
 
 ---
 
@@ -332,6 +336,12 @@ Festlegungen des Backend-Arbeitspakets B1, die darauf aufbauen (Modul `apps/back
 - **Passwort-Reset durch den Admin:** das Backend erzeugt ein kryptografisch zufälliges Einmal-Passwort, liefert es genau einmal in der Antwort an den Admin aus und speichert es nirgends im Klartext. Das Konto steht danach auf `mustChangePassword`; bis zur Änderung lehnt das Backend zustandsändernde Requests mit `AUTH_PASSWORD_CHANGE_REQUIRED` ab. Alle Sitzungen des Kontos werden dabei widerrufen.
 - **TOTP-Geheimnis:** liegt unverschlüsselt an der Passwort-`AuthMethod`. Es ist kein zweiter Passwort-Ersatz: Wer Lesezugriff auf die Datenbank hat, kommt damit an den zweiten Faktor, aber nicht am Argon2id-Passwort-Hash vorbei. Eine zusätzliche Verschlüsselung mit einem Schlüssel aus derselben `.env` würde denselben Angreifer nicht aufhalten und nur Komplexität hinzufügen.
 - **Konto-Löschung:** löscht den Datensatz samt `AuthMethod`-, `Session`- und `UserRole`-Einträgen (`ON DELETE CASCADE`). Das Owner-Konto kann sich nicht selbst löschen (`AUTH_OWNER_PROTECTED`, Lastenheft §2).
+
+Nachgezogen im Arbeitspaket R5 (ALTCHA beim Login):
+
+- **ALTCHA auch am Login-Formular:** `LoginView` bindet dasselbe `AltchaWidget` ein wie die Registrierung; `loginInputSchema` verlangt das Feld `altcha` seither verpflichtend (Breaking Change an `packages/validation`, zuvor `optional()`). Fehlt es, antwortet der Login mit `AUTH_CAPTCHA_INVALID` statt mit `AUTH_INVALID_CREDENTIALS` – die Meldung soll auf das richtige Feld zeigen.
+- **Jeder Nachweis zählt genau einmal:** Der Server führt über eingelöste Lösungen ein Verzeichnis im Arbeitsspeicher (`AltchaSolutionLedger`), Schlüssel ist die Challenge, Ablage bis zum Ablauf der Challenge. Ohne diese Sperre könnte eine einmal geleistete Rechenarbeit bis zum Ablauf an beliebig viele weitere Anmeldeversuche gehängt werden – der Proof-of-Work würde dann nur den ersten Versuch verteuern. Registrierung und Login teilen sich ein Verzeichnis. Wie beim IP-Rate-Limit bewusst ohne Datenbank/Redis: eine Backend-Instanz auf einer VPS (§1); ein Neustart verliert die Einträge, die offenen Challenges laufen ohnehin binnen `ALTCHA_EXPIRY_SECONDS` ab.
+- **Kein ALTCHA am zweiten Anmeldeschritt:** `/auth/login/2fa` bleibt beim IP-Rate-Limit. Dorthin kommt nur, wer im ersten Schritt bereits einen Nachweis eingelöst **und** gültige Zugangsdaten gezeigt hat; eine zweite Aufgabe würde dort nichts zusätzlich absichern.
 
 ---
 
@@ -457,7 +467,7 @@ Ein Skript (`scripts/setup.sh`), das:
 - **Systemweite Ankündigungen erreichen jedes Konto ohne Regel:** `publishAnnouncement()` schreibt direkt in die Inbox aller freigeschalteten Konten. Eine Wartungsmeldung, die niemanden erreicht, weil ein Admin keine Regel angelegt hat, wäre genau der stille Ausfall, den Lastenheft §3.6 nicht meint. Regeln auf `announcement.published` laufen zusätzlich und tragen den externen Kanal; doppelte Inbox-Meldungen verhindert der Unique-Index `notifications_announcement_user_idx`.
 - **Die Inbox gehört dem Empfänger.** Ihre Routen (`GET /notifications`, `POST /notifications/read`, `DELETE /notifications/:id`) verlangen eine Sitzung, aber keine Permission; die Zuordnung macht die Konto-Id. Auch ein Admin markiert oder löscht keine fremde Meldung – dieselbe Zurückhaltung wie bei privaten Nachrichten (Lastenheft §3.6). Die Verwaltung (`/admin/notification-channels`, `/admin/notification-rules`, `/admin/announcements`, `/admin/notification-deliveries`) hängt dagegen an `notification.manage` (§8).
 - **Live-Kanal:** `GET /live/notifications` (WebSocket). Eine Verbindung ohne gültige Sitzung wird mit Close-Code 4401 beendet – wie beim Agent-Kanal (§2.2), damit das Frontend „nicht angemeldet" von „Backend gerade weg" unterscheiden kann.
-- **Neue Tabellen:** `notification_channels`, `notification_rules`, `notifications`, `announcements`, `notification_deliveries` (Migration `0008_notifications`).
+- **Neue Tabellen:** `notification_channels`, `notification_rules`, `notifications`, `announcements`, `notification_deliveries` (Migration `0009_notifications`).
 - **Neue Konfigurationswerte** (.env.example Abschnitt 10): `DISCORD_WEBHOOK_URL` (bereits vorhanden, jetzt vom Backend gelesen) und `NOTIFICATION_DELIVERY_TIMEOUT_MS`.
 
 ---

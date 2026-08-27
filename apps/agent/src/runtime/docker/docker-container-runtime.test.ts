@@ -236,6 +236,87 @@ describe('Ist-Zustand', () => {
   });
 });
 
+describe('Images (Pflichtenheft §16, Ergaenzung aus A3)', () => {
+  it('liest die Imageliste und bestimmt den Nutzungsstatus aus allen Containern', async () => {
+    antwortgeber = (aufruf) => {
+      if (aufruf.pfad === '/images/json') {
+        return json([
+          {
+            Id: 'sha256:aaa',
+            RepoTags: ['palantir/testserver:1'],
+            Size: 120,
+            Created: 1_767_225_600,
+          },
+          { Id: 'sha256:bbb', RepoTags: ['<none>:<none>'], Size: 80, Created: 1_767_225_600 },
+        ]);
+      }
+      if (aufruf.pfad === '/containers/json') {
+        return json([{ Image: 'palantir/testserver:1', ImageID: 'sha256:aaa' }]);
+      }
+      return json({});
+    };
+
+    const images = await runtime.listImages();
+
+    expect(images).toEqual([
+      {
+        imageId: 'sha256:aaa',
+        tag: 'palantir/testserver:1',
+        sizeBytes: 120,
+        createdAt: new Date(1_767_225_600 * 1000).toISOString(),
+        inUse: true,
+      },
+      {
+        imageId: 'sha256:bbb',
+        tag: null,
+        sizeBytes: 80,
+        createdAt: new Date(1_767_225_600 * 1000).toISOString(),
+        inUse: false,
+      },
+    ]);
+  });
+
+  it('fragt fuer den Nutzungsstatus alle Container ab, nicht nur die von Palantir', async () => {
+    // Ein Image, das ein fremder Container benutzt, darf der Storage-Explorer
+    // nicht als ungenutzt anbieten.
+    antwortgeber = (aufruf) => (aufruf.pfad === '/images/json' ? json([]) : json([]));
+
+    await runtime.listImages();
+
+    const containerAufruf = aufrufe.find((a) => a.pfad === '/containers/json');
+    expect(containerAufruf?.query.get('all')).toBe('true');
+    expect(containerAufruf?.query.get('filters')).toBeNull();
+  });
+
+  it('entfernt ein Image ueber den Socket-Proxy', async () => {
+    antwortgeber = () => new Response(null, { status: 200 });
+
+    await expect(runtime.removeImage('sha256:bbb')).resolves.toBe(true);
+
+    const aufruf = aufrufe[0];
+    expect(aufruf?.method).toBe('DELETE');
+    expect(aufruf?.pfad).toBe('/images/sha256%3Abbb');
+  });
+
+  it('meldet ein bereits fehlendes Image als "nichts entfernt"', async () => {
+    // Idempotenz wie bei DELETE_BACKUP (Lastenheft §3.8).
+    antwortgeber = () => json({ message: 'no such image' }, 404);
+
+    await expect(runtime.removeImage('sha256:weg')).resolves.toBe(false);
+  });
+
+  it('reicht einen Konflikt der Engine als benannten Fehler durch', async () => {
+    // 409 heisst hier "Image wird noch benutzt". Der Client bildet das bereits
+    // auf CONTAINER_STATE_CONFLICT ab; der Adapter macht daraus
+    // AGENT_CONTAINER_STATE_CONFLICT statt eines pauschalen COMMAND_FAILED.
+    antwortgeber = () => json({ message: 'image is being used' }, 409);
+
+    await expect(runtime.removeImage('sha256:aaa')).rejects.toMatchObject({
+      code: 'CONTAINER_STATE_CONFLICT',
+    });
+  });
+});
+
 describe('GET_LOGS', () => {
   it('fordert Zeitstempel an und zerlegt den multiplexten Stream', async () => {
     antwortgeber = () =>

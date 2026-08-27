@@ -3,6 +3,7 @@ import {
   ContainerRuntimeAdapter,
   createWebSocketTransportFactory,
 } from './connection/index.js';
+import { createAgentJobs } from './jobs/index.js';
 import { createContainerRuntimeFromEnv } from './runtime/index.js';
 import { env } from './config/env.js';
 
@@ -12,7 +13,7 @@ import { env } from './config/env.js';
  * Hier werden die Arbeitspakete zusammengesteckt:
  *   - A1 Core-Verbindung   → src/connection (persistente, ausgehende Verbindung)
  *   - A2 Container-Runtime → src/runtime    (Docker über den Socket-Proxy)
- *   - A3 Jobs & Scheduler  → src/jobs       (noch offen)
+ *   - A3 Jobs & Scheduler  → src/jobs       (Abfrage, Backups, Speicher)
  *
  * Der Adapter dazwischen übersetzt Protokoll-Befehle auf Runtime-Aufrufe und
  * Runtime-Ereignisse zurück ins Protokoll.
@@ -36,10 +37,24 @@ function main(): void {
 
   const runtime = createContainerRuntimeFromEnv(env);
 
-  // Adapter und Verbindung brauchen einander gegenseitig. Der Adapter bekommt
-  // die Ereignis-Senke deshalb erst bei start() – so kommt beides ohne
-  // Zwischenvariable aus.
-  const adapter = new ContainerRuntimeAdapter({ runtime });
+  // Ringschluss: Die Jobs (A3) brauchen die Ereignis-Senke der Verbindung, die
+  // Verbindung braucht den Adapter, und der Adapter braucht die Jobs. Der
+  // Halter löst ihn auf, ohne dass eine der drei Seiten die andere schon im
+  // Konstruktor haben muss – gesendet wird erst, wenn alles steht. Der Adapter
+  // (A2) bekommt seine Senke aus demselben Grund erst bei start().
+  const halter: { verbindung?: AgentConnection } = {};
+  const jobs = createAgentJobs(env, {
+    runtime,
+    emit: (event) => halter.verbindung?.sendEvent(event),
+    onJobError: (jobName, fehler) => {
+      console.warn('[agent] Job fehlgeschlagen', {
+        job: jobName,
+        fehler: fehler instanceof Error ? fehler.message : String(fehler),
+      });
+    },
+  });
+
+  const adapter = new ContainerRuntimeAdapter({ runtime, jobs });
 
   const connection = new AgentConnection({
     transportFactory: createWebSocketTransportFactory({
@@ -64,10 +79,12 @@ function main(): void {
       });
     });
 
+  halter.verbindung = connection;
   connection.start();
 
   const shutdown = (signal: string): void => {
     console.info(`[agent] Beende auf ${signal}`);
+    jobs.stop();
     adapter.stop();
     connection.stop();
     void runtime.dispose().finally(() => process.exit(0));
