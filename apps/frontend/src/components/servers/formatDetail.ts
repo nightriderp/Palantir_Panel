@@ -1,51 +1,17 @@
 /**
  * Anzeigeformate der Server-Detailansicht.
  *
- * Ergänzt `components/shared/utils/format.ts` um das, was nur hier gebraucht
- * wird: Byte-Größen, Dauern und die Klartext-Beschreibung eines Cron-Ausdrucks.
- * Datum und Uhrzeit stehen seit R4 im Design-System (`formatDate`,
- * `formatDateTime`, `formatTime`) – hier steht bewusst keine zweite Fassung.
+ * Nur noch das, was allein hier gebraucht wird: die Klartext-Beschreibung eines
+ * Cron-Ausdrucks. Byte-Größen und Dauern sind mit F10 ins Design-System gezogen
+ * (`formatBytes`, `formatDuration` in `components/shared/utils/format.ts`) und
+ * werden von dort re-exportiert, damit die bestehenden Importe unverändert
+ * bleiben – keine zweite Fassung daneben („Gefundener Punkt" 67). Datum und
+ * Uhrzeit stehen seit R4 ebenfalls im Design-System.
  * Reine Funktionen, deshalb daneben getestet. Sprache ist Deutsch
  * (Lastenheft §4).
  */
 
-const NUMBER_FORMAT = new Intl.NumberFormat('de-DE');
-
-const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
-
-/**
- * Byte-Größe lesbar machen, Basis 1024 – wie überall sonst im Projekt.
- *
- * Verzeichnisse und unbekannte Größen liefern `—` statt „0 B", damit eine
- * fehlende Angabe nicht wie eine leere Datei aussieht.
- */
-export function formatBytes(bytes: number | null | undefined): string {
-  if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return '—';
-  if (bytes < 1024) return `${NUMBER_FORMAT.format(Math.round(bytes))} B`;
-
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${NUMBER_FORMAT.format(Math.round(value * 10) / 10)} ${BYTE_UNITS[unit]}`;
-}
-
-/** Dauer in Sekunden als `2 h 15 min`; `—` bei fehlender Angabe. */
-export function formatDuration(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined || Number.isNaN(seconds) || seconds < 0) return '—';
-
-  const total = Math.floor(seconds);
-  const days = Math.floor(total / 86400);
-  const hours = Math.floor((total % 86400) / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-
-  if (days > 0) return `${days} d ${hours} h`;
-  if (hours > 0) return `${hours} h ${minutes} min`;
-  if (minutes > 0) return `${minutes} min`;
-  return `${total} s`;
-}
+export { formatBytes, formatDuration } from '@/components/shared';
 
 const WEEKDAYS = [
   'sonntags',
