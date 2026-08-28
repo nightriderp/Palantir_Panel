@@ -92,6 +92,23 @@ const FRONTEND_PENDING_PATH = '/pending';
 const FRONTEND_HOME_PATH = '/servers';
 
 /**
+ * Interne Ziele, auf die eine Provider-Verknüpfung zurückkehren darf.
+ *
+ * Bewusst eine feste Allowlist statt einer freien Pfadprüfung: `frontendRedirect`
+ * baut die Zieladresse über `new URL(path, base)` – ein von aussen gesetzter
+ * absoluter Wert (`https://…`) wäre dort ein Open-Redirect. Nur die Seiten, die
+ * eine Verknüpfung anstossen, kommen als Rücksprungziel in Frage; alles andere
+ * fällt auf die Übersicht zurück.
+ */
+export const LINK_RETURN_PATHS: readonly string[] = ['/profil', '/einstellungen'];
+
+export function sanitizeReturnTo(value: unknown): string {
+  return typeof value === 'string' && LINK_RETURN_PATHS.includes(value)
+    ? value
+    : FRONTEND_HOME_PATH;
+}
+
+/**
  * Baut ein Rücksprung-Ziel im Frontend.
  *
  * Ohne gesetzte `PUBLIC_WEB_URL` wird relativ weitergeleitet – dann liegen
@@ -264,6 +281,37 @@ function pendingProvider(request: FastifyRequest): string | null {
     return typeof parsed.provider === 'string' ? parsed.provider : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Rücksprungziel aus dem OAuth-Cookie, erneut gegen die Allowlist geprüft.
+ *
+ * Doppelte Prüfung mit Absicht: Der Wert wurde beim Start bereits gefiltert, hier
+ * kommt er aus dem (signierten) Cookie – die zweite Prüfung stellt sicher, dass
+ * auch ein manipuliertes Cookie kein fremdes Ziel erreicht.
+ */
+function pendingReturnTo(request: FastifyRequest): string {
+  const raw = request.cookies[OAUTH_STATE_COOKIE_NAME];
+
+  if (!raw) {
+    return FRONTEND_HOME_PATH;
+  }
+
+  const unsigned = request.unsignCookie(raw);
+
+  if (!unsigned.valid || !unsigned.value) {
+    return FRONTEND_HOME_PATH;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(unsigned.value, 'base64url').toString('utf8')) as {
+      returnTo?: unknown;
+    };
+
+    return sanitizeReturnTo(parsed.returnTo);
+  } catch {
+    return FRONTEND_HOME_PATH;
   }
 }
 
@@ -495,37 +543,50 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
    * mit dem bestehenden Konto verknüpft, sonst angemeldet oder registriert
    * (Lastenheft §3.1).
    */
-  app.get<{ Params: { provider: string } }>('/auth/:provider/start', async (request, reply) => {
-    const provider = request.params.provider;
+  app.get<{ Params: { provider: string }; Querystring: { returnTo?: string } }>(
+    '/auth/:provider/start',
+    async (request, reply) => {
+      const provider = request.params.provider;
 
-    try {
-      if (!isOAuthProvider(provider)) {
-        throw new AuthError('AUTH_PROVIDER_NOT_CONFIGURED');
+      try {
+        if (!isOAuthProvider(provider)) {
+          throw new AuthError('AUTH_PROVIDER_NOT_CONFIGURED');
+        }
+
+        // Nur beim Verknüpfen aus dem eingeloggten Zustand relevant: Wohin es
+        // nach der Rückkehr geht. Gegen die Allowlist geprüft, damit kein
+        // fremdes Ziel eingeschleust werden kann.
+        const returnTo = sanitizeReturnTo(request.query.returnTo);
+
+        const { authorizationUrl, pending } = service.startProviderLogin(provider);
+        const cookieValue = Buffer.from(
+          JSON.stringify({
+            provider,
+            state: pending.state,
+            codeVerifier: pending.codeVerifier,
+            returnTo,
+          }),
+          'utf8',
+        ).toString('base64url');
+
+        setOAuthStateCookie(reply, cookieValue, options.cookies);
+
+        await reply.redirect(authorizationUrl, 303);
+      } catch (error) {
+        if (isAuthError(error)) {
+          // Auch hier landet der Nutzer im Browser, nicht in einem fetch-Aufruf –
+          // deshalb zurück ins Frontend statt in eine JSON-Antwort.
+          await reply.redirect(
+            frontendRedirect(options, FRONTEND_LOGIN_PATH, { error: error.code }),
+            303,
+          );
+          return;
+        }
+
+        throw error;
       }
-
-      const { authorizationUrl, pending } = service.startProviderLogin(provider);
-      const cookieValue = Buffer.from(
-        JSON.stringify({ provider, state: pending.state, codeVerifier: pending.codeVerifier }),
-        'utf8',
-      ).toString('base64url');
-
-      setOAuthStateCookie(reply, cookieValue, options.cookies);
-
-      await reply.redirect(authorizationUrl, 303);
-    } catch (error) {
-      if (isAuthError(error)) {
-        // Auch hier landet der Nutzer im Browser, nicht in einem fetch-Aufruf –
-        // deshalb zurück ins Frontend statt in eine JSON-Antwort.
-        await reply.redirect(
-          frontendRedirect(options, FRONTEND_LOGIN_PATH, { error: error.code }),
-          303,
-        );
-        return;
-      }
-
-      throw error;
-    }
-  });
+    },
+  );
 
   /**
    * Rückkehr vom Anbieter.
@@ -562,10 +623,11 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       if (request.authUser) {
         await service.completeProviderLink(provider, query, pending, request.authUser.id);
 
-        // Verknüpfen passiert aus dem eingeloggten Zustand heraus – zurück
-        // auf die Kontoseite, mit Hinweis auf das ergänzte Verfahren.
+        // Verknüpfen passiert aus dem eingeloggten Zustand heraus – zurück auf
+        // die Seite, von der aus verknüpft wurde (Profil/Einstellungen), mit
+        // Hinweis auf das ergänzte Verfahren.
         await reply.redirect(
-          frontendRedirect(options, FRONTEND_HOME_PATH, { linked: provider }),
+          frontendRedirect(options, pendingReturnTo(request), { linked: provider }),
           303,
         );
         return;

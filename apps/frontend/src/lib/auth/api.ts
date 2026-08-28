@@ -2,9 +2,15 @@ import {
   type AccountDto,
   type AltchaChallenge,
   type ApiResponse,
+  type AuthMethodType,
   type LoginResult,
+  type TwoFactorSetupDto,
 } from '@palantir/contracts';
 import {
+  type ChangePasswordInput,
+  type ConfirmTwoFactorInput,
+  type DisableTwoFactorInput,
+  type LinkPasswordInput,
   type LoginInput,
   type RegisterInput,
   type TwoFactorInput,
@@ -12,6 +18,7 @@ import {
   altchaChallengeSchema,
   apiResponseSchema,
   loginResultSchema,
+  twoFactorSetupSchema,
 } from '@palantir/validation';
 import { z } from 'zod';
 
@@ -41,8 +48,24 @@ export const AUTH_ENDPOINTS = {
   session: '/auth/session',
   logout: '/auth/logout',
   altchaChallenge: '/auth/altcha/challenge',
-  /** Startet den Redirect-Ablauf beim Provider (kein `fetch`, echte Navigation). */
-  oauthStart: (provider: string) => `/auth/${provider}/start`,
+  /**
+   * Startet den Redirect-Ablauf beim Provider (kein `fetch`, echte Navigation).
+   *
+   * `returnTo` steuert, wohin die Verknüpfung aus dem eingeloggten Zustand
+   * zurückkehrt (das Backend prüft den Wert gegen eine Allowlist). Ohne Angabe
+   * bleibt es beim Standardziel.
+   */
+  oauthStart: (provider: string, returnTo?: string) =>
+    returnTo === undefined
+      ? `/auth/${provider}/start`
+      : `/auth/${provider}/start?returnTo=${encodeURIComponent(returnTo)}`,
+  /** Verknüpftes Anmeldeverfahren trennen (Pflichtenheft §7). */
+  method: (type: string) => `/auth/methods/${type}`,
+  passwordLink: '/auth/password/link',
+  passwordChange: '/auth/password/change',
+  twoFactorSetup: '/auth/2fa/setup',
+  twoFactorConfirm: '/auth/2fa/confirm',
+  twoFactorDisable: '/auth/2fa/disable',
 } as const;
 
 /**
@@ -188,4 +211,54 @@ export function fetchAltchaChallenge(): Promise<AltchaChallenge> {
 /** Meldet die aktuelle Sitzung ab (Gast-Wartebildschirm, Pflichtenheft §7). */
 export function logout(): Promise<null> {
   return request(AUTH_ENDPOINTS.logout, z.null(), { method: 'POST' });
+}
+
+// -- Kontoverwaltung (Profil & Einstellungen) -------------------------------
+// Jede Aktion liefert das aktualisierte Konto zurück, sodass die Ansicht den
+// neuen Stand ohne zweiten Ladeaufruf uebernehmen kann.
+
+const accountEnvelopeSchema = z.object({ account: accountDtoSchema });
+
+/** Ein verknuepftes Anmeldeverfahren wieder trennen (Discord/Steam/Twitch/Passwort). */
+export function unlinkMethod(type: AuthMethodType): Promise<AccountDto> {
+  return request(AUTH_ENDPOINTS.method(type), accountEnvelopeSchema, {
+    method: 'DELETE',
+  }).then((result) => result.account);
+}
+
+/** Ein Passwort-Verfahren nachtraeglich anlegen (Konto ohne Passwort). */
+export function linkPassword(input: LinkPasswordInput): Promise<AccountDto> {
+  return request(AUTH_ENDPOINTS.passwordLink, accountEnvelopeSchema, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((result) => result.account);
+}
+
+/** Das eigene Passwort aendern (Pflichtenheft §7). */
+export function changePassword(input: ChangePasswordInput): Promise<AccountDto> {
+  return request(AUTH_ENDPOINTS.passwordChange, accountEnvelopeSchema, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((result) => result.account);
+}
+
+/** Beginnt die 2FA-Einrichtung und liefert Geheimnis samt `otpauth`-URI. */
+export function beginTwoFactorSetup(): Promise<TwoFactorSetupDto> {
+  return request(AUTH_ENDPOINTS.twoFactorSetup, twoFactorSetupSchema, { method: 'POST' });
+}
+
+/** Schliesst die 2FA-Einrichtung mit dem ersten gueltigen Code ab. */
+export function confirmTwoFactor(input: ConfirmTwoFactorInput): Promise<AccountDto> {
+  return request(AUTH_ENDPOINTS.twoFactorConfirm, accountEnvelopeSchema, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((result) => result.account);
+}
+
+/** Deaktiviert 2FA (verlangt Passwort und aktuellen Code). */
+export function disableTwoFactor(input: DisableTwoFactorInput): Promise<AccountDto> {
+  return request(AUTH_ENDPOINTS.twoFactorDisable, accountEnvelopeSchema, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }).then((result) => result.account);
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import { type ReactNode } from 'react';
-import { AppShell, Icon, StatusDot, ToastProvider } from '@/components/shared';
+import { AppShell, StatusDot, ToastProvider } from '@/components/shared';
+import { UserMenu } from '@/components/account/UserMenu';
 import { LiveChannelProvider, useLiveChannel } from '@/lib/live/LiveChannelProvider';
 import { APP_VERSION_LABEL } from '@/lib/version';
 import { DashboardNav } from './DashboardNav';
@@ -43,12 +44,7 @@ function Topbar() {
   return (
     <div className="flex flex-1 items-center justify-end gap-4">
       <LiveConnectionBadge />
-      {user ? (
-        <span className="flex items-center gap-2 text-base text-ink-muted">
-          <Icon name="user" size={14} />
-          {user.displayName}
-        </span>
-      ) : null}
+      <UserMenu user={user} />
     </div>
   );
 }
