@@ -23,6 +23,7 @@
 import {
   AGENT_PROTOCOL_VERSION,
   type AgentContainerState,
+  type AgentNodeStats,
   type AgentStateReportReason,
   type AgentToBackendFrame,
   type ApiResponse,
@@ -66,6 +67,13 @@ export interface AgentConnectionOptions {
    * antwortet, ist schlimmer als gar keiner, weil er den Reconnect verhindert.
    */
   readonly handshakeTimeoutMs?: number;
+  /**
+   * Liest die gemessenen Ist-Ressourcen der Node (Pflichtenheft §11). Ohne
+   * diese Option geht der Bericht ohne `nodeStats` raus – additiv zulässig.
+   * `null` als Rückgabe bedeutet „gerade nicht messbar" und wird ebenso
+   * behandelt.
+   */
+  readonly readNodeStats?: () => Promise<AgentNodeStats | null>;
 }
 
 export type ConnectionState = 'idle' | 'connecting' | 'handshaking' | 'ready' | 'waiting';
@@ -452,15 +460,34 @@ export class AgentConnection {
       return;
     }
 
+    // Gemessene Node-Ressourcen begleiten den Bericht (Pflichtenheft §11). Ein
+    // Fehlschlag lässt den Bericht bewusst nicht scheitern: Der Ist-Zustand der
+    // Container ist der eigentliche Zweck, die Ressourcenmessung nur die Zugabe.
+    let nodeStats: AgentNodeStats | undefined;
+    if (this.options.readNodeStats) {
+      try {
+        nodeStats = (await this.options.readNodeStats()) ?? undefined;
+      } catch (error) {
+        this.log.warn('Node-Ressourcen nicht messbar – Bericht ohne nodeStats', {
+          fehler: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     const gesendet = this.sendFrame({
       kind: 'stateReport',
       reason,
       containers,
+      ...(nodeStats ? { nodeStats } : {}),
       reportedAt: new Date().toISOString(),
     });
 
     if (gesendet) {
-      this.log.info('Ist-Zustand gemeldet', { anlass: reason, container: containers.length });
+      this.log.info('Ist-Zustand gemeldet', {
+        anlass: reason,
+        container: containers.length,
+        nodeStats: nodeStats !== undefined,
+      });
     }
   }
 
