@@ -1,6 +1,7 @@
 import {
   AgentConnection,
   ContainerRuntimeAdapter,
+  createNodeStatsReader,
   createWebSocketTransportFactory,
 } from './connection/index.js';
 import { createAgentJobs } from './jobs/index.js';
@@ -63,6 +64,9 @@ function main(): void {
     }),
     agentVersion: AGENT_VERSION,
     runtime: adapter,
+    // Gemessene Node-Ressourcen vom Dateisystem der Server-Datenordner
+    // (Pflichtenheft §11). Begleiten jeden Ist-Zustands-Bericht.
+    readNodeStats: createNodeStatsReader(env.AGENT_DATA_DIR),
   });
 
   void runtime

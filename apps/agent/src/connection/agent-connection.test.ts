@@ -1,6 +1,7 @@
 import {
   AGENT_PROTOCOL_VERSION,
   type AgentContainerState,
+  type AgentNodeStats,
   type AgentToBackendFrame,
   type ApiResponse,
   fail,
@@ -88,7 +89,10 @@ interface Harness {
   aktuellerTransport(): FakeTransport;
 }
 
-function harness(runtime: Partial<AgentRuntimePort> = {}): Harness {
+function harness(
+  runtime: Partial<AgentRuntimePort> = {},
+  readNodeStats?: () => Promise<AgentNodeStats | null>,
+): Harness {
   const transports: FakeTransport[] = [];
   const ausgefuehrt: CommandExecution[] = [];
 
@@ -112,6 +116,7 @@ function harness(runtime: Partial<AgentRuntimePort> = {}): Harness {
       listContainerStates: () => Promise.resolve([LAUFENDER_CONTAINER]),
       ...runtime,
     },
+    ...(readNodeStats ? { readNodeStats } : {}),
   });
 
   return {
@@ -277,6 +282,54 @@ describe('Ist-Zustands-Bericht nach Wiederverbindung (Pflichtenheft §2.2)', () 
 
     expect(h.transports).toHaveLength(2);
     expect(zweiteVerbindung.framesVomTyp('stateReport')[0]?.reason).toBe('connected');
+
+    h.connection.stop();
+  });
+
+  it('legt gemessene Node-Ressourcen bei, wenn ein Reader gesetzt ist', async () => {
+    const stats: AgentNodeStats = {
+      cpuCores: 8,
+      cpuLoad1m: 0.5,
+      ramTotalMb: 28_672,
+      ramAvailableMb: 20_000,
+      diskTotalMb: 1_500_000,
+      diskAvailableMb: 1_400_000,
+      observedAt: new Date().toISOString(),
+    };
+    const h = harness({}, () => Promise.resolve(stats));
+    h.connection.start();
+
+    const transport = await verbinden(h);
+    const bericht = transport.framesVomTyp('stateReport')[0];
+
+    expect(bericht?.nodeStats).toEqual(stats);
+
+    h.connection.stop();
+  });
+
+  it('sendet den Bericht ohne nodeStats, wenn kein Reader gesetzt ist', async () => {
+    const h = harness();
+    h.connection.start();
+
+    const transport = await verbinden(h);
+    const bericht = transport.framesVomTyp('stateReport')[0];
+
+    expect(bericht?.nodeStats).toBeUndefined();
+    expect(bericht?.containers).toEqual([LAUFENDER_CONTAINER]);
+
+    h.connection.stop();
+  });
+
+  it('sendet den Bericht trotzdem, wenn die Ressourcenmessung scheitert', async () => {
+    const h = harness({}, () => Promise.reject(new Error('statfs kaputt')));
+    h.connection.start();
+
+    const transport = await verbinden(h);
+    const bericht = transport.framesVomTyp('stateReport')[0];
+
+    // Container-Ist-Zustand bleibt der Zweck; die Messung ist nur Zugabe.
+    expect(bericht?.nodeStats).toBeUndefined();
+    expect(bericht?.containers).toEqual([LAUFENDER_CONTAINER]);
 
     h.connection.stop();
   });
