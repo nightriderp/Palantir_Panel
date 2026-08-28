@@ -70,6 +70,7 @@ export {
   agentEventFrameSchema,
   agentEventNameSchema,
   agentHelloFrameSchema,
+  agentNodeStatsSchema,
   agentStateReportFrameSchema,
   agentToBackendFrameSchema,
   backendCommandFrameSchema,
