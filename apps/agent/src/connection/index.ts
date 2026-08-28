@@ -50,6 +50,8 @@ export {
   type RuntimeAdapterOptions,
 } from './runtime-adapter.js';
 
+export { createNodeStatsReader, readNodeStats } from './node-stats.js';
+
 import { AgentConnection, type AgentConnectionOptions } from './agent-connection.js';
 import type { AgentRuntimePort } from './ports.js';
 import { createWebSocketTransportFactory } from './websocket-transport.js';
