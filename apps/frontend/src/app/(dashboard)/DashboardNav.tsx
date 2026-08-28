@@ -38,7 +38,7 @@ interface PlannedEntry {
 const MAIN_ENTRIES: PlannedEntry[] = [
   { key: 'servers', label: 'Übersicht', icon: 'grid', href: '/servers' },
   { key: 'my-backups', label: 'Meine Backups', icon: 'database', href: '/my-backups' },
-  { key: 'messages', label: 'Nachrichten', icon: 'chat', pending: 'F5' },
+  { key: 'messages', label: 'Nachrichten', icon: 'chat', href: '/messages' },
   { key: 'notifications', label: 'Benachrichtigungen', icon: 'bell', href: '/notifications' },
   { key: 'nodes', label: 'Nodes', icon: 'server', href: '/nodes', requires: 'canViewNodes' },
   { key: 'arcade', label: 'Arcade', icon: 'gamepad', pending: 'F8' },
