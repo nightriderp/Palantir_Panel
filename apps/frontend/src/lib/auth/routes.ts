@@ -44,3 +44,44 @@ export function landingPathForAccount(account: AccountDto): string {
 export function belongsOnPendingScreen(account: AccountDto): boolean {
   return !account.banned && account.awaitingApproval;
 }
+
+/** Öffentliche Seiten, die auch ohne Anmeldung erreichbar sind. */
+const PUBLIC_PATHS: readonly string[] = [
+  AUTH_ROUTES.login,
+  AUTH_ROUTES.register,
+  AUTH_ROUTES.pending,
+];
+
+/** Sitzungszustand, so weit ihn die Route-Sperre braucht. */
+export interface GateState {
+  /** Es besteht eine gültige Sitzung. */
+  readonly authed: boolean;
+  /** Konto ist angemeldet, aber noch nicht freigeschaltet (Gast). */
+  readonly awaiting: boolean;
+}
+
+/**
+ * Entscheidet, wohin eine Anfrage umgeleitet werden muss – oder `null`, wenn sie
+ * bleiben darf. Die einzige Stelle mit dieser Logik; die Middleware ruft sie nur
+ * auf. Bewusst rein und ohne `fetch`, damit sie vollständig testbar ist.
+ *
+ * Ohne Anmeldung ist nur der öffentliche Bereich erreichbar; jeder andere Pfad
+ * (inklusive `/`) führt zur Anmeldung. Ein noch nicht freigeschaltetes Konto
+ * gehört auf den Wartebildschirm und nirgends sonst hin. Ein freigeschaltetes
+ * Konto wird von den Anmelde-/Warteseiten und der Wurzel auf die Übersicht
+ * geführt, damit diese nach dem Login keine Sackgasse sind.
+ */
+export function gateRedirect(pathname: string, state: GateState): string | null {
+  const isPublic = PUBLIC_PATHS.includes(pathname);
+  const isEntry = isPublic || pathname === '/';
+
+  if (!state.authed) {
+    return isPublic ? null : AUTH_ROUTES.login;
+  }
+
+  if (state.awaiting) {
+    return pathname === AUTH_ROUTES.pending ? null : AUTH_ROUTES.pending;
+  }
+
+  return isEntry ? DASHBOARD_HOME : null;
+}
