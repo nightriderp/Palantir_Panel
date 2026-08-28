@@ -24,3 +24,4 @@ export * from './schema/notifications.js';
 export * from './schema/admin.js';
 export * from './schema/auth.js';
 export * from './schema/chat.js';
+export * from './schema/arcade.js';
