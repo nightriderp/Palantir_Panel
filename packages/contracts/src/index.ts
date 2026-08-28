@@ -59,6 +59,10 @@ export * from './resources.js';
 export * from './role.js';
 export * from './auth.js';
 
+// Arcade (Arbeitspaket F8): Katalog der Minispiele, Punktestände und
+// nutzerbezogene Bestenlisten (Pflichtenheft §17, Lastenheft §3.9).
+export * from './arcade.js';
+
 // Notification-Engine (Arbeitspaket B6): Ereignis-Nutzdaten, Kanäle, Regeln,
 // Inbox, systemweite Ankündigungen und der Live-Kanal der Inbox.
 export * from './notifications.js';

@@ -40,6 +40,7 @@ import {
   createServerNodePlacementSource,
   registerServerOrchestration,
 } from './modules/server-orchestration/index.js';
+import { registerArcade } from './modules/arcade/index.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { autoShutdownTask, backupScheduleTask, startScheduler } from './scheduler.js';
 
@@ -295,6 +296,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         resolveUserId: (request) => request.authUser?.id ?? null,
       }),
     );
+
+    /*
+     * Arcade (F8, Pflichtenheft §17). Rein clientseitige Minispiele; das
+     * Backend speichert nur die Punktestände und stellt die nutzerbezogene
+     * Bestenliste je Spiel zusammen. Keine eigene Permission – spielen darf
+     * jedes angemeldete Konto, die Zuordnung läuft über die Konto-Id.
+     */
+    await registerArcade(app, {
+      db,
+      resolveUserId: (request) => request.authUser?.id ?? null,
+    });
 
     /*
      * Der Zeitgeber (R2/Gefundener Punkt 63) – eine Stelle für beide

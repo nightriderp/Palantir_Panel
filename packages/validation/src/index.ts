@@ -262,3 +262,9 @@ export {
   thresholdPercentSchema,
   userResourceLimitsInputSchema,
 } from './resources.js';
+export {
+  type SubmitArcadeScoreInput,
+  arcadeGameIdSchema,
+  arcadeScoreValueSchema,
+  submitArcadeScoreInputSchema,
+} from './arcade.js';
