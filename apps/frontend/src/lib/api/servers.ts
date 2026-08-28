@@ -232,6 +232,21 @@ export function fetchBackups(
 }
 
 /**
+ * Alle Backups eines Kontos über sämtliche eigenen Server (Arbeitspaket F4).
+ *
+ * Entspricht der Route `GET /users/:userId/backups`, die B5 für die globale
+ * Eigenansicht gebaut hat. Wiederherstellen, Herunterladen und Löschen laufen
+ * danach über dieselben Endpunkte wie in der Server-Detailansicht
+ * (`restoreBackup`, `backupDownloadUrl`, `deleteBackup`).
+ */
+export function fetchOwnBackups(
+  userId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<BackupDto[]>> {
+  return apiRequest<BackupDto[]>(`/users/${encodeURIComponent(userId)}/backups`, { signal });
+}
+
+/**
  * Sicherung anstoßen.
  *
  * `stopServer` hält den Server für die Dauer der Sicherung an – das ergibt ein
