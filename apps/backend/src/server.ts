@@ -100,7 +100,13 @@ export interface BuildServerOptions {
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: env.LOG_LEVEL },
-    trustProxy: true,
+    // Nur der eigenen Proxy-Kette vertrauen (feste Hop-Zahl), nicht pauschal
+    // jedem `X-Forwarded-For`: Ein client-gesetzter Header darf `request.ip`
+    // nicht bestimmen, sonst ist der Login-Rate-Limit spoofbar (Pflichtenheft §7).
+    // `hop` ist der Abstand zum Server (0 = der unmittelbar vorgelagerte Proxy);
+    // vertraut werden genau die ersten `TRUSTED_PROXY_HOPS` Hops. `0` vertraut
+    // niemandem – dann gilt die direkte Verbindungsadresse.
+    trustProxy: (_address: string, hop: number) => hop < env.TRUSTED_PROXY_HOPS,
   });
 
   /**

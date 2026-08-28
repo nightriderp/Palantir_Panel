@@ -175,6 +175,21 @@ function countPorts(range: { startPort: number; endPort: number }): number {
   return range.endPort - range.startPort + 1;
 }
 
+/**
+ * Erkennt eine Unique-Verletzung von PostgreSQL (`SQLSTATE 23505`) – hier die
+ * Kollision zweier paralleler Vergaben auf demselben Port/Protokoll über den
+ * Index `port_allocations_port_protocol_idx`. `pg` legt den SQLSTATE als
+ * `code`-Feld auf den Fehler.
+ */
+function isPortConflict(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  );
+}
+
 /** Niedrigster freier Port über alle passenden Bereiche hinweg. */
 function findFreePort(
   ranges: readonly PortRangeRecord[],
@@ -471,39 +486,73 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
 
       const created: PortAllocationRecord[] = [];
 
-      for (const request of requests) {
-        const usable = ranges
-          .filter((range) => range.enabled && range.protocol === request.protocol)
-          .filter(
-            (range) =>
-              range.nodeId === null ||
-              request.nodeId === undefined ||
-              request.nodeId === null ||
-              range.nodeId === request.nodeId,
-          )
-          .sort((a, b) => a.startPort - b.startPort);
+      try {
+        for (const request of requests) {
+          const usable = ranges
+            .filter((range) => range.enabled && range.protocol === request.protocol)
+            .filter(
+              (range) =>
+                range.nodeId === null ||
+                request.nodeId === undefined ||
+                request.nodeId === null ||
+                range.nodeId === request.nodeId,
+            )
+            .sort((a, b) => a.startPort - b.startPort);
 
-        const taken = takenByProtocol.get(request.protocol) ?? new Set<number>();
-        takenByProtocol.set(request.protocol, taken);
+          const taken = takenByProtocol.get(request.protocol) ?? new Set<number>();
+          takenByProtocol.set(request.protocol, taken);
 
-        for (let index = 0; index < request.count; index += 1) {
-          const found = findFreePort(usable, taken);
+          for (let index = 0; index < request.count; index += 1) {
+            // Der in-memory berechnete freie Port kann zwischen Auswahl und Insert
+            // von einer parallelen Vergabe belegt worden sein. Der Unique-Index
+            // `port_allocations_port_protocol_idx` fängt das DB-seitig ab; hier gilt
+            // der Port dann als belegt und der nächste freie wird versucht – statt
+            // den rohen DB-Fehler als HTTP 500 durchzureichen. Die Schleife
+            // terminiert, weil jeder Fehlversuch `taken` wachsen lässt und
+            // `findFreePort` irgendwann nichts Freies mehr findet.
+            let inserted: PortAllocationRecord | null = null;
 
-          if (!found) {
-            throw new AdminError('PORT_POOL_EXHAUSTED');
+            while (inserted === null) {
+              const found = findFreePort(usable, taken);
+
+              if (!found) {
+                throw new AdminError('PORT_POOL_EXHAUSTED');
+              }
+
+              taken.add(found.port);
+
+              try {
+                inserted = await deps.repository.insertAllocation({
+                  rangeId: found.rangeId,
+                  port: found.port,
+                  protocol: request.protocol,
+                  serverId,
+                });
+              } catch (error) {
+                if (isPortConflict(error)) {
+                  // Rennen um diesen Port verloren – nächsten freien versuchen.
+                  continue;
+                }
+                throw error;
+              }
+            }
+
+            created.push(inserted);
           }
-
-          taken.add(found.port);
-
-          created.push(
-            await deps.repository.insertAllocation({
-              rangeId: found.rangeId,
-              port: found.port,
-              protocol: request.protocol,
-              serverId,
-            }),
-          );
         }
+      } catch (error) {
+        // Scheitert die Vergabe nach bereits eingefügten Ports, werden diese
+        // wieder freigegeben – ein halb vergebener Satz hinterließe sonst
+        // verwaiste Zuordnungen ohne lauffähigen Server.
+        for (const allocation of created) {
+          try {
+            await deps.repository.removeAllocation(allocation.id);
+          } catch {
+            // Beste Bemühung: der Aufräumfehler darf den eigentlichen Fehler
+            // nicht verdecken.
+          }
+        }
+        throw error;
       }
 
       if (created.length > 0) {

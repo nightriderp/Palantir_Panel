@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { AUTH_ENDPOINTS, apiUrl } from '@/lib/auth/api';
-import { gateRedirect } from '@/lib/auth/routes';
+import { type GateState, gateRedirect, sessionStateFromEnvelope } from '@/lib/auth/routes';
 
 /**
  * Zugriffssperre für den eingeloggten Bereich.
@@ -19,8 +19,7 @@ import { gateRedirect } from '@/lib/auth/routes';
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const cookie = request.headers.get('cookie') ?? '';
 
-  let authed = false;
-  let awaiting = false;
+  let state: GateState = { authed: false, awaiting: false };
 
   // Ohne Cookie gibt es nichts zu prüfen – spart den Roundtrip für jeden
   // anonymen Zugriff und für Bots.
@@ -32,11 +31,11 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       });
 
       if (response.ok) {
-        authed = true;
         const body: unknown = await response.json().catch(() => null);
-        awaiting = Boolean(
-          (body as { data?: { awaitingApproval?: boolean } } | null)?.data?.awaitingApproval,
-        );
+        // Auswertung liegt in einer reinen, getesteten Funktion; die Middleware
+        // besorgt nur den Roundtrip. So ist der Envelope-Vertrag ohne Mock der
+        // Next-Laufzeit prüfbar.
+        state = sessionStateFromEnvelope(body);
       }
     } catch {
       // API nicht erreichbar: als „nicht angemeldet" behandeln. Das leitet auf
@@ -44,7 +43,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  const ziel = gateRedirect(request.nextUrl.pathname, { authed, awaiting });
+  const ziel = gateRedirect(request.nextUrl.pathname, state);
 
   if (ziel !== null && ziel !== request.nextUrl.pathname) {
     const url = request.nextUrl.clone();

@@ -159,6 +159,30 @@ function requireRoleRead(actor: PermissionActor): void {
   }
 }
 
+/**
+ * Eine Rolle gilt als privilegiert, wenn ihr Bündel selbst die Rollen- oder
+ * Nutzerverwaltung verleiht – wer sie zuweisen kann, kann darüber weitere
+ * Rechte (bis zum vollen Katalog) vergeben.
+ */
+function grantsAdministration(role: RoleRecord): boolean {
+  return role.permissions.some(
+    (permission) => permission === 'role.manage' || permission === 'user.manage',
+  );
+}
+
+/**
+ * Schranke gegen Rechteausweitung: `user.manage` allein darf Rollen zuweisen und
+ * abziehen (Pflichtenheft §8), aber keine Rolle, die ihrerseits `role.manage`/
+ * `user.manage` verleiht – sonst könnte ein reiner Konten-Admin sich selbst die
+ * „Admin"-Rolle mit vollem Katalog geben. Solche Rollen setzen `role.manage`
+ * voraus. Gilt für Zuweisen und Entziehen gleichermaßen.
+ */
+function requireAssignmentAllowed(actor: PermissionActor, role: RoleRecord): void {
+  if (grantsAdministration(role) && !hasPermission(actor, 'role.manage')) {
+    throw new RbacError('PERMISSION_DENIED');
+  }
+}
+
 function toDto(actor: PermissionActor, role: RoleRecord, memberCount: number): RoleDto {
   return {
     id: role.id,
@@ -282,6 +306,7 @@ export function createRoleService(repository: RoleRepository): RoleService {
       requireRoleRead(actor);
 
       const role = await loadRoleOrFail(roleId);
+      requireAssignmentAllowed(actor, role);
       await repository.assignToUser(userId, role.id);
     },
 
@@ -289,6 +314,7 @@ export function createRoleService(repository: RoleRepository): RoleService {
       requireRoleRead(actor);
 
       const role = await loadRoleOrFail(roleId);
+      requireAssignmentAllowed(actor, role);
       await repository.removeFromUser(userId, role.id);
     },
 
