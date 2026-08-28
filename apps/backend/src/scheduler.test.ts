@@ -343,6 +343,10 @@ class SweepRepository implements ServerRepository {
     return this.nichtGebraucht('markHostDisconnected');
   }
 
+  updateMeasuredResources(): Promise<void> {
+    return this.nichtGebraucht('updateMeasuredResources');
+  }
+
   private nichtGebraucht(methode: string): never {
     throw new Error(`Der Auto-Shutdown-Sweep sollte ${methode}() nicht aufrufen.`);
   }

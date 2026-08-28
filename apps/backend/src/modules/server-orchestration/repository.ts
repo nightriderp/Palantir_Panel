@@ -137,6 +137,19 @@ export interface ServerRepository {
    */
   markHostConnected(hostId: string): Promise<void>;
   markHostDisconnected(hostId: string): Promise<void>;
+  /**
+   * Übernimmt die vom Agent **gemessenen** Gesamtressourcen der Node in
+   * `total_ram_mb` / `total_cpu_cores` / `total_disk_mb` (Pflichtenheft §11).
+   *
+   * Damit rechnet die Kapazitätsprüfung gegen das, was die VM wirklich hat,
+   * statt gegen den Seed- oder Admin-Sollwert. Bewusste Folge: Sobald ein Agent
+   * verbunden ist, führt die Messung diese Spalten – eine Vergrößerung der
+   * Platte wirkt ohne Nachpflege, ein manuell gesetzter Wert wird überschrieben.
+   */
+  updateMeasuredResources(
+    hostId: string,
+    resources: { ramMb: number; cpuCores: number; diskMb: number },
+  ): Promise<void>;
 }
 
 function toIso(value: Date | null): string | null {
@@ -425,6 +438,18 @@ export function createDrizzleServerRepository(db: Database): ServerRepository {
         .update(hostNodes)
         .set({
           status: sql`case when ${hostNodes.status} = 'online' then 'offline' else ${hostNodes.status} end`,
+          updatedAt: new Date(),
+        })
+        .where(eq(hostNodes.id, hostId));
+    },
+
+    async updateMeasuredResources(hostId, resources): Promise<void> {
+      await db
+        .update(hostNodes)
+        .set({
+          totalRamMb: resources.ramMb,
+          totalCpuCores: resources.cpuCores,
+          totalDiskMb: resources.diskMb,
           updatedAt: new Date(),
         })
         .where(eq(hostNodes.id, hostId));
