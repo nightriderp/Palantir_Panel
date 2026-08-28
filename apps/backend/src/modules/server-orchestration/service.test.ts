@@ -206,6 +206,17 @@ class FakeRepository implements ServerRepository {
   markHostDisconnected(): Promise<void> {
     return Promise.resolve();
   }
+
+  readonly measuredUpdates: { hostId: string; ramMb: number; cpuCores: number; diskMb: number }[] =
+    [];
+
+  updateMeasuredResources(
+    hostId: string,
+    resources: { ramMb: number; cpuCores: number; diskMb: number },
+  ): Promise<void> {
+    this.measuredUpdates.push({ hostId, ...resources });
+    return Promise.resolve();
+  }
 }
 
 /** Socket, der jeden Befehl sofort beantwortet – wie ein sehr schneller Agent. */
@@ -851,6 +862,45 @@ describe('Löschen', () => {
     await harness.service.deleteServer(created.id);
 
     expect(harness.releasedPorts).toEqual([created.id]);
+  });
+});
+
+describe('Gemessene Node-Ressourcen (Pflichtenheft §11)', () => {
+  it('übernimmt nodeStats aus dem Bericht in die Node-Totals', async () => {
+    const harness = makeHarness();
+
+    await harness.service.reconcile(HOST.id, {
+      kind: 'stateReport',
+      reason: 'connected',
+      containers: [],
+      nodeStats: {
+        cpuCores: 8,
+        cpuLoad1m: 0.5,
+        ramTotalMb: 28_672,
+        ramAvailableMb: 20_000,
+        diskTotalMb: 1_500_000,
+        diskAvailableMb: 1_400_000,
+        observedAt: NOW.toISOString(),
+      },
+      reportedAt: NOW.toISOString(),
+    });
+
+    expect(harness.repository.measuredUpdates).toEqual([
+      { hostId: HOST.id, ramMb: 28_672, cpuCores: 8, diskMb: 1_500_000 },
+    ]);
+  });
+
+  it('lässt die Totals unangetastet, wenn der Bericht kein nodeStats trägt', async () => {
+    const harness = makeHarness();
+
+    await harness.service.reconcile(HOST.id, {
+      kind: 'stateReport',
+      reason: 'connected',
+      containers: [],
+      reportedAt: NOW.toISOString(),
+    });
+
+    expect(harness.repository.measuredUpdates).toHaveLength(0);
   });
 });
 

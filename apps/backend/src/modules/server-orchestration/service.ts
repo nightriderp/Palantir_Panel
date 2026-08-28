@@ -850,6 +850,24 @@ export class ServerOrchestrationService {
    * wird der Plan ausgeführt – jede Korrektur über die State Machine.
    */
   async reconcile(hostId: string, frame: AgentStateReportFrame): Promise<void> {
+    // Gemessene Node-Ressourcen übernehmen (Pflichtenheft §11), falls der Agent
+    // sie mitschickt. In eigenem try/catch: Ein Schreibfehler darf den
+    // Soll/Ist-Abgleich nicht verhindern – der ist der eigentliche Zweck.
+    if (frame.nodeStats) {
+      try {
+        await this.deps.repository.updateMeasuredResources(hostId, {
+          ramMb: frame.nodeStats.ramTotalMb,
+          cpuCores: frame.nodeStats.cpuCores,
+          diskMb: frame.nodeStats.diskTotalMb,
+        });
+      } catch (error) {
+        this.deps.log.error(
+          { hostId, error: error instanceof Error ? error.message : String(error) },
+          'Gemessene Node-Ressourcen konnten nicht übernommen werden',
+        );
+      }
+    }
+
     const servers = await this.deps.repository.listByHost(hostId);
     const plan = planReconciliation(
       servers.map((server) => ({
