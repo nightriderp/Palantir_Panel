@@ -92,6 +92,7 @@ export {
   type AgentEventName,
   type AgentFrameKind,
   type AgentHelloFrame,
+  type AgentNodeStats,
   type AgentStateReportFrame,
   type AgentServerQueryPayload,
   type AgentStateReportReason,

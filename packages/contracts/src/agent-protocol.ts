@@ -187,6 +187,40 @@ export interface AgentContainerState {
   readonly observedAt: string;
 }
 
+/**
+ * Gemessene Ist-Ressourcen der Node, wie der Agent sie zum Berichtszeitpunkt
+ * vom Betriebssystem abliest (Pflichtenheft §11: „harte Prüfung der tatsächlich
+ * freien Ressourcen der Ziel-VM").
+ *
+ * Bewusst **gemessen**, nicht konfiguriert: Die Kapazitätsprüfung soll gegen
+ * das rechnen, was die VM wirklich hat, nicht gegen im Panel hinterlegte
+ * Sollwerte. Vergrößert sich etwa die Platte der VM, folgt das Panel ohne
+ * Eingriff. Die Werte begleiten den Ist-Zustands-Bericht und sind darum
+ * optional: ein Agent, der sie (noch) nicht liefert, bleibt gültig.
+ *
+ * Speicher bezieht sich auf das Dateisystem von `AGENT_DATA_DIR` – dort liegen
+ * die Server-Datenordner, deren Platzbedarf die Kapazitätsprüfung deckelt.
+ */
+export interface AgentNodeStats {
+  /** Logische CPU-Kerne der VM. */
+  readonly cpuCores: number;
+  /**
+   * Systemlast der letzten Minute (Unix `loadavg`), oder `null`, wo die
+   * Plattform sie nicht führt (z. B. Windows in der Entwicklung).
+   */
+  readonly cpuLoad1m: number | null;
+  /** Gesamter Arbeitsspeicher der VM in MB. */
+  readonly ramTotalMb: number;
+  /** Momentan verfügbarer Arbeitsspeicher in MB. */
+  readonly ramAvailableMb: number;
+  /** Gesamtgröße des Datenverzeichnis-Dateisystems in MB. */
+  readonly diskTotalMb: number;
+  /** Momentan freier Speicher desselben Dateisystems in MB. */
+  readonly diskAvailableMb: number;
+  /** Zeitpunkt der Messung als ISO-8601. */
+  readonly observedAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Frames: Agent -> Backend
 // ---------------------------------------------------------------------------
@@ -221,6 +255,12 @@ export interface AgentStateReportFrame {
   readonly kind: 'stateReport';
   readonly reason: AgentStateReportReason;
   readonly containers: readonly AgentContainerState[];
+  /**
+   * Gemessene Ist-Ressourcen der Node (siehe {@link AgentNodeStats}). Optional
+   * und additiv: Ein Agent, der sie noch nicht sendet, bleibt gültig; das
+   * Backend behält dann seinen zuletzt bekannten Stand.
+   */
+  readonly nodeStats?: AgentNodeStats;
   readonly reportedAt: string;
 }
 

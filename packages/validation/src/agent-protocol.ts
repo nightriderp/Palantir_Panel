@@ -84,10 +84,22 @@ export const agentHelloFrameSchema = z.object({
   sentAt: isoTimestampSchema,
 });
 
+export const agentNodeStatsSchema = z.object({
+  cpuCores: z.number().int().positive(),
+  cpuLoad1m: z.number().nonnegative().nullable(),
+  ramTotalMb: z.number().nonnegative(),
+  ramAvailableMb: z.number().nonnegative(),
+  diskTotalMb: z.number().nonnegative(),
+  diskAvailableMb: z.number().nonnegative(),
+  observedAt: isoTimestampSchema,
+});
+
 export const agentStateReportFrameSchema = z.object({
   kind: z.literal('stateReport'),
   reason: z.enum(['connected', 'requested']),
   containers: z.array(agentContainerStateSchema),
+  // Additiv (Contracts §3): fehlt das Feld, bleibt der Frame gültig.
+  nodeStats: agentNodeStatsSchema.optional(),
   reportedAt: isoTimestampSchema,
 });
 
