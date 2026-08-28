@@ -42,7 +42,7 @@ const MAIN_ENTRIES: PlannedEntry[] = [
   { key: 'notifications', label: 'Benachrichtigungen', icon: 'bell', href: '/notifications' },
   { key: 'nodes', label: 'Nodes', icon: 'server', href: '/nodes', requires: 'canViewNodes' },
   { key: 'arcade', label: 'Arcade', icon: 'gamepad', pending: 'F8' },
-  { key: 'skins', label: 'Skins', icon: 'palette', pending: 'F9' },
+  { key: 'skins', label: 'Skins', icon: 'palette', href: '/skins' },
 ];
 
 const ADMIN_ENTRIES: PlannedEntry[] = [
