@@ -166,6 +166,54 @@ describe('Port-Zuordnung zu Servern (Pflichtenheft §2.4)', () => {
     ).rejects.toMatchObject({ code: 'PORT_POOL_EXHAUSTED' });
   });
 
+  it('weicht bei einem Vergabe-Rennen auf den nächsten freien Port aus', async () => {
+    const { service, repository } = build();
+    const original = repository.insertAllocation.bind(repository);
+    let ersterVersuch = true;
+
+    // Simuliert, dass eine parallele Vergabe den zuerst gewählten Port 27_000
+    // zwischen Auswahl und Insert belegt hat: Der erste Insert kollidiert
+    // (SQLSTATE 23505), danach läuft alles normal.
+    repository.insertAllocation = async (data) => {
+      if (ersterVersuch) {
+        ersterVersuch = false;
+        const fehler = new Error('Kollision') as Error & { code?: string };
+        fehler.code = '23505';
+        throw fehler;
+      }
+      return original(data);
+    };
+
+    const [allocation] = await service.allocateForServer(SERVER_ID, [
+      { protocol: 'udp', count: 1 },
+    ]);
+
+    // Statt eines rohen 500 wird der nächste freie Port vergeben.
+    expect(allocation?.port).toBe(27_001);
+    expect(repository.allocations).toHaveLength(1);
+  });
+
+  it('nimmt bei einem Fehler mitten in der Vergabe bereits belegte Ports zurück', async () => {
+    const { service, repository } = build();
+    const original = repository.insertAllocation.bind(repository);
+    let aufrufe = 0;
+
+    // Der zweite Port scheitert an einem nicht auflösbaren Fehler – der erste
+    // bereits eingefügte Port darf nicht als verwaiste Zuordnung zurückbleiben.
+    repository.insertAllocation = async (data) => {
+      aufrufe += 1;
+      if (aufrufe === 2) {
+        throw new Error('Datenbank weg');
+      }
+      return original(data);
+    };
+
+    await expect(
+      service.allocateForServer(SERVER_ID, [{ protocol: 'udp', count: 2 }]),
+    ).rejects.toThrow('Datenbank weg');
+    expect(repository.allocations).toHaveLength(0);
+  });
+
   it('übergeht deaktivierte Bereiche bei der Vergabe', async () => {
     const { service } = build([
       portRange({ id: 'range-1', startPort: 27_000, endPort: 27_002, enabled: false }),
