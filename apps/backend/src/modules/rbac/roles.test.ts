@@ -269,6 +269,33 @@ describe('Rollen-Service', () => {
     );
   });
 
+  it('lässt Nutzerverwalter eine gewöhnliche Rolle zuweisen', async () => {
+    const nutzer = await repository.findByName('Nutzer');
+    await expect(
+      service.assignToUser(nutzerverwalter, 'user-1', nutzer!.id),
+    ).resolves.not.toThrow();
+  });
+
+  it('verwehrt Nutzerverwaltern die Zuweisung einer Rolle mit Verwaltungsrechten', async () => {
+    // Die „Admin"-Rolle verleiht role.manage/user.manage. Könnte ein reiner
+    // Nutzerverwalter sie vergeben, hätte er sich damit den vollen Katalog
+    // verschafft – genau diese Rechteausweitung wird hier verhindert.
+    const admin = await repository.findByName('Admin');
+    await expectRbacError(
+      service.assignToUser(nutzerverwalter, 'user-1', admin!.id),
+      'PERMISSION_DENIED',
+    );
+    await expectRbacError(
+      service.removeFromUser(nutzerverwalter, 'user-1', admin!.id),
+      'PERMISSION_DENIED',
+    );
+  });
+
+  it('lässt Rollenverwalter die Verwaltungsrolle weiterhin zuweisen', async () => {
+    const admin = await repository.findByName('Admin');
+    await expect(service.assignToUser(rollenverwalter, 'user-1', admin!.id)).resolves.not.toThrow();
+  });
+
   it('legt neue Rollen immer ungeschützt an', async () => {
     const role = await service.create(rollenverwalter, {
       name: 'Backup-Beauftragter',

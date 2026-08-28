@@ -7,6 +7,7 @@ import {
   belongsOnPendingScreen,
   gateRedirect,
   landingPathForAccount,
+  sessionStateFromEnvelope,
 } from './routes';
 
 const baseAccount: AccountDto = {
@@ -113,5 +114,38 @@ describe('gateRedirect (Zugriffssperre)', () => {
     expect(gateRedirect('/servers', nutzer)).toBeNull();
     expect(gateRedirect('/admin', nutzer)).toBeNull();
     expect(gateRedirect('/messages', nutzer)).toBeNull();
+  });
+});
+
+describe('sessionStateFromEnvelope', () => {
+  it('liest awaitingApproval aus data.account (Hülle ok({ account }))', () => {
+    expect(
+      sessionStateFromEnvelope({ success: true, data: { account: { awaitingApproval: true } } }),
+    ).toEqual({ authed: true, awaiting: true });
+
+    expect(
+      sessionStateFromEnvelope({ success: true, data: { account: { awaitingApproval: false } } }),
+    ).toEqual({ authed: true, awaiting: false });
+  });
+
+  it('behandelt einen fehlenden oder ungültigen Envelope als nicht angemeldet', () => {
+    // Genau der frühere Fehler: awaitingApproval liegt NICHT direkt auf data.
+    expect(sessionStateFromEnvelope({ success: true, data: { awaitingApproval: true } })).toEqual({
+      authed: false,
+      awaiting: false,
+    });
+    expect(sessionStateFromEnvelope(null)).toEqual({ authed: false, awaiting: false });
+    expect(sessionStateFromEnvelope({ success: false })).toEqual({
+      authed: false,
+      awaiting: false,
+    });
+  });
+
+  it('markiert eine 200-Antwort ohne Session-Envelope nicht als angemeldet', () => {
+    // Etwa eine Fehlerseite eines vorgelagerten Proxys mit HTTP 200.
+    expect(sessionStateFromEnvelope({ irgendwas: 'html' })).toEqual({
+      authed: false,
+      awaiting: false,
+    });
   });
 });

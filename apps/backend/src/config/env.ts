@@ -33,6 +33,20 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
   /**
+   * Anzahl vertrauenswürdiger Reverse-Proxy-Hops vor dem Backend (Pflichtenheft §7).
+   *
+   * Fastifys `trustProxy` bestimmt, welche `X-Forwarded-For`-Adresse als
+   * `request.ip` gilt – und darauf keyt der Brute-Force-Schutz von
+   * Anmeldung/Registrierung/2FA. Ein pauschales `true` würde die vom Client
+   * gesetzte, linke Adresse übernehmen: Ein Angreifer könnte den Header pro
+   * Request fälschen und das IP-Rate-Limit vollständig umgehen. Deshalb eine
+   * feste Hop-Zahl, die genau der eigenen Proxy-Kette entspricht. Standard `1`
+   * passt zum Aufbau „ein Reverse-Proxy (Caddy/nginx) vor dem Backend" aus §12.1;
+   * `0` schaltet das Vertrauen ganz ab (direkte Verbindung ohne Proxy).
+   */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
+
+  /**
    * Verbindungs-URL für PostgreSQL (Pflichtenheft §3, .env.example Abschnitt 3).
    *
    * Bewusst optional: das Backend startet aktuell noch ohne Datenbank, weil

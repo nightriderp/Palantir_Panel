@@ -292,8 +292,12 @@ export function createFakePortPoolRepository(
       );
 
       if (duplicate) {
-        // Entspricht dem Unique-Index in der Datenbank.
-        throw new Error(`Port ${data.port}/${data.protocol} ist bereits vergeben.`);
+        // Entspricht dem Unique-Index in der Datenbank – inklusive des
+        // PostgreSQL-SQLSTATE 23505, den `pg` als `code` auf den Fehler legt,
+        // damit der Aufrufer die Kollision wie in Produktion erkennen kann.
+        const fehler = new Error(`Port ${data.port}/${data.protocol} ist bereits vergeben.`);
+        (fehler as Error & { code?: string }).code = '23505';
+        throw fehler;
       }
 
       const allocation: PortAllocationRecord = {

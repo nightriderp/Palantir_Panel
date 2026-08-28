@@ -93,6 +93,23 @@ describe('LogLineAssembler', () => {
     expect(zeilen[0]?.timestamp).toBeNull();
     expect(zeilen[0]?.message).toBe('kein Zeitstempel');
   });
+
+  it('schneidet eine endlose Zeile ohne Umbruch ab, statt unbegrenzt zu puffern', () => {
+    const assembler = new LogLineAssembler('c1');
+    // Deutlich mehr als die 64-KiB-Grenze, ohne ein einziges '\n'.
+    const riesig = 'x'.repeat(200 * 1024);
+
+    const zeilen = assembler.push({ stream: 'stdout', payload: Buffer.from(riesig, 'utf8') });
+
+    expect(zeilen).toHaveLength(1);
+    expect(zeilen[0]?.message.endsWith('[…abgeschnitten]')).toBe(true);
+    // Der Rest ist geleert – weitere Nutzlasten wachsen nicht auf dem alten auf.
+    expect(zeilen[0]?.message.length).toBeLessThan(riesig.length);
+
+    const folge = assembler.push({ stream: 'stdout', payload: Buffer.from('danach\n') });
+    expect(folge).toHaveLength(1);
+    expect(folge[0]?.message).toBe('danach');
+  });
 });
 
 describe('readNdjson', () => {

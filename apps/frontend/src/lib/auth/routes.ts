@@ -61,6 +61,30 @@ export interface GateState {
 }
 
 /**
+ * Liest den Sitzungszustand aus der Antwort von `/auth/session`.
+ *
+ * Bewusst streng: Ein bloßer HTTP-200 genügt nicht – nur ein gültiger
+ * Response-Envelope (`success === true` mit einem `account`) zählt als
+ * angemeldet. Sonst würde etwa eine 200-Fehlerseite eines vorgelagerten Proxys
+ * einen Fremden als eingeloggt markieren. `awaitingApproval` hängt am Konto
+ * (`data.account`), nicht direkt an `data` – die Session-Route antwortet mit der
+ * Hülle `ok({ account })` (Pflichtenheft §5.1, §7). Rein und ohne `fetch`, damit
+ * vollständig testbar.
+ */
+export function sessionStateFromEnvelope(body: unknown): GateState {
+  const envelope = body as {
+    success?: boolean;
+    data?: { account?: { awaitingApproval?: boolean } };
+  } | null;
+
+  if (envelope?.success !== true || !envelope.data?.account) {
+    return { authed: false, awaiting: false };
+  }
+
+  return { authed: true, awaiting: Boolean(envelope.data.account.awaitingApproval) };
+}
+
+/**
  * Entscheidet, wohin eine Anfrage umgeleitet werden muss – oder `null`, wenn sie
  * bleiben darf. Die einzige Stelle mit dieser Logik; die Middleware ruft sie nur
  * auf. Bewusst rein und ohne `fetch`, damit sie vollständig testbar ist.
