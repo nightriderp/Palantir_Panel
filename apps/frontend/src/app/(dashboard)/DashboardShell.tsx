@@ -3,6 +3,7 @@
 import { type ReactNode } from 'react';
 import { AppShell, Icon, StatusDot, ToastProvider } from '@/components/shared';
 import { LiveChannelProvider, useLiveChannel } from '@/lib/live/LiveChannelProvider';
+import { APP_VERSION_LABEL } from '@/lib/version';
 import { DashboardNav } from './DashboardNav';
 import { SessionProvider, useSession } from './SessionProvider';
 
@@ -69,7 +70,9 @@ export function DashboardShell({ children }: DashboardShellProps) {
           <AppShell
             sidebar={<Sidebar />}
             topbar={<Topbar />}
-            sidebarFooter={<span className="text-2xs text-ink-faint">Palantir · Phase 1</span>}
+            sidebarFooter={
+              <span className="text-2xs text-ink-faint">Palantir · {APP_VERSION_LABEL}</span>
+            }
           >
             {children}
           </AppShell>
