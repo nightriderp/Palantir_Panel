@@ -5,6 +5,7 @@ import {
   AUTH_ROUTES,
   DASHBOARD_HOME,
   belongsOnPendingScreen,
+  gateRedirect,
   landingPathForAccount,
 } from './routes';
 
@@ -73,5 +74,44 @@ describe('Zugehörigkeit zum Wartebildschirm', () => {
     expect(belongsOnPendingScreen({ ...baseAccount, awaitingApproval: true, banned: true })).toBe(
       false,
     );
+  });
+});
+
+describe('gateRedirect (Zugriffssperre)', () => {
+  const anon = { authed: false, awaiting: false };
+  const gast = { authed: true, awaiting: true };
+  const nutzer = { authed: true, awaiting: false };
+
+  it('leitet nicht angemeldete Besucher von geschützten Seiten zur Anmeldung', () => {
+    expect(gateRedirect('/servers', anon)).toBe(AUTH_ROUTES.login);
+    expect(gateRedirect('/admin', anon)).toBe(AUTH_ROUTES.login);
+    expect(gateRedirect('/nodes', anon)).toBe(AUTH_ROUTES.login);
+    expect(gateRedirect('/', anon)).toBe(AUTH_ROUTES.login);
+  });
+
+  it('lässt nicht angemeldete Besucher auf den öffentlichen Seiten', () => {
+    expect(gateRedirect('/login', anon)).toBeNull();
+    expect(gateRedirect('/register', anon)).toBeNull();
+    expect(gateRedirect('/pending', anon)).toBeNull();
+  });
+
+  it('schickt ein noch nicht freigeschaltetes Konto ausschließlich zum Wartebildschirm', () => {
+    expect(gateRedirect('/servers', gast)).toBe(AUTH_ROUTES.pending);
+    expect(gateRedirect('/admin', gast)).toBe(AUTH_ROUTES.pending);
+    expect(gateRedirect('/login', gast)).toBe(AUTH_ROUTES.pending);
+    expect(gateRedirect('/pending', gast)).toBeNull();
+  });
+
+  it('führt ein freigeschaltetes Konto von Anmelde-, Warte- und Wurzelseite zur Übersicht', () => {
+    expect(gateRedirect('/login', nutzer)).toBe(DASHBOARD_HOME);
+    expect(gateRedirect('/register', nutzer)).toBe(DASHBOARD_HOME);
+    expect(gateRedirect('/pending', nutzer)).toBe(DASHBOARD_HOME);
+    expect(gateRedirect('/', nutzer)).toBe(DASHBOARD_HOME);
+  });
+
+  it('lässt ein freigeschaltetes Konto auf geschützten Seiten', () => {
+    expect(gateRedirect('/servers', nutzer)).toBeNull();
+    expect(gateRedirect('/admin', nutzer)).toBeNull();
+    expect(gateRedirect('/messages', nutzer)).toBeNull();
   });
 });
