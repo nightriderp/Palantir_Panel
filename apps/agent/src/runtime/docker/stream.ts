@@ -70,6 +70,19 @@ const TIMESTAMP_PATTERN = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s(.
  * Zeile kann ueber mehrere Rahmen laufen, ein Rahmen mehrere Zeilen enthalten.
  * Der Assembler haelt deshalb je Stream einen Rest vor.
  */
+/**
+ * Obergrenze fuer eine einzelne, noch nicht abgeschlossene Logzeile (Zeichen).
+ *
+ * Ein Container, der eine endlose Zeile ohne Zeilenumbruch schreibt (fehlerhaft
+ * oder absichtlich), liesse den Rest-Puffer sonst unbegrenzt wachsen, bis der
+ * Agent das `mem_limit` reisst und per OOM alle Streams der Node abreisst.
+ * Bei Ueberschreitung wird der bisherige Rest als gekuerzte Zeile ausgegeben und
+ * der Puffer geleert.
+ */
+const MAX_UNTERMINATED_LINE_LENGTH = 64 * 1024;
+
+const TRUNCATION_MARKER = ' […abgeschnitten]';
+
 export class LogLineAssembler {
   readonly #containerId: string;
   readonly #rest: Record<LogStreamName, string> = { stdout: '', stderr: '' };
@@ -82,8 +95,20 @@ export class LogLineAssembler {
     const text = this.#rest[frame.stream] + frame.payload.toString('utf8');
     const teile = text.split('\n');
     // Das letzte Element ist der unvollstaendige Rest bis zum naechsten Rahmen.
-    this.#rest[frame.stream] = teile.pop() ?? '';
-    return teile.map((zeile) => this.#toLogLine(frame.stream, zeile));
+    let rest = teile.pop() ?? '';
+
+    const zeilen = teile.map((zeile) => this.#toLogLine(frame.stream, zeile));
+
+    // Wuchert der Rest ueber die Grenze, ohne dass ein Umbruch kam, wird er als
+    // gekuerzte Zeile abgeschlossen statt weiter im Speicher zu wachsen.
+    if (rest.length > MAX_UNTERMINATED_LINE_LENGTH) {
+      const gekuerzt = rest.slice(0, MAX_UNTERMINATED_LINE_LENGTH) + TRUNCATION_MARKER;
+      zeilen.push(this.#toLogLine(frame.stream, gekuerzt));
+      rest = '';
+    }
+
+    this.#rest[frame.stream] = rest;
+    return zeilen;
   }
 
   /** Angefangene Zeilen am Ende des Streams ausgeben. */

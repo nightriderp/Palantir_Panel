@@ -59,6 +59,16 @@ import { createTar, parseTar } from './tar.js';
  */
 export const DEFAULT_MAX_FILE_BYTES = 64 * 1024 * 1024;
 
+/**
+ * Obergrenze fuer die gesammelte Ausgabe eines Konsolenbefehls (`execConsole`).
+ *
+ * Ein RCON-/Konsolenkommando liefert normalerweise wenige Zeilen; ein Befehl mit
+ * riesiger Ausgabe darf den Agent-Speicher nicht bis zum OOM fuellen. Wird die
+ * Grenze ueberschritten, bricht der Agent den Ausgabestrom ab und markiert die
+ * Ausgabe als gekuerzt.
+ */
+export const MAX_EXEC_OUTPUT_BYTES = 1024 * 1024;
+
 export interface DockerContainerRuntimeOptions {
   readonly client: DockerHttpClient;
   readonly hardening: HardeningOptions;
@@ -433,15 +443,35 @@ export class DockerContainerRuntime implements ContainerRuntime {
       },
     );
 
-    const ausgabe = await this.#client.requestBuffer('POST', `/exec/${exec.Id}/start`, {
+    // Bewusst streamend statt in einen Puffer: Ein Befehl mit riesiger Ausgabe
+    // (etwa `cat` einer grossen Datei) wuerde sonst den gesamten Inhalt in den
+    // Agent-Speicher ziehen, bis das `mem_limit` reisst und per OOM alle Streams
+    // der Node abreissen. Nach `MAX_EXEC_OUTPUT_BYTES` wird der Strom abgebrochen
+    // und die Ausgabe als gekuerzt markiert.
+    const strom = await this.#client.openStream('POST', `/exec/${exec.Id}/start`, {
       body: { Detach: false, Tty: false },
     });
 
     let stdout = '';
     let stderr = '';
-    for await (const rahmen of demuxDockerStream(alsStrom(ausgabe))) {
-      if (rahmen.stream === 'stderr') stderr += rahmen.payload.toString('utf8');
-      else stdout += rahmen.payload.toString('utf8');
+    let gesamtBytes = 0;
+    let abgeschnitten = false;
+    try {
+      for await (const rahmen of demuxDockerStream(strom.body)) {
+        gesamtBytes += rahmen.payload.length;
+        if (gesamtBytes > MAX_EXEC_OUTPUT_BYTES) {
+          abgeschnitten = true;
+          break;
+        }
+        if (rahmen.stream === 'stderr') stderr += rahmen.payload.toString('utf8');
+        else stdout += rahmen.payload.toString('utf8');
+      }
+    } finally {
+      strom.cancel();
+    }
+
+    if (abgeschnitten) {
+      stdout += '\n[…Ausgabe abgeschnitten]';
     }
 
     const ergebnis = await this.#client.requestJson<{ ExitCode?: number | null }>(
