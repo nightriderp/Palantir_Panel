@@ -103,9 +103,16 @@ const ADMIN_ENTRIES: PlannedEntry[] = [
     requires: 'canManageAnyBackup',
   },
   {
+    key: 'admin-nodes',
+    label: 'Nodes',
+    icon: 'server',
+    href: '/admin/nodes',
+    requires: 'canManageNodes',
+  },
+  {
     key: 'admin-node-platz',
     label: 'Node-Platz',
-    icon: 'server',
+    icon: 'database',
     href: '/admin/storage',
     requires: 'canViewNodes',
   },
