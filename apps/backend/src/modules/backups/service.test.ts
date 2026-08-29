@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { type Permission, fail, ok } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { type PermissionActor, buildPermissionActor } from '../rbac/index.js';
@@ -386,6 +387,30 @@ describe('Löschen, Wiederherstellen und Export', () => {
     expect(t.agent.restoredBackupIds).toEqual([dto.id]);
   });
 
+  it('gibt dem Agent die gespeicherte Prüfsumme zur Verifikation mit', async () => {
+    // Der Agent prüft das Archiv vor dem Entpacken dagegen (Fundpunkt 99).
+    const t = aufbau();
+    const dto = await fertigesBackup(t);
+
+    await t.service.restore(actorMit('backup.manage.own'), t.besitzerId, dto.id);
+
+    expect(t.agent.restoredChecksums).toEqual(['a'.repeat(64)]);
+  });
+
+  it('verweigert die Wiederherstellung ohne gespeicherte Prüfsumme', async () => {
+    // Ohne Referenzwert ließe sich die Integrität nicht belegen.
+    const t = aufbau({
+      bestand: (besitzerId) => [
+        testBackup({ serverId: null, ownerId: besitzerId, checksumSha256: null }),
+      ],
+    });
+    const [nurBackup] = await t.repository.listByOwner(t.besitzerId);
+
+    await expect(
+      t.service.restore(actorMit('backup.manage.own'), t.besitzerId, nurBackup!.id),
+    ).rejects.toMatchObject({ code: 'BACKUP_NOT_READY' });
+  });
+
   it('erzeugt für den Datenexport ein manuelles Backup mit isExport', async () => {
     const t = aufbau();
 
@@ -409,6 +434,19 @@ describe('Löschen, Wiederherstellen und Export', () => {
 describe('Download aller Serverdaten (Lastenheft §3.3)', () => {
   it('gibt die Blöcke des Archivs in Reihenfolge weiter, bis das Dateiende erreicht ist', async () => {
     const t = aufbau();
+    // Die gespeicherte Prüfsumme muss zum ausgelieferten Archiv passen, sonst
+    // schlägt die Integritätsprüfung an (Fundpunkt 99).
+    const palantirSha = createHash('sha256').update(Buffer.from('Palantir')).digest('hex');
+    t.agent.createResponse = ok({
+      backupId: '00000000-0000-4000-8000-000000000000',
+      storagePath: '/srv/palantir/backups/a.tar.zst',
+      sizeBytes: 8,
+      checksumSha256: palantirSha,
+      containerStopped: false,
+      startedAt: '2026-08-26T04:00:00.000Z',
+      completedAt: '2026-08-26T04:01:00.000Z',
+    });
+
     const dto = await t.service.createManual(
       actorMit('backup.manage.own'),
       t.besitzerId,
@@ -450,6 +488,54 @@ describe('Download aller Serverdaten (Lastenheft §3.3)', () => {
 
     expect(Buffer.concat(teile).toString()).toBe('Palantir');
     expect(download.fileName).toContain('.tar.zst');
+  });
+
+  it('bricht den Download ab, wenn die Prüfsumme des Archivs nicht passt', async () => {
+    // Ein beschädigtes oder verändertes Archiv darf nicht als vollständig
+    // ausgeliefert werden (Fundpunkt 99). Der Bestand trägt die Prüfsumme des
+    // korrekten Archivs; der Agent liefert hier abweichende Bytes.
+    const palantirSha = createHash('sha256').update(Buffer.from('Palantir')).digest('hex');
+    const t = aufbau();
+    t.agent.createResponse = ok({
+      backupId: '00000000-0000-4000-8000-000000000000',
+      storagePath: '/srv/palantir/backups/a.tar.zst',
+      sizeBytes: 8,
+      checksumSha256: palantirSha,
+      containerStopped: false,
+      startedAt: '2026-08-26T04:00:00.000Z',
+      completedAt: '2026-08-26T04:01:00.000Z',
+    });
+
+    const dto = await t.service.createManual(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.server.id,
+      { stopServer: false },
+    );
+    await t.fertig();
+
+    t.agent.downloadResponses = [
+      ok({
+        backupId: dto.id,
+        offset: 0,
+        contentBase64: Buffer.from('PALANTIR').toString('base64'),
+        bytesRead: 8,
+        totalBytes: 8,
+        eof: true,
+      }),
+    ];
+
+    const download = await t.service.openDownload(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      dto.id,
+    );
+
+    await expect(async () => {
+      for await (const _chunk of download.chunks()) {
+        // nur konsumieren
+      }
+    }).rejects.toMatchObject({ code: 'BACKUP_CHECKSUM_MISMATCH' });
   });
 
   it('bricht ab, wenn der Agent weder Fortschritt noch Dateiende meldet', async () => {
