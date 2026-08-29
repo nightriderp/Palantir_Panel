@@ -26,6 +26,8 @@ import { env } from '../../config/env.js';
 import { type Database } from '../../db/client.js';
 import { registerAgentRoute } from './agent-route.js';
 import { AgentRegistry } from './agent-gateway.js';
+import { ServerLiveHub, createLiveFanoutSink } from './live-hub.js';
+import { registerServerLiveRoute } from './live-route.js';
 import { DEFAULT_AUTO_SHUTDOWN } from './auto-shutdown.js';
 import { createCloudflareDnsProvider } from './dns/cloudflare.js';
 import { type DnsProvider, createNoopDnsProvider } from './dns/types.js';
@@ -125,11 +127,17 @@ export function registerServerOrchestration(
           app.log.warn(details, message);
         }));
 
-  const events: OrchestrationEventSink = options.events ?? {
+  // Grundsenke: die Notification-Engine (B6) bzw. – ohne sie – nur ein Log.
+  const baseEvents: OrchestrationEventSink = options.events ?? {
     emit: (event, payload): void => {
       app.log.debug({ event, payload }, 'Orchestrierungs-Ereignis');
     },
   };
+
+  // Browserseitiger Live-Kanal (`/live`). Er hängt sich an dieselbe Senke wie
+  // B6 (Kommentar an `OrchestrationEventSink`): Jedes Ereignis geht an beide.
+  const liveHub = new ServerLiveHub();
+  const events = createLiveFanoutSink(baseEvents, liveHub);
 
   const service = new ServerOrchestrationService({
     repository,
@@ -204,6 +212,17 @@ export function registerServerOrchestration(
   });
 
   registerServerRoutes(app, {
+    service,
+    repository,
+    registry,
+    baseDomain: env.PALANTIR_DOMAIN,
+  });
+
+  // Browserseitiger Live-Kanal `/live` (Pflichtenheft §5.3): Abos je Server,
+  // Ereignis-Frames und Konsolenbefehle. Ohne ihn bliebe die Live-Anzeige im
+  // Frontend dauerhaft „unterbrochen".
+  registerServerLiveRoute(app, {
+    hub: liveHub,
     service,
     repository,
     registry,
