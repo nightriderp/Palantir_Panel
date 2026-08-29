@@ -136,6 +136,11 @@ export const hostPathSchema = z
   .min(1)
   .startsWith('/', { message: 'Pfad muss absolut sein (mit / beginnen).' });
 
+/** SHA-256 als 64 Hex-Zeichen in Kleinbuchstaben. */
+export const sha256Schema = z
+  .string()
+  .regex(/^[0-9a-f]{64}$/, { message: 'checksumSha256 ist keine SHA-256-Prüfsumme.' });
+
 export const createBackupCommandPayloadSchema = z.object({
   backupId: idSchema,
   serverId: idSchema,
@@ -150,6 +155,9 @@ export const restoreBackupCommandPayloadSchema = z.object({
   serverId: idSchema,
   storagePath: hostPathSchema,
   targetPath: hostPathSchema,
+  // Referenz-Prüfsumme aus dem Backup-Datensatz. Der Agent verifiziert das
+  // Archiv vor dem Entpacken dagegen (Fundpunkt 99).
+  expectedChecksum: sha256Schema,
   containerId: containerIdSchema.optional(),
   stopTimeoutSeconds: z.number().int().nonnegative().optional(),
 });
@@ -165,11 +173,6 @@ export const deleteBackupCommandPayloadSchema = z.object({
   backupId: idSchema,
   storagePath: hostPathSchema,
 });
-
-/** SHA-256 als 64 Hex-Zeichen in Kleinbuchstaben. */
-export const sha256Schema = z
-  .string()
-  .regex(/^[0-9a-f]{64}$/, { message: 'checksumSha256 ist keine SHA-256-Prüfsumme.' });
 
 export const createBackupCommandResultSchema = z.object({
   backupId: idSchema,

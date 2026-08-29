@@ -19,6 +19,7 @@
  * Rollen-Service in B2).
  */
 
+import { createHash } from 'node:crypto';
 import {
   type BackupDto,
   type BackupOverviewDto,
@@ -617,6 +618,14 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
         throw new BackupError('BACKUP_NOT_READY');
       }
 
+      if (backup.checksumSha256 === null) {
+        // Ohne Referenz-Prüfsumme lässt sich die Integrität des Archivs nicht
+        // belegen; lieber gar nicht zurückspielen als ungeprüft (Fundpunkt 99).
+        // Ein abgeschlossenes Backup trägt sie immer – dieser Fall wäre ein
+        // beschädigter Datensatz.
+        throw new BackupError('BACKUP_NOT_READY');
+      }
+
       if (backup.serverId === null) {
         // Der gesicherte Server ist gelöscht: Das Archiv bleibt erhalten und
         // lässt sich herunterladen, eine Wiederherstellung braucht aber ein Ziel.
@@ -635,6 +644,9 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
         serverId: server.id,
         storagePath: backup.storagePath,
         targetPath: server.dataHostPath,
+        // Der Agent prüft das Archiv damit vor dem Entpacken; die Verifikation
+        // gehört dorthin, wo das Archiv gelesen wird (Fundpunkt 99).
+        expectedChecksum: backup.checksumSha256,
         ...(server.dockerContainerId === null ? {} : { containerId: server.dockerContainerId }),
       });
 
@@ -665,6 +677,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       }
 
       const storagePath = backup.storagePath;
+      const expectedChecksum = backup.checksumSha256;
       const fileName =
         `${server?.name ?? 'server'}-${backup.createdAt.toISOString().slice(0, 10)}-${backup.id}.tar.zst`
           .replace(/[^\w.-]+/g, '-')
@@ -672,6 +685,9 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
 
       async function* chunks(): AsyncGenerator<BackupDownloadChunk> {
         let offset = 0;
+        // Die Prüfsumme läuft über die Blöcke mit, während sie zum Client
+        // fließen – das Archiv liegt nie vollständig im Speicher (Fundpunkt 99).
+        const hash = createHash('sha256');
 
         for (;;) {
           const response = await agent.downloadBackupChunk({
@@ -695,13 +711,25 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
           }
 
           const bytes = Buffer.from(parsed.data.contentBase64, 'base64');
+          hash.update(bytes);
           offset += parsed.data.bytesRead;
 
-          yield { bytes, eof: parsed.data.eof };
-
           if (parsed.data.eof) {
+            // Vor dem letzten Block prüfen: Ein Abweichen darf nicht erst
+            // auffallen, nachdem der Client das vollständige Archiv erhalten hat.
+            // Der Fehler bricht den Stream ab – der Download bleibt unvollständig
+            // (die zugesagte content-length wird nicht erreicht) und gilt als
+            // gescheitert, statt ein beschädigtes Archiv als gültig auszuliefern.
+            if (expectedChecksum !== null && hash.digest('hex') !== expectedChecksum) {
+              throw new BackupError('BACKUP_CHECKSUM_MISMATCH');
+            }
+
+            yield { bytes, eof: true };
+
             return;
           }
+
+          yield { bytes, eof: false };
 
           if (parsed.data.bytesRead === 0) {
             // Kein Fortschritt und kein Dateiende: Weiterfragen würde endlos
