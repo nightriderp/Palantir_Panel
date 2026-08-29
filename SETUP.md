@@ -685,7 +685,13 @@ geschrieben:
   automatischem TLS, Firewall
 - **OAuth-Apps anlegen** – Discord, Twitch, Steam inkl. Redirect-URIs passend zur Domain
 - **WireGuard einrichten** – fertige `wg0.conf` für VPS (`/etc/wireguard/wg0.conf`) und
-  Homeserver (`/etc/wireguard/wg0.conf` in der Gameserver-VM), Keepalive, AllowedIPs
+  Homeserver (`/etc/wireguard/wg0.conf` in der Gameserver-VM), Keepalive, AllowedIPs.
+  **Pflicht bei der Homeserver-`wg0.conf`:** eingehenden Verkehr auf `wg0` per
+  `PostUp`/`PostDown` blockieren, damit kein Port (insbesondere SSH 22) aus dem Tunnel
+  offen steht – exakte Regeln, Zielmaschine und der bewusste Ausnahmeweg für Fernwartung
+  stehen in [`deploy/gamenode/wireguard-firewall.md`](deploy/gamenode/wireguard-firewall.md).
+  Ohne diesen Schritt endet eine Neu-Einrichtung im Zustand aus Gefundenem Punkt 85 (SSH
+  von der VPS aus offen), der [PFLICHTENHEFT.md §1](PFLICHTENHEFT.md) ausdrücklich verbietet.
 - **Homeserver-VM vorbereiten** – Docker, Docker-Socket-Proxy, Datenverzeichnisse
 - **DNS/Cloudflare** – Zone, API-Token mit ausschließlich DNS-Bearbeitungsrecht,
   „DNS only" für Spiele-Subdomains

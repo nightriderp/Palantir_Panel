@@ -42,6 +42,8 @@
 - Feste interne Adressen (z. B. VPS `10.10.0.1`, Homeserver `10.10.0.2`)
 - Keepalive-Intervall gesetzt, damit NAT-Mapping am Heimrouter nicht wegen Inaktivität verfällt
 - Schlüsselpaare werden beim Setup automatisiert generiert (siehe Abschnitt 12)
+- **Eingehender Verkehr auf dem Homeserver-Interface `wg0` ist per Voreinstellung vollständig blockiert** (Umsetzung: `PostUp`/`PostDown` in `/etc/wireguard/wg0.conf` auf dem Homeserver, dokumentiert in `deploy/gamenode/wireguard-firewall.md`). Das setzt §1 durch: der Homeserver nimmt keine eingehenden Verbindungen an, auch SSH-Port 22 steht aus dem Tunnel nicht offen. Nur der Rückverkehr der vom Agent **ausgehend** aufgebauten Verbindung wird zustandsbehaftet zugelassen.
+- **Ausnahmen für Fernwartung** (falls überhaupt nötig) sind eng zu begrenzen – feste Quell-IP eines dedizierten Wartungs-Peers (nicht die VPS) und ausschließlich Port `22/tcp` – und **hier namentlich zu vermerken**. Ohne einen solchen Eintrag gilt der vollständige Block. Derzeit ist keine Ausnahme eingerichtet.
 
 ### 2.2 Agent ↔ Backend
 - Persistente, vom Agent ausgehend initiierte WebSocket-Verbindung über den Tunnel
