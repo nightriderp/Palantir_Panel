@@ -32,7 +32,7 @@ import {
   type DockerCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
-import { assertAbsoluteContainerPath } from '../paths.js';
+import { assertAbsoluteContainerPath, resolveWithinRoot } from '../paths.js';
 import {
   DEFAULT_LOG_TAIL,
   type ContainerHandle,
@@ -393,7 +393,7 @@ export class FakeContainerRuntime implements ContainerRuntime {
   async listFiles(containerId: string, verzeichnis: string): Promise<readonly FileEntry[]> {
     this.#pruefeFehlerfall('listFiles');
     const container = this.#hole(containerId);
-    const basis = assertAbsoluteContainerPath(verzeichnis);
+    const basis = resolveWithinRoot(container.spec.dataVolume.containerPath, verzeichnis);
     const praefix = basis === '/' ? '/' : `${basis}/`;
 
     const eintraege = new Map<string, FileEntry>();
@@ -436,7 +436,7 @@ export class FakeContainerRuntime implements ContainerRuntime {
   async readFile(containerId: string, datei: string): Promise<Buffer> {
     this.#pruefeFehlerfall('readFile');
     const container = this.#hole(containerId);
-    const pfad = assertAbsoluteContainerPath(datei);
+    const pfad = resolveWithinRoot(container.spec.dataVolume.containerPath, datei);
 
     const eintrag = container.dateien.get(pfad);
     if (eintrag === undefined) {
@@ -453,7 +453,7 @@ export class FakeContainerRuntime implements ContainerRuntime {
   async writeFile(containerId: string, datei: string, inhalt: Buffer): Promise<void> {
     this.#pruefeFehlerfall('writeFile');
     const container = this.#hole(containerId);
-    const pfad = assertAbsoluteContainerPath(datei);
+    const pfad = resolveWithinRoot(container.spec.dataVolume.containerPath, datei);
 
     if (inhalt.length > this.#maxFileBytes) {
       throw new ContainerRuntimeError('FILE_TOO_LARGE', {

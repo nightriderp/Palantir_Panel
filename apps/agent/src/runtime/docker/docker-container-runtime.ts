@@ -17,11 +17,12 @@ import {
   type Unsubscribe,
 } from '../events.js';
 import {
+  PALANTIR_DATA_VOLUME_PATH_LABEL,
   PALANTIR_MANAGED_LABEL,
   buildCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
-import { assertAbsoluteContainerPath } from '../paths.js';
+import { resolveWithinRoot } from '../paths.js';
 import {
   DEFAULT_LOG_TAIL,
   type ContainerHandle,
@@ -142,6 +143,12 @@ export class DockerContainerRuntime implements ContainerRuntime {
   readonly #erwarteterStopp = new Set<string>();
   /** Container, fuer die die Engine gerade ein OOM-Ereignis gemeldet hat. */
   readonly #oomGemerkt = new Set<string>();
+  /**
+   * Container-Pfad des Datenvolumes je Container - die Grenze des Datei-Managers
+   * (Fundpunkt 100). Container-IDs sind einmalig, deshalb ist der Wert stabil und
+   * darf gecacht werden; ohne Cache inspiziert jeder Dateibefehl erneut.
+   */
+  readonly #datenVolumeWurzeln = new Map<string, string>();
 
   #eventStream: DockerStream | undefined;
   #verbunden = false;
@@ -184,6 +191,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
     this.#letzterStatus.clear();
     this.#erwarteterStopp.clear();
     this.#oomGemerkt.clear();
+    this.#datenVolumeWurzeln.clear();
   }
 
   on(listener: ContainerRuntimeEventListener): Unsubscribe {
@@ -249,15 +257,19 @@ export class DockerContainerRuntime implements ContainerRuntime {
       this.#erwarteterStopp.delete(containerId);
       this.#letzterStatus.delete(containerId);
       this.#oomGemerkt.delete(containerId);
+      this.#datenVolumeWurzeln.delete(containerId);
     }
   }
 
   async inspect(containerId: string): Promise<ContainerState> {
-    const antwort = await this.#client.requestJson<DockerInspectResponse>(
+    return toContainerState(await this.#inspectRoh(containerId));
+  }
+
+  async #inspectRoh(containerId: string): Promise<DockerInspectResponse> {
+    return this.#client.requestJson<DockerInspectResponse>(
       'GET',
       `${this.#pfad(containerId)}/json`,
     );
-    return toContainerState(antwort);
   }
 
   async list(): Promise<readonly ContainerState[]> {
@@ -484,8 +496,42 @@ export class DockerContainerRuntime implements ContainerRuntime {
 
   // ---------------------------------------------------------------- Datei-Manager
 
+  /**
+   * Container-Pfad des Datenvolumes - die Grenze, innerhalb derer der
+   * Datei-Manager arbeiten darf (Fundpunkt 100). Quelle ist das beim Anlegen
+   * gesetzte Label {@link PALANTIR_DATA_VOLUME_PATH_LABEL}.
+   *
+   * Faellt bewusst geschlossen: Laesst sich das Datenvolume nicht bestimmen
+   * (fremder oder von Hand angelegter Container ohne Label), wird kein
+   * Dateizugriff erlaubt statt auf das ganze Container-Dateisystem auszuweichen.
+   *
+   * Grenze der Pruefung: Sie sperrt den angefragten *Pfad* lexikalisch ein.
+   * Symlinks, die innerhalb des Datenordners auf ein Ziel ausserhalb zeigen,
+   * loest die Engine beim Archiv-Zugriff selbst auf; dagegen schuetzen die
+   * Container-Haertung (CapDrop, no-new-privileges, read-only Rootfs), nicht
+   * diese Zeichenketten-Pruefung.
+   */
+  async #datenVolumeWurzel(containerId: string): Promise<string> {
+    const gemerkt = this.#datenVolumeWurzeln.get(containerId);
+    if (gemerkt !== undefined) return gemerkt;
+
+    const antwort = await this.#inspectRoh(containerId);
+    const wurzel = antwort.Config?.Labels?.[PALANTIR_DATA_VOLUME_PATH_LABEL];
+    if (wurzel === undefined || !path.posix.isAbsolute(wurzel)) {
+      throw new ContainerRuntimeError('INVALID_PATH', {
+        message: 'Das Server-Datenverzeichnis des Containers ist nicht bestimmbar.',
+        details: { containerId },
+      });
+    }
+
+    const normalisiert = path.posix.normalize(wurzel);
+    this.#datenVolumeWurzeln.set(containerId, normalisiert);
+    return normalisiert;
+  }
+
   async listFiles(containerId: string, verzeichnis: string): Promise<readonly FileEntry[]> {
-    const pfad = assertAbsoluteContainerPath(verzeichnis);
+    const wurzel = await this.#datenVolumeWurzel(containerId);
+    const pfad = resolveWithinRoot(wurzel, verzeichnis);
     const archiv = await this.#client.requestBuffer('GET', `${this.#pfad(containerId)}/archive`, {
       query: { path: pfad },
       notFoundCode: 'FILE_NOT_FOUND',
@@ -517,7 +563,8 @@ export class DockerContainerRuntime implements ContainerRuntime {
   }
 
   async readFile(containerId: string, datei: string): Promise<Buffer> {
-    const pfad = assertAbsoluteContainerPath(datei);
+    const wurzel = await this.#datenVolumeWurzel(containerId);
+    const pfad = resolveWithinRoot(wurzel, datei);
     const groesse = await this.#dateiGroesse(containerId, pfad);
 
     if (groesse > this.#maxFileBytes) {
@@ -542,7 +589,8 @@ export class DockerContainerRuntime implements ContainerRuntime {
   }
 
   async writeFile(containerId: string, datei: string, inhalt: Buffer): Promise<void> {
-    const pfad = assertAbsoluteContainerPath(datei);
+    const wurzel = await this.#datenVolumeWurzel(containerId);
+    const pfad = resolveWithinRoot(wurzel, datei);
 
     if (inhalt.length > this.#maxFileBytes) {
       throw new ContainerRuntimeError('FILE_TOO_LARGE', {
