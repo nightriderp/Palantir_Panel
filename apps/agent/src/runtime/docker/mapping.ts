@@ -19,7 +19,7 @@ export interface DockerInspectResponse {
   readonly Id: string;
   readonly Name?: string;
   readonly RestartCount?: number;
-  readonly Config?: { readonly Image?: string };
+  readonly Config?: { readonly Image?: string; readonly Labels?: Record<string, string> };
   readonly Image?: string;
   readonly State?: {
     readonly Status?: string;

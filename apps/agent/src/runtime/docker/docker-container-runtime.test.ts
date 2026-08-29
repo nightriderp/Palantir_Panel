@@ -11,7 +11,7 @@ import { DockerContainerRuntime } from './docker-container-runtime.js';
 import { DockerHttpClient } from './http-client.js';
 import { createTar } from './tar.js';
 import { type ContainerRuntimeEvent } from '../events.js';
-import { PALANTIR_MANAGED_LABEL } from '../hardening.js';
+import { PALANTIR_DATA_VOLUME_PATH_LABEL, PALANTIR_MANAGED_LABEL } from '../hardening.js';
 import { type ContainerSpec } from '../types.js';
 
 const PROXY_URL = 'http://127.0.0.1:2375';
@@ -400,19 +400,40 @@ describe('EXEC_CONSOLE', () => {
 });
 
 describe('Datei-Manager', () => {
+  /** Beantwortet den Inspect-Aufruf (Datenvolume-Grenze) und reicht den Rest durch. */
+  function mitDatenVolume(
+    rest: Antwortgeber,
+    containerPath: string | null = '/data',
+  ): Antwortgeber {
+    return (aufruf) => {
+      if (aufruf.pfad === '/containers/c-1/json') {
+        const Labels =
+          containerPath === null ? {} : { [PALANTIR_DATA_VOLUME_PATH_LABEL]: containerPath };
+        return json({ Id: 'c-1', Config: { Labels } });
+      }
+      return rest(aufruf);
+    };
+  }
+
+  /** Der einzige `/archive`-Aufruf, unabhaengig vom vorgeschalteten Inspect. */
+  function archivAufruf(): Aufruf | undefined {
+    return aufrufe.find((aufruf) => aufruf.pfad === '/containers/c-1/archive');
+  }
+
   it('listet nur die direkte Ebene eines Verzeichnisses', async () => {
-    antwortgeber = () =>
-      new Response(
-        createTar([
-          { name: 'data/server.properties', content: Buffer.from('a') },
-          { name: 'data/welt/level.dat', content: Buffer.from('b') },
-        ]),
-      );
+    antwortgeber = mitDatenVolume(
+      () =>
+        new Response(
+          createTar([
+            { name: 'data/server.properties', content: Buffer.from('a') },
+            { name: 'data/welt/level.dat', content: Buffer.from('b') },
+          ]),
+        ),
+    );
 
     const eintraege = await runtime.listFiles('c-1', '/data');
 
-    expect(aufrufe[0]?.pfad).toBe('/containers/c-1/archive');
-    expect(aufrufe[0]?.query.get('path')).toBe('/data');
+    expect(archivAufruf()?.query.get('path')).toBe('/data');
     expect(eintraege.map((eintrag) => eintrag.name)).toEqual(['server.properties']);
   });
 
@@ -420,32 +441,35 @@ describe('Datei-Manager', () => {
     const stat = Buffer.from(JSON.stringify({ name: 'gross.bin', size: 999_999_999 })).toString(
       'base64',
     );
-    antwortgeber = () =>
-      new Response(null, { status: 200, headers: { 'X-Docker-Container-Path-Stat': stat } });
+    antwortgeber = mitDatenVolume(
+      () => new Response(null, { status: 200, headers: { 'X-Docker-Container-Path-Stat': stat } }),
+    );
 
     await expect(runtime.readFile('c-1', '/data/gross.bin')).rejects.toMatchObject({
       code: 'FILE_TOO_LARGE',
     });
-    // Der Inhalt wurde gar nicht erst angefordert.
-    expect(aufrufe).toHaveLength(1);
-    expect(aufrufe[0]?.method).toBe('HEAD');
+    // Der Inhalt wurde gar nicht erst angefordert: nur der HEAD auf /archive, kein GET.
+    expect(archivAufruf()?.method).toBe('HEAD');
+    expect(
+      aufrufe.some((aufruf) => aufruf.method === 'GET' && aufruf.pfad.endsWith('/archive')),
+    ).toBe(false);
   });
 
   it('liest eine Datei aus dem TAR-Strom', async () => {
     const stat = Buffer.from(JSON.stringify({ name: 'eula.txt', size: 9 })).toString('base64');
-    antwortgeber = (aufruf) => {
+    antwortgeber = mitDatenVolume((aufruf) => {
       if (aufruf.method === 'HEAD') {
         return new Response(null, { headers: { 'X-Docker-Container-Path-Stat': stat } });
       }
       return new Response(createTar([{ name: 'eula.txt', content: Buffer.from('eula=true') }]));
-    };
+    });
 
     const inhalt = await runtime.readFile('c-1', '/data/eula.txt');
     expect(inhalt.toString('utf8')).toBe('eula=true');
   });
 
   it('meldet eine fehlende Datei als FILE_NOT_FOUND', async () => {
-    antwortgeber = () => json({ message: 'Could not find the file' }, 404);
+    antwortgeber = mitDatenVolume(() => json({ message: 'Could not find the file' }, 404));
 
     await expect(runtime.readFile('c-1', '/data/fehlt.txt')).rejects.toMatchObject({
       code: 'FILE_NOT_FOUND',
@@ -453,21 +477,62 @@ describe('Datei-Manager', () => {
   });
 
   it('laedt beim Schreiben ein TAR in das Zielverzeichnis hoch', async () => {
-    antwortgeber = () => new Response(null, { status: 200 });
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
 
     await runtime.writeFile('c-1', '/data/server.properties', Buffer.from('max-players=20'));
 
-    expect(aufrufe[0]?.method).toBe('PUT');
-    expect(aufrufe[0]?.pfad).toBe('/containers/c-1/archive');
+    const archiv = archivAufruf();
+    expect(archiv?.method).toBe('PUT');
     // Zielangabe ist das Verzeichnis; der Dateiname steckt im Archiv.
-    expect(aufrufe[0]?.query.get('path')).toBe('/data');
+    expect(archiv?.query.get('path')).toBe('/data');
   });
 
-  it('lehnt relative Pfade ab, ohne die Engine zu behelligen', async () => {
+  it('sperrt den Datei-Manager auf das Datenvolume ein (absoluter Fremdpfad)', async () => {
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
+
+    await expect(runtime.readFile('c-1', '/etc/passwd')).rejects.toMatchObject({
+      code: 'INVALID_PATH',
+    });
+    // Der Ausbruch wird vor jedem Archiv-Zugriff abgefangen.
+    expect(archivAufruf()).toBeUndefined();
+  });
+
+  it('lehnt einen ueber .. maskierten Ausbruch ab', async () => {
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
+
+    await expect(runtime.readFile('c-1', '/data/../etc/passwd')).rejects.toMatchObject({
+      code: 'INVALID_PATH',
+    });
+    expect(archivAufruf()).toBeUndefined();
+  });
+
+  it('lehnt relative Ausbruchspfade ab, ohne die Engine zu behelligen', async () => {
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
+
     await expect(runtime.readFile('c-1', '../../etc/shadow')).rejects.toMatchObject({
       code: 'INVALID_PATH',
     });
-    expect(aufrufe).toEqual([]);
+    expect(archivAufruf()).toBeUndefined();
+  });
+
+  it('respektiert ein abweichendes Datenvolume des Spiels', async () => {
+    // Der erlaubte Bereich ist pro Spiel verschieden; hier /srv statt /data.
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }), '/srv/game');
+
+    await expect(runtime.readFile('c-1', '/data/server.properties')).rejects.toMatchObject({
+      code: 'INVALID_PATH',
+    });
+    expect(archivAufruf()).toBeUndefined();
+  });
+
+  it('faellt geschlossen, wenn das Datenvolume nicht bestimmbar ist', async () => {
+    // Container ohne Palantir-Label (fremd oder von Hand angelegt): kein Zugriff.
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }), null);
+
+    await expect(runtime.readFile('c-1', '/data/server.properties')).rejects.toMatchObject({
+      code: 'INVALID_PATH',
+    });
+    expect(archivAufruf()).toBeUndefined();
   });
 });
 

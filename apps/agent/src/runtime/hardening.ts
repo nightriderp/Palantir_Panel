@@ -40,6 +40,17 @@ import { assertAbsoluteContainerPath, assertHostPathAllowed } from './paths.js';
 export const PALANTIR_MANAGED_LABEL = 'palantir.managed';
 /** Label mit der ID des zugehoerigen `GameServer`-Datensatzes. */
 export const PALANTIR_SERVER_ID_LABEL = 'palantir.serverId';
+/**
+ * Label mit dem Container-Pfad des Server-Datenvolumes.
+ *
+ * Der Datei-Manager (FILE_LIST/READ/WRITE) sperrt jeden Zugriff auf dieses
+ * Verzeichnis ein (Fundpunkt 100). Der erlaubte Bereich ist pro Spiel
+ * verschieden (`dataVolume.containerPath`); die Runtime kennt beim Dateibefehl
+ * nur die Container-ID, nicht mehr den urspruenglichen Spec. Deshalb wandert die
+ * Grenze als Label mit an den Container und ueberlebt so auch einen
+ * Agent-Neustart, bei dem laufende Container uebernommen werden.
+ */
+export const PALANTIR_DATA_VOLUME_PATH_LABEL = 'palantir.dataVolume.containerPath';
 
 /** Groesse des beschreibbaren tmpfs bei read-only Root-Filesystem. */
 export const DEFAULT_TMPFS_SIZE = '64m';
@@ -236,6 +247,9 @@ export function buildCreateContainerBody(
   const labels: Record<string, string> = {
     ...(spec.labels ?? {}),
     [PALANTIR_MANAGED_LABEL]: 'true',
+    // Einsperrung des Datei-Managers: der bereits validierte Datenvolume-Pfad
+    // wandert als Label mit, damit die Runtime ihn beim Dateibefehl kennt.
+    [PALANTIR_DATA_VOLUME_PATH_LABEL]: assertAbsoluteContainerPath(spec.dataVolume.containerPath),
   };
   if (spec.serverId !== undefined) {
     labels[PALANTIR_SERVER_ID_LABEL] = spec.serverId;
