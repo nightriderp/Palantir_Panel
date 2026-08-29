@@ -1,6 +1,6 @@
 {
   "name": "@palantir/validation",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Zod-Schemas, gemeinsam von Backend und Frontend genutzt – Pflichtenheft §4",
   "type": "module",
