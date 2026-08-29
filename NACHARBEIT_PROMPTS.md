@@ -67,7 +67,7 @@ Token sparen (Pflicht): Aktiviere zu Beginn den caveman-Modus (/caveman) für ko
 Ausgaben, und nutze zum Lokalisieren graphify statt das Repo breit zu lesen –
 graphify query "<stichworte zum punkt>" gegen graphify-out/graph.json, um die Fundstelle
 je Punkt gezielt zu prüfen (kein Voll-Scan). Der Graph liegt bereits gebaut vor.
-Branch: git checkout -b n0/triage-fundpunkte (von aktuellem main).
+Branch: git checkout -b n0/status-triage (von aktuellem main).
 
 Vorgehen für JEDEN Punkt mit Status "offen" in der Nummernspanne #8 bis #76:
 1. Lies die Beschreibung und die genannte Fundstelle.
