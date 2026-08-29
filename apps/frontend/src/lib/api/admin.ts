@@ -26,9 +26,11 @@ import {
   type CreateAnnouncementInput,
   type CreateNotificationChannelInput,
   type CreateNotificationRuleInput,
+  type CreateHostNodeInput,
   type CreatePortRangeInput,
   type CreateRoleInput,
   type MessageReportQuery,
+  type UpdateHostNodeInput,
   type RegistrationRequestQuery,
   type ResolveMessageReportInput,
   type StartStorageScanInput,
@@ -200,6 +202,27 @@ export function fetchBackupOverview(
 
 export function fetchNodes(signal?: AbortSignal): Promise<ApiResult<HostNodeDto[]>> {
   return apiRequest<HostNodeDto[]>('/admin/nodes', { signal });
+}
+
+/** Neue Node anlegen (Lastenheft §3.7). Verlangt `node.manage`. */
+export function createNode(input: CreateHostNodeInput): Promise<ApiResult<HostNodeDto>> {
+  return apiRequest<HostNodeDto>('/admin/nodes', { method: 'POST', json: input });
+}
+
+/** Node bearbeiten – u. a. in Wartung nehmen oder wieder freigeben. */
+export function updateNode(
+  nodeId: string,
+  input: UpdateHostNodeInput,
+): Promise<ApiResult<HostNodeDto>> {
+  return apiRequest<HostNodeDto>(`/admin/nodes/${encodeURIComponent(nodeId)}`, {
+    method: 'PATCH',
+    json: input,
+  });
+}
+
+/** Node entfernen. Das Backend lehnt ab, solange noch Server auf ihr liegen. */
+export function deleteNode(nodeId: string): Promise<ApiResult<null>> {
+  return apiRequest<null>(`/admin/nodes/${encodeURIComponent(nodeId)}`, { method: 'DELETE' });
 }
 
 export function fetchStorageSnapshot(
