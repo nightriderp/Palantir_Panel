@@ -224,6 +224,49 @@ export interface FileUploadCommandPayload {
 }
 
 /**
+ * Archivformate, die Palantir entpacken kann (Weltdaten-Übernahme, P4).
+ *
+ * Bewusst eine kurze Positivliste: `tar.gz` ist das Format, in dem der Agent
+ * selbst sichert, `zip` das, in dem die verbreiteten Hoster ihre Weltordner
+ * ausliefern. Alles andere lehnt schon der Upload ab
+ * (`WORLD_ARCHIVE_INVALID`) – ein Format, das der Agent nicht lesen kann, soll
+ * gar nicht erst auf den Homeserver wandern.
+ */
+export const ARCHIVE_FORMATS = ['tar.gz', 'zip'] as const;
+
+export type ArchiveFormat = (typeof ARCHIVE_FORMATS)[number];
+
+export function isArchiveFormat(value: string): value is ArchiveFormat {
+  return (ARCHIVE_FORMATS as readonly string[]).includes(value);
+}
+
+/**
+ * `FILE_EXTRACT` – ein Archiv in den Datenordner eines Servers entpacken
+ * (Weltdaten-Übernahme, Lastenheft §3.3; Arbeitspaket P4).
+ *
+ * Inhalt Base64-kodiert wie bei `FILE_UPLOAD`, weil das Protokoll JSON ist.
+ * Die Größengrenze prüft der Agent wie beim Upload und lehnt mit
+ * `AGENT_FILE_TOO_LARGE` ab; ein unlesbares oder verdächtig aufgeblähtes
+ * Archiv (Entpack-Bombe) endet mit `AGENT_ARCHIVE_INVALID`.
+ *
+ * **Pfad-Einsperrung:** `path` ist – wie überall im Datei-Manager – relativ zum
+ * Datenordner. Einträge im Archiv, die daraus ausbrechen (führender
+ * Schrägstrich, `..`, absolute Symlinks), entpackt der Agent nicht; er nennt
+ * sie in `skipped`, statt den ganzen Import abzubrechen: Ein einzelner
+ * unsauberer Eintrag soll eine sonst brauchbare Welt nicht unbrauchbar machen.
+ *
+ * Ergänzung dieser Sitzung; Ausführung baut P4. Bis dahin **nicht** in
+ * `IMPLEMENTED_AGENT_COMMANDS` (`AGENT_COMMAND_NOT_IMPLEMENTED`).
+ */
+export interface FileExtractCommandPayload {
+  readonly containerId: string;
+  /** Zielordner relativ zum Datenordner; `''` ist die Wurzel. */
+  readonly path: string;
+  readonly contentBase64: string;
+  readonly format: ArchiveFormat;
+}
+
+/**
  * `CREATE_BACKUP` – Datenordner eines Servers auf dem Homeserver sichern
  * (Lastenheft §3.3, Arbeitspaket A3).
  *
@@ -532,6 +575,21 @@ export interface DownloadBackupCommandResult {
   readonly eof: boolean;
 }
 
+/**
+ * Ergebnis von `FILE_EXTRACT` (P4).
+ *
+ * `skipped` nennt die Archiveinträge, die aus dem Datenordner ausgebrochen
+ * wären – das Backend protokolliert sie, damit ein unvollständiger Import
+ * erklärbar bleibt.
+ */
+export interface FileExtractCommandResult {
+  /** Tatsächlich geschriebene Dateien (ohne Verzeichnisse). */
+  readonly fileCount: number;
+  /** Summe der entpackten Nutzdaten in Byte. */
+  readonly extractedBytes: number;
+  readonly skipped: string[];
+}
+
 /** Ergebnis von `DELETE_BACKUP`. */
 export interface DeleteBackupCommandResult {
   readonly backupId: string;
@@ -637,6 +695,7 @@ export interface AgentCommandPayloads {
   readonly FILE_WRITE: FileWriteCommandPayload;
   readonly FILE_DELETE: FileDeleteCommandPayload;
   readonly FILE_UPLOAD: FileUploadCommandPayload;
+  readonly FILE_EXTRACT: FileExtractCommandPayload;
   readonly CREATE_BACKUP: CreateBackupCommandPayload;
   readonly RESTORE_BACKUP: RestoreBackupCommandPayload;
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandPayload;
@@ -661,6 +720,7 @@ export interface AgentCommandResults {
   readonly FILE_WRITE: null;
   readonly FILE_DELETE: null;
   readonly FILE_UPLOAD: null;
+  readonly FILE_EXTRACT: FileExtractCommandResult;
   readonly CREATE_BACKUP: CreateBackupCommandResult;
   readonly RESTORE_BACKUP: RestoreBackupCommandResult;
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandResult;

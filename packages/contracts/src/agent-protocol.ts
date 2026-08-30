@@ -138,6 +138,22 @@ export const AGENT_COMMANDS = [
    * binäre, auch neue) Datei ab. Ausführung ebenfalls in P2.
    */
   'FILE_UPLOAD',
+  /**
+   * Ein hochgeladenes Archiv in den Datenordner eines Servers entpacken
+   * (Weltdaten-Übernahme, Lastenheft §3.3 „Migration von anderen
+   * Hosting-Anbietern"; Arbeitspaket P4).
+   *
+   * Ergänzung dieser Sitzung zum Katalog aus Pflichtenheft §5.3, dort
+   * nachgetragen. Bewusst ein eigener Befehl und nicht mehrere `FILE_UPLOAD`:
+   * Ein Weltordner besteht aus tausenden Dateien; einzeln übertragen wären das
+   * ebenso viele Befehle. Bewusst auch nicht `RESTORE_BACKUP`: Dort liegt das
+   * Archiv bereits auf dem Homeserver und trägt eine beim Sichern gebildete
+   * Prüfsumme – hier kommt es vom Nutzer über das Backend und ist kein Backup.
+   *
+   * **Ausgeführt** wird der Befehl erst von P4; bis dahin steht er nicht in
+   * `IMPLEMENTED_AGENT_COMMANDS` (`AGENT_COMMAND_NOT_IMPLEMENTED`).
+   */
+  'FILE_EXTRACT',
 ] as const;
 
 /** Alle gültigen Befehlsnamen – verhindert Freitext-Befehle. */
