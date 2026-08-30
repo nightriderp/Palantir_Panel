@@ -1,10 +1,14 @@
 # SETUP – Palantir einrichten
 
-> **Status:** unvollständig. Ausgearbeitet sind **Datenbank** (Abschnitt 2) und
-> **Deployment** (Abschnitt 3). Was noch fehlt – VPS-Grundinstallation, OAuth-Apps,
-> WireGuard, Owner-Ersteinrichtung – steht laut [PFLICHTENHEFT.md §12.3](PFLICHTENHEFT.md)
-> noch aus und ist unten als offen markiert (siehe „Gefundene Punkte" Nr. 2 in
-> [WORK_STATUS.md](WORK_STATUS.md)).
+> **Status:** vollständig für Version 1. Beschrieben sind zentrale Konfiguration (§1),
+> Datenbank (§2), Deployment-Pipeline (§3), VPS-Grundinstallation (§4), OAuth-Apps (§5),
+> WireGuard-Tunnel (§6), Homeserver-VM (§7) und DNS/Cloudflare (§8). Deckt die von
+> [PFLICHTENHEFT.md §12.3](PFLICHTENHEFT.md) geforderte Schritt-für-Schritt-Anleitung ab.
+>
+> **Empfohlene Reihenfolge einer Neu-Einrichtung:** §1 (`.env`) → §4 (VPS-Grundinstallation)
+> → §6 (WireGuard) → §8 (DNS) → §5 (OAuth-Apps) → §2 (Datenbank) → §3 (Deployment-Pipeline)
+> → §7 (Homeserver-VM). WireGuard (§6) muss vor dem ersten `docker compose up` stehen,
+> sonst existiert die Tunnel-Adresse `10.10.0.1` beim Containerstart noch nicht (§3.4).
 
 Palantir läuft auf zwei Maschinen:
 
@@ -676,22 +680,290 @@ ist unabhängig und läuft ins Leere, bis der Zweig `prod` das erste Mal gesetzt
 
 ---
 
-## 4. Noch zu ergänzen
+## 4. VPS-Grundinstallation
 
-Diese Abschnitte fordert [PFLICHTENHEFT.md §12.3](PFLICHTENHEFT.md), sie sind noch nicht
-geschrieben:
+Alle Schritte in diesem Abschnitt laufen auf der **VPS** (Hetzner, öffentlich) als `root`.
+Sie legen die Grundlage, auf der die Compose-Stacks aus §2 und §3 laufen.
 
-- **VPS vorbereiten** – Grundinstallation, Reverse Proxy (Caddy oder Traefik) mit
-  automatischem TLS, Firewall
-- **OAuth-Apps anlegen** – Discord, Twitch, Steam inkl. Redirect-URIs passend zur Domain
-- **WireGuard einrichten** – fertige `wg0.conf` für VPS (`/etc/wireguard/wg0.conf`) und
-  Homeserver (`/etc/wireguard/wg0.conf` in der Gameserver-VM), Keepalive, AllowedIPs.
-  **Pflicht bei der Homeserver-`wg0.conf`:** eingehenden Verkehr auf `wg0` per
-  `PostUp`/`PostDown` blockieren, damit kein Port (insbesondere SSH 22) aus dem Tunnel
-  offen steht – exakte Regeln, Zielmaschine und der bewusste Ausnahmeweg für Fernwartung
-  stehen in [`deploy/gamenode/wireguard-firewall.md`](deploy/gamenode/wireguard-firewall.md).
-  Ohne diesen Schritt endet eine Neu-Einrichtung im Zustand aus Gefundenem Punkt 85 (SSH
-  von der VPS aus offen), der [PFLICHTENHEFT.md §1](PFLICHTENHEFT.md) ausdrücklich verbietet.
-- **Homeserver-VM vorbereiten** – Docker, Docker-Socket-Proxy, Datenverzeichnisse
-- **DNS/Cloudflare** – Zone, API-Token mit ausschließlich DNS-Bearbeitungsrecht,
-  „DNS only" für Spiele-Subdomains
+### 4.1 Betriebssystem und Docker
+
+Empfohlen ist ein aktuelles Debian oder Ubuntu LTS. Palantir braucht auf der VPS **nur
+Docker** – weder Node noch pnpm (vgl. §2.1). Docker Engine samt Compose-Plugin über das
+offizielle Repository installieren:
+
+```bash
+curl -fsSL https://get.docker.com | sh
+```
+
+Prüfen, dass das Compose-Plugin vorhanden ist – der ganze Betrieb ruft `docker compose`
+(mit Leerzeichen), nicht das alte `docker-compose`:
+
+```bash
+docker compose version
+```
+
+### 4.2 Firewall
+
+Nach außen offen sein müssen nur vier Ports. Der Backend-Port `4000` gehört **nicht** dazu:
+er wird in `deploy/vps/docker-compose.yml` bewusst an die Tunnel-Adresse `10.10.0.1`
+gebunden (§3.4) und ist so nur über WireGuard erreichbar. Der Datenbank-Port `5432` bindet
+nur an `127.0.0.1` und darf ebenfalls nie geöffnet werden.
+
+```bash
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 51820/udp
+ufw enable
+```
+
+| Port        | Wofür                                                                 |
+| ----------- | --------------------------------------------------------------------- |
+| `22/tcp`    | SSH-Administration und der Deploy-Zugang (§3.2)                       |
+| `80/tcp`    | HTTP – Traefik leitet auf HTTPS um und beantwortet die ACME-Challenge |
+| `443/tcp`   | HTTPS – Frontend und API                                              |
+| `51820/udp` | WireGuard-Tunnel zum Homeserver (§6, `WIREGUARD_LISTEN_PORT`)         |
+
+> Steht die VPS-Web-Domain zusätzlich hinter Cloudflare (§8), kann `80/443` auf die
+> Cloudflare-Adressbereiche eingegrenzt werden. Der WireGuard-Port bleibt davon unberührt.
+
+### 4.3 Reverse Proxy und TLS
+
+Ein Reverse Proxy wird **nicht von Hand** aufgesetzt: Der Dienst `traefik` im Compose-Stack
+(`deploy/vps/docker-compose.yml`) übernimmt Terminierung, HTTP→HTTPS-Umleitung und holt die
+Let's-Encrypt-Zertifikate automatisch über die HTTP-Challenge. Nötig sind dafür nur zwei
+Dinge, beide bereits an anderer Stelle:
+
+- `ACME_EMAIL` in der zentralen `.env` (Abschnitt 16 der `.env.example`) – dorthin gehen die
+  Ablauf-Hinweise von Let's Encrypt.
+- Die DNS-Einträge für `<PALANTIR_DOMAIN>` und `api.<PALANTIR_DOMAIN>` müssen auf die VPS
+  zeigen (§8), sonst schlägt die ACME-Challenge fehl.
+
+Traefik spricht die Docker-API nie direkt an, sondern über den mitgelieferten
+`socket-proxy` (Pflichtenheft §2.3). Es ist also kein manueller Eingriff am Docker-Socket
+nötig.
+
+---
+
+## 5. OAuth-Apps anlegen
+
+Palantir kennt kein eigenes Passwort-Login über Drittanbieter, sondern meldet Nutzer über
+**Discord, Twitch und Steam** an ([PFLICHTENHEFT.md §7](PFLICHTENHEFT.md)). Mindestens **ein**
+Provider muss konfiguriert sein – `scripts/setup.sh` bricht sonst mit einem Pflichtfeld-Fehler
+ab. Die Werte werden in der zentralen `.env` auf der **VPS** (`/opt/palantir/.env`)
+eingetragen; die Redirect-URIs unten müssen **exakt** so auch in der jeweiligen
+Entwickler-Konsole stehen.
+
+Alle Redirect-URIs werden im Backend aus `PUBLIC_API_URL` abgeleitet
+(`apps/backend/src/config/env.ts`). Steht dort nichts, gilt `https://api.<PALANTIR_DOMAIN>`.
+Die abgeleiteten Werte:
+
+| Provider | `.env`-Variable        | Redirect-/Return-URL (`<domain>` = `PALANTIR_DOMAIN`) |
+| -------- | ---------------------- | ----------------------------------------------------- |
+| Discord  | `DISCORD_REDIRECT_URI` | `https://api.<domain>/auth/discord/callback`          |
+| Twitch   | `TWITCH_REDIRECT_URI`  | `https://api.<domain>/auth/twitch/callback`           |
+| Steam    | `STEAM_RETURN_URL`     | `https://api.<domain>/auth/steam/callback`            |
+
+> Die URIs sind **nicht frei wählbar** – sie zeigen auf die feste Route
+> `/auth/:provider/callback` des Backends. Ein Tippfehler äußert sich als
+> `redirect_uri_mismatch` (Discord/Twitch) bzw. als stumme Zurückweisung (Steam).
+
+### 5.1 Discord
+
+1. <https://discord.com/developers/applications> → **New Application**.
+2. Reiter **OAuth2** → **Redirects** → die Discord-URL aus der Tabelle eintragen.
+3. **Client ID** und ein neu erzeugtes **Client Secret** in die `.env` übernehmen:
+   `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`.
+
+Es werden nur die minimalen Scopes `identify` (und, falls gewünscht, `email`) angefragt –
+mehr braucht Palantir nicht.
+
+### 5.2 Twitch
+
+1. <https://dev.twitch.tv/console/apps> → **Register Your Application**.
+2. **OAuth Redirect URLs**: die Twitch-URL aus der Tabelle eintragen.
+3. **Client-ID** und ein erzeugtes **Client-Secret** in die `.env`:
+   `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_REDIRECT_URI`.
+
+### 5.3 Steam
+
+Steam nutzt **OpenID 2.0** und hat kein Client-Secret – nur einen Web-API-Key:
+
+1. <https://steamcommunity.com/dev/apikey> → Key auf die eigene Domain registrieren.
+2. `STEAM_API_KEY` und `STEAM_RETURN_URL` (Steam-URL aus der Tabelle) in die `.env`.
+
+Der Domainname bei der Key-Registrierung sollte `PALANTIR_DOMAIN` entsprechen; Steam bindet
+den Key an diese Domain.
+
+---
+
+## 6. WireGuard-Tunnel (VPS ↔ Homeserver)
+
+Der Tunnel ist das einzige Netz zwischen den beiden Maschinen
+([PFLICHTENHEFT.md §2.1](PFLICHTENHEFT.md)). Über ihn läuft der Agent-Kanal
+(`ws://10.10.0.1:4000/agent`); nach außen ist auf dem Homeserver **kein** Port offen.
+
+**Feste Adressen:** VPS `10.10.0.1`, Homeserver `10.10.0.2` (aus der `.env`:
+`WIREGUARD_VPS_IP`, `WIREGUARD_HOME_IP`).
+
+### 6.1 Schlüssel
+
+`scripts/setup.sh` erzeugt auf jeder Maschine ein Schlüsselpaar und trägt es in die `.env`
+ein (`WIREGUARD_*_PRIVATE_KEY` / `WIREGUARD_*_PUBLIC_KEY`). Der **private** Schlüssel bleibt
+auf seiner Maschine; die beiden **öffentlichen** Schlüssel müssen über Kreuz getauscht
+werden – der VPS-Public-Key gehört in die Homeserver-`.env` und umgekehrt. Auslesen z. B.:
+
+```bash
+grep '^WIREGUARD_VPS_PUBLIC_KEY=' /opt/palantir/.env
+```
+
+### 6.2 `wg0.conf` auf der VPS
+
+Zielort: **`/etc/wireguard/wg0.conf` auf der VPS**. Die `<Platzhalter>` durch die Werte aus
+der `.env` ersetzen:
+
+```ini
+[Interface]
+Address = 10.10.0.1/24
+ListenPort = 51820
+PrivateKey = <WIREGUARD_VPS_PRIVATE_KEY>
+
+[Peer]
+# Homeserver
+PublicKey = <WIREGUARD_HOME_PUBLIC_KEY>
+AllowedIPs = 10.10.0.2/32
+```
+
+Die VPS kennt keinen `Endpoint` des Homeservers – der sitzt hinter NAT und meldet sich
+selbst. `AllowedIPs = 10.10.0.2/32` begrenzt den Tunnel bewusst auf die eine Gegenstelle.
+
+### 6.3 `wg0.conf` auf dem Homeserver
+
+Zielort: **`/etc/wireguard/wg0.conf` in der Gameserver-VM**. `<VPS_PUBLIC_IP>` ist die
+öffentliche IPv4 der VPS (`.env`: `VPS_PUBLIC_IP`):
+
+```ini
+[Interface]
+Address = 10.10.0.2/24
+PrivateKey = <WIREGUARD_HOME_PRIVATE_KEY>
+# Eingehenden Tunnelverkehr blockieren – Pflicht, siehe unten und
+# deploy/gamenode/wireguard-firewall.md
+PostUp = nft add table inet palantir_wg; nft add chain inet palantir_wg input '{ type filter hook input priority 0; policy accept; }'; nft add rule inet palantir_wg input iifname "wg0" ct state established,related accept; nft add rule inet palantir_wg input iifname "wg0" drop
+PostDown = nft delete table inet palantir_wg
+
+[Peer]
+# VPS
+PublicKey = <WIREGUARD_VPS_PUBLIC_KEY>
+Endpoint = <VPS_PUBLIC_IP>:51820
+AllowedIPs = 10.10.0.1/32
+PersistentKeepalive = 25
+```
+
+- **`PersistentKeepalive = 25`** hält das NAT-Mapping am Heimrouter offen (`.env`:
+  `WIREGUARD_KEEPALIVE`) – ohne das fiele der Tunnel bei Inaktivität aus.
+- **`PostUp`/`PostDown`** sind auf dem Homeserver **nicht optional**: Sie verwerfen jeden
+  neu eingehenden Verkehr auf `wg0` – auch SSH-Port 22 – und lassen nur den Rückverkehr der
+  vom Agent ausgehend aufgebauten Verbindung zu. Ohne diese Regel steht SSH aus dem Tunnel
+  offen (Zustand aus Gefundenem Punkt 85), was [PFLICHTENHEFT.md §1](PFLICHTENHEFT.md)
+  ausdrücklich verbietet. Begründung, Prüfbefehle, die `ufw`-Variante und der einzig
+  zulässige Ausnahmeweg für Fernwartung stehen in
+  [`deploy/gamenode/wireguard-firewall.md`](deploy/gamenode/wireguard-firewall.md).
+
+### 6.4 Tunnel starten
+
+Auf **beiden** Maschinen, so aktiviert, dass er beim Systemstart und **vor** Docker läuft
+(sonst existiert `10.10.0.1` beim Containerstart der VPS noch nicht, siehe §3.4):
+
+```bash
+systemctl enable --now wg-quick@wg0
+```
+
+Gegenprobe auf der **VPS** – der Homeserver muss über den Tunnel antworten:
+
+```bash
+ping -c 3 10.10.0.2
+```
+
+---
+
+## 7. Homeserver-VM vorbereiten
+
+Zielmaschine: die **Gameserver-VM** (unter Proxmox). Sie trägt den Agent, den
+Docker-Socket-Proxy und die Gameserver-Container.
+
+**Grundsatz:** Diese Maschine nimmt **keine** eingehenden Verbindungen an – weder vom Router
+noch aus dem Tunnel (§6.3). Es wird kein Port weitergeleitet und in
+`deploy/gamenode/docker-compose.yml` bewusst kein `ports:` gesetzt.
+
+### 7.1 Docker
+
+Wie auf der VPS (§4.1) genügt Docker mit Compose-Plugin; Node/pnpm sind nicht nötig.
+
+```bash
+curl -fsSL https://get.docker.com | sh
+```
+
+Der **Docker-Socket-Proxy** wird nicht separat installiert – er ist der Dienst
+`socket-proxy` im Gamenode-Stack. Der Agent spricht ausschließlich über ihn mit Docker
+(Pflichtenheft §2.3), nie direkt mit dem Socket.
+
+### 7.2 Datenverzeichnisse
+
+Server-Daten und Backups liegen auf dem Host, damit sie einen Neustart des Agents
+überdauern. Die Pfade müssen zu `AGENT_DATA_DIR` und `AGENT_BACKUP_DIR` in der `.env`
+passen:
+
+```bash
+mkdir -p /srv/palantir/servers /srv/palantir/backups
+```
+
+### 7.3 Restliche Einrichtung
+
+Deploy-Key, GitHub-Host-Key, die knappe Homeserver-`.env`, der Registry-Login und der Start
+des Gamenode-Stacks samt Update-Timer stehen bereits ausführlich in **§3.4 (Gamenode
+vorbereiten)**. Voraussetzung dort: der stehende WireGuard-Tunnel aus §6 und ein Deployment,
+das die Portfreigabe an der Tunnel-Adresse enthält.
+
+---
+
+## 8. DNS / Cloudflare
+
+Palantir legt DNS-Einträge für neue Gameserver-Subdomains **automatisch** über die
+Cloudflare-API an ([PFLICHTENHEFT.md §13](PFLICHTENHEFT.md)). Einzurichten sind einmalig die
+Zone, das API-Token und die festen Einträge.
+
+### 8.1 Feste Einträge
+
+In der Cloudflare-Zone von `PALANTIR_DOMAIN` anlegen (Ziel ist jeweils `VPS_PUBLIC_IP`):
+
+| Typ | Name             | Ziel            | Proxy-Status                                |
+| --- | ---------------- | --------------- | ------------------------------------------- |
+| `A` | `@` (Web-Domain) | `VPS_PUBLIC_IP` | „Proxied" möglich (CDN/WAF) oder „DNS only" |
+| `A` | `api`            | `VPS_PUBLIC_IP` | wie Web-Domain                              |
+| `A` | `*` (Wildcard)   | `VPS_PUBLIC_IP` | **„DNS only"** (grau)                       |
+
+> **„DNS only" für die Spiele-Subdomains ist Pflicht.** Cloudflares Standardprodukt proxied
+> nur HTTP(S), kein rohes TCP/UDP-Spieleprotokoll – eine „proxied" Spiele-Subdomain wäre für
+> den Spieler nicht erreichbar ([PFLICHTENHEFT.md §13](PFLICHTENHEFT.md)). Die Web-Domain und
+> `api` dürfen hinter dem Proxy laufen; dann `TRUSTED_PROXY_HOPS` in der `.env` passend
+> setzen und die Firewall (§4.2) auf die Cloudflare-Bereiche eingrenzen.
+
+Bei Minecraft (Hostname-Routing über den Infrared-Proxy) setzt das Backend statt eines
+`A`-Eintrags einen `CNAME` auf `GAME_ROUTER_HOSTNAME` – dieser Eintrag entsteht ebenfalls
+automatisch und muss nicht von Hand angelegt werden.
+
+### 8.2 API-Token
+
+Unter <https://dash.cloudflare.com/profile/api-tokens> ein Token mit **ausschließlich**
+DNS-Bearbeitungsrecht für genau diese Zone erzeugen (Vorlage „Edit zone DNS"). Werte in die
+zentrale `.env` auf der **VPS**:
+
+```
+CLOUDFLARE_API_TOKEN=<Token>
+CLOUDFLARE_ZONE_ID=<Zone-ID aus der Zonen-Übersicht>
+```
+
+Kein Token mit umfassenderen Rechten verwenden – das Backend braucht nur DNS-Schreibrecht,
+und ein weitergehendes Token wäre bei einem Leck ein Vollzugriff auf das Cloudflare-Konto.
