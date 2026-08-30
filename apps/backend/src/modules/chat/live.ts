@@ -135,3 +135,10 @@ export function conversationCreatedFrame(
 ): ChatServerEventFrame {
   return { kind: 'event', event: 'conversation.created', data, sentAt: sentAt.toISOString() };
 }
+
+export function conversationReadFrame(
+  data: ChatEventPayloads['conversation.read'],
+  sentAt: Date,
+): ChatServerEventFrame {
+  return { kind: 'event', event: 'conversation.read', data, sentAt: sentAt.toISOString() };
+}

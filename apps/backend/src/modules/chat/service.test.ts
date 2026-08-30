@@ -326,3 +326,93 @@ describe('Übersicht der Konversationen', () => {
     expect(liste[0]?.lastMessage?.content).toBe('zuletzt hier');
   });
 });
+
+describe('Serverseitiger Lesezustand (Fundpunkt 95)', () => {
+  it('zählt fremde, nicht gelöschte Nachrichten als ungelesen – eigene nicht', async () => {
+    const dmId = await dmZwischenAlexUndBea();
+
+    await chat.sendMessage(ctxFor(ALEX), dmId, { content: 'eins' });
+    await chat.sendMessage(ctxFor(ALEX), dmId, { content: 'zwei' });
+
+    // Bea hat zwei Nachrichten von Alex offen; Alex selbst hat nichts Ungelesenes.
+    expect((await chat.getConversation(ctxFor(BEA), dmId)).unreadCount).toBe(2);
+    expect((await chat.getConversation(ctxFor(ALEX), dmId)).unreadCount).toBe(0);
+    expect((await chat.getConversation(ctxFor(BEA), dmId)).lastReadAt).toBeNull();
+  });
+
+  it('setzt den Stand auf gelesen und meldet es dem Konto selbst', async () => {
+    const dmId = await dmZwischenAlexUndBea();
+    await chat.sendMessage(ctxFor(ALEX), dmId, { content: 'hallo Bea' });
+
+    const nachher = await chat.markConversationRead(ctxFor(BEA), dmId);
+
+    expect(nachher.unreadCount).toBe(0);
+    expect(nachher.lastReadAt).not.toBeNull();
+    expect(delivery.eventsFor(BEA)).toContain('conversation.read');
+    // Nicht dem Gegenüber: der Lesestand ist privat.
+    expect(delivery.eventsFor(ALEX)).not.toContain('conversation.read');
+  });
+
+  it('hält den Stand geräteunabhängig – erneutes Lesen aus anderer Sitzung sieht 0', async () => {
+    const dmId = await dmZwischenAlexUndBea();
+    await chat.sendMessage(ctxFor(ALEX), dmId, { content: 'hallo' });
+
+    // „Gerät 1" markiert gelesen.
+    await chat.markConversationRead(ctxFor(BEA), dmId);
+
+    // „Gerät 2" – frischer Kontext desselben Kontos – sieht den Stand serverseitig.
+    const liste = await chat.listConversations(ctxFor(BEA));
+    const dm = liste.find((eintrag) => eintrag.id === dmId);
+
+    expect(dm?.unreadCount).toBe(0);
+    expect(dm?.lastReadAt).not.toBeNull();
+  });
+
+  it('zählt nach dem Lesen eingehende Nachrichten wieder als ungelesen', async () => {
+    const dmId = await dmZwischenAlexUndBea();
+    await chat.sendMessage(ctxFor(ALEX), dmId, { content: 'eins' });
+    await chat.markConversationRead(ctxFor(BEA), dmId);
+
+    await chat.sendMessage(ctxFor(ALEX), dmId, { content: 'zwei' });
+
+    expect((await chat.getConversation(ctxFor(BEA), dmId)).unreadCount).toBe(1);
+  });
+
+  it('zählt gelöschte Nachrichten nicht als ungelesen', async () => {
+    const dmId = await dmZwischenAlexUndBea();
+    const nachricht = await chat.sendMessage(ctxFor(ALEX), dmId, { content: 'wieder weg' });
+
+    await chat.deleteOwnMessage(ctxFor(ALEX), nachricht.id);
+
+    expect((await chat.getConversation(ctxFor(BEA), dmId)).unreadCount).toBe(0);
+  });
+
+  it('lässt Unbeteiligte den Lesestand nicht setzen – auch nicht Owner oder Moderator', async () => {
+    const dmId = await dmZwischenAlexUndBea();
+
+    for (const ctx of [
+      ctxFor(CHRIS),
+      ctxFor(MOD, actorWith('message.moderate')),
+      ctxFor(CHRIS, ownerActor()),
+    ]) {
+      await expect(chat.markConversationRead(ctx, dmId)).rejects.toThrowError(
+        new ChatError('CONVERSATION_NOT_FOUND'),
+      );
+    }
+
+    // Kein fremder Lesestand hinterlassen.
+    expect(repository.reads).toHaveLength(0);
+  });
+
+  it('führt den Lesestand je Teilnehmer getrennt', async () => {
+    const dmId = await dmZwischenAlexUndBea();
+    await chat.sendMessage(ctxFor(ALEX), dmId, { content: 'eins' });
+    await chat.sendMessage(ctxFor(BEA), dmId, { content: 'antwort' });
+
+    // Nur Bea liest; Alex behält seinen offenen Stand.
+    await chat.markConversationRead(ctxFor(BEA), dmId);
+
+    expect((await chat.getConversation(ctxFor(BEA), dmId)).unreadCount).toBe(0);
+    expect((await chat.getConversation(ctxFor(ALEX), dmId)).unreadCount).toBe(1);
+  });
+});

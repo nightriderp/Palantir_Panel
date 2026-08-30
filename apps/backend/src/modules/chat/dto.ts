@@ -81,6 +81,10 @@ export function toDirectMessageRecipientDto(user: ChatUserRecord): DirectMessage
 export interface ConversationDtoContext extends MessageDtoContext {
   readonly viewerId: string;
   readonly lastMessage: MessageRecord | null;
+  /** Ungelesene Nachrichten des Betrachters in dieser Konversation (Fundpunkt 95). */
+  readonly unreadCount: number;
+  /** Lesestand des Betrachters; `null`, solange er nie gelesen hat. */
+  readonly lastReadAt: Date | null;
 }
 
 export function toConversationDto(
@@ -100,6 +104,8 @@ export function toConversationDto(
     })),
     lastMessage: context.lastMessage ? toMessageDto(context.lastMessage, context) : null,
     createdAt: conversation.createdAt.toISOString(),
+    unreadCount: context.unreadCount,
+    lastReadAt: context.lastReadAt?.toISOString() ?? null,
     permissions: computeConversationPermissions(audience, context.viewerId),
   };
 }
