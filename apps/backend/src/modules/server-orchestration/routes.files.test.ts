@@ -195,6 +195,18 @@ async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Pr
     repository,
     registry: createGameRegistry(1),
     baseDomain: 'example.tld',
+    // Geplante Aufgaben stehen in `routes.schedules.test.ts` unter Test.
+    schedules: {
+      list: async () => [],
+      create: async () => {
+        throw new Error('nicht benutzt');
+      },
+      update: async () => {
+        throw new Error('nicht benutzt');
+      },
+      remove: async () => undefined,
+      tick: async () => ({ executedScheduleIds: [], failedScheduleIds: [] }),
+    },
   });
   await app.ready();
 

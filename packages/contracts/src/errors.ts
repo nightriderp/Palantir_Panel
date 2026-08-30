@@ -353,6 +353,17 @@ export const ERROR_CATALOG = {
     httpStatus: 400,
     defaultMessage: 'Der Zeitplan ist kein gültiger Cron-Ausdruck.',
   },
+  /**
+   * Geplante Aufgabe existiert nicht (Pflichtenheft §6, Entität `Schedule`). 404.
+   *
+   * Gilt auch, wenn es die Aufgabe zwar gibt, sie aber zu einem anderen Server
+   * gehört als dem in der Route: Aus der Antwort soll sich nicht ablesen
+   * lassen, welche Aufgaben an fremden Servern hängen.
+   */
+  SCHEDULE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Die geplante Aufgabe wurde nicht gefunden.',
+  },
 
   // -- Server-Orchestrierung (Pflichtenheft §9, §11, §13) --------------------
   // Arbeitspaket B3. Die Codes decken den Lifecycle, die Spiele-Registry und

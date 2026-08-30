@@ -14,6 +14,7 @@ import {
   type BackupType,
   type ErrorCode,
   type ScheduleAction,
+  type ScheduleRunResult,
 } from '@palantir/contracts';
 import { sql } from 'drizzle-orm';
 import {
@@ -43,13 +44,30 @@ export const schedules = pgTable(
     serverId: uuid('server_id')
       .notNull()
       .references(() => gameServers.id, { onDelete: 'cascade' }),
+    /**
+     * Frei gewählter Name der Aufgabe (`ScheduleDto.name`, F3-Reiter „Aufgaben").
+     *
+     * Bewusst `null`-fähig: Der Backup-Zeitplan aus B5 ist der eine Zeitplan je
+     * Server und trägt keinen eigenen Namen – die Oberfläche zeigt ihn unter
+     * „Sicherungen" und nicht in der Aufgabenliste. Eine Spalte mit
+     * Pflicht-Vorgabe müsste dort einen erfundenen Namen ablegen.
+     */
+    name: text('name'),
     action: text('action').$type<ScheduleAction>().notNull(),
     /** Cron-Ausdruck mit fünf Feldern; ausgewertet in `modules/backups/cron.ts`. */
     cronExpression: text('cron_expression').notNull(),
+    /**
+     * IANA-Zeitzone, in der `cron_expression` ausgewertet wird, z. B.
+     * `Europe/Berlin`. `null` bedeutet „lokale Zeit des Backends" – so wertet
+     * der Backup-Zeitplan aus B5 seinen Ausdruck seit jeher aus.
+     */
+    timezone: text('timezone'),
     /** Aktions-spezifische Nutzdaten, z. B. `{ stopServer: true }` beim Backup. */
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     enabled: boolean('enabled').notNull().default(true),
     lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    /** Ausgang des letzten Laufs (`ScheduleDto.lastRunResult`); `null`, solange nie gelaufen. */
+    lastRunResult: text('last_run_result').$type<ScheduleRunResult>(),
     /**
      * Nächster fälliger Lauf. Bewusst gespeichert statt bei jedem Durchlauf neu
      * gerechnet: so findet der Scheduler die fälligen Zeitpläne mit einem

@@ -9,6 +9,8 @@
  *   Pflichtenheft §9)
  * - `BackupScheduleService.tick()` – ohne Aufruf laufen geplante Backups nie
  *   (Lastenheft §3.3)
+ * - `ServerScheduleService.tick()` – dasselbe für geplante Neustarts und
+ *   Konsolenbefehle (Lastenheft §3.3, Reiter „Aufgaben")
  *
  * Beide bleiben ohne eigenen Timer, damit sie ohne Wartezeit prüfbar sind und
  * damit ein Skript oder ein Wartungs-Kommando denselben Ablauf anstoßen kann.
@@ -232,6 +234,44 @@ export function backupScheduleTask(
             skipped: result.skippedScheduleIds,
           },
           'Geplante Backups ausgewertet',
+        );
+      }
+    },
+  };
+}
+
+/** Ausschnitt der geplanten Server-Aufgaben, den der Zeitgeber braucht (B3). */
+export interface ServerScheduleTicker {
+  tick(): Promise<{
+    readonly executedScheduleIds: string[];
+    readonly failedScheduleIds: string[];
+  }>;
+}
+
+/**
+ * Fällige Server-Aufgaben anstoßen – Neustart oder Konsolenbefehl zu fester
+ * Zeit (Lastenheft §3.3, Reiter „Aufgaben").
+ *
+ * Geschwisteraufgabe zu {@link backupScheduleTask}: dieselbe Tabelle
+ * `schedules`, andere Aktionen. Auch hier kein eigener Timer im Modul – der
+ * Takt kommt von hier.
+ */
+export function serverScheduleTask(
+  schedules: ServerScheduleTicker,
+  log: SchedulerLogger,
+): ScheduledTask {
+  return {
+    name: 'serverSchedules',
+    async run(): Promise<void> {
+      const result = await schedules.tick();
+
+      if (result.executedScheduleIds.length > 0 || result.failedScheduleIds.length > 0) {
+        log.debug(
+          {
+            executed: result.executedScheduleIds,
+            failed: result.failedScheduleIds,
+          },
+          'Geplante Server-Aufgaben ausgewertet',
         );
       }
     },

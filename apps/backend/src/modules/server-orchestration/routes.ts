@@ -13,11 +13,18 @@
  * fragt das berechnete Flag ab.
  */
 
-import { type GameServerPermissions, fail, httpStatusForErrorCode, ok } from '@palantir/contracts';
+import {
+  type GameServerPermissions,
+  type SchedulePermissions,
+  fail,
+  httpStatusForErrorCode,
+  ok,
+} from '@palantir/contracts';
 import {
   cloneServerInputSchema,
   consoleCommandSchema,
   createServerInputSchema,
+  scheduleInputSchema,
   updateServerSettingsInputSchema,
   serverMemberInputSchema,
 } from '@palantir/validation';
@@ -29,6 +36,7 @@ import { type ServerDtoContext, toGameServerDto } from './dto.js';
 import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 import { type GameRegistry } from './game-registry.js';
 import { type ServerRepository } from './repository.js';
+import { type ServerScheduleService, toScheduleDto } from './schedules.js';
 import { type ServerOrchestrationService } from './service.js';
 import { checkSubdomain } from './subdomain.js';
 
@@ -37,9 +45,12 @@ export interface ServerRoutesOptions {
   readonly repository: ServerRepository;
   readonly registry: GameRegistry;
   readonly baseDomain: string;
+  /** Geplante Aufgaben des Reiters „Aufgaben" (Lastenheft §3.3). */
+  readonly schedules: ServerScheduleService;
 }
 
 const serverIdParamsSchema = z.object({ id: z.string().uuid() });
+const scheduleParamsSchema = z.object({ id: z.string().uuid(), scheduleId: z.string().uuid() });
 
 /** Ein hochgeladener Datei-Teil samt der Felder, die daneben im Formular stehen. */
 interface FileUploadInput {
@@ -114,7 +125,7 @@ async function replyWithError(reply: FastifyReply, error: unknown): Promise<void
 }
 
 export function registerServerRoutes(app: FastifyInstance, options: ServerRoutesOptions): void {
-  const { service, repository, registry, baseDomain } = options;
+  const { service, repository, registry, baseDomain, schedules } = options;
 
   /** Baut den DTO-Kontext eines Servers für den aktuellen Aufrufer. */
   async function dtoContext(request: FastifyRequest, serverId: string): Promise<ServerDtoContext> {
@@ -591,6 +602,76 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
           `attachment; filename="${datei.fileName.replaceAll('"', '')}"`,
         )
         .send(datei.content);
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  // -- Geplante Aufgaben (Lastenheft §3.3, Reiter „Aufgaben") -----------------
+  //
+  // Alle vier Routen hängen an `canManageSchedules`: Wer die Aufgabenliste
+  // sehen darf, darf sie auch pflegen – eine getrennte Lesestufe gibt es im
+  // Rechte-Katalog nicht. Das `permissions`-Objekt je Aufgabe trägt deshalb
+  // dasselbe Flag; die Oberfläche muss es nicht selbst herleiten.
+  //
+  // Der Backup-Zeitplan liegt zwar in derselben Tabelle, gehört aber zu B5 und
+  // taucht hier nicht auf (siehe `schedules.ts`).
+
+  function schedulePermissions(canManage: boolean): SchedulePermissions {
+    return { canEdit: canManage, canDelete: canManage, canToggle: canManage };
+  }
+
+  app.get('/api/servers/:id/schedules', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const { dto } = await loadAuthorized(request, id, 'canManageSchedules');
+      const rechte = schedulePermissions(dto.permissions.canManageSchedules);
+      const liste = await schedules.list(id);
+
+      return await reply.send(ok(liste.map((record) => toScheduleDto(record, rechte))));
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  app.post('/api/servers/:id/schedules', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const { dto } = await loadAuthorized(request, id, 'canManageSchedules');
+      const input = scheduleInputSchema.parse(request.body);
+      const record = await schedules.create(id, input);
+
+      return await reply
+        .status(201)
+        .send(ok(toScheduleDto(record, schedulePermissions(dto.permissions.canManageSchedules))));
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  app.patch('/api/servers/:id/schedules/:scheduleId', async (request, reply) => {
+    try {
+      const { id, scheduleId } = scheduleParamsSchema.parse(request.params);
+      const { dto } = await loadAuthorized(request, id, 'canManageSchedules');
+      const input = scheduleInputSchema.parse(request.body);
+      const record = await schedules.update(id, scheduleId, input);
+
+      return await reply.send(
+        ok(toScheduleDto(record, schedulePermissions(dto.permissions.canManageSchedules))),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  app.delete('/api/servers/:id/schedules/:scheduleId', async (request, reply) => {
+    try {
+      const { id, scheduleId } = scheduleParamsSchema.parse(request.params);
+
+      await loadAuthorized(request, id, 'canManageSchedules');
+      await schedules.remove(id, scheduleId);
+
+      return await reply.send(ok(null));
     } catch (error: unknown) {
       return replyWithError(reply, error);
     }
