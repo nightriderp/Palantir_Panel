@@ -4,7 +4,7 @@ import {
   type GameConfigValue,
   type GameTypeDto,
   type HostNodeDto,
-  type UserResourceLimitDto,
+  type ResourceQuotaDto,
 } from '@palantir/contracts';
 import { type CreateServerInput } from '@palantir/validation';
 import { useRouter } from 'next/navigation';
@@ -158,7 +158,7 @@ export function CreateServerWizard() {
 
   const gameTypes = useApiResource<GameTypeDto[]>((signal) => fetchGameTypes(signal), []);
   const nodes = useApiResource<HostNodeDto[]>((signal) => fetchHostNodes(signal), []);
-  const quota = useApiResource<UserResourceLimitDto>((signal) => fetchResourceQuota(signal), []);
+  const quota = useApiResource<ResourceQuotaDto>((signal) => fetchResourceQuota(signal), []);
 
   const subdomain = useSubdomainCheck(state.subdomain);
 

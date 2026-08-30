@@ -1,7 +1,9 @@
 import {
   type HostNodeDto,
+  type ResourceKind,
+  type ResourceQuotaDto,
   type SubdomainAvailabilityDto,
-  type UserResourceLimitDto,
+  resourceQuotaSlot,
 } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import {
@@ -184,28 +186,27 @@ describe('missingConfigFields', () => {
 });
 
 describe('quotaBlockReason', () => {
+  /**
+   * Kontingent mit Limit und Belegung je Ressourcenart.
+   *
+   * Die Slots entstehen über `resourceQuotaSlot()` aus den Contracts – dieselbe
+   * Ableitung „Rest = Limit − Belegung, nie negativ", die auch das Backend
+   * benutzt. So prüft der Test gegen die echte Rechenregel und nicht gegen
+   * einen von Hand gesetzten `remaining`-Wert.
+   */
   function quota(
-    limits: Partial<UserResourceLimitDto['limits']> = {},
-    usage: Partial<UserResourceLimitDto['usage']> = {},
-  ): UserResourceLimitDto {
+    limits: Partial<Record<ResourceKind, number | null>> = {},
+    used: Partial<Record<ResourceKind, number>> = {},
+  ): ResourceQuotaDto {
+    const slot = (resource: ResourceKind) =>
+      resourceQuotaSlot(resource, limits[resource] ?? null, used[resource] ?? 0);
+
     return {
       userId: '33333333-3333-4333-8333-333333333333',
-      userDisplayName: 'Alex',
-      limits: {
-        maxRamMb: null,
-        maxCpuCores: null,
-        maxDiskMb: null,
-        maxConcurrentServers: null,
-        ...limits,
-      },
-      usage: {
-        runningRamMb: 0,
-        runningCpuCores: 0,
-        allocatedDiskMb: 0,
-        runningServers: 0,
-        totalServers: 0,
-        ...usage,
-      },
+      ram: slot('ram'),
+      cpu: slot('cpu'),
+      disk: slot('disk'),
+      servers: slot('servers'),
       updatedAt: null,
       permissions: { canView: true, canEdit: false },
     };
@@ -217,28 +218,36 @@ describe('quotaBlockReason', () => {
   });
 
   it('meldet ein ausgeschöpftes Server-Kontingent', () => {
-    const reason = quotaBlockReason(
-      quota({ maxConcurrentServers: 2 }, { totalServers: 2 }),
-      state(),
-    );
+    const reason = quotaBlockReason(quota({ servers: 2 }, { servers: 2 }), state());
     expect(reason).toContain('2 Server');
   });
 
   it('rechnet die bereits belegten Ressourcen mit ein', () => {
-    const almostFull = quota({ maxRamMb: 8192 }, { runningRamMb: 7168 });
+    const almostFull = quota({ ram: 8192 }, { ram: 7168 });
     expect(quotaBlockReason(almostFull, state({ ramMb: 1024 }))).toBeNull();
     expect(quotaBlockReason(almostFull, state({ ramMb: 2048 }))).toContain('RAM-Kontingent');
   });
 
+  it('lässt den Rest exakt aufbrauchen, aber nicht überschreiten', () => {
+    const rest = quota({ ram: 8192 }, { ram: 6144 });
+    expect(quotaBlockReason(rest, state({ ramMb: 2048 }))).toBeNull();
+    expect(quotaBlockReason(rest, state({ ramMb: 2049 }))).toContain('RAM-Kontingent');
+  });
+
+  it('meldet ein überzogenes Kontingent, statt einen negativen Rest zu rechnen', () => {
+    // `remaining` ist nie negativ (Contracts); ein bereits überzogenes
+    // Kontingent hat Rest 0 und blockiert damit jeden weiteren Wunsch.
+    const over = quota({ ram: 4096 }, { ram: 8192 });
+    expect(over.ram.remaining).toBe(0);
+    expect(quotaBlockReason(over, state({ ramMb: 1 }))).toContain('RAM-Kontingent');
+  });
+
   it('prüft CPU und Speicherplatz ebenfalls', () => {
+    expect(quotaBlockReason(quota({ cpu: 2 }, { cpu: 1 }), state({ cpuCores: 2 }))).toContain(
+      'CPU-Kontingent',
+    );
     expect(
-      quotaBlockReason(quota({ maxCpuCores: 2 }, { runningCpuCores: 1 }), state({ cpuCores: 2 })),
-    ).toContain('CPU-Kontingent');
-    expect(
-      quotaBlockReason(
-        quota({ maxDiskMb: 20480 }, { allocatedDiskMb: 10240 }),
-        state({ diskMb: 20480 }),
-      ),
+      quotaBlockReason(quota({ disk: 20480 }, { disk: 10240 }), state({ diskMb: 20480 })),
     ).toContain('Speicher-Kontingent');
   });
 });
