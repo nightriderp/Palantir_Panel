@@ -29,17 +29,26 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
     }
   });
 
-  it('führt seit A3 jeden Befehl des Protokolls als umgesetzt', () => {
-    // Vor A3 fehlten hier die vier Backup-Befehle und der Storage-Scanner –
-    // Dateisystem- und Job-Aufgaben, keine Container-Ansteuerung. Mit dem
-    // Job-Modul sind sie gebaut; bleibt einer übrig, soll das auffallen.
-    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual([]);
-    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length);
+  it('führt genau die von WELLE 0 nachgetragenen Datei-Befehle noch nicht aus', () => {
+    // Mit A3 war die Liste vollständig. WELLE 0 nimmt FILE_DELETE und FILE_UPLOAD
+    // ins Protokoll auf, überlässt die Ausführung aber P2 (Datei-Manager) – genau
+    // wie die Backup-Befehle vor A3. Bleibt darüber hinaus etwas offen oder wird
+    // eines der beiden versehentlich als umgesetzt geführt, soll das auffallen.
+    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command)).sort()).toEqual([
+      'FILE_DELETE',
+      'FILE_UPLOAD',
+    ]);
+    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length - 2);
   });
 
   it('kennt die beiden von A3 ergänzten Befehle', () => {
     expect([...AGENT_COMMANDS]).toContain('SET_SERVER_QUERY');
     expect([...AGENT_COMMANDS]).toContain('REMOVE_STORAGE_ENTRY');
+  });
+
+  it('kennt die beiden von WELLE 0 ergänzten Datei-Befehle', () => {
+    expect([...AGENT_COMMANDS]).toContain('FILE_DELETE');
+    expect([...AGENT_COMMANDS]).toContain('FILE_UPLOAD');
   });
 
   it('isImplementedAgentCommand() erkennt Befehle außerhalb des Protokolls', () => {
