@@ -34,8 +34,13 @@ import { type DnsProvider, createNoopDnsProvider } from './dns/types.js';
 import { createGameRegistry } from './game-registry.js';
 import { createHealthProbe } from './health-check.js';
 import { type PortPoolPort, createPortAllocator } from './ports.js';
-import { buildResourceService } from '../resources/index.js';
-import { type ResourceGuard, createResourceGuardFromService } from './resource-guard.js';
+import { buildResourceService, resourceWarningThresholdsFromEnv } from '../resources/index.js';
+import { createDrizzleCapacityReservation } from './capacity-reservation.js';
+import {
+  type CapacityReservation,
+  type ResourceGuard,
+  createResourceGuardFromService,
+} from './resource-guard.js';
 import { createDrizzleServerUsageRepository } from './usage-repository.js';
 import { createDrizzleServerRepository } from './repository.js';
 import { registerServerRoutes } from './routes.js';
@@ -139,6 +144,22 @@ export function registerServerOrchestration(
   const liveHub = new ServerLiveHub();
   const events = createLiveFanoutSink(baseEvents, liveHub);
 
+  // Ressourcenprüfung aus B4 (Pflichtenheft §10). B3 prüft nicht selbst; die
+  // Belegung zählt B3 nur, weil sie in seiner Tabelle steht (usage-repository.ts).
+  const resources =
+    options.resources ??
+    createResourceGuardFromService(
+      buildResourceService(createDrizzleServerUsageRepository(options.db)),
+    );
+
+  // Serialisiert Prüfung und belegende Schreiboperation über einen Advisory-Lock
+  // je Node/Nutzer (WORK_STATUS.md Punkt 98). Nur im Betrieb: Reicht ein Test
+  // einen eigenen `resources`-Guard herein, bleibt es beim inline-Verhalten des
+  // Dienstes (keine Transaktion gegen die echte Datenbank).
+  const reservation: CapacityReservation | undefined = options.resources
+    ? undefined
+    : createDrizzleCapacityReservation(options.db, resourceWarningThresholdsFromEnv());
+
   const service = new ServerOrchestrationService({
     repository,
     agents,
@@ -146,13 +167,8 @@ export function registerServerOrchestration(
     dns,
     // Port-Pool aus B8 (Pflichtenheft §2.4) - B3 vergibt keine Ports selbst.
     ports: createPortAllocator(options.portPool),
-    // Ressourcenprüfung aus B4 (Pflichtenheft §10). B3 prüft nicht selbst; die
-    // Belegung zählt B3 nur, weil sie in seiner Tabelle steht (usage-repository.ts).
-    resources:
-      options.resources ??
-      createResourceGuardFromService(
-        buildResourceService(createDrizzleServerUsageRepository(options.db)),
-      ),
+    resources,
+    reservation,
     healthProbe: createHealthProbe(),
     events,
     log,
@@ -302,13 +318,17 @@ export {
 } from './ports.js';
 
 export {
+  type CapacityReservation,
   type ResourceCheckRequest,
   type ResourceCheckResult,
   type ResourceGuard,
   assertResourcesAvailable,
+  createInlineCapacityReservation,
   createPermissiveResourceGuard,
   createResourceGuardFromService,
 } from './resource-guard.js';
+
+export { createDrizzleCapacityReservation } from './capacity-reservation.js';
 
 export { createDrizzleServerUsageRepository } from './usage-repository.js';
 

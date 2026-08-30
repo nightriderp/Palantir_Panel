@@ -18,7 +18,7 @@ import {
   type UserResourceUsage,
 } from '@palantir/contracts';
 import { eq } from 'drizzle-orm';
-import type { Database } from '../../db/index.js';
+import type { DbConnection } from '../../db/index.js';
 import { hostNodes, userResourceLimits } from '../../db/schema/resources.js';
 import { users } from '../../db/schema/users.js';
 import type {
@@ -47,7 +47,7 @@ function toNodeRecord(row: HostNodeRow): HostNodeRecord {
   };
 }
 
-export function createDrizzleHostNodeRepository(db: Database): HostNodeRepository {
+export function createDrizzleHostNodeRepository(db: DbConnection): HostNodeRepository {
   return {
     async findById(nodeId) {
       const [row] = await db.select().from(hostNodes).where(eq(hostNodes.id, nodeId)).limit(1);
@@ -64,7 +64,7 @@ export function createDrizzleHostNodeRepository(db: Database): HostNodeRepositor
 }
 
 export function createDrizzleUserResourceLimitRepository(
-  db: Database,
+  db: DbConnection,
 ): UserResourceLimitRepository {
   /**
    * Nutzer samt Kontingent lesen.

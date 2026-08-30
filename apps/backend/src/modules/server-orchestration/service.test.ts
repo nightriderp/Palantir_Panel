@@ -14,10 +14,19 @@
 import {
   type AgentCommandName,
   type ApiResponse,
+  type NodeResourceUsage,
   type ServerMemberLevel,
   type ServerStatus,
+  type UserResourceUsage,
+  NO_USER_RESOURCE_LIMITS,
 } from '@palantir/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  type HostNodeRepository,
+  type ServerUsageRepository,
+  type UserResourceLimitRepository,
+  createResourceService,
+} from '../resources/index.js';
 import { AgentRegistry, AgentSession, type AgentSocket } from './agent-gateway.js';
 import { type ServerOrchestrationError } from './errors.js';
 import { TEST_GAME_TYPE, createGameRegistry } from './game-registry.js';
@@ -32,7 +41,12 @@ import {
   type ServerRepository,
   type UpdateServerData,
 } from './repository.js';
-import { createPermissiveResourceGuard } from './resource-guard.js';
+import {
+  type CapacityReservation,
+  createInlineCapacityReservation,
+  createPermissiveResourceGuard,
+  createResourceGuardFromService,
+} from './resource-guard.js';
 import { type OrchestrationEventSink, ServerOrchestrationService } from './service.js';
 import { type DnsProvider, type DnsRecord } from './dns/types.js';
 
@@ -315,7 +329,13 @@ interface Harness {
   advance(ms: number): void;
 }
 
-function makeHarness(options: { healthy?: boolean | 'pending' } = {}): Harness {
+function makeHarness(
+  options: {
+    healthy?: boolean | 'pending';
+    /** Eigene, serialisierende Reservierung – für den TOCTOU-Test (Punkt 98). */
+    buildReservation?: (repository: FakeRepository) => CapacityReservation;
+  } = {},
+): Harness {
   const repository = new FakeRepository();
   const agents = new AgentRegistry();
   const socket = new AnsweringSocket();
@@ -401,6 +421,7 @@ function makeHarness(options: { healthy?: boolean | 'pending' } = {}): Harness {
     dns,
     ports: createPortAllocator(portPool),
     resources: createPermissiveResourceGuard(() => undefined),
+    reservation: options.buildReservation?.(repository),
     healthProbe: healthyProbe(options.healthy ?? true),
     events,
     log: silentLog,
@@ -1050,6 +1071,163 @@ describe('Ereignisse des Agents', () => {
         emittedAt: NOW.toISOString(),
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
+  const NODE_RAM_MB = 256; // Genau ein Test-Server (256 MB) passt, zwei nicht.
+
+  /** Belegung aus den Attrappen-Servern – gezählt wie `usage-repository.ts`. */
+  function summarize(servers: readonly ServerRecord[]): UserResourceUsage & NodeResourceUsage {
+    let runningRamMb = 0;
+    let runningCpuCores = 0;
+    let allocatedDiskMb = 0;
+    let runningServers = 0;
+
+    for (const server of servers) {
+      allocatedDiskMb += server.resourceLimits.diskMb;
+
+      if (server.status === 'running' || server.status === 'starting') {
+        runningRamMb += server.resourceLimits.ramMb;
+        runningCpuCores += server.resourceLimits.cpuCores;
+        runningServers += 1;
+      }
+    }
+
+    return {
+      runningRamMb,
+      runningCpuCores,
+      allocatedDiskMb,
+      runningServers,
+      totalServers: servers.length,
+    };
+  }
+
+  /**
+   * Reservierung wie im Betrieb: die echte Kapazitätsentscheidung aus B4
+   * (`createResourceService` / `checkCapacity`) gegen die Attrappen-Belegung,
+   * dazu ein Promise-Ketten-Mutex als Nachbildung des Advisory-Locks. Damit ist
+   * genau das geprüft, was der Betrieb serialisiert – ohne echte Datenbank.
+   */
+  function buildReservation(repository: FakeRepository): CapacityReservation {
+    const only = (servers: readonly ServerRecord[], excludeServerId?: string): ServerRecord[] =>
+      servers.filter((server) => server.id !== excludeServerId);
+
+    const usage: ServerUsageRepository = {
+      usageForUser: (userId, options) =>
+        Promise.resolve(
+          summarize(
+            only(
+              [...repository.servers.values()].filter((s) => s.ownerId === userId),
+              options?.excludeServerId,
+            ),
+          ),
+        ),
+      usageForNode: (nodeId, options) =>
+        Promise.resolve(
+          summarize(
+            only(
+              [...repository.servers.values()].filter((s) => s.hostId === nodeId),
+              options?.excludeServerId,
+            ),
+          ),
+        ),
+    };
+
+    const nodes: HostNodeRepository = {
+      findById: (nodeId) =>
+        Promise.resolve(
+          nodeId === HOST.id
+            ? {
+                id: HOST.id,
+                name: HOST.name,
+                wireguardIp: HOST.wireguardIp,
+                status: 'online',
+                totalResources: { ramMb: NODE_RAM_MB, cpuCores: 64, diskMb: 1_000_000 },
+              }
+            : null,
+        ),
+      listAll: () => Promise.resolve([]),
+    };
+
+    const limits: UserResourceLimitRepository = {
+      findByUserId: (userId) =>
+        Promise.resolve({
+          userId,
+          userDisplayName: 'Besitzer',
+          limits: NO_USER_RESOURCE_LIMITS,
+          updatedAt: null,
+        }),
+      upsert: () => Promise.resolve(null),
+      remove: () => Promise.resolve(),
+    };
+
+    const guard = createResourceGuardFromService(
+      createResourceService({
+        limits,
+        nodes,
+        usage,
+        thresholds: { nodePercent: 90, serverPercent: 90 },
+      }),
+    );
+    const inner = createInlineCapacityReservation(guard, repository);
+
+    // Serialisiert reserve() vollständig – die zweite Prüfung sieht damit die
+    // Schreiboperation der ersten (wie der Advisory-Lock im Betrieb).
+    let chain: Promise<unknown> = Promise.resolve();
+
+    return {
+      reserve(request, write) {
+        const run = chain.then(() => inner.reserve(request, write));
+
+        chain = run.then(
+          () => undefined,
+          () => undefined,
+        );
+
+        return run;
+      },
+    };
+  }
+
+  it('lässt von zwei gleichzeitigen Starts nur einen zu – der andere scheitert deterministisch', async () => {
+    const harness = makeHarness({ buildReservation });
+
+    // Zwei gestoppte Server; einzeln würde jeder starten (256 MB ≤ 256 MB frei).
+    const first = await harness.service.createServer(createInput('server-eins'), OWNER_ID);
+    const second = await harness.service.createServer(createInput('server-zwei'), OWNER_ID);
+
+    const outcomes = await Promise.allSettled([
+      harness.service.startServer(first.id, OWNER_ID),
+      harness.service.startServer(second.id, OWNER_ID),
+    ]);
+
+    const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
+    const rejected = outcomes.filter((o) => o.status === 'rejected');
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    // Die Ablehnung kommt aus B4 (`ResourceError`) und trägt den Katalog-Code
+    // RESOURCE_LIMIT_EXCEEDED – derselbe Code wie im Betrieb.
+    const error = (rejected[0] as PromiseRejectedResult).reason as { readonly code: string };
+    expect(error.code).toBe('RESOURCE_LIMIT_EXCEEDED');
+
+    // Genau ein Server belegt jetzt RAM (starting/running) – die Node ist nicht
+    // überbucht.
+    const consuming = [...harness.repository.servers.values()].filter(
+      (s) => s.status === 'starting' || s.status === 'running',
+    );
+    expect(consuming).toHaveLength(1);
+  });
+
+  it('lässt einen einzelnen Start bei derselben Kapazität zu', async () => {
+    const harness = makeHarness({ buildReservation });
+    const only = await harness.service.createServer(createInput('server-solo'), OWNER_ID);
+
+    const started = await harness.service.startServer(only.id, OWNER_ID);
+
+    expect(started.status).toBe('starting');
   });
 });
 
