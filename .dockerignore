@@ -32,7 +32,6 @@ coverage
 docs
 *.md
 !README.md
-MockUp.zip
 
 # Editor / Betriebssystem
 .vscode
