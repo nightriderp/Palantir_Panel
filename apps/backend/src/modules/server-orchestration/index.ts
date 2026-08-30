@@ -45,6 +45,7 @@ import { createDrizzleServerUsageRepository } from './usage-repository.js';
 import { createDrizzleServerRepository } from './repository.js';
 import { registerServerRoutes } from './routes.js';
 import { createDrizzleServerScheduleRepository } from './schedule-repository.js';
+import { createDrizzleServerStatsRepository } from './stats-history.js';
 import { type ServerScheduleService, createServerScheduleService } from './schedules.js';
 import { type OrchestrationEventSink, ServerOrchestrationService } from './service.js';
 import {
@@ -198,6 +199,8 @@ export function registerServerOrchestration(
     reservation,
     healthProbe: createHealthProbe(),
     worldArchives,
+    // Verlauf der Messwerte (P5); abgetastet wird im Takt aus `scheduler.ts`.
+    statsHistory: createDrizzleServerStatsRepository(options.db),
     events,
     log,
     config: {
@@ -213,6 +216,8 @@ export function registerServerOrchestration(
       healthCheckAttemptTimeoutMs: env.HEALTH_CHECK_ATTEMPT_TIMEOUT_MS,
       maxUploadBytes: env.MAX_UPLOAD_SIZE_BYTES,
       maxWorldArchiveBytes: env.MAX_WORLD_ARCHIVE_BYTES,
+      statsHistoryRetentionHours: env.STATS_HISTORY_RETENTION_HOURS,
+      statsSampleIntervalMs: env.SCHEDULER_INTERVAL_MS,
       defaultAutoShutdown: {
         ...DEFAULT_AUTO_SHUTDOWN,
         idleTimeoutMinutes: env.AUTO_SHUTDOWN_DEFAULT_IDLE_MINUTES,
@@ -431,6 +436,15 @@ export {
   defaultWorldArchiveDirectory,
   detectWorldArchiveFormat,
 } from './world-import.js';
+
+export {
+  LatestQueryCache,
+  type ServerStatsRepository,
+  type StatsSample,
+  createDrizzleServerStatsRepository,
+  toLiveStats,
+  toStatsHistoryDto,
+} from './stats-history.js';
 
 export { computeGameServerPermissions } from './permissions.js';
 export { type ServerDtoContext, toGameServerDto } from './dto.js';

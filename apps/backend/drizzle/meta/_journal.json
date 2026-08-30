@@ -99,6 +99,13 @@
       "when": 1788129449367,
       "tag": "0013_schedule_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788132568543,
+      "tag": "0014_stats_history",
+      "breakpoints": true
     }
   ]
 }

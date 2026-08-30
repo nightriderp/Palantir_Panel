@@ -127,6 +127,21 @@ const envSchema = z.object({
    */
   WORLD_ARCHIVE_DIR: optionalEnvString(),
 
+  /**
+   * Aufbewahrungsfrist des Messwert-Verlaufs in Stunden (Lastenheft §3.3
+   * „Verlaufsdarstellung", Arbeitspaket P5).
+   *
+   * Zwei Tage decken den Blick „was war letzte Nacht?" ab und halten die
+   * Tabelle klein: Bei Minuten-Takt sind das rund 2 900 Zeilen je Server.
+   * Ältere Stichproben räumt der Zeitgeber in jedem Durchlauf weg.
+   */
+  STATS_HISTORY_RETENTION_HOURS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 90)
+    .default(48),
+
   /** Crash-Loop-Schutz: erlaubte automatische Neustarts im Zeitfenster (§9). */
   CRASH_LOOP_MAX_RESTARTS: z.coerce.number().int().min(0).max(50).default(3),
   CRASH_LOOP_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1_440).default(10),

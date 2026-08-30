@@ -54,6 +54,7 @@ import {
   resourceWarningTask,
   serverScheduleTask,
   startScheduler,
+  statsSamplingTask,
 } from './scheduler.js';
 
 export interface BuildServerOptions {
@@ -420,6 +421,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         autoShutdownTask(orchestration, agents, app.log),
         backupScheduleTask(backupSchedules, app.log),
         serverScheduleTask(serverSchedules, app.log),
+        statsSamplingTask(orchestration, agents, app.log),
         resourceWarningTask(resources, notifications.eventSink, app.log),
       ],
     });

@@ -51,6 +51,7 @@ import {
   type TimerHandle,
   autoShutdownTask,
   backupScheduleTask,
+  statsSamplingTask,
   resourceWarningTask,
   startScheduler,
 } from './scheduler.js';
@@ -250,6 +251,75 @@ describe('Zeitgeber: fällige Backup-Zeitpläne', () => {
     await settle();
 
     expect(ticks).toBe(2);
+  });
+});
+
+describe('Zeitgeber: Verlauf der Messwerte (Arbeitspaket P5)', () => {
+  it('tastet jede verbundene Node ab und räumt danach auf', async () => {
+    const timer = manualTimer();
+    const abgetastet: string[] = [];
+    let aufgeraeumt = 0;
+
+    startScheduler({
+      tasks: [
+        statsSamplingTask(
+          {
+            sampleServerStats: (hostId: string): Promise<readonly string[]> => {
+              abgetastet.push(hostId);
+
+              return Promise.resolve(['server-1']);
+            },
+            pruneServerStats: (): Promise<number> => {
+              aufgeraeumt += 1;
+
+              return Promise.resolve(0);
+            },
+          },
+          { connectedHostIds: (): readonly string[] => ['node-a', 'node-b'] },
+          silentLog,
+        ),
+      ],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(abgetastet).toEqual(['node-a', 'node-b']);
+    expect(aufgeraeumt).toBe(1);
+  });
+
+  it('räumt auch dann auf, wenn keine Node verbunden ist', async () => {
+    const timer = manualTimer();
+    let aufgeraeumt = 0;
+
+    startScheduler({
+      tasks: [
+        statsSamplingTask(
+          {
+            sampleServerStats: (): Promise<readonly string[]> =>
+              Promise.reject(new Error('darf nicht aufgerufen werden')),
+            pruneServerStats: (): Promise<number> => {
+              aufgeraeumt += 1;
+
+              return Promise.resolve(3);
+            },
+          },
+          { connectedHostIds: (): readonly string[] => [] },
+          silentLog,
+        ),
+      ],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(aufgeraeumt).toBe(1);
   });
 });
 
@@ -503,6 +573,8 @@ function makeSweepHarness(server: ServerRecord): SweepHarness {
       healthCheckAttemptTimeoutMs: 1_000,
       maxUploadBytes: 2 * 1024 * 1024 * 1024,
       maxWorldArchiveBytes: 64 * 1024 * 1024,
+      statsHistoryRetentionHours: 48,
+      statsSampleIntervalMs: 60_000,
       defaultAutoShutdown: { enabled: true, idleTimeoutMinutes: 30, graceMinutes: 15 },
     },
     now: (): Date => new Date(clock),
