@@ -317,6 +317,22 @@ export const ERROR_CATALOG = {
     httpStatus: 409,
     defaultMessage: 'Für diesen Server läuft bereits eine Sicherung.',
   },
+  /**
+   * Die beim Anlegen gebildete SHA-256-Prüfsumme (`Backup.checksumSha256`) stimmt
+   * beim Wiederherstellen oder Herunterladen nicht mit dem tatsächlich gelesenen
+   * Archiv überein (Lastenheft §3.3/§3.7, Fundpunkt 99). Das Archiv ist beschädigt
+   * oder wurde verändert und darf nicht zurückgespielt bzw. als vollständig
+   * ausgeliefert werden.
+   * 422: Die Anfrage ist wohlgeformt und berechtigt, aber das referenzierte
+   * Archiv ist nicht verarbeitbar – ein Retry mit demselben Archiv hilft nicht,
+   * es muss neu gesichert werden. Bewusst getrennt von `AGENT_COMMAND_FAILED`
+   * (unerwarteter Ausführungsfehler): Hier greift eine gezielte Integritätsprüfung.
+   */
+  BACKUP_CHECKSUM_MISMATCH: {
+    httpStatus: 422,
+    defaultMessage:
+      'Die Prüfsumme des Archivs stimmt nicht mit der gespeicherten Sicherung überein. Das Backup ist beschädigt oder wurde verändert.',
+  },
   /** Cron-Ausdruck einer geplanten Aufgabe ist ungültig (Pflichtenheft §6). 400. */
   SCHEDULE_INVALID_CRON: {
     httpStatus: 400,

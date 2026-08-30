@@ -162,20 +162,21 @@ describe('CREATE_BACKUP', () => {
 });
 
 describe('RESTORE_BACKUP', () => {
-  async function gesichert(): Promise<string> {
+  async function gesichert(): Promise<{ storagePath: string; checksumSha256: string }> {
     const ergebnis = await job.createBackup(createNutzlast());
-    return ergebnis.storagePath;
+    return { storagePath: ergebnis.storagePath, checksumSha256: ergebnis.checksumSha256 };
   }
 
   it('spielt den gesicherten Stand zurück', async () => {
-    const archiv = await gesichert();
+    const { storagePath, checksumSha256 } = await gesichert();
     await fs.writeFile(path.join(datenordner, 'server.properties'), 'kaputt\n');
 
     const ergebnis = await job.restoreBackup({
       backupId: BACKUP_ID,
       serverId: SERVER_ID,
-      storagePath: archiv,
+      storagePath,
       targetPath: datenordner,
+      expectedChecksum: checksumSha256,
     });
 
     expect(ergebnis.restoredBytes).toBeGreaterThan(0);
@@ -187,14 +188,15 @@ describe('RESTORE_BACKUP', () => {
   it('räumt Dateien weg, die es im Backup nicht mehr gibt', async () => {
     // Sonst wäre der wiederhergestellte Stand eine Mischung aus altem und
     // neuem und damit keiner.
-    const archiv = await gesichert();
+    const { storagePath, checksumSha256 } = await gesichert();
     await fs.writeFile(path.join(datenordner, 'nachtraeglich.txt'), 'neu');
 
     await job.restoreBackup({
       backupId: BACKUP_ID,
       serverId: SERVER_ID,
-      storagePath: archiv,
+      storagePath,
       targetPath: datenordner,
+      expectedChecksum: checksumSha256,
     });
 
     await expect(fs.stat(path.join(datenordner, 'nachtraeglich.txt'))).rejects.toThrow();
@@ -202,21 +204,84 @@ describe('RESTORE_BACKUP', () => {
 
   it('hält den Container an und lässt ihn aus', async () => {
     // Was danach mit dem Server passiert, entscheidet der Lifecycle im Backend.
-    const archiv = await gesichert();
+    const { storagePath, checksumSha256 } = await gesichert();
     const handle = await runtime.create(SPEC);
     await runtime.start(handle.containerId);
 
     const ergebnis = await job.restoreBackup({
       backupId: BACKUP_ID,
       serverId: SERVER_ID,
-      storagePath: archiv,
+      storagePath,
       targetPath: datenordner,
+      expectedChecksum: checksumSha256,
       containerId: handle.containerId,
     });
 
     expect(ergebnis.containerStopped).toBe(true);
     await expect(runtime.inspect(handle.containerId)).resolves.toMatchObject({
       status: 'exited',
+    });
+  });
+
+  it('lehnt ein Archiv mit abweichender Prüfsumme ab, ohne den Datenordner anzufassen', async () => {
+    // Ein manipuliertes oder beschädigtes Archiv darf nicht zurückgespielt
+    // werden (Fundpunkt 99).
+    const { storagePath } = await gesichert();
+    await fs.writeFile(path.join(datenordner, 'unberuehrt.txt'), 'bleibt');
+
+    await expect(
+      job.restoreBackup({
+        backupId: BACKUP_ID,
+        serverId: SERVER_ID,
+        storagePath,
+        targetPath: datenordner,
+        expectedChecksum: 'f'.repeat(64),
+      }),
+    ).rejects.toMatchObject({ code: 'CHECKSUM_MISMATCH' });
+
+    // Der Datenordner wurde nicht geleert – die Prüfung greift vor dem Entpacken.
+    await expect(fs.readFile(path.join(datenordner, 'unberuehrt.txt'), 'utf8')).resolves.toBe(
+      'bleibt',
+    );
+  });
+
+  it('lehnt ein abgeschnittenes Archiv ab', async () => {
+    // Die gespeicherte Prüfsumme gilt für das vollständige Archiv; ein
+    // gekürztes fällt damit auf, bevor der halbe Stand zurückläuft.
+    const { storagePath, checksumSha256 } = await gesichert();
+    const roh = await fs.readFile(storagePath);
+    await fs.writeFile(storagePath, roh.subarray(0, Math.max(1, roh.length - 16)));
+
+    await expect(
+      job.restoreBackup({
+        backupId: BACKUP_ID,
+        serverId: SERVER_ID,
+        storagePath,
+        targetPath: datenordner,
+        expectedChecksum: checksumSha256,
+      }),
+    ).rejects.toMatchObject({ code: 'CHECKSUM_MISMATCH' });
+  });
+
+  it('hält einen laufenden Container bei abweichender Prüfsumme nicht an', async () => {
+    // Ein beschädigtes Archiv darf keinen laufenden Server stören.
+    const { storagePath } = await gesichert();
+    const handle = await runtime.create(SPEC);
+    await runtime.start(handle.containerId);
+
+    await expect(
+      job.restoreBackup({
+        backupId: BACKUP_ID,
+        serverId: SERVER_ID,
+        storagePath,
+        targetPath: datenordner,
+        expectedChecksum: 'f'.repeat(64),
+        containerId: handle.containerId,
+      }),
+    ).rejects.toMatchObject({ code: 'CHECKSUM_MISMATCH' });
+
+    await expect(runtime.inspect(handle.containerId)).resolves.toMatchObject({
+      status: 'running',
     });
   });
 
@@ -227,19 +292,21 @@ describe('RESTORE_BACKUP', () => {
         serverId: SERVER_ID,
         storagePath: path.join(wurzel, 'fremd.tar.gz'),
         targetPath: datenordner,
+        expectedChecksum: 'a'.repeat(64),
       }),
     ).rejects.toMatchObject({ code: 'INVALID_PATH' });
   });
 
   it('lehnt ein Ziel außerhalb von AGENT_DATA_DIR ab', async () => {
-    const archiv = await gesichert();
+    const { storagePath, checksumSha256 } = await gesichert();
 
     await expect(
       job.restoreBackup({
         backupId: BACKUP_ID,
         serverId: SERVER_ID,
-        storagePath: archiv,
+        storagePath,
         targetPath: path.join(wurzel, 'fremd'),
+        expectedChecksum: checksumSha256,
       }),
     ).rejects.toMatchObject({ code: 'INVALID_PATH' });
   });

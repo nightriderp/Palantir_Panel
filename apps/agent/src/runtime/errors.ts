@@ -34,6 +34,12 @@ export const RUNTIME_ERROR_CATALOG = {
   FILE_TOO_LARGE: 'Die Datei ist groesser als das erlaubte Limit.',
   /** Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar. */
   RUNTIME_UNAVAILABLE: 'Die Container-Engine ist nicht erreichbar.',
+  /**
+   * Ein gelesenes Archiv stimmt nicht mit der erwarteten SHA-256-Pruefsumme
+   * ueberein (Backup-Wiederherstellung, Fundpunkt 99). Das Archiv ist beschaedigt
+   * oder wurde veraendert und darf nicht zurueckgespielt werden.
+   */
+  CHECKSUM_MISMATCH: 'Die Pruefsumme des Archivs stimmt nicht mit der erwarteten ueberein.',
   /** Alles Uebrige, was die Engine als Fehler meldet. */
   RUNTIME_ERROR: 'Die Container-Engine hat den Vorgang abgelehnt.',
 } as const satisfies Record<string, string>;

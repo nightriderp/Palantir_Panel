@@ -34,7 +34,7 @@ import type {
 } from '@palantir/contracts';
 import { ContainerRuntimeError, type ContainerRuntime } from '../../runtime/index.js';
 import { resolveWithinDirectory } from '../paths.js';
-import { packDirectory, unpackArchive } from './tar-gz.js';
+import { checksumOfFile, packDirectory, unpackArchive } from './tar-gz.js';
 
 /** Obergrenze eines einzelnen `DOWNLOAD_BACKUP`-Blocks (`AGENT_DOWNLOAD_BLOCK_MAX_BYTES`). */
 export const DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES = 8 * 1024 * 1024;
@@ -140,6 +140,18 @@ export class BackupJob {
     const startedAt = this.#now().toISOString();
     const archiv = resolveWithinDirectory(this.#backupDir, payload.storagePath);
     await this.#erwarteDatei(archiv, payload.storagePath);
+
+    // Integrität **vor** allem anderen prüfen: Ein beschädigtes oder verändertes
+    // Archiv darf weder den laufenden Server anhalten noch den Datenordner
+    // leeren. Die Prüfsumme wird strömend gebildet (kein Vollpuffern), passend
+    // zum Codec, der beim Sichern über dieselben Bytes hasht (Fundpunkt 99).
+    const tatsaechlich = await checksumOfFile(archiv);
+    if (tatsaechlich !== payload.expectedChecksum) {
+      throw new ContainerRuntimeError('CHECKSUM_MISMATCH', {
+        message: `Das Backup-Archiv ${payload.storagePath} stimmt nicht mit der erwarteten Prüfsumme überein.`,
+        details: { archivePath: archiv, expected: payload.expectedChecksum, actual: tatsaechlich },
+      });
+    }
 
     const ziel = resolveWithinDirectory(this.#dataDir, payload.targetPath);
     let angehalten = false;

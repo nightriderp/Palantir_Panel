@@ -213,6 +213,14 @@ export interface RestoreBackupCommandPayload {
   readonly storagePath: string;
   /** Zielordner – derselbe Datenordner wie beim Sichern. */
   readonly targetPath: string;
+  /**
+   * Beim Anlegen gebildete SHA-256 des Archivs (`CreateBackupCommandResult.
+   * checksumSha256`). Der Agent prüft das gelesene Archiv **vor** dem Entpacken
+   * dagegen und bricht bei Abweichung mit `BACKUP_CHECKSUM_MISMATCH` ab, statt
+   * einen beschädigten Stand zurückzuspielen (Fundpunkt 99, Lastenheft §3.3).
+   * Pflichtfeld: Ohne Referenzwert gäbe es nichts zu prüfen.
+   */
+  readonly expectedChecksum: string;
   readonly containerId?: string;
   readonly stopTimeoutSeconds?: number;
 }
