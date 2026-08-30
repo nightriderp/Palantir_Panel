@@ -183,6 +183,7 @@ export function registerServerOrchestration(
       },
       healthCheckIntervalMs: env.HEALTH_CHECK_INTERVAL_MS,
       healthCheckAttemptTimeoutMs: env.HEALTH_CHECK_ATTEMPT_TIMEOUT_MS,
+      maxUploadBytes: env.MAX_UPLOAD_SIZE_BYTES,
       defaultAutoShutdown: {
         ...DEFAULT_AUTO_SHUTDOWN,
         idleTimeoutMinutes: env.AUTO_SHUTDOWN_DEFAULT_IDLE_MINUTES,

@@ -684,9 +684,9 @@ export interface AgentCommandResults {
  * Adapter, nicht in dieser Liste.
  *
  * WELLE 0 hat `FILE_DELETE` und `FILE_UPLOAD` ins Protokoll aufgenommen, ihre
- * Ausführung aber P2 (Datei-Manager) überlassen. Beide fehlen daher hier
- * bewusst und werden bis P2 mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet –
- * genau wie die Backup-Befehle vor A3.
+ * Ausführung aber P2 (Datei-Manager) überlassen. Mit P2 führt der Agent beide
+ * aus (`ContainerRuntime.deleteFile`/`uploadFile`), sie stehen deshalb jetzt in
+ * dieser Liste – genau wie die Backup-Befehle seit A3.
  */
 export const IMPLEMENTED_AGENT_COMMANDS = [
   'CREATE',
@@ -700,6 +700,8 @@ export const IMPLEMENTED_AGENT_COMMANDS = [
   'FILE_LIST',
   'FILE_READ',
   'FILE_WRITE',
+  'FILE_DELETE',
+  'FILE_UPLOAD',
   'CREATE_BACKUP',
   'RESTORE_BACKUP',
   'DOWNLOAD_BACKUP',

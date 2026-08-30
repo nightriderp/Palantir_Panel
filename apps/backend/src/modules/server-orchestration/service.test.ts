@@ -334,6 +334,8 @@ function makeHarness(
     healthy?: boolean | 'pending';
     /** Eigene, serialisierende Reservierung – für den TOCTOU-Test (Punkt 98). */
     buildReservation?: (repository: FakeRepository) => CapacityReservation;
+    /** Upload-Grenze, um sie im Test ohne 64-MiB-Puffer zu erreichen (P2). */
+    maxUploadBytes?: number;
   } = {},
 ): Harness {
   const repository = new FakeRepository();
@@ -433,6 +435,7 @@ function makeHarness(
       crashLoopPolicy: { maxRestarts: 2, windowMinutes: 10 },
       healthCheckIntervalMs: 5_000,
       healthCheckAttemptTimeoutMs: 1_000,
+      maxUploadBytes: options.maxUploadBytes ?? 2 * 1024 * 1024 * 1024,
       defaultAutoShutdown: { enabled: true, idleTimeoutMinutes: 30, graceMinutes: 15 },
     },
     now: (): Date => new Date(clock),
@@ -1247,5 +1250,209 @@ describe('Konsole', () => {
     const exec = harness.socket.commands.find((c) => c.command === 'EXEC_CONSOLE');
 
     expect((exec?.payload as { command: string[] }).command).toEqual(['say', 'hallo', 'welt']);
+  });
+});
+
+/**
+ * Datei-Manager (Arbeitspaket P2, Lastenheft §3.3).
+ *
+ * Zwei Dinge stehen im Mittelpunkt: dass Pfade **relativ zum Datenordner**
+ * hinein- und hinausgehen (und der Agent den absoluten Pfad des jeweiligen
+ * Spiels bekommt), und dass ein Ausbruch aus dem Datenordner den Agent gar
+ * nicht erst erreicht.
+ */
+describe('Datei-Manager (Arbeitspaket P2)', () => {
+  const DATEN_ORDNER = '/usr/share/nginx/html';
+
+  /** Antwort des Agents auf `FILE_LIST` für ein Verzeichnis. */
+  function listenAntwort(containerPath: string, namen: readonly string[]) {
+    return {
+      success: true as const,
+      data: {
+        containerId: 'container-1',
+        path: containerPath,
+        entries: namen.map((name) => ({
+          name,
+          path: `${containerPath}/${name}`,
+          type: 'file' as const,
+          sizeBytes: 12,
+          modifiedAt: '2026-08-30T10:00:00.000Z',
+          mode: '644',
+        })),
+      },
+      error: null,
+    };
+  }
+
+  async function angelegterServer(harness: Harness): Promise<string> {
+    return (await harness.service.createServer(createInput(), OWNER_ID)).id;
+  }
+
+  function befehle(harness: Harness, command: string) {
+    return harness.socket.commands.filter((eintrag) => eintrag.command === command);
+  }
+
+  it('listet relativ zum Datenordner und schickt dem Agent den absoluten Pfad', async () => {
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+    harness.socket.answers.set(
+      'FILE_LIST',
+      listenAntwort(`${DATEN_ORDNER}/welt`, ['level.dat', 'session.lock']),
+    );
+
+    const dto = await harness.service.listFiles(id, 'welt', { writable: true });
+
+    expect(befehle(harness, 'FILE_LIST').at(-1)?.payload).toMatchObject({
+      path: `${DATEN_ORDNER}/welt`,
+    });
+    expect(dto).toMatchObject({ serverId: id, path: 'welt', parentPath: '', writable: true });
+    expect(dto.entries.map((eintrag) => eintrag.path)).toEqual([
+      'welt/level.dat',
+      'welt/session.lock',
+    ]);
+    // Die Upload-Grenze kommt aus der Konfiguration, gedeckelt auf die Kanal-Grenze.
+    expect(dto.maxUploadBytes).toBe(64 * 1024 * 1024);
+  });
+
+  it('lehnt jeden Ausbruch ab, ohne den Agent zu behelligen', async () => {
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+
+    for (const pfad of ['../etc/passwd', '/etc/passwd', 'welt/../../../etc/shadow']) {
+      await expect(harness.service.listFiles(id, pfad, { writable: true })).rejects.toMatchObject({
+        code: 'AGENT_INVALID_PATH',
+      });
+    }
+
+    expect(befehle(harness, 'FILE_LIST')).toEqual([]);
+  });
+
+  it('liest eine Datei samt Änderungszeitpunkt aus dem Verzeichnis', async () => {
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+    harness.socket.answers.set('FILE_LIST', listenAntwort(DATEN_ORDNER, ['index.html']));
+    harness.socket.answers.set('FILE_READ', {
+      success: true,
+      data: {
+        containerId: 'container-1',
+        path: `${DATEN_ORDNER}/index.html`,
+        contentBase64: Buffer.from('<h1>hallo</h1>').toString('base64'),
+        sizeBytes: 14,
+      },
+      error: null,
+    });
+
+    const dto = await harness.service.readFile(id, 'index.html', { writable: true });
+
+    expect(dto).toMatchObject({
+      serverId: id,
+      path: 'index.html',
+      content: '<h1>hallo</h1>',
+      modifiedAt: '2026-08-30T10:00:00.000Z',
+      writable: true,
+    });
+  });
+
+  it('schreibt den Editor-Inhalt Base64-kodiert zurück', async () => {
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+    harness.socket.answers.set('FILE_LIST', listenAntwort(DATEN_ORDNER, ['index.html']));
+
+    await harness.service.writeFile(id, 'index.html', 'neu', { writable: true });
+
+    expect(befehle(harness, 'FILE_WRITE').at(-1)?.payload).toMatchObject({
+      path: `${DATEN_ORDNER}/index.html`,
+      contentBase64: Buffer.from('neu').toString('base64'),
+    });
+  });
+
+  it('lädt ohne overwrite hoch – über den belegten Pfad entscheidet der Agent', async () => {
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+    harness.socket.answers.set('FILE_LIST', listenAntwort(DATEN_ORDNER, ['welt.zip']));
+
+    await harness.service.uploadFile(id, '', 'welt.zip', Buffer.from('PK'), { writable: true });
+
+    const nutzlast = befehle(harness, 'FILE_UPLOAD').at(-1)?.payload as Record<string, unknown>;
+    expect(nutzlast).toMatchObject({ path: `${DATEN_ORDNER}/welt.zip` });
+    // Ohne ausdrückliches Überschreiben fehlt das Feld – der Agent lehnt dann ab.
+    expect('overwrite' in nutzlast).toBe(false);
+  });
+
+  it('reicht ein ausdrückliches overwrite an den Agent durch', async () => {
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+    harness.socket.answers.set('FILE_LIST', listenAntwort(`${DATEN_ORDNER}/welt`, ['welt.zip']));
+
+    await harness.service.uploadFile(id, 'welt', 'welt.zip', Buffer.from('PK'), {
+      writable: true,
+      overwrite: true,
+    });
+
+    expect(befehle(harness, 'FILE_UPLOAD').at(-1)?.payload).toMatchObject({
+      path: `${DATEN_ORDNER}/welt/welt.zip`,
+      overwrite: true,
+    });
+  });
+
+  it('meldet den belegten Zielpfad des Agents als AGENT_FILE_EXISTS weiter', async () => {
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+    harness.socket.answers.set('FILE_UPLOAD', {
+      success: false,
+      data: null,
+      error: { code: 'AGENT_FILE_EXISTS', message: 'Am Zielpfad existiert bereits eine Datei.' },
+    });
+
+    await expect(
+      harness.service.uploadFile(id, '', 'welt.zip', Buffer.from('PK'), { writable: true }),
+    ).rejects.toMatchObject({ code: 'AGENT_FILE_EXISTS' });
+  });
+
+  it('puffert keinen Upload über der zulässigen Größe', async () => {
+    const harness = makeHarness({ maxUploadBytes: 8 });
+    const id = await angelegterServer(harness);
+
+    await expect(
+      harness.service.uploadFile(id, '', 'welt.zip', Buffer.alloc(9), { writable: true }),
+    ).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+    expect(befehle(harness, 'FILE_UPLOAD')).toEqual([]);
+  });
+
+  it('löscht rekursiv und sperrt den Datenordner selbst', async () => {
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+
+    await harness.service.deleteFile(id, 'welt');
+
+    expect(befehle(harness, 'FILE_DELETE').at(-1)?.payload).toMatchObject({
+      path: `${DATEN_ORDNER}/welt`,
+      recursive: true,
+    });
+
+    await expect(harness.service.deleteFile(id, '')).rejects.toMatchObject({
+      code: 'AGENT_INVALID_PATH',
+    });
+    expect(befehle(harness, 'FILE_DELETE')).toHaveLength(1);
+  });
+
+  it('liefert für den Download Dateiname und Inhalt', async () => {
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+    harness.socket.answers.set('FILE_READ', {
+      success: true,
+      data: {
+        containerId: 'container-1',
+        path: `${DATEN_ORDNER}/welt/level.dat`,
+        contentBase64: Buffer.from('rohdaten').toString('base64'),
+        sizeBytes: 8,
+      },
+      error: null,
+    });
+
+    const datei = await harness.service.downloadFile(id, 'welt/level.dat');
+
+    expect(datei.fileName).toBe('level.dat');
+    expect(datei.content.toString('utf8')).toBe('rohdaten');
   });
 });

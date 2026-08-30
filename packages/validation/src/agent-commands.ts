@@ -347,6 +347,8 @@ export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   FILE_LIST: fileListCommandPayloadSchema,
   FILE_READ: fileReadCommandPayloadSchema,
   FILE_WRITE: fileWriteCommandPayloadSchema,
+  FILE_DELETE: fileDeleteCommandPayloadSchema,
+  FILE_UPLOAD: fileUploadCommandPayloadSchema,
   CREATE_BACKUP: createBackupCommandPayloadSchema,
   RESTORE_BACKUP: restoreBackupCommandPayloadSchema,
   DOWNLOAD_BACKUP: downloadBackupCommandPayloadSchema,

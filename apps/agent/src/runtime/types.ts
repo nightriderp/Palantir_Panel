@@ -188,6 +188,26 @@ export interface FileEntry {
   readonly mode: string;
 }
 
+/** Zusatzangaben zu `deleteFile()` (`FILE_DELETE`, Arbeitspaket P2). */
+export interface DeleteFileOptions {
+  /**
+   * Verzeichnis samt Inhalt entfernen. Ohne Angabe lehnt die Runtime das
+   * Loeschen eines nicht-leeren Verzeichnisses ab, damit ein versehentlicher
+   * Klick nicht einen ganzen Datenbaum mitnimmt.
+   */
+  readonly recursive?: boolean;
+}
+
+/** Zusatzangaben zu `uploadFile()` (`FILE_UPLOAD`, Arbeitspaket P2). */
+export interface UploadFileOptions {
+  /**
+   * Bestehende Datei am Zielpfad ersetzen. Ohne Angabe scheitert der Upload auf
+   * einen belegten Pfad mit `FILE_EXISTS` - das ist der einzige
+   * Verhaltensunterschied zu `writeFile()`.
+   */
+  readonly overwrite?: boolean;
+}
+
 export interface StopOptions {
   /** Kulanzzeit fuer SIGTERM vor SIGKILL; ohne Angabe gilt der Wert aus dem Spec. */
   readonly timeoutSeconds?: number;

@@ -21,6 +21,7 @@ import {
   updateServerSettingsInputSchema,
   serverMemberInputSchema,
 } from '@palantir/validation';
+import { type MultipartFile } from '@fastify/multipart';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { requireActor, requirePermission } from '../rbac/index.js';
@@ -39,6 +40,66 @@ export interface ServerRoutesOptions {
 }
 
 const serverIdParamsSchema = z.object({ id: z.string().uuid() });
+
+/** Ein hochgeladener Datei-Teil samt der Felder, die daneben im Formular stehen. */
+interface FileUploadInput {
+  /** Zielordner, relativ zum Datenordner; `''` ist die Wurzel. */
+  readonly path: string;
+  readonly fileName: string;
+  readonly content: Buffer;
+  readonly overwrite?: boolean;
+}
+
+/** Textfeld aus einem Multipart-Formular; `undefined`, wenn es fehlt. */
+function multipartField(fields: MultipartFile['fields'], name: string): string | undefined {
+  const feld = fields[name];
+  const eintrag = Array.isArray(feld) ? feld[0] : feld;
+
+  if (eintrag === undefined || eintrag.type !== 'field') return undefined;
+
+  return typeof eintrag.value === 'string' ? eintrag.value : undefined;
+}
+
+/**
+ * Liest den Datei-Teil eines Uploads und puffert ihn genau einmal.
+ *
+ * Die Größengrenze steht in der Multipart-Registrierung (`server.ts`,
+ * `MAX_UPLOAD_SIZE_BYTES`): Der Datenstrom wird dort abgebrochen, statt hier
+ * unbegrenzt zu wachsen. `truncated` ist das Signal dafür – ohne die Prüfung
+ * käme eine halbe Datei im Container an.
+ */
+async function readUpload(request: FastifyRequest): Promise<FileUploadInput> {
+  if (!request.isMultipart()) {
+    throw new ServerOrchestrationError(
+      'VALIDATION_FAILED',
+      'Der Upload muss als multipart/form-data gesendet werden.',
+    );
+  }
+
+  const datei = await request.file();
+
+  if (datei === undefined) {
+    throw new ServerOrchestrationError('VALIDATION_FAILED', 'Im Upload fehlt das Feld „file".');
+  }
+
+  const content = await datei.toBuffer();
+
+  if (datei.file.truncated) {
+    throw new ServerOrchestrationError(
+      'FILE_TOO_LARGE',
+      'Die Datei überschreitet die zulässige Upload-Größe.',
+    );
+  }
+
+  const overwrite = multipartField(datei.fields, 'overwrite');
+
+  return {
+    path: multipartField(datei.fields, 'path') ?? '',
+    fileName: datei.filename,
+    content,
+    ...(overwrite === undefined ? {} : { overwrite: overwrite === 'true' }),
+  };
+}
 const memberParamsSchema = z.object({ id: z.string().uuid(), userId: z.string().uuid() });
 
 /** Antwortet mit dem Envelope aus §5.1 und dem HTTP-Status des Fehlercodes. */
@@ -396,14 +457,140 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     }
   });
 
+  // -- Datei-Manager (Arbeitspaket P2, Lastenheft §3.3) -----------------------
+  //
+  // Pfade sind durchgehend **relativ zum Datenordner** des Servers, `''` ist
+  // die Wurzel – dieselbe Sicht wie im Frontend (`FilesTab.tsx`). Die
+  // Übersetzung in absolute Container-Pfade und die Einsperrung auf den
+  // Datenordner passieren im Dienst (`files.ts`), nicht hier.
+  //
+  // Alle Routen hängen an `canManageFiles`: Der Datei-Manager ist eine
+  // Berechtigung, kein Lese-/Schreib-Paar. `writable` im DTO ist deshalb
+  // dasselbe Flag – es steht im Vertrag, damit die Oberfläche es nicht selbst
+  // herleiten muss.
+
+  const filePathQuerySchema = z.object({ path: z.string().max(4_096) });
+
   app.get('/api/servers/:id/files', async (request, reply) => {
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
-      const query = z.object({ path: z.string().startsWith('/') }).parse(request.query);
+      const query = filePathQuerySchema.parse(request.query);
+
+      const { dto } = await loadAuthorized(request, id, 'canManageFiles');
+
+      return await reply.send(
+        ok(await service.listFiles(id, query.path, { writable: dto.permissions.canManageFiles })),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  app.get('/api/servers/:id/files/content', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const query = filePathQuerySchema.parse(request.query);
+
+      const { dto } = await loadAuthorized(request, id, 'canManageFiles');
+
+      return await reply.send(
+        ok(await service.readFile(id, query.path, { writable: dto.permissions.canManageFiles })),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  app.put('/api/servers/:id/files/content', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const input = z
+        .object({ path: z.string().max(4_096), content: z.string() })
+        .parse(request.body);
+
+      const { dto } = await loadAuthorized(request, id, 'canManageFiles');
+
+      return await reply.send(
+        ok(
+          await service.writeFile(id, input.path, input.content, {
+            writable: dto.permissions.canManageFiles,
+          }),
+        ),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  /**
+   * Datei hochladen (`multipart/form-data`: `path` = Zielordner, `file` = Datei).
+   *
+   * Die Größengrenze steckt in zwei Stufen: `@fastify/multipart` bricht den
+   * Datenstrom bei `MAX_UPLOAD_SIZE_BYTES` ab (nichts wird darüber hinaus
+   * gepuffert), der Dienst prüft die tatsächlich gelesene Größe noch einmal
+   * gegen die Agent-Kanal-Grenze.
+   */
+  app.post('/api/servers/:id/files', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+
+      const { dto } = await loadAuthorized(request, id, 'canManageFiles');
+
+      const upload = await readUpload(request);
+
+      return await reply.send(
+        ok(
+          await service.uploadFile(id, upload.path, upload.fileName, upload.content, {
+            writable: dto.permissions.canManageFiles,
+            ...(upload.overwrite === undefined ? {} : { overwrite: upload.overwrite }),
+          }),
+        ),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  app.delete('/api/servers/:id/files', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const input = z
+        .object({ path: z.string().max(4_096), recursive: z.boolean().optional() })
+        .parse(request.body);
+
+      await loadAuthorized(request, id, 'canManageFiles');
+      await service.deleteFile(id, input.path, input.recursive ?? true);
+
+      return await reply.send(ok(null));
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  /**
+   * Einzelne Datei herunterladen.
+   *
+   * Wird als Link geöffnet (`fileDownloadUrl()` im Frontend) und liefert
+   * deshalb keinen Envelope, sondern die Datei selbst. Fehler dagegen laufen
+   * wie überall über `fail()` – ein fehlgeschlagener Download soll nicht als
+   * beschädigte Datei im Downloadordner landen.
+   */
+  app.get('/api/servers/:id/files/download', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const query = filePathQuerySchema.parse(request.query);
 
       await loadAuthorized(request, id, 'canManageFiles');
 
-      return await reply.send(ok(await service.listFiles(id, query.path)));
+      const datei = await service.downloadFile(id, query.path);
+
+      return await reply
+        .header('content-type', 'application/octet-stream')
+        .header(
+          'content-disposition',
+          `attachment; filename="${datei.fileName.replaceAll('"', '')}"`,
+        )
+        .send(datei.content);
     } catch (error: unknown) {
       return replyWithError(reply, error);
     }

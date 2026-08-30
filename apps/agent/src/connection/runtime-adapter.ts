@@ -65,6 +65,7 @@ export const RUNTIME_ERROR_TO_API_CODE: Record<ContainerRuntimeErrorCode, ErrorC
   INVALID_PATH: 'AGENT_INVALID_PATH',
   FILE_NOT_FOUND: 'AGENT_FILE_NOT_FOUND',
   FILE_TOO_LARGE: 'AGENT_FILE_TOO_LARGE',
+  FILE_EXISTS: 'AGENT_FILE_EXISTS',
   RUNTIME_UNAVAILABLE: 'AGENT_RUNTIME_UNAVAILABLE',
   RUNTIME_ERROR: 'AGENT_COMMAND_FAILED',
   CHECKSUM_MISMATCH: 'BACKUP_CHECKSUM_MISMATCH',
@@ -287,6 +288,28 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
       case 'FILE_WRITE': {
         const p = payload as { containerId: string; path: string; contentBase64: string };
         await this.runtime.writeFile(p.containerId, p.path, Buffer.from(p.contentBase64, 'base64'));
+        return null;
+      }
+      case 'FILE_DELETE': {
+        const p = payload as { containerId: string; path: string; recursive?: boolean };
+        await this.runtime.deleteFile(p.containerId, p.path, {
+          ...(p.recursive === undefined ? {} : { recursive: p.recursive }),
+        });
+        return null;
+      }
+      case 'FILE_UPLOAD': {
+        const p = payload as {
+          containerId: string;
+          path: string;
+          contentBase64: string;
+          overwrite?: boolean;
+        };
+        await this.runtime.uploadFile(
+          p.containerId,
+          p.path,
+          Buffer.from(p.contentBase64, 'base64'),
+          { ...(p.overwrite === undefined ? {} : { overwrite: p.overwrite }) },
+        );
         return null;
       }
 

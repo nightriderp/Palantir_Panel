@@ -41,6 +41,7 @@ import {
   type ContainerState,
   type ContainerStats,
   type ContainerStatus,
+  type DeleteFileOptions,
   type ExecResult,
   type FileEntry,
   type GetLogsOptions,
@@ -49,6 +50,7 @@ import {
   type RemoveImageOptions,
   type RemoveOptions,
   type StopOptions,
+  type UploadFileOptions,
   type WatchOptions,
 } from '../types.js';
 
@@ -109,6 +111,8 @@ export type FakeFailableMethod =
   | 'listFiles'
   | 'readFile'
   | 'writeFile'
+  | 'deleteFile'
+  | 'uploadFile'
   | 'watch'
   | 'listImages'
   | 'removeImage';
@@ -468,6 +472,77 @@ export class FakeContainerRuntime implements ContainerRuntime {
     });
   }
 
+  /**
+   * `FILE_UPLOAD` - wie {@link writeFile}, aber mit Existenzpruefung.
+   *
+   * Als Verzeichnis gilt hier - wie in {@link listFiles} - jeder Pfad, unter dem
+   * mindestens eine Datei liegt; auch der belegt den Namen.
+   */
+  async uploadFile(
+    containerId: string,
+    datei: string,
+    inhalt: Buffer,
+    options: UploadFileOptions = {},
+  ): Promise<void> {
+    this.#pruefeFehlerfall('uploadFile');
+    const container = this.#hole(containerId);
+    const pfad = resolveWithinRoot(container.spec.dataVolume.containerPath, datei);
+
+    if (inhalt.length > this.#maxFileBytes) {
+      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
+        details: { path: pfad, sizeBytes: inhalt.length, maxBytes: this.#maxFileBytes },
+      });
+    }
+
+    if (options.overwrite !== true && this.#existiert(container, pfad)) {
+      throw new ContainerRuntimeError('FILE_EXISTS', { details: { path: pfad } });
+    }
+
+    container.dateien.set(pfad, {
+      content: inhalt,
+      mode: container.dateien.get(pfad)?.mode ?? '644',
+      modifiedAt: this.#jetzt(),
+    });
+  }
+
+  /** `FILE_DELETE` - idempotent; ein nicht-leeres Verzeichnis nur mit `recursive`. */
+  async deleteFile(
+    containerId: string,
+    ziel: string,
+    options: DeleteFileOptions = {},
+  ): Promise<void> {
+    this.#pruefeFehlerfall('deleteFile');
+    const container = this.#hole(containerId);
+    const wurzel = container.spec.dataVolume.containerPath;
+    const pfad = resolveWithinRoot(wurzel, ziel);
+
+    if (pfad === path.posix.normalize(wurzel)) {
+      throw new ContainerRuntimeError('INVALID_PATH', {
+        message: 'Der Datenordner selbst kann nicht geloescht werden.',
+        details: { path: pfad },
+      });
+    }
+
+    if (container.dateien.delete(pfad)) return;
+
+    const praefix = `${pfad}/`;
+    const enthalten = [...container.dateien.keys()].filter((kandidat) =>
+      kandidat.startsWith(praefix),
+    );
+
+    // Ein fehlender Pfad ist kein Fehler (idempotent wie in der Docker-Variante).
+    if (enthalten.length === 0) return;
+
+    if (options.recursive !== true) {
+      throw new ContainerRuntimeError('RUNTIME_ERROR', {
+        message: 'Das Verzeichnis ist nicht leer.',
+        details: { path: pfad, entries: enthalten.length },
+      });
+    }
+
+    for (const kandidat of enthalten) container.dateien.delete(kandidat);
+  }
+
   // ---------------------------------------------------------------- Test-Steuerung
 
   /** Erzeugungs-Payload eines Containers - damit laesst sich die Haertung pruefen. */
@@ -565,6 +640,17 @@ export class FakeContainerRuntime implements ContainerRuntime {
 
   #jetzt(): string {
     return this.#now().toISOString();
+  }
+
+  /** Ist der Pfad belegt - als Datei oder als (impliziter) Ordner? */
+  #existiert(container: FakeContainer, pfad: string): boolean {
+    if (container.dateien.has(pfad)) return true;
+
+    const praefix = `${pfad}/`;
+    for (const kandidat of container.dateien.keys()) {
+      if (kandidat.startsWith(praefix)) return true;
+    }
+    return false;
   }
 
   #hole(containerId: string): FakeContainer {
