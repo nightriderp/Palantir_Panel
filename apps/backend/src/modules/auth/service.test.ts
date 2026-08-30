@@ -23,11 +23,13 @@ let repository: FakeAuthRepository;
 let roles: FakeRoleRepository;
 let now: Date;
 let service: AuthService;
+let emittedEvents: { event: string; payload: Record<string, unknown> }[];
 
 function build(options: { providers?: ReturnType<typeof createFakeProviderRegistry> } = {}): void {
   repository = createFakeAuthRepository();
   roles = createFakeRoleRepository([{ name: 'Nutzer', permissions: ['server.create'] }]);
   now = new Date('2026-08-26T12:00:00Z');
+  emittedEvents = [];
   service = new AuthService({
     repository,
     roles,
@@ -37,6 +39,11 @@ function build(options: { providers?: ReturnType<typeof createFakeProviderRegist
     twoFactorTokenTtlMs: TWO_FACTOR_TTL_MS,
     totpIssuer: 'palantir.example',
     now: () => now,
+    events: {
+      emit: (event, payload): void => {
+        emittedEvents.push({ event, payload });
+      },
+    },
   });
 }
 
@@ -75,6 +82,20 @@ describe('Registrierung (Lastenheft §3.1)', () => {
     expect(account.awaitingApproval).toBe(true);
     // Die Gast-Rolle bringt keinerlei Berechtigung mit.
     expect(Object.values(account.permissions).every((flag) => flag === false)).toBe(true);
+  });
+
+  it('meldet user.registered an die Notification-Engine (Pflichtenheft §14)', async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+
+    expect(emittedEvents).toEqual([
+      {
+        event: 'user.registered',
+        payload: { userId: account.id, displayName: 'spieler', awaitingApproval: true },
+      },
+    ]);
   });
 
   it('speichert das Passwort ausschließlich als Argon2id-Hash', async () => {
@@ -464,6 +485,34 @@ describe('Anbieter-Login und Account-Linking (Lastenheft §3.1)', () => {
     expect(outcome.account.roles.map((role) => role.name)).toEqual([GUEST_ROLE_NAME]);
     expect(outcome.account.authMethods[0]?.type).toBe('discord');
     expect(outcome.account.authMethods[0]?.providerUserId).toBe('discord-1234');
+    // Auch die Erstanmeldung über einen Anbieter ist eine Registrierung.
+    expect(emittedEvents).toEqual([
+      {
+        event: 'user.registered',
+        payload: {
+          userId: outcome.account.id,
+          displayName: outcome.account.displayName,
+          awaitingApproval: true,
+        },
+      },
+    ]);
+  });
+
+  it('meldet bei bekannter Identität kein zweites user.registered', async () => {
+    await service.completeProviderLogin(
+      'discord',
+      { state: 'state-discord' },
+      pendingDiscord,
+      CONTEXT,
+    );
+    await service.completeProviderLogin(
+      'discord',
+      { state: 'state-discord' },
+      pendingDiscord,
+      CONTEXT,
+    );
+
+    expect(emittedEvents.filter((entry) => entry.event === 'user.registered')).toHaveLength(1);
   });
 
   it('meldet bei bekannter Identität dasselbe Konto an', async () => {

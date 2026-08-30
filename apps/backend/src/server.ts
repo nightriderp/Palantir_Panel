@@ -14,12 +14,15 @@ import {
   registerBackupRoutes,
 } from './modules/backups/index.js';
 import {
+  buildResourceService,
   createDrizzleHostNodeRepository as createResourceHostNodeRepository,
   createNodeUsageSource,
 } from './modules/resources/index.js';
 import {
+  type AuthEventSink,
   type AuthModuleOptions,
   type AuthService,
+  noopAuthEventSink,
   registerAuthModule,
 } from './modules/auth/index.js';
 import { registerNotifications } from './modules/notifications/index.js';
@@ -43,7 +46,12 @@ import {
 } from './modules/server-orchestration/index.js';
 import { registerArcade } from './modules/arcade/index.js';
 import { registerHealthRoutes } from './routes/health.js';
-import { autoShutdownTask, backupScheduleTask, startScheduler } from './scheduler.js';
+import {
+  autoShutdownTask,
+  backupScheduleTask,
+  resourceWarningTask,
+  startScheduler,
+} from './scheduler.js';
 
 export interface BuildServerOptions {
   /**
@@ -139,8 +147,22 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   const auth = options.auth ?? true;
   let authService: AuthService | null = null;
 
+  /*
+   * B1 wird vor B6 eingehängt (die Auth-Hooks müssen früh laufen), meldet aber
+   * `user.registered` an die Notification-Engine. Deshalb eine später gesetzte
+   * Weiterleitung: Bis die Senke aus B6 steht, verwirft sie still; danach
+   * schickt sie das Ereignis dorthin. `emit()` wirft nie (Pflichtenheft §14).
+   */
+  let notificationEventSink: AuthEventSink = noopAuthEventSink;
+  const authEventSink: AuthEventSink = {
+    emit: (event, payload) => notificationEventSink.emit(event, payload),
+  };
+
   if (auth !== false) {
-    authService = await registerAuthModule(app, auth === true ? {} : auth);
+    authService = await registerAuthModule(app, {
+      ...(auth === true ? {} : auth),
+      events: authEventSink,
+    });
   }
 
   // Muss vor den Routen laufen: der Guard aus B2 liest `request.permissionActor`.
@@ -240,6 +262,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       log: app.log,
     });
 
+    // Ab hier meldet B1 `user.registered` an B6 (siehe Weiterleitung oben).
+    notificationEventSink = notifications.eventSink;
+
     const orchestration = registerServerOrchestration(app, {
       db,
       agents,
@@ -328,12 +353,21 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * periodischen Abläufe. Intervall und Verhalten bei Überschneidung sind im
      * Kopf von `scheduler.ts` begründet.
      */
+    /*
+     * Ressourcen-Warnungen (B4) laufen über dieselbe Zählung wie die harte
+     * Kapazitätsprüfung – `serverUsage` gegen die Node-Ressourcen. Ausgelöst
+     * wird `resource.low` in den Takt hinein (WORK_STATUS.md, Gefundener
+     * Punkt 80).
+     */
+    const resources = buildResourceService(serverUsage);
+
     const scheduler = startScheduler({
       intervalMs: env.SCHEDULER_INTERVAL_MS,
       log: app.log,
       tasks: [
         autoShutdownTask(orchestration, agents, app.log),
         backupScheduleTask(backupSchedules, app.log),
+        resourceWarningTask(resources, notifications.eventSink, app.log),
       ],
     });
 

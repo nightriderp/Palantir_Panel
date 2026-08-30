@@ -40,6 +40,8 @@
  * Auto-Shutdown darf keine geplanten Backups anhalten.
  */
 
+import type { ResourceLowEvent } from '@palantir/contracts';
+
 /** Eine Aufgabe, die der Zeitgeber periodisch anstößt. */
 export interface ScheduledTask {
   /** Name für das Protokoll – erscheint bei Fehlern und im Debug-Log. */
@@ -231,6 +233,60 @@ export function backupScheduleTask(
           },
           'Geplante Backups ausgewertet',
         );
+      }
+    },
+  };
+}
+
+/** Ausschnitt des Ressourcen-Service, den der Zeitgeber braucht (B4). */
+export interface NodeWarningEvaluator {
+  evaluateAllNodeWarnings(): Promise<readonly ResourceLowEvent[]>;
+}
+
+/**
+ * Ereignissenke, wie B3/B5/B7 sie bekommen – hier für `resource.low`.
+ *
+ * Bewusst dieselbe schmale Form wie in `server.ts`: Der Zeitgeber kennt B6 nicht,
+ * er reicht die Nutzlast nur weiter. `emit()` wirft nie (Pflichtenheft §14).
+ */
+export interface ResourceEventSink {
+  emit(event: string, payload: Record<string, unknown>): void;
+}
+
+/**
+ * Ressourcen-Warnungen periodisch auswerten und als `resource.low` melden
+ * (Pflichtenheft §10 und §14).
+ *
+ * Der fehlende Takt aus WORK_STATUS.md (Gefundener Punkt 80): Die Auswertung in
+ * B4 (`evaluateNodeWarnings()`) rechnet die Nutzlast, ausgelöst wird sie hier.
+ * Kein eigener Timer – die eine Stelle für periodische Abläufe ist dieser
+ * Zeitgeber.
+ *
+ * Ausgewertet wird die **Node-Ebene** (Belegung der VM gegen ihre
+ * Gesamt-Ressourcen). Die Server-Ebene (`evaluateServerWarnings()`) braucht
+ * gemessene Live-Werte je Container; dass das Agent-Protokoll dafür noch keinen
+ * node-weiten Wert kennt, ist in `modules/resources/node-usage.ts` und in
+ * WORK_STATUS.md vermerkt und gehört nicht in dieses Verdrahtungs-Paket.
+ */
+export function resourceWarningTask(
+  resources: NodeWarningEvaluator,
+  sink: ResourceEventSink,
+  log: SchedulerLogger,
+): ScheduledTask {
+  return {
+    name: 'resourceWarnings',
+    async run(): Promise<void> {
+      const warnings = await resources.evaluateAllNodeWarnings();
+
+      for (const warning of warnings) {
+        // ResourceLowEvent (B4) → Nutzlast von `resource.low` (B6): nur `ownerId`
+        // ergänzt; `at` trägt das Ereignis schon, `actorId` setzt die Senke.
+        // Node-Ebene hat keinen Besitzer, deshalb `ownerId: null`.
+        sink.emit('resource.low', { ...warning, ownerId: null });
+      }
+
+      if (warnings.length > 0) {
+        log.debug({ count: warnings.length }, 'Ressourcen-Warnungen gemeldet');
       }
     },
   };

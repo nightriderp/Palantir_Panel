@@ -89,6 +89,24 @@ export interface ProviderLoginOutcome {
   readonly created: boolean;
 }
 
+/**
+ * Ereignissenke der Notification-Engine (B6), wie sie B3/B5/B7 bekommen.
+ *
+ * Bewusst dieselbe schmale Form wie `OrchestrationEventSink`: B1 kennt B6 nicht,
+ * es meldet nur `user.registered`. `emit()` wirft nie (Pflichtenheft §14), der
+ * Registrierungs-Ablauf hängt also nie an der Zustellung.
+ */
+export interface AuthEventSink {
+  emit(event: string, payload: Record<string, unknown>): void;
+}
+
+/** Senke, solange B6 nicht eingehängt ist (Tests, Betrieb ohne Notifications). */
+export const noopAuthEventSink: AuthEventSink = {
+  emit() {
+    // absichtlich leer
+  },
+};
+
 export interface AuthServiceOptions {
   readonly repository: AuthRepository;
   /** Aus B2 – für die Gast-Rolle und die effektiven Rechte am Konto-DTO. */
@@ -103,6 +121,8 @@ export interface AuthServiceOptions {
   readonly totpIssuer: string;
   /** Einspeisbar, damit Tests feste Zeitpunkte setzen können. */
   readonly now?: () => Date;
+  /** Notification-Senke aus B6; ohne Angabe wird nichts gemeldet. */
+  readonly events?: AuthEventSink;
 }
 
 export class AuthService {
@@ -114,6 +134,7 @@ export class AuthService {
   private readonly twoFactorTokenTtlMs: number;
   private readonly totpIssuer: string;
   private readonly now: () => Date;
+  private readonly events: AuthEventSink;
 
   constructor(options: AuthServiceOptions) {
     this.repository = options.repository;
@@ -124,6 +145,21 @@ export class AuthService {
     this.twoFactorTokenTtlMs = options.twoFactorTokenTtlMs;
     this.totpIssuer = options.totpIssuer;
     this.now = options.now ?? ((): Date => new Date());
+    this.events = options.events ?? noopAuthEventSink;
+  }
+
+  /**
+   * Meldet `user.registered` an die Notification-Engine (Pflichtenheft §14).
+   *
+   * `awaitingApproval` kommt aus dem fertig gebauten Konto-DTO – dieselbe Regel
+   * wie überall (`isAwaitingApproval`, siehe `dto.ts`), nicht hier neu geraten.
+   */
+  private emitUserRegistered(account: AccountDto): void {
+    this.events.emit('user.registered', {
+      userId: account.id,
+      displayName: account.displayName,
+      awaitingApproval: account.awaitingApproval,
+    });
   }
 
   // -- Konto laden ----------------------------------------------------------
@@ -199,7 +235,10 @@ export class AuthService {
 
     const session = await this.issueSession(user.id, context);
 
-    return { account: await this.loadAccount(user), session };
+    const account = await this.loadAccount(user);
+    this.emitUserRegistered(account);
+
+    return { account, session };
   }
 
   /**
@@ -533,8 +572,13 @@ export class AuthService {
     });
     await this.assignGuestRole(user.id);
 
+    const account = await this.loadAccount(user);
+    // Auch die Erstanmeldung über einen Anbieter ist eine Registrierung
+    // (Lastenheft §3.1, `created: true`) und meldet `user.registered`.
+    this.emitUserRegistered(account);
+
     return {
-      account: await this.loadAccount(user),
+      account,
       session: await this.issueSession(user.id, context),
       created: true,
     };
