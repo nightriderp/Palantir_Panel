@@ -21,6 +21,7 @@ import type {
   NotificationAuditSink,
   NotificationTransport,
   RecipientDirectory,
+  RoleNameLookup,
 } from './ports.js';
 import {
   createDrizzleNotificationRepository,
@@ -93,6 +94,13 @@ export interface NotificationModuleOptions {
   readonly deliveryTimeoutMs?: number;
   readonly audit?: NotificationAuditSink;
   readonly log?: NotificationLogger;
+  /**
+   * Nachschlag „Rollen-Id → Name" für die Regelübersicht (F10).
+   *
+   * Wird in `server.ts` mit B2 hinterlegt; fehlt der Wert, zeigt die Übersicht
+   * die Rollen-Id statt des Namens (siehe {@link RoleNameLookup}).
+   */
+  readonly roles?: RoleNameLookup;
   /** Nur für Tests: eigene Umsetzungen statt Discord bzw. Drizzle. */
   readonly transport?: NotificationTransport;
   readonly directory?: RecipientDirectory;
@@ -117,6 +125,7 @@ export function createNotificationModule(options: NotificationModuleOptions): No
         options.deliveryTimeoutMs === undefined ? {} : { timeoutMs: options.deliveryTimeoutMs },
       ),
     live: hub,
+    ...(options.roles === undefined ? {} : { roles: options.roles }),
     ...(options.audit === undefined ? {} : { audit: options.audit }),
     ...(options.jobs === undefined ? {} : { jobs: options.jobs }),
     ...(options.log === undefined ? {} : { log: options.log }),
