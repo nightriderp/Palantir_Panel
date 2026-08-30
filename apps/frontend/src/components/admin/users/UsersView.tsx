@@ -5,6 +5,7 @@ import {
   type RegistrationRequestDto,
   type RegistrationRequestStatus,
   type RoleDto,
+  type UserResourceLimitDto,
 } from '@palantir/contracts';
 import { useMemo, useState } from 'react';
 import {
@@ -28,12 +29,15 @@ import { useSession } from '@/app/(dashboard)/SessionProvider';
 import {
   assignRole,
   blockRegistrationRequest,
+  clearUserLimits,
   fetchAllServers,
   fetchRegistrationRequests,
   fetchRoles,
+  fetchUserLimits,
   removeRole,
   resetUserPassword,
   resetUserTwoFactor,
+  setUserLimits,
   unblockRegistrationRequest,
 } from '@/lib/api/admin';
 import { errorText } from '@/lib/api/client';
@@ -50,9 +54,10 @@ import { registrationStatusLabel, registrationStatusTone } from '../labels';
  * zurücksetzen, 2FA zurücksetzen, Server einsehen. Jede Aktion hängt am
  * `permissions`-Objekt bzw. wird vom Backend erneut geprüft.
  *
- * **Kontingente (RAM/CPU/Speicher/Serveranzahl)** fehlen hier bewusst: Das
- * Backend hat dafür (noch) keinen Endpunkt (`ResourceService.setUserLimits` ist
- * nicht verdrahtet). Vermerkt unter „Gefundene Punkte" in WORK_STATUS.md.
+ * **Kontingente (RAM/CPU/Speicher/Serveranzahl)** hängen am
+ * `ResourceService` (B4) über die Routen `/admin/users/:userId/limits`
+ * (Gefundener Punkt 88). Der Dialog lädt den DTO samt Belegung und blendet das
+ * Bearbeiten allein am `permissions.canEdit` des DTOs ein.
  */
 
 const STATUS_FILTERS: RegistrationRequestStatus[] = ['approved', 'pending', 'blocked'];
@@ -60,6 +65,7 @@ const STATUS_FILTERS: RegistrationRequestStatus[] = ['approved', 'pending', 'blo
 type Dialog =
   | { kind: 'roles'; user: RegistrationRequestDto }
   | { kind: 'servers'; user: RegistrationRequestDto }
+  | { kind: 'limits'; user: RegistrationRequestDto }
   | { kind: 'block'; user: RegistrationRequestDto }
   | { kind: 'resetTwoFactor'; user: RegistrationRequestDto }
   | { kind: 'password'; user: RegistrationRequestDto; temporary: string }
@@ -226,6 +232,13 @@ export function UsersView() {
                   </Button>
                   <Button
                     variant="secondary"
+                    iconLeft="database"
+                    onClick={() => setDialog({ kind: 'limits', user: entry })}
+                  >
+                    Kontingent
+                  </Button>
+                  <Button
+                    variant="secondary"
                     iconLeft="key"
                     onClick={() => void doReset(entry.userId, entry.displayName)}
                   >
@@ -276,6 +289,10 @@ export function UsersView() {
 
       {dialog?.kind === 'servers' ? (
         <ServersDialog user={dialog.user} onClose={() => setDialog(null)} />
+      ) : null}
+
+      {dialog?.kind === 'limits' ? (
+        <LimitsDialog user={dialog.user} onClose={() => setDialog(null)} />
       ) : null}
 
       {dialog?.kind === 'block' ? (
@@ -404,6 +421,198 @@ function ServersDialog({ user, onClose }: { user: RegistrationRequestDto; onClos
         )}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Kontingent eines Nutzers ansehen und setzen (Lastenheft §3.4, Pflichtenheft
+ * §10). Lädt den DTO samt aktueller Belegung über `/admin/users/:id/limits`.
+ */
+function LimitsDialog({ user, onClose }: { user: RegistrationRequestDto; onClose: () => void }) {
+  const resource = useApiResource<UserResourceLimitDto>(
+    (signal) => fetchUserLimits(user.userId, signal),
+    [user.userId],
+  );
+
+  return (
+    <Modal open onClose={onClose} title={`Kontingent von „${user.displayName}"`}>
+      <div className="pb-2">
+        {resource.loading ? (
+          <p className="text-sm text-ink-faint">Kontingent wird geladen …</p>
+        ) : resource.error ? (
+          <p className="text-sm text-danger">{resource.error}</p>
+        ) : resource.data ? (
+          <LimitsForm dto={resource.data} onClose={onClose} />
+        ) : null}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Ein einzelnes Kontingent-Feld: leeres Feld bedeutet „kein Limit". Die aktuelle
+ * Belegung steht als Hinweis darunter, damit sichtbar ist, ob der Nutzer bereits
+ * über einer gerade gesetzten Grenze liegt.
+ */
+function LimitField({
+  label,
+  unit,
+  value,
+  usageHint,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  unit: string;
+  value: string;
+  usageHint: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-sm text-ink-muted">{label}</span>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          inputMode="decimal"
+          min={0}
+          step="any"
+          value={value}
+          disabled={disabled}
+          placeholder="kein Limit"
+          onChange={(event) => onChange(event.target.value)}
+          className="w-full rounded-md border border-line-strong bg-fill px-3 py-2.5 text-base text-ink outline-none placeholder:text-ink-disabled focus-visible:border-brand disabled:opacity-60"
+        />
+        <span className="shrink-0 text-sm text-ink-faint">{unit}</span>
+      </div>
+      <span className="text-2xs text-ink-faint">{usageHint}</span>
+    </label>
+  );
+}
+
+/** Wandelt den gespeicherten Zahlenwert in Feldtext; `null` → leeres Feld. */
+function limitToField(value: number | null): string {
+  return value === null ? '' : String(value);
+}
+
+/** Feldtext in einen Kontingent-Wert; leer → `null` (kein Limit). */
+function fieldToLimit(value: string): number | null {
+  const trimmed = value.trim();
+  return trimmed === '' ? null : Number(trimmed);
+}
+
+function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () => void }) {
+  const toast = useToast();
+  const canEdit = dto.permissions.canEdit;
+
+  const [ram, setRam] = useState(() => limitToField(dto.limits.maxRamMb));
+  const [cpu, setCpu] = useState(() => limitToField(dto.limits.maxCpuCores));
+  const [disk, setDisk] = useState(() => limitToField(dto.limits.maxDiskMb));
+  const [servers, setServers] = useState(() => limitToField(dto.limits.maxConcurrentServers));
+  const [busy, setBusy] = useState(false);
+
+  const hasLimit =
+    dto.limits.maxRamMb !== null ||
+    dto.limits.maxCpuCores !== null ||
+    dto.limits.maxDiskMb !== null ||
+    dto.limits.maxConcurrentServers !== null;
+
+  async function save() {
+    const fields = [ram, cpu, disk, servers];
+    if (fields.some((field) => field.trim() !== '' && Number.isNaN(Number(field)))) {
+      toast.error('Bitte nur Zahlen eingeben oder das Feld leer lassen.');
+      return;
+    }
+
+    setBusy(true);
+    const result = await setUserLimits(dto.userId, {
+      maxRamMb: fieldToLimit(ram),
+      maxCpuCores: fieldToLimit(cpu),
+      maxDiskMb: fieldToLimit(disk),
+      maxConcurrentServers: fieldToLimit(servers),
+    });
+    setBusy(false);
+
+    if (result.success) {
+      toast.success('Kontingent gespeichert.');
+      onClose();
+    } else {
+      toast.error(errorText(result));
+    }
+  }
+
+  async function clear() {
+    setBusy(true);
+    const result = await clearUserLimits(dto.userId);
+    setBusy(false);
+
+    if (result.success) {
+      toast.success('Kontingent aufgehoben.');
+      onClose();
+    } else {
+      toast.error(errorText(result));
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-ink-faint">
+        Ein leeres Feld bedeutet: kein Limit. Die harte Kapazität der Node greift unabhängig davon.
+      </p>
+
+      <div className="flex flex-col gap-3">
+        <LimitField
+          label="Arbeitsspeicher"
+          unit="MiB"
+          value={ram}
+          usageHint={`belegt: ${dto.usage.runningRamMb} MiB (laufend)`}
+          disabled={!canEdit || busy}
+          onChange={setRam}
+        />
+        <LimitField
+          label="CPU"
+          unit="Kerne"
+          value={cpu}
+          usageHint={`belegt: ${dto.usage.runningCpuCores} Kerne (laufend)`}
+          disabled={!canEdit || busy}
+          onChange={setCpu}
+        />
+        <LimitField
+          label="Speicherplatz"
+          unit="MiB"
+          value={disk}
+          usageHint={`belegt: ${dto.usage.allocatedDiskMb} MiB (alle Server)`}
+          disabled={!canEdit || busy}
+          onChange={setDisk}
+        />
+        <LimitField
+          label="Gleichzeitige Server"
+          unit="Anzahl"
+          value={servers}
+          usageHint={`laufend: ${dto.usage.runningServers} · gesamt: ${dto.usage.totalServers}`}
+          disabled={!canEdit || busy}
+          onChange={setServers}
+        />
+      </div>
+
+      {canEdit ? (
+        <div className="flex flex-wrap justify-end gap-2">
+          {hasLimit ? (
+            <Button variant="danger" iconLeft="trash" disabled={busy} onClick={() => void clear()}>
+              Aufheben
+            </Button>
+          ) : null}
+          <Button variant="primary" iconLeft="check" disabled={busy} onClick={() => void save()}>
+            Speichern
+          </Button>
+        </div>
+      ) : (
+        <p className="text-sm text-ink-faint">
+          Zum Ändern des Kontingents fehlt deinem Konto die Berechtigung.
+        </p>
+      )}
+    </div>
   );
 }
 

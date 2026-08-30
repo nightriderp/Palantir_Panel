@@ -62,6 +62,8 @@ export {
   createResourceService,
 } from './service.js';
 
+export { type ResourceRoutesOptions, registerResourceRoutes } from './routes.js';
+
 export {
   createDrizzleHostNodeRepository,
   createDrizzleUserResourceLimitRepository,
