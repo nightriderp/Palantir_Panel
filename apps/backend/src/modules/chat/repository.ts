@@ -86,6 +86,31 @@ export interface ChatRepository {
   /** Markiert eine Nachricht als gelöscht; der Datensatz bleibt stehen. */
   markMessageDeleted(messageId: string, deletedById: string, deletedAt: Date): Promise<void>;
 
+  // -- Lesezustand (Fundpunkt 95) --------------------------------------------
+  /**
+   * Setzt den Lesestand eines Kontos in einer Konversation auf `at` – legt die
+   * Zeile beim ersten Mal an, sonst überschreibt sie den bisherigen Wert.
+   */
+  markConversationRead(conversationId: string, userId: string, at: Date): Promise<void>;
+  /**
+   * Lesestände eines Kontos zu mehreren Konversationen auf einmal. Eine
+   * Konversation, die das Konto noch nie gelesen hat, fehlt im Ergebnis.
+   */
+  lastReadAtFor(
+    userId: string,
+    conversationIds: readonly string[],
+  ): Promise<ReadonlyMap<string, Date>>;
+  /**
+   * Anzahl ungelesener Nachrichten je Konversation aus Sicht eines Kontos:
+   * nach dessen Lesestand entstanden (oder alle, wenn nie gelesen), nicht vom
+   * Konto selbst und nicht gelöscht. Konversationen ohne ungelesene Nachricht
+   * fehlen im Ergebnis und sind als `0` zu behandeln.
+   */
+  unreadCounts(
+    userId: string,
+    conversationIds: readonly string[],
+  ): Promise<ReadonlyMap<string, number>>;
+
   // -- Meldungen -------------------------------------------------------------
   createReport(data: CreateReportData): Promise<MessageReportRecord>;
   findReport(reportId: string): Promise<MessageReportRecord | null>;

@@ -14,10 +14,11 @@
 
 import { GUEST_ROLE_NAME } from '@palantir/contracts';
 import { type MessageReportQuery } from '@palantir/validation';
-import { and, asc, count, desc, eq, inArray, lt, ne, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNull, lt, ne, or } from 'drizzle-orm';
 import type { Database } from '../../db/index.js';
 import {
   conversationParticipants,
+  conversationReads,
   conversations,
   messageReports,
   messages,
@@ -285,6 +286,86 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
       deletedAt: Date,
     ): Promise<void> {
       await db.update(messages).set({ deletedAt, deletedById }).where(eq(messages.id, messageId));
+    },
+
+    async markConversationRead(conversationId: string, userId: string, at: Date): Promise<void> {
+      /*
+       * Upsert auf den Primärschlüssel (conversation_id, user_id): Der erste
+       * Lesevorgang legt die Zeile an, jeder weitere schiebt `last_read_at`
+       * nach vorn. Kein separates „gibt es schon?" davor – das wäre eine zweite
+       * Abfrage mit einer Lücke für gleichzeitige Aufrufe.
+       */
+      await db
+        .insert(conversationReads)
+        .values({ conversationId, userId, lastReadAt: at })
+        .onConflictDoUpdate({
+          target: [conversationReads.conversationId, conversationReads.userId],
+          set: { lastReadAt: at },
+        });
+    },
+
+    async lastReadAtFor(
+      userId: string,
+      conversationIds: readonly string[],
+    ): Promise<ReadonlyMap<string, Date>> {
+      if (conversationIds.length === 0) {
+        return new Map();
+      }
+
+      const rows = await db
+        .select({
+          conversationId: conversationReads.conversationId,
+          lastReadAt: conversationReads.lastReadAt,
+        })
+        .from(conversationReads)
+        .where(
+          and(
+            eq(conversationReads.userId, userId),
+            inArray(conversationReads.conversationId, [...conversationIds]),
+          ),
+        );
+
+      return new Map(rows.map((row) => [row.conversationId, row.lastReadAt]));
+    },
+
+    async unreadCounts(
+      userId: string,
+      conversationIds: readonly string[],
+    ): Promise<ReadonlyMap<string, number>> {
+      if (conversationIds.length === 0) {
+        return new Map();
+      }
+
+      /*
+       * Eine Abfrage über alle Konversationen: Nachrichten nach dem jeweiligen
+       * Lesestand (per `left join` auf `conversation_reads`; fehlt der Eintrag,
+       * gilt alles als ungelesen), nicht vom Aufrufer selbst und nicht gelöscht.
+       * Konversationen ohne Treffer fallen aus dem Ergebnis – sie zählen `0`.
+       */
+      const rows = await db
+        .select({ conversationId: messages.conversationId, value: count() })
+        .from(messages)
+        .leftJoin(
+          conversationReads,
+          and(
+            eq(conversationReads.conversationId, messages.conversationId),
+            eq(conversationReads.userId, userId),
+          ),
+        )
+        .where(
+          and(
+            inArray(messages.conversationId, [...conversationIds]),
+            ne(messages.senderId, userId),
+            isNull(messages.deletedAt),
+            or(
+              isNull(conversationReads.lastReadAt),
+              gt(messages.createdAt, conversationReads.lastReadAt),
+            ),
+          ),
+        )
+        .groupBy(messages.conversationId);
+
+      return new Map(rows.map((row) => [row.conversationId, row.value]));
     },
 
     async createReport(data: CreateReportData): Promise<MessageReportRecord> {

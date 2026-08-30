@@ -169,6 +169,31 @@ describe('Envelope und Schranken', () => {
     expect(antwort.json().error.code).toBe('AUTH_REQUIRED');
   });
 
+  it('markiert eine Konversation als gelesen und gibt sie mit unreadCount 0 zurück', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    await chat.sendMessage(ctxFor(ALEX), conversation.id, { content: 'Hallo Bea' });
+
+    const antwort = await anfrage('POST', `/api/chat/conversations/${conversation.id}/read`, 'bea');
+
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.json()).toMatchObject({ success: true, error: null });
+    expect(antwort.json().data.unreadCount).toBe(0);
+    expect(antwort.json().data.lastReadAt).not.toBeNull();
+  });
+
+  it('lässt eine fremde Konversation nicht als gelesen markieren', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+
+    const antwort = await anfrage(
+      'POST',
+      `/api/chat/conversations/${conversation.id}/read`,
+      'chris',
+    );
+
+    expect(antwort.statusCode).toBe(404);
+    expect(antwort.json().error.code).toBe('CONVERSATION_NOT_FOUND');
+  });
+
   it('lehnt eine leere Nachricht mit VALIDATION_FAILED ab', async () => {
     const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
 

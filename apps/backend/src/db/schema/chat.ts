@@ -92,6 +92,37 @@ export const conversationParticipants = pgTable(
 );
 
 /**
+ * Serverseitiger Lesezustand je Teilnehmer (Pflichtenheft §15, Fundpunkt 95).
+ *
+ * Eine Zeile je (Konversation, Konto): `lastReadAt` ist der Zeitpunkt, bis zu
+ * dem dieses Konto die Konversation gelesen hat. Der Ungelesen-Zähler wird
+ * daraus abgeleitet (Nachrichten danach, nicht vom Konto selbst, nicht
+ * gelöscht) und muss deshalb nirgends gespiegelt werden – so bleibt er über
+ * Geräte hinweg konsistent, statt wie zuvor nur lokal in einer Sitzung zu
+ * zählen.
+ *
+ * Gilt für DMs **und** Server-Chats gleichermaßen: Die Tabelle bezieht sich auf
+ * die Konversation, nicht auf `conversation_participants` (die beim Server-Chat
+ * leer bleibt). Eine Zeile entsteht erst, wenn ein Konto zum ersten Mal als
+ * gelesen markiert – wer nie gelesen hat, hat keinen Eintrag und alles gilt als
+ * ungelesen. Beide Fremdschlüssel löschen mit: Ohne Konversation oder Konto
+ * hätte der Lesestand keine Bedeutung.
+ */
+export const conversationReads = pgTable(
+  'conversation_reads',
+  {
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.conversationId, table.userId] })],
+);
+
+/**
  * Nachricht (Pflichtenheft §6, `Message`).
  *
  * Eine gelöschte Nachricht wird **nicht** entfernt, sondern mit `deletedAt`
@@ -172,6 +203,8 @@ export type ConversationRow = typeof conversations.$inferSelect;
 export type NewConversationRow = typeof conversations.$inferInsert;
 export type ConversationParticipantRow = typeof conversationParticipants.$inferSelect;
 export type NewConversationParticipantRow = typeof conversationParticipants.$inferInsert;
+export type ConversationReadRow = typeof conversationReads.$inferSelect;
+export type NewConversationReadRow = typeof conversationReads.$inferInsert;
 export type MessageRow = typeof messages.$inferSelect;
 export type NewMessageRow = typeof messages.$inferInsert;
 export type MessageReportRow = typeof messageReports.$inferSelect;
