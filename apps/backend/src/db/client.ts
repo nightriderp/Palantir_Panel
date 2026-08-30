@@ -15,6 +15,19 @@ import * as schema from './schema.js';
 
 export type Database = NodePgDatabase<typeof schema>;
 
+/**
+ * Der an einen `db.transaction(...)`-Callback übergebene Handle.
+ *
+ * Aus {@link Database} abgeleitet, damit keine Drizzle-internen Typen importiert
+ * werden müssen. Repository-Fabriken nehmen {@link DbConnection}, sodass dieselbe
+ * Abfrage einmal gegen den Pool und einmal innerhalb einer Transaktion laufen
+ * kann – gebraucht für die serialisierte Kapazitätsprüfung (Pflichtenheft §10).
+ */
+export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/** Datenbank-Pool oder eine laufende Transaktion – für Repository-Fabriken. */
+export type DbConnection = Database | Transaction;
+
 let pool: pg.Pool | undefined;
 let database: Database | undefined;
 

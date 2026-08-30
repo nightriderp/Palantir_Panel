@@ -20,7 +20,7 @@ import {
   type UserResourceUsage,
 } from '@palantir/contracts';
 import { and, eq, ne } from 'drizzle-orm';
-import { type Database } from '../../db/client.js';
+import { type DbConnection } from '../../db/client.js';
 import { gameServers } from '../../db/schema.js';
 import { type ServerUsageRepository, type UsageQueryOptions } from '../resources/index.js';
 
@@ -59,7 +59,7 @@ function summarize(rows: readonly UsageRow[]): UserResourceUsage & NodeResourceU
   };
 }
 
-export function createDrizzleServerUsageRepository(db: Database): ServerUsageRepository {
+export function createDrizzleServerUsageRepository(db: DbConnection): ServerUsageRepository {
   async function load(
     column: typeof gameServers.ownerId | typeof gameServers.hostId,
     value: string,
