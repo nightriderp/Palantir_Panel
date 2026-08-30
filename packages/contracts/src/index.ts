@@ -146,6 +146,7 @@ export {
   type FileReadCommandPayload,
   type FileReadCommandResult,
   type FileWriteCommandPayload,
+  type ArchiveExtraFile,
   type ArchiveFormat,
   type FileDeleteCommandPayload,
   type FileExtractCommandPayload,
