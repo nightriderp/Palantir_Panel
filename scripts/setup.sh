@@ -98,11 +98,44 @@ fill_if_empty CSRF_SECRET "$(random_secret)"
 fill_if_empty ALTCHA_HMAC_KEY "$(random_secret)"
 fill_if_empty AGENT_TOKEN "$(random_secret)"
 
-# TODO(setup): Datenbank-Passwort (POSTGRES_PASSWORD / DATABASE_URL) wird noch
-# nicht automatisch erzeugt, weil DATABASE_URL denselben Wert eingebettet
-# enthält und beide Stellen konsistent geschrieben werden müssen.
-# Bis dahin: POSTGRES_PASSWORD und DATABASE_URL von Hand auf denselben Wert
-# setzen (Platzhalter CHANGE_ME in beiden Zeilen).
+# Datenbank-Passwort erzeugen und konsistent in POSTGRES_PASSWORD *und* die
+# darin eingebettete DATABASE_URL schreiben. POSTGRES_PASSWORD ist die Quelle der
+# Wahrheit; die DATABASE_URL wird immer auf denselben Wert nachgezogen.
+# Idempotent: ein bereits gesetztes echtes Passwort bleibt unverändert, nur der
+# Platzhalter CHANGE_ME (bzw. ein leerer Wert) wird gefüllt.
+sync_database_password() {
+  local pg_pw db_url pw updated
+  pg_pw="$(get_env_value POSTGRES_PASSWORD)"
+  db_url="$(get_env_value DATABASE_URL)"
+
+  if [[ -z "${pg_pw}" || "${pg_pw}" == "CHANGE_ME" ]]; then
+    pw="$(random_secret)"
+    set_env_value POSTGRES_PASSWORD "${pw}"
+    ok "POSTGRES_PASSWORD erzeugt"
+  else
+    pw="${pg_pw}"
+    info "POSTGRES_PASSWORD bereits gesetzt - bleibt unverändert"
+  fi
+
+  # DATABASE_URL auf denselben Wert bringen. random_secret liefert nur
+  # URL-sichere Zeichen (A-Z a-z 0-9), daher ist keine Prozent-Kodierung nötig.
+  if [[ -n "${db_url}" ]]; then
+    # nur den Passwort-Teil zwischen "user:" und "@host" ersetzen
+    updated="$(printf '%s' "${db_url}" |
+      sed -E "s#^(postgresql://[^:/@]+:)[^@]*(@.*)#\1${pw}\2#")"
+  else
+    updated="postgresql://$(get_env_value POSTGRES_USER):${pw}@127.0.0.1:5432/$(get_env_value POSTGRES_DB)"
+  fi
+
+  if [[ "${updated}" != "${db_url}" ]]; then
+    set_env_value DATABASE_URL "${updated}"
+    ok "DATABASE_URL auf das Datenbank-Passwort abgeglichen"
+  else
+    info "DATABASE_URL bereits konsistent - bleibt unverändert"
+  fi
+}
+
+sync_database_password
 
 # -----------------------------------------------------------------------------
 # 3. WireGuard-Schlüsselpaare (Pflichtenheft §2.1)
@@ -135,7 +168,7 @@ if command -v wg >/dev/null 2>&1; then
     - WIREGUARD_VPS_PRIVATE_KEY  gehört ausschließlich in /etc/wireguard/wg0.conf auf der VPS
     - WIREGUARD_HOME_PRIVATE_KEY gehört ausschließlich in /etc/wireguard/wg0.conf des Homeservers
     - Die jeweils öffentlichen Schlüssel werden auf der Gegenseite als Peer eingetragen.
-  Die fertigen wg0.conf-Vorlagen stehen in SETUP.md.
+  Die fertigen wg0.conf werden weiter unten erzeugt (Verzeichnis wireguard/).
 
 HINT
 else
@@ -143,8 +176,84 @@ else
   warn "Nachholen mit:  apt install wireguard-tools && ./scripts/setup.sh"
 fi
 
-# TODO(setup): Fertige wg0.conf für VPS und Homeserver direkt aus den Werten der
-# .env generieren, sobald die endgültigen AllowedIPs/Routing-Regeln feststehen.
+# -----------------------------------------------------------------------------
+# 3b. Fertige wg0.conf für VPS und Homeserver erzeugen (SETUP.md §6.2/§6.3)
+# -----------------------------------------------------------------------------
+# Beide Dateien landen im lokalen, per .gitignore ausgeschlossenen Verzeichnis
+# "wireguard/" - sie enthalten private Schlüssel und dürfen NIE ins Repo.
+# Von dort werden sie an ihren jeweiligen Zielort kopiert (Ausgabe unten).
+generate_wireguard_configs() {
+  local wg_dir="${REPO_ROOT}/wireguard"
+  local vps_priv vps_pub home_priv home_pub vps_ip home_ip port keepalive endpoint
+
+  vps_priv="$(get_env_value WIREGUARD_VPS_PRIVATE_KEY)"
+  vps_pub="$(get_env_value WIREGUARD_VPS_PUBLIC_KEY)"
+  home_priv="$(get_env_value WIREGUARD_HOME_PRIVATE_KEY)"
+  home_pub="$(get_env_value WIREGUARD_HOME_PUBLIC_KEY)"
+
+  if [[ -z "${vps_priv}" || -z "${vps_pub}" || -z "${home_priv}" || -z "${home_pub}" ]]; then
+    warn "WireGuard-Schlüssel noch unvollständig - wg0.conf wird noch nicht erzeugt."
+    return 0
+  fi
+
+  vps_ip="$(get_env_value WIREGUARD_VPS_IP)"
+  home_ip="$(get_env_value WIREGUARD_HOME_IP)"
+  port="$(get_env_value WIREGUARD_LISTEN_PORT)"
+  keepalive="$(get_env_value WIREGUARD_KEEPALIVE)"
+  endpoint="$(get_env_value VPS_PUBLIC_IP)"
+
+  mkdir -p "${wg_dir}"
+  chmod 700 "${wg_dir}"
+
+  # VPS: kennt keinen Endpoint des Homeservers (der sitzt hinter NAT).
+  cat >"${wg_dir}/wg0.vps.conf" <<EOF
+[Interface]
+Address = ${vps_ip}/24
+ListenPort = ${port}
+PrivateKey = ${vps_priv}
+
+[Peer]
+# Homeserver
+PublicKey = ${home_pub}
+AllowedIPs = ${home_ip}/32
+EOF
+
+  # Homeserver: baut die Verbindung aktiv auf und verwirft eingehenden
+  # Tunnelverkehr (PostUp/PostDown, Pflicht - siehe deploy/gamenode/wireguard-firewall.md).
+  cat >"${wg_dir}/wg0.home.conf" <<EOF
+[Interface]
+Address = ${home_ip}/24
+PrivateKey = ${home_priv}
+PostUp = nft add table inet palantir_wg; nft add chain inet palantir_wg input '{ type filter hook input priority 0; policy accept; }'; nft add rule inet palantir_wg input iifname "wg0" ct state established,related accept; nft add rule inet palantir_wg input iifname "wg0" drop
+PostDown = nft delete table inet palantir_wg
+
+[Peer]
+# VPS
+PublicKey = ${vps_pub}
+Endpoint = ${endpoint}:${port}
+AllowedIPs = ${vps_ip}/32
+PersistentKeepalive = ${keepalive}
+EOF
+
+  chmod 600 "${wg_dir}/wg0.vps.conf" "${wg_dir}/wg0.home.conf"
+
+  ok "wg0.conf für beide Maschinen erzeugt"
+  cat <<EOF
+
+  Fertige WireGuard-Konfigurationen liegen unter ${wg_dir}/ .
+  Jede gehört an GENAU EINEN Zielort (dort jeweils als /etc/wireguard/wg0.conf):
+    - ${wg_dir}/wg0.vps.conf   ->  VPS:               /etc/wireguard/wg0.conf
+    - ${wg_dir}/wg0.home.conf  ->  Homeserver (VM):   /etc/wireguard/wg0.conf
+  Danach je Maschine:  systemctl enable --now wg-quick@wg0
+  Die Datei mit dem PRIVATE-Key der jeweils ANDEREN Maschine wird NICHT kopiert.
+EOF
+
+  if [[ -z "${endpoint}" || "${endpoint}" == "203.0.113.10" ]]; then
+    warn "VPS_PUBLIC_IP steht noch auf dem Beispielwert - Endpoint in wg0.home.conf vor dem Kopieren prüfen."
+  fi
+}
+
+generate_wireguard_configs
 
 # -----------------------------------------------------------------------------
 # 4. Pflichtfeld-Prüfung
