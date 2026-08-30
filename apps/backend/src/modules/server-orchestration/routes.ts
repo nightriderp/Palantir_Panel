@@ -54,6 +54,7 @@ export interface ServerRoutesOptions {
 
 const serverIdParamsSchema = z.object({ id: z.string().uuid() });
 const scheduleParamsSchema = z.object({ id: z.string().uuid(), scheduleId: z.string().uuid() });
+const cloneJobParamsSchema = z.object({ id: z.string().uuid(), jobId: z.string().uuid() });
 
 /** Ein hochgeladener Datei-Teil samt der Felder, die daneben im Formular stehen. */
 interface FileUploadInput {
@@ -311,6 +312,14 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     }
   });
 
+  /**
+   * Klonen anstoßen (Pflichtenheft §9, Lastenheft §3.3).
+   *
+   * Antwortet mit dem **Auftrag**, nicht mit dem fertigen Server: Ein Klon mit
+   * Weltdaten läuft länger, als eine HTTP-Antwort offen bleiben darf. Der Stand
+   * kommt danach über den Live-Kanal (`serverClone.progressed`) oder über die
+   * Route darunter.
+   */
   app.post('/api/servers/:id/clone', async (request, reply) => {
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
@@ -323,17 +332,30 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       await loadAuthorized(request, id, 'canClone');
 
       const input = cloneServerInputSchema.parse(request.body);
-      const clone = await service.cloneServer(id, input, viewerId);
-      const context = await dtoContext(request, clone.id);
 
-      return await reply.status(201).send(
-        ok(
-          toGameServerDto(clone, {
-            ...context,
-            recentCrashCount: service.recentCrashCount(clone),
-          }),
-        ),
-      );
+      return await reply.status(202).send(ok(await service.cloneServer(id, input, viewerId)));
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  /** Stand eines Klon-Auftrags – das Gegenstück zum Fortschritts-Ereignis. */
+  app.get('/api/servers/:id/clone/:jobId', async (request, reply) => {
+    try {
+      const { id, jobId } = cloneJobParamsSchema.parse(request.params);
+
+      await loadAuthorized(request, id, 'canClone');
+
+      const job = service.findCloneJob(id, jobId);
+
+      if (job === null) {
+        throw new ServerOrchestrationError('SERVER_NOT_FOUND', 'Der Klon-Auftrag ist unbekannt.', {
+          serverId: id,
+          jobId,
+        });
+      }
+
+      return await reply.send(ok(job));
     } catch (error: unknown) {
       return replyWithError(reply, error);
     }
