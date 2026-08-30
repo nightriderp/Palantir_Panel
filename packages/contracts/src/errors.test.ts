@@ -59,6 +59,12 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     expect(httpStatusForErrorCode('AGENT_COMMAND_TIMEOUT')).toBe(504);
   });
 
+  it('kennt den Datei-Upload-Konflikt des Datei-Managers (WELLE 0, P2)', () => {
+    // FILE_UPLOAD ohne overwrite auf einen belegten Pfad – Konflikt, kein
+    // ungültiger Pfad.
+    expect(httpStatusForErrorCode('AGENT_FILE_EXISTS')).toBe(409);
+  });
+
   it('trennt die beiden Owner-Faelle (Lastenheft §2, Pflichtenheft §12.3)', () => {
     // OWNER_PROTECTED wehrt Aktionen gegen den bestehenden Owner ab;
     // OWNER_ALREADY_EXISTS die Vergabe des Status an ein zweites Konto.

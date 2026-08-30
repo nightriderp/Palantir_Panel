@@ -5,6 +5,8 @@ import {
   AGENT_COMMAND_PAYLOAD_SCHEMAS,
   createCommandPayloadSchema,
   execConsoleCommandPayloadSchema,
+  fileDeleteCommandPayloadSchema,
+  fileUploadCommandPayloadSchema,
   fileWriteCommandPayloadSchema,
   getLogsCommandPayloadSchema,
   removeStorageEntryCommandPayloadSchema,
@@ -98,6 +100,52 @@ describe('FILE_WRITE', () => {
       contentBase64: 'kein base64 !!!',
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('FILE_DELETE (Arbeitspaket P2)', () => {
+  it('nimmt einen absoluten Pfad an, recursive ist optional', () => {
+    expect(
+      fileDeleteCommandPayloadSchema.safeParse({ containerId: 'abc123', path: '/data/alt.log' })
+        .success,
+    ).toBe(true);
+    expect(
+      fileDeleteCommandPayloadSchema.safeParse({
+        containerId: 'abc123',
+        path: '/data/welt',
+        recursive: true,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('lehnt einen relativen Pfad ab', () => {
+    expect(
+      fileDeleteCommandPayloadSchema.safeParse({ containerId: 'abc123', path: 'data/alt.log' })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe('FILE_UPLOAD (Arbeitspaket P2)', () => {
+  it('akzeptiert Base64-Inhalt, overwrite ist optional', () => {
+    expect(
+      fileUploadCommandPayloadSchema.safeParse({
+        containerId: 'abc123',
+        path: '/data/welt.zip',
+        contentBase64: Buffer.from('PK...').toString('base64'),
+        overwrite: true,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('lehnt Inhalt ab, der keine gültige Base64-Kodierung ist', () => {
+    expect(
+      fileUploadCommandPayloadSchema.safeParse({
+        containerId: 'abc123',
+        path: '/data/welt.zip',
+        contentBase64: 'kein base64 !!!',
+      }).success,
+    ).toBe(false);
   });
 });
 

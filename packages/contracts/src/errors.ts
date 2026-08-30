@@ -495,6 +495,17 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Die Datei ist größer als das erlaubte Limit.',
   },
   /**
+   * Upload (`FILE_UPLOAD`) trifft auf einen bereits belegten Zielpfad, ohne dass
+   * `overwrite` gesetzt ist (Arbeitspaket P2, Datei-Manager). 409: Konflikt mit
+   * vorhandenem Zustand – erst mit ausdrücklichem Überschreiben oder anderem
+   * Namen wiederholbar. Bewusst getrennt von `AGENT_INVALID_PATH`: Der Pfad ist
+   * zulässig, er ist nur schon belegt.
+   */
+  AGENT_FILE_EXISTS: {
+    httpStatus: 409,
+    defaultMessage: 'Am Zielpfad existiert bereits eine Datei.',
+  },
+  /**
    * Für die Ziel-Node ist derzeit kein Agent verbunden (Pflichtenheft §2.2).
    * 503: sobald der Agent sich wieder meldet, kann derselbe Aufruf klappen.
    */
