@@ -38,6 +38,15 @@ import { type CrashLoopPolicy, evaluateCrashLoop } from './crash-loop.js';
 import { buildServerDnsRecord } from './dns/cloudflare.js';
 import { type DnsProvider } from './dns/types.js';
 import { ServerOrchestrationError } from './errors.js';
+import { type WorldArchiveStore } from './world-import.js';
+
+/**
+ * Verweis auf ein hochgeladenes Weltdaten-Archiv (P4).
+ *
+ * Aus `CreateServerInput` abgeleitet statt eigenständig deklariert – die
+ * Eingabe ist der Vertrag, eine zweite Formulierung könnte davon abweichen.
+ */
+type WorldImportInput = NonNullable<CreateServerInput['worldImport']>;
 import {
   AGENT_FILE_CHANNEL_MAX_BYTES,
   normalizeRelativePath,
@@ -97,6 +106,12 @@ export interface OrchestrationConfig {
    * `AGENT_FILE_CHANNEL_MAX_BYTES`.
    */
   readonly maxUploadBytes: number;
+  /**
+   * Maximale Größe eines Weltdaten-Archivs aus `MAX_WORLD_ARCHIVE_BYTES` (P4).
+   * Wirksam ist der kleinere Wert aus dieser Angabe und
+   * `AGENT_FILE_CHANNEL_MAX_BYTES`.
+   */
+  readonly maxWorldArchiveBytes: number;
 }
 
 /** Was die Datei-Routen aus dem `permissions`-Objekt des Servers mitgeben. */
@@ -128,6 +143,13 @@ export interface OrchestrationDependencies {
    */
   readonly reservation?: CapacityReservation;
   readonly healthProbe: HealthProbe;
+  /**
+   * Zwischenspeicher der hochgeladenen Weltdaten-Archive (P4).
+   *
+   * Ohne Angabe bleibt `worldImport` beim Anlegen wirkungslos – so bleiben die
+   * bestehenden Tests unverändert, die das Anlegen ohne Import prüfen.
+   */
+  readonly worldArchives?: WorldArchiveStore;
   readonly events: OrchestrationEventSink;
   readonly log: AgentGatewayLogger;
   readonly config: OrchestrationConfig;
@@ -259,7 +281,7 @@ export class ServerOrchestrationService {
 
     await this.deps.repository.update(created.id, { assignedPorts });
 
-    await this.provision(await this.requireServer(created.id));
+    await this.provision(await this.requireServer(created.id), input.worldImport);
 
     return this.requireServer(created.id);
   }
@@ -269,7 +291,10 @@ export class ServerOrchestrationService {
    *
    * Ausgelagert, weil das Klonen dieselbe Kette braucht.
    */
-  private async provision(server: ServerRecord): Promise<void> {
+  private async provision(
+    server: ServerRecord,
+    worldImport: WorldImportInput | null = null,
+  ): Promise<void> {
     const definition = this.deps.registry.require(server.gameType);
 
     try {
@@ -312,6 +337,16 @@ export class ServerOrchestrationService {
         dnsRecordId,
         dockerContainerId: created.containerId,
       });
+
+      // Weltdaten übernehmen, solange der Server noch als „wird angelegt" gilt
+      // (P4). Bewusst hier und nicht danach: Scheitert der Import, ist der
+      // Server nicht „fertig, nur ohne Welt", sondern fehlgeschlagen – ein
+      // leerer Server unter dem Namen eines übernommenen wäre die schlechtere
+      // Antwort. Der Container läuft dafür nicht; geschrieben wird über den
+      // Archiv-Endpunkt der Engine, der auch bei gestopptem Container arbeitet.
+      if (worldImport !== null) {
+        await this.importWorldData(server, created.containerId, worldImport);
+      }
 
       await this.transition(server, { type: 'createSucceeded' });
       this.deps.events.emit('server.created', { serverId: server.id, ownerId: server.ownerId });
@@ -649,6 +684,73 @@ export class ServerOrchestrationService {
     });
 
     return this.requireServer(clone.id);
+  }
+
+  /**
+   * Übernimmt ein hochgeladenes Weltdaten-Archiv in den frischen Datenordner
+   * (Lastenheft §3.3 „Migration von anderen Hosting-Anbietern", P4).
+   *
+   * Das Archiv liegt seit dem Wizard-Schritt auf der VPS (`world-import.ts`)
+   * und wird hier **einmalig** abgeholt. Entpackt wird es auf dem Homeserver:
+   * Der Agent liest es, prüft jeden Eintrag gegen den Datenordner und legt die
+   * Dateien über den Archiv-Endpunkt der Engine ab (`FILE_EXTRACT`). Das
+   * Backend fasst dabei kein Dateisystem an – der einzige Weg auf das
+   * Datenvolume bleibt der Agent (CLAUDE.md §4).
+   */
+  private async importWorldData(
+    server: ServerRecord,
+    containerId: string,
+    worldImport: WorldImportInput,
+  ): Promise<void> {
+    const store = this.deps.worldArchives;
+
+    if (store === undefined) {
+      throw new ServerOrchestrationError(
+        'WORLD_ARCHIVE_NOT_FOUND',
+        'Für Weltdaten-Übernahmen ist kein Zwischenspeicher eingerichtet.',
+        { serverId: server.id },
+      );
+    }
+
+    const archiv = await store.take(worldImport.uploadId);
+
+    if (archiv === null) {
+      throw new ServerOrchestrationError('WORLD_ARCHIVE_NOT_FOUND', undefined, {
+        serverId: server.id,
+        uploadId: worldImport.uploadId,
+      });
+    }
+
+    const grenze = Math.min(this.deps.config.maxWorldArchiveBytes, AGENT_FILE_CHANNEL_MAX_BYTES);
+
+    if (archiv.content.byteLength > grenze) {
+      throw new ServerOrchestrationError(
+        'FILE_TOO_LARGE',
+        `Das Archiv überschreitet die zulässige Größe von ${String(grenze)} Byte.`,
+        { serverId: server.id, sizeBytes: archiv.content.byteLength },
+      );
+    }
+
+    const session = this.deps.agents.require(server.hostId);
+    const ergebnis = await session.sendCommand('FILE_EXTRACT', server.id, {
+      containerId,
+      // Wurzel des Datenordners – ein Weltarchiv bringt seine eigene
+      // Ordnerstruktur mit.
+      path: '',
+      contentBase64: archiv.content.toString('base64'),
+      format: archiv.format,
+    });
+
+    this.deps.log.info(
+      {
+        serverId: server.id,
+        fileName: worldImport.fileName,
+        fileCount: ergebnis.fileCount,
+        extractedBytes: ergebnis.extractedBytes,
+        skipped: ergebnis.skipped,
+      },
+      'Weltdaten übernommen',
+    );
   }
 
   /**

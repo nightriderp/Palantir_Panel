@@ -47,6 +47,11 @@ import { registerServerRoutes } from './routes.js';
 import { createDrizzleServerScheduleRepository } from './schedule-repository.js';
 import { type ServerScheduleService, createServerScheduleService } from './schedules.js';
 import { type OrchestrationEventSink, ServerOrchestrationService } from './service.js';
+import {
+  type WorldArchiveStore,
+  createFileSystemWorldArchiveStore,
+  defaultWorldArchiveDirectory,
+} from './world-import.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -174,6 +179,14 @@ export function registerServerOrchestration(
     ? undefined
     : createDrizzleCapacityReservation(options.db, resourceWarningThresholdsFromEnv());
 
+  // Hochgeladene Weltdaten-Archive warten hier, bis der Wizard den Server
+  // wirklich anlegt (P4). Zwei Nutzer: die Upload-Route legt ab, der Dienst
+  // holt beim Anlegen ab – deshalb eine Instanz für beide.
+  const worldArchives: WorldArchiveStore = createFileSystemWorldArchiveStore({
+    directory: env.WORLD_ARCHIVE_DIR ?? defaultWorldArchiveDirectory(),
+    maxBytes: env.MAX_WORLD_ARCHIVE_BYTES,
+  });
+
   const service = new ServerOrchestrationService({
     repository,
     agents,
@@ -184,6 +197,7 @@ export function registerServerOrchestration(
     resources,
     reservation,
     healthProbe: createHealthProbe(),
+    worldArchives,
     events,
     log,
     config: {
@@ -198,6 +212,7 @@ export function registerServerOrchestration(
       healthCheckIntervalMs: env.HEALTH_CHECK_INTERVAL_MS,
       healthCheckAttemptTimeoutMs: env.HEALTH_CHECK_ATTEMPT_TIMEOUT_MS,
       maxUploadBytes: env.MAX_UPLOAD_SIZE_BYTES,
+      maxWorldArchiveBytes: env.MAX_WORLD_ARCHIVE_BYTES,
       defaultAutoShutdown: {
         ...DEFAULT_AUTO_SHUTDOWN,
         idleTimeoutMinutes: env.AUTO_SHUTDOWN_DEFAULT_IDLE_MINUTES,
@@ -257,6 +272,7 @@ export function registerServerOrchestration(
     registry,
     baseDomain: env.PALANTIR_DOMAIN,
     schedules,
+    worldArchives,
   });
 
   // Browserseitiger Live-Kanal `/live` (Pflichtenheft §5.3): Abos je Server,
@@ -406,6 +422,15 @@ export {
   createServerScheduleService,
   toScheduleDto,
 } from './schedules.js';
+
+export {
+  WORLD_ARCHIVE_TTL_MS,
+  type StoredWorldArchive,
+  type WorldArchiveStore,
+  createFileSystemWorldArchiveStore,
+  defaultWorldArchiveDirectory,
+  detectWorldArchiveFormat,
+} from './world-import.js';
 
 export { computeGameServerPermissions } from './permissions.js';
 export { type ServerDtoContext, toGameServerDto } from './dto.js';

@@ -69,6 +69,7 @@ export const RUNTIME_ERROR_TO_API_CODE: Record<ContainerRuntimeErrorCode, ErrorC
   RUNTIME_UNAVAILABLE: 'AGENT_RUNTIME_UNAVAILABLE',
   RUNTIME_ERROR: 'AGENT_COMMAND_FAILED',
   CHECKSUM_MISMATCH: 'BACKUP_CHECKSUM_MISMATCH',
+  ARCHIVE_INVALID: 'AGENT_ARCHIVE_INVALID',
 };
 
 /**
@@ -311,6 +312,21 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
           { ...(p.overwrite === undefined ? {} : { overwrite: p.overwrite }) },
         );
         return null;
+      }
+      case 'FILE_EXTRACT': {
+        const p = payload as {
+          containerId: string;
+          path: string;
+          contentBase64: string;
+          format: 'tar.gz' | 'zip';
+        };
+
+        return this.runtime.extractArchive(
+          p.containerId,
+          p.path,
+          Buffer.from(p.contentBase64, 'base64'),
+          p.format,
+        );
       }
 
       // ------------------------------------------------------------- Jobs (A3)

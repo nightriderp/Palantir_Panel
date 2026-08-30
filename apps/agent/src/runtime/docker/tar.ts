@@ -143,10 +143,17 @@ export interface TarFileInput {
   /** Dateiname im Archiv (ohne fuehrenden Schraegstrich). */
   readonly name: string;
   readonly content: Buffer;
-  /** Unix-Rechte, Vorgabe `0o644`. */
+  /** Unix-Rechte, Vorgabe `0o644` fuer Dateien, `0o755` fuer Verzeichnisse. */
   readonly mode?: number;
   /** Aenderungszeitpunkt, Vorgabe: jetzt. */
   readonly modifiedAt?: Date;
+  /**
+   * Eintragsart; Vorgabe `file`.
+   *
+   * Verzeichniseintraege braucht das Entpacken eines Weltarchivs (P4): Ein
+   * leerer Ordner im Quellarchiv soll auch im Datenordner ankommen.
+   */
+  readonly type?: 'file' | 'directory';
 }
 
 function schreibeOktal(block: Buffer, start: number, laenge: number, wert: number): void {
@@ -156,45 +163,77 @@ function schreibeOktal(block: Buffer, start: number, laenge: number, wert: numbe
   block.writeUInt8(0, start + laenge - 1);
 }
 
+/** Ein einzelner Kopfsatz samt Pruefsumme. */
+function kopfBlock(
+  name: string,
+  groesse: number,
+  mode: number,
+  modifiedAt: Date,
+  typFlag: string,
+): Buffer {
+  const kopf = Buffer.alloc(BLOCK_SIZE);
+  kopf.write(name, 0, 100, 'utf8');
+  schreibeOktal(kopf, 100, 8, mode);
+  schreibeOktal(kopf, 108, 8, 0);
+  schreibeOktal(kopf, 116, 8, 0);
+  schreibeOktal(kopf, 124, 12, groesse);
+  schreibeOktal(kopf, 136, 12, Math.floor(modifiedAt.getTime() / 1000));
+  kopf.write(typFlag, 156, 1, 'ascii');
+  kopf.write('ustar\0', 257, 6, 'ascii');
+  kopf.write('00', 263, 2, 'ascii');
+
+  // Pruefsumme: Summe aller Kopf-Bytes, wobei das Pruefsummenfeld selbst als
+  // Leerzeichen zaehlt.
+  kopf.fill(0x20, 148, 156);
+  let summe = 0;
+  for (const byte of kopf) summe += byte;
+  const pruefsumme = summe.toString(8).padStart(6, '0');
+  kopf.write(pruefsumme, 148, 6, 'ascii');
+  kopf.writeUInt8(0, 154);
+  kopf.writeUInt8(0x20, 155);
+
+  return kopf;
+}
+
+function fuellblock(groesse: number): Buffer {
+  return Buffer.alloc((BLOCK_SIZE - (groesse % BLOCK_SIZE)) % BLOCK_SIZE);
+}
+
 /**
- * Erzeugt ein TAR-Archiv mit einfachen Dateieintraegen.
+ * Erzeugt ein TAR-Archiv mit Datei- und Verzeichniseintraegen.
  *
- * Namen ueber 100 Zeichen werden abgelehnt statt still abgeschnitten: der
- * Datei-Manager arbeitet relativ zum Zielverzeichnis, dort sind so lange Namen
- * kein realistischer Fall - und ein abgeschnittener Name wuerde die falsche
- * Datei ueberschreiben.
+ * Namen ueber 100 Byte bekommen einen vorangestellten GNU-Langnamen-Kopfsatz
+ * (Typ `L`) - genau die Erweiterung, die {@link parseTar} beim Lesen schon
+ * beherrscht und die die Docker-Engine ebenfalls versteht. Frueher wurden
+ * solche Namen abgelehnt; das reichte fuer den Datei-Manager (eine Datei,
+ * relativ zum Zielordner), nicht aber fuer ein entpacktes Weltarchiv, in dem
+ * verschachtelte Pfade der Normalfall sind (P4).
  */
 export function createTar(dateien: readonly TarFileInput[]): Buffer {
   const bloecke: Buffer[] = [];
 
   for (const datei of dateien) {
-    if (Buffer.byteLength(datei.name, 'utf8') > 100) {
-      throw new Error(`Dateiname zu lang fuer das TAR-Format: ${datei.name}`);
+    const istVerzeichnis = datei.type === 'directory';
+    const name = istVerzeichnis && !datei.name.endsWith('/') ? `${datei.name}/` : datei.name;
+    const inhalt = istVerzeichnis ? Buffer.alloc(0) : datei.content;
+    const modifiedAt = datei.modifiedAt ?? new Date();
+    const mode = datei.mode ?? (istVerzeichnis ? 0o755 : 0o644);
+
+    if (Buffer.byteLength(name, 'utf8') > 100) {
+      const nameBytes = Buffer.concat([Buffer.from(name, 'utf8'), Buffer.alloc(1)]);
+
+      bloecke.push(
+        kopfBlock('././@LongLink', nameBytes.length, 0o644, modifiedAt, 'L'),
+        nameBytes,
+        fuellblock(nameBytes.length),
+      );
     }
 
-    const kopf = Buffer.alloc(BLOCK_SIZE);
-    kopf.write(datei.name, 0, 100, 'utf8');
-    schreibeOktal(kopf, 100, 8, datei.mode ?? 0o644);
-    schreibeOktal(kopf, 108, 8, 0);
-    schreibeOktal(kopf, 116, 8, 0);
-    schreibeOktal(kopf, 124, 12, datei.content.length);
-    schreibeOktal(kopf, 136, 12, Math.floor((datei.modifiedAt ?? new Date()).getTime() / 1000));
-    kopf.write('0', 156, 1, 'ascii');
-    kopf.write('ustar\0', 257, 6, 'ascii');
-    kopf.write('00', 263, 2, 'ascii');
-
-    // Pruefsumme: Summe aller Kopf-Bytes, wobei das Pruefsummenfeld selbst als
-    // Leerzeichen zaehlt.
-    kopf.fill(0x20, 148, 156);
-    let summe = 0;
-    for (const byte of kopf) summe += byte;
-    const pruefsumme = summe.toString(8).padStart(6, '0');
-    kopf.write(pruefsumme, 148, 6, 'ascii');
-    kopf.writeUInt8(0, 154);
-    kopf.writeUInt8(0x20, 155);
-
-    const fuellung = Buffer.alloc((BLOCK_SIZE - (datei.content.length % BLOCK_SIZE)) % BLOCK_SIZE);
-    bloecke.push(kopf, datei.content, fuellung);
+    bloecke.push(
+      kopfBlock(name.slice(0, 100), inhalt.length, mode, modifiedAt, istVerzeichnis ? '5' : '0'),
+      inhalt,
+      fuellblock(inhalt.length),
+    );
   }
 
   // Ein Archiv endet mit zwei Nullbloecken.

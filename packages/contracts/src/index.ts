@@ -108,6 +108,7 @@ export {
 } from './agent-protocol.js';
 
 export {
+  ARCHIVE_FORMATS,
   IMPLEMENTED_AGENT_COMMANDS,
   type AgentCommandPayloads,
   type AgentCommandResults,
@@ -145,7 +146,10 @@ export {
   type FileReadCommandPayload,
   type FileReadCommandResult,
   type FileWriteCommandPayload,
+  type ArchiveFormat,
   type FileDeleteCommandPayload,
+  type FileExtractCommandPayload,
+  type FileExtractCommandResult,
   type FileUploadCommandPayload,
   type GetLogsCommandPayload,
   type GetLogsCommandResult,
@@ -161,5 +165,6 @@ export {
   type SetServerQueryCommandResult,
   type StartCommandPayload,
   type StopCommandPayload,
+  isArchiveFormat,
   isImplementedAgentCommand,
 } from './agent-commands.js';

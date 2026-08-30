@@ -12,6 +12,7 @@
  * Typ darf dort nicht erst auffallen.
  */
 
+import { ARCHIVE_FORMATS } from '@palantir/contracts';
 import { z } from 'zod';
 import { idSchema } from './common.js';
 import { isoTimestampSchema } from './agent-protocol.js';
@@ -142,6 +143,25 @@ export const fileUploadCommandPayloadSchema = z.object({
     .string()
     .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
   overwrite: z.boolean().optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Weltdaten-Übernahme (Lastenheft §3.3, Arbeitspaket P4)
+// ---------------------------------------------------------------------------
+
+/**
+ * `FILE_EXTRACT` – ein hochgeladenes Archiv in den Datenordner entpacken.
+ *
+ * `path` darf hier **leer** sein: Der Import landet in aller Regel in der
+ * Wurzel des Datenordners, und genau die schreibt der Datei-Manager als `''`.
+ */
+export const fileExtractCommandPayloadSchema = z.object({
+  containerId: containerIdSchema,
+  path: z.string().max(4_096),
+  contentBase64: z
+    .string()
+    .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
+  format: z.enum(ARCHIVE_FORMATS),
 });
 
 // ---------------------------------------------------------------------------
@@ -349,6 +369,7 @@ export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   FILE_WRITE: fileWriteCommandPayloadSchema,
   FILE_DELETE: fileDeleteCommandPayloadSchema,
   FILE_UPLOAD: fileUploadCommandPayloadSchema,
+  FILE_EXTRACT: fileExtractCommandPayloadSchema,
   CREATE_BACKUP: createBackupCommandPayloadSchema,
   RESTORE_BACKUP: restoreBackupCommandPayloadSchema,
   DOWNLOAD_BACKUP: downloadBackupCommandPayloadSchema,

@@ -51,6 +51,16 @@ export const RUNTIME_ERROR_CATALOG = {
    * oder wurde veraendert und darf nicht zurueckgespielt werden.
    */
   CHECKSUM_MISMATCH: 'Die Pruefsumme des Archivs stimmt nicht mit der erwarteten ueberein.',
+  /**
+   * Ein hochgeladenes Archiv laesst sich nicht entpacken (`FILE_EXTRACT`,
+   * Arbeitspaket P4): unbekanntes Format, beschaedigte Kopfdaten - oder ein
+   * entpackter Inhalt, der die Grenzen aus `archive.ts` sprengt
+   * (Entpack-Bombe).
+   *
+   * Bewusst getrennt von `CHECKSUM_MISMATCH`: Dort ist ein *bekanntes* Archiv
+   * beschaedigt, hier ist schon das Format fraglich.
+   */
+  ARCHIVE_INVALID: 'Das Archiv laesst sich nicht entpacken.',
   /** Alles Uebrige, was die Engine als Fehler meldet. */
   RUNTIME_ERROR: 'Die Container-Engine hat den Vorgang abgelehnt.',
 } as const satisfies Record<string, string>;

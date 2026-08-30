@@ -32,6 +32,7 @@ import {
   type DockerCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
+import { type ArchiveKind, readArchive } from '../archive.js';
 import { assertAbsoluteContainerPath, resolveWithinRoot } from '../paths.js';
 import {
   DEFAULT_LOG_TAIL,
@@ -43,6 +44,7 @@ import {
   type ContainerStatus,
   type DeleteFileOptions,
   type ExecResult,
+  type ExtractArchiveResult,
   type FileEntry,
   type GetLogsOptions,
   type LogLine,
@@ -113,6 +115,7 @@ export type FakeFailableMethod =
   | 'writeFile'
   | 'deleteFile'
   | 'uploadFile'
+  | 'extractArchive'
   | 'watch'
   | 'listImages'
   | 'removeImage';
@@ -503,6 +506,49 @@ export class FakeContainerRuntime implements ContainerRuntime {
       mode: container.dateien.get(pfad)?.mode ?? '644',
       modifiedAt: this.#jetzt(),
     });
+  }
+
+  /**
+   * `FILE_EXTRACT` - Archiv in den Datenordner entpacken (Arbeitspaket P4).
+   *
+   * Gelesen wird mit derselben Funktion wie in der Docker-Runtime; nur das
+   * Ablegen unterscheidet sich (Map statt Engine). Verzeichniseintraege legt
+   * die Fake-Runtime nicht ab - sie leitet Verzeichnisse in {@link listFiles}
+   * aus den Dateipfaden ab.
+   */
+  async extractArchive(
+    containerId: string,
+    ziel: string,
+    archiv: Buffer,
+    format: ArchiveKind,
+  ): Promise<ExtractArchiveResult> {
+    this.#pruefeFehlerfall('extractArchive');
+    const container = this.#hole(containerId);
+    const zielPfad = resolveWithinRoot(container.spec.dataVolume.containerPath, ziel);
+
+    if (archiv.length > this.#maxFileBytes) {
+      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
+        details: { path: zielPfad, sizeBytes: archiv.length, maxBytes: this.#maxFileBytes },
+      });
+    }
+
+    const inhalt = readArchive(archiv, format);
+    let fileCount = 0;
+
+    for (const eintrag of inhalt.entries) {
+      if (eintrag.type === 'directory') {
+        continue;
+      }
+
+      container.dateien.set(path.posix.join(zielPfad, eintrag.path), {
+        content: eintrag.content,
+        mode: '644',
+        modifiedAt: this.#jetzt(),
+      });
+      fileCount += 1;
+    }
+
+    return { fileCount, extractedBytes: inhalt.totalBytes, skipped: [...inhalt.skipped] };
   }
 
   /** `FILE_DELETE` - idempotent; ein nicht-leeres Verzeichnis nur mit `recursive`. */
