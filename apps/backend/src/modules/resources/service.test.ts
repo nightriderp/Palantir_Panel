@@ -153,6 +153,109 @@ function buildService(options?: {
   };
 }
 
+describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
+  it('liefert je Ressource Limit, Belegung und Rest', async () => {
+    const { service } = buildService({
+      limits: { maxRamMb: 8192, maxCpuCores: 4, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      userUsage: {
+        runningRamMb: 2048,
+        runningCpuCores: 1.5,
+        allocatedDiskMb: 20_480,
+        runningServers: 1,
+        totalServers: 3,
+      },
+    });
+
+    const quota = await service.getOwnQuota(plainActor, USER_ID);
+
+    expect(quota.userId).toBe(USER_ID);
+    expect(quota.ram).toEqual({
+      resource: 'ram',
+      unit: 'mb',
+      limit: 8192,
+      used: 2048,
+      remaining: 6144,
+    });
+    expect(quota.cpu).toEqual({
+      resource: 'cpu',
+      unit: 'cores',
+      limit: 4,
+      used: 1.5,
+      remaining: 2.5,
+    });
+    // Speicherplatz zählt alle Server, nicht nur die laufenden.
+    expect(quota.disk).toEqual({
+      resource: 'disk',
+      unit: 'mb',
+      limit: 51_200,
+      used: 20_480,
+      remaining: 30_720,
+    });
+    // Die Serveranzahl zählt die gleichzeitig laufenden – wie in `capacity.ts`.
+    expect(quota.servers).toEqual({
+      resource: 'servers',
+      unit: 'count',
+      limit: 2,
+      used: 1,
+      remaining: 1,
+    });
+    expect(quota.updatedAt).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('meldet ohne Limit `null` als Limit und Rest, nennt die Belegung aber weiter', async () => {
+    const { service } = buildService({
+      userUsage: { runningRamMb: 4096, allocatedDiskMb: 10_240, runningServers: 2 },
+    });
+
+    const quota = await service.getOwnQuota(plainActor, USER_ID);
+
+    expect(quota.ram.limit).toBeNull();
+    expect(quota.ram.remaining).toBeNull();
+    expect(quota.ram.used).toBe(4096);
+    expect(quota.disk.remaining).toBeNull();
+    expect(quota.servers.remaining).toBeNull();
+    expect(quota.updatedAt).toBeNull();
+  });
+
+  it('gibt bei überschrittenem Limit 0 statt eines negativen Rests zurück', async () => {
+    const { service } = buildService({
+      limits: { maxRamMb: 4096, maxCpuCores: null, maxDiskMb: null, maxConcurrentServers: 1 },
+      userUsage: { runningRamMb: 6144, runningServers: 3 },
+    });
+
+    const quota = await service.getOwnQuota(plainActor, USER_ID);
+
+    expect(quota.ram.remaining).toBe(0);
+    expect(quota.servers.remaining).toBe(0);
+  });
+
+  it('verlangt keine Permission, setzt canEdit aber nur mit user.manage', async () => {
+    const { service } = buildService({});
+
+    expect((await service.getOwnQuota(plainActor, USER_ID)).permissions).toEqual({
+      canView: true,
+      canEdit: false,
+    });
+    expect((await service.getOwnQuota(adminActor, USER_ID)).permissions).toEqual({
+      canView: true,
+      canEdit: true,
+    });
+  });
+
+  it('meldet ein unbekanntes Konto mit USER_NOT_FOUND', async () => {
+    const { service } = buildService({ userExists: false });
+
+    const error = await service.getOwnQuota(plainActor, USER_ID).catch((thrown: unknown) => thrown);
+
+    expect(isResourceError(error)).toBe(true);
+    if (!isResourceError(error)) {
+      return;
+    }
+
+    expect(error.code).toBe('USER_NOT_FOUND');
+  });
+});
+
 describe('Kontingent lesen und setzen', () => {
   it('liefert den vollständigen DTO inkl. permissions-Objekt und Belegung', async () => {
     const { service } = buildService({
