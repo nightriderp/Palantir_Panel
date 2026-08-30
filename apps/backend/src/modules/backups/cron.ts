@@ -24,6 +24,10 @@
  * **Zeitzone:** ausgewertet wird in der lokalen Zeit des Backends. Ein
  * Zeitplan „täglich 04:00“ meint damit 04:00 auf dem Server, auf dem das
  * Backend läuft – dieselbe Zeit, die auch in der Oberfläche angezeigt wird.
+ * Aufgaben aus dem Reiter „Aufgaben“ (B3) bringen dagegen eine eigene
+ * IANA-Zeitzone mit; für sie gibt es {@link nextCronRunInZone}. Die Zerlegung
+ * und die Trefferregeln sind dieselben – nur der Kalender, in dem gerechnet
+ * wird, ist ein anderer.
  */
 
 import { ScheduleError } from './errors.js';
@@ -179,14 +183,32 @@ export function cronMatches(parsed: ParsedCronExpression, moment: Date): boolean
   );
 }
 
+/** Kalenderfelder eines Tages – aus lokaler Zeit oder aus einer Zeitzone. */
+interface DayFields {
+  /** Monat 1–12. */
+  readonly month: number;
+  /** Tag des Monats 1–31. */
+  readonly dayOfMonth: number;
+  /** Wochentag 0–6, Sonntag ist 0. */
+  readonly weekday: number;
+}
+
 /** Passt der Tag (Monat, Tag-des-Monats, Wochentag) – unabhängig von der Uhrzeit? */
 function dayMatches(parsed: ParsedCronExpression, day: Date): boolean {
-  if (!parsed.month.values.includes(day.getMonth() + 1)) {
+  return dayFieldsMatch(parsed, {
+    month: day.getMonth() + 1,
+    dayOfMonth: day.getDate(),
+    weekday: day.getDay(),
+  });
+}
+
+function dayFieldsMatch(parsed: ParsedCronExpression, day: DayFields): boolean {
+  if (!parsed.month.values.includes(day.month)) {
     return false;
   }
 
-  const dom = parsed.dayOfMonth.values.includes(day.getDate());
-  const dow = matchesDayOfWeek(parsed.dayOfWeek, day.getDay());
+  const dom = parsed.dayOfMonth.values.includes(day.dayOfMonth);
+  const dow = matchesDayOfWeek(parsed.dayOfWeek, day.weekday);
 
   if (parsed.dayOfMonth.wildcard && parsed.dayOfWeek.wildcard) {
     return true;
@@ -247,6 +269,179 @@ export function nextCronRun(expression: string, after: Date): Date | null {
     }
 
     day.setDate(day.getDate() + 1);
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Auswertung in einer IANA-Zeitzone (B3, Reiter „Aufgaben")
+// ---------------------------------------------------------------------------
+//
+// Die Aufgabenliste aus Lastenheft §3.3 speichert je Aufgabe eine Zeitzone: Ein
+// „täglicher Neustart um 04:00" soll 04:00 beim Nutzer meinen und nicht 04:00
+// beim Backend – und er soll über die Sommerzeitumstellung hinweg um 04:00
+// bleiben. Gerechnet wird deshalb im Kalender der Zeitzone; Trefferregeln und
+// Zerlegung bleiben dieselben wie oben.
+
+/**
+ * Formatierer je Zeitzone.
+ *
+ * `Intl.DateTimeFormat` anzulegen ist um Größenordnungen teurer als es zu
+ * benutzen; die Suche nach dem nächsten Lauf fragt bis zu einige tausend
+ * Zeitpunkte ab.
+ */
+const zoneFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function zoneFormatter(timeZone: string): Intl.DateTimeFormat {
+  const vorhanden = zoneFormatters.get(timeZone);
+
+  if (vorhanden !== undefined) {
+    return vorhanden;
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    // `hourCycle: 'h23'` statt `hour12: false`: Letzteres liefert je nach
+    // Laufzeit „24" für Mitternacht.
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  zoneFormatters.set(timeZone, formatter);
+
+  return formatter;
+}
+
+/** Kennt die Laufzeit diese IANA-Zeitzone (z. B. `Europe/Berlin`)? */
+export function isSupportedTimeZone(timeZone: string): boolean {
+  try {
+    zoneFormatter(timeZone);
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Die Wanduhr einer Zeitzone zu einem Zeitpunkt – als `Date`, dessen
+ * **UTC**-Felder die Ortszeit tragen.
+ *
+ * Damit lässt sich in der Zeitzone rechnen, ohne die Prozess-Zeitzone zu
+ * verstellen: Alle Vergleiche unten benutzen die `getUTC…`-Zugriffe.
+ */
+function zoneWallClock(instant: Date, timeZone: string): Date {
+  const parts = zoneFormatter(timeZone).formatToParts(instant);
+  const field = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? '0');
+
+  return new Date(
+    Date.UTC(
+      field('year'),
+      field('month') - 1,
+      field('day'),
+      field('hour'),
+      field('minute'),
+      field('second'),
+    ),
+  );
+}
+
+/** Abstand zwischen Ortszeit und UTC zu einem Zeitpunkt, in Millisekunden. */
+function zoneOffsetMs(instant: Date, timeZone: string): number {
+  return zoneWallClock(instant, timeZone).getTime() - instant.getTime();
+}
+
+/**
+ * Der Zeitpunkt, zu dem die Zeitzone diese Wanduhrzeit zeigt.
+ *
+ * Zwei Durchläufe, weil der Abstand zur UTC selbst vom Zeitpunkt abhängt: Die
+ * erste Schätzung benutzt den Abstand an der Wanduhrzeit, die zweite den am
+ * geschätzten Zeitpunkt. Über eine Sommerzeitumstellung hinweg ist erst die
+ * zweite richtig.
+ *
+ * In der übersprungenen Stunde der Frühjahrsumstellung gibt es die Wanduhrzeit
+ * nicht; das Ergebnis liegt dann eine Stunde später – die Aufgabe fällt nicht
+ * aus, sondern läuft am Ende der Lücke.
+ */
+function instantForWallClock(wallClockMs: number, timeZone: string): Date {
+  let guess = wallClockMs - zoneOffsetMs(new Date(wallClockMs), timeZone);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const corrected = wallClockMs - zoneOffsetMs(new Date(guess), timeZone);
+
+    if (corrected === guess) {
+      break;
+    }
+
+    guess = corrected;
+  }
+
+  return new Date(guess);
+}
+
+/** Größter Abstand zweier Zonen-Abstände – Spielraum für die Vorauswahl unten. */
+const MAX_ZONE_DRIFT_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * Nächster Zeitpunkt **nach** `after`, zu dem der Ausdruck in `timeZone` passt.
+ *
+ * Gegenstück zu {@link nextCronRun} für Aufgaben mit eigener Zeitzone. `null`,
+ * wenn es innerhalb von vier Jahren keinen gibt (unerfüllbarer Ausdruck).
+ *
+ * @throws {ScheduleError} `SCHEDULE_INVALID_CRON`, wenn der Ausdruck oder die
+ *   Zeitzone ungültig ist.
+ */
+export function nextCronRunInZone(expression: string, after: Date, timeZone: string): Date | null {
+  if (!isSupportedTimeZone(timeZone)) {
+    fail(`Die Zeitzone „${timeZone}“ ist unbekannt.`);
+  }
+
+  const parsed = parseCronExpression(expression);
+  const wall = zoneWallClock(after, timeZone);
+  const day = new Date(Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate()));
+
+  for (let step = 0; step <= MAX_LOOKAHEAD_DAYS; step += 1) {
+    const passtDerTag = dayFieldsMatch(parsed, {
+      month: day.getUTCMonth() + 1,
+      dayOfMonth: day.getUTCDate(),
+      weekday: day.getUTCDay(),
+    });
+
+    if (passtDerTag) {
+      for (const hour of parsed.hour.values) {
+        for (const minute of parsed.minute.values) {
+          const candidateWall = Date.UTC(
+            day.getUTCFullYear(),
+            day.getUTCMonth(),
+            day.getUTCDate(),
+            hour,
+            minute,
+          );
+
+          // Vorauswahl ohne Zeitzonen-Rechnung: Wanduhrzeiten, die klar vor
+          // `after` liegen, können auch nach Umrechnung nicht später sein.
+          if (candidateWall <= wall.getTime() - MAX_ZONE_DRIFT_MS) {
+            continue;
+          }
+
+          const candidate = instantForWallClock(candidateWall, timeZone);
+
+          // Strikt später: die laufende Minute hat bereits ausgelöst.
+          if (candidate.getTime() > after.getTime()) {
+            return candidate;
+          }
+        }
+      }
+    }
+
+    day.setUTCDate(day.getUTCDate() + 1);
   }
 
   return null;

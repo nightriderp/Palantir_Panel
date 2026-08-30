@@ -1,11 +1,6 @@
 'use client';
 
-import {
-  SCHEDULE_ACTIONS,
-  type GameServerDto,
-  type ScheduleAction,
-  type ScheduleDto,
-} from '@palantir/contracts';
+import { type GameServerDto, type ScheduleAction, type ScheduleDto } from '@palantir/contracts';
 import { type ScheduleInput, scheduleInputSchema } from '@palantir/validation';
 import { useState } from 'react';
 import {
@@ -39,6 +34,16 @@ const ACTION_LABELS: Record<ScheduleAction, string> = {
   restart: 'Server neu starten',
   command: 'Konsolenbefehl senden',
 };
+
+/**
+ * Auswählbare Aktionen dieses Reiters.
+ *
+ * `backup` fehlt bewusst: Der Backup-Zeitplan ist der eine Zeitplan je Server
+ * und wird unter „Sicherungen" gepflegt. Zwei Wege auf dieselbe Zeile hätten
+ * zwei Auslegungen desselben Cron-Ausdrucks zur Folge; das Backend weist die
+ * Aktion hier deshalb ab.
+ */
+const SELECTABLE_ACTIONS: readonly ScheduleAction[] = ['restart', 'command'];
 
 const RUN_RESULT_LABELS: Record<NonNullable<ScheduleDto['lastRunResult']>, string> = {
   success: 'erfolgreich',
@@ -173,7 +178,8 @@ export function TasksTab({ server }: TasksTabProps) {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-ink-faint">
-          Wiederkehrende Vorgänge, z. B. ein nächtlicher Neustart oder eine regelmäßige Sicherung.
+          Wiederkehrende Vorgänge, z. B. ein nächtlicher Neustart oder ein Konsolenbefehl zu fester
+          Uhrzeit.
         </p>
         {canManage ? (
           <Button variant="primary" iconLeft="plus" onClick={openNew}>
@@ -199,7 +205,7 @@ export function TasksTab({ server }: TasksTabProps) {
         <EmptyState
           icon="clock"
           title="Keine geplanten Aufgaben"
-          description="Lege zum Beispiel einen nächtlichen Neustart oder eine regelmäßige Sicherung an."
+          description="Lege zum Beispiel einen nächtlichen Neustart oder einen Konsolenbefehl zu fester Uhrzeit an."
           action={
             canManage ? (
               <Button variant="primary" iconLeft="plus" onClick={openNew}>
@@ -285,7 +291,7 @@ export function TasksTab({ server }: TasksTabProps) {
               command: value === 'command' ? (current.command ?? '') : null,
             }))
           }
-          options={SCHEDULE_ACTIONS.map((action) => ({
+          options={SELECTABLE_ACTIONS.map((action) => ({
             value: action,
             label: ACTION_LABELS[action],
           }))}
