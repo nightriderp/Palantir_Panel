@@ -444,6 +444,30 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     }
   });
 
+  /**
+   * Verlauf der Messwerte (Lastenheft §3.3 „Verlaufsdarstellung").
+   *
+   * Gleiche Schranke wie der Momentwert: Wer den Server sehen darf, darf auch
+   * seinen Verlauf sehen. Das Fenster kappt der Dienst an der
+   * Aufbewahrungsfrist.
+   */
+  app.get('/api/servers/:id/stats/history', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const query = z
+        .object({
+          windowMinutes: z.coerce.number().int().positive().max(43_200).default(60),
+        })
+        .parse(request.query);
+
+      await loadAuthorized(request, id, 'canView');
+
+      return await reply.send(ok(await service.getStatsHistory(id, query.windowMinutes)));
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
   app.get('/api/servers/:id/logs', async (request, reply) => {
     try {
       const { id } = serverIdParamsSchema.parse(request.params);

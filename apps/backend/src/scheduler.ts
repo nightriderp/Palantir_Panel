@@ -11,6 +11,8 @@
  *   (Lastenheft §3.3)
  * - `ServerScheduleService.tick()` – dasselbe für geplante Neustarts und
  *   Konsolenbefehle (Lastenheft §3.3, Reiter „Aufgaben")
+ * - `ServerOrchestrationService.sampleServerStats()` – ohne Aufruf entsteht nie
+ *   ein Messwert-Verlauf (Lastenheft §3.3 „Verlaufsdarstellung")
  *
  * Beide bleiben ohne eigenen Timer, damit sie ohne Wartezeit prüfbar sind und
  * damit ein Skript oder ein Wartungs-Kommando denselben Ablauf anstoßen kann.
@@ -273,6 +275,49 @@ export function serverScheduleTask(
           },
           'Geplante Server-Aufgaben ausgewertet',
         );
+      }
+    },
+  };
+}
+
+/** Ausschnitt der Verlaufs-Abtastung, den der Zeitgeber braucht (B3/P5). */
+export interface StatsSampler {
+  /** Tastet alle laufenden Server einer Node ab; liefert die abgetasteten Ids. */
+  sampleServerStats(hostId: string): Promise<readonly string[]>;
+  /** Entfernt Stichproben jenseits der Aufbewahrungsfrist; liefert die Anzahl. */
+  pruneServerStats(): Promise<number>;
+}
+
+/**
+ * Messwerte festhalten und Alte wegräumen (Lastenheft §3.3
+ * „Verlaufsdarstellung").
+ *
+ * Ohne diesen Takt gäbe es nur den Momentwert und nie eine Reihe. Abgetastet
+ * werden – wie beim Auto-Shutdown – nur Nodes mit **offener** Agent-Verbindung:
+ * Ohne Verbindung ließe sich ohnehin nichts messen, der Lauf schriebe nur eine
+ * Reihe von `AGENT_NOT_CONNECTED` ins Log.
+ *
+ * Das Wegräumen läuft in **jedem** Durchlauf mit, auch ohne verbundene Node:
+ * Die Frist gilt für die Tabelle, nicht für die Verbindung.
+ */
+export function statsSamplingTask(
+  sampler: StatsSampler,
+  agents: ConnectedHosts,
+  log: SchedulerLogger,
+): ScheduledTask {
+  return {
+    name: 'statsSampling',
+    async run(): Promise<void> {
+      let abgetastet = 0;
+
+      for (const hostId of agents.connectedHostIds()) {
+        abgetastet += (await sampler.sampleServerStats(hostId)).length;
+      }
+
+      const entfernt = await sampler.pruneServerStats();
+
+      if (abgetastet > 0 || entfernt > 0) {
+        log.debug({ abgetastet, entfernt }, 'Messwert-Verlauf fortgeschrieben');
       }
     },
   };
