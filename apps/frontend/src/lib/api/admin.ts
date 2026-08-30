@@ -43,6 +43,7 @@ import {
   type UserResourceLimitsInput,
 } from '@palantir/validation';
 import { type ApiResult, apiRequest } from './client';
+import { fetchServers } from './servers';
 
 /**
  * REST-Endpunkte des Admin-Kernbereichs (Arbeitspaket F10).
@@ -131,11 +132,15 @@ export function resetUserTwoFactor(userId: string): Promise<ApiResult<null>> {
  * Server eines Nutzers einsehen (Lastenheft §3.7).
  *
  * Das Backend hat keinen nach Besitzer gefilterten Endpunkt; ein Admin mit
- * `server.view.any` bekommt über `/servers` alle Server und filtert nach
+ * `server.view.any` bekommt über die Serverliste alle Server und filtert nach
  * `ownerId` in der Ansicht.
+ *
+ * Geht bewusst über `fetchServers` aus `lib/api/servers.ts` statt über einen
+ * eigenen Pfad – es ist dieselbe Route, und zwei Schreibweisen davon laufen
+ * beim nächsten Pfadwechsel auseinander.
  */
 export function fetchAllServers(signal?: AbortSignal): Promise<ApiResult<GameServerDto[]>> {
-  return apiRequest<GameServerDto[]>('/servers', { signal });
+  return fetchServers(signal);
 }
 
 // ---------------------------------------------------------------------------

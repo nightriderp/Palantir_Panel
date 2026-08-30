@@ -35,7 +35,19 @@ import { API_BASE_URL, type ApiResult, apiRequest } from './client';
  * wird nichts ausgepackt und nichts geworfen.
  */
 
-const SERVERS = '/servers';
+/**
+ * Basis der Server-Routen aus B3.
+ *
+ * B3 registriert seine Routen mit dem Präfix `/api`
+ * (`apps/backend/src/modules/server-orchestration/routes.ts`), `apiUrl()` hängt
+ * den Pfad unverändert an die Basisadresse und schreibt ihn nicht um. Ohne das
+ * Präfix läuft deshalb jeder Aufruf ins Leere.
+ *
+ * **Nicht jedes Modul nutzt `/api`.** B5 (Backups), B8 (Admin, Nodes) und B1
+ * (Auth) registrieren ohne Präfix. Die Basis gilt darum nur für die Routen von
+ * B3 – siehe `BACKUP_SERVERS` weiter unten.
+ */
+const SERVERS = '/api/servers';
 
 function serverPath(serverId: string, suffix = ''): string {
   return `${SERVERS}/${encodeURIComponent(serverId)}${suffix}`;
@@ -95,7 +107,7 @@ export function deleteServer(serverId: string): Promise<ApiResult<null>> {
 // ---------------------------------------------------------------------------
 
 export function fetchGameTypes(signal?: AbortSignal): Promise<ApiResult<GameTypeDto[]>> {
-  return apiRequest<GameTypeDto[]>('/game-types', { signal });
+  return apiRequest<GameTypeDto[]>('/api/game-types', { signal });
 }
 
 /**
@@ -103,6 +115,9 @@ export function fetchGameTypes(signal?: AbortSignal): Promise<ApiResult<GameType
  *
  * Der DTO stammt aus B8; die freie Kapazität steht dort fertig gerechnet in
  * `capacity.available` – F3 rechnet sie nicht selbst aus.
+ *
+ * Ohne `/api`-Präfix: B8 registriert `/nodes/available` bewusst ohne Präfix
+ * (`apps/backend/src/modules/admin/routes.ts`).
  */
 export function fetchHostNodes(signal?: AbortSignal): Promise<ApiResult<HostNodeDto[]>> {
   return apiRequest<HostNodeDto[]>('/nodes/available', { signal });
@@ -113,6 +128,10 @@ export function fetchHostNodes(signal?: AbortSignal): Promise<ApiResult<HostNode
  *
  * Der DTO stammt aus B4 und enthält neben den Grenzen immer auch die aktuelle
  * Belegung – der Wizard braucht beides, um „passt noch" zu beantworten.
+ *
+ * Ohne `/api`-Präfix: Die Route entsteht im Ressourcen-Modul (B4/P6) und liegt
+ * dort neben `/admin/users/:userId/limits` – dasselbe Modul, dieselbe
+ * präfixlose Schreibweise.
  */
 export function fetchResourceQuota(signal?: AbortSignal): Promise<ApiResult<UserResourceLimitDto>> {
   return apiRequest<UserResourceLimitDto>('/me/resource-quota', { signal });
@@ -123,12 +142,15 @@ export function fetchResourceQuota(signal?: AbortSignal): Promise<ApiResult<User
  *
  * Format und Sperrliste prüft das Backend erneut – die Sofortmeldung im
  * Formular ersetzt die verbindliche Prüfung nicht.
+ *
+ * Die Route heißt im Backend `GET /api/servers/subdomain-check` – sie steht
+ * unterhalb der Serverliste, nicht unter einer eigenen Ressource.
  */
 export function checkSubdomain(
   subdomain: string,
   signal?: AbortSignal,
 ): Promise<ApiResult<SubdomainAvailabilityDto>> {
-  return apiRequest<SubdomainAvailabilityDto>('/subdomains/check', {
+  return apiRequest<SubdomainAvailabilityDto>(`${SERVERS}/subdomain-check`, {
     query: { subdomain },
     signal,
   });
@@ -138,11 +160,13 @@ export function checkSubdomain(
  * Weltdaten-Archiv für die Übernahme hochladen (Lastenheft §3.3).
  *
  * Liefert die `uploadId`, die der Wizard anschließend in `worldImport` mitgibt.
+ *
+ * Die Route fehlt im Backend noch; der Pfad steht bereits im `/api`-Schema.
  */
 export function uploadWorldArchive(file: File): Promise<ApiResult<{ uploadId: string }>> {
   const form = new FormData();
   form.set('file', file);
-  return apiRequest<{ uploadId: string }>('/uploads/world-archives', {
+  return apiRequest<{ uploadId: string }>('/api/uploads/world-archives', {
     method: 'POST',
     body: form,
   });
@@ -177,11 +201,17 @@ export function fetchCloneJob(
 // Einstellungen und Mitglieder
 // ---------------------------------------------------------------------------
 
+/**
+ * Einstellungen ändern.
+ *
+ * Das Backend nimmt die Änderung unter `PATCH /api/servers/:id` entgegen – es
+ * gibt keine eigene `/settings`-Unterressource.
+ */
 export function updateServerSettings(
   serverId: string,
   input: UpdateServerSettingsInput,
 ): Promise<ApiResult<GameServerDto>> {
-  return apiRequest<GameServerDto>(serverPath(serverId, '/settings'), {
+  return apiRequest<GameServerDto>(serverPath(serverId), {
     method: 'PATCH',
     json: input,
   });
@@ -219,6 +249,18 @@ export function removeMember(serverId: string, userId: string): Promise<ApiResul
 // Server angelegt, danach aber über ihre eigene Id angesprochen. Der
 // vollständige Export ist dort kein eigener Auftragstyp, sondern ein
 // `BackupDto` mit `isExport: true`.
+//
+// **Ohne `/api`-Präfix, im Unterschied zu `SERVERS` oben.** B5 registriert seine
+// Routen als `/servers/:serverId/backups`, `/backups/:backupId` und
+// `/users/:userId/backups` – ein gemeinsames Präfix würde diese bereits
+// funktionierenden Aufrufe brechen. Die getrennte Basis hält den Unterschied
+// sichtbar, statt ihn in jeden einzelnen Aufruf zu streuen.
+
+const BACKUP_SERVERS = '/servers';
+
+function backupServerPath(serverId: string, suffix = ''): string {
+  return `${BACKUP_SERVERS}/${encodeURIComponent(serverId)}${suffix}`;
+}
 
 function backupPath(backupId: string, suffix = ''): string {
   return `/backups/${encodeURIComponent(backupId)}${suffix}`;
@@ -228,7 +270,7 @@ export function fetchBackups(
   serverId: string,
   signal?: AbortSignal,
 ): Promise<ApiResult<BackupDto[]>> {
-  return apiRequest<BackupDto[]>(serverPath(serverId, '/backups'), { signal });
+  return apiRequest<BackupDto[]>(backupServerPath(serverId, '/backups'), { signal });
 }
 
 /**
@@ -256,7 +298,10 @@ export function createBackup(
   serverId: string,
   input: CreateBackupInput,
 ): Promise<ApiResult<BackupDto>> {
-  return apiRequest<BackupDto>(serverPath(serverId, '/backups'), { method: 'POST', json: input });
+  return apiRequest<BackupDto>(backupServerPath(serverId, '/backups'), {
+    method: 'POST',
+    json: input,
+  });
 }
 
 export function restoreBackup(backupId: string): Promise<ApiResult<BackupDto>> {
@@ -282,7 +327,10 @@ export function startExport(
   serverId: string,
   input: CreateServerExportInput,
 ): Promise<ApiResult<BackupDto>> {
-  return apiRequest<BackupDto>(serverPath(serverId, '/export'), { method: 'POST', json: input });
+  return apiRequest<BackupDto>(backupServerPath(serverId, '/export'), {
+    method: 'POST',
+    json: input,
+  });
 }
 
 export function fetchBackup(backupId: string, signal?: AbortSignal): Promise<ApiResult<BackupDto>> {
