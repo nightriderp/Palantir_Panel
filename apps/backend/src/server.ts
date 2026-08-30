@@ -17,6 +17,7 @@ import {
   buildResourceService,
   createDrizzleHostNodeRepository as createResourceHostNodeRepository,
   createNodeUsageSource,
+  registerResourceRoutes,
 } from './modules/resources/index.js';
 import {
   type AuthEventSink,
@@ -381,6 +382,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * Punkt 80).
      */
     const resources = buildResourceService(serverUsage);
+
+    /*
+     * Kontingent-Routen (`/admin/users/:userId/limits`, Gefundener Punkt 88).
+     * Derselbe `ResourceService` wie oben – die Verwaltung der Nutzer-Limits
+     * hängt hier nur an HTTP, eine zweite Kontingent-Logik gibt es nicht.
+     */
+    await app.register(registerResourceRoutes({ resourceLimits: resources }));
 
     const scheduler = startScheduler({
       intervalMs: env.SCHEDULER_INTERVAL_MS,
