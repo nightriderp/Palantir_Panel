@@ -13,13 +13,19 @@
  * (`moderation.ts`), damit die beiden Zugriffswege nicht ineinanderlaufen.
  */
 
-import { type ConversationDto, type MessageDto, type MessagePageDto } from '@palantir/contracts';
+import {
+  type ConversationDto,
+  type DirectMessageRecipientDto,
+  type MessageDto,
+  type MessagePageDto,
+} from '@palantir/contracts';
 import { type MessagePageQuery, type SendMessageInput } from '@palantir/validation';
 import { type ChatContext, requireUserId } from './context.js';
 import {
   type ConversationDtoContext,
   type MessageDtoContext,
   toConversationDto,
+  toDirectMessageRecipientDto,
   toMessageDto,
 } from './dto.js';
 import { ChatError } from './errors.js';
@@ -43,7 +49,9 @@ import {
   assertDirectRecipientAllowed,
   assertParticipant,
   canSendMessage,
+  directRecipientCandidateIds,
   dmKeyFor,
+  isDirectRecipientAllowed,
   recipientsOf,
   resolveAudience,
 } from './visibility.js';
@@ -65,6 +73,12 @@ export interface ChatService {
   getConversation(ctx: ChatContext, conversationId: string): Promise<ConversationDto>;
   /** Öffnet die Unterhaltung mit einem anderen Konto und legt sie beim ersten Mal an. */
   openDirectConversation(ctx: ChatContext, recipientId: string): Promise<ConversationDto>;
+  /**
+   * Zulässige DM-Empfänger für den Aufrufer (Pflichtenheft §15): Besitzer und
+   * Mitglieder der Server, auf die er Zugriff hat – freigeschaltet, nicht
+   * gesperrt, ohne ihn selbst. Bewusst keine globale Nutzerliste.
+   */
+  listDirectMessageRecipients(ctx: ChatContext): Promise<DirectMessageRecipientDto[]>;
   /**
    * Gruppen-Chat eines Servers; legt ihn beim ersten Zugriff an
    * („entsteht automatisch mit dem Server", Pflichtenheft §15).
@@ -304,6 +318,46 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       }
 
       return dto;
+    },
+
+    async listDirectMessageRecipients(ctx) {
+      const viewerId = requireUserId(ctx);
+
+      const serverIds = await servers.listServerIdsForUser(viewerId);
+
+      /*
+       * Teilnehmerkreise der gemeinsamen Server frisch lesen (wie überall im
+       * Modul, Pflichtenheft §15): Wer aus einem Server entfernt wurde, fällt
+       * damit sofort aus dem Verzeichnis. Ein zwischenzeitlich gelöschter
+       * Server liefert kein Audience und wird übersprungen.
+       */
+      const audiences = (
+        await Promise.all(
+          serverIds.map(async (serverId) => {
+            const [server, members] = await Promise.all([
+              servers.findServer(serverId),
+              servers.listMembers(serverId),
+            ]);
+
+            return server
+              ? { ownerId: server.ownerId, memberIds: members.map((member) => member.userId) }
+              : null;
+          }),
+        )
+      ).filter((audience) => audience !== null);
+
+      const candidateIds = directRecipientCandidateIds(viewerId, audiences);
+
+      if (candidateIds.length === 0) {
+        return [];
+      }
+
+      const candidates = await users.listByIds(candidateIds);
+
+      return candidates
+        .filter((candidate) => isDirectRecipientAllowed(viewerId, candidate))
+        .map(toDirectMessageRecipientDto)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName));
     },
 
     async openServerConversation(ctx, serverId) {

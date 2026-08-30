@@ -24,9 +24,11 @@ import {
   ownerActor,
   recordingDelivery,
   steppingClock,
+  testId,
 } from './test-doubles.js';
 
 const SERVER = { id: SERVER_ID, name: 'Minecraft-Welt', ownerId: ALEX };
+const FREMDER_SERVER = { id: testId('5f'), name: 'Fremde-Welt', ownerId: CHRIS };
 
 const NAMEN = {
   [ALEX]: { displayName: 'Alex' },
@@ -95,6 +97,71 @@ describe('Direktnachrichten öffnen', () => {
     await expect(dienst.openDirectConversation(ctxFor(ALEX), CHRIS)).rejects.toThrowError(
       new ChatError('CONVERSATION_RECIPIENT_NOT_ALLOWED'),
     );
+  });
+});
+
+describe('DM-Verzeichnis (zulässige Empfänger)', () => {
+  const NAMEN_ALLE = {
+    ...NAMEN,
+    [CHRIS]: { displayName: 'Chris' },
+  };
+
+  /** Alex besitzt SERVER (Mitglied Bea, Mod); Chris besitzt einen Server ohne Alex. */
+  function verzeichnisDienst(
+    users = fakeUserDirectory(NAMEN_ALLE),
+  ): ReturnType<typeof createChatService> {
+    return createChatService({
+      repository,
+      users,
+      servers: fakeServerMembership([SERVER, FREMDER_SERVER], {
+        [SERVER_ID]: [BEA, MOD],
+        [FREMDER_SERVER.id]: [],
+      }),
+      delivery,
+    });
+  }
+
+  it('listet Besitzer und Mitglieder gemeinsamer Server, ohne das eigene Konto', async () => {
+    const empfaenger = await verzeichnisDienst().listDirectMessageRecipients(ctxFor(ALEX));
+
+    expect(empfaenger.map((eintrag) => eintrag.recipientId)).toEqual([BEA, MOD]);
+    expect(empfaenger[0]).toEqual({ recipientId: BEA, displayName: 'Bea' });
+  });
+
+  it('nennt aus Sicht eines Mitglieds den Besitzer des gemeinsamen Servers', async () => {
+    const empfaenger = await verzeichnisDienst().listDirectMessageRecipients(ctxFor(BEA));
+
+    expect(empfaenger.map((eintrag) => eintrag.recipientId)).toEqual([ALEX, MOD]);
+  });
+
+  it('zeigt keine Konten aus Servern, auf die der Aufrufer keinen Zugriff hat', async () => {
+    const empfaenger = await verzeichnisDienst().listDirectMessageRecipients(ctxFor(ALEX));
+
+    // Chris besitzt nur den fremden Server – Alex darf ihn nicht sehen.
+    expect(empfaenger.map((eintrag) => eintrag.recipientId)).not.toContain(CHRIS);
+  });
+
+  it('lässt gesperrte und noch nicht freigeschaltete Konten aus', async () => {
+    const empfaenger = await verzeichnisDienst(
+      fakeUserDirectory({
+        ...NAMEN_ALLE,
+        [BEA]: { displayName: 'Bea', banned: true },
+        [MOD]: { displayName: 'Mod', approved: false },
+      }),
+    ).listDirectMessageRecipients(ctxFor(ALEX));
+
+    expect(empfaenger).toEqual([]);
+  });
+
+  it('liefert ein leeres Verzeichnis, wenn der Aufrufer mit niemandem einen Server teilt', async () => {
+    const dienst = createChatService({
+      repository,
+      users: fakeUserDirectory(NAMEN_ALLE),
+      servers: fakeServerMembership([FREMDER_SERVER], { [FREMDER_SERVER.id]: [] }),
+    });
+
+    // Alex ist weder Besitzer noch Mitglied des fremden Servers.
+    expect(await dienst.listDirectMessageRecipients(ctxFor(ALEX))).toEqual([]);
   });
 });
 

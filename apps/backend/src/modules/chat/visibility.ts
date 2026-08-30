@@ -182,6 +182,56 @@ export function assertDirectRecipientAllowed(
   }
 }
 
+/**
+ * Prädikat-Gegenstück zu {@link assertDirectRecipientAllowed}: dieselbe Regel,
+ * einmal werfend (an der Aufrufstelle) und einmal filternd (für das
+ * Verzeichnis). Ein Konto darf angeschrieben werden, wenn es nicht das eigene
+ * ist, nicht gesperrt und freigeschaltet ist.
+ */
+export function isDirectRecipientAllowed(
+  senderId: string,
+  recipient: { readonly id: string; readonly banned: boolean; readonly approved: boolean },
+): boolean {
+  return recipient.id !== senderId && !recipient.banned && recipient.approved;
+}
+
+/** Ein Server samt seinem Teilnehmerkreis, so weit das DM-Verzeichnis ihn braucht. */
+export interface RecipientServerAudience {
+  readonly ownerId: string;
+  readonly memberIds: readonly string[];
+}
+
+/**
+ * Kreis der Konten, die ein Nutzer als DM-Empfänger sehen darf: Besitzer und
+ * Mitglieder der Server, auf die er selbst Zugriff hat – ohne ihn selbst
+ * (Pflichtenheft §15, Datenschutz).
+ *
+ * Bewusst **kein** globales Nutzerverzeichnis: Sichtbar wird nur, wer sich
+ * ohnehin einen Server mit dem Nutzer teilt. Wer mit niemandem einen Server
+ * teilt, sieht ein leeres Verzeichnis und kann so keine DM „ins Blaue" beginnen.
+ *
+ * Reine Mengenbildung; ob ein Kandidat auch freigeschaltet ist, prüft erst
+ * {@link isDirectRecipientAllowed} danach.
+ */
+export function directRecipientCandidateIds(
+  viewerId: string,
+  servers: readonly RecipientServerAudience[],
+): string[] {
+  const candidates = new Set<string>();
+
+  for (const server of servers) {
+    candidates.add(server.ownerId);
+
+    for (const memberId of server.memberIds) {
+      candidates.add(memberId);
+    }
+  }
+
+  candidates.delete(viewerId);
+
+  return [...candidates];
+}
+
 /** Konversationstyp aus dem Datensatz – nur zur Lesbarkeit an den Aufrufstellen. */
 export function typeOf(audience: ConversationAudience): ConversationType {
   return audience.conversation.type;

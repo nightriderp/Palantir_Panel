@@ -451,6 +451,37 @@ export function createDrizzleChatUserDirectory(db: Database): ChatUserDirectory 
 
       return new Map(rows.map((row) => [row.id, row.displayName]));
     },
+
+    async listByIds(userIds: readonly string[]): Promise<readonly ChatUserRecord[]> {
+      if (userIds.length === 0) {
+        return [];
+      }
+
+      const rows = await db
+        .select({ id: users.id, displayName: users.displayName, banned: users.banned })
+        .from(users)
+        .where(inArray(users.id, [...userIds]));
+
+      /*
+       * Freischaltstand in einer zweiten Abfrage für die ganze Menge – dieselbe
+       * Regel wie in `find` (eine Rolle außer „Gast"), nur gebündelt statt je
+       * Konto einzeln.
+       */
+      const approvedRows = await db
+        .selectDistinct({ userId: userRoles.userId })
+        .from(userRoles)
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(and(inArray(userRoles.userId, [...userIds]), ne(roles.name, GUEST_ROLE_NAME)));
+
+      const approvedIds = new Set(approvedRows.map((row) => row.userId));
+
+      return rows.map((row) => ({
+        id: row.id,
+        displayName: row.displayName,
+        banned: row.banned,
+        approved: !row.banned && approvedIds.has(row.id),
+      }));
+    },
   };
 }
 
