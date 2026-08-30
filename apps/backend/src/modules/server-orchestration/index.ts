@@ -44,6 +44,8 @@ import {
 import { createDrizzleServerUsageRepository } from './usage-repository.js';
 import { createDrizzleServerRepository } from './repository.js';
 import { registerServerRoutes } from './routes.js';
+import { createDrizzleServerScheduleRepository } from './schedule-repository.js';
+import { type ServerScheduleService, createServerScheduleService } from './schedules.js';
 import { type OrchestrationEventSink, ServerOrchestrationService } from './service.js';
 
 declare module 'fastify' {
@@ -95,10 +97,22 @@ export interface ServerOrchestrationOptions {
   readonly dns?: DnsProvider;
 }
 
+/**
+ * Was das Modul nach außen gibt.
+ *
+ * Neben dem Dienst selbst die geplanten Aufgaben: Ihre Routen hängen hier drin,
+ * ihren Takt gibt aber `scheduler.ts` vor – wie beim Backup-Zeitplan bringt das
+ * Modul keinen eigenen Timer mit.
+ */
+export interface ServerOrchestrationRegistration {
+  readonly service: ServerOrchestrationService;
+  readonly schedules: ServerScheduleService;
+}
+
 export function registerServerOrchestration(
   app: FastifyInstance,
   options: ServerOrchestrationOptions,
-): ServerOrchestrationService {
+): ServerOrchestrationRegistration {
   app.decorateRequest('viewerUserId', null);
 
   app.addHook('onRequest', async (request: FastifyRequest): Promise<void> => {
@@ -228,11 +242,21 @@ export function registerServerOrchestration(
     commandTimeoutMs: env.AGENT_COMMAND_TIMEOUT_MS,
   });
 
+  // Geplante Aufgaben (Lastenheft §3.3). Sie führen `restart` und `command`
+  // über denselben Dienst aus, den auch die Routen benutzen – kein zweiter Weg
+  // an der State Machine vorbei.
+  const schedules = createServerScheduleService({
+    repository: createDrizzleServerScheduleRepository(options.db),
+    servers: repository,
+    executor: service,
+  });
+
   registerServerRoutes(app, {
     service,
     repository,
     registry,
     baseDomain: env.PALANTIR_DOMAIN,
+    schedules,
   });
 
   // Browserseitiger Live-Kanal `/live` (Pflichtenheft §5.3): Abos je Server,
@@ -250,7 +274,7 @@ export function registerServerOrchestration(
     agents.closeAll();
   });
 
-  return service;
+  return { service, schedules };
 }
 
 export { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
@@ -365,6 +389,23 @@ export {
   createHealthProbe,
   createPortConnectProbe,
 } from './health-check.js';
+
+export {
+  type CreateServerScheduleData,
+  type ServerScheduleRecord,
+  type ServerScheduleRepository,
+  SERVER_SCHEDULE_ACTIONS,
+  createDrizzleServerScheduleRepository,
+  isServerScheduleAction,
+} from './schedule-repository.js';
+
+export {
+  type ScheduleExecutor,
+  type ServerScheduleService,
+  type ServerScheduleTickResult,
+  createServerScheduleService,
+  toScheduleDto,
+} from './schedules.js';
 
 export { computeGameServerPermissions } from './permissions.js';
 export { type ServerDtoContext, toGameServerDto } from './dto.js';

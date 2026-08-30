@@ -52,6 +52,7 @@ import {
   autoShutdownTask,
   backupScheduleTask,
   resourceWarningTask,
+  serverScheduleTask,
   startScheduler,
 } from './scheduler.js';
 
@@ -306,14 +307,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     // Ab hier meldet B1 `user.registered` an B6 (siehe Weiterleitung oben).
     notificationEventSink = notifications.eventSink;
 
-    const orchestration = registerServerOrchestration(app, {
-      db,
-      agents,
-      resolveViewerId: (request) => request.authUser?.id ?? null,
-      // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
-      portPool: admin.services.ports,
-      events: notifications.eventSink,
-    });
+    const { service: orchestration, schedules: serverSchedules } = registerServerOrchestration(
+      app,
+      {
+        db,
+        agents,
+        resolveViewerId: (request) => request.authUser?.id ?? null,
+        // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
+        portPool: admin.services.ports,
+        events: notifications.eventSink,
+      },
+    );
 
     /*
      * Chat & Moderation (B7, Pflichtenheft §15) inklusive des Live-Kanals
@@ -415,6 +419,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       tasks: [
         autoShutdownTask(orchestration, agents, app.log),
         backupScheduleTask(backupSchedules, app.log),
+        serverScheduleTask(serverSchedules, app.log),
         resourceWarningTask(resources, notifications.eventSink, app.log),
       ],
     });
