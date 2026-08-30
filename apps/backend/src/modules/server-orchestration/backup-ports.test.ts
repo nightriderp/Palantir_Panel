@@ -177,6 +177,7 @@ describe('Backup-Befehle über den Agent-Kanal (Pflichtenheft §5.3)', () => {
       serverId: SERVER_ID,
       storagePath: '/srv/palantir/backups/a.tar.zst',
       targetPath: '/srv/palantir/servers/x',
+      expectedChecksum: 'a'.repeat(64),
     });
 
     expect(response.success).toBe(false);

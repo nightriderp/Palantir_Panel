@@ -110,6 +110,8 @@ export interface FakeAgent extends BackupAgentGateway {
   readonly createdBackupIds: string[];
   readonly deletedStoragePaths: string[];
   readonly restoredBackupIds: string[];
+  /** Prüfsummen, mit denen der Service `restoreBackup` aufgerufen hat. */
+  readonly restoredChecksums: string[];
   /** Antwort, die `createBackup` liefern soll. */
   createResponse: ApiResponse<unknown>;
   deleteResponse: ApiResponse<unknown>;
@@ -123,6 +125,7 @@ export function fakeAgent(overrides: Partial<FakeAgent> = {}): FakeAgent {
     createdBackupIds: [],
     deletedStoragePaths: [],
     restoredBackupIds: [],
+    restoredChecksums: [],
     createResponse: ok({
       backupId: '00000000-0000-4000-8000-000000000000',
       storagePath: '/srv/palantir/backups/a.tar.zst',
@@ -159,6 +162,7 @@ export function fakeAgent(overrides: Partial<FakeAgent> = {}): FakeAgent {
 
     restoreBackup(payload) {
       agent.restoredBackupIds.push(payload.backupId);
+      agent.restoredChecksums.push(payload.expectedChecksum);
 
       return Promise.resolve(agent.restoreResponse);
     },
