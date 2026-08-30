@@ -15,7 +15,7 @@ import {
 } from '@palantir/contracts';
 import { type ServerAutoShutdown, type ServerPortAssignment } from './types.js';
 import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
-import { type Database } from '../../db/client.js';
+import { type DbConnection } from '../../db/client.js';
 import { gameServers, hostNodes, serverMembers, users } from '../../db/schema.js';
 
 /** Ein Gameserver, wie ihn der Dienst braucht. */
@@ -193,7 +193,7 @@ function toRecord(row: ServerJoinRow): ServerRecord {
   };
 }
 
-export function createDrizzleServerRepository(db: Database): ServerRepository {
+export function createDrizzleServerRepository(db: DbConnection): ServerRepository {
   const baseSelect = {
     server: gameServers,
     ownerDisplayName: users.displayName,

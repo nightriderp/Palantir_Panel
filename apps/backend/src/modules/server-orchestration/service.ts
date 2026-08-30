@@ -45,7 +45,11 @@ import {
 } from './game-registry.js';
 import { type HealthProbe, awaitHealthy } from './health-check.js';
 import { type PortAllocator, visiblePortOf } from './ports.js';
-import { type ResourceGuard, assertResourcesAvailable } from './resource-guard.js';
+import {
+  type CapacityReservation,
+  type ResourceGuard,
+  createInlineCapacityReservation,
+} from './resource-guard.js';
 import { planReconciliation } from './reconciliation.js';
 import { type ServerRecord, type ServerRepository } from './repository.js';
 import { type ServerAutoShutdown } from './types.js';
@@ -87,6 +91,16 @@ export interface OrchestrationDependencies {
   readonly dns: DnsProvider;
   readonly ports: PortAllocator;
   readonly resources: ResourceGuard;
+  /**
+   * Serialisiert Kapazitätsprüfung und belegende Schreiboperation (Punkt 98).
+   *
+   * Ohne Angabe wird aus {@link resources} und {@link repository} eine
+   * Reservierung ohne eigene Serialisierung gebildet – das bisherige Verhalten,
+   * das für Tests und für den Betrieb ohne Transaktionen genügt. Der
+   * Betriebszusammenbau reicht die Drizzle-Umsetzung herein (Advisory-Lock je
+   * Node/Nutzer, `capacity-reservation.ts`).
+   */
+  readonly reservation?: CapacityReservation;
   readonly healthProbe: HealthProbe;
   readonly events: OrchestrationEventSink;
   readonly log: AgentGatewayLogger;
@@ -116,10 +130,13 @@ export function dataHostPathFor(serverId: string): string {
 export class ServerOrchestrationService {
   private readonly deps: OrchestrationDependencies;
   private readonly now: () => Date;
+  private readonly reservation: CapacityReservation;
 
   constructor(deps: OrchestrationDependencies) {
     this.deps = deps;
     this.now = deps.now ?? ((): Date => new Date());
+    this.reservation =
+      deps.reservation ?? createInlineCapacityReservation(deps.resources, deps.repository);
   }
 
   // -------------------------------------------------------------------------
@@ -175,32 +192,37 @@ export class ServerOrchestrationService {
 
     const resourceLimits: ServerResourceLimits = input.resourceLimits;
 
-    await assertResourcesAvailable(this.deps.resources, {
-      userId: ownerId,
-      hostId: host.id,
-      serverId: null,
-      requested: resourceLimits,
-      intent: 'create',
-    });
-
-    // Der Datensatz entsteht zuerst: Der Port-Pool aus B8 ordnet Ports einer
-    // Server-Id zu, die es dafür schon geben muss.
-    const created = await this.deps.repository.create({
-      ownerId,
-      hostId: host.id,
-      name: input.name,
-      gameType: definition.id,
-      subdomain,
-      assignedPorts: [],
-      resourceLimits,
-      configJson: buildServerConfig(definition, input.config),
-      startupParameters: input.startupParameters,
-      autoShutdown: {
-        ...this.deps.config.defaultAutoShutdown,
-        enabled: input.autoShutdownEnabled,
+    // Prüfung und Insert laufen in einer serialisierten Reservierung: Sonst
+    // bestünden zwei gleichzeitige Creates beide die Prüfung und überbuchten die
+    // Node (TOCTOU, WORK_STATUS.md Punkt 98, Pflichtenheft §10). Der Datensatz
+    // entsteht zuerst – der Port-Pool aus B8 ordnet Ports einer Server-Id zu,
+    // die es dafür schon geben muss – aber erst, wenn die Belegung reicht.
+    const created = await this.reservation.reserve(
+      {
+        userId: ownerId,
+        hostId: host.id,
+        serverId: null,
+        requested: resourceLimits,
+        intent: 'create',
       },
-      clonedFromServerId,
-    });
+      (repository) =>
+        repository.create({
+          ownerId,
+          hostId: host.id,
+          name: input.name,
+          gameType: definition.id,
+          subdomain,
+          assignedPorts: [],
+          resourceLimits,
+          configJson: buildServerConfig(definition, input.config),
+          startupParameters: input.startupParameters,
+          autoShutdown: {
+            ...this.deps.config.defaultAutoShutdown,
+            enabled: input.autoShutdownEnabled,
+          },
+          clonedFromServerId,
+        }),
+    );
 
     const assignedPorts = await this.deps.ports.allocate(created.id, definition, {
       nodeId: host.id,
@@ -294,15 +316,28 @@ export class ServerOrchestrationService {
 
     assertTransitionAllowed(server.status, 'starting');
 
-    await assertResourcesAvailable(this.deps.resources, {
-      userId: actorUserId,
-      hostId: server.hostId,
-      serverId: server.id,
-      requested: server.resourceLimits,
-      intent: 'start',
-    });
+    // Vor der Reservierung, damit ein fehlender Container ohne offene
+    // Transaktion scheitert.
+    const containerId = this.requireContainerId(server);
+    const session = this.deps.agents.require(server.hostId);
 
-    await this.dispatchStart(server, { type: 'startRequested' });
+    // Kapazitätsprüfung und Wechsel auf `starting` als eine serialisierte
+    // Einheit: Sonst bestünden zwei gleichzeitige Starts beide die Prüfung, ehe
+    // einer die Belegung schreibt, und überbuchten die Node (TOCTOU,
+    // WORK_STATUS.md Punkt 98, Pflichtenheft §10). Der Agent-Befehl und der
+    // Health-Check laufen bewusst **außerhalb** der Sperre.
+    const started = await this.reservation.reserve(
+      {
+        userId: actorUserId,
+        hostId: server.hostId,
+        serverId: server.id,
+        requested: server.resourceLimits,
+        intent: 'start',
+      },
+      (repository) => this.transition(server, { type: 'startRequested' }, repository),
+    );
+
+    await this.finishStart(server, started, session, containerId);
 
     return this.requireServer(serverId);
   }
@@ -310,6 +345,11 @@ export class ServerOrchestrationService {
   /**
    * Setzt den Server auf `starting`, schickt `START` und wartet danach im
    * Hintergrund auf den Health-Check.
+   *
+   * Der Weg für den automatischen Neustart nach einem Absturz: Er läuft
+   * **ohne** Kapazitätsreservierung, weil der Server bereits angelegt und in der
+   * Belegung berücksichtigt ist. Der reguläre Start (`startServer`) reserviert
+   * dagegen zuerst.
    */
   private async dispatchStart(
     server: ServerRecord,
@@ -320,6 +360,20 @@ export class ServerOrchestrationService {
 
     const started = await this.transition(server, event);
 
+    await this.finishStart(server, started, session, containerId);
+  }
+
+  /**
+   * Schickt `START` an den Agent und stößt den Health-Check an – der Teil des
+   * Starts, der **nach** dem Zustandswechsel kommt und ohne Kapazitätssperre
+   * läuft (der Agent-Befehl ist ein Netz-Roundtrip, der keine Sperre halten soll).
+   */
+  private async finishStart(
+    server: ServerRecord,
+    started: ServerLifecycleState,
+    session: AgentSession,
+    containerId: string,
+  ): Promise<void> {
     try {
       await session.sendCommand('START', server.id, { containerId });
     } catch (error: unknown) {
@@ -969,12 +1023,20 @@ export class ServerOrchestrationService {
   // Hilfsmittel
   // -------------------------------------------------------------------------
 
-  /** Wendet ein Ereignis an und schreibt den neuen Zustand fort. */
+  /**
+   * Wendet ein Ereignis an und schreibt den neuen Zustand fort.
+   *
+   * `repository` erlaubt es, den Schreibvorgang gegen ein transaktionsgebundenes
+   * Repository laufen zu lassen – gebraucht für den Wechsel auf `starting`
+   * innerhalb der Kapazitätsreservierung (Punkt 98). Ohne Angabe schreibt der
+   * Dienst wie bisher gegen sein Standard-Repository.
+   */
   private async transition(
     server: ServerRecord,
     event: ServerLifecycleEvent,
+    repository: ServerRepository = this.deps.repository,
   ): Promise<ServerLifecycleState> {
-    const result = await this.transitionFull(server, event);
+    const result = await this.transitionFull(server, event, repository);
 
     return result.state;
   }
@@ -982,6 +1044,7 @@ export class ServerOrchestrationService {
   private async transitionFull(
     server: ServerRecord,
     event: ServerLifecycleEvent,
+    repository: ServerRepository = this.deps.repository,
   ): Promise<ReturnType<typeof applyLifecycleEvent>> {
     const result = applyLifecycleEvent(
       {
@@ -995,7 +1058,7 @@ export class ServerOrchestrationService {
       { now: this.now(), crashLoopPolicy: this.deps.config.crashLoopPolicy },
     );
 
-    await this.deps.repository.persistLifecycle(server.id, result.state);
+    await repository.persistLifecycle(server.id, result.state);
 
     this.deps.events.emit('server.statusChanged', {
       serverId: server.id,
