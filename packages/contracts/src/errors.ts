@@ -348,6 +348,31 @@ export const ERROR_CATALOG = {
     defaultMessage:
       'Die Prüfsumme des Archivs stimmt nicht mit der gespeicherten Sicherung überein. Das Backup ist beschädigt oder wurde verändert.',
   },
+  /**
+   * Das hochgeladene Weltdaten-Archiv ist unbrauchbar (Lastenheft §3.3,
+   * Arbeitspaket P4). 400.
+   *
+   * Deckt beides ab: ein Format außerhalb von `ARCHIVE_FORMATS` und ein Archiv,
+   * dessen Kopfdaten sich nicht lesen lassen. Bewusst ein Code statt zweier –
+   * für den Nutzer ist es dieselbe Handlung: ein anderes Archiv wählen.
+   */
+  WORLD_ARCHIVE_INVALID: {
+    httpStatus: 400,
+    defaultMessage:
+      'Das Archiv ist kein lesbares ZIP- oder tar.gz-Archiv. Bitte ein anderes Archiv wählen.',
+  },
+  /**
+   * Auf ein hochgeladenes Weltdaten-Archiv wird verwiesen, das es nicht (mehr)
+   * gibt (Arbeitspaket P4). 404.
+   *
+   * Der Upload liegt zwischen zwei Anfragen zwischengespeichert und wird nach
+   * einer Frist verworfen; wer den Wizard lange offen liegen lässt, bekommt
+   * diesen Code statt eines Servers ohne die erwarteten Weltdaten.
+   */
+  WORLD_ARCHIVE_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Das hochgeladene Archiv ist nicht mehr vorhanden. Bitte lade es erneut hoch.',
+  },
   /** Cron-Ausdruck einer geplanten Aufgabe ist ungültig (Pflichtenheft §6). 400. */
   SCHEDULE_INVALID_CRON: {
     httpStatus: 400,
@@ -512,6 +537,18 @@ export const ERROR_CATALOG = {
    * Namen wiederholbar. Bewusst getrennt von `AGENT_INVALID_PATH`: Der Pfad ist
    * zulässig, er ist nur schon belegt.
    */
+  /**
+   * Der Agent konnte ein Archiv nicht entpacken (`FILE_EXTRACT`, P4). 422.
+   *
+   * Wie `BACKUP_CHECKSUM_MISMATCH`: Die Anfrage ist wohlgeformt und berechtigt,
+   * aber das Archiv selbst ist nicht verarbeitbar – ein erneuter Versuch mit
+   * demselben Archiv hilft nicht. Greift auch bei einer Entpack-Bombe, deren
+   * entpackter Inhalt die Grenze des Agents sprengt.
+   */
+  AGENT_ARCHIVE_INVALID: {
+    httpStatus: 422,
+    defaultMessage: 'Das Archiv konnte auf dem Homeserver nicht entpackt werden.',
+  },
   AGENT_FILE_EXISTS: {
     httpStatus: 409,
     defaultMessage: 'Am Zielpfad existiert bereits eine Datei.',
