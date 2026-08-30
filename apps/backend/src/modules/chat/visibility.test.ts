@@ -22,7 +22,9 @@ import {
   assertParticipant,
   canSendMessage,
   canViewConversation,
+  directRecipientCandidateIds,
   dmKeyFor,
+  isDirectRecipientAllowed,
   recipientsOf,
   resolveAudience,
   titleFor,
@@ -43,6 +45,30 @@ function deps(servers = fakeServerMembership([SERVER], { [SERVER_ID]: [BEA] })) 
     },
   };
 }
+
+describe('DM-Verzeichnis: zulässige Empfänger', () => {
+  it('sammelt Besitzer und Mitglieder gemeinsamer Server, ohne den Betrachter', () => {
+    const kandidaten = directRecipientCandidateIds(ALEX, [
+      { ownerId: ALEX, memberIds: [BEA, MOD] },
+      { ownerId: CHRIS, memberIds: [BEA] },
+    ]);
+
+    // Alex fällt heraus, Bea kommt trotz Doppelvorkommen nur einmal vor.
+    expect([...kandidaten].sort()).toEqual([BEA, CHRIS, MOD].sort());
+    expect(kandidaten).not.toContain(ALEX);
+  });
+
+  it('ergibt einen leeren Kreis, wenn keine Server geteilt werden', () => {
+    expect(directRecipientCandidateIds(ALEX, [])).toEqual([]);
+  });
+
+  it('lässt nur freigeschaltete, nicht gesperrte Fremdkonten zu', () => {
+    expect(isDirectRecipientAllowed(ALEX, { id: BEA, banned: false, approved: true })).toBe(true);
+    expect(isDirectRecipientAllowed(ALEX, { id: ALEX, banned: false, approved: true })).toBe(false);
+    expect(isDirectRecipientAllowed(ALEX, { id: BEA, banned: true, approved: true })).toBe(false);
+    expect(isDirectRecipientAllowed(ALEX, { id: BEA, banned: false, approved: false })).toBe(false);
+  });
+});
 
 describe('Direktnachrichten', () => {
   it('lässt genau die beiden Beteiligten lesen und schreiben', async () => {

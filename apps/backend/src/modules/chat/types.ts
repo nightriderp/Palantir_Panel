@@ -77,6 +77,12 @@ export interface ChatUserDirectory {
   find(userId: string): Promise<ChatUserRecord | null>;
   /** Anzeigenamen zu mehreren Konten auf einmal – für Listen. */
   displayNames(userIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+  /**
+   * Konten samt Freischaltstand zu mehreren IDs auf einmal – für das
+   * DM-Verzeichnis. Nicht (mehr) vorhandene IDs fehlen im Ergebnis; die
+   * Reihenfolge ist nicht garantiert.
+   */
+  listByIds(userIds: readonly string[]): Promise<readonly ChatUserRecord[]>;
 }
 
 /**

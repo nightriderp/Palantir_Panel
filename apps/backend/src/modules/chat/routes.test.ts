@@ -153,6 +153,22 @@ describe('Envelope und Schranken', () => {
     expect(antwort.json().data.content).toBe('Hallo Bea');
   });
 
+  it('liefert das DM-Verzeichnis der zulässigen Empfänger im Envelope', async () => {
+    // Alex besitzt SERVER, Bea ist Mitglied – also darf Alex Bea anschreiben.
+    const antwort = await anfrage('GET', '/api/chat/recipients', 'alex');
+
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.json()).toMatchObject({ success: true, error: null });
+    expect(antwort.json().data).toEqual([{ recipientId: BEA, displayName: 'Bea' }]);
+  });
+
+  it('verschließt das DM-Verzeichnis ohne Sitzung mit AUTH_REQUIRED', async () => {
+    const antwort = await anfrage('GET', '/api/chat/recipients', null);
+
+    expect(antwort.statusCode).toBe(401);
+    expect(antwort.json().error.code).toBe('AUTH_REQUIRED');
+  });
+
   it('lehnt eine leere Nachricht mit VALIDATION_FAILED ab', async () => {
     const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
 
