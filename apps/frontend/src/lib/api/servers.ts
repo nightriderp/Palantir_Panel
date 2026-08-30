@@ -3,6 +3,7 @@ import {
   type GameServerDto,
   type HostNodeDto,
   type GameTypeDto,
+  type ResourceQuotaDto,
   type ScheduleDto,
   type ServerCloneJobDto,
   type ServerFileContentDto,
@@ -10,7 +11,6 @@ import {
   type ServerMemberDto,
   type ServerStatsHistoryDto,
   type SubdomainAvailabilityDto,
-  type UserResourceLimitDto,
 } from '@palantir/contracts';
 import {
   type CloneServerInput,
@@ -129,12 +129,17 @@ export function fetchHostNodes(signal?: AbortSignal): Promise<ApiResult<HostNode
  * Der DTO stammt aus B4 und enthält neben den Grenzen immer auch die aktuelle
  * Belegung – der Wizard braucht beides, um „passt noch" zu beantworten.
  *
- * Ohne `/api`-Präfix: Die Route entsteht im Ressourcen-Modul (B4/P6) und liegt
- * dort neben `/admin/users/:userId/limits` – dasselbe Modul, dieselbe
- * präfixlose Schreibweise.
+ * Ohne `/api`-Präfix: Die Route liegt im Ressourcen-Modul (B4/P6) neben
+ * `/admin/users/:userId/limits` – dasselbe Modul, dieselbe präfixlose
+ * Schreibweise.
+ *
+ * Liefert `ResourceQuotaDto`, **nicht** `UserResourceLimitDto`: je Ressourcenart
+ * einen Slot mit `limit`, `used` und fertig gerechnetem `remaining`. Das
+ * Kontingent fremder Konten läuft weiter über `UserResourceLimitDto`
+ * (`lib/api/admin.ts`) – die beiden DTOs nicht verwechseln.
  */
-export function fetchResourceQuota(signal?: AbortSignal): Promise<ApiResult<UserResourceLimitDto>> {
-  return apiRequest<UserResourceLimitDto>('/me/resource-quota', { signal });
+export function fetchResourceQuota(signal?: AbortSignal): Promise<ApiResult<ResourceQuotaDto>> {
+  return apiRequest<ResourceQuotaDto>('/me/resource-quota', { signal });
 }
 
 /**

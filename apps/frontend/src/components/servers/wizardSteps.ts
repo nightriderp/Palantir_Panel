@@ -5,7 +5,7 @@ import {
   type GameTypeDto,
   type HostNodeDto,
   type SubdomainAvailabilityDto,
-  type UserResourceLimitDto,
+  type ResourceQuotaDto,
 } from '@palantir/contracts';
 import { serverNameSchema, subdomainSchema } from '@palantir/validation';
 import { formatMegabytes } from '@/components/shared';
@@ -106,28 +106,35 @@ export function missingConfigFields(
 /**
  * Überschreiten die gewünschten Werte das Kontingent des Nutzers?
  *
- * Erste der beiden Prüfungen aus Pflichtenheft §10. `null` in einem Limit heißt
+ * Erste der beiden Prüfungen aus Pflichtenheft §10. `remaining === null` heißt
  * „für diese Ressource gilt kein Limit" (Lastenheft §3.4). Verbindlich prüft
  * das Backend erneut (`RESOURCE_LIMIT_EXCEEDED`).
+ *
+ * Der Rest steht fertig gerechnet im DTO (`ResourceQuotaSlot.remaining`, nie
+ * negativ) – hier wird nichts aus Limit und Belegung nachgerechnet. Damit gilt
+ * automatisch dieselbe Zählweise wie in der harten Kapazitätsprüfung des
+ * Backends: RAM und CPU zählen laufende Server, Speicherplatz alle, die
+ * Serveranzahl die gleichzeitig laufenden.
  */
 export function quotaBlockReason(
-  quota: UserResourceLimitDto | null,
+  quota: ResourceQuotaDto | null,
   state: WizardState,
 ): string | null {
   if (!quota) return null;
-  const { limits, usage } = quota;
+  const { ram, cpu, disk, servers } = quota;
 
-  if (limits.maxConcurrentServers !== null && usage.totalServers >= limits.maxConcurrentServers) {
-    return `Dein Kontingent erlaubt höchstens ${limits.maxConcurrentServers} Server gleichzeitig.`;
+  // Der neue Server zählt als einer mehr – bleibt kein Rest, ist Schluss.
+  if (servers.remaining !== null && servers.remaining < 1) {
+    return `Dein Kontingent erlaubt höchstens ${servers.limit} Server gleichzeitig.`;
   }
-  if (limits.maxRamMb !== null && usage.runningRamMb + state.ramMb > limits.maxRamMb) {
-    return `Dein RAM-Kontingent von ${formatMegabytes(limits.maxRamMb)} reicht dafür nicht aus.`;
+  if (ram.remaining !== null && state.ramMb > ram.remaining) {
+    return `Dein RAM-Kontingent von ${formatMegabytes(ram.limit ?? 0)} reicht dafür nicht aus.`;
   }
-  if (limits.maxCpuCores !== null && usage.runningCpuCores + state.cpuCores > limits.maxCpuCores) {
-    return `Dein CPU-Kontingent von ${limits.maxCpuCores} Kernen reicht dafür nicht aus.`;
+  if (cpu.remaining !== null && state.cpuCores > cpu.remaining) {
+    return `Dein CPU-Kontingent von ${cpu.limit} Kernen reicht dafür nicht aus.`;
   }
-  if (limits.maxDiskMb !== null && usage.allocatedDiskMb + state.diskMb > limits.maxDiskMb) {
-    return `Dein Speicher-Kontingent von ${formatMegabytes(limits.maxDiskMb)} reicht dafür nicht aus.`;
+  if (disk.remaining !== null && state.diskMb > disk.remaining) {
+    return `Dein Speicher-Kontingent von ${formatMegabytes(disk.limit ?? 0)} reicht dafür nicht aus.`;
   }
   return null;
 }
@@ -163,7 +170,7 @@ export function nodeBlockReason(node: HostNodeDto | null, state: WizardState): s
 export interface WizardContext {
   gameType: GameTypeDto | null;
   node: HostNodeDto | null;
-  quota: UserResourceLimitDto | null;
+  quota: ResourceQuotaDto | null;
   /** Ergebnis der Verfügbarkeitsprüfung; `null`, solange sie noch läuft. */
   subdomainCheck: SubdomainAvailabilityDto | null;
   /** Läuft die Verfügbarkeitsprüfung gerade? */
