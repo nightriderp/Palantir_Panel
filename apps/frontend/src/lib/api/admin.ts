@@ -17,6 +17,7 @@ import {
   type RoleDto,
   type StorageEntryDto,
   type StorageSnapshotDto,
+  type UserResourceLimitDto,
 } from '@palantir/contracts';
 import {
   type ApproveRegistrationRequestInput,
@@ -39,6 +40,7 @@ import {
   type UpdateNotificationRuleInput,
   type UpdatePortRangeInput,
   type UpdateRoleInput,
+  type UserResourceLimitsInput,
 } from '@palantir/validation';
 import { type ApiResult, apiRequest } from './client';
 
@@ -134,6 +136,49 @@ export function resetUserTwoFactor(userId: string): Promise<ApiResult<null>> {
  */
 export function fetchAllServers(signal?: AbortSignal): Promise<ApiResult<GameServerDto[]>> {
   return apiRequest<GameServerDto[]>('/servers', { signal });
+}
+
+// ---------------------------------------------------------------------------
+// Nutzer-Kontingente (Lastenheft §3.4 und §3.7, Pflichtenheft §10)
+// ---------------------------------------------------------------------------
+
+/**
+ * Kontingent eines Nutzers samt aktueller Belegung.
+ *
+ * Der DTO trägt sein eigenes `permissions`-Objekt (`canView`/`canEdit`); die
+ * Ansicht blendet das Bearbeiten allein daran ein. Routen unter
+ * `/admin/users/:userId/limits` (B4/B8, Gefundener Punkt 88).
+ */
+export function fetchUserLimits(
+  userId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<UserResourceLimitDto>> {
+  return apiRequest<UserResourceLimitDto>(`/admin/users/${encodeURIComponent(userId)}/limits`, {
+    signal,
+  });
+}
+
+/**
+ * Kontingent setzen oder ändern (`user.manage`).
+ *
+ * Teil-Update: nicht genannte Felder bleiben stehen, ausdrückliches `null` hebt
+ * die jeweilige Grenze auf.
+ */
+export function setUserLimits(
+  userId: string,
+  input: UserResourceLimitsInput,
+): Promise<ApiResult<UserResourceLimitDto>> {
+  return apiRequest<UserResourceLimitDto>(`/admin/users/${encodeURIComponent(userId)}/limits`, {
+    method: 'PUT',
+    json: input,
+  });
+}
+
+/** Kontingent vollständig aufheben – danach gilt für den Nutzer kein Limit. */
+export function clearUserLimits(userId: string): Promise<ApiResult<UserResourceLimitDto>> {
+  return apiRequest<UserResourceLimitDto>(`/admin/users/${encodeURIComponent(userId)}/limits`, {
+    method: 'DELETE',
+  });
 }
 
 // ---------------------------------------------------------------------------
