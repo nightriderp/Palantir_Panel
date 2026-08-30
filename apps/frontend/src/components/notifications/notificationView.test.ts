@@ -41,11 +41,21 @@ describe('Ereignis-Gruppen', () => {
 });
 
 describe('subjectHref', () => {
-  it('springt nur bei Servern an eine Stelle', () => {
+  it('verlinkt einen Server auf seine Detailseite', () => {
     expect(subjectHref({ type: 'server', id: 'srv 1', displayName: null })).toBe(
       '/servers/srv%201',
     );
-    expect(subjectHref({ type: 'backup', id: 'b1', displayName: null })).toBeNull();
+  });
+
+  it('führt die übrigen Typen auf ihre bestehende Ansicht', () => {
+    expect(subjectHref({ type: 'backup', id: 'b1', displayName: null })).toBe('/my-backups');
+    expect(subjectHref({ type: 'node', id: 'n1', displayName: null })).toBe('/nodes');
+    expect(subjectHref({ type: 'user', id: 'u1', displayName: null })).toBe('/admin/users');
+    expect(subjectHref({ type: 'message', id: 'm1', displayName: null })).toBe('/admin/moderation');
+  });
+
+  it('bietet für Ankündigung und ohne Subject kein Sprungziel', () => {
+    expect(subjectHref({ type: 'announcement', id: 'a1', displayName: null })).toBeNull();
     expect(subjectHref(null)).toBeNull();
   });
 });
