@@ -37,6 +37,7 @@ import { ServerOrchestrationError, isServerOrchestrationError } from './errors.j
 import { type GameRegistry } from './game-registry.js';
 import { type ServerRepository } from './repository.js';
 import { type ServerScheduleService, toScheduleDto } from './schedules.js';
+import { type WorldArchiveStore } from './world-import.js';
 import { type ServerOrchestrationService } from './service.js';
 import { checkSubdomain } from './subdomain.js';
 
@@ -47,6 +48,8 @@ export interface ServerRoutesOptions {
   readonly baseDomain: string;
   /** Geplante Aufgaben des Reiters „Aufgaben" (Lastenheft §3.3). */
   readonly schedules: ServerScheduleService;
+  /** Zwischenspeicher der Weltdaten-Archive des Wizards (Lastenheft §3.3, P4). */
+  readonly worldArchives: WorldArchiveStore;
 }
 
 const serverIdParamsSchema = z.object({ id: z.string().uuid() });
@@ -125,7 +128,7 @@ async function replyWithError(reply: FastifyReply, error: unknown): Promise<void
 }
 
 export function registerServerRoutes(app: FastifyInstance, options: ServerRoutesOptions): void {
-  const { service, repository, registry, baseDomain, schedules } = options;
+  const { service, repository, registry, baseDomain, schedules, worldArchives } = options;
 
   /** Baut den DTO-Kontext eines Servers für den aktuellen Aufrufer. */
   async function dtoContext(request: FastifyRequest, serverId: string): Promise<ServerDtoContext> {
@@ -606,6 +609,55 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       return replyWithError(reply, error);
     }
   });
+
+  // -- Weltdaten-Übernahme beim Anlegen (Lastenheft §3.3, P4) -----------------
+  //
+  // Der Upload steht bewusst **nicht** unter `/api/servers/:id`: Er passiert im
+  // Wizard, bevor es den Server gibt. Berechtigt ist deshalb, wer überhaupt
+  // Server anlegen darf – dieselbe Schranke wie bei `POST /api/servers`.
+  //
+  // Der Datenstrom wird nicht gepuffert, sondern direkt auf die Platte
+  // geschrieben und dabei gegen `MAX_WORLD_ARCHIVE_BYTES` gezählt: Ein zu
+  // großes Archiv soll nicht erst vollständig im Speicher landen.
+
+  app.post(
+    '/api/uploads/world-archives',
+    { preHandler: requirePermission('server.create') },
+    async (request, reply) => {
+      try {
+        if (!request.isMultipart()) {
+          throw new ServerOrchestrationError(
+            'VALIDATION_FAILED',
+            'Der Upload muss als multipart/form-data gesendet werden.',
+          );
+        }
+
+        const datei = await request.file();
+
+        if (datei === undefined) {
+          throw new ServerOrchestrationError(
+            'VALIDATION_FAILED',
+            'Im Upload fehlt das Feld „file".',
+          );
+        }
+
+        const upload = await worldArchives.save(datei.filename, datei.file);
+
+        // `truncated` meldet die Grenze aus der Multipart-Registrierung
+        // (`MAX_UPLOAD_SIZE_BYTES`); die engere Grenze zieht der Zwischenspeicher.
+        if (datei.file.truncated) {
+          throw new ServerOrchestrationError(
+            'FILE_TOO_LARGE',
+            'Das Archiv überschreitet die zulässige Upload-Größe.',
+          );
+        }
+
+        return await reply.status(201).send(ok(upload));
+      } catch (error: unknown) {
+        return replyWithError(reply, error);
+      }
+    },
+  );
 
   // -- Geplante Aufgaben (Lastenheft §3.3, Reiter „Aufgaben") -----------------
   //

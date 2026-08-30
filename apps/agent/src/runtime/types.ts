@@ -208,6 +208,22 @@ export interface UploadFileOptions {
   readonly overwrite?: boolean;
 }
 
+/**
+ * Ergebnis von `extractArchive()` (`FILE_EXTRACT`, Arbeitspaket P4).
+ *
+ * Deckungsgleich mit `FileExtractCommandResult` aus `@palantir/contracts` - die
+ * Runtime kennt das Protokoll bewusst nicht, der Adapter reicht das Ergebnis
+ * unveraendert weiter.
+ */
+export interface ExtractArchiveResult {
+  /** Tatsaechlich geschriebene Dateien (ohne Verzeichnisse). */
+  readonly fileCount: number;
+  /** Summe der entpackten Nutzdaten in Byte. */
+  readonly extractedBytes: number;
+  /** Eintraege, die aus dem Zielordner ausgebrochen waeren oder Sonderdateien sind. */
+  readonly skipped: string[];
+}
+
 export interface StopOptions {
   /** Kulanzzeit fuer SIGTERM vor SIGKILL; ohne Angabe gilt der Wert aus dem Spec. */
   readonly timeoutSeconds?: number;

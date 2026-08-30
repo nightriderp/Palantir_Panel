@@ -102,6 +102,31 @@ const envSchema = z.object({
     .positive()
     .default(2 * 1024 * 1024 * 1024),
 
+  /**
+   * Maximale Größe eines Weltdaten-Archivs beim Anlegen eines Servers
+   * (Lastenheft §3.3, Arbeitspaket P4).
+   *
+   * Eigene Grenze und nicht `MAX_UPLOAD_SIZE_BYTES`: Das Archiv geht in **einem**
+   * Befehl an den Agent und wird dort zum Entpacken im Speicher gehalten. Die
+   * Vorgabe entspricht der Kanal-Grenze des Agents (64 MiB); wirksam ist immer
+   * der kleinere der beiden Werte.
+   */
+  MAX_WORLD_ARCHIVE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(64 * 1024 * 1024),
+
+  /**
+   * Verzeichnis **auf der VPS**, in dem hochgeladene Weltdaten-Archive auf das
+   * Anlegen des Servers warten (P4).
+   *
+   * Ohne Angabe ein Unterordner des System-Temp-Verzeichnisses. Wer die Uploads
+   * auf eine andere Platte legen will (Größe, Verschlüsselung), setzt hier
+   * einen eigenen Pfad.
+   */
+  WORLD_ARCHIVE_DIR: optionalEnvString(),
+
   /** Crash-Loop-Schutz: erlaubte automatische Neustarts im Zeitfenster (§9). */
   CRASH_LOOP_MAX_RESTARTS: z.coerce.number().int().min(0).max(50).default(3),
   CRASH_LOOP_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1_440).default(10),
