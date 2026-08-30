@@ -13,6 +13,7 @@
 
 import {
   type ConversationDto,
+  type DirectMessageRecipientDto,
   type MessageDto,
   type MessageReportDto,
   type ReportedMessageDto,
@@ -23,7 +24,12 @@ import {
   computeMessagePermissions,
   computeMessageReportPermissions,
 } from './permissions.js';
-import { type ConversationRecord, type MessageRecord, type MessageReportRecord } from './types.js';
+import {
+  type ChatUserRecord,
+  type ConversationRecord,
+  type MessageRecord,
+  type MessageReportRecord,
+} from './types.js';
 import { type ConversationAudience, titleFor } from './visibility.js';
 
 /** Anzeigename oder ein neutraler Platzhalter, wenn das Konto nicht mehr existiert. */
@@ -65,6 +71,11 @@ export function toMessageDto(message: MessageRecord, context: MessageDtoContext)
       context.reportedByViewer.has(message.id),
     ),
   };
+}
+
+/** Ein Konto als zulässiger DM-Empfänger im Verzeichnis. */
+export function toDirectMessageRecipientDto(user: ChatUserRecord): DirectMessageRecipientDto {
+  return { recipientId: user.id, displayName: user.displayName };
 }
 
 export interface ConversationDtoContext extends MessageDtoContext {

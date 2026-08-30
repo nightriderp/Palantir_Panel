@@ -110,6 +110,25 @@ export function fakeUserDirectory(
 
       return result;
     },
+
+    async listByIds(userIds) {
+      const result: ChatUserRecord[] = [];
+
+      for (const userId of userIds) {
+        const user = users[userId];
+
+        if (user) {
+          result.push({
+            id: userId,
+            displayName: user.displayName,
+            banned: user.banned ?? false,
+            approved: user.approved ?? true,
+          });
+        }
+      }
+
+      return result;
+    },
   };
 }
 
