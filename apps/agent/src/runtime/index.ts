@@ -42,6 +42,7 @@ export {
   type ContainerStats,
   type ContainerStatus,
   type ExecResult,
+  type ExtractArchiveResult,
   type FileEntry,
   type FileEntryType,
   type GetLogsOptions,
@@ -72,6 +73,17 @@ export {
 } from './hardening.js';
 
 export { assertAbsoluteContainerPath, assertHostPathAllowed, resolveWithinRoot } from './paths.js';
+
+export {
+  MAX_ARCHIVE_ENTRIES,
+  MAX_EXTRACTED_BYTES,
+  type ArchiveContents,
+  type ArchiveEntry,
+  type ArchiveKind,
+  detectArchiveKind,
+  readArchive,
+  safeArchivePath,
+} from './archive.js';
 
 export {
   DockerHttpClient,

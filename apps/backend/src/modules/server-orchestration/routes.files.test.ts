@@ -207,6 +207,14 @@ async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Pr
       remove: async () => undefined,
       tick: async () => ({ executedScheduleIds: [], failedScheduleIds: [] }),
     },
+    // Weltdaten-Uploads stehen in `routes.world-import.test.ts` unter Test.
+    worldArchives: {
+      save: async () => {
+        throw new Error('nicht benutzt');
+      },
+      take: async () => null,
+      sweep: async () => 0,
+    },
   });
   await app.ready();
 

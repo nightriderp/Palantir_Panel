@@ -746,7 +746,9 @@ export interface AgentCommandResults {
  * WELLE 0 hat `FILE_DELETE` und `FILE_UPLOAD` ins Protokoll aufgenommen, ihre
  * Ausführung aber P2 (Datei-Manager) überlassen. Mit P2 führt der Agent beide
  * aus (`ContainerRuntime.deleteFile`/`uploadFile`), sie stehen deshalb jetzt in
- * dieser Liste – genau wie die Backup-Befehle seit A3.
+ * dieser Liste – genau wie die Backup-Befehle seit A3. `FILE_EXTRACT` ist
+ * denselben Weg gegangen: erst in den Vertrag, mit P4 dann umgesetzt
+ * (`ContainerRuntime.extractArchive`).
  */
 export const IMPLEMENTED_AGENT_COMMANDS = [
   'CREATE',
@@ -762,6 +764,7 @@ export const IMPLEMENTED_AGENT_COMMANDS = [
   'FILE_WRITE',
   'FILE_DELETE',
   'FILE_UPLOAD',
+  'FILE_EXTRACT',
   'CREATE_BACKUP',
   'RESTORE_BACKUP',
   'DOWNLOAD_BACKUP',

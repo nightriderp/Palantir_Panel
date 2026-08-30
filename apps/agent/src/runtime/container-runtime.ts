@@ -29,6 +29,7 @@
  * | `FILE_WRITE`          | `writeFile`          |
  * | `FILE_DELETE`         | `deleteFile`         |
  * | `FILE_UPLOAD`         | `uploadFile`         |
+ * | `FILE_EXTRACT`        | `extractArchive`     |
  *
  * `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` aus derselben
  * Liste sind Dateisystem- und Job-Aufgaben und gehoeren zu A3, nicht zur
@@ -40,6 +41,7 @@
  * Storage-Job - dieser Weg ist der einzige erlaubte (CLAUDE.md §4).
  */
 
+import { type ArchiveKind } from './archive.js';
 import { type ContainerRuntimeEventListener, type Unsubscribe } from './events.js';
 import {
   type ContainerHandle,
@@ -49,6 +51,7 @@ import {
   type ContainerStats,
   type DeleteFileOptions,
   type ExecResult,
+  type ExtractArchiveResult,
   type FileEntry,
   type GetLogsOptions,
   type LogLine,
@@ -159,6 +162,27 @@ export interface ContainerRuntime {
     content: Buffer,
     options?: UploadFileOptions,
   ): Promise<void>;
+
+  /**
+   * `FILE_EXTRACT`: ein hochgeladenes Archiv in den Datenordner entpacken
+   * (Weltdaten-Uebernahme, Lastenheft §3.3; Arbeitspaket P4).
+   *
+   * `path` ist - wie ueberall im Datei-Manager - relativ zum Datenordner; `''`
+   * ist die Wurzel. Bestehende Dateien werden ueberschrieben: Der Import laeuft
+   * beim Anlegen in einen frischen Datenordner, und ein halb uebernommener
+   * Weltordner waere schlimmer als ein ersetzter Standardstand.
+   *
+   * Archiveintraege, die aus dem Zielordner ausbrechen wuerden, und
+   * Sonderdateien (Symlinks, Geraete) entpackt die Runtime nicht; sie nennt sie
+   * in `skipped`. Ein unlesbares oder zu grosses Archiv endet mit
+   * `ARCHIVE_INVALID`.
+   */
+  extractArchive(
+    containerId: string,
+    path: string,
+    archive: Buffer,
+    format: ArchiveKind,
+  ): Promise<ExtractArchiveResult>;
 
   /** Auf Runtime-Events hoeren. Rueckgabe meldet den Listener wieder ab. */
   on(listener: ContainerRuntimeEventListener): Unsubscribe;

@@ -11,10 +11,12 @@
  * nicht selbst als Testdatei eingesammelt.
  */
 
+import { gzipSync } from 'node:zlib';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { type ContainerRuntime } from './container-runtime.js';
 import { ContainerRuntimeError } from './errors.js';
 import { type ContainerRuntimeEvent } from './events.js';
+import { createTar } from './docker/tar.js';
 import { type ContainerSpec } from './types.js';
 
 export interface ConformanceKontext {
@@ -252,6 +254,71 @@ export function runContainerRuntimeConformance(
         await expect(
           runtime.uploadFile(id, '/data/../etc/passwd', Buffer.from('x')),
         ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+      });
+    });
+
+    describe('FILE_EXTRACT (Arbeitspaket P4)', () => {
+      /** Kleines tar.gz - dasselbe Format, in dem der Agent auch sichert. */
+      function weltArchiv(): Buffer {
+        return gzipSync(
+          createTar([
+            { name: 'welt', content: Buffer.alloc(0), type: 'directory' },
+            { name: 'welt/level.dat', content: Buffer.from('spielstand') },
+          ]),
+        );
+      }
+
+      it('entpackt ein Archiv in den Datenordner', async () => {
+        const id = await angelegt();
+
+        const ergebnis = await runtime.extractArchive(id, '', weltArchiv(), 'tar.gz');
+
+        expect(ergebnis.fileCount).toBe(1);
+        expect(ergebnis.skipped).toEqual([]);
+        expect((await runtime.readFile(id, '/data/welt/level.dat')).toString('utf8')).toBe(
+          'spielstand',
+        );
+      });
+
+      it('entpackt in einen Unterordner', async () => {
+        const id = await angelegt();
+
+        await runtime.extractArchive(id, 'import', weltArchiv(), 'tar.gz');
+
+        expect((await runtime.readFile(id, '/data/import/welt/level.dat')).toString('utf8')).toBe(
+          'spielstand',
+        );
+      });
+
+      it('entpackt Eintraege nicht, die aus dem Datenordner ausbrechen', async () => {
+        const id = await angelegt();
+        const archiv = gzipSync(
+          createTar([
+            { name: '../boese.sh', content: Buffer.from('rm -rf /') },
+            { name: 'welt/level.dat', content: Buffer.from('ok') },
+          ]),
+        );
+
+        const ergebnis = await runtime.extractArchive(id, '', archiv, 'tar.gz');
+
+        expect(ergebnis.skipped).toEqual(['../boese.sh']);
+        expect(ergebnis.fileCount).toBe(1);
+      });
+
+      it('lehnt einen Zielpfad ausserhalb des Datenordners ab', async () => {
+        const id = await angelegt();
+
+        await expect(
+          runtime.extractArchive(id, '../../etc', weltArchiv(), 'tar.gz'),
+        ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+      });
+
+      it('lehnt ein unlesbares Archiv ab', async () => {
+        const id = await angelegt();
+
+        await expect(
+          runtime.extractArchive(id, '', Buffer.from('kein Archiv'), 'zip'),
+        ).rejects.toMatchObject({ code: 'ARCHIVE_INVALID' });
       });
     });
 

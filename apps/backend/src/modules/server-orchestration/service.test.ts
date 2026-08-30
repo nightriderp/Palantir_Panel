@@ -49,6 +49,7 @@ import {
 } from './resource-guard.js';
 import { type OrchestrationEventSink, ServerOrchestrationService } from './service.js';
 import { type DnsProvider, type DnsRecord } from './dns/types.js';
+import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.js';
 
 const HOST: HostNodeRecord = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -288,6 +289,14 @@ class AnsweringSocket implements AgentSocket {
       };
     }
 
+    if (command === 'FILE_EXTRACT') {
+      return {
+        success: true,
+        data: { fileCount: 2, extractedBytes: 42, skipped: [] },
+        error: null,
+      };
+    }
+
     return { success: true, data: null, error: null };
   }
 }
@@ -336,6 +345,10 @@ function makeHarness(
     buildReservation?: (repository: FakeRepository) => CapacityReservation;
     /** Upload-Grenze, um sie im Test ohne 64-MiB-Puffer zu erreichen (P2). */
     maxUploadBytes?: number;
+    /** Zwischenspeicher der Weltdaten-Archive; ohne Angabe keiner (P4). */
+    worldArchives?: WorldArchiveStore;
+    /** Grenze für Weltarchive, um sie im Test ohne 64 MiB zu erreichen (P4). */
+    maxWorldArchiveBytes?: number;
   } = {},
 ): Harness {
   const repository = new FakeRepository();
@@ -425,6 +438,7 @@ function makeHarness(
     resources: createPermissiveResourceGuard(() => undefined),
     reservation: options.buildReservation?.(repository),
     healthProbe: healthyProbe(options.healthy ?? true),
+    ...(options.worldArchives === undefined ? {} : { worldArchives: options.worldArchives }),
     events,
     log: silentLog,
     config: {
@@ -436,6 +450,7 @@ function makeHarness(
       healthCheckIntervalMs: 5_000,
       healthCheckAttemptTimeoutMs: 1_000,
       maxUploadBytes: options.maxUploadBytes ?? 2 * 1024 * 1024 * 1024,
+      maxWorldArchiveBytes: options.maxWorldArchiveBytes ?? 64 * 1024 * 1024,
       defaultAutoShutdown: { enabled: true, idleTimeoutMinutes: 30, graceMinutes: 15 },
     },
     now: (): Date => new Date(clock),
@@ -1454,5 +1469,99 @@ describe('Datei-Manager (Arbeitspaket P2)', () => {
 
     expect(datei.fileName).toBe('level.dat');
     expect(datei.content.toString('utf8')).toBe('rohdaten');
+  });
+});
+
+describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
+  const UPLOAD_ID = '77777777-7777-4777-8777-777777777777';
+
+  /** Zwischenspeicher im Speicher – dieselbe Schnittstelle wie die Platte. */
+  function fakeStore(archiv: StoredWorldArchive | null): WorldArchiveStore & {
+    readonly abgeholt: string[];
+  } {
+    const abgeholt: string[] = [];
+
+    return {
+      abgeholt,
+      save: () => Promise.reject(new Error('nicht benutzt')),
+      take: (uploadId) => {
+        abgeholt.push(uploadId);
+
+        return Promise.resolve(archiv);
+      },
+      sweep: () => Promise.resolve(0),
+    };
+  }
+
+  const mitImport = () => ({
+    ...createInput(),
+    worldImport: { uploadId: UPLOAD_ID, fileName: 'welt.zip' },
+  });
+
+  it('schickt das Archiv als FILE_EXTRACT an den Agent', async () => {
+    const store = fakeStore({
+      uploadId: UPLOAD_ID,
+      content: Buffer.from('PK-Archiv'),
+      format: 'zip',
+    });
+    const harness = makeHarness({ worldArchives: store });
+
+    const server = await harness.service.createServer(mitImport(), OWNER_ID);
+
+    expect(store.abgeholt).toEqual([UPLOAD_ID]);
+
+    const extract = harness.socket.commands.find((eintrag) => eintrag.command === 'FILE_EXTRACT');
+
+    expect(extract?.payload).toMatchObject({
+      path: '',
+      format: 'zip',
+      contentBase64: Buffer.from('PK-Archiv').toString('base64'),
+    });
+    // Der Import läuft, während der Server angelegt wird – danach ist er fertig.
+    expect(server.status).not.toBe('error');
+  });
+
+  it('legt ohne worldImport kein Archiv an', async () => {
+    const store = fakeStore(null);
+    const harness = makeHarness({ worldArchives: store });
+
+    await harness.service.createServer(createInput(), OWNER_ID);
+
+    expect(store.abgeholt).toEqual([]);
+    expect(harness.socket.commands.some((eintrag) => eintrag.command === 'FILE_EXTRACT')).toBe(
+      false,
+    );
+  });
+
+  it('lässt das Anlegen scheitern, wenn der Upload abgelaufen ist', async () => {
+    const harness = makeHarness({ worldArchives: fakeStore(null) });
+
+    await expect(harness.service.createServer(mitImport(), OWNER_ID)).rejects.toMatchObject({
+      code: 'WORLD_ARCHIVE_NOT_FOUND',
+    });
+
+    // Ein Server ohne die erwartete Welt gilt als fehlgeschlagen, nicht als
+    // fertig – sonst stünde ein leerer Server unter dem Namen eines übernommenen.
+    const [server] = await harness.repository.listAll();
+
+    expect(server?.status).toBe('error');
+  });
+
+  it('lehnt ein Archiv über der Grenze ab, bevor es an den Agent geht', async () => {
+    const harness = makeHarness({
+      worldArchives: fakeStore({
+        uploadId: UPLOAD_ID,
+        content: Buffer.alloc(2048),
+        format: 'zip',
+      }),
+      maxWorldArchiveBytes: 1024,
+    });
+
+    await expect(harness.service.createServer(mitImport(), OWNER_ID)).rejects.toMatchObject({
+      code: 'FILE_TOO_LARGE',
+    });
+    expect(harness.socket.commands.some((eintrag) => eintrag.command === 'FILE_EXTRACT')).toBe(
+      false,
+    );
   });
 });

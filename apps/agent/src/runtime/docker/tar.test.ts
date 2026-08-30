@@ -30,10 +30,24 @@ describe('TAR-Codec fuer den Datei-Manager', () => {
     expect(parseTar(archiv).map((e) => e.name)).toEqual(['a.txt', 'b.txt']);
   });
 
-  it('lehnt zu lange Dateinamen ab, statt sie stillschweigend zu kuerzen', () => {
-    expect(() => createTar([{ name: 'x'.repeat(101), content: Buffer.alloc(0) }])).toThrow(
-      /zu lang/,
-    );
+  it('schreibt lange Dateinamen als GNU-Langnamen, statt sie zu kuerzen', () => {
+    // Frueher wurden solche Namen abgelehnt; ein entpacktes Weltarchiv (P4)
+    // bringt verschachtelte Pfade als Normalfall mit.
+    const name = `${'x'.repeat(60)}/${'y'.repeat(60)}.dat`;
+    const archiv = createTar([{ name, content: Buffer.from('inhalt') }]);
+    const eintraege = parseTar(archiv);
+
+    expect(eintraege).toHaveLength(1);
+    expect(eintraege[0]?.name).toBe(name);
+    expect(eintraege[0]?.content.toString()).toBe('inhalt');
+  });
+
+  it('schreibt Verzeichniseintraege mit Schraegstrich und Typ 5', () => {
+    const archiv = createTar([{ name: 'welt', content: Buffer.alloc(0), type: 'directory' }]);
+    const eintraege = parseTar(archiv);
+
+    expect(eintraege[0]?.type).toBe('directory');
+    expect(eintraege[0]?.name).toBe('welt/');
   });
 
   it('erkennt Verzeichniseintraege', () => {

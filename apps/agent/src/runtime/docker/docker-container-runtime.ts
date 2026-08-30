@@ -22,6 +22,7 @@ import {
   buildCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
+import { type ArchiveKind, readArchive } from '../archive.js';
 import { resolveWithinRoot } from '../paths.js';
 import {
   DEFAULT_LOG_TAIL,
@@ -33,6 +34,7 @@ import {
   type ContainerStatus,
   type DeleteFileOptions,
   type ExecResult,
+  type ExtractArchiveResult,
   type FileEntry,
   type GetLogsOptions,
   type LogLine,
@@ -50,7 +52,7 @@ import {
   type DockerStatsResponse,
 } from './mapping.js';
 import { LogLineAssembler, demuxDockerStream, readNdjson } from './stream.js';
-import { createTar, parseTar } from './tar.js';
+import { type TarFileInput, createTar, parseTar } from './tar.js';
 
 /**
  * Obergrenze fuer Dateien, die der Datei-Manager im Speicher bewegt.
@@ -623,6 +625,54 @@ export class DockerContainerRuntime implements ContainerRuntime {
     }
 
     await this.#schreibeDatei(containerId, pfad, inhalt);
+  }
+
+  /**
+   * `FILE_EXTRACT` - ein hochgeladenes Archiv in den Datenordner entpacken
+   * (Weltdaten-Uebernahme, Arbeitspaket P4).
+   *
+   * Der Weg ist derselbe wie beim Schreiben einer einzelnen Datei: Die Engine
+   * kennt fuer Dateizugriffe nur `PUT /containers/{id}/archive` und entpackt
+   * einen TAR-Strom in den angegebenen Ordner. Das hochgeladene Archiv wird
+   * deshalb hier gelesen (`readArchive`), auf saubere Pfade geprueft und als
+   * **ein** TAR neu gepackt - statt tausend Einzelbefehle zu schicken.
+   *
+   * Bewusst kein `exec` mit `tar`/`unzip` im Container: Das setzte eine Shell
+   * und die passenden Werkzeuge im Image voraus (die es bei schlanken, read-only
+   * Images oft nicht gibt) und wuerde ein fremdes Archiv im Container statt im
+   * Agent auspacken - dort ohne die Grenzen aus `archive.ts`.
+   */
+  async extractArchive(
+    containerId: string,
+    ziel: string,
+    archiv: Buffer,
+    format: ArchiveKind,
+  ): Promise<ExtractArchiveResult> {
+    const wurzel = await this.#datenVolumeWurzel(containerId);
+    const zielPfad = resolveWithinRoot(wurzel, ziel);
+
+    this.#pruefeGroesse(zielPfad, archiv);
+
+    const inhalt = readArchive(archiv, format);
+    const dateien: TarFileInput[] = inhalt.entries.map((eintrag) => ({
+      name: eintrag.path,
+      content: eintrag.content,
+      type: eintrag.type,
+    }));
+
+    if (dateien.length > 0) {
+      await this.#client.requestVoid('PUT', `${this.#pfad(containerId)}/archive`, {
+        query: { path: zielPfad },
+        rawBody: createTar(dateien),
+        notFoundCode: 'FILE_NOT_FOUND',
+      });
+    }
+
+    return {
+      fileCount: inhalt.entries.filter((eintrag) => eintrag.type === 'file').length,
+      extractedBytes: inhalt.totalBytes,
+      skipped: [...inhalt.skipped],
+    };
   }
 
   /**

@@ -502,6 +502,7 @@ function makeSweepHarness(server: ServerRecord): SweepHarness {
       healthCheckIntervalMs: 5_000,
       healthCheckAttemptTimeoutMs: 1_000,
       maxUploadBytes: 2 * 1024 * 1024 * 1024,
+      maxWorldArchiveBytes: 64 * 1024 * 1024,
       defaultAutoShutdown: { enabled: true, idleTimeoutMinutes: 30, graceMinutes: 15 },
     },
     now: (): Date => new Date(clock),
