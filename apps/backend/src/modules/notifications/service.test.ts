@@ -7,6 +7,7 @@ import {
   adminActor,
   fakeDirectory,
   fakeRepository,
+  fakeRoleLookup,
   failingTransport,
   recordingTransport,
   serverEvent,
@@ -477,6 +478,66 @@ describe('Regelverwaltung', () => {
     ).rejects.toSatisfy(
       (error: unknown) => isNotificationError(error) && error.code === 'VALIDATION_FAILED',
     );
+  });
+
+  it('löst den Klartext-Namen der Zielrolle in der Übersicht auf (Gefundener Punkt 84)', async () => {
+    const repository = fakeRepository({
+      rules: [testRule({ recipientScope: 'role', recipientRoleId: ROLE_ID })],
+    });
+    const { service } = build({
+      repository,
+      roles: fakeRoleLookup({ [ROLE_ID]: 'Administratoren' }),
+    });
+
+    const rules = await service.listRules(adminActor());
+
+    expect(rules[0]?.recipientRoleId).toBe(ROLE_ID);
+    expect(rules[0]?.recipientRoleName).toBe('Administratoren');
+  });
+
+  it('liefert bei entfernter oder unbekannter Rolle weiterhin null ohne Fehler', async () => {
+    const repository = fakeRepository({
+      rules: [testRule({ recipientScope: 'role', recipientRoleId: ROLE_ID })],
+    });
+    // Nachschlag ohne Eintrag für diese Id – die Rolle wurde entfernt.
+    const { service } = build({ repository, roles: fakeRoleLookup({}) });
+
+    const rules = await service.listRules(adminActor());
+
+    expect(rules[0]?.recipientRoleId).toBe(ROLE_ID);
+    expect(rules[0]?.recipientRoleName).toBeNull();
+  });
+
+  it('gibt den Rollennamen auch beim Anlegen und Ändern einer Regel zurück', async () => {
+    const { service } = build({ roles: fakeRoleLookup({ [ROLE_ID]: 'Moderatoren' }) });
+
+    const created = await service.createRule(adminActor(), ADMIN, {
+      event: 'server.crashed',
+      channelId: null,
+      recipientScope: 'role',
+      recipientRoleId: ROLE_ID,
+      inboxEnabled: true,
+      severity: null,
+      enabled: true,
+    });
+
+    expect(created.recipientRoleName).toBe('Moderatoren');
+
+    const updated = await service.updateRule(adminActor(), ADMIN, created.id, { enabled: false });
+
+    expect(updated.recipientRoleName).toBe('Moderatoren');
+  });
+
+  it('bleibt ohne durchgereichten Rollen-Nachschlag bei null', async () => {
+    const repository = fakeRepository({
+      rules: [testRule({ recipientScope: 'role', recipientRoleId: ROLE_ID })],
+    });
+    // Kein `roles` in den Optionen: der Standard-Nachschlag liefert nichts.
+    const { service } = build({ repository });
+
+    const rules = await service.listRules(adminActor());
+
+    expect(rules[0]?.recipientRoleName).toBeNull();
   });
 });
 
