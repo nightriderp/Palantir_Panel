@@ -125,6 +125,46 @@ describe('Admin-Routen: Envelope und Berechtigungen', () => {
     await app.close();
   });
 
+  it('liefert dieselben Nodes samt freier Kapazität unter /nodes/available (Nutzeransicht F3/F7)', async () => {
+    const app = await buildTestApp();
+
+    const response = await get(app, '/nodes/available', 'nodeViewer');
+    const body = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.error).toBeNull();
+    expect(body.data).toHaveLength(1);
+    // Freie Kapazität ist vorhanden – ohne Belegung entspricht sie der Gesamtausstattung.
+    expect(body.data[0].capacity.available).toEqual({
+      ramMb: 32_768,
+      cpuCores: 8,
+      diskMb: 2_000_000,
+    });
+    expect(body.data[0].status).toBe('online');
+    expect(body.data[0].permissions).toEqual({
+      canView: true,
+      canManage: false,
+      canManageStorage: false,
+    });
+
+    await app.close();
+  });
+
+  it('schützt /nodes/available mit derselben Sichtbarkeitsregel wie die Übersicht', async () => {
+    const app = await buildTestApp();
+
+    const ohneSitzung = await get(app, '/nodes/available');
+    expect(ohneSitzung.statusCode).toBe(401);
+    expect(ohneSitzung.json().error.code).toBe('AUTH_REQUIRED');
+
+    const ohnePermission = await get(app, '/nodes/available', 'gast');
+    expect(ohnePermission.statusCode).toBe(403);
+    expect(ohnePermission.json().error.code).toBe('PERMISSION_DENIED');
+
+    await app.close();
+  });
+
   it('antwortet ohne Sitzung mit AUTH_REQUIRED', async () => {
     const app = await buildTestApp();
 

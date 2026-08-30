@@ -245,6 +245,27 @@ export async function registerAdminRoutes(
       }),
   );
 
+  /*
+   * Nutzeransicht der Nodes (Pflichtenheft §10; WORK_STATUS.md, Gefundene Punkte
+   * 49 und 87).
+   *
+   * Der F3-Wizard (`fetchHostNodes()`) und die F7-Übersicht erwarten ihre
+   * Node-Liste unter `/nodes/available` – ein Pfad ohne `/admin`-Präfix, weil es
+   * eine Nutzer- und keine Verwaltungssicht ist. Er liefert **dieselbe** Liste
+   * wie `GET /admin/nodes` (Kapazität samt freiem Rest, `usage`, `permissions`),
+   * damit F3 und F7 sich eine Quelle teilen und die Zahlen nicht auseinanderlaufen.
+   * Die Auswahl nach Status/Kapazität trifft die Oberfläche selbst am
+   * `permissions`-Objekt und an `capacity.available`.
+   *
+   * Guard wie bei der Übersicht: `node.view` **oder** `node.manage` – die
+   * Seed-Rolle „Nutzer" trägt `node.view`, also erreicht der Wizard die Route.
+   */
+  app.get(
+    '/nodes/available',
+    { preHandler: requireAnyPermission('node.view', 'node.manage') },
+    async (request, reply) => handle(reply, () => services.nodes.list(contextFrom(request))),
+  );
+
   // -- Öffentlicher Port-Bereich (Pflichtenheft §2.4) ------------------------
 
   app.get(
