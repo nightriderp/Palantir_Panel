@@ -318,4 +318,19 @@ describe('Kapazitätsprüfung über den Service', () => {
     expect(warnings.map((w) => w.resource)).toEqual(['ram']);
     expect(warnings[0]?.usedPercent).toBe(91.6);
   });
+
+  it('sammelt die Warnlage aller Nodes für den Zeitgeber ein', async () => {
+    const { service } = buildService({ nodeUsage: { runningRamMb: 30_000 } });
+
+    const warnings = await service.evaluateAllNodeWarnings(new Date('2026-08-26T12:00:00.000Z'));
+
+    expect(warnings.map((w) => w.resource)).toEqual(['ram']);
+    expect(warnings[0]).toMatchObject({ scope: 'node', nodeId: NODE_ID, usedPercent: 91.6 });
+  });
+
+  it('meldet nichts, solange jede Node unter dem Schwellwert bleibt', async () => {
+    const { service } = buildService({ nodeUsage: { runningRamMb: 1024 } });
+
+    expect(await service.evaluateAllNodeWarnings()).toEqual([]);
+  });
 });

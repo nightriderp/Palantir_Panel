@@ -117,6 +117,13 @@ export interface ResourceService {
 
   /** Aktuelle Warnlage einer Node – für periodische Auswertung ohne Serverstart. */
   evaluateNodeState(nodeId: string, at?: Date): Promise<ResourceLowEvent[]>;
+
+  /**
+   * Warnlage **aller** Nodes in einem Durchlauf – der Aufruf, den der Zeitgeber
+   * (`scheduler.ts`) periodisch nimmt, um `resource.low` an die
+   * Notification-Engine zu geben. Eine Node ohne Warnung liefert nichts.
+   */
+  evaluateAllNodeWarnings(at?: Date): Promise<ResourceLowEvent[]>;
 }
 
 export interface ResourceServiceDependencies {
@@ -276,6 +283,26 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
         thresholdPercent: deps.thresholds.nodePercent,
         ...(at ? { at } : {}),
       });
+    },
+
+    async evaluateAllNodeWarnings(at) {
+      const nodes = await deps.nodes.listAll();
+
+      // Die Node-Datensätze liegen bereits vor – deshalb hier direkt
+      // ausgewertet statt je Node über `evaluateNodeState()` erneut geladen.
+      const perNode = await Promise.all(
+        nodes.map(async (node) =>
+          evaluateNodeWarnings({
+            nodeId: node.id,
+            total: node.totalResources,
+            usage: await deps.usage.usageForNode(node.id),
+            thresholdPercent: deps.thresholds.nodePercent,
+            ...(at ? { at } : {}),
+          }),
+        ),
+      );
+
+      return perNode.flat();
     },
   };
 }

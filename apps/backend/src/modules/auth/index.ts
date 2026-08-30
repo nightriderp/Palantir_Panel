@@ -26,11 +26,13 @@ export { type AuthModuleOptions, registerAuthModule } from './plugin.js';
 
 export {
   AuthService,
+  type AuthEventSink,
   type AuthServiceOptions,
   type IssuedSession,
   type LoginOutcome,
   type ProviderLoginOutcome,
   type RequestContext,
+  noopAuthEventSink,
   sanitizeDisplayName,
 } from './service.js';
 
