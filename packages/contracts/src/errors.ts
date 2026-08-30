@@ -283,6 +283,21 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Die Anfrage enthält ungültige Werte.',
   },
 
+  /**
+   * Generisches Sicherheitsnetz für unerwartete, nicht fachliche Fehler – rohe
+   * DB- oder Laufzeitfehler, die keine Route bewusst abgefangen hat
+   * (Pflichtenheft §5.1). 500: der Fehler liegt im Server, nicht in der Eingabe.
+   *
+   * Ausschließlich vom globalen `setErrorHandler` (`buildServer`, Arbeitspaket
+   * N6) vergeben – niemals am Aufrufort geworfen. Die Meldung ist bewusst
+   * nichtssagend: der eigentliche Fehler samt Stacktrace bleibt im
+   * Server-Log (Pflichtenheft §7 – keine Implementierungsdetails nach außen).
+   */
+  INTERNAL_ERROR: {
+    httpStatus: 500,
+    defaultMessage: 'Ein interner Fehler ist aufgetreten.',
+  },
+
   // -- Server & Backups (Pflichtenheft §6, Lastenheft §3.3) ------------------
 
   /**

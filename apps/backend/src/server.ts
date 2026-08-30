@@ -3,6 +3,7 @@ import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from './config/env.js';
 import { getDb } from './db/index.js';
+import { registerErrorHandler } from './error-handler.js';
 import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
 import { createChatModule, registerChatRoutes } from './modules/chat/index.js';
 import {
@@ -108,6 +109,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     // niemandem – dann gilt die direkte Verbindungsadresse.
     trustProxy: (_address: string, hop: number) => hop < env.TRUSTED_PROXY_HOPS,
   });
+
+  /*
+   * Globales Sicherheitsnetz (N6, Gefundener Punkt 97): Ein Fehler, den keine
+   * Route bewusst abfängt, verlässt die App trotzdem im Envelope-Format
+   * (Pflichtenheft §5.1) und ohne Interna nach außen. Die fachlichen Fehler der
+   * Routen bleiben davon unberührt – die werden weiter dort übersetzt.
+   */
+  registerErrorHandler(app);
 
   /**
    * CORS (angepasst in B1): Sitzungs-Cookies gehen nur mit `credentials` über
