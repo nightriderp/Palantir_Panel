@@ -259,3 +259,76 @@ export interface ResourceWarningThresholds {
   /** Auslastung eines einzelnen Servers gegen sein eigenes Limit, ab der gewarnt wird. */
   serverPercent: number;
 }
+
+// ---------------------------------------------------------------------------
+// Ressourcen-Kontingent des aufrufenden Nutzers (Arbeitspaket P6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Eine Ressourcenart im Kontingent des aufrufenden Nutzers: konfiguriertes
+ * Limit, verbrauchter Anteil und Rest – alles in der Einheit der Ressource
+ * ({@link unitForResource}).
+ *
+ * `limit` und `remaining` sind `null`, wenn für diese Ressource kein Limit gilt
+ * (dieselbe „`null` = kein Limit"-Bedeutung wie in {@link UserResourceLimits}).
+ * `remaining` ist nie negativ: liegt die Belegung bereits über dem Limit, ist
+ * der Rest `0`, nicht ein negativer Wert.
+ */
+export interface ResourceQuotaSlot {
+  resource: ResourceKind;
+  unit: ResourceUnit;
+  /** Konfiguriertes Limit; `null` = kein Limit für diese Ressource. */
+  limit: number | null;
+  /** Aktuell belegter Anteil (gleiche Zählweise wie {@link UserResourceUsage}). */
+  used: number;
+  /** Rest bis zum Limit, nie negativ; `null`, wenn kein Limit gilt. */
+  remaining: number | null;
+}
+
+/**
+ * Kontingent-Übersicht des aufrufenden Nutzers (Arbeitspaket P6,
+ * `GET /api/me/resource-quota`, Lastenheft §3.4, Pflichtenheft §10).
+ *
+ * Fasst je Ressourcenart Limit, Belegung und Rest zusammen, damit die
+ * Oberfläche die eigene Auslastung anzeigen kann, ohne aus mehreren Endpunkten
+ * selbst zu rechnen. Die vier Ressourcenarten aus {@link ResourceKind} stehen
+ * bewusst als benannte Felder (statt als Liste), damit ein fehlender Slot schon
+ * beim Übersetzen auffällt.
+ *
+ * Enthält wie jedes DTO ein `permissions`-Objekt (CLAUDE.md §3, Pflichtenheft
+ * §5.2): Für das eigene Kontingent ist `canEdit` regelmäßig `false` – das
+ * Setzen fremder Kontingente läuft über {@link UserResourceLimitDto} und
+ * `user.manage`.
+ */
+export interface ResourceQuotaDto {
+  userId: string;
+  ram: ResourceQuotaSlot;
+  cpu: ResourceQuotaSlot;
+  disk: ResourceQuotaSlot;
+  servers: ResourceQuotaSlot;
+  /** ISO-8601-Zeitstempel der letzten Kontingent-Änderung; `null`, solange keins gesetzt wurde. */
+  updatedAt: string | null;
+  permissions: UserResourceLimitPermissions;
+}
+
+/**
+ * Baut einen {@link ResourceQuotaSlot} aus Limit und Belegung.
+ *
+ * Reine, geteilte Rechenregel für „Rest = Limit − Belegung, nie negativ" – kein
+ * Backend-spezifisches Verhalten, sondern dieselbe Ableitung, die Backend (P6)
+ * und Frontend gleich sehen sollen. Die Einheit ergibt sich fest aus der
+ * Ressourcenart ({@link unitForResource}).
+ */
+export function resourceQuotaSlot(
+  resource: ResourceKind,
+  limit: number | null,
+  used: number,
+): ResourceQuotaSlot {
+  return {
+    resource,
+    unit: unitForResource(resource),
+    limit,
+    used,
+    remaining: limit === null ? null : Math.max(0, limit - used),
+  };
+}

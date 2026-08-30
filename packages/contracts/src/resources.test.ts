@@ -4,6 +4,7 @@ import {
   NO_USER_RESOURCE_LIMITS,
   RESOURCE_UNITS,
   isHostNodeStatus,
+  resourceQuotaSlot,
   unitForResource,
 } from './resources.js';
 
@@ -45,5 +46,31 @@ describe('NO_USER_RESOURCE_LIMITS', () => {
 
   it('ist eingefroren, damit ein Aufrufer den geteilten Standard nicht verändert', () => {
     expect(Object.isFrozen(NO_USER_RESOURCE_LIMITS)).toBe(true);
+  });
+});
+
+describe('resourceQuotaSlot (Arbeitspaket P6)', () => {
+  it('rechnet den Rest aus Limit und Belegung und füllt die Einheit', () => {
+    expect(resourceQuotaSlot('ram', 8192, 2048)).toEqual({
+      resource: 'ram',
+      unit: 'mb',
+      limit: 8192,
+      used: 2048,
+      remaining: 6144,
+    });
+  });
+
+  it('lässt Limit und Rest bei „kein Limit" null', () => {
+    expect(resourceQuotaSlot('cpu', null, 3)).toEqual({
+      resource: 'cpu',
+      unit: 'cores',
+      limit: null,
+      used: 3,
+      remaining: null,
+    });
+  });
+
+  it('gibt bei Überbelegung 0 statt eines negativen Rests zurück', () => {
+    expect(resourceQuotaSlot('servers', 2, 5).remaining).toBe(0);
   });
 });

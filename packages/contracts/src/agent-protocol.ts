@@ -118,6 +118,26 @@ export const AGENT_COMMANDS = [
    * hierüber grundsätzlich nicht löschbar (Lastenheft §3.8).
    */
   'REMOVE_STORAGE_ENTRY',
+  /**
+   * Datei oder Verzeichnis im Container löschen (Datei-Manager, Lastenheft §3.3).
+   *
+   * Ergänzung dieser Sitzung (WELLE 0) zum Katalog aus Pflichtenheft §5.3, dort
+   * nachgetragen. Der Datei-Manager konnte bisher auflisten, lesen und schreiben
+   * (`FILE_LIST`/`FILE_READ`/`FILE_WRITE`), aber weder löschen noch hochladen –
+   * ohne diese beiden Befehle bliebe P2 auf halbem Weg stehen. **Ausgeführt**
+   * wird der Befehl erst von P2; bis dahin steht er nicht in
+   * `IMPLEMENTED_AGENT_COMMANDS` (`AGENT_COMMAND_NOT_IMPLEMENTED`).
+   */
+  'FILE_DELETE',
+  /**
+   * Vom Datei-Manager hochgeladene Datei im Container ablegen (Lastenheft §3.3).
+   *
+   * Ergänzung dieser Sitzung (WELLE 0), Begründung wie bei `FILE_DELETE`.
+   * Bewusst getrennt von `FILE_WRITE`: Dieses speichert eine im Editor
+   * bearbeitete Textdatei zurück, `FILE_UPLOAD` legt eine hochgeladene (auch
+   * binäre, auch neue) Datei ab. Ausführung ebenfalls in P2.
+   */
+  'FILE_UPLOAD',
 ] as const;
 
 /** Alle gültigen Befehlsnamen – verhindert Freitext-Befehle. */

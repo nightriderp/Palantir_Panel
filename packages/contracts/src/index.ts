@@ -145,6 +145,8 @@ export {
   type FileReadCommandPayload,
   type FileReadCommandResult,
   type FileWriteCommandPayload,
+  type FileDeleteCommandPayload,
+  type FileUploadCommandPayload,
   type GetLogsCommandPayload,
   type GetLogsCommandResult,
   type GetStatsCommandPayload,

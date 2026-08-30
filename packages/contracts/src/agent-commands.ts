@@ -172,6 +172,58 @@ export interface FileWriteCommandPayload {
 }
 
 /**
+ * `FILE_DELETE` – Datei oder Verzeichnis im Container entfernen (Arbeitspaket P2,
+ * Datei-Manager, Lastenheft §3.3).
+ *
+ * Bewusst idempotent wie `DELETE_BACKUP` und `REMOVE_STORAGE_ENTRY`: Ein bereits
+ * fehlender Pfad ist kein Fehler, damit ein wiederholter Aufruf nach Abbruch
+ * nicht scheitert. Das Ergebnis ist `null` (analog `FILE_WRITE`); ob wirklich
+ * etwas gelöscht wurde, ist für den Aufrufer ohne Belang.
+ *
+ * Ergänzung dieser Sitzung (WELLE 0) zum Protokoll aus Pflichtenheft §5.3, dort
+ * nachgetragen. **Ausführung** baut P2 (Agent/Backend); bis dahin steht der
+ * Befehl **nicht** in `IMPLEMENTED_AGENT_COMMANDS` und wird mit
+ * `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+ */
+export interface FileDeleteCommandPayload {
+  readonly containerId: string;
+  readonly path: string;
+  /**
+   * Verzeichnis samt Inhalt entfernen. Ohne Angabe lehnt der Agent das Löschen
+   * eines nicht-leeren Verzeichnisses ab, damit ein versehentlicher Klick nicht
+   * einen ganzen Datenbaum mitnimmt.
+   */
+  readonly recursive?: boolean;
+}
+
+/**
+ * `FILE_UPLOAD` – vom Datei-Manager hochgeladene Datei im Container ablegen
+ * (Arbeitspaket P2, Lastenheft §3.3).
+ *
+ * Inhalt Base64-kodiert wie bei `FILE_WRITE`, weil das Protokoll JSON ist und
+ * hochgeladene Dateien beliebige Bytes enthalten. Bewusst getrennt von
+ * `FILE_WRITE`: `FILE_WRITE` speichert eine im eingebauten Editor bearbeitete
+ * Textdatei zurück, `FILE_UPLOAD` legt eine vom Nutzer hochgeladene Datei
+ * (auch binär, auch neu) ab. Die Größengrenze prüft der Agent gegen
+ * `MAX_UPLOAD_SIZE_BYTES` (Pflichtenheft §12.1) und lehnt mit
+ * `AGENT_FILE_TOO_LARGE` ab.
+ *
+ * Ergänzung dieser Sitzung (WELLE 0); Ausführung baut P2. Bis dahin **nicht** in
+ * `IMPLEMENTED_AGENT_COMMANDS` (`AGENT_COMMAND_NOT_IMPLEMENTED`).
+ */
+export interface FileUploadCommandPayload {
+  readonly containerId: string;
+  readonly path: string;
+  readonly contentBase64: string;
+  /**
+   * Bestehende Datei am Zielpfad überschreiben. Ohne Angabe lehnt der Agent den
+   * Upload auf einen belegten Pfad ab (`AGENT_FILE_EXISTS`), damit ein Upload
+   * nicht unbemerkt eine gleichnamige Datei ersetzt.
+   */
+  readonly overwrite?: boolean;
+}
+
+/**
  * `CREATE_BACKUP` – Datenordner eines Servers auf dem Homeserver sichern
  * (Lastenheft §3.3, Arbeitspaket A3).
  *
@@ -583,6 +635,8 @@ export interface AgentCommandPayloads {
   readonly FILE_LIST: FileListCommandPayload;
   readonly FILE_READ: FileReadCommandPayload;
   readonly FILE_WRITE: FileWriteCommandPayload;
+  readonly FILE_DELETE: FileDeleteCommandPayload;
+  readonly FILE_UPLOAD: FileUploadCommandPayload;
   readonly CREATE_BACKUP: CreateBackupCommandPayload;
   readonly RESTORE_BACKUP: RestoreBackupCommandPayload;
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandPayload;
@@ -605,6 +659,8 @@ export interface AgentCommandResults {
   readonly FILE_LIST: FileListCommandResult;
   readonly FILE_READ: FileReadCommandResult;
   readonly FILE_WRITE: null;
+  readonly FILE_DELETE: null;
+  readonly FILE_UPLOAD: null;
   readonly CREATE_BACKUP: CreateBackupCommandResult;
   readonly RESTORE_BACKUP: RestoreBackupCommandResult;
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandResult;
@@ -621,11 +677,16 @@ export interface AgentCommandResults {
  * wird aber mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet – das Backend
  * erfährt den Unterschied zwischen „unbekannt" und „noch nicht gebaut".
  *
- * Seit Arbeitspaket A3 ist die Liste vollständig: Die Backup-Befehle, der
+ * Mit Arbeitspaket A3 war die Liste vollständig: Die Backup-Befehle, der
  * Storage-Scanner und die beiden A3-Ergänzungen werden ausgeführt. Sollte der
  * Agent ohne Job-Modul gebaut werden, antwortet er für diese Befehle weiterhin
  * mit `AGENT_COMMAND_NOT_IMPLEMENTED` – die Entscheidung fällt dann im
  * Adapter, nicht in dieser Liste.
+ *
+ * WELLE 0 hat `FILE_DELETE` und `FILE_UPLOAD` ins Protokoll aufgenommen, ihre
+ * Ausführung aber P2 (Datei-Manager) überlassen. Beide fehlen daher hier
+ * bewusst und werden bis P2 mit `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet –
+ * genau wie die Backup-Befehle vor A3.
  */
 export const IMPLEMENTED_AGENT_COMMANDS = [
   'CREATE',

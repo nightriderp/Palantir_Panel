@@ -121,6 +121,30 @@ export const fileWriteCommandPayloadSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Datei-Manager: Löschen und Hochladen (Arbeitspaket P2)
+// ---------------------------------------------------------------------------
+//
+// Diese Befehle führt der Agent noch nicht aus; sie stehen deshalb bewusst
+// **nicht** in AGENT_COMMAND_PAYLOAD_SCHEMAS weiter unten – genau wie die
+// Backup-Schemas oben. Die Schemas existieren trotzdem schon, damit P2 die
+// Nutzdaten prüfen kann, ohne den Vertrag ein zweites Mal zu formulieren.
+
+export const fileDeleteCommandPayloadSchema = z.object({
+  containerId: containerIdSchema,
+  path: containerPathSchema,
+  recursive: z.boolean().optional(),
+});
+
+export const fileUploadCommandPayloadSchema = z.object({
+  containerId: containerIdSchema,
+  path: containerPathSchema,
+  contentBase64: z
+    .string()
+    .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
+  overwrite: z.boolean().optional(),
+});
+
+// ---------------------------------------------------------------------------
 // Backup-Befehle (Lastenheft §3.3, Arbeitspaket A3)
 // ---------------------------------------------------------------------------
 //

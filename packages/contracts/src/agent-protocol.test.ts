@@ -14,8 +14,9 @@ describe('Agent-Protokoll – Befehle (Pflichtenheft §5.3)', () => {
     // DOWNLOAD_BACKUP und DELETE_BACKUP sind die Ergänzungen aus B5 (Lastenheft
     // §3.3: Download aller Serverdaten bzw. Aufbewahrungsregel),
     // SET_SERVER_QUERY und REMOVE_STORAGE_ENTRY die aus A3 (Pflichtenheft §9
-    // periodische Spielerabfrage, Lastenheft §3.8 Speicher freigeben) – alle
-    // in Pflichtenheft §5.3 nachgetragen.
+    // periodische Spielerabfrage, Lastenheft §3.8 Speicher freigeben),
+    // FILE_DELETE und FILE_UPLOAD die aus WELLE 0 (Datei-Manager, Lastenheft
+    // §3.3) – alle in Pflichtenheft §5.3 nachgetragen.
     expect([...AGENT_COMMANDS]).toEqual([
       'CREATE',
       'START',
@@ -35,6 +36,8 @@ describe('Agent-Protokoll – Befehle (Pflichtenheft §5.3)', () => {
       'GET_STORAGE_BREAKDOWN',
       'SET_SERVER_QUERY',
       'REMOVE_STORAGE_ENTRY',
+      'FILE_DELETE',
+      'FILE_UPLOAD',
     ]);
   });
 
