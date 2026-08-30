@@ -29,16 +29,14 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
     }
   });
 
-  it('führt genau die von WELLE 0 nachgetragenen Datei-Befehle noch nicht aus', () => {
-    // Mit A3 war die Liste vollständig. WELLE 0 nimmt FILE_DELETE und FILE_UPLOAD
-    // ins Protokoll auf, überlässt die Ausführung aber P2 (Datei-Manager) – genau
-    // wie die Backup-Befehle vor A3. Bleibt darüber hinaus etwas offen oder wird
-    // eines der beiden versehentlich als umgesetzt geführt, soll das auffallen.
-    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command)).sort()).toEqual([
-      'FILE_DELETE',
-      'FILE_UPLOAD',
-    ]);
-    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length - 2);
+  it('führt jeden Befehl des Protokolls aus', () => {
+    // WELLE 0 hat FILE_DELETE und FILE_UPLOAD ins Protokoll aufgenommen und ihre
+    // Ausführung P2 (Datei-Manager) überlassen; seit P2 setzt der Agent beide um
+    // (`ContainerRuntime.deleteFile`/`uploadFile`). Damit ist die Liste wieder
+    // vollständig – ein neuer Befehl ohne Umsetzung fällt hier auf, statt erst im
+    // Betrieb als `AGENT_COMMAND_NOT_IMPLEMENTED`.
+    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual([]);
+    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length);
   });
 
   it('kennt die beiden von A3 ergänzten Befehle', () => {

@@ -1,4 +1,5 @@
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from './config/env.js';
@@ -244,6 +245,24 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * authentifiziert über das Pre-Shared-Token.
      */
     await app.register(websocket);
+
+    /*
+     * Datei-Uploads des Datei-Managers (P2, Lastenheft §3.3).
+     *
+     * **Neue Abhängigkeit `@fastify/multipart` (CLAUDE.md §1).** Das Frontend
+     * lädt Dateien als `multipart/form-data` hoch (`uploadFile()` in
+     * `lib/api/servers.ts`); Fastify bringt dafür keinen Parser mit, und ein
+     * selbst gebauter wäre genau die Sorte Code, die man nicht selbst schreiben
+     * will.
+     *
+     * `fileSize` ist die harte Grenze aus `MAX_UPLOAD_SIZE_BYTES`
+     * (Pflichtenheft §12.1): Der Datenstrom wird dort abgebrochen, statt den
+     * Backend-Speicher unbegrenzt zu füllen. `files: 1`, weil der Datei-Manager
+     * genau eine Datei je Aufruf entgegennimmt.
+     */
+    await app.register(multipart, {
+      limits: { fileSize: env.MAX_UPLOAD_SIZE_BYTES, files: 1 },
+    });
 
     /*
      * Notification-Engine (B6, Pflichtenheft §14) inklusive des

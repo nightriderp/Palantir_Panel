@@ -10,7 +10,7 @@
 
 import path from 'node:path';
 import { type ContainerRuntime } from '../container-runtime.js';
-import { ContainerRuntimeError } from '../errors.js';
+import { ContainerRuntimeError, isContainerRuntimeError } from '../errors.js';
 import {
   RuntimeEventEmitter,
   type ContainerRuntimeEventListener,
@@ -31,6 +31,7 @@ import {
   type ContainerState,
   type ContainerStats,
   type ContainerStatus,
+  type DeleteFileOptions,
   type ExecResult,
   type FileEntry,
   type GetLogsOptions,
@@ -38,6 +39,7 @@ import {
   type RemoveImageOptions,
   type RemoveOptions,
   type StopOptions,
+  type UploadFileOptions,
   type WatchOptions,
 } from '../types.js';
 import { DockerHttpClient, type DockerStream, type FetchLike } from './http-client.js';
@@ -565,7 +567,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
   async readFile(containerId: string, datei: string): Promise<Buffer> {
     const wurzel = await this.#datenVolumeWurzel(containerId);
     const pfad = resolveWithinRoot(wurzel, datei);
-    const groesse = await this.#dateiGroesse(containerId, pfad);
+    const groesse = (await this.#pfadStat(containerId, pfad))?.sizeBytes ?? 0;
 
     if (groesse > this.#maxFileBytes) {
       throw new ContainerRuntimeError('FILE_TOO_LARGE', {
@@ -592,12 +594,98 @@ export class DockerContainerRuntime implements ContainerRuntime {
     const wurzel = await this.#datenVolumeWurzel(containerId);
     const pfad = resolveWithinRoot(wurzel, datei);
 
+    this.#pruefeGroesse(pfad, inhalt);
+    await this.#schreibeDatei(containerId, pfad, inhalt);
+  }
+
+  /**
+   * `FILE_UPLOAD` - wie {@link writeFile}, aber mit vorheriger Existenzpruefung.
+   *
+   * Die Pruefung ist kein Ersatz fuer eine atomare Anlage: Zwischen `HEAD` und
+   * `PUT` kann ein zweiter Upload dieselbe Datei anlegen. Die Engine bietet
+   * kein „nur anlegen, wenn nicht vorhanden" an; die Pruefung faengt den Fall
+   * ab, um den es hier geht - der Nutzer laedt versehentlich auf einen belegten
+   * Namen und wuerde die vorhandene Datei sonst unbemerkt verlieren.
+   */
+  async uploadFile(
+    containerId: string,
+    datei: string,
+    inhalt: Buffer,
+    options: UploadFileOptions = {},
+  ): Promise<void> {
+    const wurzel = await this.#datenVolumeWurzel(containerId);
+    const pfad = resolveWithinRoot(wurzel, datei);
+
+    this.#pruefeGroesse(pfad, inhalt);
+
+    if (options.overwrite !== true && (await this.#pfadStat(containerId, pfad)) !== null) {
+      throw new ContainerRuntimeError('FILE_EXISTS', { details: { path: pfad } });
+    }
+
+    await this.#schreibeDatei(containerId, pfad, inhalt);
+  }
+
+  /**
+   * `FILE_DELETE` - Datei oder Verzeichnis im Datenordner entfernen.
+   *
+   * **Setzt einen laufenden Container voraus.** Die Engine-API kennt zum Lesen
+   * und Schreiben den Archiv-Endpunkt, aber kein Loeschen; der einzige Weg
+   * ueber die Container-Schnittstelle ist `exec`. Auf einem gestoppten
+   * Container meldet die Engine deshalb `CONTAINER_NOT_RUNNING`. Das ist eine
+   * bewusste Einschraenkung dieser Umsetzung und in WORK_STATUS.md unter
+   * „Gefundene Punkte" vermerkt.
+   *
+   * Es steht keine Shell dazwischen (Argumentliste wie bei `execConsole`), und
+   * der Pfad ist vorher durch `resolveWithinRoot` gegangen - aus einem
+   * Dateinamen kann damit kein zweiter Befehl werden.
+   */
+  async deleteFile(
+    containerId: string,
+    ziel: string,
+    options: DeleteFileOptions = {},
+  ): Promise<void> {
+    const wurzel = await this.#datenVolumeWurzel(containerId);
+    const pfad = resolveWithinRoot(wurzel, ziel);
+
+    if (pfad === wurzel) {
+      throw new ContainerRuntimeError('INVALID_PATH', {
+        message: 'Der Datenordner selbst kann nicht geloescht werden.',
+        details: { path: pfad },
+      });
+    }
+
+    const stat = await this.#pfadStat(containerId, pfad);
+    // Idempotent: ein bereits fehlender Pfad ist kein Fehler.
+    if (stat === null) return;
+
+    const argv =
+      stat.istVerzeichnis && options.recursive !== true
+        ? // `rmdir` scheitert von sich aus an einem nicht-leeren Verzeichnis -
+          // genau die Grenze, die `recursive` aufhebt.
+          ['rmdir', pfad]
+        : ['rm', options.recursive === true ? '-rf' : '-f', '--', pfad];
+
+    const ergebnis = await this.execConsole(containerId, argv);
+    if (ergebnis.exitCode !== 0) {
+      throw new ContainerRuntimeError('RUNTIME_ERROR', {
+        message: 'Der Pfad konnte nicht entfernt werden.',
+        details: { path: pfad, exitCode: ergebnis.exitCode, stderr: ergebnis.stderr },
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------- Intern
+
+  #pruefeGroesse(pfad: string, inhalt: Buffer): void {
     if (inhalt.length > this.#maxFileBytes) {
       throw new ContainerRuntimeError('FILE_TOO_LARGE', {
         details: { path: pfad, sizeBytes: inhalt.length, maxBytes: this.#maxFileBytes },
       });
     }
+  }
 
+  /** Einzelne Datei als Tar in ihr Zielverzeichnis entpacken lassen. */
+  async #schreibeDatei(containerId: string, pfad: string, inhalt: Buffer): Promise<void> {
     const zielVerzeichnis = path.posix.dirname(pfad);
     const archiv = createTar([{ name: path.posix.basename(pfad), content: inhalt }]);
 
@@ -608,30 +696,46 @@ export class DockerContainerRuntime implements ContainerRuntime {
     });
   }
 
-  // ---------------------------------------------------------------- Intern
-
   #pfad(containerId: string): string {
     return `/containers/${encodeURIComponent(containerId)}`;
   }
 
-  /** Groesse einer Datei im Container, ohne sie zu laden (HEAD auf `/archive`). */
-  async #dateiGroesse(containerId: string, pfad: string): Promise<number> {
-    const antwort = await this.#client.requestRaw('HEAD', `${this.#pfad(containerId)}/archive`, {
-      query: { path: pfad },
-      notFoundCode: 'FILE_NOT_FOUND',
-    });
+  /**
+   * Groesse und Art eines Pfades im Container, ohne ihn zu laden (HEAD auf
+   * `/archive`). `null`, wenn der Pfad nicht existiert - darauf bauen die
+   * Existenzpruefung des Uploads und das idempotente Loeschen auf.
+   */
+  async #pfadStat(
+    containerId: string,
+    pfad: string,
+  ): Promise<{ sizeBytes: number; istVerzeichnis: boolean } | null> {
+    let antwort: Response;
+    try {
+      antwort = await this.#client.requestRaw('HEAD', `${this.#pfad(containerId)}/archive`, {
+        query: { path: pfad },
+        notFoundCode: 'FILE_NOT_FOUND',
+      });
+    } catch (fehler: unknown) {
+      if (isContainerRuntimeError(fehler) && fehler.code === 'FILE_NOT_FOUND') return null;
+      throw fehler;
+    }
 
     const kopfzeile = antwort.headers.get('x-docker-container-path-stat');
-    if (kopfzeile === null) return 0;
+    if (kopfzeile === null) return { sizeBytes: 0, istVerzeichnis: false };
 
     try {
       const stat = JSON.parse(Buffer.from(kopfzeile, 'base64').toString('utf8')) as {
         size?: number;
+        mode?: number;
       };
-      return stat.size ?? 0;
+      return {
+        sizeBytes: stat.size ?? 0,
+        // Go-`FileMode`: das oberste Bit (1 << 31) steht fuer „Verzeichnis".
+        istVerzeichnis: ((stat.mode ?? 0) & 0x8000_0000) !== 0,
+      };
     } catch {
       // Ohne verwertbaren Stat-Kopf greift allein das Limit beim Lesen.
-      return 0;
+      return { sizeBytes: 0, istVerzeichnis: false };
     }
   }
 

@@ -89,6 +89,19 @@ const envSchema = z.object({
   /** Einzelner öffentlicher Port für Spiele mit Hostname-Routing (§2.4). */
   MINECRAFT_ROUTER_PORT: z.coerce.number().int().min(1).max(65_535).default(25_565),
 
+  /**
+   * Maximale Upload-Größe pro Datei im Datei-Manager (§12.1).
+   *
+   * Wirksam ist der kleinere Wert aus dieser Angabe und der Kanal-Grenze des
+   * Agents (`AGENT_FILE_CHANNEL_MAX_BYTES`, 64 MiB) – eine größere Datei würde
+   * der Agent ohnehin ablehnen.
+   */
+  MAX_UPLOAD_SIZE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(2 * 1024 * 1024 * 1024),
+
   /** Crash-Loop-Schutz: erlaubte automatische Neustarts im Zeitfenster (§9). */
   CRASH_LOOP_MAX_RESTARTS: z.coerce.number().int().min(0).max(50).default(3),
   CRASH_LOOP_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1_440).default(10),
