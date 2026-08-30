@@ -4,6 +4,7 @@ import { LIVE_SERVER_EVENTS } from './server-live.js';
 import {
   NOTIFIABLE_EVENTS,
   NOTIFICATION_CHANNEL_TYPES,
+  NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED,
   NOTIFICATION_LIVE_EVENTS,
   NOTIFICATION_RECIPIENT_SCOPES,
   NOTIFICATION_SEVERITIES,
@@ -76,6 +77,12 @@ describe('Live-Kanal der Inbox (Pflichtenheft §5.3)', () => {
   it('isNotificationLiveEventName() erkennt unbekannte Namen', () => {
     expect(isNotificationLiveEventName('notification.created')).toBe(true);
     expect(isNotificationLiveEventName('server.statusChanged')).toBe(false);
+  });
+
+  it('beendet nicht angemeldete Verbindungen mit Close-Code 4401 (privater Bereich)', () => {
+    expect(NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED).toBe(4401);
+    expect(NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED).toBeGreaterThanOrEqual(4000);
+    expect(NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED).toBeLessThanOrEqual(4999);
   });
 });
 

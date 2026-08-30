@@ -514,6 +514,20 @@ export interface NotificationDeliveryDto {
  * Der Empfänger ergibt sich aus der Sitzung, nicht aus einem Frame-Feld – ein
  * Client kann also nicht die Inbox eines fremden Kontos abonnieren.
  */
+/**
+ * Close-Code, mit dem der Inbox-Live-Kanal eine Verbindung ohne gültige Sitzung
+ * beendet (Pflichtenheft §5.3).
+ *
+ * Aus dem privaten Bereich (4000–4999), damit das Frontend „nicht angemeldet"
+ * von „Backend gerade weg" unterscheiden kann: im zweiten Fall wird erneut
+ * verbunden, im ersten nicht. Dieselbe Zahl wie beim Agent-Kanal (§2.2), dort
+ * aber ein eigener, für den Agenten sichtbarer Code. Backend
+ * (`modules/notifications/live.ts`) und Frontend
+ * (`lib/live/notificationChannel.ts`) teilen sich diese Konstante, statt die 4401
+ * je erneut hinzuschreiben.
+ */
+export const NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED = 4401;
+
 export const NOTIFICATION_LIVE_EVENTS = [
   'notification.created',
 ] as const satisfies readonly WebSocketEventName[];
