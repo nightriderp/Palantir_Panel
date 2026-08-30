@@ -32,6 +32,7 @@ import { ChatError } from './errors.js';
 import {
   type ChatDelivery,
   conversationCreatedFrame,
+  conversationReadFrame,
   messageDeletedFrame,
   messageSentFrame,
   noopChatDelivery,
@@ -103,6 +104,13 @@ export interface ChatService {
   ): Promise<MessageDto>;
   /** Löscht den **eigenen** Beitrag. Moderatoren löschen über `moderation.ts`. */
   deleteOwnMessage(ctx: ChatContext, messageId: string): Promise<void>;
+  /**
+   * Markiert eine Konversation aus Sicht des Aufrufers als gelesen (Fundpunkt
+   * 95): setzt seinen Lesestand auf jetzt, liefert die aktualisierte
+   * Konversation und stellt `conversation.read` an seine weiteren Verbindungen
+   * zu. `CONVERSATION_NOT_FOUND`, wenn der Aufrufer nicht teilnimmt.
+   */
+  markConversationRead(ctx: ChatContext, conversationId: string): Promise<ConversationDto>;
   /** Lädt Konversation samt Teilnehmerkreis – von `moderation.ts` mitbenutzt. */
   audienceOf(conversationId: string): Promise<ConversationAudience>;
 }
@@ -190,11 +198,54 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
     return created.id;
   }
 
+  /** Lesestand des Aufrufers in dieser Konversation (Fundpunkt 95). */
+  interface ReadState {
+    readonly unreadCount: number;
+    readonly lastReadAt: Date | null;
+  }
+
+  /** Der Lesestand einer noch leeren, gerade angelegten Konversation. */
+  const EMPTY_READ_STATE: ReadState = { unreadCount: 0, lastReadAt: null };
+
+  /** Lesestände eines Kontos zu mehreren Konversationen in einem Zug. */
+  async function readStatesFor(
+    viewerId: string,
+    conversationIds: readonly string[],
+  ): Promise<Map<string, ReadState>> {
+    const result = new Map<string, ReadState>();
+
+    if (conversationIds.length === 0) {
+      return result;
+    }
+
+    const [unread, lastRead] = await Promise.all([
+      repository.unreadCounts(viewerId, conversationIds),
+      repository.lastReadAtFor(viewerId, conversationIds),
+    ]);
+
+    for (const conversationId of conversationIds) {
+      result.set(conversationId, {
+        unreadCount: unread.get(conversationId) ?? 0,
+        lastReadAt: lastRead.get(conversationId) ?? null,
+      });
+    }
+
+    return result;
+  }
+
+  /** Lesestand einer einzelnen Konversation. */
+  async function readStateFor(viewerId: string, conversationId: string): Promise<ReadState> {
+    const states = await readStatesFor(viewerId, [conversationId]);
+
+    return states.get(conversationId) ?? EMPTY_READ_STATE;
+  }
+
   /** Baut den DTO einer Konversation aus Sicht genau eines Kontos. */
   async function conversationDtoFor(
     audience: ConversationAudience,
     viewerId: string,
     lastMessage: MessageRecord | null,
+    readState: ReadState,
   ): Promise<ConversationDto> {
     const base = await messageContext(
       viewerId,
@@ -202,7 +253,13 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       audience.participantIds,
     );
 
-    const context: ConversationDtoContext = { ...base, viewerId, lastMessage };
+    const context: ConversationDtoContext = {
+      ...base,
+      viewerId,
+      lastMessage,
+      unreadCount: readState.unreadCount,
+      lastReadAt: readState.lastReadAt,
+    };
 
     return toConversationDto(audience, context);
   }
@@ -238,9 +295,12 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
       const visible = audiences.filter((audience) => audience.participantIds.includes(viewerId));
 
-      const lastMessages = await repository.lastMessages(
-        visible.map((audience) => audience.conversation.id),
-      );
+      const conversationIds = visible.map((audience) => audience.conversation.id);
+
+      const [lastMessages, readStates] = await Promise.all([
+        repository.lastMessages(conversationIds),
+        readStatesFor(viewerId, conversationIds),
+      ]);
 
       const dtos = await Promise.all(
         visible.map((audience) =>
@@ -248,6 +308,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
             audience,
             viewerId,
             lastMessages.get(audience.conversation.id) ?? null,
+            readStates.get(audience.conversation.id) ?? EMPTY_READ_STATE,
           ),
         ),
       );
@@ -268,9 +329,17 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
     async getConversation(ctx, conversationId) {
       const viewerId = requireUserId(ctx);
       const audience = await participatingAudience(conversationId, viewerId);
-      const lastMessages = await repository.lastMessages([conversationId]);
+      const [lastMessages, readState] = await Promise.all([
+        repository.lastMessages([conversationId]),
+        readStateFor(viewerId, conversationId),
+      ]);
 
-      return conversationDtoFor(audience, viewerId, lastMessages.get(conversationId) ?? null);
+      return conversationDtoFor(
+        audience,
+        viewerId,
+        lastMessages.get(conversationId) ?? null,
+        readState,
+      );
     },
 
     async openDirectConversation(ctx, recipientId) {
@@ -288,9 +357,17 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
       if (existing) {
         const audience = await resolveAudience(audienceDeps, existing);
-        const lastMessages = await repository.lastMessages([existing.id]);
+        const [lastMessages, readState] = await Promise.all([
+          repository.lastMessages([existing.id]),
+          readStateFor(viewerId, existing.id),
+        ]);
 
-        return conversationDtoFor(audience, viewerId, lastMessages.get(existing.id) ?? null);
+        return conversationDtoFor(
+          audience,
+          viewerId,
+          lastMessages.get(existing.id) ?? null,
+          readState,
+        );
       }
 
       const created = await repository.createConversation({
@@ -301,7 +378,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       });
 
       const audience = await resolveAudience(audienceDeps, created);
-      const dto = await conversationDtoFor(audience, viewerId, null);
+      const dto = await conversationDtoFor(audience, viewerId, null, EMPTY_READ_STATE);
 
       /*
        * Das Gegenüber erfährt sofort von der neuen Unterhaltung – mit einem
@@ -309,7 +386,12 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
        * `permissions` unterscheiden sich je Empfänger (Pflichtenheft §5.2).
        */
       for (const recipientUserId of recipientsOf(audience, viewerId)) {
-        const recipientDto = await conversationDtoFor(audience, recipientUserId, null);
+        const recipientDto = await conversationDtoFor(
+          audience,
+          recipientUserId,
+          null,
+          EMPTY_READ_STATE,
+        );
 
         delivery.deliver(
           recipientUserId,
@@ -368,9 +450,17 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       // für Nichtmitglieder nicht sichtbar – auch nicht, nachdem er entstanden
       // ist.
       const audience = await participatingAudience(conversationId, viewerId);
-      const lastMessages = await repository.lastMessages([conversationId]);
+      const [lastMessages, readState] = await Promise.all([
+        repository.lastMessages([conversationId]),
+        readStateFor(viewerId, conversationId),
+      ]);
 
-      return conversationDtoFor(audience, viewerId, lastMessages.get(conversationId) ?? null);
+      return conversationDtoFor(
+        audience,
+        viewerId,
+        lastMessages.get(conversationId) ?? null,
+        readState,
+      );
     },
 
     async listMessages(ctx, conversationId, query) {
@@ -473,6 +563,48 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       for (const recipientId of recipientsOf(audience)) {
         delivery.deliver(recipientId, frame);
       }
+    },
+
+    async markConversationRead(ctx, conversationId) {
+      const viewerId = requireUserId(ctx);
+
+      // Teilnahme prüfen, bevor irgendetwas geschrieben wird: Wer nicht
+      // teilnimmt, kann den Lesestand einer fremden Konversation weder setzen
+      // noch aus der Antwort ableiten (Pflichtenheft §15).
+      const audience = await participatingAudience(conversationId, viewerId);
+
+      const readAt = clock.now();
+
+      await repository.markConversationRead(conversationId, viewerId, readAt);
+
+      const [lastMessages, readState] = await Promise.all([
+        repository.lastMessages([conversationId]),
+        readStateFor(viewerId, conversationId),
+      ]);
+
+      const dto = await conversationDtoFor(
+        audience,
+        viewerId,
+        lastMessages.get(conversationId) ?? null,
+        readState,
+      );
+
+      /*
+       * Der Lesestand gehört dem Konto, nicht der Konversation: zugestellt wird
+       * allein an dieses Konto (alle seine Geräte/Tabs), nicht an die übrigen
+       * Teilnehmer. So zieht ein zweites Gerät seinen Ungelesen-Zähler nach,
+       * ohne zu pollen; andere Teilnehmer erfahren nichts über fremdes
+       * Leseverhalten.
+       */
+      delivery.deliver(
+        viewerId,
+        conversationReadFrame(
+          { conversationId, lastReadAt: readAt.toISOString(), unreadCount: readState.unreadCount },
+          readAt,
+        ),
+      );
+
+      return dto;
     },
   };
 }

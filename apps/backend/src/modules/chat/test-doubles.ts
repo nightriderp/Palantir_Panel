@@ -185,6 +185,7 @@ export interface InMemoryChatRepository extends ChatRepository {
   readonly participants: { conversationId: string; userId: string }[];
   readonly messages: MessageRecord[];
   readonly reports: MessageReportRecord[];
+  readonly reads: { conversationId: string; userId: string; lastReadAt: Date }[];
 }
 
 export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemoryChatRepository {
@@ -192,6 +193,7 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
   const participants: { conversationId: string; userId: string }[] = [];
   const messages: MessageRecord[] = [];
   const reports: MessageReportRecord[] = [];
+  const reads: { conversationId: string; userId: string; lastReadAt: Date }[] = [];
 
   let counter = 0;
 
@@ -206,6 +208,7 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
     participants,
     messages,
     reports,
+    reads,
 
     async findConversation(conversationId) {
       return conversations.find((conversation) => conversation.id === conversationId) ?? null;
@@ -313,6 +316,55 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
       if (message) {
         messages[index] = { ...message, deletedAt, deletedById };
       }
+    },
+
+    async markConversationRead(conversationId, userId, at) {
+      const existing = reads.find(
+        (row) => row.conversationId === conversationId && row.userId === userId,
+      );
+
+      if (existing) {
+        existing.lastReadAt = at;
+      } else {
+        reads.push({ conversationId, userId, lastReadAt: at });
+      }
+    },
+
+    async lastReadAtFor(userId, conversationIds) {
+      const wanted = new Set(conversationIds);
+      const result = new Map<string, Date>();
+
+      for (const row of reads) {
+        if (row.userId === userId && wanted.has(row.conversationId)) {
+          result.set(row.conversationId, row.lastReadAt);
+        }
+      }
+
+      return result;
+    },
+
+    async unreadCounts(userId, conversationIds) {
+      const result = new Map<string, number>();
+
+      for (const conversationId of conversationIds) {
+        const lastReadAt = reads.find(
+          (row) => row.conversationId === conversationId && row.userId === userId,
+        )?.lastReadAt;
+
+        const unread = messages.filter(
+          (message) =>
+            message.conversationId === conversationId &&
+            message.senderId !== userId &&
+            message.deletedAt === null &&
+            (lastReadAt === undefined || message.createdAt.getTime() > lastReadAt.getTime()),
+        ).length;
+
+        if (unread > 0) {
+          result.set(conversationId, unread);
+        }
+      }
+
+      return result;
     },
 
     async createReport(data: CreateReportData) {
