@@ -191,3 +191,48 @@ export interface BackupOverviewDto {
   generatedAt: string;
   permissions: BackupOverviewPermissions;
 }
+
+// ---------------------------------------------------------------------------
+// Vollständiger Export (Lastenheft §3.3, Arbeitspaket P8)
+// ---------------------------------------------------------------------------
+
+/** Dateiname des Manifests **im** Export-Archiv. */
+export const SERVER_EXPORT_MANIFEST_FILE = 'palantir-server.json';
+
+/**
+ * Konfiguration eines Servers, wie sie dem Export-Archiv beiliegt
+ * (Lastenheft §3.3: „jederzeitiger vollständiger Export **aller** Serverdaten").
+ *
+ * **Warum das ein Vertrag ist.** Die Datei verlässt das System: Sie liegt im
+ * heruntergeladenen Archiv und wird von Menschen gelesen oder von einem anderen
+ * Panel eingelesen. Eine Form, die sich still ändert, wäre für den Nutzer ein
+ * Datenverlust mit Ansage.
+ *
+ * Bewusst **ohne** Geheimnisse: keine Tokens, keine Zugangsdaten, keine
+ * Node-Adressen. Ein Export ist eine Datei, die der Nutzer weitergeben darf.
+ */
+export interface ServerExportManifest {
+  /** Formatversion des Manifests; steigt nur bei Änderungen, die nicht additiv sind. */
+  formatVersion: 1;
+  /** ISO-8601-Zeitstempel der Erzeugung. */
+  exportedAt: string;
+  server: {
+    id: string;
+    name: string;
+    /** Spiel-Kennung aus der Registry, z. B. `minecraft-java`. */
+    gameType: string;
+    subdomain: string;
+    startupParameters: string;
+    /** Vom Nutzer gesetzte Spiel-Einstellungen (`GameServerDto.config`). */
+    config: Record<string, string | number | boolean>;
+    resourceLimits: {
+      ramMb: number;
+      cpuCores: number;
+      diskMb: number;
+    };
+    autoShutdownEnabled: boolean;
+    autoShutdownTimeoutMinutes: number;
+    /** ISO-8601-Zeitstempel der Erstellung des Servers. */
+    createdAt: string;
+  };
+}
