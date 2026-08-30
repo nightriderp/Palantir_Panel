@@ -56,3 +56,27 @@ export interface ServerFileContentDto {
   modifiedAt: string;
   writable: boolean;
 }
+
+/**
+ * Antwort auf den Upload eines Weltdaten-Archivs (Lastenheft §3.3,
+ * Arbeitspaket P4).
+ *
+ * Das Archiv wandert **nicht** sofort auf den Homeserver: Beim Upload gibt es
+ * den Zielserver noch gar nicht – der Wizard lädt zuerst hoch und legt danach
+ * an. Das Backend hält das Archiv deshalb zwischen und gibt hier den Verweis
+ * zurück, den `CreateServerInput.worldImport` trägt.
+ */
+export interface WorldArchiveUploadDto {
+  /** Verweis auf das zwischengespeicherte Archiv (`worldImport.uploadId`). */
+  uploadId: string;
+  /** Ursprünglicher Dateiname – der Wizard zeigt ihn in der Zusammenfassung. */
+  fileName: string;
+  sizeBytes: number;
+  /** Erkanntes Format; einer der Werte aus `ARCHIVE_FORMATS`. */
+  format: string;
+  /**
+   * ISO-8601-Zeitstempel, bis zu dem der Verweis gültig ist. Danach antwortet
+   * das Anlegen mit `WORLD_ARCHIVE_NOT_FOUND`.
+   */
+  expiresAt: string;
+}

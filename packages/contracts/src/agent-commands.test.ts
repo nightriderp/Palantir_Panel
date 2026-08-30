@@ -29,14 +29,18 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
     }
   });
 
-  it('führt jeden Befehl des Protokolls aus', () => {
-    // WELLE 0 hat FILE_DELETE und FILE_UPLOAD ins Protokoll aufgenommen und ihre
-    // Ausführung P2 (Datei-Manager) überlassen; seit P2 setzt der Agent beide um
-    // (`ContainerRuntime.deleteFile`/`uploadFile`). Damit ist die Liste wieder
-    // vollständig – ein neuer Befehl ohne Umsetzung fällt hier auf, statt erst im
-    // Betrieb als `AGENT_COMMAND_NOT_IMPLEMENTED`.
-    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual([]);
-    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length);
+  it('führt jeden Befehl des Protokolls aus – bis auf die noch offenen', () => {
+    // Dasselbe Muster wie bei WELLE 0: Ein Befehl steht zuerst im Protokoll und
+    // wird erst vom nachfolgenden Arbeitspaket ausgeführt. Bis dahin antwortet
+    // der Agent mit `AGENT_COMMAND_NOT_IMPLEMENTED`. Die Ausnahmeliste ist
+    // absichtlich hier hinterlegt: Ein **anderer** neuer Befehl ohne Umsetzung
+    // fällt so weiterhin auf, statt erst im Betrieb.
+    const nochOffen = ['FILE_EXTRACT'];
+
+    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual(
+      nochOffen,
+    );
+    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length - nochOffen.length);
   });
 
   it('kennt die beiden von A3 ergänzten Befehle', () => {
@@ -47,6 +51,10 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
   it('kennt die beiden von WELLE 0 ergänzten Datei-Befehle', () => {
     expect([...AGENT_COMMANDS]).toContain('FILE_DELETE');
     expect([...AGENT_COMMANDS]).toContain('FILE_UPLOAD');
+  });
+
+  it('kennt den von P4 ergänzten Entpack-Befehl', () => {
+    expect([...AGENT_COMMANDS]).toContain('FILE_EXTRACT');
   });
 
   it('isImplementedAgentCommand() erkennt Befehle außerhalb des Protokolls', () => {

@@ -16,7 +16,8 @@ describe('Agent-Protokoll – Befehle (Pflichtenheft §5.3)', () => {
     // SET_SERVER_QUERY und REMOVE_STORAGE_ENTRY die aus A3 (Pflichtenheft §9
     // periodische Spielerabfrage, Lastenheft §3.8 Speicher freigeben),
     // FILE_DELETE und FILE_UPLOAD die aus WELLE 0 (Datei-Manager, Lastenheft
-    // §3.3) – alle in Pflichtenheft §5.3 nachgetragen.
+    // §3.3) und FILE_EXTRACT die aus P4 (Weltdaten-Übernahme, Lastenheft §3.3)
+    // – alle in Pflichtenheft §5.3 nachgetragen.
     expect([...AGENT_COMMANDS]).toEqual([
       'CREATE',
       'START',
@@ -38,6 +39,7 @@ describe('Agent-Protokoll – Befehle (Pflichtenheft §5.3)', () => {
       'REMOVE_STORAGE_ENTRY',
       'FILE_DELETE',
       'FILE_UPLOAD',
+      'FILE_EXTRACT',
     ]);
   });
 
