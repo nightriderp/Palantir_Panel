@@ -1,6 +1,6 @@
 # Mockup
 
-Entpackter Inhalt von `MockUp.zip` (Repo-Root). Referenz für alle Frontend-Arbeitspakete
+Referenzentwurf des Mockups (lag urspruenglich als `MockUp.zip` im Repo-Root). Referenz für alle Frontend-Arbeitspakete
 F1–F11 aus [STRUKTUR.md](../../STRUKTUR.md).
 
 | Datei | Inhalt |

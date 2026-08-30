@@ -854,7 +854,7 @@ Verbindliche Vorgaben:
 - Antworten der API folgen dem Response-Envelope aus Pflichtenheft §5.1; Fehlermeldungen
   anhand des Fehlercodes übersetzen, nicht anhand des Freitexts.
 - Typen und Schemas ausschließlich aus packages/contracts und packages/validation.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
@@ -918,7 +918,7 @@ Verbindliche Vorgaben:
   aus dem DTO (Pflichtenheft §5.2).
 - Typen ausschließlich aus packages/contracts. Fehlt dort ein Typ, den du brauchst:
   eigener, kleiner PR an packages/contracts, zuerst mergen.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 - Dokumentiere kurz (z. B. als README im Ordner shared), welche Komponenten es gibt und
   wie sie zu verwenden sind, damit F3–F11 nicht doppelt bauen.
 
@@ -985,7 +985,7 @@ Verbindliche Vorgaben:
   (Pflichtenheft §5.2) – keine eigene Rechteberechnung im Frontend.
 - Live-Daten (Konsole, Stats) laufen über die WebSocket-Kanäle, nicht über Polling.
 - Typen und Schemas ausschließlich aus packages/contracts und packages/validation.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
@@ -1041,7 +1041,7 @@ Verbindliche Vorgaben:
   (Pflichtenheft §5.2) – keine eigene Rechteberechnung im Frontend.
 - Löschen ist irreversibel: immer über die Bestätigungs-Modal-Variante aus F2.
 - Typen und Schemas ausschließlich aus packages/contracts und packages/validation.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
@@ -1097,7 +1097,7 @@ Verbindliche Vorgaben:
   private Chats sehen können – Moderation ist ausschließlich reaktiv (Pflichtenheft §15).
 - Live-Daten laufen über die WebSocket-Kanäle, nicht über Polling.
 - Typen und Schemas ausschließlich aus packages/contracts und packages/validation.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
@@ -1152,7 +1152,7 @@ Verbindliche Vorgaben:
   gehört NICHT hierher, sondern nach F10.
 - Event-Namen und Payloads kommen aus packages/contracts – keine eigenen Strings erfinden.
 - Live-Daten laufen über die WebSocket-Kanäle, nicht über Polling.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
@@ -1208,7 +1208,7 @@ Verbindliche Vorgaben:
 - Es werden keine sicherheitsrelevanten Interna angezeigt (keine WireGuard-Schlüssel,
   keine internen Tunnel-Adressen, keine Agent-Tokens).
 - Typen ausschließlich aus packages/contracts.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
@@ -1270,7 +1270,7 @@ Weitere Vorgaben:
 - Score-Übermittlung läuft über die API; das Backend ist die Instanz, die den Score
   speichert – keine Bestenliste ausschließlich im Browser.
 - Alle gemeinsamen Bausteine kommen aus F2 – keine Parallelvarianten.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
@@ -1323,7 +1323,7 @@ Verbindliche Vorgaben:
 - Mobile-First: die Oberfläche muss auf Smartphone-Browsern gut nutzbar sein.
 - Der Platzhalter wird NICHT selbst gebaut, sondern aus F2 verwendet – so sehen alle
   Phase-2-Seiten identisch aus.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
@@ -1398,7 +1398,7 @@ Verbindliche Vorgaben:
   (Pflichtenheft §15).
 - Irreversible Aktionen (Löschen, Sperren) immer über die Bestätigungs-Modal-Variante aus F2.
 - Typen und Schemas ausschließlich aus packages/contracts und packages/validation.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 - Das Paket ist groß: arbeite in kleinen, nachvollziehbaren Commits pro Ansicht und
   aktualisiere WORK_STATUS.md entsprechend häufig.
 
@@ -1458,7 +1458,7 @@ Verbindliche Vorgaben:
 - Mobile-First: die Oberfläche muss auf Smartphone-Browsern gut nutzbar sein.
 - Der Platzhalter wird NICHT selbst gebaut, sondern aus F2 verwendet – so sehen alle
   Phase-2/3-Seiten identisch aus.
-- Ein Mockup liegt als MockUp.zip im Repo-Root – daran orientieren.
+- Ein Mockup liegt entpackt unter `docs/mockup/` – daran orientieren.
 
 Vor jeder "erledigt"-Meldung: pnpm build, pnpm lint und pnpm test tatsächlich ausführen.
 Zum Abschluss den aktuellen Stand von main holen (pull/rebase), Konflikte lokal lösen,
