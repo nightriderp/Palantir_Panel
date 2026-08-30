@@ -221,6 +221,92 @@ export function runContainerRuntimeConformance(
       });
     });
 
+    describe('FILE_UPLOAD (Arbeitspaket P2)', () => {
+      it('legt eine neue Datei an', async () => {
+        const id = await angelegt();
+        await runtime.uploadFile(id, '/data/welt.zip', Buffer.from('PK'));
+
+        expect((await runtime.readFile(id, '/data/welt.zip')).toString('utf8')).toBe('PK');
+      });
+
+      it('lehnt einen belegten Zielpfad ohne overwrite mit FILE_EXISTS ab', async () => {
+        const id = await angelegt();
+        await runtime.writeFile(id, '/data/welt.zip', Buffer.from('alt'));
+
+        await expect(
+          runtime.uploadFile(id, '/data/welt.zip', Buffer.from('neu')),
+        ).rejects.toMatchObject({ code: 'FILE_EXISTS' });
+        expect((await runtime.readFile(id, '/data/welt.zip')).toString('utf8')).toBe('alt');
+      });
+
+      it('ersetzt eine vorhandene Datei mit overwrite', async () => {
+        const id = await angelegt();
+        await runtime.writeFile(id, '/data/welt.zip', Buffer.from('alt'));
+        await runtime.uploadFile(id, '/data/welt.zip', Buffer.from('neu'), { overwrite: true });
+
+        expect((await runtime.readFile(id, '/data/welt.zip')).toString('utf8')).toBe('neu');
+      });
+
+      it('lehnt einen Pfad ausserhalb des Datenordners ab', async () => {
+        const id = await angelegt();
+        await expect(
+          runtime.uploadFile(id, '/data/../etc/passwd', Buffer.from('x')),
+        ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+      });
+    });
+
+    describe('FILE_DELETE (Arbeitspaket P2)', () => {
+      it('entfernt eine Datei', async () => {
+        const id = await angelegt();
+        await runtime.writeFile(id, '/data/alt.log', Buffer.from('x'));
+        await runtime.start(id);
+
+        await runtime.deleteFile(id, '/data/alt.log');
+
+        await expect(runtime.readFile(id, '/data/alt.log')).rejects.toMatchObject({
+          code: 'FILE_NOT_FOUND',
+        });
+      });
+
+      it('behandelt einen bereits fehlenden Pfad als folgenlos', async () => {
+        const id = await angelegt();
+        await runtime.start(id);
+
+        await expect(runtime.deleteFile(id, '/data/gibtesnicht.log')).resolves.toBeUndefined();
+      });
+
+      it('entfernt ein nicht-leeres Verzeichnis nur mit recursive', async () => {
+        const id = await angelegt();
+        await runtime.writeFile(id, '/data/welt/level.dat', Buffer.from('y'));
+        await runtime.start(id);
+
+        await expect(runtime.deleteFile(id, '/data/welt')).rejects.toBeInstanceOf(
+          ContainerRuntimeError,
+        );
+
+        await runtime.deleteFile(id, '/data/welt', { recursive: true });
+        expect(await runtime.listFiles(id, '/data')).toEqual([]);
+      });
+
+      it('lehnt einen Pfad ausserhalb des Datenordners ab', async () => {
+        const id = await angelegt();
+        await runtime.start(id);
+
+        await expect(runtime.deleteFile(id, '/data/../etc/passwd')).rejects.toMatchObject({
+          code: 'INVALID_PATH',
+        });
+      });
+
+      it('lehnt den Datenordner selbst ab', async () => {
+        const id = await angelegt();
+        await runtime.start(id);
+
+        await expect(runtime.deleteFile(id, '/data')).rejects.toMatchObject({
+          code: 'INVALID_PATH',
+        });
+      });
+    });
+
     describe('Images (Pflichtenheft §16)', () => {
       it('liefert eine Liste - auch wenn der Host keine Images kennt', async () => {
         await expect(runtime.listImages()).resolves.toBeInstanceOf(Array);

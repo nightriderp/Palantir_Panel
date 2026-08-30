@@ -14,15 +14,16 @@
  *   Homeserver ankommen.
  */
 
+import path from 'node:path';
 import {
   type AgentContainerStats,
   type AgentEventFrame,
   type AgentStateReportFrame,
   type ExecConsoleCommandResult,
-  type FileListCommandResult,
-  type FileReadCommandResult,
   type GetLogsCommandResult,
   type GameConfigValues,
+  type ServerFileContentDto,
+  type ServerFileListDto,
   type ServerResourceLimits,
   buildServerHostname,
 } from '@palantir/contracts';
@@ -37,6 +38,14 @@ import { type CrashLoopPolicy, evaluateCrashLoop } from './crash-loop.js';
 import { buildServerDnsRecord } from './dns/cloudflare.js';
 import { type DnsProvider } from './dns/types.js';
 import { ServerOrchestrationError } from './errors.js';
+import {
+  AGENT_FILE_CHANNEL_MAX_BYTES,
+  normalizeRelativePath,
+  parentPathOf,
+  toContainerPath,
+  toServerFileContentDto,
+  toServerFileListDto,
+} from './files.js';
 import {
   type GameRegistry,
   buildContainerEnv,
@@ -82,6 +91,23 @@ export interface OrchestrationConfig {
   readonly healthCheckIntervalMs: number;
   readonly healthCheckAttemptTimeoutMs: number;
   readonly defaultAutoShutdown: ServerAutoShutdown;
+  /**
+   * Maximale Upload-Größe pro Datei aus `MAX_UPLOAD_SIZE_BYTES` (Pflichtenheft
+   * §12.1). Wirksam ist der kleinere Wert aus dieser Angabe und
+   * `AGENT_FILE_CHANNEL_MAX_BYTES`.
+   */
+  readonly maxUploadBytes: number;
+}
+
+/** Was die Datei-Routen aus dem `permissions`-Objekt des Servers mitgeben. */
+export interface ServerFileAccessOptions {
+  /** Darf der Aufrufer schreiben (`canManageFiles`)? Steht so im DTO. */
+  readonly writable: boolean;
+}
+
+export interface ServerFileUploadOptions extends ServerFileAccessOptions {
+  /** Vorhandene Datei am Zielpfad ersetzen; ohne Angabe lehnt der Agent ab. */
+  readonly overwrite?: boolean;
 }
 
 export interface OrchestrationDependencies {
@@ -699,22 +725,222 @@ export class ServerOrchestrationService {
     return session.sendCommand('EXEC_CONSOLE', server.id, { containerId, command: argv });
   }
 
-  async listFiles(serverId: string, path: string): Promise<FileListCommandResult> {
-    const { server, session, containerId } = await this.requireLiveTarget(serverId);
+  // -------------------------------------------------------------------------
+  // Datei-Manager (Arbeitspaket P2, Lastenheft §3.3)
+  // -------------------------------------------------------------------------
+  //
+  // Alle Methoden hier nehmen Pfade **relativ zum Datenordner** entgegen – so,
+  // wie das Frontend sie kennt – und übersetzen sie in `files.ts` in absolute
+  // Container-Pfade. Ein Ausbruch aus dem Datenordner scheitert damit schon im
+  // Backend; der Agent prüft dieselbe Grenze noch einmal (`resolveWithinRoot`).
 
-    return session.sendCommand('FILE_LIST', server.id, { containerId, path });
+  /** Verzeichnisinhalt als DTO, samt der geltenden Grenzen. */
+  async listFiles(
+    serverId: string,
+    relativePath: string,
+    options: ServerFileAccessOptions,
+  ): Promise<ServerFileListDto> {
+    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
+    const relativ = normalizeRelativePath(relativePath);
+
+    const result = await session.sendCommand('FILE_LIST', server.id, {
+      containerId,
+      path: toContainerPath(dataRoot, relativ),
+    });
+
+    return toServerFileListDto(server.id, dataRoot, relativ, result.entries, {
+      writable: options.writable,
+      maxUploadBytes: this.maxUploadBytes(),
+    });
   }
 
-  async readFile(serverId: string, path: string): Promise<FileReadCommandResult> {
-    const { server, session, containerId } = await this.requireLiveTarget(serverId);
+  /** Dateiinhalt für den eingebauten Editor. */
+  async readFile(
+    serverId: string,
+    relativePath: string,
+    options: ServerFileAccessOptions,
+  ): Promise<ServerFileContentDto> {
+    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
+    const relativ = this.requireFilePath(relativePath);
 
-    return session.sendCommand('FILE_READ', server.id, { containerId, path });
+    const result = await session.sendCommand('FILE_READ', server.id, {
+      containerId,
+      path: toContainerPath(dataRoot, relativ),
+    });
+    const content = Buffer.from(result.contentBase64, 'base64');
+
+    return toServerFileContentDto(
+      server.id,
+      relativ,
+      content,
+      await this.fileModifiedAt(server.id, relativ),
+      options.writable,
+    );
   }
 
-  async writeFile(serverId: string, path: string, contentBase64: string): Promise<void> {
-    const { server, session, containerId } = await this.requireLiveTarget(serverId);
+  /**
+   * Datei aus dem Editor zurückschreiben.
+   *
+   * Überschreibt still – anders als {@link uploadFile}. Das ist gewollt: Hier
+   * wird genau die Datei gespeichert, die der Nutzer vorher geöffnet hat.
+   */
+  async writeFile(
+    serverId: string,
+    relativePath: string,
+    content: string,
+    options: ServerFileAccessOptions,
+  ): Promise<ServerFileContentDto> {
+    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
+    const relativ = this.requireFilePath(relativePath);
+    const inhalt = Buffer.from(content, 'utf8');
 
-    await session.sendCommand('FILE_WRITE', server.id, { containerId, path, contentBase64 });
+    this.assertWithinTransferLimit(inhalt.byteLength);
+
+    await session.sendCommand('FILE_WRITE', server.id, {
+      containerId,
+      path: toContainerPath(dataRoot, relativ),
+      contentBase64: inhalt.toString('base64'),
+    });
+
+    return toServerFileContentDto(
+      server.id,
+      relativ,
+      inhalt,
+      await this.fileModifiedAt(server.id, relativ),
+      options.writable,
+    );
+  }
+
+  /**
+   * Hochgeladene Datei im Zielordner ablegen.
+   *
+   * Einziger Unterschied zu {@link writeFile}: Der Agent prüft den Zielpfad vor
+   * dem Schreiben und lehnt einen belegten Pfad ohne `overwrite` mit
+   * `AGENT_FILE_EXISTS` (409) ab. Ein Upload legt eine neue Datei an – dass
+   * dabei unbemerkt eine gleichnamige verschwindet, wäre Datenverlust ohne
+   * Rückfrage.
+   *
+   * @returns Der Inhalt des Zielordners nach dem Upload.
+   */
+  async uploadFile(
+    serverId: string,
+    directoryPath: string,
+    fileName: string,
+    content: Buffer,
+    options: ServerFileUploadOptions,
+  ): Promise<ServerFileListDto> {
+    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
+    const verzeichnis = normalizeRelativePath(directoryPath);
+    const ziel = this.requireFilePath(path.posix.join(verzeichnis, fileName));
+
+    this.assertWithinTransferLimit(content.byteLength);
+
+    await session.sendCommand('FILE_UPLOAD', server.id, {
+      containerId,
+      path: toContainerPath(dataRoot, ziel),
+      contentBase64: content.toString('base64'),
+      ...(options.overwrite === undefined ? {} : { overwrite: options.overwrite }),
+    });
+
+    return this.listFiles(server.id, verzeichnis, { writable: options.writable });
+  }
+
+  /** Datei oder Verzeichnis entfernen; ein bereits fehlender Pfad ist kein Fehler. */
+  async deleteFile(serverId: string, relativePath: string, recursive = true): Promise<void> {
+    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
+    const relativ = this.requireFilePath(relativePath);
+
+    await session.sendCommand('FILE_DELETE', server.id, {
+      containerId,
+      path: toContainerPath(dataRoot, relativ),
+      recursive,
+    });
+  }
+
+  /** Eine einzelne Datei zum Herunterladen laden (Grenze: {@link AGENT_FILE_CHANNEL_MAX_BYTES}). */
+  async downloadFile(
+    serverId: string,
+    relativePath: string,
+  ): Promise<{ fileName: string; content: Buffer }> {
+    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
+    const relativ = this.requireFilePath(relativePath);
+
+    const result = await session.sendCommand('FILE_READ', server.id, {
+      containerId,
+      path: toContainerPath(dataRoot, relativ),
+    });
+
+    return {
+      fileName: path.posix.basename(relativ),
+      content: Buffer.from(result.contentBase64, 'base64'),
+    };
+  }
+
+  /** Tatsächlich zulässige Upload-Größe: der kleinere der beiden Werte. */
+  private maxUploadBytes(): number {
+    return Math.min(this.deps.config.maxUploadBytes, AGENT_FILE_CHANNEL_MAX_BYTES);
+  }
+
+  private assertWithinTransferLimit(sizeBytes: number): void {
+    if (sizeBytes > this.maxUploadBytes()) {
+      throw new ServerOrchestrationError(
+        'FILE_TOO_LARGE',
+        'Die Datei überschreitet die zulässige Upload-Größe.',
+        { sizeBytes, maxBytes: this.maxUploadBytes() },
+      );
+    }
+  }
+
+  /** Wie {@link normalizeRelativePath}, lehnt aber zusätzlich die Wurzel ab. */
+  private requireFilePath(relativePath: string): string {
+    const relativ = normalizeRelativePath(relativePath);
+
+    if (relativ === '') {
+      throw new ServerOrchestrationError(
+        'AGENT_INVALID_PATH',
+        'Für diesen Vorgang wird eine Datei benötigt, nicht der Datenordner selbst.',
+      );
+    }
+
+    return relativ;
+  }
+
+  /**
+   * Änderungszeitpunkt einer Datei – aus dem Verzeichnis, in dem sie liegt.
+   *
+   * `FILE_READ` liefert keinen Zeitstempel; der DTO braucht ihn (Anzeige und
+   * Konflikterkennung im Editor). Statt ihn zu erfinden, wird das Verzeichnis
+   * gelistet und der Eintrag herausgesucht. Findet sich keiner – etwa weil die
+   * Datei zwischen beiden Aufrufen verschwindet – bleibt es beim Lesezeitpunkt.
+   */
+  private async fileModifiedAt(serverId: string, relativePath: string): Promise<string> {
+    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
+    const elternPfad = parentPathOf(relativePath) ?? '';
+
+    const result = await session.sendCommand('FILE_LIST', server.id, {
+      containerId,
+      path: toContainerPath(dataRoot, elternPfad),
+    });
+    const name = path.posix.basename(relativePath);
+
+    return (
+      result.entries.find((entry) => entry.name === name)?.modifiedAt ?? this.now().toISOString()
+    );
+  }
+
+  /** Wie {@link requireLiveTarget}, zusätzlich mit dem Datenordner des Spiels. */
+  private async requireFileTarget(serverId: string): Promise<{
+    server: ServerRecord;
+    session: AgentSession;
+    containerId: string;
+    dataRoot: string;
+  }> {
+    const ziel = await this.requireLiveTarget(serverId);
+
+    return {
+      ...ziel,
+      dataRoot: this.deps.registry.require(ziel.server.gameType).dataVolumeContainerPath,
+    };
   }
 
   // -------------------------------------------------------------------------

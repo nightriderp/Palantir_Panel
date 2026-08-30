@@ -525,6 +525,126 @@ describe('Datei-Manager', () => {
     expect(archivAufruf()).toBeUndefined();
   });
 
+  it('lehnt einen Upload auf einen belegten Pfad ohne overwrite ab (AGENT_FILE_EXISTS)', async () => {
+    const stat = Buffer.from(JSON.stringify({ name: 'welt.zip', size: 12 })).toString('base64');
+    antwortgeber = mitDatenVolume((aufruf) => {
+      if (aufruf.method === 'HEAD') {
+        return new Response(null, { headers: { 'X-Docker-Container-Path-Stat': stat } });
+      }
+      return new Response(null, { status: 200 });
+    });
+
+    await expect(
+      runtime.uploadFile('c-1', '/data/welt.zip', Buffer.from('PK')),
+    ).rejects.toMatchObject({ code: 'FILE_EXISTS' });
+    // Geschrieben wurde nichts: nur der HEAD, kein PUT.
+    expect(aufrufe.some((aufruf) => aufruf.method === 'PUT')).toBe(false);
+  });
+
+  it('schreibt den Upload bei belegtem Pfad mit overwrite trotzdem', async () => {
+    const stat = Buffer.from(JSON.stringify({ name: 'welt.zip', size: 12 })).toString('base64');
+    antwortgeber = mitDatenVolume((aufruf) => {
+      if (aufruf.method === 'HEAD') {
+        return new Response(null, { headers: { 'X-Docker-Container-Path-Stat': stat } });
+      }
+      return new Response(null, { status: 200 });
+    });
+
+    await runtime.uploadFile('c-1', '/data/welt.zip', Buffer.from('PK'), { overwrite: true });
+
+    expect(aufrufe.some((aufruf) => aufruf.method === 'PUT')).toBe(true);
+  });
+
+  it('legt einen Upload auf einen freien Pfad ohne Rueckfrage an', async () => {
+    antwortgeber = mitDatenVolume((aufruf) => {
+      if (aufruf.method === 'HEAD') return json({ message: 'not found' }, 404);
+      return new Response(null, { status: 200 });
+    });
+
+    await runtime.uploadFile('c-1', '/data/neu.zip', Buffer.from('PK'));
+
+    const put = aufrufe.find((aufruf) => aufruf.method === 'PUT');
+    expect(put?.query.get('path')).toBe('/data');
+  });
+
+  it('entfernt eine Datei per rm, ohne eine Shell dazwischen', async () => {
+    const stat = Buffer.from(JSON.stringify({ name: 'alt.log', size: 3 })).toString('base64');
+    antwortgeber = mitDatenVolume((aufruf) => {
+      if (aufruf.method === 'HEAD') {
+        return new Response(null, { headers: { 'X-Docker-Container-Path-Stat': stat } });
+      }
+      if (aufruf.pfad === '/containers/c-1/exec') return json({ Id: 'exec-1' });
+      if (aufruf.pfad === '/exec/exec-1/start') return new Response(Buffer.alloc(0));
+      return json({ ExitCode: 0 });
+    });
+
+    await runtime.deleteFile('c-1', '/data/alt.log');
+
+    const exec = aufrufe.find((aufruf) => aufruf.pfad === '/containers/c-1/exec');
+    expect(JSON.parse(exec?.body ?? '{}')).toMatchObject({
+      Cmd: ['rm', '-f', '--', '/data/alt.log'],
+    });
+  });
+
+  it('loescht einen bereits fehlenden Pfad folgenlos (idempotent)', async () => {
+    antwortgeber = mitDatenVolume(() => json({ message: 'not found' }, 404));
+
+    await expect(runtime.deleteFile('c-1', '/data/weg.log')).resolves.toBeUndefined();
+    expect(aufrufe.some((aufruf) => aufruf.pfad === '/containers/c-1/exec')).toBe(false);
+  });
+
+  it('raeumt ein Verzeichnis ohne recursive nur per rmdir ab', async () => {
+    // Go-`FileMode` mit gesetztem Verzeichnis-Bit (1 << 31).
+    const stat = Buffer.from(JSON.stringify({ name: 'welt', mode: 0x8000_01ed })).toString(
+      'base64',
+    );
+    antwortgeber = mitDatenVolume((aufruf) => {
+      if (aufruf.method === 'HEAD') {
+        return new Response(null, { headers: { 'X-Docker-Container-Path-Stat': stat } });
+      }
+      if (aufruf.pfad === '/containers/c-1/exec') return json({ Id: 'exec-1' });
+      if (aufruf.pfad === '/exec/exec-1/start') return new Response(Buffer.alloc(0));
+      return json({ ExitCode: 0 });
+    });
+
+    await runtime.deleteFile('c-1', '/data/welt');
+
+    const exec = aufrufe.find((aufruf) => aufruf.pfad === '/containers/c-1/exec');
+    expect(JSON.parse(exec?.body ?? '{}')).toMatchObject({ Cmd: ['rmdir', '/data/welt'] });
+  });
+
+  it('meldet einen fehlgeschlagenen rm-Aufruf als Fehler', async () => {
+    const stat = Buffer.from(JSON.stringify({ name: 'alt.log', size: 3 })).toString('base64');
+    antwortgeber = mitDatenVolume((aufruf) => {
+      if (aufruf.method === 'HEAD') {
+        return new Response(null, { headers: { 'X-Docker-Container-Path-Stat': stat } });
+      }
+      if (aufruf.pfad === '/containers/c-1/exec') return json({ Id: 'exec-1' });
+      if (aufruf.pfad === '/exec/exec-1/start') return new Response(Buffer.alloc(0));
+      return json({ ExitCode: 1 });
+    });
+
+    await expect(runtime.deleteFile('c-1', '/data/alt.log')).rejects.toMatchObject({
+      code: 'RUNTIME_ERROR',
+    });
+  });
+
+  it('sperrt auch Loeschen und Upload auf das Datenvolume ein', async () => {
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
+
+    await expect(runtime.deleteFile('c-1', '/data/../etc/passwd')).rejects.toMatchObject({
+      code: 'INVALID_PATH',
+    });
+    await expect(
+      runtime.uploadFile('c-1', '/etc/cron.d/palantir', Buffer.from('x')),
+    ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+    // Der Datenordner selbst ist ebenfalls tabu.
+    await expect(runtime.deleteFile('c-1', '/data')).rejects.toMatchObject({
+      code: 'INVALID_PATH',
+    });
+    expect(archivAufruf()).toBeUndefined();
+  });
+
   it('faellt geschlossen, wenn das Datenvolume nicht bestimmbar ist', async () => {
     // Container ohne Palantir-Label (fremd oder von Hand angelegt): kein Zugriff.
     antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }), null);

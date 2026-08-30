@@ -32,6 +32,17 @@ export const RUNTIME_ERROR_CATALOG = {
   FILE_NOT_FOUND: 'Die Datei existiert im Container nicht.',
   /** Datei ueberschreitet die zulaessige Groesse fuer Lesen/Schreiben. */
   FILE_TOO_LARGE: 'Die Datei ist groesser als das erlaubte Limit.',
+  /**
+   * Der Zielpfad eines Uploads ist bereits belegt und `overwrite` ist nicht
+   * gesetzt (`FILE_UPLOAD`, Arbeitspaket P2).
+   *
+   * Bewusst nur beim Upload und nicht beim Schreiben: `writeFile` gehoert zum
+   * eingebauten Editor und ueberschreibt still, weil dort genau die Datei
+   * zurueckgespeichert wird, die vorher gelesen wurde. Ein Upload legt dagegen
+   * eine neue Datei ab - dass dabei unbemerkt eine gleichnamige verschwindet,
+   * waere ein Datenverlust ohne Rueckfrage.
+   */
+  FILE_EXISTS: 'Am Zielpfad existiert bereits eine Datei.',
   /** Container-Engine bzw. Docker-Socket-Proxy nicht erreichbar. */
   RUNTIME_UNAVAILABLE: 'Die Container-Engine ist nicht erreichbar.',
   /**

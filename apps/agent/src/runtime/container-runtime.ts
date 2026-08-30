@@ -27,6 +27,8 @@
  * | `FILE_LIST`           | `listFiles`          |
  * | `FILE_READ`           | `readFile`           |
  * | `FILE_WRITE`          | `writeFile`          |
+ * | `FILE_DELETE`         | `deleteFile`         |
+ * | `FILE_UPLOAD`         | `uploadFile`         |
  *
  * `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` aus derselben
  * Liste sind Dateisystem- und Job-Aufgaben und gehoeren zu A3, nicht zur
@@ -45,6 +47,7 @@ import {
   type ContainerSpec,
   type ContainerState,
   type ContainerStats,
+  type DeleteFileOptions,
   type ExecResult,
   type FileEntry,
   type GetLogsOptions,
@@ -52,6 +55,7 @@ import {
   type RemoveImageOptions,
   type RemoveOptions,
   type StopOptions,
+  type UploadFileOptions,
   type WatchOptions,
 } from './types.js';
 
@@ -132,6 +136,29 @@ export interface ContainerRuntime {
 
   /** `FILE_WRITE`: Datei im Container schreiben bzw. ueberschreiben. */
   writeFile(containerId: string, path: string, content: Buffer): Promise<void>;
+
+  /**
+   * `FILE_DELETE`: Datei oder Verzeichnis im Datenordner entfernen.
+   *
+   * Bewusst **idempotent**: Ein bereits fehlender Pfad ist kein Fehler - sonst
+   * bliebe nach einem Abbruch ein Eintrag zurueck, der sich nie wieder loeschen
+   * liesse. Ein nicht-leeres Verzeichnis wird ohne `recursive` abgelehnt.
+   */
+  deleteFile(containerId: string, path: string, options?: DeleteFileOptions): Promise<void>;
+
+  /**
+   * `FILE_UPLOAD`: hochgeladene Datei im Datenordner ablegen.
+   *
+   * Unterscheidet sich von {@link writeFile} in genau einem Punkt: Der Zielpfad
+   * wird **vor** dem Schreiben geprueft und ein belegter Pfad ohne `overwrite`
+   * mit `FILE_EXISTS` abgelehnt.
+   */
+  uploadFile(
+    containerId: string,
+    path: string,
+    content: Buffer,
+    options?: UploadFileOptions,
+  ): Promise<void>;
 
   /** Auf Runtime-Events hoeren. Rueckgabe meldet den Listener wieder ab. */
   on(listener: ContainerRuntimeEventListener): Unsubscribe;
