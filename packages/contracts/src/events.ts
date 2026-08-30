@@ -81,6 +81,13 @@ export const WEBSOCKET_EVENTS = [
   'message.deleted',
   /** Konversation ist für den Empfänger neu sichtbar (erste DM, neuer Server-Chat). */
   'conversation.created',
+  /**
+   * Ein Konto hat eine Konversation als gelesen markiert (Gefundener Punkt 95).
+   * Reines Live-Ereignis des Chat-Kanals: Es wird ausschließlich an die
+   * Verbindungen desselben Kontos zugestellt und hält dessen Ungelesen-Zähler
+   * geräteübergreifend konsistent – kein Anlass für eine `NotificationRule`.
+   */
+  'conversation.read',
 ] as const satisfies readonly EventNameScheme[];
 
 /** Alle aktuell definierten Event-Namen. */

@@ -108,6 +108,25 @@ export interface ConversationDto {
   lastMessage: MessageDto | null;
   /** ISO-8601-Zeitstempel. */
   createdAt: string;
+  /**
+   * Serverseitiger Lesezustand des Aufrufers (Gefundener Punkt 95).
+   *
+   * Anzahl der Nachrichten, die dieses Konto in dieser Konversation noch nicht
+   * gelesen hat – eigene Beiträge und gelöschte Nachrichten zählen nicht mit.
+   * Serverseitig geführt, damit der Zähler über Geräte hinweg gilt und nicht,
+   * wie zuvor, nur lokal in einer Sitzung.
+   *
+   * **Additiv und optional** (CLAUDE.md §3): Das Backend liefert das Feld stets
+   * mit; optional getippt, damit bestehende Ansichten, die es noch nicht
+   * auswerten, unverändert übersetzen. Fehlt es, ist wie „0" zu behandeln.
+   */
+  unreadCount?: number;
+  /**
+   * ISO-8601-Zeitstempel, bis zu dem der Aufrufer diese Konversation zuletzt
+   * als gelesen markiert hat; `null`, solange er sie noch nie gelesen hat.
+   * Gegenstück zu {@link unreadCount}; ebenfalls additiv und optional.
+   */
+  lastReadAt?: string | null;
   permissions: ConversationPermissions;
 }
 
@@ -324,6 +343,7 @@ export const CHAT_EVENTS = [
   'message.sent',
   'message.deleted',
   'conversation.created',
+  'conversation.read',
 ] as const satisfies readonly WebSocketEventName[];
 
 export type ChatEventName = (typeof CHAT_EVENTS)[number];
@@ -344,6 +364,20 @@ export type ChatEventPayloads = {
     byModerator: boolean;
   };
   'conversation.created': { conversation: ConversationDto };
+  /**
+   * Der Aufrufer hat eine Konversation als gelesen markiert (Gefundener Punkt
+   * 95). Zugestellt wird das Ereignis an **alle** Verbindungen genau dieses
+   * Kontos – so ziehen weitere Geräte/Tabs desselben Nutzers ihren
+   * Ungelesen-Zähler nach, ohne zu pollen. Andere Teilnehmer sehen es nicht;
+   * der Lesezustand ist privat.
+   */
+  'conversation.read': {
+    conversationId: string;
+    /** ISO-8601-Zeitstempel, bis zu dem gelesen wurde. */
+    lastReadAt: string;
+    /** Verbleibende ungelesene Nachrichten nach dem Markieren – im Regelfall `0`. */
+    unreadCount: number;
+  };
 };
 
 /** Frame, das der Browser vom Backend empfängt. */
