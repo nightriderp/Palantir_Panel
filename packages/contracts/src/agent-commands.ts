@@ -278,12 +278,32 @@ export interface FileExtractCommandPayload {
  * kann der Agent ihn für einen sauberen Stand kurz anhalten – ob er das darf,
  * entscheidet das Backend über `stopContainer`.
  */
+/**
+ * Eine zusätzliche Datei, die der Agent **in** das Archiv legt, ohne dass sie
+ * im Datenordner liegt (Arbeitspaket P8, Lastenheft §3.3).
+ *
+ * Gebraucht vom vollständigen Export: Er soll neben den Weltdaten auch die
+ * Konfiguration des Servers enthalten, und die kennt nur das Backend. Sie in
+ * den Datenordner zu schreiben und danach wieder zu entfernen wäre ein Eingriff
+ * in die Daten des Nutzers für eine Datei, die dort nicht hingehört.
+ */
+export interface ArchiveExtraFile {
+  /** Pfad im Archiv, relativ zu dessen Wurzel; ohne führenden Schrägstrich. */
+  readonly path: string;
+  readonly contentBase64: string;
+}
+
 export interface CreateBackupCommandPayload {
   /** Id des `Backup`-Datensatzes im Backend (Pflichtenheft §6). */
   readonly backupId: string;
   readonly serverId: string;
   /** Zu sichernder Datenordner auf dem Homeserver (`CreateCommandPayload.dataVolume.hostPath`). */
   readonly sourcePath: string;
+  /**
+   * Zusätzliche Dateien, die mit ins Archiv wandern (P8). Ohne Angabe enthält
+   * das Archiv genau den Datenordner – das bisherige Verhalten.
+   */
+  readonly extraFiles?: readonly ArchiveExtraFile[];
   readonly containerId?: string;
   /**
    * Container vor dem Sichern anhalten und danach wieder in den vorherigen
