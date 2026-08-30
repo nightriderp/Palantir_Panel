@@ -21,6 +21,7 @@
 
 import { type ServerResourceLimits } from '@palantir/contracts';
 import { ServerOrchestrationError } from './errors.js';
+import { type ServerRepository } from './repository.js';
 
 export interface ResourceCheckRequest {
   /** Wer den Vorgang auslöst – für die Kontingentprüfung (`UserResourceLimit`). */
@@ -126,4 +127,55 @@ export async function assertResourcesAvailable(
       intent: request.intent,
     });
   }
+}
+
+/**
+ * Prüfung **und** belegende Schreiboperation als eine serialisierte Einheit.
+ *
+ * Die reine {@link assertResourcesAvailable} liest die Belegung, der Insert bzw.
+ * der Wechsel auf `starting` folgt separat – zwei gleichzeitige Starts bestehen
+ * so beide die Prüfung und überbuchen die Node (TOCTOU, WORK_STATUS.md Punkt 98,
+ * Pflichtenheft §10). {@link CapacityReservation} schließt das Fenster: Sie hält
+ * Prüfung und Schreiben unter einer Sperre je Node/Nutzer zusammen, sodass die
+ * zweite Reservierung die Belegung der ersten bereits sieht.
+ *
+ * Die Kapazitätslogik selbst bleibt die aus B4 – hier kommt ausschließlich der
+ * transaktionale Rahmen dazu (CLAUDE.md §3/§4).
+ */
+export interface CapacityReservation {
+  /**
+   * Führt die Prüfung für `request` aus und – nur wenn sie besteht – `write`.
+   * Beide laufen serialisiert gegen konkurrierende Reservierungen derselben
+   * Node bzw. desselben Nutzers. Bei Ablehnung wird `write` nicht ausgeführt und
+   * `RESOURCE_LIMIT_EXCEEDED` geworfen.
+   *
+   * `write` erhält das für die Reservierung gültige {@link ServerRepository} –
+   * bei der Drizzle-Umsetzung das transaktionsgebundene, damit Prüfung und
+   * Schreiben tatsächlich atomar sind.
+   */
+  reserve<T>(
+    request: ResourceCheckRequest,
+    write: (repository: ServerRepository) => Promise<T>,
+  ): Promise<T>;
+}
+
+/**
+ * Reservierung ohne eigene Serialisierung – Prüfung, dann Schreiben, beides auf
+ * dem übergebenen Guard und Repository.
+ *
+ * Das ist das Verhalten vor Punkt 98 und der Rückfall für Tests und für den
+ * Fall, dass keine transaktionsfähige Umsetzung eingehängt ist. Die echte
+ * Serialisierung liefert die Drizzle-Umsetzung (`capacity-reservation.ts`).
+ */
+export function createInlineCapacityReservation(
+  guard: ResourceGuard,
+  repository: ServerRepository,
+): CapacityReservation {
+  return {
+    async reserve(request, write) {
+      await assertResourcesAvailable(guard, request);
+
+      return write(repository);
+    },
+  };
 }
