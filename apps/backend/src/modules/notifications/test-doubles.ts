@@ -19,6 +19,7 @@ import type {
   OutboundMessage,
   RecipientDirectory,
   ResolvedChannelTarget,
+  RoleNameLookup,
 } from './ports.js';
 import { NotificationTransportError } from './ports.js';
 import type {
@@ -140,6 +141,29 @@ export function fakeDirectory(
           userIds
             .map((id): [string, string] | null => {
               const name = options.displayNames?.[id];
+
+              return name === undefined ? null : [id, name];
+            })
+            .filter((entry): entry is [string, string] => entry !== null),
+        ),
+      ),
+  };
+}
+
+/**
+ * Rollen-Nachschlag mit festem Bestand – ohne B2 und ohne Datenbank.
+ *
+ * Bildet die Zusicherung des Ports nach: Unbekannte Ids fehlen schlicht in der
+ * Rückgabe, der Aufrufer behandelt sie als `null`.
+ */
+export function fakeRoleLookup(names: Record<string, string> = {}): RoleNameLookup {
+  return {
+    findRoleNames: (roleIds) =>
+      Promise.resolve(
+        new Map(
+          roleIds
+            .map((id): [string, string] | null => {
+              const name = names[id];
 
               return name === undefined ? null : [id, name];
             })

@@ -191,7 +191,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   if (withDatabase) {
     const db = getDb();
-    const roles = createRoleService(createDrizzleRoleRepository(db));
+    const roleRepository = createDrizzleRoleRepository(db);
+    const roles = createRoleService(roleRepository);
 
     /*
      * Die offenen Agent-Verbindungen entstehen hier und nicht im Modul (R2):
@@ -256,6 +257,26 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       resolveUserId: (request) => request.authUser?.id ?? null,
       defaultWebhookUrl: env.DISCORD_WEBHOOK_URL ?? null,
       deliveryTimeoutMs: env.NOTIFICATION_DELIVERY_TIMEOUT_MS,
+      /*
+       * Klartext-Namen der Zielrollen für die Regelübersicht (F10, Gefundener
+       * Punkt 84). B6 kennt B2 nicht direkt, sondern bekommt nur die schmale
+       * Funktion „Id → Name" gereicht (Port `RoleNameLookup`); die Daten kommen
+       * aus dem Rollen-Repository von B2.
+       */
+      roles: {
+        async findRoleNames(roleIds) {
+          if (roleIds.length === 0) {
+            return new Map();
+          }
+
+          const wanted = new Set(roleIds);
+          const all = await roleRepository.listAll();
+
+          return new Map(
+            all.filter((role) => wanted.has(role.id)).map((role) => [role.id, role.name]),
+          );
+        },
+      },
       // Änderungen an Kanälen, Regeln und Ankündigungen sind
       // sicherheitsrelevant und gehören ins Audit-Log (Pflichtenheft §6).
       audit: admin.services.audit,
