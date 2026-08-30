@@ -34,3 +34,6 @@ Thumbs.db
 
 # Test-Ausgaben
 coverage/
+
+# graphify Wissensgraph-Ausgabe (lokales Artefakt, große graph.json – nicht committen)
+graphify-out/
