@@ -39,7 +39,7 @@ import { type FetchLike, type ProviderRegistry, createProviderRegistry } from '.
 import { createRateLimiter } from './rate-limit.js';
 import { createDrizzleAuthRepository } from './repository.js';
 import { registerAuthRoutes } from './routes.js';
-import { AuthService } from './service.js';
+import { type AuthEventSink, AuthService } from './service.js';
 import { parseDurationMs, verifyAccessToken } from './tokens.js';
 import type { AuthRepository, UserRecord } from './types.js';
 
@@ -61,6 +61,8 @@ export interface AuthModuleOptions {
   /** Vollständig ersetzte Anbieter-Registry – nur für Tests. */
   readonly providers?: ProviderRegistry;
   readonly secrets?: AuthSecrets;
+  /** Notification-Senke aus B6 für `user.registered`; ohne Angabe still. */
+  readonly events?: AuthEventSink;
 }
 
 /**
@@ -131,6 +133,7 @@ export async function registerAuthModule(
     jwtSecret: secrets.jwtSecret,
     twoFactorTokenTtlMs: parseDurationMs(env.TWO_FACTOR_TOKEN_TTL),
     totpIssuer: env.PALANTIR_DOMAIN,
+    ...(options.events ? { events: options.events } : {}),
   });
 
   app.decorateRequest('authUser', null);

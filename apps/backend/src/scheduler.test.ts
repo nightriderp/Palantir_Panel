@@ -18,6 +18,7 @@ import {
   type AgentCommandName,
   type ApiResponse,
   type GameConfigValues,
+  type ResourceLowEvent,
   type ServerMemberLevel,
   type ServerResourceLimits,
 } from '@palantir/contracts';
@@ -42,12 +43,15 @@ import {
 import { createPermissiveResourceGuard } from './modules/server-orchestration/resource-guard.js';
 import { ServerOrchestrationService } from './modules/server-orchestration/service.js';
 import {
+  type NodeWarningEvaluator,
+  type ResourceEventSink,
   type ScheduledTask,
   type SchedulerLogger,
   type SchedulerTimer,
   type TimerHandle,
   autoShutdownTask,
   backupScheduleTask,
+  resourceWarningTask,
   startScheduler,
 } from './scheduler.js';
 
@@ -584,5 +588,88 @@ describe('Zeitgeber: Auto-Shutdown (Pflichtenheft §9)', () => {
 
     expect(harness.socket.commands).toEqual([]);
     expect(harness.repository.server.status).toBe('running');
+  });
+});
+
+describe('Zeitgeber: Ressourcen-Warnungen', () => {
+  const NODE_ID = '11111111-1111-4111-8111-111111111111';
+
+  /** Eine Warnung auf Node-Ebene, wie sie B4 (`evaluateNodeWarnings`) liefert. */
+  function nodeWarning(usedPercent: number): ResourceLowEvent {
+    return {
+      scope: 'node',
+      resource: 'ram',
+      unit: 'mb',
+      nodeId: NODE_ID,
+      serverId: null,
+      used: 30_000,
+      total: 32_768,
+      usedPercent,
+      thresholdPercent: 85,
+      at: '2026-08-30T00:00:00.000Z',
+    };
+  }
+
+  /** Senke, die jede gemeldete `resource.low`-Nutzlast festhält. */
+  function capturingSink(): ResourceEventSink & {
+    readonly events: { event: string; payload: Record<string, unknown> }[];
+  } {
+    const events: { event: string; payload: Record<string, unknown> }[] = [];
+
+    return {
+      events,
+      emit(event, payload): void {
+        events.push({ event, payload });
+      },
+    };
+  }
+
+  it('meldet resource.low, wenn eine Node über dem Schwellwert liegt', async () => {
+    const timer = manualTimer();
+    const sink = capturingSink();
+    const evaluator: NodeWarningEvaluator = {
+      evaluateAllNodeWarnings: () => Promise.resolve([nodeWarning(91.5)]),
+    };
+
+    startScheduler({
+      tasks: [resourceWarningTask(evaluator, sink, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(sink.events).toHaveLength(1);
+    expect(sink.events[0]?.event).toBe('resource.low');
+    // ResourceLowEvent-Felder unverändert, nur `ownerId` ergänzt (Node: null).
+    expect(sink.events[0]?.payload).toMatchObject({
+      scope: 'node',
+      nodeId: NODE_ID,
+      usedPercent: 91.5,
+      thresholdPercent: 85,
+      ownerId: null,
+    });
+  });
+
+  it('meldet nichts, solange keine Node über dem Schwellwert liegt', async () => {
+    const timer = manualTimer();
+    const sink = capturingSink();
+    const evaluator: NodeWarningEvaluator = {
+      evaluateAllNodeWarnings: () => Promise.resolve([]),
+    };
+
+    startScheduler({
+      tasks: [resourceWarningTask(evaluator, sink, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(sink.events).toEqual([]);
   });
 });
