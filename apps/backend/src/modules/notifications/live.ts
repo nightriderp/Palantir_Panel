@@ -15,7 +15,10 @@
  */
 
 import { type WebSocket } from '@fastify/websocket';
-import type { NotificationServerFrame } from '@palantir/contracts';
+import {
+  NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  type NotificationServerFrame,
+} from '@palantir/contracts';
 import { notificationClientFrameSchema } from '@palantir/validation';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Clock, LiveNotificationPayload, LiveNotificationPublisher } from './ports.js';
@@ -25,11 +28,12 @@ import type { NotificationService } from './service.js';
 /**
  * Close-Code für eine Verbindung ohne gültige Sitzung.
  *
- * Wie beim Agent-Kanal (`CLOSE_CODE_UNAUTHORIZED` in `agent-gateway.ts`) ein
- * eigener Code aus dem privaten Bereich, damit das Frontend „nicht angemeldet"
- * von „Backend gerade weg" unterscheiden kann.
+ * Quelle ist jetzt die geteilte Konstante aus `@palantir/contracts`
+ * ({@link NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED}), damit Backend und Frontend
+ * dieselbe Zahl nutzen. Der bisherige Name bleibt als Re-Export erhalten, damit
+ * Aufrufer (`index.ts`, Tests) unverändert weiterlaufen.
  */
-export const CLOSE_CODE_UNAUTHORIZED = 4401;
+export const CLOSE_CODE_UNAUTHORIZED = NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED;
 
 /** Der Ausschnitt einer WebSocket-Verbindung, den der Hub braucht. */
 export interface LiveSocket {

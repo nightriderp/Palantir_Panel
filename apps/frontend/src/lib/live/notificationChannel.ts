@@ -1,4 +1,8 @@
-import { type NotificationServerFrame, isNotificationLiveEventName } from '@palantir/contracts';
+import {
+  NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  type NotificationServerFrame,
+  isNotificationLiveEventName,
+} from '@palantir/contracts';
 
 /**
  * Reine Bausteine des Live-Kanals der Inbox (Pflichtenheft §5.3).
@@ -11,14 +15,15 @@ import { type NotificationServerFrame, isNotificationLiveEventName } from '@pala
 /**
  * Close-Code des Backends für „nicht angemeldet".
  *
- * Dokumentiert in `notifications.ts` in `@palantir/contracts`; die Zahl steht
- * dort bisher nur im Kommentar und nicht als Konstante, deshalb hier noch
- * einmal (vermerkt unter „Gefundene Punkte" in WORK_STATUS.md). Ein eigener
- * Code aus dem privaten Bereich, damit sich „nicht angemeldet" von „Backend
- * gerade weg" unterscheiden lässt – im zweiten Fall wird erneut verbunden, im
- * ersten nicht.
+ * Quelle ist die geteilte Konstante
+ * {@link NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED} aus `@palantir/contracts` –
+ * Backend und Frontend nutzen damit dieselbe Zahl (Punkt 91 erledigt). Der
+ * lokale Name bleibt als Re-Export erhalten, damit `useNotificationLive` ihn
+ * unverändert importiert. Ein eigener Code aus dem privaten Bereich, damit sich
+ * „nicht angemeldet" von „Backend gerade weg" unterscheiden lässt – im zweiten
+ * Fall wird erneut verbunden, im ersten nicht.
  */
-export const CLOSE_CODE_UNAUTHORIZED = 4401;
+export const CLOSE_CODE_UNAUTHORIZED = NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED;
 
 /** Abstand zwischen zwei Lebenszeichen, damit Reverse Proxies nicht schließen. */
 export const PING_INTERVAL_MS = 30_000;
