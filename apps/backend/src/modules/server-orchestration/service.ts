@@ -17,6 +17,7 @@
 import path from 'node:path';
 import {
   type AgentContainerStats,
+  type ServerStatsHistoryDto,
   type AgentEventFrame,
   type AgentStateReportFrame,
   type ExecConsoleCommandResult,
@@ -38,6 +39,12 @@ import { type CrashLoopPolicy, evaluateCrashLoop } from './crash-loop.js';
 import { buildServerDnsRecord } from './dns/cloudflare.js';
 import { type DnsProvider } from './dns/types.js';
 import { ServerOrchestrationError } from './errors.js';
+import {
+  LatestQueryCache,
+  type ServerStatsRepository,
+  type StatsSample,
+  toStatsHistoryDto,
+} from './stats-history.js';
 import { type WorldArchiveStore } from './world-import.js';
 
 /**
@@ -112,6 +119,13 @@ export interface OrchestrationConfig {
    * `AGENT_FILE_CHANNEL_MAX_BYTES`.
    */
   readonly maxWorldArchiveBytes: number;
+  /** Aufbewahrungsfrist des Messwert-Verlaufs in Stunden (`STATS_HISTORY_RETENTION_HOURS`). */
+  readonly statsHistoryRetentionHours: number;
+  /**
+   * Abstand zweier Stichproben in Millisekunden – der Takt des Zeitgebers
+   * (`SCHEDULER_INTERVAL_MS`). Steht im DTO, damit das Diagramm Lücken erkennt.
+   */
+  readonly statsSampleIntervalMs: number;
 }
 
 /** Was die Datei-Routen aus dem `permissions`-Objekt des Servers mitgeben. */
@@ -150,6 +164,13 @@ export interface OrchestrationDependencies {
    * bestehenden Tests unverändert, die das Anlegen ohne Import prüfen.
    */
   readonly worldArchives?: WorldArchiveStore;
+  /**
+   * Ablage des Messwert-Verlaufs (P5).
+   *
+   * Ohne Angabe wird nichts festgehalten – so bleiben die bestehenden Tests
+   * unverändert, die den Lifecycle ohne Verlauf prüfen.
+   */
+  readonly statsHistory?: ServerStatsRepository;
   readonly events: OrchestrationEventSink;
   readonly log: AgentGatewayLogger;
   readonly config: OrchestrationConfig;
@@ -179,6 +200,15 @@ export class ServerOrchestrationService {
   private readonly deps: OrchestrationDependencies;
   private readonly now: () => Date;
   private readonly reservation: CapacityReservation;
+  /**
+   * Zuletzt gemeldete Server-Abfrage je Server (Spielerzahl, Antwortzeit).
+   *
+   * Als aktuell gilt eine Meldung, solange sie jünger ist als die doppelte
+   * Aufbewahrungs-Abtastung – hier schlicht fünf Minuten: Danach ist eine
+   * Spielerzahl im Minutenverlauf eine Zeile, die nie stimmt (siehe
+   * `stats-history.ts`).
+   */
+  private readonly latestQuery = new LatestQueryCache(5 * 60 * 1000);
 
   constructor(deps: OrchestrationDependencies) {
     this.deps = deps;
@@ -1158,8 +1188,28 @@ export class ServerOrchestrationService {
    * Bezugspunkt des Inaktivitäts-Timeouts nachgezogen.
    */
   private async handleStatsUpdate(server: ServerRecord, frame: AgentEventFrame): Promise<void> {
-    const payload = frame.payload as { readonly playersOnline?: number | null } | undefined;
+    const payload = frame.payload as
+      | {
+          readonly playersOnline?: number | null;
+          readonly playersMax?: number | null;
+          readonly pingMs?: number | null;
+        }
+      | undefined;
     const playersOnline = payload?.playersOnline ?? null;
+
+    // Die Server-Abfrage des Agents ist die einzige Quelle für Spielerzahl und
+    // Antwortzeit; die Container-Engine kennt beides nicht. Für den Verlauf
+    // (P5) wird der zuletzt gemeldete Stand gemerkt und beim Abtasten neben die
+    // Engine-Werte gelegt.
+    this.latestQuery.remember(
+      server.id,
+      {
+        playersOnline,
+        playersMax: payload?.playersMax ?? null,
+        pingMs: payload?.pingMs ?? null,
+      },
+      new Date(frame.emittedAt),
+    );
 
     if (playersOnline !== null && playersOnline > 0) {
       await this.deps.repository.update(server.id, {
@@ -1176,6 +1226,101 @@ export class ServerOrchestrationService {
   // -------------------------------------------------------------------------
   // Auto-Shutdown
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // Verlauf der Messwerte (Lastenheft §3.3, Arbeitspaket P5)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Hält die Messwerte aller laufenden Server einer Node fest.
+   *
+   * Wird periodisch aufgerufen (`scheduler.ts`) – kein eigener Timer. Ein
+   * Server, dessen Messung scheitert, hält die übrigen nicht auf: Eine Lücke im
+   * Verlauf ist hinnehmbar, ein abgebrochener Durchlauf wäre eine Lücke für
+   * alle.
+   */
+  async sampleServerStats(hostId: string): Promise<readonly string[]> {
+    const ablage = this.deps.statsHistory;
+
+    if (ablage === undefined) {
+      return [];
+    }
+
+    const moment = this.now();
+    const abgetastet: string[] = [];
+
+    for (const server of await this.deps.repository.listByHost(hostId)) {
+      if (server.status !== 'running') {
+        continue;
+      }
+
+      try {
+        const stats = await this.getStats(server.id);
+        const abfrage = this.latestQuery.read(server.id, moment);
+
+        const probe: StatsSample = {
+          serverId: server.id,
+          recordedAt: moment,
+          cpuPercent: stats.cpuPercent,
+          ramUsedMb: Math.round(stats.memoryUsedBytes / (1024 * 1024)),
+          // Belegter Plattenplatz je Container liefert das Agent-Protokoll
+          // nicht; die Speicherübersicht (B8) misst node-weit.
+          diskUsedMb: null,
+          pingMs: abfrage.pingMs,
+          playersOnline: abfrage.playersOnline,
+          playersMax: abfrage.playersMax,
+          networkRxBytes: stats.networkRxBytes,
+          networkTxBytes: stats.networkTxBytes,
+        };
+
+        await ablage.insert(probe);
+        abgetastet.push(server.id);
+      } catch (error: unknown) {
+        this.deps.log.warn(
+          { serverId: server.id, error: error instanceof Error ? error.message : String(error) },
+          'Messwerte konnten nicht festgehalten werden',
+        );
+      }
+    }
+
+    return abgetastet;
+  }
+
+  /** Entfernt Stichproben jenseits der Aufbewahrungsfrist (`STATS_HISTORY_RETENTION_HOURS`). */
+  async pruneServerStats(): Promise<number> {
+    const ablage = this.deps.statsHistory;
+
+    if (ablage === undefined) {
+      return 0;
+    }
+
+    const grenze = new Date(
+      this.now().getTime() - this.deps.config.statsHistoryRetentionHours * 60 * 60 * 1000,
+    );
+
+    return ablage.prune(grenze);
+  }
+
+  /**
+   * Verlauf der Messwerte eines Servers (Lastenheft §3.3).
+   *
+   * `windowMinutes` wird an der Aufbewahrungsfrist gekappt: Ein größeres
+   * Fenster brächte nur eine Reihe, die vorne bei der Frist abbricht, und würde
+   * Lücken vortäuschen, die in Wirklichkeit weggeräumte Zeilen sind.
+   */
+  async getStatsHistory(serverId: string, windowMinutes: number): Promise<ServerStatsHistoryDto> {
+    const fenster = Math.min(windowMinutes, this.deps.config.statsHistoryRetentionHours * 60);
+    const ablage = this.deps.statsHistory;
+    const seit = new Date(this.now().getTime() - fenster * 60 * 1000);
+    const proben = ablage === undefined ? [] : await ablage.listSince(serverId, seit);
+
+    return toStatsHistoryDto(
+      serverId,
+      fenster,
+      Math.round(this.deps.config.statsSampleIntervalMs / 1000),
+      proben,
+    );
+  }
 
   /**
    * Prüft alle laufenden Server einer Node auf Inaktivität (Pflichtenheft §9).

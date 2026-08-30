@@ -21,8 +21,11 @@ import {
 } from '../../modules/server-orchestration/types.js';
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
+  doublePrecision,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -145,7 +148,49 @@ export const serverMembers = pgTable(
   ],
 );
 
+/**
+ * Stichproben der Live-Messwerte (Lastenheft §3.3 „Verlaufsdarstellung";
+ * Arbeitspaket P5).
+ *
+ * Eine Zeile je Server und Messzeitpunkt. Bewusst **keine** eigene `id`: Der
+ * Schlüssel ist der Messzeitpunkt je Server, eine zusätzliche UUID wäre in
+ * einer Reihe, die im Minutentakt wächst, nur Ballast. Aus demselben Grund gibt
+ * es eine Aufbewahrungsfrist (`STATS_HISTORY_RETENTION_HOURS`) – ein Verlauf
+ * ohne Ende wäre die größte Tabelle der Installation, ohne dass jemand über
+ * Wochen zurückblickt.
+ *
+ * Die Spalten spiegeln `ServerLiveStats` aus den Contracts; alle sind
+ * `null`-fähig, weil nicht jede Quelle jeden Wert liefert (die Container-Engine
+ * kennt keine Spielerzahl, die Server-Abfrage kein RAM).
+ */
+export const serverStatsSamples = pgTable(
+  'server_stats_samples',
+  {
+    serverId: uuid('server_id')
+      .notNull()
+      .references(() => gameServers.id, { onDelete: 'cascade' }),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
+    /** Prozent eines Kerns (250 = 2,5 Kerne ausgelastet), wie `AgentContainerStats`. */
+    cpuPercent: doublePrecision('cpu_percent'),
+    ramUsedMb: integer('ram_used_mb'),
+    diskUsedMb: integer('disk_used_mb'),
+    pingMs: integer('ping_ms'),
+    playersOnline: integer('players_online'),
+    playersMax: integer('players_max'),
+    /** `bigint`: Der Zähler läuft seit dem Serverstart und überschreitet 2 GiB. */
+    networkRxBytes: bigint('network_rx_bytes', { mode: 'number' }),
+    networkTxBytes: bigint('network_tx_bytes', { mode: 'number' }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.serverId, table.recordedAt] }),
+    /** Trägt beide Abfragen: Verlauf eines Servers und das Wegräumen nach Frist. */
+    index('server_stats_samples_recorded_idx').on(table.recordedAt),
+  ],
+);
+
 export type GameServerRow = typeof gameServers.$inferSelect;
 export type NewGameServerRow = typeof gameServers.$inferInsert;
 export type ServerMemberRow = typeof serverMembers.$inferSelect;
 export type NewServerMemberRow = typeof serverMembers.$inferInsert;
+export type ServerStatsSampleRow = typeof serverStatsSamples.$inferSelect;
+export type NewServerStatsSampleRow = typeof serverStatsSamples.$inferInsert;

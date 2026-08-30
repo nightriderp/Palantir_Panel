@@ -49,6 +49,7 @@ import {
 } from './resource-guard.js';
 import { type OrchestrationEventSink, ServerOrchestrationService } from './service.js';
 import { type DnsProvider, type DnsRecord } from './dns/types.js';
+import { type ServerStatsRepository, type StatsSample } from './stats-history.js';
 import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.js';
 
 const HOST: HostNodeRecord = {
@@ -289,6 +290,25 @@ class AnsweringSocket implements AgentSocket {
       };
     }
 
+    if (command === 'GET_STATS') {
+      return {
+        success: true,
+        data: {
+          containerId: 'container-1',
+          cpuPercent: 42.5,
+          memoryUsedBytes: 1024 * 1024 * 512,
+          memoryLimitBytes: 1024 * 1024 * 2048,
+          networkRxBytes: 5_000,
+          networkTxBytes: 6_000,
+          blockReadBytes: 0,
+          blockWriteBytes: 0,
+          pids: 12,
+          sampledAt: NOW.toISOString(),
+        },
+        error: null,
+      };
+    }
+
     if (command === 'FILE_EXTRACT') {
       return {
         success: true,
@@ -349,6 +369,10 @@ function makeHarness(
     worldArchives?: WorldArchiveStore;
     /** Grenze für Weltarchive, um sie im Test ohne 64 MiB zu erreichen (P4). */
     maxWorldArchiveBytes?: number;
+    /** Ablage des Messwert-Verlaufs; ohne Angabe wird nichts festgehalten (P5). */
+    statsHistory?: ServerStatsRepository;
+    /** Aufbewahrungsfrist des Verlaufs in Stunden (P5). */
+    statsHistoryRetentionHours?: number;
   } = {},
 ): Harness {
   const repository = new FakeRepository();
@@ -439,6 +463,7 @@ function makeHarness(
     reservation: options.buildReservation?.(repository),
     healthProbe: healthyProbe(options.healthy ?? true),
     ...(options.worldArchives === undefined ? {} : { worldArchives: options.worldArchives }),
+    ...(options.statsHistory === undefined ? {} : { statsHistory: options.statsHistory }),
     events,
     log: silentLog,
     config: {
@@ -451,6 +476,8 @@ function makeHarness(
       healthCheckAttemptTimeoutMs: 1_000,
       maxUploadBytes: options.maxUploadBytes ?? 2 * 1024 * 1024 * 1024,
       maxWorldArchiveBytes: options.maxWorldArchiveBytes ?? 64 * 1024 * 1024,
+      statsHistoryRetentionHours: options.statsHistoryRetentionHours ?? 48,
+      statsSampleIntervalMs: 60_000,
       defaultAutoShutdown: { enabled: true, idleTimeoutMinutes: 30, graceMinutes: 15 },
     },
     now: (): Date => new Date(clock),
@@ -1563,5 +1590,123 @@ describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
     expect(harness.socket.commands.some((eintrag) => eintrag.command === 'FILE_EXTRACT')).toBe(
       false,
     );
+  });
+});
+
+describe('Verlauf der Messwerte (Arbeitspaket P5)', () => {
+  /** Ablage im Speicher – dieselbe Schnittstelle wie die Drizzle-Umsetzung. */
+  function fakeAblage(): ServerStatsRepository & { readonly proben: StatsSample[] } {
+    const proben: StatsSample[] = [];
+
+    return {
+      proben,
+      insert: (probe) => {
+        proben.push(probe);
+
+        return Promise.resolve();
+      },
+      listSince: (serverId, since) =>
+        Promise.resolve(
+          proben.filter(
+            (probe) => probe.serverId === serverId && probe.recordedAt.getTime() >= since.getTime(),
+          ),
+        ),
+      prune: (before) => {
+        const vorher = proben.length;
+
+        for (let index = proben.length - 1; index >= 0; index -= 1) {
+          if ((proben[index] as StatsSample).recordedAt.getTime() < before.getTime()) {
+            proben.splice(index, 1);
+          }
+        }
+
+        return Promise.resolve(vorher - proben.length);
+      },
+    };
+  }
+
+  /** Ein laufender Server – nur laufende werden abgetastet. */
+  async function laufenderServer(harness: Harness): Promise<string> {
+    const server = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(server.id, OWNER_ID);
+    // Erst nach bestandenem Health-Check steht der Server auf `running` – nur
+    // laufende Server werden abgetastet.
+    await settle(harness, server.id, ['running']);
+
+    return server.id;
+  }
+
+  it('hält die Messwerte eines laufenden Servers fest', async () => {
+    const ablage = fakeAblage();
+    const harness = makeHarness({ statsHistory: ablage });
+    const serverId = await laufenderServer(harness);
+
+    const abgetastet = await harness.service.sampleServerStats(HOST.id);
+
+    expect(abgetastet).toEqual([serverId]);
+    expect(ablage.proben).toHaveLength(1);
+    expect(ablage.proben[0]).toMatchObject({ serverId, diskUsedMb: null });
+  });
+
+  it('tastet einen gestoppten Server nicht ab', async () => {
+    const ablage = fakeAblage();
+    const harness = makeHarness({ statsHistory: ablage });
+    await harness.service.createServer(createInput(), OWNER_ID);
+
+    expect(await harness.service.sampleServerStats(HOST.id)).toEqual([]);
+    expect(ablage.proben).toEqual([]);
+  });
+
+  it('legt die zuletzt gemeldete Spielerzahl neben die Werte der Engine', async () => {
+    const ablage = fakeAblage();
+    const harness = makeHarness({ statsHistory: ablage });
+    const serverId = await laufenderServer(harness);
+
+    await harness.service.handleAgentEvent(HOST.id, {
+      kind: 'event',
+      event: 'STATS_UPDATE',
+      serverId,
+      emittedAt: new Date(NOW.getTime()).toISOString(),
+      payload: { source: 'serverQuery', playersOnline: 7, playersMax: 20, pingMs: 11 },
+    } as never);
+
+    await harness.service.sampleServerStats(HOST.id);
+
+    expect(ablage.proben[0]).toMatchObject({ playersOnline: 7, playersMax: 20, pingMs: 11 });
+  });
+
+  it('liefert den Verlauf im Fenster und kappt es an der Aufbewahrungsfrist', async () => {
+    const ablage = fakeAblage();
+    const harness = makeHarness({ statsHistory: ablage, statsHistoryRetentionHours: 2 });
+    const serverId = await laufenderServer(harness);
+    await harness.service.sampleServerStats(HOST.id);
+
+    const verlauf = await harness.service.getStatsHistory(serverId, 10_000);
+
+    expect(verlauf.windowMinutes).toBe(120);
+    expect(verlauf.samples).toHaveLength(1);
+    expect(verlauf.intervalSeconds).toBe(60);
+  });
+
+  it('räumt Stichproben jenseits der Frist weg', async () => {
+    const ablage = fakeAblage();
+    const harness = makeHarness({ statsHistory: ablage, statsHistoryRetentionHours: 1 });
+    await laufenderServer(harness);
+    await harness.service.sampleServerStats(HOST.id);
+
+    expect(await harness.service.pruneServerStats()).toBe(0);
+
+    harness.advance(2 * 60 * 60 * 1000);
+
+    expect(await harness.service.pruneServerStats()).toBe(1);
+    expect(ablage.proben).toEqual([]);
+  });
+
+  it('hält ohne Ablage nichts fest und liefert eine leere Reihe', async () => {
+    const harness = makeHarness();
+    const serverId = await laufenderServer(harness);
+
+    expect(await harness.service.sampleServerStats(HOST.id)).toEqual([]);
+    expect((await harness.service.getStatsHistory(serverId, 60)).samples).toEqual([]);
   });
 });
