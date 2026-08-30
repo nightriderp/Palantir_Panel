@@ -12,8 +12,10 @@
 
 import {
   NO_USER_RESOURCE_LIMITS,
+  type ResourceQuotaDto,
   type UserResourceLimitDto,
   type UserResourceLimits,
+  type UserResourceUsage,
 } from '@palantir/contracts';
 import Fastify, { type FastifyInstance, type InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -64,6 +66,7 @@ const emptyUsage = {
 async function buildApp(options?: {
   limits?: UserResourceLimits;
   userExists?: boolean;
+  userUsage?: Partial<UserResourceUsage>;
 }): Promise<FastifyInstance> {
   const stored: { record: UserResourceLimitRecord | null } = {
     record:
@@ -108,7 +111,7 @@ async function buildApp(options?: {
 
   const usage: ServerUsageRepository = {
     async usageForUser() {
-      return { ...emptyUsage };
+      return { ...emptyUsage, ...options?.userUsage };
     },
     async usageForNode() {
       return { ...emptyUsage };
@@ -132,7 +135,17 @@ async function buildApp(options?: {
     },
   });
 
-  await app.register(registerResourceRoutes({ resourceLimits }));
+  /*
+   * Die Konto-Id kommt im Betrieb aus der Sitzung (B1). Hier hängt sie am
+   * selben Test-Kopf wie der Handelnde: kein Kopf, kein angemeldetes Konto.
+   */
+  await app.register(
+    registerResourceRoutes({
+      resourceLimits,
+      resolveUserId: (request) =>
+        typeof request.headers['x-test-actor'] === 'string' ? USER_ID : null,
+    }),
+  );
   await app.ready();
 
   return app;
@@ -161,6 +174,63 @@ let app: FastifyInstance;
 
 afterEach(async () => {
   await app.close();
+});
+
+describe('GET /me/resource-quota', () => {
+  it('liefert je Ressource Limit, Belegung und Rest im Envelope-Format', async () => {
+    app = await buildApp({
+      limits: { maxRamMb: 8192, maxCpuCores: 4, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      userUsage: {
+        runningRamMb: 2048,
+        runningCpuCores: 1,
+        allocatedDiskMb: 20_480,
+        runningServers: 1,
+        totalServers: 3,
+      },
+    });
+
+    const response = await call(app, 'GET', '/me/resource-quota', { actor: 'gast' });
+    const body = response.json<{ success: boolean; data: ResourceQuotaDto; error: null }>();
+
+    expect(response.statusCode).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.error).toBeNull();
+    expect(body.data.userId).toBe(USER_ID);
+    expect(body.data.ram).toEqual({
+      resource: 'ram',
+      unit: 'mb',
+      limit: 8192,
+      used: 2048,
+      remaining: 6144,
+    });
+    expect(body.data.cpu.remaining).toBe(3);
+    expect(body.data.disk.remaining).toBe(30_720);
+    expect(body.data.servers.remaining).toBe(1);
+    // Eigenes Kontingent: sehen ja, ändern nur mit `user.manage`.
+    expect(body.data.permissions).toEqual({ canView: true, canEdit: false });
+  });
+
+  it('liefert ohne gesetztes Limit null als Limit und Rest', async () => {
+    app = await buildApp({ userUsage: { runningRamMb: 1024 } });
+
+    const response = await call(app, 'GET', '/me/resource-quota', { actor: 'gast' });
+    const body = response.json<{ data: ResourceQuotaDto }>();
+
+    expect(response.statusCode).toBe(200);
+    expect(body.data.ram.limit).toBeNull();
+    expect(body.data.ram.remaining).toBeNull();
+    expect(body.data.ram.used).toBe(1024);
+    expect(body.data.updatedAt).toBeNull();
+  });
+
+  it('antwortet ohne Sitzung mit AUTH_REQUIRED', async () => {
+    app = await buildApp({});
+
+    const response = await call(app, 'GET', '/me/resource-quota');
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('AUTH_REQUIRED');
+  });
 });
 
 describe('GET /admin/users/:userId/limits', () => {

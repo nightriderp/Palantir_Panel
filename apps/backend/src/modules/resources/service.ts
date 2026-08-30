@@ -22,10 +22,12 @@ import {
   type CapacityCheckResult,
   type RequestedServerResources,
   type ResourceLowEvent,
+  type ResourceQuotaDto,
   type ResourceWarningThresholds,
   type UserResourceLimitDto,
   type UserResourceLimitPermissions,
   type UserResourceLimits,
+  resourceQuotaSlot,
 } from '@palantir/contracts';
 import type { UserResourceLimitsInput } from '@palantir/validation';
 import {
@@ -102,6 +104,23 @@ export interface ResourceService {
   ): Promise<UserResourceLimitDto>;
   /** Kontingent vollständig aufheben – danach gilt für den Nutzer kein Limit. */
   clearUserLimits(actor: PermissionActor, userId: string): Promise<UserResourceLimitDto>;
+
+  /**
+   * Kontingent-Übersicht des aufrufenden Nutzers (`GET /api/me/resource-quota`,
+   * Arbeitspaket P6).
+   *
+   * Gleiche Zählung wie die harte Kapazitätsprüfung: Limit und Belegung kommen
+   * aus denselben beiden Quellen wie in `buildCheckInput()`
+   * (`UserResourceLimitRepository` und `ServerUsageRepository.usageForUser`) –
+   * eine zweite Rechnung entsteht hier nicht. Den Rest je Ressource leitet
+   * `resourceQuotaSlot()` aus dem Vertrag ab, damit Backend und Frontend
+   * dieselbe Regel sehen (CLAUDE.md §3).
+   *
+   * Keine Permission nötig: das eigene Kontingent darf jedes angemeldete Konto
+   * sehen. `canEdit` bleibt davon unberührt und verlangt weiterhin
+   * `user.manage`.
+   */
+  getOwnQuota(actor: PermissionActor, userId: string): Promise<ResourceQuotaDto>;
 
   /**
    * **Prüf-Funktion für B3.** Beide Prüfungen aus Pflichtenheft §10, ohne zu
@@ -254,6 +273,32 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
       await deps.limits.remove(userId);
 
       return toDto(actor, { ...current, limits: NO_USER_RESOURCE_LIMITS, updatedAt: null }, false);
+    },
+
+    async getOwnQuota(actor, userId) {
+      const record = await loadUserOrFail(userId);
+      const usage = await deps.usage.usageForUser(userId);
+
+      /*
+       * Die Zuordnung Ressource → Belegungsfeld ist dieselbe wie in
+       * `capacity.ts`: RAM und CPU zählen nur laufende Server, Speicherplatz
+       * zählt alle, und die Serveranzahl meint die gleichzeitig laufenden.
+       * Weicht das hier ab, zeigt die Oberfläche einen anderen Rest an, als die
+       * Prüfung beim Start zulässt.
+       */
+      return {
+        userId: record.userId,
+        ram: resourceQuotaSlot('ram', record.limits.maxRamMb, usage.runningRamMb),
+        cpu: resourceQuotaSlot('cpu', record.limits.maxCpuCores, usage.runningCpuCores),
+        disk: resourceQuotaSlot('disk', record.limits.maxDiskMb, usage.allocatedDiskMb),
+        servers: resourceQuotaSlot(
+          'servers',
+          record.limits.maxConcurrentServers,
+          usage.runningServers,
+        ),
+        updatedAt: record.updatedAt?.toISOString() ?? null,
+        permissions: computeUserResourceLimitPermissions(actor, true),
+      };
     },
 
     async checkStartCapacity(request) {

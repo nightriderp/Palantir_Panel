@@ -1,6 +1,7 @@
 /**
  * REST-Routen der Nutzer-Kontingente (Pflichtenheft §10, Lastenheft §3.4 und
- * §3.7, WORK_STATUS.md Gefundener Punkt 88).
+ * §3.7, WORK_STATUS.md Gefundener Punkt 88) sowie des eigenen Kontingents
+ * (`GET /me/resource-quota`, Arbeitspaket P6).
  *
  * Bis hierher hatte der `ResourceService` (B4) zwar `getUserLimits`/
  * `setUserLimits`/`clearUserLimits`, aber keine HTTP-Route – die
@@ -19,9 +20,15 @@
 
 import { type ApiResponse, ok } from '@palantir/contracts';
 import { idSchema, userResourceLimitsInputSchema } from '@palantir/validation';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { isRbacError, replyWithErrorCode, requireActor, requirePermission } from '../rbac/index.js';
+import {
+  RbacError,
+  isRbacError,
+  replyWithErrorCode,
+  requireActor,
+  requirePermission,
+} from '../rbac/index.js';
 import { isResourceError } from './errors.js';
 import type { ResourceService } from './service.js';
 
@@ -30,6 +37,17 @@ const userIdParamsSchema = z.object({ userId: idSchema });
 export interface ResourceRoutesOptions {
   /** Bestehender Ressourcen-Service aus B4 – hier nur an HTTP gehängt. */
   readonly resourceLimits: ResourceService;
+  /**
+   * Konto des Aufrufers für `GET /me/resource-quota`.
+   *
+   * Dieselbe Aufteilung wie bei `resolveViewerId` in B3 und `resolveUserId` in
+   * B5/B6: Das Modul, das die Sitzung kennt (B1), liefert den Wert. Ohne Angabe
+   * greift die Voreinstellung `request.authUser?.id ?? null` – genau die
+   * Funktion, die `server.ts` den übrigen Modulen ohnehin übergibt. Läuft das
+   * Auth-Modul nicht, gilt jeder Aufruf als nicht angemeldet und die Route
+   * antwortet mit `AUTH_REQUIRED`.
+   */
+  readonly resolveUserId?: (request: FastifyRequest) => string | null;
 }
 
 /**
@@ -65,8 +83,40 @@ async function handleError(reply: FastifyReply, error: unknown): Promise<void> {
 
 export function registerResourceRoutes(options: ResourceRoutesOptions) {
   const { resourceLimits } = options;
+  const resolveUserId = options.resolveUserId ?? ((request) => request.authUser?.id ?? null);
 
   return async function resourceRoutes(app: FastifyInstance): Promise<void> {
+    // -- Eigenes Kontingent (Arbeitspaket P6) --------------------------------
+
+    /*
+     * Kontingent des angemeldeten Nutzers – die Übersicht, die der
+     * Erstellungs-Wizard (F3) vor dem Anlegen eines Servers zeigt.
+     *
+     * Kein `requirePermission`-Guard: das eigene Kontingent darf jedes
+     * angemeldete Konto sehen. Geprüft wird nur, dass überhaupt eine Sitzung
+     * dahintersteht – `requireActor()` und die fehlende Konto-Id enden beide in
+     * `AUTH_REQUIRED` (401).
+     */
+    app.get(
+      '/me/resource-quota',
+      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
+        try {
+          const actor = requireActor(request);
+          const userId = resolveUserId(request);
+
+          if (!userId) {
+            throw new RbacError('AUTH_REQUIRED');
+          }
+
+          return ok(await resourceLimits.getOwnQuota(actor, userId));
+        } catch (error) {
+          await handleError(reply, error);
+
+          return undefined;
+        }
+      },
+    );
+
     // -- Nutzer-Kontingente (Lastenheft §3.7) --------------------------------
 
     app.get(
