@@ -38,6 +38,32 @@ export interface RecipientDirectory {
   findDisplayNames(userIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }
 
+/**
+ * Nachschlagen der Klartext-Namen von Rollen (Entität `Role`, B2).
+ *
+ * Die Regelübersicht (F10) zeigt zur `recipientRoleId` den Rollennamen. Den
+ * kennt allein B2 (`RoleService`); B6 baut aber bewusst keine harte Abhängigkeit
+ * darauf auf, sondern bekommt nur diese schmale Funktion „Id → Name" gereicht –
+ * dieselbe Trennung wie bei {@link RecipientDirectory}. Wer die Funktion nicht
+ * durchreicht, bekommt weiterhin `null` als Namen (siehe {@link noopRoleNameLookup}).
+ */
+export interface RoleNameLookup {
+  /**
+   * Klartext-Namen zu bereits bekannten Rollen-Ids.
+   *
+   * Entfernte oder unbekannte Rollen fehlen in der Rückgabe – der Aufrufer
+   * behandelt sie als `null`, ohne dass ein Fehler entsteht.
+   */
+  findRoleNames(roleIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+}
+
+/** Rollen-Nachschlag, solange B2 nicht durchgereicht ist (Tests, Betrieb ohne RBAC). */
+export const noopRoleNameLookup: RoleNameLookup = {
+  async findRoleNames() {
+    return new Map();
+  },
+};
+
 /** Eine fertig gerenderte Nachricht für einen externen Kanal. */
 export interface OutboundMessage {
   title: string;

@@ -58,10 +58,12 @@ import {
   type OutboundMessage,
   type RecipientDirectory,
   type ResolvedChannelTarget,
+  type RoleNameLookup,
   fireAndForgetJobRunner,
   isNotificationTransportError,
   noopAuditSink,
   noopLivePublisher,
+  noopRoleNameLookup,
   systemClock,
 } from './ports.js';
 import { resolveRecipients } from './recipients.js';
@@ -90,6 +92,14 @@ const silentLogger: NotificationLogger = {
 export interface NotificationServiceOptions {
   readonly repository: NotificationRepository;
   readonly directory: RecipientDirectory;
+  /**
+   * Klartext-Namen der Zielrollen für die Regelübersicht (F10).
+   *
+   * B2 liefert die Daten; B6 bekommt nur die schmale Funktion „Id → Name"
+   * gereicht (siehe {@link RoleNameLookup}). Fehlt sie, bleibt `recipientRoleName`
+   * `null` – die Übersicht zeigt dann die Rollen-Id.
+   */
+  readonly roles?: RoleNameLookup;
   readonly transport: NotificationTransport;
   readonly live?: LiveNotificationPublisher;
   readonly audit?: NotificationAuditSink;
@@ -187,6 +197,7 @@ export function createNotificationService(
   options: NotificationServiceOptions,
 ): NotificationService {
   const { repository, directory, transport } = options;
+  const roles = options.roles ?? noopRoleNameLookup;
   const live = options.live ?? noopLivePublisher;
   const audit = options.audit ?? noopAuditSink;
   const jobs = options.jobs ?? fireAndForgetJobRunner;
@@ -230,6 +241,17 @@ export function createNotificationService(
     const channels = await repository.listChannels();
 
     return new Map(channels.map((channel) => [channel.id, channel.name]));
+  }
+
+  /** Klartext-Name einer einzelnen Zielrolle; `null` ohne Rolle oder wenn entfernt. */
+  async function roleNameFor(roleId: string | null): Promise<string | null> {
+    if (roleId === null) {
+      return null;
+    }
+
+    const names = await roles.findRoleNames([roleId]);
+
+    return names.get(roleId) ?? null;
   }
 
   async function requireChannel(channelId: string): Promise<NotificationChannelRecord> {
@@ -637,14 +659,22 @@ export function createNotificationService(
 
     async listRules(actor) {
       const [rules, channels] = await Promise.all([repository.listRules(), channelNames()]);
+      // Namen einmal für alle Zielrollen der Liste nachschlagen statt je Regel –
+      // dieselbe Sammelabfrage wie bei den Anzeigenamen der Ankündigungen.
+      const roleIds = [
+        ...new Set(
+          rules.map((rule) => rule.recipientRoleId).filter((id): id is string => id !== null),
+        ),
+      ];
+      const roleNames =
+        roleIds.length === 0 ? new Map<string, string>() : await roles.findRoleNames(roleIds);
 
       return rules.map((rule) =>
         toRuleDto(rule, {
           actor,
           channelName: rule.channelId === null ? null : (channels.get(rule.channelId) ?? null),
-          // Rollennamen liefert B2; die Regelübersicht kommt auch ohne aus und
-          // zeigt dann die Id. Angeschlossen wird das beim Verdrahten (R2).
-          roleName: null,
+          roleName:
+            rule.recipientRoleId === null ? null : (roleNames.get(rule.recipientRoleId) ?? null),
         }),
       );
     },
@@ -692,12 +722,15 @@ export function createNotificationService(
         },
       });
 
-      const channels = await channelNames();
+      const [channels, roleName] = await Promise.all([
+        channelNames(),
+        roleNameFor(rule.recipientRoleId),
+      ]);
 
       return toRuleDto(rule, {
         actor,
         channelName: rule.channelId === null ? null : (channels.get(rule.channelId) ?? null),
-        roleName: null,
+        roleName,
       });
     },
 
@@ -771,12 +804,15 @@ export function createNotificationService(
         metadata: { operation: 'updated', changedFields: Object.keys(input) },
       });
 
-      const channels = await channelNames();
+      const [channels, roleName] = await Promise.all([
+        channelNames(),
+        roleNameFor(updated.recipientRoleId),
+      ]);
 
       return toRuleDto(updated, {
         actor,
         channelName: updated.channelId === null ? null : (channels.get(updated.channelId) ?? null),
-        roleName: null,
+        roleName,
       });
     },
 
