@@ -161,14 +161,47 @@ export function iconOfEvent(event: NotifiableEventName): IconName {
 /**
  * Route zur betroffenen Ressource; `null`, wenn es (noch) keine gibt.
  *
- * Bewusst nur `server`: Die Ansichten für Backups (F4), Nachrichten (F5), Nodes
- * (F7) und Konten (F10) entstehen in anderen Arbeitspaketen. Ein Link dorthin
- * liefe heute in eine 404-Seite – die Zeile wandert hier hinein, sobald die
- * jeweilige Ansicht steht (vermerkt unter „Gefundene Punkte").
+ * Die Ansichten der übrigen Subject-Typen stehen inzwischen (Punkt 92): Backups
+ * (F4), gemeldete Nachrichten und Konten (F10) sowie Nodes (F7). Verlinkt wird
+ * nur auf **bestehende** Routen, und nur auf solche, die der jeweilige Empfänger
+ * auch erreichen kann:
+ *
+ * - `server` behält als einziger Typ ein Detail-Ziel (`servers/[serverId]`).
+ * - `backup` → `/my-backups`: `backup.failed` erreicht den Besitzer, dessen
+ *   globale Sicherungsübersicht das ist. Ein Deep-Link auf eine einzelne
+ *   Sicherung gibt es (noch) nicht – die Ansicht kennt keine Detailroute.
+ * - `node` → `/nodes` (Nutzersicht, nicht `/admin/nodes`): Eine Node-Warnung
+ *   (`resource.low`, `scope: 'node'`) kann den Node-Besitzer treffen, der die
+ *   Admin-Route nicht öffnen darf.
+ * - `user` → `/admin/users` und `message` → `/admin/moderation`:
+ *   `user.registered` und `message.reported` sind Admin-/Moderationsvorgänge.
+ * - `announcement` bleibt `null`: Die Ankündigung ist selbst die Meldung (Banner
+ *   und Inbox-Eintrag); die Verwaltung unter `/admin/announcements` ist reine
+ *   Admin-Sicht und kein Sprungziel für Empfänger.
+ *
+ * Kein Typ verlinkt heute auf einen konkreten Eintrag (außer `server`): Die
+ * Listenansichten heben den betroffenen Datensatz noch nicht hervor – als
+ * Anschlussarbeit unter „Gefundene Punkte" vermerkt.
  */
 export function subjectHref(subject: NotificationSubject | null): string | null {
   if (subject === null) return null;
-  return subject.type === 'server' ? `/servers/${encodeURIComponent(subject.id)}` : null;
+
+  switch (subject.type) {
+    case 'server':
+      return `/servers/${encodeURIComponent(subject.id)}`;
+    case 'backup':
+      return '/my-backups';
+    case 'node':
+      return '/nodes';
+    case 'user':
+      return '/admin/users';
+    case 'message':
+      return '/admin/moderation';
+    case 'announcement':
+      return null;
+    default:
+      return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
