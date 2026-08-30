@@ -159,6 +159,7 @@ Fehlercodes folgen einem festen, wachsenden Katalog (z. B. `AUTH_INVALID_CREDENT
 | `SERVER_STATE_CONFLICT` | 409 | Lifecycle-Befehl passt nicht zum aktuellen Zustand (§9) |
 | `FILE_TOO_LARGE` | 413 | Upload überschreitet `MAX_UPLOAD_SIZE_BYTES` (§12.1) |
 | `VALIDATION_FAILED` | 400 | Pfad-, Query- oder Körperwert verletzt das vereinbarte Schema (§5.2) |
+| `INTERNAL_ERROR` | 500 | Generisches Sicherheitsnetz für unerwartete, nicht fachliche Fehler – vom globalen `setErrorHandler` vergeben, ohne Interna nach außen (§5.1) |
 | `SERVER_NOT_FOUND` | 404 | Gameserver existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
 | `BACKUP_NOT_FOUND` | 404 | Backup existiert nicht oder ist für den Aufrufer nicht sichtbar (§6) |
 | `BACKUP_NOT_READY` | 409 | Vorgang setzt ein abgeschlossenes Backup voraus (Restore, Download, Löschen) |
