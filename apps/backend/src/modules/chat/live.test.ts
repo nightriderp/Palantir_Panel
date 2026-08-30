@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ChatLiveHub, messageSentFrame } from './live.js';
+import { ChatLiveHub, conversationReadFrame, messageSentFrame } from './live.js';
 import { ALEX, BEA } from './test-doubles.js';
 
 function fakeSocket(): { sent: string[]; send: (data: string) => void } {
@@ -109,5 +109,21 @@ describe('ChatLiveHub', () => {
     expect(() => {
       hub.deliver(ALEX, FRAME);
     }).not.toThrow();
+  });
+});
+
+describe('conversationReadFrame', () => {
+  it('baut ein conversation.read-Frame mit Lesestand und Zähler', () => {
+    const frame = conversationReadFrame(
+      { conversationId: 'c', lastReadAt: '2026-08-26T12:00:00.000Z', unreadCount: 0 },
+      new Date('2026-08-26T12:00:01.000Z'),
+    );
+
+    expect(frame).toEqual({
+      kind: 'event',
+      event: 'conversation.read',
+      data: { conversationId: 'c', lastReadAt: '2026-08-26T12:00:00.000Z', unreadCount: 0 },
+      sentAt: '2026-08-26T12:00:01.000Z',
+    });
   });
 });

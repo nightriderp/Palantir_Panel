@@ -198,6 +198,25 @@ export function registerChatRoutes(app: FastifyInstance, options: ChatRoutesOpti
     }
   });
 
+  /**
+   * Markiert eine Konversation als gelesen (Fundpunkt 95).
+   *
+   * Teilnehmerweg wie die übrigen `/api/chat`-Routen: kein `requirePermission`.
+   * Ohne Körper – der Lesestand wird auf den Serverzeitpunkt gesetzt. Antwort
+   * ist die aktualisierte Konversation (mit `unreadCount` und `lastReadAt`).
+   */
+  app.post('/api/chat/conversations/:conversationId/read', async (request, reply) => {
+    try {
+      const { conversationId } = conversationParamsSchema.parse(request.params);
+
+      return await reply.send(
+        ok(await chat.markConversationRead(contextFrom(request), conversationId)),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
   app.delete('/api/chat/messages/:messageId', async (request, reply) => {
     try {
       const { messageId } = messageParamsSchema.parse(request.params);
