@@ -15,6 +15,7 @@ import {
   type AgentCommandName,
   type ApiResponse,
   type NodeResourceUsage,
+  type ServerCloneJobDto,
   type ServerMemberLevel,
   type ServerStatus,
   type UserResourceUsage,
@@ -290,6 +291,44 @@ class AnsweringSocket implements AgentSocket {
       };
     }
 
+    if (command === 'CREATE_BACKUP') {
+      return {
+        success: true,
+        data: {
+          backupId: 'archiv-1',
+          storagePath: '/srv/palantir/backups/quelle/archiv-1.tar.gz',
+          sizeBytes: 4_096,
+          checksumSha256: 'abc123',
+          containerStopped: false,
+          startedAt: NOW.toISOString(),
+          completedAt: NOW.toISOString(),
+        },
+        error: null,
+      };
+    }
+
+    if (command === 'RESTORE_BACKUP') {
+      return {
+        success: true,
+        data: {
+          backupId: 'archiv-1',
+          restoredBytes: 4_096,
+          containerStopped: true,
+          startedAt: NOW.toISOString(),
+          completedAt: NOW.toISOString(),
+        },
+        error: null,
+      };
+    }
+
+    if (command === 'DELETE_BACKUP') {
+      return {
+        success: true,
+        data: { backupId: 'archiv-1', removed: true, freedBytes: 4_096 },
+        error: null,
+      };
+    }
+
     if (command === 'GET_STATS') {
       return {
         success: true,
@@ -531,6 +570,25 @@ async function settle(
   }
 
   throw new Error('Der Server hat keinen der erwarteten Zustände erreicht.');
+}
+
+/** Wartet, bis ein Klon-Auftrag abgeschlossen ist (`completed` oder `failed`). */
+async function settleCloneJob(
+  harness: Harness,
+  sourceServerId: string,
+  jobId: string,
+): Promise<ServerCloneJobDto> {
+  for (let i = 0; i < 500; i += 1) {
+    const job = harness.service.findCloneJob(sourceServerId, jobId);
+
+    if (job !== null && job.finishedAt !== null) {
+      return job;
+    }
+
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  throw new Error('Der Klon-Auftrag ist nicht fertig geworden.');
 }
 
 beforeEach(() => {
@@ -861,11 +919,28 @@ describe('Klonen (Pflichtenheft §9)', () => {
       autoShutdownTimeoutMinutes: source.autoShutdown.idleTimeoutMinutes,
     });
 
-    const clone = await harness.service.cloneServer(
+    const job = await harness.service.cloneServer(
       source.id,
       { name: 'Klon', subdomain: 'klon-eins', includeWorldData: false },
       OWNER_ID,
     );
+
+    // Der Aufruf liefert den Auftrag; der Server entsteht im Hintergrund.
+    expect(job).toMatchObject({
+      serverId: source.id,
+      targetName: 'Klon',
+      targetSubdomain: 'klon-eins',
+      includeWorldData: false,
+      status: 'queued',
+    });
+
+    const fertig = await settleCloneJob(harness, source.id, job.id);
+
+    expect(fertig.status).toBe('completed');
+    expect(fertig.progressPercent).toBe(100);
+    expect(fertig.targetServerId).not.toBeNull();
+
+    const clone = await harness.service.requireServer(fertig.targetServerId as string);
 
     expect(clone.subdomain).toBe('klon-eins');
     expect(clone.configJson.greeting).toBe('Hallo Klon');
@@ -873,7 +948,7 @@ describe('Klonen (Pflichtenheft §9)', () => {
     expect(harness.emitted.map((e) => e.event)).toContain('server.cloned');
   });
 
-  it('lehnt eine bereits vergebene Subdomain für den Klon ab', async () => {
+  it('lehnt eine bereits vergebene Subdomain für den Klon ab, bevor ein Auftrag entsteht', async () => {
     const harness = makeHarness();
     const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
 
@@ -887,23 +962,74 @@ describe('Klonen (Pflichtenheft §9)', () => {
     } catch (error: unknown) {
       expect((error as ServerOrchestrationError).code).toBe('SUBDOMAIN_TAKEN');
     }
+
+    expect(harness.emitted.map((e) => e.event)).not.toContain('serverClone.progressed');
   });
 
-  it('meldet das Mitkopieren der Weltdaten als noch nicht umgesetzt', async () => {
-    // Ein leerer Server soll nicht als vollständiger Klon durchgehen.
+  it('kopiert die Weltdaten über die Backup-Mechanik mit', async () => {
     const harness = makeHarness();
     const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
 
-    try {
-      await harness.service.cloneServer(
-        source.id,
-        { name: 'Klon', subdomain: 'klon-zwei', includeWorldData: true },
-        OWNER_ID,
-      );
-      expect.unreachable('Das Mitkopieren hätte scheitern müssen.');
-    } catch (error: unknown) {
-      expect((error as ServerOrchestrationError).code).toBe('AGENT_COMMAND_NOT_IMPLEMENTED');
-    }
+    const job = await harness.service.cloneServer(
+      source.id,
+      { name: 'Klon', subdomain: 'klon-welt', includeWorldData: true },
+      OWNER_ID,
+    );
+    const fertig = await settleCloneJob(harness, source.id, job.id);
+
+    expect(fertig.status).toBe('completed');
+    expect(fertig.copiedBytes).toBe(4_096);
+    expect(fertig.totalBytes).toBe(4_096);
+
+    const befehle = harness.socket.commands.map((eintrag) => eintrag.command);
+
+    // Packen, Zurückspielen, Zwischenarchiv wegräumen – in dieser Reihenfolge.
+    expect(befehle.filter((name) => name.endsWith('_BACKUP'))).toEqual([
+      'CREATE_BACKUP',
+      'RESTORE_BACKUP',
+      'DELETE_BACKUP',
+    ]);
+
+    const restore = harness.socket.commands.find((eintrag) => eintrag.command === 'RESTORE_BACKUP');
+
+    expect(restore?.payload).toMatchObject({
+      targetPath: `/srv/palantir/servers/${String(fertig.targetServerId)}`,
+      expectedChecksum: 'abc123',
+    });
+  });
+
+  it('meldet einen gescheiterten Klon im Auftrag statt zu werfen', async () => {
+    const harness = makeHarness();
+    const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
+
+    harness.socket.answers.set('CREATE_BACKUP', {
+      success: false,
+      data: null,
+      error: { code: 'AGENT_COMMAND_FAILED', message: 'Platte voll.' },
+    });
+
+    const job = await harness.service.cloneServer(
+      source.id,
+      { name: 'Klon', subdomain: 'klon-kaputt', includeWorldData: true },
+      OWNER_ID,
+    );
+    const fertig = await settleCloneJob(harness, source.id, job.id);
+
+    expect(fertig.status).toBe('failed');
+    expect(fertig.statusMessage).toBeTruthy();
+  });
+
+  it('meldet einen Auftrag an einem fremden Server als unbekannt', async () => {
+    const harness = makeHarness();
+    const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
+    const job = await harness.service.cloneServer(
+      source.id,
+      { name: 'Klon', subdomain: 'klon-fremd', includeWorldData: false },
+      OWNER_ID,
+    );
+
+    expect(harness.service.findCloneJob(source.id, job.id)).not.toBeNull();
+    expect(harness.service.findCloneJob('99999999-9999-4999-8999-999999999999', job.id)).toBeNull();
   });
 });
 
