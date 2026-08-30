@@ -139,6 +139,21 @@ export function registerChatRoutes(app: FastifyInstance, options: ChatRoutesOpti
   });
 
   /**
+   * Zulässige DM-Empfänger für den Aufrufer (Pflichtenheft §15).
+   *
+   * Teilnehmerweg wie die übrigen `/api/chat`-Routen: kein `requirePermission`.
+   * Der Dienst gibt nur Konten heraus, mit denen der Aufrufer ohnehin einen
+   * Server teilt – kein globales Nutzerverzeichnis.
+   */
+  app.get('/api/chat/recipients', async (request, reply) => {
+    try {
+      return await reply.send(ok(await chat.listDirectMessageRecipients(contextFrom(request))));
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  /**
    * Gruppen-Chat eines Servers. Legt ihn beim ersten Zugriff an – fachlich
    * dasselbe wie „entsteht automatisch mit dem Server" (Pflichtenheft §15),
    * ohne Eingriff in die Server-Orchestrierung.

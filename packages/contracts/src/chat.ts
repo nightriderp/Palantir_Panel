@@ -112,6 +112,27 @@ export interface ConversationDto {
 }
 
 // ---------------------------------------------------------------------------
+// DM-Verzeichnis
+// ---------------------------------------------------------------------------
+
+/**
+ * Ein zulässiger Empfänger für eine Direktnachricht (Pflichtenheft §15).
+ *
+ * Das Verzeichnis listet **nicht** alle Konten der Plattform, sondern nur die,
+ * mit denen der Aufrufer bereits einen Server teilt – als Besitzer oder
+ * Mitglied – und die freigeschaltet und nicht gesperrt sind. So lässt sich eine
+ * DM beginnen, ohne die Kontenliste der Plattform quer offenzulegen: Wer mit
+ * niemandem einen Server teilt, bekommt ein leeres Verzeichnis.
+ *
+ * `recipientId` passt genau in `openDirectConversation` / die Route
+ * `POST /api/chat/conversations/direct` (Feld `recipientId`).
+ */
+export interface DirectMessageRecipientDto {
+  recipientId: string;
+  displayName: string;
+}
+
+// ---------------------------------------------------------------------------
 // Message
 // ---------------------------------------------------------------------------
 
