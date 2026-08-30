@@ -446,6 +446,13 @@ export {
   toStatsHistoryDto,
 } from './stats-history.js';
 
+export {
+  CLONE_JOB_RETENTION_MS,
+  type CloneJobProgress,
+  type CloneJobStore,
+  createCloneJobStore,
+} from './clone-jobs.js';
+
 export { computeGameServerPermissions } from './permissions.js';
 export { type ServerDtoContext, toGameServerDto } from './dto.js';
 export {
