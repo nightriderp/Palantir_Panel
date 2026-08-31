@@ -23,6 +23,7 @@ import { useApiResource } from '@/lib/api/useApiResource';
 import { type LiveConnectionState } from '@/lib/live/LiveChannelProvider';
 import { useNotificationLive } from '@/lib/live/NotificationLiveProvider';
 import { AnnouncementBanner } from './AnnouncementBanner';
+import { DesktopToggle } from './DesktopToggle';
 import { NotificationRow } from './NotificationRow';
 import {
   type InboxFilter,
@@ -77,9 +78,11 @@ export interface InboxTabProps {
   preferences: NotificationPreferences;
   /** Neue Meldung, die sich laut Einstellung sofort melden soll (Desktop-Hinweis). */
   onDesktopNotify: (notification: NotificationDto) => void;
+  /** Der Schalter für Browser-Mitteilungen steht auch hier – siehe `DesktopToggle`. */
+  onPreferencesChange: (next: NotificationPreferences) => void;
 }
 
-export function InboxTab({ preferences, onDesktopNotify }: InboxTabProps) {
+export function InboxTab({ preferences, onDesktopNotify, onPreferencesChange }: InboxTabProps) {
   const router = useRouter();
   const toast = useToast();
 
@@ -232,6 +235,12 @@ export function InboxTab({ preferences, onDesktopNotify }: InboxTabProps) {
           onAcknowledge={acknowledgeAnnouncement}
         />
       ))}
+
+      {/*
+       * Wie im Entwurf über der Liste. Derselbe Schalter steht im Reiter
+       * „Einstellungen" – gemeinsamer Zustand, kein zweiter Wert.
+       */}
+      <DesktopToggle preferences={preferences} onChange={onPreferencesChange} variant="card" />
 
       <div className="flex flex-wrap items-end gap-3">
         <SegmentedControl

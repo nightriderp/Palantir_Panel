@@ -41,6 +41,28 @@ export async function requestDesktopPermission(): Promise<boolean> {
 }
 
 /**
+ * Lässt sich der Schalter überhaupt bedienen?
+ *
+ * Ohne Unterstützung im Browser oder nach einer Sperre dort bewirkt er nichts –
+ * zurücknehmen kann die Sperre nur der Nutzer in den Browser-Einstellungen.
+ */
+export function desktopBedienbar(permission: DesktopPermission): boolean {
+  return permission !== 'unsupported' && permission !== 'denied';
+}
+
+/** Erklärung unter dem Schalter, passend zum Erlaubnisstand. */
+export function desktopHinweis(permission: DesktopPermission): string {
+  switch (permission) {
+    case 'unsupported':
+      return 'Dieser Browser unterstützt keine Mitteilungen.';
+    case 'denied':
+      return 'Die Erlaubnis ist im Browser gesperrt – dort wieder freigeben, um sie zu nutzen.';
+    default:
+      return 'Zeigt neue Meldungen auch außerhalb des Panels an, sofern der Browser es erlaubt.';
+  }
+}
+
+/**
  * Eine Meldung als Browser-Mitteilung zeigen, sofern erlaubt.
  *
  * Titel und Text kommen fertig aus dem `NotificationDto` (Pflichtenheft §5.2);
