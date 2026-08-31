@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /**
- * Angeheftete Server der Übersicht (Mockup „📌 Angepinnt").
+ * Angepinnte Server der Übersicht (Mockup „📌 Angepinnt").
  *
  * **Bewusst nur lokal:** Im `GameServerDto` gibt es kein Feld dafür, und das
  * Anheften ist eine reine Anzeigevorliebe dieses Geräts. Gespeichert wird
@@ -48,7 +48,7 @@ export function usePinnedServers(): {
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       } catch {
-        // Ohne Speicher bleibt die Anheftung eben nur für diese Sitzung.
+        // Ohne Speicher bleibt die Anpinnung eben nur für diese Sitzung.
       }
       return next;
     });

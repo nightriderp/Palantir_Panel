@@ -129,7 +129,7 @@ export function groupServers({
 
   const pinnedServers = visible.filter((server) => pinned.has(server.id));
   if (pinnedServers.length > 0) {
-    groups.push({ key: 'pinned', title: 'Angeheftet', servers: pinnedServers });
+    groups.push({ key: 'pinned', title: 'Angepinnt', servers: pinnedServers });
   }
 
   const rest = visible.filter((server) => !pinned.has(server.id));

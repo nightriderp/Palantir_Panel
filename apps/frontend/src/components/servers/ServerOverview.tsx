@@ -14,6 +14,8 @@ import {
   ServerCard,
   useToast,
 } from '@/components/shared';
+import { openDirectConversation } from '@/lib/api/chat';
+import { errorText } from '@/lib/api/client';
 import { fetchServers } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { useServerListLive } from '@/lib/live/useServerLive';
@@ -90,6 +92,26 @@ export function ServerOverview() {
       .writeText(address)
       .then(() => toast.success('Adresse kopiert.'))
       .catch(() => toast.error('Die Adresse konnte nicht kopiert werden.'));
+  }
+
+  /**
+   * „Nachricht" auf der Karte eines fremden Servers (Mockup `messageOwner`).
+   *
+   * Öffnet die Unterhaltung mit dem Besitzer – der Endpunkt legt sie beim
+   * ersten Mal an – und springt mit der Id in die Nachrichtenansicht. Ohne
+   * sichtbaren Besitzer (`ownerId` ist immer da, der Anzeigename nicht) bleibt
+   * der Knopf trotzdem sinnvoll: geschrieben wird an das Konto, nicht an den
+   * Namen.
+   */
+  function messageOwner(server: GameServerDto) {
+    void openDirectConversation(server.ownerId).then((result) => {
+      if (result.success) {
+        router.push(`/messages?c=${encodeURIComponent(result.data.id)}`);
+        return;
+      }
+
+      toast.error(errorText(result));
+    });
   }
 
   return (
@@ -183,6 +205,9 @@ export function ServerOverview() {
                 server={server}
                 stats={statsById[server.id] ?? null}
                 isOwn={user !== null && server.ownerId === user.id}
+                adminAccess={
+                  user !== null && server.ownerId !== user.id && user.permissions.canViewAnyServer
+                }
                 pinned={isPinned(server.id)}
                 updateAvailable={server.updateAvailable}
                 restartRequired={server.pendingRestart}
@@ -192,6 +217,7 @@ export function ServerOverview() {
                 onRestart={(entry) => setConfirm({ action: 'restart', server: entry })}
                 onOpen={(entry) => router.push(`/servers/${entry.id}`)}
                 onCopyAddress={copyAddress}
+                onMessageOwner={messageOwner}
               />
             ))}
           </div>

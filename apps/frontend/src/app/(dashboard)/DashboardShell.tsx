@@ -1,5 +1,6 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useMemo, type ReactNode } from 'react';
 import { type ConversationDto, type GameServerDto, type HostNodeDto } from '@palantir/contracts';
 import { AppShell, StatusDot, ToastProvider } from '@/components/shared';
@@ -69,6 +70,7 @@ interface ShellData {
  */
 function useShellData(): ShellData {
   const { user } = useSession();
+  const pathname = usePathname();
   const canViewNodes = user?.permissions.canViewNodes ?? false;
 
   const servers = useApiResource<GameServerDto[]>(
@@ -79,9 +81,17 @@ function useShellData(): ShellData {
     (signal) => fetchNodes(signal),
     canViewNodes ? [] : null,
   );
+  /*
+   * Der Pfad steht bewusst in den Abhaengigkeiten: Der Zaehler soll stimmen,
+   * nachdem in den Nachrichten gelesen wurde, und der Lesezustand aendert sich
+   * ohne Ereignis auf dem Live-Kanal. Beim Verlassen der Ansicht wird deshalb
+   * neu geholt. Eine neu eintreffende Nachricht faellt erst beim naechsten
+   * Seitenwechsel auf - der Chat-Kanal haengt an einer eigenen Verbindung
+   * (`useChatLive`), und eine zweite davon nur fuer den Zaehler waere zu teuer.
+   */
   const conversations = useApiResource<ConversationDto[]>(
     (signal) => fetchConversations(signal),
-    user ? [user.id] : null,
+    user ? [user.id, pathname] : null,
   );
 
   const list = useMemo(() => servers.data ?? [], [servers.data]);
