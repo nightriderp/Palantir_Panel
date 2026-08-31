@@ -74,7 +74,20 @@ describe('Zwischenspeicher der Server-Abfrage', () => {
       playersOnline: 4,
       playersMax: 20,
       pingMs: 9,
+      // Ohne gemeldete Namen bleibt die Liste leer (Gefundener Punkt 51).
+      players: [],
     });
+  });
+
+  it('merkt sich die gemeldeten Spielernamen (Gefundener Punkt 51)', () => {
+    const cache = new LatestQueryCache(60_000);
+    cache.remember(
+      SERVER_ID,
+      { playersOnline: 2, playersMax: 20, pingMs: 9, players: [{ name: 'Ana' }, { name: 'Bo' }] },
+      JETZT,
+    );
+
+    expect(cache.read(SERVER_ID, JETZT).players).toEqual([{ name: 'Ana' }, { name: 'Bo' }]);
   });
 
   it('schreibt veraltete Werte nicht fort', () => {
@@ -85,6 +98,8 @@ describe('Zwischenspeicher der Server-Abfrage', () => {
       playersOnline: null,
       playersMax: null,
       pingMs: null,
+      // Auch die Namensliste altert mit.
+      players: [],
     });
   });
 
@@ -93,6 +108,7 @@ describe('Zwischenspeicher der Server-Abfrage', () => {
       playersOnline: null,
       playersMax: null,
       pingMs: null,
+      players: [],
     });
   });
 

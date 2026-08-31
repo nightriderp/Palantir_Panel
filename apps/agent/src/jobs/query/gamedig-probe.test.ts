@@ -46,6 +46,8 @@ describe('gamedig-Sonde', () => {
       pingMs: 12,
       playersOnline: 3,
       playersMax: 20,
+      // Die Namen gehen mit an den Live-Kanal (Gefundener Punkt 51).
+      players: [{ name: 'a' }, { name: 'b' }, { name: 'c' }],
       reason: null,
     });
   });
@@ -98,6 +100,21 @@ describe('gamedig-Sonde', () => {
     expect(ergebnis.reachable).toBe(false);
     expect(ergebnis.playersOnline).toBeNull();
     expect(ergebnis.reason).toContain('Timeout');
+  });
+
+  it('lässt namenlose Einträge aus der Liste weg', async () => {
+    const abfragen = vi
+      .fn<GamedigQuery>()
+      .mockResolvedValue(
+        antwort({ players: [{ name: 'a' }, {}, { name: '  ' }, { name: ' b ' }] }),
+      );
+
+    // Manche Server melden Platzhalter ohne Namen; leere Zeilen in der Liste
+    // helfen niemandem. Die Zahl kommt ohnehin aus `numplayers`.
+    expect((await createGamedigProbe(abfragen).check(ZIEL, 3_000)).players).toEqual([
+      { name: 'a' },
+      { name: 'b' },
+    ]);
   });
 
   it('lehnt ein Ziel ab, das gar keine gamedig-Abfrage ist', async () => {

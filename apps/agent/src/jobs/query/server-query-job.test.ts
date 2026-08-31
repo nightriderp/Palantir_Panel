@@ -13,6 +13,7 @@ const ERREICHBAR: ServerProbeResult = {
   pingMs: 5,
   playersOnline: null,
   playersMax: null,
+  players: [],
   reason: null,
 };
 
@@ -141,6 +142,7 @@ describe('ServerQueryJob – Abfrage und Meldung', () => {
       pingMs: 7,
       playersOnline: 4,
       playersMax: 20,
+      players: [],
       reason: null,
     });
     job.setTarget(SERVER_A, ZIEL);
@@ -172,6 +174,7 @@ describe('ServerQueryJob – Abfrage und Meldung', () => {
       pingMs: null,
       playersOnline: null,
       playersMax: null,
+      players: [],
       reason: 'Der Server war nicht erreichbar (ECONNREFUSED).',
     });
     job.setTarget(SERVER_A, ZIEL);

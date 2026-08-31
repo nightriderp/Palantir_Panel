@@ -68,7 +68,7 @@ describe('liveStatsFromAgentPayload', () => {
   it('rechnet die Messwerte der Container-Runtime in ServerLiveStats um', () => {
     const stats = liveStatsFromAgentPayload(
       RUNTIME_STATS,
-      { playersOnline: 3, playersMax: 20, pingMs: 15 },
+      { playersOnline: 3, playersMax: 20, pingMs: 15, players: [] },
       EMITTED_AT,
     );
 
@@ -125,12 +125,55 @@ describe('liveStatsFromAgentPayload', () => {
   });
 });
 
+describe('Spielerliste (Gefundener Punkt 51)', () => {
+  it('reicht die Namen aus der Server-Abfrage durch', () => {
+    const stats = liveStatsFromAgentPayload(
+      { ...QUERY_PAYLOAD, players: [{ name: 'Ana' }, { name: 'Bo' }] },
+      EMPTY_QUERY_SNAPSHOT,
+      EMITTED_AT,
+    );
+
+    expect(stats.players).toEqual([{ name: 'Ana' }, { name: 'Bo' }]);
+  });
+
+  it('legt die zuletzt gemeldeten Namen neben die Messwerte der Engine', () => {
+    const stats = liveStatsFromAgentPayload(
+      RUNTIME_STATS,
+      { playersOnline: 2, playersMax: 20, pingMs: 15, players: [{ name: 'Ana' }] },
+      EMITTED_AT,
+    );
+
+    // Die Engine kennt keine Spieler; die Namen stammen aus der letzten Abfrage.
+    expect(stats.players).toEqual([{ name: 'Ana' }]);
+  });
+
+  it('lässt das Feld weg, wenn keine Namen vorliegen', () => {
+    // Fehlend heißt „keine Angabe" – eine leere Liste würde als „niemand da"
+    // gelesen, und das wäre eine Behauptung, die die Abfrage nicht deckt.
+    expect(
+      liveStatsFromAgentPayload(QUERY_PAYLOAD, EMPTY_QUERY_SNAPSHOT, EMITTED_AT).players,
+    ).toBeUndefined();
+  });
+
+  it('wirft unbrauchbare Einträge weg, statt leere Zeilen zu melden', () => {
+    const stats = liveStatsFromAgentPayload(
+      { ...QUERY_PAYLOAD, players: [{ name: 'Ana' }, {}, { name: '   ' }, 'Bo'] },
+      EMPTY_QUERY_SNAPSHOT,
+      EMITTED_AT,
+    );
+
+    expect(stats.players).toEqual([{ name: 'Ana' }]);
+  });
+});
+
 describe('querySnapshotFromPayload', () => {
   it('liest Spielerzahl und Antwortzeit', () => {
     expect(querySnapshotFromPayload(QUERY_PAYLOAD)).toEqual({
       playersOnline: 7,
       playersMax: 20,
       pingMs: 23,
+      // Die Beispiel-Nutzlast trägt keine Namen – leer heißt „keine Angabe".
+      players: [],
     });
     expect(querySnapshotFromPayload({ reachable: false })).toEqual(EMPTY_QUERY_SNAPSHOT);
   });

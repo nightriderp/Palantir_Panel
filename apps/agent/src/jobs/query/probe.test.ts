@@ -49,6 +49,7 @@ describe('Port-Connect-Sonde (Pflichtenheft §9)', () => {
       pingMs: 42,
       playersOnline: null,
       playersMax: null,
+      players: [],
       reason: null,
     });
     expect(socket.verbindungen).toEqual([{ host: '127.0.0.1', port: 30_000 }]);

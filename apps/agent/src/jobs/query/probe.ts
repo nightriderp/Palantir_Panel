@@ -46,6 +46,14 @@ export interface ServerProbeResult {
   /** Spielerzahl; `null`, wenn die Abfrageart keine liefert. */
   readonly playersOnline: number | null;
   readonly playersMax: number | null;
+  /**
+   * Namen der verbundenen Spieler (Gefundener Punkt 51).
+   *
+   * Leer, wenn die Abfrageart keine Namen liefert oder der Server keine
+   * herausgibt. Die belastbare Zahl bleibt `playersOnline`: Manche Server
+   * melden eine Zahl, aber nur einen Auszug der Namen.
+   */
+  readonly players: readonly { readonly name: string }[];
   /** Grund des Fehlschlags; `null`, wenn erreichbar. */
   readonly reason: string | null;
 }
@@ -58,7 +66,14 @@ export interface ServerProbe {
 export type SocketFactory = () => net.Socket;
 
 export function unreachable(reason: string): ServerProbeResult {
-  return { reachable: false, pingMs: null, playersOnline: null, playersMax: null, reason };
+  return {
+    reachable: false,
+    pingMs: null,
+    playersOnline: null,
+    playersMax: null,
+    players: [],
+    reason,
+  };
 }
 
 /**
@@ -101,8 +116,11 @@ export function createPortConnectProbe(
           abschliessen({
             reachable: true,
             pingMs: now() - begonnen,
+            // Der Port-Connect-Test kennt keine Spieler – nur, dass jemand die
+            // Verbindung annimmt.
             playersOnline: null,
             playersMax: null,
+            players: [],
             reason: null,
           });
         });
