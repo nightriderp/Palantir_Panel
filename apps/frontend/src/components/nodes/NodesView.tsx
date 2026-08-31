@@ -8,7 +8,7 @@ import { fetchGameTypes } from '@/lib/api/servers';
 import { fetchNodes } from '@/lib/api/nodes';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
-import { NodeCard } from './NodeCard';
+import { NodeRow } from './NodeRow';
 import { NodeExplainerDialog } from './NodeExplainerDialog';
 import { NODE_EXPLAINERS, nodesSummary, startCapacityHint } from './nodeStatus';
 
@@ -151,9 +151,10 @@ export function NodesView() {
               </Panel>
             ) : null}
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Kompakte Zeilen statt Karten – eine Node je Zeile, wie im Entwurf. */}
+            <div className="flex flex-col gap-2.5">
               {nodeList.map((node) => (
-                <NodeCard key={node.id} node={node} />
+                <NodeRow key={node.id} node={node} />
               ))}
             </div>
           </>
