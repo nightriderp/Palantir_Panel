@@ -50,6 +50,7 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     expect(httpStatusForErrorCode('SERVER_NOT_FOUND')).toBe(404);
     expect(httpStatusForErrorCode('SERVER_STATE_CONFLICT')).toBe(409);
     expect(httpStatusForErrorCode('SERVER_CRASH_LOOP')).toBe(409);
+    expect(httpStatusForErrorCode('NODE_UNAVAILABLE')).toBe(409);
     expect(httpStatusForErrorCode('SERVER_HEALTH_CHECK_FAILED')).toBe(504);
     expect(httpStatusForErrorCode('GAME_TYPE_NOT_FOUND')).toBe(404);
     expect(httpStatusForErrorCode('GAME_TYPE_NOT_AVAILABLE')).toBe(409);
