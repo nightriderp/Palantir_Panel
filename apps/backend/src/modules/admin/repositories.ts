@@ -56,6 +56,8 @@ function toNodeRecord(row: typeof hostNodes.$inferSelect): HostNodeRecord {
     status: row.status,
     statusMessage: row.statusMessage,
     lastSeenAt: row.lastSeenAt,
+    // Nur das Ja/Nein verlässt das Repository, nie der Hash selbst.
+    hasAgentToken: row.agentTokenHash !== null,
     createdAt: row.createdAt,
   };
 }
