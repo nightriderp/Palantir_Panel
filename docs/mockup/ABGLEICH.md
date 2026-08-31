@@ -5,8 +5,12 @@ Vollständiger Durchgang aller Ansichten der laufenden App gegen
 `ui/mockup-abgleich` (Basis `main` @ `d580716`), beide Seiten im Browser bei 1440×900
 nebeneinander, App mit Demo-Daten (5 Server, 2 Nodes, Owner-Konto).
 
-Diese Datei ist die **Befundliste**, noch keine Umsetzung. Reihenfolge und Umfang der
-Korrekturen entscheidet der Nutzer.
+Diese Datei ist die **Befundliste** und wird beim Abarbeiten fortgeschrieben. Reihenfolge
+und Umfang der Korrekturen entscheidet der Nutzer.
+
+**Stand:** Abschnitt 1 (Grundgerüst) ist umgesetzt, alles Übrige offen. Zwei Befunde des
+ersten Durchgangs (3.2, 3.7) haben sich beim Lesen des Codes als falsch erwiesen und sind
+als „entfällt" markiert statt gelöscht, damit die Nummerierung stabil bleibt.
 
 ## Einordnung der Befunde
 
@@ -28,17 +32,34 @@ Funktionsumfang.
 Quelle App: [DashboardShell.tsx](../../apps/frontend/src/app/(dashboard)/DashboardShell.tsx),
 [DashboardNav.tsx](../../apps/frontend/src/app/(dashboard)/DashboardNav.tsx)
 
-| # | Klasse | Befund |
-| --- | --- | --- |
-| 1.1 | **A** | **Die komplette Gesamtstatus-Leiste in der Topbar fehlt.** Mockup: `GESAMTSTATUS` · `4/7 Server online` · `28 Spieler` · `35% CPU` · `18.5 GB/32 GB RAM` · `360/1000 GB Disk` · `2/3 Nodes`, darunter eine zweite Zeile `1 in Bewegung` · `1 mit Fehler` · `2 mit Update`. App-Topbar enthält nur „Live verbunden" und das Nutzermenü. Größter Einzelunterschied im ganzen Abgleich. |
-| 1.2 | **A** | **Sidebar-Abschnitt „DEINE SERVER · n" fehlt.** Mockup listet die eigenen Server direkt in der Seitenleiste (Kürzel-Kachel, Name, Status-Punkt) als Sprungziele. |
-| 1.3 | **A** | Navigationspunkt **„Server erstellen"** fehlt in der Sidebar. In der App nur über den Button „Neuer Server" auf der Übersicht erreichbar. |
-| 1.4 | **A** | **Ungelesen-Zähler an „Nachrichten"** fehlt (Mockup: Badge mit Anzahl). |
-| 1.5 | **B** | **Reihenfolge Hauptnavigation.** Mockup: Übersicht, Nachrichten, Skins, Benachrichtigungen, Nodes, Server erstellen, Meine Backups, Arcade. App: Übersicht, Meine Backups, Nachrichten, Benachrichtigungen, Nodes, Arcade, Skins. |
-| 1.6 | **B** | **Reihenfolge Administration.** Mockup: Nutzer, Rollen, Templates, Bilder, Sticker, Arcade-Musik, Benachrichtigungs-Regeln, Anfragen, Audit-Log, Backups, Node-Platz, Adressen. App: Nutzer, Anfragen, Rollen, Moderation, Benachrichtigungs-Regeln, Ankündigungen, Audit-Log, Backups, Nodes, Node-Platz, Adressen, Templates, Bilder, Sticker, Arcade-Musik. |
-| 1.7 | **C** | App hat drei Admin-Punkte mehr als das Mockup: **Moderation**, **Ankündigungen**, **Nodes (Admin)**. Kein Mockup-Gegenstück – prüfen, ob sie ins Mockup-Schema einsortiert werden sollen. |
-| 1.8 | **B** | **Versionszeile im Fuß.** Mockup `v2026.34.0-entwicklung`, App `Palantir · v0.6.0`. Nur Format; die Quelle (`package.json`) bleibt richtig. |
-| 1.9 | **C** | Die „Demo-Rolle"-Auswahl rechts oben im Mockup ist eine reine Vorführhilfe des Entwurfs. **Nicht nachbauen.** |
+| # | Klasse | Stand | Befund |
+| --- | --- | --- | --- |
+| 1.1 | **A** | erledigt | **Die komplette Gesamtstatus-Leiste in der Topbar fehlt.** Mockup: `GESAMTSTATUS` · `4/7 Server online` · `28 Spieler` · `35% CPU` · `18.5 GB/32 GB RAM` · `360/1000 GB Disk` · `2/3 Nodes`, darunter `1 in Bewegung` · `1 mit Fehler` · `2 mit Update`. App-Topbar enthielt nur „Live verbunden" und das Nutzermenü. Größter Einzelunterschied im ganzen Abgleich. |
+| 1.2 | **A** | erledigt | **Sidebar-Abschnitt „DEINE SERVER · n" fehlt.** Mockup listet die eigenen Server direkt in der Seitenleiste (Kürzel-Kachel, Name, Status-Punkt) als Sprungziele. |
+| 1.3 | **A** | erledigt | Navigationspunkt **„Server erstellen"** fehlt in der Sidebar. In der App nur über den Button „Neuer Server" auf der Übersicht erreichbar. |
+| 1.4 | **A** | erledigt | **Ungelesen-Zähler an „Nachrichten"** fehlt (Mockup: Badge mit Anzahl). |
+| 1.5 | **B** | erledigt | **Reihenfolge Hauptnavigation.** Mockup: Übersicht, Nachrichten, Skins, Benachrichtigungen, Nodes, Server erstellen, Meine Backups, Arcade. App: Übersicht, Meine Backups, Nachrichten, Benachrichtigungen, Nodes, Arcade, Skins. |
+| 1.6 | **B** | erledigt | **Reihenfolge Administration.** Mockup: Nutzer, Rollen, Templates, Bilder, Sticker, Arcade-Musik, Benachrichtigungs-Regeln, Anfragen, Audit-Log, Backups, Node-Platz, Adressen. App: Nutzer, Anfragen, Rollen, Moderation, Benachrichtigungs-Regeln, Ankündigungen, Audit-Log, Backups, Nodes, Node-Platz, Adressen, Templates, Bilder, Sticker, Arcade-Musik. |
+| 1.7 | **C** | entschieden | App hat drei Admin-Punkte mehr als das Mockup: **Moderation**, **Ankündigungen**, **Nodes (Admin)**. Sie bleiben und stehen jetzt jeweils neben dem Eintrag, zu dem sie fachlich gehören (Moderation zu Nutzer/Rollen, Ankündigungen zu den Benachrichtigungs-Regeln, Nodes zum Node-Platz) – statt gesammelt am Ende. |
+| 1.8 | **B** | erledigt | **Versionszeile im Fuß.** Mockup `v2026.34.0-entwicklung`, App `Palantir · v0.6.0`. Nur Format; die Quelle (`package.json`) bleibt richtig. |
+| 1.9 | **C** | offen | Die „Demo-Rolle"-Auswahl rechts oben im Mockup ist eine reine Vorführhilfe des Entwurfs. **Nicht nachbauen.** |
+| 1.10 | **A** | offen | **Glocke in der Topbar fehlt.** Mockup: Schaltfläche rechts neben dem Gesamtstatus mit rotem Punkt bei ungelesenen Benachrichtigungen; ein Klick öffnet eine Liste der letzten Meldungen („Beim Öffnen als gelesen markiert"). Nachträglich aufgenommen – beim ersten Durchgang übersehen. Die Zahl dafür liegt bereits vor (`useNotificationLive` liefert `unreadCount`). |
+
+**Umsetzung von 1.1–1.8** liegt auf `ui/mockup-abgleich`. Die Kennzahlen der
+Statusleiste entstehen aus vorhandenen Daten (Serverliste, Node-Liste,
+Live-Messwerte) – kein neuer Endpunkt, keine Contracts-Änderung. Gerechnet wird
+in [`shellSummary.ts`](../../apps/frontend/src/app/(dashboard)/shellSummary.ts),
+dargestellt in [`GlobalStatus.tsx`](../../apps/frontend/src/app/(dashboard)/GlobalStatus.tsx).
+
+Zwei bewusste Abweichungen dabei:
+
+- Das Mockup zeigt beim Überfahren einer Kennzahl ein Fenster mit **Sparkline**.
+  Die Kurve besteht dort aus erfundenen Zahlen („Seit dem Öffnen der Seite –
+  diese Werte werden nicht gespeichert"). Statt einen Verlaufsspeicher zu
+  erfinden, steht die Erläuterung als Tooltip an der Kennzahl.
+- „in Bewegung" und „mit Fehler" zählen die vollständigen Zustandsgruppen des
+  Lifecycles (also auch `creating` bzw. `crashed`), nicht nur die zwei bzw. den
+  einen Zustand des Mockups.
 
 ---
 
@@ -59,13 +80,13 @@ Quelle App: [DashboardShell.tsx](../../apps/frontend/src/app/(dashboard)/Dashboa
 
 | # | Klasse | Befund |
 | --- | --- | --- |
-| 3.1 | **A** | **Gruppe „ANGEPINNT · n" fehlt.** Die Stern-Symbole sind auf den Karten vorhanden, es gibt aber keine Anpinnen-Funktion und keine eigene Gruppe. In der Datenbank existiert dafür bisher keine Spalte. |
-| 3.2 | **A** | **Gruppe „ANDERE SERVER · n" fehlt** – Server, auf die man Zugriff hat, ohne Besitzer zu sein. |
+| 3.1 | **B** | **Die Gruppe heißt „Angeheftet“ statt „Angepinnt“** und trägt kein 📌 vor der Überschrift. **Korrigiert:** die Gruppe *existiert* samt Anpinnen ([usePinnedServers.ts](../../apps/frontend/src/components/servers/usePinnedServers.ts), lokal im Browser gespeichert). Beim ersten Durchgang fälschlich als fehlend notiert – in den Testdaten war nichts angeheftet, deshalb blieb die Gruppe leer. |
+| 3.2 | — | **Entfällt.** Die Gruppe „Andere Server“ existiert (`groupServers` in [serverList.ts](../../apps/frontend/src/components/servers/serverList.ts)) und war nur leer, weil das Testkonto Besitzer aller fünf Server war. |
 | 3.3 | **A** | **Fußzeile fremder Karten fehlt**: Mockup zeigt dort `Admin-Zugriff` und einen `Nachricht`-Link. |
 | 3.4 | **A** | Statuszusatz **„Update verfügbar"** (orange, unter der Status-Pille) fehlt. App kennt nur „Neustart nötig". |
 | 3.5 | **B** | **Ring-Beschriftung `PLATTE` statt `DISK`** – [ServerCard.tsx:204](../../apps/frontend/src/components/shared/server/ServerCard.tsx#L204) und [OverviewTab.tsx:95](../../apps/frontend/src/components/servers/detail/OverviewTab.tsx#L95). |
 | 3.6 | **B** | **Fehlermeldung auf der Karte**: Mockup setzt den Text als schlichte Zeile unter den Titel, App rahmt ihn als rot hinterlegten Kasten. |
-| 3.7 | **B** | **Sortierung** der Karten wirkt willkürlich (Skin-Inspect, Nordwind, Survival Runde, …). Mockup gruppiert und sortiert stabil. |
+| 3.7 | — | **Entfällt.** Die Sortierung ist nicht willkürlich, sondern festgelegt: erst Störungen, dann Bewegung, dann Ruhendes, innerhalb einer Gruppe alphabetisch (`compareServers` in [serverList.ts](../../apps/frontend/src/components/servers/serverList.ts)). Sie weicht vom Mockup ab, ist aber begründet und stabil. |
 | 3.8 | **B** | **Kartentitel-Untertitel**: Mockup `Paper · 1.21.4` bzw. `Vanilla · Staging · Femi` (Variante · Version · ggf. Besitzer), App nur den Namen des Spieltyps. |
 
 ---
@@ -253,29 +274,32 @@ während „Skins" Titel und Untertitel darüber setzt. Uneinheitlich (Klasse **
 
 ## 14. Zusammenfassung
 
-| Bereich | A (fehlt) | B (weicht ab) | C (Entscheidung) | offen |
-| --- | --- | --- | --- | --- |
-| Grundgerüst | 4 | 3 | 2 | — |
-| Anmelden/Registrieren | 2 | 2 | 2 | — |
-| Übersicht | 4 | 4 | — | — |
-| Server-Detail | 2 | 6 | — | — |
-| Server anlegen | — | 5 | 2 | — |
-| Nachrichten | — | 1 | 1 | 1 |
-| Benachrichtigungen | 1 | 1 | 1 | — |
-| Nodes | 1 | 3 | 1 | — |
-| Meine Backups | — | 1 | 1 | 1 |
-| Arcade | 2 | 2 | 1 | — |
-| Profil | 1 | 3 | — | — |
-| Administration | 7 | 13 | 3 | — |
-| Phase-gesperrt | — | 1 | — | — |
-| **Summe** | **24** | **45** | **14** | **2** |
+| Bereich | A (fehlt) | B (weicht ab) | C (Entscheidung) | offen | entfallen |
+| --- | --- | --- | --- | --- | --- |
+| Grundgerüst | 5 | 3 | 2 | — | — |
+| Anmelden/Registrieren | 2 | 2 | 2 | — | — |
+| Übersicht | 2 | 4 | — | — | 2 |
+| Server-Detail | 2 | 6 | — | — | — |
+| Server anlegen | — | 5 | 2 | — | — |
+| Nachrichten | — | 1 | 1 | 1 | — |
+| Benachrichtigungen | 1 | 1 | 1 | — | — |
+| Nodes | 1 | 3 | 1 | — | — |
+| Meine Backups | — | 1 | 1 | 1 | — |
+| Arcade | 2 | 2 | 1 | — | — |
+| Profil | 1 | 3 | — | — | — |
+| Administration | 7 | 13 | 3 | — | — |
+| Phase-gesperrt | — | 1 | — | — | — |
+| **Summe** | **23** | **45** | **14** | **2** | **2** |
+
+Gegenüber dem ersten Durchgang: 3.2 und 3.7 entfallen, 3.1 rutscht von A nach B (die
+Gruppen der Übersicht gibt es bereits), und 1.10 kommt als übersehener Befund hinzu.
 
 Die zwei offenen Punkte (6.3, 9.3) betreffen Nachrichten und Meine Backups: dort fehlten
 Chat- und Backup-Testdaten, die Ansichten sind noch nicht abschließend verglichen.
 
 ### Vorschlag für die Reihenfolge
 
-1. **Grundgerüst** (1.1–1.6) – wirkt auf jeder Seite und ist der auffälligste Unterschied.
+1. ~~**Grundgerüst** (1.1–1.8)~~ – erledigt. Offen bleibt dort nur die Glocke (1.10).
 2. **Übersicht + Server-Karte** (3.x) – die meistgesehene Ansicht.
 3. **Server-Detail** (4.x) – vor allem die zweispaltige Übersicht mit Konsole.
 4. **Server anlegen** (5.x) – überschaubar, reine Gestaltung.
