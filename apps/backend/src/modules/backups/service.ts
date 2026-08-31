@@ -21,10 +21,12 @@
 
 import { createHash } from 'node:crypto';
 import {
+  type ArchiveExtraFile,
   type BackupDto,
   type BackupOverviewDto,
   type BackupStorageBucket,
   type ErrorCode,
+  SERVER_EXPORT_MANIFEST_FILE,
   isErrorCode,
 } from '@palantir/contracts';
 import {
@@ -44,6 +46,7 @@ import {
   type Clock,
   type JobRunner,
   type ServerDirectory,
+  type ServerExportManifestSource,
   type UserDirectory,
   fireAndForgetJobRunner,
   noopEventPublisher,
@@ -101,6 +104,11 @@ export interface BackupServiceOptions {
   readonly users: UserDirectory;
   readonly agent: BackupAgentGateway;
   readonly events?: BackupEventPublisher;
+  /**
+   * Quelle des Export-Manifests (P8). Ohne Angabe enthält ein Export nur die
+   * Weltdaten – das Verhalten vor P8.
+   */
+  readonly manifests?: ServerExportManifestSource;
   readonly now?: Clock;
   readonly runJob?: JobRunner;
 }
@@ -161,6 +169,7 @@ function groupKey(record: BackupRecord): string {
 
 export function createBackupService(options: BackupServiceOptions): BackupService {
   const { repository, servers, users, agent } = options;
+  const manifests = options.manifests;
   const events = options.events ?? noopEventPublisher;
   const now = options.now ?? systemClock;
   const runJob = options.runJob ?? fireAndForgetJobRunner;
@@ -315,13 +324,19 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
    * Läuft im Hintergrund; Fehler landen deshalb ausschließlich im Datensatz und
    * im Ereignis `backup.failed`, nie in einer HTTP-Antwort.
    */
-  async function runBackupJob(backupId: string, server: BackupServerRecord, stopServer: boolean) {
+  async function runBackupJob(
+    backupId: string,
+    server: BackupServerRecord,
+    stopServer: boolean,
+    extraFiles: readonly ArchiveExtraFile[] = [],
+  ) {
     await repository.update(backupId, { status: 'running', startedAt: now() });
 
     const response = await agent.createBackup({
       backupId,
       serverId: server.id,
       sourcePath: server.dataHostPath,
+      ...(extraFiles.length === 0 ? {} : { extraFiles }),
       ...(server.dockerContainerId === null ? {} : { containerId: server.dockerContainerId }),
       stopContainer: stopServer,
     });
@@ -402,6 +417,8 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     createdByUserId: string | null;
     scheduleId: string | null;
     stopServer: boolean;
+    /** Nur beim Export gesetzt: das Manifest, das mit ins Archiv wandert (P8). */
+    extraFiles?: readonly ArchiveExtraFile[];
   }): Promise<BackupRecord> {
     const active = await repository.findActiveByServer(params.server.id);
 
@@ -420,7 +437,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
 
     runJob(async () => {
       try {
-        await runBackupJob(backup.id, params.server, params.stopServer);
+        await runBackupJob(backup.id, params.server, params.stopServer, params.extraFiles ?? []);
       } catch (error) {
         await failBackup(
           backup.id,
@@ -564,6 +581,25 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       // Ein Export ist technisch ein manuelles Backup: Er unterliegt derselben
       // Ausnahme von der automatischen Löschung (Lastenheft §3.3) und wird über
       // dieselbe Download-Route abgeholt.
+      //
+      // Der Unterschied zum gewöhnlichen Backup ist das **Manifest** (P8):
+      // Lastenheft §3.3 verlangt den Export *aller* Serverdaten, und die
+      // Konfiguration steht nur in der Datenbank des Panels. Sie geht deshalb
+      // als `palantir-server.json` mit ins Archiv. Fehlt die Quelle (Tests,
+      // Zusammenbau ohne B3), bleibt es beim reinen Datenexport.
+      const manifest = await manifests?.buildManifest(serverId);
+      const extraFiles: ArchiveExtraFile[] =
+        manifest === undefined || manifest === null
+          ? []
+          : [
+              {
+                path: SERVER_EXPORT_MANIFEST_FILE,
+                contentBase64: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8').toString(
+                  'base64',
+                ),
+              },
+            ];
+
       const backup = await startBackup({
         server,
         type: 'manual',
@@ -571,6 +607,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
         createdByUserId: actorUserId,
         scheduleId: null,
         stopServer: input.stopServer,
+        extraFiles,
       });
 
       return toDto(actor, actorUserId, backup, { serverName: server.name, isOwn: true });

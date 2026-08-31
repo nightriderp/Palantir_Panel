@@ -169,6 +169,7 @@ export {
   fileDeleteCommandPayloadSchema,
   fileListCommandPayloadSchema,
   fileReadCommandPayloadSchema,
+  archiveExtraFileSchema,
   fileExtractCommandPayloadSchema,
   fileUploadCommandPayloadSchema,
   fileWriteCommandPayloadSchema,

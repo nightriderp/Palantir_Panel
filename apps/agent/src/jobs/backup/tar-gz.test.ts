@@ -173,3 +173,53 @@ describe('unpackArchive() – Schutz vor Pfaden nach außen', () => {
     await expect(unpackArchive(boese, ziel)).rejects.toMatchObject({ code: 'INVALID_PATH' });
   });
 });
+
+describe('Zusatzdateien im Archiv (Arbeitspaket P8)', () => {
+  it('packt sie neben den Verzeichnisbaum', async () => {
+    await schreibe('welt/level.dat', 'Spielstand');
+
+    const gepackt = await packDirectory(quelle, archiv, {
+      extraFiles: [
+        { relativ: 'palantir-server.json', inhalt: Buffer.from('{"formatVersion":1}', 'utf8') },
+      ],
+    });
+
+    // Die Zusatzdatei zaehlt mit: Sie liegt im Archiv wie jede andere Datei.
+    expect(gepackt.fileCount).toBe(2);
+
+    await unpackArchive(archiv, ziel);
+
+    await expect(lies('palantir-server.json')).resolves.toBe('{"formatVersion":1}');
+    await expect(lies('welt/level.dat')).resolves.toBe('Spielstand');
+  });
+
+  it('laesst das Quellverzeichnis unberuehrt', async () => {
+    await schreibe('welt/level.dat', 'Spielstand');
+
+    await packDirectory(quelle, archiv, {
+      extraFiles: [{ relativ: 'palantir-server.json', inhalt: Buffer.from('{}', 'utf8') }],
+    });
+
+    await expect(fs.readdir(quelle)).resolves.toEqual(['welt']);
+  });
+
+  it('kommt mit einem langen Pfad zurecht', async () => {
+    const name = `${'x'.repeat(60)}/${'y'.repeat(60)}.json`;
+
+    await packDirectory(quelle, archiv, {
+      extraFiles: [{ relativ: name, inhalt: Buffer.from('lang', 'utf8') }],
+    });
+    await unpackArchive(archiv, ziel);
+
+    await expect(lies(name)).resolves.toBe('lang');
+  });
+
+  it('packt ohne Angabe wie bisher', async () => {
+    await schreibe('a.txt', 'eins');
+
+    const mitLeerListe = await packDirectory(quelle, archiv, { extraFiles: [] });
+    const ohne = await packDirectory(quelle, path.join(wurzel, 'archiv', 'ohne.tar.gz'));
+
+    expect(mitLeerListe.checksumSha256).toBe(ohne.checksumSha256);
+  });
+});

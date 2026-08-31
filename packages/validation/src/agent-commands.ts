@@ -185,10 +185,32 @@ export const sha256Schema = z
   .string()
   .regex(/^[0-9a-f]{64}$/, { message: 'checksumSha256 ist keine SHA-256-Prüfsumme.' });
 
+/**
+ * Eine Datei, die zusätzlich zum Datenordner ins Archiv wandert (P8).
+ *
+ * Der Pfad wird hier schon eingeschränkt: kein führender Schrägstrich, kein
+ * `..`. Der Agent legt die Datei ohne weitere Prüfung ins Archiv, und ein
+ * Archiv mit `../` im Eintrag wäre beim Entpacken gefährlich.
+ */
+export const archiveExtraFileSchema = z.object({
+  path: z
+    .string()
+    .min(1)
+    .max(255)
+    .refine((wert) => !wert.startsWith('/') && !wert.split('/').includes('..'), {
+      message: 'Der Pfad im Archiv darf nicht absolut sein und kein „..“ enthalten.',
+    }),
+  contentBase64: z
+    .string()
+    .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
+});
+
 export const createBackupCommandPayloadSchema = z.object({
   backupId: idSchema,
   serverId: idSchema,
   sourcePath: hostPathSchema,
+  /** Zusätzliche Dateien im Archiv (P8); ohne Angabe nur der Datenordner. */
+  extraFiles: z.array(archiveExtraFileSchema).max(16).optional(),
   containerId: containerIdSchema.optional(),
   stopContainer: z.boolean().optional(),
   stopTimeoutSeconds: z.number().int().nonnegative().optional(),

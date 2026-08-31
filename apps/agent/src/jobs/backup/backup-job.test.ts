@@ -10,6 +10,7 @@ import {
   type ContainerSpec,
 } from '../../runtime/index.js';
 import { BackupJob } from './backup-job.js';
+import { unpackArchive } from './tar-gz.js';
 
 const SERVER_ID = '3f1d6f4e-1b1e-4b6a-9a3f-2c1d4e5f6a7b';
 const BACKUP_ID = '11111111-2222-4333-8444-555555555555';
@@ -158,6 +159,38 @@ describe('CREATE_BACKUP', () => {
     await expect(
       job.createBackup(createNutzlast({ sourcePath: path.join(wurzel, 'fremd') })),
     ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+  });
+});
+
+describe('CREATE_BACKUP mit Zusatzdateien (Arbeitspaket P8)', () => {
+  it('legt eine mitgegebene Datei ins Archiv, ohne den Datenordner anzufassen', async () => {
+    const ergebnis = await job.createBackup(
+      createNutzlast({
+        extraFiles: [
+          {
+            path: 'palantir-server.json',
+            contentBase64: Buffer.from('{"formatVersion":1}', 'utf8').toString('base64'),
+          },
+        ],
+      }),
+    );
+
+    const ziel = path.join(wurzel, 'wieder');
+    await unpackArchive(ergebnis.storagePath, ziel);
+
+    await expect(fs.readFile(path.join(ziel, 'palantir-server.json'), 'utf8')).resolves.toBe(
+      '{"formatVersion":1}',
+    );
+    // Der Datenordner selbst hat die Datei nie gesehen.
+    await expect(fs.readdir(datenordner)).resolves.not.toContain('palantir-server.json');
+  });
+
+  it('packt ohne Zusatzdateien unveraendert', async () => {
+    const ergebnis = await job.createBackup(createNutzlast({ extraFiles: [] }));
+    const ziel = path.join(wurzel, 'ohne');
+    await unpackArchive(ergebnis.storagePath, ziel);
+
+    await expect(fs.readdir(ziel)).resolves.not.toContain('palantir-server.json');
   });
 });
 

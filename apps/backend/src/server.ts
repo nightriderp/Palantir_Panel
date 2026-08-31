@@ -39,6 +39,7 @@ import {
   createAgentBackupGateway,
   createAgentStorageScanGateway,
   createDrizzleBackupServerDirectory,
+  createDrizzleServerExportManifestSource,
   createDrizzleServerRepository,
   createDrizzleServerUsageRepository,
   createServerKnownServerSource,
@@ -366,6 +367,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       servers: createDrizzleBackupServerDirectory(db),
       users: createDrizzleUserDirectory(db),
       agent: createAgentBackupGateway({ agents, repository: serverRepository }),
+      // Der vollständige Export legt die Konfiguration des Servers als
+      // `palantir-server.json` mit ins Archiv (P8, Lastenheft §3.3). B5 kennt
+      // die Entität `GameServer` nicht; die Quelle stellt B3.
+      manifests: createDrizzleServerExportManifestSource(db),
       events: notifications.eventSink,
     });
 

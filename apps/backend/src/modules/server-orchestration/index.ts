@@ -383,6 +383,7 @@ export {
   type BackupHostResolver,
   createAgentBackupGateway,
   createDrizzleBackupServerDirectory,
+  createDrizzleServerExportManifestSource,
 } from './backup-ports.js';
 
 export {

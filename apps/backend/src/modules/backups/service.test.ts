@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { type Permission, fail, ok } from '@palantir/contracts';
+import {
+  type Permission,
+  type ServerExportManifest,
+  SERVER_EXPORT_MANIFEST_FILE,
+  fail,
+  ok,
+} from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { type PermissionActor, buildPermissionActor } from '../rbac/index.js';
 import { type BackupService, createBackupService } from './service.js';
@@ -46,6 +52,8 @@ function aufbau(
     server?: BackupServerRecord;
     /** Bestand; als Funktion, wenn er die erst hier erzeugte Besitzer-Id braucht. */
     bestand?: readonly BackupRecord[] | ((besitzerId: string) => readonly BackupRecord[]);
+    /** Mit Manifest-Quelle aufbauen (P8); ohne sie exportiert B5 nur die Weltdaten. */
+    manifest?: boolean;
   } = {},
 ): Aufbau & { fertig(): Promise<void> } {
   const besitzerId = testId('2');
@@ -63,6 +71,33 @@ function aufbau(
     users: fakeUserDirectory({ [besitzerId]: 'Alex' }),
     agent,
     events,
+    ...(options.manifest === true
+      ? {
+          manifests: {
+            buildManifest: (serverId: string) =>
+              Promise.resolve(
+                serverId === server.id
+                  ? {
+                      formatVersion: 1 as const,
+                      exportedAt: JETZT.toISOString(),
+                      server: {
+                        id: server.id,
+                        name: server.name,
+                        gameType: 'test-echo',
+                        subdomain: 'testserver',
+                        startupParameters: '',
+                        config: {},
+                        resourceLimits: { ramMb: 2048, cpuCores: 2, diskMb: 10_240 },
+                        autoShutdownEnabled: false,
+                        autoShutdownTimeoutMinutes: 30,
+                        createdAt: JETZT.toISOString(),
+                      },
+                    }
+                  : null,
+              ),
+          },
+        }
+      : {}),
     now: () => JETZT,
     runJob: (job) => {
       offeneJobs.push(job);
@@ -428,6 +463,50 @@ describe('Löschen, Wiederherstellen und Export', () => {
     expect(dto.retentionProtected).toBe(true);
 
     await t.fertig();
+  });
+
+  it('legt die Konfiguration als Manifest mit ins Archiv (P8)', async () => {
+    const t = aufbau({ manifest: true });
+
+    await t.service.createExport(actorMit('backup.manage.own'), t.besitzerId, t.server.id, {
+      stopServer: false,
+    });
+    await t.fertig();
+
+    const [zusatz] = t.agent.createdExtraFiles;
+
+    expect(zusatz).toHaveLength(1);
+    expect(zusatz?.[0]?.path).toBe(SERVER_EXPORT_MANIFEST_FILE);
+
+    const manifest = JSON.parse(
+      Buffer.from(zusatz?.[0]?.contentBase64 ?? '', 'base64').toString('utf8'),
+    ) as ServerExportManifest;
+
+    expect(manifest.formatVersion).toBe(1);
+    expect(manifest.server.id).toBe(t.server.id);
+    expect(manifest.server.name).toBe(t.server.name);
+  });
+
+  it('exportiert ohne Manifest-Quelle weiterhin nur die Weltdaten', async () => {
+    const t = aufbau();
+
+    await t.service.createExport(actorMit('backup.manage.own'), t.besitzerId, t.server.id, {
+      stopServer: false,
+    });
+    await t.fertig();
+
+    expect(t.agent.createdExtraFiles).toEqual([[]]);
+  });
+
+  it('schickt bei einem gewöhnlichen Backup kein Manifest mit', async () => {
+    const t = aufbau({ manifest: true });
+
+    await t.service.createManual(actorMit('backup.manage.own'), t.besitzerId, t.server.id, {
+      stopServer: false,
+    });
+    await t.fertig();
+
+    expect(t.agent.createdExtraFiles).toEqual([[]]);
   });
 });
 
