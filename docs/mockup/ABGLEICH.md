@@ -253,22 +253,25 @@ während „Skins" Titel und Untertitel darüber setzt. Uneinheitlich (Klasse **
 
 ## 14. Zusammenfassung
 
-| Bereich | A (fehlt) | B (weicht ab) | C (Entscheidung) |
-| --- | --- | --- | --- |
-| Grundgerüst | 3 | 3 | 2 |
-| Anmelden/Registrieren | 2 | 2 | 2 |
-| Übersicht | 4 | 4 | — |
-| Server-Detail | 2 | 6 | — |
-| Server anlegen | — | 5 | 2 |
-| Nachrichten | — | 1 | 1 |
-| Benachrichtigungen | 1 | 1 | 1 |
-| Nodes | 1 | 3 | 1 |
-| Meine Backups | — | 1 | 1 |
-| Arcade | 2 | 2 | 1 |
-| Profil | 1 | 3 | — |
-| Administration | 6 | 12 | 3 |
-| Phase-gesperrt | — | 1 | — |
-| **Summe** | **22** | **44** | **14** |
+| Bereich | A (fehlt) | B (weicht ab) | C (Entscheidung) | offen |
+| --- | --- | --- | --- | --- |
+| Grundgerüst | 4 | 3 | 2 | — |
+| Anmelden/Registrieren | 2 | 2 | 2 | — |
+| Übersicht | 4 | 4 | — | — |
+| Server-Detail | 2 | 6 | — | — |
+| Server anlegen | — | 5 | 2 | — |
+| Nachrichten | — | 1 | 1 | 1 |
+| Benachrichtigungen | 1 | 1 | 1 | — |
+| Nodes | 1 | 3 | 1 | — |
+| Meine Backups | — | 1 | 1 | 1 |
+| Arcade | 2 | 2 | 1 | — |
+| Profil | 1 | 3 | — | — |
+| Administration | 7 | 13 | 3 | — |
+| Phase-gesperrt | — | 1 | — | — |
+| **Summe** | **24** | **45** | **14** | **2** |
+
+Die zwei offenen Punkte (6.3, 9.3) betreffen Nachrichten und Meine Backups: dort fehlten
+Chat- und Backup-Testdaten, die Ansichten sind noch nicht abschließend verglichen.
 
 ### Vorschlag für die Reihenfolge
 
