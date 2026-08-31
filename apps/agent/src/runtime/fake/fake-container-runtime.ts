@@ -42,7 +42,7 @@ import {
   type ContainerState,
   type ContainerStats,
   type ContainerStatus,
-  type DeleteFileOptions,
+  type DataVolumePaths,
   type ExecResult,
   type ExtractArchiveResult,
   type FileEntry,
@@ -113,7 +113,7 @@ export type FakeFailableMethod =
   | 'listFiles'
   | 'readFile'
   | 'writeFile'
-  | 'deleteFile'
+  | 'dataVolumePaths'
   | 'uploadFile'
   | 'extractArchive'
   | 'watch'
@@ -551,45 +551,20 @@ export class FakeContainerRuntime implements ContainerRuntime {
     return { fileCount, extractedBytes: inhalt.totalBytes, skipped: [...inhalt.skipped] };
   }
 
-  /** `FILE_DELETE` - idempotent; ein nicht-leeres Verzeichnis nur mit `recursive`. */
-  async deleteFile(
-    containerId: string,
-    ziel: string,
-    options: DeleteFileOptions = {},
-  ): Promise<void> {
-    this.#pruefeFehlerfall('deleteFile');
+  /**
+   * Wo der Datenordner liegt (Gefundener Punkt 105).
+   *
+   * Der Fake hat kein echtes Dateisystem; als Host-Pfad dient derselbe Pfad wie
+   * im Container. Wer host-seitiges Loeschen prueft, tut das gegen ein echtes
+   * Verzeichnis (`jobs/files/delete.test.ts`), nicht gegen diesen Fake.
+   */
+  async dataVolumePaths(containerId: string): Promise<DataVolumePaths> {
+    this.#pruefeFehlerfall('dataVolumePaths');
     const container = this.#hole(containerId);
-    const wurzel = container.spec.dataVolume.containerPath;
-    const pfad = resolveWithinRoot(wurzel, ziel);
+    const containerPath = path.posix.normalize(container.spec.dataVolume.containerPath);
 
-    if (pfad === path.posix.normalize(wurzel)) {
-      throw new ContainerRuntimeError('INVALID_PATH', {
-        message: 'Der Datenordner selbst kann nicht geloescht werden.',
-        details: { path: pfad },
-      });
-    }
-
-    if (container.dateien.delete(pfad)) return;
-
-    const praefix = `${pfad}/`;
-    const enthalten = [...container.dateien.keys()].filter((kandidat) =>
-      kandidat.startsWith(praefix),
-    );
-
-    // Ein fehlender Pfad ist kein Fehler (idempotent wie in der Docker-Variante).
-    if (enthalten.length === 0) return;
-
-    if (options.recursive !== true) {
-      throw new ContainerRuntimeError('RUNTIME_ERROR', {
-        message: 'Das Verzeichnis ist nicht leer.',
-        details: { path: pfad, entries: enthalten.length },
-      });
-    }
-
-    for (const kandidat of enthalten) container.dateien.delete(kandidat);
+    return Promise.resolve({ containerPath, hostPath: container.spec.dataVolume.hostPath });
   }
-
-  // ---------------------------------------------------------------- Test-Steuerung
 
   /** Erzeugungs-Payload eines Containers - damit laesst sich die Haertung pruefen. */
   getCreateBody(containerId: string): DockerCreateContainerBody {

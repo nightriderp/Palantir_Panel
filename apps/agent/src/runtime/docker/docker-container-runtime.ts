@@ -33,7 +33,7 @@ import {
   type ContainerState,
   type ContainerStats,
   type ContainerStatus,
-  type DeleteFileOptions,
+  type DataVolumePaths,
   type ExecResult,
   type ExtractArchiveResult,
   type FileEntry,
@@ -724,52 +724,31 @@ export class DockerContainerRuntime implements ContainerRuntime {
   }
 
   /**
-   * `FILE_DELETE` - Datei oder Verzeichnis im Datenordner entfernen.
+   * Wo der Datenordner liegt - im Container und auf dem Host
+   * (Gefundener Punkt 105).
    *
-   * **Setzt einen laufenden Container voraus.** Die Engine-API kennt zum Lesen
-   * und Schreiben den Archiv-Endpunkt, aber kein Loeschen; der einzige Weg
-   * ueber die Container-Schnittstelle ist `exec`. Auf einem gestoppten
-   * Container meldet die Engine deshalb `CONTAINER_NOT_RUNNING`. Das ist eine
-   * bewusste Einschraenkung dieser Umsetzung und in WORK_STATUS.md unter
-   * „Gefundene Punkte" vermerkt.
-   *
-   * Es steht keine Shell dazwischen (Argumentliste wie bei `execConsole`), und
-   * der Pfad ist vorher durch `resolveWithinRoot` gegangen - aus einem
-   * Dateinamen kann damit kein zweiter Befehl werden.
+   * Der Container-Pfad steht als Label am Container, der Host-Pfad in seinen
+   * Mounts. Beides wird nur gelesen; das Loeschen selbst passiert host-seitig
+   * im Job-Modul, damit es auch bei gestopptem Container geht.
    */
-  async deleteFile(
-    containerId: string,
-    ziel: string,
-    options: DeleteFileOptions = {},
-  ): Promise<void> {
-    const wurzel = await this.#datenVolumeWurzel(containerId);
-    const pfad = resolveWithinRoot(wurzel, ziel);
+  async dataVolumePaths(containerId: string): Promise<DataVolumePaths> {
+    const containerPath = await this.#datenVolumeWurzel(containerId);
+    const antwort = await this.#inspectRoh(containerId);
+    const mount = (antwort.Mounts ?? []).find(
+      (eintrag) => eintrag.Destination !== undefined && eintrag.Destination === containerPath,
+    );
 
-    if (pfad === wurzel) {
+    if (mount?.Source === undefined || !path.posix.isAbsolute(mount.Source)) {
       throw new ContainerRuntimeError('INVALID_PATH', {
-        message: 'Der Datenordner selbst kann nicht geloescht werden.',
-        details: { path: pfad },
+        message: 'Der Host-Pfad des Datenordners ist nicht bestimmbar.',
+        details: { containerId, containerPath },
       });
     }
 
-    const stat = await this.#pfadStat(containerId, pfad);
-    // Idempotent: ein bereits fehlender Pfad ist kein Fehler.
-    if (stat === null) return;
+    // Docker meldet Mount-Quellen mal mit, mal ohne nachlaufenden Schraegstrich.
+    const hostPath = path.posix.normalize(mount.Source).replace(/(?<=.)\/+$/, '');
 
-    const argv =
-      stat.istVerzeichnis && options.recursive !== true
-        ? // `rmdir` scheitert von sich aus an einem nicht-leeren Verzeichnis -
-          // genau die Grenze, die `recursive` aufhebt.
-          ['rmdir', pfad]
-        : ['rm', options.recursive === true ? '-rf' : '-f', '--', pfad];
-
-    const ergebnis = await this.execConsole(containerId, argv);
-    if (ergebnis.exitCode !== 0) {
-      throw new ContainerRuntimeError('RUNTIME_ERROR', {
-        message: 'Der Pfad konnte nicht entfernt werden.',
-        details: { path: pfad, exitCode: ergebnis.exitCode, stderr: ergebnis.stderr },
-      });
-    }
+    return { containerPath, hostPath };
   }
 
   // ---------------------------------------------------------------- Intern

@@ -22,6 +22,7 @@ import {
   type CreateBackupCommandPayload,
   type DeleteBackupCommandPayload,
   type DownloadBackupCommandPayload,
+  type FileDeleteCommandPayload,
   type GetStorageBreakdownCommandPayload,
   type RemoveStorageEntryCommandPayload,
   type RestoreBackupCommandPayload,
@@ -291,13 +292,11 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         await this.runtime.writeFile(p.containerId, p.path, Buffer.from(p.contentBase64, 'base64'));
         return null;
       }
-      case 'FILE_DELETE': {
-        const p = payload as { containerId: string; path: string; recursive?: boolean };
-        await this.runtime.deleteFile(p.containerId, p.path, {
-          ...(p.recursive === undefined ? {} : { recursive: p.recursive }),
-        });
-        return null;
-      }
+      case 'FILE_DELETE':
+        // Loeschen laeuft host-seitig im Job-Modul (A3), nicht ueber die
+        // Container-Runtime: Die Engine-API kennt kein Loeschen, und `exec`
+        // braeuchte einen laufenden Container (WORK_STATUS.md, Punkt 105).
+        return this.requireJobs().files.delete(payload as FileDeleteCommandPayload);
       case 'FILE_UPLOAD': {
         const p = payload as {
           containerId: string;
