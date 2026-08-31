@@ -53,6 +53,17 @@ export interface ServerAddress {
  * laufen über den Live-Kanal und fehlen, solange der Server nicht läuft.
  * Einzelne Werte sind `null`, wenn das jeweilige Spiel sie nicht liefert.
  */
+/**
+ * Ein verbundener Spieler (WORK_STATUS.md, Gefundener Punkt 51).
+ *
+ * Bewusst nur der Name: Mehr gibt nicht jedes Spiel heraus, und mehr braucht
+ * die Liste im Reiter „Übersicht" nicht. Wer später Punktestand oder Team
+ * anzeigen will, ergänzt hier additiv.
+ */
+export interface ServerLivePlayer {
+  name: string;
+}
+
 export interface ServerLiveStats {
   cpuPercent: number | null;
   ramUsedMb: number | null;
@@ -60,6 +71,20 @@ export interface ServerLiveStats {
   pingMs: number | null;
   playersOnline: number | null;
   playersMax: number | null;
+  /**
+   * Namen der verbundenen Spieler (Gefundener Punkt 51).
+   *
+   * Optional und additiv: Nur die Abfrage über das Spielprotokoll (`gamedig`)
+   * liefert sie – der generische Port-Connect-Test kennt keine Spieler, und
+   * manche Server geben nur einen Auszug oder gar nichts heraus. Fehlt das
+   * Feld, heißt das „keine Angabe", **nicht** „niemand da": Die belastbare
+   * Zahl steht in {@link ServerLiveStats.playersOnline}.
+   *
+   * Bewusst **nicht** im Verlauf ({@link ServerStatsHistoryDto}): Eine
+   * Namensliste je Stichprobe würde die Tabelle vollschreiben, ohne dass sie
+   * jemand über die Zeit auswertet.
+   */
+  players?: readonly ServerLivePlayer[];
   /**
    * Übertragene Bytes seit dem letzten Start des Servers – die Container-Runtime
    * zählt ab dem Start neu (`AgentContainerStats`). `null`, wenn die Runtime

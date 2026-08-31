@@ -361,6 +361,12 @@ export const agentServerQueryPayloadSchema = z.object({
   reachable: z.boolean(),
   playersOnline: z.number().int().nonnegative().nullable(),
   playersMax: z.number().int().nonnegative().nullable(),
+  /**
+   * Namen der verbundenen Spieler, soweit die Abfrage sie herausgibt
+   * (Gefundener Punkt 51). Optional und additiv: Ein Agent, der das Feld nicht
+   * schickt, bleibt gueltig.
+   */
+  players: z.array(z.object({ name: z.string().min(1) })).optional(),
   pingMs: z.number().int().nonnegative().nullable(),
   reason: z.string().min(1).nullable(),
   at: isoTimestampSchema,
