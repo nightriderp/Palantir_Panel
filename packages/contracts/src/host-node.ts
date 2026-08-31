@@ -85,6 +85,24 @@ export interface HostNodeDto {
   serverCount: number;
   /** Letzter Kontakt des Agents als ISO-8601; `null`, wenn nie verbunden. */
   lastSeenAt: string | null;
+  /**
+   * Hat diese Node ein **eigenes** Agent-Token? (WORK_STATUS.md, Gefundene
+   * Punkte 57 und 110.)
+   *
+   * `false` heißt: Ihr Agent meldet sich über das gemeinsame `AGENT_TOKEN` aus
+   * der zentralen `.env`. Das ist für eine Installation mit genau einem
+   * Homeserver in Ordnung, bei mehreren Nodes aber der Zustand, den man sehen
+   * will – deshalb steht die Angabe am DTO und wird nicht aus dem Fehlen
+   * anderer Felder erraten.
+   *
+   * Das Token selbst steht **nie** im DTO; gespeichert ist ohnehin nur sein
+   * Hash. Hier steht ausschließlich, ob eines vergeben ist.
+   *
+   * Optional, damit dieser Vertrag für sich stehen kann (CLAUDE.md §3): Ein
+   * Konsument, der das Feld nicht kennt, bleibt gültig, und ein fehlender Wert
+   * ist wie `false` zu lesen.
+   */
+  hasAgentToken?: boolean;
   /** ISO-8601-Zeitstempel. */
   createdAt: string;
   permissions: HostNodePermissions;
