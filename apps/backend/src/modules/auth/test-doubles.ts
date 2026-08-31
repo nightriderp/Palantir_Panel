@@ -106,6 +106,20 @@ export function createFakeAuthRepository(): FakeAuthRepository {
       return Promise.resolve(updated);
     },
 
+    setDisplayName: (id, displayName) => {
+      const index = users.findIndex((user) => user.id === id);
+      const current = users[index];
+
+      if (!current) {
+        return Promise.reject(new Error('Konto konnte nicht aktualisiert werden.'));
+      }
+
+      const updated: UserRecord = { ...current, displayName };
+      users[index] = updated;
+
+      return Promise.resolve(updated);
+    },
+
     deleteUser: (id) => {
       // Bildet ON DELETE CASCADE nach (Pflichtenheft §6).
       for (const list of [users, methods, sessions] as { userId?: string; id: string }[][]) {

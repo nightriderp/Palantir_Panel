@@ -32,6 +32,7 @@ import {
   loginInputSchema,
   registerInputSchema,
   twoFactorInputSchema,
+  updateProfileInputSchema,
 } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
@@ -732,6 +733,18 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       const userId = requireUserId(request);
       const input = parseBody(disableTwoFactorInputSchema, request.body, 'AUTH_TWO_FACTOR_INVALID');
       const account: AccountDto = await service.disableTwoFactor(userId, input);
+
+      await reply.send(ok({ account }));
+    });
+  });
+
+  // -- Eigenes Profil -------------------------------------------------------
+
+  app.patch('/auth/account', async (request, reply) => {
+    await handle(reply, async () => {
+      const userId = requireUserId(request);
+      const input = parseBody(updateProfileInputSchema, request.body);
+      const account: AccountDto = await service.updateProfile(userId, input);
 
       await reply.send(ok({ account }));
     });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type AccountDto, type AuthMethodType, type LinkedAuthMethod } from '@palantir/contracts';
@@ -16,10 +16,11 @@ import {
   useToast,
 } from '@/components/shared';
 import { OAUTH_PROVIDER_META } from '@/lib/auth/providers';
-import { AUTH_ENDPOINTS, apiUrl, deleteAccount, unlinkMethod } from '@/lib/auth/api';
+import { AUTH_ENDPOINTS, apiUrl, deleteAccount, unlinkMethod, updateProfile } from '@/lib/auth/api';
 import { messageForThrown } from '@/lib/auth/errors';
 import { loadAccount } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
+import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { AUTH_METHOD_LABEL, linkableProviders, methodDetail } from './methods';
 import { PasswordSection, TwoFactorSection } from './SecuritySections';
 
@@ -51,6 +52,19 @@ export function ProfileView() {
   const { data: account, loading, error, setData } = useApiResource(() => loadAccount(), []);
   const toast = useToast();
   const searchParams = useSearchParams();
+  const { setUser } = useSession();
+
+  /*
+   * Jede Aenderung geht in beide Staende: in die eigene Kopie der Seite und in
+   * den Rahmen, damit Nutzermenue und Glocke sofort denselben Namen zeigen.
+   */
+  const uebernehmen = useCallback(
+    (updated: AccountDto) => {
+      setData(updated);
+      setUser(updated);
+    },
+    [setData, setUser],
+  );
 
   /*
    * Aufruf mit Anker (`/profil#passwort`) in den Abschnitt scrollen.
@@ -100,21 +114,7 @@ export function ProfileView() {
         ) : account ? (
           <>
             <Panel>
-              <div className="flex items-start justify-between gap-4">
-                <span
-                  aria-hidden
-                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-brand-soft text-4xl font-bold text-brand"
-                >
-                  {account.displayName.slice(0, 1).toUpperCase()}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-xl font-semibold text-ink">{account.displayName}</h2>
-                  <p className="mt-0.5 text-sm text-ink-soft">
-                    {account.username ? `@${account.username}` : 'Kein Passwort-Login eingerichtet'}
-                  </p>
-                </div>
-                {account.isOwner ? <Badge tone="brand">Owner</Badge> : null}
-              </div>
+              <IdentityHeader account={account} onChanged={uebernehmen} />
 
               <dl className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div>
@@ -140,18 +140,15 @@ export function ProfileView() {
 
             {/* Reihenfolge wie im Entwurf: Konto, Passwort, Zwei-Faktor, Anmeldungen, Löschen. */}
             <section id="passwort" className="scroll-mt-24">
-              <PasswordSection account={account} onChanged={setData} />
+              <PasswordSection account={account} onChanged={uebernehmen} />
             </section>
 
             <section id="zweifaktor" className="scroll-mt-24">
-              <TwoFactorSection account={account} onChanged={setData} />
+              <TwoFactorSection account={account} onChanged={uebernehmen} />
             </section>
 
             <section id="konten" className="scroll-mt-24">
-              <LinkedMethodsPanel
-                methods={account.authMethods}
-                onUnlinked={(updated) => setData(updated)}
-              />
+              <LinkedMethodsPanel methods={account.authMethods} onUnlinked={uebernehmen} />
             </section>
 
             <DeleteAccountPanel account={account} />
@@ -159,6 +156,90 @@ export function ProfileView() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Kopf der Kontokarte: Avatar, Anzeigename und Anmeldekennung.
+ *
+ * Der Anzeigename ist bearbeitbar (Lastenheft §3.1) – so wie im Entwurf ein
+ * Feld mit „Speichern" daneben. Gespeichert wird nur auf Knopfdruck oder mit
+ * der Eingabetaste; ohne Änderung bleibt der Knopf aus, damit niemand aus
+ * Versehen denselben Namen noch einmal schickt.
+ *
+ * Die Anmeldekennung darunter bleibt fest: An ihr hängen Anmeldung und die
+ * Bestätigung der Konto-Löschung.
+ */
+function IdentityHeader({
+  account,
+  onChanged,
+}: {
+  account: AccountDto;
+  onChanged: (account: AccountDto) => void;
+}) {
+  const toast = useToast();
+  const [name, setName] = useState(account.displayName);
+  const [busy, setBusy] = useState(false);
+
+  // Kommt das Konto von außen neu herein (etwa nach einer Verknüpfung), gilt
+  // dessen Name – eine offene Eingabe wäre danach ohnehin veraltet.
+  useEffect(() => {
+    setName(account.displayName);
+  }, [account.displayName]);
+
+  const getrimmt = name.trim();
+  const geaendert = getrimmt !== account.displayName;
+  const zuKurz = getrimmt.length < 2;
+
+  async function speichern(event: FormEvent) {
+    event.preventDefault();
+    if (!geaendert || zuKurz || busy) return;
+
+    setBusy(true);
+    try {
+      onChanged(await updateProfile({ displayName: getrimmt }));
+      toast.success('Anzeigename gespeichert.');
+    } catch (error) {
+      toast.error(messageForThrown(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={speichern} className="flex items-start gap-4">
+      <span
+        aria-hidden
+        className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-brand-soft text-4xl font-bold text-brand"
+      >
+        {account.displayName.slice(0, 1).toUpperCase()}
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          aria-label="Anzeigename"
+          maxLength={32}
+          className="w-full rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-xl font-semibold text-ink outline-none hover:border-line focus:border-line-strong focus:bg-fill"
+        />
+        <p className="mt-0.5 px-1.5 text-sm text-ink-soft">
+          {account.username ? `@${account.username}` : 'Kein Passwort-Login eingerichtet'}
+        </p>
+        {geaendert && zuKurz ? (
+          <p className="mt-1 px-1.5 text-xs text-danger">
+            Der Anzeigename muss mindestens 2 Zeichen lang sein.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        {account.isOwner ? <Badge tone="brand">Owner</Badge> : null}
+        <Button type="submit" variant="secondary" size="sm" disabled={!geaendert || zuKurz || busy}>
+          Speichern
+        </Button>
+      </div>
+    </form>
   );
 }
 

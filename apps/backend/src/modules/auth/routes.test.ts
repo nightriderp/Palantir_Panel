@@ -515,6 +515,51 @@ describe('Erzwungener Passwortwechsel (Lastenheft §3.1)', () => {
   });
 });
 
+describe('Anzeigename ändern (Lastenheft §3.1)', () => {
+  it('nimmt den neuen Namen an und schickt das aktualisierte Konto zurück', async () => {
+    const { jar, account } = await registerAccount('spieler');
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/auth/account',
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '' },
+      payload: { displayName: '  Der Kapitän  ' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{ data: { account: AccountDto } }>().data.account;
+    expect(body.id).toBe(account.id);
+    // Leerraum schneidet das Schema ab, bevor der Wert im Service ankommt.
+    expect(body.displayName).toBe('Der Kapitän');
+  });
+
+  it('weist einen zu kurzen Namen ab', async () => {
+    const { jar } = await registerAccount('spieler');
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/auth/account',
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '' },
+      payload: { displayName: 'x' },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('verlangt eine Anmeldung', async () => {
+    // Mit passendem CSRF-Paar, aber ohne Sitzung: sonst greift die
+    // CSRF-Pruefung zuerst und der Auth-Teil bliebe ungeprueft.
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/auth/account',
+      headers: { cookie: `${CSRF_COOKIE_NAME}=probe`, [CSRF_HEADER_NAME]: 'probe' },
+      payload: { displayName: 'Fremder' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+});
+
 describe('Admin-Eingriffe hinter dem RBAC-Guard aus B2', () => {
   it('verlangt eine Anmeldung', async () => {
     const response = await app.inject({

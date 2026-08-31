@@ -112,6 +112,14 @@ export interface AuthRepository {
   setOwner(id: string): Promise<UserRecord>;
   /** Setzt die Anmeldekennung nach, wenn ein Provider-Konto ein Passwort bekommt. */
   setUsername(id: string, username: string): Promise<UserRecord>;
+  /**
+   * Ändert den frei wählbaren Anzeigenamen (Lastenheft §3.1).
+   *
+   * Bewusst getrennt von {@link setUsername}: Der Anmeldename ist eine Kennung
+   * und bleibt fest, der Anzeigename ist reine Darstellung und darf sich
+   * jederzeit ändern.
+   */
+  setDisplayName(id: string, displayName: string): Promise<UserRecord>;
   deleteUser(id: string): Promise<void>;
 
   listAuthMethods(userId: string): Promise<AuthMethodRecord[]>;
