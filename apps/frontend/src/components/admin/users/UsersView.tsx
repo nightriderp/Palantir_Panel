@@ -20,9 +20,11 @@ import {
   SegmentedControl,
   ServerStatusPill,
   ToggleRow,
+  cn,
   formatDate,
   formatServerAddress,
   serverInitials,
+  useHighlight,
   useToast,
 } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
@@ -76,6 +78,8 @@ export function UsersView() {
   const toast = useToast();
   const canManage = user?.permissions.canManageUsers ?? false;
 
+  // Sprung aus einer Meldung „Neue Registrierung" (Gefundener Punkt 103).
+  const highlight = useHighlight();
   const [status, setStatus] = useState<RegistrationRequestStatus>('approved');
   const [search, setSearch] = useState('');
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -211,7 +215,13 @@ export function UsersView() {
           </thead>
           <tbody>
             {filtered.map((entry) => (
-              <tr key={entry.userId}>
+              // Tabellenzeile statt Karte: Ein Rahmen liegt bei
+              // zusammengezogenen Rahmen schief, die Flaeche traegt hier.
+              <tr
+                key={entry.userId}
+                ref={highlight.ref(entry.userId)}
+                className={cn(highlight.matches(entry.userId) && 'bg-brand-soft')}
+              >
                 <Td>
                   <span className="flex items-center gap-2.5">
                     <span

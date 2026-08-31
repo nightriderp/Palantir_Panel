@@ -3,7 +3,15 @@
 import { type GameTypeDto, type HostNodeDto } from '@palantir/contracts';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { Button, EmptyState, Icon, MetricTile, PageHeader, Panel } from '@/components/shared';
+import {
+  Button,
+  EmptyState,
+  Icon,
+  MetricTile,
+  PageHeader,
+  Panel,
+  useHighlight,
+} from '@/components/shared';
 import { fetchGameTypes } from '@/lib/api/servers';
 import { fetchNodes } from '@/lib/api/nodes';
 import { useApiResource } from '@/lib/api/useApiResource';
@@ -31,6 +39,8 @@ import { NODE_EXPLAINERS, nodesSummary, startCapacityHint } from './nodeStatus';
 export function NodesView() {
   const { user, loading: sessionLoading } = useSession();
   const [helpOpen, setHelpOpen] = useState(false);
+  // Sprung aus einer Node-Warnung (Gefundener Punkt 103).
+  const highlight = useHighlight();
 
   const canView = user?.permissions.canViewNodes ?? false;
   const canManage = user?.permissions.canManageNodes ?? false;
@@ -154,7 +164,9 @@ export function NodesView() {
             {/* Kompakte Zeilen statt Karten – eine Node je Zeile, wie im Entwurf. */}
             <div className="flex flex-col gap-2.5">
               {nodeList.map((node) => (
-                <NodeRow key={node.id} node={node} />
+                <div key={node.id} ref={highlight.ref(node.id)}>
+                  <NodeRow node={node} className={highlight.className(node.id)} />
+                </div>
               ))}
             </div>
           </>
