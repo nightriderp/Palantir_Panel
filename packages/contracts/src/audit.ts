@@ -84,6 +84,13 @@ export const AUDIT_ACTIONS = [
   'node.created',
   'node.updated',
   'node.deleted',
+  /**
+   * Agent-Token einer Node erzeugt oder ersetzt (Gefundener Punkt 57).
+   *
+   * Das Token selbst steht **nie** im Log – dort stünde sonst ein gültiger
+   * Zugang zur Node. Protokolliert wird nur, dass es vergeben wurde.
+   */
+  'node.agentTokenIssued',
   'address.rangeCreated',
   'address.rangeUpdated',
   'address.rangeDeleted',

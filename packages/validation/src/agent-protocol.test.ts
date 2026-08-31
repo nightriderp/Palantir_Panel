@@ -2,6 +2,7 @@ import { AGENT_PROTOCOL_VERSION, ok } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   agentCommandResultFrameSchema,
+  agentHelloFrameSchema,
   agentStateReportFrameSchema,
   backendToAgentFrameSchema,
   correlationIdSchema,
@@ -74,6 +75,26 @@ describe('Befehls-Frame Backend -> Agent', () => {
     expect(
       backendToAgentFrameSchema.safeParse({ kind: 'stateRequest', requestedAt: NOW }).success,
     ).toBe(true);
+  });
+});
+
+describe('Hello-Frame Agent -> Backend', () => {
+  const hello = {
+    kind: 'hello',
+    protocolVersion: AGENT_PROTOCOL_VERSION,
+    agentVersion: '0.1.0',
+    sentAt: NOW,
+  };
+
+  it('nimmt einen Agent ohne Node-Kennung an (additiv, Gefundener Punkt 57)', () => {
+    const parsed = agentHelloFrameSchema.parse(hello);
+
+    expect(parsed.nodeId ?? null).toBeNull();
+  });
+
+  it('nimmt eine Node-Kennung als UUID an und lehnt Freitext ab', () => {
+    expect(agentHelloFrameSchema.parse({ ...hello, nodeId: SERVER_ID }).nodeId).toBe(SERVER_ID);
+    expect(agentHelloFrameSchema.safeParse({ ...hello, nodeId: 'homeserver' }).success).toBe(false);
   });
 });
 
