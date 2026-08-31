@@ -289,10 +289,19 @@ export class AgentSession {
    * {@link ServerOrchestrationError} mit dem benannten Code des Agents geworfen,
    * nicht als Rückgabewert – der Aufrufer soll ihn nicht übersehen können.
    */
+  /**
+   * @param options.timeoutMs Eigene Frist für diesen Befehl.
+   *
+   * Nötig, seit der Agent fehlende Images selbst holt (Gefundener Punkt 111):
+   * Ein Spiel-Image bringt Hunderte MB mit, das erste `CREATE` einer Definition
+   * dauert damit Minuten. Die übliche Frist gilt weiter für alles andere – ein
+   * `STOP`, das eine Viertelstunde offen bleibt, wäre kein Fortschritt.
+   */
   sendCommand<TCommand extends AgentCommandName>(
     command: TCommand,
     serverId: string | null,
     payload: AgentCommandPayloads[TCommand],
+    options: { readonly timeoutMs?: number } = {},
   ): Promise<AgentCommandResults[TCommand]> {
     if (!this.isReady) {
       return Promise.reject(
@@ -324,7 +333,7 @@ export class AgentSession {
             command,
           }),
         );
-      }, this.commandTimeoutMs);
+      }, options.timeoutMs ?? this.commandTimeoutMs);
 
       this.pending.set(correlationId, {
         command,

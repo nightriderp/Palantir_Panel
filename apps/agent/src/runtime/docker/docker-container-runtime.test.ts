@@ -144,10 +144,38 @@ describe('CREATE', () => {
     });
   });
 
-  it('deutet 404 beim Anlegen als fehlendes Image', async () => {
-    antwortgeber = () => json({ message: 'No such image: palantir/testserver:1' }, 404);
+  it('holt ein fehlendes Image und legt danach an (Gefundener Punkt 111)', async () => {
+    // Erst 404 („kein solches Image"), dann der Zug, dann der zweite Versuch.
+    antwortgeber = (aufruf) => {
+      if (aufruf.pfad.startsWith('/images/create')) {
+        return new Response('{"status":"Pull complete"}', { status: 200 });
+      }
+
+      return aufrufe.filter((a) => a.pfad.startsWith('/containers/create')).length === 1
+        ? json({ message: 'No such image: palantir/testserver:1' }, 404)
+        : json({ Id: 'c-1', Warnings: [] });
+    };
+
+    const handle = await runtime.create(spec());
+
+    expect(handle.containerId).toBe('c-1');
+    expect(aufrufe.map((a) => a.pfad.split('?')[0])).toEqual([
+      '/containers/create',
+      '/images/create',
+      '/containers/create',
+    ]);
+  });
+
+  it('meldet einen gescheiterten Zug, statt es zweimal vergeblich zu versuchen', async () => {
+    antwortgeber = (aufruf) =>
+      aufruf.pfad.startsWith('/images/create')
+        ? new Response('{"error":"manifest unknown"}', { status: 200 })
+        : json({ message: 'No such image: palantir/testserver:1' }, 404);
 
     await expect(runtime.create(spec())).rejects.toMatchObject({ code: 'IMAGE_NOT_FOUND' });
+
+    // Kein zweiter Anlege-Versuch, nachdem der Zug gescheitert ist.
+    expect(aufrufe.filter((a) => a.pfad.startsWith('/containers/create'))).toHaveLength(1);
   });
 
   it('deutet 409 mit Namenskonflikt als CONTAINER_NAME_CONFLICT', async () => {

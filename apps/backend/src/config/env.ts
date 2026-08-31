@@ -76,6 +76,15 @@ const envSchema = z.object({
   AGENT_TOKEN: optionalEnvString(),
   /** Frist, in der ein Agent-Befehl beantwortet sein muss (§5.3). */
   AGENT_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  /**
+   * Frist für das Anlegen eines Containers (Gefundener Punkt 111).
+   *
+   * Eigener Wert, weil der Agent ein fehlendes Image beim Anlegen selbst holt –
+   * bei einem Spiel-Image dauert das Minuten. Die übliche Befehlsfrist bleibt
+   * kurz; ein `STOP`, das eine Viertelstunde offen steht, wäre kein
+   * Fortschritt.
+   */
+  AGENT_CREATE_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
 
   /** DNS-Automatisierung über Cloudflare (§13); ohne beide Werte passiert nichts. */
   CLOUDFLARE_API_TOKEN: optionalEnvString(),

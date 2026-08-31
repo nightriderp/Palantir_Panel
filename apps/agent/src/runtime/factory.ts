@@ -20,6 +20,10 @@ export interface RuntimeEnv {
   readonly AGENT_DATA_DIR: string;
   readonly AGENT_BACKUP_DIR: string;
   readonly AGENT_SECCOMP_PROFILE_PATH?: string | undefined;
+  /** Registry der Spiel-Images (Gefundener Punkt 111); Zugang nur für private. */
+  readonly AGENT_REGISTRY_SERVER?: string | undefined;
+  readonly AGENT_REGISTRY_USERNAME?: string | undefined;
+  readonly AGENT_REGISTRY_TOKEN?: string | undefined;
 }
 
 export interface CreateContainerRuntimeOptions extends Omit<
@@ -55,9 +59,24 @@ export function createContainerRuntimeFromEnv(
     ...ladeSeccompProfil(env.AGENT_SECCOMP_PROFILE_PATH),
   };
 
+  /*
+   * Zugang zur Registry nur, wenn beide Werte gesetzt sind (Gefundener Punkt
+   * 111). Ein halber Zugang wäre schlimmer als keiner: Er ginge als gültig
+   * durch und scheiterte erst beim Holen mit einer Meldung der Registry.
+   */
+  const registry =
+    env.AGENT_REGISTRY_USERNAME !== undefined && env.AGENT_REGISTRY_TOKEN !== undefined
+      ? {
+          server: env.AGENT_REGISTRY_SERVER ?? 'ghcr.io',
+          username: env.AGENT_REGISTRY_USERNAME,
+          password: env.AGENT_REGISTRY_TOKEN,
+        }
+      : undefined;
+
   return createDockerContainerRuntime({
     dockerSocketProxyUrl: env.DOCKER_SOCKET_PROXY_URL,
     hardening,
+    ...(registry === undefined ? {} : { registry }),
     ...rest,
   });
 }
