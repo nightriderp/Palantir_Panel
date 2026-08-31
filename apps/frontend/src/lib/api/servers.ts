@@ -166,7 +166,8 @@ export function checkSubdomain(
  *
  * Liefert die `uploadId`, die der Wizard anschließend in `worldImport` mitgibt.
  *
- * Die Route fehlt im Backend noch; der Pfad steht bereits im `/api`-Schema.
+ * Das Backend nimmt den Upload unter `POST /api/uploads/world-archives` als
+ * multipart entgegen und legt das Archiv bis zum Anlegen des Servers zwischen.
  */
 export function uploadWorldArchive(file: File): Promise<ApiResult<{ uploadId: string }>> {
   const form = new FormData();
