@@ -10,7 +10,9 @@
  *    `DELETE_BACKUP` auf Dateiebene (Lastenheft §3.3)
  *  - `storage/` – `GET_STORAGE_BREAKDOWN` und `REMOVE_STORAGE_ENTRY`
  *    (Lastenheft §3.8, Pflichtenheft §16)
- *  - `files/` – `FILE_DELETE` host-seitig über den Datenordner (Lastenheft §3.3)
+ *  - `files/` – `FILE_DELETE` host-seitig über den Datenordner und
+ *    `UPLOAD_ARCHIVE_BLOCK`, das ein Archiv blockweise zusammensetzt
+ *    (Lastenheft §3.3)
  *
  * **Was hier bewusst nicht liegt.** Die Entscheidungen des Lifecycles gehören
  * ins Backend und sind dort fertig und geprüft: der Übergang
@@ -33,6 +35,7 @@
 import type { OutboundEvent } from '../connection/ports.js';
 import type { ContainerRuntime } from '../runtime/index.js';
 import { BackupJob, DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES } from './backup/backup-job.js';
+import { ArchiveUploadJob } from './files/archive-upload.js';
 import { ServerFileJob } from './files/delete.js';
 import { createGamedigProbe } from './query/gamedig-probe.js';
 import { createServerProbe, type ServerProbe } from './query/probe.js';
@@ -83,6 +86,13 @@ export {
 } from './backup/tar-gz.js';
 
 export {
+  ARCHIVE_UPLOAD_DIRNAME,
+  ARCHIVE_UPLOAD_TTL_MS,
+  ArchiveUploadJob,
+  type ArchiveUploadJobOptions,
+} from './files/archive-upload.js';
+
+export {
   deleteServerFile,
   ServerFileJob,
   type DeleteServerFileOptions,
@@ -109,6 +119,7 @@ export interface AgentJobs {
   readonly backups: BackupJob;
   readonly storage: StorageScanner;
   readonly files: ServerFileJob;
+  readonly archiveUploads: ArchiveUploadJob;
   /** Beendet alle laufenden Jobs – beim Herunterfahren des Agents. */
   stop(): void;
 }
@@ -177,12 +188,19 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
 
   const files = new ServerFileJob({ runtime: options.runtime, dataDir: env.AGENT_DATA_DIR });
 
+  const archiveUploads = new ArchiveUploadJob({
+    runtime: options.runtime,
+    dataDir: env.AGENT_DATA_DIR,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+
   return {
     scheduler,
     query,
     backups,
     storage,
     files,
+    archiveUploads,
     stop: () => {
       query.stopAll();
       scheduler.stopAll();

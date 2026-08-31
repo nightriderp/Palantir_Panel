@@ -27,6 +27,7 @@ import {
   type RemoveStorageEntryCommandPayload,
   type RestoreBackupCommandPayload,
   type SetServerQueryCommandPayload,
+  type UploadArchiveBlockCommandPayload,
   type AgentContainerStatus,
   type ApiResponse,
   type ErrorCode,
@@ -312,6 +313,12 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         );
         return null;
       }
+      case 'UPLOAD_ARCHIVE_BLOCK':
+        // Blockweise Uebertragung: Das Zusammensetzen ist Dateisystemarbeit und
+        // liegt deshalb im Job-Modul (Gefundener Punkt 106).
+        return this.requireJobs().archiveUploads.receive(
+          payload as UploadArchiveBlockCommandPayload,
+        );
       case 'FILE_EXTRACT': {
         const p = payload as {
           containerId: string;
