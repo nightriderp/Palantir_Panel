@@ -381,7 +381,6 @@ export function MessagesView() {
 
       <NewConversationDialog
         open={newOpen}
-        viewerId={viewerId}
         busy={opening}
         onClose={() => setNewOpen(false)}
         onOpenDirect={(userId) => void openDirect(userId)}

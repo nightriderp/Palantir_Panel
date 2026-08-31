@@ -1,5 +1,6 @@
 import {
   type ConversationDto,
+  type DirectMessageRecipientDto,
   type MessageDto,
   type MessagePageDto,
   type MessageReportDto,
@@ -57,6 +58,19 @@ export function fetchConversation(
 }
 
 /** Öffnet die Direktnachricht mit einem anderen Konto und legt sie beim ersten Mal an. */
+/**
+ * Wen darf der Aufrufer direkt anschreiben? (Gefundener Punkt 102.)
+ *
+ * Kein globales Nutzerverzeichnis: Das Backend gibt nur Konten heraus, mit
+ * denen der Aufrufer ohnehin einen Server teilt – als Besitzer **oder**
+ * Mitglied.
+ */
+export function fetchDirectMessageRecipients(
+  signal?: AbortSignal,
+): Promise<ApiResult<DirectMessageRecipientDto[]>> {
+  return apiRequest<DirectMessageRecipientDto[]>('/api/chat/recipients', { signal });
+}
+
 export function openDirectConversation(recipientId: string): Promise<ApiResult<ConversationDto>> {
   return apiRequest<ConversationDto>(`${CHAT}/conversations/direct`, {
     method: 'POST',

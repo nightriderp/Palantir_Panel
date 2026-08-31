@@ -1,8 +1,9 @@
 'use client';
 
-import { type GameServerDto } from '@palantir/contracts';
+import { type DirectMessageRecipientDto, type GameServerDto } from '@palantir/contracts';
 import { useMemo, useState } from 'react';
 import { Icon, Modal, SegmentedControl, TextField, cn, serverInitials } from '@/components/shared';
+import { fetchDirectMessageRecipients } from '@/lib/api/chat';
 import { fetchServers } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 
@@ -12,27 +13,24 @@ import { useApiResource } from '@/lib/api/useApiResource';
  * Zwei Wege, passend zum Datenmodell des Backends:
  * - **Server-Chat** – jeder Server, auf den der Nutzer Zugriff hat. Der Chat
  *   entsteht beim ersten Öffnen automatisch (Pflichtenheft §15).
- * - **Direktnachricht** – die Besitzer der Server, die der Nutzer sieht. Das
- *   entspricht dem Mockup („Schreib den Besitzern der anderen Server").
+ * - **Direktnachricht** – wen das Backend als Empfänger zulässt
+ *   (`GET /api/chat/recipients`, Gefundener Punkt 102).
  *
- * **Bewusste Grenze:** Es gibt im Backend keinen allgemeinen Nutzer-Verzeichnis-
- * Endpunkt, über den sich jedes freigeschaltete Konto anschreiben ließe. Ein DM
- * lässt sich hier deshalb nur mit jemandem beginnen, mit dem man über einen
- * Server bereits zu tun hat. Der fehlende Verzeichnis-Endpunkt ist in
- * WORK_STATUS.md unter „Gefundene Punkte" vermerkt (B7/B8).
+ * **Woher die Empfänger kommen:** Früher hat dieser Dialog die Besitzer aus der
+ * Serverliste zusammengesucht – eine Hilfskonstruktion, solange es keinen
+ * Endpunkt gab. Jetzt entscheidet das Backend, und zwar großzügiger und
+ * genauer: Mit-Mitglieder gemeinsamer Server zählen ebenfalls, gesperrte und
+ * nicht freigeschaltete Konten fallen weg.
+ *
+ * **Bewusste Grenze bleibt:** Es ist kein globales Nutzerverzeichnis. Wer mit
+ * niemandem einen Server teilt, sieht eine leere Liste – die Kontenliste der
+ * Plattform wird nicht quer offengelegt.
  */
 
 type Mode = 'direct' | 'server';
 
-interface DirectCandidate {
-  userId: string;
-  displayName: string;
-}
-
 export interface NewConversationDialogProps {
   open: boolean;
-  /** Eigene Konto-Id – das eigene Konto ist kein DM-Ziel. */
-  viewerId: string | null;
   /** Ein Öffnen läuft gerade (Konversation wird angelegt/geladen). */
   busy: boolean;
   onClose: () => void;
@@ -40,30 +38,8 @@ export interface NewConversationDialogProps {
   onOpenServerChat: (serverId: string) => void;
 }
 
-/** Verdichtet die Serverliste zu den ansprechbaren Besitzern (ohne Dopplungen, ohne einen selbst). */
-function directCandidatesFrom(
-  servers: readonly GameServerDto[],
-  viewerId: string | null,
-): DirectCandidate[] {
-  const byUser = new Map<string, DirectCandidate>();
-
-  for (const server of servers) {
-    if (server.ownerId === viewerId) continue;
-    if (server.ownerDisplayName === null) continue;
-    if (!byUser.has(server.ownerId)) {
-      byUser.set(server.ownerId, {
-        userId: server.ownerId,
-        displayName: server.ownerDisplayName,
-      });
-    }
-  }
-
-  return [...byUser.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
-}
-
 export function NewConversationDialog({
   open,
-  viewerId,
   busy,
   onClose,
   onOpenDirect,
@@ -77,9 +53,16 @@ export function NewConversationDialog({
     open ? [open] : null,
   );
 
+  const recipients = useApiResource<DirectMessageRecipientDto[]>(
+    (signal) => fetchDirectMessageRecipients(signal),
+    open ? [open] : null,
+  );
+
+  // Das Backend sortiert nicht zu; die Liste steht hier nebeneinander im
+  // Dialog und soll dieselbe Ordnung haben wie die Server.
   const candidates = useMemo(
-    () => directCandidatesFrom(servers.data ?? [], viewerId),
-    [servers.data, viewerId],
+    () => [...(recipients.data ?? [])].sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [recipients.data],
   );
 
   const needle = search.trim().toLowerCase();
@@ -97,7 +80,10 @@ export function NewConversationDialog({
     return needle === '' ? list : list.filter((entry) => entry.name.toLowerCase().includes(needle));
   }, [servers.data, needle]);
 
-  const loading = servers.loading && servers.data === null;
+  const loading =
+    (servers.loading && servers.data === null) || (recipients.loading && recipients.data === null);
+  const fehler = mode === 'direct' ? recipients.error : servers.error;
+  const fehltAlles = mode === 'direct' ? recipients.data === null : servers.data === null;
 
   return (
     <Modal open={open} onClose={onClose} title="Neue Konversation">
@@ -125,24 +111,24 @@ export function NewConversationDialog({
               <Icon name="clock" size={16} />
               Wird geladen …
             </div>
-          ) : servers.error && servers.data === null ? (
-            <div className="px-4 py-8 text-center text-sm text-ink-faint">{servers.error}</div>
+          ) : fehler !== null && fehltAlles ? (
+            <div className="px-4 py-8 text-center text-sm text-ink-faint">{fehler}</div>
           ) : mode === 'direct' ? (
             directRows.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-ink-faint">
-                Niemand zum Anschreiben gefunden. Direktnachrichten sind mit den Besitzern der
-                Server möglich, die du sehen kannst.
+                Niemand zum Anschreiben gefunden. Direktnachrichten sind mit allen möglich, mit
+                denen du einen Server teilst.
               </p>
             ) : (
               <ul className="divide-y divide-line">
                 {directRows.map((entry) => (
                   <PickRow
-                    key={entry.userId}
+                    key={entry.recipientId}
                     initials={serverInitials(entry.displayName)}
                     title={entry.displayName}
                     subtitle="Direktnachricht"
                     disabled={busy}
-                    onClick={() => onOpenDirect(entry.userId)}
+                    onClick={() => onOpenDirect(entry.recipientId)}
                   />
                 ))}
               </ul>
