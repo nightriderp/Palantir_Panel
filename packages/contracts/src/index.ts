@@ -166,6 +166,8 @@ export {
   type SetServerQueryCommandResult,
   type StartCommandPayload,
   type StopCommandPayload,
+  type UploadArchiveBlockCommandPayload,
+  type UploadArchiveBlockCommandResult,
   isArchiveFormat,
   isImplementedAgentCommand,
 } from './agent-commands.js';
