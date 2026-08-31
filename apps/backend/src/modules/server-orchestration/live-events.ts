@@ -21,6 +21,7 @@
 import {
   type ConsoleLineSource,
   type ServerConsoleLine,
+  type ServerLivePlayer,
   type ServerLiveStats,
 } from '@palantir/contracts';
 
@@ -66,6 +67,14 @@ export interface ServerQuerySnapshot {
   readonly playersOnline: number | null;
   readonly playersMax: number | null;
   readonly pingMs: number | null;
+  /**
+   * Namen der verbundenen Spieler (Gefundener Punkt 51).
+   *
+   * Leer heißt „keine Angabe": Nur die Abfrage über das Spielprotokoll liefert
+   * Namen, und manche Server geben nur einen Auszug heraus. Die belastbare Zahl
+   * bleibt `playersOnline`.
+   */
+  readonly players: readonly ServerLivePlayer[];
 }
 
 /** Abfragestand ohne jede Angabe. */
@@ -73,6 +82,7 @@ export const EMPTY_QUERY_SNAPSHOT: ServerQuerySnapshot = Object.freeze({
   playersOnline: null,
   playersMax: null,
   pingMs: null,
+  players: [],
 });
 
 /**
@@ -97,7 +107,28 @@ export function querySnapshotFromPayload(payload: unknown): ServerQuerySnapshot 
     playersOnline: numberOrNull(payload.playersOnline),
     playersMax: numberOrNull(payload.playersMax),
     pingMs: numberOrNull(payload.pingMs),
+    players: spielernamen(payload.players),
   };
+}
+
+/**
+ * Spielernamen aus einer Agent-Nutzlast.
+ *
+ * Streng geprüft statt durchgereicht: Was über den Agent-Kanal hereinkommt,
+ * landet unverändert im Browser. Namenlose oder unbrauchbare Einträge fallen
+ * weg, statt als leere Zeile in der Liste zu stehen.
+ */
+function spielernamen(wert: unknown): readonly ServerLivePlayer[] {
+  if (!Array.isArray(wert)) {
+    return [];
+  }
+
+  return wert
+    .map((eintrag) =>
+      isRecord(eintrag) && typeof eintrag.name === 'string' ? eintrag.name.trim() : '',
+    )
+    .filter((name) => name.length > 0)
+    .map((name) => ({ name }));
 }
 
 /**
@@ -134,6 +165,9 @@ export function liveStatsFromAgentPayload(
       pingMs: abfrage.pingMs,
       playersOnline: abfrage.playersOnline,
       playersMax: abfrage.playersMax,
+      // Leere Liste heißt „keine Angabe" – dann bleibt das Feld weg, statt als
+      // „niemand da" gelesen zu werden (Gefundener Punkt 51).
+      ...(abfrage.players.length > 0 ? { players: abfrage.players } : {}),
       networkRxBytes: null,
       networkTxBytes: null,
       updatedAt: stringOrNull(daten.at) ?? emittedAt,
@@ -149,6 +183,7 @@ export function liveStatsFromAgentPayload(
     pingMs: query.pingMs,
     playersOnline: query.playersOnline,
     playersMax: query.playersMax,
+    ...(query.players.length > 0 ? { players: query.players } : {}),
     networkRxBytes: numberOrNull(daten.networkRxBytes),
     networkTxBytes: numberOrNull(daten.networkTxBytes),
     updatedAt: stringOrNull(daten.sampledAt) ?? stringOrNull(daten.at) ?? emittedAt,

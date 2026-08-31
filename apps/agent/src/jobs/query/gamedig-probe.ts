@@ -39,6 +39,20 @@ export type GamedigQuery = (options: {
 
 const standardAbfrage: GamedigQuery = (options) => GameDig.query(options);
 
+/**
+ * Spielernamen aus der Antwort.
+ *
+ * Namenlose Einträge fallen weg: Manche Server melden Platzhalter ohne Namen,
+ * und eine Liste mit leeren Zeilen hilft niemandem. Die Zahl daneben stammt
+ * ohnehin aus `numplayers` und bleibt davon unberührt.
+ */
+function namen(spieler: QueryResult['players'] | undefined): readonly { name: string }[] {
+  return (spieler ?? [])
+    .map((eintrag) => (typeof eintrag.name === 'string' ? eintrag.name.trim() : ''))
+    .filter((name) => name.length > 0)
+    .map((name) => ({ name }));
+}
+
 /** Ganze, nicht-negative Zahl oder `null` – alles andere ist keine Angabe. */
 function zaehlung(wert: unknown): number | null {
   return typeof wert === 'number' && Number.isFinite(wert) && wert >= 0 ? Math.round(wert) : null;
@@ -65,6 +79,7 @@ export function createGamedigProbe(abfragen: GamedigQuery = standardAbfrage): Se
           pingMs: null,
           playersOnline: null,
           playersMax: null,
+          players: [],
           reason: 'Diese Sonde beantwortet nur Abfragen der Art „gamedig".',
         };
       }
@@ -86,6 +101,7 @@ export function createGamedigProbe(abfragen: GamedigQuery = standardAbfrage): Se
           // sein, weil manche Server nur einen Auszug herausgeben.
           playersOnline: zaehlung(antwort.numplayers) ?? zaehlung(antwort.players?.length),
           playersMax: zaehlung(antwort.maxplayers),
+          players: namen(antwort.players),
           reason: null,
         };
       } catch (fehler: unknown) {
@@ -96,6 +112,7 @@ export function createGamedigProbe(abfragen: GamedigQuery = standardAbfrage): Se
           pingMs: null,
           playersOnline: null,
           playersMax: null,
+          players: [],
           reason: `Der Server hat auf die Abfrage nicht geantwortet (${
             fehler instanceof Error ? fehler.message : String(fehler)
           }).`,

@@ -24,7 +24,11 @@
  * genau wie Auto-Shutdown und die Zeitpläne.
  */
 
-import { type ServerLiveStats, type ServerStatsHistoryDto } from '@palantir/contracts';
+import {
+  type ServerLivePlayer,
+  type ServerLiveStats,
+  type ServerStatsHistoryDto,
+} from '@palantir/contracts';
 import { and, asc, eq, gte, lt } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
 import { serverStatsSamples } from '../../db/schema.js';
@@ -140,7 +144,13 @@ export function toStatsHistoryDto(
 export class LatestQueryCache {
   readonly #werte = new Map<
     string,
-    { playersOnline: number | null; playersMax: number | null; pingMs: number | null; at: number }
+    {
+      playersOnline: number | null;
+      playersMax: number | null;
+      pingMs: number | null;
+      players: readonly ServerLivePlayer[];
+      at: number;
+    }
   >();
 
   /** Wie lange eine Abfrage als aktuell gilt. */
@@ -156,10 +166,12 @@ export class LatestQueryCache {
       playersOnline: number | null;
       playersMax: number | null;
       pingMs: number | null;
+      /** Spielernamen, soweit die Abfrage sie liefert (Gefundener Punkt 51). */
+      players?: readonly ServerLivePlayer[];
     },
     at: Date,
   ): void {
-    this.#werte.set(serverId, { ...werte, at: at.getTime() });
+    this.#werte.set(serverId, { ...werte, players: werte.players ?? [], at: at.getTime() });
   }
 
   /**
@@ -171,17 +183,25 @@ export class LatestQueryCache {
   read(
     serverId: string,
     now: Date,
-  ): { playersOnline: number | null; playersMax: number | null; pingMs: number | null } {
+  ): {
+    playersOnline: number | null;
+    playersMax: number | null;
+    pingMs: number | null;
+    players: readonly ServerLivePlayer[];
+  } {
     const eintrag = this.#werte.get(serverId);
 
     if (eintrag === undefined || now.getTime() - eintrag.at > this.#maxAlterMs) {
-      return { playersOnline: null, playersMax: null, pingMs: null };
+      // Auch die Namensliste altert: Wer vor einer Stunde verbunden war, steht
+      // heute nicht mehr in der Anzeige.
+      return { playersOnline: null, playersMax: null, pingMs: null, players: [] };
     }
 
     return {
       playersOnline: eintrag.playersOnline,
       playersMax: eintrag.playersMax,
       pingMs: eintrag.pingMs,
+      players: eintrag.players,
     };
   }
 

@@ -130,6 +130,34 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         <MetricTile label="Spieler" value={formatPlayers(live?.playersOnline, live?.playersMax)} />
       </div>
 
+      {/*
+        Spielerliste (Gefundener Punkt 51). Sie erscheint nur, wenn die Abfrage
+        Namen liefert: Der generische Port-Connect-Test kennt keine, und manche
+        Server geben nur einen Auszug heraus. Eine leere Liste hieße „keine
+        Angabe" – und die als „niemand da" darzustellen wäre gelogen; die
+        belastbare Zahl steht in der Kachel oben.
+      */}
+      {live?.players && live.players.length > 0 ? (
+        <Panel variant="plain" className="flex flex-col gap-2">
+          <h3 className="text-base font-semibold">
+            Verbundene Spieler
+            {live.playersOnline !== null && live.playersOnline > live.players.length
+              ? ` (${live.players.length} von ${live.playersOnline} genannt)`
+              : null}
+          </h3>
+          <ul className="flex flex-wrap gap-2">
+            {live.players.map((spieler) => (
+              <li
+                key={spieler.name}
+                className="rounded-md border border-line bg-surface-deep px-2.5 py-1 font-mono text-sm text-ink-muted"
+              >
+                {spieler.name}
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ) : null}
+
       <div>
         <button
           type="button"

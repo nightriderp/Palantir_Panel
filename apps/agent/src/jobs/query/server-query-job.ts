@@ -146,6 +146,9 @@ export class ServerQueryJob {
       reachable: ergebnis.reachable,
       playersOnline: ergebnis.playersOnline,
       playersMax: ergebnis.playersMax,
+      // Leere Liste heißt „keine Angabe" und wird deshalb weggelassen, statt
+      // als „niemand da" gelesen zu werden (Gefundener Punkt 51).
+      ...(ergebnis.players.length > 0 ? { players: ergebnis.players } : {}),
       pingMs: ergebnis.pingMs,
       reason: ergebnis.reason,
       at: this.#now().toISOString(),
