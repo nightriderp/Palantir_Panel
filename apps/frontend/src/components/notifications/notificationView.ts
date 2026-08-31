@@ -179,9 +179,10 @@ export function iconOfEvent(event: NotifiableEventName): IconName {
  *   und Inbox-Eintrag); die Verwaltung unter `/admin/announcements` ist reine
  *   Admin-Sicht und kein Sprungziel für Empfänger.
  *
- * Kein Typ verlinkt heute auf einen konkreten Eintrag (außer `server`): Die
- * Listenansichten heben den betroffenen Datensatz noch nicht hervor – als
- * Anschlussarbeit unter „Gefundene Punkte" vermerkt.
+ * Die Listenansichten bekommen den gemeinten Datensatz als `?highlight=<id>`
+ * mitgeteilt (Gefundener Punkt 103) und heben ihn hervor, statt den Empfänger
+ * in der Liste suchen zu lassen. `server` braucht das nicht – dort führt der
+ * Weg auf die Detailseite.
  */
 export function subjectHref(subject: NotificationSubject | null): string | null {
   if (subject === null) return null;
@@ -190,18 +191,26 @@ export function subjectHref(subject: NotificationSubject | null): string | null 
     case 'server':
       return `/servers/${encodeURIComponent(subject.id)}`;
     case 'backup':
-      return '/my-backups';
+      return withHighlight('/my-backups', subject.id);
     case 'node':
-      return '/nodes';
+      return withHighlight('/nodes', subject.id);
     case 'user':
-      return '/admin/users';
+      return withHighlight('/admin/users', subject.id);
     case 'message':
-      return '/admin/moderation';
+      return withHighlight('/admin/moderation', subject.id);
     case 'announcement':
       return null;
     default:
       return null;
   }
+}
+
+/** Name des Abfrageparameters; gelesen von `useHighlight()` in F2. */
+export const HIGHLIGHT_PARAM = 'highlight';
+
+/** Listenansicht plus gemeinter Eintrag. */
+function withHighlight(path: string, id: string): string {
+  return `${path}?${HIGHLIGHT_PARAM}=${encodeURIComponent(id)}`;
 }
 
 // ---------------------------------------------------------------------------

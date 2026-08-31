@@ -15,8 +15,10 @@ import {
   PageHeader,
   Panel,
   SegmentedControl,
+  cn,
   formatDateTime,
   formatNumber,
+  useHighlight,
   useToast,
 } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
@@ -50,6 +52,8 @@ export function ModerationView() {
   const toast = useToast();
   const canModerate = user?.permissions.canModerateMessages ?? false;
 
+  // Sprung aus einer Meldung „Nachricht gemeldet" (Gefundener Punkt 103).
+  const highlight = useHighlight();
   const [status, setStatus] = useState<MessageReportStatus>('open');
   const [offset, setOffset] = useState(0);
   const [dialog, setDialog] = useState<ResolveDialog>(null);
@@ -119,8 +123,12 @@ export function ModerationView() {
         <>
           <ul className="flex flex-col gap-3">
             {reports.map((report) => (
-              <li key={report.id}>
-                <Panel className="flex flex-col gap-3">
+              // Die Meldung verweist auf die Nachricht, nicht auf den
+              // Meldungs-Datensatz (Gefundener Punkt 103).
+              <li key={report.id} ref={highlight.ref(report.message.id)}>
+                <Panel
+                  className={cn('flex flex-col gap-3', highlight.className(report.message.id))}
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex flex-col gap-0.5">
                       <span className="text-base font-semibold text-ink">

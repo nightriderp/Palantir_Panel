@@ -104,6 +104,7 @@ export {
 } from './placeholder/PhaseLockedPlaceholder';
 
 export { cn } from './utils/cn';
+export { HIGHLIGHT_PARAM, useHighlight, type Highlight } from './utils/useHighlight';
 export {
   clampPercent,
   formatBytes,

@@ -18,9 +18,11 @@ import {
   PageHeader,
   Panel,
   SegmentedControl,
+  cn,
   formatBytes,
   formatDateTime,
   formatNumber,
+  useHighlight,
   useToast,
 } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
@@ -82,6 +84,8 @@ function retentionNote(backup: BackupDto): string {
 export function MyBackupsView() {
   const { user, loading: sessionLoading } = useSession();
   const toast = useToast();
+  // Sprung aus einer Meldung „Backup fehlgeschlagen“ (Gefundener Punkt 103).
+  const highlight = useHighlight();
 
   const [filter, setFilter] = useState<BackupTypeFilter>('all');
   const [busy, setBusy] = useState(false);
@@ -225,8 +229,12 @@ export function MyBackupsView() {
                   const done = backup.status === 'completed';
 
                   return (
-                    <li key={backup.id}>
-                      <Panel variant="plain" padding="sm" className="flex flex-col gap-2">
+                    <li key={backup.id} ref={highlight.ref(backup.id)}>
+                      <Panel
+                        variant="plain"
+                        padding="sm"
+                        className={cn('flex flex-col gap-2', highlight.className(backup.id))}
+                      >
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold text-ink">
                             {backup.serverName ?? 'Gelöschter Server'}

@@ -47,11 +47,24 @@ describe('subjectHref', () => {
     );
   });
 
-  it('führt die übrigen Typen auf ihre bestehende Ansicht', () => {
-    expect(subjectHref({ type: 'backup', id: 'b1', displayName: null })).toBe('/my-backups');
-    expect(subjectHref({ type: 'node', id: 'n1', displayName: null })).toBe('/nodes');
-    expect(subjectHref({ type: 'user', id: 'u1', displayName: null })).toBe('/admin/users');
-    expect(subjectHref({ type: 'message', id: 'm1', displayName: null })).toBe('/admin/moderation');
+  it('führt die übrigen Typen auf ihre Ansicht und nennt den Eintrag', () => {
+    // Gefundener Punkt 103: Die Liste hebt den gemeinten Datensatz hervor.
+    expect(subjectHref({ type: 'backup', id: 'b1', displayName: null })).toBe(
+      '/my-backups?highlight=b1',
+    );
+    expect(subjectHref({ type: 'node', id: 'n1', displayName: null })).toBe('/nodes?highlight=n1');
+    expect(subjectHref({ type: 'user', id: 'u1', displayName: null })).toBe(
+      '/admin/users?highlight=u1',
+    );
+    expect(subjectHref({ type: 'message', id: 'm1', displayName: null })).toBe(
+      '/admin/moderation?highlight=m1',
+    );
+  });
+
+  it('maskiert eine Id mit Sonderzeichen', () => {
+    expect(subjectHref({ type: 'backup', id: 'b 1&x', displayName: null })).toBe(
+      '/my-backups?highlight=b%201%26x',
+    );
   });
 
   it('bietet für Ankündigung und ohne Subject kein Sprungziel', () => {
