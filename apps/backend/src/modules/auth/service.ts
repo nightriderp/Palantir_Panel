@@ -37,6 +37,7 @@ import type {
   LinkPasswordInput,
   LoginInput,
   RegisterInput,
+  UpdateProfileInput,
 } from '@palantir/validation';
 import { buildPermissionActor, type PermissionActor, type RoleRepository } from '../rbac/index.js';
 import { toAccountDto, toSessionDto } from './dto.js';
@@ -684,6 +685,26 @@ export class AuthService {
    * **anderen** Sitzungen: wer das Passwort ändert, tut das oft gerade, weil er
    * einen fremden Zugriff vermutet.
    */
+  /**
+   * Anzeigenamen des eigenen Kontos ändern (Lastenheft §3.1).
+   *
+   * Ohne Passwortabfrage: Der Name ist reine Darstellung, keine Kennung – an
+   * ihm hängt weder die Anmeldung noch eine Berechtigung. Die Anmeldekennung
+   * (`username`) bleibt unangetastet; sie bestätigt weiterhin die
+   * Konto-Löschung.
+   *
+   * Zulässige Länge und das Abschneiden von Leerraum prüft
+   * `updateProfileInputSchema` in `@palantir/validation`, bevor der Wert hier
+   * ankommt.
+   */
+  async updateProfile(userId: string, input: UpdateProfileInput): Promise<AccountDto> {
+    await this.requireUser(userId);
+
+    const updated = await this.repository.setDisplayName(userId, input.displayName);
+
+    return this.loadAccount(updated);
+  }
+
   async changePassword(
     userId: string,
     input: ChangePasswordInput,

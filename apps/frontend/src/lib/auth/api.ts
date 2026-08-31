@@ -15,6 +15,7 @@ import {
   type LoginInput,
   type RegisterInput,
   type TwoFactorInput,
+  type UpdateProfileInput,
   accountDtoSchema,
   altchaChallengeSchema,
   apiResponseSchema,
@@ -344,6 +345,20 @@ export function deleteAccount(input: DeleteAccountInput): Promise<null> {
     method: 'DELETE',
     body: JSON.stringify(input),
   });
+}
+
+/**
+ * Anzeigenamen des eigenen Kontos aendern (Lastenheft §3.1).
+ *
+ * Ohne Passwortabfrage: Der Name ist reine Darstellung, keine Kennung. Die
+ * Antwort traegt das vollstaendige Konto, damit die Ansicht nicht nachladen
+ * muss.
+ */
+export function updateProfile(input: UpdateProfileInput): Promise<AccountDto> {
+  return request(AUTH_ENDPOINTS.account, accountEnvelopeSchema, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  }).then((result) => result.account);
 }
 
 /** Ein Passwort-Verfahren nachtraeglich anlegen (Konto ohne Passwort). */

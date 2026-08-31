@@ -144,6 +144,16 @@ export function createDrizzleAuthRepository(db: Database): AuthRepository {
       return toUser(row);
     },
 
+    async setDisplayName(id, displayName) {
+      const [row] = await db.update(users).set({ displayName }).where(eq(users.id, id)).returning();
+
+      if (!row) {
+        throw new Error('Konto konnte nicht aktualisiert werden.');
+      }
+
+      return toUser(row);
+    },
+
     async deleteUser(id) {
       // `auth_methods`, `sessions` und `user_roles` hängen mit ON DELETE CASCADE
       // am Konto und verschwinden mit (Pflichtenheft §6).

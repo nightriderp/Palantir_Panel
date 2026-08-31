@@ -278,6 +278,18 @@ export const disableTwoFactorInputSchema = z.object({
 });
 
 /**
+ * Eigenes Profil ändern (Lastenheft §3.1).
+ *
+ * Vorerst nur der Anzeigename – der Anmeldename bleibt fest, an ihm hängen die
+ * Anmeldung und die Bestätigung der Konto-Löschung. Als eigenes Schema und
+ * nicht als `registerInputSchema.partial()`, damit ein späteres Feld hier
+ * dazukommen kann, ohne die Registrierung zu berühren.
+ */
+export const updateProfileInputSchema = z.object({
+  displayName: displayNameSchema,
+});
+
+/**
  * Selbstständige Konto-Löschung (Lastenheft §3.1).
  *
  * Der Anmeldename muss zur Bestätigung abgetippt werden; bei Konten mit
@@ -328,3 +340,4 @@ export type LinkPasswordInput = z.infer<typeof linkPasswordInputSchema>;
 export type ConfirmTwoFactorInput = z.infer<typeof confirmTwoFactorInputSchema>;
 export type DisableTwoFactorInput = z.infer<typeof disableTwoFactorInputSchema>;
 export type DeleteAccountInput = z.infer<typeof deleteAccountInputSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileInputSchema>;

@@ -771,6 +771,34 @@ describe('Passwortwechsel und Admin-Reset (Lastenheft §3.1)', () => {
   });
 });
 
+describe('Anzeigename ändern (Lastenheft §3.1)', () => {
+  let userId: string;
+
+  beforeEach(async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    userId = account.id;
+  });
+
+  it('übernimmt den neuen Namen und lässt die Anmeldekennung stehen', async () => {
+    const account = await service.updateProfile(userId, { displayName: 'Der Kapitän' });
+
+    expect(account.displayName).toBe('Der Kapitän');
+    // Der Anmeldename ist eine Kennung – an ihm hängt die Anmeldung und die
+    // Bestätigung der Konto-Löschung.
+    expect(account.username).toBe('spieler');
+  });
+
+  it('scheitert an einem unbekannten Konto', async () => {
+    await expectErrorCode(
+      service.updateProfile('00000000-0000-4000-8000-000000000000', { displayName: 'Niemand' }),
+      'USER_NOT_FOUND',
+    );
+  });
+});
+
 describe('Konto-Löschung (Lastenheft §3.1)', () => {
   it('löscht Konto, Methoden und Sitzungen', async () => {
     const { account } = await service.register(

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { type AccountDto } from '@palantir/contracts';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { loadAccount } from '@/lib/api/session';
@@ -20,16 +20,31 @@ import { loadAccount } from '@/lib/api/session';
 export interface SessionValue {
   user: AccountDto | null;
   loading: boolean;
+  /**
+   * Das Konto im Rahmen ersetzen, wenn eine Ansicht es geaendert hat.
+   *
+   * Ohne das bliebe etwa der Anzeigename im Nutzermenue auf dem alten Stand,
+   * bis die Seite neu geladen wird – geaendert wird er auf dem Profil, das
+   * seine eigene Kopie haelt.
+   */
+  setUser: (account: AccountDto) => void;
 }
 
-const SessionContext = createContext<SessionValue>({ user: null, loading: true });
+const SessionContext = createContext<SessionValue>({
+  user: null,
+  loading: true,
+  setUser: () => {},
+});
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const { data, loading } = useApiResource<AccountDto>(() => loadAccount(), []);
+  const { data, loading, setData } = useApiResource<AccountDto>(() => loadAccount(), []);
 
-  return (
-    <SessionContext.Provider value={{ user: data, loading }}>{children}</SessionContext.Provider>
+  const value = useMemo<SessionValue>(
+    () => ({ user: data, loading, setUser: setData }),
+    [data, loading, setData],
   );
+
+  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
 export function useSession(): SessionValue {
