@@ -200,7 +200,50 @@ async function* sammle(wurzel: string, unterordner: string): AsyncGenerator<Eint
   }
 }
 
-async function* tarBloecke(wurzel: string, zaehler: { dateien: number }): AsyncGenerator<Buffer> {
+/**
+ * Eine Datei, die nicht aus dem Quellverzeichnis kommt, aber mit ins Archiv
+ * soll (Arbeitspaket P8: das Export-Manifest).
+ */
+export interface ZusatzDatei {
+  /** Pfad im Archiv, relativ zu dessen Wurzel. */
+  readonly relativ: string;
+  readonly inhalt: Buffer;
+}
+
+/** Kopfsatz plus Inhalt fuer eine Datei, die schon im Speicher liegt. */
+function* zusatzBloecke(datei: ZusatzDatei, mtimeSeconds: number): Generator<Buffer> {
+  if (Buffer.byteLength(datei.relativ, 'utf8') > 99) {
+    yield* langerName(datei.relativ);
+  }
+
+  yield baueKopfsatz({
+    name: datei.relativ,
+    typ: '0',
+    size: datei.inhalt.length,
+    mode: 0o644,
+    mtimeSeconds,
+  });
+  yield datei.inhalt;
+
+  const rest = fuellung(datei.inhalt.length);
+  if (rest.length > 0) {
+    yield rest;
+  }
+}
+
+async function* tarBloecke(
+  wurzel: string,
+  zaehler: { dateien: number },
+  zusatz: readonly ZusatzDatei[],
+  mtimeSeconds: number,
+): AsyncGenerator<Buffer> {
+  // Zuerst die Zusatzdateien: So steht das Manifest am Anfang des Archivs und
+  // laesst sich lesen, ohne mehrere Gigabyte Weltdaten zu entpacken.
+  for (const datei of zusatz) {
+    yield* zusatzBloecke(datei, mtimeSeconds);
+    zaehler.dateien += 1;
+  }
+
   for await (const eintrag of sammle(wurzel, '')) {
     const typ: TarTyp = eintrag.typ === 'directory' ? '5' : eintrag.typ === 'symlink' ? '2' : '0';
 
@@ -259,12 +302,30 @@ async function* tarBloecke(wurzel: string, zaehler: { dateien: number }): AsyncG
  * Die Prüfsumme wird über das **fertige, komprimierte** Archiv gebildet – also
  * über genau die Bytes, die später heruntergeladen und zurückgespielt werden.
  */
-export async function packDirectory(sourceDir: string, archivePath: string): Promise<PackResult> {
+export interface PackOptions {
+  /**
+   * Dateien, die zusaetzlich zum Verzeichnis ins Archiv wandern (P8).
+   *
+   * Sie stehen am Anfang des Archivs und zaehlen in `fileCount` mit; im
+   * Quellverzeichnis bleiben sie unsichtbar.
+   */
+  readonly extraFiles?: readonly ZusatzDatei[];
+  /** Zeitstempel der Zusatzdateien; ohne Angabe der Zeitpunkt des Packens. */
+  readonly now?: () => Date;
+}
+
+export async function packDirectory(
+  sourceDir: string,
+  archivePath: string,
+  options: PackOptions = {},
+): Promise<PackResult> {
   await fs.mkdir(path.dirname(archivePath), { recursive: true });
 
   const hash = createHash('sha256');
   let sizeBytes = 0;
   const zaehler = { dateien: 0 };
+  const zusatz = options.extraFiles ?? [];
+  const mtimeSeconds = Math.floor((options.now ?? ((): Date => new Date()))().getTime() / 1000);
 
   const messen = new Transform({
     transform(stueck: Buffer, _kodierung, weiter) {
@@ -276,7 +337,7 @@ export async function packDirectory(sourceDir: string, archivePath: string): Pro
 
   try {
     await pipeline(
-      Readable.from(tarBloecke(sourceDir, zaehler)),
+      Readable.from(tarBloecke(sourceDir, zaehler, zusatz, mtimeSeconds)),
       createGzip(),
       messen,
       createWriteStream(archivePath),

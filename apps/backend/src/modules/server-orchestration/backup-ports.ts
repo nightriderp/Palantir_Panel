@@ -21,6 +21,7 @@ import {
   type DeleteBackupCommandPayload,
   type DownloadBackupCommandPayload,
   type RestoreBackupCommandPayload,
+  type ServerExportManifest,
   fail,
   ok,
 } from '@palantir/contracts';
@@ -31,6 +32,7 @@ import {
   type BackupAgentGateway,
   type BackupServerRecord,
   type ServerDirectory,
+  type ServerExportManifestSource,
 } from '../backups/index.js';
 import { type AgentRegistry } from './agent-gateway.js';
 import { isServerOrchestrationError } from './errors.js';
@@ -214,6 +216,73 @@ export function createAgentBackupGateway(options: BackupAgentGatewayOptions): Ba
 
     async deleteBackup(payload: DeleteBackupCommandPayload): Promise<ApiResponse<unknown>> {
       return send('DELETE_BACKUP', await defaultHostId(), null, payload);
+    },
+  };
+}
+
+/**
+ * Export-Manifest eines Servers (Arbeitspaket P8, Lastenheft §3.3).
+ *
+ * B5 orchestriert den Export, kennt aber die Entität `GameServer` nicht – die
+ * gehört B3. Deshalb steht die Umsetzung hier, neben den anderen Ports, die B3
+ * für B5 stellt.
+ *
+ * **Was bewusst nicht im Manifest steht:** Node-Zuordnung, öffentliche Ports,
+ * Container-Id, DNS-Eintrag und Besitzer. Das sind Angaben dieser Installation;
+ * in einem Archiv, das der Nutzer weitergeben darf, hätten sie nichts verloren
+ * und beim Einlesen auf einem anderen Panel wären sie ohnehin falsch. Was
+ * bleibt, ist das, was den Server als Server ausmacht.
+ */
+export function createDrizzleServerExportManifestSource(
+  db: Database,
+  options: { readonly now?: () => Date } = {},
+): ServerExportManifestSource {
+  const now = options.now ?? ((): Date => new Date());
+
+  return {
+    async buildManifest(serverId: string): Promise<ServerExportManifest | null> {
+      const rows = await db
+        .select({
+          id: gameServers.id,
+          name: gameServers.name,
+          gameType: gameServers.gameType,
+          subdomain: gameServers.subdomain,
+          startupParameters: gameServers.startupParameters,
+          configJson: gameServers.configJson,
+          resourceLimits: gameServers.resourceLimits,
+          autoShutdown: gameServers.autoShutdown,
+          createdAt: gameServers.createdAt,
+        })
+        .from(gameServers)
+        .where(eq(gameServers.id, serverId))
+        .limit(1);
+
+      const row = rows[0];
+
+      if (row === undefined) {
+        return null;
+      }
+
+      return {
+        formatVersion: 1,
+        exportedAt: now().toISOString(),
+        server: {
+          id: row.id,
+          name: row.name,
+          gameType: row.gameType,
+          subdomain: row.subdomain,
+          startupParameters: row.startupParameters,
+          config: row.configJson,
+          resourceLimits: {
+            ramMb: row.resourceLimits.ramMb,
+            cpuCores: row.resourceLimits.cpuCores,
+            diskMb: row.resourceLimits.diskMb,
+          },
+          autoShutdownEnabled: row.autoShutdown.enabled,
+          autoShutdownTimeoutMinutes: row.autoShutdown.idleTimeoutMinutes,
+          createdAt: row.createdAt.toISOString(),
+        },
+      };
     },
   };
 }

@@ -21,6 +21,7 @@ import type {
   DeleteBackupCommandPayload,
   DownloadBackupCommandPayload,
   RestoreBackupCommandPayload,
+  ServerExportManifest,
   ServerStatus,
   WebSocketEventName,
 } from '@palantir/contracts';
@@ -50,6 +51,19 @@ export interface ServerDirectory {
   findById(serverId: string): Promise<BackupServerRecord | null>;
   /** Für die globale Übersicht: Namen zu bereits bekannten Server-Ids. */
   findManyByIds(serverIds: readonly string[]): Promise<BackupServerRecord[]>;
+}
+
+/**
+ * Liefert die Konfiguration eines Servers als Export-Manifest (P8,
+ * Lastenheft §3.3). Umsetzung: B3 – nur dort steht die Entität `GameServer`.
+ *
+ * Bewusst ein eigener Port und kein weiteres Feld an `BackupServerRecord`: Das
+ * Manifest wird ausschließlich beim Export gebraucht; jedes gewöhnliche Backup
+ * würde die zusätzlichen Spalten sonst mitladen.
+ */
+export interface ServerExportManifestSource {
+  /** `null`, wenn es den Server nicht (mehr) gibt. */
+  buildManifest(serverId: string): Promise<ServerExportManifest | null>;
 }
 
 /** Nachschlagen von Anzeigenamen (Entität `User`, Pflichtenheft §6). */
