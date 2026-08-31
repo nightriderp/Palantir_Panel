@@ -1,0 +1,53 @@
+# frps - Serverseite des Spiele-Tunnels auf der VPS (Pflichtenheft §2.4).
+#
+# Ablageort im Betrieb: /opt/palantir/deploy/vps/frps.toml (aus diesem
+# Repository ausgecheckt). Wird vom Dienst `frps` in `docker-compose.yml`
+# schreibgeschuetzt eingehaengt.
+#
+# WARUM EIN RUECKWAERTSTUNNEL UND KEIN DNAT
+#
+# Naheliegender waere, auf der VPS einfach die oeffentlichen Spielports per
+# DNAT auf die Tunnel-Adresse des Homeservers umzuschreiben. Das scheitert an
+# Pflichtenheft §1: Der Homeserver nimmt zu keinem Zeitpunkt eingehende
+# Verbindungen an - auch nicht innerhalb des Tunnels. Umgesetzt ist das als
+# `iifname "wg0" drop` in `/etc/wireguard/wg0.conf` auf dem Homeserver
+# (`deploy/gamenode/wireguard-firewall.md`). Ein Verbindungsversuch der VPS
+# laeuft dort ins Leere - nachgemessen, nicht vermutet.
+#
+# frp dreht die Richtung um: `frpc` auf dem Homeserver waehlt hinaus zu diesem
+# Dienst, und der Spielverkehr fliesst durch diese bestehende Verbindung
+# zurueck. Der Homeserver nimmt weiterhin nichts entgegen; §1 bleibt in Kraft.
+#
+# Die Vorlagen-Ausdruecke `{{ .Envs.X }}` loest frp beim Start aus der
+# Umgebung auf. Alle Werte kommen aus der zentralen `.env` (Pflichtenheft
+# §12.1); hier steht bewusst kein einziger fester Wert.
+
+# Der Steuerkanal lauscht NUR auf der WireGuard-Adresse der VPS, nie auf dem
+# oeffentlichen Interface. Nur der Homeserver ist Peer des Tunnels und kann ihn
+# damit ueberhaupt erreichen.
+bindAddr = "{{ .Envs.WIREGUARD_VPS_IP }}"
+bindPort = {{ .Envs.FRP_BIND_PORT }}
+
+# Die Spielports dagegen gehoeren ins Internet - hier lauscht frps oeffentlich.
+proxyBindAddr = "0.0.0.0"
+
+# Zweite Schranke zusaetzlich zum Tunnel: Ohne dieses Geheimnis nimmt frps
+# keinen Client an. Der Tunnel allein wuerde genuegen, solange nur der
+# Homeserver Peer ist - das Token deckt den Fall ab, dass spaeter ein weiterer
+# Peer dazukommt (z. B. ein Wartungszugang).
+auth.method = "token"
+auth.token = "{{ .Envs.FRP_TOKEN }}"
+
+# frps oeffnet ausschliesslich Ports aus diesem Bereich, egal was ein Client
+# anfordert. Derselbe Bereich, aus dem das Panel seine Ports vergibt - beide
+# lesen dieselben zwei Variablen, damit sie nicht auseinanderlaufen koennen.
+# Laeuft ein Server auf einem Port, fuer den es keinen Proxy gibt, startet er
+# normal, meldet "laeuft" und ist trotzdem nicht erreichbar. Genau das
+# verhindert die gemeinsame Quelle.
+allowPorts = [ { start = {{ .Envs.GAME_PORT_RANGE_START }}, end = {{ .Envs.GAME_PORT_RANGE_END }} } ]
+
+# Ins Container-Log, nicht in eine Datei: Der Container ist `read_only`, und
+# `docker compose logs` ist der Weg, auf dem hier alles andere auch gelesen
+# wird.
+log.to = "console"
+log.level = "info"

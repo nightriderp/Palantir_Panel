@@ -63,7 +63,7 @@ docker compose --env-file "${ENV_FILE}" pull --quiet
 # Nur Agent und Socket-Proxy werden neu gestartet. Die Gameserver-Container
 # gehören nicht zu diesem Compose-Projekt und laufen unberührt weiter - ein
 # Update des Agents darf keine laufende Spielrunde beenden.
-log 'Starte Agent und Socket-Proxy neu ...'
+log 'Starte die Dienste der Gamenode neu ...'
 docker compose --env-file "${ENV_FILE}" up -d --remove-orphans
 
 log 'Zustand:'

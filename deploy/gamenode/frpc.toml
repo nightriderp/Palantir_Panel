@@ -1,0 +1,78 @@
+# frpc - Clientseite des Spiele-Tunnels auf der Gamenode (Pflichtenheft §2.4).
+#
+# Ablageort im Betrieb: /opt/palantir/deploy/gamenode/frpc.toml (aus diesem
+# Repository ausgecheckt). Wird vom Dienst `frpc` in `docker-compose.yml`
+# schreibgeschuetzt eingehaengt.
+#
+# Dieser Dienst ist der Grund, warum die Gameserver von aussen erreichbar sind,
+# OHNE dass der Homeserver eine eingehende Verbindung annimmt (Pflichtenheft
+# §1): Er waehlt hinaus zur VPS und haelt die Verbindung offen; der
+# Spielverkehr kommt durch sie zurueck. Deshalb steht in seinem Dienst auch
+# kein `ports:` - siehe den Grundsatz oben in `docker-compose.yml`.
+
+serverAddr = "{{ .Envs.WIREGUARD_VPS_IP }}"
+serverPort = {{ .Envs.FRP_BIND_PORT }}
+
+auth.method = "token"
+auth.token = "{{ .Envs.FRP_TOKEN }}"
+
+# Keine vorgewaermten Arbeitsverbindungen. Beim Anmelden von ueber tausend
+# Proxies meldet frpc sonst hunderte Male "work connection pool is full,
+# discarding". Gemessen ueber den vollen Bereich 25000-25564 (1130 Proxies):
+# Voreinstellung 488 solcher Zeilen, mit diesem Wert 295. Es verschwindet also
+# NICHT, sondern halbiert sich - serverseitiges `transport.maxPoolCount = 0`
+# macht es mit 432 sogar schlechter. Die Meldungen sind harmlos (alle 1130
+# Proxies melden sich in beiden Faellen erfolgreich an), sie sind reines
+# Startrauschen im Log.
+#
+# Der Preis dieses Werts ist ein Verbindungsaufbau in dem Moment, in dem ein
+# Spieler sich verbindet, statt einer vorgehaltenen Verbindung. Neben dem
+# Verbindungsaufbau zum Spielserver selbst faellt das nicht ins Gewicht.
+transport.poolCount = 0
+
+log.to = "console"
+log.level = "info"
+
+# --- Die Proxy-Liste ---------------------------------------------------------
+#
+# Fuer jeden Port des Bereichs entsteht je ein TCP- und ein UDP-Proxy. Die
+# Liste ist damit STATISCH: Sie deckt jeden Port ab, den das Panel jemals
+# vergeben kann, und muss beim Anlegen oder Loeschen eines Servers nicht
+# angefasst werden. Das ist der Grund, warum der Agent hiervon nichts wissen
+# muss und es keinen Agent-Befehl und keine Contracts-Aenderung dafuer gibt.
+#
+# Moeglich ist das, weil das Backend dem Agent `hostPort = publicPort` schickt
+# (`server-orchestration/service.ts`): Oeffentlicher Port und Port auf dem
+# Homeserver tragen immer dieselbe Nummer.
+#
+# `localIP = 127.0.0.1` ist kein Zufall: Der Agent bindet die Spielports
+# ausschliesslich auf die lokale Adresse der Gameserver-VM (`DEFAULT_HOST_IP`
+# in `apps/agent/src/runtime/hardening.ts`, Pflichtenheft §18). Genau dort holt
+# frpc sie ab. Deshalb laeuft der Dienst mit `network_mode: host` - im eigenen
+# Container-Netz waere `127.0.0.1` das falsche Loopback.
+#
+# Kosten des Bereichs, gemessen auf der VPS: 1000 Ports (2000 Proxies)
+# registrieren in etwa einer Sekunde, frps braucht dafuer rund 59 MB und 2009
+# Dateideskriptoren bei einer Grenze von ueber einer Million. Der Bereich ist
+# also nicht durch Ressourcen begrenzt, sondern durch die Angriffsflaeche:
+# jeder deklarierte Port ist ein oeffentlich erreichbarer Socket, auch wenn
+# kein Server dahintersteht. Verkleinern kostet nichts weiter als geaenderte
+# Werte in der `.env` und einen Neustart beider Dienste.
+
+{{- $bereich := printf "%s-%s" .Envs.GAME_PORT_RANGE_START .Envs.GAME_PORT_RANGE_END }}
+{{- range $_, $v := parseNumberRangePair $bereich $bereich }}
+
+[[proxies]]
+name = "game-tcp-{{ $v.First }}"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = {{ $v.First }}
+remotePort = {{ $v.Second }}
+
+[[proxies]]
+name = "game-udp-{{ $v.First }}"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = {{ $v.First }}
+remotePort = {{ $v.Second }}
+{{- end }}

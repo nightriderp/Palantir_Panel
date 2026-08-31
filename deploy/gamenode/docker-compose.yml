@@ -91,6 +91,41 @@ services:
     networks:
       - palantir
 
+  # --- Spiele-Tunnel (Clientseite) --------------------------------------------
+  # Wählt zur VPS HINAUS und hält die Verbindung offen; der Spielverkehr kommt
+  # durch sie zurück (Pflichtenheft §2.4). Genau deshalb steht hier kein
+  # `ports:` und wird auch keines gebraucht - der Grundsatz oben bleibt
+  # unangetastet, der Homeserver nimmt weiterhin nichts entgegen.
+  #
+  # `network_mode: host` ist hier notwendig, nicht bequem: Der Agent bindet die
+  # Spielports auf `127.0.0.1` der VM (Pflichtenheft §18). Im eigenen
+  # Container-Netz wäre das die Loopback-Adresse des frpc-Containers, und frpc
+  # fände dort nichts. Das Host-Netz veröffentlicht dabei nichts - es erlaubt
+  # nur, die lokal gebundenen Spielports zu erreichen.
+  frpc:
+    image: fatedier/frpc:${FRP_VERSION}
+    container_name: palantir-frpc
+    restart: always
+    network_mode: host
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    cap_drop:
+      - ALL
+    mem_limit: ${FRPC_MEM_LIMIT:-256m}
+    pids_limit: 256
+    # Wie bei frps auf der VPS: nur die Werte, die die Konfiguration einsetzt -
+    # nicht die gesamte `.env`.
+    environment:
+      WIREGUARD_VPS_IP: ${WIREGUARD_VPS_IP}
+      FRP_BIND_PORT: ${FRP_BIND_PORT:-7000}
+      FRP_TOKEN: ${FRP_TOKEN}
+      GAME_PORT_RANGE_START: ${GAME_PORT_RANGE_START}
+      GAME_PORT_RANGE_END: ${GAME_PORT_RANGE_END}
+    volumes:
+      - ./frpc.toml:/etc/frp/frpc.toml:ro
+    command: ['-c', '/etc/frp/frpc.toml']
+
 networks:
   palantir:
     name: palantir
