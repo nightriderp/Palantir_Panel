@@ -69,7 +69,87 @@ export const AUTH_ENDPOINTS = {
   twoFactorDisable: '/auth/2fa/disable',
   /** Eigenes Konto endgültig löschen (Lastenheft §3.1). */
   account: '/auth/account',
+  /** Refresh-Token gegen ein frisches Zugriffs-Token tauschen (Pflichtenheft §7). */
+  refresh: '/auth/refresh',
 } as const;
+
+/**
+ * Pfade, bei denen ein 401 die endgültige Antwort ist.
+ *
+ * Anmeldung, Registrierung und die ALTCHA-Challenge laufen ohne Sitzung; ein
+ * Erneuerungsversuch wäre dort sinnlos. `refresh` und `logout` stehen mit in der
+ * Liste, damit sich der Ablauf nicht selbst aufruft.
+ */
+const OHNE_ERNEUERUNG: ReadonlySet<string> = new Set([
+  '/auth/login',
+  '/auth/login/2fa',
+  '/auth/register',
+  '/auth/altcha/challenge',
+  '/auth/logout',
+  '/auth/refresh',
+]);
+
+/**
+ * Läuft gerade ein Erneuerungsversuch? Alle Wartenden teilen sich denselben.
+ *
+ * Ohne diese Bündelung schickt eine Seite, die zehn Ressourcen gleichzeitig
+ * lädt, nach dem Ablauf des Zugriffs-Tokens auch zehn Erneuerungen los. Der
+ * Refresh-Token rotiert bei jedem Tausch (Pflichtenheft §7) – neun davon
+ * kämen mit einem bereits verbrauchten Token und würden die Sitzung beenden.
+ */
+let laufendeErneuerung: Promise<boolean> | null = null;
+
+async function tauscheToken(): Promise<boolean> {
+  const csrfToken = currentCsrfToken();
+
+  try {
+    const response = await fetch(apiUrl(AUTH_ENDPOINTS.refresh), {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        ...(csrfToken === null ? {} : { [CSRF_HEADER_NAME]: csrfToken }),
+      },
+    });
+
+    return response.ok;
+  } catch {
+    // Netz weg: wie ein fehlgeschlagener Tausch behandeln. Der ursprüngliche
+    // Aufruf meldet dann seinen eigenen Fehler, nicht diesen hier.
+    return false;
+  }
+}
+
+/**
+ * Die Sitzung erneuern, wenn das Zugriffs-Token abgelaufen ist.
+ *
+ * Das Zugriffs-Token gilt 15 Minuten (`JWT_ACCESS_TOKEN_TTL`), der
+ * Refresh-Token 30 Tage. Ohne diesen Tausch wäre nach einer Viertelstunde jede
+ * Anfrage `AUTH_REQUIRED`, während die Sitzung eigentlich noch gilt.
+ *
+ * `false` heißt: Der Tausch ging nicht durch. Das Backend löscht in dem Fall die
+ * Sitzungs-Cookies selbst, sodass die nächste Navigation auf der Anmeldung
+ * landet – hier wird deshalb nicht zusätzlich umgeleitet.
+ *
+ * Auf dem Server (Middleware, Server-Komponenten) passiert nichts: gesetzte
+ * Cookies erreichten den Browser dort nicht.
+ */
+export function refreshSession(): Promise<boolean> {
+  if (typeof document === 'undefined') {
+    return Promise.resolve(false);
+  }
+
+  laufendeErneuerung ??= tauscheToken().finally(() => {
+    laufendeErneuerung = null;
+  });
+
+  return laufendeErneuerung;
+}
+
+/** Darf für diesen Pfad nach einem 401 erneuert werden? */
+export function darfErneuern(path: string): boolean {
+  return !OHNE_ERNEUERUNG.has(path);
+}
 
 /**
  * Basisadresse der Backend-API.
@@ -125,6 +205,28 @@ function currentCsrfToken(): string | null {
  * Subdomain liegen kann.
  */
 async function request<TSchema extends z.ZodTypeAny>(
+  path: string,
+  dataSchema: TSchema,
+  init: RequestInit = {},
+): Promise<z.infer<TSchema>> {
+  try {
+    return await sende(path, dataSchema, init);
+  } catch (error) {
+    const abgelaufen =
+      error instanceof AuthRequestError &&
+      error.code === 'AUTH_REQUIRED' &&
+      darfErneuern(path) &&
+      (await refreshSession());
+
+    if (!abgelaufen) throw error;
+
+    // Genau ein zweiter Versuch: schlägt der auch fehl, ist es kein
+    // Token-Problem mehr und der Fehler gehört nach oben.
+    return await sende(path, dataSchema, init);
+  }
+}
+
+async function sende<TSchema extends z.ZodTypeAny>(
   path: string,
   dataSchema: TSchema,
   init: RequestInit = {},
