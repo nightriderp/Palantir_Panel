@@ -5,7 +5,9 @@ import { type HostNodeDto } from '@palantir/contracts';
 import {
   Badge,
   Button,
+  ConfirmDialog,
   DangerConfirmDialog,
+  Modal,
   PageHeader,
   Panel,
   formatDateTime,
@@ -14,7 +16,7 @@ import {
   useToast,
 } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
-import { deleteNode, fetchNodes, updateNode } from '@/lib/api/admin';
+import { deleteNode, fetchNodes, issueNodeAgentToken, updateNode } from '@/lib/api/admin';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { NODE_STATUS_META } from '@/components/nodes/nodeStatus';
@@ -25,7 +27,7 @@ import { AddNodeWizard } from './AddNodeWizard';
  * Node-Verwaltung im Admin-Bereich (Lastenheft §3.7).
  *
  * Anlegen über den {@link AddNodeWizard} (inkl. Anbinde-Anleitung), sowie je Node
- * Wartung ein/aus und Entfernen. Der Zustand „online" wird nicht von Hand gesetzt
+ * Wartung ein/aus, Agent-Token vergeben und Entfernen. Der Zustand „online" wird nicht von Hand gesetzt
  * – das entscheidet die Agent-Verbindung; deshalb schaltet „Wartung beenden" auf
  * `offline`, bis der Agent die Node wieder meldet.
  */
@@ -44,6 +46,10 @@ export function NodesAdminView() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<HostNodeDto | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** Node, für die gerade ein neues Agent-Token bestätigt werden soll. */
+  const [pendingToken, setPendingToken] = useState<HostNodeDto | null>(null);
+  /** Frisch erzeugtes Token – wird genau einmal gezeigt. */
+  const [issuedToken, setIssuedToken] = useState<{ node: HostNodeDto; token: string } | null>(null);
 
   if (!canManage) {
     return (
@@ -87,6 +93,26 @@ export function NodesAdminView() {
     }
   }
 
+  /**
+   * Neues Agent-Token erzeugen.
+   *
+   * Die Node-Liste wird danach **nicht** neu geladen: Der Datensatz ändert sich
+   * für die Anzeige nicht, und ein Neuladen würde nur den Dialog mit dem Token
+   * verdrängen.
+   */
+  async function issueToken(node: HostNodeDto) {
+    setBusyId(node.id);
+    const result = await issueNodeAgentToken(node.id);
+    setBusyId(null);
+    setPendingToken(null);
+
+    if (result.success) {
+      setIssuedToken({ node, token: result.data.token });
+    } else {
+      toast.error(errorText(result));
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -111,6 +137,7 @@ export function NodesAdminView() {
               node={node}
               busy={busyId === node.id}
               onToggleMaintenance={() => toggleMaintenance(node)}
+              onIssueToken={() => setPendingToken(node)}
               onDelete={() => setPendingDelete(node)}
             />
           ))
@@ -124,6 +151,31 @@ export function NodesAdminView() {
       </div>
 
       <AddNodeWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onCreated={reload} />
+
+      <ConfirmDialog
+        open={pendingToken !== null}
+        onClose={() => (busyId ? undefined : setPendingToken(null))}
+        title="Agent-Token erzeugen"
+        message={
+          pendingToken
+            ? `Für „${pendingToken.name}" wird ein neues Agent-Token erzeugt. Ein bereits vergebenes wird damit ungültig – der Agent dieser Node kommt erst wieder herein, wenn er das neue Token bekommen hat. Das Token wird genau einmal angezeigt.`
+            : ''
+        }
+        confirmLabel="Token erzeugen"
+        onConfirm={() => {
+          if (pendingToken) void issueToken(pendingToken);
+        }}
+        busy={busyId === pendingToken?.id}
+      />
+
+      {issuedToken ? (
+        <AgentTokenDialog
+          nodeName={issuedToken.node.name}
+          nodeId={issuedToken.node.id}
+          token={issuedToken.token}
+          onClose={() => setIssuedToken(null)}
+        />
+      ) : null}
 
       <DangerConfirmDialog
         open={pendingDelete !== null}
@@ -147,11 +199,13 @@ function NodeRow({
   node,
   busy,
   onToggleMaintenance,
+  onIssueToken,
   onDelete,
 }: {
   node: HostNodeDto;
   busy: boolean;
   onToggleMaintenance: () => void;
+  onIssueToken: () => void;
   onDelete: () => void;
 }) {
   const status = NODE_STATUS_META[node.status];
@@ -170,6 +224,15 @@ function NodeRow({
           <div className="flex shrink-0 gap-2">
             <Button variant="secondary" size="sm" disabled={busy} onClick={onToggleMaintenance}>
               {node.status === 'maintenance' ? 'Wartung beenden' : 'In Wartung'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              iconLeft="key"
+              disabled={busy}
+              onClick={onIssueToken}
+            >
+              Agent-Token
             </Button>
             <Button variant="danger" size="sm" iconLeft="trash" disabled={busy} onClick={onDelete}>
               Entfernen
@@ -195,6 +258,84 @@ function NodeRow({
           : 'Noch nie verbunden – der Agent hat sich bisher nicht gemeldet.'}
       </p>
     </Panel>
+  );
+}
+
+/**
+ * Frisch erzeugtes Agent-Token – wird genau einmal gezeigt.
+ *
+ * Gespeichert ist im Backend nur der Hash; wer das Token hier verliert, muss
+ * ein neues erzeugen. Neben dem Token stehen deshalb gleich die beiden Zeilen,
+ * die auf der Node in die `.env` gehören (CLAUDE.md §9: mit Pfad und Maschine).
+ */
+function AgentTokenDialog({
+  nodeName,
+  nodeId,
+  token,
+  onClose,
+}: {
+  nodeName: string;
+  nodeId: string;
+  token: string;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const envLines = `AGENT_TOKEN=${token}
+AGENT_NODE_ID=${nodeId}`;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Agent-Token für „${nodeName}"`}
+      description="Das Token wird nur jetzt angezeigt. Trage es auf der Node ein – geht es verloren, hilft nur ein neues Token."
+      footer={
+        <Button variant="primary" onClick={onClose}>
+          Fertig
+        </Button>
+      }
+    >
+      <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-deep px-3 py-2.5">
+        <code className="break-all font-mono text-sm text-ink">{token}</code>
+        <Button
+          variant="secondary"
+          iconLeft="copy"
+          onClick={() =>
+            void navigator.clipboard
+              .writeText(token)
+              .then(() => toast.success('Token kopiert.'))
+              .catch(() => toast.error('Kopieren nicht möglich.'))
+          }
+        >
+          Kopieren
+        </Button>
+      </div>
+
+      <p className="mt-4 text-sm text-ink-muted">
+        Auf dem <strong>Homeserver</strong> in die Datei <code>/opt/palantir/.env</code> eintragen
+        und den Agent-Stack neu starten. <code>AGENT_NODE_ID</code> ist optional: Damit prüft das
+        Backend zusätzlich, dass Token und Node zusammenpassen.
+      </p>
+
+      <div className="mt-2 flex items-start justify-between gap-3 rounded-md border border-line bg-surface-deep px-3 py-2.5">
+        <pre className="overflow-x-auto whitespace-pre font-mono text-xs text-ink-muted">
+          {envLines}
+        </pre>
+        <Button
+          variant="secondary"
+          size="sm"
+          iconLeft="copy"
+          onClick={() =>
+            void navigator.clipboard
+              .writeText(envLines)
+              .then(() => toast.success('Zeilen kopiert.'))
+              .catch(() => toast.error('Kopieren nicht möglich.'))
+          }
+        >
+          Kopieren
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
