@@ -208,12 +208,22 @@ class FakeRepository implements ServerRepository {
     return Promise.resolve();
   }
 
+  /**
+   * Zustand der einen Node (`HostNode.status`) – umstellbar, damit sich eine
+   * stillgelegte Node prüfen lässt (Gefundener Punkt 24).
+   */
+  hostStatus: HostNodeRecord['status'] = HOST.status;
+
+  private host(): HostNodeRecord {
+    return { ...HOST, status: this.hostStatus };
+  }
+
   defaultHost(): Promise<HostNodeRecord | null> {
-    return Promise.resolve(HOST);
+    return Promise.resolve(this.host());
   }
 
   findHost(hostId: string): Promise<HostNodeRecord | null> {
-    return Promise.resolve(hostId === HOST.id ? HOST : null);
+    return Promise.resolve(hostId === HOST.id ? this.host() : null);
   }
 
   markHostConnected(): Promise<void> {
@@ -714,6 +724,55 @@ describe('Starten mit Health-Check (Pflichtenheft §9)', () => {
     }
 
     expect(harness.socket.commands).toHaveLength(before);
+  });
+});
+
+describe('Verfügbarkeit der Ziel-Node (Gefundener Punkt 24)', () => {
+  it('lehnt den Start auf einer stillgelegten Node mit NODE_UNAVAILABLE ab', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const before = harness.socket.commands.length;
+
+    harness.repository.hostStatus = 'maintenance';
+
+    try {
+      await harness.service.startServer(created.id, OWNER_ID);
+      expect.unreachable('Der Start hätte abgelehnt werden müssen.');
+    } catch (error: unknown) {
+      expect((error as ServerOrchestrationError).code).toBe('NODE_UNAVAILABLE');
+      expect((error as ServerOrchestrationError).message).toContain('Wartung');
+    }
+
+    // Weder Zustandswechsel noch Agent-Befehl: Die Ablehnung greift, bevor
+    // irgendetwas reserviert oder abgeschickt wird.
+    expect((await harness.service.requireServer(created.id)).status).toBe('stopped');
+    expect(harness.socket.commands).toHaveLength(before);
+  });
+
+  it('lehnt den Start auf einer nicht verbundenen Node ebenfalls ab', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.repository.hostStatus = 'offline';
+
+    await expect(harness.service.startServer(created.id, OWNER_ID)).rejects.toMatchObject({
+      code: 'NODE_UNAVAILABLE',
+    });
+  });
+
+  it('lässt den Start zu, sobald die Node wieder online ist', async () => {
+    const harness = makeHarness({ healthy: true });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.repository.hostStatus = 'maintenance';
+    await expect(harness.service.startServer(created.id, OWNER_ID)).rejects.toMatchObject({
+      code: 'NODE_UNAVAILABLE',
+    });
+
+    harness.repository.hostStatus = 'online';
+    const starting = await harness.service.startServer(created.id, OWNER_ID);
+
+    expect(starting.status).toBe('starting');
   });
 });
 
