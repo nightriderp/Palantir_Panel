@@ -352,6 +352,43 @@ services:
     networks:
       - palantir
 
+  # --- Spiele-Tunnel (Serverseite) --------------------------------------------
+  # Nimmt den Spielverkehr aus dem Internet entgegen und reicht ihn durch die
+  # vom Homeserver AUSGEHEND aufgebaute Verbindung weiter (Pflichtenheft §2.4).
+  # Die Begründung, warum es ein Rückwärtstunnel und kein DNAT ist, steht im
+  # Kopf von `frps.toml` - kurz: Pflichtenheft §1 verbietet eingehende
+  # Verbindungen zum Homeserver, auch im Tunnel.
+  #
+  # `network_mode: host` statt `ports:`: Der Dienst öffnet je einen TCP- und
+  # UDP-Listener pro Port des Spielbereichs. Als `ports:`-Liste wären das
+  # tausende Einträge und ebenso viele docker-proxy-Prozesse; im Host-Netz
+  # bindet frps sie direkt. Deshalb hängt der Dienst auch nicht am
+  # `palantir`-Netz - er braucht keinen der anderen Container.
+  frps:
+    image: fatedier/frps:${FRP_VERSION}
+    container_name: palantir-frps
+    restart: always
+    network_mode: host
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    cap_drop:
+      - ALL
+    mem_limit: ${FRPS_MEM_LIMIT:-256m}
+    pids_limit: 256
+    # Bewusst NICHT `env_file: ../../.env`: Der Dienst bekommt genau die fünf
+    # Werte, die seine Konfiguration einsetzt, statt sämtliche Geheimnisse der
+    # Instanz (Datenbank, OAuth, Cloudflare) in seiner Umgebung zu tragen.
+    environment:
+      WIREGUARD_VPS_IP: ${WIREGUARD_VPS_IP}
+      FRP_BIND_PORT: ${FRP_BIND_PORT:-7000}
+      FRP_TOKEN: ${FRP_TOKEN}
+      GAME_PORT_RANGE_START: ${GAME_PORT_RANGE_START}
+      GAME_PORT_RANGE_END: ${GAME_PORT_RANGE_END}
+    volumes:
+      - ./frps.toml:/etc/frp/frps.toml:ro
+    command: ['-c', '/etc/frp/frps.toml']
+
 networks:
   palantir:
     name: palantir

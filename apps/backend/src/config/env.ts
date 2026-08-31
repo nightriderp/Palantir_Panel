@@ -81,9 +81,18 @@ const envSchema = z.object({
   CLOUDFLARE_API_TOKEN: optionalEnvString(),
   CLOUDFLARE_ZONE_ID: optionalEnvString(),
 
-  /** Öffentlicher Portbereich für Gameserver (§2.4). */
-  GAME_PORT_RANGE_START: z.coerce.number().int().min(1).max(65_535).default(27_000),
-  GAME_PORT_RANGE_END: z.coerce.number().int().min(1).max(65_535).default(27_999),
+  /**
+   * Öffentlicher Portbereich für Gameserver (§2.4).
+   *
+   * Dieselben zwei Werte setzen auch die Erlaubnisliste von `frps` und die
+   * Proxy-Liste von `frpc` (`deploy/vps/frps.toml`,
+   * `deploy/gamenode/frpc.toml`). Sie dürfen nicht auseinanderlaufen: Ein Port
+   * ohne Tunnel ergibt einen Server, der startet, „läuft" meldet und trotzdem
+   * nicht erreichbar ist. Das Ende liegt unter {@link MINECRAFT_ROUTER_PORT},
+   * damit dieser nicht aus dem Pool vergeben werden kann.
+   */
+  GAME_PORT_RANGE_START: z.coerce.number().int().min(1).max(65_535).default(25_000),
+  GAME_PORT_RANGE_END: z.coerce.number().int().min(1).max(65_535).default(25_564),
   /** Hostname des Hostname-Routing-Proxys – Ziel der `CNAME`-Einträge (§2.4, §13). */
   GAME_ROUTER_HOSTNAME: optionalEnvString(),
   /** Einzelner öffentlicher Port für Spiele mit Hostname-Routing (§2.4). */
