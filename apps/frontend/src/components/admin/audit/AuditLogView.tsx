@@ -13,6 +13,7 @@ import {
   PageHeader,
   Panel,
   SelectField,
+  cn,
   formatDateTime,
   formatNumber,
 } from '@/components/shared';
@@ -28,7 +29,7 @@ import {
   Td,
   Th,
 } from '../common';
-import { auditActionLabel, auditTargetTypeLabel } from '../labels';
+import { auditActionCode, auditActionLabel, auditTargetTypeLabel, isAuditFailure } from '../labels';
 
 /**
  * Audit-Log (Lastenheft §3.7, Pflichtenheft §6) – **rein lesend**.
@@ -185,9 +186,9 @@ export function AuditLogView() {
             <thead>
               <tr>
                 <Th className="whitespace-nowrap">Zeitpunkt</Th>
+                <Th>Nutzer</Th>
                 <Th>Aktion</Th>
-                <Th>Handelnder</Th>
-                <Th>Objekt</Th>
+                <Th>Ziel</Th>
                 <Th>Herkunft</Th>
                 <Th>Details</Th>
               </tr>
@@ -198,8 +199,16 @@ export function AuditLogView() {
                   <Td className="whitespace-nowrap font-mono text-sm text-ink-faint">
                     {formatDateTime(entry.timestamp)}
                   </Td>
-                  <Td className="text-ink">{auditActionLabel(entry.action)}</Td>
                   <Td>{entry.actorDisplayName ?? 'System'}</Td>
+                  <Td
+                    className={cn(
+                      'whitespace-nowrap font-mono text-sm',
+                      isAuditFailure(entry.action) ? 'text-danger' : 'text-ink',
+                    )}
+                    title={auditActionLabel(entry.action)}
+                  >
+                    {auditActionCode(entry.action)}
+                  </Td>
                   <Td>
                     {entry.targetType ? (
                       <span>

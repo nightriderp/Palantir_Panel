@@ -148,7 +148,7 @@ export function UsersView() {
   if (!canManage) {
     return (
       <div className="flex flex-col gap-5">
-        <PageHeader title="Nutzer" className="-mx-5 -mt-5 px-5" />
+        <PageHeader title="Benutzerverwaltung" className="-mx-5 -mt-5 px-5" />
         <AdminAccessNotice area="die Nutzerverwaltung" />
       </div>
     );
@@ -157,8 +157,8 @@ export function UsersView() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Nutzer"
-        subtitle="Rollen, Sperren, Passwörter und Server der Konten verwalten"
+        title="Benutzerverwaltung"
+        subtitle="Konten, Rollen und Freischaltung"
         className="-mx-5 -mt-5 px-5"
       />
 
