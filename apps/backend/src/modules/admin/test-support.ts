@@ -140,6 +140,7 @@ export function nodeRecord(overrides: Partial<HostNodeRecord> = {}): HostNodeRec
     status: 'online',
     statusMessage: null,
     lastSeenAt: new Date('2026-08-26T09:00:00.000Z'),
+    hasAgentToken: false,
     createdAt: new Date('2026-08-01T00:00:00.000Z'),
     ...overrides,
   };
@@ -172,6 +173,16 @@ export function createFakeHostNodeRepository(
 
     async setAgentTokenHash(id, hash) {
       tokenHashes.set(id, hash);
+
+      const index = rows.findIndex((row) => row.id === id);
+
+      if (index >= 0) {
+        const vorhanden = rows[index];
+
+        if (vorhanden) {
+          rows[index] = { ...vorhanden, hasAgentToken: true };
+        }
+      }
     },
 
     async findById(id) {

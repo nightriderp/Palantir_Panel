@@ -96,9 +96,10 @@ export function NodesAdminView() {
   /**
    * Neues Agent-Token erzeugen.
    *
-   * Die Node-Liste wird danach **nicht** neu geladen: Der Datensatz ändert sich
-   * für die Anzeige nicht, und ein Neuladen würde nur den Dialog mit dem Token
-   * verdrängen.
+   * Die Liste wird danach neu geladen, damit der Hinweis „Eigenes Agent-Token
+   * vergeben" stimmt (Gefundener Punkt 110). Der Dialog mit dem Token steht in
+   * einem eigenen Zustand und übersteht das Neuladen – sonst wäre das Token
+   * weg, bevor jemand es kopieren konnte.
    */
   async function issueToken(node: HostNodeDto) {
     setBusyId(node.id);
@@ -108,6 +109,7 @@ export function NodesAdminView() {
 
     if (result.success) {
       setIssuedToken({ node, token: result.data.token });
+      reload();
     } else {
       toast.error(errorText(result));
     }
@@ -256,6 +258,17 @@ function NodeRow({
         {node.lastSeenAt
           ? `Zuletzt gesehen: ${formatDateTime(node.lastSeenAt)}`
           : 'Noch nie verbunden – der Agent hat sich bisher nicht gemeldet.'}
+      </p>
+
+      {/*
+        Woran hängt der Agent dieser Node? Ohne eigenes Token meldet er sich über
+        das gemeinsame AGENT_TOKEN aus der zentralen .env – bei mehreren Nodes
+        genau der Zustand, den man sehen will (Gefundener Punkt 110).
+      */}
+      <p className="mt-1 text-xs text-ink-faint">
+        {node.hasAgentToken === true
+          ? 'Eigenes Agent-Token vergeben.'
+          : 'Kein eigenes Agent-Token – der Agent meldet sich über das gemeinsame AGENT_TOKEN.'}
       </p>
     </Panel>
   );

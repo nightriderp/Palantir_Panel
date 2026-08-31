@@ -45,6 +45,14 @@ export interface HostNodeRecord {
   readonly statusMessage: string | null;
   readonly lastSeenAt: Date | null;
   readonly createdAt: Date;
+  /**
+   * Hat diese Node ein eigenes Agent-Token? (Gefundene Punkte 57 und 110.)
+   *
+   * Bewusst nur das Ja/Nein und nicht der Hash: Über das Modul hinaus wird der
+   * Hash nirgends gebraucht, und was nicht herumgereicht wird, kann auch nicht
+   * versehentlich in einer Antwort landen.
+   */
+  readonly hasAgentToken: boolean;
 }
 
 export interface CreateHostNodeData {
@@ -212,6 +220,7 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       usage: usage ?? null,
       serverCount: placement?.serverCount ?? 0,
       lastSeenAt: node.lastSeenAt?.toISOString() ?? null,
+      hasAgentToken: node.hasAgentToken,
       createdAt: node.createdAt.toISOString(),
       permissions: computeHostNodePermissions(actor),
     };
