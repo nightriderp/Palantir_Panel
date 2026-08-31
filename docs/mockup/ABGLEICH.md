@@ -8,8 +8,8 @@ nebeneinander, App mit Demo-Daten (5 Server, 2 Nodes, Owner-Konto).
 Diese Datei ist die **Befundliste** und wird beim Abarbeiten fortgeschrieben. Reihenfolge
 und Umfang der Korrekturen entscheidet der Nutzer.
 
-**Stand:** Abschnitt 1 (Grundgerüst) und Abschnitt 3 (Übersicht) sind umgesetzt, alles
-Übrige offen. Vier Befunde des ersten Durchgangs (3.2, 3.6, 3.7, 3.8) haben sich beim
+**Stand:** Abschnitt 1 (Grundgerüst), 3 (Übersicht) und 4 (Server-Detail) sind umgesetzt,
+alles Übrige offen. Vier Befunde des ersten Durchgangs (3.2, 3.6, 3.7, 3.8) haben sich beim
 Lesen des Codes als falsch erwiesen; sie sind als „entfällt" markiert statt gelöscht,
 damit die Nummerierung stabil bleibt.
 
@@ -112,16 +112,25 @@ abgestürzter Server und eine Konversation in der Entwicklungsdatenbank.
 
 ## 4. Server-Detail (`/servers/[id]`)
 
-| # | Klasse | Befund |
-| --- | --- | --- |
-| 4.1 | **A** | **Seitenkopf fehlt.** Mockup hat über der Kopfkarte noch „Survival Runde / Details und Steuerung" plus „← Zurück zur Übersicht" rechts. In der App ist die Kopfkarte selbst der Seitenkopf, der Zurück-Button sitzt in der Aktionsleiste. |
-| 4.2 | **B** | **Kopfkarte** ist im Mockup höher, mit Farbverlauf hinterlegt und hat eine deutlich größere Server-Kachel. |
-| 4.3 | **B** | **Konsole liegt im Mockup auf der Übersicht** – zweispaltig neben „Server-Details". In der App ist sie ein eigener Reiter, „Server-Details" steht darunter über die volle Breite. Strukturell der größte Unterschied dieser Seite. |
-| 4.4 | **B** | **Reiter**: Mockup `Übersicht · Aufgaben · Dateien · Backups` (4). App `Übersicht · Konsole · Dateien · Backups · Aufgaben · Einstellungen` (6, andere Reihenfolge). |
-| 4.5 | **B** | **Kachel-Beschriftungen**: Mockup `CPU-LAST`, `ARBEITSSPEICHER`, `PLATTE`, `PING`, `LAUFZEIT`. App `CPU`, `RAM`, `PLATTE`, `PING`, `SPIELER`. |
-| 4.6 | **A** | Kachel **`LAUFZEIT`** („3 Tage 4 Std.") fehlt in der App. |
-| 4.7 | **B** | Mockup: **Textlink „Verlauf anzeigen"**, App: gefüllter Knopf „Verlauf der letzten Stunde". |
-| 4.8 | **B** | **Netzwerkaktivität**: Mockup zeigt vier Werte (Eingehend, Ausgehend, Pakete ein, Pakete aus) samt erklärender Fußnote. App zeigt die Karte, aber ohne diese Aufteilung. |
+| #   | Klasse | Stand    | Befund                                                                                                                                                                                                                                                                                             |
+| --- | ------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.1 | **A**  | erledigt | **Seitenkopf fehlte.** Jetzt steht über der Kopfkarte „`<Name>` / Details und Steuerung" mit „Zurück zur Übersicht" rechts. Der Zurück-Knopf ist dafür aus der Kopfkarte verschwunden – sie ist den Aktionen am Server vorbehalten.                                                                    |
+| 4.2 | **B**  | erledigt | **Kopfkarte.** Kürzel-Kachel (62 px, Marken-Verlauf) ergänzt, mehr Innenabstand, oben ein Hauch der Markenfarbe (`bg-hero-gradient`), größerer Titel.                                                                                                                                                |
+| 4.3 | **B**  | erledigt | **Die Konsole liegt jetzt auf der Übersicht**, zweispaltig neben „Server-Details" (Verhältnis 1.6 : 1 wie im Mockup, auf schmalen Bildschirmen untereinander). Der eigene Reiter „Konsole" entfällt – zwei Türen in denselben Raum. Ein Lesezeichen auf `?tab=console` landet auf der Übersicht.       |
+| 4.4 | **B**  | erledigt | **Reiter** jetzt `Übersicht · Aufgaben · Dateien · Backups` wie im Mockup, dazu **Einstellungen**. Der Reiter bleibt, obwohl das Mockup ihn nicht kennt: dort führt das Zahnrad in der Kopfkarte in einen Dialog, den es in der App nicht gibt – ohne den Reiter hätte das Zahnrad kein Ziel.          |
+| 4.5 | **B**  | erledigt | **Kachel-Beschriftungen**: „CPU" → „CPU-Last", „RAM" → „Arbeitsspeicher". „Platte" und „Ping" stimmten bereits.                                                                                                                                                                                      |
+| 4.6 | **A**  | erledigt | Kachel **„Laufzeit"** ergänzt, gerechnet aus `lastStartedAt` und nur bei laufendem Server. Format `3 d 4 h` statt „3 Tage 4 Std." – die App hat dafür bereits einen geprüften Formatierer (`formatDuration`), eine zweite Schreibweise daneben wäre der schlechtere Tausch.                            |
+| 4.7 | **B**  | erledigt | **Verlauf** ist wieder ein zurückhaltender Textlink („Verlauf anzeigen" / „Verlauf schließen") statt eines gefüllten Knopfes.                                                                                                                                                                        |
+| 4.8 | **B**  | teilweise | **Netzwerkaktivität**: Beschriftungen auf „Eingehend"/„Ausgehend" geändert, Fußnote um den Hinweis auf das Relay ergänzt. Die zwei **Paket-Zähler** des Mockups fehlen weiter – `ServerLiveStats` kennt nur `networkRxBytes` und `networkTxBytes`. Sie nachzurüsten wäre eine Contracts-Änderung. |
+
+**Zusätzlich, nicht im Mockup:** Die Kachel **„Spieler"** bleibt. Das Mockup zeigt die
+Spielerzahl nur auf der Karte, aber die Zahl liegt auch hier vor und gehört zum Zustand
+des Servers.
+
+**Noch nicht sichtbar geprüft:** Ohne laufenden Agent liefert der Live-Kanal keine
+Messwerte. Kacheln und Netzwerkzeile zeigen deshalb „—" bzw. „Der Server läuft nicht.";
+ihr Aufbau ist am Code abgeglichen, ihre Darstellung mit echten Zahlen noch nicht.
+Dasselbe gilt für die Konsolenausgabe.
 
 ---
 
@@ -322,7 +331,7 @@ Chat- und Backup-Testdaten, die Ansichten sind noch nicht abschließend verglich
 
 1. ~~**Grundgerüst** (1.1–1.8)~~ – erledigt. Offen bleibt dort nur die Glocke (1.10).
 2. ~~**Übersicht + Server-Karte** (3.1, 3.3, 3.5)~~ – erledigt. 3.4 wartet auf das Backend.
-3. **Server-Detail** (4.x) – vor allem die zweispaltige Übersicht mit Konsole.
+3. ~~**Server-Detail** (4.x)~~ – erledigt. Offen bleibt nur der Paket-Zähler aus 4.8, der eine Contracts-Änderung bräuchte.
 4. **Server anlegen** (5.x) – überschaubar, reine Gestaltung.
 5. **Kleinteiliges** (Anmelden, Profil, Arcade, Benachrichtigungen).
 6. **Administration** – zuletzt, weil dort die meisten Klasse-C-Entscheidungen anstehen.

@@ -5,7 +5,7 @@ import { ownerPermissions, permissions } from './testFixtures';
 describe('buildServerTabs', () => {
   it('gibt für den Besitzer alle Reiter frei', () => {
     const tabs = buildServerTabs(ownerPermissions());
-    expect(tabs).toHaveLength(6);
+    expect(tabs).toHaveLength(5);
     expect(tabs.every((tab) => !tab.locked)).toBe(true);
   });
 
@@ -13,8 +13,8 @@ describe('buildServerTabs', () => {
     const tabs = buildServerTabs(permissions({ canView: true }));
     const locked = tabs.filter((tab) => tab.locked).map((tab) => tab.key);
 
-    expect(locked).toEqual(['console', 'files', 'backups', 'tasks', 'settings']);
-    expect(tabs).toHaveLength(6);
+    expect(locked).toEqual(['tasks', 'files', 'backups', 'settings']);
+    expect(tabs).toHaveLength(5);
     for (const tab of tabs.filter((entry) => entry.locked)) {
       expect(tab.lockedReason).toBe('Für deine Rolle nicht freigegeben.');
     }
@@ -22,7 +22,6 @@ describe('buildServerTabs', () => {
 
   it('bindet jeden Reiter an genau sein Flag', () => {
     const cases = [
-      ['console', permissions({ canUseConsole: true })],
       ['files', permissions({ canManageFiles: true })],
       ['backups', permissions({ canManageBackups: true })],
       ['tasks', permissions({ canManageSchedules: true })],
@@ -50,6 +49,18 @@ describe('buildServerTabs', () => {
     );
     expect(closed?.locked).toBe(true);
   });
+
+  it('folgt der Reihenfolge des Mockups und kennt keinen Konsolen-Reiter', () => {
+    // Die Konsole steht auf der Übersicht, nicht in einem eigenen Reiter.
+    const tabs = buildServerTabs(ownerPermissions());
+    expect(tabs.map((tab) => tab.key)).toEqual([
+      'overview',
+      'tasks',
+      'files',
+      'backups',
+      'settings',
+    ]);
+  });
 });
 
 describe('resolveServerTab', () => {
@@ -60,6 +71,13 @@ describe('resolveServerTab', () => {
 
   it('weicht bei gesperrtem Reiter auf den ersten offenen aus', () => {
     const tabs = buildServerTabs(permissions({ canView: true, canManageBackups: true }));
+    expect(resolveServerTab('tasks', tabs)).toBe('overview');
+  });
+
+  it('führt ein altes Lesezeichen auf die Konsole auf die Übersicht', () => {
+    // `?tab=console` gibt es nicht mehr; die Adresse soll trotzdem irgendwo
+    // ankommen statt ins Leere zu laufen.
+    const tabs = buildServerTabs(ownerPermissions());
     expect(resolveServerTab('console', tabs)).toBe('overview');
   });
 
@@ -87,7 +105,7 @@ describe('isServerTabKey', () => {
   });
 
   it('weist fremde Werte ab', () => {
-    expect(isServerTabKey('konsole')).toBe(false);
+    expect(isServerTabKey('console')).toBe(false);
     expect(isServerTabKey('')).toBe(false);
   });
 });

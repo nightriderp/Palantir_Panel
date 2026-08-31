@@ -8,6 +8,7 @@ import {
   ConfirmDialog,
   DangerConfirmDialog,
   EmptyState,
+  PageHeader,
   Panel,
   Tabs,
   useToast,
@@ -27,7 +28,10 @@ import { SettingsTab } from './SettingsTab';
 import { TasksTab } from './TasksTab';
 
 /**
- * Server-Detailansicht mit ihren sechs Reitern (Lastenheft §3.3).
+ * Server-Detailansicht mit ihren fünf Reitern (Lastenheft §3.3).
+ *
+ * Die Konsole hat wie im Mockup **keinen eigenen Reiter**: sie steht auf der
+ * Übersicht neben den Server-Details.
  *
  * Lädt den Server per REST und hängt sich für Status, Messwerte, Konsole und
  * laufende Aufträge an den Live-Kanal. Der aktive Reiter steht in der
@@ -123,6 +127,17 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader
+        title={server.name}
+        subtitle="Details und Steuerung"
+        className="-mx-5 -mt-5 px-5"
+        actions={
+          <Button iconLeft="arrowLeft" onClick={() => router.push('/servers')}>
+            Zurück zur Übersicht
+          </Button>
+        }
+      />
+
       <DetailHeader
         server={server}
         busy={lifecycle.pendingServerId !== null}
@@ -130,7 +145,6 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
         onOpenSettings={() => selectTab('settings')}
         onDelete={() => setDeleteOpen(true)}
         onCopyAddress={copyAddress}
-        onBack={() => router.push('/servers')}
       />
 
       {activeTab === null ? (
@@ -143,15 +157,21 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
         <>
           <Tabs items={tabs} activeKey={activeTab} onChange={selectTab} />
 
-          {activeTab === 'overview' ? <OverviewTab server={server} stats={live.stats} /> : null}
-
-          {activeTab === 'console' ? (
-            <ConsoleTab
+          {activeTab === 'overview' ? (
+            <OverviewTab
               server={server}
-              lines={live.consoleLines}
-              connection={live.connection}
-              onSend={live.sendConsoleCommand}
-              onClear={live.clearConsole}
+              stats={live.stats}
+              console={
+                server.permissions.canUseConsole ? (
+                  <ConsoleTab
+                    server={server}
+                    lines={live.consoleLines}
+                    connection={live.connection}
+                    onSend={live.sendConsoleCommand}
+                    onClear={live.clearConsole}
+                  />
+                ) : null
+              }
             />
           ) : null}
 
