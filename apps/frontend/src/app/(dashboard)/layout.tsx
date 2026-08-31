@@ -14,6 +14,20 @@ import { DashboardShell } from './DashboardShell';
  * ist `process.env` leer, und zur Bauzeit ist das Versions-Tag noch nicht
  * vergeben (siehe `lib/version.ts`).
  */
+/**
+ * Kein Vorrendern zur Bauzeit.
+ *
+ * Die Version des Deployments steht erst zur Laufzeit in der Umgebung
+ * (`PALANTIR_RELEASE`, gesetzt von `deploy/vps/deploy.sh`). Ohne diese Zeile
+ * rendert Next die Seiten dieses Bereichs beim **Bauen** vor – dort ist die
+ * Variable leer, und im Image landete dauerhaft „Entwicklung".
+ *
+ * Der Bereich verliert dadurch nichts: Er steht hinter der Anmeldung und holt
+ * seine Daten ohnehin erst im Browser; vorgerendert war hier nur ein leerer
+ * Rahmen.
+ */
+export const dynamic = 'force-dynamic';
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return <DashboardShell versionLabel={releaseFromEnvironment()}>{children}</DashboardShell>;
 }
