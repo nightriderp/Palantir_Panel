@@ -283,7 +283,7 @@ describe('nodeBlockReason', () => {
 describe('stepBlockReason', () => {
   it('verlangt im ersten Schritt ein verfügbares Spiel', () => {
     expect(stepBlockReason('game', state({ gameType: null }), context())).toBe(
-      'Bitte ein Spiel wählen.',
+      'Wähle zuerst ein Spiel.',
     );
 
     const locked = gameType({ available: false, unavailableReason: 'Kommt in Phase 2.' });
@@ -336,7 +336,7 @@ describe('stepBlockReason', () => {
 
   it('verlangt eine Node-Wahl', () => {
     expect(stepBlockReason('basics', state({ hostId: null }), context({ node: null }))).toBe(
-      'Bitte eine Node wählen.',
+      'Wähle eine Node.',
     );
   });
 
@@ -344,7 +344,7 @@ describe('stepBlockReason', () => {
     expect(stepBlockReason('summary', state(), context())).toBeNull();
     expect(stepBlockReason('summary', state({ name: 'ab' }), context())).toContain('3 Zeichen');
     expect(stepBlockReason('summary', state({ gameType: null }), context())).toBe(
-      'Bitte ein Spiel wählen.',
+      'Wähle zuerst ein Spiel.',
     );
   });
 });

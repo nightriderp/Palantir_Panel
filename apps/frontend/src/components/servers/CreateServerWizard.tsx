@@ -14,7 +14,6 @@ import {
   Button,
   Icon,
   PageHeader,
-  Panel,
   SelectField,
   TextField,
   ToggleRow,
@@ -56,32 +55,47 @@ import { useSubdomainCheck } from './useSubdomainCheck';
  * einer eigenen, getesteten Datei.
  */
 
+/**
+ * Schrittanzeige über dem Wizard (Mockup „Server erstellen").
+ *
+ * Über die volle Breite: jeder Schritt nimmt denselben Anteil ein, die
+ * Beschriftung steht unter dem Kreis, dazwischen läuft eine Linie, die den
+ * bereits zurückgelegten Weg in der Markenfarbe zeigt.
+ */
 function StepIndicator({ current }: { current: WizardStep }) {
   const currentIndex = WIZARD_STEPS.indexOf(current);
 
   return (
-    <ol className="flex items-center gap-2 overflow-x-auto pb-1">
+    <ol className="flex items-center">
       {WIZARD_STEPS.map((step, index) => {
         const done = index < currentIndex;
         const active = index === currentIndex;
 
         return (
-          <li key={step} className="flex shrink-0 items-center gap-2">
-            <span
-              className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold',
-                done && 'bg-success text-canvas',
-                active && 'bg-brand text-white',
-                !done && !active && 'bg-fill-strong text-ink-faint',
-              )}
-            >
-              {done ? <Icon name="check" size={12} /> : index + 1}
-            </span>
-            <span className={cn('text-sm', active ? 'font-semibold text-ink' : 'text-ink-faint')}>
-              {WIZARD_STEP_LABELS[step]}
-            </span>
+          <li key={step} className="flex flex-1 items-center">
+            <div className="flex flex-col items-center gap-1.5">
+              <span
+                className={cn(
+                  'flex h-[38px] w-[38px] items-center justify-center rounded-full text-base font-bold',
+                  done && 'bg-brand text-white',
+                  active && 'border-2 border-brand bg-brand-soft text-brand',
+                  !done && !active && 'bg-fill-strong text-ink-faint',
+                )}
+              >
+                {done ? <Icon name="check" size={16} /> : index + 1}
+              </span>
+              <span
+                className={cn('whitespace-nowrap text-xs', active ? 'text-ink' : 'text-ink-muted')}
+              >
+                {WIZARD_STEP_LABELS[step]}
+              </span>
+            </div>
+
             {index < WIZARD_STEPS.length - 1 ? (
-              <span aria-hidden className="mx-1 h-px w-6 bg-line-strong" />
+              <span
+                aria-hidden
+                className={cn('mx-2 h-0.5 flex-1', done ? 'bg-brand' : 'bg-line-strong')}
+              />
             ) : null}
           </li>
         );
@@ -235,10 +249,10 @@ export function CreateServerWizard() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+    <div className="mx-auto flex w-full max-w-[880px] flex-col gap-5">
       <PageHeader
-        title="Neuer Server"
-        subtitle="In vier Schritten zum eigenen Gameserver"
+        title="Neuen Server erstellen"
+        subtitle="In wenigen Schritten zum eigenen Gameserver"
         className="-mx-5 -mt-5 px-5"
         actions={
           <Button iconLeft="arrowLeft" onClick={() => router.push('/servers')}>
@@ -249,7 +263,8 @@ export function CreateServerWizard() {
 
       <StepIndicator current={step} />
 
-      <Panel variant="raised" className="flex flex-col gap-5">
+      {/* Ohne umschließende Karte, wie im Mockup: der Wizard ist die Seite. */}
+      <div className="flex flex-col gap-5">
         {step === 'game' ? (
           <>
             <h2 className="text-xl font-bold">Wähle dein Spiel</h2>
@@ -434,7 +449,7 @@ export function CreateServerWizard() {
 
           {isLastStep ? (
             <Button
-              variant="primary"
+              variant="success"
               disabled={blockReason !== null || submitting}
               onClick={() => void submit()}
             >
@@ -443,7 +458,7 @@ export function CreateServerWizard() {
           ) : (
             <Button
               variant="primary"
-              iconRight="check"
+              iconRight="arrowRight"
               disabled={blockReason !== null}
               onClick={() => setStep(WIZARD_STEPS[stepIndex + 1] ?? 'summary')}
             >
@@ -451,7 +466,7 @@ export function CreateServerWizard() {
             </Button>
           )}
         </div>
-      </Panel>
+      </div>
     </div>
   );
 }

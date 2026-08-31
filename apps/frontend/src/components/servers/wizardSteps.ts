@@ -190,7 +190,7 @@ export function stepBlockReason(
 ): string | null {
   switch (step) {
     case 'game':
-      if (!state.gameType) return 'Bitte ein Spiel wählen.';
+      if (!state.gameType) return 'Wähle zuerst ein Spiel.';
       if (context.gameType && !context.gameType.available) {
         return context.gameType.unavailableReason ?? 'Dieses Spiel steht noch nicht bereit.';
       }
@@ -208,7 +208,7 @@ export function stepBlockReason(
       if (!context.subdomainCheck) return 'Die Subdomain wurde noch nicht geprüft.';
       if (!context.subdomainCheck.available) return context.subdomainCheck.message;
 
-      if (!state.hostId) return 'Bitte eine Node wählen.';
+      if (!state.hostId) return 'Wähle eine Node.';
       return nodeBlockReason(context.node, state) ?? quotaBlockReason(context.quota, state);
     }
 

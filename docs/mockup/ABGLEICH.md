@@ -8,8 +8,8 @@ nebeneinander, App mit Demo-Daten (5 Server, 2 Nodes, Owner-Konto).
 Diese Datei ist die **Befundliste** und wird beim Abarbeiten fortgeschrieben. Reihenfolge
 und Umfang der Korrekturen entscheidet der Nutzer.
 
-**Stand:** Abschnitt 1 (Grundgerüst), 3 (Übersicht) und 4 (Server-Detail) sind umgesetzt,
-alles Übrige offen. Vier Befunde des ersten Durchgangs (3.2, 3.6, 3.7, 3.8) haben sich beim
+**Stand:** Abschnitt 1 (Grundgerüst), 3 (Übersicht), 4 (Server-Detail) und 5 (Server
+anlegen) sind umgesetzt, alles Übrige offen. Vier Befunde des ersten Durchgangs (3.2, 3.6, 3.7, 3.8) haben sich beim
 Lesen des Codes als falsch erwiesen; sie sind als „entfällt" markiert statt gelöscht,
 damit die Nummerierung stabil bleibt.
 
@@ -136,15 +136,16 @@ Dasselbe gilt für die Konsolenausgabe.
 
 ## 5. Server anlegen (`/servers/neu`)
 
-| # | Klasse | Befund |
-| --- | --- | --- |
-| 5.1 | **B** | **Titel** „Neuer Server" statt „Neuen Server erstellen"; **Untertitel** „In vier Schritten …" statt „In wenigen Schritten zum eigenen Gameserver". |
-| 5.2 | **B** | **Schrittanzeige**: Mockup groß, mittig, Kreise mit Beschriftung darunter und Verbindungslinien über die volle Breite. App klein und linksbündig in einer Zeile. |
-| 5.3 | **B** | Mockup stellt den Inhalt **ohne umschließende Karte** dar, App rahmt ihn ein. |
-| 5.4 | **B** | Hinweistext „Bitte ein Spiel wählen." statt „Wähle zuerst ein Spiel." |
-| 5.5 | **B** | **„Weiter"** ist im Mockup ein zurückhaltender Knopf mit Pfeil `→`, in der App ein gefüllter Verlaufsknopf. |
-| 5.6 | **C** | App hat zusätzlich „← Zurück zur Übersicht" im Seitenkopf (im Mockup nicht vorhanden). |
-| 5.7 | **C** | Spielkarten der App tragen zusätzlich eine Empfehlungszeile (RAM/Kerne). Sinnvolle Ergänzung. |
+| #   | Klasse | Stand    | Befund                                                                                                                                                                                                                                                                    |
+| --- | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.1 | **B**  | erledigt | **Titel und Untertitel** jetzt „Neuen Server erstellen" / „In wenigen Schritten zum eigenen Gameserver". Die bisherige Fassung („In vier Schritten") war genauer, das Mockup gibt aber den Ton vor – wie schon bei „Angepinnt" und „Disk".                                   |
+| 5.2 | **B**  | erledigt | **Schrittanzeige** über die volle Breite: 38-px-Kreise mit der Beschriftung darunter, dazwischen eine Linie, die den zurückgelegten Weg in der Markenfarbe zeigt. Erledigte Schritte tragen einen Haken; bisher war die Anzeige klein, linksbündig und einzeilig.            |
+| 5.3 | **B**  | erledigt | **Ohne umschließende Karte** – der Wizard ist die Seite. Breite auf 880 px wie im Mockup (vorher 768 px).                                                                                                                                                                   |
+| 5.4 | **B**  | erledigt | **Hinweistext** „Wähle zuerst ein Spiel." statt „Bitte ein Spiel wählen."; die Node-Meldung zieht in dieselbe Ansprache mit („Wähle eine Node."). Die übrigen Meldungen kommen aus `@palantir/validation` und bleiben unangetastet.                                          |
+| 5.5 | **B**  | erledigt | **Korrigiert:** Der Erstbefund sagte, das Mockup habe einen zurückhaltenden Knopf. Das stimmt nicht – dort steht `btnPrimaryStyle`, also derselbe gefüllte Verlaufsknopf wie in der App. Der einzige Unterschied war der **Pfeil**: „Weiter →". Dafür gibt es jetzt ein Symbol `arrowRight`. |
+| —   | **B**  | erledigt | Nachgetragen: Der Knopf des letzten Schritts ist im Mockup **grün** („Server erstellen"), in der App war er die Primärfarbe. Angeglichen.                                                                                                                                    |
+| 5.6 | **C**  | bleibt   | Zusätzlicher Knopf „Zurück zur Übersicht" im Seitenkopf. Das Mockup hat ihn nicht – ohne ihn führt aus dem Wizard aber nur die Seitenleiste zurück.                                                                                                                          |
+| 5.7 | **C**  | bleibt   | Spielkarten tragen zusätzlich eine Empfehlungszeile (RAM/Kerne). Sinnvolle Ergänzung.                                                                                                                                                                                       |
 
 ---
 
@@ -300,6 +301,23 @@ während „Skins" Titel und Untertitel darüber setzt. Uneinheitlich (Klasse **
 
 ---
 
+## 13a. Nebenbefunde außerhalb der Oberfläche
+
+Beim Abgleich aufgefallen, aber kein Mockup-Thema – hier notiert statt ungefragt
+miterledigt (CLAUDE.md §6):
+
+- **Access-Token wird nie erneuert.** `JWT_ACCESS_TOKEN_TTL` steht auf 15 Minuten,
+  `REFRESH_TOKEN_TTL` auf 30 Tage, und das Backend bietet `POST /auth/refresh` an – das
+  Frontend ruft die Route jedoch an keiner Stelle auf. Nach 15 Minuten antwortet jede
+  API-Anfrage mit 401, während das Routing den Nutzer weiter als angemeldet behandelt
+  (die Anmeldeseite leitet auf die Übersicht um). Die Oberfläche wirkt dann eingeloggt,
+  zeigt aber keine Daten mehr. Beim Testen mehrfach zugeschlagen. Gehört zu B1/F1.
+- **`updateAvailable` ist im Backend fest `false`** (siehe 3.4) – die Oberfläche dafür
+  steht vollständig.
+- **Paket-Zähler fehlen in `ServerLiveStats`** (siehe 4.8) – wäre eine Contracts-Änderung.
+
+---
+
 ## 14. Zusammenfassung
 
 | Bereich | A (fehlt) | B (weicht ab) | C (Entscheidung) | offen | entfallen |
@@ -332,7 +350,7 @@ Chat- und Backup-Testdaten, die Ansichten sind noch nicht abschließend verglich
 1. ~~**Grundgerüst** (1.1–1.8)~~ – erledigt. Offen bleibt dort nur die Glocke (1.10).
 2. ~~**Übersicht + Server-Karte** (3.1, 3.3, 3.5)~~ – erledigt. 3.4 wartet auf das Backend.
 3. ~~**Server-Detail** (4.x)~~ – erledigt. Offen bleibt nur der Paket-Zähler aus 4.8, der eine Contracts-Änderung bräuchte.
-4. **Server anlegen** (5.x) – überschaubar, reine Gestaltung.
+4. ~~**Server anlegen** (5.x)~~ – erledigt.
 5. **Kleinteiliges** (Anmelden, Profil, Arcade, Benachrichtigungen).
 6. **Administration** – zuletzt, weil dort die meisten Klasse-C-Entscheidungen anstehen.
 
