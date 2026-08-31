@@ -133,6 +133,7 @@ class FakeRepository implements ServerRepository {
       crashTimestamps: [],
       dockerContainerId: null,
       imageRef: null,
+      containerSpecHash: null,
       subdomain: data.subdomain,
       dnsRecordId: null,
       assignedPorts: data.assignedPorts,
@@ -1001,6 +1002,72 @@ describe('Neustart', () => {
         .filter((name) => name === 'STOP' || name === 'START'),
     ).toEqual(['STOP', 'START']);
     expect(harness.emitted.map((e) => e.event)).toContain('server.restarted');
+  });
+});
+
+describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
+  it('baut vor dem Start neu, wenn die Konfiguration sich geändert hat', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const ersterContainer = created.dockerContainerId;
+
+    await harness.service.updateServer(created.id, {
+      name: created.name,
+      resourceLimits: created.resourceLimits,
+      config: { greeting: 'Neuer Text', motdEnabled: true },
+      startupParameters: created.startupParameters,
+      autoShutdownEnabled: created.autoShutdown.enabled,
+      autoShutdownTimeoutMinutes: created.autoShutdown.idleTimeoutMinutes,
+    });
+
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const gestartet = await settle(harness, created.id, ['running']);
+
+    // Erst weg, dann neu, dann starten: Umgebungsvariablen bekommt ein
+    // Container nur beim Anlegen.
+    expect(
+      harness.socket.commands
+        .map((c) => c.command)
+        .filter((name) => name === 'DELETE' || name === 'CREATE' || name === 'START'),
+    ).toEqual(['DELETE', 'CREATE', 'START']);
+    expect(gestartet.dockerContainerId).not.toBe(ersterContainer);
+    expect(gestartet.restartRequired).toBe(false);
+  });
+
+  it('baut vor dem Start neu, wenn die Definition ein neueres Image nennt', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    // So sieht ein Deployment mit neuer Spiel-Fassung aus.
+    harness.repository.servers.set(created.id, {
+      ...harness.repository.servers.get(created.id)!,
+      imageRef: 'ghcr.io/test/echo:alt',
+      containerSpecHash: 'veraltet',
+    });
+
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const gestartet = await settle(harness, created.id, ['running']);
+
+    expect(harness.socket.commands.map((c) => c.command)).toContain('CREATE');
+    expect(gestartet.imageRef).toBe(TEST_GAME_TYPE.dockerImage);
+  });
+
+  it('lässt einen unveränderten Container in Ruhe', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const gestartet = await settle(harness, created.id, ['running']);
+
+    // Ein Neuaufbau bei jedem Start würde bei einem Spiel-Image Minuten kosten.
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('CREATE');
+    expect(gestartet.dockerContainerId).toBe(created.dockerContainerId);
   });
 });
 

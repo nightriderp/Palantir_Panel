@@ -1,0 +1,1 @@
+ALTER TABLE "game_servers" ADD COLUMN "container_spec_hash" text;

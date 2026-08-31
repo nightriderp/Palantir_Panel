@@ -120,6 +120,13 @@
       "when": 1788215645956,
       "tag": "0016_server_image_ref",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788217062411,
+      "tag": "0017_container_spec_hash",
+      "breakpoints": true
     }
   ]
 }

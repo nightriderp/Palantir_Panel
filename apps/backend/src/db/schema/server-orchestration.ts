@@ -87,6 +87,18 @@ export const gameServers = pgTable(
      * angelegt wurden; für die lässt sich nichts mehr nachträglich feststellen.
      */
     imageRef: text('image_ref'),
+    /**
+     * Fingerabdruck des Bauplans, mit dem der Container angelegt wurde
+     * (WORK_STATUS.md, Punkt 114).
+     *
+     * Umgebungsvariablen, Image, Ports und Grenzen bekommt ein Container beim
+     * Anlegen; `RESTART` startet denselben Container mit denselben Werten.
+     * Weicht der Fingerabdruck des heutigen Bauplans ab, wird der Container vor
+     * dem naechsten Start neu gebaut. `null` bei Servern ohne Container – und
+     * bei allen, die vor dieser Spalte angelegt wurden: Die werden beim
+     * naechsten Start einmalig neu gebaut.
+     */
+    containerSpecHash: text('container_spec_hash'),
     subdomain: text('subdomain').notNull(),
     /** Kennung des DNS-Eintrags beim Anbieter, für die spätere Löschung (§13). */
     dnsRecordId: text('dns_record_id'),
