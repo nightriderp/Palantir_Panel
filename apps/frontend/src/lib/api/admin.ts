@@ -270,6 +270,20 @@ export function updateNode(
   });
 }
 
+/**
+ * Neues Agent-Token für eine Node erzeugen (Gefundener Punkt 57).
+ *
+ * Das Token steht **nur** in dieser einen Antwort; es lässt sich danach nicht
+ * wieder anzeigen, nur ersetzen. Jeder Aufruf erzeugt ein neues und entwertet
+ * damit das bisherige – der Agent dieser Node kommt erst wieder herein, wenn er
+ * das neue Token bekommen hat. Verlangt `node.manage`.
+ */
+export function issueNodeAgentToken(nodeId: string): Promise<ApiResult<{ token: string }>> {
+  return apiRequest<{ token: string }>(`/admin/nodes/${encodeURIComponent(nodeId)}/agent-token`, {
+    method: 'POST',
+  });
+}
+
 /** Node entfernen. Das Backend lehnt ab, solange noch Server auf ihr liegen. */
 export function deleteNode(nodeId: string): Promise<ApiResult<null>> {
   return apiRequest<null>(`/admin/nodes/${encodeURIComponent(nodeId)}`, { method: 'DELETE' });

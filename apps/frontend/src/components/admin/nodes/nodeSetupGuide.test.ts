@@ -13,12 +13,38 @@ describe('buildNodeSetupSteps', () => {
   it('setzt die Backend-WS-Adresse auf die VPS-Tunnel-IP (Vorgabe 10.10.0.1)', () => {
     const env = steps.find((step) => step.title.includes('.env'));
     expect(env?.code).toContain('AGENT_BACKEND_WS_URL=ws://10.10.0.1:4000/agent');
-    // Kein Token wird erzeugt – nur auf das geteilte AGENT_TOKEN verwiesen.
-    expect(env?.code).toContain('AGENT_TOKEN=<identisch mit der VPS-.env>');
+    // Die Anleitung erzeugt kein Token; sie verweist auf das im Panel vergebene.
+    expect(env?.code).toContain('AGENT_TOKEN=<Token dieser Node aus dem Panel>');
+  });
+
+  it('nennt den Schritt zur Token-Vergabe auf der VPS (Gefundener Punkt 57)', () => {
+    const tokenStep = steps.find((step) => step.title.includes('Agent-Token'));
+
+    expect(tokenStep?.machine).toBe('vps');
+    expect(tokenStep?.body).toContain('genau einmal');
+    // Ein Geheimnis entsteht hier nicht – nur der Hinweis, wo es erzeugt wird.
+    expect(tokenStep?.code).toBeUndefined();
+  });
+
+  it('setzt AGENT_NODE_ID auf die Kennung der Node, sonst einen Platzhalter', () => {
+    const env = steps.find((step) => step.title.includes('.env'));
+    expect(env?.code).toContain('AGENT_NODE_ID=<Kennung dieser Node aus dem Panel>');
+
+    const mitId = buildNodeSetupSteps({
+      name: 'Homeserver',
+      wireguardIp: '10.10.0.2',
+      nodeId: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(mitId.find((step) => step.title.includes('.env'))?.code).toContain(
+      'AGENT_NODE_ID=11111111-1111-4111-8111-111111111111',
+    );
   });
 
   it('führt den Erreichbarkeits-Test auf der VPS aus', () => {
-    const check = steps.find((step) => step.machine === 'vps');
+    // Seit der Token-Vergabe gibt es zwei Schritte auf der VPS – deshalb über
+    // den Titel gesucht und nicht über die Maschine.
+    const check = steps.find((step) => step.title.includes('Erreichbarkeit'));
+    expect(check?.machine).toBe('vps');
     expect(check?.code).toContain('http://10.10.0.1:4000/health');
   });
 

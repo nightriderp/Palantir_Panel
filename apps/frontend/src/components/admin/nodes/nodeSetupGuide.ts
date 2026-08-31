@@ -5,9 +5,11 @@
  * Node-Werten gefüllte Kurzfassung für den Wizard.
  *
  * Bewusst rein und ohne React, damit die erzeugten Befehle/Pfade ohne gerendertes
- * Bauteil prüfbar sind (CLAUDE.md §4). Es werden **keine** Geheimnisse erzeugt:
- * Der Agent authentifiziert über das geteilte `AGENT_TOKEN` aus der zentralen
- * `.env` – der Wizard verweist nur darauf.
+ * Bauteil prüfbar sind (CLAUDE.md §4). Es werden hier **keine** Geheimnisse
+ * erzeugt: Das Agent-Token vergibt das Backend auf ausdrücklichen Klick
+ * („Agent-Token" in der Node-Liste) und zeigt es genau einmal an; diese
+ * Anleitung verweist nur darauf und nennt als Rückfallweg das geteilte
+ * `AGENT_TOKEN` aus der zentralen `.env`.
  */
 
 /** Auf welcher Maschine ein Schritt ausgeführt wird (CLAUDE.md §9). */
@@ -28,6 +30,14 @@ export interface NodeSetupParams {
   wireguardIp: string;
   /** Tunnel-Adresse der VPS (Backend-Seite). Vorgabe `10.10.0.1`. */
   vpsWireguardIp?: string;
+  /**
+   * Kennung der Node (`HostNode.id`).
+   *
+   * Steht als `AGENT_NODE_ID` in der `.env` der Node; damit prüft das Backend
+   * beim Verbindungsaufbau, dass Token und Node zusammenpassen (WORK_STATUS.md,
+   * Gefundener Punkt 57). Ohne Angabe bleibt ein Platzhalter stehen.
+   */
+  nodeId?: string;
 }
 
 const DEFAULT_VPS_WIREGUARD_IP = '10.10.0.1';
@@ -56,15 +66,21 @@ export function buildNodeSetupSteps(params: NodeSetupParams): NodeSetupStep[] {
       code: 'mkdir -p /srv/palantir/servers /srv/palantir/backups',
     },
     {
+      title: 'Agent-Token für diese Node erzeugen',
+      machine: 'vps',
+      body: `In der Node-Liste bei „${params.name}" auf „Agent-Token" klicken. Das Token wird genau einmal angezeigt – gespeichert ist im Backend nur sein Hash. Jedes neue Token entwertet das bisherige. Damit ist die Verbindung eindeutig dieser Node zugeordnet; ein kompromittierter Agent betrifft keine andere.`,
+    },
+    {
       title: '.env der Gamenode anlegen',
       machine: 'homeserver',
-      body: `Datei /opt/palantir/.env (in der Gameserver-VM) von Hand anlegen. AGENT_TOKEN ist der einzige Wert, der von der VPS herüber muss – er muss identisch mit dem AGENT_TOKEN der VPS-.env sein (auslesen auf der VPS: grep '^AGENT_TOKEN=' /opt/palantir/.env). Stimmen die Werte nicht überein, weist das Backend die Verbindung im Handshake ab.`,
+      body: `Datei /opt/palantir/.env (in der Gameserver-VM) von Hand anlegen. AGENT_TOKEN ist der einzige Wert, der von der VPS herüber muss: das eben erzeugte Token dieser Node. Ist noch keines vergeben, gilt weiterhin das geteilte AGENT_TOKEN der VPS-.env (auslesen auf der VPS: grep '^AGENT_TOKEN=' /opt/palantir/.env). Passt der Wert nicht, weist das Backend die Verbindung im Handshake ab.`,
       code: [
         'NODE_ENV=production',
         'LOG_LEVEL=info',
         'PALANTIR_VERSION=prod',
         'SOCKET_PROXY_VERSION=<derselbe Wert wie auf der VPS>',
-        'AGENT_TOKEN=<identisch mit der VPS-.env>',
+        'AGENT_TOKEN=<Token dieser Node aus dem Panel>',
+        `AGENT_NODE_ID=${params.nodeId ?? '<Kennung dieser Node aus dem Panel>'}`,
         `AGENT_BACKEND_WS_URL=${backendWsUrl}`,
         'AGENT_DATA_DIR=/srv/palantir/servers',
         'AGENT_BACKUP_DIR=/srv/palantir/backups',
