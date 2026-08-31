@@ -136,7 +136,9 @@ export function NotificationBell() {
           {entries === null ? (
             <p className="px-4 py-6 text-center text-xs text-ink-faint">wird geladen …</p>
           ) : entries.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-ink-faint">Keine Benachrichtigungen.</p>
+            <p className="px-4 py-6 text-center text-xs text-ink-faint">
+              Keine Benachrichtigungen.
+            </p>
           ) : (
             entries.map((entry) => (
               <BellRow key={entry.id} notification={entry} onNavigate={() => setOpen(false)} />

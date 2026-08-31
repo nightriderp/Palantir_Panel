@@ -1,6 +1,12 @@
 import { type BackupDto } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
-import { filterByType, retentionState, sortByNewest, summarizeOwnBackups } from './backupsView';
+import {
+  filterByType,
+  retentionState,
+  serversWithoutBackup,
+  sortByNewest,
+  summarizeOwnBackups,
+} from './backupsView';
 
 /** Minimaler, vollständiger `BackupDto` mit überschreibbaren Feldern für den Test. */
 function makeBackup(overrides: Partial<BackupDto> = {}): BackupDto {
@@ -119,5 +125,33 @@ describe('sortByNewest', () => {
 
     expect(sortByNewest(input).map((b) => b.id)).toEqual(['neu', 'mitte', 'alt']);
     expect(input.map((b) => b.id)).toEqual(['alt', 'neu', 'mitte']);
+  });
+});
+
+describe('serversWithoutBackup', () => {
+  const server = (id: string, name: string, ownerId = 'u1') => ({ id, name, ownerId });
+
+  it('nennt nur eigene Server ohne jede Sicherung', () => {
+    const ergebnis = serversWithoutBackup(
+      [server('s1', 'Eins'), server('s2', 'Zwei'), server('s3', 'Fremd', 'u2')],
+      [makeBackup({ serverId: 's1' })],
+      'u1',
+    );
+
+    expect(ergebnis).toEqual([{ id: 's2', name: 'Zwei' }]);
+  });
+
+  it('zaehlt auch eine fehlgeschlagene Sicherung als Versuch', () => {
+    const ergebnis = serversWithoutBackup(
+      [server('s1', 'Eins')],
+      [makeBackup({ serverId: 's1', status: 'failed' })],
+      'u1',
+    );
+
+    expect(ergebnis).toEqual([]);
+  });
+
+  it('bleibt ohne Sitzung leer', () => {
+    expect(serversWithoutBackup([server('s1', 'Eins')], [], null)).toEqual([]);
   });
 });

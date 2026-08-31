@@ -93,3 +93,36 @@ export function filterByType(backups: readonly BackupDto[], filter: BackupTypeFi
 export function sortByNewest(backups: readonly BackupDto[]): BackupDto[] {
   return [...backups].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
+
+/** Ein Server, für den es keine einzige Sicherung gibt. */
+export interface ServerOhneSicherung {
+  id: string;
+  name: string;
+}
+
+/**
+ * Eigene Server, zu denen keine Sicherung vorliegt.
+ *
+ * Das Mockup führt in seiner Tabelle **jeden** Server auf, auch ohne Sicherung
+ * („—"). Genau die fehlen in der Liste der Sicherungen zwangsläufig – und das
+ * ist die Angabe, auf die es ankommt: welcher Server steht ohne Netz da.
+ *
+ * Gezählt wird jede Sicherung, auch eine laufende oder fehlgeschlagene: Ein
+ * fehlgeschlagener Lauf ist kein „nie versucht", und der Fehler steht bereits
+ * an der Sicherung selbst.
+ */
+export function serversWithoutBackup(
+  servers: ReadonlyArray<{ id: string; name: string; ownerId: string }>,
+  backups: readonly BackupDto[],
+  ownerId: string | null,
+): ServerOhneSicherung[] {
+  if (ownerId === null) return [];
+
+  const gesichert = new Set(
+    backups.map((backup) => backup.serverId).filter((id): id is string => id !== null),
+  );
+
+  return servers
+    .filter((server) => server.ownerId === ownerId && !gesichert.has(server.id))
+    .map((server) => ({ id: server.id, name: server.name }));
+}

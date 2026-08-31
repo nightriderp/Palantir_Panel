@@ -107,6 +107,7 @@ export { cn } from './utils/cn';
 export {
   clampPercent,
   formatBytes,
+  formatChatTime,
   formatDate,
   formatDateTime,
   formatRelativeTime,

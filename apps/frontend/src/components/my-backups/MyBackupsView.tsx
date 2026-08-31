@@ -1,6 +1,11 @@
 'use client';
 
-import { AUTOMATIC_BACKUP_RETENTION_DAYS, type BackupDto } from '@palantir/contracts';
+import {
+  AUTOMATIC_BACKUP_RETENTION_DAYS,
+  type BackupDto,
+  type GameServerDto,
+} from '@palantir/contracts';
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import {
   Badge,
@@ -19,7 +24,13 @@ import {
   useToast,
 } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
-import { backupDownloadUrl, deleteBackup, fetchOwnBackups, restoreBackup } from '@/lib/api/servers';
+import {
+  backupDownloadUrl,
+  deleteBackup,
+  fetchOwnBackups,
+  fetchServers,
+  restoreBackup,
+} from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import {
@@ -28,6 +39,7 @@ import {
   type BackupTypeFilter,
   filterByType,
   retentionState,
+  serversWithoutBackup,
   sortByNewest,
   summarizeOwnBackups,
 } from './backupsView';
@@ -81,7 +93,21 @@ export function MyBackupsView() {
     user ? [user.id] : null,
   );
 
+  /*
+   * Die Serverliste dient nur einem Zweck: zu zeigen, welcher eigene Server
+   * ueberhaupt keine Sicherung hat. In der Liste der Sicherungen kann er
+   * naturgemaess nicht auftauchen - im Entwurf steht er mit „—" in der Tabelle.
+   */
+  const servers = useApiResource<GameServerDto[]>(
+    (signal) => fetchServers(signal),
+    user ? [user.id] : null,
+  );
+
   const all = useMemo(() => sortByNewest(backups.data ?? []), [backups.data]);
+  const ungesichert = useMemo(
+    () => serversWithoutBackup(servers.data ?? [], all, user?.id ?? null),
+    [servers.data, all, user?.id],
+  );
   const summary = useMemo(() => summarizeOwnBackups(all), [all]);
   const visible = useMemo(() => filterByType(all, filter), [all, filter]);
 
@@ -158,6 +184,27 @@ export function MyBackupsView() {
               <MetricTile label="Manuell" value={formatNumber(summary.manualCount)} />
               <MetricTile label="Automatisch" value={formatNumber(summary.automaticCount)} />
             </div>
+
+            {ungesichert.length === 0 ? null : (
+              <Panel variant="outline" className="flex flex-col gap-1.5">
+                <p className="text-base font-semibold text-ink">Ohne Sicherung</p>
+                <p className="text-xs text-ink-muted">
+                  Zu diesen Servern liegt noch keine einzige Sicherung vor.
+                </p>
+                <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                  {ungesichert.map((server) => (
+                    <li key={server.id}>
+                      <Link
+                        href={`/servers/${server.id}`}
+                        className="text-base font-semibold text-brand hover:underline"
+                      >
+                        {server.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </Panel>
+            )}
 
             <SegmentedControl
               label="Backups nach Typ filtern"

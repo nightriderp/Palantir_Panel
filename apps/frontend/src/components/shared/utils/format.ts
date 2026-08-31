@@ -204,3 +204,24 @@ export function formatRelativeTime(iso: string | null | undefined, jetzt = new D
 
   return formatDate(iso);
 }
+
+/**
+ * Zeitstempel im Gesprächsverlauf: `14:05` am selben Tag, sonst `30.08.2026, 14:05`.
+ *
+ * Im Chat steht das Datum an jeder Blase im Weg, solange alles vom selben Tag
+ * ist – über einen Tagwechsel hinweg fehlt es aber. Deshalb beides, je nach
+ * Alter der Nachricht.
+ *
+ * `jetzt` ist nur für Tests da.
+ */
+export function formatChatTime(iso: string | null | undefined, jetzt = new Date()): string {
+  const date = toDate(iso);
+  if (!date) return '—';
+
+  const gleicherTag =
+    date.getFullYear() === jetzt.getFullYear() &&
+    date.getMonth() === jetzt.getMonth() &&
+    date.getDate() === jetzt.getDate();
+
+  return gleicherTag ? TIME_FORMAT.format(date) : DATE_TIME_FORMAT.format(date);
+}

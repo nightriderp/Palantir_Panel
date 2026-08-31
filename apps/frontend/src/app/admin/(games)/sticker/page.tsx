@@ -14,6 +14,7 @@ export default function AdminStickerPage() {
   return (
     <GameAdminPlaceholder
       title="Sticker"
+      subtitle="Gemeinsame Sammlung fuer die Nachrichten"
       description="Hier verwaltest du später die gemeinsame Sammlung aus GIFs, Memes und Stickern für die Nachrichten."
       icon="smile"
     />

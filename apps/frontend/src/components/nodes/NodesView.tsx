@@ -1,6 +1,7 @@
 'use client';
 
 import { type GameTypeDto, type HostNodeDto } from '@palantir/contracts';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Button, EmptyState, Icon, MetricTile, PageHeader, Panel } from '@/components/shared';
 import { fetchGameTypes } from '@/lib/api/servers';
@@ -17,7 +18,10 @@ import { NODE_EXPLAINERS, nodesSummary, startCapacityHint } from './nodeStatus';
  * Zeigt Zustand, Auslastung und freie Kapazität der Homeserver und erklärt
  * verständlich, was das bedeutet. Die Ansicht **verwaltet nichts** – Anlegen,
  * Pausieren, Löschen sowie Port-Pool und Storage-Explorer gehören zur
- * Admin-Ansicht (F10).
+ * Admin-Ansicht (F10). Wer dort hin darf, findet oben den Weg dorthin: Das
+ * Mockup setzt „Node hinzufügen" und „Node einrichten – Anleitung" direkt in
+ * diesen Seitenkopf, die App hat beides fertig unter `/admin/nodes` – ein
+ * zweiter Assistent an dieser Stelle wäre dieselbe Funktion doppelt.
  *
  * Sichtbarkeit richtet sich nach `node.view` aus dem `permissions`-Objekt
  * (Pflichtenheft §5.2, §8). Die Navigation blendet den Eintrag bereits danach
@@ -29,6 +33,8 @@ export function NodesView() {
   const [helpOpen, setHelpOpen] = useState(false);
 
   const canView = user?.permissions.canViewNodes ?? false;
+  const canManage = user?.permissions.canManageNodes ?? false;
+  const router = useRouter();
 
   // Nur laden, wenn das Konto steht und die Sicht erlaubt ist – sonst gar nicht
   // (dependencies === null hält `useApiResource` an).
@@ -46,10 +52,17 @@ export function NodesView() {
 
   const intro = NODE_EXPLAINERS[0];
 
-  const helpButton = (
-    <Button variant="secondary" iconLeft="smile" onClick={() => setHelpOpen(true)}>
-      Was ist das?
-    </Button>
+  const headerActions = (
+    <>
+      <Button variant="secondary" iconLeft="smile" onClick={() => setHelpOpen(true)}>
+        Was ist das?
+      </Button>
+      {canManage ? (
+        <Button iconLeft="server" onClick={() => router.push('/admin/nodes')}>
+          Homeserver verwalten
+        </Button>
+      ) : null}
+    </>
   );
 
   if (!canView) {
@@ -82,7 +95,7 @@ export function NodesView() {
       <PageHeader
         title="Homeserver"
         subtitle="Zustand und Auslastung der Rechner, auf denen die Gameserver laufen."
-        actions={helpButton}
+        actions={headerActions}
       />
 
       <div className="flex flex-col gap-5 p-5">

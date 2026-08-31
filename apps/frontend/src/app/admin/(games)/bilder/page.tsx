@@ -15,6 +15,7 @@ export default function AdminBilderPage() {
   return (
     <GameAdminPlaceholder
       title="Bilder"
+      subtitle="Titel- und Kachelbilder je Spiel"
       description="Hier hinterlegst du später je Spiel ein Titelbild für den Wizard und ein Kachelbild für die Serverübersicht."
       icon="image"
     />

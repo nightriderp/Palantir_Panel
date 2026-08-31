@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampPercent,
   formatBytes,
+  formatChatTime,
   formatDate,
   formatDateTime,
   formatDuration,
@@ -169,6 +170,26 @@ describe('formatRelativeTime', () => {
   });
 
   it('wechselt ab einer Woche auf das Datum', () => {
-    expect(formatRelativeTime('2026-08-20T12:00:00Z', jetzt)).toBe(formatDate('2026-08-20T12:00:00Z'));
+    expect(formatRelativeTime('2026-08-20T12:00:00Z', jetzt)).toBe(
+      formatDate('2026-08-20T12:00:00Z'),
+    );
+  });
+});
+
+describe('formatChatTime', () => {
+  const jetzt = new Date(2026, 7, 31, 14, 0);
+
+  it('zeigt am selben Tag nur die Uhrzeit', () => {
+    expect(formatChatTime(new Date(2026, 7, 31, 9, 5).toISOString(), jetzt)).toBe('09:05');
+  });
+
+  it('nimmt an anderen Tagen das Datum dazu', () => {
+    expect(formatChatTime(new Date(2026, 7, 30, 9, 5).toISOString(), jetzt)).toBe(
+      '30.08.2026, 09:05',
+    );
+  });
+
+  it('liefert — ohne brauchbare Angabe', () => {
+    expect(formatChatTime(null, jetzt)).toBe('—');
   });
 });
