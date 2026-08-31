@@ -200,7 +200,12 @@ export function MessagesView() {
     [viewerId],
   );
 
-  const live = useChatLive(onFrame);
+  /*
+   * Der Rueckgabewert wird nicht mehr gebraucht: Den Zustand der Verbindung
+   * zeigt die Kopfleiste (Abgleich 6.2). Der Aufruf bleibt - er haelt die
+   * Verbindung und liefert die Nachrichten.
+   */
+  useChatLive(onFrame);
 
   // -- Senden / Löschen / Melden --------------------------------------------
 
@@ -333,7 +338,6 @@ export function MessagesView() {
                 conversations={state.conversations}
                 activeId={activeId}
                 unread={state.unread}
-                connection={live.connection}
                 onSelect={(conversation) => selectConversation(conversation.id)}
                 onNew={() => setNewOpen(true)}
               />
