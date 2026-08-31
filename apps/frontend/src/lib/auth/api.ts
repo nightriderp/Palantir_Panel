@@ -9,6 +9,7 @@ import {
 import {
   type ChangePasswordInput,
   type ConfirmTwoFactorInput,
+  type DeleteAccountInput,
   type DisableTwoFactorInput,
   type LinkPasswordInput,
   type LoginInput,
@@ -66,6 +67,8 @@ export const AUTH_ENDPOINTS = {
   twoFactorSetup: '/auth/2fa/setup',
   twoFactorConfirm: '/auth/2fa/confirm',
   twoFactorDisable: '/auth/2fa/disable',
+  /** Eigenes Konto endgültig löschen (Lastenheft §3.1). */
+  account: '/auth/account',
 } as const;
 
 /**
@@ -224,6 +227,21 @@ export function unlinkMethod(type: AuthMethodType): Promise<AccountDto> {
   return request(AUTH_ENDPOINTS.method(type), accountEnvelopeSchema, {
     method: 'DELETE',
   }).then((result) => result.account);
+}
+
+/**
+ * Das eigene Konto endgueltig loeschen (Lastenheft §3.1, Mockup „Konto loeschen").
+ *
+ * Bestaetigt wird mit der Anmeldekennung; hat das Konto ein Passwort-Verfahren,
+ * verlangt das Backend zusaetzlich das Passwort. Das Owner-Konto laesst sich
+ * nicht loeschen - der Aufruf endet dann mit `AUTH_OWNER_PROTECTED`. Die
+ * Sitzungs-Cookies raeumt das Backend selbst ab.
+ */
+export function deleteAccount(input: DeleteAccountInput): Promise<null> {
+  return request(AUTH_ENDPOINTS.account, z.null(), {
+    method: 'DELETE',
+    body: JSON.stringify(input),
+  });
 }
 
 /** Ein Passwort-Verfahren nachtraeglich anlegen (Konto ohne Passwort). */

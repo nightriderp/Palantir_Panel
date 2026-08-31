@@ -19,6 +19,13 @@ export interface DangerConfirmDialogProps {
    * erwartete Text (z. B. der Servername). Ohne Angabe genügt der Klick.
    */
   confirmationPhrase?: string;
+  /**
+   * Zusätzliche Eingabe unter der Nachricht, etwa das Passwort bei der
+   * Kontolöschung. Den Wert hält der Aufrufer; der Dialog reicht ihn nur durch.
+   */
+  extra?: ReactNode;
+  /** Sperrt die Bestätigung zusätzlich zur abgetippten Zeichenkette. */
+  extraBlocked?: boolean;
 }
 
 /**
@@ -39,6 +46,8 @@ export function DangerConfirmDialog({
   onConfirm,
   busy = false,
   confirmationPhrase,
+  extra,
+  extraBlocked = false,
 }: DangerConfirmDialogProps) {
   const inputId = useId();
   const [typed, setTyped] = useState('');
@@ -49,7 +58,7 @@ export function DangerConfirmDialog({
     setTyped('');
   }, [open, confirmationPhrase]);
 
-  const unlocked = confirmationPhrase == null || typed === confirmationPhrase;
+  const unlocked = (confirmationPhrase == null || typed === confirmationPhrase) && !extraBlocked;
 
   return (
     <Modal
@@ -69,6 +78,8 @@ export function DangerConfirmDialog({
       }
     >
       <div className="text-base text-ink-muted">{message}</div>
+
+      {extra ? <div className="mt-4">{extra}</div> : null}
 
       {confirmationPhrase != null ? (
         <div className="mt-4">

@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { type AuthMethodType, type LinkedAuthMethod } from '@palantir/contracts';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { type AccountDto, type AuthMethodType, type LinkedAuthMethod } from '@palantir/contracts';
 import {
   Badge,
   Button,
   ConfirmDialog,
+  DangerConfirmDialog,
   Icon,
   PageHeader,
   Panel,
@@ -15,7 +16,7 @@ import {
   useToast,
 } from '@/components/shared';
 import { OAUTH_PROVIDER_META } from '@/lib/auth/providers';
-import { AUTH_ENDPOINTS, apiUrl, unlinkMethod } from '@/lib/auth/api';
+import { AUTH_ENDPOINTS, apiUrl, deleteAccount, unlinkMethod } from '@/lib/auth/api';
 import { messageForThrown } from '@/lib/auth/errors';
 import { loadAccount } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
@@ -63,7 +64,13 @@ export function ProfileView() {
           <>
             <Panel>
               <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
+                <span
+                  aria-hidden
+                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-brand-soft text-4xl font-bold text-brand"
+                >
+                  {account.displayName.slice(0, 1).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
                   <h2 className="text-xl font-semibold text-ink">{account.displayName}</h2>
                   <p className="mt-0.5 text-sm text-ink-soft">
                     {account.username ? `@${account.username}` : 'Kein Passwort-Login eingerichtet'}
@@ -98,6 +105,8 @@ export function ProfileView() {
               methods={account.authMethods}
               onUnlinked={(updated) => setData(updated)}
             />
+
+            <DeleteAccountPanel account={account} />
           </>
         ) : null}
       </div>
@@ -166,30 +175,33 @@ function LinkedMethodsPanel({
             </Button>
           </li>
         ))}
-      </ul>
 
-      {openable.length > 0 ? (
-        <div className="mt-4 border-t border-line pt-4">
-          <p className="text-2xs uppercase tracking-wide text-ink-faint">Weitere verbinden</p>
-          <div className="mt-2.5 flex flex-col gap-2.5">
-            {openable.map((provider) => {
-              const meta = OAUTH_PROVIDER_META[provider];
-              return (
-                <a
-                  key={provider}
-                  href={apiUrl(AUTH_ENDPOINTS.oauthStart(provider, RETURN_TO))}
-                  rel="nofollow"
-                  className="flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-base font-semibold no-underline hover:brightness-110"
-                  style={{ backgroundColor: meta.brandColor, color: meta.textColor }}
-                >
-                  <Icon name={meta.icon} size={14} />
-                  {AUTH_METHOD_LABEL[provider]} verbinden
-                </a>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
+        {/* Noch nicht verbundene Anbieter stehen in derselben Liste wie die
+            verknüpften – eine Zeile je Verfahren, wie im Mockup. Vorher waren
+            es breite Knöpfe in den Farben der Anbieter; nebeneinander sah das
+            aus, als wären es zwei verschiedene Dinge. */}
+        {openable.map((provider) => {
+          const meta = OAUTH_PROVIDER_META[provider];
+          return (
+            <li key={provider} className="flex items-center gap-3 py-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-fill-strong text-ink-faint">
+                <Icon name={meta.icon} size={14} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-base text-ink">{AUTH_METHOD_LABEL[provider]}</p>
+                <p className="text-xs text-ink-faint">nicht verbunden</p>
+              </div>
+              <a
+                href={apiUrl(AUTH_ENDPOINTS.oauthStart(provider, RETURN_TO))}
+                rel="nofollow"
+                className="shrink-0 rounded-md border border-line-strong bg-fill px-3 py-1.5 text-sm font-semibold text-ink no-underline hover:brightness-110"
+              >
+                Verbinden
+              </a>
+            </li>
+          );
+        })}
+      </ul>
 
       <p className="mt-4 text-xs text-ink-faint">
         Ein Passwort-Login lässt sich unter{' '}
@@ -211,6 +223,87 @@ function LinkedMethodsPanel({
         confirmLabel="Trennen"
         onConfirm={confirmUnlink}
         busy={busy}
+      />
+    </Panel>
+  );
+}
+
+/**
+ * „Konto löschen" (Mockup, Lastenheft §3.1).
+ *
+ * Endgültig: Bestätigt wird mit der Anmeldekennung, und wo ein Passwort-Login
+ * besteht, verlangt das Backend zusätzlich das Passwort. Das Owner-Konto lässt
+ * sich nicht löschen (`AUTH_OWNER_PROTECTED`) – statt eines Knopfes, der
+ * immer scheitert, steht dort der Grund.
+ */
+function DeleteAccountPanel({ account }: { account: AccountDto }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const needsPassword = account.authMethods.some((method) => method.type === 'password');
+  // Bestätigt wird mit der Kennung; reine Provider-Konten haben keine und
+  // bestätigen deshalb mit dem Anzeigenamen – dieselbe Regel wie im Backend.
+  const confirmName = account.username ?? account.displayName;
+
+  async function confirm() {
+    setBusy(true);
+    try {
+      await deleteAccount({
+        confirmName,
+        ...(needsPassword ? { password } : {}),
+      });
+      toast.success('Dein Konto wurde gelöscht.');
+      router.push('/login');
+    } catch (thrown) {
+      toast.error(messageForThrown(thrown));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel className="border-danger-line bg-danger-soft">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-md font-semibold text-danger">Konto löschen</h2>
+          <p className="mt-0.5 text-sm text-ink-muted">Kann nicht rückgängig gemacht werden.</p>
+        </div>
+
+        {account.isOwner ? (
+          <p className="text-sm text-ink-faint">Das Owner-Konto lässt sich nicht löschen.</p>
+        ) : (
+          <Button variant="danger" onClick={() => setOpen(true)}>
+            Löschen
+          </Button>
+        )}
+      </div>
+
+      <DangerConfirmDialog
+        open={open}
+        onClose={() => (busy ? undefined : setOpen(false))}
+        busy={busy}
+        title="Konto löschen?"
+        confirmationPhrase={confirmName}
+        extraBlocked={needsPassword && password.length === 0}
+        message="Dein Konto wird endgültig gelöscht, mit allen Anmeldeverfahren und Rollen. Server, die dir gehören, musst du vorher selbst entfernen."
+        extra={
+          needsPassword ? (
+            <label className="block text-sm text-ink-muted">
+              Zur Sicherheit dein Passwort:
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                className="mt-2 w-full rounded-md border border-line-strong bg-fill px-3 py-2.5 text-base text-ink outline-none focus-visible:border-brand"
+              />
+            </label>
+          ) : null
+        }
+        onConfirm={() => void confirm()}
       />
     </Panel>
   );

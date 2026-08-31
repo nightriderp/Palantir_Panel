@@ -8,8 +8,9 @@ nebeneinander, App mit Demo-Daten (5 Server, 2 Nodes, Owner-Konto).
 Diese Datei ist die **Befundliste** und wird beim Abarbeiten fortgeschrieben. Reihenfolge
 und Umfang der Korrekturen entscheidet der Nutzer.
 
-**Stand:** Abschnitt 1 (Grundgerüst), 3 (Übersicht), 4 (Server-Detail) und 5 (Server
-anlegen) sind umgesetzt, alles Übrige offen. Vier Befunde des ersten Durchgangs (3.2, 3.6, 3.7, 3.8) haben sich beim
+**Stand:** Abschnitt 1 (Grundgerüst), 3 (Übersicht), 4 (Server-Detail), 5 (Server
+anlegen) sowie das Kleinteilige aus 2, 7, 10 und 11 sind durch. Offen ist nur noch die
+Administration (12) – dort liegen die meisten Klasse-C-Entscheidungen. Vier Befunde des ersten Durchgangs (3.2, 3.6, 3.7, 3.8) haben sich beim
 Lesen des Codes als falsch erwiesen; sie sind als „entfällt" markiert statt gelöscht,
 damit die Nummerierung stabil bleibt.
 
@@ -72,14 +73,14 @@ Zwei bewusste Abweichungen dabei:
 
 ## 2. Anmelden / Registrieren
 
-| # | Klasse | Befund |
-| --- | --- | --- |
-| 2.1 | **A** | **Kennzahlenzeile am Fuß der Markenspalte fehlt** (`6 Spiele` · `612 Tage im Dienst` · `1 284 Arcade-Partien`). |
-| 2.2 | **A** | **Quellenangabe unter dem Zitat fehlt** (Mockup: „— Betriebsgrundsatz · Palantir"). |
-| 2.3 | **B** | Durch 2.1/2.2 stimmt die vertikale Aufteilung der Markenspalte nicht: Mockup verteilt Logo / Zitat / Kennzahlen über die volle Höhe (`space-between`), App hat nur zwei Blöcke. |
-| 2.4 | **B** | Anmeldeformular sitzt in der App rund 30 px höher als im Mockup. |
-| 2.5 | **C** | App zeigt zusätzlich das **ALTCHA-Feld** („Sicherheitsprüfung …") – Vorgabe aus dem Pflichtenheft, im Mockup nicht vorgesehen. Bleibt. |
-| 2.6 | **C** | App bietet **Twitch** als drittes Anmeldeverfahren, Mockup nur Discord und Steam. Bleibt, sofern im Lastenheft gedeckt. |
+| #   | Klasse | Stand    | Befund |
+| --- | ------ | -------- | ------ |
+| 2.1 | **A**  | Backend  | **Kennzahlenzeile am Fuss der Markenspalte** (`6 Spiele` · `612 Tage im Dienst` · `1 284 Arcade-Partien`). Fehlt bewusst und begruendet: es gibt keinen Endpunkt, der diese Zahlen **ohne Anmeldung** liefert. Steht so bereits im Kopfkommentar von `AuthBrandColumn.tsx`. Braeuchte eine oeffentliche Route. |
+| 2.2 | —      | entfaellt | **Quellenangabe unter dem Zitat.** Das Mockup fuehrt zwei Leitsaetze und waehlt zufaellig; nur der zweite hat eine Quelle, der erste hat keine. Die App zeigt den ersten – also korrekt ohne Quelle. Der Erstbefund verglich zwei verschiedene Zitate. |
+| 2.3 | —      | entfaellt | **Vertikale Aufteilung.** Die App verteilt bereits ueber `lg:justify-between` auf drei Bloecke (Logo, Zitat, „Palantir · selbst gehostet"). Der Erstbefund zaehlte den Fusstext nicht mit. |
+| 2.4 | —      | entfaellt | **Hoehenversatz des Formulars.** Folgt aus dem ALTCHA-Feld (2.5) und ist kein eigener Befund. |
+| 2.5 | **C**  | bleibt   | App zeigt zusaetzlich das **ALTCHA-Feld** – Vorgabe aus dem Pflichtenheft, im Mockup nicht vorgesehen. |
+| 2.6 | **C**  | bleibt   | App bietet **Twitch** als drittes Anmeldeverfahren, Mockup nur Discord und Steam. |
 
 ---
 
@@ -161,11 +162,11 @@ Dasselbe gilt für die Konsolenausgabe.
 
 ## 7. Benachrichtigungen (`/notifications`)
 
-| # | Klasse | Befund |
-| --- | --- | --- |
-| 7.1 | **A** | **Karte „Push-Benachrichtigungen"** mit Schalter am Kopf der Seite fehlt (App hat sie in den Reiter „Einstellungen" verschoben). |
-| 7.2 | **B** | **Untertitel** „Dein Posteingang und persönliche Einstellungen" statt „Dein Posteingang". |
-| 7.3 | **C** | App hat zusätzlich Reiter (Inbox/Einstellungen), Filter nach Ereignis und Dringlichkeit, „Alle gelesen" und einen Live-Punkt. Das Mockup zeigt eine schlichte Liste. **Nicht zurückbauen** ohne Entscheidung. |
+| #   | Klasse | Stand        | Befund |
+| --- | ------ | ------------ | ------ |
+| 7.1 | **C**  | Entscheidung | **Neu eingeordnet (war A).** Der Schalter des Mockups („Push-Benachrichtigungen") existiert – als „Browser-Mitteilungen" im Reiter „Einstellungen", zusammen mit den Schaltern je Themengruppe. Ihn zusaetzlich ueber den Posteingang zu legen hiesse, **eine Einstellung an zwei Stellen** zu fuehren. Deshalb nicht gebaut; wenn die Naehe zum Mockup wichtiger ist, ist es ein kleiner Handgriff. |
+| 7.2 | **B**  | haengt an 7.1 | Untertitel „Dein Posteingang und persoenliche Einstellungen" statt „Dein Posteingang". Solange der Reiter bleibt, beschreibt der laengere Satz die Seite richtig. |
+| 7.3 | **C**  | bleibt       | App hat zusaetzlich Reiter, Filter nach Ereignis und Dringlichkeit sowie „Alle gelesen". Das Mockup zeigt eine schlichte Liste. |
 
 ---
 
@@ -193,24 +194,24 @@ Dasselbe gilt für die Konsolenausgabe.
 
 ## 10. Arcade (`/arcade`)
 
-| # | Klasse | Befund |
-| --- | --- | --- |
-| 10.1 | **A** | **Bestenliste auf der Spielkarte fehlt.** Mockup zeigt die besten drei je Spiel, den eigenen Eintrag hervorgehoben, sowie „Noch niemand hat gespielt." als Leerfall. |
-| 10.2 | **A** | Zeile **„Bestenliste: 1240"** unter dem Spielnamen fehlt. |
-| 10.3 | **B** | **„Spielen"** ist im Mockup ein gefüllter Knopf unten links, in der App ein Textlink oben rechts. |
-| 10.4 | **B** | **Spielnamen**: Mockup Snake, Blocks, Echo, Chomp, Minesweeper – App Kriechpfad, Ballwechsel, Steinbrecher, Blockstapel, Punktejäger. Vermutlich bewusste Eindeutschung; bestätigen. |
-| 10.5 | **C** | App hat zusätzlich einen Erklärkasten „Eigenständige Minispiele" und je Karte einen längeren Beschreibungstext. |
+| #    | Klasse | Stand    | Befund |
+| ---- | ------ | -------- | ------ |
+| 10.1 | **A**  | erledigt | **Bestenliste auf der Spielkarte** ergaenzt: die besten drei je Spiel, der eigene Eintrag in der Markenfarbe mit „(du)", sonst „Noch niemand hat gespielt." Die Listen aller Spiele werden einmal in der Ansicht geladen und an die Kacheln durchgereicht – kein neuer Endpunkt noetig. |
+| 10.2 | **A**  | erledigt | Zeile **„Bestleistung: N"** unter dem Spielnamen ergaenzt. (Der Erstbefund schrieb „Bestenliste: 1240" – im Mockup steht dort „Bestleistung".) |
+| 10.3 | **B**  | erledigt | **„Spielen"** ist jetzt ein gefuellter Knopf am Fuss der Karte statt eines Textlinks oben rechts. Die Kachel ist dafuer kein Knopf mehr – ein Knopf im Knopf ist kein gueltiges Markup. |
+| 10.4 | **C**  | bleibt   | **Neu eingeordnet (war B).** Die Spielnamen (Kriechpfad statt Snake usw.) sind kein Versehen: Lastenheft §3.9 verlangt eigenstaendige Spiele ohne geschuetzte Titel. Das Mockup benutzt die Originalnamen; die App darf das nicht. |
+| 10.5 | **C**  | bleibt   | Erklaerkasten „Eigenstaendige Minispiele" und laengere Beschreibungstexte je Karte. |
 
 ---
 
 ## 11. Profil (`/profil`)
 
-| # | Klasse | Befund |
-| --- | --- | --- |
-| 11.1 | **B** | **Das Mockup kennt keine getrennte Einstellungsseite.** Passwort ändern, Zwei-Faktor und „Konto löschen" liegen dort als Karten direkt auf dem Profil; die App hat sie nach `/einstellungen` ausgelagert. |
-| 11.2 | **A** | Karte **„Konto löschen"** (rot umrandet, „Kann nicht rückgängig gemacht werden.") fehlt auf dem Profil. |
-| 11.3 | **B** | **Identitätskarte**: Mockup mit Avatar und „Speichern" für den Anzeigenamen. App zeigt stattdessen Owner-Abzeichen, Rollen und „Mitglied seit", ohne Bearbeitungsmöglichkeit. |
-| 11.4 | **B** | **Verknüpfte Anmeldungen**: Mockup als schmale Zeilen mit „Verbinden" rechts, App als drei breite, farbige Knöpfe. |
+| #    | Klasse | Stand        | Befund |
+| ---- | ------ | ------------ | ------ |
+| 11.2 | **A**  | erledigt     | **„Konto loeschen" ergaenzt** – rot umrandete Karte mit „Kann nicht rueckgaengig gemacht werden." Die Backend-Route (`DELETE /auth/account`) und das Schema gab es bereits, nur keinen Weg dorthin in der Oberflaeche. Bestaetigt wird mit der Anmeldekennung, bei Passwort-Konten zusaetzlich mit dem Passwort. Beim Owner steht statt des Knopfes der Grund – das Konto ist serverseitig geschuetzt. |
+| 11.4 | **B**  | erledigt     | **Verknuepfte Anmeldungen** stehen jetzt alle in einer Liste: eine schmale Zeile je Verfahren mit rechtsbuendigem Knopf, verbunden wie unverbunden. Vorher waren die offenen Anbieter breite Knoepfe in ihren Markenfarben – nebeneinander sah das aus wie zwei verschiedene Dinge. |
+| 11.3 | **B**  | teilweise    | **Identitaetskarte:** Avatar-Kreis mit Initiale ergaenzt. Das **Bearbeiten des Anzeigenamens** samt „Speichern" fehlt weiterhin – dafuer gibt es im Backend keine Route (kein `PATCH`/`PUT` auf das Konto). |
+| 11.1 | **B**  | Entscheidung | **Das Mockup kennt keine getrennte Einstellungsseite.** Passwort und Zwei-Faktor liegen dort ebenfalls auf dem Profil; die App hat sie unter `/einstellungen`. Beides zusammenzulegen waere machbar, ist aber ein Umbau zweier Seiten – deshalb hier als Frage stehen gelassen. |
 
 ---
 
@@ -323,19 +324,19 @@ miterledigt (CLAUDE.md §6):
 | Bereich | A (fehlt) | B (weicht ab) | C (Entscheidung) | offen | entfallen |
 | --- | --- | --- | --- | --- | --- |
 | Grundgerüst | 5 | 3 | 2 | — | — |
-| Anmelden/Registrieren | 2 | 2 | 2 | — | — |
+| Anmelden/Registrieren | 1 | — | 2 | — | 3 |
 | Übersicht | 2 | 2 | — | — | 4 |
 | Server-Detail | 2 | 6 | — | — | — |
 | Server anlegen | — | 5 | 2 | — | — |
 | Nachrichten | — | 1 | 1 | 1 | — |
-| Benachrichtigungen | 1 | 1 | 1 | — | — |
+| Benachrichtigungen | — | 1 | 2 | — | — |
 | Nodes | 1 | 3 | 1 | — | — |
 | Meine Backups | — | 1 | 1 | 1 | — |
-| Arcade | 2 | 2 | 1 | — | — |
+| Arcade | 2 | 1 | 2 | — | — |
 | Profil | 1 | 3 | — | — | — |
 | Administration | 7 | 13 | 3 | — | — |
 | Phase-gesperrt | — | 1 | — | — | — |
-| **Summe** | **23** | **43** | **14** | **2** | **4** |
+| **Summe** | **21** | **40** | **16** | **2** | **7** |
 
 Gegenüber dem ersten Durchgang: 3.2, 3.6, 3.7 und 3.8 entfallen, 3.1 rutscht von A nach B
 (die Gruppen der Übersicht gibt es bereits), und 1.10 kommt als übersehener Befund hinzu.
@@ -351,7 +352,7 @@ Chat- und Backup-Testdaten, die Ansichten sind noch nicht abschließend verglich
 2. ~~**Übersicht + Server-Karte** (3.1, 3.3, 3.5)~~ – erledigt. 3.4 wartet auf das Backend.
 3. ~~**Server-Detail** (4.x)~~ – erledigt. Offen bleibt nur der Paket-Zähler aus 4.8, der eine Contracts-Änderung bräuchte.
 4. ~~**Server anlegen** (5.x)~~ – erledigt.
-5. **Kleinteiliges** (Anmelden, Profil, Arcade, Benachrichtigungen).
+5. ~~**Kleinteiliges** (Anmelden, Profil, Arcade, Benachrichtigungen)~~ - erledigt, bis auf zwei Entscheidungen (7.1, 11.1) und zwei Backend-Luecken (2.1, 11.3).
 6. **Administration** – zuletzt, weil dort die meisten Klasse-C-Entscheidungen anstehen.
 
 Vor Punkt 6 sollte geklärt sein, wie mit den 14 Klasse-C-Befunden verfahren wird: Die App
