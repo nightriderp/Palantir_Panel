@@ -10,14 +10,19 @@ import { type TabItem } from '@/components/shared';
  * gibt, nur eben nicht für dieses Konto. Hier wird nichts aus Rollen abgeleitet.
  */
 
-export const SERVER_TAB_KEYS = [
-  'overview',
-  'console',
-  'files',
-  'backups',
-  'tasks',
-  'settings',
-] as const;
+/**
+ * Reihenfolge wie im Mockup: Übersicht, Aufgaben, Dateien, Backups.
+ *
+ * **Keine „Konsole"**: Sie steht im Entwurf nicht als eigener Reiter, sondern
+ * auf der Übersicht neben den Server-Details (`OverviewTab`). Ein zusätzlicher
+ * Reiter mit demselben Inhalt wäre eine zweite Tür in denselben Raum.
+ *
+ * **„Einstellungen" bleibt**, obwohl das Mockup den Reiter nicht kennt: Dort
+ * führt das Zahnrad in der Kopfkarte in einen Dialog. Der Reiter bündelt
+ * Einstellungen, Mitverwalter, Klonen, Export und Löschen – ohne ihn wäre das
+ * Zahnrad ohne Ziel.
+ */
+export const SERVER_TAB_KEYS = ['overview', 'tasks', 'files', 'backups', 'settings'] as const;
 
 export type ServerTabKey = (typeof SERVER_TAB_KEYS)[number];
 
@@ -25,10 +30,9 @@ const LOCK_REASON = 'Für deine Rolle nicht freigegeben.';
 
 const TAB_LABELS: Record<ServerTabKey, string> = {
   overview: 'Übersicht',
-  console: 'Konsole',
+  tasks: 'Aufgaben',
   files: 'Dateien',
   backups: 'Backups',
-  tasks: 'Aufgaben',
   settings: 'Einstellungen',
 };
 
@@ -37,8 +41,6 @@ function isUnlocked(key: ServerTabKey, permissions: GameServerPermissions): bool
   switch (key) {
     case 'overview':
       return permissions.canView;
-    case 'console':
-      return permissions.canUseConsole;
     case 'files':
       return permissions.canManageFiles;
     case 'backups':

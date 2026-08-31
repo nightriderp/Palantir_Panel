@@ -82,7 +82,14 @@ export {
 
 export { AppShell, type AppShellProps } from './layout/AppShell';
 export { PageHeader, type PageHeaderProps } from './layout/PageHeader';
-export { SideNavSection, type SideNavItem, type SideNavSectionProps } from './layout/SideNav';
+export {
+  SideNavSection,
+  SideNavServerSection,
+  type SideNavItem,
+  type SideNavSectionProps,
+  type SideNavServerItem,
+  type SideNavServerSectionProps,
+} from './layout/SideNav';
 export { Tabs, type TabItem, type TabsProps } from './layout/Tabs';
 export {
   SegmentedControl,

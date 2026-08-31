@@ -30,6 +30,21 @@ export function fetchConversations(signal?: AbortSignal): Promise<ApiResult<Conv
   return apiRequest<ConversationDto[]>(`${CHAT}/conversations`, { signal });
 }
 
+/**
+ * Lesestand einer Konversation auf jetzt setzen.
+ *
+ * Ohne Körper – den Zeitpunkt setzt das Backend. Antwort ist die aktualisierte
+ * Konversation mit neuem `unreadCount`, damit die Liste ohne zweiten Aufruf
+ * stimmt. Serverseitig geführt, damit der Zähler über Geräte hinweg gilt
+ * (`ConversationDto.unreadCount` in `@palantir/contracts`).
+ */
+export function markConversationRead(conversationId: string): Promise<ApiResult<ConversationDto>> {
+  return apiRequest<ConversationDto>(
+    `${CHAT}/conversations/${encodeURIComponent(conversationId)}/read`,
+    { method: 'POST' },
+  );
+}
+
 /** Eine einzelne Konversation; `CONVERSATION_NOT_FOUND`, wenn nicht teilgenommen. */
 export function fetchConversation(
   conversationId: string,

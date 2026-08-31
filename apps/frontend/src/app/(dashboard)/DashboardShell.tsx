@@ -1,11 +1,25 @@
 'use client';
 
-import { type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
+import { useMemo, type ReactNode } from 'react';
+import { type ConversationDto, type GameServerDto, type HostNodeDto } from '@palantir/contracts';
 import { AppShell, StatusDot, ToastProvider } from '@/components/shared';
 import { UserMenu } from '@/components/account/UserMenu';
+import { fetchConversations } from '@/lib/api/chat';
+import { fetchNodes } from '@/lib/api/nodes';
+import { fetchServers } from '@/lib/api/servers';
+import { useApiResource } from '@/lib/api/useApiResource';
 import { LiveChannelProvider, useLiveChannel } from '@/lib/live/LiveChannelProvider';
+import { useServerListLive } from '@/lib/live/useServerLive';
 import { DashboardNav } from './DashboardNav';
+import { GlobalStatus } from './GlobalStatus';
 import { SessionProvider, useSession } from './SessionProvider';
+import {
+  buildStatusMetrics,
+  ownServersForNav,
+  type SidebarServer,
+  type StatusMetric,
+} from './shellSummary';
 
 /**
  * Rahmen des eingeloggten Bereichs.
@@ -37,20 +51,112 @@ function LiveConnectionBadge() {
   );
 }
 
-function Topbar() {
-  const { user } = useSession();
-
-  return (
-    <div className="flex flex-1 items-center justify-end gap-4">
-      <LiveConnectionBadge />
-      <UserMenu user={user} />
-    </div>
-  );
+interface ShellData {
+  metrics: StatusMetric[];
+  ownServers: SidebarServer[];
+  unreadMessages: number;
 }
 
-function Sidebar() {
+/**
+ * Daten, die Kopfleiste und Seitenleiste gemeinsam brauchen.
+ *
+ * Bewusst **hier** und nicht in den beiden Komponenten: sonst liefe jede Liste
+ * zweimal über die Leitung. Die Serverübersicht lädt ihre Liste weiterhin
+ * selbst – sie braucht mehr als der Rahmen (Filter, Aktionen, Mitglieder) und
+ * soll nicht an dessen Ladezustand hängen.
+ *
+ * Nodes werden nur geholt, wenn das Konto sie sehen darf; sonst bleibt der Wert
+ * `null` und die zugehörigen Kennzahlen entfallen, statt Nullen anzuzeigen.
+ */
+function useShellData(): ShellData {
   const { user } = useSession();
-  return <DashboardNav user={user} />;
+  const pathname = usePathname();
+  const canViewNodes = user?.permissions.canViewNodes ?? false;
+
+  const servers = useApiResource<GameServerDto[]>(
+    (signal) => fetchServers(signal),
+    user ? [user.id] : null,
+  );
+  const nodes = useApiResource<HostNodeDto[]>(
+    (signal) => fetchNodes(signal),
+    canViewNodes ? [] : null,
+  );
+  /*
+   * Der Pfad steht bewusst in den Abhaengigkeiten: Der Zaehler soll stimmen,
+   * nachdem in den Nachrichten gelesen wurde, und der Lesezustand aendert sich
+   * ohne Ereignis auf dem Live-Kanal. Beim Verlassen der Ansicht wird deshalb
+   * neu geholt. Eine neu eintreffende Nachricht faellt erst beim naechsten
+   * Seitenwechsel auf - der Chat-Kanal haengt an einer eigenen Verbindung
+   * (`useChatLive`), und eine zweite davon nur fuer den Zaehler waere zu teuer.
+   */
+  const conversations = useApiResource<ConversationDto[]>(
+    (signal) => fetchConversations(signal),
+    user ? [user.id, pathname] : null,
+  );
+
+  const list = useMemo(() => servers.data ?? [], [servers.data]);
+  const serverIds = useMemo(() => list.map((server) => server.id), [list]);
+  const { statsById, statusById } = useServerListLive(serverIds);
+
+  // Denselben Abgleich wie die Übersicht: der über den Kanal gemeldete Status
+  // ist jünger als der aus dem REST-Aufruf.
+  const merged = useMemo(
+    () =>
+      list.map((server) => {
+        const live = statusById[server.id];
+        return live === undefined || live === server.status ? server : { ...server, status: live };
+      }),
+    [list, statusById],
+  );
+
+  const metrics = useMemo(
+    () =>
+      servers.data === null
+        ? []
+        : buildStatusMetrics({
+            servers: merged,
+            nodes: canViewNodes ? nodes.data : null,
+            statsById,
+          }),
+    [servers.data, merged, nodes.data, canViewNodes, statsById],
+  );
+
+  const ownServers = useMemo(() => ownServersForNav(merged, user?.id ?? null), [merged, user?.id]);
+
+  const unreadMessages = useMemo(
+    () => (conversations.data ?? []).reduce((total, entry) => total + (entry.unreadCount ?? 0), 0),
+    [conversations.data],
+  );
+
+  return { metrics, ownServers, unreadMessages };
+}
+
+/** Innerer Teil – braucht Sitzung und Live-Kanal, liegt deshalb unter beiden. */
+function Shell({ children, versionLabel }: { children: ReactNode; versionLabel: string }) {
+  const { user } = useSession();
+  const { metrics, ownServers, unreadMessages } = useShellData();
+
+  return (
+    <AppShell
+      sidebar={<DashboardNav user={user} ownServers={ownServers} unreadMessages={unreadMessages} />}
+      topbar={
+        <>
+          <GlobalStatus metrics={metrics} />
+          <div className="flex shrink-0 items-center gap-4">
+            <LiveConnectionBadge />
+            <UserMenu user={user} />
+          </div>
+        </>
+      }
+      sidebarFooter={
+        <span title="Aktuelle Fassung" className="font-mono text-xs text-ink-faint">
+          {versionLabel}
+        </span>
+      }
+    >
+      {children}
+    </AppShell>
+  );
 }
 
 export interface DashboardShellProps {
@@ -70,15 +176,7 @@ export function DashboardShell({ children, versionLabel }: DashboardShellProps) 
     <ToastProvider>
       <SessionProvider>
         <LiveChannelProvider>
-          <AppShell
-            sidebar={<Sidebar />}
-            topbar={<Topbar />}
-            sidebarFooter={
-              <span className="text-2xs text-ink-faint">Palantir · {versionLabel}</span>
-            }
-          >
-            {children}
-          </AppShell>
+          <Shell versionLabel={versionLabel}>{children}</Shell>
         </LiveChannelProvider>
       </SessionProvider>
     </ToastProvider>

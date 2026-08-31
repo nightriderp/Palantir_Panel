@@ -1,8 +1,10 @@
 'use client';
 
-import { ARCADE_GAMES, type ArcadeGameId } from '@palantir/contracts';
+import { ARCADE_GAMES, type ArcadeGameId, type ArcadeLeaderboardDto } from '@palantir/contracts';
 import { useState } from 'react';
 import { Icon, PageHeader, Panel } from '@/components/shared';
+import { fetchArcadeLeaderboard } from '@/lib/arcade/api';
+import { useApiResource } from '@/lib/api/useApiResource';
 import { GameCard } from './GameCard';
 import { GameScreen } from './GameScreen';
 
@@ -13,9 +15,31 @@ import { GameScreen } from './GameScreen';
  * öffnet den Spielbildschirm mit Bestenliste. Alle Spiele sind eigenständig
  * entwickelt – keine geschützten Marken oder Assets. Arcade-Musik ist Phase 2
  * und hier bewusst nicht enthalten (Verwaltung als Platzhalter in F11).
+ *
+ * Die Bestenlisten aller Spiele werden hier **einmal** geladen und an die
+ * Kacheln durchgereicht (Mockup: Spitzenplätze schon in der Auswahl). Eine
+ * Liste, die nicht lädt, lässt nur ihre Kachel schlichter aussehen – die Seite
+ * bleibt bedienbar.
  */
+
+type LeaderboardMap = Partial<Record<ArcadeGameId, ArcadeLeaderboardDto>>;
+
 export function ArcadeView() {
   const [selected, setSelected] = useState<ArcadeGameId | null>(null);
+
+  const boards = useApiResource<LeaderboardMap>(async (signal) => {
+    const results = await Promise.all(
+      ARCADE_GAMES.map((game) => fetchArcadeLeaderboard(game.id, signal)),
+    );
+
+    const map: LeaderboardMap = {};
+    for (const [index, result] of results.entries()) {
+      const game = ARCADE_GAMES[index];
+      if (game && result.success) map[game.id] = result.data;
+    }
+
+    return { success: true, data: map, error: null };
+  }, []);
 
   if (selected) {
     return <GameScreen gameId={selected} onBack={() => setSelected(null)} />;
@@ -43,7 +67,12 @@ export function ArcadeView() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {ARCADE_GAMES.map((game) => (
-            <GameCard key={game.id} game={game} onSelect={() => setSelected(game.id)} />
+            <GameCard
+              key={game.id}
+              game={game}
+              leaderboard={boards.data?.[game.id] ?? null}
+              onSelect={() => setSelected(game.id)}
+            />
           ))}
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import {
   MIN_PUBLIC_PORT,
+  type GameServerDto,
   type PortAllocationDto,
   type PortPoolDto,
   type PortProtocol,
@@ -22,12 +23,14 @@ import {
   Toggle,
   formatDateTime,
   formatNumber,
+  formatServerAddress,
   useToast,
 } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import {
   createPortRange,
   deletePortRange,
+  fetchAllServers,
   fetchPortAllocations,
   fetchPortPool,
   releasePortAllocation,
@@ -127,7 +130,7 @@ export function AddressesView() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Adressen"
-        subtitle="Öffentlichen Port-Bereich der VPS verwalten"
+        subtitle="Subdomains, Portblöcke und der öffentliche Port-Bereich der VPS"
         className="-mx-5 -mt-5 px-5"
         actions={
           <Button variant="primary" iconLeft="plus" onClick={() => setEditor({ mode: 'create' })}>
@@ -135,6 +138,8 @@ export function AddressesView() {
           </Button>
         }
       />
+
+      <ServerAddressTable />
 
       {pool.loading ? (
         <AdminLoading label="Port-Pool wird geladen …" />
@@ -376,5 +381,66 @@ function RangeEditor({
       ) : null}
       <Toggle checked={enabled} onChange={setEnabled} label="Bereich ist aktiv" />
     </FormModal>
+  );
+}
+
+/**
+ * Adressen aller Server (Mockup „Adressen").
+ *
+ * Der Entwurf zeigt auf dieser Seite eine Tabelle über alle Server mit Spiel,
+ * Node, Subdomain und Verbindungsadresse. Die App verwaltet hier daneben die
+ * Portbereiche der VPS (Pflichtenheft §13) – beides gehört zum Thema „Adresse",
+ * deshalb steht die Übersicht auf derselben Seite und nicht in einer eigenen.
+ *
+ * **Ohne DNS-Spalte:** Das Mockup führt dort einen Zustand („aktiv · SRV" /
+ * „ausstehend"). Im `GameServerDto` gibt es dafür kein Feld; eine erfundene
+ * Anzeige wäre schlechter als keine. Vermerkt im Abgleich (12.7.2).
+ */
+function ServerAddressTable() {
+  const servers = useApiResource<GameServerDto[]>((signal) => fetchAllServers(signal), []);
+  const list = servers.data ?? [];
+
+  return (
+    <Panel className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-base font-semibold text-ink">Server-Adressen</h2>
+        <p className="mt-0.5 text-sm text-ink-muted">
+          Subdomain und Verbindungsadresse jedes angelegten Servers.
+        </p>
+      </div>
+
+      {servers.loading ? (
+        <AdminLoading label="Server werden geladen …" />
+      ) : servers.error ? (
+        <AdminError message={servers.error} onRetry={servers.reload} />
+      ) : list.length === 0 ? (
+        <p className="text-base text-ink-faint">Es ist noch kein Server angelegt.</p>
+      ) : (
+        <AdminTable>
+          <thead>
+            <tr>
+              <Th>Server</Th>
+              <Th>Spiel</Th>
+              <Th>Node</Th>
+              <Th>Subdomain</Th>
+              <Th>Verbindungsadresse</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((server) => (
+              <tr key={server.id}>
+                <Td className="text-ink">{server.name}</Td>
+                <Td>{server.gameTypeName}</Td>
+                <Td>{server.hostName ?? '—'}</Td>
+                <Td className="font-mono text-sm">{server.subdomain}</Td>
+                <Td className="font-mono text-sm text-ink-muted">
+                  {formatServerAddress(server.address) ?? 'nicht freigegeben'}
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </AdminTable>
+      )}
+    </Panel>
   );
 }

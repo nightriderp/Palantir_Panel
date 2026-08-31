@@ -1,13 +1,13 @@
 'use client';
 
 import { type GameServerDto, type ServerLiveStats } from '@palantir/contracts';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
-  Button,
   MetricTile,
   Panel,
   clampPercent,
   formatDateTime,
+  formatDuration,
   formatMegabytes,
   formatPercent,
   formatPing,
@@ -25,8 +25,12 @@ import { StatsHistoryChart } from './StatsHistoryChart';
  * Reiter „Übersicht" der Detailansicht (Lastenheft §3.3).
  *
  * Live-Monitoring: CPU, RAM, Speicher, Netzwerk, Spieleranzahl – dazu die
- * Verlaufsdarstellung und die Stammdaten des Servers. Die laufenden Werte
- * kommen über den Live-Kanal; nur der Rückblick wird einmal nachgeladen.
+ * Verlaufsdarstellung, die Live-Konsole und die Stammdaten des Servers. Die
+ * laufenden Werte kommen über den Live-Kanal; nur der Rückblick wird einmal
+ * nachgeladen.
+ *
+ * Konsole und Stammdaten stehen nebeneinander (Mockup: 1.6 zu 1), auf schmalen
+ * Bildschirmen untereinander.
  */
 
 /** Zeitfenster der Verlaufsdarstellung. */
@@ -35,6 +39,12 @@ const HISTORY_WINDOW_MINUTES = 60;
 export interface OverviewTabProps {
   server: GameServerDto;
   stats: ServerLiveStats | null;
+  /**
+   * Die Live-Konsole. Sie steht wie im Mockup hier und nicht als eigener
+   * Reiter; `null`, wenn das Konto sie nicht benutzen darf – dann nehmen die
+   * Server-Details die volle Breite ein.
+   */
+  console?: ReactNode;
 }
 
 function ratio(used: number | null | undefined, total: number): number | null {
@@ -42,7 +52,7 @@ function ratio(used: number | null | undefined, total: number): number | null {
   return clampPercent((used / total) * 100);
 }
 
-export function OverviewTab({ server, stats }: OverviewTabProps) {
+export function OverviewTab({ server, stats, console: consolePanel = null }: OverviewTabProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const history = useApiResource<ServerStatsHistoryDto>(
@@ -52,6 +62,18 @@ export function OverviewTab({ server, stats }: OverviewTabProps) {
 
   const live = hasLiveStats(server.status) ? stats : null;
   const address = formatServerAddress(server.address);
+
+  /*
+   * Laufzeit seit dem letzten erfolgreichen Start (Mockup „Laufzeit").
+   * Nur wenn der Server auch laeuft: bei einem gestoppten Server stuende dort
+   * sonst die Zeit seit dem letzten Start von irgendwann, was wie eine laufende
+   * Uhr aussaehe. Gerechnet wird beim Rendern - die Anzeige aktualisiert sich
+   * mit dem naechsten Messwert, das genuegt fuer eine Angabe in Stunden.
+   */
+  const uptimeSeconds =
+    server.status === 'running' && server.lastStartedAt !== null
+      ? (Date.now() - new Date(server.lastStartedAt).getTime()) / 1000
+      : null;
 
   const detailRows: Array<{ label: string; value: string }> = [
     { label: 'Spiel', value: server.gameTypeName },
@@ -84,10 +106,12 @@ export function OverviewTab({ server, stats }: OverviewTabProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <MetricTile label="CPU" value={formatPercent(live?.cpuPercent)} />
+      {/* Rasterregel wie im Mockup: die Kacheln verteilen sich selbst, statt
+          bei einer festen Spaltenzahl umzubrechen. */}
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
+        <MetricTile label="CPU-Last" value={formatPercent(live?.cpuPercent)} />
         <MetricTile
-          label="RAM"
+          label="Arbeitsspeicher"
           value={formatMegabytes(live?.ramUsedMb)}
           note={`von ${formatMegabytes(server.resourceLimits.ramMb)}`}
         />
@@ -101,13 +125,19 @@ export function OverviewTab({ server, stats }: OverviewTabProps) {
           }
         />
         <MetricTile label="Ping" value={formatPing(live?.pingMs)} />
+        <MetricTile label="Laufzeit" value={formatDuration(uptimeSeconds)} />
+        {/* Nicht im Mockup, aber die Zahl liegt vor und gehoert zum Zustand. */}
         <MetricTile label="Spieler" value={formatPlayers(live?.playersOnline, live?.playersMax)} />
       </div>
 
       <div>
-        <Button size="sm" onClick={() => setHistoryOpen((open) => !open)}>
-          {historyOpen ? 'Verlauf ausblenden' : 'Verlauf der letzten Stunde'}
-        </Button>
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((open) => !open)}
+          className="text-sm text-brand hover:text-brand-bright"
+        >
+          {historyOpen ? 'Verlauf schließen' : 'Verlauf anzeigen'}
+        </button>
       </div>
 
       {historyOpen ? (
@@ -148,27 +178,38 @@ export function OverviewTab({ server, stats }: OverviewTabProps) {
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <MetricTile label="Empfangen" value={formatBytes(live.networkRxBytes)} />
-              <MetricTile label="Gesendet" value={formatBytes(live.networkTxBytes)} />
+              <MetricTile label="Eingehend" value={formatBytes(live.networkRxBytes)} />
+              <MetricTile label="Ausgehend" value={formatBytes(live.networkTxBytes)} />
             </div>
             <p className="text-xs text-ink-faint">
-              Die Summen zählen ab dem letzten Start des Servers.
+              Die Summen zählen ab dem letzten Start des Servers. Weil aller Spiel-Verkehr über das
+              Relay läuft, ist das zugleich der Verkehr durch die Panel-VPS.
             </p>
           </>
         )}
       </Panel>
 
-      <Panel variant="plain">
-        <h3 className="mb-2 text-base font-semibold">Server-Details</h3>
-        <dl className="divide-y divide-line">
-          {detailRows.map((row) => (
-            <div key={row.label} className="flex justify-between gap-4 py-2">
-              <dt className="text-sm text-ink-soft">{row.label}</dt>
-              <dd className="text-right font-mono text-sm text-ink">{row.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </Panel>
+      <div
+        className={
+          consolePanel === null
+            ? 'grid grid-cols-1 gap-4'
+            : 'grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]'
+        }
+      >
+        {consolePanel === null ? null : <Panel variant="plain">{consolePanel}</Panel>}
+
+        <Panel variant="plain">
+          <h3 className="mb-2 text-base font-semibold">Server-Details</h3>
+          <dl className="divide-y divide-line">
+            {detailRows.map((row) => (
+              <div key={row.label} className="flex justify-between gap-4 py-2">
+                <dt className="text-sm text-ink-soft">{row.label}</dt>
+                <dd className="text-right font-mono text-sm text-ink">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Panel>
+      </div>
     </div>
   );
 }

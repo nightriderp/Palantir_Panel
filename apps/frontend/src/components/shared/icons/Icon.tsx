@@ -22,6 +22,7 @@ export const ICON_PATHS = {
   search: 'M11 4a7 7 0 104.9 12L21 21',
   logout: 'M15 4h4v16h-4M10 16l5-4-5-4M15 12H3',
   arrowLeft: 'M19 12H5M11 5l-6 7 6 7',
+  arrowRight: 'M5 12h14M13 5l6 7-6 7',
   restart: 'M4 4v6h6M20 20v-6h-6M5 15a8 8 0 0014-4M19 9a8 8 0 00-14 4',
   copy: 'M9 9h11v11H9zM5 15V5h11v3',
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',

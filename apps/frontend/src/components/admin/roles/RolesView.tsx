@@ -16,6 +16,7 @@ import {
   Panel,
   TextField,
   ToggleRow,
+  cn,
   formatNumber,
   useToast,
 } from '@/components/shared';
@@ -57,10 +58,42 @@ export function RolesView() {
   const [editor, setEditor] = useState<Editor>(null);
   const [toDelete, setToDelete] = useState<RoleDto | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Permission[] | null>(null);
 
   const resource = useApiResource<RoleDto[]>((signal) => fetchRoles(signal), canManage ? [] : null);
 
   const roles = useMemo(() => resource.data ?? [], [resource.data]);
+
+  // Ohne eigene Wahl steht die erste Rolle offen - eine leere rechte Spalte
+  // waere nur ein zusaetzlicher Klick.
+  const selected = roles.find((role) => role.id === selectedId) ?? roles[0] ?? null;
+  const shown = draft ?? selected?.grantedPermissions ?? [];
+  const dirty =
+    selected !== null &&
+    draft !== null &&
+    (draft.length !== selected.grantedPermissions.length ||
+      draft.some((permission) => !selected.grantedPermissions.includes(permission)));
+
+  function open(role: RoleDto) {
+    setSelectedId(role.id);
+    setDraft(null);
+  }
+
+  async function savePermissions() {
+    if (!selected || draft === null) return;
+    setBusy(true);
+    const result = await updateRole(selected.id, { permissions: draft });
+    setBusy(false);
+
+    if (result.success) {
+      toast.success(`Rolle „${selected.name}" gespeichert.`);
+      setDraft(null);
+      resource.reload();
+    } else {
+      toast.error(errorText(result));
+    }
+  }
 
   async function confirmDelete() {
     if (!toDelete) return;
@@ -89,7 +122,7 @@ export function RolesView() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Rollen"
-        subtitle="Berechtigungen zu frei definierbaren Rollen bündeln"
+        subtitle="Welche Rolle was darf – jeder Schalter einzeln."
         className="-mx-5 -mt-5 px-5"
         actions={
           <Button variant="primary" iconLeft="plus" onClick={() => setEditor({ mode: 'create' })}>
@@ -103,47 +136,99 @@ export function RolesView() {
       ) : resource.error ? (
         <AdminError message={resource.error} onRetry={resource.reload} />
       ) : (
-        <ul className="flex flex-col gap-3">
-          {roles.map((role) => (
-            <li key={role.id}>
-              <Panel className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base font-semibold text-ink">{role.name}</span>
-                      {role.isProtected ? <Badge tone="brand">Systemrolle</Badge> : null}
-                    </div>
-                    {role.description ? (
-                      <p className="text-sm text-ink-muted">{role.description}</p>
-                    ) : null}
-                    <p className="text-sm text-ink-faint">
-                      {formatNumber(role.memberCount)}{' '}
-                      {role.memberCount === 1 ? 'Mitglied' : 'Mitglieder'} ·{' '}
-                      {formatNumber(role.grantedPermissions.length)}{' '}
-                      {role.grantedPermissions.length === 1 ? 'Berechtigung' : 'Berechtigungen'}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    {role.permissions.canEdit ? (
-                      <Button
-                        variant="secondary"
-                        iconLeft="gear"
-                        onClick={() => setEditor({ mode: 'edit', role })}
-                      >
-                        Bearbeiten
-                      </Button>
-                    ) : null}
-                    {role.permissions.canDelete ? (
-                      <Button variant="danger" iconLeft="trash" onClick={() => setToDelete(role)}>
-                        Löschen
-                      </Button>
-                    ) : null}
-                  </div>
+        /* Zweispaltig wie im Mockup: links die Rollen, rechts ihre Schalter. */
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr]">
+          <ul className="flex flex-col gap-0.5">
+            {roles.map((role) => (
+              <li key={role.id}>
+                <button
+                  type="button"
+                  onClick={() => open(role)}
+                  aria-current={role.id === selected?.id ? 'true' : undefined}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-tile px-3 py-2.5 text-left text-base',
+                    role.id === selected?.id
+                      ? 'border-l-2 border-brand bg-brand-soft text-ink'
+                      : 'text-ink-muted hover:text-ink',
+                  )}
+                >
+                  <span className="flex-1 truncate">{role.name}</span>
+                  {role.isProtected ? <Badge tone="brand">System</Badge> : null}
+                  <span className="font-mono text-xs text-ink-faint">
+                    {formatNumber(role.memberCount)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {selected === null ? (
+            <Panel className="text-base text-ink-muted">Es gibt noch keine Rolle.</Panel>
+          ) : (
+            <Panel className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold text-ink">{selected.name}</h2>
+                  <p className="mt-0.5 text-sm text-ink-muted">
+                    {selected.description ?? 'Keine Beschreibung.'}
+                  </p>
+                  <p className="mt-1 text-sm text-ink-faint">
+                    {formatNumber(selected.memberCount)}{' '}
+                    {selected.memberCount === 1 ? 'Mitglied' : 'Mitglieder'}
+                  </p>
                 </div>
-              </Panel>
-            </li>
-          ))}
-        </ul>
+                <div className="flex gap-2">
+                  {selected.permissions.canEdit ? (
+                    <Button
+                      variant="secondary"
+                      iconLeft="gear"
+                      onClick={() => setEditor({ mode: 'edit', role: selected })}
+                    >
+                      Name & Beschreibung
+                    </Button>
+                  ) : null}
+                  {selected.permissions.canDelete ? (
+                    <Button variant="danger" iconLeft="trash" onClick={() => setToDelete(selected)}>
+                      Löschen
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              {selected.permissions.canEdit ? null : (
+                <p className="rounded border border-line bg-fill px-2.5 py-2 text-sm text-ink-faint">
+                  Geschützte Systemrolle – ihre Berechtigungen lassen sich nicht ändern.
+                </p>
+              )}
+
+              <PermissionPicker
+                selected={shown}
+                onChange={setDraft}
+                disabled={!selected.permissions.canEdit || busy}
+              />
+
+              {/*
+                Das Mockup schaltet jeden Regler sofort scharf. Hier steht ein
+                Speichern-Schritt davor: ein Schalter je Anfrage waere bei einem
+                Fehlschlag ein halb uebernommener Stand, und genau bei
+                Berechtigungen soll nichts halb gelten.
+              */}
+              {dirty ? (
+                <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
+                  <span className="flex-1 text-sm text-warning">
+                    Nicht gespeicherte Änderungen.
+                  </span>
+                  <Button onClick={() => setDraft(null)} disabled={busy}>
+                    Verwerfen
+                  </Button>
+                  <Button variant="primary" onClick={() => void savePermissions()} disabled={busy}>
+                    Speichern
+                  </Button>
+                </div>
+              ) : null}
+            </Panel>
+          )}
+        </div>
       )}
 
       {editor ? (

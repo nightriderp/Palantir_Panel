@@ -122,6 +122,12 @@ const config: Config = {
         'brand-gradient': 'linear-gradient(135deg,#7c5cff,#22d3ee)',
         /** Flächenverlauf für Karten und Kennzahlen-Panels. */
         'card-gradient': 'linear-gradient(180deg, rgba(22,24,32,.9), rgba(18,20,27,.9))',
+        /**
+         * Kopfkarte der Server-Detailansicht: dieselbe Fläche, oben mit einem
+         * Hauch der Markenfarbe – sie hebt den Kopf vom Rest der Seite ab,
+         * ohne ihn einzufärben.
+         */
+        'hero-gradient': 'linear-gradient(180deg, rgba(124,92,255,0.07), rgba(18,20,27,.9))',
         /** Dezenter Lichtschein hinter dem gesamten Dashboard. */
         'app-glow':
           'radial-gradient(1200px 600px at 80% -10%, rgba(124,92,255,0.10), transparent 60%)',

@@ -35,6 +35,13 @@ export interface ServerCardProps {
    */
   isOwn?: boolean;
   pinned?: boolean;
+  /**
+   * Der Aufrufer sieht diesen fremden Server aufgrund eines instanzweiten
+   * Rechts, nicht als eingetragener Mitverwalter (`canViewAnyServer`). Nur dann
+   * steht in der Fußzeile „Admin-Zugriff" statt des Besitzernamens – wie im
+   * Mockup, das damit sichtbar macht, woher der Einblick kommt.
+   */
+  adminAccess?: boolean;
   /** Hinweis „Update verfügbar" über der Statuszeile. */
   updateAvailable?: boolean;
   /** Hinweis „Neustart nötig" über der Statuszeile. */
@@ -86,6 +93,7 @@ export function ServerCard({
   stats,
   isOwn = false,
   pinned = false,
+  adminAccess = false,
   updateAvailable = false,
   restartRequired = false,
   onTogglePin,
@@ -150,8 +158,8 @@ export function ServerCard({
             type="button"
             onClick={() => onTogglePin(server)}
             aria-pressed={pinned}
-            aria-label={pinned ? 'Anheftung lösen' : 'Server anheften'}
-            title={pinned ? 'Anheftung lösen' : 'Server anheften'}
+            aria-label={pinned ? 'Anpinnung lösen' : 'Server anpinnen'}
+            title={pinned ? 'Anpinnung lösen' : 'Server anpinnen'}
             className={cn(
               'shrink-0 rounded-sm p-0.5',
               pinned ? 'text-brand' : 'text-ink-faint hover:text-ink-muted',
@@ -201,7 +209,7 @@ export function ServerCard({
           tone={loadTone(ramPercent)}
         />
         <MetricRing
-          label="Platte"
+          label="Disk"
           value={formatMegabytes(stats?.diskUsedMb)}
           percent={diskPercent}
           tone={loadTone(diskPercent)}
@@ -244,13 +252,25 @@ export function ServerCard({
 
       {!isOwn ? (
         <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
-          <span className="flex-1 truncate text-xs text-ink-soft">
-            {server.ownerDisplayName
-              ? `${server.ownerDisplayName} · fremder Server`
-              : 'Fremder Server'}
-          </span>
+          {adminAccess ? (
+            <span className="flex items-center gap-1 text-xs text-warning">
+              <Icon name="shield" size={12} />
+              Admin-Zugriff
+            </span>
+          ) : (
+            <span className="flex-1 truncate text-xs text-ink-soft">
+              {server.ownerDisplayName
+                ? `${server.ownerDisplayName} · fremder Server`
+                : 'Fremder Server'}
+            </span>
+          )}
           {onMessageOwner ? (
-            <Button variant="ghost" size="sm" onClick={() => onMessageOwner(server)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() => onMessageOwner(server)}
+            >
               Nachricht
             </Button>
           ) : null}

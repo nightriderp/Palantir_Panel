@@ -322,3 +322,25 @@ const CONVERSATION_TYPE_LABELS: Record<ConversationType, string> = {
 export function conversationTypeLabel(type: ConversationType): string {
   return CONVERSATION_TYPE_LABELS[type];
 }
+
+/**
+ * Aktion als Code, wie das Mockup sie im Audit-Log zeigt (`LOGIN_FAILED`).
+ *
+ * Gebildet aus dem echten Schluessel des Katalogs, nicht aus einer zweiten
+ * Liste: `auth.loginFailed` wird zu `AUTH.LOGIN_FAILED`. So bleibt die Anzeige
+ * eindeutig und waechst automatisch mit, wenn eine Aktion dazukommt. Die
+ * ausgeschriebene Bedeutung steht weiter im Titel-Attribut daneben.
+ */
+export function auditActionCode(action: AuditAction): string {
+  return action.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
+}
+
+/**
+ * Meldet die Aktion einen Fehlschlag oder eine Abweisung?
+ *
+ * Solche Zeilen faerbt das Mockup rot - sie sind der Grund, warum man in ein
+ * Audit-Log ueberhaupt hineinsieht.
+ */
+export function isAuditFailure(action: AuditAction): boolean {
+  return /Failed|Denied/.test(action);
+}

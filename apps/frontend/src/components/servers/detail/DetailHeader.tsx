@@ -9,6 +9,7 @@ import {
   ServerStatusPill,
   formatServerAddress,
   isLifecycleActionBlocked,
+  serverInitials,
   serverStatusMeta,
   startStopAction,
 } from '@/components/shared';
@@ -20,6 +21,9 @@ import { type LifecycleAction } from '@/lib/api/servers';
  * Name, Status, Adresse und die Lifecycle-Schaltflächen. Welche Schaltfläche
  * erscheint, entscheidet ausschließlich das `permissions`-Objekt des DTO
  * (Pflichtenheft §5.2); während eines laufenden Übergangs sind sie gesperrt.
+ *
+ * Der Weg zurück zur Übersicht steht nicht hier, sondern im Seitenkopf darüber –
+ * so wie im Mockup, das die Karte den Aktionen am Server vorbehält.
  */
 
 export interface DetailHeaderProps {
@@ -29,7 +33,6 @@ export interface DetailHeaderProps {
   onOpenSettings: () => void;
   onDelete: () => void;
   onCopyAddress: (address: string) => void;
-  onBack: () => void;
 }
 
 export function DetailHeader({
@@ -39,7 +42,6 @@ export function DetailHeader({
   onOpenSettings,
   onDelete,
   onCopyAddress,
-  onBack,
 }: DetailHeaderProps) {
   const meta = serverStatusMeta(server.status);
   const blocked = isLifecycleActionBlocked(server.status) || busy;
@@ -49,15 +51,20 @@ export function DetailHeader({
   const address = formatServerAddress(server.address);
 
   return (
-    <header className="flex flex-col gap-3 rounded-2xl border border-line bg-card-gradient p-4">
-      <div className="flex flex-wrap items-start gap-3">
-        <Button iconLeft="arrowLeft" size="sm" onClick={onBack} className="sm:hidden">
-          Zurück
-        </Button>
+    <header className="flex flex-col gap-3 rounded-2xl border border-line bg-hero-gradient p-6">
+      <div className="flex flex-wrap items-start gap-4">
+        <span
+          aria-hidden
+          className="flex h-[62px] w-[62px] shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-2xl font-bold text-canvas"
+        >
+          {serverInitials(server.name)}
+        </span>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-3xl font-bold">{server.name}</h1>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Der Seitenkopf traegt bereits das `h1`; hier steht derselbe Name
+                als Ueberschrift der Karte. */}
+            <h2 className="truncate text-4xl font-bold">{server.name}</h2>
             <ServerStatusPill status={server.status} />
             {server.pendingRestart ? (
               <span title="Neue Einstellungen greifen beim nächsten Neustart.">
@@ -89,10 +96,6 @@ export function DetailHeader({
         </div>
 
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button iconLeft="arrowLeft" onClick={onBack} className="hidden sm:inline-flex">
-            Übersicht
-          </Button>
-
           {server.permissions.canManageSettings ? (
             <IconButton icon="gear" label="Einstellungen" onClick={onOpenSettings} />
           ) : null}

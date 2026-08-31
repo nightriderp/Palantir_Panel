@@ -1,6 +1,7 @@
 'use client';
 
 import { type ChatServerEventFrame, type MessageDto } from '@palantir/contracts';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConfirmDialog, EmptyState, Icon, PageHeader, cn, useToast } from '@/components/shared';
 import { errorText, isAborted } from '@/lib/api/client';
@@ -8,6 +9,7 @@ import {
   deleteMessage,
   fetchConversations,
   fetchMessages,
+  markConversationRead as markConversationReadOnServer,
   openDirectConversation,
   openServerConversation,
   reportMessage,
@@ -54,6 +56,7 @@ export function MessagesView() {
   const { user } = useSession();
   const viewerId = user?.id ?? null;
   const toast = useToast();
+  const searchParams = useSearchParams();
 
   const [state, setState] = useState<ChatViewState>(emptyChatState);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -120,9 +123,38 @@ export function MessagesView() {
       if (!stateRef.current.threads[conversationId]?.loaded) {
         void loadThread(conversationId);
       }
+
+      /*
+       * Den Lesestand auch serverseitig setzen, sonst gilt er nur auf diesem
+       * Geraet und der Zaehler in der Seitenleiste bliebe stehen. Ein
+       * Fehlschlag bleibt still: gelesen ist die Konversation fuer den Nutzer
+       * trotzdem, und eine Fehlermeldung dafuer waere nur im Weg.
+       */
+      void markConversationReadOnServer(conversationId).then((result) => {
+        if (result.success) {
+          setState((current) => upsertConversation(current, result.data));
+        }
+      });
     },
     [loadThread],
   );
+
+  /*
+   * Sprungziel aus der Adresszeile (`/messages?c=<id>`). Genutzt vom Knopf
+   * „Nachricht" auf der Karte eines fremden Servers: dort wird die Unterhaltung
+   * mit dem Besitzer geöffnet und ihre Id hierher übergeben. Der Sprung greift
+   * nur einmal – sonst würde ein späteres Umschalten in der Liste sofort wieder
+   * zurückspringen.
+   */
+  const jumpedRef = useRef(false);
+  useEffect(() => {
+    const wanted = searchParams.get('c');
+    if (!wanted || jumpedRef.current) return;
+    if (!state.conversations.some((entry) => entry.id === wanted)) return;
+
+    jumpedRef.current = true;
+    selectConversation(wanted);
+  }, [searchParams, state.conversations, selectConversation]);
 
   async function loadOlder() {
     const id = activeIdRef.current;
