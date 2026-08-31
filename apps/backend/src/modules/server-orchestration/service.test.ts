@@ -1375,7 +1375,7 @@ describe('Ereignisse des Agents', () => {
       kind: 'event',
       event: 'STATS_UPDATE',
       serverId: created.id,
-      payload: { playersOnline: 2 },
+      payload: { source: 'serverQuery', playersOnline: 2 },
       emittedAt: at,
     });
 
@@ -1390,11 +1390,108 @@ describe('Ereignisse des Agents', () => {
       kind: 'event',
       event: 'STATS_UPDATE',
       serverId: created.id,
-      payload: { playersOnline: 0 },
+      payload: { source: 'serverQuery', playersOnline: 0 },
       emittedAt: new Date(NOW.getTime() + 120_000).toISOString(),
     });
 
     expect((await harness.service.requireServer(created.id)).lastActivityAt).toBeNull();
+  });
+
+  it('meldet eine Konsolenzeile als server.consoleLineAppended (Gefundener Punkt 101)', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.handleAgentEvent(HOST.id, {
+      kind: 'event',
+      event: 'LOG_LINE',
+      serverId: created.id,
+      payload: {
+        containerId: 'container-1',
+        stream: 'stdout',
+        message: 'Server gestartet',
+        timestamp: '2026-08-26T12:00:01.000Z',
+        at: NOW.toISOString(),
+      },
+      emittedAt: NOW.toISOString(),
+    });
+
+    const gemeldet = harness.emitted.filter((e) => e.event === 'server.consoleLineAppended');
+
+    expect(gemeldet).toHaveLength(1);
+    expect(gemeldet[0]?.payload).toMatchObject({
+      serverId: created.id,
+      line: {
+        serverId: created.id,
+        source: 'stdout',
+        text: 'Server gestartet',
+        timestamp: '2026-08-26T12:00:01.000Z',
+      },
+    });
+
+    // Die Zeile lief bisher fälschlich als Zustandswechsel mit einem Feld
+    // `logLine` – ein Feld, das der Vertrag dieses Ereignisses nicht kennt.
+    expect(
+      harness.emitted.filter((e) => e.event === 'server.statusChanged' && 'logLine' in e.payload),
+    ).toEqual([]);
+  });
+
+  it('bringt die Messwerte der Container-Runtime in die Form von ServerLiveStats', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.handleAgentEvent(HOST.id, {
+      kind: 'event',
+      event: 'STATS_UPDATE',
+      serverId: created.id,
+      payload: {
+        containerId: 'container-1',
+        cpuPercent: 12.5,
+        memoryUsedBytes: 1024 * 1024 * 1024,
+        networkRxBytes: 10,
+        networkTxBytes: 20,
+        sampledAt: '2026-08-26T12:00:02.000Z',
+      },
+      emittedAt: NOW.toISOString(),
+    });
+
+    const gemeldet = harness.emitted.find((e) => e.event === 'server.statsUpdated');
+
+    // Der Agent zählt Bytes, `ServerLiveStats` zählt MiB – bis hierher wurde die
+    // Nutzlast unverändert durchgereicht.
+    expect(gemeldet?.payload).toEqual({
+      serverId: created.id,
+      stats: {
+        cpuPercent: 12.5,
+        ramUsedMb: 1_024,
+        diskUsedMb: null,
+        pingMs: null,
+        playersOnline: null,
+        playersMax: null,
+        networkRxBytes: 10,
+        networkTxBytes: 20,
+        updatedAt: '2026-08-26T12:00:02.000Z',
+      },
+    });
+  });
+
+  it('ordnet ein Ereignis ohne serverId über die Container-Id zu', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const containerId = (await harness.service.requireServer(created.id)).dockerContainerId;
+
+    expect(containerId).not.toBeNull();
+
+    // So meldet die Container-Runtime: Sie kennt nur ihre Container, nicht die
+    // Server – ohne die Zuordnung wären die Zeilen bisher verworfen worden.
+    await harness.service.handleAgentEvent(HOST.id, {
+      kind: 'event',
+      event: 'LOG_LINE',
+      serverId: null,
+      payload: { containerId, stream: 'stderr', message: 'Warnung', at: NOW.toISOString() },
+      emittedAt: NOW.toISOString(),
+    });
+
+    expect(harness.emitted.filter((e) => e.event === 'server.consoleLineAppended')).toHaveLength(1);
   });
 
   it('verwirft ein Ereignis für einen unbekannten Server', async () => {
