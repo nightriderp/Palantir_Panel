@@ -448,6 +448,15 @@ export {
 } from './stats-history.js';
 
 export {
+  type ServerQuerySnapshot,
+  consoleLineFromAgentPayload,
+  containerIdFromPayload,
+  isServerQueryPayload,
+  liveStatsFromAgentPayload,
+  querySnapshotFromPayload,
+} from './live-events.js';
+
+export {
   CLONE_JOB_RETENTION_MS,
   type CloneJobProgress,
   type CloneJobStore,

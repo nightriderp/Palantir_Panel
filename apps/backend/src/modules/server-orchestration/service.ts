@@ -78,6 +78,13 @@ import {
   type ResourceGuard,
   createInlineCapacityReservation,
 } from './resource-guard.js';
+import {
+  consoleLineFromAgentPayload,
+  containerIdFromPayload,
+  isServerQueryPayload,
+  liveStatsFromAgentPayload,
+  querySnapshotFromPayload,
+} from './live-events.js';
 import { planReconciliation } from './reconciliation.js';
 import { type HostNodeRecord, type ServerRecord, type ServerRepository } from './repository.js';
 import { type ServerAutoShutdown } from './types.js';
@@ -1304,20 +1311,20 @@ export class ServerOrchestrationService {
    * braucht es den Health-Check (Pflichtenheft §9).
    */
   async handleAgentEvent(hostId: string, frame: AgentEventFrame): Promise<void> {
-    if (frame.serverId === null) {
-      this.deps.log.warn({ hostId, event: frame.event }, 'Agent-Ereignis ohne Server verworfen');
-
-      return;
-    }
-
-    const server = await this.deps.repository.findById(frame.serverId);
+    /*
+     * Die Ereignisse der Container-Runtime tragen keine `serverId`: Die Runtime
+     * kennt nur ihre Container, und der Adapter des Agents meldet deshalb
+     * `null` (`runtime-adapter.ts`). Ohne die Zuordnung über die Container-Id
+     * wären Konsolenzeilen und Messwerte allesamt verworfen worden – die Id
+     * steht am Server-Datensatz, also wird sie hier nachgeschlagen
+     * (WORK_STATUS.md, Gefundener Punkt 101).
+     */
+    const server =
+      frame.serverId === null
+        ? await this.serverForContainerEvent(hostId, frame)
+        : await this.deps.repository.findById(frame.serverId);
 
     if (server === null) {
-      this.deps.log.warn(
-        { hostId, event: frame.event, serverId: frame.serverId },
-        'Agent-Ereignis für unbekannten Server verworfen',
-      );
-
       return;
     }
 
@@ -1331,10 +1338,7 @@ export class ServerOrchestrationService {
 
         return;
       case 'LOG_LINE':
-        this.deps.events.emit('server.statusChanged', {
-          serverId: server.id,
-          logLine: frame.payload,
-        });
+        this.handleLogLine(server, frame);
 
         return;
       case 'STATUS_CHANGED':
@@ -1403,40 +1407,90 @@ export class ServerOrchestrationService {
    * Aktivitätsnachweis für den Auto-Shutdown: Sind Spieler verbunden, wird der
    * Bezugspunkt des Inaktivitäts-Timeouts nachgezogen.
    */
-  private async handleStatsUpdate(server: ServerRecord, frame: AgentEventFrame): Promise<void> {
-    const payload = frame.payload as
-      | {
-          readonly playersOnline?: number | null;
-          readonly playersMax?: number | null;
-          readonly pingMs?: number | null;
-        }
-      | undefined;
-    const playersOnline = payload?.playersOnline ?? null;
+  /**
+   * Server zu einem Ereignis ohne `serverId` über die Container-Id finden.
+   *
+   * Bleibt die Zuordnung offen, wird das Ereignis verworfen und einmal
+   * protokolliert – geraten wird nicht.
+   */
+  private async serverForContainerEvent(
+    hostId: string,
+    frame: AgentEventFrame,
+  ): Promise<ServerRecord | null> {
+    const containerId = containerIdFromPayload(frame.payload);
 
-    // Die Server-Abfrage des Agents ist die einzige Quelle für Spielerzahl und
-    // Antwortzeit; die Container-Engine kennt beides nicht. Für den Verlauf
-    // (P5) wird der zuletzt gemeldete Stand gemerkt und beim Abtasten neben die
-    // Engine-Werte gelegt.
-    this.latestQuery.remember(
+    if (containerId === null) {
+      this.deps.log.warn({ hostId, event: frame.event }, 'Agent-Ereignis ohne Server verworfen');
+
+      return null;
+    }
+
+    const server = await this.deps.repository.findByContainerId(containerId);
+
+    if (server === null) {
+      this.deps.log.warn(
+        { hostId, event: frame.event, containerId },
+        'Agent-Ereignis für unbekannten Container verworfen',
+      );
+    }
+
+    return server;
+  }
+
+  /**
+   * Eine Konsolenzeile des Agents an den Live-Kanal geben
+   * (`server.consoleLineAppended`, Gefundener Punkt 101).
+   *
+   * Bis hierher wurde die Nutzlast als `server.statusChanged` mit einem Feld
+   * `logLine` gemeldet – ein Ereignis, dessen Vertrag das Feld nicht kennt. Der
+   * Hub setzt `server.consoleLineAppended` bereits um; gefehlt hat nur die
+   * richtige Meldung samt Übersetzung in eine `ServerConsoleLine`.
+   */
+  private handleLogLine(server: ServerRecord, frame: AgentEventFrame): void {
+    const line = consoleLineFromAgentPayload(
       server.id,
-      {
-        playersOnline,
-        playersMax: payload?.playersMax ?? null,
-        pingMs: payload?.pingMs ?? null,
-      },
-      new Date(frame.emittedAt),
+      frame.payload,
+      randomUUID(),
+      frame.emittedAt,
     );
 
-    if (playersOnline !== null && playersOnline > 0) {
+    if (line === null) {
+      return;
+    }
+
+    this.deps.events.emit('server.consoleLineAppended', { serverId: server.id, line });
+  }
+
+  private async handleStatsUpdate(server: ServerRecord, frame: AgentEventFrame): Promise<void> {
+    /*
+     * Unter dem Namen `STATS_UPDATE` fließen zwei verschiedene Nutzlasten: die
+     * Messwerte der Container-Runtime und das Ergebnis der Server-Abfrage. Nur
+     * Letztere kennt Spielerzahl und Antwortzeit – die Container-Engine liefert
+     * beides nicht. Der zuletzt gemeldete Abfragestand wird deshalb gemerkt und
+     * sowohl hier als auch beim Abtasten für den Verlauf (P5) neben die
+     * Engine-Werte gelegt.
+     */
+    if (isServerQueryPayload(frame.payload)) {
+      this.latestQuery.remember(
+        server.id,
+        querySnapshotFromPayload(frame.payload),
+        new Date(frame.emittedAt),
+      );
+    }
+
+    const stats = liveStatsFromAgentPayload(
+      frame.payload,
+      this.latestQuery.read(server.id, new Date(frame.emittedAt)),
+      frame.emittedAt,
+    );
+
+    if (stats.playersOnline !== null && stats.playersOnline > 0) {
       await this.deps.repository.update(server.id, {
         lastActivityAt: frame.emittedAt,
       });
     }
 
-    this.deps.events.emit('server.statsUpdated', {
-      serverId: server.id,
-      stats: frame.payload,
-    });
+    this.deps.events.emit('server.statsUpdated', { serverId: server.id, stats });
   }
 
   // -------------------------------------------------------------------------
