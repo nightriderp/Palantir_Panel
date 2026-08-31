@@ -339,9 +339,73 @@ export class ServerOrchestrationService {
 
     await this.deps.repository.update(created.id, { assignedPorts });
 
-    await this.provision(await this.requireServer(created.id), input.worldImport);
+    try {
+      await this.provision(await this.requireServer(created.id), input.worldImport);
+    } catch (error: unknown) {
+      /*
+       * Aufräumen, statt eine Leiche stehen zu lassen (WORK_STATUS.md,
+       * Gefundener Punkt 112). Ohne das blieb nach einem gescheiterten Anlegen
+       * ein Datensatz auf `error` zurück – samt belegter Subdomain und
+       * belegten Ports. Der zweite Versuch mit derselben Adresse lief dann in
+       * „Diese Subdomain ist bereits vergeben", und der Nutzer musste erst von
+       * Hand löschen. Geräumt wird nur, solange nie ein Container entstand –
+       * die Begründung steht an `rollbackFailedCreate()`.
+       *
+       * Der Fehler selbst geht weiter nach oben: Er ist die Antwort auf den
+       * Anlegen-Versuch, und `server.failed` ist bereits gemeldet.
+       */
+      await this.rollbackFailedCreate(created.id);
+
+      throw error;
+    }
 
     return this.requireServer(created.id);
+  }
+
+  /**
+   * Reste eines gescheiterten Anlegens entfernen.
+   *
+   * Jeder Schritt für sich abgesichert: Was hier scheitert, darf den
+   * eigentlichen Fehler nicht verdecken. Ein Rest, der liegen bleibt, wird
+   * protokolliert – der Speicher-Explorer (B8) findet ihn als verwaisten
+   * Posten, und die Subdomain ist in jedem Fall wieder frei, sobald der
+   * Datensatz weg ist.
+   */
+  private async rollbackFailedCreate(serverId: string): Promise<void> {
+    const server = await this.deps.repository.findById(serverId);
+
+    if (server === null) {
+      return;
+    }
+
+    /*
+     * Nur aufräumen, solange nie ein Container entstanden ist.
+     *
+     * Scheitert erst ein späterer Schritt – etwa die Weltdaten-Übernahme (P4) –,
+     * liegt auf der Node bereits ein Container samt Datenordner. Den still
+     * wegzuräumen hieße, einen halb übernommenen Spielstand ohne Rückfrage zu
+     * löschen. Dann bleibt es beim bisherigen Verhalten: Der Server steht auf
+     * `error` und wird im Panel bewusst entfernt.
+     */
+    if (server.dockerContainerId !== null) {
+      return;
+    }
+
+    const aufraeumen = async (was: string, schritt: () => Promise<unknown>): Promise<void> => {
+      try {
+        await schritt();
+      } catch (error: unknown) {
+        this.deps.log.warn(
+          { serverId, schritt: was, error: error instanceof Error ? error.message : String(error) },
+          'Rest eines gescheiterten Anlegens konnte nicht entfernt werden',
+        );
+      }
+    };
+
+    await aufraeumen('dns', () => this.deps.dns.deleteRecord(this.hostnameFor(server)));
+    await aufraeumen('ports', () => this.deps.ports.release(serverId));
+    // Zuletzt der Datensatz: Solange er steht, sind Subdomain und Ports belegt.
+    await aufraeumen('datensatz', () => this.deps.repository.delete(serverId));
   }
 
   /**

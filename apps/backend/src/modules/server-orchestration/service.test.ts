@@ -642,6 +642,37 @@ describe('Server anlegen (Lastenheft §3.3)', () => {
     }
   });
 
+  it('räumt einen gescheiterten Versuch weg und gibt die Subdomain frei (Punkt 112)', async () => {
+    const harness = makeHarness();
+
+    // So sah der Fehler im Betrieb aus: Das Image fehlte auf der Node.
+    harness.socket.answers.set('CREATE', {
+      success: false,
+      data: null,
+      error: {
+        code: 'AGENT_IMAGE_NOT_FOUND',
+        message: 'Das Container-Image ist auf dem Homeserver nicht vorhanden.',
+      },
+    });
+
+    await expect(
+      harness.service.createServer(createInput('mein-server'), OWNER_ID),
+    ).rejects.toBeDefined();
+
+    // Kein Datensatz auf `error`, der die Adresse belegt hält.
+    expect(harness.repository.servers.size).toBe(0);
+    // Der Fake merkt Löschungen getrennt, statt aus der Liste zu entfernen.
+    expect(harness.deletedDnsNames).toHaveLength(1);
+    expect(harness.releasedPorts).toHaveLength(1);
+
+    // Und der zweite Versuch mit derselben Subdomain geht wieder – vorher kam
+    // hier „Diese Subdomain ist bereits vergeben".
+    harness.socket.answers.delete('CREATE');
+    const zweiter = await harness.service.createServer(createInput('mein-server'), OWNER_ID);
+
+    expect(zweiter.subdomain).toBe('mein-server');
+  });
+
   it('lehnt einen gesperrten Systemnamen ab', async () => {
     const harness = makeHarness();
 
