@@ -55,6 +55,12 @@ export interface UserResourceLimitRepository {
    * Datensatz mit `NO_USER_RESOURCE_LIMITS`.
    */
   findByUserId(userId: string): Promise<UserResourceLimitRecord | null>;
+  /**
+   * Kontingente mehrerer Konten auf einmal – für Listen (Mockup-Abgleich
+   * 12.1.3). Konten ohne eigenen Datensatz fehlen in der Antwort; für sie gilt
+   * `NO_USER_RESOURCE_LIMITS`.
+   */
+  findManyByUserId(userIds: readonly string[]): Promise<ReadonlyMap<string, UserResourceLimits>>;
   /** Kontingent setzen oder ersetzen. Der Aufrufer hat den Nutzer bereits geprüft. */
   upsert(userId: string, limits: UserResourceLimits): Promise<UserResourceLimitRecord | null>;
   /** Kontingent vollständig entfernen – danach gilt für den Nutzer kein Limit mehr. */
@@ -84,5 +90,11 @@ export interface UsageQueryOptions {
  */
 export interface ServerUsageRepository {
   usageForUser(userId: string, options?: UsageQueryOptions): Promise<UserResourceUsage>;
+  /**
+   * Belegung mehrerer Nutzer in **einer** Abfrage – für Listen (Mockup-Abgleich
+   * 12.1.3). Ein Nutzer ohne Server fehlt in der Antwort; für ihn gilt die
+   * leere Belegung.
+   */
+  usageForUsers(userIds: readonly string[]): Promise<ReadonlyMap<string, UserResourceUsage>>;
   usageForNode(nodeId: string, options?: UsageQueryOptions): Promise<NodeResourceUsage>;
 }

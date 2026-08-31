@@ -30,6 +30,7 @@ import { type PortPoolService, createPortPoolService } from './ports.js';
 import {
   type RegistrationRequestService,
   createRegistrationRequestService,
+  type QuotaSummaryReader,
 } from './registration-requests.js';
 import {
   createDrizzleAuditArchiveRepository,
@@ -68,6 +69,8 @@ export interface AdminModuleOptions {
   readonly knownServers?: KnownServerSource;
   /** Anschluss an B3: Anzeigenamen der Server in der Port-Übersicht. */
   readonly serverNames?: () => Promise<ReadonlyMap<string, string>>;
+  /** Anschluss an B4: Kontingente für die Spalte in der Nutzerliste (Abgleich 12.1.3). */
+  readonly quotas?: QuotaSummaryReader;
 }
 
 export interface AdminModule {
@@ -112,6 +115,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     repository: createDrizzleRegistrationRequestRepository(db),
     roles: options.roles,
     audit,
+    ...(options.quotas ? { quotas: options.quotas } : {}),
   });
 
   // Rollenverwaltung: Die Regeln liegen im RoleService aus B2, hier kommen

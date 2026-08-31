@@ -22,11 +22,13 @@ import {
   type CapacityCheckResult,
   type RequestedServerResources,
   type ResourceLowEvent,
+  type RegistrationRequestQuota,
   type ResourceQuotaDto,
   type ResourceWarningThresholds,
   type UserResourceLimitDto,
   type UserResourceLimitPermissions,
   type UserResourceLimits,
+  type UserResourceUsage,
   resourceQuotaSlot,
 } from '@palantir/contracts';
 import type { UserResourceLimitsInput } from '@palantir/validation';
@@ -134,6 +136,21 @@ export interface ResourceService {
    */
   assertStartCapacity(request: StartCapacityRequest): Promise<CapacityCheckResult>;
 
+  /**
+   * Kontingent-Kurzfassung mehrerer Konten für Listen (Mockup-Abgleich 12.1.3).
+   *
+   * Zwei Abfragen für die ganze Liste statt zweier je Zeile. Gerechnet wird mit
+   * derselben Regel wie in {@link ResourceService.getOwnQuota} und in der
+   * harten Kapazitätsprüfung – RAM zählt laufende Server, die Serveranzahl die
+   * gleichzeitig laufenden. Eine zweite Rechnung entsteht hier nicht.
+   *
+   * Verlangt `user.manage`: Es sind fremde Kontingente.
+   */
+  listQuotaSummaries(
+    actor: PermissionActor,
+    userIds: readonly string[],
+  ): Promise<ReadonlyMap<string, RegistrationRequestQuota>>;
+
   /** Aktuelle Warnlage einer Node – für periodische Auswertung ohne Serverstart. */
   evaluateNodeState(nodeId: string, at?: Date): Promise<ResourceLowEvent[]>;
 
@@ -152,6 +169,15 @@ export interface ResourceServiceDependencies {
   readonly usage: ServerUsageRepository;
   readonly thresholds: ResourceWarningThresholds;
 }
+
+/** Belegung eines Nutzers ohne Server – Vorgabe für die Sammelabfrage. */
+const EMPTY_USAGE: UserResourceUsage = {
+  runningRamMb: 0,
+  runningCpuCores: 0,
+  allocatedDiskMb: 0,
+  runningServers: 0,
+  totalServers: 0,
+};
 
 /** Teil-Update auf das gespeicherte Kontingent anwenden. */
 function mergeLimits(
@@ -299,6 +325,37 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
         updatedAt: record.updatedAt?.toISOString() ?? null,
         permissions: computeUserResourceLimitPermissions(actor, true),
       };
+    },
+
+    async listQuotaSummaries(actor, userIds) {
+      if (!hasPermission(actor, 'user.manage')) {
+        throw new ResourceError('PERMISSION_DENIED');
+      }
+
+      const eindeutige = [...new Set(userIds)];
+
+      if (eindeutige.length === 0) {
+        return new Map();
+      }
+
+      const [grenzen, belegung] = await Promise.all([
+        deps.limits.findManyByUserId(eindeutige),
+        deps.usage.usageForUsers(eindeutige),
+      ]);
+
+      const zusammenfassung = new Map<string, RegistrationRequestQuota>();
+
+      for (const userId of eindeutige) {
+        const limits = grenzen.get(userId) ?? NO_USER_RESOURCE_LIMITS;
+        const usage = belegung.get(userId) ?? EMPTY_USAGE;
+
+        zusammenfassung.set(userId, {
+          ram: resourceQuotaSlot('ram', limits.maxRamMb, usage.runningRamMb),
+          servers: resourceQuotaSlot('servers', limits.maxConcurrentServers, usage.runningServers),
+        });
+      }
+
+      return zusammenfassung;
     },
 
     async checkStartCapacity(request) {

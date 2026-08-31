@@ -41,6 +41,9 @@ function usageRepository(usage: NodeResourceUsage): ServerUsageRepository & { ca
     usageForUser: (): Promise<UserResourceUsage> => {
       throw new Error('Die Node-Übersicht fragt nicht nach Nutzer-Belegung.');
     },
+    usageForUsers: (): Promise<ReadonlyMap<string, UserResourceUsage>> => {
+      throw new Error('Die Node-Übersicht fragt nicht nach Nutzer-Belegung.');
+    },
     usageForNode: (nodeId): Promise<NodeResourceUsage> => {
       calls.push(nodeId);
 
