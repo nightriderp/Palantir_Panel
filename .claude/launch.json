@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@palantir/frontend", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "mockup",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/serve-mockup.mjs"],
+      "port": 4100
+    }
+  ]
+}
