@@ -175,9 +175,15 @@ describe('Registrierung über HTTP (Lastenheft §3.1)', () => {
     expect(access?.sameSite?.toLowerCase()).toBe('lax');
     expect(access?.secure).toBe(env.COOKIE_SECURE);
 
-    // Der Refresh-Token wird nur an die /auth-Routen geschickt.
+    /*
+     * Der Refresh-Token liegt auf `/`, damit die Route-Sperre des Frontends
+     * eine abgelaufene Sitzung erneuern kann – sie sieht sonst nur Cookies,
+     * die zum aufgerufenen Pfad passen. Abgesichert ist er durch `httpOnly`,
+     * `SameSite=Lax` und die CSRF-Pflicht auf `/auth/refresh`.
+     */
     expect(refresh?.httpOnly).toBe(true);
-    expect(refresh?.path).toBe('/auth');
+    expect(refresh?.path).toBe('/');
+    expect(refresh?.sameSite?.toLowerCase()).toBe('lax');
 
     // Das CSRF-Cookie muss das Frontend lesen können (Double-Submit).
     expect(csrf?.httpOnly).toBeFalsy();

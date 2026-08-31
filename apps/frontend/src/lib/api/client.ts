@@ -3,7 +3,9 @@ import {
   CSRF_HEADER_NAME,
   apiBaseUrl,
   apiUrl,
+  darfErneuern,
   readCsrfToken as readCsrfTokenFrom,
+  refreshSession,
 } from '@/lib/auth/api';
 import { messageForErrorCode } from '@/lib/auth/errors';
 
@@ -129,11 +131,43 @@ export function isEnvelope(value: unknown): value is ApiResponse<unknown> {
  *
  * Endpunkte ohne Rumpf (HTTP 204, z. B. Löschen) liefern `data: null`; sie
  * werden deshalb als `apiRequest<null>(…)` aufgerufen.
+ *
+ * **Abgelaufenes Zugriffs-Token:** Antwortet das Backend mit `AUTH_REQUIRED`,
+ * wird die Sitzung einmal erneuert und der Aufruf wiederholt. Das Zugriffs-Token
+ * gilt 15 Minuten, der Refresh-Token 30 Tage (Pflichtenheft §7) – ohne diesen
+ * Schritt endete jede Sitzung nach einer Viertelstunde mitten in der Arbeit.
+ * Genau ein zweiter Versuch: bleibt es bei `AUTH_REQUIRED`, ist die Sitzung
+ * wirklich zu Ende.
  */
 export async function apiRequest<T>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<ApiResult<T>> {
+  const ergebnis = await sende<T>(path, options);
+
+  if (!sitzungAbgelaufen(ergebnis) || !darfErneuern(path)) {
+    return ergebnis;
+  }
+
+  // Ein abgebrochener Aufruf (Ansicht verlassen) wird nicht wiederholt.
+  if (options.signal?.aborted === true) {
+    return ergebnis;
+  }
+
+  const erneuert = await refreshSession();
+  if (!erneuert) {
+    return ergebnis;
+  }
+
+  return sende<T>(path, options);
+}
+
+/** Meldet die Antwort ein abgelaufenes Zugriffs-Token? */
+function sitzungAbgelaufen<T>(result: ApiResult<T>): boolean {
+  return !result.success && result.error.code === 'AUTH_REQUIRED';
+}
+
+async function sende<T>(path: string, options: ApiRequestOptions = {}): Promise<ApiResult<T>> {
   const method = options.method ?? 'GET';
   const headers = new Headers();
   headers.set('Accept', 'application/json');
