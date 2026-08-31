@@ -14,6 +14,7 @@ import {
   ContainerRuntimeAdapter,
   JOB_COMMANDS,
   RUNTIME_ERROR_TO_API_CODE,
+  toAgentContainerState,
 } from './runtime-adapter.js';
 import type { OutboundEvent } from './ports.js';
 
@@ -68,6 +69,27 @@ describe('Befehl → Runtime-Aufruf', () => {
     expect(daten.containerId).toBeTruthy();
     expect(daten.name).toBe(CREATE_PAYLOAD.name);
     expect(Array.isArray(daten.warnings)).toBe(true);
+  });
+
+  it('meldet die serverId des Ist-Zustands aus dem Label', async () => {
+    // Gefundener Punkt 19: Der Adapter liest sie nicht mehr aus dem Namen.
+    const zustand = toAgentContainerState(
+      {
+        containerId: 'c-1',
+        name: 'ganz-anders-benannt',
+        serverId: SERVER_ID,
+        image: 'palantir/echo:1',
+        status: 'running',
+        exitCode: null,
+        startedAt: null,
+        finishedAt: null,
+        oomKilled: false,
+        restartCount: 0,
+      },
+      '2026-09-01T00:00:00.000Z',
+    );
+
+    expect(zustand.serverId).toBe(SERVER_ID);
   });
 
   it('gibt die serverId als Label an die Runtime weiter', async () => {

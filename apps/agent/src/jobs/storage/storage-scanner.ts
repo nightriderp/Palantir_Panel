@@ -304,7 +304,9 @@ export class StorageScanner {
     const zuordnung = new Map<string, { containerId: string; laeuft: boolean }>();
 
     for (const zustand of zustaende) {
-      const serverId = serverIdFromContainerName(zustand.name);
+      // Seit Gefundenem Punkt 19 traegt der Zustand die Id aus dem Label; der
+      // Name bleibt das Rueckfallnetz fuer Container aus der Zeit davor.
+      const serverId = zustand.serverId ?? serverIdFromContainerName(zustand.name);
       if (serverId === null) {
         continue;
       }

@@ -693,6 +693,7 @@ export class FakeContainerRuntime implements ContainerRuntime {
     return {
       containerId: container.id,
       name: container.spec.name,
+      serverId: container.spec.serverId ?? null,
       image: container.spec.image,
       status: container.status,
       exitCode: container.exitCode,

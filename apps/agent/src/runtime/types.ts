@@ -119,6 +119,17 @@ export interface ContainerHandle {
 export interface ContainerState {
   readonly containerId: string;
   readonly name: string;
+  /**
+   * Server-Id aus dem Label `palantir.serverId`, das `create()` setzt
+   * (WORK_STATUS.md, Gefundener Punkt 19).
+   *
+   * `null` bei jedem Container, der das Label nicht traegt – fremde Container
+   * oder solche aus der Zeit vor dem Label. Der Adapter in A1 hat die Id
+   * frueher aus dem Namen `palantir-<uuid>` herausgelesen; das raet an einer
+   * Stelle, an der die Engine die Antwort schon kennt, und ginge schief, sobald
+   * jemand einen Container umbenennt.
+   */
+  readonly serverId: string | null;
   readonly image: string;
   readonly status: ContainerStatus;
   /** Exit-Code des letzten Laufs, `null` solange der Container nie beendet wurde. */

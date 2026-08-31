@@ -5,6 +5,7 @@
  * (CPU-Prozent aus zwei Messpunkten, Speicher ohne Page-Cache) direkt testen.
  */
 
+import { PALANTIR_SERVER_ID_LABEL } from '../hardening.js';
 import {
   CONTAINER_STATUSES,
   type ContainerState,
@@ -87,6 +88,7 @@ export function toContainerState(antwort: DockerInspectResponse): ContainerState
     containerId: antwort.Id,
     // Docker liefert Namen mit fuehrendem Schraegstrich.
     name: (antwort.Name ?? '').replace(/^\//, ''),
+    serverId: antwort.Config?.Labels?.[PALANTIR_SERVER_ID_LABEL] ?? null,
     image: antwort.Config?.Image ?? antwort.Image ?? '',
     status: toContainerStatus(antwort.State?.Status),
     // Ohne beendeten Lauf ist der Exit-Code der Engine (immer 0) bedeutungslos.

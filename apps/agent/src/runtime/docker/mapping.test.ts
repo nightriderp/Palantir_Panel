@@ -25,6 +25,21 @@ describe('toContainerState', () => {
     expect(state.name).toBe('palantir-srv-1');
   });
 
+  it('nimmt die serverId aus dem Label statt aus dem Namen', () => {
+    // Gefundener Punkt 19: Der Name kann von Hand geaendert sein, das Label
+    // setzt die Runtime beim Anlegen selbst.
+    const state = toContainerState({
+      Id: 'c1',
+      Name: '/irgendwas-anderes',
+      Config: { Labels: { 'palantir.serverId': 'a3f1c2d4-0000-4000-8000-000000000001' } },
+    });
+    expect(state.serverId).toBe('a3f1c2d4-0000-4000-8000-000000000001');
+  });
+
+  it('meldet keine serverId fuer einen fremden Container', () => {
+    expect(toContainerState({ Id: 'c1', Name: '/palantir-fremd' }).serverId).toBeNull();
+  });
+
   it('liefert keinen Exit-Code, solange der Container nie beendet wurde', () => {
     const state = toContainerState({
       Id: 'c1',
