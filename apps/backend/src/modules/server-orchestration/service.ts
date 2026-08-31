@@ -117,6 +117,14 @@ export interface OrchestrationConfig {
   readonly crashLoopPolicy: CrashLoopPolicy;
   readonly healthCheckIntervalMs: number;
   readonly healthCheckAttemptTimeoutMs: number;
+  /**
+   * Frist für das `CREATE` am Agent (Gefundener Punkt 111).
+   *
+   * Deutlich länger als die übliche Befehlsfrist: Fehlt das Image auf der Node,
+   * holt der Agent es beim Anlegen selbst, und ein Spiel-Image bringt Hunderte
+   * MB mit.
+   */
+  readonly createTimeoutMs: number;
   readonly defaultAutoShutdown: ServerAutoShutdown;
   /**
    * Maximale Upload-Größe pro Datei aus `MAX_UPLOAD_SIZE_BYTES` (Pflichtenheft
@@ -359,29 +367,39 @@ export class ServerOrchestrationService {
 
       const session = this.deps.agents.require(server.hostId);
 
-      const created = await session.sendCommand('CREATE', server.id, {
-        name: containerNameFor(server.id),
-        image: definition.dockerImage,
-        env: buildContainerEnv(definition, server.configJson),
-        command: definition.defaultCommand,
-        ports: server.assignedPorts.map((assignment) => ({
-          containerPort: assignment.containerPort,
-          hostPort: assignment.publicPort,
-          protocol: assignment.protocol,
-        })),
-        resources: {
-          memoryMb: server.resourceLimits.ramMb,
-          cpuCores: server.resourceLimits.cpuCores,
+      const created = await session.sendCommand(
+        'CREATE',
+        server.id,
+        {
+          name: containerNameFor(server.id),
+          image: definition.dockerImage,
+          env: buildContainerEnv(definition, server.configJson),
+          command: definition.defaultCommand,
+          ports: server.assignedPorts.map((assignment) => ({
+            containerPort: assignment.containerPort,
+            hostPort: assignment.publicPort,
+            protocol: assignment.protocol,
+          })),
+          resources: {
+            memoryMb: server.resourceLimits.ramMb,
+            cpuCores: server.resourceLimits.cpuCores,
+          },
+          dataVolume: {
+            hostPath: dataHostPathFor(server.id),
+            containerPath: definition.dataVolumeContainerPath,
+          },
+          readOnlyRootFilesystem: definition.readOnlyRootFilesystem,
+          tmpfsPaths: definition.tmpfsPaths,
+          labels: { 'palantir.serverId': server.id },
+          stopTimeoutSeconds: definition.stopTimeoutSeconds,
         },
-        dataVolume: {
-          hostPath: dataHostPathFor(server.id),
-          containerPath: definition.dataVolumeContainerPath,
-        },
-        readOnlyRootFilesystem: definition.readOnlyRootFilesystem,
-        tmpfsPaths: definition.tmpfsPaths,
-        labels: { 'palantir.serverId': server.id },
-        stopTimeoutSeconds: definition.stopTimeoutSeconds,
-      });
+        /*
+         * Eigene Frist: Fehlt das Image auf der Node, holt der Agent es beim
+         * Anlegen selbst (Gefundener Punkt 111) – das dauert bei einem
+         * Spiel-Image Minuten, nicht Sekunden.
+         */
+        { timeoutMs: this.deps.config.createTimeoutMs },
+      );
 
       await this.deps.repository.update(server.id, {
         dnsRecordId,

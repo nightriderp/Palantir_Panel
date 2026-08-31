@@ -233,6 +233,7 @@ export function registerServerOrchestration(
       },
       healthCheckIntervalMs: env.HEALTH_CHECK_INTERVAL_MS,
       healthCheckAttemptTimeoutMs: env.HEALTH_CHECK_ATTEMPT_TIMEOUT_MS,
+      createTimeoutMs: env.AGENT_CREATE_TIMEOUT_MS,
       maxUploadBytes: env.MAX_UPLOAD_SIZE_BYTES,
       maxWorldArchiveBytes: env.MAX_WORLD_ARCHIVE_BYTES,
       statsHistoryRetentionHours: env.STATS_HISTORY_RETENTION_HOURS,

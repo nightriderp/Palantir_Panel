@@ -523,6 +523,7 @@ function makeHarness(
       crashLoopPolicy: { maxRestarts: 2, windowMinutes: 10 },
       healthCheckIntervalMs: 5_000,
       healthCheckAttemptTimeoutMs: 1_000,
+      createTimeoutMs: 900_000,
       maxUploadBytes: options.maxUploadBytes ?? 2 * 1024 * 1024 * 1024,
       maxWorldArchiveBytes: options.maxWorldArchiveBytes ?? 64 * 1024 * 1024,
       statsHistoryRetentionHours: options.statsHistoryRetentionHours ?? 48,

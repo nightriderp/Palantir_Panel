@@ -37,6 +37,16 @@ export interface DockerRequestOptions {
   readonly notFoundCode?: ContainerRuntimeErrorCode;
   /** HTTP-Status, die als Erfolg gelten (z. B. 304 "laeuft bereits"). */
   readonly tolerateStatus?: readonly number[];
+  /** Zusaetzliche Kopfzeilen, z. B. `X-Registry-Auth` beim Holen eines Images. */
+  readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * Abweichende Frist fuer diese eine Anfrage.
+   *
+   * Das Holen eines Images dauert Minuten und sprengt die uebliche Frist; ein
+   * Container zu starten dagegen nicht. Deshalb je Anfrage statt global
+   * grosszuegig.
+   */
+  readonly timeoutMs?: number;
 }
 
 export interface DockerStream {
@@ -88,7 +98,7 @@ export class DockerHttpClient {
   }
 
   #init(method: string, options: DockerRequestOptions, signal: AbortSignal): RequestInit {
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
     let body: RequestInit['body'];
 
     if (options.rawBody !== undefined) {
@@ -151,13 +161,18 @@ export class DockerHttpClient {
     return new ContainerRuntimeError(code, { message: meldung, details });
   }
 
+  /** Frist dieser Anfrage – die uebliche, sofern keine eigene mitgegeben wurde. */
+  #signal(options: DockerRequestOptions): AbortSignal {
+    return AbortSignal.timeout(options.timeoutMs ?? this.#timeoutMs);
+  }
+
   /** Anfrage mit JSON-Antwort. */
   async requestJson<T>(
     method: string,
     pfad: string,
     options: DockerRequestOptions = {},
   ): Promise<T> {
-    const antwort = await this.#send(method, pfad, options, AbortSignal.timeout(this.#timeoutMs));
+    const antwort = await this.#send(method, pfad, options, this.#signal(options));
     return (await antwort.json()) as T;
   }
 
@@ -167,7 +182,7 @@ export class DockerHttpClient {
     pfad: string,
     options: DockerRequestOptions = {},
   ): Promise<void> {
-    const antwort = await this.#send(method, pfad, options, AbortSignal.timeout(this.#timeoutMs));
+    const antwort = await this.#send(method, pfad, options, this.#signal(options));
     // Koerper leeren, damit die Verbindung wiederverwendet werden kann.
     await antwort.arrayBuffer().catch(() => undefined);
   }
@@ -181,7 +196,7 @@ export class DockerHttpClient {
     pfad: string,
     options: DockerRequestOptions = {},
   ): Promise<Response> {
-    return this.#send(method, pfad, options, AbortSignal.timeout(this.#timeoutMs));
+    return this.#send(method, pfad, options, this.#signal(options));
   }
 
   /** Anfrage, deren Antwort vollstaendig als Puffer gelesen wird (TAR-Download, Exec-Ausgabe). */
@@ -190,7 +205,7 @@ export class DockerHttpClient {
     pfad: string,
     options: DockerRequestOptions = {},
   ): Promise<Buffer> {
-    const antwort = await this.#send(method, pfad, options, AbortSignal.timeout(this.#timeoutMs));
+    const antwort = await this.#send(method, pfad, options, this.#signal(options));
     return Buffer.from(await antwort.arrayBuffer());
   }
 

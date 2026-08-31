@@ -11,6 +11,7 @@
 import path from 'node:path';
 import { type ContainerRuntime } from '../container-runtime.js';
 import { ContainerRuntimeError, isContainerRuntimeError } from '../errors.js';
+import { type RegistryCredentials, pullImage } from './image-pull.js';
 import {
   RuntimeEventEmitter,
   type ContainerRuntimeEventListener,
@@ -74,6 +75,15 @@ export const DEFAULT_MAX_FILE_BYTES = 64 * 1024 * 1024;
  */
 export const MAX_EXEC_OUTPUT_BYTES = 1024 * 1024;
 
+/**
+ * Frist fuer das Holen eines Images.
+ *
+ * Grosszuegig, weil ein Spiel-Image Hunderte MB mitbringt und der erste Zug auf
+ * eine frische Node ueber eine Hausleitung laeuft. Ein zu knapper Wert bricht
+ * genau den Zug ab, den er ermoeglichen soll.
+ */
+export const DEFAULT_PULL_TIMEOUT_MS = 15 * 60 * 1_000;
+
 export interface DockerContainerRuntimeOptions {
   readonly client: DockerHttpClient;
   readonly hardening: HardeningOptions;
@@ -81,6 +91,16 @@ export interface DockerContainerRuntimeOptions {
   readonly maxFileBytes?: number;
   /** Wird gerufen, wenn ein Hintergrund-Stream unerwartet abbricht. */
   readonly onStreamError?: (fehler: unknown, kontext: Readonly<Record<string, unknown>>) => void;
+  /**
+   * Zugang zur eigenen Registry (Gefundener Punkt 111).
+   *
+   * Ohne Angabe holt der Agent nur oeffentliche Images. Die eigenen
+   * Spiel-Images liegen privat; der Login des Docker-CLI auf der Node hilft
+   * dafuer nicht, weil die Engine-API keine Client-Konfiguration liest.
+   */
+  readonly registry?: RegistryCredentials | undefined;
+  /** Frist fuer das Holen eines Images. Vorgabe: {@link DEFAULT_PULL_TIMEOUT_MS}. */
+  readonly pullTimeoutMs?: number;
 }
 
 interface DockerEngineEvent {
@@ -134,6 +154,8 @@ export class DockerContainerRuntime implements ContainerRuntime {
   readonly #client: DockerHttpClient;
   readonly #hardening: HardeningOptions;
   readonly #maxFileBytes: number;
+  readonly #registry: RegistryCredentials | undefined;
+  readonly #pullTimeoutMs: number;
   readonly #onStreamError: (fehler: unknown, kontext: Readonly<Record<string, unknown>>) => void;
 
   readonly #emitter = new RuntimeEventEmitter();
@@ -159,6 +181,8 @@ export class DockerContainerRuntime implements ContainerRuntime {
 
   constructor(options: DockerContainerRuntimeOptions) {
     this.#client = options.client;
+    this.#registry = options.registry;
+    this.#pullTimeoutMs = options.pullTimeoutMs ?? DEFAULT_PULL_TIMEOUT_MS;
     this.#hardening = options.hardening;
     this.#maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
     this.#onStreamError =
@@ -207,11 +231,35 @@ export class DockerContainerRuntime implements ContainerRuntime {
   async create(spec: ContainerSpec): Promise<ContainerHandle> {
     const body = buildCreateContainerBody(spec, this.#hardening);
 
-    const antwort = await this.#client.requestJson<{ Id: string; Warnings?: string[] }>(
-      'POST',
-      '/containers/create',
-      { query: { name: spec.name }, body, notFoundCode: 'IMAGE_NOT_FOUND' },
-    );
+    const anlegen = async (): Promise<{ Id: string; Warnings?: string[] }> =>
+      this.#client.requestJson<{ Id: string; Warnings?: string[] }>('POST', '/containers/create', {
+        query: { name: spec.name },
+        body,
+        notFoundCode: 'IMAGE_NOT_FOUND',
+      });
+
+    let antwort: { Id: string; Warnings?: string[] };
+
+    try {
+      antwort = await anlegen();
+    } catch (fehler) {
+      /*
+       * Fehlt das Image, wird es geholt und einmal erneut versucht
+       * (Gefundener Punkt 111). Bewusst erst nach dem Fehlschlag statt vorher
+       * zu pruefen: Der Normalfall ist das vorhandene Image, und eine Abfrage
+       * davor kostete jedes Anlegen eine zusaetzliche Runde zur Engine.
+       */
+      if (!(fehler instanceof ContainerRuntimeError) || fehler.code !== 'IMAGE_NOT_FOUND') {
+        throw fehler;
+      }
+
+      await pullImage(this.#client, spec.image, {
+        credentials: this.#registry,
+        timeoutMs: this.#pullTimeoutMs,
+      });
+
+      antwort = await anlegen();
+    }
 
     return { containerId: antwort.Id, name: spec.name, warnings: antwort.Warnings ?? [] };
   }

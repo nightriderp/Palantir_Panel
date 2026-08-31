@@ -39,6 +39,17 @@ const envSchema = z.object({
   /** Basisverzeichnis der Backups; für Restore-Mounts ebenfalls zugelassen. */
   AGENT_BACKUP_DIR: z.string().min(1).default('/srv/palantir/backups'),
   /**
+   * Registry, aus der Spiel-Images geholt werden (Gefundener Punkt 111).
+   *
+   * Öffentliche Images brauchen keine Angabe. Für die eigenen Images aus dem
+   * privaten GHCR-Repository sind Benutzer und Token nötig: Der Agent spricht
+   * die Engine-API über den Socket-Proxy an, und die liest keine
+   * Docker-CLI-Anmeldung von der Node.
+   */
+  AGENT_REGISTRY_SERVER: z.string().min(1).default('ghcr.io'),
+  AGENT_REGISTRY_USERNAME: z.string().min(1).optional(),
+  AGENT_REGISTRY_TOKEN: z.string().min(1).optional(),
+  /**
    * Optionaler Pfad zu einem eigenen Seccomp-Profil (Pflichtenheft §2.3).
    * Ohne Angabe greift das Standardprofil der Container-Engine.
    */
