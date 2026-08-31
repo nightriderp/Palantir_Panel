@@ -37,3 +37,22 @@ coverage/
 
 # graphify Wissensgraph-Ausgabe (lokales Artefakt, große graph.json – nicht committen)
 graphify-out/
+
+# Projektdokumente und Arbeitsunterlagen - bleiben lokal, nicht im Repository.
+# Entscheidung des Betreibers beim Wechsel auf ein oeffentliches Repository:
+# oeffentlich ist der Code, alles Weitere liegt nur auf den Rechnern des Teams.
+# Bereits vorhandene Dateien wurden mit `git rm --cached` ausgetragen und liegen
+# unveraendert weiter auf der Platte; in der Git-Historie sind sie weiterhin
+# einsehbar (kein History-Rewrite).
+CLAUDE.md
+LASTENHEFT.md
+PFLICHTENHEFT.md
+STRUKTUR.md
+SETUP.md
+WORK_STATUS.md
+SITZUNGS_PROMPTS.md
+NACHARBEIT_PROMPTS.md
+F3_ARBEITSPAKETE.md
+docs/
+deploy/gamenode/wireguard-firewall.md
+
