@@ -140,6 +140,35 @@ describe('cloneServerInputSchema', () => {
       }).subdomain,
     ).toBe('kopie');
   });
+
+  it('nimmt stopSourceServer an und lässt es weg gelten (Gefundener Punkt 107)', () => {
+    const ohneAngabe = cloneServerInputSchema.parse({
+      name: 'Kopie der Welt',
+      subdomain: 'kopie',
+      includeWorldData: true,
+    });
+
+    // Additiv: Ein Aufrufer, der das Feld nicht kennt, bleibt gültig.
+    expect(ohneAngabe.stopSourceServer).toBeUndefined();
+
+    expect(
+      cloneServerInputSchema.parse({
+        name: 'Kopie der Welt',
+        subdomain: 'kopie',
+        includeWorldData: true,
+        stopSourceServer: true,
+      }).stopSourceServer,
+    ).toBe(true);
+
+    expect(
+      cloneServerInputSchema.safeParse({
+        name: 'Kopie der Welt',
+        subdomain: 'kopie',
+        includeWorldData: true,
+        stopSourceServer: 'ja',
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('cronExpressionSchema (aus B5, hier für Aufgaben mitgenutzt)', () => {
