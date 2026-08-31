@@ -357,6 +357,7 @@ function runningServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
     lastActivityAt: null,
     crashTimestamps: [],
     dockerContainerId: 'container-1',
+    imageRef: 'ghcr.io/test:1',
     subdomain: 'wuestensturm',
     dnsRecordId: 'rec-1',
     assignedPorts: [],

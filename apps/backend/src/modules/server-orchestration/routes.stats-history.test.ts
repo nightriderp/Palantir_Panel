@@ -37,6 +37,7 @@ const SERVER: ServerRecord = {
   lastActivityAt: null,
   crashTimestamps: [],
   dockerContainerId: 'container-1',
+  imageRef: 'ghcr.io/test:1',
   subdomain: 'testserver',
   dnsRecordId: null,
   assignedPorts: [],

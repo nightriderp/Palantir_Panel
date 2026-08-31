@@ -468,6 +468,9 @@ export class ServerOrchestrationService {
       await this.deps.repository.update(server.id, {
         dnsRecordId,
         dockerContainerId: created.containerId,
+        // Womit der Container tatsächlich angelegt wurde – Grundlage für
+        // „Update verfügbar" (Mockup-Abgleich 3.4).
+        imageRef: definition.dockerImage,
       });
 
       // Weltdaten übernehmen, solange der Server noch als „wird angelegt" gilt

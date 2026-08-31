@@ -78,6 +78,15 @@ export const gameServers = pgTable(
 
     // -- Container & Netz ------------------------------------------------------
     dockerContainerId: text('docker_container_id'),
+    /**
+     * Image, mit dem der Container angelegt wurde (Mockup-Abgleich 3.4).
+     *
+     * Grundlage für „Update verfügbar": Weicht der Wert vom `dockerImage` der
+     * heutigen Spiel-Definition ab, läuft der Server auf einer älteren Fassung.
+     * `null` bei Servern ohne Container – und bei allen, die vor dieser Spalte
+     * angelegt wurden; für die lässt sich nichts mehr nachträglich feststellen.
+     */
+    imageRef: text('image_ref'),
     subdomain: text('subdomain').notNull(),
     /** Kennung des DNS-Eintrags beim Anbieter, für die spätere Löschung (§13). */
     dnsRecordId: text('dns_record_id'),
