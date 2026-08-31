@@ -33,6 +33,27 @@ export interface ServerDtoContext {
   readonly recentCrashCount: number;
 }
 
+/**
+ * Läuft der Server auf einem älteren Image als dem der heutigen Definition?
+ *
+ * Verglichen wird, womit der Container **angelegt** wurde, gegen das, was die
+ * Spiel-Definition jetzt vorsieht. Ändert ein Deployment die Fassung eines
+ * Spiel-Images, fällt das damit auf, ohne die Registry zu fragen: Der
+ * Vergleich braucht weder Zugangsdaten noch einen Netzaufruf je Server.
+ *
+ * Was er **nicht** erkennt: dasselbe Tag mit neuem Inhalt (`:latest` wandert).
+ * Dafür wäre ein Digest-Vergleich gegen die Registry nötig – ein eigener
+ * Vorgang mit Registry-Zugang, Zwischenspeicher und Frist, kein Nebenprodukt
+ * der DTO-Bildung. Die Spiel-Images des Projekts tragen feste Fassungen, damit
+ * greift der Vergleich für den Fall, um den es geht.
+ *
+ * `null` heißt „kein Container" oder „vor dieser Spalte angelegt" – beides ist
+ * keine Aussage über eine ältere Fassung, also `false`.
+ */
+export function updateAvailable(imageRef: string | null, definitionImage: string): boolean {
+  return imageRef !== null && imageRef !== definitionImage;
+}
+
 export function toGameServerDto(server: ServerRecord, context: ServerDtoContext): GameServerDto {
   const definition = context.registry.require(server.gameType);
 
@@ -79,12 +100,7 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
      */
     dockerContainerId: permissions.canManageSettings ? server.dockerContainerId : null,
     pendingRestart: server.restartRequired,
-    /**
-     * `updateAvailable` bleibt vorerst `false`: Dafür wäre ein Vergleich der
-     * Image-Digests zwischen Registry und laufendem Container nötig, und
-     * Image-Verwaltung gehört nicht zu B3 (vermerkt in WORK_STATUS.md).
-     */
-    updateAvailable: false,
+    updateAvailable: updateAvailable(server.imageRef, definition.dockerImage),
     memberCount: context.memberCount,
     lastStartedAt: server.lastStartedAt,
     createdAt: server.createdAt,

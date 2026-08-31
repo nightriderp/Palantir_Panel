@@ -132,6 +132,7 @@ class FakeRepository implements ServerRepository {
       lastActivityAt: null,
       crashTimestamps: [],
       dockerContainerId: null,
+      imageRef: null,
       subdomain: data.subdomain,
       dnsRecordId: null,
       assignedPorts: data.assignedPorts,
@@ -619,6 +620,18 @@ describe('Server anlegen (Lastenheft §3.3)', () => {
       proxied: false,
     });
     expect(harness.socket.commands.map((c) => c.command)).toEqual(['CREATE']);
+  });
+
+  it('merkt sich das benutzte Image (Grundlage fuer "Update verfuegbar")', async () => {
+    const harness = makeHarness();
+    const server = await harness.service.createServer(createInput(), OWNER_ID);
+
+    const gespeichert = harness.repository.servers.get(server.id);
+
+    // Der Vergleich mit der Definition passiert im DTO (siehe
+    // update-available.test.ts); hier zaehlt, dass ueberhaupt festgehalten
+    // wird, womit der Container angelegt wurde.
+    expect(gespeichert?.imageRef).toBe(TEST_GAME_TYPE.dockerImage);
   });
 
   it('weist einen öffentlichen Port zu und meldet server.created', async () => {
