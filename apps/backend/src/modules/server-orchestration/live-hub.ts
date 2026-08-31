@@ -149,6 +149,19 @@ export class ServerLiveHub {
         });
         return;
       }
+      case 'backup.progressed': {
+        // Nutzlast ohne aufrufer-abhängige Felder (siehe `BackupProgress` im
+        // Vertrag) – sie geht an alle Abonnenten des Server-Themas.
+        const backup = payload.backup;
+        if (backup === null || typeof backup !== 'object') {
+          return;
+        }
+        this.publish('backup.progressed', {
+          serverId,
+          backup: backup as LiveServerEventPayloads['backup.progressed']['backup'],
+        });
+        return;
+      }
       case 'server.consoleLineAppended': {
         // Wird von B3 derzeit nicht in dieser Form emittiert (die Live-Konsole
         // ist ein dokumentierter Folgeschritt). Sobald ein passendes `line`

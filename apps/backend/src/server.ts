@@ -8,6 +8,7 @@ import { registerErrorHandler } from './error-handler.js';
 import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
 import { createChatModule, registerChatRoutes } from './modules/chat/index.js';
 import {
+  type BackupEventPublisher,
   createBackupScheduleService,
   createBackupService,
   createDrizzleBackupRepository,
@@ -309,24 +310,25 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     // Ab hier meldet B1 `user.registered` an B6 (siehe Weiterleitung oben).
     notificationEventSink = notifications.eventSink;
 
-    const { service: orchestration, schedules: serverSchedules } = registerServerOrchestration(
-      app,
-      {
-        db,
-        agents,
-        resolveViewerId: (request) => request.authUser?.id ?? null,
-        // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
-        portPool: admin.services.ports,
-        /*
-         * Zuordnung Agent-Token → Node (Gefundener Punkt 57). Die Tokens führt
-         * B8 an der Node; B3 bekommt nur die Nachschlagefunktion, wie beim
-         * Port-Pool.
-         */
-        resolveHostIdByAgentToken: async (token) =>
-          (await admin.services.nodes.findByAgentToken(token))?.id ?? null,
-        events: notifications.eventSink,
-      },
-    );
+    const {
+      service: orchestration,
+      schedules: serverSchedules,
+      liveHub,
+    } = registerServerOrchestration(app, {
+      db,
+      agents,
+      resolveViewerId: (request) => request.authUser?.id ?? null,
+      // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
+      portPool: admin.services.ports,
+      /*
+       * Zuordnung Agent-Token → Node (Gefundener Punkt 57). Die Tokens führt
+       * B8 an der Node; B3 bekommt nur die Nachschlagefunktion, wie beim
+       * Port-Pool.
+       */
+      resolveHostIdByAgentToken: async (token) =>
+        (await admin.services.nodes.findByAgentToken(token))?.id ?? null,
+      events: notifications.eventSink,
+    });
 
     /*
      * Chat & Moderation (B7, Pflichtenheft §15) inklusive des Live-Kanals
@@ -369,6 +371,23 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * `publish()` wirft nie, ein nicht erreichbarer Kanal landet nur im
      * Zustellungsprotokoll (Pflichtenheft §14).
      */
+    /*
+     * Ereignis-Senke der Sicherungen: geht wie bisher an die
+     * Notification-Engine und zusätzlich in den Live-Hub, damit eine offene
+     * Export-Ansicht den Stand sieht, ohne ihn abzuholen (Gefundener Punkt 51).
+     *
+     * Kein `createLiveFanoutSink` wie bei B3: Dessen Senke spricht `emit()`,
+     * B5 erwartet `publish()`. Statt eine der beiden Schnittstellen der anderen
+     * anzupassen – beide haben ihre Gründe – steht die Verbindung hier, an der
+     * Stelle, die ohnehin beide Module kennt.
+     */
+    const backupEvents: BackupEventPublisher = {
+      async publish(event, payload) {
+        await notifications.eventSink.publish(event, payload);
+        liveHub.ingest(event, payload);
+      },
+    };
+
     const backups = createBackupService({
       repository: createDrizzleBackupRepository(db),
       servers: createDrizzleBackupServerDirectory(db),
@@ -378,7 +397,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       // `palantir-server.json` mit ins Archiv (P8, Lastenheft §3.3). B5 kennt
       // die Entität `GameServer` nicht; die Quelle stellt B3.
       manifests: createDrizzleServerExportManifestSource(db),
-      events: notifications.eventSink,
+      events: backupEvents,
     });
 
     const backupSchedules = createBackupScheduleService({

@@ -1,11 +1,12 @@
 'use client';
 
 import {
+  type BackupDto,
+  type BackupProgress,
   type GameConfigValue,
   type GameServerDto,
   type GameTypeDto,
   type ServerCloneJobDto,
-  type BackupDto,
 } from '@palantir/contracts';
 import {
   type CloneServerInput,
@@ -88,9 +89,21 @@ export interface SettingsTabProps {
   onServerUpdated: (server: GameServerDto) => void;
   /** Klon-Auftrag aus dem Live-Kanal, solange einer läuft. */
   cloneJob: ServerCloneJobDto | null;
+  /**
+   * Stand der laufenden Sicherung aus dem Live-Kanal (Gefundener Punkt 51).
+   *
+   * Betrifft hier nur den Export; gewöhnliche Sicherungen zeigt der Reiter
+   * „Backups".
+   */
+  backupProgress: BackupProgress | null;
 }
 
-export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabProps) {
+export function SettingsTab({
+  server,
+  onServerUpdated,
+  cloneJob,
+  backupProgress,
+}: SettingsTabProps) {
   const router = useRouter();
   const toast = useToast();
 
@@ -209,9 +222,10 @@ export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabPr
   /**
    * Stand des Exports nachschlagen.
    *
-   * Der Export ist bei B5 eine Sicherung mit `isExport`; ein eigenes
-   * Fortschritts-Ereignis gibt es dafür nicht. Der Stand wird deshalb auf
-   * ausdrücklichen Klick geholt, statt fortlaufend abgefragt zu werden.
+   * Seit dem Live-Ereignis `backup.progressed` (Gefundener Punkt 51) meldet
+   * sich der Fortschritt von selbst; dieser Weg bleibt als Rückfall, wenn der
+   * Live-Kanal getrennt ist – und er holt den vollständigen DTO, den das
+   * Ereignis bewusst nicht trägt (Prüfsumme, Ablageort).
    */
   async function refreshExport() {
     if (!exportBackup) return;
@@ -222,6 +236,30 @@ export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabPr
     }
     setExportBackup(result.data);
   }
+
+  /*
+   * Live gemeldeten Stand in die Anzeige übernehmen (Gefundener Punkt 51).
+   *
+   * Nur für den Export, den diese Ansicht angestoßen hat – eine gewöhnliche
+   * Sicherung desselben Servers geht sie nichts an. Gemischt wird in den
+   * vorhandenen DTO hinein: Das Ereignis trägt bewusst keine aufrufer-
+   * abhängigen Felder, die hier sonst verloren gingen.
+   */
+  useEffect(() => {
+    if (!backupProgress || backupProgress.backupId !== exportBackup?.id) return;
+
+    setExportBackup((vorher) =>
+      vorher === null
+        ? vorher
+        : {
+            ...vorher,
+            status: backupProgress.status,
+            sizeBytes: backupProgress.sizeBytes,
+            completedAt: backupProgress.completedAt,
+            failureMessage: backupProgress.failureMessage,
+          },
+    );
+  }, [backupProgress, exportBackup?.id]);
 
   async function remove() {
     setDeleting(true);

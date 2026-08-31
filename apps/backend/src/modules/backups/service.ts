@@ -324,6 +324,41 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
    * Läuft im Hintergrund; Fehler landen deshalb ausschließlich im Datensatz und
    * im Ereignis `backup.failed`, nie in einer HTTP-Antwort.
    */
+  /**
+   * Stand einer Sicherung an den Live-Kanal melden (Gefundener Punkt 51).
+   *
+   * Ohne Server-Id gibt es kein Thema, auf dem jemand zuhören könnte – dann
+   * bleibt es beim Datensatz. Fehlschläge werden geschluckt: Eine Sicherung
+   * darf nicht daran scheitern, dass niemand zuhört.
+   */
+  async function meldeFortschritt(backupId: string, serverId: string | null): Promise<void> {
+    if (serverId === null) {
+      return;
+    }
+
+    try {
+      const backup = await repository.findById(backupId);
+
+      if (backup === null) {
+        return;
+      }
+
+      await events.publish('backup.progressed', {
+        serverId,
+        backup: {
+          backupId: backup.id,
+          status: backup.status,
+          isExport: backup.isExport,
+          sizeBytes: backup.sizeBytes,
+          completedAt: backup.completedAt?.toISOString() ?? null,
+          failureMessage: backup.failureMessage,
+        },
+      });
+    } catch {
+      // Bewusst still: Der Live-Kanal ist Anzeige, nicht Ablauf.
+    }
+  }
+
   async function runBackupJob(
     backupId: string,
     server: BackupServerRecord,
@@ -331,6 +366,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     extraFiles: readonly ArchiveExtraFile[] = [],
   ) {
     await repository.update(backupId, { status: 'running', startedAt: now() });
+    await meldeFortschritt(backupId, server.id);
 
     const response = await agent.createBackup({
       backupId,
@@ -382,6 +418,8 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       failureMessage: null,
     });
 
+    await meldeFortschritt(backupId, server.id);
+
     // Aufbewahrungsregel erst nach einem erfolgreichen Lauf: Sonst könnte ein
     // Fehlschlag den Bestand ausdünnen, ohne etwas Neues beigesteuert zu haben.
     await applyRetentionInternal(server.id);
@@ -402,6 +440,8 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
 
     // Konsument ist die Notification-Engine (B6, Pflichtenheft §14).
     await events.publish('backup.failed', { backupId, serverId, code, message });
+    // Und derselbe Stand an die offene Ansicht, die sonst weiter „läuft" zeigt.
+    await meldeFortschritt(backupId, serverId);
   }
 
   /**

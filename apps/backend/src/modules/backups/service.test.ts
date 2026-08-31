@@ -243,6 +243,52 @@ describe('Berechtigungen (Pflichtenheft §8)', () => {
   });
 });
 
+describe('Live-Stand einer Sicherung (Gefundener Punkt 51)', () => {
+  it('meldet Beginn und Abschluss an den Live-Kanal', async () => {
+    const t = aufbau();
+
+    const dto = await t.service.createManual(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.server.id,
+      { stopServer: false },
+    );
+    await t.fertig();
+
+    const stand = t.events.published.filter((e) => e.event === 'backup.progressed');
+
+    // Einmal beim Anstoßen („läuft"), einmal beim Abschluss – ohne das zweite
+    // stünde die offene Ansicht dauerhaft auf „läuft".
+    expect(stand.length).toBeGreaterThanOrEqual(2);
+    expect(stand[0]?.payload['serverId']).toBe(t.server.id);
+
+    const zuletzt = stand[stand.length - 1]?.payload['backup'] as {
+      status: string;
+      backupId: string;
+    };
+
+    expect(zuletzt.status).toBe('completed');
+    expect(zuletzt.backupId).toBe(dto.id);
+  });
+
+  it('trägt keine aufrufer-abhängigen Angaben in die Nutzlast', async () => {
+    const t = aufbau();
+
+    await t.service.createManual(actorMit('backup.manage.own'), t.besitzerId, t.server.id, {
+      stopServer: false,
+    });
+    await t.fertig();
+
+    const stand = t.events.published.find((e) => e.event === 'backup.progressed');
+    const nutzlast = stand?.payload['backup'] as Record<string, unknown>;
+
+    // `permissions` und `storagePath` gehen an alle Abonnenten des Themas – sie
+    // haben in einem Live-Ereignis nichts verloren.
+    expect(nutzlast).not.toHaveProperty('permissions');
+    expect(nutzlast).not.toHaveProperty('storagePath');
+  });
+});
+
 describe('Fehlgeschlagenes Backup (Event backup.failed, Pflichtenheft §14)', () => {
   it('setzt den Datensatz auf failed und löst das Ereignis aus', async () => {
     const t = aufbau();
@@ -260,9 +306,13 @@ describe('Fehlgeschlagenes Backup (Event backup.failed, Pflichtenheft §14)', ()
 
     expect(gespeichert?.status).toBe('failed');
     expect(gespeichert?.failureCode).toBe('AGENT_RUNTIME_UNAVAILABLE');
-    expect(t.events.published).toHaveLength(1);
-    expect(t.events.published[0]?.event).toBe('backup.failed');
-    expect(t.events.published[0]?.payload['backupId']).toBe(dto.id);
+    // Neben `backup.failed` meldet der Lauf seit Punkt 51 auch seinen Stand an
+    // den Live-Kanal (angestoßen und gescheitert) – geprüft wird hier die
+    // Meldung an die Notification-Engine.
+    const gescheitert = t.events.published.filter((e) => e.event === 'backup.failed');
+
+    expect(gescheitert).toHaveLength(1);
+    expect(gescheitert[0]?.payload['backupId']).toBe(dto.id);
   });
 
   it('wertet ein unbrauchbares Agent-Ergebnis als Fehlschlag', async () => {
@@ -280,7 +330,7 @@ describe('Fehlgeschlagenes Backup (Event backup.failed, Pflichtenheft §14)', ()
     await t.fertig();
 
     expect((await t.repository.findById(dto.id))?.status).toBe('failed');
-    expect(t.events.published[0]?.event).toBe('backup.failed');
+    expect(t.events.published.some((e) => e.event === 'backup.failed')).toBe(true);
   });
 });
 

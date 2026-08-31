@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  type BackupProgress,
   type ServerCloneJobDto,
   type ServerConsoleLine,
   type ServerLiveStats,
@@ -26,6 +27,8 @@ export interface ServerLiveData {
   stats: ServerLiveStats | null;
   consoleLines: ServerConsoleLine[];
   cloneJob: ServerCloneJobDto | null;
+  /** Zuletzt gemeldeter Stand einer Sicherung dieses Servers (Gefundener Punkt 51). */
+  backupProgress: BackupProgress | null;
   /** Konsolenbefehl senden; `false`, wenn die Verbindung gerade fehlt. */
   sendConsoleCommand: (command: string) => boolean;
   clearConsole: () => void;
@@ -39,6 +42,14 @@ export function useServerLive(serverId: string | null): ServerLiveData {
   const [stats, setStats] = useState<ServerLiveStats | null>(null);
   const [consoleLines, setConsoleLines] = useState<ServerConsoleLine[]>([]);
   const [cloneJob, setCloneJob] = useState<ServerCloneJobDto | null>(null);
+  /**
+   * Stand der zuletzt gemeldeten Sicherung dieses Servers (Gefundener Punkt 51).
+   *
+   * Wer den Export anstößt, sah bisher bis zum nächsten Klick nicht, ob er
+   * läuft. Bewusst nur der letzte Stand und keine Liste: Es läuft je Server
+   * immer höchstens eine Sicherung (`BACKUP_ALREADY_RUNNING`).
+   */
+  const [backupProgress, setBackupProgress] = useState<BackupProgress | null>(null);
 
   // Beim Wechsel auf einen anderen Server nichts vom vorigen stehen lassen.
   useEffect(() => {
@@ -67,6 +78,9 @@ export function useServerLive(serverId: string | null): ServerLiveData {
         case 'serverClone.progressed':
           setCloneJob(frame.data.job);
           break;
+        case 'backup.progressed':
+          setBackupProgress(frame.data.backup);
+          break;
       }
     });
   }, [channel, serverId]);
@@ -93,6 +107,7 @@ export function useServerLive(serverId: string | null): ServerLiveData {
       stats,
       consoleLines,
       cloneJob,
+      backupProgress,
       sendConsoleCommand,
       clearConsole,
     }),
@@ -103,6 +118,7 @@ export function useServerLive(serverId: string | null): ServerLiveData {
       stats,
       consoleLines,
       cloneJob,
+      backupProgress,
       sendConsoleCommand,
       clearConsole,
     ],

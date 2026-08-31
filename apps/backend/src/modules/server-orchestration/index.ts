@@ -122,6 +122,16 @@ export interface ServerOrchestrationOptions {
 export interface ServerOrchestrationRegistration {
   readonly service: ServerOrchestrationService;
   readonly schedules: ServerScheduleService;
+  /**
+   * Der Live-Kanal zum Browser.
+   *
+   * Geht mit hinaus, damit auch andere Module in eine offene Ansicht melden
+   * können – B5 schickt darüber den Stand einer Sicherung
+   * (`backup.progressed`, Gefundener Punkt 51). Einen zweiten Hub aufzubauen
+   * wäre die Alternative gewesen; er hätte dieselben Abonnenten ein zweites Mal
+   * bedienen müssen.
+   */
+  readonly liveHub: ServerLiveHub;
 }
 
 export function registerServerOrchestration(
@@ -327,8 +337,17 @@ export function registerServerOrchestration(
     agents.closeAll();
   });
 
-  return { service, schedules };
+  /*
+   * Der Live-Hub geht mit hinaus, damit auch andere Module in die offene
+   * Ansicht melden können – B5 schickt darüber den Stand einer Sicherung
+   * (`backup.progressed`, Gefundener Punkt 51). Den Kanal ein zweites Mal
+   * aufzubauen wäre die Alternative gewesen; ein Hub je Ereignisquelle hätte
+   * dieselben Abonnenten mehrfach bedient.
+   */
+  return { service, schedules, liveHub };
 }
+
+export { ServerLiveHub, createLiveFanoutSink } from './live-hub.js';
 
 export { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 
