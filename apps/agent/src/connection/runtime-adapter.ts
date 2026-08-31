@@ -453,30 +453,23 @@ function toVolumeMount(mount: { hostPath: string; containerPath: string; readOnl
 /**
  * Runtime-Zustand → Protokoll-Zustand.
  *
- * Die `serverId` steht als Label am Container (A2 setzt sie beim Anlegen). Der
- * Container-Name ist das Rückfallnetz, wenn sie fehlt – dann meldet der Adapter
- * `null` statt zu raten, und das Backend behandelt den Container als nicht
- * zuordenbar.
+ * Die `serverId` steht als Label am Container (A2 setzt sie beim Anlegen) und
+ * kommt seit Gefundenem Punkt 19 von dort – nicht mehr aus dem Container-Namen.
+ * Fehlt das Label, meldet der Adapter `null` statt zu raten, und das Backend
+ * behandelt den Container als nicht zuordenbar.
  */
 export function toAgentContainerState(
   state: ContainerState,
   observedAt: string,
 ): AgentContainerState {
   return {
-    serverId: serverIdFromName(state.name),
+    serverId: state.serverId,
     containerId: state.containerId,
     status: CONTAINER_STATUS_MAP[state.status],
     exitCode: state.exitCode,
     startedAt: state.startedAt,
     observedAt,
   };
-}
-
-/** Container-Namen der Form `palantir-<serverId>` auflösen. */
-function serverIdFromName(name: string): string | null {
-  const treffer =
-    /^\/?palantir-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(name);
-  return treffer?.[1] ?? null;
 }
 
 /** Runtime-Ereignis → Protokoll-Ereignis. */
