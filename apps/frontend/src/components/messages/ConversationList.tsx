@@ -1,8 +1,7 @@
 'use client';
 
 import { type ConversationDto } from '@palantir/contracts';
-import { Button, Icon, StatusDot, cn, serverInitials } from '@/components/shared';
-import { type LiveConnectionState } from '@/lib/live/LiveChannelProvider';
+import { Button, Icon, cn, serverInitials } from '@/components/shared';
 import { conversationPreview } from './conversationStore';
 
 /**
@@ -12,19 +11,17 @@ import { conversationPreview } from './conversationStore';
  * Konversationen tragen einen Zähler; er ist lokal (siehe `conversationStore.ts`).
  * Server-Chats sind an ihrem Symbol erkennbar, DMs am Namenskürzel des
  * Gegenübers.
+ *
+ * Den Zustand der Live-Verbindung zeigt die Liste **nicht** mehr: Er steht in
+ * der Kopfleiste, auf jeder Seite und mit Erklärung, was er für die Bedienung
+ * bedeutet. Zwei Anzeigen für dieselbe Verbindung waren einmal zu viel
+ * (Mockup-Abgleich 6.2).
  */
-
-const LIVE_META = {
-  open: { tone: 'success', label: 'Live' },
-  connecting: { tone: 'warning', label: 'verbindet …' },
-  closed: { tone: 'danger', label: 'offline' },
-} as const;
 
 export interface ConversationListProps {
   conversations: ConversationDto[];
   activeId: string | null;
   unread: Record<string, number>;
-  connection: LiveConnectionState;
   onSelect: (conversation: ConversationDto) => void;
   onNew: () => void;
 }
@@ -33,24 +30,11 @@ export function ConversationList({
   conversations,
   activeId,
   unread,
-  connection,
   onSelect,
   onNew,
 }: ConversationListProps) {
-  const live = LIVE_META[connection];
-
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <span
-          className="flex items-center gap-1.5 text-2xs text-ink-faint"
-          title={`Live-Verbindung: ${live.label}`}
-        >
-          <StatusDot tone={live.tone} pulse={connection !== 'closed'} />
-          <span>{live.label}</span>
-        </span>
-      </div>
-
       <Button variant="primary" size="sm" iconLeft="plus" fullWidth onClick={onNew}>
         Neue Konversation
       </Button>
