@@ -11,6 +11,7 @@
  * nicht selbst als Testdatei eingesammelt.
  */
 
+import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { type ContainerRuntime } from './container-runtime.js';
@@ -322,54 +323,21 @@ export function runContainerRuntimeConformance(
       });
     });
 
-    describe('FILE_DELETE (Arbeitspaket P2)', () => {
-      it('entfernt eine Datei', async () => {
+    describe('Datenordner (Gefundener Punkt 105)', () => {
+      it('nennt Container- und Host-Pfad des Datenordners', async () => {
         const id = await angelegt();
-        await runtime.writeFile(id, '/data/alt.log', Buffer.from('x'));
-        await runtime.start(id);
 
-        await runtime.deleteFile(id, '/data/alt.log');
+        const pfade = await runtime.dataVolumePaths(id);
 
-        await expect(runtime.readFile(id, '/data/alt.log')).rejects.toMatchObject({
-          code: 'FILE_NOT_FOUND',
-        });
+        // Der Container-Pfad ist der aus der Spezifikation; der Host-Pfad muss
+        // absolut sein, sonst kann das Job-Modul nichts damit anfangen.
+        expect(pfade.containerPath).toBe('/data');
+        expect(path.posix.isAbsolute(pfade.hostPath)).toBe(true);
       });
 
-      it('behandelt einen bereits fehlenden Pfad als folgenlos', async () => {
-        const id = await angelegt();
-        await runtime.start(id);
-
-        await expect(runtime.deleteFile(id, '/data/gibtesnicht.log')).resolves.toBeUndefined();
-      });
-
-      it('entfernt ein nicht-leeres Verzeichnis nur mit recursive', async () => {
-        const id = await angelegt();
-        await runtime.writeFile(id, '/data/welt/level.dat', Buffer.from('y'));
-        await runtime.start(id);
-
-        await expect(runtime.deleteFile(id, '/data/welt')).rejects.toBeInstanceOf(
-          ContainerRuntimeError,
-        );
-
-        await runtime.deleteFile(id, '/data/welt', { recursive: true });
-        expect(await runtime.listFiles(id, '/data')).toEqual([]);
-      });
-
-      it('lehnt einen Pfad ausserhalb des Datenordners ab', async () => {
-        const id = await angelegt();
-        await runtime.start(id);
-
-        await expect(runtime.deleteFile(id, '/data/../etc/passwd')).rejects.toMatchObject({
-          code: 'INVALID_PATH',
-        });
-      });
-
-      it('lehnt den Datenordner selbst ab', async () => {
-        const id = await angelegt();
-        await runtime.start(id);
-
-        await expect(runtime.deleteFile(id, '/data')).rejects.toMatchObject({
-          code: 'INVALID_PATH',
+      it('meldet einen unbekannten Container', async () => {
+        await expect(runtime.dataVolumePaths('gibtesnicht')).rejects.toMatchObject({
+          code: 'CONTAINER_NOT_FOUND',
         });
       });
     });

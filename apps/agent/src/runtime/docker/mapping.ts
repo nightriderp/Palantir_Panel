@@ -28,6 +28,15 @@ export interface DockerInspectResponse {
     readonly FinishedAt?: string;
     readonly OOMKilled?: boolean;
   };
+  /**
+   * Eingehaengte Volumes. Gebraucht wird daraus der Host-Pfad des
+   * Datenordners: Loeschen laeuft host-seitig, damit es auch bei gestopptem
+   * Container geht (WORK_STATUS.md, Gefundener Punkt 105).
+   */
+  readonly Mounts?: readonly {
+    readonly Source?: string;
+    readonly Destination?: string;
+  }[];
 }
 
 export interface DockerStatsResponse {

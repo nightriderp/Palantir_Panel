@@ -27,7 +27,7 @@
  * | `FILE_LIST`           | `listFiles`          |
  * | `FILE_READ`           | `readFile`           |
  * | `FILE_WRITE`          | `writeFile`          |
- * | `FILE_DELETE`         | `deleteFile`         |
+ * | `FILE_DELETE`         | (host-seitig, siehe `jobs/files/delete.ts`) |
  * | `FILE_UPLOAD`         | `uploadFile`         |
  * | `FILE_EXTRACT`        | `extractArchive`     |
  *
@@ -49,7 +49,7 @@ import {
   type ContainerSpec,
   type ContainerState,
   type ContainerStats,
-  type DeleteFileOptions,
+  type DataVolumePaths,
   type ExecResult,
   type ExtractArchiveResult,
   type FileEntry,
@@ -141,13 +141,17 @@ export interface ContainerRuntime {
   writeFile(containerId: string, path: string, content: Buffer): Promise<void>;
 
   /**
-   * `FILE_DELETE`: Datei oder Verzeichnis im Datenordner entfernen.
+   * Wo der Datenordner eines Containers liegt - im Container und auf dem Host.
    *
-   * Bewusst **idempotent**: Ein bereits fehlender Pfad ist kein Fehler - sonst
-   * bliebe nach einem Abbruch ein Eintrag zurueck, der sich nie wieder loeschen
-   * liesse. Ein nicht-leeres Verzeichnis wird ohne `recursive` abgelehnt.
+   * Gebraucht fuer das Loeschen: Das laeuft host-seitig ueber das Dateisystem
+   * (`jobs/files/delete.ts`) und nicht mehr ueber `exec` im Container, weil ein
+   * gestoppter Container keine Befehle annimmt - und Aufraeumen will man
+   * gerade dann (WORK_STATUS.md, Gefundener Punkt 105).
+   *
+   * Diese Umsetzung liest nur nach; das Loeschen selbst ist Dateisystemarbeit
+   * und gehoert nicht in die Container-Runtime (CLAUDE.md §4).
    */
-  deleteFile(containerId: string, path: string, options?: DeleteFileOptions): Promise<void>;
+  dataVolumePaths(containerId: string): Promise<DataVolumePaths>;
 
   /**
    * `FILE_UPLOAD`: hochgeladene Datei im Datenordner ablegen.

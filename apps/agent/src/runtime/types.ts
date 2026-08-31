@@ -189,13 +189,17 @@ export interface FileEntry {
 }
 
 /** Zusatzangaben zu `deleteFile()` (`FILE_DELETE`, Arbeitspaket P2). */
-export interface DeleteFileOptions {
-  /**
-   * Verzeichnis samt Inhalt entfernen. Ohne Angabe lehnt die Runtime das
-   * Loeschen eines nicht-leeren Verzeichnisses ab, damit ein versehentlicher
-   * Klick nicht einen ganzen Datenbaum mitnimmt.
-   */
-  readonly recursive?: boolean;
+/**
+ * Wo der Datenordner eines Containers liegt (Gefundener Punkt 105).
+ *
+ * `containerPath` ist der Pfad im Container (z. B. `/data`), `hostPath` der
+ * dazugehoerige Ordner auf dem Homeserver. Der Datei-Manager arbeitet in
+ * Container-Pfaden; das Loeschen greift host-seitig zu und braucht deshalb
+ * beide.
+ */
+export interface DataVolumePaths {
+  readonly containerPath: string;
+  readonly hostPath: string;
 }
 
 /** Zusatzangaben zu `uploadFile()` (`FILE_UPLOAD`, Arbeitspaket P2). */
