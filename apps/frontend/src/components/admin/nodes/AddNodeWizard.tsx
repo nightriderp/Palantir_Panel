@@ -72,7 +72,11 @@ export function AddNodeWizard({
   }
 
   if (created) {
-    const steps = buildNodeSetupSteps({ name: created.name, wireguardIp: created.wireguardIp });
+    const steps = buildNodeSetupSteps({
+      name: created.name,
+      wireguardIp: created.wireguardIp,
+      nodeId: created.id,
+    });
     return (
       <Modal
         open={open}
