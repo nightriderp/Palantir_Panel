@@ -423,6 +423,8 @@ function makeHarness(
     statsHistory?: ServerStatsRepository;
     /** Aufbewahrungsfrist des Verlaufs in Stunden (P5). */
     statsHistoryRetentionHours?: number;
+    /** Gruppen-Chat beim Anlegen (Gefundener Punkt 70); ohne Angabe passiert nichts. */
+    ensureServerChat?: (serverId: string) => Promise<unknown>;
   } = {},
 ): Harness {
   const repository = new FakeRepository();
@@ -514,6 +516,9 @@ function makeHarness(
     healthProbe: healthyProbe(options.healthy ?? true),
     ...(options.worldArchives === undefined ? {} : { worldArchives: options.worldArchives }),
     ...(options.statsHistory === undefined ? {} : { statsHistory: options.statsHistory }),
+    ...(options.ensureServerChat === undefined
+      ? {}
+      : { ensureServerChat: options.ensureServerChat }),
     events,
     log: silentLog,
     config: {
@@ -856,6 +861,37 @@ describe('Periodische Server-Abfrage (Gefundener Punkt 74)', () => {
 
     expect(await harness.service.refreshServerQueries(HOST.id)).toEqual([]);
     expect(abfragen(harness)).toHaveLength(0);
+  });
+});
+
+describe('Gruppen-Chat beim Anlegen (Gefundener Punkt 70)', () => {
+  it('legt den Chat an, sobald der Server steht', async () => {
+    const angelegt: string[] = [];
+    const harness = makeHarness({
+      ensureServerChat: (serverId) => {
+        angelegt.push(serverId);
+
+        return Promise.resolve('konversation-1');
+      },
+    });
+
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    // Vorher entstand der Chat erst beim ersten Öffnen und fehlte bis dahin in
+    // der Übersicht.
+    expect(angelegt).toEqual([created.id]);
+  });
+
+  it('lässt den Server nicht scheitern, wenn der Chat nicht angelegt werden kann', async () => {
+    const harness = makeHarness({
+      ensureServerChat: () => Promise.reject(new Error('Chat gerade nicht erreichbar')),
+    });
+
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    // Der Chat ist Beiwerk zum Server; ein Server, der daran scheitert, wäre
+    // die schlechtere Antwort.
+    expect(created.status).toBe('stopped');
   });
 });
 

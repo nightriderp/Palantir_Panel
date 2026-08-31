@@ -164,6 +164,13 @@ export interface OrchestrationDependencies {
   readonly registry: GameRegistry;
   readonly dns: DnsProvider;
   readonly ports: PortAllocator;
+  /**
+   * Legt den Gruppen-Chat eines Servers an (B7, Gefundener Punkt 70).
+   *
+   * Ohne Angabe entsteht er wie bisher beim ersten Öffnen. B3 kennt B7 nicht –
+   * hier steht nur die schmale Funktion, die `server.ts` hereinreicht.
+   */
+  readonly ensureServerChat?: (serverId: string) => Promise<unknown>;
   readonly resources: ResourceGuard;
   /**
    * Serialisiert Kapazitätsprüfung und belegende Schreiboperation (Punkt 98).
@@ -484,6 +491,7 @@ export class ServerOrchestrationService {
       }
 
       await this.transition(server, { type: 'createSucceeded' });
+      await this.ensureServerChat(server.id);
       this.deps.events.emit('server.created', { serverId: server.id, ownerId: server.ownerId });
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : 'Unbekannter Fehler.';
@@ -541,6 +549,33 @@ export class ServerOrchestrationService {
     await this.finishStart(server, started, session, containerId);
 
     return this.requireServer(serverId);
+  }
+
+  /**
+   * Gruppen-Chat des Servers anlegen (Gefundener Punkt 70).
+   *
+   * Bisher entstand er beim ersten Öffnen. Fachlich dasselbe, aber in der
+   * Übersicht fehlte er, bis ihn jemand aufgerufen hatte – ein Server ohne
+   * Chat, den es eigentlich gibt.
+   *
+   * **Scheitert leise.** Der Chat ist Beiwerk zum Server, nicht Teil seines
+   * Anlegens: Ein Server, der wegen eines fehlenden Chats als gescheitert
+   * gälte, wäre die schlechtere Antwort. Gemeldet wird der Fehlschlag
+   * trotzdem – sonst sucht später niemand den fehlenden Chat.
+   */
+  private async ensureServerChat(serverId: string): Promise<void> {
+    if (this.deps.ensureServerChat === undefined) {
+      return;
+    }
+
+    try {
+      await this.deps.ensureServerChat(serverId);
+    } catch (error: unknown) {
+      this.deps.log.warn(
+        { serverId, error: error instanceof Error ? error.message : String(error) },
+        'Gruppen-Chat des Servers konnte nicht angelegt werden',
+      );
+    }
   }
 
   /**
