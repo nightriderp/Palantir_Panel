@@ -81,6 +81,8 @@ export const agentHelloFrameSchema = z.object({
   kind: z.literal('hello'),
   protocolVersion: z.number().int().positive(),
   agentVersion: z.string().min(1),
+  /** Node-Kennung, falls der Agent sie kennt – additiv, siehe Contracts. */
+  nodeId: idSchema.nullish(),
   sentAt: isoTimestampSchema,
 });
 

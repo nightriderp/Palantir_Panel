@@ -271,6 +271,20 @@ export interface AgentHelloFrame {
   readonly protocolVersion: number;
   /** Version des Agent-Pakets, nur für Diagnose/Logging. */
   readonly agentVersion: string;
+  /**
+   * Node, für die sich dieser Agent hält (`HostNode.id`, Pflichtenheft §6);
+   * `null` oder fehlend, wenn der Agent sie nicht kennt.
+   *
+   * Kein Ersatz für die Authentifizierung: Zugeordnet wird die Verbindung über
+   * das Token im `Authorization`-Header, das je Node vergeben wird. Die Kennung
+   * ist die zweite Angabe daneben – nennt der Agent eine andere Node als sein
+   * Token, wird die Verbindung abgelehnt, statt der einen oder der anderen
+   * Angabe zu glauben (WORK_STATUS.md, Gefundener Punkt 57).
+   *
+   * Optional und additiv: Ein Agent, der die Kennung nicht kennt, verbindet
+   * sich wie bisher allein über sein Token.
+   */
+  readonly nodeId?: string | null;
   readonly sentAt: string;
 }
 
