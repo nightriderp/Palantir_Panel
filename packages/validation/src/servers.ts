@@ -188,6 +188,23 @@ export const cloneServerInputSchema = z.object({
   name: serverNameSchema,
   subdomain: subdomainSchema,
   includeWorldData: z.boolean(),
+  /**
+   * Quellserver für die Dauer der Weltdaten-Kopie anhalten
+   * (WORK_STATUS.md, Gefundener Punkt 107).
+   *
+   * Ohne Anhalten schreibt ein laufender Spielserver weiter in die Dateien,
+   * die gerade gepackt werden – die Kopie kann dann einen halb geschriebenen
+   * Spielstand enthalten. Dieselbe Wahl bietet B5 beim Sichern und beim Export
+   * bereits an (`stopServer`).
+   *
+   * Optional und ohne Angabe `false`: Den Server eines Nutzers ungefragt
+   * abzuschalten wäre ein Eingriff, um den niemand gebeten hat. Angehalten wird
+   * nur, wenn es ausdrücklich gewünscht ist; der Agent versetzt den Container
+   * danach in seinen vorherigen Zustand zurück. Ohne Weltdaten-Kopie
+   * (`includeWorldData: false`) hat das Feld keine Wirkung – dann wird nichts
+   * gepackt.
+   */
+  stopSourceServer: z.boolean().optional(),
 });
 
 export type CloneServerInput = z.infer<typeof cloneServerInputSchema>;
