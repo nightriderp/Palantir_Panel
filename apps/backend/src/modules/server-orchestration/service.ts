@@ -905,7 +905,12 @@ export class ServerOrchestrationService {
       });
 
       if (input.includeWorldData) {
-        await this.copyWorldData(jobId, source, await this.requireServer(clone.id));
+        await this.copyWorldData(
+          jobId,
+          source,
+          await this.requireServer(clone.id),
+          input.stopSourceServer === true,
+        );
       }
 
       this.deps.events.emit('server.cloned', {
@@ -960,21 +965,33 @@ export class ServerOrchestrationService {
     jobId: string,
     source: ServerRecord,
     clone: ServerRecord,
+    stopSource: boolean,
   ): Promise<void> {
     const session = this.deps.agents.require(source.hostId);
     const archivId = randomUUID();
 
+    /*
+     * `stopContainer` kommt aus der Anfrage (`stopSourceServer`, Gefundener
+     * Punkt 107): Ein laufender Spielserver schreibt weiter in die Dateien, die
+     * gerade gepackt werden, und die Kopie enthielte dann einen halb
+     * geschriebenen Spielstand. Angehalten wird nur auf ausdrücklichen Wunsch –
+     * den Server eines Nutzers ungefragt abzuschalten wäre ein Eingriff, um den
+     * niemand gebeten hat. Der Agent versetzt den Container danach in seinen
+     * vorherigen Zustand zurück (`backup-job.ts`).
+     */
     const gesichert = await session.sendCommand('CREATE_BACKUP', source.id, {
       backupId: archivId,
       serverId: source.id,
       sourcePath: dataHostPathFor(source.id),
       ...(source.dockerContainerId === null ? {} : { containerId: source.dockerContainerId }),
-      stopContainer: false,
+      stopContainer: stopSource,
     });
 
     this.advanceCloneJob(jobId, {
       progressPercent: 60,
-      step: 'Weltdaten werden übertragen',
+      step: gesichert.containerStopped
+        ? 'Weltdaten werden übertragen (Quellserver angehalten)'
+        : 'Weltdaten werden übertragen',
       totalBytes: gesichert.sizeBytes,
     });
 

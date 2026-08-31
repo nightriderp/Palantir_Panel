@@ -103,6 +103,9 @@ export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabPr
     name: `${server.name} (Kopie)`,
     subdomain: '',
     includeWorldData: true,
+    // Nicht vorbelegt: Anhalten greift in den laufenden Betrieb ein und bleibt
+    // eine bewusste Entscheidung des Nutzers (Gefundener Punkt 107).
+    stopSourceServer: false,
   });
   const [cloneError, setCloneError] = useState<string | null>(null);
   const [cloneBusy, setCloneBusy] = useState(false);
@@ -181,7 +184,9 @@ export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabPr
     setCloneOpen(false);
     toast.success(
       parsed.data.includeWorldData
-        ? 'Der Klon wird angelegt – die Weltdaten werden kopiert.'
+        ? parsed.data.stopSourceServer
+          ? 'Der Klon wird angelegt – der Server wird für die Kopie kurz angehalten.'
+          : 'Der Klon wird angelegt – die Weltdaten werden kopiert.'
         : 'Der Klon wird angelegt.',
     );
   }
@@ -477,6 +482,16 @@ export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabPr
             setCloneDraft((current) => ({ ...current, includeWorldData: checked }))
           }
         />
+        {cloneDraft.includeWorldData ? (
+          <ToggleRow
+            title="Quellserver für die Kopie anhalten"
+            description="Ein laufender Server schreibt weiter – ohne Anhalten kann der kopierte Spielstand unvollständig sein. Danach läuft er wieder wie zuvor."
+            checked={cloneDraft.stopSourceServer === true}
+            onChange={(checked) =>
+              setCloneDraft((current) => ({ ...current, stopSourceServer: checked }))
+            }
+          />
+        ) : null}
       </FormModal>
 
       <DangerConfirmDialog
