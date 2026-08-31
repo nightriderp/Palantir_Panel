@@ -95,6 +95,41 @@ describe('ServerLiveHub.ingest – Umformung der Roh-Ereignisse', () => {
     });
   });
 
+  it('reicht den Stand einer Sicherung an die Abonnenten (Gefundener Punkt 51)', () => {
+    const hub = new ServerLiveHub(FIXED_NOW);
+    const a = collectingSocket();
+    const reg = hub.register(a.socket);
+    reg.subscribe('server-1');
+
+    hub.ingest('backup.progressed', {
+      serverId: 'server-1',
+      backup: {
+        backupId: 'backup-1',
+        status: 'completed',
+        isExport: true,
+        sizeBytes: 4_096,
+        completedAt: '2026-08-31T12:00:00.000Z',
+        failureMessage: null,
+      },
+    });
+
+    expect(a.frames()[0]).toMatchObject({
+      event: 'backup.progressed',
+      data: { serverId: 'server-1', backup: { backupId: 'backup-1', status: 'completed' } },
+    });
+  });
+
+  it('verwirft eine Sicherungsmeldung ohne brauchbare Nutzlast', () => {
+    const hub = new ServerLiveHub(FIXED_NOW);
+    const a = collectingSocket();
+    const reg = hub.register(a.socket);
+    reg.subscribe('server-1');
+
+    hub.ingest('backup.progressed', { serverId: 'server-1', backup: null });
+
+    expect(a.frames()).toHaveLength(0);
+  });
+
   it('verwirft unbekannte Ereignisse und ungültige Zustände', () => {
     const hub = new ServerLiveHub(FIXED_NOW);
     const a = collectingSocket();
