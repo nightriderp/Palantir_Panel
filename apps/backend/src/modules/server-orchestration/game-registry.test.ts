@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { type ServerOrchestrationError } from './errors.js';
 import {
   GAME_TYPE_DEFINITIONS,
+  MINECRAFT_GAME_TYPE,
   TEST_GAME_TYPE,
   buildContainerEnv,
   buildServerConfig,
@@ -37,6 +38,41 @@ describe('Spiele-Registry (Pflichtenheft §11)', () => {
     for (const definition of GAME_TYPE_DEFINITIONS) {
       expect(definition.ports.filter((port) => port.primary)).toHaveLength(1);
       expect(primaryPortOf(definition)).toBeGreaterThan(0);
+    }
+  });
+
+  it('führt Minecraft als Ausbaustufe 2 mit gamedig-Abfrage', () => {
+    expect(MINECRAFT_GAME_TYPE.phase).toBe(2);
+    expect(GAME_TYPE_DEFINITIONS).toContain(MINECRAFT_GAME_TYPE);
+    // Der Port-Connect würde beim Hochlauf schon anschlagen, bevor der Server
+    // antwortet – deshalb die Abfrage über das Spielprotokoll.
+    expect(MINECRAFT_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'minecraft',
+      containerPort: 25_565,
+    });
+  });
+
+  it('verlangt für Minecraft die Annahme der EULA', () => {
+    const eula = MINECRAFT_GAME_TYPE.configFields.find((feld) => feld.key === 'eula');
+
+    expect(eula?.required).toBe(true);
+    expect(eula?.defaultValue).toBe(false);
+    // Der Server startet sonst nicht; das Image erwartet die Angabe als
+    // Umgebungsvariable.
+    expect(MINECRAFT_GAME_TYPE.envMapping?.eula).toBe('EULA');
+  });
+
+  it('teilt bei Minecraft den öffentlichen Port über Hostname-Routing', () => {
+    expect(MINECRAFT_GAME_TYPE.supportsVirtualHostRouting).toBe(true);
+    expect(MINECRAFT_GAME_TYPE.readOnlyRootFilesystem).toBe(false);
+  });
+
+  it('bildet jedes Konfigurationsfeld auf eine Umgebungsvariable ab', () => {
+    for (const definition of GAME_TYPE_DEFINITIONS) {
+      for (const feld of definition.configFields) {
+        expect(definition.envMapping?.[feld.key]).toBeTruthy();
+      }
     }
   });
 

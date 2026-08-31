@@ -11,9 +11,13 @@
  *
  * **Phase 1** braucht laut Lastenheft §3.5 nur einen minimalen Test-Typ –
  * „einfacher Container, der auf einem Port lauscht" – um die gesamte
- * Orchestrierungs-Pipeline ohne echtes Spiel zu prüfen. Minecraft (Phase 2) ist
- * bewusst **nicht** vorweggenommen: dafür wäre ein eigenes Docker-Image nötig,
- * das es noch nicht gibt.
+ * Orchestrierungs-Pipeline ohne echtes Spiel zu prüfen.
+ *
+ * **Minecraft** steht als Ausbaustufe 2 daneben ({@link MINECRAFT_GAME_TYPE}).
+ * Sichtbar ist es sofort, auswählbar erst, wenn die Installation auf Stufe 2
+ * steht (`INSTALLATION_PHASE`) – bis dahin meldet `requireSelectable()`
+ * `GAME_TYPE_NOT_AVAILABLE`. Das ist der Schalter des Betreibers, nicht eine
+ * Entscheidung im Code.
  */
 
 import { type GameTypeDefinition, type GameTypeDto } from '@palantir/contracts';
@@ -99,11 +103,209 @@ export const TEST_GAME_TYPE: GameTypeDefinition = {
 };
 
 /**
+ * Minecraft (Java Edition) – erstes echtes Spiel, Ausbaustufe 2.
+ *
+ * **Fremdes Image `itzg/minecraft-server`** (CLAUDE.md §1): Es ist das
+ * eingeführte Minecraft-Server-Image und nimmt dem Panel die Dinge ab, die
+ * sonst jede Definition selbst lösen müsste – Version und Servertyp über
+ * Umgebungsvariablen, Annahme der EULA, sauberes Herunterfahren auf `SIGTERM`.
+ * Ein eigenes Image nachzubauen hieße, dieselbe Arbeit ohne dessen Pflege zu
+ * wiederholen.
+ *
+ * **Abfrage über `gamedig`** statt Port-Connect: Minecraft antwortet auf dem
+ * Spiel-Port mit dem Server-List-Ping. Erst diese Antwort beweist, dass der
+ * Server bereit ist – ein offener Port sagt beim Hochlauf noch nichts – und sie
+ * liefert Spielerzahl und Antwortzeit für Anzeige und Verlauf.
+ *
+ * **Hostname-Routing** ist gesetzt: Alle Instanzen teilen sich den öffentlichen
+ * Port 25565, unterschieden über die Subdomain (Pflichtenheft §2.4, §13). Der
+ * Spieler bekommt damit keine Portnummer zu sehen.
+ *
+ * `readOnlyRootFilesystem` ist **nicht** gesetzt: Der Server schreibt außerhalb
+ * seines Datenordners. Pflichtenheft §2.3 verlangt es „wo vom Spiel
+ * unterstützt" – hier ist es das nicht.
+ */
+export const MINECRAFT_GAME_TYPE: GameTypeDefinition = {
+  id: 'minecraft-java',
+  name: 'Minecraft (Java Edition)',
+  description:
+    'Minecraft-Server der Java Edition. Version, Servertyp und Spielregeln lassen sich beim Anlegen setzen; Weltdaten können mitgebracht werden.',
+  dockerImage: 'itzg/minecraft-server:java21',
+  defaultEnv: {
+    USE_AIKAR_FLAGS: 'true',
+    OVERRIDE_SERVER_PROPERTIES: 'true',
+  },
+  ports: [
+    {
+      containerPort: 25_565,
+      protocol: 'tcp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'eula',
+      label: 'Mojang-EULA annehmen',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Der Server startet erst, wenn die Endnutzer-Lizenzvereinbarung von Mojang angenommen ist.',
+      required: true,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'version',
+      label: 'Version',
+      type: 'text',
+      defaultValue: 'LATEST',
+      description: 'Serverversion, z. B. 1.21.1. „LATEST" nimmt die neueste freigegebene.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'serverType',
+      label: 'Servertyp',
+      type: 'select',
+      defaultValue: 'VANILLA',
+      description: 'Vanilla ist der Server von Mojang; Paper und Fabric erlauben Erweiterungen.',
+      required: false,
+      options: ['VANILLA', 'PAPER', 'FABRIC'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'motd',
+      label: 'Serverbeschreibung',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: 'Steht in der Serverliste des Spielers unter dem Namen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 20,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 200,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'difficulty',
+      label: 'Schwierigkeit',
+      type: 'select',
+      defaultValue: 'normal',
+      description: null,
+      required: false,
+      options: ['peaceful', 'easy', 'normal', 'hard'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'gameMode',
+      label: 'Spielmodus',
+      type: 'select',
+      defaultValue: 'survival',
+      description: null,
+      required: false,
+      options: ['survival', 'creative', 'adventure'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'onlineMode',
+      label: 'Mojang-Konto verlangen',
+      type: 'toggle',
+      defaultValue: true,
+      description:
+        'Aus nur in einer abgeschotteten Umgebung: Ohne Prüfung kann sich jeder unter jedem Namen anmelden.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'seed',
+      label: 'Welt-Startwert',
+      type: 'text',
+      defaultValue: '',
+      description: 'Leer lassen für eine zufällige Welt. Nach dem Anlegen ohne Wirkung.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+  ],
+  envMapping: {
+    eula: 'EULA',
+    version: 'VERSION',
+    serverType: 'TYPE',
+    motd: 'MOTD',
+    maxPlayers: 'MAX_PLAYERS',
+    difficulty: 'DIFFICULTY',
+    gameMode: 'MODE',
+    onlineMode: 'ONLINE_MODE',
+    seed: 'SEED',
+  },
+  restartRequiredFields: [
+    'version',
+    'serverType',
+    'motd',
+    'maxPlayers',
+    'difficulty',
+    'gameMode',
+    'onlineMode',
+  ],
+  resourceDefaults: {
+    ramMb: 4_096,
+    cpuCores: 2,
+    diskMb: 10_240,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'minecraft',
+    containerPort: 25_565,
+  },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: true,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: false,
+  tmpfsPaths: [],
+  stopTimeoutSeconds: 120,
+  startupTimeoutSeconds: 600,
+  phase: 2,
+};
+
+/**
  * Alle bekannten Spiele-Definitionen.
  *
  * Reihenfolge = Anzeigereihenfolge im Server-erstellen-Wizard (F3).
  */
-export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [TEST_GAME_TYPE];
+export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
+  TEST_GAME_TYPE,
+  MINECRAFT_GAME_TYPE,
+];
 
 /** Ausbaustufe, die diese Installation erreicht hat (Lastenheft §3.5). */
 export type InstallationPhase = 1 | 2 | 3;

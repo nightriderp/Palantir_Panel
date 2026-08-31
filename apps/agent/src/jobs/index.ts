@@ -32,6 +32,7 @@
 import type { OutboundEvent } from '../connection/ports.js';
 import type { ContainerRuntime } from '../runtime/index.js';
 import { BackupJob, DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES } from './backup/backup-job.js';
+import { createGamedigProbe } from './query/gamedig-probe.js';
 import { createServerProbe, type ServerProbe } from './query/probe.js';
 import { ServerQueryJob } from './query/server-query-job.js';
 import { JobScheduler, type SchedulerTimers } from './scheduler.js';
@@ -45,6 +46,8 @@ export {
   type SchedulerTimers,
   type TimerHandle,
 } from './scheduler.js';
+
+export { createGamedigProbe, type GamedigQuery } from './query/gamedig-probe.js';
 
 export {
   createPortConnectProbe,
@@ -115,7 +118,7 @@ export interface CreateAgentJobsOptions {
   readonly emit: (event: OutboundEvent) => void;
   /** Zeitgeber; ohne Angabe die globalen. */
   readonly timers?: SchedulerTimers;
-  /** Sonde; ohne Angabe Port-Connect (`gamedig` ist noch offen, siehe `probe.ts`). */
+  /** Sonde; ohne Angabe Port-Connect **und** `gamedig` (siehe `probe.ts`). */
   readonly probe?: ServerProbe;
   readonly onJobError?: (jobName: string, error: unknown) => void;
   readonly now?: () => Date;
@@ -136,7 +139,8 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
 
   const query = new ServerQueryJob({
     scheduler,
-    probe: options.probe ?? createServerProbe(),
+    // Beide Sonden: Port-Connect für den Test-Typ, `gamedig` für echte Spiele.
+    probe: options.probe ?? createServerProbe(undefined, createGamedigProbe()),
     emit: options.emit,
     defaultIntervalSeconds: env.AGENT_QUERY_INTERVAL_SECONDS,
     timeoutMs: env.AGENT_QUERY_TIMEOUT_MS,

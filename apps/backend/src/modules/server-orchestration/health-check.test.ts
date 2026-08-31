@@ -10,10 +10,12 @@ import net from 'node:net';
 import { type GameQuerySpec } from '@palantir/contracts';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
+  type GamedigQuery,
   type HealthCheckResult,
   type HealthCheckTarget,
   type HealthProbe,
   awaitHealthy,
+  createGamedigProbe,
   createHealthProbe,
   createPortConnectProbe,
 } from './health-check.js';
@@ -118,10 +120,36 @@ describe('Auswahl der Sonde', () => {
     expect(called).toBe(true);
   });
 
-  it('meldet gamedig als noch nicht umgesetzt, statt still auf Port-Connect auszuweichen', async () => {
-    // Ein stiller Rückfall würde eine Erreichbarkeit vortäuschen, die nie
-    // geprüft wurde.
-    const result = await createHealthProbe().check(
+  it('nutzt für gamedig die gamedig-Sonde, nicht den Port-Connect', async () => {
+    // Ein stiller Rückfall auf den Port-Connect würde eine Erreichbarkeit
+    // vortäuschen, die nie geprüft wurde: Ein offener Port heißt beim Hochlauf
+    // noch nicht, dass der Spielserver antwortet.
+    let portConnectGenutzt = false;
+    const portConnect: HealthProbe = {
+      check: (): Promise<HealthCheckResult> => {
+        portConnectGenutzt = true;
+
+        return Promise.resolve({
+          healthy: true,
+          pingMs: 1,
+          playersOnline: null,
+          playersMax: null,
+          reason: null,
+        });
+      },
+    };
+    const gamedig: HealthProbe = {
+      check: (): Promise<HealthCheckResult> =>
+        Promise.resolve({
+          healthy: true,
+          pingMs: 12,
+          playersOnline: 3,
+          playersMax: 20,
+          reason: null,
+        }),
+    };
+
+    const result = await createHealthProbe(portConnect, gamedig).check(
       {
         host: '127.0.0.1',
         port: 1,
@@ -130,8 +158,66 @@ describe('Auswahl der Sonde', () => {
       100,
     );
 
-    expect(result.healthy).toBe(false);
-    expect(result.reason).toContain('gamedig');
+    expect(portConnectGenutzt).toBe(false);
+    expect(result.playersOnline).toBe(3);
+  });
+});
+
+describe('gamedig-Sonde (Gefundener Punkt 60)', () => {
+  const ziel: HealthCheckTarget = {
+    host: '127.0.0.1',
+    port: 25_565,
+    query: { kind: 'gamedig', protocol: 'minecraft', containerPort: 25_565 },
+  };
+
+  function antwort(overrides: Record<string, unknown> = {}) {
+    return {
+      name: 'Ein Palantir-Server',
+      map: 'world',
+      password: false,
+      numplayers: 3,
+      maxplayers: 20,
+      players: [{ name: 'a' }, { name: 'b' }, { name: 'c' }],
+      bots: [],
+      connect: '127.0.0.1:25565',
+      ping: 12,
+      queryPort: 25_565,
+      version: '1.21.1',
+      ...overrides,
+    } as Awaited<ReturnType<GamedigQuery>>;
+  }
+
+  it('übernimmt Spielerzahl, Höchstzahl und Antwortzeit', async () => {
+    const ergebnis = await createGamedigProbe(() => Promise.resolve(antwort())).check(ziel, 3_000);
+
+    expect(ergebnis).toEqual({
+      healthy: true,
+      pingMs: 12,
+      playersOnline: 3,
+      playersMax: 20,
+      reason: null,
+    });
+  });
+
+  it('wiederholt nicht selbst – das macht awaitHealthy darüber', async () => {
+    const aufrufe: Parameters<GamedigQuery>[0][] = [];
+
+    await createGamedigProbe((options) => {
+      aufrufe.push(options);
+
+      return Promise.resolve(antwort());
+    }).check(ziel, 3_000);
+
+    expect(aufrufe[0]).toMatchObject({ type: 'minecraft', port: 25_565, maxRetries: 0 });
+  });
+
+  it('meldet einen Fehlschlag als „nicht erreichbar" mit Grund', async () => {
+    const ergebnis = await createGamedigProbe(() =>
+      Promise.reject(new Error('Server nicht erreichbar (Timeout)')),
+    ).check(ziel, 3_000);
+
+    expect(ergebnis.healthy).toBe(false);
+    expect(ergebnis.reason).toContain('Timeout');
   });
 });
 
