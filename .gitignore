@@ -42,8 +42,8 @@ graphify-out/
 # Entscheidung des Betreibers beim Wechsel auf ein oeffentliches Repository:
 # oeffentlich ist der Code, alles Weitere liegt nur auf den Rechnern des Teams.
 # Bereits vorhandene Dateien wurden mit `git rm --cached` ausgetragen und liegen
-# unveraendert weiter auf der Platte; in der Git-Historie sind sie weiterhin
-# einsehbar (kein History-Rewrite).
+# unveraendert weiter auf der Platte. Aus der Git-Historie sind sie inzwischen
+# ebenfalls entfernt (History-Rewrite am 2026-08-31).
 CLAUDE.md
 LASTENHEFT.md
 PFLICHTENHEFT.md
@@ -55,4 +55,10 @@ NACHARBEIT_PROMPTS.md
 F3_ARBEITSPAKETE.md
 docs/
 deploy/gamenode/wireguard-firewall.md
+
+# Arbeitsverzeichnis paralleler Sitzungen: eigene Worktrees und die lokale
+# Startkonfiguration der Entwicklungsumgebung. Kein Teil des Repositories -
+# .prettierignore fuehrt es aus demselben Grund. Ohne diesen Eintrag taucht ein
+# angelegter Worktree bei allen als untracked auf.
+.claude/
 
