@@ -253,6 +253,26 @@ export function registerServerOrchestration(
             'Node-Status konnte nicht auf online gesetzt werden',
           );
         }
+
+        /*
+         * Periodische Server-Abfragen neu setzen (Gefundener Punkt 74). Der
+         * Agent hält seine Ziele im Arbeitsspeicher und hat sie nach einem
+         * Neustart vergessen; der Befehl ist idempotent, das Wiederholen also
+         * folgenlos. Eigenes try/catch aus demselben Grund wie oben: Eine
+         * fehlende Abfrage kostet Messwerte, ein Abbruch die Verbindung.
+         */
+        try {
+          const gesetzt = await service.refreshServerQueries(hostId);
+
+          if (gesetzt.length > 0) {
+            log.info({ hostId, server: gesetzt.length }, 'Server-Abfragen neu gesetzt');
+          }
+        } catch (error) {
+          log.error(
+            { hostId, error: error instanceof Error ? error.message : String(error) },
+            'Server-Abfragen konnten nicht gesetzt werden',
+          );
+        }
       },
       onDisconnected: async (hostId): Promise<void> => {
         try {

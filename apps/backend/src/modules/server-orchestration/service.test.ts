@@ -727,6 +727,93 @@ describe('Starten mit Health-Check (Pflichtenheft §9)', () => {
   });
 });
 
+describe('Periodische Server-Abfrage (Gefundener Punkt 74)', () => {
+  function abfragen(harness: Harness) {
+    return harness.socket.commands.filter((c) => c.command === 'SET_SERVER_QUERY');
+  }
+
+  it('setzt die Abfrage nach dem Start mit Host-Port und Abfrageart', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+
+    const gesetzt = abfragen(harness);
+    const server = await harness.service.requireServer(created.id);
+    const primaer = server.assignedPorts.find((zuweisung) => zuweisung.primary);
+
+    expect(gesetzt).toHaveLength(1);
+    expect(gesetzt[0]?.payload).toMatchObject({
+      serverId: created.id,
+      target: {
+        containerId: server.dockerContainerId,
+        // Der Host-Port, unter dem der Container veröffentlicht ist – nicht der
+        // Port im Container.
+        hostPort: primaer?.publicPort,
+        query: { kind: 'portConnect' },
+      },
+    });
+  });
+
+  it('beendet die Abfrage beim Stoppen', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    harness.socket.commands.length = 0;
+
+    await harness.service.stopServer(created.id);
+
+    expect(abfragen(harness)).toHaveLength(1);
+    expect(abfragen(harness)[0]?.payload).toMatchObject({ serverId: created.id, target: null });
+  });
+
+  it('beendet die Abfrage beim Löschen, bevor der Container entfernt wird', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    await harness.service.stopServer(created.id);
+    harness.socket.commands.length = 0;
+
+    await harness.service.deleteServer(created.id);
+
+    const reihenfolge = harness.socket.commands
+      .map((c) => c.command)
+      .filter((name) => name === 'SET_SERVER_QUERY' || name === 'DELETE');
+
+    // Sonst fragte der Agent weiter einen Port ab, hinter dem nichts steht.
+    expect(reihenfolge).toEqual(['SET_SERVER_QUERY', 'DELETE']);
+  });
+
+  it('setzt die Abfragen aller laufenden Server nach einem Verbindungsaufbau neu', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    harness.socket.commands.length = 0;
+
+    // Der Agent hält seine Ziele im Arbeitsspeicher; nach einem Neustart sind
+    // sie weg. Der Befehl ist idempotent, das Wiederholen also folgenlos.
+    const gesetzt = await harness.service.refreshServerQueries(HOST.id);
+
+    expect(gesetzt).toEqual([created.id]);
+    expect(abfragen(harness)).toHaveLength(1);
+  });
+
+  it('lässt einen gestoppten Server dabei aus', async () => {
+    const harness = makeHarness();
+    await harness.service.createServer(createInput(), OWNER_ID);
+    harness.socket.commands.length = 0;
+
+    expect(await harness.service.refreshServerQueries(HOST.id)).toEqual([]);
+    expect(abfragen(harness)).toHaveLength(0);
+  });
+});
+
 describe('Verfügbarkeit der Ziel-Node (Gefundene Punkte 24 und 109)', () => {
   it('legt auf einer stillgelegten Node gar keinen Server an', async () => {
     const harness = makeHarness();
@@ -860,7 +947,14 @@ describe('Neustart', () => {
     await harness.service.restartServer(created.id, OWNER_ID);
     await settle(harness, created.id, ['running']);
 
-    expect(harness.socket.commands.map((c) => c.command)).toEqual(['STOP', 'START']);
+    // Nur die Lifecycle-Befehle: Dazwischen steht seit Punkt 74 das Setzen und
+    // Beenden der periodischen Abfrage, das mit dem Neustartweg nichts zu tun
+    // hat.
+    expect(
+      harness.socket.commands
+        .map((c) => c.command)
+        .filter((name) => name === 'STOP' || name === 'START'),
+    ).toEqual(['STOP', 'START']);
     expect(harness.emitted.map((e) => e.event)).toContain('server.restarted');
   });
 });
