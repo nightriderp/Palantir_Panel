@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
@@ -12,14 +11,6 @@ loadDotenv({ path: path.join(repoRoot, '.env') });
 // Abgeleitete folgt daraus, bleibt aber einzeln überschreibbar – dieselbe Regel
 // wie im Backend (`apps/backend/src/config/env.ts`, `adressenAbleiten`).
 const domain = process.env.PALANTIR_DOMAIN ?? 'palantir.local';
-
-// Angezeigte Version (unten in der Seitenleiste). Einzige Quelle ist das
-// `version`-Feld dieser package.json; ein Release setzt es und taggt passend
-// (`v<version>`), sodass die angezeigte Version immer zum gebauten Stand passt.
-// NEXT_PUBLIC_-Variablen werden zur Bauzeit eingesetzt, deshalb hier aufgelöst.
-const appVersion = JSON.parse(
-  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
-).version;
 
 // Adresse der Backend-API, wie der Browser sie sieht. Frontend und API liegen
 // auf getrennten Subdomains (`<domain>` bzw. `api.<domain>`), deshalb muss der
@@ -54,7 +45,10 @@ const nextConfig = {
     // nicht verfügbar.
     NEXT_PUBLIC_BASE_DOMAIN: process.env.NEXT_PUBLIC_BASE_DOMAIN || domain,
     NEXT_PUBLIC_API_URL: apiUrl,
-    NEXT_PUBLIC_APP_VERSION: appVersion,
+    // Die angezeigte Version steht bewusst NICHT hier: Sie ist das Versions-Tag
+    // des Deployments und existiert zur Bauzeit noch gar nicht (die Images
+    // entstehen beim Merge nach `main`, das Tag erst beim Freigeben). Sie kommt
+    // zur Laufzeit über `PALANTIR_RELEASE` – siehe `src/lib/version.ts`.
   },
 };
 

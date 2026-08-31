@@ -2,13 +2,17 @@ name: Deploy
 
 # Freigabe und Ausrollen auf die Zielmaschinen.
 #
-# Zwei Freigabewege, beide bewusst:
-#   1. Ein Versions-Tag `v*` (z. B. `v0.3.0`) wird auf einen Commit gepusht -
-#      dann rollt genau dieser getaggte Stand aus. Das Tag IST die Freigabe.
-#   2. Von Hand über `workflow_dispatch` (mit optionaler Commit-SHA, sonst der
-#      aktuelle Stand von `main`).
-# Nichts geht nach Produktion, ohne dass jemand mit Schreibrecht am Repository
-# entweder ein Tag setzt oder den Workflow bewusst startet.
+# **Ein Weg, sonst keiner:** Ein Versions-Tag `v*` (z. B. `v0.8.0`) wird auf
+# einen Commit gepusht - dann rollt genau dieser getaggte Stand aus. Das Tag IST
+# die Freigabe. Nichts geht nach Produktion, ohne dass jemand mit Schreibrecht
+# am Repository ein Tag setzt.
+#
+# Der frühere Weg von Hand (`workflow_dispatch`) ist bewusst entfallen: Er
+# konnte einen Stand ausrollen, zu dem es kein Tag gibt. Damit gab es
+# ausgerollte Stände ohne Namen - weder im Panel anzuzeigen noch später
+# eindeutig zu benennen. Jetzt gehört zu jedem Deployment genau ein Tag, und die
+# Gegenrichtung stimmt ebenso: `deploy/vps/deploy.sh` löst das Tag zum
+# ausgerollten Commit wieder auf und zeigt es im Panel unten links an.
 #
 # In beiden Fällen gilt dieselbe Schranke: Ausgerollt wird nur ein Commit, der
 # auf `main` liegt (also die Prüfungen aus ci.yml gesehen hat) und für den
@@ -30,12 +34,6 @@ on:
     tags:
       # Nur Versions-Tags lösen ein Deployment aus, nicht jedes beliebige Tag.
       - 'v*'
-  workflow_dispatch:
-    inputs:
-      commit:
-        description: 'Commit-SHA von main (vollständig, 40 Zeichen). Leer = aktueller Stand von main.'
-        required: false
-        type: string
 
 concurrency:
   group: deploy-production
@@ -62,33 +60,23 @@ jobs:
       - name: Commit bestimmen und prüfen
         id: ziel
         env:
-          # Die Eingabe kommt über die Umgebung, NICHT über `${{ }}` mitten im
+          # Werte kommen über die Umgebung, NICHT über `${{ }}` mitten im
           # Skript. Direkt eingesetzt könnte ein Wert wie `'; rm -rf /; '` aus
           # dem String ausbrechen und eigenen Code ausführen - dieselbe Lücke,
           # gegen die deploy.sh auf der Gegenseite abgesichert ist.
-          EINGABE: ${{ inputs.commit }}
-          EVENT_NAME: ${{ github.event_name }}
           # Bei einem Tag-Push zeigt `github.sha` auf den getaggten Commit.
           PUSH_SHA: ${{ github.sha }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
-          # Bei einer Tag-Auslösung ist der Tag-Ref ausgecheckt, nicht `main` -
-          # der remote-tracking-Zweig `origin/main` muss deshalb erst geholt
-          # werden, sonst geht die Vorfahren-Prüfung unten ins Leere.
+          # Ausgecheckt ist der Tag-Ref, nicht `main` - der remote-tracking-Zweig
+          # `origin/main` muss deshalb erst geholt werden, sonst geht die
+          # Vorfahren-Prüfung unten ins Leere.
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
 
-          if [ "${EVENT_NAME}" = "push" ]; then
-            # Über ein Versions-Tag ausgelöst: genau den getaggten Commit ausrollen.
-            sha="${PUSH_SHA}"
-            echo "Ausgelöst durch Tag ${REF_NAME} -> ${sha}"
-          elif [ -z "${EINGABE}" ]; then
-            sha="$(git rev-parse origin/main)"
-            echo "Kein Commit angegeben - nehme den aktuellen Stand von main."
-          else
-            sha="$(printf '%s' "${EINGABE}" | tr -d '[:space:]')"
-          fi
+          sha="${PUSH_SHA}"
+          echo "Ausgelöst durch Tag ${REF_NAME} -> ${sha}"
 
           # Streng, weil der Wert gleich an git und über SSH weitergereicht wird.
           if ! [[ "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
@@ -199,12 +187,15 @@ jobs:
       - name: Zusammenfassung
         env:
           SHA: ${{ steps.ziel.outputs.sha }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           {
             echo "### Ausgerollt"
             echo ""
+            echo "Version: \`${REF_NAME}\`"
             echo "Commit: \`${SHA}\`"
             echo ""
             echo "- VPS: neu gestartet und als gesund gemeldet"
             echo "- Gamenode: zieht innerhalb von fünf Minuten selbst nach"
+            echo "- Panel: zeigt \`${REF_NAME}\` unten links in der Seitenleiste"
           } >> "$GITHUB_STEP_SUMMARY"

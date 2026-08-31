@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { releaseFromEnvironment } from '@/lib/version';
 import { DashboardShell } from '@/app/(dashboard)/DashboardShell';
 
 /**
@@ -24,5 +25,5 @@ export const dynamic = 'force-dynamic';
  * UI ergänzt die Backend-Prüfung, ersetzt sie aber nie.
  */
 export default function AdminCoreLayout({ children }: { children: ReactNode }) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return <DashboardShell versionLabel={releaseFromEnvironment()}>{children}</DashboardShell>;
 }
