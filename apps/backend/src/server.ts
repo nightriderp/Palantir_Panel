@@ -314,6 +314,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     // Ab hier meldet B1 `user.registered` an B6 (siehe Weiterleitung oben).
     notificationEventSink = notifications.eventSink;
 
+    /*
+     * B7 entsteht weiter unten, B3 braucht die Funktion aber schon hier
+     * (Gefundener Punkt 70). Dieselbe Weiterleitung wie bei der
+     * Ereignis-Senke: B3 ruft sie, sobald ein Server angelegt ist; bis B7
+     * steht, ist sie wirkungslos.
+     */
+    let ensureServerChat: ((serverId: string) => Promise<unknown>) | null = null;
+
     const {
       service: orchestration,
       schedules: serverSchedules,
@@ -331,6 +339,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
        */
       resolveHostIdByAgentToken: async (token) =>
         (await admin.services.nodes.findByAgentToken(token))?.id ?? null,
+      /*
+       * Gruppen-Chat eines frisch angelegten Servers (B7, Gefundener Punkt 70).
+       * B7 entsteht weiter unten, deshalb über die Weiterleitung oben – bis
+       * dahin wirkungslos, danach legt B3 den Chat mit an.
+       */
+      ensureServerChat: async (serverId) => ensureServerChat?.(serverId),
       events: notifications.eventSink,
     });
 
@@ -348,6 +362,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       audit: admin.services.audit,
       events: notifications.eventSink,
     });
+
+    // Ab hier legt B3 den Gruppen-Chat beim Anlegen eines Servers an
+    // (Gefundener Punkt 70, siehe Weiterleitung oben).
+    ensureServerChat = (serverId) => chat.chat.ensureServerConversation(serverId);
 
     await app.register(async (instance) => {
       registerChatRoutes(instance, {

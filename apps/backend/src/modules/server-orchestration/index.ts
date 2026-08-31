@@ -96,6 +96,15 @@ export interface ServerOrchestrationOptions {
    * Port-Pool (CLAUDE.md §6).
    */
   resolveHostIdByAgentToken?(token: string): Promise<string | null>;
+  /**
+   * Legt den Gruppen-Chat eines frisch angelegten Servers an (B7, Gefundener
+   * Punkt 70).
+   *
+   * Ohne Angabe passiert nichts – der Chat entsteht dann wie bisher beim ersten
+   * Öffnen. B3 kennt B7 nicht; es bekommt nur diese schmale Funktion gereicht,
+   * wie schon beim Port-Pool und bei der Ereignis-Senke.
+   */
+  ensureServerChat?(serverId: string): Promise<unknown>;
   /** Ereignissenke aus B6; ohne Angabe wird nur protokolliert. */
   readonly events?: OrchestrationEventSink;
   /**
@@ -214,6 +223,9 @@ export function registerServerOrchestration(
     dns,
     // Port-Pool aus B8 (Pflichtenheft §2.4) - B3 vergibt keine Ports selbst.
     ports: createPortAllocator(options.portPool),
+    ...(options.ensureServerChat === undefined
+      ? {}
+      : { ensureServerChat: options.ensureServerChat }),
     resources,
     reservation,
     healthProbe: createHealthProbe(),
