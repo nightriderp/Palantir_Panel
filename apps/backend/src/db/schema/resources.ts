@@ -72,6 +72,20 @@ export const hostNodes = pgTable(
      * gemeldete Zustand ist. Gesetzt wird das Feld vom Agent-Kanal (B3).
      */
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    /**
+     * SHA-256 des Agent-Tokens dieser Node (WORK_STATUS.md, Gefundener Punkt 57).
+     *
+     * `null`, solange kein Token vergeben wurde – dann meldet sich der Agent
+     * dieser Node über das gemeinsame `AGENT_TOKEN` aus der zentralen `.env`,
+     * wie in Phase 1 mit genau einem Homeserver.
+     *
+     * Gespeichert wird nur der Hash: Ein Datenbank-Auszug soll keine gültigen
+     * Agent-Zugänge enthalten. SHA-256 ohne Salt genügt hier – anders als ein
+     * Passwort ist das Token 256 Bit Zufall aus `randomBytes()`, ein
+     * Wörterbuchangriff greift daran nicht (Pflichtenheft §7 verlangt Argon2id
+     * für **Passwörter**).
+     */
+    agentTokenHash: text('agent_token_hash').unique(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

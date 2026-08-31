@@ -246,6 +246,24 @@ export async function registerAdminRoutes(
   );
 
   /*
+   * Agent-Token einer Node erzeugen oder ersetzen (Gefundener Punkt 57).
+   *
+   * `POST`, weil jeder Aufruf ein **neues** Token erzeugt – der Aufruf ist
+   * bewusst nicht idempotent. Das Token steht nur in dieser einen Antwort; es
+   * lässt sich danach nicht wieder anzeigen, nur ersetzen.
+   */
+  app.post(
+    '/admin/nodes/:nodeId/agent-token',
+    { preHandler: requirePermission('node.manage') },
+    async (request, reply) =>
+      handle(reply, async () => {
+        const { nodeId } = nodeIdParamsSchema.parse(request.params);
+
+        return services.nodes.issueAgentToken(contextFrom(request), nodeId);
+      }),
+  );
+
+  /*
    * Nutzeransicht der Nodes (Pflichtenheft §10; WORK_STATUS.md, Gefundene Punkte
    * 49 und 87).
    *

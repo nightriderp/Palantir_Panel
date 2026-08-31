@@ -58,6 +58,14 @@ export interface AgentConnectionOptions {
   readonly runtime: AgentRuntimePort;
   /** Version des Agent-Pakets, geht im `hello`-Frame mit (nur Diagnose). */
   readonly agentVersion: string;
+  /**
+   * Node, für die sich dieser Agent hält (`AGENT_NODE_ID`).
+   *
+   * Geht im `hello` mit, wenn gesetzt. Das Backend lehnt die Verbindung ab,
+   * wenn die Kennung nicht zu der Node passt, der das Token gehört – die
+   * Authentifizierung selbst läuft weiter über das Token (Gefundener Punkt 57).
+   */
+  readonly nodeId?: string | undefined;
   readonly logger?: ConnectionLogger;
   readonly backoff?: Partial<BackoffOptions>;
   readonly correlationStore?: Partial<CorrelationStoreOptions>;
@@ -201,6 +209,9 @@ export class AgentConnection {
       kind: 'hello',
       protocolVersion: AGENT_PROTOCOL_VERSION,
       agentVersion: this.options.agentVersion,
+      // Nur mitschicken, wenn konfiguriert: Das Feld ist additiv, und ein
+      // ausdrückliches `null` wäre eine Angabe, die niemand gemacht hat.
+      ...(this.options.nodeId === undefined ? {} : { nodeId: this.options.nodeId }),
       sentAt: new Date().toISOString(),
     });
 

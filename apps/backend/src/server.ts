@@ -317,6 +317,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         resolveViewerId: (request) => request.authUser?.id ?? null,
         // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
         portPool: admin.services.ports,
+        /*
+         * Zuordnung Agent-Token → Node (Gefundener Punkt 57). Die Tokens führt
+         * B8 an der Node; B3 bekommt nur die Nachschlagefunktion, wie beim
+         * Port-Pool.
+         */
+        resolveHostIdByAgentToken: async (token) =>
+          (await admin.services.nodes.findByAgentToken(token))?.id ?? null,
         events: notifications.eventSink,
       },
     );

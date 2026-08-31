@@ -50,7 +50,7 @@ class FakeSocket implements AgentSocket {
   }
 }
 
-function makeSession(overrides: { correlationIds?: string[] } = {}): {
+function makeSession(overrides: { correlationIds?: string[]; hostId?: string } = {}): {
   session: AgentSession;
   socket: FakeSocket;
   stateReports: AgentStateReportFrame[];
@@ -67,7 +67,7 @@ function makeSession(overrides: { correlationIds?: string[] } = {}): {
   let index = 0;
 
   const session = new AgentSession({
-    hostId: 'host-1',
+    hostId: overrides.hostId ?? 'host-1',
     socket,
     handlers: {
       onStateReport: (_hostId, frame) => {
@@ -92,11 +92,16 @@ function makeSession(overrides: { correlationIds?: string[] } = {}): {
   return { session, socket, stateReports, events, connected, disconnected };
 }
 
-function hello(protocolVersion = AGENT_PROTOCOL_VERSION): string {
+/** Zwei Node-Kennungen für die Prüfung aus Punkt 57 – `HostNode.id` ist eine UUID. */
+const NODE_A = '11111111-1111-4111-8111-111111111111';
+const NODE_B = '22222222-2222-4222-8222-222222222222';
+
+function hello(protocolVersion = AGENT_PROTOCOL_VERSION, nodeId?: string): string {
   return JSON.stringify({
     kind: 'hello',
     protocolVersion,
     agentVersion: '0.1.0',
+    ...(nodeId === undefined ? {} : { nodeId }),
     sentAt: NOW.toISOString(),
   });
 }
@@ -113,6 +118,26 @@ describe('Handshake (Pflichtenheft §2.2)', () => {
       sentAt: NOW.toISOString(),
     });
     expect(session.isReady).toBe(true);
+  });
+
+  it('nimmt die Node-Kennung an, wenn sie zum Token passt (Gefundener Punkt 57)', () => {
+    const { session, socket } = makeSession({ hostId: NODE_A });
+
+    session.handleMessage(hello(AGENT_PROTOCOL_VERSION, NODE_A));
+
+    expect(session.isReady).toBe(true);
+    expect(socket.closedWith).toBeNull();
+  });
+
+  it('lehnt eine Node-Kennung ab, die nicht zum Token gehört', () => {
+    const { session, socket } = makeSession({ hostId: NODE_A });
+
+    // Der Agent meldet eine andere Node, als sein Token ausweist. Beides
+    // auseinanderzuhalten hieße, Befehle an die falsche Node zu schicken.
+    session.handleMessage(hello(AGENT_PROTOCOL_VERSION, NODE_B));
+
+    expect(session.isReady).toBe(false);
+    expect(socket.closedWith?.code).toBe(CLOSE_CODE_UNAUTHORIZED);
   });
 
   it('lehnt eine abweichende Protokollversion ab, statt halb verstanden weiterzuarbeiten', () => {

@@ -28,6 +28,7 @@ import {
   type AgentSessionHandlers,
   AgentSession,
   CLOSE_CODE_UNAUTHORIZED,
+  bearerTokenFrom,
   isAuthorizedAgentHandshake,
 } from './agent-gateway.js';
 
@@ -35,15 +36,28 @@ export interface AgentRouteOptions {
   readonly agents: AgentRegistry;
   readonly handlers: AgentSessionHandlers;
   readonly log: AgentGatewayLogger;
-  /** `AGENT_TOKEN` aus der zentralen `.env`. */
+  /**
+   * Gemeinsames `AGENT_TOKEN` aus der zentralen `.env`.
+   *
+   * Der Rückfallweg für eine Installation mit genau einem Homeserver
+   * (Pflichtenheft §1, §2.1): Wer kein Token je Node vergeben hat, meldet sich
+   * weiter hiermit an und landet auf der vorgegebenen Node.
+   */
   readonly token: string | undefined;
   /**
-   * Node, der eine eingehende Verbindung zugeordnet wird.
+   * Node zu einem vorgelegten Agent-Token (B8, Gefundener Punkt 57).
    *
-   * Phase 1 betreibt genau einen Homeserver (Pflichtenheft §1, §2.1). Für
-   * mehrere Nodes bräuchte es ein Token je Node – erst dann lässt sich eine
-   * Verbindung überhaupt einer Node zuordnen. Das gehört zu B8 und steht in
-   * WORK_STATUS.md unter „Gefundene Punkte".
+   * Das ist der Weg für mehrere Nodes: Jede bekommt ihr eigenes Token, und
+   * darüber ist die Verbindung eindeutig zugeordnet. `null`, wenn zu diesem
+   * Token keine Node gehört – dann greift der Rückfallweg über
+   * {@link AgentRouteOptions.token}.
+   */
+  resolveHostIdByToken?(token: string): Promise<string | null>;
+  /**
+   * Vorgegebene Node für den Rückfallweg über das gemeinsame Token.
+   *
+   * Phase 1 betreibt genau einen Homeserver; solange kein Token je Node
+   * vergeben ist, wird die Verbindung dieser Node zugeordnet.
    */
   resolveHostId(): Promise<string | null>;
   readonly commandTimeoutMs?: number;
@@ -54,7 +68,24 @@ export function registerAgentRoute(app: FastifyInstance, options: AgentRouteOpti
     '/agent',
     { websocket: true },
     async (socket: WebSocket, request: FastifyRequest): Promise<void> => {
-      if (!isAuthorizedAgentHandshake(request.headers.authorization, options.token)) {
+      /*
+       * Zwei Wege, in dieser Reihenfolge (Gefundener Punkt 57):
+       *
+       * 1. Ein Token je Node – dann ist die Verbindung eindeutig zugeordnet und
+       *    ein kompromittierter Agent betrifft nur seine eigene Node.
+       * 2. Das gemeinsame `AGENT_TOKEN` aus der `.env` – der Rückfallweg für
+       *    eine Installation mit genau einem Homeserver. Er bleibt erhalten,
+       *    damit eine bestehende Installation nach dem Update weiterläuft,
+       *    ohne dass jemand zuerst Token vergeben muss.
+       */
+      const presented = bearerTokenFrom(request.headers.authorization);
+      const hostIdByToken =
+        presented === null ? null : ((await options.resolveHostIdByToken?.(presented)) ?? null);
+
+      if (
+        hostIdByToken === null &&
+        !isAuthorizedAgentHandshake(request.headers.authorization, options.token)
+      ) {
         options.log.warn(
           { ip: request.ip },
           'Agent-Verbindung ohne gültiges Pre-Shared-Token abgelehnt',
@@ -64,7 +95,7 @@ export function registerAgentRoute(app: FastifyInstance, options: AgentRouteOpti
         return;
       }
 
-      const hostId = await options.resolveHostId();
+      const hostId = hostIdByToken ?? (await options.resolveHostId());
 
       if (hostId === null) {
         options.log.error(

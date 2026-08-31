@@ -184,7 +184,7 @@ export class AgentSession {
 
     switch (frame.kind) {
       case 'hello':
-        this.handleHello(frame.protocolVersion, frame.agentVersion);
+        this.handleHello(frame.protocolVersion, frame.agentVersion, frame.nodeId ?? null);
         return;
       case 'stateReport':
         void this.handlers.onStateReport(this.hostId, frame as AgentStateReportFrame);
@@ -198,7 +198,25 @@ export class AgentSession {
     }
   }
 
-  private handleHello(protocolVersion: number, agentVersion: string): void {
+  private handleHello(protocolVersion: number, agentVersion: string, nodeId: string | null): void {
+    /*
+     * Nennt der Agent eine Node, muss sie zu der passen, der sein Token gehört
+     * (Gefundener Punkt 57). Beides auseinander zu halten wäre schlimmer als
+     * beides zu verlangen: Wer hier der einen oder der anderen Angabe glaubt,
+     * ordnet im Zweifel Befehle der falschen Node zu. Ein Agent ohne Kennung
+     * wird nicht abgewiesen – das Feld ist additiv, das Token bleibt der
+     * Nachweis.
+     */
+    if (nodeId !== null && nodeId !== this.hostId) {
+      this.log.error(
+        { hostId: this.hostId, agentVersion, gemeldeteNode: nodeId },
+        'Agent meldet eine andere Node als sein Token',
+      );
+      this.close(CLOSE_CODE_UNAUTHORIZED, 'Node-Kennung passt nicht zum Agent-Token.');
+
+      return;
+    }
+
     if (protocolVersion !== AGENT_PROTOCOL_VERSION) {
       this.log.error(
         { hostId: this.hostId, agentVersion, protocolVersion, expected: AGENT_PROTOCOL_VERSION },
@@ -461,6 +479,21 @@ export class AgentRegistry {
  * stimmen. Das ist über einen WireGuard-Tunnel schwer auszunutzen, aber der
  * richtige Vergleich kostet hier nichts.
  */
+/**
+ * Token aus einem `Authorization: Bearer …`-Header, oder `null`.
+ *
+ * Als eigene Funktion, weil zwei Wege es brauchen: der Vergleich mit dem
+ * gemeinsamen `AGENT_TOKEN` und die Suche nach der Node, der dieses Token
+ * gehört (Gefundener Punkt 57).
+ */
+export function bearerTokenFrom(authorizationHeader: string | undefined): string | null {
+  if (authorizationHeader === undefined) {
+    return null;
+  }
+
+  return /^Bearer (.+)$/.exec(authorizationHeader)?.[1] ?? null;
+}
+
 export function isAuthorizedAgentHandshake(
   authorizationHeader: string | undefined,
   expectedToken: string | undefined,
@@ -472,14 +505,9 @@ export function isAuthorizedAgentHandshake(
     return false;
   }
 
-  if (authorizationHeader === undefined) {
-    return false;
-  }
+  const presented = bearerTokenFrom(authorizationHeader);
 
-  const match = /^Bearer (.+)$/.exec(authorizationHeader);
-  const presented = match?.[1];
-
-  if (presented === undefined) {
+  if (presented === null) {
     return false;
   }
 
