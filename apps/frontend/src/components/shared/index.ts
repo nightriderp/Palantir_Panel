@@ -109,6 +109,7 @@ export {
   formatBytes,
   formatDate,
   formatDateTime,
+  formatRelativeTime,
   formatDuration,
   formatMegabytes,
   formatNumber,

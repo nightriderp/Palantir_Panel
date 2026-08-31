@@ -5,11 +5,13 @@ import { useMemo, type ReactNode } from 'react';
 import { type ConversationDto, type GameServerDto, type HostNodeDto } from '@palantir/contracts';
 import { AppShell, StatusDot, ToastProvider } from '@/components/shared';
 import { UserMenu } from '@/components/account/UserMenu';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { fetchConversations } from '@/lib/api/chat';
 import { fetchNodes } from '@/lib/api/nodes';
 import { fetchServers } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { LiveChannelProvider, useLiveChannel } from '@/lib/live/LiveChannelProvider';
+import { NotificationLiveProvider } from '@/lib/live/NotificationLiveProvider';
 import { useServerListLive } from '@/lib/live/useServerLive';
 import { DashboardNav } from './DashboardNav';
 import { GlobalStatus } from './GlobalStatus';
@@ -142,8 +144,9 @@ function Shell({ children, versionLabel }: { children: ReactNode; versionLabel: 
       topbar={
         <>
           <GlobalStatus metrics={metrics} />
-          <div className="flex shrink-0 items-center gap-4">
+          <div className="flex shrink-0 items-center gap-3">
             <LiveConnectionBadge />
+            <NotificationBell />
             <UserMenu user={user} />
           </div>
         </>
@@ -176,7 +179,9 @@ export function DashboardShell({ children, versionLabel }: DashboardShellProps) 
     <ToastProvider>
       <SessionProvider>
         <LiveChannelProvider>
-          <Shell versionLabel={versionLabel}>{children}</Shell>
+          <NotificationLiveProvider>
+            <Shell versionLabel={versionLabel}>{children}</Shell>
+          </NotificationLiveProvider>
         </LiveChannelProvider>
       </SessionProvider>
     </ToastProvider>

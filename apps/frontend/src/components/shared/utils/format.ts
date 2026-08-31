@@ -144,6 +144,16 @@ const DATE_TIME_FORMAT = new Intl.DateTimeFormat('de-DE', {
 
 const TIME_FORMAT = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
 
+/**
+ * Kurzform relativer Zeitangaben: `vor 12 Min.`, `vor 3 Std.`, `gestern`.
+ *
+ * `numeric: 'auto'` ist Absicht – daraus wird „gestern" statt „vor 1 Tag".
+ */
+const RELATIVE_FORMAT = new Intl.RelativeTimeFormat('de-DE', {
+  numeric: 'auto',
+  style: 'short',
+});
+
 /** Wandelt einen ISO-Zeitstempel in ein `Date`; `null`, wenn er nicht taugt. */
 function toDate(iso: string | null | undefined): Date | null {
   if (!iso) return null;
@@ -167,4 +177,30 @@ export function formatDateTime(iso: string | null | undefined): string {
 export function formatTime(iso: string | null | undefined): string {
   const date = toDate(iso);
   return date ? TIME_FORMAT.format(date) : '—';
+}
+
+/**
+ * Zeitpunkt relativ zu jetzt, z. B. `vor 12 Min.` oder `gestern`.
+ *
+ * Für Listen, in denen das genaue Datum stört – etwa die Glocke in der
+ * Kopfleiste. Ab einer Woche wird auf das ausgeschriebene Datum umgeschaltet:
+ * „vor 6 Wo." sagt weniger als „12. Juli 2026".
+ *
+ * `jetzt` ist nur für Tests da; im Betrieb bleibt es beim aktuellen Zeitpunkt.
+ * Die Ausgabe hängt damit von der Uhr ab und gehört deshalb nicht in
+ * server-gerenderte Bereiche – sonst weicht sie beim Hydrieren ab.
+ */
+export function formatRelativeTime(iso: string | null | undefined, jetzt = new Date()): string {
+  const date = toDate(iso);
+  if (!date) return '—';
+
+  const sekunden = Math.round((date.getTime() - jetzt.getTime()) / 1000);
+  const betrag = Math.abs(sekunden);
+
+  if (betrag < 45) return 'gerade eben';
+  if (betrag < 3600) return RELATIVE_FORMAT.format(Math.round(sekunden / 60), 'minute');
+  if (betrag < 86400) return RELATIVE_FORMAT.format(Math.round(sekunden / 3600), 'hour');
+  if (betrag < 86400 * 7) return RELATIVE_FORMAT.format(Math.round(sekunden / 86400), 'day');
+
+  return formatDate(iso);
 }

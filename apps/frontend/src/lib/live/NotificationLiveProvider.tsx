@@ -1,7 +1,16 @@
 'use client';
 
 import { type NotificationDto } from '@palantir/contracts';
-import { useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { API_BASE_URL } from '../api/client';
 import { reconnectDelayMs } from './backoff';
 import { type LiveConnectionState } from './LiveChannelProvider';
@@ -15,11 +24,16 @@ import {
 /**
  * Live-Zugang zur eigenen Inbox (Pflichtenheft §5.3).
  *
- * Bewusst eine **eigene** Verbindung neben `LiveChannelProvider`: Der Kanal aus
- * F3 abonniert einzelne Server (`{ resource: 'server', id }`), die Inbox hängt
- * dagegen am angemeldeten Konto. Genau so ist es im Backend getrennt
- * (`/live/notifications`, eigener Endpunkt in B6) und in `notifications.ts` in
- * `@palantir/contracts` begründet.
+ * Bewusst eine **eigene** Verbindung neben {@link LiveChannelProvider}: Der
+ * Kanal aus F3 abonniert einzelne Server (`{ resource: 'server', id }`), die
+ * Inbox hängt dagegen am angemeldeten Konto. Genau so ist es im Backend
+ * getrennt (`/live/notifications`, eigener Endpunkt in B6) und in
+ * `notifications.ts` in `@palantir/contracts` begründet.
+ *
+ * Genau **eine** Verbindung für den ganzen eingeloggten Bereich: Glocke in der
+ * Kopfleiste und Posteingang hören beide hier mit. Vorher hielt der Posteingang
+ * seine eigene Verbindung; mit der Glocke wären es auf `/notifications` zwei
+ * gewesen, die dieselben Meldungen doppelt übertragen.
  *
  * Kein Polling: Neue Meldungen kommen ausschließlich über diesen Kanal herein.
  * Wer nicht angemeldet ist, wird vom Backend mit {@link CLOSE_CODE_UNAUTHORIZED}
@@ -27,25 +41,41 @@ import {
  * nichts ändern würde.
  */
 
-export interface NotificationLiveData {
+type NotificationListener = (notification: NotificationDto, unreadCount: number) => void;
+
+export interface NotificationLiveApi {
   connection: LiveConnectionState;
   /** Ungelesene laut Backend; `null`, solange der Kanal noch nichts gemeldet hat. */
   unreadCount: number | null;
   /** Die Verbindung wurde als „nicht angemeldet" abgewiesen. */
   unauthorized: boolean;
+  /** Hört auf neue Meldungen; liefert die Abmeldefunktion zurück. */
+  subscribe: (listener: NotificationListener) => () => void;
+  /**
+   * Zähler nach lokalem Lesen anpassen.
+   *
+   * Das Backend meldet über den Kanal nur **neue** Meldungen. Wird etwas
+   * gelesen, bliebe der Punkt an der Glocke sonst stehen, bis die nächste
+   * Meldung eintrifft.
+   */
+  setUnreadCount: (count: number) => void;
 }
 
-export function useNotificationLive(
-  onNotification: (notification: NotificationDto, unreadCount: number) => void,
-): NotificationLiveData {
+const NotificationLiveContext = createContext<NotificationLiveApi | null>(null);
+
+export function NotificationLiveProvider({ children }: { children: ReactNode }) {
   const [connection, setConnection] = useState<LiveConnectionState>('connecting');
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
   const [unauthorized, setUnauthorized] = useState(false);
 
-  // Der Rückruf wird bei jedem Rendern neu erzeugt; die Verbindung soll
-  // deswegen nicht neu aufgebaut werden.
-  const callbackRef = useRef(onNotification);
-  callbackRef.current = onNotification;
+  const listeners = useRef(new Set<NotificationListener>());
+
+  const subscribe = useCallback((listener: NotificationListener) => {
+    listeners.current.add(listener);
+    return () => {
+      listeners.current.delete(listener);
+    };
+  }, []);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -105,7 +135,9 @@ export function useNotificationLive(
 
         if (frame.kind === 'event') {
           setUnreadCount(frame.data.unreadCount);
-          callbackRef.current(frame.data.notification, frame.data.unreadCount);
+          for (const listener of listeners.current) {
+            listener(frame.data.notification, frame.data.unreadCount);
+          }
         }
       };
 
@@ -140,5 +172,31 @@ export function useNotificationLive(
     };
   }, []);
 
-  return { connection, unreadCount, unauthorized };
+  const value = useMemo<NotificationLiveApi>(
+    () => ({ connection, unreadCount, unauthorized, subscribe, setUnreadCount }),
+    [connection, unreadCount, unauthorized, subscribe],
+  );
+
+  return (
+    <NotificationLiveContext.Provider value={value}>{children}</NotificationLiveContext.Provider>
+  );
 }
+
+/**
+ * Zugang zum Inbox-Kanal.
+ *
+ * Außerhalb des Providers gibt es keine Verbindung – dann bleibt der Zähler
+ * `null` und `subscribe` tut nichts. So bleibt eine Ansicht auch außerhalb des
+ * eingeloggten Rahmens darstellbar (Tests, Storybook), statt zu scheitern.
+ */
+export function useNotificationLive(): NotificationLiveApi {
+  return useContext(NotificationLiveContext) ?? OHNE_KANAL;
+}
+
+const OHNE_KANAL: NotificationLiveApi = {
+  connection: 'closed',
+  unreadCount: null,
+  unauthorized: false,
+  subscribe: () => () => {},
+  setUnreadCount: () => {},
+};
