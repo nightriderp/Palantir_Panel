@@ -13,6 +13,8 @@
  * beiden Aktionen „freigeben" und „sperren".
  */
 
+import { type ResourceQuotaSlot } from './resources.js';
+
 /** Provider einer verknüpften Login-Methode (Pflichtenheft §6, `AuthMethod.type`). */
 export type LinkedAccountProvider = 'password' | 'discord' | 'steam' | 'twitch';
 
@@ -77,6 +79,25 @@ export interface RegistrationRequestPermissions {
 }
 
 /** Eintrag der Freischalt-Warteliste (Lastenheft §3.7). */
+/**
+ * Kurzfassung des Kontingents für die Nutzerliste (Mockup-Abgleich 12.1.3).
+ *
+ * Der Entwurf zeigt in der Nutzerliste eine Spalte „Kontingent" mit
+ * Arbeitsspeicher und Serveranzahl (`4 GB / 8 GB · 1 / 3`). Genau diese beiden
+ * Werte stehen hier – nicht das vollständige {@link ResourceQuotaDto}: Eine
+ * Liste braucht keinen Rechteblock je Zeile und keine CPU- und Plattenwerte,
+ * die dort ohnehin nicht hinpassen. Wer alles sehen oder ändern will, öffnet
+ * das Kontingent des Nutzers (`/admin/users/:id/limits`).
+ *
+ * `limit: null` in einem Slot heißt „für diese Ressource gilt kein Limit".
+ */
+export interface RegistrationRequestQuota {
+  /** Arbeitsspeicher der laufenden Server gegen die Grenze. */
+  ram: ResourceQuotaSlot;
+  /** Gleichzeitig laufende Server gegen die Grenze. */
+  servers: ResourceQuotaSlot;
+}
+
 export interface RegistrationRequestDto {
   /** Id des wartenden Kontos – die Warteliste ist eine Sicht auf `User`, keine eigene Entität. */
   userId: string;
@@ -89,5 +110,15 @@ export interface RegistrationRequestDto {
   roleNames: string[];
   /** Registrierungszeitpunkt als ISO-8601 (`User.createdAt`). */
   registeredAt: string;
+  /**
+   * Kontingent des Kontos für die Spalte „Kontingent" (Mockup-Abgleich 12.1.3).
+   *
+   * Optional, damit dieser Vertrag für sich stehen kann (CLAUDE.md §3): Ein
+   * Konsument, der das Feld nicht kennt, bleibt gültig. `null` heißt „nicht
+   * ermittelbar" – etwa, wenn die Belegung gerade nicht gelesen werden konnte;
+   * ein Kontingent ohne jede Grenze ist dagegen ein Objekt mit `limit: null` in
+   * beiden Slots.
+   */
+  quota?: RegistrationRequestQuota | null;
   permissions: RegistrationRequestPermissions;
 }
