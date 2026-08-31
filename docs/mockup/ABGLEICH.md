@@ -8,9 +8,16 @@ nebeneinander, App mit Demo-Daten (5 Server, 2 Nodes, Owner-Konto).
 Diese Datei ist die **Befundliste** und wird beim Abarbeiten fortgeschrieben. Reihenfolge
 und Umfang der Korrekturen entscheidet der Nutzer.
 
-**Stand:** Abschnitt 1 (Grundgerüst) ist umgesetzt, alles Übrige offen. Zwei Befunde des
-ersten Durchgangs (3.2, 3.7) haben sich beim Lesen des Codes als falsch erwiesen und sind
-als „entfällt" markiert statt gelöscht, damit die Nummerierung stabil bleibt.
+**Stand:** Abschnitt 1 (Grundgerüst) und Abschnitt 3 (Übersicht) sind umgesetzt, alles
+Übrige offen. Vier Befunde des ersten Durchgangs (3.2, 3.6, 3.7, 3.8) haben sich beim
+Lesen des Codes als falsch erwiesen; sie sind als „entfällt" markiert statt gelöscht,
+damit die Nummerierung stabil bleibt.
+
+**Lehre daraus:** Die Demo-Daten des ersten Durchgangs gehörten alle einem Konto, keiner
+war angepinnt, keiner hatte ein Update. Zustände, die es nur bei fremden, angepinnten oder
+gestörten Servern gibt, wurden deshalb nie gerendert und wirkten wie nicht gebaut. Vor
+jedem weiteren Abschnitt gilt: erst die Datenlage herstellen, die den Zustand auslöst,
+dann urteilen.
 
 ## Einordnung der Befunde
 
@@ -78,16 +85,28 @@ Zwei bewusste Abweichungen dabei:
 
 ## 3. Übersicht (`/servers`)
 
-| # | Klasse | Befund |
-| --- | --- | --- |
-| 3.1 | **B** | **Die Gruppe heißt „Angeheftet“ statt „Angepinnt“** und trägt kein 📌 vor der Überschrift. **Korrigiert:** die Gruppe *existiert* samt Anpinnen ([usePinnedServers.ts](../../apps/frontend/src/components/servers/usePinnedServers.ts), lokal im Browser gespeichert). Beim ersten Durchgang fälschlich als fehlend notiert – in den Testdaten war nichts angeheftet, deshalb blieb die Gruppe leer. |
-| 3.2 | — | **Entfällt.** Die Gruppe „Andere Server“ existiert (`groupServers` in [serverList.ts](../../apps/frontend/src/components/servers/serverList.ts)) und war nur leer, weil das Testkonto Besitzer aller fünf Server war. |
-| 3.3 | **A** | **Fußzeile fremder Karten fehlt**: Mockup zeigt dort `Admin-Zugriff` und einen `Nachricht`-Link. |
-| 3.4 | **A** | Statuszusatz **„Update verfügbar"** (orange, unter der Status-Pille) fehlt. App kennt nur „Neustart nötig". |
-| 3.5 | **B** | **Ring-Beschriftung `PLATTE` statt `DISK`** – [ServerCard.tsx:204](../../apps/frontend/src/components/shared/server/ServerCard.tsx#L204) und [OverviewTab.tsx:95](../../apps/frontend/src/components/servers/detail/OverviewTab.tsx#L95). |
-| 3.6 | **B** | **Fehlermeldung auf der Karte**: Mockup setzt den Text als schlichte Zeile unter den Titel, App rahmt ihn als rot hinterlegten Kasten. |
-| 3.7 | — | **Entfällt.** Die Sortierung ist nicht willkürlich, sondern festgelegt: erst Störungen, dann Bewegung, dann Ruhendes, innerhalb einer Gruppe alphabetisch (`compareServers` in [serverList.ts](../../apps/frontend/src/components/servers/serverList.ts)). Sie weicht vom Mockup ab, ist aber begründet und stabil. |
-| 3.8 | **B** | **Kartentitel-Untertitel**: Mockup `Paper · 1.21.4` bzw. `Vanilla · Staging · Femi` (Variante · Version · ggf. Besitzer), App nur den Namen des Spieltyps. |
+| #   | Klasse | Stand    | Befund                                                                                                                                                                                                                                                                                                                                             |
+| --- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3.1 | **B**  | erledigt | Die Gruppe hieß **„Angeheftet" statt „Angepinnt"**. Das Anpinnen selbst gab es bereits ([usePinnedServers.ts](../../apps/frontend/src/components/servers/usePinnedServers.ts)); beim ersten Durchgang stand hier fälschlich „Gruppe fehlt", weil in den Testdaten nichts angepinnt war. Das 📌 des Mockups ist in der App ein Symbol vor der Überschrift. |
+| 3.2 | —      | entfällt | Die Gruppe „Andere Server" existiert (`groupServers` in [serverList.ts](../../apps/frontend/src/components/servers/serverList.ts)) und war nur leer, weil das Testkonto Besitzer aller Server war.                                                                                                                                                   |
+| 3.3 | **A**  | erledigt | **Fußzeile fremder Karten.** Die Zeile gab es, aber ohne die Kennzeichnung **„Admin-Zugriff"**, und der Knopf **„Nachricht"** war zwar in der Karte angelegt, jedoch nirgends verdrahtet – er erschien deshalb nie. Beides ergänzt; „Nachricht" öffnet die Unterhaltung mit dem Besitzer.                                                             |
+| 3.4 | **A**  | Backend  | Statuszusatz **„Update verfügbar"** erscheint nie. Die Oberfläche ist vollständig (`ServerCard`, verdrahtet in `ServerOverview`) – das Backend setzt `updateAvailable` fest auf `false`, weil der Vergleich der Image-Digests nicht zu B3 gehört ([dto.ts](../../apps/backend/src/modules/server-orchestration/dto.ts)). **Kein Frontend-Befund.**   |
+| 3.5 | **B**  | erledigt | **Ring-Beschriftung** auf der Karte: „Platte" → **„Disk"** wie im Mockup. Die Detailseite behält „Platte" – der Entwurf selbst beschriftet sie dort so.                                                                                                                                                                                              |
+| 3.6 | —      | entfällt | Die Fehlermeldung ist im Mockup **ebenfalls** ein rot umrandeter Kasten (`ServerCard.dc.html`, `card.isError`). Die App stimmt damit überein; der Erstbefund beruhte auf einem Kartenzustand, der im gerenderten Mockup nicht sichtbar war.                                                                                                          |
+| 3.7 | —      | entfällt | Die Sortierung ist festgelegt, nicht willkürlich: erst Störungen, dann Bewegung, dann Ruhendes, innerhalb einer Gruppe alphabetisch (`compareServers`).                                                                                                                                                                                             |
+| 3.8 | —      | entfällt | Der Untertitel folgt bereits dem Mockup (`gameTag` + Besitzername bei fremden Servern). Dass dort „Paper · 1.21.4" steht und in der App „Test-Server (Echo)", liegt am Spieltyp der Testdaten, nicht an der Ansicht.                                                                                                                                 |
+
+**Umsetzung von 3.1, 3.3 und 3.5** liegt auf `ui/mockup-abgleich`. Zwei Mängel, die
+dabei auffielen und ohne die der Ungelesen-Zähler aus 1.4 falsche Zahlen zeigt, sind
+mitbehoben: der Lesestand einer Konversation wurde nur lokal vermerkt und nie an den
+Server gemeldet (obwohl die Route dafür existiert), und der Rahmen holt die
+Konversationen jetzt bei jedem Seitenwechsel neu.
+
+Von den acht Befunden dieses Abschnitts haben sich **vier als falsch erwiesen**. Ursache
+war durchweg dieselbe: die Demo-Daten des ersten Durchgangs gehörten alle einem Konto,
+keiner war angepinnt und keiner hatte ein Update – die betroffenen Zustände wurden
+deshalb nie gerendert. Für den weiteren Abgleich stehen jetzt auch fremde Server, ein
+abgestürzter Server und eine Konversation in der Entwicklungsdatenbank.
 
 ---
 
@@ -278,7 +297,7 @@ während „Skins" Titel und Untertitel darüber setzt. Uneinheitlich (Klasse **
 | --- | --- | --- | --- | --- | --- |
 | Grundgerüst | 5 | 3 | 2 | — | — |
 | Anmelden/Registrieren | 2 | 2 | 2 | — | — |
-| Übersicht | 2 | 4 | — | — | 2 |
+| Übersicht | 2 | 2 | — | — | 4 |
 | Server-Detail | 2 | 6 | — | — | — |
 | Server anlegen | — | 5 | 2 | — | — |
 | Nachrichten | — | 1 | 1 | 1 | — |
@@ -289,10 +308,12 @@ während „Skins" Titel und Untertitel darüber setzt. Uneinheitlich (Klasse **
 | Profil | 1 | 3 | — | — | — |
 | Administration | 7 | 13 | 3 | — | — |
 | Phase-gesperrt | — | 1 | — | — | — |
-| **Summe** | **23** | **45** | **14** | **2** | **2** |
+| **Summe** | **23** | **43** | **14** | **2** | **4** |
 
-Gegenüber dem ersten Durchgang: 3.2 und 3.7 entfallen, 3.1 rutscht von A nach B (die
-Gruppen der Übersicht gibt es bereits), und 1.10 kommt als übersehener Befund hinzu.
+Gegenüber dem ersten Durchgang: 3.2, 3.6, 3.7 und 3.8 entfallen, 3.1 rutscht von A nach B
+(die Gruppen der Übersicht gibt es bereits), und 1.10 kommt als übersehener Befund hinzu.
+3.4 bleibt in der Zählung, ist aber kein Frontend-Befund: die Oberfläche steht, das
+Backend liefert `updateAvailable` nur nie als `true`.
 
 Die zwei offenen Punkte (6.3, 9.3) betreffen Nachrichten und Meine Backups: dort fehlten
 Chat- und Backup-Testdaten, die Ansichten sind noch nicht abschließend verglichen.
@@ -300,7 +321,7 @@ Chat- und Backup-Testdaten, die Ansichten sind noch nicht abschließend verglich
 ### Vorschlag für die Reihenfolge
 
 1. ~~**Grundgerüst** (1.1–1.8)~~ – erledigt. Offen bleibt dort nur die Glocke (1.10).
-2. **Übersicht + Server-Karte** (3.x) – die meistgesehene Ansicht.
+2. ~~**Übersicht + Server-Karte** (3.1, 3.3, 3.5)~~ – erledigt. 3.4 wartet auf das Backend.
 3. **Server-Detail** (4.x) – vor allem die zweispaltige Übersicht mit Konsole.
 4. **Server anlegen** (5.x) – überschaubar, reine Gestaltung.
 5. **Kleinteiliges** (Anmelden, Profil, Arcade, Benachrichtigungen).

@@ -129,7 +129,7 @@ export function buildStatusMetrics({
     const diskTotal = nodes.reduce((total, node) => total + node.capacity.total.diskMb, 0);
     metrics.push({
       key: 'disk',
-      label: 'Platte',
+      label: 'Disk',
       value: diskUsed === null ? '—' : `${formatMegabytes(diskUsed)}/${formatMegabytes(diskTotal)}`,
       tone: 'warning',
       note: 'Summe der gemessenen Plattenbelegung über alle Nodes.',

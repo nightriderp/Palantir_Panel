@@ -209,7 +209,7 @@ export function ServerCard({
           tone={loadTone(ramPercent)}
         />
         <MetricRing
-          label="Platte"
+          label="Disk"
           value={formatMegabytes(stats?.diskUsedMb)}
           percent={diskPercent}
           tone={loadTone(diskPercent)}
