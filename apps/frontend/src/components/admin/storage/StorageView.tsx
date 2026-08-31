@@ -16,6 +16,8 @@ import {
   Panel,
   SelectField,
   Toggle,
+  clampPercent,
+  cn,
   formatBytes,
   formatDateTime,
   formatNumber,
@@ -60,12 +62,49 @@ export function StorageView() {
   const nodes = useApiResource<HostNodeDto[]>((signal) => fetchNodes(signal), canView ? [] : null);
   const [nodeId, setNodeId] = useState<string | null>(null);
 
-  const activeNodeId = nodeId ?? nodes.data?.[0]?.id ?? null;
+  const nodeList = useMemo(() => nodes.data ?? [], [nodes.data]);
+  const activeNodeId = nodeId ?? nodeList[0]?.id ?? null;
+
+  /*
+   * Die Uebersicht zeigt **alle** Nodes gleichzeitig (Mockup „Platz auf den
+   * Nodes"). Dafuer wird je Node der zwischengespeicherte Stand geholt - ein
+   * Aufruf je Node, aber nur der gespeicherte Schnappschuss, kein neuer Scan.
+   * Eine Node, deren Abruf scheitert, fehlt schlicht in der Karte, statt die
+   * ganze Seite zu stoppen.
+   */
+  const snapshots = useApiResource<Record<string, StorageSnapshotDto>>(
+    async (signal) => {
+      const results = await Promise.all(
+        nodeList.map((node) => fetchStorageSnapshot(node.id, signal)),
+      );
+
+      const map: Record<string, StorageSnapshotDto> = {};
+      for (const [index, result] of results.entries()) {
+        const node = nodeList[index];
+        if (node && result.success) map[node.id] = result.data;
+      }
+
+      return { success: true, data: map, error: null };
+    },
+    nodeList.length > 0 ? [nodeList.map((node) => node.id).join(',')] : null,
+  );
+
+  /** Gesamtbelegung ueber alle Nodes, die schon einmal gescannt wurden. */
+  const total = useMemo(() => {
+    let used = 0;
+    let capacity = 0;
+    for (const snapshot of Object.values(snapshots.data ?? {})) {
+      if (!snapshot.breakdown) continue;
+      used += snapshot.breakdown.usedBytes;
+      capacity += snapshot.breakdown.totalBytes;
+    }
+    return capacity > 0 ? { used, capacity } : null;
+  }, [snapshots.data]);
 
   if (!canView) {
     return (
       <div className="flex flex-col gap-5">
-        <PageHeader title="Node-Platz" className="-mx-5 -mt-5 px-5" />
+        <PageHeader title="Platz auf den Nodes" className="-mx-5 -mt-5 px-5" />
         <AdminAccessNotice area="die Speicherverwaltung" />
       </div>
     );
@@ -74,8 +113,12 @@ export function StorageView() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
-        title="Node-Platz"
-        subtitle="Belegten Speicher der Nodes einsehen und aufräumen"
+        title="Platz auf den Nodes"
+        subtitle={
+          total
+            ? `Gesamt: ${formatBytes(total.used)} / ${formatBytes(total.capacity)} belegt`
+            : 'Belegten Speicher der Nodes einsehen und aufräumen'
+        }
         className="-mx-5 -mt-5 px-5"
       />
 
@@ -89,20 +132,128 @@ export function StorageView() {
         </Panel>
       ) : (
         <>
-          {(nodes.data ?? []).length > 1 ? (
-            <div className="max-w-xs">
-              <SelectField
-                label="Node"
-                value={activeNodeId ?? ''}
-                onChange={setNodeId}
-                options={(nodes.data ?? []).map((node) => ({ value: node.id, label: node.name }))}
+          <div className="flex flex-col gap-3">
+            {nodeList.map((node) => (
+              <NodeSummaryCard
+                key={node.id}
+                node={node}
+                snapshot={snapshots.data?.[node.id] ?? null}
+                active={node.id === activeNodeId}
+                onSelect={() => setNodeId(node.id)}
+                onRescanned={(updated) =>
+                  snapshots.setData((current) => ({ ...(current ?? {}), [node.id]: updated }))
+                }
               />
-            </div>
-          ) : null}
+            ))}
+          </div>
+
           {activeNodeId ? <NodeStorage key={activeNodeId} nodeId={activeNodeId} /> : null}
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Eine Node in der Uebersicht (Mockup „Platz auf den Nodes").
+ *
+ * Balken, die drei Anteile Serverdaten / Sicherungen / Images und ein Hinweis,
+ * wenn verwaiste Daten liegen. „Neu einlesen" stoesst den Scan genau dieser
+ * Node an; die Auswahl darunter oeffnet ihre Einzelheiten.
+ */
+function NodeSummaryCard({
+  node,
+  snapshot,
+  active,
+  onSelect,
+  onRescanned,
+}: {
+  node: HostNodeDto;
+  snapshot: StorageSnapshotDto | null;
+  active: boolean;
+  onSelect: () => void;
+  onRescanned: (snapshot: StorageSnapshotDto) => void;
+}) {
+  const toast = useToast();
+  const [scanning, setScanning] = useState(false);
+
+  const breakdown = snapshot?.breakdown ?? null;
+  const percent =
+    breakdown && breakdown.totalBytes > 0
+      ? clampPercent((breakdown.usedBytes / breakdown.totalBytes) * 100)
+      : null;
+
+  function sizeOf(kind: StorageEntryKind): number {
+    return breakdown?.categories.find((category) => category.kind === kind)?.sizeBytes ?? 0;
+  }
+
+  const orphaned = sizeOf('orphaned');
+
+  async function rescan() {
+    setScanning(true);
+    const result = await startStorageScan(node.id, { includeImages: true });
+    setScanning(false);
+
+    if (result.success) {
+      onRescanned(result.data);
+      toast.success(`„${node.name}" neu eingelesen.`);
+    } else {
+      toast.error(errorText(result));
+    }
+  }
+
+  return (
+    <Panel className={cn('flex flex-col gap-3', active && 'border-brand-line')}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={onSelect}
+          className={cn('text-base font-semibold', active ? 'text-ink' : 'text-ink-muted')}
+        >
+          {node.name}
+        </button>
+
+        <Button
+          iconLeft="restart"
+          disabled={!(snapshot?.permissions.canScan ?? false) || scanning}
+          onClick={() => void rescan()}
+        >
+          {scanning ? 'Läuft …' : 'Neu einlesen'}
+        </Button>
+      </div>
+
+      {percent === null ? (
+        <p className="text-sm text-ink-faint">Für diese Node ist noch kein Scan gelaufen.</p>
+      ) : (
+        <>
+          <div className="h-1.5 overflow-hidden rounded-sm bg-fill-strong">
+            <div className="h-full rounded-sm bg-brand" style={{ width: `${percent}%` }} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {(
+              [
+                ['Serverdaten', 'serverData'],
+                ['Sicherungen', 'backup'],
+                ['Images', 'dockerImage'],
+              ] as const
+            ).map(([label, kind]) => (
+              <div key={kind}>
+                <div className="text-2xs uppercase tracking-[0.08em] text-ink-soft">{label}</div>
+                <div className="mt-1 font-mono text-md text-ink">{formatBytes(sizeOf(kind))}</div>
+                <div className="text-xs text-ink-faint">In Benutzung</div>
+              </div>
+            ))}
+          </div>
+
+          {orphaned > 0 ? (
+            <p className="text-xs text-caution">
+              {formatBytes(orphaned)} gehören zu Servern, die es nicht mehr gibt.
+            </p>
+          ) : null}
+        </>
+      )}
+    </Panel>
   );
 }
 

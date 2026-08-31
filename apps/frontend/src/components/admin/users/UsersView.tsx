@@ -42,7 +42,7 @@ import {
 } from '@/lib/api/admin';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
+import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
 import { registrationStatusLabel, registrationStatusTone } from '../labels';
 
 /**
@@ -193,87 +193,115 @@ export function UsersView() {
       ) : filtered.length === 0 ? (
         <Panel className="text-center text-base text-ink-faint">Keine Konten gefunden.</Panel>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {filtered.map((entry) => (
-            <li key={entry.userId}>
-              <Panel className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-soft font-semibold text-brand">
+        /*
+         * Tabelle statt Kartenliste (Mockup „Benutzerverwaltung"). Die Spalte
+         * „Kontingent" des Entwurfs fehlt: der Listen-DTO fuehrt keine Limits,
+         * die gibt es nur einzeln ueber die Schaltflaeche daneben. Sobald das
+         * DTO sie mitliefert, kommt hier eine Spalte dazu.
+         */
+        <AdminTable>
+          <thead>
+            <tr>
+              <Th>Benutzer</Th>
+              <Th>Rollen</Th>
+              <Th>Zustand</Th>
+              <Th>Erstellt</Th>
+              <Th>Aktion</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((entry) => (
+              <tr key={entry.userId}>
+                <Td>
+                  <span className="flex items-center gap-2.5">
+                    <span
+                      aria-hidden
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-semibold text-brand"
+                    >
                       {serverInitials(entry.displayName)}
                     </span>
-                    <div className="flex flex-col">
-                      <span className="text-base font-semibold text-ink">{entry.displayName}</span>
-                      <span className="text-sm text-ink-faint">
-                        Seit {formatDate(entry.registeredAt)}
-                        {entry.roleNames.length > 0 ? ` · ${entry.roleNames.join(', ')}` : ''}
-                      </span>
-                    </div>
-                  </div>
+                    <span className="text-ink">{entry.displayName}</span>
+                  </span>
+                </Td>
+                <Td className="text-ink-muted">
+                  {entry.roleNames.length > 0 ? entry.roleNames.join(', ') : '—'}
+                </Td>
+                <Td>
                   <Badge tone={registrationStatusTone(entry.status)} withDot>
                     {registrationStatusLabel(entry.status)}
                   </Badge>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    iconLeft="shield"
-                    onClick={() => setDialog({ kind: 'roles', user: entry })}
-                  >
-                    Rollen
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    iconLeft="server"
-                    onClick={() => setDialog({ kind: 'servers', user: entry })}
-                  >
-                    Server
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    iconLeft="database"
-                    onClick={() => setDialog({ kind: 'limits', user: entry })}
-                  >
-                    Kontingent
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    iconLeft="key"
-                    onClick={() => void doReset(entry.userId, entry.displayName)}
-                  >
-                    Passwort zurücksetzen
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    iconLeft="lock"
-                    onClick={() => setDialog({ kind: 'resetTwoFactor', user: entry })}
-                  >
-                    2FA zurücksetzen
-                  </Button>
-                  {entry.permissions.canBlock ? (
-                    <Button
-                      variant="danger"
-                      iconLeft="lock"
-                      onClick={() => setDialog({ kind: 'block', user: entry })}
-                    >
-                      Sperren
-                    </Button>
-                  ) : null}
-                  {entry.permissions.canUnblock ? (
+                </Td>
+                <Td className="whitespace-nowrap text-ink-muted">
+                  {formatDate(entry.registeredAt)}
+                </Td>
+                <Td>
+                  <span className="flex flex-wrap gap-2">
                     <Button
                       variant="secondary"
-                      iconLeft="restart"
-                      onClick={() => void doUnblock(entry)}
+                      size="sm"
+                      iconLeft="shield"
+                      onClick={() => setDialog({ kind: 'roles', user: entry })}
                     >
-                      Entsperren
+                      Rollen
                     </Button>
-                  ) : null}
-                </div>
-              </Panel>
-            </li>
-          ))}
-        </ul>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      iconLeft="server"
+                      onClick={() => setDialog({ kind: 'servers', user: entry })}
+                    >
+                      Server
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      iconLeft="database"
+                      onClick={() => setDialog({ kind: 'limits', user: entry })}
+                    >
+                      Kontingent
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      iconLeft="key"
+                      onClick={() => void doReset(entry.userId, entry.displayName)}
+                    >
+                      Passwort
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      iconLeft="lock"
+                      onClick={() => setDialog({ kind: 'resetTwoFactor', user: entry })}
+                    >
+                      2FA
+                    </Button>
+                    {entry.permissions.canBlock ? (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        iconLeft="lock"
+                        onClick={() => setDialog({ kind: 'block', user: entry })}
+                      >
+                        Sperren
+                      </Button>
+                    ) : null}
+                    {entry.permissions.canUnblock ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        iconLeft="restart"
+                        onClick={() => void doUnblock(entry)}
+                      >
+                        Entsperren
+                      </Button>
+                    ) : null}
+                  </span>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </AdminTable>
       )}
 
       {dialog?.kind === 'roles' ? (
