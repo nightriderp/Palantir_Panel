@@ -66,12 +66,34 @@ log 'Hole den Ziel-Commit ...'
 git -C "${REPO_DIR}" fetch --quiet --depth=1 origin "${ziel}"
 git -C "${REPO_DIR}" checkout --quiet --detach "${ziel}"
 
+# Versions-Tag des ausgerollten Commits bestimmen - das ist die Version, die im
+# Panel unten links steht. Sie wird nirgends von Hand gepflegt: Ein Deployment
+# laeuft ausschliesslich ueber ein Tag `v*`, und hier wird genau dieses Tag
+# wieder aufgeloest. Das flache Holen oben bringt keine Tags mit, deshalb ein
+# zweiter, ebenso flacher Holvorgang nur fuer sie.
+git -C "${REPO_DIR}" fetch --quiet --depth=1 origin '+refs/tags/*:refs/tags/*' || true
+release="$(git -C "${REPO_DIR}" describe --tags --exact-match "${ziel}" 2>/dev/null || true)"
+
+if [[ -z "${release}" ]]; then
+  # Sollte nicht vorkommen, weil nur ein Tag ein Deployment ausloest. Falls doch
+  # (Wiederanlauf von Hand), steht die kurze SHA da - eine leere Anzeige waere
+  # schlimmer als eine unschoene.
+  release="$(git -C "${REPO_DIR}" rev-parse --short "${ziel}")"
+  log "Kein Tag zu diesem Commit - Anzeige faellt auf ${release} zurueck."
+fi
+
+export PALANTIR_RELEASE="${release}"
+log "Version dieses Standes: ${release}"
+
 # -----------------------------------------------------------------------------
 # 4. Images holen und Stack starten
 # -----------------------------------------------------------------------------
 # Die .env wird NICHT angefasst (Pflichtenheft §12.1) - sie enthält alle
 # Geheimnisse und wird von Hand gepflegt. Die Fassung kommt stattdessen als
 # Umgebungsvariable; sie hat in docker compose Vorrang vor der --env-file.
+# Dasselbe gilt fuer PALANTIR_RELEASE (oben gesetzt und exportiert): die
+# angezeigte Version steht damit in der Umgebung des Frontend-Containers,
+# nicht in einer Datei, die jemand pflegen muesste.
 #
 # `prod` zeigt zu diesem Zeitpunkt bereits auf genau diesen Commit: die Pipeline
 # hängt das Tag vor dem Aufruf um, ohne neu zu bauen (docs/ci-cd.md §4).

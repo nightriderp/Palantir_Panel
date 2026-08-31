@@ -331,6 +331,12 @@ services:
         condition: service_healthy
     env_file:
       - ../../.env
+    environment:
+      # Version des ausgerollten Standes fuer die Anzeige unten links im Panel.
+      # Setzt `deploy.sh` aus dem Versions-Tag des Commits - nichts, was jemand
+      # in einer Datei nachtraegt. Leer nur bei einem Start von Hand ohne
+      # Deployment; dann zeigt das Panel `Entwicklung`.
+      PALANTIR_RELEASE: ${PALANTIR_RELEASE:-}
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.palantir-web.rule=Host(`${PALANTIR_DOMAIN}`)'

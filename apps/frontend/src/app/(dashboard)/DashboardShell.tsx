@@ -4,7 +4,6 @@ import { type ReactNode } from 'react';
 import { AppShell, StatusDot, ToastProvider } from '@/components/shared';
 import { UserMenu } from '@/components/account/UserMenu';
 import { LiveChannelProvider, useLiveChannel } from '@/lib/live/LiveChannelProvider';
-import { APP_VERSION_LABEL } from '@/lib/version';
 import { DashboardNav } from './DashboardNav';
 import { SessionProvider, useSession } from './SessionProvider';
 
@@ -56,9 +55,17 @@ function Sidebar() {
 
 export interface DashboardShellProps {
   children: ReactNode;
+  /**
+   * Version des laufenden Deployments für die Fußzeile der Seitenleiste.
+   *
+   * Kommt von der Server-Seite (`layout.tsx`), weil der Wert erst zur Laufzeit
+   * feststeht: Die Images entstehen beim Merge nach `main`, das Versions-Tag
+   * erst beim Freigeben.
+   */
+  versionLabel: string;
 }
 
-export function DashboardShell({ children }: DashboardShellProps) {
+export function DashboardShell({ children, versionLabel }: DashboardShellProps) {
   return (
     <ToastProvider>
       <SessionProvider>
@@ -67,7 +74,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
             sidebar={<Sidebar />}
             topbar={<Topbar />}
             sidebarFooter={
-              <span className="text-2xs text-ink-faint">Palantir · {APP_VERSION_LABEL}</span>
+              <span className="text-2xs text-ink-faint">Palantir · {versionLabel}</span>
             }
           >
             {children}

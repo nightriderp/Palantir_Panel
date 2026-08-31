@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { releaseFromEnvironment } from '@/lib/version';
 import { DashboardShell } from '@/app/(dashboard)/DashboardShell';
 
 /**
@@ -18,5 +19,5 @@ export const dynamic = 'force-dynamic';
  * (`components/shared/README.md`).
  */
 export default function AdminGamesLayout({ children }: { children: ReactNode }) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return <DashboardShell versionLabel={releaseFromEnvironment()}>{children}</DashboardShell>;
 }
