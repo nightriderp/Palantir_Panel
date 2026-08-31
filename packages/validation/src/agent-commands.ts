@@ -164,6 +164,27 @@ export const fileExtractCommandPayloadSchema = z.object({
   format: z.enum(ARCHIVE_FORMATS),
 });
 
+/**
+ * `UPLOAD_ARCHIVE_BLOCK` – ein Archiv blockweise übertragen (Gefundener Punkt
+ * 106).
+ *
+ * `offset` und die Blockgröße bleiben ungedeckelt: Die Frame-Grenze des
+ * Agent-Kanals (`AGENT_FILE_CHANNEL_MAX_BYTES`) begrenzt einen einzelnen Block
+ * ohnehin, und wie groß das **ganze** Archiv sein darf, entscheidet das Backend
+ * (`MAX_WORLD_ARCHIVE_BYTES`) – nicht das Wire-Format.
+ */
+export const uploadArchiveBlockCommandPayloadSchema = z.object({
+  containerId: containerIdSchema,
+  transferId: z.string().min(1).max(128),
+  offset: z.number().int().nonnegative(),
+  contentBase64: z
+    .string()
+    .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
+  last: z.boolean(),
+  path: z.string().max(4_096),
+  format: z.enum(ARCHIVE_FORMATS),
+});
+
 // ---------------------------------------------------------------------------
 // Backup-Befehle (Lastenheft §3.3, Arbeitspaket A3)
 // ---------------------------------------------------------------------------
@@ -398,6 +419,7 @@ export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   FILE_DELETE: fileDeleteCommandPayloadSchema,
   FILE_UPLOAD: fileUploadCommandPayloadSchema,
   FILE_EXTRACT: fileExtractCommandPayloadSchema,
+  UPLOAD_ARCHIVE_BLOCK: uploadArchiveBlockCommandPayloadSchema,
   CREATE_BACKUP: createBackupCommandPayloadSchema,
   RESTORE_BACKUP: restoreBackupCommandPayloadSchema,
   DOWNLOAD_BACKUP: downloadBackupCommandPayloadSchema,

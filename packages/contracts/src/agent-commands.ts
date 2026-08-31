@@ -197,6 +197,39 @@ export interface FileDeleteCommandPayload {
 }
 
 /**
+ * `UPLOAD_ARCHIVE_BLOCK` – ein Archiv blockweise übertragen und am Ende
+ * entpacken (WORK_STATUS.md, Gefundener Punkt 106).
+ *
+ * Gegenstück zu `DOWNLOAD_BACKUP`: Das Backend schickt so lange Blöcke, bis es
+ * einen mit `last` setzt; der Agent hängt jeden an eine Datei auf dem
+ * Homeserver an und entpackt sie erst danach in den Datenordner. Damit hängt
+ * die Archivgröße nicht mehr an der Frame-Grenze eines einzelnen Befehls.
+ *
+ * `offset` ist die erwartete Schreibposition und dient als Prüfung, nicht als
+ * Wunsch: Passt sie nicht zu dem, was der Agent bereits liegen hat, bricht er
+ * ab, statt ein Archiv mit Loch zusammenzusetzen. Wiederholtes Senden desselben
+ * Blocks nach einem Verbindungsabriss ist damit erkennbar.
+ *
+ * `path` und `format` stehen in **jedem** Block, obwohl sie erst beim letzten
+ * gebraucht werden: So braucht der Agent zwischen den Blöcken keinen Zustand
+ * außer der Datei selbst.
+ */
+export interface UploadArchiveBlockCommandPayload {
+  readonly containerId: string;
+  /** Kennung des Transfers – für alle Blöcke eines Archivs dieselbe. */
+  readonly transferId: string;
+  /** Erwartete Schreibposition in Byte, beim ersten Block 0. */
+  readonly offset: number;
+  /** Blockinhalt, Base64-kodiert wie bei `FILE_UPLOAD`. */
+  readonly contentBase64: string;
+  /** `true` beim letzten Block: Der Agent entpackt und räumt die Datei weg. */
+  readonly last: boolean;
+  /** Zielpfad im Datenordner; leer bedeutet dessen Wurzel (wie `FILE_EXTRACT`). */
+  readonly path: string;
+  readonly format: ArchiveFormat;
+}
+
+/**
  * `FILE_UPLOAD` – vom Datei-Manager hochgeladene Datei im Container ablegen
  * (Arbeitspaket P2, Lastenheft §3.3).
  *
@@ -610,6 +643,19 @@ export interface FileExtractCommandResult {
   readonly skipped: string[];
 }
 
+/**
+ * Ergebnis von `UPLOAD_ARCHIVE_BLOCK`.
+ *
+ * `extract` bleibt `null`, solange noch Blöcke fehlen – erst der letzte Block
+ * entpackt und liefert dasselbe Ergebnis wie `FILE_EXTRACT`.
+ */
+export interface UploadArchiveBlockCommandResult {
+  readonly transferId: string;
+  /** Bisher entgegengenommene Byte-Anzahl; das Backend gleicht damit ab. */
+  readonly receivedBytes: number;
+  readonly extract: FileExtractCommandResult | null;
+}
+
 /** Ergebnis von `DELETE_BACKUP`. */
 export interface DeleteBackupCommandResult {
   readonly backupId: string;
@@ -716,6 +762,7 @@ export interface AgentCommandPayloads {
   readonly FILE_DELETE: FileDeleteCommandPayload;
   readonly FILE_UPLOAD: FileUploadCommandPayload;
   readonly FILE_EXTRACT: FileExtractCommandPayload;
+  readonly UPLOAD_ARCHIVE_BLOCK: UploadArchiveBlockCommandPayload;
   readonly CREATE_BACKUP: CreateBackupCommandPayload;
   readonly RESTORE_BACKUP: RestoreBackupCommandPayload;
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandPayload;
@@ -741,6 +788,7 @@ export interface AgentCommandResults {
   readonly FILE_DELETE: null;
   readonly FILE_UPLOAD: null;
   readonly FILE_EXTRACT: FileExtractCommandResult;
+  readonly UPLOAD_ARCHIVE_BLOCK: UploadArchiveBlockCommandResult;
   readonly CREATE_BACKUP: CreateBackupCommandResult;
   readonly RESTORE_BACKUP: RestoreBackupCommandResult;
   readonly DOWNLOAD_BACKUP: DownloadBackupCommandResult;

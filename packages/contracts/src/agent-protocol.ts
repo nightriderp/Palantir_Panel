@@ -155,6 +155,27 @@ export const AGENT_COMMANDS = [
    * `IMPLEMENTED_AGENT_COMMANDS` (`AGENT_COMMAND_NOT_IMPLEMENTED`).
    */
   'FILE_EXTRACT',
+  /**
+   * Ein Archiv blockweise auf den Homeserver bringen und am Ende entpacken
+   * (WORK_STATUS.md, Gefundener Punkt 106).
+   *
+   * Ergänzung dieser Sitzung zum Katalog aus Pflichtenheft §5.3, dort
+   * nachgetragen. Begründung: `FILE_EXTRACT` überträgt das Archiv in **einem**
+   * Frame und ist damit auf `AGENT_FILE_CHANNEL_MAX_BYTES` (64 MiB) begrenzt.
+   * Für die Migration von einem anderen Hoster – der Zweck der Weltdaten-
+   * Übernahme – ist das zu wenig: Ein gewachsener Minecraft-Server bringt
+   * schnell mehrere hundert Megabyte mit.
+   *
+   * Aufgebaut wie `DOWNLOAD_BACKUP`, nur in die andere Richtung: Das Backend
+   * schickt Block für Block, der Agent hängt sie an eine Datei auf dem
+   * Homeserver an und entpackt erst, wenn der letzte Block da ist. Ein eigener
+   * Frame-Typ oder gar ein Listener beim Agent (Pflichtenheft §18) ist dafür
+   * nicht nötig.
+   *
+   * `FILE_EXTRACT` bleibt bestehen: Für ein kleines Archiv ist ein einzelner
+   * Befehl der kürzere Weg, und der Datei-Manager benutzt ihn ohnehin.
+   */
+  'UPLOAD_ARCHIVE_BLOCK',
 ] as const;
 
 /** Alle gültigen Befehlsnamen – verhindert Freitext-Befehle. */
