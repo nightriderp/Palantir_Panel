@@ -7,6 +7,15 @@ import {
   type AgentCommandResults,
 } from './agent-commands.js';
 
+/**
+ * Befehle, die im Vertrag stehen, aber noch niemand ausführt.
+ *
+ * Dieselbe Zwischenstufe wie bei WELLE 0 und P4: erst der Vertrag, dann die
+ * Umsetzung. `UPLOAD_ARCHIVE_BLOCK` (Gefundener Punkt 106) baut der Agent im
+ * Anschluss; mit dieser Umsetzung ist die Liste wieder leer.
+ */
+const NOCH_NICHT_UMGESETZT: readonly string[] = ['UPLOAD_ARCHIVE_BLOCK'];
+
 describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
   it('deckt die Zuordnungstabellen jeden Befehl aus dem Protokoll ab', () => {
     // Rein typseitige Prüfung: Fehlt ein Befehl in AgentCommandPayloads oder
@@ -35,8 +44,12 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
     // von P2, FILE_EXTRACT von P4. Seither ist die Liste wieder vollständig:
     // Ein neuer Befehl ohne Umsetzung fällt hier auf, statt erst im Betrieb als
     // `AGENT_COMMAND_NOT_IMPLEMENTED`.
-    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual([]);
-    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length);
+    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual(
+      NOCH_NICHT_UMGESETZT,
+    );
+    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(
+      AGENT_COMMANDS.length - NOCH_NICHT_UMGESETZT.length,
+    );
   });
 
   it('kennt die beiden von A3 ergänzten Befehle', () => {
