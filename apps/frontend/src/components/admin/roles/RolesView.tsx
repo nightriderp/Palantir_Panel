@@ -1,6 +1,11 @@
 'use client';
 
-import { type Permission, type RoleDto } from '@palantir/contracts';
+import {
+  PERMISSION_CATALOG,
+  PERMISSIONS,
+  type Permission,
+  type RoleDto,
+} from '@palantir/contracts';
 import { useMemo, useState } from 'react';
 import {
   Badge,
@@ -10,6 +15,7 @@ import {
   PageHeader,
   Panel,
   TextField,
+  ToggleRow,
   formatNumber,
   useToast,
 } from '@/components/shared';
@@ -18,7 +24,7 @@ import { createRole, deleteRole, fetchRoles, updateRole } from '@/lib/api/admin'
 import { type ApiResult, errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
-import { PermissionPicker } from './PermissionPicker';
+import { permissionAreaLabel } from '../labels';
 
 /**
  * Rollen- und Berechtigungsverwaltung (Lastenheft §3.2 und §3.7, Pflichtenheft §8).
@@ -28,6 +34,17 @@ import { PermissionPicker } from './PermissionPicker';
  * löschbar – das entscheidet der Contract über `permissions.canEdit`/`canDelete`,
  * nicht die Ansicht. Der Owner-Status ist ein Konto-Flag und keine Rolle; er
  * taucht hier deshalb nicht auf.
+ *
+ * **Warum die Berechtigungsauswahl in dieser Datei steht und nicht daneben:**
+ * Sie lag bis hierher als eigene Client-Komponente `PermissionPicker.tsx` im
+ * selben Ordner. Mit dieser zweiten Datei ließ der Next.js-Bundler den Eintrag
+ * für `RolesView` aus dem React-Client-Manifest weg – die Seite antwortete
+ * daraufhin in der Produktion mit HTTP 500 („Could not find the module … in the
+ * React Client Manifest"), während jede andere Admin-Seite lief. Reproduzierbar
+ * über `next build`: mit der zweiten Datei fehlt der Manifest-Eintrag, ohne sie
+ * ist er da. Die Auswahl wird nur hier gebraucht, deshalb ist das Zusammenlegen
+ * die kleinere Lösung als ein Umbau der Bündelung. **Nicht wieder in eine
+ * eigene Datei herauslösen**, ohne den Manifest-Eintrag danach zu prüfen.
  */
 
 type Editor = { mode: 'create' } | { mode: 'edit'; role: RoleDto } | null;
@@ -242,5 +259,68 @@ function RoleEditor({
         <PermissionPicker selected={permissions} onChange={setPermissions} disabled={busy} />
       </div>
     </FormModal>
+  );
+}
+
+/** Bereich (Präfix vor dem ersten Punkt) → seine Permissions, in Katalogreihenfolge. */
+function groupByArea(): Array<{ area: string; permissions: Permission[] }> {
+  const order: string[] = [];
+  const byArea = new Map<string, Permission[]>();
+  for (const permission of PERMISSIONS) {
+    const area = permission.split('.')[0] ?? permission;
+    if (!byArea.has(area)) {
+      byArea.set(area, []);
+      order.push(area);
+    }
+    byArea.get(area)?.push(permission);
+  }
+  return order.map((area) => ({ area, permissions: byArea.get(area) ?? [] }));
+}
+
+interface PermissionPickerProps {
+  selected: readonly Permission[];
+  onChange: (permissions: Permission[]) => void;
+  disabled?: boolean;
+}
+
+/**
+ * Auswahl der Berechtigungen einer Rolle aus dem Permission-Katalog
+ * (Pflichtenheft §8). Der Katalog ist die einzige Quelle – hier steht keine
+ * eigene Liste, damit eine neue Permission automatisch auftaucht.
+ *
+ * Rein darstellend: die Auswahl liegt im aufrufenden Editor.
+ */
+function PermissionPicker({ selected, onChange, disabled }: PermissionPickerProps) {
+  const groups = useMemo(groupByArea, []);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  function toggle(permission: Permission, on: boolean) {
+    onChange(
+      on
+        ? [...selected.filter((value) => value !== permission), permission]
+        : selected.filter((value) => value !== permission),
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {groups.map(({ area, permissions }) => (
+        <fieldset key={area} className="flex flex-col gap-2">
+          <legend className="mb-1 text-2xs uppercase tracking-[0.08em] text-ink-soft">
+            {permissionAreaLabel(area)}
+          </legend>
+          {permissions.map((permission) => (
+            <ToggleRow
+              key={permission}
+              title={PERMISSION_CATALOG[permission].description}
+              description={permission}
+              checked={selectedSet.has(permission)}
+              onChange={(on) => toggle(permission, on)}
+              disabled={disabled}
+            />
+          ))}
+        </fieldset>
+      ))}
+    </div>
   );
 }
