@@ -45,7 +45,7 @@ import {
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
-import { registrationStatusLabel, registrationStatusTone } from '../labels';
+import { quotaLabel, registrationStatusLabel, registrationStatusTone } from '../labels';
 
 /**
  * Nutzerverwaltung (Lastenheft §3.1 und §3.7).
@@ -198,10 +198,10 @@ export function UsersView() {
         <Panel className="text-center text-base text-ink-faint">Keine Konten gefunden.</Panel>
       ) : (
         /*
-         * Tabelle statt Kartenliste (Mockup „Benutzerverwaltung"). Die Spalte
-         * „Kontingent" des Entwurfs fehlt: der Listen-DTO fuehrt keine Limits,
-         * die gibt es nur einzeln ueber die Schaltflaeche daneben. Sobald das
-         * DTO sie mitliefert, kommt hier eine Spalte dazu.
+         * Tabelle statt Kartenliste (Mockup „Benutzerverwaltung"), samt der
+         * Spalte „Kontingent" – der Listen-DTO fuehrt sie seit dem Abgleich
+         * 12.1.3 mit. Gezeigt werden Arbeitsspeicher und Serveranzahl; alles
+         * Weitere steht hinter der Schaltflaeche „Kontingent" daneben.
          */
         <AdminTable>
           <thead>
@@ -209,6 +209,7 @@ export function UsersView() {
               <Th>Benutzer</Th>
               <Th>Rollen</Th>
               <Th>Zustand</Th>
+              <Th>Kontingent</Th>
               <Th>Erstellt</Th>
               <Th>Aktion</Th>
             </tr>
@@ -240,6 +241,9 @@ export function UsersView() {
                   <Badge tone={registrationStatusTone(entry.status)} withDot>
                     {registrationStatusLabel(entry.status)}
                   </Badge>
+                </Td>
+                <Td className="whitespace-nowrap font-mono text-xs text-ink-muted">
+                  {quotaLabel(entry.quota)}
                 </Td>
                 <Td className="whitespace-nowrap text-ink-muted">
                   {formatDate(entry.registeredAt)}

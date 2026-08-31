@@ -1,3 +1,5 @@
+import { type RegistrationRequestQuota, type ResourceQuotaSlot } from '@palantir/contracts';
+import { formatMegabytes } from '@/components/shared';
 import {
   type AuditAction,
   type AuditTargetType,
@@ -343,4 +345,26 @@ export function auditActionCode(action: AuditAction): string {
  */
 export function isAuditFailure(action: AuditAction): boolean {
   return /Failed|Denied/.test(action);
+}
+
+/**
+ * Kontingent einer Zeile der Nutzerliste (Mockup-Abgleich 12.1.3).
+ *
+ * Der Entwurf schreibt `4 GB / 8 GB · 1 / 3` – Belegung gegen Grenze für
+ * Arbeitsspeicher und Serveranzahl. Ohne Grenze steht dort ein Gedankenstrich
+ * statt einer erfundenen Zahl; „unbegrenzt" ist keine Grenze, und ein `∞`
+ * behauptet mehr, als die harte Node-Prüfung zulässt.
+ */
+export function quotaLabel(quota: RegistrationRequestQuota | null | undefined): string {
+  if (quota === null || quota === undefined) {
+    return '—';
+  }
+
+  return `${slotLabel(quota.ram, formatMegabytes)} · ${slotLabel(quota.servers, String)}`;
+}
+
+function slotLabel(slot: ResourceQuotaSlot, format: (value: number) => string): string {
+  const belegt = format(slot.used);
+
+  return slot.limit === null ? `${belegt} / —` : `${belegt} / ${format(slot.limit)}`;
 }

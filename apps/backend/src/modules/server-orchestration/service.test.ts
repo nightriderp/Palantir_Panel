@@ -1791,6 +1791,7 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
       servers.filter((server) => server.id !== excludeServerId);
 
     const usage: ServerUsageRepository = {
+      usageForUsers: () => Promise.resolve(new Map()),
       usageForUser: (userId, options) =>
         Promise.resolve(
           summarize(
@@ -1835,6 +1836,7 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
           limits: NO_USER_RESOURCE_LIMITS,
           updatedAt: null,
         }),
+      findManyByUserId: () => Promise.resolve(new Map()),
       upsert: () => Promise.resolve(null),
       remove: () => Promise.resolve(),
     };

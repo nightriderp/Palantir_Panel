@@ -23,6 +23,7 @@ import {
   GUEST_ROLE_NAME,
   type LinkedAccountProfileDto,
   type RegistrationRequestDto,
+  type RegistrationRequestQuota,
   type RegistrationRequestPermissions,
   type RegistrationRequestStatus,
 } from '@palantir/contracts';
@@ -143,6 +144,20 @@ export interface RegistrationRequestService {
   unblock(ctx: AdminContext, userId: string): Promise<RegistrationRequestDto>;
 }
 
+/**
+ * Kontingente mehrerer Konten – erfüllt vom Ressourcen-Modul (B4).
+ *
+ * Bewusst nur diese eine Methode statt des ganzen `ResourceService`: Die
+ * Warteliste braucht Kontingente zum Anzeigen und sonst nichts aus B4, und eine
+ * eigene Zählung hier wäre die Parallelstruktur, die CLAUDE.md §3 ausschließt.
+ */
+export interface QuotaSummaryReader {
+  listQuotaSummaries(
+    actor: PermissionActor,
+    userIds: readonly string[],
+  ): Promise<ReadonlyMap<string, RegistrationRequestQuota>>;
+}
+
 export interface RegistrationRequestDependencies {
   readonly repository: RegistrationRequestRepository;
   /** Rollenverwaltung aus B2 – die Zuweisung läuft nicht an ihr vorbei. */
@@ -150,6 +165,13 @@ export interface RegistrationRequestDependencies {
   readonly audit: AuditService;
   /** Rolle, die eine Freigabe ohne eigene Auswahl vergibt. */
   readonly defaultRoleName?: string;
+  /**
+   * Kontingente für die Spalte „Kontingent" (Mockup-Abgleich 12.1.3).
+   *
+   * Optional: Ohne diese Abhängigkeit bleibt `quota` schlicht weg – die Liste
+   * funktioniert weiter, sie zeigt nur eine Spalte weniger.
+   */
+  readonly quotas?: QuotaSummaryReader;
 }
 
 function requireUserManage(actor: PermissionActor): void {
@@ -182,8 +204,31 @@ export function createRegistrationRequestService(
       requireUserManage(ctx.actor);
 
       const page = await deps.repository.list(query);
+      const eintraege = page.rows.map((row) => toRegistrationRequestDto(ctx.actor, row));
 
-      return page.rows.map((row) => toRegistrationRequestDto(ctx.actor, row));
+      if (deps.quotas === undefined || eintraege.length === 0) {
+        return eintraege;
+      }
+
+      /*
+       * Kontingente in einem Aufruf für die ganze Seite – nicht je Zeile. Ein
+       * Fehler dabei kostet die Spalte, nicht die Liste: Die Warteliste ist der
+       * Weg, ein Konto freizugeben, und das darf nicht daran scheitern, dass
+       * eine Zusatzangabe nicht ermittelbar war.
+       */
+      try {
+        const kontingente = await deps.quotas.listQuotaSummaries(
+          ctx.actor,
+          eintraege.map((eintrag) => eintrag.userId),
+        );
+
+        return eintraege.map((eintrag) => ({
+          ...eintrag,
+          quota: kontingente.get(eintrag.userId) ?? null,
+        }));
+      } catch {
+        return eintraege.map((eintrag) => ({ ...eintrag, quota: null }));
+      }
     },
 
     async approve(ctx, userId, input) {

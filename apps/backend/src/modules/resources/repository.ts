@@ -17,7 +17,7 @@ import {
   type UserResourceLimits,
   type UserResourceUsage,
 } from '@palantir/contracts';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { DbConnection } from '../../db/index.js';
 import { hostNodes, userResourceLimits } from '../../db/schema/resources.js';
 import { users } from '../../db/schema/users.js';
@@ -103,6 +103,37 @@ export function createDrizzleUserResourceLimitRepository(
   return {
     findByUserId: load,
 
+    /**
+     * Kontingente mehrerer Konten in einer Abfrage.
+     *
+     * Nur die Kontingent-Tabelle, kein Join auf `users`: Der Aufrufer hat die
+     * Konten bereits – ihm fehlen nur die Grenzen. Konten ohne Datensatz fehlen
+     * in der Antwort; für sie gilt `NO_USER_RESOURCE_LIMITS`.
+     */
+    async findManyByUserId(userIds: readonly string[]) {
+      const gefunden = new Map<string, UserResourceLimits>();
+
+      if (userIds.length === 0) {
+        return gefunden;
+      }
+
+      const rows = await db
+        .select()
+        .from(userResourceLimits)
+        .where(inArray(userResourceLimits.userId, [...userIds]));
+
+      for (const row of rows) {
+        gefunden.set(row.userId, {
+          maxRamMb: row.maxRamMb,
+          maxCpuCores: row.maxCpuCores,
+          maxDiskMb: row.maxDiskMb,
+          maxConcurrentServers: row.maxConcurrentServers,
+        });
+      }
+
+      return gefunden;
+    },
+
     async upsert(userId: string, limits: UserResourceLimits) {
       await db
         .insert(userResourceLimits)
@@ -151,6 +182,10 @@ export function createEmptyServerUsageRepository(): ServerUsageRepository {
   return {
     async usageForUser() {
       return EMPTY_USER_USAGE;
+    },
+
+    async usageForUsers() {
+      return new Map();
     },
 
     async usageForNode() {

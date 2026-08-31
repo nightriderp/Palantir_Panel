@@ -213,6 +213,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const serverUsage = createDrizzleServerUsageRepository(db);
 
     /*
+     * Kontingent-Dienst schon hier: Die Nutzerliste in B8 zeigt seit dem
+     * Mockup-Abgleich (12.1.3) eine Spalte "Kontingent" und liest sie ueber
+     * denselben Dienst, der auch die Kontingent-Routen bedient. Zwei Instanzen
+     * waeren zwei Zaehlungen.
+     */
+    const resources = buildResourceService(serverUsage);
+
+    /*
      * Die Anschlusspunkte, die B8 offen gelassen hat (R2, Gefundene Punkte 40
      * und 42). Alle vier lesen entweder `game_servers` oder sprechen über den
      * Agent-Kanal – beides gehört zu B3 bzw. B4, nicht zu B8.
@@ -235,6 +243,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       storageRemover: createAgentStorageEntryRemover(agents),
       knownServers: createServerKnownServerSource(db),
       serverNames: createServerNameSource(db),
+      quotas: resources,
       ...(env.AUDIT_ARCHIVE_DIR ? { auditArchiveDir: env.AUDIT_ARCHIVE_DIR } : {}),
     });
 
@@ -458,8 +467,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * wird `resource.low` in den Takt hinein (WORK_STATUS.md, Gefundener
      * Punkt 80).
      */
-    const resources = buildResourceService(serverUsage);
-
     /*
      * Kontingent-Routen (`/admin/users/:userId/limits`, Gefundener Punkt 88).
      * Derselbe `ResourceService` wie oben – die Verwaltung der Nutzer-Limits

@@ -84,6 +84,9 @@ async function buildApp(options?: {
     async findByUserId() {
       return stored.record;
     },
+    async findManyByUserId() {
+      return new Map();
+    },
     async upsert(_userId, next) {
       if (!stored.record) {
         return null;
@@ -112,6 +115,9 @@ async function buildApp(options?: {
   const usage: ServerUsageRepository = {
     async usageForUser() {
       return { ...emptyUsage, ...options?.userUsage };
+    },
+    async usageForUsers() {
+      return new Map();
     },
     async usageForNode() {
       return { ...emptyUsage };

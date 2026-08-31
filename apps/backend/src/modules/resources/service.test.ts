@@ -95,6 +95,15 @@ function buildService(options?: {
     async findByUserId() {
       return stored.record;
     },
+    async findManyByUserId(userIds: readonly string[]) {
+      const gefunden = new Map<string, UserResourceLimits>();
+
+      if (stored.record && userIds.includes(stored.record.userId)) {
+        gefunden.set(stored.record.userId, stored.record.limits);
+      }
+
+      return gefunden;
+    },
     async upsert(userId, limits) {
       if (!stored.record) {
         return null;
@@ -131,6 +140,15 @@ function buildService(options?: {
       }
 
       return { ...emptyUserUsage(), ...options?.userUsage };
+    },
+    async usageForUsers(userIds: readonly string[]) {
+      const belegung = new Map<string, UserResourceUsage>();
+
+      for (const userId of userIds) {
+        belegung.set(userId, { ...emptyUserUsage(), ...options?.userUsage });
+      }
+
+      return belegung;
     },
     async usageForNode(_nodeId, queryOptions) {
       if (queryOptions?.excludeServerId) {
@@ -335,6 +353,44 @@ describe('Kontingent lesen und setzen', () => {
     await expect(service.getUserLimits(adminActor, USER_ID)).rejects.toMatchObject({
       code: 'USER_NOT_FOUND',
     });
+  });
+});
+
+describe('Kontingente für Listen (Mockup-Abgleich 12.1.3)', () => {
+  it('liefert je Konto Arbeitsspeicher und Serveranzahl', async () => {
+    const { service } = buildService({
+      limits: { maxRamMb: 8192, maxCpuCores: null, maxDiskMb: null, maxConcurrentServers: 3 },
+      userUsage: { runningRamMb: 4096, runningServers: 1 },
+    });
+
+    const kontingente = await service.listQuotaSummaries(adminActor, [USER_ID]);
+
+    expect(kontingente.get(USER_ID)?.ram).toMatchObject({ limit: 8192, used: 4096 });
+    expect(kontingente.get(USER_ID)?.servers).toMatchObject({ limit: 3, used: 1 });
+  });
+
+  it('zeigt ein Konto ohne Kontingent als unbegrenzt', async () => {
+    const { service } = buildService({ userUsage: { runningRamMb: 512, runningServers: 1 } });
+
+    const kontingente = await service.listQuotaSummaries(adminActor, [USER_ID]);
+
+    // Ohne Datensatz gilt `NO_USER_RESOURCE_LIMITS` – die Belegung stimmt
+    // trotzdem, nur eine Grenze gibt es nicht.
+    expect(kontingente.get(USER_ID)?.ram).toMatchObject({ limit: null, used: 512 });
+  });
+
+  it('verlangt user.manage – es sind fremde Kontingente', async () => {
+    const { service } = buildService();
+
+    await expect(service.listQuotaSummaries(plainActor, [USER_ID])).rejects.toSatisfy(
+      (error: unknown) => isResourceError(error) && error.code === 'PERMISSION_DENIED',
+    );
+  });
+
+  it('kommt ohne Konten ohne Abfrage aus', async () => {
+    const { service } = buildService();
+
+    expect((await service.listQuotaSummaries(adminActor, [])).size).toBe(0);
   });
 });
 
