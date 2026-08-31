@@ -1,3 +1,4 @@
+import { type BackupStatus } from './backup.js';
 import { type WebSocketEventName } from './events.js';
 import { type ServerLiveStats } from './game-server.js';
 import { type ServerCloneJobDto } from './server-jobs.js';
@@ -76,12 +77,46 @@ export const LIVE_SERVER_EVENTS = [
   'server.statsUpdated',
   'server.consoleLineAppended',
   'serverClone.progressed',
+  'backup.progressed',
 ] as const satisfies readonly WebSocketEventName[];
 
 export type LiveServerEventName = (typeof LIVE_SERVER_EVENTS)[number];
 
 export function isLiveServerEventName(value: string): value is LiveServerEventName {
   return (LIVE_SERVER_EVENTS as readonly string[]).includes(value);
+}
+
+/**
+ * Stand einer Sicherung oder eines Exports (WORK_STATUS.md, Gefundener
+ * Punkt 51).
+ *
+ * Gemeldet wird bei jedem Wechsel: angestoßen, fertig, gescheitert. Damit muss
+ * die Oberfläche den Stand nicht mehr auf Klick nachladen – beim Export ist das
+ * der Unterschied zwischen „warten und hoffen" und „sieht man".
+ *
+ * **Bewusst nicht der {@link BackupDto}.** Der trägt Felder, die vom Aufrufer
+ * abhängen: `permissions` und `storagePath` (Betriebswissen der Node, für
+ * Aufrufer ohne `backup.manage.any` immer `null`). Ein Live-Ereignis geht an
+ * **alle** Abonnenten des Server-Themas – ein DTO mit den Rechten eines
+ * einzelnen wäre für die übrigen schlicht falsch und gäbe den Ablageort
+ * preis. Hier stehen deshalb nur Angaben, die für jeden gelten, der den Server
+ * ohnehin sehen darf.
+ *
+ * Wer den vollständigen DTO braucht (Download-Verweis, Prüfsumme), holt ihn wie
+ * bisher über `GET /backups/:id` – dann aber gezielt und nicht mehr blind auf
+ * Verdacht.
+ */
+export interface BackupProgress {
+  backupId: string;
+  status: BackupStatus;
+  /** Volldatenexport statt gewöhnlicher Sicherung (Lastenheft §3.3). */
+  isExport: boolean;
+  /** Größe des Archivs in Byte; `0`, solange der Vorgang läuft. */
+  sizeBytes: number;
+  /** ISO-8601-Zeitstempel des Abschlusses; `null`, solange er läuft. */
+  completedAt: string | null;
+  /** Klartext des Fehlschlags; `null`, wenn nicht gescheitert. */
+  failureMessage: string | null;
 }
 
 /** Nutzdaten je Ereignis des Live-Kanals. */
@@ -94,6 +129,7 @@ export type LiveServerEventPayloads = {
   'server.statsUpdated': { serverId: string; stats: ServerLiveStats };
   'server.consoleLineAppended': { serverId: string; line: ServerConsoleLine };
   'serverClone.progressed': { serverId: string; job: ServerCloneJobDto };
+  'backup.progressed': { serverId: string; backup: BackupProgress };
 };
 
 /** Frame, das der Browser vom Backend empfängt. */

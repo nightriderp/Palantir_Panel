@@ -27,6 +27,7 @@ export const WEBSOCKET_EVENTS = [
   'server.statsUpdated',
   'server.consoleLineAppended',
   'serverClone.progressed',
+  'backup.progressed',
   'backup.failed',
   'autoShutdown.triggered',
   'resource.low',
