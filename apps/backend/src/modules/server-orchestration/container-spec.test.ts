@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { TEST_GAME_TYPE } from './game-registry.js';
-import { buildContainerSpec, containerSpecFingerprint } from './container-spec.js';
+import {
+  STARTUP_PARAMETERS_ENV,
+  buildContainerSpec,
+  containerSpecFingerprint,
+} from './container-spec.js';
 import { type ServerRecord } from './repository.js';
 
 /**
@@ -110,5 +114,51 @@ describe('containerSpecFingerprint', () => {
     const andereReihenfolge = server({ configJson: { motdEnabled: true, greeting: 'Hallo' } });
 
     expect(fingerabdruck(andereReihenfolge)).toBe(fingerabdruck(server()));
+  });
+});
+
+/**
+ * Startparameter (WORK_STATUS.md, Punkt 115).
+ *
+ * Sie wurden gespeichert und angezeigt, erreichten den Container aber nie.
+ * Jetzt stehen sie als Umgebungsvariable im Bauplan – und nur dann, wenn
+ * wirklich welche gesetzt sind.
+ */
+describe('Startparameter im Bauplan', () => {
+  function spec(record: ServerRecord) {
+    return buildContainerSpec({
+      server: record,
+      definition: TEST_GAME_TYPE,
+      containerName: 'palantir-s1',
+      dataHostPath: '/srv/palantir/s1',
+    });
+  }
+
+  it('reicht gesetzte Parameter als Umgebungsvariable durch', () => {
+    const mitParametern = server({ startupParameters: '-Xmx4G -Dfoo=bar' });
+
+    expect(spec(mitParametern).env[STARTUP_PARAMETERS_ENV]).toBe('-Xmx4G -Dfoo=bar');
+  });
+
+  it('schneidet Leerraum ab', () => {
+    expect(spec(server({ startupParameters: '  -Xmx4G  ' })).env[STARTUP_PARAMETERS_ENV]).toBe(
+      '-Xmx4G',
+    );
+  });
+
+  it('lässt die Variable weg, wenn nichts gesetzt ist', () => {
+    // Sonst änderte sich der Fingerabdruck jedes bestehenden Containers, und
+    // jeder würde beim nächsten Start einmal umsonst neu gebaut (Punkt 114).
+    expect(spec(server({ startupParameters: '   ' })).env).not.toHaveProperty(
+      STARTUP_PARAMETERS_ENV,
+    );
+    expect(spec(server()).env).not.toHaveProperty(STARTUP_PARAMETERS_ENV);
+  });
+
+  it('macht geänderte Parameter zu einem neuen Fingerabdruck', () => {
+    // Damit greift der Neuaufbau aus Punkt 114 auch für diese Änderung.
+    expect(containerSpecFingerprint(spec(server({ startupParameters: '-Xmx4G' })))).not.toBe(
+      containerSpecFingerprint(spec(server())),
+    );
   });
 });

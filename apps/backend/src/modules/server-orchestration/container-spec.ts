@@ -31,6 +31,24 @@ import { type ServerRecord } from './repository.js';
  */
 export type ContainerCreateSpec = CreateCommandPayload;
 
+/**
+ * Umgebungsvariable, in der die Startparameter des Servers stehen
+ * (WORK_STATUS.md, Punkt 115).
+ *
+ * **Warum eine Variable und kein angehängtes Startkommando:** Der Agent nimmt
+ * `command` als Argumentliste entgegen – bewusst ohne Shell, damit aus einer
+ * Eingabe keine Shell-Injection wird (siehe `ContainerRuntime.execConsole`).
+ * Freien Text in eine Argumentliste zu zerlegen hieße, Anführungszeichen und
+ * Escapes selbst auszuwerten: genau die Sorte Parser, an der man sich schneidet.
+ *
+ * Die Startparameter gehen deshalb **als eine Zeichenkette** an das Image. Was
+ * daraus wird, entscheidet das Image in seinem Startskript – die eigenen
+ * Spiel-Images des Projekts werden ohnehin dafür gebaut (siehe Kopfkommentar
+ * der Spiele-Registry). Ein Image, das die Variable nicht kennt, ignoriert sie
+ * schlicht.
+ */
+export const STARTUP_PARAMETERS_ENV = 'PALANTIR_STARTUP_PARAMETERS';
+
 export interface BuildContainerSpecInput {
   readonly server: ServerRecord;
   readonly definition: GameTypeDefinition;
@@ -54,7 +72,17 @@ export function buildContainerSpec({
   return {
     name: containerName,
     image: definition.dockerImage,
-    env: buildContainerEnv(definition, server.configJson),
+    env: {
+      ...buildContainerEnv(definition, server.configJson),
+      /*
+       * Nur bei tatsächlich gesetzten Parametern: Eine leere Variable an jedem
+       * Container würde den Fingerabdruck aller bestehenden Container ändern
+       * und sie beim nächsten Start einmal umsonst neu bauen (Punkt 114).
+       */
+      ...(server.startupParameters.trim() === ''
+        ? {}
+        : { [STARTUP_PARAMETERS_ENV]: server.startupParameters.trim() }),
+    },
     command: definition.defaultCommand,
     ports: server.assignedPorts.map((assignment) => ({
       containerPort: assignment.containerPort,
