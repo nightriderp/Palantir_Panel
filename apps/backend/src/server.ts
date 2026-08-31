@@ -21,6 +21,8 @@ import {
   createNodeUsageSource,
   registerResourceRoutes,
 } from './modules/resources/index.js';
+import { createPublicStatsService } from './modules/public-stats/index.js';
+import { registerPublicStatsRoutes } from './modules/public-stats/routes.js';
 import {
   type AuthEventSink,
   type AuthModuleOptions,
@@ -39,6 +41,7 @@ import {
   AgentRegistry,
   createAgentBackupGateway,
   createAgentStorageEntryRemover,
+  GAME_TYPE_DEFINITIONS,
   createAgentStorageScanGateway,
   createDrizzleBackupServerDirectory,
   createDrizzleServerExportManifestSource,
@@ -473,6 +476,21 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * hängt hier nur an HTTP, eine zweite Kontingent-Logik gibt es nicht.
      */
     await app.register(registerResourceRoutes({ resourceLimits: resources }));
+
+    /*
+     * Kennzahlen der Instanz fuer die Anmeldeseite (Mockup-Abgleich 2.1).
+     * Ohne Sitzung erreichbar - sie stehen dort, bevor sich jemand angemeldet
+     * hat. Die Zahl der Spiele kommt aus derselben Registry wie der Wizard,
+     * damit auf der Anmeldeseite nichts anderes steht als dahinter.
+     */
+    await app.register(
+      registerPublicStatsRoutes(
+        createPublicStatsService({
+          db,
+          gameTypeCount: () => GAME_TYPE_DEFINITIONS.length,
+        }),
+      ),
+    );
 
     const scheduler = startScheduler({
       intervalMs: env.SCHEDULER_INTERVAL_MS,

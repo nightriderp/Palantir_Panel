@@ -73,6 +73,7 @@ export * from './host-node.js';
 export * from './address.js';
 export * from './audit.js';
 export * from './storage.js';
+export * from './instance.js';
 export * from './registration-request.js';
 
 // Chat & Moderation (Arbeitspaket B7): Konversationen, Nachrichten, Meldungen
