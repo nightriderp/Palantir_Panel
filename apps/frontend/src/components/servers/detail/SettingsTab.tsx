@@ -109,6 +109,14 @@ export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabPr
   const [localCloneJob, setLocalCloneJob] = useState<ServerCloneJobDto | null>(null);
   const [exportBackup, setExportBackup] = useState<BackupDto | null>(null);
   const [exporting, setExporting] = useState(false);
+  /**
+   * Server für den Export anhalten.
+   *
+   * Vorgabe „aus": Ein Export soll niemanden aus dem Spiel werfen. Wer einen
+   * verlässlichen Spielstand mitnehmen will, schaltet die Option ein – ein
+   * laufender Server schreibt weiter in die Dateien, die gerade gepackt werden.
+   */
+  const [exportStopServer, setExportStopServer] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -180,7 +188,7 @@ export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabPr
 
   async function exportAll() {
     setExporting(true);
-    const result = await startExport(server.id, { stopServer: false });
+    const result = await startExport(server.id, { stopServer: exportStopServer });
     setExporting(false);
 
     if (!result.success) {
@@ -400,9 +408,18 @@ export function SettingsTab({ server, onServerUpdated, cloneJob }: SettingsTabPr
         ) : null}
 
         {exportBackup?.status === 'completed' ? null : (
-          <Button onClick={() => void exportAll()} disabled={exporting}>
-            {exporting ? 'Wird angestoßen …' : 'Export starten'}
-          </Button>
+          <div className="flex flex-col gap-3">
+            <ToggleRow
+              title="Server für den Export anhalten"
+              description="Ein laufender Server schreibt weiter – ohne Anhalten kann der Spielstand im Archiv unvollständig sein."
+              checked={exportStopServer}
+              onChange={setExportStopServer}
+              disabled={exporting}
+            />
+            <Button onClick={() => void exportAll()} disabled={exporting}>
+              {exporting ? 'Wird angestoßen …' : 'Export starten'}
+            </Button>
+          </div>
         )}
       </Panel>
 

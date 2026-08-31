@@ -8,7 +8,7 @@
  * zur Schnittstelle des Moduls.
  */
 
-import type { ApiResponse } from '@palantir/contracts';
+import type { ApiResponse, ArchiveExtraFile } from '@palantir/contracts';
 import { fail, ok } from '@palantir/contracts';
 import type {
   BackupAgentGateway,
@@ -112,6 +112,8 @@ export interface FakeAgent extends BackupAgentGateway {
   readonly restoredBackupIds: string[];
   /** Prüfsummen, mit denen der Service `restoreBackup` aufgerufen hat. */
   readonly restoredChecksums: string[];
+  /** Zusatzdateien je `createBackup`-Aufruf – beim Export das Manifest (P8). */
+  readonly createdExtraFiles: (readonly ArchiveExtraFile[])[];
   /** Antwort, die `createBackup` liefern soll. */
   createResponse: ApiResponse<unknown>;
   deleteResponse: ApiResponse<unknown>;
@@ -123,6 +125,7 @@ export interface FakeAgent extends BackupAgentGateway {
 export function fakeAgent(overrides: Partial<FakeAgent> = {}): FakeAgent {
   const agent: FakeAgent = {
     createdBackupIds: [],
+    createdExtraFiles: [],
     deletedStoragePaths: [],
     restoredBackupIds: [],
     restoredChecksums: [],
@@ -151,6 +154,7 @@ export function fakeAgent(overrides: Partial<FakeAgent> = {}): FakeAgent {
 
     createBackup(payload) {
       agent.createdBackupIds.push(payload.backupId);
+      agent.createdExtraFiles.push(payload.extraFiles ?? []);
       const response = agent.createResponse;
 
       return Promise.resolve(

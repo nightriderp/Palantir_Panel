@@ -100,7 +100,15 @@ export class BackupJob {
     }
 
     try {
-      const ergebnis = await packDirectory(quelle, archiv);
+      const ergebnis = await packDirectory(quelle, archiv, {
+        // Zusatzdateien kommen vom Backend (Export-Manifest, P8) und liegen
+        // nicht im Datenordner. Ohne sie packt der Aufruf wie bisher.
+        extraFiles: (payload.extraFiles ?? []).map((datei) => ({
+          relativ: datei.path,
+          inhalt: Buffer.from(datei.contentBase64, 'base64'),
+        })),
+        now: this.#now,
+      });
 
       return {
         backupId: payload.backupId,
