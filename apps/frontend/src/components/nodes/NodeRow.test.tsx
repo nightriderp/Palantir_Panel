@@ -1,7 +1,7 @@
 import { type HostNodeDto } from '@palantir/contracts';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { NodeCard } from './NodeCard';
+import { NodeRow } from './NodeRow';
 
 function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
   const total = { ramMb: 16384, cpuCores: 8, diskMb: 512_000 };
@@ -30,26 +30,26 @@ function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
   };
 }
 
-describe('NodeCard', () => {
+describe('NodeRow', () => {
   it('zeigt Name und Zustand', () => {
-    render(<NodeCard node={node()} />);
+    render(<NodeRow node={node()} />);
     expect(screen.getByText('Wohnzimmer-PC')).toBeTruthy();
     expect(screen.getByText('Online')).toBeTruthy();
   });
 
   it('zeigt niemals die interne Tunnel-Adresse (Vorgabe F7)', () => {
-    const { container } = render(<NodeCard node={node()} />);
+    const { container } = render(<NodeRow node={node()} />);
     expect(container.textContent).not.toContain('10.10.0.2');
   });
 
   it('erklärt einen nicht-online Zustand im Klartext', () => {
-    render(<NodeCard node={node({ status: 'maintenance' })} />);
+    render(<NodeRow node={node({ status: 'maintenance' })} />);
     expect(screen.getByText(/Wartung/)).toBeTruthy();
     expect(screen.getByText(/stillgelegt/)).toBeTruthy();
   });
 
   it('zeigt die Statusmeldung, wenn eine vorliegt', () => {
-    render(<NodeCard node={node({ statusMessage: 'Update auf Version 2 läuft.' })} />);
+    render(<NodeRow node={node({ statusMessage: 'Update auf Version 2 läuft.' })} />);
     expect(screen.getByText('Update auf Version 2 läuft.')).toBeTruthy();
   });
 });
