@@ -21,6 +21,7 @@ import { messageForThrown } from '@/lib/auth/errors';
 import { loadAccount } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AUTH_METHOD_LABEL, linkableProviders, methodDetail } from './methods';
+import { PasswordSection, TwoFactorSection } from './SecuritySections';
 
 /** Rücksprungziel für die Provider-Verknüpfung – muss zur Backend-Allowlist passen. */
 const RETURN_TO = '/profil';
@@ -28,15 +29,51 @@ const RETURN_TO = '/profil';
 /**
  * Profil-Seite (Lastenheft §3.1).
  *
- * Zeigt die Kontodaten und verwaltet die verknüpften Anmeldeverfahren: Discord,
- * Twitch und Steam lassen sich hier nachträglich verbinden oder wieder trennen.
- * Das Verbinden ist eine echte Weiterleitung zum Anbieter (kein `fetch`); nach
- * der Rückkehr landet man über `returnTo` wieder hier.
+ * Zeigt die Kontodaten, Passwort und Zwei-Faktor sowie die verknüpften
+ * Anmeldeverfahren: Discord, Twitch und Steam lassen sich hier nachträglich
+ * verbinden oder wieder trennen. Das Verbinden ist eine echte Weiterleitung zum
+ * Anbieter (kein `fetch`); nach der Rückkehr landet man über `returnTo` wieder
+ * hier.
+ *
+ * **Eine Seite statt zwei:** Passwort und Zwei-Faktor lagen unter
+ * `/einstellungen`. Der Entwurf kennt diese Trennung nicht – beides gehört zum
+ * Konto, und wer sein Passwort ändert, sucht es dort, wo sein Konto steht. Die
+ * alte Adresse leitet hierher weiter. Die Abschnitte tragen Anker
+ * (`#passwort`, `#zweifaktor`, `#konten`), damit das Konto-Menü gezielt
+ * hineinspringen kann.
+ *
+ * Das Konto wird genau **einmal** geladen und an alle Abschnitte
+ * durchgereicht; jede Änderung fließt über `setData` zurück, damit die übrigen
+ * Abschnitte sofort den neuen Stand sehen (etwa „Passwort einrichten" gegenüber
+ * „Passwort ändern").
  */
 export function ProfileView() {
   const { data: account, loading, error, setData } = useApiResource(() => loadAccount(), []);
   const toast = useToast();
   const searchParams = useSearchParams();
+
+  /*
+   * Aufruf mit Anker (`/profil#passwort`) in den Abschnitt scrollen.
+   *
+   * Zwei Gründe, warum der Browser das nicht von selbst tut: Die Abschnitte
+   * entstehen erst, wenn das Konto geladen ist – beim Auswerten des Ankers gibt
+   * es sie noch nicht. Und gescrollt wird nicht das Fenster, sondern der
+   * Inhaltsbereich des Rahmens; `scrollIntoView` findet ihn, ein Sprung des
+   * Fensters ginge ins Leere.
+   */
+  const geladen = account !== null;
+  useEffect(() => {
+    if (!geladen) return;
+
+    const id = window.location.hash.slice(1);
+    if (id === '') return;
+
+    const timer = window.setTimeout(
+      () => document.getElementById(id)?.scrollIntoView({ block: 'start' }),
+      0,
+    );
+    return () => window.clearTimeout(timer);
+  }, [geladen]);
 
   // Rückmeldung der Provider-Rückkehr (?linked=… / ?error=…) einmalig anzeigen.
   useEffect(() => {
@@ -53,7 +90,7 @@ export function ProfileView() {
 
   return (
     <div>
-      <PageHeader title="Profil" subtitle="Dein Konto und die verknüpften Anmeldeverfahren." />
+      <PageHeader title="Profil" subtitle="Konto, Sicherheit und verknüpfte Anmeldungen." />
 
       <div className="mx-auto flex max-w-3xl flex-col gap-4 px-5 py-5">
         {loading ? (
@@ -101,10 +138,21 @@ export function ProfileView() {
               </dl>
             </Panel>
 
-            <LinkedMethodsPanel
-              methods={account.authMethods}
-              onUnlinked={(updated) => setData(updated)}
-            />
+            {/* Reihenfolge wie im Entwurf: Konto, Passwort, Zwei-Faktor, Anmeldungen, Löschen. */}
+            <section id="passwort" className="scroll-mt-24">
+              <PasswordSection account={account} onChanged={setData} />
+            </section>
+
+            <section id="zweifaktor" className="scroll-mt-24">
+              <TwoFactorSection account={account} onChanged={setData} />
+            </section>
+
+            <section id="konten" className="scroll-mt-24">
+              <LinkedMethodsPanel
+                methods={account.authMethods}
+                onUnlinked={(updated) => setData(updated)}
+              />
+            </section>
 
             <DeleteAccountPanel account={account} />
           </>
@@ -204,9 +252,9 @@ function LinkedMethodsPanel({
       </ul>
 
       <p className="mt-4 text-xs text-ink-faint">
-        Ein Passwort-Login lässt sich unter{' '}
-        <Link href="/einstellungen" className="text-brand no-underline hover:text-brand-bright">
-          Einstellungen
+        Ein Passwort-Login lässt sich weiter oben unter{' '}
+        <Link href="#passwort" className="text-brand no-underline hover:text-brand-bright">
+          Passwort
         </Link>{' '}
         einrichten oder ändern.
       </p>

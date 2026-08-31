@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type AccountDto } from '@palantir/contracts';
-import { Badge, Icon, cn, useToast } from '@/components/shared';
+import { Badge, Icon, cn, useToast, type IconName } from '@/components/shared';
 import { logout } from '@/lib/auth/api';
 import { messageForThrown } from '@/lib/auth/errors';
 
@@ -99,12 +99,29 @@ export function UserMenu({ user }: { user: AccountDto | null }) {
             </div>
           </div>
 
+          {/*
+           * Ein Ziel, vier Einstiege: Seit Profil und Einstellungen eine Seite
+           * sind (Abgleich 11.1), springen die Punkte in die Abschnitte – so
+           * steht es auch im Entwurf.
+           */}
           <nav className="py-1">
             <MenuLink href="/profil" icon="user" label="Profil" onNavigate={() => setOpen(false)} />
             <MenuLink
-              href="/einstellungen"
+              href="/profil#passwort"
+              icon="lock"
+              label="Passwort ändern"
+              onNavigate={() => setOpen(false)}
+            />
+            <MenuLink
+              href="/profil#zweifaktor"
+              icon="shield"
+              label="Zwei-Faktor"
+              onNavigate={() => setOpen(false)}
+            />
+            <MenuLink
+              href="/profil#konten"
               icon="gear"
-              label="Einstellungen"
+              label="Verbundene Konten"
               onNavigate={() => setOpen(false)}
             />
           </nav>
@@ -126,6 +143,22 @@ export function UserMenu({ user }: { user: AccountDto | null }) {
   );
 }
 
+/**
+ * Auf der Zielseite selbst zum Anker scrollen.
+ *
+ * Steht man schon auf `/profil`, setzt der Link den Anker über die
+ * History-API – darauf scrollt der Browser nicht, und ein Sprung des Fensters
+ * hülfe ohnehin nicht, weil der Inhaltsbereich des Rahmens scrollt und nicht
+ * das Fenster. Kommt man von einer anderen Seite, gibt es das Ziel hier noch
+ * nicht; dann übernimmt die Profil-Ansicht den Sprung nach dem Laden.
+ */
+function springeZuAnker(href: string) {
+  const id = href.split('#')[1];
+  if (id === undefined) return;
+
+  window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 0);
+}
+
 function MenuLink({
   href,
   icon,
@@ -133,7 +166,7 @@ function MenuLink({
   onNavigate,
 }: {
   href: string;
-  icon: 'user' | 'gear';
+  icon: IconName;
   label: string;
   onNavigate: () => void;
 }) {
@@ -141,7 +174,10 @@ function MenuLink({
     <Link
       href={href}
       role="menuitem"
-      onClick={onNavigate}
+      onClick={() => {
+        onNavigate();
+        springeZuAnker(href);
+      }}
       className="flex items-center gap-2.5 px-4 py-2 text-base text-ink-muted no-underline hover:bg-fill hover:text-ink"
     >
       <Icon name={icon} size={14} />

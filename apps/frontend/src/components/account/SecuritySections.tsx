@@ -2,7 +2,7 @@
 
 import { type FormEvent, useState } from 'react';
 import { type AccountDto, type TwoFactorSetupDto } from '@palantir/contracts';
-import { Button, Icon, PageHeader, Panel, TextField, useToast } from '@/components/shared';
+import { Button, Icon, Panel, TextField, useToast } from '@/components/shared';
 import {
   beginTwoFactorSetup,
   changePassword,
@@ -11,47 +11,27 @@ import {
   linkPassword,
 } from '@/lib/auth/api';
 import { messageForThrown } from '@/lib/auth/errors';
-import { loadAccount } from '@/lib/api/session';
-import { useApiResource } from '@/lib/api/useApiResource';
 import { hasPassword } from './methods';
 
 /**
- * Einstellungen · Sicherheit (Pflichtenheft §7).
+ * Sicherheits-Abschnitte des Profils (Pflichtenheft §7).
  *
  * Passwort setzen/ändern und die Zwei-Faktor-Authentisierung verwalten. Bewusst
  * knapp: Die eigentliche Prüfung (aktuelles Passwort, gültiger Code) liegt beim
  * Backend; hier werden Eingaben gesammelt und Fehlermeldungen aus dem Katalog
  * angezeigt.
+ *
+ * Beide Abschnitte standen bis zur Zusammenlegung von Profil und Einstellungen
+ * auf einer eigenen Seite. Sie laden das Konto deshalb **nicht** selbst: Es
+ * kommt aus der Profil-Ansicht, die es ohnehin schon geholt hat, und geht bei
+ * jeder Änderung über `onChanged` dorthin zurück.
  */
-export function SecuritySettingsView() {
-  const { data: account, loading, error, setData } = useApiResource(() => loadAccount(), []);
-
-  return (
-    <div>
-      <PageHeader title="Einstellungen" subtitle="Passwort und Zwei-Faktor-Authentisierung." />
-
-      <div className="mx-auto flex max-w-3xl flex-col gap-4 px-5 py-5">
-        {loading ? (
-          <p className="text-base text-ink-muted">Konto wird geladen …</p>
-        ) : error ? (
-          <p className="text-base text-danger">{error}</p>
-        ) : account ? (
-          <>
-            <PasswordSection account={account} onChanged={setData} />
-            <TwoFactorSection account={account} onChanged={setData} />
-          </>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-interface SectionProps {
+export interface SectionProps {
   account: AccountDto;
   onChanged: (account: AccountDto) => void;
 }
 
-function PasswordSection({ account, onChanged }: SectionProps) {
+export function PasswordSection({ account, onChanged }: SectionProps) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -125,7 +105,7 @@ function PasswordSection({ account, onChanged }: SectionProps) {
   );
 }
 
-function TwoFactorSection({ account, onChanged }: SectionProps) {
+export function TwoFactorSection({ account, onChanged }: SectionProps) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [setup, setSetup] = useState<TwoFactorSetupDto | null>(null);
