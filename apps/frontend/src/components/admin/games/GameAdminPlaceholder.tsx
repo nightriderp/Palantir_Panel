@@ -1,6 +1,6 @@
 'use client';
 
-import { PhaseLockedPlaceholder, type IconName } from '@/components/shared';
+import { PageHeader, PhaseLockedPlaceholder, type IconName } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { AdminAccessNotice, AdminLoading } from '../common';
 
@@ -29,12 +29,19 @@ import { AdminAccessNotice, AdminLoading } from '../common';
 export interface GameAdminPlaceholderProps {
   /** Bereichsname, z. B. „Templates" oder „Arcade-Musik". */
   title: string;
+  /** Kurze Zeile unter dem Titel – wie auf jeder anderen Seite. */
+  subtitle: string;
   /** Ein Satz, was hier später zu sehen sein wird (kein Fehlereindruck). */
   description: string;
   icon: IconName;
 }
 
-export function GameAdminPlaceholder({ title, description, icon }: GameAdminPlaceholderProps) {
+export function GameAdminPlaceholder({
+  title,
+  subtitle,
+  description,
+  icon,
+}: GameAdminPlaceholderProps) {
   const { user, loading } = useSession();
   const canManage = user?.permissions.canManageGameTypes ?? false;
 
@@ -46,5 +53,16 @@ export function GameAdminPlaceholder({ title, description, icon }: GameAdminPlac
     return <AdminAccessNotice area={`die Spiele-Verwaltung „${title}"`} />;
   }
 
-  return <PhaseLockedPlaceholder title={title} description={description} phase={3} icon={icon} />;
+  /*
+   * Seitenkopf wie auf „Skins": Der Platzhalter stand hier bisher ohne Titel,
+   * waehrend jede andere gesperrte Seite einen hat.
+   */
+  return (
+    <>
+      <PageHeader title={title} subtitle={subtitle} />
+      <div className="p-5">
+        <PhaseLockedPlaceholder title={title} description={description} phase={3} icon={icon} />
+      </div>
+    </>
+  );
 }

@@ -2,7 +2,7 @@
 
 import { type NotificationDto, type NotificationPageDto } from '@palantir/contracts';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   EmptyState,
@@ -21,7 +21,7 @@ import {
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { type LiveConnectionState } from '@/lib/live/LiveChannelProvider';
-import { useNotificationLive } from '@/lib/live/useNotificationLive';
+import { useNotificationLive } from '@/lib/live/NotificationLiveProvider';
 import { AnnouncementBanner } from './AnnouncementBanner';
 import { NotificationRow } from './NotificationRow';
 import {
@@ -130,7 +130,29 @@ export function InboxTab({ preferences, onDesktopNotify }: InboxTabProps) {
     [inbox, filter, preferences, toast, onDesktopNotify],
   );
 
-  const live = useNotificationLive(onLive);
+  /*
+   * Der Kanal gehoert dem Rahmen (`NotificationLiveProvider`), damit Glocke und
+   * Posteingang sich eine Verbindung teilen. Der Rueckruf wird bei jedem
+   * Rendern neu erzeugt und sieht dadurch den aktuellen Filter; die Ref haelt
+   * ihn fest, ohne das Abo jedes Mal neu anzumelden.
+   */
+  const live = useNotificationLive();
+  const onLiveRef = useRef(onLive);
+  onLiveRef.current = onLive;
+
+  const { subscribe, setUnreadCount } = live;
+
+  useEffect(
+    () => subscribe((notification, unreadCount) => onLiveRef.current(notification, unreadCount)),
+    [subscribe],
+  );
+
+  // Der Zaehler an der Glocke haengt am selben Kanal; lesen und loeschen
+  // passieren hier per REST, davon erfaehrt er sonst nichts.
+  const unreadInPage = page?.unreadCount ?? null;
+  useEffect(() => {
+    if (unreadInPage !== null) setUnreadCount(unreadInPage);
+  }, [unreadInPage, setUnreadCount]);
 
   async function toggleRead(notification: NotificationDto) {
     const read = notification.readAt === null;

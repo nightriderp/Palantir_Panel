@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampPercent,
   formatBytes,
+  formatChatTime,
   formatDate,
   formatDateTime,
   formatDuration,
@@ -9,6 +10,7 @@ import {
   formatPercent,
   formatPing,
   formatPlayers,
+  formatRelativeTime,
   formatServerAddress,
   formatTime,
   serverInitials,
@@ -146,5 +148,48 @@ describe('formatDuration', () => {
     expect(formatDuration(120)).toBe('2 min');
     expect(formatDuration(3600 * 2 + 60 * 15)).toBe('2 h 15 min');
     expect(formatDuration(86400 * 3 + 3600 * 4)).toBe('3 d 4 h');
+  });
+});
+
+describe('formatRelativeTime', () => {
+  const jetzt = new Date('2026-08-31T12:00:00Z');
+
+  it('liefert — ohne brauchbare Angabe', () => {
+    expect(formatRelativeTime(null, jetzt)).toBe('—');
+    expect(formatRelativeTime('kein Datum', jetzt)).toBe('—');
+  });
+
+  it('fasst die letzte Dreiviertelminute zusammen', () => {
+    expect(formatRelativeTime('2026-08-31T11:59:30Z', jetzt)).toBe('gerade eben');
+  });
+
+  it('staffelt Minuten, Stunden und Tage', () => {
+    expect(formatRelativeTime('2026-08-31T11:48:00Z', jetzt)).toBe('vor 12 Min.');
+    expect(formatRelativeTime('2026-08-31T09:00:00Z', jetzt)).toBe('vor 3 Std.');
+    expect(formatRelativeTime('2026-08-30T12:00:00Z', jetzt)).toBe('gestern');
+  });
+
+  it('wechselt ab einer Woche auf das Datum', () => {
+    expect(formatRelativeTime('2026-08-20T12:00:00Z', jetzt)).toBe(
+      formatDate('2026-08-20T12:00:00Z'),
+    );
+  });
+});
+
+describe('formatChatTime', () => {
+  const jetzt = new Date(2026, 7, 31, 14, 0);
+
+  it('zeigt am selben Tag nur die Uhrzeit', () => {
+    expect(formatChatTime(new Date(2026, 7, 31, 9, 5).toISOString(), jetzt)).toBe('09:05');
+  });
+
+  it('nimmt an anderen Tagen das Datum dazu', () => {
+    expect(formatChatTime(new Date(2026, 7, 30, 9, 5).toISOString(), jetzt)).toBe(
+      '30.08.2026, 09:05',
+    );
+  });
+
+  it('liefert — ohne brauchbare Angabe', () => {
+    expect(formatChatTime(null, jetzt)).toBe('—');
   });
 });

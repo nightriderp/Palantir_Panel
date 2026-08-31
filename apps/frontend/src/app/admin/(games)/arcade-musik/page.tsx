@@ -15,6 +15,7 @@ export default function AdminArcadeMusikPage() {
   return (
     <GameAdminPlaceholder
       title="Arcade-Musik"
+      subtitle="Musik je Arcade-Spiel"
       description="Hier hinterlegst du später je Spiel ein eigenes Musikstück – ohne eigenes klingt das eingebaute."
       icon="gamepad"
     />

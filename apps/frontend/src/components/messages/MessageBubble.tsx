@@ -1,7 +1,7 @@
 'use client';
 
 import { type MessageDto } from '@palantir/contracts';
-import { Icon, cn, formatDateTime } from '@/components/shared';
+import { Icon, cn, formatChatTime } from '@/components/shared';
 
 /**
  * Eine einzelne Nachricht im Verlauf (Arbeitspaket F5).
@@ -44,6 +44,9 @@ export function MessageBubble({
       <div
         className={cn(
           'max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm sm:max-w-[70%]',
+          // Die Ecke zum Absender hin bleibt fast eckig – die Blase zeigt damit,
+          // von welcher Seite sie kommt (so auch im Entwurf).
+          mine ? 'rounded-br-sm' : 'rounded-bl-sm',
           deleted
             ? 'border border-dashed border-line-strong bg-transparent italic text-ink-faint'
             : mine
@@ -59,7 +62,7 @@ export function MessageBubble({
       </div>
 
       <div className="flex items-center gap-2 px-1">
-        <span className="text-2xs text-ink-faint">{formatDateTime(message.createdAt)}</span>
+        <span className="text-2xs text-ink-faint">{formatChatTime(message.createdAt)}</span>
 
         {!deleted && message.permissions.canReport ? (
           message.reportedByViewer ? (

@@ -15,6 +15,7 @@ export default function AdminTemplatesPage() {
   return (
     <GameAdminPlaceholder
       title="Templates"
+      subtitle="Vorlagen, aus denen neue Spiele-Typen entstehen"
       description="Hier entstehen später die Spiel-Vorlagen mit ihren generischen Feldern – die Grundlage, auf der neue Spiele-Typen ohne Code-Änderung angelegt werden."
       icon="layers"
     />
