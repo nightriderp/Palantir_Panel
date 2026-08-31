@@ -8,7 +8,8 @@ name: Images
 #
 # Getaggt wird mit dem vollständigen Commit-SHA. Das ist die eigentliche Wahrheit:
 # unveränderlich und eindeutig einem Stand zuzuordnen. Das Tag `prod` wird davon
-# getrennt vergeben - erst nach der Freigabe, und ohne neuen Bau (siehe docs/ci-cd.md).
+# getrennt vergeben - erst nach der Freigabe, und ohne neuen Bau (Ablauf war in
+# docs/ci-cd.md beschrieben; das Dokument liegt nicht mehr im Repo, siehe Historie).
 
 on:
   push:
