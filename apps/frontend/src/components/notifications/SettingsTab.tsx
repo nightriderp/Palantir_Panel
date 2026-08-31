@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Icon, Panel, ToggleRow, useToast } from '@/components/shared';
+import { Icon, Panel, ToggleRow } from '@/components/shared';
 import { NOTIFICATION_GROUPS } from './notificationView';
-import { type DesktopPermission, desktopPermission, requestDesktopPermission } from './desktop';
+import { DesktopToggle } from './DesktopToggle';
 import { type NotificationPreferences, withGroup } from './preferences';
 
 /**
@@ -23,29 +22,6 @@ export interface SettingsTabProps {
 }
 
 export function SettingsTab({ preferences, onChange }: SettingsTabProps) {
-  const toast = useToast();
-  const [permission, setPermission] = useState<DesktopPermission>('unsupported');
-
-  useEffect(() => {
-    setPermission(desktopPermission());
-  }, []);
-
-  async function toggleDesktop(enabled: boolean) {
-    if (!enabled) {
-      onChange({ ...preferences, desktopEnabled: false });
-      return;
-    }
-
-    const granted = await requestDesktopPermission();
-    setPermission(desktopPermission());
-
-    if (granted) {
-      onChange({ ...preferences, desktopEnabled: true });
-    } else {
-      toast.warning('Der Browser hat die Erlaubnis für Mitteilungen nicht erteilt.');
-    }
-  }
-
   return (
     <div className="flex flex-col gap-5">
       <Panel variant="outline" className="flex gap-3">
@@ -77,19 +53,8 @@ export function SettingsTab({ preferences, onChange }: SettingsTabProps) {
 
       <section className="flex flex-col gap-2.5">
         <h2 className="text-base font-semibold text-ink">Browser-Mitteilungen</h2>
-        <ToggleRow
-          title="Mitteilungen des Browsers"
-          description={
-            permission === 'unsupported'
-              ? 'Dieser Browser unterstützt keine Mitteilungen.'
-              : permission === 'denied'
-                ? 'Die Erlaubnis ist im Browser gesperrt – dort wieder freigeben, um sie zu nutzen.'
-                : 'Zeigt neue Meldungen auch außerhalb des Panels an, sofern der Browser es erlaubt.'
-          }
-          checked={preferences.desktopEnabled && permission === 'granted'}
-          disabled={permission === 'unsupported' || permission === 'denied'}
-          onChange={(enabled) => void toggleDesktop(enabled)}
-        />
+        {/* Derselbe Schalter steht über dem Posteingang – gemeinsamer Zustand. */}
+        <DesktopToggle preferences={preferences} onChange={onChange} />
       </section>
 
       <section className="flex flex-col gap-2.5">

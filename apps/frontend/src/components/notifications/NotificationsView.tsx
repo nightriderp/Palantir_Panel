@@ -20,7 +20,9 @@ import { useNotificationPreferences } from './usePreferences';
  * Beide Reiter bleiben eingehängt; der inaktive wird nur ausgeblendet. So
  * bricht der Wechsel auf die Einstellungen den Live-Kanal der Inbox nicht ab und
  * lädt die Liste beim Zurückwechseln nicht neu. Die Vorlieben liegen an genau
- * einer Stelle, damit ein Umschalten sofort auch für die Inbox gilt.
+ * einer Stelle, damit ein Umschalten sofort auch für die Inbox gilt – und damit
+ * der Schalter für Browser-Mitteilungen an beiden Stellen (Karte über dem
+ * Posteingang, Zeile in den Einstellungen) denselben Wert zeigt.
  */
 
 type TabKey = 'inbox' | 'settings';
@@ -60,7 +62,11 @@ export function NotificationsView() {
       {ready ? (
         <>
           <div hidden={tab !== 'inbox'}>
-            <InboxTab preferences={preferences} onDesktopNotify={onDesktopNotify} />
+            <InboxTab
+              preferences={preferences}
+              onDesktopNotify={onDesktopNotify}
+              onPreferencesChange={update}
+            />
           </div>
           <div hidden={tab !== 'settings'}>
             <SettingsTab preferences={preferences} onChange={update} />
