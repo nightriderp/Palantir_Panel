@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { type ConversationDto, type GameServerDto, type HostNodeDto } from '@palantir/contracts';
 import { AppShell, StatusDot, ToastProvider } from '@/components/shared';
 import { UserMenu } from '@/components/account/UserMenu';
@@ -15,6 +15,7 @@ import { NotificationLiveProvider } from '@/lib/live/NotificationLiveProvider';
 import { useServerListLive } from '@/lib/live/useServerLive';
 import { DashboardNav } from './DashboardNav';
 import { GlobalStatus } from './GlobalStatus';
+import { AUSFALL_SCHWELLE_MS, liveAnzeige } from './liveBadge';
 import { SessionProvider, useSession } from './SessionProvider';
 import {
   buildStatusMetrics,
@@ -33,21 +34,35 @@ import {
  * WORK_STATUS.md.
  */
 
-/** Zustand der Live-Verbindung in der Kopfleiste (Pflichtenheft §5.3). */
+/**
+ * Zustand der Live-Verbindung in der Kopfleiste (Pflichtenheft §5.3).
+ *
+ * Die Beschriftung selbst steht in `liveBadge.ts`; hier läuft nur die Uhr, die
+ * einen kurzen Aussetzer von einem echten Ausfall trennt. Sie hängt bewusst am
+ * **Ja/Nein** „verbunden", nicht am Verbindungszustand: Sonst würde jeder
+ * Fehlversuch sie neu starten, und aus dem Aussetzer würde nie ein Ausfall.
+ */
 function LiveConnectionBadge() {
   const { connection } = useLiveChannel();
+  const [ausfallBestaetigt, setAusfallBestaetigt] = useState(false);
 
-  const meta = {
-    open: { tone: 'success', label: 'Live verbunden' },
-    connecting: { tone: 'warning', label: 'Verbindung wird aufgebaut …' },
-    closed: { tone: 'danger', label: 'Live-Verbindung unterbrochen' },
-  } as const;
+  const getrennt = connection !== 'open';
 
-  const { tone, label } = meta[connection];
+  useEffect(() => {
+    if (!getrennt) {
+      setAusfallBestaetigt(false);
+      return;
+    }
+
+    const timer = setTimeout(() => setAusfallBestaetigt(true), AUSFALL_SCHWELLE_MS);
+    return () => clearTimeout(timer);
+  }, [getrennt]);
+
+  const { tone, label, title, pulse } = liveAnzeige(connection, ausfallBestaetigt);
 
   return (
-    <span className="flex items-center gap-1.5 text-xs text-ink-faint" title={label}>
-      <StatusDot tone={tone} pulse={connection !== 'closed'} />
+    <span className="flex items-center gap-1.5 text-xs text-ink-faint" title={title}>
+      <StatusDot tone={tone} pulse={pulse} />
       <span className="hidden sm:inline">{label}</span>
     </span>
   );
