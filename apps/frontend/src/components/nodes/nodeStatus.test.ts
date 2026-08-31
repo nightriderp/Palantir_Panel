@@ -1,5 +1,6 @@
 import { type GameTypeDto, type HostNodeDto } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
+import { formatMegabytes } from '@/components/shared';
 import {
   NODE_EXPLAINERS,
   formatCores,
@@ -120,6 +121,24 @@ describe('nodesSummary', () => {
     const summary = nodesSummary([node(), node({ id: 'n2', status: 'offline' })]);
     const online = summary.find((entry) => entry.key === 'online');
     expect(online?.value).toBe('1/2');
+  });
+
+  /*
+   * Die beiden Kennzahlen beantworten verschiedene Fragen, so wie im Entwurf:
+   * „RAM gebucht" zeigt das Vergebene, „Platte frei" das Verbleibende. Die
+   * Beschriftung darf deshalb nie ohne den passenden Wert geändert werden.
+   */
+  it('nimmt beim RAM das Gebuchte und beim Platz das Freie', () => {
+    const summary = nodesSummary([node(), node({ id: 'n2' })]);
+
+    const ram = summary.find((entry) => entry.key === 'ram');
+    expect(ram?.label).toBe('RAM gebucht');
+    // 2 × 8192 MB vergeben – nicht die 2 × 8192 MB, die frei sind.
+    expect(ram?.value).toBe(formatMegabytes(2 * 8192));
+
+    const disk = summary.find((entry) => entry.key === 'disk');
+    expect(disk?.label).toBe('Platte frei');
+    expect(disk?.value).toBe(formatMegabytes(2 * (512_000 - 128_000)));
   });
 });
 

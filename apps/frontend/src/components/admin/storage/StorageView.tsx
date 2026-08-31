@@ -453,7 +453,7 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
           onConfirm={() => void confirmDelete()}
           message={`${storageKindLabel(toDelete.kind)} · ${formatBytes(
             toDelete.sizeBytes,
-          )} werden unwiderruflich vom Homeserver entfernt.`}
+          )} werden unwiderruflich von der Node entfernt.`}
         />
       ) : null}
     </div>

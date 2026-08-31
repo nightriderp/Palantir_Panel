@@ -46,7 +46,7 @@ export interface NodeStatusMeta {
 export const NODE_STATUS_META: Record<HostNodeStatus, NodeStatusMeta> = {
   online: {
     label: 'Online',
-    description: 'Der Homeserver ist verbunden und nimmt Serverstarts an.',
+    description: 'Die Node ist verbunden und nimmt Serverstarts an.',
     tone: 'success',
     pulse: true,
     acceptsStarts: true,
@@ -54,7 +54,7 @@ export const NODE_STATUS_META: Record<HostNodeStatus, NodeStatusMeta> = {
   offline: {
     label: 'Offline',
     description:
-      'Der Homeserver ist gerade nicht erreichbar. Bereits laufende Server sind währenddessen nicht spielbar, und neue Server lassen sich nicht starten.',
+      'Die Node ist gerade nicht erreichbar. Bereits laufende Server sind währenddessen nicht spielbar, und neue Server lassen sich nicht starten.',
     tone: 'danger',
     pulse: false,
     acceptsStarts: false,
@@ -62,7 +62,7 @@ export const NODE_STATUS_META: Record<HostNodeStatus, NodeStatusMeta> = {
   maintenance: {
     label: 'Wartung',
     description:
-      'Der Homeserver wurde bewusst stillgelegt, zum Beispiel für ein Update. Neue Server lassen sich so lange nicht starten.',
+      'Die Node wurde bewusst stillgelegt, zum Beispiel für ein Update. Neue Server lassen sich so lange nicht starten.',
     tone: 'warning',
     pulse: false,
     acceptsStarts: false,
@@ -137,7 +137,7 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
   return [
     {
       key: 'cpu',
-      label: 'Rechenleistung',
+      label: 'Kerne gebucht',
       usedLabel: formatCores(allocated.cpuCores),
       totalLabel: formatCores(total.cpuCores),
       freeLabel: formatCores(available.cpuCores),
@@ -146,7 +146,7 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
     },
     {
       key: 'ram',
-      label: 'Arbeitsspeicher',
+      label: 'RAM gebucht',
       usedLabel: formatMegabytes(allocated.ramMb),
       totalLabel: formatMegabytes(total.ramMb),
       freeLabel: formatMegabytes(available.ramMb),
@@ -155,7 +155,7 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
     },
     {
       key: 'disk',
-      label: 'Speicherplatz',
+      label: 'Platte belegt',
       usedLabel: formatMegabytes(allocated.diskMb),
       totalLabel: formatMegabytes(total.diskMb),
       freeLabel: formatMegabytes(available.diskMb),
@@ -181,35 +181,40 @@ export interface NodesSummaryEntry {
  *
  * Zählt bewusst nur über die Nodes, die der Aufrufer sehen darf – eine
  * ausgeblendete Node darf sich nicht über eine Summe verraten.
+ *
+ * Beim RAM steht bewusst das **gebuchte** und beim Platz das **freie** – so wie
+ * im Entwurf. Beides beantwortet eine andere Frage: „Wie viel ist schon
+ * vergeben?" gegenüber „Wie viel passt noch drauf?". Die Beschriftung sagt
+ * jeweils, welche der beiden gemeint ist.
  */
 export function nodesSummary(nodes: HostNodeDto[]): NodesSummaryEntry[] {
   const online = nodes.filter((node) => node.status === 'online').length;
   const servers = nodes.reduce((sum, node) => sum + node.serverCount, 0);
-  const freeRamMb = nodes.reduce((sum, node) => sum + node.capacity.available.ramMb, 0);
+  const bookedRamMb = nodes.reduce((sum, node) => sum + node.capacity.allocated.ramMb, 0);
   const freeDiskMb = nodes.reduce((sum, node) => sum + node.capacity.available.diskMb, 0);
 
   return [
     {
       key: 'online',
-      label: 'Verbunden',
+      label: 'Nodes online',
       value: `${formatNumber(online)}/${formatNumber(nodes.length)}`,
-      note: 'Erreichbare Homeserver gegenüber allen eingerichteten.',
+      note: 'Erreichbare Nodes gegenüber allen eingerichteten.',
     },
     {
       key: 'servers',
-      label: 'Server',
+      label: 'Server verteilt',
       value: formatNumber(servers),
-      note: 'Angelegte Gameserver auf allen Homeservern zusammen.',
+      note: 'Angelegte Gameserver auf allen Nodes zusammen.',
     },
     {
       key: 'ram',
-      label: 'Freier Arbeitsspeicher',
-      value: formatMegabytes(freeRamMb),
-      note: 'Was für weitere Server noch reserviert werden kann.',
+      label: 'RAM gebucht',
+      value: formatMegabytes(bookedRamMb),
+      note: 'Für vorhandene Server fest reserviert.',
     },
     {
       key: 'disk',
-      label: 'Freier Speicherplatz',
+      label: 'Platte frei',
       value: formatMegabytes(freeDiskMb),
       note: 'Platz für Weltdaten und Backups.',
     },
@@ -272,7 +277,7 @@ export function nodeHasRoomFor(node: HostNodeDto, needed: ServerResourceLimits):
  * Hinweis erscheint nur, wenn er etwas zu sagen hat.
  *
  * Das eigene Kontingent des Nutzers (Pflichtenheft §10, erste Prüfung) bleibt
- * hier außen vor: Diese Ansicht beschreibt die Homeserver, nicht das Konto. Den
+ * hier außen vor: Diese Ansicht beschreibt die Nodes, nicht das Konto. Den
  * Kontingent-Teil beantwortet der Erstellungs-Wizard in F3.
  */
 export function startCapacityHint(
@@ -287,8 +292,8 @@ export function startCapacityHint(
     return {
       title: 'Zurzeit lässt sich kein Server starten',
       description: inMaintenance
-        ? 'Alle Homeserver sind in Wartung. Sobald die Wartung beendet ist, funktionieren Starts wieder von allein – du musst nichts tun.'
-        : 'Kein Homeserver ist gerade erreichbar. Solange das so ist, nimmt Palantir keine Serverstarts an. Meist genügt es, später erneut nachzusehen.',
+        ? 'Alle Nodes sind in Wartung. Sobald die Wartung beendet ist, funktionieren Starts wieder von allein – du musst nichts tun.'
+        : 'Keine Node ist gerade erreichbar. Solange das so ist, nimmt Palantir keine Serverstarts an. Meist genügt es, später erneut nachzusehen.',
     };
   }
 
@@ -303,7 +308,7 @@ export function startCapacityHint(
       smallest.limits.ramMb,
     )} Arbeitsspeicher, ${formatCores(smallest.limits.cpuCores)} und ${formatMegabytes(
       smallest.limits.diskMb,
-    )} Speicherplatz – so viel ist auf keinem verbundenen Homeserver mehr frei. Ein nicht mehr genutzter Server, den du löschst, gibt seinen Platz sofort wieder frei.`,
+    )} Speicherplatz – so viel ist auf keiner verbundenen Node mehr frei. Ein nicht mehr genutzter Server, den du löschst, gibt seinen Platz sofort wieder frei.`,
   };
 }
 
@@ -329,23 +334,23 @@ export interface NodeExplainer {
  */
 export const NODE_EXPLAINERS: NodeExplainer[] = [
   {
-    title: 'Was ist ein Homeserver („Node")?',
-    body: 'Ein Homeserver ist der Rechner, auf dem deine Gameserver tatsächlich laufen. Palantir selbst ist nur die Bedienoberfläche: Du drückst hier auf „Starten", die Arbeit macht der Homeserver. Diese Seite zeigt dir, wie es ihm geht.',
+    title: 'Was ist eine „Node"?',
+    body: 'Eine Node ist ein Rechner, auf dem deine Gameserver tatsächlich laufen – im Regelfall der Homeserver bei dir zu Hause. Palantir selbst ist nur die Bedienoberfläche: Du drückst hier auf „Starten", die Arbeit macht die Node. Diese Seite zeigt dir, wie es ihr geht.',
   },
   {
     title: 'Was bedeutet der Zustand?',
-    body: `„${NODE_STATUS_META.online.label}" heißt: alles läuft, Server lassen sich starten. „${NODE_STATUS_META.maintenance.label}" heißt: der Homeserver wurde absichtlich stillgelegt, etwa für ein Update – das geht vorbei. „${NODE_STATUS_META.offline.label}" heißt: er meldet sich nicht, zum Beispiel wegen eines Strom- oder Internetausfalls zu Hause. In beiden Fällen sind Server so lange nicht spielbar.`,
+    body: `„${NODE_STATUS_META.online.label}" heißt: alles läuft, Server lassen sich starten. „${NODE_STATUS_META.maintenance.label}" heißt: die Node wurde absichtlich stillgelegt, etwa für ein Update – das geht vorbei. „${NODE_STATUS_META.offline.label}" heißt: sie meldet sich nicht, zum Beispiel wegen eines Strom- oder Internetausfalls zu Hause. In beiden Fällen sind Server so lange nicht spielbar.`,
   },
   {
     title: 'Was zeigen die Balken?',
-    body: 'Sie zeigen, wie viel von der Ausstattung des Homeservers bereits für Gameserver reserviert ist – nicht, wie stark er in diesem Moment arbeitet. Reserviert bleibt reserviert, auch wenn ein Server gerade gestoppt ist: Der Platz steht für ihn bereit, sobald er wieder startet.',
+    body: 'Sie zeigen, wie viel von der Ausstattung der Node bereits für Gameserver reserviert ist – nicht, wie stark sie in diesem Moment arbeitet. Reserviert bleibt reserviert, auch wenn ein Server gerade gestoppt ist: Der Platz steht für ihn bereit, sobald er wieder startet.',
   },
   {
     title: 'Warum ist der Platz manchmal alle?',
-    body: 'Jeder Gameserver bekommt feste Obergrenzen für Arbeitsspeicher, Rechenleistung und Speicherplatz. Ist die Summe aller Obergrenzen erreicht, nimmt der Homeserver keinen weiteren Server mehr an – auch dann nicht, wenn dein eigenes Kontingent noch Luft hätte. Lösche dann einen Server, den du nicht mehr brauchst, oder wende dich an die Administration.',
+    body: 'Jeder Gameserver bekommt feste Obergrenzen für Arbeitsspeicher, Rechenleistung und Speicherplatz. Ist die Summe aller Obergrenzen erreicht, nimmt die Node keinen weiteren Server mehr an – auch dann nicht, wenn dein eigenes Kontingent noch Luft hätte. Lösche dann einen Server, den du nicht mehr brauchst, oder wende dich an die Administration.',
   },
   {
     title: 'Kann ich hier etwas kaputt machen?',
-    body: 'Nein. Diese Ansicht zeigt nur an. Homeserver einrichten, pausieren oder entfernen kann ausschließlich die Administration.',
+    body: 'Nein. Diese Ansicht zeigt nur an. Nodes einrichten, pausieren oder entfernen kann ausschließlich die Administration.',
   },
 ];

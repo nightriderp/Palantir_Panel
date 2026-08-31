@@ -15,7 +15,7 @@ import { NODE_EXPLAINERS, nodesSummary, startCapacityHint } from './nodeStatus';
 /**
  * Nodes aus Nutzersicht (Arbeitspaket F7, Lastenheft §3.7).
  *
- * Zeigt Zustand, Auslastung und freie Kapazität der Homeserver und erklärt
+ * Zeigt Zustand, Auslastung und freie Kapazität der Nodes und erklärt
  * verständlich, was das bedeutet. Die Ansicht **verwaltet nichts** – Anlegen,
  * Pausieren, Löschen sowie Port-Pool und Storage-Explorer gehören zur
  * Admin-Ansicht (F10). Wer dort hin darf, findet oben den Weg dorthin: Das
@@ -59,7 +59,7 @@ export function NodesView() {
       </Button>
       {canManage ? (
         <Button iconLeft="server" onClick={() => router.push('/admin/nodes')}>
-          Homeserver verwalten
+          Nodes verwalten
         </Button>
       ) : null}
     </>
@@ -69,13 +69,13 @@ export function NodesView() {
     return (
       <>
         <PageHeader
-          title="Homeserver"
+          title="Nodes"
           subtitle="Zustand und Auslastung der Rechner, auf denen die Gameserver laufen."
         />
         <div className="p-5">
           <EmptyState
             icon="lock"
-            title={sessionLoading ? 'Einen Moment …' : 'Kein Zugriff auf die Homeserver-Übersicht'}
+            title={sessionLoading ? 'Einen Moment …' : 'Kein Zugriff auf die Node-Übersicht'}
             description={
               sessionLoading
                 ? 'Dein Konto wird geladen.'
@@ -93,7 +93,7 @@ export function NodesView() {
   return (
     <>
       <PageHeader
-        title="Homeserver"
+        title="Nodes"
         subtitle="Zustand und Auslastung der Rechner, auf denen die Gameserver laufen."
         actions={headerActions}
       />
@@ -112,7 +112,7 @@ export function NodesView() {
         {hasError ? (
           <EmptyState
             icon="warning"
-            title="Die Homeserver-Übersicht konnte nicht geladen werden"
+            title="Die Node-Übersicht konnte nicht geladen werden"
             description={nodes.error ?? undefined}
             action={
               <Button variant="secondary" onClick={() => nodes.reload()}>
@@ -121,12 +121,12 @@ export function NodesView() {
             }
           />
         ) : loading ? (
-          <p className="text-base text-ink-muted">Homeserver werden geladen …</p>
+          <p className="text-base text-ink-muted">Nodes werden geladen …</p>
         ) : nodeList.length === 0 ? (
           <EmptyState
             icon="server"
-            title="Noch kein Homeserver eingerichtet"
-            description="Sobald die Administration einen Homeserver verbindet, erscheint er hier."
+            title="Noch keine Node eingerichtet"
+            description="Sobald die Administration eine Node verbindet, erscheint sie hier."
           />
         ) : (
           <>

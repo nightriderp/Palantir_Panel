@@ -20,7 +20,7 @@ export function NodeExplainerDialog({ open, onClose }: NodeExplainerDialogProps)
     <Modal
       open={open}
       onClose={onClose}
-      title="Homeserver verständlich erklärt"
+      title="Nodes verständlich erklärt"
       description="Kurz zusammengefasst, was diese Seite zeigt und was die Angaben bedeuten."
       footer={
         <Button variant="primary" onClick={onClose}>
