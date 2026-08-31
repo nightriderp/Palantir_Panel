@@ -63,6 +63,7 @@ function main(): void {
       token: env.AGENT_TOKEN,
     }),
     agentVersion: AGENT_VERSION,
+    ...(env.AGENT_NODE_ID === undefined ? {} : { nodeId: env.AGENT_NODE_ID }),
     runtime: adapter,
     // Gemessene Node-Ressourcen vom Dateisystem der Server-Datenordner
     // (Pflichtenheft §11). Begleiten jeden Ist-Zustands-Bericht.

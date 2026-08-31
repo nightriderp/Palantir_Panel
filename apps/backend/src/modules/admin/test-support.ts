@@ -149,6 +149,8 @@ export function createFakeHostNodeRepository(
   seed: HostNodeRecord[] = [],
 ): HostNodeRepository & { rows: HostNodeRecord[] } {
   const rows: HostNodeRecord[] = [...seed];
+  /** Vergebene Agent-Token je Node, als Hash – wie in der Datenbank. */
+  const tokenHashes = new Map<string, string>();
   let nextId = 1;
 
   return {
@@ -156,6 +158,20 @@ export function createFakeHostNodeRepository(
 
     async listAll() {
       return [...rows];
+    },
+
+    async findByAgentTokenHash(hash) {
+      for (const [nodeId, gespeichert] of tokenHashes) {
+        if (gespeichert === hash) {
+          return rows.find((row) => row.id === nodeId) ?? null;
+        }
+      }
+
+      return null;
+    },
+
+    async setAgentTokenHash(id, hash) {
+      tokenHashes.set(id, hash);
     },
 
     async findById(id) {

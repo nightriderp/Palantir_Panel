@@ -15,8 +15,23 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   /** WebSocket-Endpunkt des Backends, erreichbar über den WireGuard-Tunnel. */
   AGENT_BACKEND_WS_URL: z.string().url().default('ws://10.10.0.1:4000/agent'),
-  /** Pre-Shared-Token zur Authentifizierung des Agents (Pflichtenheft §2.2). */
+  /**
+   * Pre-Shared-Token zur Authentifizierung des Agents (Pflichtenheft §2.2).
+   *
+   * Entweder das Token dieser Node (über `POST /admin/nodes/:nodeId/agent-token`
+   * vergeben) oder – bei genau einem Homeserver – das gemeinsame `AGENT_TOKEN`
+   * aus der zentralen `.env` des Backends.
+   */
   AGENT_TOKEN: z.string().min(1).optional(),
+  /**
+   * Node, für die sich dieser Agent hält (`HostNode.id`).
+   *
+   * Optional. Ist sie gesetzt, geht sie im `hello` mit und das Backend prüft,
+   * dass sie zu der Node passt, der das Token gehört – sonst wird die
+   * Verbindung abgelehnt. Ohne Angabe entscheidet allein das Token
+   * (WORK_STATUS.md, Gefundener Punkt 57).
+   */
+  AGENT_NODE_ID: z.string().uuid().optional(),
   /** Docker-Socket-Proxy – der Agent spricht nie direkt mit dem Docker-Socket. */
   DOCKER_SOCKET_PROXY_URL: z.string().url().default('http://127.0.0.1:2375'),
   /** Basisverzeichnis der Server-Datenordner; Bind-Mounts sind darauf begrenzt. */
