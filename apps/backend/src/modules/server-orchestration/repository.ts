@@ -36,6 +36,8 @@ export interface ServerRecord {
   readonly dockerContainerId: string | null;
   /** Image, mit dem der Container angelegt wurde; `null` ohne Container. */
   readonly imageRef: string | null;
+  /** Fingerabdruck des Bauplans des Containers; `null` ohne Container. */
+  readonly containerSpecHash: string | null;
   readonly subdomain: string;
   readonly dnsRecordId: string | null;
   readonly assignedPorts: readonly ServerPortAssignment[];
@@ -73,6 +75,7 @@ export interface UpdateServerData {
   readonly restartRequired?: boolean;
   readonly dockerContainerId?: string | null;
   readonly imageRef?: string | null;
+  readonly containerSpecHash?: string | null;
   readonly dnsRecordId?: string | null;
   readonly assignedPorts?: readonly ServerPortAssignment[];
   readonly lastActivityAt?: string | null;
@@ -184,6 +187,7 @@ function toRecord(row: ServerJoinRow): ServerRecord {
     crashTimestamps: server.crashTimestamps,
     dockerContainerId: server.dockerContainerId,
     imageRef: server.imageRef,
+    containerSpecHash: server.containerSpecHash,
     subdomain: server.subdomain,
     dnsRecordId: server.dnsRecordId,
     assignedPorts: server.assignedPorts,
@@ -321,6 +325,7 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
       if (data.restartRequired !== undefined) values.restartRequired = data.restartRequired;
       if (data.dockerContainerId !== undefined) values.dockerContainerId = data.dockerContainerId;
       if (data.imageRef !== undefined) values.imageRef = data.imageRef;
+      if (data.containerSpecHash !== undefined) values.containerSpecHash = data.containerSpecHash;
       if (data.dnsRecordId !== undefined) values.dnsRecordId = data.dnsRecordId;
       if (data.assignedPorts !== undefined) values.assignedPorts = [...data.assignedPorts];
       if (data.lastActivityAt !== undefined) {

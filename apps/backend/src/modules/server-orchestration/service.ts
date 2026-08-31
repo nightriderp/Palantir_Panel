@@ -25,6 +25,7 @@ import {
   type ExecConsoleCommandResult,
   type GetLogsCommandResult,
   type GameConfigValues,
+  type GameTypeDefinition,
   type ServerFileContentDto,
   type ServerFileListDto,
   type ServerResourceLimits,
@@ -67,8 +68,12 @@ import {
   toServerFileListDto,
 } from './files.js';
 import {
+  type ContainerCreateSpec,
+  buildContainerSpec,
+  containerSpecFingerprint,
+} from './container-spec.js';
+import {
   type GameRegistry,
-  buildContainerEnv,
   buildServerConfig,
   requiresRestartAfterChange,
 } from './game-registry.js';
@@ -437,33 +442,12 @@ export class ServerOrchestrationService {
       const dnsRecordId = await this.deps.dns.upsertRecord(record);
 
       const session = this.deps.agents.require(server.hostId);
+      const spec = this.containerSpecFor(server, definition);
 
       const created = await session.sendCommand(
         'CREATE',
         server.id,
-        {
-          name: containerNameFor(server.id),
-          image: definition.dockerImage,
-          env: buildContainerEnv(definition, server.configJson),
-          command: definition.defaultCommand,
-          ports: server.assignedPorts.map((assignment) => ({
-            containerPort: assignment.containerPort,
-            hostPort: assignment.publicPort,
-            protocol: assignment.protocol,
-          })),
-          resources: {
-            memoryMb: server.resourceLimits.ramMb,
-            cpuCores: server.resourceLimits.cpuCores,
-          },
-          dataVolume: {
-            hostPath: dataHostPathFor(server.id),
-            containerPath: definition.dataVolumeContainerPath,
-          },
-          readOnlyRootFilesystem: definition.readOnlyRootFilesystem,
-          tmpfsPaths: definition.tmpfsPaths,
-          labels: { 'palantir.serverId': server.id },
-          stopTimeoutSeconds: definition.stopTimeoutSeconds,
-        },
+        spec,
         /*
          * Eigene Frist: Fehlt das Image auf der Node, holt der Agent es beim
          * Anlegen selbst (Gefundener Punkt 111) – das dauert bei einem
@@ -476,8 +460,10 @@ export class ServerOrchestrationService {
         dnsRecordId,
         dockerContainerId: created.containerId,
         // Womit der Container tatsächlich angelegt wurde – Grundlage für
-        // „Update verfügbar" (Mockup-Abgleich 3.4).
-        imageRef: definition.dockerImage,
+        // „Update verfügbar" (Mockup-Abgleich 3.4) und für den Abgleich, ob er
+        // noch zum heutigen Bauplan passt (Punkt 114).
+        imageRef: spec.image,
+        containerSpecHash: containerSpecFingerprint(spec),
       });
 
       // Weltdaten übernehmen, solange der Server noch als „wird angelegt" gilt
@@ -503,6 +489,73 @@ export class ServerOrchestrationService {
     }
   }
 
+  /** Bauplan des Containers – eine Quelle für Anlegen und Neuaufbau. */
+  private containerSpecFor(
+    server: ServerRecord,
+    definition: GameTypeDefinition,
+  ): ContainerCreateSpec {
+    return buildContainerSpec({
+      server,
+      definition,
+      containerName: containerNameFor(server.id),
+      dataHostPath: dataHostPathFor(server.id),
+    });
+  }
+
+  /**
+   * Container neu bauen, wenn er nicht mehr zum heutigen Bauplan passt
+   * (WORK_STATUS.md, Punkt 114).
+   *
+   * Umgebungsvariablen, Image, Ports und Grenzen bekommt ein Container beim
+   * Anlegen; `RESTART` startet denselben Container mit denselben Werten. Ohne
+   * diesen Schritt wirkte eine geänderte Konfiguration nie, und ein neueres
+   * Image blieb ungenutzt – die Oberfläche meldete „Neustart nötig" und
+   * „Update verfügbar", und ein Neustart änderte nichts daran.
+   *
+   * Die Daten des Servers liegen in einem Bind-Mount auf der Node und
+   * überleben den Neuaufbau; Ports und DNS-Eintrag bleiben ebenfalls, sie
+   * hängen am Server und nicht am Container.
+   *
+   * `containerSpecHash === null` heißt „vor dieser Spalte angelegt": Diese
+   * Container werden einmalig neu gebaut, danach steht der Fingerabdruck.
+   */
+  private async ensureContainerCurrent(
+    server: ServerRecord,
+    definition: GameTypeDefinition,
+  ): Promise<ServerRecord> {
+    if (server.dockerContainerId === null) {
+      return server;
+    }
+
+    const spec = this.containerSpecFor(server, definition);
+    const fingerabdruck = containerSpecFingerprint(spec);
+
+    if (server.containerSpecHash === fingerabdruck) {
+      return server;
+    }
+
+    const session = this.deps.agents.require(server.hostId);
+
+    await session.sendCommand('DELETE', server.id, {
+      containerId: server.dockerContainerId,
+      force: true,
+    });
+
+    const created = await session.sendCommand('CREATE', server.id, spec, {
+      timeoutMs: this.deps.config.createTimeoutMs,
+    });
+
+    await this.deps.repository.update(server.id, {
+      dockerContainerId: created.containerId,
+      imageRef: spec.image,
+      containerSpecHash: fingerabdruck,
+      // Der Grund für den Hinweis ist damit erledigt.
+      restartRequired: false,
+    });
+
+    return this.requireServer(server.id);
+  }
+
   // -------------------------------------------------------------------------
   // Lifecycle-Befehle
   // -------------------------------------------------------------------------
@@ -516,14 +569,25 @@ export class ServerOrchestrationService {
    * (Pflichtenheft §9).
    */
   async startServer(serverId: string, actorUserId: string): Promise<ServerRecord> {
-    const server = await this.requireServer(serverId);
+    const geladen = await this.requireServer(serverId);
 
-    assertTransitionAllowed(server.status, 'starting');
+    assertTransitionAllowed(geladen.status, 'starting');
 
     // Verfügbarkeit der Ziel-Node vor der Kapazitätsprüfung: Eine Node in
     // `maintenance` hat volle freie Kapazität und käme durch die Rechnung aus
     // B4 anstandslos durch (WORK_STATUS.md, Gefundener Punkt 24).
-    await this.requireNodeAcceptsStarts(server.hostId);
+    await this.requireNodeAcceptsStarts(geladen.hostId);
+
+    /*
+     * Vor dem Start: Passt der Container noch zum heutigen Bauplan? Geänderte
+     * Konfiguration und ein neueres Image wirken erst nach einem Neuaufbau
+     * (Punkt 114). Bewusst hier und nicht im Neustart: Auch ein Start aus dem
+     * gestoppten Zustand soll die Änderung mitnehmen.
+     */
+    const server = await this.ensureContainerCurrent(
+      geladen,
+      this.deps.registry.require(geladen.gameType),
+    );
 
     // Vor der Reservierung, damit ein fehlender Container ohne offene
     // Transaktion scheitert.
