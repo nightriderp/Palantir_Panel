@@ -5,7 +5,8 @@
 # Browser-Bundle ein. `PALANTIR_DOMAIN` muss deshalb beim Bauen bekannt sein und
 # wird als Build-Argument übergeben. Ein Domainwechsel erfordert bei diesem
 # Image also einen Neubau - anders als bei Backend und Agent, die den Wert zur
-# Laufzeit aus der .env lesen. Siehe docs/ci-cd.md.
+# Laufzeit aus der .env lesen. (Hintergrund stand in docs/ci-cd.md - nicht mehr im
+# Repo, siehe Historie.)
 
 FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm
