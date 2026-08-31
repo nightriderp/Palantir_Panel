@@ -9,19 +9,23 @@
  * steht in `service.ts`; der Zustandswechsel selbst passiert ausschließlich über
  * die State Machine.
  *
- * **Stand der Umsetzung:** Der generische Port-Connect-Test ist gebaut – er ist
- * das, was Phase 1 braucht (Lastenheft §3.5: „spielunabhängig, funktionsfähig
- * mit einem einfachen Test-Server-Typ"). Der `gamedig`-Weg ist als
- * Sonden-Variante vorgesehen, aber noch nicht implementiert: `gamedig` wäre
- * eine neue Laufzeit-Abhängigkeit, die in Phase 1 kein einziger Spiel-Typ
- * benutzt (CLAUDE.md §1 – Abhängigkeiten werden benannt und begründet, nicht
- * auf Vorrat eingebaut). Eine Definition mit `query.kind === 'gamedig'` fällt
- * deshalb sichtbar mit einer benannten Meldung durch, statt still den
- * Port-Connect zu nehmen und eine Erreichbarkeit vorzutäuschen, die nie geprüft
- * wurde. Vermerkt in WORK_STATUS.md unter „Gefundene Punkte".
+ * **Zwei Sonden:** Der generische Port-Connect-Test deckt den Test-Typ aus
+ * Phase 1 ab; mit dem ersten echten Spiel (Minecraft, Ausbaustufe 2) kommt die
+ * Abfrage über `gamedig` dazu (WORK_STATUS.md, Gefundener Punkt 60). Welche
+ * greift, entscheidet `query.kind` der Spiele-Definition – geraten wird nichts.
+ *
+ * **Laufzeit-Abhängigkeit `gamedig`** (CLAUDE.md §1): bewusst erst mit dem
+ * Spiel eingeführt, das sie braucht, nicht auf Vorrat. Sie spricht die
+ * Abfrageprotokolle der Spiele; das Protokoll steht als `protocol` in der
+ * Definition.
+ *
+ * Der Unterschied ist nicht kosmetisch: Ein offener Port beweist nur, dass
+ * etwas lauscht. Erst eine gültige Protokollantwort beweist, dass der
+ * Spielserver bereit ist – und liefert nebenbei Spielerzahl und Antwortzeit.
  */
 
 import net from 'node:net';
+import { GameDig, type QueryResult } from 'gamedig';
 import { type GameQuerySpec } from '@palantir/contracts';
 
 export interface HealthCheckTarget {
@@ -109,25 +113,88 @@ export function createPortConnectProbe(): HealthProbe {
 }
 
 /**
+ * Abfrage-Funktion, wie `gamedig` sie anbietet.
+ *
+ * Bewusst nur die Felder, die hier gebraucht werden – hereingereicht, damit die
+ * Zuordnung „Antwort → {@link HealthCheckResult}" ohne Netz und ohne laufenden
+ * Spielserver prüfbar bleibt (CLAUDE.md §4).
+ */
+export type GamedigQuery = (options: {
+  type: string;
+  host: string;
+  port: number;
+  socketTimeout: number;
+  attemptTimeout: number;
+  maxRetries: number;
+}) => Promise<QueryResult>;
+
+/** Ganze, nicht-negative Zahl oder `null` – alles andere ist keine Angabe. */
+function zaehlung(wert: unknown): number | null {
+  return typeof wert === 'number' && Number.isFinite(wert) && wert >= 0 ? Math.round(wert) : null;
+}
+
+/**
+ * Sonde, die den Server über sein eigenes Abfrageprotokoll anspricht.
+ *
+ * `maxRetries: 0`: Der Health-Check wiederholt bereits selbst in Abständen
+ * (`awaitHealthy`). Ein zweiter Wiederholungsmechanismus darunter würde die
+ * Frist eines Versuchs vervielfachen und den Hochlauf verschleppen.
+ */
+export function createGamedigProbe(abfragen: GamedigQuery = (options) => GameDig.query(options)) {
+  return {
+    async check(target: HealthCheckTarget, timeoutMs: number): Promise<HealthCheckResult> {
+      if (target.query.kind !== 'gamedig') {
+        return UNREACHABLE('Diese Sonde beantwortet nur Abfragen der Art „gamedig".');
+      }
+
+      try {
+        const antwort = await abfragen({
+          type: target.query.protocol,
+          host: target.host,
+          port: target.port,
+          socketTimeout: timeoutMs,
+          attemptTimeout: timeoutMs,
+          maxRetries: 0,
+        });
+
+        return {
+          healthy: true,
+          pingMs: zaehlung(antwort.ping),
+          // `numplayers` ist die gemeldete Zahl; die Liste `players` kann kürzer
+          // sein, weil manche Server nur einen Auszug herausgeben.
+          playersOnline: zaehlung(antwort.numplayers) ?? zaehlung(antwort.players?.length),
+          playersMax: zaehlung(antwort.maxplayers),
+          reason: null,
+        };
+      } catch (fehler: unknown) {
+        // „Hat nicht geantwortet", nicht „kaputt": Ein Spielserver im Hochlauf
+        // lehnt Abfragen ab, bis er bereit ist – genau darauf wartet der
+        // Health-Check.
+        return UNREACHABLE(
+          `Der Server hat auf die Abfrage nicht geantwortet (${
+            fehler instanceof Error ? fehler.message : String(fehler)
+          }).`,
+        );
+      }
+    },
+  } satisfies HealthProbe;
+}
+
+/**
  * Sonde, die nach dem Abfragetyp der Spiele-Definition auswählt.
  *
- * `gamedig` fehlt bewusst (siehe Kopfkommentar) und meldet einen benannten
- * Fehlschlag, statt still auf den Port-Connect auszuweichen.
+ * Geraten wird nichts: `portConnect` und `gamedig` sind getrennte Sonden, und
+ * die Definition sagt, welche gilt.
  */
 export function createHealthProbe(
   portConnect: HealthProbe = createPortConnectProbe(),
+  gamedig: HealthProbe = createGamedigProbe(),
 ): HealthProbe {
   return {
     check(target: HealthCheckTarget, timeoutMs: number): Promise<HealthCheckResult> {
-      if (target.query.kind === 'portConnect') {
-        return portConnect.check(target, timeoutMs);
-      }
-
-      return Promise.resolve(
-        UNREACHABLE(
-          `Die Abfrage über gamedig (Protokoll "${target.query.protocol}") ist in dieser Ausbaustufe noch nicht umgesetzt.`,
-        ),
-      );
+      return target.query.kind === 'portConnect'
+        ? portConnect.check(target, timeoutMs)
+        : gamedig.check(target, timeoutMs);
     },
   };
 }

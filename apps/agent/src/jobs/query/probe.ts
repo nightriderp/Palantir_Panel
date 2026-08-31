@@ -17,8 +17,9 @@
  * Spielerzahl, ohne die `decideAutoShutdown()` nur `activityUnknown` melden
  * kann. Auf dem Homeserver ist der Port ohne Umweg erreichbar.
  *
- * **Stand `gamedig`:** Wie im Backend (B3, „Gefundene Punkte" 60) bewusst noch
- * nicht umgesetzt. `gamedig` wäre eine neue Laufzeit-Abhängigkeit, die in
+ * **`gamedig`:** Wie im Backend (B3, „Gefundene Punkte" 60 und 76) mit dem
+ * ersten echten Spiel dazugekommen; die Sonde steht in `gamedig-probe.ts`. Der
+ * frühere Hinweis lautete: `gamedig` wäre eine neue Laufzeit-Abhängigkeit, die in
  * Phase 1 kein einziger Spiel-Typ benutzt (CLAUDE.md §1 – Abhängigkeiten werden
  * begründet, nicht auf Vorrat eingebaut). Eine Abfrage mit `kind: 'gamedig'`
  * fällt deshalb sichtbar mit benannter Meldung durch, statt still auf den
@@ -125,8 +126,11 @@ export function createPortConnectProbe(
 /**
  * Sonde, die nach der Abfrageart auswählt.
  *
- * `gamedig` fehlt bewusst (siehe Kopfkommentar) und meldet einen benannten
- * Fehlschlag, statt still auf den Port-Connect auszuweichen.
+ * Geraten wird nichts: Port-Connect und `gamedig` sind getrennte Sonden, und
+ * das Ziel sagt, welche gilt. Ohne übergebene `gamedig`-Sonde fällt eine solche
+ * Abfrage weiterhin sichtbar mit benannter Meldung durch, statt still auf den
+ * Port-Connect auszuweichen – das wäre eine Erreichbarkeit, die nie geprüft
+ * wurde.
  */
 export function createServerProbe(
   portConnect: ServerProbe = createPortConnectProbe(),
