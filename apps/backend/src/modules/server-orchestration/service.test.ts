@@ -1098,6 +1098,73 @@ describe('Klonen (Pflichtenheft §9)', () => {
     });
   });
 
+  it('hält den Quellserver nur auf ausdrücklichen Wunsch an (Gefundener Punkt 107)', async () => {
+    const harness = makeHarness();
+    const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
+
+    const ohne = await harness.service.cloneServer(
+      source.id,
+      { name: 'Klon', subdomain: 'klon-ohne-stopp', includeWorldData: true },
+      OWNER_ID,
+    );
+    await settleCloneJob(harness, source.id, ohne.id);
+
+    const ersterBackupBefehl = harness.socket.commands.find(
+      (eintrag) => eintrag.command === 'CREATE_BACKUP',
+    );
+
+    // Voreinstellung bleibt der laufende Betrieb – niemand hat um ein
+    // Abschalten gebeten.
+    expect(ersterBackupBefehl?.payload).toMatchObject({ stopContainer: false });
+  });
+
+  it('reicht stopSourceServer als stopContainer an den Agent durch', async () => {
+    const harness = makeHarness();
+    const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
+
+    const job = await harness.service.cloneServer(
+      source.id,
+      {
+        name: 'Klon',
+        subdomain: 'klon-mit-stopp',
+        includeWorldData: true,
+        stopSourceServer: true,
+      },
+      OWNER_ID,
+    );
+    const fertig = await settleCloneJob(harness, source.id, job.id);
+
+    expect(fertig.status).toBe('completed');
+
+    const backupBefehl = harness.socket.commands.find(
+      (eintrag) => eintrag.command === 'CREATE_BACKUP',
+    );
+
+    expect(backupBefehl?.payload).toMatchObject({ stopContainer: true });
+  });
+
+  it('ignoriert stopSourceServer ohne Weltdaten-Kopie', async () => {
+    const harness = makeHarness();
+    const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
+
+    const job = await harness.service.cloneServer(
+      source.id,
+      {
+        name: 'Klon',
+        subdomain: 'klon-ohne-welt',
+        includeWorldData: false,
+        stopSourceServer: true,
+      },
+      OWNER_ID,
+    );
+    await settleCloneJob(harness, source.id, job.id);
+
+    // Ohne Weltdaten wird nichts gepackt – und deshalb auch nichts angehalten.
+    expect(harness.socket.commands.map((eintrag) => eintrag.command)).not.toContain(
+      'CREATE_BACKUP',
+    );
+  });
+
   it('meldet einen gescheiterten Klon im Auftrag statt zu werfen', async () => {
     const harness = makeHarness();
     const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
