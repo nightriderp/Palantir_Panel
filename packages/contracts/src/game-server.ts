@@ -65,6 +65,20 @@ export interface ServerLivePlayer {
 }
 
 export interface ServerLiveStats {
+  /**
+   * CPU-Auslastung in **Prozent eines Kerns** (WORK_STATUS.md, Gefundener
+   * Punkt 23).
+   *
+   * `250` heißt also 2,5 ausgelastete Kerne, nicht „250 % von irgendetwas".
+   * Bezugsgröße ist bewusst **nicht** das CPU-Kontingent des Servers und auch
+   * nicht die Node: Der Wert kommt unverändert aus
+   * `AgentContainerStats.cpuPercent`, und dieselbe Größe hält der Verlauf in
+   * `server_stats_samples.cpu_percent` fest. Wer einen Anteil am eigenen Limit
+   * anzeigen will, teilt selbst durch `resourceLimits.cpuCores * 100` – die
+   * Umrechnung gehört in die Ansicht, nicht in den Vertrag.
+   *
+   * `null`, solange keine Messung vorliegt.
+   */
   cpuPercent: number | null;
   ramUsedMb: number | null;
   diskUsedMb: number | null;
