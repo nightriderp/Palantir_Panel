@@ -395,8 +395,24 @@ export const ERROR_CATALOG = {
   // die Subdomain-/DNS-Vergabe ab. Bereits weiter oben stehen und werden von B3
   // unverändert benutzt: `SERVER_NOT_FOUND` und `SUBDOMAIN_TAKEN` (B5),
   // `SERVER_STATE_CONFLICT` und `SUBDOMAIN_INVALID` (F3), `PORT_POOL_EXHAUSTED`
-  // (B8). `RESOURCE_LIMIT_EXCEEDED` gehört zur Prüfung aus B4 (§10).
+  // (B8). `RESOURCE_LIMIT_EXCEEDED` gehört zur Prüfung aus B4 (§10);
+  // `NODE_UNAVAILABLE` steht daneben und meint die Verfügbarkeit der Node.
 
+  /**
+   * Die Ziel-Node nimmt gerade keine Serverstarts an (`HostNode.status`,
+   * Pflichtenheft §6 und §9). 409, nicht 503: Die Node antwortet, sie ist nur
+   * bewusst stillgelegt (`maintenance`) oder nicht verbunden (`offline`) –
+   * blindes Wiederholen hilft nicht, ein Betreiber muss sie erst freigeben.
+   *
+   * Bewusst getrennt von `RESOURCE_LIMIT_EXCEEDED`: Das ist eine
+   * Verfügbarkeitsfrage des Lifecycles (B3), keine Ressourcenrechnung (B4).
+   * Eine stillgelegte Node hat regelmäßig **volle** freie Kapazität
+   * (WORK_STATUS.md, Gefundener Punkt 24).
+   */
+  NODE_UNAVAILABLE: {
+    httpStatus: 409,
+    defaultMessage: 'Diese Node nimmt gerade keine Serverstarts an.',
+  },
   /**
    * Der Crash-Loop-Schutz hat abgeschaltet: zu viele Abstürze im Zeitfenster
    * (Pflichtenheft §9). 409, nicht 503 – der Server bleibt bewusst aus, bis
