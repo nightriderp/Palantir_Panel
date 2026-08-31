@@ -166,9 +166,9 @@ services:
   # selbst, ein zusätzliches `--profile setup` ist nicht nötig.
   #
   # Warum überhaupt ein Dienst: Auf der VPS gibt es weder Node noch pnpm, dort
-  # läuft nur Docker. Der in SETUP.md zuvor genannte Aufruf
-  # `pnpm --filter @palantir/backend db:seed` ist dort nicht ausführbar - und
-  # ohne Seed existiert nach dem ersten Start keine einzige Rolle.
+  # läuft nur Docker. Der Aufruf `pnpm --filter @palantir/backend db:seed` ist dort
+  # nicht ausführbar - und ohne Seed existiert nach dem ersten Start keine einzige
+  # Rolle.
   seed:
     profiles: ['setup']
     image: ghcr.io/nightriderp/palantir-backend:${PALANTIR_VERSION}
@@ -280,7 +280,7 @@ services:
       # schriebe der Archivierungslauf in das Dateisystem des Containers - und
       # die Sicherheitsprotokolle wären beim nächsten Neustart verschwunden.
       # Das Verzeichnis muss dem Benutzer `node` (UID 1000) aus dem Image
-      # gehören, siehe SETUP.md.
+      # gehören (Details standen in SETUP.md, nicht mehr im Repo).
       - ../../data/audit-archive:/data/audit-archive
     ports:
       # Der Agent-Kanal (WebSocket `/agent`, Pflichtenheft §2.2) läuft NICHT
@@ -293,7 +293,7 @@ services:
       #
       # Voraussetzung: `wg-quick@wg0` läuft, bevor Docker den Container startet -
       # sonst existiert die Adresse noch nicht und die Bindung scheitert. Auf der
-      # VPS ist der Dienst dafür aktiviert (siehe SETUP.md §3.4).
+      # VPS ist der Dienst dafür aktiviert (stand in SETUP.md §3.4, nicht mehr im Repo).
       - '${WIREGUARD_VPS_IP:-10.10.0.1}:4000:4000'
     labels:
       - 'traefik.enable=true'

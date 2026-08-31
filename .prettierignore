@@ -7,14 +7,19 @@ coverage
 pnpm-lock.yaml
 *.zip
 
-# Verbindliche Referenzdokumente - Formatierung bleibt unveraendert
+# Projektdokumente - liegen nur lokal (siehe .gitignore) und werden nicht
+# umformatiert. Ohne diese Eintraege meldet `pnpm format:check` auf einem
+# Arbeitsrechner Dateien, die es im Repository gar nicht gibt.
 LASTENHEFT.md
 PFLICHTENHEFT.md
 STRUKTUR.md
 CLAUDE.md
-
-# Mockup bleibt unveraendert (Referenzentwurf)
-docs/mockup/
+SETUP.md
+WORK_STATUS.md
+SITZUNGS_PROMPTS.md
+NACHARBEIT_PROMPTS.md
+F3_ARBEITSPAKETE.md
+docs/
 
 # Von Drizzle Kit erzeugte Migrations-Metadaten – werden bei jedem
 # `db:generate` neu geschrieben und dürfen nicht umformatiert werden.
