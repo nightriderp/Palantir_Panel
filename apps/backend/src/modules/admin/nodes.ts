@@ -33,6 +33,7 @@ import {
 import { type AuditService, entryFor } from './audit.js';
 import type { AdminContext } from './context.js';
 import { AdminError } from './errors.js';
+import { generateAgentToken, hashAgentToken } from './agent-token.js';
 
 /** Node, wie sie in der Datenbank steht. */
 export interface HostNodeRecord {
@@ -71,6 +72,15 @@ export interface HostNodeRepository {
   create(data: CreateHostNodeData): Promise<HostNodeRecord>;
   update(id: string, data: UpdateHostNodeData): Promise<HostNodeRecord>;
   remove(id: string): Promise<void>;
+  /**
+   * Node zu einem Agent-Token finden (Gefundener Punkt 57).
+   *
+   * Gesucht wird über den Hash, nie über das Token selbst – gespeichert ist
+   * ohnehin nur der Hash.
+   */
+  findByAgentTokenHash(hash: string): Promise<HostNodeRecord | null>;
+  /** Agent-Token einer Node setzen oder ersetzen. Übergeben wird der Hash. */
+  setAgentTokenHash(id: string, hash: string): Promise<void>;
 }
 
 /** Was auf einer Node an Servern liegt – geliefert von B3. */
@@ -144,6 +154,23 @@ export interface HostNodeService {
   remove(ctx: AdminContext, nodeId: string): Promise<void>;
   /** Node laden oder mit `NODE_NOT_FOUND` abbrechen – auch für andere Dienste des Moduls. */
   require(nodeId: string): Promise<HostNodeRecord>;
+  /**
+   * Neues Agent-Token für eine Node erzeugen (Gefundener Punkt 57).
+   *
+   * Gibt das Token **einmal** im Klartext zurück; gespeichert wird nur sein
+   * Hash. Ein bereits vergebenes Token wird dabei ersetzt – der bisherige Agent
+   * dieser Node kommt danach nicht mehr herein, bis er das neue Token bekommt.
+   * Erfordert `node.manage`.
+   */
+  issueAgentToken(ctx: AdminContext, nodeId: string): Promise<{ token: string }>;
+  /**
+   * Node zu einem vorgelegten Agent-Token, oder `null`.
+   *
+   * Ohne Permission-Prüfung: Der Aufrufer ist der Agent-Endpunkt (B3), der zu
+   * diesem Zeitpunkt noch niemanden authentifiziert hat – das Token **ist** der
+   * Nachweis.
+   */
+  findByAgentToken(token: string): Promise<HostNodeRecord | null>;
 }
 
 export interface HostNodeServiceDependencies {
@@ -282,6 +309,38 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       const [placementMap, usageMap] = await Promise.all([placements.load(), usageSource.load()]);
 
       return toDto(ctx.actor, updated, placementMap.get(updated.id), usageMap.get(updated.id));
+    },
+
+    async issueAgentToken(ctx, nodeId) {
+      requireNodeManage(ctx.actor);
+
+      const node = await requireNode(nodeId);
+      const token = generateAgentToken();
+
+      await deps.repository.setAgentTokenHash(node.id, hashAgentToken(token));
+
+      /*
+       * Das Token selbst gehört nicht ins Audit-Log – dort stünde sonst ein
+       * gültiger Zugang zur Node. Protokolliert wird, dass es vergeben wurde.
+       */
+      await deps.audit.record(
+        entryFor(ctx, {
+          action: 'node.agentTokenIssued',
+          targetType: 'node',
+          targetId: node.id,
+          metadata: { name: node.name },
+        }),
+      );
+
+      return { token };
+    },
+
+    async findByAgentToken(token) {
+      if (token.length === 0) {
+        return null;
+      }
+
+      return deps.repository.findByAgentTokenHash(hashAgentToken(token));
     },
 
     async remove(ctx, nodeId) {

@@ -74,6 +74,23 @@ export function createDrizzleHostNodeRepository(db: Database): HostNodeRepositor
       return row ? toNodeRecord(row) : null;
     },
 
+    async findByAgentTokenHash(hash) {
+      const [row] = await db
+        .select()
+        .from(hostNodes)
+        .where(eq(hostNodes.agentTokenHash, hash))
+        .limit(1);
+
+      return row ? toNodeRecord(row) : null;
+    },
+
+    async setAgentTokenHash(id, hash) {
+      await db
+        .update(hostNodes)
+        .set({ agentTokenHash: hash, updatedAt: new Date() })
+        .where(eq(hostNodes.id, id));
+    },
+
     async findByNameOrIp(name, wireguardIp) {
       // Der Name wird ohne Rücksicht auf Groß-/Kleinschreibung verglichen, die
       // Adresse exakt – sie ist eine technische Angabe, kein Anzeigename.

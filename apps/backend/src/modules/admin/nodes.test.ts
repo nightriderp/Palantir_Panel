@@ -1,5 +1,6 @@
 import { createHostNodeInputSchema, updateHostNodeInputSchema } from '@palantir/validation';
 import { describe, expect, it } from 'vitest';
+import { AGENT_TOKEN_PREFIX, hashAgentToken } from './agent-token.js';
 import { createAuditService } from './audit.js';
 import { type NodePlacementSource, computeCapacity, createHostNodeService } from './nodes.js';
 import {
@@ -158,5 +159,58 @@ describe('Node-Verwaltung', () => {
     await expect(
       service.get(ctxWith(actorWith('node.view')), '99999999-9999-4999-8999-999999999999'),
     ).rejects.toMatchObject({ code: 'NODE_NOT_FOUND' });
+  });
+});
+
+describe('Agent-Token je Node (Gefundener Punkt 57)', () => {
+  it('gibt das Token einmal im Klartext aus und speichert nur den Hash', async () => {
+    const { service, repository } = build();
+
+    const { token } = await service.issueAgentToken(ctxWith(actorWith('node.manage')), NODE_ID);
+
+    expect(token.startsWith(AGENT_TOKEN_PREFIX)).toBe(true);
+    // Nichts am Datensatz verrät das Token selbst.
+    expect(JSON.stringify(repository.rows)).not.toContain(token);
+    expect(await repository.findByAgentTokenHash(hashAgentToken(token))).not.toBeNull();
+  });
+
+  it('findet die Node zum vorgelegten Token und sonst keine', async () => {
+    const { service } = build();
+    const { token } = await service.issueAgentToken(ctxWith(actorWith('node.manage')), NODE_ID);
+
+    expect((await service.findByAgentToken(token))?.id).toBe(NODE_ID);
+    expect(await service.findByAgentToken(`${token}x`)).toBeNull();
+    expect(await service.findByAgentToken('')).toBeNull();
+  });
+
+  it('erzeugt bei jedem Aufruf ein neues Token und entwertet das alte', async () => {
+    const { service } = build();
+    const ctx = ctxWith(actorWith('node.manage'));
+
+    const erstes = (await service.issueAgentToken(ctx, NODE_ID)).token;
+    const zweites = (await service.issueAgentToken(ctx, NODE_ID)).token;
+
+    expect(zweites).not.toBe(erstes);
+    expect(await service.findByAgentToken(erstes)).toBeNull();
+    expect((await service.findByAgentToken(zweites))?.id).toBe(NODE_ID);
+  });
+
+  it('protokolliert die Vergabe, ohne das Token ins Log zu schreiben', async () => {
+    const { service, auditRepository } = build();
+
+    const { token } = await service.issueAgentToken(ctxWith(actorWith('node.manage')), NODE_ID);
+
+    const eintrag = auditRepository.rows.find((e) => e.action === 'node.agentTokenIssued');
+
+    expect(eintrag).toBeDefined();
+    expect(JSON.stringify(auditRepository.rows)).not.toContain(token);
+  });
+
+  it('verlangt node.manage', async () => {
+    const { service } = build();
+
+    await expect(
+      service.issueAgentToken(ctxWith(actorWith('node.view')), NODE_ID),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
   });
 });

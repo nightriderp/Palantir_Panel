@@ -87,6 +87,15 @@ export interface ServerOrchestrationOptions {
    * (Pflichtenheft §2.4, CLAUDE.md §6).
    */
   readonly portPool: PortPoolPort;
+  /**
+   * Node zu einem vorgelegten Agent-Token (B8, Gefundener Punkt 57).
+   *
+   * Ohne Angabe bleibt es beim gemeinsamen `AGENT_TOKEN` und der vorgegebenen
+   * Node – der Stand für eine Installation mit genau einem Homeserver. B3
+   * fragt die Nodes nicht selbst ab; die Zuordnung liefert B8, wie beim
+   * Port-Pool (CLAUDE.md §6).
+   */
+  resolveHostIdByAgentToken?(token: string): Promise<string | null>;
   /** Ereignissenke aus B6; ohne Angabe wird nur protokolliert. */
   readonly events?: OrchestrationEventSink;
   /**
@@ -258,6 +267,9 @@ export function registerServerOrchestration(
     },
     log,
     token: env.AGENT_TOKEN,
+    ...(options.resolveHostIdByAgentToken === undefined
+      ? {}
+      : { resolveHostIdByToken: options.resolveHostIdByAgentToken }),
     resolveHostId: async (): Promise<string | null> => (await repository.defaultHost())?.id ?? null,
     commandTimeoutMs: env.AGENT_COMMAND_TIMEOUT_MS,
   });
