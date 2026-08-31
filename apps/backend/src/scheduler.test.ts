@@ -639,7 +639,9 @@ describe('Zeitgeber: Auto-Shutdown (Pflichtenheft §9)', () => {
     timer.fire();
     await settle();
 
-    expect(harness.socket.commands).toEqual(['STOP']);
+    // Neben dem Stopp steht seit Punkt 74 das Beenden der periodischen Abfrage;
+    // geprüft wird hier der Auto-Shutdown, nicht die Begleitbefehle.
+    expect(harness.socket.commands.filter((name) => name === 'STOP')).toEqual(['STOP']);
     expect(harness.repository.server.status).toBe('stopped');
   });
 

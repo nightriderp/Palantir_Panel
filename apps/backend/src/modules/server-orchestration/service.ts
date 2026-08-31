@@ -20,6 +20,7 @@ import {
   type ServerCloneJobDto,
   type ServerStatsHistoryDto,
   type AgentEventFrame,
+  type AgentServerQueryTarget,
   type AgentStateReportFrame,
   type ExecConsoleCommandResult,
   type GetLogsCommandResult,
@@ -525,6 +526,104 @@ export class ServerOrchestrationService {
    * Starts, der **nach** dem Zustandswechsel kommt und ohne Kapazitätssperre
    * läuft (der Agent-Befehl ist ein Netz-Roundtrip, der keine Sperre halten soll).
    */
+  /**
+   * Ziel für die periodische Server-Abfrage des Agents
+   * (`SET_SERVER_QUERY`, WORK_STATUS.md Gefundener Punkt 74).
+   *
+   * Der Agent kennt keine Spiele und errät nichts: Abfrageart und Port kommen
+   * aus der Spiele-Definition und der Portvergabe. `null`, solange der Server
+   * keinen Container oder keinen primären Port hat – dann gibt es nichts
+   * abzufragen.
+   *
+   * Als Adresse bleibt die Vorgabe des Agents (`127.0.0.1`): Die Portbindung
+   * liegt auf dem Homeserver selbst, im LAN lauscht nichts (Pflichtenheft §18).
+   */
+  private queryTargetFor(server: ServerRecord): AgentServerQueryTarget | null {
+    if (server.dockerContainerId === null) {
+      return null;
+    }
+
+    const definition = this.deps.registry.require(server.gameType);
+    // Der Agent prüft auf dem Host-Port, unter dem der Container veröffentlicht
+    // ist – nicht auf dem Port im Container. Genau diesen Wert bekommt auch
+    // `CREATE_CONTAINER` als `hostPort`.
+    const hostPort = server.assignedPorts.find((zuweisung) => zuweisung.primary)?.publicPort;
+
+    if (hostPort === undefined) {
+      return null;
+    }
+
+    return {
+      containerId: server.dockerContainerId,
+      hostPort,
+      query:
+        definition.query.kind === 'gamedig'
+          ? { kind: 'gamedig', protocol: definition.query.protocol }
+          : { kind: 'portConnect' },
+    };
+  }
+
+  /**
+   * Periodische Abfrage für einen Server setzen oder beenden.
+   *
+   * `active: false` schickt `target: null` – der Agent stellt die Abfrage dann
+   * ein. Beides ist idempotent und darf wiederholt werden.
+   *
+   * **Scheitert bewusst leise.** Die Abfrage liefert Spielerzahl und
+   * Antwortzeit; sie ist eine Zutat zur Anzeige, kein Teil des Lifecycles. Ein
+   * Serverstart darf nicht daran scheitern, dass der Agent den Zusatzbefehl
+   * nicht annimmt – gemeldet wird er trotzdem, sonst sucht später niemand die
+   * fehlenden Messwerte.
+   */
+  private async applyServerQuery(server: ServerRecord, active: boolean): Promise<void> {
+    const session = this.deps.agents.get(server.hostId);
+
+    if (session === null) {
+      return;
+    }
+
+    const target = active ? this.queryTargetFor(server) : null;
+
+    if (active && target === null) {
+      return;
+    }
+
+    try {
+      await session.sendCommand('SET_SERVER_QUERY', server.id, { serverId: server.id, target });
+    } catch (error: unknown) {
+      this.deps.log.warn(
+        {
+          serverId: server.id,
+          aktiv: active,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Server-Abfrage konnte nicht gesetzt werden',
+      );
+    }
+  }
+
+  /**
+   * Abfragen aller laufenden Server einer Node neu setzen.
+   *
+   * Der Aufruf gehört an jeden Verbindungsaufbau des Agents: Er hält seine
+   * Ziele im Arbeitsspeicher und hat sie nach einem Neustart vergessen. Der
+   * Befehl ist idempotent, ein zweites Setzen desselben Ziels also folgenlos.
+   */
+  async refreshServerQueries(hostId: string): Promise<readonly string[]> {
+    const gesetzt: string[] = [];
+
+    for (const server of await this.deps.repository.listByHost(hostId)) {
+      if (server.status !== 'running' && server.status !== 'starting') {
+        continue;
+      }
+
+      await this.applyServerQuery(server, true);
+      gesetzt.push(server.id);
+    }
+
+    return gesetzt;
+  }
+
   private async finishStart(
     server: ServerRecord,
     started: ServerLifecycleState,
@@ -541,6 +640,11 @@ export class ServerOrchestrationService {
 
       throw error;
     }
+
+    // Periodische Abfrage einsetzen (Gefundener Punkt 74). Ohne sie meldet der
+    // Agent nie ein `STATS_UPDATE` aus der Server-Abfrage, und Spielerzahl,
+    // Antwortzeit und der Spieler-Verlauf bleiben dauerhaft leer.
+    await this.applyServerQuery({ ...server, ...started }, true);
 
     // Der Health-Check läuft bewusst neben dem Request: Ein Spiel darf beim
     // Hochlauf Minuten brauchen, so lange soll niemand auf eine HTTP-Antwort
@@ -624,6 +728,10 @@ export class ServerOrchestrationService {
 
     try {
       await session.sendCommand('STOP', server.id, { containerId });
+      // Abfrage beenden, bevor der Zustand wechselt: Ein gestoppter Server
+      // antwortet nicht mehr, und jede weitere Abfrage wäre nur ein Fehlschlag
+      // im Log (Gefundener Punkt 74).
+      await this.applyServerQuery(server, false);
       await this.transition({ ...server, ...stopping }, { type: 'stopSucceeded' });
       this.deps.events.emit('server.stopped', { serverId });
     } catch (error: unknown) {
@@ -673,6 +781,10 @@ export class ServerOrchestrationService {
     const session = this.deps.agents.get(server.hostId);
 
     if (server.dockerContainerId !== null && session !== null) {
+      // Erst die Abfrage einstellen, dann den Container entfernen: Sonst fragt
+      // der Agent weiter einen Port ab, hinter dem nichts mehr steht
+      // (Gefundener Punkt 74).
+      await this.applyServerQuery(server, false);
       await session.sendCommand('DELETE', server.id, {
         containerId: server.dockerContainerId,
         force: true,
