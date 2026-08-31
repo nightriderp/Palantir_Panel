@@ -79,7 +79,7 @@ import {
   createInlineCapacityReservation,
 } from './resource-guard.js';
 import { planReconciliation } from './reconciliation.js';
-import { type ServerRecord, type ServerRepository } from './repository.js';
+import { type HostNodeRecord, type ServerRecord, type ServerRepository } from './repository.js';
 import { type ServerAutoShutdown } from './types.js';
 import {
   type ServerLifecycleEvent,
@@ -451,21 +451,37 @@ export class ServerOrchestrationService {
   }
 
   /**
-   * Nimmt die Ziel-Node gerade Starts an? (`HostNode.status`, Pflichtenheft §6
-   * und §9, WORK_STATUS.md Gefundener Punkt 24.)
+   * Nimmt die Ziel-Node gerade neue Arbeit an? (`HostNode.status`,
+   * Pflichtenheft §6 und §9, WORK_STATUS.md Gefundene Punkte 24 und 109.)
    *
-   * Nur `online` nimmt an. `maintenance` ist eine bewusst stillgelegte Node –
-   * sie hat volle freie Kapazität und würde die Prüfung aus B4 (§10) deshalb
-   * immer bestehen; das ist eine Verfügbarkeitsfrage des Lifecycles und keine
-   * Ressourcenrechnung. `offline` fängt in der Praxis schon
-   * `agents.require()` ab, wird hier aber mit abgedeckt, damit die Antwort auch
-   * dann `NODE_UNAVAILABLE` heißt und nicht von der Reihenfolge der Prüfungen
+   * Nur `online` nimmt an – beim Anlegen wie beim Starten. `maintenance` ist
+   * eine bewusst stillgelegte Node: Sie hat volle freie Kapazität und würde die
+   * Prüfung aus B4 (§10) deshalb immer bestehen; das ist eine
+   * Verfügbarkeitsfrage des Lifecycles und keine Ressourcenrechnung. `offline`
+   * fängt in der Praxis schon `agents.require()` ab, wird hier aber mit
+   * abgedeckt, damit die Antwort nicht von der Reihenfolge der Prüfungen
    * abhängt.
    *
    * Bewusst **nicht** im automatischen Neustart nach einem Absturz
    * (`dispatchStart`): Dort geht es nicht darum, eine stillgelegte Node neu zu
    * belegen, sondern einen bereits dort laufenden Server wieder hochzubringen.
    */
+  private assertNodeAcceptsWork(host: HostNodeRecord, intent: 'create' | 'start'): void {
+    if (host.status === 'online') {
+      return;
+    }
+
+    throw new ServerOrchestrationError(
+      'NODE_UNAVAILABLE',
+      host.status === 'maintenance'
+        ? `„${host.name}" ist gerade in Wartung und nimmt ${
+            intent === 'start' ? 'keine Serverstarts' : 'keine neuen Server'
+          } an.`
+        : `„${host.name}" ist gerade nicht erreichbar.`,
+      { hostId: host.id, nodeStatus: host.status },
+    );
+  }
+
   private async requireNodeAcceptsStarts(hostId: string): Promise<void> {
     const host = await this.deps.repository.findHost(hostId);
 
@@ -473,15 +489,7 @@ export class ServerOrchestrationService {
       throw new ServerOrchestrationError('NODE_NOT_FOUND', undefined, { hostId });
     }
 
-    if (host.status !== 'online') {
-      throw new ServerOrchestrationError(
-        'NODE_UNAVAILABLE',
-        host.status === 'maintenance'
-          ? `„${host.name}" ist gerade in Wartung und nimmt keine Serverstarts an.`
-          : `„${host.name}" ist gerade nicht erreichbar.`,
-        { hostId, nodeStatus: host.status },
-      );
-    }
+    this.assertNodeAcceptsWork(host, 'start');
   }
 
   /**
@@ -1772,6 +1780,10 @@ export class ServerOrchestrationService {
         );
       }
 
+      // Eine stillgelegte Node nimmt auch keinen neuen Server auf: Sonst
+      // entstünde ein Server, den niemand starten kann (Gefundener Punkt 109).
+      this.assertNodeAcceptsWork(host, 'create');
+
       return host;
     }
 
@@ -1783,6 +1795,10 @@ export class ServerOrchestrationService {
         'Es ist keine Node eingerichtet. Bitte zuerst die Ersteinrichtung ausführen (pnpm --filter @palantir/backend db:seed).',
       );
     }
+
+    // Auch die vorgegebene Node muss annehmen: Ist die einzige Node der
+    // Installation stillgelegt, entsteht hier kein Server (Punkt 109).
+    this.assertNodeAcceptsWork(host, 'create');
 
     return host;
   }

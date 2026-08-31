@@ -727,7 +727,48 @@ describe('Starten mit Health-Check (Pflichtenheft §9)', () => {
   });
 });
 
-describe('Verfügbarkeit der Ziel-Node (Gefundener Punkt 24)', () => {
+describe('Verfügbarkeit der Ziel-Node (Gefundene Punkte 24 und 109)', () => {
+  it('legt auf einer stillgelegten Node gar keinen Server an', async () => {
+    const harness = makeHarness();
+    harness.repository.hostStatus = 'maintenance';
+
+    try {
+      await harness.service.createServer(createInput(), OWNER_ID);
+      expect.unreachable('Das Anlegen hätte abgelehnt werden müssen.');
+    } catch (error: unknown) {
+      expect((error as ServerOrchestrationError).code).toBe('NODE_UNAVAILABLE');
+      expect((error as ServerOrchestrationError).message).toContain('keine neuen Server');
+    }
+
+    // Sonst bliebe ein Server übrig, den niemand starten kann.
+    expect(harness.repository.servers.size).toBe(0);
+    expect(harness.socket.commands).toHaveLength(0);
+    expect(harness.dnsRecords).toEqual([]);
+  });
+
+  it('lässt einen Klon auf eine stillgelegte Node scheitern, statt ihn anzulegen', async () => {
+    const harness = makeHarness();
+    const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
+
+    harness.repository.hostStatus = 'maintenance';
+
+    // Der Klon läuft als Auftrag: Die Ablehnung landet deshalb nicht als
+    // Ausnahme beim Aufrufer, sondern im Ergebnis des Auftrags.
+    const job = await harness.service.cloneServer(
+      source.id,
+      { name: 'Klon', subdomain: 'klon', includeWorldData: false },
+      OWNER_ID,
+    );
+
+    const ergebnis = await settleCloneJob(harness, source.id, job.id);
+
+    expect(ergebnis.status).toBe('failed');
+    expect(ergebnis.statusMessage).toContain('Wartung');
+
+    // Nur die Vorlage steht noch da, kein halber Klon.
+    expect(harness.repository.servers.size).toBe(1);
+  });
+
   it('lehnt den Start auf einer stillgelegten Node mit NODE_UNAVAILABLE ab', async () => {
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
