@@ -419,6 +419,11 @@ export class ServerOrchestrationService {
 
     assertTransitionAllowed(server.status, 'starting');
 
+    // Verfügbarkeit der Ziel-Node vor der Kapazitätsprüfung: Eine Node in
+    // `maintenance` hat volle freie Kapazität und käme durch die Rechnung aus
+    // B4 anstandslos durch (WORK_STATUS.md, Gefundener Punkt 24).
+    await this.requireNodeAcceptsStarts(server.hostId);
+
     // Vor der Reservierung, damit ein fehlender Container ohne offene
     // Transaktion scheitert.
     const containerId = this.requireContainerId(server);
@@ -443,6 +448,40 @@ export class ServerOrchestrationService {
     await this.finishStart(server, started, session, containerId);
 
     return this.requireServer(serverId);
+  }
+
+  /**
+   * Nimmt die Ziel-Node gerade Starts an? (`HostNode.status`, Pflichtenheft §6
+   * und §9, WORK_STATUS.md Gefundener Punkt 24.)
+   *
+   * Nur `online` nimmt an. `maintenance` ist eine bewusst stillgelegte Node –
+   * sie hat volle freie Kapazität und würde die Prüfung aus B4 (§10) deshalb
+   * immer bestehen; das ist eine Verfügbarkeitsfrage des Lifecycles und keine
+   * Ressourcenrechnung. `offline` fängt in der Praxis schon
+   * `agents.require()` ab, wird hier aber mit abgedeckt, damit die Antwort auch
+   * dann `NODE_UNAVAILABLE` heißt und nicht von der Reihenfolge der Prüfungen
+   * abhängt.
+   *
+   * Bewusst **nicht** im automatischen Neustart nach einem Absturz
+   * (`dispatchStart`): Dort geht es nicht darum, eine stillgelegte Node neu zu
+   * belegen, sondern einen bereits dort laufenden Server wieder hochzubringen.
+   */
+  private async requireNodeAcceptsStarts(hostId: string): Promise<void> {
+    const host = await this.deps.repository.findHost(hostId);
+
+    if (!host) {
+      throw new ServerOrchestrationError('NODE_NOT_FOUND', undefined, { hostId });
+    }
+
+    if (host.status !== 'online') {
+      throw new ServerOrchestrationError(
+        'NODE_UNAVAILABLE',
+        host.status === 'maintenance'
+          ? `„${host.name}" ist gerade in Wartung und nimmt keine Serverstarts an.`
+          : `„${host.name}" ist gerade nicht erreichbar.`,
+        { hostId, nodeStatus: host.status },
+      );
+    }
   }
 
   /**
