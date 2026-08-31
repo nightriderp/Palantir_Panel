@@ -22,6 +22,7 @@
  */
 
 import type { ApiResponse } from './envelope.js';
+import type { ServerLivePlayer } from './game-server.js';
 
 /**
  * Version des Protokolls. Der Agent schickt sie im `hello`-Frame, das Backend
@@ -373,6 +374,15 @@ export interface AgentServerQueryPayload {
    */
   readonly playersOnline: number | null;
   readonly playersMax: number | null;
+  /**
+   * Namen der verbundenen Spieler, soweit die Abfrage sie herausgibt
+   * (Gefundener Punkt 51).
+   *
+   * Optional und additiv. Der Port-Connect-Test liefert sie nie; `gamedig`
+   * liefert sie je nach Spiel und Servereinstellung ganz, teilweise oder gar
+   * nicht. Fehlt das Feld, heißt das „keine Angabe", nicht „niemand da".
+   */
+  readonly players?: readonly ServerLivePlayer[];
   /** Antwortzeit in Millisekunden; `null`, wenn nicht erreichbar. */
   readonly pingMs: number | null;
   /** Grund des Fehlschlags; `null`, wenn erreichbar. */
