@@ -38,6 +38,7 @@ import {
 import {
   AgentRegistry,
   createAgentBackupGateway,
+  createAgentStorageEntryRemover,
   createAgentStorageScanGateway,
   createDrizzleBackupServerDirectory,
   createDrizzleServerExportManifestSource,
@@ -229,6 +230,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         usage: serverUsage,
       }),
       storageGateway: createAgentStorageScanGateway(agents),
+      // Löschen im Speicher-Explorer geht jetzt wirklich an den Agent
+      // (Gefundener Punkt 75); vorher meldete es „noch nicht gebaut".
+      storageRemover: createAgentStorageEntryRemover(agents),
       knownServers: createServerKnownServerSource(db),
       serverNames: createServerNameSource(db),
       ...(env.AUDIT_ARCHIVE_DIR ? { auditArchiveDir: env.AUDIT_ARCHIVE_DIR } : {}),

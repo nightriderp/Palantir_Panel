@@ -439,6 +439,7 @@ export {
 } from './backup-ports.js';
 
 export {
+  createAgentStorageEntryRemover,
   createAgentStorageScanGateway,
   createServerKnownServerSource,
   createServerNameSource,
