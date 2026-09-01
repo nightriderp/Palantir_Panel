@@ -23,6 +23,7 @@ import {
   type AgentServerQueryTarget,
   type AgentStateReportFrame,
   type ExecConsoleCommandResult,
+  type FileExtractCommandResult,
   type GetLogsCommandResult,
   type GameConfigValues,
   type GameTypeDefinition,
@@ -50,7 +51,7 @@ import {
   type StatsSample,
   toStatsHistoryDto,
 } from './stats-history.js';
-import { type WorldArchiveStore } from './world-import.js';
+import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.js';
 
 /**
  * Verweis auf ein hochgeladenes Weltdaten-Archiv (P4).
@@ -139,8 +140,10 @@ export interface OrchestrationConfig {
   readonly maxUploadBytes: number;
   /**
    * Maximale Größe eines Weltdaten-Archivs aus `MAX_WORLD_ARCHIVE_BYTES` (P4).
-   * Wirksam ist der kleinere Wert aus dieser Angabe und
-   * `AGENT_FILE_CHANNEL_MAX_BYTES`.
+   *
+   * Seit Gefundenem Punkt 106 gilt allein diese Angabe: Das Archiv geht nicht
+   * mehr in einem Frame an den Agent, sondern blockweise – die Frame-Grenze
+   * `AGENT_FILE_CHANNEL_MAX_BYTES` begrenzt nur noch den einzelnen Block.
    */
   readonly maxWorldArchiveBytes: number;
   /** Aufbewahrungsfrist des Messwert-Verlaufs in Stunden (`STATS_HISTORY_RETENTION_HOURS`). */
@@ -226,6 +229,16 @@ export function containerNameFor(serverId: string): string {
 export function dataHostPathFor(serverId: string): string {
   return `/srv/palantir/servers/${serverId}`;
 }
+
+/**
+ * Blockgroesse beim Uebertragen eines Weltarchivs an den Agent.
+ *
+ * Dieselbe Groesse wie beim Herunterladen eines Backups (`DOWNLOAD_CHUNK_BYTES`
+ * in B5): 4 MiB roh werden Base64-kodiert zu rund 5,5 MiB JSON - gross genug,
+ * dass ein grosses Archiv nicht in Zehntausenden Runden geht, und klein genug,
+ * dass ein Block die Verbindung zum Agent nicht fuer andere Befehle blockiert.
+ */
+export const WORLD_IMPORT_CHUNK_BYTES = 4 * 1024 * 1024;
 
 export class ServerOrchestrationService {
   private readonly deps: OrchestrationDependencies;
@@ -1059,36 +1072,93 @@ export class ServerOrchestrationService {
       });
     }
 
-    const grenze = Math.min(this.deps.config.maxWorldArchiveBytes, AGENT_FILE_CHANNEL_MAX_BYTES);
+    try {
+      const grenze = this.deps.config.maxWorldArchiveBytes;
 
-    if (archiv.content.byteLength > grenze) {
-      throw new ServerOrchestrationError(
-        'FILE_TOO_LARGE',
-        `Das Archiv überschreitet die zulässige Größe von ${String(grenze)} Byte.`,
-        { serverId: server.id, sizeBytes: archiv.content.byteLength },
+      if (archiv.sizeBytes > grenze) {
+        throw new ServerOrchestrationError(
+          'FILE_TOO_LARGE',
+          `Das Archiv überschreitet die zulässige Größe von ${String(grenze)} Byte.`,
+          { serverId: server.id, sizeBytes: archiv.sizeBytes },
+        );
+      }
+
+      const session = this.deps.agents.require(server.hostId);
+      const ergebnis = await this.sendWorldArchive(session, server, containerId, archiv);
+
+      this.deps.log.info(
+        {
+          serverId: server.id,
+          fileName: worldImport.fileName,
+          sizeBytes: archiv.sizeBytes,
+          fileCount: ergebnis.fileCount,
+          extractedBytes: ergebnis.extractedBytes,
+          skipped: ergebnis.skipped,
+        },
+        'Weltdaten übernommen',
       );
+    } finally {
+      // Auch nach einem Fehler: Das Archiv gehört dem Nutzer und hat nach dem
+      // Versuch nichts mehr auf der VPS verloren.
+      await archiv.release();
     }
+  }
 
-    const session = this.deps.agents.require(server.hostId);
-    const ergebnis = await session.sendCommand('FILE_EXTRACT', server.id, {
-      containerId,
-      // Wurzel des Datenordners – ein Weltarchiv bringt seine eigene
-      // Ordnerstruktur mit.
-      path: '',
-      contentBase64: archiv.content.toString('base64'),
-      format: archiv.format,
-    });
+  /**
+   * Ein Archiv blockweise an den Agent geben (Gefundener Punkt 106).
+   *
+   * Früher ging es in einem `FILE_EXTRACT` über den Kanal und war damit auf
+   * `AGENT_FILE_CHANNEL_MAX_BYTES` (64 MiB) begrenzt – für die Migration eines
+   * gewachsenen Servers zu wenig. Jetzt fließt es in Blöcken; der Agent hängt
+   * sie auf dem Homeserver aneinander und entpackt beim letzten.
+   *
+   * `transferId` ist die `uploadId` des Zwischenspeichers: Sie ist bereits
+   * eindeutig, und ein zweiter Anlauf desselben Imports trifft damit auf
+   * dieselbe Datei, statt eine weitere anzulegen.
+   */
+  private async sendWorldArchive(
+    session: AgentSession,
+    server: ServerRecord,
+    containerId: string,
+    archiv: StoredWorldArchive,
+  ): Promise<FileExtractCommandResult> {
+    let offset = 0;
 
-    this.deps.log.info(
-      {
-        serverId: server.id,
-        fileName: worldImport.fileName,
-        fileCount: ergebnis.fileCount,
-        extractedBytes: ergebnis.extractedBytes,
-        skipped: ergebnis.skipped,
-      },
-      'Weltdaten übernommen',
-    );
+    for (;;) {
+      const block = await archiv.read(offset, WORLD_IMPORT_CHUNK_BYTES);
+      // Der letzte Block ist der, nach dem nichts mehr kommt. Ein leeres Archiv
+      // gibt es nicht (der Upload prüft das Format), ein leerer letzter Block
+      // also auch nicht – außer die Datei ist unterwegs geschrumpft.
+      const last = offset + block.byteLength >= archiv.sizeBytes;
+
+      const antwort = await session.sendCommand('UPLOAD_ARCHIVE_BLOCK', server.id, {
+        containerId,
+        transferId: archiv.uploadId,
+        offset,
+        contentBase64: block.toString('base64'),
+        last,
+        // Wurzel des Datenordners – ein Weltarchiv bringt seine eigene
+        // Ordnerstruktur mit.
+        path: '',
+        format: archiv.format,
+      });
+
+      offset += block.byteLength;
+
+      if (antwort.extract !== null) {
+        return antwort.extract;
+      }
+
+      if (block.byteLength === 0) {
+        // Kein Fortschritt und kein Ergebnis: weiterzudrehen hieße, für immer
+        // zu drehen.
+        throw new ServerOrchestrationError(
+          'WORLD_ARCHIVE_INVALID',
+          'Die Übertragung des Archivs endete ohne Ergebnis.',
+          { serverId: server.id, uploadId: archiv.uploadId, offset },
+        );
+      }
+    }
   }
 
   /**

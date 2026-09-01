@@ -22,7 +22,7 @@
 
 import { createWriteStream } from 'node:fs';
 import os from 'node:os';
-import { mkdir, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { mkdir, open, readdir, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { randomUUID } from 'node:crypto';
@@ -79,11 +79,29 @@ export function defaultWorldArchiveDirectory(): string {
   return path.join(os.tmpdir(), 'palantir-world-archives');
 }
 
-/** Ein abgeholtes Archiv, bereit für den Agent. */
+/**
+ * Ein abgeholtes Archiv, bereit für den Agent.
+ *
+ * Blockweise statt als ein Puffer (Gefundener Punkt 106): Ein Archiv darf
+ * mehrere hundert Megabyte groß sein, und es ganz in den Speicher zu laden,
+ * nur um es gleich wieder in Blöcken weiterzugeben, wäre genau der Engpass,
+ * den die blockweise Übertragung beseitigen soll.
+ */
 export interface StoredWorldArchive {
   readonly uploadId: string;
-  readonly content: Buffer;
   readonly format: ArchiveFormat;
+  readonly sizeBytes: number;
+  /**
+   * Liest einen Block ab `offset`; am Ende einen leeren Puffer.
+   *
+   * Nach {@link release} nicht mehr aufrufen.
+   */
+  read(offset: number, maxBytes: number): Promise<Buffer>;
+  /**
+   * Gibt die Datei frei und entfernt sie – immer aufrufen, auch nach einem
+   * Fehler. Danach ist der Verweis verbraucht.
+   */
+  release(): Promise<void>;
 }
 
 export interface WorldArchiveStore {
@@ -126,6 +144,9 @@ export interface WorldArchiveStoreOptions {
 function dateiName(uploadId: string, expiresAt: number, format: ArchiveFormat): string {
   return `${uploadId}.${String(expiresAt)}.${FORMAT_SUFFIX[format]}`;
 }
+
+/** Namenszusatz eines Archivs, das gerade zum Agent uebertragen wird. */
+const IN_ARBEIT = '.taken';
 
 function zerlege(
   name: string,
@@ -170,7 +191,11 @@ export function createFileSystemWorldArchiveStore(
     let entfernt = 0;
 
     for (const name of namen) {
-      const eintrag = zerlege(name);
+      // Ein Archiv, das gerade blockweise an den Agent geht, traegt den Zusatz
+      // `.taken` (Gefundener Punkt 106). Es gehoert einem laufenden Import und
+      // wird von diesem selbst entfernt - hier faellt es nur, wenn seine Frist
+      // abgelaufen ist, also der Import abgebrochen wurde.
+      const eintrag = zerlege(name.endsWith(IN_ARBEIT) ? name.slice(0, -IN_ARBEIT.length) : name);
 
       if (eintrag !== null && eintrag.expiresAt > grenze) {
         continue;
@@ -279,10 +304,30 @@ export function createFileSystemWorldArchiveStore(
         return null;
       }
 
-      const content = await readFile(datei);
-      await rm(datei, { force: true });
+      // Aus dem Wartebereich herausnehmen, aber noch nicht loeschen: Die Datei
+      // wird jetzt blockweise gelesen. Der neue Name traegt keine Frist mehr,
+      // `take()` findet sie also kein zweites Mal - einmalig wie zuvor.
+      const inArbeit = `${datei}${IN_ARBEIT}`;
+      await rename(datei, inArbeit);
 
-      return { uploadId, content, format: treffer.eintrag.format };
+      const groesse = await stat(inArbeit).then((eintrag) => eintrag.size);
+      const griff = await open(inArbeit, 'r');
+
+      return {
+        uploadId,
+        format: treffer.eintrag.format,
+        sizeBytes: groesse,
+        async read(offset, maxBytes) {
+          const puffer = Buffer.allocUnsafe(Math.max(0, maxBytes));
+          const { bytesRead } = await griff.read(puffer, 0, puffer.byteLength, offset);
+
+          return puffer.subarray(0, bytesRead);
+        },
+        async release() {
+          await griff.close().catch(() => undefined);
+          await rm(inArbeit, { force: true });
+        },
+      };
     },
   };
 }

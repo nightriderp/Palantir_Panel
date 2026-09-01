@@ -71,8 +71,10 @@ describe('Ablegen und Abholen', () => {
 
     const abgeholt = await speicher.take(upload.uploadId);
 
-    expect(abgeholt?.content).toEqual(ZIP);
     expect(abgeholt?.format).toBe('zip');
+    expect(abgeholt?.sizeBytes).toBe(ZIP.byteLength);
+    expect(await abgeholt?.read(0, ZIP.byteLength)).toEqual(ZIP);
+    await abgeholt?.release();
   });
 
   it('setzt das Format nach dem Inhalt, nicht nach der Endung', async () => {
@@ -102,7 +104,10 @@ describe('Ablegen und Abholen', () => {
       strom(ZIP.subarray(0, 2), ZIP.subarray(2, 10), ZIP.subarray(10)),
     );
 
-    expect((await speicher.take(upload.uploadId))?.content).toEqual(ZIP);
+    const abgeholt = await speicher.take(upload.uploadId);
+
+    expect(await abgeholt?.read(0, ZIP.byteLength)).toEqual(ZIP);
+    await abgeholt?.release();
   });
 });
 

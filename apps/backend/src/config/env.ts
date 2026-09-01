@@ -124,16 +124,20 @@ const envSchema = z.object({
    * Maximale Größe eines Weltdaten-Archivs beim Anlegen eines Servers
    * (Lastenheft §3.3, Arbeitspaket P4).
    *
-   * Eigene Grenze und nicht `MAX_UPLOAD_SIZE_BYTES`: Das Archiv geht in **einem**
-   * Befehl an den Agent und wird dort zum Entpacken im Speicher gehalten. Die
-   * Vorgabe entspricht der Kanal-Grenze des Agents (64 MiB); wirksam ist immer
-   * der kleinere der beiden Werte.
+   * Eigene Grenze und nicht `MAX_UPLOAD_SIZE_BYTES`: Das Archiv wird auf dem
+   * Homeserver entpackt und die Einträge dabei im Speicher gehalten.
+   *
+   * Seit Gefundenem Punkt 106 geht es **blockweise** an den Agent, hängt also
+   * nicht mehr an dessen Frame-Grenze von 64 MiB. Die Vorgabe steht deshalb bei
+   * 256 MiB – genug für die Migration eines gewachsenen Servers und noch mit
+   * Abstand unter der Entpack-Grenze des Agents (`MAX_EXTRACTED_BYTES`,
+   * 512 MiB **entpackt**).
    */
   MAX_WORLD_ARCHIVE_BYTES: z.coerce
     .number()
     .int()
     .positive()
-    .default(64 * 1024 * 1024),
+    .default(256 * 1024 * 1024),
 
   /**
    * Verzeichnis **auf der VPS**, in dem hochgeladene Weltdaten-Archive auf das
