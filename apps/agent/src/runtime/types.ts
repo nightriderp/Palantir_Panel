@@ -149,6 +149,9 @@ export interface ContainerStats {
   readonly memoryLimitBytes: number;
   readonly networkRxBytes: number;
   readonly networkTxBytes: number;
+  /** Empfangene und gesendete Pakete – wie oft, nicht wie viel. */
+  readonly networkRxPackets: number;
+  readonly networkTxPackets: number;
   readonly blockReadBytes: number;
   readonly blockWriteBytes: number;
   readonly pids: number;

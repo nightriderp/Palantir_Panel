@@ -9,6 +9,7 @@ import {
   formatDateTime,
   formatDuration,
   formatMegabytes,
+  formatNumber,
   formatPercent,
   formatPing,
   formatPlayers,
@@ -208,6 +209,17 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
             <div className="grid grid-cols-2 gap-3">
               <MetricTile label="Eingehend" value={formatBytes(live.networkRxBytes)} />
               <MetricTile label="Ausgehend" value={formatBytes(live.networkTxBytes)} />
+              {/*
+               * Paket-Zaehler wie im Entwurf (Abgleich 4.8). Sie stehen nur da,
+               * wenn die Runtime sie meldet - ein aelterer Agent laesst die
+               * Felder weg, und zwei Kacheln mit "—" waeren dann nur Fuellsel.
+               */}
+              {live.networkRxPackets === undefined || live.networkRxPackets === null ? null : (
+                <MetricTile label="Pakete eingehend" value={formatNumber(live.networkRxPackets)} />
+              )}
+              {live.networkTxPackets === undefined || live.networkTxPackets === null ? null : (
+                <MetricTile label="Pakete ausgehend" value={formatNumber(live.networkTxPackets)} />
+              )}
             </div>
             <p className="text-xs text-ink-faint">
               Die Summen zählen ab dem letzten Start des Servers. Weil aller Spiel-Verkehr über das

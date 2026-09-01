@@ -28,6 +28,8 @@ const RUNTIME_STATS = {
   memoryLimitBytes: 4 * 1024 * 1024 * 1024,
   networkRxBytes: 1_024,
   networkTxBytes: 2_048,
+  networkRxPackets: 12,
+  networkTxPackets: 8,
   blockReadBytes: 0,
   blockWriteBytes: 0,
   pids: 12,
@@ -84,8 +86,28 @@ describe('liveStatsFromAgentPayload', () => {
       playersMax: 20,
       networkRxBytes: 1_024,
       networkTxBytes: 2_048,
+      networkRxPackets: 12,
+      networkTxPackets: 8,
       updatedAt: '2026-08-31T11:59:59.000Z',
     });
+  });
+
+  it('laesst die Paket-Zaehler weg, wenn der Agent sie nicht meldet', () => {
+    // Aeltere Agents kennen die Felder nicht (Mockup-Abgleich 4.8). Sie sollen
+    // dann fehlen und nicht als `null` auftauchen: „nicht gemeldet" ist etwas
+    // anderes als „gemessen, aber leer".
+    const { networkRxPackets, networkTxPackets, ...ohnePakete } = RUNTIME_STATS;
+    void networkRxPackets;
+    void networkTxPackets;
+
+    const stats = liveStatsFromAgentPayload(
+      ohnePakete,
+      { playersOnline: 3, playersMax: 20, pingMs: 15, players: [] },
+      EMITTED_AT,
+    );
+
+    expect(stats).not.toHaveProperty('networkRxPackets');
+    expect(stats).not.toHaveProperty('networkTxPackets');
   });
 
   it('füllt aus der Server-Abfrage nur, was sie misst', () => {

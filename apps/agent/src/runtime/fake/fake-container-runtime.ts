@@ -131,6 +131,8 @@ const LEERE_STATS = (containerId: string, sampledAt: string): ContainerStats => 
   memoryUsedBytes: 0,
   memoryLimitBytes: 0,
   networkRxBytes: 0,
+  networkRxPackets: 0,
+  networkTxPackets: 0,
   networkTxBytes: 0,
   blockReadBytes: 0,
   blockWriteBytes: 0,
