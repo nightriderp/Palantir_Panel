@@ -74,6 +74,7 @@ export * from './address.js';
 export * from './audit.js';
 export * from './storage.js';
 export * from './instance.js';
+export * from './panel-backup.js';
 export * from './quota-request.js';
 export * from './registration-request.js';
 
