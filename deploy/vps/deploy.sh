@@ -86,6 +86,36 @@ export PALANTIR_RELEASE="${release}"
 log "Version dieses Standes: ${release}"
 
 # -----------------------------------------------------------------------------
+# 3b. Ablageorte pruefen (WORK_STATUS.md, Gefundener Punkt 116)
+# -----------------------------------------------------------------------------
+# Beide Verzeichnisse werden in den Backend-Container eingehaengt und dort vom
+# Benutzer `node` (UID 1000) beschrieben. Gehoeren sie auf dem Host `root`,
+# laeuft alles scheinbar normal an - und der erste Archivierungslauf bzw. die
+# erste Sicherung scheitert dann still am Schreiben. Ein Deployment ist der
+# richtige Zeitpunkt, das zu merken.
+#
+# Bewusst nur eine Warnung und kein Abbruch: Das Panel funktioniert auch mit
+# falschen Rechten, nur diese beiden Laeufe nicht. Und bewusst kein `chown`:
+# Dieses Skript laeuft als unprivilegierter Deploy-Benutzer, dem gehoeren die
+# Verzeichnisse nicht.
+pruefe_besitzer() {
+  local pfad="$1" zweck="$2"
+
+  [[ -d "${pfad}" ]] || return 0
+
+  local besitzer
+  besitzer="$(stat -c '%u' "${pfad}" 2>/dev/null || echo '')"
+
+  if [[ -n "${besitzer}" && "${besitzer}" != '1000' ]]; then
+    log "ACHTUNG: ${pfad} gehoert UID ${besitzer}, gebraucht wird UID 1000 (${zweck})."
+    log "         Auf der VPS als root beheben: chown -R 1000:1000 ${pfad}"
+  fi
+}
+
+pruefe_besitzer "${REPO_DIR}/data/audit-archive" 'Archivierung des Audit-Logs'
+pruefe_besitzer "${REPO_DIR}/data/panel-backups" 'Sicherungen der Panel-Datenbank'
+
+# -----------------------------------------------------------------------------
 # 4. Images holen und Stack starten
 # -----------------------------------------------------------------------------
 # Die .env wird NICHT angefasst (Pflichtenheft §12.1) - sie enthält alle
