@@ -162,6 +162,13 @@
       "when": 1788254000057,
       "tag": "0022_server_pins",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788256695359,
+      "tag": "0023_node_measured_usage",
+      "breakpoints": true
     }
   ]
 }

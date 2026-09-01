@@ -22,6 +22,7 @@ const NODE: HostNodeRecord = {
   wireguardIp: '10.10.0.2',
   status: 'online',
   totalResources: { ramMb: 16_384, cpuCores: 8, diskMb: 2_000_000 },
+  measuredUsage: null,
 };
 
 const AT = new Date('2026-08-26T12:00:00.000Z');
@@ -78,7 +79,74 @@ describe('Auslastung je Node (Lastenheft §3.7)', () => {
       // Speicherplatz zählt über alle Server, auch die gestoppten.
       diskUsedMb: 120_000,
       sampledAt: AT.toISOString(),
+      // Ohne Messung des Agents bleibt es die Rechnung aus den Kontingenten
+      // (Gefundener Punkt 96).
+      source: 'reserved',
     });
+  });
+
+  it('nimmt die Messung des Agents, wenn sie frisch ist', async () => {
+    const gemessen = {
+      // 16 GiB gesamt, 8 GiB frei -> 8 GiB benutzt.
+      ramAvailableMb: 8_192,
+      diskAvailableMb: 1_000_000,
+      cpuLoad1m: 2,
+      observedAt: new Date(AT.getTime() - 60_000),
+    };
+
+    const usage = usageRepository({
+      runningRamMb: 4096,
+      runningCpuCores: 2,
+      allocatedDiskMb: 120_000,
+      runningServers: 2,
+      totalServers: 5,
+    });
+
+    const source = createNodeUsageSource({
+      nodes: nodeRepository([{ ...NODE, measuredUsage: gemessen }]),
+      usage,
+      now: () => AT,
+    });
+
+    const result = await source.load();
+
+    expect(result.get(NODE.id)).toEqual({
+      // Systemlast 2 auf 8 Kernen.
+      cpuPercent: 25,
+      ramUsedMb: NODE.totalResources.ramMb - gemessen.ramAvailableMb,
+      diskUsedMb: NODE.totalResources.diskMb - gemessen.diskAvailableMb,
+      sampledAt: gemessen.observedAt.toISOString(),
+      source: 'measured',
+    });
+    // Die Reservierung wird dann gar nicht erst gelesen.
+    expect(usage.calls).toEqual([]);
+  });
+
+  it('faellt auf die Reservierung zurueck, wenn die Messung veraltet ist', async () => {
+    const source = createNodeUsageSource({
+      nodes: nodeRepository([
+        {
+          ...NODE,
+          measuredUsage: {
+            ramAvailableMb: 20_480,
+            diskAvailableMb: 1_000_000,
+            cpuLoad1m: 2,
+            // Eine Auslastung von vor einer Stunde ist keine Auslastung.
+            observedAt: new Date(AT.getTime() - 60 * 60_000),
+          },
+        },
+      ]),
+      usage: usageRepository({
+        runningRamMb: 4096,
+        runningCpuCores: 2,
+        allocatedDiskMb: 120_000,
+        runningServers: 2,
+        totalServers: 5,
+      }),
+      now: () => AT,
+    });
+
+    expect((await source.load()).get(NODE.id)?.source).toBe('reserved');
   });
 
   it('meldet keinen Prozentwert, wenn die Node keine Kerne führt', async () => {

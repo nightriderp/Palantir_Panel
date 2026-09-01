@@ -75,6 +75,25 @@ export const hostNodes = pgTable(
      */
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     /**
+     * Zuletzt vom Agent **gemessene** Auslastung (WORK_STATUS.md, Gefundener
+     * Punkt 96).
+     *
+     * Bisher rechnete die Uebersicht die Auslastung aus den Kontingenten der
+     * angelegten Server - das ist die obere Schranke, nicht der Verbrauch, und
+     * es sieht nicht, was sonst noch auf der Node laeuft. Der Agent meldet die
+     * Zahlen ohnehin bei jedem Ist-Zustands-Bericht (`AgentNodeStats`); hier
+     * ueberdauern sie den naechsten Bericht.
+     *
+     * `null`, solange nie gemessen wurde. `measuredCpuLoad1m` bleibt auch dann
+     * `null`, wenn die Plattform keine Systemlast fuehrt (Windows in der
+     * Entwicklung).
+     */
+    measuredRamAvailableMb: integer('measured_ram_available_mb'),
+    measuredDiskAvailableMb: integer('measured_disk_available_mb'),
+    measuredCpuLoad1m: doublePrecision('measured_cpu_load_1m'),
+    /** Zeitpunkt der letzten Messung; `null`, solange keine vorliegt. */
+    measuredAt: timestamp('measured_at', { withTimezone: true }),
+    /**
      * SHA-256 des Agent-Tokens dieser Node (WORK_STATUS.md, Gefundener Punkt 57).
      *
      * `null`, solange kein Token vergeben wurde – dann meldet sich der Agent

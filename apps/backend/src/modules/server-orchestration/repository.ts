@@ -170,7 +170,22 @@ export interface ServerRepository {
    */
   updateMeasuredResources(
     hostId: string,
-    resources: { ramMb: number; cpuCores: number; diskMb: number },
+    resources: {
+      ramMb: number;
+      cpuCores: number;
+      diskMb: number;
+      /**
+       * Momentaufnahme der Auslastung (Gefundener Punkt 96). Optional, weil ein
+       * Agent aelterer Fassung sie nicht mitschickt; dann bleiben die Spalten,
+       * wie sie sind.
+       */
+      usage?: {
+        ramAvailableMb: number;
+        diskAvailableMb: number;
+        cpuLoad1m: number | null;
+        observedAt: Date;
+      };
+    },
   ): Promise<void>;
 }
 
@@ -511,6 +526,16 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
           totalRamMb: resources.ramMb,
           totalCpuCores: resources.cpuCores,
           totalDiskMb: resources.diskMb,
+          // Auslastung nur, wenn sie mitkam (Gefundener Punkt 96) - sonst
+          // bleiben die letzten Messwerte stehen, statt auf null zu fallen.
+          ...(resources.usage === undefined
+            ? {}
+            : {
+                measuredRamAvailableMb: resources.usage.ramAvailableMb,
+                measuredDiskAvailableMb: resources.usage.diskAvailableMb,
+                measuredCpuLoad1m: resources.usage.cpuLoad1m,
+                measuredAt: resources.usage.observedAt,
+              }),
           updatedAt: new Date(),
         })
         .where(eq(hostNodes.id, hostId));
