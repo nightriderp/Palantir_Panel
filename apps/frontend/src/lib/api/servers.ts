@@ -449,3 +449,22 @@ export function deleteFile(serverId: string, path: string): Promise<ApiResult<nu
 export function fileDownloadUrl(serverId: string, path: string): string {
   return `${API_BASE_URL}${serverPath(serverId, '/files/download')}?path=${encodeURIComponent(path)}`;
 }
+
+/**
+ * Server an die eigene Übersicht heften bzw. lösen (Gefundener Punkt 50).
+ *
+ * `PUT`/`DELETE` statt eines Umschalters: Beide führen zum selben Zielzustand,
+ * ein doppelter Klick bewirkt also nicht das Gegenteil. Die Antwort ist der
+ * vollständige Server – die Karte kann sie unverändert übernehmen.
+ */
+export function pinServer(serverId: string): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(`${SERVERS}/${encodeURIComponent(serverId)}/pin`, {
+    method: 'PUT',
+  });
+}
+
+export function unpinServer(serverId: string): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(`${SERVERS}/${encodeURIComponent(serverId)}/pin`, {
+    method: 'DELETE',
+  });
+}
