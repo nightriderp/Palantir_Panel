@@ -24,6 +24,7 @@ import {
   ToggleRow,
   cn,
   formatDate,
+  formatNumber,
   formatServerAddress,
   serverInitials,
   useHighlight,
@@ -239,6 +240,7 @@ export function UsersView() {
               <Th>Rollen</Th>
               <Th>Zustand</Th>
               <Th>Kontingent</Th>
+              <Th>Server</Th>
               <Th>Erstellt</Th>
               <Th>Aktion</Th>
             </tr>
@@ -273,6 +275,11 @@ export function UsersView() {
                 </Td>
                 <Td className="whitespace-nowrap font-mono text-xs text-ink-muted">
                   {quotaLabel(entry.quota)}
+                </Td>
+                {/* Serveranzahl aus dem DTO (Gefundener Punkt 90) – vorher
+                    filterte die Ansicht dafür die ganze Serverliste im Browser. */}
+                <Td className="whitespace-nowrap font-mono text-xs text-ink-muted">
+                  {entry.serverCount === undefined ? '—' : formatNumber(entry.serverCount)}
                 </Td>
                 <Td className="whitespace-nowrap text-ink-muted">
                   {formatDate(entry.registeredAt)}
@@ -427,7 +434,14 @@ function RolesDialog({
   // Registrierung und weicht bei der Freigabe).
   const assignable = roles.filter((role) => !role.isProtected);
   const [assigned, setAssigned] = useState<Set<string>>(
-    () => new Set(assignable.filter((role) => user.roleNames.includes(role.name)).map((r) => r.id)),
+    () =>
+      // Ids aus dem DTO (Gefundener Punkt 90); der Rückfall über die Namen gilt
+      // nur für Antworten aus der Zeit vor diesem Feld.
+      new Set(
+        user.roles === undefined
+          ? assignable.filter((role) => user.roleNames.includes(role.name)).map((r) => r.id)
+          : user.roles.map((role) => role.id),
+      ),
   );
   const [pending, setPending] = useState<string | null>(null);
 
