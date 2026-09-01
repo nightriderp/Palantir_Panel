@@ -13,6 +13,8 @@ import {
   type BackupStatus,
   type BackupType,
   type ErrorCode,
+  type PanelBackupStatus,
+  type PanelBackupTrigger,
   type ScheduleAction,
   type ScheduleRunResult,
 } from '@palantir/contracts';
@@ -164,3 +166,30 @@ export type BackupRow = typeof backups.$inferSelect;
 export type NewBackupRow = typeof backups.$inferInsert;
 export type ScheduleRow = typeof schedules.$inferSelect;
 export type NewScheduleRow = typeof schedules.$inferInsert;
+
+/**
+ * Sicherungen des Panels selbst (Mockup-Abgleich 12.5.1).
+ *
+ * Bewusst **neben** `backups` und nicht darin: Dort stehen die Sicherungen der
+ * Gameserver – mit Besitzer, Server und Node. Eine Panel-Sicherung hat nichts
+ * davon; sie gehört der Instanz. Ein gemeinsamer Tisch mit lauter leeren
+ * Spalten wäre die schlechtere Ordnung.
+ */
+export const panelBackups = pgTable(
+  'panel_backups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    status: text('status').$type<PanelBackupStatus>().notNull().default('running'),
+    trigger: text('trigger').$type<PanelBackupTrigger>().notNull(),
+    /** Ablageort auf der VPS; `null`, solange nichts geschrieben wurde. */
+    storagePath: text('storage_path'),
+    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull().default(0),
+    failureMessage: text('failure_message'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => [index('panel_backups_started_idx').on(table.startedAt.desc())],
+);
+
+export type PanelBackupRow = typeof panelBackups.$inferSelect;
+export type NewPanelBackupRow = typeof panelBackups.$inferInsert;

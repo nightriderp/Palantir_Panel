@@ -3,6 +3,7 @@ import {
   type AnnouncementDto,
   type AuditLogPageDto,
   type BackupOverviewDto,
+  type PanelBackupDto,
   type GameServerDto,
   type HostNodeDto,
   type InstanceSettingsDto,
@@ -321,6 +322,30 @@ export function fetchBackupOverview(
   signal?: AbortSignal,
 ): Promise<ApiResult<BackupOverviewDto>> {
   return apiRequest<BackupOverviewDto>('/admin/backups', { query, signal });
+}
+
+// ---------------------------------------------------------------------------
+// Sicherungen des Panels (Mockup-Abgleich 12.5.1 und 12.5.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Verlauf der Panel-Sicherungen.
+ *
+ * Etwas anderes als {@link fetchBackupOverview}: Dort geht es um den
+ * Speicherverbrauch der Server-Backups, hier um die Abzuege der
+ * Panel-Datenbank.
+ */
+export function fetchPanelBackups(signal?: AbortSignal): Promise<ApiResult<PanelBackupDto[]>> {
+  return apiRequest<PanelBackupDto[]>('/admin/panel-backups', { signal });
+}
+
+/** Sicherung von Hand anstossen; die Antwort kommt erst, wenn der Abzug steht. */
+export function startPanelBackup(): Promise<ApiResult<PanelBackupDto>> {
+  return apiRequest<PanelBackupDto>('/admin/panel-backups', { method: 'POST' });
+}
+
+export function deletePanelBackup(id: string): Promise<ApiResult<null>> {
+  return apiRequest<null>(`/admin/panel-backups/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 // ---------------------------------------------------------------------------
