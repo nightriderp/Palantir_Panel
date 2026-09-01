@@ -73,7 +73,7 @@ async function buildTestApp(seed?: { repository?: FakeRepository }): Promise<{
 
 async function anfrage(
   app: FastifyInstance,
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   url: string,
   actor: string | null,
   payload?: unknown,
@@ -245,6 +245,52 @@ describe('Inbox', () => {
     expect(antwort.statusCode).toBe(404);
     expect(antwort.json().error.code).toBe('NOTIFICATION_NOT_FOUND');
     expect(repo.notifications).toHaveLength(1);
+  });
+});
+
+describe('Persoenliche Zustell-Einstellung (Gefundener Punkt 93)', () => {
+  it('liefert die Vorgabe und speichert eine Abbestellung', async () => {
+    const { app } = await buildTestApp();
+
+    const vorher = await anfrage(app, 'GET', '/notifications/preferences', 'nutzer');
+
+    expect(vorher.statusCode).toBe(200);
+    expect(vorher.json<{ data: { mutedEvents: string[] } }>().data.mutedEvents).toEqual([]);
+
+    const gesetzt = await anfrage(app, 'PUT', '/notifications/preferences', 'nutzer', {
+      mutedEvents: ['backup.failed'],
+    });
+
+    expect(gesetzt.statusCode).toBe(200);
+    expect(gesetzt.json<{ data: { mutedEvents: string[] } }>().data.mutedEvents).toEqual([
+      'backup.failed',
+    ]);
+
+    await app.close();
+  });
+
+  it('lehnt eine Ankuendigung als Abbestellung ab', async () => {
+    const { app } = await buildTestApp();
+
+    // Gefundener Punkt 93: Die Mitteilung des Betreibers an alle bleibt.
+    const response = await anfrage(app, 'PUT', '/notifications/preferences', 'nutzer', {
+      mutedEvents: ['announcement.published'],
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
+
+    await app.close();
+  });
+
+  it('verlangt eine Anmeldung', async () => {
+    const { app } = await buildTestApp();
+
+    const response = await anfrage(app, 'GET', '/notifications/preferences', null);
+
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('AUTH_REQUIRED');
+
+    await app.close();
   });
 });
 

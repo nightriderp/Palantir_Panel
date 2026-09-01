@@ -141,6 +141,13 @@
       "when": 1788248894531,
       "tag": "0019_quota_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788252014847,
+      "tag": "0020_notification_preferences",
+      "breakpoints": true
     }
   ]
 }

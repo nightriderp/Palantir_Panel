@@ -24,9 +24,11 @@ import {
   type NotificationDeliveryDto,
   type NotificationEvent,
   type NotificationPageDto,
+  type NotificationPreferencesDto,
   type NotificationRuleDto,
   type NotificationChannelDto,
   type NotificationSeverity,
+  isMutableNotificationEvent,
   isNotifiableEventName,
 } from '@palantir/contracts';
 import type {
@@ -34,6 +36,7 @@ import type {
   CreateNotificationChannelInput,
   CreateNotificationRuleInput,
   MarkNotificationsReadInput,
+  NotificationPreferencesInput,
   NotificationQuery,
   UpdateAnnouncementInput,
   UpdateNotificationChannelInput,
@@ -70,6 +73,7 @@ import { resolveRecipients } from './recipients.js';
 import type {
   CreateNotificationData,
   NotificationChannelRecord,
+  NotificationPreferencesRecord,
   NotificationRepository,
   NotificationRuleRecord,
 } from './repository.js';
@@ -166,6 +170,12 @@ export interface NotificationService {
 
   // Inbox (gehört dem Empfänger)
   listInbox(viewerId: string, query: NotificationQuery): Promise<NotificationPageDto>;
+  /** Persönliche Zustell-Einstellung des Kontos (Gefundener Punkt 93). */
+  getPreferences(viewerId: string): Promise<NotificationPreferencesDto>;
+  setPreferences(
+    viewerId: string,
+    input: NotificationPreferencesInput,
+  ): Promise<NotificationPreferencesDto>;
   markRead(viewerId: string, input: MarkNotificationsReadInput): Promise<number>;
   deleteNotification(viewerId: string, notificationId: string): Promise<void>;
   countUnread(viewerId: string): Promise<number>;
@@ -191,6 +201,16 @@ export interface NotificationService {
 
   // Zustellungsprotokoll (Permission `notification.manage`)
   listDeliveries(limit: number): Promise<NotificationDeliveryDto[]>;
+}
+
+/** Datensatz → DTO (Gefundener Punkt 93). */
+function toPreferencesDto(record: NotificationPreferencesRecord): NotificationPreferencesDto {
+  return {
+    // Nur was der Vertrag als abbestellbar fuehrt: Ein Ereignis, das inzwischen
+    // aus der Auswahl gefallen ist, soll nicht als unbekannter Wert auftauchen.
+    mutedEvents: record.mutedEvents.filter(isMutableNotificationEvent),
+    updatedAt: record.updatedAt?.toISOString() ?? null,
+  };
 }
 
 export function createNotificationService(
@@ -432,8 +452,17 @@ export function createNotificationService(
           directory,
         );
 
+        /*
+         * Persönliche Abbestellung (Gefundener Punkt 93): Die Regel bestimmt
+         * weiter, wer überhaupt in Frage kommt; wer das Ereignis für sich
+         * abbestellt hat, fällt hier heraus. Nur die Inbox – der externe Kanal
+         * einer Regel gehört dem Administrator, nicht dem einzelnen Konto.
+         */
+        const stumm = await repository.findMutedRecipients(recipients, input.event);
+        const empfaenger = recipients.filter((userId) => !stumm.has(userId));
+
         await fillInbox(
-          recipients.map((userId) => ({
+          empfaenger.map((userId) => ({
             userId,
             event: input.event,
             severity,
@@ -827,6 +856,20 @@ export function createNotificationService(
         targetId: ruleId,
         metadata: { operation: 'deleted', event: rule.event },
       });
+    },
+
+    async getPreferences(viewerId) {
+      const eintrag = await repository.findPreferences(viewerId);
+
+      return toPreferencesDto(eintrag);
+    },
+
+    async setPreferences(viewerId, input) {
+      // Doppelte Nennungen fallen hier weg: Gespeichert wird eine Menge, keine
+      // Liste - zweimal dasselbe abbestellt ist einmal abbestellt.
+      const abbestellt = [...new Set(input.mutedEvents)];
+
+      return toPreferencesDto(await repository.savePreferences(viewerId, abbestellt));
     },
 
     async listInbox(viewerId, query) {
