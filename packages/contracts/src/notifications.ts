@@ -414,6 +414,60 @@ export interface NotificationDto extends WithPermissions<NotificationPermissions
 }
 
 /** Seite der Inbox. Die Inbox wächst dauerhaft, sie wird nie vollständig geliefert. */
+/**
+ * Ereignisse, die ein Konto für sich abbestellen darf (WORK_STATUS.md,
+ * Gefundener Punkt 93).
+ *
+ * Alles außer `announcement.published`: Eine Ankündigung ist die Mitteilung des
+ * Betreibers an alle – Wartungsfenster, Abschaltungen. Wer sie abbestellen
+ * könnte, bekäme genau die Hinweise nicht, die ihn betreffen. Alle übrigen
+ * Ereignisse hängen an eigenen Servern, eigenen Backups oder an einer
+ * Admin-Aufgabe und sind damit persönliche Sache.
+ */
+export const MUTABLE_NOTIFICATION_EVENTS = [
+  'server.created',
+  'server.started',
+  'server.stopped',
+  'server.restarted',
+  'server.crashed',
+  'server.failed',
+  'server.cloned',
+  'server.deleted',
+  'autoShutdown.triggered',
+  'backup.failed',
+  'resource.low',
+  'user.registered',
+  'message.reported',
+] as const satisfies readonly NotifiableEventName[];
+
+/** Ein Ereignis, das sich abbestellen lässt. */
+export type MutableNotificationEvent = (typeof MUTABLE_NOTIFICATION_EVENTS)[number];
+
+export function isMutableNotificationEvent(value: string): value is MutableNotificationEvent {
+  return (MUTABLE_NOTIFICATION_EVENTS as readonly string[]).includes(value);
+}
+
+/**
+ * Persönliche Zustell-Einstellung eines Kontos (Lastenheft §3.6: „persönliche
+ * Einstellungen, welche Ereignisse man erhalten möchte"; Gefundener Punkt 93).
+ *
+ * **Verhältnis zu den Regeln des Administrators.** Die Regeln (Ereignis →
+ * Kanal → Empfängerkreis) entscheiden weiterhin, **wer überhaupt** in Frage
+ * kommt. Diese Einstellung kann daraus nur **abwählen**, nie hinzufügen: Ein
+ * Konto kann sich nicht in einen Empfängerkreis eintragen, dem es nicht
+ * angehört.
+ *
+ * Bewusst eine Liste des Abbestellten und nicht des Gewünschten: Kommt ein
+ * neues Ereignis dazu, erreicht es alle – statt still niemanden, weil es in
+ * keiner gespeicherten Wunschliste steht.
+ */
+export interface NotificationPreferencesDto {
+  /** Abbestellte Ereignisse; leer bedeutet „alles wie von den Regeln vorgesehen". */
+  mutedEvents: MutableNotificationEvent[];
+  /** ISO-8601-Zeitstempel der letzten Änderung; `null`, solange nichts gesetzt wurde. */
+  updatedAt: string | null;
+}
+
 export interface NotificationPageDto {
   entries: NotificationDto[];
   /** Gesamtzahl der Meldungen, die auf den Filter passen. */

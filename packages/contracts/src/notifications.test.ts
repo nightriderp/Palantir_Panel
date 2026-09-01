@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { WEBSOCKET_EVENTS } from './events.js';
 import { LIVE_SERVER_EVENTS } from './server-live.js';
 import {
+  MUTABLE_NOTIFICATION_EVENTS,
   NOTIFIABLE_EVENTS,
   NOTIFICATION_CHANNEL_TYPES,
   NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED,
   NOTIFICATION_LIVE_EVENTS,
   NOTIFICATION_RECIPIENT_SCOPES,
   NOTIFICATION_SEVERITIES,
+  isMutableNotificationEvent,
   isNotifiableEventName,
   isNotificationLiveEventName,
 } from './notifications.js';
@@ -102,5 +104,21 @@ describe('Aufzählungen der Notification-Engine', () => {
 
   it('führt drei Dringlichkeitsstufen', () => {
     expect([...NOTIFICATION_SEVERITIES]).toEqual(['info', 'warning', 'error']);
+  });
+});
+
+describe('Abbestellbare Ereignisse (Gefundener Punkt 93)', () => {
+  it('umfasst jedes Ereignis ausser der Ankuendigung', () => {
+    // Die Liste steht ausgeschrieben, damit `z.enum()` einen Tupel-Typ
+    // bekommt – dieser Test haelt sie mit NOTIFIABLE_EVENTS im Gleichschritt.
+    expect([...MUTABLE_NOTIFICATION_EVENTS]).toEqual(
+      NOTIFIABLE_EVENTS.filter((event) => event !== 'announcement.published'),
+    );
+  });
+
+  it('erkennt eine Ankuendigung nicht als abbestellbar', () => {
+    expect(isMutableNotificationEvent('announcement.published')).toBe(false);
+    expect(isMutableNotificationEvent('backup.failed')).toBe(true);
+    expect(isMutableNotificationEvent('gibtesnicht')).toBe(false);
   });
 });
