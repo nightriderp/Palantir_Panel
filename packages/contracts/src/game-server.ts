@@ -167,6 +167,16 @@ export interface GameServerDto {
   updateAvailable: boolean;
   /** Anzahl der Mitverwalter (`ServerMember`, Pflichtenheft §6). */
   memberCount: number;
+  /**
+   * Hat der Aufrufer diesen Server angeheftet (WORK_STATUS.md, Gefundener Punkt
+   * 50)?
+   *
+   * Sicht des Aufrufers wie `permissions`: Dieselbe Zeile ist für zwei Konten
+   * unterschiedlich angeheftet. Bis hierher lag die Anheftung im `localStorage`
+   * und galt damit pro Gerät – wer am Telefon anheftete, sah am Rechner nichts
+   * davon.
+   */
+  pinned: boolean;
   /** Letzter erfolgreicher Start als ISO-8601; `null`, wenn nie gestartet. */
   lastStartedAt: string | null;
   /** ISO-8601-Zeitstempel. */

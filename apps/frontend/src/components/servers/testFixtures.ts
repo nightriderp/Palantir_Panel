@@ -88,6 +88,7 @@ export function server(options: ServerFixtureOptions): GameServerDto {
     dockerContainerId: null,
     pendingRestart: false,
     updateAvailable: false,
+    pinned: false,
     memberCount: 0,
     lastStartedAt: null,
     createdAt: '2026-08-01T10:00:00.000Z',
