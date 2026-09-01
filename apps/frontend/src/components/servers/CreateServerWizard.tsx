@@ -41,8 +41,10 @@ import {
   applyGameType,
   buildSummaryRows,
   missingConfigFields,
+  quotaBlockReason,
   stepBlockReason,
 } from './wizardSteps';
+import { QuotaRequestDialog } from './QuotaRequestDialog';
 import { ConfigFields } from './form/ConfigFields';
 import { ResourceFields } from './form/ResourceFields';
 import { useSubdomainCheck } from './useSubdomainCheck';
@@ -194,6 +196,7 @@ export function CreateServerWizard() {
   };
 
   const blockReason = stepBlockReason(step, state, context);
+  const [quotaDialog, setQuotaDialog] = useState(false);
   const stepIndex = WIZARD_STEPS.indexOf(step);
   const isLastStep = stepIndex === WIZARD_STEPS.length - 1;
   const missingKeys = missingConfigFields(selectedGame, state.config).map((field) => field.key);
@@ -445,7 +448,26 @@ export function CreateServerWizard() {
             Zurück
           </Button>
 
-          <span className="min-w-0 flex-1 text-xs text-warning">{blockReason}</span>
+          <span className="min-w-0 flex-1 text-xs text-warning">
+            {blockReason}
+            {/*
+             * Der Weg zum Antrag steht dort, wo die Grenze auffaellt
+             * (Mockup-Abgleich 12.3.1). Nur bei einer Kontingent-Sperre: Eine
+             * volle Node laesst sich nicht beantragen.
+             */}
+            {blockReason !== null && quota.data !== null && quotaBlockReason(quota.data, state) ? (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  onClick={() => setQuotaDialog(true)}
+                  className="font-semibold text-brand underline-offset-2 hover:underline"
+                >
+                  Mehr beantragen
+                </button>
+              </>
+            ) : null}
+          </span>
 
           {isLastStep ? (
             <Button
@@ -467,6 +489,10 @@ export function CreateServerWizard() {
           )}
         </div>
       </div>
+
+      {quotaDialog && quota.data !== null ? (
+        <QuotaRequestDialog quota={quota.data} onClose={() => setQuotaDialog(false)} />
+      ) : null}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   type PortAllocationDto,
   type PortPoolDto,
   type PortRangeDto,
+  type QuotaRequestDto,
   type RegistrationRequestDto,
   type RoleDto,
   type StorageEntryDto,
@@ -24,7 +25,9 @@ import {
 import {
   type ApproveRegistrationRequestInput,
   type CreateUserInput,
+  type DecideQuotaRequestInput,
   type InstanceSettingsInput,
+  type QuotaRequestQuery,
   type AuditLogQuery,
   type BackupOverviewQuery,
   type BlockRegistrationRequestInput,
@@ -115,6 +118,42 @@ export function unblockRegistrationRequest(
     `/admin/requests/${encodeURIComponent(userId)}/unblock`,
     { method: 'POST' },
   );
+}
+
+/**
+ * Kontingent-Anfragen (Mockup-Abgleich 12.3.1).
+ *
+ * Ohne Filter kommen alle; die Übersicht holt gezielt die offenen, weil nur die
+ * eine Entscheidung brauchen.
+ */
+export function fetchQuotaRequests(
+  query: QuotaRequestQuery,
+  signal?: AbortSignal,
+): Promise<ApiResult<QuotaRequestDto[]>> {
+  return apiRequest<QuotaRequestDto[]>('/admin/quota-requests', {
+    query: { status: query.status },
+    signal,
+  });
+}
+
+export function approveQuotaRequest(
+  id: string,
+  input: DecideQuotaRequestInput = {},
+): Promise<ApiResult<QuotaRequestDto>> {
+  return apiRequest<QuotaRequestDto>(`/admin/quota-requests/${encodeURIComponent(id)}/approve`, {
+    method: 'POST',
+    json: input,
+  });
+}
+
+export function rejectQuotaRequest(
+  id: string,
+  input: DecideQuotaRequestInput = {},
+): Promise<ApiResult<QuotaRequestDto>> {
+  return apiRequest<QuotaRequestDto>(`/admin/quota-requests/${encodeURIComponent(id)}/reject`, {
+    method: 'POST',
+    json: input,
+  });
 }
 
 /** Einstellungen der Instanz lesen (Mockup-Abgleich 12.1.1). */

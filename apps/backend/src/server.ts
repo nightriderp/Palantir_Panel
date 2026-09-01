@@ -22,6 +22,9 @@ import {
   registerResourceRoutes,
 } from './modules/resources/index.js';
 import { type InstanceSettingsService } from './modules/admin/instance-settings.js';
+import { createQuotaRequestService } from './modules/quota-requests/index.js';
+import { createDrizzleQuotaRequestRepository } from './modules/quota-requests/repository.js';
+import { registerQuotaRequestRoutes } from './modules/quota-requests/routes.js';
 import { createPublicStatsService } from './modules/public-stats/index.js';
 import { registerPublicStatsRoutes } from './modules/public-stats/routes.js';
 import {
@@ -488,6 +491,21 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * hängt hier nur an HTTP, eine zweite Kontingent-Logik gibt es nicht.
      */
     await app.register(registerResourceRoutes({ resourceLimits: resources }));
+
+    /*
+     * Kontingent-Anfragen (Mockup-Abgleich 12.3.1). Genehmigt ein Admin, setzt
+     * derselbe Ressourcen-Dienst das Kontingent, der es auch von Hand setzt -
+     * eine zweite Stelle dafuer waere eine zweite Wahrheit.
+     */
+    await app.register(
+      registerQuotaRequestRoutes({
+        service: createQuotaRequestService({
+          repository: createDrizzleQuotaRequestRepository(db),
+          quotas: resources,
+        }),
+        actorUserId: (request) => request.authUser?.id ?? null,
+      }),
+    );
 
     /*
      * Kennzahlen der Instanz fuer die Anmeldeseite (Mockup-Abgleich 2.1).
