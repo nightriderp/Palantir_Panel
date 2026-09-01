@@ -38,7 +38,7 @@ führt. Vollständige Liste mit Kommentaren in `apps/frontend/tailwind.config.ts
 | Schrift   | `font-sans` (Space Grotesk), `font-mono` (JetBrains Mono)                                       |
 | Größen    | `text-3xs` … `text-5xl` – **`text-base` ist 13px**, nicht 16px                                  |
 | Radien    | `rounded-sm` 6 · `rounded` 8 · `rounded-md` 10 · `rounded-tile` 11 · `rounded-xl` 14 · `2xl` 16 |
-| Schatten  | `shadow-panel`, `shadow-modal`, `shadow-brand`                                                  |
+| Schatten  | `shadow-panel`, `shadow-modal`                                                                  |
 | Animation | `animate-pulse-dot`, `animate-fade-up`, `animate-materialize`, `animate-startup-sweep`          |
 
 Globale Grundlagen (Body-Farben, Fokus-Ring, Formular-Elemente, Scrollbalken,

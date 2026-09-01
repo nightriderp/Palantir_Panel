@@ -114,8 +114,6 @@ const config: Config = {
         panel: '0 16px 40px rgba(0,0,0,0.5)',
         /** Modal-Dialog. */
         modal: '0 30px 90px rgba(0,0,0,0.55)',
-        /** Primär-Button. */
-        brand: '0 4px 18px rgba(124,92,255,0.3)',
       },
       backgroundImage: {
         /** Marken-Verlauf: Logo-Kachel, Primär-Button, Server-Initialen. */

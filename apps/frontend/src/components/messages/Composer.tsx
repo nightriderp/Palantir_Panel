@@ -110,7 +110,7 @@ export function Composer({ canSend, sending, onSend }: ComposerProps) {
         disabled={!canSubmit}
         aria-label="Senden"
         title="Senden"
-        className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-white shadow-brand transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-white transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Icon name="send" size={16} />
       </button>

@@ -50,7 +50,7 @@ export function MessageBubble({
           deleted
             ? 'border border-dashed border-line-strong bg-transparent italic text-ink-faint'
             : mine
-              ? 'bg-brand-gradient text-white shadow-brand'
+              ? 'bg-brand-gradient text-white'
               : 'bg-fill text-ink',
         )}
       >
