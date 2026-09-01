@@ -23,19 +23,10 @@ const GUELTIGER_SPEC = {
   dataVolume: { hostPath: '/srv/palantir/servers/abc', containerPath: '/data' },
 };
 
-/**
- * Befehle mit Schema, aber noch ohne Umsetzung im Agent.
- *
- * `UPLOAD_ARCHIVE_BLOCK` steht seit Gefundenem Punkt 106 im Vertrag; der Agent
- * baut ihn im Anschluss. Das Schema kommt zuerst – ohne es könnte er den
- * Befehl dann gar nicht annehmen.
- */
-const NOCH_OHNE_UMSETZUNG: readonly string[] = ['UPLOAD_ARCHIVE_BLOCK'];
-
 describe('Schema-Tabelle', () => {
   it('enthält für jeden umgesetzten Befehl ein Schema', () => {
     expect(Object.keys(AGENT_COMMAND_PAYLOAD_SCHEMAS).sort()).toEqual(
-      [...IMPLEMENTED_AGENT_COMMANDS, ...NOCH_OHNE_UMSETZUNG].sort(),
+      [...IMPLEMENTED_AGENT_COMMANDS].sort(),
     );
   });
 });
@@ -201,13 +192,8 @@ describe('Optionale Felder', () => {
   it('deckt die Schema-Tabelle genau die umgesetzten Befehle ab', () => {
     // Ein Befehl in IMPLEMENTED_AGENT_COMMANDS ohne Schema würde ungeprüft
     // durchgereicht – der Adapter schlägt dann erst beim Zugriff fehl.
-    //
-    // Umgekehrt darf ein Schema der Umsetzung vorauslaufen: `UPLOAD_ARCHIVE_BLOCK`
-    // steht seit Gefundenem Punkt 106 im Vertrag, ausgeführt wird er im
-    // Anschluss vom Agent. Ohne Schema könnte der Agent ihn dann gar nicht
-    // annehmen.
     expect(Object.keys(AGENT_COMMAND_PAYLOAD_SCHEMAS).sort()).toEqual(
-      [...IMPLEMENTED_AGENT_COMMANDS, ...NOCH_OHNE_UMSETZUNG].sort(),
+      [...IMPLEMENTED_AGENT_COMMANDS].sort(),
     );
   });
 

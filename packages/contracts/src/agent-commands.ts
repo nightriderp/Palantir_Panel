@@ -840,6 +840,7 @@ export const IMPLEMENTED_AGENT_COMMANDS = [
   'GET_STORAGE_BREAKDOWN',
   'SET_SERVER_QUERY',
   'REMOVE_STORAGE_ENTRY',
+  'UPLOAD_ARCHIVE_BLOCK',
 ] as const;
 
 export type ImplementedAgentCommandName = (typeof IMPLEMENTED_AGENT_COMMANDS)[number];
