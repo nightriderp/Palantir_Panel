@@ -102,6 +102,20 @@ export const PERMISSION_CATALOG = {
     description: 'Audit-Log einsehen.',
     scope: 'global',
   },
+  /**
+   * Getrennt von `audit.view` (WORK_STATUS.md, Gefundener Punkt 46).
+   *
+   * Der Archivierungslauf entfernt Einträge älter als 24 Monate aus dem Log,
+   * nachdem er sie exportiert hat (Pflichtenheft §6). Das ist der einzige
+   * Vorgang, der ein append-only Log überhaupt verkürzt – ihn an dieselbe
+   * Permission zu hängen wie das bloße Lesen hieße, jedem Mitleser diesen
+   * Eingriff mitzugeben.
+   */
+  'audit.manage': {
+    description:
+      'Audit-Log archivieren (Einträge nach Ablauf der Frist exportieren und entfernen).',
+    scope: 'global',
+  },
   'message.moderate': {
     description: 'Gemeldete Nachrichten einsehen und moderieren.',
     scope: 'global',
