@@ -25,7 +25,13 @@ let now: Date;
 let service: AuthService;
 let emittedEvents: { event: string; payload: Record<string, unknown> }[];
 
-function build(options: { providers?: ReturnType<typeof createFakeProviderRegistry> } = {}): void {
+function build(
+  options: {
+    providers?: ReturnType<typeof createFakeProviderRegistry>;
+    /** Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.) */
+    selfRegistration?: () => Promise<boolean>;
+  } = {},
+): void {
   repository = createFakeAuthRepository();
   roles = createFakeRoleRepository([{ name: 'Nutzer', permissions: ['server.create'] }]);
   now = new Date('2026-08-26T12:00:00Z');
@@ -38,6 +44,7 @@ function build(options: { providers?: ReturnType<typeof createFakeProviderRegist
     jwtSecret: JWT_SECRET,
     twoFactorTokenTtlMs: TWO_FACTOR_TTL_MS,
     totpIssuer: 'palantir.example',
+    ...(options.selfRegistration ? { selfRegistration: options.selfRegistration } : {}),
     now: () => now,
     events: {
       emit: (event, payload): void => {
@@ -767,6 +774,63 @@ describe('Passwortwechsel und Admin-Reset (Lastenheft §3.1)', () => {
     await expectErrorCode(
       service.resetPasswordAsAdmin('00000000-0000-4000-8000-000000000000'),
       'USER_NOT_FOUND',
+    );
+  });
+});
+
+describe('Selbstregistrierung und Konto-Anlage (Mockup-Abgleich 12.1.1)', () => {
+  it('lehnt die Registrierung ab, wenn die Instanz geschlossen ist', async () => {
+    build({ selfRegistration: () => Promise.resolve(false) });
+
+    await expectErrorCode(
+      service.register({ username: 'fremder', password: PASSWORD, altcha: ALTCHA }, CONTEXT),
+      'AUTH_REGISTRATION_DISABLED',
+    );
+  });
+
+  it('nimmt sie an, solange die Instanz offen ist', async () => {
+    build({ selfRegistration: () => Promise.resolve(true) });
+
+    const { account } = await service.register(
+      { username: 'fremder', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+
+    expect(account.username).toBe('fremder');
+  });
+
+  it('legt ein Konto ohne Rollenauswahl mit der Standardrolle an', async () => {
+    build();
+
+    const account = await service.createUserAsAdmin(
+      { username: 'vom-admin', password: PASSWORD },
+      [],
+    );
+
+    // Ein Konto ganz ohne Rolle waere weder freigeschaltet noch wartend: Es
+    // taucht in keiner Liste auf und kann nichts.
+    expect(account.roles.map((rolle) => rolle.name)).toEqual(['Nutzer']);
+    expect(account.username).toBe('vom-admin');
+  });
+
+  it('legt auch bei geschlossener Registrierung an – die Sperre gilt Fremden', async () => {
+    build({ selfRegistration: () => Promise.resolve(false) });
+
+    const account = await service.createUserAsAdmin(
+      { username: 'vom-admin', password: PASSWORD },
+      [],
+    );
+
+    expect(account.username).toBe('vom-admin');
+  });
+
+  it('lehnt einen vergebenen Anmeldenamen ab', async () => {
+    build();
+    await service.register({ username: 'spieler', password: PASSWORD, altcha: ALTCHA }, CONTEXT);
+
+    await expectErrorCode(
+      service.createUserAsAdmin({ username: 'spieler', password: PASSWORD }, []),
+      'AUTH_USERNAME_TAKEN',
     );
   });
 });

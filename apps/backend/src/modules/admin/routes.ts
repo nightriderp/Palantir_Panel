@@ -30,6 +30,7 @@ import {
   updateHostNodeInputSchema,
   updatePortRangeInputSchema,
   updateRoleInputSchema,
+  instanceSettingsInputSchema,
 } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -45,6 +46,7 @@ import type { AdminContext } from './context.js';
 import { AdminError, isAdminError } from './errors.js';
 import type { HostNodeService } from './nodes.js';
 import type { PortPoolService } from './ports.js';
+import type { InstanceSettingsService } from './instance-settings.js';
 import type { RegistrationRequestService } from './registration-requests.js';
 import type { RoleAdminService } from './roles.js';
 import type { StorageExplorerService } from './storage.js';
@@ -55,6 +57,8 @@ export interface AdminRouteServices {
   readonly audit: AuditService;
   readonly storage: StorageExplorerService;
   readonly registrationRequests: RegistrationRequestService;
+  /** Einstellungen der Instanz (Mockup-Abgleich 12.1.1). */
+  readonly instanceSettings: InstanceSettingsService;
   /**
    * Rollenverwaltung mit Audit-Log (`roles.ts`). Die Regeln selbst liegen im
    * `RoleService` aus B2.
@@ -515,6 +519,32 @@ export async function registerAdminRoutes(
         const { roleId, userId } = roleMemberParamsSchema.parse(request.params);
 
         return services.roles.removeFromUser(contextFrom(request), roleId, userId);
+      }),
+  );
+
+  // -- Einstellungen der Instanz (Mockup-Abgleich 12.1.1) -------------------
+
+  app.get(
+    '/admin/instance-settings',
+    { preHandler: requirePermission('user.manage') },
+    async (request, reply) =>
+      handle(reply, async () => services.instanceSettings.get(contextFrom(request).actor)),
+  );
+
+  /*
+   * `PUT`, weil derselbe Körper zum selben Zielzustand führt – wie bei den
+   * Nutzer-Kontingenten. Der Schalter ist keine Teiländerung, sondern der
+   * vollständige Zustand der Einstellung.
+   */
+  app.put(
+    '/admin/instance-settings',
+    { preHandler: requirePermission('user.manage') },
+    async (request, reply) =>
+      handle(reply, async () => {
+        const input = instanceSettingsInputSchema.parse(request.body ?? {});
+        const context = contextFrom(request);
+
+        return services.instanceSettings.set(context.actor, input, context.userId);
       }),
   );
 

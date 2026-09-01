@@ -11,6 +11,7 @@
  * Aufbau liefert nur die Fastify-Instanz.
  */
 
+import { createInstanceSettingsService } from './instance-settings.js';
 import { GUEST_ROLE_NAME, type RoleDto } from '@palantir/contracts';
 import Fastify, { type FastifyInstance, type InjectOptions } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -90,6 +91,12 @@ async function buildApp(): Promise<FastifyInstance> {
     storage: createStorageExplorerService({
       repository: createFakeStorageRepository(),
       nodes,
+    }),
+    instanceSettings: createInstanceSettingsService({
+      repository: {
+        load: () => Promise.resolve({ selfRegistrationEnabled: true, updatedAt: null }),
+        save: () => Promise.resolve(),
+      },
     }),
     registrationRequests: createRegistrationRequestService({
       repository: {

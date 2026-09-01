@@ -2,12 +2,13 @@
 
 import {
   type GameServerDto,
+  type InstanceSettingsDto,
   type RegistrationRequestDto,
   type RegistrationRequestStatus,
   type RoleDto,
   type UserResourceLimitDto,
 } from '@palantir/contracts';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import {
   Badge,
   Button,
@@ -15,6 +16,7 @@ import {
   DangerConfirmDialog,
   Icon,
   Modal,
+  TextField,
   PageHeader,
   Panel,
   SegmentedControl,
@@ -33,6 +35,8 @@ import {
   blockRegistrationRequest,
   clearUserLimits,
   fetchAllServers,
+  createUser,
+  fetchInstanceSettings,
   fetchRegistrationRequests,
   fetchRoles,
   fetchUserLimits,
@@ -46,6 +50,7 @@ import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
 import { quotaLabel, registrationStatusLabel, registrationStatusTone } from '../labels';
+import { InstanceSettingsCard } from './InstanceSettingsCard';
 
 /**
  * Nutzerverwaltung (Lastenheft §3.1 und §3.7).
@@ -65,6 +70,7 @@ import { quotaLabel, registrationStatusLabel, registrationStatusTone } from '../
 const STATUS_FILTERS: RegistrationRequestStatus[] = ['approved', 'pending', 'blocked'];
 
 type Dialog =
+  | { kind: 'create' }
   | { kind: 'roles'; user: RegistrationRequestDto }
   | { kind: 'servers'; user: RegistrationRequestDto }
   | { kind: 'limits'; user: RegistrationRequestDto }
@@ -90,6 +96,17 @@ export function UsersView() {
     canManage ? [status] : null,
   );
   const roles = useApiResource<RoleDto[]>((signal) => fetchRoles(signal), canManage ? [] : null);
+
+  /*
+   * Einstellungen der Instanz (Mockup-Abgleich 12.1.1). Sie hängen an dieser
+   * Seite, weil der Entwurf den Schalter über der Nutzerliste zeigt – und weil
+   * das Anlegen eines Kontos die Kehrseite derselben Frage ist: Wer kommt
+   * herein, und wer lässt ihn herein?
+   */
+  const settings = useApiResource<InstanceSettingsDto>(
+    (signal) => fetchInstanceSettings(signal),
+    canManage ? [] : null,
+  );
 
   const filtered = useMemo(() => {
     const list = resource.data ?? [];
@@ -164,7 +181,19 @@ export function UsersView() {
         title="Benutzerverwaltung"
         subtitle="Konten, Rollen und Freischaltung"
         className="-mx-5 -mt-5 px-5"
+        actions={
+          <Button iconLeft="plus" onClick={() => setDialog({ kind: 'create' })}>
+            Nutzer anlegen
+          </Button>
+        }
       />
+
+      {settings.data === null ? null : (
+        <InstanceSettingsCard
+          settings={settings.data}
+          onChanged={(next) => settings.setData(next)}
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedControl
@@ -317,6 +346,17 @@ export function UsersView() {
           </tbody>
         </AdminTable>
       )}
+
+      {dialog?.kind === 'create' ? (
+        <CreateUserDialog
+          roles={roles.data ?? []}
+          onClose={() => setDialog(null)}
+          onCreated={() => {
+            setDialog(null);
+            resource.reload();
+          }}
+        />
+      ) : null}
 
       {dialog?.kind === 'roles' ? (
         <RolesDialog
@@ -696,6 +736,117 @@ function PasswordResultDialog({
           Kopieren
         </Button>
       </div>
+    </Modal>
+  );
+}
+
+/**
+ * Konto anlegen (Mockup-Abgleich 12.1.1).
+ *
+ * Der Administrator setzt Name und Passwort selbst und gibt beides weiter; die
+ * Antwort trägt kein Passwort zurück – ein Rückkanal wäre eine zweite Stelle,
+ * an der es steht. Ohne Rollenauswahl bekommt das Konto die Standardrolle,
+ * dieselbe wie bei einer Freigabe über die Warteliste.
+ */
+function CreateUserDialog({
+  roles,
+  onClose,
+  onCreated,
+}: {
+  roles: RoleDto[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const toast = useToast();
+  const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
+  const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  // Geschützte Systemrollen vergibt das Backend selbst (B2).
+  const assignable = roles.filter((role) => !role.isProtected);
+
+  async function anlegen(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+
+    setBusy(true);
+    const result = await createUser({
+      username: username.trim(),
+      password,
+      ...(displayName.trim() === '' ? {} : { displayName: displayName.trim() }),
+      ...(roleIds.length > 0 ? { roleIds } : {}),
+    });
+    setBusy(false);
+
+    if (!result.success) {
+      toast.error(errorText(result));
+      return;
+    }
+
+    toast.success(`Konto „${result.data.account.displayName}" angelegt.`);
+    onCreated();
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Nutzer anlegen">
+      <form className="flex flex-col gap-3 pb-2" onSubmit={anlegen}>
+        <TextField
+          label="Anmeldename"
+          value={username}
+          onChange={setUsername}
+          autoComplete="off"
+          inputProps={{ required: true }}
+        />
+        <TextField
+          label="Anzeigename"
+          hint="Ohne Angabe wird der Anmeldename übernommen."
+          value={displayName}
+          onChange={setDisplayName}
+          autoComplete="off"
+        />
+        <TextField
+          label="Passwort"
+          type="password"
+          hint="Mindestens 12 Zeichen. Gib es dem Nutzer weiter – es steht danach nirgends mehr."
+          value={password}
+          onChange={setPassword}
+          autoComplete="new-password"
+          inputProps={{ required: true }}
+        />
+
+        {assignable.length === 0 ? null : (
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-semibold text-ink">Rollen</span>
+            <p className="text-xs text-ink-faint">
+              Ohne Auswahl bekommt das Konto die Standardrolle – dieselbe wie bei einer Freigabe.
+            </p>
+            {assignable.map((role) => (
+              <ToggleRow
+                key={role.id}
+                title={role.name}
+                description={role.description ?? undefined}
+                checked={roleIds.includes(role.id)}
+                onChange={(on) =>
+                  setRoleIds((current) =>
+                    on ? [...current, role.id] : current.filter((id) => id !== role.id),
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Abbrechen
+          </Button>
+          <Button type="submit" disabled={busy}>
+            Anlegen
+          </Button>
+        </div>
+      </form>
     </Modal>
   );
 }

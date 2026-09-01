@@ -4,6 +4,7 @@ import { type PermissionActor, registerRbac } from '../rbac/index.js';
 import { createAuditService } from './audit.js';
 import { createHostNodeService } from './nodes.js';
 import { createPortPoolService } from './ports.js';
+import { createInstanceSettingsService } from './instance-settings.js';
 import {
   type RegistrationRequestService,
   createRegistrationRequestService,
@@ -84,12 +85,20 @@ async function buildTestApp(): Promise<FastifyInstance> {
   const roleRepository = createFakeRoleRepository([roleRecord()]);
   const roles = createTestRoleAdminService({ repository: roleRepository, audit });
 
+  const instanceSettings = createInstanceSettingsService({
+    repository: {
+      load: () => Promise.resolve({ selfRegistrationEnabled: true, updatedAt: null }),
+      save: () => Promise.resolve(),
+    },
+  });
+
   await registerAdminRoutes(app, {
     nodes,
     ports,
     audit,
     storage,
     registrationRequests,
+    instanceSettings,
     roles,
   });
   await app.ready();

@@ -145,6 +145,23 @@ export const auditLog = pgTable(
  * Genau eine Zeile je Node – ein Verlauf ist nicht gefordert und würde die
  * Tabelle nur unbegrenzt wachsen lassen.
  */
+/**
+ * Einstellungen der Instanz (Mockup-Abgleich 12.1.1).
+ *
+ * Genau **eine** Zeile, festgehalten über den Primärschlüssel `id = 1`: Es gibt
+ * eine Instanz, und zwei Zeilen wären zwei Wahrheiten. Fehlt die Zeile, gelten
+ * die Vorgaben – die Instanz verhält sich dann wie bisher.
+ */
+export const instanceSettings = pgTable('instance_settings', {
+  /** Immer `1`; der Wert hat keine Bedeutung außer „diese eine Zeile". */
+  id: integer('id').primaryKey().default(1),
+  /** Dürfen sich neue Konten selbst registrieren? Vorgabe: ja, wie bisher. */
+  selfRegistrationEnabled: boolean('self_registration_enabled').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
+  /** Wer zuletzt geändert hat – für das Audit-Log ohnehin, hier zur Anzeige. */
+  updatedById: uuid('updated_by_id').references(() => users.id, { onDelete: 'set null' }),
+});
+
 export const storageSnapshots = pgTable('storage_snapshots', {
   nodeId: uuid('node_id')
     .primaryKey()

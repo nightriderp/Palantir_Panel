@@ -15,6 +15,7 @@
  * Auflösung genau so wie im Betrieb – über Cookie, Access-Token und Sitzung.
  */
 
+import { createInstanceSettingsService } from '../admin/instance-settings.js';
 import { createHash } from 'node:crypto';
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type AccountDto } from '@palantir/contracts';
 import type { FastifyInstance } from 'fastify';
@@ -175,6 +176,12 @@ beforeEach(async () => {
     storage: createStorageExplorerService({
       repository: createFakeStorageRepository(),
       nodes,
+    }),
+    instanceSettings: createInstanceSettingsService({
+      repository: {
+        load: () => Promise.resolve({ selfRegistrationEnabled: true, updatedAt: null }),
+        save: () => Promise.resolve(),
+      },
     }),
     registrationRequests: createRegistrationRequestService({
       repository: {

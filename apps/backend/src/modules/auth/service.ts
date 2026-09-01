@@ -37,6 +37,7 @@ import type {
   LinkPasswordInput,
   LoginInput,
   RegisterInput,
+  CreateUserInput,
   UpdateProfileInput,
 } from '@palantir/validation';
 import { buildPermissionActor, type PermissionActor, type RoleRepository } from '../rbac/index.js';
@@ -124,6 +125,16 @@ export interface AuthServiceOptions {
   readonly now?: () => Date;
   /** Notification-Senke aus B6; ohne Angabe wird nichts gemeldet. */
   readonly events?: AuthEventSink;
+  /**
+   * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
+   *
+   * Kommt aus B8 (`InstanceSettingsService`). Ohne Angabe bleibt die
+   * Registrierung offen – so verhielt sich die Instanz, bevor es die
+   * Einstellung gab.
+   */
+  readonly selfRegistration?: () => Promise<boolean>;
+  /** Standardrolle beim Anlegen durch einen Admin; Vorgabe "Nutzer". */
+  readonly defaultRoleName?: string;
 }
 
 export class AuthService {
@@ -136,6 +147,16 @@ export class AuthService {
   private readonly totpIssuer: string;
   private readonly now: () => Date;
   private readonly events: AuthEventSink;
+  /**
+   * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
+   *
+   * Optional: Ohne diese Abhaengigkeit bleibt die Registrierung offen - so
+   * verhielt sich die Instanz, bevor es die Einstellung gab. Bewusst eine
+   * Funktion und kein Wert: Der Schalter kann sich zur Laufzeit aendern.
+   */
+  private readonly selfRegistration: (() => Promise<boolean>) | null;
+  /** Rolle, die ein vom Admin angelegtes Konto ohne eigene Auswahl bekommt. */
+  private readonly defaultRoleName: string;
 
   constructor(options: AuthServiceOptions) {
     this.repository = options.repository;
@@ -147,6 +168,8 @@ export class AuthService {
     this.totpIssuer = options.totpIssuer;
     this.now = options.now ?? ((): Date => new Date());
     this.events = options.events ?? noopAuthEventSink;
+    this.selfRegistration = options.selfRegistration ?? null;
+    this.defaultRoleName = options.defaultRoleName ?? 'Nutzer';
   }
 
   /**
@@ -219,6 +242,15 @@ export class AuthService {
     input: RegisterInput,
     context: RequestContext,
   ): Promise<{ account: AccountDto; session: IssuedSession }> {
+    /*
+     * Nimmt die Instanz überhaupt neue Konten an? (Mockup-Abgleich 12.1.1.)
+     *
+     * Vor der Namensprüfung: Ist die Selbstregistrierung zu, soll die Antwort
+     * nicht davon abhängen, ob der gewünschte Name frei ist – das verriete,
+     * welche Namen es gibt.
+     */
+    await this.assertRegistrationOpen();
+
     if (await this.repository.usernameExists(input.username)) {
       throw new AuthError('AUTH_USERNAME_TAKEN');
     }
@@ -240,6 +272,62 @@ export class AuthService {
     this.emitUserRegistered(account);
 
     return { account, session };
+  }
+
+  /**
+   * Wirft, wenn die Instanz keine Selbstregistrierung annimmt
+   * (Mockup-Abgleich 12.1.1).
+   *
+   * Oeffentlich, damit die Route sie **vor** der ALTCHA-Pruefung stellen kann:
+   * Ist die Registrierung zu, ist ein geloester Nachweis vergebene Rechenzeit.
+   * Der Aufruf steht trotzdem auch in `register()` – eine Regel, die nur in der
+   * Route steht, gilt beim naechsten Aufrufer nicht mehr.
+   */
+  async assertRegistrationOpen(): Promise<void> {
+    if (this.selfRegistration !== null && !(await this.selfRegistration())) {
+      throw new AuthError('AUTH_REGISTRATION_DISABLED');
+    }
+  }
+
+  /**
+   * Konto durch einen Administrator anlegen (Mockup-Abgleich 12.1.1).
+   *
+   * Unterschiede zur Selbstregistrierung, alle beabsichtigt:
+   * - **keine Sitzung**: Angelegt wird ein fremdes Konto, angemeldet bleibt der
+   *   Administrator.
+   * - **kein ALTCHA**: Den Nachweis legt ab, wer sich selbst registriert.
+   * - **sofort freigeschaltet**: Ein vom Admin angelegtes Konto in die eigene
+   *   Warteliste zu stellen, wäre eine Bestätigung der eigenen Entscheidung.
+   *   Die Rollen kommen mit; ohne Angabe die Standardrolle.
+   *
+   * Die Sperre der Selbstregistrierung gilt hier **nicht**: Sie richtet sich an
+   * Fremde, nicht an den Betreiber.
+   */
+  async createUserAsAdmin(input: CreateUserInput, roleIds: readonly string[]): Promise<AccountDto> {
+    if (await this.repository.usernameExists(input.username)) {
+      throw new AuthError('AUTH_USERNAME_TAKEN');
+    }
+
+    const passwordHash = await hashPassword(input.password);
+    const user = await this.repository.createUser({
+      username: input.username,
+      displayName: input.displayName ?? input.username,
+    });
+
+    await this.repository.createAuthMethod({ userId: user.id, type: 'password', passwordHash });
+
+    /*
+     * Ohne Auswahl die Standardrolle – dieselbe, die eine Freigabe ueber die
+     * Warteliste vergibt. Ein Konto ganz ohne Rolle waere weder freigeschaltet
+     * noch wartend: Es taucht in keiner Liste auf und kann nichts.
+     */
+    const zuweisen = roleIds.length > 0 ? roleIds : [await this.requireDefaultRoleId()];
+
+    for (const roleId of zuweisen) {
+      await this.roles.assignToUser(user.id, roleId);
+    }
+
+    return this.loadAccount(user);
   }
 
   /**
@@ -911,6 +999,25 @@ export class AuthService {
    * Betriebsfehler und keine Nutzereingabe – deshalb eine gewöhnliche Ausnahme
    * mit klarem Hinweis statt eines Fehlercodes aus dem Katalog.
    */
+  /**
+   * Id der Standardrolle (Mockup-Abgleich 12.1.1).
+   *
+   * Wie bei der Gast-Rolle: Fehlt sie, ist die Ersteinrichtung nicht
+   * durchlaufen – ein Betriebsfehler, keine Nutzereingabe.
+   */
+  private async requireDefaultRoleId(): Promise<string> {
+    const rolle = await this.roles.findByName(this.defaultRoleName);
+
+    if (!rolle) {
+      throw new Error(
+        `Die Rolle "${this.defaultRoleName}" fehlt. Bitte einmalig ` +
+          '"pnpm --filter @palantir/backend db:seed" ausfuehren (SETUP.md §2.4).',
+      );
+    }
+
+    return rolle.id;
+  }
+
   private async assignGuestRole(userId: string): Promise<void> {
     const guestRole = await this.roles.findByName(GUEST_ROLE_NAME);
 

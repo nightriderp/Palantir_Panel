@@ -63,6 +63,12 @@ export interface AuthModuleOptions {
   readonly secrets?: AuthSecrets;
   /** Notification-Senke aus B6 für `user.registered`; ohne Angabe still. */
   readonly events?: AuthEventSink;
+  /**
+   * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
+   *
+   * Kommt aus B8; ohne Angabe bleibt die Registrierung offen.
+   */
+  readonly selfRegistration?: () => Promise<boolean>;
 }
 
 /**
@@ -134,6 +140,7 @@ export async function registerAuthModule(
     twoFactorTokenTtlMs: parseDurationMs(env.TWO_FACTOR_TOKEN_TTL),
     totpIssuer: env.PALANTIR_DOMAIN,
     ...(options.events ? { events: options.events } : {}),
+    ...(options.selfRegistration ? { selfRegistration: options.selfRegistration } : {}),
   });
 
   app.decorateRequest('authUser', null);
