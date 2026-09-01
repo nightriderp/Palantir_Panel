@@ -284,6 +284,40 @@ describe('Job-Befehle mit eingehängtem Job-Modul (A3)', () => {
     });
   }
 
+  it('legt den Datenordner an, bevor der Container entsteht (Gefundener Punkt 117)', async () => {
+    // Sonst legt der Docker-Daemon die fehlende Bind-Quelle als root:root an,
+    // und ein Spielprozess ohne root-Rechte koennte darin nicht schreiben.
+    const neuerServer = '8f0f3f4e-2b2e-4c6a-8a3f-3c1d4e5f6a7c';
+    const ziel = path.join(wurzel, 'servers', neuerServer);
+
+    await mitJobs.execute({
+      correlationId: CORRELATION_ID,
+      command: 'CREATE',
+      serverId: neuerServer,
+      payload: {
+        ...CREATE_PAYLOAD,
+        name: `palantir-${neuerServer}`,
+        dataVolume: { hostPath: ziel, containerPath: '/data' },
+      },
+    });
+
+    expect((await fs.stat(ziel)).isDirectory()).toBe(true);
+  });
+
+  it('legt nichts ausserhalb des Datenverzeichnisses an', async () => {
+    const daneben = path.join(wurzel, 'woanders');
+
+    const antwort = await mitJobs.execute({
+      correlationId: CORRELATION_ID,
+      command: 'CREATE',
+      serverId: SERVER_ID,
+      payload: { ...CREATE_PAYLOAD, dataVolume: { hostPath: daneben, containerPath: '/data' } },
+    });
+
+    expect(isFail(antwort)).toBe(true);
+    await expect(fs.stat(daneben)).rejects.toThrow();
+  });
+
   it('reicht CREATE_BACKUP an den Backup-Job durch', async () => {
     // Geprüft wird hier die Weiterleitung, nicht das Sichern selbst: Der
     // Nutzdaten-Vertrag verlangt einen POSIX-Pfad (der Homeserver ist Linux),
