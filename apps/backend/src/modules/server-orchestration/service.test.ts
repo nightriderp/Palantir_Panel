@@ -1211,6 +1211,24 @@ describe('Absturz und Crash-Loop-Schutz (Pflichtenheft §9)', () => {
     );
   });
 
+  it('meldet Server-Ereignisse mit vollstaendiger Nutzlast (Gefundener Punkt 118)', async () => {
+    // Ohne `ownerId`/`memberUserIds` findet die Empfaengeraufloesung niemanden,
+    // ohne `serverName` steht kein Name in der Meldung, und ein fehlendes
+    // `detail` liess das Rendern abstuerzen.
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    const angelegt = harness.emitted.find((e) => e.event === 'server.created');
+
+    expect(angelegt?.payload).toMatchObject({
+      serverId: created.id,
+      serverName: created.name,
+      ownerId: OWNER_ID,
+      memberUserIds: [],
+      detail: null,
+    });
+  });
+
   it('schaltet nach zu vielen Abstürzen im Zeitfenster nach error ab', async () => {
     // Der Server stürzt jedes Mal ab, während er noch hochfährt – genau der
     // Fall, für den es den Schutz gibt. Der Health-Check bleibt deshalb offen
@@ -1236,11 +1254,22 @@ describe('Absturz und Crash-Loop-Schutz (Pflichtenheft §9)', () => {
 
     expect(final.status).toBe('error');
     expect(final.statusMessage).toContain('zu oft');
-    expect(
-      harness.emitted.filter(
-        (e) => e.event === 'server.failed' && e.payload.reason === 'crashLoop',
-      ),
-    ).toHaveLength(1);
+    // Die Nutzlast traegt den Grund jetzt als `detail` (Gefundener Punkt 118) -
+    // `reason` gab es im Vertrag nie.
+    const abgeschaltet = harness.emitted.filter(
+      (e) =>
+        e.event === 'server.failed' &&
+        typeof e.payload.detail === 'string' &&
+        e.payload.detail.includes('zu oft'),
+    );
+
+    expect(abgeschaltet).toHaveLength(1);
+    // Und sie ist vollstaendig: ohne Besitzer faende die Empfaengeraufloesung niemanden.
+    expect(abgeschaltet[0]?.payload).toMatchObject({
+      serverId: created.id,
+      ownerId: OWNER_ID,
+      serverName: created.name,
+    });
   });
 
   it('startet vor dem Auslösen des Schutzes jedes Mal automatisch neu', async () => {

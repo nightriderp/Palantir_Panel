@@ -38,6 +38,7 @@ import {
 } from '@palantir/contracts';
 import { AGENT_COMMAND_PAYLOAD_SCHEMAS } from '@palantir/validation';
 import type { AgentJobs } from '../jobs/index.js';
+import { type ConnectionLogger, consoleLogger } from './agent-connection.js';
 import {
   type ContainerRuntime,
   type ContainerRuntimeErrorCode,
@@ -95,6 +96,17 @@ const CONTAINER_STATUS_MAP: Record<ContainerState['status'], AgentContainerStatu
 export interface RuntimeAdapterOptions {
   readonly runtime: ContainerRuntime;
   /**
+   * Protokoll des Agents. Ohne Angabe die Konsole - dieselbe Voreinstellung
+   * wie in der Verbindung.
+   *
+   * Gebraucht wird er fuer **gescheiterte Befehle** (WORK_STATUS.md,
+   * Gefundener Punkt 118): Bisher gingen sie ausschliesslich als Antwort ans
+   * Backend zurueck, und auf der Node stand nichts davon. Wer dort nachsah,
+   * warum ein Server nicht entsteht, fand ein leeres Log - der Fehler war nur
+   * im Panel sichtbar, und dort nur als uebersetzter Code ohne Einzelheiten.
+   */
+  readonly logger?: ConnectionLogger;
+  /**
    * Job-Modul (A3). Ohne Angabe beantwortet der Adapter die Job-Befehle
    * (Backups, Speicherübersicht, Server-Abfrage) mit
    * `AGENT_COMMAND_NOT_IMPLEMENTED` – so bleibt der Adapter ohne Dateisystem
@@ -124,11 +136,13 @@ export type OutboundEventSink = (event: OutboundEvent) => void;
 export class ContainerRuntimeAdapter implements AgentRuntimePort {
   private readonly runtime: ContainerRuntime;
   private readonly jobs: AgentJobs | undefined;
+  private readonly log: ConnectionLogger;
   private unsubscribe: Unsubscribe | null = null;
 
   constructor(options: RuntimeAdapterOptions) {
     this.runtime = options.runtime;
     this.jobs = options.jobs;
+    this.log = options.logger ?? consoleLogger;
   }
 
   /**
@@ -182,7 +196,22 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
     try {
       return ok(await this.dispatch(command, payload.data, execution.serverId));
     } catch (error) {
-      return toErrorResponse(command, error);
+      const antwort = toErrorResponse(command, error);
+
+      /*
+       * Auch auf der Node festhalten (Gefundener Punkt 118). Die Antwort geht
+       * ans Backend, aber wer auf dem Homeserver nachsieht, warum etwas nicht
+       * klappt, soll den Grund dort finden - mit Befehl, Server und dem
+       * urspruenglichen Text, nicht nur dem uebersetzten Code.
+       */
+      this.log.error('Befehl fehlgeschlagen', {
+        command,
+        serverId: execution.serverId,
+        code: antwort.error?.code,
+        message: antwort.error?.message,
+      });
+
+      return antwort;
     }
   }
 

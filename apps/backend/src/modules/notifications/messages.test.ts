@@ -159,3 +159,45 @@ describe('Textbildung (Pflichtenheft §14)', () => {
     expect(rendered.severity).toBe('warning');
   });
 });
+
+describe('Fehlende Freitextzusaetze (Gefundener Punkt 118)', () => {
+  it('rendert server.failed auch ohne detail', () => {
+    // Die Nutzlast kommt ueber eine bewusst schmale Senke; fehlt ein Feld, darf
+    // das Rendern nicht abstuerzen - sonst geht die Meldung ausgerechnet im
+    // Fehlerfall verloren.
+    const ohneDetail = {
+      serverId: '11111111-1111-4111-8111-111111111111',
+      serverName: 'Testserver',
+      ownerId: '22222222-2222-4222-8222-222222222222',
+      memberUserIds: [],
+      at: '2026-09-01T12:00:00.000Z',
+      actorId: null,
+    } as unknown as Parameters<typeof renderNotification>[0]['payload'];
+
+    const gerendert = renderNotification({
+      event: 'server.failed',
+      payload: ohneDetail,
+    } as Parameters<typeof renderNotification>[0]);
+
+    expect(gerendert.title).toContain('Testserver');
+    expect(gerendert.body.length).toBeGreaterThan(0);
+    expect(gerendert.severity).toBe('error');
+  });
+
+  it('haengt einen vorhandenen Zusatz an', () => {
+    const gerendert = renderNotification({
+      event: 'server.failed',
+      payload: {
+        serverId: '11111111-1111-4111-8111-111111111111',
+        serverName: 'Testserver',
+        ownerId: '22222222-2222-4222-8222-222222222222',
+        memberUserIds: [],
+        detail: 'Image fehlt.',
+        at: '2026-09-01T12:00:00.000Z',
+        actorId: null,
+      },
+    } as Parameters<typeof renderNotification>[0]);
+
+    expect(gerendert.body).toContain('Image fehlt.');
+  });
+});

@@ -44,8 +44,19 @@ function serverSubject(payload: { serverId: string; serverName: string }): Notif
 }
 
 /** Hängt den Zusatz der Quelle an, sofern es einen gibt. */
-function withDetail(text: string, detail: string | null): string {
-  return detail === null || detail.trim().length === 0 ? text : `${text} ${detail.trim()}`;
+/**
+ * Haengt einen Freitextzusatz an, wenn es einen gibt.
+ *
+ * `undefined` gilt wie `null` (Gefundener Punkt 118): Die Nutzlasten kommen
+ * ueber eine bewusst schmale Senke (`Record<string, unknown>`), der Vertrag
+ * wird dort nicht erzwungen. Ein fehlendes Feld darf das Rendern nicht
+ * abstuerzen lassen - sonst geht die ganze Meldung verloren, und das
+ * ausgerechnet im Fehlerfall, in dem sie am meisten zaehlt.
+ */
+function withDetail(text: string, detail: string | null | undefined): string {
+  const zusatz = detail?.trim() ?? '';
+
+  return zusatz.length === 0 ? text : `${text} ${zusatz}`;
 }
 
 /** Prozentwert in deutscher Schreibweise, auf eine Nachkommastelle. */

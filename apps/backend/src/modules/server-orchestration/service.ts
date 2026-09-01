@@ -491,12 +491,12 @@ export class ServerOrchestrationService {
 
       await this.transition(server, { type: 'createSucceeded' });
       await this.ensureServerChat(server.id);
-      this.deps.events.emit('server.created', { serverId: server.id, ownerId: server.ownerId });
+      await this.emitServerEvent('server.created', server);
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : 'Unbekannter Fehler.';
 
       await this.transition(server, { type: 'createFailed', reason });
-      this.deps.events.emit('server.failed', { serverId: server.id, reason });
+      await this.emitServerEvent('server.failed', server, { detail: reason });
 
       throw error;
     }
@@ -833,7 +833,7 @@ export class ServerOrchestrationService {
       const reason = error instanceof Error ? error.message : 'Der Start ist fehlgeschlagen.';
 
       await this.transition({ ...server, ...started }, { type: 'failed', reason });
-      this.deps.events.emit('server.failed', { serverId: server.id, reason });
+      await this.emitServerEvent('server.failed', server, { detail: reason });
 
       throw error;
     }
@@ -867,7 +867,9 @@ export class ServerOrchestrationService {
         type: 'healthCheckFailed',
         reason: 'Die Node oder die Portzuweisung des Servers ist unvollständig.',
       });
-      this.deps.events.emit('server.failed', { serverId, reason: 'Portzuweisung unvollständig' });
+      await this.emitServerEvent('server.failed', serverId, {
+        detail: 'Portzuweisung unvollständig',
+      });
 
       return;
     }
@@ -902,7 +904,7 @@ export class ServerOrchestrationService {
 
     if (result.healthy) {
       await this.transition(current, { type: 'healthCheckPassed' });
-      this.deps.events.emit('server.started', { serverId, pingMs: result.pingMs });
+      await this.emitServerEvent('server.started', serverId, { pingMs: result.pingMs });
 
       return;
     }
@@ -911,7 +913,7 @@ export class ServerOrchestrationService {
       type: 'healthCheckFailed',
       reason: result.reason ?? 'Der Server war nach dem Start nicht erreichbar.',
     });
-    this.deps.events.emit('server.failed', { serverId, reason: result.reason });
+    await this.emitServerEvent('server.failed', serverId, { detail: result.reason ?? null });
   }
 
   async stopServer(serverId: string): Promise<ServerRecord> {
@@ -930,12 +932,12 @@ export class ServerOrchestrationService {
       // im Log (Gefundener Punkt 74).
       await this.applyServerQuery(server, false);
       await this.transition({ ...server, ...stopping }, { type: 'stopSucceeded' });
-      this.deps.events.emit('server.stopped', { serverId });
+      await this.emitServerEvent('server.stopped', serverId);
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : 'Das Stoppen ist fehlgeschlagen.';
 
       await this.transition({ ...server, ...stopping }, { type: 'stopFailed', reason });
-      this.deps.events.emit('server.failed', { serverId, reason });
+      await this.emitServerEvent('server.failed', serverId, { detail: reason });
 
       throw error;
     }
@@ -960,7 +962,7 @@ export class ServerOrchestrationService {
     }
 
     const restarted = await this.startServer(serverId, actorUserId);
-    this.deps.events.emit('server.restarted', { serverId });
+    await this.emitServerEvent('server.restarted', serverId);
 
     return restarted;
   }
@@ -997,9 +999,21 @@ export class ServerOrchestrationService {
     // Ports zurück in den Pool (B8) – vor dem Löschen des Datensatzes, damit
     // eine Zuordnung nicht ohne Server zurückbleibt (Pflichtenheft §2.4).
     await this.deps.ports.release(serverId);
+    // Nutzlast VOR dem Loeschen bilden: Danach gibt es weder den Datensatz
+    // noch seine Mitverwalter (Fremdschluessel mit `cascade`).
+    const geloescht = {
+      serverId: server.id,
+      serverName: server.name,
+      ownerId: server.ownerId,
+      memberUserIds: (await this.deps.repository.listMembers(serverId)).map(
+        (member) => member.userId,
+      ),
+      detail: null,
+    };
+
     await this.deps.repository.delete(serverId);
 
-    this.deps.events.emit('server.deleted', { serverId, ownerId: server.ownerId });
+    this.deps.events.emit('server.deleted', geloescht);
   }
 
   // -------------------------------------------------------------------------
@@ -1286,9 +1300,8 @@ export class ServerOrchestrationService {
         );
       }
 
-      this.deps.events.emit('server.cloned', {
+      await this.emitServerEvent('server.cloned', clone, {
         sourceServerId: source.id,
-        serverId: clone.id,
         copiedWorldData: input.includeWorldData,
       });
 
@@ -1734,8 +1747,7 @@ export class ServerOrchestrationService {
       exitCode: payload?.exitCode ?? null,
     });
 
-    this.deps.events.emit('server.crashed', {
-      serverId: server.id,
+    await this.emitServerEvent('server.crashed', server, {
       exitCode: payload?.exitCode ?? null,
       recentCrashCount: result.state.crashTimestamps.length,
     });
@@ -1749,9 +1761,8 @@ export class ServerOrchestrationService {
             'Der Server ist zu oft hintereinander abgestürzt. Der automatische Neustart wurde abgeschaltet.',
         },
       );
-      this.deps.events.emit('server.failed', {
-        serverId: server.id,
-        reason: 'crashLoop',
+      await this.emitServerEvent('server.failed', server, {
+        detail: 'Der Server ist zu oft hintereinander abgestürzt.',
         recentCrashCount: result.state.crashTimestamps.length,
       });
 
@@ -1986,8 +1997,7 @@ export class ServerOrchestrationService {
 
       try {
         await this.stopServer(server.id);
-        this.deps.events.emit('autoShutdown.triggered', {
-          serverId: server.id,
+        await this.emitServerEvent('autoShutdown.triggered', server, {
           idleMinutes: Math.round(decision.idleMinutes),
         });
         shutdown.push(server.id);
@@ -2000,6 +2010,61 @@ export class ServerOrchestrationService {
     }
 
     return shutdown;
+  }
+
+  /**
+   * Meldet ein Server-Ereignis mit **vollstaendiger** Nutzlast (Pflichtenheft
+   * §14, Vertrag `ServerEventPayload`).
+   *
+   * **Warum es diese Methode gibt.** Die Senke ist bewusst schmal
+   * (`emit(event: string, payload: Record<string, unknown>)`), damit B3 die
+   * Notification-Engine nicht kennen muss. Der Preis: Der Vertrag der Nutzlast
+   * wird nirgends erzwungen - und genau daran fehlten bisher `serverName`,
+   * `memberUserIds` und `detail`. Ohne `ownerId` und `memberUserIds` findet die
+   * Empfaengeraufloesung niemanden; ohne `serverName` steht ein leerer Name in
+   * der Meldung, und ein fehlendes `detail` liess das Rendern abstuerzen.
+   *
+   * Aufgefallen ist es erst, als die ersten Benachrichtigungs-Regeln existierten
+   * (Gefundener Punkt 82) - vorher hoerte auf diese Ereignisse niemand zu.
+   *
+   * Die Mitverwalter werden hier nachgeschlagen und nicht am Aufrufort: Sie
+   * gehoeren zur Nutzlast jedes Server-Ereignisses, und keine der aufrufenden
+   * Stellen braucht sie sonst.
+   *
+   * Ein Fehler beim Zusammenstellen darf den ausloesenden Vorgang nicht
+   * scheitern lassen (Pflichtenheft §14) - er wird protokolliert, mehr nicht.
+   */
+  private async emitServerEvent(
+    event: string,
+    server: ServerRecord | string,
+    extra: Record<string, unknown> = {},
+  ): Promise<void> {
+    try {
+      const record =
+        typeof server === 'string' ? await this.deps.repository.findById(server) : server;
+
+      if (record === null) {
+        this.deps.log.warn({ event, serverId: server }, 'Ereignis ohne Serverdatensatz verworfen');
+
+        return;
+      }
+
+      const members = await this.deps.repository.listMembers(record.id);
+
+      this.deps.events.emit(event, {
+        serverId: record.id,
+        serverName: record.name,
+        ownerId: record.ownerId,
+        memberUserIds: members.map((member) => member.userId),
+        detail: null,
+        ...extra,
+      });
+    } catch (error: unknown) {
+      this.deps.log.error(
+        { event, error: error instanceof Error ? error.message : String(error) },
+        'Server-Ereignis konnte nicht gemeldet werden',
+      );
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -2101,16 +2166,13 @@ export class ServerOrchestrationService {
           return;
         case 'markStopped':
           await this.transition(server, { type: 'observedStopped', reason: action.reason });
-          this.deps.events.emit('server.stopped', { serverId: server.id, reason: action.reason });
+          await this.emitServerEvent('server.stopped', server, { detail: action.reason });
 
           return;
         case 'markMissing':
         case 'markCreateInterrupted':
           await this.transition(server, { type: 'failed', reason: action.reason });
-          this.deps.events.emit('server.failed', {
-            serverId: server.id,
-            reason: action.reason,
-          });
+          await this.emitServerEvent('server.failed', server, { detail: action.reason });
 
           return;
         case 'verifyHealth':
