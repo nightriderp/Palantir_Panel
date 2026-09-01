@@ -487,7 +487,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * Derselbe `ResourceService` wie oben – die Verwaltung der Nutzer-Limits
      * hängt hier nur an HTTP, eine zweite Kontingent-Logik gibt es nicht.
      */
-    await app.register(registerResourceRoutes({ resourceLimits: resources }));
+    await app.register(
+      registerResourceRoutes({ resourceLimits: resources, audit: admin.services.audit }),
+    );
 
     /*
      * Kennzahlen der Instanz fuer die Anmeldeseite (Mockup-Abgleich 2.1).
