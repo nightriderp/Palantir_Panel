@@ -4,6 +4,7 @@ import { type ServerOrchestrationError } from './errors.js';
 import {
   GAME_TYPE_DEFINITIONS,
   TEST_GAME_TYPE,
+  TEST_MINECRAFT_GAME_TYPE,
   buildContainerEnv,
   buildServerConfig,
   createGameRegistry,
@@ -196,5 +197,36 @@ describe('requiresRestartAfterChange() (Lastenheft §3.3)', () => {
     expect(requiresRestartAfterChange(definition, { greeting: 'a' }, { greeting: 'b' })).toBe(
       false,
     );
+  });
+});
+
+describe('Test-Typ mit Minecraft-Protokoll (Gefundener Punkt 113)', () => {
+  it('ist erst ab Ausbaustufe 2 auswaehlbar', () => {
+    // Phase 1 kennt ihn, darf ihn aber nicht anlegen - das ist der Schalter des
+    // Betreibers (`INSTALLATION_PHASE`), keine Entscheidung im Code.
+    expect(() => createGameRegistry(1).requireSelectable('test-minecraft')).toThrow();
+    expect(createGameRegistry(2).requireSelectable('test-minecraft').id).toBe('test-minecraft');
+  });
+
+  it('wird ueber gamedig abgefragt, nicht ueber einen offenen Port', () => {
+    // Ein offener Port sagt beim Hochlauf noch nichts; erst die Antwort auf den
+    // Server-List-Ping beweist, dass der Server bereit ist.
+    expect(TEST_MINECRAFT_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'minecraft',
+      containerPort: 25_565,
+    });
+  });
+
+  it('nimmt einen Port aus dem Bereich, solange kein Hostname-Router laeuft', () => {
+    expect(TEST_MINECRAFT_GAME_TYPE.supportsVirtualHostRouting).toBe(false);
+  });
+
+  it('zeigt jedes Konfigurationsfeld auf eine Umgebungsvariable', () => {
+    const felder = TEST_MINECRAFT_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(TEST_MINECRAFT_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    // Alle vier liest der Server beim Start - geaendert wirken sie erst danach.
+    expect([...(TEST_MINECRAFT_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
   });
 });

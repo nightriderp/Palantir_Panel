@@ -110,11 +110,137 @@ export const TEST_GAME_TYPE: GameTypeDefinition = {
 };
 
 /**
+ * Test-Spielserver mit Minecraft-Protokoll (WORK_STATUS.md, Gefundener Punkt 113).
+ *
+ * **Der Unterschied zum Echo-Typ oben:** Der prüft die Orchestrierung ohne
+ * Spieleprotokoll. Dieser prüft alles, was erst mit einem Spiel dazukommt —
+ * `gamedig`-Abfrage statt Port-Connect, ein Client, der sich verbinden kann,
+ * und die Subdomain, die im Handshake mitkommt. Beides nebeneinander, weil das
+ * eine ohne Spiel auskommt und das andere eines nachstellt.
+ *
+ * **Kein echter Spielserver.** Das Image spricht genau so viel Minecraft, wie
+ * für diese Prüfung nötig ist (`images/test-minecraft`); es hält aber dieselben
+ * Regeln ein wie ein echtes Spiel-Image, sonst wäre die Prüfung wertlos.
+ *
+ * **`supportsVirtualHostRouting` ist `false`**, obwohl Minecraft der Fall wäre,
+ * für den das Hostname-Routing gedacht ist: Der dafür nötige Router (Infrared
+ * auf `MINECRAFT_ROUTER_PORT`) läuft noch nicht. So bekommt der Server einen
+ * Port aus dem Bereich 25000–25564, und genau der Weg — Portvergabe, frpc,
+ * frps, öffentlicher Port — soll hier ohnehin geprüft werden.
+ *
+ * **`supportsWorldImport` ist `true`**, damit sich auch der Weltdaten-Import
+ * ausprobieren lässt: Das Archiv landet im Datenordner, und ob das Spiel etwas
+ * damit anfängt, ist für den Weg dorthin ohne Belang.
+ */
+export const TEST_MINECRAFT_GAME_TYPE: GameTypeDefinition = {
+  id: 'test-minecraft',
+  name: 'Test-Server (Minecraft-Protokoll)',
+  description:
+    'Prüfstand für die Kette bis zum Spieler: antwortet auf den Server-List-Ping, erscheint in der Minecraft-Serverliste und weist eine Anmeldung mit einer erklärenden Meldung ab. Kein Spielserver — dafür kommt ein eigenes Image.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-test-minecraft:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 25_565,
+      protocol: 'tcp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'motd',
+      label: 'Serverbeschreibung',
+      type: 'text',
+      defaultValue: 'Palantir – Test-Server',
+      description: 'Steht in der Serverliste des Spielers unter dem Namen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 20,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 200,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'fakePlayers',
+      label: 'Gemeldete Spielerzahl',
+      type: 'number',
+      defaultValue: 0,
+      description:
+        'Was der Server als Spielerzahl meldet. Zur Laufzeit über die Konsole änderbar (`players 3`) — damit lässt sich der automatische Stopp bei 0 Spielern auslösen, ohne dass jemand spielt.',
+      required: false,
+      options: [],
+      min: 0,
+      max: 200,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'startupDelaySeconds',
+      label: 'Startverzögerung (Sekunden)',
+      type: 'number',
+      defaultValue: 0,
+      description:
+        'Der Server antwortet erst nach dieser Zeit. Damit lässt sich der Übergang „startet" → „läuft" beobachten und die Startzeit-Grenze prüfen.',
+      required: false,
+      options: [],
+      min: 0,
+      max: 120,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    motd: 'MOTD',
+    maxPlayers: 'MAX_PLAYERS',
+    fakePlayers: 'FAKE_PLAYERS',
+    startupDelaySeconds: 'STARTUP_DELAY_SECONDS',
+  },
+  // Alle vier Werte liest der Server beim Start aus der Umgebung; geändert
+  // wirken sie deshalb erst nach einem Neustart.
+  restartRequiredFields: ['motd', 'maxPlayers', 'fakePlayers', 'startupDelaySeconds'],
+  resourceDefaults: {
+    ramMb: 256,
+    cpuCores: 0.5,
+    diskMb: 1_024,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'minecraft',
+    containerPort: 25_565,
+  },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  // Das Image schreibt ausschliesslich in den Datenordner; `/tmp` braucht Node
+  // fuer sich selbst.
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 15,
+  startupTimeoutSeconds: 120,
+  phase: 2,
+};
+
+/**
  * Alle bekannten Spiele-Definitionen.
  *
  * Reihenfolge = Anzeigereihenfolge im Server-erstellen-Wizard (F3).
  */
-export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [TEST_GAME_TYPE];
+export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
+  TEST_GAME_TYPE,
+  TEST_MINECRAFT_GAME_TYPE,
+];
 
 /** Ausbaustufe, die diese Installation erreicht hat (Lastenheft §3.5). */
 export type InstallationPhase = 1 | 2 | 3;
