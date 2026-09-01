@@ -134,3 +134,10 @@ export {
 export { type AdminRouteServices, contextFrom, ipHintOf, registerAdminRoutes } from './routes.js';
 
 export { type AdminModule, createAdminModule } from './module.js';
+
+export {
+  type PortRangeSeedStore,
+  type SeedPortRangesResult,
+  drizzlePortRangeSeedStore,
+  seedDefaultPortRanges,
+} from './ports-seed.js';
