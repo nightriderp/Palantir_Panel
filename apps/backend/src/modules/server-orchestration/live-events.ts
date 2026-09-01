@@ -186,6 +186,17 @@ export function liveStatsFromAgentPayload(
     ...(query.players.length > 0 ? { players: query.players } : {}),
     networkRxBytes: numberOrNull(daten.networkRxBytes),
     networkTxBytes: numberOrNull(daten.networkTxBytes),
+    /*
+     * Paket-Zaehler sind optional im Agent-Protokoll (Mockup-Abgleich 4.8):
+     * Ein aelterer Agent meldet sie nicht, dann fehlen sie auch hier. Ein
+     * ausdrueckliches null waere eine andere Aussage - "gemessen, aber leer".
+     */
+    ...(numberOrNull(daten.networkRxPackets) === null
+      ? {}
+      : { networkRxPackets: numberOrNull(daten.networkRxPackets) }),
+    ...(numberOrNull(daten.networkTxPackets) === null
+      ? {}
+      : { networkTxPackets: numberOrNull(daten.networkTxPackets) }),
     updatedAt: stringOrNull(daten.sampledAt) ?? stringOrNull(daten.at) ?? emittedAt,
   };
 }

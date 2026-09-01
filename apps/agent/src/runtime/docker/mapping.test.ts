@@ -134,8 +134,8 @@ describe('toContainerStats', () => {
       pids_stats: { current: 42 },
       memory_stats: { usage: 500, limit: 2048 },
       networks: {
-        eth0: { rx_bytes: 100, tx_bytes: 200 },
-        eth1: { rx_bytes: 50, tx_bytes: 25 },
+        eth0: { rx_bytes: 100, tx_bytes: 200, rx_packets: 7, tx_packets: 9 },
+        eth1: { rx_bytes: 50, tx_bytes: 25, rx_packets: 3, tx_packets: 1 },
       },
       blkio_stats: {
         io_service_bytes_recursive: [
@@ -152,6 +152,9 @@ describe('toContainerStats', () => {
       memoryLimitBytes: 2048,
       networkRxBytes: 150,
       networkTxBytes: 225,
+      // Pakete werden ueber alle Schnittstellen summiert wie die Bytes.
+      networkRxPackets: 10,
+      networkTxPackets: 10,
       blockReadBytes: 10,
       blockWriteBytes: 20,
       pids: 42,

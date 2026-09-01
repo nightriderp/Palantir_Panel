@@ -51,7 +51,15 @@ export interface DockerStatsResponse {
     readonly stats?: Readonly<Record<string, number>>;
   };
   readonly networks?: Readonly<
-    Record<string, { readonly rx_bytes?: number; readonly tx_bytes?: number }>
+    Record<
+      string,
+      {
+        readonly rx_bytes?: number;
+        readonly tx_bytes?: number;
+        readonly rx_packets?: number;
+        readonly tx_packets?: number;
+      }
+    >
   >;
   readonly blkio_stats?: {
     readonly io_service_bytes_recursive?: readonly {
@@ -140,9 +148,13 @@ export function berechneSpeicherVerbrauch(stats: DockerStatsResponse): number {
 export function toContainerStats(containerId: string, stats: DockerStatsResponse): ContainerStats {
   let rx = 0;
   let tx = 0;
+  let rxPakete = 0;
+  let txPakete = 0;
   for (const netz of Object.values(stats.networks ?? {})) {
     rx += netz.rx_bytes ?? 0;
     tx += netz.tx_bytes ?? 0;
+    rxPakete += netz.rx_packets ?? 0;
+    txPakete += netz.tx_packets ?? 0;
   }
 
   let gelesen = 0;
@@ -162,6 +174,8 @@ export function toContainerStats(containerId: string, stats: DockerStatsResponse
     memoryLimitBytes: stats.memory_stats?.limit ?? 0,
     networkRxBytes: rx,
     networkTxBytes: tx,
+    networkRxPackets: rxPakete,
+    networkTxPackets: txPakete,
     blockReadBytes: gelesen,
     blockWriteBytes: geschrieben,
     pids: stats.pids_stats?.current ?? 0,
