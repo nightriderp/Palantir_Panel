@@ -155,6 +155,13 @@
       "when": 1788253206008,
       "tag": "0021_panel_backups",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788254000057,
+      "tag": "0022_server_pins",
+      "breakpoints": true
     }
   ]
 }

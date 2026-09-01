@@ -170,6 +170,34 @@ export const serverMembers = pgTable(
 );
 
 /**
+ * Angeheftete Server je Konto (WORK_STATUS.md, Gefundener Punkt 50).
+ *
+ * Eine Zeile je Anheftung; nichts angeheftet heisst keine Zeile. Der
+ * Primaerschluessel aus beiden Spalten macht die Anheftung von sich aus
+ * eindeutig - zweimal anheften ist einmal angeheftet.
+ *
+ * `cascade` auf beiden Seiten: Ein geloeschter Server und ein geloeschtes Konto
+ * lassen keine Anheftung zurueck, die auf nichts mehr zeigt.
+ */
+export const serverPins = pgTable(
+  'server_pins',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    serverId: uuid('server_id')
+      .notNull()
+      .references(() => gameServers.id, { onDelete: 'cascade' }),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.serverId] }),
+    /** Traegt die Uebersicht: alle Anheftungen eines Kontos auf einmal. */
+    index('server_pins_user_idx').on(table.userId),
+  ],
+);
+
+/**
  * Stichproben der Live-Messwerte (Lastenheft §3.3 „Verlaufsdarstellung";
  * Arbeitspaket P5).
  *
@@ -213,5 +241,7 @@ export type GameServerRow = typeof gameServers.$inferSelect;
 export type NewGameServerRow = typeof gameServers.$inferInsert;
 export type ServerMemberRow = typeof serverMembers.$inferSelect;
 export type NewServerMemberRow = typeof serverMembers.$inferInsert;
+export type ServerPinRow = typeof serverPins.$inferSelect;
+export type NewServerPinRow = typeof serverPins.$inferInsert;
 export type ServerStatsSampleRow = typeof serverStatsSamples.$inferSelect;
 export type NewServerStatsSampleRow = typeof serverStatsSamples.$inferInsert;

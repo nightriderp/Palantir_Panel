@@ -138,7 +138,10 @@ async function buildApp(options: { job?: ServerCloneJobDto | null } = {}): Promi
 
   registerServerRoutes(app, {
     service,
-    repository: { listMembers: async () => [] } as unknown as ServerRepository,
+    repository: {
+      listMembers: async () => [],
+      listPinnedServerIds: async () => new Set<string>(),
+    } as unknown as ServerRepository,
     registry: createGameRegistry(1),
     baseDomain: 'example.tld',
     schedules: {
