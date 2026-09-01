@@ -259,6 +259,8 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       // Preisgabe von Interna gegenüber jedem Aufrufer).
       storagePath: seesStoragePath ? backup.storagePath : null,
       checksumSha256: backup.checksumSha256,
+      // Lief der Server beim Sichern nicht? (Gefundener Punkt 38)
+      containerStopped: backup.containerStopped,
       createdByUserId: backup.createdByUserId,
       createdByDisplayName:
         backup.createdByUserId === null ? null : (displayNames.get(backup.createdByUserId) ?? null),
