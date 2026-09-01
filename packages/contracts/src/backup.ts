@@ -109,8 +109,28 @@ export interface BackupDto {
    * in die Nutzeransicht.
    */
   storagePath: string | null;
-  /** SHA-256 des Archivs; `null`, solange kein Archiv existiert. */
+  /**
+   * SHA-256 des Archivs; `null`, solange kein Archiv existiert.
+   *
+   * Gebildet beim Sichern und beim Herunterladen mitgeführt. **Nachträglich
+   * geprüft wird sie nicht** – es gibt keinen Lauf, der Archive erneut liest
+   * und gegen diesen Wert hält. Die Backup-Tabellen zeigen deshalb keine Spalte
+   * „Integrität": Ein Häkchen, hinter dem keine Prüfung steht, wäre eine
+   * Zusicherung, die niemand einlöst (WORK_STATUS.md, Gefundener Punkt 38).
+   */
   checksumSha256: string | null;
+  /**
+   * Lief der Server beim Sichern **nicht** (WORK_STATUS.md, Gefundener Punkt
+   * 38)?
+   *
+   * Ein Archiv aus dem laufenden Betrieb kann eine Welt mitten im Schreiben
+   * erwischen; ein bei gestopptem Server gezogenes ist in sich stimmig. Genau
+   * diesen Unterschied meint die Spalte „Vollständig / Unklar" im Entwurf, und
+   * der Agent meldet ihn bereits (`CreateBackupCommandResult.containerStopped`).
+   *
+   * `false` heißt „im Betrieb gesichert", nicht „kaputt".
+   */
+  containerStopped: boolean;
   /** Auslösender Nutzer; `null` bei geplanten (automatischen) Backups. */
   createdByUserId: string | null;
   createdByDisplayName: string | null;

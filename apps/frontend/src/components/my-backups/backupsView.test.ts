@@ -22,6 +22,7 @@ function makeBackup(overrides: Partial<BackupDto> = {}): BackupDto {
     sizeBytes: 1000,
     storagePath: null,
     checksumSha256: null,
+    containerStopped: false,
     createdByUserId: 'u1',
     createdByDisplayName: 'Ich',
     createdAt: '2026-08-20T10:00:00.000Z',
