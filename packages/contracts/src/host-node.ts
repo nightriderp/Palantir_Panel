@@ -51,7 +51,23 @@ export interface HostNodeUsage {
   diskUsedMb: number | null;
   /** ISO-8601-Zeitstempel der Messung. */
   sampledAt: string;
+  /**
+   * Woher die Zahlen stammen (WORK_STATUS.md, Gefundener Punkt 96).
+   *
+   * - `measured` – vom Agent auf dem Homeserver gemessen (`AgentNodeStats`).
+   *   Das ist der tatsächliche Verbrauch, inklusive allem, was neben den
+   *   Gameservern auf der Node läuft.
+   * - `reserved` – aus den Kontingenten der angelegten Server gerechnet. Das
+   *   überschätzt eher, was für eine Auslastungsanzeige die richtige Richtung
+   *   ist, zeigt aber nicht, was wirklich benutzt wird.
+   *
+   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3); fehlt das
+   * Feld, ist die Herkunft unbekannt und die Anzeige nennt sie nicht.
+   */
+  source?: HostNodeUsageSource;
 }
+
+export type HostNodeUsageSource = 'measured' | 'reserved';
 
 /**
  * Serverseitig berechnetes `permissions`-Objekt einer Node (Pflichtenheft §5.2).
