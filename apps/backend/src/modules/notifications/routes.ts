@@ -20,6 +20,7 @@ import {
   createNotificationChannelInputSchema,
   createNotificationRuleInputSchema,
   markNotificationsReadInputSchema,
+  notificationPreferencesInputSchema,
   notificationQuerySchema,
   updateAnnouncementInputSchema,
   updateNotificationChannelInputSchema,
@@ -134,6 +135,42 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
           await notifications.deleteNotification(userIdOf(request), notificationId);
 
           return ok({ deleted: true });
+        } catch (error) {
+          await handleError(reply, error);
+
+          return undefined;
+        }
+      },
+    );
+
+    // -- Persönliche Zustell-Einstellung (Gefundener Punkt 93) ---------------
+
+    /*
+     * Unter `/notifications/preferences` und nicht unter `/me/...`: Der Vorgang
+     * gehört zum Benachrichtigungs-Modul, und die Inbox-Routen daneben tragen
+     * dieselbe Wurzel. Das Konto kommt in beiden Fällen aus der Sitzung, nie
+     * aus dem Pfad – niemand stellt für ein fremdes Konto etwas ein.
+     */
+    app.get(
+      '/notifications/preferences',
+      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
+        try {
+          return ok(await notifications.getPreferences(userIdOf(request)));
+        } catch (error) {
+          await handleError(reply, error);
+
+          return undefined;
+        }
+      },
+    );
+
+    app.put(
+      '/notifications/preferences',
+      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
+        try {
+          const input = notificationPreferencesInputSchema.parse(request.body ?? {});
+
+          return ok(await notifications.setPreferences(userIdOf(request), input));
         } catch (error) {
           await handleError(reply, error);
 

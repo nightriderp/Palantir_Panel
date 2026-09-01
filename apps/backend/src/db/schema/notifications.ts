@@ -224,6 +224,26 @@ export const notifications = pgTable(
 );
 
 /**
+ * Persoenliche Zustell-Einstellung eines Kontos (Lastenheft §3.6, Gefundener
+ * Punkt 93).
+ *
+ * Eine Zeile je Konto, angelegt beim ersten Speichern - kein Eintrag bedeutet
+ * "nichts abbestellt". Das haelt die Tabelle klein: Der Normalfall ist, dass
+ * jemand nichts abstellt, und dafuer braucht es keine Zeile.
+ *
+ * Die abbestellten Ereignisse stehen als JSON-Liste und nicht als eigene
+ * Tabelle mit einer Zeile je Ereignis: Sie werden immer vollstaendig gelesen
+ * und vollstaendig ersetzt, nie einzeln abgefragt.
+ */
+export const notificationPreferences = pgTable('notification_preferences', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  mutedEvents: jsonb('muted_events').$type<NotifiableEventName[]>().notNull().default([]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * Protokoll einer Zustellung an einen externen Kanal.
  *
  * Notwendige Kehrseite der Vorgabe aus Pflichtenheft §14: Eine gescheiterte
@@ -268,5 +288,7 @@ export type AnnouncementRow = typeof announcements.$inferSelect;
 export type NewAnnouncementRow = typeof announcements.$inferInsert;
 export type NotificationRow = typeof notifications.$inferSelect;
 export type NewNotificationRow = typeof notifications.$inferInsert;
+export type NotificationPreferencesRow = typeof notificationPreferences.$inferSelect;
+export type NewNotificationPreferencesRow = typeof notificationPreferences.$inferInsert;
 export type NotificationDeliveryRow = typeof notificationDeliveries.$inferSelect;
 export type NewNotificationDeliveryRow = typeof notificationDeliveries.$inferInsert;

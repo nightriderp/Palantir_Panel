@@ -709,3 +709,67 @@ describe('Systemweite Ankündigungen (Lastenheft §3.6)', () => {
     );
   });
 });
+
+describe('Persoenliche Zustell-Einstellung (Gefundener Punkt 93)', () => {
+  it('liefert ohne Eintrag eine leere Abbestellung', async () => {
+    const { service } = build();
+
+    await expect(service.getPreferences(OWNER)).resolves.toEqual({
+      mutedEvents: [],
+      updatedAt: null,
+    });
+  });
+
+  it('speichert die Abbestellung und meldet den Zeitpunkt', async () => {
+    const { service } = build();
+
+    const gespeichert = await service.setPreferences(OWNER, {
+      // Doppelt genannt: eine Menge, keine Liste.
+      mutedEvents: ['server.crashed', 'server.crashed'],
+    });
+
+    expect(gespeichert.mutedEvents).toEqual(['server.crashed']);
+    expect(gespeichert.updatedAt).not.toBeNull();
+    await expect(service.getPreferences(OWNER)).resolves.toMatchObject({
+      mutedEvents: ['server.crashed'],
+    });
+  });
+
+  it('laesst ein abbestelltes Ereignis nicht in die Inbox', async () => {
+    const repository = fakeRepository({ rules: [testRule({ event: 'server.crashed' })] });
+    const { service } = build({ repository });
+
+    await service.setPreferences(OWNER, { mutedEvents: ['server.crashed'] });
+    await service.publish(serverEvent('server.crashed', { ownerId: OWNER }));
+
+    expect(repository.notifications).toHaveLength(0);
+  });
+
+  it('stellt die uebrigen Ereignisse weiter zu', async () => {
+    const repository = fakeRepository({
+      rules: [testRule({ event: 'server.crashed' }), testRule({ event: 'server.failed' })],
+    });
+    const { service } = build({ repository });
+
+    await service.setPreferences(OWNER, { mutedEvents: ['server.crashed'] });
+    await service.publish(serverEvent('server.failed', { ownerId: OWNER }));
+
+    expect(repository.notifications).toHaveLength(1);
+    expect(repository.notifications[0]?.event).toBe('server.failed');
+  });
+
+  it('betrifft nur das eigene Konto', async () => {
+    const repository = fakeRepository({
+      rules: [testRule({ event: 'server.crashed', recipientScope: 'allUsers' })],
+    });
+    const { service } = build({ repository });
+
+    await service.setPreferences(OWNER, { mutedEvents: ['server.crashed'] });
+    await service.publish(serverEvent('server.crashed', { ownerId: OWNER }));
+
+    const empfaenger = repository.notifications.map((eintrag) => eintrag.userId);
+
+    expect(empfaenger).not.toContain(OWNER);
+    expect(empfaenger).toContain(MEMBER);
+  });
+});

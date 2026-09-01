@@ -24,6 +24,7 @@ import {
   announcements,
   notificationChannels,
   notificationDeliveries,
+  notificationPreferences,
   notificationRules,
   notifications,
 } from '../../db/schema/notifications.js';
@@ -257,6 +258,26 @@ export interface NotificationRepository {
   deleteNotification(notificationId: string): Promise<void>;
   countUnread(userId: string): Promise<number>;
 
+  // Persönliche Zustell-Einstellung (Gefundener Punkt 93)
+  /** Abbestellte Ereignisse eines Kontos; leere Liste, solange nichts gesetzt wurde. */
+  findPreferences(userId: string): Promise<NotificationPreferencesRecord>;
+  /** Ersetzt die abbestellten Ereignisse vollständig. */
+  savePreferences(
+    userId: string,
+    mutedEvents: readonly NotifiableEventName[],
+  ): Promise<NotificationPreferencesRecord>;
+  /**
+   * Von welchen der genannten Konten ist dieses Ereignis abbestellt?
+   *
+   * Eine Abfrage statt einer je Empfänger: Ein Ereignis kann hunderte
+   * Empfänger haben, und der Versand soll nicht an der Zahl der Abfragen
+   * hängen.
+   */
+  findMutedRecipients(
+    userIds: readonly string[],
+    event: NotifiableEventName,
+  ): Promise<ReadonlySet<string>>;
+
   // Ankündigungen
   listAnnouncements(): Promise<AnnouncementRecord[]>;
   findAnnouncementById(announcementId: string): Promise<AnnouncementRecord | null>;
@@ -276,6 +297,14 @@ export interface NotificationRepository {
   }): Promise<NotificationDeliveryRecord>;
   finishDelivery(deliveryId: string, outcome: DeliveryOutcome): Promise<void>;
   listDeliveries(limit: number): Promise<NotificationDeliveryRecord[]>;
+}
+
+/** Zustell-Einstellung eines Kontos (Gefundener Punkt 93). */
+export interface NotificationPreferencesRecord {
+  readonly userId: string;
+  readonly mutedEvents: readonly NotifiableEventName[];
+  /** `null`, solange das Konto nichts gespeichert hat. */
+  readonly updatedAt: Date | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -602,6 +631,56 @@ export function createDrizzleNotificationRepository(db: Database): NotificationR
 
     async deleteNotification(notificationId) {
       await db.delete(notifications).where(eq(notifications.id, notificationId));
+    },
+
+    async findPreferences(userId) {
+      const [row] = await db
+        .select()
+        .from(notificationPreferences)
+        .where(eq(notificationPreferences.userId, userId));
+
+      if (row === undefined) {
+        // Kein Eintrag heisst "nichts abbestellt" - dafuer wird keine Zeile angelegt.
+        return { userId, mutedEvents: [], updatedAt: null };
+      }
+
+      return { userId, mutedEvents: row.mutedEvents, updatedAt: row.updatedAt };
+    },
+
+    async savePreferences(userId, mutedEvents) {
+      const werte = [...mutedEvents];
+      const [row] = await db
+        .insert(notificationPreferences)
+        .values({ userId, mutedEvents: werte })
+        .onConflictDoUpdate({
+          target: notificationPreferences.userId,
+          set: { mutedEvents: werte, updatedAt: new Date() },
+        })
+        .returning();
+
+      return {
+        userId,
+        mutedEvents: row?.mutedEvents ?? werte,
+        updatedAt: row?.updatedAt ?? null,
+      };
+    },
+
+    async findMutedRecipients(userIds, event) {
+      if (userIds.length === 0) {
+        return new Set<string>();
+      }
+
+      const rows = await db
+        .select({
+          userId: notificationPreferences.userId,
+          mutedEvents: notificationPreferences.mutedEvents,
+        })
+        .from(notificationPreferences)
+        .where(inArray(notificationPreferences.userId, [...userIds]));
+
+      return new Set(
+        rows.filter((row) => row.mutedEvents.includes(event)).map((row) => row.userId),
+      );
     },
 
     async countUnread(userId) {

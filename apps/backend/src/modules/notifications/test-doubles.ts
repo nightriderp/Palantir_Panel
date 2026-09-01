@@ -32,6 +32,7 @@ import type {
   NotificationChannelRecord,
   NotificationDeliveryRecord,
   NotificationFilter,
+  NotificationPreferencesRecord,
   NotificationRecord,
   NotificationRepository,
   NotificationRuleRecord,
@@ -245,6 +246,7 @@ export function fakeRepository(
   const notifications: NotificationRecord[] = [...(seed.notifications ?? [])];
   const announcements: AnnouncementRecord[] = [];
   const deliveries: NotificationDeliveryRecord[] = [];
+  const preferences = new Map<string, NotificationPreferencesRecord>();
   const now = new Date('2026-08-26T12:00:00.000Z');
 
   function replaceChannel(index: number, next: NotificationChannelRecord): void {
@@ -459,6 +461,24 @@ export function fakeRepository(
     countUnread: (userId) =>
       Promise.resolve(
         notifications.filter((entry) => entry.userId === userId && entry.readAt === null).length,
+      ),
+
+    // Persoenliche Zustell-Einstellung (Gefundener Punkt 93)
+    findPreferences: (userId) =>
+      Promise.resolve(preferences.get(userId) ?? { userId, mutedEvents: [], updatedAt: null }),
+
+    savePreferences: (userId, mutedEvents) => {
+      const eintrag = { userId, mutedEvents: [...mutedEvents], updatedAt: new Date() };
+      preferences.set(userId, eintrag);
+
+      return Promise.resolve(eintrag);
+    },
+
+    findMutedRecipients: (userIds, event) =>
+      Promise.resolve(
+        new Set(
+          userIds.filter((userId) => preferences.get(userId)?.mutedEvents.includes(event) === true),
+        ),
       ),
 
     listAnnouncements: () => Promise.resolve([...announcements]),
