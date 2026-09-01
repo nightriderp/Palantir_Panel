@@ -1,5 +1,9 @@
-import { type NotificationPageDto } from '@palantir/contracts';
-import { type MarkNotificationsReadInput, type NotificationQuery } from '@palantir/validation';
+import { type NotificationPageDto, type NotificationPreferencesDto } from '@palantir/contracts';
+import {
+  type MarkNotificationsReadInput,
+  type NotificationPreferencesInput,
+  type NotificationQuery,
+} from '@palantir/validation';
 import { type ApiResult, apiRequest } from './client';
 
 /**
@@ -58,4 +62,25 @@ export function deleteNotification(
     `${NOTIFICATIONS}/${encodeURIComponent(notificationId)}`,
     { method: 'DELETE' },
   );
+}
+
+/**
+ * Persönliche Zustell-Einstellung des Kontos (Gefundener Punkt 93).
+ *
+ * Anders als die Schalter im `localStorage` betrifft das **jedes Gerät**: Ein
+ * hier abbestelltes Ereignis landet gar nicht mehr in der Inbox.
+ */
+export function fetchNotificationPreferences(
+  signal?: AbortSignal,
+): Promise<ApiResult<NotificationPreferencesDto>> {
+  return apiRequest<NotificationPreferencesDto>(`${NOTIFICATIONS}/preferences`, { signal });
+}
+
+export function saveNotificationPreferences(
+  input: NotificationPreferencesInput,
+): Promise<ApiResult<NotificationPreferencesDto>> {
+  return apiRequest<NotificationPreferencesDto>(`${NOTIFICATIONS}/preferences`, {
+    method: 'PUT',
+    json: input,
+  });
 }
