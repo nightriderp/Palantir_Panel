@@ -28,6 +28,7 @@ import {
 } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { formatBytes } from '../formatDetail';
+import { consistencyMeta } from '@/components/my-backups/backupsView';
 
 /**
  * Reiter „Backups" der Detailansicht (Lastenheft §3.3).
@@ -171,6 +172,14 @@ export function BackupsTab({ server }: BackupsTabProps) {
                     <Badge tone={status.tone} withDot pulse={backup.status === 'running'}>
                       {status.label}
                     </Badge>
+                    {/* „Vollständig / Unklar" (Gefundener Punkt 38). */}
+                    {consistencyMeta(backup) === null ? null : (
+                      <span title={consistencyMeta(backup)?.title}>
+                        <Badge tone={consistencyMeta(backup)?.tone ?? 'neutral'}>
+                          {consistencyMeta(backup)?.label}
+                        </Badge>
+                      </span>
+                    )}
                     <span className="font-mono text-xs text-ink-faint">
                       {done ? formatBytes(backup.sizeBytes) : '—'}
                     </span>
