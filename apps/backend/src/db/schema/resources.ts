@@ -13,7 +13,8 @@
  * von B8 additiv erweiterbar. Vermerkt in WORK_STATUS.md unter „Gefundene Punkte".
  */
 
-import { type HostNodeStatus } from '@palantir/contracts';
+import { type HostNodeStatus, type QuotaRequestStatus } from '@palantir/contracts';
+import { sql } from 'drizzle-orm';
 import {
   doublePrecision,
   integer,
@@ -21,6 +22,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
@@ -124,3 +126,41 @@ export type HostNodeRow = typeof hostNodes.$inferSelect;
 export type NewHostNodeRow = typeof hostNodes.$inferInsert;
 export type UserResourceLimitRow = typeof userResourceLimits.$inferSelect;
 export type NewUserResourceLimitRow = typeof userResourceLimits.$inferInsert;
+
+/**
+ * Anfragen auf mehr Kontingent (Mockup-Abgleich 12.3.1).
+ *
+ * Ein Nutzer stößt an seine Grenze, begründet, was er braucht, und ein
+ * Administrator entscheidet. Entschieden wird genau einmal – danach steht der
+ * Vorgang als Beleg da und wird nicht mehr angefasst.
+ *
+ * Der partielle Unique-Index lässt **eine** offene Anfrage je Konto zu. Zwei
+ * gleichzeitig hülfen niemandem: Der Administrator sähe zwei Wünsche desselben
+ * Kontos und wüsste nicht, welcher gilt.
+ */
+export const quotaRequests = pgTable(
+  'quota_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Gewünschter Arbeitsspeicher in MB; `null`, wenn nicht Teil der Anfrage. */
+    requestedRamMb: integer('requested_ram_mb'),
+    /** Gewünschte Zahl gleichzeitig laufender Server; `null`, wenn nicht Teil der Anfrage. */
+    requestedMaxConcurrentServers: integer('requested_max_concurrent_servers'),
+    reason: text('reason').notNull(),
+    status: text('status').$type<QuotaRequestStatus>().notNull().default('pending'),
+    decisionNote: text('decision_note'),
+    decidedById: uuid('decided_by_id').references(() => users.id, { onDelete: 'set null' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // Eine offene Anfrage je Konto (siehe Kopfkommentar).
+    uniqueIndex('quota_requests_open_per_user_idx')
+      .on(table.userId)
+      .where(sql`${table.status} = 'pending'`),
+    index('quota_requests_status_created_idx').on(table.status, table.createdAt.desc()),
+  ],
+);
