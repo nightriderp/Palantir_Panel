@@ -28,6 +28,7 @@ describe('Permission-Katalog (Pflichtenheft §8)', () => {
         'node.manage',
         'address.manage',
         'audit.view',
+        'audit.manage',
         'message.moderate',
         'gametype.manage',
       ].sort(),
