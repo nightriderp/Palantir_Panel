@@ -13,6 +13,7 @@ import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { fetchBackupOverview } from '@/lib/api/admin';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
+import { PanelBackupSection } from './PanelBackupSection';
 
 /**
  * Globale Backup-Übersicht (Lastenheft §3.7).
@@ -87,9 +88,11 @@ export function BackupsView() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Backups"
-        subtitle="Speicherverbrauch aller Nutzer und Server im Überblick"
+        subtitle="Sicherungen der Panel-Datenbank und Speicherverbrauch der Server-Backups"
         className="-mx-5 -mt-5 px-5"
       />
+
+      <PanelBackupSection />
 
       {resource.loading ? (
         <AdminLoading label="Übersicht wird geladen …" />
@@ -97,6 +100,8 @@ export function BackupsView() {
         <AdminError message={resource.error} onRetry={resource.reload} />
       ) : overview ? (
         <>
+          <h2 className="text-base font-semibold text-ink">Server-Backups</h2>
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <MetricTile label="Backups" value={formatNumber(overview.totalCount)} />
             <MetricTile label="Speicher gesamt" value={formatBytes(overview.totalSizeBytes)} />

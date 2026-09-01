@@ -148,6 +148,13 @@
       "when": 1788252014847,
       "tag": "0020_notification_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788253206008,
+      "tag": "0021_panel_backups",
+      "breakpoints": true
     }
   ]
 }

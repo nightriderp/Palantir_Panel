@@ -25,6 +25,11 @@ import { type InstanceSettingsService } from './modules/admin/instance-settings.
 import { createQuotaRequestService } from './modules/quota-requests/index.js';
 import { createDrizzleQuotaRequestRepository } from './modules/quota-requests/repository.js';
 import { registerQuotaRequestRoutes } from './modules/quota-requests/routes.js';
+import { createPanelBackupService } from './modules/panel-backups/index.js';
+import { createNodeBackupFileRemover } from './modules/panel-backups/files.js';
+import { createDrizzlePanelBackupRepository } from './modules/panel-backups/repository.js';
+import { createPgDumpDumper } from './modules/panel-backups/pg-dump.js';
+import { registerPanelBackupRoutes } from './modules/panel-backups/routes.js';
 import { createPublicStatsService } from './modules/public-stats/index.js';
 import { registerPublicStatsRoutes } from './modules/public-stats/routes.js';
 import {
@@ -61,6 +66,7 @@ import { registerHealthRoutes } from './routes/health.js';
 import {
   autoShutdownTask,
   backupScheduleTask,
+  panelBackupTask,
   resourceWarningTask,
   serverScheduleTask,
   startScheduler,
@@ -524,6 +530,26 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       ),
     );
 
+    /*
+     * Sicherung des Panels selbst (Mockup-Abgleich 12.5). Der Abzug laeuft ueber
+     * `pg_dump` gegen dieselbe `DATABASE_URL`, die auch das Backend benutzt -
+     * eine zweite Verbindungsangabe waere eine zweite Wahrheit darueber, welche
+     * Datenbank die Instanz eigentlich fuehrt.
+     */
+    const panelBackups = createPanelBackupService({
+      repository: createDrizzlePanelBackupRepository(db),
+      directory: env.PANEL_BACKUP_DIR ?? null,
+      dumper: createPgDumpDumper({
+        databaseUrl: env.DATABASE_URL ?? '',
+        binary: env.PG_DUMP_BINARY,
+      }),
+      files: createNodeBackupFileRemover(),
+      intervalHours: env.PANEL_BACKUP_INTERVAL_HOURS === 0 ? null : env.PANEL_BACKUP_INTERVAL_HOURS,
+      retentionDays: env.PANEL_BACKUP_RETENTION_DAYS === 0 ? null : env.PANEL_BACKUP_RETENTION_DAYS,
+    });
+
+    await app.register(registerPanelBackupRoutes({ service: panelBackups }));
+
     const scheduler = startScheduler({
       intervalMs: env.SCHEDULER_INTERVAL_MS,
       log: app.log,
@@ -533,6 +559,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         serverScheduleTask(serverSchedules, app.log),
         statsSamplingTask(orchestration, agents, app.log),
         resourceWarningTask(resources, notifications.eventSink, app.log),
+        panelBackupTask(panelBackups, app.log),
       ],
     });
 

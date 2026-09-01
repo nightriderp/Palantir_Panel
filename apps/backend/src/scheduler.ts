@@ -376,3 +376,36 @@ export function resourceWarningTask(
     },
   };
 }
+
+/** Ausschnitt der Panel-Sicherungen, den der Zeitgeber braucht (12.5.1). */
+export interface PanelBackupRunner {
+  /** Geplanter Lauf; `null`, wenn nichts zu tun war. */
+  runScheduled(): Promise<{ readonly id: string } | null>;
+  /** Alte Abzuege wegraeumen; liefert die Anzahl. */
+  prune(): Promise<number>;
+}
+
+/**
+ * Sicherung des Panels selbst anstossen und alte Abzuege wegraeumen
+ * (Mockup-Abgleich 12.5.1).
+ *
+ * Kein eigener Timer im Modul - dieselbe Aufteilung wie beim Backup-Zeitplan.
+ * Ob ein Lauf faellig ist, entscheidet der Dienst anhand des Abstands zum
+ * vorigen Lauf; der Zeitgeber fragt nur in jeder Minute nach.
+ *
+ * Das Wegraeumen laeuft auch dann, wenn kein Lauf faellig war: Die
+ * Aufbewahrungsfrist gilt fuer die abgelegten Dateien, nicht fuer den Takt.
+ */
+export function panelBackupTask(backups: PanelBackupRunner, log: SchedulerLogger): ScheduledTask {
+  return {
+    name: 'panelBackups',
+    async run(): Promise<void> {
+      const gestartet = await backups.runScheduled();
+      const entfernt = await backups.prune();
+
+      if (gestartet !== null || entfernt > 0) {
+        log.debug({ backupId: gestartet?.id ?? null, entfernt }, 'Panel-Sicherung ausgewertet');
+      }
+    },
+  };
+}

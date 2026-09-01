@@ -164,6 +164,48 @@ const envSchema = z.object({
     .max(24 * 90)
     .default(48),
 
+  /**
+   * Ablageort der Panel-Sicherungen **auf der VPS** (Mockup-Abgleich 12.5.1).
+   *
+   * Ohne Angabe gibt es keine Sicherung des Panels: Weder ein Lauf von Hand
+   * noch der geplante Lauf legt dann etwas an, beide melden
+   * `PANEL_BACKUP_NOT_CONFIGURED`. Bewusst ohne Vorgabewert – ein vollständiger
+   * Abzug der Datenbank in einem Verzeichnis, das niemand gewählt hat, wäre
+   * schlechter als keine Sicherung.
+   */
+  PANEL_BACKUP_DIR: optionalEnvString(),
+
+  /**
+   * Abstand zweier geplanter Panel-Sicherungen in Stunden.
+   *
+   * `0` schaltet den geplanten Lauf ab; von Hand bleibt er möglich. Gerechnet
+   * wird der Abstand zum vorigen Lauf und nicht eine feste Uhrzeit: Nach einem
+   * Neustart des Backends fehlte sonst genau der Lauf, dessen Uhrzeit in die
+   * Ausfallzeit fiel.
+   */
+  PANEL_BACKUP_INTERVAL_HOURS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 30)
+    .default(24),
+
+  /**
+   * Aufbewahrung der Panel-Sicherungen in Tagen; `0` heißt „nie löschen".
+   *
+   * Vierzehn Tage decken den Fall ab, dass ein Fehler erst nach ein paar Tagen
+   * auffällt, und halten den Platzbedarf berechenbar.
+   */
+  PANEL_BACKUP_RETENTION_DAYS: z.coerce.number().int().min(0).max(365).default(14),
+
+  /**
+   * Programm für den Abzug; nur nötig, wenn `pg_dump` nicht im `PATH` steht.
+   *
+   * Die Fassung muss zur Datenbank passen: Ein älteres `pg_dump` lehnt eine
+   * neuere Serverfassung ab, statt einen halben Abzug zu schreiben.
+   */
+  PG_DUMP_BINARY: optionalEnvString(),
+
   /** Crash-Loop-Schutz: erlaubte automatische Neustarts im Zeitfenster (§9). */
   CRASH_LOOP_MAX_RESTARTS: z.coerce.number().int().min(0).max(50).default(3),
   CRASH_LOOP_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1_440).default(10),
