@@ -1,5 +1,9 @@
 import { env } from '../config/env.js';
 import { createDrizzleRoleRepository, seedRoles } from '../modules/rbac/index.js';
+import {
+  drizzleNotificationRuleSeedStore,
+  seedDefaultNotificationRules,
+} from '../modules/notifications/seed.js';
 import { seedDefaultHostNode } from '../modules/server-orchestration/seed.js';
 import { closeDb, getDb } from './client.js';
 
@@ -43,6 +47,24 @@ async function main(): Promise<void> {
       ? `Node angelegt: ${node.id} (${env.WIREGUARD_HOME_IP})`
       : `Node bereits vorhanden (unverändert): ${node.id}`,
   );
+
+  // Benachrichtigungs-Regeln (R1, Gefundener Punkt 82). Ohne sie loest kein
+  // Ereignis etwas aus - ein abgestuerzter Server meldete sich bei niemandem.
+  const rules = await seedDefaultNotificationRules(drizzleNotificationRuleSeedStore(db));
+
+  if (rules.created.length > 0) {
+    console.log(`Angelegte Benachrichtigungs-Regeln: ${rules.created.join(', ')}`);
+  }
+
+  if (rules.existing.length > 0) {
+    console.log(`Regeln bereits vorhanden (unverändert): ${rules.existing.join(', ')}`);
+  }
+
+  if (rules.adminRoleMissing) {
+    console.warn(
+      'Rolle „Admin" nicht gefunden – die Regeln für neue Registrierungen und knappe Ressourcen wurden ausgelassen.',
+    );
+  }
 }
 
 try {
