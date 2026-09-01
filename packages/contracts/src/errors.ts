@@ -67,6 +67,15 @@ export const ERROR_CATALOG = {
     httpStatus: 409,
     defaultMessage: 'Dieser Benutzername ist bereits vergeben.',
   },
+  /**
+   * Die Instanz nimmt keine Selbstregistrierung an (Lastenheft §3.1,
+   * Mockup-Abgleich 12.1.1). Kein Fehler des Aufrufers, sondern eine
+   * Entscheidung des Betreibers – deshalb 403 und keine 400. 403.
+   */
+  AUTH_REGISTRATION_DISABLED: {
+    httpStatus: 403,
+    defaultMessage: 'Diese Instanz nimmt zurzeit keine neuen Registrierungen an.',
+  },
   /** Passwort erfüllt die Mindestanforderungen aus Pflichtenheft §7 nicht. 400. */
   AUTH_PASSWORD_TOO_WEAK: {
     httpStatus: 400,

@@ -7,6 +7,16 @@
  * Instanz lebt.
  */
 export interface PublicInstanceStatsDto {
+  /**
+   * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
+   *
+   * Steht hier, weil die Anmeldeseite es **vor** der Anmeldung wissen muss:
+   * Ein Registrierungsformular, das erst beim Abschicken sagt, dass gerade
+   * niemand aufgenommen wird, ist eine vergeudete Eingabe. Optional, damit
+   * ältere Konsumenten gültig bleiben; fehlt es, wird von „offen" ausgegangen –
+   * so verhält sich die Instanz seit jeher.
+   */
+  selfRegistrationEnabled?: boolean;
   /** Verfügbare Spiel-Typen dieser Instanz. */
   gameTypes: number;
   /**
@@ -18,4 +28,30 @@ export interface PublicInstanceStatsDto {
   daysInService: number | null;
   /** Gespielte Arcade-Partien insgesamt. */
   arcadeRounds: number;
+}
+
+/** Was der Aufrufer mit den Instanz-Einstellungen tun darf (Pflichtenheft §5.2). */
+export interface InstanceSettingsPermissions {
+  canEdit: boolean;
+}
+
+/**
+ * Einstellungen der Instanz (Mockup-Abgleich 12.1.1).
+ *
+ * Bewusst ein eigenes DTO und keine Sammlung loser Schalter: Die Nutzerseite
+ * der Administration zeigt sie als Karte, und jede weitere Einstellung des
+ * Betriebs gehört später hierher – nicht in ein neues Feld irgendwo anders.
+ */
+export interface InstanceSettingsDto {
+  /**
+   * Dürfen sich neue Konten selbst registrieren?
+   *
+   * `false` heißt: `POST /auth/register` antwortet mit
+   * `AUTH_REGISTRATION_DISABLED`. Bestehende Konten sind davon unberührt, und
+   * ein Admin kann weiterhin Konten anlegen.
+   */
+  selfRegistrationEnabled: boolean;
+  /** ISO-8601 der letzten Änderung; `null`, solange nie etwas geändert wurde. */
+  updatedAt: string | null;
+  permissions: InstanceSettingsPermissions;
 }
