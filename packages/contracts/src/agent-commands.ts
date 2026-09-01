@@ -533,6 +533,15 @@ export interface AgentContainerStats {
   readonly memoryLimitBytes: number;
   readonly networkRxBytes: number;
   readonly networkTxBytes: number;
+  /**
+   * Empfangene und gesendete Pakete seit dem Start des Containers.
+   *
+   * Optional, damit dieser Vertrag fuer sich stehen kann (CLAUDE.md §3): Ein
+   * Agent, der die Felder nicht kennt, bleibt gueltig – dann fehlen sie, und
+   * die Oberflaeche zeigt an ihrer Stelle nichts.
+   */
+  readonly networkRxPackets?: number;
+  readonly networkTxPackets?: number;
   readonly blockReadBytes: number;
   readonly blockWriteBytes: number;
   readonly pids: number;
