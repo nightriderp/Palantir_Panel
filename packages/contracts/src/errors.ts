@@ -76,6 +76,28 @@ export const ERROR_CATALOG = {
     httpStatus: 403,
     defaultMessage: 'Diese Instanz nimmt zurzeit keine neuen Registrierungen an.',
   },
+  /** Sicherung des Panels existiert nicht. 404. */
+  PANEL_BACKUP_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Sicherung gibt es nicht.',
+  },
+  /**
+   * Die Sicherung des Panels ist nicht eingerichtet (Mockup-Abgleich 12.5.1).
+   *
+   * Es fehlt der Ablageort (`PANEL_BACKUP_DIR`) oder `pg_dump` auf der VPS. Ein
+   * unklarer Ablageort für einen vollständigen Datenbankabzug ist schlechter
+   * als keine Sicherung – deshalb ein benannter Fehler statt einer Vorgabe. 503.
+   */
+  PANEL_BACKUP_NOT_CONFIGURED: {
+    httpStatus: 503,
+    defaultMessage:
+      'Die Sicherung des Panels ist nicht eingerichtet. Bitte PANEL_BACKUP_DIR setzen und pg_dump bereitstellen.',
+  },
+  /** Ein Lauf ist bereits unterwegs – zwei gleichzeitig ergäben zwei halbe Abzüge. 409. */
+  PANEL_BACKUP_ALREADY_RUNNING: {
+    httpStatus: 409,
+    defaultMessage: 'Es läuft bereits eine Sicherung.',
+  },
   /** Kontingent-Anfrage existiert nicht oder gehört einem anderen Konto. 404. */
   QUOTA_REQUEST_NOT_FOUND: {
     httpStatus: 404,
