@@ -383,6 +383,19 @@ function runningServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
 class SweepRepository implements ServerRepository {
   server: ServerRecord;
 
+  // Anheften spielt fuer den Aufraeum-Lauf keine Rolle (Gefundener Punkt 50).
+  listPinnedServerIds(): Promise<ReadonlySet<string>> {
+    return Promise.resolve(new Set<string>());
+  }
+
+  pinServer(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  unpinServer(): Promise<void> {
+    return Promise.resolve();
+  }
+
   constructor(server: ServerRecord) {
     this.server = server;
   }

@@ -131,11 +131,22 @@ async function replyWithError(reply: FastifyReply, error: unknown): Promise<void
 export function registerServerRoutes(app: FastifyInstance, options: ServerRoutesOptions): void {
   const { service, repository, registry, baseDomain, schedules, worldArchives } = options;
 
-  /** Baut den DTO-Kontext eines Servers für den aktuellen Aufrufer. */
-  async function dtoContext(request: FastifyRequest, serverId: string): Promise<ServerDtoContext> {
+  /**
+   * Baut den DTO-Kontext eines Servers für den aktuellen Aufrufer.
+   *
+   * `pinned` kann vorab geladen mitgegeben werden (Gefundener Punkt 50): Die
+   * Serverliste braucht die Anheftungen des Kontos genau einmal, nicht einmal
+   * je Server.
+   */
+  async function dtoContext(
+    request: FastifyRequest,
+    serverId: string,
+    angeheftet?: ReadonlySet<string>,
+  ): Promise<ServerDtoContext> {
     const actor = requireActor(request);
     const viewerId = request.viewerUserId ?? null;
     const members = await repository.listMembers(serverId);
+    const pins = angeheftet ?? (await pinnedIdsOf(viewerId));
 
     return {
       actor,
@@ -145,10 +156,27 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
           ? null
           : (members.find((member) => member.userId === viewerId)?.level ?? null),
       memberCount: members.length,
+      pinned: pins.has(serverId),
       registry,
       baseDomain,
       recentCrashCount: 0,
     };
+  }
+
+  /** Konto des Aufrufers; ohne Anmeldung `AUTH_REQUIRED`. */
+  function requireViewer(request: FastifyRequest): string {
+    const viewerId = request.viewerUserId ?? null;
+
+    if (viewerId === null) {
+      throw new ServerOrchestrationError('AUTH_REQUIRED');
+    }
+
+    return viewerId;
+  }
+
+  /** Angeheftete Server eines Kontos; ohne Anmeldung leer. */
+  async function pinnedIdsOf(viewerId: string | null): Promise<ReadonlySet<string>> {
+    return viewerId === null ? new Set<string>() : await repository.listPinnedServerIds(viewerId);
   }
 
   /**
@@ -210,9 +238,10 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
           : await repository.listByOwnerOrMembership(viewerId);
 
       const dtos = [];
+      const angeheftet = await pinnedIdsOf(viewerId);
 
       for (const server of servers) {
-        const context = await dtoContext(request, server.id);
+        const context = await dtoContext(request, server.id, angeheftet);
         const dto = toGameServerDto(server, {
           ...context,
           recentCrashCount: service.recentCrashCount(server),
@@ -235,6 +264,45 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       const { dto } = await loadAuthorized(request, id, 'canView');
 
       return await reply.send(ok(dto));
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  // -- Anheften (Gefundener Punkt 50) ------------------------------------------
+
+  /*
+   * `PUT`/`DELETE` statt eines Umschalters: Beide Aufrufe fuehren zum selben
+   * Zielzustand, egal wie oft sie kommen. Ein Umschalter wuerde bei einem
+   * doppelt abgesetzten Klick das Gegenteil bewirken.
+   *
+   * Geprueft wird `canView`: Wer einen Server sehen darf, darf ihn sich auch
+   * an die eigene Uebersicht heften - eine eigene Permission dafuer waere ohne
+   * Wirkung, weil die Anheftung niemandem sonst etwas zeigt.
+   */
+  app.put('/api/servers/:id/pin', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const { dto } = await loadAuthorized(request, id, 'canView');
+      const viewerId = requireViewer(request);
+
+      await repository.pinServer(viewerId, id);
+
+      return await reply.send(ok({ ...dto, pinned: true }));
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  app.delete('/api/servers/:id/pin', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const { dto } = await loadAuthorized(request, id, 'canView');
+      const viewerId = requireViewer(request);
+
+      await repository.unpinServer(viewerId, id);
+
+      return await reply.send(ok({ ...dto, pinned: false }));
     } catch (error: unknown) {
       return replyWithError(reply, error);
     }

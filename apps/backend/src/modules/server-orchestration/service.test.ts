@@ -76,6 +76,26 @@ const nextId = (): string => `44444444-4444-4444-8444-${String(++idCounter).padS
 class FakeRepository implements ServerRepository {
   readonly servers = new Map<string, ServerRecord>();
   readonly members = new Map<string, Map<string, ServerMemberLevel>>();
+  /** Angeheftete Server je Konto (Gefundener Punkt 50). */
+  readonly pins = new Map<string, Set<string>>();
+
+  listPinnedServerIds(userId: string): Promise<ReadonlySet<string>> {
+    return Promise.resolve(this.pins.get(userId) ?? new Set<string>());
+  }
+
+  pinServer(userId: string, serverId: string): Promise<void> {
+    const vorhanden = this.pins.get(userId) ?? new Set<string>();
+    vorhanden.add(serverId);
+    this.pins.set(userId, vorhanden);
+
+    return Promise.resolve();
+  }
+
+  unpinServer(userId: string, serverId: string): Promise<void> {
+    this.pins.get(userId)?.delete(serverId);
+
+    return Promise.resolve();
+  }
 
   findById(id: string): Promise<ServerRecord | null> {
     return Promise.resolve(this.servers.get(id) ?? null);
