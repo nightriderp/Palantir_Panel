@@ -166,7 +166,10 @@ async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Pr
     },
   } as unknown as ServerOrchestrationService;
 
-  const repository = { listMembers: async () => [] } as unknown as ServerRepository;
+  const repository = {
+    listMembers: async () => [],
+    listPinnedServerIds: async () => new Set<string>(),
+  } as unknown as ServerRepository;
 
   const app = Fastify({ logger: false });
 

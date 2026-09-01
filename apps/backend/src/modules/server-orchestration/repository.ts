@@ -16,7 +16,7 @@ import {
 import { type ServerAutoShutdown, type ServerPortAssignment } from './types.js';
 import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
-import { gameServers, hostNodes, serverMembers, users } from '../../db/schema.js';
+import { gameServers, hostNodes, serverMembers, serverPins, users } from '../../db/schema.js';
 
 /** Ein Gameserver, wie ihn der Dienst braucht. */
 export interface ServerRecord {
@@ -120,6 +120,14 @@ export interface ServerRepository {
   memberLevel(serverId: string, userId: string): Promise<ServerMemberLevel | null>;
   upsertMember(serverId: string, userId: string, level: ServerMemberLevel): Promise<void>;
   removeMember(serverId: string, userId: string): Promise<void>;
+
+  // Angeheftete Server (Gefundener Punkt 50)
+  /** Alle Server-Ids, die dieses Konto angeheftet hat. */
+  listPinnedServerIds(userId: string): Promise<ReadonlySet<string>>;
+  /** Anheften; ein zweites Mal anheften ändert nichts (idempotent). */
+  pinServer(userId: string, serverId: string): Promise<void>;
+  /** Lösen; ein nicht angehefteter Server ist kein Fehler. */
+  unpinServer(userId: string, serverId: string): Promise<void>;
   /**
    * Die einzige Node dieser Installation.
    *
@@ -351,6 +359,27 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
 
     async delete(id: string): Promise<void> {
       await db.delete(gameServers).where(eq(gameServers.id, id));
+    },
+
+    async listPinnedServerIds(userId: string): Promise<ReadonlySet<string>> {
+      const rows = await db
+        .select({ serverId: serverPins.serverId })
+        .from(serverPins)
+        .where(eq(serverPins.userId, userId));
+
+      return new Set(rows.map((row) => row.serverId));
+    },
+
+    async pinServer(userId: string, serverId: string): Promise<void> {
+      // `onConflictDoNothing`: Zweimal anheften ist einmal angeheftet, und ein
+      // doppelter Klick soll keinen Fehler ergeben.
+      await db.insert(serverPins).values({ userId, serverId }).onConflictDoNothing();
+    },
+
+    async unpinServer(userId: string, serverId: string): Promise<void> {
+      await db
+        .delete(serverPins)
+        .where(and(eq(serverPins.userId, userId), eq(serverPins.serverId, serverId)));
     },
 
     async listMembers(serverId: string): Promise<readonly ServerMemberRecord[]> {
