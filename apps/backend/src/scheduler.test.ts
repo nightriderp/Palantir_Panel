@@ -383,6 +383,10 @@ function runningServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
 class SweepRepository implements ServerRepository {
   server: ServerRecord;
 
+  countByOwners(): Promise<ReadonlyMap<string, number>> {
+    return Promise.resolve(new Map<string, number>());
+  }
+
   // Anheften spielt fuer den Aufraeum-Lauf keine Rolle (Gefundener Punkt 50).
   listPinnedServerIds(): Promise<ReadonlySet<string>> {
     return Promise.resolve(new Set<string>());

@@ -36,6 +36,7 @@ import {
   type RegistrationRequestService,
   createRegistrationRequestService,
   type QuotaSummaryReader,
+  type ServerCountReader,
 } from './registration-requests.js';
 import {
   createDrizzleAuditArchiveRepository,
@@ -76,6 +77,8 @@ export interface AdminModuleOptions {
   readonly serverNames?: () => Promise<ReadonlyMap<string, string>>;
   /** Anschluss an B4: Kontingente für die Spalte in der Nutzerliste (Abgleich 12.1.3). */
   readonly quotas?: QuotaSummaryReader;
+  /** Anschluss an B3: Serveranzahl je Konto in der Nutzerliste (Gefundener Punkt 90). */
+  readonly serverCounts?: ServerCountReader;
 }
 
 export interface AdminModule {
@@ -126,6 +129,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     roles: options.roles,
     audit,
     ...(options.quotas ? { quotas: options.quotas } : {}),
+    ...(options.serverCounts ? { serverCounts: options.serverCounts } : {}),
   });
 
   // Rollenverwaltung: Die Regeln liegen im RoleService aus B2, hier kommen

@@ -117,7 +117,10 @@ function createFakeRepository(seed: WaitlistUserRecord[]): RegistrationRequestRe
   };
 }
 
-function build(seed: WaitlistUserRecord[]) {
+function build(
+  seed: WaitlistUserRecord[],
+  options: { serverCounts?: ReadonlyMap<string, number> | 'fehler' } = {},
+) {
   const auditRepository = createFakeAuditRepository();
   const repository = createFakeRepository(seed);
   const roles = createFakeRoleService();
@@ -125,6 +128,16 @@ function build(seed: WaitlistUserRecord[]) {
     repository,
     roles,
     audit: createAuditService(auditRepository),
+    ...(options.serverCounts === undefined
+      ? {}
+      : {
+          serverCounts: {
+            countServersByOwner: () =>
+              options.serverCounts === 'fehler'
+                ? Promise.reject(new Error('Zaehlung nicht moeglich'))
+                : Promise.resolve(options.serverCounts ?? new Map<string, number>()),
+          },
+        }),
   });
 
   return { service, repository, roles, auditRepository };
@@ -165,6 +178,42 @@ describe('Freischalt-Warteliste', () => {
       displayName: 'neuling#0001',
     });
     expect(request?.roleNames).toEqual([GUEST_ROLE_NAME]);
+  });
+
+  it('liefert die Rollen mit Id (Gefundener Punkt 90)', async () => {
+    const { service } = build([waitlistUser()]);
+
+    const [request] = await service.list(adminCtx(), registrationRequestQuerySchema.parse({}));
+
+    // Die Oberflaeche muss die Namen nicht mehr ueber /admin/roles zurueckrechnen.
+    expect(request?.roles).toEqual([{ id: GUEST_ROLE.id, name: GUEST_ROLE.name }]);
+  });
+
+  it('liefert die Serveranzahl, wenn die Zaehlung angeschlossen ist', async () => {
+    const { service } = build([waitlistUser()], { serverCounts: new Map([[USER_ID, 3]]) });
+
+    const [request] = await service.list(adminCtx(), registrationRequestQuerySchema.parse({}));
+
+    expect(request?.serverCount).toBe(3);
+  });
+
+  it('meldet 0 Server fuer ein Konto ohne Eintrag in der Zaehlung', async () => {
+    const { service } = build([waitlistUser()], { serverCounts: new Map() });
+
+    const [request] = await service.list(adminCtx(), registrationRequestQuerySchema.parse({}));
+
+    expect(request?.serverCount).toBe(0);
+  });
+
+  it('liefert die Liste auch, wenn die Zaehlung scheitert', async () => {
+    // Die Warteliste ist der Weg, ein Konto freizugeben - eine Zusatzangabe
+    // darf das nicht aufhalten.
+    const { service } = build([waitlistUser()], { serverCounts: 'fehler' });
+
+    const [request] = await service.list(adminCtx(), registrationRequestQuerySchema.parse({}));
+
+    expect(request?.userId).toBe(USER_ID);
+    expect(request?.serverCount).toBeUndefined();
   });
 
   it('lehnt jede Wartelisten-Aktion ohne user.manage ab', async () => {

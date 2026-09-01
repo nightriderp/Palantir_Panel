@@ -79,6 +79,18 @@ class FakeRepository implements ServerRepository {
   /** Angeheftete Server je Konto (Gefundener Punkt 50). */
   readonly pins = new Map<string, Set<string>>();
 
+  countByOwners(userIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
+    const anzahl = new Map<string, number>();
+
+    for (const server of this.servers.values()) {
+      if (userIds.includes(server.ownerId)) {
+        anzahl.set(server.ownerId, (anzahl.get(server.ownerId) ?? 0) + 1);
+      }
+    }
+
+    return Promise.resolve(anzahl);
+  }
+
   listPinnedServerIds(userId: string): Promise<ReadonlySet<string>> {
     return Promise.resolve(this.pins.get(userId) ?? new Set<string>());
   }
