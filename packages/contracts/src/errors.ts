@@ -76,6 +76,26 @@ export const ERROR_CATALOG = {
     httpStatus: 403,
     defaultMessage: 'Diese Instanz nimmt zurzeit keine neuen Registrierungen an.',
   },
+  /** Kontingent-Anfrage existiert nicht oder gehört einem anderen Konto. 404. */
+  QUOTA_REQUEST_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Kontingent-Anfrage gibt es nicht.',
+  },
+  /**
+   * Es liegt bereits eine offene Anfrage vor (Mockup-Abgleich 12.3.1).
+   *
+   * Eine zweite daneben hülfe niemandem: Der Administrator sähe zwei Wünsche
+   * desselben Kontos und wüsste nicht, welcher gilt. 409.
+   */
+  QUOTA_REQUEST_ALREADY_OPEN: {
+    httpStatus: 409,
+    defaultMessage: 'Es liegt bereits eine offene Kontingent-Anfrage vor.',
+  },
+  /** Die Anfrage ist bereits entschieden – entschieden wird genau einmal. 409. */
+  QUOTA_REQUEST_INVALID_STATE: {
+    httpStatus: 409,
+    defaultMessage: 'Diese Kontingent-Anfrage ist bereits entschieden.',
+  },
   /** Passwort erfüllt die Mindestanforderungen aus Pflichtenheft §7 nicht. 400. */
   AUTH_PASSWORD_TOO_WEAK: {
     httpStatus: 400,

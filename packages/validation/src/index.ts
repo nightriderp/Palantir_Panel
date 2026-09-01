@@ -279,3 +279,13 @@ export {
   arcadeScoreValueSchema,
   submitArcadeScoreInputSchema,
 } from './arcade.js';
+
+export {
+  type CreateQuotaRequestInput,
+  type DecideQuotaRequestInput,
+  type QuotaRequestQuery,
+  createQuotaRequestInputSchema,
+  decideQuotaRequestInputSchema,
+  quotaRequestQuerySchema,
+  quotaRequestStatusSchema,
+} from './quota-request.js';
