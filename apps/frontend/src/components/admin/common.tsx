@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Button, EmptyState, Panel, cn } from '@/components/shared';
 
 /**
@@ -96,88 +96,6 @@ export function Td({
     >
       {children}
     </td>
-  );
-}
-
-/**
- * Datumsfeld für Filter (z. B. Audit-Log-Zeitraum).
- *
- * Das Design-System hat bewusst kein Datumsfeld – die einzige Stelle dafür ist
- * bislang der Admin-Bereich. Optik über dieselben Tokens wie die übrigen
- * Eingabefelder; sobald ein zweites Paket eines braucht, gehört es nach F2
- * (vermerkt unter „Gefundene Punkte" in WORK_STATUS.md).
- */
-export function DateField({
-  label,
-  value,
-  onChange,
-  max,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  max?: string;
-}) {
-  const id = useId();
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm text-ink-muted">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="date"
-        value={value}
-        max={max}
-        onChange={(event) => onChange(event.target.value)}
-        className="rounded-md border border-line-strong bg-fill px-3 py-2.5 text-base text-ink outline-none focus-visible:border-brand"
-      />
-    </div>
-  );
-}
-
-/**
- * Mehrzeiliges Textfeld für längere Eingaben (z. B. Ankündigungstext).
- *
- * Das Design-System hat bislang kein Textarea-Feld; die erste Stelle dafür ist
- * der Admin-Bereich. Optik über dieselben Tokens wie die übrigen Eingabefelder.
- * Sobald ein zweites Paket eines braucht, gehört es nach F2 (vermerkt unter
- * „Gefundene Punkte" in WORK_STATUS.md).
- */
-export function TextArea({
-  label,
-  value,
-  onChange,
-  placeholder,
-  rows = 5,
-  maxLength,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  rows?: number;
-  maxLength?: number;
-  hint?: string;
-}) {
-  const id = useId();
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm text-ink-muted">
-        {label}
-      </label>
-      <textarea
-        id={id}
-        value={value}
-        rows={rows}
-        maxLength={maxLength}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full resize-y rounded-md border border-line-strong bg-fill px-3 py-2.5 text-base text-ink outline-none placeholder:text-ink-disabled focus-visible:border-brand"
-      />
-      {hint ? <span className="text-2xs text-ink-faint">{hint}</span> : null}
-    </div>
   );
 }
 

@@ -234,6 +234,94 @@ export function NumberField({
   );
 }
 
+/**
+ * Datumsfeld (WORK_STATUS.md, Gefundener Punkt 89).
+ *
+ * Kommt aus dem Admin-Bereich (F10, Audit-Filter) und steht jetzt hier, weil es
+ * ein zweites Paket braucht. Bewusst das `date`-Feld des Browsers und kein
+ * eigener Kalender: Der Browser bringt Tastaturbedienung, Sprache und
+ * Datumsformat des Systems schon mit; ein selbstgebauter Kalender müsste all das
+ * nachbilden.
+ *
+ * Wert und Grenzen im ISO-Format `JJJJ-MM-TT` – dasselbe Format, das das Feld
+ * liefert und das die API erwartet.
+ */
+export interface DateFieldProps extends FieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  /** Frühestes wählbares Datum, `JJJJ-MM-TT`. */
+  min?: string;
+  /** Spätestes wählbares Datum, `JJJJ-MM-TT`. */
+  max?: string;
+  disabled?: boolean;
+}
+
+export function DateField({ value, onChange, min, max, disabled, ...shell }: DateFieldProps) {
+  const { id, hintId, errorId, describedBy } = useFieldIds(shell.hint, shell.error);
+
+  return (
+    <FieldShell {...shell} htmlFor={id} hintId={hintId} errorId={errorId}>
+      <input
+        id={id}
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        disabled={disabled}
+        aria-invalid={shell.error ? true : undefined}
+        aria-describedby={describedBy}
+        onChange={(event) => onChange(event.target.value)}
+        className={controlClasses(shell.error)}
+      />
+    </FieldShell>
+  );
+}
+
+/**
+ * Mehrzeiliges Textfeld (WORK_STATUS.md, Gefundener Punkt 89).
+ *
+ * Für längere Eingaben – Ankündigungstext, Begründungen. In der Höhe frei
+ * ziehbar (`resize-y`), aber nicht in der Breite: Ein über den Rand gezogenes
+ * Feld zerlegt das Formular.
+ */
+export interface TextAreaFieldProps extends FieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+  maxLength?: number;
+  disabled?: boolean;
+}
+
+export function TextAreaField({
+  value,
+  onChange,
+  placeholder,
+  rows = 5,
+  maxLength,
+  disabled,
+  ...shell
+}: TextAreaFieldProps) {
+  const { id, hintId, errorId, describedBy } = useFieldIds(shell.hint, shell.error);
+
+  return (
+    <FieldShell {...shell} htmlFor={id} hintId={hintId} errorId={errorId}>
+      <textarea
+        id={id}
+        value={value}
+        rows={rows}
+        maxLength={maxLength}
+        placeholder={placeholder}
+        disabled={disabled}
+        aria-invalid={shell.error ? true : undefined}
+        aria-describedby={describedBy}
+        onChange={(event) => onChange(event.target.value)}
+        className={controlClasses(shell.error, 'w-full resize-y')}
+      />
+    </FieldShell>
+  );
+}
+
 export interface SelectFieldProps extends FieldProps {
   value: string;
   onChange: (value: string) => void;

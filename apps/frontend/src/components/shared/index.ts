@@ -45,18 +45,22 @@ export {
 } from './feedback/ToastProvider';
 
 export {
+  DateField,
   FieldShell,
   NumberField,
   SelectField,
   SliderField,
+  TextAreaField,
   TextField,
   Toggle,
   ToggleRow,
+  type DateFieldProps,
   type FieldLabelVariant,
   type FieldShellProps,
   type NumberFieldProps,
   type SelectFieldProps,
   type SliderFieldProps,
+  type TextAreaFieldProps,
   type TextFieldProps,
   type ToggleProps,
   type ToggleRowProps,
