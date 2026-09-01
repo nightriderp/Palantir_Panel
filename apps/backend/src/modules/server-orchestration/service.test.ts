@@ -12,6 +12,7 @@
  */
 
 import {
+  type ArchiveFormat,
   type AgentCommandName,
   type ApiResponse,
   type NodeResourceUsage,
@@ -48,7 +49,11 @@ import {
   createPermissiveResourceGuard,
   createResourceGuardFromService,
 } from './resource-guard.js';
-import { type OrchestrationEventSink, ServerOrchestrationService } from './service.js';
+import {
+  type OrchestrationEventSink,
+  ServerOrchestrationService,
+  WORLD_IMPORT_CHUNK_BYTES,
+} from './service.js';
 import { type DnsProvider, type DnsRecord } from './dns/types.js';
 import { type ServerStatsRepository, type StatsSample } from './stats-history.js';
 import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.js';
@@ -269,7 +274,8 @@ class AnsweringSocket implements AgentSocket {
 
     this.commands.push({ command: frame.command, payload: frame.payload });
 
-    const result = this.answers.get(frame.command) ?? this.defaultAnswerFor(frame.command);
+    const result =
+      this.answers.get(frame.command) ?? this.defaultAnswerFor(frame.command, frame.payload);
 
     // Der Agent antwortet nie synchron innerhalb von `send` – der Aufrufer hat
     // sonst noch keinen offenen Befehl eingetragen.
@@ -292,7 +298,7 @@ class AnsweringSocket implements AgentSocket {
   }
 
   /** Erfolgsantwort mit der Nutzlast, die der jeweilige Befehl zurückgibt. */
-  private defaultAnswerFor(command: AgentCommandName): ApiResponse<unknown> {
+  private defaultAnswerFor(command: AgentCommandName, payload?: unknown): ApiResponse<unknown> {
     if (command === 'CREATE') {
       const containerId = `container-${String(this.commands.length)}`;
 
@@ -364,6 +370,22 @@ class AnsweringSocket implements AgentSocket {
       return {
         success: true,
         data: { fileCount: 2, extractedBytes: 42, skipped: [] },
+        error: null,
+      };
+    }
+
+    if (command === 'UPLOAD_ARCHIVE_BLOCK') {
+      // Wie der Agent: Erst der letzte Block liefert ein Entpack-Ergebnis.
+      const nutzlast = payload as { offset: number; contentBase64: string; last: boolean };
+      const empfangen = nutzlast.offset + Buffer.from(nutzlast.contentBase64, 'base64').byteLength;
+
+      return {
+        success: true,
+        data: {
+          transferId: 'transfer',
+          receivedBytes: empfangen,
+          extract: nutzlast.last ? { fileCount: 2, extractedBytes: 42, skipped: [] } : null,
+        },
         error: null,
       };
     }
@@ -2136,14 +2158,37 @@ describe('Datei-Manager (Arbeitspaket P2)', () => {
 describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
   const UPLOAD_ID = '77777777-7777-4777-8777-777777777777';
 
-  /** Zwischenspeicher im Speicher – dieselbe Schnittstelle wie die Platte. */
-  function fakeStore(archiv: StoredWorldArchive | null): WorldArchiveStore & {
-    readonly abgeholt: string[];
-  } {
+  /**
+   * Zwischenspeicher im Speicher – dieselbe Schnittstelle wie die Platte.
+   *
+   * Seit Gefundenem Punkt 106 wird blockweise gelesen; der Fake schneidet dafür
+   * aus einem Puffer und merkt sich, ob er freigegeben wurde.
+   */
+  function fakeStore(
+    inhalt: { uploadId: string; content: Buffer; format: ArchiveFormat } | null,
+  ): WorldArchiveStore & { readonly abgeholt: string[]; readonly freigegeben: string[] } {
     const abgeholt: string[] = [];
+    const freigegeben: string[] = [];
+
+    const archiv: StoredWorldArchive | null =
+      inhalt === null
+        ? null
+        : {
+            uploadId: inhalt.uploadId,
+            format: inhalt.format,
+            sizeBytes: inhalt.content.byteLength,
+            read: (offset, maxBytes) =>
+              Promise.resolve(inhalt.content.subarray(offset, offset + maxBytes)),
+            release: () => {
+              freigegeben.push(inhalt.uploadId);
+
+              return Promise.resolve();
+            },
+          };
 
     return {
       abgeholt,
+      freigegeben,
       save: () => Promise.reject(new Error('nicht benutzt')),
       take: (uploadId) => {
         abgeholt.push(uploadId);
@@ -2159,7 +2204,7 @@ describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
     worldImport: { uploadId: UPLOAD_ID, fileName: 'welt.zip' },
   });
 
-  it('schickt das Archiv als FILE_EXTRACT an den Agent', async () => {
+  it('schickt das Archiv blockweise an den Agent', async () => {
     const store = fakeStore({
       uploadId: UPLOAD_ID,
       content: Buffer.from('PK-Archiv'),
@@ -2171,15 +2216,23 @@ describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
 
     expect(store.abgeholt).toEqual([UPLOAD_ID]);
 
-    const extract = harness.socket.commands.find((eintrag) => eintrag.command === 'FILE_EXTRACT');
+    const bloecke = harness.socket.commands.filter(
+      (eintrag) => eintrag.command === 'UPLOAD_ARCHIVE_BLOCK',
+    );
 
-    expect(extract?.payload).toMatchObject({
+    // Klein genug für einen Block – der ist dann zugleich der letzte.
+    expect(bloecke).toHaveLength(1);
+    expect(bloecke[0]?.payload).toMatchObject({
       path: '',
       format: 'zip',
+      transferId: UPLOAD_ID,
+      offset: 0,
+      last: true,
       contentBase64: Buffer.from('PK-Archiv').toString('base64'),
     });
     // Der Import läuft, während der Server angelegt wird – danach ist er fertig.
     expect(server.status).not.toBe('error');
+    expect(store.freigegeben).toEqual([UPLOAD_ID]);
   });
 
   it('legt ohne worldImport kein Archiv an', async () => {
@@ -2189,9 +2242,9 @@ describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
     await harness.service.createServer(createInput(), OWNER_ID);
 
     expect(store.abgeholt).toEqual([]);
-    expect(harness.socket.commands.some((eintrag) => eintrag.command === 'FILE_EXTRACT')).toBe(
-      false,
-    );
+    expect(
+      harness.socket.commands.some((eintrag) => eintrag.command === 'UPLOAD_ARCHIVE_BLOCK'),
+    ).toBe(false);
   });
 
   it('lässt das Anlegen scheitern, wenn der Upload abgelaufen ist', async () => {
@@ -2209,21 +2262,37 @@ describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
   });
 
   it('lehnt ein Archiv über der Grenze ab, bevor es an den Agent geht', async () => {
-    const harness = makeHarness({
-      worldArchives: fakeStore({
-        uploadId: UPLOAD_ID,
-        content: Buffer.alloc(2048),
-        format: 'zip',
-      }),
-      maxWorldArchiveBytes: 1024,
+    const store = fakeStore({
+      uploadId: UPLOAD_ID,
+      content: Buffer.alloc(2048),
+      format: 'zip',
     });
+    const harness = makeHarness({ worldArchives: store, maxWorldArchiveBytes: 1024 });
 
     await expect(harness.service.createServer(mitImport(), OWNER_ID)).rejects.toMatchObject({
       code: 'FILE_TOO_LARGE',
     });
-    expect(harness.socket.commands.some((eintrag) => eintrag.command === 'FILE_EXTRACT')).toBe(
-      false,
+    expect(
+      harness.socket.commands.some((eintrag) => eintrag.command === 'UPLOAD_ARCHIVE_BLOCK'),
+    ).toBe(false);
+    // Auch der abgelehnte Versuch gibt das Archiv frei.
+    expect(store.freigegeben).toEqual([UPLOAD_ID]);
+  });
+
+  it('teilt ein großes Archiv in mehrere Blöcke', async () => {
+    const inhalt = Buffer.alloc(WORLD_IMPORT_CHUNK_BYTES + 1024, 7);
+    const store = fakeStore({ uploadId: UPLOAD_ID, content: inhalt, format: 'tar.gz' });
+    const harness = makeHarness({ worldArchives: store });
+
+    await harness.service.createServer(mitImport(), OWNER_ID);
+
+    const bloecke = harness.socket.commands.filter(
+      (eintrag) => eintrag.command === 'UPLOAD_ARCHIVE_BLOCK',
     );
+
+    expect(bloecke).toHaveLength(2);
+    expect(bloecke[0]?.payload).toMatchObject({ offset: 0, last: false });
+    expect(bloecke[1]?.payload).toMatchObject({ offset: WORLD_IMPORT_CHUNK_BYTES, last: true });
   });
 });
 
