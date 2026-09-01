@@ -2,10 +2,12 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  DateField,
   FieldShell,
   NumberField,
   SelectField,
   SliderField,
+  TextAreaField,
   TextField,
   Toggle,
   ToggleRow,
@@ -228,5 +230,32 @@ describe('ToggleRow', () => {
     fireEvent.click(screen.getByRole('switch'));
 
     expect(onChange).toHaveBeenCalledWith(false);
+  });
+});
+
+describe('DateField (Gefundener Punkt 89)', () => {
+  it('reicht das gewählte Datum weiter und beschriftet das Feld', () => {
+    const gewaehlt = vi.fn();
+    render(<DateField label="Ab" value="2026-08-01" max="2026-09-01" onChange={gewaehlt} />);
+
+    const feld = screen.getByLabelText('Ab');
+
+    expect((feld as HTMLInputElement).value).toBe('2026-08-01');
+    fireEvent.change(feld, { target: { value: '2026-08-15' } });
+    expect(gewaehlt).toHaveBeenCalledWith('2026-08-15');
+  });
+});
+
+describe('TextAreaField (Gefundener Punkt 89)', () => {
+  it('reicht die Eingabe weiter und zeigt den Hinweis', () => {
+    const getippt = vi.fn();
+    render(
+      <TextAreaField label="Text" value="Hallo" hint="Höchstens 1800 Zeichen" onChange={getippt} />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'Neu' } });
+
+    expect(getippt).toHaveBeenCalledWith('Neu');
+    expect(screen.getByText('Höchstens 1800 Zeichen')).toBeTruthy();
   });
 });

@@ -10,10 +10,12 @@ import {
   Badge,
   Button,
   DangerConfirmDialog,
+  DateField,
   FormModal,
   PageHeader,
   Panel,
   SelectField,
+  TextAreaField,
   TextField,
   formatDateTime,
   formatNumber,
@@ -28,7 +30,7 @@ import {
 } from '@/lib/api/admin';
 import { type ApiResult, errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { AdminAccessNotice, AdminError, AdminLoading, DateField, TextArea } from '../common';
+import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
 import { severityLabel, severityTone } from '../labels';
 
 /**
@@ -253,7 +255,7 @@ function AnnouncementEditor({
       onSubmit={() => void submit()}
     >
       <TextField label="Titel" value={title} onChange={setTitle} placeholder="Kurz und klar" />
-      <TextArea
+      <TextAreaField
         label="Text"
         value={body}
         onChange={setBody}
