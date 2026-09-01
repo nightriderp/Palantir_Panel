@@ -1,9 +1,11 @@
 import {
+  type AccountDto,
   type AnnouncementDto,
   type AuditLogPageDto,
   type BackupOverviewDto,
   type GameServerDto,
   type HostNodeDto,
+  type InstanceSettingsDto,
   type MessageReportDto,
   type MessageReportPageDto,
   type NotificationChannelDto,
@@ -21,6 +23,8 @@ import {
 } from '@palantir/contracts';
 import {
   type ApproveRegistrationRequestInput,
+  type CreateUserInput,
+  type InstanceSettingsInput,
   type AuditLogQuery,
   type BackupOverviewQuery,
   type BlockRegistrationRequestInput,
@@ -111,6 +115,40 @@ export function unblockRegistrationRequest(
     `/admin/requests/${encodeURIComponent(userId)}/unblock`,
     { method: 'POST' },
   );
+}
+
+/** Einstellungen der Instanz lesen (Mockup-Abgleich 12.1.1). */
+export function fetchInstanceSettings(
+  signal?: AbortSignal,
+): Promise<ApiResult<InstanceSettingsDto>> {
+  return apiRequest<InstanceSettingsDto>('/admin/instance-settings', { signal });
+}
+
+/**
+ * Einstellungen der Instanz setzen.
+ *
+ * `PUT` mit dem vollständigen Zustand – der Schalter ist keine Teiländerung.
+ */
+export function updateInstanceSettings(
+  input: InstanceSettingsInput,
+): Promise<ApiResult<InstanceSettingsDto>> {
+  return apiRequest<InstanceSettingsDto>('/admin/instance-settings', {
+    method: 'PUT',
+    json: input,
+  });
+}
+
+/**
+ * Konto anlegen (Mockup-Abgleich 12.1.1).
+ *
+ * Die Antwort trägt das fertige Konto, nicht das Passwort: Das hat der
+ * Administrator selbst gesetzt und gibt es dem Nutzer weiter.
+ */
+export function createUser(input: CreateUserInput): Promise<ApiResult<{ account: AccountDto }>> {
+  return apiRequest<{ account: AccountDto }>('/auth/admin/users', {
+    method: 'POST',
+    json: input,
+  });
 }
 
 /** Einmal-Passwort setzen (Lastenheft §3.1); die Antwort zeigt es genau einmal. */

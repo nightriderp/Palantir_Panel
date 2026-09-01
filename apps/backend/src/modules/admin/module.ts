@@ -28,6 +28,11 @@ import {
 } from './nodes.js';
 import { type PortPoolService, createPortPoolService } from './ports.js';
 import {
+  createDrizzleInstanceSettingsRepository,
+  createInstanceSettingsService,
+  type InstanceSettingsService,
+} from './instance-settings.js';
+import {
   type RegistrationRequestService,
   createRegistrationRequestService,
   type QuotaSummaryReader,
@@ -80,6 +85,7 @@ export interface AdminModule {
   readonly audit: AuditService;
   readonly storage: StorageExplorerService;
   readonly registrationRequests: RegistrationRequestService;
+  readonly instanceSettings: InstanceSettingsService;
   readonly roles: RoleAdminService;
   /** Archivierungslauf ohne HTTP – genutzt vom Kommando `audit:archive`. */
   readonly archiveAuditLog: () => ReturnType<typeof archiveAuditEntries>;
@@ -109,6 +115,10 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     ...(options.storageGateway ? { gateway: options.storageGateway } : {}),
     ...(options.storageRemover ? { remover: options.storageRemover } : {}),
     ...(options.knownServers ? { knownServers: options.knownServers } : {}),
+  });
+
+  const instanceSettings = createInstanceSettingsService({
+    repository: createDrizzleInstanceSettingsRepository(db),
   });
 
   const registrationRequests = createRegistrationRequestService({
@@ -141,6 +151,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
       audit,
       storage,
       registrationRequests,
+      instanceSettings,
       roles: roleAdmin,
       ...(auditArchive ? { auditArchive } : {}),
     },
@@ -149,6 +160,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     audit,
     storage,
     registrationRequests,
+    instanceSettings,
     roles: roleAdmin,
     archiveAuditLog: async () => {
       if (!auditArchive) {

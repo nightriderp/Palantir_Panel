@@ -31,6 +31,7 @@ import {
   linkPasswordInputSchema,
   loginInputSchema,
   registerInputSchema,
+  createUserInputSchema,
   twoFactorInputSchema,
   updateProfileInputSchema,
 } from '@palantir/validation';
@@ -370,6 +371,15 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
   app.post('/auth/register', async (request, reply) => {
     await handle(reply, async () => {
       const input = parseBody(registerInputSchema, request.body);
+
+      /*
+       * Nimmt die Instanz ueberhaupt neue Konten an? (Mockup-Abgleich 12.1.1.)
+       *
+       * Vor der ALTCHA-Pruefung: Ist die Selbstregistrierung geschlossen, ist
+       * der geloeste Nachweis vergebene Rechenzeit - und die Antwort haengt
+       * nicht davon ab, wie gut jemand rechnen kann.
+       */
+      await service.assertRegistrationOpen();
 
       guardPublicAttempt(
         request,
@@ -766,6 +776,26 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
   // -- Admin-Eingriffe (Lastenheft §3.1) ------------------------------------
   // Beide verlangen `user.manage`; geprüft über den Guard aus B2.
+
+  /**
+   * Konto anlegen (Mockup-Abgleich 12.1.1).
+   *
+   * Die Antwort trägt das fertige Konto, nicht das Passwort: Der Administrator
+   * hat es selbst gesetzt und gibt es dem Nutzer weiter. Ein Rückkanal für ein
+   * frisch gesetztes Passwort wäre eine zweite Stelle, an der es steht.
+   */
+  app.post(
+    '/auth/admin/users',
+    { preHandler: requirePermission('user.manage') },
+    async (request, reply) => {
+      await handle(reply, async () => {
+        const input = parseBody(createUserInputSchema, request.body);
+        const account: AccountDto = await service.createUserAsAdmin(input, input.roleIds ?? []);
+
+        await reply.status(201).send(ok({ account }));
+      });
+    },
+  );
 
   app.post<{ Params: { userId: string } }>(
     '/auth/admin/users/:userId/password-reset',

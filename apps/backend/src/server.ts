@@ -21,6 +21,7 @@ import {
   createNodeUsageSource,
   registerResourceRoutes,
 } from './modules/resources/index.js';
+import { type InstanceSettingsService } from './modules/admin/instance-settings.js';
 import { createPublicStatsService } from './modules/public-stats/index.js';
 import { registerPublicStatsRoutes } from './modules/public-stats/routes.js';
 import {
@@ -164,6 +165,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
    * schickt sie das Ereignis dorthin. `emit()` wirft nie (Pflichtenheft §14).
    */
   let notificationEventSink: AuthEventSink = noopAuthEventSink;
+  /*
+   * Dieselbe spaete Verdrahtung wie bei der Notification-Senke: B1 wird vor den
+   * Datenbank-Modulen registriert, die Instanz-Einstellungen entstehen aber
+   * erst mit dem Admin-Modul. Ohne sie bleibt die Registrierung offen - so
+   * verhielt sich die Instanz, bevor es den Schalter gab (Abgleich 12.1.1).
+   */
+  let instanceSettings: InstanceSettingsService | null = null;
   const authEventSink: AuthEventSink = {
     emit: (event, payload) => notificationEventSink.emit(event, payload),
   };
@@ -172,6 +180,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     authService = await registerAuthModule(app, {
       ...(auth === true ? {} : auth),
       events: authEventSink,
+      selfRegistration: async () => (await instanceSettings?.selfRegistrationEnabled()) ?? true,
     });
   }
 
@@ -253,6 +262,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     await app.register(async (instance) => {
       await registerAdminRoutes(instance, admin.services);
     });
+
+    // Ab jetzt kennt die Registrierung den Schalter (Abgleich 12.1.1).
+    instanceSettings = admin.instanceSettings;
 
     /*
      * Server-Orchestrierung (B3) inklusive des WebSocket-Endpunkts `/agent`
