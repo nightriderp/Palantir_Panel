@@ -44,6 +44,19 @@ function toNodeRecord(row: HostNodeRow): HostNodeRecord {
       cpuCores: row.totalCpuCores,
       diskMb: row.totalDiskMb,
     },
+    // Gemessene Auslastung nur, wenn sie vollstaendig vorliegt (Gefundener
+    // Punkt 96): Ein halber Messwert waere schlechter als keiner.
+    measuredUsage:
+      row.measuredAt === null ||
+      row.measuredRamAvailableMb === null ||
+      row.measuredDiskAvailableMb === null
+        ? null
+        : {
+            ramAvailableMb: row.measuredRamAvailableMb,
+            diskAvailableMb: row.measuredDiskAvailableMb,
+            cpuLoad1m: row.measuredCpuLoad1m,
+            observedAt: row.measuredAt,
+          },
   };
 }
 

@@ -273,12 +273,13 @@ class FakeRepository implements ServerRepository {
     return Promise.resolve();
   }
 
-  readonly measuredUpdates: { hostId: string; ramMb: number; cpuCores: number; diskMb: number }[] =
-    [];
+  readonly measuredUpdates: ({ hostId: string } & Parameters<
+    ServerRepository['updateMeasuredResources']
+  >[1])[] = [];
 
   updateMeasuredResources(
     hostId: string,
-    resources: { ramMb: number; cpuCores: number; diskMb: number },
+    resources: Parameters<ServerRepository['updateMeasuredResources']>[1],
   ): Promise<void> {
     this.measuredUpdates.push({ hostId, ...resources });
     return Promise.resolve();
@@ -1541,7 +1542,19 @@ describe('Gemessene Node-Ressourcen (Pflichtenheft §11)', () => {
     });
 
     expect(harness.repository.measuredUpdates).toEqual([
-      { hostId: HOST.id, ramMb: 28_672, cpuCores: 8, diskMb: 1_500_000 },
+      {
+        hostId: HOST.id,
+        ramMb: 28_672,
+        cpuCores: 8,
+        diskMb: 1_500_000,
+        // Auch die Momentaufnahme wird festgehalten (Gefundener Punkt 96).
+        usage: {
+          ramAvailableMb: 20_000,
+          diskAvailableMb: 1_400_000,
+          cpuLoad1m: 0.5,
+          observedAt: NOW,
+        },
+      },
     ]);
   });
 
@@ -1876,6 +1889,7 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
                 wireguardIp: HOST.wireguardIp,
                 status: 'online',
                 totalResources: { ramMb: NODE_RAM_MB, cpuCores: 64, diskMb: 1_000_000 },
+                measuredUsage: null,
               }
             : null,
         ),

@@ -28,6 +28,24 @@ export interface HostNodeRecord {
   readonly wireguardIp: string;
   readonly status: HostNodeStatus;
   readonly totalResources: NodeResources;
+  /**
+   * Zuletzt vom Agent gemessene Auslastung (WORK_STATUS.md, Gefundener Punkt
+   * 96); `null`, solange nie gemessen wurde.
+   *
+   * Bewusst als „verfuegbar" und nicht als „benutzt" gespeichert: Genau so
+   * meldet es der Agent (`AgentNodeStats`), und die Umrechnung gehoert an die
+   * Stelle, die auch die Gesamtgroesse kennt.
+   */
+  readonly measuredUsage: MeasuredNodeUsage | null;
+}
+
+/** Momentaufnahme der Node, gemessen auf dem Homeserver. */
+export interface MeasuredNodeUsage {
+  readonly ramAvailableMb: number;
+  readonly diskAvailableMb: number;
+  /** Systemlast der letzten Minute; `null`, wo die Plattform sie nicht fuehrt. */
+  readonly cpuLoad1m: number | null;
+  readonly observedAt: Date;
 }
 
 export interface HostNodeRepository {

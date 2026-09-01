@@ -2022,6 +2022,14 @@ export class ServerOrchestrationService {
           ramMb: frame.nodeStats.ramTotalMb,
           cpuCores: frame.nodeStats.cpuCores,
           diskMb: frame.nodeStats.diskTotalMb,
+          // Auch die Momentaufnahme festhalten (Gefundener Punkt 96): Die
+          // Uebersicht zeigt sonst nur, was reserviert ist, nicht was laeuft.
+          usage: {
+            ramAvailableMb: frame.nodeStats.ramAvailableMb,
+            diskAvailableMb: frame.nodeStats.diskAvailableMb,
+            cpuLoad1m: frame.nodeStats.cpuLoad1m,
+            observedAt: new Date(frame.nodeStats.observedAt),
+          },
         });
       } catch (error) {
         this.deps.log.error(

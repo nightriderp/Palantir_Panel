@@ -43,6 +43,7 @@ const NODE: HostNodeRecord = {
   wireguardIp: '10.10.0.2',
   status: 'online',
   totalResources: { ramMb: 32_768, cpuCores: 16, diskMb: 2_097_152 },
+  measuredUsage: null,
 };
 
 function emptyUserUsage(): UserResourceUsage {
