@@ -124,6 +124,9 @@ export function toRegistrationRequestDto(
     banned: user.banned,
     profiles: [...user.profiles],
     roleNames: user.roles.map((role) => role.name),
+    // Dieselben Rollen mit Id (Gefundener Punkt 90): Die Oberflaeche muss die
+    // Namen nicht mehr ueber /admin/roles zurueckrechnen.
+    roles: user.roles.map((role) => ({ id: role.id, name: role.name })),
     registeredAt: user.createdAt.toISOString(),
     permissions: computeRegistrationRequestPermissions(actor, user),
   };
@@ -151,6 +154,17 @@ export interface RegistrationRequestService {
  * Warteliste braucht Kontingente zum Anzeigen und sonst nichts aus B4, und eine
  * eigene Zählung hier wäre die Parallelstruktur, die CLAUDE.md §3 ausschließt.
  */
+/**
+ * Serveranzahl mehrerer Konten - erfuellt von der Server-Orchestrierung (B3).
+ *
+ * Wie {@link QuotaSummaryReader} bewusst nur diese eine Methode: Die Uebersicht
+ * braucht eine Zahl, keine Serverliste, und eine eigene Zaehlung hier waere die
+ * Parallelstruktur, die CLAUDE.md §3 ausschliesst.
+ */
+export interface ServerCountReader {
+  countServersByOwner(userIds: readonly string[]): Promise<ReadonlyMap<string, number>>;
+}
+
 export interface QuotaSummaryReader {
   listQuotaSummaries(
     actor: PermissionActor,
@@ -172,6 +186,13 @@ export interface RegistrationRequestDependencies {
    * funktioniert weiter, sie zeigt nur eine Spalte weniger.
    */
   readonly quotas?: QuotaSummaryReader;
+  /**
+   * Serveranzahl je Konto (Gefundener Punkt 90).
+   *
+   * Optional wie {@link QuotaSummaryReader}: Ohne diese Abhaengigkeit bleibt
+   * `serverCount` weg, die Liste funktioniert weiter.
+   */
+  readonly serverCounts?: ServerCountReader;
 }
 
 function requireUserManage(actor: PermissionActor): void {
@@ -199,12 +220,42 @@ export function createRegistrationRequestService(
     return toRegistrationRequestDto(ctx.actor, await requireUser(userId));
   }
 
+  /**
+   * Serveranzahl an die Eintraege haengen (Gefundener Punkt 90).
+   *
+   * Eine Abfrage fuer die ganze Seite, nicht eine je Zeile. Ein Fehler dabei
+   * kostet die Spalte, nicht die Liste - genau wie beim Kontingent: Die
+   * Warteliste ist der Weg, ein Konto freizugeben, und das darf nicht an einer
+   * Zusatzangabe scheitern.
+   */
+  async function mitServeranzahl(
+    eintraege: RegistrationRequestDto[],
+  ): Promise<RegistrationRequestDto[]> {
+    if (deps.serverCounts === undefined || eintraege.length === 0) {
+      return eintraege;
+    }
+
+    try {
+      const anzahl = await deps.serverCounts.countServersByOwner(
+        eintraege.map((eintrag) => eintrag.userId),
+      );
+
+      return eintraege.map((eintrag) => ({
+        ...eintrag,
+        serverCount: anzahl.get(eintrag.userId) ?? 0,
+      }));
+    } catch {
+      return eintraege;
+    }
+  }
+
   return {
     async list(ctx, query) {
       requireUserManage(ctx.actor);
 
       const page = await deps.repository.list(query);
-      const eintraege = page.rows.map((row) => toRegistrationRequestDto(ctx.actor, row));
+      const roh = page.rows.map((row) => toRegistrationRequestDto(ctx.actor, row));
+      const eintraege = await mitServeranzahl(roh);
 
       if (deps.quotas === undefined || eintraege.length === 0) {
         return eintraege;

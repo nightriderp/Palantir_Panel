@@ -265,6 +265,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       knownServers: createServerKnownServerSource(db),
       serverNames: createServerNameSource(db),
       quotas: resources,
+      // Serveranzahl je Konto fuer die Nutzerliste (Gefundener Punkt 90) -
+      // gezaehlt dort, wo die Server liegen, nicht im Browser.
+      serverCounts: {
+        countServersByOwner: (userIds) => serverRepository.countByOwners(userIds),
+      },
       ...(env.AUDIT_ARCHIVE_DIR ? { auditArchiveDir: env.AUDIT_ARCHIVE_DIR } : {}),
     });
 

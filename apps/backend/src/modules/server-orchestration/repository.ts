@@ -121,6 +121,14 @@ export interface ServerRepository {
   upsertMember(serverId: string, userId: string, level: ServerMemberLevel): Promise<void>;
   removeMember(serverId: string, userId: string): Promise<void>;
 
+  /**
+   * Anzahl der Server je Besitzer (Gefundener Punkt 90).
+   *
+   * Fuer die Nutzeruebersicht in F10. Konten ohne Server fehlen in der Map -
+   * der Aufrufer liest sie als 0.
+   */
+  countByOwners(userIds: readonly string[]): Promise<ReadonlyMap<string, number>>;
+
   // Angeheftete Server (Gefundener Punkt 50)
   /** Alle Server-Ids, die dieses Konto angeheftet hat. */
   listPinnedServerIds(userId: string): Promise<ReadonlySet<string>>;
@@ -359,6 +367,20 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
 
     async delete(id: string): Promise<void> {
       await db.delete(gameServers).where(eq(gameServers.id, id));
+    },
+
+    async countByOwners(userIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
+      if (userIds.length === 0) {
+        return new Map<string, number>();
+      }
+
+      const rows = await db
+        .select({ ownerId: gameServers.ownerId, anzahl: sql<number>`count(*)::int` })
+        .from(gameServers)
+        .where(inArray(gameServers.ownerId, [...userIds]))
+        .groupBy(gameServers.ownerId);
+
+      return new Map(rows.map((row) => [row.ownerId, Number(row.anzahl)]));
     },
 
     async listPinnedServerIds(userId: string): Promise<ReadonlySet<string>> {
