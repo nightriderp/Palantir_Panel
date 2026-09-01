@@ -1,60 +1,41 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { type GameServerDto } from '@palantir/contracts';
+import { useCallback, useMemo } from 'react';
+import { pinServer, unpinServer } from '@/lib/api/servers';
 
 /**
- * Angepinnte Server der Übersicht (Mockup „📌 Angepinnt").
+ * Angeheftete Server der Übersicht (Mockup „📌 Angepinnt";
+ * WORK_STATUS.md, Gefundener Punkt 50).
  *
- * **Bewusst nur lokal:** Im `GameServerDto` gibt es kein Feld dafür, und das
- * Anheften ist eine reine Anzeigevorliebe dieses Geräts. Gespeichert wird
- * deshalb im `localStorage`. Sobald das Backend die Vorliebe am Konto führt,
- * wandert das hierher hinein – vermerkt unter „Gefundene Punkte".
+ * **Seit dem Backend-Feld am Konto**: Die Anheftung steht im
+ * `GameServerDto.pinned` und gilt damit auf jedem Gerät. Vorher lag sie im
+ * `localStorage` und war pro Browser verschieden – wer am Telefon anheftete,
+ * sah am Rechner nichts davon.
+ *
+ * Die Liste kommt deshalb nicht mehr aus einem eigenen Zustand, sondern aus den
+ * geladenen Servern. Umgeschaltet wird sofort in der Anzeige und danach am
+ * Server; scheitert der Aufruf, nimmt der Aufrufer die Änderung über sein
+ * `onError` zurück (er hält die Liste).
  */
-
-const STORAGE_KEY = 'palantir.pinnedServers';
-
-function read(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((entry) => typeof entry === 'string') : [];
-  } catch {
-    // Beschädigter oder gesperrter Speicher darf die Übersicht nicht aufhalten.
-    return [];
-  }
-}
-
-export function usePinnedServers(): {
+export function usePinnedServers(servers: readonly GameServerDto[]): {
   pinnedIds: string[];
   isPinned: (serverId: string) => boolean;
-  togglePin: (serverId: string) => void;
+  /** Schaltet die Anheftung um; liefert den Server aus der Antwort. */
+  togglePin: (server: GameServerDto) => Promise<GameServerDto | null>;
 } {
-  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
-
-  // Erst nach dem ersten Rendern lesen, damit Server- und Browser-Ausgabe
-  // übereinstimmen (`localStorage` gibt es auf dem Server nicht).
-  useEffect(() => {
-    setPinnedIds(read());
-  }, []);
-
-  const togglePin = useCallback((serverId: string) => {
-    setPinnedIds((current) => {
-      const next = current.includes(serverId)
-        ? current.filter((entry) => entry !== serverId)
-        : [...current, serverId];
-
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // Ohne Speicher bleibt die Anpinnung eben nur für diese Sitzung.
-      }
-      return next;
-    });
-  }, []);
+  const pinnedIds = useMemo(
+    () => servers.filter((server) => server.pinned).map((server) => server.id),
+    [servers],
+  );
 
   const isPinned = useCallback((serverId: string) => pinnedIds.includes(serverId), [pinnedIds]);
+
+  const togglePin = useCallback(async (server: GameServerDto) => {
+    const antwort = server.pinned ? await unpinServer(server.id) : await pinServer(server.id);
+
+    return antwort.success ? antwort.data : null;
+  }, []);
 
   return { pinnedIds, isPinned, togglePin };
 }

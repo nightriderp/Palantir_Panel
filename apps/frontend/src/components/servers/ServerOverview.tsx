@@ -51,7 +51,7 @@ export function ServerOverview() {
   const [confirm, setConfirm] = useState<PendingConfirm>(null);
 
   const servers = useApiResource<GameServerDto[]>((signal) => fetchServers(signal), []);
-  const { pinnedIds, isPinned, togglePin } = usePinnedServers();
+  const { pinnedIds, isPinned, togglePin } = usePinnedServers(servers.data ?? []);
 
   const list = useMemo(() => servers.data ?? [], [servers.data]);
   const serverIds = useMemo(() => list.map((server) => server.id), [list]);
@@ -86,6 +86,27 @@ export function ServerOverview() {
   );
 
   const canCreate = user?.permissions.canCreateServer ?? false;
+
+  /**
+   * Anheftung umschalten (Gefundener Punkt 50).
+   *
+   * Die Antwort ersetzt den Server in der geladenen Liste; scheitert der
+   * Aufruf, bleibt alles stehen und die Meldung erklärt warum – ein Schalter,
+   * der etwas anderes zeigt als der Server weiß, wäre schlimmer als keiner.
+   */
+  async function anheften(server: GameServerDto): Promise<void> {
+    const aktualisiert = await togglePin(server);
+
+    if (aktualisiert === null) {
+      toast.error('Die Anheftung konnte nicht gespeichert werden.');
+
+      return;
+    }
+
+    servers.setData((current) =>
+      (current ?? []).map((entry) => (entry.id === aktualisiert.id ? aktualisiert : entry)),
+    );
+  }
 
   function copyAddress(address: string) {
     void navigator.clipboard
@@ -211,7 +232,7 @@ export function ServerOverview() {
                 pinned={isPinned(server.id)}
                 updateAvailable={server.updateAvailable}
                 restartRequired={server.pendingRestart}
-                onTogglePin={(entry) => togglePin(entry.id)}
+                onTogglePin={(entry) => void anheften(entry)}
                 onStart={(entry) => void lifecycle.run(entry, 'start')}
                 onStop={(entry) => setConfirm({ action: 'stop', server: entry })}
                 onRestart={(entry) => setConfirm({ action: 'restart', server: entry })}
