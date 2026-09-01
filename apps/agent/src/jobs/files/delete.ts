@@ -16,7 +16,7 @@
  * die beiden Pfade.
  */
 
-import { rm, rmdir, stat } from 'node:fs/promises';
+import { mkdir, rm, rmdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileDeleteCommandPayload } from '@palantir/contracts';
 import { type ContainerRuntime } from '../../runtime/container-runtime.js';
@@ -147,6 +147,38 @@ export class ServerFileJob {
   constructor(options: ServerFileJobOptions) {
     this.#runtime = options.runtime;
     this.#dataDir = path.resolve(options.dataDir);
+  }
+
+  /**
+   * Legt den Datenordner eines Servers an, bevor der Container entsteht
+   * (WORK_STATUS.md, Gefundener Punkt 117).
+   *
+   * **Warum ueberhaupt.** Der Datenordner ist eine Bind-Quelle. Fehlt sie beim
+   * Anlegen des Containers, erzeugt der Docker-Daemon sie selbst - und zwar als
+   * `root:root`, denn der Daemon laeuft als root. Ein Spielprozess, der wie
+   * gefordert nicht als root laeuft, koennte darin nichts schreiben; er
+   * scheiterte beim ersten Start, ohne dass die Ursache am Container sichtbar
+   * waere.
+   *
+   * **Warum kein `chown`.** Der Agent laeuft selbst als UID 1000 und ohne
+   * Capabilities (`no-new-privileges`, siehe `deploy/gamenode/docker-compose.yml`).
+   * Er kann den Ordner also nicht verschenken - er legt ihn an, und damit
+   * gehoert er ihm. Genau diese UID verlangen die eigenen Spiel-Images
+   * (SPIEL_IMAGES.md); mehr braucht es nicht.
+   *
+   * `0o700`, weil derselbe Benutzer schreibt, der auch liest: Spielstaende sind
+   * fremde Daten und gehen den Rest des Homeservers nichts an.
+   *
+   * Idempotent: Ein vorhandener Ordner bleibt unangetastet - auch seine Rechte,
+   * die der Betreiber bewusst gesetzt haben kann.
+   */
+  async ensureDataDirectory(hostPath: string): Promise<void> {
+    // Dieselbe Schranke wie beim Loeschen: Der Agent legt nur unterhalb seines
+    // Datenverzeichnisses etwas an. Ein Pfad daneben waere Fehlkonfiguration
+    // oder ein untergeschobener Bind-Mount.
+    const ziel = resolveWithinDirectory(this.#dataDir, hostPath);
+
+    await mkdir(ziel, { recursive: true, mode: 0o700 });
   }
 
   /** Ergebnis ist `null` wie im Protokoll festgelegt. */

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type DataVolumePaths } from '../../runtime/types.js';
-import { deleteServerFile } from './delete.js';
+import { ServerFileJob, deleteServerFile } from './delete.js';
 
 let wurzel: string;
 let volume: DataVolumePaths;
@@ -88,5 +88,53 @@ describe('deleteServerFile (Gefundener Punkt 105)', () => {
       deleteServerFile(volume, '/data/server.properties', { allowedRoot: path.dirname(wurzel) }),
     ).resolves.toBeUndefined();
     expect(await vorhanden('server.properties')).toBe(false);
+  });
+});
+
+describe('ensureDataDirectory (Gefundener Punkt 117)', () => {
+  /** Job mit echtem Datenverzeichnis; die Runtime wird dabei nicht gebraucht. */
+  function job(): ServerFileJob {
+    return new ServerFileJob({
+      runtime: null as unknown as ConstructorParameters<typeof ServerFileJob>[0]['runtime'],
+      dataDir: wurzel,
+    });
+  }
+
+  it('legt einen fehlenden Datenordner an', async () => {
+    const ziel = path.join(wurzel, 'neuer-server');
+
+    await job().ensureDataDirectory(ziel);
+
+    expect((await fs.stat(ziel)).isDirectory()).toBe(true);
+  });
+
+  it('laesst einen vorhandenen Ordner samt Inhalt in Ruhe', async () => {
+    const ziel = path.join(wurzel, 'welt');
+
+    await job().ensureDataDirectory(ziel);
+
+    // `welt/level.dat` stammt aus dem Aufbau oben und muss den Lauf ueberstehen.
+    expect(await vorhanden('welt', 'level.dat')).toBe(true);
+  });
+
+  it('lehnt einen Pfad ausserhalb des Datenverzeichnisses ab', async () => {
+    await expect(
+      job().ensureDataDirectory(path.join(wurzel, '..', 'woanders')),
+    ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+  });
+
+  it('vergibt nur dem eigenen Benutzer Rechte', async ({ skip }) => {
+    // Rechte-Bits gibt es so nur auf POSIX; auf Windows ignoriert der Kern den
+    // Modus, und der Homeserver ist Linux.
+    if (process.platform === 'win32') {
+      skip();
+
+      return;
+    }
+
+    const ziel = path.join(wurzel, 'rechte-server');
+    await job().ensureDataDirectory(ziel);
+
+    expect((await fs.stat(ziel)).mode & 0o777).toBe(0o700);
   });
 });

@@ -210,7 +210,21 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
     switch (command) {
       case 'CREATE': {
         const p = payload as CreatePayload;
-        const handle = await this.runtime.create(toContainerSpec(p, serverId));
+        const spec = toContainerSpec(p, serverId);
+
+        /*
+         * Datenordner anlegen, bevor Docker es tut (Gefundener Punkt 117): Eine
+         * fehlende Bind-Quelle erzeugt der Daemon als `root:root`, und ein
+         * Spielprozess, der nicht als root laeuft, koennte darin nicht
+         * schreiben. Legt ihn der Agent an, gehoert er dessen UID.
+         *
+         * Ohne Job-Modul bleibt es beim alten Verhalten - der Adapter laeuft
+         * dann ohne Dateisystem-Zugriff (Tests), und das Anlegen selbst soll
+         * daran nicht scheitern.
+         */
+        await this.jobs?.files.ensureDataDirectory(spec.dataVolume.hostPath);
+
+        const handle = await this.runtime.create(spec);
         return { containerId: handle.containerId, name: handle.name, warnings: handle.warnings };
       }
       case 'START': {
