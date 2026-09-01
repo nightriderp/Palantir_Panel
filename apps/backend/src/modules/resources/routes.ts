@@ -18,10 +18,11 @@
  * (`replyWithErrorCode`) – kein lokal geformtes Format.
  */
 
-import { type ApiResponse, ok } from '@palantir/contracts';
+import { type ApiResponse, type UserResourceLimitDto, ok } from '@palantir/contracts';
 import { idSchema, userResourceLimitsInputSchema } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { type AuditService, contextFrom, entryFor } from '../admin/index.js';
 import {
   RbacError,
   isRbacError,
@@ -48,6 +49,29 @@ export interface ResourceRoutesOptions {
    * antwortet mit `AUTH_REQUIRED`.
    */
   readonly resolveUserId?: (request: FastifyRequest) => string | null;
+  /**
+   * Audit-Log (B8) für Kontingent-Änderungen (WORK_STATUS.md, Gefundener Punkt
+   * 53).
+   *
+   * `user.limitsChanged` stand im Katalog, wurde aber nirgends geschrieben:
+   * Wer wem wie viel zuteilt, ist ein Eingriff in fremde Konten und gehört
+   * damit ins Log (Pflichtenheft §6) – genauso wie Sperren, Freischalten und
+   * Rollenvergabe, die B8 bereits protokolliert.
+   *
+   * Optional, damit Tests des Grundgerüsts die Routen ohne Admin-Modul bauen
+   * können; ohne Angabe wird nichts protokolliert.
+   */
+  readonly audit?: AuditService;
+}
+
+/** Grenzen als Metadaten des Log-Eintrags – Zahlen, keine personenbezogenen Daten. */
+function limitsMetadata(eintrag: UserResourceLimitDto): Record<string, unknown> {
+  return {
+    maxRamMb: eintrag.limits.maxRamMb,
+    maxCpuCores: eintrag.limits.maxCpuCores,
+    maxDiskMb: eintrag.limits.maxDiskMb,
+    maxConcurrentServers: eintrag.limits.maxConcurrentServers,
+  };
 }
 
 /**
@@ -82,7 +106,7 @@ async function handleError(reply: FastifyReply, error: unknown): Promise<void> {
 }
 
 export function registerResourceRoutes(options: ResourceRoutesOptions) {
-  const { resourceLimits } = options;
+  const { resourceLimits, audit } = options;
   const resolveUserId = options.resolveUserId ?? ((request) => request.authUser?.id ?? null);
 
   return async function resourceRoutes(app: FastifyInstance): Promise<void> {
@@ -147,8 +171,20 @@ export function registerResourceRoutes(options: ResourceRoutesOptions) {
         try {
           const { userId } = userIdParamsSchema.parse(request.params);
           const input = userResourceLimitsInputSchema.parse(request.body ?? {});
+          const gesetzt = await resourceLimits.setUserLimits(requireActor(request), userId, input);
 
-          return ok(await resourceLimits.setUserLimits(requireActor(request), userId, input));
+          // Erst nach dem Erfolg: Ein abgelehnter Versuch hat das Kontingent
+          // nicht geändert und gehört nicht als Änderung ins Log.
+          await audit?.record(
+            entryFor(contextFrom(request), {
+              action: 'user.limitsChanged',
+              targetType: 'user',
+              targetId: userId,
+              metadata: limitsMetadata(gesetzt),
+            }),
+          );
+
+          return ok(gesetzt);
         } catch (error) {
           await handleError(reply, error);
 
@@ -164,8 +200,19 @@ export function registerResourceRoutes(options: ResourceRoutesOptions) {
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { userId } = userIdParamsSchema.parse(request.params);
+          const geleert = await resourceLimits.clearUserLimits(requireActor(request), userId);
 
-          return ok(await resourceLimits.clearUserLimits(requireActor(request), userId));
+          await audit?.record(
+            entryFor(contextFrom(request), {
+              action: 'user.limitsChanged',
+              targetType: 'user',
+              targetId: userId,
+              // Ohne Grenzen: Das Log soll den Unterschied zum Setzen zeigen.
+              metadata: { ...limitsMetadata(geleert), cleared: true },
+            }),
+          );
+
+          return ok(geleert);
         } catch (error) {
           await handleError(reply, error);
 

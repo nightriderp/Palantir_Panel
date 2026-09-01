@@ -62,6 +62,9 @@ const emptyUsage = {
   totalServers: 0,
 } as const;
 
+/** Mitgeschriebene Audit-Einträge des jeweiligen Tests (Gefundener Punkt 53). */
+let auditEintraege: { action: string; targetId: string | null; metadata: unknown }[] = [];
+
 /** Fastify-Instanz mit den Kontingent-Routen und einem Fake-`ResourceService`. */
 async function buildApp(options?: {
   limits?: UserResourceLimits;
@@ -145,11 +148,25 @@ async function buildApp(options?: {
    * Die Konto-Id kommt im Betrieb aus der Sitzung (B1). Hier hängt sie am
    * selben Test-Kopf wie der Handelnde: kein Kopf, kein angemeldetes Konto.
    */
+  auditEintraege = [];
+
   await app.register(
     registerResourceRoutes({
       resourceLimits,
       resolveUserId: (request) =>
         typeof request.headers['x-test-actor'] === 'string' ? USER_ID : null,
+      audit: {
+        record: (eintrag) => {
+          auditEintraege.push({
+            action: eintrag.action,
+            targetId: eintrag.targetId ?? null,
+            metadata: eintrag.metadata,
+          });
+
+          return Promise.resolve();
+        },
+        list: () => Promise.reject(new Error('nicht benutzt')),
+      },
     }),
   );
   await app.ready();
@@ -347,6 +364,55 @@ describe('PUT /admin/users/:userId/limits', () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json<{ error: { code: string } }>().error.code).toBe('PERMISSION_DENIED');
+  });
+});
+
+describe('Audit-Log der Kontingent-Änderungen (Gefundener Punkt 53)', () => {
+  it('hält das Setzen mit den neuen Grenzen fest', async () => {
+    app = await buildApp();
+
+    await call(app, 'PUT', `/admin/users/${USER_ID}/limits`, {
+      actor: 'userAdmin',
+      payload: { maxRamMb: 16_384 },
+    });
+
+    expect(auditEintraege).toEqual([
+      {
+        action: 'user.limitsChanged',
+        targetId: USER_ID,
+        metadata: {
+          maxRamMb: 16_384,
+          maxCpuCores: null,
+          maxDiskMb: null,
+          maxConcurrentServers: null,
+        },
+      },
+    ]);
+  });
+
+  it('hält das Aufheben als solches fest', async () => {
+    app = await buildApp({
+      limits: { maxRamMb: 8192, maxCpuCores: 4, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+    });
+
+    await call(app, 'DELETE', `/admin/users/${USER_ID}/limits`, { actor: 'userAdmin' });
+
+    expect(auditEintraege[0]).toMatchObject({
+      action: 'user.limitsChanged',
+      targetId: USER_ID,
+      metadata: { cleared: true, maxRamMb: null },
+    });
+  });
+
+  it('schreibt nichts, wenn der Aufruf abgelehnt wird', async () => {
+    app = await buildApp();
+
+    await call(app, 'PUT', `/admin/users/${USER_ID}/limits`, {
+      actor: 'gast',
+      payload: { maxRamMb: 1024 },
+    });
+
+    expect(auditEintraege).toEqual([]);
   });
 });
 
