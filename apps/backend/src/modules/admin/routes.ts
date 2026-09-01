@@ -368,13 +368,13 @@ export async function registerAdminRoutes(
    * dem Einträge die aktive Tabelle verlassen, und er exportiert sie vorher
    * vollständig.
    *
-   * Geschützt mit `audit.view`: Der Permission-Katalog kennt für das Log keine
-   * zweite Berechtigung (Pflichtenheft §8), und eine neue einzuführen wäre eine
-   * Katalog-Erweiterung außerhalb dieses Arbeitspakets.
+   * Geschützt mit `audit.manage` (Gefundener Punkt 46): Wer das Log liest, soll
+   * es nicht allein deshalb auch verkürzen dürfen. `audit.view` reicht für die
+   * Ansicht, für diesen Lauf braucht es die eigene Berechtigung.
    */
   app.post(
     '/admin/audit/archive',
-    { preHandler: requirePermission('audit.view') },
+    { preHandler: requirePermission('audit.manage') },
     async (request, reply) =>
       handle(reply, async () => {
         if (!services.auditArchive) {

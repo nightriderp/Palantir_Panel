@@ -125,16 +125,28 @@ describe('Archivierung des Audit-Logs (Pflichtenheft §6)', () => {
     expect(result.archivedCount).toBe(1);
   });
 
-  it('lehnt den Lauf ohne audit.view ab', async () => {
+  it('lehnt den Lauf ohne audit.manage ab – auch mit audit.view', async () => {
     const repository = createFakeAuditRepository([alt]);
 
+    // Gefundener Punkt 46: Lesen berechtigt nicht zum Verkuerzen.
     await expect(
       archiveAuditEntries(
         { repository, writer: createRecordingWriter(), now: () => NOW },
-        actorWith('node.manage'),
+        actorWith('audit.view'),
       ),
     ).rejects.toThrow(AdminError);
 
     expect(repository.rows).toHaveLength(1);
+  });
+
+  it('laesst den Lauf mit audit.manage zu', async () => {
+    const repository = createFakeAuditRepository([alt]);
+
+    const result = await archiveAuditEntries(
+      { repository, writer: createRecordingWriter(), now: () => NOW },
+      actorWith('audit.manage'),
+    );
+
+    expect(result.archivedCount).toBe(1);
   });
 });
