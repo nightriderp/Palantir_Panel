@@ -23,6 +23,38 @@ export const BACKUP_STATUS_META: Record<BackupStatus, { label: string; tone: Ton
   failed: { label: 'Fehlgeschlagen', tone: 'danger' },
 };
 
+/**
+ * Kennzeichnung „Vollständig / Unklar" (WORK_STATUS.md, Gefundener Punkt 38).
+ *
+ * Ein bei gestopptem Server gezogenes Archiv ist in sich stimmig; eines aus dem
+ * laufenden Betrieb kann eine Welt mitten im Schreiben erwischt haben. Das ist
+ * kein Fehler, sondern eine Einschränkung – deshalb `neutral` statt `warning`
+ * und der Zusatz im Titel, statt die Zeile rot zu färben.
+ *
+ * `null` für Backups ohne Archiv: Was nicht fertig ist, ist weder vollständig
+ * noch unklar.
+ */
+export function consistencyMeta(
+  backup: BackupDto,
+): { label: string; title: string; tone: Tone } | null {
+  if (backup.status !== 'completed') {
+    return null;
+  }
+
+  return backup.containerStopped
+    ? {
+        label: 'Vollständig',
+        title: 'Der Server war beim Sichern gestoppt – das Archiv ist in sich stimmig.',
+        tone: 'success',
+      }
+    : {
+        label: 'Unklar',
+        title:
+          'Im laufenden Betrieb gesichert. Brauchbar, aber Dateien können mitten im Schreiben erfasst worden sein.',
+        tone: 'neutral',
+      };
+}
+
 /** Filter der Übersicht – „alle" plus die beiden fachlichen Typen aus §3.3. */
 export type BackupTypeFilter = 'all' | BackupType;
 

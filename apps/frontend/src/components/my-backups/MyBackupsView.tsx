@@ -39,6 +39,7 @@ import {
   BACKUP_STATUS_META,
   BACKUP_TYPE_LABELS,
   type BackupTypeFilter,
+  consistencyMeta,
   filterByType,
   retentionState,
   serversWithoutBackup,
@@ -226,6 +227,7 @@ export function MyBackupsView() {
               <ul className="flex flex-col gap-2">
                 {visible.map((backup) => {
                   const status = BACKUP_STATUS_META[backup.status];
+                  const consistency = consistencyMeta(backup);
                   const done = backup.status === 'completed';
 
                   return (
@@ -244,6 +246,12 @@ export function MyBackupsView() {
                           <Badge tone={status.tone} withDot pulse={backup.status === 'running'}>
                             {status.label}
                           </Badge>
+                          {/* „Vollständig / Unklar" (Gefundener Punkt 38). */}
+                          {consistency === null ? null : (
+                            <span title={consistency.title}>
+                              <Badge tone={consistency.tone}>{consistency.label}</Badge>
+                            </span>
+                          )}
 
                           <span className="ml-auto flex flex-wrap items-center gap-2">
                             {backup.permissions.canDownload && done ? (

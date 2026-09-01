@@ -1,6 +1,7 @@
 import { type BackupDto } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import {
+  consistencyMeta,
   filterByType,
   retentionState,
   serversWithoutBackup,
@@ -154,5 +155,27 @@ describe('serversWithoutBackup', () => {
 
   it('bleibt ohne Sitzung leer', () => {
     expect(serversWithoutBackup([server('s1', 'Eins')], [], null)).toEqual([]);
+  });
+});
+
+describe('Vollstaendig / Unklar (Gefundener Punkt 38)', () => {
+  it('nennt ein bei gestopptem Server gezogenes Archiv vollstaendig', () => {
+    const meta = consistencyMeta(makeBackup({ status: 'completed', containerStopped: true }));
+
+    expect(meta?.label).toBe('Vollständig');
+    expect(meta?.tone).toBe('success');
+  });
+
+  it('nennt ein im Betrieb gezogenes Archiv unklar - aber nicht fehlerhaft', () => {
+    const meta = consistencyMeta(makeBackup({ status: 'completed', containerStopped: false }));
+
+    expect(meta?.label).toBe('Unklar');
+    // Kein Fehler, nur eine Einschraenkung.
+    expect(meta?.tone).toBe('neutral');
+  });
+
+  it('sagt zu einem unfertigen Backup nichts', () => {
+    expect(consistencyMeta(makeBackup({ status: 'running' }))).toBeNull();
+    expect(consistencyMeta(makeBackup({ status: 'failed' }))).toBeNull();
   });
 });
