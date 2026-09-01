@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { drizzlePortRangeSeedStore, seedDefaultPortRanges } from '../modules/admin/ports-seed.js';
 import { createDrizzleRoleRepository, seedRoles } from '../modules/rbac/index.js';
 import {
   drizzleNotificationRuleSeedStore,
@@ -46,6 +47,22 @@ async function main(): Promise<void> {
     node.created
       ? `Node angelegt: ${node.id} (${env.WIREGUARD_HOME_IP})`
       : `Node bereits vorhanden (unverändert): ${node.id}`,
+  );
+
+  /*
+   * Oeffentlicher Port-Bereich (B8, Gefundener Punkt 58). Ohne ihn scheitert
+   * das Anlegen des ersten Servers mit PORT_POOL_EXHAUSTED; die Grenzen stehen
+   * ohnehin in der zentralen .env, weil frps und frpc sie brauchen.
+   */
+  const ports = await seedDefaultPortRanges(drizzlePortRangeSeedStore(db), {
+    startPort: env.GAME_PORT_RANGE_START,
+    endPort: env.GAME_PORT_RANGE_END,
+  });
+
+  console.log(
+    ports.existing
+      ? 'Port-Bereich bereits vorhanden (unverändert).'
+      : `Port-Bereich angelegt: ${String(env.GAME_PORT_RANGE_START)}-${String(env.GAME_PORT_RANGE_END)} (${ports.created.join(', ')})`,
   );
 
   // Benachrichtigungs-Regeln (R1, Gefundener Punkt 82). Ohne sie loest kein
