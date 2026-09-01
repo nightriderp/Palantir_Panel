@@ -310,7 +310,7 @@ export function SettingsTab({
           <TextField
             label="Startparameter"
             value={draft.startupParameters}
-            hint="Werden beim Start an den Server übergeben."
+            hint="Werden dem Server beim Start als PALANTIR_STARTUP_PARAMETERS übergeben. Leer lassen, wenn unsicher."
             onChange={(value) => setDraft((current) => ({ ...current, startupParameters: value }))}
           />
 

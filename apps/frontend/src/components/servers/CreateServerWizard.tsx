@@ -359,7 +359,7 @@ export function CreateServerWizard() {
             <TextField
               label="Startparameter"
               placeholder="z. B. -Xmx4G"
-              hint="Werden beim Start an den Server übergeben. Leer lassen, wenn unsicher."
+              hint="Werden dem Server beim Start als PALANTIR_STARTUP_PARAMETERS übergeben. Leer lassen, wenn unsicher."
               value={state.startupParameters}
               onChange={(value) => patch({ startupParameters: value })}
             />
