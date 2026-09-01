@@ -275,6 +275,9 @@ services:
       # Container gilt der Einhängepunkt. So bleibt der Ablageort auf dem Host
       # frei wählbar, ohne dass die Einhängung nachgezogen werden muss.
       AUDIT_ARCHIVE_DIR: /data/audit-archive
+      # Dasselbe für die Sicherungen der Panel-Datenbank (Mockup-Abgleich 12.5):
+      # in der .env steht der Pfad des HOSTS, hier gilt der Einhängepunkt.
+      PANEL_BACKUP_DIR: /data/panel-backups
     volumes:
       # Archive des Audit-Logs (Pflichtenheft §6). Ohne diese Einhängung
       # schriebe der Archivierungslauf in das Dateisystem des Containers - und
@@ -282,6 +285,12 @@ services:
       # Das Verzeichnis muss dem Benutzer `node` (UID 1000) aus dem Image
       # gehören (Details standen in SETUP.md, nicht mehr im Repo).
       - ../../data/audit-archive:/data/audit-archive
+      # Abzüge der Panel-Datenbank. Ohne diese Einhängung läge die einzige
+      # Sicherung der Instanz im Dateisystem des Containers und wäre beim
+      # nächsten Deployment weg - also genau dann verschwunden, wenn man sie
+      # braucht. Ebenfalls dem Benutzer `node` (UID 1000) übereignen, sonst
+      # scheitert `pg_dump` am Schreiben.
+      - ../../data/panel-backups:/data/panel-backups
     ports:
       # Der Agent-Kanal (WebSocket `/agent`, Pflichtenheft §2.2) läuft NICHT
       # über Traefik, sondern durch den WireGuard-Tunnel. Dafür muss der Port

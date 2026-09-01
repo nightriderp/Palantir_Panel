@@ -71,6 +71,26 @@ COPY --from=build /app/packages/validation/dist ./packages/validation/dist
 # muss er auf derselben Ebene wie `dist` liegen.
 COPY apps/backend/drizzle ./apps/backend/drizzle
 
+# `pg_dump` fuer die Sicherung der Panel-Datenbank (Mockup-Abgleich 12.5).
+#
+# Die Fassung muss zur Datenbank passen: PostgreSQL 18 lehnt einen Abzug durch
+# ein aelteres `pg_dump` ab, statt eine halbe Datei zu schreiben. Bookworm
+# liefert von sich aus nur 15 - deshalb das PGDG-Repository, und deshalb steht
+# die Fassung hier als Zahl und nicht als `postgresql-client` ohne Suffix.
+#
+# Nur in der Laufzeitstufe: Die Bau-Stufen brauchen kein `pg_dump`, und in
+# `base` wuerde es jede von ihnen mitschleppen.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl ca-certificates \
+  && install -d /etc/apt/keyrings \
+  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    -o /etc/apt/keyrings/pgdg.asc \
+  && echo 'deb [signed-by=/etc/apt/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' \
+    > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client-18 \
+  && rm -rf /var/lib/apt/lists/*
+
 # Das Node-Basisimage bringt den unprivilegierten Benutzer `node` bereits mit.
 USER node
 
