@@ -28,6 +28,13 @@ export interface ServerDtoContext {
   readonly viewerId: string | null;
   readonly viewerMemberLevel: ServerMemberLevel | null;
   readonly memberCount: number;
+  /**
+   * Hat der Aufrufer den Server angeheftet (Gefundener Punkt 50)?
+   *
+   * Voreinstellung `false`: Aufrufer ohne Konto - etwa der Live-Kanal beim
+   * Nachreichen eines Zustands - heften nichts an.
+   */
+  readonly pinned?: boolean;
   readonly registry: GameRegistry;
   readonly baseDomain: string;
   readonly recentCrashCount: number;
@@ -102,6 +109,7 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     pendingRestart: server.restartRequired,
     updateAvailable: updateAvailable(server.imageRef, definition.dockerImage),
     memberCount: context.memberCount,
+    pinned: context.pinned ?? false,
     lastStartedAt: server.lastStartedAt,
     createdAt: server.createdAt,
     permissions,
