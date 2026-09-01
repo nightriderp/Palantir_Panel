@@ -106,6 +106,16 @@ export interface ServerLiveStats {
    */
   networkRxBytes: number | null;
   networkTxBytes: number | null;
+  /**
+   * Empfangene und gesendete Pakete seit dem letzten Start (Mockup-Abgleich 4.8).
+   *
+   * Optional und zusaetzlich zu den Byte-Zaehlern: Bytes sagen, wie viel
+   * geflossen ist, Pakete sagen, wie oft – bei einem Gameserver ist das der
+   * Unterschied zwischen "viel Verkehr" und "viele Spieler". Fehlt das Feld,
+   * meldet die Runtime es nicht.
+   */
+  networkRxPackets?: number | null;
+  networkTxPackets?: number | null;
   /** ISO-8601-Zeitstempel der Messung. */
   updatedAt: string;
 }
