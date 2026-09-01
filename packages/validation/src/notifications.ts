@@ -9,6 +9,7 @@
  */
 
 import {
+  MUTABLE_NOTIFICATION_EVENTS,
   NOTIFIABLE_EVENTS,
   NOTIFICATION_CHANNEL_TYPES,
   NOTIFICATION_RECIPIENT_SCOPES,
@@ -152,6 +153,20 @@ export const notificationQuerySchema = z.object({
 });
 
 /**
+ * Persönliche Zustell-Einstellung eines Kontos (Gefundener Punkt 93).
+ *
+ * Vollständige Ersetzung statt Teil-Update: Die Oberfläche zeigt ohnehin alle
+ * Schalter auf einmal, und zwei Browser, die gleichzeitig je einen Schalter
+ * umlegen, würden sich bei einem Teil-Update gegenseitig überraschen.
+ *
+ * `announcement.published` fehlt bewusst in der Auswahl – eine Ankündigung ist
+ * die Mitteilung des Betreibers an alle (siehe `MUTABLE_NOTIFICATION_EVENTS`).
+ */
+export const notificationPreferencesInputSchema = z.object({
+  mutedEvents: z.array(z.enum(MUTABLE_NOTIFICATION_EVENTS)).max(MUTABLE_NOTIFICATION_EVENTS.length),
+});
+
+/**
  * Mehrere Meldungen auf einmal als gelesen markieren (F6 → Backend).
  *
  * Ohne `ids` gilt der Vorgang für **alle** ungelesenen Meldungen des Kontos –
@@ -222,6 +237,7 @@ export type CreateNotificationRuleInput = z.infer<typeof createNotificationRuleI
 export type UpdateNotificationRuleInput = z.infer<typeof updateNotificationRuleInputSchema>;
 export type NotificationQuery = z.infer<typeof notificationQuerySchema>;
 export type MarkNotificationsReadInput = z.infer<typeof markNotificationsReadInputSchema>;
+export type NotificationPreferencesInput = z.infer<typeof notificationPreferencesInputSchema>;
 export type CreateAnnouncementInput = z.infer<typeof createAnnouncementInputSchema>;
 export type UpdateAnnouncementInput = z.infer<typeof updateAnnouncementInputSchema>;
 export type NotificationClientFrameInput = z.infer<typeof notificationClientFrameSchema>;
