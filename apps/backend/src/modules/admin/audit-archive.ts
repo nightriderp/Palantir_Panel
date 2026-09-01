@@ -122,17 +122,17 @@ export interface AuditArchiveDependencies {
 /**
  * Führt einen Archivierungslauf aus.
  *
- * @param actor Wer den Lauf anstößt. `audit.view` ist die einzige Permission,
- *   die der Katalog für das Log kennt (Pflichtenheft §8); eine eigene
- *   `audit.manage` wäre eine Katalog-Erweiterung, die nicht zu diesem
- *   Arbeitspaket gehört. `null` steht für den Aufruf über das Kommando
- *   `audit:archive`, der auf der VPS bereits Systemzugang voraussetzt.
+ * @param actor Wer den Lauf anstößt. Verlangt `audit.manage` (Gefundener Punkt
+ *   46) – nicht `audit.view`: Lesen und Verkürzen sind zwei verschiedene Dinge,
+ *   und dieser Lauf ist der einzige Weg, auf dem Einträge die Tabelle verlassen.
+ *   `null` steht für den Aufruf über das Kommando `audit:archive`, der auf der
+ *   VPS bereits Systemzugang voraussetzt.
  */
 export async function archiveAuditEntries(
   deps: AuditArchiveDependencies,
   actor: PermissionActor | null,
 ): Promise<AuditArchiveResultDto> {
-  if (actor && !hasPermission(actor, 'audit.view')) {
+  if (actor && !hasPermission(actor, 'audit.manage')) {
     throw new AdminError('PERMISSION_DENIED');
   }
 
