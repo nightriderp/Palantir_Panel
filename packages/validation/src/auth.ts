@@ -290,6 +290,28 @@ export const updateProfileInputSchema = z.object({
 });
 
 /**
+ * Konto durch einen Administrator anlegen (Mockup-Abgleich 12.1.1).
+ *
+ * Dieselben Regeln für Name und Passwort wie bei der Selbstregistrierung – ein
+ * vom Admin angelegtes Konto ist kein zweitklassiges. Ohne ALTCHA: Den Nachweis
+ * legt ab, wer sich selbst registriert, nicht ein angemeldeter Administrator.
+ *
+ * `roleIds` leer heißt „Standardrolle" – dieselbe, die eine Freigabe über die
+ * Warteliste vergibt. Ein so angelegtes Konto ist sofort freigeschaltet.
+ */
+export const createUserInputSchema = z.object({
+  username: usernameSchema,
+  password: passwordSchema,
+  displayName: displayNameSchema.optional(),
+  roleIds: z.array(idSchema).optional(),
+});
+
+/** Instanz-Einstellungen setzen (Mockup-Abgleich 12.1.1). */
+export const instanceSettingsInputSchema = z.object({
+  selfRegistrationEnabled: z.boolean(),
+});
+
+/**
  * Selbstständige Konto-Löschung (Lastenheft §3.1).
  *
  * Der Anmeldename muss zur Bestätigung abgetippt werden; bei Konten mit
@@ -341,3 +363,5 @@ export type ConfirmTwoFactorInput = z.infer<typeof confirmTwoFactorInputSchema>;
 export type DisableTwoFactorInput = z.infer<typeof disableTwoFactorInputSchema>;
 export type DeleteAccountInput = z.infer<typeof deleteAccountInputSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileInputSchema>;
+export type CreateUserInput = z.infer<typeof createUserInputSchema>;
+export type InstanceSettingsInput = z.infer<typeof instanceSettingsInputSchema>;
