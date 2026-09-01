@@ -98,6 +98,12 @@ export interface RegistrationRequestQuota {
   servers: ResourceQuotaSlot;
 }
 
+/** Eine Rolle des Kontos mit Id und Name (Gefundener Punkt 90). */
+export interface RegistrationRequestRole {
+  id: string;
+  name: string;
+}
+
 export interface RegistrationRequestDto {
   /** Id des wartenden Kontos – die Warteliste ist eine Sicht auf `User`, keine eigene Entität. */
   userId: string;
@@ -108,6 +114,25 @@ export interface RegistrationRequestDto {
   profiles: LinkedAccountProfileDto[];
   /** Namen der aktuell zugewiesenen Rollen – bei `pending` nur „Gast". */
   roleNames: string[];
+  /**
+   * Dieselben Rollen **mit Id** (WORK_STATUS.md, Gefundener Punkt 90).
+   *
+   * `roleNames` bleibt für die reine Anzeige. Die Oberfläche musste die Namen
+   * bisher über `/admin/roles` auf Ids zurückrechnen, um im Rollen-Dialog die
+   * richtigen Häkchen zu setzen – das geht schief, sobald zwei Rollen denselben
+   * Namen tragen oder eine umbenannt wird.
+   *
+   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3).
+   */
+  roles?: RegistrationRequestRole[];
+  /**
+   * Anzahl der Server, die dieses Konto besitzt (Gefundener Punkt 90).
+   *
+   * Die Oberfläche hat dafür bisher die ganze Serverliste geholt und im Browser
+   * nach `ownerId` gefiltert – das zeigt nur, was der Aufrufer ohnehin sehen
+   * darf, und lädt bei vielen Servern viel für eine einzige Zahl.
+   */
+  serverCount?: number;
   /** Registrierungszeitpunkt als ISO-8601 (`User.createdAt`). */
   registeredAt: string;
   /**
