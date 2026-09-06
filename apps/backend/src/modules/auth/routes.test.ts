@@ -114,7 +114,10 @@ async function registerAccount(
 
 beforeEach(async () => {
   repository = createFakeAuthRepository();
-  roles = createFakeRoleRepository([{ name: 'Admin', permissions: ['user.manage'] }]);
+  roles = createFakeRoleRepository([
+    { name: 'Admin', permissions: ['user.manage'] },
+    { name: 'Vollverwalter', permissions: ['user.manage', 'role.manage'] },
+  ]);
   app = await buildServer({
     auth: {
       repository,
@@ -604,6 +607,98 @@ describe('Admin-Eingriffe hinter dem RBAC-Guard aus B2', () => {
     expect(
       response.json<{ data: { temporaryPassword: string } }>().data.temporaryPassword.length,
     ).toBeGreaterThan(12);
+  });
+
+  // -- Rangregel (Fundpunkte 119 und 124) ----------------------------------
+
+  async function adminWithRole(roleName: string): Promise<ReturnType<typeof registerAccount>> {
+    const admin = await registerAccount(`admin-${roleName.toLowerCase()}`);
+    const role = roles.roles.find((candidate) => candidate.name === roleName);
+    await roles.assignToUser(admin.account.id, role!.id);
+
+    return admin;
+  }
+
+  it('lässt user.manage allein kein Konto mit Verwaltungsrolle anlegen (Fundpunkt 119)', async () => {
+    const admin = await adminWithRole('Admin');
+    const adminRole = roles.roles.find((role) => role.name === 'Admin');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/admin/users',
+      headers: {
+        cookie: cookieHeader(admin.jar),
+        [CSRF_HEADER_NAME]: admin.jar[CSRF_COOKIE_NAME] ?? '',
+      },
+      payload: { username: 'neu', password: PASSWORD, roleIds: [adminRole!.id] },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('PERMISSION_DENIED');
+    expect(repository.users.some((user) => user.username === 'neu')).toBe(false);
+  });
+
+  it('legt mit role.manage auch Konten mit Verwaltungsrolle an', async () => {
+    const admin = await adminWithRole('Vollverwalter');
+    const adminRole = roles.roles.find((role) => role.name === 'Admin');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/admin/users',
+      headers: {
+        cookie: cookieHeader(admin.jar),
+        [CSRF_HEADER_NAME]: admin.jar[CSRF_COOKIE_NAME] ?? '',
+      },
+      payload: { username: 'neu', password: PASSWORD, roleIds: [adminRole!.id] },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(
+      response.json<{ data: { account: AccountDto } }>().data.account.roles.map((r) => r.name),
+    ).toEqual(['Admin']);
+  });
+
+  it('schützt das Owner-Konto vor Passwort-Reset und 2FA-Abschaltung (Fundpunkt 124)', async () => {
+    const owner = await registerAccount('owner');
+    await repository.setOwner(owner.account.id);
+    const admin = await adminWithRole('Vollverwalter');
+    const headers = {
+      cookie: cookieHeader(admin.jar),
+      [CSRF_HEADER_NAME]: admin.jar[CSRF_COOKIE_NAME] ?? '',
+    };
+
+    const reset = await app.inject({
+      method: 'POST',
+      url: `/auth/admin/users/${owner.account.id}/password-reset`,
+      headers,
+    });
+    expect(reset.statusCode).toBe(403);
+    expect(reset.json<{ error: { code: string } }>().error.code).toBe('AUTH_OWNER_PROTECTED');
+
+    const twoFactor = await app.inject({
+      method: 'DELETE',
+      url: `/auth/admin/users/${owner.account.id}/2fa`,
+      headers,
+    });
+    expect(twoFactor.statusCode).toBe(403);
+    expect(twoFactor.json<{ error: { code: string } }>().error.code).toBe('AUTH_OWNER_PROTECTED');
+  });
+
+  it('lässt user.manage allein kein Verwaltungskonto zurücksetzen (Fundpunkt 124)', async () => {
+    const target = await adminWithRole('Vollverwalter');
+    const admin = await adminWithRole('Admin');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/auth/admin/users/${target.account.id}/password-reset`,
+      headers: {
+        cookie: cookieHeader(admin.jar),
+        [CSRF_HEADER_NAME]: admin.jar[CSRF_COOKIE_NAME] ?? '',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('PERMISSION_DENIED');
   });
 });
 

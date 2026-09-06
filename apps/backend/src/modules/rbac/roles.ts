@@ -163,8 +163,12 @@ function requireRoleRead(actor: PermissionActor): void {
  * Eine Rolle gilt als privilegiert, wenn ihr Bündel selbst die Rollen- oder
  * Nutzerverwaltung verleiht – wer sie zuweisen kann, kann darüber weitere
  * Rechte (bis zum vollen Katalog) vergeben.
+ *
+ * Exportiert, weil B1 dieselbe Regel für die Admin-Eingriffe an Konten braucht
+ * (Fundpunkte 119 und 124): Konten anlegen mit Rollen, Passwort-Reset und
+ * 2FA-Abschaltung dürfen die Schranke nicht auf einem zweiten Weg umgehen.
  */
-function grantsAdministration(role: RoleRecord): boolean {
+export function grantsAdministration(role: RoleRecord): boolean {
   return role.permissions.some(
     (permission) => permission === 'role.manage' || permission === 'user.manage',
   );

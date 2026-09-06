@@ -44,6 +44,7 @@ export {
   type UpdateRoleData,
   SEED_ROLES,
   createRoleService,
+  grantsAdministration,
   seedRoles,
 } from './roles.js';
 

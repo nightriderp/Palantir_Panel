@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { GUEST_ROLE_NAME } from '@palantir/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { buildPermissionActor } from '../rbac/index.js';
 import { isAuthError } from './errors.js';
 import { AuthService, sanitizeDisplayName } from './service.js';
 import {
@@ -18,6 +20,16 @@ const TWO_FACTOR_TTL_MS = 5 * 60_000;
 const JWT_SECRET = 'test-jwt-secret';
 const PASSWORD = 'ein-sehr-langes-passwort';
 const ALTCHA = 'nachweis-wird-in-der-route-geprueft';
+/** Konten-Admin ohne `role.manage` – darf keine Verwaltungsrolle vergeben oder anfassen. */
+const KONTEN_ADMIN = buildPermissionActor({
+  isOwner: false,
+  roles: [{ grantedPermissions: ['user.manage'] }],
+});
+/** Voll-Admin mit `role.manage` – die Rangregel lässt ihn durch. */
+const VOLL_ADMIN = buildPermissionActor({
+  isOwner: false,
+  roles: [{ grantedPermissions: ['user.manage', 'role.manage'] }],
+});
 
 let repository: FakeAuthRepository;
 let roles: FakeRoleRepository;
@@ -349,7 +361,7 @@ describe('2FA (Pflichtenheft §7)', () => {
 
   it('lässt sich vom Admin abschalten – der einzige Weg an einer verlorenen 2FA vorbei', async () => {
     await enableTwoFactor();
-    await service.disableTwoFactorAsAdmin(userId);
+    await service.disableTwoFactorAsAdmin(VOLL_ADMIN, userId);
 
     const account = await service.loadAccount(repository.users[0]!);
     expect(account.twoFactorEnabled).toBe(false);
@@ -734,7 +746,7 @@ describe('Passwortwechsel und Admin-Reset (Lastenheft §3.1)', () => {
   });
 
   it('erzeugt beim Admin-Reset ein Einmal-Passwort und sperrt das Konto neu', async () => {
-    const result = await service.resetPasswordAsAdmin(userId);
+    const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, userId);
 
     expect(result.temporaryPassword.length).toBeGreaterThan(12);
     // Das Klartext-Passwort steht nirgends in der Ablage.
@@ -751,7 +763,7 @@ describe('Passwortwechsel und Admin-Reset (Lastenheft §3.1)', () => {
   });
 
   it('räumt das Wechsel-Kennzeichen nach dem Passwortwechsel ab', async () => {
-    const result = await service.resetPasswordAsAdmin(userId);
+    const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, userId);
     const outcome = await service.login(
       { username: 'spieler', password: result.temporaryPassword, altcha: ALTCHA },
       CONTEXT,
@@ -772,7 +784,7 @@ describe('Passwortwechsel und Admin-Reset (Lastenheft §3.1)', () => {
 
   it('meldet ein unbekanntes Konto beim Reset', async () => {
     await expectErrorCode(
-      service.resetPasswordAsAdmin('00000000-0000-4000-8000-000000000000'),
+      service.resetPasswordAsAdmin(VOLL_ADMIN, '00000000-0000-4000-8000-000000000000'),
       'USER_NOT_FOUND',
     );
   });
@@ -803,6 +815,7 @@ describe('Selbstregistrierung und Konto-Anlage (Mockup-Abgleich 12.1.1)', () => 
     build();
 
     const account = await service.createUserAsAdmin(
+      VOLL_ADMIN,
       { username: 'vom-admin', password: PASSWORD },
       [],
     );
@@ -817,6 +830,7 @@ describe('Selbstregistrierung und Konto-Anlage (Mockup-Abgleich 12.1.1)', () => 
     build({ selfRegistration: () => Promise.resolve(false) });
 
     const account = await service.createUserAsAdmin(
+      VOLL_ADMIN,
       { username: 'vom-admin', password: PASSWORD },
       [],
     );
@@ -829,9 +843,108 @@ describe('Selbstregistrierung und Konto-Anlage (Mockup-Abgleich 12.1.1)', () => 
     await service.register({ username: 'spieler', password: PASSWORD, altcha: ALTCHA }, CONTEXT);
 
     await expectErrorCode(
-      service.createUserAsAdmin({ username: 'spieler', password: PASSWORD }, []),
+      service.createUserAsAdmin(VOLL_ADMIN, { username: 'spieler', password: PASSWORD }, []),
       'AUTH_USERNAME_TAKEN',
     );
+  });
+});
+
+describe('Rangschutz der Admin-Eingriffe (Fundpunkte 119 und 124)', () => {
+  let adminRolleId: string;
+
+  beforeEach(() => {
+    build();
+    adminRolleId = randomUUID();
+    roles.roles.push({
+      id: adminRolleId,
+      name: 'Admin',
+      description: null,
+      permissions: ['user.manage', 'role.manage'],
+      isProtected: false,
+      createdAt: now,
+    });
+  });
+
+  it('lässt user.manage allein keine Rolle mit Verwaltungsrechten vergeben', async () => {
+    await expectErrorCode(
+      service.createUserAsAdmin(KONTEN_ADMIN, { username: 'neu', password: PASSWORD }, [
+        adminRolleId,
+      ]),
+      'PERMISSION_DENIED',
+    );
+
+    // Die Prüfung läuft vor dem Anlegen: kein halbes Konto in der Ablage.
+    expect(repository.users.some((user) => user.username === 'neu')).toBe(false);
+  });
+
+  it('vergibt Verwaltungsrollen, wenn der Aufrufer role.manage besitzt', async () => {
+    const account = await service.createUserAsAdmin(
+      VOLL_ADMIN,
+      { username: 'neu', password: PASSWORD },
+      [adminRolleId],
+    );
+
+    expect(account.roles.map((rolle) => rolle.name)).toEqual(['Admin']);
+  });
+
+  it('meldet eine unbekannte Rolle als ROLE_NOT_FOUND statt als Datenbankfehler', async () => {
+    await expectErrorCode(
+      service.createUserAsAdmin(VOLL_ADMIN, { username: 'neu', password: PASSWORD }, [
+        '00000000-0000-4000-8000-000000000000',
+      ]),
+      'ROLE_NOT_FOUND',
+    );
+    expect(repository.users.some((user) => user.username === 'neu')).toBe(false);
+  });
+
+  it('schützt das Owner-Konto vor Passwort-Reset und 2FA-Abschaltung', async () => {
+    const { account } = await service.register(
+      { username: 'owner', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    await repository.setOwner(account.id);
+
+    await expectErrorCode(
+      service.resetPasswordAsAdmin(VOLL_ADMIN, account.id),
+      'AUTH_OWNER_PROTECTED',
+    );
+    await expectErrorCode(
+      service.disableTwoFactorAsAdmin(VOLL_ADMIN, account.id),
+      'AUTH_OWNER_PROTECTED',
+    );
+    // Der Reset ist nie gelaufen: die Sitzung der Registrierung lebt noch.
+    expect(repository.sessions.every((session) => session.revokedAt === null)).toBe(true);
+  });
+
+  it('lässt user.manage allein kein Konto mit Verwaltungsrolle anfassen', async () => {
+    const { account } = await service.register(
+      { username: 'verwalter', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    await roles.assignToUser(account.id, adminRolleId);
+
+    await expectErrorCode(
+      service.resetPasswordAsAdmin(KONTEN_ADMIN, account.id),
+      'PERMISSION_DENIED',
+    );
+    await expectErrorCode(
+      service.disableTwoFactorAsAdmin(KONTEN_ADMIN, account.id),
+      'PERMISSION_DENIED',
+    );
+
+    // Mit role.manage geht es – dieselbe Regel wie beim Zuweisen der Rolle.
+    const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, account.id);
+    expect(result.temporaryPassword.length).toBeGreaterThan(12);
+  });
+
+  it('lässt user.manage allein gewöhnliche Konten weiterhin zurücksetzen', async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+
+    const result = await service.resetPasswordAsAdmin(KONTEN_ADMIN, account.id);
+    expect(result.userId).toBe(account.id);
   });
 });
 

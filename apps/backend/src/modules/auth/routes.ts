@@ -37,7 +37,7 @@ import {
 } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
-import { replyWithErrorCode, requirePermission } from '../rbac/index.js';
+import { replyWithErrorCode, requireActor, requirePermission } from '../rbac/index.js';
 import {
   type AltchaOptions,
   type AltchaSolutionLedger,
@@ -775,7 +775,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
   });
 
   // -- Admin-Eingriffe (Lastenheft §3.1) ------------------------------------
-  // Beide verlangen `user.manage`; geprüft über den Guard aus B2.
+  // Alle verlangen `user.manage`; geprüft über den Guard aus B2. Der Actor geht
+  // an den Service weiter, weil dort die Rangregel greift: `user.manage` allein
+  // vergibt keine Verwaltungsrolle und fasst kein Verwaltungs- oder Owner-Konto
+  // an (Fundpunkte 119 und 124).
 
   /**
    * Konto anlegen (Mockup-Abgleich 12.1.1).
@@ -790,7 +793,11 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     async (request, reply) => {
       await handle(reply, async () => {
         const input = parseBody(createUserInputSchema, request.body);
-        const account: AccountDto = await service.createUserAsAdmin(input, input.roleIds ?? []);
+        const account: AccountDto = await service.createUserAsAdmin(
+          requireActor(request),
+          input,
+          input.roleIds ?? [],
+        );
 
         await reply.status(201).send(ok({ account }));
       });
@@ -803,6 +810,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     async (request, reply) => {
       await handle(reply, async () => {
         const result: PasswordResetResultDto = await service.resetPasswordAsAdmin(
+          requireActor(request),
           request.params.userId,
         );
 
@@ -816,7 +824,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     { preHandler: requirePermission('user.manage') },
     async (request, reply) => {
       await handle(reply, async () => {
-        await service.disableTwoFactorAsAdmin(request.params.userId);
+        await service.disableTwoFactorAsAdmin(requireActor(request), request.params.userId);
 
         await reply.send(ok(null));
       });
