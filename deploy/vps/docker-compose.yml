@@ -292,13 +292,17 @@ services:
       # scheitert `pg_dump` am Schreiben.
       - ../../data/panel-backups:/data/panel-backups
     ports:
-      # Der Agent-Kanal (WebSocket `/agent`, Pflichtenheft §2.2) läuft NICHT
-      # über Traefik, sondern durch den WireGuard-Tunnel. Dafür muss der Port
-      # auf dem Host erreichbar sein - aber ausschließlich an der Tunnel-Adresse.
+      # Der Agent-Kanal (WebSocket `/agent`, Pflichtenheft §2.2) erreicht das
+      # Backend ausschließlich über diesen Host-Port, gebunden an die
+      # WireGuard-Adresse - also durch den Tunnel. Traefik lässt `/agent` in
+      # seiner Router-Regel bewusst aus (Labels unten, Fundpunkt 121): Ohne die
+      # Ausnahme wäre der Kanal unter `https://api.<Domain>/agent` aus dem
+      # Internet erreichbar, geschützt nur noch durch das Pre-Shared-Token. Als
+      # zweite Schicht prüft das Backend die Quelladresse gegen
+      # `AGENT_SOURCE_ALLOWLIST` (.env.example Abschnitt 8).
       # Die Angabe der IP ist hier sicherheitsrelevant: ohne sie bindet Docker
-      # an 0.0.0.0 und stellt den Agent-Kanal ins offene Internet, wo ihn nur
-      # noch das Pre-Shared-Token schützt. Alles andere (Web, API) erreicht das
-      # Backend weiterhin allein über Traefik.
+      # an 0.0.0.0 und stellt den Agent-Kanal ins offene Internet. Alles andere
+      # (Web, API) erreicht das Backend weiterhin allein über Traefik.
       #
       # Voraussetzung: `wg-quick@wg0` läuft, bevor Docker den Container startet -
       # sonst existiert die Adresse noch nicht und die Bindung scheitert. Auf der
@@ -306,7 +310,11 @@ services:
       - '${WIREGUARD_VPS_IP:-10.10.0.1}:4000:4000'
     labels:
       - 'traefik.enable=true'
-      - 'traefik.http.routers.palantir-api.rule=Host(`api.${PALANTIR_DOMAIN}`)'
+      # `/agent` bewusst ausgenommen (Fundpunkt 121): Der Agent-Kanal läuft nur
+      # über den Host-Port an der Tunnel-Adresse (siehe `ports` oben). Traefik
+      # antwortet auf `/agent` mit 404, statt den WebSocket ans Backend
+      # durchzureichen. Die Negation `!` ist Traefik-v3-Syntax (TRAEFIK_VERSION).
+      - 'traefik.http.routers.palantir-api.rule=Host(`api.${PALANTIR_DOMAIN}`) && !PathPrefix(`/agent`)'
       - 'traefik.http.routers.palantir-api.entrypoints=websecure'
       - 'traefik.http.routers.palantir-api.tls.certresolver=letsencrypt'
       - 'traefik.http.services.palantir-api.loadbalancer.server.port=4000'

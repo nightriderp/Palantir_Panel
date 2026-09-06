@@ -2,6 +2,10 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
+import {
+  type SourceAllowlist,
+  parseSourceAllowlist,
+} from '../modules/server-orchestration/source-allowlist.js';
 
 /**
  * Zentrale `.env` im Repo-Root (Pflichtenheft §12.1): dieselbe Datei wird auf
@@ -74,6 +78,30 @@ const envSchema = z.object({
    * wäre vollständiger Zugriff auf den Homeserver (§18).
    */
   AGENT_TOKEN: optionalEnvString(),
+  /**
+   * Zulässige Quelladressen des Agent-Kanals `/agent` (Fundpunkt 121, W0-2).
+   *
+   * Kommagetrennte IPv4-/IPv6-Adressen oder CIDR-Netze, z. B.
+   * `10.10.0.0/24,127.0.0.1`. Zweite Schicht hinter dem Deployment: Traefik
+   * lässt `/agent` aus und der Host-Port hängt an der Tunnel-Adresse – fehlt
+   * aber das Label oder bindet der Port an `0.0.0.0`, bliebe sonst nur noch
+   * das Token als Hürde. Leer = keine Prüfung, damit Entwicklungsumgebungen
+   * und bestehende Installationen unverändert laufen. Ein ungültiger Eintrag
+   * verhindert den Start: Eine Liste, die still weniger prüft als
+   * hingeschrieben, wäre schlimmer als gar keine.
+   */
+  AGENT_SOURCE_ALLOWLIST: optionalEnvString().transform((value, ctx): SourceAllowlist => {
+    try {
+      return parseSourceAllowlist(value);
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: error instanceof Error ? error.message : String(error),
+      });
+
+      return z.NEVER;
+    }
+  }),
   /** Frist, in der ein Agent-Befehl beantwortet sein muss (§5.3). */
   AGENT_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   /**

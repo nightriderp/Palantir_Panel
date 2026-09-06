@@ -31,11 +31,21 @@ import {
   bearerTokenFrom,
   isAuthorizedAgentHandshake,
 } from './agent-gateway.js';
+import { type SourceAllowlist, isSourceAllowed } from './source-allowlist.js';
 
 export interface AgentRouteOptions {
   readonly agents: AgentRegistry;
   readonly handlers: AgentSessionHandlers;
   readonly log: AgentGatewayLogger;
+  /**
+   * Zulässige Quelladressen (`AGENT_SOURCE_ALLOWLIST`, Fundpunkt 121).
+   *
+   * Zweite Schicht hinter dem Deployment (Traefik lässt `/agent` aus, der
+   * Host-Port hängt an der Tunnel-Adresse): Kommt die Gegenstelle nicht aus
+   * dem Tunnelnetz, wird das Token gar nicht erst geprüft. Leer oder nicht
+   * gesetzt = keine Prüfung.
+   */
+  readonly sourceAllowlist?: SourceAllowlist;
   /**
    * Gemeinsames `AGENT_TOKEN` aus der zentralen `.env`.
    *
@@ -68,6 +78,40 @@ export function registerAgentRoute(app: FastifyInstance, options: AgentRouteOpti
     '/agent',
     { websocket: true },
     async (socket: WebSocket, request: FastifyRequest): Promise<void> => {
+      /*
+       * Zuerst die Quelladresse (Fundpunkt 121, W0-2), erst danach das Token.
+       *
+       * Geprüft wird die Adresse der TCP-Gegenstelle
+       * (`request.socket.remoteAddress`), bewusst nicht `request.ip`: Das folgt
+       * mit `TRUSTED_PROXY_HOPS=1` (`server.ts`) einem `X-Forwarded-For`-Header
+       * der direkt verbundenen Gegenstelle – auf dem Agent-Weg steht aber kein
+       * Proxy, dessen Header hier gelten dürfte. Der Agent kommt durch den
+       * WireGuard-Tunnel an den Host-Port `WIREGUARD_VPS_IP:4000`
+       * (`deploy/vps/docker-compose.yml`); Docker reicht ihn per DNAT in den
+       * Container und lässt die Absenderadresse stehen, die Gegenstelle ist
+       * also die Tunnel-Adresse des Homeservers (`WIREGUARD_HOME_IP`). Nur eine
+       * Verbindung vom VPS-Host selbst liefe über Dockers Userland-Proxy und
+       * erschiene als Bridge-Adresse – von dort kommt der Agent nie. Über
+       * Traefik wäre die Gegenstelle der Traefik-Container aus dem Docker-Netz,
+       * also außerhalb des Tunnelnetzes, selbst wenn das Label im Deployment
+       * fehlte. Ein Nachbar-Container im Docker-Netz könnte `request.ip` per
+       * gefälschtem Header ins Tunnelnetz legen, seine Socket-Adresse nicht.
+       *
+       * Gleicher Close-Code wie beim Token: Der Agent versucht bei 4401 keinen
+       * Reconnect, das Protokoll nennt den Grund.
+       */
+      const peer = request.socket.remoteAddress;
+
+      if (!isSourceAllowed(options.sourceAllowlist ?? [], peer)) {
+        options.log.warn(
+          { peer: peer ?? null, ip: request.ip },
+          'Agent-Verbindung von einer Quelladresse außerhalb von AGENT_SOURCE_ALLOWLIST abgelehnt',
+        );
+        socket.close(CLOSE_CODE_UNAUTHORIZED, 'Quelladresse nicht zugelassen.');
+
+        return;
+      }
+
       /*
        * Zwei Wege, in dieser Reihenfolge (Gefundener Punkt 57):
        *
