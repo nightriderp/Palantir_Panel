@@ -11,6 +11,7 @@ import {
   type BackupEventPublisher,
   createBackupScheduleService,
   createBackupService,
+  createFireAndForgetJobRunner,
   createDrizzleBackupRepository,
   createDrizzleUserDirectory,
   registerBackupRoutes,
@@ -470,6 +471,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       // die Entität `GameServer` nicht; die Quelle stellt B3.
       manifests: createDrizzleServerExportManifestSource(db),
       events: backupEvents,
+      // Hintergrundläufe (Backup, Restore) melden Fehlschläge über `app.log`
+      // statt als unbehandelte Ablehnung (Audit W0-5, bb-05).
+      runJob: createFireAndForgetJobRunner(app.log),
     });
 
     const backupSchedules = createBackupScheduleService({

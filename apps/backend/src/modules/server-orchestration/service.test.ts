@@ -22,7 +22,7 @@ import {
   type UserResourceUsage,
   NO_USER_RESOURCE_LIMITS,
 } from '@palantir/contracts';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   type HostNodeRepository,
   type ServerUsageRepository,
@@ -452,6 +452,13 @@ function healthyProbe(healthy: boolean | 'pending'): HealthProbe {
   };
 }
 
+/** Eine Log-Zeile des Dienstes bzw. der Agent-Sitzung. */
+interface LoggedLine {
+  readonly level: 'info' | 'warn' | 'error';
+  readonly details: Record<string, unknown>;
+  readonly message: string;
+}
+
 interface Harness {
   readonly service: ServerOrchestrationService;
   readonly repository: FakeRepository;
@@ -460,6 +467,8 @@ interface Harness {
   readonly dnsRecords: DnsRecord[];
   readonly deletedDnsNames: string[];
   readonly releasedPorts: string[];
+  /** Alles, was Dienst und Agent-Sitzung protokolliert haben (Audit W0-5). */
+  readonly logged: LoggedLine[];
   /** Stellt die Uhr des Dienstes vor – ohne echte Wartezeit. */
   advance(ms: number): void;
 }
@@ -467,6 +476,8 @@ interface Harness {
 function makeHarness(
   options: {
     healthy?: boolean | 'pending';
+    /** Eigene Probe, wenn ein Test den Health-Check von Hand beantworten will (Audit W0-5). */
+    probe?: HealthProbe;
     /** Eigene, serialisierende Reservierung – für den TOCTOU-Test (Punkt 98). */
     buildReservation?: (repository: FakeRepository) => CapacityReservation;
     /** Upload-Grenze, um sie im Test ohne 64-MiB-Puffer zu erreichen (P2). */
@@ -490,17 +501,21 @@ function makeHarness(
   const dnsRecords: DnsRecord[] = [];
   const deletedDnsNames: string[] = [];
 
-  const silentLog = {
-    info: (): void => undefined,
-    warn: (): void => undefined,
-    error: (): void => undefined,
-  };
+  // Protokoll mitschreiben statt verschlucken: Die Tests zum Prozess-Schutz
+  // (Audit W0-5) prüfen, dass eine Dublette als Warnung endet und nicht als Wurf.
+  const logged: LoggedLine[] = [];
+  const record =
+    (level: LoggedLine['level']) =>
+    (details: Record<string, unknown>, message: string): void => {
+      logged.push({ level, details, message });
+    };
+  const log = { info: record('info'), warn: record('warn'), error: record('error') };
 
   const session = new AgentSession({
     hostId: HOST.id,
     socket,
     handlers: { onStateReport: () => undefined, onEvent: () => undefined },
-    log: silentLog,
+    log,
     commandTimeoutMs: 1_000,
   });
 
@@ -569,14 +584,14 @@ function makeHarness(
     ports: createPortAllocator(portPool),
     resources: createPermissiveResourceGuard(() => undefined),
     reservation: options.buildReservation?.(repository),
-    healthProbe: healthyProbe(options.healthy ?? true),
+    healthProbe: options.probe ?? healthyProbe(options.healthy ?? true),
     ...(options.worldArchives === undefined ? {} : { worldArchives: options.worldArchives }),
     ...(options.statsHistory === undefined ? {} : { statsHistory: options.statsHistory }),
     ...(options.ensureServerChat === undefined
       ? {}
       : { ensureServerChat: options.ensureServerChat }),
     events,
-    log: silentLog,
+    log,
     config: {
       baseDomain: 'example.tld',
       publicIpv4: '203.0.113.10',
@@ -608,6 +623,7 @@ function makeHarness(
     dnsRecords,
     deletedDnsNames,
     releasedPorts,
+    logged,
     advance: (ms: number): void => {
       clock += ms;
     },
@@ -1547,6 +1563,272 @@ describe('Löschen', () => {
     await harness.service.deleteServer(created.id);
 
     expect(harness.releasedPorts).toEqual([created.id]);
+  });
+});
+
+describe('Prozess-Schutz: Zwischenzustände und Dubletten (Audit W0-5, Fundpunkte 126/127)', () => {
+  /*
+   * Der Spion an `unhandledRejection` ist die eigentliche Prüfung: Ein
+   * Hintergrundlauf, der wirft, ohne dass jemand ihn fängt, beendete bisher
+   * das ganze Backend.
+   */
+  const rejections: unknown[] = [];
+  const spion = (reason: unknown): void => {
+    rejections.push(reason);
+  };
+
+  beforeEach(() => {
+    rejections.length = 0;
+    process.on('unhandledRejection', spion);
+  });
+
+  afterEach(() => {
+    process.off('unhandledRejection', spion);
+  });
+
+  async function tick(): Promise<void> {
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+
+  function crashedFrame(serverId: string): string {
+    return JSON.stringify({
+      kind: 'event',
+      event: 'CRASHED',
+      serverId,
+      payload: { exitCode: 137 },
+      emittedAt: NOW.toISOString(),
+    });
+  }
+
+  it('lehnt das Löschen während des Startvorgangs mit SERVER_STATE_CONFLICT ab', async () => {
+    const harness = makeHarness({ healthy: 'pending' });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const before = harness.socket.commands.length;
+
+    await expect(harness.service.deleteServer(created.id)).rejects.toMatchObject({
+      code: 'SERVER_STATE_CONFLICT',
+      details: { status: 'starting' },
+    });
+
+    // Nichts ist passiert: kein DELETE am Agent, Datensatz und DNS bleiben.
+    expect(harness.socket.commands).toHaveLength(before);
+    expect(harness.repository.servers.has(created.id)).toBe(true);
+    expect(harness.deletedDnsNames).toEqual([]);
+  });
+
+  it('lässt das Löschen in `stopping` zu – der Ausweg aus einem hängenden Stoppvorgang', async () => {
+    // Ein Server kann nach einem Backend-Neustart dauerhaft in `stopping`
+    // hängen (orchestration-core-04); Löschen muss dann weiter möglich sein.
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.repository.servers.set(created.id, {
+      ...(await harness.service.requireServer(created.id)),
+      status: 'stopping',
+    });
+
+    await expect(harness.service.deleteServer(created.id)).resolves.toBeUndefined();
+    expect(harness.repository.servers.has(created.id)).toBe(false);
+  });
+
+  it('lässt das Löschen zu, sobald der Start abgeschlossen ist', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    await expect(harness.service.deleteServer(created.id)).resolves.toBeUndefined();
+    expect(harness.repository.servers.has(created.id)).toBe(false);
+  });
+
+  it('beendet den Health-Check ohne Ablehnung, wenn der Server währenddessen verschwindet', async () => {
+    // Der Datensatz kann auch am Guard vorbei verschwinden (Kaskade in der
+    // Datenbank, Abgleich). Der Health-Lauf darf dann nicht werfen.
+    let antworten: ((result: HealthCheckResult) => void) | undefined;
+    const probe: HealthProbe = {
+      check: () =>
+        new Promise<HealthCheckResult>((resolve) => {
+          antworten = resolve;
+        }),
+    };
+    const harness = makeHarness({ probe });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await tick();
+    expect(antworten).toBeDefined();
+
+    harness.repository.servers.delete(created.id);
+    antworten?.({ healthy: true, pingMs: 5, playersOnline: null, playersMax: null, reason: null });
+    await tick();
+
+    expect(rejections).toEqual([]);
+    expect(harness.emitted.map((e) => e.event)).not.toContain('server.started');
+    expect(
+      harness.logged.some(
+        (line) => line.level === 'warn' && line.message.includes('Health-Check abgebrochen'),
+      ),
+    ).toBe(true);
+    // Und nicht als Fehlschlag des Hintergrundlaufs geführt.
+    expect(harness.logged.some((line) => line.level === 'error')).toBe(false);
+  });
+
+  it('behandelt awaitStartupHealth für einen unbekannten Server als abgebrochenen Start', async () => {
+    const harness = makeHarness();
+
+    await expect(harness.service.awaitStartupHealth('gibt-es-nicht')).resolves.toBeUndefined();
+    expect(rejections).toEqual([]);
+  });
+
+  it('verwirft ein CRASHED, das im aktuellen Zustand nicht anwendbar ist, mit einer Warnung', async () => {
+    // Ein Server, der nie gestartet wurde, kann nicht abstürzen – die
+    // Übergangstabelle verbietet `stopped → crashed`. Bisher warf das.
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await expect(
+      harness.service.handleAgentEvent(HOST.id, {
+        kind: 'event',
+        event: 'CRASHED',
+        serverId: created.id,
+        payload: { exitCode: 1 },
+        emittedAt: NOW.toISOString(),
+      }),
+    ).resolves.toBeUndefined();
+
+    expect((await harness.service.requireServer(created.id)).status).toBe('stopped');
+    expect(
+      harness.logged.some(
+        (line) => line.level === 'warn' && line.message.includes('Absturzmeldung verworfen'),
+      ),
+    ).toBe(true);
+    expect(harness.logged.some((line) => line.level === 'error')).toBe(false);
+  });
+
+  it('meldet ein doppeltes CRASHED nach ausgelöstem Crash-Loop-Schutz nur im Log', async () => {
+    const harness = makeHarness({ healthy: 'pending' });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.repository.servers.set(created.id, {
+      ...(await harness.service.requireServer(created.id)),
+      status: 'running',
+    });
+
+    // maxRestarts = 2: der dritte Absturz schaltet ab (`error`).
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      harness.advance(30_000);
+      await harness.service.handleAgentEvent(HOST.id, {
+        kind: 'event',
+        event: 'CRASHED',
+        serverId: created.id,
+        payload: { exitCode: 137 },
+        emittedAt: NOW.toISOString(),
+      });
+      await tick();
+    }
+
+    expect((await harness.service.requireServer(created.id)).status).toBe('error');
+    harness.logged.length = 0;
+
+    // Die Wiederholung derselben Meldung (Reconnect) – `error → crashed` ist verboten.
+    await expect(
+      harness.service.handleAgentEvent(HOST.id, {
+        kind: 'event',
+        event: 'CRASHED',
+        serverId: created.id,
+        payload: { exitCode: 137 },
+        emittedAt: NOW.toISOString(),
+      }),
+    ).resolves.toBeUndefined();
+
+    expect((await harness.service.requireServer(created.id)).status).toBe('error');
+    expect(harness.logged.map((line) => line.level)).toEqual(['warn']);
+    expect(harness.logged[0]?.details).toMatchObject({ serverId: created.id, status: 'error' });
+  });
+
+  it('lässt ein doppeltes CRASHED über den Agent-Kanal nicht zur unbehandelten Ablehnung werden', async () => {
+    // Derselbe Weg wie im Betrieb: Frame → AgentSession → handleAgentEvent.
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    const socket = new AnsweringSocket();
+    const session = new AgentSession({
+      hostId: HOST.id,
+      socket,
+      handlers: {
+        onStateReport: () => undefined,
+        onEvent: (hostId, frame) => harness.service.handleAgentEvent(hostId, frame),
+      },
+      log: {
+        info: (): void => undefined,
+        warn: (details, message): void => {
+          harness.logged.push({ level: 'warn', details, message });
+        },
+        error: (details, message): void => {
+          harness.logged.push({ level: 'error', details, message });
+        },
+      },
+    });
+    session.handleMessage(
+      JSON.stringify({
+        kind: 'hello',
+        protocolVersion: 1,
+        agentVersion: 'test',
+        sentAt: NOW.toISOString(),
+      }),
+    );
+    harness.logged.length = 0;
+
+    session.handleMessage(crashedFrame(created.id));
+    session.handleMessage(crashedFrame(created.id));
+    await tick();
+
+    expect(rejections).toEqual([]);
+    expect(harness.logged.filter((line) => line.level === 'error')).toEqual([]);
+    expect(harness.logged.filter((line) => line.level === 'warn')).toHaveLength(2);
+    expect((await harness.service.requireServer(created.id)).status).toBe('stopped');
+  });
+
+  it('meldet einen Übergangskonflikt aus dem Soll/Ist-Abgleich als Warnung, nicht als Fehler', async () => {
+    // Ein Server steht laut Datenbank auf `stopping`, der Container läuft
+    // aber noch (orchestration-core-04): Der Abgleich plant `verifyHealth`,
+    // die Tabelle verbietet `stopping → starting`. Bisher ein error-Eintrag.
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const server = await harness.service.requireServer(created.id);
+
+    harness.repository.servers.set(created.id, { ...server, status: 'stopping' });
+    harness.logged.length = 0;
+
+    await harness.service.reconcile(HOST.id, {
+      kind: 'stateReport',
+      reason: 'connected',
+      containers: [
+        {
+          serverId: created.id,
+          containerId: server.dockerContainerId ?? 'c1',
+          status: 'running',
+          exitCode: null,
+          startedAt: NOW.toISOString(),
+          observedAt: NOW.toISOString(),
+        },
+      ],
+      reportedAt: NOW.toISOString(),
+    });
+
+    expect(rejections).toEqual([]);
+    expect(harness.logged.filter((line) => line.level === 'error')).toEqual([]);
+    expect(
+      harness.logged.some(
+        (line) =>
+          line.level === 'warn' && line.message.includes('im aktuellen Zustand nicht anwendbar'),
+      ),
+    ).toBe(true);
   });
 });
 

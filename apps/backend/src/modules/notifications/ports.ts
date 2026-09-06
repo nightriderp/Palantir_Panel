@@ -15,6 +15,11 @@
  */
 
 import type { ErrorCode, NotificationChannelType, NotificationDto } from '@palantir/contracts';
+import {
+  type FireAndForgetLogger,
+  consoleFireAndForgetLogger,
+  fireAndForget,
+} from '../../lib/fire-and-forget.js';
 
 /**
  * Nachschlagen von Empfängern (Entitäten `User`, `UserRole`, Pflichtenheft §6).
@@ -191,6 +196,19 @@ export const systemClock: Clock = () => new Date();
  */
 export type JobRunner = (job: () => Promise<void>) => void;
 
-export const fireAndForgetJobRunner: JobRunner = (job) => {
-  void job();
-};
+/**
+ * Der Standard-Runner mit dem Logger des Betriebs (Audit W0-5, Fundpunkt
+ * 126): Wirft der Lauf trotz seines eigenen try/catch – etwa weil das Log-
+ * Schreiben ins Protokoll selbst scheitert –, landet das im Log statt als
+ * unbehandelte Ablehnung, die den Prozess beendet.
+ */
+export function createFireAndForgetJobRunner(log: FireAndForgetLogger): JobRunner {
+  return (job) => {
+    fireAndForget(job(), log, 'Hintergrundlauf der Benachrichtigungen');
+  };
+}
+
+/** Runner ohne eigenen Logger – für Tests und Skripte; meldet über `console`. */
+export const fireAndForgetJobRunner: JobRunner = createFireAndForgetJobRunner(
+  consoleFireAndForgetLogger,
+);
