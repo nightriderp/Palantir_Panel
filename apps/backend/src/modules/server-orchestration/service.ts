@@ -61,7 +61,7 @@ import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.
  */
 type WorldImportInput = NonNullable<CreateServerInput['worldImport']>;
 import {
-  AGENT_FILE_CHANNEL_MAX_BYTES,
+  effectiveUploadLimitBytes,
   normalizeRelativePath,
   parentPathOf,
   toContainerPath,
@@ -1591,7 +1591,7 @@ export class ServerOrchestrationService {
     });
   }
 
-  /** Eine einzelne Datei zum Herunterladen laden (Grenze: {@link AGENT_FILE_CHANNEL_MAX_BYTES}). */
+  /** Eine einzelne Datei zum Herunterladen laden (Grenze: `AGENT_FILE_CHANNEL_MAX_BYTES`). */
   async downloadFile(
     serverId: string,
     relativePath: string,
@@ -1610,9 +1610,15 @@ export class ServerOrchestrationService {
     };
   }
 
-  /** Tatsächlich zulässige Upload-Größe: der kleinere der beiden Werte. */
-  private maxUploadBytes(): number {
-    return Math.min(this.deps.config.maxUploadBytes, AGENT_FILE_CHANNEL_MAX_BYTES);
+  /**
+   * Tatsächlich zulässige Upload-Größe: der kleinere der beiden Werte.
+   *
+   * Öffentlich, weil die Upload-Route dieselbe Zahl als Multipart-Grenze je
+   * Aufruf setzt (Fundpunkt 123) – so puffert das Backend nie mehr, als der
+   * Dienst gleich darauf annehmen würde.
+   */
+  maxUploadBytes(): number {
+    return effectiveUploadLimitBytes(this.deps.config.maxUploadBytes);
   }
 
   private assertWithinTransferLimit(sizeBytes: number): void {

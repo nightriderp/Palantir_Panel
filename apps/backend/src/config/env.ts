@@ -110,9 +110,12 @@ const envSchema = z.object({
   /**
    * Maximale Upload-Größe pro Datei im Datei-Manager (§12.1).
    *
-   * Wirksam ist der kleinere Wert aus dieser Angabe und der Kanal-Grenze des
-   * Agents (`AGENT_FILE_CHANNEL_MAX_BYTES`, 64 MiB) – eine größere Datei würde
-   * der Agent ohnehin ablehnen.
+   * Wirkt nur **unterhalb** der Kanal-Grenze des Agents
+   * (`AGENT_FILE_CHANNEL_MAX_BYTES`, 64 MiB): Der Agent nimmt eine Datei in
+   * einem Stück entgegen und lehnt Größeres ab, also puffert das Backend sie
+   * auch nicht erst (Fundpunkt 123). Ein größerer Wert – auch die Vorgabe von
+   * 2 GiB – hebt die Grenze nicht an; wer sie enger ziehen will, setzt hier
+   * weniger.
    */
   MAX_UPLOAD_SIZE_BYTES: z.coerce
     .number()

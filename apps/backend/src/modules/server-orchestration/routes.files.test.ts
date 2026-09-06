@@ -67,6 +67,13 @@ const actors: Record<string, PermissionActor> = {
   }),
 };
 
+/**
+ * Wirksame Upload-Grenze des Dienst-Stubs – bewusst enger als die globale
+ * Multipart-Grenze in `buildApp` (`fileSize: 1_000`), damit sichtbar wird,
+ * dass die Route ihre eigene Grenze je Aufruf setzt (Fundpunkt 123).
+ */
+const UPLOAD_LIMIT_BYTES = 100;
+
 const LIST_DTO: ServerFileListDto = {
   serverId: SERVER_ID,
   path: 'welt',
@@ -83,7 +90,7 @@ const LIST_DTO: ServerFileListDto = {
     },
   ],
   writable: true,
-  maxUploadBytes: 1_000,
+  maxUploadBytes: UPLOAD_LIMIT_BYTES,
   maxEditableBytes: 1_024,
 };
 
@@ -119,6 +126,7 @@ async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Pr
   const service = {
     requireServer: async () => SERVER,
     recentCrashCount: () => 0,
+    maxUploadBytes: () => UPLOAD_LIMIT_BYTES,
     listFiles: async (_id: string, path: string, opts: { writable: boolean }) => {
       pruefeFehler();
       aufrufe.list.push({ path, writable: opts.writable });
@@ -193,6 +201,9 @@ async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Pr
     request.viewerUserId = request.headers['x-test-actor'] === 'fremd' ? FREMD_ID : OWNER_ID;
   });
 
+  // Globale Grenze bewusst über der des Dienstes (`UPLOAD_LIMIT_BYTES`): Ein
+  // Upload dazwischen darf nur dann durchfallen, wenn die Route die engere
+  // Grenze selbst setzt.
   await app.register(multipart, { limits: { fileSize: 1_000, files: 1 } });
 
   registerServerRoutes(app, {
@@ -369,6 +380,90 @@ describe('Datei-Manager-Routen', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
+    expect(gebaut.aufrufe.upload).toEqual([]);
+  });
+
+  // -- Upload-Grenze vor dem Puffern (Fundpunkt 123) -------------------------
+  //
+  // Die Grenze je Aufruf ist die Multipart-Grenze von busboy: Ab ihr fließt
+  // nichts mehr in den Puffer, der Rest des Rumpfs wird verworfen. Die beiden
+  // Randfälle (genau an der Grenze, ein Byte darüber) zeigen, dass die Route
+  // genau die Zahl des Dienstes setzt – nicht die globale Grenze aus `buildApp`.
+
+  it('nimmt eine Datei genau an der wirksamen Grenze noch an', async () => {
+    const gebaut = await buildApp();
+    app = gebaut.app;
+    const body = multipartBody(
+      { path: '' },
+      { name: 'welt.zip', content: 'x'.repeat(UPLOAD_LIMIT_BYTES) },
+    );
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/files`, {
+      actor: 'besitzer',
+      payload: body.payload,
+      headers: body.headers,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(gebaut.aufrufe.upload).toEqual([
+      { path: '', fileName: 'welt.zip', size: UPLOAD_LIMIT_BYTES },
+    ]);
+  });
+
+  it('schneidet eine Datei über der wirksamen Grenze ab: FILE_TOO_LARGE (413), Dienst unberührt', async () => {
+    const gebaut = await buildApp();
+    app = gebaut.app;
+    // Passt in die globale Grenze (1_000), nicht in die des Dienstes (100):
+    // Ohne die Grenze je Aufruf käme die Datei vollständig beim Dienst an.
+    const body = multipartBody(
+      { path: '' },
+      { name: 'welt.zip', content: 'x'.repeat(UPLOAD_LIMIT_BYTES + 1) },
+    );
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/files`, {
+      actor: 'besitzer',
+      payload: body.payload,
+      headers: body.headers,
+    });
+
+    expect(response.statusCode).toBe(413);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('FILE_TOO_LARGE');
+    expect(gebaut.aufrufe.upload).toEqual([]);
+  });
+
+  it('meldet auch eine Datei über der globalen Multipart-Grenze als FILE_TOO_LARGE, nicht als INTERNAL_ERROR', async () => {
+    const gebaut = await buildApp();
+    app = gebaut.app;
+    // Über beiden Grenzen. Vor Fundpunkt 123 warf `toBuffer()` hier den
+    // Bibliotheksfehler `FST_REQ_FILE_TOO_LARGE`, der als 500 beim Aufrufer ankam.
+    const body = multipartBody({ path: '' }, { name: 'welt.zip', content: 'x'.repeat(5_000) });
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/files`, {
+      actor: 'besitzer',
+      payload: body.payload,
+      headers: body.headers,
+    });
+
+    expect(response.statusCode).toBe(413);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('FILE_TOO_LARGE');
+    expect(gebaut.aufrufe.upload).toEqual([]);
+  });
+
+  it('weist eine angekündigte Größe über der Grenze ab, ohne den Rumpf zu lesen', async () => {
+    const gebaut = await buildApp();
+    app = gebaut.app;
+    const body = multipartBody({ path: '' }, { name: 'welt.zip', content: 'PK' });
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/files`, {
+      actor: 'besitzer',
+      payload: body.payload,
+      // Ankündigung weit über der Grenze; der Rumpf selbst ist winzig und ginge,
+      // käme er beim Parser an, ohne Beanstandung durch.
+      headers: { ...body.headers, 'content-length': String(2 * 1024 * 1024 * 1024) },
+    });
+
+    expect(response.statusCode).toBe(413);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('FILE_TOO_LARGE');
     expect(gebaut.aufrufe.upload).toEqual([]);
   });
 

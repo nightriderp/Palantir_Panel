@@ -61,6 +61,7 @@ import {
   createServerNodePlacementSource,
   registerServerOrchestration,
 } from './modules/server-orchestration/index.js';
+import { effectiveUploadLimitBytes } from './modules/server-orchestration/files.js';
 import { registerArcade } from './modules/arcade/index.js';
 import { registerHealthRoutes } from './routes/health.js';
 import {
@@ -293,7 +294,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     await app.register(websocket);
 
     /*
-     * Datei-Uploads des Datei-Managers (P2, Lastenheft §3.3).
+     * Datei-Uploads des Datei-Managers (P2, Lastenheft §3.3) und des Wizards
+     * (Weltdaten-Archive, P4).
      *
      * **Neue Abhängigkeit `@fastify/multipart` (CLAUDE.md §1).** Das Frontend
      * lädt Dateien als `multipart/form-data` hoch (`uploadFile()` in
@@ -301,13 +303,23 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * selbst gebauter wäre genau die Sorte Code, die man nicht selbst schreiben
      * will.
      *
-     * `fileSize` ist die harte Grenze aus `MAX_UPLOAD_SIZE_BYTES`
-     * (Pflichtenheft §12.1): Der Datenstrom wird dort abgebrochen, statt den
-     * Backend-Speicher unbegrenzt zu füllen. `files: 1`, weil der Datei-Manager
-     * genau eine Datei je Aufruf entgegennimmt.
+     * `fileSize` ist hier nur das Sicherheitsnetz für jede Multipart-Route,
+     * nicht die fachliche Grenze: Der Datei-Manager setzt seine wirksame Grenze
+     * (`MAX_UPLOAD_SIZE_BYTES`, höchstens die 64 MiB des Agent-Kanals) je
+     * Aufruf selbst, damit nie mehr gepuffert wird, als der Dienst annimmt
+     * (Fundpunkt 123); der Weltdaten-Upload zählt beim Schreiben auf die Platte
+     * gegen `MAX_WORLD_ARCHIVE_BYTES`. Hier steht deshalb die größere der
+     * beiden wirksamen Grenzen – mehr kann keine Route brauchen. `files: 1`,
+     * weil beide genau eine Datei je Aufruf entgegennehmen.
      */
     await app.register(multipart, {
-      limits: { fileSize: env.MAX_UPLOAD_SIZE_BYTES, files: 1 },
+      limits: {
+        fileSize: Math.max(
+          effectiveUploadLimitBytes(env.MAX_UPLOAD_SIZE_BYTES),
+          env.MAX_WORLD_ARCHIVE_BYTES,
+        ),
+        files: 1,
+      },
     });
 
     /*
