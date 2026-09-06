@@ -1,4 +1,5 @@
-import { type Permission } from '@palantir/contracts';
+import { createHash } from 'node:crypto';
+import { type Permission, fail, ok } from '@palantir/contracts';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { describe, expect, it } from 'vitest';
 import { type PermissionActor, buildPermissionActor, registerRbac } from '../rbac/index.js';
@@ -6,6 +7,7 @@ import { registerBackupRoutes } from './routes.js';
 import { createBackupScheduleService } from './schedules.js';
 import { type BackupService, createBackupService } from './service.js';
 import {
+  type FakeAgent,
   fakeAgent,
   fakeServerDirectory,
   fakeUserDirectory,
@@ -29,21 +31,34 @@ function actorMit(...permissions: Permission[]): PermissionActor {
  * in B2): Sie bestimmt Rechte **und** Konto-Id, weil die `.own`-Prüfung beides
  * braucht.
  */
-async function buildTestApp(): Promise<{ app: FastifyInstance; backups: BackupService }> {
+async function buildTestApp(): Promise<{
+  app: FastifyInstance;
+  backups: BackupService;
+  agent: FakeAgent;
+  /** Führt die angestoßenen Backup-Läufe aus – im Betrieb tut das der Job-Runner. */
+  laufeJobs: () => Promise<void>;
+}> {
   const offeneJobs: (() => Promise<void>)[] = [];
   const repository = inMemoryBackupRepository();
   const servers = fakeServerDirectory([SERVER]);
+  const agent = fakeAgent();
 
   const backups = createBackupService({
     repository,
     servers,
     users: fakeUserDirectory({ [BESITZER_ID]: 'Alex' }),
-    agent: fakeAgent(),
+    agent,
     events: recordingEventPublisher(),
     runJob: (job) => {
       offeneJobs.push(job);
     },
   });
+
+  async function laufeJobs(): Promise<void> {
+    for (let job = offeneJobs.shift(); job !== undefined; job = offeneJobs.shift()) {
+      await job();
+    }
+  }
 
   const schedules = createBackupScheduleService({ repository, servers, backups });
 
@@ -74,7 +89,7 @@ async function buildTestApp(): Promise<{ app: FastifyInstance; backups: BackupSe
 
   await app.ready();
 
-  return { app, backups };
+  return { app, backups, agent, laufeJobs };
 }
 
 async function anfrage(
@@ -169,6 +184,140 @@ describe('Backup-Routen – Envelope und Statuscodes (Pflichtenheft §5.1)', () 
 
     expect(antwort.statusCode).toBe(404);
     expect(antwort.json().error.code).toBe('BACKUP_NOT_FOUND');
+  });
+});
+
+describe('Download und Löschen über HTTP (Lastenheft §3.3, Fundpunkt 120)', () => {
+  const INHALT = Buffer.from('Palantir');
+
+  /** Legt ein fertiges Backup mit passender Prüfsumme an und liefert seine Id. */
+  async function fertigesBackup(harness: Awaited<ReturnType<typeof buildTestApp>>) {
+    harness.agent.createResponse = ok({
+      backupId: '00000000-0000-4000-8000-000000000000',
+      storagePath: '/srv/palantir/backups/a.tar.zst',
+      sizeBytes: INHALT.length,
+      checksumSha256: createHash('sha256').update(INHALT).digest('hex'),
+      containerStopped: false,
+      startedAt: '2026-08-26T04:00:00.000Z',
+      completedAt: '2026-08-26T04:01:00.000Z',
+    });
+
+    const angelegt = await anfrage(
+      harness.app,
+      'POST',
+      `/servers/${SERVER.id}/backups`,
+      'besitzer',
+      {},
+    );
+    expect(angelegt.statusCode).toBe(202);
+    await harness.laufeJobs();
+
+    return angelegt.json().data.id as string;
+  }
+
+  function block(backupId: string, offset: number, text: string, eof: boolean) {
+    return ok({
+      backupId,
+      offset,
+      contentBase64: Buffer.from(text).toString('base64'),
+      bytesRead: text.length,
+      totalBytes: INHALT.length,
+      eof,
+    });
+  }
+
+  it('streamt das Archiv als Bytes mit Länge und Dateinamen', async () => {
+    const harness = await buildTestApp();
+    const backupId = await fertigesBackup(harness);
+    harness.agent.downloadResponses = [
+      block(backupId, 0, 'Palan', false),
+      block(backupId, 5, 'tir', true),
+    ];
+
+    const antwort = await anfrage(harness.app, 'GET', `/backups/${backupId}/download`, 'besitzer');
+
+    // Genau der Fall aus Fundpunkt 120: Ein AsyncGenerator als Payload endete
+    // hier als 500, weil Fastify ihn nicht als Stream annimmt.
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.headers['content-type']).toBe('application/octet-stream');
+    expect(antwort.headers['content-length']).toBe(String(INHALT.length));
+    expect(antwort.headers['content-disposition']).toMatch(/^attachment; filename=".*\.tar\.zst"$/);
+    expect(antwort.rawPayload.equals(INHALT)).toBe(true);
+  });
+
+  it('meldet einen Fehler vor dem ersten Block als Envelope statt als leeren 200', async () => {
+    const harness = await buildTestApp();
+    const backupId = await fertigesBackup(harness);
+    harness.agent.downloadResponses = [
+      fail('AGENT_NOT_CONNECTED', 'Der Agent der Node ist nicht verbunden.'),
+    ];
+
+    const antwort = await anfrage(harness.app, 'GET', `/backups/${backupId}/download`, 'besitzer');
+
+    expect(antwort.statusCode).toBeGreaterThanOrEqual(400);
+    expect(antwort.json()).toEqual({
+      success: false,
+      data: null,
+      error: { code: 'AGENT_NOT_CONNECTED', message: expect.any(String) },
+    });
+  });
+
+  it('bricht die Verbindung ab, wenn ein späterer Block fehlt – kein stiller 200', async () => {
+    const harness = await buildTestApp();
+    const backupId = await fertigesBackup(harness);
+    harness.agent.downloadResponses = [
+      block(backupId, 0, 'Palan', false),
+      fail('AGENT_COMMAND_FAILED', 'Verbindung zur Node verloren.'),
+    ];
+
+    // Die Kopfzeilen sind nach dem ersten Block raus – es gibt keinen zweiten
+    // Antwortversuch mehr. Entweder scheitert die Anfrage sichtbar oder der
+    // Körper bleibt unvollständig; ein vollständiger 200 wäre der Fehler.
+    const ergebnis = await anfrage(
+      harness.app,
+      'GET',
+      `/backups/${backupId}/download`,
+      'besitzer',
+    ).then(
+      (antwort) => ({ antwort }),
+      (error: unknown) => ({ error }),
+    );
+
+    if ('antwort' in ergebnis) {
+      expect(ergebnis.antwort.rawPayload.equals(INHALT)).toBe(false);
+    } else {
+      expect(ergebnis.error).toBeDefined();
+    }
+  });
+
+  it('weist den Download eines noch laufenden Backups mit BACKUP_NOT_READY ab', async () => {
+    const harness = await buildTestApp();
+    const angelegt = await anfrage(
+      harness.app,
+      'POST',
+      `/servers/${SERVER.id}/backups`,
+      'besitzer',
+      {},
+    );
+    const backupId = angelegt.json().data.id as string;
+
+    const antwort = await anfrage(harness.app, 'GET', `/backups/${backupId}/download`, 'besitzer');
+
+    expect(antwort.statusCode).toBe(409);
+    expect(antwort.json().error.code).toBe('BACKUP_NOT_READY');
+  });
+
+  it('löscht ein fertiges Backup und meldet es danach als unbekannt', async () => {
+    const harness = await buildTestApp();
+    const backupId = await fertigesBackup(harness);
+
+    const geloescht = await anfrage(harness.app, 'DELETE', `/backups/${backupId}`, 'besitzer');
+    expect(geloescht.statusCode).toBe(200);
+    expect(harness.agent.deletedStoragePaths).toEqual(['/srv/palantir/backups/a.tar.zst']);
+
+    const danach = await anfrage(harness.app, 'GET', `/backups/${backupId}`, 'besitzer');
+    expect(danach.statusCode).toBe(404);
+    expect(danach.json().error.code).toBe('BACKUP_NOT_FOUND');
   });
 });
 
