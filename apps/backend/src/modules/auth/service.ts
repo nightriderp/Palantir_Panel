@@ -14,6 +14,10 @@
  *   ersetzter Token erneut auf, werden **alle** Sitzungen des Kontos widerrufen.
  * - Die letzte verbliebene Login-Methode kann nicht getrennt werden.
  * - Das Owner-Konto kann sich nicht selbst löschen.
+ * - Admin-Eingriffe (Konto anlegen, Passwort-Reset, 2FA-Abschaltung) folgen der
+ *   Rangregel aus B2: `user.manage` allein vergibt keine Verwaltungsrolle und
+ *   fasst kein Konto mit Verwaltungsrolle an; das Owner-Konto nie
+ *   (Fundpunkte 119 und 124).
  *
  * Datenbank und HTTP stecken hinter {@link AuthRepository} bzw. bleiben in
  * `routes.ts`; diese Datei ist damit ohne Infrastruktur testbar (CLAUDE.md §4).
@@ -40,7 +44,13 @@ import type {
   CreateUserInput,
   UpdateProfileInput,
 } from '@palantir/validation';
-import { buildPermissionActor, type PermissionActor, type RoleRepository } from '../rbac/index.js';
+import {
+  buildPermissionActor,
+  grantsAdministration,
+  hasPermission,
+  type PermissionActor,
+  type RoleRepository,
+} from '../rbac/index.js';
 import { toAccountDto, toSessionDto } from './dto.js';
 import { AuthError } from './errors.js';
 import { generateTemporaryPassword, hashPassword, verifyPassword } from './passwords.js';
@@ -230,6 +240,41 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * Schranke für Admin-Eingriffe an fremden Konten (Fundpunkt 124).
+   *
+   * Das Owner-Konto ändert Passwort und 2FA ausschließlich über die eigenen
+   * Routen – kein Admin-Eingriff erreicht es. Ein Konto, dessen Rollen selbst
+   * Rollen- oder Nutzerverwaltung verleihen, darf nur anfassen, wer `role.manage`
+   * besitzt: dieselbe Regel wie beim Zuweisen solcher Rollen in B2
+   * (`requireAssignmentAllowed`). Ohne sie könnte `user.manage` allein jedes
+   * Admin-Konto per Passwort-Reset übernehmen.
+   */
+  private async requireAdminTargetAllowed(
+    actor: PermissionActor,
+    target: UserRecord,
+  ): Promise<void> {
+    if (target.isOwner) {
+      throw new AuthError(
+        'AUTH_OWNER_PROTECTED',
+        'Das Owner-Konto lässt sich nicht über Admin-Eingriffe ändern.',
+      );
+    }
+
+    if (hasPermission(actor, 'role.manage')) {
+      return;
+    }
+
+    const rollen = await this.roles.listRolesForUser(target.id);
+
+    if (rollen.some((rolle) => grantsAdministration(rolle))) {
+      throw new AuthError(
+        'PERMISSION_DENIED',
+        'Konten mit Rollen- oder Nutzerverwaltung darf nur ändern, wer selbst role.manage besitzt.',
+      );
+    }
+  }
+
   // -- Registrierung & Login ------------------------------------------------
 
   /**
@@ -303,9 +348,40 @@ export class AuthService {
    * Die Sperre der Selbstregistrierung gilt hier **nicht**: Sie richtet sich an
    * Fremde, nicht an den Betreiber.
    */
-  async createUserAsAdmin(input: CreateUserInput, roleIds: readonly string[]): Promise<AccountDto> {
+  async createUserAsAdmin(
+    actor: PermissionActor,
+    input: CreateUserInput,
+    roleIds: readonly string[],
+  ): Promise<AccountDto> {
     if (await this.repository.usernameExists(input.username)) {
       throw new AuthError('AUTH_USERNAME_TAKEN');
+    }
+
+    /*
+     * Rollen werden VOR dem Anlegen geprüft (Fundpunkt 119): Die Schranke aus
+     * B2 – `user.manage` allein vergibt keine Rolle, die selbst `role.manage`
+     * oder `user.manage` verleiht – gilt hier genauso wie beim regulären
+     * Zuweisen über den RoleService. Ein abgelehnter Aufruf hinterlässt kein
+     * halbes Konto, und eine unbekannte Rolle endet als benannter Fehler statt
+     * als FK-Verletzung.
+     */
+    const gepruefteRollen: string[] = [];
+
+    for (const roleId of roleIds) {
+      const rolle = await this.roles.findById(roleId);
+
+      if (!rolle) {
+        throw new AuthError('ROLE_NOT_FOUND');
+      }
+
+      if (grantsAdministration(rolle) && !hasPermission(actor, 'role.manage')) {
+        throw new AuthError(
+          'PERMISSION_DENIED',
+          'Rollen mit Rollen- oder Nutzerverwaltung darf nur vergeben, wer selbst role.manage besitzt.',
+        );
+      }
+
+      gepruefteRollen.push(rolle.id);
     }
 
     const passwordHash = await hashPassword(input.password);
@@ -321,7 +397,8 @@ export class AuthService {
      * Warteliste vergibt. Ein Konto ganz ohne Rolle waere weder freigeschaltet
      * noch wartend: Es taucht in keiner Liste auf und kann nichts.
      */
-    const zuweisen = roleIds.length > 0 ? roleIds : [await this.requireDefaultRoleId()];
+    const zuweisen =
+      gepruefteRollen.length > 0 ? gepruefteRollen : [await this.requireDefaultRoleId()];
 
     for (const roleId of zuweisen) {
       await this.roles.assignToUser(user.id, roleId);
@@ -824,10 +901,16 @@ export class AuthService {
    * Ablauf in Pflichtenheft §7).
    *
    * Der Aufrufer muss `user.manage` besitzen; das prüft die Route über den Guard
-   * aus B2. Alle Sitzungen des betroffenen Kontos werden widerrufen.
+   * aus B2. Owner- und Verwaltungskonten unterliegen zusätzlich der Rangregel
+   * ({@link requireAdminTargetAllowed}, Fundpunkt 124). Alle Sitzungen des
+   * betroffenen Kontos werden widerrufen.
    */
-  async resetPasswordAsAdmin(targetUserId: string): Promise<PasswordResetResultDto> {
+  async resetPasswordAsAdmin(
+    actor: PermissionActor,
+    targetUserId: string,
+  ): Promise<PasswordResetResultDto> {
     const user = await this.requireUser(targetUserId);
+    await this.requireAdminTargetAllowed(actor, user);
     const method = await this.repository.findAuthMethod(targetUserId, 'password');
 
     if (!method) {
@@ -935,10 +1018,12 @@ export class AuthService {
    *
    * Bewusst der einzige Weg an einer verlorenen 2FA vorbei – es gibt keine
    * Wiederherstellungscodes. Der Aufrufer braucht `user.manage`; das prüft die
-   * Route über den Guard aus B2.
+   * Route über den Guard aus B2. Owner- und Verwaltungskonten unterliegen
+   * zusätzlich der Rangregel ({@link requireAdminTargetAllowed}, Fundpunkt 124).
    */
-  async disableTwoFactorAsAdmin(targetUserId: string): Promise<void> {
-    await this.requireUser(targetUserId);
+  async disableTwoFactorAsAdmin(actor: PermissionActor, targetUserId: string): Promise<void> {
+    const user = await this.requireUser(targetUserId);
+    await this.requireAdminTargetAllowed(actor, user);
 
     const method = await this.repository.findAuthMethod(targetUserId, 'password');
 
