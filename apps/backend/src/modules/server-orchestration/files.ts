@@ -41,13 +41,27 @@ export const MAX_EDITABLE_FILE_BYTES = 1024 * 1024;
  * Spiegelt `DEFAULT_MAX_FILE_BYTES` der Container-Runtime (64 MiB). Der Agent
  * lehnt größere Dateien ohnehin mit `AGENT_FILE_TOO_LARGE` ab – das Backend
  * puffert sie deshalb erst gar nicht: `MAX_UPLOAD_SIZE_BYTES` (Pflichtenheft
- * §12.1) darf größer sein, wirksam ist der kleinere der beiden Werte.
+ * §12.1) darf größer sein, wirksam ist der kleinere der beiden Werte
+ * ({@link effectiveUploadLimitBytes}).
  *
  * Ohne diese Grenze wäre der Upload-Puffer allein durch die
  * Umgebungsvariable begrenzt (Vorgabe dort: 2 GB) – ein einziger Upload könnte
  * den Backend-Speicher füllen.
  */
 export const AGENT_FILE_CHANNEL_MAX_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Wirksame Upload-Grenze des Datei-Managers: der kleinere Wert aus
+ * `MAX_UPLOAD_SIZE_BYTES` und {@link AGENT_FILE_CHANNEL_MAX_BYTES}.
+ *
+ * Eine Stelle für alle, die die Zahl brauchen – den Dienst (Prüfung und DTO),
+ * die Upload-Route (Multipart-Grenze je Aufruf) und die Multipart-Registrierung
+ * in `server.ts`. Bis Fundpunkt 123 kannte nur der Dienst sie: Die Route hatte
+ * die Datei da bereits vollständig gepuffert, bis zu 2 GiB je Aufruf.
+ */
+export function effectiveUploadLimitBytes(configuredMaxBytes: number): number {
+  return Math.min(configuredMaxBytes, AGENT_FILE_CHANNEL_MAX_BYTES);
+}
 
 /**
  * Endungen, die der eingebaute Editor öffnet.

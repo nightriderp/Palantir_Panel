@@ -76,14 +76,27 @@ function multipartField(fields: MultipartFile['fields'], name: string): string |
 }
 
 /**
- * Liest den Datei-Teil eines Uploads und puffert ihn genau einmal.
- *
- * Die Größengrenze steht in der Multipart-Registrierung (`server.ts`,
- * `MAX_UPLOAD_SIZE_BYTES`): Der Datenstrom wird dort abgebrochen, statt hier
- * unbegrenzt zu wachsen. `truncated` ist das Signal dafür – ohne die Prüfung
- * käme eine halbe Datei im Container an.
+ * Spielraum für den Formular-Rahmen um die Datei herum (Trenner, Feldnamen,
+ * `path`, Dateiname): `Content-Length` zählt das ganze Formular, die Grenze
+ * gilt nur für die Datei. Ohne den Spielraum fiele eine Datei knapp unter der
+ * Grenze schon an der Ankündigung durch, obwohl sie selbst hineinpasst.
  */
-async function readUpload(request: FastifyRequest): Promise<FileUploadInput> {
+const MULTIPART_ENVELOPE_ALLOWANCE_BYTES = 64 * 1024;
+
+/**
+ * Liest den Datei-Teil eines Uploads und puffert ihn genau einmal – höchstens
+ * bis `maxBytes`.
+ *
+ * Die Grenze geht je Aufruf an `@fastify/multipart` und greift damit **vor**
+ * dem Puffern: Der Datenstrom wird dort abgeschnitten, statt bis zur globalen
+ * Multipart-Grenze aus `server.ts` zu wachsen (Fundpunkt 123 – vorher lag die
+ * Datei mit bis zu 2 GiB im Speicher, bevor der Dienst die 64 MiB des
+ * Agent-Kanals prüfte). `truncated` ist das Signal dafür – ohne die Prüfung
+ * käme eine halbe Datei im Container an. Kündigt `Content-Length` schon mehr
+ * an, als hineinpasst, wird der Rumpf gar nicht erst gelesen; ein Upload ohne
+ * Ankündigung (chunked) läuft unverändert in die Multipart-Grenze.
+ */
+async function readUpload(request: FastifyRequest, maxBytes: number): Promise<FileUploadInput> {
   if (!request.isMultipart()) {
     throw new ServerOrchestrationError(
       'VALIDATION_FAILED',
@@ -91,7 +104,23 @@ async function readUpload(request: FastifyRequest): Promise<FileUploadInput> {
     );
   }
 
-  const datei = await request.file();
+  const angekuendigt = Number(request.headers['content-length']);
+
+  if (
+    Number.isFinite(angekuendigt) &&
+    angekuendigt > maxBytes + MULTIPART_ENVELOPE_ALLOWANCE_BYTES
+  ) {
+    throw new ServerOrchestrationError(
+      'FILE_TOO_LARGE',
+      'Die Datei überschreitet die zulässige Upload-Größe.',
+    );
+  }
+
+  // `throwFileSizeLimit: false`: Sonst wirft `toBuffer()` beim Abschneiden den
+  // Bibliotheksfehler `FST_REQ_FILE_TOO_LARGE`, der außerhalb des Katalogs
+  // liegt und als `INTERNAL_ERROR` (500) beim Aufrufer ankäme – hier zählt
+  // allein `truncated`.
+  const datei = await request.file({ limits: { fileSize: maxBytes }, throwFileSizeLimit: false });
 
   if (datei === undefined) {
     throw new ServerOrchestrationError('VALIDATION_FAILED', 'Im Upload fehlt das Feld „file".');
@@ -653,10 +682,10 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   /**
    * Datei hochladen (`multipart/form-data`: `path` = Zielordner, `file` = Datei).
    *
-   * Die Größengrenze steckt in zwei Stufen: `@fastify/multipart` bricht den
-   * Datenstrom bei `MAX_UPLOAD_SIZE_BYTES` ab (nichts wird darüber hinaus
-   * gepuffert), der Dienst prüft die tatsächlich gelesene Größe noch einmal
-   * gegen die Agent-Kanal-Grenze.
+   * Die Größengrenze steckt in zwei Stufen: `readUpload` schneidet den
+   * Datenstrom bei der wirksamen Grenze des Dienstes ab (nichts wird darüber
+   * hinaus gepuffert), der Dienst prüft die tatsächlich gelesene Größe noch
+   * einmal gegen dieselbe Zahl.
    */
   app.post('/api/servers/:id/files', async (request, reply) => {
     try {
@@ -664,7 +693,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
       const { dto } = await loadAuthorized(request, id, 'canManageFiles');
 
-      const upload = await readUpload(request);
+      const upload = await readUpload(request, service.maxUploadBytes());
 
       return await reply.send(
         ok(
@@ -757,8 +786,9 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
         const upload = await worldArchives.save(datei.filename, datei.file);
 
-        // `truncated` meldet die Grenze aus der Multipart-Registrierung
-        // (`MAX_UPLOAD_SIZE_BYTES`); die engere Grenze zieht der Zwischenspeicher.
+        // `truncated` meldet die Multipart-Grenze aus `server.ts` (die größere
+        // der beiden Upload-Grenzen); die engere zieht der Zwischenspeicher
+        // beim Schreiben gegen `MAX_WORLD_ARCHIVE_BYTES`.
         if (datei.file.truncated) {
           throw new ServerOrchestrationError(
             'FILE_TOO_LARGE',
