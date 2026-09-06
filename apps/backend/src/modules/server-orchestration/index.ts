@@ -310,6 +310,8 @@ export function registerServerOrchestration(
     },
     log,
     token: env.AGENT_TOKEN,
+    // Quelladressen-Allowlist des Agent-Kanals (Fundpunkt 121); leer = keine Prüfung.
+    sourceAllowlist: env.AGENT_SOURCE_ALLOWLIST,
     ...(options.resolveHostIdByAgentToken === undefined
       ? {}
       : { resolveHostIdByToken: options.resolveHostIdByAgentToken }),
