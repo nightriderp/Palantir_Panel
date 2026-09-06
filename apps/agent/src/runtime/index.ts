@@ -80,6 +80,7 @@ export {
   type ArchiveContents,
   type ArchiveEntry,
   type ArchiveKind,
+  type ReadArchiveOptions,
   detectArchiveKind,
   readArchive,
   safeArchivePath,

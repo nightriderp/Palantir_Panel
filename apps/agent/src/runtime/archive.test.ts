@@ -11,6 +11,7 @@ import { deflateRawSync, gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { MAX_ARCHIVE_ENTRIES, detectArchiveKind, readArchive, safeArchivePath } from './archive.js';
 import { createTar } from './docker/tar.js';
+import { ContainerRuntimeError } from './errors.js';
 
 function tarGz(dateien: { name: string; content: string; type?: 'file' | 'directory' }[]): Buffer {
   return gzipSync(
@@ -225,5 +226,58 @@ describe('Entpack-Bombe', () => {
     archiv.writeUInt32LE(0xffff_fff0, zentralStart + 24);
 
     expect(() => readArchive(archiv)).toThrowError(/zu gross/);
+  });
+
+  // Die Grenze wird auf 1 MiB gesetzt, damit die Bombe mit wenigen Megabyte
+  // nachstellbar ist - der Mechanismus ist derselbe wie bei 512 MiB.
+  const GRENZE = 1024 * 1024;
+
+  /** Muster aus `hardening.test.ts`: Code UND Meldung des geworfenen Fehlers pruefen. */
+  function erwarteZuGross(lesen: () => unknown): void {
+    try {
+      lesen();
+      throw new Error('Es wurde ein Fehler erwartet.');
+    } catch (fehler) {
+      expect(fehler).toBeInstanceOf(ContainerRuntimeError);
+      expect((fehler as ContainerRuntimeError).code).toBe('ARCHIVE_INVALID');
+      expect((fehler as ContainerRuntimeError).message).toMatch(/zu gross/);
+    }
+  }
+
+  it('lehnt eine gzip-Bombe ab, bevor sie sich entfaltet (Fundpunkt 122)', () => {
+    // 4 MiB Nullen schrumpfen auf wenige KiB gzip. Ohne Deckel an `gunzip`
+    // wuerde der Sammler die Grenze erst NACH dem vollstaendigen Entpacken sehen.
+    const bombe = gzipSync(
+      createTar([{ name: 'welt/level.dat', content: Buffer.alloc(4 * 1024 * 1024) }]),
+    );
+
+    expect(bombe.length).toBeLessThan(16 * 1024);
+    erwarteZuGross(() => readArchive(bombe, 'tar.gz', { maxExtractedBytes: GRENZE }));
+  });
+
+  it('entpackt ein tar.gz knapp unter der Grenze weiterhin', () => {
+    // Nutzdaten + tar-Kopfsatz (512 B) + zwei Nullbloecke (1024 B) bleiben
+    // zusammen unter der Grenze - der Deckel darf hier nicht zuschlagen.
+    const nutzdaten = Buffer.alloc(GRENZE - 4096, 7);
+    const archiv = gzipSync(createTar([{ name: 'welt/level.dat', content: nutzdaten }]));
+
+    const inhalt = readArchive(archiv, 'tar.gz', { maxExtractedBytes: GRENZE });
+
+    // `Buffer.equals` statt `toEqual`: Letzteres vergleicht 1 MiB elementweise.
+    expect(inhalt.entries[0]?.content.equals(nutzdaten)).toBe(true);
+    expect(inhalt.totalBytes).toBe(nutzdaten.length);
+  });
+
+  it('lehnt einen ZIP-Eintrag ab, der sich groesser entfaltet als angekuendigt', () => {
+    const archiv = zip([
+      { name: 'gross.bin', content: Buffer.alloc(4 * 1024 * 1024), deflate: true },
+    ]);
+    // Die angekuendigte Groesse im Zentralverzeichnis kleinreden: Die
+    // Vorpruefung laesst den Eintrag durch, erst der Deckel an `inflateRaw`
+    // stoppt ihn - und auch der muss "zu gross" melden, nicht "beschaedigt".
+    const zentralStart = archiv.readUInt32LE(archiv.length - 6);
+    archiv.writeUInt32LE(1024, zentralStart + 24);
+
+    erwarteZuGross(() => readArchive(archiv, 'zip', { maxExtractedBytes: GRENZE }));
   });
 });

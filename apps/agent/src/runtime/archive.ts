@@ -21,7 +21,10 @@
  *    oder `..` werden uebersprungen und gemeldet, nicht entpackt.
  * 2. *Entpack-Bombe* - Ein paar Kilobyte Archiv koennen sich zu Gigabyte
  *    entfalten. Sowohl die Gesamtgroesse als auch die Anzahl der Eintraege sind
- *    gedeckelt; darueber bricht der Vorgang mit `ARCHIVE_INVALID` ab.
+ *    gedeckelt; darueber bricht der Vorgang mit `ARCHIVE_INVALID` ab. Der
+ *    Groessen-Deckel wird dabei an zlib selbst durchgereicht
+ *    (`maxOutputLength`), damit die Bombe gar nicht erst im Speicher entsteht
+ *    (Fundpunkt 122).
  * 3. *Sonderdateien* - Symlinks, Hardlinks und Geraetedateien werden
  *    uebersprungen. Ein Symlink im Datenordner, der nach `/etc` zeigt, waere ein
  *    Ausbruch mit Umweg.
@@ -60,8 +63,27 @@ export interface ArchiveContents {
   readonly totalBytes: number;
 }
 
+export interface ReadArchiveOptions {
+  /**
+   * Obergrenze fuer die entpackten Nutzdaten; ohne Angabe `MAX_EXTRACTED_BYTES`.
+   *
+   * Nur fuer Tests gedacht: Eine Entpack-Bombe laesst sich so mit wenigen
+   * Megabyte nachstellen statt mit einem halben Gigabyte.
+   */
+  readonly maxExtractedBytes?: number;
+}
+
 function ungueltig(grund: string, details: Record<string, unknown> = {}): never {
   throw new ContainerRuntimeError('ARCHIVE_INVALID', { message: grund, details });
+}
+
+/**
+ * Hat zlib wegen `maxOutputLength` abgebrochen? Node wirft dann einen
+ * `RangeError` mit `code: 'ERR_BUFFER_TOO_LARGE'` - genau der Fall, der als
+ * "zu gross" und nicht als "beschaedigt" gemeldet werden soll.
+ */
+function istDeckelUeberschritten(error: unknown): boolean {
+  return error instanceof RangeError && 'code' in error && error.code === 'ERR_BUFFER_TOO_LARGE';
 }
 
 /**
@@ -134,7 +156,12 @@ export function safeArchivePath(roh: string): string | null {
 class Sammler {
   readonly #entries: ArchiveEntry[] = [];
   readonly #skipped: string[] = [];
+  readonly #maxExtractedBytes: number;
   #totalBytes = 0;
+
+  constructor(maxExtractedBytes: number) {
+    this.#maxExtractedBytes = maxExtractedBytes;
+  }
 
   add(rohPfad: string, type: 'file' | 'directory', content: Buffer): void {
     const pfad = safeArchivePath(rohPfad);
@@ -153,9 +180,9 @@ class Sammler {
 
     this.#totalBytes += content.length;
 
-    if (this.#totalBytes > MAX_EXTRACTED_BYTES) {
+    if (this.#totalBytes > this.#maxExtractedBytes) {
       ungueltig('Der entpackte Inhalt des Archivs ist zu gross.', {
-        maxExtractedBytes: MAX_EXTRACTED_BYTES,
+        maxExtractedBytes: this.#maxExtractedBytes,
       });
     }
 
@@ -171,12 +198,20 @@ class Sammler {
   }
 }
 
-function readTarGz(archiv: Buffer, sammler: Sammler): void {
+function readTarGz(archiv: Buffer, sammler: Sammler, maxExtractedBytes: number): void {
   let roh: Buffer;
 
   try {
-    roh = gunzipSync(archiv);
+    // Der Deckel muss VOR dem Entpacken sitzen, nicht erst im Sammler dahinter:
+    // gunzip liefert das ganze tar auf einmal, und eine gzip-Bombe aus 64 MiB
+    // Nullen fordert dabei rund 64 GiB an - der Sammler saehe davon nichts mehr,
+    // weil der Agent-Prozess vorher am Speicher stirbt (Fundpunkt 122).
+    roh = gunzipSync(archiv, { maxOutputLength: maxExtractedBytes });
   } catch (error: unknown) {
+    if (istDeckelUeberschritten(error)) {
+      ungueltig('Der entpackte Inhalt des Archivs ist zu gross.', { maxExtractedBytes });
+    }
+
     ungueltig('Das Archiv liess sich nicht entpacken (gzip).', {
       cause: error instanceof Error ? error.message : String(error),
     });
@@ -218,7 +253,7 @@ function findeEocd(archiv: Buffer): number {
   ungueltig('Das ZIP-Archiv hat kein lesbares Zentralverzeichnis.');
 }
 
-function readZip(archiv: Buffer, sammler: Sammler): void {
+function readZip(archiv: Buffer, sammler: Sammler, maxExtractedBytes: number): void {
   if (archiv.length < 22) {
     ungueltig('Das ZIP-Archiv ist unvollstaendig.');
   }
@@ -270,11 +305,8 @@ function readZip(archiv: Buffer, sammler: Sammler): void {
       ungueltig('Ein Eintrag des ZIP-Archivs ist unvollstaendig.', { name });
     }
 
-    if (entpackt > MAX_EXTRACTED_BYTES) {
-      ungueltig('Der entpackte Inhalt des Archivs ist zu gross.', {
-        name,
-        maxExtractedBytes: MAX_EXTRACTED_BYTES,
-      });
+    if (entpackt > maxExtractedBytes) {
+      ungueltig('Der entpackte Inhalt des Archivs ist zu gross.', { name, maxExtractedBytes });
     }
 
     let inhalt: Buffer;
@@ -283,8 +315,14 @@ function readZip(archiv: Buffer, sammler: Sammler): void {
       inhalt = Buffer.from(daten);
     } else if (verfahren === 8) {
       try {
-        inhalt = inflateRawSync(daten, { maxOutputLength: MAX_EXTRACTED_BYTES });
+        inhalt = inflateRawSync(daten, { maxOutputLength: maxExtractedBytes });
       } catch (error: unknown) {
+        if (istDeckelUeberschritten(error)) {
+          // Das Zentralverzeichnis hat die Groesse kleingeredet - die Vorpruefung
+          // oben kam durch, erst der Deckel an zlib hat die Bombe gestoppt.
+          ungueltig('Der entpackte Inhalt des Archivs ist zu gross.', { name, maxExtractedBytes });
+        }
+
         ungueltig('Ein Eintrag des ZIP-Archivs liess sich nicht entpacken.', {
           name,
           cause: error instanceof Error ? error.message : String(error),
@@ -308,19 +346,24 @@ function readZip(archiv: Buffer, sammler: Sammler): void {
  *   lesbar ist, ein nicht unterstuetztes Format hat oder die Grenzen aus dem
  *   Kopfkommentar sprengt.
  */
-export function readArchive(archiv: Buffer, kind?: ArchiveKind): ArchiveContents {
+export function readArchive(
+  archiv: Buffer,
+  kind?: ArchiveKind,
+  options: ReadArchiveOptions = {},
+): ArchiveContents {
   const format = kind ?? detectArchiveKind(archiv);
 
   if (format === null) {
     ungueltig('Das Archiv ist weder ein ZIP- noch ein tar.gz-Archiv.');
   }
 
-  const sammler = new Sammler();
+  const maxExtractedBytes = options.maxExtractedBytes ?? MAX_EXTRACTED_BYTES;
+  const sammler = new Sammler(maxExtractedBytes);
 
   if (format === 'zip') {
-    readZip(archiv, sammler);
+    readZip(archiv, sammler, maxExtractedBytes);
   } else {
-    readTarGz(archiv, sammler);
+    readTarGz(archiv, sammler, maxExtractedBytes);
   }
 
   return sammler.result();
