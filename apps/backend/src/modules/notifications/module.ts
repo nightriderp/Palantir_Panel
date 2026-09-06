@@ -14,6 +14,11 @@
 import { type NotificationEvent, isNotifiableEventName } from '@palantir/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Database } from '../../db/index.js';
+import {
+  type FireAndForgetLogger,
+  consoleFireAndForgetLogger,
+  fireAndForget,
+} from '../../lib/fire-and-forget.js';
 import { createDiscordTransport } from './discord.js';
 import { createNotificationHub, registerNotificationLiveRoute } from './live.js';
 import type {
@@ -50,7 +55,10 @@ export interface NotificationEventSink {
   publish(event: string, payload: Record<string, unknown>): void;
 }
 
-export function createNotificationEventSink(service: NotificationService): NotificationEventSink {
+export function createNotificationEventSink(
+  service: NotificationService,
+  log: FireAndForgetLogger = consoleFireAndForgetLogger,
+): NotificationEventSink {
   function forward(event: string, payload: Record<string, unknown>): void {
     if (!isNotifiableEventName(event)) {
       return;
@@ -80,7 +88,11 @@ export function createNotificationEventSink(service: NotificationService): Notif
      * Typisiert herstellen ließe sie sich nur, wenn B3 und B5 gegen die Typen
      * der Notification-Engine übersetzen müssten – genau das sollen sie nicht.
      */
-    void service.publish({ event, payload: normalized } as unknown as NotificationEvent);
+    fireAndForget(
+      service.publish({ event, payload: normalized } as unknown as NotificationEvent),
+      log,
+      { vorgang: 'Benachrichtigung veröffentlichen', event },
+    );
   }
 
   return { emit: forward, publish: forward };
@@ -132,7 +144,7 @@ export function createNotificationModule(options: NotificationModuleOptions): No
     defaultWebhookUrl: options.defaultWebhookUrl ?? null,
   });
 
-  return { service, eventSink: createNotificationEventSink(service), hub };
+  return { service, eventSink: createNotificationEventSink(service, options.log), hub };
 }
 
 export interface RegisterNotificationsOptions extends NotificationModuleOptions {

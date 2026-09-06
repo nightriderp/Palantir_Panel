@@ -87,16 +87,51 @@ function main(): void {
   halter.verbindung = connection;
   connection.start();
 
-  const shutdown = (signal: string): void => {
-    console.info(`[agent] Beende auf ${signal}`);
+  let beendet = false;
+
+  const shutdown = (grund: string, exitCode = 0): void => {
+    // Nur einmal: Eine Ausnahme während des Beendens oder ein zweites Signal
+    // darf den Ablauf nicht erneut anstoßen.
+    if (beendet) {
+      return;
+    }
+
+    beendet = true;
+    console.info(`[agent] Beende auf ${grund}`);
     jobs.stop();
     adapter.stop();
     connection.stop();
-    void runtime.dispose().finally(() => process.exit(0));
+    void runtime
+      .dispose()
+      .catch((fehler: unknown) => {
+        console.error('[agent] Container-Runtime konnte nicht sauber getrennt werden', {
+          fehler: fehler instanceof Error ? fehler.message : String(fehler),
+        });
+      })
+      .finally(() => process.exit(exitCode));
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  // Prozess-Wächter (Audit W0-5, Fundpunkt 126): Node beendet den Prozess bei
+  // der ersten unbehandelten Promise-Ablehnung. Der Agent loggt sie und läuft
+  // weiter – die Container auf der Node brauchen weiter jemanden, der sie
+  // meldet. Eine unbehandelte Ausnahme hinterlässt dagegen einen unbekannten
+  // Zustand: loggen, geordnet beenden, Neustart dem Container-Betrieb überlassen.
+  process.on('unhandledRejection', (grund: unknown) => {
+    console.error('[agent] Unbehandelte Promise-Ablehnung – der Agent läuft weiter', {
+      fehler: grund instanceof Error ? grund.message : String(grund),
+      stack: grund instanceof Error ? grund.stack : undefined,
+    });
+  });
+  process.on('uncaughtException', (fehler: Error) => {
+    console.error('[agent] Unbehandelte Ausnahme – der Agent wird beendet', {
+      fehler: fehler.message,
+      stack: fehler.stack,
+    });
+    shutdown('uncaughtException', 1);
+  });
 }
 
 /** Version aus package.json; nur für Diagnose im `hello`-Frame. */

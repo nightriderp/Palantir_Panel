@@ -38,6 +38,7 @@ import {
   isErrorCode,
 } from '@palantir/contracts';
 import { agentToBackendFrameSchema } from '@palantir/validation';
+import { fireAndForget } from '../../lib/fire-and-forget.js';
 import { ServerOrchestrationError } from './errors.js';
 
 /**
@@ -182,16 +183,41 @@ export class AgentSession {
 
     const frame = parsed.data;
 
+    /*
+     * Die Handler laufen bewusst neben dem Socket-Callback her – ein
+     * Soll/Ist-Abgleich darf den Empfang weiterer Frames nicht blockieren.
+     * Ihre Fehler müssen aber gefangen werden (Audit W0-5, Fundpunkt 126):
+     * Ein zweites `CRASHED` für einen bereits abgestürzten Server oder eine
+     * kurz nicht erreichbare Datenbank wären sonst eine unbehandelte
+     * Ablehnung, und Node beendete damit das ganze Backend. Ein fehlerhafter
+     * (oder feindlicher, aber authentifizierter) Agent könnte das Panel so
+     * beliebig oft abschießen.
+     */
     switch (frame.kind) {
       case 'hello':
         this.handleHello(frame.protocolVersion, frame.agentVersion, frame.nodeId ?? null);
         return;
-      case 'stateReport':
-        void this.handlers.onStateReport(this.hostId, frame as AgentStateReportFrame);
+      case 'stateReport': {
+        const report = frame as AgentStateReportFrame;
+
+        fireAndForget(this.handlers.onStateReport(this.hostId, report), this.log, {
+          vorgang: 'Ist-Zustands-Bericht des Agents verarbeiten',
+          hostId: this.hostId,
+          reason: report.reason,
+        });
         return;
-      case 'event':
-        void this.handlers.onEvent(this.hostId, frame as AgentEventFrame);
+      }
+      case 'event': {
+        const event = frame as AgentEventFrame;
+
+        fireAndForget(this.handlers.onEvent(this.hostId, event), this.log, {
+          vorgang: 'Agent-Ereignis verarbeiten',
+          hostId: this.hostId,
+          event: event.event,
+          serverId: event.serverId,
+        });
         return;
+      }
       case 'commandResult':
         this.handleCommandResult(frame as AgentCommandResultFrame);
         return;
@@ -231,7 +257,10 @@ export class AgentSession {
 
     this.helloReceived = true;
     this.log.info({ hostId: this.hostId, agentVersion }, 'Agent verbunden');
-    void this.handlers.onConnected?.(this.hostId);
+    fireAndForget(this.handlers.onConnected?.(this.hostId), this.log, {
+      vorgang: 'Node als verbunden melden',
+      hostId: this.hostId,
+    });
 
     const welcome: BackendWelcomeFrame = {
       kind: 'welcome',
@@ -374,7 +403,10 @@ export class AgentSession {
     // nie als verbunden geführt und dürfte auch nicht als getrennt gemeldet
     // werden (z. B. bei abgelehnter Protokollversion vor dem `hello`).
     if (this.helloReceived) {
-      void this.handlers.onDisconnected?.(this.hostId);
+      fireAndForget(this.handlers.onDisconnected?.(this.hostId), this.log, {
+        vorgang: 'Node als getrennt melden',
+        hostId: this.hostId,
+      });
     }
 
     for (const [correlationId, pending] of this.pending) {

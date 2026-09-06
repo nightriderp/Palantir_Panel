@@ -405,6 +405,131 @@ describe('Ereignisse und Ist-Zustand', () => {
   });
 });
 
+describe('Fehler in Handlern (Audit W0-5, Fundpunkt 126)', () => {
+  /*
+   * Der Spion an `unhandledRejection` ist die eigentliche Prüfung: Node
+   * beendete den Prozess bei der ersten unbehandelten Ablehnung – ein Agent,
+   * der ein zweites `CRASHED` schickt, hätte damit das Panel abgeschossen.
+   */
+  const rejections: unknown[] = [];
+  const spion = (reason: unknown): void => {
+    rejections.push(reason);
+  };
+
+  beforeEach(() => {
+    rejections.length = 0;
+    process.on('unhandledRejection', spion);
+  });
+
+  afterEach(() => {
+    process.off('unhandledRejection', spion);
+  });
+
+  async function tick(): Promise<void> {
+    for (let i = 0; i < 3; i += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+
+  function makeThrowingSession(): {
+    session: AgentSession;
+    socket: FakeSocket;
+    errors: { details: Record<string, unknown>; message: string }[];
+  } {
+    const socket = new FakeSocket();
+    const errors: { details: Record<string, unknown>; message: string }[] = [];
+
+    const session = new AgentSession({
+      hostId: 'host-1',
+      socket,
+      handlers: {
+        onStateReport: () => Promise.reject(new Error('Datenbank nicht erreichbar')),
+        onEvent: () => Promise.reject(new Error('SERVER_STATE_CONFLICT: crashed → crashed')),
+        onConnected: () => Promise.reject(new Error('markHostConnected scheitert')),
+        onDisconnected: () => Promise.reject(new Error('markHostDisconnected scheitert')),
+      },
+      log: {
+        ...silentLog,
+        error: (details, message): void => {
+          errors.push({ details, message });
+        },
+      },
+      now: () => NOW,
+    });
+
+    return { session, socket, errors };
+  }
+
+  it('loggt eine Ablehnung des Ereignis-Handlers, statt den Prozess sterben zu lassen', async () => {
+    const { session, socket, errors } = makeThrowingSession();
+
+    session.handleMessage(hello());
+    session.handleMessage(
+      JSON.stringify({
+        kind: 'event',
+        event: 'CRASHED',
+        serverId: SERVER_ID,
+        payload: { exitCode: 137 },
+        emittedAt: NOW.toISOString(),
+      }),
+    );
+    await tick();
+
+    expect(rejections).toEqual([]);
+    const geloggt = errors.find((entry) => entry.details.vorgang === 'Agent-Ereignis verarbeiten');
+
+    expect(geloggt?.message).toBe('Hintergrundvorgang fehlgeschlagen');
+    expect(geloggt?.details).toMatchObject({
+      hostId: 'host-1',
+      event: 'CRASHED',
+      serverId: SERVER_ID,
+      error: 'SERVER_STATE_CONFLICT: crashed → crashed',
+    });
+    // Die Verbindung bleibt offen: Ein verworfenes Ereignis ist kein Grund,
+    // einen laufenden Server unbeaufsichtigt zu lassen.
+    expect(socket.closedWith).toBeNull();
+    expect(session.isReady).toBe(true);
+  });
+
+  it('loggt eine Ablehnung beim Ist-Zustands-Bericht mit dem Anlass', async () => {
+    const { session, errors } = makeThrowingSession();
+
+    session.handleMessage(hello());
+    session.handleMessage(
+      JSON.stringify({
+        kind: 'stateReport',
+        reason: 'connected',
+        containers: [],
+        reportedAt: NOW.toISOString(),
+      }),
+    );
+    await tick();
+
+    expect(rejections).toEqual([]);
+    expect(
+      errors.find(
+        (entry) => entry.details.vorgang === 'Ist-Zustands-Bericht des Agents verarbeiten',
+      )?.details,
+    ).toMatchObject({ hostId: 'host-1', reason: 'connected', error: 'Datenbank nicht erreichbar' });
+  });
+
+  it('fängt auch Ablehnungen von onConnected und onDisconnected', async () => {
+    const { session, socket, errors } = makeThrowingSession();
+
+    session.handleMessage(hello());
+    session.close();
+    await tick();
+
+    expect(rejections).toEqual([]);
+    expect(errors.map((entry) => entry.details.vorgang)).toEqual([
+      'Node als verbunden melden',
+      'Node als getrennt melden',
+    ]);
+    // Der Handshake ist trotz des Fehlers durchgelaufen – `welcome` ging raus.
+    expect(socket.sent[0]?.kind).toBe('welcome');
+  });
+});
+
 describe('AgentRegistry', () => {
   it('liefert nur Verbindungen nach abgeschlossenem Handshake', () => {
     const registry = new AgentRegistry();

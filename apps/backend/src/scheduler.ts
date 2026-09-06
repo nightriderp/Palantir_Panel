@@ -45,6 +45,7 @@
  */
 
 import type { ResourceLowEvent } from '@palantir/contracts';
+import { fireAndForget } from './lib/fire-and-forget.js';
 
 /** Eine Aufgabe, die der Zeitgeber periodisch anstößt. */
 export interface ScheduledTask {
@@ -147,7 +148,9 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
       return;
     }
 
-    void runOnce();
+    // `runOnce()` fängt jede Aufgabe einzeln; das Netz darunter fängt, was
+    // daran vorbeigeht (Audit W0-5, Fundpunkt 126).
+    fireAndForget(runOnce(), log, 'Durchlauf des Zeitgebers');
   }, options.intervalMs);
 
   log.debug(

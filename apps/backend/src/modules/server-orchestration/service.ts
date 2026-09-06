@@ -44,7 +44,8 @@ import { buildServerDnsRecord } from './dns/cloudflare.js';
 import { randomUUID } from 'node:crypto';
 import { type DnsProvider } from './dns/types.js';
 import { type CloneJobProgress, type CloneJobStore, createCloneJobStore } from './clone-jobs.js';
-import { ServerOrchestrationError } from './errors.js';
+import { fireAndForget } from '../../lib/fire-and-forget.js';
+import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 import {
   LatestQueryCache,
   type ServerStatsRepository,
@@ -846,7 +847,10 @@ export class ServerOrchestrationService {
     // Der Health-Check läuft bewusst neben dem Request: Ein Spiel darf beim
     // Hochlauf Minuten brauchen, so lange soll niemand auf eine HTTP-Antwort
     // warten. Der Zustandswechsel wird über `server.statusChanged` gemeldet.
-    void this.awaitStartupHealth(server.id);
+    fireAndForget(this.awaitStartupHealth(server.id), this.deps.log, {
+      vorgang: 'Health-Check nach dem Start',
+      serverId: server.id,
+    });
   }
 
   /**
@@ -854,8 +858,31 @@ export class ServerOrchestrationService {
    *
    * Öffentlich, damit der Soll/Ist-Abgleich denselben Weg nimmt und nicht eine
    * zweite Auslegung von „läuft" mitbringt.
+   *
+   * Verschwindet der Server währenddessen (gelöscht, während der Check über
+   * Minuten lief – Fundpunkt 127), gibt es keinen Zustand mehr, der
+   * fortzuschreiben wäre: Der Start ist damit schlicht abgebrochen, kein
+   * Fehler. `deleteServer()` lehnt das Löschen im Zustand `starting` zwar ab,
+   * doch der Datensatz kann auch anders verschwinden (Kaskade, Abgleich).
    */
   async awaitStartupHealth(serverId: string): Promise<void> {
+    try {
+      await this.runStartupHealth(serverId);
+    } catch (error: unknown) {
+      if (isServerOrchestrationError(error) && error.code === 'SERVER_NOT_FOUND') {
+        this.deps.log.warn(
+          { serverId },
+          'Health-Check abgebrochen – der Server existiert nicht mehr',
+        );
+
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  private async runStartupHealth(serverId: string): Promise<void> {
     const server = await this.requireServer(serverId);
     const definition = this.deps.registry.require(server.gameType);
     const host = await this.deps.repository.findHost(server.hostId);
@@ -977,6 +1004,28 @@ export class ServerOrchestrationService {
    */
   async deleteServer(serverId: string): Promise<void> {
     const server = await this.requireServer(serverId);
+
+    /*
+     * Kein Löschen mitten im Startvorgang (Fundpunkt 127): Der Health-Check
+     * läuft noch im Hintergrund und will gleich einen Datensatz fortschreiben,
+     * den es dann nicht mehr gäbe. Der Zustand ist kurzlebig – der Aufrufer
+     * wiederholt, sobald er durch ist (409, `SERVER_STATE_CONFLICT`), oder
+     * stoppt den Server zuerst.
+     *
+     * `stopping` wird bewusst NICHT gesperrt: Ein Server kann nach einem
+     * Backend-Neustart dauerhaft in `stopping` hängen (orchestration-core-04,
+     * Abgleich plant einen unerlaubten Übergang) – Löschen ist dann der einzige
+     * Ausweg über die API. Der `STOP`-Befehl selbst läuft synchron innerhalb
+     * der Anfrage; ein paralleles Löschen hinterlässt keinen Hintergrundlauf.
+     */
+    if (server.status === 'starting') {
+      throw new ServerOrchestrationError(
+        'SERVER_STATE_CONFLICT',
+        'Der Server ist gerade im Startvorgang und kann erst danach gelöscht werden.',
+        { serverId, status: server.status },
+      );
+    }
+
     const session = this.deps.agents.get(server.hostId);
 
     if (server.dockerContainerId !== null && session !== null) {
@@ -1222,8 +1271,12 @@ export class ServerOrchestrationService {
 
     // Bewusst nicht abgewartet: Der Aufrufer bekommt den Auftrag sofort. Der
     // Hintergrundlauf fängt jeden Fehler selbst ab und schreibt ihn in den
-    // Auftrag – eine unbehandelte Ablehnung würde nur im Log landen.
-    void this.runCloneJob(job.id, source, input, ownerId);
+    // Auftrag; das Netz darunter fängt, was daran vorbeigeht (Fundpunkt 126).
+    fireAndForget(this.runCloneJob(job.id, source, input, ownerId), this.deps.log, {
+      vorgang: 'Klon-Auftrag',
+      serverId: sourceServerId,
+      jobId: job.id,
+    });
 
     return job;
   }
@@ -1709,7 +1762,27 @@ export class ServerOrchestrationService {
 
     switch (frame.event) {
       case 'CRASHED':
-        await this.handleCrash(server, frame);
+        try {
+          await this.handleCrash(server, frame);
+        } catch (error: unknown) {
+          /*
+           * Ein zweites `CRASHED` für einen Server, der schon als abgestürzt
+           * (oder nach Crash-Loop als `error`) geführt wird – Wiederholung
+           * nach einem Reconnect, zwei Meldungen kurz nacheinander – scheitert
+           * an der Übergangstabelle. Das ist eine Dublette, keine Störung
+           * (Fundpunkt 126): Der maßgebliche Zustand steht bereits.
+           */
+          if (isServerOrchestrationError(error) && error.code === 'SERVER_STATE_CONFLICT') {
+            this.deps.log.warn(
+              { serverId: server.id, status: server.status, error: error.message },
+              'Absturzmeldung verworfen – im aktuellen Zustand nicht anwendbar',
+            );
+
+            return;
+          }
+
+          throw error;
+        }
 
         return;
       case 'STATS_UPDATE':
@@ -2187,14 +2260,25 @@ export class ServerOrchestrationService {
           return;
       }
     } catch (error: unknown) {
-      this.deps.log.error(
-        {
-          serverId: server.id,
-          action: action.kind,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Korrektur aus dem Soll/Ist-Abgleich fehlgeschlagen',
-      );
+      const details = {
+        serverId: server.id,
+        status: server.status,
+        action: action.kind,
+        error: error instanceof Error ? error.message : String(error),
+      };
+
+      // Ein Übergang, den die Tabelle im aktuellen Zustand verbietet, ist eine
+      // überholte oder doppelte Beobachtung, keine Störung (Fundpunkt 126).
+      if (isServerOrchestrationError(error) && error.code === 'SERVER_STATE_CONFLICT') {
+        this.deps.log.warn(
+          details,
+          'Korrektur aus dem Soll/Ist-Abgleich im aktuellen Zustand nicht anwendbar',
+        );
+
+        return;
+      }
+
+      this.deps.log.error(details, 'Korrektur aus dem Soll/Ist-Abgleich fehlgeschlagen');
     }
   }
 

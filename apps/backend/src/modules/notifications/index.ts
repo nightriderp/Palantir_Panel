@@ -36,6 +36,7 @@ export {
   type RecipientDirectory,
   type ResolvedChannelTarget,
   NotificationTransportError,
+  createFireAndForgetJobRunner,
   fireAndForgetJobRunner,
   isNotificationTransportError,
   noopAuditSink,

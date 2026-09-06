@@ -25,6 +25,11 @@ import type {
   ServerStatus,
   WebSocketEventName,
 } from '@palantir/contracts';
+import {
+  type FireAndForgetLogger,
+  consoleFireAndForgetLogger,
+  fireAndForget,
+} from '../../lib/fire-and-forget.js';
 
 /**
  * Der Ausschnitt eines `GameServer`, den die Backup-Verwaltung braucht
@@ -121,6 +126,19 @@ export const systemClock: Clock = () => new Date();
  */
 export type JobRunner = (job: () => Promise<void>) => void;
 
-export const fireAndForgetJobRunner: JobRunner = (job) => {
-  void job();
-};
+/**
+ * Der Standard-Runner mit dem Logger des Betriebs (Audit W0-5, bb-05): Bricht
+ * während eines Backups die Datenbank weg, wirft erst der Lauf und dann das
+ * `failBackup` im catch – ohne Fänger wäre das eine unbehandelte Ablehnung,
+ * die den Prozess beendet. Hier landet sie im Log.
+ */
+export function createFireAndForgetJobRunner(log: FireAndForgetLogger): JobRunner {
+  return (job) => {
+    fireAndForget(job(), log, 'Hintergrundlauf der Backup-Verwaltung');
+  };
+}
+
+/** Runner ohne eigenen Logger – für Tests und Skripte; meldet über `console`. */
+export const fireAndForgetJobRunner: JobRunner = createFireAndForgetJobRunner(
+  consoleFireAndForgetLogger,
+);

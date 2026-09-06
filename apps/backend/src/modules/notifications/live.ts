@@ -21,6 +21,7 @@ import {
 } from '@palantir/contracts';
 import { notificationClientFrameSchema } from '@palantir/validation';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { fireAndForget } from '../../lib/fire-and-forget.js';
 import type { Clock, LiveNotificationPayload, LiveNotificationPublisher } from './ports.js';
 import { systemClock } from './ports.js';
 import type { NotificationService } from './service.js';
@@ -175,15 +176,22 @@ export function registerNotificationLiveRoute(
           return;
         }
 
-        void options.notifications.countUnread(userId).then((unreadCount) => {
-          socket.send(
-            JSON.stringify({
-              kind: 'subscribed',
-              data: { unreadCount },
-              sentAt: new Date().toISOString(),
-            }),
-          );
-        });
+        // Ohne Fänger würde eine kurz nicht erreichbare Datenbank hier das
+        // ganze Backend beenden (Audit W0-5, backend-community-02). Der Client
+        // bekommt dann kein `subscribed`; sein Abo steht trotzdem.
+        fireAndForget(
+          options.notifications.countUnread(userId).then((unreadCount) => {
+            socket.send(
+              JSON.stringify({
+                kind: 'subscribed',
+                data: { unreadCount },
+                sentAt: new Date().toISOString(),
+              }),
+            );
+          }),
+          app.log,
+          { vorgang: 'Ungelesene Meldungen beim Abonnieren zählen', userId },
+        );
       });
     },
   );

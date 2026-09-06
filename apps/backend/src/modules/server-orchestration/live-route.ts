@@ -5,6 +5,7 @@ import {
   type LiveClientFrame,
   type ServerConsoleLine,
 } from '@palantir/contracts';
+import { fireAndForget } from '../../lib/fire-and-forget.js';
 import { requireActor } from '../rbac/index.js';
 import { type GameRegistry } from './game-registry.js';
 import { type ServerLiveHub } from './live-hub.js';
@@ -160,7 +161,12 @@ export function registerServerLiveRoute(
     }
 
     socket.on('message', (raw: unknown) => {
-      void handleFrame(bufferToString(raw));
+      // Die Frame-Verarbeitung fängt ihre Fehler je Fall selbst; das Netz
+      // darunter verhindert, dass ein unerwarteter Wurf das Backend beendet
+      // (Audit W0-5, Fundpunkt 126).
+      fireAndForget(handleFrame(bufferToString(raw)), app.log, {
+        vorgang: 'Live-Frame des Browsers verarbeiten',
+      });
     });
     socket.on('close', () => registration.close());
     socket.on('error', () => registration.close());

@@ -56,6 +56,7 @@ export {
   type ServerDirectory,
   type ServerExportManifestSource,
   type UserDirectory,
+  createFireAndForgetJobRunner,
   fireAndForgetJobRunner,
   noopEventPublisher,
   systemClock,

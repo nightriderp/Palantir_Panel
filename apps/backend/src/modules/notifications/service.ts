@@ -62,7 +62,7 @@ import {
   type RecipientDirectory,
   type ResolvedChannelTarget,
   type RoleNameLookup,
-  fireAndForgetJobRunner,
+  createFireAndForgetJobRunner,
   isNotificationTransportError,
   noopAuditSink,
   noopLivePublisher,
@@ -220,9 +220,11 @@ export function createNotificationService(
   const roles = options.roles ?? noopRoleNameLookup;
   const live = options.live ?? noopLivePublisher;
   const audit = options.audit ?? noopAuditSink;
-  const jobs = options.jobs ?? fireAndForgetJobRunner;
   const now: Clock = options.now ?? systemClock;
   const log = options.log ?? silentLogger;
+  // Der Standard-Runner meldet über denselben Logger wie der Service – im
+  // Betrieb `app.log` (Audit W0-5, Fundpunkt 126).
+  const jobs = options.jobs ?? createFireAndForgetJobRunner(log);
   const defaultWebhookUrl = options.defaultWebhookUrl ?? null;
   const deliveryAttempts = options.deliveryAttempts ?? 3;
   const retryDelayMs = options.retryDelayMs ?? 2_000;
