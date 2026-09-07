@@ -8,12 +8,16 @@
  * für Aufrufer außerhalb des HTTP-Pfads gilt.
  *
  * Einzige Ausnahme vom Envelope ist der Download: Er liefert die Bytes des
- * Archivs, keinen JSON-Körper. Fehler **vor** dem ersten Block kommen weiterhin
- * als Envelope; reißt die Übertragung mittendrin ab, bleibt nur der Abbruch der
- * Verbindung – ein halb geschriebener Datei-Body lässt sich nicht mehr in eine
- * JSON-Antwort verwandeln.
+ * Archivs, keinen JSON-Körper. Der erste Block wird deshalb **vor** den
+ * Kopfzeilen abgeholt – Fehler bis dahin (Agent nicht verbunden, Archiv weg)
+ * kommen weiterhin als Envelope. Reißt die Übertragung danach ab, bleibt nur
+ * der Abbruch der Verbindung – ein halb geschriebener Datei-Body lässt sich
+ * nicht mehr in eine JSON-Antwort verwandeln, und ein stiller 200 mit
+ * abgeschnittenem Rest wäre schlimmer als ein sichtbarer Abbruch
+ * (Fundpunkt 120, bb-09).
  */
 
+import { Readable } from 'node:stream';
 import { type ApiResponse, ok } from '@palantir/contracts';
 import {
   backupOverviewQuerySchema,
@@ -26,7 +30,7 @@ import { z } from 'zod';
 import { isRbacError, replyWithErrorCode, requireActor, requirePermission } from '../rbac/index.js';
 import { BackupError, isBackupError, isScheduleError } from './errors.js';
 import type { BackupScheduleService } from './schedules.js';
-import type { BackupService } from './service.js';
+import type { BackupDownload, BackupDownloadChunk, BackupService } from './service.js';
 
 const serverParamsSchema = z.object({ serverId: z.string().uuid() });
 const backupParamsSchema = z.object({ backupId: z.string().uuid() });
@@ -225,32 +229,90 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
       '/backups/:backupId/download',
       { preHandler: requirePermission('backup.manage.own') },
       async (request, reply): Promise<void> => {
-        try {
-          const { backupId } = backupParamsSchema.parse(request.params);
-          const download = await backups.openDownload(
-            requireActor(request),
-            userIdOf(request),
-            backupId,
-          );
+        let backupId: string | undefined;
+        let download: BackupDownload;
+        let bloecke: AsyncGenerator<BackupDownloadChunk>;
+        let ersterBlock: IteratorResult<BackupDownloadChunk>;
 
-          await reply
-            .header('content-type', 'application/octet-stream')
-            .header('content-length', String(download.totalBytes))
-            .header('content-disposition', `attachment; filename="${download.fileName}"`)
-            .send(
-              // Fastify verarbeitet einen async iterable als Stream: Jeder Block
-              // geht sofort raus, das Archiv liegt nie vollständig im Speicher.
-              (async function* stream() {
-                for await (const chunk of download.chunks()) {
-                  if (chunk.bytes.length > 0) {
-                    yield chunk.bytes;
-                  }
-                }
-              })(),
-            );
+        try {
+          backupId = backupParamsSchema.parse(request.params).backupId;
+          download = await backups.openDownload(requireActor(request), userIdOf(request), backupId);
+          bloecke = download.chunks();
+          /*
+           * Der erste Block wird VOR den Kopfzeilen abgeholt (bb-09):
+           * `openDownload` spricht den Agent noch nicht an, erst der erste Block
+           * tut es. Ist der Agent nicht verbunden oder das Archiv weg, kommt der
+           * Fehler so als Envelope – statt als 200 mit leerem Körper und
+           * anschließendem Verbindungsabbruch.
+           */
+          ersterBlock = await bloecke.next();
         } catch (error) {
           await handleError(reply, error);
+
+          return;
         }
+
+        const erwartet = download.totalBytes;
+        let gesendet = 0;
+
+        /*
+         * `Readable.from` statt eines nackten AsyncGenerators: Fastify 5 nimmt
+         * als Stream-Payload nur Node-Streams (und Web-ReadableStreams) an – ein
+         * AsyncGenerator endete als `FST_ERR_REP_INVALID_PAYLOAD_TYPE` und damit
+         * als 500 für jeden Download (Fundpunkt 120). Jeder Block geht sofort
+         * raus, das Archiv liegt nie vollständig im Speicher.
+         */
+        const body = Readable.from(
+          (async function* archiv(): AsyncGenerator<Buffer> {
+            try {
+              if (ersterBlock.done) {
+                return;
+              }
+
+              if (ersterBlock.value.bytes.length > 0) {
+                gesendet += ersterBlock.value.bytes.length;
+                yield ersterBlock.value.bytes;
+              }
+
+              for await (const chunk of bloecke) {
+                if (chunk.bytes.length > 0) {
+                  gesendet += chunk.bytes.length;
+                  yield chunk.bytes;
+                }
+              }
+
+              // `content-length` ist zugesagt; liefert der Agent eine andere
+              // Blocksumme, ist das Archiv nicht das erwartete – lieber sichtbar
+              // abbrechen als den Client mit einer falschen Länge hängen lassen.
+              if (gesendet !== erwartet) {
+                throw new BackupError(
+                  'AGENT_COMMAND_FAILED',
+                  `Das Archiv hat ${String(gesendet)} statt ${String(erwartet)} Bytes geliefert.`,
+                );
+              }
+            } catch (error) {
+              /*
+               * Fehler nach dem ersten Block: Die Kopfzeilen sind raus, ein
+               * zweiter Antwortversuch ist unmöglich (bb-09 – Fastifys eigener
+               * Fehler-Hook liefe sonst in `ERR_HTTP_HEADERS_SENT`). Deshalb
+               * endet der Stream hier ohne `error`-Ereignis, und die Verbindung
+               * wird abgebrochen: Der Client sieht einen unvollständigen Download
+               * statt eines stillen 200 mit abgeschnittenem Rest.
+               */
+              request.log.warn(
+                { err: error, backupId, gesendet, erwartet },
+                'Backup-Download nach Sendebeginn abgebrochen',
+              );
+              reply.raw.destroy();
+            }
+          })(),
+        );
+
+        await reply
+          .header('content-type', 'application/octet-stream')
+          .header('content-length', String(erwartet))
+          .header('content-disposition', `attachment; filename="${download.fileName}"`)
+          .send(body);
       },
     );
 
