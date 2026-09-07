@@ -15,7 +15,7 @@ import {
   updateServerSettingsInputSchema,
 } from '@palantir/validation';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Badge,
   Button,
@@ -35,13 +35,16 @@ import {
   cloneServer,
   deleteServer,
   fetchBackup,
+  fetchCloneJob,
   fetchGameTypes,
   startExport,
   updateServerSettings,
 } from '@/lib/api/servers';
-import { errorText } from '@/lib/api/client';
+import { errorText, isAborted } from '@/lib/api/client';
 import { BASE_DOMAIN } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
+import { type LiveConnectionState } from '@/lib/live/LiveChannelProvider';
+import { forgetCloneJob, rememberCloneJob, rememberedCloneJob } from '@/lib/live/cloneJobHandle';
 import { ConfigFields } from '../form/ConfigFields';
 import { ResourceFields } from '../form/ResourceFields';
 import { formatBytes } from '../formatDetail';
@@ -90,6 +93,13 @@ export interface SettingsTabProps {
   /** Klon-Auftrag aus dem Live-Kanal, solange einer läuft. */
   cloneJob: ServerCloneJobDto | null;
   /**
+   * Zustand des Live-Kanals (Fundpunkt event-flow-06).
+   *
+   * Nach einem Wiederanlauf liefert das Backend keinen Schnappschuss nach
+   * (event-flow-03); der Klon-Stand wird deshalb hier aktiv nachgeholt.
+   */
+  connection: LiveConnectionState;
+  /**
    * Stand der laufenden Sicherung aus dem Live-Kanal (Gefundener Punkt 51).
    *
    * Betrifft hier nur den Export; gewöhnliche Sicherungen zeigt der Reiter
@@ -102,6 +112,7 @@ export function SettingsTab({
   server,
   onServerUpdated,
   cloneJob,
+  connection,
   backupProgress,
 }: SettingsTabProps) {
   const router = useRouter();
@@ -141,11 +152,99 @@ export function SettingsTab({
   const gameTypes = useApiResource<GameTypeDto[]>((signal) => fetchGameTypes(signal), []);
   const gameType = gameTypes.data?.find((entry) => entry.id === server.gameType) ?? null;
 
-  // Änderungen von außen (Live-Kanal, andere Aktion) in das Formular übernehmen,
-  // solange gerade nicht gespeichert wird.
+  /*
+   * Formular auf den angezeigten Server einstellen (Fundpunkt frontend-lib-04).
+   *
+   * Der Effekt hing an `server` – und `ServerDetail` baut bei **jedem**
+   * Live-Statuswechsel ein neues DTO-Objekt (`{...data, status, statusMessage}`).
+   * Wer während des Startvorgangs Startparameter oder Namen tippte, verlor die
+   * Eingabe kommentarlos, sobald `starting → running` eintraf. Der Status hat
+   * mit dem Formular nichts zu tun; zurückgesetzt wird deshalb nur noch beim
+   * Wechsel auf einen **anderen** Server.
+   *
+   * Der Server steckt in einer Referenz, damit der Effekt beim Aufbau den
+   * aktuellen Stand liest, ohne dass jede Änderung daran ihn erneut auslöst.
+   */
+  const serverRef = useRef(server);
+  serverRef.current = server;
+
   useEffect(() => {
-    setDraft(toDraft(server));
-  }, [server]);
+    setDraft(toDraft(serverRef.current));
+  }, [server.id]);
+
+  /*
+   * Klon-Stand nachholen (Fundpunkt event-flow-06).
+   *
+   * `fetchCloneJob` gab es seit F3, gerufen hat es nie jemand: Der Fortschritt
+   * lebte allein in der 202-Antwort und im Live-Ereignis. Wer die Detailseite
+   * verließ und zurückkam – oder die Seite neu lud –, sah nichts mehr, obwohl
+   * der Auftrag weiterlief. Und riss der Kanal ab, blieb die Anzeige für immer
+   * bei „Wartet 0 %", weil nach einem Wiederanlauf kein Schnappschuss
+   * nachgeliefert wird (event-flow-03).
+   *
+   * Der Effekt läuft deshalb beim Öffnen des Reiters **und** bei jedem Wechsel
+   * des Verbindungszustands, also insbesondere nach jedem Wiederanlauf. Ohne
+   * gemerkten Auftrag kostet er nichts – dann gibt es auch keine Id, die man
+   * abfragen könnte.
+   */
+  useEffect(() => {
+    const gemerkt = rememberedCloneJob(server.id);
+
+    if (gemerkt === null) return;
+
+    // Sofort etwas zeigen; die Antwort ersetzt es gleich durch die Wahrheit.
+    setLocalCloneJob((aktuell) => aktuell ?? gemerkt);
+
+    let verworfen = false;
+
+    void fetchCloneJob(server.id, gemerkt.id).then((ergebnis) => {
+      if (verworfen || isAborted(ergebnis)) return;
+
+      if (ergebnis.success) {
+        setLocalCloneJob(ergebnis.data);
+        rememberCloneJob(ergebnis.data);
+
+        return;
+      }
+
+      // Netzfehler o. Ä.: Der gemerkte Stand bleibt stehen, es wird erneut
+      // versucht, sobald sich der Kanal wieder meldet.
+      if (ergebnis.error.code !== 'SERVER_NOT_FOUND') return;
+
+      /*
+       * Das Backend kennt den Auftrag nicht mehr. Die Auftragsliste liegt dort
+       * bewusst im Arbeitsspeicher (`clone-jobs.ts`) – nach einem Neustart ist
+       * sie leer und der Hintergrundlauf tot. Als „läuft" stehen zu bleiben
+       * wäre die schlechteste Auskunft: Der Nutzer wartet auf etwas, das nicht
+       * mehr passiert.
+       */
+      const hinweis =
+        'Der Auftrag ist nicht mehr bekannt – vermutlich wurde die Verwaltung zwischendurch neu gestartet. Bitte prüfe, ob der Klon angelegt wurde, bevor du es erneut versuchst.';
+
+      forgetCloneJob(server.id);
+      setLocalCloneJob({
+        ...gemerkt,
+        status: 'cancelled',
+        // `JobProgress` zeigt `statusMessage` nur bei `failed`; für alles andere
+        // ist `step` die sichtbare Zeile – der Hinweis steht deshalb in beiden.
+        step: hinweis,
+        statusMessage: hinweis,
+        finishedAt: new Date().toISOString(),
+      });
+    });
+
+    return () => {
+      verworfen = true;
+    };
+  }, [server.id, connection]);
+
+  // Den über den Kanal gemeldeten Stand mitschreiben, damit er ein Neuladen
+  // der Seite überlebt. Abgeschlossene Aufträge vergisst der Merkzettel selbst.
+  useEffect(() => {
+    if (cloneJob === null) return;
+
+    rememberCloneJob(cloneJob);
+  }, [cloneJob]);
 
   const activeCloneJob = cloneJob ?? localCloneJob;
   const canEdit = server.permissions.canManageSettings;
@@ -194,6 +293,9 @@ export function SettingsTab({
       return;
     }
     setLocalCloneJob(result.data);
+    // Merken, damit der Fortschritt Reiterwechsel und Neuladen übersteht
+    // (Fundpunkt event-flow-06).
+    rememberCloneJob(result.data);
     setCloneOpen(false);
     toast.success(
       parsed.data.includeWorldData

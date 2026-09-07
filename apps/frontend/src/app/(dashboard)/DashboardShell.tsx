@@ -12,6 +12,8 @@ import { fetchServers } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { LiveChannelProvider, useLiveChannel } from '@/lib/live/LiveChannelProvider';
 import { NotificationLiveProvider } from '@/lib/live/NotificationLiveProvider';
+import { mergeLiveStatus } from '@/lib/live/mergeLiveStatus';
+import { useDtoRevisions } from '@/lib/live/useDtoRevision';
 import { useServerListLive } from '@/lib/live/useServerLive';
 import { DashboardNav } from './DashboardNav';
 import { GlobalStatus } from './GlobalStatus';
@@ -114,16 +116,16 @@ function useShellData(): ShellData {
   const list = useMemo(() => servers.data ?? [], [servers.data]);
   const serverIds = useMemo(() => list.map((server) => server.id), [list]);
   const { statsById, statusById } = useServerListLive(serverIds);
+  const dtoRevisions = useDtoRevisions(list);
 
-  // Denselben Abgleich wie die Übersicht: der über den Kanal gemeldete Status
-  // ist jünger als der aus dem REST-Aufruf.
+  // Denselben Abgleich wie die Übersicht: Es gewinnt der jüngere der beiden
+  // Stände, nicht grundsätzlich der Live-Kanal (Fundpunkt event-flow-04).
   const merged = useMemo(
     () =>
-      list.map((server) => {
-        const live = statusById[server.id];
-        return live === undefined || live === server.status ? server : { ...server, status: live };
-      }),
-    [list, statusById],
+      list.map((server) =>
+        mergeLiveStatus(server, dtoRevisions[server.id] ?? 0, statusById[server.id] ?? null),
+      ),
+    [list, dtoRevisions, statusById],
   );
 
   const metrics = useMemo(

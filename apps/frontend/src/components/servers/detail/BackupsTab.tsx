@@ -3,9 +3,10 @@
 import {
   AUTOMATIC_BACKUP_RETENTION_DAYS,
   type BackupDto,
+  type BackupProgress,
   type GameServerDto,
 } from '@palantir/contracts';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Badge,
   Button,
@@ -56,9 +57,17 @@ const STATUS_META: Record<BackupDto['status'], { label: string; tone: Tone }> = 
 
 export interface BackupsTabProps {
   server: GameServerDto;
+  /**
+   * Stand der laufenden Sicherung aus dem Live-Kanal (Fundpunkt event-flow-05).
+   *
+   * Bis hierher las diese Liste das Ereignis `backup.progressed` gar nicht: Ein
+   * eben angestoßenes Backup blieb bis zum Reiterwechsel oder Neuladen auf
+   * „Läuft …" stehen, obwohl der Abschluss längst im Browser angekommen war.
+   */
+  backupProgress: BackupProgress | null;
 }
 
-export function BackupsTab({ server }: BackupsTabProps) {
+export function BackupsTab({ server, backupProgress }: BackupsTabProps) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [stopServer, setStopServer] = useState(false);
@@ -69,6 +78,51 @@ export function BackupsTab({ server }: BackupsTabProps) {
     (signal) => fetchBackups(server.id, signal),
     [server.id],
   );
+
+  const { reload: reloadBackups, setData: setBackups } = backups;
+
+  /*
+   * Live gemeldeten Stand übernehmen (Fundpunkt event-flow-05).
+   *
+   * Zwei Schritte, absichtlich beide:
+   *
+   * 1. Der vorhandene Eintrag wird sofort fortgeschrieben – der Nutzer sieht
+   *    das Ergebnis in dem Moment, in dem es eintrifft, ohne Netzaufruf.
+   * 2. Ist der Vorgang zu Ende (`completed`/`failed`), wird die Liste einmal
+   *    nachgeladen. Das Ereignis trägt bewusst nur einen Ausschnitt; Prüfsumme,
+   *    Aufbewahrung (`expiresAt`, `retentionProtected`) und das
+   *    `permissions`-Objekt, von dem „Herunterladen"/„Wiederherstellen"
+   *    abhängen, kommen erst mit dem vollständigen DTO. Ein Nachladen bringt
+   *    außerdem Sicherungen mit, die diese Ansicht nie gesehen hat – etwa den
+   *    geplanten Lauf, der nebenher fertig wurde.
+   *
+   * Exporte gehören in den Reiter „Einstellungen" und werden hier übergangen;
+   * für welchen Server das Ereignis gilt, entscheidet bereits das Abo im
+   * `useServerLive` (Topic = Server-Id, Rücksetzung beim Wechsel).
+   */
+  useEffect(() => {
+    if (backupProgress === null || backupProgress.isExport) return;
+
+    setBackups((current) =>
+      current === null
+        ? current
+        : current.map((eintrag) =>
+            eintrag.id === backupProgress.backupId
+              ? {
+                  ...eintrag,
+                  status: backupProgress.status,
+                  sizeBytes: backupProgress.sizeBytes,
+                  completedAt: backupProgress.completedAt,
+                  failureMessage: backupProgress.failureMessage,
+                }
+              : eintrag,
+          ),
+    );
+
+    if (backupProgress.status === 'completed' || backupProgress.status === 'failed') {
+      reloadBackups();
+    }
+  }, [backupProgress, reloadBackups, setBackups]);
 
   async function createNow() {
     setBusy(true);

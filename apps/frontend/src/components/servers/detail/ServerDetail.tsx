@@ -16,6 +16,8 @@ import {
 import { type LifecycleAction, deleteServer, fetchServer } from '@/lib/api/servers';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
+import { useDtoRevision } from '@/lib/live/useDtoRevision';
+import { type LiveStatusEntry, mergeLiveStatus } from '@/lib/live/mergeLiveStatus';
 import { useServerLive } from '@/lib/live/useServerLive';
 import { buildServerTabs, resolveServerTab, type ServerTabKey } from '../serverTabs';
 import { useLifecycleActions } from '../useLifecycleActions';
@@ -57,15 +59,34 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
     [serverId],
   );
   const live = useServerLive(serverId);
+  const dtoRevision = useDtoRevision(resource.data);
 
   const lifecycle = useLifecycleActions((updated) => resource.setData(updated));
 
-  /** DTO mit dem zuletzt über den Live-Kanal gemeldeten Zustand zusammenführen. */
-  const server = useMemo<GameServerDto | null>(() => {
-    if (!resource.data) return null;
-    if (live.status === null || live.status === resource.data.status) return resource.data;
-    return { ...resource.data, status: live.status, statusMessage: live.statusMessage };
-  }, [resource.data, live.status, live.statusMessage]);
+  const liveStatus = useMemo<LiveStatusEntry | null>(
+    () =>
+      live.status === null
+        ? null
+        : {
+            status: live.status,
+            statusMessage: live.statusMessage,
+            revision: live.statusRevision,
+          },
+    [live.status, live.statusMessage, live.statusRevision],
+  );
+
+  /**
+   * DTO mit dem zuletzt über den Live-Kanal gemeldeten Zustand zusammenführen.
+   *
+   * Der jüngere Stand gewinnt, nicht mehr grundsätzlich der Live-Kanal
+   * (Fundpunkt event-flow-04): Nach „Start" ist die REST-Antwort das jüngere
+   * Datum, ein noch stehender Live-Status von vorhin darf sie nicht
+   * überschreiben.
+   */
+  const server = useMemo<GameServerDto | null>(
+    () => (resource.data ? mergeLiveStatus(resource.data, dtoRevision, liveStatus) : null),
+    [resource.data, dtoRevision, liveStatus],
+  );
 
   const tabs = useMemo(() => (server ? buildServerTabs(server.permissions) : []), [server]);
   const activeTab = resolveServerTab(searchParams.get('tab'), tabs);
@@ -176,7 +197,9 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
           ) : null}
 
           {activeTab === 'files' ? <FilesTab server={server} /> : null}
-          {activeTab === 'backups' ? <BackupsTab server={server} /> : null}
+          {activeTab === 'backups' ? (
+            <BackupsTab server={server} backupProgress={live.backupProgress} />
+          ) : null}
           {activeTab === 'tasks' ? <TasksTab server={server} /> : null}
 
           {activeTab === 'settings' ? (
@@ -184,6 +207,7 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
               server={server}
               onServerUpdated={(updated) => resource.setData(updated)}
               cloneJob={live.cloneJob}
+              connection={live.connection}
               backupProgress={live.backupProgress}
             />
           ) : null}
