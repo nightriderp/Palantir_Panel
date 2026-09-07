@@ -37,6 +37,8 @@ describe('Cron-Ausdruck zerlegen', () => {
     ['0 4 5-1 * *', 'Bereich läuft rückwärts'],
     ['*/0 * * * *', 'Schrittweite 0'],
     ['MON 4 * * *', 'Namen werden bewusst nicht unterstützt'],
+    ['0 4 5/2 * *', 'Schrittweite auf einem Einzelwert (Audit bb-13)'],
+    ['0 4 1,5/2 * *', 'Schrittweite auf einem Einzelwert in einer Liste'],
   ])('lehnt %s ab (%s)', (ausdruck) => {
     expect(isValidCronExpression(ausdruck)).toBe(false);
   });
@@ -87,6 +89,36 @@ describe('Passt der Ausdruck auf diesen Zeitpunkt?', () => {
     expect(cronMatches(nurTag, lokal(2026, 8, 13, 4, 0))).toBe(true);
     expect(cronMatches(nurTag, lokal(2026, 8, 28, 4, 0))).toBe(false);
   });
+
+  it('zählt einen Stern mit Schrittweite als gesetzt, nicht als offen (Audit bb-13)', () => {
+    // „jeden zweiten Tag ODER montags“ – klassische Vixie-Semantik. Zuvor galt
+    // die Schrittweite als Wildcard, damit fiel das Tagesfeld weg und der
+    // Zeitplan lief ausschließlich montags.
+    const parsed = parseCronExpression('0 4 */2 * 1');
+
+    // Der 25.08.2026 ist ein Dienstag – ungerader Tag, also über das Tagesfeld
+    // getroffen. Genau dieser Lauf fiel vorher aus.
+    expect(lokal(2026, 8, 25).getDay()).toBe(2);
+    expect(cronMatches(parsed, lokal(2026, 8, 25, 4, 0))).toBe(true);
+
+    // Der 24.08.2026 ist ein Montag mit geradem Datum – über den Wochentag.
+    expect(lokal(2026, 8, 24).getDay()).toBe(1);
+    expect(cronMatches(parsed, lokal(2026, 8, 24, 4, 0))).toBe(true);
+
+    // Gerader Tag, kein Montag: kein Treffer.
+    expect(cronMatches(parsed, lokal(2026, 8, 26, 4, 0))).toBe(false);
+  });
+
+  it('bewertet dieselbe Liste unabhängig von der Reihenfolge ihrer Bestandteile', () => {
+    // Die frühere Prüfung über `startsWith` machte „*/2,5“ zur Wildcard und
+    // „5,*/2“ nicht – gleiche Bedeutung, verschiedenes Ergebnis.
+    const vorne = parseCronExpression('0 4 */2,5 * 1');
+    const hinten = parseCronExpression('0 4 5,*/2 * 1');
+    const dienstag = lokal(2026, 8, 25, 4, 0);
+
+    expect(cronMatches(vorne, dienstag)).toBe(cronMatches(hinten, dienstag));
+    expect(cronMatches(vorne, dienstag)).toBe(true);
+  });
 });
 
 describe('Nächster Lauf', () => {
@@ -119,9 +151,22 @@ describe('Nächster Lauf', () => {
     expect(nextCronRun('0 4 29 2 *', lokal(2026, 8, 26, 12, 0))).toEqual(lokal(2028, 2, 29, 4, 0));
   });
 
-  it('liefert null bei einem formal gültigen, aber unerfüllbaren Ausdruck', () => {
-    // Den 30. Februar gibt es nicht – ohne Obergrenze liefe die Suche endlos.
-    expect(nextCronRun('0 4 30 2 *', lokal(2026, 8, 26, 12, 0))).toBeNull();
+  it.each(['0 4 30 2 *', '0 4 31 2 *', '0 4 31 4 *'])(
+    'liefert null bei dem formal gültigen, aber unerfüllbaren Ausdruck %s',
+    (ausdruck) => {
+      // Den 30./31. Februar und den 31. April gibt es nicht – ohne Obergrenze
+      // liefe die Suche endlos. Aus diesem `null` macht `schedules.set()` die
+      // Ablehnung mit `SCHEDULE_UNSATISFIABLE` (Audit bb-14); hier steht nur
+      // die Auswertung selbst.
+      expect(nextCronRun(ausdruck, lokal(2026, 8, 26, 12, 0))).toBeNull();
+    },
+  );
+
+  it('sucht bei einem Stern mit Schrittweite über beide Zweige der ODER-Regel', () => {
+    // Gegenprobe zu bb-13: Vom Mittwoch, 26.08.2026, 12:00 aus ist der nächste
+    // Treffer schon der Donnerstag, 27.08. (ungerader Tag) – nicht erst der
+    // Montag, den die frühere Wildcard-Auslegung übrig ließ.
+    expect(nextCronRun('0 4 */2 * 1', lokal(2026, 8, 26, 12, 0))).toEqual(lokal(2026, 8, 27, 4, 0));
   });
 });
 

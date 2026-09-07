@@ -127,6 +127,14 @@ export interface BackupRepository {
    * Datensatzes.
    */
   listStale(olderThan: Date): Promise<BackupRecord[]>;
+  /**
+   * Jüngstes Backup, das aus diesem Zeitplan entstanden ist (Audit bb-15).
+   *
+   * Eigene Abfrage statt eines Vollscans über `listByServer`: Der Zeitplan
+   * braucht für `lastBackupId` genau eine Id, und der Bestand eines Servers
+   * kann groß werden.
+   */
+  findLatestByScheduleId(scheduleId: string): Promise<BackupRecord | null>;
   create(data: CreateBackupData): Promise<BackupRecord>;
   update(backupId: string, data: UpdateBackupData): Promise<BackupRecord>;
   remove(backupId: string): Promise<void>;
@@ -291,6 +299,17 @@ export function createDrizzleBackupRepository(db: Database): BackupRepository {
         .orderBy(desc(backups.createdAt));
 
       return rows.map(toBackupRecord);
+    },
+
+    async findLatestByScheduleId(scheduleId) {
+      const [row] = await db
+        .select()
+        .from(backups)
+        .where(eq(backups.scheduleId, scheduleId))
+        .orderBy(desc(backups.createdAt))
+        .limit(1);
+
+      return row ? toBackupRecord(row) : null;
     },
 
     async create(data) {

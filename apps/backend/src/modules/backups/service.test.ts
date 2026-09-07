@@ -56,6 +56,12 @@ function aufbau(
       | ((besitzerId: string, server: BackupServerRecord) => readonly BackupRecord[]);
     /** Mit Manifest-Quelle aufbauen (P8); ohne sie exportiert B5 nur die Weltdaten. */
     manifest?: boolean;
+    /**
+     * Umhüllt das Repository, um Ausfälle mitten im Lauf nachzubilden (z. B.
+     * eine kurz abgerissene Datenbankverbindung, Audit bb-06). Die Prüfungen
+     * lesen weiterhin den echten Bestand.
+     */
+    repositoryUmhuellung?: (basis: BackupRepository) => BackupRepository;
   } = {},
 ): Aufbau & { fertig(): Promise<void> } {
   const besitzerId = testId('2');
@@ -70,7 +76,7 @@ function aufbau(
   const offeneJobs: (() => Promise<void>)[] = [];
 
   const service = createBackupService({
-    repository,
+    repository: options.repositoryUmhuellung?.(repository) ?? repository,
     servers: fakeServerDirectory([server]),
     users: fakeUserDirectory({ [besitzerId]: 'Alex' }),
     agent,
@@ -427,6 +433,67 @@ describe('Aufbewahrungsregel im Zusammenspiel mit dem Agent', () => {
     // Der Datensatz bleibt stehen; der nächste Durchgang holt das Löschen nach.
     expect(ergebnis.removedBackupIds).toEqual([]);
     expect(await t.repository.findById(abgelaufenesAuto.id)).not.toBeNull();
+  });
+
+  it('lässt ein fertiges Backup fertig, wenn die Aufbewahrung danach scheitert (Audit bb-06)', async () => {
+    let brich = false;
+    const t = aufbau({
+      server,
+      repositoryUmhuellung: (basis) => ({
+        ...basis,
+        // Der Aufbewahrungslauf am Ende des Jobs liest hierüber den Bestand;
+        // zum Zeitpunkt des Fehlers steht der Datensatz bereits auf `completed`.
+        listByServer: (id) =>
+          brich
+            ? Promise.reject(new Error('Datenbankverbindung kurz weg.'))
+            : basis.listByServer(id),
+      }),
+    });
+
+    await t.service.createManual(actorMit('backup.manage.own'), besitzer, serverId, {
+      stopServer: false,
+    });
+    brich = true;
+    await t.fertig();
+
+    const [backup] = await t.repository.listByServer(serverId);
+
+    // Das Archiv existiert vollständig – es nachträglich auf `failed` zu setzen
+    // kostete es den Schutz „neuestes abgeschlossenes automatisches Backup“ und
+    // meldete B6 einen Fehlschlag, den es nie gab.
+    expect(backup?.status).toBe('completed');
+    expect(backup?.failureCode).toBeNull();
+    expect(t.events.published.map((eintrag) => eintrag.event)).not.toContain('backup.failed');
+  });
+
+  it('macht auch aus einem Fehler nach dem Abschluss-Update kein failed', async () => {
+    const t = aufbau({
+      server,
+      repositoryUmhuellung: (basis) => ({
+        ...basis,
+        // Geschrieben ist geschrieben: Das Update geht durch, erst die Antwort
+        // geht verloren. Der Fänger in `startBackup` griffe danach ins Leere.
+        update: async (id, data) => {
+          const record = await basis.update(id, data);
+
+          if (data.status === 'completed') {
+            throw new Error('Verbindung nach dem Schreiben verloren.');
+          }
+
+          return record;
+        },
+      }),
+    });
+
+    await t.service.createManual(actorMit('backup.manage.own'), besitzer, serverId, {
+      stopServer: false,
+    });
+    await t.fertig();
+
+    const [backup] = await t.repository.listByServer(serverId);
+
+    expect(backup?.status).toBe('completed');
+    expect(t.events.published.map((eintrag) => eintrag.event)).not.toContain('backup.failed');
   });
 
   it('läuft nach einem erfolgreichen Backup von selbst mit', async () => {
@@ -918,6 +985,51 @@ describe('Kehraus abgerissener Laeufe (Audit W1-6, bb-03)', () => {
     );
 
     expect(dto.status).toBe('pending');
+  });
+
+  it('erreicht auch die Zombie-Zeilen geloeschter Server (Audit backend-db-06)', async () => {
+    /*
+     * `server_id` steht nach dem Loeschen des Servers auf NULL, und NULL-Werte
+     * kollidieren im partiellen Unique-Index nicht: Mehrere „aktive" Zeilen
+     * ohne Server sind damit moeglich. Aufgeraeumt werden sie hier und nicht
+     * ueber den Index – ein Index, der die NULL-Faelle mitzaehlt, liesse das
+     * Loeschen des Servers selbst an einer Unique-Verletzung scheitern.
+     */
+    const abgerissen = new Date(JETZT.getTime() - FUENF_STUNDEN_MS);
+    let laufend!: BackupRecord;
+    let wartend!: BackupRecord;
+    const t = aufbau({
+      bestand: () => {
+        laufend = testBackup({
+          serverId: null,
+          status: 'running',
+          storagePath: null,
+          checksumSha256: null,
+          startedAt: abgerissen,
+          completedAt: null,
+        });
+        wartend = testBackup({
+          serverId: null,
+          status: 'pending',
+          storagePath: null,
+          checksumSha256: null,
+          createdAt: abgerissen,
+          startedAt: null,
+          completedAt: null,
+        });
+
+        return [laufend, wartend];
+      },
+    });
+
+    expect([...(await t.service.sweepOrphanedRuns())].sort()).toEqual(
+      [laufend.id, wartend.id].sort(),
+    );
+    expect((await t.repository.findById(laufend.id))?.status).toBe('failed');
+    expect((await t.repository.findById(wartend.id))?.status).toBe('failed');
+    // Ohne Server gibt es keinen vertragsgemaessen Empfaenger fuer
+    // `backup.failed`; den Ausgang traegt der Datensatz.
+    expect(t.events.published.map((eintrag) => eintrag.event)).not.toContain('backup.failed');
   });
 
   it('laesst einen jungen Lauf unangetastet – er arbeitet noch', async () => {

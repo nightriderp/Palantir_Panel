@@ -20,7 +20,7 @@
 
 import { type PanelBackupDto, type PanelBackupTrigger } from '@palantir/contracts';
 import { type PermissionActor, hasPermission } from '../rbac/index.js';
-import { PanelBackupError } from './errors.js';
+import { PanelBackupError, isPanelBackupError } from './errors.js';
 import { PG_DUMP_DEFAULT_TIMEOUT_MS } from './pg-dump.js';
 
 export { PanelBackupError, isPanelBackupError } from './errors.js';
@@ -132,6 +132,22 @@ export interface PanelBackupDependencies {
 const STUNDE_MS = 3_600_000;
 const TAG_MS = 86_400_000;
 
+/**
+ * Erkennt eine Unique-Verletzung von PostgreSQL (`SQLSTATE 23505`) – hier den
+ * partiellen Index `panel_backups_one_running_idx` (Audit bb-11).
+ *
+ * `pg` legt den SQLSTATE als `code`-Feld auf den Fehler; dasselbe Muster nutzt
+ * die Portvergabe (`modules/admin/ports.ts`).
+ */
+function istLaufKollision(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  );
+}
+
 /** Dateiname eines Abzugs – sortierbar und ohne Zeichen, die Pfade sprengen. */
 export function backupFileName(at: Date): string {
   const stempel = at.toISOString().replace(/[:.]/g, '-');
@@ -197,7 +213,25 @@ export function createPanelBackupService(deps: PanelBackupDependencies): PanelBa
     }
 
     const pfad = `${verzeichnis.replace(/[\\/]+$/, '')}/${backupFileName(jetzt())}`;
-    const lauf = await deps.repository.create(trigger, pfad);
+    let lauf: PanelBackupRecord;
+
+    try {
+      lauf = await deps.repository.create(trigger, pfad);
+    } catch (error: unknown) {
+      /*
+       * `findRunning()` oben und `create()` hier sind zwei Schritte; dazwischen
+       * passt der Minuten-Takt oder ein zweiter Admin (Audit bb-11). Den
+       * Ausgang entscheidet deshalb die Datenbank über den partiellen
+       * Unique-Index: Der Verlierer bekommt den Fachcode statt eines rohen
+       * 23505 als `INTERNAL_ERROR` – und startet vor allem **kein** zweites
+       * `pg_dump`, das sonst auf denselben Zielpfad schriebe.
+       */
+      if (istLaufKollision(error)) {
+        throw new PanelBackupError('PANEL_BACKUP_ALREADY_RUNNING');
+      }
+
+      throw error;
+    }
 
     try {
       return await deps.repository.finish(lauf.id, await deps.dumper.dump(pfad));
@@ -268,7 +302,23 @@ export function createPanelBackupService(deps: PanelBackupDependencies): PanelBa
         return null;
       }
 
-      const record = await fuehreAus('scheduled');
+      let record: PanelBackupRecord;
+
+      try {
+        record = await fuehreAus('scheduled');
+      } catch (error: unknown) {
+        /*
+         * Verliert der Takt das Rennen gegen einen Lauf von Hand, ist das für
+         * ihn kein Fehler, sondern der dokumentierte Fall „bereits einer
+         * unterwegs“ (Audit bb-11): `runScheduled()` liefert dann `null`, statt
+         * den Zeitgeber mit einer Ausnahme zu behelligen.
+         */
+        if (isPanelBackupError(error) && error.code === 'PANEL_BACKUP_ALREADY_RUNNING') {
+          return null;
+        }
+
+        throw error;
+      }
 
       // Ohne Actor gibt es keine Rechte – der Zeitgeber zeigt nichts an.
       return toPanelBackupDto({ isOwner: false, permissions: new Set(), approved: false }, record);

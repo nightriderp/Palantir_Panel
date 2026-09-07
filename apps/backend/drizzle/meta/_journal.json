@@ -176,6 +176,13 @@
       "when": 1788746700771,
       "tag": "0024_refresh_rotation_zeitstempel",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788762648097,
+      "tag": "0025_backup_zeitplan_konsistenz",
+      "breakpoints": true
     }
   ]
 }

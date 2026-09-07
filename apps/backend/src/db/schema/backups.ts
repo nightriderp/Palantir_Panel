@@ -155,6 +155,18 @@ export const backups = pgTable(
      * Höchstens ein laufendes Backup je Server. Zwei gleichzeitige Läufe würden
      * denselben Datenordner lesen, während er sich ändert – die Regel steht
      * deshalb in der Datenbank und nicht nur im Service.
+     *
+     * **Warum `server_id IS NULL` bewusst ausgenommen bleibt** (Audit
+     * backend-db-06): NULL-Werte kollidieren im btree nicht, mehrere „aktive“
+     * Backups gelöschter Server sind also möglich. Der Schutzzweck – kein
+     * paralleler Lesezugriff auf denselben Datenordner – ist dabei nicht
+     * verletzt, denn den Ordner gibt es nicht mehr. Die NULL-Fälle
+     * mitzuzählen (etwa über `coalesce`) würde dagegen echten Schaden
+     * anrichten: `ON DELETE SET NULL` schreibt beim Löschen eines Servers genau
+     * diese Zeilen um, und ein zweiter server-loser Lauf ließe **das Löschen
+     * des Servers** an einer Unique-Verletzung scheitern. Aufgeräumt werden die
+     * Zombie-Zeilen deshalb im Service: `sweepOrphanedRuns()` setzt sie nach
+     * ihrer Frist auf `failed` (Audit W1-6, bb-03).
      */
     uniqueIndex('backups_one_active_per_server_idx')
       .on(table.serverId)
@@ -188,7 +200,27 @@ export const panelBackups = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
   },
-  (table) => [index('panel_backups_started_idx').on(table.startedAt.desc())],
+  (table) => [
+    index('panel_backups_started_idx').on(table.startedAt.desc()),
+    /**
+     * Höchstens ein laufender Abzug – zur selben Zeit, für die ganze Instanz
+     * (Audit bb-11).
+     *
+     * Der Service prüft das zwar über `findRunning()`, aber Prüfen und Anlegen
+     * sind zwei Schritte: Zwischen ihnen kann der Minuten-Takt oder ein zweiter
+     * Admin dazwischenkommen. Ohne Zusicherung in der Datenbank entstünden zwei
+     * `running`-Datensätze und zwei parallele `pg_dump`-Prozesse – bei
+     * gleicher Millisekunde sogar auf denselben Zielpfad, also zwei Prozesse
+     * auf einer Datei. Anders als bei den Server-Backups (B5) fing hier nichts.
+     *
+     * Der Index steht auf `status`, weil genau dieser Wert die Regel trägt; die
+     * Bedingung macht ihn partiell, damit `completed`/`failed` beliebig oft
+     * vorkommen dürfen.
+     */
+    uniqueIndex('panel_backups_one_running_idx')
+      .on(table.status)
+      .where(sql`${table.status} = 'running'`),
+  ],
 );
 
 export type PanelBackupRow = typeof panelBackups.$inferSelect;

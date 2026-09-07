@@ -161,6 +161,89 @@ describe('Backup-Zeitplan setzen (Lastenheft §3.3)', () => {
       await t.schedules.get(actorMit('backup.manage.own'), t.besitzerId, t.server.id),
     ).toBeNull();
   });
+
+  it('lehnt einen unerfüllbaren Ausdruck mit SCHEDULE_UNSATISFIABLE ab (Audit bb-14)', async () => {
+    const t = aufbau();
+
+    // Den 30. Februar gibt es nicht: Der Ausdruck zerlegt sauber, trifft aber
+    // nie zu. Gespeichert wäre er ein Zeitplan, der für immer stumm bleibt.
+    await expect(
+      t.schedules.set(actorMit('backup.manage.own'), t.besitzerId, t.server.id, {
+        enabled: true,
+        cronExpression: '0 4 30 2 *',
+        stopServer: false,
+      }),
+    ).rejects.toMatchObject({ code: 'SCHEDULE_UNSATISFIABLE' });
+
+    expect(await t.repository.findScheduleByServer(t.server.id)).toBeNull();
+  });
+
+  it('lehnt ihn auch bei abgeschaltetem Zeitplan ab – sonst schlüge es erst beim Einschalten zu', async () => {
+    const t = aufbau();
+
+    await expect(
+      t.schedules.set(actorMit('backup.manage.own'), t.besitzerId, t.server.id, {
+        enabled: false,
+        cronExpression: '0 4 30 2 *',
+        stopServer: false,
+      }),
+    ).rejects.toMatchObject({ code: 'SCHEDULE_UNSATISFIABLE' });
+  });
+
+  it('liefert „sauberer Spielstand“ im DTO zurück (contracts-validation-03)', async () => {
+    const t = aufbau();
+
+    const dto = await t.schedules.set(actorMit('backup.manage.own'), t.besitzerId, t.server.id, {
+      enabled: true,
+      cronExpression: '0 4 * * *',
+      stopServer: true,
+    });
+
+    // Ohne das Feld konnte kein Formular den Ist-Zustand anzeigen oder beim
+    // Umschalten von `enabled` wieder mitschicken – die Einstellung ging bei
+    // jeder Änderung still verloren.
+    expect(dto.stopServer).toBe(true);
+  });
+
+  it('antwortet auf set() mit demselben DTO wie get() (Audit bb-15)', async () => {
+    const t = aufbau();
+    const actor = actorMit('backup.manage.own');
+
+    const gesetzt = await t.schedules.set(actor, t.besitzerId, t.server.id, {
+      enabled: true,
+      cronExpression: '0 4 * * *',
+      stopServer: true,
+    });
+
+    expect(await t.schedules.get(actor, t.besitzerId, t.server.id)).toEqual(gesetzt);
+  });
+
+  it('nennt beim Speichern den letzten Lauf des Zeitplans, nicht null', async () => {
+    const t = aufbau();
+    const actor = actorMit('backup.manage.own');
+
+    await t.schedules.set(actor, t.besitzerId, t.server.id, {
+      enabled: true,
+      cronExpression: '0 4 * * *',
+      stopServer: false,
+    });
+
+    t.jetzt = new Date(2026, 7, 27, 4, 0);
+    await t.schedules.tick();
+    await t.fertig();
+
+    const [backup] = await t.repository.listByServer(t.server.id);
+    const erneutGesetzt = await t.schedules.set(actor, t.besitzerId, t.server.id, {
+      enabled: true,
+      cronExpression: '0 5 * * *',
+      stopServer: false,
+    });
+
+    // Vorher stand hier fest `null`: Nach dem Speichern zeigte die Oberfläche
+    // „noch nie gelaufen“, bis der Nutzer die Seite neu lud.
+    expect(erneutGesetzt.lastBackupId).toBe(backup?.id);
+    expect(await t.schedules.get(actor, t.besitzerId, t.server.id)).toEqual(erneutGesetzt);
+  });
 });
 
 describe('Fälliger Zeitplan (automatische Backups)', () => {

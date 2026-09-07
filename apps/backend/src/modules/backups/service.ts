@@ -464,7 +464,19 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
 
     // Aufbewahrungsregel erst nach einem erfolgreichen Lauf: Sonst könnte ein
     // Fehlschlag den Bestand ausdünnen, ohne etwas Neues beigesteuert zu haben.
-    await applyRetentionInternal(server.id);
+    try {
+      await applyRetentionInternal(server.id);
+    } catch {
+      /*
+       * Eigener Fänger (Audit bb-06): Der Datensatz steht an dieser Stelle
+       * bereits auf `completed`, das Archiv liegt vollständig auf der Node.
+       * Ein Fehler beim Ausdünnen (kurzer Datenbank-Ausfall) lief bisher in den
+       * Fänger von `startBackup` und machte aus einer fertigen Sicherung ein
+       * `failed` – mitsamt Meldung an B6 und dem Verlust des Schutzes „das
+       * neueste abgeschlossene automatische Backup bleibt“ (retention.ts). Der
+       * nächste Aufbewahrungslauf holt das Ausdünnen nach.
+       */
+    }
   }
 
   /**
@@ -489,6 +501,20 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     code: ErrorCode,
     message: string,
   ): Promise<void> {
+    /*
+     * Ein bereits abgeschlossener Lauf wird nicht nachträglich zum Fehlschlag
+     * (Audit bb-06). Wirft irgendetwas **nach** dem Wechsel auf `completed`,
+     * landet es im Fänger von `startBackup` – der Datensatz stünde danach auf
+     * `failed`, obwohl das Archiv vollständig existiert, und verlöre als
+     * `failed` den Aufbewahrungsschutz. Die Wahrheit über den Lauf steht im
+     * Datensatz, nicht im Kontrollfluss.
+     */
+    const vorher = await repository.findById(backupId);
+
+    if (vorher?.status === 'completed') {
+      return;
+    }
+
     await repository.update(backupId, {
       status: 'failed',
       completedAt: now(),

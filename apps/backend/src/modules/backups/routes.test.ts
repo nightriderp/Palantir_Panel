@@ -358,6 +358,103 @@ describe('Backup-Zeitplan über die API', () => {
     expect(antwort.statusCode).toBe(400);
     expect(antwort.json().error.code).toBe('SCHEDULE_INVALID_CRON');
   });
+
+  it('lehnt einen nie zutreffenden Ausdruck mit SCHEDULE_UNSATISFIABLE ab (Audit bb-14)', async () => {
+    const { app } = await buildTestApp();
+
+    // Formal gültig, aber der 30. Februar kommt nie: Gespeichert wäre das ein
+    // Zeitplan mit `enabled: true`, der niemals auslöst.
+    const antwort = await anfrage(app, 'PUT', `/servers/${SERVER.id}/backup-schedule`, 'besitzer', {
+      enabled: true,
+      cronExpression: '0 4 30 2 *',
+    });
+
+    expect(antwort.statusCode).toBe(400);
+    expect(antwort.json().error.code).toBe('SCHEDULE_UNSATISFIABLE');
+  });
+
+  it('liefert den gespeicherten „sauberen Spielstand“ mit aus', async () => {
+    const { app } = await buildTestApp();
+
+    const antwort = await anfrage(app, 'PUT', `/servers/${SERVER.id}/backup-schedule`, 'besitzer', {
+      enabled: true,
+      cronExpression: '0 4 * * *',
+      stopServer: true,
+    });
+
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.json().data.stopServer).toBe(true);
+  });
+});
+
+describe('Rolle mit ausschließlich backup.manage.any (Audit bb-12)', () => {
+  /*
+   * Eine Rolle „Backup-Verwalter“ mit nur `backup.manage.any` ist laut
+   * Pflichtenheft §8 die stärkere Ausprägung desselben Rechts. Der Service
+   * behandelt sie überall als Obermenge von `.own`, der Routen-Guard verlangte
+   * aber exakt `.own` und wies sie mit 403 an der Tür ab – während
+   * `/admin/backups` ihr dieselben Backups zeigte und deren `permissions`
+   * `canDelete`/`canRestore` versprachen.
+   */
+
+  it('darf die Backups eines fremden Servers sehen', async () => {
+    const { app } = await buildTestApp();
+
+    const antwort = await anfrage(app, 'GET', `/servers/${SERVER.id}/backups`, 'admin');
+
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.json()).toEqual({ success: true, data: [], error: null });
+  });
+
+  it('darf ein Backup anstoßen und danach abrufen', async () => {
+    const { app } = await buildTestApp();
+
+    const angelegt = await anfrage(app, 'POST', `/servers/${SERVER.id}/backups`, 'admin', {});
+
+    expect(angelegt.statusCode).toBe(202);
+
+    const einzeln = await anfrage(
+      app,
+      'GET',
+      `/backups/${angelegt.json().data.id as string}`,
+      'admin',
+    );
+
+    expect(einzeln.statusCode).toBe(200);
+  });
+
+  it('darf den Zeitplan eines fremden Servers lesen und setzen', async () => {
+    const { app } = await buildTestApp();
+
+    const gesetzt = await anfrage(app, 'PUT', `/servers/${SERVER.id}/backup-schedule`, 'admin', {
+      enabled: true,
+      cronExpression: '0 4 * * *',
+    });
+
+    expect(gesetzt.statusCode).toBe(200);
+
+    const gelesen = await anfrage(app, 'GET', `/servers/${SERVER.id}/backup-schedule`, 'admin');
+
+    expect(gelesen.statusCode).toBe(200);
+    expect(gelesen.json().data.cronExpression).toBe('0 4 * * *');
+  });
+
+  it('darf die Backups eines fremden Kontos auflisten', async () => {
+    const { app } = await buildTestApp();
+
+    const antwort = await anfrage(app, 'GET', `/users/${BESITZER_ID}/backups`, 'admin');
+
+    expect(antwort.statusCode).toBe(200);
+  });
+
+  it('sperrt weiterhin, wer gar kein Backup-Recht hat', async () => {
+    const { app } = await buildTestApp();
+
+    const antwort = await anfrage(app, 'GET', `/servers/${SERVER.id}/backup-schedule`, 'gast');
+
+    expect(antwort.statusCode).toBe(403);
+    expect(antwort.json().error.code).toBe('PERMISSION_DENIED');
+  });
 });
 
 describe('Globale Übersicht über die API (Lastenheft §3.7)', () => {
