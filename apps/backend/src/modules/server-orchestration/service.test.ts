@@ -2381,6 +2381,64 @@ describe('Ereignisse des Agents', () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  it('verwirft ein Ereignis, das eine fremde Node für diesen Server meldet (Audit security-matrix-07)', async () => {
+    /*
+     * Multi-Node: Der Agent von Node B meldet ein Ereignis mit der `serverId`
+     * eines Servers, der auf Node A liegt. Ohne Node-Bindung löste ein
+     * `CRASHED` dort einen Zustandswechsel samt automatischem Neustart aus –
+     * ein Agent konnte also fremde Server abschießen. Der Soll/Ist-Abgleich
+     * zieht die Grenze über `listByHost` längst richtig; am Ereignisweg fehlte
+     * sie.
+     */
+    const FREMDE_NODE = '44444444-4444-4444-8444-444444444444';
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    harness.socket.commands.length = 0;
+    harness.emitted.length = 0;
+
+    await harness.service.handleAgentEvent(FREMDE_NODE, {
+      kind: 'event',
+      event: 'CRASHED',
+      serverId: created.id,
+      payload: { exitCode: 137 },
+      emittedAt: NOW.toISOString(),
+    });
+
+    // Kein Zustandswechsel, kein Neustart, kein Live-Ereignis …
+    expect((await harness.service.requireServer(created.id)).status).toBe('running');
+    expect(harness.socket.commands).toEqual([]);
+    expect(harness.emitted).toEqual([]);
+    // … aber eine Zeile im Protokoll: Ein regulärer Agent erzeugt das nicht.
+    expect(
+      harness.logged.some(
+        (zeile) => zeile.level === 'warn' && zeile.message.includes('anderen Node'),
+      ),
+    ).toBe(true);
+  });
+
+  it('verwirft auch eine Konsolenzeile, die eine fremde Node über die Container-Id meldet', async () => {
+    const FREMDE_NODE = '44444444-4444-4444-8444-444444444444';
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const containerId = (await harness.service.requireServer(created.id)).dockerContainerId;
+
+    harness.emitted.length = 0;
+
+    await harness.service.handleAgentEvent(FREMDE_NODE, {
+      kind: 'event',
+      event: 'LOG_LINE',
+      serverId: null,
+      payload: { containerId, stream: 'stdout', message: 'fremd', at: NOW.toISOString() },
+      emittedAt: NOW.toISOString(),
+    });
+
+    expect(harness.emitted.filter((e) => e.event === 'server.consoleLineAppended')).toEqual([]);
+  });
 });
 
 describe('Lifecycle-Konsistenz (Audit W2-10)', () => {

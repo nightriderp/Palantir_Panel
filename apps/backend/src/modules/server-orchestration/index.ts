@@ -297,9 +297,11 @@ export function registerServerOrchestration(
           );
         }
       },
-      onDisconnected: async (hostId): Promise<void> => {
+      onDisconnected: async (hostId, getrenntSeit): Promise<void> => {
         try {
-          await repository.markHostDisconnected(hostId);
+          // `getrenntSeit` verhindert, dass eine verspätete Abmeldung eine
+          // inzwischen übernommene Verbindung offline schreibt (event-flow-12).
+          await repository.markHostDisconnected(hostId, getrenntSeit);
         } catch (error) {
           log.error(
             { hostId, error: error instanceof Error ? error.message : String(error) },
