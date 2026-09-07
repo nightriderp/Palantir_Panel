@@ -488,7 +488,22 @@ describe('Datei-Manager-Routen', () => {
       data: null,
       error: null,
     });
-    expect(gebaut.aufrufe.remove).toEqual([{ path: 'welt/alt.log', recursive: true }]);
+    // Ohne Angabe nicht rekursiv – die Schranke des Vertrags bleibt stehen
+    // (Audit contract-drift-03).
+    expect(gebaut.aufrufe.remove).toEqual([{ path: 'welt/alt.log', recursive: false }]);
+  });
+
+  it('reicht ein ausdrückliches recursive an den Dienst durch', async () => {
+    const gebaut = await buildApp();
+    app = gebaut.app;
+
+    const response = await call(app, 'DELETE', `/api/servers/${SERVER_ID}/files`, {
+      actor: 'besitzer',
+      payload: { path: 'welt', recursive: true },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(gebaut.aufrufe.remove).toEqual([{ path: 'welt', recursive: true }]);
   });
 
   it('liefert den Download als Datei, nicht als Envelope', async () => {

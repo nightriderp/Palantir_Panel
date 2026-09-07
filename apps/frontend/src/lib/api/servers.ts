@@ -428,9 +428,22 @@ export function uploadFile(
   serverId: string,
   path: string,
   file: File,
+  /**
+   * Vorhandene Datei am Zielpfad ersetzen (Audit contract-drift-03).
+   *
+   * Ohne dieses Feld lehnt der Agent einen belegten Zielpfad mit
+   * `AGENT_FILE_EXISTS` ab – gewollt, damit ein Upload nichts unbemerkt
+   * überschreibt. Gesetzt wird es deshalb erst, nachdem der Nutzer die
+   * Rückfrage bejaht hat.
+   */
+  overwrite = false,
 ): Promise<ApiResult<ServerFileListDto>> {
   const form = new FormData();
+  // Beide Textfelder **vor** der Datei: Das Backend liest den Rumpf als Strom
+  // und wertet aus, was bis zum Dateiteil angekommen ist (`readUpload`). Ein
+  // Feld dahinter käme dort nie an.
   form.set('path', path);
+  if (overwrite) form.set('overwrite', 'true');
   form.set('file', file);
   return apiRequest<ServerFileListDto>(serverPath(serverId, '/files'), {
     method: 'POST',
@@ -438,10 +451,22 @@ export function uploadFile(
   });
 }
 
-export function deleteFile(serverId: string, path: string): Promise<ApiResult<null>> {
+/**
+ * Datei oder Verzeichnis im Datenordner entfernen.
+ *
+ * `recursive` nimmt den Inhalt eines Verzeichnisses mit (Audit
+ * contract-drift-03). Ohne Angabe lehnt der Agent ein nicht-leeres Verzeichnis
+ * ab – die Schranke des Vertrags, und der Grund, warum die Oberfläche zuerst
+ * fragt, statt es stillschweigend mitzusenden.
+ */
+export function deleteFile(
+  serverId: string,
+  path: string,
+  recursive = false,
+): Promise<ApiResult<null>> {
   return apiRequest<null>(serverPath(serverId, '/files'), {
     method: 'DELETE',
-    json: { path },
+    json: recursive ? { path, recursive: true } : { path },
   });
 }
 

@@ -190,6 +190,43 @@ export interface ConnectedHosts {
 }
 
 /**
+ * Eine Node-Schleife, in der eine kaputte Node die übrigen nicht mitreißt
+ * (Audit backend-core-05).
+ *
+ * Der Zeitgeber fängt bisher nur **je Aufgabe**. Wirft die Arbeit an der ersten
+ * Node – in der Praxis ein Datenbankfehler beim Laden ihrer Server oder ein
+ * abgerissener Agent mitten im Durchlauf –, bricht die `for`-Schleife ab: Jede
+ * weitere Node wird in diesem Takt übersprungen, und beim Abtasten der Messwerte
+ * entfiele zusätzlich das anschließende Wegräumen. Ein Takt später beginnt
+ * dasselbe Spiel wieder bei derselben Node.
+ *
+ * Deshalb hier eine Ebene tiefer fangen: Der Fehler landet mit `hostId` im Log,
+ * die Schleife läuft weiter. Was an einer Node nicht ging, ist im nächsten Takt
+ * ohnehin erneut fällig.
+ */
+async function proNodeSicher(
+  hosts: ConnectedHosts,
+  aufgabe: string,
+  log: SchedulerLogger,
+  lauf: (hostId: string) => Promise<void>,
+): Promise<void> {
+  for (const hostId of hosts.connectedHostIds()) {
+    try {
+      await lauf(hostId);
+    } catch (error: unknown) {
+      log.error(
+        {
+          task: aufgabe,
+          hostId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Node im Durchlauf des Zeitgebers übersprungen',
+      );
+    }
+  }
+}
+
+/**
  * Automatisches Abschalten inaktiver Server (Pflichtenheft §9).
  *
  * Geprüft werden nur Nodes mit **offener** Agent-Verbindung. Bei einer Node
@@ -198,6 +235,9 @@ export interface ConnectedHosts {
  * ein einzelner Server abgeschaltet wird, trifft unverändert
  * `decideAutoShutdown()` – insbesondere bleibt ein Server innerhalb seiner
  * Schonfrist unangetastet.
+ *
+ * Jede Node ist einzeln gefangen (Audit backend-core-05): Eine Node, deren
+ * Sweep wirft, darf die übrigen nicht um ihren Durchlauf bringen.
  */
 export function autoShutdownTask(
   orchestration: AutoShutdownSweeper,
@@ -207,13 +247,13 @@ export function autoShutdownTask(
   return {
     name: 'autoShutdown',
     async run(): Promise<void> {
-      for (const hostId of agents.connectedHostIds()) {
+      await proNodeSicher(agents, 'autoShutdown', log, async (hostId) => {
         const stopped = await orchestration.runAutoShutdownSweep(hostId);
 
         if (stopped.length > 0) {
           log.debug({ hostId, serverIds: stopped }, 'Server wegen Inaktivität abgeschaltet');
         }
-      }
+      });
     },
   };
 }
@@ -305,7 +345,9 @@ export interface StatsSampler {
  * Reihe von `AGENT_NOT_CONNECTED` ins Log.
  *
  * Das Wegräumen läuft in **jedem** Durchlauf mit, auch ohne verbundene Node:
- * Die Frist gilt für die Tabelle, nicht für die Verbindung.
+ * Die Frist gilt für die Tabelle, nicht für die Verbindung. Aus demselben Grund
+ * ist jede Node einzeln gefangen (Audit backend-core-05) – eine Node, deren
+ * Abtastung wirft, hätte sonst das Wegräumen mitgenommen.
  */
 export function statsSamplingTask(
   sampler: StatsSampler,
@@ -317,9 +359,9 @@ export function statsSamplingTask(
     async run(): Promise<void> {
       let abgetastet = 0;
 
-      for (const hostId of agents.connectedHostIds()) {
+      await proNodeSicher(agents, 'statsSampling', log, async (hostId) => {
         abgetastet += (await sampler.sampleServerStats(hostId)).length;
-      }
+      });
 
       const entfernt = await sampler.pruneServerStats();
 
@@ -401,17 +443,34 @@ export interface PanelBackupRunner {
  * vorigen Lauf; der Zeitgeber fragt nur in jeder Minute nach.
  *
  * Das Wegraeumen laeuft auch dann, wenn kein Lauf faellig war: Die
- * Aufbewahrungsfrist gilt fuer die abgelegten Dateien, nicht fuer den Takt.
+ * Aufbewahrungsfrist gilt fuer die abgelegten Dateien, nicht fuer den Takt –
+ * und deshalb auch dann, wenn der geplante Lauf geworfen hat (Audit
+ * backend-core-05). Der Fehler des Laufs geht danach unveraendert an den
+ * Zeitgeber weiter, der ihn wie jeden Aufgabenfehler protokolliert.
  */
 export function panelBackupTask(backups: PanelBackupRunner, log: SchedulerLogger): ScheduledTask {
   return {
     name: 'panelBackups',
     async run(): Promise<void> {
-      const gestartet = await backups.runScheduled();
-      const entfernt = await backups.prune();
+      let gestartet: { readonly id: string } | null = null;
 
-      if (gestartet !== null || entfernt > 0) {
-        log.debug({ backupId: gestartet?.id ?? null, entfernt }, 'Panel-Sicherung ausgewertet');
+      try {
+        gestartet = await backups.runScheduled();
+      } finally {
+        // Eigener Fang: Ein Fehler beim Wegraeumen darf den Fehler des Laufs
+        // nicht verdecken – der ist die eigentliche Nachricht.
+        try {
+          const entfernt = await backups.prune();
+
+          if (gestartet !== null || entfernt > 0) {
+            log.debug({ backupId: gestartet?.id ?? null, entfernt }, 'Panel-Sicherung ausgewertet');
+          }
+        } catch (error: unknown) {
+          log.error(
+            { task: 'panelBackups', error: error instanceof Error ? error.message : String(error) },
+            'Alte Panel-Abzuege konnten nicht weggeraeumt werden',
+          );
+        }
       }
     },
   };

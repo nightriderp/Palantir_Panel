@@ -40,6 +40,15 @@ import { formatBytes } from '../formatDetail';
  * §12.1) und steht nirgends im Frontend. Die Prüfung hier erspart nur den
  * vergeblichen Upload; abgelehnt wird endgültig serverseitig
  * (`FILE_TOO_LARGE`).
+ *
+ * **Zwei Schranken des Vertrags sind hier bedienbar** (Audit
+ * contract-drift-03): `recursive` beim Löschen und `overwrite` beim Hochladen.
+ * Beide sind im Agent-Protokoll bewusst als „nur auf ausdrückliche Ansage"
+ * angelegt – ein Verzeichnis mit Inhalt und eine bereits vorhandene Datei
+ * bleiben unangetastet, bis jemand die Rückfrage bejaht. Vorher hob ein
+ * Vorgabewert im Backend die erste Schranke auf (jedes Verzeichnis wurde samt
+ * Baum gelöscht), während die zweite gar nicht erreichbar war (Ersetzen ging
+ * nur über Löschen und erneutes Hochladen).
  */
 
 /** Pfad in die Bestandteile für die Brotkrumen-Leiste zerlegen. */
@@ -73,6 +82,13 @@ export function FilesTab({ server }: FilesTabProps) {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ServerFileEntryDto | null>(null);
+  /**
+   * Datei, deren Upload am belegten Zielpfad gescheitert ist (Audit
+   * contract-drift-03). Sie wird festgehalten, bis der Nutzer das Ersetzen
+   * bestätigt oder abbricht – nur so kommt derselbe Upload ein zweites Mal mit
+   * `overwrite` los, ohne dass er die Datei erneut auswählen muss.
+   */
+  const [pendingOverwrite, setPendingOverwrite] = useState<File | null>(null);
 
   const listing = useApiResource<ServerFileListDto>(
     (signal) => fetchFileList(server.id, path, signal),
@@ -117,7 +133,7 @@ export function FilesTab({ server }: FilesTabProps) {
     listing.reload();
   }
 
-  async function upload(file: File) {
+  async function upload(file: File, overwrite = false) {
     if (data && file.size > data.maxUploadBytes) {
       toast.error(
         `„${file.name}" ist ${formatBytes(file.size)} groß. Erlaubt sind höchstens ${formatBytes(data.maxUploadBytes)} pro Datei.`,
@@ -126,20 +142,39 @@ export function FilesTab({ server }: FilesTabProps) {
     }
 
     setBusy(true);
-    const result = await uploadFile(server.id, path, file);
+    const result = await uploadFile(server.id, path, file, overwrite);
     setBusy(false);
 
     if (!result.success) {
+      /*
+       * Der Zielpfad ist belegt (Audit contract-drift-03). Statt den Nutzer
+       * mit einem Fehler stehen zu lassen – ersetzen ginge sonst nur über
+       * Löschen und erneutes Hochladen – wird gefragt und der Upload auf
+       * Wunsch mit `overwrite` wiederholt.
+       */
+      if (result.error.code === 'AGENT_FILE_EXISTS') {
+        setPendingOverwrite(file);
+        return;
+      }
+      // Jeder andere Fehler beendet den Vorgang – auch den zweiten Anlauf mit
+      // `overwrite`, dessen Dialog sonst offen stehen bliebe.
+      setPendingOverwrite(null);
       toast.error(errorText(result));
       return;
     }
+    setPendingOverwrite(null);
     toast.success(`„${file.name}" hochgeladen.`);
     listing.setData(result.data);
   }
 
   async function remove(entry: ServerFileEntryDto) {
     setBusy(true);
-    const result = await deleteFile(server.id, entry.path);
+    /*
+     * Den Inhalt nimmt nur ein Verzeichnis mit, und nur, weil der Dialog es
+     * vorher benannt hat (Audit contract-drift-03). Bei einer Datei ist das
+     * Feld ohne Bedeutung und bleibt weg.
+     */
+    const result = await deleteFile(server.id, entry.path, entry.type === 'directory');
     setBusy(false);
     setPendingDelete(null);
 
@@ -306,18 +341,43 @@ export function FilesTab({ server }: FilesTabProps) {
         ) : null}
       </Modal>
 
+      {/*
+        Der Dialog benennt den Unterschied, den der Vertrag macht (Audit
+        contract-drift-03): Bei einem Verzeichnis geht der gesamte Inhalt mit –
+        genau dafür schickt die Bestätigung `recursive`. Vorher stand über
+        beiden Fällen „Datei löschen?", und ein Klick neben `world/` nahm
+        wortlos den ganzen Regionsbaum mit.
+      */}
       <DangerConfirmDialog
         open={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
         busy={busy}
-        title="Datei löschen?"
+        title={pendingDelete?.type === 'directory' ? 'Verzeichnis löschen?' : 'Datei löschen?'}
         message={
           pendingDelete
-            ? `„${pendingDelete.name}" wird endgültig aus dem Datenordner entfernt.`
+            ? pendingDelete.type === 'directory'
+              ? `„${pendingDelete.name}" wird mit seinem gesamten Inhalt endgültig aus dem Datenordner entfernt.`
+              : `„${pendingDelete.name}" wird endgültig aus dem Datenordner entfernt.`
             : ''
         }
         onConfirm={() => {
           if (pendingDelete) void remove(pendingDelete);
+        }}
+      />
+
+      <DangerConfirmDialog
+        open={pendingOverwrite !== null}
+        onClose={() => setPendingOverwrite(null)}
+        busy={busy}
+        title="Datei ersetzen?"
+        message={
+          pendingOverwrite
+            ? `Im Datenordner liegt bereits „${pendingOverwrite.name}". Der bisherige Inhalt geht beim Ersetzen verloren.`
+            : ''
+        }
+        confirmLabel="Ersetzen"
+        onConfirm={() => {
+          if (pendingOverwrite) void upload(pendingOverwrite, true);
         }}
       />
     </div>

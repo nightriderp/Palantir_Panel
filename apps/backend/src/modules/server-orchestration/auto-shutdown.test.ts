@@ -24,6 +24,10 @@ function input(overrides: Partial<AutoShutdownInput> = {}): AutoShutdownInput {
     lastStartedAt: minutesAgo(60),
     lastActivityAt: minutesAgo(60),
     playersOnline: 0,
+    // Vorgabe für die meisten Fälle: ein Spiel mit `gamedig`-Abfrage, dessen
+    // Spielerzahl tatsächlich gemessen wird. Der Gegenfall steht unten in
+    // „Spiele ohne Spielerzahl".
+    playerCountAvailable: true,
     now: T0,
     ...overrides,
   };
@@ -126,6 +130,54 @@ describe('Auto-Shutdown (Pflichtenheft §9)', () => {
     );
 
     expect(decision.action).toBe('shutdown');
+  });
+});
+
+describe('Auto-Shutdown: Spiele ohne Spielerzahl (Audit event-flow-08)', () => {
+  it('schaltet ein Spiel ohne messbare Spielerzahl nicht ab', () => {
+    // Reiner Port-Connect-Test: Der Agent meldet nie eine Spielerzahl, also
+    // bleibt `lastActivityAt` leer. Ohne die Sonderbehandlung liefe die
+    // Rechnung ab `lastStartedAt` und schaltete den Server 40 Minuten nach dem
+    // Start ab – mitten in die laufende Runde.
+    const decision = decideAutoShutdown(
+      input({
+        playerCountAvailable: false,
+        lastActivityAt: null,
+        lastStartedAt: minutesAgo(40),
+      }),
+    );
+
+    expect(decision).toEqual({ action: 'keepRunning', reason: 'activityUnknown' });
+  });
+
+  it('bleibt auch nach Tagen bei „unbekannt“ statt abzuschalten', () => {
+    const decision = decideAutoShutdown(
+      input({
+        playerCountAvailable: false,
+        lastActivityAt: null,
+        lastStartedAt: minutesAgo(3 * 24 * 60),
+      }),
+    );
+
+    expect(decision).toEqual({ action: 'keepRunning', reason: 'activityUnknown' });
+  });
+
+  it('nutzt einen vorhandenen Aktivitätszeitpunkt trotzdem', () => {
+    // Käme die Aktivität aus einer anderen Quelle als der Spielerzahl, wäre sie
+    // messbar – dann gilt wieder die gewöhnliche Rechnung.
+    const decision = decideAutoShutdown(
+      input({ playerCountAvailable: false, lastActivityAt: minutesAgo(45) }),
+    );
+
+    expect(decision).toEqual({ action: 'shutdown', idleMinutes: 45 });
+  });
+
+  it('stellt die Schonfrist weiterhin voran', () => {
+    const decision = decideAutoShutdown(
+      input({ playerCountAvailable: false, lastActivityAt: null, lastStartedAt: minutesAgo(5) }),
+    );
+
+    expect(decision).toEqual({ action: 'keepRunning', reason: 'graceActive' });
   });
 });
 

@@ -29,7 +29,11 @@ import {
   AgentSession,
   type AgentSocket,
 } from './modules/server-orchestration/agent-gateway.js';
-import { createGameRegistry } from './modules/server-orchestration/game-registry.js';
+import {
+  TEST_GAME_TYPE,
+  TEST_MINECRAFT_GAME_TYPE,
+  createGameRegistry,
+} from './modules/server-orchestration/game-registry.js';
 import { type HealthProbe } from './modules/server-orchestration/health-check.js';
 import { createPortAllocator } from './modules/server-orchestration/ports.js';
 import {
@@ -325,6 +329,55 @@ describe('Zeitgeber: Verlauf der Messwerte (Arbeitspaket P5)', () => {
 
     expect(aufgeraeumt).toBe(1);
   });
+
+  it('räumt auch dann auf, wenn eine Node beim Abtasten wirft (Audit backend-core-05)', async () => {
+    const timer = manualTimer();
+    const abgetastet: string[] = [];
+    let aufgeraeumt = 0;
+    const fehler: Array<Record<string, unknown>> = [];
+
+    const recordingLog: SchedulerLogger = {
+      ...silentLog,
+      error: (details): void => {
+        fehler.push(details);
+      },
+    };
+
+    startScheduler({
+      tasks: [
+        statsSamplingTask(
+          {
+            sampleServerStats: (hostId: string): Promise<readonly string[]> => {
+              abgetastet.push(hostId);
+
+              return hostId === 'node-a'
+                ? Promise.reject(new Error('Verbindung abgerissen'))
+                : Promise.resolve(['server-1']);
+            },
+            pruneServerStats: (): Promise<number> => {
+              aufgeraeumt += 1;
+
+              return Promise.resolve(0);
+            },
+          },
+          { connectedHostIds: (): readonly string[] => ['node-a', 'node-b'] },
+          recordingLog,
+        ),
+      ],
+      intervalMs: 60_000,
+      log: recordingLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    // Die zweite Node kommt dran, und die Aufbewahrungsfrist wird eingelöst –
+    // beides entfiel bisher, sobald die erste Node warf.
+    expect(abgetastet).toEqual(['node-a', 'node-b']);
+    expect(aufgeraeumt).toBe(1);
+    expect(fehler[0]).toMatchObject({ task: 'statsSampling', hostId: 'node-a' });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -344,16 +397,26 @@ const NOW = new Date('2026-08-26T12:00:00.000Z');
 
 const RESOURCE_LIMITS: ServerResourceLimits = { ramMb: 2048, cpuCores: 2, diskMb: 10_240 };
 
+/**
+ * Ein laufender Server.
+ *
+ * `gameType` zeigt auf eine Definition, die es in der Registry **wirklich**
+ * gibt: Seit der Auto-Shutdown die Abfrageart des Spiels mitliest (Audit
+ * event-flow-08), macht eine erfundene Kennung aus jedem Server einen Fall von
+ * „Aktivität nicht messbar". Vorgabe ist deshalb der Minecraft-Testtyp mit
+ * `gamedig`-Abfrage – das Spiel, das eine Spielerzahl liefert.
+ *
+ * `...overrides` steht am Ende, damit die Angaben des Aufrufers auch wirken.
+ */
 function runningServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
   return {
-    ...overrides,
     id: SERVER_ID,
     ownerId: OWNER_ID,
     ownerDisplayName: 'Besitzerin',
     hostId: HOST.id,
     hostName: HOST.name,
     name: 'Wüstensturm',
-    gameType: 'test',
+    gameType: TEST_MINECRAFT_GAME_TYPE.id,
     status: 'running',
     statusMessage: null,
     statusChangedAt: NOW.toISOString(),
@@ -373,6 +436,7 @@ function runningServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
     restartRequired: false,
     clonedFromServerId: null,
     createdAt: NOW.toISOString(),
+    ...overrides,
   };
 }
 
@@ -676,6 +740,87 @@ describe('Zeitgeber: Auto-Shutdown (Pflichtenheft §9)', () => {
     // geprüft wird hier der Auto-Shutdown, nicht die Begleitbefehle.
     expect(harness.socket.commands.filter((name) => name === 'STOP')).toEqual(['STOP']);
     expect(harness.repository.server.status).toBe('stopped');
+  });
+
+  it('lässt ein Spiel ohne Spielerzahl laufen (Audit event-flow-08)', async () => {
+    /*
+     * Der Echo-Testtyp kennt nur den Port-Connect-Test: Der Agent meldet nie
+     * eine Spielerzahl, `lastActivityAt` bleibt deshalb leer. Bisher rechnete
+     * der Auto-Shutdown dann ab dem Startzeitpunkt und schaltete den Server 30
+     * Minuten nach dem Start ab – für einen Server mit verbundenen Spielern das
+     * Gegenteil dessen, was „bei Inaktivität abschalten" meint.
+     */
+    const harness = makeSweepHarness(runningServer({ gameType: TEST_GAME_TYPE.id }));
+    const timer = manualTimer();
+
+    startScheduler({
+      tasks: [autoShutdownTask(harness.service, harness.agents, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    // Weit jenseits von Schonfrist und Inaktivitäts-Timeout.
+    harness.advance(6 * 60 * 60_000);
+
+    for (let takt = 0; takt < 3; takt += 1) {
+      timer.fire();
+      await settle();
+    }
+
+    expect(harness.socket.commands).toEqual([]);
+    expect(harness.repository.server.status).toBe('running');
+  });
+
+  it('lässt eine kaputte Node die übrigen nicht aufhalten (Audit backend-core-05)', async () => {
+    /*
+     * Der Sweep der ersten Node wirft – in der Praxis ein Datenbankfehler beim
+     * Laden ihrer Server. Bisher brach die `for`-Schleife im Zeitgeber dort ab
+     * und jede weitere Node blieb in diesem Takt unbearbeitet; im nächsten Takt
+     * begann dasselbe wieder bei derselben Node.
+     */
+    const timer = manualTimer();
+    const besucht: string[] = [];
+    const fehler: Array<Record<string, unknown>> = [];
+
+    const recordingLog: SchedulerLogger = {
+      ...silentLog,
+      error: (details): void => {
+        fehler.push(details);
+      },
+    };
+
+    startScheduler({
+      tasks: [
+        autoShutdownTask(
+          {
+            runAutoShutdownSweep: (hostId: string): Promise<readonly string[]> => {
+              besucht.push(hostId);
+
+              return hostId === 'node-kaputt'
+                ? Promise.reject(new Error('Node antwortet nicht'))
+                : Promise.resolve([]);
+            },
+          },
+          { connectedHostIds: (): readonly string[] => ['node-kaputt', 'node-b', 'node-c'] },
+          recordingLog,
+        ),
+      ],
+      intervalMs: 60_000,
+      log: recordingLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(besucht).toEqual(['node-kaputt', 'node-b', 'node-c']);
+    expect(fehler).toHaveLength(1);
+    expect(fehler[0]).toMatchObject({
+      task: 'autoShutdown',
+      hostId: 'node-kaputt',
+      error: 'Node antwortet nicht',
+    });
   });
 
   it('rührt Nodes ohne Agent-Verbindung nicht an', async () => {
