@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AUTH_ENDPOINTS, CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from '@/lib/auth/api';
-import { middleware } from './middleware';
+import { config, middleware } from './middleware';
 
 /**
  * Umleitungen der Zugriffssperre (Fundpunkt frontend-app-02).
@@ -262,5 +262,47 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
     expect(fetchDouble).toHaveBeenCalledTimes(1);
     expect(response.headers.get('location')).toBeNull();
     expect(response.headers.get('set-cookie')).toBeNull();
+  });
+});
+
+/**
+ * Die Wurzel `/` – Fundpunkt frontend-app-07.
+ *
+ * Unter `src/app` liegt keine `page.tsx` mehr: Sie wurde nie gerendert, weil
+ * die Sperre jede Anfrage auf `/` weiterleitet, und hielt daneben eine zweite,
+ * clientseitige Fassung derselben Entscheidung vor. Damit die Löschung nicht
+ * eines Tages einen 404 hinterlässt, hängen zwei Bedingungen daran: Der Matcher
+ * muss `/` erfassen, und `gateRedirect()` muss für `/` in jedem Zustand ein Ziel
+ * liefern (dort geprüft). Beides steht hier bzw. in `lib/auth/routes.test.ts`.
+ */
+describe('Middleware – Wurzel ohne eigene Seite (Fundpunkt frontend-app-07)', () => {
+  it('erfasst `/` mit dem Matcher', () => {
+    const muster = config.matcher.map((eintrag) => new RegExp(`^${eintrag}$`));
+
+    expect(muster.some((regex) => regex.test('/'))).toBe(true);
+    // Gegenprobe: Dateien mit Endung bleiben bewusst außen vor.
+    expect(muster.some((regex) => regex.test('/logo.svg'))).toBe(false);
+  });
+
+  it('leitet einen anonymen Besucher der Wurzel zur Anmeldung', async () => {
+    const response = await middleware(anfrage('https://panel.example/'));
+
+    expect(ziel(response)).toBe('/login');
+  });
+
+  it('leitet ein wartendes Konto von der Wurzel auf den Wartebildschirm', async () => {
+    fetchDouble.mockResolvedValue(angemeldet(true));
+
+    const response = await middleware(anfrage('https://panel.example/', SITZUNGS_COOKIE));
+
+    expect(ziel(response)).toBe('/pending');
+  });
+
+  it('leitet ein freigeschaltetes Konto von der Wurzel auf die Übersicht', async () => {
+    fetchDouble.mockResolvedValue(angemeldet());
+
+    const response = await middleware(anfrage('https://panel.example/', SITZUNGS_COOKIE));
+
+    expect(ziel(response)).toBe('/servers');
   });
 });

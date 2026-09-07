@@ -100,19 +100,29 @@ export function buildStatusMetrics({
   if (nodes !== null) {
     const online = nodes.filter((node) => node.status === 'online');
 
-    const cpuValues = online.map((node) => node.usage?.cpuPercent);
+    /*
+     * Gemessene Kennzahlen zählen nur Nodes, für die auch eine Messung vorliegt
+     * (Fundpunkt frontend-app-05). `HostNodeDto.usage` ist `null`, solange der
+     * Agent nichts gemeldet hat; einzelne Felder darin können ebenfalls fehlen.
+     * Zähler und Nenner müssen deshalb aus **derselben** Menge stammen – sonst
+     * misst der Bruch zwei verschiedene Grundgesamtheiten gegeneinander.
+     */
+    const cpuValues = online
+      .map((node) => node.usage?.cpuPercent)
+      .filter((value): value is number => value != null);
     const cpuSum = sumDefined(cpuValues);
-    const cpuCount = cpuValues.filter((value) => value != null).length;
     metrics.push({
       key: 'cpu',
       label: 'CPU',
-      value: cpuSum === null ? '—' : `${Math.round(cpuSum / cpuCount)}%`,
+      value: cpuSum === null ? '—' : `${Math.round(cpuSum / cpuValues.length)}%`,
       tone: 'warning',
-      note: 'Durchschnitt über die Maschinen aller verbundenen Nodes – nicht über einzelne Container.',
+      note: 'Durchschnitt über die Maschinen der verbundenen Nodes, die Messwerte melden – nicht über einzelne Container.',
     });
 
     // RAM ist der **gebuchte** Anteil (Summe der Server-Limits), nicht der
-    // gemessene: er sagt, wie viel Platz für weitere Server bleibt.
+    // gemessene: er sagt, wie viel Platz für weitere Server bleibt. Buchungen
+    // kennt jede Node, auch eine offline stehende – deshalb geht diese Zahl
+    // bewusst über alle Nodes, anders als CPU und Platte darüber.
     const ramUsed = nodes.reduce((total, node) => total + node.capacity.allocated.ramMb, 0);
     const ramTotal = nodes.reduce((total, node) => total + node.capacity.total.ramMb, 0);
     metrics.push({
@@ -120,19 +130,26 @@ export function buildStatusMetrics({
       label: 'RAM',
       value: `${formatMegabytes(ramUsed)}/${formatMegabytes(ramTotal)}`,
       tone: 'accent',
-      note: 'Summe des gebuchten Arbeitsspeichers über alle Nodes.',
+      note: 'Summe des gebuchten Arbeitsspeichers über alle Nodes – gebucht, nicht gemessen.',
     });
 
-    // Platte dagegen ist die **gemessene** Belegung: Daten liegen auch dann auf
-    // der Node, wenn der Server gestoppt ist.
-    const diskUsed = sumDefined(nodes.map((node) => node.usage?.diskUsedMb));
-    const diskTotal = nodes.reduce((total, node) => total + node.capacity.total.diskMb, 0);
+    /*
+     * Platte dagegen ist die **gemessene** Belegung: Daten liegen auch dann auf
+     * der Node, wenn der Server gestoppt ist. Der Nenner ist deshalb nur der
+     * Platz der Nodes, die ihre Belegung gemeldet haben. Zählte er alle mit,
+     * zeigte eine Node ohne Messung ihren gesamten Platz als „frei" – zwei
+     * Nodes à 500 GB, eine ohne Messung, ergäben „100 GB/1000 GB" statt
+     * „100 GB/500 GB".
+     */
+    const gemessen = nodes.filter((node) => node.usage?.diskUsedMb != null);
+    const diskUsed = sumDefined(gemessen.map((node) => node.usage?.diskUsedMb));
+    const diskTotal = gemessen.reduce((total, node) => total + node.capacity.total.diskMb, 0);
     metrics.push({
       key: 'disk',
       label: 'Disk',
       value: diskUsed === null ? '—' : `${formatMegabytes(diskUsed)}/${formatMegabytes(diskTotal)}`,
       tone: 'warning',
-      note: 'Summe der gemessenen Plattenbelegung über alle Nodes.',
+      note: 'Summe der gemessenen Plattenbelegung über die Nodes, für die eine Messung vorliegt.',
     });
 
     metrics.push({

@@ -147,6 +147,66 @@ describe('buildStatusMetrics', () => {
     expect(valueOf(metrics, 'cpu')).toBe('—');
   });
 
+  /*
+   * Fundpunkt frontend-app-05: Zähler und Nenner der Platte kamen aus zwei
+   * verschiedenen Mengen. Eine Node ohne Messung brachte ihren Platz in den
+   * Nenner ein, ihre Belegung aber nicht in den Zähler – die Leiste meldete
+   * freien Platz, den niemand messen konnte.
+   */
+  it('bildet die Plattenbelegung nur über Nodes mit Messung', () => {
+    const metrics = buildStatusMetrics({
+      servers: [],
+      nodes: [
+        node({ id: 'n1', usage: usage(20, 102400) }),
+        // Node ohne jede Messung: darf den Nenner nicht aufblähen.
+        node({ id: 'n2', usage: null }),
+      ],
+      statsById: {},
+    });
+
+    expect(valueOf(metrics, 'disk')).toBe('100 GB/500 GB');
+  });
+
+  it('zählt auch eine Node ohne Plattenwert nicht mit, wenn sie sonst misst', () => {
+    const metrics = buildStatusMetrics({
+      servers: [],
+      nodes: [
+        node({ id: 'n1', usage: usage(20, 102400) }),
+        // Meldet CPU, aber keine Plattenbelegung – zählt nur bei der CPU mit.
+        node({ id: 'n2', usage: usage(60, null) }),
+        // Offline, aber mit letzter Messung: Platte zählt, CPU nicht.
+        node({
+          id: 'n3',
+          status: 'offline',
+          usage: usage(90, 51200),
+          capacity: {
+            total: { ramMb: 16384, cpuCores: 8, diskMb: 204800 },
+            allocated: { ramMb: 4096, cpuCores: 2, diskMb: 20480 },
+            available: { ramMb: 12288, cpuCores: 6, diskMb: 184320 },
+          },
+        }),
+      ],
+      statsById: {},
+    });
+
+    // 100 GB + 50 GB gemessen, Nenner 500 GB + 200 GB – die Node ohne
+    // Plattenwert steuert zu keiner der beiden Seiten etwas bei.
+    expect(valueOf(metrics, 'disk')).toBe('150 GB/700 GB');
+    expect(valueOf(metrics, 'cpu')).toBe('40%');
+    expect(valueOf(metrics, 'nodes')).toBe('2/3');
+  });
+
+  it('lässt den gebuchten RAM über alle Nodes laufen, auch ohne Messung', () => {
+    const metrics = buildStatusMetrics({
+      servers: [],
+      nodes: [node({ id: 'n1' }), node({ id: 'n2', status: 'offline', usage: null })],
+      statsById: {},
+    });
+
+    // Buchungen kennt jede Node – eine fehlende Messung ändert daran nichts.
+    expect(valueOf(metrics, 'ram')).toBe('8 GB/32 GB');
+  });
+
   it('blendet Bewegung, Fehler und Updates nur ein, wenn es etwas zu melden gibt', () => {
     const ruhig = buildStatusMetrics({
       servers: [server({ id: 'a', status: 'running' })],

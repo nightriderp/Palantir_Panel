@@ -115,6 +115,20 @@ describe('gateRedirect (Zugriffssperre)', () => {
     expect(gateRedirect('/admin', nutzer)).toBeNull();
     expect(gateRedirect('/messages', nutzer)).toBeNull();
   });
+
+  /*
+   * Fundpunkt frontend-app-07: Weil die Wurzel in **jedem** Sitzungszustand
+   * weitergeleitet wird, gibt es unter `src/app` bewusst keine `page.tsx` mehr –
+   * sie wurde nie gerendert und hielt eine zweite, clientseitige Fassung dieser
+   * Entscheidung vor. Fiele einer der drei Fälle hier weg, liefe `/` in einen
+   * echten 404. Dieser Test hält die Voraussetzung der Löschung fest.
+   */
+  it('leitet die Wurzel in jedem Sitzungszustand weiter – sie braucht keine Seite', () => {
+    for (const zustand of [anon, gast, nutzer]) {
+      expect(gateRedirect('/', zustand)).not.toBeNull();
+    }
+    expect(gateRedirect('/', gast)).toBe(AUTH_ROUTES.pending);
+  });
 });
 
 describe('sessionStateFromEnvelope', () => {
