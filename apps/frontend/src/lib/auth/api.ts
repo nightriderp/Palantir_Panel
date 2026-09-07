@@ -80,6 +80,12 @@ export const AUTH_ENDPOINTS = {
  * Anmeldung, Registrierung und die ALTCHA-Challenge laufen ohne Sitzung; ein
  * Erneuerungsversuch wäre dort sinnlos. `refresh` und `logout` stehen mit in der
  * Liste, damit sich der Ablauf nicht selbst aufruft.
+ *
+ * Für `logout` ist das seit dem Backend-Fix zu Fundpunkt frontend-lib-05
+ * unschädlich: Fehlt das Zugriffs-Token, weist der Refresh-Token die Sitzung
+ * aus und `POST /auth/logout` widerruft sie trotzdem. Ein Tausch davor wäre
+ * nur ein zusätzlicher Roundtrip, der eine gerade abzumeldende Sitzung noch
+ * einmal verlängert.
  */
 const OHNE_ERNEUERUNG: ReadonlySet<string> = new Set([
   '/auth/login',
@@ -96,11 +102,158 @@ const OHNE_ERNEUERUNG: ReadonlySet<string> = new Set([
  * Ohne diese Bündelung schickt eine Seite, die zehn Ressourcen gleichzeitig
  * lädt, nach dem Ablauf des Zugriffs-Tokens auch zehn Erneuerungen los. Der
  * Refresh-Token rotiert bei jedem Tausch (Pflichtenheft §7) – neun davon
- * kämen mit einem bereits verbrauchten Token und würden die Sitzung beenden.
+ * kämen mit einem bereits verbrauchten Token.
  */
 let laufendeErneuerung: Promise<boolean> | null = null;
 
+/*
+ * Abstimmung über Tab-Grenzen hinweg (Fundpunkt frontend-lib-01).
+ *
+ * `laufendeErneuerung` bündelt nur im eigenen Tab: Zwei offene Tabs haben je
+ * einen eigenen Modulzustand und tauschen sonst gleichzeitig denselben
+ * Refresh-Token ein. Die Sperre liegt deshalb in `localStorage` – das sehen
+ * alle Tabs derselben Herkunft –, das Ergebnis wandert über einen
+ * `BroadcastChannel`, damit Wartende nicht auf gut Glück nachtauschen.
+ *
+ * Beides ist optional: Fehlt der Speicher (Server-Rendering, Logik-Testlauf
+ * ohne DOM) oder der Kanal, bleibt es bei der Bündelung im eigenen Tab. Die
+ * Sperre ist bewusst nur eine Verkehrsberuhigung und kein harter Ausschluss –
+ * `localStorage` kennt kein „schreiben, falls leer". Was durchrutscht, fängt
+ * die Kulanzfrist des Backends auf den eben ersetzten Token ab.
+ */
+const ERNEUERUNG_SPERRE = 'palantir.auth.erneuerung';
+const ERNEUERUNG_KANAL = 'palantir.auth.erneuerung';
+/** Danach gilt eine Sperre als verwaist – der Tab wurde geschlossen. */
+const SPERRE_TTL_MS = 10_000;
+/** Abstand, in dem eine fremde Sperre nachgesehen wird. */
+const SPERRE_TAKT_MS = 50;
+
+/** `localStorage`, sofern vorhanden und zugänglich. */
+function speicher(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    // In manchen Browser-Einstellungen wirft schon der Zugriff.
+    return null;
+  }
+}
+
+/** Tauscht gerade ein anderer Tab? */
+function fremdeSperre(): boolean {
+  try {
+    const wert = speicher()?.getItem(ERNEUERUNG_SPERRE);
+    if (wert === undefined || wert === null) return false;
+
+    const gesetzt = Number(wert);
+    return Number.isFinite(gesetzt) && Date.now() - gesetzt < SPERRE_TTL_MS;
+  } catch {
+    // Unlesbare Sperre wie „keine" behandeln – lieber einmal zu viel tauschen.
+    return false;
+  }
+}
+
+function setzeSperre(): void {
+  try {
+    speicher()?.setItem(ERNEUERUNG_SPERRE, String(Date.now()));
+  } catch {
+    // Voller oder gesperrter Speicher: dann eben ohne Abstimmung.
+  }
+}
+
+function loeseSperre(): void {
+  try {
+    speicher()?.removeItem(ERNEUERUNG_SPERRE);
+  } catch {
+    // Bleibt die Sperre liegen, läuft sie nach `SPERRE_TTL_MS` von selbst ab.
+  }
+}
+
+function oeffneKanal(): BroadcastChannel | null {
+  try {
+    return typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(ERNEUERUNG_KANAL);
+  } catch {
+    return null;
+  }
+}
+
+/** Nachricht eines anderen Tabs auf die eigene Form prüfen. */
+function leseErgebnis(nachricht: unknown): boolean | null {
+  if (typeof nachricht !== 'object' || nachricht === null || !('erneuert' in nachricht)) {
+    return null;
+  }
+
+  const wert = (nachricht as { erneuert: unknown }).erneuert;
+  return typeof wert === 'boolean' ? wert : null;
+}
+
+/** Das Ergebnis des eigenen Tauschs an die anderen Tabs melden. */
+function meldeErgebnis(erneuert: boolean): void {
+  const kanal = oeffneKanal();
+  if (kanal === null) return;
+
+  try {
+    kanal.postMessage({ erneuert });
+  } catch {
+    // Ohne Meldung warten die anderen Tabs, bis die Sperre fällt.
+  } finally {
+    kanal.close();
+  }
+}
+
+/**
+ * Auf den Tausch eines anderen Tabs warten.
+ *
+ * `null` heißt: Es kam kein Ergebnis – der andere Tab wurde geschlossen oder
+ * es gibt keinen Kanal. Dann tauscht der eigene Tab selbst.
+ */
+function warteAufFremdesErgebnis(): Promise<boolean | null> {
+  return new Promise((resolve) => {
+    const kanal = oeffneKanal();
+    let takt: ReturnType<typeof setInterval> | null = null;
+
+    const beenden = (wert: boolean | null): void => {
+      if (takt !== null) clearInterval(takt);
+      kanal?.close();
+      resolve(wert);
+    };
+
+    if (kanal !== null) {
+      kanal.onmessage = (ereignis: MessageEvent<unknown>): void => {
+        const ergebnis = leseErgebnis(ereignis.data);
+        if (ergebnis !== null) beenden(ergebnis);
+      };
+    }
+
+    // Fällt der andere Tab aus, endet das Warten mit dem Ablauf seiner Sperre.
+    takt = setInterval(() => {
+      if (!fremdeSperre()) beenden(null);
+    }, SPERRE_TAKT_MS);
+  });
+}
+
 async function tauscheToken(): Promise<boolean> {
+  if (speicher() === null) {
+    // Ohne gemeinsamen Speicher gibt es nichts abzustimmen.
+    return await sendeErneuerung();
+  }
+
+  if (fremdeSperre()) {
+    const fremd = await warteAufFremdesErgebnis();
+    if (fremd !== null) return fremd;
+  }
+
+  setzeSperre();
+
+  try {
+    const erfolg = await sendeErneuerung();
+    meldeErgebnis(erfolg);
+    return erfolg;
+  } finally {
+    loeseSperre();
+  }
+}
+
+async function sendeErneuerung(): Promise<boolean> {
   const csrfToken = currentCsrfToken();
 
   try {

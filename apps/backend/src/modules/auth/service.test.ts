@@ -420,9 +420,105 @@ describe('Sitzungen und Token-Rotation (Pflichtenheft §7)', () => {
     await service.login({ username: 'spieler', password: PASSWORD, altcha: ALTCHA }, CONTEXT);
     await service.refresh(refreshToken, CONTEXT);
 
-    // Der alte Token taucht erneut auf – Anzeichen für einen Diebstahl.
+    // Außerhalb der Kulanzfrist von 30 s ist eine Doppelanfrage des Browsers
+    // ausgeschlossen – der alte Token taucht erneut auf, also Diebstahl.
+    now = new Date(now.getTime() + 60_000);
+
     await expectErrorCode(service.refresh(refreshToken, CONTEXT), 'AUTH_SESSION_EXPIRED');
     expect(repository.sessions.every((session) => session.revokedAt !== null)).toBe(true);
+  });
+
+  it('trägt eine zweite Erneuerung mit demselben Token innerhalb der Kulanzfrist', async () => {
+    await service.login({ username: 'spieler', password: PASSWORD, altcha: ALTCHA }, CONTEXT);
+    const erster = await service.refresh(refreshToken, CONTEXT);
+
+    // Zweiter Tab / Middleware neben dem Client: derselbe Token, Sekunden
+    // später. Das ist kein Diebstahl (Fundpunkte backend-auth-02,
+    // frontend-lib-01).
+    now = new Date(now.getTime() + 5_000);
+    const zweiter = await service.refresh(refreshToken, CONTEXT);
+
+    expect(zweiter.session.sessionId).toBe(sessionId);
+    expect(zweiter.session.refreshToken).not.toBe(erster.session.refreshToken);
+    expect(repository.sessions.every((session) => session.revokedAt === null)).toBe(true);
+  });
+
+  it('hält den Token des ersten Aufrufers nach der Kulanz-Rotation gültig', async () => {
+    const erster = await service.refresh(refreshToken, CONTEXT);
+
+    now = new Date(now.getTime() + 5_000);
+    await service.refresh(refreshToken, CONTEXT);
+
+    // Der Tab, der zuerst getauscht hat, darf nicht plötzlich ausgesperrt sein.
+    now = new Date(now.getTime() + 5_000);
+    const dritter = await service.refresh(erster.session.refreshToken, CONTEXT);
+
+    expect(dritter.session.sessionId).toBe(sessionId);
+    expect(repository.sessions.every((session) => session.revokedAt === null)).toBe(true);
+  });
+
+  it('lässt zwei gleichzeitige Erneuerungen mit demselben Token beide durch', async () => {
+    await service.login({ username: 'spieler', password: PASSWORD, altcha: ALTCHA }, CONTEXT);
+
+    // Beide lesen die Sitzung, bevor die erste rotiert – genau die Verschränkung
+    // aus dem Befund. Ohne bedingte Rotation widerruft die zweite hier alles.
+    const [a, b] = await Promise.all([
+      service.refresh(refreshToken, CONTEXT),
+      service.refresh(refreshToken, CONTEXT),
+    ]);
+
+    expect(a.session.sessionId).toBe(sessionId);
+    expect(b.session.sessionId).toBe(sessionId);
+    expect(a.session.refreshToken).not.toBe(b.session.refreshToken);
+    expect(repository.sessions.every((session) => session.revokedAt === null)).toBe(true);
+  });
+
+  it('rotiert bedingt: ein überholter Tausch schreibt nicht mehr', async () => {
+    await service.refresh(refreshToken, CONTEXT);
+
+    const stored = repository.sessions[0];
+    const ueberholt = await repository.rotateSession(sessionId, {
+      refreshTokenHash: 'neuer-hash',
+      // Vorgelegt wird der bereits ersetzte Hash – das Update muss ins Leere
+      // laufen, statt die Sitzung eines anderen zu übernehmen.
+      previousRefreshTokenHash: stored?.previousRefreshTokenHash ?? '',
+      expiresAt: new Date(now.getTime() + REFRESH_TTL_MS),
+      lastUsedAt: now,
+      rotatedAt: now,
+    });
+
+    expect(ueberholt).toBeNull();
+    expect(repository.sessions[0]?.refreshTokenHash).toBe(stored?.refreshTokenHash);
+  });
+
+  it('vermerkt den Zeitpunkt der Rotation', async () => {
+    await service.refresh(refreshToken, CONTEXT);
+
+    expect(repository.sessions[0]?.rotatedAt?.getTime()).toBe(now.getTime());
+  });
+
+  it('meldet über den Refresh-Token ab, wenn das Zugriffs-Token abgelaufen ist', async () => {
+    await service.logoutByRefreshToken(refreshToken);
+
+    expect(repository.sessions[0]?.revokedAt).not.toBeNull();
+  });
+
+  it('lässt fremde Sitzungen beim Abmelden über den Refresh-Token stehen', async () => {
+    const other = await service.login(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+
+    await service.logoutByRefreshToken(refreshToken);
+
+    const fremd = repository.sessions.find((session) => session.id === other.session?.sessionId);
+    expect(fremd?.revokedAt).toBeNull();
+  });
+
+  it('ignoriert einen unbekannten Token beim Abmelden', async () => {
+    await service.logoutByRefreshToken('unbekannt');
+
+    expect(repository.sessions[0]?.revokedAt).toBeNull();
   });
 
   it('merkt sich den ersetzten Hash, damit ein alter Token erkennbar bleibt', async () => {

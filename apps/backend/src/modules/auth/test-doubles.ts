@@ -222,6 +222,7 @@ export function createFakeAuthRepository(): FakeAuthRepository {
         userId: data.userId,
         refreshTokenHash: data.refreshTokenHash,
         previousRefreshTokenHash: null,
+        rotatedAt: null,
         deviceInfo: data.deviceInfo,
         ipHint: data.ipHint,
         createdAt: new Date('2026-08-26T10:00:00Z'),
@@ -259,8 +260,14 @@ export function createFakeAuthRepository(): FakeAuthRepository {
       const index = sessions.findIndex((session) => session.id === id);
       const current = sessions[index];
 
-      if (!current) {
-        return Promise.reject(new Error('Sitzung nicht gefunden.'));
+      /*
+       * Bedingt wie in der Datenbank: Wer nicht mehr den aktuellen Hash
+       * vorlegt, hat gegen eine parallele Erneuerung verloren und bekommt
+       * `null` statt einer Rotation. Ohne diese Nachbildung liefe die
+       * Attrappe auseinander mit dem echten Repository.
+       */
+      if (!current || current.refreshTokenHash !== data.previousRefreshTokenHash) {
+        return Promise.resolve(null);
       }
 
       const updated: SessionRecord = { ...current, ...data };

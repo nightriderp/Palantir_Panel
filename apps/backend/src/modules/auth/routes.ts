@@ -489,10 +489,24 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     );
   });
 
+  /**
+   * Meldet die aktuelle Sitzung ab.
+   *
+   * Fehlt das Zugriffs-Token (es gilt nur 15 Minuten, der Refresh-Token 30
+   * Tage), dient der Refresh-Token als Nachweis. Sonst würde ein „Abmelden"
+   * nach längerer Pause bloß die Cookies löschen, während die Sitzung in der
+   * Ablage weiterlebt und erneuerbar bleibt (Fundpunkt frontend-lib-05). Die
+   * Route ist – wie `/auth/refresh` – nicht von der CSRF-Prüfung ausgenommen,
+   * der Nachweis ist also nicht allein das mitgeschickte Cookie.
+   */
   app.post('/auth/logout', async (request, reply) => {
     await handle(reply, async () => {
+      const refreshToken = request.cookies[REFRESH_COOKIE_NAME];
+
       if (request.authSessionId) {
         await service.logout(request.authSessionId);
+      } else if (refreshToken) {
+        await service.logoutByRefreshToken(refreshToken);
       }
 
       clearSessionCookies(reply, options.cookies);

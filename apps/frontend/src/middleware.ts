@@ -22,6 +22,25 @@ import { type GateState, gateRedirect, sessionStateFromEnvelope } from '@/lib/au
  * die Erneuerung im Browser (`lib/api/client.ts`) greift erst, wenn die Seite
  * schon läuft. Gelingt der Tausch, werden die neuen Sitzungs-Cookies an die
  * Antwort gehängt; sonst bleibt es beim Weg zur Anmeldung.
+ *
+ * **Verhältnis zur Erneuerung im Browser** (Fundpunkt frontend-lib-01). Der
+ * Ablauf ist bewusst einseitig:
+ *
+ * 1. Die Middleware tauscht serverseitig und hängt die Antwort-Cookies über
+ *    `mitCookies()` an die Navigation (`set-cookie`). Der Browser übernimmt sie,
+ *    bevor die Seite läuft.
+ * 2. Die anschließenden Aufrufe der Seite tragen damit ein frisches
+ *    Zugriffs-Token, laufen nicht in `AUTH_REQUIRED` und lösen im Client
+ *    (`lib/auth/api.ts`) gar keinen zweiten Tausch aus. Ein Abstimmen zwischen
+ *    beiden Seiten ist deshalb nicht nötig – nur der Client selbst muss seine
+ *    parallelen Versuche bündeln, über Tabs hinweg (dort beschrieben).
+ * 3. Bleibt trotzdem eine Überschneidung – Next.js schickt für sichtbare
+ *    `<Link>`-Ziele mehrere Prefetches gleichzeitig, und jeder läuft durch diese
+ *    Middleware –, ist sie unschädlich: Das Backend rotiert seit Fundpunkt
+ *    backend-auth-02 bedingt und lässt den eben ersetzten Token eine kurze
+ *    Kulanzfrist lang weitergelten, statt alle Sitzungen zu widerrufen. Eine
+ *    Sperre über Requests hinweg hätte die Middleware ohnehin nicht: Sie läuft
+ *    ohne gemeinsamen Zustand, unter Umständen in mehreren Instanzen.
  */
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const cookie = request.headers.get('cookie') ?? '';
