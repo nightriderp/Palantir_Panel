@@ -273,3 +273,90 @@ describe('Umgebungsschema', () => {
     expect(fehlerPfade(ergebnis)).toContain('TRUSTED_PROXY_ADDRESSES');
   });
 });
+
+/**
+ * Ableitungs-Vorgaben nur außerhalb der Produktion (Audit W2-23,
+ * backend-core-07).
+ *
+ * Die drei Werte überleben ein Vergessen bisher stumm: Das Backend startet, legt
+ * `A`-Einträge auf `127.0.0.1` an und setzt Cookies auf `palantir.local`. Es
+ * gibt keinen Zeitpunkt, an dem das auffällt - deshalb der Startabbruch.
+ */
+describe('Produktions-Pflichtwerte', () => {
+  const produktion = {
+    NODE_ENV: 'production',
+    VPS_PUBLIC_IP: '203.0.113.10',
+    WIREGUARD_HOME_IP: '10.10.0.2',
+    PALANTIR_DOMAIN: 'beispiel.tld',
+  };
+
+  const fehlerPfade = (ergebnis: ReturnType<typeof umgebungLesen>): string[] =>
+    ergebnis.success ? [] : ergebnis.error.issues.map((issue) => issue.path.join('.'));
+
+  it('bricht in Produktion ab, wenn einer der drei Werte fehlt', () => {
+    const ergebnis = umgebungLesen({ NODE_ENV: 'production' });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toEqual(
+      expect.arrayContaining(['VPS_PUBLIC_IP', 'WIREGUARD_HOME_IP', 'PALANTIR_DOMAIN']),
+    );
+  });
+
+  it('bricht auch ab, wenn der Wert in der .env nur leer dasteht', () => {
+    // `VPS_PUBLIC_IP=` ist der wahrscheinlichere Fall als eine fehlende Zeile:
+    // Die Vorlage führt jede Variable auf.
+    const ergebnis = umgebungLesen({ ...produktion, VPS_PUBLIC_IP: '   ' });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toContain('VPS_PUBLIC_IP');
+  });
+
+  it('nennt in der Meldung den Wert, das Fehlen und die Folge', () => {
+    const ergebnis = umgebungLesen({ NODE_ENV: 'production' });
+
+    expect(ergebnis.success).toBe(false);
+
+    if (!ergebnis.success) {
+      const meldung = ergebnis.error.issues
+        .filter((issue) => issue.path.join('.') === 'PALANTIR_DOMAIN')
+        .map((issue) => issue.message)
+        .join('\n');
+
+      expect(meldung).toContain('PALANTIR_DOMAIN fehlt');
+      expect(meldung).toContain('NODE_ENV=production');
+      expect(meldung).toContain('.env');
+    }
+  });
+
+  it('lässt Produktion mit vollständigen Werten durch', () => {
+    const ergebnis = umgebungLesen(produktion);
+
+    expect(ergebnis.success).toBe(true);
+    expect(ergebnis.success && ergebnis.data.VPS_PUBLIC_IP).toBe('203.0.113.10');
+  });
+
+  it('greift außerhalb der Produktion weiterhin auf die Vorgaben zurück', () => {
+    // Entwicklung und Tests laufen ohne .env; dort sind genau diese Werte
+    // richtig, und niemand pflegt eine Domain.
+    for (const nodeEnv of ['development', 'test']) {
+      const ergebnis = umgebungLesen({ NODE_ENV: nodeEnv });
+
+      expect(ergebnis.success).toBe(true);
+
+      if (ergebnis.success) {
+        expect(ergebnis.data.VPS_PUBLIC_IP).toBe('127.0.0.1');
+        expect(ergebnis.data.WIREGUARD_HOME_IP).toBe('10.10.0.2');
+        expect(ergebnis.data.PALANTIR_DOMAIN).toBe('palantir.local');
+      }
+    }
+  });
+
+  it('nimmt in Produktion einen gesetzten Wert, der zufällig der Vorgabe entspricht', () => {
+    // Wer `VPS_PUBLIC_IP=127.0.0.1` bewusst einträgt (Testinstanz auf einer
+    // Maschine), soll nicht am Startabbruch hängen: Geprüft wird das Fehlen,
+    // nicht der Inhalt.
+    const ergebnis = umgebungLesen({ ...produktion, VPS_PUBLIC_IP: '127.0.0.1' });
+
+    expect(ergebnis.success).toBe(true);
+  });
+});

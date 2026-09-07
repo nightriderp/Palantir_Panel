@@ -65,6 +65,50 @@ const geheimnis = (name: string): z.ZodType<string | undefined> =>
  */
 const TRUSTED_PROXY_DEFAULT = '127.0.0.1/8,::1/128,172.16.0.0/12,192.168.0.0/16';
 
+/**
+ * Werte, deren Vorgabe **nur außerhalb der Produktion** gilt (Audit W2-23,
+ * backend-core-07).
+ *
+ * Die drei haben dieselbe Eigenschaft: Fehlen sie in der `.env`, startet das
+ * Backend anstandslos und arbeitet danach still falsch. Ohne `VPS_PUBLIC_IP`
+ * bekommt jeder neu angelegte Server einen `A`-Eintrag auf `127.0.0.1` –
+ * Cloudflare nimmt das an, und die Spieler lösen die Subdomain auf ihre eigene
+ * Maschine auf. Ohne `WIREGUARD_HOME_IP` geht der Health-Check an eine Adresse,
+ * hinter der nichts steht. Ohne `PALANTIR_DOMAIN` heißen alle abgeleiteten
+ * Adressen `palantir.local`, und mit ihnen die Sitzungs-Cookies: Niemand kann
+ * sich anmelden. Nirgends ein Fehler.
+ *
+ * Die Auth-Geheimnisse brechen für genau diesen Fall hart ab
+ * ({@link requireAuthSecrets}) – der Maßstab war hier bisher ein anderer. In der
+ * Entwicklung bleiben die Vorgaben unverändert: Dort ist `127.0.0.1` richtig,
+ * und niemand pflegt eine Domain.
+ */
+const VORGABE_NAMEN = ['VPS_PUBLIC_IP', 'WIREGUARD_HOME_IP', 'PALANTIR_DOMAIN'] as const;
+
+const PRODUKTIONS_VORGABEN: Record<
+  (typeof VORGABE_NAMEN)[number],
+  { readonly vorgabe: string; readonly zweck: string }
+> = {
+  VPS_PUBLIC_IP: {
+    vorgabe: '127.0.0.1',
+    zweck:
+      'Der Wert ist das Ziel der A-Einträge aller Gameserver (Pflichtenheft §13); ' +
+      'mit der Vorgabe 127.0.0.1 zeigt jede Server-Adresse auf die Maschine des Spielers.',
+  },
+  WIREGUARD_HOME_IP: {
+    vorgabe: '10.10.0.2',
+    zweck:
+      'Der Wert ist das Ziel des Health-Checks im Tunnel (Pflichtenheft §2.1, §9); ' +
+      'stimmt er nicht, gilt jeder gestartete Server als nicht erreichbar.',
+  },
+  PALANTIR_DOMAIN: {
+    vorgabe: 'palantir.local',
+    zweck:
+      'Aus dem Wert entstehen Panel-Adressen, OAuth-Rücksprünge und die Cookie-Domain; ' +
+      'mit der Vorgabe palantir.local kann sich niemand anmelden.',
+  },
+};
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   BACKEND_HOST: z.string().default('0.0.0.0'),
@@ -122,10 +166,18 @@ const envSchema = z.object({
   // `PALANTIR_DOMAIN` steht weiter unten bei B1 – dieselbe Variable, hier als
   // Basis der Gameserver-Subdomains (§13) benutzt.
 
-  /** Öffentliche IPv4 der VPS – Ziel der `A`-Einträge (§13). */
-  VPS_PUBLIC_IP: z.string().min(1).default('127.0.0.1'),
-  /** Interne Tunnel-Adresse des Homeservers – Ziel des Health-Checks (§2.1, §9). */
-  WIREGUARD_HOME_IP: z.string().min(1).default('10.10.0.2'),
+  /**
+   * Öffentliche IPv4 der VPS – Ziel der `A`-Einträge (§13).
+   *
+   * Vorgabe nur außerhalb der Produktion, siehe {@link PRODUKTIONS_VORGABEN}.
+   */
+  VPS_PUBLIC_IP: optionalEnvString(),
+  /**
+   * Interne Tunnel-Adresse des Homeservers – Ziel des Health-Checks (§2.1, §9).
+   *
+   * Vorgabe nur außerhalb der Produktion, siehe {@link PRODUKTIONS_VORGABEN}.
+   */
+  WIREGUARD_HOME_IP: optionalEnvString(),
 
   /**
    * Pre-Shared-Token des Agents (§2.2).
@@ -461,8 +513,10 @@ const envSchema = z.object({
    * gepflegt wird. Alle folgenden Adressen werden daraus abgeleitet, sofern
    * sie nicht ausdrücklich gesetzt sind (siehe `adressenAbleiten`).
    * Dient zusätzlich dem Authenticator als Aussteller-Bezeichnung.
+   *
+   * Vorgabe nur außerhalb der Produktion, siehe {@link PRODUKTIONS_VORGABEN}.
    */
-  PALANTIR_DOMAIN: z.string().min(1).default('palantir.local'),
+  PALANTIR_DOMAIN: optionalEnvString(),
   /**
    * Öffentliche Adresse des Frontends – Ziel des Rücksprungs nach OAuth.
    * Ohne Angabe: `https://<PALANTIR_DOMAIN>`.
@@ -503,26 +557,72 @@ const envSchema = z.object({
 
 /**
  * Prüfungen, die mehr als eine Variable brauchen (Audit W2-6,
- * spec-pflichtenheft-10).
+ * spec-pflichtenheft-10; Audit W2-23, backend-core-07).
  *
  * `COOKIE_SECURE=false` ist laut Pflichtenheft §7 **ausschließlich** für die
  * lokale Entwicklung ohne TLS gedacht. Eine aus der Entwicklung übernommene
  * `.env` startete bisher auch mit `NODE_ENV=production` klaglos – und setzte
  * Access-, Refresh- und CSRF-Cookie ohne `Secure`. Lieber ein Startabbruch mit
  * klarer Meldung als eine Instanz, die still ohne diesen Schutz läuft.
+ *
+ * Aus demselben Grund verlangt die zweite Prüfung in Produktion die Werte aus
+ * {@link PRODUKTIONS_VORGABEN}. Der anschließende `transform` setzt die
+ * Vorgaben – er läuft nur, wenn keine Prüfung angeschlagen hat.
  */
-const envSchemaMitPrüfungen = envSchema.superRefine((werte, ctx) => {
-  if (werte.NODE_ENV === 'production' && !werte.COOKIE_SECURE) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['COOKIE_SECURE'],
-      message:
-        'COOKIE_SECURE=false ist nur außerhalb der Produktion zulässig ' +
-        '(Pflichtenheft §7): ohne Secure-Flag gehen die Sitzungs-Cookies auch über HTTP. ' +
-        'Entweder COOKIE_SECURE=true setzen oder NODE_ENV umstellen.',
-    });
-  }
-});
+const envSchemaMitPrüfungen = envSchema
+  .superRefine((werte, ctx) => {
+    if (werte.NODE_ENV === 'production' && !werte.COOKIE_SECURE) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['COOKIE_SECURE'],
+        message:
+          'COOKIE_SECURE=false ist nur außerhalb der Produktion zulässig ' +
+          '(Pflichtenheft §7): ohne Secure-Flag gehen die Sitzungs-Cookies auch über HTTP. ' +
+          'Entweder COOKIE_SECURE=true setzen oder NODE_ENV umstellen.',
+      });
+    }
+
+    if (werte.NODE_ENV !== 'production') {
+      return;
+    }
+
+    for (const name of VORGABE_NAMEN) {
+      if (werte[name] !== undefined) {
+        continue;
+      }
+
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [name],
+        message:
+          `${name} fehlt. Mit NODE_ENV=production gibt es dafür keinen Vorgabewert ` +
+          `(Vorgabe außerhalb der Produktion: ${PRODUKTIONS_VORGABEN[name].vorgabe}). ` +
+          `${PRODUKTIONS_VORGABEN[name].zweck} ` +
+          'Wert in der zentralen .env im Repo-Root eintragen (siehe .env.example).',
+      });
+    }
+  })
+  .transform((werte) => ({
+    ...werte,
+    VPS_PUBLIC_IP: werte.VPS_PUBLIC_IP ?? PRODUKTIONS_VORGABEN.VPS_PUBLIC_IP.vorgabe,
+    WIREGUARD_HOME_IP: werte.WIREGUARD_HOME_IP ?? PRODUKTIONS_VORGABEN.WIREGUARD_HOME_IP.vorgabe,
+    PALANTIR_DOMAIN: werte.PALANTIR_DOMAIN ?? PRODUKTIONS_VORGABEN.PALANTIR_DOMAIN.vorgabe,
+  }));
+
+/** Vollständig geprüfte und ergänzte Umgebung (Ausgabe von {@link umgebungLesen}). */
+export type UmgebungRoh = z.infer<typeof envSchemaMitPrüfungen>;
+
+/**
+ * Namen aller Umgebungsvariablen, die das Backend liest.
+ *
+ * Ausgeschrieben aus dem Schema selbst, damit die `environment:`-Listen der
+ * Backend-Dienste in `deploy/vps/docker-compose.yml` dagegen geprüft werden
+ * können (Audit W2-23, infra-images-03; siehe `deploy-umgebung.test.ts`). Seit
+ * dort kein `env_file: ../../.env` mehr steht, ist eine hier ergänzte und dort
+ * vergessene Variable sonst nicht zu bemerken: Der Container zöge still den
+ * Vorgabewert.
+ */
+export const BACKEND_UMGEBUNGSVARIABLEN: readonly string[] = Object.keys(envSchema.shape);
 
 /**
  * In einer `.env` bedeutet `SCHLUESSEL=` „nicht gesetzt", nicht „leerer Wert".
@@ -551,7 +651,7 @@ export function leereWerteAlsUngesetzt(
  */
 export function umgebungLesen(
   werte: Record<string, string | undefined>,
-): z.SafeParseReturnType<unknown, z.infer<typeof envSchema>> {
+): z.SafeParseReturnType<unknown, UmgebungRoh> {
   return envSchemaMitPrüfungen.safeParse(leereWerteAlsUngesetzt(werte));
 }
 
@@ -579,7 +679,7 @@ if (!parsed.success) {
  * Die Callback-Pfade entsprechen der in `modules/auth/routes.ts` registrierten
  * Route `/auth/:provider/callback` – sie sind nicht frei gewählt.
  */
-export function adressenAbleiten(werte: z.infer<typeof envSchema>) {
+export function adressenAbleiten(werte: UmgebungRoh) {
   const ohneSchrägstrich = (url: string): string => url.replace(/\/+$/, '');
   const domain = werte.PALANTIR_DOMAIN;
 

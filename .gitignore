@@ -20,6 +20,19 @@ out/
 *.pem
 wireguard/
 
+# Betriebsdaten der Auscheckung unter /opt/palantir (Audit W2-23,
+# infra-images-17). Die Produktionsauscheckung ist ein normales Git-Repo -
+# deploy.sh arbeitet darin. Ohne diese Zeilen zeigt `git status` dort drei
+# untracked Verzeichnisse, und ein `git add -A && git push` nach einem Hotfix
+# veroeffentlicht sie im oeffentlichen Repository: acme.json enthaelt den
+# ACME-Kontoschluessel und die privaten Schluessel aller Zertifikate,
+# postgres-data/ das Datenverzeichnis der Datenbank und data/panel-backups die
+# vollstaendigen Abzuege - samt aller Geheimnisse aus der Datenbank.
+# Angelegt werden sie von deploy/vps/docker-compose.yml.
+/deploy/vps/letsencrypt/
+/deploy/vps/postgres-data/
+/data/
+
 # Logs
 *.log
 npm-debug.log*
