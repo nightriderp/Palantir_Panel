@@ -21,9 +21,11 @@ import { createDrizzleArcadeRepository } from './repository.js';
 import { type ArcadeService, createArcadeService } from './service.js';
 import { registerArcadeRoutes } from './routes.js';
 
+export { ArcadeError } from './errors.js';
 export {
   type ArcadeLeaderboardRow,
   type ArcadePersonalRow,
+  type ArcadeQueries,
   type ArcadeRepository,
   type InsertArcadeScore,
   createDrizzleArcadeRepository,
