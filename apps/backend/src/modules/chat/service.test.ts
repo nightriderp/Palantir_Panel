@@ -520,3 +520,90 @@ describe('Serverseitiger Lesezustand (Fundpunkt 95)', () => {
     expect((await chat.getConversation(ctxFor(ALEX), dmId)).unreadCount).toBe(1);
   });
 });
+
+/**
+ * Kosten einer Zustellung (Audit W2-3, `backend-community-visibility-06`,
+ * `backend-community-10`).
+ *
+ * Vor der Korrektur lief der DTO-Kontext je Empfänger, also zwei Abfragen mal
+ * Teilnehmerzahl – nacheinander abgewartet, bevor die Antwort hinausging. Der
+ * Test hält fest, dass die Zahl der Abfragen jetzt **nicht** mehr mit dem
+ * Teilnehmerkreis wächst.
+ */
+describe('sendMessage: Abfragen je Zustellung', () => {
+  it('lädt den Kontext einmal für fünf Empfänger, nicht einmal je Empfänger', async () => {
+    const clock = steppingClock();
+    const mitglieder = [BEA, CHRIS, MOD, testId('e5')];
+    const namen = { ...NAMEN, [testId('e5')]: { displayName: 'Eve' } };
+
+    const echtesRepository = inMemoryChatRepository(clock);
+    const echtesVerzeichnis = fakeUserDirectory(namen);
+
+    let displayNamesAufrufe = 0;
+    let gemeldetAufrufe = 0;
+
+    const zaehlendesVerzeichnis = {
+      ...echtesVerzeichnis,
+      displayNames: async (userIds: readonly string[]) => {
+        displayNamesAufrufe += 1;
+
+        return echtesVerzeichnis.displayNames(userIds);
+      },
+    };
+
+    const zaehlendesRepository = {
+      ...echtesRepository,
+      reportedMessageIds: async (viewerId: string, messageIds: readonly string[]) => {
+        gemeldetAufrufe += 1;
+
+        return echtesRepository.reportedMessageIds(viewerId, messageIds);
+      },
+    };
+
+    const eigeneZustellung = recordingDelivery();
+    const dienst = createChatService({
+      repository: zaehlendesRepository,
+      users: zaehlendesVerzeichnis,
+      servers: fakeServerMembership([SERVER], { [SERVER_ID]: mitglieder }),
+      delivery: eigeneZustellung,
+      clock,
+    });
+
+    const conversation = await dienst.openServerConversation(ctxFor(ALEX), SERVER_ID);
+
+    // Erst ab hier zählt es: Das Anlegen der Konversation gehört nicht zur
+    // Zustellung, die hier gemessen wird.
+    displayNamesAufrufe = 0;
+    gemeldetAufrufe = 0;
+
+    await dienst.sendMessage(ctxFor(ALEX), conversation.id, { content: 'Hallo zusammen' });
+
+    // Fünf Empfänger: der Besitzer und seine vier Mitglieder.
+    expect(
+      eigeneZustellung.delivered.filter((eintrag) => eintrag.frame.event === 'message.sent'),
+    ).toHaveLength(5);
+    expect(displayNamesAufrufe).toBe(1);
+    // Eine gerade angelegte Nachricht kann niemand gemeldet haben – die Abfrage
+    // entfällt vollständig.
+    expect(gemeldetAufrufe).toBe(0);
+  });
+
+  it('behält dabei die Sicht jedes Empfängers: nur der Absender darf löschen', async () => {
+    const conversationId = await dmZwischenAlexUndBea();
+
+    await chat.sendMessage(ctxFor(ALEX), conversationId, { content: 'Hallo Bea' });
+
+    const zustellungen = delivery.delivered.filter(
+      (eintrag) => eintrag.frame.event === 'message.sent',
+    );
+    const anAlex = zustellungen.find((eintrag) => eintrag.userId === ALEX);
+    const anBea = zustellungen.find((eintrag) => eintrag.userId === BEA);
+
+    expect(anAlex?.frame.data).toMatchObject({
+      message: { permissions: { canDelete: true, canReport: false } },
+    });
+    expect(anBea?.frame.data).toMatchObject({
+      message: { permissions: { canDelete: false, canReport: true } },
+    });
+  });
+});

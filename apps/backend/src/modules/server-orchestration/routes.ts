@@ -33,6 +33,7 @@ import {
 import { type MultipartFile } from '@fastify/multipart';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { accountRateLimit } from '../../lib/abuse-limits.js';
 import { requireActor, requireApproved, requirePermission } from '../rbac/index.js';
 import { type ServerDtoContext, toGameServerDto } from './dto.js';
 import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
@@ -183,6 +184,20 @@ async function replyWithError(reply: FastifyReply, error: unknown): Promise<void
 
 export function registerServerRoutes(app: FastifyInstance, options: ServerRoutesOptions): void {
   const { service, repository, registry, baseDomain, schedules, worldArchives } = options;
+
+  /*
+   * Missbrauchsgrenze der Konsole je Konto (Audit W2-3, `security-matrix-05`
+   * Szenario d).
+   *
+   * Ein Konsolenbefehl ist ein Roundtrip zum Agent und von dort in den
+   * Container. Ohne Bremse ließ sich der Spielserver im Sekundentakt
+   * fernsteuern – auch von einem regulären Mitglied mit `canUseConsole`. Der
+   * Zähler entsteht einmal je Registrierung, nicht je Request.
+   */
+  const consoleLimit = accountRateLimit({
+    scope: 'server.console',
+    resolveUserId: (request) => request.viewerUserId ?? null,
+  });
 
   /**
    * Baut den DTO-Kontext eines Servers für den aktuellen Aufrufer.
@@ -639,7 +654,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     }
   });
 
-  app.post('/api/servers/:id/console', async (request, reply) => {
+  app.post('/api/servers/:id/console', { preHandler: consoleLimit }, async (request, reply) => {
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
 

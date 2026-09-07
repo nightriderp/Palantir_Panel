@@ -30,10 +30,11 @@ import {
 import { type WebSocket } from '@fastify/websocket';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { accountRateLimit } from '../../lib/abuse-limits.js';
 import { isRbacError, requireActor, requirePermission } from '../rbac/index.js';
 import { type ChatContext, contextOf } from './context.js';
 import { isChatError } from './errors.js';
-import { CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, type ChatLiveHub } from './live.js';
+import { CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, type ChatLiveHub, startChatHeartbeat } from './live.js';
 import { type ModerationService } from './moderation.js';
 import { type ChatService } from './service.js';
 
@@ -108,6 +109,24 @@ async function replyWithError(reply: FastifyReply, error: unknown): Promise<void
 
 export function registerChatRoutes(app: FastifyInstance, options: ChatRoutesOptions): void {
   const { chat, moderation, live } = options;
+
+  /*
+   * Missbrauchsgrenzen je Konto (Audit W2-3, `security-matrix-05`,
+   * `backend-community-visibility-06`).
+   *
+   * Beide Zähler entstehen **hier**, einmal je Registrierung – nicht im
+   * Handler, sonst begänne jede Anfrage bei null. Die Identität ist die
+   * Konto-Id aus derselben Sitzungsauflösung, aus der auch der Handelnde kommt.
+   */
+  const messageLimit = accountRateLimit({
+    scope: 'chat.message',
+    resolveUserId: (request) => options.resolveViewer(request)?.id ?? null,
+  });
+
+  const reportLimit = accountRateLimit({
+    scope: 'chat.report',
+    resolveUserId: (request) => options.resolveViewer(request)?.id ?? null,
+  });
 
   function contextFrom(request: FastifyRequest): ChatContext {
     const actor = requireActor(request);
@@ -200,18 +219,27 @@ export function registerChatRoutes(app: FastifyInstance, options: ChatRoutesOpti
     }
   });
 
-  app.post('/api/chat/conversations/:conversationId/messages', async (request, reply) => {
-    try {
-      const { conversationId } = conversationParamsSchema.parse(request.params);
-      const input = sendMessageInputSchema.parse(request.body);
+  /*
+   * Der teuerste Pfad des Moduls: Schreiben plus Live-Zustellung an jeden
+   * Teilnehmer. Deshalb steht hier die engste Grenze (30/min je Konto,
+   * `security-matrix-05` Szenario a).
+   */
+  app.post(
+    '/api/chat/conversations/:conversationId/messages',
+    { preHandler: messageLimit },
+    async (request, reply) => {
+      try {
+        const { conversationId } = conversationParamsSchema.parse(request.params);
+        const input = sendMessageInputSchema.parse(request.body);
 
-      return await reply
-        .status(201)
-        .send(ok(await chat.sendMessage(contextFrom(request), conversationId, input)));
-    } catch (error: unknown) {
-      return replyWithError(reply, error);
-    }
-  });
+        return await reply
+          .status(201)
+          .send(ok(await chat.sendMessage(contextFrom(request), conversationId, input)));
+      } catch (error: unknown) {
+        return replyWithError(reply, error);
+      }
+    },
+  );
 
   /**
    * Markiert eine Konversation als gelesen (Fundpunkt 95).
@@ -249,18 +277,28 @@ export function registerChatRoutes(app: FastifyInstance, options: ChatRoutesOpti
   // Moderationsaktion. Sie setzt die Teilnahme an der Konversation voraus und
   // verlangt keine Permission.
 
-  app.post('/api/chat/messages/:messageId/report', async (request, reply) => {
-    try {
-      const { messageId } = messageParamsSchema.parse(request.params);
-      const input = reportMessageInputSchema.parse(request.body);
+  /*
+   * Melden ist eine Ausnahmehandlung, kein Dauerbetrieb: 10/h je Konto. Ohne
+   * die Grenze konnte ein Konto jede Nachricht melden und die
+   * Moderationsansicht damit unbrauchbar machen (`security-matrix-05`
+   * Szenario b).
+   */
+  app.post(
+    '/api/chat/messages/:messageId/report',
+    { preHandler: reportLimit },
+    async (request, reply) => {
+      try {
+        const { messageId } = messageParamsSchema.parse(request.params);
+        const input = reportMessageInputSchema.parse(request.body);
 
-      return await reply
-        .status(201)
-        .send(ok(await moderation.reportMessage(contextFrom(request), messageId, input.reason)));
-    } catch (error: unknown) {
-      return replyWithError(reply, error);
-    }
-  });
+        return await reply
+          .status(201)
+          .send(ok(await moderation.reportMessage(contextFrom(request), messageId, input.reason)));
+      } catch (error: unknown) {
+        return replyWithError(reply, error);
+      }
+    },
+  );
 
   // -- Moderation -------------------------------------------------------------
   // Ausschließlich gemeldete Nachrichten. Es gibt hier keine Route, die eine
@@ -377,11 +415,20 @@ export function registerChatRoutes(app: FastifyInstance, options: ChatRoutesOpti
     // Der Zeitgeber darf das Beenden des Prozesses nicht aufhalten.
     timer?.unref();
 
+    /*
+     * Server-seitiges Lebenszeichen (Audit W2-3,
+     * `backend-community-visibility-11`): Eine halboffene Verbindung meldet
+     * weder `close` noch `error` und bliebe sonst bis zum TCP-Timeout im
+     * Verteiler – samt ihrer Kopie jeder Zustellung.
+     */
+    const stopHeartbeat = startChatHeartbeat(socket);
+
     const cleanup = (): void => {
       if (timer) {
         clearInterval(timer);
       }
 
+      stopHeartbeat();
       unregister();
     };
 

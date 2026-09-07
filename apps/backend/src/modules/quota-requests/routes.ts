@@ -15,6 +15,7 @@ import {
 } from '@palantir/validation';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { accountRateLimit } from '../../lib/abuse-limits.js';
 import {
   RbacError,
   isRbacError,
@@ -35,6 +36,18 @@ export interface QuotaRequestRouteOptions {
 }
 
 export function registerQuotaRequestRoutes(options: QuotaRequestRouteOptions) {
+  /*
+   * Missbrauchsgrenze je Konto (Audit W2-3, `security-matrix-05`).
+   *
+   * Eine Kontingent-Anfrage wird von Hand beschieden; sie in Schleife zu
+   * stellen füllt die Warteliste der Administratoren. Der Zähler entsteht
+   * einmal je Registrierung, nicht je Request.
+   */
+  const createLimit = accountRateLimit({
+    scope: 'quota.request',
+    resolveUserId: (request) => options.actorUserId(request),
+  });
+
   return async function register(app: FastifyInstance): Promise<void> {
     async function handle<T>(
       reply: FastifyReply,
@@ -83,13 +96,18 @@ export function registerQuotaRequestRoutes(options: QuotaRequestRouteOptions) {
      * Wünschen füllen, obwohl es noch keinen einzigen Server anlegen darf
      * (security-matrix-06).
      */
-    app.post('/quota-requests', { preHandler: requireApproved() }, async (request, reply) =>
-      handle<QuotaRequestDto>(reply, async () => {
-        const input = createQuotaRequestInputSchema.parse(request.body ?? {});
-        const userId = requireUserId(request);
+    app.post(
+      '/quota-requests',
+      // Erst die Freischaltung, dann der Zähler: Ein Konto in der Warteliste
+      // kommt gar nicht so weit, dass es ein Kontingent verbrauchen könnte.
+      { preHandler: [requireApproved(), createLimit] },
+      async (request, reply) =>
+        handle<QuotaRequestDto>(reply, async () => {
+          const input = createQuotaRequestInputSchema.parse(request.body ?? {});
+          const userId = requireUserId(request);
 
-        return options.service.create(requireActor(request), userId, input);
-      }),
+          return options.service.create(requireActor(request), userId, input);
+        }),
     );
 
     app.get('/quota-requests/mine', { preHandler: requireApproved() }, async (request, reply) =>

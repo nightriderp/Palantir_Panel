@@ -15,6 +15,7 @@
 import { type QuotaRequestDto } from '@palantir/contracts';
 import Fastify, { type FastifyInstance, type InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
+import { ABUSE_LIMITS, ABUSE_LIMIT_ERROR_CODE } from '../../lib/abuse-limits.js';
 import { registerErrorHandler } from '../../error-handler.js';
 import { type PermissionActor, buildPermissionActor, registerRbac } from '../rbac/index.js';
 import { QuotaRequestError } from './errors.js';
@@ -341,5 +342,57 @@ describe('Bescheiden (Administration)', () => {
     expect(response.json<{ error: { code: string } }>().error.code).toBe(
       'QUOTA_REQUEST_INVALID_STATE',
     );
+  });
+});
+
+/**
+ * Missbrauchsgrenze je Konto (Audit W2-3, `security-matrix-05`).
+ *
+ * Eine Kontingent-Anfrage wird von Hand beschieden; sie in Schleife zu stellen
+ * füllt die Warteliste der Administratoren.
+ */
+describe('Missbrauchsgrenze', () => {
+  const eingabe = {
+    requestedRamMb: 8192,
+    reason: 'Der Server läuft mit 4 GB regelmäßig voll.',
+  };
+
+  it('lehnt die vierte Anfrage am Tag mit 429 ab', async () => {
+    app = await buildApp();
+
+    for (let nummer = 0; nummer < ABUSE_LIMITS['quota.request'].maxAttempts; nummer += 1) {
+      const angenommen = await call(app, 'POST', '/quota-requests', {
+        actor: 'nutzer',
+        payload: eingabe,
+      });
+
+      expect(angenommen.statusCode).toBe(200);
+    }
+
+    const abgelehnt = await call(app, 'POST', '/quota-requests', {
+      actor: 'nutzer',
+      payload: eingabe,
+    });
+
+    expect(abgelehnt.statusCode).toBe(429);
+    expect(abgelehnt.json()).toMatchObject({
+      success: false,
+      data: null,
+      error: { code: ABUSE_LIMIT_ERROR_CODE },
+    });
+    // Der abgewiesene Aufruf hat den Dienst nicht mehr erreicht.
+    expect(aufrufe).toHaveLength(ABUSE_LIMITS['quota.request'].maxAttempts);
+  });
+
+  it('lässt das Lesen der eigenen Anfragen unberührt', async () => {
+    app = await buildApp();
+
+    for (let nummer = 0; nummer <= ABUSE_LIMITS['quota.request'].maxAttempts; nummer += 1) {
+      await call(app, 'POST', '/quota-requests', { actor: 'nutzer', payload: eingabe });
+    }
+
+    const gelesen = await call(app, 'GET', '/quota-requests/mine', { actor: 'nutzer' });
+
+    expect(gelesen.statusCode).toBe(200);
   });
 });

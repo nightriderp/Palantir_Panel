@@ -6,12 +6,16 @@
  * soll nicht an zwei Stellen leben.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
   CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  CHAT_LIVE_MAX_CONNECTIONS_PER_USER,
+  type ChatHeartbeatSocket,
   ChatLiveHub,
   conversationReadFrame,
   messageSentFrame,
+  startChatHeartbeat,
 } from './live.js';
 import { ALEX, BEA } from './test-doubles.js';
 
@@ -228,5 +232,147 @@ describe('conversationReadFrame', () => {
       data: { conversationId: 'c', lastReadAt: '2026-08-26T12:00:00.000Z', unreadCount: 0 },
       sentAt: '2026-08-26T12:00:01.000Z',
     });
+  });
+});
+
+/**
+ * Verbindungsobergrenze je Konto (Audit W2-3,
+ * `backend-community-visibility-11`).
+ *
+ * Ohne sie vervielfachte ein Konto mit tausenden offenen Sockets jede
+ * Zustellung – auch die fremder Beiträge im Server-Chat.
+ */
+describe('ChatLiveHub – Verbindungsobergrenze', () => {
+  it('schließt beim Überschreiten die älteste Verbindung des Kontos', () => {
+    const hub = new ChatLiveHub();
+    const sockets = Array.from({ length: CHAT_LIVE_MAX_CONNECTIONS_PER_USER + 1 }, () =>
+      fakeSocket(),
+    );
+
+    for (const socket of sockets) {
+      hub.register(ALEX, socket);
+    }
+
+    expect(hub.connectionCount(ALEX)).toBe(CHAT_LIVE_MAX_CONNECTIONS_PER_USER);
+    expect(sockets[0]?.closed).toEqual([
+      {
+        code: CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
+        reason: 'Zu viele gleichzeitige Verbindungen dieses Kontos.',
+      },
+    ]);
+    // Die zuletzt geöffnete bleibt: Wer gerade neu verbindet, soll nicht
+    // ausgesperrt werden, nur weil eine alte Verbindung halb offen hängt.
+    expect(sockets.at(-1)?.closed).toHaveLength(0);
+  });
+
+  it('stellt der geschlossenen Verbindung nichts mehr zu', () => {
+    const hub = new ChatLiveHub();
+    const sockets = Array.from({ length: CHAT_LIVE_MAX_CONNECTIONS_PER_USER + 1 }, () =>
+      fakeSocket(),
+    );
+
+    for (const socket of sockets) {
+      hub.register(ALEX, socket);
+    }
+
+    hub.deliver(ALEX, FRAME);
+
+    expect(sockets[0]?.sent).toHaveLength(0);
+    expect(sockets.at(-1)?.sent).toHaveLength(1);
+  });
+
+  it('zählt je Konto – fremde Verbindungen bleiben unberührt', () => {
+    const hub = new ChatLiveHub();
+    const beas = fakeSocket();
+
+    hub.register(BEA, beas);
+
+    for (let nummer = 0; nummer <= CHAT_LIVE_MAX_CONNECTIONS_PER_USER; nummer += 1) {
+      hub.register(ALEX, fakeSocket());
+    }
+
+    expect(hub.connectionCount(BEA)).toBe(1);
+    expect(beas.closed).toHaveLength(0);
+  });
+});
+
+/**
+ * Server-seitiges Lebenszeichen (Audit W2-3,
+ * `backend-community-visibility-11`, `backend-community-13`).
+ */
+describe('startChatHeartbeat', () => {
+  interface FakeHeartbeatSocket extends ChatHeartbeatSocket {
+    readonly pings: number[];
+    readonly terminations: number[];
+    pong(): void;
+  }
+
+  function fakeHeartbeatSocket(): FakeHeartbeatSocket {
+    const pings: number[] = [];
+    const terminations: number[] = [];
+    const listeners: (() => void)[] = [];
+
+    return {
+      pings,
+      terminations,
+      ping: () => pings.push(pings.length + 1),
+      terminate: () => terminations.push(terminations.length + 1),
+      on: (_event, listener) => listeners.push(listener),
+      pong: () => {
+        for (const listener of listeners) {
+          listener();
+        }
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('reißt eine Verbindung ab, die auf den Ping nicht antwortet', () => {
+    const socket = fakeHeartbeatSocket();
+
+    startChatHeartbeat(socket, { intervalMs: 1_000 });
+
+    vi.advanceTimersByTime(1_000);
+
+    expect(socket.pings).toHaveLength(1);
+    expect(socket.terminations).toHaveLength(0);
+
+    // Zweiter Takt ohne Pong dazwischen: Die Gegenstelle ist weg.
+    vi.advanceTimersByTime(1_000);
+
+    expect(socket.terminations).toHaveLength(1);
+  });
+
+  it('lässt eine antwortende Verbindung offen', () => {
+    const socket = fakeHeartbeatSocket();
+
+    startChatHeartbeat(socket, { intervalMs: 1_000 });
+
+    for (let takt = 0; takt < 5; takt += 1) {
+      vi.advanceTimersByTime(1_000);
+      socket.pong();
+    }
+
+    expect(socket.terminations).toHaveLength(0);
+    expect(socket.pings).toHaveLength(5);
+  });
+
+  it('hört auf zu pingen, sobald die Verbindung abgemeldet ist', () => {
+    const socket = fakeHeartbeatSocket();
+
+    const stop = startChatHeartbeat(socket, { intervalMs: 1_000 });
+
+    stop();
+    vi.advanceTimersByTime(10_000);
+
+    expect(socket.pings).toHaveLength(0);
+    expect(socket.terminations).toHaveLength(0);
   });
 });

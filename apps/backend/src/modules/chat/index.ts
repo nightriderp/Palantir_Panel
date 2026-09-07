@@ -104,13 +104,18 @@ export {
 
 export {
   type ChatDelivery,
+  type ChatHeartbeatSocket,
   type ChatSocket,
+  CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
   CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  CHAT_LIVE_HEARTBEAT_INTERVAL_MS,
+  CHAT_LIVE_MAX_CONNECTIONS_PER_USER,
   ChatLiveHub,
   conversationCreatedFrame,
   messageDeletedFrame,
   messageSentFrame,
   noopChatDelivery,
+  startChatHeartbeat,
 } from './live.js';
 
 export { type ChatService, type ChatServiceDependencies, createChatService } from './service.js';
