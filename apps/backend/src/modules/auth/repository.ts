@@ -58,6 +58,7 @@ function toSession(row: SessionRow): SessionRecord {
     userId: row.userId,
     refreshTokenHash: row.refreshTokenHash,
     previousRefreshTokenHash: row.previousRefreshTokenHash,
+    rotatedAt: row.rotatedAt,
     deviceInfo: row.deviceInfo,
     ipHint: row.ipHint,
     createdAt: row.createdAt,
@@ -305,6 +306,13 @@ export function createDrizzleAuthRepository(db: Database): AuthRepository {
     },
 
     async rotateSession(id, data) {
+      /*
+       * Prüfen und Schreiben in einem Statement: Die Zeile wird nur getauscht,
+       * solange der vorgefundene Hash noch der aktuelle ist. Zwei parallele
+       * Erneuerungen mit demselben Token schreiben so nicht beide – die zweite
+       * kommt auf 0 Zeilen und weiß dadurch, dass sie das Rennen verloren hat
+       * (Pflichtenheft §7, Fundpunkt backend-auth-02).
+       */
       const [row] = await db
         .update(sessions)
         .set({
@@ -312,15 +320,14 @@ export function createDrizzleAuthRepository(db: Database): AuthRepository {
           previousRefreshTokenHash: data.previousRefreshTokenHash,
           expiresAt: data.expiresAt,
           lastUsedAt: data.lastUsedAt,
+          rotatedAt: data.rotatedAt,
         })
-        .where(eq(sessions.id, id))
+        .where(
+          and(eq(sessions.id, id), eq(sessions.refreshTokenHash, data.previousRefreshTokenHash)),
+        )
         .returning();
 
-      if (!row) {
-        throw new Error('Sitzung konnte nicht erneuert werden.');
-      }
-
-      return toSession(row);
+      return row ? toSession(row) : null;
     },
 
     async revokeSession(id, revokedAt) {

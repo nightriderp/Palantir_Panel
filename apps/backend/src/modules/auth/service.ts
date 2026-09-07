@@ -70,6 +70,27 @@ import {
 } from './tokens.js';
 import type { AuthMethodRecord, AuthRepository, SessionRecord, UserRecord } from './types.js';
 
+/**
+ * Kulanzfrist auf den eben ersetzten Refresh-Token (Pflichtenheft §7).
+ *
+ * Bewusst eine Konstante und keine Einstellung: Der Wert ist eine
+ * Sicherheitsabwägung, keine Betriebsgröße. Er soll genau die Spanne abdecken,
+ * in der zwei Anfragen desselben Browsers unterwegs sein können (Tab-Wechsel,
+ * Middleware neben dem Client, ein Wiederholungsversuch) – lang genug, um
+ * legitime Doppelanfragen zu tragen, kurz genug, dass ein abgegriffener Token
+ * praktisch immer außerhalb liegt und die Diebstahlerkennung greift.
+ */
+const REFRESH_ROTATION_GRACE_MS = 30_000;
+
+/**
+ * Wie oft die Rotation ein verlorenes Rennen wiederholen darf.
+ *
+ * Zwei Versuche decken den realistischen Fall ab (genau eine parallele
+ * Anfrage). Danach wird abgebrochen, statt unter Dauerlast beliebig viele
+ * Token zu erzeugen.
+ */
+const REFRESH_ROTATION_ATTEMPTS = 3;
+
 /** Was ein Request über seinen Ursprung mitbringt (siehe `request-context.ts`). */
 export interface RequestContext {
   readonly deviceInfo: string | null;
@@ -562,28 +583,40 @@ export class AuthService {
    * Wird ein bereits ersetzter oder widerrufener Token vorgelegt, ist das ein
    * starkes Anzeichen dafür, dass er abgegriffen wurde: dann werden **alle**
    * Sitzungen des Kontos widerrufen, nicht nur diese eine.
+   *
+   * Eine Ausnahme ist die Kulanzfrist unmittelbar nach der Rotation
+   * (`REFRESH_ROTATION_GRACE_MS`): Dass zwei Anfragen mit demselben Token
+   * eintreffen, ist im Browser der Normalfall und kein Diebstahl – zwei Tabs,
+   * die Middleware neben dem Client, ein Wiederholungsversuch nach einem
+   * Verbindungsabbruch. Innerhalb der Frist gilt der eben ersetzte Token
+   * deshalb weiter und liefert ein frisches Token-Paar, erst danach greift die
+   * Diebstahlerkennung (Fundpunkte backend-auth-02, frontend-lib-01).
    */
   async refresh(
     refreshToken: string,
     context: RequestContext,
   ): Promise<{ account: AccountDto; session: IssuedSession }> {
     const tokenHash = hashRefreshToken(refreshToken);
-    const session = await this.repository.findSessionByTokenHash(tokenHash);
     const now = this.now();
+    // Der vorgelegte Token ist entweder der aktuelle oder der eben erst
+    // ersetzte; beide Fälle führen auf dieselbe Sitzung.
+    const session =
+      (await this.repository.findSessionByTokenHash(tokenHash)) ??
+      (await this.repository.findSessionByPreviousTokenHash(tokenHash));
 
     if (!session) {
-      // Der Token ist entweder nie vergeben worden oder bereits ersetzt. Nur
-      // im zweiten Fall ist das ein Diebstahls-Anzeichen.
-      const replaced = await this.repository.findSessionByPreviousTokenHash(tokenHash);
-
-      if (replaced) {
-        await this.repository.revokeAllSessions(replaced.userId, now);
-      }
-
+      // Nie vergeben oder so alt, dass er nicht einmal mehr als vorheriger
+      // Token geführt wird – daraus lässt sich kein Diebstahl ableiten.
       throw new AuthError('AUTH_SESSION_EXPIRED');
     }
 
     if (session.revokedAt) {
+      await this.repository.revokeAllSessions(session.userId, now);
+      throw new AuthError('AUTH_SESSION_EXPIRED');
+    }
+
+    if (session.refreshTokenHash !== tokenHash && !this.withinRotationGrace(session, now)) {
+      // Ein längst ersetzter Token taucht wieder auf: Diebstahls-Anzeichen.
       await this.repository.revokeAllSessions(session.userId, now);
       throw new AuthError('AUTH_SESSION_EXPIRED');
     }
@@ -600,24 +633,72 @@ export class AuthService {
       throw new AuthError('AUTH_ACCOUNT_BANNED');
     }
 
-    const { token, hash } = createRefreshToken();
-    const expiresAt = new Date(now.getTime() + this.refreshTokenTtlMs);
-
-    await this.repository.rotateSession(session.id, {
-      refreshTokenHash: hash,
-      previousRefreshTokenHash: tokenHash,
-      expiresAt,
-      lastUsedAt: now,
-    });
+    const issued = await this.rotateRefreshToken(session, now);
 
     // Gerätekennung und Herkunft mitzuführen wäre möglich, wird aber bewusst
     // nicht getan: die Sitzung soll das Gerät zeigen, an dem sie entstanden ist.
     void context;
 
-    return {
-      account: await this.loadAccount(user),
-      session: { sessionId: session.id, refreshToken: token, expiresAt },
-    };
+    return { account: await this.loadAccount(user), session: issued };
+  }
+
+  /**
+   * Liegt die letzte Rotation innerhalb der Kulanzfrist?
+   *
+   * Nie rotierte Sitzungen (`rotatedAt === null`, u. a. alle Sitzungen aus der
+   * Zeit vor der Spalte) fallen bewusst heraus: Ohne Zeitstempel lässt sich
+   * „gerade eben" nicht belegen, und im Zweifel gilt die strengere Regel.
+   */
+  private withinRotationGrace(session: SessionRecord, now: Date): boolean {
+    return (
+      session.rotatedAt !== null &&
+      now.getTime() - session.rotatedAt.getTime() <= REFRESH_ROTATION_GRACE_MS
+    );
+  }
+
+  /**
+   * Rotiert den Refresh-Token der Sitzung und gibt das neue Paar zurück.
+   *
+   * Das Update ist bedingt (`WHERE refresh_token_hash = <vorgefunden>`). Kommt
+   * es auf null Zeilen, hat eine parallele Anfrage zwischen Lesen und
+   * Schreiben rotiert. Dann wird der frische Stand gelesen und – solange die
+   * Kulanzfrist trägt – erneut rotiert, damit auch der zweite Aufrufer ein
+   * gültiges eigenes Token bekommt, statt die Sitzung des ersten zu
+   * übernehmen. Der Ausgestellte des Konkurrenten wird dabei zum vorherigen
+   * Token und bleibt seinerseits in der Frist gültig.
+   *
+   * Die Zahl der Versuche ist begrenzt: Ein Dauerrennen soll die Anfrage
+   * beenden, nicht endlos Token erzeugen.
+   */
+  private async rotateRefreshToken(session: SessionRecord, now: Date): Promise<IssuedSession> {
+    let current = session;
+
+    for (let versuch = 0; versuch < REFRESH_ROTATION_ATTEMPTS; versuch += 1) {
+      const { token, hash } = createRefreshToken();
+      const expiresAt = new Date(now.getTime() + this.refreshTokenTtlMs);
+
+      const rotated = await this.repository.rotateSession(current.id, {
+        refreshTokenHash: hash,
+        previousRefreshTokenHash: current.refreshTokenHash,
+        expiresAt,
+        lastUsedAt: now,
+        rotatedAt: now,
+      });
+
+      if (rotated) {
+        return { sessionId: rotated.id, refreshToken: token, expiresAt };
+      }
+
+      const fresh = await this.repository.findSessionById(current.id);
+
+      if (!fresh || fresh.revokedAt || !this.withinRotationGrace(fresh, now)) {
+        throw new AuthError('AUTH_SESSION_EXPIRED');
+      }
+
+      current = fresh;
+    }
+
+    throw new AuthError('AUTH_SESSION_EXPIRED');
   }
 
   /**
@@ -672,6 +753,32 @@ export class AuthService {
 
     if (session && !session.revokedAt) {
       await this.repository.revokeSession(sessionId, this.now());
+    }
+  }
+
+  /**
+   * Abmeldung, wenn nur noch der Refresh-Token gilt (Fundpunkt frontend-lib-05).
+   *
+   * Das Zugriffs-Token gilt 15 Minuten, der Refresh-Token 30 Tage. Wer die
+   * Seite eine halbe Stunde liegen lässt und dann „Abmelden" drückt, hat kein
+   * gültiges Zugriffs-Token mehr – ohne diesen Weg würden nur die Cookies
+   * gelöscht, die Sitzung bliebe in der Ablage aber wochenlang gültig und
+   * erneuerbar. Der Refresh-Token ist hier der Nachweis; er ist httpOnly und
+   * die Route ist wie `/auth/refresh` CSRF-pflichtig.
+   *
+   * Widerrufen wird ausschließlich die eine zugehörige Sitzung – ein Abmelden
+   * darf nie mehr abräumen, als der Nutzer gedrückt hat. Ein eben erst
+   * ersetzter Token zählt mit, sonst schlüge das Abmelden direkt nach einer
+   * parallelen Erneuerung fehl.
+   */
+  async logoutByRefreshToken(refreshToken: string): Promise<void> {
+    const tokenHash = hashRefreshToken(refreshToken);
+    const session =
+      (await this.repository.findSessionByTokenHash(tokenHash)) ??
+      (await this.repository.findSessionByPreviousTokenHash(tokenHash));
+
+    if (session && !session.revokedAt) {
+      await this.repository.revokeSession(session.id, this.now());
     }
   }
 

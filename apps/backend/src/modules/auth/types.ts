@@ -44,6 +44,12 @@ export interface SessionRecord {
   readonly refreshTokenHash: string;
   /** Der bei der letzten Rotation ersetzte Hash – erkennt gestohlene Token. */
   readonly previousRefreshTokenHash: string | null;
+  /**
+   * Zeitpunkt der letzten Rotation; `null`, solange nie rotiert wurde.
+   *
+   * Trägt die Kulanzfrist auf `previousRefreshTokenHash` (Pflichtenheft §7).
+   */
+  readonly rotatedAt: Date | null;
   readonly deviceInfo: string | null;
   readonly ipHint: string | null;
   readonly createdAt: Date;
@@ -145,7 +151,18 @@ export interface AuthRepository {
   findSessionByPreviousTokenHash(refreshTokenHash: string): Promise<SessionRecord | null>;
   /** Nur nicht widerrufene, nicht abgelaufene Sitzungen; neueste zuerst. */
   listActiveSessions(userId: string, nowMs: number): Promise<SessionRecord[]>;
-  /** Setzt bei der Rotation neuen Token-Hash, Ablauf und Nutzungszeitpunkt. */
+  /**
+   * Setzt bei der Rotation neuen Token-Hash, Ablauf und Nutzungszeitpunkt.
+   *
+   * **Bedingt:** Die Rotation greift nur, wenn in der Ablage noch genau
+   * `previousRefreshTokenHash` als aktueller Hash steht – der Hash, den der
+   * Aufrufer vorgefunden hat. Das eine Statement ist damit Prüfung und
+   * Schreiben zugleich; zwei gleichzeitige Erneuerungen können sich nicht mehr
+   * gegenseitig überholen (Pflichtenheft §7).
+   *
+   * `null` heißt deshalb nicht „Fehler", sondern: eine parallele Anfrage war
+   * schneller. Der Aufrufer entscheidet, ob er es erneut versucht.
+   */
   rotateSession(
     id: string,
     data: {
@@ -153,8 +170,9 @@ export interface AuthRepository {
       previousRefreshTokenHash: string;
       expiresAt: Date;
       lastUsedAt: Date;
+      rotatedAt: Date;
     },
-  ): Promise<SessionRecord>;
+  ): Promise<SessionRecord | null>;
   revokeSession(id: string, revokedAt: Date): Promise<void>;
   /** Widerruft alle noch offenen Sitzungen eines Kontos. */
   revokeAllSessions(userId: string, revokedAt: Date): Promise<void>;

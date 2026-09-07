@@ -169,6 +169,13 @@
       "when": 1788256695359,
       "tag": "0023_node_measured_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788746700771,
+      "tag": "0024_refresh_rotation_zeitstempel",
+      "breakpoints": true
     }
   ]
 }

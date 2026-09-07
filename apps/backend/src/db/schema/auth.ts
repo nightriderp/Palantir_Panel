@@ -168,6 +168,21 @@ export const sessions = pgTable(
      * auf, werden alle Sitzungen des Kontos widerrufen.
      */
     previousRefreshTokenHash: text('previous_refresh_token_hash'),
+    /**
+     * Zeitpunkt der letzten Rotation – Grundlage der Kulanzfrist (§7).
+     *
+     * Zwei legitime Erneuerungen mit demselben Token (zwei Tabs, Middleware und
+     * Client, ein Wiederholungsversuch) sind der Normalfall, kein Diebstahl.
+     * Innerhalb einer kurzen Frist nach der Rotation gilt der eben ersetzte
+     * Token deshalb noch, statt sofort alle Sitzungen zu widerrufen. Ohne
+     * eigenen Zeitstempel ließe sich „gerade eben ersetzt" nicht von „vor
+     * Wochen ersetzt" unterscheiden; `lastUsedAt` taugt dafür nicht, weil es
+     * fachlich die Nutzung beschreibt und nicht die Rotation.
+     *
+     * `null` bei Sitzungen, die noch nie rotiert wurden – dort greift die Frist
+     * nicht.
+     */
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
     /** Grobe Gerätekennung aus dem User-Agent, z. B. „Firefox auf Windows". */
     deviceInfo: text('device_info'),
     /** Gekürzte Herkunfts-IP als Wiedererkennungshilfe, z. B. `203.0.113.x`. */

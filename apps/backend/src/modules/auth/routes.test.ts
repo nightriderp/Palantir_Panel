@@ -424,6 +424,54 @@ describe('Sitzung und CSRF (Pflichtenheft §7, §18)', () => {
     expect(after.statusCode).toBe(401);
   });
 
+  it('meldet auch ohne gültiges Zugriffs-Token ab (Fundpunkt frontend-lib-05)', async () => {
+    /*
+     * Nach 15 Minuten verwirft der Browser das Access-Cookie (Max-Age), Refresh-
+     * und CSRF-Cookie bleiben. Bisher löschte „Abmelden" dann nur die Cookies,
+     * während die Sitzung 30 Tage lang gültig und erneuerbar blieb.
+     */
+    const abgelaufen = { ...jar };
+    delete abgelaufen[ACCESS_COOKIE_NAME];
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/logout',
+      headers: {
+        cookie: cookieHeader(abgelaufen),
+        [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(repository.sessions[0]?.revokedAt).not.toBeNull();
+
+    // Und der Refresh-Token trägt danach nicht mehr.
+    const erneuert = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      headers: {
+        cookie: cookieHeader(abgelaufen),
+        [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '',
+      },
+    });
+
+    expect(erneuert.statusCode).toBe(401);
+  });
+
+  it('verlangt auch beim Abmelden über den Refresh-Token einen CSRF-Header', async () => {
+    const abgelaufen = { ...jar };
+    delete abgelaufen[ACCESS_COOKIE_NAME];
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/logout',
+      headers: { cookie: cookieHeader(abgelaufen) },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(repository.sessions[0]?.revokedAt).toBeNull();
+  });
+
   it('wirkt ein Remote-Logout sofort, obwohl das Access-Token noch gültig wäre', async () => {
     const second = await app.inject({
       method: 'POST',
