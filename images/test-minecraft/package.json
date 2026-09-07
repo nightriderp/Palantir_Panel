@@ -1,0 +1,9 @@
+{
+  "name": "@palantir/test-minecraft-image",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Test-Spielserver mit Minecraft-Protokoll – Prüfstand für die Kette des Panels. Diese package.json existiert nur, damit `pnpm test` im Repo-Wurzelverzeichnis die Tests des Images mitlaufen lässt; ins Image kopiert wird sie nicht (siehe Dockerfile).",
+  "scripts": {
+    "test": "node --test"
+  }
+}

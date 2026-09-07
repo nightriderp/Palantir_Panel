@@ -8,6 +8,11 @@
  * der Steuerport aus `server.mjs`.
  *
  * Aufruf: `palantir-console players 3`
+ *
+ * **Exit-Codes** (Fundpunkt infra-images-20): 0 nur, wenn der Server den Befehl
+ * angenommen hat; 1 bei abgelehntem Befehl, ausbleibender oder unerreichbarer
+ * Antwort; 2, wenn gar kein Befehl übergeben wurde. Vorher endete auch ein
+ * abgelehnter Befehl mit 0 – wer den Code auswertet, hielt ihn für gelungen.
  */
 
 import net from 'node:net';
@@ -39,6 +44,34 @@ socket.on('error', (fehler) => {
   console.error(`Steuerport nicht erreichbar: ${fehler.message}`);
   process.exit(1);
 });
+
+/**
+ * Trennt die Marke des Steuerports (`OK ` / `FEHLER `) vom Text.
+ *
+ * Ausgegeben wird nur der Text – die Panel-Konsole sieht also dieselbe Meldung
+ * wie bisher. Fehlt die Marke, stammt die Antwort von einem älteren Server;
+ * dann bleibt es beim bisherigen Verhalten (Text durchreichen, Exit 0).
+ */
+function werteAntwortAus(roh) {
+  if (roh.startsWith('FEHLER ')) return { code: 1, text: roh.slice('FEHLER '.length) };
+  if (roh.startsWith('OK ')) return { code: 0, text: roh.slice('OK '.length) };
+
+  return { code: 0, text: roh };
+}
+
 socket.on('close', () => {
-  process.stdout.write(antwort.length > 0 ? antwort : 'Keine Antwort.\n');
+  if (antwort.length === 0) {
+    // Verbindung stand, aber der Server hat nichts geschickt: kein Erfolg.
+    process.stdout.write('Keine Antwort.\n');
+    process.exitCode = 1;
+
+    return;
+  }
+
+  const { code, text } = werteAntwortAus(antwort);
+
+  // `process.exitCode` statt `process.exit()`: So wird die Ausgabe noch
+  // vollständig geschrieben, bevor der Prozess endet.
+  process.stdout.write(text);
+  process.exitCode = code;
 });
