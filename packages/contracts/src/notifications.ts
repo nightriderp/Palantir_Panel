@@ -413,7 +413,6 @@ export interface NotificationDto extends WithPermissions<NotificationPermissions
   createdAt: string;
 }
 
-/** Seite der Inbox. Die Inbox wächst dauerhaft, sie wird nie vollständig geliefert. */
 /**
  * Ereignisse, die ein Konto für sich abbestellen darf (WORK_STATUS.md,
  * Gefundener Punkt 93).
@@ -468,6 +467,7 @@ export interface NotificationPreferencesDto {
   updatedAt: string | null;
 }
 
+/** Seite der Inbox. Die Inbox wächst dauerhaft, sie wird nie vollständig geliefert. */
 export interface NotificationPageDto {
   entries: NotificationDto[];
   /** Gesamtzahl der Meldungen, die auf den Filter passen. */

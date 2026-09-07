@@ -19,12 +19,16 @@ import { activeNavHref, type SidebarServer } from './shellSummary';
  * Meine Backups, Arcade – darunter die eigenen Server als Sprungziele und
  * zuletzt die Administration.
  *
- * **Für F4–F11:** Ein fertiges Arbeitspaket ändert an dieser Datei genau eine
- * Zeile – `pending` raus, `href` rein – und legt die Seite unter
- * `src/app/(dashboard)/<pfad>/page.tsx` an. Die ausführliche Anleitung samt der
- * Dinge, die dabei ausdrücklich **nicht** zu tun sind, steht unter „Navigation
- * im eingeloggten Bereich" in `components/shared/README.md` (Arbeitspaket R4,
- * „Gefundener Punkt" 48).
+ * **Stand:** Jeder Eintrag trägt inzwischen ein `href`, `pending` ist an keinem
+ * mehr gesetzt – der Hinweis-Zweig darunter (`onSelect` + Toast) ist damit
+ * unerreichbar. Er meldet ohne `pending` „im Arbeitspaket undefined"; wer einen
+ * Eintrag ohne `href` ergänzt, setzt `pending` also mit (Audit W3-2,
+ * frontend-app-06).
+ *
+ * Eine neue Seite gehört unter `src/app/(dashboard)/<pfad>/page.tsx`; die
+ * Anleitung samt der Dinge, die dabei ausdrücklich **nicht** zu tun sind, steht
+ * unter „Navigation im eingeloggten Bereich" in `components/shared/README.md`
+ * (Arbeitspaket R4, „Gefundener Punkt" 48).
  *
  * Welche Einträge überhaupt erscheinen, entscheidet ausschließlich das
  * `permissions`-Objekt des Kontos (Pflichtenheft §5.2, §8).

@@ -125,10 +125,11 @@ export const fileWriteCommandPayloadSchema = z.object({
 // Datei-Manager: Löschen und Hochladen (Arbeitspaket P2)
 // ---------------------------------------------------------------------------
 //
-// Diese Befehle führt der Agent noch nicht aus; sie stehen deshalb bewusst
-// **nicht** in AGENT_COMMAND_PAYLOAD_SCHEMAS weiter unten – genau wie die
-// Backup-Schemas oben. Die Schemas existieren trotzdem schon, damit P2 die
-// Nutzdaten prüfen kann, ohne den Vertrag ein zweites Mal zu formulieren.
+// Die Schemas entstanden vor der Ausführung, damit P2 die Nutzdaten prüfen
+// konnte, ohne den Vertrag ein zweites Mal zu formulieren. Seit P2 führt der
+// Agent beide Befehle aus; sie stehen deshalb – wie alle übrigen – in
+// AGENT_COMMAND_PAYLOAD_SCHEMAS weiter unten (Audit W3-2,
+// contracts-validation-09).
 
 export const fileDeleteCommandPayloadSchema = z.object({
   containerId: containerIdSchema,
@@ -209,11 +210,12 @@ export const uploadArchiveBlockCommandPayloadSchema = z.object({
 // Backup-Befehle (Lastenheft §3.3, Arbeitspaket A3)
 // ---------------------------------------------------------------------------
 //
-// Diese Befehle führt der Agent noch nicht aus; sie stehen deshalb bewusst
-// **nicht** in AGENT_COMMAND_PAYLOAD_SCHEMAS weiter unten. Die Schemas
-// existieren trotzdem schon, weil das Backend (B5) sie in beiden Richtungen
-// braucht: zum Prüfen der eigenen Nutzdaten und – vor allem – zum Prüfen der
-// Ergebnisse, die als `unknown` im Envelope zurückkommen.
+// Die Schemas entstanden mit B5, bevor der Agent die Befehle ausführte: Das
+// Backend braucht sie in beiden Richtungen – zum Prüfen der eigenen Nutzdaten
+// und – vor allem – zum Prüfen der Ergebnisse, die als `unknown` im Envelope
+// zurückkommen. Seit A3 führt der Agent sie aus; sie stehen deshalb in
+// AGENT_COMMAND_PAYLOAD_SCHEMAS weiter unten (Audit W3-2,
+// contracts-validation-09).
 
 /** Absoluter Pfad auf dem Homeserver (nicht im Container). */
 export const hostPathSchema = z

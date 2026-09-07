@@ -180,10 +180,9 @@ export interface FileWriteCommandPayload {
  * nicht scheitert. Das Ergebnis ist `null` (analog `FILE_WRITE`); ob wirklich
  * etwas gelöscht wurde, ist für den Aufrufer ohne Belang.
  *
- * Ergänzung dieser Sitzung (WELLE 0) zum Protokoll aus Pflichtenheft §5.3, dort
- * nachgetragen. **Ausführung** baut P2 (Agent/Backend); bis dahin steht der
- * Befehl **nicht** in `IMPLEMENTED_AGENT_COMMANDS` und wird mit
- * `AGENT_COMMAND_NOT_IMPLEMENTED` beantwortet.
+ * Ergänzung von WELLE 0 zum Protokoll aus Pflichtenheft §5.3, dort nachgetragen.
+ * Die **Ausführung** hat P2 (Agent/Backend) gebaut; der Befehl steht seither in
+ * `IMPLEMENTED_AGENT_COMMANDS` (Audit W3-2, contracts-validation-09).
  */
 export interface FileDeleteCommandPayload {
   readonly containerId: string;
@@ -241,8 +240,8 @@ export interface UploadArchiveBlockCommandPayload {
  * `MAX_UPLOAD_SIZE_BYTES` (Pflichtenheft §12.1) und lehnt mit
  * `AGENT_FILE_TOO_LARGE` ab.
  *
- * Ergänzung dieser Sitzung (WELLE 0); Ausführung baut P2. Bis dahin **nicht** in
- * `IMPLEMENTED_AGENT_COMMANDS` (`AGENT_COMMAND_NOT_IMPLEMENTED`).
+ * Ergänzung von WELLE 0; die Ausführung hat P2 gebaut. Der Befehl steht seither
+ * in `IMPLEMENTED_AGENT_COMMANDS` (Audit W3-2, contracts-validation-09).
  */
 export interface FileUploadCommandPayload {
   readonly containerId: string;
@@ -288,8 +287,8 @@ export function isArchiveFormat(value: string): value is ArchiveFormat {
  * sie in `skipped`, statt den ganzen Import abzubrechen: Ein einzelner
  * unsauberer Eintrag soll eine sonst brauchbare Welt nicht unbrauchbar machen.
  *
- * Ergänzung dieser Sitzung; Ausführung baut P4. Bis dahin **nicht** in
- * `IMPLEMENTED_AGENT_COMMANDS` (`AGENT_COMMAND_NOT_IMPLEMENTED`).
+ * Ergänzung zum Protokoll; die Ausführung hat P4 gebaut. Der Befehl steht
+ * seither in `IMPLEMENTED_AGENT_COMMANDS` (Audit W3-2, contracts-validation-09).
  */
 export interface FileExtractCommandPayload {
   readonly containerId: string;
@@ -299,18 +298,6 @@ export interface FileExtractCommandPayload {
   readonly format: ArchiveFormat;
 }
 
-/**
- * `CREATE_BACKUP` – Datenordner eines Servers auf dem Homeserver sichern
- * (Lastenheft §3.3, Arbeitspaket A3).
- *
- * Das Backend legt den Datensatz vorher an und gibt seine `backupId` mit, damit
- * Ergebnis und Datensatz auch dann zusammenfinden, wenn die Verbindung während
- * des Laufs abreißt und der Befehl wiederholt wird.
- *
- * `containerId` ist gesetzt, wenn zum Server ein Container existiert. Nur dann
- * kann der Agent ihn für einen sauberen Stand kurz anhalten – ob er das darf,
- * entscheidet das Backend über `stopContainer`.
- */
 /**
  * Eine zusätzliche Datei, die der Agent **in** das Archiv legt, ohne dass sie
  * im Datenordner liegt (Arbeitspaket P8, Lastenheft §3.3).
@@ -326,6 +313,18 @@ export interface ArchiveExtraFile {
   readonly contentBase64: string;
 }
 
+/**
+ * `CREATE_BACKUP` – Datenordner eines Servers auf dem Homeserver sichern
+ * (Lastenheft §3.3, Arbeitspaket A3).
+ *
+ * Das Backend legt den Datensatz vorher an und gibt seine `backupId` mit, damit
+ * Ergebnis und Datensatz auch dann zusammenfinden, wenn die Verbindung während
+ * des Laufs abreißt und der Befehl wiederholt wird.
+ *
+ * `containerId` ist gesetzt, wenn zum Server ein Container existiert. Nur dann
+ * kann der Agent ihn für einen sauberen Stand kurz anhalten – ob er das darf,
+ * entscheidet das Backend über `stopContainer`.
+ */
 export interface CreateBackupCommandPayload {
   /** Id des `Backup`-Datensatzes im Backend (Pflichtenheft §6). */
   readonly backupId: string;
@@ -743,18 +742,19 @@ export interface RemoveStorageEntryCommandResult {
 /**
  * Nutzdaten je Befehlsname.
  *
- * `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP` und `DELETE_BACKUP` sind mit B5
- * ausdefiniert, damit das Backend die Backup-Verwaltung dagegen bauen kann. Die
- * **Ausführung** bleibt Dateisystem- und Job-Arbeit des Agents (A3): bis dahin
- * beantwortet er sie mit `AGENT_COMMAND_NOT_IMPLEMENTED`, weil sie nicht in
- * `IMPLEMENTED_AGENT_COMMANDS` stehen.
+ * `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP` und `DELETE_BACKUP` wurden
+ * mit B5 ausdefiniert, damit das Backend die Backup-Verwaltung dagegen bauen
+ * kann; die **Ausführung** hat A3 als Dateisystem- und Job-Arbeit des Agents
+ * nachgezogen.
  *
  * `GET_STORAGE_BREAKDOWN` hat seit B8 ebenfalls eine Nutzlast und ein Ergebnis: Das
  * Backend muss die Antwort entgegennehmen, zwischenspeichern und ausliefern
- * (Pflichtenheft §16), und dafür braucht es das Wire-Format. Ausgeführt wird
- * der Befehl weiterhin von niemandem – er steht nach wie vor **nicht** in
- * `IMPLEMENTED_AGENT_COMMANDS`, der Agent antwortet also unverändert mit
- * `AGENT_COMMAND_NOT_IMPLEMENTED`, bis A3 den Scanner baut.
+ * (Pflichtenheft §16), und dafür braucht es das Wire-Format. Den Scanner dazu
+ * hat A3 gebaut.
+ *
+ * Alle Befehle dieser Tabelle stehen damit in `IMPLEMENTED_AGENT_COMMANDS`
+ * (Audit W3-2, contracts-validation-09); `agent-commands.test.ts` hält beide
+ * Listen deckungsgleich.
  */
 export interface AgentCommandPayloads {
   readonly CREATE: CreateCommandPayload;

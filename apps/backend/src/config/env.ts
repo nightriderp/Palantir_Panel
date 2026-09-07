@@ -24,6 +24,13 @@ loadDotenv({ path: path.join(repoRoot, '.env') });
  * mit leerem Wert (`CLOUDFLARE_API_TOKEN=`). Ohne diese Umsetzung wäre eine aus
  * der Vorlage erzeugte `.env` ungültig, sobald eine optionale Variable
  * unausgefüllt bleibt, und genau das ist der Normalfall.
+ *
+ * Zweite Ebene, bewusst doppelt (Audit W3-2, backend-core-12): `umgebungLesen()`
+ * schickt jeden Satz vorher durch {@link leereWerteAlsUngesetzt}, das dasselbe
+ * für **alle** Felder tut. Deshalb verhalten sich auch die Felder mit blankem
+ * `.optional()` (`AUDIT_ARCHIVE_DIR`, die OAuth-Variablen) genauso. Diese
+ * Fassung hier bleibt, weil sie am Feld sichtbar macht, was gemeint ist, und
+ * weil ein direkter Aufruf von `envSchema.parse()` sonst anders ausginge.
  */
 const optionalEnvString = (): z.ZodType<string | undefined> =>
   z

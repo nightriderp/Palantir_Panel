@@ -29,16 +29,21 @@ export function MetricRing({ label, value, percent, tone = 'brand', className }:
     <div className={cn('flex flex-col items-center gap-1', className)}>
       <div className="relative h-12 w-12">
         <svg width={48} height={48} viewBox="0 0 48 48" className="rotate-[135deg]" aria-hidden>
+          {/*
+            Spur des Rings: derselbe Wert wie jede Trennlinie, deshalb über das
+            Token `line` statt als literales `rgba(...)` (Audit W3-2,
+            frontend-lib-17; Regel aus `tailwind.config.ts`).
+          */}
           <circle
             cx={24}
             cy={24}
             r={19}
             fill="none"
-            stroke="rgba(255,255,255,0.07)"
             strokeWidth={4}
             strokeDasharray={`${ARC_LENGTH} 100`}
             pathLength={100}
             strokeLinecap="round"
+            className="stroke-line"
           />
           <circle
             cx={24}
