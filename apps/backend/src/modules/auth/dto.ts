@@ -20,7 +20,8 @@ import {
 import {
   type PermissionActor,
   computeGlobalPermissions,
-  isAccountApproved,
+  hasNonGuestRole,
+  isAwaitingApproval as standingAwaitsApproval,
 } from '../rbac/index.js';
 import type { AuthMethodRecord, SessionRecord, UserRecord } from './types.js';
 
@@ -38,12 +39,16 @@ export function isTwoFactorActive(method: AuthMethodRecord): boolean {
  * Feld ausgeliefert – das Frontend soll den Zustand nicht aus Rollennamen
  * herleiten müssen (Pflichtenheft §5.2).
  *
- * Die Regel selbst liegt in B2 (`isAccountApproved`) und wird von dort auch vom
- * Guard `requireApproved()` gelesen – eine zweite Auslegung derselben Sache
- * soll nicht entstehen (security-matrix-06).
+ * Die Regel selbst steht in B2 (`rbac/approval.ts`) und wird von B7, B8 und
+ * dem Guard `requireApproved()` (über `isAccountApproved`) ebenso genutzt;
+ * hier bleibt nur die Übersetzung der B1-Datensätze in ihre Eingabe
+ * (Audit W2-2, `backend-community-06`; security-matrix-06).
  */
 export function isAwaitingApproval(user: UserRecord, roles: readonly { name: string }[]): boolean {
-  return !isAccountApproved({ isOwner: user.isOwner, roles });
+  return standingAwaitsApproval({
+    isOwner: user.isOwner,
+    hasNonGuestRole: hasNonGuestRole(roles),
+  });
 }
 
 export function toLinkedAuthMethod(

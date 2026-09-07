@@ -197,6 +197,25 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
         );
       }
 
+      /*
+       * Eine gelöschte Nachricht lässt sich nicht mehr melden (Audit W2-2,
+       * `backend-community-01`).
+       *
+       * Ohne diese Schranke wäre die Melde-Funktion der Weg, auf dem der Inhalt
+       * einer zurückgenommenen Nachricht wieder lesbar wird: `reportedContent`
+       * kopiert ihn aus der Datenbank und `MessageReportDto` gibt ihn dem
+       * Melder zurück. Pflichtenheft §15 sichert das Gegenteil zu – gelöschte
+       * Nachrichten werden „mit leerem Inhalt ausgeliefert", auch dem Absender.
+       * Serverseitige Hälfte der Regel, die `computeMessagePermissions()` mit
+       * `canReport: false` schon im DTO ankündigt.
+       */
+      if (message.deletedAt !== null) {
+        throw new ChatError(
+          'MESSAGE_REPORT_NOT_ALLOWED',
+          'Gelöschte Nachrichten lassen sich nicht melden.',
+        );
+      }
+
       const existing = await repository.findReportByMessageAndReporter(messageId, viewerId);
 
       if (existing) {

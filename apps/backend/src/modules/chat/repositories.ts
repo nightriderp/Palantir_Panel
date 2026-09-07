@@ -26,6 +26,7 @@ import {
 import { roles, userRoles } from '../../db/schema/rbac.js';
 import { gameServers, serverMembers } from '../../db/schema/server-orchestration.js';
 import { users } from '../../db/schema/users.js';
+import { isApproved } from '../rbac/index.js';
 import { ChatError } from './errors.js';
 import type {
   ChatRepository,
@@ -487,16 +488,24 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
 /**
  * Freischaltstand eines Kontos (Lastenheft §3.6).
  *
- * Dieselbe Regel wie in der Freischalt-Warteliste aus B8 (`statusOf()`): Ein
- * Konto, das nur die Systemrolle „Gast" trägt, wartet noch auf seine Freigabe.
- * Ausgewertet wird sie hier in SQL, weil der Chat sie für einzelne Konten
- * braucht und nicht die ganze Warteliste laden soll.
+ * Bewertet wird er von der gemeinsamen Regel aus B2 (`rbac/approval.ts`) –
+ * derselben, die B1 für `awaitingApproval` und B8 für die Warteliste nutzt. SQL
+ * beantwortet hier nur noch die beiden Tatsachenfragen (gesperrt? Rolle außer
+ * „Gast"?), weil der Chat sie für einzelne Konten braucht und nicht die ganze
+ * Warteliste laden soll. `isOwner` gehört mit dazu: Der Owner steht außerhalb
+ * des Rollensystems und galt hier zuvor als nicht freigeschaltet – niemand
+ * konnte ihm schreiben (Audit W2-2, `backend-community-06`).
  */
 export function createDrizzleChatUserDirectory(db: Database): ChatUserDirectory {
   return {
     async find(userId: string): Promise<ChatUserRecord | null> {
       const [row] = await db
-        .select({ id: users.id, displayName: users.displayName, banned: users.banned })
+        .select({
+          id: users.id,
+          displayName: users.displayName,
+          banned: users.banned,
+          isOwner: users.isOwner,
+        })
         .from(users)
         .where(eq(users.id, userId))
         .limit(1);
@@ -516,7 +525,11 @@ export function createDrizzleChatUserDirectory(db: Database): ChatUserDirectory 
         id: row.id,
         displayName: row.displayName,
         banned: row.banned,
-        approved: !row.banned && approvedRole !== undefined,
+        approved: isApproved({
+          isOwner: row.isOwner,
+          banned: row.banned,
+          hasNonGuestRole: approvedRole !== undefined,
+        }),
       };
     },
 
@@ -539,7 +552,12 @@ export function createDrizzleChatUserDirectory(db: Database): ChatUserDirectory 
       }
 
       const rows = await db
-        .select({ id: users.id, displayName: users.displayName, banned: users.banned })
+        .select({
+          id: users.id,
+          displayName: users.displayName,
+          banned: users.banned,
+          isOwner: users.isOwner,
+        })
         .from(users)
         .where(inArray(users.id, [...userIds]));
 
@@ -560,7 +578,11 @@ export function createDrizzleChatUserDirectory(db: Database): ChatUserDirectory 
         id: row.id,
         displayName: row.displayName,
         banned: row.banned,
-        approved: !row.banned && approvedIds.has(row.id),
+        approved: isApproved({
+          isOwner: row.isOwner,
+          banned: row.banned,
+          hasNonGuestRole: approvedIds.has(row.id),
+        }),
       }));
     },
   };

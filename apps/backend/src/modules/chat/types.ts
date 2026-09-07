@@ -62,7 +62,7 @@ export interface MessageReportRecord {
  * Konto, so weit der Chat es kennen muss.
  *
  * `approved` bildet „freigeschaltete Nutzer" aus Lastenheft §3.6 ab. Die Regel
- * dazu gehört B8 (`statusOf()` in der Freischalt-Warteliste) – dieses Modul
+ * dazu steht in B2 (`rbac/approval.ts`, gemeinsam mit B1 und B8) – dieses Modul
  * bewertet sie nicht selbst, sondern bekommt das Ergebnis geliefert.
  */
 export interface ChatUserRecord {

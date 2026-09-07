@@ -33,6 +33,7 @@ import {
   type InstanceSettingsService,
 } from './instance-settings.js';
 import {
+  type AccountBlockSink,
   type RegistrationRequestService,
   createRegistrationRequestService,
   type QuotaSummaryReader,
@@ -79,6 +80,11 @@ export interface AdminModuleOptions {
   readonly quotas?: QuotaSummaryReader;
   /** Anschluss an B3: Serveranzahl je Konto in der Nutzerliste (Gefundener Punkt 90). */
   readonly serverCounts?: ServerCountReader;
+  /**
+   * Anschluss an B7: Empfaenger der Kontosperre (Audit W2-2). Der Chat schliesst
+   * daraufhin die offenen Live-Verbindungen des Kontos.
+   */
+  readonly sessions?: AccountBlockSink;
 }
 
 export interface AdminModule {
@@ -131,6 +137,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     audit,
     ...(options.quotas ? { quotas: options.quotas } : {}),
     ...(options.serverCounts ? { serverCounts: options.serverCounts } : {}),
+    ...(options.sessions ? { sessions: options.sessions } : {}),
   });
 
   // Rollenverwaltung: Die Regeln liegen im RoleService aus B2, hier kommen

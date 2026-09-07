@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { isApproved } from '../rbac/index.js';
 import { ChatError } from './errors.js';
 import { type ChatService, createChatService } from './service.js';
 import {
@@ -97,6 +98,109 @@ describe('Direktnachrichten öffnen', () => {
     await expect(dienst.openDirectConversation(ctxFor(ALEX), CHRIS)).rejects.toThrowError(
       new ChatError('CONVERSATION_RECIPIENT_NOT_ALLOWED'),
     );
+  });
+
+  /*
+   * Audit W2-2, `backend-community-visibility-02`: Lastenheft §3.6 erlaubt
+   * Direktnachrichten „zwischen freigeschalteten Nutzern" – geprüft wurde
+   * bisher nur die Seite des Empfängers.
+   */
+  it('lehnt ein wartendes Gast-Konto als Absender ab', async () => {
+    const dienst = createChatService({
+      repository,
+      users: fakeUserDirectory({ ...NAMEN, [ALEX]: { displayName: 'Alex', approved: false } }),
+      servers: fakeServerMembership([SERVER], { [SERVER_ID]: [BEA] }),
+    });
+
+    await expect(dienst.openDirectConversation(ctxFor(ALEX), BEA)).rejects.toThrowError(
+      new ChatError(
+        'PERMISSION_DENIED',
+        'Direktnachrichten stehen erst nach der Freischaltung des Kontos offen.',
+      ),
+    );
+    expect(repository.conversations).toHaveLength(0);
+  });
+
+  it('lehnt ein gesperrtes Konto als Absender ab', async () => {
+    const dienst = createChatService({
+      repository,
+      users: fakeUserDirectory({ ...NAMEN, [ALEX]: { displayName: 'Alex', banned: true } }),
+      servers: fakeServerMembership([SERVER], { [SERVER_ID]: [BEA] }),
+    });
+
+    await expect(dienst.openDirectConversation(ctxFor(ALEX), BEA)).rejects.toThrowError(ChatError);
+  });
+
+  /** Ein wartendes Konto darf nicht einmal erfahren, ob eine Id existiert. */
+  it('prüft den Absender vor dem Nachschlagen des Empfängers', async () => {
+    const dienst = createChatService({
+      repository,
+      users: fakeUserDirectory({ ...NAMEN, [ALEX]: { displayName: 'Alex', approved: false } }),
+      servers: fakeServerMembership([SERVER], { [SERVER_ID]: [BEA] }),
+    });
+
+    // Nicht `USER_NOT_FOUND`: Der Fehlercode darf keine Auskunft über fremde
+    // Konto-Ids geben, solange der Aufrufer nicht freigeschaltet ist.
+    await expect(
+      dienst.openDirectConversation(ctxFor(ALEX), CHRIS.replace('c3', 'ff')),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+  });
+
+  /**
+   * Der Kandidatenkreis ist derselbe wie im Verzeichnis
+   * (`directRecipientCandidateIds`): Wer keinen Server mit dem Empfänger teilt,
+   * beginnt auch mit bekannter Id keine Unterhaltung – die Arcade-Bestenliste
+   * liefert Ids an jede Sitzung.
+   */
+  it('lehnt einen Empfänger außerhalb des Kandidatenkreises ab', async () => {
+    const dienst = createChatService({
+      repository,
+      users: fakeUserDirectory(NAMEN),
+      servers: fakeServerMembership([SERVER], { [SERVER_ID]: [BEA] }),
+    });
+
+    await expect(dienst.openDirectConversation(ctxFor(ALEX), CHRIS)).rejects.toThrowError(
+      new ChatError('CONVERSATION_RECIPIENT_NOT_ALLOWED'),
+    );
+    expect(repository.conversations).toHaveLength(0);
+  });
+
+  /**
+   * Der Owner steht außerhalb des Rollensystems (Lastenheft §2). Dass der Chat
+   * ihn für „nicht freigeschaltet" hielt, war `backend-community-06`; die Regel
+   * liegt jetzt in B2 (`rbac/approval.ts`) und wird hier über den
+   * Freischaltstand des Verzeichnisses geprüft.
+   */
+  it('lässt eine Unterhaltung mit dem Owner zu, auch ohne weitere Rolle', async () => {
+    // Freischaltstand wie ihn das echte Verzeichnis berechnet: Owner, nicht
+    // gesperrt, ohne Rolle außer „Gast".
+    const approved = isApproved({ isOwner: true, banned: false, hasNonGuestRole: false });
+    const dienst = createChatService({
+      repository,
+      users: fakeUserDirectory({ ...NAMEN, [MOD]: { displayName: 'Owner', approved } }),
+      servers: fakeServerMembership([{ ...SERVER, ownerId: MOD }], { [SERVER_ID]: [ALEX] }),
+    });
+
+    const unterhaltung = await dienst.openDirectConversation(ctxFor(ALEX), MOD);
+
+    expect(unterhaltung.type).toBe('dm');
+  });
+
+  /**
+   * Eine einmal rechtmäßig entstandene Unterhaltung bleibt erreichbar, auch
+   * wenn der gemeinsame Server später wegfällt – sie steht ohnehin weiter in
+   * `listConversations`.
+   */
+  it('öffnet eine bestehende Unterhaltung auch ohne gemeinsamen Server erneut', async () => {
+    const erste = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+
+    const ohneServer = createChatService({
+      repository,
+      users: fakeUserDirectory(NAMEN),
+      servers: fakeServerMembership([]),
+    });
+
+    expect((await ohneServer.openDirectConversation(ctxFor(ALEX), BEA)).id).toBe(erste.id);
   });
 });
 

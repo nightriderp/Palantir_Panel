@@ -149,6 +149,41 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
     return audience;
   }
 
+  /**
+   * Kreis der Konten, die für den Aufrufer als DM-Empfänger in Frage kommen:
+   * Besitzer und Mitglieder der Server, auf die er Zugriff hat
+   * (Pflichtenheft §15).
+   *
+   * Eine Stelle für beide Aufrufer – das Verzeichnis
+   * (`listDirectMessageRecipients`) und den Start einer neuen Unterhaltung
+   * (`openDirectConversation`). Zwei Auslegungen derselben Regel waren genau
+   * die Lücke aus dem Audit (`backend-community-visibility-02`).
+   *
+   * Die Teilnehmerkreise werden frisch gelesen (wie überall im Modul): Wer aus
+   * einem Server entfernt wurde, fällt sofort heraus. Ein zwischenzeitlich
+   * gelöschter Server liefert kein Audience und wird übersprungen.
+   */
+  async function directRecipientCandidates(viewerId: string): Promise<readonly string[]> {
+    const serverIds = await servers.listServerIdsForUser(viewerId);
+
+    const audiences = (
+      await Promise.all(
+        serverIds.map(async (serverId) => {
+          const [server, members] = await Promise.all([
+            servers.findServer(serverId),
+            servers.listMembers(serverId),
+          ]);
+
+          return server
+            ? { ownerId: server.ownerId, memberIds: members.map((member) => member.userId) }
+            : null;
+        }),
+      )
+    ).filter((audience) => audience !== null);
+
+    return directRecipientCandidateIds(viewerId, audiences);
+  }
+
   /** Baut den DTO-Kontext für eine Menge Nachrichten aus Sicht eines Kontos. */
   async function messageContext(
     viewerId: string,
@@ -344,6 +379,27 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
     async openDirectConversation(ctx, recipientId) {
       const viewerId = requireUserId(ctx);
+
+      /*
+       * Zuerst der **Absender** (Audit W2-2, `backend-community-visibility-02`):
+       * Lastenheft §3.6 erlaubt Direktnachrichten „zwischen freigeschalteten
+       * Nutzern" – in beide Richtungen. Geprüft wurde bisher nur der Empfänger,
+       * ein wartendes Gast-Konto konnte also jedes Konto anschreiben, dessen Id
+       * es kannte.
+       *
+       * Die Prüfung steht vor dem Nachschlagen des Empfängers, damit ein nicht
+       * freigeschaltetes Konto nicht über den Fehlercode erfährt, ob eine
+       * fremde Konto-Id existiert.
+       */
+      const sender = await users.find(viewerId);
+
+      if (!sender || sender.banned || !sender.approved) {
+        throw new ChatError(
+          'PERMISSION_DENIED',
+          'Direktnachrichten stehen erst nach der Freischaltung des Kontos offen.',
+        );
+      }
+
       const recipient = await users.find(recipientId);
 
       if (!recipient) {
@@ -368,6 +424,24 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
           lastMessages.get(existing.id) ?? null,
           readState,
         );
+      }
+
+      /*
+       * Eine **neue** Unterhaltung entsteht nur innerhalb des Kandidatenkreises,
+       * den auch das Verzeichnis zeigt (`directRecipientCandidateIds`): Besitzer
+       * und Mitglieder gemeinsamer Server (Pflichtenheft §15). Sonst wäre die
+       * Zusicherung „keine DM ins Blaue" allein eine Frage der bekannten Id –
+       * und die Arcade-Bestenliste liefert Ids an jede Sitzung.
+       *
+       * Bewusst erst hier und nicht vor dem Nachschlagen der bestehenden
+       * Unterhaltung: Eine einmal rechtmäßig entstandene DM bleibt erreichbar,
+       * auch wenn der gemeinsame Server später wegfällt – sie steht ohnehin
+       * weiter in `listConversations`.
+       */
+      const candidateIds = await directRecipientCandidates(viewerId);
+
+      if (!candidateIds.includes(recipientId)) {
+        throw new ChatError('CONVERSATION_RECIPIENT_NOT_ALLOWED');
       }
 
       const created = await repository.createConversation({
@@ -404,31 +478,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
     async listDirectMessageRecipients(ctx) {
       const viewerId = requireUserId(ctx);
-
-      const serverIds = await servers.listServerIdsForUser(viewerId);
-
-      /*
-       * Teilnehmerkreise der gemeinsamen Server frisch lesen (wie überall im
-       * Modul, Pflichtenheft §15): Wer aus einem Server entfernt wurde, fällt
-       * damit sofort aus dem Verzeichnis. Ein zwischenzeitlich gelöschter
-       * Server liefert kein Audience und wird übersprungen.
-       */
-      const audiences = (
-        await Promise.all(
-          serverIds.map(async (serverId) => {
-            const [server, members] = await Promise.all([
-              servers.findServer(serverId),
-              servers.listMembers(serverId),
-            ]);
-
-            return server
-              ? { ownerId: server.ownerId, memberIds: members.map((member) => member.userId) }
-              : null;
-          }),
-        )
-      ).filter((audience) => audience !== null);
-
-      const candidateIds = directRecipientCandidateIds(viewerId, audiences);
+      const candidateIds = await directRecipientCandidates(viewerId);
 
       if (candidateIds.length === 0) {
         return [];

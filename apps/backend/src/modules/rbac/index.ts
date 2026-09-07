@@ -6,6 +6,8 @@
  * - `buildPermissionActor()` / `loadActor()` – effektive Rechte eines Nutzers
  *   (Vereinigung seiner Rollen; Owner bekommt immer alles)
  * - `hasPermission()` / `hasScopedPermission()` – Einzelprüfungen
+ * - `isApproved()` / `isAwaitingApproval()` – die Freischaltregel aus
+ *   Lastenheft §3.1/§3.6, gemeinsam genutzt von B1, B7 und B8
  * - `computePermissionFlags()` – das `permissions`-Objekt eines DTOs
  *   (Pflichtenheft §5.2); `computeGlobalPermissions()` als kontobezogene
  *   Ausprägung
@@ -19,6 +21,13 @@
  */
 
 export { RbacError, isRbacError } from './errors.js';
+
+export {
+  type ApprovalStanding,
+  hasNonGuestRole,
+  isApproved,
+  isAwaitingApproval,
+} from './approval.js';
 
 export {
   type PermissionActor,

@@ -39,7 +39,7 @@ import { type FetchLike, type ProviderRegistry, createProviderRegistry } from '.
 import { createRateLimiter } from './rate-limit.js';
 import { createDrizzleAuthRepository } from './repository.js';
 import { registerAuthRoutes } from './routes.js';
-import { type AuthEventSink, AuthService } from './service.js';
+import { type AuthEventSink, AuthService, type SessionRevocationSink } from './service.js';
 import { parseDurationMs, verifyAccessToken } from './tokens.js';
 import type { AuthRepository, UserRecord } from './types.js';
 
@@ -63,6 +63,11 @@ export interface AuthModuleOptions {
   readonly secrets?: AuthSecrets;
   /** Notification-Senke aus B6 für `user.registered`; ohne Angabe still. */
   readonly events?: AuthEventSink;
+  /**
+   * Empfänger des Sitzungswiderrufs (B7 schließt daraufhin die Live-Sockets des
+   * Kontos, Audit W2-2); ohne Angabe still.
+   */
+  readonly sessions?: SessionRevocationSink;
   /**
    * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
    *
@@ -140,6 +145,7 @@ export async function registerAuthModule(
     twoFactorTokenTtlMs: parseDurationMs(env.TWO_FACTOR_TOKEN_TTL),
     totpIssuer: env.PALANTIR_DOMAIN,
     ...(options.events ? { events: options.events } : {}),
+    ...(options.sessions ? { sessions: options.sessions } : {}),
     ...(options.selfRegistration ? { selfRegistration: options.selfRegistration } : {}),
   });
 

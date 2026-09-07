@@ -33,7 +33,7 @@ import { z } from 'zod';
 import { isRbacError, requireActor, requirePermission } from '../rbac/index.js';
 import { type ChatContext, contextOf } from './context.js';
 import { isChatError } from './errors.js';
-import { type ChatLiveHub } from './live.js';
+import { CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, type ChatLiveHub } from './live.js';
 import { type ModerationService } from './moderation.js';
 import { type ChatService } from './service.js';
 
@@ -41,6 +41,9 @@ const conversationParamsSchema = z.object({ conversationId: idSchema });
 const messageParamsSchema = z.object({ messageId: idSchema });
 const reportParamsSchema = z.object({ reportId: idSchema });
 const serverParamsSchema = z.object({ serverId: idSchema });
+
+/** Abstand der wiederkehrenden Sitzungsprüfung am offenen Live-Kanal. */
+const SESSION_CHECK_INTERVAL_MS = 60_000;
 
 export interface ChatRoutesOptions {
   readonly chat: ChatService;
@@ -50,6 +53,18 @@ export interface ChatRoutesOptions {
   ipHintOf(request: FastifyRequest): string | null;
   /** Konto des Aufrufers aus der Sitzung (B1). */
   resolveViewer(request: FastifyRequest): { id: string; displayName: string } | null;
+  /**
+   * Gilt die Sitzung des Handshakes noch? (Audit W2-2,
+   * `backend-community-visibility-03`.)
+   *
+   * Wird am offenen Live-Kanal wiederkehrend gefragt, weil Sperre und
+   * Sitzungswiderruf sonst erst beim nächsten REST-Aufruf wirken. Optional:
+   * Ohne diese Abhängigkeit bleibt es beim Schließen über
+   * `ChatLiveHub.closeAll()` – geöffnet wird dadurch nichts.
+   */
+  isSessionValid?(request: FastifyRequest): Promise<boolean>;
+  /** Abstand der Sitzungsprüfung; Vorgabe 60 s. Nur für Tests gedacht. */
+  readonly sessionCheckIntervalMs?: number;
 }
 
 /** Verdichtet die Zod-Fehler zu einer lesbaren Meldung – ohne den Rohbaum auszuliefern. */
@@ -308,12 +323,18 @@ export function registerChatRoutes(app: FastifyInstance, options: ChatRoutesOpti
    *
    * Der Browser schickt hierüber nichts: Gesendet wird über die REST-Route
    * oben. Eingehende Frames werden deshalb verworfen.
+   *
+   * Die Sitzung wird **nicht nur** im Handshake geprüft: Solange die Verbindung
+   * steht, fragt der Kanal wiederkehrend nach, ob sie noch gilt, und schließt
+   * sonst. Eine Sperre oder ein Remote-Logout wirkte sonst erst beim nächsten
+   * REST-Aufruf – der offene Socket bekam bis dahin weiter private Nachrichten
+   * (Audit W2-2, `backend-community-visibility-03`).
    */
   app.get('/api/chat/live', { websocket: true }, (socket: WebSocket, request: FastifyRequest) => {
     const viewer = options.resolveViewer(request);
 
     if (!viewer) {
-      socket.close(4401, 'Nicht angemeldet.');
+      socket.close(CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, 'Nicht angemeldet.');
 
       return;
     }
@@ -322,9 +343,49 @@ export function registerChatRoutes(app: FastifyInstance, options: ChatRoutesOpti
       send: (data: string) => {
         socket.send(data);
       },
+      close: (code: number, reason?: string) => {
+        socket.close(code, reason);
+      },
     });
 
-    socket.on('close', unregister);
-    socket.on('error', unregister);
+    const check = options.isSessionValid;
+    const timer =
+      check === undefined
+        ? null
+        : setInterval(() => {
+            void (async (): Promise<void> => {
+              /*
+               * Ein Fehler beim Nachsehen (Datenbank kurz weg) darf die
+               * Verbindung nicht kappen: Die REST-Seite entscheidet dann
+               * ohnehin bei der nächsten Anfrage. Nur ein klares „gilt nicht
+               * mehr" schließt.
+               */
+              let valid = true;
+
+              try {
+                valid = await check(request);
+              } catch {
+                return;
+              }
+
+              if (!valid) {
+                socket.close(CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, 'Sitzung nicht mehr gültig.');
+              }
+            })();
+          }, options.sessionCheckIntervalMs ?? SESSION_CHECK_INTERVAL_MS);
+
+    // Der Zeitgeber darf das Beenden des Prozesses nicht aufhalten.
+    timer?.unref();
+
+    const cleanup = (): void => {
+      if (timer) {
+        clearInterval(timer);
+      }
+
+      unregister();
+    };
+
+    socket.on('close', cleanup);
+    socket.on('error', cleanup);
   });
 }

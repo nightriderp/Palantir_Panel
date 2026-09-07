@@ -45,6 +45,16 @@ export interface LiveSocket {
 export interface NotificationHub extends LiveNotificationPublisher {
   /** Meldet eine Verbindung an; die Rückgabe meldet sie wieder ab. */
   attach(userId: string, socket: LiveSocket): () => void;
+  /**
+   * Schließt **alle** Verbindungen eines Kontos und meldet sie ab; liefert
+   * zurück, wie viele es waren.
+   *
+   * Anschluss für Sperre und Sitzungswiderruf (Audit W2-2,
+   * `backend-community-visibility-03`): Die Sitzung wird sonst nur im Handshake
+   * geprüft, ein offener Kanal überlebte beides. Wer das auslöst, entscheidet
+   * `server.ts`; der Verteiler kennt weder Sitzungen noch Sperren.
+   */
+  closeAll(userId: string, code: number, reason?: string): number;
   /** Offene Verbindungen eines Kontos – für Tests und den Health-Blick. */
   connectionCount(userId: string): number;
 }
@@ -90,6 +100,31 @@ export function createNotificationHub(options: NotificationHubOptions = {}): Not
           connections.delete(userId);
         }
       };
+    },
+
+    closeAll(userId, code, reason = 'Sitzung beendet.') {
+      const sockets = connections.get(userId);
+
+      if (!sockets || sockets.size === 0) {
+        return 0;
+      }
+
+      const open = [...sockets];
+
+      // Erst abmelden, dann schließen: Das `close`-Ereignis meldet dieselbe
+      // Verbindung gleich noch einmal ab – das ist idempotent, eine Zustellung
+      // dazwischen darf es aber nicht mehr geben.
+      connections.delete(userId);
+
+      for (const socket of open) {
+        try {
+          socket.close(code, reason);
+        } catch {
+          // Verbindung ist bereits weg; mehr als schließen war nicht zu tun.
+        }
+      }
+
+      return open.length;
     },
 
     connectionCount(userId) {

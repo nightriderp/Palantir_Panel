@@ -150,6 +150,27 @@ export const noopAuthEventSink: AuthEventSink = {
   },
 };
 
+/**
+ * Senke für „alle Sitzungen dieses Kontos sind widerrufen" (Audit W2-2,
+ * `backend-community-visibility-03`).
+ *
+ * B1 kennt weder Chat noch Live-Kanal; es meldet nur den Widerruf. Wer daran
+ * hängt – der Chat-Verteiler schließt die offenen Sockets des Kontos –
+ * entscheidet `server.ts`, genau wie bei {@link AuthEventSink}. `revoked()`
+ * wirft nie: Ein Remote-Logout darf nicht daran scheitern, dass ein Verteiler
+ * klemmt.
+ */
+export interface SessionRevocationSink {
+  revoked(userId: string): void;
+}
+
+/** Senke, solange niemand am Widerruf hängt (Tests, Betrieb ohne Chat). */
+export const noopSessionRevocationSink: SessionRevocationSink = {
+  revoked() {
+    // absichtlich leer
+  },
+};
+
 export interface AuthServiceOptions {
   readonly repository: AuthRepository;
   /** Aus B2 – für die Gast-Rolle und die effektiven Rechte am Konto-DTO. */
@@ -166,6 +187,11 @@ export interface AuthServiceOptions {
   readonly now?: () => Date;
   /** Notification-Senke aus B6; ohne Angabe wird nichts gemeldet. */
   readonly events?: AuthEventSink;
+  /**
+   * Empfänger des Sitzungswiderrufs (B7 schließt daraufhin die Live-Sockets des
+   * Kontos); ohne Angabe wird nichts gemeldet.
+   */
+  readonly sessions?: SessionRevocationSink;
   /**
    * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
    *
@@ -188,6 +214,8 @@ export class AuthService {
   private readonly totpIssuer: string;
   private readonly now: () => Date;
   private readonly events: AuthEventSink;
+  /** Empfänger des Sitzungswiderrufs (Audit W2-2). */
+  private readonly sessions: SessionRevocationSink;
   /**
    * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
    *
@@ -209,6 +237,7 @@ export class AuthService {
     this.totpIssuer = options.totpIssuer;
     this.now = options.now ?? ((): Date => new Date());
     this.events = options.events ?? noopAuthEventSink;
+    this.sessions = options.sessions ?? noopSessionRevocationSink;
     this.selfRegistration = options.selfRegistration ?? null;
     this.defaultRoleName = options.defaultRoleName ?? 'Nutzer';
   }
@@ -564,6 +593,25 @@ export class AuthService {
 
   // -- Sitzungen ------------------------------------------------------------
 
+  /**
+   * Widerruft **alle** Sitzungen eines Kontos und meldet das der Senke.
+   *
+   * Einziger Weg zu `repository.revokeAllSessions`, damit kein Pfad den
+   * Widerruf vollzieht, ohne die daran hängenden Live-Verbindungen zu schließen
+   * (Audit W2-2). Der Einzel-Logout meldet bewusst nichts: Der Verteiler
+   * adressiert je Konto, nicht je Sitzung – er würde die übrigen Geräte
+   * mitschließen.
+   */
+  private async revokeEverySession(userId: string, now: Date): Promise<void> {
+    await this.repository.revokeAllSessions(userId, now);
+
+    try {
+      this.sessions.revoked(userId);
+    } catch {
+      // Der Widerruf gilt auch dann, wenn der Verteiler klemmt.
+    }
+  }
+
   private async issueSession(userId: string, context: RequestContext): Promise<IssuedSession> {
     const { token, hash } = createRefreshToken();
     const expiresAt = new Date(this.now().getTime() + this.refreshTokenTtlMs);
@@ -613,13 +661,15 @@ export class AuthService {
     }
 
     if (session.revokedAt) {
-      await this.repository.revokeAllSessions(session.userId, now);
+      await this.revokeEverySession(session.userId, now);
       throw new AuthError('AUTH_SESSION_EXPIRED');
     }
 
     if (session.refreshTokenHash !== tokenHash && !this.withinRotationGrace(session, now)) {
       // Ein längst ersetzter Token taucht wieder auf: Diebstahls-Anzeichen.
-      await this.repository.revokeAllSessions(session.userId, now);
+      // Über `revokeEverySession`, damit auch die Live-Kanäle des Kontos
+      // schließen (Audit W2-2, backend-community-visibility-03).
+      await this.revokeEverySession(session.userId, now);
       throw new AuthError('AUTH_SESSION_EXPIRED');
     }
 
@@ -631,7 +681,7 @@ export class AuthService {
     const user = await this.requireUser(session.userId);
 
     if (user.banned) {
-      await this.repository.revokeAllSessions(user.id, now);
+      await this.revokeEverySession(user.id, now);
       throw new AuthError('AUTH_ACCOUNT_BANNED');
     }
 
@@ -1047,7 +1097,7 @@ export class AuthService {
       passwordHash: await hashPassword(temporaryPassword),
       mustChangePassword: true,
     });
-    await this.repository.revokeAllSessions(user.id, this.now());
+    await this.revokeEverySession(user.id, this.now());
 
     return { userId: user.id, temporaryPassword };
   }

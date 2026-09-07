@@ -15,7 +15,6 @@
  */
 
 import {
-  GUEST_ROLE_NAME,
   type GlobalPermissions,
   PERMISSIONS,
   type Permission,
@@ -23,6 +22,7 @@ import {
   type RolePermissions,
   type ScopedPermissionBase,
 } from '@palantir/contracts';
+import { hasNonGuestRole, isAwaitingApproval } from './approval.js';
 
 /** Rolle, soweit die Rechteberechnung sie braucht. */
 export interface RoleGrant {
@@ -70,24 +70,28 @@ export interface PermissionActor {
 /**
  * Ist ein Konto freigeschaltet (Lastenheft §3.1)?
  *
- * **Die** Auslegung der Freischaltung – `isAwaitingApproval()` (B1, Konto-DTO)
- * und `statusOf()` (B8, Warteliste) leiten sich daraus ab, damit es nicht drei
- * Lesarten derselben Regel gibt (backend-community-06, security-matrix-06):
+ * Reine Übersetzung einer Rollenliste in die **eine** Freischaltregel aus
+ * `approval.ts` (`isAwaitingApproval`), damit der Guard `requireApproved()`,
+ * das Konto-DTO (B1), die Warteliste (B8) und der Chat (B7) nicht vier
+ * Lesarten derselben Sache führen (backend-community-06, security-matrix-06):
  *
  * - Der Owner steht außerhalb des Rollensystems und ist immer freigeschaltet.
  * - Sonst gilt: freigeschaltet, sobald mindestens eine Rolle **nicht** die
  *   geschützte Systemrolle „Gast" ist. Ein Konto ganz ohne Rolle ist damit
- *   nicht freigeschaltet (`every` auf der leeren Liste ist wahr).
+ *   nicht freigeschaltet. Eine Rolle ohne Namen zählt wie eine Rolle, die
+ *   nicht „Gast" heißt (siehe {@link RoleGrant.name}).
+ *
+ * Die Sperre bleibt hier außen vor: Ein gesperrtes Konto bekommt gar keine
+ * Sitzung mehr (B1 widerruft sie beim Sperren).
  */
 export function isAccountApproved(input: {
   readonly isOwner: boolean;
   readonly roles: readonly { readonly name?: string }[];
 }): boolean {
-  if (input.isOwner) {
-    return true;
-  }
-
-  return !input.roles.every((role) => role.name === GUEST_ROLE_NAME);
+  return !isAwaitingApproval({
+    isOwner: input.isOwner,
+    hasNonGuestRole: hasNonGuestRole(input.roles),
+  });
 }
 
 /**

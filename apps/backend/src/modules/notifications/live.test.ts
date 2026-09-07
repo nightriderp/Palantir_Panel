@@ -2,16 +2,21 @@ import type { NotificationDto } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { createNotificationHub, type LiveSocket } from './live.js';
 
-function fakeSocket(): LiveSocket & { frames: unknown[] } {
+function fakeSocket(): LiveSocket & {
+  frames: unknown[];
+  closed: { code: number | undefined; reason: string | undefined }[];
+} {
   const frames: unknown[] = [];
+  const closed: { code: number | undefined; reason: string | undefined }[] = [];
 
   return {
     frames,
+    closed,
     send(data) {
       frames.push(JSON.parse(data));
     },
-    close() {
-      // im Test ohne Bedeutung
+    close(code, reason) {
+      closed.push({ code, reason });
     },
   };
 }
@@ -111,5 +116,31 @@ describe('Live-Kanal der Inbox (Pflichtenheft §5.3)', () => {
     }).not.toThrow();
     // Die zweite Verbindung bekommt ihre Meldung trotzdem.
     expect(gesund.frames).toHaveLength(1);
+  });
+
+  /**
+   * Audit W2-2, `backend-community-visibility-03`: Die Sitzung wurde nur im
+   * Handshake geprueft – Sperre und Remote-Logout liessen den Kanal offen.
+   */
+  it('schliesst bei Sperre oder Widerruf alle Verbindungen des Kontos', () => {
+    const hub = createNotificationHub();
+    const handy = fakeSocket();
+    const laptop = fakeSocket();
+    const fremdes = fakeSocket();
+
+    hub.attach('user-1', handy);
+    hub.attach('user-1', laptop);
+    hub.attach('user-2', fremdes);
+
+    expect(hub.closeAll('user-1', 4401, 'Sitzung beendet.')).toBe(2);
+
+    expect(handy.closed).toEqual([{ code: 4401, reason: 'Sitzung beendet.' }]);
+    expect(laptop.closed).toEqual([{ code: 4401, reason: 'Sitzung beendet.' }]);
+    expect(fremdes.closed).toHaveLength(0);
+    expect(hub.connectionCount('user-1')).toBe(0);
+
+    hub.publish('user-1', { notification, unreadCount: 1 });
+
+    expect(handy.frames).toHaveLength(0);
   });
 });
