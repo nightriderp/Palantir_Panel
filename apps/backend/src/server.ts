@@ -3,6 +3,8 @@ import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from './config/env.js';
+import { cookieDomainUmfasstSpielhosts } from './config/cookie-domain.js';
+import { createTrustProxy } from './config/trusted-proxy.js';
 import { getDb } from './db/index.js';
 import { registerErrorHandler } from './error-handler.js';
 import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
@@ -134,14 +136,31 @@ export interface BuildServerOptions {
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: env.LOG_LEVEL },
-    // Nur der eigenen Proxy-Kette vertrauen (feste Hop-Zahl), nicht pauschal
-    // jedem `X-Forwarded-For`: Ein client-gesetzter Header darf `request.ip`
-    // nicht bestimmen, sonst ist der Login-Rate-Limit spoofbar (Pflichtenheft §7).
-    // `hop` ist der Abstand zum Server (0 = der unmittelbar vorgelagerte Proxy);
-    // vertraut werden genau die ersten `TRUSTED_PROXY_HOPS` Hops. `0` vertraut
-    // niemandem – dann gilt die direkte Verbindungsadresse.
-    trustProxy: (_address: string, hop: number) => hop < env.TRUSTED_PROXY_HOPS,
+    // Nur den eigenen Reverse-Proxys vertrauen, und zwar an ihrer **Adresse**
+    // (`TRUSTED_PROXY_ADDRESSES`), nicht an einer Hop-Zahl: Ein client-gesetzter
+    // `X-Forwarded-For` darf `request.ip` nicht bestimmen, sonst ist der
+    // Login-Rate-Limit spoofbar (Pflichtenheft §7). Die frühere Hop-Zählung
+    // vertraute dem unmittelbaren Peer – auch einem WireGuard-Teilnehmer am
+    // Host-Port des Backends (Audit W2-6, backend-core-10).
+    trustProxy: createTrustProxy(env.TRUSTED_PROXY_ADDRESSES),
   });
+
+  /*
+   * Geltungsbereich der Sitzungs-Cookies gegen die Spielserver-Hosts prüfen
+   * (Audit W2-6, security-matrix-03). Deckt die Cookie-Domain auch
+   * `<sub>.<PALANTIR_DOMAIN>` ab, bekommt jeder Spielserver-Container die
+   * Sitzungs-Cookies seiner Besucher zu sehen. Abhilfe ist eine
+   * Betriebsentscheidung (Panel eine Ebene tiefer), deshalb nur eine Warnung –
+   * ein Startabbruch würde jede bestehende Installation lahmlegen.
+   */
+  if (cookieDomainUmfasstSpielhosts(env.COOKIE_DOMAIN, env.PALANTIR_DOMAIN)) {
+    app.log.warn(
+      { cookieDomain: env.COOKIE_DOMAIN, palantirDomain: env.PALANTIR_DOMAIN },
+      'Cookie-Domain umfasst die Spielserver-Subdomains: Sitzungs-Cookies gehen auch an ' +
+        'nutzergesteuerte Container. Panel und API eine Ebene tiefer betreiben ' +
+        '(z. B. panel.<Domain> und api.panel.<Domain>) und COOKIE_DOMAIN darauf setzen.',
+    );
+  }
 
   /*
    * Globales Sicherheitsnetz (N6, Gefundener Punkt 97): Ein Fehler, den keine

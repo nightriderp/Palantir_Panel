@@ -83,6 +83,17 @@ services:
       - '--entrypoints.web.http.redirections.entrypoint.to=websecure'
       - '--entrypoints.web.http.redirections.entrypoint.scheme=https'
       - '--entrypoints.websecure.address=:443'
+      # Wessen `X-Forwarded-For` Traefik uebernehmen darf (Audit W2-6,
+      # infra-images-06). Ohne diese Angabe verwirft Traefik jeden eingehenden
+      # Header und setzt die Adresse der direkten Verbindung - hinter dem
+      # Cloudflare-Proxy (Pflichtenheft §13) also die Cloudflare-Edge. Das
+      # Backend saehe dann fuer alle Nutzer dieselbe IP, und ein einziger
+      # Fehlversuch spaerrte das Login-Rate-Limit fuer alle (Pflichtenheft §7).
+      # Vorgabe 127.0.0.1/32 = wie bisher niemandem vertrauen; die
+      # Cloudflare-Bereiche stehen in .env.example Abschnitt 16 zum Eintragen
+      # bereit und gehoeren zusaetzlich in TRUSTED_PROXY_ADDRESSES.
+      - '--entrypoints.websecure.forwardedHeaders.trustedIPs=${TRAEFIK_TRUSTED_IPS:-127.0.0.1/32}'
+      - '--entrypoints.web.forwardedHeaders.trustedIPs=${TRAEFIK_TRUSTED_IPS:-127.0.0.1/32}'
       - '--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}'
       - '--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json'
       # HTTP-Challenge statt TLS-Challenge: Läuft die Web-Domain hinter dem
@@ -318,6 +329,25 @@ services:
       - 'traefik.http.routers.palantir-api.entrypoints=websecure'
       - 'traefik.http.routers.palantir-api.tls.certresolver=letsencrypt'
       - 'traefik.http.services.palantir-api.loadbalancer.server.port=4000'
+      # Sicherheits-Header der API (Audit W2-6, security-matrix-10). Bis hierher
+      # lieferte weder Traefik noch Fastify einen davon.
+      # - HSTS: der erste Aufruf ueber http:// ist sonst abfangbar, und mit ihm
+      #   die Sitzungs-Cookies. `includeSubdomains` zwingt auch die
+      #   Spielserver-Hosts auf HTTPS - gewollt, weil die Cookie-Domain sie
+      #   heute mit abdeckt (security-matrix-03). Wer dort spaeter eine
+      #   Weboberflaeche ueber reines HTTP anbieten will, setzt den Wert auf
+      #   false. Bewusst ohne `preload`: Der Eintrag in die Browser-Liste ist
+      #   praktisch nicht rueckholbar.
+      # - nosniff: JSON-Antworten duerfen nicht als HTML interpretiert werden.
+      # - frameDeny + CSP: Die API gehoert in keinen fremden Rahmen und liefert
+      #   nichts, was ein Browser darstellen soll.
+      - 'traefik.http.middlewares.palantir-api-secure.headers.stsSeconds=31536000'
+      - 'traefik.http.middlewares.palantir-api-secure.headers.stsIncludeSubdomains=true'
+      - 'traefik.http.middlewares.palantir-api-secure.headers.contentTypeNosniff=true'
+      - 'traefik.http.middlewares.palantir-api-secure.headers.frameDeny=true'
+      - 'traefik.http.middlewares.palantir-api-secure.headers.referrerPolicy=strict-origin-when-cross-origin'
+      - "traefik.http.middlewares.palantir-api-secure.headers.contentSecurityPolicy=default-src 'none'; frame-ancestors 'none'"
+      - 'traefik.http.routers.palantir-api.middlewares=palantir-api-secure'
     healthcheck:
       # curl und wget fehlen im Image (bewusst schlank) - node ist vorhanden.
       test:
@@ -360,6 +390,16 @@ services:
       - 'traefik.http.routers.palantir-web.entrypoints=websecure'
       - 'traefik.http.routers.palantir-web.tls.certresolver=letsencrypt'
       - 'traefik.http.services.palantir-web.loadbalancer.server.port=3000'
+      # Sicherheits-Header der Weboberflaeche (Audit W2-6, security-matrix-10).
+      # Gleiche Begruendung wie bei der API; die Content-Security-Policy setzt
+      # das Frontend selbst (`apps/frontend/next.config.mjs`), damit sie zu
+      # Next.js und den eingebundenen Schriften passt und nicht doppelt kommt.
+      - 'traefik.http.middlewares.palantir-web-secure.headers.stsSeconds=31536000'
+      - 'traefik.http.middlewares.palantir-web-secure.headers.stsIncludeSubdomains=true'
+      - 'traefik.http.middlewares.palantir-web-secure.headers.contentTypeNosniff=true'
+      - 'traefik.http.middlewares.palantir-web-secure.headers.frameDeny=true'
+      - 'traefik.http.middlewares.palantir-web-secure.headers.referrerPolicy=strict-origin-when-cross-origin'
+      - 'traefik.http.routers.palantir-web.middlewares=palantir-web-secure'
     healthcheck:
       test:
         [

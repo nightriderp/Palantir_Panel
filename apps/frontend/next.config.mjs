@@ -23,8 +23,83 @@ const domain = process.env.PALANTIR_DOMAIN ?? 'palantir.local';
 const apiUrl =
   process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || `https://api.${domain}`;
 
+// Adresse des Live-Kanals (WebSocket). Steht sie nicht in der .env, ergibt sie
+// sich wie im Frontend-Code aus der API-Adresse mit ws:// bzw. wss://.
+const liveWsUrl =
+  process.env.NEXT_PUBLIC_LIVE_WS_URL || apiUrl.replace(/^http/, 'ws').replace(/\/+$/, '');
+
+/**
+ * Content-Security-Policy (Audit W2-6, security-matrix-10).
+ *
+ * Zwei Header, bewusst getrennt:
+ *
+ * 1. **Durchgesetzt** wird nur, was nichts brechen kann und trotzdem die
+ *    wichtigsten Angriffe abdeckt: kein fremder Rahmen (Clickjacking auf
+ *    „Server löschen"), keine untergeschobene `<base>`-Adresse, keine Plugins,
+ *    Formularziele nur die eigene Herkunft.
+ * 2. **Nur beobachtet** (`Report-Only`) wird die vollständige Regel für das
+ *    Laden von Skripten, Stilen, Schriften und Bildern. Next.js liefert seine
+ *    Bootstrap-Skripte und Stile inline und ohne Nonce, die Schriften kommen
+ *    von Google (`layout.tsx`, bewusste Entscheidung), und Profilbilder liegen
+ *    auf den CDNs der Anmelde-Anbieter. Eine durchgesetzte Regel würde bei der
+ *    kleinsten Auslassung die Oberfläche zerlegen; im Report-Only-Modus meldet
+ *    der Browser Verstöße in seiner Konsole, ohne etwas zu blockieren.
+ *
+ * Der zweite Header wird durchgesetzt, sobald die Meldungen über eine
+ * Betriebsphase hinweg leer bleiben (dann `-Report-Only` aus dem Namen nehmen).
+ */
+const cspErzwungen = [
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join('; ');
+
+const cspBeobachtet = [
+  "default-src 'self'",
+  // `unsafe-inline`/`unsafe-eval`: Next.js hängt seine Hydrations-Skripte ohne
+  // Nonce in die Seite; in der Entwicklung kommt der Refresh-Mechanismus dazu.
+  process.env.NODE_ENV === 'development'
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline'",
+  // Google Fonts: Stylesheet von fonts.googleapis.com, Schriftdateien von
+  // fonts.gstatic.com (siehe `src/app/layout.tsx`).
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  // Profilbilder der Anmelde-Anbieter (Discord/Twitch/Steam-CDN) - deren Hosts
+  // stehen nicht fest, deshalb `https:`.
+  "img-src 'self' data: blob: https:",
+  `connect-src 'self' ${apiUrl} ${liveWsUrl}`,
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join('; ');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  /**
+   * Sicherheits-Header der Weboberfläche (Audit W2-6, security-matrix-10).
+   *
+   * Dieselben Werte setzt zusätzlich die Traefik-Middleware
+   * (`deploy/vps/docker-compose.yml`) - hier stehen sie, damit sie auch bei
+   * einem Start ohne Reverse-Proxy und in der Entwicklung gelten. HSTS bleibt
+   * bewusst bei Traefik: Nur dort ist bekannt, ob TLS tatsächlich anliegt.
+   */
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Content-Security-Policy', value: cspErzwungen },
+          { key: 'Content-Security-Policy-Report-Only', value: cspBeobachtet },
+        ],
+      },
+    ];
+  },
   reactStrictMode: true,
   // Workspace-Packages werden als TypeScript-Quelle mitkompiliert.
   transpilePackages: ['@palantir/contracts', '@palantir/validation'],
