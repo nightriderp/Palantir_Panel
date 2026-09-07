@@ -38,6 +38,19 @@ export function RegisterView() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [altcha, setAltcha] = useState<string | null>(null);
+  /**
+   * Zählt jeden abgeschlossenen Registrierungsversuch hoch und dient dem Widget
+   * als `key` (wie in `LoginView`).
+   *
+   * Das Backend löst den ALTCHA-Nachweis **vor** der Namensprüfung ein, und ein
+   * Nachweis zählt genau einmal (Pflichtenheft §7, R5). Ohne Rücksetzen zeigte
+   * das Widget nach `AUTH_USERNAME_TAKEN` weiterhin „bestanden", während der
+   * Nachweis längst verbraucht war – jeder weitere Versuch scheiterte mit
+   * `AUTH_CAPTCHA_INVALID`, und es half nur ein Neuladen der Seite
+   * (Fundpunkt frontend-app-01). Der Schlüsselwechsel baut das Widget neu auf,
+   * es holt eine frische Aufgabe und löst sie.
+   */
+  const [altchaAttempt, setAltchaAttempt] = useState(0);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [blocking, setBlocking] = useState(false);
@@ -90,6 +103,11 @@ export function RegisterView() {
       }
     } finally {
       setBusy(false);
+      // Der mitgeschickte Nachweis ist verbraucht – gleich einen neuen holen.
+      // Auch im Erfolgsfall: bis der Seitenwechsel greift, bleibt die Ansicht
+      // stehen, und ein zweiter Versuch soll nicht am alten Nachweis scheitern.
+      setAltcha(null);
+      setAltchaAttempt((value) => value + 1);
     }
   }
 
@@ -132,7 +150,7 @@ export function RegisterView() {
           placeholder="Wird sonst aus dem Benutzernamen abgeleitet"
         />
 
-        <AltchaWidget onSolved={handleSolved} />
+        <AltchaWidget key={altchaAttempt} onSolved={handleSolved} />
         {fieldErrors.altcha ? (
           <p className="-mt-1.5 text-sm text-danger">{fieldErrors.altcha}</p>
         ) : null}

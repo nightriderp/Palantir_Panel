@@ -8,6 +8,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
+import { UNKNOWN_ERROR_MESSAGE } from '@/lib/auth/errors';
 import { type ApiResult, errorText, isAborted } from './client';
 
 /**
@@ -65,17 +66,37 @@ export function useApiResource<T>(
     setLoading(true);
     setError(null);
 
-    void loadRef.current(controller.signal).then((result) => {
-      if (controller.signal.aborted || isAborted(result)) return;
+    /*
+     * Die Ladefunktion liefert normalerweise auch im Fehlerfall ein Ergebnis
+     * (`ApiResult`) statt zu werfen. Verlässlich ist das aber nicht: Schon ein
+     * fehlerhaft kodiertes CSRF-Cookie ließ `apiRequest` mit einem `URIError`
+     * ablehnen (Fundpunkt frontend-lib-12), und jeder eigene Loader kann
+     * werfen. Ohne diesen Zweig blieb `loading` dann für immer `true`, die
+     * Ansicht zeigte ewig „wird geladen …", und die Ablehnung landete
+     * unbehandelt in der Konsole. Deshalb: jeder Ausgang endet im selben
+     * sichtbaren Zustand.
+     */
+    async function laden(): Promise<void> {
+      try {
+        const result = await loadRef.current(controller.signal);
+        if (controller.signal.aborted || isAborted(result)) return;
 
-      if (result.success) {
-        setData(result.data);
-        setError(null);
-      } else {
-        setError(errorText(result));
+        if (result.success) {
+          setData(result.data);
+          setError(null);
+        } else {
+          setError(errorText(result));
+        }
+      } catch {
+        // Abbrüche erzeugen wie bisher keinen Fehlerzustand – die Ansicht wird
+        // gerade verlassen oder lädt schon mit neuen Abhängigkeiten.
+        if (controller.signal.aborted) return;
+        setError(UNKNOWN_ERROR_MESSAGE);
       }
       setLoading(false);
-    });
+    }
+
+    void laden();
 
     return () => controller.abort();
   }, [enabled, dependencyKey, reloadToken]);

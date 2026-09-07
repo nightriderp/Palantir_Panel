@@ -88,7 +88,21 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (ziel !== null && ziel !== request.nextUrl.pathname) {
     const url = request.nextUrl.clone();
     url.pathname = ziel;
-    url.search = '';
+    /*
+     * Die Query bleibt stehen (Fundpunkt frontend-app-02).
+     *
+     * Sie wurde bisher geleert (`url.search = ''`) – damit ging die einzige
+     * Rückmeldung eines gescheiterten Provider-Rücklaufs verloren: Das Backend
+     * leitet auch eine misslungene **Verknüpfung** auf `/login?error=<CODE>`,
+     * und ein angemeldeter Nutzer wird von dort weiter auf `/servers` geschickt.
+     * Ohne Query landete er wortlos auf der Übersicht, während `ProfileView`
+     * vergeblich auf `?error=` wartete.
+     *
+     * Unbedenklich, weil nur der Pfad wechselt: Herkunft und Werte bleiben die
+     * des eigenen Aufrufs, ein fremdes Ziel entsteht nicht. Freitext erreicht
+     * die Oberfläche ohnehin nicht – `?error=` wird gegen den Fehlercode-Katalog
+     * geprüft (`messageForErrorCode`), `?linked=` gegen `AUTH_METHOD_LABEL`.
+     */
     return mitCookies(NextResponse.redirect(url), frischeCookies);
   }
 
