@@ -32,7 +32,7 @@ import {
   type DockerCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
-import { type ArchiveKind, readArchive } from '../archive.js';
+import { MAX_EXTRACTED_BYTES, type ArchiveKind, readArchive } from '../archive.js';
 import { assertAbsoluteContainerPath, resolveWithinRoot } from '../paths.js';
 import {
   DEFAULT_LOG_TAIL,
@@ -66,6 +66,12 @@ export interface FakeContainerRuntimeOptions {
   readonly now?: () => Date;
   /** Groessenlimit fuer `readFile`/`writeFile`. */
   readonly maxFileBytes?: number;
+  /**
+   * Groessenlimit fuer `extractArchive` - getrennt von `maxFileBytes` wie in der
+   * Docker-Runtime (Audit agent-runtime-02). Vorgabe:
+   * {@link MAX_EXTRACTED_BYTES}.
+   */
+  readonly maxArchiveBytes?: number;
 }
 
 interface FakeImage {
@@ -149,6 +155,7 @@ export class FakeContainerRuntime implements ContainerRuntime {
   readonly #hardening: HardeningOptions;
   readonly #now: () => Date;
   readonly #maxFileBytes: number;
+  readonly #maxArchiveBytes: number;
 
   #naechsteId = 1;
   #verbunden = false;
@@ -158,6 +165,7 @@ export class FakeContainerRuntime implements ContainerRuntime {
     this.#hardening = options.hardening ?? { allowedHostRoots: [FAKE_DATA_ROOT] };
     this.#now = options.now ?? (() => new Date());
     this.#maxFileBytes = options.maxFileBytes ?? 64 * 1024 * 1024;
+    this.#maxArchiveBytes = options.maxArchiveBytes ?? MAX_EXTRACTED_BYTES;
   }
 
   // ---------------------------------------------------------------- Lebenszyklus
@@ -528,9 +536,10 @@ export class FakeContainerRuntime implements ContainerRuntime {
     const container = this.#hole(containerId);
     const zielPfad = resolveWithinRoot(container.spec.dataVolume.containerPath, ziel);
 
-    if (archiv.length > this.#maxFileBytes) {
-      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
-        details: { path: zielPfad, sizeBytes: archiv.length, maxBytes: this.#maxFileBytes },
+    // Eigene Archiv-Grenze, nicht die des Datei-Managers (agent-runtime-02).
+    if (archiv.length > this.#maxArchiveBytes) {
+      throw new ContainerRuntimeError('ARCHIVE_TOO_LARGE', {
+        details: { path: zielPfad, sizeBytes: archiv.length, maxBytes: this.#maxArchiveBytes },
       });
     }
 

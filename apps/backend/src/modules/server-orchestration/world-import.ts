@@ -17,7 +17,14 @@
  * Dateien räumt der nächste Upload mit weg (`sweep()`). Bewusst kein eigener
  * Timer und keine zusätzliche Aufgabe im Zeitgeber: Ohne Uploads entstehen auch
  * keine Reste, und ein Verzeichnis, in dem nichts passiert, muss niemand
- * durchsehen.
+ * durchsehen. Eine gerade entstehende Datei (`.teil`) ist davon ausgenommen,
+ * solange sie jünger als die Frist ist (Audit orchestration-features-02).
+ *
+ * **Besitz.** Ein Verweis (`uploadId`) allein berechtigt nicht: Im Namen steht
+ * zusätzlich der Fingerabdruck des hochladenden Kontos, und `take()` gibt ein
+ * Archiv nur an dieses Konto heraus (Audit orchestration-features-09). Eine
+ * fremde `uploadId` sieht deshalb aus wie eine unbekannte – kein Orakel, das
+ * die Existenz fremder Uploads bestätigt.
  */
 
 import { createWriteStream } from 'node:fs';
@@ -25,7 +32,7 @@ import os from 'node:os';
 import { mkdir, open, readdir, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { type ArchiveFormat, type WorldArchiveUploadDto } from '@palantir/contracts';
 import { ServerOrchestrationError } from './errors.js';
 
@@ -104,6 +111,23 @@ export interface StoredWorldArchive {
   release(): Promise<void>;
 }
 
+/** Was beim Ablegen neben dem Datenstrom bekannt sein muss. */
+export interface SaveWorldArchiveOptions {
+  /**
+   * Konto, das den Upload startet. Nur dieses Konto bekommt das Archiv über
+   * {@link WorldArchiveStore.take} zurück (orchestration-features-09).
+   */
+  readonly ownerId: string;
+  /**
+   * Meldet, ob die Multipart-Ebene den Datenstrom gekappt hat.
+   *
+   * Wird **vor** dem Umbenennen ausgewertet (orchestration-features-05): Ein
+   * abgeschnittenes Archiv soll gar nicht erst unter einem gültigen Namen im
+   * Zwischenspeicher landen und dort bis zur Frist liegen bleiben.
+   */
+  readonly isTruncated?: () => boolean;
+}
+
 export interface WorldArchiveStore {
   /**
    * Nimmt einen Upload entgegen.
@@ -112,15 +136,20 @@ export interface WorldArchiveStore {
    * gepuffert wird dabei nichts: Ein zu großes Archiv soll nicht erst
    * vollständig ankommen, bevor es abgelehnt wird.
    */
-  save(fileName: string, source: AsyncIterable<Buffer>): Promise<WorldArchiveUploadDto>;
+  save(
+    fileName: string,
+    source: AsyncIterable<Buffer>,
+    options: SaveWorldArchiveOptions,
+  ): Promise<WorldArchiveUploadDto>;
   /**
    * Holt ein Archiv ab und entfernt es.
    *
    * Einmalig mit Absicht: Nach dem Anlegen wird es nicht mehr gebraucht, und ein
    * liegengebliebenes Archiv wäre eine Kopie fremder Spielstände ohne Besitzer.
-   * `null`, wenn der Verweis unbekannt oder abgelaufen ist.
+   * `null`, wenn der Verweis unbekannt, abgelaufen **oder fremd** ist – ein
+   * fremdes Archiv ist von einem nicht existierenden nicht zu unterscheiden.
    */
-  take(uploadId: string): Promise<StoredWorldArchive | null>;
+  take(uploadId: string, ownerId: string): Promise<StoredWorldArchive | null>;
   /** Entfernt abgelaufene Archive; liefert die Anzahl. */
   sweep(now?: Date): Promise<number>;
 }
@@ -135,29 +164,55 @@ export interface WorldArchiveStoreOptions {
 }
 
 /**
- * Dateiname eines Uploads: `<uploadId>.<ablaufZeitstempel>.<endung>`.
+ * Fingerabdruck des Besitzers – 32 Hex-Zeichen aus SHA-256.
+ *
+ * Nicht die Konto-ID selbst: Ein Dateiname im System-Temp der VPS ist für jeden
+ * lesbar, der dort hineinsieht, und wer welche Welt hochlädt, gehört nicht
+ * dorthin. Der Fingerabdruck reicht für den einzigen Zweck – vergleichen, ob
+ * dasselbe Konto abholt, das hochgeladen hat – und ist nebenbei garantiert frei
+ * von Punkten und Pfadtrennern.
+ */
+function besitzerMarke(ownerId: string): string {
+  return createHash('sha256').update(ownerId).digest('hex').slice(0, 32);
+}
+
+/**
+ * Dateiname eines Uploads:
+ * `<uploadId>.<besitzerMarke>.<ablaufZeitstempel>.<endung>`.
  *
  * Die Frist steht im Namen, damit `sweep()` sie ohne zweite Datenhaltung lesen
  * kann – eine Tabelle für etwas, das nach zwei Stunden ohnehin verschwindet,
- * wäre die schwerere Lösung.
+ * wäre die schwerere Lösung. Der Besitzer steht aus demselben Grund daneben
+ * (orchestration-features-09).
  */
-function dateiName(uploadId: string, expiresAt: number, format: ArchiveFormat): string {
-  return `${uploadId}.${String(expiresAt)}.${FORMAT_SUFFIX[format]}`;
+function dateiName(
+  uploadId: string,
+  ownerId: string,
+  expiresAt: number,
+  format: ArchiveFormat,
+): string {
+  return `${uploadId}.${besitzerMarke(ownerId)}.${String(expiresAt)}.${FORMAT_SUFFIX[format]}`;
 }
 
 /** Namenszusatz eines Archivs, das gerade zum Agent uebertragen wird. */
 const IN_ARBEIT = '.taken';
 
-function zerlege(
-  name: string,
-): { uploadId: string; expiresAt: number; format: ArchiveFormat } | null {
+/** Namenszusatz eines Uploads, der gerade geschrieben wird. */
+const IN_ANNAHME = '.teil';
+
+function zerlege(name: string): {
+  uploadId: string;
+  ownerMark: string;
+  expiresAt: number;
+  format: ArchiveFormat;
+} | null {
   const teile = name.split('.');
 
-  if (teile.length !== 3) {
+  if (teile.length !== 4) {
     return null;
   }
 
-  const [uploadId, frist, endung] = teile as [string, string, string];
+  const [uploadId, ownerMark, frist, endung] = teile as [string, string, string, string];
   const expiresAt = Number(frist);
   const format = (Object.keys(FORMAT_SUFFIX) as ArchiveFormat[]).find(
     (kandidat) => FORMAT_SUFFIX[kandidat] === endung,
@@ -167,7 +222,7 @@ function zerlege(
     return null;
   }
 
-  return { uploadId, expiresAt, format };
+  return { uploadId, ownerMark, expiresAt, format };
 }
 
 export function createFileSystemWorldArchiveStore(
@@ -191,6 +246,23 @@ export function createFileSystemWorldArchiveStore(
     let entfernt = 0;
 
     for (const name of namen) {
+      /*
+       * Ein Upload, der gerade geschrieben wird, heisst `<uuid>.teil` und
+       * traegt noch keine Frist im Namen (orchestration-features-02). Er wird
+       * hier verschont, solange er jünger als die Frist ist: Der Sweep läuft zu
+       * Beginn *jedes* Uploads, also auch mitten in einem fremden, minutenlang
+       * laufenden. Wurde er früher entfernt, schrieb dessen `pipeline` in eine
+       * entkettete Inode weiter und das abschließende `rename` scheiterte mit
+       * ENOENT – ein gültiger Upload endete als 500.
+       */
+      if (name.endsWith(IN_ANNAHME)) {
+        const angefangen = await stat(path.join(verzeichnis, name)).catch(() => null);
+
+        if (angefangen !== null && grenze - angefangen.mtimeMs < WORLD_ARCHIVE_TTL_MS) {
+          continue;
+        }
+      }
+
       // Ein Archiv, das gerade blockweise an den Agent geht, traegt den Zusatz
       // `.taken` (Gefundener Punkt 106). Es gehoert einem laufenden Import und
       // wird von diesem selbst entfernt - hier faellt es nur, wenn seine Frist
@@ -213,12 +285,14 @@ export function createFileSystemWorldArchiveStore(
   return {
     sweep,
 
-    async save(fileName, source) {
+    // `auftrag` und nicht `options`: Der Name der Fabrik-Optionen darf hier
+    // nicht verdeckt werden – `begrenzt()` unten liest daraus `maxBytes`.
+    async save(fileName, source, auftrag) {
       await mkdir(verzeichnis, { recursive: true });
       await sweep();
 
       const uploadId = randomUUID();
-      const vorlaeufig = path.join(verzeichnis, `${uploadId}.teil`);
+      const vorlaeufig = path.join(verzeichnis, `${uploadId}${IN_ANNAHME}`);
 
       let gelesen = 0;
       let kopf = Buffer.alloc(0);
@@ -245,7 +319,14 @@ export function createFileSystemWorldArchiveStore(
       try {
         await pipeline(begrenzt(), createWriteStream(vorlaeufig));
 
-        if (zuGross) {
+        /*
+         * Beide Größensignale vor dem Umbenennen (orchestration-features-05):
+         * `zuGross` ist die eigene Zählung, `isTruncated()` die Kappung der
+         * Multipart-Ebene. Fällt die Kappung genau auf die eigene Grenze, zählt
+         * die eigene Prüfung nichts Auffälliges – das Archiv wäre trotzdem
+         * unbrauchbar und läge bis zur Frist im Zwischenspeicher.
+         */
+        if (zuGross || auftrag.isTruncated?.() === true) {
           throw new ServerOrchestrationError(
             'FILE_TOO_LARGE',
             `Das Archiv überschreitet die zulässige Größe von ${String(options.maxBytes)} Byte.`,
@@ -259,7 +340,10 @@ export function createFileSystemWorldArchiveStore(
         }
 
         const expiresAt = now().getTime() + WORLD_ARCHIVE_TTL_MS;
-        const ziel = path.join(verzeichnis, dateiName(uploadId, expiresAt, format));
+        const ziel = path.join(
+          verzeichnis,
+          dateiName(uploadId, auftrag.ownerId, expiresAt, format),
+        );
 
         // Umbenennen statt direkt schreiben: Erst wenn Größe und Format
         // feststehen, bekommt die Datei den Namen, unter dem `take()` sie findet.
@@ -279,7 +363,7 @@ export function createFileSystemWorldArchiveStore(
       }
     },
 
-    async take(uploadId) {
+    async take(uploadId, ownerId) {
       let namen: string[];
 
       try {
@@ -288,9 +372,20 @@ export function createFileSystemWorldArchiveStore(
         return null;
       }
 
+      /*
+       * Der Besitz wird gleich mit gesucht (orchestration-features-09): Ein
+       * Archiv, das einem anderen Konto gehört, verhält sich hier wie ein
+       * unbekannter Verweis – gleiche Antwort (`WORLD_ARCHIVE_NOT_FOUND`, 404),
+       * keine Auskunft darüber, dass es die `uploadId` überhaupt gibt, und
+       * entzogen wird dem Eigentümer nichts.
+       */
+      const marke = besitzerMarke(ownerId);
       const treffer = namen
         .map((name) => ({ name, eintrag: zerlege(name) }))
-        .find(({ eintrag }) => eintrag !== null && eintrag.uploadId === uploadId);
+        .find(
+          ({ eintrag }) =>
+            eintrag !== null && eintrag.uploadId === uploadId && eintrag.ownerMark === marke,
+        );
 
       if (treffer?.eintrag === undefined || treffer.eintrag === null) {
         return null;

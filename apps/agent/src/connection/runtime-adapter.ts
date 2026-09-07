@@ -68,6 +68,12 @@ export const RUNTIME_ERROR_TO_API_CODE: Record<ContainerRuntimeErrorCode, ErrorC
   INVALID_PATH: 'AGENT_INVALID_PATH',
   FILE_NOT_FOUND: 'AGENT_FILE_NOT_FOUND',
   FILE_TOO_LARGE: 'AGENT_FILE_TOO_LARGE',
+  // Derselbe API-Code wie FILE_TOO_LARGE (413): Der Katalog in
+  // `packages/contracts` unterscheidet Datei und Archiv nicht, und ein neuer
+  // Wire-Code waere eine Vertragsaenderung fuer eine Nuance, die der Nutzer
+  // ohnehin als „zu gross" liest. Agent-intern bleiben beide getrennt, damit im
+  // Node-Log steht, welche Grenze gegriffen hat.
+  ARCHIVE_TOO_LARGE: 'AGENT_FILE_TOO_LARGE',
   FILE_EXISTS: 'AGENT_FILE_EXISTS',
   RUNTIME_UNAVAILABLE: 'AGENT_RUNTIME_UNAVAILABLE',
   RUNTIME_ERROR: 'AGENT_COMMAND_FAILED',
@@ -509,10 +515,28 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
   private requireJobs(): AgentJobs {
     if (this.jobs === undefined) {
       // Kann nur passieren, wenn JOB_COMMANDS und dieser Zweig auseinanderlaufen
-      // – ein Test hält beide zusammen.
-      throw new Error('Das Job-Modul (A3) ist nicht eingehängt.');
+      // – ein Test hält beide zusammen. Der eigene Fehlertyp sorgt dafür, dass
+      // die Antwort auch dann ehrlich bleibt (Audit agent-conn-03): ein
+      // generischer `Error` käme über `toErrorResponse` als
+      // AGENT_COMMAND_FAILED heraus und behauptete damit einen Fehlschlag,
+      // wo schlicht nichts gebaut ist.
+      throw new MissingAgentJobsError();
     }
     return this.jobs;
+  }
+}
+
+/**
+ * „Dieser Befehl braucht das Job-Modul (A3), und es ist nicht eingehängt."
+ *
+ * Eigener Typ statt eines generischen `Error`, damit {@link toErrorResponse}
+ * ihn erkennt. Exportiert, weil ein Test prüft, dass er nie auftritt – solange
+ * {@link JOB_COMMANDS} vollständig ist, greift schon das Gate in `execute()`.
+ */
+export class MissingAgentJobsError extends Error {
+  constructor() {
+    super('Das Job-Modul (A3) ist nicht eingehängt.');
+    this.name = 'MissingAgentJobsError';
   }
 }
 
@@ -530,6 +554,12 @@ export const JOB_COMMANDS: ReadonlySet<AgentCommandName> = new Set([
   'GET_STORAGE_BREAKDOWN',
   'SET_SERVER_QUERY',
   'REMOVE_STORAGE_ENTRY',
+  // Beide fehlten hier, obwohl ihre Zweige in dispatch() `requireJobs()` rufen
+  // (Audit agent-conn-03): Ein Adapter ohne Job-Modul beantwortete sie mit
+  // AGENT_COMMAND_FAILED statt AGENT_COMMAND_NOT_IMPLEMENTED - das Backend
+  // konnte „nicht gebaut" nicht mehr von „hat nicht funktioniert" trennen.
+  'FILE_DELETE',
+  'UPLOAD_ARCHIVE_BLOCK',
 ]);
 
 /** Nutzdaten von `CREATE`, wie sie das Schema liefert. */
@@ -679,6 +709,13 @@ export function toOutboundEvent(event: ContainerRuntimeEvent): OutboundEvent {
 export function toErrorResponse(command: AgentCommandName, error: unknown): ApiResponse<never> {
   if (isContainerRuntimeError(error)) {
     return fail(RUNTIME_ERROR_TO_API_CODE[error.code], `${command}: ${error.message}`);
+  }
+
+  if (error instanceof MissingAgentJobsError) {
+    return fail(
+      'AGENT_COMMAND_NOT_IMPLEMENTED',
+      `${command} braucht das Job-Modul (A3), das in diesem Agent nicht eingehängt ist.`,
+    );
   }
 
   const meldung = error instanceof Error ? error.message : String(error);

@@ -1,7 +1,13 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ERROR_CATALOG, isFail, isOk } from '@palantir/contracts';
+import {
+  ERROR_CATALOG,
+  IMPLEMENTED_AGENT_COMMANDS,
+  type ImplementedAgentCommandName,
+  isFail,
+  isOk,
+} from '@palantir/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentJobs, type AgentJobs } from '../jobs/index.js';
 import {
@@ -13,9 +19,11 @@ import {
 import {
   ContainerRuntimeAdapter,
   JOB_COMMANDS,
+  MissingAgentJobsError,
   RUNTIME_ERROR_TO_API_CODE,
   toAgentContainerState,
   toContainerSpec,
+  toErrorResponse,
 } from './runtime-adapter.js';
 import type { OutboundEvent } from './ports.js';
 
@@ -30,6 +38,70 @@ const CREATE_PAYLOAD = {
   ports: [{ containerPort: 25565, hostPort: 30000, protocol: 'tcp' as const }],
   resources: { memoryMb: 2048, cpuCores: 2 },
   dataVolume: { hostPath: `/srv/palantir/servers/${SERVER_ID}`, containerPath: '/data' },
+};
+
+const CHECKSUM = 'a'.repeat(64);
+const EIN_BYTE_BASE64 = Buffer.from('x').toString('base64');
+
+/**
+ * Gültige Nutzdaten je Befehl – die Grundlage des Abgleichs zwischen
+ * {@link JOB_COMMANDS} und den Zweigen in `dispatch()`.
+ *
+ * Sie müssen das Wire-Schema bestehen, damit der Adapter überhaupt bis zum
+ * Zweig kommt; was der Zweig dann meldet (fehlender Container, fehlende Datei),
+ * spielt für den Abgleich keine Rolle.
+ */
+const GUELTIGE_NUTZDATEN: Record<ImplementedAgentCommandName, unknown> = {
+  CREATE: CREATE_PAYLOAD,
+  START: { containerId: 'c-1' },
+  STOP: { containerId: 'c-1' },
+  RESTART: { containerId: 'c-1' },
+  DELETE: { containerId: 'c-1' },
+  GET_STATS: { containerId: 'c-1' },
+  GET_LOGS: { containerId: 'c-1' },
+  EXEC_CONSOLE: { containerId: 'c-1', command: ['list'] },
+  FILE_LIST: { containerId: 'c-1', path: '/data' },
+  FILE_READ: { containerId: 'c-1', path: '/data/eula.txt' },
+  FILE_WRITE: { containerId: 'c-1', path: '/data/eula.txt', contentBase64: EIN_BYTE_BASE64 },
+  FILE_DELETE: { containerId: 'c-1', path: '/data/alt.txt' },
+  FILE_UPLOAD: { containerId: 'c-1', path: '/data/neu.txt', contentBase64: EIN_BYTE_BASE64 },
+  FILE_EXTRACT: {
+    containerId: 'c-1',
+    path: '',
+    contentBase64: EIN_BYTE_BASE64,
+    format: 'tar.gz',
+  },
+  UPLOAD_ARCHIVE_BLOCK: {
+    containerId: 'c-1',
+    transferId: 'transfer-1',
+    offset: 0,
+    contentBase64: EIN_BYTE_BASE64,
+    last: false,
+    path: '',
+    format: 'tar.gz',
+  },
+  CREATE_BACKUP: {
+    backupId: BACKUP_ID,
+    serverId: SERVER_ID,
+    sourcePath: '/srv/palantir/servers/gibt-es-nicht',
+  },
+  RESTORE_BACKUP: {
+    backupId: BACKUP_ID,
+    serverId: SERVER_ID,
+    storagePath: '/srv/palantir/backups/a.tar.gz',
+    targetPath: '/srv/palantir/servers/gibt-es-nicht',
+    expectedChecksum: CHECKSUM,
+  },
+  DOWNLOAD_BACKUP: {
+    backupId: BACKUP_ID,
+    storagePath: '/srv/palantir/backups/a.tar.gz',
+    offset: 0,
+    maxBytes: 1024,
+  },
+  DELETE_BACKUP: { backupId: BACKUP_ID, storagePath: '/srv/palantir/backups/a.tar.gz' },
+  GET_STORAGE_BREAKDOWN: { includeImages: false },
+  SET_SERVER_QUERY: { serverId: SERVER_ID, target: null },
+  REMOVE_STORAGE_ENTRY: { kind: 'backup', path: '/srv/palantir/backups/a.tar.gz' },
 };
 
 let runtime: FakeContainerRuntime;
@@ -213,6 +285,31 @@ describe('Nutzdaten-Prüfung', () => {
 
     expect(antwort.error?.message).toContain('command');
   });
+
+  /*
+   * Traversal-Prüfung des Zielpfads schon am Wire-Schema (Audit
+   * contracts-validation-13). Die Linie hing bisher allein am
+   * `resolveWithinRoot` der Runtime; das Schema ließ `../` durch. Geprüft wird
+   * hier, dass der Agent die Refine aus `@palantir/validation` auch wirklich
+   * anwendet – vor jedem Runtime-Aufruf. (`UPLOAD_ARCHIVE_BLOCK` braucht das
+   * Job-Modul und wird deshalb weiter unten geprüft.)
+   */
+  it.each([['../../etc'], ['/etc'], ['welt\\..\\etc']])(
+    'FILE_EXTRACT lehnt den Zielpfad "%s" schon am Schema ab',
+    async (pfad) => {
+      const containerId = await containerAnlegen();
+
+      const antwort = await befehl('FILE_EXTRACT', {
+        ...(GUELTIGE_NUTZDATEN.FILE_EXTRACT as Record<string, unknown>),
+        containerId,
+        path: pfad,
+      });
+
+      expect(antwort.error?.code).toBe('AGENT_COMMAND_INVALID');
+      // Kein Dateizugriff: Der Datenordner des Containers ist unberührt.
+      expect(await runtime.listFiles(containerId, '/data')).toEqual([]);
+    },
+  );
 });
 
 describe('Job-Befehle ohne eingehängtes Job-Modul (A3)', () => {
@@ -230,20 +327,40 @@ describe('Job-Befehle ohne eingehängtes Job-Modul (A3)', () => {
     expect(antwort.error?.message).toContain('Job-Modul');
   });
 
-  it('deckt JOB_COMMANDS genau die Befehle ab, die das Job-Modul bedient', () => {
-    // Läuft die Liste mit den Zweigen in dispatch() auseinander, endet ein
-    // Befehl in einem Laufzeitfehler statt in einer ehrlichen Antwort.
-    expect([...JOB_COMMANDS].sort()).toEqual(
-      [
-        'CREATE_BACKUP',
-        'DELETE_BACKUP',
-        'DOWNLOAD_BACKUP',
-        'GET_STORAGE_BREAKDOWN',
-        'REMOVE_STORAGE_ENTRY',
-        'RESTORE_BACKUP',
-        'SET_SERVER_QUERY',
-      ].sort(),
-    );
+  it('deckt JOB_COMMANDS genau die Befehle ab, die das Job-Modul bedient', async () => {
+    /*
+     * Nicht gegen eine zweite, von Hand gepflegte Liste (Audit agent-conn-03):
+     * Genau so lief die Liste mit den Zweigen in dispatch() auseinander, ohne
+     * dass es auffiel – FILE_DELETE und UPLOAD_ARCHIVE_BLOCK fehlten. Hier
+     * läuft stattdessen jeder Befehl des Protokolls mit gültigen Nutzdaten
+     * gegen einen Adapter **ohne** Job-Modul; wer dabei
+     * AGENT_COMMAND_NOT_IMPLEMENTED meldet, braucht die Jobs.
+     */
+    const brauchtJobs: string[] = [];
+
+    for (const command of IMPLEMENTED_AGENT_COMMANDS) {
+      const antwort = await befehl(command, GUELTIGE_NUTZDATEN[command]);
+
+      // Sonst prüfte der Test nur, dass die Nutzdaten im Tisch veraltet sind.
+      expect({ command, code: antwort.error?.code }).not.toMatchObject({
+        code: 'AGENT_COMMAND_INVALID',
+      });
+
+      if (antwort.error?.code === 'AGENT_COMMAND_NOT_IMPLEMENTED') {
+        brauchtJobs.push(command);
+      }
+    }
+
+    expect(brauchtJobs.sort()).toEqual([...JOB_COMMANDS].sort());
+  });
+
+  it('bleibt auch ohne das Gate ehrlich, wenn ein Zweig die Jobs braucht', () => {
+    // Zweite Verteidigungslinie zum Gate: Selbst wenn JOB_COMMANDS und
+    // dispatch() wieder auseinanderlaufen, kommt beim Backend nicht
+    // „hat nicht funktioniert" an, sondern „ist nicht gebaut".
+    const antwort = toErrorResponse('FILE_DELETE', new MissingAgentJobsError());
+
+    expect(antwort.error?.code).toBe('AGENT_COMMAND_NOT_IMPLEMENTED');
   });
 });
 
@@ -318,6 +435,22 @@ describe('Job-Befehle mit eingehängtem Job-Modul (A3)', () => {
     expect(isFail(antwort)).toBe(true);
     await expect(fs.stat(daneben)).rejects.toThrow();
   });
+
+  it.each([['../../etc'], ['/etc'], ['welt\\..\\etc']])(
+    'lässt UPLOAD_ARCHIVE_BLOCK mit dem Zielpfad "%s" nicht bis zur Platte',
+    async (pfad) => {
+      // contracts-validation-13 zusammen mit agent-conn-02: Das Schema greift
+      // vor dem Job, es entsteht also nicht einmal der Ordner für angefangene
+      // Übertragungen.
+      const antwort = await jobBefehl('UPLOAD_ARCHIVE_BLOCK', {
+        ...(GUELTIGE_NUTZDATEN.UPLOAD_ARCHIVE_BLOCK as Record<string, unknown>),
+        path: pfad,
+      });
+
+      expect(antwort.error?.code).toBe('AGENT_COMMAND_INVALID');
+      await expect(fs.stat(path.join(wurzel, 'servers', '.uploads'))).rejects.toThrow();
+    },
+  );
 
   it('reicht CREATE_BACKUP an den Backup-Job durch', async () => {
     // Geprüft wird hier die Weiterleitung, nicht das Sichern selbst: Der

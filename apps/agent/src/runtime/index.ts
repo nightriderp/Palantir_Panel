@@ -93,6 +93,7 @@ export {
 } from './docker/http-client.js';
 
 export {
+  DEFAULT_MAX_ARCHIVE_BYTES,
   DEFAULT_MAX_FILE_BYTES,
   DockerContainerRuntime,
   createDockerContainerRuntime,

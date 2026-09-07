@@ -1223,7 +1223,14 @@ export class ServerOrchestrationService {
       );
     }
 
-    const archiv = await store.take(worldImport.uploadId);
+    /*
+     * Der Verweis gilt nur für das Konto, das hochgeladen hat
+     * (orchestration-features-09). `server.ownerId` ist genau dieses Konto: Der
+     * Wizard lädt hoch und legt danach den Server an, und ein geklonter Server
+     * bringt gar keinen `worldImport` mit. Eine fremde `uploadId` sieht damit
+     * aus wie eine abgelaufene.
+     */
+    const archiv = await store.take(worldImport.uploadId, server.ownerId);
 
     if (archiv === null) {
       throw new ServerOrchestrationError('WORLD_ARCHIVE_NOT_FOUND', undefined, {

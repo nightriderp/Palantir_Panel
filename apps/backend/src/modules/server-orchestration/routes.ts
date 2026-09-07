@@ -814,6 +814,9 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
           );
         }
 
+        // Vor dem Lesen des Rumpfs: Ohne bekanntes Konto gibt es keinen
+        // Besitzer, an den der Verweis gebunden werden könnte.
+        const ownerId = requireViewer(request);
         const datei = await request.file();
 
         if (datei === undefined) {
@@ -823,17 +826,20 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
           );
         }
 
-        const upload = await worldArchives.save(datei.filename, datei.file);
-
-        // `truncated` meldet die Multipart-Grenze aus `server.ts` (die größere
-        // der beiden Upload-Grenzen); die engere zieht der Zwischenspeicher
-        // beim Schreiben gegen `MAX_WORLD_ARCHIVE_BYTES`.
-        if (datei.file.truncated) {
-          throw new ServerOrchestrationError(
-            'FILE_TOO_LARGE',
-            'Das Archiv überschreitet die zulässige Upload-Größe.',
-          );
-        }
+        /*
+         * Beides geht in den Zwischenspeicher hinein, nicht erst danach:
+         *  - `ownerId` bindet den Verweis an das hochladende Konto, damit ihn
+         *    niemand sonst einlösen kann (orchestration-features-09);
+         *  - `isTruncated` meldet die Multipart-Grenze aus `server.ts`. Sie
+         *    wird vor dem Umbenennen ausgewertet, sonst läge ein
+         *    abgeschnittenes Archiv unter gültigem Namen bis zur Frist auf der
+         *    Platte, während der Nutzer einen Fehler bekommt
+         *    (orchestration-features-05).
+         */
+        const upload = await worldArchives.save(datei.filename, datei.file, {
+          ownerId,
+          isTruncated: () => datei.file.truncated,
+        });
 
         return await reply.status(201).send(ok(upload));
       } catch (error: unknown) {

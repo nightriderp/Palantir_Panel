@@ -35,7 +35,7 @@
 import type { OutboundEvent } from '../connection/ports.js';
 import type { ContainerRuntime } from '../runtime/index.js';
 import { BackupJob, DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES } from './backup/backup-job.js';
-import { ArchiveUploadJob } from './files/archive-upload.js';
+import { ArchiveUploadJob, DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES } from './files/archive-upload.js';
 import { ServerFileJob } from './files/delete.js';
 import { createGamedigProbe } from './query/gamedig-probe.js';
 import { createServerProbe, type ServerProbe } from './query/probe.js';
@@ -89,6 +89,7 @@ export {
   ARCHIVE_UPLOAD_DIRNAME,
   ARCHIVE_UPLOAD_TTL_MS,
   ArchiveUploadJob,
+  DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES,
   type ArchiveUploadJobOptions,
 } from './files/archive-upload.js';
 
@@ -131,6 +132,11 @@ export interface JobsEnv {
   readonly AGENT_QUERY_INTERVAL_SECONDS: number;
   readonly AGENT_QUERY_TIMEOUT_MS: number;
   readonly AGENT_DOWNLOAD_BLOCK_MAX_BYTES: number;
+  /**
+   * Deckel der blockweisen Archiv-Übernahme (agent-conn-02). Optional, damit
+   * bestehende Testaufbauten mit der Vorgabe weiterlaufen.
+   */
+  readonly AGENT_UPLOAD_ARCHIVE_MAX_BYTES?: number;
 }
 
 export interface CreateAgentJobsOptions {
@@ -191,6 +197,10 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
   const archiveUploads = new ArchiveUploadJob({
     runtime: options.runtime,
     dataDir: env.AGENT_DATA_DIR,
+    maxArchiveBytes:
+      env.AGENT_UPLOAD_ARCHIVE_MAX_BYTES !== undefined && env.AGENT_UPLOAD_ARCHIVE_MAX_BYTES > 0
+        ? env.AGENT_UPLOAD_ARCHIVE_MAX_BYTES
+        : DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES,
     ...(options.now === undefined ? {} : { now: options.now }),
   });
 

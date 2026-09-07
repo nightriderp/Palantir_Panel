@@ -7,7 +7,7 @@
  * nicht gebaut wurde.
  */
 
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -20,6 +20,10 @@ import {
 
 const ZIP = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(64, 1)]);
 const TAR_GZ = gzipSync(Buffer.alloc(64, 2));
+
+/** Zwei Konten – der Zwischenspeicher bindet jeden Verweis an eines davon. */
+const ANNA = '11111111-1111-4111-8111-111111111111';
+const BERND = '22222222-2222-4222-8222-222222222222';
 
 /** Ein Upload, wie ihn `@fastify/multipart` liefert: ein Strom von Blöcken. */
 async function* strom(...bloecke: Buffer[]): AsyncGenerator<Buffer> {
@@ -37,6 +41,16 @@ function store(maxBytes = 1024) {
     maxBytes,
     now: () => jetzt,
   });
+}
+
+/** Kurzform für die Tests, die sich nicht um den Besitzer kümmern. */
+function ablegen(
+  speicher: ReturnType<typeof store>,
+  fileName: string,
+  quelle: AsyncIterable<Buffer>,
+  ownerId = ANNA,
+) {
+  return speicher.save(fileName, quelle, { ownerId });
 }
 
 beforeEach(async () => {
@@ -64,12 +78,12 @@ describe('Ablegen und Abholen', () => {
   it('nimmt ein ZIP an und gibt es unverändert wieder heraus', async () => {
     const speicher = store();
 
-    const upload = await speicher.save('welt.zip', strom(ZIP));
+    const upload = await ablegen(speicher, 'welt.zip', strom(ZIP));
 
     expect(upload).toMatchObject({ fileName: 'welt.zip', sizeBytes: ZIP.length, format: 'zip' });
     expect(Date.parse(upload.expiresAt)).toBe(jetzt.getTime() + WORLD_ARCHIVE_TTL_MS);
 
-    const abgeholt = await speicher.take(upload.uploadId);
+    const abgeholt = await speicher.take(upload.uploadId, ANNA);
 
     expect(abgeholt?.format).toBe('zip');
     expect(abgeholt?.sizeBytes).toBe(ZIP.byteLength);
@@ -80,34 +94,77 @@ describe('Ablegen und Abholen', () => {
   it('setzt das Format nach dem Inhalt, nicht nach der Endung', async () => {
     const speicher = store();
 
-    const upload = await speicher.save('welt.zip', strom(TAR_GZ));
+    const upload = await ablegen(speicher, 'welt.zip', strom(TAR_GZ));
 
     expect(upload.format).toBe('tar.gz');
   });
 
   it('gibt ein Archiv nur einmal heraus', async () => {
     const speicher = store();
-    const upload = await speicher.save('welt.zip', strom(ZIP));
+    const upload = await ablegen(speicher, 'welt.zip', strom(ZIP));
 
-    expect(await speicher.take(upload.uploadId)).not.toBeNull();
-    expect(await speicher.take(upload.uploadId)).toBeNull();
+    expect(await speicher.take(upload.uploadId, ANNA)).not.toBeNull();
+    expect(await speicher.take(upload.uploadId, ANNA)).toBeNull();
   });
 
   it('kennt einen unbekannten Verweis nicht', async () => {
-    expect(await store().take('11111111-1111-4111-8111-111111111111')).toBeNull();
+    expect(await store().take('11111111-1111-4111-8111-111111111111', ANNA)).toBeNull();
   });
 
   it('setzt den Strom aus mehreren Blöcken korrekt zusammen', async () => {
     const speicher = store();
-    const upload = await speicher.save(
+    const upload = await ablegen(
+      speicher,
       'welt.zip',
       strom(ZIP.subarray(0, 2), ZIP.subarray(2, 10), ZIP.subarray(10)),
     );
 
-    const abgeholt = await speicher.take(upload.uploadId);
+    const abgeholt = await speicher.take(upload.uploadId, ANNA);
 
     expect(await abgeholt?.read(0, ZIP.byteLength)).toEqual(ZIP);
     await abgeholt?.release();
+  });
+});
+
+/**
+ * Besitzerbindung des Verweises (Audit orchestration-features-09).
+ *
+ * Vorher reichte die Kenntnis der `uploadId`: Wer sie irgendwo aufschnappte,
+ * konnte das fremde Archiv in seinen eigenen Server einspielen – und entzog es
+ * dem Eigentümer, weil `take()` einmalig ist.
+ */
+describe('Besitz', () => {
+  it('gibt ein fremdes Archiv nicht heraus und lässt es dem Eigentümer', async () => {
+    const speicher = store();
+    const upload = await ablegen(speicher, 'welt.zip', strom(ZIP), ANNA);
+
+    // Wie ein unbekannter Verweis – nicht wie ein verbotener. Der Aufrufer
+    // erfährt so nicht, dass es diese uploadId überhaupt gibt.
+    expect(await speicher.take(upload.uploadId, BERND)).toBeNull();
+
+    const eigenes = await speicher.take(upload.uploadId, ANNA);
+
+    expect(eigenes).not.toBeNull();
+    await eigenes?.release();
+  });
+
+  it('trennt gleichzeitige Uploads zweier Konten', async () => {
+    const speicher = store();
+    const [a, b] = await Promise.all([
+      ablegen(speicher, 'a.zip', strom(ZIP), ANNA),
+      ablegen(speicher, 'b.zip', strom(TAR_GZ), BERND),
+    ]);
+
+    expect(await speicher.take(a.uploadId, BERND)).toBeNull();
+    expect(await speicher.take(b.uploadId, ANNA)).toBeNull();
+
+    const fuerAnna = await speicher.take(a.uploadId, ANNA);
+    const fuerBernd = await speicher.take(b.uploadId, BERND);
+
+    expect(fuerAnna?.format).toBe('zip');
+    expect(fuerBernd?.format).toBe('tar.gz');
+    await fuerAnna?.release();
+    await fuerBernd?.release();
   });
 });
 
@@ -115,7 +172,7 @@ describe('Abweisen', () => {
   it('lehnt ein zu großes Archiv ab und lässt nichts liegen', async () => {
     const speicher = store(32);
 
-    await expect(speicher.save('welt.zip', strom(ZIP))).rejects.toMatchObject({
+    await expect(ablegen(speicher, 'welt.zip', strom(ZIP))).rejects.toMatchObject({
       code: 'FILE_TOO_LARGE',
     });
     expect(await readdir(verzeichnis)).toEqual([]);
@@ -124,9 +181,24 @@ describe('Abweisen', () => {
   it('lehnt ein fremdes Format ab und lässt nichts liegen', async () => {
     const speicher = store();
 
-    await expect(speicher.save('welt.exe', strom(Buffer.from('MZ nope')))).rejects.toMatchObject({
+    await expect(
+      ablegen(speicher, 'welt.exe', strom(Buffer.from('MZ nope'))),
+    ).rejects.toMatchObject({
       code: 'WORLD_ARCHIVE_INVALID',
     });
+    expect(await readdir(verzeichnis)).toEqual([]);
+  });
+
+  it('lehnt ein gekapptes Archiv ab, bevor es einen gültigen Namen bekommt', async () => {
+    // Der Fall aus orchestration-features-05: Die Multipart-Ebene hat den
+    // Strom genau an der eigenen Grenze abgeschnitten, die eigene Zählung
+    // schlägt deshalb nicht an – der Kopf ist trotzdem gültig, das Archiv
+    // unbrauchbar. Früher lag es danach bis zur Frist im Zwischenspeicher.
+    const speicher = store(ZIP.byteLength);
+
+    await expect(
+      speicher.save('welt.zip', strom(ZIP), { ownerId: ANNA, isTruncated: () => true }),
+    ).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
     expect(await readdir(verzeichnis)).toEqual([]);
   });
 });
@@ -134,20 +206,20 @@ describe('Abweisen', () => {
 describe('Frist', () => {
   it('gibt ein abgelaufenes Archiv nicht mehr heraus', async () => {
     const speicher = store();
-    const upload = await speicher.save('welt.zip', strom(ZIP));
+    const upload = await ablegen(speicher, 'welt.zip', strom(ZIP));
 
     jetzt = new Date(jetzt.getTime() + WORLD_ARCHIVE_TTL_MS + 1);
 
-    expect(await speicher.take(upload.uploadId)).toBeNull();
+    expect(await speicher.take(upload.uploadId, ANNA)).toBeNull();
     expect(await readdir(verzeichnis)).toEqual([]);
   });
 
   it('räumt abgelaufene Archive beim nächsten Upload weg', async () => {
     const speicher = store();
-    await speicher.save('alt.zip', strom(ZIP));
+    await ablegen(speicher, 'alt.zip', strom(ZIP));
 
     jetzt = new Date(jetzt.getTime() + WORLD_ARCHIVE_TTL_MS + 1);
-    const neu = await speicher.save('neu.zip', strom(ZIP));
+    const neu = await ablegen(speicher, 'neu.zip', strom(ZIP));
 
     const inhalt = await readdir(verzeichnis);
 
@@ -157,9 +229,113 @@ describe('Frist', () => {
 
   it('lässt ein noch gültiges Archiv beim Aufräumen stehen', async () => {
     const speicher = store();
-    const upload = await speicher.save('welt.zip', strom(ZIP));
+    const upload = await ablegen(speicher, 'welt.zip', strom(ZIP));
 
     expect(await speicher.sweep()).toBe(0);
-    expect(await speicher.take(upload.uploadId)).not.toBeNull();
+    expect(await speicher.take(upload.uploadId, ANNA)).not.toBeNull();
+  });
+});
+
+/**
+ * Gleichzeitige Uploads (Audit orchestration-features-02).
+ *
+ * `save()` räumt zu Beginn auf – auch mitten in einem fremden, noch laufenden
+ * Upload. Dessen halbfertige `<uuid>.teil` fiel früher durch das Raster
+ * („Dateien mit unerwartetem Namen fliegen"), womit ein gültiger, minutenlanger
+ * Upload am abschließenden `rename` mit ENOENT scheiterte.
+ */
+describe('Gleichzeitige Uploads', () => {
+  /** Ein Strom, der erst weiterläuft, wenn `weiter()` gerufen wurde. */
+  function langsamerStrom(...bloecke: Buffer[]): {
+    quelle: AsyncGenerator<Buffer>;
+    begonnen: Promise<void>;
+    weiter: () => void;
+  } {
+    let begonnenAufloesen = (): void => undefined;
+    let weiterAufloesen = (): void => undefined;
+    const begonnen = new Promise<void>((resolve) => {
+      begonnenAufloesen = resolve;
+    });
+    const angehalten = new Promise<void>((resolve) => {
+      weiterAufloesen = resolve;
+    });
+
+    async function* quelle(): AsyncGenerator<Buffer> {
+      const [erster, ...rest] = bloecke;
+
+      if (erster !== undefined) {
+        yield erster;
+      }
+
+      begonnenAufloesen();
+      await angehalten;
+
+      for (const block of rest) {
+        yield block;
+      }
+    }
+
+    return { quelle: quelle(), begonnen, weiter: weiterAufloesen };
+  }
+
+  /** Wartet, bis die angefangene Datei eines laufenden Uploads im Ordner liegt. */
+  async function warteAufAngefangene(): Promise<string> {
+    for (let versuch = 0; versuch < 200; versuch += 1) {
+      const treffer = (await readdir(verzeichnis)).filter((name) => name.endsWith('.teil'));
+
+      if (treffer[0] !== undefined) {
+        return treffer[0];
+      }
+
+      await new Promise((weiter) => setTimeout(weiter, 5));
+    }
+
+    throw new Error('Es ist keine .teil-Datei entstanden.');
+  }
+
+  it('räumt die angefangene Datei eines laufenden Uploads nicht weg', async () => {
+    const speicher = store();
+    const langsam = langsamerStrom(ZIP.subarray(0, 8), ZIP.subarray(8));
+
+    // A läuft und hängt mitten im Schreiben – seine `.teil` liegt im Ordner.
+    const laufend = ablegen(speicher, 'a.zip', langsam.quelle, ANNA);
+    await langsam.begonnen;
+    await warteAufAngefangene();
+
+    // B startet dazwischen; sein `save()` beginnt mit dem Aufräumen.
+    const b = await ablegen(speicher, 'b.zip', strom(TAR_GZ), BERND);
+
+    langsam.weiter();
+    const a = await laufend;
+
+    // Beide Uploads sind vollständig und einzeln abholbar.
+    expect(a.sizeBytes).toBe(ZIP.byteLength);
+    expect(b.sizeBytes).toBe(TAR_GZ.byteLength);
+
+    const archivA = await speicher.take(a.uploadId, ANNA);
+    const archivB = await speicher.take(b.uploadId, BERND);
+
+    expect(await archivA?.read(0, ZIP.byteLength)).toEqual(ZIP);
+    expect(await archivB?.read(0, TAR_GZ.byteLength)).toEqual(TAR_GZ);
+    await archivA?.release();
+    await archivB?.release();
+  });
+
+  it('entfernt eine liegengebliebene .teil-Datei nach Ablauf der Frist', async () => {
+    const leiche = path.join(verzeichnis, 'abgebrochen.teil');
+    await writeFile(leiche, 'halbes Archiv');
+    const alt = new Date(Date.now() - WORLD_ARCHIVE_TTL_MS - 60_000);
+    await utimes(leiche, alt, alt);
+
+    // Die Uhr des Speichers zeigt Testzeit; die Frist der `.teil` hängt an der
+    // Änderungszeit der Datei, deshalb wird hier die echte Uhr gestellt.
+    const speicher = createFileSystemWorldArchiveStore({
+      directory: verzeichnis,
+      maxBytes: 1024,
+      now: () => new Date(),
+    });
+
+    expect(await speicher.sweep()).toBe(1);
+    expect(await readdir(verzeichnis)).toEqual([]);
   });
 });
