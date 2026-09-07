@@ -249,6 +249,31 @@ export function createRegistrationRequestService(
   }
 
   /**
+   * Gast-Rolle aus einer Auswahl herausnehmen (Audit W3-6,
+   * backend-admin-resources-15).
+   *
+   * Eine Freigabe **mit** der Gast-Rolle ist ein Widerspruch in sich: Genau
+   * diese Rolle entzieht der Vorgang gleich danach wieder. Vorher blieb dabei
+   * ein Konto ganz ohne Rolle zurück – `statusOf` meldete es weiter als
+   * `pending`, während das Audit-Log bereits `user.approved` behauptete.
+   *
+   * Herausfiltern statt ablehnen: Die restliche Auswahl des Admins ist gültig
+   * und soll wirken. Bleibt danach nichts übrig, greift die Standardrolle – ein
+   * freigegebenes Konto ohne Rolle darf es nicht geben.
+   */
+  async function ohneGastRolle(
+    actor: PermissionActor,
+    roleIds: readonly string[],
+  ): Promise<string[]> {
+    const alle = await deps.roles.list(actor);
+    const gastIds = new Set(
+      alle.filter((rolle) => rolle.name === GUEST_ROLE_NAME).map((rolle) => rolle.id),
+    );
+
+    return roleIds.filter((roleId) => !gastIds.has(roleId));
+  }
+
+  /**
    * Serveranzahl an die Eintraege haengen (Gefundener Punkt 90).
    *
    * Eine Abfrage fuer die ganze Seite, nicht eine je Zeile. Ein Fehler dabei
@@ -319,8 +344,9 @@ export function createRegistrationRequestService(
         throw new AdminError('REGISTRATION_REQUEST_INVALID_STATE');
       }
 
-      const roleIds = input.roleIds?.length
-        ? input.roleIds
+      const gewaehlt = input.roleIds?.length ? await ohneGastRolle(ctx.actor, input.roleIds) : [];
+      const roleIds = gewaehlt.length
+        ? gewaehlt
         : [await resolveDefaultRoleId(ctx.actor, deps.roles, defaultRoleName)];
 
       for (const roleId of roleIds) {

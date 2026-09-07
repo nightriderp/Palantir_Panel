@@ -34,6 +34,7 @@ import { isUniqueViolation } from '../../db/errors.js';
 import { type AuditService, entryFor } from './audit.js';
 import type { AdminContext } from './context.js';
 import { AdminError } from './errors.js';
+import type { NodePortBinding } from './ports.js';
 import { generateAgentToken, hashAgentToken } from './agent-token.js';
 
 /** Node, wie sie in der Datenbank steht. */
@@ -182,11 +183,30 @@ export interface HostNodeService {
   findByAgentToken(token: string): Promise<HostNodeRecord | null>;
 }
 
+/**
+ * Port-Bereiche, die exklusiv an eine Node gebunden sind (Audit W3-6,
+ * backend-admin-resources-08).
+ *
+ * Erfüllt vom `PortPoolService` desselben Moduls. Bewusst diese schmale Sicht
+ * statt der ganzen Port-Verwaltung: Die Node-Verwaltung braucht vor dem Löschen
+ * genau zwei Auskünfte – hängen Bereiche an der Node, und sind daraus Ports
+ * vergeben.
+ *
+ * Ohne diese Abhängigkeit verhält sich `remove()` wie bisher; dann fehlt nur
+ * die Prüfung, nicht die Funktion.
+ */
+export interface NodePortBindingSource {
+  listNodeBindings(nodeId: string): Promise<readonly NodePortBinding[]>;
+  removeNodeBinding(ctx: AdminContext, rangeId: string): Promise<void>;
+}
+
 export interface HostNodeServiceDependencies {
   readonly repository: HostNodeRepository;
   readonly audit: AuditService;
   readonly placements?: NodePlacementSource;
   readonly usage?: NodeUsageSource;
+  /** Port-Bereiche der Node – für die Prüfung beim Löschen (Audit W3-6). */
+  readonly portBindings?: NodePortBindingSource;
 }
 
 function requireNodeRead(actor: PermissionActor): void {
@@ -387,6 +407,36 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       if (placement && placement.serverCount > 0) {
         // Sonst blieben Container ohne zuständige Node zurück.
         throw new AdminError('NODE_IN_USE');
+      }
+
+      /*
+       * Node-gebundene Port-Bereiche (Audit W3-6, backend-admin-resources-08).
+       *
+       * `port_ranges.node_id` löscht per `ON DELETE CASCADE` mit, die daraus
+       * vergebenen Zuordnungen stehen aber unter `ON DELETE RESTRICT`. Ohne
+       * diese Prüfung liefen beide Fälle daneben:
+       *
+       * - Bereich mit vergebenen Ports: Der Löschversuch lief in den
+       *   Fremdschlüssel und kam als roher 500 heraus statt als `NODE_IN_USE`.
+       * - Leerer Bereich: Er verschwand still per CASCADE – ohne den
+       *   Audit-Eintrag, den ein Löschen von Hand immer schreibt.
+       */
+      const bindungen = (await deps.portBindings?.listNodeBindings(node.id)) ?? [];
+      const belegt = bindungen.filter((bindung) => bindung.allocatedPorts > 0);
+
+      if (belegt.length > 0) {
+        throw new AdminError(
+          'NODE_IN_USE',
+          `An dieser Node hängen Port-Bereiche mit vergebenen Ports (${belegt
+            .map((bindung) => bindung.label)
+            .join(', ')}). Erst die Ports freigeben, dann die Node entfernen.`,
+        );
+      }
+
+      // Leere Bereiche über den Port-Dienst räumen, damit der Audit-Eintrag
+      // `address.rangeDeleted` entsteht, bevor der CASCADE zuschlägt.
+      for (const bindung of bindungen) {
+        await deps.portBindings?.removeNodeBinding(ctx, bindung.id);
       }
 
       await deps.repository.remove(node.id);

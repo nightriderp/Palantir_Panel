@@ -13,10 +13,20 @@ import {
   createRegistrationRequestService,
   statusOf,
 } from './registration-requests.js';
-import { USER_ID, actorWith, createFakeAuditRepository, ctxWith } from './test-support.js';
+import {
+  GUEST_ROLE_ID,
+  ROLE_ID,
+  USER_ID,
+  actorWith,
+  createFakeAuditRepository,
+  ctxWith,
+} from './test-support.js';
 
-const GUEST_ROLE = { id: 'role-gast', name: GUEST_ROLE_NAME, isProtected: true };
-const USER_ROLE = { id: 'role-nutzer', name: 'Nutzer', isProtected: false };
+// Echte UUIDs: `approveRegistrationRequestInputSchema` prüft die übergebenen
+// `roleIds` gegen `idSchema` – ein Platzhalter wie „role-gast" käme dort nie
+// durch (Audit W3-6).
+const GUEST_ROLE = { id: GUEST_ROLE_ID, name: GUEST_ROLE_NAME, isProtected: true };
+const USER_ROLE = { id: ROLE_ID, name: 'Nutzer', isProtected: false };
 
 function waitlistUser(overrides: Partial<WaitlistUserRecord> = {}): WaitlistUserRecord {
   return {
@@ -239,6 +249,43 @@ describe('Freischalt-Warteliste', () => {
     expect(roles.assigned).toEqual([USER_ROLE.id]);
     expect(roles.removed).toEqual([GUEST_ROLE.id]);
     expect(auditRepository.rows.map((row) => row.action)).toEqual(['user.approved']);
+  });
+
+  /*
+   * Gast-Rolle in der Auswahl (Audit W3-6, backend-admin-resources-15).
+   *
+   * Vorher wurde sie erst zugewiesen und gleich danach von der Entzugsschleife
+   * wieder abgeräumt: Das Konto stand ohne jede Rolle da, `statusOf` meldete es
+   * weiter als `pending` – während das Audit-Log bereits `user.approved`
+   * behauptete.
+   */
+  it('weist die Gast-Rolle auch dann nicht zu, wenn sie in der Auswahl steht', async () => {
+    const { service, roles, auditRepository } = build([waitlistUser()]);
+
+    await service.approve(
+      adminCtx(),
+      USER_ID,
+      approveRegistrationRequestInputSchema.parse({ roleIds: [USER_ROLE.id, GUEST_ROLE.id] }),
+    );
+
+    expect(roles.assigned).toEqual([USER_ROLE.id]);
+    expect(roles.removed).toEqual([GUEST_ROLE.id]);
+    // Das Protokoll nennt, was tatsächlich zugewiesen wurde.
+    expect(auditRepository.rows[0]?.metadata).toMatchObject({ roleIds: [USER_ROLE.id] });
+  });
+
+  it('greift auf die Standardrolle zurück, wenn nur die Gast-Rolle gewählt war', async () => {
+    const { service, roles } = build([waitlistUser()]);
+
+    await service.approve(
+      adminCtx(),
+      USER_ID,
+      approveRegistrationRequestInputSchema.parse({ roleIds: [GUEST_ROLE.id] }),
+    );
+
+    // Ein freigegebenes Konto ohne Rolle darf es nicht geben.
+    expect(roles.assigned).toEqual([USER_ROLE.id]);
+    expect(roles.removed).toEqual([GUEST_ROLE.id]);
   });
 
   it('weist die Freigabe eines bereits freigegebenen Kontos zurück', async () => {

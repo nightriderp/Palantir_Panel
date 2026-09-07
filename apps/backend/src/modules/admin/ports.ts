@@ -128,8 +128,29 @@ export function computePortAllocationPermissions(
 export interface PortRequest {
   readonly protocol: PortProtocol;
   readonly count: number;
-  /** Node, auf der der Server liegt – begrenzt die Auswahl auf passende Bereiche. */
+  /**
+   * Node, auf der der Server liegt – begrenzt die Auswahl auf passende Bereiche.
+   *
+   * Fehlt die Angabe (oder ist sie `null`), kommen **nur ungebundene** Bereiche
+   * infrage (Audit W3-6, backend-admin-resources-09). Bis dahin galt „keine
+   * Angabe = alle Bindungen ignorieren": Ein Server auf Node B konnte Ports aus
+   * einem Bereich bekommen, den ein Admin exklusiv an Node A gebunden hatte.
+   */
   readonly nodeId?: string | null;
+}
+
+/**
+ * Ein Port-Bereich, der exklusiv an eine Node gebunden ist (Audit W3-6,
+ * backend-admin-resources-08).
+ *
+ * Gedacht für die Node-Verwaltung: Sie muss vor dem Löschen einer Node wissen,
+ * ob daran noch Bereiche hängen und ob daraus Ports vergeben sind.
+ */
+export interface NodePortBinding {
+  readonly id: string;
+  readonly label: string;
+  /** Wie viele Ports aus diesem Bereich derzeit vergeben sind. */
+  readonly allocatedPorts: number;
 }
 
 export interface PortPoolService {
@@ -157,6 +178,30 @@ export interface PortPoolService {
   ): Promise<PortAllocationRecord[]>;
   /** Alle Ports eines Servers wieder freigeben; liefert die Anzahl. */
   releaseForServer(serverId: string): Promise<number>;
+  /**
+   * Bereiche, die exklusiv an diese Node gebunden sind (Audit W3-6,
+   * backend-admin-resources-08).
+   *
+   * Ohne Aufrufkontext und ohne eigene Permission-Prüfung: Der einzige Aufrufer
+   * ist die Node-Verwaltung, die `node.manage` bereits geprüft hat, und
+   * geliefert wird nichts, was nicht ohnehin an der Node hinge.
+   */
+  listNodeBindings(nodeId: string): Promise<readonly NodePortBinding[]>;
+  /**
+   * Einen leeren, an eine Node gebundenen Bereich beim Löschen der Node räumen
+   * (Audit W3-6, backend-admin-resources-08).
+   *
+   * Der Bereich verschwände sonst per `ON DELETE CASCADE` stillschweigend und
+   * ohne Audit-Eintrag. Hier ist er derselbe Vorgang wie ein Löschen von Hand –
+   * inklusive `address.rangeDeleted`.
+   *
+   * Verlangt bewusst **nicht** `address.manage`: Der Kontext dient nur der
+   * Zuordnung des Audit-Eintrags; die Berechtigung ist mit `node.manage` an der
+   * aufrufenden Stelle geprüft. Sind aus dem Bereich noch Ports vergeben, bricht
+   * der Aufruf mit `PORT_RANGE_IN_USE` ab – die Node-Verwaltung fängt diesen
+   * Fall vorher ab, doppelt hält hier besser als ein verlorener Datensatz.
+   */
+  removeNodeBinding(ctx: AdminContext, rangeId: string): Promise<void>;
 }
 
 export interface PortPoolServiceDependencies {
@@ -273,6 +318,40 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
     }
   }
 
+  /**
+   * Bereich löschen und den Vorgang protokollieren.
+   *
+   * Gemeinsamer Kern von {@link PortPoolService.removeRange} (Löschen von Hand)
+   * und {@link PortPoolService.removeNodeBinding} (Räumen beim Löschen der
+   * Node, Audit W3-6). Beide Wege müssen dieselbe Prüfung und denselben
+   * Audit-Eintrag erzeugen – zwei Kopien liefen sonst auseinander.
+   *
+   * `zusatzAngaben` landet unverändert in den Metadaten des Eintrags: Beim
+   * Räumen einer Node steht dort, welche Node den Anlass gab.
+   */
+  async function entfernenMitProtokoll(
+    ctx: AdminContext,
+    rangeId: string,
+    zusatzAngaben: Readonly<Record<string, unknown>>,
+  ): Promise<void> {
+    const range = await requireRange(rangeId);
+    const allocations = (await allocationsByRange()).get(range.id) ?? [];
+
+    if (allocations.length > 0) {
+      throw new AdminError('PORT_RANGE_IN_USE');
+    }
+
+    await deps.repository.removeRange(range.id);
+    await deps.audit.record(
+      entryFor(ctx, {
+        action: 'address.rangeDeleted',
+        targetType: 'portRange',
+        targetId: range.id,
+        metadata: { label: range.label, ...zusatzAngaben },
+      }),
+    );
+  }
+
   return {
     async getPool(ctx) {
       requireAddressManage(ctx.actor);
@@ -387,22 +466,7 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
     async removeRange(ctx, rangeId) {
       requireAddressManage(ctx.actor);
 
-      const range = await requireRange(rangeId);
-      const allocations = (await allocationsByRange()).get(range.id) ?? [];
-
-      if (allocations.length > 0) {
-        throw new AdminError('PORT_RANGE_IN_USE');
-      }
-
-      await deps.repository.removeRange(range.id);
-      await deps.audit.record(
-        entryFor(ctx, {
-          action: 'address.rangeDeleted',
-          targetType: 'portRange',
-          targetId: range.id,
-          metadata: { label: range.label },
-        }),
-      );
+      await entfernenMitProtokoll(ctx, rangeId, {});
     },
 
     async listAllocations(ctx) {
@@ -476,12 +540,19 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
         for (const request of requests) {
           const usable = ranges
             .filter((range) => range.enabled && range.protocol === request.protocol)
-            .filter(
-              (range) =>
-                range.nodeId === null ||
-                request.nodeId === undefined ||
-                request.nodeId === null ||
-                range.nodeId === request.nodeId,
+            /*
+             * Ohne Node-Angabe nur ungebundene Bereiche (Audit W3-6,
+             * backend-admin-resources-09).
+             *
+             * Eine Bindung ist eine Zusage: „Diese Ports gehören Node A." Wer
+             * beim Vergeben keine Node nennt, kann diese Zusage nicht einhalten
+             * – also darf er auch nicht aus gebundenen Bereichen nehmen. Vorher
+             * hieß „keine Angabe" das Gegenteil: alle Bindungen ignorieren.
+             */
+            .filter((range) =>
+              request.nodeId === undefined || request.nodeId === null
+                ? range.nodeId === null
+                : range.nodeId === null || range.nodeId === request.nodeId,
             )
             .sort((a, b) => a.startPort - b.startPort);
 
@@ -573,6 +644,25 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
       }
 
       return removed;
+    },
+
+    async listNodeBindings(nodeId) {
+      const [ranges, byRange] = await Promise.all([
+        deps.repository.listRanges(),
+        allocationsByRange(),
+      ]);
+
+      return ranges
+        .filter((range) => range.nodeId === nodeId)
+        .map((range) => ({
+          id: range.id,
+          label: range.label,
+          allocatedPorts: (byRange.get(range.id) ?? []).length,
+        }));
+    },
+
+    async removeNodeBinding(ctx, rangeId) {
+      await entfernenMitProtokoll(ctx, rangeId, { reason: 'nodeDeleted' });
     },
   };
 }
