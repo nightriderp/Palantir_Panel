@@ -23,8 +23,15 @@ import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { createGzip } from 'node:zlib';
 import { AUDIT_RETENTION_MONTHS, type AuditArchiveResultDto } from '@palantir/contracts';
-import { type PermissionActor, hasPermission } from '../rbac/index.js';
-import { type AuditArchiveRepository, type AuditEntryRecord, type AuditService } from './audit.js';
+import { hasPermission } from '../rbac/index.js';
+import {
+  type AppendAuditEntry,
+  type AuditArchiveRepository,
+  type AuditEntryRecord,
+  type AuditService,
+  entryFor,
+} from './audit.js';
+import type { AdminContext } from './context.js';
 import { AdminError } from './errors.js';
 
 /**
@@ -122,17 +129,21 @@ export interface AuditArchiveDependencies {
 /**
  * Führt einen Archivierungslauf aus.
  *
- * @param actor Wer den Lauf anstößt. Verlangt `audit.manage` (Gefundener Punkt
+ * @param ctx Wer den Lauf anstößt. Verlangt `audit.manage` (Gefundener Punkt
  *   46) – nicht `audit.view`: Lesen und Verkürzen sind zwei verschiedene Dinge,
  *   und dieser Lauf ist der einzige Weg, auf dem Einträge die Tabelle verlassen.
  *   `null` steht für den Aufruf über das Kommando `audit:archive`, der auf der
  *   VPS bereits Systemzugang voraussetzt.
+ *
+ *   Bewusst der volle {@link AdminContext} statt nur der Rechte: Der
+ *   Selbstprotokoll-Eintrag trug bisher `actorId: null` und war damit nicht vom
+ *   Kommandozeilen-Lauf zu unterscheiden (Pflichtenheft §6).
  */
 export async function archiveAuditEntries(
   deps: AuditArchiveDependencies,
-  actor: PermissionActor | null,
+  ctx: AdminContext | null,
 ): Promise<AuditArchiveResultDto> {
-  if (actor && !hasPermission(actor, 'audit.manage')) {
+  if (ctx && !hasPermission(ctx.actor, 'audit.manage')) {
     throw new AdminError('PERMISSION_DENIED');
   }
 
@@ -180,9 +191,8 @@ export async function archiveAuditEntries(
     executedAt: now.toISOString(),
   };
 
-  await deps.audit?.record({
+  const eintrag: Omit<AppendAuditEntry, 'actorId' | 'actorDisplayName' | 'ipHint'> = {
     action: 'audit.archived',
-    actorId: null,
     targetType: 'auditLog',
     targetId: null,
     metadata: {
@@ -190,7 +200,13 @@ export async function archiveAuditEntries(
       archiveFilePath: result.archiveFilePath,
       cutoff: result.cutoff,
     },
-  });
+  };
+
+  // Mit Kontext trägt der Eintrag den Handelnden, ohne Kontext bleibt er wie
+  // bisher ohne Identität – dort ist der Systemzugang auf der VPS der Nachweis.
+  await deps.audit?.record(
+    ctx ? entryFor(ctx, eintrag) : { ...eintrag, actorId: null, actorDisplayName: null },
+  );
 
   return result;
 }

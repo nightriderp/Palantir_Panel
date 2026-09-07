@@ -8,7 +8,13 @@ import {
 } from './audit-archive.js';
 import { createAuditService } from './audit.js';
 import { AdminError } from './errors.js';
-import { actorWith, auditEntry, createFakeAuditRepository } from './test-support.js';
+import {
+  USER_ID,
+  actorWith,
+  auditEntry,
+  createFakeAuditRepository,
+  ctxWith,
+} from './test-support.js';
 
 const NOW = new Date('2026-08-26T10:00:00.000Z');
 
@@ -125,6 +131,40 @@ describe('Archivierung des Audit-Logs (Pflichtenheft §6)', () => {
     expect(result.archivedCount).toBe(1);
   });
 
+  it('hält den Auslöser des Laufs fest', async () => {
+    // Bisher stand der Eintrag mit `actorId: null` da – ein HTTP-Lauf war vom
+    // Kommandozeilen-Lauf nicht zu unterscheiden (Pflichtenheft §6).
+    const repository = createFakeAuditRepository([alt]);
+    const audit = createAuditService(repository);
+
+    await archiveAuditEntries(
+      { repository, writer: createRecordingWriter(), audit, now: () => NOW },
+      ctxWith(actorWith('audit.manage')),
+    );
+
+    expect(repository.rows).toHaveLength(1);
+    expect(repository.rows[0]).toMatchObject({
+      action: 'audit.archived',
+      actorId: USER_ID,
+      actorDisplayName: 'Test-Admin',
+      ipHint: '10.0.0.x',
+      targetType: 'auditLog',
+      metadata: { archivedCount: 1 },
+    });
+  });
+
+  it('bleibt beim Kommandozeilen-Lauf ohne Handelnden', async () => {
+    const repository = createFakeAuditRepository([alt]);
+    const audit = createAuditService(repository);
+
+    await archiveAuditEntries(
+      { repository, writer: createRecordingWriter(), audit, now: () => NOW },
+      null,
+    );
+
+    expect(repository.rows[0]).toMatchObject({ action: 'audit.archived', actorId: null });
+  });
+
   it('lehnt den Lauf ohne audit.manage ab – auch mit audit.view', async () => {
     const repository = createFakeAuditRepository([alt]);
 
@@ -132,7 +172,7 @@ describe('Archivierung des Audit-Logs (Pflichtenheft §6)', () => {
     await expect(
       archiveAuditEntries(
         { repository, writer: createRecordingWriter(), now: () => NOW },
-        actorWith('audit.view'),
+        ctxWith(actorWith('audit.view')),
       ),
     ).rejects.toThrow(AdminError);
 
@@ -144,7 +184,7 @@ describe('Archivierung des Audit-Logs (Pflichtenheft §6)', () => {
 
     const result = await archiveAuditEntries(
       { repository, writer: createRecordingWriter(), now: () => NOW },
-      actorWith('audit.manage'),
+      ctxWith(actorWith('audit.manage')),
     );
 
     expect(result.archivedCount).toBe(1);

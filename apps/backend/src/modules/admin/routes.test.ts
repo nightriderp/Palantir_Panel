@@ -70,6 +70,7 @@ async function buildTestApp(): Promise<FastifyInstance> {
   const storage = createStorageExplorerService({
     repository: createFakeStorageRepository(snapshotRecord([agentEntry()])),
     nodes,
+    audit,
     knownServers: { load: async () => new Map([[SERVER_ID, { name: 'Beispielserver' }]]) },
   });
   const registrationRequests: RegistrationRequestService = createRegistrationRequestService({

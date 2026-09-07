@@ -91,6 +91,7 @@ async function buildApp(): Promise<FastifyInstance> {
     storage: createStorageExplorerService({
       repository: createFakeStorageRepository(),
       nodes,
+      audit,
     }),
     instanceSettings: createInstanceSettingsService({
       repository: {
