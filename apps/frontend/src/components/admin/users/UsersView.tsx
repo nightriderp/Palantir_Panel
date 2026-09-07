@@ -66,6 +66,13 @@ import { InstanceSettingsCard } from './InstanceSettingsCard';
  * `ResourceService` (B4) über die Routen `/admin/users/:userId/limits`
  * (Gefundener Punkt 88). Der Dialog lädt den DTO samt Belegung und blendet das
  * Bearbeiten allein am `permissions.canEdit` des DTOs ein.
+ *
+ * **Rückfragen vor folgenreichen Aktionen** (Fundpunkt frontend-lib-02): Jede
+ * Aktion, die den Nutzer aussperrt oder seine Anmeldung verändert, geht über
+ * einen Bestätigungsdialog – Sperren, 2FA zurücksetzen **und** Passwort
+ * zurücksetzen. Letzteres beendet zusätzlich alle laufenden Sitzungen des
+ * Kontos; genau das steht im Dialog, damit ein Fehlgriff in der Aktionsleiste
+ * niemanden ungefragt überall abmeldet.
  */
 
 const STATUS_FILTERS: RegistrationRequestStatus[] = ['approved', 'pending', 'blocked'];
@@ -77,6 +84,7 @@ type Dialog =
   | { kind: 'limits'; user: RegistrationRequestDto }
   | { kind: 'block'; user: RegistrationRequestDto }
   | { kind: 'resetTwoFactor'; user: RegistrationRequestDto }
+  | { kind: 'resetPassword'; user: RegistrationRequestDto }
   | { kind: 'password'; user: RegistrationRequestDto; temporary: string }
   | null;
 
@@ -84,6 +92,17 @@ export function UsersView() {
   const { user } = useSession();
   const toast = useToast();
   const canManage = user?.permissions.canManageUsers ?? false;
+
+  /*
+   * „Server einsehen" (Lastenheft §3.7) hängt an `server.view.any`
+   * (Fundpunkt spec-lastenheft-07): Der Dialog holt die Serverliste des
+   * **Aufrufers** und filtert nach `ownerId`. Ohne dieses Recht enthält sie nur
+   * eigene und mitverwaltete Server – für jedes fremde Konto käme also „besitzt
+   * keine Server" heraus, obwohl in Wahrheit nur die Berechtigung fehlt. Statt
+   * einer solchen Falschaussage bleibt die Schaltfläche dann ganz weg; die
+   * eigenen Server stehen ohnehin unter „Übersicht".
+   */
+  const canViewAnyServer = user?.permissions.canViewAnyServer ?? false;
 
   // Sprung aus einer Meldung „Neue Registrierung" (Gefundener Punkt 103).
   const highlight = useHighlight();
@@ -115,14 +134,19 @@ export function UsersView() {
     return term ? list.filter((entry) => entry.displayName.toLowerCase().includes(term)) : list;
   }, [resource.data, search]);
 
-  async function doReset(userId: string, displayName: string) {
+  /**
+   * Passwort zurücksetzen – nur aus dem Bestätigungsdialog heraus aufgerufen
+   * (Fundpunkt frontend-lib-02). Bei Erfolg tritt der Dialog mit dem
+   * Einmal-Passwort an die Stelle der Rückfrage.
+   */
+  async function doReset(target: RegistrationRequestDto) {
     setBusy(true);
-    const result = await resetUserPassword(userId);
+    const result = await resetUserPassword(target.userId);
     setBusy(false);
     if (result.success) {
       setDialog({
         kind: 'password',
-        user: { userId, displayName } as RegistrationRequestDto,
+        user: target,
         temporary: result.data.temporaryPassword,
       });
     } else {
@@ -294,14 +318,16 @@ export function UsersView() {
                     >
                       Rollen
                     </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      iconLeft="server"
-                      onClick={() => setDialog({ kind: 'servers', user: entry })}
-                    >
-                      Server
-                    </Button>
+                    {canViewAnyServer ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        iconLeft="server"
+                        onClick={() => setDialog({ kind: 'servers', user: entry })}
+                      >
+                        Server einsehen
+                      </Button>
+                    ) : null}
                     <Button
                       variant="secondary"
                       size="sm"
@@ -314,7 +340,7 @@ export function UsersView() {
                       variant="secondary"
                       size="sm"
                       iconLeft="key"
-                      onClick={() => void doReset(entry.userId, entry.displayName)}
+                      onClick={() => setDialog({ kind: 'resetPassword', user: entry })}
                     >
                       Passwort
                     </Button>
@@ -408,6 +434,23 @@ export function UsersView() {
         />
       ) : null}
 
+      {/*
+        Rückfrage vor dem Zurücksetzen (Fundpunkt frontend-lib-02). Der Text
+        nennt beide Folgen: das Einmal-Passwort und das Ende aller Sitzungen –
+        das Backend widerruft sie beim Zurücksetzen mit.
+      */}
+      {dialog?.kind === 'resetPassword' ? (
+        <ConfirmDialog
+          open
+          onClose={() => setDialog(null)}
+          title={`Passwort von „${dialog.user.displayName}" zurücksetzen?`}
+          confirmLabel="Zurücksetzen"
+          busy={busy}
+          onConfirm={() => void doReset(dialog.user)}
+          message="Das Konto bekommt ein Einmal-Passwort, das nur einmal angezeigt wird, und muss es bei der nächsten Anmeldung ändern. Alle laufenden Sitzungen des Kontos enden sofort – der Nutzer wird überall abgemeldet."
+        />
+      ) : null}
+
       {dialog?.kind === 'password' ? (
         <PasswordResultDialog
           displayName={dialog.user.displayName}
@@ -485,10 +528,28 @@ function RolesDialog({
   );
 }
 
-/** Server eines Nutzers einsehen (Lastenheft §3.7). */
+/**
+ * Server eines Nutzers einsehen (Lastenheft §3.7).
+ *
+ * Das Backend kennt keinen nach Besitzer gefilterten Endpunkt: Der Dialog holt
+ * `GET /api/servers` – für ein Konto mit `server.view.any` also alle Server –
+ * und filtert im Browser nach `ownerId`. Die Schaltfläche, die hierher führt,
+ * erscheint deshalb nur mit diesem Recht (Fundpunkt spec-lastenheft-07).
+ *
+ * Zwei Aussagen hält der Dialog auseinander, weil sie vorher beide als „besitzt
+ * keine Server" herauskamen:
+ *
+ * - **keine eigenen Server** – `serverCount` aus dem DTO ist 0 oder fehlt;
+ * - **keiner davon sichtbar** – `serverCount` zählt mehr, als die gefilterte
+ *   Liste hergibt (etwa weil das Server-DTO `canView` verneint).
+ *
+ * Mitverwaltete Server (Mitgliedschaft ohne Besitz) stehen nicht in der Liste;
+ * der Hinweis unter der Liste sagt das ausdrücklich.
+ */
 function ServersDialog({ user, onClose }: { user: RegistrationRequestDto; onClose: () => void }) {
   const servers = useApiResource<GameServerDto[]>((signal) => fetchAllServers(signal), []);
   const own = (servers.data ?? []).filter((server) => server.ownerId === user.userId);
+  const counted = user.serverCount ?? 0;
 
   return (
     <Modal open onClose={onClose} title={`Server von „${user.displayName}"`}>
@@ -498,7 +559,11 @@ function ServersDialog({ user, onClose }: { user: RegistrationRequestDto; onClos
         ) : servers.error ? (
           <p className="text-sm text-danger">{servers.error}</p>
         ) : own.length === 0 ? (
-          <p className="text-sm text-ink-faint">Dieses Konto besitzt keine Server.</p>
+          <p className="text-sm text-ink-faint">
+            {counted === 0
+              ? 'Dieses Konto besitzt keine eigenen Server.'
+              : `Dieses Konto besitzt ${formatNumber(counted)} Server, die dir hier nicht angezeigt werden können.`}
+          </p>
         ) : (
           own.map((server) => (
             <div
@@ -514,6 +579,13 @@ function ServersDialog({ user, onClose }: { user: RegistrationRequestDto; onClos
               <ServerStatusPill status={server.status} />
             </div>
           ))
+        )}
+
+        {servers.loading || servers.error !== null ? null : (
+          <p className="pt-1 text-2xs text-ink-faint">
+            Aufgeführt sind nur Server, die dieses Konto besitzt – Server, bei denen es allein
+            Mitglied ist, erscheinen hier nicht.
+          </p>
         )}
       </div>
     </Modal>
@@ -712,7 +784,14 @@ function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () =
   );
 }
 
-/** Einmal-Passwort nach dem Zurücksetzen – wird genau einmal gezeigt. */
+/**
+ * Einmal-Passwort nach dem Zurücksetzen – wird genau einmal gezeigt.
+ *
+ * Abtippen wäre die fehleranfälligste Stelle des ganzen Vorgangs, deshalb die
+ * Schaltfläche „Kopieren". `navigator.clipboard` gibt es nur in einem sicheren
+ * Kontext; fehlt es (etwa bei einem Aufruf über einfaches HTTP), sagt der
+ * Dialog das, statt an einer undefinierten Eigenschaft zu scheitern.
+ */
 function PasswordResultDialog({
   displayName,
   temporary,
@@ -723,6 +802,20 @@ function PasswordResultDialog({
   onClose: () => void;
 }) {
   const toast = useToast();
+
+  function kopieren() {
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+    if (!clipboard) {
+      toast.error('Kopieren nicht möglich.');
+      return;
+    }
+
+    void clipboard
+      .writeText(temporary)
+      .then(() => toast.success('Passwort kopiert.'))
+      .catch(() => toast.error('Kopieren nicht möglich.'));
+  }
+
   return (
     <Modal
       open
@@ -737,16 +830,7 @@ function PasswordResultDialog({
     >
       <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-deep px-3 py-2.5">
         <code className="break-all font-mono text-base text-ink">{temporary}</code>
-        <Button
-          variant="secondary"
-          iconLeft="copy"
-          onClick={() =>
-            void navigator.clipboard
-              .writeText(temporary)
-              .then(() => toast.success('Passwort kopiert.'))
-              .catch(() => toast.error('Kopieren nicht möglich.'))
-          }
-        >
+        <Button variant="secondary" iconLeft="copy" onClick={kopieren}>
           Kopieren
         </Button>
       </div>

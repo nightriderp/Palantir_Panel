@@ -30,7 +30,7 @@ import { activeNavHref, type SidebarServer } from './shellSummary';
  * `permissions`-Objekt des Kontos (Pflichtenheft §5.2, §8).
  */
 
-interface PlannedEntry {
+export interface PlannedEntry {
   key: string;
   label: string;
   icon: SideNavItem['icon'];
@@ -66,8 +66,15 @@ const MAIN_ENTRIES: PlannedEntry[] = [
  * **Nodes**. Sie stehen deshalb nicht am Ende, sondern jeweils neben dem
  * Eintrag, zu dem sie fachlich gehören: Moderation zu Nutzer und Rollen,
  * Ankündigungen zu den Benachrichtigungs-Regeln, Nodes zum Node-Platz.
+ *
+ * **Exportiert, weil `/admin` dieselbe Liste braucht** (Fundpunkt
+ * frontend-app-04): Die Einstiegsseite `AdminLanding` leitet auf den ersten
+ * Bereich weiter, für den das Konto berechtigt ist. Solange sie eine zweite,
+ * von Hand gepflegte Liste führte, fehlten dort `canManageNodes` und
+ * `canManageGameTypes` – die Seitenleiste zeigte „Nodes", `/admin` meldete
+ * „Kein Zugriff auf den Admin-Bereich". Eine Quelle, kein Abgleich von Hand.
  */
-const ADMIN_ENTRIES: PlannedEntry[] = [
+export const ADMIN_ENTRIES: PlannedEntry[] = [
   {
     key: 'admin-users',
     label: 'Nutzer',
@@ -175,6 +182,22 @@ const ADMIN_ENTRIES: PlannedEntry[] = [
   },
 ];
 
+/**
+ * Einträge, die dieses Konto sehen darf.
+ *
+ * Bewusst exportiert und nicht in der Komponente versteckt: `/admin` entscheidet
+ * mit derselben Regel, wohin es weiterleitet (Fundpunkt frontend-app-04). Ein
+ * Eintrag ohne `requires` ist für jedes eingeloggte Konto sichtbar; sonst
+ * entscheidet allein das genannte Flag aus `AccountDto.permissions`
+ * (Pflichtenheft §5.2, §8) – nie eine aus Rollen hergeleitete Prüfung.
+ */
+export function visibleEntries(
+  entries: readonly PlannedEntry[],
+  user: AccountDto | null,
+): PlannedEntry[] {
+  return entries.filter((entry) => !entry.requires || (user?.permissions[entry.requires] ?? false));
+}
+
 export interface DashboardNavProps {
   user: AccountDto | null;
   /** Eigene Server für die Gruppe „Deine Server" unter der Hauptnavigation. */
@@ -187,14 +210,8 @@ export function DashboardNav({ user, ownServers, unreadMessages }: DashboardNavP
   const pathname = usePathname();
   const toast = useToast();
 
-  function visible(entries: PlannedEntry[]): PlannedEntry[] {
-    return entries.filter(
-      (entry) => !entry.requires || (user?.permissions[entry.requires] ?? false),
-    );
-  }
-
-  const mainEntries = visible(MAIN_ENTRIES);
-  const adminEntries = visible(ADMIN_ENTRIES);
+  const mainEntries = visibleEntries(MAIN_ENTRIES, user);
+  const adminEntries = visibleEntries(ADMIN_ENTRIES, user);
 
   const serverHrefs = ownServers.map((server) => `/servers/${server.id}`);
   const active = activeNavHref(pathname, [
