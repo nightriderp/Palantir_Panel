@@ -18,6 +18,8 @@ import { openDirectConversation } from '@/lib/api/chat';
 import { errorText } from '@/lib/api/client';
 import { fetchServers } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
+import { mergeLiveStatus } from '@/lib/live/mergeLiveStatus';
+import { useDtoRevisions } from '@/lib/live/useDtoRevision';
 import { useServerListLive } from '@/lib/live/useServerLive';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import {
@@ -56,15 +58,18 @@ export function ServerOverview() {
   const list = useMemo(() => servers.data ?? [], [servers.data]);
   const serverIds = useMemo(() => list.map((server) => server.id), [list]);
   const { statsById, statusById } = useServerListLive(serverIds);
+  const dtoRevisions = useDtoRevisions(list);
 
-  /** DTO mit dem zuletzt über den Live-Kanal gemeldeten Status zusammenführen. */
+  /**
+   * DTO mit dem zuletzt über den Live-Kanal gemeldeten Status zusammenführen –
+   * je Karte gewinnt der jüngere Stand (Fundpunkt event-flow-04).
+   */
   const merged = useMemo(
     () =>
-      list.map((server) => {
-        const live = statusById[server.id];
-        return live === undefined || live === server.status ? server : { ...server, status: live };
-      }),
-    [list, statusById],
+      list.map((server) =>
+        mergeLiveStatus(server, dtoRevisions[server.id] ?? 0, statusById[server.id] ?? null),
+      ),
+    [list, dtoRevisions, statusById],
   );
 
   const lifecycle = useLifecycleActions((updated) => {
