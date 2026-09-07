@@ -558,22 +558,48 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       const sentAt = clock.now();
 
       /*
+       * **Ein** Kontext für alle Empfänger (Audit W2-3,
+       * `backend-community-visibility-06`, `backend-community-10`).
+       *
+       * Vorher lief `messageContext()` je Empfänger, also zwei Abfragen mal
+       * Teilnehmerzahl, nacheinander abgewartet, bevor die 201 hinausging: In
+       * einem Server-Chat mit 40 Mitgliedern 80 Abfragen für eine Nachricht.
+       * Beide liefern für eine gerade angelegte Nachricht aber für jeden
+       * dasselbe:
+       *  - `displayNames` fragt nur nach dem Absender und ist damit unabhängig
+       *    vom Empfänger;
+       *  - `reportedMessageIds` ist zwingend leer – melden kann niemand eine
+       *    Nachricht, die es in diesem Moment erst gibt.
+       * Empfängerabhängig ist allein `viewerId`, und der fließt nur in
+       * `computeMessagePermissions` ein. Also einmal laden und je Empfänger
+       * ausschließlich die Sicht austauschen.
+       */
+      const displayNames = await users.displayNames([message.senderId]);
+      const reportedByViewer: ReadonlySet<string> = new Set<string>();
+
+      /*
        * Zugestellt wird an **alle** Teilnehmer, den Absender eingeschlossen:
        * Er hat womöglich mehrere Geräte offen, und dort soll die Nachricht
        * ebenso erscheinen.
        */
       for (const recipientId of recipientsOf(audience)) {
-        const context = await messageContext(recipientId, [message]);
-
         delivery.deliver(
           recipientId,
-          messageSentFrame({ conversationId, message: toMessageDto(message, context) }, sentAt),
+          messageSentFrame(
+            {
+              conversationId,
+              message: toMessageDto(message, {
+                viewerId: recipientId,
+                displayNames,
+                reportedByViewer,
+              }),
+            },
+            sentAt,
+          ),
         );
       }
 
-      const ownContext = await messageContext(viewerId, [message]);
-
-      return toMessageDto(message, ownContext);
+      return toMessageDto(message, { viewerId, displayNames, reportedByViewer });
     },
 
     async deleteOwnMessage(ctx, messageId) {

@@ -9,6 +9,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { ABUSE_LIMITS, ABUSE_LIMIT_ERROR_CODE } from '../../lib/abuse-limits.js';
 import { type PermissionActor, registerRbac } from '../rbac/index.js';
 import { createModerationService } from './moderation.js';
 import { registerChatRoutes } from './routes.js';
@@ -258,5 +259,73 @@ describe('Moderationsweg', () => {
 
     expect(antwort.statusCode).toBe(404);
     expect(antwort.json().error.code).toBe('CONVERSATION_NOT_FOUND');
+  });
+});
+
+/**
+ * Missbrauchsgrenzen je Konto (Audit W2-3, `security-matrix-05`,
+ * `backend-community-visibility-06`).
+ *
+ * Geprüft wird an der Route, nicht am Helfer: dass sie überhaupt einen Zähler
+ * trägt, dass er je Konto läuft und dass die Ablehnung einen benannten Code im
+ * Envelope aus Pflichtenheft §5.1 trägt.
+ */
+describe('Missbrauchsgrenzen', () => {
+  it('lehnt den 31. Beitrag in der Minute mit 429 ab', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const url = `/api/chat/conversations/${conversation.id}/messages`;
+
+    for (let nummer = 1; nummer <= ABUSE_LIMITS['chat.message'].maxAttempts; nummer += 1) {
+      const angenommen = await anfrage('POST', url, 'alex', {
+        content: `Beitrag ${String(nummer)}`,
+      });
+
+      expect(angenommen.statusCode).toBe(201);
+    }
+
+    const abgelehnt = await anfrage('POST', url, 'alex', { content: 'einer zu viel' });
+
+    expect(abgelehnt.statusCode).toBe(429);
+    expect(abgelehnt.json()).toMatchObject({
+      success: false,
+      data: null,
+      error: { code: ABUSE_LIMIT_ERROR_CODE },
+    });
+  });
+
+  it('trifft nur das Konto, das die Grenze reißt', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const url = `/api/chat/conversations/${conversation.id}/messages`;
+
+    for (let nummer = 0; nummer <= ABUSE_LIMITS['chat.message'].maxAttempts; nummer += 1) {
+      await anfrage('POST', url, 'alex', { content: `Beitrag ${String(nummer)}` });
+    }
+
+    expect((await anfrage('POST', url, 'alex', { content: 'noch einer' })).statusCode).toBe(429);
+    expect((await anfrage('POST', url, 'bea', { content: 'Hallo Alex' })).statusCode).toBe(201);
+  });
+
+  it('lehnt die 11. Meldung in der Stunde mit 429 ab – auch die gescheiterten zählen', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const nachricht = await chat.sendMessage(ctxFor(ALEX), conversation.id, {
+      content: 'Etwas Unschönes',
+    });
+    const url = `/api/chat/messages/${nachricht.id}/report`;
+
+    /*
+     * Nur der erste Versuch wird eine Meldung; die übrigen scheitern fachlich
+     * (dieselbe Nachricht). Genau das ist der Punkt: Gezählt wird der Versuch,
+     * sonst wäre die Grenze mit einem ungültigen Aufruf zu umgehen.
+     */
+    for (let nummer = 0; nummer < ABUSE_LIMITS['chat.report'].maxAttempts; nummer += 1) {
+      const antwort = await anfrage('POST', url, 'bea', { reason: 'Beleidigung' });
+
+      expect(antwort.statusCode).not.toBe(429);
+    }
+
+    const abgelehnt = await anfrage('POST', url, 'bea', { reason: 'Beleidigung' });
+
+    expect(abgelehnt.statusCode).toBe(429);
+    expect(abgelehnt.json().error.code).toBe(ABUSE_LIMIT_ERROR_CODE);
   });
 });

@@ -14,6 +14,7 @@ import { type ApiResponse, ok } from '@palantir/contracts';
 import { arcadeGameIdSchema, submitArcadeScoreInputSchema } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { accountRateLimit } from '../../lib/abuse-limits.js';
 import { replyWithErrorCode, requireApproved } from '../rbac/index.js';
 import type { ArcadeService } from './service.js';
 
@@ -54,6 +55,20 @@ async function handleError(reply: FastifyReply, error: unknown): Promise<void> {
 export function registerArcadeRoutes(options: ArcadeRoutesOptions) {
   const { arcade } = options;
 
+  /*
+   * Missbrauchsgrenze je Konto (Audit W2-3, `backend-community-14`).
+   *
+   * Der Punktestand ist client-authoritativ – das ist die bewusste
+   * Grundsatzentscheidung dieses Bereichs (siehe `service.ts`). Umso wichtiger
+   * ist, dass er nicht in Schleife eintreffen kann: Jeder POST ist eine Zeile
+   * in `arcade_scores` plus drei Abfragen. Einmal je Registrierung gebaut, nicht
+   * je Request.
+   */
+  const scoreLimit = accountRateLimit({
+    scope: 'arcade.score',
+    resolveUserId: (request) => options.resolveUserId(request),
+  });
+
   return async function arcadeRoutes(app: FastifyInstance): Promise<void> {
     /** Konto-Id des Aufrufers oder `null`, wenn niemand angemeldet ist. */
     function userIdOf(request: FastifyRequest): string | null {
@@ -92,7 +107,10 @@ export function registerArcadeRoutes(options: ArcadeRoutesOptions) {
 
     app.post(
       '/arcade/scores',
-      { preHandler: requireApproved() },
+      // Reihenfolge mit Absicht: Erst die Freischaltung, dann der Zähler – ein
+      // Konto in der Warteliste soll nicht das Kontingent eines anderen
+      // beeinflussen und auch keines eigenes verbrauchen.
+      { preHandler: [requireApproved(), scoreLimit] },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const userId = userIdOf(request);

@@ -25,6 +25,15 @@
  * Archiv nur an dieses Konto heraus (Audit orchestration-features-09). Eine
  * fremde `uploadId` sieht deshalb aus wie eine unbekannte – kein Orakel, das
  * die Existenz fremder Uploads bestätigt.
+ *
+ * **Kontingent.** Zwei Grenzen begrenzen den Zwischenspeicher (Audit W2-3,
+ * `orchestration-features-06`): wie viele Archive ein Konto gleichzeitig warten
+ * lassen darf ({@link WORLD_ARCHIVE_MAX_PENDING_PER_OWNER}) und wieviel Platz
+ * das Verzeichnis insgesamt belegen darf. Ohne beide konnte ein Konto mit
+ * `server.create` in Schleife Archive hochladen, bis die Platte der VPS voll
+ * war – und traf damit auch jeden anderen Dienst darauf, denn der Vorgabeort
+ * ist das System-Temp. `sweep()` half nicht: Es entfernt nur *Abgelaufenes* und
+ * läuft ohnehin erst beim nächsten Upload.
  */
 
 import { createWriteStream } from 'node:fs';
@@ -44,6 +53,30 @@ import { ServerOrchestrationError } from './errors.js';
  * gibt keinen Betriebsfall, in dem hier eine andere Zahl gebraucht würde.
  */
 export const WORLD_ARCHIVE_TTL_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Wieviele Archive ein Konto gleichzeitig warten lassen darf (Audit W2-3,
+ * `orchestration-features-06`).
+ *
+ * Der Wizard braucht genau eines. Zwei lassen Raum für den Fall, dass jemand
+ * einen angefangenen Wizard liegen lässt und neu beginnt, ohne dass er dafür
+ * die Frist von zwei Stunden abwarten muss. Alles darüber ist keine Migration
+ * mehr, sondern eine Schleife.
+ */
+export const WORLD_ARCHIVE_MAX_PENDING_PER_OWNER = 2;
+
+/**
+ * Wieviel Platz der Zwischenspeicher insgesamt belegen darf – ausgedrückt als
+ * Vielfaches der Grenze je Archiv.
+ *
+ * Als Faktor und nicht als absolute Zahl, damit die Gesamtgrenze der
+ * eingestellten Archivgröße folgt: Bei den vorgegebenen 256 MiB je Archiv sind
+ * das 2 GiB für alle wartenden Uploads zusammen – genug für mehrere parallele
+ * Migrationen, wenig genug, um eine VPS-Platte nicht zu füllen. Bewusst keine
+ * eigene Umgebungsvariable (CLAUDE.md §8): Wer mehr Spielraum braucht, hebt
+ * `MAX_WORLD_ARCHIVE_BYTES`, und die Gesamtgrenze zieht mit.
+ */
+const WORLD_ARCHIVE_TOTAL_BUDGET_FACTOR = 8;
 
 /** Dateiendungen je Format – der Zwischenspeicher merkt sich das Format im Namen. */
 const FORMAT_SUFFIX: Record<ArchiveFormat, string> = {
@@ -159,6 +192,16 @@ export interface WorldArchiveStoreOptions {
   readonly directory: string;
   /** Obergrenze je Archiv in Byte. */
   readonly maxBytes: number;
+  /**
+   * Wartende Archive je Konto; Vorgabe
+   * {@link WORLD_ARCHIVE_MAX_PENDING_PER_OWNER}.
+   */
+  readonly maxPendingPerOwner?: number;
+  /**
+   * Gesamter Platz des Verzeichnisses in Byte; Vorgabe das
+   * {@link WORLD_ARCHIVE_TOTAL_BUDGET_FACTOR}-fache von `maxBytes`.
+   */
+  readonly maxTotalBytes?: number;
   /** Nur für Tests: feste Uhr. */
   readonly now?: () => Date;
 }
@@ -230,6 +273,59 @@ export function createFileSystemWorldArchiveStore(
 ): WorldArchiveStore {
   const now = options.now ?? ((): Date => new Date());
   const verzeichnis = path.resolve(options.directory);
+  const maxWartendJeBesitzer = options.maxPendingPerOwner ?? WORLD_ARCHIVE_MAX_PENDING_PER_OWNER;
+  const maxGesamtBytes =
+    options.maxTotalBytes ?? options.maxBytes * WORLD_ARCHIVE_TOTAL_BUDGET_FACTOR;
+
+  /**
+   * Was gerade im Zwischenspeicher liegt (Audit W2-3,
+   * `orchestration-features-06`).
+   *
+   * `gesamtBytes` zählt **jede** Datei im Verzeichnis, auch angefangene
+   * (`.teil`) und gerade zum Agent laufende (`.taken`): Sie belegen Platz auf
+   * derselben Platte, egal wie sie heißen. `wartendJeBesitzer` zählt dagegen nur
+   * fertige, noch abholbare Archive – ein Upload, der gerade in den Container
+   * wandert, ist im Begriff zu verschwinden und darf den Wizard des Besitzers
+   * nicht blockieren.
+   */
+  async function belegung(): Promise<{
+    gesamtBytes: number;
+    wartendJeBesitzer: ReadonlyMap<string, number>;
+  }> {
+    let namen: string[];
+
+    try {
+      namen = await readdir(verzeichnis);
+    } catch {
+      return { gesamtBytes: 0, wartendJeBesitzer: new Map() };
+    }
+
+    let gesamtBytes = 0;
+    const wartendJeBesitzer = new Map<string, number>();
+
+    for (const name of namen) {
+      // Eine Datei, die zwischen `readdir` und `stat` verschwindet, zählt als
+      // nicht vorhanden – der nächste Upload sieht ohnehin den neuen Stand.
+      const eigenschaften = await stat(path.join(verzeichnis, name)).catch(() => null);
+
+      gesamtBytes += eigenschaften?.size ?? 0;
+
+      if (name.endsWith(IN_ANNAHME) || name.endsWith(IN_ARBEIT)) {
+        continue;
+      }
+
+      const eintrag = zerlege(name);
+
+      if (eintrag !== null) {
+        wartendJeBesitzer.set(
+          eintrag.ownerMark,
+          (wartendJeBesitzer.get(eintrag.ownerMark) ?? 0) + 1,
+        );
+      }
+    }
+
+    return { gesamtBytes, wartendJeBesitzer };
+  }
 
   async function sweep(zeitpunkt?: Date): Promise<number> {
     const grenze = (zeitpunkt ?? now()).getTime();
@@ -291,12 +387,37 @@ export function createFileSystemWorldArchiveStore(
       await mkdir(verzeichnis, { recursive: true });
       await sweep();
 
+      /*
+       * Kontingent **vor** dem Anlegen der Datei (Audit W2-3,
+       * `orchestration-features-06`): Ein abgewiesener Upload soll keine
+       * `.teil`-Datei hinterlassen, die erst der nächste Sweep abräumt. Der
+       * Sweep oben ist gerade gelaufen, gezählt wird also nur, was wirklich
+       * noch gilt.
+       */
+      const { gesamtBytes, wartendJeBesitzer } = await belegung();
+      const marke = besitzerMarke(auftrag.ownerId);
+
+      if ((wartendJeBesitzer.get(marke) ?? 0) >= maxWartendJeBesitzer) {
+        throw new ServerOrchestrationError(
+          'RESOURCE_LIMIT_EXCEEDED',
+          `Es warten bereits ${String(maxWartendJeBesitzer)} hochgeladene Archive dieses Kontos. Bitte lege den Server damit an oder warte, bis sie ablaufen.`,
+        );
+      }
+
+      if (gesamtBytes >= maxGesamtBytes) {
+        throw new ServerOrchestrationError(
+          'RESOURCE_LIMIT_EXCEEDED',
+          'Der Zwischenspeicher für Weltdaten-Archive ist ausgelastet. Bitte versuche es später erneut.',
+        );
+      }
+
       const uploadId = randomUUID();
       const vorlaeufig = path.join(verzeichnis, `${uploadId}${IN_ANNAHME}`);
 
       let gelesen = 0;
       let kopf = Buffer.alloc(0);
       let zuGross = false;
+      let budgetErschoepft = false;
 
       async function* begrenzt(): AsyncGenerator<Buffer> {
         for await (const stueck of source) {
@@ -304,6 +425,19 @@ export function createFileSystemWorldArchiveStore(
 
           if (gelesen > options.maxBytes) {
             zuGross = true;
+
+            return;
+          }
+
+          /*
+           * Die Gesamtgrenze auch während des Schreibens: Die Prüfung oben
+           * kennt nur den Stand vor diesem Upload. Ohne diese zweite Prüfung
+           * könnte ein einzelnes Archiv das Verzeichnis um seine volle Größe
+           * über das Budget heben – und zwei gleichzeitige Uploads um das
+           * Doppelte.
+           */
+          if (gesamtBytes + gelesen > maxGesamtBytes) {
+            budgetErschoepft = true;
 
             return;
           }
@@ -318,6 +452,15 @@ export function createFileSystemWorldArchiveStore(
 
       try {
         await pipeline(begrenzt(), createWriteStream(vorlaeufig));
+
+        // Vor der Größenprüfung des einzelnen Archivs: Wer das Gesamtbudget
+        // reißt, soll nicht „Archiv zu groß" lesen, obwohl seines passt.
+        if (budgetErschoepft) {
+          throw new ServerOrchestrationError(
+            'RESOURCE_LIMIT_EXCEEDED',
+            'Der Zwischenspeicher für Weltdaten-Archive ist ausgelastet. Bitte versuche es später erneut.',
+          );
+        }
 
         /*
          * Beide Größensignale vor dem Umbenennen (orchestration-features-05):

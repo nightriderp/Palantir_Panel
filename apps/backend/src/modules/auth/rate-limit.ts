@@ -98,7 +98,12 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
  *
  * Der Vorgang steht mit im Schlüssel, damit fehlgeschlagene Logins nicht das
  * Kontingent für Registrierungen aufbrauchen.
+ *
+ * `identity` ist bei Anmeldung und Registrierung die IP (dort gibt es noch kein
+ * Konto), bei den Missbrauchsgrenzen angemeldeter Konten die Konto-Id
+ * (`lib/abuse-limits.ts`, Audit W2-3). Der Zähler selbst unterscheidet beides
+ * nicht – für ihn ist es eine Zeichenkette.
  */
-export function rateLimitKey(scope: string, ip: string): string {
-  return `${scope}:${ip}`;
+export function rateLimitKey(scope: string, identity: string): string {
+  return `${scope}:${identity}`;
 }

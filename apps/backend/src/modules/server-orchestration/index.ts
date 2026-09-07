@@ -497,6 +497,7 @@ export {
 } from './schedules.js';
 
 export {
+  WORLD_ARCHIVE_MAX_PENDING_PER_OWNER,
   WORLD_ARCHIVE_TTL_MS,
   type StoredWorldArchive,
   type WorldArchiveStore,

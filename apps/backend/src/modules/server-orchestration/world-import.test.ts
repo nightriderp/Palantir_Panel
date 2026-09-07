@@ -13,6 +13,7 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  WORLD_ARCHIVE_MAX_PENDING_PER_OWNER,
   WORLD_ARCHIVE_TTL_MS,
   createFileSystemWorldArchiveStore,
   detectWorldArchiveFormat,
@@ -337,5 +338,112 @@ describe('Gleichzeitige Uploads', () => {
 
     expect(await speicher.sweep()).toBe(1);
     expect(await readdir(verzeichnis)).toEqual([]);
+  });
+});
+
+/**
+ * Kontingent des Zwischenspeichers (Audit W2-3, `orchestration-features-06`).
+ *
+ * Ohne die beiden Grenzen konnte ein Konto mit `server.create` in Schleife
+ * Archive hochladen, bis die Platte der VPS voll war – `sweep()` entfernt nur
+ * Abgelaufenes.
+ */
+describe('Kontingent', () => {
+  /** Wie viele Dateien gerade im Zwischenspeicher liegen. */
+  async function dateien(): Promise<string[]> {
+    return readdir(verzeichnis);
+  }
+
+  it('lässt ein Konto höchstens die vorgesehene Zahl Archive warten', async () => {
+    const speicher = createFileSystemWorldArchiveStore({
+      directory: verzeichnis,
+      maxBytes: 1024,
+      now: () => jetzt,
+    });
+
+    for (let nummer = 0; nummer < WORLD_ARCHIVE_MAX_PENDING_PER_OWNER; nummer += 1) {
+      await ablegen(speicher, `welt-${String(nummer)}.zip`, strom(ZIP));
+    }
+
+    await expect(ablegen(speicher, 'einer-zu-viel.zip', strom(ZIP))).rejects.toMatchObject({
+      code: 'RESOURCE_LIMIT_EXCEEDED',
+    });
+
+    // Der abgewiesene Upload hat nichts hinterlassen – auch keine `.teil`-Datei.
+    expect(await dateien()).toHaveLength(WORLD_ARCHIVE_MAX_PENDING_PER_OWNER);
+  });
+
+  it('zählt je Konto: ein anderes Konto darf weiter hochladen', async () => {
+    const speicher = createFileSystemWorldArchiveStore({
+      directory: verzeichnis,
+      maxBytes: 1024,
+      now: () => jetzt,
+    });
+
+    for (let nummer = 0; nummer < WORLD_ARCHIVE_MAX_PENDING_PER_OWNER; nummer += 1) {
+      await ablegen(speicher, `welt-${String(nummer)}.zip`, strom(ZIP), ANNA);
+    }
+
+    await expect(ablegen(speicher, 'noch-eine.zip', strom(ZIP), ANNA)).rejects.toMatchObject({
+      code: 'RESOURCE_LIMIT_EXCEEDED',
+    });
+
+    const fremd = await ablegen(speicher, 'berndts-welt.zip', strom(ZIP), BERND);
+
+    expect(fremd.format).toBe('zip');
+  });
+
+  it('gibt ein Kontingent frei, sobald das Archiv abgeholt ist', async () => {
+    const speicher = createFileSystemWorldArchiveStore({
+      directory: verzeichnis,
+      maxBytes: 1024,
+      now: () => jetzt,
+    });
+
+    const erster = await ablegen(speicher, 'welt-0.zip', strom(ZIP));
+    await ablegen(speicher, 'welt-1.zip', strom(ZIP));
+
+    const abgeholt = await speicher.take(erster.uploadId, ANNA);
+    await abgeholt?.release();
+
+    const nachschlag = await ablegen(speicher, 'welt-2.zip', strom(ZIP));
+
+    expect(nachschlag.format).toBe('zip');
+  });
+
+  it('weist einen Upload ab, wenn der Zwischenspeicher insgesamt ausgelastet ist', async () => {
+    const speicher = createFileSystemWorldArchiveStore({
+      directory: verzeichnis,
+      maxBytes: 1024,
+      // Platz für genau ein Archiv dieser Größe – danach greift schon die
+      // Prüfung vor dem Anlegen der Datei.
+      maxTotalBytes: ZIP.byteLength,
+      now: () => jetzt,
+    });
+
+    await ablegen(speicher, 'welt-0.zip', strom(ZIP), ANNA);
+
+    await expect(ablegen(speicher, 'welt-1.zip', strom(ZIP), BERND)).rejects.toMatchObject({
+      code: 'RESOURCE_LIMIT_EXCEEDED',
+    });
+
+    expect(await dateien()).toHaveLength(1);
+  });
+
+  it('bricht auch mitten im Strom ab, wenn das Gesamtbudget reißt', async () => {
+    const speicher = createFileSystemWorldArchiveStore({
+      directory: verzeichnis,
+      maxBytes: 4096,
+      // Das leere Verzeichnis kommt durch die Vorabprüfung; erst der Strom
+      // selbst überschreitet das Budget.
+      maxTotalBytes: 8,
+      now: () => jetzt,
+    });
+
+    await expect(ablegen(speicher, 'welt.zip', strom(ZIP))).rejects.toMatchObject({
+      code: 'RESOURCE_LIMIT_EXCEEDED',
+    });
+
+    expect(await dateien()).toHaveLength(0);
   });
 });
