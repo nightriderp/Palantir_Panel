@@ -85,6 +85,7 @@ export {
 } from './repository.js';
 
 export {
+  DEFAULT_BACKUP_ORPHAN_AFTER_MS,
   DOWNLOAD_CHUNK_BYTES,
   type BackupDownload,
   type BackupDownloadChunk,

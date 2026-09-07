@@ -50,8 +50,10 @@ interface Aufbau {
 function aufbau(
   options: {
     server?: BackupServerRecord;
-    /** Bestand; als Funktion, wenn er die erst hier erzeugte Besitzer-Id braucht. */
-    bestand?: readonly BackupRecord[] | ((besitzerId: string) => readonly BackupRecord[]);
+    /** Bestand; als Funktion, wenn er die erst hier erzeugten Ids braucht. */
+    bestand?:
+      | readonly BackupRecord[]
+      | ((besitzerId: string, server: BackupServerRecord) => readonly BackupRecord[]);
     /** Mit Manifest-Quelle aufbauen (P8); ohne sie exportiert B5 nur die Weltdaten. */
     manifest?: boolean;
   } = {},
@@ -59,7 +61,9 @@ function aufbau(
   const besitzerId = testId('2');
   const server = options.server ?? testServer({ ownerId: besitzerId });
   const bestand =
-    typeof options.bestand === 'function' ? options.bestand(besitzerId) : (options.bestand ?? []);
+    typeof options.bestand === 'function'
+      ? options.bestand(besitzerId, server)
+      : (options.bestand ?? []);
   const repository = inMemoryBackupRepository(bestand);
   const agent = fakeAgent();
   const events = recordingEventPublisher();
@@ -812,5 +816,163 @@ describe('Backup ohne Server (ON DELETE SET NULL, Lastenheft §3.3)', () => {
 
     expect(liste).toHaveLength(2);
     expect(liste.map((dto) => dto.retentionProtected)).toEqual([true, true]);
+  });
+});
+
+describe('Kehraus abgerissener Laeufe (Audit W1-6, bb-03)', () => {
+  const FUENF_STUNDEN_MS = 5 * 60 * 60 * 1000;
+
+  /**
+   * Ein Lauf, den der Neustart des Backends mitten im Sichern erwischt hat: Der
+   * Job lebte nur im Prozess, der Datensatz blieb stehen.
+   */
+  function haengenderLauf(serverId: string, startedAt: Date): BackupRecord {
+    return testBackup({
+      serverId,
+      status: 'running',
+      type: 'automatic',
+      storagePath: null,
+      checksumSha256: null,
+      startedAt,
+      completedAt: null,
+    });
+  }
+
+  it('setzt einen seit Stunden haengenden Lauf auf failed und meldet ihn', async () => {
+    let lauf!: BackupRecord;
+    const t = aufbau({
+      bestand: (_besitzerId, server) => {
+        lauf = haengenderLauf(server.id, new Date(JETZT.getTime() - FUENF_STUNDEN_MS));
+
+        return [lauf];
+      },
+    });
+
+    expect(await t.service.sweepOrphanedRuns()).toEqual([lauf.id]);
+
+    const danach = await t.repository.findById(lauf.id);
+
+    expect(danach?.status).toBe('failed');
+    // Benannter Code aus dem Katalog, kein Freitext (CLAUDE.md §5). Die Ursache
+    // liegt beim Panel selbst und nicht beim Homeserver.
+    expect(danach?.failureCode).toBe('INTERNAL_ERROR');
+    expect(danach?.failureMessage).toContain('Neustart');
+    expect(t.events.published.map((eintrag) => eintrag.event)).toContain('backup.failed');
+  });
+
+  it('gibt den gesperrten Server wieder frei', async () => {
+    const t = aufbau({
+      bestand: (_besitzerId, server) => [
+        haengenderLauf(server.id, new Date(JETZT.getTime() - FUENF_STUNDEN_MS)),
+      ],
+    });
+
+    // Vorher sperrt der abgerissene Datensatz jedes weitere Backup – genau der
+    // Zustand, aus dem bisher nur ein Eingriff von Hand herausführte.
+    await expect(
+      t.service.createManual(actorMit('backup.manage.own'), t.besitzerId, t.server.id, {
+        stopServer: false,
+      }),
+    ).rejects.toMatchObject({ code: 'BACKUP_ALREADY_RUNNING' });
+
+    await t.service.sweepOrphanedRuns();
+
+    const dto = await t.service.createManual(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.server.id,
+      { stopServer: false },
+    );
+
+    expect(dto.status).toBe('pending');
+  });
+
+  it('laesst einen jungen Lauf unangetastet – er arbeitet noch', async () => {
+    let lauf!: BackupRecord;
+    const t = aufbau({
+      bestand: (_besitzerId, server) => {
+        lauf = haengenderLauf(server.id, new Date(JETZT.getTime() - 10 * 60 * 1000));
+
+        return [lauf];
+      },
+    });
+
+    expect(await t.service.sweepOrphanedRuns()).toEqual([]);
+    expect((await t.repository.findById(lauf.id))?.status).toBe('running');
+  });
+});
+
+describe('Aufbewahrung ueber den gesamten Bestand (Audit W1-6, bb-07)', () => {
+  it('raeumt abgelaufene automatische Backups auch ohne neuen Lauf weg', async () => {
+    let alt!: BackupRecord;
+    let neu!: BackupRecord;
+    let manuell!: BackupRecord;
+    const t = aufbau({
+      bestand: (besitzerId, server) => {
+        alt = testBackup({
+          serverId: server.id,
+          ownerId: besitzerId,
+          type: 'automatic',
+          createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        });
+        neu = testBackup({
+          serverId: server.id,
+          ownerId: besitzerId,
+          type: 'automatic',
+          createdAt: new Date('2026-08-25T00:00:00.000Z'),
+        });
+        manuell = testBackup({
+          serverId: server.id,
+          ownerId: besitzerId,
+          type: 'manual',
+          createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        });
+
+        return [alt, neu, manuell];
+      },
+    });
+
+    const ergebnis = await t.service.applyRetentionToAll();
+
+    expect(ergebnis.removedBackupIds).toEqual([alt.id]);
+    // Das neueste abgeschlossene automatische Backup und jedes manuelle bleiben.
+    expect(await t.repository.findById(neu.id)).not.toBeNull();
+    expect(await t.repository.findById(manuell.id)).not.toBeNull();
+  });
+
+  it('erreicht auch Backups geloeschter Server', async () => {
+    let gescheitert!: BackupRecord;
+    let fertig!: BackupRecord;
+    const t = aufbau({
+      bestand: (besitzerId) => {
+        gescheitert = testBackup({
+          serverId: null,
+          ownerId: besitzerId,
+          type: 'automatic',
+          status: 'failed',
+          createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        });
+        fertig = testBackup({
+          serverId: null,
+          ownerId: besitzerId,
+          type: 'automatic',
+          createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        });
+
+        return [gescheitert, fertig];
+      },
+    });
+
+    const ergebnis = await t.service.applyRetentionToAll();
+
+    /*
+     * Ohne Server bildet jedes Backup seine eigene Gruppe (`groupKey`, s. o.):
+     * Der abgeschlossene Lauf gilt als „neuester" seiner Gruppe und bleibt –
+     * genau das zeigt auch sein DTO an. Der gescheiterte Lauf traegt keine
+     * Daten, ist nicht geschuetzt und faellt nach der Frist. Bisher sah ihn
+     * ueberhaupt niemand an: Ein Aufbewahrungslauf gab es nur je Server.
+     */
+    expect(ergebnis.removedBackupIds).toEqual([gescheitert.id]);
+    expect(await t.repository.findById(fertig.id)).not.toBeNull();
   });
 });

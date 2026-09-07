@@ -43,13 +43,16 @@ import {
 import { createPermissiveResourceGuard } from './modules/server-orchestration/resource-guard.js';
 import { ServerOrchestrationService } from './modules/server-orchestration/service.js';
 import {
+  type BackupHousekeeper,
   type NodeWarningEvaluator,
+  type PanelBackupHousekeeper,
   type ResourceEventSink,
   type ScheduledTask,
   type SchedulerLogger,
   type SchedulerTimer,
   type TimerHandle,
   autoShutdownTask,
+  backupHousekeepingTask,
   backupScheduleTask,
   statsSamplingTask,
   resourceWarningTask,
@@ -767,5 +770,120 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
     await settle();
 
     expect(sink.events).toEqual([]);
+  });
+});
+
+describe('Zeitgeber: Kehraus der Sicherungen (Audit W1-6)', () => {
+  /** Mitschreibende Attrappe der Backup-Verwaltung. */
+  function housekeeper(
+    overrides: Partial<BackupHousekeeper> = {},
+  ): BackupHousekeeper & { readonly laeufe: string[] } {
+    const laeufe: string[] = [];
+
+    return {
+      laeufe,
+      sweepOrphanedRuns(): Promise<string[]> {
+        laeufe.push('sweep');
+
+        return Promise.resolve(['backup-1']);
+      },
+      applyRetentionToAll(): Promise<{ removedBackupIds: string[] }> {
+        laeufe.push('retention');
+
+        return Promise.resolve({ removedBackupIds: [] });
+      },
+      ...overrides,
+    };
+  }
+
+  function panelHousekeeper(): PanelBackupHousekeeper & { readonly laeufe: string[] } {
+    const laeufe: string[] = [];
+
+    return {
+      laeufe,
+      sweepOrphanedRun(): Promise<string | null> {
+        laeufe.push('panel');
+
+        return Promise.resolve(null);
+      },
+    };
+  }
+
+  it('läuft beim ersten Takt – dann liegen die abgerissenen Läufe herum', async () => {
+    const timer = manualTimer();
+    const backups = housekeeper();
+    const panel = panelHousekeeper();
+
+    startScheduler({
+      tasks: [backupHousekeepingTask(backups, panel, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(backups.laeufe).toEqual(['sweep', 'retention']);
+    expect(panel.laeufe).toEqual(['panel']);
+  });
+
+  it('lädt nicht in jeder Minute den gesamten Bestand', async () => {
+    const timer = manualTimer();
+    const backups = housekeeper();
+    const panel = panelHousekeeper();
+    let jetzt = new Date('2026-09-01T03:00:00.000Z');
+
+    startScheduler({
+      tasks: [
+        backupHousekeepingTask(backups, panel, silentLog, {
+          intervalMs: 5 * 60_000,
+          now: () => jetzt,
+        }),
+      ],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    // Eine Minute später: nichts zu tun, hier ist nichts minutengenau fällig.
+    jetzt = new Date('2026-09-01T03:01:00.000Z');
+    timer.fire();
+    await settle();
+
+    expect(backups.laeufe).toEqual(['sweep', 'retention']);
+
+    // Nach dem eigenen Abstand läuft er wieder.
+    jetzt = new Date('2026-09-01T03:06:00.000Z');
+    timer.fire();
+    await settle();
+
+    expect(backups.laeufe).toEqual(['sweep', 'retention', 'sweep', 'retention']);
+  });
+
+  it('lässt einen gescheiterten Schritt die übrigen nicht aufhalten', async () => {
+    const timer = manualTimer();
+    const panel = panelHousekeeper();
+    const backups = housekeeper({
+      sweepOrphanedRuns: () => Promise.reject(new Error('Datenbank weg')),
+    });
+
+    startScheduler({
+      tasks: [backupHousekeepingTask(backups, panel, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    // Der Kehraus der abgerissenen Läufe scheitert – Panel-Abzug und
+    // Aufbewahrung laufen trotzdem.
+    expect(backups.laeufe).toEqual(['retention']);
+    expect(panel.laeufe).toEqual(['panel']);
   });
 });

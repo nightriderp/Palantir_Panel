@@ -13,6 +13,10 @@
  *   Konsolenbefehle (Lastenheft §3.3, Reiter „Aufgaben")
  * - `ServerOrchestrationService.sampleServerStats()` – ohne Aufruf entsteht nie
  *   ein Messwert-Verlauf (Lastenheft §3.3 „Verlaufsdarstellung")
+ * - `BackupService.sweepOrphanedRuns()`/`applyRetentionToAll()` und
+ *   `PanelBackupService.sweepOrphanedRun()` – ohne Aufruf blockiert ein vom
+ *   Neustart abgerissener Lauf seinen Server bzw. die Panel-Sicherung für
+ *   immer, und die Aufbewahrungsfrist wird nie eingelöst (Lastenheft §3.3)
  *
  * Beide bleiben ohne eigenen Timer, damit sie ohne Wartezeit prüfbar sind und
  * damit ein Skript oder ein Wartungs-Kommando denselben Ablauf anstoßen kann.
@@ -408,6 +412,112 @@ export function panelBackupTask(backups: PanelBackupRunner, log: SchedulerLogger
 
       if (gestartet !== null || entfernt > 0) {
         log.debug({ backupId: gestartet?.id ?? null, entfernt }, 'Panel-Sicherung ausgewertet');
+      }
+    },
+  };
+}
+
+/** Ausschnitt der Backup-Verwaltung, den der Kehraus braucht (B5). */
+export interface BackupHousekeeper {
+  /** Abgerissene Läufe auf `failed` setzen; liefert die Ids. */
+  sweepOrphanedRuns(): Promise<string[]>;
+  /** Aufbewahrungsregel über den gesamten Bestand. */
+  applyRetentionToAll(): Promise<{ readonly removedBackupIds: string[] }>;
+}
+
+/** Ausschnitt der Panel-Sicherungen, den der Kehraus braucht. */
+export interface PanelBackupHousekeeper {
+  /** Abgerissenen Abzug auf `failed` setzen; liefert seine Id oder `null`. */
+  sweepOrphanedRun(): Promise<string | null>;
+}
+
+export interface BackupHousekeepingOptions {
+  /** Abstand zweier Läufe; Vorgabe fünf Minuten. */
+  readonly intervalMs?: number;
+  /** Zeitquelle – austauschbar für Tests. */
+  readonly now?: () => Date;
+}
+
+/** Vorgabe-Abstand des Kehraus. */
+export const BACKUP_HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Kehraus der Sicherungen (Audit W1-6, Fundpunkte 130 und 131).
+ *
+ * Drei Dinge, die ohne Takt niemand tut:
+ *
+ * 1. **Abgerissene Server-Backups** (bb-03). Ein Backup-Job lebt nur im
+ *    Prozess. Stirbt das Backend mittendrin, bleibt der Datensatz `running` –
+ *    und sperrt den Server für jedes weitere Backup, für immer.
+ * 2. **Abgerissener Panel-Abzug** (bb-04). Derselbe Fall eine Ebene höher, mit
+ *    demselben Ausgang: Die Instanz sichert sich unbemerkt nie wieder selbst.
+ * 3. **Aufbewahrungsregel** (bb-07). Sie lief bisher nur huckepack nach einem
+ *    erfolgreichen Backup desselben Servers. Wer seinen Zeitplan abschaltet,
+ *    behält seine abgelaufenen Backups ewig – obwohl ihr DTO ein `expiresAt`
+ *    zusagt.
+ *
+ * **Warum ein eigener Abstand.** Anders als fällige Zeitpläne ist hier nichts
+ * minutengenau: Ein abgerissener Lauf steht seit Stunden, und die
+ * Aufbewahrungsfrist zählt in Tagen. Jede Minute den gesamten Bestand zu laden
+ * wäre Last ohne Ertrag. Der Takt bleibt trotzdem der eine Zeitgeber – die
+ * Aufgabe zählt nur mit, wann sie zuletzt lief. Der **erste** Takt nach dem
+ * Start läuft immer: Genau dann liegen die Datensätze herum, die der Neustart
+ * abgerissen hat.
+ *
+ * Jeder der drei Schritte ist einzeln gefangen: Ein Aufbewahrungslauf, der an
+ * einer nicht erreichbaren Node scheitert, darf den Kehraus der abgerissenen
+ * Läufe nicht mitreißen – und umgekehrt.
+ */
+export function backupHousekeepingTask(
+  backups: BackupHousekeeper,
+  panel: PanelBackupHousekeeper,
+  log: SchedulerLogger,
+  options: BackupHousekeepingOptions = {},
+): ScheduledTask {
+  const intervalMs = options.intervalMs ?? BACKUP_HOUSEKEEPING_INTERVAL_MS;
+  const now = options.now ?? ((): Date => new Date());
+  let letzterLauf: number | null = null;
+
+  async function sicher<T>(schritt: string, lauf: () => Promise<T>): Promise<T | null> {
+    try {
+      return await lauf();
+    } catch (error: unknown) {
+      log.error(
+        { schritt, error: error instanceof Error ? error.message : String(error) },
+        'Kehraus der Sicherungen fehlgeschlagen',
+      );
+
+      return null;
+    }
+  }
+
+  return {
+    name: 'backupHousekeeping',
+    async run(): Promise<void> {
+      const jetzt = now().getTime();
+
+      if (letzterLauf !== null && jetzt - letzterLauf < intervalMs) {
+        return;
+      }
+
+      letzterLauf = jetzt;
+
+      const abgerissen = await sicher('abgerissene Backups', () => backups.sweepOrphanedRuns());
+      const panelAbgerissen = await sicher('abgerissener Panel-Abzug', () =>
+        panel.sweepOrphanedRun(),
+      );
+      const aufbewahrung = await sicher('Aufbewahrung', () => backups.applyRetentionToAll());
+      const entfernt = aufbewahrung?.removedBackupIds ?? [];
+
+      if ((abgerissen?.length ?? 0) > 0 || panelAbgerissen !== null || entfernt.length > 0) {
+        log.debug(
+          {
+            abgerissen: abgerissen ?? [],
+            panelBackupId: panelAbgerissen,
+            entfernt,
+          },
+          'Kehraus der Sicherungen ausgeführt',
+        );
       }
     },
   };
