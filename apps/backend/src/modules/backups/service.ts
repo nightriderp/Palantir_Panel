@@ -111,6 +111,11 @@ export interface BackupServiceOptions {
   readonly manifests?: ServerExportManifestSource;
   readonly now?: Clock;
   readonly runJob?: JobRunner;
+  /**
+   * Ab wann ein `pending`/`running`-Datensatz als abgerissen gilt
+   * (Audit W1-6, bb-03). Vorgabe: {@link DEFAULT_BACKUP_ORPHAN_AFTER_MS}.
+   */
+  readonly orphanAfterMs?: number;
 }
 
 export interface BackupService {
@@ -149,7 +154,41 @@ export interface BackupService {
   overview(actor: PermissionActor, query: BackupOverviewQuery): Promise<BackupOverviewDto>;
   /** Aufbewahrungsregel für einen Server anwenden (Lastenheft §3.3). */
   applyRetention(serverId: string): Promise<RetentionOutcome>;
+  /**
+   * Aufbewahrungsregel für den **gesamten** Bestand anwenden (Audit W1-6,
+   * bb-07).
+   *
+   * Der Aufruf je Server hängt am Ende eines erfolgreichen Backups. Wer seinen
+   * Zeitplan abschaltet, hat danach nie wieder einen Aufbewahrungslauf –
+   * obwohl das DTO seinen Backups ein `expiresAt` zusagt. Diesen Weg nimmt der
+   * Zeitgeber; er erfasst auch Backups gelöschter Server, die kein Server-Lauf
+   * je erreicht.
+   */
+  applyRetentionToAll(): Promise<RetentionOutcome>;
+  /**
+   * Abgerissene Läufe auf `failed` setzen und `backup.failed` melden
+   * (Audit W1-6, bb-03); liefert die Ids.
+   *
+   * Ein Backup-Job lebt nur im Prozess (`JobRunner`). Stirbt das Backend
+   * während eines Laufs, bleibt der Datensatz `pending`/`running` – und
+   * blockiert ab da jedes weitere Backup dieses Servers
+   * (`BACKUP_ALREADY_RUNNING`), lässt sich nicht löschen (`BACKUP_NOT_READY`)
+   * und wird von der Aufbewahrungsregel ausdrücklich geschützt. Ohne diesen
+   * Kehraus hilft nur ein Eingriff von Hand in die Datenbank.
+   */
+  sweepOrphanedRuns(): Promise<string[]>;
 }
+
+/**
+ * Frist, nach der ein hängender Lauf als abgerissen gilt (Audit W1-6, bb-03).
+ *
+ * Drei Stunden liegen bewusst weit über allem, was ein echter Lauf braucht: Ein
+ * Backup wartet auf den Agent, und ein Archiv über mehrere GB Weltdaten darf
+ * dauern. Ein zu kurzer Wert würde einen laufenden Lauf als abgerissen
+ * markieren, während der Agent noch schreibt – das Archiv bliebe ohne
+ * Datensatz auf der Node liegen.
+ */
+export const DEFAULT_BACKUP_ORPHAN_AFTER_MS = 3 * 60 * 60 * 1000;
 
 /** Fehlercode aus einer Agent-Antwort, notfalls der allgemeine Ausführungsfehler. */
 function agentErrorCode(code: string | undefined): ErrorCode {
@@ -173,6 +212,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
   const events = options.events ?? noopEventPublisher;
   const now = options.now ?? systemClock;
   const runJob = options.runJob ?? fireAndForgetJobRunner;
+  const orphanAfterMs = options.orphanAfterMs ?? DEFAULT_BACKUP_ORPHAN_AFTER_MS;
 
   async function loadServerOrFail(serverId: string): Promise<BackupServerRecord> {
     const server = await servers.findById(serverId);
@@ -427,9 +467,14 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     await applyRetentionInternal(server.id);
   }
 
+  /**
+   * `serverId` darf `null` sein: Ein abgerissener Lauf kann zu einem inzwischen
+   * gelöschten Server gehören (`ON DELETE SET NULL`). Ohne Server gibt es kein
+   * Thema für die Live-Ansicht – gemeldet wird er trotzdem.
+   */
   async function failBackup(
     backupId: string,
-    serverId: string,
+    serverId: string | null,
     code: ErrorCode,
     message: string,
   ): Promise<void> {
@@ -521,8 +566,21 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
   }
 
   async function applyRetentionInternal(serverId: string): Promise<RetentionOutcome> {
-    const all = await repository.listByServer(serverId);
-    const expired = selectExpiredBackups(all, now());
+    return removeExpiredOf(await repository.listByServer(serverId));
+  }
+
+  /**
+   * Aufbewahrungsregel auf **eine** Gruppe anwenden.
+   *
+   * Eine Gruppe ist alles, was `selectExpiredBackups` als Geschwister sehen
+   * darf – also die Backups genau eines Servers. Der Aufbewahrungslauf über den
+   * gesamten Bestand teilt den Bestand vorher nach demselben Schlüssel auf, mit
+   * dem auch das DTO seine `retentionProtected`/`expiresAt`-Felder rechnet:
+   * Sonst löschte der Zeitgeber, was die Oberfläche gerade als geschützt
+   * anzeigt.
+   */
+  async function removeExpiredOf(group: readonly BackupRecord[]): Promise<RetentionOutcome> {
+    const expired = selectExpiredBackups(group, now());
 
     const removedBackupIds: string[] = [];
     let freedBytes = 0;
@@ -539,6 +597,68 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     }
 
     return { removedBackupIds, freedBytes };
+  }
+
+  /**
+   * Aufbewahrungsregel über den gesamten Bestand (Audit W1-6, bb-07).
+   *
+   * Geladen werden nur **automatische** Backups: Manuelle Backups und Exporte
+   * sind von der Regel ausgenommen (Lastenheft §3.3), und auch der Schutz „das
+   * neueste abgeschlossene automatische Backup bleibt" sieht sie nie an. Das
+   * Ergebnis ist damit dasselbe wie über den vollen Bestand, die Ladelast aber
+   * deutlich kleiner.
+   */
+  async function applyRetentionToAllInternal(): Promise<RetentionOutcome> {
+    const gruppen = new Map<string, BackupRecord[]>();
+
+    for (const record of await repository.list({ type: 'automatic' })) {
+      const key = groupKey(record);
+      gruppen.set(key, [...(gruppen.get(key) ?? []), record]);
+    }
+
+    const removedBackupIds: string[] = [];
+    let freedBytes = 0;
+
+    for (const gruppe of gruppen.values()) {
+      // Je Gruppe gefangen: Ein Server, dessen Node gerade nicht antwortet,
+      // darf die übrigen Server nicht um ihren Aufbewahrungslauf bringen.
+      try {
+        const ergebnis = await removeExpiredOf(gruppe);
+        removedBackupIds.push(...ergebnis.removedBackupIds);
+        freedBytes += ergebnis.freedBytes;
+      } catch {
+        // Nächster Durchlauf holt es nach – die Datensätze bleiben stehen.
+      }
+    }
+
+    return { removedBackupIds, freedBytes };
+  }
+
+  /** Abgerissene Läufe aufräumen (Audit W1-6, bb-03). */
+  async function sweepOrphanedRunsInternal(): Promise<string[]> {
+    const stale = await repository.listStale(new Date(now().getTime() - orphanAfterMs));
+    const abgeraeumt: string[] = [];
+
+    for (const backup of stale) {
+      // Je Datensatz gefangen: Ein Fehlschlag beim Melden darf die übrigen
+      // hängenden Läufe nicht weiter blockieren.
+      try {
+        await failBackup(
+          backup.id,
+          backup.serverId,
+          // Kein eigener Katalog-Code: Die Ursache liegt beim Panel selbst und
+          // nicht beim Homeserver – `AGENT_COMMAND_TIMEOUT` würde ihn zu
+          // Unrecht beschuldigen. Den Grund trägt die Meldung.
+          'INTERNAL_ERROR',
+          'Der Lauf wurde durch einen Neustart des Backends abgerissen und ist nicht mehr nachvollziehbar. Bitte erneut sichern.',
+        );
+        abgeraeumt.push(backup.id);
+      } catch {
+        // Bewusst still: Der nächste Durchlauf findet den Datensatz wieder.
+      }
+    }
+
+    return abgeraeumt;
   }
 
   return {
@@ -874,5 +994,9 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     },
 
     applyRetention: applyRetentionInternal,
+
+    applyRetentionToAll: applyRetentionToAllInternal,
+
+    sweepOrphanedRuns: sweepOrphanedRunsInternal,
   };
 }

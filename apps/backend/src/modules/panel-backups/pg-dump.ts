@@ -21,6 +21,15 @@ import { dirname } from 'node:path';
 import { type DatabaseDumper } from './index.js';
 import { PanelBackupError } from './errors.js';
 
+/**
+ * Frist eines Abzugs, wenn keine andere gesetzt ist.
+ *
+ * Exportiert, weil der Kehraus abgerissener Läufe (Audit W1-6, bb-04) daraus
+ * seine Obergrenze ableitet: Länger als diese Frist kann ein Abzug nicht
+ * dauern, ein `running` darüber hinaus gehört keinem lebenden Prozess mehr.
+ */
+export const PG_DUMP_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+
 export interface PgDumpOptions {
   readonly databaseUrl: string;
   /** Programmname oder voller Pfad; überschreibbar für Umgebungen ohne PATH-Eintrag. */
@@ -72,7 +81,7 @@ export function pgEnvFromUrl(databaseUrl: string): Record<string, string> {
 
 export function createPgDumpDumper(options: PgDumpOptions): DatabaseDumper {
   const binary = options.binary ?? 'pg_dump';
-  const timeoutMs = options.timeoutMs ?? 10 * 60 * 1000;
+  const timeoutMs = options.timeoutMs ?? PG_DUMP_DEFAULT_TIMEOUT_MS;
 
   return {
     async dump(targetPath: string): Promise<number> {

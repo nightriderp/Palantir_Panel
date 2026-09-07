@@ -67,6 +67,7 @@ import { registerArcade } from './modules/arcade/index.js';
 import { registerHealthRoutes } from './routes/health.js';
 import {
   autoShutdownTask,
+  backupHousekeepingTask,
   backupScheduleTask,
   panelBackupTask,
   resourceWarningTask,
@@ -481,6 +482,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       // Hintergrundläufe (Backup, Restore) melden Fehlschläge über `app.log`
       // statt als unbehandelte Ablehnung (Audit W0-5, bb-05).
       runJob: createFireAndForgetJobRunner(app.log),
+      // Frist, ab der ein hängender Lauf als vom Neustart abgerissen gilt
+      // (Audit W1-6, bb-03) – aufgeräumt wird er vom Zeitgeber.
+      orphanAfterMs: env.BACKUP_ORPHAN_AFTER_MS,
     });
 
     const backupSchedules = createBackupScheduleService({
@@ -588,6 +592,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         statsSamplingTask(orchestration, agents, app.log),
         resourceWarningTask(resources, notifications.eventSink, app.log),
         panelBackupTask(panelBackups, app.log),
+        // Abgerissene Läufe und die Aufbewahrungsfrist (Audit W1-6,
+        // Fundpunkte 130 und 131). Eigener Abstand innerhalb des Takts: Hier
+        // ist nichts minutengenau fällig.
+        backupHousekeepingTask(backups, panelBackups, app.log),
       ],
     });
 

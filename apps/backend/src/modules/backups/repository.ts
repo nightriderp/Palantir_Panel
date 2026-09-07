@@ -118,6 +118,15 @@ export interface BackupRepository {
   list(filter: BackupFilter): Promise<BackupRecord[]>;
   /** Läuft für diesen Server bereits ein Backup? */
   findActiveByServer(serverId: string): Promise<BackupRecord | null>;
+  /**
+   * Läufe, die seit `olderThan` in `pending`/`running` hängen (Audit W1-6, bb-03).
+   *
+   * Ein Backup-Job lebt nur im Prozess. Stirbt das Backend mittendrin, bleibt
+   * der Datensatz für immer stehen und sperrt den Server. Maßgeblich ist der
+   * Beginn des Laufs, ersatzweise – solange `pending` – die Anlage des
+   * Datensatzes.
+   */
+  listStale(olderThan: Date): Promise<BackupRecord[]>;
   create(data: CreateBackupData): Promise<BackupRecord>;
   update(backupId: string, data: UpdateBackupData): Promise<BackupRecord>;
   remove(backupId: string): Promise<void>;
@@ -264,6 +273,24 @@ export function createDrizzleBackupRepository(db: Database): BackupRepository {
         .limit(1);
 
       return row ? toBackupRecord(row) : null;
+    },
+
+    async listStale(olderThan) {
+      const rows = await db
+        .select()
+        .from(backups)
+        .where(
+          and(
+            inArray(backups.status, ['pending', 'running']),
+            // `coalesce`, weil `started_at` erst mit dem Wechsel auf `running`
+            // gesetzt wird – ein Lauf, der schon als `pending` abriss, hat nur
+            // seinen Anlagezeitpunkt.
+            sql`coalesce(${backups.startedAt}, ${backups.createdAt}) < ${olderThan}`,
+          ),
+        )
+        .orderBy(desc(backups.createdAt));
+
+      return rows.map(toBackupRecord);
     },
 
     async create(data) {

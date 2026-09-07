@@ -249,6 +249,18 @@ export function inMemoryBackupRepository(seed: readonly BackupRecord[] = []): Ba
         ) ?? null,
       ),
 
+    listStale: (olderThan) =>
+      Promise.resolve(
+        newestFirst(
+          [...rows.values()].filter(
+            (r) =>
+              (r.status === 'pending' || r.status === 'running') &&
+              // Wie in der Datenbank: `startedAt` zählt, ersatzweise `createdAt`.
+              (r.startedAt ?? r.createdAt).getTime() < olderThan.getTime(),
+          ),
+        ),
+      ),
+
     create(data: CreateBackupData) {
       const active = [...rows.values()].find(
         (r) => r.serverId === data.serverId && (r.status === 'pending' || r.status === 'running'),

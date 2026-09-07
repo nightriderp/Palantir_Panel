@@ -21,6 +21,7 @@
 import { type PanelBackupDto, type PanelBackupTrigger } from '@palantir/contracts';
 import { type PermissionActor, hasPermission } from '../rbac/index.js';
 import { PanelBackupError } from './errors.js';
+import { PG_DUMP_DEFAULT_TIMEOUT_MS } from './pg-dump.js';
 
 export { PanelBackupError, isPanelBackupError } from './errors.js';
 
@@ -85,7 +86,28 @@ export interface PanelBackupService {
   runScheduled(): Promise<PanelBackupDto | null>;
   /** Alte Abzüge nach der Aufbewahrungsfrist entfernen; liefert die Anzahl. */
   prune(): Promise<number>;
+  /**
+   * Einen abgerissenen Lauf auf `failed` setzen; liefert seine Id oder `null`
+   * (Audit W1-6, bb-04).
+   *
+   * Stirbt der Prozess während `dump()` (Neustart, OOM, Kill), bleibt der
+   * Datensatz `running`. Ab da lehnt jeder Lauf von Hand mit
+   * `PANEL_BACKUP_ALREADY_RUNNING` ab, `runScheduled()` liefert immer `null`
+   * und `prune()` fasst ihn nicht an – die Instanz hat unbemerkt nie wieder
+   * eine Panel-Sicherung.
+   */
+  sweepOrphanedRun(): Promise<string | null>;
 }
+
+/**
+ * Frist, nach der ein `running` als abgerissen gilt (Audit W1-6, bb-04).
+ *
+ * Zwei Fristen des Abzugs: Länger als eine Frist kann `pg_dump` nicht laufen,
+ * der Puffer deckt einen überlasteten Rechner ab. Kürzer wäre gefährlich – ein
+ * als abgerissen markierter Lauf, dessen `pg_dump` noch schreibt, ließe einen
+ * zweiten Abzug daneben starten.
+ */
+export const DEFAULT_PANEL_BACKUP_STALE_AFTER_MS = 2 * PG_DUMP_DEFAULT_TIMEOUT_MS;
 
 export interface PanelBackupDependencies {
   readonly repository: PanelBackupRepository;
@@ -97,6 +119,11 @@ export interface PanelBackupDependencies {
   readonly intervalHours: number | null;
   /** Aufbewahrung in Tagen; `null` heißt „nie automatisch löschen". */
   readonly retentionDays: number | null;
+  /**
+   * Ab wann ein `running` als abgerissen gilt (Audit W1-6, bb-04). Vorgabe:
+   * {@link DEFAULT_PANEL_BACKUP_STALE_AFTER_MS}.
+   */
+  readonly staleAfterMs?: number;
   readonly now?: () => Date;
   /** Wie viele Läufe die Übersicht zeigt. */
   readonly listLimit?: number;
@@ -135,6 +162,7 @@ export function toPanelBackupDto(
 export function createPanelBackupService(deps: PanelBackupDependencies): PanelBackupService {
   const jetzt = deps.now ?? ((): Date => new Date());
   const limit = deps.listLimit ?? 50;
+  const staleAfterMs = deps.staleAfterMs ?? DEFAULT_PANEL_BACKUP_STALE_AFTER_MS;
 
   function requireBackupManage(actor: PermissionActor): void {
     if (!hasPermission(actor, 'backup.manage.any')) {
@@ -253,16 +281,49 @@ export function createPanelBackupService(deps: PanelBackupDependencies): PanelBa
 
       const stichtag = new Date(jetzt().getTime() - deps.retentionDays * TAG_MS);
       const alte = await deps.repository.listFinishedBefore(stichtag);
+      let entfernt = 0;
 
       for (const record of alte) {
-        if (record.storagePath !== null) {
-          await deps.files.remove(record.storagePath);
-        }
+        /*
+         * Je Datensatz gefangen (Audit W1-6, bb-16): Eine Datei, die sich
+         * gerade nicht entfernen lässt (EPERM/EBUSY – `force` schluckt nur
+         * ENOENT), hielt sonst den gesamten Lauf auf. Alle danach gelisteten
+         * Abzüge blieben liegen, und der Zeitgeber wiederholte den Fehler jede
+         * Minute. Der Datensatz bleibt bewusst stehen: Der nächste Lauf
+         * versucht es erneut.
+         */
+        try {
+          if (record.storagePath !== null) {
+            await deps.files.remove(record.storagePath);
+          }
 
-        await deps.repository.remove(record.id);
+          await deps.repository.remove(record.id);
+          entfernt += 1;
+        } catch {
+          // Bewusst still – gezählt wird nur, was tatsächlich weg ist.
+        }
       }
 
-      return alte.length;
+      return entfernt;
+    },
+
+    async sweepOrphanedRun() {
+      const laufend = await deps.repository.findRunning();
+
+      if (laufend === null) {
+        return null;
+      }
+
+      if (jetzt().getTime() - laufend.startedAt.getTime() < staleAfterMs) {
+        return null;
+      }
+
+      await deps.repository.fail(
+        laufend.id,
+        'Der Abzug wurde durch einen Neustart des Backends abgerissen und ist unvollständig.',
+      );
+
+      return laufend.id;
     },
   };
 }

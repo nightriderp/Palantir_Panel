@@ -249,6 +249,25 @@ const envSchema = z.object({
    */
   PG_DUMP_BINARY: optionalEnvString(),
 
+  /**
+   * Frist, nach der eine hängende Sicherung als abgerissen gilt (Audit W1-6,
+   * bb-03).
+   *
+   * Ein Backup-Lauf lebt nur im Prozess des Backends. Stirbt es mittendrin
+   * (Deploy, Absturz), bleibt der Datensatz auf `pending`/`running` stehen und
+   * sperrt jedes weitere Backup dieses Servers. Der Zeitgeber setzt solche
+   * Läufe nach dieser Frist auf `failed`.
+   *
+   * Drei Stunden liegen weit über allem, was ein echter Lauf braucht – ein
+   * Archiv über mehrere GB Weltdaten darf dauern. Zu kurz wäre schädlich: Ein
+   * noch schreibender Agent hinterließe ein Archiv ohne Datensatz.
+   */
+  BACKUP_ORPHAN_AFTER_MS: z.coerce
+    .number()
+    .int()
+    .min(60_000)
+    .default(3 * 60 * 60 * 1000),
+
   /** Crash-Loop-Schutz: erlaubte automatische Neustarts im Zeitfenster (§9). */
   CRASH_LOOP_MAX_RESTARTS: z.coerce.number().int().min(0).max(50).default(3),
   CRASH_LOOP_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1_440).default(10),

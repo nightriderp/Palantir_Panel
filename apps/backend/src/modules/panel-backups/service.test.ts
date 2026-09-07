@@ -329,6 +329,83 @@ describe('Panel-Sicherungen', () => {
       expect(await baue({ repository, retentionDays: null }).prune()).toBe(0);
       expect(repository.rows).toHaveLength(1);
     });
+
+    it('macht nach einer unloeschbaren Datei weiter (Audit W1-6, bb-16)', async () => {
+      const repository = speicherRepository([
+        fertig('gesperrt', '2026-08-01T03:00:00.000Z', '/pfad/gesperrt.sql.gz'),
+        fertig('uralt', '2026-08-02T03:00:00.000Z', '/pfad/uralt.sql.gz'),
+      ]);
+      const entfernt: string[] = [];
+      const dateien = {
+        remove(path: string): Promise<void> {
+          if (path === '/pfad/gesperrt.sql.gz') {
+            // `rm force` schluckt nur ENOENT – EPERM/EBUSY kommen durch.
+            return Promise.reject(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+          }
+
+          entfernt.push(path);
+
+          return Promise.resolve();
+        },
+      };
+
+      const anzahl = await baue({ repository, files: dateien }).prune();
+
+      // Der sperrige Datensatz bleibt stehen – der naechste Lauf versucht es
+      // erneut. Alles danach ist trotzdem weg, statt jede Minute am selben
+      // Eintrag zu scheitern.
+      expect(anzahl).toBe(1);
+      expect(entfernt).toEqual(['/pfad/uralt.sql.gz']);
+      expect(repository.rows.map((row) => row.id)).toEqual(['gesperrt']);
+    });
+  });
+
+  describe('abgerissener Lauf (Audit W1-6, bb-04)', () => {
+    /** Ein `running`, dessen Prozess den Neustart nicht ueberlebt hat. */
+    function laufend(startedAt: string): PanelBackupRecord {
+      return {
+        id: 'abgerissen',
+        status: 'running',
+        trigger: 'scheduled',
+        storagePath: '/pfad/abgerissen.sql.gz',
+        sizeBytes: 0,
+        failureMessage: null,
+        startedAt: new Date(startedAt),
+        completedAt: null,
+      };
+    }
+
+    it('setzt einen seit Stunden laufenden Abzug auf failed', async () => {
+      const repository = speicherRepository([laufend('2026-08-31T02:00:00.000Z')]);
+
+      expect(await baue({ repository }).sweepOrphanedRun()).toBe('abgerissen');
+      expect(repository.rows[0]?.status).toBe('failed');
+      expect(repository.rows[0]?.failureMessage).toContain('Neustart');
+    });
+
+    it('laesst die geplante Sicherung danach wieder laufen', async () => {
+      const repository = speicherRepository([laufend('2026-08-31T02:00:00.000Z')]);
+      const service = baue({ repository });
+
+      // Vorher: `runScheduled()` liefert still `null` – die Instanz sichert
+      // sich unbemerkt nie wieder selbst.
+      expect(await service.runScheduled()).toBeNull();
+
+      await service.sweepOrphanedRun();
+
+      expect((await service.runScheduled())?.status).toBe('completed');
+    });
+
+    it('ruehrt einen frisch gestarteten Abzug nicht an', async () => {
+      const repository = speicherRepository([laufend('2026-09-01T02:55:00.000Z')]);
+
+      expect(await baue({ repository }).sweepOrphanedRun()).toBeNull();
+      expect(repository.rows[0]?.status).toBe('running');
+    });
+
+    it('meldet ohne laufenden Abzug nichts', async () => {
+      expect(await baue().sweepOrphanedRun()).toBeNull();
+    });
   });
 });
 
