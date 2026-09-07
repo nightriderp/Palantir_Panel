@@ -6,3 +6,6 @@ packages:
   # damit die CI) die Tests mitlaufen lässt, die neben den .mjs-Dateien liegen.
   # Verzeichnisse ohne package.json ignoriert pnpm.
   - 'images/*'
+  # Dieselbe Überlegung für die Hilfsskripte: `scripts/serve-mockup.test.mjs`
+  # läuft über `node --test` und soll in `pnpm test` erscheinen (Maßnahme W3-13).
+  - 'scripts'

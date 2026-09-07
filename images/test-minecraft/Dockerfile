@@ -5,7 +5,18 @@
 # Auto-Shutdown, Datenordner. Was ein echtes Spiel-Image erfüllen muss, steht in
 # SPIEL_IMAGES.md; dieses Image hält dieselben Regeln ein, damit der Prüfstand
 # etwas wert ist.
-FROM node:22-alpine
+#
+# Basis-Image per Digest gepinnt (Audit `infra-images-14`). Der Tag `22-alpine`
+# wandert bei jedem Node- und Alpine-Patch. Ohne Digest hätte ein
+# `workflow_dispatch` ohne jede Code-Änderung gereicht, um hinter dem
+# unveränderlichen Spiel-Tag `:1` ein anderes Betriebssystem auszuliefern - und
+# genau das darf ein Prüfstand nicht tun, dessen Zweck der Vergleich zweier
+# Läufe ist. Der Tag bleibt zur Lesbarkeit davor stehen, gezogen wird der
+# Digest. Nachgehalten von `.github/dependabot.yml` (Ökosystem `docker`).
+#
+# sha256:c610fc… ist der Multi-Arch-Index (linux/amd64, arm64v8, armv6, armv7,
+# s390x) hinter `node:22-alpine` mit Node 22.23.2.
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
 
 # Feste, nicht-root Identität. `node` ist in diesem Image 1000:1000 - genau die
 # UID, der der Datenordner auf dem Homeserver gehört (Gefundener Punkt 117).

@@ -1,0 +1,68 @@
+# Dependabot – hält die gepinnten Fassungen nach (Audit `infra-images-13`, -14).
+#
+# **Warum es diese Datei braucht.** Die Workflows benutzen fremde Actions seit
+# W3-13 nicht mehr über verschiebbare Tags (`@v4`), sondern über den
+# Commit-SHA. Das schließt die Lücke, dass jemand mit Schreibrecht am
+# Action-Repository ein Tag umhängt und damit eigenen Code in unseren Läufen
+# ausführt – erkauft aber, dass ein Pin ohne Pflege einfriert. Eine Sicherheits-
+# lücke in `actions/checkout` würde uns dann dauerhaft treffen, weil niemand
+# etwas dagegen tut. Dependabot ist die Gegenseite dazu: Es liest den Kommentar
+# hinter dem SHA, findet die nächste Fassung und öffnet einen Pull Request, der
+# SHA und Kommentar gemeinsam nachzieht. Erst beide Hälften zusammen ergeben
+# ein wartbares Pinning.
+#
+# **Der Pull Request geht durch dieselbe Schwelle wie jeder andere.** `main` ist
+# durch ein Ruleset geschützt (CLAUDE.md §6); ci.yml läuft, jemand sieht sich
+# den neuen SHA an und merged. Automatisch wird nichts übernommen.
+version: 2
+
+updates:
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: github-actions
+    # `/` ist für dieses Ökosystem kein Ordner, sondern die Angabe „dieses
+    # Repository“: Dependabot sieht sich alle Dateien in `.github/workflows/`
+    # an, nicht nur eine.
+    directory: /
+    schedule:
+      interval: weekly
+      # Montagmorgen: Ein Pull Request, der zu Wochenbeginn daliegt, wird
+      # angesehen; einer vom Freitagabend bleibt liegen.
+      day: monday
+      time: '06:00'
+      timezone: Europe/Berlin
+    # Ein Pull Request für alle Actions statt sieben einzelne. Sie werden
+    # ohnehin gemeinsam angesehen, und die Prüfung ist dieselbe.
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+    open-pull-requests-limit: 3
+    commit-message:
+      # CLAUDE.md §6 verlangt das Kürzel des Arbeitspakets im Betreff.
+      prefix: '[ci]'
+
+  # ---------------------------------------------------------------------------
+  # Das Basis-Image des Prüfstands ist seit W3-13 ebenfalls per Digest gepinnt
+  # (`images/test-minecraft/Dockerfile`) und hat damit dasselbe Problem wie die
+  # Actions: Ohne Nachpflege bleibt es auf dem Node- und Alpine-Stand vom Tag
+  # des Pins stehen. Der Eintrag hier zieht den Digest nach, sobald sich
+  # `node:22-alpine` bewegt.
+  #
+  # Die Anwendungs-Images (`apps/*/Dockerfile`) stehen bewusst NICHT hier: Sie
+  # arbeiten mit wandernden Tags, für sie gäbe es nichts nachzuziehen.
+  #
+  # **Beim Übernehmen eines solchen Pull Requests gehört die Zahl in
+  # `images/test-minecraft/VERSION` mit erhöht** – ein neuer Digest ist ein
+  # neuer Image-Inhalt, und der braucht laut SPIEL_IMAGES.md §2 eine neue
+  # Fassung. Wer es vergisst, merkt es sofort: game-images.yml bricht auf `main`
+  # mit „Versions-Tag gibt es bereits“ ab.
+  - package-ecosystem: docker
+    directory: /images/test-minecraft
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: '[images]'
