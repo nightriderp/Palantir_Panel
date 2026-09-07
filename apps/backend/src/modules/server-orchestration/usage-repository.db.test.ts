@@ -226,6 +226,13 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
      * Reihenfolge: Die erste Reservierung bleibt in ihrem Schreibschritt
      * stehen; solange sie das tut, kommt die zweite nicht an ihrem
      * `pg_advisory_xact_lock` vorbei und ist noch nicht fertig.
+     *
+     * Die zweite Reservierung startet deshalb erst, wenn die erste ihre Sperre
+     * nachweislich hält (`haeltSperre`). Ohne dieses Signal war der Test
+     * flatterhaft: Beide Reservierungen liefen los, und wenn die zweite den
+     * Zuschlag zuerst bekam, war sie längst fertig, bevor die Wartezeit unten
+     * ablief – der Test scheiterte dann an der Reihenfolge, nicht an der
+     * Sperre.
      */
     const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN);
     const besitzer = await legeNutzerAn(kontext.db);
@@ -238,12 +245,24 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       };
     });
 
+    let sperreErreicht: () => void = () => undefined;
+    const haeltSperre = new Promise<void>((fertig) => {
+      sperreErreicht = () => {
+        fertig();
+      };
+    });
+
     const erste = reservierung.reserve(anfrage(besitzer, node), async (repository) => {
       const server = await repository.create(neuerServer(besitzer, node, 'gehalten'));
+      sperreErreicht();
       await gehalten;
 
       return server;
     });
+
+    // Ab hier steht fest: Die erste Reservierung ist in ihrer Transaktion und
+    // hält die Sperre. Alles Weitere misst die Sperre, nicht das Wettrennen.
+    await haeltSperre;
 
     let zweiteFertig = false;
     const zweite = reservierung
