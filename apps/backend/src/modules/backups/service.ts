@@ -422,7 +422,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     if (!response.success) {
       await failBackup(
         backupId,
-        server.id,
+        { server },
         agentErrorCode(response.error.code),
         response.error.message,
       );
@@ -438,7 +438,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       // Ablageort wäre schlimmer als ein sichtbarer Fehler.
       await failBackup(
         backupId,
-        server.id,
+        { server },
         'AGENT_COMMAND_INVALID',
         `Der Agent hat kein gültiges Backup-Ergebnis geliefert: ${parsed.error.issues
           .map((issue) => `${issue.path.join('.') || '(Wurzel)'}: ${issue.message}`)
@@ -468,13 +468,24 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
   }
 
   /**
-   * `serverId` darf `null` sein: Ein abgerissener Lauf kann zu einem inzwischen
-   * gelöschten Server gehören (`ON DELETE SET NULL`). Ohne Server gibt es kein
-   * Thema für die Live-Ansicht – gemeldet wird er trotzdem.
+   * Setzt den Datensatz auf `failed` und meldet den Fehlschlag.
+   *
+   * Bekommt den Server und nicht nur dessen Id: Die Nutzlast von
+   * `backup.failed` trägt laut Vertrag `ownerId` und `serverName`. Ohne
+   * `ownerId` fand die Empfängerauflösung niemanden (Regel „Besitzer" aus dem
+   * Seed), ohne `serverName` stand „undefined" in der Meldung – beides fiel nie
+   * auf, weil die Notification-Engine Fehler bewusst schluckt (Audit W1-7,
+   * event-flow-02).
+   *
+   * `server` darf `null` sein: Ein abgerissener Lauf (Audit W1-6, bb-03) kann zu
+   * einem inzwischen gelöschten Server gehören (`ON DELETE SET NULL`). Dann
+   * wird der Datensatz nur auf `failed` gesetzt: `backup.failed` verlangt laut
+   * Vertrag eine Server-Id und einen Servernamen, und ein Live-Thema gibt es
+   * ohne Server nicht mehr – der Kehraus der Aufbewahrung räumt den Rest ab.
    */
   async function failBackup(
     backupId: string,
-    serverId: string | null,
+    ziel: { readonly server: BackupServerRecord | null },
     code: ErrorCode,
     message: string,
   ): Promise<void> {
@@ -485,10 +496,29 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       failureMessage: message,
     });
 
+    const server = ziel.server;
+
+    if (server === null) {
+      // Kein Server mehr: keine vertragsgemäße Meldung möglich, keine Ansicht,
+      // die den Stand bräuchte. Der Rückfall bleibt für die Ablage sichtbar.
+      return;
+    }
+
     // Konsument ist die Notification-Engine (B6, Pflichtenheft §14).
-    await events.publish('backup.failed', { backupId, serverId, code, message });
+    await events.publish('backup.failed', {
+      at: now().toISOString(),
+      // Ein Fehlschlag entsteht im Hintergrundlauf: Er gehört dem Vorgang, nicht
+      // dem Konto, das die Sicherung angestoßen hat (Pflichtenheft §14).
+      actorId: null,
+      backupId,
+      serverId: server.id,
+      serverName: server.name,
+      ownerId: server.ownerId,
+      failureCode: code,
+      failureMessage: message,
+    });
     // Und derselbe Stand an die offene Ansicht, die sonst weiter „läuft" zeigt.
-    await meldeFortschritt(backupId, serverId);
+    await meldeFortschritt(backupId, server.id);
   }
 
   /**
@@ -528,7 +558,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       } catch (error) {
         await failBackup(
           backup.id,
-          params.server.id,
+          { server: params.server },
           'AGENT_COMMAND_FAILED',
           error instanceof Error ? error.message : 'Unbekannter Fehler beim Sichern.',
         );
@@ -643,9 +673,11 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       // Je Datensatz gefangen: Ein Fehlschlag beim Melden darf die übrigen
       // hängenden Läufe nicht weiter blockieren.
       try {
+        const server = backup.serverId === null ? null : await servers.findById(backup.serverId);
+
         await failBackup(
           backup.id,
-          backup.serverId,
+          { server },
           // Kein eigener Katalog-Code: Die Ursache liegt beim Panel selbst und
           // nicht beim Homeserver – `AGENT_COMMAND_TIMEOUT` würde ihn zu
           // Unrecht beschuldigen. Den Grund trägt die Meldung.

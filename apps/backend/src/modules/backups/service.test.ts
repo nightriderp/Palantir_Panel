@@ -319,6 +319,39 @@ describe('Fehlgeschlagenes Backup (Event backup.failed, Pflichtenheft §14)', ()
     expect(gescheitert[0]?.payload['backupId']).toBe(dto.id);
   });
 
+  /**
+   * Die Nutzlast muss den Vertrag erfüllen: Ohne `ownerId` fand die
+   * Empfängerauflösung niemanden, ohne `serverName`/`failureCode` stand
+   * „undefined" in der Meldung – und beides fiel nie auf, weil die
+   * Notification-Engine Fehler bewusst schluckt (Audit W1-7, event-flow-02).
+   */
+  it('meldet backup.failed mit allen Feldern des Vertrags', async () => {
+    const t = aufbau();
+    t.agent.createResponse = fail('AGENT_RUNTIME_UNAVAILABLE', 'Der Agent ist nicht verbunden.');
+
+    const dto = await t.service.createManual(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.server.id,
+      { stopServer: false },
+    );
+    await t.fertig();
+
+    const gescheitert = t.events.published.find((e) => e.event === 'backup.failed');
+
+    expect(gescheitert?.payload).toEqual({
+      at: JETZT.toISOString(),
+      // Ein Fehlschlag entsteht im Hintergrundlauf, nicht durch eine Handlung.
+      actorId: null,
+      backupId: dto.id,
+      serverId: t.server.id,
+      serverName: t.server.name,
+      ownerId: t.besitzerId,
+      failureCode: 'AGENT_RUNTIME_UNAVAILABLE',
+      failureMessage: 'Der Agent ist nicht verbunden.',
+    });
+  });
+
   it('wertet ein unbrauchbares Agent-Ergebnis als Fehlschlag', async () => {
     const t = aufbau();
     // „Hat geklappt“, aber ohne Ablageort: Ein Datensatz ohne Archiv wäre

@@ -137,6 +137,34 @@ describe('Melden', () => {
     expect(JSON.stringify(ereignis?.payload)).not.toContain('Unschönes');
   });
 
+  /**
+   * Die Nutzlast folgte bisher eigenen Feldnamen (`reportedById`, dazu
+   * `conversationType`/`serverId`) und ließ `conversationId` und `reason` weg –
+   * die Meldung in der Inbox blieb deshalb ohne Detail, ein Sprung in die
+   * Unterhaltung war nicht möglich (Audit W1-7,
+   * backend-community-visibility-04).
+   */
+  it('trägt Konversation, Melder und Begründung wie im Vertrag', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const nachricht = await chat.sendMessage(ctxFor(ALEX), conversation.id, {
+      content: 'Etwas Unschönes',
+    });
+    const meldung = await moderation.reportMessage(ctxFor(BEA), nachricht.id, 'Beleidigung');
+
+    const ereignis = events.published.find((entry) => entry.event === 'message.reported');
+
+    expect(ereignis?.payload).toEqual({
+      at: expect.any(String) as unknown as string,
+      // Ausgelöst hat die Meldung, wer sie abgeschickt hat.
+      actorId: BEA,
+      reportId: meldung.id,
+      messageId: nachricht.id,
+      conversationId: conversation.id,
+      reportedByUserId: BEA,
+      reason: 'Beleidigung',
+    });
+  });
+
   it('merkt sich die Meldung am DTO der Nachricht', async () => {
     const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
     const nachricht = await chat.sendMessage(ctxFor(ALEX), conversation.id, { content: 'Hallo' });

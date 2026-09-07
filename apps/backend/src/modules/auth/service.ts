@@ -29,6 +29,7 @@ import {
   type AuthMethodType,
   GUEST_ROLE_NAME,
   type LoginResult,
+  type NotificationEventPayloads,
   type OAuthProvider,
   type PasswordResetResultDto,
   type SessionDto,
@@ -101,15 +102,24 @@ export interface ProviderLoginOutcome {
   readonly created: boolean;
 }
 
+/** Ereignisse, die B1 auslöst, mit ihrer vertraglichen Nutzlast. */
+export interface AuthEventPayloads {
+  'user.registered': NotificationEventPayloads['user.registered'];
+}
+
 /**
  * Ereignissenke der Notification-Engine (B6), wie sie B3/B5/B7 bekommen.
  *
- * Bewusst dieselbe schmale Form wie `OrchestrationEventSink`: B1 kennt B6 nicht,
- * es meldet nur `user.registered`. `emit()` wirft nie (Pflichtenheft §14), der
- * Registrierungs-Ablauf hängt also nie an der Zustellung.
+ * B1 kennt B6 nicht, es meldet nur `user.registered`. `emit()` wirft nie
+ * (Pflichtenheft §14), der Registrierungs-Ablauf hängt also nie an der
+ * Zustellung.
+ *
+ * Die Nutzlast kommt aus dem Vertrag statt aus `Record<string, unknown>`: Mit
+ * der offenen Form fällt ein fehlendes Feld erst in der Empfängerauflösung auf
+ * – und dort still (Audit W1-7, event-flow-02).
  */
 export interface AuthEventSink {
-  emit(event: string, payload: Record<string, unknown>): void;
+  emit(event: 'user.registered', payload: AuthEventPayloads['user.registered']): void;
 }
 
 /** Senke, solange B6 nicht eingehängt ist (Tests, Betrieb ohne Notifications). */
@@ -190,6 +200,11 @@ export class AuthService {
    */
   private emitUserRegistered(account: AccountDto): void {
     this.events.emit('user.registered', {
+      at: this.now().toISOString(),
+      // Eine Registrierung hat keinen auslösenden Dritten: Beim Selbstanlegen
+      // ist das Konto selbst der Gegenstand, beim Anlegen durch einen Admin
+      // kennt diese Stelle ihn nicht (Pflichtenheft §14).
+      actorId: null,
       userId: account.id,
       displayName: account.displayName,
       awaitingApproval: account.awaitingApproval,

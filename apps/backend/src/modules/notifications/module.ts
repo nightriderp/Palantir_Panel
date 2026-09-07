@@ -11,7 +11,13 @@
  * nicht – sie bekommen diese Senke beim Aufbau ihres Services gereicht.
  */
 
-import { type NotificationEvent, isNotifiableEventName } from '@palantir/contracts';
+import {
+  type NotifiableEventName,
+  type NotificationEvent,
+  type NotificationEventPayloads,
+  type WebSocketEventName,
+  isNotifiableEventName,
+} from '@palantir/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Database } from '../../db/index.js';
 import {
@@ -40,26 +46,55 @@ import {
 } from './service.js';
 
 /**
+ * Nutzlast je Ereignisname, wie die Senke sie annimmt.
+ *
+ * Für benachrichtigungsfähige Ereignisse ist das die Nutzlast aus dem Vertrag –
+ * damit meldet der Compiler ein fehlendes Feld dort, wo das Ereignis entsteht,
+ * statt es erst in der Empfängerauflösung als `undefined` auffallen zu lassen
+ * (Audit W1-7, event-flow-02). Reine Live-Ereignisse (`server.statsUpdated`,
+ * `server.statusChanged` …) verwirft die Senke ohnehin; für sie bleibt die
+ * Nutzlast offen, weil B3 seine Roh-Ereignisse in eigener Form über dieselbe
+ * Senke schickt.
+ */
+export type NotificationSinkPayloads = {
+  [TEvent in WebSocketEventName]: TEvent extends NotifiableEventName
+    ? NotificationEventPayloads[TEvent]
+    : Record<string, unknown>;
+};
+
+/**
  * Ereignis-Senke für die auslösenden Arbeitspakete.
  *
- * Nimmt den Ereignisnamen als schlichten String entgegen, weil B3 und B5 ihre
- * Senken so definiert haben – sie sollen für eine Meldung nicht gegen die
- * Typen der Notification-Engine übersetzen müssen. Namen außerhalb von
- * `NOTIFIABLE_EVENTS` (etwa das reine Live-Ereignis `server.statsUpdated`)
- * werden still verworfen: Der Live-Kanal aus F3 hört auf dieselbe Senke, und
- * eine Ausnahme dort würde den auslösenden Vorgang gefährden.
+ * Namen außerhalb von `NOTIFIABLE_EVENTS` (etwa das reine Live-Ereignis
+ * `server.statsUpdated`) werden still verworfen: Der Live-Kanal aus F3 hört auf
+ * dieselbe Senke, und eine Ausnahme dort würde den auslösenden Vorgang
+ * gefährden.
+ *
+ * Die Senke bleibt zu den schmalen Schnittstellen der Auslöser passend
+ * (`OrchestrationEventSink.emit(event: string, payload: Record<string,
+ * unknown>)`): Eine Signatur mit engeren Namen ist einer mit weiteren
+ * zuweisbar, B3 muss deshalb weiterhin nichts von B6 wissen.
  */
 export interface NotificationEventSink {
-  emit(event: string, payload: Record<string, unknown>): void;
+  emit<TEvent extends WebSocketEventName>(
+    event: TEvent,
+    payload: NotificationSinkPayloads[TEvent],
+  ): void;
   /** Namensgleiche Form für `BackupEventPublisher` aus B5. */
-  publish(event: string, payload: Record<string, unknown>): void;
+  publish<TEvent extends WebSocketEventName>(
+    event: TEvent,
+    payload: NotificationSinkPayloads[TEvent],
+  ): void;
 }
 
 export function createNotificationEventSink(
   service: NotificationService,
   log: FireAndForgetLogger = consoleFireAndForgetLogger,
 ): NotificationEventSink {
-  function forward(event: string, payload: Record<string, unknown>): void {
+  function forward<TEvent extends WebSocketEventName>(
+    event: TEvent,
+    payload: NotificationSinkPayloads[TEvent],
+  ): void {
     if (!isNotifiableEventName(event)) {
       return;
     }
@@ -68,31 +103,27 @@ export function createNotificationEventSink(
      * Die gemeinsame Basis jeder Nutzlast (`at`, `actorId`) wird hier ergänzt,
      * falls die Quelle sie weggelassen hat: Ohne `at` bekäme die Meldung keinen
      * Zeitstempel, und ein fehlender Wert soll keine Ausnahme im auslösenden
-     * Vorgang erzeugen. Die ereignisspezifischen Felder liefert die Quelle;
-     * ihre Typen stehen in `NotificationEventPayloads`.
+     * Vorgang erzeugen. Nötig bleibt das für die Auslöser mit schmaler Senke
+     * (B3): Wer gegen {@link NotificationSinkPayloads} meldet, liefert beide
+     * Felder ohnehin.
      */
-    const normalized: Record<string, unknown> = { ...payload };
-
-    if (typeof normalized.at !== 'string') {
-      normalized.at = new Date().toISOString();
-    }
-
-    if (typeof normalized.actorId !== 'string') {
-      normalized.actorId = null;
-    }
+    const gemeldet = { ...payload } as Record<string, unknown>;
+    const normalized = {
+      ...gemeldet,
+      at: typeof gemeldet.at === 'string' ? gemeldet.at : new Date().toISOString(),
+      actorId: typeof gemeldet.actorId === 'string' ? gemeldet.actorId : null,
+    } as NotificationEventPayloads[typeof event];
 
     /*
-     * Die einzige Umwandlung dieser Art im Modul. Sie ist die Grenze zwischen
-     * den absichtlich schmalen Senken aus B3/B5 (`emit(event: string, payload:
-     * Record<string, unknown>)`) und den typisierten Nutzlasten des Vertrags.
-     * Typisiert herstellen ließe sie sich nur, wenn B3 und B5 gegen die Typen
-     * der Notification-Engine übersetzen müssten – genau das sollen sie nicht.
+     * Name und Nutzlast sind zwei Werte; dass sie zusammenpassen, weiß der
+     * Compiler in einer generischen Funktion nicht – geprüft ist es beim
+     * Auslöser (siehe {@link NotificationSinkPayloads}). Deshalb hier eine
+     * einfache Zusicherung statt der früheren Umdeutung über `unknown`.
      */
-    fireAndForget(
-      service.publish({ event, payload: normalized } as unknown as NotificationEvent),
-      log,
-      { vorgang: 'Benachrichtigung veröffentlichen', event },
-    );
+    fireAndForget(service.publish({ event, payload: normalized } as NotificationEvent), log, {
+      vorgang: 'Benachrichtigung veröffentlichen',
+      event,
+    });
   }
 
   return { emit: forward, publish: forward };

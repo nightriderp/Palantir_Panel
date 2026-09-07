@@ -49,6 +49,32 @@ describe('Empfängerkreise aus der Nutzlast (Lastenheft §3.6)', () => {
     expect(directRecipientsOf(registration, 'resourceOwner')).toEqual([]);
   });
 
+  /**
+   * Die Seed-Regel zu `backup.failed` hört auf `resourceOwner`. Kam die
+   * Nutzlast ohne `ownerId`, lief die Zustellung auf `[undefined]` und scheiterte
+   * still an der Datenbank – der Besitzer erfuhr nichts (Audit W1-7,
+   * event-flow-02).
+   */
+  it('trifft bei einem fehlgeschlagenen Backup den Besitzer des Servers', () => {
+    const backupFailed: NotificationEvent = {
+      event: 'backup.failed',
+      payload: {
+        at: '2026-08-26T12:00:00.000Z',
+        actorId: null,
+        backupId: 'backup-1',
+        serverId: 'server-1',
+        serverName: 'Zombie-Welt',
+        ownerId: OWNER,
+        failureCode: 'AGENT_RUNTIME_UNAVAILABLE',
+        failureMessage: 'Der Agent ist nicht erreichbar.',
+      },
+    };
+
+    expect(directRecipientsOf(backupFailed, 'resourceOwner')).toEqual([OWNER]);
+    // Mitverwalter stehen nicht in der Nutzlast; der Kreis trifft denselben.
+    expect(directRecipientsOf(backupFailed, 'serverMembers')).toEqual([OWNER]);
+  });
+
   it('trifft bei einer Node-Warnung keinen Besitzer', () => {
     const nodeWarning: NotificationEvent = {
       event: 'resource.low',

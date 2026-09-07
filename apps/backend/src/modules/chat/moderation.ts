@@ -20,7 +20,7 @@
 import {
   type MessageReportDto,
   type MessageReportPageDto,
-  type WebSocketEventName,
+  type NotificationEventPayloads,
 } from '@palantir/contracts';
 import { type MessageReportQuery, type ResolveMessageReportInput } from '@palantir/validation';
 import { type AuditService } from '../admin/index.js';
@@ -41,14 +41,28 @@ import {
 } from './types.js';
 import { assertParticipant, recipientsOf } from './visibility.js';
 
+/** Ereignisse, die B7 auslöst, mit ihrer vertraglichen Nutzlast. */
+export interface ChatEventPayloads {
+  'message.reported': NotificationEventPayloads['message.reported'];
+}
+
 /**
  * Ereignis-Senke für die Notification-Engine (B6, Pflichtenheft §14).
  *
  * `message.reported` steht bereits im Katalog; wer darauf hört, entscheidet
  * B6 – dieses Modul kennt die Engine nicht.
+ *
+ * Die Nutzlast kommt aus dem Vertrag statt aus `Record<string, unknown>`: Mit
+ * der offenen Form wichen die gesendeten Feldnamen unbemerkt vom Vertrag ab
+ * (`reportedById` statt `reportedByUserId`, `conversationId` und `reason`
+ * fehlten ganz), und die Meldung blieb dauerhaft ohne Detail (Audit W1-7,
+ * backend-community-visibility-04).
  */
 export interface ChatEventPublisher {
-  publish(event: WebSocketEventName, payload: Record<string, unknown>): void | Promise<void>;
+  publish(
+    event: 'message.reported',
+    payload: ChatEventPayloads['message.reported'],
+  ): void | Promise<void>;
 }
 
 /**
@@ -207,16 +221,20 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
       /*
        * `message.reported` ist das einzige Chat-Ereignis, das laut
        * Pflichtenheft §14 eine Benachrichtigung auslösen darf. Die Nutzlast
-       * trägt bewusst **keinen** Nachrichteninhalt: Eine Benachrichtigung geht
-       * an einen Kanal (Discord-Webhook), und dorthin gehört kein privater
-       * Text.
+       * trägt bewusst **keinen** Nachrichteninhalt (Gefundener Punkt 71): Eine
+       * Benachrichtigung geht an einen Kanal (Discord-Webhook), und dorthin
+       * gehört kein privater Text. Die Begründung des Melders (`reason`) steht
+       * dagegen im Vertrag – sie ist der Grund der Meldung, nicht der gemeldete
+       * Text, und ohne sie bliebe jede Meldung in der Inbox ohne Detail.
        */
       await events.publish('message.reported', {
+        at: clock.now().toISOString(),
+        actorId: viewerId,
         reportId: report.id,
         messageId,
-        conversationType: conversation.type,
-        serverId: conversation.serverId,
-        reportedById: viewerId,
+        conversationId: message.conversationId,
+        reportedByUserId: viewerId,
+        reason,
       });
 
       return toDto(ctx, report, message, conversation);

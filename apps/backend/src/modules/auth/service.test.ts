@@ -60,7 +60,7 @@ function build(
     now: () => now,
     events: {
       emit: (event, payload): void => {
-        emittedEvents.push({ event, payload });
+        emittedEvents.push({ event, payload: { ...payload } });
       },
     },
   });
@@ -109,10 +109,18 @@ describe('Registrierung (Lastenheft §3.1)', () => {
       CONTEXT,
     );
 
+    // `at` und `actorId` gehören seit W1-7 zur Nutzlast des Vertrags und werden
+    // nicht mehr erst von der Senke ergänzt.
     expect(emittedEvents).toEqual([
       {
         event: 'user.registered',
-        payload: { userId: account.id, displayName: 'spieler', awaitingApproval: true },
+        payload: {
+          at: now.toISOString(),
+          actorId: null,
+          userId: account.id,
+          displayName: 'spieler',
+          awaitingApproval: true,
+        },
       },
     ]);
   });
@@ -509,6 +517,8 @@ describe('Anbieter-Login und Account-Linking (Lastenheft §3.1)', () => {
       {
         event: 'user.registered',
         payload: {
+          at: now.toISOString(),
+          actorId: null,
           userId: outcome.account.id,
           displayName: outcome.account.displayName,
           awaitingApproval: true,
