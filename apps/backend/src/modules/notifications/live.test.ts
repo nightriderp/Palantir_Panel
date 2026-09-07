@@ -156,13 +156,13 @@ describe('Live-Kanal der Inbox (Pflichtenheft §5.3)', () => {
 describe('Herkunft des Handshakes (security-matrix-04)', () => {
   const PANEL = 'https://panel.example.tld';
 
-  async function baueApp(): Promise<FastifyInstance> {
+  async function baueApp(hub = createNotificationHub()): Promise<FastifyInstance> {
     const app = Fastify({ logger: false });
 
     await app.register(websocket);
 
     registerNotificationLiveRoute(app, {
-      hub: createNotificationHub(),
+      hub,
       notifications: { countUnread: async () => 0 } as unknown as NotificationService,
       resolveUserId: () => 'user-1',
       allowedOrigin: PANEL,
@@ -195,5 +195,49 @@ describe('Herkunft des Handshakes (security-matrix-04)', () => {
     await expect(
       app.injectWS('/live/notifications', { headers: { origin: 'https://boese.example' } }),
     ).rejects.toThrow('403');
+  });
+
+  /**
+   * Audit W3-4, `backend-community-08`: Nach einem `unsubscribe` bestätigte ein
+   * erneutes `subscribe` mit `subscribed` samt Zähler, ohne die Verbindung
+   * jemals wieder anzumelden. Der Client hielt sich für abonniert, bekam aber
+   * bis zum Neuaufbau kein `notification.created` mehr.
+   */
+  it('meldet nach unsubscribe/subscribe wirklich wieder an', async () => {
+    const hub = createNotificationHub();
+
+    app = await baueApp(hub);
+
+    const socket = await app.injectWS('/live/notifications', { headers: { origin: PANEL } });
+
+    /** Wartet auf das nächste Frame der Verbindung. */
+    const naechstesFrame = async (): Promise<Record<string, unknown>> =>
+      new Promise((resolve) => {
+        socket.once('message', (raw: unknown) => {
+          resolve(JSON.parse(String(raw)) as Record<string, unknown>);
+        });
+      });
+
+    expect(hub.connectionCount('user-1')).toBe(1);
+
+    socket.send(JSON.stringify({ kind: 'unsubscribe' }));
+    // Der `pong` beweist, dass das `unsubscribe` davor verarbeitet wurde.
+    socket.send(JSON.stringify({ kind: 'ping' }));
+
+    expect(await naechstesFrame()).toMatchObject({ kind: 'pong' });
+    expect(hub.connectionCount('user-1')).toBe(0);
+
+    socket.send(JSON.stringify({ kind: 'subscribe' }));
+
+    expect(await naechstesFrame()).toMatchObject({ kind: 'subscribed' });
+    expect(hub.connectionCount('user-1')).toBe(1);
+
+    const angekommen = naechstesFrame();
+
+    hub.publish('user-1', { notification, unreadCount: 1 });
+
+    expect(await angekommen).toMatchObject({ event: 'notification.created' });
+
+    socket.close();
   });
 });

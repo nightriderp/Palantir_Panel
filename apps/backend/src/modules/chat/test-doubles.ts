@@ -14,6 +14,7 @@ import { type MessageReportQuery } from '@palantir/validation';
 import { type AppendAuditEntry, type AuditService } from '../admin/index.js';
 import { type PermissionActor, buildPermissionActor } from '../rbac/index.js';
 import { type ChatContext, contextOf } from './context.js';
+import { ChatError } from './errors.js';
 import { type ChatDelivery } from './live.js';
 import { type ChatEventPayloads, type ChatEventPublisher } from './moderation.js';
 import type {
@@ -203,6 +204,24 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
     return testId(`${prefix}${String(counter).padStart(4, '0')}`);
   };
 
+  /**
+   * Dieselbe Ordnung wie in SQL: `(created_at, id)` absteigend.
+   *
+   * Der Tiebreaker gehört zwingend dazu – ohne ihn verdeckte die Attrappe
+   * genau den Fehler, den sie prüfen soll (Audit W3-4,
+   * `backend-community-04`/`-21`): Nachrichten mit gleichem Zeitstempel
+   * standen hier in beliebiger Reihenfolge, in der Datenbank dagegen nach Id.
+   */
+  const juengsteZuerst = (a: MessageRecord, b: MessageRecord): number => {
+    const zeit = b.createdAt.getTime() - a.createdAt.getTime();
+
+    if (zeit !== 0) {
+      return zeit;
+    }
+
+    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+  };
+
   return {
     conversations,
     participants,
@@ -277,14 +296,31 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
     async listMessages(conversationId, options) {
       const ordered = messages
         .filter((message) => message.conversationId === conversationId)
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        .sort(juengsteZuerst);
 
-      const anchor = options.before
-        ? messages.find((message) => message.id === options.before)
-        : undefined;
+      /*
+       * Der Anker liegt in **dieser** Konversation, sonst gibt es ihn für den
+       * Aufrufer nicht – und eine unbekannte Id wirft, statt still ohne Filter
+       * weiterzulaufen. Die Attrappe wich hier vom echten Repository ab und
+       * verdeckte damit beides (Audit W3-4, `backend-community-visibility-08`).
+       */
+      const anchor =
+        options.before === undefined
+          ? undefined
+          : ordered.find((message) => message.id === options.before);
 
+      if (options.before !== undefined && !anchor) {
+        throw new ChatError('MESSAGE_NOT_FOUND');
+      }
+
+      // Keyset auf dem vollen Schlüssel `(createdAt, id)`.
       const filtered = anchor
-        ? ordered.filter((message) => message.createdAt.getTime() < anchor.createdAt.getTime())
+        ? ordered.filter(
+            (message) =>
+              message.createdAt.getTime() < anchor.createdAt.getTime() ||
+              (message.createdAt.getTime() === anchor.createdAt.getTime() &&
+                message.id < anchor.id),
+          )
         : ordered;
 
       return {
@@ -299,7 +335,7 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
       for (const conversationId of conversationIds) {
         const newest = messages
           .filter((message) => message.conversationId === conversationId)
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+          .sort(juengsteZuerst)[0];
 
         if (newest) {
           result.set(conversationId, newest);
@@ -313,9 +349,15 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
       const index = messages.findIndex((message) => message.id === messageId);
       const message = messages[index];
 
-      if (message) {
-        messages[index] = { ...message, deletedAt, deletedById };
+      // Das bedingte `UPDATE … where deleted_at is null` des echten
+      // Repositorys: Eine bereits gelöschte Nachricht wird nicht überschrieben.
+      if (!message || message.deletedAt !== null) {
+        return false;
       }
+
+      messages[index] = { ...message, deletedAt, deletedById };
+
+      return true;
     },
 
     async markConversationRead(conversationId, userId, at) {
@@ -427,6 +469,12 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
 
       if (!report) {
         throw new Error(`Meldung ${reportId} fehlt in der Attrappe.`);
+      }
+
+      // Das bedingte `UPDATE … where status = 'open'`: Über eine bereits
+      // entschiedene Meldung entscheidet niemand ein zweites Mal.
+      if (report.status !== 'open') {
+        return null;
       }
 
       const updated: MessageReportRecord = {

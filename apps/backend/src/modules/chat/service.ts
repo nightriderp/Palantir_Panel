@@ -50,6 +50,7 @@ import {
 import {
   type ConversationAudience,
   assertDirectRecipientAllowed,
+  assertMessageParticipant,
   assertParticipant,
   canSendMessage,
   directRecipientCandidateIds,
@@ -57,6 +58,7 @@ import {
   isDirectRecipientAllowed,
   recipientsOf,
   resolveAudience,
+  serverParticipantIds,
 } from './visibility.js';
 
 export interface ChatServiceDependencies {
@@ -115,6 +117,35 @@ export interface ChatService {
   markConversationRead(ctx: ChatContext, conversationId: string): Promise<ConversationDto>;
   /** Lädt Konversation samt Teilnehmerkreis – von `moderation.ts` mitbenutzt. */
   audienceOf(conversationId: string): Promise<ConversationAudience>;
+  /**
+   * Teilnehmerkreis der Konversation, in der eine **Nachricht** liegt – samt
+   * Teilnahmeprüfung des Aufrufers.
+   *
+   * Meldet in beiden Fällen (Konversation weg, Aufrufer nicht dabei)
+   * `MESSAGE_NOT_FOUND`: Ein Vorgang, der eine Nachricht benennt, antwortet
+   * überall mit demselben Code, sonst unterscheidet der Fehlercode zwischen
+   * „gibt es nicht" und „gehört jemand anderem" (Audit W3-4,
+   * `backend-community-visibility-09`).
+   */
+  messageAudience(conversationId: string, userId: string): Promise<ConversationAudience>;
+}
+
+/**
+ * Sortierschlüssel des Verlaufs: `(createdAt, id)`, aufsteigend.
+ *
+ * Derselbe Schlüssel, auf dem das Repository blättert – nur andersherum. Ohne
+ * das `id`-Kriterium wäre die Reihenfolge bei gleichem Zeitstempel eine andere
+ * als beim Blättern, und der Cursor (die älteste Nachricht der Seite) zeigte
+ * auf die falsche Nachricht (Audit W3-4, `backend-community-04`).
+ */
+function nachAlterAufsteigend(a: MessageRecord, b: MessageRecord): number {
+  const zeit = a.createdAt.getTime() - b.createdAt.getTime();
+
+  if (zeit !== 0) {
+    return zeit;
+  }
+
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 export function createChatService(deps: ChatServiceDependencies): ChatService {
@@ -147,6 +178,28 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
     const audience = await audienceOf(conversationId);
 
     assertParticipant(audience, userId);
+
+    return audience;
+  }
+
+  /**
+   * Wie {@link participatingAudience}, aber für Vorgänge, die eine Nachricht
+   * benennen: Beide Absagen tragen `MESSAGE_NOT_FOUND` (siehe
+   * {@link ChatService.messageAudience}).
+   */
+  async function messageAudience(
+    conversationId: string,
+    userId: string,
+  ): Promise<ConversationAudience> {
+    const conversation = await repository.findConversation(conversationId);
+
+    if (!conversation) {
+      throw new ChatError('MESSAGE_NOT_FOUND');
+    }
+
+    const audience = await resolveAudience(audienceDeps, conversation);
+
+    assertMessageParticipant(audience, userId);
 
     return audience;
   }
@@ -326,6 +379,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
   return {
     audienceOf,
+    messageAudience,
     ensureServerConversation,
 
     async listConversations(ctx) {
@@ -550,11 +604,33 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
     async openServerConversation(ctx, serverId) {
       const viewerId = requireUserId(ctx);
+
+      /*
+       * Zuerst der Teilnehmerkreis des **Servers**, dann erst der Chat (Audit
+       * W3-4, `backend-community-visibility-10`).
+       *
+       * Vorher legte `ensureServerConversation` die Konversation an, bevor
+       * irgendjemand die Teilnahme geprüft hatte: Ein Unbeteiligter erzeugte
+       * damit eine Zeile in einem fremden Server und unterschied über den
+       * Fehlercode (`SERVER_NOT_FOUND` vs. `CONVERSATION_NOT_FOUND`), welche
+       * Server-Ids es gibt. Beide Fälle antworten jetzt gleich – ein Server,
+       * zu dem der Aufrufer nicht gehört, ist für ihn nicht von einem
+       * nicht existierenden zu unterscheiden.
+       */
+      const [server, members] = await Promise.all([
+        servers.findServer(serverId),
+        servers.listMembers(serverId),
+      ]);
+
+      if (server === null || !serverParticipantIds(server, members).includes(viewerId)) {
+        throw new ChatError('CONVERSATION_NOT_FOUND');
+      }
+
       const conversationId = await ensureServerConversation(serverId);
 
-      // Teilnahme wird auch hier geprüft: Der Chat eines fremden Servers ist
-      // für Nichtmitglieder nicht sichtbar – auch nicht, nachdem er entstanden
-      // ist.
+      // Teilnahme wird auch danach geprüft: Der Teilnehmerkreis wird für das
+      // DTO ohnehin frisch aufgelöst, und der Chat eines fremden Servers bleibt
+      // auch dann verschlossen, wenn er längst entstanden ist.
       const audience = await participatingAudience(conversationId, viewerId);
       const [lastMessages, readState] = await Promise.all([
         repository.lastMessages([conversationId]),
@@ -581,11 +657,15 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
       const context = await messageContext(viewerId, page.messages);
 
-      // Das Repository liefert die jüngsten zuerst; der Vertrag verlangt
-      // aufsteigende Reihenfolge, damit das Frontend nichts umdrehen muss.
-      const ordered = [...page.messages].sort(
-        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-      );
+      /*
+       * Das Repository liefert die jüngsten zuerst; der Vertrag verlangt
+       * aufsteigende Reihenfolge, damit das Frontend nichts umdrehen muss.
+       * Sortiert wird über den vollen Schlüssel `(createdAt, id)` – die
+       * Umkehrung muss dieselbe Ordnung treffen, auf der das Repository
+       * blättert, sonst zeigt `nextCursor` bei gleichem Zeitstempel auf die
+       * falsche Nachricht und die nächste Seite lässt eine aus.
+       */
+      const ordered = [...page.messages].sort(nachAlterAufsteigend);
 
       const oldest = ordered[0];
 
@@ -667,8 +747,9 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       }
 
       // Erst die Teilnahme prüfen: Sonst verriete die Fehlermeldung, ob es die
-      // Nachricht in einer fremden Konversation gibt.
-      const audience = await participatingAudience(message.conversationId, viewerId);
+      // Nachricht in einer fremden Konversation gibt. Beide Absagen tragen
+      // denselben Code wie die unbekannte Id.
+      const audience = await messageAudience(message.conversationId, viewerId);
 
       if (message.senderId !== viewerId) {
         throw new ChatError('MESSAGE_NOT_FOUND');
@@ -680,7 +761,19 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
       const deletedAt = clock.now();
 
-      await repository.markMessageDeleted(messageId, viewerId, deletedAt);
+      /*
+       * Die Vorprüfung oben liest einen Stand, der beim Schreiben schon veraltet
+       * sein kann: Löscht ein Moderator im selben Moment (`moderation.ts`),
+       * bestünden beide Aufrufe die Prüfung und der letzte überschriebe
+       * `deletedById` – das DTO-Flag `deletedByModerator` kippte je nach
+       * Reihenfolge. Wer die Löschung beansprucht, entscheidet deshalb das
+       * bedingte `UPDATE` (Audit W3-4, `backend-community-12`).
+       */
+      const beansprucht = await repository.markMessageDeleted(messageId, viewerId, deletedAt);
+
+      if (!beansprucht) {
+        throw new ChatError('MESSAGE_ALREADY_DELETED');
+      }
 
       const frame = messageDeletedFrame(
         {

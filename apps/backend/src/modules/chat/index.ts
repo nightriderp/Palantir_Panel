@@ -59,6 +59,7 @@ export {
   type AudienceDependencies,
   type ConversationAudience,
   assertDirectRecipientAllowed,
+  assertMessageParticipant,
   assertParticipant,
   canSendMessage,
   canViewConversation,
@@ -66,6 +67,7 @@ export {
   isParticipant,
   recipientsOf,
   resolveAudience,
+  serverParticipantIds,
   titleFor,
   typeOf,
 } from './visibility.js';

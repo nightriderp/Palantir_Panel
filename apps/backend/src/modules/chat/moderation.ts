@@ -40,7 +40,7 @@ import {
   type MessageReportRecord,
   systemClock,
 } from './types.js';
-import { assertParticipant, recipientsOf } from './visibility.js';
+import { recipientsOf } from './visibility.js';
 
 /** Ereignisse, die B7 auslöst, mit ihrer vertraglichen Nutzlast. */
 export interface ChatEventPayloads {
@@ -186,10 +186,13 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
        * Melden darf nur, wer die Nachricht überhaupt sehen durfte. Ohne diese
        * Prüfung wäre die Melde-Funktion der Umweg, über den sich jeder beliebige
        * fremde Nachrichteninhalt in die Moderationsansicht heben ließe.
+       *
+       * Die Absage trägt denselben Code wie eine unbekannte Id
+       * (`MESSAGE_NOT_FOUND`): Ein Wechsel zwischen zwei Codes je nach Pfad
+       * wäre genau die Auskunft, die der Melde-Endpunkt nicht geben soll
+       * (Audit W3-4, `backend-community-visibility-09`).
        */
-      const audience = await chat.audienceOf(message.conversationId);
-
-      assertParticipant(audience, viewerId);
+      await chat.messageAudience(message.conversationId, viewerId);
 
       if (message.senderId === viewerId) {
         throw new ChatError(
@@ -329,29 +332,18 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
       const deleteMessage = input.action === 'deleteMessage';
 
       /*
-       * Löschen ist idempotent gedacht: Hat der Absender seinen Beitrag
-       * inzwischen selbst entfernt, bleibt die Entscheidung trotzdem gültig und
-       * wird protokolliert – nur gelöscht wird nicht ein zweites Mal.
+       * Die Meldung wird **zuerst** beansprucht (Audit W3-4,
+       * `backend-community-12`).
+       *
+       * Die Vorprüfung oben liest einen Stand, der beim Schreiben veraltet sein
+       * kann: Entscheiden zwei Moderatoren dieselbe offene Meldung im selben
+       * Moment, kommen beide daran vorbei. Bisher liefen dann beide Updates
+       * durch – der letzte gewann Status und `actionTaken`, es entstanden zwei
+       * Audit-Einträge und im Zweifel eine Löschung zu einer verworfenen
+       * Entscheidung. Das bedingte `UPDATE` (`status = 'open'`) lässt genau
+       * einen gewinnen; der Verlierer bricht hier ab, bevor irgendetwas
+       * geschrieben, zugestellt oder protokolliert wurde.
        */
-      if (deleteMessage && message.deletedAt === null) {
-        await repository.markMessageDeleted(message.id, moderatorId, resolvedAt);
-
-        const audience = await chat.audienceOf(message.conversationId);
-        const frame = messageDeletedFrame(
-          {
-            conversationId: message.conversationId,
-            messageId: message.id,
-            deletedAt: resolvedAt.toISOString(),
-            byModerator: true,
-          },
-          resolvedAt,
-        );
-
-        for (const recipientId of recipientsOf(audience)) {
-          delivery.deliver(recipientId, frame);
-        }
-      }
-
       const resolved = await repository.resolveReport(reportId, {
         status: deleteMessage ? 'resolved' : 'dismissed',
         actionTaken: input.action,
@@ -359,6 +351,42 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
         resolvedById: moderatorId,
         resolvedAt,
       });
+
+      if (!resolved) {
+        throw new ChatError('MESSAGE_REPORT_ALREADY_RESOLVED');
+      }
+
+      /*
+       * Löschen ist idempotent gedacht: Hat der Absender seinen Beitrag
+       * inzwischen selbst entfernt, bleibt die Entscheidung trotzdem gültig und
+       * wird protokolliert – nur gelöscht wird nicht ein zweites Mal. Ob diese
+       * Löschung die erste ist, entscheidet das bedingte `UPDATE`; nur der
+       * Gewinner stellt `message.deleted` zu.
+       */
+      if (deleteMessage) {
+        const beansprucht = await repository.markMessageDeleted(
+          message.id,
+          moderatorId,
+          resolvedAt,
+        );
+
+        if (beansprucht) {
+          const audience = await chat.audienceOf(message.conversationId);
+          const frame = messageDeletedFrame(
+            {
+              conversationId: message.conversationId,
+              messageId: message.id,
+              deletedAt: resolvedAt.toISOString(),
+              byModerator: true,
+            },
+            resolvedAt,
+          );
+
+          for (const recipientId of recipientsOf(audience)) {
+            delivery.deliver(recipientId, frame);
+          }
+        }
+      }
 
       /*
        * Audit-Eintrag (Pflichtenheft §15: „Moderationsaktionen werden im
