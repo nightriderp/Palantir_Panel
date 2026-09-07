@@ -12,6 +12,7 @@ import {
 import {
   NODE_ID,
   SERVER_ID,
+  USER_ID,
   actorWith,
   agentEntry,
   createFakeAuditRepository,
@@ -49,7 +50,8 @@ function buildService(options: {
   remover?: StorageEntryRemover;
   gateway?: StorageScanGateway;
 }) {
-  const audit = createAuditService(createFakeAuditRepository());
+  const auditRepository = createFakeAuditRepository();
+  const audit = createAuditService(auditRepository);
   const nodes = createHostNodeService({
     repository: createFakeHostNodeRepository([nodeRecord()]),
     audit,
@@ -61,12 +63,13 @@ function buildService(options: {
   const storage = createStorageExplorerService({
     repository,
     nodes,
+    audit,
     knownServers: options.servers ?? knownServers(),
     ...(options.remover ? { remover: options.remover } : {}),
     ...(options.gateway ? { gateway: options.gateway } : {}),
   });
 
-  return { storage, repository };
+  return { storage, repository, auditRepository };
 }
 
 /**
@@ -200,6 +203,48 @@ describe('Storage-Explorer: löschbare Posten (Lastenheft §3.8)', () => {
     expect(repository.snapshot?.entries.map((entry) => entry.path)).toEqual([
       '/srv/palantir/servers/reste',
     ]);
+  });
+
+  it('protokolliert die Löschung genau einmal mit Handelndem, Ziel und Ergebnis', async () => {
+    // Pflichtenheft §6: Seit A3 den Remover mitbringt, sind die Daten real
+    // weg – ohne diesen Eintrag stünde die einzige destruktive Aktion des
+    // Speicher-Explorers nicht im append-only Log.
+    const { storage, auditRepository } = buildService({
+      entries: [backup, verwaist],
+      remover: createRecordingRemover(),
+    });
+
+    await storage.deleteEntry(
+      ctxWith(actorWith('node.manage')),
+      NODE_ID,
+      '/srv/palantir/backups/beispiel.tar.gz',
+    );
+
+    expect(auditRepository.rows).toHaveLength(1);
+    expect(auditRepository.rows[0]).toMatchObject({
+      action: 'storage.entryDeleted',
+      actorId: USER_ID,
+      actorDisplayName: 'Test-Admin',
+      ipHint: '10.0.0.x',
+      targetType: 'storageEntry',
+      targetId: '/srv/palantir/backups/beispiel.tar.gz',
+      metadata: {
+        nodeId: NODE_ID,
+        kind: 'backup',
+        sizeBytes: 5_000_000,
+        path: '/srv/palantir/backups/beispiel.tar.gz',
+      },
+    });
+  });
+
+  it('protokolliert nichts, wenn der Posten gesperrt ist', async () => {
+    const { storage, auditRepository } = buildService({ entries: [agentEntry()] });
+
+    await storage
+      .deleteEntry(ctxWith(actorWith('node.manage')), NODE_ID, `/srv/palantir/servers/${SERVER_ID}`)
+      .catch(() => undefined);
+
+    expect(auditRepository.rows).toEqual([]);
   });
 
   it('gibt ohne node.manage gar nichts frei', async () => {

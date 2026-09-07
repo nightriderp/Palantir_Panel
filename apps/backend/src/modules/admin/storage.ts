@@ -41,6 +41,7 @@ import {
 } from '@palantir/contracts';
 import { type StartStorageScanInput, getStorageBreakdownResultSchema } from '@palantir/validation';
 import { type PermissionActor, hasAnyPermission, hasPermission } from '../rbac/index.js';
+import { type AuditService, entryFor } from './audit.js';
 import type { AdminContext } from './context.js';
 import { AdminError } from './errors.js';
 import type { HostNodeRecord, HostNodeService } from './nodes.js';
@@ -279,6 +280,14 @@ export interface StorageExplorerService {
 export interface StorageExplorerDependencies {
   readonly repository: StorageRepository;
   readonly nodes: HostNodeService;
+  /**
+   * Audit-Log für die Löschung eines Postens (Pflichtenheft §6).
+   *
+   * Nicht optional – wie bei `nodes` und `ports`: Seit A3 den Remover
+   * mitbringt, verschwinden hier echte Daten vom Homeserver. Ein Aufbau ohne
+   * Log wäre genau die Lücke, die dieser Eintrag schließt.
+   */
+  readonly audit: AuditService;
   readonly gateway?: StorageScanGateway;
   readonly remover?: StorageEntryRemover;
   readonly knownServers?: KnownServerSource;
@@ -431,6 +440,24 @@ export function createStorageExplorerService(
       // den entfernten Posten nicht weiter anzeigt. Die Größenangaben bleiben
       // die des Scans – korrekt werden sie erst beim nächsten Lauf.
       await deps.repository.saveSnapshot({ ...snapshot, entries: remaining });
+
+      // Erst nach dem Erfolg auf dem Homeserver: Ein abgelehnter Versuch hat
+      // nichts entfernt und gehört nicht als Löschung ins Log. Die Größe steht
+      // im Eintrag, weil sich später nicht mehr rekonstruieren lässt, wie viel
+      // an dieser Stelle lag (Pflichtenheft §6).
+      await deps.audit.record(
+        entryFor(ctx, {
+          action: 'storage.entryDeleted',
+          targetType: 'storageEntry',
+          targetId: entry.id,
+          metadata: {
+            nodeId,
+            kind: entry.kind,
+            sizeBytes: entry.sizeBytes,
+            path: entry.path,
+          },
+        }),
+      );
 
       return entry;
     },

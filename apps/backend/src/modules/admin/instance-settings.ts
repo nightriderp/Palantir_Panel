@@ -126,6 +126,24 @@ export function createInstanceSettingsService(
 
       await deps.repository.save(input, actorUserId);
 
+      /*
+       * Hier fehlt der Audit-Eintrag (Pflichtenheft §6): Das Ab- und
+       * Anschalten der Selbstregistrierung ist ein sicherheitsrelevanter
+       * Instanz-Schalter, `updated_by_id` hält aber nur den **letzten**
+       * Änderer – die Historie fehlt.
+       *
+       * Der Eintrag lässt sich noch nicht schreiben, weil der Katalog in
+       * `packages/contracts/src/audit.ts` keine passende Aktion kennt
+       * (`instance.settingsChanged`) und `AUDIT_TARGET_TYPES` keinen passenden
+       * Zieltyp. Der Katalog ist Vertragsgrenze und wird nach CLAUDE.md §6 in
+       * einem eigenen, kleinen Contracts-PR ergänzt – nicht nebenbei hier.
+       *
+       * Sobald die Aktion im Katalog steht: `AuditService` als optionale
+       * Abhängigkeit aufnehmen (wie im Kontingent-Modul) und an dieser Stelle
+       * `action: 'instance.settingsChanged'` mit `actorUserId` als Handelndem
+       * und `{ selfRegistrationEnabled: input.selfRegistrationEnabled }` als
+       * Metadaten protokollieren.
+       */
       return toDto(actor, await deps.repository.load());
     },
 

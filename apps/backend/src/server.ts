@@ -560,6 +560,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         service: createQuotaRequestService({
           repository: createDrizzleQuotaRequestRepository(db),
           quotas: resources,
+          // Damit eine Genehmigung dieselbe Spur hinterlaesst wie das Setzen
+          // von Hand (Pflichtenheft §6).
+          audit: admin.services.audit,
         }),
         actorUserId: (request) => request.authUser?.id ?? null,
       }),

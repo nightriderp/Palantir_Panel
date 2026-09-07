@@ -19,6 +19,7 @@ import {
   type QuotaRequestQuery,
   type UserResourceLimitsInput,
 } from '@palantir/validation';
+import { type AuditService } from '../admin/index.js';
 import { type PermissionActor, hasPermission } from '../rbac/index.js';
 import { QuotaRequestError } from './errors.js';
 
@@ -101,6 +102,17 @@ export interface QuotaRequestDependencies {
   readonly repository: QuotaRequestRepository;
   /** Zum Setzen des Kontingents bei einer Genehmigung. */
   readonly quotas: QuotaWriter;
+  /**
+   * Audit-Log (B8) für die Genehmigung.
+   *
+   * `user.limitsChanged` hing bisher allein an der Route
+   * `PUT /admin/users/:userId/limits` – wer ein Kontingent über den
+   * Genehmigungsweg erhöhte, tat das unprotokolliert (Pflichtenheft §6).
+   *
+   * Optional, damit Tests des Ablaufs ohne Admin-Modul auskommen; ohne Angabe
+   * wird nichts protokolliert.
+   */
+  readonly audit?: AuditService;
 }
 
 export function toQuotaRequestDto(
@@ -186,6 +198,30 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
       actorUserId,
       input.note?.trim() === '' ? null : (input.note ?? null),
     );
+
+    if (status === 'approved') {
+      /*
+       * Dieselbe Aktion wie beim Setzen von Hand: Für das Log zählt, dass sich
+       * das Kontingent eines fremden Kontos geändert hat – nicht, über welchen
+       * der beiden Wege (Pflichtenheft §6). Die Anfrage steht als Beleg
+       * daneben in den Metadaten.
+       *
+       * Erst nach dem Bescheid: Ein gescheiterter Lauf hat die Anfrage offen
+       * gelassen und ist keine Änderung, die ins Log gehört.
+       */
+      await deps.audit?.record({
+        action: 'user.limitsChanged',
+        actorId: actorUserId,
+        actorDisplayName: entschieden.decidedByDisplayName,
+        targetType: 'user',
+        targetId: entschieden.userId,
+        metadata: {
+          quotaRequestId: entschieden.id,
+          maxRamMb: entschieden.requestedRamMb,
+          maxConcurrentServers: entschieden.requestedMaxConcurrentServers,
+        },
+      });
+    }
 
     return toQuotaRequestDto(actor, actorUserId, entschieden);
   }

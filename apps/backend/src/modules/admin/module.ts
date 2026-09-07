@@ -115,6 +115,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
   const storage = createStorageExplorerService({
     repository: createDrizzleStorageRepository(db),
     nodes,
+    audit,
     ...(options.storageGateway ? { gateway: options.storageGateway } : {}),
     ...(options.storageRemover ? { remover: options.storageRemover } : {}),
     ...(options.knownServers ? { knownServers: options.knownServers } : {}),

@@ -384,7 +384,9 @@ export async function registerAdminRoutes(
           );
         }
 
-        return archiveAuditEntries(services.auditArchive, contextFrom(request).actor);
+        // Vollständiger Kontext statt nur der Rechte: Sonst stünde der Lauf
+        // ohne Handelnden im Log (Pflichtenheft §6).
+        return archiveAuditEntries(services.auditArchive, contextFrom(request));
       }),
   );
 

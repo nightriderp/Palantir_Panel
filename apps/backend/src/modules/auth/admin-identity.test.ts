@@ -176,6 +176,7 @@ beforeEach(async () => {
     storage: createStorageExplorerService({
       repository: createFakeStorageRepository(),
       nodes,
+      audit,
     }),
     instanceSettings: createInstanceSettingsService({
       repository: {

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createAuditService } from '../admin/audit.js';
+import { createFakeAuditRepository } from '../admin/test-support.js';
 import { buildPermissionActor } from '../rbac/index.js';
 import {
   type QuotaRequestRecord,
@@ -50,6 +52,7 @@ interface Aufbau {
   service: ReturnType<typeof createQuotaRequestService>;
   gesetzteLimits: Array<{ userId: string; input: Record<string, unknown> }>;
   gespeichert: QuotaRequestRecord[];
+  auditRepository: ReturnType<typeof createFakeAuditRepository>;
 }
 
 function build(
@@ -118,10 +121,17 @@ function build(
     },
   };
 
+  const auditRepository = createFakeAuditRepository();
+
   return {
-    service: createQuotaRequestService({ repository, quotas }),
+    service: createQuotaRequestService({
+      repository,
+      quotas,
+      audit: createAuditService(auditRepository),
+    }),
     gesetzteLimits,
     gespeichert,
+    auditRepository,
   };
 }
 
@@ -201,6 +211,43 @@ describe('Bescheiden', () => {
     expect(dto.status).toBe('rejected');
     expect(dto.decisionNote).toBe('Node ist zu klein.');
     expect(gesetzteLimits).toEqual([]);
+  });
+
+  it('protokolliert die Genehmigung genau einmal mit Handelndem, Ziel und Ergebnis', async () => {
+    // Pflichtenheft §6: Über diesen Weg wurde das Kontingent eines fremden
+    // Kontos bisher unprotokolliert erhöht – der Eintrag hing allein an
+    // `PUT /admin/users/:userId/limits`.
+    const { service, auditRepository } = build({ vorhanden: [record()] });
+
+    await service.approve(adminActor, ADMIN_ID, 'req-1', {});
+
+    expect(auditRepository.rows).toHaveLength(1);
+    expect(auditRepository.rows[0]).toMatchObject({
+      action: 'user.limitsChanged',
+      actorId: ADMIN_ID,
+      actorDisplayName: 'Admin',
+      targetType: 'user',
+      targetId: USER_ID,
+      metadata: { quotaRequestId: 'req-1', maxRamMb: 8192, maxConcurrentServers: null },
+    });
+  });
+
+  it('protokolliert nichts, wenn das Kontingent nicht gesetzt werden konnte', async () => {
+    const { service, auditRepository } = build({ vorhanden: [record()], setzenScheitert: true });
+
+    await expect(service.approve(adminActor, ADMIN_ID, 'req-1', {})).rejects.toThrow();
+
+    expect(auditRepository.rows).toEqual([]);
+  });
+
+  it('protokolliert die Ablehnung nicht als Kontingent-Änderung', async () => {
+    // Eine Ablehnung ändert kein Kontingent. Für den Vorgang selbst fehlt im
+    // Katalog (`packages/contracts/src/audit.ts`) noch eine eigene Aktion.
+    const { service, auditRepository } = build({ vorhanden: [record()] });
+
+    await service.reject(adminActor, ADMIN_ID, 'req-1', {});
+
+    expect(auditRepository.rows).toEqual([]);
   });
 
   it('entscheidet genau einmal', async () => {
