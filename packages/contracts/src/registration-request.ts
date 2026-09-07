@@ -88,7 +88,6 @@ export interface RegistrationRequestPermissions {
   canUnblock: boolean;
 }
 
-/** Eintrag der Freischalt-Warteliste (Lastenheft §3.7). */
 /**
  * Kurzfassung des Kontingents für die Nutzerliste (Mockup-Abgleich 12.1.3).
  *
@@ -114,6 +113,7 @@ export interface RegistrationRequestRole {
   name: string;
 }
 
+/** Eintrag der Freischalt-Warteliste (Lastenheft §3.7). */
 export interface RegistrationRequestDto {
   /** Id des wartenden Kontos – die Warteliste ist eine Sicht auf `User`, keine eigene Entität. */
   userId: string;

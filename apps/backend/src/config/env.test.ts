@@ -47,6 +47,21 @@ describe('Adressableitung aus PALANTIR_DOMAIN', () => {
     }
   });
 
+  /**
+   * Belegt den entfernten CORS-Rückfall (Audit W3-2, backend-core-09):
+   * `server.ts` hatte für „PUBLIC_WEB_URL nicht gesetzt" einen Zweig
+   * `origin: false`. Die Ableitung füllt den Wert aber immer – der Zweig war
+   * unerreichbar und der Kommentar daneben falsch.
+   */
+  it('PUBLIC_WEB_URL ist nach der Ableitung nie leer', () => {
+    for (const domain of ['beispiel.tld', 'palantir.local']) {
+      const e = adressenAbleiten(eingabe({ PALANTIR_DOMAIN: domain }));
+
+      expect(e.PUBLIC_WEB_URL).toBeTruthy();
+      expect(e.PUBLIC_WEB_URL).toBe(`https://${domain}`);
+    }
+  });
+
   it('ausdrücklich gesetzte Werte bleiben unangetastet', () => {
     const e = adressenAbleiten(
       eingabe({

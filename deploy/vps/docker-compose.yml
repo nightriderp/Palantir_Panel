@@ -462,7 +462,11 @@ services:
       - "traefik.http.middlewares.palantir-api-secure.headers.contentSecurityPolicy=default-src 'none'; frame-ancestors 'none'"
       - 'traefik.http.routers.palantir-api.middlewares=palantir-api-secure'
     healthcheck:
-      # curl und wget fehlen im Image (bewusst schlank) - node ist vorhanden.
+      # Der Check laeuft ueber `node`, nicht ueber curl oder wget: node ist die
+      # einzige Laufzeit, die im Image garantiert vorhanden ist. curl liegt zwar
+      # drin (apps/backend/Dockerfile installiert es fuer das PGDG-Repository),
+      # aber nur als Nebenprodukt - wer es dort einmal einspart, soll nicht den
+      # Healthcheck mitreissen. wget fehlt ganz.
       test:
         [
           'CMD',

@@ -1079,13 +1079,6 @@ export class AuthService {
   // -- Passwort -------------------------------------------------------------
 
   /**
-   * Passwortwechsel im eingeloggten Zustand.
-   *
-   * Löscht anschließend ein gesetztes `mustChangePassword` und widerruft alle
-   * **anderen** Sitzungen: wer das Passwort ändert, tut das oft gerade, weil er
-   * einen fremden Zugriff vermutet.
-   */
-  /**
    * Anzeigenamen des eigenen Kontos ändern (Lastenheft §3.1).
    *
    * Ohne Passwortabfrage: Der Name ist reine Darstellung, keine Kennung – an
@@ -1105,6 +1098,13 @@ export class AuthService {
     return this.loadAccount(updated);
   }
 
+  /**
+   * Passwortwechsel im eingeloggten Zustand.
+   *
+   * Löscht anschließend ein gesetztes `mustChangePassword` und widerruft alle
+   * **anderen** Sitzungen: wer das Passwort ändert, tut das oft gerade, weil er
+   * einen fremden Zugriff vermutet.
+   */
   async changePassword(
     userId: string,
     input: ChangePasswordInput,
@@ -1382,14 +1382,6 @@ export class AuthService {
   // -- Hilfsfunktionen ------------------------------------------------------
 
   /**
-   * Weist die geschützte Systemrolle „Gast" zu (Lastenheft §3.1, B2).
-   *
-   * Fehlt die Rolle, ist die Ersteinrichtung nicht vollständig durchlaufen
-   * (`pnpm --filter @palantir/backend db:seed`, SETUP.md §2.4). Das ist ein
-   * Betriebsfehler und keine Nutzereingabe – deshalb eine gewöhnliche Ausnahme
-   * mit klarem Hinweis statt eines Fehlercodes aus dem Katalog.
-   */
-  /**
    * Id der Standardrolle (Mockup-Abgleich 12.1.1).
    *
    * Wie bei der Gast-Rolle: Fehlt sie, ist die Ersteinrichtung nicht
@@ -1408,6 +1400,14 @@ export class AuthService {
     return rolle.id;
   }
 
+  /**
+   * Weist die geschützte Systemrolle „Gast" zu (Lastenheft §3.1, B2).
+   *
+   * Fehlt die Rolle, ist die Ersteinrichtung nicht vollständig durchlaufen
+   * (`pnpm --filter @palantir/backend db:seed`, SETUP.md §2.4). Das ist ein
+   * Betriebsfehler und keine Nutzereingabe – deshalb eine gewöhnliche Ausnahme
+   * mit klarem Hinweis statt eines Fehlercodes aus dem Katalog.
+   */
   private async assignGuestRole(userId: string): Promise<void> {
     const guestRole = await this.roles.findByName(GUEST_ROLE_NAME);
 

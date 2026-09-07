@@ -339,7 +339,8 @@ function auditFilters(query: AuditLogQuery) {
  *
  * Hier gibt es absichtlich kein `update` und kein `delete`. Ein Versuch würde
  * ohnehin am Trigger `audit_log_append_only` in der Datenbank scheitern
- * (Migration `0003`), aber die Schnittstelle soll gar nicht erst dazu einladen.
+ * (Migration `0005_admin_ports_audit_storage`), aber die Schnittstelle soll gar
+ * nicht erst dazu einladen.
  */
 export function createDrizzleAuditLogRepository(db: Database): AuditLogRepository {
   return {

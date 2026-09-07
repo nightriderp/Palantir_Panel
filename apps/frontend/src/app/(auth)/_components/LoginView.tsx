@@ -72,13 +72,6 @@ export function LoginView() {
   const [blocking, setBlocking] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  /**
-   * Fehler eines Provider-Rücklaufs (Discord/Twitch/Steam).
-   *
-   * Das Backend leitet nach einem gescheiterten Callback auf
-   * `/login?error=<CODE>` zurück – ein Fehlercode aus dem Katalog, kein
-   * Freitext (Pflichtenheft §5.1).
-   */
   const handleSolved = useCallback((payload: string | null) => {
     setAltcha(payload);
     if (payload !== null) {
@@ -86,6 +79,13 @@ export function LoginView() {
     }
   }, []);
 
+  /**
+   * Fehler eines Provider-Rücklaufs (Discord/Twitch/Steam).
+   *
+   * Das Backend leitet nach einem gescheiterten Callback auf
+   * `/login?error=<CODE>` zurück – ein Fehlercode aus dem Katalog, kein
+   * Freitext (Pflichtenheft §5.1).
+   */
   const providerErrorCode = searchParams.get('error');
   const providerError = providerErrorCode ? messageForErrorCode(providerErrorCode) : null;
 

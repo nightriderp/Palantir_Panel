@@ -215,9 +215,10 @@ export class ServerLiveHub {
         return;
       }
       case 'server.consoleLineAppended': {
-        // Wird von B3 derzeit nicht in dieser Form emittiert (die Live-Konsole
-        // ist ein dokumentierter Folgeschritt). Sobald ein passendes `line`
-        // geliefert wird, greift dieser Zweig ohne weitere Änderung.
+        // B3 emittiert das Ereignis mit einer fertigen `ServerConsoleLine`
+        // (`service.ts`, `handleLogLine`, Gefundener Punkt 101); hier wird sie
+        // nur durchgereicht. Das Echo eingetippter Befehle geht nicht durch
+        // `ingest`, sondern direkt über `publish` (`live-route.ts`).
         const line = payload.line;
         if (line === null || typeof line !== 'object') {
           return;

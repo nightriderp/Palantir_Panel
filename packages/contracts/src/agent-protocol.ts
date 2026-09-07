@@ -138,21 +138,21 @@ export const AGENT_COMMANDS = [
   /**
    * Datei oder Verzeichnis im Container löschen (Datei-Manager, Lastenheft §3.3).
    *
-   * Ergänzung dieser Sitzung (WELLE 0) zum Katalog aus Pflichtenheft §5.3, dort
-   * nachgetragen. Der Datei-Manager konnte bisher auflisten, lesen und schreiben
+   * Ergänzung von WELLE 0 zum Katalog aus Pflichtenheft §5.3, dort nachgetragen.
+   * Der Datei-Manager konnte bis dahin auflisten, lesen und schreiben
    * (`FILE_LIST`/`FILE_READ`/`FILE_WRITE`), aber weder löschen noch hochladen –
-   * ohne diese beiden Befehle bliebe P2 auf halbem Weg stehen. **Ausgeführt**
-   * wird der Befehl erst von P2; bis dahin steht er nicht in
-   * `IMPLEMENTED_AGENT_COMMANDS` (`AGENT_COMMAND_NOT_IMPLEMENTED`).
+   * ohne diese beiden Befehle wäre P2 auf halbem Weg stehen geblieben.
+   * **Ausgeführt** wird der Befehl seit P2; er steht seither in
+   * `IMPLEMENTED_AGENT_COMMANDS` (Audit W3-2, contracts-validation-09).
    */
   'FILE_DELETE',
   /**
    * Vom Datei-Manager hochgeladene Datei im Container ablegen (Lastenheft §3.3).
    *
-   * Ergänzung dieser Sitzung (WELLE 0), Begründung wie bei `FILE_DELETE`.
-   * Bewusst getrennt von `FILE_WRITE`: Dieses speichert eine im Editor
-   * bearbeitete Textdatei zurück, `FILE_UPLOAD` legt eine hochgeladene (auch
-   * binäre, auch neue) Datei ab. Ausführung ebenfalls in P2.
+   * Ergänzung von WELLE 0, Begründung wie bei `FILE_DELETE`. Bewusst getrennt
+   * von `FILE_WRITE`: Dieses speichert eine im Editor bearbeitete Textdatei
+   * zurück, `FILE_UPLOAD` legt eine hochgeladene (auch binäre, auch neue) Datei
+   * ab. Ausführung ebenfalls seit P2.
    */
   'FILE_UPLOAD',
   /**
@@ -167,8 +167,8 @@ export const AGENT_COMMANDS = [
    * Archiv bereits auf dem Homeserver und trägt eine beim Sichern gebildete
    * Prüfsumme – hier kommt es vom Nutzer über das Backend und ist kein Backup.
    *
-   * **Ausgeführt** wird der Befehl erst von P4; bis dahin steht er nicht in
-   * `IMPLEMENTED_AGENT_COMMANDS` (`AGENT_COMMAND_NOT_IMPLEMENTED`).
+   * **Ausgeführt** wird der Befehl seit P4; er steht seither in
+   * `IMPLEMENTED_AGENT_COMMANDS` (Audit W3-2, contracts-validation-09).
    */
   'FILE_EXTRACT',
   /**

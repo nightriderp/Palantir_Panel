@@ -569,9 +569,14 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Die Ausführung des Befehls auf dem Homeserver ist fehlgeschlagen.',
   },
   /**
-   * Befehl steht im Protokoll, ist auf dem Agent aber noch nicht gebaut
-   * (aktuell: `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`,
-   * `DELETE_BACKUP`, `GET_STORAGE_BREAKDOWN` – A3).
+   * Befehl steht im Protokoll, ist auf dem Agent aber noch nicht gebaut.
+   *
+   * Derzeit trifft das auf **keinen** Befehl zu: `IMPLEMENTED_AGENT_COMMANDS`
+   * umfasst inzwischen alle Befehle des Protokolls, ein Test hält beide Listen
+   * deckungsgleich (`agent-commands.test.ts`). Der Code bleibt für künftige
+   * Ergänzungen, die zuerst in den Vertrag und erst später in den Agent
+   * wandern (Audit W3-2, contracts-validation-09).
+   *
    * 501: bewusst getrennt von einem Ausführungsfehler, damit das Backend
    * „noch nicht gebaut" von „hat nicht funktioniert" unterscheiden kann.
    */
@@ -629,13 +634,6 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Die Datei ist größer als das erlaubte Limit.',
   },
   /**
-   * Upload (`FILE_UPLOAD`) trifft auf einen bereits belegten Zielpfad, ohne dass
-   * `overwrite` gesetzt ist (Arbeitspaket P2, Datei-Manager). 409: Konflikt mit
-   * vorhandenem Zustand – erst mit ausdrücklichem Überschreiben oder anderem
-   * Namen wiederholbar. Bewusst getrennt von `AGENT_INVALID_PATH`: Der Pfad ist
-   * zulässig, er ist nur schon belegt.
-   */
-  /**
    * Der Agent konnte ein Archiv nicht entpacken (`FILE_EXTRACT`, P4). 422.
    *
    * Wie `BACKUP_CHECKSUM_MISMATCH`: Die Anfrage ist wohlgeformt und berechtigt,
@@ -647,6 +645,13 @@ export const ERROR_CATALOG = {
     httpStatus: 422,
     defaultMessage: 'Das Archiv konnte auf dem Homeserver nicht entpackt werden.',
   },
+  /**
+   * Upload (`FILE_UPLOAD`) trifft auf einen bereits belegten Zielpfad, ohne dass
+   * `overwrite` gesetzt ist (Arbeitspaket P2, Datei-Manager). 409: Konflikt mit
+   * vorhandenem Zustand – erst mit ausdrücklichem Überschreiben oder anderem
+   * Namen wiederholbar. Bewusst getrennt von `AGENT_INVALID_PATH`: Der Pfad ist
+   * zulässig, er ist nur schon belegt.
+   */
   AGENT_FILE_EXISTS: {
     httpStatus: 409,
     defaultMessage: 'Am Zielpfad existiert bereits eine Datei.',

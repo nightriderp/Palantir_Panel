@@ -47,13 +47,6 @@ export interface ServerAddress {
 }
 
 /**
- * Live-Messwerte eines Servers (Pflichtenheft §5.3, WebSocket-Kanal `STATS_UPDATE`).
- *
- * Bewusst getrennt vom `GameServerDto`: der DTO kommt per REST, die Messwerte
- * laufen über den Live-Kanal und fehlen, solange der Server nicht läuft.
- * Einzelne Werte sind `null`, wenn das jeweilige Spiel sie nicht liefert.
- */
-/**
  * Ein verbundener Spieler (WORK_STATUS.md, Gefundener Punkt 51).
  *
  * Bewusst nur der Name: Mehr gibt nicht jedes Spiel heraus, und mehr braucht
@@ -64,6 +57,13 @@ export interface ServerLivePlayer {
   name: string;
 }
 
+/**
+ * Live-Messwerte eines Servers (Pflichtenheft §5.3, WebSocket-Kanal `STATS_UPDATE`).
+ *
+ * Bewusst getrennt vom `GameServerDto`: der DTO kommt per REST, die Messwerte
+ * laufen über den Live-Kanal und fehlen, solange der Server nicht läuft.
+ * Einzelne Werte sind `null`, wenn das jeweilige Spiel sie nicht liefert.
+ */
 export interface ServerLiveStats {
   /**
    * CPU-Auslastung in **Prozent eines Kerns** (WORK_STATUS.md, Gefundener

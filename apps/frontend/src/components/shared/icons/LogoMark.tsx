@@ -27,11 +27,17 @@ export function LogoMark({ size = 34, className }: LogoMarkProps) {
         fill="none"
         aria-hidden
       >
+        {/*
+          Das Symbol ist in der Farbe des Seitenhintergrunds aus der
+          Verlaufskachel ausgespart – deshalb das Token `canvas` statt eines
+          literalen Hex-Werts (Audit W3-2, frontend-lib-17; Regel aus
+          `tailwind.config.ts`).
+        */}
         <path
           d="M8 4v16M16 4v16M6 12c2 2.5 4 3.5 6 3.5s4-1 6-3.5"
-          stroke="#0a0b0f"
           strokeWidth={2.5}
           strokeLinecap="round"
+          className="stroke-canvas"
         />
       </svg>
     </span>

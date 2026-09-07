@@ -8,6 +8,7 @@ import {
 import { createAgentJobs } from './jobs/index.js';
 import { createContainerRuntimeFromEnv } from './runtime/index.js';
 import { env } from './config/env.js';
+import { AGENT_VERSION } from './version.js';
 
 /**
  * Einstiegspunkt des Homeserver-Agents.
@@ -130,8 +131,5 @@ function main(): void {
     shutdown('uncaughtException', 1);
   });
 }
-
-/** Version aus package.json; nur für Diagnose im `hello`-Frame. */
-const AGENT_VERSION = '0.1.0';
 
 main();

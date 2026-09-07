@@ -186,16 +186,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   /**
    * CORS (angepasst in B1): Sitzungs-Cookies gehen nur mit `credentials` über
-   * die Grenze, und `credentials` verträgt keine Herkunft `*`. Ist
-   * `PUBLIC_WEB_URL` gesetzt – Frontend und API laufen üblicherweise auf
-   * verschiedenen Subdomains (Pflichtenheft §12.1) –, wird genau diese eine
-   * Herkunft erlaubt. Ohne die Variable bleibt es beim bisherigen
-   * `origin: false`, also gar keine fremde Herkunft.
+   * die Grenze, und `credentials` verträgt keine Herkunft `*`. Erlaubt ist
+   * deshalb genau eine Herkunft – das Frontend, das üblicherweise auf einer
+   * anderen Subdomain als die API liegt (Pflichtenheft §12.1).
+   *
+   * `PUBLIC_WEB_URL` ist immer gesetzt: `adressenAbleiten()` in `config/env.ts`
+   * füllt sie andernfalls aus `PALANTIR_DOMAIN` (Audit W3-2, backend-core-09).
+   * Der frühere Rückfall auf `origin: false` war damit toter Code und ist
+   * entfernt – wer CORS abschalten will, ändert nicht diese Zeile, sondern die
+   * Ableitung.
    */
-  await app.register(
-    cors,
-    env.PUBLIC_WEB_URL ? { origin: [env.PUBLIC_WEB_URL], credentials: true } : { origin: false },
-  );
+  await app.register(cors, { origin: [env.PUBLIC_WEB_URL], credentials: true });
 
   /*
    * Reihenfolge ist wichtig: Das Auth-Modul hängt seine `onRequest`-Hooks vor
