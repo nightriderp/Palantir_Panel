@@ -6,6 +6,7 @@ import {
   type SourceAllowlist,
   parseSourceAllowlist,
 } from '../modules/server-orchestration/source-allowlist.js';
+import { cookieDomainAbleiten } from './cookie-domain.js';
 
 /**
  * Zentrale `.env` im Repo-Root (Pflichtenheft §12.1): dieselbe Datei wird auf
@@ -30,6 +31,40 @@ const optionalEnvString = (): z.ZodType<string | undefined> =>
     .optional()
     .transform((value) => (value === undefined || value.trim().length === 0 ? undefined : value));
 
+/**
+ * Mindestlänge aller Geheimnisse (Audit W2-6, security-matrix-08).
+ *
+ * HS256 (Access-Token, Pflichtenheft §7) verlangt einen Schlüssel von 256 Bit;
+ * `jose` erzwingt das nicht und signiert klaglos mit `JWT_SECRET=test`. Ein
+ * solcher Schlüssel ist offline zu erraten, und wer ihn hat, fälscht
+ * Access-Token, OAuth-`state` und ALTCHA-Challenges. 32 Zeichen sind die
+ * Untergrenze; `scripts/setup.sh` erzeugt 64.
+ */
+const MIN_SECRET_LENGTH = 32;
+
+const geheimnisFehler = (name: string): string =>
+  `${name} muss mindestens ${String(MIN_SECRET_LENGTH)} Zeichen lang sein ` +
+  '(scripts/setup.sh erzeugt 64; siehe .env.example Abschnitt 4).';
+
+/** Optionales Geheimnis: fehlen darf es, zu kurz sein nicht. */
+const geheimnis = (name: string): z.ZodType<string | undefined> =>
+  z.string().min(MIN_SECRET_LENGTH, geheimnisFehler(name)).optional();
+
+/**
+ * Vorgabe der Proxy-Vertrauensliste (Audit W2-6, backend-core-10).
+ *
+ * Enthalten sind die Adressbereiche, aus denen im ausgelieferten Aufbau ein
+ * eigener Reverse-Proxy kommt: Loopback (Proxy direkt auf dem Host, §12.1) und
+ * die privaten Bereiche, aus denen Docker seine Netze vergibt – Traefik läuft
+ * im Netz `palantir` (`deploy/vps/docker-compose.yml`), dessen Adressbereich
+ * Docker selbst zuteilt (172.17–172.31, danach 192.168.x).
+ *
+ * Bewusst **nicht** enthalten: `10.10.0.0/24`, das WireGuard-Netz. Genau dort
+ * hängt der zusätzliche Host-Port des Backends, und ein Tunnel-Teilnehmer darf
+ * `request.ip` nicht setzen können.
+ */
+const TRUSTED_PROXY_DEFAULT = '127.0.0.1/8,::1/128,172.16.0.0/12,192.168.0.0/16';
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   BACKEND_HOST: z.string().default('0.0.0.0'),
@@ -37,18 +72,40 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
   /**
-   * Anzahl vertrauenswürdiger Reverse-Proxy-Hops vor dem Backend (Pflichtenheft §7).
+   * Adressen der eigenen Reverse-Proxys (Pflichtenheft §7; Audit W2-6,
+   * backend-core-10, security-matrix-10).
    *
-   * Fastifys `trustProxy` bestimmt, welche `X-Forwarded-For`-Adresse als
-   * `request.ip` gilt – und darauf keyt der Brute-Force-Schutz von
-   * Anmeldung/Registrierung/2FA. Ein pauschales `true` würde die vom Client
-   * gesetzte, linke Adresse übernehmen: Ein Angreifer könnte den Header pro
-   * Request fälschen und das IP-Rate-Limit vollständig umgehen. Deshalb eine
-   * feste Hop-Zahl, die genau der eigenen Proxy-Kette entspricht. Standard `1`
-   * passt zum Aufbau „ein Reverse-Proxy (Caddy/nginx) vor dem Backend" aus §12.1;
-   * `0` schaltet das Vertrauen ganz ab (direkte Verbindung ohne Proxy).
+   * Kommagetrennte IPv4-/IPv6-Adressen oder CIDR-Netze. Fastifys `trustProxy`
+   * bestimmt daraus, welche `X-Forwarded-For`-Adresse als `request.ip` gilt –
+   * und darauf keyt der Brute-Force-Schutz von Anmeldung/Registrierung/2FA.
+   *
+   * Ersetzt die frühere Hop-Zahl `TRUSTED_PROXY_HOPS`: Die vertraute dem
+   * unmittelbaren Peer, wer immer das war. Der Backend-Port hängt zusätzlich an
+   * der WireGuard-Adresse der VPS, also konnte jeder Tunnel-Teilnehmer die API
+   * direkt ansprechen und seinen eigenen `X-Forwarded-For` gültig machen.
+   *
+   * Läuft die Instanz hinter dem Cloudflare-Proxy (Pflichtenheft §13), gehören
+   * die Cloudflare-Bereiche hier **und** in `TRAEFIK_TRUSTED_IPS` – sonst gilt
+   * die Cloudflare-Edge als Client und alle Nutzer teilen sich ein Rate-Limit
+   * (infra-images-06). Ein leerer Eintrag in der `.env` bedeutet – wie überall
+   * hier – „nicht gesetzt" und zieht die Vorgabe; eine Liste ohne gültigen
+   * Eintrag gäbe es nur programmatisch und hieße „niemandem vertrauen".
    */
-  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
+  TRUSTED_PROXY_ADDRESSES: z
+    .string()
+    .default(TRUSTED_PROXY_DEFAULT)
+    .transform((value, ctx): SourceAllowlist => {
+      try {
+        return parseSourceAllowlist(value);
+      } catch (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: error instanceof Error ? error.message : String(error),
+        });
+
+        return z.NEVER;
+      }
+    }),
 
   /**
    * Verbindungs-URL für PostgreSQL (Pflichtenheft §3, .env.example Abschnitt 3).
@@ -77,7 +134,10 @@ const envSchema = z.object({
    * `/agent` lehnt dann aber **jede** Verbindung ab – ein offener Agent-Kanal
    * wäre vollständiger Zugriff auf den Homeserver (§18).
    */
-  AGENT_TOKEN: optionalEnvString(),
+  AGENT_TOKEN: optionalEnvString().refine(
+    (value) => value === undefined || value.length >= MIN_SECRET_LENGTH,
+    { message: geheimnisFehler('AGENT_TOKEN') },
+  ),
   /**
    * Zulässige Quelladressen des Agent-Kanals `/agent` (Fundpunkt 121, W0-2).
    *
@@ -358,8 +418,8 @@ const envSchema = z.object({
   // eingebaut wäre – ein hartkodiertes Fallback-Secret wäre eine Hintertür
   // (CLAUDE.md §2).
 
-  /** Signaturschlüssel des kurzlebigen Access-JWT (HS256). */
-  JWT_SECRET: z.string().min(1).optional(),
+  /** Signaturschlüssel des kurzlebigen Access-JWT (HS256), mindestens 32 Zeichen. */
+  JWT_SECRET: geheimnis('JWT_SECRET'),
   /** Lebensdauer des Access-Tokens, z. B. `15m`. */
   JWT_ACCESS_TOKEN_TTL: z.string().min(1).default('15m'),
   /** Lebensdauer des opaken Refresh-Tokens, z. B. `30d`. */
@@ -370,9 +430,18 @@ const envSchema = z.object({
    * bereits geprüften Zugangsdaten, bis der Code eingegeben ist.
    */
   TWO_FACTOR_TOKEN_TTL: z.string().min(1).default('5m'),
-  /** Schlüssel, mit dem das OAuth-`state`-Cookie signiert wird. */
-  CSRF_SECRET: z.string().min(1).optional(),
-  /** Cookie-Domain der Sitzungs-Cookies; leer = Host des Requests. */
+  /** Schlüssel, mit dem das OAuth-`state`-Cookie signiert wird; mindestens 32 Zeichen. */
+  CSRF_SECRET: geheimnis('CSRF_SECRET'),
+  /**
+   * Cookie-Domain der Sitzungs-Cookies.
+   *
+   * Leer lassen: Die Vorgabe wird aus den tatsächlichen Panel-Adressen
+   * abgeleitet (`cookieDomainAbleiten`) und ist damit so eng wie möglich –
+   * früher stand hier `PALANTIR_DOMAIN`, was die Cookies auch an die
+   * nutzergesteuerten Spielserver-Hosts `<sub>.<PALANTIR_DOMAIN>` schickte
+   * (Audit W2-6, security-matrix-03). Ein von Hand gesetzter Wert gilt
+   * unverändert weiter.
+   */
   COOKIE_DOMAIN: z.string().optional(),
   /**
    * `Secure`-Flag der Sitzungs-Cookies (Pflichtenheft §7).
@@ -380,7 +449,8 @@ const envSchema = z.object({
    * Standard `true`. Ausschließlich für lokale Entwicklung ohne TLS auf `false`
    * zu setzen – über HTTP schickt der Browser ein `Secure`-Cookie sonst nie.
    * Bewusst als Variable statt als stille Abhängigkeit von `NODE_ENV`, damit im
-   * Betrieb sichtbar bleibt, was gilt.
+   * Betrieb sichtbar bleibt, was gilt; mit `NODE_ENV=production` lehnt die
+   * Prüfung unten den Wert `false` aber ab (spec-pflichtenheft-10).
    */
   COOKIE_SECURE: z
     .enum(['true', 'false'])
@@ -404,8 +474,8 @@ const envSchema = z.object({
    */
   PUBLIC_API_URL: z.string().url().optional(),
 
-  /** HMAC-Schlüssel der ALTCHA-Challenges (Pflichtenheft §7). */
-  ALTCHA_HMAC_KEY: z.string().min(1).optional(),
+  /** HMAC-Schlüssel der ALTCHA-Challenges (Pflichtenheft §7), mindestens 32 Zeichen. */
+  ALTCHA_HMAC_KEY: geheimnis('ALTCHA_HMAC_KEY'),
   /** Obere Grenze der Zufallszahl – höher bedeutet mehr Rechenaufwand. */
   ALTCHA_COMPLEXITY: z.coerce.number().int().positive().default(100000),
   /** Gültigkeitsdauer einer Challenge in Sekunden. */
@@ -432,6 +502,29 @@ const envSchema = z.object({
 });
 
 /**
+ * Prüfungen, die mehr als eine Variable brauchen (Audit W2-6,
+ * spec-pflichtenheft-10).
+ *
+ * `COOKIE_SECURE=false` ist laut Pflichtenheft §7 **ausschließlich** für die
+ * lokale Entwicklung ohne TLS gedacht. Eine aus der Entwicklung übernommene
+ * `.env` startete bisher auch mit `NODE_ENV=production` klaglos – und setzte
+ * Access-, Refresh- und CSRF-Cookie ohne `Secure`. Lieber ein Startabbruch mit
+ * klarer Meldung als eine Instanz, die still ohne diesen Schutz läuft.
+ */
+const envSchemaMitPrüfungen = envSchema.superRefine((werte, ctx) => {
+  if (werte.NODE_ENV === 'production' && !werte.COOKIE_SECURE) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['COOKIE_SECURE'],
+      message:
+        'COOKIE_SECURE=false ist nur außerhalb der Produktion zulässig ' +
+        '(Pflichtenheft §7): ohne Secure-Flag gehen die Sitzungs-Cookies auch über HTTP. ' +
+        'Entweder COOKIE_SECURE=true setzen oder NODE_ENV umstellen.',
+    });
+  }
+});
+
+/**
  * In einer `.env` bedeutet `SCHLUESSEL=` „nicht gesetzt", nicht „leerer Wert".
  * `dotenv` liefert dafür aber einen leeren String. Ohne diese Normalisierung
  * würden Vorgabewerte nicht greifen, abgeleitete Adressen leer bleiben und
@@ -449,7 +542,20 @@ export function leereWerteAlsUngesetzt(
   );
 }
 
-const parsed = envSchema.safeParse(leereWerteAlsUngesetzt(process.env));
+/**
+ * Liest einen Satz Umgebungswerte gegen das vollständige Schema.
+ *
+ * Ausgelagert und exportiert, damit die Prüfungen (Mindestlängen der
+ * Geheimnisse, `COOKIE_SECURE` in Produktion) ohne Neuladen des Moduls
+ * testbar sind (CLAUDE.md §4).
+ */
+export function umgebungLesen(
+  werte: Record<string, string | undefined>,
+): z.SafeParseReturnType<unknown, z.infer<typeof envSchema>> {
+  return envSchemaMitPrüfungen.safeParse(leereWerteAlsUngesetzt(werte));
+}
+
+const parsed = umgebungLesen(process.env);
 
 if (!parsed.success) {
   const details = parsed.error.issues
@@ -484,7 +590,19 @@ export function adressenAbleiten(werte: z.infer<typeof envSchema>) {
     ...werte,
     PUBLIC_WEB_URL: webUrl,
     PUBLIC_API_URL: apiUrl,
-    COOKIE_DOMAIN: werte.COOKIE_DOMAIN ?? domain,
+    /*
+     * Nicht mehr `domain` als Vorgabe (Audit W2-6, security-matrix-03): Ein
+     * `Domain`-Attribut gilt samt aller Subdomains, und unter
+     * `<sub>.<PALANTIR_DOMAIN>` laufen die Spielserver-Container mit fremdem
+     * Code. Abgeleitet wird deshalb aus den echten Panel-Adressen – bei
+     * getrennten Hosts (`beispiel.tld` + `api.beispiel.tld`) ergibt das
+     * denselben Wert wie bisher, bei einem gemeinsamen Host (Entwicklung auf
+     * `localhost`) gar keine Domain, und bei der empfohlenen Aufteilung eine
+     * Ebene tiefer (`panel.beispiel.tld` + `api.panel.beispiel.tld`) genau die
+     * Panel-Ebene. Wechselt der Wert, gelten die im Browser liegenden Cookies
+     * nicht mehr: der Bestand meldet sich einmalig neu an.
+     */
+    COOKIE_DOMAIN: werte.COOKIE_DOMAIN ?? cookieDomainAbleiten(webUrl, apiUrl),
     DISCORD_REDIRECT_URI: werte.DISCORD_REDIRECT_URI ?? `${apiUrl}/auth/discord/callback`,
     TWITCH_REDIRECT_URI: werte.TWITCH_REDIRECT_URI ?? `${apiUrl}/auth/twitch/callback`,
     STEAM_RETURN_URL: werte.STEAM_RETURN_URL ?? `${apiUrl}/auth/steam/callback`,

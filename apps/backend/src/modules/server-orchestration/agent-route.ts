@@ -83,9 +83,9 @@ export function registerAgentRoute(app: FastifyInstance, options: AgentRouteOpti
        *
        * Geprüft wird die Adresse der TCP-Gegenstelle
        * (`request.socket.remoteAddress`), bewusst nicht `request.ip`: Das folgt
-       * mit `TRUSTED_PROXY_HOPS=1` (`server.ts`) einem `X-Forwarded-For`-Header
-       * der direkt verbundenen Gegenstelle – auf dem Agent-Weg steht aber kein
-       * Proxy, dessen Header hier gelten dürfte. Der Agent kommt durch den
+       * dem `X-Forwarded-For` jeder Gegenstelle aus `TRUSTED_PROXY_ADDRESSES`
+       * (`server.ts`) – auf dem Agent-Weg steht aber kein Proxy, dessen Header
+       * hier gelten dürfte. Der Agent kommt durch den
        * WireGuard-Tunnel an den Host-Port `WIREGUARD_VPS_IP:4000`
        * (`deploy/vps/docker-compose.yml`); Docker reicht ihn per DNAT in den
        * Container und lässt die Absenderadresse stehen, die Gegenstelle ist
