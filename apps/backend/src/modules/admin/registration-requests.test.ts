@@ -124,10 +124,17 @@ function build(
   const auditRepository = createFakeAuditRepository();
   const repository = createFakeRepository(seed);
   const roles = createFakeRoleService();
+  /** Mitschrift der Konten, deren Live-Verbindungen geschlossen werden sollen. */
+  const geschlossen: string[] = [];
   const service = createRegistrationRequestService({
     repository,
     roles,
     audit: createAuditService(auditRepository),
+    sessions: {
+      blocked: (userId) => {
+        geschlossen.push(userId);
+      },
+    },
     ...(options.serverCounts === undefined
       ? {}
       : {
@@ -140,7 +147,7 @@ function build(
         }),
   });
 
-  return { service, repository, roles, auditRepository };
+  return { service, repository, roles, auditRepository, geschlossen };
 }
 
 const adminCtx = () => ctxWith(actorWith('user.manage'));
@@ -257,6 +264,29 @@ describe('Freischalt-Warteliste', () => {
       action: 'user.banned',
       metadata: { reason: 'Spam' },
     });
+  });
+
+  /**
+   * Audit W2-2, `backend-community-visibility-03`: Die Sperre wirkte bisher nur
+   * je Request. Ein bereits offener Live-Kanal des Kontos lief weiter und stellte
+   * weiter private Nachrichten zu.
+   */
+  it('meldet die Sperre weiter, damit offene Live-Verbindungen geschlossen werden', async () => {
+    const { service, geschlossen } = build([waitlistUser()]);
+
+    await service.block(adminCtx(), USER_ID, blockRegistrationRequestInputSchema.parse({}));
+
+    expect(geschlossen).toEqual([USER_ID]);
+  });
+
+  it('meldet nichts weiter, wenn die Sperre gar nicht zustande kommt', async () => {
+    const { service, geschlossen } = build([waitlistUser({ banned: true })]);
+
+    await expect(
+      service.block(adminCtx(), USER_ID, blockRegistrationRequestInputSchema.parse({})),
+    ).rejects.toMatchObject({ code: 'REGISTRATION_REQUEST_INVALID_STATE' });
+
+    expect(geschlossen).toEqual([]);
   });
 
   it('schützt das Owner-Konto vor dem Sperren (Lastenheft §2)', async () => {

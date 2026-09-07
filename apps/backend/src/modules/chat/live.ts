@@ -19,9 +19,32 @@
 
 import { type ChatEventPayloads, type ChatServerEventFrame } from '@palantir/contracts';
 
+/**
+ * Close-Code „nicht (mehr) angemeldet".
+ *
+ * Dieselbe Zahl wie beim Inbox-Kanal (`NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED`
+ * in `@palantir/contracts`), beim Agent-Kanal und im Frontend
+ * (`lib/live/chatChannel.ts`): Aus dem privaten Bereich, damit der Browser
+ * „nicht angemeldet" von „Backend gerade weg" unterscheiden und in diesem Fall
+ * auf den Wiederverbindungsversuch verzichten kann. Hier als benannte Konstante,
+ * damit Handshake-Abweisung und {@link ChatLiveHub.closeAll} dieselbe Zahl
+ * benutzen (der Vertrag führt bislang nur die Konstante des Inbox-Kanals –
+ * „Gefundener Punkt" 91).
+ */
+export const CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED = 4401;
+
 /** Der Ausschnitt eines WebSockets, den die Zustellung braucht. */
 export interface ChatSocket {
   send(data: string): void;
+  /**
+   * Beendet die Verbindung.
+   *
+   * Gehört zur Schnittstelle, weil der Verteiler die Sockets eines Kontos von
+   * sich aus schließen können muss, sobald dessen Sitzungen ungültig werden
+   * (Sperre, Remote-Logout) – ohne das lief ein offener Socket weiter
+   * (Audit W2-2, `backend-community-visibility-03`).
+   */
+  close(code: number, reason?: string): void;
 }
 
 /** Zustellung an genau ein Konto. */
@@ -99,6 +122,45 @@ export class ChatLiveHub implements ChatDelivery {
         // Verbindung ist bereits weg; das `close`-Ereignis meldet sie ab.
       }
     }
+  }
+
+  /**
+   * Schließt **alle** Verbindungen eines Kontos und meldet sie ab; liefert
+   * zurück, wie viele es waren.
+   *
+   * Der Anschluss für Sperre und Sitzungswiderruf (Audit W2-2,
+   * `backend-community-visibility-03`): Die Sitzung wurde bisher nur im
+   * Handshake geprüft, ein einmal offener Socket bekam danach weiter private
+   * Nachrichten – auch nachdem jeder REST-Aufruf desselben Kontos längst
+   * abgelehnt wurde. Wer das auslöst, entscheidet `server.ts`; dieser Verteiler
+   * kennt weder Sitzungen noch Sperren.
+   *
+   * Ein Fehler beim Schließen beendet den Durchlauf nicht – die übrigen
+   * Verbindungen müssen trotzdem weg.
+   */
+  closeAll(userId: string, code: number, reason = 'Sitzung beendet.'): number {
+    const sockets = this.#sockets.get(userId);
+
+    if (!sockets || sockets.size === 0) {
+      return 0;
+    }
+
+    const open = [...sockets];
+
+    // Erst abmelden, dann schließen: Das `close`-Ereignis meldet dieselbe
+    // Verbindung gleich noch einmal ab – die Abmeldung ist idempotent, aber
+    // eine Zustellung dazwischen darf es nicht mehr geben.
+    this.#sockets.delete(userId);
+
+    for (const socket of open) {
+      try {
+        socket.close(code, reason);
+      } catch {
+        // Verbindung ist bereits weg; mehr als schließen war nicht zu tun.
+      }
+    }
+
+    return open.length;
   }
 
   /** Offene Verbindungen eines Kontos – für Tests und Diagnose. */

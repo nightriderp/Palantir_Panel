@@ -36,6 +36,8 @@ let roles: FakeRoleRepository;
 let now: Date;
 let service: AuthService;
 let emittedEvents: { event: string; payload: Record<string, unknown> }[];
+/** Konten, deren Sitzungen widerrufen wurden – Anschluss fuer B7 (Audit W2-2). */
+let revokedUserIds: string[];
 
 function build(
   options: {
@@ -48,6 +50,7 @@ function build(
   roles = createFakeRoleRepository([{ name: 'Nutzer', permissions: ['server.create'] }]);
   now = new Date('2026-08-26T12:00:00Z');
   emittedEvents = [];
+  revokedUserIds = [];
   service = new AuthService({
     repository,
     roles,
@@ -61,6 +64,11 @@ function build(
     events: {
       emit: (event, payload): void => {
         emittedEvents.push({ event, payload: { ...payload } });
+      },
+    },
+    sessions: {
+      revoked: (userId): void => {
+        revokedUserIds.push(userId);
       },
     },
   });
@@ -519,6 +527,28 @@ describe('Sitzungen und Token-Rotation (Pflichtenheft §7)', () => {
     await service.logoutByRefreshToken('unbekannt');
 
     expect(repository.sessions[0]?.revokedAt).toBeNull();
+  });
+
+  /**
+   * Audit W2-2, `backend-community-visibility-03`: Ein offener Live-Kanal
+   * ueberlebte den Widerruf und bekam weiter private Nachrichten. B1 kennt den
+   * Chat nicht – es meldet den Widerruf, geschlossen wird an anderer Stelle.
+   */
+  it('meldet den Widerruf aller Sitzungen weiter', async () => {
+    await service.refresh(refreshToken, CONTEXT);
+
+    // Erst nach der Kulanzfrist von 30 s (`REFRESH_ROTATION_GRACE_MS`, W2-1)
+    // gilt der alte Token als gestohlen.
+    now = new Date(now.getTime() + 31_000);
+    await expectErrorCode(service.refresh(refreshToken, CONTEXT), 'AUTH_SESSION_EXPIRED');
+
+    expect(revokedUserIds).toEqual([userId]);
+  });
+
+  it('meldet beim Einzel-Logout nichts – der Verteiler adressiert je Konto', async () => {
+    await service.revokeSession(userId, sessionId);
+
+    expect(revokedUserIds).toEqual([]);
   });
 
   it('merkt sich den ersetzten Hash, damit ein alter Token erkennbar bleibt', async () => {

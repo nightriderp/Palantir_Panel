@@ -102,6 +102,7 @@ export {
 export { type LinkedMethodRow, profileUrlFor, toLinkedAccountProfile } from './linked-profiles.js';
 
 export {
+  type AccountBlockSink,
   type RegistrationRequestDependencies,
   type RegistrationRequestRepository,
   type RegistrationRequestService,

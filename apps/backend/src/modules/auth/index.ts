@@ -32,7 +32,9 @@ export {
   type LoginOutcome,
   type ProviderLoginOutcome,
   type RequestContext,
+  type SessionRevocationSink,
   noopAuthEventSink,
+  noopSessionRevocationSink,
   sanitizeDisplayName,
 } from './service.js';
 

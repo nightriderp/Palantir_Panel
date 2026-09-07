@@ -7,13 +7,32 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ChatLiveHub, conversationReadFrame, messageSentFrame } from './live.js';
+import {
+  CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  ChatLiveHub,
+  conversationReadFrame,
+  messageSentFrame,
+} from './live.js';
 import { ALEX, BEA } from './test-doubles.js';
 
-function fakeSocket(): { sent: string[]; send: (data: string) => void } {
-  const sent: string[] = [];
+interface FakeSocket {
+  readonly sent: string[];
+  /** Mitschrift der `close`-Aufrufe – `closeAll` muss Code und Grund durchreichen. */
+  readonly closed: { code: number; reason: string | undefined }[];
+  send(data: string): void;
+  close(code: number, reason?: string): void;
+}
 
-  return { sent, send: (data) => sent.push(data) };
+function fakeSocket(): FakeSocket {
+  const sent: string[] = [];
+  const closed: { code: number; reason: string | undefined }[] = [];
+
+  return {
+    sent,
+    closed,
+    send: (data) => sent.push(data),
+    close: (code, reason) => closed.push({ code, reason }),
+  };
 }
 
 const FRAME = messageSentFrame(
@@ -88,8 +107,11 @@ describe('ChatLiveHub', () => {
   it('stellt weiter zu, wenn eine Verbindung beim Senden scheitert', () => {
     const hub = new ChatLiveHub();
     const kaputt = {
-      send: () => {
+      send: (): never => {
         throw new Error('socket closed');
+      },
+      close: (): void => {
+        // für diesen Test ohne Bedeutung
       },
     };
     const heil = fakeSocket();
@@ -109,6 +131,87 @@ describe('ChatLiveHub', () => {
     expect(() => {
       hub.deliver(ALEX, FRAME);
     }).not.toThrow();
+  });
+});
+
+/**
+ * Sperre und Sitzungswiderruf am offenen Kanal (Audit W2-2,
+ * `backend-community-visibility-03`).
+ *
+ * Vorher überlebte ein einmal angemeldeter Socket beides und bekam weiter
+ * private Nachrichten, obwohl jeder REST-Aufruf desselben Kontos längst
+ * abgelehnt wurde.
+ */
+describe('ChatLiveHub.closeAll', () => {
+  it('schließt bei einer Kontosperre alle Verbindungen des Kontos mit dem Code', () => {
+    const hub = new ChatLiveHub();
+    const handy = fakeSocket();
+    const laptop = fakeSocket();
+
+    hub.register(BEA, handy);
+    hub.register(BEA, laptop);
+
+    expect(hub.closeAll(BEA, CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, 'Konto gesperrt.')).toBe(2);
+
+    expect(handy.closed).toEqual([
+      { code: CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, reason: 'Konto gesperrt.' },
+    ]);
+    expect(laptop.closed).toEqual([
+      { code: CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, reason: 'Konto gesperrt.' },
+    ]);
+  });
+
+  it('stellt nach einem Sitzungswiderruf nichts mehr zu', () => {
+    const hub = new ChatLiveHub();
+    const socket = fakeSocket();
+
+    hub.register(BEA, socket);
+    hub.closeAll(BEA, CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED);
+
+    expect(hub.connectionCount(BEA)).toBe(0);
+
+    hub.deliver(BEA, FRAME);
+
+    expect(socket.sent).toHaveLength(0);
+    expect(socket.closed[0]?.code).toBe(CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED);
+  });
+
+  it('lässt die Verbindungen anderer Konten unberührt', () => {
+    const hub = new ChatLiveHub();
+    const alex = fakeSocket();
+    const bea = fakeSocket();
+
+    hub.register(ALEX, alex);
+    hub.register(BEA, bea);
+    hub.closeAll(BEA, CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED);
+
+    expect(alex.closed).toHaveLength(0);
+    expect(hub.connectionCount(ALEX)).toBe(1);
+  });
+
+  it('schließt die übrigen Verbindungen, auch wenn eine dabei scheitert', () => {
+    const hub = new ChatLiveHub();
+    const kaputt = {
+      send: (): void => {
+        // für diesen Test ohne Bedeutung
+      },
+      close: (): never => {
+        throw new Error('socket already gone');
+      },
+    };
+    const heil = fakeSocket();
+
+    hub.register(BEA, kaputt);
+    hub.register(BEA, heil);
+
+    expect(() => hub.closeAll(BEA, CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED)).not.toThrow();
+    expect(heil.closed).toHaveLength(1);
+  });
+
+  it('bleibt wirkungslos, wenn das Konto keine Verbindung hat', () => {
+    const hub = new ChatLiveHub();
+
+    expect(hub.closeAll(ALEX, CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED)).toBe(0);
   });
 });
 

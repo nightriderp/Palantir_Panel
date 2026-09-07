@@ -8,7 +8,11 @@ import { createTrustProxy } from './config/trusted-proxy.js';
 import { getDb } from './db/index.js';
 import { registerErrorHandler } from './error-handler.js';
 import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
-import { createChatModule, registerChatRoutes } from './modules/chat/index.js';
+import {
+  CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  createChatModule,
+  registerChatRoutes,
+} from './modules/chat/index.js';
 import {
   type BackupEventName,
   type BackupEventPayloads,
@@ -41,10 +45,15 @@ import {
   type AuthEventSink,
   type AuthModuleOptions,
   type AuthService,
+  type SessionRevocationSink,
+  isAuthError,
   noopAuthEventSink,
   registerAuthModule,
 } from './modules/auth/index.js';
-import { registerNotifications } from './modules/notifications/index.js';
+import {
+  CLOSE_CODE_UNAUTHORIZED as NOTIFICATION_CLOSE_CODE_UNAUTHORIZED,
+  registerNotifications,
+} from './modules/notifications/index.js';
 import {
   type PermissionActor,
   createDrizzleRoleRepository,
@@ -209,10 +218,25 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     emit: (event, payload) => notificationEventSink.emit(event, payload),
   };
 
+  /*
+   * Dieselbe späte Weiterleitung wie bei der Notification-Senke, diesmal in die
+   * Gegenrichtung (Audit W2-2, `backend-community-visibility-03`): B1 (Widerruf
+   * aller Sitzungen) und B8 (Kontosperre) melden, dass die Sitzungen eines
+   * Kontos nicht mehr gelten; B7 schließt daraufhin dessen offene
+   * Live-Verbindungen. Der Chat-Verteiler entsteht erst mit den
+   * Datenbank-Modulen weiter unten – bis dahin verwirft die Weiterleitung still,
+   * und ohne offene Verbindung gibt es ohnehin nichts zu schließen.
+   */
+  let closeLiveConnections: ((userId: string) => void) | null = null;
+  const sessionRevocationSink: SessionRevocationSink = {
+    revoked: (userId) => closeLiveConnections?.(userId),
+  };
+
   if (auth !== false) {
     authService = await registerAuthModule(app, {
       ...(auth === true ? {} : auth),
       events: authEventSink,
+      sessions: sessionRevocationSink,
       selfRegistration: async () => (await instanceSettings?.selfRegistrationEnabled()) ?? true,
     });
   }
@@ -277,6 +301,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const admin = createAdminModule({
       db,
       roles,
+      // Kontosperre schließt die offenen Live-Verbindungen des Kontos
+      // (Audit W2-2) – über dieselbe Weiterleitung wie der Sitzungswiderruf.
+      sessions: { blocked: (userId) => closeLiveConnections?.(userId) },
       nodePlacements: createServerNodePlacementSource(db),
       nodeUsage: createNodeUsageSource({
         nodes: createResourceHostNodeRepository(db),
@@ -440,6 +467,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     // (Gefundener Punkt 70, siehe Weiterleitung oben).
     ensureServerChat = (serverId) => chat.chat.ensureServerConversation(serverId);
 
+    /*
+     * Ab hier wirken Sperre (B8) und Sitzungswiderruf (B1) auch auf offene
+     * Live-Verbindungen (Audit W2-2). Der Close-Code ist derselbe wie bei der
+     * Abweisung im Handshake: Das Frontend erkennt daran „nicht mehr angemeldet"
+     * und versucht keine neue Verbindung.
+     */
+    closeLiveConnections = (userId) => {
+      chat.live.closeAll(userId, CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, 'Sitzung beendet.');
+      // Der Inbox-Kanal hängt genauso am Konto und bekommt dieselbe Behandlung.
+      notifications.hub.closeAll(userId, NOTIFICATION_CLOSE_CODE_UNAUTHORIZED, 'Sitzung beendet.');
+    };
+
     await app.register(async (instance) => {
       registerChatRoutes(instance, {
         chat: chat.chat,
@@ -450,6 +489,36 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           request.authUser
             ? { id: request.authUser.id, displayName: request.authUser.displayName }
             : null,
+        /*
+         * Wiederkehrende Prüfung am offenen Kanal: Sperre und Widerruf schlagen
+         * über die Senke oben sofort durch, diese Prüfung fängt alles Übrige ab
+         * (abgelaufene Sitzung, Widerruf ohne Senke, verpasste Meldung).
+         */
+        isSessionValid: async (request) => {
+          const sessionId = request.authSessionId;
+
+          if (!authService || sessionId === null) {
+            return true;
+          }
+
+          try {
+            await authService.resolveSession(sessionId);
+
+            return true;
+          } catch (error: unknown) {
+            /*
+             * Nur ein Urteil von B1 („abgelaufen", „gesperrt") beendet die
+             * Verbindung. Ein Infrastrukturfehler (Datenbank kurz weg) fliegt
+             * weiter und lässt den Kanal offen – die Route behandelt ihn als
+             * „diesmal nichts feststellbar".
+             */
+            if (isAuthError(error)) {
+              return false;
+            }
+
+            throw error;
+          }
+        },
       });
     });
 

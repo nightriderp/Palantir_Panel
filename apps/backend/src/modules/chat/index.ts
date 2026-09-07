@@ -105,6 +105,7 @@ export {
 export {
   type ChatDelivery,
   type ChatSocket,
+  CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
   ChatLiveHub,
   conversationCreatedFrame,
   messageDeletedFrame,

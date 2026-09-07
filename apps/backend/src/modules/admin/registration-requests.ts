@@ -32,7 +32,13 @@ import type {
   BlockRegistrationRequestInput,
   RegistrationRequestQuery,
 } from '@palantir/validation';
-import { type PermissionActor, type RoleService, hasPermission } from '../rbac/index.js';
+import {
+  type PermissionActor,
+  type RoleService,
+  hasNonGuestRole,
+  hasPermission,
+  isAwaitingApproval,
+} from '../rbac/index.js';
 import { type AuditService, entryFor } from './audit.js';
 import type { AdminContext } from './context.js';
 import { AdminError } from './errors.js';
@@ -87,13 +93,14 @@ export function statusOf(user: WaitlistUserRecord): RegistrationRequestStatus {
     return 'blocked';
   }
 
-  if (user.isOwner) {
-    return 'approved';
-  }
-
-  const hasOnlyGuestRole = user.roles.every((role) => role.name === GUEST_ROLE_NAME);
-
-  return hasOnlyGuestRole ? 'pending' : 'approved';
+  // Dieselbe Regel wie in B1 und B7 – sie steht in B2 (`rbac/approval.ts`),
+  // damit sie nicht ein viertes Mal auseinanderläuft (Audit W2-2).
+  return isAwaitingApproval({
+    isOwner: user.isOwner,
+    hasNonGuestRole: hasNonGuestRole(user.roles),
+  })
+    ? 'pending'
+    : 'approved';
 }
 
 export function computeRegistrationRequestPermissions(
@@ -172,6 +179,20 @@ export interface QuotaSummaryReader {
   ): Promise<ReadonlyMap<string, RegistrationRequestQuota>>;
 }
 
+/**
+ * Senke für „dieses Konto ist gesperrt" (Audit W2-2,
+ * `backend-community-visibility-03`).
+ *
+ * B8 kennt weder Chat noch Live-Kanal; es meldet nur die Sperre. Wer daran hängt
+ * – der Chat-Verteiler schließt die offenen Sockets des Kontos – entscheidet
+ * `server.ts`. Ohne diese Meldung lief ein bereits offener Socket nach der
+ * Sperre weiter und stellte weiter private Nachrichten zu, während jeder
+ * REST-Aufruf desselben Kontos schon abgelehnt wurde.
+ */
+export interface AccountBlockSink {
+  blocked(userId: string): void;
+}
+
 export interface RegistrationRequestDependencies {
   readonly repository: RegistrationRequestRepository;
   /** Rollenverwaltung aus B2 – die Zuweisung läuft nicht an ihr vorbei. */
@@ -193,6 +214,13 @@ export interface RegistrationRequestDependencies {
    * `serverCount` weg, die Liste funktioniert weiter.
    */
   readonly serverCounts?: ServerCountReader;
+  /**
+   * Empfänger der Sperre (B7 schließt daraufhin die Live-Sockets des Kontos).
+   *
+   * Optional wie die übrigen Anschlüsse: Ohne sie ändert sich an der Sperre
+   * selbst nichts.
+   */
+  readonly sessions?: AccountBlockSink;
 }
 
 function requireUserManage(actor: PermissionActor): void {
@@ -341,6 +369,18 @@ export function createRegistrationRequestService(
           metadata: input.reason ? { reason: input.reason } : {},
         }),
       );
+
+      /*
+       * Erst nachdem die Sperre steht: Offene Live-Verbindungen des Kontos
+       * schließen (Audit W2-2). Ein Fehler dabei darf die Sperre nicht
+       * zurücknehmen – sie gilt bereits, der Socket fällt spätestens mit der
+       * wiederkehrenden Sitzungsprüfung.
+       */
+      try {
+        deps.sessions?.blocked(user.id);
+      } catch {
+        // bewusst verschluckt, siehe oben
+      }
 
       return reload(ctx, user.id);
     },

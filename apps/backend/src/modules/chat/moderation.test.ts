@@ -114,6 +114,58 @@ describe('Melden', () => {
     ).rejects.toMatchObject({ code: 'MESSAGE_REPORT_NOT_ALLOWED' });
   });
 
+  /**
+   * Audit W2-2, `backend-community-01` (= `backend-community-visibility-01`):
+   * Der Melde-Endpunkt war der Weg, auf dem der Inhalt einer zurückgenommenen
+   * Nachricht wieder lesbar wurde – `reportedContent` kopiert ihn aus der
+   * Datenbank, und das Antwort-DTO gibt ihn dem Melder zurück. Pflichtenheft
+   * §15 sichert das Gegenteil zu; `canReport: false` kündigte die Regel im DTO
+   * schon an, der Dienst setzte sie nicht durch.
+   */
+  it('lehnt die Meldung einer vom Absender gelöschten Nachricht ab', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const nachricht = await chat.sendMessage(ctxFor(ALEX), conversation.id, {
+      content: 'Etwas Unschönes',
+    });
+
+    await chat.deleteOwnMessage(ctxFor(ALEX), nachricht.id);
+
+    await expect(
+      moderation.reportMessage(ctxFor(BEA), nachricht.id, 'Beleidigung'),
+    ).rejects.toMatchObject({ code: 'MESSAGE_REPORT_NOT_ALLOWED' });
+  });
+
+  it('hebt den Inhalt einer gelöschten Nachricht nicht in die Moderationsansicht', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const nachricht = await chat.sendMessage(ctxFor(ALEX), conversation.id, {
+      content: 'Etwas Unschönes',
+    });
+
+    await chat.deleteOwnMessage(ctxFor(ALEX), nachricht.id);
+    await expect(moderation.reportMessage(ctxFor(BEA), nachricht.id, 'Grund')).rejects.toThrow();
+
+    const seite = await moderation.listReports(MODERATOR, OFFEN);
+
+    expect(seite.total).toBe(0);
+    // `reportedContent` stammt nie aus einer gelöschten Nachricht.
+    expect(JSON.stringify(seite)).not.toContain('Unschönes');
+  });
+
+  it('lehnt die Meldung auch nach einer Moderationslöschung ab', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const nachricht = await chat.sendMessage(ctxFor(ALEX), conversation.id, {
+      content: 'Etwas Unschönes',
+    });
+    const meldung = await moderation.reportMessage(ctxFor(BEA), nachricht.id, 'Beleidigung');
+
+    await moderation.resolveReport(MODERATOR, meldung.id, { action: 'deleteMessage' });
+
+    // Auch der Absender selbst kommt so nicht mehr an den Text heran.
+    await expect(
+      moderation.reportMessage(ctxFor(BEA), nachricht.id, 'Nochmal'),
+    ).rejects.toMatchObject({ code: 'MESSAGE_REPORT_NOT_ALLOWED' });
+  });
+
   it('lehnt die zweite Meldung derselben Person ab', async () => {
     const { messageId } = await gemeldeteNachricht();
 
