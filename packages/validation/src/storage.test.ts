@@ -41,10 +41,21 @@ describe('Ergebnis von GET_STORAGE_BREAKDOWN (Pflichtenheft §16)', () => {
     expect(result.success).toBe(false);
   });
 
-  it('lehnt eine serverId ab, die keine UUID ist', () => {
+  it('nimmt einen fremden Ordnernamen als serverId an (Audit contracts-validation-02)', () => {
+    // Der Agent meldet den Ordnernamen so, wie er auf der Platte steht. Ein von
+    // Hand angelegter Ordner darf nicht den ganzen Scan zerlegen.
+    const result = getStorageBreakdownResultSchema.parse({
+      ...ergebnis,
+      entries: [{ ...ergebnis.entries[0], serverId: 'alt-server' }],
+    });
+
+    expect(result.entries[0]?.serverId).toBe('alt-server');
+  });
+
+  it('lehnt eine leere serverId ab – „nicht zuordenbar" heißt null', () => {
     const result = getStorageBreakdownResultSchema.safeParse({
       ...ergebnis,
-      entries: [{ ...ergebnis.entries[0], serverId: 'server-1' }],
+      entries: [{ ...ergebnis.entries[0], serverId: '' }],
     });
 
     expect(result.success).toBe(false);

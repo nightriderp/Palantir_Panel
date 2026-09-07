@@ -75,6 +75,8 @@ const AUDIT_ACTION_LABELS: Partial<Record<AuditAction, string>> = {
   'storage.scanned': 'Speicher gescannt',
   'storage.entryDeleted': 'Speicher-Eintrag gelöscht',
   'audit.archived': 'Audit-Log archiviert',
+  'instance.settingsChanged': 'Instanz-Einstellungen geändert',
+  'quotaRequest.rejected': 'Kontingent-Anfrage abgelehnt',
   'notification.channelChanged': 'Kanal geändert',
   'notification.ruleChanged': 'Regel geändert',
   'notification.announcementChanged': 'Ankündigung geändert',
@@ -100,6 +102,8 @@ const AUDIT_TARGET_TYPE_LABELS: Record<AuditTargetType, string> = {
   notificationRule: 'Regel',
   announcement: 'Ankündigung',
   message: 'Nachricht',
+  instanceSettings: 'Instanz-Einstellungen',
+  quotaRequest: 'Kontingent-Anfrage',
 };
 
 export function auditTargetTypeLabel(target: AuditTargetType): string {

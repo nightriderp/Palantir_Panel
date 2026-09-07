@@ -150,14 +150,34 @@ export const fileUploadCommandPayloadSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * `FILE_EXTRACT` – ein hochgeladenes Archiv in den Datenordner entpacken.
+ * Zielpfad einer Archiv-Übernahme, relativ zum Datenordner.
  *
- * `path` darf hier **leer** sein: Der Import landet in aller Regel in der
+ * Leer ist ausdrücklich erlaubt – der Import landet in aller Regel in der
  * Wurzel des Datenordners, und genau die schreibt der Datei-Manager als `''`.
+ *
+ * Dieselbe Einsperrung wie `serverFilePathSchema` und `archiveExtraFileSchema`:
+ * kein absoluter Pfad, kein `..`-Segment, kein Backslash (Audit-Fundstelle
+ * contracts-validation-13). Der Agent prüft das zusätzlich
+ * (`resolveWithinRoot`); die Linie hing bisher aber allein an ihm. Ein
+ * fehlerhafter oder künftiger zweiter Aufrufer, der den Nutzerpfad nicht durch
+ * `serverFilePathSchema` schickt, kam hier ungebremst durch.
+ */
+const archiveTargetPathSchema = z
+  .string()
+  .max(4_096)
+  .refine((wert) => !wert.startsWith('/') && !wert.includes('\\'), {
+    message: 'Erwartet wird ein relativer Pfad mit „/" als Trenner.',
+  })
+  .refine((wert) => !wert.split('/').includes('..'), {
+    message: 'Der Pfad darf nicht aus dem Datenordner herausführen.',
+  });
+
+/**
+ * `FILE_EXTRACT` – ein hochgeladenes Archiv in den Datenordner entpacken.
  */
 export const fileExtractCommandPayloadSchema = z.object({
   containerId: containerIdSchema,
-  path: z.string().max(4_096),
+  path: archiveTargetPathSchema,
   contentBase64: z
     .string()
     .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
@@ -181,7 +201,7 @@ export const uploadArchiveBlockCommandPayloadSchema = z.object({
     .string()
     .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
   last: z.boolean(),
-  path: z.string().max(4_096),
+  path: archiveTargetPathSchema,
   format: z.enum(ARCHIVE_FORMATS),
 });
 

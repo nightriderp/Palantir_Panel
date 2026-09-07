@@ -6,12 +6,14 @@ import {
   createCommandPayloadSchema,
   execConsoleCommandPayloadSchema,
   fileDeleteCommandPayloadSchema,
+  fileExtractCommandPayloadSchema,
   fileUploadCommandPayloadSchema,
   fileWriteCommandPayloadSchema,
   getLogsCommandPayloadSchema,
   removeStorageEntryCommandPayloadSchema,
   setServerQueryCommandPayloadSchema,
   stopCommandPayloadSchema,
+  uploadArchiveBlockCommandPayloadSchema,
 } from './agent-commands.js';
 
 const GUELTIGER_SPEC = {
@@ -302,4 +304,42 @@ describe('REMOVE_STORAGE_ENTRY (Lastenheft §3.8)', () => {
         .success,
     ).toBe(false);
   });
+});
+
+describe('Archiv-Übernahme: Pfad-Einsperrung (Audit contracts-validation-13)', () => {
+  const EXTRACT_BASIS = {
+    containerId: 'container-1',
+    contentBase64: '',
+    format: 'zip' as const,
+  };
+  const BLOCK_BASIS = {
+    containerId: 'container-1',
+    transferId: 'transfer-1',
+    offset: 0,
+    contentBase64: '',
+    last: true,
+    format: 'zip' as const,
+  };
+
+  it('nimmt die Wurzel des Datenordners und relative Pfade an', () => {
+    // Der Datei-Manager schreibt die Wurzel als leeren String.
+    expect(fileExtractCommandPayloadSchema.parse({ ...EXTRACT_BASIS, path: '' }).path).toBe('');
+    expect(
+      uploadArchiveBlockCommandPayloadSchema.parse({ ...BLOCK_BASIS, path: 'world/backup' }).path,
+    ).toBe('world/backup');
+  });
+
+  it.each(['../', '../../etc', 'world/../../etc', '/etc/passwd', 'world\\level'])(
+    'lehnt %s in beiden Befehlen ab',
+    (pfad) => {
+      // Bisher hielt die Linie allein der Agent; das Wire-Schema ließ alles
+      // durch.
+      expect(
+        fileExtractCommandPayloadSchema.safeParse({ ...EXTRACT_BASIS, path: pfad }).success,
+      ).toBe(false);
+      expect(
+        uploadArchiveBlockCommandPayloadSchema.safeParse({ ...BLOCK_BASIS, path: pfad }).success,
+      ).toBe(false);
+    },
+  );
 });

@@ -4,6 +4,7 @@ import {
   downloadBackupCommandResultSchema,
 } from './agent-commands.js';
 import {
+  backupScheduleDtoSchema,
   createBackupInputSchema,
   cronExpressionSchema,
   updateBackupScheduleInputSchema,
@@ -33,6 +34,31 @@ describe('Eingaben der Backup-Verwaltung', () => {
     expect(
       updateBackupScheduleInputSchema.parse({ enabled: true, cronExpression: '0 4 * * *' }),
     ).toEqual({ enabled: true, cronExpression: '0 4 * * *', stopServer: false });
+  });
+});
+
+describe('Backup-Zeitplan als Antwort (Audit contracts-validation-03)', () => {
+  const zeitplan = {
+    serverId: UUID,
+    enabled: true,
+    cronExpression: '0 4 * * *',
+    stopServer: true,
+    lastRunAt: '2026-08-26T04:00:00.000Z',
+    nextRunAt: '2026-08-27T04:00:00.000Z',
+    lastBackupId: '22222222-2222-4222-8222-222222222222',
+    createdAt: '2026-08-01T10:00:00.000Z',
+    updatedAt: '2026-08-26T04:00:00.000Z',
+    permissions: { canView: true, canEdit: true },
+  };
+
+  it('liefert stopServer mit aus – sonst kann es kein Formular anzeigen', () => {
+    expect(backupScheduleDtoSchema.parse(zeitplan)).toEqual(zeitplan);
+  });
+
+  it('nimmt eine Antwort ohne das additive Feld weiter an', () => {
+    const { stopServer: _stopServer, ...ohneFeld } = zeitplan;
+
+    expect(backupScheduleDtoSchema.parse(ohneFeld)).toEqual(ohneFeld);
   });
 });
 

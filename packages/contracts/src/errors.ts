@@ -228,6 +228,22 @@ export const ERROR_CATALOG = {
       'Das Owner-Konto ist geschützt: Es kann sich nicht selbst löschen oder aussperren.',
   },
   /**
+   * Selbst-Löschung eines Kontos, an dem noch eigene Gameserver hängen
+   * (Lastenheft §3.1; Audit-Fundstelle backend-db-05).
+   *
+   * Der Fremdschlüssel `game_servers.owner_id` steht bewusst auf `RESTRICT` –
+   * das Löschen eines Kontos darf keine Server mitreißen. Ohne benannten Code
+   * käme dieser Fall als roher Datenbankfehler (Postgres 23503) und damit als
+   * 500 zurück; der Nutzer erführe nicht, dass er zuerst seine Server löschen
+   * muss. 409: Konflikt mit vorhandenem Zustand, wie bei den übrigen
+   * „erst aufräumen"-Fällen des Katalogs.
+   */
+  ACCOUNT_HAS_SERVERS: {
+    httpStatus: 409,
+    defaultMessage:
+      'Diesem Konto gehören noch Gameserver. Bitte lösche sie zuerst und wiederhole den Vorgang.',
+  },
+  /**
    * Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (Pflichtenheft §10).
    * 403: Request ist verstanden und authentifiziert, wird aber wegen eines
    * Limits abgelehnt – ein Retry ohne Änderung hilft nicht.
@@ -428,6 +444,21 @@ export const ERROR_CATALOG = {
   SCHEDULE_INVALID_CRON: {
     httpStatus: 400,
     defaultMessage: 'Der Zeitplan ist kein gültiger Cron-Ausdruck.',
+  },
+  /**
+   * Der Cron-Ausdruck ist formal gültig, trifft aber nie zu – etwa `0 4 30 2 *`
+   * (30. Februar). Audit-Fundstelle bb-14.
+   *
+   * Bewusst getrennt von `SCHEDULE_INVALID_CRON`: Der Ausdruck ist lesbar und
+   * wohlgeformt, nur unerfüllbar. Ohne eigenen Code würde ein solcher Zeitplan
+   * mit `enabled = true` und `nextRunAt = null` gespeichert und liefe für immer
+   * stumm mit; der Nutzer bekäme keinerlei Hinweis. 400 wie bei
+   * `SCHEDULE_INVALID_CRON` und `VALIDATION_FAILED`: fehlerhafte Eingabe, ein
+   * Retry ohne Änderung hilft nicht.
+   */
+  SCHEDULE_UNSATISFIABLE: {
+    httpStatus: 400,
+    defaultMessage: 'Dieser Zeitplan trifft nie zu – bitte wähle einen erfüllbaren Zeitpunkt.',
   },
   /**
    * Geplante Aufgabe existiert nicht (Pflichtenheft §6, Entität `Schedule`). 404.

@@ -12,6 +12,7 @@ import {
   AUTH_METHOD_TYPES,
   type AccountDto,
   type GlobalPermissions,
+  type LinkedAuthMethod,
   LOGIN_RESULT_STATUSES,
   OAUTH_PROVIDERS,
   type PasswordResetResultDto,
@@ -146,8 +147,21 @@ export const twoFactorInputSchema = z.object({
 export const authMethodTypeSchema = z.enum(AUTH_METHOD_TYPES);
 export const oauthProviderSchema = z.enum(OAUTH_PROVIDERS);
 
-export const linkedAuthMethodSchema = z.object({
+/**
+ * Ein verknüpftes Anmeldeverfahren – Gegenstück zu `LinkedAuthMethod`.
+ *
+ * **Vollständig**, und das ist der Punkt (Audit-Fundstelle
+ * contracts-validation-01): Zod-Objekte entfernen unbekannte Schlüssel beim
+ * Parsen. Fehlt hier ein additiv ergänztes Feld, kommt es zwar über die
+ * Leitung, ist nach dem Parsen aber `undefined` – ohne Fehler, ohne Warnung.
+ * `canUnlink` hat auf diesem Weg den „Trennen"-Knopf dauerhaft deaktiviert.
+ * Die Typ-Annotation hält Schema und Vertrag ab jetzt zusammen.
+ */
+export const linkedAuthMethodSchema: z.ZodType<LinkedAuthMethod> = z.object({
   type: authMethodTypeSchema,
+  providerUserId: z.string().nullable().optional(),
+  providerAvatarUrl: z.string().nullable().optional(),
+  canUnlink: z.boolean().optional(),
   providerDisplayName: z.string().nullable(),
   linkedAt: z.string().datetime({ offset: true }),
 });
@@ -191,6 +205,11 @@ export const accountDtoSchema: z.ZodType<AccountDto> = z.object({
   twoFactorEnabled: z.boolean(),
   roles: z.array(accountRoleSummarySchema),
   authMethods: z.array(linkedAuthMethodSchema),
+  /**
+   * Ergänzt in B1 und bis zur Audit-Fundstelle contracts-validation-01 hier
+   * vergessen – jede Sperr-Anzeige lief still ins Leere.
+   */
+  mustChangePassword: z.boolean().optional(),
   createdAt: z.string().datetime({ offset: true }),
   permissions: globalPermissionsSchema,
 });

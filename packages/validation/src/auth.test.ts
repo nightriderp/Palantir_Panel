@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   PASSWORD_MIN_LENGTH,
+  accountDtoSchema,
   altchaChallengeSchema,
   changePasswordInputSchema,
   deleteAccountInputSchema,
   disableTwoFactorInputSchema,
   linkPasswordInputSchema,
+  linkedAuthMethodSchema,
   loginInputSchema,
   loginResultSchema,
   passwordSchema,
@@ -158,6 +160,78 @@ describe('Login-Ergebnis', () => {
     });
     // Zusatzfelder werden von Zod entfernt, das Konto darf aber nie ankommen:
     expect(result.success && 'account' in result.data).toBe(false);
+  });
+});
+
+describe('Konto-DTO bleibt vollständig (Audit contracts-validation-01)', () => {
+  /** Genau das, was das Backend liefert – mit allen additiv ergänzten Feldern. */
+  const vollstaendigesKonto = {
+    id: '11111111-1111-4111-8111-111111111111',
+    displayName: 'Alex',
+    username: 'alex',
+    isOwner: false,
+    banned: false,
+    awaitingApproval: false,
+    twoFactorEnabled: true,
+    roles: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Nutzer', isProtected: false }],
+    authMethods: [
+      {
+        type: 'password' as const,
+        providerUserId: null,
+        providerAvatarUrl: null,
+        canUnlink: true,
+        providerDisplayName: null,
+        linkedAt: '2026-08-26T10:00:00Z',
+      },
+      {
+        type: 'discord' as const,
+        providerUserId: '987654321',
+        providerAvatarUrl: 'https://cdn.example.tld/avatar.png',
+        canUnlink: true,
+        providerDisplayName: 'alex#0001',
+        linkedAt: '2026-08-27T10:00:00Z',
+      },
+    ],
+    mustChangePassword: true,
+    createdAt: '2026-08-26T10:00:00Z',
+    permissions: {
+      canCreateServer: true,
+      canViewAnyServer: false,
+      canManageAnyBackup: false,
+      canManageUsers: false,
+      canManageRoles: false,
+      canManageNotifications: false,
+      canViewNodes: false,
+      canManageNodes: false,
+      canManageAddresses: false,
+      canViewAuditLog: false,
+      canModerateMessages: false,
+      canManageGameTypes: false,
+    },
+  };
+
+  it('parst das Backend-DTO unverändert', () => {
+    // Zod entfernt unbekannte Schlüssel still. Fehlt hier ein Feld, ist es nach
+    // dem Parsen `undefined` – genau so war der „Trennen"-Knopf dauerhaft
+    // deaktiviert, weil `canUnlink` nie ankam.
+    expect(accountDtoSchema.parse(vollstaendigesKonto)).toEqual(vollstaendigesKonto);
+  });
+
+  it('behält canUnlink an jedem Anmeldeverfahren', () => {
+    const parsed = accountDtoSchema.parse(vollstaendigesKonto);
+
+    expect(parsed.authMethods.map((methode) => methode.canUnlink)).toEqual([true, true]);
+    expect(parsed.mustChangePassword).toBe(true);
+  });
+
+  it('nimmt ein Verfahren ohne die optionalen Felder weiter an', () => {
+    const ergebnis = linkedAuthMethodSchema.parse({
+      type: 'steam',
+      providerDisplayName: 'Alex',
+      linkedAt: '2026-08-26T10:00:00Z',
+    });
+
+    expect(ergebnis.canUnlink).toBeUndefined();
   });
 });
 

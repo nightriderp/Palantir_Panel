@@ -10,6 +10,7 @@ import {
   TOTP_CODE_LENGTH,
   isOAuthProvider,
 } from './auth.js';
+import { LINKED_ACCOUNT_PROVIDERS, isLinkedAccountProvider } from './registration-request.js';
 
 describe('Auth-Contracts (Pflichtenheft §7)', () => {
   it('kennt genau die Anmeldeverfahren aus Pflichtenheft §6', () => {
@@ -59,5 +60,20 @@ describe('Ergänzungen aus B1 (Pflichtenheft §7)', () => {
 
   it('nutzt die sechsstellige TOTP-Länge aus RFC 6238', () => {
     expect(TOTP_CODE_LENGTH).toBe(6);
+  });
+});
+
+describe('Provider-Liste der Warteliste (Audit contracts-validation-11)', () => {
+  it('stammt aus derselben Quelle wie die Anmeldeverfahren', () => {
+    // Zwei getrennte Literallisten liefen sonst beim fünften Provider still
+    // auseinander – wer die eine ergänzt, findet die andere nicht zwingend.
+    expect(LINKED_ACCOUNT_PROVIDERS).toBe(AUTH_METHOD_TYPES);
+  });
+
+  it('erkennt jedes Anmeldeverfahren als Provider der Warteliste', () => {
+    for (const typ of AUTH_METHOD_TYPES) {
+      expect(isLinkedAccountProvider(typ)).toBe(true);
+    }
+    expect(isLinkedAccountProvider('github')).toBe(false);
   });
 });

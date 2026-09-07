@@ -73,6 +73,23 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     expect(httpStatusForErrorCode('OWNER_ALREADY_EXISTS')).toBe(409);
   });
 
+  it('kennt die Selbst-Löschung mit eigenen Servern (Audit backend-db-05)', () => {
+    // Konflikt mit vorhandenem Zustand, kein roher Datenbankfehler: erst die
+    // eigenen Server löschen, dann das Konto.
+    expect(httpStatusForErrorCode('ACCOUNT_HAS_SERVERS')).toBe(409);
+    expect(defaultMessageForErrorCode('ACCOUNT_HAS_SERVERS')).toContain('Gameserver');
+  });
+
+  it('trennt ungültigen von unerfüllbarem Cron-Ausdruck (Audit bb-14)', () => {
+    // Beide 400 – der eine Ausdruck ist unlesbar, der andere lesbar, aber nie
+    // erfüllbar (z. B. 30. Februar).
+    expect(httpStatusForErrorCode('SCHEDULE_INVALID_CRON')).toBe(400);
+    expect(httpStatusForErrorCode('SCHEDULE_UNSATISFIABLE')).toBe(400);
+    expect(defaultMessageForErrorCode('SCHEDULE_UNSATISFIABLE')).not.toBe(
+      defaultMessageForErrorCode('SCHEDULE_INVALID_CRON'),
+    );
+  });
+
   it('isErrorCode() erkennt unbekannte Codes', () => {
     expect(isErrorCode('SUBDOMAIN_TAKEN')).toBe(true);
     expect(isErrorCode('NICHT_IM_KATALOG')).toBe(false);

@@ -102,6 +102,21 @@ export const AUDIT_ACTIONS = [
   'storage.entryDeleted',
   'audit.archived',
 
+  // Instanz-Einstellungen und Kontingent-Anfragen (B8, Audit W2-4)
+  /**
+   * Schalter der Instanz umgelegt – zuerst die Selbstregistrierung
+   * (Mockup-Abgleich 12.1.1). Wer die Tür der Instanz öffnet oder schließt,
+   * gehört ins Log wie eine Rollenänderung.
+   */
+  'instance.settingsChanged',
+  /**
+   * Kontingent-Anfrage abgelehnt. Die Genehmigung erscheint als
+   * `user.limitsChanged` (das Kontingent ändert sich); die Ablehnung ändert
+   * nichts am Konto und braucht deshalb eine eigene Aktion, sonst bliebe die
+   * Entscheidung unsichtbar.
+   */
+  'quotaRequest.rejected',
+
   // Benachrichtigungen und Moderation (B6/B7)
   'notification.channelChanged',
   'notification.ruleChanged',
@@ -137,6 +152,10 @@ export const AUDIT_TARGET_TYPES = [
   'notificationRule',
   'announcement',
   'message',
+  /** Instanzweite Einstellungen (`instance_settings`, Audit W2-4). */
+  'instanceSettings',
+  /** Kontingent-Anfrage eines Kontos (Audit W2-4). */
+  'quotaRequest',
 ] as const;
 
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
