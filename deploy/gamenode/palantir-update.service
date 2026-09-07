@@ -33,6 +33,15 @@ Type=oneshot
 Environment=DOCKER_CONFIG=/etc/palantir/docker
 ExecStart=/opt/palantir/deploy/gamenode/update.sh
 
+# Legt /run/palantir als root:root 0755 an - dort liegt die Sperrdatei des
+# Laufs. Nicht /tmp und nicht /run/lock: beide sind world-writable, und eine
+# fremd vorbelegte Sperrdatei wuerde jeden weiteren Lauf still abbrechen lassen.
+RuntimeDirectory=palantir
+RuntimeDirectoryMode=0755
+# Bleibt bis zum Neustart bestehen, damit ein Lauf von Hand dieselbe Sperrdatei
+# benutzt wie der Timer - sonst liefen beide aneinander vorbei.
+RuntimeDirectoryPreserve=yes
+
 # Hängt der Lauf (Registry antwortet nicht), soll er abbrechen statt den Timer
 # dauerhaft zu blockieren.
 TimeoutStartSec=900

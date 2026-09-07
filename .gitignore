@@ -64,3 +64,10 @@ deploy/gamenode/wireguard-firewall.md
 
 # Ablage der Entwicklungsmaschine (u. a. Panel-Sicherungen aus PANEL_BACKUP_DIR)
 .dev-data/
+
+# Betriebsspuren der Auscheckung auf VPS und Gamenode: die Erfolgsmarke des
+# zuletzt ausgerollten Standes und die Sperrdateien der Deploy-Skripte, wenn
+# weder /run/palantir noch $XDG_RUNTIME_DIR zur Verfuegung stehen.
+.deployed-sha
+.deploy.lock
+.update.lock
