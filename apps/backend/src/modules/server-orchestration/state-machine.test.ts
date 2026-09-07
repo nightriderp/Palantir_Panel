@@ -5,7 +5,12 @@
  * **unzulässigen** Übergänge und des Crash-Loop-Schutzes.
  */
 
-import { SERVER_STATUSES, type ServerStatus } from '@palantir/contracts';
+import {
+  SERVER_STATUSES,
+  SERVER_STATUS_TRANSITIONS,
+  type ServerStatus,
+  isAllowedServerStatusTransition,
+} from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { type CrashLoopPolicy } from './crash-loop.js';
 import { ServerOrchestrationError } from './errors.js';
@@ -79,36 +84,15 @@ describe('Hauptfolge creating → stopped → starting → running → stopping 
 });
 
 describe('Health-Check-Pflicht (Pflichtenheft §9, Lastenheft §3.3)', () => {
-  it('kennt kein Ereignis, das ohne Health-Check nach running führt', () => {
-    const events: ServerLifecycleEvent[] = [
-      { type: 'createSucceeded' },
-      { type: 'createFailed', reason: 'x' },
-      { type: 'startRequested' },
-      { type: 'automaticRestartRequested', attempt: 1 },
-      { type: 'healthCheckFailed', reason: 'x' },
-      { type: 'stopRequested' },
-      { type: 'stopSucceeded' },
-      { type: 'stopFailed', reason: 'x' },
-      { type: 'crashed', reason: 'x', exitCode: 1 },
-      { type: 'observedStopped', reason: 'x' },
-      { type: 'failed', reason: 'x' },
-      { type: 'acknowledged' },
-    ];
-
-    for (const event of events) {
-      for (const status of SERVER_STATUSES) {
-        let result;
-
-        try {
-          result = apply(stateWith({ status }), event);
-        } catch {
-          continue;
-        }
-
-        expect(result.state.status).not.toBe('running');
-      }
-    }
-  });
+  /*
+   * Der frühere Test an dieser Stelle lief zwar über alle Paare, fing aber
+   * jede Ausnahme mit `catch { continue }` ab (Audit `test-gaps-03`): Er wäre
+   * grün geblieben, wenn `applyLifecycleEvent` ausnahmslos geworfen hätte.
+   * Die Aussage „nur ein bestandener Health-Check macht `running`" steht
+   * deshalb jetzt in der erschöpfenden Tabelle weiter unten – dort wird jedes
+   * Paar entweder auf seinen Zielzustand oder auf `SERVER_STATE_CONFLICT`
+   * festgenagelt. Hier bleibt der eine Fall, um den es fachlich geht.
+   */
 
   it('macht ausschließlich healthCheckPassed einen Server zu running', () => {
     const result = apply(stateWith({ status: 'starting' }), { type: 'healthCheckPassed' });
@@ -177,6 +161,162 @@ describe('Unzulässige Übergänge', () => {
       }).toThrow(ServerOrchestrationError);
     }
   });
+});
+
+// -- Erschöpfende Prüfung der Übergangstabelle (Audit `test-gaps-03`) --------
+
+const GRUND = 'Grund aus dem Test.';
+const EXIT_CODE = 137;
+const VERSUCH = 3;
+
+/**
+ * Zielzustand je Ereignis.
+ *
+ * Bewusst hier noch einmal ausgeschrieben statt aus `state-machine.ts`
+ * importiert: Ein Test, der die Zuordnung aus der Umsetzung bezieht, macht
+ * jede Änderung daran mit, statt sie zu melden. Genau das war der Befund –
+ * „jemand ändert `stopFailed` so, dass es nach `stopped` führt, kein Test wird
+ * rot".
+ */
+const ZIEL_JE_EREIGNIS = {
+  createSucceeded: 'stopped',
+  createFailed: 'error',
+  startRequested: 'starting',
+  automaticRestartRequested: 'starting',
+  healthCheckPassed: 'running',
+  healthCheckFailed: 'error',
+  stopRequested: 'stopping',
+  stopSucceeded: 'stopped',
+  stopFailed: 'error',
+  crashed: 'crashed',
+  observedStopped: 'stopped',
+  failed: 'error',
+  acknowledged: 'stopped',
+} as const satisfies Record<ServerLifecycleEvent['type'], ServerStatus>;
+
+/** Begleittext je Ereignis – `null`, wenn es nichts zu erläutern gibt. */
+const MELDUNG_JE_EREIGNIS: Record<ServerLifecycleEvent['type'], string | null> = {
+  createSucceeded: null,
+  createFailed: GRUND,
+  startRequested: null,
+  automaticRestartRequested: `Automatischer Neustart nach Absturz (Versuch ${String(VERSUCH)}).`,
+  healthCheckPassed: null,
+  healthCheckFailed: GRUND,
+  stopRequested: null,
+  stopSucceeded: null,
+  stopFailed: GRUND,
+  crashed: `${GRUND} (Exit-Code ${String(EXIT_CODE)})`,
+  observedStopped: GRUND,
+  failed: GRUND,
+  acknowledged: null,
+};
+
+const ALLE_EREIGNISSE: readonly ServerLifecycleEvent[] = [
+  { type: 'createSucceeded' },
+  { type: 'createFailed', reason: GRUND },
+  { type: 'startRequested' },
+  { type: 'automaticRestartRequested', attempt: VERSUCH },
+  { type: 'healthCheckPassed' },
+  { type: 'healthCheckFailed', reason: GRUND },
+  { type: 'stopRequested' },
+  { type: 'stopSucceeded' },
+  { type: 'stopFailed', reason: GRUND },
+  { type: 'crashed', reason: GRUND, exitCode: EXIT_CODE },
+  { type: 'observedStopped', reason: GRUND },
+  { type: 'failed', reason: GRUND },
+  { type: 'acknowledged' },
+];
+
+/** Ein früherer erfolgreicher Start – nur `healthCheckPassed` darf ihn ersetzen. */
+const FRUEHER_START = new Date(T0.getTime() - 60 * 60_000).toISOString();
+/** Ein Absturz innerhalb des laufenden Fensters (Voreinstellung: 10 Minuten). */
+const ALTER_ABSTURZ = new Date(T0.getTime() - 60_000).toISOString();
+
+function ausgangszustand(status: ServerStatus): ServerLifecycleState {
+  return stateWith({ status, lastStartedAt: FRUEHER_START, crashTimestamps: [ALTER_ABSTURZ] });
+}
+
+describe('Übergangstabelle erschöpfend (Audit test-gaps-03)', () => {
+  it('kennt jedes Ereignis der State Machine', () => {
+    // Ein neues Ereignis in `state-machine.ts` ohne Eintrag hier fällt hier auf
+    // und nicht erst im Betrieb.
+    expect([...ALLE_EREIGNISSE.map((ereignis) => ereignis.type)].sort()).toEqual(
+      [...Object.keys(ZIEL_JE_EREIGNIS)].sort(),
+    );
+  });
+
+  it('führt die Übergangstabelle des Vertrags unverändert', () => {
+    // Die Tabelle ist die Erwartung der Matrix darunter; eine Änderung daran
+    // soll bewusst geschehen und nicht stillschweigend die Matrix umschreiben.
+    expect(SERVER_STATUS_TRANSITIONS).toEqual({
+      creating: ['stopped', 'error'],
+      stopped: ['starting', 'error'],
+      starting: ['running', 'stopping', 'crashed', 'error'],
+      running: ['stopping', 'crashed', 'error'],
+      stopping: ['stopped', 'error'],
+      crashed: ['starting', 'stopped', 'error'],
+      error: ['starting', 'stopped'],
+    });
+    expect(Object.keys(SERVER_STATUS_TRANSITIONS)).toHaveLength(SERVER_STATUSES.length);
+  });
+
+  /*
+   * Jede Kombination aus Zustand und Ereignis – 7 x 13 = 91 Fälle, jeder als
+   * eigener Test. Erlaubte Paare werden auf ihren Zielzustand, ihre Meldung und
+   * ihre Begleitfelder festgenagelt, verbotene auf den Fachcode
+   * `SERVER_STATE_CONFLICT`. Kein `try/catch`, das einen Fehler schluckt.
+   */
+  for (const status of SERVER_STATUSES) {
+    for (const ereignis of ALLE_EREIGNISSE) {
+      const ziel = ZIEL_JE_EREIGNIS[ereignis.type];
+      const erlaubt = isAllowedServerStatusTransition(status, ziel);
+
+      it(`${status} + ${ereignis.type} → ${erlaubt ? ziel : 'SERVER_STATE_CONFLICT'}`, () => {
+        const vorher = ausgangszustand(status);
+
+        if (!erlaubt) {
+          expect(() => apply(vorher, ereignis)).toThrowError(
+            expect.objectContaining({ code: 'SERVER_STATE_CONFLICT' }),
+          );
+
+          return;
+        }
+
+        const ergebnis = apply(vorher, ereignis);
+
+        expect(ergebnis.state.status).toBe(ziel);
+        expect(ergebnis.state.statusChangedAt).toBe(T0.toISOString());
+        expect(ergebnis.state.statusMessage).toBe(MELDUNG_JE_EREIGNIS[ereignis.type]);
+
+        if (ereignis.type === 'healthCheckPassed') {
+          // Erst der bestandene Health-Check zählt als erfolgreicher Start.
+          expect(ergebnis.state.lastStartedAt).toBe(T0.toISOString());
+          expect(ergebnis.state.crashTimestamps).toEqual([]);
+        } else if (ereignis.type === 'acknowledged') {
+          expect(ergebnis.state.lastStartedAt).toBe(FRUEHER_START);
+          expect(ergebnis.state.crashTimestamps).toEqual([]);
+        } else if (ereignis.type === 'crashed') {
+          expect(ergebnis.state.lastStartedAt).toBe(FRUEHER_START);
+          expect(ergebnis.state.crashTimestamps).toEqual([ALTER_ABSTURZ, T0.toISOString()]);
+        } else {
+          expect(ergebnis.state.lastStartedAt).toBe(FRUEHER_START);
+          expect(ergebnis.state.crashTimestamps).toEqual([ALTER_ABSTURZ]);
+        }
+
+        if (ereignis.type === 'crashed') {
+          // Zwei Abstürze im Fenster, erlaubt sind drei: Neustart-Vorschlag.
+          expect(ergebnis.crashLoopTripped).toBe(false);
+          expect(ergebnis.shouldAutoRestart).toBe(true);
+          expect(ergebnis.nextRestartAttempt).toBe(2);
+        } else {
+          // Nur ein Absturz stößt einen automatischen Neustart an.
+          expect(ergebnis.crashLoopTripped).toBe(false);
+          expect(ergebnis.shouldAutoRestart).toBe(false);
+          expect(ergebnis.nextRestartAttempt).toBe(0);
+        }
+      });
+    }
+  }
 });
 
 describe('Absturz und Crash-Loop-Schutz (Pflichtenheft §9)', () => {
