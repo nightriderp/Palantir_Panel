@@ -14,8 +14,10 @@
  */
 
 import {
+  type ApiResponse,
   type GameServerPermissions,
   type SchedulePermissions,
+  type ServerMemberDto,
   fail,
   httpStatusForErrorCode,
   ok,
@@ -35,7 +37,7 @@ import { requireActor, requirePermission } from '../rbac/index.js';
 import { type ServerDtoContext, toGameServerDto } from './dto.js';
 import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 import { type GameRegistry } from './game-registry.js';
-import { type ServerRepository } from './repository.js';
+import { type ServerMemberRecord, type ServerRepository } from './repository.js';
 import { type ServerScheduleService, toScheduleDto } from './schedules.js';
 import { type WorldArchiveStore } from './world-import.js';
 import { type ServerOrchestrationService } from './service.js';
@@ -145,6 +147,28 @@ async function readUpload(request: FastifyRequest, maxBytes: number): Promise<Fi
   };
 }
 const memberParamsSchema = z.object({ id: z.string().uuid(), userId: z.string().uuid() });
+
+/**
+ * Eine Mitglieds-Zuordnung in Vertragsform (`ServerMemberDto`).
+ *
+ * `canEdit` ist kein Feld der Zuordnung selbst, sondern das Recht des
+ * **Aufrufers** auf diesem Server: Stufe ändern und entfernen hängen an
+ * `canManageMembers`. Wie bei `schedulePermissions` rechnet das Backend das Flag
+ * aus und die Oberfläche liest nur es (Pflichtenheft §5.2) – sie leitet nie
+ * selbst etwas aus der Stufe ab.
+ */
+function toServerMemberDto(
+  record: ServerMemberRecord,
+  permissions: GameServerPermissions,
+): ServerMemberDto {
+  return {
+    userId: record.userId,
+    displayName: record.displayName,
+    level: record.level,
+    addedAt: record.addedAt,
+    canEdit: permissions.canManageMembers,
+  };
+}
 
 /** Antwortet mit dem Envelope aus §5.1 und dem HTTP-Status des Fehlercodes. */
 async function replyWithError(reply: FastifyReply, error: unknown): Promise<void> {
@@ -874,53 +898,93 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   });
 
   // -- Mitglieder (Lastenheft §3.3) -------------------------------------------
+  //
+  // Lesen hängt an `canView`, Ändern und Entfernen an `canManageMembers`: Wer
+  // den Server überhaupt sehen darf, darf auch sehen, wer sonst noch Zugriff
+  // hat – die Oberfläche zeigt den Abschnitt „Zugriff" ohnehin jedem, der die
+  // Einstellungen öffnen kann (`SettingsTab.tsx`). Was jemand mit einem Eintrag
+  // tun darf, steht als `canEdit` an jedem Mitglied.
+  //
+  // Die Rückgabetypen sind annotiert, damit der Compiler den Vertrag prüft: Ein
+  // Handler ohne Annotation würde auch einen Repository-Datensatz ohne `canEdit`
+  // klaglos ausliefern.
 
-  app.get('/api/servers/:id/members', async (request, reply) => {
-    try {
-      const { id } = serverIdParamsSchema.parse(request.params);
+  app.get(
+    '/api/servers/:id/members',
+    async (request, reply): Promise<ApiResponse<ServerMemberDto[]> | undefined> => {
+      try {
+        const { id } = serverIdParamsSchema.parse(request.params);
+        const { dto } = await loadAuthorized(request, id, 'canView');
+        const mitglieder = await repository.listMembers(id);
 
-      await loadAuthorized(request, id, 'canManageMembers');
+        return ok(mitglieder.map((record) => toServerMemberDto(record, dto.permissions)));
+      } catch (error: unknown) {
+        await replyWithError(reply, error);
 
-      return await reply.send(ok(await repository.listMembers(id)));
-    } catch (error: unknown) {
-      return replyWithError(reply, error);
-    }
-  });
-
-  app.put('/api/servers/:id/members', async (request, reply) => {
-    try {
-      const { id } = serverIdParamsSchema.parse(request.params);
-
-      const { server } = await loadAuthorized(request, id, 'canManageMembers');
-      const input = serverMemberInputSchema.parse(request.body);
-
-      // Der Besitzer steht nicht in der Mitgliederliste – er hat ohnehin alle
-      // Rechte, und ein Eintrag mit niedrigerer Stufe wäre irreführend.
-      if (input.userId === server.ownerId) {
-        throw new ServerOrchestrationError(
-          'SERVER_STATE_CONFLICT',
-          'Der Besitzer des Servers kann nicht als Mitglied eingetragen werden.',
-        );
+        return undefined;
       }
+    },
+  );
 
-      await repository.upsertMember(id, input.userId, input.level);
+  app.put(
+    '/api/servers/:id/members',
+    async (request, reply): Promise<ApiResponse<ServerMemberDto> | undefined> => {
+      try {
+        const { id } = serverIdParamsSchema.parse(request.params);
 
-      return await reply.send(ok(await repository.listMembers(id)));
-    } catch (error: unknown) {
-      return replyWithError(reply, error);
-    }
-  });
+        const { server, dto } = await loadAuthorized(request, id, 'canManageMembers');
+        const input = serverMemberInputSchema.parse(request.body);
 
-  app.delete('/api/servers/:id/members/:userId', async (request, reply) => {
-    try {
-      const { id, userId } = memberParamsSchema.parse(request.params);
+        // Der Besitzer steht nicht in der Mitgliederliste – er hat ohnehin alle
+        // Rechte, und ein Eintrag mit niedrigerer Stufe wäre irreführend.
+        if (input.userId === server.ownerId) {
+          throw new ServerOrchestrationError(
+            'SERVER_STATE_CONFLICT',
+            'Der Besitzer des Servers kann nicht als Mitglied eingetragen werden.',
+          );
+        }
 
-      await loadAuthorized(request, id, 'canManageMembers');
-      await repository.removeMember(id, userId);
+        await repository.upsertMember(id, input.userId, input.level);
 
-      return await reply.send(ok(await repository.listMembers(id)));
-    } catch (error: unknown) {
-      return replyWithError(reply, error);
-    }
-  });
+        // Die Antwort trägt genau die eine geänderte Zuordnung (Vertrag
+        // `ServerMemberDto`), nicht die ganze Liste: Das Frontend ersetzt damit
+        // den betroffenen Eintrag. Der Anzeigename kommt aus der Liste, weil ihn
+        // nur der Join mit dem Konto kennt.
+        const record = (await repository.listMembers(id)).find(
+          (member) => member.userId === input.userId,
+        );
+
+        if (record === undefined) {
+          throw new ServerOrchestrationError('USER_NOT_FOUND');
+        }
+
+        return ok(toServerMemberDto(record, dto.permissions));
+      } catch (error: unknown) {
+        await replyWithError(reply, error);
+
+        return undefined;
+      }
+    },
+  );
+
+  app.delete(
+    '/api/servers/:id/members/:userId',
+    async (request, reply): Promise<ApiResponse<null> | undefined> => {
+      try {
+        const { id, userId } = memberParamsSchema.parse(request.params);
+
+        await loadAuthorized(request, id, 'canManageMembers');
+        await repository.removeMember(id, userId);
+
+        // `null` wie im Vertrag und im Frontend (`removeMember` in
+        // `lib/api/servers.ts`): Die Oberfläche streicht den Eintrag selbst und
+        // braucht die Restliste nicht.
+        return ok(null);
+      } catch (error: unknown) {
+        await replyWithError(reply, error);
+
+        return undefined;
+      }
+    },
+  );
 }
