@@ -147,11 +147,21 @@ function spielernamen(wert: unknown): readonly ServerLivePlayer[] {
  * Belegter Plattenplatz je Container ist in keiner der beiden Quellen enthalten
  * – dieselbe Lücke wie beim Verlauf (P5); die Speicherübersicht (B8) misst
  * node-weit.
+ *
+ * **`updatedAt` kommt vom Backend** (W2-14, orchestration-features-03). Die
+ * Nutzlast trägt zwar eigene Zeitstempel (`sampledAt`, `at`) – die stammen aber
+ * alle aus derselben Agent-Uhr wie `emittedAt`. Geht diese Uhr vor, behauptet
+ * die Anzeige eine Messung aus der Zukunft; geht sie nach, sieht ein frischer
+ * Wert alt aus. Deshalb steht hier die Empfangszeit des Backends: dieselbe Uhr,
+ * die auch den Verlauf stempelt (`stats-history.ts`), damit Live-Anzeige und
+ * Diagramm nicht in zwei Zeitrechnungen laufen.
+ *
+ * @param receivedAt Zeit des Backends beim Empfang des Ereignisses (ISO-8601).
  */
 export function liveStatsFromAgentPayload(
   payload: unknown,
   query: ServerQuerySnapshot,
-  emittedAt: string,
+  receivedAt: string,
 ): ServerLiveStats {
   const daten = isRecord(payload) ? payload : {};
 
@@ -170,7 +180,7 @@ export function liveStatsFromAgentPayload(
       ...(abfrage.players.length > 0 ? { players: abfrage.players } : {}),
       networkRxBytes: null,
       networkTxBytes: null,
-      updatedAt: stringOrNull(daten.at) ?? emittedAt,
+      updatedAt: receivedAt,
     };
   }
 
@@ -197,7 +207,7 @@ export function liveStatsFromAgentPayload(
     ...(numberOrNull(daten.networkTxPackets) === null
       ? {}
       : { networkTxPackets: numberOrNull(daten.networkTxPackets) }),
-    updatedAt: stringOrNull(daten.sampledAt) ?? stringOrNull(daten.at) ?? emittedAt,
+    updatedAt: receivedAt,
   };
 }
 
