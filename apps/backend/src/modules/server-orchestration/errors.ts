@@ -11,11 +11,10 @@
  * einen gemeinsamen Katalog führt, nur eine Fehlerquelle.
  */
 
-import { type ErrorCode, defaultMessageForErrorCode } from '@palantir/contracts';
+import { type ErrorCode } from '@palantir/contracts';
+import { AppError } from '../../lib/app-error.js';
 
-export class ServerOrchestrationError extends Error {
-  readonly code: ErrorCode;
-
+export class ServerOrchestrationError extends AppError {
   /**
    * Zusatzangaben für das Log – niemals für die Antwort an den Aufrufer.
    *
@@ -25,9 +24,8 @@ export class ServerOrchestrationError extends Error {
   readonly details: Readonly<Record<string, unknown>>;
 
   constructor(code: ErrorCode, message?: string, details: Record<string, unknown> = {}) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'ServerOrchestrationError';
-    this.code = code;
     this.details = details;
   }
 }

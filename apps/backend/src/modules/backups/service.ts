@@ -37,6 +37,7 @@ import {
   downloadBackupCommandResultSchema,
   restoreBackupCommandResultSchema,
 } from '@palantir/validation';
+import { isUniqueViolation } from '../../db/errors.js';
 import { type PermissionActor } from '../rbac/index.js';
 import { BackupError } from './errors.js';
 import {
@@ -569,14 +570,32 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       throw new BackupError('BACKUP_ALREADY_RUNNING');
     }
 
-    const backup = await repository.create({
-      serverId: params.server.id,
-      ownerId: params.server.ownerId,
-      type: params.type,
-      isExport: params.isExport,
-      createdByUserId: params.createdByUserId,
-      scheduleId: params.scheduleId,
-    });
+    let backup: BackupRecord;
+
+    try {
+      backup = await repository.create({
+        serverId: params.server.id,
+        ownerId: params.server.ownerId,
+        type: params.type,
+        isExport: params.isExport,
+        createdByUserId: params.createdByUserId,
+        scheduleId: params.scheduleId,
+      });
+    } catch (error) {
+      /*
+       * Doppelklick auf „Sichern" (Audit W2-9, bb-10): `findActiveByServer()`
+       * oben und dieses `INSERT` sind zwei Schritte, beide Aufrufe finden
+       * keinen laufenden Vorgang. Den zweiten fängt der partielle Unique-Index
+       * `backups_one_active_per_server_idx` – bisher als roher 23505 und damit
+       * als 500 statt als `BACKUP_ALREADY_RUNNING` (409). Vor allem startet der
+       * Verlierer so **keinen** zweiten Agent-Auftrag auf denselben Datenordner.
+       */
+      if (isUniqueViolation(error)) {
+        throw new BackupError('BACKUP_ALREADY_RUNNING');
+      }
+
+      throw error;
+    }
 
     runJob(async () => {
       try {

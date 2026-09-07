@@ -151,6 +151,25 @@ describe('Registrierung (Lastenheft §3.1)', () => {
     );
   });
 
+  /**
+   * Audit W2-9, `backend-auth-03`: `usernameExists()` und `createUser()` sind
+   * zwei Anweisungen ohne gemeinsame Transaktion. Hier wird die Lücke
+   * dazwischen nachgestellt – die Vorprüfung meldet „frei", der Unique-Index
+   * schlägt trotzdem zu. Bisher endete das als roher 23505 und damit als 500.
+   */
+  it('beantwortet den Unique-Index (23505) mit AUTH_USERNAME_TAKEN statt eines rohen Fehlers', async () => {
+    await service.register({ username: 'spieler', password: PASSWORD, altcha: ALTCHA }, CONTEXT);
+    // Zweiter Aufruf gewinnt die Vorprüfung – so, als hätte der erste sein
+    // `INSERT` erst danach abgeschlossen.
+    repository.usernameExists = (): Promise<boolean> => Promise.resolve(false);
+
+    await expectErrorCode(
+      service.register({ username: 'spieler', password: PASSWORD, altcha: ALTCHA }, CONTEXT),
+      'AUTH_USERNAME_TAKEN',
+    );
+    expect(repository.users).toHaveLength(1);
+  });
+
   it('bricht ab, wenn die Systemrolle „Gast" fehlt (Ersteinrichtung unvollständig)', async () => {
     roles.roles.splice(0, roles.roles.length);
 
@@ -1191,6 +1210,33 @@ describe('Konto-Löschung (Lastenheft §3.1)', () => {
       'ACCOUNT_HAS_SERVERS mit Hinweis auf die übrigen Sicherungen',
     );
     expect(repository.users).toHaveLength(1);
+  });
+
+  /**
+   * Audit W2-9: Rest des Rennens hinter der Vorprüfung aus W2-11. Zwischen
+   * `countAccountBlockers()` und dem `DELETE` kann ein Admin dem Konto einen
+   * Server übertragen; `ON DELETE RESTRICT` meldet dann 23503. Fachlich ist es
+   * derselbe Fall, den die Vorprüfung beantwortet – bisher kam er als 500.
+   */
+  it('beantwortet den Fremdschlüssel (23503) mit ACCOUNT_HAS_SERVERS statt eines rohen Fehlers', async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    repository.ownedServers.push({ ownerId: account.id });
+    // Vorprüfung sieht noch nichts – der Server entsteht erst danach.
+    repository.countAccountBlockers = (): Promise<{
+      servers: number;
+      backups: number;
+      activeBackups: number;
+    }> => Promise.resolve({ servers: 0, backups: 0, activeBackups: 0 });
+
+    await expectErrorCode(
+      service.deleteAccount(account.id, { confirmName: 'spieler', password: PASSWORD }),
+      'ACCOUNT_HAS_SERVERS',
+    );
+    expect(repository.users).toHaveLength(1);
+    expect(revokedUserIds).toHaveLength(0);
   });
 
   it('nennt zuerst die Server und erst danach die Sicherungen', async () => {

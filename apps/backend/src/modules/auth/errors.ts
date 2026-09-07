@@ -7,15 +7,13 @@
  * Pflichtenheft §5.1 um; dieselbe Stelle, die auch RBAC-Fehler beantwortet.
  */
 
-import { type ErrorCode, defaultMessageForErrorCode } from '@palantir/contracts';
+import { type ErrorCode } from '@palantir/contracts';
+import { AppError } from '../../lib/app-error.js';
 
-export class AuthError extends Error {
-  readonly code: ErrorCode;
-
+export class AuthError extends AppError {
   constructor(code: ErrorCode, message?: string) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'AuthError';
-    this.code = code;
   }
 }
 

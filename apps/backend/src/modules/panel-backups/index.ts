@@ -19,6 +19,7 @@
  */
 
 import { type PanelBackupDto, type PanelBackupTrigger } from '@palantir/contracts';
+import { isUniqueViolation } from '../../db/errors.js';
 import { type PermissionActor, hasPermission } from '../rbac/index.js';
 import { PanelBackupError, isPanelBackupError } from './errors.js';
 import { PG_DUMP_DEFAULT_TIMEOUT_MS } from './pg-dump.js';
@@ -132,22 +133,6 @@ export interface PanelBackupDependencies {
 const STUNDE_MS = 3_600_000;
 const TAG_MS = 86_400_000;
 
-/**
- * Erkennt eine Unique-Verletzung von PostgreSQL (`SQLSTATE 23505`) – hier den
- * partiellen Index `panel_backups_one_running_idx` (Audit bb-11).
- *
- * `pg` legt den SQLSTATE als `code`-Feld auf den Fehler; dasselbe Muster nutzt
- * die Portvergabe (`modules/admin/ports.ts`).
- */
-function istLaufKollision(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === '23505'
-  );
-}
-
 /** Dateiname eines Abzugs – sortierbar und ohne Zeichen, die Pfade sprengen. */
 export function backupFileName(at: Date): string {
   const stempel = at.toISOString().replace(/[:.]/g, '-');
@@ -226,7 +211,7 @@ export function createPanelBackupService(deps: PanelBackupDependencies): PanelBa
        * 23505 als `INTERNAL_ERROR` – und startet vor allem **kein** zweites
        * `pg_dump`, das sonst auf denselben Zielpfad schriebe.
        */
-      if (istLaufKollision(error)) {
+      if (isUniqueViolation(error)) {
         throw new PanelBackupError('PANEL_BACKUP_ALREADY_RUNNING');
       }
 

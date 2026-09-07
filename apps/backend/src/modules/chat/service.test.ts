@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { isApproved } from '../rbac/index.js';
 import { ChatError } from './errors.js';
 import { type ChatService, createChatService } from './service.js';
+import { type ConversationRecord } from './types.js';
 import {
   ALEX,
   BEA,
@@ -69,6 +70,42 @@ describe('Direktnachrichten öffnen', () => {
 
     expect(zweite.id).toBe(erste.id);
     expect(repository.conversations).toHaveLength(1);
+  });
+
+  /**
+   * Audit W2-9, `backend-community-05`: Beide Seiten schreiben sich im selben
+   * Moment zum ersten Mal an. `conversations_dm_key_idx` lässt nur einen Insert
+   * zu; der Verlierer bekommt die eben entstandene Unterhaltung statt eines 500.
+   */
+  it('nimmt bei einem Unique-Index (23505) die bestehende Unterhaltung', async () => {
+    const erste = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const findeNachDmKey = repository.findConversationByDmKey.bind(repository);
+    let erstesLesen = true;
+
+    repository.findConversationByDmKey = (dmKey): Promise<ConversationRecord | null> => {
+      if (erstesLesen) {
+        erstesLesen = false;
+
+        return Promise.resolve(null);
+      }
+
+      return findeNachDmKey(dmKey);
+    };
+    repository.createConversation = (): Promise<ConversationRecord> =>
+      Promise.reject(
+        Object.assign(new Error('duplicate key value violates unique constraint'), {
+          code: '23505',
+        }),
+      );
+    delivery.delivered.length = 0;
+
+    const zweite = await chat.openDirectConversation(ctxFor(BEA), ALEX);
+
+    expect(zweite.id).toBe(erste.id);
+    expect(repository.conversations).toHaveLength(1);
+    // Kein zweites `conversation.created`: Das hat der Gewinner des Rennens
+    // bereits verschickt.
+    expect(delivery.delivered).toHaveLength(0);
   });
 
   it('meldet dem Gegenüber die neue Unterhaltung aus dessen Sicht', async () => {
@@ -389,6 +426,41 @@ describe('Server-Chat', () => {
     const zweite = await chat.openServerConversation(ctxFor(BEA), SERVER_ID);
 
     expect(zweite.id).toBe(erste.id);
+  });
+
+  /**
+   * Audit W2-9, `backend-community-05`: Zwei Teilnehmer öffnen den Server-Chat
+   * im selben Moment zum ersten Mal. Beide finden nichts, beide legen an; den
+   * zweiten fängt `conversations_server_id_idx`. Fachlich ist das kein Fehler –
+   * es gibt die Konversation dann eben schon. Bisher endete der Fall als 500.
+   */
+  it('nimmt bei einem Unique-Index (23505) die bestehende Konversation', async () => {
+    const erste = await chat.openServerConversation(ctxFor(ALEX), SERVER_ID);
+    const findeNachServer = repository.findConversationByServerId.bind(repository);
+    let erstesLesen = true;
+
+    // Der zweite Aufruf liest, bevor der erste geschrieben hat …
+    repository.findConversationByServerId = (serverId): Promise<ConversationRecord | null> => {
+      if (erstesLesen) {
+        erstesLesen = false;
+
+        return Promise.resolve(null);
+      }
+
+      return findeNachServer(serverId);
+    };
+    // … und läuft deshalb in den Unique-Index.
+    repository.createConversation = (): Promise<ConversationRecord> =>
+      Promise.reject(
+        Object.assign(new Error('duplicate key value violates unique constraint'), {
+          code: '23505',
+        }),
+      );
+
+    const zweite = await chat.openServerConversation(ctxFor(BEA), SERVER_ID);
+
+    expect(zweite.id).toBe(erste.id);
+    expect(repository.conversations).toHaveLength(1);
   });
 
   it('bleibt für Nichtmitglieder verschlossen, auch nachdem er entstanden ist', async () => {

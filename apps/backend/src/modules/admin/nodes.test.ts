@@ -108,6 +108,34 @@ describe('Node-Verwaltung', () => {
     });
   });
 
+  /**
+   * Audit W2-9, `backend-admin-resources-12`: `ensureAddressFree()` und der
+   * Insert sind zwei Schritte. Zwei gleichzeitige Aufrufe mit demselben Namen
+   * bestehen beide die Vorprüfung; den zweiten fängt erst der Unique-Index –
+   * bisher als roher 23505 und damit als 500 statt als `NODE_ADDRESS_TAKEN`.
+   */
+  it('beantwortet den Unique-Index (23505) mit NODE_ADDRESS_TAKEN', async () => {
+    const { service, repository } = build();
+    // Der Gewinner des Rennens hat seinen Insert noch nicht abgeschlossen.
+    repository.findByNameOrIp = () => Promise.resolve(null);
+    repository.create = () =>
+      Promise.reject(
+        Object.assign(new Error('duplicate key value violates unique constraint'), {
+          code: '23505',
+        }),
+      );
+
+    const input = createHostNodeInputSchema.parse({
+      name: 'Zweitserver',
+      wireguardIp: '10.10.0.9',
+      totalResources: { ramMb: 16_384, cpuCores: 4, diskMb: 500_000 },
+    });
+
+    await expect(service.create(ctxWith(actorWith('node.manage')), input)).rejects.toMatchObject({
+      code: 'NODE_ADDRESS_TAKEN',
+    });
+  });
+
   it('protokolliert das Anlegen im Audit-Log', async () => {
     const { service, auditRepository } = build();
     const input = createHostNodeInputSchema.parse({

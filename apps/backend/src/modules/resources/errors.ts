@@ -12,6 +12,7 @@ import {
   type ResourceUnit,
   defaultMessageForErrorCode,
 } from '@palantir/contracts';
+import { AppError } from '../../lib/app-error.js';
 
 /** Einheit für die Meldung ausschreiben. */
 function formatAmount(value: number, unit: ResourceUnit): string {
@@ -64,15 +65,13 @@ export function describeViolations(violations: readonly CapacityViolation[]): st
   return violations.map(describeViolation).join(' ');
 }
 
-export class ResourceError extends Error {
-  readonly code: ErrorCode;
+export class ResourceError extends AppError {
   /** Bei `RESOURCE_LIMIT_EXCEEDED` die überschrittenen Grenzen, sonst leer. */
   readonly violations: readonly CapacityViolation[];
 
   constructor(code: ErrorCode, message?: string, violations: readonly CapacityViolation[] = []) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'ResourceError';
-    this.code = code;
     this.violations = violations;
   }
 

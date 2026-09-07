@@ -105,6 +105,11 @@ export interface NotificationTransport {
  * Trägt einen benannten Code aus dem Katalog, damit die Ursache in
  * `notification_deliveries` und am Kanal (`lastFailureCode`) auswertbar bleibt
  * statt als Freitext (CLAUDE.md §5).
+ *
+ * Bewusst **kein** `AppError` (Audit W2-9): Der Fehler beantwortet keine
+ * HTTP-Anfrage, sondern wird vollständig in `service.ts` ausgewertet, und seine
+ * Meldung enthält die Antwort des Zielsystems (z. B. den Antworttext von
+ * Discord). Sie gehört ins Zustellungsprotokoll, nicht in eine API-Antwort.
  */
 export class NotificationTransportError extends Error {
   readonly code: ErrorCode;

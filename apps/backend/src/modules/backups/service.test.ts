@@ -184,6 +184,35 @@ describe('Manuelles Backup auf Knopfdruck (Lastenheft §3.3)', () => {
     ).rejects.toMatchObject({ code: 'BACKUP_ALREADY_RUNNING' });
   });
 
+  /**
+   * Audit W2-9, bb-10: `findActiveByServer()` und `create()` sind zwei
+   * Schritte. Beim Doppelklick bestehen beide Aufrufe die Vorprüfung, den
+   * zweiten Insert fängt erst `backups_one_active_per_server_idx` – bisher als
+   * roher 23505 und damit als 500 statt als `BACKUP_ALREADY_RUNNING` (409).
+   */
+  it('beantwortet den Unique-Index (23505) mit BACKUP_ALREADY_RUNNING', async () => {
+    const t = aufbau({
+      repositoryUmhuellung: (basis) => ({
+        ...basis,
+        // Der Gewinner des Rennens hat sein `INSERT` noch nicht abgeschlossen,
+        // als dieser Aufruf die Vorprüfung passiert.
+        findActiveByServer: () => Promise.resolve(null),
+        create: () =>
+          Promise.reject(
+            Object.assign(new Error('duplicate key value violates unique constraint'), {
+              code: '23505',
+            }),
+          ),
+      }),
+    });
+
+    await expect(
+      t.service.createManual(actorMit('backup.manage.own'), t.besitzerId, t.server.id, {
+        stopServer: false,
+      }),
+    ).rejects.toMatchObject({ code: 'BACKUP_ALREADY_RUNNING' });
+  });
+
   it('meldet einen unbekannten Server als SERVER_NOT_FOUND', async () => {
     const t = aufbau();
 

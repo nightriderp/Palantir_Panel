@@ -7,15 +7,13 @@
  * Pflichtenheft §5.1 um. Aufbau bewusst analog zu `RbacError`.
  */
 
-import { type ErrorCode, defaultMessageForErrorCode } from '@palantir/contracts';
+import { type ErrorCode } from '@palantir/contracts';
+import { AppError } from '../../lib/app-error.js';
 
-export class BackupError extends Error {
-  readonly code: ErrorCode;
-
+export class BackupError extends AppError {
   constructor(code: ErrorCode, message?: string) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'BackupError';
-    this.code = code;
   }
 }
 
@@ -30,13 +28,10 @@ export function isBackupError(error: unknown): error is BackupError {
  * auskommt – andere Arbeitspakete mit geplanten Aufgaben (B3) nutzen dieselbe
  * Auswertung und denselben Fehler.
  */
-export class ScheduleError extends Error {
-  readonly code: ErrorCode;
-
+export class ScheduleError extends AppError {
   constructor(code: ErrorCode, message?: string) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'ScheduleError';
-    this.code = code;
   }
 }
 
