@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CSRF_COOKIE_NAME } from '@/lib/auth/api';
+import { AUTH_ENDPOINTS, CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from '@/lib/auth/api';
 import { middleware } from './middleware';
 
 /**
@@ -136,5 +136,131 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
     // Sitzung gilt wieder: keine Umleitung, aber frische Cookies an der Antwort.
     expect(response.headers.get('location')).toBeNull();
     expect(response.headers.get('set-cookie')).toContain('palantir_session=neu');
+  });
+});
+
+/**
+ * Der Tausch-Zweig im Einzelnen (Audit W2-29, `test-gaps-10`).
+ *
+ * Das Zugriffs-Token gilt 15 Minuten, der Refresh-Token 30 Tage
+ * (Pflichtenheft §7). Ohne diesen Zweig landete jeder Seitenaufruf nach einer
+ * Viertelstunde auf der Anmeldung, obwohl die Sitzung noch gilt. Geprüft wird
+ * deshalb nicht nur der glückliche Fall, sondern auch, **womit** getauscht wird
+ * und was bei einem gescheiterten Tausch passiert.
+ */
+describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
+  /** Antwort von `/auth/refresh` mit beliebig vielen Sitzungs-Cookies. */
+  function erneuert(cookies: readonly string[], awaitingApproval = false): Response {
+    const headers = new Headers({ 'content-type': 'application/json' });
+    for (const wert of cookies) headers.append('set-cookie', wert);
+
+    return new Response(
+      JSON.stringify({ success: true, data: { account: { awaitingApproval } }, error: null }),
+      { status: 200, headers },
+    );
+  }
+
+  it('ruft /auth/refresh als POST mit dem CSRF-Kopf auf', async () => {
+    fetchDouble
+      .mockResolvedValueOnce(abgemeldet())
+      .mockResolvedValueOnce(erneuert(['palantir_session=neu']));
+
+    await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+
+    expect(fetchDouble).toHaveBeenCalledTimes(2);
+
+    const [url, init] = fetchDouble.mock.calls[1] as [string, RequestInit];
+
+    expect(url).toContain(AUTH_ENDPOINTS.refresh);
+    expect(init.method).toBe('POST');
+    // Ohne den Kopf endete der Tausch am CSRF-Schutz (Pflichtenheft §7).
+    expect((init.headers as Record<string, string>)[CSRF_HEADER_NAME]).toBe('csrf-token');
+    expect((init.headers as Record<string, string>).cookie).toBe(SITZUNGS_COOKIE);
+  });
+
+  it('hängt jeden gelieferten Cookie an – nicht nur den ersten', async () => {
+    fetchDouble
+      .mockResolvedValueOnce(abgemeldet())
+      .mockResolvedValueOnce(
+        erneuert(['palantir_session=neu; Path=/', 'palantir_refresh=neu; Path=/']),
+      );
+
+    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const gesetzt = response.headers.getSetCookie();
+
+    expect(gesetzt).toHaveLength(2);
+    expect(gesetzt.join(' ')).toContain('palantir_refresh=neu');
+  });
+
+  it('führt ein noch nicht freigeschaltetes Konto trotz Tausch auf den Wartebildschirm', async () => {
+    fetchDouble
+      .mockResolvedValueOnce(abgemeldet())
+      .mockResolvedValueOnce(erneuert(['palantir_session=neu'], true));
+
+    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+
+    expect(ziel(response)).toBe('/pending');
+    // Die frischen Cookies gehen trotzdem mit: sonst liefe der nächste Aufruf
+    // erneut in den Tausch.
+    expect(response.headers.get('set-cookie')).toContain('palantir_session=neu');
+  });
+
+  it('leitet ohne Cookies zur Anmeldung, wenn der Tausch abgelehnt wird', async () => {
+    fetchDouble.mockResolvedValueOnce(abgemeldet()).mockResolvedValueOnce(
+      // Der Refresh-Token ist wirklich zu Ende; das Backend hat die Cookies
+      // bereits selbst gelöscht.
+      new Response(JSON.stringify({ success: false, data: null }), { status: 401 }),
+    );
+
+    const response = await middleware(
+      anfrage('https://panel.example/servers?a=1', SITZUNGS_COOKIE),
+    );
+
+    expect(ziel(response)).toBe('/login?a=1');
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('versucht den Tausch nur bei 401, nicht bei einem Serverfehler', async () => {
+    fetchDouble.mockResolvedValue(new Response('kaputt', { status: 500 }));
+
+    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+
+    expect(fetchDouble).toHaveBeenCalledTimes(1);
+    expect(ziel(response)).toBe('/login');
+  });
+
+  it('behandelt eine Tausch-Antwort ohne verwertbaren Rumpf als nicht angemeldet', async () => {
+    fetchDouble
+      .mockResolvedValueOnce(abgemeldet())
+      .mockResolvedValueOnce(new Response('kein json', { status: 200 }));
+
+    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+
+    expect(ziel(response)).toBe('/login');
+  });
+
+  it('fällt auf die Anmeldung zurück, wenn der Tausch selbst am Netz scheitert', async () => {
+    fetchDouble.mockResolvedValueOnce(abgemeldet()).mockRejectedValueOnce(new Error('Netz weg'));
+
+    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+
+    expect(ziel(response)).toBe('/login');
+  });
+
+  it('spart den Roundtrip für einen Besucher ganz ohne Cookie', async () => {
+    const response = await middleware(anfrage('https://panel.example/servers'));
+
+    expect(fetchDouble).not.toHaveBeenCalled();
+    expect(ziel(response)).toBe('/login');
+  });
+
+  it('lässt eine gültige Sitzung unangetastet – kein Tausch, keine Cookies', async () => {
+    fetchDouble.mockResolvedValue(angemeldet());
+
+    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+
+    expect(fetchDouble).toHaveBeenCalledTimes(1);
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('set-cookie')).toBeNull();
   });
 });
