@@ -143,6 +143,43 @@ describe('Inbox-Abfrage', () => {
     expect(notificationQuerySchema.safeParse({ limit: 500 }).success).toBe(false);
   });
 
+  /*
+   * contracts-validation-06: Der Filter kommt aus dem Query-String, also als
+   * Zeichenkette. `z.coerce.boolean()` hätte `?unreadOnly=false` in `true`
+   * verwandelt und damit still auf „nur ungelesene" gefiltert.
+   */
+  it('nimmt ?unreadOnly=false als „alle Einträge"', () => {
+    expect(notificationQuerySchema.parse({ unreadOnly: 'false' }).unreadOnly).toBe(false);
+  });
+
+  it('nimmt ?unreadOnly=true als „nur ungelesene"', () => {
+    expect(notificationQuerySchema.parse({ unreadOnly: 'true' }).unreadOnly).toBe(true);
+  });
+
+  it('filtert ohne unreadOnly nicht', () => {
+    expect(notificationQuerySchema.parse({ limit: 10 }).unreadOnly).toBe(false);
+  });
+
+  it('lehnt jeden anderen Wert ab, statt ihn als „true" zu lesen', () => {
+    // Alle diese Werte hätte `z.coerce.boolean()` zu `true` bzw. `false`
+    // gemacht – ein Tippfehler im Query-String soll auffallen.
+    for (const wert of ['1', '0', 'yes', 'False', 'TRUE', '', 'vielleicht']) {
+      expect(notificationQuerySchema.safeParse({ unreadOnly: wert }).success, wert).toBe(false);
+    }
+  });
+
+  it('nimmt keinen echten Boolean an – es ist ein Schema für den Query-String', () => {
+    expect(notificationQuerySchema.safeParse({ unreadOnly: true }).success).toBe(false);
+    expect(notificationQuerySchema.safeParse({ unreadOnly: false }).success).toBe(false);
+  });
+
+  it('benennt im Fehler das betroffene Feld', () => {
+    const ergebnis = notificationQuerySchema.safeParse({ unreadOnly: 'ja' });
+
+    expect(ergebnis.success).toBe(false);
+    expect(ergebnis.success ? [] : ergebnis.error.issues[0]?.path).toEqual(['unreadOnly']);
+  });
+
   it('markiert ohne Id-Liste alle Meldungen', () => {
     expect(markNotificationsReadInputSchema.parse({})).toEqual({ read: true });
   });

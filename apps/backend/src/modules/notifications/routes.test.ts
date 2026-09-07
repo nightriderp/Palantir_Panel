@@ -220,6 +220,36 @@ describe('Inbox', () => {
     expect(fremde.json().data.total).toBe(0);
   });
 
+  /*
+   * contracts-validation-06: `?unreadOnly=false` heißt „alles anzeigen".
+   * Vorher machte `z.coerce.boolean()` daraus `true`; die Route lieferte dann
+   * nur ungelesene Meldungen, obwohl der Aufrufer das Gegenteil verlangt hatte.
+   * Der Test läuft bewusst über die Route, weil der Fehler erst am
+   * Query-String entsteht – im Service ist `unreadOnly` längst ein Boolean.
+   */
+  it('nimmt ?unreadOnly=false als „alle Meldungen" entgegen', async () => {
+    const repository = fakeRepository({ rules: [testRule({ event: 'server.crashed' })] });
+    const { app, notifications } = await buildTestApp({ repository });
+
+    await notifications.publish(serverEvent('server.crashed', { ownerId: NUTZER_ID }));
+    await anfrage(app, 'POST', '/notifications/read', 'nutzer', {});
+
+    const alle = await anfrage(app, 'GET', '/notifications?unreadOnly=false', 'nutzer');
+    const ungelesene = await anfrage(app, 'GET', '/notifications?unreadOnly=true', 'nutzer');
+
+    expect(alle.json().data.total).toBe(1);
+    expect(ungelesene.json().data.total).toBe(0);
+  });
+
+  it('lehnt einen unbekannten Wert für unreadOnly ab, statt ihn als „true" zu lesen', async () => {
+    const { app } = await buildTestApp();
+
+    const antwort = await anfrage(app, 'GET', '/notifications?unreadOnly=1', 'nutzer');
+
+    expect(antwort.statusCode).toBe(400);
+    expect(antwort.json().error.code).toBe('VALIDATION_FAILED');
+  });
+
   it('markiert Meldungen als gelesen', async () => {
     const repository = fakeRepository({ rules: [testRule({ event: 'server.crashed' })] });
     const { app, notifications } = await buildTestApp({ repository });

@@ -54,10 +54,31 @@ export const auditLogQuerySchema = z
     limit: z.coerce.number().int().min(1).max(200).default(50),
     offset: z.coerce.number().int().min(0).default(0),
   })
-  .refine((input) => input.from === undefined || input.to === undefined || input.from <= input.to, {
-    message: 'Der Anfangszeitpunkt muss vor dem Endzeitpunkt liegen.',
-    path: ['to'],
-  });
+  /*
+   * Zeitvergleich, kein Zeichenkettenvergleich (contracts-validation-07).
+   *
+   * `isoTimestampSchema` erlaubt Zonen-Offsets ausdrücklich (`offset: true`).
+   * Damit fallen lexikographische und chronologische Reihenfolge auseinander:
+   * `2026-01-01T10:00:00+02:00` ist 08:00 UTC und liegt damit **vor**
+   * `2026-01-01T09:00:00Z`, steht als Zeichenkette aber dahinter. Ein
+   * `from <= to` auf den Rohtexten hätte den einen Zeitraum fälschlich
+   * abgelehnt und den umgekehrten fälschlich durchgelassen.
+   *
+   * Beide Werte sind an dieser Stelle bereits als ISO-8601 geprüft, `Date.parse`
+   * liefert deshalb immer eine Zahl und nie `NaN`.
+   */
+  .refine(
+    (input) =>
+      input.from === undefined ||
+      input.to === undefined ||
+      Date.parse(input.from) <= Date.parse(input.to),
+    {
+      // Gleiche Zeitpunkte sind zulässig – der Zeitraum ist beidseitig
+      // einschließlich, ein Punkt-Zeitraum ergibt also Sinn.
+      message: 'Der Anfangszeitpunkt darf nicht nach dem Endzeitpunkt liegen.',
+      path: ['to'],
+    },
+  );
 
 export type AppendAuditEntryInput = z.infer<typeof appendAuditEntryInputSchema>;
 export type AuditLogQuery = z.infer<typeof auditLogQuerySchema>;
