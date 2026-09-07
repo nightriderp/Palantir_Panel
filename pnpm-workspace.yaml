@@ -1,3 +1,8 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  # Spiel-Images sind keine Anwendungspakete – sie werden nicht gebaut und haben
+  # keine Abhängigkeiten. Sie stehen hier, damit `pnpm test` in der Wurzel (und
+  # damit die CI) die Tests mitlaufen lässt, die neben den .mjs-Dateien liegen.
+  # Verzeichnisse ohne package.json ignoriert pnpm.
+  - 'images/*'

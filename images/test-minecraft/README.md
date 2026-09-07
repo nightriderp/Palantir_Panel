@@ -21,15 +21,16 @@ in `SPIEL_IMAGES.md` (lokal, nicht im Repo).
 
 Alles über Umgebungsvariablen, gesetzt vom Panel über `envMapping` der Spiel-Definition:
 
-| Variable                            | Vorgabe                  | Wirkung                                               |
-| ----------------------------------- | ------------------------ | ----------------------------------------------------- |
-| `SERVER_PORT`                       | `25565`                  | Port im Container                                     |
-| `MOTD`                              | `Palantir – Test-Server` | Text in der Serverliste                               |
-| `MAX_PLAYERS`                       | `20`                     | Angezeigte Obergrenze                                 |
-| `FAKE_PLAYERS`                      | `0`                      | Gemeldete Spielerzahl beim Start                      |
-| `VERSION_NAME` / `PROTOCOL_VERSION` | `Palantir Test` / `767`  | Was der Client als Version sieht                      |
-| `STARTUP_DELAY_SECONDS`             | `0`                      | Verzögerter Start – prüft `starting → running`        |
-| `PALANTIR_STARTUP_PARAMETERS`       | –                        | Wird ins Log und nach `server.properties` geschrieben |
+| Variable                            | Vorgabe                  | Wirkung                                                |
+| ----------------------------------- | ------------------------ | ------------------------------------------------------ |
+| `SERVER_PORT`                       | `25565`                  | Port im Container                                      |
+| `MOTD`                              | `Palantir – Test-Server` | Text in der Serverliste                                |
+| `MAX_PLAYERS`                       | `20`                     | Angezeigte Obergrenze                                  |
+| `FAKE_PLAYERS`                      | `0`                      | Gemeldete Spielerzahl beim Start                       |
+| `VERSION_NAME` / `PROTOCOL_VERSION` | `Palantir Test` / `767`  | Was der Client als Version sieht                       |
+| `STARTUP_DELAY_SECONDS`             | `0`                      | Verzögerter Start – prüft `starting → running`         |
+| `IDLE_TIMEOUT_SECONDS`              | `30`                     | Frist je Verbindung ohne Datenverkehr; `0` schaltet ab |
+| `PALANTIR_STARTUP_PARAMETERS`       | –                        | Wird ins Log und nach `server.properties` geschrieben  |
 
 ## Konsole
 
@@ -42,6 +43,29 @@ palantir-console stop
 
 `players` ist der nützlichste Befehl: Damit lässt sich die Spielerzahl von Hand setzen und
 so der Auto-Shutdown auslösen, ohne dass jemand wirklich spielt.
+
+## Tests
+
+`server.test.mjs` startet `server.mjs` als eigenen Prozess auf freien Ports und redet über
+TCP mit ihm — **kein Docker nötig**, beide Dateien sind reine Node-Programme. Geprüft wird
+vor allem, dass ein kaputter Client nur seine eigene Verbindung kostet und den Prozess
+nicht mitnimmt (ungültiges VarInt, überzogene Paketlänge, Leerlauf) sowie der Exit-Code der
+Konsole.
+
+```bash
+# im Verbund, so wie die CI es tut
+pnpm test
+
+# nur dieses Image
+pnpm --filter @palantir/test-minecraft-image test
+
+# ganz ohne pnpm (Dateiname ausschreiben – ein Verzeichnis nimmt `--test` nicht)
+node --test images/test-minecraft/server.test.mjs
+```
+
+Die `package.json` daneben existiert nur für diese Verdrahtung; das Image kopiert sie nicht.
+Die Leerlauf-Frist lässt sich für Tests über `IDLE_TIMEOUT_SECONDS` klein setzen
+(Bruchteile von Sekunden sind erlaubt, `0` schaltet sie ab).
 
 ## Von Hand prüfen
 
