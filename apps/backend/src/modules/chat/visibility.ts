@@ -18,6 +18,7 @@
 import { type ConversationType } from '@palantir/contracts';
 import { ChatError } from './errors.js';
 import {
+  type ChatServerMember,
   type ChatServerRecord,
   type ConversationRecord,
   type ServerMembershipSource,
@@ -79,10 +80,26 @@ export async function resolveAudience(
   }
 
   const members = await deps.servers.listMembers(conversation.serverId);
-  const participantIds = [server.ownerId, ...members.map((member) => member.userId)];
 
+  return { conversation, participantIds: serverParticipantIds(server, members), server };
+}
+
+/**
+ * Teilnehmerkreis eines Servers: Besitzer und Mitglieder – ohne den Umweg über
+ * eine Konversation.
+ *
+ * Dieselbe Menge, die {@link resolveAudience} für einen Server-Chat bildet, nur
+ * eine Ebene früher greifbar: Der Gruppen-Chat entsteht beim ersten Zugriff, und
+ * ob jemand ihn öffnen darf, muss **vor** dem Anlegen feststehen (Audit W3-4,
+ * `backend-community-visibility-10`). Zwei Auslegungen derselben Regel wären
+ * genau die Lücke, die dieses Modul sonst vermeidet.
+ */
+export function serverParticipantIds(
+  server: ChatServerRecord,
+  members: readonly ChatServerMember[],
+): readonly string[] {
   // Der Besitzer könnte theoretisch zusätzlich als Mitglied eingetragen sein.
-  return { conversation, participantIds: [...new Set(participantIds)], server };
+  return [...new Set([server.ownerId, ...members.map((member) => member.userId)])];
 }
 
 /** Nimmt das Konto an dieser Konversation teil? */
@@ -125,6 +142,25 @@ export function canSendMessage(audience: ConversationAudience, userId: string | 
 export function assertParticipant(audience: ConversationAudience, userId: string | null): void {
   if (!canViewConversation(audience, userId)) {
     throw new ChatError('CONVERSATION_NOT_FOUND');
+  }
+}
+
+/**
+ * Dieselbe Prüfung, aber für einen Vorgang, der eine **Nachricht** benennt.
+ *
+ * Der Katalog führt `MESSAGE_NOT_FOUND` als „existiert nicht **oder** liegt in
+ * einer fremden Konversation" (Pflichtenheft §7). Genau das war bisher nicht
+ * eingehalten: Eine unbekannte Id ergab `MESSAGE_NOT_FOUND`, eine vorhandene in
+ * fremder Konversation `CONVERSATION_NOT_FOUND` – der Unterschied zwischen
+ * beiden Antworten ist die Information, die der Code verbergen soll (Audit
+ * W3-4, `backend-community-visibility-09`).
+ */
+export function assertMessageParticipant(
+  audience: ConversationAudience,
+  userId: string | null,
+): void {
+  if (!canViewConversation(audience, userId)) {
+    throw new ChatError('MESSAGE_NOT_FOUND');
   }
 }
 

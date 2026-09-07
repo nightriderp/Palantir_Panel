@@ -198,10 +198,12 @@ export function registerNotificationLiveRoute(
         return;
       }
 
-      const detach = options.hub.attach(userId, socket);
+      let detach = options.hub.attach(userId, socket);
+      let angemeldet = true;
 
       socket.on('close', () => {
         detach();
+        angemeldet = false;
       });
 
       socket.on('message', (data: unknown) => {
@@ -221,8 +223,25 @@ export function registerNotificationLiveRoute(
 
         if (parsed.data.kind === 'unsubscribe') {
           detach();
+          angemeldet = false;
 
           return;
+        }
+
+        /*
+         * `subscribe` nach einem `unsubscribe` meldet die Verbindung wirklich
+         * wieder an (Audit W3-4, `backend-community-08`).
+         *
+         * Vorher bestätigte der Zweig unten nur mit `subscribed` samt Zähler,
+         * ohne je wieder `attach` zu rufen: Der Client hielt sich für
+         * angemeldet, bekam aber bis zum Neuaufbau der Verbindung kein
+         * `notification.created` mehr. Der Wächter hält das idempotent – ein
+         * zweites `subscribe` ohne zwischenzeitliches `unsubscribe` lässt die
+         * bestehende Abmeldefunktion stehen, statt sie zu ersetzen.
+         */
+        if (!angemeldet) {
+          detach = options.hub.attach(userId, socket);
+          angemeldet = true;
         }
 
         // Ohne Fänger würde eine kurz nicht erreichbare Datenbank hier das

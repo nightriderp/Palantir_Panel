@@ -74,6 +74,7 @@ import type {
   CreateNotificationData,
   NotificationChannelRecord,
   NotificationPreferencesRecord,
+  NotificationRecord,
   NotificationRepository,
   NotificationRuleRecord,
 } from './repository.js';
@@ -391,14 +392,15 @@ export function createNotificationService(
     });
   }
 
-  /** Legt Inbox-Meldungen an und schiebt sie an offene Ansichten. */
-  async function fillInbox(entries: readonly CreateNotificationData[]): Promise<void> {
-    if (entries.length === 0) {
-      return;
-    }
-
-    const created = await repository.createNotifications(entries);
-
+  /**
+   * Schiebt bereits angelegte Meldungen an offene Ansichten.
+   *
+   * Getrennt vom Anlegen, weil beides nicht zusammengehört: Das Anlegen kann in
+   * einer Transaktion stecken (`publishAnnouncement`), die Zustellung an offene
+   * WebSockets darf erst nach dem Commit passieren – vorher gäbe es sie für
+   * jeden anderen Leser noch gar nicht.
+   */
+  async function zustellen(created: readonly NotificationRecord[]): Promise<void> {
     for (const record of created) {
       const unreadCount = await repository.countUnread(record.userId);
 
@@ -407,6 +409,32 @@ export function createNotificationService(
         unreadCount,
       });
     }
+  }
+
+  /**
+   * Anzeigename eines Kontos für die DTO-Bildung.
+   *
+   * Dieselbe Auflösung, die `listAnnouncements` für die Liste macht – damit ein
+   * frisch geschriebener DTO nicht weniger enthält als der gleich darauf
+   * gelesene (Audit W3-4, `backend-community-18`).
+   */
+  async function anzeigename(userId: string | null): Promise<string | null> {
+    if (userId === null) {
+      return null;
+    }
+
+    const namen = await directory.findDisplayNames([userId]);
+
+    return namen.get(userId) ?? null;
+  }
+
+  /** Legt Inbox-Meldungen an und schiebt sie an offene Ansichten. */
+  async function fillInbox(entries: readonly CreateNotificationData[]): Promise<void> {
+    if (entries.length === 0) {
+      return;
+    }
+
+    await zustellen(await repository.createNotifications(entries));
   }
 
   // -------------------------------------------------------------------------
@@ -943,14 +971,6 @@ export function createNotificationService(
     },
 
     async publishAnnouncement(actor, actorId, input) {
-      const announcement = await repository.createAnnouncement({
-        title: input.title,
-        body: input.body,
-        severity: input.severity,
-        publishedByUserId: actorId,
-        expiresAt: input.expiresAt === null ? null : new Date(input.expiresAt),
-      });
-
       /*
        * „Systemweit" heißt: alle freigeschalteten Konten – unabhängig davon, ob
        * ein Admin eine Regel für `announcement.published` angelegt hat. Eine
@@ -964,21 +984,40 @@ export function createNotificationService(
        */
       const recipients = await directory.listActiveUserIds();
 
-      await fillInbox(
-        recipients.map((userId) => ({
-          userId,
-          event: 'announcement.published' as const,
-          severity: announcement.severity,
-          title: announcement.title,
-          body: announcement.body,
-          subjectType: 'announcement' as const,
-          subjectId: announcement.id,
-          subjectName: announcement.title,
-          data: {},
-          ruleId: null,
-          announcementId: announcement.id,
-        })),
+      /*
+       * Ankündigung und Zustellung entstehen gemeinsam oder gar nicht (Audit
+       * W3-4, `backend-community-18`). Vorher waren es zwei Schritte: Scheiterte
+       * der zweite, stand eine Ankündigung in der Tabelle, die niemand in seiner
+       * Inbox hatte – und der zweite Anlauf des Admins legte eine weitere an,
+       * weil der Dedupe-Index je `announcement_id` greift.
+       */
+      const { announcement, notifications: zugestellt } = await repository.publishAnnouncement(
+        {
+          title: input.title,
+          body: input.body,
+          severity: input.severity,
+          publishedByUserId: actorId,
+          expiresAt: input.expiresAt === null ? null : new Date(input.expiresAt),
+        },
+        (angelegt) =>
+          recipients.map((userId) => ({
+            userId,
+            event: 'announcement.published' as const,
+            severity: angelegt.severity,
+            title: angelegt.title,
+            body: angelegt.body,
+            subjectType: 'announcement' as const,
+            subjectId: angelegt.id,
+            subjectName: angelegt.title,
+            data: {},
+            ruleId: null,
+            announcementId: angelegt.id,
+          })),
       );
+
+      // Erst nach dem Commit an offene Ansichten – vorher gäbe es die Meldungen
+      // für jeden anderen Leser noch nicht.
+      await zustellen(zugestellt);
 
       await publishSafe({
         event: 'announcement.published',
@@ -1000,14 +1039,21 @@ export function createNotificationService(
         metadata: {
           operation: 'published',
           title: announcement.title,
-          recipientCount: recipients.length,
+          recipientCount: zugestellt.length,
         },
       });
 
+      /*
+       * Derselbe DTO, den `listAnnouncements` gleich darauf liefert – samt
+       * Verfasser und tatsächlicher Empfängerzahl. Vorher stand hier
+       * `publishedByDisplayName: null`, obwohl der Actor bekannt ist: Die
+       * Ansicht zeigte bis zum nächsten Laden keinen Verfasser (Audit W3-4,
+       * `backend-community-18`).
+       */
       return toAnnouncementDto(announcement, {
         actor,
-        publishedByDisplayName: null,
-        recipientCount: recipients.length,
+        publishedByDisplayName: await anzeigename(announcement.publishedByUserId),
+        recipientCount: zugestellt.length,
       });
     },
 
@@ -1047,9 +1093,10 @@ export function createNotificationService(
 
       const counts = await repository.countNotificationsPerAnnouncement();
 
+      // Wie beim Veröffentlichen: derselbe DTO wie beim Lesen, samt Verfasser.
       return toAnnouncementDto(updated, {
         actor,
-        publishedByDisplayName: null,
+        publishedByDisplayName: await anzeigename(updated.publishedByUserId),
         recipientCount: counts.get(announcementId) ?? 0,
       });
     },

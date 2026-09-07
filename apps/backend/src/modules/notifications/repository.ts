@@ -282,6 +282,27 @@ export interface NotificationRepository {
   listAnnouncements(): Promise<AnnouncementRecord[]>;
   findAnnouncementById(announcementId: string): Promise<AnnouncementRecord | null>;
   createAnnouncement(data: CreateAnnouncementData): Promise<AnnouncementRecord>;
+  /**
+   * Legt eine Ankündigung samt ihren Inbox-Meldungen in **einer** Transaktion
+   * an (Audit W3-4, `backend-community-18`).
+   *
+   * Beides gehört zusammen: Scheiterte die Zustellung nach dem Anlegen, stand
+   * die Ankündigung bereits in der Tabelle, erreichte aber niemanden – und ein
+   * zweiter Versuch legte eine **zweite** an, weil der Dedupe-Index je
+   * `announcement_id` greift und nicht je Titel.
+   *
+   * Die Meldungen bildet der Aufrufer aus dem eben entstandenen Datensatz
+   * (`inboxFor`) – die Fachlichkeit bleibt im Dienst, die Transaktionsgrenze
+   * hier. Zurück kommen die tatsächlich angelegten Zeilen; der Unique-Index
+   * `notifications_announcement_user_idx` kann einzelne verwerfen.
+   */
+  publishAnnouncement(
+    data: CreateAnnouncementData,
+    inboxFor: (announcement: AnnouncementRecord) => readonly CreateNotificationData[],
+  ): Promise<{
+    readonly announcement: AnnouncementRecord;
+    readonly notifications: readonly NotificationRecord[];
+  }>;
   updateAnnouncement(
     announcementId: string,
     data: UpdateAnnouncementData,
@@ -716,6 +737,34 @@ export function createDrizzleNotificationRepository(db: Database): NotificationR
       }
 
       return toAnnouncement(row);
+    },
+
+    async publishAnnouncement(data, inboxFor) {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.insert(announcements).values(data).returning();
+
+        if (!row) {
+          throw new Error('Die Ankündigung konnte nicht angelegt werden.');
+        }
+
+        const announcement = toAnnouncement(row);
+        const entries = inboxFor(announcement);
+
+        if (entries.length === 0) {
+          return { announcement, notifications: [] };
+        }
+
+        // `onConflictDoNothing` wie in `createNotifications`: Der Unique-Index
+        // je Ankündigung und Konto darf die Veröffentlichung nicht scheitern
+        // lassen.
+        const rows = await tx
+          .insert(notifications)
+          .values([...entries])
+          .onConflictDoNothing()
+          .returning();
+
+        return { announcement, notifications: rows.map(toNotification) };
+      });
     },
 
     async updateAnnouncement(announcementId, data) {

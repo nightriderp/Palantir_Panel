@@ -207,29 +207,53 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
        */
       const fetchLimit = options.limit + 1;
 
-      let cutoff: Date | null = null;
+      let anker: { readonly createdAt: Date; readonly id: string } | null = null;
 
       if (options.before !== undefined) {
-        const [anchor] = await db
-          .select({ createdAt: messages.createdAt })
+        /*
+         * Der Anker muss in **dieser** Konversation liegen (Audit W3-4,
+         * `backend-community-09` / `backend-community-visibility-08`). Ohne die
+         * zweite Bedingung beantwortete die Route die Frage „gibt es diese
+         * Nachricht-Id irgendwo im System?" – eine Seite bei Treffer,
+         * `MESSAGE_NOT_FOUND` sonst – und der fremde Zeitstempel wurde als
+         * Schnittpunkt nutzbar. Der Chat lässt sonst keinen zweiten Zugriffsweg
+         * zu (`service.ts`), hier stand einer offen.
+         */
+        const [gefunden] = await db
+          .select({ id: messages.id, createdAt: messages.createdAt })
           .from(messages)
-          .where(eq(messages.id, options.before))
+          .where(and(eq(messages.id, options.before), eq(messages.conversationId, conversationId)))
           .limit(1);
 
-        if (!anchor) {
+        if (!gefunden) {
           throw new ChatError('MESSAGE_NOT_FOUND');
         }
 
-        cutoff = anchor.createdAt;
+        anker = gefunden;
       }
 
+      /*
+       * Keyset auf dem vollen Sortierschlüssel `(created_at, id)` – genau dem
+       * der Ordnung unten (Audit W3-4, `backend-community-04`).
+       *
+       * `created_at < cutoff` allein reichte nicht: Mehrere Nachrichten können
+       * denselben Zeitstempel tragen (gleiche Transaktion, Lastspitze). Alle,
+       * die bei Gleichstand hinter dem Anker kämen, fielen zwischen zwei Seiten
+       * heraus – der Verlauf hatte beim Zurückblättern stille Lücken.
+       */
       const rows = await db
         .select()
         .from(messages)
         .where(
-          cutoff === null
-            ? eq(messages.conversationId, conversationId)
-            : and(eq(messages.conversationId, conversationId), lt(messages.createdAt, cutoff)),
+          and(
+            eq(messages.conversationId, conversationId),
+            anker === null
+              ? undefined
+              : or(
+                  lt(messages.createdAt, anker.createdAt),
+                  and(eq(messages.createdAt, anker.createdAt), lt(messages.id, anker.id)),
+                ),
+          ),
         )
         .orderBy(desc(messages.createdAt), desc(messages.id))
         .limit(fetchLimit);
@@ -285,8 +309,22 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
       messageId: string,
       deletedById: string,
       deletedAt: Date,
-    ): Promise<void> {
-      await db.update(messages).set({ deletedAt, deletedById }).where(eq(messages.id, messageId));
+    ): Promise<boolean> {
+      /*
+       * `deleted_at is null` steht in der Bedingung des `UPDATE` selbst – wie
+       * bei den Kontingent-Anfragen (Audit W2-15, `backend-admin-resources-06`).
+       * Das eine Statement ist für sich atomar: Löschen der Absender und ein
+       * Moderator im selben Moment, trifft nur einer eine Zeile. Vorher gewann
+       * der letzte Schreiber, und das DTO-Flag `deletedByModerator` kippte je
+       * nach Reihenfolge (Audit W3-4, `backend-community-12`).
+       */
+      const [beansprucht] = await db
+        .update(messages)
+        .set({ deletedAt, deletedById })
+        .where(and(eq(messages.id, messageId), isNull(messages.deletedAt)))
+        .returning({ id: messages.id });
+
+      return beansprucht !== undefined;
     },
 
     async markConversationRead(conversationId: string, userId: string, at: Date): Promise<void> {
@@ -459,7 +497,19 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
       };
     },
 
-    async resolveReport(reportId: string, data: ResolveReportData): Promise<MessageReportRecord> {
+    async resolveReport(
+      reportId: string,
+      data: ResolveReportData,
+    ): Promise<MessageReportRecord | null> {
+      /*
+       * `status = 'open'` in der Bedingung des `UPDATE`: Zwei Moderatoren
+       * entscheiden dieselbe Meldung gleichzeitig – beide kämen an der
+       * Vorprüfung im Dienst vorbei, denn beide haben denselben offenen Stand
+       * gelesen. Wer die Zeile beansprucht, entscheidet damit die Datenbank;
+       * der Verlierer bekommt `null` und daraus
+       * `MESSAGE_REPORT_ALREADY_RESOLVED` statt eines stillen Überschreibens
+       * (Audit W3-4, `backend-community-12`).
+       */
       const [row] = await db
         .update(messageReports)
         .set({
@@ -469,14 +519,10 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
           resolvedById: data.resolvedById,
           resolvedAt: data.resolvedAt,
         })
-        .where(eq(messageReports.id, reportId))
+        .where(and(eq(messageReports.id, reportId), eq(messageReports.status, 'open')))
         .returning();
 
-      if (!row) {
-        throw new ChatError('MESSAGE_REPORT_NOT_FOUND');
-      }
-
-      return toReportRecord(row);
+      return row ? toReportRecord(row) : null;
     },
   };
 }

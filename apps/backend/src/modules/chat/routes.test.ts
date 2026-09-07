@@ -252,14 +252,26 @@ describe('Moderationsweg', () => {
     expect(routen.join('\n')).not.toMatch(/conversation|message[^R]/i);
   });
 
+  /**
+   * Derselbe Code wie für eine Id, die es gar nicht gibt (Audit W3-4,
+   * `backend-community-visibility-09`): Der Unterschied zwischen beiden
+   * Antworten wäre die Auskunft, dass die Nachricht existiert.
+   */
   it('lässt einen Moderator eine fremde Nachricht nicht ohne Meldung anfassen', async () => {
     const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
     const nachricht = await chat.sendMessage(ctxFor(ALEX), conversation.id, { content: 'Hallo' });
 
-    const antwort = await anfrage('DELETE', `/api/chat/messages/${nachricht.id}`, 'mod');
+    const fremd = await anfrage('DELETE', `/api/chat/messages/${nachricht.id}`, 'mod');
+    const unbekannt = await anfrage(
+      'DELETE',
+      `/api/chat/messages/00000000-0000-4000-8000-0000000000ff`,
+      'mod',
+    );
 
-    expect(antwort.statusCode).toBe(404);
-    expect(antwort.json().error.code).toBe('CONVERSATION_NOT_FOUND');
+    expect(fremd.statusCode).toBe(404);
+    expect(fremd.json().error.code).toBe('MESSAGE_NOT_FOUND');
+    expect(unbekannt.statusCode).toBe(404);
+    expect(unbekannt.json().error.code).toBe('MESSAGE_NOT_FOUND');
   });
 });
 

@@ -73,9 +73,15 @@ export interface ChatRepository {
   createMessage(data: CreateMessageData): Promise<MessageRecord>;
   findMessage(messageId: string): Promise<MessageRecord | null>;
   /**
-   * Verlauf einer Konversation, absteigend nach `createdAt` – jüngste zuerst.
+   * Verlauf einer Konversation, absteigend nach `(createdAt, id)` – jüngste
+   * zuerst.
+   *
    * `before` ist die `Message.id`, ab der weiter in die Vergangenheit gelesen
-   * wird.
+   * wird. Der Anker muss **in dieser Konversation** liegen; sonst
+   * `MESSAGE_NOT_FOUND` – eine fremde Id darf über die Antwort weder ihre
+   * Existenz noch ihren Zeitpunkt verraten. Gefiltert wird auf dem vollen
+   * Sortierschlüssel, damit Nachrichten mit gleichem Zeitstempel nicht zwischen
+   * zwei Seiten herausfallen.
    */
   listMessages(
     conversationId: string,
@@ -83,8 +89,15 @@ export interface ChatRepository {
   ): Promise<MessagePage>;
   /** Jüngste Nachricht je Konversation – für die Vorschau in der Liste. */
   lastMessages(conversationIds: readonly string[]): Promise<ReadonlyMap<string, MessageRecord>>;
-  /** Markiert eine Nachricht als gelöscht; der Datensatz bleibt stehen. */
-  markMessageDeleted(messageId: string, deletedById: string, deletedAt: Date): Promise<void>;
+  /**
+   * Markiert eine Nachricht als gelöscht; der Datensatz bleibt stehen.
+   *
+   * Bedingt auf „noch nicht gelöscht": Die Rückgabe sagt, ob dieser Aufruf die
+   * Löschung beansprucht hat. `false` heißt, jemand anderes war schneller – der
+   * Aufrufer darf dann weder überschreiben noch ein zweites
+   * `message.deleted` zustellen.
+   */
+  markMessageDeleted(messageId: string, deletedById: string, deletedAt: Date): Promise<boolean>;
 
   // -- Lesezustand (Fundpunkt 95) --------------------------------------------
   /**
@@ -124,5 +137,11 @@ export interface ChatRepository {
     messageIds: readonly string[],
   ): Promise<ReadonlySet<string>>;
   listReports(query: MessageReportQuery): Promise<MessageReportPage>;
-  resolveReport(reportId: string, data: ResolveReportData): Promise<MessageReportRecord>;
+  /**
+   * Entscheidet eine **offene** Meldung.
+   *
+   * Bedingt auf `status = 'open'`: `null` heißt, ein anderer Moderator hat die
+   * Meldung im selben Moment beansprucht.
+   */
+  resolveReport(reportId: string, data: ResolveReportData): Promise<MessageReportRecord | null>;
 }

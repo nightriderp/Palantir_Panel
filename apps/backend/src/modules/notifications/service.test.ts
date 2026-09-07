@@ -701,6 +701,63 @@ describe('Systemweite Ankündigungen (Lastenheft §3.6)', () => {
     expect(repository.notifications[0]?.title).toBe('Wartung');
   });
 
+  /**
+   * Audit W3-4, `backend-community-18`: Ankündigung und Zustellung waren zwei
+   * Schritte. Scheiterte der zweite, stand die Ankündigung bereits in der
+   * Tabelle, erreichte aber niemanden – und der zweite Anlauf des Admins legte
+   * eine **zweite** an, weil der Dedupe-Index je `announcement_id` greift.
+   */
+  it('lässt nichts halb angelegt, wenn die Zustellung scheitert', async () => {
+    const repository = fakeRepository();
+    const { service } = build({ repository });
+    const transaktion = repository.publishAnnouncement;
+
+    repository.publishAnnouncement = (data) =>
+      transaktion(data, () => {
+        throw new Error('Inbox nicht beschreibbar');
+      });
+
+    await expect(
+      service.publishAnnouncement(adminActor(), ADMIN, {
+        title: 'Wartung',
+        body: 'Am Sonntag ab 02:00 Uhr.',
+        severity: 'info',
+        expiresAt: null,
+      }),
+    ).rejects.toThrow('Inbox nicht beschreibbar');
+
+    expect(repository.announcements).toHaveLength(0);
+    expect(repository.notifications).toHaveLength(0);
+  });
+
+  /**
+   * Der DTO direkt nach dem Anlegen trug `publishedByDisplayName: null`, obwohl
+   * der Verfasser bekannt ist – die Ansicht zeigte bis zum nächsten Laden
+   * keinen (Audit W3-4, `backend-community-18`).
+   */
+  it('liefert beim Veröffentlichen denselben DTO wie beim Lesen', async () => {
+    const repository = fakeRepository();
+    const { service } = build({
+      repository,
+      directory: fakeDirectory({
+        activeUserIds: [OWNER, MEMBER, ADMIN],
+        displayNames: { [ADMIN]: 'Admina' },
+      }),
+    });
+
+    const veroeffentlicht = await service.publishAnnouncement(adminActor(), ADMIN, {
+      title: 'Wartung',
+      body: 'Am Sonntag ab 02:00 Uhr.',
+      severity: 'info',
+      expiresAt: null,
+    });
+
+    const [gelesen] = await service.listAnnouncements(adminActor());
+
+    expect(veroeffentlicht.publishedByDisplayName).toBe('Admina');
+    expect(veroeffentlicht).toEqual(gelesen);
+  });
+
   it('meldet eine unbekannte Ankündigung als nicht vorhanden', async () => {
     const { service } = build();
 

@@ -5,6 +5,7 @@
  * Teilnahmeprüfung scheitern, auch der eines Owners.
  */
 
+import { type MessagePageDto } from '@palantir/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { isApproved } from '../rbac/index.js';
 import { ChatError } from './errors.js';
@@ -372,6 +373,98 @@ describe('Nachrichten lesen und schreiben', () => {
   });
 });
 
+/**
+ * Blättern im Verlauf (Audit W3-4, `backend-community-04`,
+ * `backend-community-09`, `backend-community-visibility-08`).
+ *
+ * Der Cursor ankert auf dem vollen Sortierschlüssel `(createdAt, id)`, und der
+ * Anker gilt nur innerhalb derselben Konversation.
+ */
+describe('Blättern im Verlauf', () => {
+  /** Uhr, die stillsteht: alle Nachrichten tragen denselben Zeitstempel. */
+  const STILLSTAND = { now: (): Date => new Date('2026-08-26T12:00:00.000Z') };
+
+  let ablage: InMemoryChatRepository;
+  let gleichzeitig: ChatService;
+
+  beforeEach(() => {
+    ablage = inMemoryChatRepository(STILLSTAND);
+    gleichzeitig = createChatService({
+      repository: ablage,
+      users: fakeUserDirectory(NAMEN),
+      servers: fakeServerMembership([SERVER], { [SERVER_ID]: [BEA] }),
+      clock: STILLSTAND,
+    });
+  });
+
+  /** Nächste Seite; scheitert sichtbar, wenn es gar keinen Cursor gibt. */
+  async function naechsteSeite(
+    conversationId: string,
+    cursor: string | null,
+  ): Promise<MessagePageDto> {
+    if (cursor === null) {
+      throw new Error('Ohne Cursor gibt es keine nächste Seite.');
+    }
+
+    return gleichzeitig.listMessages(ctxFor(ALEX), conversationId, { limit: 2, before: cursor });
+  }
+
+  it('blättert bei gleichem Zeitstempel ohne Lücke und ohne Dopplung', async () => {
+    const conversation = await gleichzeitig.openDirectConversation(ctxFor(ALEX), BEA);
+
+    for (const text of ['eins', 'zwei', 'drei', 'vier']) {
+      await gleichzeitig.sendMessage(ctxFor(ALEX), conversation.id, { content: text });
+    }
+
+    const erste = await gleichzeitig.listMessages(ctxFor(ALEX), conversation.id, { limit: 2 });
+
+    expect(erste.messages.map((nachricht) => nachricht.content)).toEqual(['drei', 'vier']);
+    expect(erste.nextCursor).toBe(erste.messages[0]?.id);
+
+    const zweite = await naechsteSeite(conversation.id, erste.nextCursor);
+
+    /*
+     * Vorher filterte das Repository nur mit `createdAt < cutoff`: „eins" und
+     * „zwei" tragen denselben Zeitstempel wie der Anker „drei" und fielen
+     * damit zwischen die beiden Seiten.
+     */
+    expect(zweite.messages.map((nachricht) => nachricht.content)).toEqual(['eins', 'zwei']);
+    expect(zweite.nextCursor).toBeNull();
+
+    expect([...zweite.messages, ...erste.messages].map((nachricht) => nachricht.content)).toEqual([
+      'eins',
+      'zwei',
+      'drei',
+      'vier',
+    ]);
+  });
+
+  it('weist einen Anker aus einer fremden Konversation ab', async () => {
+    const dm = await gleichzeitig.openDirectConversation(ctxFor(ALEX), BEA);
+    const serverChat = await gleichzeitig.openServerConversation(ctxFor(ALEX), SERVER_ID);
+
+    // Alex nimmt an beiden teil – der Anker gilt trotzdem nur in seiner eigenen
+    // Konversation, sonst wäre er ein Orakel über fremde Zeitstempel.
+    const woanders = await gleichzeitig.sendMessage(ctxFor(ALEX), serverChat.id, {
+      content: 'woanders',
+    });
+
+    await gleichzeitig.sendMessage(ctxFor(ALEX), dm.id, { content: 'hier' });
+
+    await expect(
+      gleichzeitig.listMessages(ctxFor(ALEX), dm.id, { limit: 2, before: woanders.id }),
+    ).rejects.toThrowError(new ChatError('MESSAGE_NOT_FOUND'));
+  });
+
+  it('weist einen unbekannten Anker ab', async () => {
+    const dm = await gleichzeitig.openDirectConversation(ctxFor(ALEX), BEA);
+
+    await expect(
+      gleichzeitig.listMessages(ctxFor(ALEX), dm.id, { limit: 2, before: testId('ff') }),
+    ).rejects.toThrowError(new ChatError('MESSAGE_NOT_FOUND'));
+  });
+});
+
 describe('Eigene Nachricht löschen', () => {
   it('markiert sie als gelöscht und meldet das den Teilnehmern', async () => {
     const conversationId = await dmZwischenAlexUndBea();
@@ -387,17 +480,61 @@ describe('Eigene Nachricht löschen', () => {
     expect(delivery.eventsFor(BEA)).toContain('message.deleted');
   });
 
-  it('lässt fremde Nachrichten nicht löschen – auch nicht mit message.moderate', async () => {
+  /**
+   * Audit W3-4, `backend-community-visibility-09`: Der Katalog führt
+   * `MESSAGE_NOT_FOUND` als „existiert nicht **oder** liegt in einer fremden
+   * Konversation". Ein Wechsel zu `CONVERSATION_NOT_FOUND` für den
+   * Unbeteiligten war genau der Unterschied, an dem sich ablesen ließ, ob es
+   * die Nachricht gibt.
+   */
+  it('lässt fremde Nachrichten nicht löschen – überall mit demselben Code', async () => {
     const conversationId = await dmZwischenAlexUndBea();
     const nachricht = await chat.sendMessage(ctxFor(ALEX), conversationId, { content: 'Hallo' });
 
+    // Teilnehmerin, aber nicht Absenderin.
     await expect(chat.deleteOwnMessage(ctxFor(BEA), nachricht.id)).rejects.toThrowError(
       new ChatError('MESSAGE_NOT_FOUND'),
     );
 
+    // Unbeteiligter mit `message.moderate` – derselbe Code.
     await expect(
       chat.deleteOwnMessage(ctxFor(MOD, actorWith('message.moderate')), nachricht.id),
-    ).rejects.toThrowError(new ChatError('CONVERSATION_NOT_FOUND'));
+    ).rejects.toThrowError(new ChatError('MESSAGE_NOT_FOUND'));
+
+    // Und eine Id, die es gar nicht gibt – ebenfalls derselbe.
+    await expect(chat.deleteOwnMessage(ctxFor(BEA), testId('ff'))).rejects.toThrowError(
+      new ChatError('MESSAGE_NOT_FOUND'),
+    );
+  });
+
+  /**
+   * Audit W3-4, `backend-community-12`: Die Vorprüfung liest einen Stand, der
+   * beim Schreiben veraltet sein kann. Ohne Bedingung im `UPDATE` überschrieb
+   * der zweite Schreiber `deletedById` – das DTO-Flag `deletedByModerator`
+   * kippte je nach Reihenfolge.
+   */
+  it('überschreibt eine bereits gelöschte Nachricht nicht (bedingtes Update)', async () => {
+    const conversationId = await dmZwischenAlexUndBea();
+    const nachricht = await chat.sendMessage(ctxFor(ALEX), conversationId, { content: 'Hallo' });
+    const frisch = await repository.findMessage(nachricht.id);
+
+    await chat.deleteOwnMessage(ctxFor(ALEX), nachricht.id);
+
+    const zustellungenVorher = delivery.delivered.filter(
+      (eintrag) => eintrag.frame.event === 'message.deleted',
+    ).length;
+
+    // Der zweite Aufruf hat die Nachricht noch als ungelöscht gelesen.
+    repository.findMessage = (): Promise<typeof frisch> => Promise.resolve(frisch);
+
+    await expect(chat.deleteOwnMessage(ctxFor(ALEX), nachricht.id)).rejects.toThrowError(
+      new ChatError('MESSAGE_ALREADY_DELETED'),
+    );
+
+    // Kein zweites `message.deleted` an die Teilnehmer.
+    expect(
+      delivery.delivered.filter((eintrag) => eintrag.frame.event === 'message.deleted'),
+    ).toHaveLength(zustellungenVorher);
   });
 
   it('lehnt das zweite Löschen mit MESSAGE_ALREADY_DELETED ab', async () => {
@@ -471,10 +608,42 @@ describe('Server-Chat', () => {
     );
   });
 
-  it('meldet einen unbekannten Server als SERVER_NOT_FOUND', async () => {
-    await expect(
-      chat.openServerConversation(ctxFor(ALEX), SERVER_ID.replace('5e', 'ee')),
-    ).rejects.toThrowError(new ChatError('SERVER_NOT_FOUND'));
+  /**
+   * Audit W3-4, `backend-community-visibility-10`: Der Chat entstand, bevor
+   * irgendjemand die Teilnahme geprüft hatte – ein Unbeteiligter legte damit
+   * eine Zeile in einem fremden Server an und bekam erst danach seine Absage.
+   */
+  it('legt für ein Nichtmitglied gar nichts erst an', async () => {
+    await expect(chat.openServerConversation(ctxFor(CHRIS), SERVER_ID)).rejects.toThrowError(
+      new ChatError('CONVERSATION_NOT_FOUND'),
+    );
+
+    expect(repository.conversations).toHaveLength(0);
+  });
+
+  /**
+   * Derselbe Code für „gibt es nicht" und „gehört dir nicht": Über den
+   * Fehlercode ließ sich sonst abfragen, welche Server-Ids existieren.
+   */
+  it('unterscheidet einen unbekannten Server nicht von einem fremden', async () => {
+    const unbekannt = SERVER_ID.replace('5e', 'ee');
+
+    await expect(chat.openServerConversation(ctxFor(ALEX), unbekannt)).rejects.toThrowError(
+      new ChatError('CONVERSATION_NOT_FOUND'),
+    );
+    await expect(chat.openServerConversation(ctxFor(CHRIS), SERVER_ID)).rejects.toThrowError(
+      new ChatError('CONVERSATION_NOT_FOUND'),
+    );
+  });
+
+  /**
+   * Der Anschlusspunkt für B3 kennt kein Konto und prüft deshalb keine Rechte –
+   * er darf einen unbekannten Server weiterhin als solchen melden.
+   */
+  it('meldet einen unbekannten Server beim B3-Anschluss als SERVER_NOT_FOUND', async () => {
+    await expect(chat.ensureServerConversation(SERVER_ID.replace('5e', 'ee'))).rejects.toThrowError(
+      new ChatError('SERVER_NOT_FOUND'),
+    );
   });
 });
 

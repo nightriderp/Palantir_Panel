@@ -253,6 +253,39 @@ export function fakeRepository(
     channels.splice(index, 1, next);
   }
 
+  /** Inbox-Meldungen anlegen – die gemeinsame Hälfte beider Schreibwege. */
+  function anlegen(data: readonly CreateNotificationData[]): NotificationRecord[] {
+    const created: NotificationRecord[] = [];
+
+    for (const entry of data) {
+      // Der Unique-Index `notifications_announcement_user_idx` aus der
+      // Migration – hier nachgebildet, damit die Doppelzustellung einer
+      // Ankündigung auch im Test nicht entstehen kann.
+      const duplicate =
+        entry.announcementId !== null &&
+        notifications.some(
+          (existing) =>
+            existing.announcementId === entry.announcementId && existing.userId === entry.userId,
+        );
+
+      if (duplicate) {
+        continue;
+      }
+
+      const record: NotificationRecord = {
+        id: testId('6'),
+        readAt: null,
+        createdAt: now,
+        ...entry,
+      };
+
+      notifications.push(record);
+      created.push(record);
+    }
+
+    return created;
+  }
+
   return {
     channels,
     rules,
@@ -374,37 +407,8 @@ export function fakeRepository(
       return Promise.resolve();
     },
 
-    createNotifications: (data: readonly CreateNotificationData[]) => {
-      const created: NotificationRecord[] = [];
-
-      for (const entry of data) {
-        // Der Unique-Index `notifications_announcement_user_idx` aus der
-        // Migration – hier nachgebildet, damit die Doppelzustellung einer
-        // Ankündigung auch im Test nicht entstehen kann.
-        const duplicate =
-          entry.announcementId !== null &&
-          notifications.some(
-            (existing) =>
-              existing.announcementId === entry.announcementId && existing.userId === entry.userId,
-          );
-
-        if (duplicate) {
-          continue;
-        }
-
-        const record: NotificationRecord = {
-          id: testId('6'),
-          readAt: null,
-          createdAt: now,
-          ...entry,
-        };
-
-        notifications.push(record);
-        created.push(record);
-      }
-
-      return Promise.resolve(created);
-    },
+    createNotifications: (data: readonly CreateNotificationData[]) =>
+      Promise.resolve(anlegen(data)),
 
     listNotifications: (filter: NotificationFilter) => {
       const mine = notifications.filter((entry) => entry.userId === filter.userId);
@@ -497,6 +501,37 @@ export function fakeRepository(
       announcements.push(record);
 
       return Promise.resolve(record);
+    },
+
+    /**
+     * Ankündigung und Inbox-Meldungen in einem Zug – die Transaktion des echten
+     * Repositorys, nachgebildet: Scheitert der zweite Teil, bleibt auch der
+     * erste nicht stehen (Audit W3-4, `backend-community-18`).
+     */
+    publishAnnouncement: (
+      data: CreateAnnouncementData,
+      inboxFor: (announcement: AnnouncementRecord) => readonly CreateNotificationData[],
+    ) => {
+      const record: AnnouncementRecord = {
+        id: testId('7'),
+        publishedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        ...data,
+      };
+
+      const marke = notifications.length;
+
+      announcements.push(record);
+
+      try {
+        return Promise.resolve({ announcement: record, notifications: anlegen(inboxFor(record)) });
+      } catch (error) {
+        notifications.length = marke;
+        announcements.pop();
+
+        throw error;
+      }
     },
 
     updateAnnouncement: (id, data: UpdateAnnouncementData) => {

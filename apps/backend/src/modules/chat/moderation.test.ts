@@ -43,6 +43,8 @@ const NAMEN = {
 };
 
 const MODERATOR = ctxFor(MOD, actorWith('message.moderate'));
+/** Zweiter Moderator – für die gleichzeitige Entscheidung über dieselbe Meldung. */
+const ZWEITER_MODERATOR = ctxFor(CHRIS, actorWith('message.moderate'));
 const OFFEN = { status: 'open' as const, limit: 50, offset: 0 };
 
 let repository: InMemoryChatRepository;
@@ -98,11 +100,37 @@ describe('Melden', () => {
      */
     await expect(
       moderation.reportMessage(ctxFor(CHRIS), nachricht.id, 'Neugier'),
-    ).rejects.toThrowError(new ChatError('CONVERSATION_NOT_FOUND'));
+    ).rejects.toThrowError(new ChatError('MESSAGE_NOT_FOUND'));
 
     await expect(moderation.reportMessage(MODERATOR, nachricht.id, 'Neugier')).rejects.toThrowError(
-      new ChatError('CONVERSATION_NOT_FOUND'),
+      new ChatError('MESSAGE_NOT_FOUND'),
     );
+  });
+
+  /**
+   * Audit W3-4, `backend-community-visibility-09`: Eine unbekannte Id ergab
+   * `MESSAGE_NOT_FOUND`, eine vorhandene in fremder Konversation
+   * `CONVERSATION_NOT_FOUND` – der Unterschied zwischen beiden Antworten war
+   * genau die Auskunft, die der Melde-Endpunkt nicht geben soll. Beide Wege
+   * (Melden und Löschen) tragen jetzt denselben Code.
+   */
+  it('antwortet auf eine fremde und auf eine unbekannte Nachricht gleich', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const nachricht = await chat.sendMessage(ctxFor(ALEX), conversation.id, { content: 'Hallo' });
+
+    const fremd = await moderation
+      .reportMessage(ctxFor(CHRIS), nachricht.id, 'Neugier')
+      .catch((error: unknown) => error);
+    const unbekannt = await moderation
+      .reportMessage(ctxFor(CHRIS), SERVER_ID.replace('5e', 'ff'), 'Neugier')
+      .catch((error: unknown) => error);
+    const geloescht = await chat
+      .deleteOwnMessage(ctxFor(CHRIS), nachricht.id)
+      .catch((error: unknown) => error);
+
+    expect(fremd).toMatchObject({ code: 'MESSAGE_NOT_FOUND' });
+    expect(unbekannt).toMatchObject({ code: 'MESSAGE_NOT_FOUND' });
+    expect(geloescht).toMatchObject({ code: 'MESSAGE_NOT_FOUND' });
   });
 
   it('lehnt die eigene Nachricht ab', async () => {
@@ -396,6 +424,72 @@ describe('Entscheidung über eine Meldung', () => {
     await expect(
       moderation.resolveReport(MODERATOR, reportId, { action: 'deleteMessage' }),
     ).rejects.toThrowError(new ChatError('MESSAGE_REPORT_ALREADY_RESOLVED'));
+  });
+
+  /**
+   * Audit W3-4, `backend-community-12`: Zwei Moderatoren entscheiden dieselbe
+   * offene Meldung gleichzeitig. Beide kommen an der Vorprüfung vorbei, weil
+   * beide denselben offenen Stand gelesen haben. Vorher liefen beide Updates
+   * durch – der letzte gewann Status und `actionTaken`, und es entstanden zwei
+   * Audit-Einträge zu einer Meldung.
+   */
+  it('lässt bei zwei gleichzeitigen Entscheidungen genau eine gewinnen', async () => {
+    const { reportId } = await gemeldeteNachricht();
+    const offen = await repository.findReport(reportId);
+
+    // Beide haben denselben offenen Stand gelesen, bevor einer geschrieben hat.
+    repository.findReport = (): Promise<typeof offen> => Promise.resolve(offen);
+
+    const ergebnisse = await Promise.allSettled([
+      moderation.resolveReport(MODERATOR, reportId, { action: 'deleteMessage' }),
+      moderation.resolveReport(ZWEITER_MODERATOR, reportId, { action: 'dismiss' }),
+    ]);
+
+    const abgelehnt = ergebnisse.filter(
+      (eintrag): eintrag is PromiseRejectedResult => eintrag.status === 'rejected',
+    );
+
+    expect(ergebnisse.filter((eintrag) => eintrag.status === 'fulfilled')).toHaveLength(1);
+    // Der Verlierer bekommt einen Fachcode aus dem Katalog, keinen 500er.
+    expect(abgelehnt).toHaveLength(1);
+    expect(abgelehnt[0]?.reason).toMatchObject({ code: 'MESSAGE_REPORT_ALREADY_RESOLVED' });
+
+    // Genau eine Entscheidung, genau ein Audit-Eintrag.
+    expect(repository.reports[0]?.resolvedAt).not.toBeNull();
+    expect(audit.entries).toHaveLength(1);
+  });
+
+  /**
+   * Dieselbe Nachricht, zwei Löschwege (Audit W3-4, `backend-community-12`):
+   * Der Absender löscht selbst, während ein Moderator entscheidet. Ohne
+   * Bedingung im `UPDATE` überschrieb der zweite Schreiber `deletedById`, und
+   * das DTO-Flag `deletedByModerator` kippte je nach Reihenfolge.
+   */
+  it('überschreibt eine zeitgleiche Selbstlöschung nicht', async () => {
+    const { messageId, reportId } = await gemeldeteNachricht();
+    const frisch = await repository.findMessage(messageId);
+
+    await chat.deleteOwnMessage(ctxFor(ALEX), messageId);
+
+    // Die Moderation hat die Nachricht noch als ungelöscht gelesen.
+    repository.findMessage = (): Promise<typeof frisch> => Promise.resolve(frisch);
+
+    const entschieden = await moderation.resolveReport(MODERATOR, reportId, {
+      action: 'deleteMessage',
+    });
+
+    // Die Entscheidung gilt und ist protokolliert …
+    expect(entschieden.status).toBe('resolved');
+    expect(audit.actions()).toEqual(['message.moderated']);
+
+    // … die Löschung bleibt aber die des Absenders, und es geht kein zweites
+    // `message.deleted` hinaus.
+    expect(repository.messages[0]?.deletedById).toBe(ALEX);
+    expect(
+      delivery.delivered
+        .filter((eintrag) => eintrag.frame.event === 'message.deleted')
+        .map((eintrag) => (eintrag.frame.data as { byModerator: boolean }).byModerator),
+    ).toEqual([false, false]);
   });
 
   it('bleibt gültig, wenn der Absender die Nachricht inzwischen selbst gelöscht hat', async () => {
