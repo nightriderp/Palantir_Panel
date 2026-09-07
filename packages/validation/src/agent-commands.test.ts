@@ -26,7 +26,9 @@ const GUELTIGER_SPEC = {
 };
 
 describe('Schema-Tabelle', () => {
-  it('enthält für jeden umgesetzten Befehl ein Schema', () => {
+  it('deckt genau die umgesetzten Befehle ab', () => {
+    // Ein Befehl in IMPLEMENTED_AGENT_COMMANDS ohne Schema würde ungeprüft
+    // durchgereicht – der Adapter schlägt dann erst beim Zugriff fehl.
     expect(Object.keys(AGENT_COMMAND_PAYLOAD_SCHEMAS).sort()).toEqual(
       [...IMPLEMENTED_AGENT_COMMANDS].sort(),
     );
@@ -191,13 +193,9 @@ describe('Optionale Felder', () => {
     }
   });
 
-  it('deckt die Schema-Tabelle genau die umgesetzten Befehle ab', () => {
-    // Ein Befehl in IMPLEMENTED_AGENT_COMMANDS ohne Schema würde ungeprüft
-    // durchgereicht – der Adapter schlägt dann erst beim Zugriff fehl.
-    expect(Object.keys(AGENT_COMMAND_PAYLOAD_SCHEMAS).sort()).toEqual(
-      [...IMPLEMENTED_AGENT_COMMANDS].sort(),
-    );
-  });
+  // Die Vollständigkeit der Schema-Tabelle stand hier ein zweites Mal wörtlich
+  // (Audit W3-12, `contracts-validation-14`); sie gehört zu „Schema-Tabelle"
+  // oben und wird dort geprüft.
 
   it('lässt GET_STORAGE_BREAKDOWN ohne Nutzdaten zu', () => {
     // Node-weiter Befehl; includeImages ist optional und ohne Angabe true.

@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { env } from '../../config/env.js';
 import { buildServer } from '../../server.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from './cookies.js';
+import { generateTotp } from './totp.js';
 import {
   type FakeAuthRepository,
   type FakeRoleRepository,
@@ -578,6 +579,239 @@ describe('Sitzung und CSRF (Pflichtenheft §7, §18)', () => {
     expect(response.cookies.filter((cookie) => cookie.name === ACCESS_COOKIE_NAME)[0]?.value).toBe(
       '',
     );
+  });
+});
+
+describe('Zweiter Anmeldeschritt über HTTP (Pflichtenheft §7)', () => {
+  /**
+   * Schaltet die 2FA für das angemeldete Konto über die Routen ein und meldet
+   * danach ab; zurück kommt das TOTP-Geheimnis.
+   *
+   * Bewusst über HTTP statt am Dienst vorbei: Geprüft werden soll ja gerade der
+   * Weg, den der Browser nimmt.
+   */
+  async function enableTwoFactor(jar: CookieJar): Promise<string> {
+    const csrf = jar[CSRF_COOKIE_NAME] ?? '';
+
+    const setup = await app.inject({
+      method: 'POST',
+      url: '/auth/2fa/setup',
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: csrf },
+    });
+    expect(setup.statusCode).toBe(200);
+    const secret = setup.json<{ data: { secret: string } }>().data.secret;
+
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: '/auth/2fa/confirm',
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: csrf },
+      payload: { code: generateTotp(secret, Date.now()) },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json<{ data: { account: AccountDto } }>().data.account.twoFactorEnabled).toBe(
+      true,
+    );
+
+    return secret;
+  }
+
+  /** Erster Schritt mit aktivierter 2FA. */
+  function login(): Promise<Awaited<ReturnType<typeof app.inject>>> {
+    return solveAltcha().then((altcha) =>
+      app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { username: 'spieler', password: PASSWORD, altcha },
+      }),
+    );
+  }
+
+  it('gibt im ersten Schritt einen Zwischen-Token und noch keine Sitzungs-Cookies aus', async () => {
+    /*
+     * Der Kern des Findings `test-gaps-06`: Im Dienst ist der Schritt dicht
+     * getestet, aber der Dienst sieht keine Cookies. Setzte die Route sie schon
+     * hier, wäre der zweite Faktor wirkungslos – und kein Test bemerkte es.
+     */
+    const { jar } = await registerAccount('spieler');
+    await enableTwoFactor(jar);
+
+    const response = await login();
+    const body = response.json<{ data: { status: string; twoFactorToken?: string } }>().data;
+
+    expect(response.statusCode).toBe(200);
+    expect(body.status).toBe('two_factor_required');
+    expect(body.twoFactorToken).toBeTruthy();
+
+    const namen = response.cookies.map((cookie) => cookie.name);
+    expect(namen).not.toContain(ACCESS_COOKIE_NAME);
+    expect(namen).not.toContain(REFRESH_COOKIE_NAME);
+  });
+
+  it('setzt die Sitzungs-Cookies erst nach dem bestätigten Code', async () => {
+    const { jar } = await registerAccount('spieler');
+    const secret = await enableTwoFactor(jar);
+
+    const erster = await login();
+    const token = erster.json<{ data: { twoFactorToken: string } }>().data.twoFactorToken;
+
+    const zweiter = await app.inject({
+      method: 'POST',
+      url: '/auth/login/2fa',
+      payload: { twoFactorToken: token, code: generateTotp(secret, Date.now()) },
+    });
+
+    expect(zweiter.statusCode).toBe(200);
+    const namen = zweiter.cookies.map((cookie) => cookie.name);
+    expect(namen).toContain(ACCESS_COOKIE_NAME);
+    expect(namen).toContain(REFRESH_COOKIE_NAME);
+    expect(namen).toContain(CSRF_COOKIE_NAME);
+
+    // Und die neuen Cookies tragen tatsächlich eine Sitzung.
+    const neu = collectCookies({}, zweiter);
+    const sitzung = await app.inject({
+      method: 'GET',
+      url: '/auth/session',
+      headers: { cookie: cookieHeader(neu) },
+    });
+    expect(sitzung.statusCode).toBe(200);
+    expect(sitzung.json<{ data: { account: AccountDto } }>().data.account.username).toBe('spieler');
+  });
+
+  it('lehnt einen falschen Code mit 401 und ohne Cookies ab', async () => {
+    const { jar } = await registerAccount('spieler');
+    await enableTwoFactor(jar);
+
+    const erster = await login();
+    const token = erster.json<{ data: { twoFactorToken: string } }>().data.twoFactorToken;
+
+    const zweiter = await app.inject({
+      method: 'POST',
+      url: '/auth/login/2fa',
+      payload: { twoFactorToken: token, code: '000000' },
+    });
+
+    expect(zweiter.statusCode).toBe(401);
+    expect(zweiter.json<{ error: { code: string } }>().error.code).toBe('AUTH_TWO_FACTOR_INVALID');
+    expect(zweiter.cookies.some((cookie) => cookie.name === ACCESS_COOKIE_NAME)).toBe(false);
+  });
+
+  it('lehnt einen erfundenen Zwischen-Token ab, auch mit gültigem Code', async () => {
+    const { jar } = await registerAccount('spieler');
+    const secret = await enableTwoFactor(jar);
+
+    const zweiter = await app.inject({
+      method: 'POST',
+      url: '/auth/login/2fa',
+      payload: { twoFactorToken: 'selbst.gebastelt.token', code: generateTotp(secret, Date.now()) },
+    });
+
+    expect(zweiter.statusCode).toBe(401);
+    expect(zweiter.cookies.some((cookie) => cookie.name === ACCESS_COOKIE_NAME)).toBe(false);
+  });
+
+  it('nimmt den Zwischen-Token nicht als Zugriffs-Token an', async () => {
+    // Beide sind signierte JWT desselben Geheimnisses; nur die Nutzlast trennt
+    // sie. Ein zu nachsichtiges Prüfen machte den zweiten Faktor überflüssig.
+    const { jar } = await registerAccount('spieler');
+    await enableTwoFactor(jar);
+
+    const erster = await login();
+    const token = erster.json<{ data: { twoFactorToken: string } }>().data.twoFactorToken;
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/auth/session',
+      headers: { cookie: `${ACCESS_COOKIE_NAME}=${token}` },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+});
+
+describe('Gleichzeitige Erneuerungen (Pflichtenheft §7, backend-auth-02)', () => {
+  it('bedient zwei parallele Refreshes mit demselben Token, ohne die Sitzung zu verwerfen', async () => {
+    /*
+     * Der Browser schickt zwei Anfragen los, deren Zugriffs-Token gerade
+     * abgelaufen ist – beide erneuern mit **demselben** Refresh-Token. Vor der
+     * Kulanzfrist (W2-1) las der zweite Aufruf einen bereits ersetzten Token,
+     * wertete das als Diebstahl und widerrief alle Sitzungen des Kontos: Der
+     * Nutzer flog beim Öffnen zweier Reiter aus dem Panel.
+     *
+     * Bewusst ohne `await` dazwischen – genau das unterscheidet diesen Test von
+     * den sequentiellen Rotationstests im Dienst.
+     */
+    const { jar } = await registerAccount('spieler');
+    const kopf = {
+      cookie: cookieHeader(jar),
+      [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '',
+    };
+
+    const [erste, zweite] = await Promise.all([
+      app.inject({ method: 'POST', url: '/auth/refresh', headers: kopf }),
+      app.inject({ method: 'POST', url: '/auth/refresh', headers: kopf }),
+    ]);
+
+    expect(erste.statusCode).toBe(200);
+    expect(zweite.statusCode).toBe(200);
+
+    // Jede Antwort bringt ein eigenes Refresh-Cookie mit; keine der beiden
+    // übernimmt die Sitzung der anderen.
+    const ersteCookies = collectCookies({}, erste);
+    const zweiteCookies = collectCookies({}, zweite);
+    expect(ersteCookies[REFRESH_COOKIE_NAME]).toBeTruthy();
+    expect(zweiteCookies[REFRESH_COOKIE_NAME]).toBeTruthy();
+    expect(ersteCookies[REFRESH_COOKIE_NAME]).not.toBe(zweiteCookies[REFRESH_COOKIE_NAME]);
+
+    // Und die Sitzung lebt: kein Rundumschlag durch `revokeEverySession`.
+    expect(repository.sessions.every((sitzung) => sitzung.revokedAt === null)).toBe(true);
+
+    const sitzung = await app.inject({
+      method: 'GET',
+      url: '/auth/session',
+      headers: { cookie: cookieHeader(zweiteCookies) },
+    });
+    expect(sitzung.statusCode).toBe(200);
+  });
+
+  it('widerruft weiterhin alles, wenn ein längst ersetzter Token wieder auftaucht', async () => {
+    /*
+     * Die Kehrseite: Die Kulanzfrist darf den Diebstahlsschutz nicht abschalten.
+     * Ein Token, dessen Sitzung nach der Frist erneut damit erneuert werden
+     * soll, gilt weiter als Anzeichen (Pflichtenheft §7).
+     */
+    const { jar } = await registerAccount('spieler');
+    const alt = jar[REFRESH_COOKIE_NAME] ?? '';
+    const csrf = jar[CSRF_COOKIE_NAME] ?? '';
+
+    const erneuert = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: csrf },
+    });
+    expect(erneuert.statusCode).toBe(200);
+
+    /*
+     * Kulanzfrist künstlich ablaufen lassen, statt sie abzuwarten: Die Rotation
+     * wird auf 60 s zurückdatiert, also auf das Doppelte von
+     * `REFRESH_ROTATION_GRACE_MS` (30 s, modulintern in `service.ts`). Der
+     * Abstand ist bewusst großzügig – bei einer knapp darüber liegenden Zahl
+     * entschiede die Laufzeit des Testlaufs mit.
+     */
+    repository.sessions.forEach((sitzung, index) => {
+      repository.sessions[index] = { ...sitzung, rotatedAt: new Date(Date.now() - 60_000) };
+    });
+
+    const nochmal = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      headers: {
+        cookie: `${REFRESH_COOKIE_NAME}=${alt}; ${CSRF_COOKIE_NAME}=${csrf}`,
+        [CSRF_HEADER_NAME]: csrf,
+      },
+    });
+
+    expect(nochmal.statusCode).toBe(401);
+    expect(repository.sessions.every((sitzung) => sitzung.revokedAt !== null)).toBe(true);
   });
 });
 

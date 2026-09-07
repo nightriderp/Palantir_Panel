@@ -135,6 +135,31 @@ export function createFakeAuthRepository(): FakeAuthRepository {
         return Promise.reject(new Error('Konto nicht gefunden.'));
       }
 
+      if (
+        username !== null &&
+        users.some(
+          (user) => user.id !== id && user.username !== null && sameName(user.username, username),
+        )
+      ) {
+        /*
+         * Auch das Nachtragen läuft in `users_username_lower_idx` (Audit W3-12,
+         * `test-gaps-07`): `linkPassword` gibt einem Provider-Konto erst hier
+         * seine Anmeldekennung und übersetzt genau diesen SQLSTATE in
+         * `AUTH_USERNAME_TAKEN` (`service.ts`). Ohne den Nachbau blieb der
+         * Zweig ungetestet – und die Attrappe ließ eine fremde Kennung zu.
+         *
+         * `null` läuft daran vorbei: Der Index ist partiell
+         * (`where username is not null`), beliebig viele Konten dürfen ohne
+         * Kennung dastehen. Genau das tut `unlinkMethod('password')`
+         * (Audit backend-auth-04).
+         */
+        return Promise.reject(
+          Object.assign(new Error('duplicate key value violates unique constraint'), {
+            code: '23505',
+          }),
+        );
+      }
+
       const updated: UserRecord = { ...current, username };
       users[index] = updated;
 
@@ -316,12 +341,20 @@ export function createFakeAuthRepository(): FakeAuthRepository {
 
     listActiveSessions: (userId, nowMs) =>
       Promise.resolve(
-        sessions.filter(
-          (session) =>
-            session.userId === userId &&
-            session.revokedAt === null &&
-            session.expiresAt.getTime() > nowMs,
-        ),
+        sessions
+          .filter(
+            (session) =>
+              session.userId === userId &&
+              session.revokedAt === null &&
+              session.expiresAt.getTime() > nowMs,
+          )
+          /*
+           * Zuletzt benutzte zuerst – wie `orderBy(desc(sessions.lastUsedAt))`
+           * im echten Repository (Audit W3-12, `test-gaps-07`). Ohne die
+           * Sortierung lieferte die Attrappe die Einfügereihenfolge, und die
+           * Sitzungsübersicht in F1 stand im Test anders als im Betrieb.
+           */
+          .sort((a, b) => b.lastUsedAt.getTime() - a.lastUsedAt.getTime()),
       ),
 
     rotateSession: (id, data) => {
