@@ -179,3 +179,74 @@ describe('createLiveFanoutSink', () => {
     });
   });
 });
+
+/**
+ * Audit W2-5, `orchestration-core-09`: Der Server-Live-Kanal blieb als
+ * einziger offen, wenn eine Sitzung entzogen oder ein Konto gesperrt wurde –
+ * Chat und Inbox konnten das über `closeAll()` längst.
+ */
+describe('ServerLiveHub – Rauswurf eines Kontos', () => {
+  function schliessbarerSocket() {
+    const geschlossen: { code: number; reason?: string }[] = [];
+    const sent: string[] = [];
+
+    return {
+      geschlossen,
+      socket: {
+        send: (data: string) => sent.push(data),
+        close: (code: number, reason?: string) => geschlossen.push({ code, reason }),
+      },
+      frames: () => sent.map((raw) => JSON.parse(raw) as Record<string, unknown>),
+    };
+  }
+
+  it('schließt alle Verbindungen des Kontos und lässt fremde stehen', () => {
+    const hub = new ServerLiveHub(FIXED_NOW);
+    const handy = schliessbarerSocket();
+    const laptop = schliessbarerSocket();
+    const fremd = schliessbarerSocket();
+
+    const regHandy = hub.register(handy.socket, 'user-1');
+    hub.register(laptop.socket, 'user-1');
+    const regFremd = hub.register(fremd.socket, 'user-2');
+    regHandy.subscribe('server-1');
+    regFremd.subscribe('server-1');
+
+    expect(hub.closeAll('user-1', 4401, 'Sitzung beendet.')).toBe(2);
+
+    expect(handy.geschlossen).toEqual([{ code: 4401, reason: 'Sitzung beendet.' }]);
+    expect(laptop.geschlossen).toEqual([{ code: 4401, reason: 'Sitzung beendet.' }]);
+    expect(fremd.geschlossen).toHaveLength(0);
+    expect(hub.socketCount).toBe(1);
+
+    hub.publish('server.statusChanged', {
+      serverId: 'server-1',
+      status: 'running',
+      statusMessage: null,
+    });
+
+    expect(handy.frames()).toHaveLength(0);
+    expect(fremd.frames()).toHaveLength(1);
+  });
+
+  it('rührt Verbindungen ohne bekanntes Konto nicht an', () => {
+    const hub = new ServerLiveHub(FIXED_NOW);
+    const ohneKonto = schliessbarerSocket();
+
+    hub.register(ohneKonto.socket);
+
+    expect(hub.closeAll('user-1', 4401)).toBe(0);
+    expect(hub.socketCount).toBe(1);
+  });
+
+  it('nennt die abonnierten Server für die wiederkehrende Prüfung', () => {
+    const hub = new ServerLiveHub(FIXED_NOW);
+    const registrierung = hub.register(schliessbarerSocket().socket, 'user-1');
+
+    registrierung.subscribe('server-1');
+    registrierung.subscribe('server-2');
+    registrierung.unsubscribe('server-1');
+
+    expect(registrierung.subscribedServerIds()).toEqual(['server-2']);
+  });
+});

@@ -49,3 +49,41 @@ describe('appendConsoleLines', () => {
     expect(after.map((entry) => entry.id)).toEqual(['6', '7', '8', '9']);
   });
 });
+
+/**
+ * Audit W2-5, `event-flow-07`: Die Zeilen-Id lautete `${serverId}-${n}` mit
+ * einem Zähler, der bei jedem Backend-Start wieder bei 0 begann. Nach einem
+ * Deploy erzeugte das Backend erneut `…-1`, `…-2`, … – der Puffer hielt sie für
+ * schon gesehene Zeilen und verwarf Echo **und** Ausgabe still. Seit die Id die
+ * Kennung des Prozesses trägt, kann das nicht mehr passieren.
+ */
+describe('Zeilen nach einem Backend-Neustart', () => {
+  const SERVER = '11111111-1111-4111-8111-111111111111';
+
+  it('verwirft die Zeilen des neuen Prozesses nicht', () => {
+    const vorNeustart = appendConsoleLines(
+      [],
+      [
+        line(`${SERVER}-a1b2c3d4e5f6-1`, '> list'),
+        line(`${SERVER}-a1b2c3d4e5f6-2`, 'Es sind 2 Spieler online'),
+      ],
+    );
+
+    // Nach dem Neustart beginnt der Zähler wieder bei 1 – die Prozesskennung
+    // ist aber eine andere.
+    const nachNeustart = appendConsoleLines(vorNeustart, [
+      line(`${SERVER}-9f8e7d6c5b4a-1`, '> list'),
+      line(`${SERVER}-9f8e7d6c5b4a-2`, 'Es sind 3 Spieler online'),
+    ]);
+
+    expect(nachNeustart).toHaveLength(4);
+    expect(nachNeustart.at(-1)?.text).toBe('Es sind 3 Spieler online');
+  });
+
+  it('entdoppelt innerhalb desselben Prozesses weiterhin', () => {
+    const puffer = appendConsoleLines([], [line(`${SERVER}-a1b2c3d4e5f6-1`, '> list')]);
+    const erneut = appendConsoleLine(puffer, line(`${SERVER}-a1b2c3d4e5f6-1`, '> list'));
+
+    expect(erneut).toHaveLength(1);
+  });
+});

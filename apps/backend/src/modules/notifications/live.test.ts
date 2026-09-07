@@ -1,6 +1,9 @@
+import websocket from '@fastify/websocket';
 import type { NotificationDto } from '@palantir/contracts';
-import { describe, expect, it } from 'vitest';
-import { createNotificationHub, type LiveSocket } from './live.js';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createNotificationHub, registerNotificationLiveRoute, type LiveSocket } from './live.js';
+import type { NotificationService } from './service.js';
 
 function fakeSocket(): LiveSocket & {
   frames: unknown[];
@@ -142,5 +145,55 @@ describe('Live-Kanal der Inbox (Pflichtenheft §5.3)', () => {
     hub.publish('user-1', { notification, unreadCount: 1 });
 
     expect(handy.frames).toHaveLength(0);
+  });
+});
+
+/**
+ * Audit W2-5, `security-matrix-04`: WebSocket-Handshakes unterliegen nicht
+ * CORS. Eine fremde Seite konnte den Inbox-Kanal des Opfers öffnen und dessen
+ * Meldungen mitlesen; der Schutz hing allein an `SameSite=Lax`.
+ */
+describe('Herkunft des Handshakes (security-matrix-04)', () => {
+  const PANEL = 'https://panel.example.tld';
+
+  async function baueApp(): Promise<FastifyInstance> {
+    const app = Fastify({ logger: false });
+
+    await app.register(websocket);
+
+    registerNotificationLiveRoute(app, {
+      hub: createNotificationHub(),
+      notifications: { countUnread: async () => 0 } as unknown as NotificationService,
+      resolveUserId: () => 'user-1',
+      allowedOrigin: PANEL,
+    });
+
+    await app.ready();
+
+    return app;
+  }
+
+  let app: FastifyInstance | null = null;
+
+  afterEach(async () => {
+    await app?.close();
+    app = null;
+  });
+
+  it('lässt die konfigurierte Panel-Adresse durch', async () => {
+    app = await baueApp();
+
+    const socket = await app.injectWS('/live/notifications', { headers: { origin: PANEL } });
+
+    expect(socket.readyState).toBe(socket.OPEN);
+    socket.close();
+  });
+
+  it('weist eine fremde Herkunft schon beim Handshake ab', async () => {
+    app = await baueApp();
+
+    await expect(
+      app.injectWS('/live/notifications', { headers: { origin: 'https://boese.example' } }),
+    ).rejects.toThrow('403');
   });
 });

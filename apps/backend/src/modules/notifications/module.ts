@@ -181,6 +181,11 @@ export function createNotificationModule(options: NotificationModuleOptions): No
 export interface RegisterNotificationsOptions extends NotificationModuleOptions {
   /** Konto-Id des Aufrufers aus der Sitzung (B1); `null` = nicht angemeldet. */
   resolveUserId(request: FastifyRequest): string | null;
+  /**
+   * Panel-Adresse (`PUBLIC_WEB_URL`) für die Herkunftsprüfung des
+   * WebSocket-Handshakes (Audit W2-5, `security-matrix-04`).
+   */
+  readonly allowedOrigin?: string;
 }
 
 /**
@@ -206,6 +211,7 @@ export async function registerNotifications(
     hub: module.hub,
     notifications: module.service,
     resolveUserId: options.resolveUserId,
+    ...(options.allowedOrigin === undefined ? {} : { allowedOrigin: options.allowedOrigin }),
   });
 
   return module;

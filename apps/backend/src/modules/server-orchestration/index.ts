@@ -348,6 +348,10 @@ export function registerServerOrchestration(
     repository,
     registry,
     baseDomain: env.PALANTIR_DOMAIN,
+    // Herkunftsprüfung des Handshakes (Audit W2-5, `security-matrix-04`):
+    // WebSocket-Handshakes unterliegen nicht CORS, der Schutz hing bisher
+    // allein an `SameSite=Lax`.
+    allowedOrigin: env.PUBLIC_WEB_URL,
   });
 
   app.addHook('onClose', async (): Promise<void> => {
@@ -365,6 +369,15 @@ export function registerServerOrchestration(
 }
 
 export { ServerLiveHub, createLiveFanoutSink } from './live-hub.js';
+
+/**
+ * Close-Codes des Server-Live-Kanals (Audit W2-5).
+ *
+ * Gehen mit hinaus, weil `server.ts` beim Sitzungswiderruf denselben Code
+ * vergeben muss wie die Abweisung im Handshake – sonst versuchte das Frontend
+ * eine neue Verbindung, die genauso endete.
+ */
+export { LIVE_CLOSE_CODE_FORBIDDEN, LIVE_CLOSE_CODE_UNAUTHORIZED } from './live-frames.js';
 
 export { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 

@@ -73,6 +73,7 @@ import {
   createServerKnownServerSource,
   createServerNameSource,
   createServerNodePlacementSource,
+  LIVE_CLOSE_CODE_UNAUTHORIZED,
   registerServerOrchestration,
 } from './modules/server-orchestration/index.js';
 import { effectiveUploadLimitBytes } from './modules/server-orchestration/files.js';
@@ -386,6 +387,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const notifications = await registerNotifications(app, {
       db,
       resolveUserId: (request) => request.authUser?.id ?? null,
+      // Herkunftsprüfung des WebSocket-Handshakes (Audit W2-5,
+      // `security-matrix-04`) – dieselbe Adresse wie bei CORS oben.
+      allowedOrigin: env.PUBLIC_WEB_URL,
       defaultWebhookUrl: env.DISCORD_WEBHOOK_URL ?? null,
       deliveryTimeoutMs: env.NOTIFICATION_DELIVERY_TIMEOUT_MS,
       /*
@@ -480,6 +484,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       chat.live.closeAll(userId, CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED, 'Sitzung beendet.');
       // Der Inbox-Kanal hängt genauso am Konto und bekommt dieselbe Behandlung.
       notifications.hub.closeAll(userId, NOTIFICATION_CLOSE_CODE_UNAUTHORIZED, 'Sitzung beendet.');
+      /*
+       * Und der Server-Live-Kanal (Audit W2-5, `orchestration-core-09`): Er
+       * blieb bisher als einziger offen und lieferte einem gesperrten oder
+       * abgemeldeten Konto weiter Statuswechsel, Messwerte samt Spielernamen
+       * und Konsolenzeilen. Derselbe Close-Code wie bei der Abweisung im
+       * Handshake – das Frontend erkennt daran „nicht mehr angemeldet".
+       */
+      liveHub.closeAll(userId, LIVE_CLOSE_CODE_UNAUTHORIZED, 'Sitzung beendet.');
     };
 
     await app.register(async (instance) => {
@@ -488,6 +500,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         moderation: chat.moderation,
         live: chat.live,
         ipHintOf,
+        // Herkunftsprüfung des WebSocket-Handshakes (Audit W2-5,
+        // `security-matrix-04`) – dieselbe Adresse wie bei CORS oben.
+        allowedOrigin: env.PUBLIC_WEB_URL,
         resolveViewer: (request) =>
           request.authUser
             ? { id: request.authUser.id, displayName: request.authUser.displayName }
