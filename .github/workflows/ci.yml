@@ -27,8 +27,13 @@ jobs:
     services:
       # Wegwerf-Datenbank nur für diesen Lauf. Die Zugangsdaten sind bewusst
       # trivial – der Container ist nach dem Job weg und von außen nicht erreichbar.
+      #
+      # Version 18 wie im Betrieb (`.env.example`: POSTGRES_VERSION=18,
+      # `apps/backend/Dockerfile`: postgresql-client-18). Vorher stand hier 17 –
+      # eine Migration, die 18 anders behandelt, wäre in der CI durchgelaufen und
+      # erst auf der VPS gescheitert (Audit W2-28, `infra-images-11`).
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: palantir
           POSTGRES_PASSWORD: palantir
@@ -115,6 +120,22 @@ jobs:
         run: pnpm lint
 
       - name: Tests
+        # `PALANTIR_TEST_DB=1` ist die ausdrückliche Freigabe für die
+        # datenbankgestützten Tests (`*.db.test.ts`, Audit W2-28). Sie steht
+        # bewusst nur hier und in keiner `.env`: `DATABASE_URL` allein taugt
+        # nicht als Signal, weil das Backend beim Import seine `.env` lädt und
+        # die Variable damit auch auf Entwicklungsrechnern in der Umgebung
+        # steht – dort zeigt sie auf die Entwicklungsdatenbank.
+        #
+        # Geschrieben wird ohnehin nicht in die Datenbank aus `DATABASE_URL`:
+        # Der Harness legt sich je Testdatei eine eigene Wegwerf-Datenbank an
+        # (`palantir_test_…`), migriert sie und wirft sie danach weg (siehe
+        # `apps/backend/src/test-support/db.ts`).
+        #
+        # Ohne die Freigabe überspringen sich diese Tests mit sichtbarem
+        # Hinweis – so bleibt `pnpm test` auf einem Rechner ohne Postgres grün.
+        env:
+          PALANTIR_TEST_DB: '1'
         run: pnpm test
 
       - name: Formatierung

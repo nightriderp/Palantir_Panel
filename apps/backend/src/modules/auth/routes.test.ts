@@ -119,6 +119,16 @@ beforeEach(async () => {
     { name: 'Vollverwalter', permissions: ['user.manage', 'role.manage'] },
   ]);
   app = await buildServer({
+    /*
+     * Wie in `admin-identity.test.ts`: Die datenbankgestützten Module bleiben
+     * draußen (Audit W2-28, `test-gaps-01`). Ohne das Abschalten hing dieser
+     * Test daran, ob auf der Maschine eine `.env` mit `DATABASE_URL` liegt –
+     * ohne Variable grün, mit unerreichbarer Datenbank 25-mal rot
+     * (`expected 500 to be 201` aus den Instanz-Einstellungen), und in der CI
+     * lief er still gegen die echte Postgres. Datenbanknahe Tests stehen jetzt
+     * ausdrücklich in den `*.db.test.ts`-Dateien.
+     */
+    database: false,
     auth: {
       repository,
       roles,

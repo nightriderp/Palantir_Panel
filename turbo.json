@@ -18,6 +18,7 @@
     },
     "test": {
       "dependsOn": ["^build"],
+      "env": ["DATABASE_URL", "PALANTIR_TEST_DB"],
       "outputs": []
     },
     "dev": {
