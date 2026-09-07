@@ -168,6 +168,25 @@ export interface ServerFileUploadOptions extends ServerFileAccessOptions {
   readonly overwrite?: boolean;
 }
 
+/**
+ * Warum ein Server gestoppt wird (Audit event-flow-09).
+ *
+ * Entscheidet allein darüber, **ob** der Stopp eine eigene Meldung wert ist –
+ * am Zustandswechsel und am Agent-Befehl ändert er nichts. `'restart'` und
+ * `'autoShutdown'` sind Zwischenschritte eines größeren Vorgangs, der seine
+ * eigene, genauere Meldung hat.
+ */
+export type StopReason = 'manual' | 'restart' | 'autoShutdown';
+
+/**
+ * Warum ein Server gestartet wird (Audit event-flow-09).
+ *
+ * Reicht bis ans Ende des Health-Checks durch: Ein Neustart meldet dort
+ * `server.restarted` statt `server.started` – dieselbe Stelle, dieselbe
+ * Bedingung („der Server antwortet"), nur der passendere Name.
+ */
+export type StartIntent = 'start' | 'restart';
+
 export interface OrchestrationDependencies {
   readonly repository: ServerRepository;
   readonly agents: AgentRegistry;
@@ -524,7 +543,18 @@ export class ServerOrchestrationService {
 
       await this.transition(server, { type: 'createSucceeded' });
       await this.ensureServerChat(server.id);
-      await this.emitServerEvent('server.created', server);
+
+      /*
+       * Ein Klon meldet sich nicht zweimal (Audit event-flow-09): Der
+       * Klon-Lauf schickt zum Schluss `server.cloned` – die genauere Meldung,
+       * sie nennt die Quelle und ob die Welt mitkam. `server.created` davor
+       * wäre für denselben Vorgang die zweite Zeile in der Inbox und, je Regel,
+       * der zweite Discord-Post. Der Klon steht in der Liste trotzdem sofort:
+       * dafür sorgt `serverClone.progressed`.
+       */
+      if (server.clonedFromServerId === null) {
+        await this.emitServerEvent('server.created', server);
+      }
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : 'Unbekannter Fehler.';
 
@@ -656,8 +686,16 @@ export class ServerOrchestrationService {
    * steht dann auf `starting`. Der Übergang nach `running` passiert erst nach
    * bestandenem Health-Check und wird über `server.statusChanged` gemeldet
    * (Pflichtenheft §9).
+   *
+   * `anlass` reicht bis zum Ende des Health-Checks durch und entscheidet dort,
+   * ob `server.started` oder `server.restarted` gemeldet wird (Audit
+   * event-flow-09).
    */
-  async startServer(serverId: string, actorUserId: string): Promise<ServerRecord> {
+  async startServer(
+    serverId: string,
+    actorUserId: string,
+    anlass: StartIntent = 'start',
+  ): Promise<ServerRecord> {
     const geladen = await this.requireServer(serverId);
 
     assertTransitionAllowed(geladen.status, 'starting');
@@ -709,7 +747,7 @@ export class ServerOrchestrationService {
 
     const started = reserviert.result.state;
 
-    await this.finishStart(server, started, session, containerId);
+    await this.finishStart(server, started, session, containerId, anlass);
 
     return this.requireServer(serverId);
   }
@@ -886,22 +924,32 @@ export class ServerOrchestrationService {
   }
 
   /**
-   * Abfragen aller laufenden Server einer Node neu setzen.
+   * Abfragen einer Node **abgleichen** – setzen, was laufen soll, und abräumen,
+   * was nicht mehr laufen soll (Audit event-flow-10).
    *
    * Der Aufruf gehört an jeden Verbindungsaufbau des Agents: Er hält seine
    * Ziele im Arbeitsspeicher und hat sie nach einem Neustart vergessen. Der
    * Befehl ist idempotent, ein zweites Setzen desselben Ziels also folgenlos.
+   *
+   * **Warum auch die nicht laufenden Server angefasst werden.** Überlebt der
+   * Agent einen Neustart des Backends, behält er seine Ziele. Ging in derselben
+   * Zeit ein Server verloren – abgestürzt, vom Abgleich auf `stopped` gesetzt –,
+   * fragte er dessen toten Port bis zu seinem eigenen Neustart weiter ab und
+   * schickte für jeden Fehlschlag ein `STATS_UPDATE` zurück. Ein `null` je
+   * übrigem Server beendet das in einem Zug; die Rückgabe nennt weiterhin nur
+   * die tatsächlich **gesetzten** Ziele.
    */
   async refreshServerQueries(hostId: string): Promise<readonly string[]> {
     const gesetzt: string[] = [];
 
     for (const server of await this.deps.repository.listByHost(hostId)) {
-      if (server.status !== 'running' && server.status !== 'starting') {
-        continue;
-      }
+      const aktiv = server.status === 'running' || server.status === 'starting';
 
-      await this.applyServerQuery(server, true);
-      gesetzt.push(server.id);
+      await this.applyServerQuery(server, aktiv);
+
+      if (aktiv) {
+        gesetzt.push(server.id);
+      }
     }
 
     return gesetzt;
@@ -912,6 +960,7 @@ export class ServerOrchestrationService {
     started: ServerLifecycleState,
     session: AgentSession,
     containerId: string,
+    anlass: StartIntent = 'start',
   ): Promise<void> {
     try {
       await session.sendCommand('START', server.id, { containerId });
@@ -932,7 +981,7 @@ export class ServerOrchestrationService {
     // Der Health-Check läuft bewusst neben dem Request: Ein Spiel darf beim
     // Hochlauf Minuten brauchen, so lange soll niemand auf eine HTTP-Antwort
     // warten. Der Zustandswechsel wird über `server.statusChanged` gemeldet.
-    fireAndForget(this.awaitStartupHealth(server.id), this.deps.log, {
+    fireAndForget(this.awaitStartupHealth(server.id, anlass), this.deps.log, {
       vorgang: 'Health-Check nach dem Start',
       serverId: server.id,
     });
@@ -950,9 +999,9 @@ export class ServerOrchestrationService {
    * Fehler. `deleteServer()` lehnt das Löschen im Zustand `starting` zwar ab,
    * doch der Datensatz kann auch anders verschwinden (Kaskade, Abgleich).
    */
-  async awaitStartupHealth(serverId: string): Promise<void> {
+  async awaitStartupHealth(serverId: string, anlass: StartIntent = 'start'): Promise<void> {
     try {
-      await this.runStartupHealth(serverId);
+      await this.runStartupHealth(serverId, anlass);
     } catch (error: unknown) {
       if (isServerOrchestrationError(error) && error.code === 'SERVER_NOT_FOUND') {
         this.deps.log.warn(
@@ -967,7 +1016,7 @@ export class ServerOrchestrationService {
     }
   }
 
-  private async runStartupHealth(serverId: string): Promise<void> {
+  private async runStartupHealth(serverId: string, anlass: StartIntent = 'start'): Promise<void> {
     const server = await this.requireServer(serverId);
     const definition = this.deps.registry.require(server.gameType);
     const host = await this.deps.repository.findHost(server.hostId);
@@ -1016,7 +1065,17 @@ export class ServerOrchestrationService {
 
     if (result.healthy) {
       await this.transition(current, { type: 'healthCheckPassed' });
-      await this.emitServerEvent('server.started', serverId, { pingMs: result.pingMs });
+      /*
+       * Genau eine Meldung je Vorgang (Audit event-flow-09): Beim Neustart
+       * steht hier `server.restarted` („Neustart abgeschlossen – der Server ist
+       * wieder erreichbar"), sonst `server.started`. Beide zu senden wäre für
+       * denselben Vorgang zweimal dieselbe Nachricht.
+       */
+      await this.emitServerEvent(
+        anlass === 'restart' ? 'server.restarted' : 'server.started',
+        serverId,
+        { pingMs: result.pingMs },
+      );
 
       return;
     }
@@ -1028,7 +1087,22 @@ export class ServerOrchestrationService {
     await this.emitServerEvent('server.failed', serverId, { detail: result.reason ?? null });
   }
 
-  async stopServer(serverId: string): Promise<ServerRecord> {
+  /**
+   * Stoppt einen Server.
+   *
+   * `anlass` sagt, **warum** gestoppt wird, und entscheidet damit über die
+   * Meldung (Audit event-flow-09): Nur ein Stopp, den jemand ausdrücklich
+   * angefordert hat, ist für sich genommen eine Nachricht wert. Der Stopp
+   * innerhalb eines Neustarts und der Stopp durch den Auto-Shutdown haben ihre
+   * eigene, aussagekräftigere Meldung – `server.restarted` bzw.
+   * `autoShutdown.triggered`. Ohne diese Unterscheidung bekam der Besitzer für
+   * einen einzigen Vorgang zwei bis drei Meldungen in die Inbox und, je Regel,
+   * ebenso viele Discord-Nachrichten.
+   *
+   * Der Zustandswechsel selbst ist in allen Fällen derselbe: `server.statusChanged`
+   * geht unverändert an den Live-Kanal, die Oberfläche verpasst also nichts.
+   */
+  async stopServer(serverId: string, anlass: StopReason = 'manual'): Promise<ServerRecord> {
     const server = await this.requireServer(serverId);
 
     assertTransitionAllowed(server.status, 'stopping');
@@ -1041,7 +1115,7 @@ export class ServerOrchestrationService {
 
     const stopping = await this.transition(server, { type: 'stopRequested' });
 
-    await this.dispatchStop({ ...server, ...stopping });
+    await this.dispatchStop({ ...server, ...stopping }, anlass);
 
     return this.requireServer(serverId);
   }
@@ -1053,20 +1127,28 @@ export class ServerOrchestrationService {
    * dorthin gehört dem Aufrufer. Ausgelagert, weil der Soll/Ist-Abgleich
    * denselben Weg nimmt: Ist der `STOP`-Befehl mit der Verbindung verloren
    * gegangen, wird er erneut geschickt, statt einen Zustandswechsel zu planen,
-   * den die Tabelle verbietet (Audit orchestration-core-04).
+   * den die Tabelle verbietet (Audit orchestration-core-04). Der Abgleich holt
+   * einen liegen gebliebenen Stopp nach und meldet ihn deshalb als eigenen
+   * Vorgang – Vorgabe `'manual'`.
+   *
+   * Die periodische Abfrage schaltet hier niemand mehr eigens ab: Das erledigt
+   * der Wechsel auf `stopping` in {@link transitionFull} – also **vor** dem
+   * `STOP`-Befehl und damit früher als zuvor (Audit event-flow-10). Nimmt der
+   * Abgleich diesen Weg ohne Zustandswechsel (`retryStop` nach einem
+   * Backend-Neustart), räumt {@link refreshServerQueries} beim
+   * Verbindungsaufbau des Agents auf.
    */
-  private async dispatchStop(server: ServerRecord): Promise<void> {
+  private async dispatchStop(server: ServerRecord, anlass: StopReason = 'manual'): Promise<void> {
     const containerId = this.requireContainerId(server);
     const session = this.deps.agents.require(server.hostId);
 
     try {
       await session.sendCommand('STOP', server.id, { containerId });
-      // Abfrage beenden, bevor der Zustand wechselt: Ein gestoppter Server
-      // antwortet nicht mehr, und jede weitere Abfrage wäre nur ein Fehlschlag
-      // im Log (Gefundener Punkt 74).
-      await this.applyServerQuery(server, false);
       await this.transition(server, { type: 'stopSucceeded' });
-      await this.emitServerEvent('server.stopped', server.id);
+
+      if (anlass === 'manual') {
+        await this.emitServerEvent('server.stopped', server.id);
+      }
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : 'Das Stoppen ist fehlgeschlagen.';
 
@@ -1085,18 +1167,25 @@ export class ServerOrchestrationService {
    * Ressourcenprüfung und, vor allem, mit Health-Check. Ein `RESTART` am
    * Lifecycle vorbei würde einen Server als „läuft" zurücklassen, ohne dass je
    * geprüft wurde, ob er antwortet (Pflichtenheft §9).
+   *
+   * **Genau eine Meldung, und zwar die richtige** (Audit event-flow-09): Der
+   * Rückgabewert kommt, sobald der Startbefehl abgesetzt ist – der Health-Check
+   * läuft dann noch. `server.restarted` sagt laut Vertrag „der Server ist wieder
+   * erreichbar"; bisher ging es genau hier hinaus, also bevor irgendjemand das
+   * geprüft hatte, und es blieb auch dann stehen, wenn der Start eine Minute
+   * später mit `server.failed` endete. Gemeldet wird deshalb erst am Ende des
+   * Health-Checks – dort ersetzt es das `server.started` des gewöhnlichen
+   * Starts. Der Stopp davor meldet nichts (siehe {@link stopServer}), sodass
+   * aus drei Meldungen eine wird.
    */
   async restartServer(serverId: string, actorUserId: string): Promise<ServerRecord> {
     const server = await this.requireServer(serverId);
 
     if (server.status === 'running' || server.status === 'starting') {
-      await this.stopServer(serverId);
+      await this.stopServer(serverId, 'restart');
     }
 
-    const restarted = await this.startServer(serverId, actorUserId);
-    await this.emitServerEvent('server.restarted', serverId);
-
-    return restarted;
+    return this.startServer(serverId, actorUserId, 'restart');
   }
 
   /**
@@ -1820,8 +1909,20 @@ export class ServerOrchestrationService {
     return this.listFiles(server.id, verzeichnis, { writable: options.writable });
   }
 
-  /** Datei oder Verzeichnis entfernen; ein bereits fehlender Pfad ist kein Fehler. */
-  async deleteFile(serverId: string, relativePath: string, recursive = true): Promise<void> {
+  /**
+   * Datei oder Verzeichnis entfernen; ein bereits fehlender Pfad ist kein
+   * Fehler.
+   *
+   * **Vorgabe `false`** (Audit contract-drift-03). Der Vertrag zieht die Grenze
+   * ausdrücklich: „Ohne Angabe lehnt der Agent das Löschen eines nicht-leeren
+   * Verzeichnisses ab, damit ein versehentlicher Klick nicht einen ganzen
+   * Datenbaum mitnimmt" (`FileDeleteCommandPayload`). Die bisherige Vorgabe
+   * `true` hob genau diese Schranke wieder auf – ein Klick auf „Löschen" neben
+   * `world/` nahm die ganze Welt mit, ohne dass die Oberfläche den Unterschied
+   * zwischen Datei und Verzeichnis auch nur benannt hätte. Wer einen Baum
+   * löschen will, sagt es jetzt ausdrücklich.
+   */
+  async deleteFile(serverId: string, relativePath: string, recursive = false): Promise<void> {
     const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
     const relativ = this.requireFilePath(relativePath);
 
@@ -2311,15 +2412,23 @@ export class ServerOrchestrationService {
         // Ohne frische Messung wird die Spielerzahl nicht geraten: Der
         // Aktivitätszeitpunkt aus `STATS_UPDATE` ist der Bezugspunkt.
         playersOnline: null,
+        playerCountAvailable: this.playerCountAvailableFor(server),
         now: this.now(),
       });
 
       if (decision.action !== 'shutdown') {
+        // Warum nicht abgeschaltet wird, steht als `decision.reason` fest –
+        // insbesondere `activityUnknown` für Spiele ohne Spielerzahl (Audit
+        // event-flow-08). Protokolliert wird es bewusst nicht: Der Sweep läuft
+        // jede Minute über jeden Server, das wären Zeilen ohne Erkenntnis.
         continue;
       }
 
       try {
-        await this.stopServer(server.id);
+        // `'autoShutdown'` unterdrückt das allgemeine `server.stopped`: Der
+        // Vorgang meldet sich gleich selbst, und zwar mit Grund und Dauer
+        // (Audit event-flow-09).
+        await this.stopServer(server.id, 'autoShutdown');
         await this.emitServerEvent('autoShutdown.triggered', server, {
           idleMinutes: Math.round(decision.idleMinutes),
         });
@@ -2333,6 +2442,25 @@ export class ServerOrchestrationService {
     }
 
     return shutdown;
+  }
+
+  /**
+   * Liefert die Abfrage dieses Spiels eine Spielerzahl? (Audit event-flow-08.)
+   *
+   * Nur `gamedig` fragt das Spieleprotokoll und bekommt Spieler und Ping;
+   * `portConnect` prüft ausschließlich, ob sich eine TCP-Verbindung aufbauen
+   * lässt (Vertrag `GameQuerySpec`, Pflichtenheft §9).
+   *
+   * Eine unbekannte Spiele-Kennung zählt hier als „nicht messbar" statt zu
+   * werfen: Sie darf den Sweep der übrigen Server nicht abreißen lassen, und
+   * die vorsichtige Antwort ist die, die keinen Server abschaltet.
+   */
+  private playerCountAvailableFor(server: ServerRecord): boolean {
+    try {
+      return this.deps.registry.require(server.gameType).query.kind === 'gamedig';
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -2579,6 +2707,27 @@ export class ServerOrchestrationService {
     return result.state;
   }
 
+  /**
+   * Wie {@link transition}, liefert aber das vollständige Ergebnis der State
+   * Machine – und räumt die periodische Abfrage ab, wenn der Server aufhört zu
+   * laufen (Audit event-flow-10).
+   *
+   * **Warum hier und nicht an jedem Aufrufort.** Abgemeldet wurde die Abfrage
+   * bisher nur beim Stoppen und beim Löschen. Jeder andere Weg aus dem Betrieb
+   * – Crash-Loop nach `error`, gescheiterter Health-Check, ein vom Abgleich
+   * beobachteter Stopp – ließ das Ziel beim Agent stehen: Er fragte den toten
+   * Port weiter im 30-Sekunden-Takt ab, und jedes Ergebnis kostete im Backend
+   * ein `findById` samt Live-Frame für einen Server, der gar nicht läuft. Eine
+   * Regel an einer Stelle ist verlässlicher als sechs Aufrufe, von denen der
+   * siebte vergessen wird.
+   *
+   * Beim Stoppen greift die Regel schon auf dem Weg nach `stopping`, also
+   * **vor** dem `STOP`-Befehl: Zwischen Befehl und Zustandswechsel läuft damit
+   * keine Abfrage mehr gegen einen bereits angehaltenen Container – der Grund,
+   * aus dem `dispatchStop()` das früher von Hand tat. Der Aufruf scheitert
+   * leise (siehe {@link applyServerQuery}): Ein Zustandswechsel darf nicht
+   * daran hängen, dass der Agent einen Zusatzbefehl annimmt.
+   */
   private async transitionFull(
     server: ServerRecord,
     event: ServerLifecycleEvent,
@@ -2587,6 +2736,13 @@ export class ServerOrchestrationService {
     const { result, publish } = await this.applyTransition(server, event, repository);
 
     publish();
+
+    const liefVorher = server.status === 'running' || server.status === 'starting';
+    const laeuftJetzt = result.state.status === 'running' || result.state.status === 'starting';
+
+    if (liefVorher && !laeuftJetzt) {
+      await this.applyServerQuery(server, false);
+    }
 
     return result;
   }

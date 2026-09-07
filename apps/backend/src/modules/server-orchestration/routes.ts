@@ -778,7 +778,13 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
         .parse(request.body);
 
       await loadAuthorized(request, id, 'canManageFiles');
-      await service.deleteFile(id, input.path, input.recursive ?? true);
+      /*
+       * Ohne Angabe **nicht** rekursiv (Audit contract-drift-03): So steht es
+       * im Vertrag des Agent-Befehls, und so bleibt ein nicht-leeres
+       * Verzeichnis geschützt, bis der Aufrufer das Mitnehmen des Inhalts
+       * ausdrücklich verlangt.
+       */
+      await service.deleteFile(id, input.path, input.recursive === true);
 
       return await reply.send(ok(null));
     } catch (error: unknown) {

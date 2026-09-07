@@ -30,8 +30,14 @@ import {
   createResourceService,
 } from '../resources/index.js';
 import { AgentRegistry, AgentSession, type AgentSocket } from './agent-gateway.js';
+import { decideAutoShutdown } from './auto-shutdown.js';
 import { ServerOrchestrationError } from './errors.js';
-import { TEST_GAME_TYPE, createGameRegistry } from './game-registry.js';
+import {
+  type InstallationPhase,
+  TEST_GAME_TYPE,
+  TEST_MINECRAFT_GAME_TYPE,
+  createGameRegistry,
+} from './game-registry.js';
 import { type HealthCheckResult, type HealthProbe } from './health-check.js';
 import { createPortAllocator } from './ports.js';
 import {
@@ -475,6 +481,65 @@ function healthyProbe(healthy: boolean | 'pending'): HealthProbe {
   };
 }
 
+/** Health-Probe, deren Antworten der Test einzeln gibt. */
+interface HaltendeProbe {
+  readonly probe: HealthProbe;
+  /** Beantwortet die älteste noch offene Prüfung. */
+  antworte(healthy: boolean): void;
+  /** Wie viele Prüfungen bisher gestellt wurden. */
+  readonly gestellt: number;
+}
+
+/**
+ * Eine Probe, die von sich aus nichts beantwortet.
+ *
+ * Gebraucht, wo geprüft wird, was **während** eines laufenden Health-Checks
+ * gilt – etwa dass der Neustart erst danach gemeldet wird (Audit
+ * event-flow-09). Mit einer sofort antwortenden Probe gäbe es dieses Fenster im
+ * Test gar nicht.
+ */
+function haltendeProbe(): HaltendeProbe {
+  const offen: Array<(result: HealthCheckResult) => void> = [];
+  let gestellt = 0;
+
+  return {
+    probe: {
+      check: (): Promise<HealthCheckResult> => {
+        gestellt += 1;
+
+        return new Promise<HealthCheckResult>((resolve) => {
+          offen.push(resolve);
+        });
+      },
+    },
+    antworte(healthy: boolean): void {
+      offen.shift()?.({
+        healthy,
+        pingMs: healthy ? 5 : null,
+        playersOnline: null,
+        playersMax: null,
+        reason: healthy ? null : 'nicht erreichbar',
+      });
+    },
+    get gestellt(): number {
+      return gestellt;
+    },
+  };
+}
+
+/** Wartet, bis der Health-Check die erwartete Zahl an Prüfungen gestellt hat. */
+async function warteAufPruefungen(probe: HaltendeProbe, anzahl: number): Promise<void> {
+  for (let i = 0; i < 200; i += 1) {
+    if (probe.gestellt >= anzahl) {
+      return;
+    }
+
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  throw new Error('Der Health-Check wurde nicht angestoßen.');
+}
+
 /** Eine Log-Zeile des Dienstes bzw. der Agent-Sitzung. */
 interface LoggedLine {
   readonly level: 'info' | 'warn' | 'error';
@@ -538,6 +603,15 @@ function makeHarness(
      * Reihenfolge „erst Commit, dann melden" (event-flow-11).
      */
     onEmit?: (event: string, payload: Record<string, unknown>) => void;
+    /**
+     * Ausbaustufe der Spiele-Registry; Vorgabe 1 (nur der Echo-Testtyp).
+     *
+     * Stufe 2 gibt den Minecraft-Testtyp frei – das einzige Spiel mit
+     * `gamedig`-Abfrage und damit mit einer messbaren Spielerzahl. Gebraucht
+     * für den Auto-Shutdown (Audit event-flow-08): Ohne Spielerzahl entscheidet
+     * er auf „nicht messbar" und schaltet gar nicht mehr ab.
+     */
+    gamePhase?: InstallationPhase;
   } = {},
 ): Harness {
   const repository = new FakeRepository();
@@ -635,7 +709,7 @@ function makeHarness(
   const service = new ServerOrchestrationService({
     repository,
     agents,
-    registry: createGameRegistry(1),
+    registry: createGameRegistry(options.gamePhase ?? 1),
     dns,
     ports: createPortAllocator(portPool),
     resources: createPermissiveResourceGuard(() => undefined),
@@ -687,12 +761,12 @@ function makeHarness(
   };
 }
 
-const createInput = (subdomain = 'mein-server') => ({
+const createInput = (subdomain = 'mein-server', gameType = TEST_GAME_TYPE) => ({
   name: 'Mein Server',
-  gameType: TEST_GAME_TYPE.id,
+  gameType: gameType.id,
   subdomain,
   hostId: HOST.id,
-  resourceLimits: TEST_GAME_TYPE.resourceDefaults,
+  resourceLimits: gameType.resourceDefaults,
   config: {},
   startupParameters: '',
   autoShutdownEnabled: true,
@@ -1008,13 +1082,76 @@ describe('Periodische Server-Abfrage (Gefundener Punkt 74)', () => {
     expect(abfragen(harness)).toHaveLength(1);
   });
 
-  it('lässt einen gestoppten Server dabei aus', async () => {
+  it('beendet die Abfrage, wenn der Crash-Loop-Schutz abschaltet (Audit event-flow-10)', async () => {
+    /*
+     * Abgemeldet wurde die Abfrage bisher nur beim Stoppen und beim Löschen.
+     * Ein Server, den der Crash-Loop-Schutz auf `error` gesetzt hat, wurde
+     * dagegen weiter im 30-Sekunden-Takt abgefragt – der Agent schrieb
+     * Fehlschläge ins Log, das Backend beantwortete jeden mit einem
+     * Datenbankzugriff und einem Live-Frame für einen Server, der nicht läuft.
+     */
+    const harness = makeHarness({ healthy: 'pending' });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.repository.servers.set(created.id, {
+      ...(await harness.service.requireServer(created.id)),
+      status: 'running',
+    });
+    harness.socket.commands.length = 0;
+
+    // maxRestarts = 2: der dritte Absturz schaltet ab (`error`).
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      harness.advance(30_000);
+      await harness.service.handleAgentEvent(HOST.id, {
+        kind: 'event',
+        event: 'CRASHED',
+        serverId: created.id,
+        payload: { exitCode: 137 },
+        emittedAt: NOW.toISOString(),
+      });
+
+      for (let i = 0; i < 5; i += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    }
+
+    expect((await harness.service.requireServer(created.id)).status).toBe('error');
+    expect(abfragen(harness).at(-1)?.payload).toMatchObject({
+      serverId: created.id,
+      target: null,
+    });
+  });
+
+  it('beendet die Abfrage, wenn die Gesundheitsprüfung scheitert (Audit event-flow-10)', async () => {
+    const harness = makeHarness({ healthy: false });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['error']);
+
+    expect(abfragen(harness).at(-1)?.payload).toMatchObject({
+      serverId: created.id,
+      target: null,
+    });
+  });
+
+  it('räumt das Ziel eines nicht laufenden Servers dabei ab', async () => {
     const harness = makeHarness();
     await harness.service.createServer(createInput(), OWNER_ID);
     harness.socket.commands.length = 0;
 
+    /*
+     * Überlebt der Agent einen Neustart des Backends, behält er seine Ziele
+     * (Audit event-flow-10). Ein Server, der in dieser Zeit stehen geblieben
+     * ist, würde sonst bis zum nächsten Agent-Neustart weiter abgefragt. Der
+     * Abgleich schickt deshalb `null` – gesetzt wird trotzdem nichts.
+     */
     expect(await harness.service.refreshServerQueries(HOST.id)).toEqual([]);
-    expect(abfragen(harness)).toHaveLength(0);
+
+    const abgeraeumt = abfragen(harness);
+
+    expect(abgeraeumt).toHaveLength(1);
+    expect(abgeraeumt[0]?.payload).toMatchObject({ target: null });
   });
 });
 
@@ -1191,6 +1328,76 @@ describe('Neustart', () => {
         .filter((name) => name === 'STOP' || name === 'START'),
     ).toEqual(['STOP', 'START']);
     expect(harness.emitted.map((e) => e.event)).toContain('server.restarted');
+  });
+
+  it('meldet server.restarted erst nach bestandener Gesundheitsprüfung (Audit event-flow-09)', async () => {
+    /*
+     * Der Vertrag sagt zu `server.restarted`: „Neustart abgeschlossen – der
+     * Server ist wieder erreichbar". Gemeldet wurde es bisher, sobald der
+     * START-Befehl heraus war – also bevor irgendjemand das geprüft hatte, und
+     * es blieb auch dann stehen, wenn der Health-Check eine Minute später
+     * scheiterte.
+     */
+    const pruefung = haltendeProbe();
+    const harness = makeHarness({ probe: pruefung.probe });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await warteAufPruefungen(pruefung, 1);
+    pruefung.antworte(true);
+    await settle(harness, created.id, ['running']);
+
+    harness.emitted.length = 0;
+
+    await harness.service.restartServer(created.id, OWNER_ID);
+    await warteAufPruefungen(pruefung, 2);
+
+    // Der Health-Check läuft noch: Noch ist nichts „wieder erreichbar".
+    expect((await harness.service.requireServer(created.id)).status).toBe('starting');
+    expect(harness.emitted.map((e) => e.event)).not.toContain('server.restarted');
+
+    pruefung.antworte(true);
+    await settle(harness, created.id, ['running']);
+
+    const ereignisse = harness.emitted.map((e) => e.event);
+
+    // Genau eine Meldung für den ganzen Vorgang – und die richtige: kein
+    // „Server gestoppt" für den Zwischenschritt, kein zusätzliches
+    // „Server gestartet" neben dem Neustart.
+    expect(ereignisse.filter((name) => name === 'server.restarted')).toEqual(['server.restarted']);
+    expect(ereignisse).not.toContain('server.stopped');
+    expect(ereignisse).not.toContain('server.started');
+  });
+
+  it('meldet keinen Neustart, wenn die Gesundheitsprüfung scheitert (Audit event-flow-09)', async () => {
+    let gesund = true;
+    const harness = makeHarness({
+      probe: {
+        check: (): Promise<HealthCheckResult> =>
+          Promise.resolve({
+            healthy: gesund,
+            pingMs: gesund ? 5 : null,
+            playersOnline: null,
+            playersMax: null,
+            reason: gesund ? null : 'nicht erreichbar',
+          }),
+      },
+    });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    harness.emitted.length = 0;
+    gesund = false;
+
+    await harness.service.restartServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['error']);
+
+    const ereignisse = harness.emitted.map((e) => e.event);
+
+    expect(ereignisse).toContain('server.failed');
+    expect(ereignisse).not.toContain('server.restarted');
   });
 });
 
@@ -1482,31 +1689,100 @@ describe('Absturz und Crash-Loop-Schutz (Pflichtenheft §9)', () => {
 });
 
 describe('Auto-Shutdown (Pflichtenheft §9)', () => {
-  it('schaltet einen lange leeren Server ab', async () => {
-    const harness = makeHarness();
-    const created = await harness.service.createServer(createInput(), OWNER_ID);
+  /**
+   * Ein Server eines Spiels, dessen Abfrage tatsächlich eine Spielerzahl
+   * liefert (`gamedig`) – die Voraussetzung dafür, dass „leer" überhaupt
+   * messbar ist (Audit event-flow-08).
+   */
+  async function laufenderMinecraftServer(): Promise<{
+    harness: Harness;
+    serverId: string;
+  }> {
+    const harness = makeHarness({ gamePhase: 2 });
+    const created = await harness.service.createServer(
+      createInput('mein-server', TEST_MINECRAFT_GAME_TYPE),
+      OWNER_ID,
+    );
 
     await harness.service.startServer(created.id, OWNER_ID);
     await settle(harness, created.id, ['running']);
+
+    return { harness, serverId: created.id };
+  }
+
+  it('schaltet einen lange leeren Server ab', async () => {
+    const { harness, serverId } = await laufenderMinecraftServer();
 
     harness.advance(60 * 60_000);
 
     const stopped = await harness.service.runAutoShutdownSweep(HOST.id);
 
-    expect(stopped).toEqual([created.id]);
+    expect(stopped).toEqual([serverId]);
     expect(harness.emitted.map((e) => e.event)).toContain('autoShutdown.triggered');
   });
 
+  it('meldet den Vorgang nur einmal (Audit event-flow-09)', async () => {
+    const { harness } = await laufenderMinecraftServer();
+
+    harness.advance(60 * 60_000);
+    harness.emitted.length = 0;
+
+    await harness.service.runAutoShutdownSweep(HOST.id);
+
+    const ereignisse = harness.emitted.map((e) => e.event);
+
+    /*
+     * „Server gestoppt" **und** „automatisch abgeschaltet" wären zwei Meldungen
+     * für einen Vorgang – bei einer Discord-Regel je Ereignis auch zwei Posts.
+     * Bleibt die genauere: Sie nennt den Grund und die Inaktivitätsdauer.
+     */
+    expect(ereignisse).toContain('autoShutdown.triggered');
+    expect(ereignisse).not.toContain('server.stopped');
+  });
+
   it('lässt einen Server innerhalb der Schonfrist laufen', async () => {
+    const { harness } = await laufenderMinecraftServer();
+
+    harness.advance(5 * 60_000);
+
+    expect(await harness.service.runAutoShutdownSweep(HOST.id)).toEqual([]);
+  });
+
+  it('lässt ein Spiel ohne Spielerzahl laufen (Audit event-flow-08)', async () => {
+    /*
+     * Der Echo-Testtyp kennt nur den Port-Connect-Test. Ohne gemessene
+     * Spielerzahl bleibt `lastActivityAt` leer, und die Rechnung fiele auf den
+     * Startzeitpunkt zurück: Der Server ginge 30 Minuten nach dem Start aus,
+     * ganz gleich, wie viele Spieler verbunden sind. „Nicht messbar" ist nicht
+     * „leer" – der Auto-Shutdown greift hier deshalb nicht.
+     */
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
 
     await harness.service.startServer(created.id, OWNER_ID);
     await settle(harness, created.id, ['running']);
 
-    harness.advance(5 * 60_000);
+    harness.advance(6 * 60 * 60_000);
 
     expect(await harness.service.runAutoShutdownSweep(HOST.id)).toEqual([]);
+    expect((await harness.service.requireServer(created.id)).status).toBe('running');
+    expect(harness.emitted.map((e) => e.event)).not.toContain('autoShutdown.triggered');
+  });
+
+  it('meldet den unbekannten Zustand als activityUnknown', async () => {
+    // Die Entscheidung selbst – damit im Test sichtbar ist, *warum* der Server
+    // läuft, und nicht nur, *dass* er läuft.
+    expect(
+      decideAutoShutdown({
+        settings: { enabled: true, idleTimeoutMinutes: 30, graceMinutes: 15 },
+        status: 'running',
+        lastStartedAt: new Date(NOW.getTime() - 6 * 60 * 60_000).toISOString(),
+        lastActivityAt: null,
+        playersOnline: null,
+        playerCountAvailable: false,
+        now: NOW,
+      }),
+    ).toEqual({ action: 'keepRunning', reason: 'activityUnknown' });
   });
 
   it('lässt einen gestoppten Server in Ruhe', async () => {
@@ -1559,6 +1835,29 @@ describe('Klonen (Pflichtenheft §9)', () => {
     expect(clone.configJson.greeting).toBe('Hallo Klon');
     expect(clone.clonedFromServerId).toBe(source.id);
     expect(harness.emitted.map((e) => e.event)).toContain('server.cloned');
+  });
+
+  it('meldet einen Klon nur als server.cloned, nicht zusätzlich als server.created (Audit event-flow-09)', async () => {
+    const harness = makeHarness();
+    const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
+
+    // Nur die Ereignisse des Klon-Laufs betrachten – die Quelle hat ihr
+    // eigenes `server.created` beim Anlegen bekommen, und das gehört ihr.
+    harness.emitted.length = 0;
+
+    const job = await harness.service.cloneServer(
+      source.id,
+      { name: 'Klon', subdomain: 'klon-zwei', includeWorldData: false },
+      OWNER_ID,
+    );
+    const fertig = await settleCloneJob(harness, source.id, job.id);
+
+    expect(fertig.status).toBe('completed');
+
+    const ereignisse = harness.emitted.map((e) => e.event);
+
+    expect(ereignisse).toContain('server.cloned');
+    expect(ereignisse).not.toContain('server.created');
   });
 
   it('lehnt eine bereits vergebene Subdomain für den Klon ab, bevor ein Auftrag entsteht', async () => {
@@ -2974,11 +3273,23 @@ describe('Datei-Manager (Arbeitspaket P2)', () => {
     expect(befehle(harness, 'FILE_UPLOAD')).toEqual([]);
   });
 
-  it('löscht rekursiv und sperrt den Datenordner selbst', async () => {
+  it('löscht ohne ausdrückliche Ansage nicht rekursiv und sperrt den Datenordner selbst', async () => {
     const harness = makeHarness();
     const id = await angelegterServer(harness);
 
+    /*
+     * Vorgabe `false` (Audit contract-drift-03): So steht die Schranke im
+     * Vertrag des Agent-Befehls – ein nicht-leeres Verzeichnis bleibt stehen,
+     * bis jemand das Mitnehmen des Inhalts ausdrücklich verlangt.
+     */
     await harness.service.deleteFile(id, 'welt');
+
+    expect(befehle(harness, 'FILE_DELETE').at(-1)?.payload).toMatchObject({
+      path: `${DATEN_ORDNER}/welt`,
+      recursive: false,
+    });
+
+    await harness.service.deleteFile(id, 'welt', true);
 
     expect(befehle(harness, 'FILE_DELETE').at(-1)?.payload).toMatchObject({
       path: `${DATEN_ORDNER}/welt`,
@@ -2988,7 +3299,7 @@ describe('Datei-Manager (Arbeitspaket P2)', () => {
     await expect(harness.service.deleteFile(id, '')).rejects.toMatchObject({
       code: 'AGENT_INVALID_PATH',
     });
-    expect(befehle(harness, 'FILE_DELETE')).toHaveLength(1);
+    expect(befehle(harness, 'FILE_DELETE')).toHaveLength(2);
   });
 
   it('liefert für den Download Dateiname und Inhalt', async () => {
