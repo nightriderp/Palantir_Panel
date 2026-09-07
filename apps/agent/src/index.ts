@@ -3,6 +3,7 @@ import {
   ContainerRuntimeAdapter,
   createNodeStatsReader,
   createWebSocketTransportFactory,
+  startRuntimeLink,
 } from './connection/index.js';
 import { createAgentJobs } from './jobs/index.js';
 import { createContainerRuntimeFromEnv } from './runtime/index.js';
@@ -70,19 +71,14 @@ function main(): void {
     readNodeStats: createNodeStatsReader(env.AGENT_DATA_DIR),
   });
 
-  void runtime
-    .connect()
-    .then(() => {
-      adapter.start((event) => connection.sendEvent(event));
-      console.info('[agent] Container-Runtime verbunden');
-    })
-    .catch((fehler: unknown) => {
-      // Kein Abbruch: Der Agent hält die Backend-Verbindung offen und beantwortet
-      // Befehle ehrlich mit AGENT_RUNTIME_UNAVAILABLE, statt stumm zu bleiben.
-      console.error('[agent] Container-Runtime nicht erreichbar', {
-        fehler: fehler instanceof Error ? fehler.message : String(fehler),
-      });
-    });
+  // Verbindet die Runtime und hängt den Adapter an - mit Wiederholung, falls
+  // der Docker-Socket-Proxy beim Start noch nicht antwortet (Audit
+  // agent-conn-01). Ohne sie bliebe der Agent dauerhaft ohne Ereignisstrom.
+  const runtimeLink = startRuntimeLink({
+    runtime,
+    adapter,
+    emit: (event) => connection.sendEvent(event),
+  });
 
   halter.verbindung = connection;
   connection.start();
@@ -99,6 +95,7 @@ function main(): void {
     beendet = true;
     console.info(`[agent] Beende auf ${grund}`);
     jobs.stop();
+    runtimeLink.stop();
     adapter.stop();
     connection.stop();
     void runtime

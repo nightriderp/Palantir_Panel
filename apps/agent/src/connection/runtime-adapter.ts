@@ -138,6 +138,19 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
   private readonly jobs: AgentJobs | undefined;
   private readonly log: ConnectionLogger;
   private unsubscribe: Unsubscribe | null = null;
+  /**
+   * Container mit offenen Live-Kanälen (`LOG_LINE`, `STATS_UPDATE`), je Eintrag
+   * die Abmeldung – `null`, solange `watch()` noch läuft.
+   *
+   * Ohne diese Liste bliebe die Live-Konsole leer und CPU/RAM dauerhaft „—":
+   * `runtime.on()` allein liefert nur `STATUS_CHANGED`/`CRASHED`, die beiden
+   * Live-Kanäle öffnet erst `runtime.watch()` (Audit event-flow-01).
+   *
+   * Die Liste ist nötig, weil `watch()` **nicht** idempotent ist: Jeder Aufruf
+   * der Docker-Runtime öffnet ein weiteres Stream-Paar, und jede Logzeile käme
+   * dann mehrfach beim Backend an.
+   */
+  private readonly liveChannels = new Map<string, Unsubscribe | null>();
 
   constructor(options: RuntimeAdapterOptions) {
     this.runtime = options.runtime;
@@ -162,6 +175,13 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
   stop(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+
+    // Die Live-Kanäle mit schließen: Ohne Senke hätte ihr Inhalt kein Ziel mehr,
+    // die Streams liefen aber weiter.
+    for (const abmelden of this.liveChannels.values()) {
+      abmelden?.();
+    }
+    this.liveChannels.clear();
   }
 
   async execute(execution: CommandExecution): Promise<ApiResponse<unknown>> {
@@ -221,6 +241,14 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
     // Backend als „hier läuft nichts" (siehe ports.ts).
     const states = await this.runtime.list();
     const observedAt = new Date().toISOString();
+
+    // Derselbe Ist-Zustand richtet auch die Live-Kanäle aus (Audit
+    // event-flow-01). Das ist die Stelle, an der ein bereits laufender Container
+    // nach dem Agent-Start und nach jedem Soll/Ist-Abgleich seine Konsole und
+    // seine Messwerte zurückbekommt – ohne sie käme Live-Ausgabe erst nach dem
+    // nächsten START.
+    await this.syncLiveChannels(states);
+
     return states.map((state) => toAgentContainerState(state, observedAt));
   }
 
@@ -259,16 +287,22 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
       case 'START': {
         const p = payload as { containerId: string };
         await this.runtime.start(p.containerId);
+        // Erst jetzt, nach dem erfolgreichen Start: Die Live-Streams der Engine
+        // enden mit dem Container, ein Abonnement von vorher wäre also tot.
+        await this.renewLiveChannels(p.containerId);
         return null;
       }
       case 'STOP': {
         const p = payload as { containerId: string; timeoutSeconds?: number };
         await this.runtime.stop(p.containerId, optionalTimeout(p.timeoutSeconds));
+        await this.closeLiveChannels(p.containerId);
         return null;
       }
       case 'RESTART': {
         const p = payload as { containerId: string; timeoutSeconds?: number };
         await this.runtime.restart(p.containerId, optionalTimeout(p.timeoutSeconds));
+        // Wie bei START: Der Neustart hat die alten Streams beendet.
+        await this.renewLiveChannels(p.containerId);
         return null;
       }
       case 'DELETE': {
@@ -277,6 +311,9 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
           ...(p.removeVolumes === undefined ? {} : { removeVolumes: p.removeVolumes }),
           ...(p.force === undefined ? {} : { force: p.force }),
         });
+        // Nur nach erfolgreichem Entfernen – scheitert DELETE (etwa 409, weil
+        // der Container noch läuft), behält er seine Live-Kanäle.
+        await this.closeLiveChannels(p.containerId);
         return null;
       }
       case 'GET_STATS': {
@@ -397,6 +434,74 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
       case 'SET_SERVER_QUERY': {
         const p = payload as SetServerQueryCommandPayload;
         return this.requireJobs().query.setTarget(p.serverId, p.target);
+      }
+    }
+  }
+
+  /**
+   * Live-Kanäle eines Containers öffnen, sofern noch keine offen sind.
+   *
+   * Ein Fehlschlag lässt den auslösenden Befehl bewusst **nicht** scheitern: Der
+   * Container läuft, es fehlen nur Konsole und Live-Messwerte. Der Grund steht
+   * dafür im Log der Node.
+   */
+  private async openLiveChannels(containerId: string): Promise<void> {
+    if (this.liveChannels.has(containerId)) {
+      return;
+    }
+
+    // Platzhalter vor dem `await`: Zwei gleichzeitige Aufrufe (START und
+    // Ist-Zustands-Bericht) dürfen nicht zwei Stream-Paare öffnen.
+    this.liveChannels.set(containerId, null);
+    try {
+      const abmelden = await this.runtime.watch(containerId);
+      if (!this.liveChannels.has(containerId)) {
+        // Zwischenzeitlich abgemeldet (STOP/DELETE): sofort wieder schließen.
+        abmelden();
+        return;
+      }
+      this.liveChannels.set(containerId, abmelden);
+    } catch (fehler) {
+      this.liveChannels.delete(containerId);
+      this.log.warn('Live-Kanäle konnten nicht geöffnet werden', {
+        containerId,
+        fehler: fehler instanceof Error ? fehler.message : String(fehler),
+      });
+    }
+  }
+
+  /** Live-Kanäle schließen und wieder öffnen – nach START und RESTART. */
+  private async renewLiveChannels(containerId: string): Promise<void> {
+    await this.closeLiveChannels(containerId);
+    await this.openLiveChannels(containerId);
+  }
+
+  /**
+   * Live-Kanäle eines Containers schließen.
+   *
+   * Bewusst über `unwatch()` statt nur über die gemerkte Abmeldung: Nach einem
+   * Neustart des Adapters können in der Runtime noch Abonnements hängen, die
+   * hier nicht mehr bekannt sind.
+   */
+  private async closeLiveChannels(containerId: string): Promise<void> {
+    this.liveChannels.delete(containerId);
+    try {
+      await this.runtime.unwatch(containerId);
+    } catch (fehler) {
+      this.log.warn('Live-Kanäle konnten nicht geschlossen werden', {
+        containerId,
+        fehler: fehler instanceof Error ? fehler.message : String(fehler),
+      });
+    }
+  }
+
+  /** Live-Kanäle am gemeldeten Ist-Zustand ausrichten. */
+  private async syncLiveChannels(states: readonly ContainerState[]): Promise<void> {
+    for (const state of states) {
+      if (state.status === 'running') {
+        await this.openLiveChannels(state.containerId);
+      } else if (this.liveChannels.has(state.containerId)) {
+        await this.closeLiveChannels(state.containerId);
       }
     }
   }
