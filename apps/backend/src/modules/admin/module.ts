@@ -12,6 +12,7 @@
  * benannten Fehlercode – statt so zu tun, als wäre alles vorhanden.
  */
 
+import type { Pool } from 'pg';
 import type { Database } from '../../db/index.js';
 import type { RoleService } from '../rbac/index.js';
 import {
@@ -60,6 +61,14 @@ import {
 
 export interface AdminModuleOptions {
   readonly db: Database;
+  /**
+   * Verbindungspool derselben Datenbank (`getPool()`).
+   *
+   * Zusätzlich zur Drizzle-Instanz, weil der Archivierungslauf einen
+   * Advisory-Lock auf Sitzungsebene hält und dafür für seine Dauer eine feste
+   * Verbindung braucht (Audit W2-16, siehe `repositories.ts`).
+   */
+  readonly pool: Pool;
   /** Rollenverwaltung aus B2 – für die Freigabe wartender Konten. */
   readonly roles: RoleService;
   /** Ablageort der Audit-Archive auf der VPS (`AUDIT_ARCHIVE_DIR`). */
@@ -150,7 +159,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
 
   const auditArchive: AuditArchiveDependencies | undefined = options.auditArchiveDir
     ? {
-        repository: createDrizzleAuditArchiveRepository(db),
+        repository: createDrizzleAuditArchiveRepository(db, options.pool),
         writer: createGzipArchiveWriter(options.auditArchiveDir),
         audit,
       }

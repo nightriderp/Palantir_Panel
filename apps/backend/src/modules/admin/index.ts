@@ -30,6 +30,7 @@ export { type AdminContext, contextOf } from './context.js';
 export {
   AUDIT_SERVICE_METHODS,
   type AppendAuditEntry,
+  type AuditArchiveLock,
   type AuditArchiveRepository,
   type AuditEntryPage,
   type AuditEntryRecord,

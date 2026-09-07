@@ -59,14 +59,37 @@ export function ctxWith(actor: PermissionActor): AdminContext {
 
 export interface FakeAuditRepository extends AuditLogRepository, AuditArchiveRepository {
   readonly rows: AuditEntryRecord[];
+  /** Ob der Archiv-Lock gerade belegt ist – für den Nachweis der Freigabe. */
+  readonly lockHeld: boolean;
 }
 
 export function createFakeAuditRepository(seed: AuditEntryRecord[] = []): FakeAuditRepository {
   const rows: AuditEntryRecord[] = [...seed];
   let nextId = seed.length + 1;
+  // Bildet `pg_try_advisory_lock` nach: Der zweite Lauf bekommt nichts, solange
+  // der erste nicht freigegeben hat (Audit W2-16).
+  let belegt = false;
 
   return {
     rows,
+
+    get lockHeld() {
+      return belegt;
+    },
+
+    async acquireLock() {
+      if (belegt) {
+        return null;
+      }
+
+      belegt = true;
+
+      return {
+        async release() {
+          belegt = false;
+        },
+      };
+    },
 
     async append(entry: AppendAuditEntry) {
       const record: AuditEntryRecord = {

@@ -5,7 +5,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from './config/env.js';
 import { cookieDomainUmfasstSpielhosts } from './config/cookie-domain.js';
 import { createTrustProxy } from './config/trusted-proxy.js';
-import { getDb } from './db/index.js';
+import { getDb, getPool } from './db/index.js';
 import { registerErrorHandler } from './error-handler.js';
 import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
 import {
@@ -300,6 +300,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      */
     const admin = createAdminModule({
       db,
+      // Für den Archivlauf: Der Advisory-Lock gehört der Verbindung, die ihn
+      // nimmt, und braucht deshalb den Pool selbst (Audit W2-16).
+      pool: getPool(),
       roles,
       // Kontosperre schließt die offenen Live-Verbindungen des Kontos
       // (Audit W2-2) – über dieselbe Weiterleitung wie der Sitzungswiderruf.
