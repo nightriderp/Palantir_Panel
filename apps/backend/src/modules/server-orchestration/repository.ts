@@ -14,7 +14,7 @@ import {
   type ServerStatus,
 } from '@palantir/contracts';
 import { type ServerAutoShutdown, type ServerPortAssignment } from './types.js';
-import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
 import { gameServers, hostNodes, serverMembers, serverPins, users } from '../../db/schema.js';
 import { ServerOrchestrationError } from './errors.js';
@@ -163,6 +163,9 @@ export interface ServerRepository {
    * Adressen für VPS und Homeserver). Mehrere Nodes brauchen ein Token je Node,
    * damit sich eine Verbindung überhaupt einer Node zuordnen lässt – das gehört
    * zu B8 und ist in WORK_STATUS.md vermerkt.
+   *
+   * Gibt es dennoch mehrere, liefert die Abfrage die **älteste** – dieselbe bei
+   * jedem Aufruf (Audit W3-6, orchestration-core-10).
    */
   defaultHost(): Promise<HostNodeRecord | null>;
   findHost(hostId: string): Promise<HostNodeRecord | null>;
@@ -523,6 +526,20 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
           status: hostNodes.status,
         })
         .from(hostNodes)
+        /*
+         * Feste Reihenfolge (Audit W3-6, orchestration-core-10).
+         *
+         * Ohne `ORDER BY` entscheidet die Laufzeit-Reihenfolge von Postgres,
+         * welche Node „die" Node ist – bei mehreren kann dieselbe Abfrage
+         * nacheinander verschiedene Antworten geben. Daran hängen die Zuordnung
+         * einer Agent-Verbindung mit gemeinsamem `AGENT_TOKEN` und die
+         * Node-Auflösung der Backup-Kommandos: Trifft es die falsche Node,
+         * gehen Befehle an den falschen physischen Homeserver.
+         *
+         * Die älteste Node ist die stabile Wahl: Sie ändert sich nicht mehr,
+         * wenn später weitere dazukommen.
+         */
+        .orderBy(asc(hostNodes.createdAt))
         .limit(1);
 
       return rows[0] ?? null;

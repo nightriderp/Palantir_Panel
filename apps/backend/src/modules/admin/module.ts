@@ -114,17 +114,21 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
 
   const audit = createAuditService(createDrizzleAuditLogRepository(db));
 
-  const nodes = createHostNodeService({
-    repository: createDrizzleHostNodeRepository(db),
-    audit,
-    ...(options.nodePlacements ? { placements: options.nodePlacements } : {}),
-    ...(options.nodeUsage ? { usage: options.nodeUsage } : {}),
-  });
-
+  // Port-Verwaltung vor der Node-Verwaltung: Letztere fragt beim Löschen einer
+  // Node nach den an sie gebundenen Bereichen (Audit W3-6). Umgekehrt kennt die
+  // Port-Verwaltung die Nodes nicht – die Richtung bleibt eindeutig.
   const ports = createPortPoolService({
     repository: createDrizzlePortPoolRepository(db),
     audit,
     ...(options.serverNames ? { serverNames: options.serverNames } : {}),
+  });
+
+  const nodes = createHostNodeService({
+    repository: createDrizzleHostNodeRepository(db),
+    audit,
+    portBindings: ports,
+    ...(options.nodePlacements ? { placements: options.nodePlacements } : {}),
+    ...(options.nodeUsage ? { usage: options.nodeUsage } : {}),
   });
 
   const storage = createStorageExplorerService({

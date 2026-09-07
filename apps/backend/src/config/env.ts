@@ -251,6 +251,10 @@ const envSchema = z.object({
    * ohne Tunnel ergibt einen Server, der startet, „läuft" meldet und trotzdem
    * nicht erreichbar ist. Das Ende liegt unter {@link MINECRAFT_ROUTER_PORT},
    * damit dieser nicht aus dem Pool vergeben werden kann.
+   *
+   * Beide Bedingungen – `START <= END` und `END < MINECRAFT_ROUTER_PORT` –
+   * prüft seit Audit W3-6 der `superRefine` weiter unten; vorher standen sie
+   * nur hier im Text (backend-core-06).
    */
   GAME_PORT_RANGE_START: z.coerce.number().int().min(1).max(65_535).default(25_000),
   GAME_PORT_RANGE_END: z.coerce.number().int().min(1).max(65_535).default(25_564),
@@ -579,6 +583,48 @@ const envSchemaMitPrüfungen = envSchema
           'COOKIE_SECURE=false ist nur außerhalb der Produktion zulässig ' +
           '(Pflichtenheft §7): ohne Secure-Flag gehen die Sitzungs-Cookies auch über HTTP. ' +
           'Entweder COOKIE_SECURE=true setzen oder NODE_ENV umstellen.',
+      });
+    }
+
+    /*
+     * Port-Invariante des Spiele-Bereichs (Audit W3-6, backend-core-06).
+     *
+     * Die beiden Bedingungen standen bisher nur im Kommentar am Schema und in
+     * `.env.example` – geprüft hat sie niemand:
+     *
+     * - `START > END` ergibt still einen leeren Pool. Der Seed legt dann keinen
+     *   einzigen Port an, und der Fehler zeigt sich erst Tage später beim
+     *   ersten Server-Start als „Pool erschöpft".
+     * - Liegt `MINECRAFT_ROUTER_PORT` im Bereich, kann ein Gameserver genau den
+     *   Port bekommen, über den das Hostname-Routing aller Minecraft-Server
+     *   läuft – danach kollidieren beide, und den Port wieder herauszulösen
+     *   hieße, einem laufenden Server die Adresse zu nehmen.
+     *
+     * Beides gilt unabhängig von `NODE_ENV`, deshalb steht die Prüfung vor dem
+     * Ausstieg für die Entwicklung. Ein Startabbruch mit Klartext ist billiger
+     * als beide Folgen.
+     */
+    if (werte.GAME_PORT_RANGE_START > werte.GAME_PORT_RANGE_END) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GAME_PORT_RANGE_END'],
+        message:
+          `GAME_PORT_RANGE_START (${werte.GAME_PORT_RANGE_START}) liegt über ` +
+          `GAME_PORT_RANGE_END (${werte.GAME_PORT_RANGE_END}). Der Bereich wäre leer: ` +
+          'Der Seed legt keinen vergebbaren Port an, und jeder Server-Start scheiterte ' +
+          'später an der Port-Vergabe. Werte in der zentralen .env im Repo-Root tauschen ' +
+          '(siehe .env.example Abschnitt „Öffentlicher Portbereich").',
+      });
+    } else if (werte.GAME_PORT_RANGE_END >= werte.MINECRAFT_ROUTER_PORT) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GAME_PORT_RANGE_END'],
+        message:
+          `GAME_PORT_RANGE_END (${werte.GAME_PORT_RANGE_END}) muss unter ` +
+          `MINECRAFT_ROUTER_PORT (${werte.MINECRAFT_ROUTER_PORT}) liegen (Pflichtenheft §2.4). ` +
+          'Sonst steht der Port des Hostname-Routers im vergebbaren Pool und kann einem ' +
+          'einzelnen Gameserver zufallen – das Minecraft-Routing bräche danach für alle. ' +
+          'Werte in der zentralen .env im Repo-Root anpassen (siehe .env.example).',
       });
     }
 

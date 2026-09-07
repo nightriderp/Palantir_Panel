@@ -275,6 +275,85 @@ describe('Umgebungsschema', () => {
 });
 
 /**
+ * Port-Invariante des Spiele-Bereichs (Audit W3-6, backend-core-06).
+ *
+ * Beide Bedingungen standen seit jeher im Kommentar am Schema und in
+ * `.env.example`, geprüft hat sie niemand. Die Folgen zeigten sich erst weit
+ * später: ein leerer Pool erst beim ersten Server-Start, der Router-Port im
+ * Pool erst, wenn ein Gameserver ihn belegt hat und das Minecraft-Routing für
+ * alle bricht.
+ */
+describe('Port-Invariante des Spiele-Bereichs', () => {
+  const fehlerPfade = (ergebnis: ReturnType<typeof umgebungLesen>): string[] =>
+    ergebnis.success ? [] : ergebnis.error.issues.map((issue) => issue.path.join('.'));
+
+  const meldungen = (ergebnis: ReturnType<typeof umgebungLesen>): string =>
+    ergebnis.success ? '' : ergebnis.error.issues.map((issue) => issue.message).join(' ');
+
+  it('nimmt die ausgelieferten Vorgaben an', () => {
+    expect(umgebungLesen({}).success).toBe(true);
+  });
+
+  it('bricht ab, wenn der Anfang über dem Ende liegt', () => {
+    const ergebnis = umgebungLesen({
+      GAME_PORT_RANGE_START: '25600',
+      GAME_PORT_RANGE_END: '25100',
+      MINECRAFT_ROUTER_PORT: '25565',
+    });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toContain('GAME_PORT_RANGE_END');
+    expect(meldungen(ergebnis)).toContain('leer');
+  });
+
+  it('bricht ab, wenn der Router-Port im vergebbaren Bereich liegt', () => {
+    const ergebnis = umgebungLesen({
+      GAME_PORT_RANGE_START: '25000',
+      GAME_PORT_RANGE_END: '25600',
+      MINECRAFT_ROUTER_PORT: '25565',
+    });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toContain('GAME_PORT_RANGE_END');
+    expect(meldungen(ergebnis)).toContain('MINECRAFT_ROUTER_PORT');
+  });
+
+  it('bricht auch ab, wenn das Ende genau der Router-Port ist', () => {
+    const ergebnis = umgebungLesen({
+      GAME_PORT_RANGE_START: '25000',
+      GAME_PORT_RANGE_END: '25565',
+      MINECRAFT_ROUTER_PORT: '25565',
+    });
+
+    expect(ergebnis.success).toBe(false);
+  });
+
+  it('gilt auch in Produktion, nicht nur in der Entwicklung', () => {
+    const ergebnis = umgebungLesen({
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      VPS_PUBLIC_IP: '203.0.113.10',
+      WIREGUARD_HOME_IP: '10.10.0.2',
+      PALANTIR_DOMAIN: 'beispiel.tld',
+      GAME_PORT_RANGE_END: '25600',
+    });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toContain('GAME_PORT_RANGE_END');
+  });
+
+  it('lässt einen verschobenen, in sich stimmigen Bereich durch', () => {
+    const ergebnis = umgebungLesen({
+      GAME_PORT_RANGE_START: '30000',
+      GAME_PORT_RANGE_END: '30999',
+      MINECRAFT_ROUTER_PORT: '31000',
+    });
+
+    expect(ergebnis.success).toBe(true);
+  });
+});
+
+/**
  * Ableitungs-Vorgaben nur außerhalb der Produktion (Audit W2-23,
  * backend-core-07).
  *

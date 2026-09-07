@@ -273,7 +273,18 @@ export function createDrizzlePortPoolRepository(db: Database): PortPoolRepositor
       const [row] = await db.insert(portAllocations).values(data).returning();
 
       if (!row) {
-        throw new AdminError('PORT_POOL_EXHAUSTED');
+        /*
+         * Kein `PORT_POOL_EXHAUSTED` (Audit W3-6, backend-admin-resources-17).
+         *
+         * Dass ein `INSERT … RETURNING` ohne Fehler keine Zeile liefert, kommt
+         * praktisch nur bei einem Treiber- oder Infrastrukturdefekt vor – mit
+         * dem Fachcode las der Betreiber „Port-Pool erschöpft" und vergrößerte
+         * den Bereich, während das Problem woanders lag. Die echte Erschöpfung
+         * erkennt der Service selbst (`ports.ts`, `findFreePort`); hier bleibt
+         * ein generischer Fehler, den der globale Handler als 500 zeigt – wie
+         * bei `createRange`.
+         */
+        throw new Error('Port-Zuordnung konnte nicht angelegt werden.');
       }
 
       return toAllocationRecord(row);

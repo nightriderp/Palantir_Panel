@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createAuditService } from './audit.js';
 import { createPortPoolService, rangesOverlap } from './ports.js';
 import {
+  NODE_ID,
   SERVER_ID,
   actorWith,
   createFakeAuditRepository,
@@ -10,6 +11,9 @@ import {
   ctxWith,
   portRange,
 } from './test-support.js';
+
+/** Eine andere Node als {@link NODE_ID} – für die Bindungsprüfung (Audit W3-6). */
+const FREMDE_NODE_ID = '44444444-4444-4444-8444-444444444444';
 
 function build(
   ranges = [portRange()],
@@ -166,6 +170,86 @@ describe('Port-Zuordnung zu Servern (Pflichtenheft §2.4)', () => {
     ).rejects.toMatchObject({ code: 'PORT_POOL_EXHAUSTED' });
   });
 
+  /*
+   * PORT_POOL_EXHAUSTED nur bei echter Erschöpfung (Audit W3-6,
+   * backend-admin-resources-17). Vorher trug auch ein Insert ohne Rückgabezeile
+   * – praktisch ein Treiberdefekt – diesen Code; der Betreiber vergrößerte
+   * daraufhin den Bereich, obwohl das Problem woanders lag.
+   */
+  it('gibt einem anderen Fehler bei der Vergabe seinen eigenen Code', async () => {
+    const { service, repository } = build();
+
+    repository.insertAllocation = async () => {
+      throw new Error('Port-Zuordnung konnte nicht angelegt werden.');
+    };
+
+    const fehler = await service
+      .allocateForServer(SERVER_ID, [{ protocol: 'udp', count: 1 }])
+      .catch((error: unknown) => error);
+
+    expect(fehler).toBeInstanceOf(Error);
+    expect((fehler as Error).message).toBe('Port-Zuordnung konnte nicht angelegt werden.');
+    // Vor allem: kein Fachcode, der eine falsche Fährte legt.
+    expect(fehler).not.toMatchObject({ code: 'PORT_POOL_EXHAUSTED' });
+  });
+
+  /*
+   * Vergabe ohne Node-Angabe (Audit W3-6, backend-admin-resources-09).
+   *
+   * Ein gebundener Bereich ist die Zusage „diese Ports gehören Node A". Wer
+   * ohne Node vergibt, kann sie nicht einhalten – vorher galt genau umgekehrt
+   * „keine Angabe = alle Bindungen ignorieren".
+   */
+  it('greift ohne Node-Angabe nicht in einen gebundenen Bereich', async () => {
+    const { service } = build([
+      portRange({ id: 'range-node', startPort: 27_000, endPort: 27_002, nodeId: NODE_ID }),
+      portRange({ id: 'range-frei', startPort: 28_000, endPort: 28_002, nodeId: null }),
+    ]);
+
+    const [allocation] = await service.allocateForServer(SERVER_ID, [
+      { protocol: 'udp', count: 1 },
+    ]);
+
+    expect(allocation?.rangeId).toBe('range-frei');
+    expect(allocation?.port).toBe(28_000);
+  });
+
+  it('meldet ohne Node-Angabe Erschöpfung, wenn nur gebundene Bereiche übrig sind', async () => {
+    const { service } = build([
+      portRange({ id: 'range-node', startPort: 27_000, endPort: 27_002, nodeId: NODE_ID }),
+    ]);
+
+    await expect(
+      service.allocateForServer(SERVER_ID, [{ protocol: 'udp', count: 1 }]),
+    ).rejects.toMatchObject({ code: 'PORT_POOL_EXHAUSTED' });
+  });
+
+  it('nimmt mit Node-Angabe den eigenen gebundenen Bereich vor dem ungebundenen', async () => {
+    const { service } = build([
+      portRange({ id: 'range-node', startPort: 27_000, endPort: 27_002, nodeId: NODE_ID }),
+      portRange({ id: 'range-frei', startPort: 28_000, endPort: 28_002, nodeId: null }),
+    ]);
+
+    const [allocation] = await service.allocateForServer(SERVER_ID, [
+      { protocol: 'udp', count: 1, nodeId: NODE_ID },
+    ]);
+
+    expect(allocation?.rangeId).toBe('range-node');
+  });
+
+  it('lässt mit Node-Angabe den Bereich einer fremden Node aus', async () => {
+    const { service } = build([
+      portRange({ id: 'range-node', startPort: 27_000, endPort: 27_002, nodeId: NODE_ID }),
+      portRange({ id: 'range-frei', startPort: 28_000, endPort: 28_002, nodeId: null }),
+    ]);
+
+    const [allocation] = await service.allocateForServer(SERVER_ID, [
+      { protocol: 'udp', count: 1, nodeId: FREMDE_NODE_ID },
+    ]);
+
+    expect(allocation?.rangeId).toBe('range-frei');
+  });
+
   it('weicht bei einem Vergabe-Rennen auf den nächsten freien Port aus', async () => {
     const { service, repository } = build();
     const original = repository.insertAllocation.bind(repository);
@@ -286,5 +370,69 @@ describe('Port-Zuordnung zu Servern (Pflichtenheft §2.4)', () => {
     await expect(service.releaseAllocation(adminCtx(), 'allocation-99')).rejects.toMatchObject({
       code: 'PORT_ALLOCATION_NOT_FOUND',
     });
+  });
+});
+
+/**
+ * Bindung an eine Node – die Auskunft, die die Node-Verwaltung vor dem Löschen
+ * braucht (Audit W3-6, backend-admin-resources-08).
+ */
+describe('Node-gebundene Bereiche', () => {
+  it('nennt je gebundenem Bereich die Zahl der vergebenen Ports', async () => {
+    const { service } = build(
+      [
+        portRange({ id: 'range-node', label: 'Node-Bereich', nodeId: NODE_ID }),
+        portRange({ id: 'range-frei', startPort: 28_000, endPort: 28_002, nodeId: null }),
+      ],
+      [
+        {
+          id: 'allocation-1',
+          rangeId: 'range-node',
+          port: 27_000,
+          protocol: 'udp',
+          serverId: SERVER_ID,
+          allocatedAt: new Date('2026-08-26T10:00:00.000Z'),
+        },
+      ],
+    );
+
+    expect(await service.listNodeBindings(NODE_ID)).toEqual([
+      { id: 'range-node', label: 'Node-Bereich', allocatedPorts: 1 },
+    ]);
+    // Ungebundene Bereiche gehören keiner Node – auch nicht dieser.
+    expect(await service.listNodeBindings(FREMDE_NODE_ID)).toEqual([]);
+  });
+
+  it('räumt einen leeren gebundenen Bereich und protokolliert den Anlass', async () => {
+    const { service, repository, auditRepository } = build([
+      portRange({ id: 'range-node', label: 'Node-Bereich', nodeId: NODE_ID }),
+    ]);
+
+    await service.removeNodeBinding(adminCtx(), 'range-node');
+
+    expect(repository.ranges).toHaveLength(0);
+    expect(auditRepository.rows.map((row) => row.action)).toEqual(['address.rangeDeleted']);
+    expect(auditRepository.rows[0]?.metadata).toMatchObject({ reason: 'nodeDeleted' });
+  });
+
+  it('räumt keinen Bereich, aus dem noch Ports vergeben sind', async () => {
+    const { service, repository } = build(
+      [portRange({ id: 'range-node', nodeId: NODE_ID })],
+      [
+        {
+          id: 'allocation-1',
+          rangeId: 'range-node',
+          port: 27_000,
+          protocol: 'udp',
+          serverId: SERVER_ID,
+          allocatedAt: new Date('2026-08-26T10:00:00.000Z'),
+        },
+      ],
+    );
+
+    await expect(service.removeNodeBinding(adminCtx(), 'range-node')).rejects.toMatchObject({
+      code: 'PORT_RANGE_IN_USE',
+    });
+    expect(repository.ranges).toHaveLength(1);
   });
 });

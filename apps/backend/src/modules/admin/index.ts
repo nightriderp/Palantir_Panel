@@ -59,6 +59,7 @@ export {
   type HostNodeServiceDependencies,
   type NodePlacement,
   type NodePlacementSource,
+  type NodePortBindingSource,
   type NodeUsageSource,
   type UpdateHostNodeData,
   computeCapacity,
@@ -70,6 +71,7 @@ export {
 
 export {
   type CreatePortRangeData,
+  type NodePortBinding,
   type PortAllocationRecord,
   type PortPoolRepository,
   type PortPoolService,

@@ -3,27 +3,60 @@ import { describe, expect, it } from 'vitest';
 import { AGENT_TOKEN_PREFIX, hashAgentToken } from './agent-token.js';
 import { createAuditService } from './audit.js';
 import { type NodePlacementSource, computeCapacity, createHostNodeService } from './nodes.js';
+import { type PortAllocationRecord, type PortRangeRecord, createPortPoolService } from './ports.js';
 import {
   NODE_ID,
   actorWith,
   createFakeAuditRepository,
   createFakeHostNodeRepository,
+  createFakePortPoolRepository,
   ctxWith,
   nodeRecord,
+  portRange,
 } from './test-support.js';
 
 function build(
-  options: { nodes?: ReturnType<typeof nodeRecord>[]; placements?: NodePlacementSource } = {},
+  options: {
+    nodes?: ReturnType<typeof nodeRecord>[];
+    placements?: NodePlacementSource;
+    /** Port-Bereiche, die es in der Instanz gibt (Audit W3-6). */
+    ranges?: PortRangeRecord[];
+    allocations?: PortAllocationRecord[];
+  } = {},
 ) {
   const auditRepository = createFakeAuditRepository();
+  const audit = createAuditService(auditRepository);
   const repository = createFakeHostNodeRepository(options.nodes ?? [nodeRecord()]);
+  /*
+   * Echter Port-Dienst statt einer Attrappe (Audit W3-6): Die Prüfung beim
+   * Löschen einer Node und das Räumen leerer Bereiche laufen über genau diesen
+   * Weg – eine Attrappe würde nur die eigene Erwartung bestätigen.
+   */
+  const portRepository = createFakePortPoolRepository(
+    options.ranges ?? [],
+    options.allocations ?? [],
+  );
   const service = createHostNodeService({
     repository,
-    audit: createAuditService(auditRepository),
+    audit,
+    portBindings: createPortPoolService({ repository: portRepository, audit }),
     ...(options.placements ? { placements: options.placements } : {}),
   });
 
-  return { service, repository, auditRepository };
+  return { service, repository, portRepository, auditRepository };
+}
+
+/** Zuordnung aus einem Bereich – die Attrappe legt keine von sich aus an. */
+function allocation(overrides: Partial<PortAllocationRecord> = {}): PortAllocationRecord {
+  return {
+    id: 'allocation-1',
+    rangeId: 'range-node',
+    port: 27_000,
+    protocol: 'udp',
+    serverId: null,
+    allocatedAt: new Date('2026-08-26T10:00:00.000Z'),
+    ...overrides,
+  };
 }
 
 function placements(
@@ -179,6 +212,60 @@ describe('Node-Verwaltung', () => {
     });
 
     expect(repository.rows).toHaveLength(1);
+  });
+
+  /*
+   * Node-gebundene Port-Bereiche (Audit W3-6, backend-admin-resources-08).
+   *
+   * `port_ranges.node_id` hängt an `ON DELETE CASCADE`, die Zuordnungen daraus
+   * an `ON DELETE RESTRICT` – ohne eigene Prüfung endete der erste Fall als
+   * roher Fremdschlüssel-Fehler und der zweite in einem stillen Verschwinden.
+   */
+  it('lehnt das Entfernen ab, solange aus einem gebundenen Bereich Ports vergeben sind', async () => {
+    const { service, repository, portRepository, auditRepository } = build({
+      ranges: [portRange({ id: 'range-node', label: 'Node-Bereich', nodeId: NODE_ID })],
+      allocations: [allocation()],
+    });
+
+    await expect(service.remove(ctxWith(actorWith('node.manage')), NODE_ID)).rejects.toMatchObject({
+      code: 'NODE_IN_USE',
+    });
+
+    // Node und Bereich bleiben unangetastet, und nichts wurde protokolliert.
+    expect(repository.rows).toHaveLength(1);
+    expect(portRepository.ranges).toHaveLength(1);
+    expect(auditRepository.rows).toHaveLength(0);
+  });
+
+  it('räumt einen leeren gebundenen Bereich mit Protokolleintrag, bevor die Node fällt', async () => {
+    const { service, repository, portRepository, auditRepository } = build({
+      ranges: [portRange({ id: 'range-node', label: 'Node-Bereich', nodeId: NODE_ID })],
+    });
+
+    await service.remove(ctxWith(actorWith('node.manage')), NODE_ID);
+
+    expect(repository.rows).toHaveLength(0);
+    expect(portRepository.ranges).toHaveLength(0);
+    // Reihenfolge zählt: erst der Bereich, dann die Node.
+    expect(auditRepository.rows.map((row) => row.action)).toEqual([
+      'address.rangeDeleted',
+      'node.deleted',
+    ]);
+    expect(auditRepository.rows[0]?.metadata).toMatchObject({
+      label: 'Node-Bereich',
+      reason: 'nodeDeleted',
+    });
+  });
+
+  it('lässt ungebundene Bereiche beim Löschen einer Node unberührt', async () => {
+    const { service, portRepository, auditRepository } = build({
+      ranges: [portRange({ id: 'range-frei', nodeId: null })],
+    });
+
+    await service.remove(ctxWith(actorWith('node.manage')), NODE_ID);
+
+    expect(portRepository.ranges.map((range) => range.id)).toEqual(['range-frei']);
+    expect(auditRepository.rows.map((row) => row.action)).toEqual(['node.deleted']);
   });
 
   it('meldet eine unbekannte Node mit NODE_NOT_FOUND', async () => {
