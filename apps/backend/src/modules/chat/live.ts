@@ -17,35 +17,21 @@
  * bekommen dasselbe Frame.
  */
 
-import { type ChatEventPayloads, type ChatServerEventFrame } from '@palantir/contracts';
+import {
+  CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
+  CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  type ChatEventPayloads,
+  type ChatServerEventFrame,
+} from '@palantir/contracts';
 
-/**
- * Close-Code „nicht (mehr) angemeldet".
- *
- * Dieselbe Zahl wie beim Inbox-Kanal (`NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED`
- * in `@palantir/contracts`), beim Agent-Kanal und im Frontend
- * (`lib/live/chatChannel.ts`): Aus dem privaten Bereich, damit der Browser
- * „nicht angemeldet" von „Backend gerade weg" unterscheiden und in diesem Fall
- * auf den Wiederverbindungsversuch verzichten kann. Hier als benannte Konstante,
- * damit Handshake-Abweisung und {@link ChatLiveHub.closeAll} dieselbe Zahl
- * benutzen (der Vertrag führt bislang nur die Konstante des Inbox-Kanals –
- * „Gefundener Punkt" 91).
+/*
+ * Beide Close-Codes stehen seit dem Contracts-Nachzug W2-C2 im Vertrag
+ * (`packages/contracts/src/chat.ts`) und werden hier nur weitergereicht: Die
+ * Aufrufer im Backend (`routes.ts`, `server.ts`, `index.ts`) importieren sie
+ * unverändert aus diesem Modul, das Frontend liest dieselben Konstanten direkt
+ * aus dem Vertrag. Vorher lagen die Zahlen hier und im Frontend doppelt.
  */
-export const CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED = 4401;
-
-/**
- * Close-Code „zu viele Verbindungen dieses Kontos" (Audit W2-3,
- * `backend-community-visibility-11`).
- *
- * Aus demselben privaten Bereich wie {@link CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED},
- * die Zahl lehnt sich an HTTP 429 an. **Backend-lokal, mit Absicht:** Der
- * Vertrag führt bislang nur `NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED`; ein
- * weiterer geteilter Close-Code gehört in einen eigenen Contracts-PR
- * (CLAUDE.md §6) und wird als Vertragsbedarf notiert. Für das Frontend ist die
- * Unterscheidung ohnehin unkritisch: Es darf – anders als bei 4401 – neu
- * verbinden, nur eben nicht sofort und nicht hundertfach.
- */
-export const CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS = 4029;
+export { CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS, CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED };
 
 /**
  * Wie viele gleichzeitige Live-Verbindungen ein Konto haben darf.

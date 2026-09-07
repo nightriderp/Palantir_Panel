@@ -1,6 +1,12 @@
 import {
+  SERVER_LIVE_CLOSE_CODE_FORBIDDEN,
+  SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED,
   type LiveServerEventFrame,
   type LiveTopic,
+  type ServerLiveErrorFrame,
+  type ServerLiveFrame,
+  type ServerLivePongFrame,
+  type ServerLiveResyncFrame,
   type ServerStatus,
   isLiveServerEventName,
 } from '@palantir/contracts';
@@ -13,14 +19,11 @@ import {
  * Vorgehen wie bei `notificationChannel.ts`, `backoff.ts` und
  * `consoleBuffer.ts`.
  *
- * **PROVISORIUM.** Die Frames `resync`, `pong` und `error` sowie die
- * Close-Codes stehen noch nicht in `@palantir/contracts/server-live.ts`; der
- * Contracts-PR dieser Runde (#238) war bereits durch, als W2-5 sie brauchte,
- * und CLAUDE.md §6 verlangt für Contracts-Änderungen einen eigenen, zuerst zu
- * mergenden PR. Das Gegenstück im Backend
- * (`apps/backend/src/modules/server-orchestration/live-frames.ts`) trägt
- * denselben Hinweis – beide müssen bis zum nächsten Contracts-PR von Hand
- * gleich gehalten werden.
+ * Frames (`resync`, `pong`, `error`) und Close-Codes kommen aus
+ * `@palantir/contracts`; hier stehen nur noch die Taktzeiten des Browsers, die
+ * kein anderer kennen muss. Bis zum Contracts-Nachzug W2-C2 lagen sie doppelt
+ * hier und im Backend (`live-frames.ts`) und mussten von Hand gleich gehalten
+ * werden.
  */
 
 /**
@@ -28,10 +31,10 @@ import {
  *
  * Ein erneuter Versuch endete genauso; deshalb wird danach nicht neu verbunden.
  */
-export const CLOSE_CODE_UNAUTHORIZED = 4401;
+export const CLOSE_CODE_UNAUTHORIZED = SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED;
 
 /** Angemeldet, aber nicht freigeschaltet (Lastenheft §3.1). Ebenfalls endgültig. */
-export const CLOSE_CODE_FORBIDDEN = 4403;
+export const CLOSE_CODE_FORBIDDEN = SERVER_LIVE_CLOSE_CODE_FORBIDDEN;
 
 /**
  * Abstand zwischen zwei Lebenszeichen.
@@ -53,31 +56,12 @@ export const PING_INTERVAL_MS = 30_000;
  */
 export const PONG_TIMEOUT_MS = 10_000;
 
-/** Ist-Stand nach `subscribe` – siehe Provisorium-Hinweis oben. */
-export interface ServerLiveResyncFrame {
-  kind: 'resync';
-  topic: LiveTopic;
-  data: { status: ServerStatus; statusMessage: string | null };
-  sentAt: string;
-}
-
-/** Antwort auf ein Lebenszeichen. */
-export interface ServerLivePongFrame {
-  kind: 'pong';
-  sentAt: string;
-}
-
-/** Abgelehntes Frame – heute nur beim Konsolenbefehl. */
-export interface ServerLiveErrorFrame {
-  kind: 'error';
-  topic: LiveTopic | null;
-  code: string;
-  message: string;
-  sentAt: string;
-}
-
-export type ServerLiveFrame =
-  LiveServerEventFrame | ServerLiveResyncFrame | ServerLivePongFrame | ServerLiveErrorFrame;
+/*
+ * `ServerLiveResyncFrame`, `ServerLivePongFrame`, `ServerLiveErrorFrame` und
+ * `ServerLiveFrame` kommen aus `@palantir/contracts` und werden hier nur
+ * weitergereicht – bestehende Importe aus dieser Datei bleiben damit gültig.
+ */
+export type { ServerLiveErrorFrame, ServerLiveFrame, ServerLivePongFrame, ServerLiveResyncFrame };
 
 function istRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -89,6 +73,11 @@ function leseTopic(value: unknown): LiveTopic | null {
   }
 
   return { resource: 'server', id: value.id };
+}
+
+/** Die Codes, die der Vertrag für ein `error`-Frame dieses Kanals vorsieht. */
+function istFehlerCode(value: unknown): value is ServerLiveErrorFrame['code'] {
+  return value === 'VALIDATION_FAILED' || value === 'PERMISSION_DENIED';
 }
 
 /**
@@ -129,7 +118,10 @@ export function parseServerLiveFrame(raw: string): ServerLiveFrame | null {
   }
 
   if (parsed.kind === 'error') {
-    if (typeof parsed.message !== 'string' || typeof parsed.code !== 'string') return null;
+    // Der Vertrag lässt für dieses Frame genau zwei Codes zu; ein dritter wäre
+    // ein Protokollfehler und wird wie eine fremde Nachricht verworfen, statt
+    // als Freitext in die Anzeige zu wandern.
+    if (typeof parsed.message !== 'string' || !istFehlerCode(parsed.code)) return null;
 
     return {
       kind: 'error',

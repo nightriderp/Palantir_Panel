@@ -25,8 +25,20 @@ describe('Client-Frames des Live-Kanals (Audit contracts-validation-04)', () => 
     ).toEqual({ kind: 'consoleCommand', topic: TOPIC, command: 'list' });
   });
 
+  it('nimmt das Lebenszeichen ohne Thema an (Contracts-Nachzug W2-C2)', () => {
+    // Vorher fing die Route das `ping` von Hand vor dem Schema ab, weil der
+    // Vertrag es nicht kannte – ein zweiter Parser für denselben Kanal.
+    expect(liveClientFrameSchema.parse({ kind: 'ping' })).toEqual({ kind: 'ping' });
+  });
+
+  it('lässt am Lebenszeichen kein Thema stehen', () => {
+    // Wie bei allen Frames dieses Schemas: unbekannte Felder werden entfernt,
+    // nicht durchgereicht – ein `topic` am `ping` hätte keine Bedeutung.
+    expect(liveClientFrameSchema.parse({ kind: 'ping', topic: TOPIC })).toEqual({ kind: 'ping' });
+  });
+
   it('lehnt eine unbekannte Frame-Art und ein fehlendes Thema ab', () => {
-    expect(liveClientFrameSchema.safeParse({ kind: 'ping', topic: TOPIC }).success).toBe(false);
+    expect(liveClientFrameSchema.safeParse({ kind: 'pong' }).success).toBe(false);
     expect(liveClientFrameSchema.safeParse({ kind: 'subscribe' }).success).toBe(false);
   });
 

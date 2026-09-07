@@ -8,6 +8,7 @@
  * der Grenze des ersten nie betroffen.
  */
 
+import { httpStatusForErrorCode } from '@palantir/contracts';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -79,6 +80,14 @@ describe('accountRateLimit', () => {
       data: null,
       error: { code: ABUSE_LIMIT_ERROR_CODE },
     });
+  });
+
+  it('meldet den eigenen 429er des Kontos, nicht den des Anmeldeformulars', () => {
+    // Contracts-Nachzug W2-C2: Vorher lieh sich die Grenze `AUTH_RATE_LIMITED`.
+    // Der zählt je IP und bedeutet für die Oberfläche „warte vor dem nächsten
+    // Anmeldeversuch" – für ein angemeldetes Konto die falsche Auskunft.
+    expect(ABUSE_LIMIT_ERROR_CODE).toBe('RATE_LIMITED');
+    expect(httpStatusForErrorCode(ABUSE_LIMIT_ERROR_CODE)).toBe(429);
   });
 
   it('nennt in „retry-after", wann der nächste Versuch Sinn hat', async () => {

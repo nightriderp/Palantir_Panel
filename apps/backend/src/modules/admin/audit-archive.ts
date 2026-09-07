@@ -201,7 +201,9 @@ export interface AuditArchiveDependencies {
  * Oberfläche – lasen sonst dieselben Einträge, schrieben ineinander verschränkt
  * in dieselbe Datei und löschten anschließend beide: Die einzige Kopie der
  * Alt-Einträge wäre ein kaputtes gzip. Der zweite Lauf endet stattdessen sofort
- * mit `AUDIT_ARCHIVE_FAILED` und lässt Tabelle wie Datei unangetastet.
+ * mit `AUDIT_ARCHIVE_ALREADY_RUNNING` (409) und lässt Tabelle wie Datei
+ * unangetastet – nichts ist kaputt, der Aufruf ist nach dem Ende des laufenden
+ * Vorgangs unverändert wiederholbar.
  *
  * @param ctx Wer den Lauf anstößt. Verlangt `audit.manage` (Gefundener Punkt
  *   46) – nicht `audit.view`: Lesen und Verkürzen sind zwei verschiedene Dinge,
@@ -224,10 +226,9 @@ export async function archiveAuditEntries(
   const lock = await deps.repository.acquireLock();
 
   if (!lock) {
-    throw new AdminError(
-      'AUDIT_ARCHIVE_FAILED',
-      'Es läuft bereits ein Archivierungslauf des Audit-Logs. Bitte dessen Ende abwarten.',
-    );
+    // Ohne eigene Nachricht: Der Standardtext des Katalogs beschreibt genau
+    // diesen Fall.
+    throw new AdminError('AUDIT_ARCHIVE_ALREADY_RUNNING');
   }
 
   try {

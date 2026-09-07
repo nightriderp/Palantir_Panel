@@ -14,7 +14,10 @@
  *  - `ZodError`                      → `VALIDATION_FAILED` (400)
  *  - `AppError` (eigene Fehlerklasse) → dessen Code samt HTTP-Status
  *  - Fastify-Fehler mit `statusCode < 500` → dieser Status, Katalog-Code nach
- *                                      Statusklasse, Meldung aus dem Katalog
+ *                                      Statusklasse (`NOT_FOUND`,
+ *                                      `METHOD_NOT_ALLOWED`,
+ *                                      `UNSUPPORTED_MEDIA_TYPE`, ...), Meldung
+ *                                      aus dem Katalog
  *  - alles Übrige                    → `INTERNAL_ERROR` (500), nichtssagend nach
  *                                      außen; der echte Fehler bleibt im Log.
  *
@@ -40,9 +43,10 @@ import { type AppError, isAppError } from './lib/app-error.js';
  *
  * Abgebildet wird über die **Statusklasse**, nicht über den `FST_*`-Namen: Die
  * Namen sind Fastify-Interna und ändern sich mit dem Framework, der Status
- * gehört zum HTTP-Vertrag. Für Status ohne passenden Katalog-Eintrag (404, 405,
- * 415, ...) bleibt `VALIDATION_FAILED` als „an dieser Anfrage stimmt etwas
- * nicht"; der Status selbst wird davon **nicht** überschrieben.
+ * gehört zum HTTP-Vertrag. Seit dem Contracts-Nachzug W2-C2 hat jeder Status,
+ * den Fastify hier tatsächlich vergibt, seinen eigenen Katalog-Eintrag; für
+ * alles Übrige bleibt `VALIDATION_FAILED` als „an dieser Anfrage stimmt etwas
+ * nicht". Der Status selbst wird davon in keinem Fall überschrieben.
  */
 function catalogCodeForClientStatus(statusCode: number): ErrorCode {
   switch (statusCode) {
@@ -50,12 +54,21 @@ function catalogCodeForClientStatus(statusCode: number): ErrorCode {
       return 'AUTH_REQUIRED';
     case 403:
       return 'PERMISSION_DENIED';
+    case 404:
+      return 'NOT_FOUND';
+    case 405:
+      return 'METHOD_NOT_ALLOWED';
     case 413:
       // Gegenstück zum Upload-Limit des Datei-Managers: `datei.toBuffer()`
       // wirft `FST_REQ_FILE_TOO_LARGE`, bevor der `truncated`-Check der Route
       // greift.
       return 'FILE_TOO_LARGE';
+    case 415:
+      return 'UNSUPPORTED_MEDIA_TYPE';
     case 429:
+      // Der Weg hierher ist der **nicht** angemeldete: Die Missbrauchsgrenzen
+      // angemeldeter Konten (`lib/abuse-limits.ts`) antworten selbst und mit
+      // `RATE_LIMITED`, kommen also gar nicht bis zu diesem Handler.
       return 'AUTH_RATE_LIMITED';
     default:
       return 'VALIDATION_FAILED';
@@ -114,18 +127,16 @@ export function registerErrorHandler(app: FastifyInstance): void {
    * GET:/x not found","error":"Not Found","statusCode":404}` – kein Envelope,
    * und ein Frontend, das `error.code` auswertet, liest `undefined`.
    *
-   * Der Status bleibt bewusst 404 (unveränderte HTTP-Semantik), obwohl der
-   * Katalog für `VALIDATION_FAILED` 400 führt: Ein allgemeiner `NOT_FOUND`-Code
-   * fehlt im Katalog noch – alle vorhandenen 404er benennen einen konkreten
-   * Gegenstand (`SERVER_NOT_FOUND`, `USER_NOT_FOUND`, ...) und wären für eine
-   * unbekannte Route irreführend. Sobald `packages/contracts` einen
-   * gegenstandslosen `NOT_FOUND` führt, gehört er hierher.
+   * Status und Code stammen jetzt beide aus dem Katalog-Eintrag `NOT_FOUND`
+   * (404, Contracts-Nachzug W2-C2). Vorher blieb der Status bei 404, der Code
+   * war aber `VALIDATION_FAILED` (400) – Status und Code widersprachen sich,
+   * weil ein gegenstandsloser 404er im Katalog fehlte.
    */
   app.setNotFoundHandler(async (_request, reply) => {
     // Ohne den angefragten Pfad in der Meldung: Er käme aus der Anfrage und
     // würde ungefiltert zurückgespiegelt, ohne etwas zu erklären, das der
     // Aufrufer nicht selbst geschickt hat.
-    await reply.status(404).send(fail('VALIDATION_FAILED', 'Diese Route existiert nicht.'));
+    await reply.status(httpStatusForErrorCode('NOT_FOUND')).send(fail('NOT_FOUND'));
   });
 
   app.setErrorHandler(async (error, request, reply) => {

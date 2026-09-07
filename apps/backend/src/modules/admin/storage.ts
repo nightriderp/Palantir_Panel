@@ -509,18 +509,10 @@ export function createStorageExplorerService(
          * Mehrdeutig – hier wird nicht geraten, welcher Posten gemeint ist.
          * Das kann nur passieren, wenn zwei Posten in jedem Feld gleich sind
          * (siehe `storageEntryId`); die Abhilfe ist dieselbe wie bei einem
-         * fehlenden Scan: neu scannen und erneut versuchen.
-         *
-         * Der Katalog kennt bislang keinen eigenen Code für „Kennung nicht
-         * eindeutig". `STORAGE_SCAN_MISSING` ist der einzige 409er des
-         * Speicher-Explorers und trägt genau diese Abhilfe im Namen; ein
-         * eigener Code (`STORAGE_ENTRY_AMBIGUOUS`) gehört in einen separaten
-         * Contracts-PR (CLAUDE.md §6) und ist im Bericht zu W2-7 vermerkt.
+         * fehlenden Scan: neu scannen und erneut versuchen. Der Grund ist ein
+         * anderer, deshalb ein eigener Code – die Übersicht ist ja da.
          */
-        throw new AdminError(
-          'STORAGE_SCAN_MISSING',
-          'Diese Kennung passt auf mehrere Posten der zwischengespeicherten Speicherübersicht. Bitte einen neuen Scan anstoßen und den Vorgang wiederholen.',
-        );
+        throw new AdminError('STORAGE_ENTRY_AMBIGUOUS');
       }
 
       const raw = treffer[0];

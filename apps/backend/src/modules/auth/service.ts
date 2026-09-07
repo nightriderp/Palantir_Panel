@@ -1287,7 +1287,8 @@ export class AuthService {
    * Container und eine Archivdatei auf der Node. Eine Datenbank-Kaskade würde
    * nur die Zeilen entfernen und beides unerreichbar zurücklassen. Ohne
    * Vorprüfung käme der Fremdschlüsselfehler als 500 zurück; deshalb steht hier
-   * `ACCOUNT_HAS_SERVERS` (409) mit einem Satz, der sagt, was zuerst wegmuss.
+   * je nach Fall `ACCOUNT_HAS_SERVERS` oder `ACCOUNT_HAS_BACKUPS` (beide 409)
+   * mit einem Satz, der sagt, was zuerst wegmuss.
    */
   async deleteAccount(userId: string, input: DeleteAccountInput): Promise<void> {
     const user = await this.requireUser(userId);
@@ -1329,6 +1330,10 @@ export class AuthService {
        * Fachlich ist es derselbe Fall, den die Vorprüfung meldet.
        */
       if (isForeignKeyViolation(error)) {
+        // Welche der beiden Tabellen gehalten hat, sagt der Fremdschlüsselfehler
+        // nicht verlässlich; die Vorprüfung nennt es beim nächsten Versuch
+        // genau. `ACCOUNT_HAS_SERVERS` ist hier der weiter gefasste der beiden
+        // Fälle und nennt den Schritt, der ohnehin zuerst kommt.
         throw new AuthError('ACCOUNT_HAS_SERVERS');
       }
 
@@ -1343,14 +1348,16 @@ export class AuthService {
   }
 
   /**
-   * Wirft `ACCOUNT_HAS_SERVERS` (409), solange noch etwas am Konto hängt.
+   * Wirft einen 409er, solange noch etwas am Konto hängt.
    *
    * Die Reihenfolge der Prüfungen ist die Reihenfolge, in der der Nutzer
    * aufräumen muss: Ein Server nimmt seine Sicherungen beim Löschen nicht mit
    * (`backups.server_id` wird `NULL`, Lastenheft §3.3), also nennt die Antwort
-   * erst die Server und danach die übrig gebliebenen Sicherungen. Ein Satz je
-   * Fall statt einer Aufzählung – der nächste Versuch zeigt den nächsten
-   * Schritt.
+   * erst die Server (`ACCOUNT_HAS_SERVERS`) und danach die übrig gebliebenen
+   * Sicherungen (`ACCOUNT_HAS_BACKUPS`). Ein Satz je Fall statt einer
+   * Aufzählung – der nächste Versuch zeigt den nächsten Schritt, und der Code
+   * benennt seit dem Contracts-Nachzug W2-C2 die Stelle, an der aufgeräumt
+   * werden muss.
    */
   private async assertNothingBlocksDeletion(userId: string): Promise<void> {
     const blocker = await this.repository.countAccountBlockers(userId);
@@ -1364,18 +1371,18 @@ export class AuthService {
     if (blocker.activeBackups > 0) {
       // Daran kann der Nutzer gerade nichts ändern: Ein laufender Vorgang lässt
       // sich nicht löschen, er endet – oder der Kehraus räumt ihn nach seiner
-      // Frist ab (`sweepOrphanedRuns`).
+      // Frist ab (`sweepOrphanedRuns`). Deshalb hier eine eigene Meldung zum
+      // gemeinsamen Code: „warte" statt „lösche".
       throw new AuthError(
-        'ACCOUNT_HAS_SERVERS',
+        'ACCOUNT_HAS_BACKUPS',
         'Für dieses Konto läuft noch eine Sicherung. Bitte warte, bis sie abgeschlossen ist, und wiederhole den Vorgang.',
       );
     }
 
     if (blocker.backups > 0) {
-      throw new AuthError(
-        'ACCOUNT_HAS_SERVERS',
-        'Diesem Konto gehören noch Sicherungen. Bitte lösche sie zuerst und wiederhole den Vorgang.',
-      );
+      // Ohne eigene Nachricht: Der Standardtext des Katalogs beschreibt genau
+      // diesen Fall (`ACCOUNT_HAS_BACKUPS`).
+      throw new AuthError('ACCOUNT_HAS_BACKUPS');
     }
   }
 

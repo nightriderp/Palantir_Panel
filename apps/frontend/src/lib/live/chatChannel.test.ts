@@ -1,4 +1,4 @@
-import { NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED } from '@palantir/contracts';
+import { CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { CLOSE_CODE_UNAUTHORIZED, chatChannelUrl, parseChatFrame } from './chatChannel';
 
@@ -67,15 +67,13 @@ describe('chatChannelUrl', () => {
 });
 
 /*
- * Provisorium, solange `@palantir/contracts` keine Konstante für den Chat-Kanal
- * führt (Finding frontend-lib-10): Backend (`chat/live.ts`,
- * `CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED`) und Frontend halten die Zahl je lokal.
- * Dieser Test hält sie an die einzige Stelle, an der sie im Vertrag steht –
- * läuft eine der beiden weg, fällt es hier auf statt erst im Browser.
+ * Seit dem Contracts-Nachzug W2-C2 führt `@palantir/contracts` die Konstante
+ * des Chat-Kanals selbst (Finding frontend-lib-10). Der Test hält fest, dass
+ * das Frontend sie von dort nimmt und keine eigene Zahl mehr pflegt.
  */
 describe('CLOSE_CODE_UNAUTHORIZED', () => {
-  it('ist dieselbe Zahl wie im Vertrag für den Inbox-Kanal', () => {
-    expect(CLOSE_CODE_UNAUTHORIZED).toBe(NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED);
+  it('ist die Konstante des Chat-Kanals aus dem Vertrag', () => {
+    expect(CLOSE_CODE_UNAUTHORIZED).toBe(CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED);
   });
 
   it('liegt im privaten Bereich, damit er nicht mit einem Protokoll-Code kollidiert', () => {

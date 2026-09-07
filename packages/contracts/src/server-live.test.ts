@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { ERROR_CATALOG } from './errors.js';
 import { WEBSOCKET_EVENTS } from './events.js';
-import { LIVE_SERVER_EVENTS, isLiveServerEventName } from './server-live.js';
+import {
+  LIVE_SERVER_EVENTS,
+  SERVER_LIVE_CLOSE_CODE_FORBIDDEN,
+  SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  type LiveClientFrame,
+  type ServerLiveErrorFrame,
+  type ServerLiveExtraFrame,
+  type ServerLivePongFrame,
+  type ServerLiveResyncFrame,
+  isLiveServerEventName,
+} from './server-live.js';
 
 describe('LIVE_SERVER_EVENTS', () => {
   it('steht vollständig im Katalog WEBSOCKET_EVENTS', () => {
@@ -24,5 +35,69 @@ describe('LIVE_SERVER_EVENTS', () => {
     // Ein Katalog-Ereignis, das über die Notification-Engine läuft, nicht hier.
     expect(isLiveServerEventName('backup.failed')).toBe(false);
     expect(isLiveServerEventName('server.irgendwas')).toBe(false);
+  });
+});
+
+/**
+ * Frames und Close-Codes des Server-Live-Kanals (Audit W2-5, Contracts-Nachzug
+ * W2-C2).
+ *
+ * Bis zu diesem Vertrag lagen beide doppelt im Backend (`live-frames.ts`) und
+ * im Frontend (`serverChannel.ts`). Die Tests halten hier fest, was die beiden
+ * Seiten voneinander erwarten dürfen.
+ */
+describe('Close-Codes des Server-Live-Kanals', () => {
+  it('liegen im privaten Bereich, damit sie nicht mit Protokoll-Codes kollidieren', () => {
+    for (const code of [SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED, SERVER_LIVE_CLOSE_CODE_FORBIDDEN]) {
+      expect(code).toBeGreaterThanOrEqual(4000);
+      expect(code).toBeLessThanOrEqual(4999);
+    }
+  });
+
+  it('unterscheidet „nicht angemeldet" von „nicht freigeschaltet"', () => {
+    // Der Browser verbindet nach beiden nicht neu – die Zahl sagt ihm aber,
+    // was er dem Nutzer anzeigen soll.
+    expect(SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED).not.toBe(SERVER_LIVE_CLOSE_CODE_FORBIDDEN);
+  });
+});
+
+describe('Frames des Server-Live-Kanals', () => {
+  it('kennt das Lebenszeichen als Client-Frame ohne Thema', () => {
+    // Ohne `topic`: Das Lebenszeichen gilt der Verbindung, nicht einem Abo.
+    // Der Typ-Test genügt hier – ein `topic` am `ping` wäre ein Übersetzfehler.
+    const ping: LiveClientFrame = { kind: 'ping' };
+
+    expect(ping.kind).toBe('ping');
+  });
+
+  it('führt pong, resync und error als Antwort-Frames des Backends', () => {
+    const pong: ServerLivePongFrame = { kind: 'pong', sentAt: '2026-09-06T10:00:00.000Z' };
+    const resync: ServerLiveResyncFrame = {
+      kind: 'resync',
+      topic: { resource: 'server', id: 'srv-1' },
+      data: { status: 'running', statusMessage: null },
+      sentAt: '2026-09-06T10:00:00.000Z',
+    };
+    const fehler: ServerLiveErrorFrame = {
+      kind: 'error',
+      topic: null,
+      code: 'VALIDATION_FAILED',
+      message: 'Der Befehl ist zu lang.',
+      sentAt: '2026-09-06T10:00:00.000Z',
+    };
+    const alle: ServerLiveExtraFrame[] = [pong, resync, fehler];
+
+    expect(alle.map((frame) => frame.kind)).toEqual(['pong', 'resync', 'error']);
+  });
+
+  it('lässt im error-Frame nur Codes zu, die im Katalog stehen', () => {
+    // Der Typ ist auf zwei Codes eingeschränkt; der Test hält fest, dass beide
+    // tatsächlich im Katalog geführt werden – ein Tippfehler im Vertrag fiele
+    // sonst erst im Browser auf.
+    const codes: ServerLiveErrorFrame['code'][] = ['VALIDATION_FAILED', 'PERMISSION_DENIED'];
+
+    for (const code of codes) {
+      expect(ERROR_CATALOG[code]).toBeDefined();
+    }
   });
 });

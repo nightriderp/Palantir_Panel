@@ -158,8 +158,8 @@ function build(options: BuildOptions = {}): Aufbau {
 
       return Promise.resolve();
     },
-    remove: (id) => {
-      // Wie das echte `DELETE ... WHERE status = 'pending'`.
+    withdraw: (id) => {
+      // Wie das echte `UPDATE ... SET status = 'withdrawn' WHERE status = 'pending'`.
       const index = gespeichert.findIndex(
         (eintrag) => eintrag.id === id && eintrag.status === 'pending',
       );
@@ -168,7 +168,7 @@ function build(options: BuildOptions = {}): Aufbau {
         return Promise.resolve(false);
       }
 
-      gespeichert.splice(index, 1);
+      gespeichert[index] = { ...gespeichert[index]!, status: 'withdrawn' };
 
       return Promise.resolve(true);
     },
@@ -348,12 +348,32 @@ describe('Bescheiden', () => {
 });
 
 describe('Zurückziehen', () => {
-  it('entfernt den eigenen offenen Antrag', async () => {
+  it('setzt den eigenen offenen Antrag auf zurückgezogen, statt ihn zu löschen', async () => {
+    // Audit W2-15: Der Vorgang bleibt als Beleg stehen – vorher verschwand er
+    // per `DELETE` und niemand konnte hinterher sagen, ob er je gestellt wurde.
     const { service, gespeichert } = build({ vorhanden: [record()] });
 
     await service.withdraw(plainActor, USER_ID, 'req-1');
 
-    expect(gespeichert).toHaveLength(0);
+    expect(gespeichert).toHaveLength(1);
+    expect(gespeichert[0]?.status).toBe('withdrawn');
+    // Kein Bescheid: Über einen Rückzug hat niemand entschieden.
+    expect(gespeichert[0]?.decidedAt).toBeNull();
+  });
+
+  it('lässt nach dem Rückzug sofort einen neuen Antrag zu', async () => {
+    // Der partielle Unique-Index deckt nur `status = 'pending'`; ein
+    // zurückgezogener Vorgang blockiert deshalb nichts.
+    const { service, gespeichert } = build({ vorhanden: [record()] });
+
+    await service.withdraw(plainActor, USER_ID, 'req-1');
+    const neu = await service.create(plainActor, USER_ID, {
+      requestedRamMb: 8192,
+      reason: 'Zweiter Anlauf mit besserer Begründung.',
+    });
+
+    expect(neu.status).toBe('pending');
+    expect(gespeichert.map((eintrag) => eintrag.status).sort()).toEqual(['pending', 'withdrawn']);
   });
 
   it('kennt fremde Anfragen nicht', async () => {
@@ -424,7 +444,7 @@ describe('Rennen zwischen Bescheid und Rückzug', () => {
 
     // Kein Kontingent ohne Beleg: Die Erhöhung darf gar nicht erst laufen.
     expect(gesetzteLimits).toEqual([]);
-    expect(gespeichert).toHaveLength(0);
+    expect(gespeichert[0]?.status).toBe('withdrawn');
   });
 
   it('lässt die zweite von zwei gleichzeitigen Ablehnungen scheitern', async () => {

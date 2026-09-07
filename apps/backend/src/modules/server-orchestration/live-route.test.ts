@@ -16,11 +16,17 @@
 
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
+import {
+  SERVER_LIVE_CLOSE_CODE_FORBIDDEN,
+  SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED,
+} from '@palantir/contracts';
+import { liveClientFrameSchema } from '@palantir/validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type PermissionActor, registerRbac } from '../rbac/index.js';
 import { buildPermissionActor } from '../rbac/permissions.js';
 import { createGameRegistry } from './game-registry.js';
 import { ServerLiveHub } from './live-hub.js';
+import { LIVE_CLOSE_CODE_FORBIDDEN, LIVE_CLOSE_CODE_UNAUTHORIZED } from './live-frames.js';
 import { LIVE_BOOT_ID, registerServerLiveRoute } from './live-route.js';
 import { type ServerMemberRecord, type ServerRecord, type ServerRepository } from './repository.js';
 import { type ServerOrchestrationService } from './service.js';
@@ -307,6 +313,13 @@ describe('Ist-Stand und Lebenszeichen (event-flow-03)', () => {
     expect(typeof kanal.frames[0]?.sentAt).toBe('string');
   });
 
+  it('lässt das ping über dasselbe Schema laufen wie die übrigen Frames', () => {
+    // Contracts-Nachzug W2-C2: Vorher fing die Route das Lebenszeichen von Hand
+    // vor `liveClientFrameSchema` ab, weil der Vertrag es nicht kannte – ein
+    // zweiter Parser für denselben Kanal.
+    expect(liveClientFrameSchema.parse({ kind: 'ping' })).toEqual({ kind: 'ping' });
+  });
+
   it('antwortet einem nicht abonnierten Server gegenüber nicht auf subscribe', async () => {
     const { app } = await baueApp();
     const kanal = await verbinde(app, 'mitglied');
@@ -432,5 +445,17 @@ describe('Herkunft des Handshakes (security-matrix-04)', () => {
     await expect(
       app.injectWS('/live', { headers: { 'x-test-actor': 'besitzer' } }),
     ).rejects.toThrow('403');
+  });
+});
+
+/**
+ * Contracts-Nachzug W2-C2: Die Close-Codes des Kanals stehen im Vertrag; das
+ * Backend reicht sie nur unter seinem bisherigen Namen weiter. Vorher hielt
+ * jede Seite ihre eigene Zahl.
+ */
+describe('Close-Codes des Server-Live-Kanals', () => {
+  it('nimmt beide Zahlen unverändert aus dem Vertrag', () => {
+    expect(LIVE_CLOSE_CODE_UNAUTHORIZED).toBe(SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED);
+    expect(LIVE_CLOSE_CODE_FORBIDDEN).toBe(SERVER_LIVE_CLOSE_CODE_FORBIDDEN);
   });
 });

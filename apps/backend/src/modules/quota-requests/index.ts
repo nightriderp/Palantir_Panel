@@ -62,7 +62,7 @@ export interface QuotaRequestRepository {
    */
   decide(
     id: string,
-    status: Exclude<QuotaRequestStatus, 'pending'>,
+    status: 'approved' | 'rejected',
     decidedById: string | null,
     note: string | null,
   ): Promise<QuotaRequestRecord | null>;
@@ -74,10 +74,14 @@ export interface QuotaRequestRepository {
    */
   reopen(id: string): Promise<void>;
   /**
-   * Entfernt eine **offene** Anfrage; `false`, wenn sie inzwischen beschieden
-   * wurde und deshalb nichts mehr zu entfernen war.
+   * Setzt eine **offene** Anfrage auf `withdrawn`; `false`, wenn sie inzwischen
+   * beschieden wurde und deshalb nichts mehr zurückzuziehen war.
+   *
+   * Kein `DELETE` mehr (Audit W2-15): Der Vorgang bleibt als Beleg stehen, wie
+   * jeder beschiedene auch. Eine neue Anfrage ist trotzdem sofort möglich – der
+   * partielle Unique-Index deckt nur `status = 'pending'`.
    */
-  remove(id: string): Promise<boolean>;
+  withdraw(id: string): Promise<boolean>;
 }
 
 /** Setzt das Kontingent – erfüllt vom Ressourcen-Modul (B4). */
@@ -329,14 +333,14 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
       }
 
       /*
-       * Auch hier entscheidet die Bedingung im `DELETE`, nicht die Prüfung
-       * darüber: Wird gleichzeitig beschieden, trifft das `DELETE` keine Zeile
+       * Auch hier entscheidet die Bedingung im `UPDATE`, nicht die Prüfung
+       * darüber: Wird gleichzeitig beschieden, trifft das `UPDATE` keine Zeile
        * mehr und der Rückzug scheitert fachlich (409), statt den bereits
-       * erteilten Bescheid spurlos zu entfernen (backend-admin-resources-06).
+       * erteilten Bescheid zu überschreiben (backend-admin-resources-06).
        */
-      const entfernt = await deps.repository.remove(id);
+      const zurueckgezogen = await deps.repository.withdraw(id);
 
-      if (!entfernt) {
+      if (!zurueckgezogen) {
         throw new QuotaRequestError('QUOTA_REQUEST_INVALID_STATE');
       }
     },

@@ -48,15 +48,13 @@ import {
 /**
  * Fehlercode einer überschrittenen Grenze.
  *
- * Der Katalog in `@palantir/contracts` führt bislang **nur**
- * `AUTH_RATE_LIMITED` (429) und keinen allgemeinen `RATE_LIMITED`-Code. Statt
- * einen zweiten Code neben den bestehenden zu stellen – eine Contracts-Änderung
- * gehört in einen eigenen PR (CLAUDE.md §6) – wird der vorhandene 429er
- * wiederverwendet: Sein Wortlaut („Zu viele Versuche. Bitte warte einen Moment")
- * passt unverändert, und das Frontend kennt ihn bereits. Ein umbenannter
- * `RATE_LIMITED` bleibt als Vertragsbedarf notiert.
+ * Seit dem Contracts-Nachzug W2-C2 ein eigener Code (429) statt des geliehenen
+ * `AUTH_RATE_LIMITED`. Der zählt Anmelde- und Registrierungsversuche je **IP**;
+ * die Oberfläche darf ihn als „warte, bevor du dich erneut anmeldest" lesen.
+ * Hier ist der Aufrufer bereits angemeldet und stößt an eine Grenze seines
+ * **Kontos** – ihm das Anmeldeformular zu zeigen, wäre die falsche Auskunft.
  */
-export const ABUSE_LIMIT_ERROR_CODE = 'AUTH_RATE_LIMITED' as const;
+export const ABUSE_LIMIT_ERROR_CODE = 'RATE_LIMITED' as const;
 
 /** Ein Fenster samt zulässiger Anzahl darin. */
 export interface AbuseLimit {

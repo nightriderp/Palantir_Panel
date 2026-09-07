@@ -13,13 +13,24 @@
  * Formular machen.
  */
 
-/** Zustand einer Anfrage. Entschieden wird genau einmal. */
-export type QuotaRequestStatus = 'pending' | 'approved' | 'rejected';
+/**
+ * Zustand einer Anfrage. Entschieden wird genau einmal.
+ *
+ * `withdrawn` ist kein Bescheid, sondern der Rückzug durch den Antragsteller
+ * (Audit W2-15): Bis dahin verschwand die Anfrage per `DELETE` spurlos, und
+ * niemand – auch der Antragsteller nicht – konnte hinterher sagen, ob sie je
+ * gestellt worden war. Ein eigener Endzustand hält den Vorgang wie jeden
+ * anderen als Beleg fest; die offene Anfrage ist trotzdem weg, weil der
+ * partielle Unique-Index nur `pending` deckt und ein neuer Antrag deshalb
+ * sofort wieder möglich ist.
+ */
+export type QuotaRequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
 
 export const QUOTA_REQUEST_STATUSES: readonly QuotaRequestStatus[] = [
   'pending',
   'approved',
   'rejected',
+  'withdrawn',
 ] as const;
 
 /** Was der Aufrufer mit dieser Anfrage tun darf (Pflichtenheft §5.2). */
@@ -52,9 +63,9 @@ export interface QuotaRequestDto {
    * eine Auflage, keine Ablehnung.
    */
   decisionNote: string | null;
-  /** Wer entschieden hat; `null`, solange offen. */
+  /** Wer entschieden hat; `null`, solange offen oder zurückgezogen. */
   decidedByDisplayName: string | null;
-  /** ISO-8601 der Entscheidung; `null`, solange offen. */
+  /** ISO-8601 der Entscheidung; `null`, solange offen oder zurückgezogen. */
   decidedAt: string | null;
   /** ISO-8601 der Antragstellung. */
   createdAt: string;

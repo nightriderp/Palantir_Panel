@@ -68,12 +68,12 @@ export const RUNTIME_ERROR_TO_API_CODE: Record<ContainerRuntimeErrorCode, ErrorC
   INVALID_PATH: 'AGENT_INVALID_PATH',
   FILE_NOT_FOUND: 'AGENT_FILE_NOT_FOUND',
   FILE_TOO_LARGE: 'AGENT_FILE_TOO_LARGE',
-  // Derselbe API-Code wie FILE_TOO_LARGE (413): Der Katalog in
-  // `packages/contracts` unterscheidet Datei und Archiv nicht, und ein neuer
-  // Wire-Code waere eine Vertragsaenderung fuer eine Nuance, die der Nutzer
-  // ohnehin als „zu gross" liest. Agent-intern bleiben beide getrennt, damit im
-  // Node-Log steht, welche Grenze gegriffen hat.
-  ARCHIVE_TOO_LARGE: 'AGENT_FILE_TOO_LARGE',
+  // Eigener Code (413) seit dem Contracts-Nachzug W2-C2: Datei- und
+  // Archiv-Grenze sind zwei verschiedene Grenzen, und der Nutzer raeumt anders
+  // auf (kleinere Datei waehlen vs. Archiv aufteilen). Vorher stand im Panel
+  // "die Datei ist zu gross" ueber einem Archiv, dessen einzelne Dateien alle
+  // unter der Grenze lagen. Agent-intern bleiben beide ohnehin getrennt.
+  ARCHIVE_TOO_LARGE: 'AGENT_ARCHIVE_TOO_LARGE',
   FILE_EXISTS: 'AGENT_FILE_EXISTS',
   RUNTIME_UNAVAILABLE: 'AGENT_RUNTIME_UNAVAILABLE',
   RUNTIME_ERROR: 'AGENT_COMMAND_FAILED',

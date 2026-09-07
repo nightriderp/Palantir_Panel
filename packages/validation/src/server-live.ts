@@ -39,6 +39,11 @@ export const liveTopicSchema: z.ZodType<LiveTopic> = z.object({
  * REST-Pfad, damit ein mehrzeiliger oder mehrere Megabyte großer „Befehl" nicht
  * über den Kanal daneben bis in `EXEC_CONSOLE` durchläuft.
  *
+ * `ping` trägt als einziges Frame **kein** Thema: Das Lebenszeichen gilt der
+ * Verbindung, nicht einem Abo (Audit W2-5). Bis der Vertrag es kannte, fing die
+ * Route es vor dem Schema von Hand ab – ein zweiter Parser für denselben Kanal,
+ * genau das Anti-Ziel dieser Datei.
+ *
  * Die Typ-Annotation ist Absicht: kommt in `@palantir/contracts` ein Frame dazu
  * oder ändert sich einer, schlägt hier die Übersetzung fehl, statt dass Schema
  * und Vertrag still auseinanderlaufen.
@@ -51,6 +56,7 @@ export const liveClientFrameSchema: z.ZodType<LiveClientFrame> = z.discriminated
     topic: liveTopicSchema,
     command: consoleCommandSchema,
   }),
+  z.object({ kind: z.literal('ping') }),
 ]);
 
 export type LiveTopicInput = z.infer<typeof liveTopicSchema>;

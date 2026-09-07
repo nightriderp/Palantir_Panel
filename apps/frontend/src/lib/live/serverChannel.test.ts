@@ -1,5 +1,11 @@
+import {
+  SERVER_LIVE_CLOSE_CODE_FORBIDDEN,
+  SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED,
+} from '@palantir/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  CLOSE_CODE_FORBIDDEN,
+  CLOSE_CODE_UNAUTHORIZED,
   PING_INTERVAL_MS,
   PONG_TIMEOUT_MS,
   errorToConsoleFrame,
@@ -191,5 +197,33 @@ describe('startHeartbeat', () => {
     expect(send).not.toHaveBeenCalled();
     expect(onTimeout).not.toHaveBeenCalled();
     vi.useRealTimers();
+  });
+});
+
+/**
+ * Contracts-Nachzug W2-C2: Close-Codes und Frames des Kanals stehen im Vertrag.
+ * Vorher hielten Backend (`live-frames.ts`) und Browser je eine eigene Zahl,
+ * die von Hand gleich gehalten werden musste.
+ */
+describe('Close-Codes des Server-Kanals', () => {
+  it('nimmt beide Zahlen unverändert aus dem Vertrag', () => {
+    expect(CLOSE_CODE_UNAUTHORIZED).toBe(SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED);
+    expect(CLOSE_CODE_FORBIDDEN).toBe(SERVER_LIVE_CLOSE_CODE_FORBIDDEN);
+  });
+});
+
+describe('parseServerLiveFrame: error-Frame', () => {
+  it('verwirft einen Code, den der Vertrag für dieses Frame nicht vorsieht', () => {
+    // Der Vertrag lässt genau zwei Codes zu. Ein dritter wäre ein
+    // Protokollfehler und darf nicht als Freitext in die Konsole wandern.
+    const roh = JSON.stringify({
+      kind: 'error',
+      topic: TOPIC,
+      code: 'INTERNAL_ERROR',
+      message: 'kaputt',
+      sentAt: '2026-09-06T10:00:00.000Z',
+    });
+
+    expect(parseServerLiveFrame(roh)).toBeNull();
   });
 });

@@ -90,6 +90,75 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     );
   });
 
+  /**
+   * Contracts-Nachzug W2-C2: Die Codes, die in den Audit-Wellen 2 und 3
+   * fehlten und dort ersatzweise auf fremde Einträge abgebildet wurden.
+   * Geprüft wird beides – der Status und die Abgrenzung zu dem Code, den die
+   * jeweilige Stelle vorher mitbenutzt hat.
+   */
+  describe('Nachgezogene Codes (Audit-Wellen 2 und 3)', () => {
+    it('trennt den laufenden Archivlauf vom gescheiterten (W2-16)', () => {
+      // 409 statt 500: Es ist nichts kaputt, der Aufruf ist wiederholbar.
+      expect(httpStatusForErrorCode('AUDIT_ARCHIVE_ALREADY_RUNNING')).toBe(409);
+      expect(httpStatusForErrorCode('AUDIT_ARCHIVE_FAILED')).toBe(500);
+    });
+
+    it('trennt die mehrdeutige Kennung von der fehlenden Übersicht (W2-7)', () => {
+      // Beide 409, aber mit unterschiedlichem Grund – deshalb zwei Codes und
+      // zwei Meldungen.
+      expect(httpStatusForErrorCode('STORAGE_ENTRY_AMBIGUOUS')).toBe(409);
+      expect(defaultMessageForErrorCode('STORAGE_ENTRY_AMBIGUOUS')).not.toBe(
+        defaultMessageForErrorCode('STORAGE_SCAN_MISSING'),
+      );
+    });
+
+    it('trennt die Archiv-Grenze von der Datei-Grenze (W2-13)', () => {
+      // Beide 413, aber der Nutzer räumt anders auf: kleinere Datei wählen
+      // gegen Archiv aufteilen.
+      expect(httpStatusForErrorCode('AGENT_ARCHIVE_TOO_LARGE')).toBe(413);
+      expect(defaultMessageForErrorCode('AGENT_ARCHIVE_TOO_LARGE')).toContain('Archiv');
+      expect(defaultMessageForErrorCode('AGENT_ARCHIVE_TOO_LARGE')).not.toBe(
+        defaultMessageForErrorCode('AGENT_FILE_TOO_LARGE'),
+      );
+      // Nicht zu verwechseln mit dem unlesbaren Archiv (422).
+      expect(httpStatusForErrorCode('AGENT_ARCHIVE_INVALID')).toBe(422);
+    });
+
+    it('trennt Sicherungen von Servern bei der Konto-Löschung (W2-11)', () => {
+      expect(httpStatusForErrorCode('ACCOUNT_HAS_BACKUPS')).toBe(409);
+      expect(defaultMessageForErrorCode('ACCOUNT_HAS_BACKUPS')).toContain('Sicherungen');
+      expect(defaultMessageForErrorCode('ACCOUNT_HAS_BACKUPS')).not.toBe(
+        defaultMessageForErrorCode('ACCOUNT_HAS_SERVERS'),
+      );
+    });
+
+    it('führt die drei Protokoll-Fälle des Fehler-Handlers (W2-9)', () => {
+      // Status und Code stimmen jetzt überein; vorher stand über allen dreien
+      // `VALIDATION_FAILED`, dessen Katalog-Status 400 ist.
+      expect(httpStatusForErrorCode('NOT_FOUND')).toBe(404);
+      expect(httpStatusForErrorCode('METHOD_NOT_ALLOWED')).toBe(405);
+      expect(httpStatusForErrorCode('UNSUPPORTED_MEDIA_TYPE')).toBe(415);
+      expect(httpStatusForErrorCode('VALIDATION_FAILED')).toBe(400);
+    });
+
+    it('trennt die Missbrauchsgrenze des Kontos vom Anmelde-Limit (W2-3)', () => {
+      // Beide 429; die Oberfläche darf `AUTH_RATE_LIMITED` als „warte vor dem
+      // nächsten Anmeldeversuch" lesen, was für ein angemeldetes Konto die
+      // falsche Auskunft wäre.
+      expect(httpStatusForErrorCode('RATE_LIMITED')).toBe(429);
+      expect(httpStatusForErrorCode('AUTH_RATE_LIMITED')).toBe(429);
+      expect(defaultMessageForErrorCode('RATE_LIMITED')).not.toBe(
+        defaultMessageForErrorCode('AUTH_RATE_LIMITED'),
+      );
+    });
+
+    it('vergibt jeden Code genau einmal', () => {
+      // Der Katalog ist ein Objekt-Literal; ein doppelter Schlüssel fiele erst
+      // hier auf, weil die zweite Zuweisung die erste still überschriebe.
+      expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
+    });
+  });
+
   it('isErrorCode() erkennt unbekannte Codes', () => {
     expect(isErrorCode('SUBDOMAIN_TAKEN')).toBe(true);
     expect(isErrorCode('NICHT_IM_KATALOG')).toBe(false);

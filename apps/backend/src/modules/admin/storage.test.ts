@@ -361,7 +361,10 @@ describe('Storage-Explorer: mehrdeutige Kennung wird nicht geraten', () => {
     });
   }
 
-  it('lehnt das Löschen mit einem Katalogcode ab (409)', async () => {
+  it('lehnt das Löschen mit einem eigenen Katalogcode ab (409)', async () => {
+    // Contracts-Nachzug W2-C2: Vorher lieh sich der Fall `STORAGE_SCAN_MISSING`
+    // – „es gibt keine Übersicht", obwohl es sehr wohl eine gibt. Der eigene
+    // Code benennt den Grund: die Kennung ist nicht eindeutig.
     const { storage } = buildService({ entries: [namenloserPosten(), namenloserPosten()] });
 
     await expect(
@@ -370,9 +373,9 @@ describe('Storage-Explorer: mehrdeutige Kennung wird nicht geraten', () => {
         NODE_ID,
         storageEntryId(namenloserPosten()),
       ),
-    ).rejects.toMatchObject({ code: 'STORAGE_SCAN_MISSING' });
+    ).rejects.toMatchObject({ code: 'STORAGE_ENTRY_AMBIGUOUS' });
 
-    expect(httpStatusForErrorCode('STORAGE_SCAN_MISSING')).toBe(409);
+    expect(httpStatusForErrorCode('STORAGE_ENTRY_AMBIGUOUS')).toBe(409);
   });
 
   it('fasst dabei weder Homeserver noch Zwischenspeicher noch Log an', async () => {
