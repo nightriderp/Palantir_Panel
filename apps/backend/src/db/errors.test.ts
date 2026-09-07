@@ -30,6 +30,47 @@ describe('Erkennung von PostgreSQL-Fehlerklassen', () => {
     );
   });
 
+  /*
+   * Drizzle wirft nicht den Fehler von `pg`, sondern einen eigenen mit dem
+   * Original an `cause`. Ohne diese Fälle war der Helfer gegen die Attrappe
+   * grün und im Betrieb wirkungslos – aufgefallen erst durch die Vertrags-Suite
+   * gegen das echte Repository (W3-12, test-gaps-07).
+   */
+  it('erkennt den SQLSTATE auch unter einer Hülle', () => {
+    const eingehuellt = Object.assign(new Error('Failed query: insert into "users"'), {
+      cause: pgFehler('23505'),
+    });
+
+    expect(isUniqueViolation(eingehuellt)).toBe(true);
+    expect(isForeignKeyViolation(eingehuellt)).toBe(false);
+  });
+
+  it('läuft die Ursachenkette bis zum SQLSTATE ab', () => {
+    const zweifach = Object.assign(new Error('äußere Hülle'), {
+      cause: Object.assign(new Error('Failed query'), { cause: pgFehler('23503') }),
+    });
+
+    expect(isForeignKeyViolation(zweifach)).toBe(true);
+  });
+
+  it('bleibt bei einem Ringschluss in der Ursachenkette stehen', () => {
+    const ring: { cause?: unknown } = {};
+    ring.cause = ring;
+
+    expect(isUniqueViolation(ring)).toBe(false);
+  });
+
+  it('nimmt den äußeren SQLSTATE, wenn es einen gibt', () => {
+    const aussenNodeInnenPg = Object.assign(new Error('kein Zugriff'), {
+      code: 'EACCES',
+      cause: pgFehler('23505'),
+    });
+
+    // Der äußere Fehler ist der, den der Aufrufer bekommt - seine Aussage
+    // zählt. Ein Node-Code wie EACCES ist keine Unique-Verletzung.
+    expect(isUniqueViolation(aussenNodeInnenPg)).toBe(false);
+  });
+
   it('wirft nicht bei Werten ohne code-Feld', () => {
     expect(isUniqueViolation(null)).toBe(false);
     expect(isUniqueViolation(undefined)).toBe(false);
