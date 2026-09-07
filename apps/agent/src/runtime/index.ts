@@ -59,6 +59,7 @@ export {
 } from './types.js';
 
 export {
+  DEFAULT_GAME_NETWORK,
   DEFAULT_HOST_IP,
   DEFAULT_STOP_TIMEOUT_SECONDS,
   DEFAULT_TMPFS_SIZE,

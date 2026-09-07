@@ -19,6 +19,11 @@ export interface RuntimeEnv {
   readonly DOCKER_SOCKET_PROXY_URL: string;
   readonly AGENT_DATA_DIR: string;
   readonly AGENT_BACKUP_DIR: string;
+  /**
+   * Docker-Netz der Gameserver-Container (security-matrix-02). Ohne Angabe
+   * greift `DEFAULT_GAME_NETWORK` aus der Haertung - in keinem Fall `bridge`.
+   */
+  readonly AGENT_CONTAINER_NETWORK?: string | undefined;
   readonly AGENT_SECCOMP_PROFILE_PATH?: string | undefined;
   /** Registry der Spiel-Images (Gefundener Punkt 111); Zugang nur für private. */
   readonly AGENT_REGISTRY_SERVER?: string | undefined;
@@ -49,13 +54,15 @@ export function createContainerRuntimeFromEnv(
   options: CreateContainerRuntimeOptions = {},
 ): DockerContainerRuntime {
   const { networkMode, defaultHostIp, ...rest } = options;
+  // Vorrang: ausdrueckliche Option (Tests) vor Umgebung vor Haertungs-Vorgabe.
+  const netz = networkMode ?? env.AGENT_CONTAINER_NETWORK;
 
   const hardening: HardeningOptions = {
     // Bind-Mounts sind auf die Palantir-Verzeichnisse begrenzt; Backups werden
     // fuer den Restore ebenfalls gemountet (A3).
     allowedHostRoots: [env.AGENT_DATA_DIR, env.AGENT_BACKUP_DIR],
     ...(defaultHostIp === undefined ? {} : { defaultHostIp }),
-    ...(networkMode === undefined ? {} : { networkMode }),
+    ...(netz === undefined ? {} : { networkMode: netz }),
     ...ladeSeccompProfil(env.AGENT_SECCOMP_PROFILE_PATH),
   };
 

@@ -29,21 +29,51 @@ services:
     mem_limit: ${SOCKET_PROXY_MEM_LIMIT:-64m}
     pids_limit: 64
     environment:
-      # Was der Agent für den Server-Lebenszyklus braucht.
+      # Was der Agent für den Server-Lebenszyklus braucht - und nur das
+      # (Pflichtenheft §2.3 "nur die tatsächlich benötigten API-Endpunkte";
+      # Audit spec-pflichtenheft-05). Die Liste deckt genau die Pfade ab, die
+      # `apps/agent/src/runtime/docker/**` aufruft: `/containers/*`,
+      # `/images/*`, `/exec/*`, `/events`. Der Agent-Test
+      # `docker/docker-container-runtime.test.ts` bildet diese Sperre im
+      # fetch-Stub nach und schlägt fehl, sobald ein Produktivpfad einen
+      # anderen Endpunkt anspricht.
       CONTAINERS: 1
       IMAGES: 1
-      EVENTS: 1
-      PING: 1
-      VOLUMES: 1
-      NETWORKS: 1
-      INFO: 1
-      # Zustandsändernde Aufrufe (Container erstellen, starten, stoppen,
-      # löschen) laufen über POST. Ohne das könnte der Agent nichts orchestrieren.
-      POST: 1
       # EXEC gibt Konsolenbefehle an laufende Container weiter
       # (Agent-Befehl EXEC_CONSOLE, Pflichtenheft §5.3).
       EXEC: 1
+      # Engine-Ereignisstrom (`GET /events`): daraus erfährt der Agent von
+      # Start, Stopp und Absturz eines Containers (`watchEngineEvents`). In der
+      # Maßnahme W2-26 nicht aufgezählt, aber nachweislich in Benutzung - ohne
+      # ihn meldet der Agent keine Zustandswechsel mehr.
+      EVENTS: 1
+      # Zustandsändernde Aufrufe (Container erstellen, starten, stoppen,
+      # löschen) laufen über POST. Ohne das könnte der Agent nichts
+      # orchestrieren. Der Schalter deckt beim Socket-Proxy alle Methoden außer
+      # GET ab, also auch PUT/HEAD auf `/containers/*/archive` (Datei-Manager)
+      # und DELETE auf `/containers/*` und `/images/*`.
+      POST: 1
       # Ausdrücklich gesperrt: nichts davon gehört zum Auftrag des Agents.
+      #
+      # VOLUMES, NETWORKS, INFO und PING standen bis W2-26 offen, ohne dass der
+      # Agent sie je aufruft (spec-pflichtenheft-05). Zusammen mit POST erlaubte
+      # das einem übernommenen Agent-Prozess `POST /networks/create` und
+      # `/networks/{id}/connect` (fremde Container ins Palantir-Netz hängen)
+      # sowie `POST /volumes/prune`; `/info` gab Host-Interna preis.
+      # Datenvolumes reicht der Agent als `Binds` im Erzeugungs-Payload durch,
+      # und das Spielenetz `palantir-games` legt `./egress-firewall.sh` auf der
+      # Node an - nicht der Agent.
+      #
+      # PING=0 heißt: `GET /_ping` antwortet mit 403. Kein Dienst hier hängt
+      # daran (weder ein `healthcheck:` noch ein `depends_on: condition`).
+      # Bringt eine spätere Version des Proxy-Images einen eigenen HEALTHCHECK
+      # auf `/_ping` mit, meldet sich der Container als "unhealthy", ohne dass
+      # etwas ausfällt - dann hier PING wieder auf 1 setzen und den Grund
+      # danebenschreiben.
+      VOLUMES: 0
+      NETWORKS: 0
+      INFO: 0
+      PING: 0
       BUILD: 0
       COMMIT: 0
       CONFIGS: 0
@@ -96,6 +126,9 @@ services:
       AGENT_NODE_ID: ${AGENT_NODE_ID}
       AGENT_DATA_DIR: ${AGENT_DATA_DIR}
       AGENT_BACKUP_DIR: ${AGENT_BACKUP_DIR}
+      # Netz der Spielcontainer (Audit security-matrix-02). Muss zu dem Netz
+      # passen, das ./egress-firewall.sh anlegt - siehe Hinweis am Dateiende.
+      AGENT_CONTAINER_NETWORK: ${AGENT_CONTAINER_NETWORK}
       AGENT_REGISTRY_SERVER: ${AGENT_REGISTRY_SERVER}
       AGENT_REGISTRY_USERNAME: ${AGENT_REGISTRY_USERNAME}
       AGENT_REGISTRY_TOKEN: ${AGENT_REGISTRY_TOKEN}
@@ -156,5 +189,26 @@ services:
     command: ['-c', '/etc/frp/frpc.toml']
 
 networks:
+  # Netz der Palantir-Dienste (Agent, Socket-Proxy). Die SPIELCONTAINER hängen
+  # bewusst NICHT hier drin.
   palantir:
     name: palantir
+# --- Spielenetz `palantir-games` (bewusst nicht hier definiert) ---------------
+# Die Gameserver-Container laufen in einem eigenen Netz `palantir-games`
+# (Audit security-matrix-02): abgeschaltete Container-zu-Container-
+# Kommunikation (`icc=false`), fester Bridge-Name und festes Subnetz, dazu
+# DOCKER-USER-Regeln, die Heim-LAN, WireGuard-Subnetz und Nachbar-Container
+# sperren - das Internet bleibt erreichbar, damit Mod- und Plugin-Downloads
+# nicht brechen. Der Agent setzt das Netz als `NetworkMode` (Variable
+# `AGENT_CONTAINER_NETWORK`, Vorgabe `palantir-games`).
+#
+# Warum kein Eintrag unter `networks:`? Compose erzeugt nur Netze, an denen auch
+# ein Dienst hängt - die Spielcontainer erzeugt aber der Agent zur Laufzeit,
+# nicht Compose. Ein `external: true` hier wäre zudem eine Startsperre: Auf
+# einer frischen Node gäbe es das Netz beim ersten `docker compose up` noch
+# nicht. Angelegt und mit Regeln versehen wird es deshalb von
+#
+#   sudo /opt/palantir/deploy/gamenode/egress-firewall.sh apply
+#
+# (dauerhaft über `palantir-egress.service`). Netzname, Bridge-Name und Subnetz
+# stehen dort und müssen zu `AGENT_CONTAINER_NETWORK` in der `.env` passen.
