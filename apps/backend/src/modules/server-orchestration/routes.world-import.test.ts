@@ -42,18 +42,24 @@ const actors: Record<string, PermissionActor> = {
   }),
 };
 
+const VIEWER_ID = '22222222-2222-4222-8222-222222222222';
+
 interface Aufrufe {
   save: string[];
+  /** Besitzer, an den der Zwischenspeicher den Verweis binden soll. */
+  ownerIds: string[];
+  /** War beim Ablegen ein Signal für die gekappte Übertragung dabei? */
+  truncatedGemeldet: (boolean | null)[];
 }
 
 async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Promise<{
   app: FastifyInstance;
   aufrufe: Aufrufe;
 }> {
-  const aufrufe: Aufrufe = { save: [] };
+  const aufrufe: Aufrufe = { save: [], ownerIds: [], truncatedGemeldet: [] };
 
   const worldArchives: WorldArchiveStore = {
-    save: async (fileName, source) => {
+    save: async (fileName, source, auftrag) => {
       if (options.fehler) {
         // Wie im Betrieb: Der Strom wird gelesen, bevor die Ablehnung feststeht.
         for await (const _block of source) {
@@ -70,6 +76,8 @@ async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Pr
       }
 
       aufrufe.save.push(fileName);
+      aufrufe.ownerIds.push(auftrag.ownerId);
+      aufrufe.truncatedGemeldet.push(auftrag.isTruncated?.() ?? null);
 
       return { ...UPLOAD, fileName, sizeBytes: groesse };
     },
@@ -98,7 +106,7 @@ async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Pr
 
   app.decorateRequest('viewerUserId', null);
   app.addHook('onRequest', async (request) => {
-    request.viewerUserId = '22222222-2222-4222-8222-222222222222';
+    request.viewerUserId = VIEWER_ID;
     void request;
   });
 
@@ -177,6 +185,41 @@ describe('POST /api/uploads/world-archives', () => {
       format: 'zip',
     });
     expect(aufrufe.save).toEqual(['welt.zip']);
+  });
+
+  it('bindet den Verweis an das hochladende Konto', async () => {
+    // Audit orchestration-features-09: Ohne Besitzer im Zwischenspeicher könnte
+    // jeder mit `server.create` eine fremde uploadId einlösen.
+    const { app, aufrufe } = await buildApp();
+    offen = app;
+    const koerper = multipartBody({ name: 'welt.zip', content: Buffer.from('PK-Archiv') });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/uploads/world-archives',
+      headers: { ...koerper.headers, 'x-test-actor': 'ersteller' },
+      payload: koerper.payload,
+    });
+
+    expect(aufrufe.ownerIds).toEqual([VIEWER_ID]);
+  });
+
+  it('reicht das Kappungssignal in den Zwischenspeicher hinein', async () => {
+    // Audit orchestration-features-05: Früher wurde `truncated` erst nach
+    // `save()` geprüft – das abgeschnittene Archiv lag da schon unter gültigem
+    // Namen im Zwischenspeicher und blieb bis zur Frist liegen.
+    const { app, aufrufe } = await buildApp();
+    offen = app;
+    const koerper = multipartBody({ name: 'welt.zip', content: Buffer.from('PK-Archiv') });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/uploads/world-archives',
+      headers: { ...koerper.headers, 'x-test-actor': 'ersteller' },
+      payload: koerper.payload,
+    });
+
+    expect(aufrufe.truncatedGemeldet).toEqual([false]);
   });
 
   it('weist ab, wer keine Server anlegen darf', async () => {

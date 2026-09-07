@@ -6,6 +6,7 @@
  * (Pflichtenheft §2.5).
  */
 
+import { gzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DockerContainerRuntime,
@@ -485,6 +486,66 @@ describe('Datei-Manager', () => {
     expect(
       aufrufe.some((aufruf) => aufruf.method === 'GET' && aufruf.pfad.endsWith('/archive')),
     ).toBe(false);
+  });
+
+  it('liest nicht, wenn die Engine keinen verwertbaren Stat-Kopf liefert', async () => {
+    // Audit agent-runtime-06: Frueher galt die Groesse dann als 0, die Pruefung
+    // ging durch und `requestBuffer` lud das ganze Archiv ohne Grenze in den
+    // Speicher. Jetzt faellt der Zugriff geschlossen.
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
+
+    await expect(runtime.readFile('c-1', '/data/ohne-stat.bin')).rejects.toMatchObject({
+      code: 'FILE_TOO_LARGE',
+    });
+    expect(archivAufruf()?.method).toBe('HEAD');
+    expect(
+      aufrufe.some((aufruf) => aufruf.method === 'GET' && aufruf.pfad.endsWith('/archive')),
+    ).toBe(false);
+  });
+
+  it('entpackt ein Archiv oberhalb der Datei-Grenze', async () => {
+    /*
+     * Audit agent-runtime-02: `extractArchive` hing an derselben Grenze wie der
+     * Datei-Editor (64 MiB). Damit scheiterte genau der Fall am letzten Block,
+     * fuer den die blockweise Uebertragung gebaut wurde - ein gewachsener
+     * Weltordner. Hier steht die Datei-Grenze bewusst winzig.
+     */
+    await runtime.dispose();
+    runtime = new DockerContainerRuntime({
+      client: new DockerHttpClient({ baseUrl: PROXY_URL, fetchImpl: stubFetch }),
+      hardening: { allowedHostRoots: [DATEN_WURZEL] },
+      onStreamError: () => undefined,
+      maxFileBytes: 16,
+    });
+    aufrufe = [];
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
+
+    const archiv = gzipSync(createTar([{ name: 'welt/level.dat', content: Buffer.alloc(512, 7) }]));
+    expect(archiv.byteLength).toBeGreaterThan(16);
+
+    const ergebnis = await runtime.extractArchive('c-1', '', archiv, 'tar.gz');
+
+    expect(ergebnis.fileCount).toBe(1);
+    expect(aufrufe.some((aufruf) => aufruf.method === 'PUT')).toBe(true);
+  });
+
+  it('lehnt ein Archiv oberhalb der Archiv-Grenze ab, ohne es zu lesen', async () => {
+    await runtime.dispose();
+    runtime = new DockerContainerRuntime({
+      client: new DockerHttpClient({ baseUrl: PROXY_URL, fetchImpl: stubFetch }),
+      hardening: { allowedHostRoots: [DATEN_WURZEL] },
+      onStreamError: () => undefined,
+      maxArchiveBytes: 32,
+    });
+    aufrufe = [];
+    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
+
+    const archiv = gzipSync(createTar([{ name: 'welt/level.dat', content: Buffer.alloc(512, 7) }]));
+
+    await expect(runtime.extractArchive('c-1', '', archiv, 'tar.gz')).rejects.toMatchObject({
+      code: 'ARCHIVE_TOO_LARGE',
+    });
+    expect(aufrufe.some((aufruf) => aufruf.method === 'PUT')).toBe(false);
   });
 
   it('liest eine Datei aus dem TAR-Strom', async () => {

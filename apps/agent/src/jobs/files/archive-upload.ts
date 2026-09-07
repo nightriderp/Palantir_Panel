@@ -14,12 +14,19 @@
  * ein fertiges Archiv und macht damit dasselbe wie bei `FILE_EXTRACT`
  * (CLAUDE.md §4).
  *
+ * **Gesamtgroessen-Deckel** (Audit agent-conn-02). Die Uebertragung war frueher
+ * unbegrenzt: Ein fehlerhaftes oder kompromittiertes Backend konnte mit
+ * fortlaufenden Bloecken (`last: false`) die Platte fuellen, und der
+ * abschliessende `readFile` zog das gesamte, womoeglich mehrere Gigabyte grosse
+ * Archiv in den Speicher - vor jeder Grenze des Entpackens. Jetzt gilt
+ * {@link DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES}, geprueft **vor** jedem
+ * Dateizugriff.
+ *
  * **Was diese Datei nicht loest.** Zum Entpacken wird das Archiv einmal ganz
  * gelesen; die Eintraege haelt die Runtime dabei im Speicher
- * (`MAX_EXTRACTED_BYTES`, 512 MiB). Die Uebertragung ist damit nicht mehr
- * begrenzt, das Entpacken sehr wohl - ein streamendes Entpacken waere ein
- * eigener Umbau von `runtime/archive.ts` und steht als Restpunkt in
- * WORK_STATUS.md.
+ * (`MAX_EXTRACTED_BYTES`, 512 MiB). Der Deckel begrenzt diesen Puffer auf
+ * dieselbe Zahl - ein streamendes Entpacken waere ein eigener Umbau von
+ * `runtime/archive.ts` und steht als Restpunkt in WORK_STATUS.md.
  */
 
 import { appendFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -28,6 +35,7 @@ import type {
   UploadArchiveBlockCommandPayload,
   UploadArchiveBlockCommandResult,
 } from '@palantir/contracts';
+import { MAX_EXTRACTED_BYTES } from '../../runtime/archive.js';
 import { type ContainerRuntime } from '../../runtime/container-runtime.js';
 import { ContainerRuntimeError } from '../../runtime/errors.js';
 
@@ -48,21 +56,39 @@ export const ARCHIVE_UPLOAD_TTL_MS = 2 * 60 * 60 * 1000;
 /** Nur unauffaellige Kennungen; alles andere koennte den Pfad verlassen. */
 const TRANSFER_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
+/**
+ * Obergrenze fuer die Summe aller Bloecke einer Uebertragung
+ * (`AGENT_UPLOAD_ARCHIVE_MAX_BYTES`).
+ *
+ * Dieselbe Zahl wie `MAX_EXTRACTED_BYTES`: Ein Archiv, das schon komprimiert
+ * groesser ist als das erlaubte Entpackergebnis, kann ohnehin nicht durchkommen
+ * - es dafuer erst vollstaendig auf die Platte zu schreiben und in den Speicher
+ * zu lesen, waere Arbeit fuer eine sichere Ablehnung.
+ */
+export const DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES = MAX_EXTRACTED_BYTES;
+
 export interface ArchiveUploadJobOptions {
   readonly runtime: ContainerRuntime;
   /** `AGENT_DATA_DIR`; darunter liegt der Ordner fuer angefangene Uebertragungen. */
   readonly dataDir: string;
+  /**
+   * Deckel der Gesamtuebertragung; ohne Angabe
+   * {@link DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES}.
+   */
+  readonly maxArchiveBytes?: number;
   readonly now?: () => Date;
 }
 
 export class ArchiveUploadJob {
   readonly #runtime: ContainerRuntime;
   readonly #wurzel: string;
+  readonly #maxArchiveBytes: number;
   readonly #now: () => Date;
 
   constructor(options: ArchiveUploadJobOptions) {
     this.#runtime = options.runtime;
     this.#wurzel = path.join(path.resolve(options.dataDir), ARCHIVE_UPLOAD_DIRNAME);
+    this.#maxArchiveBytes = options.maxArchiveBytes ?? DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES;
     this.#now = options.now ?? (() => new Date());
   }
 
@@ -79,6 +105,24 @@ export class ArchiveUploadJob {
   ): Promise<UploadArchiveBlockCommandResult> {
     const ziel = this.#pfad(payload.transferId);
     const block = Buffer.from(payload.contentBase64, 'base64');
+    const receivedBytes = payload.offset + block.byteLength;
+
+    /*
+     * Der Deckel steht vor jedem Dateizugriff (agent-conn-02): Ein Block, der
+     * die Uebertragung ueber die Grenze hebt, darf gar nicht erst geschrieben
+     * werden - und ein Angreifer, der mit riesigem `offset` arbeitet, soll
+     * daran scheitern und nicht am Vergleich mit der Dateigroesse.
+     */
+    if (receivedBytes > this.#maxArchiveBytes) {
+      throw new ContainerRuntimeError('ARCHIVE_TOO_LARGE', {
+        message: 'Die Uebertragung ueberschreitet die zulaessige Gesamtgroesse.',
+        details: {
+          transferId: payload.transferId,
+          receivedBytes,
+          maxBytes: this.#maxArchiveBytes,
+        },
+      });
+    }
 
     await mkdir(this.#wurzel, { recursive: true });
 
@@ -91,8 +135,6 @@ export class ArchiveUploadJob {
       await this.#erwarteGroesse(ziel, payload.offset, payload.transferId);
       await appendFile(ziel, block);
     }
-
-    const receivedBytes = payload.offset + block.byteLength;
 
     if (!payload.last) {
       return { transferId: payload.transferId, receivedBytes, extract: null };

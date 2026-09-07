@@ -23,7 +23,7 @@ import {
   buildCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
-import { type ArchiveKind, readArchive } from '../archive.js';
+import { MAX_EXTRACTED_BYTES, type ArchiveKind, readArchive } from '../archive.js';
 import { resolveWithinRoot } from '../paths.js';
 import {
   DEFAULT_LOG_TAIL,
@@ -66,6 +66,19 @@ import { type TarFileInput, createTar, parseTar } from './tar.js';
 export const DEFAULT_MAX_FILE_BYTES = 64 * 1024 * 1024;
 
 /**
+ * Obergrenze fuer ein **Archiv**, das entpackt werden soll (Audit
+ * agent-runtime-02).
+ *
+ * Bewusst nicht {@link DEFAULT_MAX_FILE_BYTES}: `UPLOAD_ARCHIVE_BLOCK` existiert
+ * genau deshalb, weil ein gewachsener Weltordner die 64 MiB des Agent-Kanals
+ * sprengt (`jobs/files/archive-upload.ts`). Praeft `extractArchive` das
+ * zusammengesetzte Archiv gegen die Datei-Grenze, scheitert die blockweise
+ * Uebertragung am letzten Block - fuer genau den Fall, fuer den sie gebaut
+ * wurde. Die gewollte Grenze ist die des Entpackens.
+ */
+export const DEFAULT_MAX_ARCHIVE_BYTES = MAX_EXTRACTED_BYTES;
+
+/**
  * Obergrenze fuer die gesammelte Ausgabe eines Konsolenbefehls (`execConsole`).
  *
  * Ein RCON-/Konsolenkommando liefert normalerweise wenige Zeilen; ein Befehl mit
@@ -89,6 +102,8 @@ export interface DockerContainerRuntimeOptions {
   readonly hardening: HardeningOptions;
   /** Groessenlimit fuer `readFile`/`writeFile`. Vorgabe: {@link DEFAULT_MAX_FILE_BYTES}. */
   readonly maxFileBytes?: number;
+  /** Groessenlimit fuer `extractArchive`. Vorgabe: {@link DEFAULT_MAX_ARCHIVE_BYTES}. */
+  readonly maxArchiveBytes?: number;
   /** Wird gerufen, wenn ein Hintergrund-Stream unerwartet abbricht. */
   readonly onStreamError?: (fehler: unknown, kontext: Readonly<Record<string, unknown>>) => void;
   /**
@@ -165,6 +180,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
   readonly #client: DockerHttpClient;
   readonly #hardening: HardeningOptions;
   readonly #maxFileBytes: number;
+  readonly #maxArchiveBytes: number;
   readonly #registry: RegistryCredentials | undefined;
   readonly #pullTimeoutMs: number;
   readonly #onStreamError: (fehler: unknown, kontext: Readonly<Record<string, unknown>>) => void;
@@ -200,6 +216,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
     this.#pullTimeoutMs = options.pullTimeoutMs ?? DEFAULT_PULL_TIMEOUT_MS;
     this.#hardening = options.hardening;
     this.#maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
+    this.#maxArchiveBytes = options.maxArchiveBytes ?? DEFAULT_MAX_ARCHIVE_BYTES;
     this.#onStreamError =
       options.onStreamError ??
       ((fehler, kontext) => {
@@ -670,7 +687,28 @@ export class DockerContainerRuntime implements ContainerRuntime {
   async readFile(containerId: string, datei: string): Promise<Buffer> {
     const wurzel = await this.#datenVolumeWurzel(containerId);
     const pfad = resolveWithinRoot(wurzel, datei);
-    const groesse = (await this.#pfadStat(containerId, pfad))?.sizeBytes ?? 0;
+    const eintragStat = await this.#pfadStat(containerId, pfad);
+
+    /*
+     * Der Pfad existiert, aber die Engine nennt keine Groesse: dann wird nicht
+     * gelesen (Audit agent-runtime-06). Frueher galt die Groesse in dem Fall
+     * als 0, die Pruefung unten ging durch und `requestBuffer` lud das ganze
+     * `/archive` ohne jede Grenze in den Speicher - genau die Absicherung, die
+     * der Kommentar in `#pfadStat` behauptete, gab es nicht. Faellt lieber
+     * geschlossen: Der Datei-Manager zeigt eine Datei nicht an, statt dass der
+     * Agent am Speicher stirbt.
+     *
+     * `null` als ganzer Eintrag heisst dagegen „nicht vorhanden"; das beantwortet
+     * der Lesezugriff darunter wie bisher mit `FILE_NOT_FOUND`.
+     */
+    if (eintragStat !== null && eintragStat.sizeBytes === null) {
+      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
+        message: 'Die Groesse der Datei ist nicht bestimmbar; sie wird nicht gelesen.',
+        details: { path: pfad, maxBytes: this.#maxFileBytes },
+      });
+    }
+
+    const groesse = eintragStat?.sizeBytes ?? 0;
 
     if (groesse > this.#maxFileBytes) {
       throw new ContainerRuntimeError('FILE_TOO_LARGE', {
@@ -752,7 +790,16 @@ export class DockerContainerRuntime implements ContainerRuntime {
     const wurzel = await this.#datenVolumeWurzel(containerId);
     const zielPfad = resolveWithinRoot(wurzel, ziel);
 
-    this.#pruefeGroesse(zielPfad, archiv);
+    /*
+     * Eigene Grenze statt der des Datei-Managers (Audit agent-runtime-02): Ein
+     * komprimiertes Weltarchiv darf groesser sein als eine einzelne Datei im
+     * Editor - sonst waere die blockweise Uebertragung nutzlos.
+     */
+    if (archiv.length > this.#maxArchiveBytes) {
+      throw new ContainerRuntimeError('ARCHIVE_TOO_LARGE', {
+        details: { path: zielPfad, sizeBytes: archiv.length, maxBytes: this.#maxArchiveBytes },
+      });
+    }
 
     const inhalt = readArchive(archiv, format);
     const dateien: TarFileInput[] = inhalt.entries.map((eintrag) => ({
@@ -838,7 +885,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
   async #pfadStat(
     containerId: string,
     pfad: string,
-  ): Promise<{ sizeBytes: number; istVerzeichnis: boolean } | null> {
+  ): Promise<{ sizeBytes: number | null; istVerzeichnis: boolean } | null> {
     let antwort: Response;
     try {
       antwort = await this.#client.requestRaw('HEAD', `${this.#pfad(containerId)}/archive`, {
@@ -850,8 +897,12 @@ export class DockerContainerRuntime implements ContainerRuntime {
       throw fehler;
     }
 
+    // `sizeBytes: null` heisst „Pfad existiert, Groesse unbekannt" - und ist
+    // etwas anderes als eine leere Datei. Wer die Groesse braucht, muss den
+    // Fall behandeln (`readFile` lehnt ab); wer nur die Existenz prueft
+    // (`uploadFile`, Loeschen), kommt weiter wie bisher.
     const kopfzeile = antwort.headers.get('x-docker-container-path-stat');
-    if (kopfzeile === null) return { sizeBytes: 0, istVerzeichnis: false };
+    if (kopfzeile === null) return { sizeBytes: null, istVerzeichnis: false };
 
     try {
       const stat = JSON.parse(Buffer.from(kopfzeile, 'base64').toString('utf8')) as {
@@ -859,13 +910,12 @@ export class DockerContainerRuntime implements ContainerRuntime {
         mode?: number;
       };
       return {
-        sizeBytes: stat.size ?? 0,
+        sizeBytes: stat.size ?? null,
         // Go-`FileMode`: das oberste Bit (1 << 31) steht fuer „Verzeichnis".
         istVerzeichnis: ((stat.mode ?? 0) & 0x8000_0000) !== 0,
       };
     } catch {
-      // Ohne verwertbaren Stat-Kopf greift allein das Limit beim Lesen.
-      return { sizeBytes: 0, istVerzeichnis: false };
+      return { sizeBytes: null, istVerzeichnis: false };
     }
   }
 

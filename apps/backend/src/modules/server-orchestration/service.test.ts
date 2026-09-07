@@ -2920,9 +2920,20 @@ describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
    * aus einem Puffer und merkt sich, ob er freigegeben wurde.
    */
   function fakeStore(
-    inhalt: { uploadId: string; content: Buffer; format: ArchiveFormat } | null,
-  ): WorldArchiveStore & { readonly abgeholt: string[]; readonly freigegeben: string[] } {
+    inhalt: {
+      uploadId: string;
+      content: Buffer;
+      format: ArchiveFormat;
+      /** Konto, dem das Archiv gehört; ohne Angabe gehört es dem Abholenden. */
+      ownerId?: string;
+    } | null,
+  ): WorldArchiveStore & {
+    readonly abgeholt: string[];
+    readonly besitzer: string[];
+    readonly freigegeben: string[];
+  } {
     const abgeholt: string[] = [];
+    const besitzer: string[] = [];
     const freigegeben: string[] = [];
 
     const archiv: StoredWorldArchive | null =
@@ -2943,10 +2954,18 @@ describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
 
     return {
       abgeholt,
+      besitzer,
       freigegeben,
       save: () => Promise.reject(new Error('nicht benutzt')),
-      take: (uploadId) => {
+      // Wie die Umsetzung auf der Platte: Ein fremdes Archiv verhält sich wie
+      // ein unbekanntes (orchestration-features-09).
+      take: (uploadId, ownerId) => {
         abgeholt.push(uploadId);
+        besitzer.push(ownerId);
+
+        if (inhalt?.ownerId !== undefined && inhalt.ownerId !== ownerId) {
+          return Promise.resolve(null);
+        }
 
         return Promise.resolve(archiv);
       },
@@ -2988,6 +3007,42 @@ describe('Weltdaten-Übernahme beim Anlegen (Arbeitspaket P4)', () => {
     // Der Import läuft, während der Server angelegt wird – danach ist er fertig.
     expect(server.status).not.toBe('error');
     expect(store.freigegeben).toEqual([UPLOAD_ID]);
+  });
+
+  it('holt das Archiv im Namen des anlegenden Kontos ab', async () => {
+    const store = fakeStore({
+      uploadId: UPLOAD_ID,
+      content: Buffer.from('PK-Archiv'),
+      format: 'zip',
+    });
+    const harness = makeHarness({ worldArchives: store });
+
+    await harness.service.createServer(mitImport(), OWNER_ID);
+
+    expect(store.besitzer).toEqual([OWNER_ID]);
+  });
+
+  it('lässt das Anlegen mit einer fremden uploadId scheitern', async () => {
+    // Audit orchestration-features-09: Der Verweis gehört einem anderen Konto.
+    // Antwort ist derselbe Code wie bei einem abgelaufenen Verweis
+    // (WORLD_ARCHIVE_NOT_FOUND, 404) – kein Orakel über fremde Uploads.
+    const fremd = '99999999-9999-4999-8999-999999999999';
+    const store = fakeStore({
+      uploadId: UPLOAD_ID,
+      content: Buffer.from('PK-Archiv'),
+      format: 'zip',
+      ownerId: fremd,
+    });
+    const harness = makeHarness({ worldArchives: store });
+
+    await expect(harness.service.createServer(mitImport(), OWNER_ID)).rejects.toMatchObject({
+      code: 'WORLD_ARCHIVE_NOT_FOUND',
+    });
+    expect(
+      harness.socket.commands.some((eintrag) => eintrag.command === 'UPLOAD_ARCHIVE_BLOCK'),
+    ).toBe(false);
+    // Nicht abgeholt heißt auch: dem Eigentümer nichts entzogen.
+    expect(store.freigegeben).toEqual([]);
   });
 
   it('legt ohne worldImport kein Archiv an', async () => {

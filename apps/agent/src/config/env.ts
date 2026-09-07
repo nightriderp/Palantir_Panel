@@ -71,6 +71,21 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(8 * 1024 * 1024),
+  /**
+   * Obergrenze der **gesamten** blockweisen Archiv-Übernahme
+   * (`UPLOAD_ARCHIVE_BLOCK`, Audit agent-conn-02).
+   *
+   * Gegenstück zu `AGENT_DOWNLOAD_BLOCK_MAX_BYTES` für die andere Richtung:
+   * Ohne Deckel kann ein fehlerhaftes Backend mit fortlaufenden Blöcken die
+   * Platte füllen, und das abschließende Lesen des Archivs bringt den Agent
+   * über den Speicher. Vorgabe: 512 MiB – dieselbe Zahl wie die Grenze des
+   * Entpackens.
+   */
+  AGENT_UPLOAD_ARCHIVE_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(512 * 1024 * 1024),
 });
 
 const parsed = envSchema.safeParse(process.env);

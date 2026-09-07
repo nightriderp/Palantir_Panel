@@ -5,7 +5,11 @@ import { gzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTar } from '../../runtime/docker/tar.js';
 import { FakeContainerRuntime, type ContainerSpec } from '../../runtime/index.js';
-import { ARCHIVE_UPLOAD_DIRNAME, ArchiveUploadJob } from './archive-upload.js';
+import {
+  ARCHIVE_UPLOAD_DIRNAME,
+  ArchiveUploadJob,
+  DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES,
+} from './archive-upload.js';
 
 const SERVER_ID = '3f1d6f4e-1b1e-4b6a-9a3f-2c1d4e5f6a7b';
 const TRANSFER = 'transfer-1';
@@ -123,6 +127,58 @@ describe('ArchiveUploadJob (Gefundener Punkt 106)', () => {
     ).rejects.toMatchObject({ code: 'ARCHIVE_INVALID' });
 
     expect(await reste()).toEqual([]);
+  });
+
+  it('nimmt eine Übertragung von 100 MiB an – die Datei-Grenze gilt hier nicht', async () => {
+    /*
+     * Audit agent-runtime-02/agent-conn-02: `UPLOAD_ARCHIVE_BLOCK` existiert,
+     * weil ein gewachsener Weltordner die 64 MiB des Agent-Kanals sprengt. Eine
+     * Übertragung deutlich darüber muss deshalb durchgehen; erst der eigene
+     * Deckel (512 MiB) begrenzt sie.
+     */
+    const blockGroesse = 25 * 1024 * 1024;
+    const stueck = Buffer.alloc(blockGroesse, 3);
+
+    let offset = 0;
+    for (let nummer = 0; nummer < 4; nummer += 1) {
+      const ergebnis = await job.receive(block(stueck, offset, false));
+      offset += blockGroesse;
+      expect(ergebnis.receivedBytes).toBe(offset);
+    }
+
+    expect(offset).toBe(100 * 1024 * 1024);
+    expect(await reste()).toHaveLength(1);
+  });
+
+  it('lehnt eine Übertragung über dem Deckel ab, ohne die Platte anzufassen', async () => {
+    // 600 MiB > 512 MiB: Der Deckel greift vor jedem Dateizugriff, damit ein
+    // riesiger `offset` nicht erst eine Datei anlegt (agent-conn-02).
+    await expect(
+      job.receive(block(Buffer.alloc(16, 9), 600 * 1024 * 1024, true)),
+    ).rejects.toMatchObject({ code: 'ARCHIVE_TOO_LARGE' });
+
+    expect(await reste()).toEqual([]);
+  });
+
+  it('bricht ab, sobald die Summe der Blöcke den Deckel überschreitet', async () => {
+    const eng = new ArchiveUploadJob({ runtime, dataDir, maxArchiveBytes: 64 });
+
+    await eng.receive(block(Buffer.alloc(48, 1), 0, false));
+
+    await expect(eng.receive(block(Buffer.alloc(32, 1), 48, true))).rejects.toMatchObject({
+      code: 'ARCHIVE_TOO_LARGE',
+    });
+
+    // Der abgelehnte Block wurde nicht angehängt: Es bleibt bei den 48 Byte.
+    const angefangen = path.join(dataDir, ARCHIVE_UPLOAD_DIRNAME, `${TRANSFER}.archive`);
+    expect((await fs.stat(angefangen)).size).toBe(48);
+  });
+
+  it('nennt den Deckel als 512 MiB', () => {
+    // Dieselbe Zahl wie `MAX_EXTRACTED_BYTES`: Ein Archiv, das schon
+    // komprimiert größer ist als das erlaubte Entpackergebnis, kommt ohnehin
+    // nicht durch.
+    expect(DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES).toBe(512 * 1024 * 1024);
   });
 
   it('räumt abgelaufene Reste beim Beginn der nächsten Übertragung weg', async () => {
