@@ -19,6 +19,12 @@ import {
 
 const SERVER_ID = '44444444-4444-4444-8444-000000000001';
 const EMITTED_AT = '2026-08-31T12:00:00.000Z';
+/**
+ * Zeit des Backends beim Empfang – seit W2-14 der Zeitstempel jeder Messung
+ * (orchestration-features-03). Bewusst ein anderer Wert als die Zeitstempel in
+ * der Nutzlast, damit sichtbar wird, welche Uhr gewinnt.
+ */
+const RECEIVED_AT = '2026-08-31T12:00:05.000Z';
 
 /** Messwerte, wie die Container-Runtime sie meldet (`AgentContainerStats` plus `at`). */
 const RUNTIME_STATS = {
@@ -71,7 +77,7 @@ describe('liveStatsFromAgentPayload', () => {
     const stats = liveStatsFromAgentPayload(
       RUNTIME_STATS,
       { playersOnline: 3, playersMax: 20, pingMs: 15, players: [] },
-      EMITTED_AT,
+      RECEIVED_AT,
     );
 
     expect(stats).toEqual({
@@ -88,7 +94,7 @@ describe('liveStatsFromAgentPayload', () => {
       networkTxBytes: 2_048,
       networkRxPackets: 12,
       networkTxPackets: 8,
-      updatedAt: '2026-08-31T11:59:59.000Z',
+      updatedAt: RECEIVED_AT,
     });
   });
 
@@ -103,7 +109,7 @@ describe('liveStatsFromAgentPayload', () => {
     const stats = liveStatsFromAgentPayload(
       ohnePakete,
       { playersOnline: 3, playersMax: 20, pingMs: 15, players: [] },
-      EMITTED_AT,
+      RECEIVED_AT,
     );
 
     expect(stats).not.toHaveProperty('networkRxPackets');
@@ -111,7 +117,7 @@ describe('liveStatsFromAgentPayload', () => {
   });
 
   it('füllt aus der Server-Abfrage nur, was sie misst', () => {
-    const stats = liveStatsFromAgentPayload(QUERY_PAYLOAD, EMPTY_QUERY_SNAPSHOT, EMITTED_AT);
+    const stats = liveStatsFromAgentPayload(QUERY_PAYLOAD, EMPTY_QUERY_SNAPSHOT, RECEIVED_AT);
 
     expect(stats).toEqual({
       cpuPercent: null,
@@ -122,15 +128,30 @@ describe('liveStatsFromAgentPayload', () => {
       playersMax: 20,
       networkRxBytes: null,
       networkTxBytes: null,
-      updatedAt: '2026-08-31T11:59:58.000Z',
+      updatedAt: RECEIVED_AT,
     });
   });
 
-  it('nimmt den Ereignis-Zeitstempel, wenn die Nutzlast keinen trägt', () => {
+  it('stempelt mit der Empfangszeit, nicht mit den Zeitstempeln des Agents (W2-14)', () => {
+    /*
+     * `sampledAt` und `at` stammen aus derselben Agent-Uhr wie `emittedAt`.
+     * Bis W2-14 gewann der Wert aus der Nutzlast – eine vorgehende Uhr des
+     * Homeservers meldete damit Messungen aus der Zukunft, eine nachgehende
+     * ließ frische Werte alt aussehen (orchestration-features-03).
+     */
+    expect(
+      liveStatsFromAgentPayload(RUNTIME_STATS, EMPTY_QUERY_SNAPSHOT, RECEIVED_AT).updatedAt,
+    ).toBe(RECEIVED_AT);
+    expect(
+      liveStatsFromAgentPayload(QUERY_PAYLOAD, EMPTY_QUERY_SNAPSHOT, RECEIVED_AT).updatedAt,
+    ).toBe(RECEIVED_AT);
+  });
+
+  it('trägt die Empfangszeit auch, wenn die Nutzlast keinen Zeitstempel hat', () => {
     const { sampledAt: _sampledAt, at: _at, ...ohneZeit } = RUNTIME_STATS;
 
-    expect(liveStatsFromAgentPayload(ohneZeit, EMPTY_QUERY_SNAPSHOT, EMITTED_AT).updatedAt).toBe(
-      EMITTED_AT,
+    expect(liveStatsFromAgentPayload(ohneZeit, EMPTY_QUERY_SNAPSHOT, RECEIVED_AT).updatedAt).toBe(
+      RECEIVED_AT,
     );
   });
 
@@ -138,12 +159,12 @@ describe('liveStatsFromAgentPayload', () => {
     const stats = liveStatsFromAgentPayload(
       { cpuPercent: 'viel', memoryUsedBytes: null },
       EMPTY_QUERY_SNAPSHOT,
-      EMITTED_AT,
+      RECEIVED_AT,
     );
 
     expect(stats.cpuPercent).toBeNull();
     expect(stats.ramUsedMb).toBeNull();
-    expect(stats.updatedAt).toBe(EMITTED_AT);
+    expect(stats.updatedAt).toBe(RECEIVED_AT);
   });
 });
 
@@ -152,7 +173,7 @@ describe('Spielerliste (Gefundener Punkt 51)', () => {
     const stats = liveStatsFromAgentPayload(
       { ...QUERY_PAYLOAD, players: [{ name: 'Ana' }, { name: 'Bo' }] },
       EMPTY_QUERY_SNAPSHOT,
-      EMITTED_AT,
+      RECEIVED_AT,
     );
 
     expect(stats.players).toEqual([{ name: 'Ana' }, { name: 'Bo' }]);
@@ -162,7 +183,7 @@ describe('Spielerliste (Gefundener Punkt 51)', () => {
     const stats = liveStatsFromAgentPayload(
       RUNTIME_STATS,
       { playersOnline: 2, playersMax: 20, pingMs: 15, players: [{ name: 'Ana' }] },
-      EMITTED_AT,
+      RECEIVED_AT,
     );
 
     // Die Engine kennt keine Spieler; die Namen stammen aus der letzten Abfrage.
@@ -173,7 +194,7 @@ describe('Spielerliste (Gefundener Punkt 51)', () => {
     // Fehlend heißt „keine Angabe" – eine leere Liste würde als „niemand da"
     // gelesen, und das wäre eine Behauptung, die die Abfrage nicht deckt.
     expect(
-      liveStatsFromAgentPayload(QUERY_PAYLOAD, EMPTY_QUERY_SNAPSHOT, EMITTED_AT).players,
+      liveStatsFromAgentPayload(QUERY_PAYLOAD, EMPTY_QUERY_SNAPSHOT, RECEIVED_AT).players,
     ).toBeUndefined();
   });
 
@@ -181,7 +202,7 @@ describe('Spielerliste (Gefundener Punkt 51)', () => {
     const stats = liveStatsFromAgentPayload(
       { ...QUERY_PAYLOAD, players: [{ name: 'Ana' }, {}, { name: '   ' }, 'Bo'] },
       EMPTY_QUERY_SNAPSHOT,
-      EMITTED_AT,
+      RECEIVED_AT,
     );
 
     expect(stats.players).toEqual([{ name: 'Ana' }]);

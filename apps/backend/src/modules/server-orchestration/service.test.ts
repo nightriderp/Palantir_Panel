@@ -489,6 +489,13 @@ interface Harness {
   readonly logged: LoggedLine[];
   /** Stellt die Uhr des Dienstes vor – ohne echte Wartezeit. */
   advance(ms: number): void;
+  /**
+   * Aktueller Stand der virtuellen Uhr (Audit W2-14).
+   *
+   * Wer gegen die Backend-Zeit prüft, braucht sie: `NOW` gilt nur bis zum
+   * ersten `sleep()` des Health-Checks.
+   */
+  now(): Date;
 }
 
 function makeHarness(
@@ -671,6 +678,7 @@ function makeHarness(
     advance: (ms: number): void => {
       clock += ms;
     },
+    now: (): Date => new Date(clock),
   };
 }
 
@@ -2226,20 +2234,24 @@ describe('Soll/Ist-Abgleich (Pflichtenheft §2.2)', () => {
 });
 
 describe('Ereignisse des Agents', () => {
-  it('zieht bei verbundenen Spielern den Aktivitätszeitpunkt nach', async () => {
+  it('zieht bei verbundenen Spielern den Aktivitätszeitpunkt nach – mit der Backend-Uhr (W2-14)', async () => {
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
-    const at = new Date(NOW.getTime() + 120_000).toISOString();
+    // Der Agent meldet zwei Minuten zu früh. Bis W2-14 landete genau dieser
+    // Wert als `lastActivityAt` in der Datenbank – die Inaktivitätsfrist des
+    // Auto-Shutdown hing damit an einer fremden Uhr.
+    const agentZeit = new Date(harness.now().getTime() + 120_000).toISOString();
+    const backendZeit = harness.now().toISOString();
 
     await harness.service.handleAgentEvent(HOST.id, {
       kind: 'event',
       event: 'STATS_UPDATE',
       serverId: created.id,
       payload: { source: 'serverQuery', playersOnline: 2 },
-      emittedAt: at,
+      emittedAt: agentZeit,
     });
 
-    expect((await harness.service.requireServer(created.id)).lastActivityAt).toBe(at);
+    expect((await harness.service.requireServer(created.id)).lastActivityAt).toBe(backendZeit);
   });
 
   it('zieht ohne Spieler nichts nach', async () => {
@@ -2298,6 +2310,7 @@ describe('Ereignisse des Agents', () => {
   it('bringt die Messwerte der Container-Runtime in die Form von ServerLiveStats', async () => {
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const backendZeit = harness.now().toISOString();
 
     await harness.service.handleAgentEvent(HOST.id, {
       kind: 'event',
@@ -2317,7 +2330,8 @@ describe('Ereignisse des Agents', () => {
     const gemeldet = harness.emitted.find((e) => e.event === 'server.statsUpdated');
 
     // Der Agent zählt Bytes, `ServerLiveStats` zählt MiB – bis hierher wurde die
-    // Nutzlast unverändert durchgereicht.
+    // Nutzlast unverändert durchgereicht. `updatedAt` trägt seit W2-14 die
+    // Empfangszeit des Backends und nicht mehr `sampledAt` aus der Agent-Uhr.
     expect(gemeldet?.payload).toEqual({
       serverId: created.id,
       stats: {
@@ -2329,7 +2343,7 @@ describe('Ereignisse des Agents', () => {
         playersMax: null,
         networkRxBytes: 10,
         networkTxBytes: 20,
-        updatedAt: '2026-08-26T12:00:02.000Z',
+        updatedAt: backendZeit,
       },
     });
   });
@@ -3186,6 +3200,136 @@ describe('Verlauf der Messwerte (Arbeitspaket P5)', () => {
     await harness.service.sampleServerStats(HOST.id);
 
     expect(ablage.proben[0]).toMatchObject({ playersOnline: 7, playersMax: 20, pingMs: 11 });
+  });
+
+  /*
+   * Clock-Skew Agent ↔ Backend (Audit W2-14, orchestration-features-03).
+   *
+   * Bis hierher entschied `emittedAt` – die Uhr des Homeservers – darüber, wie
+   * alt eine Abfrage ist. Ging sie mehr als fünf Minuten nach, fiel jede
+   * Spielerzahl aus dem Zwischenspeicher und stand dauerhaft als `null` im
+   * Verlauf; ging sie vor, sahen veraltete Werte ewig frisch aus. Der
+   * Zeitstempel kommt jetzt vom Backend.
+   */
+  describe('Uhr des Agents weicht ab (W2-14)', () => {
+    /** Frame einer Server-Abfrage mit frei wählbarer Agent-Zeit. */
+    async function meldeAbfrage(
+      harness: Harness,
+      serverId: string,
+      agentZeit: Date,
+      playersOnline: number,
+    ): Promise<void> {
+      await harness.service.handleAgentEvent(HOST.id, {
+        kind: 'event',
+        event: 'STATS_UPDATE',
+        serverId,
+        emittedAt: agentZeit.toISOString(),
+        payload: { source: 'serverQuery', playersOnline, playersMax: 20, pingMs: 11 },
+      } as never);
+    }
+
+    it('nimmt die Spielerzahl auch bei 90 s vorgehender Agent-Uhr in den Verlauf', async () => {
+      const ablage = fakeAblage();
+      const harness = makeHarness({ statsHistory: ablage });
+      const serverId = await laufenderServer(harness);
+      const backendZeit = harness.now();
+
+      await meldeAbfrage(harness, serverId, new Date(backendZeit.getTime() + 90_000), 7);
+      await harness.service.sampleServerStats(HOST.id);
+
+      expect(ablage.proben).toHaveLength(1);
+      expect(ablage.proben[0]).toMatchObject({
+        playersOnline: 7,
+        playersMax: 20,
+        pingMs: 11,
+        // Festgehalten wird mit der Backend-Uhr – nicht 90 s in der Zukunft.
+        recordedAt: backendZeit,
+      });
+
+      // Auch der Live-Kanal trägt die Empfangszeit.
+      const gemeldet = harness.emitted.find((e) => e.event === 'server.statsUpdated');
+
+      expect(gemeldet?.payload).toMatchObject({
+        stats: { updatedAt: backendZeit.toISOString() },
+      });
+    });
+
+    it('übernimmt eine nachgehende Agent-Uhr und hält die Reihenfolge im Verlauf monoton', async () => {
+      const ablage = fakeAblage();
+      const harness = makeHarness({ statsHistory: ablage });
+      const serverId = await laufenderServer(harness);
+      const start = harness.now();
+
+      await meldeAbfrage(harness, serverId, new Date(start.getTime() - 90_000), 3);
+      await harness.service.sampleServerStats(HOST.id);
+
+      harness.advance(60_000);
+      // Die Agent-Uhr springt zusätzlich zurück: Der zweite Frame trägt eine
+      // ältere Zeit als der erste. Der Verlauf darf davon nichts merken.
+      await meldeAbfrage(harness, serverId, new Date(start.getTime() - 120_000), 5);
+      await harness.service.sampleServerStats(HOST.id);
+
+      expect(ablage.proben.map((probe) => probe.playersOnline)).toEqual([3, 5]);
+      expect((ablage.proben[1] as StatsSample).recordedAt.getTime()).toBeGreaterThan(
+        (ablage.proben[0] as StatsSample).recordedAt.getTime(),
+      );
+
+      // Auch die Live-Meldungen laufen vorwärts, obwohl die Agent-Zeiten
+      // rückwärts liefen.
+      const zeiten = harness.emitted
+        .filter((e) => e.event === 'server.statsUpdated')
+        .map((e) => (e.payload as { stats: { updatedAt: string } }).stats.updatedAt);
+
+      expect(zeiten).toEqual([start.toISOString(), harness.now().toISOString()]);
+    });
+
+    it('führt den Messwert auch bei stundenweiter Abweichung und meldet sie gedrosselt', async () => {
+      const ablage = fakeAblage();
+      const harness = makeHarness({ statsHistory: ablage });
+      const serverId = await laufenderServer(harness);
+      const abweichungMs = 3 * 60 * 60 * 1000;
+
+      // Drei Frames dicht hintereinander – so kommen sie im Betrieb.
+      for (const spielerzahl of [4, 5, 6]) {
+        await meldeAbfrage(
+          harness,
+          serverId,
+          new Date(harness.now().getTime() + abweichungMs),
+          spielerzahl,
+        );
+      }
+
+      await harness.service.sampleServerStats(HOST.id);
+
+      // Der Messwert zählt trotzdem – verworfen wird nichts.
+      expect(ablage.proben[0]).toMatchObject({ playersOnline: 6, recordedAt: harness.now() });
+
+      const meldungen = harness.logged.filter((zeile) =>
+        zeile.message.startsWith('Uhr des Agents'),
+      );
+
+      expect(meldungen).toHaveLength(1);
+      expect(meldungen[0]?.details).toMatchObject({ serverId, skewMs: abweichungMs });
+
+      // Nach Ablauf der Sperrfrist wieder – der Zustand hält ja an.
+      harness.advance(60 * 60 * 1000);
+      await meldeAbfrage(harness, serverId, new Date(harness.now().getTime() + abweichungMs), 6);
+
+      expect(
+        harness.logged.filter((zeile) => zeile.message.startsWith('Uhr des Agents')),
+      ).toHaveLength(2);
+    });
+
+    it('protokolliert eine Abweichung innerhalb des Toleranzfensters nicht', async () => {
+      const harness = makeHarness({ statsHistory: fakeAblage() });
+      const serverId = await laufenderServer(harness);
+
+      await meldeAbfrage(harness, serverId, new Date(harness.now().getTime() + 30_000), 2);
+
+      expect(harness.logged.filter((zeile) => zeile.message.startsWith('Uhr des Agents'))).toEqual(
+        [],
+      );
+    });
   });
 
   it('liefert den Verlauf im Fenster und kappt es an der Aufbewahrungsfrist', async () => {

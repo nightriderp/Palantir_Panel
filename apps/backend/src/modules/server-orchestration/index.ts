@@ -506,6 +506,10 @@ export {
 } from './world-import.js';
 
 export {
+  CLOCK_SKEW_LOG_INTERVAL_MS,
+  CLOCK_SKEW_TOLERANCE_MS,
+  type ClockSkewCheck,
+  ClockSkewMonitor,
   LatestQueryCache,
   type ServerStatsRepository,
   type StatsSample,

@@ -47,6 +47,7 @@ import { type CloneJobProgress, type CloneJobStore, createCloneJobStore } from '
 import { fireAndForget } from '../../lib/fire-and-forget.js';
 import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 import {
+  ClockSkewMonitor,
   LatestQueryCache,
   type ServerStatsRepository,
   type StatsSample,
@@ -254,6 +255,16 @@ export class ServerOrchestrationService {
    * `stats-history.ts`).
    */
   private readonly latestQuery = new LatestQueryCache(5 * 60 * 1000);
+  /**
+   * Abgleich der Agent-Uhr gegen die eigene (W2-14,
+   * orchestration-features-03).
+   *
+   * Entscheidet nichts über den Messwert – der trägt immer die Backend-Zeit –,
+   * sondern nur darüber, wann eine auffällige Abweichung ins Protokoll gehört.
+   * Die Drosselung sitzt im Monitor, weil `STATS_UPDATE` je Server im
+   * Sekundentakt eintrifft.
+   */
+  private readonly clockSkew = new ClockSkewMonitor();
   /**
    * Laufende und kürzlich beendete Klon-Aufträge (P7).
    *
@@ -2082,6 +2093,35 @@ export class ServerOrchestrationService {
 
   private async handleStatsUpdate(server: ServerRecord, frame: AgentEventFrame): Promise<void> {
     /*
+     * **Maßgeblich ist die Backend-Uhr** (W2-14, orchestration-features-03).
+     * Bis hierher entschied `frame.emittedAt` – also die Uhr des Homeservers –
+     * darüber, wie alt ein Messwert ist. Ging sie mehr als fünf Minuten nach,
+     * galt jede Abfrage sofort als veraltet und `playersOnline/playersMax/
+     * pingMs` standen dauerhaft als `null` im Verlauf, obwohl der Agent
+     * laufend meldete; ging sie vor, sah ein alter Wert ewig frisch aus. Ein
+     * Zeitstempel, den das Backend selbst setzt, kann beides nicht.
+     *
+     * `emittedAt` geht deshalb nicht verloren, wechselt aber die Rolle: vom
+     * Maß zum Diagnosewert. Weicht es auffällig ab, steht das – gedrosselt –
+     * im Protokoll; verworfen wird nichts.
+     */
+    const empfangen = this.now();
+    const abgleich = this.clockSkew.check(server.id, frame.emittedAt, empfangen);
+
+    if (abgleich.shouldLog) {
+      this.deps.log.warn(
+        {
+          serverId: server.id,
+          hostId: server.hostId,
+          emittedAt: frame.emittedAt,
+          receivedAt: empfangen.toISOString(),
+          skewMs: abgleich.skewMs,
+        },
+        'Uhr des Agents weicht von der Backend-Uhr ab – Messwerte werden mit der Empfangszeit geführt',
+      );
+    }
+
+    /*
      * Unter dem Namen `STATS_UPDATE` fließen zwei verschiedene Nutzlasten: die
      * Messwerte der Container-Runtime und das Ergebnis der Server-Abfrage. Nur
      * Letztere kennt Spielerzahl und Antwortzeit – die Container-Engine liefert
@@ -2093,19 +2133,25 @@ export class ServerOrchestrationService {
       this.latestQuery.remember(
         server.id,
         querySnapshotFromPayload(frame.payload),
-        new Date(frame.emittedAt),
+        abgleich.recordedAt,
       );
     }
 
     const stats = liveStatsFromAgentPayload(
       frame.payload,
-      this.latestQuery.read(server.id, new Date(frame.emittedAt)),
-      frame.emittedAt,
+      this.latestQuery.read(server.id, abgleich.recordedAt),
+      abgleich.recordedAt.toISOString(),
     );
 
     if (stats.playersOnline !== null && stats.playersOnline > 0) {
+      /*
+       * Auch der Aktivitätsnachweis für den Auto-Shutdown hing an der
+       * Agent-Uhr: Eine vorgehende Uhr hätte den Server über die
+       * Inaktivitätsfrist hinaus am Leben gehalten, eine nachgehende ihn trotz
+       * verbundener Spieler abgeschaltet.
+       */
       await this.deps.repository.update(server.id, {
-        lastActivityAt: frame.emittedAt,
+        lastActivityAt: abgleich.recordedAt.toISOString(),
       });
     }
 
