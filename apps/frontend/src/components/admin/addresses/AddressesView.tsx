@@ -306,16 +306,27 @@ function RangeEditor({
 }) {
   const initial = editor.mode === 'edit' ? editor.range : null;
   const [label, setLabel] = useState(initial?.label ?? '');
-  const [startPort, setStartPort] = useState(initial?.startPort ?? MIN_PUBLIC_PORT);
-  const [endPort, setEndPort] = useState(initial?.endPort ?? MIN_PUBLIC_PORT);
+  /*
+   * Beide Port-Felder dürfen leer sein (`null`), während ein Wert ausgetauscht
+   * wird. Vorher stand nach dem Löschen `Number('') = 0` im Feld – ein Port
+   * unterhalb des erlaubten Bereichs, den erst das Backend zurückwies
+   * (Audit-Fundstelle frontend-lib-13). Solange eines der Felder leer ist,
+   * bleibt „Anlegen"/„Speichern" gesperrt.
+   */
+  const [startPort, setStartPort] = useState<number | null>(initial?.startPort ?? MIN_PUBLIC_PORT);
+  const [endPort, setEndPort] = useState<number | null>(initial?.endPort ?? MIN_PUBLIC_PORT);
   const [protocol, setProtocol] = useState<PortProtocol>(initial?.protocol ?? 'tcp');
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [error, setError] = useState<string | null>(null);
 
   const labelValid = label.trim().length >= 2 && label.trim().length <= 50;
-  const boundsValid = startPort <= endPort;
+  const portsFilled = startPort !== null && endPort !== null;
+  /** Nur bei zwei gefüllten Feldern eine Aussage – sonst fehlt schlicht ein Wert. */
+  const boundsValid = startPort !== null && endPort !== null && startPort <= endPort;
 
   async function submit() {
+    if (startPort === null || endPort === null) return;
+
     setBusy(true);
     setError(null);
     const result: ApiResult<PortRangeDto> =
@@ -367,7 +378,9 @@ function RangeEditor({
           min={MIN_PUBLIC_PORT}
           max={65535}
           error={
-            !boundsValid ? 'Der erste Port muss kleiner oder gleich dem letzten sein.' : undefined
+            portsFilled && !boundsValid
+              ? 'Der erste Port muss kleiner oder gleich dem letzten sein.'
+              : undefined
           }
         />
       </div>

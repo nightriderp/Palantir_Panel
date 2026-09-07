@@ -13,6 +13,11 @@ export interface DangerConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: () => void;
+  /**
+   * Läuft die Aktion noch, sind beide Schaltflächen gesperrt – und der Dialog
+   * schließt weder über Escape noch über den Hintergrund
+   * (Audit-Fundstelle frontend-lib-08).
+   */
   busy?: boolean;
   /**
    * Muss der Nutzer einen Text abtippen, um freizuschalten? Angegeben wird der
@@ -66,6 +71,7 @@ export function DangerConfirmDialog({
       onClose={onClose}
       title={title}
       tone="danger"
+      busy={busy}
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>

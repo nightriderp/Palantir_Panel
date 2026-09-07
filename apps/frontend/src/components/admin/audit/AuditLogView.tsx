@@ -35,14 +35,40 @@ import { auditActionCode, auditActionLabel, auditTargetTypeLabel, isAuditFailure
 
 const PAGE_SIZE = 50;
 
-/** Beginn eines Tages als ISO-Zeitstempel (Filter „ab"). */
-function startOfDayIso(date: string): string {
-  return `${date}T00:00:00.000Z`;
+/**
+ * Tagesgrenze eines `JJJJ-MM-TT`-Datums als ISO-Zeitstempel – gebildet in der
+ * Zeitzone des Browsers (Audit-Fundstelle frontend-lib-07).
+ *
+ * Vorher wurde schlicht `Z` angehängt, die Grenze lag also in UTC: Ein Admin in
+ * Berlin (CEST), der auf „Ab 01.09. Bis 01.09." filterte, bekam die Einträge
+ * zwischen 00:00 und 02:00 Uhr des 1.9. nicht zu sehen, dafür die des 2.9. bis
+ * 02:00 Uhr. Gemeint ist der Kalendertag, den der Admin vor sich sieht – also
+ * wird die Grenze lokal gebildet und erst danach nach UTC umgerechnet.
+ */
+function dayBoundaryIso(
+  date: string,
+  hours: number,
+  minutes: number,
+  seconds: number,
+  milliseconds: number,
+): string {
+  const [year, month, day] = date.split('-').map(Number);
+  if (year === undefined || month === undefined || day === undefined) return date;
+
+  const local = new Date(year, month - 1, day, hours, minutes, seconds, milliseconds);
+  if (Number.isNaN(local.getTime())) return date;
+
+  return local.toISOString();
 }
 
-/** Ende eines Tages als ISO-Zeitstempel (Filter „bis", einschließlich). */
-function endOfDayIso(date: string): string {
-  return `${date}T23:59:59.999Z`;
+/** Beginn eines Tages als ISO-Zeitstempel (Filter „ab"), lokale Zeitzone. */
+export function startOfDayIso(date: string): string {
+  return dayBoundaryIso(date, 0, 0, 0, 0);
+}
+
+/** Ende eines Tages als ISO-Zeitstempel (Filter „bis", einschließlich), lokal. */
+export function endOfDayIso(date: string): string {
+  return dayBoundaryIso(date, 23, 59, 59, 999);
 }
 
 /** Metadaten kompakt als eine Zeile – rohe Angabe, ohne Interpretation. */

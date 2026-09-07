@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useId, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 
 import { cn } from '../utils/cn';
 
@@ -197,14 +197,39 @@ export function TextField({
 }
 
 export interface NumberFieldProps extends FieldProps {
-  value: number;
-  onChange: (value: number) => void;
+  /** Aktueller Wert; `null` zeigt ein leeres Feld. */
+  value: number | null;
+  /**
+   * Meldet die eingegebene Zahl – oder `null`, sobald das Feld leer ist. Nie
+   * `NaN`, nie eine geratene `0` (Audit-Fundstelle frontend-lib-13).
+   */
+  onChange: (value: number | null) => void;
   min?: number;
   max?: number;
   step?: number;
   disabled?: boolean;
 }
 
+/** Anzeigetext zu einem Wert – `null` ist das leere Feld. */
+function numberFieldText(value: number | null): string {
+  return value === null ? '' : String(value);
+}
+
+/**
+ * Zahlenfeld.
+ *
+ * Zwei Eigenheiten, beide aus Audit-Fundstelle frontend-lib-13:
+ *
+ * 1. **Leer ist `null`, nicht `0`.** `Number('')` ergibt `0`; wer im Wizard den
+ *    RAM-Wert löschte, um ihn neu zu tippen, verschickte damit `ramMb: 0` und
+ *    bekam erst vom Backend einen Fehler. Gemeldet wird jetzt `null` – der
+ *    Aufrufer entscheidet, ob das ein leeres Pflichtfeld oder ein bewusster
+ *    „kein Wert" ist.
+ * 2. **Der Rohtext bleibt stehen.** Das Feld hält seine Eingabe selbst und zieht
+ *    sie nur nach, wenn sich der Wert von außen ändert. Sonst schrieb der
+ *    zurückgereichte Wert sofort wieder eine `0` ins leere Feld, und die
+ *    nächste Ziffer machte daraus „016".
+ */
 export function NumberField({
   value,
   onChange,
@@ -215,19 +240,37 @@ export function NumberField({
   ...shell
 }: NumberFieldProps) {
   const { id, hintId, errorId, describedBy } = useFieldIds(shell.hint, shell.error);
+
+  const [text, setText] = useState(() => numberFieldText(value));
+  const [lastValue, setLastValue] = useState(value);
+
+  // Wert von außen gewechselt (geladener Datensatz, Regler daneben, Reset des
+  // Formulars)? Dann den Text nachziehen. Reicht der Aufrufer denselben Wert
+  // zurück, bleibt die Eingabe unangetastet – auch „1,50" oder das leere Feld.
+  if (value !== lastValue) {
+    setLastValue(value);
+    setText(numberFieldText(value));
+  }
+
+  function handleChange(raw: string): void {
+    setText(raw);
+    const parsed = raw.trim() === '' ? Number.NaN : Number(raw);
+    onChange(Number.isNaN(parsed) ? null : parsed);
+  }
+
   return (
     <FieldShell {...shell} htmlFor={id} hintId={hintId} errorId={errorId}>
       <input
         id={id}
         type="number"
-        value={value}
+        value={text}
         min={min}
         max={max}
         step={step}
         disabled={disabled}
         aria-invalid={shell.error ? true : undefined}
         aria-describedby={describedBy}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onChange={(event) => handleChange(event.target.value)}
         className={controlClasses(shell.error)}
       />
     </FieldShell>

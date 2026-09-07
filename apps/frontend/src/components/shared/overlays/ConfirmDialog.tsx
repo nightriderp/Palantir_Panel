@@ -14,7 +14,11 @@ export interface ConfirmDialogProps {
   confirmLabel: string;
   cancelLabel?: string;
   onConfirm: () => void;
-  /** Läuft die Aktion noch, sind beide Schaltflächen gesperrt. */
+  /**
+   * Läuft die Aktion noch, sind beide Schaltflächen gesperrt – und der Dialog
+   * schließt weder über Escape noch über den Hintergrund
+   * (Audit-Fundstelle frontend-lib-08).
+   */
   busy?: boolean;
 }
 
@@ -39,6 +43,7 @@ export function ConfirmDialog({
       open={open}
       onClose={onClose}
       title={title}
+      busy={busy}
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>

@@ -30,9 +30,16 @@ export function AddNodeWizard({
 
   const [name, setName] = useState('');
   const [wireguardIp, setWireguardIp] = useState('');
-  const [ramGb, setRamGb] = useState(8);
-  const [cpuCores, setCpuCores] = useState(4);
-  const [diskGb, setDiskGb] = useState(100);
+  /*
+   * Die drei Ressourcen-Felder dürfen leer sein (`null`), während der Admin
+   * einen Wert austauscht. Vorher meldete ein geleertes Feld `Number('') = 0`;
+   * wer nur löschte und weiterklickte, legte eine Node mit 0 MB RAM an
+   * (Audit-Fundstelle frontend-lib-13). „Node anlegen" bleibt gesperrt, solange
+   * ein Feld leer ist.
+   */
+  const [ramGb, setRamGb] = useState<number | null>(8);
+  const [cpuCores, setCpuCores] = useState<number | null>(4);
+  const [diskGb, setDiskGb] = useState<number | null>(100);
 
   function reset() {
     setCreated(null);
@@ -49,7 +56,12 @@ export function AddNodeWizard({
     onClose();
   }
 
+  /** Alle Ressourcen-Felder gefüllt? Sonst gäbe es nichts zu senden. */
+  const resourcesComplete = ramGb !== null && cpuCores !== null && diskGb !== null;
+
   async function onSubmit() {
+    if (ramGb === null || cpuCores === null || diskGb === null) return;
+
     setBusy(true);
     const result = await createNode({
       name: name.trim(),
@@ -112,7 +124,7 @@ export function AddNodeWizard({
           <Button variant="secondary" onClick={close} disabled={busy}>
             Abbrechen
           </Button>
-          <Button variant="primary" onClick={onSubmit} disabled={busy}>
+          <Button variant="primary" onClick={onSubmit} disabled={busy || !resourcesComplete}>
             Node anlegen
           </Button>
         </div>

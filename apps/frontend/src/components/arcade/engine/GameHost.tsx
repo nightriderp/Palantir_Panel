@@ -33,6 +33,20 @@ export function GameHost({ game, onGameOver }: GameHostProps) {
   const phaseRef = useRef<GamePhase>('ready');
   const scoreRef = useRef<number>(0);
 
+  /*
+   * `onGameOver` bewusst nur in einer Ref, nicht in den Abhängigkeiten.
+   *
+   * Die Ansicht baut den Rückruf bei jedem Rendern neu (er hängt am Ergebnis
+   * von `useApiResource`). Stand er in den Deps, erzeugte jedes Rendern eine
+   * neue `loop` → neues `startLoop` → neues `reset` → und der Effekt weiter
+   * unten startete das Spiel neu: Der „Vorbei"-Bildschirm verschwand nach einem
+   * Frame, und eine laufende Partie brach ab, sobald die Bestenliste nachlud
+   * (Audit-Fundstelle frontend-lib-03). Aufgerufen wird immer die zuletzt
+   * übergebene Fassung.
+   */
+  const onGameOverRef = useRef(onGameOver);
+  onGameOverRef.current = onGameOver;
+
   const [phase, setPhase] = useState<GamePhase>('ready');
   const [paused, setPaused] = useState<boolean>(false);
   const [score, setScore] = useState<number>(0);
@@ -75,7 +89,7 @@ export function GameHost({ game, onGameOver }: GameHostProps) {
         phaseRef.current = nextPhase;
         setPhase(nextPhase);
         if (nextPhase === 'over') {
-          onGameOver(nextScore);
+          onGameOverRef.current(nextScore);
         }
       }
 
@@ -85,7 +99,7 @@ export function GameHost({ game, onGameOver }: GameHostProps) {
       }
       rafRef.current = requestAnimationFrame(loop);
     },
-    [draw, game, onGameOver, stopLoop],
+    [draw, game, stopLoop],
   );
 
   const startLoop = useCallback(() => {
@@ -105,7 +119,9 @@ export function GameHost({ game, onGameOver }: GameHostProps) {
     startLoop();
   }, [game, startLoop]);
 
-  // Neues Spiel bei Wechsel des Spiels; Schleife beim Verlassen anhalten.
+  // Neues Spiel nur bei Wechsel des Spiels; Schleife beim Verlassen anhalten.
+  // `reset` und `stopLoop` hängen (seit `onGameOver` in der Ref steckt) allein
+  // an `game` – ein Rendern der Ansicht setzt die Partie also nicht mehr zurück.
   useEffect(() => {
     reset();
     return () => stopLoop();
