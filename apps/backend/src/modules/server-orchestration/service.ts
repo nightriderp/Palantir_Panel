@@ -1170,6 +1170,20 @@ export class ServerOrchestrationService {
 
     await this.deps.repository.delete(serverId);
 
+    /*
+     * Flüchtigen Zustand des Servers abräumen (Audit orchestration-features-13,
+     * Fundpunkt 137). Beide Speicher liegen nur im Prozess und hingen bisher
+     * bis zum Neustart am gelöschten Server: die zuletzt gemeldete Abfrage
+     * (Spielerzahl, Ping) und der Zeitpunkt der letzten Uhren-Meldung. Kleines,
+     * aber unbegrenztes Wachstum – und ein wiederverwendeter Datensatz gäbe es
+     * nicht, weil Ids nicht wiederkehren.
+     *
+     * Nach dem Löschen des Datensatzes, nicht davor: Bricht das Löschen ab,
+     * bleibt der Server bestehen und behält seine Werte.
+     */
+    this.latestQuery.forget(serverId);
+    this.clockSkew.forget(serverId);
+
     this.deps.events.emit('server.deleted', geloescht);
   }
 

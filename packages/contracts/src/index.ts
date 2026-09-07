@@ -86,6 +86,7 @@ export {
   AGENT_COMMANDS,
   AGENT_CONTAINER_STATUSES,
   AGENT_EVENTS,
+  AGENT_FILE_CHANNEL_MAX_BYTES,
   AGENT_PROTOCOL_VERSION,
   type AgentCommandName,
   type AgentCommandResultFrame,

@@ -431,7 +431,6 @@ export {
 
 export {
   type SubdomainAvailabilityCheck,
-  type SubdomainCheckResult,
   checkSubdomain,
   normalizeSubdomain,
   resolveAvailableSubdomain,

@@ -16,8 +16,10 @@
  */
 
 import { gzipSync } from 'node:zlib';
+import { AGENT_FILE_CHANNEL_MAX_BYTES } from '@palantir/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_MAX_FILE_BYTES,
   DockerContainerRuntime,
   ENGINE_RECONNECT_INITIAL_MS,
   ENGINE_RECONNECT_MAX_MS,
@@ -483,6 +485,19 @@ describe('EXEC_CONSOLE', () => {
   it('lehnt einen leeren Befehl ab, ohne die Engine zu behelligen', async () => {
     await expect(runtime.execConsole('c-1', [])).rejects.toBeInstanceOf(Error);
     expect(aufrufe).toEqual([]);
+  });
+});
+
+describe('Kanal-Grenze (Audit contracts-validation-12)', () => {
+  it('nimmt die Datei-Grenze aus dem Vertrag', () => {
+    /*
+     * Backend und Agent muessen dieselbe Zahl kennen: Das Backend puffert nichts
+     * Groesseres, der Agent lehnt Groesseres mit AGENT_FILE_TOO_LARGE ab. Vorher
+     * stand die 64 MiB auf beiden Seiten als eigenes Literal, verbunden nur
+     * durch einen Kommentar. Das Gegenstueck steht in
+     * `apps/backend/.../files.test.ts`.
+     */
+    expect(DEFAULT_MAX_FILE_BYTES).toBe(AGENT_FILE_CHANNEL_MAX_BYTES);
   });
 });
 

@@ -7,7 +7,12 @@ import {
   type NotificationSeverity,
   type NotificationSubject,
 } from '@palantir/contracts';
-import { type IconName, type Tone } from '@/components/shared';
+import {
+  NOTIFIABLE_EVENT_LABELS,
+  NOTIFICATION_SEVERITY_LABELS,
+  NOTIFICATION_SEVERITY_TONES,
+  type IconName,
+} from '@/components/shared';
 
 /**
  * Reine Logik der Benachrichtigungs-Ansicht (Arbeitspaket F6).
@@ -22,41 +27,17 @@ import { type IconName, type Tone } from '@/components/shared';
 // Beschriftungen
 // ---------------------------------------------------------------------------
 
-/**
- * Deutscher Name je Ereignis (Lastenheft §4).
- *
- * `Record` über `NotifiableEventName` statt einer lockeren Zuordnung: Kommt ein
- * Ereignis zu `NOTIFIABLE_EVENTS` dazu, scheitert die Übersetzung, statt in der
- * Filterliste still als roher Ereignisname aufzutauchen.
+/*
+ * Die Beschriftungen stehen seit Audit frontend-lib-14 im Design-System: Die
+ * Verwaltung (F10) beschriftet dieselben Ereignisse im Regel-Editor, und beide
+ * Tabellen waren auseinandergelaufen. Hier werden sie nur unter den bisherigen
+ * Namen weitergereicht, damit die Ansichten dieses Pakets unverändert
+ * importieren.
  */
-export const NOTIFICATION_EVENT_LABELS: Record<NotifiableEventName, string> = {
-  'server.created': 'Server erstellt',
-  'server.started': 'Server gestartet',
-  'server.stopped': 'Server gestoppt',
-  'server.restarted': 'Server neu gestartet',
-  'server.crashed': 'Server abgestürzt',
-  'server.failed': 'Server im Fehlerzustand',
-  'server.cloned': 'Server geklont',
-  'server.deleted': 'Server gelöscht',
-  'autoShutdown.triggered': 'Automatisch abgeschaltet',
-  'backup.failed': 'Backup fehlgeschlagen',
-  'resource.low': 'Ressourcen werden knapp',
-  'user.registered': 'Neue Registrierung',
-  'message.reported': 'Nachricht gemeldet',
-  'announcement.published': 'Ankündigung',
-};
-
-export const NOTIFICATION_SEVERITY_LABELS: Record<NotificationSeverity, string> = {
-  info: 'Information',
-  warning: 'Warnung',
-  error: 'Fehler',
-};
-
-/** Farbliche Einordnung über die `Tone`-Skala aus F2. */
-export const NOTIFICATION_SEVERITY_TONES: Record<NotificationSeverity, Tone> = {
-  info: 'neutral',
-  warning: 'warning',
-  error: 'danger',
+export {
+  NOTIFIABLE_EVENT_LABELS as NOTIFICATION_EVENT_LABELS,
+  NOTIFICATION_SEVERITY_LABELS,
+  NOTIFICATION_SEVERITY_TONES,
 };
 
 // ---------------------------------------------------------------------------
@@ -247,7 +228,7 @@ export function matchesInboxFilter(notification: NotificationDto, filter: InboxF
 /** Auswahl für das Ereignis-Feld der Filterleiste, alphabetisch nach Beschriftung. */
 export function eventFilterOptions(): ReadonlyArray<{ value: string; label: string }> {
   return [...NOTIFIABLE_EVENTS]
-    .map((event) => ({ value: event, label: NOTIFICATION_EVENT_LABELS[event] }))
+    .map((event) => ({ value: event, label: NOTIFIABLE_EVENT_LABELS[event] }))
     .sort((left, right) => left.label.localeCompare(right.label, 'de'));
 }
 

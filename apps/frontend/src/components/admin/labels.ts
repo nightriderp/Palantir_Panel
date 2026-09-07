@@ -1,5 +1,4 @@
 import { type RegistrationRequestQuota, type ResourceQuotaSlot } from '@palantir/contracts';
-import { formatMegabytes } from '@/components/shared';
 import {
   type AuditAction,
   type AuditTargetType,
@@ -17,7 +16,15 @@ import {
   type StorageDeleteBlockReason,
   type StorageEntryKind,
 } from '@palantir/contracts';
-import { type Tone } from '@/components/shared';
+import {
+  BACKUP_STATUS_META,
+  BACKUP_TYPE_LABELS,
+  NOTIFIABLE_EVENT_LABELS,
+  NOTIFICATION_SEVERITY_LABELS,
+  NOTIFICATION_SEVERITY_TONES,
+  formatMegabytes,
+  type Tone,
+} from '@/components/shared';
 
 /**
  * Deutsche Beschriftungen der Aufzählungswerte aus den Contracts (Lastenheft §4).
@@ -163,39 +170,23 @@ export function storageBlockReasonLabel(reason: StorageDeleteBlockReason): strin
 // Benachrichtigungen
 // ---------------------------------------------------------------------------
 
-const NOTIFIABLE_EVENT_LABELS: Record<NotifiableEventName, string> = {
-  'server.created': 'Server erstellt',
-  'server.started': 'Server gestartet',
-  'server.stopped': 'Server gestoppt',
-  'server.restarted': 'Server neu gestartet',
-  'server.crashed': 'Server abgestürzt',
-  'server.failed': 'Serverstart fehlgeschlagen',
-  'server.cloned': 'Server geklont',
-  'server.deleted': 'Server gelöscht',
-  'autoShutdown.triggered': 'Automatische Abschaltung',
-  'backup.failed': 'Backup fehlgeschlagen',
-  'resource.low': 'Ressourcen werden knapp',
-  'user.registered': 'Neue Registrierung',
-  'message.reported': 'Nachricht gemeldet',
-  'announcement.published': 'Ankündigung veröffentlicht',
-};
-
+/*
+ * Ereignisnamen und Dringlichkeit kommen aus dem Design-System (Audit
+ * frontend-lib-14): Dieselben Werte beschriftet die Inbox (F6), und die beiden
+ * Tabellen waren auseinandergelaufen - der Regel-Editor nannte `server.failed`
+ * „Serverstart fehlgeschlagen“, die Inbox „Server im Fehlerzustand“. Die
+ * Kurzformen bleiben hier, damit die Admin-Ansichten unverändert aufrufen.
+ */
 export function notifiableEventLabel(event: NotifiableEventName): string {
   return NOTIFIABLE_EVENT_LABELS[event];
 }
 
-const SEVERITY_LABELS: Record<NotificationSeverity, string> = {
-  info: 'Info',
-  warning: 'Warnung',
-  error: 'Fehler',
-};
-
 export function severityLabel(severity: NotificationSeverity): string {
-  return SEVERITY_LABELS[severity];
+  return NOTIFICATION_SEVERITY_LABELS[severity];
 }
 
 export function severityTone(severity: NotificationSeverity): Tone {
-  return severity === 'error' ? 'danger' : severity === 'warning' ? 'warning' : 'brand';
+  return NOTIFICATION_SEVERITY_TONES[severity];
 }
 
 const RECIPIENT_SCOPE_LABELS: Record<NotificationRecipientScope, string> = {
@@ -227,34 +218,22 @@ export function deliveryStatusTone(status: NotificationDeliveryStatus): Tone {
 // Backups
 // ---------------------------------------------------------------------------
 
-const BACKUP_TYPE_LABELS: Record<BackupType, string> = {
-  manual: 'Manuell',
-  automatic: 'Automatisch',
-};
-
+/*
+ * Backup-Typ und -Stand ebenfalls aus dem Design-System (Audit
+ * frontend-lib-14). Der Stand stand zuvor an vier Stellen mit zwei
+ * Wortlauten - „Abgeschlossen“ hier, „Fertig“ in „Meine Backups“, im
+ * Backup-Reiter und im Export-Block.
+ */
 export function backupTypeLabel(type: BackupType): string {
   return BACKUP_TYPE_LABELS[type];
 }
 
-const BACKUP_STATUS_LABELS: Record<BackupStatus, string> = {
-  pending: 'Ausstehend',
-  running: 'Läuft',
-  completed: 'Abgeschlossen',
-  failed: 'Fehlgeschlagen',
-};
-
 export function backupStatusLabel(status: BackupStatus): string {
-  return BACKUP_STATUS_LABELS[status];
+  return BACKUP_STATUS_META[status].label;
 }
 
 export function backupStatusTone(status: BackupStatus): Tone {
-  return status === 'completed'
-    ? 'success'
-    : status === 'failed'
-      ? 'danger'
-      : status === 'running'
-        ? 'brand'
-        : 'warning';
+  return BACKUP_STATUS_META[status].tone;
 }
 
 // ---------------------------------------------------------------------------

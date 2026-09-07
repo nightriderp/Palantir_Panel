@@ -14,6 +14,13 @@
  *     `duplicate: true`), denn der Retry entsteht meist gerade deshalb, weil das
  *     erste Ergebnis das Backend nicht erreicht hat.
  *
+ * Einen dritten Fall „abgebrochen" gibt es bewusst nicht (Audit agent-conn-06):
+ * `executeCommand` fängt jede Ausnahme ab und legt auch den Fehlschlag über
+ * `complete()` ab. Eine Markierung „läuft gerade" wird damit immer aufgelöst,
+ * und dieselbe correlationId bleibt dieselbe logische Anfrage – ein frischer
+ * Versuch bekommt eine neue Id. Ein `abandon()` hatte deshalb nie einen
+ * Aufrufer und ist entfernt.
+ *
  * **Grenze:** Der Speicher lebt nur im Prozess. Nach einem Neustart des Agents
  * ist er leer. Das ist bewusst so: Der Agent meldet nach jeder Verbindung
  * seinen vollständigen Ist-Zustand, und der Soll/Ist-Abgleich im Backend (B3)
@@ -121,17 +128,6 @@ export class CorrelationStore {
     this.completed.set(entry.correlationId, { entry, storedAt: this.now() });
     this.prune();
     this.evictOverflow();
-  }
-
-  /**
-   * Hebt die Ausführungsmarkierung auf, ohne ein Ergebnis abzulegen.
-   *
-   * Nötig, wenn die Ausführung unerwartet abbricht (z. B. Prozessfehler in der
-   * Runtime): Der Befehl darf dann erneut versucht werden, statt für immer als
-   * „läuft gerade" zu gelten.
-   */
-  abandon(correlationId: CorrelationId): void {
-    this.inFlight.delete(correlationId);
   }
 
   /** Entfernt abgelaufene Einträge. */

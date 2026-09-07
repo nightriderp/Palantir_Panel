@@ -140,12 +140,6 @@ describe('Unzulässige Übergänge', () => {
     ).toThrow(ServerOrchestrationError);
   });
 
-  it('lehnt das Quittieren eines laufenden Servers ab', () => {
-    expect(() => apply(stateWith({ status: 'running' }), { type: 'acknowledged' })).toThrow(
-      ServerOrchestrationError,
-    );
-  });
-
   it('kennt keinen Weg zurück nach creating', () => {
     for (const status of SERVER_STATUSES) {
       expect(() => {
@@ -191,7 +185,6 @@ const ZIEL_JE_EREIGNIS = {
   crashed: 'crashed',
   observedStopped: 'stopped',
   failed: 'error',
-  acknowledged: 'stopped',
 } as const satisfies Record<ServerLifecycleEvent['type'], ServerStatus>;
 
 /** Begleittext je Ereignis – `null`, wenn es nichts zu erläutern gibt. */
@@ -208,7 +201,6 @@ const MELDUNG_JE_EREIGNIS: Record<ServerLifecycleEvent['type'], string | null> =
   crashed: `${GRUND} (Exit-Code ${String(EXIT_CODE)})`,
   observedStopped: GRUND,
   failed: GRUND,
-  acknowledged: null,
 };
 
 const ALLE_EREIGNISSE: readonly ServerLifecycleEvent[] = [
@@ -224,7 +216,6 @@ const ALLE_EREIGNISSE: readonly ServerLifecycleEvent[] = [
   { type: 'crashed', reason: GRUND, exitCode: EXIT_CODE },
   { type: 'observedStopped', reason: GRUND },
   { type: 'failed', reason: GRUND },
-  { type: 'acknowledged' },
 ];
 
 /** Ein früherer erfolgreicher Start – nur `healthCheckPassed` darf ihn ersetzen. */
@@ -291,9 +282,6 @@ describe('Übergangstabelle erschöpfend (Audit test-gaps-03)', () => {
         if (ereignis.type === 'healthCheckPassed') {
           // Erst der bestandene Health-Check zählt als erfolgreicher Start.
           expect(ergebnis.state.lastStartedAt).toBe(T0.toISOString());
-          expect(ergebnis.state.crashTimestamps).toEqual([]);
-        } else if (ereignis.type === 'acknowledged') {
-          expect(ergebnis.state.lastStartedAt).toBe(FRUEHER_START);
           expect(ergebnis.state.crashTimestamps).toEqual([]);
         } else if (ereignis.type === 'crashed') {
           expect(ergebnis.state.lastStartedAt).toBe(FRUEHER_START);
@@ -488,10 +476,20 @@ describe('Auto-Shutdown-Schonfrist (Pflichtenheft §9)', () => {
     expect(apply(state, { type: 'healthCheckPassed' }).state.crashTimestamps).toEqual([]);
   });
 
-  it('räumt die Absturzhistorie beim Quittieren ab', () => {
+  it('kennt keinen Weg aus error heraus außer einem erneuten Start', () => {
+    /*
+     * Audit orchestration-core-13: Das Ereignis `acknowledged` (Quittieren,
+     * setzte auf `stopped` und leerte die Absturzhistorie) hatte keinen
+     * Aufrufer und ist entfernt. Dieser Test hält den Zustand danach fest –
+     * aus `error` führt nur `startRequested`, und die Historie räumt erst der
+     * bestandene Health-Check ab.
+     */
     const state = stateWith({ status: 'error', crashTimestamps: [T0.toISOString()] });
+    const gestartet = apply(state, { type: 'startRequested' });
 
-    expect(apply(state, { type: 'acknowledged' }).state.crashTimestamps).toEqual([]);
+    expect(gestartet.state.status).toBe('starting');
+    expect(gestartet.state.crashTimestamps).toEqual([T0.toISOString()]);
+    expect(apply(gestartet.state, { type: 'healthCheckPassed' }).state.crashTimestamps).toEqual([]);
   });
 });
 

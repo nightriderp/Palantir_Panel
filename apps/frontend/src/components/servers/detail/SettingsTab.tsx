@@ -17,6 +17,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import {
+  BACKUP_STATUS_META,
   Badge,
   Button,
   DangerConfirmDialog,
@@ -25,7 +26,6 @@ import {
   Panel,
   TextField,
   ToggleRow,
-  type Tone,
   formatDateTime,
   formatMegabytes,
   useToast,
@@ -60,21 +60,6 @@ import { MembersPanel } from './MembersPanel';
  * erscheint nur, wenn das passende Flag im `permissions`-Objekt gesetzt ist
  * (Pflichtenheft §5.2).
  */
-
-/** Anzeige des Export-Fortschritts – der Export ist bei B5 eine Sicherung. */
-const EXPORT_STATUS_LABELS: Record<BackupDto['status'], string> = {
-  pending: 'Wartet',
-  running: 'Läuft …',
-  completed: 'Fertig',
-  failed: 'Fehlgeschlagen',
-};
-
-const EXPORT_STATUS_TONE: Record<BackupDto['status'], Tone> = {
-  pending: 'warning',
-  running: 'warning',
-  completed: 'success',
-  failed: 'danger',
-};
 
 function toDraft(server: GameServerDto): UpdateServerSettingsInput {
   return {
@@ -525,12 +510,16 @@ export function SettingsTab({
 
         {exportBackup ? (
           <div className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-fill p-3.5">
+            {/*
+              Der Export ist bei B5 eine Sicherung – deshalb dieselbe Tabelle
+              wie im Backup-Reiter (Audit frontend-lib-14), statt einer eigenen.
+            */}
             <Badge
-              tone={EXPORT_STATUS_TONE[exportBackup.status]}
+              tone={BACKUP_STATUS_META[exportBackup.status].tone}
               withDot
               pulse={exportBackup.status === 'pending' || exportBackup.status === 'running'}
             >
-              {EXPORT_STATUS_LABELS[exportBackup.status]}
+              {BACKUP_STATUS_META[exportBackup.status].label}
             </Badge>
             <span className="font-mono text-xs text-ink-faint">
               {exportBackup.status === 'completed' ? formatBytes(exportBackup.sizeBytes) : '—'}

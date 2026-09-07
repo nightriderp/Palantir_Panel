@@ -7,7 +7,10 @@
  * Datei-Manager zum Dateibrowser des ganzen Containers machen würde.
  */
 
-import { type AgentFileEntry } from '@palantir/contracts';
+import {
+  AGENT_FILE_CHANNEL_MAX_BYTES as VERTRAGS_KANALGRENZE,
+  type AgentFileEntry,
+} from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { isServerOrchestrationError } from './errors.js';
 import {
@@ -171,5 +174,15 @@ describe('Kanal-Grenze', () => {
   it('bleibt unter der Vorgabe der Umgebungsvariable', () => {
     // Spiegelt DEFAULT_MAX_FILE_BYTES des Agents; größere Dateien lehnt er ab.
     expect(AGENT_FILE_CHANNEL_MAX_BYTES).toBe(64 * 1024 * 1024);
+  });
+
+  it('liest die Grenze aus dem Vertrag statt aus einem eigenen Literal', () => {
+    /*
+     * Audit contracts-validation-12: Die Zahl stand nur im Backend und wurde im
+     * Vertrag lediglich zitiert. Seitdem sie dort steht, muss dieser Export
+     * derselbe Wert sein – sonst kennen Backend und Agent wieder zwei Grenzen.
+     * Das Gegenstück steht in `apps/agent/.../docker-container-runtime.test.ts`.
+     */
+    expect(AGENT_FILE_CHANNEL_MAX_BYTES).toBe(VERTRAGS_KANALGRENZE);
   });
 });

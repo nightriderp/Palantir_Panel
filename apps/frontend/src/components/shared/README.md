@@ -174,6 +174,7 @@ Wissenswertes:
 | `EmptyState`                       | Leerzustand mit optionaler Aktion                        |
 | `Icon`, `LogoMark`                 | Icon-Set (24×24, `currentColor`) und Palantir-Signet     |
 | `cn`, `utils/format.ts`            | Klassen-Helfer, deutsche Zahlen- und Datumsformate       |
+| `utils/labels.ts`                  | Deutsche Beschriftungen je Vertrags-Aufzählung           |
 
 ### Phase-2/3-Platzhalter
 

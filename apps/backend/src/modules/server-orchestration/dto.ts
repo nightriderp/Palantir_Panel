@@ -17,6 +17,7 @@ import {
   type GameServerDto,
   type GameServerPermissions,
   type ServerMemberLevel,
+  buildServerHostname,
 } from '@palantir/contracts';
 import { type PermissionActor } from '../rbac/index.js';
 import { type GameRegistry } from './game-registry.js';
@@ -88,7 +89,9 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     subdomain: server.subdomain,
     address: permissions.canViewAddress
       ? {
-          hostname: `${server.subdomain}.${context.baseDomain}`,
+          // Adresse aus den Contracts bilden, nicht von Hand zusammensetzen –
+          // dieselbe Funktion nutzen DNS-Eintrag und Subdomain-Prüfung.
+          hostname: buildServerHostname(server.subdomain, context.baseDomain),
           // Bei Hostname-Routing sieht der Spieler keinen Port (§13).
           port: definition.supportsVirtualHostRouting ? null : primaryPort,
         }

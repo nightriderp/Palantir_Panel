@@ -8,6 +8,8 @@ import {
 } from '@palantir/contracts';
 import { useEffect, useState } from 'react';
 import {
+  BACKUP_STATUS_META,
+  BACKUP_TYPE_LABELS,
   Badge,
   Button,
   ConfirmDialog,
@@ -15,7 +17,6 @@ import {
   EmptyState,
   Panel,
   ToggleRow,
-  type Tone,
   formatDateTime,
   useToast,
 } from '@/components/shared';
@@ -42,18 +43,6 @@ import { consistencyMeta } from '@/components/my-backups/backupsView';
  * Exporte (`isExport`) erscheinen bewusst nicht in dieser Liste: sie gehören
  * zur Datenmitnahme und stehen im Reiter „Einstellungen".
  */
-
-const TYPE_LABELS: Record<BackupDto['type'], string> = {
-  manual: 'Manuell',
-  automatic: 'Automatisch',
-};
-
-const STATUS_META: Record<BackupDto['status'], { label: string; tone: Tone }> = {
-  pending: { label: 'Wartet', tone: 'warning' },
-  running: { label: 'Läuft …', tone: 'warning' },
-  completed: { label: 'Fertig', tone: 'success' },
-  failed: { label: 'Fehlgeschlagen', tone: 'danger' },
-};
 
 export interface BackupsTabProps {
   server: GameServerDto;
@@ -212,7 +201,7 @@ export function BackupsTab({ server, backupProgress }: BackupsTabProps) {
       {list.length > 0 ? (
         <ul className="flex flex-col gap-2">
           {list.map((backup) => {
-            const status = STATUS_META[backup.status];
+            const status = BACKUP_STATUS_META[backup.status];
             const done = backup.status === 'completed';
 
             return (
@@ -222,7 +211,7 @@ export function BackupsTab({ server, backupProgress }: BackupsTabProps) {
                     <span className="font-mono text-sm text-ink">
                       {formatDateTime(backup.createdAt)}
                     </span>
-                    <Badge tone="neutral">{TYPE_LABELS[backup.type]}</Badge>
+                    <Badge tone="neutral">{BACKUP_TYPE_LABELS[backup.type]}</Badge>
                     <Badge tone={status.tone} withDot pulse={backup.status === 'running'}>
                       {status.label}
                     </Badge>

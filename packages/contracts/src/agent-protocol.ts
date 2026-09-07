@@ -44,6 +44,22 @@ export const AGENT_PROTOCOL_VERSION = 1;
  */
 export type CorrelationId = string;
 
+/**
+ * Harte Obergrenze für alles, was in **einem** Frame über den Agent-Kanal läuft
+ * (64 MiB).
+ *
+ * Steht hier und nicht im Backend, weil beide Seiten sie brauchen: Das Backend
+ * puffert nichts Größeres (`effectiveUploadLimitBytes`), der Agent lehnt
+ * Größeres mit `AGENT_FILE_TOO_LARGE` ab (`DEFAULT_MAX_FILE_BYTES` der
+ * Container-Runtime). Bis Audit contracts-validation-12 war die Zahl allein im
+ * Backend definiert und im Vertrag nur zitiert – änderte das Backend sie, wusste
+ * es keine andere Seite (CLAUDE.md §3).
+ *
+ * Sie ist bewusst **keine** Umgebungsvariable: Eine Protokollgrenze, die je
+ * Installation anders wäre, könnte der Agent nicht durchsetzen.
+ */
+export const AGENT_FILE_CHANNEL_MAX_BYTES = 64 * 1024 * 1024;
+
 // ---------------------------------------------------------------------------
 // Befehle: Backend -> Agent (Pflichtenheft §5.3)
 // ---------------------------------------------------------------------------

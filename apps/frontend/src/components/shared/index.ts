@@ -108,6 +108,13 @@ export {
 } from './placeholder/PhaseLockedPlaceholder';
 
 export { cn } from './utils/cn';
+export {
+  BACKUP_STATUS_META,
+  BACKUP_TYPE_LABELS,
+  NOTIFIABLE_EVENT_LABELS,
+  NOTIFICATION_SEVERITY_LABELS,
+  NOTIFICATION_SEVERITY_TONES,
+} from './utils/labels';
 export { HIGHLIGHT_PARAM, useHighlight, type Highlight } from './utils/useHighlight';
 export {
   clampPercent,

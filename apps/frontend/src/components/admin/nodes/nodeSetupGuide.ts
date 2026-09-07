@@ -38,13 +38,28 @@ export interface NodeSetupParams {
    * Gefundener Punkt 57). Ohne Angabe bleibt ein Platzhalter stehen.
    */
   nodeId?: string;
+  /**
+   * GHCR-Konto, unter dem die Palantir-Images liegen – der Nutzername im
+   * `docker login`.
+   *
+   * Bewusst ein Parameter mit Platzhalter statt eines festen Namens (Audit
+   * frontend-lib-15): Der Name gehört dem Betreiber, nicht der Software. Vorher
+   * stand hier ein konkretes Konto fest im Code; eine andere Installation hätte
+   * den Befehl kopiert und sich mit einem fremden Konto angemeldet, worauf der
+   * Pull scheitert.
+   */
+  registryUser?: string;
 }
 
 const DEFAULT_VPS_WIREGUARD_IP = '10.10.0.1';
 
+/** Steht im Befehl, solange der Betreiber sein Registry-Konto nicht nennt. */
+const REGISTRY_USER_PLACEHOLDER = '<GitHub-Nutzer>';
+
 export function buildNodeSetupSteps(params: NodeSetupParams): NodeSetupStep[] {
   const vpsIp = params.vpsWireguardIp ?? DEFAULT_VPS_WIREGUARD_IP;
   const backendWsUrl = `ws://${vpsIp}:4000/agent`;
+  const registryUser = params.registryUser ?? REGISTRY_USER_PLACEHOLDER;
 
   return [
     {
@@ -89,8 +104,8 @@ export function buildNodeSetupSteps(params: NodeSetupParams): NodeSetupStep[] {
     {
       title: 'An der Registry anmelden',
       machine: 'homeserver',
-      body: 'Das Agent-Image liegt in einem privaten GHCR-Repository. Nötig ist ein Personal Access Token (classic) mit read:packages. Die Anmeldung muss nach /etc/palantir/docker schreiben, nicht nach /root.',
-      code: 'read -rsp \'Token: \' T; echo; echo "$T" | DOCKER_CONFIG=/etc/palantir/docker docker login ghcr.io -u nightriderp --password-stdin; unset T',
+      body: `Das Agent-Image liegt in einem privaten GHCR-Repository. Nötig ist ein Personal Access Token (classic) mit read:packages. Als Nutzername steht ${registryUser} im Befehl – das GitHub-Konto, dem die Images gehören (derselbe Wert wie AGENT_REGISTRY_USERNAME in der zentralen .env). Die Anmeldung muss nach /etc/palantir/docker schreiben, nicht nach /root.`,
+      code: `read -rsp 'Token: ' T; echo; echo "$T" | DOCKER_CONFIG=/etc/palantir/docker docker login ghcr.io -u ${registryUser} --password-stdin; unset T`,
     },
     {
       title: 'Agent-Stack starten',
