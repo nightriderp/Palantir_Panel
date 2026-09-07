@@ -13,6 +13,7 @@ import {
 } from '@palantir/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  type AgentGatewayLogger,
   type AgentSocket,
   AgentRegistry,
   AgentSession,
@@ -50,7 +51,9 @@ class FakeSocket implements AgentSocket {
   }
 }
 
-function makeSession(overrides: { correlationIds?: string[]; hostId?: string } = {}): {
+function makeSession(
+  overrides: { correlationIds?: string[]; hostId?: string; log?: AgentGatewayLogger } = {},
+): {
   session: AgentSession;
   socket: FakeSocket;
   stateReports: AgentStateReportFrame[];
@@ -83,7 +86,7 @@ function makeSession(overrides: { correlationIds?: string[]; hostId?: string } =
         disconnected.push(hostId);
       },
     },
-    log: silentLog,
+    log: overrides.log ?? silentLog,
     commandTimeoutMs: 1_000,
     now: () => NOW,
     newCorrelationId: () => ids[index++] ?? `id-${String(index)}`,
@@ -324,6 +327,60 @@ describe('Befehle und Korrelations-IDs (Pflichtenheft §5.3)', () => {
 
     await vi.advanceTimersByTimeAsync(1_001);
     await rejected;
+  });
+
+  it('verwirft ein Ergebnis, das erst nach Ablauf der Frist eintrifft', async () => {
+    /*
+     * Der Fall aus Audit W1-5 (bb-02): Der Agent packt noch, die Frist läuft
+     * ab, der Aufrufer hat seine Antwort. Trifft das Ergebnis danach ein, darf
+     * es den Befehl nicht ein zweites Mal auflösen – sonst liefe eine
+     * Fehlerbehandlung neben einem vermeintlichen Erfolg her. Verworfen wird
+     * es nicht still, sondern mit einem Protokolleintrag.
+     */
+    const verworfen: Record<string, unknown>[] = [];
+    const { session } = makeSession({
+      log: {
+        ...silentLog,
+        warn: (details): void => {
+          verworfen.push(details);
+        },
+      },
+    });
+
+    session.handleMessage(hello());
+
+    const pending = session.sendCommand('CREATE_BACKUP', SERVER_ID, {
+      backupId: '33333333-3333-4333-8333-333333333333',
+      serverId: SERVER_ID,
+      sourcePath: '/srv/palantir/servers/x',
+    });
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'AGENT_COMMAND_TIMEOUT' });
+
+    await vi.advanceTimersByTimeAsync(1_001);
+    await rejected;
+
+    session.handleMessage(
+      JSON.stringify({
+        kind: 'commandResult',
+        correlationId: '00000000-0000-4000-8000-000000000001',
+        command: 'CREATE_BACKUP',
+        result: {
+          success: true,
+          data: { sizeBytes: 1_024, completedAt: NOW.toISOString() },
+          error: null,
+        },
+        duplicate: false,
+        completedAt: NOW.toISOString(),
+      }),
+    );
+
+    expect(verworfen).toHaveLength(1);
+    expect(verworfen[0]).toMatchObject({
+      correlationId: '00000000-0000-4000-8000-000000000001',
+      command: 'CREATE_BACKUP',
+    });
+    // Kein zweites Auflösen: Das Ergebnis bleibt die Ablehnung der Frist.
+    await expect(pending).rejects.toMatchObject({ code: 'AGENT_COMMAND_TIMEOUT' });
   });
 
   it('verwirft ein Ergebnis ohne offenen Befehl', () => {
