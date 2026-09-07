@@ -50,6 +50,13 @@ export {
   type RuntimeAdapterOptions,
 } from './runtime-adapter.js';
 
+export {
+  RUNTIME_RETRY_MAX_DELAY_MS,
+  startRuntimeLink,
+  type RuntimeLink,
+  type RuntimeLinkOptions,
+} from './runtime-link.js';
+
 export { createNodeStatsReader, readNodeStats } from './node-stats.js';
 
 import { AgentConnection, type AgentConnectionOptions } from './agent-connection.js';

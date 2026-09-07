@@ -6,8 +6,12 @@
  * (Pflichtenheft §2.5).
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DockerContainerRuntime } from './docker-container-runtime.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  DockerContainerRuntime,
+  ENGINE_RECONNECT_INITIAL_MS,
+  ENGINE_RECONNECT_MAX_MS,
+} from './docker-container-runtime.js';
 import { DockerHttpClient } from './http-client.js';
 import { createTar } from './tar.js';
 import { type ContainerRuntimeEvent } from '../events.js';
@@ -660,7 +664,10 @@ describe('Engine-Events', () => {
     runtime.on((event) => events.push(event));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Erst trennen, dann den Strom schliessen: Sonst plant das Ende des Stroms
+    // noch einen Wiederaufbau, der in den naechsten Test hineinlaeuft.
+    await runtime.dispose();
     engineStream.close();
   });
 
@@ -754,5 +761,279 @@ describe('Engine-Events', () => {
     await tick();
 
     expect(events.filter((event) => event.type === 'STATUS_CHANGED')).toHaveLength(1);
+  });
+});
+
+describe('Engine-Events: Wiederaufbau nach Abbruch', () => {
+  let stroeme: ReturnType<typeof steuerbarerStream>[];
+  let events: ContainerRuntimeEvent[];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    stroeme = [];
+    events = [];
+    antwortgeber = (aufruf) => {
+      if (aufruf.pfad === '/events') {
+        const strom = steuerbarerStream();
+        stroeme.push(strom);
+        return strom.antwort;
+      }
+      if (aufruf.pfad === '/containers/json') return json([{ Id: 'c-1' }]);
+      if (aufruf.pfad === '/containers/c-1/json') {
+        return json({
+          Id: 'c-1',
+          Name: '/palantir-srv-1',
+          Config: { Image: 'palantir/testserver:1' },
+          State: {
+            Status: 'exited',
+            ExitCode: 1,
+            StartedAt: '2026-08-26T10:00:00Z',
+            FinishedAt: '2026-08-26T11:00:00Z',
+          },
+        });
+      }
+      return new Response(null, { status: 204 });
+    };
+  });
+
+  afterEach(async () => {
+    await runtime.dispose();
+    for (const strom of stroeme) {
+      try {
+        strom.close();
+      } catch {
+        // Schon geschlossen - der Test hat den Abbruch selbst ausgeloest.
+      }
+    }
+    vi.useRealTimers();
+  });
+
+  /** Laesst Leseschleifen und faellige Timer zum Zug kommen. */
+  async function warte(ms: number): Promise<void> {
+    for (let i = 0; i < 3; i += 1) await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(ms);
+    for (let i = 0; i < 3; i += 1) await vi.advanceTimersByTimeAsync(0);
+  }
+
+  function eventAufrufe(): number {
+    return aufrufe.filter((aufruf) => aufruf.pfad === '/events').length;
+  }
+
+  it('oeffnet /events nach einem Abbruch erneut und gleicht den Zustand ab', async () => {
+    // Audit agent-runtime-04: Ohne Wiederaufbau versiegen STATUS_CHANGED und
+    // CRASHED dauerhaft - ein Absturz bliebe bis zum Agent-Neustart unsichtbar.
+    await runtime.connect();
+    runtime.on((event) => events.push(event));
+
+    // Der Docker-Socket-Proxy startet neu: Der Strom endet.
+    stroeme[0]?.close();
+    await warte(ENGINE_RECONNECT_INITIAL_MS);
+
+    expect(eventAufrufe()).toBe(2);
+    // Was in der Luecke passiert ist, kommt nicht nach - deshalb einmal Ist-Abgleich.
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'STATUS_CHANGED',
+        containerId: 'c-1',
+        status: 'exited',
+        exitCode: 1,
+      }),
+    );
+  });
+
+  it('wartet zwischen zwei Fehlversuchen laenger', async () => {
+    await runtime.connect();
+
+    // Der Wiederaufbau selbst scheitert: /events antwortet nicht mehr.
+    antwortgeber = (aufruf) => {
+      if (aufruf.pfad === '/events') throw new Error('ECONNREFUSED');
+      return new Response(null, { status: 204 });
+    };
+
+    stroeme[0]?.close();
+    await warte(ENGINE_RECONNECT_INITIAL_MS);
+    expect(eventAufrufe()).toBe(2);
+
+    // Der naechste Versuch kommt erst nach der doppelten Wartezeit.
+    await warte(ENGINE_RECONNECT_INITIAL_MS);
+    expect(eventAufrufe()).toBe(2);
+
+    await warte(ENGINE_RECONNECT_INITIAL_MS);
+    expect(eventAufrufe()).toBe(3);
+  });
+
+  it('baut nach dispose() nicht mehr auf', async () => {
+    await runtime.connect();
+    await runtime.dispose();
+
+    await warte(ENGINE_RECONNECT_MAX_MS);
+
+    expect(eventAufrufe()).toBe(1);
+  });
+});
+
+describe('Erwarteter Stopp (Unterdrueckung von CRASHED)', () => {
+  let engineStream: ReturnType<typeof steuerbarerStream>;
+  let events: ContainerRuntimeEvent[];
+  let stopStatus: number;
+
+  beforeEach(async () => {
+    engineStream = steuerbarerStream();
+    events = [];
+    stopStatus = 204;
+    antwortgeber = (aufruf) => {
+      if (aufruf.pfad === '/events') return engineStream.antwort;
+      if (aufruf.pfad === '/containers/c-1/stop') return new Response(null, { status: stopStatus });
+      return new Response(null, { status: 204 });
+    };
+
+    await runtime.connect();
+    runtime.on((event) => events.push(event));
+  });
+
+  afterEach(async () => {
+    // Erst trennen, dann den Strom schliessen: Sonst plant das Ende des Stroms
+    // noch einen Wiederaufbau, der in den naechsten Test hineinlaeuft.
+    await runtime.dispose();
+    engineStream.close();
+  });
+
+  function sendeEvent(status: string, attribute: Record<string, string> = {}): void {
+    engineStream.push(
+      `${JSON.stringify({
+        status,
+        id: 'c-1',
+        time: 1_787_000_000,
+        Actor: { ID: 'c-1', Attributes: attribute },
+      })}\n`,
+    );
+  }
+
+  it('meldet einen spaeteren Absturz, wenn der Container schon gestoppt war', async () => {
+    // Audit agent-runtime-03: Auf 304 ("war schon gestoppt") folgt kein `die`.
+    // Blieb das Merkmal liegen, verschluckte es den naechsten echten Absturz.
+    stopStatus = 304;
+    await runtime.stop('c-1');
+
+    sendeEvent('start');
+    await tick();
+    sendeEvent('die', { exitCode: '1' });
+    await tick();
+
+    expect(events.filter((event) => event.type === 'CRASHED')).toHaveLength(1);
+  });
+
+  it('meldet einen spaeteren Absturz, wenn das Stoppen fehlschlaegt', async () => {
+    antwortgeber = (aufruf) => {
+      if (aufruf.pfad === '/events') return engineStream.antwort;
+      if (aufruf.pfad === '/containers/c-1/stop') return new Response('kaputt', { status: 500 });
+      return new Response(null, { status: 204 });
+    };
+
+    await expect(runtime.stop('c-1')).rejects.toThrow();
+
+    sendeEvent('start');
+    await tick();
+    sendeEvent('die', { exitCode: '1' });
+    await tick();
+
+    expect(events.filter((event) => event.type === 'CRASHED')).toHaveLength(1);
+  });
+
+  it('vergisst den erwarteten Stopp, sobald der Container wieder laeuft', async () => {
+    // restart() auf einen gestoppten Container: kein `die`, nur `start`.
+    await runtime.restart('c-1');
+
+    sendeEvent('start');
+    await tick();
+    sendeEvent('die', { exitCode: '137' });
+    await tick();
+
+    expect(events.filter((event) => event.type === 'CRASHED')).toHaveLength(1);
+  });
+});
+
+describe('DELETE: Zustand nur bei Erfolg freigeben', () => {
+  let engineStream: ReturnType<typeof steuerbarerStream>;
+  let events: ContainerRuntimeEvent[];
+  let deleteStatus: number;
+
+  beforeEach(async () => {
+    engineStream = steuerbarerStream();
+    events = [];
+    deleteStatus = 204;
+    antwortgeber = (aufruf) => {
+      if (aufruf.pfad === '/events') return engineStream.antwort;
+      if (aufruf.method === 'DELETE') {
+        return new Response(deleteStatus === 204 ? null : 'laeuft noch', { status: deleteStatus });
+      }
+      return new Response(null, { status: 204 });
+    };
+
+    await runtime.connect();
+    runtime.on((event) => events.push(event));
+  });
+
+  afterEach(async () => {
+    // Erst trennen, dann den Strom schliessen: Sonst plant das Ende des Stroms
+    // noch einen Wiederaufbau, der in den naechsten Test hineinlaeuft.
+    await runtime.dispose();
+    engineStream.close();
+  });
+
+  function sendeEvent(status: string, attribute: Record<string, string> = {}): void {
+    engineStream.push(
+      `${JSON.stringify({
+        status,
+        id: 'c-1',
+        time: 1_787_000_000,
+        Actor: { ID: 'c-1', Attributes: attribute },
+      })}\n`,
+    );
+  }
+
+  it('behaelt Abos und gemerkten Zustand, wenn das Entfernen scheitert', async () => {
+    // Audit agent-runtime-05: 409 heisst "laeuft noch". Wuerde hier aufgeraeumt,
+    // waeren Konsole und Messwerte still abgeschaltet, und der naechste
+    // Statuswechsel kaeme mit previousStatus null an, als sei der Container neu.
+    const unwatch = vi.spyOn(runtime, 'unwatch');
+    deleteStatus = 409;
+    sendeEvent('start');
+    await tick();
+
+    await expect(runtime.remove('c-1')).rejects.toMatchObject({
+      code: 'CONTAINER_STATE_CONFLICT',
+    });
+
+    expect(unwatch).not.toHaveBeenCalled();
+
+    sendeEvent('die', { exitCode: '0' });
+    await tick();
+
+    expect(events.at(-1)).toMatchObject({
+      type: 'STATUS_CHANGED',
+      status: 'exited',
+      previousStatus: 'running',
+    });
+  });
+
+  it('gibt Abos und gemerkten Zustand nach erfolgreichem Entfernen frei', async () => {
+    const unwatch = vi.spyOn(runtime, 'unwatch');
+    sendeEvent('start');
+    await tick();
+
+    await runtime.remove('c-1');
+
+    expect(unwatch).toHaveBeenCalledWith('c-1');
+
+    // Der gemerkte Status ist weg: Ein Container mit derselben Id waere neu.
+    sendeEvent('start');
+    await tick();
+
+    expect(events.at(-1)).toMatchObject({
+      type: 'STATUS_CHANGED',
+      status: 'running',
+      previousStatus: null,
+    });
   });
 });

@@ -176,15 +176,22 @@ export class DockerHttpClient {
     return (await antwort.json()) as T;
   }
 
-  /** Anfrage ohne verwertbaren Antwortkoerper. */
+  /**
+   * Anfrage ohne verwertbaren Antwortkoerper.
+   *
+   * Rueckgabe ist der HTTP-Status: Wer `tolerateStatus` nutzt, muss die
+   * geduldeten Faelle auseinanderhalten koennen - ein 304 beim Stoppen heisst
+   * "war schon gestoppt", und darauf folgt kein `die`-Event.
+   */
   async requestVoid(
     method: string,
     pfad: string,
     options: DockerRequestOptions = {},
-  ): Promise<void> {
+  ): Promise<number> {
     const antwort = await this.#send(method, pfad, options, this.#signal(options));
     // Koerper leeren, damit die Verbindung wiederverwendet werden kann.
     await antwort.arrayBuffer().catch(() => undefined);
+    return antwort.status;
   }
 
   /**

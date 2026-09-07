@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ERROR_CATALOG, isFail, isOk } from '@palantir/contracts';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentJobs, type AgentJobs } from '../jobs/index.js';
 import {
   ContainerRuntimeError,
@@ -15,6 +15,7 @@ import {
   JOB_COMMANDS,
   RUNTIME_ERROR_TO_API_CODE,
   toAgentContainerState,
+  toContainerSpec,
 } from './runtime-adapter.js';
 import type { OutboundEvent } from './ports.js';
 
@@ -530,5 +531,108 @@ describe('Ereignisse Runtime → Protokoll', () => {
     runtime.simulateCrash(containerId, { exitCode: 137 });
 
     expect(ereignisse.filter((e) => e.event === 'CRASHED')).toHaveLength(1);
+  });
+});
+
+describe('Live-Kanäle (Konsole und Messwerte)', () => {
+  function logZeilen(): OutboundEvent[] {
+    return ereignisse.filter((e) => e.event === 'LOG_LINE');
+  }
+
+  it('öffnet die Live-Kanäle nach START – die Logzeile erreicht die Verbindung', async () => {
+    // Audit event-flow-01: Ohne watch() liefert die Runtime nie eine LOG_LINE,
+    // und die Live-Konsole zeigt nur das Echo eigener Befehle.
+    adapter.start((event) => ereignisse.push(event));
+    const containerId = await containerAnlegen();
+    const watch = vi.spyOn(runtime, 'watch');
+
+    await befehl('START', { containerId });
+
+    expect(watch).toHaveBeenCalledWith(containerId);
+
+    runtime.appendLog(containerId, 'Server bereit');
+
+    expect(logZeilen()).toHaveLength(1);
+    expect(logZeilen()[0]?.payload).toMatchObject({
+      containerId,
+      stream: 'stdout',
+      message: 'Server bereit',
+    });
+  });
+
+  it('meldet Live-Messwerte als STATS_UPDATE', async () => {
+    adapter.start((event) => ereignisse.push(event));
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+
+    runtime.setStats(containerId, { cpuPercent: 42 });
+
+    const stats = ereignisse.filter((e) => e.event === 'STATS_UPDATE');
+    expect(stats).toHaveLength(1);
+    expect(stats[0]?.payload).toMatchObject({ containerId, cpuPercent: 42 });
+  });
+
+  it('öffnet die Live-Kanäle beim Ist-Zustands-Bericht für bereits laufende Container', async () => {
+    // Der Container lief schon, bevor der Adapter dazukam (Agent-Neustart): Die
+    // Kanäle dürfen nicht erst beim nächsten START aufgehen.
+    const handle = await runtime.create(toContainerSpec(CREATE_PAYLOAD, SERVER_ID));
+    await runtime.start(handle.containerId);
+
+    adapter.start((event) => ereignisse.push(event));
+    await adapter.listContainerStates();
+
+    runtime.appendLog(handle.containerId, 'lief schon');
+
+    expect(logZeilen()).toHaveLength(1);
+  });
+
+  it('schließt die Live-Kanäle nach STOP', async () => {
+    adapter.start((event) => ereignisse.push(event));
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    const unwatch = vi.spyOn(runtime, 'unwatch');
+
+    await befehl('STOP', { containerId });
+    ereignisse.length = 0;
+    runtime.appendLog(containerId, 'kommt nicht mehr an');
+
+    expect(unwatch).toHaveBeenCalledWith(containerId);
+    expect(logZeilen()).toHaveLength(0);
+  });
+
+  it('öffnet die Live-Kanäle nicht doppelt', async () => {
+    // watch() ist in der Docker-Runtime nicht idempotent: Ein zweites
+    // Abonnement lieferte jede Zeile doppelt.
+    adapter.start((event) => ereignisse.push(event));
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    const watch = vi.spyOn(runtime, 'watch');
+
+    await adapter.listContainerStates();
+    await adapter.listContainerStates();
+
+    expect(watch).not.toHaveBeenCalled();
+  });
+
+  it('behält die Live-Kanäle, wenn DELETE scheitert', async () => {
+    adapter.start((event) => ereignisse.push(event));
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    runtime.failNext('remove', new ContainerRuntimeError('CONTAINER_STATE_CONFLICT'));
+
+    expect(isFail(await befehl('DELETE', { containerId }))).toBe(true);
+    runtime.appendLog(containerId, 'läuft weiter');
+
+    expect(logZeilen()).toHaveLength(1);
+  });
+
+  it('lässt START nicht scheitern, wenn die Live-Kanäle nicht aufgehen', async () => {
+    // Der Container läuft dann trotzdem – es fehlen nur Konsole und Messwerte.
+    adapter.start((event) => ereignisse.push(event));
+    const containerId = await containerAnlegen();
+    runtime.failNext('watch', new ContainerRuntimeError('RUNTIME_UNAVAILABLE'));
+
+    expect(isOk(await befehl('START', { containerId }))).toBe(true);
+    expect((await runtime.inspect(containerId)).status).toBe('running');
   });
 });

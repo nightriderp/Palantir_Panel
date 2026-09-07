@@ -138,6 +138,17 @@ const ENGINE_EVENT_FILTER = JSON.stringify({
   label: [`${PALANTIR_MANAGED_LABEL}=true`],
 });
 
+/**
+ * Wartezeiten fuer den Wiederaufbau des Engine-Ereignisstroms: 1 s, 2 s, 4 s …
+ * bis hoechstens 30 s (Audit agent-runtime-04).
+ *
+ * Ohne Jitter - anders als beim Verbindungsaufbau zum Backend gibt es hier
+ * keine Herde: Der Agent spricht mit genau einem Socket-Proxy auf derselben
+ * Node, und der vertraegt einen Versuch pro Sekunde.
+ */
+export const ENGINE_RECONNECT_INITIAL_MS = 1_000;
+export const ENGINE_RECONNECT_MAX_MS = 30_000;
+
 async function* alsStrom(inhalt: Buffer): AsyncGenerator<Uint8Array> {
   yield inhalt;
 }
@@ -178,6 +189,10 @@ export class DockerContainerRuntime implements ContainerRuntime {
 
   #eventStream: DockerStream | undefined;
   #verbunden = false;
+  /** Laufender Wiederaufbau des Ereignisstroms; `undefined` = keiner geplant. */
+  #eventReconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Fehlversuche seit dem letzten erfolgreichen Ereignisstrom - Basis der Wartezeit. */
+  #eventVersuche = 0;
 
   constructor(options: DockerContainerRuntimeOptions) {
     this.#client = options.client;
@@ -197,17 +212,21 @@ export class DockerContainerRuntime implements ContainerRuntime {
   async connect(): Promise<void> {
     if (this.#verbunden) return;
 
-    const stream = await this.#client.openStream('GET', '/events', {
-      query: { filters: ENGINE_EVENT_FILTER },
-    });
+    const stream = await this.#oeffneEngineEvents();
     this.#eventStream = stream;
     this.#verbunden = true;
+    this.#eventVersuche = 0;
 
     void this.#leseEngineEvents(stream);
   }
 
   async dispose(): Promise<void> {
     this.#verbunden = false;
+
+    if (this.#eventReconnectTimer !== undefined) {
+      clearTimeout(this.#eventReconnectTimer);
+      this.#eventReconnectTimer = undefined;
+    }
 
     for (const containerId of [...this.#abos.keys()]) {
       await this.unwatch(containerId);
@@ -274,27 +293,40 @@ export class DockerContainerRuntime implements ContainerRuntime {
   }
 
   async stop(containerId: string, options: StopOptions = {}): Promise<void> {
+    /*
+     * Das Merken passiert **vor** der Anfrage: Das `die`-Event kann eintreffen,
+     * bevor die Engine auf `/stop` antwortet. Verbraucht wird es nur von genau
+     * diesem Event - bleibt es liegen, verschluckt es den naechsten echten
+     * Absturz (Audit agent-runtime-03). Deshalb wird es im `finally` wieder
+     * entfernt, wenn kein `die` folgen kann: bei einem Fehler und bei 304
+     * ("war schon gestoppt", laut Interface kein Fehlerfall).
+     */
     this.#erwarteterStopp.add(containerId);
+    let ausgeloest = false;
     try {
-      await this.#client.requestVoid('POST', `${this.#pfad(containerId)}/stop`, {
+      const status = await this.#client.requestVoid('POST', `${this.#pfad(containerId)}/stop`, {
         query: { t: options.timeoutSeconds },
         tolerateStatus: [304],
       });
-    } catch (fehler) {
-      this.#erwarteterStopp.delete(containerId);
-      throw fehler;
+      ausgeloest = status !== 304;
+    } finally {
+      if (!ausgeloest) this.#erwarteterStopp.delete(containerId);
     }
   }
 
   async restart(containerId: string, options: StopOptions = {}): Promise<void> {
+    // Wie bei stop(): Das Flag ueberlebt nur einen tatsaechlich ausgeloesten
+    // Neustart. Lief der Container gar nicht, folgt kein `die`; der
+    // `start`-Zweig in #verarbeiteEngineEvent raeumt das Flag dann ab.
     this.#erwarteterStopp.add(containerId);
+    let ausgeloest = false;
     try {
       await this.#client.requestVoid('POST', `${this.#pfad(containerId)}/restart`, {
         query: { t: options.timeoutSeconds },
       });
-    } catch (fehler) {
-      this.#erwarteterStopp.delete(containerId);
-      throw fehler;
+      ausgeloest = true;
+    } finally {
+      if (!ausgeloest) this.#erwarteterStopp.delete(containerId);
     }
   }
 
@@ -304,13 +336,34 @@ export class DockerContainerRuntime implements ContainerRuntime {
       await this.#client.requestVoid('DELETE', this.#pfad(containerId), {
         query: { v: options.removeVolumes ?? false, force: options.force ?? false },
       });
-    } finally {
-      await this.unwatch(containerId);
+    } catch (fehler) {
+      /*
+       * Nur aufraeumen, wenn der Container wirklich weg ist (Audit
+       * agent-runtime-05): Ein DELETE ohne `force` auf einen laufenden
+       * Container endet mit 409. Wuerden hier die Abos beendet und der
+       * gemerkte Zustand geloescht, waeren Konsole und Messwerte des weiter
+       * laufenden Containers still abgeschaltet, und sein naechster
+       * Statuswechsel kaeme mit `previousStatus: null` an, als sei er neu.
+       * Ein 404 heisst dagegen "existiert nicht mehr" - da ist Aufraeumen
+       * richtig, der Fehler geht trotzdem an den Aufrufer.
+       */
       this.#erwarteterStopp.delete(containerId);
-      this.#letzterStatus.delete(containerId);
-      this.#oomGemerkt.delete(containerId);
-      this.#datenVolumeWurzeln.delete(containerId);
+      if (isContainerRuntimeError(fehler) && fehler.code === 'CONTAINER_NOT_FOUND') {
+        await this.#vergesseContainer(containerId);
+      }
+      throw fehler;
     }
+
+    this.#erwarteterStopp.delete(containerId);
+    await this.#vergesseContainer(containerId);
+  }
+
+  /** Abos und gemerkten Zustand eines entfernten Containers freigeben. */
+  async #vergesseContainer(containerId: string): Promise<void> {
+    await this.unwatch(containerId);
+    this.#letzterStatus.delete(containerId);
+    this.#oomGemerkt.delete(containerId);
+    this.#datenVolumeWurzeln.delete(containerId);
   }
 
   async inspect(containerId: string): Promise<ContainerState> {
@@ -835,6 +888,12 @@ export class DockerContainerRuntime implements ContainerRuntime {
     });
   }
 
+  #oeffneEngineEvents(): Promise<DockerStream> {
+    return this.#client.openStream('GET', '/events', {
+      query: { filters: ENGINE_EVENT_FILTER },
+    });
+  }
+
   async #leseEngineEvents(stream: DockerStream): Promise<void> {
     try {
       for await (const roh of readNdjson(stream.body)) {
@@ -842,6 +901,82 @@ export class DockerContainerRuntime implements ContainerRuntime {
       }
     } catch (fehler) {
       if (!istAbbruch(fehler)) this.#onStreamError(fehler, { stream: 'events' });
+    }
+
+    /*
+     * Hier endet der Strom - regulaer (Proxy-Neustart) oder mit Fehler
+     * (Netz-Blip). Ohne Wiederaufbau versiegen STATUS_CHANGED und CRASHED
+     * dauerhaft, und Abstuerze bleiben bis zum Agent-Neustart unsichtbar
+     * (Audit agent-runtime-04).
+     */
+    if (this.#eventStream !== stream) return; // dispose() oder bereits ersetzt
+    this.#eventStream = undefined;
+    this.#planeEngineReconnect();
+  }
+
+  #planeEngineReconnect(): void {
+    if (!this.#verbunden || this.#eventReconnectTimer !== undefined) return;
+
+    const wartezeit = Math.min(
+      ENGINE_RECONNECT_INITIAL_MS * 2 ** this.#eventVersuche,
+      ENGINE_RECONNECT_MAX_MS,
+    );
+    this.#eventVersuche += 1;
+
+    const timer = setTimeout(() => {
+      this.#eventReconnectTimer = undefined;
+      void this.#verbindeEngineEventsNeu();
+    }, wartezeit);
+    // Der Wiederaufbau haelt den Prozess nicht am Leben - das tut die
+    // Backend-Verbindung.
+    timer.unref?.();
+    this.#eventReconnectTimer = timer;
+  }
+
+  async #verbindeEngineEventsNeu(): Promise<void> {
+    if (!this.#verbunden) return;
+
+    let stream: DockerStream;
+    try {
+      stream = await this.#oeffneEngineEvents();
+    } catch (fehler) {
+      this.#onStreamError(fehler, { stream: 'events', phase: 'reconnect' });
+      this.#planeEngineReconnect();
+      return;
+    }
+
+    if (!this.#verbunden) {
+      // Zwischenzeitlich dispose(): den frisch geoeffneten Strom nicht stehen lassen.
+      stream.cancel();
+      return;
+    }
+
+    this.#eventStream = stream;
+    this.#eventVersuche = 0;
+    void this.#leseEngineEvents(stream);
+
+    await this.#gleicheZustandAb();
+  }
+
+  /**
+   * Einmaliger Ist-Abgleich nach dem Wiederaufbau: Ereignisse aus der Luecke
+   * kommen nicht nach. `#setzeStatus` meldet nur echte Wechsel, ein Abgleich
+   * ohne Aenderung bleibt also still.
+   *
+   * Bewusst kein nachtraegliches CRASHED: Ob ein zwischenzeitlich beendeter
+   * Container abgestuerzt oder regulaer gestoppt wurde, laesst sich hier nicht
+   * mehr entscheiden. Diese Bewertung trifft das Backend beim Soll/Ist-Abgleich
+   * (Pflichtenheft §2.2).
+   */
+  async #gleicheZustandAb(): Promise<void> {
+    try {
+      const zustaende = await this.list();
+      const at = new Date().toISOString();
+      for (const zustand of zustaende) {
+        this.#setzeStatus(zustand.containerId, zustand.status, zustand.exitCode, at);
+      }
+    } catch (fehler) {
+      this.#onStreamError(fehler, { stream: 'events', phase: 'abgleich' });
     }
   }
 
@@ -857,6 +992,12 @@ export class DockerContainerRuntime implements ContainerRuntime {
         return;
       case 'start':
       case 'unpause':
+        // Der Container laeuft wieder: Ein noch gesetzter erwarteter Stopp
+        // gehoert zu einem Lauf, der vorbei ist (etwa `restart` auf einen
+        // bereits gestoppten Container - dort folgt kein `die`). Bliebe er
+        // liegen, verschluckte er den naechsten echten Absturz
+        // (Audit agent-runtime-03).
+        this.#erwarteterStopp.delete(containerId);
         this.#setzeStatus(containerId, 'running', null, at);
         return;
       case 'pause':
