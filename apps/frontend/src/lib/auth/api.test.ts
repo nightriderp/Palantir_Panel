@@ -1,6 +1,32 @@
+import {
+  CSRF_COOKIE_NAME as VERTRAG_COOKIE_NAME,
+  CSRF_HEADER_NAME as VERTRAG_HEADER_NAME,
+} from '@palantir/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AUTH_ENDPOINTS, CSRF_COOKIE_NAME, readCsrfToken } from './api';
+import { AUTH_ENDPOINTS, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, readCsrfToken } from './api';
+
+/*
+ * Finding frontend-lib-10: Cookie- und Header-Name standen hier als eigene
+ * Zeichenketten neben denen des Vertrags. Wird der Name dort angepasst (etwa auf
+ * das Präfix `__Host-`), zieht das Backend mit – das Frontend zog nicht mit, und
+ * jeder zustandsändernde Request wäre an `AUTH_CSRF_INVALID` gescheitert, ohne
+ * dass ein Test es gemerkt hätte. Beide Namen sind jetzt Re-Exporte aus
+ * `@palantir/contracts`; dieser Test hält sie daran fest.
+ */
+describe('CSRF-Namen kommen aus dem Vertrag (Finding frontend-lib-10)', () => {
+  it('reicht den Cookie-Namen aus @palantir/contracts durch', () => {
+    expect(CSRF_COOKIE_NAME).toBe(VERTRAG_COOKIE_NAME);
+  });
+
+  it('reicht den Header-Namen aus @palantir/contracts durch', () => {
+    expect(CSRF_HEADER_NAME).toBe(VERTRAG_HEADER_NAME);
+  });
+
+  it('hält den Header klein geschrieben – so vergleicht ihn das Backend', () => {
+    expect(CSRF_HEADER_NAME).toBe(CSRF_HEADER_NAME.toLowerCase());
+  });
+});
 
 describe('CSRF-Token aus dem Cookie (Pflichtenheft §7)', () => {
   it('liest das Token aus einer Cookie-Zeile mit mehreren Einträgen', () => {

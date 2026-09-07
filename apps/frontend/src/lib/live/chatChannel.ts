@@ -17,12 +17,18 @@ import { type ChatServerEventFrame, isChatEventName } from '@palantir/contracts'
 /**
  * Close-Code des Backends für „nicht angemeldet".
  *
- * Dieselbe Zahl wie beim Inbox-Kanal (B6) und beim Agent-Kanal (B3); im
- * Chat-Backend als Argument von `socket.close(4401, …)` in `routes.ts`. Ein
- * eigener Code aus dem privaten Bereich, damit sich „nicht angemeldet" von
- * „Backend gerade weg" unterscheiden lässt – im zweiten Fall wird erneut
- * verbunden, im ersten nicht. (Dass diese Zahl an mehreren Stellen erneut
- * hingeschrieben wird, ist als „Gefundener Punkt" 91 notiert.)
+ * **Provisorium (Finding frontend-lib-10).** Dieselbe Zahl wie beim Inbox-Kanal
+ * (B6) und beim Agent-Kanal (B3); das Chat-Backend führt sie als
+ * `CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED` in `modules/chat/live.ts` – ebenfalls
+ * lokal. Der Vertrag kennt bislang nur `NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED`
+ * für den Inbox-Kanal; ihn hier zu verwenden hieße, den Chat an die Konstante
+ * eines fremden Kanals zu binden (ändert sie sich, folgt das Chat-Backend nicht
+ * mit). Solange `@palantir/contracts` keine gemeinsame Konstante für alle
+ * Live-Kanäle führt, bleibt der Wert deshalb hier stehen – der Test in
+ * `chatChannel.test.ts` hält beide Zahlen aneinander, damit ein Auseinanderlaufen
+ * auffällt. Ein eigener Code aus dem privaten Bereich, damit sich „nicht
+ * angemeldet" von „Backend gerade weg" unterscheiden lässt – im zweiten Fall
+ * wird erneut verbunden, im ersten nicht.
  */
 export const CLOSE_CODE_UNAUTHORIZED = 4401;
 
@@ -30,19 +36,43 @@ export const CLOSE_CODE_UNAUTHORIZED = 4401;
 export const PING_INTERVAL_MS = 30_000;
 
 /**
+ * Pfad, unter dem das Backend den Chat-Kanal registriert
+ * (`apps/backend/src/modules/chat/routes.ts`).
+ *
+ * Anders als der Inbox-Kanal hängt der Chat **nicht** unter `…/live`, sondern
+ * liegt bei den übrigen Chat-Routen unter `/api/chat`.
+ */
+const CHAT_LIVE_PATH = '/api/chat/live';
+
+/**
  * Adresse des Chat-Kanals.
  *
  * `configured` ist `NEXT_PUBLIC_LIVE_WS_URL` – die Adresse des Server-Kanals
- * (`…/live`). Der Chat-Kanal hängt als eigener Pfad darunter (`…/live/chat`
- * bzw. `…/api/chat/live`), deshalb wird sie nur ergänzt und kein zweiter
- * Umgebungswert eingeführt (analog `notificationChannelUrl` in F6).
+ * (`…/live`), also der vollständige Endpunkt, nicht nur der Ursprung. Der
+ * Chat-Kanal liegt daneben und **nicht** darunter: Das Backend registriert
+ * ausschließlich {@link CHAT_LIVE_PATH}.
+ *
+ * Zuvor wurde hier `…/live/chat` gebildet – ein Pfad, den es im Backend nie gab
+ * (Finding contract-drift-02). Wer die Variable setzte, bekam einen Handshake,
+ * der still scheiterte: kein Eintrag im Backend-Log (die Anfrage erreichte keine
+ * Route), kein Hinweis im Frontend, dafür endloses Wiederverbinden und eine
+ * Ansicht, die dauerhaft „Wird verbunden" zeigte. Deshalb wird ein
+ * abschließendes `/live` abgeschnitten und der tatsächliche Pfad angehängt; ein
+ * etwaiges Präfix des Reverse Proxy bleibt dabei erhalten. Ein zweiter
+ * Umgebungswert wird bewusst nicht eingeführt – der Ursprung ist derselbe.
  */
 export function chatChannelUrl(configured: string | undefined, apiBaseUrl: string): string {
   if (configured) {
-    return `${configured.replace(/\/+$/, '')}/chat`;
+    const ohneSchraegstrich = configured.replace(/\/+$/, '');
+
+    // Wer die Variable schon auf den Chat-Kanal selbst gesetzt hat, bekommt sie
+    // unverändert zurück statt eines doppelt angehängten Pfades.
+    if (ohneSchraegstrich.endsWith(CHAT_LIVE_PATH)) return ohneSchraegstrich;
+
+    return `${ohneSchraegstrich.replace(/\/live$/, '')}${CHAT_LIVE_PATH}`;
   }
 
-  return `${apiBaseUrl.replace(/^http/, 'ws').replace(/\/+$/, '')}/api/chat/live`;
+  return `${apiBaseUrl.replace(/^http/, 'ws').replace(/\/+$/, '')}${CHAT_LIVE_PATH}`;
 }
 
 /**
