@@ -97,9 +97,15 @@ function kette(url: string): string {
  * Der Umbau hat an dieser Liste nichts geändert – das ist sein Kern: Aus
  * `admin/(core)/users/page.tsx` wurde `(dashboard)/admin/users/page.tsx`, die
  * Adresse blieb `/admin/users`.
+ *
+ * **Die Wurzel `/` fehlt hier bewusst** (Fundpunkt frontend-app-07): Sie hatte
+ * eine Seite, die nie gerendert wurde – die Zugriffssperre leitet jede Anfrage
+ * auf `/` weiter, in jedem Sitzungszustand. Die Seite hielt daneben eine
+ * zweite, clientseitige Fassung dieser Entscheidung vor. Dass `/` dadurch nicht
+ * in einen 404 läuft, sichern `middleware.test.ts` (Matcher erfasst `/`) und
+ * `lib/auth/routes.test.ts` (`gateRedirect('/')` liefert immer ein Ziel).
  */
 const ERWARTETE_ROUTEN = [
-  '/',
   '/admin',
   '/admin/addresses',
   '/admin/announcements',
