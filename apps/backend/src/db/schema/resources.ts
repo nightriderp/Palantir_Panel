@@ -181,5 +181,20 @@ export const quotaRequests = pgTable(
       .on(table.userId)
       .where(sql`${table.status} = 'pending'`),
     index('quota_requests_status_created_idx').on(table.status, table.createdAt.desc()),
+    /**
+     * Trägt die Kaskade beim Löschen eines Kontos und die Verlaufsansicht
+     * „meine Anfragen" (Audit backend-db-07).
+     *
+     * Der Unique-Index oben steht zwar auf derselben Spalte, ist aber auf
+     * `status = 'pending'` eingeschränkt – für einen Zugriff über `user_id`
+     * ohne diese Bedingung taugt er nicht. Erledigte Anfragen bleiben als Beleg
+     * stehen, die Tabelle wächst also mit dem Betrieb.
+     */
+    index('quota_requests_user_id_idx').on(table.userId),
+    /**
+     * Trägt das `ON DELETE SET NULL` beim Löschen eines Administrator-Kontos
+     * (Audit backend-db-07).
+     */
+    index('quota_requests_decided_by_id_idx').on(table.decidedById),
   ],
 );

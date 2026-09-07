@@ -190,6 +190,13 @@
       "when": 1788765263725,
       "tag": "0026_konto_loeschung_kaskaden",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788786802386,
+      "tag": "0027_schema_feinschliff_indizes",
+      "breakpoints": true
     }
   ]
 }

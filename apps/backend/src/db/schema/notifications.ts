@@ -101,7 +101,17 @@ export const notificationRules = pgTable(
       onDelete: 'restrict',
     }),
     recipientScope: text('recipient_scope').$type<NotificationRecipientScope>().notNull(),
-    /** Rolle bei `recipient_scope = 'role'`, sonst `null`. Löscht die Rolle, verschwindet die Regel mit. */
+    /**
+     * Rolle bei `recipient_scope = 'role'`, sonst `null`. Löscht die Rolle,
+     * verschwindet die Regel mit.
+     *
+     * **Bewusst ohne eigenen Index** (Audit backend-db-07): Die Zeilenzahl
+     * dieser Tabelle bestimmt der Administrator, sie liegt im zweistelligen
+     * Bereich und wächst nicht mit dem Betrieb. Bei so wenigen Zeilen wählt
+     * PostgreSQL für die Kaskade ohnehin den sequenziellen Weg; ein Index
+     * kostete nur bei jedem Schreibvorgang. Die Duplikatsprüfung des Dienstes
+     * trägt der Unique-Index weiter unten, der die Spalte enthält.
+     */
     recipientRoleId: uuid('recipient_role_id').references(() => roles.id, { onDelete: 'cascade' }),
     inboxEnabled: boolean('inbox_enabled').notNull().default(true),
     /**
@@ -155,7 +165,15 @@ export const announcements = pgTable(
     title: text('title').notNull(),
     body: text('body').notNull(),
     severity: text('severity').$type<NotificationSeverity>().notNull().default('info'),
-    /** Veröffentlichendes Konto; `null`, wenn es später gelöscht wurde – die Ankündigung bleibt. */
+    /**
+     * Veröffentlichendes Konto; `null`, wenn es später gelöscht wurde – die
+     * Ankündigung bleibt.
+     *
+     * **Bewusst ohne eigenen Index** (Audit backend-db-07): Ankündigungen legt
+     * ausschließlich ein Administrator an, die Tabelle wächst nicht mit der
+     * Nutzung des Panels, sondern mit einer Handvoll Einträgen im Jahr.
+     * Dieselbe Überlegung wie bei `notification_rules.recipient_role_id`.
+     */
     publishedByUserId: uuid('published_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -212,6 +230,13 @@ export const notifications = pgTable(
   (table) => [
     /** Trägt die Inbox-Ansicht: Meldungen eines Kontos, neueste zuerst. */
     index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
+    /**
+     * Trägt das `ON DELETE SET NULL` beim Löschen einer Regel (Audit
+     * backend-db-07). Diese Tabelle wächst mit jeder zugestellten Meldung
+     * unbegrenzt weiter; ohne Index läse das Löschen einer einzigen Regel sie
+     * vollständig, unter Sperre.
+     */
+    index('notifications_rule_id_idx').on(table.ruleId),
     /** Trägt den Zähler in der Navigation, ohne die gelesenen Meldungen mitzuzählen. */
     index('notifications_unread_idx')
       .on(table.userId)
@@ -277,6 +302,12 @@ export const notificationDeliveries = pgTable(
     index('notification_deliveries_status_idx')
       .on(table.status)
       .where(sql`${table.status} = 'failed'`),
+    /**
+     * Trägt das `ON DELETE SET NULL` beim Löschen einer Regel (Audit
+     * backend-db-07) – wie bei `notifications` eine Tabelle, die mit dem
+     * Betrieb unbegrenzt wächst.
+     */
+    index('notification_deliveries_rule_id_idx').on(table.ruleId),
   ],
 );
 
