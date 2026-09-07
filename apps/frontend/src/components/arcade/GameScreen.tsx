@@ -45,6 +45,16 @@ export function GameScreen({ gameId, onBack }: GameScreenProps) {
 
   const canSubmit = leaderboard.data?.permissions.canSubmit ?? user !== null;
 
+  /*
+   * Nur `reload` als Abhängigkeit, nicht die ganze Ressource
+   * (Audit-Fundstelle frontend-lib-03).
+   *
+   * `reload` ist stabil, `leaderboard` wechselt dagegen mit jedem geladenen
+   * Stand die Identität. Zusammen mit der Ref in `GameHost` ist damit sicher,
+   * dass eine nachladende Bestenliste keine laufende Partie zurücksetzt.
+   */
+  const { reload: reloadLeaderboard } = leaderboard;
+
   const handleGameOver = useCallback(
     async (score: number) => {
       if (!canSubmit) {
@@ -68,9 +78,9 @@ export function GameScreen({ gameId, onBack }: GameScreenProps) {
       } else {
         toast.show(`Ergebnis gespeichert: ${score} Punkte.`);
       }
-      leaderboard.reload();
+      reloadLeaderboard();
     },
-    [canSubmit, gameId, leaderboard, toast],
+    [canSubmit, gameId, reloadLeaderboard, toast],
   );
 
   return (

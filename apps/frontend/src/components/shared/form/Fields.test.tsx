@@ -123,6 +123,56 @@ describe('NumberField', () => {
     expect(input.getAttribute('min')).toBe('1');
     expect(input.getAttribute('max')).toBe('64');
   });
+
+  /**
+   * Audit-Fundstelle frontend-lib-13: `Number('')` ergibt `0`. Wer den Wert
+   * löschte, um ihn neu zu tippen, verschickte `ramMb: 0` bzw. `cpuCores: 0` –
+   * und das Feld tippte sich anschließend zu „016".
+   */
+  it('meldet beim Leeren `null` statt `0` oder `NaN`', () => {
+    const gemeldet = vi.fn();
+    render(<NumberField label="RAM" value={16} onChange={gemeldet} min={1} />);
+
+    fireEvent.change(screen.getByLabelText('RAM'), { target: { value: '' } });
+
+    expect(gemeldet).toHaveBeenCalledTimes(1);
+    expect(gemeldet).toHaveBeenCalledWith(null);
+    const [gemeldeterWert] = gemeldet.mock.calls[0] as [number | null];
+    expect(gemeldeterWert).not.toBe(0);
+    expect(Number.isNaN(gemeldeterWert)).toBe(false);
+  });
+
+  it('zeigt ein leeres Feld, wenn der Wert `null` ist', () => {
+    render(<NumberField label="Timeout" value={null} onChange={() => {}} />);
+
+    expect((screen.getByLabelText('Timeout') as HTMLInputElement).value).toBe('');
+  });
+
+  it('bleibt leer, auch wenn der Aufrufer den alten Wert behält', () => {
+    const gemeldet = vi.fn();
+    render(<NumberField label="RAM" value={16} onChange={gemeldet} min={1} />);
+
+    const feld = screen.getByLabelText('RAM') as HTMLInputElement;
+    fireEvent.change(feld, { target: { value: '' } });
+
+    // Der Aufrufer hat `null` verworfen und `value` unverändert gelassen – das
+    // Feld darf trotzdem nicht wieder „16" zeigen, sonst tippt es sich zu „161".
+    expect(feld.value).toBe('');
+
+    fireEvent.change(feld, { target: { value: '8' } });
+    expect(gemeldet).toHaveBeenLastCalledWith(8);
+    expect(feld.value).toBe('8');
+  });
+
+  it('zieht den Text nach, wenn der Wert von außen wechselt', () => {
+    const { rerender } = render(<NumberField label="RAM" value={16} onChange={() => {}} />);
+
+    const feld = screen.getByLabelText('RAM') as HTMLInputElement;
+    expect(feld.value).toBe('16');
+
+    rerender(<NumberField label="RAM" value={32} onChange={() => {}} />);
+    expect(feld.value).toBe('32');
+  });
 });
 
 describe('SelectField', () => {

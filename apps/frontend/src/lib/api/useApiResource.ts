@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -103,5 +104,17 @@ export function useApiResource<T>(
 
   const reload = useCallback(() => setReloadToken((token) => token + 1), []);
 
-  return { data, loading, error, reload, setData };
+  /*
+   * Ein Objektliteral im `return` bekäme bei jedem Rendern eine neue Identität –
+   * auch wenn sich an Daten, Lade- und Fehlerzustand nichts geändert hat. Wer
+   * das Ergebnis in die Abhängigkeiten eines `useCallback`/`useEffect` legt,
+   * baut sich damit eine Endlosschleife: Im Arcade lief genau so bei jedem
+   * Rendern ein `reset()`, der Endbildschirm verschwand nach einem Frame und
+   * eine laufende Partie brach ab, sobald die Bestenliste nachlud
+   * (Audit-Fundstelle frontend-lib-03).
+   *
+   * `reload` und `setData` sind ohnehin stabil (`useCallback` bzw. der Setter
+   * aus `useState`); gemerkt wird deshalb nur das umgebende Objekt.
+   */
+  return useMemo(() => ({ data, loading, error, reload, setData }), [data, loading, error, reload]);
 }

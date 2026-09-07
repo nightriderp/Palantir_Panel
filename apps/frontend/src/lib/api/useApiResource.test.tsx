@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { UNKNOWN_ERROR_MESSAGE } from '@/lib/auth/errors';
@@ -95,6 +95,47 @@ describe('useApiResource – abgelehnte Ladefunktion (Fundpunkt frontend-lib-12)
     });
     expect(result.current.data).toBeNull();
     expect(result.current.error).toBeNull();
+  });
+
+  /**
+   * Audit-Fundstelle frontend-lib-03: Das Ergebnis war ein Objektliteral und
+   * bekam bei jedem Rendern eine neue Identität. Wer es in die Abhängigkeiten
+   * eines `useCallback`/`useEffect` legte, baute sich damit eine Schleife – im
+   * Arcade setzte jedes Rendern das laufende Spiel zurück.
+   */
+  it('liefert über ein erneutes Rendern hinweg dieselben Referenzen', async () => {
+    const { result, rerender } = renderHook(() => useApiResource<string>(async () => DATEN, []));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    const vorher = result.current;
+    rerender();
+    rerender();
+
+    expect(result.current).toBe(vorher);
+    expect(result.current.reload).toBe(vorher.reload);
+    expect(result.current.setData).toBe(vorher.setData);
+  });
+
+  it('erneuert das Ergebnis, sobald sich Daten oder Zustand ändern', async () => {
+    const { result } = renderHook(() => useApiResource<string>(async () => DATEN, []));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    const vorher = result.current;
+    act(() => {
+      result.current.setData('neu');
+    });
+
+    expect(result.current).not.toBe(vorher);
+    expect(result.current.data).toBe('neu');
+    // Die Funktionen bleiben trotzdem dieselben.
+    expect(result.current.reload).toBe(vorher.reload);
+    expect(result.current.setData).toBe(vorher.setData);
   });
 
   it('räumt den Fehler bei erneutem Laden wieder ab', async () => {

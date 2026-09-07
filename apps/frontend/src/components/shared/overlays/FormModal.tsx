@@ -18,6 +18,12 @@ export interface FormModalProps {
   onSubmit: () => void;
   /** Absenden gesperrt, z. B. solange Pflichtfelder fehlen. */
   submitDisabled?: boolean;
+  /**
+   * Läuft das Speichern noch, sind die Schaltflächen gesperrt – und der Dialog
+   * schließt weder über Escape noch über den Hintergrund
+   * (Audit-Fundstelle frontend-lib-08). Sonst verschwände das Formular samt
+   * Eingaben, während der Request noch unterwegs ist.
+   */
   busy?: boolean;
   /** Fehlermeldung über der Aktionsleiste (Fehlertext aus dem API-Envelope). */
   error?: string | null;
@@ -50,7 +56,7 @@ export function FormModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={title} description={description}>
+    <Modal open={open} onClose={onClose} title={title} description={description} busy={busy}>
       <form onSubmit={handleSubmit} className="pb-6">
         <div className="flex flex-col gap-4">{children}</div>
 

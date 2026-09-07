@@ -82,7 +82,14 @@ export function ConfigFields({
                 min={field.min ?? undefined}
                 max={field.max ?? undefined}
                 value={typeof value === 'number' ? value : Number(value ?? 0)}
-                onChange={(next) => onChange(field.key, next)}
+                // `GameConfigValue` kennt kein `null` (Vertrag: Text, Zahl oder
+                // Schalter). Ein geleertes Feld meldet deshalb nichts nach oben
+                // – der zuletzt gültige Wert bleibt im Entwurf stehen, statt zu
+                // einer 0 zu werden (Audit-Fundstelle frontend-lib-13).
+                onChange={(next) => {
+                  if (next === null) return;
+                  onChange(field.key, next);
+                }}
               />
             );
 

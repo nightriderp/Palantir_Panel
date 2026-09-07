@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react';
 import { Icon } from '../icons/Icon';
 import { cn } from '../utils/cn';
 
@@ -18,6 +25,16 @@ export interface ModalProps {
   tone?: 'default' | 'danger';
   /** Hintergrundklick schließt den Dialog (Standard: ja). */
   closeOnBackdrop?: boolean;
+  /**
+   * Läuft die bestätigte Aktion noch? Dann schließt der Dialog weder über
+   * Escape noch über den Hintergrund noch über das Kreuz
+   * (Audit-Fundstelle frontend-lib-08).
+   *
+   * Vorher sperrten die Aufsätze nur ihre Schaltflächen: Der Dialog verschwand
+   * mitten in der laufenden Aktion, und die Rückmeldung kam später aus dem
+   * Nichts. Wer `busy` reicht, hält den Dialog stehen, bis die Aktion antwortet.
+   */
+  busy?: boolean;
   className?: string;
   children?: ReactNode;
 }
@@ -29,6 +46,8 @@ export interface ModalProps {
  * springt beim Öffnen in den Dialog und der Seiteninhalt darunter scrollt nicht
  * mit. Für die drei häufigen Fälle gibt es fertige Aufsätze – `ConfirmDialog`,
  * `DangerConfirmDialog` und `FormModal` – die hier drauf aufbauen.
+ *
+ * Beides – Escape und Hintergrund – ist gesperrt, solange `busy` gesetzt ist.
  */
 export function Modal({
   open,
@@ -38,6 +57,7 @@ export function Modal({
   footer,
   tone = 'default',
   closeOnBackdrop = true,
+  busy = false,
   className,
   children,
 }: ModalProps) {
@@ -45,11 +65,22 @@ export function Modal({
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * Lag der Beginn des Klicks (`mousedown`) auf dem Hintergrund?
+   *
+   * Nur dann darf das Loslassen schließen. Wer im Dialog Text markiert und die
+   * Maus außerhalb loslässt, erzeugt sonst ein `click` am gemeinsamen Vorfahren
+   * – dem Hintergrund – und verliert seine Eingaben (frontend-lib-08).
+   */
+  const pressStartedOnBackdrop = useRef(false);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      if (busy) return;
+      onClose();
     },
-    [onClose],
+    [busy, onClose],
   );
 
   useEffect(() => {
@@ -66,10 +97,26 @@ export function Modal({
 
   if (!open) return null;
 
+  function handleBackdropMouseDown(event: ReactMouseEvent<HTMLDivElement>): void {
+    pressStartedOnBackdrop.current = event.target === event.currentTarget;
+  }
+
+  function handleBackdropMouseUp(event: ReactMouseEvent<HTMLDivElement>): void {
+    const startedAndEndedOnBackdrop =
+      pressStartedOnBackdrop.current && event.target === event.currentTarget;
+    pressStartedOnBackdrop.current = false;
+    if (!startedAndEndedOnBackdrop) return;
+    if (!closeOnBackdrop || busy) return;
+    onClose();
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex animate-fade-up items-end justify-center bg-black/60 p-0 backdrop-blur-[3px] sm:items-center sm:p-5"
-      onClick={closeOnBackdrop ? onClose : undefined}
+      // Geschlossen wird erst beim Loslassen – und nur, wenn schon das Drücken
+      // auf dem Hintergrund lag (frontend-lib-08).
+      onMouseDown={handleBackdropMouseDown}
+      onMouseUp={handleBackdropMouseUp}
     >
       <div
         ref={dialogRef}
@@ -78,6 +125,9 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
+        // Der Dialog steckt im React-Baum seines Aufrufers (kein Portal): ohne
+        // das hier liefe jeder Klick im Dialog zusätzlich in dessen Karten- oder
+        // Zeilen-Handler.
         onClick={(event) => event.stopPropagation()}
         className={cn(
           'max-h-[86vh] w-full max-w-[520px] animate-materialize overflow-y-auto rounded-t-2xl bg-surface shadow-modal outline-none sm:rounded-2xl',
@@ -101,8 +151,9 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
+            disabled={busy}
             aria-label="Dialog schließen"
-            className="-mr-1 shrink-0 rounded p-1 text-ink-muted hover:text-ink"
+            className="-mr-1 shrink-0 rounded p-1 text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:text-ink-disabled disabled:hover:text-ink-disabled"
           >
             <Icon name="close" size={16} />
           </button>

@@ -431,7 +431,10 @@ export function SettingsTab({
               hint="Leer lassen entspricht dem Standardwert der Instanz."
               min={5}
               max={1440}
-              value={draft.autoShutdownTimeoutMinutes ?? 30}
+              // Leer ist hier eine gültige Aussage („Standardwert der Instanz")
+              // und wird als `null` gespeichert – nicht als 0
+              // (Audit-Fundstelle frontend-lib-13).
+              value={draft.autoShutdownTimeoutMinutes}
               onChange={(value) =>
                 setDraft((current) => ({ ...current, autoShutdownTimeoutMinutes: value }))
               }
