@@ -1039,6 +1039,17 @@ export class AuthService {
    *
    * Die letzte verbliebene Methode bleibt bestehen – sonst käme niemand mehr in
    * das Konto (Lastenheft §3.1). Wer das Konto loswerden will, löscht es.
+   *
+   * Beim Passwort-Verfahren fällt die Anmeldekennung mit weg (Audit
+   * backend-auth-04). Sie gehört ausschließlich zu diesem Verfahren: Ohne
+   * Passwort-Zeile findet `findUserByUsername` zwar noch das Konto, die
+   * Anmeldung scheitert aber mangels Hash. Bliebe die Kennung stehen, wäre sie
+   * für jeden anderen dauerhaft gesperrt (`AUTH_USERNAME_TAKEN` auf einen
+   * Namen, den niemand mehr benutzen kann) – bei einem gelöschten Konto gibt
+   * die Datenbank sie dagegen frei. Reine Anbieter-Konten haben von Haus aus
+   * keine Kennung, der Zustand ist also keiner, den es sonst nicht gäbe:
+   * `deleteAccount` bestätigt dann über den Anzeigenamen, und ein späteres
+   * `linkPassword` vergibt eine neue Kennung.
    */
   async unlinkMethod(userId: string, type: AuthMethodType): Promise<AccountDto> {
     const user = await this.requireUser(userId);
@@ -1055,7 +1066,14 @@ export class AuthService {
 
     await this.repository.deleteAuthMethod(target.id);
 
-    return this.loadAccount(user);
+    // Erst nach dem Löschen der Methode: Scheitert das `DELETE`, bleibt das
+    // Konto vollständig, statt ohne Kennung mit Passwort dazustehen.
+    const updated =
+      type === 'password' && user.username !== null
+        ? await this.repository.setUsername(userId, null)
+        : user;
+
+    return this.loadAccount(updated);
   }
 
   // -- Passwort -------------------------------------------------------------

@@ -176,17 +176,45 @@ async function issueCookies(
 }
 
 /**
+ * Standard-Fehlercode je Feldname (Audit backend-auth-05).
+ *
+ * Vorher galt für jeden Schema-Verstoß pauschal `AUTH_PASSWORD_TOO_WEAK` –
+ * eine Registrierung mit zu kurzem Benutzernamen oder ein zu kurzer
+ * Anzeigename bekam damit einen Code, der auf das Passwortfeld zeigt. Die
+ * Tabelle gilt für **alle** Routen, weil ein Feld überall dasselbe bedeutet:
+ * `password` verletzt die Passwortregeln, `altcha` ist der Spam-Nachweis,
+ * `code`/`twoFactorToken` gehören zum zweiten Faktor.
+ *
+ * Felder ohne Eintrag beantwortet {@link parseBody} mit `VALIDATION_FAILED` –
+ * dem neutralen Katalogcode für „Anfrage enthält ungültige Werte"
+ * (Pflichtenheft §5.1). Die Meldung des Schemas nennt das Feld ohnehin.
+ */
+const DEFAULT_FIELD_CODES: Readonly<Record<string, ErrorCode>> = {
+  password: 'AUTH_PASSWORD_TOO_WEAK',
+  newPassword: 'AUTH_PASSWORD_TOO_WEAK',
+  currentPassword: 'AUTH_INVALID_CREDENTIALS',
+  altcha: 'AUTH_CAPTCHA_INVALID',
+  code: 'AUTH_TWO_FACTOR_INVALID',
+  twoFactorToken: 'AUTH_TWO_FACTOR_INVALID',
+};
+
+/**
  * Validiert einen Request-Body und wirft bei Fehlern einen benannten Code.
  *
- * `fieldCodes` erlaubt, einzelne Felder abweichend zu beantworten: ein
- * fehlender ALTCHA-Nachweis beim Login ist kein Zugangsdaten-Fehler, sondern
- * `AUTH_CAPTCHA_INVALID` – sonst bekäme das Formular eine Meldung, die auf das
- * falsche Feld zeigt.
+ * Die Reihenfolge ist Absicht:
+ * 1. `fieldCodes` – die Route beantwortet ein einzelnes Feld ausdrücklich
+ *    anders (ein fehlender ALTCHA-Nachweis beim Login ist kein
+ *    Zugangsdaten-Fehler, sondern `AUTH_CAPTCHA_INVALID`).
+ * 2. `code` – die Route beantwortet **alle** Felder einheitlich. Login und
+ *    2FA-Abschaltung tun das mit Absicht: Aus der Antwort soll nicht
+ *    hervorgehen, welcher der beiden übergebenen Werte falsch war.
+ * 3. {@link DEFAULT_FIELD_CODES} – der zum Feld passende Standard.
+ * 4. `VALIDATION_FAILED` als neutraler Rest.
  */
 function parseBody<TSchema extends z.ZodTypeAny>(
   schema: TSchema,
   body: unknown,
-  code: ErrorCode = 'AUTH_PASSWORD_TOO_WEAK',
+  code?: ErrorCode,
   fieldCodes: Record<string, ErrorCode> = {},
 ): z.infer<TSchema> {
   const parsed = schema.safeParse(body);
@@ -196,8 +224,10 @@ function parseBody<TSchema extends z.ZodTypeAny>(
     // Oberfläche gedacht; der Code kommt aus dem Katalog.
     const issue = parsed.error.issues[0];
     const field = typeof issue?.path[0] === 'string' ? issue.path[0] : null;
+    const fieldCode = field !== null ? fieldCodes[field] : undefined;
+    const fallback = field !== null ? DEFAULT_FIELD_CODES[field] : undefined;
 
-    throw new AuthError((field !== null ? fieldCodes[field] : undefined) ?? code, issue?.message);
+    throw new AuthError(fieldCode ?? code ?? fallback ?? 'VALIDATION_FAILED', issue?.message);
   }
 
   return parsed.data as z.infer<TSchema>;

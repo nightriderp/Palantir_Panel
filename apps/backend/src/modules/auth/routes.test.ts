@@ -225,6 +225,42 @@ describe('Registrierung über HTTP (Lastenheft §3.1)', () => {
     expect(response.json<{ error: { code: string } }>().error.code).toBe('AUTH_PASSWORD_TOO_WEAK');
   });
 
+  /*
+   * Audit backend-auth-05: Vorher beantwortete `parseBody` jeden Schema-Verstoß
+   * pauschal mit `AUTH_PASSWORD_TOO_WEAK` – auch einen zu kurzen Benutzernamen.
+   * Das Formular markierte damit das falsche Feld.
+   */
+  it('nennt zu jedem Feld den passenden Fehlercode', async () => {
+    const nachricht = await solveAltcha();
+
+    const benutzername = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { username: 'ab', password: PASSWORD, altcha: nachricht },
+    });
+    expect(benutzername.statusCode).toBe(400);
+    expect(benutzername.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
+
+    const anzeigename = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { username: 'spieler', password: PASSWORD, displayName: 'x', altcha: nachricht },
+    });
+    expect(anzeigename.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
+
+    const nachweis = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { username: 'spieler', password: PASSWORD },
+    });
+    expect(nachweis.json<{ error: { code: string } }>().error.code).toBe('AUTH_CAPTCHA_INVALID');
+
+    // Die Meldung des Schemas bleibt erhalten und nennt das Feld beim Namen.
+    expect(benutzername.json<{ error: { message: string } }>().error.message).toContain(
+      'Benutzername',
+    );
+  });
+
   it('meldet einen vergebenen Benutzernamen mit 409', async () => {
     await registerAccount('spieler');
 
@@ -574,6 +610,95 @@ describe('Erzwungener Passwortwechsel (Lastenheft §3.1)', () => {
     expect(body.mustChangePassword).toBe(false);
     expect(body.id).toBe(account.id);
   });
+
+  /*
+   * Audit backend-auth-09: Wer eine verdächtige Fremdsitzung sieht, muss sie
+   * sofort abmelden können – erst das Passwort zu wechseln, während die fremde
+   * Sitzung weiterläuft, dreht die Reihenfolge um.
+   */
+  it('lässt den Widerruf einer Sitzung zu', async () => {
+    const { jar } = await registerAccount('spieler');
+
+    // Zweite Sitzung desselben Kontos, damit es etwas zu widerrufen gibt.
+    await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'spieler', password: PASSWORD, altcha: await solveAltcha() },
+    });
+
+    const method = repository.methods[0];
+    repository.methods[0] = { ...method!, mustChangePassword: true };
+
+    const sessions = await app.inject({
+      method: 'GET',
+      url: '/auth/sessions',
+      headers: { cookie: cookieHeader(jar) },
+    });
+    const fremd = sessions
+      .json<{ data: { id: string; current: boolean }[] }>()
+      .data.find((session) => !session.current);
+
+    const revoked = await app.inject({
+      method: 'DELETE',
+      url: `/auth/sessions/${fremd?.id ?? ''}`,
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '' },
+    });
+
+    expect(revoked.statusCode).toBe(200);
+  });
+
+  it('lässt die Konto-Löschung zu, das Profil aber nicht', async () => {
+    const { jar } = await registerAccount('spieler');
+    const method = repository.methods[0];
+    repository.methods[0] = { ...method!, mustChangePassword: true };
+
+    const headers = {
+      cookie: cookieHeader(jar),
+      [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '',
+    };
+
+    // Der Anzeigename ist keine Ausnahme: `/auth/account` trägt zwei Vorgänge,
+    // die Liste unterscheidet sie an der Methode.
+    const profil = await app.inject({
+      method: 'PATCH',
+      url: '/auth/account',
+      headers,
+      payload: { displayName: 'Neuer Name' },
+    });
+    expect(profil.statusCode).toBe(403);
+    expect(profil.json<{ error: { code: string } }>().error.code).toBe(
+      'AUTH_PASSWORD_CHANGE_REQUIRED',
+    );
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: '/auth/account',
+      headers,
+      payload: { confirmName: 'spieler', password: PASSWORD },
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(repository.users).toHaveLength(0);
+  });
+
+  it('bleibt für beide Ausnahmen bei der CSRF-Pflicht', async () => {
+    // Die Ausnahme gilt dem erzwungenen Passwortwechsel, nicht dem
+    // Double-Submit: Beides sind zustandsändernde Vorgänge an einer
+    // bestehenden Sitzung.
+    const { jar } = await registerAccount('spieler');
+    const method = repository.methods[0];
+    repository.methods[0] = { ...method!, mustChangePassword: true };
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/auth/account',
+      headers: { cookie: cookieHeader(jar) },
+      payload: { confirmName: 'spieler', password: PASSWORD },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('AUTH_CSRF_INVALID');
+    expect(repository.users).toHaveLength(1);
+  });
 });
 
 describe('Anzeigename ändern (Lastenheft §3.1)', () => {
@@ -605,6 +730,8 @@ describe('Anzeigename ändern (Lastenheft §3.1)', () => {
     });
 
     expect(response.statusCode).toBe(400);
+    // Der Anzeigename ist kein Passwortfeld (Audit backend-auth-05).
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
   });
 
   it('verlangt eine Anmeldung', async () => {

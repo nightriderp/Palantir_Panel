@@ -51,10 +51,50 @@ describe('Herkunfts-Hinweis (Datenschutz-Prinzip, Pflichtenheft §18)', () => {
     expect(toIpHint('2001:db8:1:2:3:4:5:6')).toBe('2001:db8:1:x');
   });
 
+  /*
+   * Audit backend-auth-07: Vorher wurden die durch `::` entstandenen
+   * Leerblöcke weggefiltert. Aus `2001:db8::dead:beef` wurde dadurch
+   * `2001:db8:dead:x` – „dead" ist aber der siebte Block, nicht der dritte.
+   * Der Hinweis zeigte damit andere Bits, als der Kommentar zusagt, und zwei
+   * verschiedene Netze konnten denselben Hinweis ergeben.
+   */
+  it('füllt komprimierte Adressen auf, bevor es kürzt', () => {
+    expect(toIpHint('2001:db8::dead:beef')).toBe('2001:db8:0:x');
+    expect(toIpHint('2001:db8:1::')).toBe('2001:db8:1:x');
+    expect(toIpHint('::1')).toBe('0:0:0:x');
+    expect(toIpHint('fe80::1')).toBe('fe80:0:0:x');
+  });
+
+  it('behandelt ausgeschriebene und komprimierte Form gleich', () => {
+    expect(toIpHint('2001:0db8:0001:0000:0000:0000:0000:0001')).toBe('2001:db8:1:x');
+    expect(toIpHint('2001:db8:1::1')).toBe('2001:db8:1:x');
+  });
+
+  it('erkennt IPv4-mapped in beiden Schreibweisen', () => {
+    // Fastify liefert die erste Form über IPv6-Sockets, die zweite ist
+    // dieselbe Adresse in Hex – beide sind derselbe Anschluss.
+    expect(toIpHint('::ffff:203.0.113.10')).toBe('203.0.113.x');
+    expect(toIpHint('0:0:0:0:0:ffff:203.0.113.10')).toBe('203.0.113.x');
+    expect(toIpHint('::ffff:cb00:710a')).toBe('203.0.113.x');
+  });
+
+  it('lässt den Zonen-Index weg', () => {
+    // `%eth0` benennt die Schnittstelle des Servers, nicht die Herkunft.
+    expect(toIpHint('fe80::1%eth0')).toBe('fe80:0:0:x');
+  });
+
   it('speichert nie die vollständige Adresse', () => {
     expect(toIpHint('203.0.113.10')).not.toContain('.10');
     expect(toIpHint(undefined)).toBeNull();
     expect(toIpHint('keine-adresse')).toBeNull();
+  });
+
+  it('erfindet nichts bei unbrauchbaren Eingaben', () => {
+    expect(toIpHint('2001:db8::1::2')).toBeNull();
+    expect(toIpHint('2001:db8:1:2:3:4:5')).toBeNull();
+    expect(toIpHint('203.0.113')).toBeNull();
+    expect(toIpHint('999.0.113.10')).toBeNull();
+    expect(toIpHint('   ')).toBeNull();
   });
 });
 

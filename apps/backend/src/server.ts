@@ -4,6 +4,7 @@ import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from './config/env.js';
 import { cookieDomainUmfasstSpielhosts } from './config/cookie-domain.js';
+import { buildLoggerOptions } from './config/logging.js';
 import { createTrustProxy } from './config/trusted-proxy.js';
 import { getDb, getPool } from './db/index.js';
 import { registerErrorHandler } from './error-handler.js';
@@ -145,7 +146,10 @@ export interface BuildServerOptions {
  */
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: { level: env.LOG_LEVEL },
+    // Query-Parameter und `Authorization` bleiben aus den Log-Zeilen heraus
+    // (Audit W3-9, security-matrix-09) – der OAuth-Rücklauf trägt Code und
+    // `state` in der URL.
+    logger: buildLoggerOptions(env.LOG_LEVEL),
     // Nur den eigenen Reverse-Proxys vertrauen, und zwar an ihrer **Adresse**
     // (`TRUSTED_PROXY_ADDRESSES`), nicht an einer Hop-Zahl: Ein client-gesetzter
     // `X-Forwarded-For` darf `request.ip` nicht bestimmen, sonst ist der
