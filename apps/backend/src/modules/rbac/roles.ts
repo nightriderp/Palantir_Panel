@@ -331,9 +331,10 @@ export function createRoleService(repository: RoleRepository): RoleService {
 
       const roles = await repository.listRolesForUser(userId);
 
+      // Der Name fließt mit: aus ihm leitet B2 die Freischaltung ab (§3.1).
       return buildPermissionActor({
         isOwner: false,
-        roles: roles.map((role) => ({ grantedPermissions: role.permissions })),
+        roles: roles.map((role) => ({ grantedPermissions: role.permissions, name: role.name })),
       });
     },
   };

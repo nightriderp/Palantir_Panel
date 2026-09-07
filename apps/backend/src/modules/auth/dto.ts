@@ -14,11 +14,14 @@
 import {
   type AccountDto,
   type AccountRoleSummary,
-  GUEST_ROLE_NAME,
   type LinkedAuthMethod,
   type SessionDto,
 } from '@palantir/contracts';
-import { type PermissionActor, computeGlobalPermissions } from '../rbac/index.js';
+import {
+  type PermissionActor,
+  computeGlobalPermissions,
+  isAccountApproved,
+} from '../rbac/index.js';
 import type { AuthMethodRecord, SessionRecord, UserRecord } from './types.js';
 
 /** 2FA gilt erst als aktiv, wenn die Einrichtung bestätigt wurde. */
@@ -34,13 +37,13 @@ export function isTwoFactorActive(method: AuthMethodRecord): boolean {
  * „Gast" trägt. Der Owner wartet nie. Bewusst hier berechnet und als fertiges
  * Feld ausgeliefert – das Frontend soll den Zustand nicht aus Rollennamen
  * herleiten müssen (Pflichtenheft §5.2).
+ *
+ * Die Regel selbst liegt in B2 (`isAccountApproved`) und wird von dort auch vom
+ * Guard `requireApproved()` gelesen – eine zweite Auslegung derselben Sache
+ * soll nicht entstehen (security-matrix-06).
  */
 export function isAwaitingApproval(user: UserRecord, roles: readonly { name: string }[]): boolean {
-  if (user.isOwner) {
-    return false;
-  }
-
-  return roles.every((role) => role.name === GUEST_ROLE_NAME);
+  return !isAccountApproved({ isOwner: user.isOwner, roles });
 }
 
 export function toLinkedAuthMethod(

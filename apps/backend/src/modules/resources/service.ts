@@ -66,6 +66,23 @@ export function computeUserResourceLimitPermissions(
   });
 }
 
+/**
+ * Aufrufer **samt** seiner Konto-Id, wie die Sitzung sie liefert (B1).
+ *
+ * Eigener Typ statt eines zweiten `userId`-Parameters neben dem Actor: Wo
+ * „eigenes Konto" gemeint ist, soll die Konto-Id sichtbar aus der Sitzung
+ * kommen und nicht aus Pfad, Query oder Body. Ein Aufrufer, der eine
+ * Nutzereingabe durchreichen wollte, müsste sie hier ausdrücklich zur Identität
+ * des Aufrufers erklären – das fällt an der Aufrufstelle auf, ein weiterer
+ * `string`-Parameter tut das nicht (backend-admin-resources-13).
+ */
+export interface SessionSubject {
+  /** Effektive Rechte des Aufrufers (B2). */
+  readonly actor: PermissionActor;
+  /** Konto-Id **aus der Sitzung** – nie aus einer Eingabe des Aufrufers. */
+  readonly userId: string;
+}
+
 /** Anfrage an die Kapazitätsprüfung (Pflichtenheft §10). */
 export interface StartCapacityRequest {
   /** Besitzer des Servers – sein Kontingent wird geprüft. */
@@ -120,9 +137,11 @@ export interface ResourceService {
    *
    * Keine Permission nötig: das eigene Kontingent darf jedes angemeldete Konto
    * sehen. `canEdit` bleibt davon unberührt und verlangt weiterhin
-   * `user.manage`.
+   * `user.manage`. Genau deshalb nimmt die Methode **keine freie `userId`**
+   * mehr entgegen, sondern einen {@link SessionSubject}
+   * (backend-admin-resources-13).
    */
-  getOwnQuota(actor: PermissionActor, userId: string): Promise<ResourceQuotaDto>;
+  getOwnQuota(self: SessionSubject): Promise<ResourceQuotaDto>;
 
   /**
    * **Prüf-Funktion für B3.** Beide Prüfungen aus Pflichtenheft §10, ohne zu
@@ -301,7 +320,10 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
       return toDto(actor, { ...current, limits: NO_USER_RESOURCE_LIMITS, updatedAt: null }, false);
     },
 
-    async getOwnQuota(actor, userId) {
+    async getOwnQuota(self) {
+      // Gelesen wird ausschließlich das Konto der Sitzung; eine zweite Id, die
+      // davon abweichen könnte, gibt es in dieser Methode nicht.
+      const { actor, userId } = self;
       const record = await loadUserOrFail(userId);
       const usage = await deps.usage.usageForUser(userId);
 

@@ -9,7 +9,8 @@
  * - `computePermissionFlags()` – das `permissions`-Objekt eines DTOs
  *   (Pflichtenheft §5.2); `computeGlobalPermissions()` als kontobezogene
  *   Ausprägung
- * - `requirePermission()` & Co. – Guard für Fastify-Routen
+ * - `requirePermission()` & Co. – Guard für Fastify-Routen; `requireApproved()`
+ *   für Routen, die nur ein freigeschaltetes Konto verlangen (Lastenheft §3.1)
  * - `createRoleService()` – Rollenverwaltung inkl. Schutz der Systemrolle „Gast"
  * - `seedRoles()` – Rollen der Ersteinrichtung
  *
@@ -33,6 +34,7 @@ export {
   hasAnyPermission,
   hasPermission,
   hasScopedPermission,
+  isAccountApproved,
 } from './permissions.js';
 
 export {
@@ -58,5 +60,6 @@ export {
   requireActor,
   requireAllPermissions,
   requireAnyPermission,
+  requireApproved,
   requirePermission,
 } from './guard.js';

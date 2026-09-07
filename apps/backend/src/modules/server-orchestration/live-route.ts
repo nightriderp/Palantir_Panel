@@ -66,13 +66,23 @@ export function registerServerLiveRoute(
   app.get('/live', { websocket: true }, (socket: WebSocket, request: FastifyRequest) => {
     // Auth: Es braucht sowohl das Konto (B1) als auch den Rechte-Akteur (B2).
     let authenticated = (request.viewerUserId ?? null) !== null;
+    // Und die Freischaltung (Lastenheft §3.1): Ein Konto in der Warteliste soll
+    // keine Live-Verbindung offenhalten (security-matrix-06). Ein `preHandler`
+    // kommt hier nicht in Frage – der Handshake ist bereits vollzogen, also
+    // wird derselbe Actor-Wert geprüft, den `requireApproved()` liest.
+    let approved = false;
     try {
-      requireActor(request);
+      approved = requireActor(request).approved;
     } catch {
       authenticated = false;
     }
     if (!authenticated) {
       socket.close(4401, 'Nicht angemeldet.');
+
+      return;
+    }
+    if (!approved) {
+      socket.close(4403, 'Konto ist noch nicht freigeschaltet.');
 
       return;
     }

@@ -70,6 +70,8 @@ interface Fakes {
   readonly service: ResourceService;
   readonly stored: { record: UserResourceLimitRecord | null };
   readonly excludedIds: string[];
+  /** Konto-Ids, nach denen der Service tatsächlich gefragt hat. */
+  readonly abgefragteIds: string[];
 }
 
 function buildService(options?: {
@@ -91,9 +93,12 @@ function buildService(options?: {
           },
   };
   const excludedIds: string[] = [];
+  const abgefragteIds: string[] = [];
 
   const limitRepository: UserResourceLimitRepository = {
-    async findByUserId() {
+    async findByUserId(userId: string) {
+      abgefragteIds.push(userId);
+
       return stored.record;
     },
     async findManyByUserId(userIds: readonly string[]) {
@@ -169,6 +174,7 @@ function buildService(options?: {
     }),
     stored,
     excludedIds,
+    abgefragteIds,
   };
 }
 
@@ -185,7 +191,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
       },
     });
 
-    const quota = await service.getOwnQuota(plainActor, USER_ID);
+    const quota = await service.getOwnQuota({ actor: plainActor, userId: USER_ID });
 
     expect(quota.userId).toBe(USER_ID);
     expect(quota.ram).toEqual({
@@ -226,7 +232,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
       userUsage: { runningRamMb: 4096, allocatedDiskMb: 10_240, runningServers: 2 },
     });
 
-    const quota = await service.getOwnQuota(plainActor, USER_ID);
+    const quota = await service.getOwnQuota({ actor: plainActor, userId: USER_ID });
 
     expect(quota.ram.limit).toBeNull();
     expect(quota.ram.remaining).toBeNull();
@@ -242,7 +248,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
       userUsage: { runningRamMb: 6144, runningServers: 3 },
     });
 
-    const quota = await service.getOwnQuota(plainActor, USER_ID);
+    const quota = await service.getOwnQuota({ actor: plainActor, userId: USER_ID });
 
     expect(quota.ram.remaining).toBe(0);
     expect(quota.servers.remaining).toBe(0);
@@ -251,20 +257,41 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
   it('verlangt keine Permission, setzt canEdit aber nur mit user.manage', async () => {
     const { service } = buildService({});
 
-    expect((await service.getOwnQuota(plainActor, USER_ID)).permissions).toEqual({
-      canView: true,
-      canEdit: false,
-    });
-    expect((await service.getOwnQuota(adminActor, USER_ID)).permissions).toEqual({
-      canView: true,
-      canEdit: true,
-    });
+    expect((await service.getOwnQuota({ actor: plainActor, userId: USER_ID })).permissions).toEqual(
+      {
+        canView: true,
+        canEdit: false,
+      },
+    );
+    expect((await service.getOwnQuota({ actor: adminActor, userId: USER_ID })).permissions).toEqual(
+      {
+        canView: true,
+        canEdit: true,
+      },
+    );
+  });
+
+  /*
+   * backend-admin-resources-13: Die Methode liest ausschließlich das Konto der
+   * Sitzung. Eine zweite, frei wählbare Id gibt es in der Signatur nicht mehr –
+   * geprüft wird deshalb, dass genau die Id der Sitzung abgefragt wird und dass
+   * eine fremde Id nur dann etwas liefert, wenn sie *die* Sitzung ist.
+   */
+  it('fragt ausschließlich das Konto der Sitzung ab', async () => {
+    const { service, abgefragteIds } = buildService({});
+
+    const quota = await service.getOwnQuota({ actor: plainActor, userId: USER_ID });
+
+    expect(quota.userId).toBe(USER_ID);
+    expect(abgefragteIds).toEqual([USER_ID]);
   });
 
   it('meldet ein unbekanntes Konto mit USER_NOT_FOUND', async () => {
     const { service } = buildService({ userExists: false });
 
-    const error = await service.getOwnQuota(plainActor, USER_ID).catch((thrown: unknown) => thrown);
+    const error = await service
+      .getOwnQuota({ actor: plainActor, userId: USER_ID })
+      .catch((thrown: unknown) => thrown);
 
     expect(isResourceError(error)).toBe(true);
     if (!isResourceError(error)) {

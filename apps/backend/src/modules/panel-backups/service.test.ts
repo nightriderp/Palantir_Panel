@@ -19,8 +19,16 @@ import {
 } from './index.js';
 import { pgEnvFromUrl } from './pg-dump.js';
 
-const ADMIN: PermissionActor = { isOwner: false, permissions: new Set(['backup.manage.any']) };
-const NUTZER: PermissionActor = { isOwner: false, permissions: new Set(['backup.manage.own']) };
+const ADMIN: PermissionActor = {
+  isOwner: false,
+  permissions: new Set(['backup.manage.any']),
+  approved: true,
+};
+const NUTZER: PermissionActor = {
+  isOwner: false,
+  permissions: new Set(['backup.manage.own']),
+  approved: true,
+};
 
 /** Ablage im Speicher – dieselbe Reihenfolge wie die Drizzle-Umsetzung. */
 function speicherRepository(vorhanden: PanelBackupRecord[] = []): PanelBackupRepository & {

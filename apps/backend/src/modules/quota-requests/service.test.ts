@@ -55,9 +55,22 @@ interface Aufbau {
   auditRepository: ReturnType<typeof createFakeAuditRepository>;
 }
 
-function build(
-  options: { vorhanden?: QuotaRequestRecord[]; setzenScheitert?: boolean } = {},
-): Aufbau {
+interface BuildOptions {
+  vorhanden?: QuotaRequestRecord[];
+  setzenScheitert?: boolean;
+  /**
+   * Läuft im Fake-Repository **vor** dem beanspruchenden `UPDATE`.
+   *
+   * Damit lässt sich das Rennen aus backend-admin-resources-06 nachstellen: Ein
+   * zweiter Aufruf landet genau zwischen dem Lesen der Anfrage im Service und
+   * dem Schreiben in der Datenbank.
+   */
+  vorDemBeanspruchen?: () => Promise<void>;
+  /** Läuft, während das Kontingent gesetzt wird – die andere Hälfte des Rennens. */
+  waehrendSetzen?: () => Promise<void>;
+}
+
+function build(options: BuildOptions = {}): Aufbau {
   const gespeichert = [...(options.vorhanden ?? [])];
   const gesetzteLimits: Array<{ userId: string; input: Record<string, unknown> }> = [];
 
@@ -88,8 +101,19 @@ function build(
         gespeichert.find((eintrag) => eintrag.userId === userId && eintrag.status === 'pending') ??
           null,
       ),
-    decide: (id, status, decidedById, note) => {
-      const index = gespeichert.findIndex((eintrag) => eintrag.id === id);
+    decide: async (id, status, decidedById, note) => {
+      await options.vorDemBeanspruchen?.();
+
+      // Wie das echte `UPDATE ... WHERE status = 'pending'`: Wer zu spät kommt,
+      // trifft keine Zeile mehr und bekommt `null`.
+      const index = gespeichert.findIndex(
+        (eintrag) => eintrag.id === id && eintrag.status === 'pending',
+      );
+
+      if (index === -1) {
+        return null;
+      }
+
       const aktualisiert = {
         ...gespeichert[index]!,
         status,
@@ -99,25 +123,50 @@ function build(
       };
       gespeichert[index] = aktualisiert;
 
-      return Promise.resolve(aktualisiert);
+      return aktualisiert;
     },
-    remove: (id) => {
+    reopen: (id) => {
       const index = gespeichert.findIndex((eintrag) => eintrag.id === id);
-      gespeichert.splice(index, 1);
+
+      if (index !== -1) {
+        gespeichert[index] = {
+          ...gespeichert[index]!,
+          status: 'pending',
+          decisionNote: null,
+          decidedByDisplayName: null,
+          decidedAt: null,
+        };
+      }
 
       return Promise.resolve();
+    },
+    remove: (id) => {
+      // Wie das echte `DELETE ... WHERE status = 'pending'`.
+      const index = gespeichert.findIndex(
+        (eintrag) => eintrag.id === id && eintrag.status === 'pending',
+      );
+
+      if (index === -1) {
+        return Promise.resolve(false);
+      }
+
+      gespeichert.splice(index, 1);
+
+      return Promise.resolve(true);
     },
   };
 
   const quotas: QuotaWriter = {
-    setUserLimits: (_actor, userId, input) => {
+    setUserLimits: async (_actor, userId, input) => {
+      await options.waehrendSetzen?.();
+
       if (options.setzenScheitert === true) {
-        return Promise.reject(new Error('Das Kontingent konnte nicht gesetzt werden.'));
+        throw new Error('Das Kontingent konnte nicht gesetzt werden.');
       }
 
       gesetzteLimits.push({ userId, input: input as Record<string, unknown> });
 
-      return Promise.resolve(null);
+      return null;
     },
   };
 
@@ -287,5 +336,80 @@ describe('Zurückziehen', () => {
     const { service } = build({ vorhanden: [record({ status: 'approved' })] });
 
     await expectCode(service.withdraw(plainActor, USER_ID, 'req-1'), 'QUOTA_REQUEST_INVALID_STATE');
+  });
+});
+
+/**
+ * Genehmigen und Zurückziehen zur selben Zeit (backend-admin-resources-06).
+ *
+ * Beide Seiten lesen dieselbe offene Anfrage; entschieden wird erst im
+ * bedingten Schreiben. Geprüft wird deshalb dreierlei: Genau einer gewinnt, der
+ * Verlierer bekommt einen Fachcode aus dem Katalog (kein unerwarteter Fehler,
+ * der als 500 endete), und ein erhöhtes Kontingent steht nie ohne die Anfrage
+ * da, die es belegt.
+ */
+describe('Rennen zwischen Bescheid und Rückzug', () => {
+  it('lässt den Rückzug scheitern, wenn die Genehmigung zuerst zugreift', async () => {
+    const rueckzug: { fehler: unknown } = { fehler: null };
+    const { service, gesetzteLimits, gespeichert } = build({
+      vorhanden: [record()],
+      // Der Rückzug kommt, während das Kontingent gesetzt wird – die Anfrage ist
+      // zu diesem Zeitpunkt bereits beansprucht.
+      waehrendSetzen: async () => {
+        rueckzug.fehler = await service
+          .withdraw(plainActor, USER_ID, 'req-1')
+          .then(() => null)
+          .catch((error: unknown) => error);
+      },
+    });
+
+    const dto = await service.approve(adminActor, ADMIN_ID, 'req-1', {});
+
+    expect(dto.status).toBe('approved');
+    expect(gesetzteLimits).toHaveLength(1);
+    expect(gespeichert[0]?.status).toBe('approved');
+    expect(
+      isQuotaRequestError(rueckzug.fehler) &&
+        rueckzug.fehler.code === 'QUOTA_REQUEST_INVALID_STATE',
+    ).toBe(true);
+  });
+
+  it('lässt die Genehmigung scheitern, wenn der Rückzug zuerst zugreift', async () => {
+    let vorbereitet: (() => Promise<void>) | null = null;
+    const { service, gesetzteLimits, gespeichert } = build({
+      vorhanden: [record()],
+      // Der Rückzug landet zwischen dem Lesen im Service und dem Schreiben.
+      vorDemBeanspruchen: async () => {
+        await vorbereitet?.();
+      },
+    });
+    vorbereitet = () => service.withdraw(plainActor, USER_ID, 'req-1');
+
+    await expectCode(
+      service.approve(adminActor, ADMIN_ID, 'req-1', {}),
+      'QUOTA_REQUEST_INVALID_STATE',
+    );
+
+    // Kein Kontingent ohne Beleg: Die Erhöhung darf gar nicht erst laufen.
+    expect(gesetzteLimits).toEqual([]);
+    expect(gespeichert).toHaveLength(0);
+  });
+
+  it('lässt die zweite von zwei gleichzeitigen Ablehnungen scheitern', async () => {
+    let zweiter: (() => Promise<unknown>) | null = null;
+    const { service } = build({
+      vorhanden: [record()],
+      vorDemBeanspruchen: async () => {
+        const lauf = zweiter;
+        zweiter = null;
+        await lauf?.();
+      },
+    });
+    zweiter = () => service.reject(adminActor, ADMIN_ID, 'req-1', { note: 'Zu groß.' });
+
+    await expectCode(
+      service.reject(adminActor, ADMIN_ID, 'req-1', { note: 'Zu groß.' }),
+      'QUOTA_REQUEST_INVALID_STATE',
+    );
   });
 });

@@ -52,13 +52,31 @@ export interface QuotaRequestRepository {
   list(query: QuotaRequestQuery): Promise<QuotaRequestRecord[]>;
   /** Offene Anfrage eines Kontos; `null`, wenn keine offen ist. */
   findOpenByUser(userId: string): Promise<QuotaRequestRecord | null>;
+  /**
+   * Bescheidet eine **offene** Anfrage; `null`, wenn sie es nicht mehr ist.
+   *
+   * Die Bedingung „noch offen" gehört ins `UPDATE` selbst und nicht in eine
+   * Prüfung davor: Nur so entscheidet die Datenbank ein gleichzeitiges
+   * Bescheiden und Zurückziehen (backend-admin-resources-06).
+   */
   decide(
     id: string,
     status: Exclude<QuotaRequestStatus, 'pending'>,
     decidedById: string | null,
     note: string | null,
-  ): Promise<QuotaRequestRecord>;
-  remove(id: string): Promise<void>;
+  ): Promise<QuotaRequestRecord | null>;
+  /**
+   * Nimmt eine bereits beschiedene Anfrage zurück auf `pending`.
+   *
+   * Ausschließlich als Rücknahme eines Genehmigungslaufs gedacht, bei dem das
+   * Setzen des Kontingents danach gescheitert ist.
+   */
+  reopen(id: string): Promise<void>;
+  /**
+   * Entfernt eine **offene** Anfrage; `false`, wenn sie inzwischen beschieden
+   * wurde und deshalb nichts mehr zu entfernen war.
+   */
+  remove(id: string): Promise<boolean>;
 }
 
 /** Setzt das Kontingent – erfüllt vom Ressourcen-Modul (B4). */
@@ -168,30 +186,21 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
   ): Promise<QuotaRequestDto> {
     requireUserManage(actor);
 
+    // Vorprüfung, damit „gibt es nicht" 404 bleibt und nicht als Konflikt
+    // erscheint. Entschieden wird der Zustand aber unten in der Datenbank.
     const record = await requireRecord(id);
 
     if (record.status !== 'pending') {
       throw new QuotaRequestError('QUOTA_REQUEST_INVALID_STATE');
     }
 
-    if (status === 'approved') {
-      /*
-       * Erst das Kontingent, dann die Anfrage schließen: Scheitert das Setzen,
-       * bleibt die Anfrage offen und kann erneut beschieden werden. Andersherum
-       * stünde eine genehmigte Anfrage ohne das Kontingent da, das sie
-       * verspricht.
-       *
-       * Nur die beantragten Felder – ein nicht genannter Wunsch lässt die
-       * übrigen Grenzen stehen (Teil-Update, siehe `setUserLimits`).
-       */
-      await deps.quotas.setUserLimits(actor, record.userId, {
-        ...(record.requestedRamMb === null ? {} : { maxRamMb: record.requestedRamMb }),
-        ...(record.requestedMaxConcurrentServers === null
-          ? {}
-          : { maxConcurrentServers: record.requestedMaxConcurrentServers }),
-      });
-    }
-
+    /*
+     * Die Anfrage wird zuerst **beansprucht**: Das `UPDATE` trägt die Bedingung
+     * `status = 'pending'` selbst, also gewinnt bei gleichzeitigem Bescheiden
+     * und Zurückziehen genau einer, und der Verlierer bekommt den Fachcode
+     * `QUOTA_REQUEST_INVALID_STATE` (409) statt eines 500 aus einem ins Leere
+     * laufenden Folge-Lesen (backend-admin-resources-06).
+     */
     const entschieden = await deps.repository.decide(
       id,
       status,
@@ -199,15 +208,43 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
       input.note?.trim() === '' ? null : (input.note ?? null),
     );
 
+    if (!entschieden) {
+      throw new QuotaRequestError('QUOTA_REQUEST_INVALID_STATE');
+    }
+
     if (status === 'approved') {
+      /*
+       * Das Kontingent erst nach dem Anspruch: Eine genehmigte Anfrage ohne das
+       * versprochene Kontingent wäre falsch, deshalb wird die Anfrage wieder
+       * geöffnet, wenn das Setzen scheitert – sie kann dann erneut beschieden
+       * werden.
+       *
+       * Nur die beantragten Felder – ein nicht genannter Wunsch lässt die
+       * übrigen Grenzen stehen (Teil-Update, siehe `setUserLimits`).
+       */
+      try {
+        await deps.quotas.setUserLimits(actor, record.userId, {
+          ...(record.requestedRamMb === null ? {} : { maxRamMb: record.requestedRamMb }),
+          ...(record.requestedMaxConcurrentServers === null
+            ? {}
+            : { maxConcurrentServers: record.requestedMaxConcurrentServers }),
+        });
+      } catch (error) {
+        // Scheitert auch das Zurücksetzen, bleibt der ursprüngliche Fehler der
+        // aussagekräftigere – er wird gemeldet, nicht der Folgefehler.
+        await deps.repository.reopen(id).catch(() => undefined);
+
+        throw error;
+      }
+
       /*
        * Dieselbe Aktion wie beim Setzen von Hand: Für das Log zählt, dass sich
        * das Kontingent eines fremden Kontos geändert hat – nicht, über welchen
        * der beiden Wege (Pflichtenheft §6). Die Anfrage steht als Beleg
        * daneben in den Metadaten.
        *
-       * Erst nach dem Bescheid: Ein gescheiterter Lauf hat die Anfrage offen
-       * gelassen und ist keine Änderung, die ins Log gehört.
+       * Erst nach dem gesetzten Kontingent: Ein gescheiterter Lauf hat die
+       * Anfrage wieder geöffnet und ist keine Änderung, die ins Log gehört.
        */
       await deps.audit?.record({
         action: 'user.limitsChanged',
@@ -273,7 +310,17 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
         throw new QuotaRequestError('QUOTA_REQUEST_INVALID_STATE');
       }
 
-      await deps.repository.remove(id);
+      /*
+       * Auch hier entscheidet die Bedingung im `DELETE`, nicht die Prüfung
+       * darüber: Wird gleichzeitig beschieden, trifft das `DELETE` keine Zeile
+       * mehr und der Rückzug scheitert fachlich (409), statt den bereits
+       * erteilten Bescheid spurlos zu entfernen (backend-admin-resources-06).
+       */
+      const entfernt = await deps.repository.remove(id);
+
+      if (!entfernt) {
+        throw new QuotaRequestError('QUOTA_REQUEST_INVALID_STATE');
+      }
     },
   };
 }

@@ -14,7 +14,7 @@ import { type ApiResponse, ok } from '@palantir/contracts';
 import { arcadeGameIdSchema, submitArcadeScoreInputSchema } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { replyWithErrorCode } from '../rbac/index.js';
+import { replyWithErrorCode, requireApproved } from '../rbac/index.js';
 import type { ArcadeService } from './service.js';
 
 const leaderboardParamsSchema = z.object({ gameId: arcadeGameIdSchema });
@@ -60,8 +60,15 @@ export function registerArcadeRoutes(options: ArcadeRoutesOptions) {
       return options.resolveUserId(request);
     }
 
+    /*
+     * `requireApproved()` auf beiden Arcade-Routen: Die Spielhalle ist eine
+     * Funktion des Panels, kein Vorraum. Ein Konto, das noch auf die
+     * Freischaltung wartet, soll dort weder Bestenlisten lesen noch Punkte
+     * eintragen (Lastenheft §3.1, security-matrix-06).
+     */
     app.get(
       '/arcade/leaderboard/:gameId',
+      { preHandler: requireApproved() },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const userId = userIdOf(request);
@@ -85,6 +92,7 @@ export function registerArcadeRoutes(options: ArcadeRoutesOptions) {
 
     app.post(
       '/arcade/scores',
+      { preHandler: requireApproved() },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const userId = userIdOf(request);

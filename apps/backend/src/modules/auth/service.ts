@@ -222,9 +222,11 @@ export class AuthService {
   async buildActor(user: UserRecord): Promise<PermissionActor> {
     const roles = await this.roles.listRolesForUser(user.id);
 
+    // Der Rollenname fließt mit, weil `buildPermissionActor` daraus die
+    // Freischaltung ableitet (Lastenheft §3.1) – nicht für die Rechte selbst.
     return buildPermissionActor({
       isOwner: user.isOwner,
-      roles: roles.map((role) => ({ grantedPermissions: role.permissions })),
+      roles: roles.map((role) => ({ grantedPermissions: role.permissions, name: role.name })),
     });
   }
 
