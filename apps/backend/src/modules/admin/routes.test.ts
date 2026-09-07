@@ -261,6 +261,40 @@ describe('Admin-Routen: Envelope und Berechtigungen', () => {
     await app.close();
   });
 
+  /*
+   * contracts-validation-07: Der Zeitraumfilter vergleicht Zeitpunkte, nicht
+   * Zeichenketten. Beide Fälle laufen über die echte Route, weil der Filter
+   * erst dort als Text ankommt – mit Zonen-Offset, den `isoTimestampSchema`
+   * ausdrücklich erlaubt.
+   */
+  it('nimmt einen gültigen Zeitraum an, der als Zeichenkette verdreht wirkt', async () => {
+    const app = await buildTestApp();
+
+    // 08:00 UTC bis 09:00 UTC; als Text steht der Anfang hinter dem Ende.
+    const from = encodeURIComponent('2026-01-01T10:00:00+02:00');
+    const to = encodeURIComponent('2026-01-01T09:00:00Z');
+    const response = await get(app, `/admin/audit?from=${from}&to=${to}`, 'auditor');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().success).toBe(true);
+
+    await app.close();
+  });
+
+  it('lehnt einen verdrehten Zeitraum ab, der als Zeichenkette richtig wirkt', async () => {
+    const app = await buildTestApp();
+
+    // 09:00 UTC bis 08:00 UTC; als Text steht der Anfang vor dem Ende.
+    const from = encodeURIComponent('2026-01-01T09:00:00Z');
+    const to = encodeURIComponent('2026-01-01T10:00:00+02:00');
+    const response = await get(app, `/admin/audit?from=${from}&to=${to}`, 'auditor');
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe('VALIDATION_FAILED');
+
+    await app.close();
+  });
+
   it('bietet keinen Endpunkt zum Ändern oder Löschen einzelner Audit-Einträge', async () => {
     const app = await buildTestApp();
 

@@ -138,6 +138,29 @@ export const updateNotificationRuleInputSchema = z
   });
 
 /**
+ * `unreadOnly` als Query-Parameter (contracts-validation-06).
+ *
+ * Der Filter steht im Query-String und kommt deshalb immer als Zeichenkette an
+ * – genau wie `limit` und `offset`, die dafür `z.coerce.number` benutzen. Für
+ * einen Wahrheitswert ist `z.coerce.boolean()` an dieser Stelle aber falsch:
+ * Es macht aus **jeder** nicht-leeren Zeichenkette `true`, also auch aus
+ * `?unreadOnly=false`. Die Abfrage „zeig mir alles" hätte damit still auf „nur
+ * ungelesene" gefiltert.
+ *
+ * Deshalb die ausdrückliche Wortliste statt einer Umwandlung: Erlaubt sind
+ * genau `true` und `false`, alles andere (`1`, `yes`, leer) wird abgelehnt,
+ * statt heimlich `true` zu bedeuten. Ein echter Boolean wird ebenfalls
+ * abgelehnt – dies ist ein Schema für den Query-String, nicht für einen
+ * bereits geparsten Filter.
+ */
+const unreadOnlyQuerySchema = z
+  .enum(['true', 'false'], {
+    errorMap: () => ({ message: 'unreadOnly muss "true" oder "false" sein.' }),
+  })
+  .default('false')
+  .transform((value) => value === 'true');
+
+/**
  * Filter der Inbox (F6 → Backend).
  *
  * `unreadOnly` trägt den Zähler in der Navigation, `event` die Filterleiste.
@@ -145,7 +168,7 @@ export const updateNotificationRuleInputSchema = z
  * dauerhaft und wird nie vollständig geliefert.
  */
 export const notificationQuerySchema = z.object({
-  unreadOnly: z.coerce.boolean().default(false),
+  unreadOnly: unreadOnlyQuerySchema,
   event: notifiableEventSchema.optional(),
   severity: notificationSeveritySchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
