@@ -124,6 +124,12 @@ export function UserMenu({ user }: { user: AccountDto | null }) {
               label="Verbundene Konten"
               onNavigate={() => setOpen(false)}
             />
+            <MenuLink
+              href="/profil#sitzungen"
+              icon="clock"
+              label="Aktive Sitzungen"
+              onNavigate={() => setOpen(false)}
+            />
           </nav>
 
           <div className="border-t border-line py-1">

@@ -35,9 +35,13 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => query,
 }));
 
-// Nur die Ladefunktion wird ersetzt; alles andere an der Ansicht bleibt echt.
+// Nur die Ladefunktionen werden ersetzt; alles andere an der Ansicht bleibt
+// echt. `loadSessions` gehört dazu, seit das Profil auch die angemeldeten
+// Geräte zeigt – ohne den Eintrag liefe der Abschnitt hier in einen echten
+// `fetch`.
 vi.mock('@/lib/api/session', () => ({
   loadAccount: () => Promise.resolve({ success: true, data: ACCOUNT, error: null }),
+  loadSessions: () => Promise.resolve({ success: true, data: [], error: null }),
   BASE_DOMAIN: 'example.tld',
 }));
 

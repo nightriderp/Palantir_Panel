@@ -23,6 +23,7 @@ import { useApiResource } from '@/lib/api/useApiResource';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { AUTH_METHOD_LABEL, authMethodLabel, linkableProviders, methodDetail } from './methods';
 import { PasswordSection, TwoFactorSection } from './SecuritySections';
+import { SessionsPanel } from './SessionsPanel';
 
 /** Rücksprungziel für die Provider-Verknüpfung – muss zur Backend-Allowlist passen. */
 const RETURN_TO = '/profil';
@@ -34,14 +35,14 @@ const RETURN_TO = '/profil';
  * Anmeldeverfahren: Discord, Twitch und Steam lassen sich hier nachträglich
  * verbinden oder wieder trennen. Das Verbinden ist eine echte Weiterleitung zum
  * Anbieter (kein `fetch`); nach der Rückkehr landet man über `returnTo` wieder
- * hier.
+ * hier. Darunter steht die Übersicht der angemeldeten Geräte (`SessionsPanel`).
  *
  * **Eine Seite statt zwei:** Passwort und Zwei-Faktor lagen unter
  * `/einstellungen`. Der Entwurf kennt diese Trennung nicht – beides gehört zum
  * Konto, und wer sein Passwort ändert, sucht es dort, wo sein Konto steht. Die
  * alte Adresse leitet hierher weiter. Die Abschnitte tragen Anker
- * (`#passwort`, `#zweifaktor`, `#konten`), damit das Konto-Menü gezielt
- * hineinspringen kann.
+ * (`#passwort`, `#zweifaktor`, `#konten`, `#sitzungen`), damit das Konto-Menü
+ * gezielt hineinspringen kann.
  *
  * Das Konto wird genau **einmal** geladen und an alle Abschnitte
  * durchgereicht; jede Änderung fließt über `setData` zurück, damit die übrigen
@@ -146,7 +147,12 @@ export function ProfileView() {
               </dl>
             </Panel>
 
-            {/* Reihenfolge wie im Entwurf: Konto, Passwort, Zwei-Faktor, Anmeldungen, Löschen. */}
+            {/*
+              Reihenfolge wie im Entwurf: Konto, Passwort, Zwei-Faktor,
+              Anmeldungen, Löschen. Die Sitzungen stehen zwischen Anmeldungen
+              und Löschen – sie gehören zur Sicherheit des Kontos, sind aber
+              nichts, was man vor dem Anmeldeverfahren sucht.
+            */}
             <section id="passwort" className="scroll-mt-24">
               <PasswordSection account={account} onChanged={uebernehmen} />
             </section>
@@ -157,6 +163,10 @@ export function ProfileView() {
 
             <section id="konten" className="scroll-mt-24">
               <LinkedMethodsPanel methods={account.authMethods} onUnlinked={uebernehmen} />
+            </section>
+
+            <section id="sitzungen" className="scroll-mt-24">
+              <SessionsPanel />
             </section>
 
             <DeleteAccountPanel account={account} />

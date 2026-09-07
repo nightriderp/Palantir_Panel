@@ -4,6 +4,7 @@ import {
   type ApiResponse,
   type AuthMethodType,
   type LoginResult,
+  type SessionDto,
   type TwoFactorSetupDto,
 } from '@palantir/contracts';
 import {
@@ -20,6 +21,7 @@ import {
   altchaChallengeSchema,
   apiResponseSchema,
   loginResultSchema,
+  sessionDtoSchema,
   twoFactorSetupSchema,
 } from '@palantir/validation';
 import { z } from 'zod';
@@ -70,6 +72,15 @@ export const AUTH_ENDPOINTS = {
   twoFactorDisable: '/auth/2fa/disable',
   /** Eigenes Konto endgültig löschen (Lastenheft §3.1). */
   account: '/auth/account',
+  /**
+   * Übersicht der angemeldeten Geräte (Lastenheft §3.1).
+   *
+   * Einen Sammelpfad „alle anderen abmelden" gibt es im Backend nicht – die
+   * Oberfläche ruft dafür `sessionById` je Sitzung einmal auf.
+   */
+  sessions: '/auth/sessions',
+  /** Eine einzelne Sitzung remote abmelden (Lastenheft §3.1). */
+  sessionById: (sessionId: string) => `/auth/sessions/${encodeURIComponent(sessionId)}`,
   /** Refresh-Token gegen ein frisches Zugriffs-Token tauschen (Pflichtenheft §7). */
   refresh: '/auth/refresh',
 } as const;
@@ -566,4 +577,29 @@ export function disableTwoFactor(input: DisableTwoFactorInput): Promise<AccountD
     method: 'POST',
     body: JSON.stringify(input),
   }).then((result) => result.account);
+}
+
+// -- Sitzungsverwaltung (Lastenheft §3.1) -----------------------------------
+
+/**
+ * Alle aktiven Sitzungen des eigenen Kontos (Geraeteuebersicht).
+ *
+ * Das Backend liefert eine flache Liste; welche davon die eigene ist, steht in
+ * `current` – das entscheidet der Server anhand der Sitzung des Requests, nicht
+ * die Oberflaeche. Ein Refresh-Token taucht im DTO bewusst nirgends auf.
+ */
+export function listSessions(): Promise<SessionDto[]> {
+  return request(AUTH_ENDPOINTS.sessions, z.array(sessionDtoSchema), { method: 'GET' });
+}
+
+/**
+ * Eine Sitzung remote abmelden (Lastenheft §3.1).
+ *
+ * Erlaubt ist ausschliesslich eine eigene Sitzung; eine fremde Id beantwortet
+ * das Backend wie eine nicht vorhandene (`AUTH_SESSION_NOT_FOUND`). Trifft es
+ * die eigene Sitzung, raeumt das Backend zugleich die Sitzungs-Cookies ab – die
+ * Ansicht muss dann zur Anmeldung zurueckfuehren.
+ */
+export function revokeSession(sessionId: string): Promise<null> {
+  return request(AUTH_ENDPOINTS.sessionById(sessionId), z.null(), { method: 'DELETE' });
 }
