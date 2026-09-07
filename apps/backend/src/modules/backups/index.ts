@@ -49,6 +49,8 @@ export {
 
 export {
   type BackupAgentGateway,
+  type BackupEventName,
+  type BackupEventPayloads,
   type BackupEventPublisher,
   type BackupServerRecord,
   type Clock,

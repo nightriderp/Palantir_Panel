@@ -118,11 +118,27 @@ describe('Textbildung (Pflichtenheft §14)', () => {
     expect(rendered.severity).toBe('error');
     expect(rendered.title).toContain('Wüstensturm');
     expect(rendered.body).toContain('AGENT_NOT_CONNECTED');
+    // Servername und Grund kamen bis W1-7 nie an: Die Nutzlast von B5 trug
+    // beide Felder nicht, Titel und Text lauteten „undefined" (event-flow-02).
+    expect(rendered.title).not.toContain('undefined');
+    expect(rendered.body).toContain('Der Agent war nicht verbunden.');
     expect(rendered.subject).toEqual({
       type: 'backup',
       id: 'bkp',
       displayName: 'Wüstensturm',
     });
+  });
+
+  /**
+   * Die Begründung des Melders ist das einzige Detail, das eine Meldung trägt –
+   * fehlte sie in der Nutzlast, blieb jede Meldung ohne Zusatz
+   * (backend-community-visibility-04).
+   */
+  it('nennt bei einer gemeldeten Nachricht die Begründung', () => {
+    const rendered = renderNotification(SAMPLES['message.reported'] as NotificationEvent);
+
+    expect(rendered.body).toContain('Beleidigung');
+    expect(rendered.subject).toEqual({ type: 'message', id: 'msg', displayName: null });
   });
 
   it('schreibt Prozentwerte in deutscher Schreibweise', () => {

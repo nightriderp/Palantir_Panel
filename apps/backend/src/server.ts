@@ -8,6 +8,8 @@ import { registerErrorHandler } from './error-handler.js';
 import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
 import { createChatModule, registerChatRoutes } from './modules/chat/index.js';
 import {
+  type BackupEventName,
+  type BackupEventPayloads,
   type BackupEventPublisher,
   createBackupScheduleService,
   createBackupService,
@@ -456,9 +458,25 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * Stelle, die ohnehin beide Module kennt.
      */
     const backupEvents: BackupEventPublisher = {
-      async publish(event, payload) {
-        await notifications.eventSink.publish(event, payload);
-        liveHub.ingest(event, payload);
+      async publish(
+        event: BackupEventName,
+        payload: BackupEventPayloads[BackupEventName],
+      ): Promise<void> {
+        /*
+         * Name und Nutzlast sind zwei Werte – die Verengung des einen sagt dem
+         * Compiler nichts über den anderen; der Feldtest ordnet sie einander zu.
+         * Getrennt weitergereicht wird ohnehin: Ein Fehlschlag ist ein
+         * Benachrichtigungsanlass, der Fortschritt nur Anzeige.
+         */
+        if (event === 'backup.failed' && 'failureCode' in payload) {
+          await notifications.eventSink.publish(event, payload);
+
+          return;
+        }
+
+        if (event === 'backup.progressed' && 'backup' in payload) {
+          liveHub.publish(event, payload);
+        }
       },
     };
 

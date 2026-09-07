@@ -20,10 +20,11 @@ import type {
   CreateBackupCommandPayload,
   DeleteBackupCommandPayload,
   DownloadBackupCommandPayload,
+  LiveServerEventPayloads,
+  NotificationEventPayloads,
   RestoreBackupCommandPayload,
   ServerExportManifest,
   ServerStatus,
-  WebSocketEventName,
 } from '@palantir/contracts';
 import {
   type FireAndForgetLogger,
@@ -92,12 +93,39 @@ export interface BackupAgentGateway {
 }
 
 /**
+ * Ereignisse, die B5 auslöst, mit ihrer vertraglichen Nutzlast.
+ *
+ * `backup.failed` ist ein Benachrichtigungsanlass (Pflichtenheft §14),
+ * `backup.progressed` ein reines Live-Ereignis für offene Ansichten
+ * (Gefundener Punkt 51). Beide Formen stehen im Vertrag; hier steht nur die
+ * Zuordnung Ereignis → Nutzlast, keine zweite Beschreibung (CLAUDE.md §3).
+ */
+export interface BackupEventPayloads {
+  'backup.failed': NotificationEventPayloads['backup.failed'];
+  'backup.progressed': LiveServerEventPayloads['backup.progressed'];
+}
+
+export type BackupEventName = keyof BackupEventPayloads;
+
+/**
  * Ereignisse ins interne Event-System (Pflichtenheft §14).
  *
- * B5 löst ausschließlich `backup.failed` aus; Konsument ist B6.
+ * Je Ereignis eine eigene Signatur statt `Record<string, unknown>`: Eine
+ * unvollständige Nutzlast fiel früher erst zur Laufzeit auf – und dort still,
+ * weil die Notification-Engine jeden Fehler abfängt. Der Besitzer eines Servers
+ * erfuhr deshalb nichts von einem gescheiterten Backup (Audit W1-7,
+ * event-flow-02). Jetzt meldet der Compiler das fehlende Feld an der Stelle,
+ * an der das Ereignis entsteht.
  */
 export interface BackupEventPublisher {
-  publish(event: WebSocketEventName, payload: Record<string, unknown>): void | Promise<void>;
+  publish(
+    event: 'backup.failed',
+    payload: BackupEventPayloads['backup.failed'],
+  ): void | Promise<void>;
+  publish(
+    event: 'backup.progressed',
+    payload: BackupEventPayloads['backup.progressed'],
+  ): void | Promise<void>;
 }
 
 /**

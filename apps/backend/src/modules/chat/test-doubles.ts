@@ -15,7 +15,7 @@ import { type AppendAuditEntry, type AuditService } from '../admin/index.js';
 import { type PermissionActor, buildPermissionActor } from '../rbac/index.js';
 import { type ChatContext, contextOf } from './context.js';
 import { type ChatDelivery } from './live.js';
-import { type ChatEventPublisher } from './moderation.js';
+import { type ChatEventPayloads, type ChatEventPublisher } from './moderation.js';
 import type {
   ChatRepository,
   CreateConversationData,
@@ -471,17 +471,23 @@ export function recordingAuditService(): RecordingAuditService {
   };
 }
 
+/**
+ * Ereignis-Senke, die mitschreibt statt zu verschicken.
+ *
+ * Die Nutzlast liegt zum Prüfen offen: Ob sie den Vertrag erfüllt, entscheidet
+ * inzwischen der Compiler am Auslöser ({@link ChatEventPublisher}).
+ */
 export interface RecordingEventPublisher extends ChatEventPublisher {
-  readonly published: { event: string; payload: Record<string, unknown> }[];
+  readonly published: { event: 'message.reported'; payload: Record<string, unknown> }[];
 }
 
 export function recordingEventPublisher(): RecordingEventPublisher {
-  const published: { event: string; payload: Record<string, unknown> }[] = [];
+  const published: { event: 'message.reported'; payload: Record<string, unknown> }[] = [];
 
   return {
     published,
-    publish(event, payload) {
-      published.push({ event, payload });
+    publish(event: 'message.reported', payload: ChatEventPayloads['message.reported']): void {
+      published.push({ event, payload: { ...payload } });
     },
   };
 }

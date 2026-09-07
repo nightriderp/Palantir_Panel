@@ -12,6 +12,8 @@ import type { ApiResponse, ArchiveExtraFile } from '@palantir/contracts';
 import { fail, ok } from '@palantir/contracts';
 import type {
   BackupAgentGateway,
+  BackupEventName,
+  BackupEventPayloads,
   BackupEventPublisher,
   BackupServerRecord,
   ServerDirectory,
@@ -189,18 +191,24 @@ export function fakeAgent(overrides: Partial<FakeAgent> = {}): FakeAgent {
   return agent;
 }
 
-/** Ereignis-Senke, die mitschreibt statt zu verschicken. */
+/**
+ * Ereignis-Senke, die mitschreibt statt zu verschicken.
+ *
+ * Die Nutzlast wird zum Prüfen als offene Ablage abgelegt: Ob sie den Vertrag
+ * erfüllt, entscheidet inzwischen der Compiler am Auslöser
+ * ({@link BackupEventPublisher}); der Test liest daraus einzelne Felder.
+ */
 export interface RecordingEventPublisher extends BackupEventPublisher {
-  readonly published: { event: string; payload: Record<string, unknown> }[];
+  readonly published: { event: BackupEventName; payload: Record<string, unknown> }[];
 }
 
 export function recordingEventPublisher(): RecordingEventPublisher {
-  const published: { event: string; payload: Record<string, unknown> }[] = [];
+  const published: { event: BackupEventName; payload: Record<string, unknown> }[] = [];
 
   return {
     published,
-    publish(event, payload) {
-      published.push({ event, payload });
+    publish(event: BackupEventName, payload: BackupEventPayloads[BackupEventName]): void {
+      published.push({ event, payload: { ...payload } });
     },
   };
 }
