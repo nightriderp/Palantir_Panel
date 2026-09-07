@@ -113,6 +113,18 @@ const envSchema = z.object({
    * Fortschritt.
    */
   AGENT_CREATE_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
+  /**
+   * Frist für `CREATE_BACKUP` und `RESTORE_BACKUP` (Audit W1-5, bb-02).
+   *
+   * Der Agent antwortet auf diese beiden Befehle erst, wenn er fertig ist – das
+   * Ergebnis trägt `sizeBytes` und `completedAt`. Über mehrere Gigabyte
+   * Weltdaten braucht tar+zstd dafür Stunden, nicht Sekunden. Mit der üblichen
+   * Frist gälte ein laufendes Backup nach 30 s als gescheitert, während der
+   * Agent weiterschreibt: fertiges Archiv ohne Datensatz, freigegebene Sperre,
+   * ein zweiter Lauf über denselben Datenordner. Zwei Stunden sind die
+   * Obergrenze, ab der ein Vorgang als hängend gelten darf.
+   */
+  BACKUP_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(7_200_000),
 
   /** DNS-Automatisierung über Cloudflare (§13); ohne beide Werte passiert nichts. */
   CLOUDFLARE_API_TOKEN: optionalEnvString(),

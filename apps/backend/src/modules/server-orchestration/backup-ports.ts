@@ -127,6 +127,14 @@ export interface BackupAgentGatewayOptions {
   readonly agents: AgentRegistry;
   /** Auflösung Server → Node und die Node der Installation (Pflichtenheft §2.1). */
   readonly repository: BackupHostResolver;
+  /**
+   * Frist für `CREATE_BACKUP` und `RESTORE_BACKUP` (`BACKUP_COMMAND_TIMEOUT_MS`).
+   *
+   * Ohne Angabe verpflichtend, nicht optional: Eine vergessene Verdrahtung
+   * fiele auf die übliche 30-s-Frist zurück und damit genau in den Fehler, den
+   * dieser Wert behebt (Audit W1-5, bb-02).
+   */
+  readonly backupTimeoutMs: number;
 }
 
 /**
@@ -145,9 +153,15 @@ export interface BackupAgentGatewayOptions {
  *    und kennen keinen Server mehr – ein Backup soll seinen Server überleben
  *    (siehe Löschregel in `db/schema/backups.ts`). Sie gehen deshalb an die
  *    Node der Installation (`defaultHost()`, Phase 1 betreibt genau eine).
+ * 3. **`CREATE_BACKUP` und `RESTORE_BACKUP` bekommen eine eigene, lange Frist.**
+ *    Der Agent antwortet auf beide erst nach Fertigstellung; über Gigabyte an
+ *    Weltdaten dauert tar+zstd länger als die übliche Befehlsfrist von 30 s
+ *    (Audit W1-5, bb-02). Gleiches Muster wie `createTimeoutMs` in
+ *    `service.ts` (Gefundener Punkt 111): eigener Wert je Befehlsart statt
+ *    einer global hochgedrehten Frist, die ein hängendes `STOP` mitverschleppt.
  */
 export function createAgentBackupGateway(options: BackupAgentGatewayOptions): BackupAgentGateway {
-  const { agents, repository } = options;
+  const { agents, repository, backupTimeoutMs } = options;
 
   async function hostOfServer(serverId: string): Promise<string | null> {
     const server = await repository.findById(serverId);
@@ -164,6 +178,7 @@ export function createAgentBackupGateway(options: BackupAgentGatewayOptions): Ba
     hostId: string | null,
     serverId: string | null,
     payload: AgentCommandPayloads[TCommand],
+    commandOptions: { readonly timeoutMs?: number } = {},
   ): Promise<ApiResponse<AgentCommandResults[TCommand]>> {
     if (hostId === null) {
       return fail(
@@ -179,7 +194,7 @@ export function createAgentBackupGateway(options: BackupAgentGatewayOptions): Ba
     }
 
     try {
-      return ok(await session.sendCommand(command, serverId, payload));
+      return ok(await session.sendCommand(command, serverId, payload, commandOptions));
     } catch (error: unknown) {
       if (isServerOrchestrationError(error)) {
         return fail(error.code, error.message);
@@ -196,7 +211,13 @@ export function createAgentBackupGateway(options: BackupAgentGatewayOptions): Ba
 
   return {
     async createBackup(payload: CreateBackupCommandPayload): Promise<ApiResponse<unknown>> {
-      return send('CREATE_BACKUP', await hostOfServer(payload.serverId), payload.serverId, payload);
+      return send(
+        'CREATE_BACKUP',
+        await hostOfServer(payload.serverId),
+        payload.serverId,
+        payload,
+        { timeoutMs: backupTimeoutMs },
+      );
     },
 
     async restoreBackup(payload: RestoreBackupCommandPayload): Promise<ApiResponse<unknown>> {
@@ -205,9 +226,16 @@ export function createAgentBackupGateway(options: BackupAgentGatewayOptions): Ba
         await hostOfServer(payload.serverId),
         payload.serverId,
         payload,
+        { timeoutMs: backupTimeoutMs },
       );
     },
 
+    /*
+     * Die beiden Übrigen bleiben bei der üblichen Frist: `DOWNLOAD_BACKUP` holt
+     * das Archiv blockweise ab – jeder einzelne Aufruf liest nur ein paar
+     * Megabyte –, und `DELETE_BACKUP` entfernt eine Datei. Beides ist kurz;
+     * eine lange Frist würde hier nur einen hängenden Agent länger verdecken.
+     */
     async downloadBackupChunk(
       payload: DownloadBackupCommandPayload,
     ): Promise<ApiResponse<unknown>> {
