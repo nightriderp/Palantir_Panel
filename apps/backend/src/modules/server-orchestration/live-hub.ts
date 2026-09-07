@@ -25,10 +25,19 @@ import { type OrchestrationEventSink } from './service.js';
 /** Das Wenige, das der Hub von einem WebSocket braucht – erleichtert Tests. */
 export interface LiveSocket {
   send(data: string): void;
+  /**
+   * Verbindung schließen – gebraucht für {@link ServerLiveHub.closeAll}.
+   *
+   * Optional, damit ein Testdouble weiterhin mit `{ send }` auskommt: Ein Hub
+   * ohne Schließ-Anschluss kann alles außer dem Rauswurf.
+   */
+  close?(code: number, reason?: string): void;
 }
 
 interface Subscriber {
   readonly socket: LiveSocket;
+  /** Konto hinter dieser Verbindung; `null`, wenn unbekannt (Testdoubles). */
+  readonly userId: string | null;
   /** Server-Ids, die dieser Socket abonniert hat. */
   readonly topics: Set<string>;
 }
@@ -39,6 +48,14 @@ export interface LiveRegistration {
   unsubscribe(serverId: string): void;
   /** Ist dieser Server bereits abonniert? */
   isSubscribed(serverId: string): boolean;
+  /**
+   * Aktuell abonnierte Server-Ids.
+   *
+   * Für die wiederkehrende Abo-Prüfung am offenen Kanal (Audit W2-5,
+   * `orchestration-core-09`): Ohne sie müsste die Route eine zweite Liste
+   * neben dem Hub führen – zwei Wahrheiten über dieselben Abos.
+   */
+  subscribedServerIds(): readonly string[];
   /** Socket entfernen (bei Verbindungsende). */
   close(): void;
 }
@@ -56,16 +73,51 @@ export class ServerLiveHub {
     return this.#subscribers.size;
   }
 
-  register(socket: LiveSocket): LiveRegistration {
-    const subscriber: Subscriber = { socket, topics: new Set<string>() };
+  register(socket: LiveSocket, userId: string | null = null): LiveRegistration {
+    const subscriber: Subscriber = { socket, userId, topics: new Set<string>() };
     this.#subscribers.add(subscriber);
 
     return {
       subscribe: (serverId) => subscriber.topics.add(serverId),
       unsubscribe: (serverId) => subscriber.topics.delete(serverId),
       isSubscribed: (serverId) => subscriber.topics.has(serverId),
+      subscribedServerIds: () => [...subscriber.topics],
       close: () => this.#subscribers.delete(subscriber),
     };
+  }
+
+  /**
+   * Schließt **alle** Verbindungen eines Kontos und meldet sie ab; liefert
+   * zurück, wie viele es waren.
+   *
+   * Anschluss für Sperre und Sitzungswiderruf (Audit W2-2/W2-5,
+   * `orchestration-core-09`) – dieselbe Aufgabe wie
+   * `ChatLiveHub.closeAll()`/`NotificationHub.closeAll()`, damit ein Konto
+   * nicht über den einen Kanal ausgesperrt wird und über den anderen weiter
+   * Statuswechsel, Messwerte und Konsolenzeilen bekommt. Wer das auslöst,
+   * entscheidet `server.ts`; der Hub kennt weder Sitzungen noch Sperren.
+   */
+  closeAll(userId: string, code: number, reason = 'Sitzung beendet.'): number {
+    const betroffen = [...this.#subscribers].filter(
+      (subscriber) => subscriber.userId === userId && subscriber.userId !== null,
+    );
+
+    // Erst abmelden, dann schließen: Das `close`-Ereignis meldet dieselbe
+    // Verbindung gleich noch einmal ab – das ist idempotent, eine Zustellung
+    // dazwischen darf es aber nicht mehr geben.
+    for (const subscriber of betroffen) {
+      this.#subscribers.delete(subscriber);
+    }
+
+    for (const subscriber of betroffen) {
+      try {
+        subscriber.socket.close?.(code, reason);
+      } catch {
+        // Verbindung ist bereits weg; mehr als schließen war nicht zu tun.
+      }
+    }
+
+    return betroffen.length;
   }
 
   /** Ein fertiges Frame an alle Abonnenten des betroffenen Servers senden. */

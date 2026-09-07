@@ -22,6 +22,7 @@ import {
 import { notificationClientFrameSchema } from '@palantir/validation';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
+import { createWebSocketOriginGuard } from '../../lib/ws-origin.js';
 import type { Clock, LiveNotificationPayload, LiveNotificationPublisher } from './ports.js';
 import { systemClock } from './ports.js';
 import type { NotificationService } from './service.js';
@@ -159,6 +160,14 @@ export interface NotificationLiveRouteOptions {
   /** Konto-Id des Aufrufers aus der Sitzung (B1); `null` = nicht angemeldet. */
   resolveUserId(request: FastifyRequest): string | null;
   readonly path?: string;
+  /**
+   * Panel-Adresse (`PUBLIC_WEB_URL`) für die Herkunftsprüfung des
+   * WebSocket-Handshakes (Audit W2-5, `security-matrix-04`).
+   *
+   * Ohne Angabe bleibt die Prüfung aus – so laufen Tests und
+   * Entwicklungsaufbauten ohne konfigurierte Adresse weiter.
+   */
+  readonly allowedOrigin?: string;
 }
 
 /**
@@ -174,7 +183,12 @@ export function registerNotificationLiveRoute(
 ): void {
   app.get(
     options.path ?? '/live/notifications',
-    { websocket: true },
+    {
+      websocket: true,
+      // Cross-Site-WebSocket-Hijacking: Handshakes unterliegen nicht CORS
+      // (Audit W2-5, `security-matrix-04`). Abgelehnt wird vor dem Upgrade.
+      onRequest: createWebSocketOriginGuard(options.allowedOrigin),
+    },
     async (socket: WebSocket, request: FastifyRequest): Promise<void> => {
       const userId = options.resolveUserId(request);
 

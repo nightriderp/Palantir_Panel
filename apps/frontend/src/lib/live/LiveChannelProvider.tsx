@@ -4,7 +4,6 @@ import {
   type LiveClientFrame,
   type LiveServerEventFrame,
   type LiveTopic,
-  isLiveServerEventName,
 } from '@palantir/contracts';
 import {
   createContext,
@@ -18,6 +17,15 @@ import {
 } from 'react';
 import { API_BASE_URL } from '../api/client';
 import { reconnectDelayMs } from './backoff';
+import {
+  CLOSE_CODE_FORBIDDEN,
+  CLOSE_CODE_UNAUTHORIZED,
+  errorToConsoleFrame,
+  parseServerLiveFrame,
+  resyncToEventFrame,
+  startHeartbeat,
+  type Heartbeat,
+} from './serverChannel';
 
 /**
  * Der Live-Kanal zwischen Browser und Backend (Pflichtenheft §5.3).
@@ -28,7 +36,11 @@ import { reconnectDelayMs } from './backoff';
  * wird nirgends im Sekundentakt nachgeladen.
  *
  * Bricht die Verbindung ab, versucht der Provider es mit wachsender Wartezeit
- * erneut und meldet alle noch offenen Abos danach automatisch wieder an.
+ * erneut und meldet alle noch offenen Abos danach automatisch wieder an. Das
+ * Backend antwortet auf jedes `subscribe` mit dem Ist-Stand (`resync`), damit
+ * ein Statuswechsel während der Lücke nicht verloren geht (`event-flow-03`);
+ * ein Lebenszeichen im 30-Sekunden-Takt hält die Verbindung durch Reverse
+ * Proxies offen und erkennt eine, die nur noch auf dem Papier steht.
  */
 
 export type LiveConnectionState = 'connecting' | 'open' | 'closed';
@@ -63,26 +75,6 @@ function liveChannelUrl(): string {
   return `${base.replace(/^http/, 'ws')}/live`;
 }
 
-/** Ereignis-Frame aus einer empfangenen Nachricht lesen; `null`, wenn fremd. */
-function parseEventFrame(raw: string): LiveServerEventFrame | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== 'object' || parsed === null) return null;
-  const candidate = parsed as { kind?: unknown; event?: unknown; topic?: unknown };
-  if (candidate.kind !== 'event') return null;
-  if (typeof candidate.event !== 'string' || !isLiveServerEventName(candidate.event)) return null;
-
-  const topic = candidate.topic as { resource?: unknown; id?: unknown } | undefined;
-  if (!topic || topic.resource !== 'server' || typeof topic.id !== 'string') return null;
-
-  return parsed as LiveServerEventFrame;
-}
-
 export interface LiveChannelProviderProps {
   children: ReactNode;
 }
@@ -96,18 +88,42 @@ export function LiveChannelProvider({ children }: LiveChannelProviderProps) {
   const attemptRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedByUsRef = useRef(false);
+  const heartbeatRef = useRef<Heartbeat | null>(null);
+  /** Laufende Nummer für die Ids der selbst erzeugten Konsolenzeilen. */
+  const localLineRef = useRef(0);
 
-  const sendRaw = useCallback((frame: LiveClientFrame): boolean => {
+  /**
+   * Rohes Frame schicken.
+   *
+   * Nimmt bewusst mehr als `LiveClientFrame` entgegen: Das Lebenszeichen
+   * (`{ kind: 'ping' }`) steht noch nicht im Vertrag – siehe den
+   * Provisorium-Hinweis in `serverChannel.ts`.
+   */
+  const sendJson = useCallback((frame: unknown): boolean => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
     socket.send(JSON.stringify(frame));
     return true;
   }, []);
 
+  const sendRaw = useCallback((frame: LiveClientFrame): boolean => sendJson(frame), [sendJson]);
+
   // Aufbau der Verbindung inklusive Wiederanlauf. Läuft einmal für den ganzen
   // eingeloggten Bereich; die Abhängigkeitsliste ist deshalb bewusst leer.
   useEffect(() => {
     closedByUsRef.current = false;
+
+    /** Ereignis-Frame an alle Zuhörer des Themas ausliefern. */
+    function dispatch(frame: LiveServerEventFrame) {
+      const listeners = listenersRef.current.get(topicKey(frame.topic));
+      if (!listeners) return;
+      for (const listener of listeners) listener(frame);
+    }
+
+    function stopHeartbeat() {
+      heartbeatRef.current?.stop();
+      heartbeatRef.current = null;
+    }
 
     function connect() {
       setConnection('connecting');
@@ -124,24 +140,59 @@ export function LiveChannelProvider({ children }: LiveChannelProviderProps) {
       socket.onopen = () => {
         attemptRef.current = 0;
         setConnection('open');
-        // Nach einem Wiederanlauf kennt das Backend die Abos nicht mehr.
+        // Nach einem Wiederanlauf kennt das Backend die Abos nicht mehr. Es
+        // antwortet auf jedes `subscribe` mit dem Ist-Stand (`resync`), damit
+        // ein Wechsel während der Lücke nicht verloren geht (event-flow-03).
         for (const topic of topicsRef.current.values()) {
           sendRaw({ kind: 'subscribe', topic });
         }
+
+        stopHeartbeat();
+        heartbeatRef.current = startHeartbeat({
+          send: () => {
+            sendJson({ kind: 'ping' });
+          },
+          onTimeout: () => {
+            // Keine Antwort: Die Verbindung steht nur noch auf dem Papier.
+            // Schließen löst den gewohnten Wiederanlauf über `onclose` aus.
+            socket.close();
+          },
+        });
       };
 
       socket.onmessage = (event) => {
         if (typeof event.data !== 'string') return;
-        const frame = parseEventFrame(event.data);
+        const frame = parseServerLiveFrame(event.data);
         if (!frame) return;
-        const listeners = listenersRef.current.get(topicKey(frame.topic));
-        if (!listeners) return;
-        for (const listener of listeners) listener(frame);
+
+        if (frame.kind === 'pong') {
+          heartbeatRef.current?.pong();
+          return;
+        }
+
+        if (frame.kind === 'resync') {
+          dispatch(resyncToEventFrame(frame));
+          return;
+        }
+
+        if (frame.kind === 'error') {
+          localLineRef.current += 1;
+          const zeile = errorToConsoleFrame(frame, `local-${localLineRef.current}`);
+          if (zeile) dispatch(zeile);
+          return;
+        }
+
+        dispatch(frame);
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         socketRef.current = null;
+        stopHeartbeat();
         setConnection('closed');
+
+        // Ohne gültige Sitzung oder ohne Freischaltung endete jeder weitere
+        // Versuch genauso – das wäre eine Schleife, kein Wiederanlauf.
+        if (event.code === CLOSE_CODE_UNAUTHORIZED || event.code === CLOSE_CODE_FORBIDDEN) return;
         if (!closedByUsRef.current) scheduleRetry();
       };
 
@@ -163,10 +214,11 @@ export function LiveChannelProvider({ children }: LiveChannelProviderProps) {
     return () => {
       closedByUsRef.current = true;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      stopHeartbeat();
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, [sendRaw]);
+  }, [sendJson, sendRaw]);
 
   const subscribe = useCallback(
     (topic: LiveTopic, listener: FrameListener) => {

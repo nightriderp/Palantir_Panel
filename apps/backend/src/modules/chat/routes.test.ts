@@ -8,10 +8,11 @@
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ABUSE_LIMITS, ABUSE_LIMIT_ERROR_CODE } from '../../lib/abuse-limits.js';
 import { type PermissionActor, registerRbac } from '../rbac/index.js';
-import { createModerationService } from './moderation.js';
+import { ChatLiveHub } from './live.js';
+import { createModerationService, type ModerationService } from './moderation.js';
 import { registerChatRoutes } from './routes.js';
 import { type ChatService, createChatService } from './service.js';
 import {
@@ -327,5 +328,61 @@ describe('Missbrauchsgrenzen', () => {
 
     expect(abgelehnt.statusCode).toBe(429);
     expect(abgelehnt.json().error.code).toBe(ABUSE_LIMIT_ERROR_CODE);
+  });
+});
+
+/**
+ * Audit W2-5, `security-matrix-04`: WebSocket-Handshakes unterliegen nicht
+ * CORS. Eine fremde Seite konnte `wss://api.<domain>/api/chat/live` öffnen und
+ * ab dann jede Nachricht des Opfers mitlesen – der Kanal pusht ohne Abo alle
+ * eigenen Konversationen. Der Schutz hing allein an `SameSite=Lax`.
+ */
+describe('Herkunft des Handshakes (security-matrix-04)', () => {
+  const PANEL = 'https://panel.example.tld';
+
+  let kanalApp: FastifyInstance | null = null;
+
+  async function baueApp(): Promise<FastifyInstance> {
+    const instanz = Fastify({ logger: false });
+
+    await instanz.register(websocket);
+    await instanz.register(async (inner) => {
+      registerChatRoutes(inner, {
+        chat,
+        // Der Live-Kanal fasst die Moderation nicht an; für den Handshake
+        // genügt eine Attrappe.
+        moderation: {} as ModerationService,
+        live: new ChatLiveHub(),
+        ipHintOf: () => null,
+        resolveViewer: () => ({ id: ALEX, displayName: 'Alex' }),
+        allowedOrigin: PANEL,
+      });
+    });
+
+    await instanz.ready();
+
+    return instanz;
+  }
+
+  afterEach(async () => {
+    await kanalApp?.close();
+    kanalApp = null;
+  });
+
+  it('lässt die konfigurierte Panel-Adresse durch', async () => {
+    kanalApp = await baueApp();
+
+    const socket = await kanalApp.injectWS('/api/chat/live', { headers: { origin: PANEL } });
+
+    expect(socket.readyState).toBe(socket.OPEN);
+    socket.close();
+  });
+
+  it('weist eine fremde Herkunft schon beim Handshake ab', async () => {
+    kanalApp = await baueApp();
+
+    await expect(
+      kanalApp.injectWS('/api/chat/live', { headers: { origin: 'https://boese.example' } }),
+    ).rejects.toThrow('403');
   });
 });

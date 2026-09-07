@@ -31,6 +31,7 @@ import { type WebSocket } from '@fastify/websocket';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { accountRateLimit } from '../../lib/abuse-limits.js';
+import { createWebSocketOriginGuard } from '../../lib/ws-origin.js';
 import { isRbacError, requireActor, requirePermission } from '../rbac/index.js';
 import { type ChatContext, contextOf } from './context.js';
 import { isChatError } from './errors.js';
@@ -66,6 +67,14 @@ export interface ChatRoutesOptions {
   isSessionValid?(request: FastifyRequest): Promise<boolean>;
   /** Abstand der Sitzungsprüfung; Vorgabe 60 s. Nur für Tests gedacht. */
   readonly sessionCheckIntervalMs?: number;
+  /**
+   * Panel-Adresse (`PUBLIC_WEB_URL`) für die Herkunftsprüfung des
+   * WebSocket-Handshakes (Audit W2-5, `security-matrix-04`).
+   *
+   * Ohne Angabe bleibt die Prüfung aus – so laufen Tests und
+   * Entwicklungsaufbauten ohne konfigurierte Adresse weiter.
+   */
+  readonly allowedOrigin?: string;
 }
 
 /** Verdichtet die Zod-Fehler zu einer lesbaren Meldung – ohne den Rohbaum auszuliefern. */
@@ -368,7 +377,19 @@ export function registerChatRoutes(app: FastifyInstance, options: ChatRoutesOpti
    * REST-Aufruf – der offene Socket bekam bis dahin weiter private Nachrichten
    * (Audit W2-2, `backend-community-visibility-03`).
    */
-  app.get('/api/chat/live', { websocket: true }, (socket: WebSocket, request: FastifyRequest) => {
+  /*
+   * Cross-Site-WebSocket-Hijacking: Handshakes unterliegen nicht CORS (Audit
+   * W2-5, `security-matrix-04`). Abgelehnt wird vor dem Upgrade, nicht mit
+   * einem Close-Code danach.
+   */
+  const liveRouteOptions = {
+    // `as const`: Der WebSocket-Zweig der Fastify-Typen verlangt das Literal
+    // `true`, ein weitergezogenes `boolean` passt auf keine der Überladungen.
+    websocket: true as const,
+    onRequest: createWebSocketOriginGuard(options.allowedOrigin),
+  };
+
+  app.get('/api/chat/live', liveRouteOptions, (socket: WebSocket, request: FastifyRequest) => {
     const viewer = options.resolveViewer(request);
 
     if (!viewer) {
