@@ -14,7 +14,9 @@
  * `Minute Stunde Tag-des-Monats Monat Wochentag`, je Feld `*`, eine Zahl, eine
  * Liste (`1,15`), ein Bereich (`1-5`) und eine Schrittweite – geschrieben als
  * Stern, Schrägstrich, Zahl (alle 15 Minuten) oder als Bereich mit Schrittweite
- * (`0-30/10`).
+ * (`0-30/10`). Eine Schrittweite auf einem Einzelwert (`5/2`) wird abgelehnt:
+ * Klassisches Cron kennt sie nicht, und still ignoriert zu werden wäre für den
+ * Nutzer die schlechtere Antwort (Audit bb-13).
  * Wochentag: `0` und `7` sind beide Sonntag.
  *
  * **Bewusst nicht unterstützt:** Namen (`MON`, `JAN`), Sonderausdrücke
@@ -37,7 +39,10 @@ interface CronField {
   readonly max: number;
   /** Erlaubte Werte, aufsteigend. */
   readonly values: readonly number[];
-  /** `true` bei `*` – wichtig für die Sonderregel bei Tag/Wochentag. */
+  /**
+   * `true` **nur** bei exakt `*` – wichtig für die Sonderregel bei
+   * Tag/Wochentag (siehe {@link cronMatches}).
+   */
   readonly wildcard: boolean;
 }
 
@@ -63,7 +68,13 @@ function fail(message: string): never {
 
 function parseField(raw: string, min: number, max: number, name: string): CronField {
   const values = new Set<number>();
-  const wildcard = raw === '*' || raw.startsWith('*/');
+  // Wildcard heißt „jeder Wert dieses Feldes“ – und das ist ausschließlich der
+  // Stern allein (Audit bb-13). Ein Stern mit Schrittweite schränkt ein und
+  // darf deshalb nicht als Wildcard gelten: Sonst liefe „0 4 stern/2 stern 1“
+  // nur montags statt „jeden zweiten Tag oder montags“, wie klassisches Cron
+  // (Vixie/POSIX) es auslegt. Die frühere Prüfung über startsWith war zudem in
+  // sich uneinheitlich – bei Listen entschied die Reihenfolge der Bestandteile.
+  const wildcard = raw === '*';
 
   for (const part of raw.split(',')) {
     if (part === '') {
@@ -83,6 +94,16 @@ function parseField(raw: string, min: number, max: number, name: string): CronFi
 
       if (!Number.isInteger(step) || step < 1) {
         fail(`Feld „${name}“: Schrittweite „${stepPart}“ muss eine Zahl ab 1 sein.`);
+      }
+
+      // Eine Schrittweite braucht etwas, worüber sie schreiten kann: den Stern
+      // oder einen Bereich. Auf einem Einzelwert (`5/2`) bleibt sie wirkungslos
+      // – klassisches Cron lehnt sie deshalb ab, und still zu ignorieren, was
+      // der Nutzer geschrieben hat, ist die schlechtere Antwort (Audit bb-13).
+      if (rangePart !== '*' && !rangePart.includes('-')) {
+        fail(
+          `Feld „${name}“: „${part}“ – eine Schrittweite gilt nur für den Stern oder einen Bereich (z. B. „0-30/10“).`,
+        );
       }
     }
 
@@ -173,7 +194,9 @@ function matchesDayOfWeek(field: CronField, weekday: number): boolean {
  * Die Sonderregel bei Tag-des-Monats und Wochentag folgt der klassischen
  * Cron-Semantik: Sind **beide** Felder gesetzt (kein `*`), reicht es, wenn
  * **eines** von beiden passt. `0 4 13 * 5` bedeutet also „jeden 13. und jeden
- * Freitag“, nicht „an Freitagen, die auf den 13. fallen“.
+ * Freitag“, nicht „an Freitagen, die auf den 13. fallen“. Ein Stern mit
+ * Schrittweite ist dabei **gesetzt** und nicht offen (Audit bb-13): „jeden
+ * zweiten Tag“ schränkt ein.
  */
 export function cronMatches(parsed: ParsedCronExpression, moment: Date): boolean {
   return (

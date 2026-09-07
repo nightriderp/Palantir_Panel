@@ -3,9 +3,9 @@
  *
  * Jede Antwort nutzt den Response-Envelope aus §5.1 über `ok()`/`fail()` aus
  * `@palantir/contracts` – kein lokal geformtes Format (CLAUDE.md §3). Der
- * Guard `requirePermission` sperrt den groben Zugang; die feine Prüfung
- * (`.own`/`.any` an der konkreten Ressource) macht der Service, damit sie auch
- * für Aufrufer außerhalb des HTTP-Pfads gilt.
+ * Guard sperrt den groben Zugang; die feine Prüfung (`.own`/`.any` an der
+ * konkreten Ressource) macht der Service, damit sie auch für Aufrufer außerhalb
+ * des HTTP-Pfads gilt.
  *
  * Einzige Ausnahme vom Envelope ist der Download: Er liefert die Bytes des
  * Archivs, keinen JSON-Körper. Der erste Block wird deshalb **vor** den
@@ -27,10 +27,29 @@ import {
 } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { isRbacError, replyWithErrorCode, requireActor, requirePermission } from '../rbac/index.js';
+import {
+  isRbacError,
+  replyWithErrorCode,
+  requireActor,
+  requireAnyPermission,
+  requirePermission,
+} from '../rbac/index.js';
 import { BackupError, isBackupError, isScheduleError } from './errors.js';
 import type { BackupScheduleService } from './schedules.js';
 import type { BackupDownload, BackupDownloadChunk, BackupService } from './service.js';
+
+/**
+ * Grober Zugang zu den Backup-Routen eines Servers (Audit bb-12).
+ *
+ * `backup.manage.any` ist laut Pflichtenheft §8 die stärkere Ausprägung
+ * desselben Rechts, und der Service behandelt sie überall als Obermenge von
+ * `.own`. Ein Guard, der exakt `.own` verlangte, wies eine Rolle mit
+ * ausschließlich `backup.manage.any` schon an der Tür mit 403 ab – obwohl
+ * `/admin/backups` ihr dieselben Backups zeigt und das dort gelieferte
+ * `permissions`-Objekt `canDelete`/`canRestore` zusagt. Das Frontend zeigte
+ * damit Aktionen an, die am Guard scheiterten.
+ */
+const requireBackupManage = requireAnyPermission('backup.manage.own', 'backup.manage.any');
 
 const serverParamsSchema = z.object({ serverId: z.string().uuid() });
 const backupParamsSchema = z.object({ backupId: z.string().uuid() });
@@ -97,7 +116,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
 
     app.get(
       '/servers/:serverId/backups',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { serverId } = serverParamsSchema.parse(request.params);
@@ -115,7 +134,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
 
     app.post(
       '/servers/:serverId/backups',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { serverId } = serverParamsSchema.parse(request.params);
@@ -151,7 +170,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
      */
     app.post(
       '/servers/:serverId/export',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { serverId } = serverParamsSchema.parse(request.params);
@@ -178,7 +197,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
 
     app.get(
       '/backups/:backupId',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { backupId } = backupParamsSchema.parse(request.params);
@@ -194,7 +213,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
 
     app.delete(
       '/backups/:backupId',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { backupId } = backupParamsSchema.parse(request.params);
@@ -211,7 +230,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
 
     app.post(
       '/backups/:backupId/restore',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { backupId } = backupParamsSchema.parse(request.params);
@@ -227,7 +246,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
 
     app.get(
       '/backups/:backupId/download',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<void> => {
         let backupId: string | undefined;
         let download: BackupDownload;
@@ -320,7 +339,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
 
     app.get(
       '/users/:userId/backups',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { userId } = ownerParamsSchema.parse(request.params);
@@ -338,7 +357,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
 
     app.get(
       '/servers/:serverId/backup-schedule',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { serverId } = serverParamsSchema.parse(request.params);
@@ -354,7 +373,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
 
     app.put(
       '/servers/:serverId/backup-schedule',
-      { preHandler: requirePermission('backup.manage.own') },
+      { preHandler: requireBackupManage },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { serverId } = serverParamsSchema.parse(request.params);

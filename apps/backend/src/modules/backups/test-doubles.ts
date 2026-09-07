@@ -269,6 +269,11 @@ export function inMemoryBackupRepository(seed: readonly BackupRecord[] = []): Ba
         ),
       ),
 
+    findLatestByScheduleId: (scheduleId) =>
+      Promise.resolve(
+        newestFirst([...rows.values()].filter((r) => r.scheduleId === scheduleId))[0] ?? null,
+      ),
+
     create(data: CreateBackupData) {
       const active = [...rows.values()].find(
         (r) => r.serverId === data.serverId && (r.status === 'pending' || r.status === 'running'),

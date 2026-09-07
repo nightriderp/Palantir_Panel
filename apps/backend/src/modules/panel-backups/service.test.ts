@@ -53,6 +53,20 @@ function speicherRepository(vorhanden: PanelBackupRecord[] = []): PanelBackupRep
   return {
     rows,
     async create(trigger, storagePath) {
+      if (rows.some((row) => row.status === 'running')) {
+        /*
+         * Bildet den partiellen Unique-Index `panel_backups_one_running_idx`
+         * nach (Audit bb-11): Höchstens ein laufender Abzug, zugesichert von
+         * der Datenbank. `pg` legt den SQLSTATE als `code` auf den Fehler.
+         */
+        const fehler = new Error(
+          'duplicate key value violates unique constraint "panel_backups_one_running_idx"',
+        ) as Error & { code?: string };
+        fehler.code = '23505';
+
+        throw fehler;
+      }
+
       const record: PanelBackupRecord = {
         id: `backup-${String(naechste++)}`,
         status: 'running',
@@ -221,6 +235,38 @@ describe('Panel-Sicherungen', () => {
     );
   });
 
+  it('laesst im Rennen die Datenbank entscheiden – kein zweites pg_dump (Audit bb-11)', async () => {
+    const repository = speicherRepository([
+      {
+        id: 'laufend',
+        status: 'running',
+        trigger: 'scheduled',
+        storagePath: '/pfad/laufend.sql.gz',
+        sizeBytes: 0,
+        failureMessage: null,
+        startedAt: new Date('2026-09-01T02:59:00.000Z'),
+        completedAt: null,
+      },
+    ]);
+    const abzug = dumper();
+    const service = baue({
+      // Das Rennfenster zwischen Pruefen und Anlegen: Beide Aufrufer (Takt und
+      // Knopfdruck) sehen „nichts laeuft", der Index faengt den zweiten.
+      repository: { ...repository, findRunning: async () => null },
+      dumper: abzug,
+    });
+
+    await expect(service.start(ADMIN, 'manual')).rejects.toSatisfy(
+      (error: unknown) =>
+        isPanelBackupError(error) && error.code === 'PANEL_BACKUP_ALREADY_RUNNING',
+    );
+
+    // Entscheidend: kein zweiter Abzug auf denselben Zielpfad – und kein roher
+    // 23505, der als INTERNAL_ERROR (500) beim Aufrufer ankaeme.
+    expect(abzug.pfade).toEqual([]);
+    expect(repository.rows.filter((row) => row.status === 'running')).toHaveLength(1);
+  });
+
   it('verlangt backup.manage.any – ein eigenes Backup-Recht genuegt nicht', async () => {
     const service = baue();
 
@@ -292,6 +338,35 @@ describe('Panel-Sicherungen', () => {
 
       expect(dto?.trigger).toBe('scheduled');
       expect(dto?.status).toBe('completed');
+    });
+
+    it('meldet dem Zeitgeber „nichts zu tun", wenn er das Rennen verliert (Audit bb-11)', async () => {
+      const repository = speicherRepository([
+        {
+          id: 'laufend',
+          status: 'running',
+          trigger: 'manual',
+          storagePath: '/pfad/laufend.sql.gz',
+          sizeBytes: 0,
+          failureMessage: null,
+          // Weit genug zurueck, damit der Takt faellig ist und ueberhaupt bis
+          // zum Anlegen kommt.
+          startedAt: new Date('2026-08-30T03:00:00.000Z'),
+          completedAt: null,
+        },
+      ]);
+      const abzug = dumper();
+
+      // Der Takt sieht „nichts laeuft", zwischen Pruefung und Anlegen kommt ein
+      // Lauf von Hand dazwischen. Fuer den Zeitgeber ist das kein Fehler,
+      // sondern der dokumentierte Fall „bereits einer unterwegs".
+      const dto = await baue({
+        repository: { ...repository, findRunning: async () => null },
+        dumper: abzug,
+      }).runScheduled();
+
+      expect(dto).toBeNull();
+      expect(abzug.pfade).toEqual([]);
     });
 
     it('wartet, solange der Abstand nicht um ist', async () => {
