@@ -482,6 +482,11 @@ function makeHarness(
     buildReservation?: (repository: FakeRepository) => CapacityReservation;
     /** Upload-Grenze, um sie im Test ohne 64-MiB-Puffer zu erreichen (P2). */
     maxUploadBytes?: number;
+    /**
+     * Lässt das Entfernen des DNS-Eintrags **einmal** scheitern – für den
+     * Abbruch mitten in der Löschkette (orchestration-core-03).
+     */
+    failNextDnsDelete?: boolean;
     /** Zwischenspeicher der Weltdaten-Archive; ohne Angabe keiner (P4). */
     worldArchives?: WorldArchiveStore;
     /** Grenze für Weltarchive, um sie im Test ohne 64 MiB zu erreichen (P4). */
@@ -530,6 +535,7 @@ function makeHarness(
   );
   agents.register(session);
 
+  let dnsLoeschenScheitert = options.failNextDnsDelete === true;
   const dns: DnsProvider = {
     upsertRecord: (record) => {
       dnsRecords.push(record);
@@ -537,6 +543,12 @@ function makeHarness(
       return Promise.resolve(`rec-${String(dnsRecords.length)}`);
     },
     deleteRecord: (name) => {
+      if (dnsLoeschenScheitert) {
+        dnsLoeschenScheitert = false;
+
+        return Promise.reject(new Error('Der DNS-Eintrag ließ sich nicht entfernen.'));
+      }
+
       deletedDnsNames.push(name);
 
       return Promise.resolve();
@@ -1163,6 +1175,95 @@ describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
     expect(gestartet.imageRef).toBe(TEST_GAME_TYPE.dockerImage);
   });
 
+  /**
+   * Konfiguration ändern, damit der nächste Start den Container neu baut –
+   * derselbe Weg wie in der Oberfläche.
+   */
+  async function konfigurationAendern(harness: Harness, server: ServerRecord): Promise<void> {
+    await harness.service.updateServer(server.id, {
+      name: server.name,
+      resourceLimits: server.resourceLimits,
+      config: { greeting: 'Neuer Text', motdEnabled: true },
+      startupParameters: server.startupParameters,
+      autoShutdownEnabled: server.autoShutdown.enabled,
+      autoShutdownTimeoutMinutes: server.autoShutdown.idleTimeoutMinutes,
+    });
+  }
+
+  /** Antwort des Agents, wenn das CREATE auf der Node scheitert. */
+  const createScheitert = {
+    success: false,
+    data: null,
+    error: {
+      code: 'AGENT_IMAGE_NOT_FOUND',
+      message: 'Das Container-Image ist auf dem Homeserver nicht vorhanden.',
+    },
+  } as const;
+
+  it('vergisst die Container-Id, sobald das DELETE durch ist (orchestration-core-03)', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await konfigurationAendern(harness, created);
+    harness.socket.answers.set('CREATE', createScheitert);
+
+    await expect(harness.service.startServer(created.id, OWNER_ID)).rejects.toMatchObject({
+      code: 'AGENT_IMAGE_NOT_FOUND',
+    });
+
+    // Der Datensatz zeigt den Ist-Zustand der Node: Der alte Container ist weg,
+    // ein neuer ist nie entstanden.
+    const stehengeblieben = await harness.service.requireServer(created.id);
+
+    expect(stehengeblieben.dockerContainerId).toBeNull();
+    expect(stehengeblieben.containerSpecHash).toBeNull();
+  });
+
+  it('legt beim nächsten Start direkt neu an, ohne zweites DELETE (orchestration-core-03)', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await konfigurationAendern(harness, created);
+    harness.socket.answers.set('CREATE', createScheitert);
+
+    await expect(harness.service.startServer(created.id, OWNER_ID)).rejects.toBeDefined();
+
+    harness.socket.answers.delete('CREATE');
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const gestartet = await settle(harness, created.id, ['running']);
+
+    // Früher lief hier erneut ein DELETE auf die tote Id, das der Agent mit
+    // AGENT_CONTAINER_NOT_FOUND beantwortete – der Server war nie wieder
+    // startbar.
+    expect(
+      harness.socket.commands
+        .map((c) => c.command)
+        .filter((name) => name === 'DELETE' || name === 'CREATE' || name === 'START'),
+    ).toEqual(['CREATE', 'START']);
+    expect(gestartet.dockerContainerId).not.toBeNull();
+  });
+
+  it('bleibt nach einem gescheiterten Neuaufbau löschbar (orchestration-core-03)', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await konfigurationAendern(harness, created);
+    harness.socket.answers.set('CREATE', createScheitert);
+
+    await expect(harness.service.startServer(created.id, OWNER_ID)).rejects.toBeDefined();
+
+    harness.socket.commands.length = 0;
+
+    await expect(harness.service.deleteServer(created.id)).resolves.toBeUndefined();
+
+    // Ohne Container gibt es nichts mehr zu löschen – und nichts, woran das
+    // Löschen scheitern könnte.
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('DELETE');
+    expect(harness.repository.servers.size).toBe(0);
+  });
+
   it('lässt einen unveränderten Container in Ruhe', async () => {
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
@@ -1562,6 +1663,46 @@ describe('Löschen', () => {
 
     await harness.service.deleteServer(created.id);
 
+    expect(harness.releasedPorts).toEqual([created.id]);
+  });
+
+  it('löscht auch, wenn der Container auf der Node schon fehlt (orchestration-core-03)', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    // Container von Hand entfernt oder Rest eines abgebrochenen Neuaufbaus:
+    // Das Ziel „Container weg" ist erreicht, also ist der Befehl erledigt.
+    harness.socket.answers.set('DELETE', {
+      success: false,
+      data: null,
+      error: {
+        code: 'AGENT_CONTAINER_NOT_FOUND',
+        message: 'Der Container ist auf dem Homeserver nicht vorhanden.',
+      },
+    });
+
+    await expect(harness.service.deleteServer(created.id)).resolves.toBeUndefined();
+
+    expect(harness.repository.servers.size).toBe(0);
+    expect(harness.deletedDnsNames).toEqual(['mein-server.example.tld']);
+    expect(harness.releasedPorts).toEqual([created.id]);
+  });
+
+  it('nimmt einen Abbruch hinter dem Container-DELETE beim zweiten Anlauf auf (orchestration-core-03)', async () => {
+    const harness = makeHarness({ failNextDnsDelete: true });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await expect(harness.service.deleteServer(created.id)).rejects.toBeDefined();
+
+    // Container weg, Datensatz noch da – und er weiß, dass es keinen mehr gibt.
+    expect(harness.repository.servers.get(created.id)?.dockerContainerId).toBeNull();
+
+    harness.socket.commands.length = 0;
+
+    await expect(harness.service.deleteServer(created.id)).resolves.toBeUndefined();
+
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('DELETE');
+    expect(harness.repository.servers.size).toBe(0);
     expect(harness.releasedPorts).toEqual([created.id]);
   });
 });

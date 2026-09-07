@@ -517,6 +517,39 @@ export class ServerOrchestrationService {
   }
 
   /**
+   * Schickt `DELETE` an den Agent – ein bereits fehlender Container gilt als
+   * Erledigung (orchestration-core-03).
+   *
+   * Das Ziel des Befehls ist „Container weg". Meldet der Agent
+   * `AGENT_CONTAINER_NOT_FOUND`, ist genau das der Fall: Der Container wurde
+   * zuvor schon entfernt (abgebrochener Neuaufbau, abgebrochenes Löschen, von
+   * Hand auf der Node aufgeräumt). Als Fehler behandelt hätte das den Server
+   * dauerhaft unstart- **und** unlöschbar gemacht, weil jeder Versuch an
+   * derselben toten Id abbrach.
+   *
+   * Jeder Aufrufer schreibt anschließend `dockerContainerId = null`, damit ein
+   * zweiter Anlauf nicht wieder hier landet.
+   */
+  private async removeContainer(
+    session: AgentSession,
+    serverId: string,
+    containerId: string,
+  ): Promise<void> {
+    try {
+      await session.sendCommand('DELETE', serverId, { containerId, force: true });
+    } catch (error: unknown) {
+      if (!isServerOrchestrationError(error) || error.code !== 'AGENT_CONTAINER_NOT_FOUND') {
+        throw error;
+      }
+
+      this.deps.log.warn(
+        { serverId, containerId },
+        'Container war auf der Node bereits entfernt – Löschbefehl gilt als erledigt',
+      );
+    }
+  }
+
+  /**
    * Container neu bauen, wenn er nicht mehr zum heutigen Bauplan passt
    * (WORK_STATUS.md, Punkt 114).
    *
@@ -532,28 +565,38 @@ export class ServerOrchestrationService {
    *
    * `containerSpecHash === null` heißt „vor dieser Spalte angelegt": Diese
    * Container werden einmalig neu gebaut, danach steht der Fingerabdruck.
+   *
+   * **Zweischrittig und wiederholbar** (orchestration-core-03): Sobald das
+   * `DELETE` durch ist, steht in der Datenbank keine Container-Id mehr – noch
+   * bevor das `CREATE` losläuft. Scheitert das Anlegen (Registry weg, Image
+   * nicht ziehbar, Zeitüberschreitung), gilt der Server als „ohne Container";
+   * der nächste Start schickt direkt `CREATE` statt erneut ein `DELETE` auf
+   * eine tote Id, an dem er früher dauerhaft hängenblieb.
    */
   private async ensureContainerCurrent(
     server: ServerRecord,
     definition: GameTypeDefinition,
   ): Promise<ServerRecord> {
-    if (server.dockerContainerId === null) {
-      return server;
-    }
-
     const spec = this.containerSpecFor(server, definition);
     const fingerabdruck = containerSpecFingerprint(spec);
 
-    if (server.containerSpecHash === fingerabdruck) {
+    if (server.dockerContainerId !== null && server.containerSpecHash === fingerabdruck) {
       return server;
     }
 
     const session = this.deps.agents.require(server.hostId);
 
-    await session.sendCommand('DELETE', server.id, {
-      containerId: server.dockerContainerId,
-      force: true,
-    });
+    if (server.dockerContainerId !== null) {
+      await this.removeContainer(session, server.id, server.dockerContainerId);
+
+      // Erst die Id löschen, dann neu anlegen: Bricht das `CREATE` ab, zeigt
+      // der Datensatz den Ist-Zustand auf der Node („kein Container") und der
+      // nächste Versuch beginnt an der richtigen Stelle.
+      await this.deps.repository.update(server.id, {
+        dockerContainerId: null,
+        containerSpecHash: null,
+      });
+    }
 
     const created = await session.sendCommand('CREATE', server.id, spec, {
       timeoutMs: this.deps.config.createTimeoutMs,
@@ -1033,10 +1076,13 @@ export class ServerOrchestrationService {
       // der Agent weiter einen Port ab, hinter dem nichts mehr steht
       // (Gefundener Punkt 74).
       await this.applyServerQuery(server, false);
-      await session.sendCommand('DELETE', server.id, {
-        containerId: server.dockerContainerId,
-        force: true,
-      });
+      await this.removeContainer(session, server.id, server.dockerContainerId);
+
+      // Id sofort löschen (orchestration-core-03): Bricht ein späterer Schritt
+      // der Kette ab – DNS-Eintrag, Portfreigabe –, beginnt der
+      // Wiederholungsversuch hinter dem bereits entfernten Container und nicht
+      // erneut davor.
+      await this.deps.repository.update(server.id, { dockerContainerId: null });
     } else if (server.dockerContainerId !== null) {
       throw new ServerOrchestrationError('AGENT_NOT_CONNECTED', undefined, {
         hostId: server.hostId,
