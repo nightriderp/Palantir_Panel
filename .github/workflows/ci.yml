@@ -3,6 +3,16 @@ name: CI
 # Läuft auf jedem Pull Request nach main und auf main selbst.
 # Mehrere Sitzungen arbeiten parallel an eigenen Arbeitspaketen (siehe STRUKTUR.md);
 # dieser Workflow ist die gemeinsame Schwelle, die verhindert, dass main kaputtgeht.
+#
+# **Fremde Actions sind per Commit-SHA gepinnt** (Audit `infra-images-13`). Ein
+# Tag wie `@v4` ist verschiebbar: Wer Schreibrecht am Repository der Action
+# bekommt, hängt das Tag um und führt damit eigenen Code in jedem Lauf aus, der
+# das Tag benutzt - so geschehen bei `tj-actions/changed-files` im März 2025.
+# Ein SHA lässt sich nicht umhängen. Der Kommentar hinter dem SHA nennt die
+# Fassung, damit lesbar bleibt, was dort steht; `.github/dependabot.yml` hält
+# SHA und Kommentar gemeinsam nach. Beim Ändern eines Pins von Hand gilt: Der
+# SHA muss aus dem Action-Repository stammen (`gh api repos/<owner>/<repo>/tags`
+# oder die GitHub-Oberfläche), nicht aus dem Gedächtnis.
 
 on:
   pull_request:
@@ -56,14 +66,14 @@ jobs:
 
     steps:
       - name: Repository auschecken
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: pnpm einrichten
         # Version kommt aus dem Feld "packageManager" in der package.json.
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
       - name: Node einrichten
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -74,7 +84,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Turborepo-Cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}

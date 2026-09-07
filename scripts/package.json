@@ -1,0 +1,10 @@
+{
+  "name": "@palantir/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Hilfsskripte des Repositorys (Mockup-Server, Einrichtung). Diese package.json existiert nur, damit `pnpm test` im Repo-Wurzelverzeichnis die Tests neben den .mjs-Dateien mitlaufen lässt – genauso wie bei images/test-minecraft. Gebaut oder veröffentlicht wird hier nichts.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

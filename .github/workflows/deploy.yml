@@ -28,6 +28,12 @@ name: Deploy
 # Gebaut wird hier NICHTS. Der Lauf hängt nur das Tag `prod` auf ein bereits
 # gebautes und geprüftes Image um (siehe images.yml). Was nach Produktion geht,
 # ist damit bitgleich mit dem, was auf `main` geprüft wurde.
+#
+# **Fremde Actions sind per Commit-SHA gepinnt** (Audit `infra-images-13`,
+# Begründung im Kopf von ci.yml). Hier wiegt es am schwersten: Der Job läuft mit
+# `contents: write`, `packages: write` und dem SSH-Deploy-Schlüssel in der
+# Umgebung - eine über ein umgehängtes Tag ausgetauschte Action läse alles
+# davon mit. `.github/dependabot.yml` hält die Pins nach.
 
 on:
   push:
@@ -52,7 +58,7 @@ jobs:
 
     steps:
       - name: Repository auschecken
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -99,7 +105,7 @@ jobs:
 
       # ----------------------------------------------------------------------
       - name: An GHCR anmelden
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
