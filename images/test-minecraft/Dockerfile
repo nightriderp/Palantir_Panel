@@ -16,7 +16,7 @@
 #
 # sha256:c610fc… ist der Multi-Arch-Index (linux/amd64, arm64v8, armv6, armv7,
 # s390x) hinter `node:22-alpine` mit Node 22.23.2.
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3
 
 # Feste, nicht-root Identität. `node` ist in diesem Image 1000:1000 - genau die
 # UID, der der Datenordner auf dem Homeserver gehört (Gefundener Punkt 117).
