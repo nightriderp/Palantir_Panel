@@ -29,9 +29,11 @@ import {
   type AuditTargetType,
   type PortProtocol,
 } from '@palantir/contracts';
+import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -61,7 +63,15 @@ export const portRanges = pgTable(
     startPort: integer('start_port').notNull(),
     endPort: integer('end_port').notNull(),
     protocol: text('protocol').$type<PortProtocol>().notNull(),
-    /** Node, für die der Bereich gilt; `null` = für alle Nodes. */
+    /**
+     * Node, für die der Bereich gilt; `null` = für alle Nodes.
+     *
+     * **Bewusst ohne Index** (Audit backend-db-07): Port-Bereiche legt ein
+     * Administrator an, es sind eine Handvoll Zeilen, und die Tabelle wächst
+     * nicht mit dem Betrieb. Die Vergabe filtert die Bereiche zudem in der
+     * Anwendung (`ports.ts`), nicht in SQL – für die Kaskade beim Löschen einer
+     * Node liest PostgreSQL bei dieser Zeilenzahl ohnehin sequenziell.
+     */
     nodeId: uuid('node_id').references(() => hostNodes.id, { onDelete: 'cascade' }),
     enabled: boolean('enabled').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -148,19 +158,41 @@ export const auditLog = pgTable(
 /**
  * Einstellungen der Instanz (Mockup-Abgleich 12.1.1).
  *
- * Genau **eine** Zeile, festgehalten über den Primärschlüssel `id = 1`: Es gibt
- * eine Instanz, und zwei Zeilen wären zwei Wahrheiten. Fehlt die Zeile, gelten
- * die Vorgaben – die Instanz verhält sich dann wie bisher.
+ * Genau **eine** Zeile, festgehalten über den Primärschlüssel `id = 1` **und**
+ * die Bedingung `instance_settings_singleton`: Es gibt eine Instanz, und zwei
+ * Zeilen wären zwei Wahrheiten. Fehlt die Zeile, gelten die Vorgaben – die
+ * Instanz verhält sich dann wie bisher.
  */
-export const instanceSettings = pgTable('instance_settings', {
-  /** Immer `1`; der Wert hat keine Bedeutung außer „diese eine Zeile". */
-  id: integer('id').primaryKey().default(1),
-  /** Dürfen sich neue Konten selbst registrieren? Vorgabe: ja, wie bisher. */
-  selfRegistrationEnabled: boolean('self_registration_enabled').notNull().default(true),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
-  /** Wer zuletzt geändert hat – für das Audit-Log ohnehin, hier zur Anzeige. */
-  updatedById: uuid('updated_by_id').references(() => users.id, { onDelete: 'set null' }),
-});
+export const instanceSettings = pgTable(
+  'instance_settings',
+  {
+    /** Immer `1`; der Wert hat keine Bedeutung außer „diese eine Zeile". */
+    id: integer('id').primaryKey().default(1),
+    /** Dürfen sich neue Konten selbst registrieren? Vorgabe: ja, wie bisher. */
+    selfRegistrationEnabled: boolean('self_registration_enabled').notNull().default(true),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+    /**
+     * Wer zuletzt geändert hat – für das Audit-Log ohnehin, hier zur Anzeige.
+     *
+     * **Bewusst ohne Index** (Audit backend-db-07): Die Tabelle hat genau eine
+     * Zeile. Ein Index darauf wäre größer als die Tabelle und würde vom Planer
+     * nie gewählt.
+     */
+    updatedById: uuid('updated_by_id').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (table) => [
+    /**
+     * „Genau eine Zeile" auch technisch (Audit backend-db-09).
+     *
+     * Der Primärschlüssel-Vorgabewert `1` allein hielt das Versprechen des
+     * Kommentars nicht: Ein Insert mit ausdrücklichem `id = 2` – ein
+     * fehlerhafter Code-Pfad, eine Korrektur von Hand – legte eine zweite
+     * Wahrheit an, und welche davon die Anwendung liest, hinge an der Abfrage.
+     * Mit dieser Bedingung lehnt die Datenbank das ab.
+     */
+    check('instance_settings_singleton', sql`${table.id} = 1`),
+  ],
+);
 
 export const storageSnapshots = pgTable('storage_snapshots', {
   nodeId: uuid('node_id')

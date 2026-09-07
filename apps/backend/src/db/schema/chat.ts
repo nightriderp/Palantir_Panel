@@ -119,7 +119,16 @@ export const conversationReads = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     lastReadAt: timestamp('last_read_at', { withTimezone: true }).notNull(),
   },
-  (table) => [primaryKey({ columns: [table.conversationId, table.userId] })],
+  (table) => [
+    primaryKey({ columns: [table.conversationId, table.userId] }),
+    /**
+     * `user_id` steht im Primärschlüssel an zweiter Stelle und wird davon nicht
+     * getragen (Audit backend-db-07). Die Kaskade beim Löschen eines Kontos
+     * (`delete from conversation_reads where user_id = …`) läse die Tabelle
+     * sonst vollständig – sie wächst mit Konversationen × Konten.
+     */
+    index('conversation_reads_user_id_idx').on(table.userId),
+  ],
 );
 
 /**
@@ -156,6 +165,19 @@ export const messages = pgTable(
     /** Verlauf einer Konversation, jüngste zuerst – die einzige Leseform. */
     index('messages_conversation_created_idx').on(table.conversationId, table.createdAt),
     index('messages_sender_id_idx').on(table.senderId),
+    /**
+     * Trägt das `ON DELETE SET NULL` beim Löschen eines Moderator-Kontos (Audit
+     * backend-db-07). Ohne ihn liest PostgreSQL für **jede** gelöschte
+     * `users`-Zeile die gesamte – potenziell größte – Tabelle der Installation.
+     *
+     * Bewusst partiell: Gelöschte Nachrichten sind die Ausnahme, in der
+     * weit überwiegenden Zahl der Zeilen ist die Spalte `null`. Der Index bleibt
+     * damit klein, und für die Kaskade genügt er: PostgreSQL erkennt, dass
+     * `deleted_by_id = $1` die Bedingung `is not null` einschließt.
+     */
+    index('messages_deleted_by_id_idx')
+      .on(table.deletedById)
+      .where(sql`${table.deletedById} is not null`),
   ],
 );
 
@@ -196,6 +218,22 @@ export const messageReports = pgTable(
     uniqueIndex('message_reports_message_reporter_idx').on(table.messageId, table.reportedById),
     /** Die Moderationsübersicht filtert nach Stand und sortiert nach Eingang. */
     index('message_reports_status_created_idx').on(table.status, table.createdAt),
+    /**
+     * `reported_by_id` steht im Unique-Index oben an zweiter Stelle und wird
+     * davon nicht getragen (Audit backend-db-07). Gebraucht wird die Spalte
+     * zweifach: von der Kaskade beim Löschen eines Kontos und von
+     * `reportedMessageIds` in `ChatRepository` – die Abfrage, die zu einem
+     * Seitenabruf des Verlaufs zusammenträgt, welche der gezeigten Nachrichten
+     * der Betrachter bereits gemeldet hat. Sie filtert nach dem Melder und
+     * einer Liste von Nachrichten-Ids; der Unique-Index führt auf
+     * `message_id` und taugt dafür nicht.
+     */
+    index('message_reports_reported_by_id_idx').on(table.reportedById),
+    /**
+     * Trägt das `ON DELETE SET NULL` beim Löschen eines Moderator-Kontos
+     * (Audit backend-db-07).
+     */
+    index('message_reports_resolved_by_id_idx').on(table.resolvedById),
   ],
 );
 

@@ -118,6 +118,13 @@ export const gameServers = pgTable(
      *
      * `ON DELETE SET NULL`: Wird die Vorlage gelöscht, bleibt der Klon
      * selbstverständlich bestehen – er ist ein eigenständiger Server.
+     *
+     * **Bewusst ohne eigenen Index** (Audit backend-db-07): Die Spalte wird
+     * nirgends gefiltert – sie wird nur mitgelesen und beim Klonen gesetzt.
+     * Bleibt das `ON DELETE SET NULL`, und dessen Zeilenzahl begrenzt die
+     * Kapazität des Homeservers (Lastenheft §5): ein paar Dutzend Server, nicht
+     * eine mit dem Betrieb wachsende Reihe. Ein Index brächte dort nichts, das
+     * PostgreSQL nicht schneller sequenziell liest.
      */
     clonedFromServerId: uuid('cloned_from_server_id').references(
       (): AnyPgColumn => gameServers.id,
@@ -194,6 +201,13 @@ export const serverPins = pgTable(
     primaryKey({ columns: [table.userId, table.serverId] }),
     /** Traegt die Uebersicht: alle Anheftungen eines Kontos auf einmal. */
     index('server_pins_user_idx').on(table.userId),
+    /**
+     * `server_id` steht im Primaerschluessel an zweiter Stelle und wird davon
+     * nicht getragen (Audit backend-db-07). Die Kaskade beim Loeschen eines
+     * Servers laese die Tabelle sonst vollstaendig – sie waechst mit
+     * Konten × angehefteten Servern.
+     */
+    index('server_pins_server_idx').on(table.serverId),
   ],
 );
 

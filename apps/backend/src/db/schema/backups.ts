@@ -91,6 +91,16 @@ export const schedules = pgTable(
     index('schedules_due_idx')
       .on(table.nextRunAt)
       .where(sql`${table.enabled}`),
+    /**
+     * Trägt die Kaskade beim Löschen eines Servers (Audit backend-db-07).
+     *
+     * Der Unique-Index oben steht zwar auf derselben Spalte, ist aber auf
+     * `action = 'backup'` eingeschränkt – für `delete from schedules where
+     * server_id = …` taugt er nicht, weil diese Bedingung dort nicht
+     * mitgegeben wird. Mit den Aufgaben-Zeitplänen (`restart`, `command`)
+     * wächst die Tabelle über den einen Backup-Zeitplan je Server hinaus.
+     */
+    index('schedules_server_id_idx').on(table.serverId),
   ],
 );
 
@@ -171,6 +181,24 @@ export const backups = pgTable(
     index('backups_server_created_idx').on(table.serverId, table.createdAt.desc()),
     index('backups_owner_idx').on(table.ownerId),
     index('backups_status_idx').on(table.status),
+    /**
+     * Trägt das `ON DELETE SET NULL` beim Löschen eines Kontos (Audit
+     * backend-db-07). `owner_id` steht auf `RESTRICT` und ist indiziert –
+     * `created_by_user_id` ist der zweite Verweis auf `users` in dieser
+     * Tabelle und wurde dabei übersehen.
+     */
+    index('backups_created_by_user_id_idx').on(table.createdByUserId),
+    /**
+     * Trägt zwei Wege (Audit backend-db-07): das `ON DELETE SET NULL` beim
+     * Löschen eines Zeitplans und `findLatestByScheduleId` – die Abfrage, die
+     * jeder Zeitplan-DTO für `lastBackupId` absetzt (`schedules.ts`). Letztere
+     * filtert allein nach `schedule_id`; der bestehende
+     * `backups_server_created_idx` trägt sie nicht, weil er auf `server_id`
+     * führt. Bewusst nur die eine Spalte: Wie viele Sicherungen je Zeitplan
+     * stehen bleiben, begrenzt die Aufbewahrung – die anschließende Sortierung
+     * nach `created_at` läuft über eine Handvoll Zeilen.
+     */
+    index('backups_schedule_id_idx').on(table.scheduleId),
     /**
      * Höchstens ein laufendes Backup je Server. Zwei gleichzeitige Läufe würden
      * denselben Datenordner lesen, während er sich ändert – die Regel steht
