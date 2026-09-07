@@ -1,0 +1,23 @@
+-- W2-11 – Konto-Selbstlöschung reißt keine Sicherungen mehr mit
+-- (Audit backend-db-02).
+--
+-- `backups.owner_id` stand auf `ON DELETE CASCADE`. Löschte ein Nutzer sein
+-- Konto, verschwanden damit alle seine Backup-Zeilen – aber **nur** in der
+-- Datenbank. Die Archivdatei unter `storage_path` liegt auf der Node und wird
+-- ausschließlich vom Agent entfernt (`DELETE_BACKUP`); bei einer
+-- Datenbank-Kaskade läuft kein Anwendungscode, der ihn anstößt. Zurück blieb
+-- Speicher, den keine Übersicht mehr ausweist (Lastenheft §3.7).
+--
+-- `RESTRICT` dreht die Reihenfolge um: Erst gehen die Sicherungen über den
+-- regulären Weg, dann das Konto. Die Vorprüfung dazu steht in
+-- `AuthService.deleteAccount` und antwortet mit `ACCOUNT_HAS_SERVERS` (409),
+-- damit aus dem Fremdschlüsselfehler (Postgres 23503) kein 500 wird.
+--
+-- Kein Aufräumen von Bestandsdaten nötig: `owner_id` ist `NOT NULL` und zeigte
+-- schon bisher per Fremdschlüssel auf ein vorhandenes Konto – `ADD CONSTRAINT`
+-- findet also nichts, was es ablehnen müsste. Der Befehl prüft den Bestand
+-- trotzdem einmal vollständig und hält dabei kurz eine Sperre auf `backups`
+-- und `users`; bei der Größenordnung dieser Tabellen ist das ein Wimpernschlag.
+ALTER TABLE "backups" DROP CONSTRAINT "backups_owner_id_users_id_fk";
+--> statement-breakpoint
+ALTER TABLE "backups" ADD CONSTRAINT "backups_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;

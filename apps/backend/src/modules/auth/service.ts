@@ -1219,6 +1219,14 @@ export class AuthService {
    * Der Anzeigename muss abgetippt werden. Hat das Konto eine Passwort-Methode,
    * kommt das Passwort dazu. Das Owner-Konto kann sich nicht selbst löschen –
    * sonst stünde die Instanz ohne Owner da (Lastenheft §2).
+   *
+   * **Was am Konto hängt, geht zuerst** (Audit W2-11, backend-db-02/05).
+   * `game_servers.owner_id` und `backups.owner_id` stehen auf `RESTRICT`: Beide
+   * tragen Dinge, die außerhalb der Datenbank liegen – einen laufenden
+   * Container und eine Archivdatei auf der Node. Eine Datenbank-Kaskade würde
+   * nur die Zeilen entfernen und beides unerreichbar zurücklassen. Ohne
+   * Vorprüfung käme der Fremdschlüsselfehler als 500 zurück; deshalb steht hier
+   * `ACCOUNT_HAS_SERVERS` (409) mit einem Satz, der sagt, was zuerst wegmuss.
    */
   async deleteAccount(userId: string, input: DeleteAccountInput): Promise<void> {
     const user = await this.requireUser(userId);
@@ -1243,9 +1251,56 @@ export class AuthService {
       }
     }
 
+    // Erst nach der Identitätsprüfung: Wer sich nicht ausweisen kann, soll
+    // nicht erfahren, wie viele Server oder Sicherungen ein fremdes Konto hat.
+    await this.assertNothingBlocksDeletion(userId);
+
     // `AuthMethod`, `Session` und `UserRole` hängen mit `ON DELETE CASCADE` am
     // Konto und verschwinden mit (Pflichtenheft §6).
     await this.repository.deleteUser(userId);
+
+    // Die Sitzungszeilen sind mit der Kaskade schon weg – der Aufruf gilt der
+    // Senke: Sie schließt die noch offenen Live-Kanäle des Kontos (Audit W2-2).
+    // Bewusst **nach** dem Löschen: Scheitert es doch, bleibt das Konto so, wie
+    // es war, statt abgemeldet und trotzdem vorhanden.
+    await this.revokeEverySession(userId, this.now());
+  }
+
+  /**
+   * Wirft `ACCOUNT_HAS_SERVERS` (409), solange noch etwas am Konto hängt.
+   *
+   * Die Reihenfolge der Prüfungen ist die Reihenfolge, in der der Nutzer
+   * aufräumen muss: Ein Server nimmt seine Sicherungen beim Löschen nicht mit
+   * (`backups.server_id` wird `NULL`, Lastenheft §3.3), also nennt die Antwort
+   * erst die Server und danach die übrig gebliebenen Sicherungen. Ein Satz je
+   * Fall statt einer Aufzählung – der nächste Versuch zeigt den nächsten
+   * Schritt.
+   */
+  private async assertNothingBlocksDeletion(userId: string): Promise<void> {
+    const blocker = await this.repository.countAccountBlockers(userId);
+
+    if (blocker.servers > 0) {
+      // Ohne eigene Nachricht: Der Standardtext des Katalogs beschreibt genau
+      // diesen Fall (`ACCOUNT_HAS_SERVERS`).
+      throw new AuthError('ACCOUNT_HAS_SERVERS');
+    }
+
+    if (blocker.activeBackups > 0) {
+      // Daran kann der Nutzer gerade nichts ändern: Ein laufender Vorgang lässt
+      // sich nicht löschen, er endet – oder der Kehraus räumt ihn nach seiner
+      // Frist ab (`sweepOrphanedRuns`).
+      throw new AuthError(
+        'ACCOUNT_HAS_SERVERS',
+        'Für dieses Konto läuft noch eine Sicherung. Bitte warte, bis sie abgeschlossen ist, und wiederhole den Vorgang.',
+      );
+    }
+
+    if (blocker.backups > 0) {
+      throw new AuthError(
+        'ACCOUNT_HAS_SERVERS',
+        'Diesem Konto gehören noch Sicherungen. Bitte lösche sie zuerst und wiederhole den Vorgang.',
+      );
+    }
   }
 
   // -- Hilfsfunktionen ------------------------------------------------------

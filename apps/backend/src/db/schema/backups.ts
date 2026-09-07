@@ -104,6 +104,10 @@ export const schedules = pgTable(
  * überlebt seinen Server bewusst. Der Fremdschlüssel auf `game_servers` setzt
  * `server_id` beim Löschen des Servers deshalb auf `NULL` (R3), statt das Backup
  * mit zu löschen.
+ *
+ * Das Konto überlebt ein Backup dagegen **nicht**: `owner_id` steht auf
+ * `RESTRICT`, weil die Archivdatei auf der Node nur der Agent entfernt – siehe
+ * die Anmerkung an der Spalte (Audit backend-db-02).
  */
 export const backups = pgTable(
   'backups',
@@ -117,9 +121,25 @@ export const backups = pgTable(
      * Servers darf nicht daran scheitern, dass es noch Sicherungen gibt.
      */
     serverId: uuid('server_id').references(() => gameServers.id, { onDelete: 'set null' }),
+    /**
+     * Besitzer des Backups; trägt `.own`/`.any` und den Speicherverbrauch je
+     * Konto (Lastenheft §3.7).
+     *
+     * `ON DELETE RESTRICT` statt `CASCADE` (Audit backend-db-02). Die Kaskade
+     * entfernte die Zeilen **nur in der Datenbank**: Die Archivdatei unter
+     * `storage_path` liegt auf der Node und wird ausschließlich vom Agent
+     * entfernt (`DELETE_BACKUP`), den beim Kaskadenlauf niemand anstößt. Ein
+     * gelöschtes Konto hinterließ so für immer unsichtbaren Speicherverbrauch –
+     * genau das, was die globale Übersicht eigentlich zeigen soll.
+     *
+     * `RESTRICT` dreht das um: Ein Konto verschwindet erst, wenn seine
+     * Sicherungen über den regulären Weg entfernt sind. Die Vorprüfung dazu
+     * steht in `AuthService.deleteAccount` und antwortet mit
+     * `ACCOUNT_HAS_SERVERS` (409) statt mit dem rohen Fremdschlüsselfehler.
+     */
     ownerId: uuid('owner_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => users.id, { onDelete: 'restrict' }),
     /** `manual` oder `automatic` – trägt die Aufbewahrungsregel (Lastenheft §3.3). */
     type: text('type').$type<BackupType>().notNull(),
     status: text('status').$type<BackupStatus>().notNull().default('pending'),
