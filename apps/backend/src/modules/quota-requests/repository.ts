@@ -99,10 +99,21 @@ export function createDrizzleQuotaRequestRepository(db: DbConnection): QuotaRequ
       decidedById: string | null,
       note: string | null,
     ) {
-      await db
+      /*
+       * `status = 'pending'` steht in der Bedingung des `UPDATE` selbst. Das
+       * eine Statement ist für sich atomar: Zwei gleichzeitige Bescheide – oder
+       * ein Bescheid gegen einen Rückzug – treffen nie beide eine Zeile, der
+       * Verlierer bekommt hier `null` (backend-admin-resources-06).
+       */
+      const [beansprucht] = await db
         .update(quotaRequests)
         .set({ status, decidedById, decisionNote: note, decidedAt: new Date() })
-        .where(eq(quotaRequests.id, id));
+        .where(and(eq(quotaRequests.id, id), eq(quotaRequests.status, 'pending')))
+        .returning({ id: quotaRequests.id });
+
+      if (!beansprucht) {
+        return null;
+      }
 
       const entschieden = await this.findById(id);
 
@@ -113,8 +124,22 @@ export function createDrizzleQuotaRequestRepository(db: DbConnection): QuotaRequ
       return entschieden;
     },
 
+    async reopen(id) {
+      await db
+        .update(quotaRequests)
+        .set({ status: 'pending', decidedById: null, decisionNote: null, decidedAt: null })
+        .where(eq(quotaRequests.id, id));
+    },
+
     async remove(id) {
-      await db.delete(quotaRequests).where(eq(quotaRequests.id, id));
+      // Dieselbe Bedingung wie in `decide`: Nur eine noch offene Anfrage lässt
+      // sich zurückziehen, und ob sie es ist, entscheidet die Datenbank.
+      const entfernt = await db
+        .delete(quotaRequests)
+        .where(and(eq(quotaRequests.id, id), eq(quotaRequests.status, 'pending')))
+        .returning({ id: quotaRequests.id });
+
+      return entfernt.length > 0;
     },
   } satisfies QuotaRequestRepository & {
     findById(id: string): Promise<QuotaRequestRecord | null>;

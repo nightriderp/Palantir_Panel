@@ -33,7 +33,7 @@ import {
 import { type MultipartFile } from '@fastify/multipart';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { requireActor, requirePermission } from '../rbac/index.js';
+import { requireActor, requireApproved, requirePermission } from '../rbac/index.js';
 import { type ServerDtoContext, toGameServerDto } from './dto.js';
 import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 import { type GameRegistry } from './game-registry.js';
@@ -264,7 +264,13 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
   // -- Spiele-Registry (Pflichtenheft §11) ------------------------------------
 
-  app.get('/api/game-types', async (request, reply) => {
+  /*
+   * `requireApproved()`: Der Spiel-Katalog ist eine Funktion des Panels und
+   * damit für ein noch nicht freigeschaltetes Konto tabu (Lastenheft §3.1,
+   * security-matrix-06). Eine Permission verlangt die Route weiterhin nicht –
+   * wer freigeschaltet ist, darf sehen, welche Spiele es gibt.
+   */
+  app.get('/api/game-types', { preHandler: requireApproved() }, async (request, reply) => {
     try {
       requireActor(request);
 
@@ -363,18 +369,27 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
   // -- Subdomain-Prüfung (Pflichtenheft §13) -----------------------------------
 
-  app.get('/api/servers/subdomain-check', async (request, reply) => {
-    try {
-      requireActor(request);
+  /*
+   * `requireApproved()`: Die Prüfung beantwortet, ob eine Subdomain belegt ist –
+   * für ein nicht freigeschaltetes Konto ein Orakel über vorhandene Server
+   * (security-matrix-06).
+   */
+  app.get(
+    '/api/servers/subdomain-check',
+    { preHandler: requireApproved() },
+    async (request, reply) => {
+      try {
+        requireActor(request);
 
-      const query = z.object({ subdomain: z.string() }).parse(request.query);
-      const result = await checkSubdomain(query.subdomain, repository);
+        const query = z.object({ subdomain: z.string() }).parse(request.query);
+        const result = await checkSubdomain(query.subdomain, repository);
 
-      return await reply.send(ok(result));
-    } catch (error: unknown) {
-      return replyWithError(reply, error);
-    }
-  });
+        return await reply.send(ok(result));
+      } catch (error: unknown) {
+        return replyWithError(reply, error);
+      }
+    },
+  );
 
   // -- Anlegen, Ändern, Klonen, Löschen ---------------------------------------
 

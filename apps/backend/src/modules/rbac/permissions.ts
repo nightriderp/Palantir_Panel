@@ -15,6 +15,7 @@
  */
 
 import {
+  GUEST_ROLE_NAME,
   type GlobalPermissions,
   PERMISSIONS,
   type Permission,
@@ -26,6 +27,14 @@ import {
 /** Rolle, soweit die Rechteberechnung sie braucht. */
 export interface RoleGrant {
   readonly grantedPermissions: readonly Permission[];
+  /**
+   * Name der Rolle – nur für die Freischalt-Regel ({@link isAccountApproved}).
+   *
+   * Optional, weil die reine Rechteberechnung ihn nicht braucht: Tests und
+   * Aufrufer, die nur Permissions vereinigen wollen, sollen ihn nicht erfinden
+   * müssen. Eine Rolle ohne Namen zählt wie jede Rolle, die nicht „Gast" heißt.
+   */
+  readonly name?: string;
 }
 
 /** Eingabe für {@link buildPermissionActor}. */
@@ -46,6 +55,39 @@ export interface PermissionActor {
   readonly isOwner: boolean;
   /** Effektive Permissions – beim Owner der vollständige Katalog. */
   readonly permissions: ReadonlySet<Permission>;
+  /**
+   * Ist das Konto freigeschaltet? Ergebnis von {@link isAccountApproved}.
+   *
+   * Steht neben `isOwner` und nicht in `permissions`, weil es keine Permission
+   * ist, sondern der Kontostatus aus Lastenheft §3.1: Ein Konto, das noch in
+   * der Warteliste steht, hat „keinerlei Zugriff auf Funktionen" – auch nicht
+   * auf die, die sonst jede Sitzung offensteht. Der Guard `requireApproved()`
+   * liest genau dieses Feld.
+   */
+  readonly approved: boolean;
+}
+
+/**
+ * Ist ein Konto freigeschaltet (Lastenheft §3.1)?
+ *
+ * **Die** Auslegung der Freischaltung – `isAwaitingApproval()` (B1, Konto-DTO)
+ * und `statusOf()` (B8, Warteliste) leiten sich daraus ab, damit es nicht drei
+ * Lesarten derselben Regel gibt (backend-community-06, security-matrix-06):
+ *
+ * - Der Owner steht außerhalb des Rollensystems und ist immer freigeschaltet.
+ * - Sonst gilt: freigeschaltet, sobald mindestens eine Rolle **nicht** die
+ *   geschützte Systemrolle „Gast" ist. Ein Konto ganz ohne Rolle ist damit
+ *   nicht freigeschaltet (`every` auf der leeren Liste ist wahr).
+ */
+export function isAccountApproved(input: {
+  readonly isOwner: boolean;
+  readonly roles: readonly { readonly name?: string }[];
+}): boolean {
+  if (input.isOwner) {
+    return true;
+  }
+
+  return !input.roles.every((role) => role.name === GUEST_ROLE_NAME);
 }
 
 /**
@@ -56,7 +98,7 @@ export interface PermissionActor {
  */
 export function buildPermissionActor(input: PermissionActorInput): PermissionActor {
   if (input.isOwner) {
-    return { isOwner: true, permissions: new Set(PERMISSIONS) };
+    return { isOwner: true, permissions: new Set(PERMISSIONS), approved: true };
   }
 
   const permissions = new Set<Permission>();
@@ -67,12 +109,12 @@ export function buildPermissionActor(input: PermissionActorInput): PermissionAct
     }
   }
 
-  return { isOwner: false, permissions };
+  return { isOwner: false, permissions, approved: isAccountApproved(input) };
 }
 
 /** Handelnder ohne jedes Recht – für nicht angemeldete Zugriffe und Tests. */
 export function anonymousActor(): PermissionActor {
-  return { isOwner: false, permissions: new Set<Permission>() };
+  return { isOwner: false, permissions: new Set<Permission>(), approved: false };
 }
 
 export function hasPermission(actor: PermissionActor, permission: Permission): boolean {

@@ -132,7 +132,9 @@ export function registerResourceRoutes(options: ResourceRoutesOptions) {
             throw new RbacError('AUTH_REQUIRED');
           }
 
-          return ok(await resourceLimits.getOwnQuota(actor, userId));
+          // Actor und Konto-Id kommen beide aus derselben Sitzung – der
+          // Service bekommt keine frei gewählte Id (backend-admin-resources-13).
+          return ok(await resourceLimits.getOwnQuota({ actor, userId }));
         } catch (error) {
           await handleError(reply, error);
 

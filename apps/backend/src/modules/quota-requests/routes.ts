@@ -15,7 +15,14 @@ import {
 } from '@palantir/validation';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { replyWithErrorCode, requireActor, requirePermission } from '../rbac/index.js';
+import {
+  RbacError,
+  isRbacError,
+  replyWithErrorCode,
+  requireActor,
+  requireApproved,
+  requirePermission,
+} from '../rbac/index.js';
 import { type QuotaRequestService } from './index.js';
 import { isQuotaRequestError } from './errors.js';
 
@@ -36,7 +43,10 @@ export function registerQuotaRequestRoutes(options: QuotaRequestRouteOptions) {
       try {
         return ok(await work());
       } catch (error) {
-        if (isQuotaRequestError(error)) {
+        // `RbacError` gehört mit hierher: `requireActor`/`requireUserId` werfen
+        // ihn, und ohne diese Übersetzung antwortete erst der globale Handler –
+        // mit derselben 401, aber als „nicht abgefangen" im Log.
+        if (isQuotaRequestError(error) || isRbacError(error)) {
           await replyWithErrorCode(reply, error.code, error.message);
 
           return undefined;
@@ -46,12 +56,19 @@ export function registerQuotaRequestRoutes(options: QuotaRequestRouteOptions) {
       }
     }
 
-    /** Konto des Aufrufers – ohne Anmeldung gibt es hier nichts zu tun. */
+    /**
+     * Konto des Aufrufers – ohne Anmeldung gibt es hier nichts zu tun.
+     *
+     * Benannter Code statt eines nackten `Error` (CLAUDE.md §5): Sonst hängt es
+     * an der Auswertungsreihenfolge der Argumente, ob ein anonymer Aufruf als
+     * `AUTH_REQUIRED` (401) oder als `INTERNAL_ERROR` (500) endet
+     * (backend-admin-resources-05).
+     */
     function requireUserId(request: FastifyRequest): string {
       const userId = options.actorUserId(request);
 
       if (userId === null) {
-        throw new Error('Diese Route setzt eine Anmeldung voraus.');
+        throw new RbacError('AUTH_REQUIRED');
       }
 
       return userId;
@@ -59,7 +76,14 @@ export function registerQuotaRequestRoutes(options: QuotaRequestRouteOptions) {
 
     // -- Eigene Anfragen ----------------------------------------------------
 
-    app.post('/quota-requests', async (request, reply) =>
+    /*
+     * `requireApproved()` statt bloßer Anmeldung: Ein noch nicht freigeschaltetes
+     * Konto soll „keinerlei Zugriff auf Funktionen" haben (Lastenheft §3.1). Ohne
+     * den Guard könnte es die Warteliste der Administratoren mit Kontingent-
+     * Wünschen füllen, obwohl es noch keinen einzigen Server anlegen darf
+     * (security-matrix-06).
+     */
+    app.post('/quota-requests', { preHandler: requireApproved() }, async (request, reply) =>
       handle<QuotaRequestDto>(reply, async () => {
         const input = createQuotaRequestInputSchema.parse(request.body ?? {});
         const userId = requireUserId(request);
@@ -68,20 +92,23 @@ export function registerQuotaRequestRoutes(options: QuotaRequestRouteOptions) {
       }),
     );
 
-    app.get('/quota-requests/mine', async (request, reply) =>
+    app.get('/quota-requests/mine', { preHandler: requireApproved() }, async (request, reply) =>
       handle<QuotaRequestDto[]>(reply, async () =>
         options.service.listOwn(requireActor(request), requireUserId(request)),
       ),
     );
 
-    app.delete<{ Params: { id: string } }>('/quota-requests/:id', async (request, reply) =>
-      handle<null>(reply, async () => {
-        const { id } = idParamsSchema.parse(request.params);
+    app.delete<{ Params: { id: string } }>(
+      '/quota-requests/:id',
+      { preHandler: requireApproved() },
+      async (request, reply) =>
+        handle<null>(reply, async () => {
+          const { id } = idParamsSchema.parse(request.params);
 
-        await options.service.withdraw(requireActor(request), requireUserId(request), id);
+          await options.service.withdraw(requireActor(request), requireUserId(request), id);
 
-        return null;
-      }),
+          return null;
+        }),
     );
 
     // -- Bescheiden (Administration) ---------------------------------------

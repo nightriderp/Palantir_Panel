@@ -825,7 +825,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       return toDto(
         // Für den Rückgabewert ist kein Aufrufer vorhanden; die Flags sind für
         // den Scheduler ohne Bedeutung.
-        { isOwner: false, permissions: new Set() },
+        { isOwner: false, permissions: new Set(), approved: false },
         '',
         backup,
         { serverName: server.name, isOwn: false, siblings },

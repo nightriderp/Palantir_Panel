@@ -271,7 +271,7 @@ export function createPanelBackupService(deps: PanelBackupDependencies): PanelBa
       const record = await fuehreAus('scheduled');
 
       // Ohne Actor gibt es keine Rechte – der Zeitgeber zeigt nichts an.
-      return toPanelBackupDto({ isOwner: false, permissions: new Set() }, record);
+      return toPanelBackupDto({ isOwner: false, permissions: new Set(), approved: false }, record);
     },
 
     async prune() {

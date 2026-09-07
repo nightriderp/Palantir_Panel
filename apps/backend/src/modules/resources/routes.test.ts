@@ -255,6 +255,20 @@ describe('GET /me/resource-quota', () => {
     expect(response.statusCode).toBe(401);
     expect(response.json<{ error: { code: string } }>().error.code).toBe('AUTH_REQUIRED');
   });
+
+  it('ignoriert eine mitgeschickte fremde Konto-Id (backend-admin-resources-13)', async () => {
+    app = await buildApp({ limits: { ...NO_USER_RESOURCE_LIMITS, maxRamMb: 8192 } });
+
+    // Die Route liest die Konto-Id ausschließlich aus der Sitzung; was am Query
+    // hängt, erreicht den Service gar nicht erst.
+    const response = await call(app, 'GET', `/me/resource-quota?userId=${UNKNOWN_ID}`, {
+      actor: 'gast',
+    });
+    const body = response.json<{ data: ResourceQuotaDto }>();
+
+    expect(response.statusCode).toBe(200);
+    expect(body.data.userId).toBe(USER_ID);
+  });
 });
 
 describe('GET /admin/users/:userId/limits', () => {

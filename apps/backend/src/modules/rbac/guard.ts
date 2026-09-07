@@ -110,6 +110,26 @@ export function requireAllPermissions(
 }
 
 /**
+ * Route verlangt ein **freigeschaltetes** Konto (Lastenheft §3.1).
+ *
+ * Für Routen, die keine Permission aus dem Katalog verlangen, sondern nur eine
+ * Sitzung. Ohne diesen Guard reicht dort die bloße Anmeldung – ein frisch
+ * registriertes Konto mit ausschließlich der Rolle „Gast" käme durch, obwohl es
+ * „keinerlei Zugriff auf Funktionen" haben soll (security-matrix-06).
+ *
+ * Die Regel selbst wird nicht hier ausgelegt: `actor.approved` kommt aus
+ * {@link isAccountApproved} und ist damit dieselbe Regel wie
+ * `AccountDto.awaitingApproval` und die Warteliste in B8.
+ *
+ * Antwortet mit `AUTH_REQUIRED` (401) ohne Sitzung und `PERMISSION_DENIED`
+ * (403) bei einem nicht freigeschalteten Konto – dieselben zwei Codes wie
+ * {@link requirePermission}, damit das Frontend nicht drei Fälle kennen muss.
+ */
+export function requireApproved(): preHandlerHookHandler {
+  return createGuard((actor) => actor.approved);
+}
+
+/**
  * Liefert den Actor eines Requests oder bricht mit `AUTH_REQUIRED` ab.
  *
  * Für Handler, die den Actor brauchen (etwa zum Berechnen des
