@@ -10,12 +10,18 @@ import { type ConversationDto, type MessageDto, type MessagePageDto } from '@pal
  * auf; sie treffen jede Entscheidung darüber, was oben steht, was als ungelesen
  * gilt und wie eine gelöschte Nachricht aussieht.
  *
- * **„Ungelesen" ist bewusst lokal.** Der Vertrag (`ConversationDto`) trägt keinen
- * serverseitigen Ungelesen-Zähler; B7 kennt keinen Lesezustand. Der Zähler hier
- * lebt deshalb nur in dieser Sitzung dieses Browsers und zählt Nachrichten, die
- * eintreffen, während die Konversation nicht offen ist. Ein echter, geräte­
- * übergreifender Lesezustand bräuchte Contract und Endpunkt in B7 (als
- * „Gefundener Punkt" notiert).
+ * **„Ungelesen" kommt vom Server.** Der Zähler steht als `unreadCount` an der
+ * jeweiligen `ConversationDto` und wird vom Backend geführt (B7, Endpunkt
+ * `POST …/read` und Ereignis `conversation.read`); er gilt damit über Geräte und
+ * Tabs hinweg. Ein zweiter, lokaler Zähler existiert bewusst **nicht** mehr
+ * (Findings frontend-lib-06 und event-flow-14): Er lief mit der Seitenleiste
+ * auseinander, blieb nach dem Lesen auf einem anderen Gerät stehen und zählte
+ * Nachrichten für Konversationen mit, die gar nicht in der Liste standen.
+ *
+ * Live eintreffende fremde Nachrichten erhöhen `unreadCount` der bekannten
+ * Konversation vorläufig weiter – sonst stünde die Liste bis zum nächsten Laden
+ * still. Jede Serverantwort (Liste, `POST …/read`, `conversation.read`)
+ * überschreibt diesen Zwischenstand mit dem echten Wert.
  */
 
 export interface ThreadState {
@@ -32,12 +38,25 @@ export interface ChatViewState {
   conversations: ConversationDto[];
   /** Geladene Verläufe je Konversations-Id. */
   threads: Record<string, ThreadState>;
-  /** Lokale Ungelesen-Zähler je Konversations-Id (nur diese Sitzung). */
-  unread: Record<string, number>;
 }
 
 export function emptyChatState(): ChatViewState {
-  return { conversations: [], threads: {}, unread: {} };
+  return { conversations: [], threads: {} };
+}
+
+/**
+ * Ungelesene Nachrichten einer Konversation.
+ *
+ * `unreadCount` ist im Vertrag additiv und optional; fehlt es, ist es wie „0"
+ * zu behandeln (siehe `chat.ts` in `@palantir/contracts`).
+ */
+export function unreadOf(conversation: ConversationDto): number {
+  return conversation.unreadCount ?? 0;
+}
+
+/** Steht die Konversation in der geladenen Übersicht? */
+export function knowsConversation(state: ChatViewState, conversationId: string): boolean {
+  return state.conversations.some((entry) => entry.id === conversationId);
 }
 
 /** Zeitstempel, nach dem eine Konversation einsortiert wird: jüngste Nachricht, sonst Entstehung. */
@@ -66,9 +85,9 @@ function dedupeById(list: readonly MessageDto[]): MessageDto[] {
 }
 
 /**
- * Erstladung der Übersicht. Bestehende Verläufe und Ungelesen-Zähler bleiben
- * erhalten – ein erneutes Laden der Liste soll den offenen Verlauf nicht
- * verwerfen.
+ * Erstladung der Übersicht. Bestehende Verläufe bleiben erhalten – ein erneutes
+ * Laden der Liste soll den offenen Verlauf nicht verwerfen. Die Ungelesen-Zähler
+ * kommen mit den Konversationen selbst und sind damit auf dem Stand des Servers.
  */
 export function setConversations(
   state: ChatViewState,
@@ -125,6 +144,16 @@ export interface ApplyMessageOptions {
  * auf das eigene Senden. Beide Wege laufen hier zusammen; die Entdopplung nach
  * Id sorgt dafür, dass die eigene Nachricht nicht zweimal erscheint, wenn sie
  * zusätzlich live zurückkommt.
+ *
+ * Steht die Konversation **nicht** in der Übersicht (etwa der Gruppen-Chat eines
+ * gerade angelegten Servers, für den B7 kein `conversation.created` schickt),
+ * bleibt die Übersicht unberührt – es wird kein Platzhalter erfunden und kein
+ * Zähler hochgezählt: Beides wäre ohne zugehörige Zeile für niemanden sichtbar
+ * (Finding event-flow-14). Ein bereits geladener Verlauf wird trotzdem
+ * fortgeschrieben, damit eine geöffnete Konversation nichts verliert, falls sie
+ * nur aus der Liste gefallen ist. Die Ansicht erkennt den Fall über
+ * {@link knowsConversation} und lädt die Liste nach; sie kommt dann samt
+ * serverseitigem `unreadCount` zurück, in dem diese Nachricht bereits steckt.
  */
 export function applyMessageSent(
   state: ChatViewState,
@@ -146,25 +175,23 @@ export function applyMessageSent(
     next = { ...next, threads: { ...next.threads, [conversationId]: thread } };
   }
 
-  // Vorschau/Sortierung der Übersicht aktualisieren.
   const conversation = next.conversations.find((entry) => entry.id === conversationId);
-  if (conversation) {
-    next = upsertConversation(next, { ...conversation, lastMessage: message });
-  }
+  if (!conversation) return next;
 
   // Ungelesen zählen: nur fremde Nachrichten in nicht offenen Konversationen,
-  // und jede höchstens einmal.
+  // und jede höchstens einmal. Vorläufiger Zwischenstand bis zur nächsten
+  // Serverantwort – der maßgebliche Wert kommt von dort.
   const countsAsUnread =
     !alreadyKnown &&
     conversationId !== options.activeConversationId &&
     message.senderId !== options.viewerId;
 
-  if (countsAsUnread) {
-    const previous = next.unread[conversationId] ?? 0;
-    next = { ...next, unread: { ...next.unread, [conversationId]: previous + 1 } };
-  }
-
-  return next;
+  // Vorschau/Sortierung der Übersicht aktualisieren.
+  return upsertConversation(next, {
+    ...conversation,
+    lastMessage: message,
+    unreadCount: unreadOf(conversation) + (countsAsUnread ? 1 : 0),
+  });
 }
 
 /** Maskiert eine Nachricht als gelöscht (leerer Inhalt, wie im Vertrag beschrieben). */
@@ -236,15 +263,42 @@ export function markMessageReported(
   return { ...state, threads: { ...state.threads, [conversationId]: thread } };
 }
 
-/** Öffnen einer Konversation setzt ihren Ungelesen-Zähler zurück. */
+/**
+ * Öffnen einer Konversation setzt ihren Ungelesen-Zähler zurück.
+ *
+ * Nur die Anzeige – der maßgebliche Lesestand entsteht mit `POST …/read` im
+ * Backend. Dessen Antwort (und das Ereignis `conversation.read` an die weiteren
+ * Geräte desselben Kontos) überschreibt diesen Zwischenstand.
+ */
 export function markConversationRead(state: ChatViewState, conversationId: string): ChatViewState {
-  if ((state.unread[conversationId] ?? 0) === 0) return state;
-  return { ...state, unread: { ...state.unread, [conversationId]: 0 } };
+  const conversation = state.conversations.find((entry) => entry.id === conversationId);
+  if (!conversation || unreadOf(conversation) === 0) return state;
+
+  return upsertConversation(state, { ...conversation, unreadCount: 0 });
+}
+
+/**
+ * Das Ereignis `conversation.read` einarbeiten (B7).
+ *
+ * Es kommt an **alle** Verbindungen desselben Kontos: Wer auf dem Handy liest,
+ * dessen Zähler fällt auch im offenen Browser-Tab – ohne Nachladen. Zuvor wurde
+ * das Ereignis im Frontend verworfen (Finding frontend-lib-06).
+ */
+export function applyConversationRead(
+  state: ChatViewState,
+  conversationId: string,
+  lastReadAt: string,
+  unreadCount: number,
+): ChatViewState {
+  const conversation = state.conversations.find((entry) => entry.id === conversationId);
+  if (!conversation) return state;
+
+  return upsertConversation(state, { ...conversation, lastReadAt, unreadCount });
 }
 
 /** Summe aller ungelesenen Nachrichten – für einen etwaigen Zähler in der Ansicht. */
 export function totalUnread(state: ChatViewState): number {
-  return Object.values(state.unread).reduce((sum, count) => sum + count, 0);
+  return state.conversations.reduce((sum, conversation) => sum + unreadOf(conversation), 0);
 }
 
 /**

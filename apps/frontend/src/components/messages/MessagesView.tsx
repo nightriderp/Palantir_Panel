@@ -23,9 +23,11 @@ import { NewConversationDialog } from './NewConversationDialog';
 import { ReportMessageDialog } from './ReportMessageDialog';
 import {
   type ChatViewState,
+  applyConversationRead,
   applyMessageDeleted,
   applyMessageSent,
   emptyChatState,
+  knowsConversation,
   markConversationRead,
   markMessageReported,
   setConversations,
@@ -174,14 +176,48 @@ export function MessagesView() {
 
   // -- Live-Kanal ------------------------------------------------------------
 
+  /*
+   * Konversationen, für die wegen eines unbekannten Frames bereits nachgeladen
+   * wurde. Ohne diese Merkliste würde jede weitere Nachricht derselben
+   * unbekannten Konversation ein weiteres Laden auslösen.
+   */
+  const reloadedForRef = useRef<Set<string>>(new Set());
+
   const onFrame = useCallback(
     (frame: ChatServerEventFrame) => {
       if (frame.event === 'message.sent') {
+        const { conversationId } = frame.data;
+
+        /*
+         * Nachricht für eine Konversation, die nicht in der Übersicht steht –
+         * etwa der Gruppen-Chat eines gerade angelegten Servers, dessen
+         * Entstehung B7 nicht meldet (Finding event-flow-14). Früher wuchs dafür
+         * ein unsichtbarer Zähler; jetzt wird die Liste einmal nachgeladen, dann
+         * ist die Konversation samt serverseitigem `unreadCount` da.
+         */
+        if (
+          !knowsConversation(stateRef.current, conversationId) &&
+          !reloadedForRef.current.has(conversationId)
+        ) {
+          reloadedForRef.current.add(conversationId);
+          void reloadConversations();
+        }
+
         setState((current) =>
-          applyMessageSent(current, frame.data.conversationId, frame.data.message, {
+          applyMessageSent(current, conversationId, frame.data.message, {
             activeConversationId: activeIdRef.current,
             viewerId,
           }),
+        );
+      } else if (frame.event === 'conversation.read') {
+        // Gelesen auf einem anderen Gerät desselben Kontos: Zähler nachziehen.
+        setState((current) =>
+          applyConversationRead(
+            current,
+            frame.data.conversationId,
+            frame.data.lastReadAt,
+            frame.data.unreadCount,
+          ),
         );
       } else if (frame.event === 'message.deleted') {
         setState((current) =>
@@ -197,7 +233,7 @@ export function MessagesView() {
         setState((current) => upsertConversation(current, frame.data.conversation));
       }
     },
-    [viewerId],
+    [viewerId, reloadConversations],
   );
 
   /*
@@ -337,7 +373,6 @@ export function MessagesView() {
               <ConversationList
                 conversations={state.conversations}
                 activeId={activeId}
-                unread={state.unread}
                 onSelect={(conversation) => selectConversation(conversation.id)}
                 onNew={() => setNewOpen(true)}
               />

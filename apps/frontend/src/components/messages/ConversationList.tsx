@@ -2,15 +2,16 @@
 
 import { type ConversationDto } from '@palantir/contracts';
 import { Button, Icon, cn, serverInitials } from '@/components/shared';
-import { conversationPreview } from './conversationStore';
+import { conversationPreview, unreadOf } from './conversationStore';
 
 /**
  * Liste der Konversationen (Arbeitspaket F5, Lastenheft §3.6).
  *
  * Zeigt DMs und Server-Chats gemeinsam, jüngste Aktivität oben. Ungelesene
- * Konversationen tragen einen Zähler; er ist lokal (siehe `conversationStore.ts`).
- * Server-Chats sind an ihrem Symbol erkennbar, DMs am Namenskürzel des
- * Gegenübers.
+ * Konversationen tragen einen Zähler; er steht als `unreadCount` an der
+ * Konversation selbst und wird vom Backend geführt – dieselbe Quelle wie das
+ * Abzeichen in der Seitenleiste (Finding frontend-lib-06). Server-Chats sind an
+ * ihrem Symbol erkennbar, DMs am Namenskürzel des Gegenübers.
  *
  * Den Zustand der Live-Verbindung zeigt die Liste **nicht** mehr: Er steht in
  * der Kopfleiste, auf jeder Seite und mit Erklärung, was er für die Bedienung
@@ -21,7 +22,6 @@ import { conversationPreview } from './conversationStore';
 export interface ConversationListProps {
   conversations: ConversationDto[];
   activeId: string | null;
-  unread: Record<string, number>;
   onSelect: (conversation: ConversationDto) => void;
   onNew: () => void;
 }
@@ -29,7 +29,6 @@ export interface ConversationListProps {
 export function ConversationList({
   conversations,
   activeId,
-  unread,
   onSelect,
   onNew,
 }: ConversationListProps) {
@@ -47,7 +46,7 @@ export function ConversationList({
         ) : (
           <ul className="flex flex-col gap-1">
             {conversations.map((conversation) => {
-              const count = unread[conversation.id] ?? 0;
+              const count = unreadOf(conversation);
               const active = conversation.id === activeId;
               const isServer = conversation.type === 'server_chat';
 

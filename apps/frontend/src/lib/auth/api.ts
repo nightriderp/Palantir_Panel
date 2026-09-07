@@ -3,6 +3,8 @@ import {
   type AltchaChallenge,
   type ApiResponse,
   type AuthMethodType,
+  CSRF_COOKIE_NAME,
+  CSRF_HEADER_NAME,
   type LoginResult,
   type SessionDto,
   type TwoFactorSetupDto,
@@ -341,9 +343,17 @@ export function apiUrl(path: string): string {
  * das httpOnly bleibt); der Browser schickt es hier als Header zurück. Fehlt es,
  * wird der Header weggelassen und das Backend antwortet mit seinem eigenen
  * Fehler – ein stiller Bypass entsteht dadurch nicht.
+ *
+ * Beide Namen kommen aus `@palantir/contracts` und werden hier nur
+ * weitergereicht (Finding frontend-lib-10). Zuvor standen dieselben
+ * Zeichenketten ein zweites Mal hier: Wird der Name im Vertrag angepasst (etwa
+ * auf das Präfix `__Host-`), zieht das Backend mit, das Frontend zog nicht mit –
+ * jeder zustandsändernde Request wäre an `AUTH_CSRF_INVALID` gescheitert und die
+ * Middleware hätte für die Erneuerung kein Token mehr gefunden. Der Re-Export
+ * bleibt, damit `client.ts`, `middleware.ts` und die Tests ihren bisherigen
+ * Import behalten.
  */
-export const CSRF_COOKIE_NAME = 'palantir_csrf';
-export const CSRF_HEADER_NAME = 'x-csrf-token';
+export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME };
 
 export function readCsrfToken(cookieHeader: string): string | null {
   for (const part of cookieHeader.split(';')) {
