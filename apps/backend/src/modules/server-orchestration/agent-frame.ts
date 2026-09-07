@@ -9,12 +9,16 @@
  *
  * Zwei Punkte aus dem Audit stehen dahinter:
  *
- * - `security-matrix-07`: Nutzlasten ohne Größengrenze. `agentEventFrameSchema`
- *   erlaubt `payload: z.unknown()`, die Konsolenzeile daraus wird an alle
+ * - `security-matrix-07`: Nutzlasten ohne Größengrenze. Die Form einer
+ *   Ereignis-Nutzlast bleibt offen, und die Konsolenzeile daraus wird an alle
  *   Abonnenten gefächert. Ohne Grenze am Frame hängt die Obergrenze allein an
  *   `maxPayload` der WebSocket-Bibliothek (Standard: 100 MiB). Die Grenze ist
  *   deshalb zweistufig: eng für alles, was der Agent von sich aus schickt, weit
- *   genug für das eine Ergebnis, das legitim groß wird (`FILE_READ`).
+ *   genug für das eine Ergebnis, das legitim groß wird (`FILE_READ`). Seit dem
+ *   Contracts-Nachzug W2-C2 kommt eine dritte Stufe dazu: `agentEventFrameSchema`
+ *   begrenzt jedes **einzelne** Textfeld einer Nutzlast
+ *   (`AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH`) – vorher durfte eine einzige
+ *   Konsolenzeile den ganzen Frame-Rahmen ausfüllen (Fundpunkt 145).
  * - `contract-drift-05`: Der Ist-Zustands-Bericht wird bisher als Ganzes gegen
  *   `agentToBackendFrameSchema` geprüft. Ein einziges unbrauchbares Nebenfeld –
  *   `cpuCores: 0` auf einer Plattform, auf der `os.cpus()` leer bleibt, oder

@@ -7,7 +7,6 @@
  */
 
 import { type QuotaRequestQuery } from '@palantir/validation';
-import { type QuotaRequestStatus } from '@palantir/contracts';
 import { and, desc, eq } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type DbConnection } from '../../db/client.js';
@@ -95,7 +94,7 @@ export function createDrizzleQuotaRequestRepository(db: DbConnection): QuotaRequ
 
     async decide(
       id: string,
-      status: Exclude<QuotaRequestStatus, 'pending'>,
+      status: 'approved' | 'rejected',
       decidedById: string | null,
       note: string | null,
     ) {
@@ -131,15 +130,22 @@ export function createDrizzleQuotaRequestRepository(db: DbConnection): QuotaRequ
         .where(eq(quotaRequests.id, id));
     },
 
-    async remove(id) {
-      // Dieselbe Bedingung wie in `decide`: Nur eine noch offene Anfrage lässt
-      // sich zurückziehen, und ob sie es ist, entscheidet die Datenbank.
-      const entfernt = await db
-        .delete(quotaRequests)
+    async withdraw(id) {
+      /*
+       * Dieselbe Bedingung wie in `decide`: Nur eine noch offene Anfrage lässt
+       * sich zurückziehen, und ob sie es ist, entscheidet die Datenbank.
+       *
+       * `UPDATE` statt `DELETE` (Audit W2-15): Der Vorgang bleibt als Beleg
+       * stehen. `decided_by_id`/`decided_at` bleiben leer – der Rückzug ist
+       * kein Bescheid, und niemand hat über ihn entschieden.
+       */
+      const zurueckgezogen = await db
+        .update(quotaRequests)
+        .set({ status: 'withdrawn' })
         .where(and(eq(quotaRequests.id, id), eq(quotaRequests.status, 'pending')))
         .returning({ id: quotaRequests.id });
 
-      return entfernt.length > 0;
+      return zurueckgezogen.length > 0;
     },
   } satisfies QuotaRequestRepository & {
     findById(id: string): Promise<QuotaRequestRecord | null>;

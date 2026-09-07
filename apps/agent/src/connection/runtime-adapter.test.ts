@@ -534,12 +534,23 @@ describe('Fehlerzuordnung Runtime → API-Katalog', () => {
     expect(Object.keys(RUNTIME_ERROR_TO_API_CODE).sort()).toEqual([...RUNTIME_ERROR_CODES].sort());
   });
 
+  it('trennt die Archiv-Grenze von der Datei-Grenze', () => {
+    // Contracts-Nachzug W2-C2: Vorher liefen beide auf `AGENT_FILE_TOO_LARGE`,
+    // und im Panel stand "die Datei ist zu gross" ueber einem Archiv, dessen
+    // einzelne Dateien alle unter der Grenze lagen.
+    expect(RUNTIME_ERROR_TO_API_CODE.ARCHIVE_TOO_LARGE).toBe('AGENT_ARCHIVE_TOO_LARGE');
+    expect(RUNTIME_ERROR_TO_API_CODE.FILE_TOO_LARGE).toBe('AGENT_FILE_TOO_LARGE');
+    // Beide bleiben 413 - unterschieden wird der Grund, nicht der Status.
+    expect(ERROR_CATALOG.AGENT_ARCHIVE_TOO_LARGE.httpStatus).toBe(413);
+  });
+
   it.each([
     ['CONTAINER_NOT_FOUND', 'AGENT_CONTAINER_NOT_FOUND'],
     ['CONTAINER_NOT_RUNNING', 'AGENT_CONTAINER_NOT_RUNNING'],
     ['IMAGE_NOT_FOUND', 'AGENT_IMAGE_NOT_FOUND'],
     ['RUNTIME_UNAVAILABLE', 'AGENT_RUNTIME_UNAVAILABLE'],
     ['FILE_TOO_LARGE', 'AGENT_FILE_TOO_LARGE'],
+    ['ARCHIVE_TOO_LARGE', 'AGENT_ARCHIVE_TOO_LARGE'],
   ])('übersetzt %s in %s', async (runtimeCode, apiCode) => {
     const containerId = await containerAnlegen();
     runtime.failNext('start', new ContainerRuntimeError(runtimeCode as ContainerRuntimeErrorCode));

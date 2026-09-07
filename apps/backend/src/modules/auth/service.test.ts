@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { GUEST_ROLE_NAME } from '@palantir/contracts';
+import { GUEST_ROLE_NAME, httpStatusForErrorCode } from '@palantir/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildPermissionActor } from '../rbac/index.js';
 import { isAuthError } from './errors.js';
@@ -1250,11 +1250,14 @@ describe('Konto-Löschung (Lastenheft §3.1)', () => {
     ).rejects.toSatisfy(
       (error: unknown) =>
         isAuthError(error) &&
-        error.code === 'ACCOUNT_HAS_SERVERS' &&
+        // Eigener Code seit dem Contracts-Nachzug W2-C2: Wer nur die Server
+        // entfernt hat, suchte bei derselben Meldung an der falschen Stelle
+        // weiter.
+        error.code === 'ACCOUNT_HAS_BACKUPS' &&
         // Ein laufender Vorgang lässt sich nicht löschen – der Text sagt
         // deshalb „warten" und nicht „zuerst löschen".
         error.message.includes('läuft noch eine Sicherung'),
-      'ACCOUNT_HAS_SERVERS mit Hinweis auf den laufenden Vorgang',
+      'ACCOUNT_HAS_BACKUPS mit Hinweis auf den laufenden Vorgang',
     );
     expect(repository.users).toHaveLength(1);
   });
@@ -1275,11 +1278,13 @@ describe('Konto-Löschung (Lastenheft §3.1)', () => {
     ).rejects.toSatisfy(
       (error: unknown) =>
         isAuthError(error) &&
-        error.code === 'ACCOUNT_HAS_SERVERS' &&
+        error.code === 'ACCOUNT_HAS_BACKUPS' &&
         error.message.includes('noch Sicherungen'),
-      'ACCOUNT_HAS_SERVERS mit Hinweis auf die übrigen Sicherungen',
+      'ACCOUNT_HAS_BACKUPS mit Hinweis auf die übrigen Sicherungen',
     );
     expect(repository.users).toHaveLength(1);
+    // 409 wie der Server-Fall: Konflikt mit vorhandenem Zustand, kein Defekt.
+    expect(httpStatusForErrorCode('ACCOUNT_HAS_BACKUPS')).toBe(409);
   });
 
   /**

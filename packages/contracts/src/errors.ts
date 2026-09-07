@@ -37,6 +37,9 @@ export const ERROR_CATALOG = {
   /**
    * IP-basiertes Rate-Limit auf Anmeldung oder Registrierung greift
    * (Pflichtenheft §7). 429: derselbe Versuch kann später erfolgreich sein.
+   *
+   * Ausschließlich für den **nicht angemeldeten** Weg. Grenzen, die ein
+   * angemeldetes Konto treffen, tragen {@link ERROR_CATALOG.RATE_LIMITED}.
    */
   AUTH_RATE_LIMITED: {
     httpStatus: 429,
@@ -244,6 +247,20 @@ export const ERROR_CATALOG = {
       'Diesem Konto gehören noch Gameserver. Bitte lösche sie zuerst und wiederhole den Vorgang.',
   },
   /**
+   * Am Konto hängen noch Sicherungen (Audit W2-11, `backend-db-02`). 409.
+   *
+   * Bewusst getrennt von {@link ERROR_CATALOG.ACCOUNT_HAS_SERVERS}: Der Nutzer
+   * räumt an zwei verschiedenen Stellen auf. Eine Sicherung überlebt das
+   * Löschen ihres Servers (`backups.server_id` wird `NULL`, Lastenheft §3.3) –
+   * wer nur die Server entfernt hat und dieselbe Meldung „lösche zuerst deine
+   * Gameserver" ein zweites Mal bekommt, sucht an der falschen Stelle weiter.
+   */
+  ACCOUNT_HAS_BACKUPS: {
+    httpStatus: 409,
+    defaultMessage:
+      'Diesem Konto gehören noch Sicherungen. Bitte lösche sie zuerst und wiederhole den Vorgang.',
+  },
+  /**
    * Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (Pflichtenheft §10).
    * 403: Request ist verstanden und authentifiziert, wird aber wegen eines
    * Limits abgelehnt – ein Retry ohne Änderung hilft nicht.
@@ -348,6 +365,61 @@ export const ERROR_CATALOG = {
   VALIDATION_FAILED: {
     httpStatus: 400,
     defaultMessage: 'Die Anfrage enthält ungültige Werte.',
+  },
+
+  /**
+   * Gegenstandsloses „gibt es nicht" – die angefragte Route selbst ist
+   * unbekannt (Audit W2-9, `backend-core-02`). 404.
+   *
+   * Bewusst getrennt von den benannten 404ern (`SERVER_NOT_FOUND`,
+   * `USER_NOT_FOUND`, ...): Die benennen einen konkreten Gegenstand, der zu
+   * existieren hätte. Für eine Route, die es im Backend gar nicht gibt, wäre
+   * jeder von ihnen irreführend – und `VALIDATION_FAILED` (400) behauptete,
+   * der Aufrufer habe einen Wert falsch geschickt.
+   */
+  NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Route existiert nicht.',
+  },
+  /**
+   * Der Pfad existiert, aber nicht mit dieser HTTP-Methode (Audit W2-9). 405.
+   *
+   * Anders als {@link ERROR_CATALOG.NOT_FOUND} ist die Adresse richtig; nur das
+   * Verb passt nicht. Der Status ist Teil des HTTP-Vertrags und wird vom
+   * Framework gesetzt – der Katalog trägt hier nur den benannten Code nach,
+   * damit die Antwort im Envelope aus Pflichtenheft §5.1 bleibt.
+   */
+  METHOD_NOT_ALLOWED: {
+    httpStatus: 405,
+    defaultMessage: 'Diese Methode ist für diese Route nicht zulässig.',
+  },
+  /**
+   * Der Inhaltstyp der Anfrage wird nicht verarbeitet (Audit W2-9). 415.
+   *
+   * Typisch ein `POST` ohne oder mit falschem `Content-Type`, das Fastifys
+   * Body-Parser abweist, bevor eine Route es sieht. Bewusst getrennt von
+   * `VALIDATION_FAILED` (400): Nicht der Inhalt ist falsch, sondern seine
+   * Verpackung – ein Aufrufer, der nur den Kopf korrigiert, ist fertig.
+   */
+  UNSUPPORTED_MEDIA_TYPE: {
+    httpStatus: 415,
+    defaultMessage: 'Dieser Inhaltstyp wird nicht unterstützt.',
+  },
+  /**
+   * Missbrauchsgrenze eines **angemeldeten** Kontos greift (Audit W2-3,
+   * `security-matrix-05`; Pflichtenheft §18 „Rate-Limiting gegen Spam"). 429:
+   * derselbe Aufruf kann nach Ablauf des Fensters erfolgreich sein.
+   *
+   * Bewusst getrennt von `AUTH_RATE_LIMITED`: Der zählt Anmelde- und
+   * Registrierungsversuche je **IP** und bedeutet für die Oberfläche „warte,
+   * bevor du dich erneut anmeldest". Dieser hier zählt je **Konto** und trifft
+   * Chat, Meldungen, Konsolenbefehle, Kontingent-Anfragen und Arcade-Punkte –
+   * ein angemeldeter Nutzer, dem das Anmeldeformular gezeigt würde, wäre die
+   * falsche Auskunft. Die Antwort trägt zusätzlich `Retry-After`.
+   */
+  RATE_LIMITED: {
+    httpStatus: 429,
+    defaultMessage: 'Zu viele Anfragen. Bitte warte einen Moment und versuche es erneut.',
   },
 
   /**
@@ -634,6 +706,23 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Die Datei ist größer als das erlaubte Limit.',
   },
   /**
+   * Ein Archiv sprengt die Archiv-Grenze des Agents (Audit W2-13). 413.
+   *
+   * Bewusst getrennt von {@link ERROR_CATALOG.AGENT_FILE_TOO_LARGE}: Dort geht
+   * es um **eine** Datei gegen `MAX_UPLOAD_SIZE_BYTES`, hier um die Summe eines
+   * Archivs – zwei verschiedene Grenzen, und der Nutzer räumt anders auf
+   * (kleinere Datei wählen vs. Archiv aufteilen). Ohne den eigenen Code stand
+   * im Panel „die Datei ist zu groß" über einem Archiv, dessen einzelne
+   * Dateien alle unter der Grenze lagen.
+   *
+   * Nicht zu verwechseln mit `AGENT_ARCHIVE_INVALID` (422): Das Archiv ist hier
+   * lesbar und in Ordnung, nur zu groß.
+   */
+  AGENT_ARCHIVE_TOO_LARGE: {
+    httpStatus: 413,
+    defaultMessage: 'Das Archiv ist größer als das erlaubte Limit.',
+  },
+  /**
    * Der Agent konnte ein Archiv nicht entpacken (`FILE_EXTRACT`, P4). 422.
    *
    * Wie `BACKUP_CHECKSUM_MISMATCH`: Die Anfrage ist wohlgeformt und berechtigt,
@@ -754,6 +843,21 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Dieser Eintrag steht nicht in der Speicherübersicht.',
   },
   /**
+   * Die Kennung passt auf mehrere Posten derselben Speicherübersicht
+   * (Audit W2-7, `backend-admin-resources-10`). 409.
+   *
+   * Bewusst getrennt von {@link ERROR_CATALOG.STORAGE_ENTRY_NOT_FOUND} (404):
+   * Der Posten fehlt nicht, er ist nur nicht eindeutig benannt – und getrennt
+   * von `STORAGE_SCAN_MISSING`, weil es sehr wohl eine Übersicht gibt. Die
+   * Abhilfe ist dieselbe wie dort (neu scannen), der Grund ein anderer; hier
+   * wird nicht geraten, welcher Posten gelöscht werden soll.
+   */
+  STORAGE_ENTRY_AMBIGUOUS: {
+    httpStatus: 409,
+    defaultMessage:
+      'Diese Kennung passt auf mehrere Posten der Speicherübersicht. Bitte einen neuen Scan anstoßen und den Vorgang wiederholen.',
+  },
+  /**
    * Eintrag ist über den Storage-Explorer nicht löschbar – insbesondere der
    * Datenordner eines aktiven Servers (Lastenheft §3.8). 403: die Aktion ist
    * grundsätzlich unzulässig, unabhängig von Berechtigungen; auch der Owner
@@ -782,6 +886,22 @@ export const ERROR_CATALOG = {
   AUDIT_ARCHIVE_FAILED: {
     httpStatus: 500,
     defaultMessage: 'Das Archiv des Audit-Logs konnte nicht geschrieben werden.',
+  },
+  /**
+   * Es läuft bereits ein Archivierungslauf (Audit W2-16,
+   * `backend-admin-resources-11`). 409.
+   *
+   * Genau ein Lauf zur Zeit: Der zweite bekäme sonst dieselben Einträge zu
+   * fassen und beide schrieben ineinander verschränkt in dieselbe Datei.
+   * Bewusst getrennt von {@link ERROR_CATALOG.AUDIT_ARCHIVE_FAILED} (500):
+   * Hier ist nichts kaputt – der Aufruf ist nach dem Ende des laufenden
+   * Vorgangs unverändert wiederholbar, und ein 500er hätte den Betreiber
+   * auf die Suche nach einem Defekt geschickt, den es nicht gibt.
+   */
+  AUDIT_ARCHIVE_ALREADY_RUNNING: {
+    httpStatus: 409,
+    defaultMessage:
+      'Es läuft bereits ein Archivierungslauf des Audit-Logs. Bitte dessen Ende abwarten.',
   },
   /**
    * Aktion am Owner-Konto, die dieses aussperren würde (sperren, Rollen

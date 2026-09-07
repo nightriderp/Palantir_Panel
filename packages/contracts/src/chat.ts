@@ -390,3 +390,37 @@ export type ChatServerEventFrame = {
     sentAt: string;
   };
 }[ChatEventName];
+
+// ---------------------------------------------------------------------------
+// Close-Codes des Chat-Live-Kanals (Audit W2-2/W2-3/W2-19)
+// ---------------------------------------------------------------------------
+//
+// Bis hierher lagen beide Zahlen backend-lokal in
+// `apps/backend/src/modules/chat/live.ts`, das Frontend
+// (`apps/frontend/src/lib/live/chatChannel.ts`) führte eine Kopie und ein Test
+// hielt sie gegen die Konstante eines fremden Kanals. Der Kanal bekommt seine
+// eigenen Namen, damit beide Seiten dieselbe Quelle lesen.
+
+/**
+ * Close-Code „nicht (mehr) angemeldet" des Chat-Live-Kanals
+ * (Pflichtenheft §5.3, §15).
+ *
+ * Aus dem privaten Bereich (4000–4999), damit der Browser „nicht angemeldet"
+ * von „Backend gerade weg" unterscheiden kann: im zweiten Fall wird erneut
+ * verbunden, im ersten nicht. Dieselbe Zahl wie beim Inbox- und Server-Kanal,
+ * aber ein eigener Name je Kanal – ihn an
+ * `NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED` zu binden hieße, den Chat der
+ * Entscheidung eines fremden Kanals zu unterwerfen.
+ */
+export const CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED = 4401;
+
+/**
+ * Close-Code „zu viele gleichzeitige Verbindungen dieses Kontos"
+ * (Audit W2-3, `backend-community-visibility-11`).
+ *
+ * Aus demselben privaten Bereich, die Zahl lehnt sich an HTTP 429 an. Der
+ * Unterschied zu {@link CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED} ist für den Browser
+ * wesentlich: Hier darf er neu verbinden – nur eben nicht sofort und nicht
+ * hundertfach.
+ */
+export const CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS = 4029;

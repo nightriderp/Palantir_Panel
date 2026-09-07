@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHAT_EVENTS,
+  CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
+  CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
   CONVERSATION_TYPES,
   MESSAGE_MODERATION_ACTIONS,
   MESSAGE_PAGE_DEFAULT_LIMIT,
@@ -78,5 +80,30 @@ describe('Chat-Vertrag (Pflichtenheft §15)', () => {
 
   it('hält die Seitengrenzen des Verlaufs plausibel', () => {
     expect(MESSAGE_PAGE_DEFAULT_LIMIT).toBeLessThanOrEqual(MESSAGE_PAGE_MAX_LIMIT);
+  });
+});
+
+/**
+ * Close-Codes des Chat-Live-Kanals (Audit W2-2/W2-3/W2-19, Contracts-Nachzug
+ * W2-C2).
+ *
+ * Vorher lagen sie backend-lokal, das Frontend führte eine Kopie und ein Test
+ * hielt sie gegen die Konstante des Inbox-Kanals.
+ */
+describe('Close-Codes des Chat-Live-Kanals', () => {
+  it('liegen im privaten Bereich (4000-4999)', () => {
+    for (const code of [
+      CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
+      CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
+    ]) {
+      expect(code).toBeGreaterThanOrEqual(4000);
+      expect(code).toBeLessThanOrEqual(4999);
+    }
+  });
+
+  it('unterscheidet den endgültigen vom wiederholbaren Fall', () => {
+    // Nach 4401 verbindet der Browser nicht neu, nach 4029 schon – nur eben
+    // nicht sofort und nicht hundertfach.
+    expect(CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED).not.toBe(CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS);
   });
 });

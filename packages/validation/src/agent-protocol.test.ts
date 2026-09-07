@@ -1,9 +1,12 @@
 import { AGENT_PROTOCOL_VERSION, ok } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import {
+  AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH,
   agentCommandResultFrameSchema,
+  agentEventFrameSchema,
   agentHelloFrameSchema,
   agentStateReportFrameSchema,
+  agentToBackendFrameSchema,
   backendToAgentFrameSchema,
   correlationIdSchema,
 } from './agent-protocol.js';
@@ -172,5 +175,72 @@ describe('Frames Agent -> Backend', () => {
       completedAt: NOW,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+/**
+ * Feldgrenze der Ereignis-Nutzlasten (Audit W2-30, Fundpunkt 145).
+ *
+ * Gedeckelt war bisher nur der ganze Frame (1 MiB). `LOG_LINE.message` wandert
+ * ungefiltert in den Konsolenpuffer jedes Browsers, der den Server abonniert
+ * hat – eine Logzeile von einem Megabyte war damit kein Protokollfehler,
+ * sondern ein gültiger Frame.
+ */
+describe('Feldgrenze der Ereignis-Nutzlast', () => {
+  const logFrame = (message: string): unknown => ({
+    kind: 'event',
+    event: 'LOG_LINE',
+    serverId: SERVER_ID,
+    payload: { containerId: 'abc123', stream: 'stdout', message, timestamp: NOW, at: NOW },
+    emittedAt: NOW,
+  });
+
+  it('nimmt eine Konsolenzeile bis zur Grenze an', () => {
+    const gerade = agentEventFrameSchema.safeParse(
+      logFrame('a'.repeat(AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH)),
+    );
+
+    expect(gerade.success).toBe(true);
+  });
+
+  it('lehnt eine überlange Konsolenzeile ab', () => {
+    const zuLang = agentEventFrameSchema.safeParse(
+      logFrame('a'.repeat(AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH + 1)),
+    );
+
+    expect(zuLang.success).toBe(false);
+    // Auch über die Frame-Union, denn dort kommt der Frame tatsächlich an.
+    expect(
+      agentToBackendFrameSchema.safeParse(
+        logFrame('a'.repeat(AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH + 1)),
+      ).success,
+    ).toBe(false);
+  });
+
+  it('greift auch für ein verschachteltes Feld', () => {
+    // Die heutigen Nutzlasten sind flach; die Grenze soll aber auch dann noch
+    // greifen, wenn ein späteres Ereignis seine Zeilen bündelt.
+    const verschachtelt = agentEventFrameSchema.safeParse({
+      kind: 'event',
+      event: 'LOG_LINE',
+      serverId: SERVER_ID,
+      payload: { lines: [{ message: 'a'.repeat(AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH + 1) }] },
+      emittedAt: NOW,
+    });
+
+    expect(verschachtelt.success).toBe(false);
+  });
+
+  it('lässt einen Frame ohne Nutzlast weiterhin gültig', () => {
+    // `payload` ist im Vertrag optional (`AgentEventFrame`) – die Grenze darf
+    // daran nichts ändern.
+    const ohne = agentEventFrameSchema.safeParse({
+      kind: 'event',
+      event: 'CRASHED',
+      serverId: SERVER_ID,
+      emittedAt: NOW,
+    });
+
+    expect(ohne.success).toBe(true);
   });
 });

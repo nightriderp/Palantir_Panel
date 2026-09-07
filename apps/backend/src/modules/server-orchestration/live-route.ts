@@ -6,6 +6,7 @@ import {
   type LiveClientFrame,
   type LiveTopic,
   type ServerConsoleLine,
+  type ServerLiveExtraFrame,
 } from '@palantir/contracts';
 import { liveClientFrameSchema } from '@palantir/validation';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
@@ -18,7 +19,6 @@ import {
   LIVE_CLOSE_CODE_UNAUTHORIZED,
   LIVE_MAX_FRAME_BYTES,
   SUBSCRIPTION_CHECK_INTERVAL_MS,
-  type ServerLiveExtraFrame,
 } from './live-frames.js';
 import { toGameServerDto } from './dto.js';
 import { isServerOrchestrationError } from './errors.js';
@@ -166,15 +166,6 @@ export function registerServerLiveRoute(
 
       async function handleFrame(text: string): Promise<void> {
         const roh = parseJson(text);
-
-        // Lebenszeichen zuerst: Es trägt kein Thema und fällt deshalb durch
-        // `liveClientFrameSchema` (Vertrag kennt `ping` noch nicht).
-        if (istRecord(roh) && roh.kind === 'ping') {
-          reply({ kind: 'pong', sentAt: new Date().toISOString() });
-
-          return;
-        }
-
         const geprueft = liveClientFrameSchema.safeParse(roh);
 
         if (!geprueft.success) {
@@ -195,6 +186,15 @@ export function registerServerLiveRoute(
         }
 
         const frame: LiveClientFrame = geprueft.data;
+
+        // Das Lebenszeichen trägt als einziges Frame kein Thema (Vertrag:
+        // `server-live.ts`) – es gilt der Verbindung, nicht einem Abo.
+        if (frame.kind === 'ping') {
+          reply({ kind: 'pong', sentAt: new Date().toISOString() });
+
+          return;
+        }
+
         const serverId = frame.topic.id;
 
         switch (frame.kind) {

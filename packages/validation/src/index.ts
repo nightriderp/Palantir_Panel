@@ -69,12 +69,14 @@ export {
   usernameSchema,
 } from './auth.js';
 export {
+  AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH,
   agentCommandNameSchema,
   agentCommandResultFrameSchema,
   agentContainerStateSchema,
   agentContainerStatusSchema,
   agentEventFrameSchema,
   agentEventNameSchema,
+  agentEventPayloadSchema,
   agentHelloFrameSchema,
   agentNodeStatsSchema,
   agentStateReportFrameSchema,

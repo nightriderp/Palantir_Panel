@@ -6,6 +6,10 @@
  * soll nicht an zwei Stellen leben.
  */
 
+import {
+  CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS as VERTRAG_TOO_MANY_CONNECTIONS,
+  CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED as VERTRAG_UNAUTHORIZED,
+} from '@palantir/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
@@ -374,5 +378,17 @@ describe('startChatHeartbeat', () => {
 
     expect(socket.pings).toHaveLength(0);
     expect(socket.terminations).toHaveLength(0);
+  });
+});
+
+/**
+ * Contracts-Nachzug W2-C2: Beide Close-Codes stehen im Vertrag; das Chat-Modul
+ * reicht sie nur weiter. Vorher lagen sie hier und im Frontend doppelt, und ein
+ * Test hielt sie gegen die Konstante des Inbox-Kanals.
+ */
+describe('Close-Codes des Chat-Live-Kanals', () => {
+  it('nimmt beide Zahlen unverändert aus dem Vertrag', () => {
+    expect(CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED).toBe(VERTRAG_UNAUTHORIZED);
+    expect(CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS).toBe(VERTRAG_TOO_MANY_CONNECTIONS);
   });
 });

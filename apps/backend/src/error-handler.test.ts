@@ -1,3 +1,4 @@
+import { httpStatusForErrorCode } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { RbacError } from './modules/rbac/errors.js';
@@ -155,10 +156,64 @@ describe('Globaler Fehler-Handler', () => {
     const body = response.json();
     expect(body.success).toBe(false);
     expect(body.data).toBeNull();
-    expect(body.error.code).toBe('VALIDATION_FAILED');
+    // Contracts-Nachzug W2-C2: Status und Code stammen jetzt beide aus dem
+    // Katalog-Eintrag. Vorher stand `VALIDATION_FAILED` (Katalog: 400) über
+    // einer 404-Antwort – Status und Code widersprachen sich.
+    expect(body.error.code).toBe('NOT_FOUND');
+    expect(httpStatusForErrorCode('NOT_FOUND')).toBe(404);
     expect(body.error.message).toBe('Diese Route existiert nicht.');
     // Fastifys Standardform darf nicht mehr durchschlagen.
     expect(body).not.toHaveProperty('statusCode');
+
+    await app.close();
+  });
+
+  /**
+   * Contracts-Nachzug W2-C2: Fastify weist einen Körper ohne passenden
+   * Content-Type mit 415 ab, bevor eine Route ihn sieht. Bis dahin stand darüber
+   * `VALIDATION_FAILED` (Katalog: 400) – der Aufrufer las „dein Inhalt ist
+   * falsch", obwohl nur die Verpackung nicht stimmte.
+   */
+  it('beantwortet einen unbekannten Inhaltstyp mit UNSUPPORTED_MEDIA_TYPE (415)', async () => {
+    const app = await buildServer({ auth: false, database: false });
+    app.post('/__typ', async () => ({ unreachable: true }));
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/__typ',
+      headers: { 'content-type': 'application/x-erfunden' },
+      payload: 'egal',
+    });
+
+    expect(response.statusCode).toBe(415);
+    expect(response.json().error.code).toBe('UNSUPPORTED_MEDIA_TYPE');
+    expect(httpStatusForErrorCode('UNSUPPORTED_MEDIA_TYPE')).toBe(415);
+
+    await app.close();
+  });
+
+  /**
+   * Gegenstück dazu: Der Pfad stimmt, nur das Verb nicht.
+   *
+   * Fastify selbst beantwortet ein unbekanntes Verb heute über den
+   * Not-Found-Hook (404); die 405 kommt von Plugins und Proxys, die den Fehler
+   * mit gesetztem `statusCode` weiterreichen. Geprüft wird deshalb genau der
+   * Weg, den der Handler auch dann geht: ein Fehler mit `statusCode: 405`
+   * bekommt den passenden Katalog-Code statt `VALIDATION_FAILED` (400).
+   */
+  it('beantwortet einen Fehler mit statusCode 405 als METHOD_NOT_ALLOWED', async () => {
+    const app = await buildServer({ auth: false, database: false });
+    app.get('/__verb', async () => {
+      throw Object.assign(new Error('Method Not Allowed'), { statusCode: 405 });
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/__verb' });
+
+    expect(response.statusCode).toBe(405);
+    expect(response.json().error.code).toBe('METHOD_NOT_ALLOWED');
+    expect(httpStatusForErrorCode('METHOD_NOT_ALLOWED')).toBe(405);
+    // Der Originaltext des Werfenden bleibt im Log, nicht in der Antwort.
+    expect(response.json().error.message).toBe('Diese Methode ist für diese Route nicht zulässig.');
 
     await app.close();
   });

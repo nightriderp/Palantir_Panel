@@ -93,20 +93,18 @@ export function LiveChannelProvider({ children }: LiveChannelProviderProps) {
   const localLineRef = useRef(0);
 
   /**
-   * Rohes Frame schicken.
+   * Frame des Browsers schicken.
    *
-   * Nimmt bewusst mehr als `LiveClientFrame` entgegen: Das Lebenszeichen
-   * (`{ kind: 'ping' }`) steht noch nicht im Vertrag – siehe den
-   * Provisorium-Hinweis in `serverChannel.ts`.
+   * Genau `LiveClientFrame`: Das Lebenszeichen (`{ kind: 'ping' }`) steht seit
+   * dem Contracts-Nachzug W2-C2 mit im Vertrag, ein zweiter, ungetypter Weg
+   * daneben ist damit hinfällig.
    */
-  const sendJson = useCallback((frame: unknown): boolean => {
+  const sendRaw = useCallback((frame: LiveClientFrame): boolean => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
     socket.send(JSON.stringify(frame));
     return true;
   }, []);
-
-  const sendRaw = useCallback((frame: LiveClientFrame): boolean => sendJson(frame), [sendJson]);
 
   // Aufbau der Verbindung inklusive Wiederanlauf. Läuft einmal für den ganzen
   // eingeloggten Bereich; die Abhängigkeitsliste ist deshalb bewusst leer.
@@ -150,7 +148,7 @@ export function LiveChannelProvider({ children }: LiveChannelProviderProps) {
         stopHeartbeat();
         heartbeatRef.current = startHeartbeat({
           send: () => {
-            sendJson({ kind: 'ping' });
+            sendRaw({ kind: 'ping' });
           },
           onTimeout: () => {
             // Keine Antwort: Die Verbindung steht nur noch auf dem Papier.
@@ -218,7 +216,7 @@ export function LiveChannelProvider({ children }: LiveChannelProviderProps) {
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, [sendJson, sendRaw]);
+  }, [sendRaw]);
 
   const subscribe = useCallback(
     (topic: LiveTopic, listener: FrameListener) => {

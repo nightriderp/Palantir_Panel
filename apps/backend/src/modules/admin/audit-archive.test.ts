@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import { AUDIT_RETENTION_MONTHS } from '@palantir/contracts';
+import { AUDIT_RETENTION_MONTHS, httpStatusForErrorCode } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   type AuditArchiveWriter,
@@ -337,7 +337,10 @@ describe('Serialisierung des Archivlaufs', () => {
     ).catch((error: unknown) => error);
 
     expect(fehler).toBeInstanceOf(AdminError);
-    expect(fehler).toMatchObject({ code: 'AUDIT_ARCHIVE_FAILED' });
+    // Eigener Code statt des geliehenen 500ers (Contracts-Nachzug W2-C2):
+    // Hier ist nichts kaputt, der Aufruf ist später unverändert wiederholbar.
+    expect(fehler).toMatchObject({ code: 'AUDIT_ARCHIVE_ALREADY_RUNNING' });
+    expect(httpStatusForErrorCode('AUDIT_ARCHIVE_ALREADY_RUNNING')).toBe(409);
     expect((fehler as AdminError).message).toMatch(/bereits ein Archivierungslauf/);
 
     // Der zweite Lauf hat nichts geschrieben und nichts gelöscht.

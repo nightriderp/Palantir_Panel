@@ -105,11 +105,64 @@ export const agentStateReportFrameSchema = z.object({
   reportedAt: isoTimestampSchema,
 });
 
+/**
+ * Obergrenze für ein **einzelnes** Textfeld einer Ereignis-Nutzlast, in Zeichen
+ * (Audit W2-30, Fundpunkt 145).
+ *
+ * Gedeckelt war bisher nur der ganze Frame (`MAX_AGENT_FRAME_BYTES`, 1 MiB).
+ * Ein einzelnes Feld durfte diesen Rahmen also allein ausfüllen – und genau das
+ * tut die interessanteste Nutzlast: `LOG_LINE.message` wandert ungefiltert in
+ * den Konsolenpuffer **jedes** Browsers, der den Server abonniert hat. Eine
+ * Logzeile von einem Megabyte war damit kein Protokollfehler, sondern ein
+ * gültiger Frame, den das Backend an alle Zuschauer weiterreichte.
+ *
+ * **Warum 16 384.** Das ist die Chunk-Grenze der Docker-Log-Treiber
+ * (`json-file`/`local` zerlegen eine längere Ausgabe in Stücke von höchstens
+ * 16 KiB). Eine echte Logzeile erreicht den Agent deshalb nie am Stück länger
+ * als 16 KiB; in Zeichen gerechnet ist die Grenze selbst für reines ASCII nicht
+ * enger als die Quelle. Es wird also keine legitime Zeile abgeschnitten, und
+ * ein einzelnes Feld kann den Frame-Rahmen nicht mehr allein ausschöpfen.
+ */
+export const AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH = 16_384;
+
+/**
+ * Nutzlast eines Ereignis-Frames – beliebig geformt, aber mit begrenzten
+ * Textfeldern.
+ *
+ * Die Form je Ereignis bleibt bewusst offen (siehe `AgentEventFrame` in
+ * `@palantir/contracts`: der Agent bringt sie additiv mit). Geprüft wird
+ * deshalb nicht die Struktur, sondern nur eine Eigenschaft, die für jede Form
+ * gilt: Kein Text darin ist länger als
+ * {@link AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH}.
+ *
+ * Rekursiv über Objekte und Arrays, damit die Grenze auch dann greift, wenn ein
+ * späteres Ereignis seine Zeilen verschachtelt statt flach meldet.
+ */
+export const agentEventPayloadSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.string().max(AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH, {
+      message: `Einzelne Textfelder einer Ereignis-Nutzlast dürfen höchstens ${String(AGENT_EVENT_PAYLOAD_MAX_STRING_LENGTH)} Zeichen lang sein.`,
+    }),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    // Wie zuvor bei `z.unknown()`: Ein Feld ohne Wert ist kein Protokollfehler.
+    // Über die Leitung kommt es ohnehin nicht an (JSON kennt kein `undefined`),
+    // im Prozess soll es aber nicht den ganzen Frame verwerfen.
+    z.undefined(),
+    z.array(agentEventPayloadSchema),
+    z.record(agentEventPayloadSchema),
+  ]),
+);
+
 export const agentEventFrameSchema = z.object({
   kind: z.literal('event'),
   event: agentEventNameSchema,
   serverId: idSchema.nullable(),
-  payload: z.unknown(),
+  // `.optional()` hält den Frame ohne Nutzlast gültig – `payload` ist im
+  // Vertrag optional (`AgentEventFrame`), und `z.unknown()` war es hier bisher
+  // ebenfalls.
+  payload: agentEventPayloadSchema.optional(),
   emittedAt: isoTimestampSchema,
 });
 

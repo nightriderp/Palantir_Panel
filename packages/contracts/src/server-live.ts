@@ -1,4 +1,5 @@
 import { type BackupStatus } from './backup.js';
+import { type ErrorCode } from './errors.js';
 import { type WebSocketEventName } from './events.js';
 import { type ServerLiveStats } from './game-server.js';
 import { type ServerCloneJobDto } from './server-jobs.js';
@@ -24,12 +25,45 @@ export interface LiveTopic {
   id: string;
 }
 
+/**
+ * Close-Code des Server-Live-Kanals für „nicht (mehr) angemeldet".
+ *
+ * Aus dem privaten Bereich (4000–4999), damit der Browser „nicht angemeldet"
+ * von „Backend gerade weg" unterscheiden kann: im zweiten Fall wird erneut
+ * verbunden, im ersten nicht. Dieselbe Zahl wie beim Inbox- und Chat-Kanal,
+ * aber ein eigener Name je Kanal – jeder darf sie unabhängig ändern, ohne dass
+ * die anderen stillschweigend mitwandern.
+ */
+export const SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED = 4401;
+
+/**
+ * Angemeldet, aber (noch) nicht freigeschaltet bzw. Sitzung entzogen
+ * (Lastenheft §3.1).
+ *
+ * Ebenfalls endgültig: Ein erneuter Verbindungsversuch endete genauso, deshalb
+ * verzichtet der Browser danach auf den Wiederanlauf.
+ */
+export const SERVER_LIVE_CLOSE_CODE_FORBIDDEN = 4403;
+
 /** Frames, die der Browser schickt. */
 export type LiveClientFrame =
   | { kind: 'subscribe'; topic: LiveTopic }
   | { kind: 'unsubscribe'; topic: LiveTopic }
   /** Konsolenbefehl (Lastenheft §3.3); erfordert `permissions.canUseConsole`. */
-  | { kind: 'consoleCommand'; topic: LiveTopic; command: string };
+  | { kind: 'consoleCommand'; topic: LiveTopic; command: string }
+  /**
+   * Lebenszeichen ohne Thema (Audit W2-5, `event-flow-03`).
+   *
+   * Ein Reverse Proxy schließt eine stille WebSocket-Verbindung nach seinem
+   * Idle-Timeout (nginx: 60 s `proxy_read_timeout`). Der Browser schickt
+   * deshalb im halben Takt ein `ping` und erwartet ein {@link
+   * ServerLivePongFrame} – bleibt es aus, gilt die Verbindung als tot, auch
+   * wenn nie ein `close` kam.
+   *
+   * Bewusst **ohne** `topic`: Das Lebenszeichen gilt der Verbindung, nicht
+   * einem Abo.
+   */
+  | { kind: 'ping' };
 
 /** Herkunft einer Konsolenzeile. */
 export const CONSOLE_LINE_SOURCES = ['stdout', 'stderr', 'input', 'system'] as const;
@@ -143,3 +177,72 @@ export type LiveServerEventFrame = {
     sentAt: string;
   };
 }[LiveServerEventName];
+
+// ---------------------------------------------------------------------------
+// Weitere Frames Backend -> Browser (Audit W2-5)
+// ---------------------------------------------------------------------------
+//
+// Bis zu diesem Vertrag lagen sie doppelt als Provisorium in
+// `apps/backend/src/modules/server-orchestration/live-frames.ts` und
+// `apps/frontend/src/lib/live/serverChannel.ts` und mussten von Hand gleich
+// gehalten werden. Beide Seiten lesen sie jetzt von hier.
+
+/** Antwort des Backends auf ein `ping` des Browsers. */
+export interface ServerLivePongFrame {
+  kind: 'pong';
+  /** ISO-8601-Zeitstempel des Versands. */
+  sentAt: string;
+}
+
+/**
+ * Ist-Stand direkt nach einem `subscribe` (Audit W2-5, `event-flow-03`).
+ *
+ * Der Browser meldet nach jedem Wiederanlauf seine Abos erneut an; ohne dieses
+ * Frame bestätigte das Backend nichts und lieferte auch nichts. Wechselte der
+ * Server während der Lücke von `starting` nach `running`, blieb die Anzeige auf
+ * dem alten Stand, bis zufällig ein weiteres Ereignis kam – bei `running` kommt
+ * außer Messwerten keins mehr.
+ */
+export interface ServerLiveResyncFrame {
+  kind: 'resync';
+  topic: LiveTopic;
+  data: {
+    status: ServerStatus;
+    statusMessage: string | null;
+  };
+  /** ISO-8601-Zeitstempel des Versands. */
+  sentAt: string;
+}
+
+/**
+ * Abgelehntes Frame des Browsers (Audit W2-5, `contracts-validation-04`).
+ *
+ * Nur dort, wo das Ausbleiben einer Wirkung sonst unerklärlich wäre – heute
+ * ausschließlich beim Konsolenbefehl. Unbekannte oder beschädigte Frames werden
+ * weiterhin **kommentarlos** verworfen: Eine Rückmeldung gäbe nur Auskunft über
+ * das erwartete Format (dieselbe Haltung wie im Inbox-Kanal).
+ */
+export interface ServerLiveErrorFrame {
+  kind: 'error';
+  /** Thema, auf das sich die Ablehnung bezieht; `null`, wenn unlesbar. */
+  topic: LiveTopic | null;
+  /**
+   * Code aus dem Katalog (`errors.ts`), kein Freitext.
+   *
+   * Bewusst auf die beiden Fälle eingeschränkt, die auf diesem Kanal überhaupt
+   * entstehen können: Das Frame verletzt das Schema, oder das Konto darf den
+   * Befehl nicht absetzen. `Extract` statt einer losen Union, damit ein
+   * Tippfehler schon beim Übersetzen auffällt.
+   */
+  code: Extract<ErrorCode, 'VALIDATION_FAILED' | 'PERMISSION_DENIED'>;
+  message: string;
+  /** ISO-8601-Zeitstempel des Versands. */
+  sentAt: string;
+}
+
+/** Alles, was `/live` zusätzlich zum Ereignis-Frame an den Browser schickt. */
+export type ServerLiveExtraFrame =
+  ServerLivePongFrame | ServerLiveResyncFrame | ServerLiveErrorFrame;
+
+/** Jedes Frame, das der Browser über den Server-Live-Kanal empfangen kann. */
+export type ServerLiveFrame = LiveServerEventFrame | ServerLiveExtraFrame;

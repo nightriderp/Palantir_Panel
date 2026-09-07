@@ -1,4 +1,8 @@
-import { type ChatServerEventFrame, isChatEventName } from '@palantir/contracts';
+import {
+  CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
+  type ChatServerEventFrame,
+  isChatEventName,
+} from '@palantir/contracts';
 
 /**
  * Reine Bausteine des Chat-Live-Kanals (Pflichtenheft §5.3, Arbeitspaket B7).
@@ -17,20 +21,14 @@ import { type ChatServerEventFrame, isChatEventName } from '@palantir/contracts'
 /**
  * Close-Code des Backends für „nicht angemeldet".
  *
- * **Provisorium (Finding frontend-lib-10).** Dieselbe Zahl wie beim Inbox-Kanal
- * (B6) und beim Agent-Kanal (B3); das Chat-Backend führt sie als
- * `CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED` in `modules/chat/live.ts` – ebenfalls
- * lokal. Der Vertrag kennt bislang nur `NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED`
- * für den Inbox-Kanal; ihn hier zu verwenden hieße, den Chat an die Konstante
- * eines fremden Kanals zu binden (ändert sie sich, folgt das Chat-Backend nicht
- * mit). Solange `@palantir/contracts` keine gemeinsame Konstante für alle
- * Live-Kanäle führt, bleibt der Wert deshalb hier stehen – der Test in
- * `chatChannel.test.ts` hält beide Zahlen aneinander, damit ein Auseinanderlaufen
- * auffällt. Ein eigener Code aus dem privaten Bereich, damit sich „nicht
- * angemeldet" von „Backend gerade weg" unterscheiden lässt – im zweiten Fall
- * wird erneut verbunden, im ersten nicht.
+ * Seit dem Contracts-Nachzug W2-C2 aus dem Vertrag statt als eigene Zahl
+ * (Finding frontend-lib-10): `CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED` gehört dem
+ * Chat-Kanal, nicht dem Inbox-Kanal – Backend (`modules/chat/live.ts`) und
+ * Browser lesen jetzt dieselbe Konstante. Ein eigener Code aus dem privaten
+ * Bereich, damit sich „nicht angemeldet" von „Backend gerade weg" unterscheiden
+ * lässt – im zweiten Fall wird erneut verbunden, im ersten nicht.
  */
-export const CLOSE_CODE_UNAUTHORIZED = 4401;
+export const CLOSE_CODE_UNAUTHORIZED = CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED;
 
 /** Abstand zwischen zwei Lebenszeichen, damit Reverse Proxies nicht schließen. */
 export const PING_INTERVAL_MS = 30_000;
