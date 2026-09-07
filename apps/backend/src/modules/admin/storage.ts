@@ -4,9 +4,10 @@
  * Ablauf:
  * 1. Ein Admin stößt einen Scan an (`scan()`), das Backend schickt
  *    `GET_STORAGE_BREAKDOWN` an den Agent der Node.
- * 2. Das rohe Ergebnis wird **unverändert** mit Zeitstempel zwischengespeichert
- *    (`storage_snapshots`). Der Scan läuft on demand, nicht dauerhaft im
- *    Hintergrund.
+ * 2. Das rohe Ergebnis wird mit Zeitstempel zwischengespeichert
+ *    (`storage_snapshots`) – ohne jede Umdeutung; einzig Posten, die dem
+ *    vereinbarten Format nicht entsprechen, bleiben außen vor (siehe `scan()`).
+ *    Der Scan läuft on demand, nicht dauerhaft im Hintergrund.
  * 3. Bei jedem Abruf wird die Übersicht neu bewertet: Ob ein Posten löschbar
  *    ist, hängt vom aktuellen Datenbestand ab und nicht vom Zeitpunkt des Scans.
  *
@@ -39,7 +40,12 @@ import {
   type StorageSnapshotPermissions,
   isFail,
 } from '@palantir/contracts';
-import { type StartStorageScanInput, getStorageBreakdownResultSchema } from '@palantir/validation';
+import {
+  type StartStorageScanInput,
+  agentStorageEntrySchema,
+  getStorageBreakdownResultSchema,
+} from '@palantir/validation';
+import { z } from 'zod';
 import { type PermissionActor, hasAnyPermission, hasPermission } from '../rbac/index.js';
 import { type AuditService, entryFor } from './audit.js';
 import type { AdminContext } from './context.js';
@@ -200,10 +206,60 @@ export function classifyEntry(
   }
 }
 
-/** Stabile Kennung eines Postens innerhalb eines Scans. */
+/**
+ * Stabile Kennung eines Postens innerhalb eines Scans.
+ *
+ * Die Kennung ist die einzige Handhabe, mit der ein Client einen Posten zum
+ * Löschen benennt – sie muss innerhalb eines Scans eindeutig sein
+ * (Audit-Fundstelle backend-admin-resources-10). Bis hierher fielen alle Posten
+ * ohne Pfad, Image-Id und Image-Tag auf den festen Wert `'unbekannt'` zurück:
+ * Zwei solche Posten teilten sich eine Kennung, das Löschen bewertete den
+ * ersten und entfernte **beide** aus dem Zwischenspeicher – der zweite
+ * verschwand aus der Anzeige, ohne von der Platte zu sein.
+ *
+ * Die Reihenfolge der natürlichen Merkmale ist Vertrag, nicht Geschmack: Bei
+ * `dockerImage` reicht der Remover die Kennung unverändert als `imageId` an den
+ * Agent weiter (`createAgentStorageEntryRemover` in B3). Deshalb bleibt dort
+ * `entry.imageId` die Kennung – ohne Präfix, ohne Umformung.
+ *
+ * Bleibt kein natürliches Merkmal übrig, tritt ein Fingerabdruck über den
+ * Inhalt des Postens an die Stelle des alten Festwerts. Er hängt bewusst nicht
+ * an der Position in der Liste – die verschiebt sich, sobald ein Posten
+ * gelöscht wird, und eine wandernde Kennung träfe beim nächsten Klick den
+ * falschen Posten. Zwei in **jedem** Feld gleiche Posten bleiben damit
+ * ununterscheidbar; für die verweigert {@link StorageExplorerService.deleteEntry}
+ * die Löschung, statt zu raten.
+ */
 export function storageEntryId(entry: AgentStorageEntry): string {
-  return entry.path ?? entry.imageId ?? entry.imageTag ?? 'unbekannt';
+  return (
+    entry.path ??
+    entry.imageId ??
+    entry.imageTag ??
+    entry.backupFileName ??
+    [
+      'posten',
+      entry.kind,
+      entry.serverId ?? '-',
+      String(entry.sizeBytes),
+      entry.inUse ? 'benutzt' : 'frei',
+      entry.lastModifiedAt ?? '-',
+    ].join(':')
+  );
 }
+
+/**
+ * Der Rahmen einer Scan-Meldung – Zeitstempel und Belegung streng geprüft, die
+ * Postenliste zunächst nur als Liste.
+ *
+ * Die Posten prüft {@link agentStorageEntrySchema} anschließend einzeln
+ * (Audit-Fundstelle contracts-validation-02): Ein einziger Ordner, mit dem das
+ * Schema nichts anfangen kann, darf nicht die gesamte Speicherübersicht der
+ * Node unbenutzbar machen. Der Rahmen dagegen bleibt hart – ohne Zeitstempel
+ * und Belegung ist die Meldung als Ganzes wertlos.
+ */
+const storageBreakdownFrameSchema = getStorageBreakdownResultSchema.extend({
+  entries: z.array(z.unknown()),
+});
 
 function computeEntryPermissions(
   actor: PermissionActor,
@@ -381,23 +437,54 @@ export function createStorageExplorerService(
       }
 
       // Der Agent läuft auf einer anderen Maschine; sein Ergebnis ist Eingabe
-      // wie jede andere und wird geprüft, bevor es gespeichert wird.
-      const parsed = getStorageBreakdownResultSchema.safeParse(response.data);
+      // wie jede andere und wird geprüft, bevor es gespeichert wird – aber in
+      // zwei Stufen (Audit-Fundstelle contracts-validation-02).
+      //
+      // Zuerst der Rahmen: Stimmt er nicht, ist die Meldung als Ganzes
+      // unbrauchbar und wird wie bisher abgelehnt.
+      const frame = storageBreakdownFrameSchema.safeParse(response.data);
 
-      if (!parsed.success) {
+      if (!frame.success) {
         throw new AdminError(
           'AGENT_COMMAND_INVALID',
           'Die Speicherübersicht des Agents entspricht nicht dem vereinbarten Format.',
         );
       }
 
+      // Dann die Posten einzeln. Was hier liegt, hat der Homeserver auf der
+      // Platte gefunden – darunter auch von Hand angelegte Ordner, die niemand
+      // vorhergesehen hat. Ein solcher Posten wird übergangen; früher zerlegte
+      // er das gesamte Ergebnis und der Storage-Explorer der Node blieb
+      // unbenutzbar, bis jemand den Ordner an der Konsole entfernte. Genau
+      // dieses Aufräumen ist aber der Zweck der Ansicht.
+      const entries: AgentStorageEntry[] = [];
+
+      for (const candidate of frame.data.entries) {
+        const parsed = agentStorageEntrySchema.safeParse(candidate);
+
+        if (parsed.success) {
+          entries.push(parsed.data);
+        }
+      }
+
+      // Kein einziger brauchbarer Posten aus einer nicht leeren Meldung: Das
+      // ist kein fremder Ordner mehr, sondern ein auseinandergelaufenes
+      // Protokoll. Dann lieber der alte Fehler als ein leerer Scan, der
+      // aussieht, als läge auf dem Homeserver nichts.
+      if (entries.length === 0 && frame.data.entries.length > 0) {
+        throw new AdminError(
+          'AGENT_COMMAND_INVALID',
+          'Kein einziger Posten der Speicherübersicht entspricht dem vereinbarten Format.',
+        );
+      }
+
       const snapshot: StorageSnapshotRecord = {
         nodeId,
-        scannedAt: new Date(parsed.data.scannedAt),
-        totalBytes: parsed.data.totalBytes,
-        usedBytes: parsed.data.usedBytes,
-        freeBytes: parsed.data.freeBytes,
-        entries: parsed.data.entries,
+        scannedAt: new Date(frame.data.scannedAt),
+        totalBytes: frame.data.totalBytes,
+        usedBytes: frame.data.usedBytes,
+        freeBytes: frame.data.freeBytes,
+        entries,
       };
 
       await deps.repository.saveSnapshot(snapshot);
@@ -412,9 +499,33 @@ export function createStorageExplorerService(
       const snapshot = await requireSnapshot(nodeId);
       const servers = await knownServers.load();
 
-      const raw = snapshot.entries.find((entry) => storageEntryId(entry) === entryId);
+      // Alle Treffer, nicht nur den ersten (Audit-Fundstelle
+      // backend-admin-resources-10): Eine Kennung, die auf mehrere Posten
+      // passt, ist keine Anweisung, sondern eine offene Frage.
+      const treffer = snapshot.entries.filter((entry) => storageEntryId(entry) === entryId);
 
-      if (!raw) {
+      if (treffer.length > 1) {
+        /*
+         * Mehrdeutig – hier wird nicht geraten, welcher Posten gemeint ist.
+         * Das kann nur passieren, wenn zwei Posten in jedem Feld gleich sind
+         * (siehe `storageEntryId`); die Abhilfe ist dieselbe wie bei einem
+         * fehlenden Scan: neu scannen und erneut versuchen.
+         *
+         * Der Katalog kennt bislang keinen eigenen Code für „Kennung nicht
+         * eindeutig". `STORAGE_SCAN_MISSING` ist der einzige 409er des
+         * Speicher-Explorers und trägt genau diese Abhilfe im Namen; ein
+         * eigener Code (`STORAGE_ENTRY_AMBIGUOUS`) gehört in einen separaten
+         * Contracts-PR (CLAUDE.md §6) und ist im Bericht zu W2-7 vermerkt.
+         */
+        throw new AdminError(
+          'STORAGE_SCAN_MISSING',
+          'Diese Kennung passt auf mehrere Posten der zwischengespeicherten Speicherübersicht. Bitte einen neuen Scan anstoßen und den Vorgang wiederholen.',
+        );
+      }
+
+      const raw = treffer[0];
+
+      if (raw === undefined) {
         throw new AdminError('STORAGE_ENTRY_NOT_FOUND');
       }
 
@@ -432,9 +543,11 @@ export function createStorageExplorerService(
         throw new AdminError(response.error.code, response.error.message);
       }
 
-      const remaining = snapshot.entries.filter(
-        (candidate) => storageEntryId(candidate) !== entryId,
-      );
+      // Entfernt wird genau der bewertete Posten – über die Objektidentität,
+      // nicht über die Kennung. Ein Filter über die Kennung riss früher alle
+      // Namensvettern mit aus dem Zwischenspeicher, obwohl auf der Platte nur
+      // einer verschwunden war (Audit-Fundstelle backend-admin-resources-10).
+      const remaining = snapshot.entries.filter((candidate) => candidate !== raw);
 
       // Der zwischengespeicherte Scan wird nachgezogen, damit die Oberfläche
       // den entfernten Posten nicht weiter anzeigt. Die Größenangaben bleiben

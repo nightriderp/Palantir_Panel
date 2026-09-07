@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { getStorageBreakdownResultSchema } from '@palantir/validation';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeContainerRuntime, type ContainerSpec } from '../../runtime/index.js';
 import { StorageScanner } from './storage-scanner.js';
@@ -110,6 +111,29 @@ describe('GET_STORAGE_BREAKDOWN – Serverdaten', () => {
 
     const ergebnis = await scanner.scan({ includeImages: false });
     expect(ergebnis.entries[0]).toMatchObject({ kind: 'orphaned', serverId: null });
+  });
+
+  it('meldet einen von Hand angelegten Ordner als orphaned – und bleibt vertragstreu', async () => {
+    // Audit-Fundstelle contracts-validation-02: `alt-server` ist keine UUID.
+    // Der Agent meldet den Ordner trotzdem so, wie er auf der Platte steht –
+    // und das Ergebnis muss die Prüfung des Backends bestehen, sonst ist der
+    // Storage-Explorer der Node komplett unbenutzbar, bis jemand an der
+    // Konsole aufräumt. Genau dieses Aufräumen ist der Zweck der Ansicht.
+    await schreibe('servers/alt-server/notiz.txt', 'x');
+    await schreibe('backups/alt-server/backup-1.tar.gz', 'abc');
+
+    const ergebnis = await scanner.scan({ includeImages: false });
+    const ordner = ergebnis.entries.find((e) => e.kind === 'orphaned');
+    const archiv = ergebnis.entries.find((e) => e.kind === 'backup');
+
+    expect(ordner).toMatchObject({
+      kind: 'orphaned',
+      serverId: null,
+      path: path.join(path.resolve(dataDir), 'alt-server'),
+    });
+    // Im Backup-Verzeichnis ist der Ordnername die serverId – ohne UUID-Zwang.
+    expect(archiv).toMatchObject({ kind: 'backup', serverId: 'alt-server' });
+    expect(getStorageBreakdownResultSchema.safeParse(ergebnis).success).toBe(true);
   });
 
   it('summiert einen Verzeichnisbaum über mehrere Ebenen', async () => {
