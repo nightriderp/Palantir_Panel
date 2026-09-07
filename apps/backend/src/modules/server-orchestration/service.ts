@@ -324,11 +324,23 @@ export class ServerOrchestrationService {
 
     const resourceLimits: ServerResourceLimits = input.resourceLimits;
 
-    // Prüfung und Insert laufen in einer serialisierten Reservierung: Sonst
-    // bestünden zwei gleichzeitige Creates beide die Prüfung und überbuchten die
-    // Node (TOCTOU, WORK_STATUS.md Punkt 98, Pflichtenheft §10). Der Datensatz
-    // entsteht zuerst – der Port-Pool aus B8 ordnet Ports einer Server-Id zu,
-    // die es dafür schon geben muss – aber erst, wenn die Belegung reicht.
+    /*
+     * Prüfung und Insert laufen in einer serialisierten Reservierung: Sonst
+     * bestünden zwei gleichzeitige Creates beide die Prüfung und überbuchten die
+     * Node (TOCTOU, WORK_STATUS.md Punkt 98, Pflichtenheft §10). Der Datensatz
+     * entsteht zuerst – der Port-Pool aus B8 ordnet Ports einer Server-Id zu,
+     * die es dafür schon geben muss – aber erst, wenn die Belegung reicht.
+     *
+     * Die Portvergabe selbst bleibt bewusst **außerhalb** dieser Transaktion
+     * (Audit backend-db-04): `PortPoolService.allocateForServer()` fängt die
+     * Kollision zweier paralleler Vergaben über die Unique-Verletzung des
+     * Index ab und versucht den nächsten freien Port. Innerhalb einer
+     * Transaktion bricht ein Constraint-Fehler die ganze Transaktion ab – die
+     * Wiederholung liefe ins Leere. Ports transaktional zu vergeben verlangt
+     * deshalb einen Umbau in B8 (Savepoint je Einfügeversuch) und gehört in
+     * einen eigenen Schritt. Was hier geschlossen ist: Scheitert die Vergabe
+     * oder das Nachtragen, räumt der Rollback unten alles ab.
+     */
     const created = await this.reservation.reserve(
       {
         userId: ownerId,
@@ -356,16 +368,25 @@ export class ServerOrchestrationService {
         }),
     );
 
-    const assignedPorts = await this.deps.ports.allocate(created.id, definition, {
-      nodeId: host.id,
-      virtualHostPort: definition.supportsVirtualHostRouting
-        ? this.deps.config.virtualHostPort
-        : null,
-    });
-
-    await this.deps.repository.update(created.id, { assignedPorts });
-
     try {
+      /*
+       * Portvergabe und das Nachtragen der Zuweisung liegen **innerhalb** des
+       * Rollbacks (Audit orchestration-core-05). Vorher standen beide davor:
+       * Ein erschöpfter Port-Pool (`PORT_POOL_EXHAUSTED`) oder ein
+       * fehlgeschlagenes Update hinterließen dann genau die Leiche, die
+       * `rollbackFailedCreate()` beseitigen soll – Datensatz auf `creating`,
+       * Subdomain belegt, Ports womöglich schon vergeben. Der zweite Versuch
+       * mit derselben Adresse endete in `SUBDOMAIN_TAKEN`.
+       */
+      const assignedPorts = await this.deps.ports.allocate(created.id, definition, {
+        nodeId: host.id,
+        virtualHostPort: definition.supportsVirtualHostRouting
+          ? this.deps.config.virtualHostPort
+          : null,
+      });
+
+      await this.deps.repository.update(created.id, { assignedPorts });
+
       await this.provision(await this.requireServer(created.id), input.worldImport);
     } catch (error: unknown) {
       /*
@@ -656,7 +677,7 @@ export class ServerOrchestrationService {
     // einer die Belegung schreibt, und überbuchten die Node (TOCTOU,
     // WORK_STATUS.md Punkt 98, Pflichtenheft §10). Der Agent-Befehl und der
     // Health-Check laufen bewusst **außerhalb** der Sperre.
-    const started = await this.reservation.reserve(
+    const reserviert = await this.reservation.reserve(
       {
         userId: actorUserId,
         hostId: server.hostId,
@@ -664,8 +685,18 @@ export class ServerOrchestrationService {
         requested: server.resourceLimits,
         intent: 'start',
       },
-      (repository) => this.transition(server, { type: 'startRequested' }, repository),
+      (repository) => this.applyTransition(server, { type: 'startRequested' }, repository),
     );
+
+    /*
+     * Erst jetzt melden: Innerhalb des Callbacks ist die Transaktion noch offen
+     * (Audit event-flow-11). Ein dort abgesetztes `server.statusChanged` hätte
+     * `starting` verkündet, während ein Abbruch beim Commit den Server auf
+     * `stopped` zurückfallen lässt – und kein weiteres Frame korrigiert das.
+     */
+    reserviert.publish();
+
+    const started = reserviert.result.state;
 
     await this.finishStart(server, started, session, containerId);
 
@@ -991,9 +1022,31 @@ export class ServerOrchestrationService {
 
     assertTransitionAllowed(server.status, 'stopping');
 
+    // Container und Agent vorab prüfen: Ein Server ohne Container oder auf einer
+    // getrennten Node soll gar nicht erst auf `stopping` wechseln – sonst bliebe
+    // er in einem Zwischenzustand stehen, aus dem nur der Abgleich ihn holt.
+    this.requireContainerId(server);
+    this.deps.agents.require(server.hostId);
+
+    const stopping = await this.transition(server, { type: 'stopRequested' });
+
+    await this.dispatchStop({ ...server, ...stopping });
+
+    return this.requireServer(serverId);
+  }
+
+  /**
+   * Schickt `STOP` an den Agent und schließt den Stopp ab.
+   *
+   * Erwartet einen Server, der **bereits** auf `stopping` steht – der Übergang
+   * dorthin gehört dem Aufrufer. Ausgelagert, weil der Soll/Ist-Abgleich
+   * denselben Weg nimmt: Ist der `STOP`-Befehl mit der Verbindung verloren
+   * gegangen, wird er erneut geschickt, statt einen Zustandswechsel zu planen,
+   * den die Tabelle verbietet (Audit orchestration-core-04).
+   */
+  private async dispatchStop(server: ServerRecord): Promise<void> {
     const containerId = this.requireContainerId(server);
     const session = this.deps.agents.require(server.hostId);
-    const stopping = await this.transition(server, { type: 'stopRequested' });
 
     try {
       await session.sendCommand('STOP', server.id, { containerId });
@@ -1001,18 +1054,16 @@ export class ServerOrchestrationService {
       // antwortet nicht mehr, und jede weitere Abfrage wäre nur ein Fehlschlag
       // im Log (Gefundener Punkt 74).
       await this.applyServerQuery(server, false);
-      await this.transition({ ...server, ...stopping }, { type: 'stopSucceeded' });
-      await this.emitServerEvent('server.stopped', serverId);
+      await this.transition(server, { type: 'stopSucceeded' });
+      await this.emitServerEvent('server.stopped', server.id);
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : 'Das Stoppen ist fehlgeschlagen.';
 
-      await this.transition({ ...server, ...stopping }, { type: 'stopFailed', reason });
-      await this.emitServerEvent('server.failed', serverId, { detail: reason });
+      await this.transition(server, { type: 'stopFailed', reason });
+      await this.emitServerEvent('server.failed', server.id, { detail: reason });
 
       throw error;
     }
-
-    return this.requireServer(serverId);
   }
 
   /**
@@ -1361,6 +1412,14 @@ export class ServerOrchestrationService {
     input: CloneServerInput,
     ownerId: string,
   ): Promise<void> {
+    /*
+     * Der bereits angelegte Zielserver – gebraucht im Fehlerfall (Audit
+     * orchestration-features-04). Bleibt `null`, solange `createServerInternal`
+     * nicht durch ist; scheitert das Anlegen selbst, hat sein Rollback den
+     * Datensatz schon entfernt.
+     */
+    let ziel: ServerRecord | null = null;
+
     try {
       this.advanceCloneJob(jobId, {
         status: 'running',
@@ -1383,6 +1442,8 @@ export class ServerOrchestrationService {
         ownerId,
         source.id,
       );
+
+      ziel = clone;
 
       this.advanceCloneJob(jobId, {
         targetServerId: clone.id,
@@ -1411,16 +1472,65 @@ export class ServerOrchestrationService {
       }
     } catch (error: unknown) {
       const grund = error instanceof Error ? error.message : 'Unbekannter Fehler.';
+
+      /*
+       * Der Zielserver darf nicht unauffällig stehen bleiben (Audit
+       * orchestration-features-04): Der Klon-Auftrag ist nach 15 Minuten
+       * vergessen, danach deutete nichts mehr darauf hin, dass diesem Server
+       * die Welt fehlt – der Nutzer startet ihn und spielt auf leerer Welt
+       * weiter.
+       */
+      if (ziel !== null) {
+        await this.markCloneTargetFailed(ziel, grund);
+      }
+
       const gescheitert = this.cloneJobs.finish(jobId, 'failed', grund);
 
       this.deps.log.error(
-        { jobId, sourceServerId: source.id, error: grund },
+        { jobId, sourceServerId: source.id, targetServerId: ziel?.id ?? null, error: grund },
         'Klon fehlgeschlagen',
       );
 
       if (gescheitert !== null) {
         this.publishCloneJob(gescheitert);
       }
+    }
+  }
+
+  /**
+   * Markiert einen Klon, dessen Weltdaten-Übernahme gescheitert ist, als
+   * `error` – mit einem Hinweis, der den Grund benennt.
+   *
+   * Bewusst **kein** Löschen: Auf der Node liegen bereits Container und
+   * Datenordner, und je nachdem, wie weit `RESTORE_BACKUP` gekommen ist, auch
+   * schon Teile der Welt. Sie ungefragt wegzuräumen wäre der schlechtere
+   * Eingriff – dieselbe Begründung wie an `rollbackFailedCreate()`. Der Nutzer
+   * sieht den Fehlerzustand samt Meldung und entscheidet selbst.
+   *
+   * Scheitert das Markieren, bleibt es beim Log: Der Klon-Auftrag ist die
+   * eigentliche Antwort auf den Vorgang, und der wird ohnehin als `failed`
+   * gemeldet.
+   */
+  private async markCloneTargetFailed(clone: ServerRecord, grund: string): Promise<void> {
+    const hinweis = `Die Weltdaten des Ursprungsservers konnten nicht übernommen werden: ${grund} Der Server ist angelegt, seine Welt aber leer.`;
+
+    try {
+      const aktuell = await this.deps.repository.findById(clone.id);
+
+      if (aktuell === null) {
+        return;
+      }
+
+      await this.transition(aktuell, { type: 'failed', reason: hinweis });
+      await this.emitServerEvent('server.failed', aktuell.id, { detail: hinweis });
+    } catch (error: unknown) {
+      this.deps.log.warn(
+        {
+          serverId: clone.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Gescheiterter Klon konnte nicht als fehlerhaft markiert werden',
+      );
     }
   }
 
@@ -2289,9 +2399,34 @@ export class ServerOrchestrationService {
           });
 
           return;
-        case 'markStopped':
-          await this.transition(server, { type: 'observedStopped', reason: action.reason });
+        case 'markStopped': {
+          /*
+           * Aus `running` und `starting` erlaubt die Tabelle `stopped` nur über
+           * `stopping` (Audit orchestration-core-04). Der Plan sagt, ob der
+           * Zwischenschritt nötig ist; beide Schritte sind zulässige Übergänge.
+           */
+          let aktuell = server;
+
+          if (action.viaStopping) {
+            const zwischen = await this.transition(server, { type: 'stopRequested' });
+
+            aktuell = { ...server, ...zwischen };
+          }
+
+          await this.transition(aktuell, { type: 'observedStopped', reason: action.reason });
           await this.emitServerEvent('server.stopped', server, { detail: action.reason });
+
+          return;
+        }
+        case 'retryStop':
+          /*
+           * Der Server soll gestoppt werden, der Befehl ist aber mit der
+           * Verbindung verloren gegangen. Kein Zustandswechsel – der Zielzustand
+           * steht bereits in der Datenbank; es fehlt allein der Befehl an den
+           * Homeserver (Audit orchestration-core-04).
+           */
+          this.deps.log.info({ serverId: server.id }, action.reason);
+          await this.dispatchStop(server);
 
           return;
         case 'markMissing':
@@ -2361,6 +2496,39 @@ export class ServerOrchestrationService {
     event: ServerLifecycleEvent,
     repository: ServerRepository = this.deps.repository,
   ): Promise<ReturnType<typeof applyLifecycleEvent>> {
+    const { result, publish } = await this.applyTransition(server, event, repository);
+
+    publish();
+
+    return result;
+  }
+
+  /**
+   * Kern jedes Zustandswechsels: Ereignis anwenden, bedingt fortschreiben,
+   * Meldung **vorbereiten**.
+   *
+   * Getrennt von {@link transitionFull}, weil `server.statusChanged` erst nach
+   * dem Commit hinausgehen darf (Audit event-flow-11). Läuft der Wechsel
+   * innerhalb der Kapazitätsreservierung, ist die Zeile beim Rückkehren aus dem
+   * Callback noch ungeschrieben – ein dort abgesetztes Frame hätte jedem
+   * Browser `starting` gezeigt, während ein Abbruch der Transaktion die
+   * Datenbank auf `stopped` zurückfallen lässt. Der Aufrufer ruft `publish()`
+   * deshalb erst, wenn die Transaktion durch ist.
+   *
+   * Das Fortschreiben selbst ist bedingt (`persistLifecycle` mit erwartetem
+   * Zustand, Audit orchestration-core-07): Die State Machine rechnet gegen den
+   * geladenen Datensatz; hat ihn zwischenzeitlich jemand anders weitergeschaltet,
+   * endet dieser Wechsel mit `SERVER_STATE_CONFLICT` statt den fremden zu
+   * überschreiben.
+   */
+  private async applyTransition(
+    server: ServerRecord,
+    event: ServerLifecycleEvent,
+    repository: ServerRepository = this.deps.repository,
+  ): Promise<{
+    readonly result: ReturnType<typeof applyLifecycleEvent>;
+    readonly publish: () => void;
+  }> {
     const result = applyLifecycleEvent(
       {
         status: server.status,
@@ -2373,16 +2541,19 @@ export class ServerOrchestrationService {
       { now: this.now(), crashLoopPolicy: this.deps.config.crashLoopPolicy },
     );
 
-    await repository.persistLifecycle(server.id, result.state);
+    await repository.persistLifecycle(server.id, result.state, server.status);
 
-    this.deps.events.emit('server.statusChanged', {
-      serverId: server.id,
-      from: server.status,
-      to: result.state.status,
-      statusMessage: result.state.statusMessage,
-    });
-
-    return result;
+    return {
+      result,
+      publish: (): void => {
+        this.deps.events.emit('server.statusChanged', {
+          serverId: server.id,
+          from: server.status,
+          to: result.state.status,
+          statusMessage: result.state.statusMessage,
+        });
+      },
+    };
   }
 
   private requireContainerId(server: ServerRecord): string {

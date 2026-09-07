@@ -21,6 +21,7 @@ import {
   type ResourceLowEvent,
   type ServerMemberLevel,
   type ServerResourceLimits,
+  type ServerStatus,
 } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import {
@@ -415,10 +416,19 @@ class SweepRepository implements ServerRepository {
     return Promise.resolve(hostId === this.server.hostId ? [this.server] : []);
   }
 
-  persistLifecycle(id: string, data: PersistLifecycleData): Promise<void> {
-    if (id === this.server.id) {
-      this.server = { ...this.server, ...data };
+  /** Bedingtes Fortschreiben wie im Betrieb (orchestration-core-07). */
+  persistLifecycle(
+    id: string,
+    data: PersistLifecycleData,
+    expectedStatus: ServerStatus,
+  ): Promise<void> {
+    if (id !== this.server.id || this.server.status !== expectedStatus) {
+      return Promise.reject(
+        new Error(`Unerwarteter Ausgangszustand beim Fortschreiben von ${id}.`),
+      );
     }
+
+    this.server = { ...this.server, ...data };
 
     return Promise.resolve();
   }

@@ -17,6 +17,7 @@ import { type ServerAutoShutdown, type ServerPortAssignment } from './types.js';
 import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
 import { gameServers, hostNodes, serverMembers, serverPins, users } from '../../db/schema.js';
+import { ServerOrchestrationError } from './errors.js';
 
 /** Ein Gameserver, wie ihn der Dienst braucht. */
 export interface ServerRecord {
@@ -114,7 +115,26 @@ export interface ServerRepository {
   isSubdomainTaken(subdomain: string, excludeServerId?: string): Promise<boolean>;
   create(data: CreateServerData): Promise<ServerRecord>;
   update(id: string, data: UpdateServerData): Promise<void>;
-  persistLifecycle(id: string, data: PersistLifecycleData): Promise<void>;
+  /**
+   * Schreibt einen Zustandswechsel fort – **nur**, solange der Server noch in
+   * `expectedStatus` steht (Compare-and-Swap, Audit orchestration-core-07).
+   *
+   * Die State Machine rechnet gegen den Datensatz, den der Aufrufer geladen
+   * hat. Zwischen Lesen und Schreiben kann ein zweiter Vorgang denselben Server
+   * bereits weitergeschaltet haben – zwei gleichzeitige „Start"-Klicks, ein Stopp
+   * und ein zeitgleich eintreffendes `CRASHED`. Ohne Bedingung gewönne schlicht
+   * der spätere Schreibvorgang, obwohl sein Ausgangszustand nicht mehr stimmt.
+   *
+   * Passt der Zustand nicht mehr, wirft die Umsetzung `SERVER_STATE_CONFLICT`.
+   * Genau denselben Fehlercode liefert auch die Übergangstabelle – die
+   * Aufrufer, die eine überholte Beobachtung tolerieren (Agent-Ereignisse,
+   * Soll/Ist-Abgleich), behandeln damit beide Fälle gleich.
+   */
+  persistLifecycle(
+    id: string,
+    data: PersistLifecycleData,
+    expectedStatus: ServerStatus,
+  ): Promise<void>;
   delete(id: string): Promise<void>;
   listMembers(serverId: string): Promise<readonly ServerMemberRecord[]>;
   memberLevel(serverId: string, userId: string): Promise<ServerMemberLevel | null>;
@@ -366,8 +386,19 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
       await db.update(gameServers).set(values).where(eq(gameServers.id, id));
     },
 
-    async persistLifecycle(id: string, data: PersistLifecycleData): Promise<void> {
-      await db
+    async persistLifecycle(
+      id: string,
+      data: PersistLifecycleData,
+      expectedStatus: ServerStatus,
+    ): Promise<void> {
+      /*
+       * Bedingtes UPDATE statt „letzter gewinnt": Die Zeile wird nur
+       * fortgeschrieben, solange sie noch in dem Zustand steht, aus dem der
+       * Übergang berechnet wurde. Postgres wertet die WHERE-Bedingung auf der
+       * gesperrten Zeile aus – zwei gleichzeitige Wechsel werden dadurch
+       * serialisiert, und der zweite findet den erwarteten Zustand nicht mehr.
+       */
+      const geschrieben = await db
         .update(gameServers)
         .set({
           status: data.status,
@@ -377,7 +408,16 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
           crashTimestamps: [...data.crashTimestamps],
           updatedAt: new Date(),
         })
-        .where(eq(gameServers.id, id));
+        .where(and(eq(gameServers.id, id), eq(gameServers.status, expectedStatus)))
+        .returning({ id: gameServers.id });
+
+      if (geschrieben.length === 0) {
+        throw new ServerOrchestrationError(
+          'SERVER_STATE_CONFLICT',
+          'Der Zustand des Servers hat sich zwischenzeitlich geändert.',
+          { serverId: id, expected: expectedStatus, to: data.status },
+        );
+      }
     },
 
     async delete(id: string): Promise<void> {

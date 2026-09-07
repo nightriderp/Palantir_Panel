@@ -5,9 +5,19 @@
  * während der Trennung abgestürzt ist".
  */
 
-import { type AgentContainerState, type AgentContainerStatus } from '@palantir/contracts';
+import {
+  type AgentContainerState,
+  type AgentContainerStatus,
+  AGENT_CONTAINER_STATUSES,
+  SERVER_STATUSES,
+  isAllowedServerStatusTransition,
+} from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
-import { type ExpectedServer, planReconciliation } from './reconciliation.js';
+import {
+  type ExpectedServer,
+  planReconciliation,
+  reconciliationTargetStatuses,
+} from './reconciliation.js';
 
 const OBSERVED_AT = '2026-08-26T12:00:00.000Z';
 
@@ -111,11 +121,40 @@ describe('Absturz während der Trennung (Pflichtenheft §2.2)', () => {
 describe('Container läuft, Datenbank sagt etwas anderes', () => {
   it('prüft die Erreichbarkeit statt den Server einfach auf running zu setzen', () => {
     // `running` setzt einen bestandenen Health-Check voraus (Pflichtenheft §9).
-    for (const status of ['starting', 'stopping', 'stopped', 'creating', 'error'] as const) {
+    for (const status of ['starting', 'stopped', 'error', 'crashed'] as const) {
       const plan = planReconciliation([expected({ status })], [observed({ status: 'running' })]);
 
       expect(plan.actions[0]?.kind).toBe('verifyHealth');
     }
+  });
+
+  it('schickt bei stopping den verlorenen Stopp-Befehl erneut', () => {
+    // `stopping → starting` verbietet die Tabelle; der Zielzustand steht bereits
+    // in der Datenbank, es fehlt allein der Befehl (orchestration-core-04).
+    const plan = planReconciliation(
+      [expected({ status: 'stopping' })],
+      [observed({ status: 'running' })],
+    );
+
+    expect(plan.actions).toEqual([
+      {
+        kind: 'retryStop',
+        serverId: 'server-1',
+        reason:
+          'Der Stopp-Befehl ging durch die Trennung verloren; der Container läuft noch und wird erneut gestoppt.',
+      },
+    ]);
+  });
+
+  it('schließt bei creating zuerst das Anlegen ab', () => {
+    // `creating → starting` verbietet die Tabelle. Der Abschluss des Anlegens
+    // ist `creating → stopped`; der nächste Bericht prüft dann die Erreichbarkeit.
+    const plan = planReconciliation(
+      [expected({ status: 'creating' })],
+      [observed({ status: 'running' })],
+    );
+
+    expect(plan.actions[0]).toMatchObject({ kind: 'markStopped', viaStopping: false });
   });
 
   it('behandelt restarting wie laufend', () => {
@@ -140,17 +179,19 @@ describe('Container existiert, läuft aber nicht', () => {
         kind: 'markStopped',
         serverId: 'server-1',
         reason: 'Der Container ist angelegt und bereit.',
+        viaStopping: false,
       },
     ]);
   });
 
-  it('korrigiert einen als laufend geführten, pausierten Container', () => {
+  it('korrigiert einen als laufend geführten, pausierten Container über stopping', () => {
     const plan = planReconciliation(
       [expected({ status: 'running' })],
       [observed({ status: 'paused' })],
     );
 
-    expect(plan.actions[0]?.kind).toBe('markStopped');
+    // `running → stopped` verbietet die Tabelle; der Weg führt über `stopping`.
+    expect(plan.actions[0]).toMatchObject({ kind: 'markStopped', viaStopping: true });
   });
 });
 
@@ -217,6 +258,62 @@ describe('Verwaiste Container', () => {
     const plan = planReconciliation([expected()], [observed()]);
 
     expect(plan.actions.filter((action) => action.kind === 'reportOrphan')).toEqual([]);
+  });
+});
+
+describe('Der Plan enthält nur Übergänge, die die Tabelle erlaubt (orchestration-core-04)', () => {
+  /*
+   * Der Kernpunkt des Findings: Plan und ausführbare Übergänge müssen
+   * gegeneinander geprüft werden. Bis W2-10 plante der Abgleich Korrekturen wie
+   * `stopping → starting` oder `running → stopped`, die
+   * `SERVER_STATUS_TRANSITIONS` verbietet – die Ausführung scheiterte still im
+   * Log, und der Server hing fest.
+   *
+   * Dieser Test fährt **alle** Kombinationen aus Soll-Zustand und gemeldetem
+   * Container-Zustand ab und läuft die Zustandskette jeder geplanten Maßnahme
+   * gegen die Tabelle aus den Contracts.
+   */
+  it('führt jede Maßnahme über zulässige Zustände', () => {
+    for (const status of SERVER_STATUSES) {
+      for (const containerStatus of AGENT_CONTAINER_STATUSES) {
+        for (const exitCode of [0, 1, null]) {
+          const plan = planReconciliation(
+            [expected({ status })],
+            [observed({ status: containerStatus, exitCode })],
+          );
+
+          for (const action of plan.actions) {
+            let von = status;
+
+            for (const nach of reconciliationTargetStatuses(action)) {
+              // Ein Übergang auf den eigenen Zustand überspringt der Dienst
+              // (`verifyHealth` aus `starting`) – alles andere muss zulässig sein.
+              if (nach !== von) {
+                expect({
+                  status,
+                  containerStatus,
+                  exitCode,
+                  kind: action.kind,
+                  von,
+                  nach,
+                  erlaubt: isAllowedServerStatusTransition(von, nach),
+                }).toMatchObject({ erlaubt: true });
+              }
+
+              von = nach;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('lässt einen Server, der bereits auf error steht, ohne Container in Ruhe', () => {
+    // `error → error` ist ein Selbstübergang und damit verboten; markiert ist
+    // der Server ohnehin schon.
+    const plan = planReconciliation([expected({ status: 'error' })], []);
+
+    expect(plan.actions).toEqual([]);
   });
 });
 
