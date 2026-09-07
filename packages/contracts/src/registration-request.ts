@@ -13,17 +13,27 @@
  * beiden Aktionen „freigeben" und „sperren".
  */
 
+import { AUTH_METHOD_TYPES, type AuthMethodType } from './auth.js';
 import { type ResourceQuotaSlot } from './resources.js';
 
-/** Provider einer verknüpften Login-Methode (Pflichtenheft §6, `AuthMethod.type`). */
-export type LinkedAccountProvider = 'password' | 'discord' | 'steam' | 'twitch';
+/**
+ * Provider einer verknüpften Login-Methode (Pflichtenheft §6, `AuthMethod.type`).
+ *
+ * Bewusst ein Alias auf {@link AuthMethodType} statt einer zweiten Literalliste
+ * (Audit-Fundstelle contracts-validation-11): Es ist dieselbe Spalte derselben
+ * Entität, nur aus der Admin-Sicht betrachtet. Der Name bleibt erhalten, weil
+ * er in der Warteliste die Lesbarkeit trägt – zwei Listen zu pflegen, die
+ * stillschweigend auseinanderlaufen können, tut er nicht.
+ */
+export type LinkedAccountProvider = AuthMethodType;
 
-export const LINKED_ACCOUNT_PROVIDERS = [
-  'password',
-  'discord',
-  'steam',
-  'twitch',
-] as const satisfies readonly LinkedAccountProvider[];
+/**
+ * Anzeigereihenfolge der Provider – dieselbe Quelle wie {@link AUTH_METHOD_TYPES}.
+ *
+ * Kommt in `auth.ts` ein fünfter Provider dazu, kennt ihn die Warteliste ohne
+ * weiteres Zutun.
+ */
+export const LINKED_ACCOUNT_PROVIDERS = AUTH_METHOD_TYPES;
 
 export function isLinkedAccountProvider(value: string): value is LinkedAccountProvider {
   return (LINKED_ACCOUNT_PROVIDERS as readonly string[]).includes(value);

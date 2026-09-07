@@ -6,7 +6,12 @@
  * dieselben Schemas – kein zweiter, abweichender Regelsatz.
  */
 
-import { BACKUP_STATUSES, BACKUP_TYPES } from '@palantir/contracts';
+import {
+  BACKUP_STATUSES,
+  BACKUP_TYPES,
+  type BackupScheduleDto,
+  type BackupSchedulePermissions,
+} from '@palantir/contracts';
 import { z } from 'zod';
 import { idSchema } from './common.js';
 
@@ -62,6 +67,37 @@ export const backupOverviewQuerySchema = z.object({
   serverId: idSchema.optional(),
   type: backupTypeSchema.optional(),
   status: backupStatusSchema.optional(),
+});
+
+// -- Antwort-Schemas ---------------------------------------------------------
+
+/** Rechte an einem Backup-Zeitplan (`BackupSchedulePermissions`). */
+export const backupSchedulePermissionsSchema: z.ZodType<BackupSchedulePermissions> = z.object({
+  canView: z.boolean(),
+  canEdit: z.boolean(),
+});
+
+/**
+ * Backup-Zeitplan eines Servers – Gegenstück zu `BackupScheduleDto`.
+ *
+ * Ergänzt aus der Audit-Fundstelle contracts-validation-03: `stopServer` wurde
+ * seit jeher gespeichert, aber nie ausgeliefert. `updateBackupScheduleInput`
+ * ist ein Voll-Ersatz mit Standard `false` – ohne das Feld im DTO konnte kein
+ * Formular den Ist-Zustand anzeigen oder ihn beim Umschalten von `enabled`
+ * wieder mitschicken, und die Einstellung „sauberer Spielstand" ging still
+ * verloren. Optional, damit ältere Antworten ohne das Feld weiter durchgehen.
+ */
+export const backupScheduleDtoSchema: z.ZodType<BackupScheduleDto> = z.object({
+  serverId: idSchema,
+  enabled: z.boolean(),
+  cronExpression: cronExpressionSchema,
+  stopServer: z.boolean().optional(),
+  lastRunAt: z.string().datetime({ offset: true }).nullable(),
+  nextRunAt: z.string().datetime({ offset: true }).nullable(),
+  lastBackupId: idSchema.nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true }),
+  permissions: backupSchedulePermissionsSchema,
 });
 
 export type CreateBackupInput = z.infer<typeof createBackupInputSchema>;

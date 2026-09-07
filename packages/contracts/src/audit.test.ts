@@ -38,6 +38,13 @@ describe('Audit-Log-Contract (Pflichtenheft §6)', () => {
     expect(isAuditAction('user.ownerGranted')).toBe(true);
   });
 
+  it('kennt Instanz-Einstellungen und abgelehnte Kontingent-Anfragen (Audit W2-4)', () => {
+    expect(isAuditAction('instance.settingsChanged')).toBe(true);
+    expect(isAuditAction('quotaRequest.rejected')).toBe(true);
+    expect(isAuditTargetType('instanceSettings')).toBe(true);
+    expect(isAuditTargetType('quotaRequest')).toBe(true);
+  });
+
   it('erkennt unbekannte Aktionen und Zielarten', () => {
     expect(isAuditAction('user.approved')).toBe(true);
     expect(isAuditAction('user.geloescht')).toBe(false);

@@ -78,16 +78,42 @@ export const subdomainSchema = z
  * Backend gegen Nutzer-Kontingent und freie Node-Kapazität
  * (`RESOURCE_LIMIT_EXCEEDED`).
  */
+// Grenzwerte als benannte Konstanten (Audit-Fundstelle frontend-lib-09): Das
+// Frontend baut daraus Regler und Eingabefelder. Solange die Zahlen nur als
+// Literale im Schema standen, hat die Oberfläche eigene, engere Werte geraten –
+// ein per API angelegter Server mit 64 GB RAM stand am rechten Anschlag, und
+// jede Berührung des Reglers hat den Wert beim Speichern stillschweigend
+// gekappt. Wer die Grenzen anzeigt, importiert sie ab jetzt von hier.
+
+/** Untergrenze Arbeitsspeicher je Server in MiB – darunter startet nichts. */
+export const SERVER_RAM_MIN_MB = 512;
+
+/** Obergrenze Arbeitsspeicher je Server in MiB (256 GB). */
+export const SERVER_RAM_MAX_MB = 262_144;
+
+/** Untergrenze CPU-Anteil je Server in Kernen. */
+export const SERVER_CPU_MIN_CORES = 0.5;
+
+/** Obergrenze CPU-Anteil je Server in Kernen. */
+export const SERVER_CPU_MAX_CORES = 64;
+
+/** Untergrenze Speicherplatz je Server in MiB (1 GB). */
+export const SERVER_DISK_MIN_MB = 1024;
+
+/** Obergrenze Speicherplatz je Server in MiB (4 TB). */
+export const SERVER_DISK_MAX_MB = 4_194_304;
+
 export const serverResourceLimitsSchema = z.object({
   ramMb: megabytesSchema
-    .min(512, { message: 'Mindestens 512 MB Arbeitsspeicher.' })
-    .max(262144, { message: 'Höchstens 256 GB Arbeitsspeicher.' }),
-  cpuCores: cpuCoresSchema.refine((value) => value >= 0.5 && value <= 64, {
-    message: 'Zwischen einem halben und 64 CPU-Kernen.',
-  }),
+    .min(SERVER_RAM_MIN_MB, { message: 'Mindestens 512 MB Arbeitsspeicher.' })
+    .max(SERVER_RAM_MAX_MB, { message: 'Höchstens 256 GB Arbeitsspeicher.' }),
+  cpuCores: cpuCoresSchema.refine(
+    (value) => value >= SERVER_CPU_MIN_CORES && value <= SERVER_CPU_MAX_CORES,
+    { message: 'Zwischen einem halben und 64 CPU-Kernen.' },
+  ),
   diskMb: megabytesSchema
-    .min(1024, { message: 'Mindestens 1 GB Speicherplatz.' })
-    .max(4194304, { message: 'Höchstens 4 TB Speicherplatz.' }),
+    .min(SERVER_DISK_MIN_MB, { message: 'Mindestens 1 GB Speicherplatz.' })
+    .max(SERVER_DISK_MAX_MB, { message: 'Höchstens 4 TB Speicherplatz.' }),
 });
 
 /** Startparameter als eine Zeile (Lastenheft §3.3). */

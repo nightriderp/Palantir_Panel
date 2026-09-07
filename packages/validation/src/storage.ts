@@ -10,7 +10,6 @@
 
 import { STORAGE_ENTRY_KINDS } from '@palantir/contracts';
 import { z } from 'zod';
-import { idSchema } from './common.js';
 import { isoTimestampSchema } from './agent-protocol.js';
 
 export const storageEntryKindSchema = z.enum(STORAGE_ENTRY_KINDS);
@@ -30,7 +29,19 @@ export const agentStorageEntrySchema = z.object({
   kind: agentStorageEntryKindSchema,
   path: z.string().min(1).nullable(),
   sizeBytes: byteSizeSchema,
-  serverId: idSchema.nullable(),
+  /**
+   * Ordnername, aus dem der Agent den Server ableitet – **keine** UUID-Pflicht
+   * (Audit-Fundstelle contracts-validation-02).
+   *
+   * Der Vertrag verspricht hier `string | null` („aus dem Ordnernamen; null,
+   * wenn nicht zuordenbar"), und der Agent hält sich daran: Er meldet den
+   * Namen des Elternordners, wie er auf der Platte steht. Ein von Hand
+   * angelegter Ordner wie `alt-server` hat dem Schema früher das **gesamte**
+   * Scan-Ergebnis zerlegt – der Storage-Explorer der Node war dann komplett
+   * unbenutzbar. Ob der Name zu einem bekannten Server gehört, entscheidet das
+   * Backend beim Zuordnen, nicht das Wire-Format.
+   */
+  serverId: z.string().min(1).nullable(),
   backupFileName: z.string().min(1).nullable(),
   imageId: z.string().min(1).nullable(),
   imageTag: z.string().min(1).nullable(),

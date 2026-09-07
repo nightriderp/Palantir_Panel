@@ -54,6 +54,18 @@ export interface BackupScheduleDto {
    * Zeitzone des Backends. Auswertung im Backend, an genau einer Stelle.
    */
   cronExpression: string;
+  /**
+   * Ob der Server für einen sauberen Spielstand vor der Sicherung kurz
+   * angehalten wird (Lastenheft §3.3).
+   *
+   * Ergänzt aus der Audit-Fundstelle contracts-validation-03 und optional,
+   * damit bestehende Aufrufer unverändert bleiben: Der Wert wird seit jeher
+   * gespeichert, tauchte aber im DTO nicht auf. `updateBackupScheduleInput` ist
+   * ein Voll-Ersatz mit Standard `false` – ohne dieses Feld konnte kein Client
+   * den Ist-Zustand anzeigen oder beim Umschalten von `enabled` wieder
+   * mitschicken, und die Einstellung ging still verloren.
+   */
+  stopServer?: boolean;
   /** ISO-8601-Zeitstempel des letzten Laufs; `null`, solange nie gelaufen. */
   lastRunAt: string | null;
   /** Nächster Lauf laut Cron-Ausdruck (ISO-8601); `null`, wenn abgeschaltet. */

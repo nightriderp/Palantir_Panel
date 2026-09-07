@@ -2,6 +2,12 @@ import { RESERVED_SUBDOMAINS } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { cronExpressionSchema } from './backups.js';
 import {
+  SERVER_CPU_MAX_CORES,
+  SERVER_CPU_MIN_CORES,
+  SERVER_DISK_MAX_MB,
+  SERVER_DISK_MIN_MB,
+  SERVER_RAM_MAX_MB,
+  SERVER_RAM_MIN_MB,
   cloneServerInputSchema,
   consoleCommandSchema,
   createServerInputSchema,
@@ -78,6 +84,34 @@ describe('serverResourceLimitsSchema', () => {
         diskMb: 10240,
       },
     );
+  });
+
+  it('führt die exportierten Grenzen und das Schema an einer Quelle (Audit frontend-lib-09)', () => {
+    // Das Frontend baut daraus Regler; laufen Konstante und Schema
+    // auseinander, kappt die Oberfläche gültige Werte beim Speichern.
+    const anDenGrenzen = {
+      ramMb: SERVER_RAM_MAX_MB,
+      cpuCores: SERVER_CPU_MAX_CORES,
+      diskMb: SERVER_DISK_MAX_MB,
+    };
+    const anDenUntergrenzen = {
+      ramMb: SERVER_RAM_MIN_MB,
+      cpuCores: SERVER_CPU_MIN_CORES,
+      diskMb: SERVER_DISK_MIN_MB,
+    };
+
+    expect(serverResourceLimitsSchema.parse(anDenGrenzen)).toEqual(anDenGrenzen);
+    expect(serverResourceLimitsSchema.parse(anDenUntergrenzen)).toEqual(anDenUntergrenzen);
+    expect(
+      serverResourceLimitsSchema.safeParse({ ...anDenGrenzen, ramMb: SERVER_RAM_MAX_MB + 1 })
+        .success,
+    ).toBe(false);
+    expect(
+      serverResourceLimitsSchema.safeParse({
+        ...anDenUntergrenzen,
+        diskMb: SERVER_DISK_MIN_MB - 1,
+      }).success,
+    ).toBe(false);
   });
 
   it('lehnt Werte unterhalb der Untergrenzen ab', () => {
