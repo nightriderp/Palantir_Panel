@@ -183,6 +183,13 @@
       "when": 1788762648097,
       "tag": "0025_backup_zeitplan_konsistenz",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788765263725,
+      "tag": "0026_konto_loeschung_kaskaden",
+      "breakpoints": true
     }
   ]
 }

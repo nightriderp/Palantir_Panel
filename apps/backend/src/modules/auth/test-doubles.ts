@@ -9,22 +9,48 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { GUEST_ROLE_NAME, type Permission } from '@palantir/contracts';
+import {
+  type BackupStatus,
+  GUEST_ROLE_NAME,
+  PENDING_BACKUP_STATUSES,
+  type Permission,
+} from '@palantir/contracts';
 import type { RoleRecord, RoleRepository } from '../rbac/index.js';
 import { AuthError } from './errors.js';
 import type { AuthMethodRecord, AuthRepository, SessionRecord, UserRecord } from './types.js';
 import type { ProviderAdapter, ProviderIdentity, ProviderRegistry } from './providers.js';
 
+/** Gameserver, wie ihn der Fake für die Löschsperre kennt (Audit W2-11). */
+export interface FakeOwnedServer {
+  readonly ownerId: string;
+}
+
+/** Sicherung, wie sie der Fake für die Löschsperre kennt (Audit W2-11). */
+export interface FakeOwnedBackup {
+  readonly ownerId: string;
+  readonly status: BackupStatus;
+}
+
 export interface FakeAuthRepository extends AuthRepository {
   readonly users: UserRecord[];
   readonly methods: AuthMethodRecord[];
   readonly sessions: SessionRecord[];
+  /**
+   * Fremde Tabellen, soweit die Konto-Löschung sie sieht (Audit W2-11).
+   *
+   * Bewusst nur das, was `countAccountBlockers` zählt – der Fake bildet die
+   * Löschsperre nach, nicht die Arbeitspakete B3 und B5.
+   */
+  readonly ownedServers: FakeOwnedServer[];
+  readonly ownedBackups: FakeOwnedBackup[];
 }
 
 export function createFakeAuthRepository(): FakeAuthRepository {
   const users: UserRecord[] = [];
   const methods: AuthMethodRecord[] = [];
   const sessions: SessionRecord[] = [];
+  const ownedServers: FakeOwnedServer[] = [];
+  const ownedBackups: FakeOwnedBackup[] = [];
 
   const sameName = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
@@ -32,6 +58,8 @@ export function createFakeAuthRepository(): FakeAuthRepository {
     users,
     methods,
     sessions,
+    ownedServers,
+    ownedBackups,
 
     findUserById: (id) => Promise.resolve(users.find((user) => user.id === id) ?? null),
 
@@ -121,6 +149,25 @@ export function createFakeAuthRepository(): FakeAuthRepository {
     },
 
     deleteUser: (id) => {
+      /*
+       * Bildet `ON DELETE RESTRICT` nach (`game_servers.owner_id`,
+       * `backups.owner_id` seit Migration 0026): Die Datenbank lehnt die
+       * Löschung ab, solange etwas daran hängt – mit einem rohen Fehler, ohne
+       * Katalog-Code. Genau davor soll die Vorprüfung im Dienst stehen; ohne
+       * diesen Nachbau ließe sich nicht zeigen, dass sie greift.
+       */
+      if (ownedServers.some((server) => server.ownerId === id)) {
+        return Promise.reject(
+          new Error('update or delete on table "users" violates foreign key constraint'),
+        );
+      }
+
+      if (ownedBackups.some((backup) => backup.ownerId === id)) {
+        return Promise.reject(
+          new Error('update or delete on table "users" violates foreign key constraint'),
+        );
+      }
+
       // Bildet ON DELETE CASCADE nach (Pflichtenheft §6).
       for (const list of [users, methods, sessions] as { userId?: string; id: string }[][]) {
         for (let index = list.length - 1; index >= 0; index -= 1) {
@@ -134,6 +181,17 @@ export function createFakeAuthRepository(): FakeAuthRepository {
 
       return Promise.resolve();
     },
+
+    countAccountBlockers: (userId) =>
+      Promise.resolve({
+        servers: ownedServers.filter((server) => server.ownerId === userId).length,
+        backups: ownedBackups.filter((backup) => backup.ownerId === userId).length,
+        activeBackups: ownedBackups.filter(
+          (backup) =>
+            backup.ownerId === userId &&
+            (PENDING_BACKUP_STATUSES as readonly BackupStatus[]).includes(backup.status),
+        ).length,
+      }),
 
     listAuthMethods: (userId) =>
       Promise.resolve(methods.filter((method) => method.userId === userId)),

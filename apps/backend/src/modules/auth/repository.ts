@@ -5,10 +5,12 @@
  * Methoden-Verknüpfung, Token-Rotation) liegt im Service in `service.ts`.
  */
 
-import { type AuthMethodType } from '@palantir/contracts';
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { type AuthMethodType, PENDING_BACKUP_STATUSES } from '@palantir/contracts';
+import { and, count, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index.js';
 import { authMethods, sessions } from '../../db/schema/auth.js';
+import { backups } from '../../db/schema/backups.js';
+import { gameServers } from '../../db/schema/server-orchestration.js';
 import { users } from '../../db/schema/users.js';
 import type {
   AuthMethodRecord,
@@ -157,8 +159,41 @@ export function createDrizzleAuthRepository(db: Database): AuthRepository {
 
     async deleteUser(id) {
       // `auth_methods`, `sessions` und `user_roles` hängen mit ON DELETE CASCADE
-      // am Konto und verschwinden mit (Pflichtenheft §6).
+      // am Konto und verschwinden mit (Pflichtenheft §6). `game_servers` und
+      // `backups` hängen dagegen mit RESTRICT daran – der Aufrufer prüft das
+      // vorher über `countAccountBlockers` (Audit W2-11).
       await db.delete(users).where(eq(users.id, id));
+    },
+
+    async countAccountBlockers(userId) {
+      // Zwei Abfragen statt eines Joins: `backups` und `game_servers` haben
+      // keine gemeinsame Zeile, über die sich zählen ließe – ein Join würde
+      // entweder ein Kreuzprodukt bilden oder ein `distinct` je Seite nötig
+      // machen. Beide laufen über ihren Index auf `owner_id`.
+      const [serverRow] = await db
+        .select({ anzahl: count() })
+        .from(gameServers)
+        .where(eq(gameServers.ownerId, userId));
+
+      const [backupRow] = await db
+        .select({
+          anzahl: count(),
+          // `filter (where …)` holt Gesamtzahl und laufende Läufe aus einem
+          // Durchgang; dieselbe Form wie in `backups/repository.ts`. Die
+          // Zustände kommen aus dem Vertrag, nicht aus einer zweiten Liste.
+          laufend:
+            sql<number>`count(*) filter (where ${inArray(backups.status, [...PENDING_BACKUP_STATUSES])})`.mapWith(
+              Number,
+            ),
+        })
+        .from(backups)
+        .where(eq(backups.ownerId, userId));
+
+      return {
+        servers: serverRow?.anzahl ?? 0,
+        backups: backupRow?.anzahl ?? 0,
+        activeBackups: backupRow?.laufend ?? 0,
+      };
     },
 
     async listAuthMethods(userId) {

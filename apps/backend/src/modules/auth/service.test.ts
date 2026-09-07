@@ -1127,6 +1127,120 @@ describe('Konto-Löschung (Lastenheft §3.1)', () => {
     expect(repository.users).toHaveLength(0);
     expect(repository.methods).toHaveLength(0);
     expect(repository.sessions).toHaveLength(0);
+    // Die Sitzungszeilen sind mit der Kaskade weg; die Meldung an B7 schließt
+    // die noch offenen Live-Kanäle des Kontos (Audit W2-2).
+    expect(revokedUserIds).toContain(account.id);
+  });
+
+  it('verweigert die Löschung, solange dem Konto ein Gameserver gehört', async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    repository.ownedServers.push({ ownerId: account.id });
+
+    await expectErrorCode(
+      service.deleteAccount(account.id, { confirmName: 'spieler', password: PASSWORD }),
+      'ACCOUNT_HAS_SERVERS',
+    );
+    // Ohne die Vorprüfung stünde hier der rohe Fremdschlüsselfehler des Fakes
+    // und damit ein 500 (Audit backend-db-05).
+    expect(repository.users).toHaveLength(1);
+    expect(revokedUserIds).toHaveLength(0);
+  });
+
+  it('verweigert die Löschung, solange eine Sicherung des Kontos läuft', async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    repository.ownedBackups.push({ ownerId: account.id, status: 'running' });
+
+    await expect(
+      service.deleteAccount(account.id, { confirmName: 'spieler', password: PASSWORD }),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        isAuthError(error) &&
+        error.code === 'ACCOUNT_HAS_SERVERS' &&
+        // Ein laufender Vorgang lässt sich nicht löschen – der Text sagt
+        // deshalb „warten" und nicht „zuerst löschen".
+        error.message.includes('läuft noch eine Sicherung'),
+      'ACCOUNT_HAS_SERVERS mit Hinweis auf den laufenden Vorgang',
+    );
+    expect(repository.users).toHaveLength(1);
+  });
+
+  it('verweigert die Löschung, solange eine abgeschlossene Sicherung übrig ist', async () => {
+    // Der Server ist längst gelöscht, das Backup hat ihn überlebt
+    // (`backups.server_id` wird NULL, Lastenheft §3.3) – seine Archivdatei
+    // liegt weiter auf der Node und verschwindet nur über `DELETE_BACKUP`
+    // (Audit backend-db-02).
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    repository.ownedBackups.push({ ownerId: account.id, status: 'completed' });
+
+    await expect(
+      service.deleteAccount(account.id, { confirmName: 'spieler', password: PASSWORD }),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        isAuthError(error) &&
+        error.code === 'ACCOUNT_HAS_SERVERS' &&
+        error.message.includes('noch Sicherungen'),
+      'ACCOUNT_HAS_SERVERS mit Hinweis auf die übrigen Sicherungen',
+    );
+    expect(repository.users).toHaveLength(1);
+  });
+
+  it('nennt zuerst die Server und erst danach die Sicherungen', async () => {
+    // Reihenfolge des Aufräumens: Ein gelöschter Server nimmt seine Sicherungen
+    // nicht mit, deshalb ist der Server der erste Schritt.
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    repository.ownedServers.push({ ownerId: account.id });
+    repository.ownedBackups.push({ ownerId: account.id, status: 'completed' });
+
+    await expect(
+      service.deleteAccount(account.id, { confirmName: 'spieler', password: PASSWORD }),
+    ).rejects.toSatisfy(
+      (error: unknown) => isAuthError(error) && error.message.includes('Gameserver'),
+      'Hinweis auf die Gameserver',
+    );
+  });
+
+  it('lässt fremde Server und Sicherungen die eigene Löschung nicht blockieren', async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    const fremd = await service.register(
+      { username: 'jemand.anders', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    repository.ownedServers.push({ ownerId: fremd.account.id });
+    repository.ownedBackups.push({ ownerId: fremd.account.id, status: 'running' });
+
+    await service.deleteAccount(account.id, { confirmName: 'spieler', password: PASSWORD });
+
+    expect(repository.users.map((user) => user.id)).toEqual([fremd.account.id]);
+  });
+
+  it('prüft die Löschsperre erst nach Name und Passwort', async () => {
+    // Sonst verriete die Fehlermeldung einem Fremden, wie viele Server oder
+    // Sicherungen an einem Konto hängen.
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    repository.ownedServers.push({ ownerId: account.id });
+
+    await expectErrorCode(
+      service.deleteAccount(account.id, { confirmName: 'spieler', password: 'falsches-passwort' }),
+      'AUTH_INVALID_CREDENTIALS',
+    );
   });
 
   it('verlangt den abgetippten Anzeigenamen und das Passwort', async () => {

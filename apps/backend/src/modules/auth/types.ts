@@ -87,6 +87,35 @@ export interface CreateSessionData {
 }
 
 /**
+ * Was noch am Konto hängt und seiner Löschung im Weg steht (Audit W2-11).
+ *
+ * Beide Fremdschlüssel stehen auf `ON DELETE RESTRICT`: `game_servers.owner_id`
+ * seit jeher, `backups.owner_id` seit Migration 0026. Ohne Vorprüfung endete
+ * die Selbstlöschung deshalb im rohen Postgres-Fehler 23503 und damit in einem
+ * 500 (backend-db-05); mit ihr in `ACCOUNT_HAS_SERVERS` (409) und einem Satz,
+ * der sagt, was zuerst wegmuss.
+ *
+ * Bewusst Zahlen statt Listen: Die Antwort nennt keine Namen, sie nennt den
+ * Grund – und ein `count(*)` lädt keine fremden Datensätze in ein Modul, das
+ * mit ihnen sonst nichts zu tun hat.
+ */
+export interface AccountBlockers {
+  /** Gameserver, deren Besitzer das Konto ist. */
+  readonly servers: number;
+  /** Sicherungen, deren Besitzer das Konto ist – gleich welchen Zustands. */
+  readonly backups: number;
+  /**
+   * Davon Läufe in `pending`/`running`.
+   *
+   * Eigener Wert, weil der Nutzer daran nichts ändern kann: Ein laufendes
+   * Backup lässt sich nicht löschen (`computeBackupPermissions`), es muss
+   * enden oder vom Kehraus (`sweepOrphanedRuns`) abgeräumt werden. Der
+   * Hinweistext unterscheidet deshalb „lösche zuerst" von „warte kurz".
+   */
+  readonly activeBackups: number;
+}
+
+/**
  * Persistenz des Auth-Moduls. Die Drizzle-Implementierung steht in
  * `repository.ts`.
  *
@@ -127,6 +156,17 @@ export interface AuthRepository {
    */
   setDisplayName(id: string, displayName: string): Promise<UserRecord>;
   deleteUser(id: string): Promise<void>;
+  /**
+   * Zählt, was der Selbstlöschung im Weg steht (Audit W2-11, backend-db-02/05).
+   *
+   * Liest `game_servers` und `backups` – Tabellen fremder Arbeitspakete, aber
+   * dieselbe Datenbank. Der Umweg über deren Dienste wäre teurer als der
+   * Nutzen: B1 bräuchte dann zwei weitere Abhängigkeiten, nur um zwei Zahlen zu
+   * erfahren, die es nicht bewertet, sondern nur an einen Fehlercode reicht.
+   * Dass Repositories Tabellen anderer Pakete lesen, ist im Bestand üblich
+   * (`chat/repositories.ts` liest `game_servers`).
+   */
+  countAccountBlockers(userId: string): Promise<AccountBlockers>;
 
   listAuthMethods(userId: string): Promise<AuthMethodRecord[]>;
   findAuthMethod(userId: string, type: AuthMethodType): Promise<AuthMethodRecord | null>;
