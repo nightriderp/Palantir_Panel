@@ -23,6 +23,7 @@ import {
   buildCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
+import { AGENT_FILE_CHANNEL_MAX_BYTES } from '@palantir/contracts';
 import { MAX_EXTRACTED_BYTES, type ArchiveKind, readArchive } from '../archive.js';
 import { resolveWithinRoot } from '../paths.js';
 import {
@@ -62,8 +63,13 @@ import { type TarFileInput, createTar, parseTar } from './tar.js';
  * `readFile`/`writeFile` halten den Inhalt komplett im Speicher. Der
  * vollstaendige Export der Serverdaten (Lastenheft §3.3) laeuft nicht hierueber,
  * sondern als Backup-Job in A3.
+ *
+ * Der Wert kommt aus dem Vertrag (Audit contracts-validation-12): Es ist
+ * dieselbe Grenze, gegen die das Backend puffert - vorher stand die 64 MiB
+ * zweimal als Literal im Code, und nur ein Kommentar hielt beide Seiten
+ * zusammen.
  */
-export const DEFAULT_MAX_FILE_BYTES = 64 * 1024 * 1024;
+export const DEFAULT_MAX_FILE_BYTES = AGENT_FILE_CHANNEL_MAX_BYTES;
 
 /**
  * Obergrenze fuer ein **Archiv**, das entpackt werden soll (Audit

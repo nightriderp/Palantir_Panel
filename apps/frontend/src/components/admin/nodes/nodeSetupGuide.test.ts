@@ -40,6 +40,28 @@ describe('buildNodeSetupSteps', () => {
     );
   });
 
+  it('hält den Registry-Nutzer als Platzhalter offen (Audit frontend-lib-15)', () => {
+    /*
+     * Der GHCR-Nutzername gehört dem Betreiber, nicht der Software: Vorher
+     * stand ein konkretes Konto fest im Befehl, und eine andere Installation
+     * hätte sich damit angemeldet.
+     */
+    const login = steps.find((step) => step.title.includes('Registry'));
+
+    expect(login?.code).toContain('docker login ghcr.io -u <GitHub-Nutzer>');
+    expect(login?.body).toContain('<GitHub-Nutzer>');
+
+    const eigen = buildNodeSetupSteps({
+      name: 'Homeserver',
+      wireguardIp: '10.10.0.2',
+      registryUser: 'beispiel-konto',
+    });
+    const eigenerLogin = eigen.find((step) => step.title.includes('Registry'));
+
+    expect(eigenerLogin?.code).toContain('docker login ghcr.io -u beispiel-konto');
+    expect(eigenerLogin?.code).not.toContain('<GitHub-Nutzer>');
+  });
+
   it('führt den Erreichbarkeits-Test auf der VPS aus', () => {
     // Seit der Token-Vergabe gibt es zwei Schritte auf der VPS – deshalb über
     // den Titel gesucht und nicht über die Maschine.

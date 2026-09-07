@@ -93,9 +93,20 @@ export type ServerLifecycleEvent =
    */
   | { readonly type: 'observedStopped'; readonly reason: string }
   /** Ein Vorgang ist endgültig gescheitert; der Server braucht Zuwendung. */
-  | { readonly type: 'failed'; readonly reason: string }
-  /** Ein Nutzer quittiert einen Fehler- oder Absturzzustand. */
-  | { readonly type: 'acknowledged' };
+  | { readonly type: 'failed'; readonly reason: string };
+
+/*
+ * Kein `acknowledged` (Audit orchestration-core-13). Das Quittieren eines
+ * Fehler- oder Absturzzustands war implementiert und getestet, aber weder eine
+ * Route noch ein Dienstpfad löste es je aus – toter Code in der Kernlogik.
+ *
+ * Entfernt statt angeschlossen, weil weder Lastenheft noch Pflichtenheft ein
+ * Quittieren kennen; eine Route dafür wäre ein neues Feature (CLAUDE.md §1).
+ * Aus `error`/`crashed` führt der Weg weiterhin über einen erneuten Start, und
+ * die Absturzhistorie räumt ein bestandener Health-Check ab. Soll das Quittieren
+ * kommen, gehört es zuerst ins Lastenheft und dann als Ereignis **mit** Route
+ * zurück.
+ */
 
 export interface TransitionOptions {
   /** Zeitpunkt des Übergangs. Wird hereingereicht, damit Tests ihn festlegen können. */
@@ -168,7 +179,6 @@ function targetStatusFor(event: ServerLifecycleEvent): ServerStatus {
       return 'stopping';
     case 'stopSucceeded':
     case 'observedStopped':
-    case 'acknowledged':
       return 'stopped';
     case 'stopFailed':
     case 'failed':
@@ -246,16 +256,6 @@ export function applyLifecycleEvent(
         lastStartedAt: now.toISOString(),
         crashTimestamps: clearCrashHistory(),
       },
-      crashLoopTripped: false,
-      shouldAutoRestart: false,
-      nextRestartAttempt: 0,
-    };
-  }
-
-  if (event.type === 'acknowledged') {
-    // Quittieren räumt die Absturzhistorie ab – jemand hat hingesehen.
-    return {
-      state: { ...base, crashTimestamps: clearCrashHistory() },
       crashLoopTripped: false,
       shouldAutoRestart: false,
       nextRestartAttempt: 0,

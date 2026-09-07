@@ -1,4 +1,4 @@
-import { ok } from '@palantir/contracts';
+import { fail, ok } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { CorrelationStore } from './correlation-store.js';
 
@@ -71,16 +71,28 @@ describe('Korrelations-ID-Deduplizierung (Pflichtenheft §2.2)', () => {
     expect(store.isInFlight(ID_A)).toBe(false);
   });
 
-  it('gibt eine abgebrochene Ausführung wieder frei', () => {
+  it('beendet die Ausführungsmarkierung auch bei einem Fehlschlag', () => {
+    /*
+     * Audit agent-conn-06: Für den Abbruch gab es einmal `abandon()`, aber
+     * keinen Aufrufer – `executeCommand` fängt jede Ausnahme und legt auch den
+     * Fehlschlag über `complete()` ab. Dieser Test hält genau das fest: Eine
+     * ID bleibt nach einem Fehler nicht als „läuft gerade" hängen, sie gilt als
+     * beantwortet und ein Retry bekommt die Fehlerantwort erneut.
+     */
     const store = new CorrelationStore();
 
     store.markInFlight(ID_A);
-    store.abandon(ID_A);
+    store.complete({
+      correlationId: ID_A,
+      command: 'START',
+      result: fail('AGENT_COMMAND_FAILED', 'START: Runtime weg'),
+      completedAt: '2026-08-26T10:00:00.000Z',
+    });
 
-    // Bricht die Ausführung ab, darf der Befehl erneut versucht werden – sonst
-    // bliebe die ID für immer als "läuft gerade" blockiert.
     expect(store.isInFlight(ID_A)).toBe(false);
-    expect(store.markInFlight(ID_A)).toBe(true);
+    expect(store.getCompleted(ID_A)?.result).toEqual(
+      fail('AGENT_COMMAND_FAILED', 'START: Runtime weg'),
+    );
   });
 
   describe('Ablauf nach Lebensdauer', () => {

@@ -352,9 +352,18 @@ export function deletePanelBackup(id: string): Promise<ApiResult<null>> {
 // Nodes und Storage-Explorer (Lastenheft §3.7 und §3.8, Pflichtenheft §16)
 // ---------------------------------------------------------------------------
 
-export function fetchNodes(signal?: AbortSignal): Promise<ApiResult<HostNodeDto[]>> {
-  return apiRequest<HostNodeDto[]>('/admin/nodes', { signal });
-}
+/**
+ * Node-Liste – eine Definition für alle Ansichten (Audit frontend-app-09).
+ *
+ * Stand bis dahin zweimal für denselben Endpunkt (`GET /admin/nodes`): einmal
+ * hier für die Node-Verwaltung und den Storage-Explorer, einmal in `nodes.ts`
+ * für Dashboard und Node-Ansicht. Änderte sich Pfad oder Query, musste es
+ * zweimal geschehen (CLAUDE.md §3, keine Parallelstrukturen). Die Definition
+ * liegt jetzt in `nodes.ts` – dort steht auch die Begründung, warum eine
+ * Nutzeransicht einen `/admin`-Pfad ruft; hier wird sie nur weitergereicht,
+ * damit die bisherigen Aufrufer unverändert aus `@/lib/api/admin` importieren.
+ */
+export { fetchNodes } from './nodes';
 
 /** Neue Node anlegen (Lastenheft §3.7). Verlangt `node.manage`. */
 export function createNode(input: CreateHostNodeInput): Promise<ApiResult<HostNodeDto>> {

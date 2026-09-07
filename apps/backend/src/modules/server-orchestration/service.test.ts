@@ -22,7 +22,7 @@ import {
   type UserResourceUsage,
   NO_USER_RESOURCE_LIMITS,
 } from '@palantir/contracts';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type HostNodeRepository,
   type ServerUsageRepository,
@@ -55,7 +55,12 @@ import {
   WORLD_IMPORT_CHUNK_BYTES,
 } from './service.js';
 import { type DnsProvider, type DnsRecord } from './dns/types.js';
-import { type ServerStatsRepository, type StatsSample } from './stats-history.js';
+import {
+  ClockSkewMonitor,
+  LatestQueryCache,
+  type ServerStatsRepository,
+  type StatsSample,
+} from './stats-history.js';
 import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.js';
 
 const HOST: HostNodeRecord = {
@@ -1759,6 +1764,31 @@ describe('Löschen', () => {
     expect(harness.deletedDnsNames).toEqual(['mein-server.example.tld']);
     expect(harness.repository.servers.size).toBe(0);
     expect(harness.emitted.map((e) => e.event)).toContain('server.deleted');
+  });
+
+  it('vergisst die fluechtigen Speicherstaende des Servers (orchestration-features-13)', async () => {
+    /*
+     * `LatestQueryCache` und `ClockSkewMonitor` liegen nur im Prozess und
+     * hingen bisher bis zum Neustart am geloeschten Server - `forget()` hatte
+     * ueberhaupt keinen Aufrufer ausser dem eigenen Test (Fundpunkt 137). Der
+     * Spion haengt an der Prototyp-Methode, weil beide Speicher dienstintern
+     * angelegt werden.
+     */
+    const vergessenQuery = vi.spyOn(LatestQueryCache.prototype, 'forget');
+    const vergessenUhr = vi.spyOn(ClockSkewMonitor.prototype, 'forget');
+
+    try {
+      const harness = makeHarness();
+      const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+      await harness.service.deleteServer(created.id);
+
+      expect(vergessenQuery).toHaveBeenCalledWith(created.id);
+      expect(vergessenUhr).toHaveBeenCalledWith(created.id);
+    } finally {
+      vergessenQuery.mockRestore();
+      vergessenUhr.mockRestore();
+    }
   });
 
   it('gibt die oeffentlichen Ports wieder an den Pool zurueck', async () => {

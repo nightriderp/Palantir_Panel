@@ -20,6 +20,7 @@
 
 import path from 'node:path';
 import {
+  AGENT_FILE_CHANNEL_MAX_BYTES,
   type AgentFileEntry,
   type ServerFileContentDto,
   type ServerFileEntryDto,
@@ -38,8 +39,12 @@ export const MAX_EDITABLE_FILE_BYTES = 1024 * 1024;
 /**
  * Harte Obergrenze für alles, was über den Agent-Kanal in einem Stück läuft.
  *
- * Spiegelt `DEFAULT_MAX_FILE_BYTES` der Container-Runtime (64 MiB). Der Agent
- * lehnt größere Dateien ohnehin mit `AGENT_FILE_TOO_LARGE` ab – das Backend
+ * Die Zahl selbst steht seit Audit contracts-validation-12 im Vertrag
+ * (`@palantir/contracts`), weil Backend und Agent dieselbe Grenze einhalten
+ * müssen; hier wird sie nur weitergereicht, damit die bisherigen Aufrufer
+ * innerhalb von B3 unverändert `./files.js` importieren können.
+ *
+ * Der Agent lehnt größere Dateien mit `AGENT_FILE_TOO_LARGE` ab – das Backend
  * puffert sie deshalb erst gar nicht: `MAX_UPLOAD_SIZE_BYTES` (Pflichtenheft
  * §12.1) darf größer sein, wirksam ist der kleinere der beiden Werte
  * ({@link effectiveUploadLimitBytes}).
@@ -48,7 +53,7 @@ export const MAX_EDITABLE_FILE_BYTES = 1024 * 1024;
  * Umgebungsvariable begrenzt (Vorgabe dort: 2 GB) – ein einziger Upload könnte
  * den Backend-Speicher füllen.
  */
-export const AGENT_FILE_CHANNEL_MAX_BYTES = 64 * 1024 * 1024;
+export { AGENT_FILE_CHANNEL_MAX_BYTES };
 
 /**
  * Wirksame Upload-Grenze des Datei-Managers: der kleinere Wert aus

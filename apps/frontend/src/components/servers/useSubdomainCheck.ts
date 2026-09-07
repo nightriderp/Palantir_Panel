@@ -1,10 +1,11 @@
 'use client';
 
-import { type SubdomainAvailabilityDto } from '@palantir/contracts';
+import { type SubdomainAvailabilityDto, buildServerHostname } from '@palantir/contracts';
 import { subdomainSchema } from '@palantir/validation';
 import { useEffect, useState } from 'react';
 import { checkSubdomain } from '@/lib/api/servers';
 import { errorText, isAborted } from '@/lib/api/client';
+import { BASE_DOMAIN } from '@/lib/api/session';
 
 /**
  * Verfügbarkeitsprüfung der Subdomain (Pflichtenheft §13).
@@ -61,7 +62,10 @@ export function useSubdomainCheck(subdomain: string): SubdomainCheck {
           available: false,
           reason: response.error.code === 'SUBDOMAIN_TAKEN' ? 'taken' : 'invalid',
           message: errorText(response),
-          fullHostname: '',
+          // Die Adresse bildet dieselbe Funktion wie im Backend – vorher stand
+          // hier `''`, obwohl der Vertrag einen Hostnamen zusagt (Audit
+          // contract-drift-04).
+          fullHostname: buildServerHostname(normalized, BASE_DOMAIN),
         });
       });
     }, DEBOUNCE_MS);

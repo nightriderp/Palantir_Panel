@@ -1,4 +1,4 @@
-import { type BackupDto, type BackupStatus, type BackupType } from '@palantir/contracts';
+import { type BackupDto, type BackupType } from '@palantir/contracts';
 import { type Tone } from '@/components/shared';
 
 /**
@@ -11,17 +11,14 @@ import { type Tone } from '@/components/shared';
  * Anzeigezustand übersetzt.
  */
 
-export const BACKUP_TYPE_LABELS: Record<BackupType, string> = {
-  manual: 'Manuell',
-  automatic: 'Automatisch',
-};
-
-export const BACKUP_STATUS_META: Record<BackupStatus, { label: string; tone: Tone }> = {
-  pending: { label: 'Wartet', tone: 'warning' },
-  running: { label: 'Läuft …', tone: 'warning' },
-  completed: { label: 'Fertig', tone: 'success' },
-  failed: { label: 'Fehlgeschlagen', tone: 'danger' },
-};
+/*
+ * Typ und Stand einer Sicherung beschriftet das Design-System (Audit
+ * frontend-lib-14). Dieselben Werte zeigten zuvor auch der Backup-Reiter der
+ * Detailansicht, der Export-Block und die Verwaltung - jeweils mit eigener
+ * Tabelle. Hier nur weitergereicht, damit `MyBackupsView` unverändert
+ * importiert.
+ */
+export { BACKUP_STATUS_META, BACKUP_TYPE_LABELS } from '@/components/shared';
 
 /**
  * Kennzeichnung „Vollständig / Unklar" (WORK_STATUS.md, Gefundener Punkt 38).

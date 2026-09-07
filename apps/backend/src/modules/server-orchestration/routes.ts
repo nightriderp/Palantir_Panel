@@ -18,6 +18,7 @@ import {
   type GameServerPermissions,
   type SchedulePermissions,
   type ServerMemberDto,
+  type SubdomainAvailabilityDto,
   fail,
   httpStatusForErrorCode,
   ok,
@@ -398,7 +399,13 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
         requireActor(request);
 
         const query = z.object({ subdomain: z.string() }).parse(request.query);
-        const result = await checkSubdomain(query.subdomain, repository);
+        // `baseDomain` nur für `fullHostname` im DTO (contract-drift-04) – der
+        // Wizard zeigt damit die Adresse an, die entstehen würde.
+        const result: SubdomainAvailabilityDto = await checkSubdomain(
+          query.subdomain,
+          repository,
+          baseDomain,
+        );
 
         return await reply.send(ok(result));
       } catch (error: unknown) {

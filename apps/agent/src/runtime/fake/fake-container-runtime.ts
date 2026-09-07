@@ -32,6 +32,7 @@ import {
   type DockerCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
+import { AGENT_FILE_CHANNEL_MAX_BYTES } from '@palantir/contracts';
 import { MAX_EXTRACTED_BYTES, type ArchiveKind, readArchive } from '../archive.js';
 import { assertAbsoluteContainerPath, resolveWithinRoot } from '../paths.js';
 import {
@@ -64,7 +65,10 @@ export interface FakeContainerRuntimeOptions {
   readonly hardening?: HardeningOptions;
   /** Zeitquelle, damit Tests deterministisch bleiben. */
   readonly now?: () => Date;
-  /** Groessenlimit fuer `readFile`/`writeFile`. */
+  /**
+   * Groessenlimit fuer `readFile`/`writeFile`. Vorgabe wie in der
+   * Docker-Runtime: {@link AGENT_FILE_CHANNEL_MAX_BYTES} aus dem Vertrag.
+   */
   readonly maxFileBytes?: number;
   /**
    * Groessenlimit fuer `extractArchive` - getrennt von `maxFileBytes` wie in der
@@ -164,7 +168,7 @@ export class FakeContainerRuntime implements ContainerRuntime {
   constructor(options: FakeContainerRuntimeOptions = {}) {
     this.#hardening = options.hardening ?? { allowedHostRoots: [FAKE_DATA_ROOT] };
     this.#now = options.now ?? (() => new Date());
-    this.#maxFileBytes = options.maxFileBytes ?? 64 * 1024 * 1024;
+    this.#maxFileBytes = options.maxFileBytes ?? AGENT_FILE_CHANNEL_MAX_BYTES;
     this.#maxArchiveBytes = options.maxArchiveBytes ?? MAX_EXTRACTED_BYTES;
   }
 
