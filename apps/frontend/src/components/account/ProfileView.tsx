@@ -21,7 +21,7 @@ import { messageForThrown } from '@/lib/auth/errors';
 import { loadAccount } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
-import { AUTH_METHOD_LABEL, linkableProviders, methodDetail } from './methods';
+import { AUTH_METHOD_LABEL, authMethodLabel, linkableProviders, methodDetail } from './methods';
 import { PasswordSection, TwoFactorSection } from './SecuritySections';
 
 /** Rücksprungziel für die Provider-Verknüpfung – muss zur Backend-Allowlist passen. */
@@ -89,12 +89,20 @@ export function ProfileView() {
     return () => window.clearTimeout(timer);
   }, [geladen]);
 
-  // Rückmeldung der Provider-Rückkehr (?linked=… / ?error=…) einmalig anzeigen.
+  /*
+   * Rückmeldung der Provider-Rückkehr (?linked=… / ?error=…) einmalig anzeigen.
+   *
+   * `linked` kommt aus der Adresszeile und wird gegen die vier Verfahren aus
+   * dem Vertrag geprüft (Fundpunkt frontend-lib-11); ein unbekannter Wert
+   * erzeugt gar keine Meldung, statt als Freitext im Erfolgs-Toast zu landen.
+   * `error` erzeugt bewusst denselben festen Satz wie bisher – der Code selbst
+   * wird nicht angezeigt.
+   */
   useEffect(() => {
-    const linked = searchParams.get('linked');
+    const linkedLabel = authMethodLabel(searchParams.get('linked'));
     const failed = searchParams.get('error');
-    if (linked) {
-      toast.success(`${AUTH_METHOD_LABEL[linked as AuthMethodType] ?? linked} wurde verknüpft.`);
+    if (linkedLabel !== null) {
+      toast.success(`${linkedLabel} wurde verknüpft.`);
     } else if (failed) {
       toast.error('Die Verknüpfung ist fehlgeschlagen. Bitte versuche es erneut.');
     }

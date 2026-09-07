@@ -27,6 +27,23 @@ describe('CSRF-Token aus dem Cookie (Pflichtenheft §7)', () => {
   it('verwechselt es nicht mit einem ähnlich benannten Cookie', () => {
     expect(readCsrfToken(`x_${CSRF_COOKIE_NAME}=fremd`)).toBeNull();
   });
+
+  /*
+   * Fehlerhaft kodierte Werte (Fundpunkt frontend-lib-12).
+   *
+   * Die Sitzungs-Cookies hängen an der Basis-Domain und sind damit für jede
+   * Subdomain schreibbar. Ein fremder Dienst konnte so `decodeURIComponent`
+   * werfen lassen – und damit jeden zustandsändernden Aufruf reißen: Der
+   * Aufrufer bekam eine Ablehnung statt eines Envelope, die Ansicht blieb im
+   * Ladezustand hängen. Erwartet wird jetzt „kein Token" wie bei einem
+   * fehlenden Cookie; das Backend antwortet dann mit seiner eigenen
+   * CSRF-Prüfung (Pflichtenheft §7).
+   */
+  it('liefert null statt zu werfen, wenn der Wert kaputt kodiert ist', () => {
+    expect(readCsrfToken(`${CSRF_COOKIE_NAME}=%E0`)).toBeNull();
+    expect(readCsrfToken(`${CSRF_COOKIE_NAME}=%`)).toBeNull();
+    expect(readCsrfToken(`theme=dark; ${CSRF_COOKIE_NAME}=abc%ZZ; other=1`)).toBeNull();
+  });
 });
 
 describe('Endpunkte (Pflichtenheft §5.3)', () => {

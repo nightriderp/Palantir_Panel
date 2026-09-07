@@ -338,7 +338,24 @@ export function readCsrfToken(cookieHeader: string): string | null {
   for (const part of cookieHeader.split(';')) {
     const [name, ...rest] = part.trim().split('=');
     if (name === CSRF_COOKIE_NAME && rest.length > 0) {
-      return decodeURIComponent(rest.join('='));
+      try {
+        return decodeURIComponent(rest.join('='));
+      } catch {
+        /*
+         * Fehlerhaft kodierter Wert (`%E0`, halbe Prozentangabe): Der Cookie ist
+         * unbrauchbar, aber er darf nicht den ganzen Aufruf reißen
+         * (Fundpunkt frontend-lib-12). Die Sitzungs-Cookies hängen an der
+         * Basis-Domain und sind damit für jede Subdomain schreibbar – ein
+         * fremder Dienst konnte so jeden zustandsändernden Request in einen
+         * `URIError` laufen lassen: `apiRequest` rejected, die Ansicht blieb
+         * für immer im Ladezustand.
+         *
+         * `null` heißt hier wie überall „kein Token" – der Header entfällt und
+         * das Backend antwortet mit seiner eigenen CSRF-Prüfung
+         * (Pflichtenheft §7). Ein stiller Bypass entsteht dadurch nicht.
+         */
+        return null;
+      }
     }
   }
   return null;
