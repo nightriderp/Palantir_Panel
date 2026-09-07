@@ -145,8 +145,14 @@ export interface AuthRepository {
    * Owners ist kein Vorgang der Version 1.
    */
   setOwner(id: string): Promise<UserRecord>;
-  /** Setzt die Anmeldekennung nach, wenn ein Provider-Konto ein Passwort bekommt. */
-  setUsername(id: string, username: string): Promise<UserRecord>;
+  /**
+   * Setzt die Anmeldekennung nach, wenn ein Provider-Konto ein Passwort bekommt.
+   *
+   * `null` gibt sie wieder frei – das tut `unlinkMethod('password')`, damit
+   * eine Kennung ohne Passwort-Verfahren nicht dauerhaft belegt bleibt (Audit
+   * backend-auth-04).
+   */
+  setUsername(id: string, username: string | null): Promise<UserRecord>;
   /**
    * Ändert den frei wählbaren Anzeigenamen (Lastenheft §3.1).
    *

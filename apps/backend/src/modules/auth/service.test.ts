@@ -843,6 +843,76 @@ describe('Anbieter-Login und Account-Linking (Lastenheft §3.1)', () => {
     expect(after.authMethods.map((method) => method.type)).toEqual(['password']);
   });
 
+  /*
+   * Audit backend-auth-04: Ohne Passwort-Verfahren gehört die Anmeldekennung
+   * niemandem mehr – sie blieb aber am Konto stehen und war damit für jeden
+   * anderen dauerhaft gesperrt.
+   */
+  it('gibt die Anmeldekennung frei, wenn das Passwort-Verfahren geht', async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    await service.completeProviderLink(
+      'discord',
+      { state: 'state-discord' },
+      pendingDiscord,
+      account.id,
+    );
+
+    const after = await service.unlinkMethod(account.id, 'password');
+
+    expect(after.authMethods.map((method) => method.type)).toEqual(['discord']);
+    expect(after.username).toBeNull();
+
+    // Der Beweis: ein anderes Konto kann die Kennung jetzt übernehmen.
+    const zweiter = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    expect(zweiter.account.username).toBe('spieler');
+    expect(zweiter.account.id).not.toBe(account.id);
+  });
+
+  it('lässt das Konto danach eine neue Kennung setzen', async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    await service.completeProviderLink(
+      'discord',
+      { state: 'state-discord' },
+      pendingDiscord,
+      account.id,
+    );
+    await service.unlinkMethod(account.id, 'password');
+
+    const wieder = await service.linkPassword(account.id, {
+      username: 'neuer-name',
+      password: PASSWORD,
+    });
+
+    expect(wieder.username).toBe('neuer-name');
+    expect(wieder.authMethods.map((method) => method.type).sort()).toEqual(['discord', 'password']);
+  });
+
+  it('lässt die Kennung stehen, wenn ein Anbieter-Verfahren geht', async () => {
+    const { account } = await service.register(
+      { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    await service.completeProviderLink(
+      'discord',
+      { state: 'state-discord' },
+      pendingDiscord,
+      account.id,
+    );
+
+    const after = await service.unlinkMethod(account.id, 'discord');
+
+    expect(after.username).toBe('spieler');
+  });
+
   it('meldet eine nicht verknüpfte Methode als nicht gefunden', async () => {
     const { account } = await service.register(
       { username: 'spieler', password: PASSWORD, altcha: ALTCHA },

@@ -77,14 +77,34 @@ export interface AuthModuleOptions {
 }
 
 /**
- * Routen, die auch mit erzwungenem Passwortwechsel erreichbar bleiben müssen –
+ * Vorgänge, die auch mit erzwungenem Passwortwechsel erreichbar bleiben müssen –
  * sonst käme der Nutzer aus dem Zustand nicht mehr heraus.
+ *
+ * Eintragsform ist `METHODE Pfad` und nicht nur der Pfad (Audit
+ * backend-auth-09): `/auth/account` trägt zwei Vorgänge. `DELETE` (Konto
+ * löschen) gehört auf die Liste, `PATCH` (Anzeigename ändern) nicht – wer im
+ * erzwungenen Wechsel steckt, soll das Konto verlassen können, aber nicht
+ * nebenbei sein Profil pflegen.
+ *
+ * Die beiden Ergänzungen aus dem Audit:
+ * - `DELETE /auth/sessions/:sessionId` – wer eine verdächtige Fremdsitzung
+ *   sieht, muss sie **sofort** abmelden können. Erst das Passwort ändern zu
+ *   müssen, während die fremde Sitzung weiterläuft, dreht die Reihenfolge um.
+ * - `DELETE /auth/account` – die Konto-Löschung verlangt ohnehin die
+ *   Bestätigung mit Name und (falls vorhanden) Passwort; das alte Passwort
+ *   davor noch zu wechseln, schützt niemanden.
+ *
+ * Beides bleibt **nicht** von der CSRF-Prüfung ausgenommen (siehe
+ * {@link CSRF_EXEMPT_PATHS}): Es sind zustandsändernde Vorgänge an einer
+ * bestehenden Sitzung, genau der Fall, für den der Double-Submit da ist.
  */
-const PASSWORD_CHANGE_EXEMPT_PATHS = new Set([
-  '/auth/password/change',
-  '/auth/logout',
-  '/auth/refresh',
-  '/auth/altcha/challenge',
+const PASSWORD_CHANGE_EXEMPT_ROUTES = new Set([
+  'POST /auth/password/change',
+  'POST /auth/logout',
+  'POST /auth/refresh',
+  'GET /auth/altcha/challenge',
+  'DELETE /auth/sessions/:sessionId',
+  'DELETE /auth/account',
 ]);
 
 /**
@@ -101,6 +121,11 @@ function routePath(request: FastifyRequest): string {
   // `routerPath` ist das Muster der Route (ohne Query); fällt zurück auf die
   // rohe URL, falls noch keine Route zugeordnet wurde.
   return (request.routeOptions.url ?? request.url.split('?')[0]) || '';
+}
+
+/** Schlüssel der Ausnahmeliste: `METHODE Pfadmuster`, z. B. `DELETE /auth/account`. */
+function routeKey(request: FastifyRequest): string {
+  return `${request.method.toUpperCase()} ${routePath(request)}`;
 }
 
 export async function registerAuthModule(
@@ -212,7 +237,7 @@ export async function registerAuthModule(
       return;
     }
 
-    if (PASSWORD_CHANGE_EXEMPT_PATHS.has(routePath(request))) {
+    if (PASSWORD_CHANGE_EXEMPT_ROUTES.has(routeKey(request))) {
       return;
     }
 
