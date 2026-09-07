@@ -1940,6 +1940,27 @@ export class ServerOrchestrationService {
       return;
     }
 
+    /*
+     * Node-Bindung (Audit security-matrix-07).
+     *
+     * Bisher wurde ausschließlich über Container-Id bzw. `serverId`
+     * nachgeschlagen – ein Agent konnte also Ereignisse für Server melden, die
+     * auf einer ganz anderen Node liegen: ein `CRASHED` mit fremder `serverId`
+     * hätte dort einen Zustandswechsel samt Crash-Loop-Neustart ausgelöst, ein
+     * `LOG_LINE` fremde Konsolenzeilen in die Live-Kanäle fremder Server
+     * gelegt. Der Soll/Ist-Abgleich zieht die Grenze über `listByHost` längst
+     * richtig; hier fehlte sie. Verworfen wird mit Protokolleintrag – ein
+     * regulärer Agent kann diesen Fall nicht erzeugen.
+     */
+    if (server.hostId !== hostId) {
+      this.deps.log.warn(
+        { hostId, serverId: server.id, serverHostId: server.hostId, event: frame.event },
+        'Agent-Ereignis für einen Server einer anderen Node verworfen',
+      );
+
+      return;
+    }
+
     switch (frame.event) {
       case 'CRASHED':
         try {

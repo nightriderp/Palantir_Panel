@@ -14,7 +14,12 @@ import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { AGENT_PROTOCOL_VERSION } from '@palantir/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AgentRegistry, CLOSE_CODE_UNAUTHORIZED } from './agent-gateway.js';
+import {
+  AgentRegistry,
+  CLOSE_CODE_FRAME_TOO_LARGE,
+  CLOSE_CODE_UNAUTHORIZED,
+  MAX_AGENT_FRAME_BYTES,
+} from './agent-gateway.js';
 import { type AgentRouteOptions, registerAgentRoute } from './agent-route.js';
 import { parseSourceAllowlist } from './source-allowlist.js';
 
@@ -244,5 +249,86 @@ describe('Quelladressen-Allowlist (Fundpunkt 121, AGENT_SOURCE_ALLOWLIST)', () =
       code: CLOSE_CODE_UNAUTHORIZED,
       reason: 'Ungültiges Agent-Token.',
     });
+  });
+});
+
+describe('Frame-Prüfung am echten Socket (Audit security-matrix-07)', () => {
+  /*
+   * Die Protokoll-Logik prüft `agent-gateway.test.ts`. Hier geht es um den Weg
+   * dorthin: `ws` reicht die Nutzlast als `Buffer` durch, und genau daran hängt,
+   * dass die Größengrenze greift, **bevor** ein 100-MiB-Frame als String im
+   * Speicher landet.
+   */
+  function stateReport(): string {
+    return JSON.stringify({
+      kind: 'stateReport',
+      reason: 'connected',
+      containers: [],
+      reportedAt: new Date().toISOString(),
+    });
+  }
+
+  it('verwirft einen Ist-Zustands-Bericht, der vor dem hello eintrifft', async () => {
+    const berichte: string[] = [];
+    const { app: instance, log } = await buildApp({
+      handlers: {
+        onStateReport: (hostId): void => {
+          berichte.push(hostId);
+        },
+        onEvent: (): void => undefined,
+      },
+    });
+
+    const verbindung = await verbinden(instance, {
+      peer: '10.10.0.2',
+      authorization: `Bearer ${TOKEN}`,
+    });
+
+    verbindung.send(stateReport());
+    verbindung.send(hello());
+
+    const antwort = JSON.parse(await verbindung.firstMessage) as { kind: string };
+
+    // Das `welcome` beweist, dass der frühe Bericht bereits durch war …
+    expect(antwort.kind).toBe('welcome');
+    // … und der Handler ihn nie gesehen hat.
+    expect(berichte).toEqual([]);
+    expect(log.warnings.some((zeile) => zeile.includes('vor dem Handshake'))).toBe(true);
+    verbindung.terminate();
+  });
+
+  it('beendet die Verbindung bei einem Frame über der Größengrenze', async () => {
+    const ereignisse: string[] = [];
+    const { app: instance } = await buildApp({
+      handlers: {
+        onStateReport: (): void => undefined,
+        onEvent: (hostId): void => {
+          ereignisse.push(hostId);
+        },
+      },
+    });
+
+    const verbindung = await verbinden(instance, {
+      peer: '10.10.0.2',
+      authorization: `Bearer ${TOKEN}`,
+    });
+
+    verbindung.send(hello());
+    await verbindung.firstMessage;
+
+    verbindung.send(
+      JSON.stringify({
+        kind: 'event',
+        event: 'LOG_LINE',
+        serverId: null,
+        payload: { message: 'x'.repeat(MAX_AGENT_FRAME_BYTES + 1) },
+        emittedAt: new Date().toISOString(),
+      }),
+    );
+
+    const geschlossen = await verbindung.closed;
+
+    expect(geschlossen.code).toBe(CLOSE_CODE_FRAME_TOO_LARGE);
+    expect(ereignisse).toEqual([]);
   });
 });

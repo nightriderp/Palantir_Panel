@@ -169,7 +169,13 @@ export function registerAgentRoute(app: FastifyInstance, options: AgentRouteOpti
       options.agents.register(session);
 
       socket.on('message', (data: unknown) => {
-        session.handleMessage(String(data));
+        /*
+         * Rohpuffer durchreichen, wo es einer ist (Audit security-matrix-07):
+         * `AgentSession` prüft die Größe, bevor die Nutzlast als String im
+         * Speicher landet. `String(buffer)` hätte einen 100-MiB-Frame erst
+         * vollständig dekodiert und dann verworfen.
+         */
+        session.handleMessage(Buffer.isBuffer(data) ? data : String(data));
       });
 
       socket.on('close', (code: number, reason: Buffer) => {

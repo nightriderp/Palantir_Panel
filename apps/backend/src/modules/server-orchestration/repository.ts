@@ -178,7 +178,16 @@ export interface ServerRepository {
    * nur beim Verbinden gesetzt.
    */
   markHostConnected(hostId: string): Promise<void>;
-  markHostDisconnected(hostId: string): Promise<void>;
+  /**
+   * @param getrenntSeit Zeitpunkt, zu dem die Trennung bemerkt wurde
+   * (Audit event-flow-12). Ist gesetzt, wird `offline` nur geschrieben, solange
+   * `last_seen_at` **nicht neuer** ist – denn `last_seen_at` trägt den
+   * Verbindungszeitpunkt der zuletzt angemeldeten Sitzung. Eine verspätete
+   * Abmeldung einer bereits übernommenen Verbindung schreibt damit nicht die
+   * frisch verbundene Node offline. Ohne das Argument bleibt es beim
+   * bedingungslosen Schreiben.
+   */
+  markHostDisconnected(hostId: string, getrenntSeit?: Date): Promise<void>;
   /**
    * Übernimmt die vom Agent **gemessenen** Gesamtressourcen der Node in
    * `total_ram_mb` / `total_cpu_cores` / `total_disk_mb` (Pflichtenheft §11).
@@ -549,11 +558,29 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
         .where(eq(hostNodes.id, hostId));
     },
 
-    async markHostDisconnected(hostId: string): Promise<void> {
+    async markHostDisconnected(hostId: string, getrenntSeit?: Date): Promise<void> {
+      /*
+       * Vergleichen-und-Schreiben über `last_seen_at` (Audit event-flow-12).
+       *
+       * `markHostConnected` setzt `last_seen_at` auf den Zeitpunkt des
+       * Handshakes und ist der einzige Schreiber dieser Spalte – sie markiert
+       * damit die aktuell angemeldete Sitzung. Trifft die Abmeldung einer
+       * älteren Verbindung erst ein, nachdem sich bereits eine neuere
+       * angemeldet hat, ist `last_seen_at` neuer als der Trennzeitpunkt: Dann
+       * bleibt der Status stehen, statt eine verbundene Node offline zu
+       * schreiben. Der Gleichheitsfall zählt als „gehört zu dieser Sitzung" –
+       * sonst bliebe eine Node, deren Verbindung in derselben Millisekunde
+       * aufgebaut und wieder abgerissen ist, dauerhaft als online geführt.
+       */
+      const nurWennNichtNeuerVerbunden =
+        getrenntSeit === undefined
+          ? sql`true`
+          : sql`(${hostNodes.lastSeenAt} is null or ${hostNodes.lastSeenAt} <= ${getrenntSeit})`;
+
       await db
         .update(hostNodes)
         .set({
-          status: sql`case when ${hostNodes.status} = 'online' then 'offline' else ${hostNodes.status} end`,
+          status: sql`case when ${hostNodes.status} = 'online' and ${nurWennNichtNeuerVerbunden} then 'offline' else ${hostNodes.status} end`,
           updatedAt: new Date(),
         })
         .where(eq(hostNodes.id, hostId));
