@@ -1,3 +1,4 @@
+import { httpStatusForErrorCode } from '@palantir/contracts';
 import { startStorageScanInputSchema } from '@palantir/validation';
 import { describe, expect, it } from 'vitest';
 import { createAuditService } from './audit.js';
@@ -7,6 +8,7 @@ import {
   type StorageEntryRemover,
   type StorageScanGateway,
   createStorageExplorerService,
+  storageEntryId,
   unavailableStorageRemover,
 } from './storage.js';
 import {
@@ -41,6 +43,30 @@ function createRecordingRemover(): StorageEntryRemover & { calls: string[] } {
 
       return { success: true, data: null, error: null };
     },
+  };
+}
+
+/**
+ * Agent, der genau diese Postenliste meldet.
+ *
+ * Die Liste ist bewusst `unknown[]`: Ein Teil der Tests schickt absichtlich
+ * Posten, die dem Vertrag nicht entsprechen – der Agent läuft auf einer anderen
+ * Maschine, sein Ergebnis ist Eingabe wie jede andere.
+ */
+function breakdownGateway(entries: readonly unknown[]): StorageScanGateway {
+  return {
+    requestBreakdown: async () =>
+      ({
+        success: true,
+        data: {
+          scannedAt: '2026-08-26T09:30:00.000Z',
+          totalBytes: 2_000_000_000_000,
+          usedBytes: 900_000_000_000,
+          freeBytes: 1_100_000_000_000,
+          entries,
+        },
+        error: null,
+      }) as never,
   };
 }
 
@@ -267,6 +293,135 @@ describe('Storage-Explorer: löschbare Posten (Lastenheft §3.8)', () => {
   });
 });
 
+/**
+ * Audit-Fundstelle backend-admin-resources-10: Bis hierher fielen alle Posten
+ * ohne Pfad, Image-Id und Image-Tag auf die feste Kennung `'unbekannt'`
+ * zurück – zwei davon waren nicht auseinanderzuhalten.
+ */
+describe('Storage-Explorer: Kennung eines Postens ist eindeutig', () => {
+  it('unterscheidet zwei fremde Ordner am Pfad', () => {
+    const alt = agentEntry({ kind: 'orphaned', path: '/srv/palantir/servers/alt-server' });
+    const misc = agentEntry({ kind: 'orphaned', path: '/srv/palantir/servers/misc' });
+
+    expect(storageEntryId(alt)).not.toBe(storageEntryId(misc));
+  });
+
+  it('unterscheidet zwei Posten ganz ohne natürliches Merkmal', () => {
+    // Kein Pfad, kein Image, kein Dateiname – früher beide „unbekannt".
+    const gemeinsam = {
+      kind: 'orphaned' as const,
+      path: null,
+      serverId: null,
+      backupFileName: null,
+      imageId: null,
+      imageTag: null,
+    };
+    const klein = agentEntry({ ...gemeinsam, sizeBytes: 10 });
+    const gross = agentEntry({ ...gemeinsam, sizeBytes: 20 });
+
+    expect(storageEntryId(klein)).not.toBe('unbekannt');
+    expect(storageEntryId(klein)).not.toBe(storageEntryId(gross));
+  });
+
+  it('zieht den Backup-Dateinamen heran, wenn der Pfad fehlt', () => {
+    const eins = agentEntry({ kind: 'backup', path: null, backupFileName: 'a.tar.gz' });
+    const zwei = agentEntry({ kind: 'backup', path: null, backupFileName: 'b.tar.gz' });
+
+    expect(storageEntryId(eins)).toBe('a.tar.gz');
+    expect(storageEntryId(zwei)).toBe('b.tar.gz');
+  });
+
+  it('bleibt bei Images exakt die imageId', () => {
+    // Der Remover reicht die Kennung unverändert als `imageId` an den Agent
+    // weiter (createAgentStorageEntryRemover in B3) – ein Präfix hier würde
+    // dort ins Leere greifen.
+    const image = agentEntry({
+      kind: 'dockerImage',
+      path: null,
+      serverId: null,
+      imageId: 'sha256:abc',
+      imageTag: 'palantir/test:1',
+    });
+
+    expect(storageEntryId(image)).toBe('sha256:abc');
+  });
+});
+
+describe('Storage-Explorer: mehrdeutige Kennung wird nicht geraten', () => {
+  /** Ein Posten ohne jedes natürliche Merkmal – zweimal erzeugt: dieselbe Kennung, zwei Dinge. */
+  function namenloserPosten(): ReturnType<typeof agentEntry> {
+    return agentEntry({
+      kind: 'orphaned',
+      path: null,
+      serverId: null,
+      backupFileName: null,
+      imageId: null,
+      imageTag: null,
+      inUse: false,
+    });
+  }
+
+  it('lehnt das Löschen mit einem Katalogcode ab (409)', async () => {
+    const { storage } = buildService({ entries: [namenloserPosten(), namenloserPosten()] });
+
+    await expect(
+      storage.deleteEntry(
+        ctxWith(actorWith('node.manage')),
+        NODE_ID,
+        storageEntryId(namenloserPosten()),
+      ),
+    ).rejects.toMatchObject({ code: 'STORAGE_SCAN_MISSING' });
+
+    expect(httpStatusForErrorCode('STORAGE_SCAN_MISSING')).toBe(409);
+  });
+
+  it('fasst dabei weder Homeserver noch Zwischenspeicher noch Log an', async () => {
+    const remover = createRecordingRemover();
+    const { storage, repository, auditRepository } = buildService({
+      entries: [namenloserPosten(), namenloserPosten()],
+      remover,
+    });
+
+    await storage
+      .deleteEntry(ctxWith(actorWith('node.manage')), NODE_ID, storageEntryId(namenloserPosten()))
+      .catch(() => undefined);
+
+    expect(remover.calls).toEqual([]);
+    expect(repository.snapshot?.entries).toHaveLength(2);
+    expect(auditRepository.rows).toEqual([]);
+  });
+
+  it('entfernt bei eindeutiger Kennung genau einen Posten', async () => {
+    // Gegenprobe zum alten `filter` über die Kennung: Der zweite Posten bleibt.
+    const verwaist = agentEntry({
+      kind: 'orphaned',
+      path: '/srv/palantir/servers/alt-server',
+      serverId: null,
+      inUse: false,
+    });
+    const anderer = agentEntry({
+      kind: 'orphaned',
+      path: '/srv/palantir/servers/misc',
+      serverId: null,
+      inUse: false,
+    });
+    const { storage, repository } = buildService({
+      entries: [verwaist, anderer],
+      remover: createRecordingRemover(),
+    });
+
+    await storage.deleteEntry(
+      ctxWith(actorWith('node.manage')),
+      NODE_ID,
+      '/srv/palantir/servers/alt-server',
+    );
+
+    expect(repository.snapshot?.entries.map((entry) => entry.path)).toEqual([
+      '/srv/palantir/servers/misc',
+    ]);
+  });
+});
+
 describe('Storage-Explorer: Scan on demand (Pflichtenheft §16)', () => {
   it('liefert ohne bisherigen Scan eine leere Übersicht statt eines Fehlers', async () => {
     const { storage } = buildService({});
@@ -323,6 +478,99 @@ describe('Storage-Explorer: Scan on demand (Pflichtenheft §16)', () => {
 
     expect(snapshot.breakdown?.scannedAt).toBe('2026-08-26T09:30:00.000Z');
     expect(repository.snapshot?.entries).toHaveLength(1);
+  });
+
+  it('nimmt fremde Ordner an, statt den ganzen Scan zu verwerfen', async () => {
+    // Audit-Fundstelle contracts-validation-02: Auf dem Homeserver liegt ein
+    // von Hand angelegter Ordner `alt-server`. Der Agent kennt keinen Container
+    // dazu und rät nicht – er meldet `orphaned` ohne serverId. Unter dem
+    // Backup-Verzeichnis trägt derselbe Ordnername dagegen die serverId, so wie
+    // er auf der Platte steht: keine UUID.
+    const { storage, repository } = buildService({
+      gateway: breakdownGateway([
+        {
+          kind: 'orphaned',
+          path: '/srv/palantir/servers/alt-server',
+          sizeBytes: 1_024,
+          serverId: null,
+          backupFileName: null,
+          imageId: null,
+          imageTag: null,
+          inUse: false,
+          lastModifiedAt: null,
+        },
+        {
+          kind: 'backup',
+          path: '/srv/palantir/backups/alt-server/a.tar.gz',
+          sizeBytes: 42,
+          serverId: 'alt-server',
+          backupFileName: 'a.tar.gz',
+          imageId: null,
+          imageTag: null,
+          inUse: false,
+          lastModifiedAt: null,
+        },
+      ]),
+    });
+
+    const snapshot = await storage.scan(
+      ctxWith(actorWith('node.manage')),
+      NODE_ID,
+      startStorageScanInputSchema.parse({}),
+    );
+    const [verwaist, archiv] = snapshot.breakdown?.entries ?? [];
+
+    expect(repository.snapshot?.entries).toHaveLength(2);
+    expect(verwaist).toMatchObject({ kind: 'orphaned', serverId: null });
+    // Aufräumen ist der Zweck der Ansicht – der Ordner ist freigegeben.
+    expect(verwaist?.permissions.canDelete).toBe(true);
+    expect(archiv).toMatchObject({ kind: 'backup', serverId: 'alt-server' });
+  });
+
+  it('übergeht einen unbrauchbaren Posten und behält die übrigen', async () => {
+    const { storage, repository } = buildService({
+      gateway: breakdownGateway([
+        { kind: 'backup', path: 42 } as never,
+        {
+          kind: 'backup',
+          path: '/srv/palantir/backups/a.tar.gz',
+          sizeBytes: 42,
+          serverId: null,
+          backupFileName: 'a.tar.gz',
+          imageId: null,
+          imageTag: null,
+          inUse: false,
+          lastModifiedAt: null,
+        },
+      ]),
+    });
+
+    const snapshot = await storage.scan(
+      ctxWith(actorWith('node.manage')),
+      NODE_ID,
+      startStorageScanInputSchema.parse({}),
+    );
+
+    expect(repository.snapshot?.entries).toHaveLength(1);
+    expect(snapshot.breakdown?.entries[0]?.id).toBe('/srv/palantir/backups/a.tar.gz');
+  });
+
+  it('lehnt eine Meldung ab, in der kein einziger Posten brauchbar ist', async () => {
+    // Ein fremder Ordner ist ein Ordner – eine Liste ohne einen einzigen
+    // gültigen Posten ist ein auseinandergelaufenes Protokoll.
+    const { storage, repository } = buildService({
+      gateway: breakdownGateway([{ kind: 'backup', path: 42 } as never]),
+    });
+
+    await expect(
+      storage.scan(
+        ctxWith(actorWith('node.manage')),
+        NODE_ID,
+        startStorageScanInputSchema.parse({}),
+      ),
+    ).rejects.toMatchObject({ code: 'AGENT_COMMAND_INVALID' });
+
+    expect(repository.snapshot).toBeNull();
   });
 
   it('lehnt eine Antwort ab, die nicht dem vereinbarten Format entspricht', async () => {
