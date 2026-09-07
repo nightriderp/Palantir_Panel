@@ -1,0 +1,56 @@
+# Ausgangsbeschränkung für Spielserver-Container - einmaliger Lauf nach Docker.
+#
+# Ablageort auf dem Homeserver (in der Gameserver-VM):
+#   /etc/systemd/system/palantir-egress.service
+#
+# Einrichten:
+#   sudo cp /opt/palantir/deploy/gamenode/palantir-egress.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now palantir-egress.service
+#
+# WARUM ALS DIENST: Die iptables-Regeln aus egress-firewall.sh überleben ein
+# `systemctl restart docker` (Docker leert DOCKER-USER nicht), aber keinen
+# Neustart der VM. Ohne diesen Dienst liefen die Spielcontainer nach jedem
+# Reboot wieder ohne Egress-Grenze - und niemand würde es bemerken, weil sich
+# funktional nichts ändert (Audit security-matrix-02).
+
+[Unit]
+Description=Palantir Egress-Regeln fuer Spielserver-Container
+# Ohne laufenden Docker gibt es weder das Netz noch die Kette DOCKER-USER.
+After=docker.service
+Requires=docker.service
+# Startet Docker neu, wird auch dieser Dienst neu ausgeführt: ein Daemon-Start
+# legt DOCKER-USER neu an, und ein Sprung, der vorher darin stand, wäre weg.
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+# Der Lauf ist beendet, sobald die Regeln stehen - der Dienst soll danach
+# trotzdem als "aktiv" gelten, sonst sieht `systemctl status` nach Fehler aus.
+RemainAfterExit=yes
+ExecStart=/opt/palantir/deploy/gamenode/egress-firewall.sh apply
+
+# Kein ExecStop: Das Regelwerk beim Stoppen zurückzunehmen würde bei jedem
+# Docker-Neustart ein Zeitfenster ohne Grenze öffnen. Absichtlich entfernt wird
+# es nur von Hand mit `egress-firewall.sh remove`.
+
+# Antwortet der Docker-Daemon nicht, soll der Lauf abbrechen statt zu hängen.
+TimeoutStartSec=120
+
+# Härtung. Das Skript braucht iptables (CAP_NET_ADMIN als root), den
+# Docker-Socket und Lesezugriff auf /opt/palantir/.env - sonst nichts.
+# ProtectSystem=full statt strict: strict machte auch /var/run schreibgeschützt,
+# und ohne Schreibrecht auf den Docker-Socket ließe sich das Netz nicht anlegen.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

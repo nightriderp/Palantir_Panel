@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_GAME_NETWORK,
   DEFAULT_STOP_TIMEOUT_SECONDS,
   PALANTIR_MANAGED_LABEL,
   PALANTIR_SERVER_ID_LABEL,
@@ -32,6 +33,19 @@ describe('Container-Haertung (Pflichtenheft §2.3)', () => {
   it('setzt no-new-privileges immer', () => {
     const body = buildCreateContainerBody(spec(), optionen);
     expect(body.HostConfig.SecurityOpt).toContain('no-new-privileges:true');
+  });
+
+  it('haengt den Container ins Netz mit Egress-Regeln, nie ins Standardnetz', () => {
+    // security-matrix-02: `bridge` hat keine Ausgangsbeschraenkung - von dort
+    // aus waren Heim-LAN, Nachbar-Container und der Tunnel-Peer erreichbar.
+    const body = buildCreateContainerBody(spec(), optionen);
+    expect(body.HostConfig.NetworkMode).toBe(DEFAULT_GAME_NETWORK);
+    expect(body.HostConfig.NetworkMode).not.toBe('bridge');
+  });
+
+  it('uebernimmt ein abweichendes Netz aus der Konfiguration', () => {
+    const body = buildCreateContainerBody(spec(), { ...optionen, networkMode: 'spiele-nord' });
+    expect(body.HostConfig.NetworkMode).toBe('spiele-nord');
   });
 
   it('entzieht alle Capabilities und laesst keinen privilegierten Container zu', () => {

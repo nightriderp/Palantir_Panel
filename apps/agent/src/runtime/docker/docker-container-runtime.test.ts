@@ -4,6 +4,15 @@
  * Damit laesst sich pruefen, **was** die Runtime an den Docker-Socket-Proxy
  * schickt und wie sie dessen Antworten deutet - ohne laufenden Docker-Host
  * (Pflichtenheft §2.5).
+ *
+ * Der Stub bildet zusaetzlich die **Positivliste des Socket-Proxys** nach
+ * (Audit spec-pflichtenheft-05, Massnahme W2-26): `deploy/gamenode/
+ * docker-compose.yml` gibt nur noch CONTAINERS, IMAGES, EXEC, EVENTS und POST
+ * frei. Jeder Aufruf auf einen anderen Pfad beantwortet der Stub mit HTTP 403 -
+ * genau wie der echte Proxy. Damit belegt jeder gruene Test dieser Datei, dass
+ * der betroffene Produktivpfad ohne die gesperrten Endpunkte auskommt; ein
+ * kuenftiger Aufruf auf `/networks`, `/volumes`, `/info` oder `/_ping` faellt
+ * hier sofort auf, statt erst im Betrieb.
  */
 
 import { gzipSync } from 'node:zlib';
@@ -16,7 +25,11 @@ import {
 import { DockerHttpClient } from './http-client.js';
 import { createTar } from './tar.js';
 import { type ContainerRuntimeEvent } from '../events.js';
-import { PALANTIR_DATA_VOLUME_PATH_LABEL, PALANTIR_MANAGED_LABEL } from '../hardening.js';
+import {
+  DEFAULT_GAME_NETWORK,
+  PALANTIR_DATA_VOLUME_PATH_LABEL,
+  PALANTIR_MANAGED_LABEL,
+} from '../hardening.js';
 import { type ContainerSpec } from '../types.js';
 
 const PROXY_URL = 'http://127.0.0.1:2375';
@@ -31,8 +44,30 @@ interface Aufruf {
 
 type Antwortgeber = (aufruf: Aufruf) => Response | Promise<Response>;
 
+/**
+ * Die Pfade, die der Docker-Socket-Proxy auf der Gamenode noch durchlaesst.
+ *
+ * Gegenstueck zu den Schaltern in `deploy/gamenode/docker-compose.yml`:
+ * CONTAINERS -> `/containers/*`, IMAGES -> `/images/*`, EXEC -> `/exec/*`,
+ * EVENTS -> `/events`. VOLUMES, NETWORKS, INFO und PING stehen auf 0.
+ */
+export const PROXY_ERLAUBTE_PFADE: readonly RegExp[] = [
+  /^\/containers(\/|$)/,
+  /^\/images(\/|$)/,
+  /^\/exec\//,
+  /^\/events$/,
+];
+
 let aufrufe: Aufruf[] = [];
 let antwortgeber: Antwortgeber;
+
+/** HTTP 403 wie vom Socket-Proxy, wenn die Ressourcengruppe gesperrt ist. */
+function verboten(): Response {
+  return new Response(JSON.stringify({ message: 'Forbidden' }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
 const stubFetch = async (input: string, init?: RequestInit): Promise<Response> => {
   const url = new URL(input);
@@ -43,6 +78,11 @@ const stubFetch = async (input: string, init?: RequestInit): Promise<Response> =
     query: url.searchParams,
     body: typeof koerper === 'string' ? koerper : undefined,
   });
+  // Sperre des Proxys vor dem Antwortgeber: Ein Test kann sie nicht versehentlich
+  // umgehen, indem er auf jeden Pfad antwortet.
+  if (!PROXY_ERLAUBTE_PFADE.some((muster) => muster.test(url.pathname))) {
+    return verboten();
+  }
   return antwortgeber(aufrufe[aufrufe.length - 1] as Aufruf);
 };
 
@@ -145,8 +185,22 @@ describe('CREATE', () => {
         NanoCpus: 1_000_000_000,
         RestartPolicy: { Name: 'no' },
         Binds: [`${DATEN_WURZEL}/srv-1:/data:rw`],
+        // Eigenes Netz mit Egress-Regeln statt `bridge` (security-matrix-02).
+        NetworkMode: DEFAULT_GAME_NETWORK,
       },
     });
+  });
+
+  it('legt den Container im Netz palantir-games an, nicht im Standardnetz', async () => {
+    antwortgeber = () => json({ Id: 'c-1', Warnings: [] });
+
+    await runtime.create(spec());
+
+    const gesendet = JSON.parse(aufrufe[0]?.body ?? '{}') as {
+      HostConfig?: { NetworkMode?: string };
+    };
+    expect(gesendet.HostConfig?.NetworkMode).toBe('palantir-games');
+    expect(gesendet.HostConfig?.NetworkMode).not.toBe('bridge');
   });
 
   it('holt ein fehlendes Image und legt danach an (Gefundener Punkt 111)', async () => {
@@ -1096,5 +1150,80 @@ describe('DELETE: Zustand nur bei Erfolg freigeben', () => {
       status: 'running',
       previousStatus: null,
     });
+  });
+});
+
+describe('Socket-Proxy-Positivliste (spec-pflichtenheft-05)', () => {
+  /**
+   * Die Gegenprobe: Der Stub bildet die Sperre nur dann glaubwuerdig nach, wenn
+   * ein gesperrter Endpunkt auch wirklich scheitert. Ohne diesen Test koennte
+   * die Positivliste stillschweigend jeden Pfad durchlassen und alle anderen
+   * Tests waeren trotzdem gruen.
+   */
+  it('beantwortet gesperrte Endpunkte mit einem Fehler', async () => {
+    const client = new DockerHttpClient({ baseUrl: PROXY_URL, fetchImpl: stubFetch });
+
+    for (const pfad of ['/networks/create', '/volumes/prune', '/info', '/_ping']) {
+      await expect(client.requestJson('POST', pfad)).rejects.toMatchObject({
+        name: 'ContainerRuntimeError',
+        code: 'RUNTIME_ERROR',
+      });
+    }
+
+    expect(aufrufe.map((aufruf) => aufruf.pfad)).toEqual([
+      '/networks/create',
+      '/volumes/prune',
+      '/info',
+      '/_ping',
+    ]);
+  });
+
+  it('kommt fuer den gesamten Server-Lebenszyklus ohne gesperrte Endpunkte aus', async () => {
+    antwortgeber = (aufruf) => {
+      if (aufruf.pfad === '/containers/create') return json({ Id: 'c-1', Warnings: [] });
+      if (aufruf.pfad === '/containers/json') return json([{ Id: 'c-1' }]);
+      if (aufruf.pfad === '/images/json') return json([]);
+      if (aufruf.pfad === '/containers/c-1/exec') return json({ Id: 'exec-1' });
+      if (aufruf.pfad === '/exec/exec-1/start') return new Response(dockerRahmen(1, 'ok'));
+      if (aufruf.pfad === '/exec/exec-1/json') return json({ ExitCode: 0 });
+      if (aufruf.pfad === '/containers/c-1/stats') {
+        return json({
+          cpu_stats: { cpu_usage: { total_usage: 2 }, system_cpu_usage: 20, online_cpus: 1 },
+          precpu_stats: { cpu_usage: { total_usage: 1 }, system_cpu_usage: 10 },
+          memory_stats: { usage: 100, limit: 1000 },
+          pids_stats: { current: 4 },
+        });
+      }
+      if (aufruf.pfad === '/containers/c-1/logs') return new Response(dockerRahmen(1, 'Zeile\n'));
+      if (aufruf.pfad === '/containers/c-1/json') {
+        return json({
+          Id: 'c-1',
+          State: { Status: 'running', ExitCode: 0 },
+          Config: { Labels: { [PALANTIR_DATA_VOLUME_PATH_LABEL]: '/data' } },
+        });
+      }
+      return json({});
+    };
+
+    // Ein durchgaengiger Lebenszyklus: anlegen, starten, abfragen, Konsole,
+    // Logs, Statistik, stoppen, entfernen - dazu der Ereignisstrom aus connect().
+    await runtime.connect();
+    await runtime.create(spec());
+    await runtime.start('c-1');
+    await runtime.inspect('c-1');
+    await runtime.list();
+    await runtime.listImages();
+    await runtime.getStats('c-1');
+    await runtime.getLogs('c-1', { tail: 10 });
+    await runtime.execConsole('c-1', ['rcon-cli', 'list']);
+    await runtime.stop('c-1');
+    await runtime.remove('c-1');
+    await runtime.removeImage('sha256:aaa', { force: true });
+
+    expect(aufrufe.length).toBeGreaterThan(10);
+    const nichtErlaubt = aufrufe
+      .map((aufruf) => aufruf.pfad)
+      .filter((pfad) => !PROXY_ERLAUBTE_PFADE.some((muster) => muster.test(pfad)));
+    expect(nichtErlaubt).toEqual([]);
   });
 });

@@ -60,6 +60,29 @@ export const TMPFS_OPTIONS = `rw,noexec,nosuid,nodev,size=${DEFAULT_TMPFS_SIZE}`
 export const DEFAULT_HOST_IP = '127.0.0.1';
 /** Kulanzzeit fuer SIGTERM, wenn der Spec nichts anderes sagt. */
 export const DEFAULT_STOP_TIMEOUT_SECONDS = 30;
+/**
+ * Docker-Netz der Gameserver-Container (Audit security-matrix-02).
+ *
+ * **Nicht mehr `bridge`.** Das Standardnetz der Engine hat keinerlei
+ * Ausgangsbeschraenkung: Aus einem Spielcontainer heraus waren das Heim-LAN des
+ * Betreibers, jeder Nachbar-Container derselben Node (Docker-Vorgabe
+ * `icc=true`) und ueber `wg0` der Tunnel-Peer der VPS erreichbar - also der
+ * frps-Steuerkanal und der Agent-Port des Backends.
+ *
+ * `palantir-games` ist ein eigenes Bridge-Netz mit abgeschalteter
+ * Container-zu-Container-Kommunikation; die Ausgangsregeln dazu setzt
+ * `deploy/gamenode/egress-firewall.sh` in der `DOCKER-USER`-Kette. Ins Internet
+ * darf der Container weiterhin - Mods und Plugins werden von dort geladen.
+ *
+ * Das Netz legt **nicht** der Agent an: Der Docker-Socket-Proxy gibt seit
+ * derselben Massnahme keine `/networks`-Endpunkte mehr frei
+ * (spec-pflichtenheft-05). Es entsteht auf der Node durch
+ * `egress-firewall.sh` und ist in `deploy/gamenode/docker-compose.yml`
+ * beschrieben. Fehlt es, scheitert `POST /containers/create` mit einem
+ * sprechenden Fehler der Engine - das ist gewollt: lieber kein Server als ein
+ * Server ohne Egress-Grenze.
+ */
+export const DEFAULT_GAME_NETWORK = 'palantir-games';
 
 /** Teilmenge der Docker-Engine-`HostConfig`, die Palantir setzt. */
 export interface DockerHostConfig {
@@ -105,7 +128,10 @@ export interface HardeningOptions {
   readonly seccompProfile?: string;
   /** Host-Interface fuer Portbindungen, wenn der Spec keines nennt. */
   readonly defaultHostIp?: string;
-  /** Docker-Netzwerk, in dem die Gameserver laufen. */
+  /**
+   * Docker-Netzwerk, in dem die Gameserver laufen.
+   * Ohne Angabe `palantir-games` (siehe `DEFAULT_GAME_NETWORK`) - nie `bridge`.
+   */
   readonly networkMode?: string;
 }
 
@@ -285,7 +311,9 @@ export function buildCreateContainerBody(
       Privileged: false,
       RestartPolicy: { Name: 'no' },
       LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } },
-      NetworkMode: options.networkMode ?? 'bridge',
+      // Eigenes Netz mit Egress-Regeln statt des offenen Standardnetzes
+      // (security-matrix-02) - Begruendung an DEFAULT_GAME_NETWORK.
+      NetworkMode: options.networkMode ?? DEFAULT_GAME_NETWORK,
     },
   };
 

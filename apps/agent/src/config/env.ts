@@ -39,6 +39,17 @@ const envSchema = z.object({
   /** Basisverzeichnis der Backups; für Restore-Mounts ebenfalls zugelassen. */
   AGENT_BACKUP_DIR: z.string().min(1).default('/srv/palantir/backups'),
   /**
+   * Docker-Netz der Gameserver-Container (Audit security-matrix-02).
+   *
+   * Vorgabe `palantir-games`: ein eigenes Bridge-Netz ohne
+   * Container-zu-Container-Kommunikation, dessen Ausgangsregeln
+   * `deploy/gamenode/egress-firewall.sh` in der `DOCKER-USER`-Kette setzt.
+   * Der Wert muss zu dem Netz passen, das dort und in
+   * `deploy/gamenode/docker-compose.yml` steht - der Agent legt es nicht selbst
+   * an (der Socket-Proxy gibt keine `/networks`-Endpunkte mehr frei).
+   */
+  AGENT_CONTAINER_NETWORK: z.string().min(1).default('palantir-games'),
+  /**
    * Registry, aus der Spiel-Images geholt werden (Gefundener Punkt 111).
    *
    * Öffentliche Images brauchen keine Angabe. Für die eigenen Images aus dem
