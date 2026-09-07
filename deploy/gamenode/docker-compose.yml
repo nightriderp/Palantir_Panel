@@ -72,9 +72,38 @@ services:
     pids_limit: 512
     depends_on:
       - socket-proxy
-    env_file:
-      - ../../.env
     environment:
+      # Kein `env_file: ../../.env` mehr (Audit W2-23, infra-images-03).
+      #
+      # Die Gamenode verarbeitet fremde Spiel-Images und den Verkehr der
+      # Spieler - sie ist das schwächere Glied der Anlage. Trotzdem trug ihr
+      # Agent-Container bisher sämtliche Geheimnisse der Instanz: JWT_SECRET
+      # (damit lassen sich beliebige Access-Token fälschen, also Owner-Rechte
+      # im Panel), das Datenbank-Passwort, die OAuth-Geheimnisse, den
+      # Cloudflare-Token für die ganze DNS-Zone und beide
+      # WireGuard-Privatschlüssel. `docker inspect palantir-agent` genügte.
+      #
+      # Hier steht deshalb genau das, was `apps/agent/src/config/env.ts` liest.
+      # Ein Test hält beide Seiten zusammen
+      # (`apps/agent/src/config/deploy-umgebung.test.ts`).
+      #
+      # Ein in der .env leerer Wert kommt als leerer String an; der Agent
+      # behandelt ihn wie „nicht gesetzt" (`leereWerteAlsUngesetzt`).
+      NODE_ENV: ${NODE_ENV}
+      LOG_LEVEL: ${LOG_LEVEL}
+      AGENT_BACKEND_WS_URL: ${AGENT_BACKEND_WS_URL}
+      AGENT_TOKEN: ${AGENT_TOKEN}
+      AGENT_NODE_ID: ${AGENT_NODE_ID}
+      AGENT_DATA_DIR: ${AGENT_DATA_DIR}
+      AGENT_BACKUP_DIR: ${AGENT_BACKUP_DIR}
+      AGENT_REGISTRY_SERVER: ${AGENT_REGISTRY_SERVER}
+      AGENT_REGISTRY_USERNAME: ${AGENT_REGISTRY_USERNAME}
+      AGENT_REGISTRY_TOKEN: ${AGENT_REGISTRY_TOKEN}
+      AGENT_SECCOMP_PROFILE_PATH: ${AGENT_SECCOMP_PROFILE_PATH}
+      AGENT_QUERY_INTERVAL_SECONDS: ${AGENT_QUERY_INTERVAL_SECONDS}
+      AGENT_QUERY_TIMEOUT_MS: ${AGENT_QUERY_TIMEOUT_MS}
+      AGENT_DOWNLOAD_BLOCK_MAX_BYTES: ${AGENT_DOWNLOAD_BLOCK_MAX_BYTES}
+      AGENT_UPLOAD_ARCHIVE_MAX_BYTES: ${AGENT_UPLOAD_ARCHIVE_MAX_BYTES}
       # Übersteuert den Wert aus der .env: innerhalb des Compose-Netzes heißt
       # der Proxy `socket-proxy`, nicht 127.0.0.1.
       DOCKER_SOCKET_PROXY_URL: http://socket-proxy:2375

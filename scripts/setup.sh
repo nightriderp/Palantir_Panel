@@ -10,9 +10,9 @@
 #
 # Das Skript:
 #   1. kopiert .env.example nach .env, falls noch nicht vorhanden
-#   2. erzeugt sichere Secrets (JWT, CSRF, ALTCHA, Agent-Token)
+#   2. erzeugt sichere Secrets (JWT, CSRF, ALTCHA, Agent-Token, frp-Token)
 #   3. erzeugt WireGuard-Schlüsselpaare für VPS und Homeserver
-#   4. prüft die Pflichtfelder (Domain, mindestens ein OAuth-Provider)
+#   4. prüft die Pflichtfelder (Domain, OAuth-Provider, DATABASE_URL, frp-Token)
 #
 # Bestehende, bereits gefüllte Werte werden NIEMALS überschrieben.
 
@@ -53,10 +53,18 @@ set_env_value() {
   mv "${tmp}" "${ENV_FILE}"
 }
 
-# fill_if_empty KEY VALUE -> setzt den Wert nur, wenn er noch leer ist
-fill_if_empty() {
-  local key="$1" value="$2"
-  if [[ -z "$(get_env_value "${key}")" ]]; then
+# fill_if_unset KEY VALUE -> setzt den Wert nur, wenn noch keiner dasteht
+#
+# "Kein Wert" ist dabei zweierlei: die leere Zeile UND der Platzhalter
+# CHANGE_ME aus der Vorlage (Audit W2-23, infra-images-04). Ohne den zweiten
+# Fall lief der Spiele-Tunnel mit dem öffentlich bekannten Token `CHANGE_ME`
+# weiter, und der Wizard meldete trotzdem "Alle Pflichtfelder gesetzt".
+# `sync_database_password` behandelt den Platzhalter seit jeher so; hier gilt
+# nun dieselbe Regel. Ein echter, bereits gefüllter Wert bleibt unangetastet.
+fill_if_unset() {
+  local key="$1" value="$2" aktuell
+  aktuell="$(get_env_value "${key}")"
+  if [[ -z "${aktuell}" || "${aktuell}" == "CHANGE_ME" ]]; then
     set_env_value "${key}" "${value}"
     ok "${key} erzeugt"
   else
@@ -93,10 +101,26 @@ ok "Dateirechte auf .env restriktiv gesetzt (600)"
 command -v openssl >/dev/null 2>&1 || fail "openssl wird benötigt (apt install openssl)"
 
 info "Erzeuge fehlende Secrets ..."
-fill_if_empty JWT_SECRET "$(random_secret)"
-fill_if_empty CSRF_SECRET "$(random_secret)"
-fill_if_empty ALTCHA_HMAC_KEY "$(random_secret)"
-fill_if_empty AGENT_TOKEN "$(random_secret)"
+fill_if_unset JWT_SECRET "$(random_secret)"
+fill_if_unset CSRF_SECRET "$(random_secret)"
+fill_if_unset ALTCHA_HMAC_KEY "$(random_secret)"
+fill_if_unset AGENT_TOKEN "$(random_secret)"
+# Zweite Schranke des Spiele-Tunnels neben WireGuard (Pflichtenheft §2.4):
+# ohne Token nimmt frps jeden Client an, der die Steuerkanal-Adresse erreicht,
+# und kann Proxies für den gesamten Spielport-Bereich anmelden.
+fill_if_unset FRP_TOKEN "$(random_secret)"
+
+cat <<'HINT'
+
+  Hinweis zu den gemeinsamen Geheimnissen:
+    - AGENT_TOKEN und FRP_TOKEN müssen auf VPS und Homeserver IDENTISCH sein.
+    - Dieses Skript erzeugt sie je Maschine neu. Wer es auf beiden Maschinen
+      getrennt laufen lässt, bekommt zwei verschiedene Werte: Der Agent meldet
+      sich dann nicht an und der Spiele-Tunnel bleibt zu.
+    - Richtige Reihenfolge: zuerst auf der VPS ausführen, danach die beiden
+      Werte in die .env des Homeservers übernehmen (oder die .env als Ganzes).
+
+HINT
 
 # Datenbank-Passwort erzeugen und konsistent in POSTGRES_PASSWORD *und* die
 # darin eingebettete DATABASE_URL schreiben. POSTGRES_PASSWORD ist die Quelle der
@@ -124,7 +148,12 @@ sync_database_password() {
     updated="$(printf '%s' "${db_url}" |
       sed -E "s#^(postgresql://[^:/@]+:)[^@]*(@.*)#\1${pw}\2#")"
   else
-    updated="postgresql://$(get_env_value POSTGRES_USER):${pw}@127.0.0.1:5432/$(get_env_value POSTGRES_DB)"
+    # Hostname `postgres` = der Datenbank-Dienst im Docker-Netz
+    # (deploy/vps/docker-compose.yml). Backend und Migrationen laufen selbst
+    # als Container; `127.0.0.1` wäre dort die Loopback-Adresse des eigenen
+    # Containers und der Start endete mit ECONNREFUSED
+    # (Audit W2-23, infra-images-16).
+    updated="postgresql://$(get_env_value POSTGRES_USER):${pw}@postgres:5432/$(get_env_value POSTGRES_DB)"
   fi
 
   if [[ "${updated}" != "${db_url}" ]]; then
@@ -278,8 +307,26 @@ if [[ "${has_oauth}" -eq 0 ]]; then
   errors=$((errors + 1))
 fi
 
-if [[ -z "$(get_env_value DATABASE_URL)" || "$(get_env_value DATABASE_URL)" == *"CHANGE_ME"* ]]; then
+database_url="$(get_env_value DATABASE_URL)"
+if [[ -z "${database_url}" || "${database_url}" == *"CHANGE_ME"* ]]; then
   warn "DATABASE_URL enthält noch den Platzhalter CHANGE_ME"
+  errors=$((errors + 1))
+elif [[ "${database_url}" == *"@127.0.0.1:"* || "${database_url}" == *"@localhost:"* ]]; then
+  # Kein Fehler, nur ein Hinweis: Für die lokale Entwicklung ist genau das
+  # richtig. Im Docker-Stack dagegen ist 127.0.0.1 die Loopback-Adresse des
+  # Backend-Containers selbst - die Migrationen scheitern mit ECONNREFUSED,
+  # und Backend wie Frontend kommen wegen service_completed_successfully nie
+  # hoch (Audit W2-23, infra-images-16).
+  warn "DATABASE_URL zeigt auf 127.0.0.1/localhost - im Docker-Stack muss der Host 'postgres' heißen."
+fi
+
+# Der Spiele-Tunnel wird oben erzeugt; diese Prüfung ist der Rückfall für den
+# Fall, dass das Erzeugen nichts geliefert hat oder jemand den Platzhalter von
+# Hand zurückgeschrieben hat (Audit W2-23, infra-images-04). Ohne Token nimmt
+# frps jeden Client an, der den Steuerkanal erreicht.
+frp_token="$(get_env_value FRP_TOKEN)"
+if [[ -z "${frp_token}" || "${frp_token}" == "CHANGE_ME" ]]; then
+  warn "FRP_TOKEN ist leer oder steht noch auf CHANGE_ME - der Spiele-Tunnel hätte keine zweite Schranke"
   errors=$((errors + 1))
 fi
 

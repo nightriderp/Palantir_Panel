@@ -9,6 +9,122 @@
 # mitausgeliefert. Fassungen der Images stehen darin bewusst OHNE Vorgabewert:
 # ein fehlender Wert soll den Start abbrechen, statt still `:latest` zu ziehen.
 
+# --- Umgebung der Dienste aus dem Backend-Image -------------------------------
+# (Audit W2-23, infra-images-03, spec-pflichtenheft-04)
+#
+# Bis hierher stand bei jedem dieser Dienste `env_file: ../../.env`. Damit trug
+# jeder Container sämtliche Geheimnisse der Instanz - auch die, die er nie
+# liest: beide WireGuard-Privatschlüssel, das frp-Token, die Registry-Zugänge
+# der Gamenode, das Datenbank-Passwort im Klartext. Ein `docker inspect
+# palantir-migrate` genügte, um sie zu lesen; ein Fehlerpfad, der `process.env`
+# ausgibt, ebenso.
+#
+# Hier steht deshalb genau die Liste, die `apps/backend/src/config/env.ts`
+# prüft - nicht mehr und nicht weniger. Alle fünf Dienste aus dem Backend-Image
+# (migrate, seed, owner, archive, backend) lesen dieselbe Liste, weil alle fünf
+# beim Start dasselbe Schema auswerten; einzelne Werte übersteuern sie unten.
+#
+# Der Anker hält die Liste an EINER Stelle. Ein Test hält sie mit dem Schema
+# zusammen (`apps/backend/src/config/deploy-umgebung.test.ts`): Wer dort eine
+# Variable ergänzt und hier vergisst, bekommt einen roten Lauf statt eines
+# stillschweigend greifenden Vorgabewerts.
+#
+# Ein in der .env leerer Wert kommt hier als leerer String an. Das Backend
+# behandelt ihn wie „nicht gesetzt" (`leereWerteAlsUngesetzt`) - also genau wie
+# bisher über `env_file`.
+#
+# Reihenfolge und Zwischenüberschriften folgen den Abschnitten der .env.example,
+# damit sich beide Dateien nebeneinander lesen lassen. Es beginnt mit
+# Abschnitt 1 (Allgemein / Domain).
+x-backend-umgebung: &backend-umgebung
+  NODE_ENV: ${NODE_ENV}
+  LOG_LEVEL: ${LOG_LEVEL}
+  TRUSTED_PROXY_ADDRESSES: ${TRUSTED_PROXY_ADDRESSES}
+  PALANTIR_DOMAIN: ${PALANTIR_DOMAIN}
+  PUBLIC_WEB_URL: ${PUBLIC_WEB_URL}
+  PUBLIC_API_URL: ${PUBLIC_API_URL}
+  VPS_PUBLIC_IP: ${VPS_PUBLIC_IP}
+  # 2. Netzwerk-Bindung des Backends (Abschnitt 2)
+  BACKEND_HOST: ${BACKEND_HOST}
+  BACKEND_PORT: ${BACKEND_PORT}
+  # 3. Datenbank (Abschnitt 3) - POSTGRES_USER/_PASSWORD/_DB gehören zum
+  # Datenbank-Container, nicht hierher: Das Backend spricht ausschließlich über
+  # die DATABASE_URL.
+  DATABASE_URL: ${DATABASE_URL}
+  # 4. Sicherheit / Tokens (Abschnitt 4)
+  JWT_SECRET: ${JWT_SECRET}
+  JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL}
+  REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL}
+  TWO_FACTOR_TOKEN_TTL: ${TWO_FACTOR_TOKEN_TTL}
+  CSRF_SECRET: ${CSRF_SECRET}
+  COOKIE_DOMAIN: ${COOKIE_DOMAIN}
+  COOKIE_SECURE: ${COOKIE_SECURE}
+  AUTH_RATE_LIMIT_WINDOW_SECONDS: ${AUTH_RATE_LIMIT_WINDOW_SECONDS}
+  AUTH_RATE_LIMIT_LOGIN_MAX: ${AUTH_RATE_LIMIT_LOGIN_MAX}
+  AUTH_RATE_LIMIT_REGISTER_MAX: ${AUTH_RATE_LIMIT_REGISTER_MAX}
+  # 5. Identitätsanbieter (Abschnitt 5)
+  DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+  DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+  DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI}
+  TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID}
+  TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET}
+  TWITCH_REDIRECT_URI: ${TWITCH_REDIRECT_URI}
+  STEAM_API_KEY: ${STEAM_API_KEY}
+  STEAM_RETURN_URL: ${STEAM_RETURN_URL}
+  # 6. ALTCHA (Abschnitt 6)
+  ALTCHA_HMAC_KEY: ${ALTCHA_HMAC_KEY}
+  ALTCHA_COMPLEXITY: ${ALTCHA_COMPLEXITY}
+  ALTCHA_EXPIRY_SECONDS: ${ALTCHA_EXPIRY_SECONDS}
+  # 7. Tunnel-Adresse der Gegenseite (Abschnitt 7) - nur die Adresse, keiner
+  # der beiden WireGuard-Schlüssel: die gehören in die wg0.conf der jeweiligen
+  # Maschine, nicht in einen Container.
+  WIREGUARD_HOME_IP: ${WIREGUARD_HOME_IP}
+  # 8. Agent-Kanal (Abschnitt 8)
+  AGENT_TOKEN: ${AGENT_TOKEN}
+  AGENT_SOURCE_ALLOWLIST: ${AGENT_SOURCE_ALLOWLIST}
+  AGENT_COMMAND_TIMEOUT_MS: ${AGENT_COMMAND_TIMEOUT_MS}
+  AGENT_CREATE_TIMEOUT_MS: ${AGENT_CREATE_TIMEOUT_MS}
+  BACKUP_COMMAND_TIMEOUT_MS: ${BACKUP_COMMAND_TIMEOUT_MS}
+  # 9. DNS-Automatisierung (Abschnitt 9)
+  CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+  CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID}
+  # 10. Benachrichtigungen (Abschnitt 10)
+  DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+  NOTIFICATION_DELIVERY_TIMEOUT_MS: ${NOTIFICATION_DELIVERY_TIMEOUT_MS}
+  # 11. Messwerte und Dateien (Abschnitt 11)
+  STATS_HISTORY_RETENTION_HOURS: ${STATS_HISTORY_RETENTION_HOURS}
+  MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES}
+  MAX_WORLD_ARCHIVE_BYTES: ${MAX_WORLD_ARCHIVE_BYTES}
+  WORLD_ARCHIVE_DIR: ${WORLD_ARCHIVE_DIR}
+  # 12. Spielports und Tunnel (Abschnitt 12) - FRP_TOKEN bleibt draußen, das
+  # liest allein frps.
+  GAME_PORT_RANGE_START: ${GAME_PORT_RANGE_START}
+  GAME_PORT_RANGE_END: ${GAME_PORT_RANGE_END}
+  GAME_ROUTER_HOSTNAME: ${GAME_ROUTER_HOSTNAME}
+  MINECRAFT_ROUTER_PORT: ${MINECRAFT_ROUTER_PORT}
+  # 13. Ressourcen-Warnungen (Abschnitt 13)
+  RESOURCE_WARN_NODE_PERCENT: ${RESOURCE_WARN_NODE_PERCENT}
+  RESOURCE_WARN_SERVER_PERCENT: ${RESOURCE_WARN_SERVER_PERCENT}
+  # 14. Audit-Archiv (Abschnitt 14) - Pfad des HOSTS; die Dienste mit
+  # Einhängepunkt übersteuern ihn unten.
+  AUDIT_ARCHIVE_DIR: ${AUDIT_ARCHIVE_DIR}
+  # 15. Server-Lebenszyklus (Abschnitt 15)
+  CRASH_LOOP_MAX_RESTARTS: ${CRASH_LOOP_MAX_RESTARTS}
+  CRASH_LOOP_WINDOW_MINUTES: ${CRASH_LOOP_WINDOW_MINUTES}
+  HEALTH_CHECK_INTERVAL_MS: ${HEALTH_CHECK_INTERVAL_MS}
+  HEALTH_CHECK_ATTEMPT_TIMEOUT_MS: ${HEALTH_CHECK_ATTEMPT_TIMEOUT_MS}
+  AUTO_SHUTDOWN_DEFAULT_IDLE_MINUTES: ${AUTO_SHUTDOWN_DEFAULT_IDLE_MINUTES}
+  AUTO_SHUTDOWN_DEFAULT_GRACE_MINUTES: ${AUTO_SHUTDOWN_DEFAULT_GRACE_MINUTES}
+  SCHEDULER_INTERVAL_MS: ${SCHEDULER_INTERVAL_MS}
+  BACKUP_ORPHAN_AFTER_MS: ${BACKUP_ORPHAN_AFTER_MS}
+  INSTALLATION_PHASE: ${INSTALLATION_PHASE}
+  # 17. Sicherungen der Panel-Datenbank (Abschnitt 17) - ebenfalls ein Pfad des
+  # HOSTS, den der Backend-Dienst unten übersteuert.
+  PANEL_BACKUP_DIR: ${PANEL_BACKUP_DIR}
+  PANEL_BACKUP_INTERVAL_HOURS: ${PANEL_BACKUP_INTERVAL_HOURS}
+  PANEL_BACKUP_RETENTION_DAYS: ${PANEL_BACKUP_RETENTION_DAYS}
+  PG_DUMP_BINARY: ${PG_DUMP_BINARY}
+
 services:
   # --- Docker-Socket-Proxy für Traefik ---------------------------------------
   # Traefik muss die Labels der anderen Container lesen und braucht dafür Zugang
@@ -159,8 +275,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    env_file:
-      - ../../.env
+    environment: *backend-umgebung
     command: ['node', 'apps/backend/dist/db/migrate.js']
     networks:
       - palantir
@@ -192,8 +307,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    env_file:
-      - ../../.env
+    environment: *backend-umgebung
     command: ['node', 'apps/backend/dist/db/seed.js']
     networks:
       - palantir
@@ -228,8 +342,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    env_file:
-      - ../../.env
+    environment: *backend-umgebung
     entrypoint: ['node', 'apps/backend/dist/db/owner.js']
     networks:
       - palantir
@@ -255,9 +368,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    env_file:
-      - ../../.env
     environment:
+      <<: *backend-umgebung
+      # Übersteuert den Wert aus der .env: dort steht ein Pfad des HOSTS, im
+      # Container gilt der Einhängepunkt.
       AUDIT_ARCHIVE_DIR: /data/audit-archive
     volumes:
       - ../../data/audit-archive:/data/audit-archive
@@ -279,9 +393,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    env_file:
-      - ../../.env
     environment:
+      <<: *backend-umgebung
       # Übersteuert den Wert aus der .env: dort steht ein Pfad des HOSTS, im
       # Container gilt der Einhängepunkt. So bleibt der Ablageort auf dem Host
       # frei wählbar, ohne dass die Einhängung nachgezogen werden muss.
@@ -376,9 +489,23 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    env_file:
-      - ../../.env
     environment:
+      # Kein `env_file: ../../.env` (Audit W2-23, infra-images-03): Das
+      # Frontend ist der einzige Dienst, der aus dem Internet erreichbar ist,
+      # und liest keines der Geheimnisse der Instanz - trug sie bisher aber
+      # vollständig in seiner Umgebung. Hier steht deshalb nur, was der Dienst
+      # tatsächlich anfasst, und nichts davon ist geheim.
+      #
+      # Die NEXT_PUBLIC_-Werte setzt Next.js bereits beim BAUEN des Images in
+      # das Bundle ein (apps/frontend/Dockerfile) - sie stehen hier, damit die
+      # Umgebung des Containers dasselbe sagt wie das Bundle und die Liste
+      # vollständig zeigt, was der Dienst sieht. NODE_ENV kommt aus dem Image
+      # (`ENV NODE_ENV=production`) und gehört nicht in die Liste: Ein aus der
+      # Entwicklung übernommenes `NODE_ENV=development` würde den fertig
+      # gebauten Standalone-Server sonst in den Entwicklungsmodus schicken.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_LIVE_WS_URL: ${NEXT_PUBLIC_LIVE_WS_URL}
+      NEXT_PUBLIC_BASE_DOMAIN: ${NEXT_PUBLIC_BASE_DOMAIN}
       # Version des ausgerollten Standes fuer die Anzeige unten links im Panel.
       # Setzt `deploy.sh` aus dem Versions-Tag des Commits - nichts, was jemand
       # in einer Datei nachtraegt. Leer nur bei einem Start von Hand ohne

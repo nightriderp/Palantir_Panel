@@ -88,7 +88,57 @@ const envSchema = z.object({
     .default(512 * 1024 * 1024),
 });
 
-const parsed = envSchema.safeParse(process.env);
+/**
+ * Namen aller Umgebungsvariablen, die der Agent liest.
+ *
+ * Aus dem Schema selbst abgeleitet, damit die `environment:`-Liste des
+ * Agent-Dienstes in `deploy/gamenode/docker-compose.yml` dagegen geprüft werden
+ * kann (Audit W2-23, infra-images-03; siehe `deploy-umgebung.test.ts`). Seit
+ * dort kein `env_file: ../../.env` mehr steht – der Agent trug damit sämtliche
+ * Geheimnisse der Instanz –, wäre eine hier ergänzte und dort vergessene
+ * Variable sonst nicht zu bemerken: Der Container zöge still den Vorgabewert.
+ */
+export const AGENT_UMGEBUNGSVARIABLEN: readonly string[] = Object.keys(envSchema.shape);
+
+/**
+ * In einer `.env` bedeutet `SCHLUESSEL=` „nicht gesetzt", nicht „leerer Wert" –
+ * und dasselbe gilt für `SCHLUESSEL: ${SCHLUESSEL}` in der Compose-Datei, wenn
+ * der Wert in der `.env` leer bleibt (Audit W2-23).
+ *
+ * Ohne diese Normalisierung greift kein Vorgabewert: Die Vorlage liefert
+ * `AGENT_REGISTRY_USERNAME=`, `AGENT_SECCOMP_PROFILE_PATH=` und
+ * `AGENT_NODE_ID=` leer aus, und `z.string().min(1)` bzw. `.url()` weisen den
+ * leeren String zurück – der Agent käme mit der ausgelieferten Vorlage gar
+ * nicht erst hoch. Gleiche Umsetzung wie im Backend
+ * (`apps/backend/src/config/env.ts`, `leereWerteAlsUngesetzt`); bewusst
+ * doppelt statt über ein gemeinsames Paket, weil `packages/contracts` und
+ * `packages/validation` die Vertragsgrenze zwischen den Komponenten sind und
+ * keine Laufzeit-Hilfsfunktionen aufnehmen (CLAUDE.md §3).
+ */
+export function leereWerteAlsUngesetzt(
+  werte: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  return Object.fromEntries(
+    Object.entries(werte).map(([schlüssel, wert]) => [
+      schlüssel,
+      typeof wert === 'string' && wert.trim() === '' ? undefined : wert,
+    ]),
+  );
+}
+
+/**
+ * Liest einen Satz Umgebungswerte gegen das vollständige Schema.
+ *
+ * Ausgelagert und exportiert, damit die Normalisierung ohne Neuladen des Moduls
+ * testbar ist (CLAUDE.md §4).
+ */
+export function umgebungLesen(
+  werte: Record<string, string | undefined>,
+): z.SafeParseReturnType<unknown, z.infer<typeof envSchema>> {
+  return envSchema.safeParse(leereWerteAlsUngesetzt(werte));
+}
+
+const parsed = umgebungLesen(process.env);
 
 if (!parsed.success) {
   const details = parsed.error.issues
