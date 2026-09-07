@@ -1,7 +1,7 @@
 import { createDrizzleRoleRepository, createRoleService } from '../modules/rbac/index.js';
 import { createAdminModule } from '../modules/admin/index.js';
 import { env } from '../config/env.js';
-import { closeDb, getDb } from './client.js';
+import { closeDb, getDb, getPool } from './client.js';
 
 /**
  * Archivierungslauf des Audit-Logs
@@ -31,6 +31,9 @@ async function main(): Promise<void> {
   const db = getDb();
   const admin = createAdminModule({
     db,
+    // Der Archivlauf hält für seine Dauer eine feste Verbindung: Über sie läuft
+    // der Advisory-Lock, der einen zweiten Lauf abweist (Audit W2-16).
+    pool: getPool(),
     roles: createRoleService(createDrizzleRoleRepository(db)),
     auditArchiveDir: env.AUDIT_ARCHIVE_DIR,
   });

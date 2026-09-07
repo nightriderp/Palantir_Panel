@@ -16,6 +16,7 @@
  * genau wie bei Migrationen und Seed-Rollen.
  */
 
+import { randomBytes } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { mkdir, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
@@ -51,19 +52,63 @@ export interface AuditArchiveFile {
   readonly sizeBytes: number;
 }
 
-/** Stichtag: alles davor darf archiviert werden. */
+/**
+ * Stichtag: alles davor darf archiviert werden – als UTC-Datum
+ * (Audit W2-16, backend-db-08).
+ *
+ * Der Datenbank-Trigger aus `0005_admin_ports_audit_storage.sql` rechnet
+ * `now() - interval '24 months'` und lehnt jeden Löschversuch ab, der jünger
+ * ist. Rechnet die Anwendung auch nur eine Stunde großzügiger, wandern Einträge
+ * in die Archivdatei, die der Trigger anschließend nicht freigibt – die
+ * **gesamte** Löschtransaktion rollt zurück und der Lauf endet als Fehler,
+ * obwohl die Datei bereits geschrieben ist.
+ *
+ * Zwei Unterschiede zum früheren `setMonth()` sorgten genau dafür:
+ *
+ * 1. `setMonth()` rechnet in der **lokalen** Zeitzone des Backend-Prozesses.
+ *    Steht die auf Europe/Berlin, während PostgreSQL in UTC läuft, verschiebt
+ *    schon die Sommerzeit den Stichtag um eine Stunde.
+ * 2. `setMonth()` lässt den Tag **überlaufen**: Der 29.02.2028 minus 24 Monate
+ *    ergibt dort den 01.03.2026, PostgreSQL klemmt dagegen auf den 28.02.2026.
+ *    Der App-Stichtag läge einen Tag später als der der Datenbank.
+ *
+ * Deshalb: alles in UTC, Klemmen wie PostgreSQL – und zusätzlich auf
+ * Mitternacht abgeschnitten. Das Abschneiden geht immer nach **hinten** und
+ * macht den Stichtag damit nie später als den der Datenbank; es lässt einen
+ * angefangenen Tag stehen, der beim nächsten Lauf mitgeht, und ist zugleich der
+ * Puffer für eine Datenbank-Sitzung, die nicht in UTC läuft.
+ */
 export function archiveCutoff(now: Date): Date {
-  const cutoff = new Date(now.getTime());
-  cutoff.setMonth(cutoff.getMonth() - AUDIT_RETENTION_MONTHS);
+  const verschoben = now.getUTCMonth() - AUDIT_RETENTION_MONTHS;
+  const jahr = now.getUTCFullYear() + Math.floor(verschoben / 12);
+  const monat = ((verschoben % 12) + 12) % 12;
+  // Tag 0 des Folgemonats ist der letzte Tag des Zielmonats.
+  const letzterTag = new Date(Date.UTC(jahr, monat + 1, 0)).getUTCDate();
 
-  return cutoff;
+  return new Date(Date.UTC(jahr, monat, Math.min(now.getUTCDate(), letzterTag)));
 }
 
-/** Dateiname eines Laufs – enthält den Stichtag, damit Archive sortierbar bleiben. */
-export function archiveFileName(cutoff: Date): string {
-  const stamp = cutoff.toISOString().slice(0, 10);
+/**
+ * Dateiname eines Laufs (Audit W2-16, backend-admin-resources-11).
+ *
+ * Drei Bestandteile: der Stichtag, damit Archive sortierbar bleiben und man
+ * ihnen ansieht, bis wohin sie reichen; der Zeitpunkt des Laufs; ein
+ * Zufallsanteil.
+ *
+ * Der Stichtag allein reichte nicht: Zwei Läufe am selben Tag – etwa der
+ * Cronjob auf der VPS und ein Klick in der Oberfläche – kamen auf denselben
+ * Namen. Der Zeitstempel allein reicht ebenso wenig, zwei Läufe können in
+ * dieselbe Sekunde fallen. Erst der Zufallsanteil macht den Namen eindeutig.
+ */
+export function archiveFileName(cutoff: Date, now: Date): string {
+  const stichtag = cutoff.toISOString().slice(0, 10);
+  const zeitpunkt = now
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d+Z$/, 'Z');
+  const zufall = randomBytes(4).toString('hex');
 
-  return `audit-log-bis-${stamp}.jsonl.gz`;
+  return `audit-log-bis-${stichtag}-${zeitpunkt}-${zufall}.jsonl.gz`;
 }
 
 /**
@@ -76,6 +121,13 @@ export function archiveFileName(cutoff: Date): string {
  * Bricht das Schreiben ab, wird die halbfertige Datei wieder entfernt und der
  * Fehler weitergereicht: Ein Torso im Archivverzeichnis würde später wie ein
  * vollständiger Export aussehen.
+ *
+ * Geschrieben wird mit `flags: 'wx'` – eine vorhandene Datei wird nie
+ * überschrieben (Audit W2-16, backend-admin-resources-11). Der Archivlauf ist
+ * bereits über einen Advisory-Lock serialisiert und der Dateiname trägt einen
+ * Zufallsanteil; das Flag ist die letzte Schranke für den Fall, dass beides
+ * versagt. Ein überschriebenes Archiv wäre der schlimmste denkbare Ausgang:
+ * Die Einträge stehen danach weder in der Tabelle noch in der Datei.
  */
 export function createGzipArchiveWriter(directory: string): AuditArchiveWriter {
   return {
@@ -86,9 +138,18 @@ export function createGzipArchiveWriter(directory: string): AuditArchiveWriter {
       const lines = entries.map((entry) => `${JSON.stringify(serializeEntry(entry))}\n`);
 
       try {
-        await pipeline(Readable.from(lines), createGzip(), createWriteStream(filePath));
+        await pipeline(
+          Readable.from(lines),
+          createGzip(),
+          createWriteStream(filePath, { flags: 'wx' }),
+        );
       } catch (error: unknown) {
-        await unlink(filePath).catch(() => undefined);
+        // Bei EEXIST gehört die Datei einem anderen Lauf – sie zu entfernen
+        // hieße, ein fremdes Archiv zu löschen.
+        if (!istBereitsVorhanden(error)) {
+          await unlink(filePath).catch(() => undefined);
+        }
+
         throw error;
       }
 
@@ -97,6 +158,11 @@ export function createGzipArchiveWriter(directory: string): AuditArchiveWriter {
       return { filePath, sizeBytes: size };
     },
   };
+}
+
+/** Erkennt den Fehler „Datei existiert bereits" von `flags: 'wx'`. */
+function istBereitsVorhanden(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'EEXIST';
 }
 
 function serializeEntry(entry: AuditEntryRecord): Record<string, unknown> {
@@ -129,6 +195,14 @@ export interface AuditArchiveDependencies {
 /**
  * Führt einen Archivierungslauf aus.
  *
+ * **Genau einer zur Zeit** (Audit W2-16, backend-admin-resources-11): Der Lauf
+ * belegt vorab eine Sperre in der Datenbank und gibt sie am Ende wieder frei.
+ * Zwei gleichzeitige Läufe – etwa der Cronjob auf der VPS und ein Klick in der
+ * Oberfläche – lasen sonst dieselben Einträge, schrieben ineinander verschränkt
+ * in dieselbe Datei und löschten anschließend beide: Die einzige Kopie der
+ * Alt-Einträge wäre ein kaputtes gzip. Der zweite Lauf endet stattdessen sofort
+ * mit `AUDIT_ARCHIVE_FAILED` und lässt Tabelle wie Datei unangetastet.
+ *
  * @param ctx Wer den Lauf anstößt. Verlangt `audit.manage` (Gefundener Punkt
  *   46) – nicht `audit.view`: Lesen und Verkürzen sind zwei verschiedene Dinge,
  *   und dieser Lauf ist der einzige Weg, auf dem Einträge die Tabelle verlassen.
@@ -147,6 +221,32 @@ export async function archiveAuditEntries(
     throw new AdminError('PERMISSION_DENIED');
   }
 
+  const lock = await deps.repository.acquireLock();
+
+  if (!lock) {
+    throw new AdminError(
+      'AUDIT_ARCHIVE_FAILED',
+      'Es läuft bereits ein Archivierungslauf des Audit-Logs. Bitte dessen Ende abwarten.',
+    );
+  }
+
+  try {
+    return await fuehreLaufAus(deps, ctx);
+  } finally {
+    await lock.release();
+  }
+}
+
+/**
+ * Der eigentliche Lauf – aufgerufen ausschließlich mit gehaltenem Lock.
+ *
+ * Getrennt von {@link archiveAuditEntries}, damit die Freigabe des Locks in
+ * genau einem `finally` steht und kein Rückgabepfad daran vorbeikommt.
+ */
+async function fuehreLaufAus(
+  deps: AuditArchiveDependencies,
+  ctx: AdminContext | null,
+): Promise<AuditArchiveResultDto> {
   const now = deps.now?.() ?? new Date();
   const cutoff = archiveCutoff(now);
   const entries = await deps.repository.listOlderThan(cutoff);
@@ -166,7 +266,7 @@ export async function archiveAuditEntries(
   let file: AuditArchiveFile;
 
   try {
-    file = await deps.writer.write(archiveFileName(cutoff), entries);
+    file = await deps.writer.write(archiveFileName(cutoff, now), entries);
   } catch (error: unknown) {
     // Die aktive Tabelle bleibt unangetastet – lieber ein gescheiterter Lauf
     // als ein Eintrag, der weder in der Tabelle noch im Archiv steht.

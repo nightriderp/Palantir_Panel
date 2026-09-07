@@ -10,6 +10,7 @@
 import type { AgentStorageEntry, LinkedAccountProfileDto } from '@palantir/contracts';
 import type { AuditLogQuery, RegistrationRequestQuery } from '@palantir/validation';
 import { and, asc, count, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
+import type { Pool } from 'pg';
 import type { Database } from '../../db/index.js';
 import { auditLog, portAllocations, portRanges, storageSnapshots } from '../../db/schema/admin.js';
 // `auth_methods` gehört zu B1 (Pflichtenheft §7); die Warteliste liest die
@@ -373,15 +374,74 @@ export function createDrizzleAuditLogRepository(db: Database): AuditLogRepositor
 }
 
 /**
+ * Kennung des Archiv-Locks (Audit W2-16).
+ *
+ * `pg_try_advisory_lock` gibt es in einer 64-Bit- und einer Zwei-mal-32-Bit-
+ * Variante. Die zweite ist hier die verständlichere: Die erste Zahl steht für
+ * das Panel (ASCII „PALA"), die zweite für den Vorgang. Weitere Sperren
+ * bekommen später eine eigene zweite Zahl, ohne dass sich zwei frei gewählte
+ * 64-Bit-Zahlen zufällig überschneiden können.
+ */
+export const AUDIT_ARCHIVE_LOCK_CLASS = 0x50414c41;
+export const AUDIT_ARCHIVE_LOCK_ID = 1;
+
+/**
  * Zugriff des Archivierungsprozesses (Pflichtenheft §6).
  *
  * `deleteOlderThan()` weist sich gegenüber dem Datenbank-Trigger über die
  * Sitzungsvariable `palantir.audit_archive` aus. `SET LOCAL` gilt nur innerhalb
  * der Transaktion – nach dem Commit ist das Log wieder für jeden unantastbar,
  * auch wenn dieselbe Verbindung weiterverwendet wird.
+ *
+ * `acquireLock()` braucht den Pool zusätzlich zur Drizzle-Instanz: Ein
+ * Advisory-Lock auf Sitzungsebene gehört der Verbindung, die ihn genommen hat.
+ * Über `db.execute()` läge das Freigeben irgendwann auf einer anderen
+ * Poolverbindung – der Lock bliebe hängen, bis die Verbindung stirbt. Deshalb
+ * wird für die Dauer des Laufs eine feste Verbindung aus dem Pool gehalten
+ * (Audit W2-16, backend-admin-resources-11).
  */
-export function createDrizzleAuditArchiveRepository(db: Database): AuditArchiveRepository {
+export function createDrizzleAuditArchiveRepository(
+  db: Database,
+  pool: Pool,
+): AuditArchiveRepository {
   return {
+    async acquireLock() {
+      const client = await pool.connect();
+
+      try {
+        const { rows } = await client.query<{ locked: boolean }>(
+          'SELECT pg_try_advisory_lock($1, $2) AS locked',
+          [AUDIT_ARCHIVE_LOCK_CLASS, AUDIT_ARCHIVE_LOCK_ID],
+        );
+
+        if (rows[0]?.locked !== true) {
+          client.release();
+
+          return null;
+        }
+      } catch (error: unknown) {
+        client.release();
+
+        throw error;
+      }
+
+      return {
+        async release() {
+          try {
+            await client.query('SELECT pg_advisory_unlock($1, $2)', [
+              AUDIT_ARCHIVE_LOCK_CLASS,
+              AUDIT_ARCHIVE_LOCK_ID,
+            ]);
+          } finally {
+            // Auch ohne erfolgreiches Freigeben zurück in den Pool: Stirbt die
+            // Verbindung, gibt PostgreSQL den Lock von sich aus frei – ein
+            // hängengebliebener Lauf sperrt das Archiv also nicht für immer.
+            client.release();
+          }
+        },
+      };
+    },
+
     async listOlderThan(cutoff) {
       const rows = await db
         .select()

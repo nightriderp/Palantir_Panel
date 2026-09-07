@@ -85,6 +85,16 @@ export interface AuditLogRepository {
  * Schnittstelle gar nicht in die Hand.
  */
 export interface AuditArchiveRepository {
+  /**
+   * Belegt den Archivlauf exklusiv; `null`, wenn bereits einer unterwegs ist
+   * (Audit W2-16, backend-admin-resources-11).
+   *
+   * Die Sperre muss **prozessübergreifend** wirken: Der Lauf lässt sich sowohl
+   * über die Admin-Oberfläche als auch über `pnpm … audit:archive` auf der VPS
+   * anstoßen – zwei verschiedene Prozesse, die sich nur über die Datenbank
+   * sehen. Ein Flag im Arbeitsspeicher würde den Fall gerade nicht abdecken.
+   */
+  acquireLock(): Promise<AuditArchiveLock | null>;
   /** Einträge, die älter als der Stichtag sind – aufsteigend nach Zeitstempel. */
   listOlderThan(cutoff: Date): Promise<AuditEntryRecord[]>;
   /**
@@ -92,6 +102,17 @@ export interface AuditArchiveRepository {
    * Anzahl. Wird erst aufgerufen, wenn die Archivdatei geschrieben ist.
    */
   deleteOlderThan(cutoff: Date): Promise<number>;
+}
+
+/**
+ * Belegung eines Archivlaufs – wird am Ende des Laufs wieder freigegeben.
+ *
+ * Bewusst ein Handle statt zweier Methoden `lock()`/`unlock()` am Repository:
+ * Die Freigabe gehört zu genau dieser Belegung, und der Aufrufer kann sie nicht
+ * versehentlich für einen fremden Lauf aufrufen.
+ */
+export interface AuditArchiveLock {
+  release(): Promise<void>;
 }
 
 /** Öffentliche Schnittstelle des Audit-Logs. Kein `update`, kein `delete`. */
