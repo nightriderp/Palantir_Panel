@@ -51,14 +51,18 @@ import {
   type BackupHousekeeper,
   type NodeWarningEvaluator,
   type PanelBackupHousekeeper,
+  type PanelBackupRunner,
   type ResourceEventSink,
   type ScheduledTask,
   type SchedulerLogger,
   type SchedulerTimer,
+  type ServerScheduleTicker,
   type TimerHandle,
   autoShutdownTask,
   backupHousekeepingTask,
   backupScheduleTask,
+  panelBackupTask,
+  serverScheduleTask,
   statsSamplingTask,
   resourceWarningTask,
   startScheduler,
@@ -103,6 +107,35 @@ function manualTimer(): SchedulerTimer & { fire(): void; readonly cleared: boole
 
 /** Wartet, bis alle bereits angestoßenen Zusagen abgearbeitet sind. */
 const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+/** Ein mitgeschriebener Protokolleintrag. */
+interface Eintrag {
+  readonly stufe: 'debug' | 'warn' | 'error';
+  readonly details: Record<string, unknown>;
+  readonly nachricht: string;
+}
+
+/**
+ * Protokollierung, die ihre Einträge behält (Audit W3-12, `backend-core-11`).
+ *
+ * Bei den Zeitgeber-Aufgaben ist das Protokoll die **einzige** sichtbare
+ * Wirkung: `serverScheduleTask` und `panelBackupTask` liefern nichts zurück und
+ * ändern nichts, was der Test sonst abfragen könnte. Ohne Blick in die Einträge
+ * prüfte ein Test nur, dass `tick()` aufgerufen wurde – und ein Vertauschen von
+ * „ausgeführt" und „fehlgeschlagen" bliebe unsichtbar.
+ */
+function mitschreibendesLog(): SchedulerLogger & { readonly eintraege: Eintrag[] } {
+  const eintraege: Eintrag[] = [];
+
+  return {
+    eintraege,
+    debug: (details, nachricht): void =>
+      void eintraege.push({ stufe: 'debug', details, nachricht }),
+    warn: (details, nachricht): void => void eintraege.push({ stufe: 'warn', details, nachricht }),
+    error: (details, nachricht): void =>
+      void eintraege.push({ stufe: 'error', details, nachricht }),
+  };
+}
 
 describe('Zeitgeber: Auslösen und Überschneidung', () => {
   it('stößt bei jedem Takt alle Aufgaben an', async () => {
@@ -259,6 +292,280 @@ describe('Zeitgeber: fällige Backup-Zeitpläne', () => {
     await settle();
 
     expect(ticks).toBe(2);
+  });
+});
+
+describe('Zeitgeber: fällige Server-Aufgaben (B3, Reiter „Aufgaben")', () => {
+  /** Zeitplan-Dienst, der eine feste Auswertung liefert und Aufrufe zählt. */
+  function ticker(
+    ergebnis: { executedScheduleIds: string[]; failedScheduleIds: string[] },
+    fehler?: Error,
+  ): ServerScheduleTicker & { readonly aufrufe: number } {
+    let aufrufe = 0;
+
+    return {
+      get aufrufe(): number {
+        return aufrufe;
+      },
+      tick: (): Promise<{ executedScheduleIds: string[]; failedScheduleIds: string[] }> => {
+        aufrufe += 1;
+
+        return fehler ? Promise.reject(fehler) : Promise.resolve(ergebnis);
+      },
+    };
+  }
+
+  it('ruft tick() bei jedem Takt auf', async () => {
+    const timer = manualTimer();
+    const schedules = ticker({ executedScheduleIds: [], failedScheduleIds: [] });
+
+    startScheduler({
+      tasks: [serverScheduleTask(schedules, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+    timer.fire();
+    await settle();
+
+    expect(schedules.aufrufe).toBe(2);
+  });
+
+  it('meldet ausgeführte und gescheiterte Aufgaben unter dem jeweils eigenen Namen', async () => {
+    /*
+     * Die beiden Listen kommen aus **einem** Ergebnisobjekt und werden hier auf
+     * zwei Protokollfelder verteilt. Vertauschte Felder wären im Betrieb der
+     * Unterschied zwischen „alles lief" und „alles scheiterte" – und ohne diese
+     * Zusicherung von keinem Test bemerkbar (`backend-core-11`).
+     */
+    const timer = manualTimer();
+    const log = mitschreibendesLog();
+    const schedules = ticker({
+      executedScheduleIds: ['plan-lief'],
+      failedScheduleIds: ['plan-scheiterte', 'plan-scheiterte-auch'],
+    });
+
+    startScheduler({
+      tasks: [serverScheduleTask(schedules, log)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(log.eintraege).toHaveLength(1);
+    expect(log.eintraege[0]?.stufe).toBe('debug');
+    expect(log.eintraege[0]?.details).toEqual({
+      executed: ['plan-lief'],
+      failed: ['plan-scheiterte', 'plan-scheiterte-auch'],
+    });
+  });
+
+  it('schreibt nichts, solange kein Zeitplan fällig war', async () => {
+    // Jede Minute eine Zeile „nichts zu tun" macht das Protokoll unlesbar.
+    const timer = manualTimer();
+    const log = mitschreibendesLog();
+
+    startScheduler({
+      tasks: [serverScheduleTask(ticker({ executedScheduleIds: [], failedScheduleIds: [] }), log)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(log.eintraege).toEqual([]);
+  });
+
+  it('schreibt auch dann, wenn ausschließlich Aufgaben gescheitert sind', async () => {
+    const timer = manualTimer();
+    const log = mitschreibendesLog();
+
+    startScheduler({
+      tasks: [
+        serverScheduleTask(
+          ticker({ executedScheduleIds: [], failedScheduleIds: ['plan-scheiterte'] }),
+          log,
+        ),
+      ],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(log.eintraege[0]?.details).toEqual({ executed: [], failed: ['plan-scheiterte'] });
+  });
+
+  it('lässt einen Fehler des Zeitplan-Dienstes den Durchlauf nicht abbrechen', async () => {
+    const timer = manualTimer();
+    const log = mitschreibendesLog();
+    const danach: string[] = [];
+
+    startScheduler({
+      tasks: [
+        serverScheduleTask(
+          ticker({ executedScheduleIds: [], failedScheduleIds: [] }, new Error('Datenbank weg')),
+          silentLog,
+        ),
+        {
+          name: 'danach',
+          run: (): Promise<void> => {
+            danach.push('gelaufen');
+
+            return Promise.resolve();
+          },
+        },
+      ],
+      intervalMs: 60_000,
+      log,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(danach).toEqual(['gelaufen']);
+
+    // `eintraege[0]` ist die Startmeldung des Zeitgebers – gesucht ist der
+    // Fehler, den `runOnce()` je Aufgabe einzeln fängt.
+    const fehler = log.eintraege.filter((eintrag) => eintrag.stufe === 'error');
+    expect(fehler).toHaveLength(1);
+    expect(fehler[0]?.details.task).toBe('serverSchedules');
+  });
+});
+
+describe('Zeitgeber: Sicherung des Panels (Mockup-Abgleich 12.5.1)', () => {
+  /** Panel-Sicherung, die Aufrufe in ihrer Reihenfolge festhält. */
+  function runner(
+    lauf: { readonly id: string } | null,
+    entfernt: number,
+  ): PanelBackupRunner & { readonly aufrufe: string[] } {
+    const aufrufe: string[] = [];
+
+    return {
+      aufrufe,
+      runScheduled: (): Promise<{ readonly id: string } | null> => {
+        aufrufe.push('runScheduled');
+
+        return Promise.resolve(lauf);
+      },
+      prune: (): Promise<number> => {
+        aufrufe.push('prune');
+
+        return Promise.resolve(entfernt);
+      },
+    };
+  }
+
+  it('stößt den fälligen Lauf an und räumt danach auf', async () => {
+    const timer = manualTimer();
+    const log = mitschreibendesLog();
+    const backups = runner({ id: 'abzug-1' }, 2);
+
+    startScheduler({
+      tasks: [panelBackupTask(backups, log)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(backups.aufrufe).toEqual(['runScheduled', 'prune']);
+    expect(log.eintraege[0]?.details).toEqual({ backupId: 'abzug-1', entfernt: 2 });
+  });
+
+  it('räumt auch dann auf, wenn kein Lauf fällig war', async () => {
+    /*
+     * Die Aufbewahrungsfrist gilt für die abgelegten Dateien, nicht für den
+     * Takt: Ein vorzeitiges `return` nach `runScheduled() === null` ließe alte
+     * Abzüge für immer liegen.
+     */
+    const timer = manualTimer();
+    const log = mitschreibendesLog();
+    const backups = runner(null, 3);
+
+    startScheduler({
+      tasks: [panelBackupTask(backups, log)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(backups.aufrufe).toEqual(['runScheduled', 'prune']);
+    expect(log.eintraege[0]?.details).toEqual({ backupId: null, entfernt: 3 });
+  });
+
+  it('schreibt nichts, wenn weder ein Lauf fällig war noch etwas wegzuräumen ist', async () => {
+    const timer = manualTimer();
+    const log = mitschreibendesLog();
+    const backups = runner(null, 0);
+
+    startScheduler({
+      tasks: [panelBackupTask(backups, log)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(backups.aufrufe).toEqual(['runScheduled', 'prune']);
+    expect(log.eintraege).toEqual([]);
+  });
+
+  it('lässt einen Fehler der Panel-Sicherung den Durchlauf nicht abbrechen', async () => {
+    const timer = manualTimer();
+    const log = mitschreibendesLog();
+    const danach: string[] = [];
+
+    startScheduler({
+      tasks: [
+        panelBackupTask(
+          {
+            runScheduled: (): Promise<{ readonly id: string } | null> =>
+              Promise.reject(new Error('pg_dump fehlt')),
+            prune: (): Promise<number> => Promise.resolve(0),
+          },
+          silentLog,
+        ),
+        {
+          name: 'danach',
+          run: (): Promise<void> => {
+            danach.push('gelaufen');
+
+            return Promise.resolve();
+          },
+        },
+      ],
+      intervalMs: 60_000,
+      log,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(danach).toEqual(['gelaufen']);
+
+    const fehler = log.eintraege.filter((eintrag) => eintrag.stufe === 'error');
+    expect(fehler).toHaveLength(1);
+    expect(fehler[0]?.details.task).toBe('panelBackups');
   });
 });
 

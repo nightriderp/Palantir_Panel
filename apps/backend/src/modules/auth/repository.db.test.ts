@@ -7,6 +7,12 @@
  * Unique-Index auf `lower(username)` und an einem bedingten `UPDATE` – beides
  * ist bis hierher nie ausgeführt worden.
  *
+ * Am Ende der Datei läuft zusätzlich die **gemeinsame Vertrags-Suite**
+ * (`repository-contract.ts`, Audit W3-12 / `test-gaps-07`) gegen dieses
+ * Repository – dieselben Erwartungen, die `repository-contract.test.ts` an die
+ * Attrappe stellt. Läuft eine Seite grün und die andere rot, sind Attrappe und
+ * Produktion auseinandergelaufen.
+ *
  * Läuft nur mit `DATABASE_URL` **und** `PALANTIR_TEST_DB=1`.
  */
 
@@ -19,6 +25,7 @@ import {
   legeServerAn,
 } from '../../test-support/fixtures.js';
 import { backups } from '../../db/schema.js';
+import { describeAuthRepositoryContract } from './repository-contract.js';
 import { createDrizzleAuthRepository } from './repository.js';
 
 const STUNDE = 60 * 60 * 1000;
@@ -262,4 +269,10 @@ describeDatenbank('AuthRepository gegen PostgreSQL', (kontext) => {
     expect((await repository.setUsername(nutzer, 'nachher')).username).toBe('nachher');
     expect((await repository.setDisplayName(nutzer, 'Neuer Name')).displayName).toBe('Neuer Name');
   });
+
+  /*
+   * Die gemeinsame Vertrags-Suite. `kontext.db` steht erst innerhalb eines
+   * Testfalls bereit – deshalb eine Fabrik und kein fertiges Repository.
+   */
+  describeAuthRepositoryContract(() => createDrizzleAuthRepository(kontext.db));
 });
