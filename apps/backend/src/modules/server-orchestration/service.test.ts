@@ -30,7 +30,7 @@ import {
   createResourceService,
 } from '../resources/index.js';
 import { AgentRegistry, AgentSession, type AgentSocket } from './agent-gateway.js';
-import { type ServerOrchestrationError } from './errors.js';
+import { ServerOrchestrationError } from './errors.js';
 import { TEST_GAME_TYPE, createGameRegistry } from './game-registry.js';
 import { type HealthCheckResult, type HealthProbe } from './health-check.js';
 import { createPortAllocator } from './ports.js';
@@ -201,12 +201,30 @@ class FakeRepository implements ServerRepository {
     return Promise.resolve();
   }
 
-  persistLifecycle(id: string, data: PersistLifecycleData): Promise<void> {
+  /**
+   * Wie die Drizzle-Umsetzung: schreibt nur, solange der Server noch in
+   * `expectedStatus` steht (Compare-and-Swap, orchestration-core-07). Sonst
+   * `SERVER_STATE_CONFLICT` – ohne diese Bedingung ließe sich der
+   * Nebenläufigkeitsschutz nicht ohne Datenbank prüfen.
+   */
+  persistLifecycle(
+    id: string,
+    data: PersistLifecycleData,
+    expectedStatus: ServerStatus,
+  ): Promise<void> {
     const current = this.servers.get(id);
 
-    if (current !== undefined) {
-      this.servers.set(id, { ...current, ...data });
+    if (current === undefined || current.status !== expectedStatus) {
+      return Promise.reject(
+        new ServerOrchestrationError(
+          'SERVER_STATE_CONFLICT',
+          'Der Zustand des Servers hat sich zwischenzeitlich geändert.',
+          { serverId: id, expected: expectedStatus, to: data.status },
+        ),
+      );
     }
+
+    this.servers.set(id, { ...current, ...data });
 
     return Promise.resolve();
   }
@@ -497,6 +515,17 @@ function makeHarness(
     statsHistoryRetentionHours?: number;
     /** Gruppen-Chat beim Anlegen (Gefundener Punkt 70); ohne Angabe passiert nichts. */
     ensureServerChat?: (serverId: string) => Promise<unknown>;
+    /**
+     * Lässt die Portvergabe scheitern – für den Rollback-Test
+     * (orchestration-core-05): Der Pool ist erschöpft, der eben angelegte
+     * Datensatz darf nicht als Leiche stehen bleiben.
+     */
+    failPortAllocation?: boolean;
+    /**
+     * Wird bei jedem gemeldeten Ereignis aufgerufen – für den Test der
+     * Reihenfolge „erst Commit, dann melden" (event-flow-11).
+     */
+    onEmit?: (event: string, payload: Record<string, unknown>) => void;
   } = {},
 ): Harness {
   const repository = new FakeRepository();
@@ -558,6 +587,7 @@ function makeHarness(
   const events: OrchestrationEventSink = {
     emit: (event, payload) => {
       emitted.push({ event, payload });
+      options.onEmit?.(event, payload);
     },
   };
 
@@ -569,14 +599,16 @@ function makeHarness(
       _serverId: string,
       requests: readonly { protocol: 'tcp' | 'udp'; count: number }[],
     ) =>
-      Promise.resolve(
-        requests.flatMap((request) =>
-          Array.from({ length: request.count }, () => ({
-            port: nextPort++,
-            protocol: request.protocol,
-          })),
-        ),
-      ),
+      options.failPortAllocation === true
+        ? Promise.reject(new ServerOrchestrationError('PORT_POOL_EXHAUSTED'))
+        : Promise.resolve(
+            requests.flatMap((request) =>
+              Array.from({ length: request.count }, () => ({
+                port: nextPort++,
+                protocol: request.protocol,
+              })),
+            ),
+          ),
     releaseForServer: (serverId: string) => {
       releasedPorts.push(serverId);
 
@@ -773,6 +805,31 @@ describe('Server anlegen (Lastenheft §3.3)', () => {
     const zweiter = await harness.service.createServer(createInput('mein-server'), OWNER_ID);
 
     expect(zweiter.subdomain).toBe('mein-server');
+  });
+
+  it('räumt auch eine gescheiterte Portvergabe weg (orchestration-core-05)', async () => {
+    /*
+     * Bis W2-10 lagen Portvergabe und das Nachtragen der Zuweisung **vor** dem
+     * try-Block: Ein erschöpfter Port-Pool hinterließ den eben angelegten
+     * Datensatz auf `creating` – Subdomain belegt, Ports womöglich schon
+     * vergeben. Genau die Leiche, die der Rollback beseitigen sollte.
+     */
+    const harness = makeHarness({ failPortAllocation: true });
+
+    await expect(
+      harness.service.createServer(createInput('mein-server'), OWNER_ID),
+    ).rejects.toMatchObject({ code: 'PORT_POOL_EXHAUSTED' });
+
+    // Kein Datensatz, keine belegte Subdomain, die Reservierung ist zurückgegeben.
+    expect(harness.repository.servers.size).toBe(0);
+    expect(harness.releasedPorts).toHaveLength(1);
+    expect(harness.deletedDnsNames).toHaveLength(1);
+    // Und es ging kein CREATE an den Homeserver – die Kette bricht vorher ab.
+    expect(harness.socket.commands.map((befehl) => befehl.command)).not.toContain('CREATE');
+
+    // Die Subdomain ist wieder frei – der zweite Versuch lief vorher in
+    // „Diese Subdomain ist bereits vergeben".
+    await expect(harness.repository.isSubdomainTaken('mein-server')).resolves.toBe(false);
   });
 
   it('lehnt einen gesperrten Systemnamen ab', async () => {
@@ -1629,6 +1686,46 @@ describe('Klonen (Pflichtenheft §9)', () => {
     expect(fertig.statusMessage).toBeTruthy();
   });
 
+  it('setzt den Zielserver auf error, wenn die Weltdaten-Kopie scheitert (orchestration-features-04)', async () => {
+    /*
+     * Der Klon ist angelegt (Server, DNS, Ports, Container), das Zurückspielen
+     * der Welt scheitert. Bis W2-10 endete nur der Auftrag auf `failed` – der
+     * Zielserver stand unauffällig da, und nach 15 Minuten (Aufbewahrung des
+     * Auftrags) deutete nichts mehr darauf hin, dass ihm die Welt fehlt.
+     */
+    const harness = makeHarness();
+    const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
+
+    harness.socket.answers.set('RESTORE_BACKUP', {
+      success: false,
+      data: null,
+      error: { code: 'AGENT_COMMAND_FAILED', message: 'Die Prüfsumme passt nicht.' },
+    });
+
+    const job = await harness.service.cloneServer(
+      source.id,
+      { name: 'Klon', subdomain: 'klon-ohne-welt', includeWorldData: true },
+      OWNER_ID,
+    );
+    const fertig = await settleCloneJob(harness, source.id, job.id);
+
+    expect(fertig.status).toBe('failed');
+    expect(fertig.targetServerId).toBeTruthy();
+
+    const ziel = await harness.service.requireServer(String(fertig.targetServerId));
+
+    expect(ziel.status).toBe('error');
+    expect(ziel.statusMessage).toContain('Weltdaten');
+    expect(ziel.statusMessage).toContain('Welt aber leer');
+
+    // Der Fehlerzustand wird auch gemeldet, nicht nur in die Zeile geschrieben.
+    expect(
+      harness.emitted.some(
+        (eintrag) => eintrag.event === 'server.failed' && eintrag.payload.serverId === ziel.id,
+      ),
+    ).toBe(true);
+  });
+
   it('meldet einen Auftrag an einem fremden Server als unbekannt', async () => {
     const harness = makeHarness();
     const source = await harness.service.createServer(createInput('vorlage'), OWNER_ID);
@@ -1935,16 +2032,22 @@ describe('Prozess-Schutz: Zwischenzustände und Dubletten (Audit W0-5, Fundpunkt
     expect((await harness.service.requireServer(created.id)).status).toBe('stopped');
   });
 
-  it('meldet einen Übergangskonflikt aus dem Soll/Ist-Abgleich als Warnung, nicht als Fehler', async () => {
-    // Ein Server steht laut Datenbank auf `stopping`, der Container läuft
-    // aber noch (orchestration-core-04): Der Abgleich plant `verifyHealth`,
-    // die Tabelle verbietet `stopping → starting`. Bisher ein error-Eintrag.
+  it('schickt den verlorenen Stopp-Befehl erneut, statt einen verbotenen Übergang zu planen', async () => {
+    /*
+     * Ein Server steht laut Datenbank auf `stopping`, der Container läuft aber
+     * noch (orchestration-core-04). Bis W2-10 plante der Abgleich hier
+     * `verifyHealth`; die Tabelle verbietet `stopping → starting`, der Server
+     * blieb dauerhaft in `stopping` hängen (weder Start noch Stopp erlaubt).
+     * Jetzt geht der verlorene `STOP` erneut hinaus – der Wunsch des Nutzers
+     * steht ja schon in der Datenbank.
+     */
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
     const server = await harness.service.requireServer(created.id);
 
     harness.repository.servers.set(created.id, { ...server, status: 'stopping' });
     harness.logged.length = 0;
+    harness.socket.commands.length = 0;
 
     await harness.service.reconcile(HOST.id, {
       kind: 'stateReport',
@@ -1964,12 +2067,8 @@ describe('Prozess-Schutz: Zwischenzustände und Dubletten (Audit W0-5, Fundpunkt
 
     expect(rejections).toEqual([]);
     expect(harness.logged.filter((line) => line.level === 'error')).toEqual([]);
-    expect(
-      harness.logged.some(
-        (line) =>
-          line.level === 'warn' && line.message.includes('im aktuellen Zustand nicht anwendbar'),
-      ),
-    ).toBe(true);
+    expect(harness.socket.commands.map((befehl) => befehl.command)).toContain('STOP');
+    expect((await harness.service.requireServer(created.id)).status).toBe('stopped');
   });
 });
 
@@ -2267,6 +2366,164 @@ describe('Ereignisse des Agents', () => {
         emittedAt: NOW.toISOString(),
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('Lifecycle-Konsistenz (Audit W2-10)', () => {
+  it('lässt von zwei gleichzeitigen Starts genau einen gewinnen (orchestration-core-07)', async () => {
+    /*
+     * Beide Aufrufe laden den Server als `stopped` und bestehen die
+     * Übergangsprüfung – bis W2-10 schrieben auch beide `starting`, schickten
+     * `START` und starteten je einen Health-Lauf. Das bedingte Fortschreiben
+     * (`UPDATE … WHERE status = $erwartet`) lässt nur den ersten durch; der
+     * zweite endet mit `SERVER_STATE_CONFLICT`, also mit 409 statt 500.
+     */
+    const harness = makeHarness({ healthy: 'pending' });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.socket.commands.length = 0;
+
+    const ergebnisse = await Promise.allSettled([
+      harness.service.startServer(created.id, OWNER_ID),
+      harness.service.startServer(created.id, OWNER_ID),
+    ]);
+
+    expect(ergebnisse.filter((e) => e.status === 'fulfilled')).toHaveLength(1);
+
+    const abgelehnt = ergebnisse.find((e) => e.status === 'rejected');
+
+    expect(abgelehnt?.status === 'rejected' ? abgelehnt.reason : null).toMatchObject({
+      code: 'SERVER_STATE_CONFLICT',
+    });
+
+    // Genau ein START ging an den Homeserver, nicht zwei.
+    expect(harness.socket.commands.filter((befehl) => befehl.command === 'START')).toHaveLength(1);
+    expect((await harness.service.requireServer(created.id)).status).toBe('starting');
+  });
+
+  it('verwirft ein zweites gleichzeitiges CRASHED, ohne den Vorgang zu stören', async () => {
+    // Zwei Meldungen desselben Absturzes, echt nebenläufig: Der zweite
+    // Schreibvorgang findet den erwarteten Zustand nicht mehr vor.
+    const harness = makeHarness({ healthy: true });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    harness.logged.length = 0;
+
+    const laufend = await harness.service.requireServer(created.id);
+    const frame = {
+      kind: 'event' as const,
+      event: 'CRASHED' as const,
+      serverId: laufend.id,
+      payload: { exitCode: 137 },
+      emittedAt: NOW.toISOString(),
+    };
+
+    await expect(
+      Promise.all([
+        harness.service.handleAgentEvent(HOST.id, frame),
+        harness.service.handleAgentEvent(HOST.id, frame),
+      ]),
+    ).resolves.toBeDefined();
+
+    // Genau ein `server.crashed` – die Dublette endet als Warnung im Log.
+    expect(harness.emitted.filter((e) => e.event === 'server.crashed')).toHaveLength(1);
+    expect(harness.logged.filter((line) => line.level === 'error')).toEqual([]);
+    expect(
+      harness.logged.some(
+        (line) => line.level === 'warn' && line.message.includes('Absturzmeldung verworfen'),
+      ),
+    ).toBe(true);
+  });
+
+  it('meldet server.statusChanged erst nach dem Commit der Reservierung (event-flow-11)', async () => {
+    /*
+     * Innerhalb der Reservierung ist die Zeile noch ungeschrieben. Ging das
+     * Frame dort hinaus, zeigte jeder Browser `starting`, während ein Abbruch
+     * beim Commit die Datenbank auf `stopped` zurückfallen ließ – und kein
+     * weiteres Frame korrigierte das.
+     */
+    const reihenfolge: string[] = [];
+    const harness = makeHarness({
+      healthy: 'pending',
+      buildReservation: (repository) => ({
+        async reserve(_request, write) {
+          reihenfolge.push('transaktion-offen');
+
+          const ergebnis = await write(repository);
+
+          reihenfolge.push('commit');
+
+          return ergebnis;
+        },
+      }),
+      onEmit: (event) => {
+        if (event === 'server.statusChanged') {
+          reihenfolge.push('server.statusChanged');
+        }
+      },
+    });
+
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    reihenfolge.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+
+    expect(reihenfolge.slice(0, 3)).toEqual([
+      'transaktion-offen',
+      'commit',
+      'server.statusChanged',
+    ]);
+  });
+
+  it('zieht einen laufenden Server mit beendetem Container über stopping auf stopped (orchestration-core-04)', async () => {
+    /*
+     * `running → stopped` verbietet die Übergangstabelle; der Weg führt über
+     * `stopping`. Bis W2-10 plante der Abgleich den direkten Sprung, die
+     * Ausführung scheiterte still im Log und der Server blieb auf `running`
+     * stehen, obwohl sein Container längst beendet war.
+     */
+    const harness = makeHarness({ healthy: true });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+
+    const laufend = await settle(harness, created.id, ['running']);
+    const wechsel: { from: unknown; to: unknown }[] = [];
+
+    harness.logged.length = 0;
+    harness.emitted.length = 0;
+
+    await harness.service.reconcile(HOST.id, {
+      kind: 'stateReport',
+      reason: 'connected',
+      containers: [
+        {
+          serverId: laufend.id,
+          containerId: laufend.dockerContainerId ?? 'c1',
+          status: 'exited',
+          exitCode: 0,
+          startedAt: null,
+          observedAt: NOW.toISOString(),
+        },
+      ],
+      reportedAt: NOW.toISOString(),
+    });
+
+    for (const eintrag of harness.emitted) {
+      if (eintrag.event === 'server.statusChanged') {
+        wechsel.push({ from: eintrag.payload.from, to: eintrag.payload.to });
+      }
+    }
+
+    expect((await harness.service.requireServer(laufend.id)).status).toBe('stopped');
+    expect(wechsel).toEqual([
+      { from: 'running', to: 'stopping' },
+      { from: 'stopping', to: 'stopped' },
+    ]);
+    expect(harness.logged.filter((line) => line.level === 'error')).toEqual([]);
   });
 });
 

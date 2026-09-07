@@ -17,6 +17,26 @@
  * beobachtbaren Container-Zustände (`AGENT_CONTAINER_STATUSES`), nicht die
  * Lifecycle-Zustände aus Pflichtenheft §9 – die Auslegung liegt hier
  * (WORK_STATUS „Gefundene Punkte" Nr. 18).
+ *
+ * **Jede geplante Maßnahme muss über die Übergangstabelle ausführbar sein.**
+ * Bis zum Audit (orchestration-core-04) plante der Abgleich Korrekturen, die
+ * `SERVER_STATUS_TRANSITIONS` verbietet – etwa `stopping` + laufender Container
+ * → `verifyHealth` → `stopping → starting`. Der Dienst brach die Korrektur dann
+ * mit `SERVER_STATE_CONFLICT` ab und protokollierte sie nur; der Server blieb
+ * dauerhaft in `stopping` hängen, aus dem heraus weder Start noch Stopp erlaubt
+ * sind. Deshalb ist die Zuordnung (Soll-Zustand × Container-Zustand) → Maßnahme
+ * so gewählt, dass jeder Schritt laut Tabelle zulässig ist:
+ *
+ * - `running`/`starting` erreichen `stopped` nur über `stopping` – dafür trägt
+ *   `markStopped` das Kennzeichen `viaStopping`.
+ * - `stopping` mit laufendem Container ist kein Zustandsproblem, sondern ein
+ *   verlorener Befehl: Der Stopp wird erneut geschickt (`retryStop`), der
+ *   Zustand bleibt.
+ * - `creating` mit laufendem Container geht nach `stopped`; der nächste Bericht
+ *   hebt ihn regulär über den Health-Check auf `running`.
+ *
+ * {@link reconciliationTargetStatuses} macht diese Zuordnung prüfbar: Der Test
+ * fährt alle Kombinationen gegen die Tabelle aus den Contracts.
  */
 
 import { type AgentContainerState, type ServerStatus } from '@palantir/contracts';
@@ -47,8 +67,32 @@ export type ReconciliationAction =
       readonly exitCode: number | null;
       readonly reason: string;
     }
-  /** Der Container ist sauber beendet – der Soll-Zustand wird nachgezogen. */
-  | { readonly kind: 'markStopped'; readonly serverId: string; readonly reason: string }
+  /**
+   * Der Container ist sauber beendet (oder läuft schlicht nicht) – der
+   * Soll-Zustand wird nachgezogen.
+   *
+   * `viaStopping` sagt, ob der Dienst den Zwischenschritt `stopping` gehen
+   * muss: Aus `running` und `starting` erlaubt die Tabelle `stopped` nicht
+   * direkt, wohl aber über `stopping` (orchestration-core-04). Aus `creating`
+   * und `stopping` selbst geht es direkt.
+   */
+  | {
+      readonly kind: 'markStopped';
+      readonly serverId: string;
+      readonly reason: string;
+      readonly viaStopping: boolean;
+    }
+  /**
+   * Der Server steht auf `stopping`, der Container läuft aber noch: Der
+   * `STOP`-Befehl ist mit der Verbindung verloren gegangen.
+   *
+   * Bewusst **kein** Zustandswechsel: Der gewünschte Zielzustand steht schon in
+   * der Datenbank, es fehlt allein der Befehl an den Homeserver. Ihn erneut zu
+   * schicken ist die einzige Korrektur, die den Wunsch des Nutzers erfüllt –
+   * `stopping → starting` verbietet die Tabelle, und den laufenden Container
+   * als `stopped` zu verbuchen wäre schlicht falsch.
+   */
+  | { readonly kind: 'retryStop'; readonly serverId: string; readonly reason: string }
   /**
    * Der Container läuft, obwohl die Datenbank etwas anderes sagt.
    *
@@ -192,6 +236,23 @@ function planForServer(
   return planForIdleContainer(server);
 }
 
+/**
+ * Aus `running` und `starting` erlaubt die Tabelle `stopped` nicht direkt – der
+ * Weg führt über `stopping` (Contracts `SERVER_STATUS_TRANSITIONS`).
+ */
+function needsStoppingStep(status: ServerStatus): boolean {
+  return status === 'running' || status === 'starting';
+}
+
+function stopAction(server: ExpectedServer, reason: string): ReconciliationAction {
+  return {
+    kind: 'markStopped',
+    serverId: server.id,
+    reason,
+    viaStopping: needsStoppingStep(server.status),
+  };
+}
+
 function planForMissingContainer(server: ExpectedServer): ReconciliationAction | null {
   if (server.dockerContainerId === null) {
     if (server.status === 'creating') {
@@ -204,6 +265,13 @@ function planForMissingContainer(server: ExpectedServer): ReconciliationAction |
     }
 
     // Kein Container erwartet, keiner da – nichts zu tun.
+    return null;
+  }
+
+  // Ein Server, der bereits als `error` geführt wird, ist schon markiert; ein
+  // zweites `error` verbietet die Tabelle (Selbstübergang) und hätte nichts
+  // hinzuzufügen.
+  if (server.status === 'error') {
     return null;
   }
 
@@ -228,10 +296,24 @@ function planForLiveContainer(server: ExpectedServer): ReconciliationAction | nu
       };
     case 'stopping':
       return {
-        kind: 'verifyHealth',
+        kind: 'retryStop',
         serverId: server.id,
         reason:
-          'Der Stopp-Befehl ging durch die Trennung verloren; der Container läuft noch und wird erneut bewertet.',
+          'Der Stopp-Befehl ging durch die Trennung verloren; der Container läuft noch und wird erneut gestoppt.',
+      };
+    case 'creating':
+      /*
+       * Der Container ist entstanden und läuft sogar – das Anlegen ist damit
+       * durch. `creating → starting` verbietet die Tabelle, `creating → stopped`
+       * ist der reguläre Abschluss des Anlegens (Pflichtenheft §9). Der nächste
+       * Bericht sieht dann `stopped` + laufender Container und prüft über
+       * `verifyHealth` die Erreichbarkeit.
+       */
+      return {
+        kind: 'markStopped',
+        serverId: server.id,
+        reason: 'Der Container ist angelegt und lief beim Wiederverbinden bereits.',
+        viaStopping: false,
       };
     default:
       return {
@@ -254,17 +336,9 @@ function planForTerminatedContainer(
       // `crashed` bleiben stehen, damit die Ursache sichtbar bleibt.
       return null;
     case 'stopping':
-      return {
-        kind: 'markStopped',
-        serverId: server.id,
-        reason: 'Der Container wurde während der Trennung beendet.',
-      };
+      return stopAction(server, 'Der Container wurde während der Trennung beendet.');
     case 'creating':
-      return {
-        kind: 'markStopped',
-        serverId: server.id,
-        reason: 'Der Container wurde angelegt, ist aber noch nie gelaufen.',
-      };
+      return stopAction(server, 'Der Container wurde angelegt, ist aber noch nie gelaufen.');
     default:
       // `running` oder `starting`: Der Server sollte laufen, tut es aber nicht.
       if (looksLikeCrash(state)) {
@@ -276,11 +350,10 @@ function planForTerminatedContainer(
         };
       }
 
-      return {
-        kind: 'markStopped',
-        serverId: server.id,
-        reason: 'Der Server wurde während der Trennung zum Homeserver regulär beendet.',
-      };
+      return stopAction(
+        server,
+        'Der Server wurde während der Trennung zum Homeserver regulär beendet.',
+      );
   }
 }
 
@@ -293,16 +366,40 @@ function planForIdleContainer(server: ExpectedServer): ReconciliationAction | nu
     case 'creating':
       // Container angelegt, noch nie gestartet – genau der erwartete Abschluss
       // des Anlegens (Pflichtenheft §9: `creating → stopped`).
-      return {
-        kind: 'markStopped',
-        serverId: server.id,
-        reason: 'Der Container ist angelegt und bereit.',
-      };
+      return stopAction(server, 'Der Container ist angelegt und bereit.');
     default:
-      return {
-        kind: 'markStopped',
-        serverId: server.id,
-        reason: `Der Container läuft nicht, obwohl der Server als "${server.status}" geführt wird.`,
-      };
+      return stopAction(
+        server,
+        `Der Container läuft nicht, obwohl der Server als "${server.status}" geführt wird.`,
+      );
+  }
+}
+
+/**
+ * Zustände, die der Dienst für eine Maßnahme **nacheinander** ansteuert.
+ *
+ * Der Prüfstein für „der Plan enthält nur erlaubte Übergänge": Der Test fährt
+ * die Kette gegen `SERVER_STATUS_TRANSITIONS`. Leer bei Maßnahmen, die den
+ * Lifecycle nicht anfassen (`reportOrphan`, `retryStop`).
+ *
+ * `verifyHealth` führt nur dann nach `starting`, wenn der Server nicht schon
+ * dort steht – der Dienst überspringt den Übergang in dem Fall.
+ */
+export function reconciliationTargetStatuses(
+  action: ReconciliationAction,
+): readonly ServerStatus[] {
+  switch (action.kind) {
+    case 'markCrashed':
+      return ['crashed'];
+    case 'markStopped':
+      return action.viaStopping ? ['stopping', 'stopped'] : ['stopped'];
+    case 'markMissing':
+    case 'markCreateInterrupted':
+      return ['error'];
+    case 'verifyHealth':
+      return ['starting'];
+    case 'retryStop':
+    case 'reportOrphan':
+      return [];
   }
 }
