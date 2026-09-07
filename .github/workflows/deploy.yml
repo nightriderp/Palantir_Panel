@@ -105,7 +105,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Images auf `prod` umhängen
+      # Nur prüfen, noch nicht umhängen: Das Tag `prod` bewegt sich erst, wenn
+      # die VPS steht (Schritt weiter unten). Sonst zeigte
+      # `palantir-agent:prod` schon auf den neuen Stand, während der Rollout
+      # scheitert - und jede Gamenode, die neu aufgesetzt wird oder ein
+      # `docker compose pull` sieht, zöge einen Agent gegen ein Backend, das der
+      # Betreiber gerade zurückdreht.
+      - name: Images für diesen Commit prüfen
         env:
           SHA: ${{ steps.ziel.outputs.sha }}
           OWNER: ${{ github.repository_owner }}
@@ -118,13 +124,12 @@ jobs:
               echo "::error::${quelle} existiert nicht. Ist der Images-Workflow für diesen Commit durchgelaufen?"
               exit 1
             fi
-            # Hängt nur den Verweis um - es wird nichts neu gebaut und nichts
-            # heruntergeladen.
-            docker buildx imagetools create -t "ghcr.io/${OWNER}/${image}:prod" "${quelle}"
-            echo "  ${image}:prod -> ${SHA}"
+            echo "  ${image}:${SHA} vorhanden"
           done
 
       # ----------------------------------------------------------------------
+      # Rollt den SHA aus, nicht das Tag `prod`: deploy.sh setzt
+      # PALANTIR_VERSION auf den Commit-SHA, die Images dazu sind oben geprüft.
       - name: Auf der VPS ausrollen
         env:
           SHA: ${{ steps.ziel.outputs.sha }}
@@ -165,9 +170,26 @@ jobs:
               "${SSH_USER}@${SSH_HOST}" "${SHA}"
 
       # ----------------------------------------------------------------------
-      # Erst NACH dem erfolgreichen Ausrollen auf der VPS. Scheitert der Schritt
-      # oben, bleibt die Gamenode auf ihrem bisherigen Stand, statt zu einem
-      # Backend zu wandern, das gar nicht läuft.
+      # Erst NACH dem erfolgreichen Ausrollen auf der VPS - wie der Zweig `prod`
+      # darunter. Beide zusammen sind der Stand, den die Gamenode zieht: Sie
+      # nimmt den Zweig `prod` und daraus das Image-Tag `prod`. Scheitert der
+      # Schritt oben, bleibt beides alt.
+      - name: Images auf `prod` umhängen
+        env:
+          SHA: ${{ steps.ziel.outputs.sha }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          for image in palantir-backend palantir-frontend palantir-agent; do
+            # Hängt nur den Verweis um - es wird nichts neu gebaut und nichts
+            # heruntergeladen.
+            docker buildx imagetools create -t "ghcr.io/${OWNER}/${image}:prod" "ghcr.io/${OWNER}/${image}:${SHA}"
+            echo "  ${image}:prod -> ${SHA}"
+          done
+
+      # ----------------------------------------------------------------------
+      # Zuletzt der Zweig: Erst wenn er sich bewegt, holt sich die Gamenode den
+      # neuen Stand - und dann zeigt das Image-Tag `prod` schon dorthin.
       - name: Zweig `prod` für die Gamenode nachziehen
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
