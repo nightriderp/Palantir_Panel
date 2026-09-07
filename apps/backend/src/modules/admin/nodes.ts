@@ -30,6 +30,7 @@ import {
   hasAnyPermission,
   hasPermission,
 } from '../rbac/index.js';
+import { isUniqueViolation } from '../../db/errors.js';
 import { type AuditService, entryFor } from './audit.js';
 import type { AdminContext } from './context.js';
 import { AdminError } from './errors.js';
@@ -252,6 +253,29 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
     }
   }
 
+  /**
+   * Führt den Schreibvorgang aus und übersetzt die Kollision zweier
+   * gleichzeitiger Aufrufe (Audit W2-9, `backend-admin-resources-12`).
+   *
+   * `ensureAddressFree()` und der folgende Schreibvorgang sind zwei getrennte
+   * Anweisungen; zwei gleichzeitige Aufrufe mit demselben Namen bestehen beide
+   * die Vorprüfung. Den zweiten fängt der Unique-Index auf `host_nodes.name`
+   * bzw. `host_nodes.wireguard_ip` – bisher als roher Postgres-Fehler und damit
+   * als 500 statt als `NODE_ADDRESS_TAKEN` (409). Die Port-Vergabe in
+   * `ports.ts` behandelt dasselbe Rennen seit jeher so.
+   */
+  async function mitAdresskonflikt<T>(schreiben: () => Promise<T>): Promise<T> {
+    try {
+      return await schreiben();
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new AdminError('NODE_ADDRESS_TAKEN');
+      }
+
+      throw error;
+    }
+  }
+
   return {
     async list(ctx) {
       requireNodeRead(ctx.actor);
@@ -280,11 +304,13 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       requireNodeManage(ctx.actor);
       await ensureAddressFree(input.name, input.wireguardIp);
 
-      const node = await deps.repository.create({
-        name: input.name,
-        wireguardIp: input.wireguardIp,
-        totalResources: input.totalResources,
-      });
+      const node = await mitAdresskonflikt(() =>
+        deps.repository.create({
+          name: input.name,
+          wireguardIp: input.wireguardIp,
+          totalResources: input.totalResources,
+        }),
+      );
 
       await deps.audit.record(
         entryFor(ctx, {
@@ -304,7 +330,7 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       const node = await requireNode(nodeId);
       await ensureAddressFree(input.name, input.wireguardIp, node.id);
 
-      const updated = await deps.repository.update(node.id, input);
+      const updated = await mitAdresskonflikt(() => deps.repository.update(node.id, input));
 
       await deps.audit.record(
         entryFor(ctx, {

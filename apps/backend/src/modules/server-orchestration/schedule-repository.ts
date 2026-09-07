@@ -17,6 +17,7 @@ import { type ScheduleAction, type ScheduleRunResult } from '@palantir/contracts
 import { and, asc, eq, inArray, isNotNull, lte } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
 import { schedules } from '../../db/schema.js';
+import { ServerOrchestrationError } from './errors.js';
 
 /** Aktionen, die dieses Modul verwaltet – `backup` gehört B5. */
 export const SERVER_SCHEDULE_ACTIONS = ['restart', 'command'] as const;
@@ -151,7 +152,17 @@ export function createDrizzleServerScheduleRepository(db: DbConnection): ServerS
         .returning();
 
       if (row === undefined) {
-        throw new Error('Die geplante Aufgabe konnte nicht angelegt werden.');
+        /*
+         * `INSERT ... RETURNING` ohne Zeile ist ein Widerspruch und bleibt
+         * deshalb ein Serverfehler – aber als benannter Code statt als rohem
+         * `Error` (Audit W2-9, `orchestration-features-11`; CLAUDE.md §5). Die
+         * Antwort ist dieselbe 500, die Route muss den Fall aber nicht mehr am
+         * globalen Handler vorbeireichen.
+         */
+        throw new ServerOrchestrationError(
+          'INTERNAL_ERROR',
+          'Die geplante Aufgabe konnte nicht angelegt werden.',
+        );
       }
 
       return toRecord(row);
@@ -174,7 +185,13 @@ export function createDrizzleServerScheduleRepository(db: DbConnection): ServerS
         .returning();
 
       if (row === undefined) {
-        throw new Error(`Die geplante Aufgabe ${scheduleId} existiert nicht mehr.`);
+        /*
+         * Zwischen `requireOwn()` im Dienst und diesem `UPDATE` kann die Aufgabe
+         * gelöscht worden sein (zweiter Browser-Tab). Bisher endete das als
+         * roher `Error` und damit als 500; fachlich ist es genau
+         * `SCHEDULE_NOT_FOUND` (404) – Audit W2-9, `orchestration-features-11`.
+         */
+        throw new ServerOrchestrationError('SCHEDULE_NOT_FOUND', undefined, { scheduleId });
       }
 
       return toRecord(row);

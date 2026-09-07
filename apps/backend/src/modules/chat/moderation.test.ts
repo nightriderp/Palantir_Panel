@@ -175,6 +175,32 @@ describe('Melden', () => {
   });
 
   /**
+   * Audit W2-9, `backend-community-05`: Doppelklick auf „Melden". Beide Aufrufe
+   * finden über `findReportByMessageAndReporter` nichts, den zweiten Insert
+   * fängt `message_reports_message_reporter_idx` – bisher als roher 23505 und
+   * damit als 500 statt als `MESSAGE_REPORT_DUPLICATE` (409).
+   */
+  it('beantwortet den Unique-Index (23505) mit MESSAGE_REPORT_DUPLICATE', async () => {
+    const conversation = await chat.openDirectConversation(ctxFor(ALEX), BEA);
+    const nachricht = await chat.sendMessage(ctxFor(ALEX), conversation.id, {
+      content: 'Etwas Unschönes',
+    });
+
+    // Der Gewinner des Rennens hat seinen Insert noch nicht abgeschlossen.
+    repository.findReportByMessageAndReporter = (): Promise<null> => Promise.resolve(null);
+    repository.createReport = (): Promise<never> =>
+      Promise.reject(
+        Object.assign(new Error('duplicate key value violates unique constraint'), {
+          code: '23505',
+        }),
+      );
+
+    await expect(
+      moderation.reportMessage(ctxFor(BEA), nachricht.id, 'Beleidigung'),
+    ).rejects.toThrowError(new ChatError('MESSAGE_REPORT_DUPLICATE'));
+  });
+
+  /**
    * `message.reported` ist das einzige Chat-Ereignis, das laut Pflichtenheft
    * §14 eine Benachrichtigung auslösen darf – und es trägt keinen Inhalt: Eine
    * Benachrichtigung geht an einen Discord-Webhook, dorthin gehört kein

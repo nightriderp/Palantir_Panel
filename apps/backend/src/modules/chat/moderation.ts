@@ -23,6 +23,7 @@ import {
   type NotificationEventPayloads,
 } from '@palantir/contracts';
 import { type MessageReportQuery, type ResolveMessageReportInput } from '@palantir/validation';
+import { isUniqueViolation } from '../../db/errors.js';
 import { type AuditService } from '../admin/index.js';
 import { hasPermission } from '../rbac/index.js';
 import { type ChatContext, requireUserId } from './context.js';
@@ -222,14 +223,31 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
         throw new ChatError('MESSAGE_REPORT_DUPLICATE');
       }
 
-      const report = await repository.createReport({
-        messageId,
-        reportedById: viewerId,
-        reason,
-        // Kopie des Inhalts: Die Entscheidung soll nachvollziehbar bleiben,
-        // auch wenn die Nachricht danach gelöscht wird.
-        reportedContent: message.content,
-      });
+      let report: MessageReportRecord;
+
+      try {
+        report = await repository.createReport({
+          messageId,
+          reportedById: viewerId,
+          reason,
+          // Kopie des Inhalts: Die Entscheidung soll nachvollziehbar bleiben,
+          // auch wenn die Nachricht danach gelöscht wird.
+          reportedContent: message.content,
+        });
+      } catch (error) {
+        /*
+         * Doppelklick auf „Melden" (Audit W2-9, `backend-community-05`): Beide
+         * Aufrufe finden über `findReportByMessageAndReporter` nichts, den
+         * zweiten Insert fängt `message_reports_message_reporter_idx`. Fachlich
+         * ist das derselbe Fall, den die Vorprüfung meldet – bisher kam er als
+         * 500 zurück.
+         */
+        if (isUniqueViolation(error)) {
+          throw new ChatError('MESSAGE_REPORT_DUPLICATE');
+        }
+
+        throw error;
+      }
 
       const conversation = await repository.findConversation(message.conversationId);
 

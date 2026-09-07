@@ -34,6 +34,7 @@ import { type MultipartFile } from '@fastify/multipart';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { accountRateLimit } from '../../lib/abuse-limits.js';
+import { attachmentContentDisposition } from '../../lib/content-disposition.js';
 import { requireActor, requireApproved, requirePermission } from '../rbac/index.js';
 import { type ServerDtoContext, toGameServerDto } from './dto.js';
 import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
@@ -797,10 +798,11 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
       return await reply
         .header('content-type', 'application/octet-stream')
-        .header(
-          'content-disposition',
-          `attachment; filename="${datei.fileName.replaceAll('"', '')}"`,
-        )
+        // RFC-6266-konform kodiert (Audit W2-9, `orchestration-features-07`):
+        // Ein Dateiname mit Steuerzeichen (`welt\r\nx.txt`) ließ Node den
+        // Kopfzeilenwert ablehnen – der Download endete als 500 –, Umlaute
+        // kamen als Buchstabensalat an.
+        .header('content-disposition', attachmentContentDisposition(datei.fileName))
         .send(datei.content);
     } catch (error: unknown) {
       return replyWithError(reply, error);

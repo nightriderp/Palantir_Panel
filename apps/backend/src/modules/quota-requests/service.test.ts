@@ -68,6 +68,15 @@ interface BuildOptions {
   vorDemBeanspruchen?: () => Promise<void>;
   /** Läuft, während das Kontingent gesetzt wird – die andere Hälfte des Rennens. */
   waehrendSetzen?: () => Promise<void>;
+  /**
+   * Lässt `create()` am partiellen Index `quota_requests_open_per_user_idx`
+   * scheitern (Audit W2-9, `backend-admin-resources-12`).
+   *
+   * Damit lässt sich das Rennen zwischen `findOpenByUser()` und dem `INSERT`
+   * nachstellen: Die Vorprüfung findet nichts, die Datenbank hat die Zeile
+   * inzwischen trotzdem.
+   */
+  anlegenKollidiert?: boolean;
 }
 
 function build(options: BuildOptions = {}): Aufbau {
@@ -76,6 +85,15 @@ function build(options: BuildOptions = {}): Aufbau {
 
   const repository: QuotaRequestRepository = {
     create: (input) => {
+      if (options.anlegenKollidiert === true) {
+        // SQLSTATE, den `pg` als `code` auf den Fehler legt.
+        return Promise.reject(
+          Object.assign(new Error('duplicate key value violates unique constraint'), {
+            code: '23505',
+          }),
+        );
+      }
+
       const neu = record({
         id: `req-${String(gespeichert.length + 1)}`,
         userId: input.userId,
@@ -212,6 +230,20 @@ describe('Anfrage stellen', () => {
 
     await expectCode(
       service.create(plainActor, USER_ID, { requestedRamMb: 16_384, reason: 'Noch mehr, bitte.' }),
+      'QUOTA_REQUEST_ALREADY_OPEN',
+    );
+  });
+
+  /**
+   * Audit W2-9, `backend-admin-resources-12`: Zwei gleichzeitige Anfragen
+   * desselben Kontos bestehen beide `findOpenByUser()`. Den zweiten Insert
+   * fängt der partielle Index – bisher als roher 23505 und damit als 500.
+   */
+  it('beantwortet den Unique-Index (23505) mit QUOTA_REQUEST_ALREADY_OPEN', async () => {
+    const { service } = build({ anlegenKollidiert: true });
+
+    await expectCode(
+      service.create(plainActor, USER_ID, { requestedRamMb: 16_384, reason: 'Bitte mehr RAM.' }),
       'QUOTA_REQUEST_ALREADY_OPEN',
     );
   });

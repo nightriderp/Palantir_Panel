@@ -24,6 +24,7 @@ import {
   type PortRangePermissions,
 } from '@palantir/contracts';
 import type { CreatePortRangeInput, UpdatePortRangeInput } from '@palantir/validation';
+import { isUniqueViolation } from '../../db/errors.js';
 import { type PermissionActor, computePermissionFlags, hasPermission } from '../rbac/index.js';
 import { type AuditService, entryFor } from './audit.js';
 import type { AdminContext } from './context.js';
@@ -173,21 +174,6 @@ function requireAddressManage(actor: PermissionActor): void {
 
 function countPorts(range: { startPort: number; endPort: number }): number {
   return range.endPort - range.startPort + 1;
-}
-
-/**
- * Erkennt eine Unique-Verletzung von PostgreSQL (`SQLSTATE 23505`) – hier die
- * Kollision zweier paralleler Vergaben auf demselben Port/Protokoll über den
- * Index `port_allocations_port_protocol_idx`. `pg` legt den SQLSTATE als
- * `code`-Feld auf den Fehler.
- */
-function isPortConflict(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === '23505'
-  );
 }
 
 /** Niedrigster freier Port über alle passenden Bereiche hinweg. */
@@ -529,7 +515,7 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
                   serverId,
                 });
               } catch (error) {
-                if (isPortConflict(error)) {
+                if (isUniqueViolation(error)) {
                   // Rennen um diesen Port verloren – nächsten freien versuchen.
                   continue;
                 }

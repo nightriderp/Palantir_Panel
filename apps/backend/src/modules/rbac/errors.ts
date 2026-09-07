@@ -6,15 +6,13 @@
  * `replyWithRbacError()` in den Response-Envelope aus Pflichtenheft §5.1 um.
  */
 
-import { type ErrorCode, defaultMessageForErrorCode } from '@palantir/contracts';
+import { type ErrorCode } from '@palantir/contracts';
+import { AppError } from '../../lib/app-error.js';
 
-export class RbacError extends Error {
-  readonly code: ErrorCode;
-
+export class RbacError extends AppError {
   constructor(code: ErrorCode, message?: string) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'RbacError';
-    this.code = code;
   }
 }
 

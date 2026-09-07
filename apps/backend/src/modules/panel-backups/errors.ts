@@ -5,15 +5,13 @@
  * (CLAUDE.md §5) – gleicher Aufbau wie `ResourceError` und `QuotaRequestError`.
  */
 
-import { type ErrorCode, defaultMessageForErrorCode } from '@palantir/contracts';
+import { type ErrorCode } from '@palantir/contracts';
+import { AppError } from '../../lib/app-error.js';
 
-export class PanelBackupError extends Error {
-  readonly code: ErrorCode;
-
+export class PanelBackupError extends AppError {
   constructor(code: ErrorCode, message?: string) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'PanelBackupError';
-    this.code = code;
   }
 }
 

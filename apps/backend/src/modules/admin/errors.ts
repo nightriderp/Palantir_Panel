@@ -5,20 +5,20 @@
  * `@palantir/contracts` – kein Freitext (CLAUDE.md §5). Routen wandeln ihn über
  * `replyWithAdminError()` in den Response-Envelope aus Pflichtenheft §5.1 um.
  *
- * Bewusst eine eigene Klasse statt einer gemeinsamen Basisklasse mit
- * `RbacError`: Beide Module bleiben so unabhängig voneinander, und der Guard
- * aus B2 kennt weiterhin nur seine eigenen Fehler.
+ * Bewusst eine eigene Klasse neben `RbacError`: Beide Module bleiben so
+ * unabhängig voneinander, und der Guard aus B2 kennt weiterhin nur seine
+ * eigenen Fehler. Gemeinsam ist beiden seit Audit W2-9 lediglich die
+ * Basisklasse `AppError` – sie trägt den Katalog-Code und ist das Merkmal, an
+ * dem der globale Fehler-Handler eine fachliche Antwort erkennt.
  */
 
-import { type ErrorCode, defaultMessageForErrorCode } from '@palantir/contracts';
+import { type ErrorCode } from '@palantir/contracts';
+import { AppError } from '../../lib/app-error.js';
 
-export class AdminError extends Error {
-  readonly code: ErrorCode;
-
+export class AdminError extends AppError {
   constructor(code: ErrorCode, message?: string) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'AdminError';
-    this.code = code;
   }
 }
 

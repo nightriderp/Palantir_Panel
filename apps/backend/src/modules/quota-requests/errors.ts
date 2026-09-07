@@ -6,15 +6,13 @@
  * zu `RbacError` und `ResourceError`, damit Routen alle gleich behandeln.
  */
 
-import { type ErrorCode, defaultMessageForErrorCode } from '@palantir/contracts';
+import { type ErrorCode } from '@palantir/contracts';
+import { AppError } from '../../lib/app-error.js';
 
-export class QuotaRequestError extends Error {
-  readonly code: ErrorCode;
-
+export class QuotaRequestError extends AppError {
   constructor(code: ErrorCode, message?: string) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'QuotaRequestError';
-    this.code = code;
   }
 }
 

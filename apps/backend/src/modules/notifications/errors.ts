@@ -7,15 +7,13 @@
  * Pflichtenheft §5.1 um. Aufbau bewusst analog zu `BackupError` und `RbacError`.
  */
 
-import { type ErrorCode, defaultMessageForErrorCode } from '@palantir/contracts';
+import { type ErrorCode } from '@palantir/contracts';
+import { AppError } from '../../lib/app-error.js';
 
-export class NotificationError extends Error {
-  readonly code: ErrorCode;
-
+export class NotificationError extends AppError {
   constructor(code: ErrorCode, message?: string) {
-    super(message ?? defaultMessageForErrorCode(code));
+    super(code, message);
     this.name = 'NotificationError';
-    this.code = code;
   }
 }
 

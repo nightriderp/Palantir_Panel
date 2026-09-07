@@ -113,7 +113,13 @@ interface Aufrufe {
   download: string[];
 }
 
-async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Promise<{
+async function buildApp(
+  options: {
+    fehler?: ServerOrchestrationError;
+    /** Dateiname, den der Download liefert – für die Kopfzeilen-Kodierung (W2-9). */
+    dateiname?: string;
+  } = {},
+): Promise<{
   app: FastifyInstance;
   aufrufe: Aufrufe;
 }> {
@@ -170,7 +176,7 @@ async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Pr
       pruefeFehler();
       aufrufe.download.push(path);
 
-      return { fileName: 'level.dat', content: Buffer.from('rohdaten') };
+      return { fileName: options.dateiname ?? 'level.dat', content: Buffer.from('rohdaten') };
     },
   } as unknown as ServerOrchestrationService;
 
@@ -498,9 +504,35 @@ describe('Datei-Manager-Routen', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toBe('application/octet-stream');
-    expect(response.headers['content-disposition']).toBe('attachment; filename="level.dat"');
+    expect(response.headers['content-disposition']).toBe(
+      `attachment; filename="level.dat"; filename*=UTF-8''level.dat`,
+    );
     expect(response.rawPayload.toString('utf8')).toBe('rohdaten');
     expect(gebaut.aufrufe.download).toEqual(['welt/level.dat']);
+  });
+
+  /**
+   * Audit W2-9, `orchestration-features-07`: Der Name landete roh in der
+   * Kopfzeile. Steuerzeichen (`welt\r\nx.txt` – per Upload anlegbar und vom
+   * Spiel selbst erzeugbar) ließen Node den Wert ablehnen: Der Download endete
+   * als 500, die Datei war über das Panel nicht mehr erreichbar.
+   */
+  it('kodiert Umlaute, Anführungszeichen und Steuerzeichen im Dateinamen', async () => {
+    const gebaut = await buildApp({ dateiname: 'welt\r\n"größe".txt' });
+    app = gebaut.app;
+
+    const response = await call(
+      app,
+      'GET',
+      `/api/servers/${SERVER_ID}/files/download?path=welt/level.dat`,
+      { actor: 'besitzer' },
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-disposition']).toBe(
+      `attachment; filename="welt___gr__e_.txt"; filename*=UTF-8''welt%0D%0A%22gr%C3%B6%C3%9Fe%22.txt`,
+    );
+    expect(response.rawPayload.toString('utf8')).toBe('rohdaten');
   });
 
   it('meldet einen Ausbruchspfad des Dienstes als AGENT_INVALID_PATH (400)', async () => {

@@ -19,6 +19,7 @@ import {
   type QuotaRequestQuery,
   type UserResourceLimitsInput,
 } from '@palantir/validation';
+import { isUniqueViolation } from '../../db/errors.js';
 import { type AuditService } from '../admin/index.js';
 import { type PermissionActor, hasPermission } from '../rbac/index.js';
 import { QuotaRequestError } from './errors.js';
@@ -269,12 +270,29 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
         throw new QuotaRequestError('QUOTA_REQUEST_ALREADY_OPEN');
       }
 
-      const record = await deps.repository.create({
-        userId,
-        requestedRamMb: input.requestedRamMb ?? null,
-        requestedMaxConcurrentServers: input.requestedMaxConcurrentServers ?? null,
-        reason: input.reason,
-      });
+      let record: QuotaRequestRecord;
+
+      try {
+        record = await deps.repository.create({
+          userId,
+          requestedRamMb: input.requestedRamMb ?? null,
+          requestedMaxConcurrentServers: input.requestedMaxConcurrentServers ?? null,
+          reason: input.reason,
+        });
+      } catch (error) {
+        /*
+         * Zwei gleichzeitige Anfragen desselben Kontos (Audit W2-9,
+         * `backend-admin-resources-12`): Beide bestehen `findOpenByUser()`, den
+         * zweiten Insert fängt der partielle Index
+         * `quota_requests_open_per_user_idx`. Fachlich ist das derselbe Fall,
+         * den die Vorprüfung meldet – bisher kam er als 500 zurück.
+         */
+        if (isUniqueViolation(error)) {
+          throw new QuotaRequestError('QUOTA_REQUEST_ALREADY_OPEN');
+        }
+
+        throw error;
+      }
 
       return toQuotaRequestDto(actor, userId, record);
     },

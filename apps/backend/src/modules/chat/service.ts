@@ -20,6 +20,7 @@ import {
   type MessagePageDto,
 } from '@palantir/contracts';
 import { type MessagePageQuery, type SendMessageInput } from '@palantir/validation';
+import { isUniqueViolation } from '../../db/errors.js';
 import { type ChatContext, requireUserId } from './context.js';
 import {
   type ConversationDtoContext,
@@ -41,6 +42,7 @@ import { type ChatRepository } from './repository.js';
 import {
   type ChatUserDirectory,
   type Clock,
+  type ConversationRecord,
   type MessageRecord,
   type ServerMembershipSource,
   systemClock,
@@ -223,14 +225,37 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       throw new ChatError('SERVER_NOT_FOUND');
     }
 
-    const created = await repository.createConversation({
-      type: 'server_chat',
-      serverId,
-      dmKey: null,
-      participantIds: [],
-    });
+    try {
+      const created = await repository.createConversation({
+        type: 'server_chat',
+        serverId,
+        dmKey: null,
+        participantIds: [],
+      });
 
-    return created.id;
+      return created.id;
+    } catch (error) {
+      /*
+       * Zwei Teilnehmer öffnen den Server-Chat im selben Moment zum ersten Mal
+       * (Audit W2-9, `backend-community-05`): Beide finden nichts, beide legen
+       * an, der Unique-Index `conversations_server_id_idx` fängt den zweiten.
+       * Fachlich ist das kein Fehler – es gibt die Konversation dann eben schon,
+       * und genau die ist gemeint. Bisher endete der Fall als 500.
+       */
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+
+      const nachgelesen = await repository.findConversationByServerId(serverId);
+
+      if (!nachgelesen) {
+        // Der Index hat ausgelöst, die Zeile ist trotzdem nicht da: Das ist
+        // kein Rennen mehr, sondern ein Widerspruch – unverändert nach oben.
+        throw error;
+      }
+
+      return nachgelesen.id;
+    }
   }
 
   /** Lesestand des Aufrufers in dieser Konversation (Fundpunkt 95). */
@@ -409,21 +434,27 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       assertDirectRecipientAllowed(viewerId, recipient);
 
       const dmKey = dmKeyFor(viewerId, recipientId);
-      const existing = await repository.findConversationByDmKey(dmKey);
 
-      if (existing) {
-        const audience = await resolveAudience(audienceDeps, existing);
+      /** DTO einer Unterhaltung, die es bereits gibt – samt Lesestand. */
+      async function bestehende(vorhanden: ConversationRecord): Promise<ConversationDto> {
+        const audience = await resolveAudience(audienceDeps, vorhanden);
         const [lastMessages, readState] = await Promise.all([
-          repository.lastMessages([existing.id]),
-          readStateFor(viewerId, existing.id),
+          repository.lastMessages([vorhanden.id]),
+          readStateFor(viewerId, vorhanden.id),
         ]);
 
         return conversationDtoFor(
           audience,
           viewerId,
-          lastMessages.get(existing.id) ?? null,
+          lastMessages.get(vorhanden.id) ?? null,
           readState,
         );
+      }
+
+      const existing = await repository.findConversationByDmKey(dmKey);
+
+      if (existing) {
+        return bestehende(existing);
       }
 
       /*
@@ -444,12 +475,37 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
         throw new ChatError('CONVERSATION_RECIPIENT_NOT_ALLOWED');
       }
 
-      const created = await repository.createConversation({
-        type: 'dm',
-        serverId: null,
-        dmKey,
-        participantIds: [viewerId, recipientId],
-      });
+      let created: ConversationRecord;
+
+      try {
+        created = await repository.createConversation({
+          type: 'dm',
+          serverId: null,
+          dmKey,
+          participantIds: [viewerId, recipientId],
+        });
+      } catch (error) {
+        /*
+         * Beide Seiten schreiben sich im selben Moment zum ersten Mal an
+         * (Audit W2-9, `backend-community-05`): Der Unique-Index
+         * `conversations_dm_key_idx` lässt nur einen Insert zu. Der Verlierer
+         * bekommt die eben entstandene Unterhaltung – dieselbe Antwort, die ein
+         * Wimpernschlag später ohnehin herausgekommen wäre – statt eines 500.
+         * Kein `conversation.created` an das Gegenüber: Das hat der Gewinner
+         * des Rennens bereits verschickt.
+         */
+        if (!isUniqueViolation(error)) {
+          throw error;
+        }
+
+        const nachgelesen = await repository.findConversationByDmKey(dmKey);
+
+        if (!nachgelesen) {
+          throw error;
+        }
+
+        return bestehende(nachgelesen);
+      }
 
       const audience = await resolveAudience(audienceDeps, created);
       const dto = await conversationDtoFor(audience, viewerId, null, EMPTY_READ_STATE);

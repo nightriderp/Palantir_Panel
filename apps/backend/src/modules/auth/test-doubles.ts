@@ -80,8 +80,15 @@ export function createFakeAuthRepository(): FakeAuthRepository {
         wanted !== null &&
         users.some((user) => user.username !== null && sameName(user.username, wanted))
       ) {
-        // Bildet den Unique-Index `users_username_lower_idx` nach.
-        return Promise.reject(new Error('Benutzername bereits vergeben.'));
+        // Bildet den Unique-Index `users_username_lower_idx` nach – samt
+        // SQLSTATE, den `pg` als `code` auf den Fehler legt (Audit W2-9): Ohne
+        // ihn ließe sich nicht zeigen, dass der Dienst das Rennen fachlich
+        // beantwortet statt mit einem 500.
+        return Promise.reject(
+          Object.assign(new Error('duplicate key value violates unique constraint'), {
+            code: '23505',
+          }),
+        );
       }
 
       const user: UserRecord = {
@@ -156,15 +163,18 @@ export function createFakeAuthRepository(): FakeAuthRepository {
        * Katalog-Code. Genau davor soll die Vorprüfung im Dienst stehen; ohne
        * diesen Nachbau ließe sich nicht zeigen, dass sie greift.
        */
-      if (ownedServers.some((server) => server.ownerId === id)) {
+      if (
+        ownedServers.some((server) => server.ownerId === id) ||
+        ownedBackups.some((backup) => backup.ownerId === id)
+      ) {
+        // SQLSTATE 23503 wie von `pg` geliefert (Audit W2-9): Der Dienst
+        // übersetzt ihn in `ACCOUNT_HAS_SERVERS`, falls die Vorprüfung das
+        // Rennen verliert.
         return Promise.reject(
-          new Error('update or delete on table "users" violates foreign key constraint'),
-        );
-      }
-
-      if (ownedBackups.some((backup) => backup.ownerId === id)) {
-        return Promise.reject(
-          new Error('update or delete on table "users" violates foreign key constraint'),
+          Object.assign(
+            new Error('update or delete on table "users" violates foreign key constraint'),
+            { code: '23503' },
+          ),
         );
       }
 

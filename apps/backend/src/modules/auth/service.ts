@@ -52,6 +52,7 @@ import {
   type PermissionActor,
   type RoleRepository,
 } from '../rbac/index.js';
+import { isForeignKeyViolation, isUniqueViolation } from '../../db/errors.js';
 import { toAccountDto, toSessionDto } from './dto.js';
 import { AuthError } from './errors.js';
 import { generateTemporaryPassword, hashPassword, verifyPassword } from './passwords.js';
@@ -308,6 +309,35 @@ export class AuthService {
   }
 
   /**
+   * Legt ein Konto an und beantwortet die vergebene Kennung fachlich
+   * (Audit W2-9, `backend-auth-03`).
+   *
+   * `usernameExists()` und `createUser()` sind zwei getrennte Anweisungen ohne
+   * gemeinsame Transaktion. Zwei gleichzeitige Registrierungen mit demselben
+   * Namen bestehen deshalb beide die Vorprüfung; den zweiten Insert fängt erst
+   * der partielle Unique-Index `users_username_lower_idx` – bisher als roher
+   * Postgres-Fehler und damit als 500. Der Verlierer des Rennens bekommt jetzt
+   * dieselbe Antwort wie der Aufrufer, der eine Sekunde später gekommen wäre.
+   *
+   * Die Vorprüfung an den Aufrufstellen bleibt: Sie ist der übliche Weg und
+   * liefert die Ablehnung, ohne ein Konto anzulegen.
+   */
+  private async createUserOrFail(data: {
+    username: string | null;
+    displayName: string;
+  }): Promise<UserRecord> {
+    try {
+      return await this.repository.createUser(data);
+    } catch (error) {
+      if (data.username !== null && isUniqueViolation(error)) {
+        throw new AuthError('AUTH_USERNAME_TAKEN');
+      }
+
+      throw error;
+    }
+  }
+
+  /**
    * Schranke für Admin-Eingriffe an fremden Konten (Fundpunkt 124).
    *
    * Das Owner-Konto ändert Passwort und 2FA ausschließlich über die eigenen
@@ -368,7 +398,7 @@ export class AuthService {
     }
 
     const passwordHash = await hashPassword(input.password);
-    const user = await this.repository.createUser({
+    const user = await this.createUserOrFail({
       username: input.username,
       // Ohne eigene Angabe übernimmt das Konto den Benutzernamen als
       // Anzeigenamen (so beschrieben in `registerInputSchema`).
@@ -452,7 +482,7 @@ export class AuthService {
     }
 
     const passwordHash = await hashPassword(input.password);
-    const user = await this.repository.createUser({
+    const user = await this.createUserOrFail({
       username: input.username,
       displayName: input.displayName ?? input.username,
     });
@@ -986,7 +1016,20 @@ export class AuthService {
 
     // Erst jetzt bekommt das Konto eine Anmeldekennung – vorher gab es nichts,
     // womit man sich per Passwort hätte anmelden können.
-    const updated = await this.repository.setUsername(userId, input.username);
+    let updated: UserRecord;
+
+    try {
+      updated = await this.repository.setUsername(userId, input.username);
+    } catch (error) {
+      // Dasselbe Rennen wie bei der Registrierung (Audit W2-9): Zwischen der
+      // Prüfung `findUserByUsername` oben und diesem `UPDATE` kann sich ein
+      // zweites Konto dieselbe Kennung geben.
+      if (isUniqueViolation(error)) {
+        throw new AuthError('AUTH_USERNAME_TAKEN');
+      }
+
+      throw error;
+    }
 
     return this.loadAccount(updated);
   }
@@ -1257,7 +1300,22 @@ export class AuthService {
 
     // `AuthMethod`, `Session` und `UserRole` hängen mit `ON DELETE CASCADE` am
     // Konto und verschwinden mit (Pflichtenheft §6).
-    await this.repository.deleteUser(userId);
+    try {
+      await this.repository.deleteUser(userId);
+    } catch (error) {
+      /*
+       * Rest des Rennens hinter der Vorprüfung (Audit W2-9): Zwischen
+       * `assertNothingBlocksDeletion()` und diesem `DELETE` kann ein Admin dem
+       * Konto einen Server übertragen oder eine Sicherung anlegen. `ON DELETE
+       * RESTRICT` fängt das ab – bisher als roher 23503 und damit als 500.
+       * Fachlich ist es derselbe Fall, den die Vorprüfung meldet.
+       */
+      if (isForeignKeyViolation(error)) {
+        throw new AuthError('ACCOUNT_HAS_SERVERS');
+      }
+
+      throw error;
+    }
 
     // Die Sitzungszeilen sind mit der Kaskade schon weg – der Aufruf gilt der
     // Senke: Sie schließt die noch offenen Live-Kanäle des Kontos (Audit W2-2).
