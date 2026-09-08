@@ -1,4 +1,4 @@
-import type { NotificationEvent } from '@palantir/contracts';
+import type { NotificationEvent, NotificationEventPayload } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { isNotificationError } from './errors.js';
 import type { JobRunner, LiveNotificationPayload, NotificationAuditSink } from './ports.js';
@@ -79,6 +79,24 @@ function build(
   });
 
   return { service, repository, jobs, live };
+}
+
+/** Ressourcen-Warnung aus B4 – je nach `scope` mit oder ohne Besitzer. */
+function resourceLow(
+  payload: Pick<NotificationEventPayload<'resource.low'>, 'scope' | 'serverId' | 'ownerId'>,
+): NotificationEvent {
+  return {
+    event: 'resource.low',
+    payload: {
+      at: '2026-08-26T12:00:00.000Z',
+      actorId: null,
+      resource: 'disk',
+      nodeId: 'node-1',
+      usedPercent: 92,
+      thresholdPercent: 85,
+      ...payload,
+    },
+  };
 }
 
 describe('Auslösen eines Ereignisses (Pflichtenheft §14)', () => {
@@ -170,6 +188,56 @@ describe('Auslösen eines Ereignisses (Pflichtenheft §14)', () => {
     };
 
     await service.publish(registration);
+
+    expect(repository.notifications.map((entry) => entry.userId)).toEqual([ADMIN]);
+  });
+
+  /**
+   * Fundpunkt 167: Die Vorgaben kennen zu `resource.low` seit B4 zwei Regeln –
+   * die Admin-Rolle und den Besitzer. Die Besitzer-Regel muss den treffen, für
+   * den die Warnung gerechnet wurde.
+   */
+  it('meldet eine knappe Server-Ressource dem Besitzer', async () => {
+    const repository = fakeRepository({
+      rules: [testRule({ event: 'resource.low', recipientScope: 'resourceOwner' })],
+    });
+    const { service } = build({ repository });
+
+    await service.publish(resourceLow({ scope: 'server', serverId: 'srv-1', ownerId: OWNER }));
+
+    expect(repository.notifications.map((entry) => entry.userId)).toEqual([OWNER]);
+  });
+
+  /**
+   * Die Node-Warnung gehört niemandem (`ownerId: null`). Die Besitzer-Regel
+   * darf dafür nicht ins Leere laufen – kein Eintrag, kein Fehler, und die
+   * Rollen-Regel daneben bleibt der Weg, auf dem sie jemanden erreicht.
+   */
+  it('läuft bei einer Node-Warnung ohne Besitzer still ins Leere', async () => {
+    const repository = fakeRepository({
+      rules: [testRule({ event: 'resource.low', recipientScope: 'resourceOwner' })],
+    });
+    const { service, live } = build({ repository });
+
+    await service.publish(resourceLow({ scope: 'node', serverId: null, ownerId: null }));
+
+    expect(repository.notifications).toHaveLength(0);
+    expect(live).toHaveLength(0);
+  });
+
+  it('erreicht dieselbe Node-Warnung über die Rollen-Regel doch noch', async () => {
+    const repository = fakeRepository({
+      rules: [
+        testRule({ event: 'resource.low', recipientScope: 'resourceOwner' }),
+        testRule({ event: 'resource.low', recipientScope: 'role', recipientRoleId: ROLE_ID }),
+      ],
+    });
+    const { service } = build({
+      repository,
+      directory: fakeDirectory({ roleMembers: { [ROLE_ID]: [ADMIN] } }),
+    });
+
+    await service.publish(resourceLow({ scope: 'node', serverId: null, ownerId: null }));
 
     expect(repository.notifications.map((entry) => entry.userId)).toEqual([ADMIN]);
   });

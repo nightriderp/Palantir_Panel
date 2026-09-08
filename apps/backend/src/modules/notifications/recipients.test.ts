@@ -7,6 +7,22 @@ const OWNER = 'owner-1';
 const MEMBER_A = 'member-a';
 const MEMBER_B = 'member-b';
 
+/** Node-Warnung aus B4: `scope: 'node'` und damit ohne Besitzer. */
+const nodeWarning: NotificationEvent = {
+  event: 'resource.low',
+  payload: {
+    at: '2026-08-26T12:00:00.000Z',
+    actorId: null,
+    scope: 'node',
+    resource: 'disk',
+    nodeId: 'node-1',
+    serverId: null,
+    ownerId: null,
+    usedPercent: 90,
+    thresholdPercent: 85,
+  },
+};
+
 const registration: NotificationEvent = {
   event: 'user.registered',
   payload: {
@@ -76,22 +92,25 @@ describe('Empfängerkreise aus der Nutzlast (Lastenheft §3.6)', () => {
   });
 
   it('trifft bei einer Node-Warnung keinen Besitzer', () => {
-    const nodeWarning: NotificationEvent = {
+    expect(directRecipientsOf(nodeWarning, 'resourceOwner')).toEqual([]);
+  });
+
+  /**
+   * Fundpunkt 167: Seit die Vorgaben zu `resource.low` auch eine
+   * Besitzer-Regel enthalten, trifft diese Regel bei jeder Node-Warnung auf
+   * `ownerId: null`. Das Ergebnis muss die leere Liste sein – „niemand", nicht
+   * `[null]` und nicht `null` („weiß ich hier nicht"), sonst versuchte die
+   * Zustellung einen Empfänger ohne Konto-Id.
+   */
+  it('trifft bei einer Server-Warnung den Besitzer, bei einer Node-Warnung niemanden', () => {
+    const serverWarning: NotificationEvent = {
       event: 'resource.low',
-      payload: {
-        at: '2026-08-26T12:00:00.000Z',
-        actorId: null,
-        scope: 'node',
-        resource: 'disk',
-        nodeId: 'node-1',
-        serverId: null,
-        ownerId: null,
-        usedPercent: 90,
-        thresholdPercent: 85,
-      },
+      payload: { ...nodeWarning.payload, scope: 'server', serverId: 'server-1', ownerId: OWNER },
     };
 
-    expect(directRecipientsOf(nodeWarning, 'resourceOwner')).toEqual([]);
+    expect(directRecipientsOf(serverWarning, 'resourceOwner')).toEqual([OWNER]);
+    expect(directRecipientsOf(nodeWarning, 'resourceOwner')).not.toBeNull();
+    expect(directRecipientsOf(nodeWarning, 'resourceOwner')).toHaveLength(0);
   });
 });
 
@@ -122,6 +141,13 @@ describe('Auflösung über das Verzeichnis', () => {
     await expect(resolveRecipients(registration, 'role', null, fakeDirectory())).resolves.toEqual(
       [],
     );
+  });
+
+  /** Die Besitzer-Regel darf bei einer Node-Warnung keine Zustellung erzeugen. */
+  it('liefert bei einer Node-Warnung an „Besitzer" niemanden', async () => {
+    await expect(
+      resolveRecipients(nodeWarning, 'resourceOwner', null, fakeDirectory()),
+    ).resolves.toEqual([]);
   });
 
   it('stellt niemandem dieselbe Meldung zweimal zu', async () => {
