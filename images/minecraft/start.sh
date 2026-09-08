@@ -166,11 +166,23 @@ mv "${ZIEL}.neu" "$ZIEL"
 # Kontingents, mindestens 512 und höchstens 2048 MiB, deckt das ab, ohne bei
 # großen Servern GiB zu verschenken. Reißt der Rest, greift nicht der GC, sondern
 # der Kernel – und der schießt den Container ab.
+#
+# `PALANTIR_MEMORY_LIMIT_FILE` ist ein **Ersatz**, keine zusätzliche Adresse:
+# Ist die Variable gesetzt, wird nur diese Datei gelesen. Vorher stand sie am
+# Anfang einer Suchliste — eine nicht lesbare Datei wurde übersprungen, und das
+# Skript las danach doch die cgroup-Dateien der Maschine. Der Test, der damit
+# „keine Grenze" nachstellen wollte, prüfte deshalb in Wahrheit die Grenze des
+# Läufers; auf einem Läufer ohne Grenze bestand er aus dem falschen Grund
+# (Fundpunkt 178).
 speichergrenze_bytes() {
-  for datei in "${PALANTIR_MEMORY_LIMIT_FILE:-}" \
-    /sys/fs/cgroup/memory.max \
-    /sys/fs/cgroup/memory/memory.limit_in_bytes; do
-    if [ -z "$datei" ] || [ ! -r "$datei" ]; then
+  if [ -n "${PALANTIR_MEMORY_LIMIT_FILE:-}" ]; then
+    quellen="${PALANTIR_MEMORY_LIMIT_FILE}"
+  else
+    quellen="/sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes"
+  fi
+
+  for datei in $quellen; do
+    if [ ! -r "$datei" ]; then
       continue
     fi
 
