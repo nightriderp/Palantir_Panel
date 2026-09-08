@@ -1,6 +1,8 @@
 node_modules
+.pnpm-store
 dist
 build
+out
 .next
 .turbo
 coverage
@@ -10,6 +12,12 @@ pnpm-lock.yaml
 # Projektdokumente - liegen nur lokal (siehe .gitignore) und werden nicht
 # umformatiert. Ohne diese Eintraege meldet `pnpm format:check` auf einem
 # Arbeitsrechner Dateien, die es im Repository gar nicht gibt.
+#
+# Diese Liste muss mit dem gleichnamigen Block in .gitignore uebereinstimmen:
+# Eine Datei, die dort ausgetragen und hier vergessen wird, laesst
+# `pnpm format:check` beim Betreiber scheitern, ohne dass eine im Repository
+# sichtbare Datei schuld waere - und niemand sonst kann den Fehler nachstellen.
+# Genau so lag es bei wireguard-firewall.md (Fundpunkt 164).
 LASTENHEFT.md
 PFLICHTENHEFT.md
 STRUKTUR.md
@@ -20,6 +28,17 @@ SITZUNGS_PROMPTS.md
 NACHARBEIT_PROMPTS.md
 F3_ARBEITSPAKETE.md
 docs/
+deploy/gamenode/wireguard-firewall.md
+
+# Betriebs- und Arbeitsdaten, die nur lokal entstehen (ebenfalls aus
+# .gitignore). Sie enthalten Dateien, die Prettier von sich aus anfassen wuerde
+# - graph.json aus graphify, acme.json mit den Zertifikatsschluesseln, die
+# Panel-Sicherungen. Formatieren waere hier bestenfalls nutzlos.
+graphify-out/
+.dev-data/
+/data/
+/deploy/vps/letsencrypt/
+/deploy/vps/postgres-data/
 
 # Von Drizzle Kit erzeugte Migrations-Metadaten – werden bei jedem
 # `db:generate` neu geschrieben und dürfen nicht umformatiert werden.

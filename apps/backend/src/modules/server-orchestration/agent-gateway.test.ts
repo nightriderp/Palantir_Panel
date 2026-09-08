@@ -1266,40 +1266,104 @@ describe('Übernahme einer Node-Verbindung (Audit event-flow-12)', () => {
    */
   const HOST = '33333333-3333-4333-8333-333333333333';
 
-  function warte(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  /** Ein Halt, den der Test von Hand freigibt. */
+  function halt(): { readonly warten: Promise<void>; readonly freigeben: () => void } {
+    let freigeben = (): void => undefined;
+    const warten = new Promise<void>((aufloesen) => {
+      freigeben = (): void => {
+        aufloesen();
+      };
+    });
+
+    return { warten, freigeben };
+  }
+
+  /**
+   * Lässt alle fälligen Microtasks laufen.
+   *
+   * Genügt hier als „gib der falschen Reihenfolge eine faire Chance": Beide
+   * Handler hängen nur an Microtasks bzw. am Halt – was laufen kann, ist danach
+   * gelaufen. Ohne Frist, also auch unter Last belastbar.
+   */
+  async function mikrotasksLeeren(): Promise<void> {
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
   }
 
   interface Nodezustand {
     readonly ablauf: string[];
     status: 'connected' | 'disconnected';
     readonly handlers: AgentSessionHandlers;
+    /** Gibt die angehaltene Abmeldung frei. */
+    abmeldungFreigeben(): void;
+    /** Läuft, sobald `eintrag` zum `anzahl`-ten Mal im Ablauf steht. */
+    warteAuf(eintrag: string, anzahl?: number): Promise<void>;
   }
 
   /**
-   * Handler, die den Node-Status wie `index.ts` fortschreiben – nur langsamer:
-   * Die Abmeldung braucht länger als die Anmeldung. Genau in dieser Konstellation
-   * überholte der `online`-Write den `offline`-Write.
+   * Handler, die den Node-Status wie `index.ts` fortschreiben – die Abmeldung
+   * hängt dabei an einem Halt, den der Test freigibt.
+   *
+   * Vorher warteten Handler und Test auf Fristen (`setTimeout` 1 ms bzw. 25 ms,
+   * dazwischen `await warte(60)`). Die Konstellation, um die es geht – die
+   * Abmeldung der alten Verbindung läuft noch, die Anmeldung der neuen steht
+   * schon an –, war damit nur so lange hergestellt, wie die Maschine die Fristen
+   * einhielt; unter Last fiel der Test um (Fundpunkt 163). Mit dem Halt steht
+   * die Konstellation fest, und gewartet wird auf den Ablauf selbst statt auf
+   * die Uhr.
    */
   function nodezustand(): Nodezustand {
     const ablauf: string[] = [];
+    const wartende: { anzahl: number; eintrag: string; melden: () => void }[] = [];
+    const abmeldung = halt();
+
+    function haeufigkeit(eintrag: string): number {
+      return ablauf.filter((vorhanden) => vorhanden === eintrag).length;
+    }
+
+    function schritt(eintrag: string): void {
+      ablauf.push(eintrag);
+
+      for (const wartender of wartende.splice(0)) {
+        if (haeufigkeit(wartender.eintrag) >= wartender.anzahl) {
+          wartender.melden();
+        } else {
+          wartende.push(wartender);
+        }
+      }
+    }
+
     const zustand: Nodezustand = {
       ablauf,
       status: 'disconnected',
+      abmeldungFreigeben: abmeldung.freigeben,
+      warteAuf: (eintrag, anzahl = 1) =>
+        new Promise<void>((melden) => {
+          if (haeufigkeit(eintrag) >= anzahl) {
+            melden();
+
+            return;
+          }
+
+          wartende.push({ anzahl, eintrag, melden });
+        }),
       handlers: {
         onStateReport: (): void => undefined,
         onEvent: (): void => undefined,
         onConnected: async (): Promise<void> => {
-          ablauf.push('onConnected:start');
-          await warte(1);
+          schritt('onConnected:start');
+          // Ein echter Handler schreibt in die Datenbank und ist nie im selben
+          // Zug fertig – der Microtask bildet genau das nach.
+          await Promise.resolve();
           zustand.status = 'connected';
-          ablauf.push('onConnected:fertig');
+          schritt('onConnected:fertig');
         },
         onDisconnected: async (): Promise<void> => {
-          ablauf.push('onDisconnected:start');
-          await warte(25);
+          schritt('onDisconnected:start');
+          await abmeldung.warten;
           zustand.status = 'disconnected';
-          ablauf.push('onDisconnected:fertig');
+          schritt('onDisconnected:fertig');
         },
       },
     };
@@ -1327,7 +1391,7 @@ describe('Übernahme einer Node-Verbindung (Audit event-flow-12)', () => {
     const erste = sitzung(zustand);
     registry.register(erste.session);
     erste.session.handleMessage(hello());
-    await warte(10);
+    await zustand.warteAuf('onConnected:fertig');
 
     expect(zustand.status).toBe('connected');
 
@@ -1337,7 +1401,20 @@ describe('Übernahme einer Node-Verbindung (Audit event-flow-12)', () => {
     registry.register(zweite.session);
     zweite.session.handleMessage(hello());
 
-    await warte(60);
+    await zustand.warteAuf('onDisconnected:start');
+    await mikrotasksLeeren();
+
+    // Der eigentliche Befund: Solange die Abmeldung der alten Verbindung hängt,
+    // meldet sich die neue nicht an – hier prüfbar, ohne auf eine Frist zu
+    // setzen, weil die Abmeldung nur der Test selbst weiterlaufen lässt.
+    expect(zustand.ablauf).toEqual([
+      'onConnected:start',
+      'onConnected:fertig',
+      'onDisconnected:start',
+    ]);
+
+    zustand.abmeldungFreigeben();
+    await zustand.warteAuf('onConnected:fertig', 2);
 
     expect(zustand.ablauf).toEqual([
       'onConnected:start',
@@ -1362,7 +1439,7 @@ describe('Übernahme einer Node-Verbindung (Audit event-flow-12)', () => {
     const erste = sitzung(zustand);
     registry.register(erste.session);
     erste.session.handleMessage(hello());
-    await warte(10);
+    await zustand.warteAuf('onConnected:fertig');
 
     const zweite = sitzung(zustand);
     registry.register(zweite.session);
@@ -1370,7 +1447,11 @@ describe('Übernahme einer Node-Verbindung (Audit event-flow-12)', () => {
     // Die neue Verbindung bricht ab, während die Abmeldung der alten noch läuft.
     zweite.session.handleSocketClosed(1006, 'abgebrochen');
 
-    await warte(60);
+    zustand.abmeldungFreigeben();
+    // Zwei Abmeldungen: die der alten Verbindung und die der abgebrochenen neuen.
+    await zustand.warteAuf('onDisconnected:fertig', 2);
+    // Danach hätte die aufgeschobene Anmeldung ihre Gelegenheit gehabt.
+    await mikrotasksLeeren();
 
     expect(zustand.status).toBe('disconnected');
     expect(zustand.ablauf.filter((eintrag) => eintrag === 'onConnected:start')).toHaveLength(1);
@@ -1387,7 +1468,10 @@ describe('Übernahme einer Node-Verbindung (Audit event-flow-12)', () => {
     // Kein zusätzlicher Microtask: Der Handler läuft schon los, bevor der Test
     // überhaupt wartet.
     expect(zustand.ablauf).toEqual(['onConnected:start']);
-    await warte(10);
+
+    await zustand.warteAuf('onConnected:fertig');
+
+    expect(zustand.status).toBe('connected');
   });
 });
 
