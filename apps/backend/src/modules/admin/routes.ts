@@ -553,9 +553,8 @@ export async function registerAdminRoutes(
     async (request, reply) =>
       handle(reply, async () => {
         const input = instanceSettingsInputSchema.parse(request.body ?? {});
-        const context = contextFrom(request);
 
-        return services.instanceSettings.set(context.actor, input, context.userId);
+        return services.instanceSettings.set(contextFrom(request), input);
       }),
   );
 

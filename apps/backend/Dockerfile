@@ -71,6 +71,14 @@ COPY --from=build /app/packages/validation/dist ./packages/validation/dist
 # muss er auf derselben Ebene wie `dist` liegen.
 COPY apps/backend/drizzle ./apps/backend/drizzle
 
+# Die mitgelieferten Schriften der Oberfläche (Arbeitspaket S-2). Auch sie
+# werden nicht kompiliert, und `dist/modules/fonts/bundled.js` löst den Ordner
+# relativ zur eigenen Datei auf - er muss also wie `drizzle` auf derselben Ebene
+# wie `dist` liegen. Ohne diese Zeile liefert die Instanz keine einzige
+# mitgelieferte Schrift aus und die Oberfläche fällt auf die Systemschrift
+# zurück.
+COPY apps/backend/assets ./apps/backend/assets
+
 # `pg_dump` fuer die Sicherung der Panel-Datenbank (Mockup-Abgleich 12.5).
 #
 # Die Fassung muss zur Datenbank passen: PostgreSQL 18 lehnt einen Abzug durch

@@ -54,6 +54,10 @@ const OHNE_INDEX_MIT_ABSICHT: ReadonlyMap<SpaltenSchluessel, string> = new Map([
     'game_servers.cloned_from_server_id',
     'Die Spalte wird nie gefiltert; die Zeilenzahl begrenzt die Kapazität des Homeservers.',
   ],
+  [
+    'uploaded_fonts.uploaded_by_id',
+    'Schriften lädt ein Administrator hoch – eine Handvoll Zeilen; gefiltert wird nach der Kennung, nie nach dem Hochladenden.',
+  ],
 ]);
 
 /**

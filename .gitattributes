@@ -3,3 +3,12 @@
 *.png binary
 *.jpg binary
 *.zip binary
+# Mitgelieferte Schriften (apps/backend/assets/fonts). Ohne diese Zeilen haengt
+# es an der Binaer-Erkennung von `text=auto`, ob eine Schriftdatei beim
+# Auschecken zeilenendennormalisiert - also zerstoert - wird. Eine so
+# beschaedigte Datei faellt nirgends auf: Sie liegt am richtigen Ort, hat eine
+# plausible Groesse, und erst der Browser weigert sich stumm, sie zu laden.
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.otf binary

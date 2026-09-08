@@ -32,6 +32,7 @@ import { type PortPoolService, createPortPoolService } from './ports.js';
 import {
   createDrizzleInstanceSettingsRepository,
   createInstanceSettingsService,
+  type FontDirectory,
   type InstanceSettingsService,
 } from './instance-settings.js';
 import {
@@ -102,6 +103,14 @@ export interface AdminModuleOptions {
    * daraufhin die offenen Live-Verbindungen des Kontos.
    */
   readonly sessions?: AccountBlockSink;
+  /**
+   * Anschluss an S-2: Bestand der Schriften.
+   *
+   * Nur damit lassen sich `uiFontId`/`monospaceFontId` in den
+   * Instanz-Einstellungen setzen – ohne den Anschluss gilt jede Kennung als
+   * unbekannt (`FONT_NOT_FOUND`), was der sichere Zustand ist.
+   */
+  readonly fonts?: FontDirectory;
 }
 
 export interface AdminModule {
@@ -180,6 +189,9 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
 
   const instanceSettings = createInstanceSettingsService({
     repository: createDrizzleInstanceSettingsRepository(db),
+    // Änderungen an instanzweiten Schaltern gehören ins Log (Pflichtenheft §6).
+    audit,
+    ...(options.fonts ? { fonts: options.fonts } : {}),
   });
 
   const registrationRequests = createRegistrationRequestService({

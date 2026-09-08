@@ -124,6 +124,9 @@ x-backend-umgebung: &backend-umgebung
   PANEL_BACKUP_INTERVAL_HOURS: ${PANEL_BACKUP_INTERVAL_HOURS}
   PANEL_BACKUP_RETENTION_DAYS: ${PANEL_BACKUP_RETENTION_DAYS}
   PG_DUMP_BINARY: ${PG_DUMP_BINARY}
+  # 18. Schriften der Oberfläche (Abschnitt 18) - wieder ein Pfad des HOSTS, den
+  # der Backend-Dienst unten übersteuert.
+  FONT_UPLOAD_DIR: ${FONT_UPLOAD_DIR}
 
 services:
   # --- Docker-Socket-Proxy für Traefik ---------------------------------------
@@ -402,6 +405,8 @@ services:
       # Dasselbe für die Sicherungen der Panel-Datenbank (Mockup-Abgleich 12.5):
       # in der .env steht der Pfad des HOSTS, hier gilt der Einhängepunkt.
       PANEL_BACKUP_DIR: /data/panel-backups
+      # Und dasselbe für die hochgeladenen Schriften (Arbeitspaket S-2).
+      FONT_UPLOAD_DIR: /data/fonts
     volumes:
       # Archive des Audit-Logs (Pflichtenheft §6). Ohne diese Einhängung
       # schriebe der Archivierungslauf in das Dateisystem des Containers - und
@@ -415,6 +420,14 @@ services:
       # braucht. Ebenfalls dem Benutzer `node` (UID 1000) übereignen, sonst
       # scheitert `pg_dump` am Schreiben.
       - ../../data/panel-backups:/data/panel-backups
+      # Hochgeladene Schriften (Arbeitspaket S-2). Ohne diese Einhängung lägen
+      # sie im Dateisystem des Containers und wären beim nächsten Deployment
+      # weg - die Oberfläche fiele dann auf die Vorgabeschrift zurück, ohne
+      # dass jemand das entschieden hätte. Die MITGELIEFERTEN Schriften stecken
+      # dagegen im Image (apps/backend/assets/fonts) und brauchen kein Volume.
+      # Ebenfalls dem Benutzer `node` (UID 1000) übereignen, sonst scheitert
+      # der erste Upload am Schreiben.
+      - ../../data/fonts:/data/fonts
     ports:
       # Der Agent-Kanal (WebSocket `/agent`, Pflichtenheft §2.2) erreicht das
       # Backend ausschließlich über diesen Host-Port, gebunden an die

@@ -88,7 +88,13 @@ async function buildTestApp(): Promise<FastifyInstance> {
 
   const instanceSettings = createInstanceSettingsService({
     repository: {
-      load: () => Promise.resolve({ selfRegistrationEnabled: true, updatedAt: null }),
+      load: () =>
+        Promise.resolve({
+          selfRegistrationEnabled: true,
+          uiFontId: null,
+          monospaceFontId: null,
+          updatedAt: null,
+        }),
       save: () => Promise.resolve(),
     },
   });
