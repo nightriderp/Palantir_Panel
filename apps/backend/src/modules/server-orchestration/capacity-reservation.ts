@@ -17,16 +17,24 @@
  * (`createResourceService` / `checkCapacity`), nur eben gegen die
  * transaktionsgebundenen Repositories. Hier kommt allein der transaktionale
  * Rahmen dazu (CLAUDE.md §3/§4).
+ *
+ * Seit Fundpunkt 135 liegt auch die **Portvergabe** in diesem Rahmen: Der
+ * Port-Pool aus B8 wird über dieselbe Transaktion gebaut (`portPoolFor`), und
+ * seine Drizzle-Umsetzung stellt jeden Einfügeversuch in einen eigenen
+ * Savepoint. Ein verlorenes Rennen um einen Port rollt damit nur den Savepoint
+ * zurück, nicht die Transaktion – vorher wäre genau das der Grund gewesen, die
+ * Vergabe draußen zu lassen.
  */
 
 import { type ResourceWarningThresholds } from '@palantir/contracts';
 import { sql } from 'drizzle-orm';
-import { type Database } from '../../db/client.js';
+import { type Database, type DbConnection } from '../../db/client.js';
 import { createResourceService } from '../resources/index.js';
 import {
   createDrizzleHostNodeRepository,
   createDrizzleUserResourceLimitRepository,
 } from '../resources/repository.js';
+import { type PortPoolPort, createPortAllocator } from './ports.js';
 import { createDrizzleServerRepository } from './repository.js';
 import {
   type CapacityReservation,
@@ -45,9 +53,16 @@ import { createDrizzleServerUsageRepository } from './usage-repository.js';
 const NODE_LOCK_CLASS = 1;
 const USER_LOCK_CLASS = 2;
 
+/**
+ * @param portPoolFor Port-Pool aus B8 über einer beliebigen Verbindung
+ *   (`AdminModule.portPoolFor`). Wird mit dem Transaktions-Handle aufgerufen,
+ *   damit vergebene Ports **und** der Audit-Eintrag `address.portAllocated`
+ *   mit derselben Transaktion stehen und fallen (Fundpunkt 135).
+ */
 export function createDrizzleCapacityReservation(
   db: Database,
   thresholds: ResourceWarningThresholds,
+  portPoolFor: (connection: DbConnection) => PortPoolPort,
 ): CapacityReservation {
   return {
     async reserve(request, write) {
@@ -76,7 +91,10 @@ export function createDrizzleCapacityReservation(
         // damit zurück, bevor irgendetwas geschrieben ist.
         await assertResourcesAvailable(guard, request);
 
-        return write(createDrizzleServerRepository(tx));
+        return write({
+          servers: createDrizzleServerRepository(tx),
+          ports: createPortAllocator(portPoolFor(tx)),
+        });
       });
     },
   };

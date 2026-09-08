@@ -23,7 +23,7 @@
 
 import { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from '../../config/env.js';
-import { type Database } from '../../db/client.js';
+import { type Database, type DbConnection } from '../../db/client.js';
 import { registerAgentRoute } from './agent-route.js';
 import { AgentRegistry } from './agent-gateway.js';
 import { ServerLiveHub, createLiveFanoutSink } from './live-hub.js';
@@ -81,12 +81,19 @@ export interface ServerOrchestrationOptions {
    */
   readonly resources?: ResourceGuard;
   /**
-   * Port-Pool aus B8 (`PortPoolService`).
+   * Port-Pool aus B8 (`AdminModule.portPoolFor`) über einer frei wählbaren
+   * Verbindung.
    *
    * Pflicht: B3 vergibt oeffentliche Ports ausdruecklich nicht selbst
    * (Pflichtenheft §2.4, CLAUDE.md §6).
+   *
+   * Nicht der fertige Dienst, sondern die Fabrik dazu (Fundpunkt 135): Die
+   * Vergabe eines neuen Servers läuft innerhalb der Reservierungs-Transaktion
+   * und braucht den Pool über deren Handle. Über dem Datenbank-Pool ist es
+   * derselbe Dienst wie `AdminModule.ports` – gebraucht für das Freigeben beim
+   * Löschen und beim Aufräumen eines gescheiterten Anlegens.
    */
-  readonly portPool: PortPoolPort;
+  readonly portPoolFor: (connection: DbConnection) => PortPoolPort;
   /**
    * Node zu einem vorgelegten Agent-Token (B8, Gefundener Punkt 57).
    *
@@ -206,7 +213,14 @@ export function registerServerOrchestration(
   // Dienstes (keine Transaktion gegen die echte Datenbank).
   const reservation: CapacityReservation | undefined = options.resources
     ? undefined
-    : createDrizzleCapacityReservation(options.db, resourceWarningThresholdsFromEnv());
+    : createDrizzleCapacityReservation(
+        options.db,
+        resourceWarningThresholdsFromEnv(),
+        // Port-Pool über dem Transaktions-Handle: Die Vergabe eines neuen
+        // Servers läuft in derselben Transaktion wie sein Datensatz
+        // (Fundpunkt 135).
+        options.portPoolFor,
+      );
 
   // Hochgeladene Weltdaten-Archive warten hier, bis der Wizard den Server
   // wirklich anlegt (P4). Zwei Nutzer: die Upload-Route legt ab, der Dienst
@@ -222,7 +236,7 @@ export function registerServerOrchestration(
     registry,
     dns,
     // Port-Pool aus B8 (Pflichtenheft §2.4) - B3 vergibt keine Ports selbst.
-    ports: createPortAllocator(options.portPool),
+    ports: createPortAllocator(options.portPoolFor(options.db)),
     ...(options.ensureServerChat === undefined
       ? {}
       : { ensureServerChat: options.ensureServerChat }),
@@ -318,6 +332,9 @@ export function registerServerOrchestration(
       ? {}
       : { resolveHostIdByToken: options.resolveHostIdByAgentToken }),
     resolveHostId: async (): Promise<string | null> => (await repository.defaultHost())?.id ?? null,
+    // Ab zwei Nodes ist das gemeinsame `AGENT_TOKEN` nicht mehr zuordenbar
+    // (Fundpunkt 149) – dann verlangt der Endpunkt ein Token je Node.
+    countHosts: () => repository.countHosts(),
     commandTimeoutMs: env.AGENT_COMMAND_TIMEOUT_MS,
   });
 
@@ -448,6 +465,7 @@ export {
   type ResourceCheckRequest,
   type ResourceCheckResult,
   type ResourceGuard,
+  type ReservationScope,
   assertResourcesAvailable,
   createInlineCapacityReservation,
   createPermissiveResourceGuard,

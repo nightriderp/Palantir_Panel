@@ -35,6 +35,24 @@ function warte(millisekunden: number): Promise<void> {
   return new Promise((fertig) => setTimeout(fertig, millisekunden));
 }
 
+/**
+ * Port-Pool-Attrappe für die Reservierung.
+ *
+ * Diese Suite prüft Zählregel und Advisory-Lock; die Portvergabe innerhalb der
+ * Transaktion (Fundpunkt 135) hat mit `port-allocation.db.test.ts` eine eigene.
+ * Eine echte Vergabe hier hieße nur, jeden Testfall zusätzlich mit
+ * Port-Bereichen auszustatten.
+ */
+function ohnePortvergabe(): {
+  allocateForServer: () => Promise<never[]>;
+  releaseForServer: () => Promise<number>;
+} {
+  return {
+    allocateForServer: async () => [],
+    releaseForServer: async () => 0,
+  };
+}
+
 describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
   it('zählt RAM und CPU nur für running und starting, Platte für alle Zustände', async () => {
     const usage = createDrizzleServerUsageRepository(kontext.db);
@@ -159,12 +177,12 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
   });
 
   it('lässt eine Reservierung durch, solange die Node Platz hat', async () => {
-    const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN);
+    const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN, ohnePortvergabe);
     const besitzer = await legeNutzerAn(kontext.db);
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 10_000 });
 
-    const angelegt = await reservierung.reserve(anfrage(besitzer, node), async (repository) =>
-      repository.create({
+    const angelegt = await reservierung.reserve(anfrage(besitzer, node), async ({ servers }) =>
+      servers.create({
         ownerId: besitzer,
         hostId: node,
         name: 'Erster',
@@ -191,16 +209,16 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
      * Gemessen wird am Platzbedarf, nicht am RAM: Ein frisch angelegter Server
      * steht in `creating` und belegt damit laut Zählregel Platte, aber kein RAM.
      */
-    const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN);
+    const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN, ohnePortvergabe);
     const besitzer = await legeNutzerAn(kontext.db);
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 10_000 });
 
     const ergebnisse = await Promise.allSettled([
-      reservierung.reserve(anfrage(besitzer, node), (repository) =>
-        repository.create(neuerServer(besitzer, node, 'eins')),
+      reservierung.reserve(anfrage(besitzer, node), ({ servers }) =>
+        servers.create(neuerServer(besitzer, node, 'eins')),
       ),
-      reservierung.reserve(anfrage(besitzer, node), (repository) =>
-        repository.create(neuerServer(besitzer, node, 'zwei')),
+      reservierung.reserve(anfrage(besitzer, node), ({ servers }) =>
+        servers.create(neuerServer(besitzer, node, 'zwei')),
       ),
     ]);
 
@@ -234,7 +252,7 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
      * ablief – der Test scheiterte dann an der Reihenfolge, nicht an der
      * Sperre.
      */
-    const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN);
+    const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN, ohnePortvergabe);
     const besitzer = await legeNutzerAn(kontext.db);
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 10_000 });
 
@@ -252,8 +270,8 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       };
     });
 
-    const erste = reservierung.reserve(anfrage(besitzer, node), async (repository) => {
-      const server = await repository.create(neuerServer(besitzer, node, 'gehalten'));
+    const erste = reservierung.reserve(anfrage(besitzer, node), async ({ servers }) => {
+      const server = await servers.create(neuerServer(besitzer, node, 'gehalten'));
       sperreErreicht();
       await gehalten;
 
@@ -266,8 +284,8 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
 
     let zweiteFertig = false;
     const zweite = reservierung
-      .reserve(anfrage(besitzer, node), (repository) =>
-        repository.create(neuerServer(besitzer, node, 'wartend')),
+      .reserve(anfrage(besitzer, node), ({ servers }) =>
+        servers.create(neuerServer(besitzer, node, 'wartend')),
       )
       .catch((fehler: unknown) => fehler)
       .then((ergebnis) => {
@@ -287,7 +305,7 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
   });
 
   it('lehnt gegen das Nutzer-Kontingent ab, bevor irgendetwas geschrieben ist', async () => {
-    const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN);
+    const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN, ohnePortvergabe);
     const besitzer = await legeNutzerAn(kontext.db);
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 1_000_000 });
     await setzeKontingent(kontext.db, besitzer, { maxDiskMb: 4000 });
@@ -295,10 +313,10 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
     let geschrieben = false;
 
     const fehler = await reservierung
-      .reserve(anfrage(besitzer, node), async (repository) => {
+      .reserve(anfrage(besitzer, node), async ({ servers }) => {
         geschrieben = true;
 
-        return repository.create(neuerServer(besitzer, node, 'darfnicht'));
+        return servers.create(neuerServer(besitzer, node, 'darfnicht'));
       })
       .catch((ursache: unknown) => ursache);
 

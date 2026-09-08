@@ -39,7 +39,7 @@ import {
   createGameRegistry,
 } from './game-registry.js';
 import { type HealthCheckResult, type HealthProbe } from './health-check.js';
-import { createPortAllocator } from './ports.js';
+import { type PortAllocator, createPortAllocator } from './ports.js';
 import {
   type CreateServerData,
   type HostNodeRecord,
@@ -288,6 +288,10 @@ class FakeRepository implements ServerRepository {
 
   defaultHost(): Promise<HostNodeRecord | null> {
     return Promise.resolve(this.host());
+  }
+
+  countHosts(): Promise<number> {
+    return Promise.resolve(1);
   }
 
   findHost(hostId: string): Promise<HostNodeRecord | null> {
@@ -574,7 +578,7 @@ function makeHarness(
     /** Eigene Probe, wenn ein Test den Health-Check von Hand beantworten will (Audit W0-5). */
     probe?: HealthProbe;
     /** Eigene, serialisierende Reservierung – für den TOCTOU-Test (Punkt 98). */
-    buildReservation?: (repository: FakeRepository) => CapacityReservation;
+    buildReservation?: (repository: FakeRepository, ports: PortAllocator) => CapacityReservation;
     /** Upload-Grenze, um sie im Test ohne 64-MiB-Puffer zu erreichen (P2). */
     maxUploadBytes?: number;
     /**
@@ -702,6 +706,10 @@ function makeHarness(
     },
   };
 
+  // Eine Instanz für beide Wege: Der Dienst benutzt sie zum Freigeben, die
+  // Reservierung zum Vergeben innerhalb der Transaktion (Fundpunkt 135).
+  const portAllocator = createPortAllocator(portPool);
+
   // Virtuelle Uhr: `sleep()` stellt sie vor, statt echte Zeit zu verbrauchen.
   // Die Startfrist des Health-Checks läuft dadurch gegen dieselbe Uhr.
   let clock = NOW.getTime();
@@ -711,9 +719,9 @@ function makeHarness(
     agents,
     registry: createGameRegistry(options.gamePhase ?? 1),
     dns,
-    ports: createPortAllocator(portPool),
+    ports: portAllocator,
     resources: createPermissiveResourceGuard(() => undefined),
-    reservation: options.buildReservation?.(repository),
+    reservation: options.buildReservation?.(repository, portAllocator),
     healthProbe: options.probe ?? healthyProbe(options.healthy ?? true),
     ...(options.worldArchives === undefined ? {} : { worldArchives: options.worldArchives }),
     ...(options.statsHistory === undefined ? {} : { statsHistory: options.statsHistory }),
@@ -2848,11 +2856,11 @@ describe('Lifecycle-Konsistenz (Audit W2-10)', () => {
     const reihenfolge: string[] = [];
     const harness = makeHarness({
       healthy: 'pending',
-      buildReservation: (repository) => ({
+      buildReservation: (repository, ports) => ({
         async reserve(_request, write) {
           reihenfolge.push('transaktion-offen');
 
-          const ergebnis = await write(repository);
+          const ergebnis = await write({ servers: repository, ports });
 
           reihenfolge.push('commit');
 
@@ -2963,7 +2971,7 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
    * dazu ein Promise-Ketten-Mutex als Nachbildung des Advisory-Locks. Damit ist
    * genau das geprüft, was der Betrieb serialisiert – ohne echte Datenbank.
    */
-  function buildReservation(repository: FakeRepository): CapacityReservation {
+  function buildReservation(repository: FakeRepository, ports: PortAllocator): CapacityReservation {
     const only = (servers: readonly ServerRecord[], excludeServerId?: string): ServerRecord[] =>
       servers.filter((server) => server.id !== excludeServerId);
 
@@ -3027,7 +3035,7 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
         thresholds: { nodePercent: 90, serverPercent: 90 },
       }),
     );
-    const inner = createInlineCapacityReservation(guard, repository);
+    const inner = createInlineCapacityReservation(guard, repository, ports);
 
     // Serialisiert reserve() vollständig – die zweite Prüfung sieht damit die
     // Schreiboperation der ersten (wie der Advisory-Lock im Betrieb).

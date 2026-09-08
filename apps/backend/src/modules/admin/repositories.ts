@@ -11,7 +11,7 @@ import type { AgentStorageEntry, LinkedAccountProfileDto } from '@palantir/contr
 import type { AuditLogQuery, RegistrationRequestQuery } from '@palantir/validation';
 import { and, asc, count, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 import type { Pool } from 'pg';
-import type { Database } from '../../db/index.js';
+import type { Database, DbConnection } from '../../db/index.js';
 import { auditLog, portAllocations, portRanges, storageSnapshots } from '../../db/schema/admin.js';
 // `auth_methods` gehört zu B1 (Pflichtenheft §7); die Warteliste liest die
 // Profilangaben der verknüpften Anmeldeverfahren daraus mit (Lastenheft §3.1).
@@ -195,7 +195,24 @@ function toAllocationRecord(row: typeof portAllocations.$inferSelect): PortAlloc
   };
 }
 
-export function createDrizzlePortPoolRepository(db: Database): PortPoolRepository {
+/**
+ * Port-Pool über einer beliebigen Verbindung – Pool **oder** laufende
+ * Transaktion (Fundpunkt 135).
+ *
+ * Die Portvergabe lag bis hierher außerhalb der Reservierungs-Transaktion des
+ * Server-Anlegens, weil sie eine Kollision zweier paralleler Vergaben über die
+ * Unique-Verletzung des Index abfängt und den nächsten freien Port versucht –
+ * und ein Constraint-Fehler innerhalb einer Transaktion diese Transaktion als
+ * Ganzes abbricht (`current transaction is aborted`). Der nächste Versuch liefe
+ * ins Leere.
+ *
+ * Der Ausweg steckt in {@link PortPoolRepository.insertAllocation}: Jeder
+ * Einfügeversuch läuft in seinem eigenen Savepoint. Scheitert er, wird nur
+ * dieser Savepoint zurückgerollt; die umgebende Transaktion – und alles, was
+ * vorher in ihr geschrieben wurde – bleibt bestehen. Damit kann die Vergabe in
+ * dieselbe Transaktion wandern, in der der Server entsteht.
+ */
+export function createDrizzlePortPoolRepository(db: DbConnection): PortPoolRepository {
   return {
     async listRanges() {
       const rows = await db.select().from(portRanges).orderBy(asc(portRanges.startPort));
@@ -270,7 +287,20 @@ export function createDrizzlePortPoolRepository(db: Database): PortPoolRepositor
     },
 
     async insertAllocation(data) {
-      const [row] = await db.insert(portAllocations).values(data).returning();
+      /*
+       * Ein Savepoint je Einfügeversuch (Fundpunkt 135).
+       *
+       * `transaction()` einer laufenden Transaktion erzeugt bei Drizzle einen
+       * Savepoint und rollt bei einem Fehler nur bis dorthin zurück – der
+       * Fehler selbst wird unverändert weitergereicht, sodass `ports.ts` die
+       * Unique-Verletzung wie bisher erkennt und den nächsten freien Port
+       * nimmt. Auf dem Pool ist es eine gewöhnliche, sehr kurze Transaktion;
+       * das kostet einen Umlauf mehr, hält den Aufruf aber an beiden Enden
+       * gleich, statt zwei Wege nebeneinander zu pflegen.
+       */
+      const [row] = await db.transaction(async (versuch) =>
+        versuch.insert(portAllocations).values(data).returning(),
+      );
 
       if (!row) {
         /*
@@ -341,8 +371,14 @@ function auditFilters(query: AuditLogQuery) {
  * ohnehin am Trigger `audit_log_append_only` in der Datenbank scheitern
  * (Migration `0005_admin_ports_audit_storage`), aber die Schnittstelle soll gar
  * nicht erst dazu einladen.
+ *
+ * Nimmt eine {@link DbConnection}, damit ein Eintrag auch **innerhalb** einer
+ * laufenden Transaktion geschrieben werden kann (Fundpunkt 135): Die
+ * Portvergabe protokolliert `address.portAllocated`, und dieser Eintrag soll
+ * mit derselben Transaktion verschwinden, mit der die vergebenen Ports
+ * verschwinden – sonst behauptet das Log eine Vergabe, die es nicht gibt.
  */
-export function createDrizzleAuditLogRepository(db: Database): AuditLogRepository {
+export function createDrizzleAuditLogRepository(db: DbConnection): AuditLogRepository {
   return {
     async append(entry) {
       const [row] = await db

@@ -446,8 +446,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       db,
       agents,
       resolveViewerId: (request) => request.authUser?.id ?? null,
-      // Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
-      portPool: admin.services.ports,
+      /*
+       * Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
+       * Gereicht wird die Fabrik, nicht der fertige Dienst: Die Vergabe eines
+       * neuen Servers läuft innerhalb der Reservierungs-Transaktion und braucht
+       * den Pool über deren Handle (Fundpunkt 135).
+       */
+      portPoolFor: admin.portPoolFor,
       /*
        * Zuordnung Agent-Token → Node (Gefundener Punkt 57). Die Tokens führt
        * B8 an der Node; B3 bekommt nur die Nachschlagefunktion, wie beim

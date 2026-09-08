@@ -13,7 +13,7 @@
  */
 
 import type { Pool } from 'pg';
-import type { Database } from '../../db/index.js';
+import type { Database, DbConnection } from '../../db/index.js';
 import type { RoleService } from '../rbac/index.js';
 import {
   type AuditArchiveDependencies,
@@ -108,6 +108,18 @@ export interface AdminModule {
   readonly services: AdminRouteServices;
   readonly nodes: HostNodeService;
   readonly ports: PortPoolService;
+  /**
+   * Derselbe Port-Pool, gebunden an eine **andere** Verbindung – etwa an eine
+   * laufende Transaktion (Fundpunkt 135).
+   *
+   * B3 vergibt die Ports eines neuen Servers innerhalb der Transaktion, in der
+   * der Server entsteht. Dafür braucht es den Dienst über dem
+   * Transaktions-Handle: Repository **und** Audit-Log schreiben dann in
+   * dieselbe Transaktion, und ein Rollback nimmt beides mit.
+   *
+   * {@link AdminModule.ports} ist genau dieser Aufruf mit dem Pool.
+   */
+  readonly portPoolFor: (connection: DbConnection) => PortPoolService;
   readonly audit: AuditService;
   readonly storage: StorageExplorerService;
   readonly registrationRequests: RegistrationRequestService;
@@ -122,14 +134,31 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
 
   const audit = createAuditService(createDrizzleAuditLogRepository(db));
 
-  // Port-Verwaltung vor der Node-Verwaltung: Letztere fragt beim Löschen einer
-  // Node nach den an sie gebundenen Bereichen (Audit W3-6). Umgekehrt kennt die
-  // Port-Verwaltung die Nodes nicht – die Richtung bleibt eindeutig.
-  const ports = createPortPoolService({
-    repository: createDrizzlePortPoolRepository(db),
-    audit,
-    ...(options.serverNames ? { serverNames: options.serverNames } : {}),
-  });
+  /*
+   * Der Port-Pool über einer frei wählbaren Verbindung (Fundpunkt 135).
+   *
+   * Er entsteht vor der Node-Verwaltung: Letztere fragt beim Löschen einer Node
+   * nach den an sie gebundenen Bereichen (Audit W3-6). Umgekehrt kennt die
+   * Port-Verwaltung die Nodes nicht – die Richtung bleibt eindeutig.
+   *
+   * Das Audit-Log wird hier **mit** gebunden: Vergibt B3 die Ports innerhalb
+   * der Transaktion, in der der Server entsteht, dann gehört auch der Eintrag
+   * `address.portAllocated` in diese Transaktion. Sonst bliebe er stehen, wenn
+   * das Anlegen scheitert – ein Protokoll, das eine Vergabe behauptet, die
+   * niemals bestand, und dessen `targetId` auf einen Server zeigt, den es nie
+   * gab.
+   */
+  const portPoolFor = (connection: DbConnection): PortPoolService =>
+    createPortPoolService({
+      repository: createDrizzlePortPoolRepository(connection),
+      // Über dem Pool bleibt es der gemeinsame Dienst des Moduls; über einer
+      // Transaktion braucht es einen, der in genau diese schreibt.
+      audit:
+        connection === db ? audit : createAuditService(createDrizzleAuditLogRepository(connection)),
+      ...(options.serverNames ? { serverNames: options.serverNames } : {}),
+    });
+
+  const ports = portPoolFor(db);
 
   const nodes = createHostNodeService({
     repository: createDrizzleHostNodeRepository(db),
@@ -191,6 +220,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     },
     nodes,
     ports,
+    portPoolFor,
     audit,
     storage,
     registrationRequests,

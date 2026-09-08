@@ -16,6 +16,8 @@
  * wird. Eine abgelehnte Verbindung wird mit Close-Code 4401 beendet, damit der
  * Agent „falsches Token" von „Backend gerade weg" unterscheiden kann
  * (`CLOSE_CODE_UNAUTHORIZED` in `apps/agent/src/connection/websocket-transport.ts`).
+ * Ab der zweiten eingetragenen Node ist nur noch ein Token je Node zulässig
+ * (Fundpunkt 149, {@link AgentRouteOptions.countHosts}).
  */
 
 // Der Import bringt die Typerweiterung für `{ websocket: true }` mit; das
@@ -49,9 +51,11 @@ export interface AgentRouteOptions {
   /**
    * Gemeinsames `AGENT_TOKEN` aus der zentralen `.env`.
    *
-   * Der Rückfallweg für eine Installation mit genau einem Homeserver
+   * Der Rückfallweg für eine Installation mit **genau einem** Homeserver
    * (Pflichtenheft §1, §2.1): Wer kein Token je Node vergeben hat, meldet sich
-   * weiter hiermit an und landet auf der vorgegebenen Node.
+   * weiter hiermit an und landet auf der vorgegebenen Node. Sobald eine zweite
+   * Node eingetragen ist, gilt er nicht mehr – siehe
+   * {@link AgentRouteOptions.countHosts}.
    */
   readonly token: string | undefined;
   /**
@@ -70,6 +74,23 @@ export interface AgentRouteOptions {
    * vergeben ist, wird die Verbindung dieser Node zugeordnet.
    */
   resolveHostId(): Promise<string | null>;
+  /**
+   * Anzahl der eingetragenen Nodes (Fundpunkt 149, Rest von
+   * orchestration-core-10 aus W3-6).
+   *
+   * Das gemeinsame `AGENT_TOKEN` sagt nichts darüber aus, *welcher* Homeserver
+   * sich meldet. Bei einer Node ist das folgenlos – es gibt nur eine.
+   * `defaultHost()` wählt seit W3-6 zwar deterministisch die älteste Node, aber
+   * deterministisch ist nicht richtig: Ab der zweiten Node landet ein Agent,
+   * der sich mit dem gemeinsamen Token meldet, verlässlich auf der **falschen**
+   * Node, sobald er nicht auf der ältesten läuft. Die Folge wären Befehle an
+   * den falschen physischen Homeserver – Container, Datenordner und Ports der
+   * einen Node, verwaltet als die der anderen.
+   *
+   * Deshalb: ab zwei Nodes wird das gemeinsame Token abgelehnt und ein
+   * Node-Token verlangt (B8, `POST /api/admin/nodes/:nodeId/agent-token`).
+   */
+  countHosts(): Promise<number>;
   readonly commandTimeoutMs?: number;
 }
 
@@ -137,6 +158,38 @@ export function registerAgentRoute(app: FastifyInstance, options: AgentRouteOpti
         socket.close(CLOSE_CODE_UNAUTHORIZED, 'Ungültiges Agent-Token.');
 
         return;
+      }
+
+      if (hostIdByToken === null) {
+        /*
+         * Rückfallweg auf das gemeinsame Token – nur bei genau einer Node
+         * (Fundpunkt 149).
+         *
+         * Geprüft wird erst hier, nach dem Token: Wer ein falsches Token
+         * vorlegt, soll nicht über die Antwortzeit erfahren, wie viele Nodes
+         * eingetragen sind. Und geprüft wird nur auf diesem Weg – ein
+         * Node-Token bleibt in jeder Größe der Installation gültig, es benennt
+         * seine Node ja selbst.
+         *
+         * Der Grund steht im Close-Frame, damit der Betreiber im Agent-Log
+         * sieht, warum die Verbindung nicht zustande kommt. Der Weg heraus
+         * steht im Backend-Log: Node-Token in der Node-Verwaltung erzeugen und
+         * auf dem Homeserver als `AGENT_TOKEN` eintragen.
+         */
+        const nodes = await options.countHosts();
+
+        if (nodes > 1) {
+          options.log.warn(
+            { ip: request.ip, nodes },
+            'Agent-Verbindung mit dem gemeinsamen AGENT_TOKEN abgelehnt: Es sind mehrere Nodes eingetragen. Für jede Node ein eigenes Token in der Node-Verwaltung erzeugen (POST /api/admin/nodes/:nodeId/agent-token) und auf dem jeweiligen Homeserver als AGENT_TOKEN eintragen.',
+          );
+          socket.close(
+            CLOSE_CODE_UNAUTHORIZED,
+            'Mehrere Nodes eingetragen: Es wird das Agent-Token dieser Node verlangt.',
+          );
+
+          return;
+        }
       }
 
       const hostId = hostIdByToken ?? (await options.resolveHostId());

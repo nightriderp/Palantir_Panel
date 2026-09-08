@@ -294,6 +294,99 @@ describe('Storage-Explorer: löschbare Posten (Lastenheft §3.8)', () => {
 });
 
 /**
+ * Fundpunkt 136: Der Agent meldet `orphaned`, wenn er zu einem Datenordner
+ * **keinen Container** findet. Fehlt der Container, während das Panel den
+ * Server noch führt – Prune auf der Node, neu aufgesetzter Docker-Host –, war
+ * dessen Datenordner über den Speicher-Explorer löschbar. Die Sperre griff nur
+ * für `serverData`.
+ */
+describe('Storage-Explorer: verwaister Ordner eines bekannten Servers (Fundpunkt 136)', () => {
+  /** Datenordner, benannt nach der Server-Id, aber ohne Container auf der Node. */
+  const ohneContainer = agentEntry({
+    kind: 'orphaned',
+    path: `/srv/palantir/servers/${SERVER_ID}`,
+    serverId: null,
+    inUse: false,
+  });
+
+  it('sperrt ihn, solange das Panel den Server noch kennt', async () => {
+    const { storage } = buildService({ entries: [ohneContainer] });
+
+    const snapshot = await storage.getSnapshot(ctxWith(actorWith('node.manage')), NODE_ID);
+    const [entry] = snapshot.breakdown?.entries ?? [];
+
+    expect(entry?.deleteBlockedReason).toBe('activeServerData');
+    expect(entry?.permissions.canDelete).toBe(false);
+    // Und er wird als das gezeigt, was er ist: der Datenordner dieses Servers.
+    expect(entry?.kind).toBe('serverData');
+    expect(entry?.serverId).toBe(SERVER_ID);
+    expect(entry?.label).toBe('Beispielserver');
+  });
+
+  it('lehnt das Löschen mit dem Fachcode ab, ohne den Homeserver anzufassen', async () => {
+    const remover = createRecordingRemover();
+    const { storage } = buildService({ entries: [ohneContainer], remover });
+
+    await expect(
+      storage.deleteEntry(
+        ctxWith(actorWith('node.manage')),
+        NODE_ID,
+        storageEntryId(ohneContainer),
+      ),
+    ).rejects.toMatchObject({ code: 'STORAGE_ENTRY_NOT_DELETABLE' });
+    expect(remover.calls).toEqual([]);
+  });
+
+  it('lässt den Ordner eines wirklich gelöschten Servers weiterhin entfernen', async () => {
+    const remover = createRecordingRemover();
+    const { storage } = buildService({
+      entries: [ohneContainer],
+      // Das Panel kennt diesen Server nicht mehr – er ist gelöscht.
+      servers: knownServers([]),
+      remover,
+    });
+
+    const entfernt = await storage.deleteEntry(
+      ctxWith(actorWith('node.manage')),
+      NODE_ID,
+      storageEntryId(ohneContainer),
+    );
+
+    expect(entfernt.kind).toBe('orphaned');
+    expect(remover.calls).toEqual([storageEntryId(ohneContainer)]);
+  });
+
+  it('vergleicht den Ordnernamen unabhängig von der Schreibweise', async () => {
+    const grossgeschrieben = agentEntry({
+      kind: 'orphaned',
+      path: `/srv/palantir/servers/${SERVER_ID.toUpperCase()}`,
+      serverId: null,
+      inUse: false,
+    });
+    const { storage } = buildService({ entries: [grossgeschrieben] });
+
+    const snapshot = await storage.getSnapshot(ctxWith(actorWith('node.manage')), NODE_ID);
+
+    expect(snapshot.breakdown?.entries[0]?.deleteBlockedReason).toBe('activeServerData');
+  });
+
+  it('sperrt auch einen Datenordner, dessen serverId der Agent nicht mitgeschickt hat', async () => {
+    // Derselbe Weg für `serverData`: Meldet der Agent den Ordner ohne Id,
+    // benennt der Ordnername den Server trotzdem eindeutig.
+    const ohneId = agentEntry({ serverId: null });
+    const { storage } = buildService({ entries: [ohneId] });
+
+    const snapshot = await storage.getSnapshot(ctxWith(actorWith('node.manage')), NODE_ID);
+
+    expect(snapshot.breakdown?.entries[0]).toMatchObject({
+      kind: 'serverData',
+      serverId: SERVER_ID,
+      deleteBlockedReason: 'activeServerData',
+    });
+  });
+});
+
+/**
  * Audit-Fundstelle backend-admin-resources-10: Bis hierher fielen alle Posten
  * ohne Pfad, Image-Id und Image-Tag auf die feste Kennung `'unbekannt'`
  * zurück – zwei davon waren nicht auseinanderzuhalten.

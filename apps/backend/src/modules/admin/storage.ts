@@ -23,6 +23,17 @@
  * Auslegung wäre in dem Zustand jeder Datenordner löschbar. Verwaist ist nur,
  * was der Agent selbst als verwaist meldet (`orphaned`): Dort liegen Daten
  * unterhalb der Palantir-Verzeichnisse, die zu keinem Container gehören.
+ *
+ * **Auch ein `orphaned` des Agents ist nur ein Verdacht** (Fundpunkt 136): Der
+ * Agent vergibt ihn, wenn er zu einem Datenordner **keinen Container** findet –
+ * und ein Container kann fehlen, obwohl das Panel den Server noch führt (Prune
+ * auf der Node, neu aufgesetzter Docker-Host, von Hand entfernter Container).
+ * Bis hierher griff die Sperre nur für `serverData`, und genau dieser Ordner
+ * ließ sich über den Speicher-Explorer entfernen – der Spielstand eines
+ * Servers, den das Panel weiterhin anzeigt. Deshalb wird zusätzlich der
+ * **Ordnername** gegen die bekannten Server geprüft: Passt er auf einen, ist es
+ * der Datenordner dieses Servers und bleibt gesperrt. Ein wirklich gelöschter
+ * Server steht in der Liste nicht mehr – seine Reste bleiben löschbar.
  */
 
 import {
@@ -147,6 +158,60 @@ interface Classification {
 }
 
 /**
+ * Letzter Namensbestandteil eines Pfades vom Homeserver.
+ *
+ * Bewusst ohne `node:path`: Der Pfad kommt von einer Linux-Node, die Tests
+ * laufen auch unter Windows – `path.basename()` würde dort an `/` nicht
+ * trennen. Beide Trennzeichen abzudecken kostet eine Zeile und macht die
+ * Auswertung vom Betriebssystem des Backends unabhängig.
+ */
+function ordnernameAus(pfad: string | null): string | null {
+  if (pfad === null) {
+    return null;
+  }
+
+  const teile = pfad.split(/[\\/]+/).filter((teil) => teil.length > 0);
+
+  return teile[teile.length - 1] ?? null;
+}
+
+/**
+ * Der Server, zu dem ein Posten gehört – sofern das Panel ihn noch führt
+ * (Fundpunkt 136).
+ *
+ * Zwei Wege, in dieser Reihenfolge:
+ *
+ * 1. Die vom Agent gemeldete `serverId`. Die setzt er nur, wenn er einen
+ *    passenden **Container** gefunden hat.
+ * 2. Der **Ordnername**. Der Datenordner heißt auf der Node wie die Server-Id
+ *    (`<AGENT_DATA_DIR>/<serverId>`); der Agent legt ihn so an. Damit bleibt
+ *    der Bezug erhalten, wenn der Container fehlt – der Fall, in dem der Agent
+ *    `orphaned` meldet, obwohl der Server im Panel weiterlebt.
+ *
+ * Der Vergleich läuft klein geschrieben: Der Agent normalisiert Ordnernamen
+ * ebenso (`storage-scanner.ts`), und PostgreSQL liefert UUIDs klein.
+ */
+function bekannterServerZu(
+  entry: AgentStorageEntry,
+  knownServers: ReadonlyMap<string, { readonly name: string }>,
+): { readonly id: string; readonly name: string } | null {
+  for (const kandidat of [entry.serverId, ordnernameAus(entry.path)]) {
+    if (kandidat === null) {
+      continue;
+    }
+
+    const id = kandidat.toLowerCase();
+    const server = knownServers.get(id);
+
+    if (server) {
+      return { id, name: server.name };
+    }
+  }
+
+  return null;
+}
+
+/**
  * Bewertet einen vom Agent gemeldeten Posten.
  *
  * Einzige Stelle, an der entschieden wird, ob etwas gelöscht werden darf – die
@@ -158,14 +223,14 @@ export function classifyEntry(
 ): Classification {
   switch (entry.kind) {
     case 'serverData': {
-      const server = entry.serverId ? knownServers.get(entry.serverId) : undefined;
+      const server = bekannterServerZu(entry, knownServers);
 
       if (server) {
         // Lastenheft §3.8: ausschließlich über den Server-Löschen-Vorgang.
         return {
           kind: 'serverData',
           label: server.name,
-          serverId: entry.serverId,
+          serverId: server.id,
           blockedReason: 'activeServerData',
         };
       }
@@ -196,13 +261,35 @@ export function classifyEntry(
         blockedReason: entry.inUse ? 'imageInUse' : null,
       };
 
-    case 'orphaned':
+    case 'orphaned': {
+      /*
+       * Der Agent meldet `orphaned`, wenn zum Ordner **kein Container**
+       * existiert – nicht, wenn es den Server nicht mehr gibt (Fundpunkt 136).
+       * Führt das Panel einen Server dieses Namens weiter, ist das sein
+       * Datenordner: Ein Prune auf der Node oder ein neu aufgesetzter
+       * Docker-Host hat den Container entfernt, den Spielstand aber nicht. Er
+       * gehört damit unter dieselbe Sperre wie jeder aktive Datenordner
+       * (Lastenheft §3.8) – entfernt wird er nur über das Löschen des Servers.
+       */
+      const server = bekannterServerZu(entry, knownServers);
+
+      if (server) {
+        return {
+          kind: 'serverData',
+          label: server.name,
+          serverId: server.id,
+          blockedReason: 'activeServerData',
+        };
+      }
+
+      // Echte Waise: kein Container, kein Server im Panel – löschbar wie bisher.
       return {
         kind: 'orphaned',
         label: entry.path ?? 'Verwaiste Daten',
         serverId: null,
         blockedReason: null,
       };
+    }
   }
 }
 

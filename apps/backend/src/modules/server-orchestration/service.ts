@@ -297,7 +297,8 @@ export class ServerOrchestrationService {
     this.deps = deps;
     this.now = deps.now ?? ((): Date => new Date());
     this.reservation =
-      deps.reservation ?? createInlineCapacityReservation(deps.resources, deps.repository);
+      deps.reservation ??
+      createInlineCapacityReservation(deps.resources, deps.repository, deps.ports);
     this.cloneJobs = createCloneJobStore({ now: this.now });
   }
 
@@ -355,69 +356,92 @@ export class ServerOrchestrationService {
     const resourceLimits: ServerResourceLimits = input.resourceLimits;
 
     /*
-     * Prüfung und Insert laufen in einer serialisierten Reservierung: Sonst
-     * bestünden zwei gleichzeitige Creates beide die Prüfung und überbuchten die
-     * Node (TOCTOU, WORK_STATUS.md Punkt 98, Pflichtenheft §10). Der Datensatz
-     * entsteht zuerst – der Port-Pool aus B8 ordnet Ports einer Server-Id zu,
-     * die es dafür schon geben muss – aber erst, wenn die Belegung reicht.
+     * Prüfung, Insert **und Portvergabe** laufen in einer serialisierten
+     * Reservierung: Sonst bestünden zwei gleichzeitige Creates beide die
+     * Prüfung und überbuchten die Node (TOCTOU, WORK_STATUS.md Punkt 98,
+     * Pflichtenheft §10). Der Datensatz entsteht zuerst – der Port-Pool aus B8
+     * ordnet Ports einer Server-Id zu, die es dafür schon geben muss.
      *
-     * Die Portvergabe selbst bleibt bewusst **außerhalb** dieser Transaktion
-     * (Audit backend-db-04): `PortPoolService.allocateForServer()` fängt die
-     * Kollision zweier paralleler Vergaben über die Unique-Verletzung des
-     * Index ab und versucht den nächsten freien Port. Innerhalb einer
-     * Transaktion bricht ein Constraint-Fehler die ganze Transaktion ab – die
-     * Wiederholung liefe ins Leere. Ports transaktional zu vergeben verlangt
-     * deshalb einen Umbau in B8 (Savepoint je Einfügeversuch) und gehört in
-     * einen eigenen Schritt. Was hier geschlossen ist: Scheitert die Vergabe
-     * oder das Nachtragen, räumt der Rollback unten alles ab.
+     * Die Portvergabe lag bis Fundpunkt 135 bewusst **außerhalb** (Audit
+     * backend-db-04): `PortPoolService.allocateForServer()` fängt die Kollision
+     * zweier paralleler Vergaben über die Unique-Verletzung des Index ab und
+     * versucht den nächsten freien Port – und ein Constraint-Fehler bricht
+     * innerhalb einer Transaktion die ganze Transaktion ab, die Wiederholung
+     * liefe ins Leere. Seit die Drizzle-Umsetzung des Port-Pools jeden
+     * Einfügeversuch in einen eigenen Savepoint stellt, rollt ein verlorenes
+     * Rennen nur diesen Savepoint zurück. Damit ist der Zustand „Server
+     * angelegt, Ports fehlen" nicht mehr möglich: Scheitert die Vergabe,
+     * verschwindet der Datensatz mit derselben Transaktion – samt Subdomain,
+     * ohne dass jemand aufräumen muss.
+     *
+     * Was danach kommt (DNS, Container), liegt bewusst draußen: Das sind
+     * Wirkungen auf anderen Maschinen, die keine Transaktion zurücknimmt –
+     * dafür ist `rollbackFailedCreate()` da.
      */
-    const created = await this.reservation.reserve(
-      {
-        userId: ownerId,
-        hostId: host.id,
-        serverId: null,
-        requested: resourceLimits,
-        intent: 'create',
-      },
-      (repository) =>
-        repository.create({
-          ownerId,
-          hostId: host.id,
-          name: input.name,
-          gameType: definition.id,
-          subdomain,
-          assignedPorts: [],
-          resourceLimits,
-          configJson: buildServerConfig(definition, input.config),
-          startupParameters: input.startupParameters,
-          autoShutdown: {
-            ...this.deps.config.defaultAutoShutdown,
-            enabled: input.autoShutdownEnabled,
-          },
-          clonedFromServerId,
-        }),
-    );
+
+    /*
+     * Die Id des angelegten Datensatzes, sobald es einen gibt.
+     *
+     * Sie wird **innerhalb** der Reservierung gesetzt, gebraucht wird sie
+     * außerhalb: Scheitert die Vergabe, wirft `reserve()` – und ohne diese
+     * Merkstelle wüsste das Aufräumen unten nicht, was es aufräumen soll. Bei
+     * der Drizzle-Umsetzung ist danach ohnehin nichts mehr da (der Rollback hat
+     * den Datensatz mitgenommen, `rollbackFailedCreate()` findet nichts und
+     * kehrt sofort um). Bei einer Reservierung ohne Transaktion – der Rückfall
+     * aus `createInlineCapacityReservation()` – ist sie das, was die Leiche
+     * verhindert.
+     */
+    const angelegt: { id: string | null } = { id: null };
 
     try {
-      /*
-       * Portvergabe und das Nachtragen der Zuweisung liegen **innerhalb** des
-       * Rollbacks (Audit orchestration-core-05). Vorher standen beide davor:
-       * Ein erschöpfter Port-Pool (`PORT_POOL_EXHAUSTED`) oder ein
-       * fehlgeschlagenes Update hinterließen dann genau die Leiche, die
-       * `rollbackFailedCreate()` beseitigen soll – Datensatz auf `creating`,
-       * Subdomain belegt, Ports womöglich schon vergeben. Der zweite Versuch
-       * mit derselben Adresse endete in `SUBDOMAIN_TAKEN`.
-       */
-      const assignedPorts = await this.deps.ports.allocate(created.id, definition, {
-        nodeId: host.id,
-        virtualHostPort: definition.supportsVirtualHostRouting
-          ? this.deps.config.virtualHostPort
-          : null,
-      });
+      const created = await this.reservation.reserve(
+        {
+          userId: ownerId,
+          hostId: host.id,
+          serverId: null,
+          requested: resourceLimits,
+          intent: 'create',
+        },
+        async (scope) => {
+          const server = await scope.servers.create({
+            ownerId,
+            hostId: host.id,
+            name: input.name,
+            gameType: definition.id,
+            subdomain,
+            assignedPorts: [],
+            resourceLimits,
+            configJson: buildServerConfig(definition, input.config),
+            startupParameters: input.startupParameters,
+            autoShutdown: {
+              ...this.deps.config.defaultAutoShutdown,
+              enabled: input.autoShutdownEnabled,
+            },
+            clonedFromServerId,
+          });
 
-      await this.deps.repository.update(created.id, { assignedPorts });
+          angelegt.id = server.id;
+
+          const assignedPorts = await scope.ports.allocate(server.id, definition, {
+            nodeId: host.id,
+            virtualHostPort: definition.supportsVirtualHostRouting
+              ? this.deps.config.virtualHostPort
+              : null,
+          });
+
+          await scope.servers.update(server.id, { assignedPorts });
+
+          // `update()` liefert nichts zurück; der frisch angelegte Datensatz
+          // plus die eben vergebenen Ports ist derselbe Stand, ohne ihn erneut
+          // zu laden – und ein Laden wäre hier ohnehin nur innerhalb der
+          // Transaktion sichtbar.
+          return { ...server, assignedPorts };
+        },
+      );
 
       await this.provision(await this.requireServer(created.id), input.worldImport);
+
+      return await this.requireServer(created.id);
     } catch (error: unknown) {
       /*
        * Aufräumen, statt eine Leiche stehen zu lassen (WORK_STATUS.md,
@@ -431,12 +455,12 @@ export class ServerOrchestrationService {
        * Der Fehler selbst geht weiter nach oben: Er ist die Antwort auf den
        * Anlegen-Versuch, und `server.failed` ist bereits gemeldet.
        */
-      await this.rollbackFailedCreate(created.id);
+      if (angelegt.id !== null) {
+        await this.rollbackFailedCreate(angelegt.id);
+      }
 
       throw error;
     }
-
-    return this.requireServer(created.id);
   }
 
   /**
@@ -734,7 +758,7 @@ export class ServerOrchestrationService {
         requested: server.resourceLimits,
         intent: 'start',
       },
-      (repository) => this.applyTransition(server, { type: 'startRequested' }, repository),
+      (scope) => this.applyTransition(server, { type: 'startRequested' }, scope.servers),
     );
 
     /*
