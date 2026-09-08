@@ -11,8 +11,16 @@ export interface SideNavItem {
   key: string;
   label: string;
   icon: IconName;
-  /** Ziel-Route. Fehlt sie, wird `onSelect` verwendet. */
-  href?: string;
+  /**
+   * Ziel-Route – Pflicht (Fundpunkt 159).
+   *
+   * Bis dahin war sie optional, und Einträge ohne Ziel wurden als `<button>`
+   * gerendert. Seit die Hauptnavigation ein Ziel verlangt (Fundpunkt 155,
+   * `DashboardNav.tsx`), ging diesen Weg niemand mehr – ein Eintrag, der
+   * nirgendwohin führt, gehört gar nicht erst in die Liste.
+   */
+  href: string;
+  /** Wird beim Anklicken zusätzlich aufgerufen (mobile Schublade schließen). */
   onSelect?: () => void;
   active?: boolean;
   /** Zähler rechts im Eintrag (z. B. ungelesene Nachrichten). */
@@ -33,6 +41,8 @@ export interface SideNavSectionProps {
  *
  * Welche Einträge überhaupt übergeben werden, entscheidet das aufrufende Paket
  * anhand der Berechtigungen aus dem DTO – die Navigation filtert nicht selbst.
+ * Jeder Eintrag führt zu einer Route, also ist jede Zeile ein Link
+ * (Fundpunkt 159).
  */
 /** Überschrift einer Gruppe – gleich für Einträge und Serverliste. */
 function SectionHeading({ title, aside }: { title: string; aside?: string }) {
@@ -49,37 +59,24 @@ export function SideNavSection({ title, titleAside, items, className }: SideNavS
     <div className={cn('flex flex-col gap-0.5', className)}>
       {title ? <SectionHeading title={title} aside={titleAside} /> : null}
 
-      {items.map((item) => {
-        const itemClassName = cn(
-          'flex items-center gap-2.5 rounded-tile px-2.5 py-2.5 text-base',
-          item.active
-            ? 'border-l-2 border-brand bg-brand-soft text-white'
-            : 'text-ink-muted hover:text-ink',
-        );
-        const content = (
-          <>
-            <Icon name={item.icon} size={16} />
-            <span className="flex-1 truncate text-left">{item.label}</span>
-            {item.badgeCount ? <CountBadge count={item.badgeCount} /> : null}
-          </>
-        );
-
-        return item.href ? (
-          <Link
-            key={item.key}
-            href={item.href}
-            aria-current={item.active ? 'page' : undefined}
-            onClick={item.onSelect}
-            className={itemClassName}
-          >
-            {content}
-          </Link>
-        ) : (
-          <button key={item.key} type="button" onClick={item.onSelect} className={itemClassName}>
-            {content}
-          </button>
-        );
-      })}
+      {items.map((item) => (
+        <Link
+          key={item.key}
+          href={item.href}
+          aria-current={item.active ? 'page' : undefined}
+          onClick={item.onSelect}
+          className={cn(
+            'flex items-center gap-2.5 rounded-tile px-2.5 py-2.5 text-base',
+            item.active
+              ? 'border-l-2 border-brand bg-brand-soft text-white'
+              : 'text-ink-muted hover:text-ink',
+          )}
+        >
+          <Icon name={item.icon} size={16} />
+          <span className="flex-1 truncate text-left">{item.label}</span>
+          {item.badgeCount ? <CountBadge count={item.badgeCount} /> : null}
+        </Link>
+      ))}
     </div>
   );
 }

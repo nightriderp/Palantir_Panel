@@ -180,11 +180,14 @@ export interface NotificationAuditSink {
       metadata: Record<string, unknown>;
     },
     /**
-     * Laufende Transaktion, in der der Eintrag entstehen soll (Fundpunkt 150).
+     * Laufende Transaktion, in der der Eintrag entstehen soll (Fundpunkte 150
+     * und 158).
      *
-     * Nur `publishAnnouncement` reicht hier etwas durch: Dort entstehen
-     * Ankündigung und Inbox-Zeilen gemeinsam, und der Protokolleintrag gehört
-     * in dieselbe Klammer. Alle übrigen Aufrufe lassen den Parameter weg.
+     * Nur die beiden Schreibwege der Ankündigungen reichen hier etwas durch:
+     * `publishAnnouncement` (Ankündigung und Inbox-Zeilen entstehen gemeinsam)
+     * und `deleteAnnouncement` (die Ankündigung verschwindet samt ihren
+     * Inbox-Zeilen). In beiden Fällen gehört der Protokolleintrag in dieselbe
+     * Klammer. Alle übrigen Aufrufe lassen den Parameter weg.
      */
     connection?: DbConnection,
   ): void | Promise<void>;

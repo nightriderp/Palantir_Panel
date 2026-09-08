@@ -692,6 +692,56 @@ describe('Systemweite Ankündigungen (Lastenheft §3.6)', () => {
     expect(repository.notifications).toHaveLength(0);
   });
 
+  /**
+   * Fundpunkt 158: Der Protokolleintrag lag hinter dem Löschen. Scheiterte er,
+   * war die Ankündigung weg, der Admin sah aber einen Fehler – und sein zweiter
+   * Anlauf endete mit `ANNOUNCEMENT_NOT_FOUND`. Im Protokoll stand damit nie,
+   * wer sie entfernt hat; anders als beim Veröffentlichen ließ sich das nicht
+   * nachholen.
+   */
+  it('lässt die Ankündigung stehen, wenn der Protokolleintrag beim Zurückziehen scheitert', async () => {
+    const repository = fakeRepository();
+    const { service } = build({ repository });
+    const announcement = await service.publishAnnouncement(adminActor(), ADMIN, {
+      title: 'Wartung',
+      body: 'Am Sonntag ab 02:00 Uhr.',
+      severity: 'info',
+      expiresAt: null,
+    });
+
+    // Zweiter Dienst auf derselben Ablage: Veröffentlicht wurde mit heilem
+    // Protokoll, erst das Zurückziehen scheitert daran.
+    const { service: ohneProtokoll } = build({ repository, audit: failingAudit() });
+
+    await expect(
+      ohneProtokoll.deleteAnnouncement(adminActor(), ADMIN, announcement.id),
+    ).rejects.toThrow('Audit-Log nicht beschreibbar');
+
+    expect(repository.announcements).toHaveLength(1);
+    expect(repository.notifications).toHaveLength(3);
+  });
+
+  it('protokolliert das Zurückziehen gemeinsam mit dem Löschen', async () => {
+    const repository = fakeRepository();
+    const audit = recordingAudit();
+    const { service } = build({ repository, audit });
+    const announcement = await service.publishAnnouncement(adminActor(), ADMIN, {
+      title: 'Wartung',
+      body: 'Am Sonntag ab 02:00 Uhr.',
+      severity: 'info',
+      expiresAt: null,
+    });
+
+    await service.deleteAnnouncement(adminActor(), ADMIN, announcement.id);
+
+    expect(repository.announcements).toHaveLength(0);
+    // Zwei Einträge: das Veröffentlichen und das Zurückziehen.
+    expect(audit.entries).toEqual([
+      { action: 'notification.announcementChanged', targetId: announcement.id },
+      { action: 'notification.announcementChanged', targetId: announcement.id },
+    ]);
+  });
+
   /** Eine Korrektur am Banner darf nicht ändern, was jemand gestern gelesen hat. */
   it('lässt bereits zugestellte Meldungen bei einer Korrektur unverändert', async () => {
     const repository = fakeRepository();

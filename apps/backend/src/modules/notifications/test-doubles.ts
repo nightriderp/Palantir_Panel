@@ -559,7 +559,14 @@ export function fakeRepository(
       return Promise.resolve(next);
     },
 
-    deleteAnnouncement: (id) => {
+    /**
+     * Zurückziehen samt Protokolleintrag in einem Zug (Fundpunkt 158): Scheitert
+     * der Rückruf, steht die Ankündigung danach wieder – wie nach dem Rollback
+     * der echten Transaktion.
+     */
+    deleteAnnouncement: async (id, alsoInTransaction) => {
+      const vorherAnkuendigungen = [...announcements];
+      const vorherMeldungen = [...notifications];
       const index = announcements.findIndex((entry) => entry.id === id);
 
       if (index >= 0) {
@@ -573,7 +580,14 @@ export function fakeRepository(
         }
       }
 
-      return Promise.resolve();
+      try {
+        await alsoInTransaction?.();
+      } catch (error) {
+        announcements.splice(0, announcements.length, ...vorherAnkuendigungen);
+        notifications.splice(0, notifications.length, ...vorherMeldungen);
+
+        throw error;
+      }
     },
 
     countNotificationsPerAnnouncement: () => {

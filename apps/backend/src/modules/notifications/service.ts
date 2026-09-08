@@ -1129,17 +1129,30 @@ export function createNotificationService(
         throw new NotificationError('ANNOUNCEMENT_NOT_FOUND');
       }
 
-      // Die zugehörigen Inbox-Meldungen verschwinden mit (Fremdschlüssel
-      // `on delete cascade`): Eine zurückgezogene Ankündigung soll auch aus den
-      // Inboxen verschwinden, sonst bliebe ein Wartungshinweis stehen, der
-      // nicht mehr gilt.
-      await repository.deleteAnnouncement(announcementId);
-      await audit.record({
-        action: 'notification.announcementChanged',
-        actorId,
-        targetType: 'announcement',
-        targetId: announcementId,
-        metadata: { operation: 'withdrawn', title: existing.title },
+      /*
+       * Die zugehörigen Inbox-Meldungen verschwinden mit (Fremdschlüssel
+       * `on delete cascade`): Eine zurückgezogene Ankündigung soll auch aus den
+       * Inboxen verschwinden, sonst bliebe ein Wartungshinweis stehen, der
+       * nicht mehr gilt.
+       *
+       * Der Audit-Eintrag gehört in dieselbe Klammer (Fundpunkt 158) – hier
+       * schwerer als beim Veröffentlichen: Stand er dahinter und scheiterte, war
+       * die Ankündigung bereits weg, und der zweite Anlauf des Admins endete mit
+       * `ANNOUNCEMENT_NOT_FOUND`. Im Protokoll stand dann nie, wer sie entfernt
+       * hat – anders als beim Veröffentlichen ließ sich das nicht mehr
+       * nachholen.
+       */
+      await repository.deleteAnnouncement(announcementId, async (connection) => {
+        await audit.record(
+          {
+            action: 'notification.announcementChanged',
+            actorId,
+            targetType: 'announcement',
+            targetId: announcementId,
+            metadata: { operation: 'withdrawn', title: existing.title },
+          },
+          connection,
+        );
       });
     },
 
