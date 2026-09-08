@@ -22,13 +22,17 @@ import { UsersView } from './UsersView';
  * - **spec-lastenheft-07** – „Server einsehen" hängt an `server.view.any`.
  *   Ohne dieses Recht zeigte der Dialog für jedes fremde Konto „besitzt keine
  *   Server"; jetzt erscheint die Schaltfläche erst gar nicht.
+ * - **Fundpunkt 138** – der Dialog holte die Gesamtliste und filterte im
+ *   Browser nach `ownerId`. Geprüft wird jetzt, dass er die Abfrage filtern
+ *   lässt (`fetchUserServers`) und dass mitverwaltete Server erscheinen, statt
+ *   unsichtbar zu bleiben.
  */
 
 const api = vi.hoisted(() => ({
   fetchRegistrationRequests: vi.fn(),
   fetchRoles: vi.fn(),
   fetchInstanceSettings: vi.fn(),
-  fetchAllServers: vi.fn(),
+  fetchUserServers: vi.fn(),
   resetUserPassword: vi.fn(),
 }));
 
@@ -43,7 +47,7 @@ vi.mock('@/lib/api/admin', async (importOriginal) => ({
   fetchRegistrationRequests: api.fetchRegistrationRequests,
   fetchRoles: api.fetchRoles,
   fetchInstanceSettings: api.fetchInstanceSettings,
-  fetchAllServers: api.fetchAllServers,
+  fetchUserServers: api.fetchUserServers,
   resetUserPassword: api.resetUserPassword,
 }));
 
@@ -125,7 +129,7 @@ beforeEach(() => {
   api.fetchRegistrationRequests.mockResolvedValue(ok([eintrag()]));
   api.fetchRoles.mockResolvedValue(ok([]));
   api.fetchInstanceSettings.mockResolvedValue(ok(einstellungen));
-  api.fetchAllServers.mockResolvedValue(ok([]));
+  api.fetchUserServers.mockResolvedValue(ok([]));
   api.resetUserPassword.mockResolvedValue(ok({ temporaryPassword: 'Einmal-4711' }));
 
   sitzung.account = konto(berechtigungen({ canManageUsers: true, canViewAnyServer: true }));
@@ -219,11 +223,20 @@ describe('UsersView – „Server einsehen" (spec-lastenheft-07)', () => {
     expect(screen.getByRole('button', { name: 'Kontingent' }));
   });
 
-  it('zeigt die Server des Kontos und grenzt Mitgliedschaften ab', async () => {
-    api.fetchAllServers.mockResolvedValue(
+  it('lässt die Abfrage nach dem Konto filtern, statt selbst zu sieben (Fundpunkt 138)', async () => {
+    await zeichne();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server einsehen' }));
+    await screen.findByRole('dialog');
+
+    expect(api.fetchUserServers).toHaveBeenCalledWith('user-1', expect.anything());
+  });
+
+  it('zeigt eigene und mitverwaltete Server und hält sie auseinander (Fundpunkt 138)', async () => {
+    api.fetchUserServers.mockResolvedValue(
       ok([
         serverFixture({ id: 'srv-1', name: 'Welt', ownerId: 'user-1' }),
-        serverFixture({ id: 'srv-2', name: 'Fremd', ownerId: 'user-2' }),
+        serverFixture({ id: 'srv-2', name: 'Bea-Welt', ownerId: 'user-2' }),
       ]),
     );
     await zeichne();
@@ -232,8 +245,10 @@ describe('UsersView – „Server einsehen" (spec-lastenheft-07)', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByText('Welt'));
-    expect(within(dialog).queryByText('Fremd')).toBeNull();
-    expect(within(dialog).getByText(/allein\s+Mitglied ist, erscheinen hier nicht/));
+    // Der mitverwaltete Server fehlte vorher ganz – jetzt steht er da, benannt.
+    expect(within(dialog).getByText('Bea-Welt'));
+    expect(within(dialog).getAllByText('Mitverwaltet')).toHaveLength(1);
+    expect(within(dialog).getByText(/eigene und solche, bei denen es allein\s+Mitglied ist/));
   });
 
   it('unterscheidet „keine eigenen Server" von „keiner davon sichtbar"', async () => {

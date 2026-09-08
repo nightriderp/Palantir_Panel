@@ -108,6 +108,7 @@ export {
 } from './placeholder/PhaseLockedPlaceholder';
 
 export { cn } from './utils/cn';
+export { dayInputFromIso, endOfDayIso, startOfDayIso } from './utils/dayRange';
 export {
   BACKUP_STATUS_META,
   BACKUP_TYPE_LABELS,

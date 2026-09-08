@@ -35,12 +35,12 @@ import {
   assignRole,
   blockRegistrationRequest,
   clearUserLimits,
-  fetchAllServers,
   createUser,
   fetchInstanceSettings,
   fetchRegistrationRequests,
   fetchRoles,
   fetchUserLimits,
+  fetchUserServers,
   removeRole,
   resetUserPassword,
   resetUserTwoFactor,
@@ -95,12 +95,11 @@ export function UsersView() {
 
   /*
    * „Server einsehen" (Lastenheft §3.7) hängt an `server.view.any`
-   * (Fundpunkt spec-lastenheft-07): Der Dialog holt die Serverliste des
-   * **Aufrufers** und filtert nach `ownerId`. Ohne dieses Recht enthält sie nur
-   * eigene und mitverwaltete Server – für jedes fremde Konto käme also „besitzt
-   * keine Server" heraus, obwohl in Wahrheit nur die Berechtigung fehlt. Statt
-   * einer solchen Falschaussage bleibt die Schaltfläche dann ganz weg; die
-   * eigenen Server stehen ohnehin unter „Übersicht".
+   * (Fundpunkt spec-lastenheft-07): Der Dialog fragt die Serverliste nach einem
+   * fremden Konto, und genau das lässt die Route nur mit diesem Recht zu
+   * (Fundpunkt 138). Ohne das Recht käme eine Absage statt einer Liste – die
+   * Schaltfläche bleibt deshalb gleich ganz weg, statt in einen Fehler zu
+   * führen; die eigenen Server stehen ohnehin unter „Übersicht".
    */
   const canViewAnyServer = user?.permissions.canViewAnyServer ?? false;
 
@@ -531,24 +530,29 @@ function RolesDialog({
 /**
  * Server eines Nutzers einsehen (Lastenheft §3.7).
  *
- * Das Backend kennt keinen nach Besitzer gefilterten Endpunkt: Der Dialog holt
- * `GET /api/servers` – für ein Konto mit `server.view.any` also alle Server –
- * und filtert im Browser nach `ownerId`. Die Schaltfläche, die hierher führt,
- * erscheint deshalb nur mit diesem Recht (Fundpunkt spec-lastenheft-07).
+ * **Gefiltert wird in der Abfrage** (Fundpunkt 138): `GET /api/servers?userId=…`
+ * liefert die Server dieses einen Kontos – eigene **und** mitverwaltete. Vorher
+ * holte der Dialog die Gesamtliste und filterte im Browser nach `ownerId`: Für
+ * eine Handvoll Treffer wanderten alle DTOs der Instanz über die Leitung, und
+ * Server, bei denen das Konto allein Mitglied ist, ließen sich gar nicht zeigen.
+ *
+ * Die Schaltfläche, die hierher führt, erscheint weiterhin nur mit
+ * `server.view.any` (Fundpunkt spec-lastenheft-07) – dieselbe Schranke prüft
+ * jetzt auch die Route selbst und lehnt den Filter ohne das Recht ab.
  *
  * Zwei Aussagen hält der Dialog auseinander, weil sie vorher beide als „besitzt
  * keine Server" herauskamen:
  *
- * - **keine eigenen Server** – `serverCount` aus dem DTO ist 0 oder fehlt;
- * - **keiner davon sichtbar** – `serverCount` zählt mehr, als die gefilterte
- *   Liste hergibt (etwa weil das Server-DTO `canView` verneint).
- *
- * Mitverwaltete Server (Mitgliedschaft ohne Besitz) stehen nicht in der Liste;
- * der Hinweis unter der Liste sagt das ausdrücklich.
+ * - **keine Server** – `serverCount` aus dem DTO ist 0 oder fehlt;
+ * - **keiner davon sichtbar** – `serverCount` zählt mehr, als die Liste hergibt
+ *   (etwa weil das Server-DTO `canView` verneint).
  */
 function ServersDialog({ user, onClose }: { user: RegistrationRequestDto; onClose: () => void }) {
-  const servers = useApiResource<GameServerDto[]>((signal) => fetchAllServers(signal), []);
-  const own = (servers.data ?? []).filter((server) => server.ownerId === user.userId);
+  const servers = useApiResource<GameServerDto[]>(
+    (signal) => fetchUserServers(user.userId, signal),
+    [user.userId],
+  );
+  const list = servers.data ?? [];
   const counted = user.serverCount ?? 0;
 
   return (
@@ -558,21 +562,28 @@ function ServersDialog({ user, onClose }: { user: RegistrationRequestDto; onClos
           <p className="text-sm text-ink-faint">Server werden geladen …</p>
         ) : servers.error ? (
           <p className="text-sm text-danger">{servers.error}</p>
-        ) : own.length === 0 ? (
+        ) : list.length === 0 ? (
           <p className="text-sm text-ink-faint">
             {counted === 0
               ? 'Dieses Konto besitzt keine eigenen Server.'
               : `Dieses Konto besitzt ${formatNumber(counted)} Server, die dir hier nicht angezeigt werden können.`}
           </p>
         ) : (
-          own.map((server) => (
+          list.map((server) => (
             <div
               key={server.id}
               className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface px-3 py-2.5"
             >
-              <div className="flex flex-col">
-                <span className="text-base text-ink">{server.name}</span>
-                <span className="font-mono text-sm text-ink-faint">
+              <div className="flex min-w-0 flex-col">
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-base text-ink">{server.name}</span>
+                  {/* `ownerId` unterscheidet Besitz von bloßer Mitgliedschaft –
+                      beides steht in der Liste, aber nicht ununterscheidbar. */}
+                  {server.ownerId === user.userId ? null : (
+                    <Badge tone="neutral">Mitverwaltet</Badge>
+                  )}
+                </span>
+                <span className="truncate font-mono text-sm text-ink-faint">
                   {formatServerAddress(server.address) ?? '—'}
                 </span>
               </div>
@@ -583,8 +594,8 @@ function ServersDialog({ user, onClose }: { user: RegistrationRequestDto; onClos
 
         {servers.loading || servers.error !== null ? null : (
           <p className="pt-1 text-2xs text-ink-faint">
-            Aufgeführt sind nur Server, die dieses Konto besitzt – Server, bei denen es allein
-            Mitglied ist, erscheinen hier nicht.
+            Aufgeführt sind die Server dieses Kontos – eigene und solche, bei denen es allein
+            Mitglied ist.
           </p>
         )}
       </div>

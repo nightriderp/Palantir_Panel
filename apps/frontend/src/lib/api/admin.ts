@@ -51,7 +51,7 @@ import {
   type UserResourceLimitsInput,
 } from '@palantir/validation';
 import { type ApiResult, apiRequest } from './client';
-import { fetchServers } from './servers';
+import { fetchServers, fetchServersOfUser } from './servers';
 
 /**
  * REST-Endpunkte des Admin-Kernbereichs (Arbeitspaket F10).
@@ -207,11 +207,7 @@ export function resetUserTwoFactor(userId: string): Promise<ApiResult<null>> {
 }
 
 /**
- * Server eines Nutzers einsehen (Lastenheft §3.7).
- *
- * Das Backend hat keinen nach Besitzer gefilterten Endpunkt; ein Admin mit
- * `server.view.any` bekommt über die Serverliste alle Server und filtert nach
- * `ownerId` in der Ansicht.
+ * Alle Server der Instanz – für die Adressvergabe (Lastenheft §3.7).
  *
  * Geht bewusst über `fetchServers` aus `lib/api/servers.ts` statt über einen
  * eigenen Pfad – es ist dieselbe Route, und zwei Schreibweisen davon laufen
@@ -219,6 +215,22 @@ export function resetUserTwoFactor(userId: string): Promise<ApiResult<null>> {
  */
 export function fetchAllServers(signal?: AbortSignal): Promise<ApiResult<GameServerDto[]>> {
   return fetchServers(signal);
+}
+
+/**
+ * Server eines Nutzers einsehen (Lastenheft §3.7).
+ *
+ * Der Filter sitzt seit Fundpunkt 138 an der Abfrage: `GET /api/servers` nimmt
+ * `userId` entgegen und liefert die Server dieses Kontos – eigene und
+ * mitverwaltete. Vorher holte die Ansicht dafür `fetchAllServers` und filterte
+ * im Browser nach `ownerId`; mitverwaltete Server ließen sich so gar nicht
+ * zeigen, und für eine Handvoll Treffer wanderten alle DTOs über die Leitung.
+ */
+export function fetchUserServers(
+  userId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<GameServerDto[]>> {
+  return fetchServersOfUser(userId, signal);
 }
 
 // ---------------------------------------------------------------------------

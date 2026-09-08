@@ -1,17 +1,66 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-
-import { endOfDayIso, startOfDayIso } from './AuditLogView';
+import { type AccountDto, type GlobalPermissions } from '@palantir/contracts';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuditLogView } from './AuditLogView';
 
 /**
- * Audit-Fundstelle frontend-lib-07 – die Tagesgrenzen des Audit-Filters lagen
- * in UTC.
+ * Audit-Fundstelle frontend-lib-07, nachgezogen mit Fundpunkt 139.
  *
- * Ein Admin in Berlin (CEST), der auf „Ab 01.09. Bis 01.09." filterte, schickte
- * `2026-09-01T00:00:00.000Z … T23:59:59.999Z` – also 02:00 Uhr des 1.9. bis
- * 01:59 Uhr des 2.9. seiner Zeit. Die ersten zwei Stunden des gewählten Tages
- * fehlten, dafür erschienen Einträge des Folgetages. Gemeint ist der
- * Kalendertag, den der Admin vor sich sieht.
+ * Die Tagesgrenzen der Filter „Ab"/„Bis" lagen ursprünglich in UTC: Ein Admin
+ * in Berlin (CEST), der auf „Ab 01.09. Bis 01.09." filterte, verlor die ersten
+ * zwei Stunden des gewählten Tages und bekam dafür Einträge des Folgetages.
+ *
+ * Die reine Rechnung dahinter prüft `components/shared/utils/dayRange.test.ts` –
+ * dort liegen die Helfer seit Fundpunkt 139. **Hier** wird geprüft, dass diese
+ * Ansicht sie weiter benutzt: dass also genau die lokale Tagesgrenze in der
+ * Abfrage landet und nicht wieder ein angehängtes `Z`.
  */
+
+const api = vi.hoisted(() => ({ fetchAuditLog: vi.fn() }));
+const sitzung = vi.hoisted(() => ({ account: null as AccountDto | null }));
+
+vi.mock('@/app/(dashboard)/SessionProvider', () => ({
+  useSession: () => ({ user: sitzung.account, loading: false, setUser: () => undefined }),
+}));
+
+vi.mock('@/lib/api/admin', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchAuditLog: api.fetchAuditLog,
+}));
+
+function berechtigungen(overrides: Partial<GlobalPermissions> = {}): GlobalPermissions {
+  return {
+    canCreateServer: false,
+    canViewAnyServer: false,
+    canManageAnyBackup: false,
+    canManageUsers: false,
+    canManageRoles: false,
+    canManageNotifications: false,
+    canViewNodes: false,
+    canManageNodes: false,
+    canManageAddresses: false,
+    canViewAuditLog: false,
+    canModerateMessages: false,
+    canManageGameTypes: false,
+    ...overrides,
+  };
+}
+
+function konto(permissions: GlobalPermissions): AccountDto {
+  return {
+    id: 'admin-1',
+    displayName: 'Admina',
+    username: 'admina',
+    isOwner: false,
+    banned: false,
+    awaitingApproval: false,
+    twoFactorEnabled: false,
+    roles: [],
+    authMethods: [],
+    createdAt: '2026-08-01T10:00:00.000Z',
+    permissions,
+  };
+}
 
 /** Zeitzone des Testlaufs umstellen – Node wertet `process.env.TZ` neu aus. */
 function mitZeitzone(zone: string): () => void {
@@ -22,43 +71,71 @@ function mitZeitzone(zone: string): () => void {
   };
 }
 
-describe('Tagesgrenzen des Audit-Filters – lokale Zeitzone (frontend-lib-07)', () => {
-  it('bildet den Tagesbeginn in der Zeitzone des Browsers', () => {
-    const grenze = new Date(startOfDayIso('2026-09-01'));
+/** Die zuletzt gestellte Abfrage – das, was die Ansicht ans Backend schickt. */
+function letzteAbfrage(): { from?: string; to?: string } {
+  const aufrufe = api.fetchAuditLog.mock.calls;
 
-    expect(grenze.getFullYear()).toBe(2026);
-    expect(grenze.getMonth()).toBe(8);
-    expect(grenze.getDate()).toBe(1);
-    expect(grenze.getHours()).toBe(0);
-    expect(grenze.getMinutes()).toBe(0);
-    expect(grenze.getSeconds()).toBe(0);
-    expect(grenze.getMilliseconds()).toBe(0);
+  return (aufrufe[aufrufe.length - 1]?.[0] ?? {}) as { from?: string; to?: string };
+}
+
+/** Rendert die Ansicht und setzt beide Datumsfelder auf denselben Tag. */
+async function filtereAufDen(tag: string) {
+  render(<AuditLogView />);
+
+  fireEvent.change(screen.getByLabelText('Ab'), { target: { value: tag } });
+  fireEvent.change(screen.getByLabelText('Bis'), { target: { value: tag } });
+
+  await waitFor(() => {
+    expect(letzteAbfrage().to).toBeDefined();
+  });
+}
+
+beforeEach(() => {
+  api.fetchAuditLog.mockReset();
+  api.fetchAuditLog.mockResolvedValue({
+    success: true as const,
+    data: { entries: [], total: 0, limit: 50, offset: 0 },
+    error: null,
+  });
+  sitzung.account = konto(berechtigungen({ canViewAuditLog: true }));
+});
+
+describe('Audit-Log – Tagesgrenzen in der Zeitzone des Browsers (frontend-lib-07)', () => {
+  it('schickt einen vollen Kalendertag – Anfang wie Ende lokal', async () => {
+    await filtereAufDen('2026-09-01');
+
+    const { from, to } = letzteAbfrage();
+    const von = new Date(String(from));
+    const bis = new Date(String(to));
+
+    expect(von.getDate()).toBe(1);
+    expect(von.getHours()).toBe(0);
+    expect(bis.getDate()).toBe(1);
+    expect(bis.getHours()).toBe(23);
+    expect(bis.getTime() - von.getTime()).toBe(24 * 60 * 60 * 1000 - 1);
   });
 
-  it('bildet das Tagesende einschließlich der letzten Millisekunde', () => {
-    const grenze = new Date(endOfDayIso('2026-09-01'));
+  it('stellt ohne Datumsangabe gar keine Grenze', async () => {
+    render(<AuditLogView />);
 
-    expect(grenze.getDate()).toBe(1);
-    expect(grenze.getHours()).toBe(23);
-    expect(grenze.getMinutes()).toBe(59);
-    expect(grenze.getSeconds()).toBe(59);
-    expect(grenze.getMilliseconds()).toBe(999);
+    await waitFor(() => {
+      expect(api.fetchAuditLog).toHaveBeenCalled();
+    });
+
+    expect(letzteAbfrage().from).toBeUndefined();
+    expect(letzteAbfrage().to).toBeUndefined();
   });
 
-  it('umfasst genau einen vollen Tag', () => {
-    const von = new Date(startOfDayIso('2026-09-01')).getTime();
-    const bis = new Date(endOfDayIso('2026-09-01')).getTime();
+  it('bleibt ohne `canViewAuditLog` stumm', () => {
+    sitzung.account = konto(berechtigungen());
+    render(<AuditLogView />);
 
-    expect(bis - von).toBe(24 * 60 * 60 * 1000 - 1);
-  });
-
-  it('gibt ein unbrauchbares Datum unverändert zurück', () => {
-    expect(startOfDayIso('')).toBe('');
-    expect(endOfDayIso('kein-datum')).toBe('kein-datum');
+    expect(screen.getByText('Kein Zugriff'));
+    expect(api.fetchAuditLog).not.toHaveBeenCalled();
   });
 });
 
-describe('Tagesgrenzen in Europe/Berlin (Sommerzeit)', () => {
+describe('Audit-Log in Europe/Berlin – die Fundstelle selbst', () => {
   let zuruecksetzen: () => void;
 
   beforeAll(() => {
@@ -69,20 +146,15 @@ describe('Tagesgrenzen in Europe/Berlin (Sommerzeit)', () => {
     zuruecksetzen();
   });
 
-  it('setzt am 1.9. voraus, dass der Testlauf wirklich auf Berlin steht', () => {
-    expect(new Date(2026, 8, 1).getTimezoneOffset()).toBe(-120);
-  });
+  it('schickt 22:00 Uhr UTC des Vortags statt eines angehängten „Z"', async () => {
+    await filtereAufDen('2026-09-01');
 
-  it('sendet 22:00 Uhr UTC des Vortags als Tagesbeginn', () => {
-    expect(startOfDayIso('2026-09-01')).toBe('2026-08-31T22:00:00.000Z');
-  });
-
-  it('sendet 21:59:59.999 Uhr UTC desselben Tages als Tagesende', () => {
-    expect(endOfDayIso('2026-09-01')).toBe('2026-09-01T21:59:59.999Z');
+    expect(letzteAbfrage().from).toBe('2026-08-31T22:00:00.000Z');
+    expect(letzteAbfrage().to).toBe('2026-09-01T21:59:59.999Z');
   });
 });
 
-describe('Tagesgrenzen in UTC', () => {
+describe('Audit-Log in UTC', () => {
   let zuruecksetzen: () => void;
 
   beforeAll(() => {
@@ -93,8 +165,10 @@ describe('Tagesgrenzen in UTC', () => {
     zuruecksetzen();
   });
 
-  it('bleibt in UTC beim bisherigen Ergebnis', () => {
-    expect(startOfDayIso('2026-09-01')).toBe('2026-09-01T00:00:00.000Z');
-    expect(endOfDayIso('2026-09-01')).toBe('2026-09-01T23:59:59.999Z');
+  it('bleibt in UTC beim bisherigen Ergebnis', async () => {
+    await filtereAufDen('2026-09-01');
+
+    expect(letzteAbfrage().from).toBe('2026-09-01T00:00:00.000Z');
+    expect(letzteAbfrage().to).toBe('2026-09-01T23:59:59.999Z');
   });
 });

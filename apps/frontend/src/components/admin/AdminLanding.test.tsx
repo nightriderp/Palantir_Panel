@@ -1,7 +1,6 @@
 import { type AccountDto, type GlobalPermissions } from '@palantir/contracts';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ToastProvider } from '@/components/shared';
 import { ADMIN_ENTRIES, DashboardNav } from '@/app/(dashboard)/DashboardNav';
 import { AdminLanding } from './AdminLanding';
 
@@ -13,6 +12,9 @@ import { AdminLanding } from './AdminLanding';
  * einem dieser Rechte sah in der Seitenleiste einen Eintrag, bekam auf `/admin`
  * aber „Kein Zugriff". Die Tests sichern beides: dass jedes Admin-Flag ein Ziel
  * hat und dass dieses Ziel dasselbe ist, das die Seitenleiste anbietet.
+ *
+ * Seit Fundpunkt 155 braucht die Seitenleiste keinen `ToastProvider` mehr: Der
+ * Hinweis-Zweig für Einträge ohne Ziel ist entfernt, jeder Eintrag ist ein Link.
  */
 
 const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
@@ -130,11 +132,7 @@ describe('AdminLanding – jedes Admin-Flag hat ein Ziel (frontend-app-04)', () 
 describe('AdminLanding und Seitenleiste stimmen überein (frontend-app-04)', () => {
   /** Die Administrations-Gruppe der Seitenleiste, gerendert für dieses Konto. */
   function seitenleiste(account: AccountDto): string[] {
-    render(
-      <ToastProvider>
-        <DashboardNav user={account} ownServers={[]} unreadMessages={0} />
-      </ToastProvider>,
-    );
+    render(<DashboardNav user={account} ownServers={[]} unreadMessages={0} />);
 
     return screen
       .getAllByRole('link')
