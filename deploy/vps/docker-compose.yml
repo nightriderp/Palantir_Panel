@@ -467,6 +467,13 @@ services:
       # - nosniff: JSON-Antworten duerfen nicht als HTML interpretiert werden.
       # - frameDeny + CSP: Die API gehoert in keinen fremden Rahmen und liefert
       #   nichts, was ein Browser darstellen soll.
+      #
+      #   Das `default-src 'none'` blockiert die Schriften-Auslieferung NICHT,
+      #   auch wenn es sich beim Ueberfliegen so liest: Browser werten CSP nur
+      #   auf Dokumenten aus, nicht auf CSS-, Font- oder JSON-Antworten. Wer
+      #   `/public/fonts.css` und `/api/fonts/:id/file` einschraenken will,
+      #   tut das in der CSP des **Panels** (apps/frontend/next.config.mjs);
+      #   dort stehen `style-src` und `font-src` und nennen diese Herkunft.
       - 'traefik.http.middlewares.palantir-api-secure.headers.stsSeconds=31536000'
       - 'traefik.http.middlewares.palantir-api-secure.headers.stsIncludeSubdomains=true'
       - 'traefik.http.middlewares.palantir-api-secure.headers.contentTypeNosniff=true'

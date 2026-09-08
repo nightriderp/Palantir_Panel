@@ -16,7 +16,7 @@
     "db:check": "drizzle-kit check",
     "audit:archive": "tsx src/db/archive-audit.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src drizzle.config.ts",
+    "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist .turbo",
     "db:migrate:prod": "node dist/db/migrate.js",
