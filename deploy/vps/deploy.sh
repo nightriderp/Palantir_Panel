@@ -154,10 +154,29 @@ log "Version dieses Standes: ${release}"
 # falschen Rechten, nur diese beiden Laeufe nicht. Und bewusst kein `chown`:
 # Dieses Skript laeuft als unprivilegierter Deploy-Benutzer, dem gehoeren die
 # Verzeichnisse nicht.
+#
+# **Ein fehlendes Verzeichnis ist der schlimmere Fall, nicht der harmlosere.**
+# Bis hierher stieg die Pruefung dann still aus. Auf einer frischen Installation
+# gibt es die Ordner aber gerade nicht - Docker legt die fehlende Bind-Quelle
+# selbst an, und zwar als `root:root`. Die Warnung blieb also genau dort aus, wo
+# sie gebraucht wird, und der erste Schrift-Upload scheiterte spaeter mit einem
+# 500er, ohne dass irgendwo etwas gestanden haette (Fundpunkt 177).
+#
+# Angelegt wird der Ordner hier trotzdem nicht: Dieses Skript laeuft als
+# unprivilegierter Deploy-Benutzer, ein von ihm angelegter Ordner gehoerte ihm
+# und damit wieder nicht UID 1000. Es bleibt beim Hinweis - aber jetzt kommt er.
 pruefe_besitzer() {
   local pfad="$1" zweck="$2"
 
-  [[ -d "${pfad}" ]] || return 0
+  if [[ ! -d "${pfad}" ]]; then
+    log "ACHTUNG: ${pfad} gibt es noch nicht (${zweck})."
+    log "         Docker legt die Bind-Quelle sonst als root:root an, und das"
+    log "         Backend schreibt als UID 1000 - der erste Zugriff scheitert."
+    log "         Auf der VPS als root vorbereiten:"
+    log "         mkdir -p ${pfad} && chown 1000:1000 ${pfad}"
+
+    return 0
+  fi
 
   local besitzer
   besitzer="$(stat -c '%u' "${pfad}" 2>/dev/null || echo '')"

@@ -126,9 +126,10 @@ export class ServerDiskUsage {
     const bekannt = this.#stand.get(serverId.toLowerCase());
 
     if (bekannt === undefined || this.#abgelaufen(bekannt)) {
-      // Bewusst ohne `await`: Der Aufrufer bekommt sofort eine Antwort. Fehler
-      // sind in `measureNow` bereits abgefangen, es kann also nichts unbemerkt
-      // liegen bleiben.
+      // Bewusst ohne `await`: Der Aufrufer bekommt sofort eine Antwort. Dass
+      // hier nichts unbehandelt liegen bleibt, trägt `#messe` — es fängt jeden
+      // Fehler und trägt „keine Angabe" ein. Ohne das nähme eine abgelehnte
+      // Zusage den ganzen Agent-Prozess mit.
       void this.measureNow(serverId);
     }
 
@@ -169,9 +170,30 @@ export class ServerDiskUsage {
     await Promise.all([...this.#laufend.values()]);
   }
 
+  /**
+   * Misst einmal und schreibt den Stand fort.
+   *
+   * **Fängt jeden Fehler.** `usedMb()` stößt die Messung mit `void` an, ohne
+   * auf sie zu warten — eine abgelehnte Zusage hätte dort niemanden, der sie
+   * behandelt, und unter Nodes Vorgabe (`--unhandled-rejections=throw`) nimmt
+   * sie den ganzen Agent-Prozess mit. Ein Spielserver würde also sterben, weil
+   * sich sein Datenordner nicht vermessen ließ.
+   *
+   * Im Betriebspfad schluckt `messeOrdner` bereits alles; durch kommen der
+   * einsetzbare `measure`-Port und ein `RangeError` aus der Rekursion in
+   * `directorySize` bei sehr tiefen Bäumen. Beides endet hier als „keine
+   * Angabe" — dasselbe wie ein fehlender oder unlesbarer Ordner, und `null`
+   * erzeugt nie eine Warnung.
+   */
   async #messe(id: string): Promise<number | null> {
-    const pfad = this.#pfad(id);
-    const usedMb = pfad === null ? null : await this.#measure(pfad);
+    let usedMb: number | null = null;
+
+    try {
+      const pfad = this.#pfad(id);
+      usedMb = pfad === null ? null : await this.#measure(pfad);
+    } catch {
+      usedMb = null;
+    }
 
     this.#stand.set(id, { usedMb, gemessenUm: this.#now().getTime() });
 

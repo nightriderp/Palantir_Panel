@@ -282,6 +282,35 @@ describe('start.sh – Heap aus dem RAM-Kontingent', nurMitShell, () => {
     assert.ok(!lauf.argv.some((arg) => arg.startsWith('-Xmx')));
   });
 
+  /*
+   * Fundpunkt 178: `PALANTIR_MEMORY_LIMIT_FILE` ist ein Ersatz, keine
+   * zusätzliche Adresse. Vorher stand die Variable am Anfang einer Suchliste —
+   * eine unlesbare Datei wurde übersprungen, und das Skript las danach doch
+   * `/sys/fs/cgroup/memory.max` der Maschine. Die drei Tests unten wollten
+   * „keine brauchbare Grenze" nachstellen, prüften in Wahrheit aber die Grenze
+   * des Läufers; auf ubuntu-latest steht dort „max", deshalb bestanden sie aus
+   * dem falschen Grund. In einem Container mit RAM-Grenze wären sie umgefallen.
+   */
+  it('liest nur die angegebene Datei, nicht zusätzlich die der Maschine', () => {
+    const ordner = arbeitsordner();
+    const mitGrenze = starteSkript(ordner, {
+      EULA: 'true',
+      PALANTIR_MEMORY_LIMIT_FILE: speichergrenze(ordner, 2048 * 1024 * 1024),
+    });
+
+    // 2048 MiB Kontingent, Rücklage ein Viertel (512) → 1536 MiB Heap.
+    assert.equal(mitGrenze.argv[1], '-Xmx1536M');
+
+    // Und mit einer Adresse, die es nicht gibt, bleibt es beim Rückfall — auch
+    // auf einer Maschine, die selbst eine cgroup-Grenze hat.
+    const ohneGrenze = starteSkript(ordner, {
+      EULA: 'true',
+      PALANTIR_MEMORY_LIMIT_FILE: posix(ordner.ohneGrenze),
+    });
+
+    assert.equal(ohneGrenze.argv[0], '-XX:MaxRAMPercentage=70');
+  });
+
   it('wertet "max" (cgroup v2 ohne Grenze) nicht als Zahl', () => {
     const ordner = arbeitsordner();
     const lauf = starteSkript(ordner, {

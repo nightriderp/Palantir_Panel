@@ -286,6 +286,44 @@ describe('ServerDiskUsage – Takt und Zwischenspeicher', () => {
     expect(messung.laeufe).toBe(2);
   });
 
+  /*
+   * Fundpunkt 176: `usedMb()` stößt die Messung mit `void` an. Wirft die
+   * Messung, hat die abgelehnte Zusage dort niemanden, der sie behandelt — und
+   * unter Nodes Vorgabe (`--unhandled-rejections=throw`) nimmt sie den ganzen
+   * Agent-Prozess mit. Ein Spielserver würde also sterben, weil sich sein
+   * Datenordner nicht vermessen ließ.
+   */
+  it('fängt einen Fehler der Messung ab, statt den Prozess mitzunehmen', async () => {
+    const belegung = new ServerDiskUsage({
+      dataDir,
+      measure: () => Promise.reject(new Error('Ordner zu tief')),
+    });
+
+    await expect(belegung.measureNow(SERVER_A)).resolves.toBeNull();
+    expect(belegung.usedMb(SERVER_A)).toBeNull();
+    await expect(belegung.settled()).resolves.toBeUndefined();
+  });
+
+  it('hält den gescheiterten Stand fest, statt in einer Schleife neu zu messen', async () => {
+    let laeufe = 0;
+    const belegung = new ServerDiskUsage({
+      dataDir,
+      measure: () => {
+        laeufe += 1;
+
+        return Promise.reject(new Error('kaputt'));
+      },
+    });
+
+    await belegung.measureNow(SERVER_A);
+    // Innerhalb der Frist wird nicht erneut gemessen — ein dauerhaft unlesbarer
+    // Ordner darf nicht jeden Takt einen neuen Durchlauf auslösen.
+    expect(belegung.usedMb(SERVER_A)).toBeNull();
+    await belegung.settled();
+
+    expect(laeufe).toBe(1);
+  });
+
   it('behandelt Groß- und Kleinschreibung der Id gleich', async () => {
     const messung = zaehlendeMessung();
     const belegung = new ServerDiskUsage({ dataDir, measure: messung.measure });
