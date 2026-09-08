@@ -7,7 +7,8 @@
  *   **nicht** geworfen – im Hintergrundlauf eines Backups würde ein geworfener
  *   Fehler unbeachtet verpuffen.
  * - Die Node wird je Befehl aufgelöst: über die `serverId`, wo es eine gibt,
- *   sonst über die Node der Installation.
+ *   sonst über die Node, die am Backup-Datensatz steht (Fundpunkt 174) – und
+ *   erst wenn dort nichts steht, über die Node der Installation.
  * - `CREATE_BACKUP` und `RESTORE_BACKUP` laufen in einer eigenen, langen Frist
  *   (Audit W1-5, bb-02); die kurzen Befehle bleiben bei der üblichen.
  */
@@ -15,7 +16,12 @@
 import { type AgentCommandName, type ApiResponse } from '@palantir/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type BackupAgentGateway } from '../backups/index.js';
-import { AgentRegistry, AgentSession, type AgentSocket } from './agent-gateway.js';
+import {
+  type AgentGatewayLogger,
+  AgentRegistry,
+  AgentSession,
+  type AgentSocket,
+} from './agent-gateway.js';
 import { type BackupHostResolver, createAgentBackupGateway } from './backup-ports.js';
 
 const HOST_ID = '88888888-8888-4888-8888-888888888888';
@@ -35,6 +41,24 @@ const silentLog = {
   warn: (): void => undefined,
   error: (): void => undefined,
 };
+
+/** Log, das Warnungen mitschreibt – der Rückfall muss darin auftauchen. */
+interface MitschriftLog extends AgentGatewayLogger {
+  readonly warnungen: { details: Record<string, unknown>; message: string }[];
+}
+
+function mitschriftLog(): MitschriftLog {
+  const warnungen: { details: Record<string, unknown>; message: string }[] = [];
+
+  return {
+    warnungen,
+    info: (): void => undefined,
+    warn: (details, message): void => {
+      warnungen.push({ details, message });
+    },
+    error: (): void => undefined,
+  };
+}
 
 /** Socket, der jeden Befehl mit der hinterlegten Antwort beantwortet. */
 class ScriptedSocket implements AgentSocket {
@@ -113,9 +137,18 @@ const resolver: BackupHostResolver = {
 function makeGateway(
   agents: AgentRegistry,
   repository: BackupHostResolver = resolver,
+  log: AgentGatewayLogger = silentLog,
 ): BackupAgentGateway {
-  return createAgentBackupGateway({ agents, repository, backupTimeoutMs: BACKUP_FRIST_MS });
+  return createAgentBackupGateway({ agents, repository, log, backupTimeoutMs: BACKUP_FRIST_MS });
 }
+
+/** Archiv, dessen Node am Datensatz steht (der Regelfall seit Fundpunkt 174). */
+function auf(hostId: string): { readonly hostId: string | null } {
+  return { hostId };
+}
+
+/** Archiv ohne Node am Datensatz – alte Zeile oder ausgemusterte Node. */
+const OHNE_NODE = { hostId: null } as const;
 
 describe('Backup-Befehle über den Agent-Kanal (Pflichtenheft §5.3)', () => {
   it('schickt CREATE_BACKUP an die Node des Servers', async () => {
@@ -134,17 +167,22 @@ describe('Backup-Befehle über den Agent-Kanal (Pflichtenheft §5.3)', () => {
     expect(socket.commands).toEqual([{ command: 'CREATE_BACKUP', serverId: SERVER_ID }]);
   });
 
-  it('schickt DELETE_BACKUP an die Node der Installation – ein Backup überlebt seinen Server', async () => {
+  it('schickt DELETE_BACKUP an die Node, die am Backup steht – auch ohne Server', async () => {
     const agents = new AgentRegistry();
     const socket = connect(agents, HOST_ID);
     const gateway = makeGateway(agents);
 
-    const response = await gateway.deleteBackup({
-      backupId: BACKUP_ID,
-      storagePath: '/srv/palantir/backups/a.tar.zst',
-    });
+    const response = await gateway.deleteBackup(
+      {
+        backupId: BACKUP_ID,
+        storagePath: '/srv/palantir/backups/a.tar.zst',
+      },
+      auf(HOST_ID),
+    );
 
     expect(response.success).toBe(true);
+    // Kein `serverId` im Rahmen: Der Befehl arbeitet auf einem Archivpfad, der
+    // Server kann längst gelöscht sein.
     expect(socket.commands).toEqual([{ command: 'DELETE_BACKUP', serverId: null }]);
   });
 
@@ -171,12 +209,15 @@ describe('Backup-Befehle über den Agent-Kanal (Pflichtenheft §5.3)', () => {
       defaultHost: () => Promise.resolve(null),
     });
 
-    const response = await gateway.downloadBackupChunk({
-      backupId: BACKUP_ID,
-      storagePath: '/srv/palantir/backups/a.tar.zst',
-      offset: 0,
-      maxBytes: 1024,
-    });
+    const response = await gateway.downloadBackupChunk(
+      {
+        backupId: BACKUP_ID,
+        storagePath: '/srv/palantir/backups/a.tar.zst',
+        offset: 0,
+        maxBytes: 1024,
+      },
+      OHNE_NODE,
+    );
 
     expect(response.success).toBe(false);
     expect(response.error?.code).toBe('AGENT_NOT_CONNECTED');
@@ -204,6 +245,126 @@ describe('Backup-Befehle über den Agent-Kanal (Pflichtenheft §5.3)', () => {
 
     expect(response.success).toBe(false);
     expect(response.error?.code).toBe('AGENT_COMMAND_NOT_IMPLEMENTED');
+  });
+});
+
+/**
+ * Ein Backup weiß, auf welcher Node es liegt (Fundpunkt 174).
+ *
+ * Mit **einer** Node belegt kein Test etwas: Jeder Weg endet dort. Deshalb
+ * laufen hier zwei Agents, und die Node der Installation (`defaultHost()`) ist
+ * ausdrücklich die **andere** – trifft der Befehl trotzdem die Node des
+ * Archivs, kann das kein Zufall sein.
+ */
+describe('Node des Archivs bei zwei Nodes', () => {
+  /** Node der Installation ist `OTHER_HOST_ID`, das Archiv liegt auf `HOST_ID`. */
+  const zweiNodes: BackupHostResolver = {
+    findById: (serverId) => Promise.resolve(serverId === SERVER_ID ? { hostId: HOST_ID } : null),
+    defaultHost: () => Promise.resolve({ id: OTHER_HOST_ID }),
+  };
+
+  function beideNodes(): {
+    agents: AgentRegistry;
+    archivNode: ScriptedSocket;
+    standardNode: ScriptedSocket;
+  } {
+    const agents = new AgentRegistry();
+
+    return {
+      agents,
+      archivNode: connect(agents, HOST_ID),
+      standardNode: connect(agents, OTHER_HOST_ID),
+    };
+  }
+
+  it('schickt DOWNLOAD_BACKUP an die Node des Archivs, nicht an die Standard-Node', async () => {
+    const { agents, archivNode, standardNode } = beideNodes();
+    const gateway = makeGateway(agents, zweiNodes);
+
+    const response = await gateway.downloadBackupChunk(
+      {
+        backupId: BACKUP_ID,
+        storagePath: '/srv/palantir/backups/a.tar.zst',
+        offset: 0,
+        maxBytes: 1024,
+      },
+      auf(HOST_ID),
+    );
+
+    expect(response.success).toBe(true);
+    expect(archivNode.commands).toEqual([{ command: 'DOWNLOAD_BACKUP', serverId: null }]);
+    expect(standardNode.commands).toEqual([]);
+  });
+
+  it('schickt DELETE_BACKUP an die Node des Archivs, nicht an die Standard-Node', async () => {
+    const { agents, archivNode, standardNode } = beideNodes();
+    const gateway = makeGateway(agents, zweiNodes);
+
+    const response = await gateway.deleteBackup(
+      { backupId: BACKUP_ID, storagePath: '/srv/palantir/backups/a.tar.zst' },
+      auf(HOST_ID),
+    );
+
+    expect(response.success).toBe(true);
+    expect(archivNode.commands).toEqual([{ command: 'DELETE_BACKUP', serverId: null }]);
+    expect(standardNode.commands).toEqual([]);
+  });
+
+  it('fällt ohne Node am Datensatz auf die Node der Installation zurück und meldet das', async () => {
+    const { agents, archivNode, standardNode } = beideNodes();
+    const log = mitschriftLog();
+    const gateway = makeGateway(agents, zweiNodes, log);
+
+    const response = await gateway.deleteBackup(
+      { backupId: BACKUP_ID, storagePath: '/srv/palantir/backups/alt.tar.zst' },
+      OHNE_NODE,
+    );
+
+    expect(response.success).toBe(true);
+    // Der bisherige Weg bleibt erhalten – sonst wäre die Verbesserung für alte
+    // Zeilen ein Rückschritt.
+    expect(standardNode.commands).toEqual([{ command: 'DELETE_BACKUP', serverId: null }]);
+    expect(archivNode.commands).toEqual([]);
+
+    // Aber nicht stillschweigend: Findet der Agent die Datei dort nicht, steht
+    // im Log, warum überhaupt dort gesucht wurde.
+    expect(log.warnungen).toHaveLength(1);
+    expect(log.warnungen[0]?.details).toMatchObject({
+      command: 'DELETE_BACKUP',
+      backupId: BACKUP_ID,
+      hostId: OTHER_HOST_ID,
+    });
+  });
+
+  it('meldet den Rückfall auch beim Herunterladen', async () => {
+    const { agents } = beideNodes();
+    const log = mitschriftLog();
+    const gateway = makeGateway(agents, zweiNodes, log);
+
+    await gateway.downloadBackupChunk(
+      {
+        backupId: BACKUP_ID,
+        storagePath: '/srv/palantir/backups/alt.tar.zst',
+        offset: 0,
+        maxBytes: 1024,
+      },
+      OHNE_NODE,
+    );
+
+    expect(log.warnungen.map((eintrag) => eintrag.details['command'])).toEqual(['DOWNLOAD_BACKUP']);
+  });
+
+  it('schweigt, solange die Node am Datensatz steht', async () => {
+    const { agents } = beideNodes();
+    const log = mitschriftLog();
+    const gateway = makeGateway(agents, zweiNodes, log);
+
+    await gateway.deleteBackup(
+      { backupId: BACKUP_ID, storagePath: '/srv/palantir/backups/a.tar.zst' },
+      auf(HOST_ID),
+    );
+
+    expect(log.warnungen).toEqual([]);
   });
 });
 
@@ -301,10 +462,13 @@ describe('Eigene Frist für die langen Backup-Befehle', () => {
     socket.answers = false;
 
     const gateway = makeGateway(agents);
-    const laufend = gateway.deleteBackup({
-      backupId: BACKUP_ID,
-      storagePath: '/srv/palantir/backups/a.tar.zst',
-    });
+    const laufend = gateway.deleteBackup(
+      {
+        backupId: BACKUP_ID,
+        storagePath: '/srv/palantir/backups/a.tar.zst',
+      },
+      auf(HOST_ID),
+    );
 
     await vi.advanceTimersByTimeAsync(UEBLICHE_FRIST_MS + 1);
 

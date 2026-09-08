@@ -678,6 +678,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       agent: createAgentBackupGateway({
         agents,
         repository: serverRepository,
+        // Meldet den Rückfall auf die Node der Installation, wenn eine
+        // Sicherung keine Node am Datensatz trägt (Fundpunkt 174).
+        log: app.log,
         backupTimeoutMs: env.BACKUP_COMMAND_TIMEOUT_MS,
       }),
       // Der vollständige Export legt die Konfiguration des Servers als

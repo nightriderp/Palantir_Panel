@@ -43,6 +43,15 @@ export interface BackupServerRecord {
   readonly id: string;
   readonly name: string;
   readonly ownerId: string;
+  /**
+   * Node, auf der der Server läuft – und damit die Node, auf der seine
+   * Sicherungen entstehen (Fundpunkt 174).
+   *
+   * B5 fragt sie nie ab; sie wird beim Anlegen am Backup festgehalten, damit
+   * `DOWNLOAD_BACKUP` und `DELETE_BACKUP` ihre Node auch dann noch kennen, wenn
+   * der Server längst gelöscht ist.
+   */
+  readonly hostId: string;
   readonly status: ServerStatus;
   /** `null`, solange kein Container angelegt ist. */
   readonly dockerContainerId: string | null;
@@ -78,6 +87,24 @@ export interface UserDirectory {
 }
 
 /**
+ * Wo ein Archiv liegt (Fundpunkt 174).
+ *
+ * `CREATE_BACKUP` und `RESTORE_BACKUP` tragen eine `serverId`; ihre Node
+ * erschließt sich daraus. `DOWNLOAD_BACKUP` und `DELETE_BACKUP` arbeiten nur
+ * auf einem Archivpfad – ihnen muss der Aufrufer sagen, auf welcher Maschine
+ * dieser Pfad gilt. Bewusst ein eigener Parameter und kein Feld an der
+ * Befehlsnutzlast: Die Nutzlasten stehen im Vertrag und beschreiben, was der
+ * Agent bekommt; die Node bestimmt dagegen, **welcher** Agent gemeint ist.
+ *
+ * `null` heißt „unbekannt" (Zeile von vor der Spalte `backups.host_id`, oder
+ * ausgemusterte Node) – das Gateway fällt dann auf die Node der Installation
+ * zurück und schreibt das ins Log.
+ */
+export interface BackupArchiveLocation {
+  readonly hostId: string | null;
+}
+
+/**
  * Zugang zum Agent für die vier Backup-Befehle (Pflichtenheft §5.3).
  *
  * Die Antworten kommen als Response-Envelope mit `unknown`-Nutzdaten zurück;
@@ -88,8 +115,14 @@ export interface UserDirectory {
 export interface BackupAgentGateway {
   createBackup(payload: CreateBackupCommandPayload): Promise<ApiResponse<unknown>>;
   restoreBackup(payload: RestoreBackupCommandPayload): Promise<ApiResponse<unknown>>;
-  downloadBackupChunk(payload: DownloadBackupCommandPayload): Promise<ApiResponse<unknown>>;
-  deleteBackup(payload: DeleteBackupCommandPayload): Promise<ApiResponse<unknown>>;
+  downloadBackupChunk(
+    payload: DownloadBackupCommandPayload,
+    archive: BackupArchiveLocation,
+  ): Promise<ApiResponse<unknown>>;
+  deleteBackup(
+    payload: DeleteBackupCommandPayload,
+    archive: BackupArchiveLocation,
+  ): Promise<ApiResponse<unknown>>;
 }
 
 /**

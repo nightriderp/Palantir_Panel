@@ -30,11 +30,12 @@ import { type Database } from '../../db/client.js';
 import { gameServers, serverMembers } from '../../db/schema.js';
 import {
   type BackupAgentGateway,
+  type BackupArchiveLocation,
   type BackupServerRecord,
   type ServerDirectory,
   type ServerExportManifestSource,
 } from '../backups/index.js';
-import { type AgentRegistry } from './agent-gateway.js';
+import { type AgentGatewayLogger, type AgentRegistry } from './agent-gateway.js';
 import { isServerOrchestrationError } from './errors.js';
 import { dataHostPathFor } from './service.js';
 
@@ -57,6 +58,9 @@ export function createDrizzleBackupServerDirectory(db: Database): ServerDirector
         id: gameServers.id,
         name: gameServers.name,
         ownerId: gameServers.ownerId,
+        // Node des Servers – B5 hält sie beim Anlegen am Backup fest
+        // (Fundpunkt 174).
+        hostId: gameServers.hostId,
         status: gameServers.status,
         dockerContainerId: gameServers.dockerContainerId,
       })
@@ -93,6 +97,7 @@ export function createDrizzleBackupServerDirectory(db: Database): ServerDirector
       id: row.id,
       name: row.name,
       ownerId: row.ownerId,
+      hostId: row.hostId,
       status: row.status,
       dockerContainerId: row.dockerContainerId,
       dataHostPath: dataHostPathFor(row.id),
@@ -128,6 +133,15 @@ export interface BackupAgentGatewayOptions {
   /** Auflösung Server → Node und die Node der Installation (Pflichtenheft §2.1). */
   readonly repository: BackupHostResolver;
   /**
+   * Wohin der Rückfall auf `defaultHost()` gemeldet wird (Fundpunkt 174).
+   *
+   * Verpflichtend, aus demselben Grund wie {@link backupTimeoutMs}: Eine
+   * vergessene Verdrahtung ließe genau den Fall still verschwinden, den dieser
+   * Wert sichtbar machen soll – eine Sicherung ohne bekannte Node, die auf gut
+   * Glück an die Node der Installation geschickt wird.
+   */
+  readonly log: AgentGatewayLogger;
+  /**
    * Frist für `CREATE_BACKUP` und `RESTORE_BACKUP` (`BACKUP_COMMAND_TIMEOUT_MS`).
    *
    * Ohne Angabe verpflichtend, nicht optional: Eine vergessene Verdrahtung
@@ -151,8 +165,14 @@ export interface BackupAgentGatewayOptions {
  *    `RESTORE_BACKUP` tragen eine `serverId` und gehen an dessen Node.
  *    `DOWNLOAD_BACKUP` und `DELETE_BACKUP` arbeiten nur auf einem Archivpfad
  *    und kennen keinen Server mehr – ein Backup soll seinen Server überleben
- *    (siehe Löschregel in `db/schema/backups.ts`). Sie gehen deshalb an die
- *    Node der Installation (`defaultHost()`, Phase 1 betreibt genau eine).
+ *    (siehe Löschregel in `db/schema/backups.ts`). Ihre Node kommt deshalb vom
+ *    Aufrufer: B5 hält sie beim Anlegen der Sicherung in `backups.host_id`
+ *    fest und reicht sie als {@link BackupArchiveLocation} herein
+ *    (Fundpunkt 174). Erst wenn dort nichts steht – eine Zeile von vor der
+ *    Spalte oder eine ausgemusterte Node –, greift der bisherige Weg über die
+ *    Node der Installation (`defaultHost()`). Dieser Rückfall ist eine
+ *    Vermutung und keine Auskunft: Er steht als Warnung im Log, statt die
+ *    Sicherung stillschweigend an die falsche Maschine zu schicken.
  * 3. **`CREATE_BACKUP` und `RESTORE_BACKUP` bekommen eine eigene, lange Frist.**
  *    Der Agent antwortet auf beide erst nach Fertigstellung; über Gigabyte an
  *    Weltdaten dauert tar+zstd länger als die übliche Befehlsfrist von 30 s
@@ -161,7 +181,7 @@ export interface BackupAgentGatewayOptions {
  *    einer global hochgedrehten Frist, die ein hängendes `STOP` mitverschleppt.
  */
 export function createAgentBackupGateway(options: BackupAgentGatewayOptions): BackupAgentGateway {
-  const { agents, repository, backupTimeoutMs } = options;
+  const { agents, repository, log, backupTimeoutMs } = options;
 
   async function hostOfServer(serverId: string): Promise<string | null> {
     const server = await repository.findById(serverId);
@@ -169,8 +189,31 @@ export function createAgentBackupGateway(options: BackupAgentGatewayOptions): Ba
     return server?.hostId ?? null;
   }
 
-  async function defaultHostId(): Promise<string | null> {
-    return (await repository.defaultHost())?.id ?? null;
+  /**
+   * Node eines Archivs (Fundpunkt 174).
+   *
+   * Steht sie am Datensatz, wird genau sie genommen. Steht dort nichts, bleibt
+   * nur die Node der Installation – vor der zweiten Node war das der einzige
+   * Weg, danach ist es eine Vermutung. Deshalb die Warnung: Findet der Agent
+   * dort die Datei nicht, steht im Log, warum überhaupt dort gesucht wurde.
+   */
+  async function hostOfArchive(
+    command: AgentCommandName,
+    archive: BackupArchiveLocation,
+    backupId: string,
+  ): Promise<string | null> {
+    if (archive.hostId !== null) {
+      return archive.hostId;
+    }
+
+    const fallback = (await repository.defaultHost())?.id ?? null;
+
+    log.warn(
+      { command, backupId, hostId: fallback },
+      'Sicherung ohne hinterlegte Node – der Befehl geht ersatzweise an die Node der Installation',
+    );
+
+    return fallback;
   }
 
   async function send<TCommand extends AgentCommandName>(
@@ -238,12 +281,26 @@ export function createAgentBackupGateway(options: BackupAgentGatewayOptions): Ba
      */
     async downloadBackupChunk(
       payload: DownloadBackupCommandPayload,
+      archive: BackupArchiveLocation,
     ): Promise<ApiResponse<unknown>> {
-      return send('DOWNLOAD_BACKUP', await defaultHostId(), null, payload);
+      return send(
+        'DOWNLOAD_BACKUP',
+        await hostOfArchive('DOWNLOAD_BACKUP', archive, payload.backupId),
+        null,
+        payload,
+      );
     },
 
-    async deleteBackup(payload: DeleteBackupCommandPayload): Promise<ApiResponse<unknown>> {
-      return send('DELETE_BACKUP', await defaultHostId(), null, payload);
+    async deleteBackup(
+      payload: DeleteBackupCommandPayload,
+      archive: BackupArchiveLocation,
+    ): Promise<ApiResponse<unknown>> {
+      return send(
+        'DELETE_BACKUP',
+        await hostOfArchive('DELETE_BACKUP', archive, payload.backupId),
+        null,
+        payload,
+      );
     },
   };
 }
