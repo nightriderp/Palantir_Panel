@@ -54,19 +54,92 @@ permissions:
   packages: write
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Welche Images baut dieser Lauf?
+  #
+  # **Nur die geänderten.** Solange es ein einziges Image gab, war eine feste
+  # Liste richtig: Jede Änderung unter `images/` betraf es. Mit dem zweiten
+  # stimmt das nicht mehr — eine Änderung an `images/minecraft` liess auch
+  # `test-minecraft` bauen, dessen `VERSION` unveraendert bei `1` steht. Die
+  # Schranke unten meldete daraufhin völlig zu Recht „Tag gibt es bereits" und
+  # der Lauf wurde rot, ohne dass jemand etwas falsch gemacht hätte.
+  #
+  # Die Schranke selbst bleibt scharf: Wer ein Image ändert und `VERSION`
+  # vergisst, steht in der Liste der geänderten Images, das Tag existiert — und
+  # der Lauf scheitert. Genau so soll es sein.
+  #
+  # Die Liste aller Images kommt aus dem Dateisystem, nicht aus einer gepflegten
+  # Aufzählung: Ein drittes Image soll nichts weiter brauchen als seinen Ordner.
+  auswahl:
+    name: Auswahl
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      images: ${{ steps.ermitteln.outputs.images }}
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Der Vergleich braucht den Stand vor diesem Push.
+          fetch-depth: 0
+
+      - name: Geänderte Images ermitteln
+        id: ermitteln
+        env:
+          VORHER: ${{ github.event.before }}
+          NACHHER: ${{ github.sha }}
+          ANLASS: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          alle="$(find images -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
+
+          # Von Hand gestartet gibt es keinen Vergleichspunkt — dann sind alle
+          # gemeint. Dasselbe, wenn der Vorher-Stand fehlt (erster Push eines
+          # Branches) oder nicht mehr existiert (Force-Push, Verdichtung).
+          if [ "${ANLASS}" != 'push' ] || [ -z "${VORHER}" ] \
+            || [ "${VORHER}" = '0000000000000000000000000000000000000000' ] \
+            || ! git cat-file -e "${VORHER}^{commit}" 2>/dev/null; then
+            echo "Kein Vergleichspunkt — alle Images."
+            gewaehlt="${alle}"
+          else
+            geaendert="$(git diff --name-only "${VORHER}" "${NACHHER}" -- images/ \
+              | cut -d/ -f2 | sort -u)"
+            # Schnittmenge: Ein geloeschter Ordner steht im Diff, aber nicht mehr
+            # im Dateisystem — der laesst sich nicht bauen.
+            gewaehlt="$(comm -12 <(printf '%s\n' "${alle}") <(printf '%s\n' "${geaendert}"))"
+          fi
+
+          if [ -z "${gewaehlt}" ]; then
+            echo "Kein Image geändert — nichts zu bauen."
+            echo 'images=[]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Zu bauen:"
+          printf '  %s\n' ${gewaehlt}
+
+          # JSON von Hand statt mit `jq`: Die Namen sind Ordnernamen aus diesem
+          # Repository, es gibt also nichts zu maskieren — und eine Abhängigkeit
+          # weniger, die auf dem Läufer vorhanden sein muss.
+          liste="$(printf '%s\n' ${gewaehlt} | sed 's/.*/"&"/' | paste -sd, -)"
+          echo "images=[${liste}]" >> "$GITHUB_OUTPUT"
+
   build:
     name: ${{ matrix.image }}
+    needs: auswahl
+    if: ${{ needs.auswahl.outputs.images != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     strategy:
       fail-fast: false
       matrix:
-        # `minecraft` ist das echte Spiel-Image (Paper), `test-minecraft` der
-        # Prüfstand daneben. Beide bauen unabhängig voneinander –
-        # `fail-fast: false` oben sorgt dafür, dass ein Fehlschlag beim einen den
+        # Aus dem Auswahl-Job: die Images, die dieser Push wirklich geändert hat.
+        # `fail-fast: false` sorgt dafür, dass ein Fehlschlag beim einen den
         # anderen nicht abwürgt.
-        image: [test-minecraft, minecraft]
+        image: ${{ fromJson(needs.auswahl.outputs.images) }}
 
     steps:
       - name: Repository auschecken
