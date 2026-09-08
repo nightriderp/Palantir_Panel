@@ -79,4 +79,22 @@ describe('buildNodeSetupSteps', () => {
     const env = custom.find((step) => step.title.includes('.env'));
     expect(env?.code).toContain('AGENT_BACKEND_WS_URL=ws://10.20.0.1:4000/agent');
   });
+
+  it('nennt den geteilten Rückfallweg nur, solange er gilt (Fundpunkt 160)', () => {
+    // Vorgabe: erste Node – der Rückfallweg auf das geteilte AGENT_TOKEN steht.
+    const env = steps.find((step) => step.title.includes('.env'));
+    expect(env?.body).toContain('gilt weiterhin das geteilte AGENT_TOKEN');
+
+    // Ab der zweiten Node lehnt das Backend es ab; die Anleitung darf ihn dann
+    // nicht mehr anbieten, sonst widerspricht sie der Warnung im Wizard.
+    const zweite = buildNodeSetupSteps({
+      name: 'Zweitnode',
+      wireguardIp: '10.10.0.3',
+      sharedTokenFallback: false,
+    });
+    const zweiteEnv = zweite.find((step) => step.title.includes('.env'));
+
+    expect(zweiteEnv?.body).not.toContain('gilt weiterhin das geteilte AGENT_TOKEN');
+    expect(zweiteEnv?.body).toContain('Close-Code 4401');
+  });
 });

@@ -9,7 +9,8 @@
  * erzeugt: Das Agent-Token vergibt das Backend auf ausdrücklichen Klick
  * („Agent-Token" in der Node-Liste) und zeigt es genau einmal an; diese
  * Anleitung verweist nur darauf und nennt als Rückfallweg das geteilte
- * `AGENT_TOKEN` aus der zentralen `.env`.
+ * `AGENT_TOKEN` aus der zentralen `.env` – aber nur, solange dieser Rückfallweg
+ * überhaupt gilt (siehe {@link NodeSetupParams.sharedTokenFallback}).
  */
 
 /** Auf welcher Maschine ein Schritt ausgeführt wird (CLAUDE.md §9). */
@@ -49,6 +50,21 @@ export interface NodeSetupParams {
    * Pull scheitert.
    */
   registryUser?: string;
+  /**
+   * Gilt das geteilte `AGENT_TOKEN` aus der zentralen `.env` der VPS noch als
+   * Rückfallweg? (Fundpunkt 160.)
+   *
+   * Nur bei **genau einer** eingetragenen Node. Ab der zweiten lehnt das
+   * Backend es beim Verbindungsaufbau mit Close-Code 4401 ab (Fundpunkt 149,
+   * `apps/backend/src/modules/server-orchestration/agent-route.ts`). Ohne diese
+   * Unterscheidung nennt die Anleitung einen Rückfallweg, den es in dieser
+   * Installation nicht mehr gibt – und widerspricht damit der Warnung, die der
+   * Wizard eine Ansicht vorher zeigt.
+   *
+   * Vorgabe `true`: die Installation mit einem Homeserver, für die dieser
+   * Rückfallweg gedacht ist.
+   */
+  sharedTokenFallback?: boolean;
 }
 
 const DEFAULT_VPS_WIREGUARD_IP = '10.10.0.1';
@@ -60,6 +76,10 @@ export function buildNodeSetupSteps(params: NodeSetupParams): NodeSetupStep[] {
   const vpsIp = params.vpsWireguardIp ?? DEFAULT_VPS_WIREGUARD_IP;
   const backendWsUrl = `ws://${vpsIp}:4000/agent`;
   const registryUser = params.registryUser ?? REGISTRY_USER_PLACEHOLDER;
+  const rueckfallweg =
+    (params.sharedTokenFallback ?? true)
+      ? "Ist noch keines vergeben, gilt weiterhin das geteilte AGENT_TOKEN der VPS-.env (auslesen auf der VPS: grep '^AGENT_TOKEN=' /opt/palantir/.env)."
+      : 'Ein Rückfall auf das geteilte AGENT_TOKEN der VPS-.env gibt es hier nicht mehr: Ab zwei eingetragenen Nodes lehnt das Backend es mit Close-Code 4401 ab. Jede Node braucht ihr eigenes.';
 
   return [
     {
@@ -88,7 +108,7 @@ export function buildNodeSetupSteps(params: NodeSetupParams): NodeSetupStep[] {
     {
       title: '.env der Gamenode anlegen',
       machine: 'homeserver',
-      body: `Datei /opt/palantir/.env (in der Gameserver-VM) von Hand anlegen. AGENT_TOKEN ist der einzige Wert, der von der VPS herüber muss: das eben erzeugte Token dieser Node. Ist noch keines vergeben, gilt weiterhin das geteilte AGENT_TOKEN der VPS-.env (auslesen auf der VPS: grep '^AGENT_TOKEN=' /opt/palantir/.env). Passt der Wert nicht, weist das Backend die Verbindung im Handshake ab.`,
+      body: `Datei /opt/palantir/.env (in der Gameserver-VM) von Hand anlegen. AGENT_TOKEN ist der einzige Wert, der von der VPS herüber muss: das eben erzeugte Token dieser Node. ${rueckfallweg} Passt der Wert nicht, weist das Backend die Verbindung im Handshake ab.`,
       code: [
         'NODE_ENV=production',
         'LOG_LEVEL=info',
