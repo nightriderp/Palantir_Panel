@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { GUEST_ROLE_NAME, httpStatusForErrorCode } from '@palantir/contracts';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildPermissionActor } from '../rbac/index.js';
 import { isAuthError } from './errors.js';
 import { AuthService, sanitizeDisplayName } from './service.js';
@@ -13,6 +13,22 @@ import {
 } from './test-doubles.js';
 import { signTwoFactorToken, verifyAccessToken } from './tokens.js';
 import { generateTotp } from './totp.js';
+
+/*
+ * Dieselbe Ursache wie in `routes.test.ts` (Fundpunkt 147), deshalb dieselbe
+ * Behandlung: Fast jeder Test hier legt über `service.register` ein Konto an
+ * oder meldet sich an und rechnet dabei einen echten Argon2id-Hash (64 MiB,
+ * 3 Durchgänge, `passwords.ts`). Der Sammel-Logout-Test kommt auf drei solche
+ * Vorgänge und wurde mit 1641 ms gemessen; bei dem Faktor, den Last auf dieser
+ * Maschine erzeugt (gemessen 2,4- bis 3,2-fach), reicht das an die
+ * Vitest-Vorgabe von 5000 ms heran.
+ *
+ * `vi.setConfig` wirkt nur in dieser Datei – ein global gesetztes Limit würde
+ * echte Hänger in allen übrigen Suiten verdecken. Die ausführliche Begründung
+ * samt der verworfenen Alternative (Hashing für Tests verbilligen) steht in
+ * `routes.test.ts`.
+ */
+vi.setConfig({ testTimeout: 30_000 });
 
 const CONTEXT = { deviceInfo: 'Firefox auf Windows', ipHint: '203.0.113.x' };
 const REFRESH_TTL_MS = 30 * 86_400_000;

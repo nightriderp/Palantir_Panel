@@ -3,6 +3,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
+import globals from 'globals';
 
 export default tseslint.config(
   {
@@ -31,6 +32,23 @@ export default tseslint.config(
         { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
       ],
       'no-console': 'off',
+    },
+  },
+  {
+    // Reine Node-Skripte (`.mjs`). Sie laufen ohne Bundler und ohne TypeScript
+    // direkt in Node, benutzen also `process`, `Buffer`, `console`, `setTimeout`,
+    // `URL` und `fetch` als vorhandene Globals. ESLint weiß davon nur, wenn die
+    // Umgebung benannt ist – ohne diesen Abschnitt meldet `no-undef` jede dieser
+    // Stellen als undefiniert (83 Treffer über alle `.mjs`-Dateien). Genau
+    // deshalb hatten `images/*` und `scripts` bisher gar kein `lint`-Skript:
+    // Die Lücke bestand von Anfang an, sie fiel nur nie auf (Fundpunkt 143).
+    //
+    // `globals.node` statt einer selbst gepflegten Liste: Eine handgeschriebene
+    // Aufzählung rostet still vor sich hin – das erste `setInterval` in einem
+    // neuen Skript ließe den Lint mit einer irreführenden Meldung scheitern.
+    files: ['**/*.mjs'],
+    languageOptions: {
+      globals: globals.node,
     },
   },
   prettier,

@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type AccountDto } from '@palantir/contracts';
 import type { FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from '../../config/env.js';
 import { buildServer } from '../../server.js';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from './cookies.js';
@@ -22,6 +22,38 @@ import {
   createFakeProviderRegistry,
   createFakeRoleRepository,
 } from './test-doubles.js';
+
+/*
+ * Zeitlimit dieser Datei – ausdrücklich gesetzt, nicht global (Fundpunkt 147).
+ *
+ * **Warum es nötig ist.** Jeder Test hier geht durch den echten Argon2id-Pfad:
+ * eine Registrierung kostet einen Hash mit 64 MiB und 3 Durchgängen
+ * (`passwords.ts`), ein Login einen Vergleich, ein Passwortwechsel beides. Der
+ * Rate-Limit-Test rechnet allein `AUTH_RATE_LIMIT_REGISTER_MAX + 1` = 6
+ * Registrierungen samt ALTCHA-Nachweis. Auf einer ruhigen Maschine sind das
+ * ~750 ms, unter Last dieser Maschine wurden 1831 ms (Maßnahme W2-28) und
+ * 2421 ms gemessen – die Vitest-Vorgabe von 5000 ms ist damit nicht mehr weit,
+ * und der Test fiel gelegentlich in die Frist statt an einer Zusicherung.
+ *
+ * **Warum für die ganze Datei und nicht für den einen Test.** Gemessen über
+ * mehrere Läufe gibt es keine Kante: hinter dem Rate-Limit-Test (1985 ms)
+ * folgen der Passwort-Reset (1867 ms) und der erzwungene Wechsel (1481 ms)
+ * dicht auf, danach läuft es stetig aus. Die Ursache ist bei allen dieselbe,
+ * und unter Last skalieren sie gemeinsam – eine handverlesene Liste einzelner
+ * Tests wäre willkürlich gezogen und würde beim nächsten hinzugefügten
+ * Registrierungsschritt erneut umfallen.
+ *
+ * **Warum nicht global und warum nicht billiger hashen.** Global heraufgesetzt
+ * würde das Limit echte Hänger in allen anderen Suiten verdecken; `vi.setConfig`
+ * wirkt nur in dieser Datei. Die Kosten des Hashings zu senken, hätte eine Naht
+ * in `passwords.ts` gebraucht – die gibt es nicht, und sie nachzurüsten hieße,
+ * den Produktivpfad der Passwortprüfung für Tests abzuschwächen oder
+ * wegzumocken (CLAUDE.md §2). Der Test soll gerade die echte Kette prüfen.
+ *
+ * 30 s sind großzügig gegenüber dem Gemessenen und fangen einen echten Hänger
+ * (nicht aufgelöstes Promise, Deadlock) trotzdem ab, statt ihn laufen zu lassen.
+ */
+vi.setConfig({ testTimeout: 30_000 });
 
 const SECRETS = {
   jwtSecret: 'test-jwt-secret',
