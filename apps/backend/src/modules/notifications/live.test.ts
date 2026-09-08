@@ -1,6 +1,6 @@
 import websocket from '@fastify/websocket';
 import {
-  CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS as VERTRAG_TOO_MANY_CONNECTIONS,
+  NOTIFICATION_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS as VERTRAG_TOO_MANY_CONNECTIONS,
   type NotificationDto,
 } from '@palantir/contracts';
 import Fastify, { type FastifyInstance } from 'fastify';

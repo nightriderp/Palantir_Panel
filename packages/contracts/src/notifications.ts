@@ -594,6 +594,23 @@ export interface NotificationDeliveryDto {
  */
 export const NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED = 4401;
 
+/**
+ * Close-Code „zu viele gleichzeitige Verbindungen dieses Kontos" des
+ * Inbox-Kanals (Audit W4-2, Fundpunkt 157).
+ *
+ * Aus demselben privaten Bereich, die Zahl lehnt sich an HTTP 429 an. Für den
+ * Browser ist der Unterschied zu
+ * {@link NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED} wesentlich: Hier darf er
+ * neu verbinden – nur eben nicht sofort und nicht hundertfach.
+ *
+ * **Eigener Name, gleiche Zahl wie beim Chat-Kanal.** Genau wie beim Code für
+ * „nicht angemeldet": Ihn an `CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS` zu
+ * binden hieße, den Inbox-Kanal der Entscheidung eines fremden Kanals zu
+ * unterwerfen. Bis hierher tat das Backend genau das – es reichte die
+ * Chat-Konstante unter einem eigenen Namen weiter, weil es hier keine gab.
+ */
+export const NOTIFICATION_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS = 4029;
+
 export const NOTIFICATION_LIVE_EVENTS = [
   'notification.created',
 ] as const satisfies readonly WebSocketEventName[];
