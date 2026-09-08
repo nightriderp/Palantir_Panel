@@ -27,10 +27,12 @@ export function AdminLanding() {
   const router = useRouter();
   const { user, loading } = useSession();
 
-  // Einträge ohne `href` sind noch nicht gebaut und taugen nicht als Sprungziel.
-  const target = visibleEntries(ADMIN_ENTRIES, user).find(
-    (entry) => entry.href !== undefined,
-  )?.href;
+  /*
+   * Der erste Eintrag, den dieses Konto sehen darf – jeder trägt ein Ziel
+   * (Fundpunkt 155). Vorher wurde hier zusätzlich auf ein vorhandenes `href`
+   * geprüft, weil die Liste Einträge ohne gebaute Seite erlaubte.
+   */
+  const target = visibleEntries(ADMIN_ENTRIES, user)[0]?.href;
 
   useEffect(() => {
     if (target) router.replace(target);

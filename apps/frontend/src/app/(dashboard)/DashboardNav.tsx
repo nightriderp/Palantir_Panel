@@ -6,7 +6,6 @@ import {
   SideNavServerSection,
   type SideNavItem,
   type SideNavServerItem,
-  useToast,
 } from '@/components/shared';
 import { type AccountDto } from '@palantir/contracts';
 import { activeNavHref, type SidebarServer } from './shellSummary';
@@ -19,11 +18,13 @@ import { activeNavHref, type SidebarServer } from './shellSummary';
  * Meine Backups, Arcade – darunter die eigenen Server als Sprungziele und
  * zuletzt die Administration.
  *
- * **Stand:** Jeder Eintrag trägt inzwischen ein `href`, `pending` ist an keinem
- * mehr gesetzt – der Hinweis-Zweig darunter (`onSelect` + Toast) ist damit
- * unerreichbar. Er meldet ohne `pending` „im Arbeitspaket undefined"; wer einen
- * Eintrag ohne `href` ergänzt, setzt `pending` also mit (Audit W3-2,
- * frontend-app-06).
+ * **Jeder Eintrag hat ein Ziel** (Fundpunkt 155, zweite Hälfte von
+ * `frontend-app-06`): `href` ist Pflicht. Bis dahin gab es daneben ein
+ * optionales `pending` und einen Hinweis-Zweig („entsteht im Arbeitspaket …"),
+ * der seit dem letzten fertiggestellten Eintrag unerreichbar war und ohne
+ * `pending` wörtlich „entsteht im Arbeitspaket undefined" meldete. Statt eine
+ * tote Meldung zu pflegen, verlangt der Typ jetzt das Ziel – ein Eintrag ohne
+ * gebaute Seite kommt gar nicht erst in die Liste.
  *
  * Eine neue Seite gehört unter `src/app/(dashboard)/<pfad>/page.tsx`; die
  * Anleitung samt der Dinge, die dabei ausdrücklich **nicht** zu tun sind, steht
@@ -38,10 +39,8 @@ export interface PlannedEntry {
   key: string;
   label: string;
   icon: SideNavItem['icon'];
-  /** Route, sobald das zugehörige Arbeitspaket sie gebaut hat. */
-  href?: string;
-  /** Arbeitspaket, das den Eintrag fertigstellt – erscheint im Hinweis. */
-  pending?: string;
+  /** Route des Eintrags – Pflicht, siehe oben (Fundpunkt 155). */
+  href: string;
   /** Nur zeigen, wenn dieses Flag am Konto gesetzt ist. */
   requires?: keyof AccountDto['permissions'];
 }
@@ -212,14 +211,13 @@ export interface DashboardNavProps {
 
 export function DashboardNav({ user, ownServers, unreadMessages }: DashboardNavProps) {
   const pathname = usePathname();
-  const toast = useToast();
 
   const mainEntries = visibleEntries(MAIN_ENTRIES, user);
   const adminEntries = visibleEntries(ADMIN_ENTRIES, user);
 
   const serverHrefs = ownServers.map((server) => `/servers/${server.id}`);
   const active = activeNavHref(pathname, [
-    ...[...mainEntries, ...adminEntries].flatMap((entry) => (entry.href ? [entry.href] : [])),
+    ...[...mainEntries, ...adminEntries].map((entry) => entry.href),
     ...serverHrefs,
   ]);
 
@@ -229,14 +227,8 @@ export function DashboardNav({ user, ownServers, unreadMessages }: DashboardNavP
       label: entry.label,
       icon: entry.icon,
       href: entry.href,
-      active: entry.href !== undefined && entry.href === active,
+      active: entry.href === active,
       badgeCount: entry.key === 'messages' ? unreadMessages : undefined,
-      onSelect: entry.href
-        ? undefined
-        : () =>
-            toast.show(
-              `„${entry.label}" entsteht im Arbeitspaket ${entry.pending} und ist noch nicht verfügbar.`,
-            ),
     }));
   }
 

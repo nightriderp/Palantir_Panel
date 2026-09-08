@@ -17,6 +17,8 @@ import {
   SelectField,
   TextAreaField,
   TextField,
+  dayInputFromIso,
+  endOfDayIso,
   formatDateTime,
   formatNumber,
   useToast,
@@ -44,12 +46,18 @@ import { severityLabel, severityTone } from '../labels';
 
 type Editor = { mode: 'create' } | { mode: 'edit'; announcement: AnnouncementDto } | null;
 
-/** ISO-Datum (nur Tag) aus einem ISO-Zeitstempel für das Datumsfeld. */
-function isoDay(iso: string | null): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '' : iso.slice(0, 10);
-}
+/*
+ * Das Ablaufdatum ist ein **Kalendertag**, kein Zeitpunkt: Hin- und Rückweg
+ * laufen deshalb über `utils/dayRange.ts` und rechnen in der Zeitzone des
+ * Browsers (Fundpunkt 139 – derselbe Fehler, den W2-22 für das Audit-Log behoben
+ * hat).
+ *
+ * Vorher stand hier `${expiresDay}T23:59:59.999Z` von Hand und daneben ein
+ * `iso.slice(0, 10)` für den Rückweg. Beides in UTC: In Berlin lief eine
+ * Ankündigung „bis 1.9." schon um 01:59 Uhr des 2.9. ab statt um Mitternacht,
+ * und westlich von Greenwich sprang das Datum beim bloßen Öffnen und Speichern
+ * des Formulars um einen Tag nach hinten.
+ */
 
 export function AnnouncementsView() {
   const { user } = useSession();
@@ -213,7 +221,7 @@ function AnnouncementEditor({
   const [title, setTitle] = useState(initial?.title ?? '');
   const [body, setBody] = useState(initial?.body ?? '');
   const [severity, setSeverity] = useState<NotificationSeverity>(initial?.severity ?? 'info');
-  const [expiresDay, setExpiresDay] = useState(isoDay(initial?.expiresAt ?? null));
+  const [expiresDay, setExpiresDay] = useState(dayInputFromIso(initial?.expiresAt ?? null));
   const [error, setError] = useState<string | null>(null);
 
   const titleValid = title.trim().length >= 1 && title.trim().length <= 120;
@@ -222,8 +230,11 @@ function AnnouncementEditor({
   async function submit() {
     setBusy(true);
     setError(null);
-    // Ablauf am Ende des gewählten Tages; ohne Angabe läuft die Ankündigung nie ab.
-    const expiresAt = expiresDay ? `${expiresDay}T23:59:59.999Z` : null;
+    /*
+     * Ablauf am Ende des gewählten Tages – in der Zeitzone des Browsers
+     * (Fundpunkt 139). Ohne Angabe läuft die Ankündigung nie ab.
+     */
+    const expiresAt = expiresDay ? endOfDayIso(expiresDay) : null;
 
     const result: ApiResult<AnnouncementDto> =
       editor.mode === 'create'

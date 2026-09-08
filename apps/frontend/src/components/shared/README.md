@@ -174,6 +174,7 @@ Wissenswertes:
 | `EmptyState`                       | Leerzustand mit optionaler Aktion                        |
 | `Icon`, `LogoMark`                 | Icon-Set (24×24, `currentColor`) und Palantir-Signet     |
 | `cn`, `utils/format.ts`            | Klassen-Helfer, deutsche Zahlen- und Datumsformate       |
+| `utils/dayRange.ts`                | Tagesgrenzen eines `DateField` – lokal, nicht in UTC     |
 | `utils/labels.ts`                  | Deutsche Beschriftungen je Vertrags-Aufzählung           |
 
 ### Phase-2/3-Platzhalter
@@ -200,22 +201,25 @@ Das Layout unter `src/app/(dashboard)` (`layout.tsx`, `DashboardShell`, `Dashboa
 F3 hat es angelegt, weil die Serverübersicht die erste Ansicht darunter war. Damit F4–F11
 das nicht jedes Mal neu herausfinden müssen, gilt folgende Regel.
 
-**Die Seitenleiste kennt alle geplanten Einträge von Anfang an.** In
+**Jeder Eintrag der Seitenleiste hat ein Ziel.** In
 [`DashboardNav.tsx`](<../../app/(dashboard)/DashboardNav.tsx>) stehen sie als
-`PlannedEntry`. Ein Eintrag ohne `href` führt nirgendwo hin und meldet beim Antippen, dass
-die Ansicht noch entsteht – statt in eine 404-Seite zu laufen.
+`PlannedEntry`, und `href` ist dort Pflicht (Fundpunkt 155).
 
-**Ein fertiges Arbeitspaket ändert genau eine Zeile:** `pending` raus, `href` rein.
+Bis alle Ansichten gebaut waren, kannte die Liste auch noch nicht gebaute Einträge: `href`
+war optional, ein `pending` nannte das zuständige Arbeitspaket, und beim Antippen meldete
+ein Toast „entsteht im Arbeitspaket …“. Seit der letzte Eintrag ein Ziel hat, war dieser
+Zweig unerreichbar – und ohne `pending` meldete er wörtlich „im Arbeitspaket undefined“.
+Beides ist entfernt.
+
+**Ein fertiges Arbeitspaket ändert genau eine Zeile:** den Eintrag in die Liste, samt Ziel.
 
 ```ts
-// vorher
-{ key: 'my-backups', label: 'Meine Backups', icon: 'database', pending: 'F4' },
-// nachher
 { key: 'my-backups', label: 'Meine Backups', icon: 'database', href: '/my-backups' },
 ```
 
-Dazu gehört die Seite selbst unter `src/app/(dashboard)/<pfad>/page.tsx`; die
-Platzhalter-Ordner mit `.gitkeep` liegen bereits dort.
+Dazu gehört die Seite selbst unter `src/app/(dashboard)/<pfad>/page.tsx`. Ein Eintrag
+kommt erst dann in die Liste, wenn es diese Seite gibt – sonst liefe die Seitenleiste in
+eine 404-Seite.
 
 Was dabei **nicht** zu tun ist:
 

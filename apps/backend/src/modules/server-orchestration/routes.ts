@@ -61,6 +61,21 @@ const serverIdParamsSchema = z.object({ id: z.string().uuid() });
 const scheduleParamsSchema = z.object({ id: z.string().uuid(), scheduleId: z.string().uuid() });
 const cloneJobParamsSchema = z.object({ id: z.string().uuid(), jobId: z.string().uuid() });
 
+/**
+ * Filter der Serverliste (Fundpunkt 138).
+ *
+ * `userId` schränkt die Liste auf die Server **eines** Kontos ein – die eigenen
+ * dieses Kontos und die, bei denen es Mitglied ist. Beides zusammen, weil die
+ * Nutzerverwaltung genau diese Frage stellt („Welche Server hat dieses
+ * Konto?"); ein Filter allein auf Besitz ließe die mitverwalteten Server
+ * weiterhin unsichtbar, und das war die zweite Hälfte des Fundpunkts.
+ *
+ * Vorher holte die Nutzerverwaltung die Gesamtliste und filterte im Browser:
+ * Bei einer Instanz mit vielen Servern wanderten dafür alle DTOs über die
+ * Leitung, und mitverwaltete Server ließen sich gar nicht zeigen.
+ */
+const serverListQuerySchema = z.object({ userId: z.string().uuid().optional() });
+
 /** Ein hochgeladener Datei-Teil samt der Felder, die daneben im Formular stehen. */
 interface FileUploadInput {
   /** Zielordner, relativ zum Datenordner; `''` ist die Wurzel. */
@@ -303,15 +318,34 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     try {
       const actor = requireActor(request);
       const viewerId = request.viewerUserId ?? null;
+      const { userId } = serverListQuerySchema.parse(request.query);
+      const darfAlleSehen = actor.permissions.has('server.view.any');
 
-      // Wer alle Server sehen darf, bekommt alle; alle anderen ihre eigenen und
-      // die, bei denen sie Mitglied sind. Die Feinprüfung macht danach das
-      // `permissions`-Objekt je Server.
-      const servers = actor.permissions.has('server.view.any')
-        ? await repository.listAll()
-        : viewerId === null
-          ? []
-          : await repository.listByOwnerOrMembership(viewerId);
+      /*
+       * Der Filter wirkt nur mit `server.view.any` – und wird ohne dieses Recht
+       * abgelehnt statt stillschweigend übergangen (Fundpunkt 138). Würde er
+       * einfach ignoriert, bekäme der Aufrufer seine **eigene** Liste unter dem
+       * Namen eines fremden Kontos zurück; die Nutzerverwaltung zeigte dann
+       * fremde Server, die es gar nicht gibt.
+       */
+      if (userId !== undefined && !darfAlleSehen) {
+        throw new ServerOrchestrationError(
+          'PERMISSION_DENIED',
+          'Server eines anderen Kontos einzusehen verlangt die Berechtigung „server.view.any".',
+        );
+      }
+
+      // Ohne Filter gilt die bisherige Regel: Wer alle Server sehen darf,
+      // bekommt alle; alle anderen ihre eigenen und die, bei denen sie Mitglied
+      // sind. Die Feinprüfung macht danach das `permissions`-Objekt je Server.
+      const servers =
+        userId !== undefined
+          ? await repository.listByOwnerOrMembership(userId)
+          : darfAlleSehen
+            ? await repository.listAll()
+            : viewerId === null
+              ? []
+              : await repository.listByOwnerOrMembership(viewerId);
 
       const dtos = [];
       const angeheftet = await pinnedIdsOf(viewerId);

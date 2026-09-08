@@ -61,6 +61,24 @@ export function fetchServers(signal?: AbortSignal): Promise<ApiResult<GameServer
   return apiRequest<GameServerDto[]>(SERVERS, { signal });
 }
 
+/**
+ * Server eines bestimmten Kontos – eigene **und** mitverwaltete (Fundpunkt 138).
+ *
+ * Der Filter gehört an die Abfrage, nicht in den Browser: Vorher holte die
+ * Nutzerverwaltung die Gesamtliste und filterte selbst nach `ownerId`. Damit
+ * wanderten alle DTOs der Instanz über die Leitung, und Server, bei denen das
+ * Konto allein Mitglied ist, ließen sich gar nicht zeigen.
+ *
+ * Verlangt `server.view.any`; ohne dieses Recht antwortet die Route mit
+ * `PERMISSION_DENIED`, statt stillschweigend die eigene Liste zu liefern.
+ */
+export function fetchServersOfUser(
+  userId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<GameServerDto[]>> {
+  return apiRequest<GameServerDto[]>(`${SERVERS}?userId=${encodeURIComponent(userId)}`, { signal });
+}
+
 export function fetchServer(
   serverId: string,
   signal?: AbortSignal,
