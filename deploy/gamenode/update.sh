@@ -109,14 +109,30 @@ git -C "${REPO_DIR}" checkout --quiet --detach "${ziel}"
 
 cd "${COMPOSE_DIR}"
 
-log 'Hole die Images ...'
-docker compose --env-file "${ENV_FILE}" pull --quiet
+# Der Hostname-Router haengt an einem Compose-Profil (Pflichtenheft §2.4, §13).
+# Ohne dieses Argument saehe `up -d --remove-orphans` ihn als verwaisten
+# Container und wuerde ihn bei JEDEM automatischen Update entfernen - alle
+# Minecraft-Server waeren danach dunkel, ohne dass jemand etwas geaendert haette.
+#
+# Entschieden wird nach dem Ist-Zustand, nicht nach einem Schalter: Laeuft (oder
+# existiert) der Container, gehoert er dazu und wird mitgezogen. Laeuft er
+# nicht, bleibt alles wie vorher - das Update startet nichts, was der Betreiber
+# nicht selbst in Betrieb genommen hat.
+PROFIL=()
+if [[ -n "$(docker ps -aq --filter 'name=^palantir-hostname-router$')" ]]; then
+  log 'Hostname-Router laeuft mit - sein Profil wird beim Update mitgegeben.'
+  PROFIL=(--profile hostname-router)
+fi
 
-# Nur Agent und Socket-Proxy werden neu gestartet. Die Gameserver-Container
-# gehören nicht zu diesem Compose-Projekt und laufen unberührt weiter - ein
-# Update des Agents darf keine laufende Spielrunde beenden.
+log 'Hole die Images ...'
+docker compose --env-file "${ENV_FILE}" "${PROFIL[@]}" pull --quiet
+
+# Nur Agent, Socket-Proxy, Tunnel und - falls in Betrieb - der Hostname-Router
+# werden neu gestartet. Die Gameserver-Container gehören nicht zu diesem
+# Compose-Projekt und laufen unberührt weiter - ein Update des Agents darf keine
+# laufende Spielrunde beenden.
 log 'Starte die Dienste der Gamenode neu ...'
-docker compose --env-file "${ENV_FILE}" up -d --remove-orphans
+docker compose --env-file "${ENV_FILE}" "${PROFIL[@]}" up -d --remove-orphans
 
 # -----------------------------------------------------------------------------
 # Ergebnis pruefen
@@ -137,7 +153,7 @@ for versuch in $(seq 1 24); do
   # `{{.Health}}` steht als letztes Feld, weil genau dieses leer sein kann:
   # `read` fasst mehrere Trennzeichen zusammen, in der Mitte wuerde ein leerer
   # Wert also die folgenden Felder verschieben.
-  if ! zeilen="$(docker compose --env-file "${ENV_FILE}" ps --all \
+  if ! zeilen="$(docker compose --env-file "${ENV_FILE}" "${PROFIL[@]}" ps --all \
     --format '{{.Service}} {{.State}} {{.ExitCode}} {{.Health}}')"; then
     fail 'docker compose ps ist fehlgeschlagen - der Zustand der Dienste ist unbekannt.'
   fi
@@ -183,7 +199,7 @@ for versuch in $(seq 1 24); do
 
   if [[ "${versuch}" -eq 24 ]]; then
     log "Nicht betriebsbereit:${ungesund}"
-    docker compose --env-file "${ENV_FILE}" ps --all
+    docker compose --env-file "${ENV_FILE}" "${PROFIL[@]}" ps --all
     fail 'Die Dienste der Gamenode sind nicht rechtzeitig hochgekommen.'
   fi
   sleep 5
@@ -194,7 +210,7 @@ if [[ -n "${ohne_check}" ]]; then
 fi
 
 log 'Zustand:'
-docker compose --env-file "${ENV_FILE}" ps --format 'table {{.Service}}\t{{.Status}}'
+docker compose --env-file "${ENV_FILE}" "${PROFIL[@]}" ps --format 'table {{.Service}}\t{{.Status}}'
 
 # Erst jetzt, nach `up -d` und Ergebnispruefung, gilt der Stand als ausgerollt.
 printf '%s\n' "${ziel}" > "${MARKE}"

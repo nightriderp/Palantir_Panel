@@ -49,11 +49,43 @@ export type ContainerCreateSpec = CreateCommandPayload;
  */
 export const STARTUP_PARAMETERS_ENV = 'PALANTIR_STARTUP_PARAMETERS';
 
+/**
+ * Labels für das Hostname-Routing (Pflichtenheft §2.4, §13).
+ *
+ * Nur gesetzt bei Spieltypen mit `supportsVirtualHostRouting`. Sie tragen die
+ * beiden Angaben, die der Reverse-Proxy auf der Gamenode braucht und sonst
+ * nirgends her bekäme: **welchen Namen** der Spieler eintippt und **auf welchem
+ * Port im Container** der Server dahinter lauscht. Der Agent macht daraus eine
+ * Routen-Datei (`apps/agent/src/jobs/router/hostname-routes.ts`); ein Container
+ * ohne diese Labels erzeugt keine.
+ *
+ * **Warum Labels und kein eigener Agent-Befehl:** `ContainerSpec.labels` ist im
+ * Vertrag bereits ein freies `Record<string, string>` (`agent-commands.ts`), im
+ * Wire-Schema geprüft und in der Härtung durchgereicht. Ein zusätzlicher Befehl
+ * wäre eine Vertragsänderung für eine Angabe, die ohnehin am Container hängt –
+ * und er ginge beim Neuaufbau eines Containers verloren, wenn ihn jemand
+ * vergisst. Am Container hängt sie, solange es ihn gibt.
+ *
+ * Als Zeichenkette und nicht aus `@palantir/contracts`: Dasselbe gilt schon für
+ * `palantir.serverId` unten. Die Gegenstücke stehen im Agent
+ * (`apps/agent/src/runtime/hardening.ts`).
+ */
+export const VIRTUAL_HOST_HOSTNAME_LABEL = 'palantir.virtualHost.hostname';
+export const VIRTUAL_HOST_TARGET_PORT_LABEL = 'palantir.virtualHost.targetPort';
+
 export interface BuildContainerSpecInput {
   readonly server: ServerRecord;
   readonly definition: GameTypeDefinition;
   readonly containerName: string;
   readonly dataHostPath: string;
+  /**
+   * Vollständiger Hostname des Servers (`<subdomain>.<PALANTIR_DOMAIN>`).
+   *
+   * Wird nur bei Spieltypen mit `supportsVirtualHostRouting` verwendet – der
+   * Aufrufer reicht ihn trotzdem immer herein, damit die Entscheidung an
+   * genau einer Stelle steht und nicht zwei Aufrufer sie verschieden treffen.
+   */
+  readonly hostname: string;
 }
 
 /**
@@ -68,7 +100,28 @@ export function buildContainerSpec({
   definition,
   containerName,
   dataHostPath,
+  hostname,
 }: BuildContainerSpecInput): ContainerCreateSpec {
+  const routing = definition.supportsVirtualHostRouting;
+
+  /*
+   * Der primäre Port eines Spiels mit Hostname-Routing gehört NICHT auf den
+   * Host (Pflichtenheft §2.4).
+   *
+   * `ports.allocate()` trägt ihn zwar als Zuweisung ein – mit
+   * `MINECRAFT_ROUTER_PORT` als öffentlichem Port, damit die Adresse in der
+   * Datenbank vollständig ist –, aber alle Instanzen teilen sich genau diesen
+   * einen Port. Als Bindung an `127.0.0.1` wäre er nach dem ersten Server
+   * belegt: Der zweite käme mit „port is already allocated" gar nicht erst
+   * hoch. Erreichbar ist der Container stattdessen über das Spielenetz, und
+   * genau dorthin verbindet der Router.
+   */
+  const hostBindings = server.assignedPorts.filter(
+    (assignment) => !(routing && assignment.primary),
+  );
+
+  const primaerPort = server.assignedPorts.find((assignment) => assignment.primary);
+
   return {
     name: containerName,
     image: definition.dockerImage,
@@ -84,7 +137,7 @@ export function buildContainerSpec({
         : { [STARTUP_PARAMETERS_ENV]: server.startupParameters.trim() }),
     },
     command: definition.defaultCommand,
-    ports: server.assignedPorts.map((assignment) => ({
+    ports: hostBindings.map((assignment) => ({
       containerPort: assignment.containerPort,
       hostPort: assignment.publicPort,
       protocol: assignment.protocol,
@@ -99,7 +152,20 @@ export function buildContainerSpec({
     },
     readOnlyRootFilesystem: definition.readOnlyRootFilesystem,
     tmpfsPaths: definition.tmpfsPaths,
-    labels: { 'palantir.serverId': server.id },
+    labels: {
+      'palantir.serverId': server.id,
+      /*
+       * Nur bei Hostname-Routing, und nur mit einem primären Port: Ohne ihn
+       * wüsste der Router kein Ziel, und ein halbes Label wäre schlimmer als
+       * keines - der Agent legte eine Routen-Datei an, die ins Leere zeigt.
+       */
+      ...(routing && primaerPort !== undefined
+        ? {
+            [VIRTUAL_HOST_HOSTNAME_LABEL]: hostname,
+            [VIRTUAL_HOST_TARGET_PORT_LABEL]: String(primaerPort.containerPort),
+          }
+        : {}),
+    },
     stopTimeoutSeconds: definition.stopTimeoutSeconds,
   };
 }

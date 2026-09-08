@@ -45,7 +45,18 @@ auth.token = "{{ .Envs.FRP_TOKEN }}"
 # Laeuft ein Server auf einem Port, fuer den es keinen Proxy gibt, startet er
 # normal, meldet "laeuft" und ist trotzdem nicht erreichbar. Genau das
 # verhindert die gemeinsame Quelle.
-allowPorts = [ { start = {{ .Envs.GAME_PORT_RANGE_START }}, end = {{ .Envs.GAME_PORT_RANGE_END }} } ]
+#
+# Der zweite Eintrag ist der Hostname-Router (Pflichtenheft §2.4, §13, offener
+# Punkt aus §19). Sein Port liegt AUSSERHALB des Bereichs - MINECRAFT_ROUTER_PORT
+# ist 25565, der Pool endet bei 25564 -, damit ihn kein Server aus der Vergabe
+# bekommen kann. Ohne diesen Eintrag lehnte frps genau den einen Proxy ab, ueber
+# den saemtliche Minecraft-Server laufen: Sie starteten, meldeten „laeuft" und
+# waeren fuer niemanden erreichbar. `single` ist frps' Schreibweise fuer einen
+# einzelnen Port (`PortsRange.Single` in `pkg/config/types/types.go`).
+allowPorts = [
+  { start = {{ .Envs.GAME_PORT_RANGE_START }}, end = {{ .Envs.GAME_PORT_RANGE_END }} },
+  { single = {{ .Envs.MINECRAFT_ROUTER_PORT }} },
+]
 
 # Ins Container-Log, nicht in eine Datei: Der Container ist `read_only`, und
 # `docker compose logs` ist der Weg, auf dem hier alles andere auch gelesen

@@ -1,0 +1,14 @@
+{
+  "domainName": "kein-server.invalid",
+  "listenTo": ":25565",
+  "proxyTo": "127.0.0.1:1",
+  "timeout": 1000,
+  "disconnectMessage": "Auf dieser Adresse laeuft kein Server.",
+  "offlineStatus": {
+    "versionName": "Palantir",
+    "protocolNumber": 47,
+    "maxPlayers": 0,
+    "playersOnline": 0,
+    "motd": "Palantir - Hostname-Router"
+  }
+}

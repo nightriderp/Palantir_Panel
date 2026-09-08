@@ -618,6 +618,9 @@ export class ServerOrchestrationService {
       definition,
       containerName: containerNameFor(server.id),
       dataHostPath: dataHostPathFor(server.id),
+      // Derselbe Name, den auch der DNS-Eintrag trägt (`provision`) – bei
+      // Hostname-Routing ist er das einzige Unterscheidungsmerkmal am Router.
+      hostname: this.hostnameFor(server),
     });
   }
 

@@ -14,6 +14,8 @@
  *  - `files/` – `FILE_DELETE` host-seitig über den Datenordner und
  *    `UPLOAD_ARCHIVE_BLOCK`, das ein Archiv blockweise zusammensetzt
  *    (Lastenheft §3.3)
+ *  - `router/` – die Routen-Dateien des Hostname-Routers, eine je Server mit
+ *    `supportsVirtualHostRouting` (Pflichtenheft §2.4, §13)
  *
  * **Was hier bewusst nicht liegt.** Die Entscheidungen des Lifecycles gehören
  * ins Backend und sind dort fertig und geprüft: der Übergang
@@ -38,6 +40,7 @@ import type { ContainerRuntime } from '../runtime/index.js';
 import { BackupJob, DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES } from './backup/backup-job.js';
 import { ArchiveUploadJob, DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES } from './files/archive-upload.js';
 import { ServerFileJob } from './files/delete.js';
+import { DEFAULT_ROUTER_LISTEN_PORT, HostnameRouterJob } from './router/hostname-routes.js';
 import { createGamedigProbe } from './query/gamedig-probe.js';
 import { createServerProbe, type ServerProbe } from './query/probe.js';
 import { ServerQueryJob } from './query/server-query-job.js';
@@ -117,6 +120,19 @@ export {
 } from './storage/server-disk-usage.js';
 
 export {
+  DEFAULT_ROUTER_LISTEN_PORT,
+  HostnameRouterJob,
+  PROXIES_DIRNAME,
+  STAGING_DIRNAME,
+  VIRTUAL_HOST_HOSTNAME_LABEL,
+  VIRTUAL_HOST_TARGET_PORT_LABEL,
+  routeFileContent,
+  routeFromSpec,
+  type HostnameRoute,
+  type HostnameRouterJobOptions,
+} from './router/hostname-routes.js';
+
+export {
   resolveWithinAny,
   resolveWithinDirectory,
   serverIdFromContainerName,
@@ -139,6 +155,13 @@ export interface AgentJobs {
   readonly serverDisk: ServerDiskUsage;
   readonly files: ServerFileJob;
   readonly archiveUploads: ArchiveUploadJob;
+  /**
+   * Routen-Dateien des Hostname-Routers (Pflichtenheft §2.4, §13).
+   *
+   * Ohne `AGENT_ROUTER_DIR` wirkungslos – eine Installation ohne Router soll
+   * daran nicht scheitern.
+   */
+  readonly router: HostnameRouterJob;
   /** Beendet alle laufenden Jobs – beim Herunterfahren des Agents. */
   stop(): void;
 }
@@ -155,6 +178,16 @@ export interface JobsEnv {
    * bestehende Testaufbauten mit der Vorgabe weiterlaufen.
    */
   readonly AGENT_UPLOAD_ARCHIVE_MAX_BYTES?: number;
+  /**
+   * Ablage des Hostname-Routers auf der Node. Ohne Wert legt der Agent keine
+   * Routen-Dateien an – der Router läuft dann schlicht nicht.
+   */
+  readonly AGENT_ROUTER_DIR?: string | undefined;
+  /**
+   * Port, auf dem der Router lauscht. Er steht in jeder Routen-Datei
+   * (`listenTo`) und muss zu `frpc.toml` passen.
+   */
+  readonly MINECRAFT_ROUTER_PORT?: number;
 }
 
 export interface CreateAgentJobsOptions {
@@ -227,6 +260,11 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     ...(options.now === undefined ? {} : { now: options.now }),
   });
 
+  const router = new HostnameRouterJob({
+    routerDir: env.AGENT_ROUTER_DIR ?? null,
+    listenPort: env.MINECRAFT_ROUTER_PORT ?? DEFAULT_ROUTER_LISTEN_PORT,
+  });
+
   return {
     scheduler,
     query,
@@ -235,6 +273,7 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     serverDisk,
     files,
     archiveUploads,
+    router,
     stop: () => {
       query.stopAll();
       scheduler.stopAll();

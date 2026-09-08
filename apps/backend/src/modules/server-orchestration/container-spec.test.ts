@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { TEST_GAME_TYPE } from './game-registry.js';
 import {
   STARTUP_PARAMETERS_ENV,
+  VIRTUAL_HOST_HOSTNAME_LABEL,
+  VIRTUAL_HOST_TARGET_PORT_LABEL,
   buildContainerSpec,
   containerSpecFingerprint,
 } from './container-spec.js';
@@ -62,6 +64,7 @@ function fingerabdruck(record: ServerRecord, definition = TEST_GAME_TYPE): strin
       definition,
       containerName: 'palantir-s1',
       dataHostPath: '/srv/palantir/s1',
+      hostname: 'mein-server.example.tld',
     }),
   );
 }
@@ -131,6 +134,7 @@ describe('Startparameter im Bauplan', () => {
       definition: TEST_GAME_TYPE,
       containerName: 'palantir-s1',
       dataHostPath: '/srv/palantir/s1',
+      hostname: 'mein-server.example.tld',
     });
   }
 
@@ -160,5 +164,126 @@ describe('Startparameter im Bauplan', () => {
     expect(containerSpecFingerprint(spec(server({ startupParameters: '-Xmx4G' })))).not.toBe(
       containerSpecFingerprint(spec(server())),
     );
+  });
+});
+
+/**
+ * Hostname-Routing im Bauplan (Pflichtenheft §2.4, §13).
+ *
+ * Zwei Dinge unterscheiden einen Server mit Hostname-Routing vom Rest, und
+ * beide entscheiden sich hier:
+ *
+ *  1. Er trägt die Labels, aus denen der Agent auf der Gamenode die Routen-
+ *     Datei des Reverse-Proxys baut. Ohne sie legt der Agent keine an.
+ *  2. Sein primärer Port wird NICHT auf den Host gebunden. Alle Instanzen
+ *     teilen sich denselben öffentlichen Port; als Host-Bindung wäre er nach
+ *     dem ersten Server belegt.
+ *
+ * Beides bleibt so lange folgenlos, wie kein Spieltyp
+ * `supportsVirtualHostRouting` auf `true` stehen hat - genau deshalb steht es
+ * hier und nicht erst im Betrieb.
+ */
+describe('Hostname-Routing im Bauplan', () => {
+  const MIT_ROUTING = { ...TEST_GAME_TYPE, supportsVirtualHostRouting: true };
+
+  function spec(definition = TEST_GAME_TYPE, record = server()) {
+    return buildContainerSpec({
+      server: record,
+      definition,
+      containerName: 'palantir-s1',
+      dataHostPath: '/srv/palantir/s1',
+      hostname: 'mein-server.example.tld',
+    });
+  }
+
+  it('setzt die Router-Labels bei einem Spieltyp mit dem Flag', () => {
+    const labels = spec(MIT_ROUTING).labels ?? {};
+
+    expect(labels[VIRTUAL_HOST_HOSTNAME_LABEL]).toBe('mein-server.example.tld');
+    // Der Port IM Container, nicht der öffentliche: Dorthin verbindet der
+    // Router über das Spielenetz.
+    expect(labels[VIRTUAL_HOST_TARGET_PORT_LABEL]).toBe('8080');
+    expect(labels['palantir.serverId']).toBe('s1');
+  });
+
+  it('setzt sie bei jedem anderen Spieltyp nicht', () => {
+    const labels = spec().labels ?? {};
+
+    expect(labels).not.toHaveProperty(VIRTUAL_HOST_HOSTNAME_LABEL);
+    expect(labels).not.toHaveProperty(VIRTUAL_HOST_TARGET_PORT_LABEL);
+    expect(labels['palantir.serverId']).toBe('s1');
+  });
+
+  it('lässt den primären Port ohne Host-Bindung', () => {
+    // Der zweite Server desselben Spiels käme sonst mit „port is already
+    // allocated" nicht hoch - beide bekämen dieselbe Nummer.
+    expect(spec(MIT_ROUTING).ports).toEqual([]);
+  });
+
+  it('bindet die übrigen Ports weiterhin auf den Host', () => {
+    const mitZweitport = server({
+      assignedPorts: [
+        { containerPort: 8080, publicPort: 25_565, protocol: 'tcp', primary: true, label: 'Spiel' },
+        {
+          containerPort: 8081,
+          publicPort: 27_015,
+          protocol: 'udp',
+          primary: false,
+          label: 'Query',
+        },
+      ],
+    });
+
+    expect(spec(MIT_ROUTING, mitZweitport).ports).toEqual([
+      { containerPort: 8081, hostPort: 27_015, protocol: 'udp' },
+    ]);
+  });
+
+  it('bindet ohne das Flag unverändert alle Ports', () => {
+    expect(spec().ports).toEqual([{ containerPort: 8080, hostPort: 27_000, protocol: 'tcp' }]);
+  });
+
+  it('lässt die Labels weg, wenn es keinen primären Port gibt', () => {
+    // Ein Label ohne Ziel wäre schlimmer als keines: Der Agent legte eine
+    // Route an, hinter der nichts steht.
+    const ohnePrimaer = server({
+      assignedPorts: [
+        {
+          containerPort: 8081,
+          publicPort: 27_015,
+          protocol: 'udp',
+          primary: false,
+          label: 'Query',
+        },
+      ],
+    });
+
+    expect(spec(MIT_ROUTING, ohnePrimaer).labels).not.toHaveProperty(VIRTUAL_HOST_HOSTNAME_LABEL);
+  });
+
+  it('macht einen geänderten Hostnamen zu einem neuen Fingerabdruck', () => {
+    // Sonst behielte ein umbenannter Server seine alte Route bis zum nächsten
+    // Neuaufbau aus anderem Grund.
+    const anderer = buildContainerSpec({
+      server: server(),
+      definition: MIT_ROUTING,
+      containerName: 'palantir-s1',
+      dataHostPath: '/srv/palantir/s1',
+      hostname: 'anderer-name.example.tld',
+    });
+
+    expect(containerSpecFingerprint(anderer)).not.toBe(containerSpecFingerprint(spec(MIT_ROUTING)));
+  });
+
+  it('lässt den Fingerabdruck ohne das Flag unberührt vom Hostnamen', () => {
+    const anderer = buildContainerSpec({
+      server: server(),
+      definition: TEST_GAME_TYPE,
+      containerName: 'palantir-s1',
+      dataHostPath: '/srv/palantir/s1',
+      hostname: 'anderer-name.example.tld',
+    });
+
+    expect(containerSpecFingerprint(anderer)).toBe(containerSpecFingerprint(spec()));
   });
 });

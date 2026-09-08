@@ -590,7 +590,7 @@ services:
       - ALL
     mem_limit: ${FRPS_MEM_LIMIT:-256m}
     pids_limit: 256
-    # Bewusst NICHT `env_file: ../../.env`: Der Dienst bekommt genau die fünf
+    # Bewusst NICHT `env_file: ../../.env`: Der Dienst bekommt genau die sechs
     # Werte, die seine Konfiguration einsetzt, statt sämtliche Geheimnisse der
     # Instanz (Datenbank, OAuth, Cloudflare) in seiner Umgebung zu tragen.
     environment:
@@ -599,6 +599,9 @@ services:
       FRP_TOKEN: ${FRP_TOKEN}
       GAME_PORT_RANGE_START: ${GAME_PORT_RANGE_START}
       GAME_PORT_RANGE_END: ${GAME_PORT_RANGE_END}
+      # Der Port des Hostname-Routers liegt außerhalb des Bereichs und steht
+      # deshalb als eigener Eintrag in `allowPorts` (frps.toml).
+      MINECRAFT_ROUTER_PORT: ${MINECRAFT_ROUTER_PORT}
     volumes:
       - ./frps.toml:/etc/frp/frps.toml:ro
     command: ['-c', '/etc/frp/frps.toml']

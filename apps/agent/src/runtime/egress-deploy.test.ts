@@ -153,3 +153,132 @@ describe('Netzname ueber alle Stellen hinweg', () => {
     expect(compose).toContain('egress-firewall.sh');
   });
 });
+
+/**
+ * Der Hostname-Router (Pflichtenheft §2.4, §13).
+ *
+ * Er steht im selben Netz wie die Spielserver und waere damit ein
+ * „Nachbar-Container" - also gesperrt. Die Ausnahme dafuer ist die einzige
+ * Stelle, an der die Grenze aus security-matrix-02 aufgemacht wird, und sie
+ * muss genau so eng bleiben, wie sie gedacht ist. Deshalb steht sie hier
+ * Zeile fuer Zeile.
+ */
+describe('Ausnahme fuer den Hostname-Router', () => {
+  it('laesst nur die eine Richtung auf den einen Port zu', () => {
+    // Quelle ist ausschliesslich die feste Adresse des Routers, Ziel das
+    // Spielenetz, Protokoll TCP, Port der Spielport.
+    expect(skript).toContain('iptables -A "${CHAIN_FWD}" -s "${ROUTER_IP}" -d "${GAMES_SUBNET}"');
+    expect(skript).toContain('-p tcp --dport "${ROUTER_TARGET_PORT}"');
+  });
+
+  it('laesst zurueck nur bestehende Verbindungen', () => {
+    // Eine NEUE Verbindung eines Spielcontainers zum Router faellt weiterhin
+    // unter die Sperre gegen Nachbar-Container.
+    expect(skript).toContain('iptables -A "${CHAIN_FWD}" -d "${ROUTER_IP}"');
+    expect(skript).toContain('-m conntrack --ctstate ESTABLISHED,RELATED');
+  });
+
+  it('benutzt ACCEPT und nicht RETURN', () => {
+    // RETURN fiele in die DROP-Regel, die Docker wegen `icc=false` selbst in
+    // FORWARD setzt - der Router erreichte dann nichts.
+    expect(skript).toContain("--comment 'palantir: Hostname-Router -> Spielserver' -j ACCEPT");
+    expect(skript).toContain("--comment 'palantir: Antwort an den Hostname-Router' -j ACCEPT");
+  });
+
+  it('steht vor den Sperren', () => {
+    const ausnahme = skript.indexOf('palantir: Hostname-Router -> Spielserver');
+    const nachbarn = skript.indexOf('palantir: Nachbar-Container');
+    const bestehend = skript.indexOf("palantir: bestehende Verbindung' -j RETURN");
+
+    expect(ausnahme).toBeGreaterThan(0);
+    expect(ausnahme).toBeLessThan(nachbarn);
+    // Auch vor der allgemeinen ESTABLISHED-Zeile: die springt mit RETURN aus
+    // der Kette heraus, und danach greift die icc-Sperre.
+    expect(ausnahme).toBeLessThan(bestehend);
+  });
+
+  it('entfaellt vollstaendig, wenn keine Router-Adresse gesetzt ist', () => {
+    expect(skript).toContain('if [[ -n "${ROUTER_IP}" ]]; then');
+    expect(skript).toContain('ROUTER_IP="${ROUTER_IP:-$(get_env_value GAME_ROUTER_CONTAINER_IP)}"');
+  });
+
+  it('haelt die Adresse des Routers aus der automatischen Vergabe heraus', () => {
+    // Sonst koennte ein Spielcontainer sie belegen, waehrend der Router steht -
+    // danach kaeme er nicht mehr hoch, und alle Minecraft-Server waeren dunkel.
+    expect(skript).toContain('--ip-range "${GAMES_IP_RANGE}"');
+    expect(skript).toContain('GAMES_IP_RANGE="${GAMES_IP_RANGE:-172.31.240.0/25}"');
+    expect(envBeispiel).toContain('GAME_ROUTER_CONTAINER_IP=172.31.240.254');
+  });
+});
+
+describe('Hostname-Router in den Deploy-Dateien', () => {
+  const frpc = readFileSync(path.join(repoRoot, 'deploy', 'gamenode', 'frpc.toml'), 'utf8');
+  const frps = readFileSync(path.join(repoRoot, 'deploy', 'vps', 'frps.toml'), 'utf8');
+
+  it('veroeffentlicht auf der Gamenode weiterhin keinen Port', () => {
+    // Der Grundsatz im Kopf der Datei (Pflichtenheft §1) gilt auch fuer den
+    // Router: Er lauscht nur im eigenen Netz-Namensraum.
+    const alsSchluessel = compose.split('\n').filter((zeile) => /^\s*ports:\s*$/.test(zeile));
+    expect(alsSchluessel).toEqual([]);
+  });
+
+  it('bindet den Router haertend ein und pinnt sein Image auf einen Digest', () => {
+    const dienst = compose.slice(compose.indexOf('  hostname-router:'));
+
+    expect(dienst).toContain('image: haveachin/infrared:${INFRARED_VERSION}@${INFRARED_DIGEST}');
+    expect(dienst).toContain('no-new-privileges:true');
+    expect(dienst).toContain('read_only: true');
+    expect(dienst).toContain('- ALL');
+    expect(dienst).toMatch(/^\s+user: '65534:65534'$/m);
+    // Nur mit Profil - eine frische Node kommt sonst ohne das externe Netz
+    // nicht hoch.
+    expect(dienst).toContain("profiles: ['hostname-router']");
+    // Das Routen-Verzeichnis nur lesend; geschrieben wird allein vom Agent.
+    expect(dienst).toContain('/proxies:/configs:ro');
+  });
+
+  it('holt den Router ueber seine feste Adresse ab, nicht ueber 127.0.0.1', () => {
+    expect(frpc).toContain('localIP = "{{ .Envs.GAME_ROUTER_CONTAINER_IP }}"');
+    expect(frpc).toContain('localPort = {{ .Envs.MINECRAFT_ROUTER_PORT }}');
+    expect(frpc).toContain('remotePort = {{ .Envs.MINECRAFT_ROUTER_PORT }}');
+    // Minecraft Java spricht TCP; ein UDP-Proxy waere ein offener Socket ohne
+    // Gegenstelle.
+    expect(frpc).not.toContain('name = "hostname-router-udp"');
+  });
+
+  it('raeumt das automatische Update den Router nicht weg', () => {
+    // `up -d --remove-orphans` ohne das Profil haelt den Router fuer einen
+    // verwaisten Container und entfernt ihn - bei JEDEM naechtlichen Lauf,
+    // ohne dass jemand etwas geaendert haette.
+    const update = readFileSync(path.join(repoRoot, 'deploy', 'gamenode', 'update.sh'), 'utf8');
+
+    expect(update).toContain('PROFIL=(--profile hostname-router)');
+    for (const zeile of update.split('\n')) {
+      if (/^\s*docker compose /.test(zeile)) {
+        expect(zeile, `ohne Profil: ${zeile.trim()}`).toContain('"${PROFIL[@]}"');
+      }
+    }
+  });
+
+  it('laesst frps den Router-Port zusaetzlich zum Pool durch (Pflichtenheft §19)', () => {
+    expect(frps).toContain('{ single = {{ .Envs.MINECRAFT_ROUTER_PORT }} }');
+    expect(frps).toContain(
+      '{ start = {{ .Envs.GAME_PORT_RANGE_START }}, end = {{ .Envs.GAME_PORT_RANGE_END }} }',
+    );
+  });
+
+  it('haelt den Router am Leben, solange es keine einzige Route gibt', () => {
+    // Ohne mindestens einen Proxy beendet sich Infrared mit „no proxies in
+    // gateway" und liefe wegen `restart: always` in eine Schleife.
+    const platzhalter = JSON.parse(
+      readFileSync(
+        path.join(repoRoot, 'deploy', 'gamenode', 'infrared', '00-platzhalter.json'),
+        'utf8',
+      ),
+    ) as Record<string, unknown>;
+
+    expect(String(platzhalter['domainName']).endsWith('.invalid')).toBe(true);
+    expect(platzhalter['listenTo']).toBe(':25565');
+    expect(compose).toContain('00-platzhalter.json:/configs/00-platzhalter.json:ro');
+  });
+});

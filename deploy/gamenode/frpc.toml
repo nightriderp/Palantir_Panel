@@ -76,3 +76,35 @@ localIP = "127.0.0.1"
 localPort = {{ $v.First }}
 remotePort = {{ $v.Second }}
 {{- end }}
+
+# --- Hostname-Router ---------------------------------------------------------
+#
+# Ein einziger Proxy fuer beliebig viele Minecraft-Server (Pflichtenheft §2.4,
+# §13): Sie teilen sich MINECRAFT_ROUTER_PORT, und auseinandergehalten werden
+# sie erst hinter diesem Tunnel, vom Reverse-Proxy Infrared anhand des
+# Hostnamens aus dem Handshake. Deshalb kommt hier kein Eintrag je Server dazu -
+# diese eine Zeile deckt alle ab.
+#
+# ZWEI UNTERSCHIEDE zur Liste oben, beide aus demselben Grund:
+#
+#   * `localIP` ist NICHT 127.0.0.1, sondern die feste Adresse des Routers im
+#     Spielenetz (GAME_ROUTER_CONTAINER_IP). Der Router veroeffentlicht keinen
+#     Port - der Grundsatz im Kopf von `docker-compose.yml` gilt auch fuer ihn -,
+#     also gibt es auf 127.0.0.1 nichts abzuholen. frpc laeuft im Host-Netz und
+#     erreicht die Container-Adresse direkt ueber die Bridge; das ist Verkehr des
+#     Hosts an einen Container und faellt nicht unter die DOCKER-USER-Regeln aus
+#     `egress-firewall.sh`.
+#
+#   * Nur TCP. Minecraft Java spricht TCP, und das Hostname-Routing haengt am
+#     Handshake-Paket - ohne Verbindung gibt es keinen Namen zu lesen. Ein
+#     UDP-Proxy waere ein offener Socket ohne Gegenstelle.
+#
+# Der Port liegt ausserhalb von GAME_PORT_RANGE_*; `allowPorts` in
+# `deploy/vps/frps.toml` fuehrt ihn deshalb als eigenen Eintrag.
+
+[[proxies]]
+name = "hostname-router"
+type = "tcp"
+localIP = "{{ .Envs.GAME_ROUTER_CONTAINER_IP }}"
+localPort = {{ .Envs.MINECRAFT_ROUTER_PORT }}
+remotePort = {{ .Envs.MINECRAFT_ROUTER_PORT }}
