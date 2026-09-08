@@ -81,6 +81,15 @@ export interface InstanceSettingsService {
    * Schriften-Moduls, nicht ein Aufrufer von außen.
    */
   selectedFontIds(): Promise<readonly string[]>;
+  /**
+   * Dieselbe Auswahl, aber **je Rolle** – für das erzeugte Stylesheet (S-3).
+   *
+   * Ebenfalls ohne Rechteprüfung, und aus demselben Grund: Welche Schrift die
+   * Oberfläche benutzt, sieht ohnehin jeder, der sie aufruft. Die Route, die
+   * daraus CSS macht, ist bewusst ohne Sitzung erreichbar – sonst stünde die
+   * Anmeldeseite ohne die Schrift der Instanz da.
+   */
+  selectedFontRoles(): Promise<{ uiFontId: string | null; monospaceFontId: string | null }>;
 }
 
 export function createDrizzleInstanceSettingsRepository(
@@ -247,6 +256,12 @@ export function createInstanceSettingsService(
       const { uiFontId, monospaceFontId } = await deps.repository.load();
 
       return [uiFontId, monospaceFontId].filter((id): id is string => id !== null);
+    },
+
+    async selectedFontRoles() {
+      const { uiFontId, monospaceFontId } = await deps.repository.load();
+
+      return { uiFontId, monospaceFontId };
     },
   };
 }

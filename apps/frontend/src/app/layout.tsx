@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { FONT_STYLESHEET_LINK_ATTRIBUTE, fontStylesheetUrl } from '@/lib/api/fonts';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -18,19 +19,41 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="de">
       <head>
         {/*
-          Schriften des Design-Systems (F2): Space Grotesk und JetBrains Mono,
-          wie im Referenz-Mockup. Bewusst als <link> statt über `next/font/google`,
-          damit der Build ohne Netzzugang durchläuft; die Fallback-Stacks stehen
-          in `tailwind.config.ts`.
+          Schriften der Instanz (Arbeitspaket S-3, Fundpunkt 151).
+
+          Hier standen bis zuletzt drei `<link>`-Zeilen zu den Schrift-Hosts von
+          Google. Damit erfuhr ein Dritter bei **jedem** Seitenaufruf die
+          IP-Adresse des Betrachters – noch bevor er sich angemeldet hatte. Das
+          ist der Grund für das ganze Feature; die beiden Hostnamen stehen
+          deshalb nirgends mehr in dieser Anwendung, auch nicht als Kommentar
+          (`fontSources.test.ts` hält das fest).
+
+          Jetzt kommt ein einziges Stylesheet aus der eigenen API. Es enthält die
+          `@font-face`-Regeln aller Schriften der Instanz und die beiden
+          CSS-Variablen mit der Auswahl des Betreibers
+          (`--palantir-font-ui`/`--palantir-font-mono`, ausgewertet in
+          `tailwind.config.ts`). Bewusst als `<link>` und nicht per JavaScript:
+          So wirkt es auf jeder Seite – auch auf der Anmeldeseite, die noch gar
+          keine Sitzung hat –, der Browser holt es parallel zum Dokument, und es
+          bleibt zwischenspeicherbar.
+
+          Hat der Betreiber nichts ausgewählt, trägt das Stylesheet Space Grotesk
+          und JetBrains Mono ein: genau die zwei Schriften, die vorher von Google
+          kamen. Eine unkonfigurierte Instanz sieht danach also unverändert aus.
+
+          Das Merkmal `data-palantir-fonts` findet die Schriftverwaltung wieder,
+          um das Stylesheet nach einem Upload neu zu holen (`lib/api/fonts.ts`).
         */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* eslint-disable-next-line @next/next/no-page-custom-font -- Die Regel zielt auf
-            pages/_document.js. Im App Router ist dieses Root-Layout genau die eine Stelle,
-            an der die Schriften für alle Seiten eingebunden werden. */}
+        {/*
+          Kein `preconnect` daneben: Die alten Zeilen brauchten es, weil
+          Stylesheet und Schriftdateien auf zwei fremden Hosts lagen, zu denen
+          erst eine Verbindung entstehen musste. Beides kommt jetzt von der
+          API-Herkunft, die die Seite ohnehin gleich anspricht.
+        */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
+          href={fontStylesheetUrl()}
+          {...{ [FONT_STYLESHEET_LINK_ATTRIBUTE]: 'true' }}
         />
       </head>
       <body className="min-h-screen bg-canvas text-ink antialiased">{children}</body>

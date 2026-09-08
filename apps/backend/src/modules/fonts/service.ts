@@ -29,6 +29,7 @@ import { FontError } from './errors.js';
 import { resolveFontUpload } from './format.js';
 import { type FontRepository, type UploadedFontRecord } from './repository.js';
 import { type FontFileStore, fontFileName } from './storage.js';
+import { type FontRoleSelection, type StylesheetFont, buildFontStylesheet } from './stylesheet.js';
 
 /**
  * Berechtigung, die Schriften hochlädt und löscht.
@@ -53,6 +54,15 @@ const DEFAULT_WEIGHT = 400;
 export interface FontSelectionSource {
   /** Gewählte Kennungen; ohne die Rollen zu unterscheiden. */
   selectedFontIds(): Promise<readonly string[]>;
+  /**
+   * Gewählte Kennungen **je Rolle** – für das erzeugte Stylesheet (S-3).
+   *
+   * Bewusst neben {@link selectedFontIds} und nicht an dessen Stelle: Die
+   * beiden Fragen sind verschieden. Der Löschschutz will nur wissen, ob eine
+   * Schrift überhaupt in Benutzung ist; das Stylesheet muss wissen, **welche**
+   * Rolle sie besetzt, weil daraus zwei verschiedene CSS-Variablen werden.
+   */
+  selectedFontRoles(): Promise<FontRoleSelection>;
 }
 
 /** Eine Schriftdatei, fertig zum Ausliefern. */
@@ -75,11 +85,28 @@ export interface FontFileDownload {
   readonly immutable: boolean;
 }
 
+/** Das erzeugte Stylesheet samt Fingerabdruck für den `ETag`. */
+export interface FontStylesheet {
+  readonly css: string;
+  /** SHA-256 des CSS in Hexschreibweise – ändert sich mit jeder Änderung. */
+  readonly fingerprint: string;
+}
+
 export interface FontService {
   /** Mitgelieferte und hochgeladene Schriften gemeinsam, je als volles DTO. */
   list(ctx: AdminContext): Promise<FontDto[]>;
   /** Datei einer Schrift; `FONT_NOT_FOUND`, wenn Kennung oder Datei fehlen. */
   file(id: string): Promise<FontFileDownload>;
+  /**
+   * Die `@font-face`-Regeln aller Schriften und die beiden CSS-Variablen der
+   * aktuellen Auswahl – **ohne Handelnden**.
+   *
+   * Kein `AdminContext`, weil das Ergebnis keinen enthält: Es steht nichts
+   * darin, was nicht ohnehin jeder sieht, der die Oberfläche aufruft. Genau
+   * deshalb kann die Route ohne Sitzung antworten und die Anmeldeseite in der
+   * Schrift der Instanz stehen.
+   */
+  stylesheet(): Promise<FontStylesheet>;
   upload(ctx: AdminContext, input: UploadFontInput, file: UploadedFile): Promise<FontDto>;
   remove(ctx: AdminContext, id: string): Promise<void>;
   /**
@@ -224,6 +251,35 @@ export function createFontService(deps: FontServiceDependencies): FontService {
         ...mitgeliefert.map(({ font, sizeBytes }) => bundledDto(font, sizeBytes)),
         ...hochgeladen.map((record) => uploadedDto(record, ctx.actor, selected)),
       ];
+    },
+
+    async stylesheet() {
+      const [mitgeliefert, hochgeladen, auswahl] = await Promise.all([
+        verfuegbareMitgelieferte(),
+        deps.repository.list(),
+        deps.selection.selectedFontRoles(),
+      ]);
+
+      const schriften: StylesheetFont[] = [
+        ...mitgeliefert.map(({ font }) => ({
+          id: font.id,
+          family: font.family,
+          format: font.format,
+          variable: font.variable,
+          weightRange: font.weightRange,
+        })),
+        ...hochgeladen.map((record) => ({
+          id: record.id,
+          family: record.family,
+          format: record.format,
+          variable: record.variable,
+          weightRange: { min: record.weightMin, max: record.weightMax },
+        })),
+      ];
+
+      const css = buildFontStylesheet(schriften, auswahl);
+
+      return { css, fingerprint: createHash('sha256').update(css).digest('hex') };
     },
 
     async file(id) {

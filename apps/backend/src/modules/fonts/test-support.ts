@@ -131,9 +131,33 @@ export function createFakeFontFileStore(
   };
 }
 
-/** Gewählte Schriften – der Löschschutz fragt genau hier nach. */
+/**
+ * Gewählte Schriften – der Löschschutz fragt genau hier nach.
+ *
+ * Die Rollen ergeben sich der Reihe nach (erste Kennung = Oberfläche, zweite =
+ * dicktengleich). Für Tests, die es auf die Rollen anlegt, gibt es
+ * {@link roleSelection}.
+ */
 export function fixedSelection(...ids: string[]): FontSelectionSource {
-  return { selectedFontIds: async () => ids };
+  return {
+    selectedFontIds: async () => ids,
+    selectedFontRoles: async () => ({
+      uiFontId: ids[0] ?? null,
+      monospaceFontId: ids[1] ?? null,
+    }),
+  };
+}
+
+/** Auswahl mit ausdrücklich benannten Rollen – für das erzeugte Stylesheet. */
+export function roleSelection(
+  uiFontId: string | null,
+  monospaceFontId: string | null,
+): FontSelectionSource {
+  return {
+    selectedFontIds: async () =>
+      [uiFontId, monospaceFontId].filter((id): id is string => id !== null),
+    selectedFontRoles: async () => ({ uiFontId, monospaceFontId }),
+  };
 }
 
 /**

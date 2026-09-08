@@ -148,6 +148,20 @@ export const BUNDLED_FONTS: readonly BundledFont[] = ENTRIES.map((entry) => ({
   fileName: `${entry.slug}${FONT_FORMAT_CATALOG[entry.format].extension}`,
 }));
 
+/**
+ * Vorgabe für die Rolle „Fließtext und Überschriften".
+ *
+ * Genau die Schrift, die die Oberfläche vor S-2 von Google geladen hat. Sie
+ * greift, solange `uiFontId` in den Instanz-Einstellungen `null` ist – also für
+ * jede Instanz, die nie etwas ausgewählt hat. **Das ist die Messlatte des
+ * Umbaus:** Eine unkonfigurierte Instanz sieht danach genauso aus wie vorher,
+ * nur ohne den fremden Host.
+ */
+export const DEFAULT_UI_FONT_ID = `${BUNDLED_FONT_ID_PREFIX}space-grotesk`;
+
+/** Vorgabe für die dicktengleiche Rolle – ebenfalls wie bisher. */
+export const DEFAULT_MONOSPACE_FONT_ID = `${BUNDLED_FONT_ID_PREFIX}jetbrains-mono`;
+
 const BY_ID = new Map(BUNDLED_FONTS.map((font) => [font.id, font]));
 
 /**

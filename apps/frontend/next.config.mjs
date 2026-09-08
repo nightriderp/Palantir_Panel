@@ -40,7 +40,7 @@ const liveWsUrl =
  * 2. **Nur beobachtet** (`Report-Only`) wird die vollständige Regel für das
  *    Laden von Skripten, Stilen, Schriften und Bildern. Next.js liefert seine
  *    Bootstrap-Skripte und Stile inline und ohne Nonce, die Schriften kommen
- *    von Google (`layout.tsx`, bewusste Entscheidung), und Profilbilder liegen
+ *    von der eigenen API-Herkunft (`layout.tsx`), und Profilbilder liegen
  *    auf den CDNs der Anmelde-Anbieter. Eine durchgesetzte Regel würde bei der
  *    kleinsten Auslassung die Oberfläche zerlegen; im Report-Only-Modus meldet
  *    der Browser Verstöße in seiner Konsole, ohne etwas zu blockieren.
@@ -62,10 +62,24 @@ const cspBeobachtet = [
   process.env.NODE_ENV === 'development'
     ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
     : "script-src 'self' 'unsafe-inline'",
-  // Google Fonts: Stylesheet von fonts.googleapis.com, Schriftdateien von
-  // fonts.gstatic.com (siehe `src/app/layout.tsx`).
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com data:",
+  /*
+   * Schriften kommen aus der eigenen Instanz (Fundpunkt 151, Arbeitspaket S-3).
+   *
+   * Bis dahin standen hier `https://fonts.googleapis.com` (Stylesheet) und
+   * `https://fonts.gstatic.com` (Schriftdateien): Jeder Seitenaufruf gab damit
+   * die IP-Adresse des Betrachters an einen Dritten weiter. Beide Hosts sind
+   * ersatzlos verschwunden – **das ist der Kern der Änderung.** Solange sie
+   * hier erlaubt blieben, würde eine übersehene `<link>`-Zeile weiterhin
+   * stillschweigend dort laden, und niemand bemerkte es.
+   *
+   * Stattdessen die Herkunft der eigenen API: Von dort kommt das erzeugte
+   * Stylesheet (`/public/fonts.css`) und von dort kommen die Schriftdateien
+   * (`/api/fonts/:id/file`). `'self'` genügt dafür nicht – Panel und API liegen
+   * auf getrennten Subdomains (Pflichtenheft §12.1). Bewusst dieselbe Variable
+   * wie in `connect-src`, damit hier kein zweiter Host von Hand gepflegt wird.
+   */
+  `style-src 'self' 'unsafe-inline' ${apiUrl}`,
+  `font-src 'self' ${apiUrl} data:`,
   // Profilbilder der Anmelde-Anbieter (Discord/Twitch/Steam-CDN) - deren Hosts
   // stehen nicht fest, deshalb `https:`.
   "img-src 'self' data: blob: https:",
