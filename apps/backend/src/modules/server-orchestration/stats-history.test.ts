@@ -13,7 +13,9 @@ import {
   CLOCK_SKEW_LOG_INTERVAL_MS,
   CLOCK_SKEW_TOLERANCE_MS,
   ClockSkewMonitor,
+  LIVE_ENGINE_STATS_MAX_AGE_MS,
   LatestDiskUsageCache,
+  LatestEngineStatsCache,
   LatestQueryCache,
   ServerLoadRegistry,
   type StatsSample,
@@ -21,6 +23,7 @@ import {
   toLiveStats,
   toStatsHistoryDto,
 } from './stats-history.js';
+import { EMPTY_ENGINE_STATS } from './live-events.js';
 
 const SERVER_ID = '11111111-1111-4111-8111-111111111111';
 const NODE_ID = '22222222-2222-4222-8222-222222222222';
@@ -132,6 +135,103 @@ describe('Zwischenspeicher des Plattenplatzes', () => {
     cache.forget(SERVER_ID);
 
     expect(cache.read(SERVER_ID, JETZT)).toBeNull();
+  });
+});
+
+/**
+ * Zwischenspeicher der Engine-Messwerte (Fundpunkt 179).
+ *
+ * Er überbrückt den Abfrage-Rahmen: Unter `STATS_UPDATE` fließen zwei
+ * Nutzlasten, und nur eine misst CPU, Arbeitsspeicher und Netzverkehr.
+ *
+ * Anders als die beiden anderen Speicher hat er eine **kurze** Frist, und die
+ * ist der eigentliche Gegenstand dieser Prüfungen: `ServerLiveStats` trägt nur
+ * einen Zeitstempel für den ganzen Satz, ein gemerkter Wert wird also mit der
+ * Empfangszeit des Abfrage-Rahmens ausgeliefert. Das Fenster ist damit genau
+ * die Spanne, um die ein Wert älter sein kann, als er aussieht – und darf
+ * deshalb nicht wachsen.
+ */
+describe('Zwischenspeicher der Engine-Messwerte (Fundpunkt 179)', () => {
+  const JETZT = new Date('2026-09-01T10:00:00.000Z');
+  const STAND = {
+    cpuPercent: 42.5,
+    ramUsedMb: 2_048,
+    networkRxBytes: 1_024,
+    networkTxBytes: 2_048,
+    networkRxPackets: 12,
+    networkTxPackets: 8,
+  };
+
+  it('gibt den zuletzt gemeldeten Stand zurück', () => {
+    const cache = new LatestEngineStatsCache();
+    cache.remember(SERVER_ID, STAND, JETZT);
+
+    expect(cache.read(SERVER_ID, JETZT)).toEqual(STAND);
+  });
+
+  it('kennt einen Server ohne Meldung nicht', () => {
+    expect(new LatestEngineStatsCache().read(SERVER_ID, JETZT)).toEqual(EMPTY_ENGINE_STATS);
+  });
+
+  it('lässt einen Rahmen ohne jede Zahl den bekannten Stand nicht löschen', () => {
+    // Meldet die Runtime für einen Rahmen zu allem `null`, ist das keine
+    // Messung. Verdrängte das den bekannten Stand, spränge die Anzeige bei
+    // jedem solchen Rahmen auf „—".
+    const cache = new LatestEngineStatsCache();
+    cache.remember(SERVER_ID, STAND, JETZT);
+    cache.remember(SERVER_ID, EMPTY_ENGINE_STATS, JETZT);
+
+    expect(cache.read(SERVER_ID, JETZT)).toEqual(STAND);
+  });
+
+  /*
+   * **Der Test, der umfällt, wenn jemand die Entscheidung zurückdreht.**
+   *
+   * Das ist der Preis dieses Wegs: Ein gemerkter Wert wird mit der Empfangszeit
+   * des Abfrage-Rahmens ausgeliefert, sieht also frischer aus, als er ist. Die
+   * Frist ist die einzige Schranke dagegen. Wer sie auf die fünf Minuten der
+   * beiden anderen Speicher „vereinheitlicht", liefert eine CPU-Last von vor
+   * fünf Minuten als aktuelle Messung aus – hier fällt das auf.
+   */
+  it('liefert einen Stand nicht mehr aus, sobald er einen Abfrage-Takt überdauert hat', () => {
+    const cache = new LatestEngineStatsCache();
+    cache.remember(SERVER_ID, STAND, JETZT);
+
+    // Ein Abfrage-Rahmen kommt frühestens nach `AGENT_QUERY_INTERVAL_SECONDS`
+    // (Vorgabe 60 s). So alt darf ein Engine-Wert nie werden.
+    expect(cache.read(SERVER_ID, new Date(JETZT.getTime() + 60_000))).toEqual(EMPTY_ENGINE_STATS);
+  });
+
+  it('hält die Vorgabe-Frist beim Zehnfachen des Strom-Takts', () => {
+    // Der Statistik-Strom liefert etwa einmal je Sekunde. Das Fenster braucht
+    // Luft für einen Aussetzer, mehr aber auch nicht: Es ist die Spanne, um die
+    // eine Zahl das beschriebene Geschehen überleben kann.
+    expect(LIVE_ENGINE_STATS_MAX_AGE_MS).toBe(10_000);
+
+    const cache = new LatestEngineStatsCache();
+    cache.remember(SERVER_ID, STAND, JETZT);
+
+    expect(cache.read(SERVER_ID, new Date(JETZT.getTime() + LIVE_ENGINE_STATS_MAX_AGE_MS))).toEqual(
+      STAND,
+    );
+    expect(
+      cache.read(SERVER_ID, new Date(JETZT.getTime() + LIVE_ENGINE_STATS_MAX_AGE_MS + 1)),
+    ).toEqual(EMPTY_ENGINE_STATS);
+  });
+
+  it('lässt einen Stand weit aus der Zukunft verfallen (W2-14)', () => {
+    const cache = new LatestEngineStatsCache();
+    cache.remember(SERVER_ID, STAND, new Date(JETZT.getTime() + CLOCK_SKEW_TOLERANCE_MS + 1_000));
+
+    expect(cache.read(SERVER_ID, JETZT)).toEqual(EMPTY_ENGINE_STATS);
+  });
+
+  it('vergisst einen gelöschten Server', () => {
+    const cache = new LatestEngineStatsCache();
+    cache.remember(SERVER_ID, STAND, JETZT);
+    cache.forget(SERVER_ID);
+
+    expect(cache.read(SERVER_ID, JETZT)).toEqual(EMPTY_ENGINE_STATS);
   });
 });
 

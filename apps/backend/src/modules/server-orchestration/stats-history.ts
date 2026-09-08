@@ -48,6 +48,11 @@ import { and, asc, eq, gte, lt } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
 import { serverStatsSamples } from '../../db/schema.js';
 import { type ServerLoadSnapshot } from '../resources/index.js';
+import {
+  EMPTY_ENGINE_STATS,
+  type EngineStatsSnapshot,
+  hasEngineMeasurement,
+} from './live-events.js';
 
 /** Eine Stichprobe, wie Dienst und Repository sie austauschen. */
 export interface StatsSample {
@@ -436,6 +441,109 @@ export class LatestDiskUsageCache {
   }
 
   /** Vergisst einen Server – gelöscht, also gibt es den Ordner nicht mehr. */
+  forget(serverId: string): void {
+    this.#werte.delete(serverId);
+  }
+}
+
+/**
+ * Wie lange ein Engine-Messwert im Live-Kanal weiterverwendet werden darf
+ * (Fundpunkt 179).
+ *
+ * **Bewusst nicht die fünf Minuten** der beiden anderen Zwischenspeicher. Deren
+ * Werte ändern sich langsam – der belegte Plattenplatz über Stunden, die
+ * Spielerzahl über Minuten. CPU, Arbeitsspeicher und Netzverkehr sind dagegen
+ * Sekundengrößen: Der Statistik-Strom der Container-Engine liefert etwa einmal
+ * je Sekunde, und `ServerLiveStats` trägt nur **einen** Zeitstempel für den
+ * ganzen Satz. Ein hier gemerkter Wert wird also mit der Empfangszeit des
+ * Abfrage-Rahmens ausgeliefert – dieses Fenster ist deshalb genau die Spanne,
+ * um die ein angezeigter Wert älter sein kann, als sein `updatedAt` behauptet.
+ *
+ * Zehn Sekunden sind das Zehnfache des Strom-Takts: genug Luft für einen
+ * Aussetzer, und kurz genug, dass die Zahl das beschriebene Geschehen nicht
+ * überlebt. Schweigt der Strom länger, liefert er nicht mehr – dann ist „—" die
+ * wahre Antwort, und die Kachel sagt sie.
+ *
+ * Im gesunden Betrieb greift die Frist ohnehin nie: Zwischen zwei
+ * Abfrage-Rahmen (`AGENT_QUERY_INTERVAL_SECONDS`, Vorgabe 60 s) liegen rund
+ * sechzig Engine-Rahmen, der gemerkte Wert ist beim Zusammenführen also etwa
+ * eine Sekunde alt.
+ */
+export const LIVE_ENGINE_STATS_MAX_AGE_MS = 10_000;
+
+/**
+ * Zuletzt gemeldete Messwerte der Container-Engine je Server (Fundpunkt 179).
+ *
+ * **Wozu.** Unter `STATS_UPDATE` fließen zwei Nutzlasten, und nur eine davon
+ * misst CPU, Arbeitsspeicher und Netzverkehr. Weil das Frontend die Messwerte
+ * je Rahmen vollständig ersetzt, löschte jeder Rahmen der Server-Abfrage die
+ * drei Kacheln, bis der nächste Engine-Rahmen kam. Dieser Speicher legt den
+ * zuletzt gemeldeten Engine-Stand daneben – dieselbe Rolle, die
+ * {@link LatestQueryCache} in der Gegenrichtung spielt.
+ *
+ * **Warum das nicht der Browser macht.** Dort kämen beide Bedeutungen von
+ * `null` als dasselbe an: „diese Quelle misst es nicht" und „es ist unbekannt".
+ * Ein Zusammenführen im Browser müsste deshalb pauschal „`null` überschreibt
+ * nie" gelten lassen und hätte keine Möglichkeit, einen alten Wert je wieder
+ * loszuwerden. Hier gibt es eine Frist – siehe
+ * {@link LIVE_ENGINE_STATS_MAX_AGE_MS}.
+ *
+ * Wie die beiden anderen: nur im Speicher, ohne eigene Tabelle, und ein
+ * Neustart des Backends vergisst alles.
+ */
+export class LatestEngineStatsCache {
+  readonly #werte = new Map<string, { stand: EngineStatsSnapshot; at: number }>();
+  readonly #maxAlterMs: number;
+  readonly #zukunftsToleranzMs: number;
+
+  constructor(
+    maxAlterMs: number = LIVE_ENGINE_STATS_MAX_AGE_MS,
+    zukunftsToleranzMs: number = CLOCK_SKEW_TOLERANCE_MS,
+  ) {
+    this.#maxAlterMs = maxAlterMs;
+    this.#zukunftsToleranzMs = zukunftsToleranzMs;
+  }
+
+  /**
+   * Einen gemeldeten Engine-Stand merken.
+   *
+   * Ein Stand ohne jede Zahl ist keine Messung und verdrängt deshalb nichts:
+   * Meldet die Runtime für einen Rahmen zu allem `null`, spränge die Anzeige
+   * sonst bei jedem solchen Rahmen auf „—". Veraltet der bekannte Wert
+   * wirklich, verfällt er über {@link read}.
+   */
+  remember(serverId: string, stand: EngineStatsSnapshot, at: Date): void {
+    if (!hasEngineMeasurement(stand)) {
+      return;
+    }
+
+    this.#werte.set(serverId, { stand, at: at.getTime() });
+  }
+
+  /**
+   * Der zuletzt gemeldete Stand – oder lauter `null`, wenn er zu alt ist.
+   *
+   * Dieselbe Frist-Logik wie in den beiden anderen Speichern, in beide
+   * Richtungen: zu alt **und** zu weit in der Zukunft. Ein Wert aus der Zukunft
+   * altert sonst nie und stünde dauerhaft als „frisch" in der Anzeige.
+   */
+  read(serverId: string, now: Date): EngineStatsSnapshot {
+    const eintrag = this.#werte.get(serverId);
+
+    if (eintrag === undefined) {
+      return EMPTY_ENGINE_STATS;
+    }
+
+    const alter = now.getTime() - eintrag.at;
+
+    if (alter > this.#maxAlterMs || alter < -this.#zukunftsToleranzMs) {
+      return EMPTY_ENGINE_STATS;
+    }
+
+    return eintrag.stand;
+  }
+
+  /** Vergisst einen Server – gelöscht, also misst niemand mehr an ihm. */
   forget(serverId: string): void {
     this.#werte.delete(serverId);
   }

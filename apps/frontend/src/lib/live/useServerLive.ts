@@ -93,6 +93,17 @@ export function useServerLive(serverId: string | null): ServerLiveData {
           setStatusRevision(nextRevision());
           break;
         case 'server.statsUpdated':
+          /*
+           * Vollständig ersetzen, nicht zusammenführen (Fundpunkt 179).
+           *
+           * Unter diesem Namen fließen zwei Nutzlasten, und die Server-Abfrage
+           * misst weder CPU noch Arbeitsspeicher noch Netzverkehr. Sie
+           * danebenzulegen ist Sache des Backends: Nur dort ist bekannt, ob ein
+           * `null` „diese Quelle misst es nicht" oder „es ist unbekannt" heißt –
+           * hier kommen beide Fälle als dasselbe `null` an. Wer an dieser Stelle
+           * zusammenführt, muss pauschal „`null` überschreibt nie" gelten lassen
+           * und wird einen einmal gezeigten Wert nie wieder los.
+           */
           setStats(frame.data.stats);
           break;
         case 'server.consoleLineAppended':

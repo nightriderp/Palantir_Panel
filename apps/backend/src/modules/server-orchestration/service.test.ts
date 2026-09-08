@@ -3785,6 +3785,141 @@ describe('Verlauf der Messwerte (Arbeitspaket P5)', () => {
     expect(platten).toEqual([3_072, 3_072]);
   });
 
+  /**
+   * Fundpunkt 179: Die Messwert-Kacheln flackerten im Takt der Server-Abfrage.
+   *
+   * Dasselbe Muster wie beim Plattenplatz, nur in der Gegenrichtung. CPU,
+   * Arbeitsspeicher und Netzverkehr kennt allein der Statistik-Strom der
+   * Engine; der Zweig der Server-Abfrage trug dort ein festes `null`. Weil das
+   * Frontend die Messwerte je Rahmen vollständig ersetzt, sprangen die drei
+   * Kacheln bei jedem Abfrage-Rahmen auf „—", bis der nächste Engine-Rahmen kam.
+   */
+  describe('Engine-Messwerte über den Abfrage-Rahmen hinweg (Fundpunkt 179)', () => {
+    /** Ein Rahmen des Statistik-Stroms mit frei wählbarer CPU-Last. */
+    async function meldeEngine(
+      harness: Harness,
+      serverId: string,
+      cpuPercent: number,
+    ): Promise<void> {
+      await harness.service.handleAgentEvent(HOST.id, {
+        kind: 'event',
+        event: 'STATS_UPDATE',
+        serverId,
+        emittedAt: harness.now().toISOString(),
+        payload: {
+          containerId: 'container-1',
+          cpuPercent,
+          memoryUsedBytes: 1024 * 1024 * 256,
+          memoryLimitBytes: 1024 * 1024 * 2048,
+          networkRxBytes: 5_000,
+          networkTxBytes: 6_000,
+          blockReadBytes: 0,
+          blockWriteBytes: 0,
+          pids: 4,
+          sampledAt: harness.now().toISOString(),
+        },
+      } as never);
+    }
+
+    /** Ein Rahmen der Server-Abfrage – misst keine Ressourcen. */
+    async function meldeAbfrage(harness: Harness, serverId: string): Promise<void> {
+      await harness.service.handleAgentEvent(HOST.id, {
+        kind: 'event',
+        event: 'STATS_UPDATE',
+        serverId,
+        emittedAt: harness.now().toISOString(),
+        payload: { source: 'serverQuery', playersOnline: 7, playersMax: 20, pingMs: 11 },
+      } as never);
+    }
+
+    /** Die Messwerte aller bisher gemeldeten Live-Rahmen. */
+    function gemeldeteMesswerte(harness: Harness): {
+      cpuPercent: number | null;
+      ramUsedMb: number | null;
+      networkRxBytes: number | null;
+      networkTxBytes: number | null;
+    }[] {
+      return harness.emitted
+        .filter((e) => e.event === 'server.statsUpdated')
+        .map(
+          (e) =>
+            (
+              e.payload as {
+                stats: {
+                  cpuPercent: number | null;
+                  ramUsedMb: number | null;
+                  networkRxBytes: number | null;
+                  networkTxBytes: number | null;
+                };
+              }
+            ).stats,
+        );
+    }
+
+    it('löscht CPU, Arbeitsspeicher und Netzverkehr nicht mit dem Abfrage-Rahmen', async () => {
+      const harness = makeHarness({ statsHistory: fakeAblage() });
+      const serverId = await laufenderServer(harness);
+
+      await meldeEngine(harness, serverId, 12);
+      // Der Abfrage-Rahmen folgt eine Sekunde später – so kommt er im Betrieb.
+      harness.advance(1_000);
+      await meldeAbfrage(harness, serverId);
+
+      const messwerte = gemeldeteMesswerte(harness);
+
+      expect(messwerte).toHaveLength(2);
+      // Beide Rahmen tragen dieselben Zahlen: Die Kachel bleibt stehen.
+      expect(messwerte[1]).toMatchObject({
+        cpuPercent: 12,
+        ramUsedMb: 256,
+        networkRxBytes: 5_000,
+        networkTxBytes: 6_000,
+      });
+    });
+
+    it('bringt mit dem nächsten Engine-Rahmen die frischen Werte', async () => {
+      const harness = makeHarness({ statsHistory: fakeAblage() });
+      const serverId = await laufenderServer(harness);
+
+      await meldeEngine(harness, serverId, 12);
+      harness.advance(1_000);
+      await meldeAbfrage(harness, serverId);
+      harness.advance(1_000);
+      await meldeEngine(harness, serverId, 87);
+
+      expect(gemeldeteMesswerte(harness).map((m) => m.cpuPercent)).toEqual([12, 12, 87]);
+    });
+
+    /*
+     * **Der Fall, den dieser Weg riskiert.**
+     *
+     * Der gemerkte Wert wird mit der Empfangszeit des Abfrage-Rahmens
+     * ausgeliefert – er sieht also frischer aus, als er ist. Solange der
+     * Statistik-Strom im Sekundentakt liefert, ist das eine Sekunde. Bleibt er
+     * aus, während die Abfrage weiterläuft, wäre es eine Behauptung: Die
+     * Kachel zeigte eine CPU-Last, die niemand mehr misst. Genau dagegen steht
+     * die Frist – danach ist „—" die wahre Antwort.
+     */
+    it('lässt die Kacheln leer, wenn der Statistik-Strom ausbleibt', async () => {
+      const harness = makeHarness({ statsHistory: fakeAblage() });
+      const serverId = await laufenderServer(harness);
+
+      await meldeEngine(harness, serverId, 12);
+      // Der Strom schweigt eine Minute; nur die Abfrage meldet noch.
+      harness.advance(60_000);
+      await meldeAbfrage(harness, serverId);
+
+      const messwerte = gemeldeteMesswerte(harness);
+
+      expect(messwerte[1]).toMatchObject({
+        cpuPercent: null,
+        ramUsedMb: null,
+        networkRxBytes: null,
+        networkTxBytes: null,
+      });
+    });
+  });
+
   it('lässt den Plattenplatz im Live-Rahmen leer, solange nichts gemessen ist', async () => {
     /*
      * „nicht gemessen" ist etwas anderes als „null Bytes belegt": Aus einer 0

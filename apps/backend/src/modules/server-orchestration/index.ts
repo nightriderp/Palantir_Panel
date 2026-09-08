@@ -544,7 +544,9 @@ export {
   CLOCK_SKEW_TOLERANCE_MS,
   type ClockSkewCheck,
   ClockSkewMonitor,
+  LIVE_ENGINE_STATS_MAX_AGE_MS,
   LatestDiskUsageCache,
+  LatestEngineStatsCache,
   LatestQueryCache,
   ServerLoadRegistry,
   type ServerStatsRepository,
@@ -556,9 +558,13 @@ export {
 } from './stats-history.js';
 
 export {
+  EMPTY_ENGINE_STATS,
+  type EngineStatsSnapshot,
   type ServerQuerySnapshot,
   consoleLineFromAgentPayload,
   containerIdFromPayload,
+  engineStatsFromPayload,
+  hasEngineMeasurement,
   isServerQueryPayload,
   liveStatsFromAgentPayload,
   querySnapshotFromPayload,
