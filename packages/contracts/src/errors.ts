@@ -1164,6 +1164,25 @@ export const ERROR_CATALOG = {
     defaultMessage:
       'Diese Schrift ist in den Instanz-Einstellungen ausgewählt und kann deshalb nicht gelöscht werden.',
   },
+  /**
+   * Es gibt bereits eine Schrift mit diesem `family`-Namen. 409: der Zustand
+   * steht dem Anlegen entgegen, der Aufrufer räumt ihn aus – wie
+   * `AUTH_USERNAME_TAKEN`.
+   *
+   * Der Name ist kein Anzeigetext, sondern der Bezeichner in der erzeugten
+   * `@font-face`-Regel. Zwei Schriften mit demselben Namen überschreiben sich
+   * dort gegenseitig, und welche gewinnt, entscheidet die Reihenfolge im
+   * erzeugten CSS – die Instanz sähe nach jedem Neustart anders aus. Verglichen
+   * wird ohne Rücksicht auf Groß- und Kleinschreibung, weil CSS den Namen
+   * ebenfalls so auflöst.
+   *
+   * Bewusst nicht `FONT_IN_USE`: Der meint die Auswahl in den Einstellungen
+   * und tritt beim Löschen auf, nicht beim Anlegen.
+   */
+  FONT_FAMILY_TAKEN: {
+    httpStatus: 409,
+    defaultMessage: 'Es gibt bereits eine Schrift mit diesem Namen.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */

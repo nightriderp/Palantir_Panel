@@ -256,5 +256,23 @@ export interface FontDto {
    * Länge null ist.
    */
   weightRange: FontWeightRange;
+  /**
+   * Dicktengleiche Schrift – jedes Zeichen ist gleich breit.
+   *
+   * Steht im DTO, weil die Oberfläche **zwei** Rollen getrennt besetzt
+   * (`uiFontId` und `monospaceFontId`) und für die zweite nur dicktengleiche
+   * Schriften taugen: Konsole, Logs und Serveradressen verrutschen sonst
+   * spaltenweise. Ohne diese Angabe kann die Auswahl weder vorsortieren noch
+   * warnen, und der Fehler fällt erst auf, wenn jemand eine Konsolenausgabe
+   * liest.
+   *
+   * **Eine Angabe, keine Messung.** Ob eine Schrift wirklich dicktengleich ist,
+   * stünde in der `post`-Tabelle der Schriftdatei; die auszulesen hieße, einen
+   * Parser über fremdbestimmte Daten zu führen. Bei mitgelieferten Schriften
+   * setzt der Katalog den Wert, bei hochgeladenen der Administrator beim
+   * Hochladen. Falsch gesetzt ist er eine unschöne Anzeige, kein Sicherheits-
+   * oder Datenproblem.
+   */
+  monospace: boolean;
   permissions: FontPermissions;
 }

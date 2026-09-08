@@ -120,6 +120,7 @@ describe('Schrift-Contract (Lastenheft §3.10)', () => {
         uploadedByDisplayName: null,
         variable: true,
         weightRange: { min: 300, max: 700 },
+        monospace: false,
         permissions: { canDelete: false },
       };
 
@@ -141,6 +142,7 @@ describe('Schrift-Contract (Lastenheft §3.10)', () => {
         uploadedByDisplayName: 'Admin',
         variable: false,
         weightRange: { min: 400, max: 400 },
+        monospace: false,
         permissions: { canDelete: true },
       };
 
@@ -150,6 +152,42 @@ describe('Schrift-Contract (Lastenheft §3.10)', () => {
 
     it('kennt genau zwei Herkünfte', () => {
       expect(FONT_SOURCES).toEqual(['bundled', 'uploaded']);
+    });
+
+    /*
+     * Die Oberfläche besetzt zwei Rollen getrennt (`uiFontId` und
+     * `monospaceFontId`), und für die zweite taugen nur dicktengleiche
+     * Schriften. Ohne dieses Merkmal könnte die Auswahl weder vorsortieren noch
+     * warnen – der Fehler fiele erst auf, wenn jemand eine Konsolenausgabe
+     * liest, in der die Spalten verrutschen.
+     */
+    it('sagt, ob eine Schrift für die Konsole taugt', () => {
+      const konsole: FontDto = {
+        id: 'bundled-jetbrains-mono',
+        family: 'JetBrains Mono',
+        label: 'JetBrains Mono',
+        source: 'bundled',
+        format: 'woff2',
+        sizeBytes: 40_404,
+        uploadedAt: null,
+        uploadedByDisplayName: null,
+        variable: true,
+        weightRange: { min: 100, max: 800 },
+        monospace: true,
+        permissions: { canDelete: false },
+      };
+
+      expect(konsole.monospace).toBe(true);
+    });
+
+    it('ist bei „dicktengleich" ein Schalter und nichts Dreiwertiges', () => {
+      // Kein `null` für „unbekannt": Der Wert ist eine Angabe, keine Messung –
+      // beim Hochladen beantwortet ihn der Administrator, bei mitgelieferten
+      // Schriften der Katalog. Ein dritter Zustand zwänge jede Auswertung zu
+      // einer Fallunterscheidung, die niemand sinnvoll auflösen könnte.
+      const feld: FontDto['monospace'] = false;
+
+      expect(typeof feld).toBe('boolean');
     });
   });
 });
