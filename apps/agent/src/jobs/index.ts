@@ -9,7 +9,8 @@
  *  - `backup/` – `CREATE_BACKUP`, `RESTORE_BACKUP`, `DOWNLOAD_BACKUP`,
  *    `DELETE_BACKUP` auf Dateiebene (Lastenheft §3.3)
  *  - `storage/` – `GET_STORAGE_BREAKDOWN` und `REMOVE_STORAGE_ENTRY`
- *    (Lastenheft §3.8, Pflichtenheft §16)
+ *    (Lastenheft §3.8, Pflichtenheft §16) sowie der belegte Plattenplatz je
+ *    Server (`ServerDiskUsage`, Fundpunkt 168)
  *  - `files/` – `FILE_DELETE` host-seitig über den Datenordner und
  *    `UPLOAD_ARCHIVE_BLOCK`, das ein Archiv blockweise zusammensetzt
  *    (Lastenheft §3.3)
@@ -41,6 +42,7 @@ import { createGamedigProbe } from './query/gamedig-probe.js';
 import { createServerProbe, type ServerProbe } from './query/probe.js';
 import { ServerQueryJob } from './query/server-query-job.js';
 import { JobScheduler, type SchedulerTimers } from './scheduler.js';
+import { ServerDiskUsage } from './storage/server-disk-usage.js';
 import { StorageScanner } from './storage/storage-scanner.js';
 
 export {
@@ -106,6 +108,14 @@ export {
   type StorageScannerOptions,
 } from './storage/storage-scanner.js';
 
+export { directorySize, type DirectorySize } from './storage/directory-size.js';
+
+export {
+  DEFAULT_DISK_USAGE_TTL_MS,
+  ServerDiskUsage,
+  type ServerDiskUsageOptions,
+} from './storage/server-disk-usage.js';
+
 export {
   resolveWithinAny,
   resolveWithinDirectory,
@@ -119,6 +129,14 @@ export interface AgentJobs {
   readonly query: ServerQueryJob;
   readonly backups: BackupJob;
   readonly storage: StorageScanner;
+  /**
+   * Belegter Plattenplatz je Server (Fundpunkt 168).
+   *
+   * Steht neben `storage` und nicht darin: Die Speicherübersicht ist ein
+   * node-weiter Befehl auf Abruf, das hier ein Wert je Server mit eigener
+   * Frist. Beide benutzen denselben Baumdurchlauf.
+   */
+  readonly serverDisk: ServerDiskUsage;
   readonly files: ServerFileJob;
   readonly archiveUploads: ArchiveUploadJob;
   /** Beendet alle laufenden Jobs – beim Herunterfahren des Agents. */
@@ -192,6 +210,11 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     ...(options.now === undefined ? {} : { now: options.now }),
   });
 
+  const serverDisk = new ServerDiskUsage({
+    dataDir: env.AGENT_DATA_DIR,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+
   const files = new ServerFileJob({ runtime: options.runtime, dataDir: env.AGENT_DATA_DIR });
 
   const archiveUploads = new ArchiveUploadJob({
@@ -209,6 +232,7 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     query,
     backups,
     storage,
+    serverDisk,
     files,
     archiveUploads,
     stop: () => {

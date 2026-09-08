@@ -34,6 +34,7 @@ import type {
 } from '@palantir/contracts';
 import { ContainerRuntimeError, type ContainerRuntime } from '../../runtime/index.js';
 import { resolveWithinAny, resolveWithinDirectory, serverIdFromContainerName } from '../paths.js';
+import { directorySize, type DirectorySize } from './directory-size.js';
 
 export interface StorageScannerOptions {
   readonly runtime: ContainerRuntime;
@@ -56,11 +57,14 @@ export interface DiskUsage {
   readonly freeBytes: number;
 }
 
-/** Größe und jüngste Änderung eines Verzeichnisbaums. */
-interface Baumgroesse {
-  readonly sizeBytes: number;
-  readonly lastModifiedAt: string | null;
-}
+/**
+ * Größe und jüngste Änderung eines Verzeichnisbaums.
+ *
+ * Die Messung selbst steht seit Fundpunkt 168 in `directory-size.ts` – dort
+ * braucht sie auch der belegte Plattenplatz je Server, und zwei Durchläufe mit
+ * unterschiedlichem Verhalten wären eine Parallelstruktur (CLAUDE.md §3).
+ */
+type Baumgroesse = DirectorySize;
 
 export class StorageScanner {
   readonly #runtime: ContainerRuntime;
@@ -371,57 +375,13 @@ export class StorageScanner {
   /**
    * Größe eines Verzeichnisbaums.
    *
-   * Symbolische Verknüpfungen werden bewusst nicht verfolgt (`lstat`): Sonst
-   * würde derselbe Speicher doppelt gezählt, und eine Verknüpfung nach `/`
-   * würde den Scan endlos laufen lassen.
+   * Ein nicht lesbarer oder fehlender Ordner zählt in der Speicherübersicht als
+   * `0` und nicht als „keine Angabe": Die Postenliste braucht für jeden Eintrag
+   * eine Zahl, und der Eintrag entsteht nur für Ordner, die es beim Auflisten
+   * noch gab.
    */
   async #baumgroesse(wurzel: string): Promise<Baumgroesse> {
-    let sizeBytes = 0;
-    let neuste = 0;
-
-    const gehe = async (verzeichnis: string): Promise<void> => {
-      let eintraege;
-      try {
-        eintraege = await fs.readdir(verzeichnis, { withFileTypes: true });
-      } catch {
-        return;
-      }
-
-      for (const eintrag of eintraege) {
-        const pfad = path.join(verzeichnis, eintrag.name);
-
-        if (eintrag.isDirectory()) {
-          await gehe(pfad);
-          continue;
-        }
-
-        if (eintrag.isSymbolicLink()) {
-          continue;
-        }
-
-        try {
-          const stat = await fs.lstat(pfad);
-          sizeBytes += stat.size;
-          neuste = Math.max(neuste, stat.mtimeMs);
-        } catch {
-          // Datei ist zwischen readdir und lstat verschwunden – nicht mitzählen.
-        }
-      }
-    };
-
-    await gehe(wurzel);
-
-    try {
-      const stat = await fs.lstat(wurzel);
-      neuste = Math.max(neuste, stat.mtimeMs);
-    } catch {
-      // Wurzel existiert nicht (mehr).
-    }
-
-    return {
-      sizeBytes,
-      lastModifiedAt: neuste === 0 ? null : new Date(neuste).toISOString(),
-    };
+    return (await directorySize(wurzel)) ?? { sizeBytes: 0, lastModifiedAt: null };
   }
 }
 

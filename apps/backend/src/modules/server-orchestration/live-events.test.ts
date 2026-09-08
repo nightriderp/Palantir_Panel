@@ -73,6 +73,38 @@ describe('isServerQueryPayload', () => {
 });
 
 describe('liveStatsFromAgentPayload', () => {
+  /*
+   * Fundpunkt 168: `diskUsedBytes` ist im Vertrag optional. Ein älterer Agent
+   * kennt das Feld nicht, ein neuer lässt es weg, solange er den Datenordner
+   * noch nicht gemessen hat. Beide Fälle müssen zu `null` werden – „nicht
+   * gemessen", **nicht** „null Bytes belegt": Aus einer 0 rechnete die
+   * Schwellwert-Prüfung „0 % belegt" und schwiege auch bei voller Platte.
+   */
+  it('rechnet den belegten Plattenplatz in MiB um', () => {
+    const stats = liveStatsFromAgentPayload(
+      { ...RUNTIME_STATS, diskUsedBytes: 3 * 1024 * 1024 * 1024 },
+      EMPTY_QUERY_SNAPSHOT,
+      RECEIVED_AT,
+    );
+
+    expect(stats.diskUsedMb).toBe(3_072);
+  });
+
+  it('lässt den Plattenplatz leer, wenn der Agent ihn nicht mitschickt', () => {
+    expect(
+      liveStatsFromAgentPayload(RUNTIME_STATS, EMPTY_QUERY_SNAPSHOT, RECEIVED_AT).diskUsedMb,
+    ).toBeNull();
+
+    // Auch ein unbrauchbarer Wert wird zu "nicht gemessen", nicht zu 0.
+    expect(
+      liveStatsFromAgentPayload(
+        { ...RUNTIME_STATS, diskUsedBytes: 'viel' },
+        EMPTY_QUERY_SNAPSHOT,
+        RECEIVED_AT,
+      ).diskUsedMb,
+    ).toBeNull();
+  });
+
   it('rechnet die Messwerte der Container-Runtime in ServerLiveStats um', () => {
     const stats = liveStatsFromAgentPayload(
       RUNTIME_STATS,
