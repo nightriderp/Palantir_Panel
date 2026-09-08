@@ -5,6 +5,7 @@ import {
   isImplementedAgentCommand,
   type AgentCommandPayloads,
   type AgentCommandResults,
+  type AgentContainerStats,
 } from './agent-commands.js';
 
 describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
@@ -51,6 +52,34 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
 
   it('kennt den von P4 ergänzten Entpack-Befehl', () => {
     expect([...AGENT_COMMANDS]).toContain('FILE_EXTRACT');
+  });
+
+  /*
+   * Fundpunkt 168: Die Warnung bei knappem Speicherplatz auf Server-Ebene
+   * hatte keine Quelle - das Protokoll mass Plattenplatz nur node-weit.
+   * `diskUsedBytes` schliesst das, und zwar optional: Ein Agent, der das Feld
+   * nicht kennt, bleibt gueltig.
+   */
+  it('traegt den Plattenplatz je Server, laesst ihn aber weg duerfen', () => {
+    const ohneMessung: AgentContainerStats = {
+      containerId: 'c1',
+      cpuPercent: 12.5,
+      memoryUsedBytes: 1024,
+      memoryLimitBytes: 4096,
+      networkRxBytes: 0,
+      networkTxBytes: 0,
+      blockReadBytes: 0,
+      blockWriteBytes: 0,
+      pids: 3,
+      sampledAt: '2026-09-08T12:00:00.000Z',
+    };
+
+    const mitMessung: AgentContainerStats = { ...ohneMessung, diskUsedBytes: 5_242_880 };
+
+    // Fehlt das Feld, heisst das 'nicht gemessen' - nicht 'null Bytes belegt'.
+    // Aus einer fehlenden Messung darf nie eine Warnung entstehen.
+    expect(ohneMessung.diskUsedBytes).toBeUndefined();
+    expect(mitMessung.diskUsedBytes).toBe(5_242_880);
   });
 
   it('isImplementedAgentCommand() erkennt Befehle außerhalb des Protokolls', () => {
