@@ -1080,6 +1080,90 @@ export const ERROR_CATALOG = {
     httpStatus: 409,
     defaultMessage: 'Über diese Meldung wurde bereits entschieden.',
   },
+
+  // -- Schriften der Oberfläche (Lastenheft §3.10) ---------------------------
+
+  /**
+   * Die angegebene Schrift gibt es nicht (mehr) – weder mitgeliefert noch
+   * hochgeladen. 404: Zielobjekt nicht vorhanden, wie `ROLE_NOT_FOUND`.
+   *
+   * Trifft auch die Auswahl: Wer eine Kennung in den Instanz-Einstellungen
+   * setzt, die inzwischen gelöscht wurde, bekommt diesen Code – und nicht
+   * stillschweigend die Vorgabeschrift.
+   */
+  FONT_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diese Schrift existiert nicht.',
+  },
+  /**
+   * Die hochgeladene Datei hat ein Format außerhalb von `FONT_FORMATS`. 415.
+   *
+   * Bewusst getrennt von `UNSUPPORTED_MEDIA_TYPE`: Der zielt auf den
+   * `Content-Type` der **Anfrage**, den Fastifys Body-Parser abweist, bevor
+   * eine Route sie sieht. Hier ist die Anfrage selbst richtig verpackt
+   * (`multipart/form-data`) – unbrauchbar ist die Datei darin. Der Aufrufer
+   * korrigiert nicht den Kopf, sondern wählt eine andere Datei.
+   */
+  FONT_FORMAT_UNSUPPORTED: {
+    httpStatus: 415,
+    defaultMessage:
+      'Dieses Schriftformat wird nicht unterstützt. Erlaubt sind WOFF2, WOFF, TTF und OTF.',
+  },
+  /**
+   * Die Schriftdatei überschreitet die Höchstgröße ihres Formats
+   * (`FONT_FORMAT_CATALOG`). 413.
+   *
+   * Bewusst getrennt von `FILE_TOO_LARGE`: Der gilt für den Datei-Manager eines
+   * Servers und misst gegen `MAX_UPLOAD_SIZE_BYTES`. Die Schriftgrenze liegt um
+   * Größenordnungen darunter und hängt am Format – dieselbe Datei kann als
+   * Weltdatei erlaubt und als Schrift zu groß sein. Auch die Abhilfe ist eine
+   * andere: nicht „kleinere Datei", sondern „denselben Schnitt als WOFF2".
+   */
+  FONT_FILE_TOO_LARGE: {
+    httpStatus: 413,
+    defaultMessage:
+      'Die Schriftdatei ist zu groß. Ein als WOFF2 komprimierter Schnitt bleibt in der Regel deutlich darunter.',
+  },
+  /**
+   * Der Inhalt der Datei ist keine Schrift oder passt nicht zur Endung. 422:
+   * die Anfrage ist wohlgeformt, ihr Inhalt aber nicht verarbeitbar – dieselbe
+   * Zuordnung wie bei `AGENT_ARCHIVE_INVALID`.
+   *
+   * Geprüft wird gegen die Kopfbytes, nicht gegen den Dateinamen: `wOF2` für
+   * WOFF2, `wOFF` für WOFF, `\0\x01\0\0` oder `true` für TTF und `OTTO` für
+   * OTF. Eine als `.woff2` benannte ZIP-Datei landet hier und nicht bei
+   * `FONT_FORMAT_UNSUPPORTED` – die Endung war ja erlaubt, sie hat nur gelogen.
+   */
+  FONT_FILE_INVALID: {
+    httpStatus: 422,
+    defaultMessage: 'Die Datei ist keine lesbare Schrift oder passt nicht zu ihrer Endung.',
+  },
+  /**
+   * Versuch, eine mitgelieferte Schrift zu löschen. 403: die Aktion ist
+   * grundsätzlich unzulässig, unabhängig von Berechtigungen – auch der Owner
+   * darf sie nicht, wie bei `ROLE_PROTECTED`.
+   *
+   * Mitgelieferte Schriften liegen im Auslieferungsverzeichnis; ein „Löschen"
+   * hielte nur bis zur nächsten Aktualisierung und ließe die Instanz
+   * zwischenzeitlich ohne garantierte Vorgabeschrift zurück.
+   */
+  FONT_BUNDLED_PROTECTED: {
+    httpStatus: 403,
+    defaultMessage: 'Mitgelieferte Schriften können nicht gelöscht werden.',
+  },
+  /**
+   * Die Schrift ist in den Instanz-Einstellungen gewählt. 409: erst eine andere
+   * Schrift wählen, dann löschen – wie `NOTIFICATION_CHANNEL_IN_USE`.
+   *
+   * Kein stiller Rückfall auf die Vorgabe: Das Löschen einer Schrift würde
+   * sonst nebenbei das Aussehen der ganzen Instanz ändern, ohne dass jemand
+   * das entschieden hätte.
+   */
+  FONT_IN_USE: {
+    httpStatus: 409,
+    defaultMessage:
+      'Diese Schrift ist in den Instanz-Einstellungen ausgewählt und kann deshalb nicht gelöscht werden.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */

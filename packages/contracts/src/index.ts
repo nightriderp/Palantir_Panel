@@ -74,6 +74,9 @@ export * from './address.js';
 export * from './audit.js';
 export * from './storage.js';
 export * from './instance.js';
+// Schriften der Oberfläche (Lastenheft §3.10): Formate, Grenzen und Kennungen
+// der mitgelieferten und hochgeladenen Schriften.
+export * from './font.js';
 export * from './panel-backup.js';
 export * from './quota-request.js';
 export * from './registration-request.js';

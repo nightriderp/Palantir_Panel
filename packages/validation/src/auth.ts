@@ -23,6 +23,7 @@ import {
 import { z } from 'zod';
 
 import { idSchema } from './common.js';
+import { fontIdSchema } from './font.js';
 
 /** Mindestlänge eines Passworts (Pflichtenheft §7). */
 export const PASSWORD_MIN_LENGTH = 12;
@@ -325,9 +326,22 @@ export const createUserInputSchema = z.object({
   roleIds: z.array(idSchema).optional(),
 });
 
-/** Instanz-Einstellungen setzen (Mockup-Abgleich 12.1.1). */
+/**
+ * Instanz-Einstellungen setzen (Mockup-Abgleich 12.1.1).
+ *
+ * Die beiden Schrift-Kennungen sind additiv ergänzt (Lastenheft §3.10) und
+ * bewusst **optional mit erlaubtem `null`**: Ein weggelassenes Feld heißt
+ * „unverändert", ein ausdrückliches `null` heißt „zurück auf die Vorgabe der
+ * Instanz". Ohne diese Unterscheidung könnte eine einmal gewählte Schrift nicht
+ * mehr abgewählt werden. Ältere Aufrufer, die nur den Registrierungsschalter
+ * kennen, bleiben unverändert gültig (CLAUDE.md §3).
+ */
 export const instanceSettingsInputSchema = z.object({
   selfRegistrationEnabled: z.boolean(),
+  /** Schrift der Oberfläche; `null` = Vorgabe der Instanz. */
+  uiFontId: fontIdSchema.nullable().optional(),
+  /** Schrift für dicktengleiche Ausgaben (Konsole, Logs, Serveradressen). */
+  monospaceFontId: fontIdSchema.nullable().optional(),
 });
 
 /**

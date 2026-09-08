@@ -159,6 +159,70 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     });
   });
 
+  /**
+   * Schriften der Oberfläche (Lastenheft §3.10). Geprüft wird je Code der
+   * gedachte Status und – wo ein vorhandener Code denselben Status trägt – die
+   * Abgrenzung zu ihm.
+   */
+  describe('Schrift-Codes (Lastenheft §3.10)', () => {
+    it('ordnet jedem der sechs Fälle seinen Status zu', () => {
+      expect(httpStatusForErrorCode('FONT_NOT_FOUND')).toBe(404);
+      expect(httpStatusForErrorCode('FONT_FORMAT_UNSUPPORTED')).toBe(415);
+      expect(httpStatusForErrorCode('FONT_FILE_TOO_LARGE')).toBe(413);
+      expect(httpStatusForErrorCode('FONT_FILE_INVALID')).toBe(422);
+      expect(httpStatusForErrorCode('FONT_BUNDLED_PROTECTED')).toBe(403);
+      expect(httpStatusForErrorCode('FONT_IN_USE')).toBe(409);
+    });
+
+    it('trennt das Schriftformat vom Inhaltstyp der Anfrage', () => {
+      // Beide 415: dort ist die Verpackung der Anfrage falsch, hier die Datei
+      // darin. Verschiedene Meldungen, weil der Aufrufer Verschiedenes tut.
+      expect(httpStatusForErrorCode('UNSUPPORTED_MEDIA_TYPE')).toBe(415);
+      expect(defaultMessageForErrorCode('FONT_FORMAT_UNSUPPORTED')).not.toBe(
+        defaultMessageForErrorCode('UNSUPPORTED_MEDIA_TYPE'),
+      );
+      expect(defaultMessageForErrorCode('FONT_FORMAT_UNSUPPORTED')).toContain('WOFF2');
+    });
+
+    it('trennt die Schrift-Grenze von der Upload-Grenze des Datei-Managers', () => {
+      // Beide 413, aber die Schriftgrenze hängt am Format und liegt um
+      // Größenordnungen niedriger (vgl. AGENT_ARCHIVE_TOO_LARGE / FILE_TOO_LARGE).
+      expect(httpStatusForErrorCode('FILE_TOO_LARGE')).toBe(413);
+      expect(defaultMessageForErrorCode('FONT_FILE_TOO_LARGE')).not.toBe(
+        defaultMessageForErrorCode('FILE_TOO_LARGE'),
+      );
+    });
+
+    it('trennt das falsche Format von der gefälschten Endung', () => {
+      // 415: die Endung ist gar nicht erlaubt. 422: die Endung war erlaubt,
+      // der Inhalt passt nicht dazu – wie AGENT_ARCHIVE_INVALID.
+      expect(httpStatusForErrorCode('FONT_FILE_INVALID')).toBe(422);
+      expect(httpStatusForErrorCode('AGENT_ARCHIVE_INVALID')).toBe(422);
+      expect(defaultMessageForErrorCode('FONT_FILE_INVALID')).not.toBe(
+        defaultMessageForErrorCode('FONT_FORMAT_UNSUPPORTED'),
+      );
+    });
+
+    it('trennt die geschützte mitgelieferte Schrift von der benutzten', () => {
+      // 403: grundsätzlich unzulässig, für jeden (wie ROLE_PROTECTED).
+      // 409: zulässig, aber erst nach einer anderen Auswahl (wie
+      // NOTIFICATION_CHANNEL_IN_USE).
+      expect(httpStatusForErrorCode('ROLE_PROTECTED')).toBe(403);
+      expect(httpStatusForErrorCode('NOTIFICATION_CHANNEL_IN_USE')).toBe(409);
+      expect(defaultMessageForErrorCode('FONT_BUNDLED_PROTECTED')).not.toBe(
+        defaultMessageForErrorCode('FONT_IN_USE'),
+      );
+    });
+
+    it('vergibt jeden Schrift-Code genau einmal und mit eigener Meldung', () => {
+      const fontCodes = ERROR_CODES.filter((code) => code.startsWith('FONT_'));
+
+      expect(fontCodes).toHaveLength(6);
+      expect(new Set(fontCodes).size).toBe(fontCodes.length);
+      expect(new Set(fontCodes.map(defaultMessageForErrorCode)).size).toBe(fontCodes.length);
+    });
+  });
+
   it('isErrorCode() erkennt unbekannte Codes', () => {
     expect(isErrorCode('SUBDOMAIN_TAKEN')).toBe(true);
     expect(isErrorCode('NICHT_IM_KATALOG')).toBe(false);

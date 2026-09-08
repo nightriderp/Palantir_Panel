@@ -123,6 +123,16 @@ export const AUDIT_ACTIONS = [
   /** Systemweite Ankündigung veröffentlicht, geändert oder zurückgezogen (Lastenheft §3.6). */
   'notification.announcementChanged',
   'message.moderated',
+
+  // Schriften der Oberfläche (Lastenheft §3.10)
+  /**
+   * Schrift hochgeladen. Ein Upload legt eine Datei im Ablageort der Instanz
+   * an, die anschließend jedem Besucher der Oberfläche ausgeliefert wird –
+   * das gehört ins Log wie jeder andere Eingriff in den Betrieb.
+   */
+  'font.uploaded',
+  /** Hochgeladene Schrift gelöscht; mitgelieferte lassen sich nicht löschen. */
+  'font.deleted',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -156,6 +166,18 @@ export const AUDIT_TARGET_TYPES = [
   'instanceSettings',
   /** Kontingent-Anfrage eines Kontos (Audit W2-4). */
   'quotaRequest',
+  /**
+   * Schrift der Oberfläche (Lastenheft §3.10).
+   *
+   * Für Upload und Löschung. Die **Auswahl** einer Schrift trägt dagegen
+   * `instance.settingsChanged` mit dem Ziel `instanceSettings`: Dabei ändert
+   * sich keine Schrift, sondern eine Instanz-Einstellung – die gewählte
+   * Kennung steht in `InstanceSettingsDto`, und die Metadaten des Eintrags
+   * nennen die geänderten Felder. Eine eigene Aktion `font.selected` würde
+   * denselben Vorgang ein zweites Mal protokollieren und die Historie der
+   * Instanz-Einstellungen auf zwei Aktionen aufteilen.
+   */
+  'font',
 ] as const;
 
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];

@@ -45,6 +45,28 @@ describe('Audit-Log-Contract (Pflichtenheft §6)', () => {
     expect(isAuditTargetType('quotaRequest')).toBe(true);
   });
 
+  it('protokolliert Hochladen und Löschen einer Schrift (Lastenheft §3.10)', () => {
+    expect(isAuditAction('font.uploaded')).toBe(true);
+    expect(isAuditAction('font.deleted')).toBe(true);
+    expect(isAuditTargetType('font')).toBe(true);
+
+    // Das Benennungsschema <domäne>.<vorgang> gilt auch hier – geprüft wird es
+    // für alle Aktionen weiter oben, hier nur die Domäne.
+    for (const action of AUDIT_ACTIONS.filter((entry) => entry.startsWith('font.'))) {
+      expect(action).toMatch(/^font\.[a-z][a-zA-Z0-9]*$/);
+    }
+  });
+
+  it('führt die Schrift-Auswahl über die vorhandene Instanz-Aktion', () => {
+    // Die Auswahl ändert keine Schrift, sondern eine Instanz-Einstellung
+    // (`InstanceSettingsDto.uiFontId` / `monospaceFontId`). Eine eigene Aktion
+    // `font.selected` würde denselben Vorgang doppelt protokollieren und die
+    // Historie der Einstellungen auf zwei Aktionen aufteilen.
+    expect(isAuditAction('instance.settingsChanged')).toBe(true);
+    expect(isAuditTargetType('instanceSettings')).toBe(true);
+    expect(isAuditAction('font.selected')).toBe(false);
+  });
+
   it('erkennt unbekannte Aktionen und Zielarten', () => {
     expect(isAuditAction('user.approved')).toBe(true);
     expect(isAuditAction('user.geloescht')).toBe(false);
