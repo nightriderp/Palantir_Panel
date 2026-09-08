@@ -338,6 +338,36 @@ describe('FontService.upload', () => {
     ).toBe('FONT_FAMILY_TAKEN');
   });
 
+  /*
+   * Das Rennen zwischen Vorprüfung und Insert (Audit W2-9, `db/errors.ts`):
+   * Zwei gleichzeitige Uploads desselben Namens kommen beide an `findByFamily`
+   * vorbei, den zweiten fängt erst `uploaded_fonts_family_lower_idx`. Ohne die
+   * Übersetzung käme dieser fachlich benannte Konflikt als 500 zurück.
+   */
+  it('beantwortet auch die Unique-Verletzung des Index mit FONT_FAMILY_TAKEN', async () => {
+    const { service, repository, uploads } = aufbauen({ hochgeladen: false });
+    repository.create = async () => {
+      throw Object.assign(new Error('Failed query: insert into "uploaded_fonts"'), {
+        cause: Object.assign(new Error('duplicate key value violates unique constraint'), {
+          code: '23505',
+        }),
+      });
+    };
+
+    expect(
+      await fehlercode(() =>
+        service.upload(
+          ADMIN,
+          { label: 'Inter', family: 'Inter' },
+          { fileName: 'inter.woff2', content: fontBytes('woff2') },
+        ),
+      ),
+    ).toBe('FONT_FAMILY_TAKEN');
+
+    // Und die Datei liegt auch in diesem Zweig nicht verwaist im Ablageort.
+    expect(uploads.files.size).toBe(0);
+  });
+
   it('lässt keine Datei zurück, wenn der Datensatz nicht angelegt werden kann', async () => {
     const { service, repository, uploads } = aufbauen({ hochgeladen: false });
     repository.create = async () => {
