@@ -4,10 +4,14 @@ import {
   CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
   CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
   CONVERSATION_TYPES,
+  DELETED_ACCOUNT_DISPLAY_NAME,
   MESSAGE_MODERATION_ACTIONS,
   MESSAGE_PAGE_DEFAULT_LIMIT,
   MESSAGE_PAGE_MAX_LIMIT,
   MESSAGE_REPORT_STATUSES,
+  type MessageDto,
+  type MessageReportDto,
+  type ReportedMessageDto,
   isChatEventName,
   isConversationType,
   isMessageModerationAction,
@@ -105,5 +109,49 @@ describe('Close-Codes des Chat-Live-Kanals', () => {
     // Nach 4401 verbindet der Browser nicht neu, nach 4029 schon – nur eben
     // nicht sofort und nicht hundertfach.
     expect(CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED).not.toBe(CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS);
+  });
+});
+
+/**
+ * `true` genau dann, wenn `T` weder `null` noch `undefined` zulässt.
+ *
+ * Die eckigen Klammern sind nötig: Ohne sie verteilte TypeScript den bedingten
+ * Typ über die Union und `string | null` ergäbe `true | false` statt `false`.
+ */
+type OhneLeerwert<T> = [null] extends [T] ? false : [undefined] extends [T] ? false : true;
+
+/** `true` genau dann, wenn `T` den Wert `null` zulässt. */
+type ErlaubtNull<T> = [null] extends [T] ? true : false;
+
+/**
+ * Gelöschte Konten (Fundpunkt 141).
+ *
+ * Die Zuweisungen unten sind Prüfung und Aussage zugleich: Ändert sich die
+ * Nullbarkeit eines Feldes, scheitert schon das Übersetzen dieser Datei – der
+ * Test fällt also nicht erst zur Laufzeit, sondern beim Typecheck.
+ */
+describe('Gelöschte Konten (Fundpunkt 141)', () => {
+  it('hält den Wortlaut des Ersatznamens fest', () => {
+    // Backend (DTO-Aufbau) und Frontend (Darstellung) lesen genau diese
+    // Zeichenkette. Driftet sie unbemerkt, stehen im Verlauf und in der
+    // Moderationsansicht wieder zwei verschiedene Texte für dieselbe Lage.
+    expect(DELETED_ACCOUNT_DISPLAY_NAME).toBe('Unbekanntes Konto');
+    expect(DELETED_ACCOUNT_DISPLAY_NAME.trim()).toBe(DELETED_ACCOUNT_DISPLAY_NAME);
+  });
+
+  it('lässt die Kennung von Absender und meldender Person leer sein', () => {
+    const absender: ErlaubtNull<MessageDto['senderId']> = true;
+    const gemeldeterAbsender: ErlaubtNull<ReportedMessageDto['senderId']> = true;
+    const melder: ErlaubtNull<MessageReportDto['reportedById']> = true;
+
+    expect([absender, gemeldeterAbsender, melder]).toEqual([true, true, true]);
+  });
+
+  it('lässt den Anzeigenamen niemals leer sein', () => {
+    const absender: OhneLeerwert<MessageDto['senderDisplayName']> = true;
+    const gemeldeterAbsender: OhneLeerwert<ReportedMessageDto['senderDisplayName']> = true;
+    const melder: OhneLeerwert<MessageReportDto['reportedByDisplayName']> = true;
+
+    expect([absender, gemeldeterAbsender, melder]).toEqual([true, true, true]);
   });
 });

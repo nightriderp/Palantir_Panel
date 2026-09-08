@@ -200,6 +200,18 @@ export interface NotificationEventPayloads {
     reportId: string;
     messageId: string;
     conversationId: string;
+    /**
+     * Meldendes Konto – bewusst **nicht** nullbar, anders als
+     * `MessageReportDto.reportedById` (Fundpunkt 141).
+     *
+     * Eine Nutzlast beschreibt den Augenblick des Vorgangs, und in diesem
+     * Augenblick meldet ein bestehendes Konto; ein `null` wäre hier ein Zustand,
+     * den kein Auslöser erzeugen kann, und zwänge die Empfängerauflösung, einen
+     * unmöglichen Fall zu behandeln. Wird das Konto später gelöscht, altert die
+     * in `NotificationDto.data` mitgeführte Kopie – wie `serverName` in den
+     * Server-Ereignissen auch. Die gültige Auskunft steht dann im Meldungs-DTO,
+     * nicht in dieser Kopie.
+     */
     reportedByUserId: string;
     reason: string;
   };

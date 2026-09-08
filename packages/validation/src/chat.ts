@@ -20,6 +20,11 @@ import {
   MESSAGE_PAGE_MAX_LIMIT,
   MESSAGE_REPORT_REASON_MAX_LENGTH,
   MESSAGE_REPORT_STATUSES,
+  type MessageDto,
+  type MessagePermissions,
+  type MessageReportDto,
+  type MessageReportPermissions,
+  type ReportedMessageDto,
 } from '@palantir/contracts';
 import { z } from 'zod';
 import { idSchema } from './common.js';
@@ -100,6 +105,92 @@ export const messageReportQuerySchema = z.object({
   status: messageReportStatusSchema.default('open'),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+// ---------------------------------------------------------------------------
+// Ausgabe-Schemas (Fundpunkt 141)
+// ---------------------------------------------------------------------------
+//
+// Gegenstück zu den ausgelieferten DTOs, nicht zu einer Eingabe. Die
+// Typ-Annotation `z.ZodType<…Dto>` ist der eigentliche Zweck: Ändert sich ein
+// Feld im Vertrag, schlägt hier die Übersetzung fehl, statt dass Schema und Typ
+// still auseinanderlaufen. Zod-Objekte entfernen unbekannte Schlüssel beim
+// Parsen – ein hier vergessenes Feld käme über die Leitung an und wäre danach
+// `undefined`, ohne Fehler und ohne Warnung (Audit-Fundstelle
+// contracts-validation-01, dort am Konto-DTO aufgefallen).
+
+/** `permissions`-Objekt einer Nachricht – Gegenstück zu `MessagePermissions`. */
+export const messagePermissionsSchema: z.ZodType<MessagePermissions> = z.object({
+  canDelete: z.boolean(),
+  canReport: z.boolean(),
+});
+
+/**
+ * Eine Nachricht – Gegenstück zu `MessageDto` (Pflichtenheft §5.2).
+ *
+ * `senderId` ist nullbar: Das Konto des Absenders kann gelöscht sein, die
+ * Nachricht bleibt (Fundpunkt 141). `senderDisplayName` ist es **nicht** – dort
+ * steht dann `DELETED_ACCOUNT_DISPLAY_NAME`, aber immer eine Zeichenkette.
+ *
+ * Der Unterschied zwischen `null` und „Feld fehlt" ist Absicht und wird
+ * geprüft: `null` heißt „Konto gelöscht", ein fehlendes Feld heißt „das Backend
+ * hat es vergessen" – das ist ein Fehler und muss einer bleiben.
+ */
+export const messageDtoSchema: z.ZodType<MessageDto> = z.object({
+  id: idSchema,
+  conversationId: idSchema,
+  senderId: idSchema.nullable(),
+  senderDisplayName: z.string().min(1),
+  /** Bei gelöschten Nachrichten leer – deshalb ohne `min(1)`. */
+  content: z.string(),
+  createdAt: z.string().datetime({ offset: true }),
+  deletedAt: z.string().datetime({ offset: true }).nullable(),
+  deletedByModerator: z.boolean().nullable(),
+  reportedByViewer: z.boolean(),
+  permissions: messagePermissionsSchema,
+});
+
+/** Die gemeldete Nachricht – Gegenstück zu `ReportedMessageDto`. */
+export const reportedMessageDtoSchema: z.ZodType<ReportedMessageDto> = z.object({
+  id: idSchema,
+  senderId: idSchema.nullable(),
+  senderDisplayName: z.string().min(1),
+  content: z.string(),
+  createdAt: z.string().datetime({ offset: true }),
+  deletedAt: z.string().datetime({ offset: true }).nullable(),
+});
+
+/** `permissions`-Objekt einer Meldung – Gegenstück zu `MessageReportPermissions`. */
+export const messageReportPermissionsSchema: z.ZodType<MessageReportPermissions> = z.object({
+  canView: z.boolean(),
+  canResolve: z.boolean(),
+});
+
+/**
+ * Eine Meldung – Gegenstück zu `MessageReportDto`.
+ *
+ * `reportedById` ist aus demselben Grund nullbar wie `senderId`: Auch das
+ * Löschen des Melder-Kontos darf die Meldung und damit die Beweiskopie nicht
+ * mitnehmen (Fundpunkt 141).
+ */
+export const messageReportDtoSchema: z.ZodType<MessageReportDto> = z.object({
+  id: idSchema,
+  messageId: idSchema,
+  conversationId: idSchema,
+  conversationType: conversationTypeSchema,
+  serverId: idSchema.nullable(),
+  reportedById: idSchema.nullable(),
+  reportedByDisplayName: z.string().min(1),
+  reason: z.string().min(1),
+  status: messageReportStatusSchema,
+  actionTaken: messageModerationActionSchema.nullable(),
+  moderatorNote: z.string().nullable(),
+  resolvedById: idSchema.nullable(),
+  resolvedByDisplayName: z.string().nullable(),
+  resolvedAt: z.string().datetime({ offset: true }).nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  message: reportedMessageDtoSchema,
+  permissions: messageReportPermissionsSchema,
 });
 
 export type CreateDirectConversationInput = z.infer<typeof createDirectConversationInputSchema>;
