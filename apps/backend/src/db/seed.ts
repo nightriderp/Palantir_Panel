@@ -4,9 +4,21 @@ import { createDrizzleRoleRepository, seedRoles } from '../modules/rbac/index.js
 import {
   drizzleNotificationRuleSeedStore,
   seedDefaultNotificationRules,
+  type SeededNotificationRule,
 } from '../modules/notifications/seed.js';
 import { seedDefaultHostNode } from '../modules/server-orchestration/seed.js';
 import { closeDb, getDb } from './client.js';
+
+/**
+ * Regelname für die Ausgabe.
+ *
+ * Der Empfängerkreis gehört dazu, seit `resource.low` zwei Vorgaben hat
+ * (Fundpunkt 167) – sonst stünde dasselbe Ereignis zweimal ohne Unterschied in
+ * der Zeile.
+ */
+function regelName(rule: SeededNotificationRule): string {
+  return `${rule.event} (${rule.recipientScope === 'role' ? 'Rolle' : 'Besitzer'})`;
+}
 
 /**
  * Legt die Rollen der Ersteinrichtung an
@@ -70,16 +82,18 @@ async function main(): Promise<void> {
   const rules = await seedDefaultNotificationRules(drizzleNotificationRuleSeedStore(db));
 
   if (rules.created.length > 0) {
-    console.log(`Angelegte Benachrichtigungs-Regeln: ${rules.created.join(', ')}`);
+    console.log(`Angelegte Benachrichtigungs-Regeln: ${rules.created.map(regelName).join(', ')}`);
   }
 
   if (rules.existing.length > 0) {
-    console.log(`Regeln bereits vorhanden (unverändert): ${rules.existing.join(', ')}`);
+    console.log(
+      `Regeln bereits vorhanden (unverändert): ${rules.existing.map(regelName).join(', ')}`,
+    );
   }
 
   if (rules.adminRoleMissing) {
     console.warn(
-      'Rolle „Admin" nicht gefunden – die Regeln für neue Registrierungen und knappe Ressourcen wurden ausgelassen.',
+      'Rolle „Admin" nicht gefunden – die Rollen-Regeln für neue Registrierungen und knappe Ressourcen wurden ausgelassen.',
     );
   }
 }
