@@ -812,6 +812,10 @@ class SweepRepository implements ServerRepository {
     return Promise.resolve(HOST);
   }
 
+  countHosts(): Promise<number> {
+    return Promise.resolve(1);
+  }
+
   markHostConnected(): Promise<void> {
     return this.nichtGebraucht('markHostConnected');
   }

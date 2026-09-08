@@ -67,6 +67,9 @@ async function buildApp(
     log,
     token: TOKEN,
     resolveHostId: async (): Promise<string | null> => HOST_ID,
+    // Vorgabe: genau eine Node – dann bleibt das gemeinsame Token zulässig
+    // (Fundpunkt 149). Die Tests dazu setzen die Zahl selbst.
+    countHosts: async (): Promise<number> => 1,
     ...overrides,
   });
   await app.ready();
@@ -249,6 +252,119 @@ describe('Quelladressen-Allowlist (Fundpunkt 121, AGENT_SOURCE_ALLOWLIST)', () =
       code: CLOSE_CODE_UNAUTHORIZED,
       reason: 'Ungültiges Agent-Token.',
     });
+  });
+});
+
+describe('Gemeinsames AGENT_TOKEN nur bei einer Node (Fundpunkt 149)', () => {
+  /** Token einer bestimmten Node – die Nachschlagefunktion liefert deren Id. */
+  const NODE_TOKEN = 'palantir-agent_token-der-zweiten-node';
+  const ZWEITE_NODE_ID = '22222222-2222-4222-8222-222222222222';
+
+  const nodeTokenAufloesung = async (token: string): Promise<string | null> =>
+    token === NODE_TOKEN ? ZWEITE_NODE_ID : null;
+
+  it('nimmt das gemeinsame Token an, solange nur eine Node eingetragen ist', async () => {
+    const { app: instance, log } = await buildApp({
+      countHosts: async (): Promise<number> => 1,
+      resolveHostIdByToken: nodeTokenAufloesung,
+    });
+
+    const verbindung = await verbinden(instance, {
+      peer: '10.10.0.2',
+      authorization: `Bearer ${TOKEN}`,
+    });
+    verbindung.send(hello());
+
+    const antwort = JSON.parse(await verbindung.firstMessage) as { kind: string };
+
+    expect(antwort.kind).toBe('welcome');
+    expect(log.warnings).toEqual([]);
+    verbindung.terminate();
+  });
+
+  it('lehnt das gemeinsame Token ab, sobald eine zweite Node eingetragen ist – und nennt den Grund', async () => {
+    const resolveHostId = vi.fn(async (): Promise<string | null> => HOST_ID);
+    const { app: instance, log } = await buildApp({
+      countHosts: async (): Promise<number> => 2,
+      resolveHostIdByToken: nodeTokenAufloesung,
+      resolveHostId,
+    });
+
+    const verbindung = await verbinden(instance, {
+      peer: '10.10.0.2',
+      authorization: `Bearer ${TOKEN}`,
+    });
+
+    await expect(verbindung.closed).resolves.toEqual({
+      code: CLOSE_CODE_UNAUTHORIZED,
+      reason: 'Mehrere Nodes eingetragen: Es wird das Agent-Token dieser Node verlangt.',
+    });
+    // Es wird gar nicht erst eine Node ausgewählt – das war ja der Fehler.
+    expect(resolveHostId).not.toHaveBeenCalled();
+    expect(log.warnings).toHaveLength(1);
+    expect(log.warnings[0]).toContain('mehrere Nodes eingetragen');
+    // Der Weg heraus steht im Log, nicht nur die Ablehnung.
+    expect(log.warnings[0]).toContain('agent-token');
+    // Das Token gehört auch hier nicht ins Protokoll.
+    expect(log.warnings[0]).not.toContain(TOKEN);
+  });
+
+  it('nimmt ein Node-Token mit einer Node an', async () => {
+    const { app: instance } = await buildApp({
+      countHosts: async (): Promise<number> => 1,
+      resolveHostIdByToken: nodeTokenAufloesung,
+    });
+
+    const verbindung = await verbinden(instance, {
+      peer: '10.10.0.2',
+      authorization: `Bearer ${NODE_TOKEN}`,
+    });
+    verbindung.send(hello());
+
+    const antwort = JSON.parse(await verbindung.firstMessage) as { kind: string };
+
+    expect(antwort.kind).toBe('welcome');
+    verbindung.terminate();
+  });
+
+  it('nimmt dasselbe Node-Token auch mit zwei Nodes an', async () => {
+    const countHosts = vi.fn(async (): Promise<number> => 2);
+    const { app: instance, log } = await buildApp({
+      countHosts,
+      resolveHostIdByToken: nodeTokenAufloesung,
+    });
+
+    const verbindung = await verbinden(instance, {
+      peer: '10.10.0.2',
+      authorization: `Bearer ${NODE_TOKEN}`,
+    });
+    verbindung.send(hello());
+
+    const antwort = JSON.parse(await verbindung.firstMessage) as { kind: string };
+
+    expect(antwort.kind).toBe('welcome');
+    // Ein Node-Token benennt seine Node selbst – die Zahl der Nodes ist dafür
+    // ohne Belang und wird gar nicht erst abgefragt.
+    expect(countHosts).not.toHaveBeenCalled();
+    expect(log.warnings).toEqual([]);
+    verbindung.terminate();
+  });
+
+  it('prüft die Node-Zahl erst nach dem Token', async () => {
+    const countHosts = vi.fn(async (): Promise<number> => 2);
+    const { app: instance } = await buildApp({ countHosts });
+
+    const verbindung = await verbinden(instance, {
+      peer: '10.10.0.2',
+      authorization: 'Bearer falsch',
+    });
+
+    await expect(verbindung.closed).resolves.toEqual({
+      code: CLOSE_CODE_UNAUTHORIZED,
+      reason: 'Ungültiges Agent-Token.',
+    });
+    // Ein falsches Token erfährt nichts über die Größe der Installation.
+    expect(countHosts).not.toHaveBeenCalled();
   });
 });
 

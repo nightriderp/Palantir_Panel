@@ -21,6 +21,7 @@
 
 import { type ServerResourceLimits } from '@palantir/contracts';
 import { ServerOrchestrationError } from './errors.js';
+import { type PortAllocator } from './ports.js';
 import { type ServerRepository } from './repository.js';
 
 export interface ResourceCheckRequest {
@@ -130,6 +131,31 @@ export async function assertResourcesAvailable(
 }
 
 /**
+ * Was innerhalb einer Reservierung geschrieben werden darf.
+ *
+ * Bei der Drizzle-Umsetzung hängen **beide** Einträge an derselben
+ * Transaktion – deshalb ein gemeinsames Objekt statt zweier Parameter, die
+ * unbemerkt aus verschiedenen Verbindungen stammen könnten.
+ */
+export interface ReservationScope {
+  /** Server-Tabelle (Anlegen, Zustandswechsel). */
+  readonly servers: ServerRepository;
+  /**
+   * Portvergabe in derselben Transaktion (Fundpunkt 135).
+   *
+   * Bis hierher lag sie außerhalb: `PortPoolService.allocateForServer()` fängt
+   * eine Kollision zweier paralleler Vergaben über die Unique-Verletzung des
+   * Index ab und versucht den nächsten freien Port – und ein Constraint-Fehler
+   * bricht innerhalb einer Transaktion die ganze Transaktion ab. Seit die
+   * Drizzle-Umsetzung des Port-Pools jeden Einfügeversuch in einen eigenen
+   * Savepoint stellt (`createDrizzlePortPoolRepository`), rollt ein
+   * Fehlversuch nur diesen Savepoint zurück – und die Vergabe kann dorthin, wo
+   * sie hingehört: neben den Datensatz des Servers, mit demselben Rollback.
+   */
+  readonly ports: PortAllocator;
+}
+
+/**
  * Prüfung **und** belegende Schreiboperation als eine serialisierte Einheit.
  *
  * Die reine {@link assertResourcesAvailable} liest die Belegung, der Insert bzw.
@@ -149,13 +175,13 @@ export interface CapacityReservation {
    * Node bzw. desselben Nutzers. Bei Ablehnung wird `write` nicht ausgeführt und
    * `RESOURCE_LIMIT_EXCEEDED` geworfen.
    *
-   * `write` erhält das für die Reservierung gültige {@link ServerRepository} –
-   * bei der Drizzle-Umsetzung das transaktionsgebundene, damit Prüfung und
-   * Schreiben tatsächlich atomar sind.
+   * `write` erhält den für die Reservierung gültigen {@link ReservationScope} –
+   * bei der Drizzle-Umsetzung die transaktionsgebundenen Fassungen, damit
+   * Prüfung und Schreiben tatsächlich atomar sind.
    */
   reserve<T>(
     request: ResourceCheckRequest,
-    write: (repository: ServerRepository) => Promise<T>,
+    write: (scope: ReservationScope) => Promise<T>,
   ): Promise<T>;
 }
 
@@ -170,12 +196,15 @@ export interface CapacityReservation {
 export function createInlineCapacityReservation(
   guard: ResourceGuard,
   repository: ServerRepository,
+  ports: PortAllocator,
 ): CapacityReservation {
+  const scope: ReservationScope = { servers: repository, ports };
+
   return {
     async reserve(request, write) {
       await assertResourcesAvailable(guard, request);
 
-      return write(repository);
+      return write(scope);
     },
   };
 }

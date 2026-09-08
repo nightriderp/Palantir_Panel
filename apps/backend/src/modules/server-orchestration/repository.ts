@@ -168,6 +168,16 @@ export interface ServerRepository {
    * jedem Aufruf (Audit W3-6, orchestration-core-10).
    */
   defaultHost(): Promise<HostNodeRecord | null>;
+  /**
+   * Anzahl der eingetragenen Nodes (Fundpunkt 149).
+   *
+   * Einziger Nutzer ist der Agent-Endpunkt: Ab der zweiten Node ist
+   * {@link ServerRepository.defaultHost} zwar deterministisch, aber nicht mehr
+   * *richtig* – eine Anmeldung mit dem gemeinsamen `AGENT_TOKEN` landete dann
+   * verlässlich auf der ältesten Node, auch wenn der Agent auf der neuen läuft.
+   * Ab zwei Nodes wird das gemeinsame Token deshalb abgelehnt.
+   */
+  countHosts(): Promise<number>;
   findHost(hostId: string): Promise<HostNodeRecord | null>;
   /**
    * Hält den Verbindungszustand einer Node fest, wenn ihr Agent den Handshake
@@ -543,6 +553,14 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
         .limit(1);
 
       return rows[0] ?? null;
+    },
+
+    async countHosts(): Promise<number> {
+      // `count(*)` statt einer geladenen Liste: Der Agent-Endpunkt fragt das bei
+      // jedem Verbindungsaufbau, und gebraucht wird nur die Zahl.
+      const rows = await db.select({ anzahl: sql<number>`count(*)::int` }).from(hostNodes);
+
+      return rows[0]?.anzahl ?? 0;
     },
 
     async findHost(hostId: string): Promise<HostNodeRecord | null> {
