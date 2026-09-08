@@ -185,11 +185,18 @@ export function liveStatsFromAgentPayload(
   }
 
   const memoryUsedBytes = numberOrNull(daten.memoryUsedBytes);
+  /*
+   * Optional im Vertrag (Fundpunkt 168): Ein älterer Agent kennt das Feld
+   * nicht, ein neuer lässt es weg, solange er den Datenordner noch nicht
+   * gemessen hat. `numberOrNull` bildet beides auf `null` ab – „nicht
+   * gemessen", nicht „null Bytes belegt".
+   */
+  const diskUsedBytes = numberOrNull(daten.diskUsedBytes);
 
   return {
     cpuPercent: numberOrNull(daten.cpuPercent),
     ramUsedMb: memoryUsedBytes === null ? null : toMebibytes(memoryUsedBytes),
-    diskUsedMb: null,
+    diskUsedMb: diskUsedBytes === null ? null : toMebibytes(diskUsedBytes),
     pingMs: query.pingMs,
     playersOnline: query.playersOnline,
     playersMax: query.playersMax,

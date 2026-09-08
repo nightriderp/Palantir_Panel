@@ -2379,9 +2379,20 @@ export class ServerOrchestrationService {
         const stats = await this.getStats(server.id);
         const abfrage = this.latestQuery.read(server.id, moment);
         const ramUsedMb = Math.round(stats.memoryUsedBytes / (1024 * 1024));
-        // Belegter Plattenplatz je Container liefert das Agent-Protokoll
-        // nicht; die Speicherübersicht (B8) misst node-weit.
-        const diskUsedMb = null;
+        /*
+         * Belegter Plattenplatz des Datenordners (Fundpunkt 168). Das Feld ist
+         * im Vertrag optional: Ein älterer Agent kennt es nicht, und auch ein
+         * neuer lässt es weg, solange er den Ordner noch nicht gemessen hat.
+         *
+         * Fehlt es, bleibt der Wert `null` – „nicht gemessen", **nicht** „null
+         * Bytes belegt". Der Unterschied zählt: `evaluateServerWarnings` lässt
+         * `null` fallen, aus einer 0 rechnete es dagegen „0 % belegt" und
+         * schwiege auch dann, wenn die Platte längst voll wäre.
+         */
+        const diskUsedMb =
+          stats.diskUsedBytes === undefined
+            ? null
+            : Math.round(stats.diskUsedBytes / (1024 * 1024));
 
         const probe: StatsSample = {
           serverId: server.id,

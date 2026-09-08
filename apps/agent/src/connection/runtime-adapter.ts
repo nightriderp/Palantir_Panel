@@ -325,7 +325,30 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
       case 'GET_STATS': {
         const p = payload as { containerId: string };
         const stats = await this.runtime.getStats(p.containerId);
-        return { ...stats };
+
+        /*
+         * Plattenplatz kommt nicht aus der Container-Engine (Fundpunkt 168):
+         * Der Datenordner ist ein Bind-Mount, und `blockReadBytes` zählt
+         * Ein-/Ausgabe, nicht Belegung. Er wird deshalb hier ergänzt, aus der
+         * eigenen Messung am Ordner.
+         *
+         * `usedMb()` wartet nie auf das Dateisystem, sondern gibt den letzten
+         * bekannten Wert heraus und stößt die Messung nur an – ein langsamer
+         * Weltordner verzögert damit keine Antwort. Solange nichts gemessen
+         * ist, bleibt das Feld weg: „nicht gemessen" ist etwas anderes als
+         * „null Bytes belegt", und aus einer fehlenden Messung darf nie eine
+         * Warnung entstehen.
+         *
+         * Ohne Job-Modul (`jobs` nicht eingehängt) oder ohne `serverId` bleibt
+         * es ebenfalls weg – dann gibt es keinen Ordner, den man messen könnte.
+         */
+        const belegtMb =
+          serverId === null ? null : (this.jobs?.serverDisk.usedMb(serverId) ?? null);
+
+        return {
+          ...stats,
+          ...(belegtMb === null ? {} : { diskUsedBytes: belegtMb * 1024 * 1024 }),
+        };
       }
       case 'GET_LOGS': {
         const p = payload as {

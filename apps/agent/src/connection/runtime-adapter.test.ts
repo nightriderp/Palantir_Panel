@@ -393,6 +393,71 @@ describe('Job-Befehle mit eingehängtem Job-Modul (A3)', () => {
     await fs.rm(wurzel, { recursive: true, force: true });
   });
 
+  /*
+   * Fundpunkt 168: Plattenplatz kommt nicht aus der Container-Engine – der
+   * Datenordner ist ein Bind-Mount, und `blockReadBytes` zählt Ein-/Ausgabe,
+   * nicht Belegung. Der Adapter ergänzt ihn aus der eigenen Messung.
+   */
+  describe('GET_STATS trägt den Plattenplatz des Datenordners', () => {
+    it('lässt das Feld weg, solange nichts gemessen ist', async () => {
+      const containerId = await containerMitJobs();
+      const antwort = await jobBefehl('GET_STATS', { containerId });
+
+      // „Noch nicht gemessen" ist etwas anderes als „null Bytes belegt": Aus
+      // einer 0 rechnete die Schwellwert-Prüfung „0 % belegt" und schwiege
+      // auch bei voller Platte.
+      expect(isOk(antwort)).toBe(true);
+      expect(antwort.data).not.toHaveProperty('diskUsedBytes');
+    });
+
+    it('liefert die Belegung, sobald der Ordner gemessen ist', async () => {
+      const containerId = await containerMitJobs();
+
+      await jobs.serverDisk.measureNow(SERVER_ID);
+
+      const antwort = await jobBefehl('GET_STATS', { containerId });
+      const daten = antwort.data as { diskUsedBytes?: number };
+
+      // Der Ordner enthält genau eine kleine Datei; auf MB gerundet ist das 0
+      // – das Feld muss trotzdem da sein, denn gemessen wurde.
+      expect(isOk(antwort)).toBe(true);
+      expect(typeof daten.diskUsedBytes).toBe('number');
+      expect(daten.diskUsedBytes).toBeGreaterThanOrEqual(0);
+    });
+
+    it('lässt das Feld ohne Server-Kennung weg', async () => {
+      const containerId = await containerMitJobs();
+      await jobs.serverDisk.measureNow(SERVER_ID);
+
+      const antwort = await mitJobs.execute({
+        correlationId: CORRELATION_ID,
+        command: 'GET_STATS',
+        serverId: null,
+        payload: { containerId },
+      });
+
+      // Ohne Kennung gibt es keinen Ordner, den man messen könnte.
+      expect(isOk(antwort)).toBe(true);
+      expect(antwort.data).not.toHaveProperty('diskUsedBytes');
+    });
+  });
+
+  /**
+   * Legt einen Container direkt ueber die Attrappe an.
+   *
+   * Bewusst nicht ueber den CREATE-Befehl: Dessen Pfadpruefung verlangt einen
+   * POSIX-absoluten Host-Pfad (`path.posix.isAbsolute`), und das temporaere
+   * Verzeichnis dieses Blocks ist auf Windows keiner. Fuer GET_STATS zaehlt
+   * nur, dass es den Container gibt.
+   */
+  async function containerMitJobs(): Promise<string> {
+    const handle = await runtime.create(toContainerSpec(CREATE_PAYLOAD, SERVER_ID));
+
+    runtime.setStats(handle.containerId, { cpuPercent: 1, memoryUsedBytes: 1024 });
+
+    return handle.containerId;
+  }
+
   function jobBefehl(command: string, payload: unknown) {
     return mitJobs.execute({
       correlationId: CORRELATION_ID,
