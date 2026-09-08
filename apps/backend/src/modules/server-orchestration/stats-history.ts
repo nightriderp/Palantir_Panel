@@ -23,6 +23,12 @@
  * **Kein eigener Timer.** Abgetastet wird im Minuten-Takt aus `scheduler.ts`,
  * genau wie Auto-Shutdown und die Zeitpläne.
  *
+ * **Zweiter Abnehmer derselben Abtastung.** Die Ressourcen-Warnung auf
+ * Server-Ebene (Lastenheft §3.3) braucht dieselben Zahlen. Sie liest sie aus
+ * der {@link ServerLoadRegistry}, die beim Abtasten mitgeschrieben wird –
+ * nicht aus der Tabelle: Sonst läge in jedem Takt eine zusätzliche Abfrage auf
+ * Zahlen, die derselbe Durchlauf gerade selbst erzeugt hat.
+ *
  * **Eine Uhr für den Verlauf** (W2-14, orchestration-features-03). Der
  * Zeitstempel einer Messung ist immer die Zeit des Backends beim Empfang, nie
  * die des Agents: Ein Homeserver ohne NTP kann Minuten oder Stunden daneben
@@ -41,6 +47,7 @@ import {
 import { and, asc, eq, gte, lt } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
 import { serverStatsSamples } from '../../db/schema.js';
+import { type ServerLoadSnapshot } from '../resources/index.js';
 
 /** Eine Stichprobe, wie Dienst und Repository sie austauschen. */
 export interface StatsSample {
@@ -347,5 +354,98 @@ export class LatestQueryCache {
 
   forget(serverId: string): void {
     this.#werte.delete(serverId);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Last je Server – Quelle der Warnungen auf Server-Ebene (Lastenheft §3.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * `cpuPercent` in absolute Kerne.
+ *
+ * `ServerLiveStats.cpuPercent` und `AgentContainerStats.cpuPercent` messen
+ * Prozent **eines Kerns**: `250` heißt 2,5 ausgelastete Kerne – ausdrücklich
+ * nicht 250 % irgendeines Kontingents. Die Schwellwertprüfung rechnet dagegen
+ * in Kernen gegen `resourceLimits.cpuCores`.
+ *
+ * Die Umrechnung steht deshalb hier, an der Messstelle, und nicht im
+ * Schwellwert-Modul: Wer dort einen Prozentwert entgegennähme, müsste dessen
+ * Bezugsgröße raten. Ein Fehler an dieser Stelle fällt lange nicht auf – er
+ * erzeugt entweder Dauerwarnungen (Faktor 100 zu hoch) oder gar keine.
+ *
+ * `null` bleibt `null`: „kein Messwert" ist keine 0.
+ */
+export function cpuCoresFromPercent(cpuPercent: number | null): number | null {
+  return cpuPercent === null ? null : cpuPercent / 100;
+}
+
+/**
+ * Zuletzt gemessene Last der laufenden Server, je Node.
+ *
+ * **Warum im Speicher und nicht aus der Datenbank.** Die Werte entstehen
+ * ohnehin in jedem Takt beim Abtasten des Verlaufs (`sampleServerStats()`) –
+ * dort liegen Messwert, Limit und Besitzer bereits zusammen vor. Sie für die
+ * Warnungen ein zweites Mal aus `server_stats_samples` zu lesen wäre je Takt
+ * eine zusätzliche Abfrage für Zahlen, die der Prozess gerade selbst
+ * geschrieben hat. Wie beim {@link LatestQueryCache} gilt: Ein Messwert ist
+ * genau bis zur nächsten Abtastung interessant und darf einen Neustart des
+ * Backends nicht überleben.
+ *
+ * **Warum der Stand je Node vollständig ersetzt wird.** Ein Server, der
+ * gestoppt oder gelöscht wurde, taucht in der nächsten Abtastung schlicht nicht
+ * mehr auf – und fällt damit von selbst heraus. Ein Zwischenspeicher, aus dem
+ * einzelne Einträge entfernt werden müssten, bräuchte an jedem Lebenszyklus-Weg
+ * einen Aufruf; genau einer davon wird beim nächsten Umbau vergessen, und dann
+ * warnt ein längst gestoppter Server weiter.
+ */
+export class ServerLoadRegistry {
+  readonly #maxAlterMs: number;
+  readonly #zukunftsToleranzMs: number;
+  /** Node → zuletzt gemessene Last ihrer laufenden Server. */
+  readonly #proNode = new Map<string, { at: number; loads: readonly ServerLoadSnapshot[] }>();
+
+  constructor(maxAlterMs: number, zukunftsToleranzMs: number = CLOCK_SKEW_TOLERANCE_MS) {
+    this.#maxAlterMs = maxAlterMs;
+    this.#zukunftsToleranzMs = zukunftsToleranzMs;
+  }
+
+  /** Ersetzt den Stand einer Node vollständig. */
+  replace(nodeId: string, loads: readonly ServerLoadSnapshot[], at: Date): void {
+    this.#proNode.set(nodeId, { at: at.getTime(), loads });
+  }
+
+  /**
+   * Alle Messwerte, die noch zählen.
+   *
+   * Zu alt heißt: Seit der letzten Abtastung dieser Node ist mehr als ein
+   * Takt vergangen – der Agent hängt, ist abgemeldet oder die Node ist weg. Auf
+   * so einen Wert hin zu warnen hieße, einen Zustand zu melden, den niemand
+   * mehr misst. Das Fenster gilt wie beim {@link LatestQueryCache} in beide
+   * Richtungen: Ein Eintrag aus der Zukunft (zurückspringende Backend-Uhr)
+   * würde sonst nie verfallen.
+   */
+  list(now: Date): readonly ServerLoadSnapshot[] {
+    const aktuell: ServerLoadSnapshot[] = [];
+
+    for (const [nodeId, eintrag] of this.#proNode) {
+      const alter = now.getTime() - eintrag.at;
+
+      if (alter > this.#maxAlterMs || alter < -this.#zukunftsToleranzMs) {
+        // Nicht nur überspringen, sondern vergessen: Eine abgemeldete Node
+        // bekommt sonst nie wieder jemand aus der Tabelle.
+        this.#proNode.delete(nodeId);
+        continue;
+      }
+
+      aktuell.push(...eintrag.loads);
+    }
+
+    return aktuell;
+  }
+
+  /** Vergisst eine Node (Verbindung beendet, Node gelöscht). */
+  forget(nodeId: string): void {
+    this.#proNode.delete(nodeId);
   }
 }

@@ -50,6 +50,7 @@
 
 import type { ResourceLowEvent } from '@palantir/contracts';
 import { fireAndForget } from './lib/fire-and-forget.js';
+import { type ServerLoadSnapshot } from './modules/resources/index.js';
 
 /** Eine Aufgabe, die der Zeitgeber periodisch anstößt. */
 export interface ScheduledTask {
@@ -375,6 +376,22 @@ export function statsSamplingTask(
 /** Ausschnitt des Ressourcen-Service, den der Zeitgeber braucht (B4). */
 export interface NodeWarningEvaluator {
   evaluateAllNodeWarnings(): Promise<readonly ResourceLowEvent[]>;
+  /**
+   * Server-Ebene: derselbe Dienst, andere Bezugsgröße. Synchron, weil die
+   * Messwerte mitgereicht werden und keine Abfrage nötig ist.
+   */
+  evaluateAllServerWarnings(loads: readonly ServerLoadSnapshot[]): readonly ResourceLowEvent[];
+}
+
+/**
+ * Quelle der Messwerte je Server (B3).
+ *
+ * Der Zeitgeber holt die Werte nicht selbst: Sie entstehen im selben Durchlauf
+ * bereits in `statsSamplingTask`, die vor dieser Aufgabe läuft. Deshalb ein
+ * reiner Lesezugriff ohne Promise – nichts wird hier abgefragt, nur abgeholt.
+ */
+export interface ServerLoadSource {
+  listServerLoads(): readonly ServerLoadSnapshot[];
 }
 
 /**
@@ -388,39 +405,99 @@ export interface ResourceEventSink {
 }
 
 /**
+ * Kennung einer Warnlage – Ebene, Ressource und betroffene Einheit.
+ *
+ * Grundlage der Kantenerkennung weiter unten: Zwei Läufe melden dieselbe Lage,
+ * solange sich an diesen vier Angaben nichts ändert.
+ */
+function warnungsSchluessel(warning: ResourceLowEvent): string {
+  return `${warning.scope}:${warning.nodeId}:${warning.serverId ?? '-'}:${warning.resource}`;
+}
+
+/**
  * Ressourcen-Warnungen periodisch auswerten und als `resource.low` melden
- * (Pflichtenheft §10 und §14).
+ * (Pflichtenheft §10 und §14, Lastenheft §3.3).
  *
  * Der fehlende Takt aus WORK_STATUS.md (Gefundener Punkt 80): Die Auswertung in
- * B4 (`evaluateNodeWarnings()`) rechnet die Nutzlast, ausgelöst wird sie hier.
- * Kein eigener Timer – die eine Stelle für periodische Abläufe ist dieser
- * Zeitgeber.
+ * B4 rechnet die Nutzlast, ausgelöst wird sie hier. Kein eigener Timer – die
+ * eine Stelle für periodische Abläufe ist dieser Zeitgeber.
  *
- * Ausgewertet wird die **Node-Ebene** (Belegung der VM gegen ihre
- * Gesamt-Ressourcen). Die Server-Ebene (`evaluateServerWarnings()`) braucht
- * gemessene Live-Werte je Container; dass das Agent-Protokoll dafür noch keinen
- * node-weiten Wert kennt, ist in `modules/resources/node-usage.ts` und in
- * WORK_STATUS.md vermerkt und gehört nicht in dieses Verdrahtungs-Paket.
+ * **Beide Ebenen, wie im Lastenheft §3.3 verlangt:**
+ *
+ * - **Node:** Belegung der VM gegen ihre Gesamt-Ressourcen (`evaluateAllNodeWarnings()`).
+ * - **Server:** Verbrauch eines einzelnen Servers gegen sein *eigenes* Limit
+ *   (`evaluateAllServerWarnings()`). Bis hierher lief die Server-Ebene ins
+ *   Leere: Der Kopfkommentar verwies auf ein Agent-Protokoll, das die Werte je
+ *   Server nicht liefere. Das stimmt seit `ServerLiveStats` nicht mehr –
+ *   `cpuPercent`, `ramUsedMb` und `diskUsedMb` stehen dort je Server, und der
+ *   Verlauf hält dieselben Größen fest. `RESOURCE_WARN_SERVER_PERCENT` war
+ *   dadurch wirkungslos: Ein Server, der sein Kontingent füllte, meldete sich
+ *   nicht, solange die Node insgesamt Luft hatte.
+ *
+ * **Woher die Messwerte kommen.** Aus {@link ServerLoadSource} – dem Stand, den
+ * `statsSamplingTask` in *diesem* Durchlauf geschrieben hat (sie steht in
+ * `server.ts` vor dieser Aufgabe). Keine eigene Abfrage, kein zweiter Weg zum
+ * Agent. Server ohne aktuelle Messung stehen gar nicht erst darin.
+ *
+ * **Kein Warnungsregen.** Der Zeitgeber läuft jede Minute; ohne weiteres Zutun
+ * wäre jede anhaltende Lage in jedem Takt eine neue Meldung in der Inbox.
+ * Gemeldet wird deshalb nur der **Übergang** unter → über die Schwelle. Fällt
+ * die Belegung wieder darunter, ist die Lage vergessen und ein erneutes
+ * Überschreiten wieder eine Meldung wert. Die Node-Ebene löste das bisher gar
+ * nicht – sie meldete in jedem Takt neu; die Kantenerkennung gilt jetzt für
+ * beide Ebenen gleich. Der Zustand liegt im Prozess: Nach einem Neustart des
+ * Backends darf eine anhaltende Lage einmal neu gemeldet werden – das ist keine
+ * Flut, aber ein Hinweis, dass sie den Neustart überdauert hat.
  */
 export function resourceWarningTask(
   resources: NodeWarningEvaluator,
+  servers: ServerLoadSource,
   sink: ResourceEventSink,
   log: SchedulerLogger,
 ): ScheduledTask {
+  /** Lagen, die im vorigen Durchlauf über der Schwelle standen. */
+  let gemeldet = new Set<string>();
+
   return {
     name: 'resourceWarnings',
     async run(): Promise<void> {
-      const warnings = await resources.evaluateAllNodeWarnings();
+      const lasten = servers.listServerLoads();
+      const besitzer = new Map(lasten.map((last) => [last.serverId, last.ownerId]));
+      const warnings = [
+        ...(await resources.evaluateAllNodeWarnings()),
+        ...resources.evaluateAllServerWarnings(lasten),
+      ];
+
+      const aktuell = new Set<string>();
+      let neue = 0;
 
       for (const warning of warnings) {
-        // ResourceLowEvent (B4) → Nutzlast von `resource.low` (B6): nur `ownerId`
-        // ergänzt; `at` trägt das Ereignis schon, `actorId` setzt die Senke.
-        // Node-Ebene hat keinen Besitzer, deshalb `ownerId: null`.
-        sink.emit('resource.low', { ...warning, ownerId: null });
+        const schluessel = warnungsSchluessel(warning);
+        aktuell.add(schluessel);
+
+        if (gemeldet.has(schluessel)) {
+          continue;
+        }
+
+        /*
+         * ResourceLowEvent (B4) → Nutzlast von `resource.low` (B6): nur
+         * `ownerId` ergänzt; `at` trägt das Ereignis schon, `actorId` setzt die
+         * Senke. Eine Node hat keinen Besitzer (`null`), ein Server schon – und
+         * genau er soll die Meldung bekommen (Empfängerkreis `resourceOwner`,
+         * siehe `modules/notifications/recipients.ts`).
+         */
+        const ownerId = warning.serverId === null ? null : (besitzer.get(warning.serverId) ?? null);
+
+        sink.emit('resource.low', { ...warning, ownerId });
+        neue += 1;
       }
 
-      if (warnings.length > 0) {
-        log.debug({ count: warnings.length }, 'Ressourcen-Warnungen gemeldet');
+      // Was nicht mehr über der Schwelle liegt, fällt aus der Menge und darf
+      // beim nächsten Überschreiten wieder melden.
+      gemeldet = aktuell;
+
+      if (neue > 0) {
+        log.debug({ count: neue, anhaltend: aktuell.size - neue }, 'Ressourcen-Warnungen gemeldet');
       }
     },
   };

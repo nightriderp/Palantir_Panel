@@ -8,17 +8,22 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { type ServerLoadSnapshot } from '../resources/index.js';
 import {
   CLOCK_SKEW_LOG_INTERVAL_MS,
   CLOCK_SKEW_TOLERANCE_MS,
   ClockSkewMonitor,
   LatestQueryCache,
+  ServerLoadRegistry,
   type StatsSample,
+  cpuCoresFromPercent,
   toLiveStats,
   toStatsHistoryDto,
 } from './stats-history.js';
 
 const SERVER_ID = '11111111-1111-4111-8111-111111111111';
+const NODE_ID = '22222222-2222-4222-8222-222222222222';
+const OWNER_ID = '33333333-3333-4333-8333-333333333333';
 
 function probe(overrides: Partial<StatsSample> = {}): StatsSample {
   return {
@@ -255,5 +260,109 @@ describe('Uhrenabgleich mit dem Agent', () => {
     monitor.forget(SERVER_ID);
 
     expect(monitor.check(SERVER_ID, versetzt(90_000), EMPFANGEN).shouldLog).toBe(true);
+  });
+});
+
+/**
+ * Umrechnung von `cpuPercent` in Kerne (Lastenheft §3.3, Warnung auf
+ * Server-Ebene).
+ *
+ * Die Stelle, an der ein stiller Faktor 100 entstehen kann: Der Vertrag misst
+ * Prozent **eines Kerns**, die Schwellwertprüfung rechnet in Kernen gegen
+ * `resourceLimits.cpuCores`. Wer beides verwechselt, bekommt entweder in jedem
+ * Takt eine Warnung oder nie eine – und merkt es lange nicht.
+ */
+describe('cpuPercent in Kerne', () => {
+  it('liest einen Wert über 100 als mehrere Kerne', () => {
+    // 250 % eines Kerns sind 2,5 ausgelastete Kerne – nicht 250 % des
+    // Kontingents. Gegenprobe zur naheliegenden Fehlrechnung.
+    expect(cpuCoresFromPercent(250)).toBe(2.5);
+    expect(cpuCoresFromPercent(380)).toBe(3.8);
+  });
+
+  it('rechnet Werte unter 100 auf einen Bruchteil eines Kerns', () => {
+    expect(cpuCoresFromPercent(42.5)).toBe(0.425);
+    expect(cpuCoresFromPercent(0)).toBe(0);
+  });
+
+  it('macht aus „kein Messwert" keine Null', () => {
+    expect(cpuCoresFromPercent(null)).toBeNull();
+  });
+});
+
+describe('Stand der Server-Last', () => {
+  const JETZT = new Date('2026-09-01T10:00:00.000Z');
+  const TAKT_MS = 60_000;
+
+  function last(overrides: Partial<ServerLoadSnapshot> = {}): ServerLoadSnapshot {
+    return {
+      serverId: SERVER_ID,
+      nodeId: NODE_ID,
+      ownerId: OWNER_ID,
+      limits: { ramMb: 4096, cpuCores: 2, diskMb: 20_480 },
+      usedRamMb: 3900,
+      usedCpuCores: 0.4,
+      usedDiskMb: null,
+      ...overrides,
+    };
+  }
+
+  it('liefert den zuletzt geschriebenen Stand einer Node', () => {
+    const stand = new ServerLoadRegistry(2 * TAKT_MS);
+    stand.replace(NODE_ID, [last()], JETZT);
+
+    expect(stand.list(JETZT)).toEqual([last()]);
+  });
+
+  it('ersetzt den Stand einer Node vollständig, statt ihn zu ergänzen', () => {
+    // Der Fall „Server gestoppt": Er taucht in der nächsten Abtastung nicht
+    // mehr auf und darf danach keine Warnung mehr auslösen.
+    const stand = new ServerLoadRegistry(2 * TAKT_MS);
+    const zweiter = '44444444-4444-4444-8444-000000000001';
+
+    stand.replace(NODE_ID, [last(), last({ serverId: zweiter })], JETZT);
+    stand.replace(NODE_ID, [last()], new Date(JETZT.getTime() + TAKT_MS));
+
+    expect(
+      stand.list(new Date(JETZT.getTime() + TAKT_MS)).map((eintrag) => eintrag.serverId),
+    ).toEqual([SERVER_ID]);
+  });
+
+  it('hält Nodes auseinander', () => {
+    const stand = new ServerLoadRegistry(2 * TAKT_MS);
+    const andere = '55555555-5555-4555-8555-000000000002';
+
+    stand.replace(NODE_ID, [last()], JETZT);
+    stand.replace(andere, [last({ nodeId: andere })], JETZT);
+
+    expect(stand.list(JETZT)).toHaveLength(2);
+  });
+
+  it('lässt einen Stand nach zwei Takten verfallen', () => {
+    // Zwei Takte ohne Messung heißen: Der Agent ist weg oder die Abtastung
+    // scheitert. Auf so einen Wert hin zu warnen wäre eine Meldung über einen
+    // Zustand, den niemand mehr misst.
+    const stand = new ServerLoadRegistry(2 * TAKT_MS);
+    stand.replace(NODE_ID, [last()], JETZT);
+
+    expect(stand.list(new Date(JETZT.getTime() + 2 * TAKT_MS))).toHaveLength(1);
+    expect(stand.list(new Date(JETZT.getTime() + 2 * TAKT_MS + 1))).toEqual([]);
+  });
+
+  it('lässt einen Stand weit aus der Zukunft verfallen', () => {
+    // Sonst altert er nie – dieselbe Falle wie beim Zwischenspeicher der
+    // Server-Abfrage (W2-14).
+    const stand = new ServerLoadRegistry(2 * TAKT_MS);
+    stand.replace(NODE_ID, [last()], new Date(JETZT.getTime() + 2 * 60 * 60 * 1000));
+
+    expect(stand.list(JETZT)).toEqual([]);
+  });
+
+  it('vergisst eine Node auf Anforderung', () => {
+    const stand = new ServerLoadRegistry(2 * TAKT_MS);
+    stand.replace(NODE_ID, [last()], JETZT);
+    stand.forget(NODE_ID);
+
+    expect(stand.list(JETZT)).toEqual([]);
   });
 });

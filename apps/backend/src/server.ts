@@ -727,7 +727,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * Ressourcen-Warnungen (B4) laufen über dieselbe Zählung wie die harte
      * Kapazitätsprüfung – `serverUsage` gegen die Node-Ressourcen. Ausgelöst
      * wird `resource.low` in den Takt hinein (WORK_STATUS.md, Gefundener
-     * Punkt 80).
+     * Punkt 80). Auf Server-Ebene kommen die Messwerte aus B3 (`orchestration`),
+     * das sie beim Abtasten des Verlaufs ohnehin schon erhebt.
      */
     /*
      * Kontingent-Routen (`/admin/users/:userId/limits`, Gefundener Punkt 88).
@@ -799,7 +800,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         backupScheduleTask(backupSchedules, app.log),
         serverScheduleTask(serverSchedules, app.log),
         statsSamplingTask(orchestration, agents, app.log),
-        resourceWarningTask(resources, notifications.eventSink, app.log),
+        // Muss **nach** der Abtastung stehen: Die Warnung auf Server-Ebene
+        // rechnet mit den Messwerten, die der Schritt darüber gerade in
+        // diesem Durchlauf geschrieben hat.
+        resourceWarningTask(resources, orchestration, notifications.eventSink, app.log),
         panelBackupTask(panelBackups, app.log),
         // Abgerissene Läufe und die Aufbewahrungsfrist (Audit W1-6,
         // Fundpunkte 130 und 131). Eigener Abstand innerhalb des Takts: Hier

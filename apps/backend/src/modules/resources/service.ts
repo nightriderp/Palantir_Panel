@@ -46,7 +46,11 @@ import type {
   UserResourceLimitRecord,
   UserResourceLimitRepository,
 } from './ports.js';
-import { evaluateNodeWarnings } from './thresholds.js';
+import {
+  type ServerLoadSnapshot,
+  evaluateNodeWarnings,
+  evaluateServerWarnings,
+} from './thresholds.js';
 
 /**
  * `permissions`-Objekt eines Kontingent-DTOs (Pflichtenheft §5.2).
@@ -179,6 +183,26 @@ export interface ResourceService {
    * Notification-Engine zu geben. Eine Node ohne Warnung liefert nichts.
    */
   evaluateAllNodeWarnings(at?: Date): Promise<ResourceLowEvent[]>;
+
+  /**
+   * Dasselbe eine Ebene tiefer: jeder gemessene Server gegen sein **eigenes**
+   * Limit (Lastenheft §3.3 – Warnungen auf Server- *und* Node-Ebene).
+   *
+   * Bewusst **synchron und ohne eigene Abfrage**: Die Messwerte bringt der
+   * Aufrufer mit. Sie entstehen ohnehin schon beim Abtasten des Verlaufs in
+   * B3 (`sampleServerStats()`); sie hier ein zweites Mal zu beschaffen wäre in
+   * jedem Takt eine zusätzliche Runde zum Agent und zur Datenbank. Was der
+   * Dienst beisteuert, ist allein der Schwellwert
+   * (`RESOURCE_WARN_SERVER_PERCENT`) – damit er an einer Stelle steht.
+   *
+   * Ein Messwert, der `null` ist, erzeugt keine Warnung (siehe
+   * `thresholds.ts`); ein Server ohne aktuelle Messung steht gar nicht erst in
+   * `loads`.
+   */
+  evaluateAllServerWarnings(
+    loads: readonly ServerLoadSnapshot[],
+    at?: Date,
+  ): readonly ResourceLowEvent[];
 }
 
 export interface ResourceServiceDependencies {
@@ -427,6 +451,21 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
       );
 
       return perNode.flat();
+    },
+
+    evaluateAllServerWarnings(loads, at) {
+      return loads.flatMap((load) =>
+        evaluateServerWarnings({
+          serverId: load.serverId,
+          nodeId: load.nodeId,
+          limits: load.limits,
+          usedRamMb: load.usedRamMb,
+          usedCpuCores: load.usedCpuCores,
+          usedDiskMb: load.usedDiskMb,
+          thresholdPercent: deps.thresholds.serverPercent,
+          ...(at ? { at } : {}),
+        }),
+      );
     },
   };
 }

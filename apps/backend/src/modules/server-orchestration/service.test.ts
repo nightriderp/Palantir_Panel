@@ -3773,4 +3773,58 @@ describe('Verlauf der Messwerte (Arbeitspaket P5)', () => {
     expect(await harness.service.sampleServerStats(HOST.id)).toEqual([]);
     expect((await harness.service.getStatsHistory(serverId, 60)).samples).toEqual([]);
   });
+
+  /**
+   * Zweiter Abnehmer derselben Abtastung: die Ressourcen-Warnung auf
+   * Server-Ebene (Lastenheft §3.3). Sie bekommt ihre Zahlen aus diesem
+   * Durchlauf und stellt keine eigene Abfrage.
+   */
+  describe('Last je Server für die Ressourcen-Warnung', () => {
+    it('liefert Messwert, Limit und Besitzer eines laufenden Servers', async () => {
+      const harness = makeHarness({ statsHistory: fakeAblage() });
+      const serverId = await laufenderServer(harness);
+      const server = await harness.service.requireServer(serverId);
+
+      await harness.service.sampleServerStats(HOST.id);
+
+      expect(harness.service.listServerLoads()).toEqual([
+        {
+          serverId,
+          nodeId: HOST.id,
+          ownerId: OWNER_ID,
+          limits: server.resourceLimits,
+          // 512 MiB der Attrappe.
+          usedRamMb: 512,
+          // 42,5 % **eines Kerns** sind 0,425 Kerne – nicht 42,5.
+          usedCpuCores: 0.425,
+          // Belegter Plattenplatz je Container fehlt im Agent-Protokoll; `null`
+          // darf nie zu einer Warnung führen.
+          usedDiskMb: null,
+        },
+      ]);
+    });
+
+    it('kennt einen gestoppten Server nicht', async () => {
+      const harness = makeHarness({ statsHistory: fakeAblage() });
+      await harness.service.createServer(createInput(), OWNER_ID);
+
+      await harness.service.sampleServerStats(HOST.id);
+
+      expect(harness.service.listServerLoads()).toEqual([]);
+    });
+
+    it('vergisst die Last einer Node, die zwei Takte nicht gemessen wurde', async () => {
+      // Etwa nach einem Verbindungsabbruch des Agents: Der letzte Messwert ist
+      // dann kein Warnungsgrund mehr, sondern ein Messproblem.
+      const harness = makeHarness({ statsHistory: fakeAblage() });
+      await laufenderServer(harness);
+      await harness.service.sampleServerStats(HOST.id);
+
+      harness.advance(2 * 60_000);
+      expect(harness.service.listServerLoads()).toHaveLength(1);
+
+      harness.advance(1);
+      expect(harness.service.listServerLoads()).toEqual([]);
+    });
+  });
 });

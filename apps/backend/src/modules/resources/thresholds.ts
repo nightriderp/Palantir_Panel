@@ -116,11 +116,12 @@ export interface ServerWarningInput {
   /**
    * Gemessener Verbrauch in **absoluten** Werten.
    *
-   * Bewusst nicht als Prozentwert übergeben: `ServerLiveStats.cpuPercent` legt
-   * seine Bezugsgröße nicht fest (Anteil am eigenen Limit oder an der ganzen
-   * Node?). Die Umrechnung in Kerne macht der Aufrufer, damit die Bezugsgröße
-   * nicht in diesem Modul geraten wird. `null` heißt „das Spiel bzw. der Agent
-   * liefert diesen Wert nicht" – dafür gibt es dann auch keine Warnung.
+   * Bewusst nicht als Prozentwert übergeben: `ServerLiveStats.cpuPercent` misst
+   * Prozent **eines Kerns** (250 = 2,5 ausgelastete Kerne) und gerade nicht
+   * Prozent des Kontingents. Die Umrechnung in Kerne macht der Aufrufer, damit
+   * die Bezugsgröße nicht in diesem Modul geraten wird. `null` heißt „das Spiel
+   * bzw. der Agent liefert diesen Wert nicht" – dafür gibt es dann auch keine
+   * Warnung.
    */
   readonly usedRamMb: number | null;
   readonly usedCpuCores: number | null;
@@ -128,6 +129,36 @@ export interface ServerWarningInput {
   /** Schwellwert in Prozent (`RESOURCE_WARN_SERVER_PERCENT`). */
   readonly thresholdPercent: number;
   readonly at?: Date;
+}
+
+/**
+ * Ein gemessener Server, wie die periodische Auswertung ihn geliefert bekommt.
+ *
+ * Eigener Typ neben {@link ServerWarningInput}: Dort steht ein vollständiger
+ * Prüfauftrag **samt** Schwellwert, hier nur der Messwert. Den Schwellwert
+ * kennt die Messstelle (B3) nicht – er kommt aus der Konfiguration und wird
+ * erst im Ressourcen-Dienst dazugelegt.
+ *
+ * `usedCpuCores` ist wie oben in **absoluten Kernen** angegeben, nicht als
+ * `cpuPercent`: Der Vertrag misst dort Prozent *eines Kerns* (250 = 2,5
+ * ausgelastete Kerne) und ausdrücklich nicht Prozent des Kontingents. Die
+ * Umrechnung gehört an die Messstelle.
+ */
+export interface ServerLoadSnapshot {
+  readonly serverId: string;
+  readonly nodeId: string;
+  /**
+   * Besitzer des Servers – Empfänger der Warnung (B6).
+   *
+   * Anders als bei der Node-Ebene gibt es hier einen: Eine Node gehört
+   * niemandem, ein Server schon. Für die Schwellwertrechnung ist das Feld
+   * bedeutungslos, für die Zustellung ist es der ganze Punkt.
+   */
+  readonly ownerId: string;
+  readonly limits: ServerResourceLimits;
+  readonly usedRamMb: number | null;
+  readonly usedCpuCores: number | null;
+  readonly usedDiskMb: number | null;
 }
 
 /** Warnungen auf Server-Ebene: Verbrauch gegen das eigene Limit des Servers. */
