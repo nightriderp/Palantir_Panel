@@ -6,7 +6,7 @@
  */
 
 import { type AuthMethodType, PENDING_BACKUP_STATUSES } from '@palantir/contracts';
-import { and, count, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index.js';
 import { authMethods, sessions } from '../../db/schema/auth.js';
 import { backups } from '../../db/schema/backups.js';
@@ -377,6 +377,30 @@ export function createDrizzleAuthRepository(db: Database): AuthRepository {
         .update(sessions)
         .set({ revokedAt })
         .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+    },
+
+    async revokeOtherSessions(userId, keepSessionId, revokedAt) {
+      /*
+       * Ein Statement für den ganzen Vorgang (Fundpunkt 140): Entweder sind
+       * danach alle fremden Geräte abgemeldet oder keines. `returning` liefert
+       * genau die Zeilen, die dieser Aufruf geschlossen hat – der `is
+       * null`-Filter hält bereits widerrufene Sitzungen heraus, sie zählen
+       * deshalb nicht mit.
+       */
+      const rows = await db
+        .update(sessions)
+        .set({ revokedAt })
+        .where(
+          and(
+            eq(sessions.userId, userId),
+            // `null` nimmt keine Sitzung aus – dann bleibt nur der Kontofilter.
+            ...(keepSessionId === null ? [] : [ne(sessions.id, keepSessionId)]),
+            isNull(sessions.revokedAt),
+          ),
+        )
+        .returning({ id: sessions.id });
+
+      return rows.length;
     },
   };
 }

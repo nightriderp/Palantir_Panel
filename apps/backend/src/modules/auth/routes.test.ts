@@ -551,6 +551,78 @@ describe('Sitzung und CSRF (Pflichtenheft §7, §18)', () => {
     expect(blocked.statusCode).toBe(401);
   });
 
+  /*
+   * Fundpunkt 140: Der Sammelpfad. Vorher gab es nur `:sessionId`, und die
+   * Oberfläche schickte ein `DELETE` je Gerät.
+   */
+  it('meldet mit einem Aufruf alle anderen Geräte ab und bleibt selbst angemeldet', async () => {
+    const zweites = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'spieler', password: PASSWORD, altcha: await solveAltcha() },
+    });
+    const zweitesJar = collectCookies({}, zweites);
+    const drittes = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'spieler', password: PASSWORD, altcha: await solveAltcha() },
+    });
+    const drittesJar = collectCookies({}, drittes);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/auth/sessions',
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    // Die Antwort trägt die verbliebenen Sitzungen – dieselbe Nutzlast wie GET.
+    const verbleibend = response.json<{ data: { id: string; current: boolean }[] }>().data;
+    expect(verbleibend).toHaveLength(1);
+    expect(verbleibend[0]?.current).toBe(true);
+
+    // Beide fremden Geräte sind sofort draußen, obwohl ihr Access-Token
+    // formal noch gälte.
+    for (const fremd of [zweitesJar, drittesJar]) {
+      const blocked = await app.inject({
+        method: 'GET',
+        url: '/auth/session',
+        headers: { cookie: cookieHeader(fremd) },
+      });
+      expect(blocked.statusCode).toBe(401);
+    }
+
+    // Die eigene Sitzung gilt weiter, und die Cookies bleiben stehen.
+    const eigene = await app.inject({
+      method: 'GET',
+      url: '/auth/session',
+      headers: { cookie: cookieHeader(jar) },
+    });
+    expect(eigene.statusCode).toBe(200);
+    expect(response.cookies.filter((cookie) => cookie.name === ACCESS_COOKIE_NAME)).toHaveLength(0);
+  });
+
+  it('verlangt für den Sammel-Logout einen CSRF-Header', async () => {
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/auth/sessions',
+      headers: { cookie: cookieHeader(jar) },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(repository.sessions.every((session) => session.revokedAt === null)).toBe(true);
+  });
+
+  it('lehnt den Sammel-Logout ohne Anmeldung ab', async () => {
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/auth/sessions',
+      headers: { [CSRF_HEADER_NAME]: 'x', cookie: `${CSRF_COOKIE_NAME}=x` },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
   it('tauscht beim Refresh die Cookies aus', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -881,6 +953,29 @@ describe('Erzwungener Passwortwechsel (Lastenheft §3.1)', () => {
     expect(revoked.statusCode).toBe(200);
   });
 
+  // Aus demselben Grund steht auch der Sammelpfad auf der Liste (Fundpunkt 140).
+  it('lässt auch den Sammel-Logout zu', async () => {
+    const { jar } = await registerAccount('spieler');
+
+    await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { username: 'spieler', password: PASSWORD, altcha: await solveAltcha() },
+    });
+
+    const method = repository.methods[0];
+    repository.methods[0] = { ...method!, mustChangePassword: true };
+
+    const revoked = await app.inject({
+      method: 'DELETE',
+      url: '/auth/sessions',
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '' },
+    });
+
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json<{ data: { current: boolean }[] }>().data).toHaveLength(1);
+  });
+
   it('lässt die Konto-Löschung zu, das Profil aber nicht', async () => {
     const { jar } = await registerAccount('spieler');
     const method = repository.methods[0];
@@ -1196,6 +1291,69 @@ describe('Anbieter-Login über HTTP (Pflichtenheft §7)', () => {
 
     expect(callback.headers.location).toContain('/login?error=AUTH_OAUTH_STATE_INVALID');
     expect(repository.users).toHaveLength(0);
+  });
+
+  /*
+   * Fundpunkt 134: Ein gescheitertes Verknüpfen ging auf `/login?error=<CODE>`.
+   * Von dort schickt die Middleware ein angemeldetes Konto sofort weiter auf
+   * die Serverübersicht, und die wertet den Code nicht aus – die Meldung kam
+   * also nie an. Der Anmelde-Fall bleibt unverändert bei `/login`.
+   */
+  it('schickt ein gescheitertes Verknüpfen zurück zum Ausgangsort (Fundpunkt 134)', async () => {
+    const { jar } = await registerAccount('spieler');
+    const start = await app.inject({
+      method: 'GET',
+      url: '/auth/discord/start?returnTo=%2Fprofil',
+      headers: { cookie: cookieHeader(jar) },
+    });
+    const withState = collectCookies(jar, start);
+
+    // Untergeschobener `state`: Der Dienst weist die Rückkehr ab.
+    const callback = await app.inject({
+      method: 'GET',
+      url: '/auth/discord/callback?state=untergeschoben&code=abc',
+      headers: { cookie: cookieHeader(withState) },
+    });
+
+    expect(callback.statusCode).toBe(303);
+    expect(callback.headers.location).toMatch(/\/profil\?error=AUTH_OAUTH_STATE_INVALID$/);
+    // Verknüpft wurde nichts – nur das Passwort-Verfahren steht am Konto.
+    expect(repository.methods.map((method) => method.type)).toEqual(['password']);
+  });
+
+  it('bleibt beim Anmelde-Fall unverändert auf der Anmeldeseite', async () => {
+    // Ohne Anmeldung ist die Rückkehr ein Login-Versuch: `/login` zeigt den
+    // Code an (`LoginView`), ein Rücksprungziel gibt es hier nicht.
+    const start = await app.inject({ method: 'GET', url: '/auth/discord/start' });
+    const jar = collectCookies({}, start);
+
+    const callback = await app.inject({
+      method: 'GET',
+      url: '/auth/discord/callback?state=untergeschoben&code=abc',
+      headers: { cookie: cookieHeader(jar) },
+    });
+
+    expect(callback.headers.location).toMatch(/\/login\?error=AUTH_OAUTH_STATE_INVALID$/);
+  });
+
+  it('fällt beim Verknüpfen ohne Rücksprungziel auf die Übersicht zurück', async () => {
+    // Ohne `returnTo` steht im Cookie das Standardziel – die Allowlist lässt
+    // nichts anderes zu, ein untergeschobener Wert landet ebenfalls hier.
+    const { jar } = await registerAccount('spieler');
+    const start = await app.inject({
+      method: 'GET',
+      url: '/auth/discord/start?returnTo=https%3A%2F%2Fboese.tld',
+      headers: { cookie: cookieHeader(jar) },
+    });
+    const withState = collectCookies(jar, start);
+
+    const callback = await app.inject({
+      method: 'GET',
+      url: '/auth/discord/callback?state=untergeschoben&code=abc',
+      headers: { cookie: cookieHeader(withState) },
+    });
+
+    expect(callback.headers.location).toMatch(/\/servers\?error=AUTH_OAUTH_STATE_INVALID$/);
   });
 
   it('verknüpft im eingeloggten Zustand statt ein zweites Konto anzulegen', async () => {

@@ -34,6 +34,7 @@ import {
 } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { toIpHint } from '../auth/request-context.js';
 import {
   isRbacError,
   requireActor,
@@ -83,22 +84,30 @@ const roleMemberParamsSchema = z.object({ roleId: idSchema, userId: idSchema });
  *
  * Bewusst gekürzt: Für die Nachvollziehbarkeit reicht das Netz, die vollständige
  * Adresse wäre mehr personenbezogene Angabe als nötig.
+ *
+ * **Die Kürzung selbst liegt bei B1** (`toIpHint`, Fundpunkt 152). Hier stand
+ * bis dahin eine zweite, eigene Auslegung – und sie hatte denselben Fehler, den
+ * W3-9 in `auth/request-context.ts` behoben hat: `::` wurde nicht zu
+ * Nullblöcken ausgeschrieben, weshalb `2001:db8::1` zu `2001:db8:::x` wurde,
+ * eine IPv4-mapped Adresse (`::ffff:203.0.113.10`, so liefert Fastify IPv4 über
+ * IPv6-Sockets) im IPv4-Zweig landete und eine unbrauchbare Eingabe unverkürzt
+ * durchging. Zwei Auslegungen derselben Regel laufen zwangsläufig auseinander;
+ * `Session.ipHint` und `AuditLog.ipHint` sind aber dasselbe Feld aus
+ * Pflichtenheft §6 und müssen für denselben Anschluss denselben Wert ergeben –
+ * sonst stünde in der Geräteübersicht eine andere Herkunft als im Audit-Log.
+ *
+ * Damit ändert sich auch die **Tiefe** von vier auf drei Gruppen. Fachlich ist
+ * genau das gewollt: Die drei Gruppen von B1 sind die abgestimmte Wahl (ein /48
+ * ist die übliche Zuteilung an einen Anschluss), vier Gruppen gaben ein Netz
+ * mehr preis als nötig – die engere Kürzung ist hier zugleich die
+ * datensparsamere (Pflichtenheft §18).
+ *
+ * Bewusst der direkte Import der Moduldatei statt des Fassaden-Exports aus
+ * `../auth/index.js`: Gebraucht wird eine reine Funktion ohne Fastify- und
+ * Datenbankbezug, nicht das ganze Auth-Modul.
  */
 export function ipHintOf(request: FastifyRequest): string | null {
-  const ip = request.ip;
-
-  if (!ip) {
-    return null;
-  }
-
-  if (ip.includes('.')) {
-    const parts = ip.split('.');
-
-    return parts.length === 4 ? `${parts[0]}.${parts[1]}.${parts[2]}.x` : ip;
-  }
-
-  // IPv6: die ersten vier Gruppen reichen zur groben Zuordnung.
-  return `${ip.split(':').slice(0, 4).join(':')}::x`;
+  return toIpHint(request.ip);
 }
 
 /**

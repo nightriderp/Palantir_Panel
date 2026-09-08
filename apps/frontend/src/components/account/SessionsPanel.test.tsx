@@ -8,14 +8,15 @@ import { SessionsPanel } from './SessionsPanel';
 /**
  * Sitzungsverwaltung im Profil (Lastenheft §3.1, Finding spec-lastenheft-01).
  *
- * Geprüft wird die Ansicht, nicht der Transport: `loadSessions` und
- * `revokeSession` sind ersetzt, alles andere – Bestätigungsdialog, Liste,
- * Meldungen – läuft echt.
+ * Geprüft wird die Ansicht, nicht der Transport: `loadSessions`,
+ * `revokeSession` und `revokeOtherSessions` sind ersetzt, alles andere –
+ * Bestätigungsdialog, Liste, Meldungen – läuft echt.
  */
 
 const api = vi.hoisted(() => ({
   loadSessions: vi.fn(),
   revokeSession: vi.fn(),
+  revokeOtherSessions: vi.fn(),
 }));
 
 const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
@@ -33,6 +34,7 @@ vi.mock('@/lib/api/session', async (importOriginal) => ({
 vi.mock('@/lib/auth/api', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   revokeSession: api.revokeSession,
+  revokeOtherSessions: api.revokeOtherSessions,
 }));
 
 function sitzung(overrides: Partial<SessionDto> = {}): SessionDto {
@@ -88,6 +90,8 @@ function bestaetige(): void {
 beforeEach(() => {
   vi.clearAllMocks();
   api.revokeSession.mockResolvedValue(null);
+  // Das Backend antwortet mit den verbliebenen Sitzungen (Fundpunkt 140).
+  api.revokeOtherSessions.mockResolvedValue([AKTUELL]);
 });
 
 describe('SessionsPanel – Geräteübersicht', () => {
@@ -181,7 +185,11 @@ describe('SessionsPanel – Abmelden', () => {
     expect(router.refresh).toHaveBeenCalled();
   });
 
-  it('beendet mit „Alle anderen abmelden" jede Sitzung außer der aktuellen', async () => {
+  /*
+   * Fundpunkt 140: Vorher schickte die Aktion ein `DELETE` je Gerät. Jetzt ist
+   * es genau ein Aufruf, und die Liste kommt aus dessen Antwort.
+   */
+  it('beendet mit „Alle anderen abmelden" jede Sitzung außer der aktuellen – mit einem Aufruf', async () => {
     const ersteFremde = sitzung();
     const zweiteFremde = sitzung({
       id: '33333333-3333-4333-8333-333333333333',
@@ -192,6 +200,9 @@ describe('SessionsPanel – Abmelden', () => {
     await fertigGeladen();
 
     fireEvent.click(screen.getByRole('button', { name: 'Alle anderen abmelden' }));
+    // Ohne Bestätigung passiert nichts.
+    expect(api.revokeOtherSessions).not.toHaveBeenCalled();
+
     bestaetige();
 
     await waitFor(() => {
@@ -200,12 +211,13 @@ describe('SessionsPanel – Abmelden', () => {
     expect(screen.queryByText('Safari auf iPhone')).toBeNull();
     expect(screen.getByText('Chrome auf Linux')).toBeTruthy();
 
-    expect(api.revokeSession).toHaveBeenCalledTimes(2);
-    expect(api.revokeSession).toHaveBeenCalledWith(ersteFremde.id);
-    expect(api.revokeSession).toHaveBeenCalledWith(zweiteFremde.id);
-    // Die eigene Sitzung wird dabei nie angefasst.
-    expect(api.revokeSession).not.toHaveBeenCalledWith(AKTUELL.id);
+    // Genau ein Aufruf – unabhängig davon, wie viele Geräte betroffen sind.
+    expect(api.revokeOtherSessions).toHaveBeenCalledTimes(1);
+    expect(api.revokeOtherSessions).toHaveBeenCalledWith();
+    // Der Einzelpfad bleibt dabei ungenutzt; die eigene Sitzung wird nie angefasst.
+    expect(api.revokeSession).not.toHaveBeenCalled();
     expect(router.push).not.toHaveBeenCalled();
+    expect(meldungen().some((text) => text.includes('2 Geräte wurden abgemeldet.'))).toBe(true);
   });
 
   it('meldet einen Fehlschlag und lässt die Sitzung in der Liste stehen', async () => {
@@ -230,17 +242,19 @@ describe('SessionsPanel – Abmelden', () => {
     expect(screen.getByText('Firefox auf Windows')).toBeTruthy();
   });
 
-  it('meldet einen Fehlschlag der Sammelaktion, ohne die übrigen zu verlieren', async () => {
-    const ersteFremde = sitzung();
+  it('meldet einen Fehlschlag der Sammelaktion und lässt die ganze Liste stehen', async () => {
+    /*
+     * Der Vorgang ist jetzt atomar: Scheitert er, hat das Backend nichts
+     * widerrufen – dann darf auch keine Zeile verschwinden. Vorher konnte ein
+     * Teil durchgehen und der Rest sichtbar stehen bleiben.
+     */
     const zweiteFremde = sitzung({
       id: '33333333-3333-4333-8333-333333333333',
       deviceInfo: 'Safari auf iPhone',
     });
-    api.loadSessions.mockResolvedValue(geladen([AKTUELL, ersteFremde, zweiteFremde]));
-    api.revokeSession.mockImplementation((id: string) =>
-      id === zweiteFremde.id
-        ? Promise.reject(new AuthRequestError('session not found', 'AUTH_SESSION_NOT_FOUND'))
-        : Promise.resolve(null),
+    api.loadSessions.mockResolvedValue(geladen([AKTUELL, sitzung(), zweiteFremde]));
+    api.revokeOtherSessions.mockRejectedValue(
+      new AuthRequestError('session not found', 'AUTH_SESSION_NOT_FOUND'),
     );
     zeige();
     await fertigGeladen();
@@ -249,14 +263,14 @@ describe('SessionsPanel – Abmelden', () => {
     bestaetige();
 
     await waitFor(() => {
-      expect(screen.queryByText('Firefox auf Windows')).toBeNull();
+      expect(
+        meldungen().some((text) =>
+          text.includes(defaultMessageForErrorCode('AUTH_SESSION_NOT_FOUND')),
+        ),
+      ).toBe(true);
     });
-    // Was nicht durchging, bleibt sichtbar – samt Meldung.
+    expect(screen.getByText('Firefox auf Windows')).toBeTruthy();
     expect(screen.getByText('Safari auf iPhone')).toBeTruthy();
-    expect(
-      meldungen().some((text) =>
-        text.includes(defaultMessageForErrorCode('AUTH_SESSION_NOT_FOUND')),
-      ),
-    ).toBe(true);
+    expect(screen.getByText('Chrome auf Linux')).toBeTruthy();
   });
 });

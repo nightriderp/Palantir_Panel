@@ -222,4 +222,29 @@ export interface AuthRepository {
   revokeSession(id: string, revokedAt: Date): Promise<void>;
   /** Widerruft alle noch offenen Sitzungen eines Kontos. */
   revokeAllSessions(userId: string, revokedAt: Date): Promise<void>;
+  /**
+   * Widerruft alle noch offenen Sitzungen eines Kontos **außer einer** und
+   * liefert deren Anzahl (Fundpunkt 140, „alle anderen Geräte abmelden";
+   * zweiter Aufrufer ist der Passwortwechsel).
+   *
+   * Ein einziges Statement mit Absicht: Der Vorgang ist genau dann richtig,
+   * wenn er ganz oder gar nicht wirkt. Eine Schleife über
+   * {@link AuthRepository.revokeSession} könnte auf halbem Weg abbrechen und
+   * einen Teil der Geräte angemeldet lassen – der Nutzer glaubte dann, er hätte
+   * aufgeräumt.
+   *
+   * `keepSessionId` bleibt unberührt, auch wenn die Id zu einem anderen Konto
+   * gehört oder gar nicht existiert; gefiltert wird immer zusätzlich nach
+   * `userId`, fremde Sitzungen sind also nie betroffen. `null` nimmt keine
+   * Sitzung aus – der Fall des Passwortwechsels über einen Aufruf ohne eigene
+   * Sitzung.
+   *
+   * Gezählt wird, was dieser Aufruf tatsächlich geschlossen hat – bereits
+   * widerrufene Sitzungen zählen nicht mit.
+   */
+  revokeOtherSessions(
+    userId: string,
+    keepSessionId: string | null,
+    revokedAt: Date,
+  ): Promise<number>;
 }
