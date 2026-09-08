@@ -66,3 +66,22 @@ updates:
     open-pull-requests-limit: 2
     commit-message:
       prefix: '[images]'
+    # Hauptfassungen des Basis-Abbilds bleiben außen vor (PR #271).
+    #
+    # Zwei Gründe, beide unabhängig voneinander ausreichend:
+    #
+    # 1. Ein Wechsel ist hier kein Einzeiler. Er verlangt eine neue Zahl in
+    #    `VERSION`, und weil `game-registry.ts` fest auf
+    #    `palantir-test-minecraft:1` zeigt, muss die Spieltyp-Definition mit.
+    #    Ein Vorschlag, der nur die eine Zeile ändert, ist nie übernehmbar –
+    #    er erzeugte ein Abbild, das niemand benutzt.
+    # 2. Der Prüfstand soll der Anwendung folgen, nicht vorauslaufen. Backend,
+    #    Frontend und Agent bauen auf Node 24, hier steht Node 22 (LTS). Ein
+    #    Sprung auf die jeweils aktuelle Fassung kehrte das Verhältnis um.
+    #
+    # Sicherheits- und Nebenfassungen kommen weiterhin – die sind der Grund,
+    # warum dieser Eintrag überhaupt existiert (ein Digest-Pin ohne Pflege
+    # friert genauso ein wie ein SHA-Pin).
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
