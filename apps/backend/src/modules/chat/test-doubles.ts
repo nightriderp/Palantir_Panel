@@ -282,6 +282,7 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
         createdAt: clock.now(),
         deletedAt: null,
         deletedById: null,
+        deletedByModerator: null,
       };
 
       messages.push(record);
@@ -345,7 +346,7 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
       return result;
     },
 
-    async markMessageDeleted(messageId, deletedById, deletedAt) {
+    async markMessageDeleted(messageId, deletedById, deletedAt, byModerator) {
       const index = messages.findIndex((message) => message.id === messageId);
       const message = messages[index];
 
@@ -355,7 +356,7 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
         return false;
       }
 
-      messages[index] = { ...message, deletedAt, deletedById };
+      messages[index] = { ...message, deletedAt, deletedById, deletedByModerator: byModerator };
 
       return true;
     },
@@ -393,6 +394,16 @@ export function inMemoryChatRepository(clock: Clock = steppingClock()): InMemory
           (row) => row.conversationId === conversationId && row.userId === userId,
         )?.lastReadAt;
 
+        /*
+         * `senderId !== userId` schließt hier auch `null` ein und zählt die
+         * Nachrichten eines gelöschten Kontos mit – so wie es sein soll. Das
+         * echte Repository braucht dafür ein ausdrückliches
+         * `is null or <>` (Fundpunkt 141): In SQL ist der Vergleich mit `NULL`
+         * dreiwertig und hätte diese Nachrichten stillschweigend
+         * herausgefiltert, während diese Attrappe weiter richtig zählte. Genau
+         * deshalb steht die Gegenprobe in `repositories.db.test.ts` und nicht
+         * nur hier.
+         */
         const unread = messages.filter(
           (message) =>
             message.conversationId === conversationId &&

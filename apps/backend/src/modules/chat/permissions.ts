@@ -39,6 +39,15 @@ export function computeConversationPermissions(
  *
  * `canReport` gilt nie dem eigenen Beitrag: Sich selbst zu melden erzeugt nur
  * Arbeit in der Moderation.
+ *
+ * **Gelöschtes Absender-Konto** (Fundpunkt 141): `senderId` ist dann `null` und
+ * `isOwn` damit nie wahr – beide Kennungen werden ausdrücklich gegen `null`
+ * geprüft, bevor sie verglichen werden. Ohne diese Prüfung träfen sich zwei
+ * `null` bei einem Betrachter ohne Konto und machten jede Nachricht eines
+ * gelöschten Kontos zu seinem eigenen Beitrag – mit `canDelete: true`. Melden
+ * bleibt dagegen möglich: Der Text steht weiter im Verlauf und kann weiter
+ * verletzend sein; die Entscheidung eines Moderators richtet sich ohnehin gegen
+ * die Nachricht, nicht gegen ein Konto.
  */
 export function computeMessagePermissions(
   message: MessageRecord,
@@ -46,7 +55,7 @@ export function computeMessagePermissions(
   alreadyReported: boolean,
 ): MessagePermissions {
   const isDeleted = message.deletedAt !== null;
-  const isOwn = viewerId !== null && message.senderId === viewerId;
+  const isOwn = viewerId !== null && message.senderId !== null && message.senderId === viewerId;
 
   return {
     canDelete: isOwn && !isDeleted,
@@ -61,16 +70,23 @@ export function computeMessagePermissions(
  * Es soll nachsehen können, was aus der eigenen Meldung geworden ist, ohne
  * dafür `message.moderate` zu brauchen. Entscheiden darf nur die Moderation,
  * und nur solange die Meldung offen ist.
+ *
+ * Ist das Melder-Konto gelöscht (`reportedById === null`, Fundpunkt 141), bleibt
+ * die Meldung für die Moderation sichtbar und für alle anderen unsichtbar – aus
+ * demselben Grund wie oben: Zwei `null` dürfen sich nicht treffen und niemanden
+ * zum Melder einer fremden Meldung machen.
  */
 export function computeMessageReportPermissions(
   actor: PermissionActor,
   viewerId: string | null,
-  report: { readonly reportedById: string; readonly status: string },
+  report: { readonly reportedById: string | null; readonly status: string },
 ): MessageReportPermissions {
   const canModerate = hasPermission(actor, 'message.moderate');
+  const isReporter =
+    viewerId !== null && report.reportedById !== null && report.reportedById === viewerId;
 
   return {
-    canView: canModerate || (viewerId !== null && report.reportedById === viewerId),
+    canView: canModerate || isReporter,
     canResolve: canModerate && report.status === 'open',
   };
 }

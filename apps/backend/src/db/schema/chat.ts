@@ -20,6 +20,7 @@ import {
 } from '@palantir/contracts';
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   index,
   pgTable,
   primaryKey,
@@ -138,8 +139,13 @@ export const conversationReads = pgTable(
  * markiert: Der Verlauf bliebe sonst lückenhaft, und eine laufende Meldung
  * verlöre ihren Bezug. Ausgeliefert wird sie mit leerem Inhalt.
  *
- * `senderId` löscht mit dem Konto mit. Wer sein Konto löschen lässt
- * (Lastenheft §3.1), soll seine Beiträge nicht als Karteileiche zurücklassen.
+ * `senderId` wird beim Löschen des Kontos **geleert**, nicht mitgelöscht
+ * (Fundpunkt 141). Vorher stand die Spalte auf `ON DELETE CASCADE`: Wer sein
+ * Konto löschen ließ (Lastenheft §3.1), riss damit seine Hälfte aus **fremden**
+ * Unterhaltungen heraus. Beim Gegenüber blieb ein Verlauf zurück, in dem nur
+ * noch die eigenen Beiträge standen – ohne Hinweis, dass dort je etwas anderes
+ * stand. Die Nachricht bleibt deshalb stehen, die Kennung fällt weg; angezeigt
+ * wird `DELETED_ACCOUNT_DISPLAY_NAME` aus `@palantir/contracts`.
  */
 export const messages = pgTable(
   'messages',
@@ -148,9 +154,8 @@ export const messages = pgTable(
     conversationId: uuid('conversation_id')
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
-    senderId: uuid('sender_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    /** `null`, sobald das Konto des Absenders gelöscht wurde (Fundpunkt 141). */
+    senderId: uuid('sender_id').references(() => users.id, { onDelete: 'set null' }),
     content: text('content').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -160,10 +165,35 @@ export const messages = pgTable(
      * mitnimmt, über die er entschieden hat.
      */
     deletedById: uuid('deleted_by_id').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * Wurde die Nachricht im Zuge einer Meldung entfernt? `null`, solange sie
+     * steht.
+     *
+     * Bis Fundpunkt 141 leitete das DTO die Angabe aus `deletedById !==
+     * senderId` ab. Das trägt nicht mehr: Beide Spalten stehen auf `SET NULL`,
+     * und sind Absender **und** Moderator gelöscht, sind beide `null` – der
+     * Vergleich behauptete dann „vom Absender selbst gelöscht" und benannte
+     * eine Moderationsentscheidung als Rücknahme durch den Verfasser. Der
+     * Vertrag verlangt deshalb ausdrücklich, dass das Backend die Angabe
+     * *führt* statt sie zu erschließen (`MessageDto.deletedByModerator`).
+     *
+     * Dieselbe Begründung wie bei `message_reports.reported_content`: eine
+     * Tatsache, die eine Entscheidung nachvollziehbar hält, wird festgehalten
+     * und nicht aus Kennungen rekonstruiert, die später wegfallen dürfen.
+     */
+    deletedByModerator: boolean('deleted_by_moderator'),
   },
   (table) => [
     /** Verlauf einer Konversation, jüngste zuerst – die einzige Leseform. */
     index('messages_conversation_created_idx').on(table.conversationId, table.createdAt),
+    /**
+     * Trägt seit Fundpunkt 141 zusätzlich das `ON DELETE SET NULL` der Spalte:
+     * Ohne ihn müsste PostgreSQL beim Löschen **jedes** Kontos die gesamte
+     * Nachrichtentabelle lesen. Bewusst nicht partiell wie
+     * `messages_deleted_by_id_idx` – `sender_id` ist im Regelfall gesetzt, eine
+     * Bedingung `is not null` schlösse also fast nichts aus und nähme dem Index
+     * seinen zweiten Zweck (Nachrichten eines Kontos finden).
+     */
     index('messages_sender_id_idx').on(table.senderId),
     /**
      * Trägt das `ON DELETE SET NULL` beim Löschen eines Moderator-Kontos (Audit
@@ -188,17 +218,28 @@ export const messages = pgTable(
  * ist der Grund, warum eine Entscheidung nachvollziehbar bleibt, nachdem die
  * Nachricht gelöscht wurde – und zugleich die **einzige** Stelle, an der ein
  * Moderator überhaupt an einen Nachrichteninhalt kommt (Pflichtenheft §15).
+ *
+ * `reportedById` wird beim Löschen des Melder-Kontos geleert, die Meldung
+ * bleibt (Fundpunkt 141). Vorher nahm `ON DELETE CASCADE` sie mit, samt
+ * `reportedContent`: Wer eine Belästigung meldete und danach – womöglich gerade
+ * deswegen – sein Konto löschte, zog seine eigene Meldung zurück, ohne das zu
+ * wollen. Ein noch offener Fall verschwand dabei mitsamt der Beweiskopie.
  */
 export const messageReports = pgTable(
   'message_reports',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    /**
+     * Bleibt `ON DELETE CASCADE`, anders als die beiden Konto-Verweise: Eine
+     * Nachricht wird im Betrieb nie entfernt, sondern nur als gelöscht markiert
+     * (siehe {@link messages}). Verschwände die Zeile doch, hätte die Meldung
+     * keinen Gegenstand mehr – sie zeigte auf nichts.
+     */
     messageId: uuid('message_id')
       .notNull()
       .references(() => messages.id, { onDelete: 'cascade' }),
-    reportedById: uuid('reported_by_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    /** `null`, sobald das Konto der meldenden Person gelöscht wurde (Fundpunkt 141). */
+    reportedById: uuid('reported_by_id').references(() => users.id, { onDelete: 'set null' }),
     reason: text('reason').notNull(),
     /** Inhalt der Nachricht zum Zeitpunkt der Meldung. */
     reportedContent: text('reported_content').notNull(),
@@ -214,6 +255,13 @@ export const messageReports = pgTable(
      * Dieselbe Nachricht meldet dasselbe Konto nur einmal. In der Datenbank
      * abgesichert und nicht nur im Dienst: Zwei gleichzeitige Meldungen
      * bestünden die Prüfung sonst beide.
+     *
+     * Für gelöschte Konten greift der Index nicht mehr, und das ist so
+     * gewollt: PostgreSQL zählt `NULL` in einem Unique-Index als verschieden
+     * (`NULLS DISTINCT`, die Vorgabe). Zwei Meldungen derselben Nachricht durch
+     * zwei inzwischen gelöschte Konten bleiben deshalb beide bestehen – hätte
+     * PostgreSQL sie als gleich behandelt, wäre schon die Kaskade an ihnen
+     * gescheitert und das Löschen des zweiten Kontos unmöglich geworden.
      */
     uniqueIndex('message_reports_message_reporter_idx').on(table.messageId, table.reportedById),
     /** Die Moderationsübersicht filtert nach Stand und sortiert nach Eingang. */

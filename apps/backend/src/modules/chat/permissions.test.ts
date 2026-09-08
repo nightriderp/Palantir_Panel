@@ -36,6 +36,7 @@ function nachricht(overrides: Partial<Parameters<typeof computeMessagePermission
     createdAt: new Date('2026-08-26T12:00:00.000Z'),
     deletedAt: null,
     deletedById: null,
+    deletedByModerator: null,
     ...overrides,
   };
 }
@@ -88,6 +89,28 @@ describe('Nachricht', () => {
     });
     expect(computeMessagePermissions(geloescht, BEA, false).canReport).toBe(false);
   });
+
+  it('macht die Nachricht eines gelöschten Kontos für niemanden zum eigenen Beitrag', () => {
+    /*
+     * Fundpunkt 141: `senderId` ist `null`, sobald das Konto des Absenders
+     * gelöscht wurde. Der kritische Fall ist der Betrachter **ohne** Konto –
+     * ohne ausdrückliche `null`-Prüfung träfen sich zwei `null`, `isOwn` wäre
+     * wahr und die fremde Nachricht käme mit `canDelete: true` zurück.
+     */
+    const verwaist = nachricht({ senderId: null });
+
+    expect(computeMessagePermissions(verwaist, null, false)).toEqual({
+      canDelete: false,
+      canReport: false,
+    });
+    expect(computeMessagePermissions(verwaist, ALEX, false)).toEqual({
+      canDelete: false,
+      // Melden bleibt möglich: Der Text steht weiter im Verlauf, und die
+      // Entscheidung eines Moderators richtet sich gegen die Nachricht, nicht
+      // gegen ein Konto.
+      canReport: true,
+    });
+  });
 });
 
 describe('Meldung', () => {
@@ -111,6 +134,23 @@ describe('Meldung', () => {
     expect(computeMessageReportPermissions(actorWith(), CHRIS, offen)).toEqual({
       canView: false,
       canResolve: false,
+    });
+  });
+
+  it('zeigt die Meldung eines gelöschten Melder-Kontos nur noch der Moderation', () => {
+    /*
+     * `canView` hängt daran, ob der Betrachter selbst der Melder ist. Ist das
+     * Melder-Konto gelöscht (`reportedById: null`), darf dieser Vergleich
+     * niemanden treffen – erst recht nicht einen Betrachter ohne Konto
+     * (Fundpunkt 141). Die Meldung selbst bleibt bestehen und entscheidbar.
+     */
+    const verwaist = { reportedById: null, status: 'open' };
+
+    expect(computeMessageReportPermissions(actorWith(), null, verwaist).canView).toBe(false);
+    expect(computeMessageReportPermissions(actorWith(), CHRIS, verwaist).canView).toBe(false);
+    expect(computeMessageReportPermissions(actorWith('message.moderate'), MOD, verwaist)).toEqual({
+      canView: true,
+      canResolve: true,
     });
   });
 

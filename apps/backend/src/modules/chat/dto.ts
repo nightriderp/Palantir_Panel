@@ -13,6 +13,7 @@
 
 import {
   type ConversationDto,
+  DELETED_ACCOUNT_DISPLAY_NAME,
   type DirectMessageRecipientDto,
   type MessageDto,
   type MessageReportDto,
@@ -32,9 +33,25 @@ import {
 } from './types.js';
 import { type ConversationAudience, titleFor } from './visibility.js';
 
-/** Anzeigename oder ein neutraler Platzhalter, wenn das Konto nicht mehr existiert. */
-function nameOf(displayNames: ReadonlyMap<string, string>, userId: string): string {
-  return displayNames.get(userId) ?? 'Unbekanntes Konto';
+/**
+ * Anzeigename oder der feste Text, wenn das Konto nicht mehr existiert.
+ *
+ * `userId` darf `null` sein: Seit Fundpunkt 141 bleibt eine Nachricht stehen,
+ * wenn ihr Absender sein Konto löschen lässt, und trägt dann keine Kennung
+ * mehr. Ohne diesen Zweig ginge die `null`-Kennung als Schlüssel in die Map und
+ * käme als „nicht gefunden" zurück – dasselbe Ergebnis, aber aus Versehen.
+ *
+ * Der Text kommt aus dem Vertrag und steht nicht hier als Zeichenkette: Er
+ * erscheint im Verlauf **und** in der Moderationsansicht, und zwei
+ * Schreibweisen ließen den Betrachter raten, ob es zwei verschiedene Fälle
+ * sind.
+ */
+function nameOf(displayNames: ReadonlyMap<string, string>, userId: string | null): string {
+  if (userId === null) {
+    return DELETED_ACCOUNT_DISPLAY_NAME;
+  }
+
+  return displayNames.get(userId) ?? DELETED_ACCOUNT_DISPLAY_NAME;
 }
 
 export interface MessageDtoContext {
@@ -63,7 +80,17 @@ export function toMessageDto(message: MessageRecord, context: MessageDtoContext)
     content: isDeleted ? '' : message.content,
     createdAt: message.createdAt.toISOString(),
     deletedAt: message.deletedAt?.toISOString() ?? null,
-    deletedByModerator: isDeleted ? message.deletedById !== message.senderId : null,
+    /*
+     * Aus der geführten Spalte, nicht aus `deletedById !== senderId`
+     * (Fundpunkt 141): Sind Absender und löschender Moderator beide gelöscht,
+     * sind beide Kennungen `null`, der Vergleich ergäbe `false` und die Zeile
+     * behauptete „vom Absender zurückgenommen", wo eine Moderationsentscheidung
+     * stand. `?? false` fängt Bestandszeilen ab, die vor der Migration gelöscht
+     * wurden und deren Spalte wider Erwarten leer blieb – im Zweifel die
+     * zurückhaltendere Aussage: „gelöscht", nicht „nach einer Meldung
+     * entfernt".
+     */
+    deletedByModerator: isDeleted ? (message.deletedByModerator ?? false) : null,
     reportedByViewer: context.reportedByViewer.has(message.id),
     permissions: computeMessagePermissions(
       message,

@@ -32,17 +32,29 @@ export interface ConversationRecord {
 export interface MessageRecord {
   readonly id: string;
   readonly conversationId: string;
-  readonly senderId: string;
+  /**
+   * `null`, wenn das Konto des Absenders gelöscht wurde (Fundpunkt 141). Jede
+   * Auswertung muss den Fall beantworten – „ist mein eigener Beitrag" darf für
+   * ein gelöschtes Konto nie wahr werden.
+   */
+  readonly senderId: string | null;
   readonly content: string;
   readonly createdAt: Date;
   readonly deletedAt: Date | null;
   readonly deletedById: string | null;
+  /**
+   * Wurde die Nachricht im Zuge einer Meldung entfernt? `null`, solange sie
+   * steht. Geführt statt aus `deletedById`/`senderId` erschlossen – beide
+   * dürfen `null` werden (siehe `db/schema/chat.ts`).
+   */
+  readonly deletedByModerator: boolean | null;
 }
 
 export interface MessageReportRecord {
   readonly id: string;
   readonly messageId: string;
-  readonly reportedById: string;
+  /** `null`, wenn das Konto der meldenden Person gelöscht wurde (Fundpunkt 141). */
+  readonly reportedById: string | null;
   readonly reason: string;
   /** Inhalt der Nachricht zum Zeitpunkt der Meldung. */
   readonly reportedContent: string;

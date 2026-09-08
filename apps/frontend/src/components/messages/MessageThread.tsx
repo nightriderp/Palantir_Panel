@@ -129,10 +129,32 @@ export function MessageThread({
             ) : null}
 
             {messages.map((message, index) => {
-              const mine = message.senderId === viewerId;
+              /*
+               * Beide Kennungen ausdrücklich gegen `null` geprüft
+               * (Fundpunkt 141): `senderId` ist leer, sobald das Konto des
+               * Absenders gelöscht wurde, und `viewerId` ist es, solange der
+               * Betrachter nicht (mehr) angemeldet ist. Ohne die Prüfung träfen
+               * sich zwei `null` und jede Nachricht eines gelöschten Kontos
+               * stünde als eigener Beitrag rechts in der Markenfarbe.
+               */
+              const mine =
+                viewerId !== null && message.senderId !== null && message.senderId === viewerId;
               const previous = messages[index - 1];
+              /*
+               * Aufeinanderfolgende Beiträge desselben Absenders tragen den
+               * Namen nur einmal. Für ein gelöschtes Konto wird **nie**
+               * zusammengefasst: `null === null` würde zwei verschiedene
+               * gelöschte Konten zu einem Block verschmelzen, und aus zwei
+               * verschwundenen Absendern sähe eine Person mit mehreren
+               * Nachrichten – eine Falschaussage, die der Verlauf nicht treffen
+               * darf. Ohne Kennung lässt sich Gleichheit nicht feststellen,
+               * also wird sie auch nicht behauptet: jede solche Nachricht
+               * bekommt ihre eigene Namenszeile.
+               */
               const showSender =
-                isServerChat && !mine && (!previous || previous.senderId !== message.senderId);
+                isServerChat &&
+                !mine &&
+                (message.senderId === null || !previous || previous.senderId !== message.senderId);
 
               return (
                 <MessageBubble
