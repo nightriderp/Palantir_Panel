@@ -49,6 +49,7 @@ import { ServerOrchestrationError, isServerOrchestrationError } from './errors.j
 import {
   ClockSkewMonitor,
   LatestDiskUsageCache,
+  LatestEngineStatsCache,
   LatestQueryCache,
   ServerLoadRegistry,
   type ServerStatsRepository,
@@ -94,6 +95,7 @@ import {
 import {
   consoleLineFromAgentPayload,
   containerIdFromPayload,
+  engineStatsFromPayload,
   isServerQueryPayload,
   liveStatsFromAgentPayload,
   querySnapshotFromPayload,
@@ -293,6 +295,21 @@ export class ServerOrchestrationService {
    * Zahl von vorhin.
    */
   private readonly latestDiskUsage = new LatestDiskUsageCache(5 * 60 * 1000);
+  /**
+   * Zuletzt gemeldete Messwerte der Container-Engine je Server (Fundpunkt 179).
+   *
+   * Das Gegenstück zum {@link latestQuery}: Dort merkt sich der Dienst, was nur
+   * die Server-Abfrage weiß, hier, was nur der Statistik-Strom weiß. Ohne das
+   * löschte jeder Abfrage-Rahmen die Kacheln „CPU", „Arbeitsspeicher" und
+   * „Netzverkehr", weil das Frontend die Messwerte je Rahmen vollständig
+   * ersetzt.
+   *
+   * **Deutlich kürzere Frist als bei den beiden anderen** – die Vorgabe des
+   * Speichers selbst (`LIVE_ENGINE_STATS_MAX_AGE_MS`, zehn Sekunden).
+   * CPU ist eine Sekundengröße; ein Wert von vor fünf Minuten wäre keine
+   * Überbrückung mehr, sondern eine Behauptung.
+   */
+  private readonly latestEngineStats = new LatestEngineStatsCache();
   /**
    * Abgleich der Agent-Uhr gegen die eigene (W2-14,
    * orchestration-features-03).
@@ -1362,8 +1379,9 @@ export class ServerOrchestrationService {
      * Flüchtigen Zustand des Servers abräumen (Audit orchestration-features-13,
      * Fundpunkt 137). Die Speicher liegen nur im Prozess und hingen bisher
      * bis zum Neustart am gelöschten Server: die zuletzt gemeldete Abfrage
-     * (Spielerzahl, Ping), der zuletzt gemessene Plattenplatz und der Zeitpunkt
-     * der letzten Uhren-Meldung. Kleines, aber unbegrenztes Wachstum – und ein
+     * (Spielerzahl, Ping), der zuletzt gemessene Plattenplatz, die zuletzt
+     * gemeldeten Engine-Messwerte und der Zeitpunkt der letzten Uhren-Meldung.
+     * Kleines, aber unbegrenztes Wachstum – und ein
      * wiederverwendeter Datensatz gäbe es nicht, weil Ids nicht wiederkehren.
      *
      * Nach dem Löschen des Datensatzes, nicht davor: Bricht das Löschen ab,
@@ -1371,6 +1389,7 @@ export class ServerOrchestrationService {
      */
     this.latestQuery.forget(serverId);
     this.latestDiskUsage.forget(serverId);
+    this.latestEngineStats.forget(serverId);
     this.clockSkew.forget(serverId);
 
     this.deps.events.emit('server.deleted', geloescht);
@@ -2371,6 +2390,19 @@ export class ServerOrchestrationService {
         querySnapshotFromPayload(frame.payload),
         abgleich.recordedAt,
       );
+    } else {
+      /*
+       * Dieselbe Überlegung in der Gegenrichtung (Fundpunkt 179): CPU,
+       * Arbeitsspeicher und Netzverkehr kennt nur der Statistik-Strom. Ohne
+       * diesen Speicher trüge der nächste Abfrage-Rahmen dort `null` – und weil
+       * das Frontend die Messwerte je Rahmen vollständig ersetzt, sprängen die
+       * drei Kacheln im Takt der Abfrage auf „—".
+       */
+      this.latestEngineStats.remember(
+        server.id,
+        engineStatsFromPayload(frame.payload),
+        abgleich.recordedAt,
+      );
     }
 
     /*
@@ -2386,6 +2418,7 @@ export class ServerOrchestrationService {
       this.latestQuery.read(server.id, abgleich.recordedAt),
       abgleich.recordedAt.toISOString(),
       this.latestDiskUsage.read(server.id, abgleich.recordedAt),
+      this.latestEngineStats.read(server.id, abgleich.recordedAt),
     );
 
     if (stats.playersOnline !== null && stats.playersOnline > 0) {

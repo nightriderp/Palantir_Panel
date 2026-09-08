@@ -9,9 +9,12 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  EMPTY_ENGINE_STATS,
   EMPTY_QUERY_SNAPSHOT,
   consoleLineFromAgentPayload,
   containerIdFromPayload,
+  engineStatsFromPayload,
+  hasEngineMeasurement,
   isServerQueryPayload,
   liveStatsFromAgentPayload,
   querySnapshotFromPayload,
@@ -189,7 +192,12 @@ describe('liveStatsFromAgentPayload', () => {
     expect(stats).not.toHaveProperty('networkTxPackets');
   });
 
-  it('füllt aus der Server-Abfrage nur, was sie misst', () => {
+  it('lässt die Engine-Kacheln leer, solange nichts gemessen wurde', () => {
+    /*
+     * Die Gegenprobe zu Fundpunkt 179: Ohne gemerkten Engine-Stand wird nichts
+     * erfunden. Ein „—" darf nur dort stehen, wo wirklich nichts bekannt ist –
+     * aber dort muss es auch stehen.
+     */
     const stats = liveStatsFromAgentPayload(QUERY_PAYLOAD, EMPTY_QUERY_SNAPSHOT, RECEIVED_AT);
 
     expect(stats).toEqual({
@@ -238,6 +246,115 @@ describe('liveStatsFromAgentPayload', () => {
     expect(stats.cpuPercent).toBeNull();
     expect(stats.ramUsedMb).toBeNull();
     expect(stats.updatedAt).toBe(RECEIVED_AT);
+  });
+});
+
+/**
+ * Messwerte der Engine im Abfrage-Rahmen (Fundpunkt 179).
+ *
+ * Dasselbe Muster wie beim Plattenplatz (Fundpunkt 175), nur in der anderen
+ * Richtung: CPU, Arbeitsspeicher und Netzverkehr kennt allein der
+ * Statistik-Strom. Weil das Frontend die Messwerte je Rahmen vollständig
+ * ersetzt, löschte jeder Abfrage-Rahmen die drei Kacheln, bis der nächste
+ * Engine-Rahmen kam.
+ */
+describe('Engine-Messwerte im Zweig der Server-Abfrage (Fundpunkt 179)', () => {
+  /** Ein gemerkter Engine-Stand, wie ihn `LatestEngineStatsCache` liefert. */
+  const GEMERKT = {
+    cpuPercent: 42.5,
+    ramUsedMb: 2_048,
+    networkRxBytes: 1_024,
+    networkTxBytes: 2_048,
+    networkRxPackets: 12,
+    networkTxPackets: 8,
+  };
+
+  it('löscht CPU, Arbeitsspeicher und Netzverkehr nicht mehr aus der Anzeige', () => {
+    const stats = liveStatsFromAgentPayload(
+      QUERY_PAYLOAD,
+      EMPTY_QUERY_SNAPSHOT,
+      RECEIVED_AT,
+      null,
+      GEMERKT,
+    );
+
+    expect(stats).toMatchObject({
+      cpuPercent: 42.5,
+      ramUsedMb: 2_048,
+      networkRxBytes: 1_024,
+      networkTxBytes: 2_048,
+      networkRxPackets: 12,
+      networkTxPackets: 8,
+    });
+    // Was die Abfrage wirklich misst, bleibt davon unberührt.
+    expect(stats).toMatchObject({ pingMs: 23, playersOnline: 7, playersMax: 20 });
+  });
+
+  it('lässt die Paket-Zähler auch hier weg, wenn die Engine sie nie gemeldet hat', () => {
+    // „nicht gemeldet" ist etwas anderes als „gemessen, aber leer" – die
+    // Unterscheidung darf über den Zwischenspeicher nicht verloren gehen.
+    const stats = liveStatsFromAgentPayload(
+      QUERY_PAYLOAD,
+      EMPTY_QUERY_SNAPSHOT,
+      RECEIVED_AT,
+      null,
+      { ...GEMERKT, networkRxPackets: null, networkTxPackets: null },
+    );
+
+    expect(stats).not.toHaveProperty('networkRxPackets');
+    expect(stats).not.toHaveProperty('networkTxPackets');
+  });
+
+  it('lässt den frischen Engine-Rahmen gegen den gemerkten Stand gewinnen', () => {
+    /*
+     * Der Zwischenspeicher überbrückt nur die Lücke. Meldet die Engine selbst,
+     * ist das die Messung – sonst hinge die Anzeige an einem alten Wert, obwohl
+     * gerade ein neuer eintrifft.
+     */
+    const stats = liveStatsFromAgentPayload(
+      RUNTIME_STATS,
+      EMPTY_QUERY_SNAPSHOT,
+      RECEIVED_AT,
+      null,
+      { ...GEMERKT, cpuPercent: 99, ramUsedMb: 1, networkRxBytes: 7, networkTxBytes: 9 },
+    );
+
+    expect(stats).toMatchObject({
+      cpuPercent: 42.5,
+      ramUsedMb: 2_048,
+      networkRxBytes: 1_024,
+      networkTxBytes: 2_048,
+    });
+  });
+});
+
+describe('engineStatsFromPayload', () => {
+  it('liest die Messwerte der Engine und rechnet den Arbeitsspeicher in MiB', () => {
+    expect(engineStatsFromPayload(RUNTIME_STATS)).toEqual({
+      cpuPercent: 42.5,
+      ramUsedMb: 2_048,
+      networkRxBytes: 1_024,
+      networkTxBytes: 2_048,
+      networkRxPackets: 12,
+      networkTxPackets: 8,
+    });
+  });
+
+  it('liest aus einer Abfrage-Nutzlast nichts', () => {
+    /*
+     * Die Abfrage misst keine Ressourcen. Läse hier jemand ihre Felder, käme
+     * ein erfundener Stand in den Zwischenspeicher – und der stünde dann bis
+     * zum Ablauf der Frist als Messung in der Anzeige.
+     */
+    expect(engineStatsFromPayload(QUERY_PAYLOAD)).toEqual(EMPTY_ENGINE_STATS);
+    expect(engineStatsFromPayload(null)).toEqual(EMPTY_ENGINE_STATS);
+  });
+
+  it('unterscheidet „keine Messung" von „gemessen"', () => {
+    expect(hasEngineMeasurement(EMPTY_ENGINE_STATS)).toBe(false);
+    expect(hasEngineMeasurement(engineStatsFromPayload(RUNTIME_STATS))).toBe(true);
+    // Ein einzelner Wert genügt: Die Runtime meldet nicht immer alles.
+    expect(hasEngineMeasurement({ ...EMPTY_ENGINE_STATS, cpuPercent: 0 })).toBe(true);
   });
 });
 
