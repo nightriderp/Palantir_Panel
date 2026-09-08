@@ -23,6 +23,7 @@ import {
 import { type AuditService, createAuditService } from './audit.js';
 import {
   type HostNodeService,
+  type NodeConnectionSource,
   type NodePlacementSource,
   type NodeUsageSource,
   createHostNodeService,
@@ -77,6 +78,13 @@ export interface AdminModuleOptions {
   readonly nodePlacements?: NodePlacementSource;
   /** Anschluss an B4: gemessene Auslastung der Nodes. */
   readonly nodeUsage?: NodeUsageSource;
+  /**
+   * Anschluss an B3: offene Agent-Verbindungen.
+   *
+   * Gebraucht beim Ende einer Wartung, um die Node mit dem Zustand
+   * einzutragen, der der Wirklichkeit entspricht (`nodes.ts`).
+   */
+  readonly nodeConnections?: NodeConnectionSource;
   /** Anschluss an B3: Agent-Kanal für den Speicher-Scan. */
   readonly storageGateway?: StorageScanGateway;
   /** Anschluss an A3/B5: Entfernen eines Speicher-Postens auf dem Homeserver. */
@@ -129,6 +137,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     portBindings: ports,
     ...(options.nodePlacements ? { placements: options.nodePlacements } : {}),
     ...(options.nodeUsage ? { usage: options.nodeUsage } : {}),
+    ...(options.nodeConnections ? { connections: options.nodeConnections } : {}),
   });
 
   const storage = createStorageExplorerService({

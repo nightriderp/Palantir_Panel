@@ -16,6 +16,7 @@
  * | {@link createServerKnownServerSource} | bekannte Server für die Bewertung der Datenordner |
  * | {@link createServerNameSource} | Anzeigenamen in der Port-Übersicht |
  * | {@link createAgentStorageScanGateway} | `GET_STORAGE_BREAKDOWN` über den Agent-Kanal |
+ * | {@link createAgentNodeConnectionSource} | ob für eine Node gerade eine Agent-Sitzung besteht |
  */
 
 import {
@@ -33,6 +34,7 @@ import { type Database } from '../../db/client.js';
 import { gameServers } from '../../db/schema.js';
 import {
   type KnownServerSource,
+  type NodeConnectionSource,
   type NodePlacement,
   type NodePlacementSource,
   type StorageEntryRemover,
@@ -211,6 +213,26 @@ export function createAgentStorageScanGateway(agents: AgentRegistry): StorageSca
           error instanceof Error ? error.message : 'Unbekannter Fehler.',
         );
       }
+    },
+  };
+}
+
+/**
+ * Ob für eine Node gerade eine Agent-Sitzung besteht.
+ *
+ * Die Node-Verwaltung (B8) braucht die Auskunft, wenn eine Wartung endet: Sie
+ * trägt die Node dann nicht mehr pauschal als `offline` ein, sondern mit dem
+ * Zustand, der wirklich gilt. Bewusst nur diese eine Frage statt der ganzen
+ * Registry – B8 soll keine Agent-Verbindungen steuern können.
+ *
+ * `agents.get()` liefert nur Sitzungen nach abgeschlossenem Handshake
+ * (`isReady`); eine noch nicht fertig angemeldete Verbindung zählt also
+ * richtigerweise nicht als verbunden.
+ */
+export function createAgentNodeConnectionSource(agents: AgentRegistry): NodeConnectionSource {
+  return {
+    isConnected(nodeId: string): boolean {
+      return agents.get(nodeId) !== null;
     },
   };
 }

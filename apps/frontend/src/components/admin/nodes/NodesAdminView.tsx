@@ -27,9 +27,10 @@ import { AddNodeWizard } from './AddNodeWizard';
  * Node-Verwaltung im Admin-Bereich (Lastenheft §3.7).
  *
  * Anlegen über den {@link AddNodeWizard} (inkl. Anbinde-Anleitung), sowie je Node
- * Wartung ein/aus, Agent-Token vergeben und Entfernen. Der Zustand „online" wird nicht von Hand gesetzt
- * – das entscheidet die Agent-Verbindung; deshalb schaltet „Wartung beenden" auf
- * `offline`, bis der Agent die Node wieder meldet.
+ * Wartung ein/aus, Agent-Token vergeben und Entfernen. Der Zustand wird nie von
+ * Hand gesetzt – das entscheidet die Agent-Verbindung. Von hier geht deshalb nur
+ * ein Ja/Nein zur Wartung ans Backend; welchen Zustand „Wartung beenden" nach
+ * sich zieht, bestimmt dort die Frage, ob der Agent gerade verbunden ist.
  */
 export function NodesAdminView() {
   const { user } = useSession();
@@ -64,12 +65,12 @@ export function NodesAdminView() {
 
   async function toggleMaintenance(node: HostNodeDto) {
     setBusyId(node.id);
-    const next = node.status === 'maintenance' ? 'offline' : 'maintenance';
-    const result = await updateNode(node.id, { status: next });
+    const next = node.status !== 'maintenance';
+    const result = await updateNode(node.id, { maintenance: next });
     setBusyId(null);
 
     if (result.success) {
-      toast.success(next === 'maintenance' ? 'Node in Wartung genommen.' : 'Wartung beendet.');
+      toast.success(next ? 'Node in Wartung genommen.' : 'Wartung beendet.');
       reload();
     } else {
       toast.error(errorText(result));

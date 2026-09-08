@@ -201,6 +201,68 @@ describe('Admin-Routen: Envelope und Berechtigungen', () => {
     await app.close();
   });
 
+  /*
+   * Der Zustand einer Node ist über die Route nicht mehr erreichbar.
+   *
+   * Vorher nahm das Eingabe-Schema `status: 'maintenance' | 'offline'` entgegen
+   * und die Route reichte es ungefiltert an das Repository weiter – „Wartung
+   * beenden" schrieb also von Hand `offline`. Jetzt gibt es nur noch den
+   * Wartungsschalter; ein mitgeschicktes `status` wird abgelehnt statt still
+   * entfernt, damit ein alter Aufrufer nicht fälschlich Erfolg gemeldet bekommt.
+   */
+  it('lässt den Node-Zustand nicht mehr von Hand setzen', async () => {
+    const app = await buildTestApp();
+
+    for (const status of ['online', 'offline', 'maintenance']) {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/admin/nodes/${NODE_ID}`,
+        headers: { 'x-test-actor': 'nodeAdmin' },
+        payload: { status },
+      });
+
+      expect(response.statusCode, status).toBe(400);
+      expect(response.json().error.code, status).toBe('VALIDATION_FAILED');
+    }
+
+    // Der Zustand steht danach unverändert auf dem Wert aus `nodeRecord()`.
+    const nach = await get(app, `/admin/nodes/${NODE_ID}`, 'nodeAdmin');
+
+    expect(nach.json().data.status).toBe('online');
+
+    await app.close();
+  });
+
+  it('nimmt die Wartung als Ja/Nein entgegen und leitet den Zustand ab', async () => {
+    const app = await buildTestApp();
+
+    const an = await app.inject({
+      method: 'PATCH',
+      url: `/admin/nodes/${NODE_ID}`,
+      headers: { 'x-test-actor': 'nodeAdmin' },
+      payload: { maintenance: true },
+    });
+
+    expect(an.statusCode).toBe(200);
+    expect(an.json().data.status).toBe('maintenance');
+
+    /*
+     * Ohne Agent-Gateway kennt der Dienst keine offenen Verbindungen und nimmt
+     * `offline` an – die sichere Annahme, siehe `nodes.ts`.
+     */
+    const aus = await app.inject({
+      method: 'PATCH',
+      url: `/admin/nodes/${NODE_ID}`,
+      headers: { 'x-test-actor': 'nodeAdmin' },
+      payload: { maintenance: false },
+    });
+
+    expect(aus.statusCode).toBe(200);
+    expect(aus.json().data.status).toBe('offline');
+
+    await app.close();
+  });
+
   it('trennt die Bereiche: node.manage öffnet nicht den Port-Pool', async () => {
     const app = await buildTestApp();
 

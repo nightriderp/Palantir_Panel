@@ -10,7 +10,7 @@
 import { type StorageEntryDto } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { AgentRegistry } from './agent-gateway.js';
-import { createAgentStorageEntryRemover } from './admin-ports.js';
+import { createAgentNodeConnectionSource, createAgentStorageEntryRemover } from './admin-ports.js';
 
 const NODE = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -109,5 +109,35 @@ describe('Speicher-Posten entfernen (Gefundener Punkt 75)', () => {
 
     expect(antwort.success).toBe(false);
     expect(antwort.error?.code).toBe('AGENT_NOT_CONNECTED');
+  });
+});
+
+/**
+ * Auskunft für die Node-Verwaltung, ob der Agent gerade hängt.
+ *
+ * Gebraucht beim Ende einer Wartung: Ohne diese Frage schrieb die Verwaltung
+ * pauschal `offline`, und `markHostConnected` holte das nur beim nächsten
+ * Handshake zurück – ein durchgehend verbundener Agent macht keinen.
+ */
+describe('Verbindungsauskunft für die Node-Verwaltung', () => {
+  it('meldet eine Node mit fertiger Sitzung als verbunden', () => {
+    const { agents } = registryMitSitzung();
+
+    expect(createAgentNodeConnectionSource(agents).isConnected(NODE.id)).toBe(true);
+  });
+
+  it('meldet eine Node ohne Sitzung als nicht verbunden', () => {
+    const { agents } = registryMitSitzung();
+
+    expect(
+      createAgentNodeConnectionSource(agents).isConnected('22222222-2222-4222-8222-222222222222'),
+    ).toBe(false);
+  });
+
+  it('zählt eine noch nicht fertig angemeldete Sitzung nicht als verbunden', () => {
+    const agents = new AgentRegistry();
+    agents.register({ hostId: NODE.id, isReady: false } as never);
+
+    expect(createAgentNodeConnectionSource(agents).isConnected(NODE.id)).toBe(false);
   });
 });
