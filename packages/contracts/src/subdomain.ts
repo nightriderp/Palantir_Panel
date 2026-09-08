@@ -68,10 +68,19 @@ export const SUBDOMAIN_MIN_LENGTH = 3;
 /**
  * Größte zulässige Länge.
  *
- * 63 ist die Obergrenze eines DNS-Labels (RFC 1035); enger wird bewusst nicht
- * eingeschränkt, damit die Regel technisch begründbar bleibt.
+ * 63 wäre die Obergrenze eines DNS-Labels (RFC 1035). Vergeben werden hier
+ * trotzdem nur 30 Zeichen – das ist die Regel, die seit jeher wirksam war:
+ * `subdomainSchema` in `@palantir/validation` prüft gegen 30, und dieses Schema
+ * ist der einzige Weg, auf dem eine Subdomain ins System gelangt. Die Zahl 63
+ * stand hier daneben, ohne dass sie je jemand aufgerufen hätte; wer sie las,
+ * durfte annehmen, ein 40 Zeichen langer Name ginge durch (Audit
+ * contracts-validation-05).
+ *
+ * Warum überhaupt enger als das DNS erlaubt: Der Name erscheint in der
+ * Serveradresse, die Spieler abtippen und vorlesen. 30 Zeichen sind dafür
+ * reichlich; 63 wären eine Zeile.
  */
-export const SUBDOMAIN_MAX_LENGTH = 63;
+export const SUBDOMAIN_MAX_LENGTH = 30;
 
 /**
  * Kleinbuchstaben, Ziffern und Bindestriche, weder am Anfang noch am Ende ein
