@@ -292,6 +292,23 @@ export {
   userResourceLimitsInputSchema,
 } from './resources.js';
 export {
+  FONT_FAMILY_NAME_MAX_LENGTH,
+  FONT_FAMILY_NAME_PATTERN,
+  FONT_LABEL_MAX_LENGTH,
+  RESERVED_FONT_FAMILY_NAMES,
+  type FontWeightRangeInput,
+  type UploadFontInput,
+  bundledFontIdSchema,
+  fontFamilyNameSchema,
+  fontFormatSchema,
+  fontIdSchema,
+  fontLabelSchema,
+  fontSourceSchema,
+  fontWeightRangeSchema,
+  fontWeightSchema,
+  uploadFontInputSchema,
+} from './font.js';
+export {
   type SubmitArcadeScoreInput,
   arcadeGameIdSchema,
   arcadeScoreValueSchema,

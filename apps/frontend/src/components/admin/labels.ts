@@ -111,6 +111,10 @@ const AUDIT_TARGET_TYPE_LABELS: Record<AuditTargetType, string> = {
   message: 'Nachricht',
   instanceSettings: 'Instanz-Einstellungen',
   quotaRequest: 'Kontingent-Anfrage',
+  // Pflichteintrag: Die Zuordnung ist bewusst vollständig (`Record`, nicht
+  // `Partial`), damit eine neue Zielart aus den Contracts nicht unbeschriftet
+  // durchrutscht. Der Schrift-Vertrag (Lastenheft §3.10) bringt sie mit.
+  font: 'Schrift',
 };
 
 export function auditTargetTypeLabel(target: AuditTargetType): string {
