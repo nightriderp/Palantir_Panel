@@ -16,7 +16,7 @@
 
 import { type WebSocket } from '@fastify/websocket';
 import {
-  CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
+  NOTIFICATION_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
   NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED,
   type NotificationServerFrame,
 } from '@palantir/contracts';
@@ -45,14 +45,13 @@ export const CLOSE_CODE_UNAUTHORIZED = NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED
  *
  * Bewusst **keine zweite Zahl**: Es ist dieselbe 4029 wie am Chat-Kanal, und
  * das Frontend soll sie an beiden Kanälen gleich lesen (neu verbinden, nur
- * nicht sofort und nicht hundertfach). Der Vertrag benennt sie bislang nur am
- * Chat-Kanal (`CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS`); ein eigener Name
- * `NOTIFICATION_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS` fehlt dort noch – siehe
- * Bericht. Bis dahin steht der kanal-eigene Name hier, wie schon bei
- * {@link CLOSE_CODE_UNAUTHORIZED}, und der Wert kommt aus dem Vertrag statt aus
- * einer erfundenen Konstante.
+ * nicht sofort und nicht hundertfach). Der Name gehört aber dem Kanal: Bis
+ * Fundpunkt 157 stand hier die Chat-Konstante, was den Inbox-Kanal der
+ * Entscheidung eines fremden Kanals unterworfen hätte. Jetzt kommt der Wert aus
+ * `NOTIFICATION_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS`, wie schon bei
+ * {@link CLOSE_CODE_UNAUTHORIZED}.
  */
-export const CLOSE_CODE_TOO_MANY_CONNECTIONS = CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS;
+export const CLOSE_CODE_TOO_MANY_CONNECTIONS = NOTIFICATION_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS;
 
 /**
  * Wie viele gleichzeitige Live-Verbindungen ein Konto am Inbox-Kanal haben darf

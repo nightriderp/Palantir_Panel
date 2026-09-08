@@ -26,6 +26,17 @@ describe('RESERVED_SUBDOMAINS', () => {
     }
   });
 
+  it('sperrt auch die Namen, an denen die Mail der Domain hängt', () => {
+    // Nachgetragen (Audit W3-1): Das Pflichtenheft führte beide schon als
+    // gesperrt, die Liste kannte sie nicht. `autodiscover` fragen Outlook und
+    // Thunderbird ab, `mx` ist das übliche Ziel des MX-Eintrags – ein
+    // Spielserver dort störte die Mail der Domain, ohne dass jemand den
+    // Zusammenhang sähe.
+    for (const name of ['autodiscover', 'mx', 'ns1', 'ns2']) {
+      expect(RESERVED_SUBDOMAINS, name).toContain(name);
+    }
+  });
+
   it('führt jeden Namen nur einmal und durchgängig klein', () => {
     expect(new Set(RESERVED_SUBDOMAINS).size).toBe(RESERVED_SUBDOMAINS.length);
     for (const name of RESERVED_SUBDOMAINS) {

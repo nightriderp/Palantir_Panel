@@ -46,6 +46,17 @@ export const RESERVED_SUBDOMAINS = [
   'cdn',
   'ns1',
   'ns2',
+  // Nachgetragen (Audit W3-1): Das Pflichtenheft führte beide schon als
+  // gesperrt, die Liste hier kannte sie nicht. Beide gehören zur Mail-
+  // Infrastruktur der Domain – genau wie `mail`, `ns1` und `ns2`, die von
+  // Anfang an gesperrt sind.
+  //
+  // `autodiscover` fragen Outlook und Thunderbird ab, um die Einstellungen
+  // eines Postfachs zu finden; `mx` ist der übliche Name des Mailservers, auf
+  // den der MX-Eintrag zeigt. Ein Spielserver unter einem der beiden Namen
+  // würde die Mail der Domain stören, ohne dass jemand den Zusammenhang sieht.
+  'autodiscover',
+  'mx',
 ] as const;
 
 export type ReservedSubdomain = (typeof RESERVED_SUBDOMAINS)[number];
