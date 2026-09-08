@@ -544,6 +544,28 @@ export interface AgentContainerStats {
   readonly blockReadBytes: number;
   readonly blockWriteBytes: number;
   readonly pids: number;
+  /**
+   * Belegter Plattenplatz des Datenordners dieses Servers in Bytes
+   * (Fundpunkt 168).
+   *
+   * **Nicht aus der Container-Engine.** Alle übrigen Werte hier kommen aus dem
+   * Statistik-Strom der Engine; diesen misst der Agent selbst am Datenordner
+   * unter `AGENT_DATA_DIR`. Die Engine kennt ihn nicht: Der Ordner ist ein
+   * Bind-Mount, und `blockReadBytes`/`blockWriteBytes` zählen Ein-/Ausgabe,
+   * nicht Belegung.
+   *
+   * **Optional, damit dieser Vertrag für sich stehen kann** (CLAUDE.md §3):
+   * Ein Agent, der das Feld nicht kennt, bleibt gültig – dann fehlt es, und
+   * `ServerLiveStats.diskUsedMb` bleibt `null`, so wie bisher immer. Fehlt es,
+   * heißt das „nicht gemessen", **nicht** „null Bytes belegt": Aus einer
+   * fehlenden Messung darf nie eine Warnung entstehen.
+   *
+   * Warum es das braucht: Das Lastenheft §3.3 verlangt Warnungen bei knappem
+   * **Speicherplatz** auf Server- und Node-Ebene. Die Node-Ebene misst über
+   * `statfs`, die Server-Ebene hatte bis hierher keine Quelle – die Warnung
+   * konnte deshalb nie auslösen.
+   */
+  readonly diskUsedBytes?: number;
   /** Zeitpunkt der Messung als ISO-8601. */
   readonly sampledAt: string;
 }
