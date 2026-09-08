@@ -39,7 +39,12 @@ import { type FetchLike, type ProviderRegistry, createProviderRegistry } from '.
 import { createRateLimiter } from './rate-limit.js';
 import { createDrizzleAuthRepository } from './repository.js';
 import { registerAuthRoutes } from './routes.js';
-import { type AuthEventSink, AuthService, type SessionRevocationSink } from './service.js';
+import {
+  type AuthAuditSink,
+  type AuthEventSink,
+  AuthService,
+  type SessionRevocationSink,
+} from './service.js';
 import { parseDurationMs, verifyAccessToken } from './tokens.js';
 import type { AuthRepository, UserRecord } from './types.js';
 
@@ -69,6 +74,11 @@ export interface AuthModuleOptions {
    */
   readonly sessions?: SessionRevocationSink;
   /**
+   * Audit-Log aus B8 für den Sammel-Logout (Fundpunkt 140); ohne Angabe wird
+   * nichts protokolliert.
+   */
+  readonly audit?: AuthAuditSink;
+  /**
    * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
    *
    * Kommt aus B8; ohne Angabe bleibt die Registrierung offen.
@@ -90,6 +100,9 @@ export interface AuthModuleOptions {
  * - `DELETE /auth/sessions/:sessionId` – wer eine verdächtige Fremdsitzung
  *   sieht, muss sie **sofort** abmelden können. Erst das Passwort ändern zu
  *   müssen, während die fremde Sitzung weiterläuft, dreht die Reihenfolge um.
+ *   Aus demselben Grund steht auch der Sammelpfad `DELETE /auth/sessions` auf
+ *   der Liste (Fundpunkt 140) – er tut nichts anderes, nur für alle fremden
+ *   Geräte auf einmal.
  * - `DELETE /auth/account` – die Konto-Löschung verlangt ohnehin die
  *   Bestätigung mit Name und (falls vorhanden) Passwort; das alte Passwort
  *   davor noch zu wechseln, schützt niemanden.
@@ -103,6 +116,7 @@ const PASSWORD_CHANGE_EXEMPT_ROUTES = new Set([
   'POST /auth/logout',
   'POST /auth/refresh',
   'GET /auth/altcha/challenge',
+  'DELETE /auth/sessions',
   'DELETE /auth/sessions/:sessionId',
   'DELETE /auth/account',
 ]);
@@ -171,6 +185,7 @@ export async function registerAuthModule(
     totpIssuer: env.PALANTIR_DOMAIN,
     ...(options.events ? { events: options.events } : {}),
     ...(options.sessions ? { sessions: options.sessions } : {}),
+    ...(options.audit ? { audit: options.audit } : {}),
     ...(options.selfRegistration ? { selfRegistration: options.selfRegistration } : {}),
   });
 

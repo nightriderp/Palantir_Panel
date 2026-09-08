@@ -569,6 +569,41 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     });
   });
 
+  /**
+   * Alle anderen Geräte abmelden (Fundpunkt 140, Lastenheft §3.1).
+   *
+   * Der Sammelpfad zum Einzel-Widerruf darunter. Die Oberfläche schickte bis
+   * hierher ein `DELETE` je Gerät – viele Anfragen, und bei einem Ausfall
+   * mittendrin blieb ein Teil der Geräte angemeldet, ohne dass es auffiel.
+   *
+   * Antwortet mit den **danach noch gültigen** Sitzungen (im Regelfall genau
+   * der aufrufenden). Dieselbe Nutzlast wie `GET /auth/sessions`, damit die
+   * Liste ohne einen zweiten Aufruf stimmt.
+   */
+  app.delete('/auth/sessions', async (request, reply) => {
+    await handle(reply, async () => {
+      const userId = requireUserId(request);
+      const currentSessionId = request.authSessionId;
+
+      /*
+       * „Alle anderen" ist ohne die eigene Sitzung nicht definiert – ohne sie
+       * wäre der Aufruf ein vollständiger Logout, und den hat niemand gedrückt.
+       * Der Fall ist unerreichbar (`plugin.ts` setzt `authUser` und
+       * `authSessionId` zusammen), die Absicherung kostet aber nichts.
+       */
+      if (currentSessionId === null) {
+        throw new AuthError('AUTH_REQUIRED');
+      }
+
+      const remaining: SessionDto[] = await service.revokeOtherSessions(userId, currentSessionId, {
+        displayName: request.authUser?.displayName ?? null,
+        ipHint: toIpHint(request.ip),
+      });
+
+      await reply.send(ok(remaining));
+    });
+  });
+
   app.delete<{ Params: { sessionId: string } }>(
     '/auth/sessions/:sessionId',
     async (request, reply) => {
@@ -650,9 +685,12 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
    * hier über eine Weiterleitung an, nicht über einen fetch-Aufruf.
    *
    * Erfolgreiche Anmeldungen landen dort, wo das Konto hingehört
-   * (Wartebildschirm oder Übersicht); ein fehlgeschlagener Versuch geht auf
-   * `/login?error=<CODE>` – ein Code aus dem Katalog, kein Freitext. Beides
+   * (Wartebildschirm oder Übersicht); ein fehlgeschlagener Anmeldeversuch geht
+   * auf `/login?error=<CODE>` – ein Code aus dem Katalog, kein Freitext. Beides
    * folgt dem, was F1 erwartet (WORK_STATUS.md, Gefundener Punkt 27).
+   *
+   * Ein fehlgeschlagenes **Verknüpfen** geht dagegen dorthin zurück, wo der
+   * Vorgang begonnen hat (Fundpunkt 134) – siehe die Begründung am `catch`.
    */
   app.get<{ Params: { provider: string } }>('/auth/:provider/callback', async (request, reply) => {
     const provider = request.params.provider;
@@ -706,10 +744,28 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       clearOAuthStateCookie(reply, options.cookies);
 
       if (isAuthError(error)) {
-        await reply.redirect(
-          frontendRedirect(options, FRONTEND_LOGIN_PATH, { error: error.code }),
-          303,
-        );
+        /*
+         * Wohin der Fehlschlag zurückgeht, entscheidet dasselbe Merkmal wie im
+         * Erfolgsfall oben: Wer angemeldet ist, wollte ein weiteres Verfahren
+         * **verknüpfen** – und gehört auf die Seite zurück, von der aus er das
+         * angestoßen hat (Fundpunkt 134).
+         *
+         * Vorher ging auch dieser Fall auf `/login?error=<CODE>`. Von dort
+         * schickt die Middleware ein angemeldetes Konto sofort weiter auf die
+         * Serverübersicht, und die wertet den Code nicht aus – die Meldung
+         * erreichte das Profil also nie, der Nutzer sah nur einen stillen
+         * Sprung auf die Übersicht. `/profil` wertet `?error=` dagegen aus
+         * (`ProfileView`) – und von dort aus wird auch verknüpft.
+         *
+         * `pendingReturnTo` liest den Wert aus dem (signierten) OAuth-Cookie
+         * und prüft ihn erneut gegen die Allowlist; das `clearOAuthStateCookie`
+         * darüber setzt nur einen Löschauftrag auf die Antwort und nimmt dem
+         * Request sein Cookie nicht weg. Der Anmelde-Fall bleibt unverändert
+         * bei `/login`.
+         */
+        const target = request.authUser ? pendingReturnTo(request) : FRONTEND_LOGIN_PATH;
+
+        await reply.redirect(frontendRedirect(options, target, { error: error.code }), 303);
         return;
       }
 

@@ -397,6 +397,23 @@ export function createFakeAuthRepository(): FakeAuthRepository {
 
       return Promise.resolve();
     },
+
+    revokeOtherSessions: (userId, keepSessionId, revokedAt) => {
+      let widerrufen = 0;
+
+      sessions.forEach((session, index) => {
+        if (
+          session.userId === userId &&
+          session.id !== keepSessionId &&
+          session.revokedAt === null
+        ) {
+          sessions[index] = { ...session, revokedAt };
+          widerrufen += 1;
+        }
+      });
+
+      return Promise.resolve(widerrufen);
+    },
   };
 }
 

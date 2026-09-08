@@ -26,6 +26,8 @@ export { type AuthModuleOptions, registerAuthModule } from './plugin.js';
 
 export {
   AuthService,
+  type AuthAuditContext,
+  type AuthAuditSink,
   type AuthEventSink,
   type AuthServiceOptions,
   type IssuedSession,
@@ -33,6 +35,7 @@ export {
   type ProviderLoginOutcome,
   type RequestContext,
   type SessionRevocationSink,
+  noopAuthAuditSink,
   noopAuthEventSink,
   noopSessionRevocationSink,
   sanitizeDisplayName,

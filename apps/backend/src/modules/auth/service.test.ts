@@ -38,6 +38,16 @@ let service: AuthService;
 let emittedEvents: { event: string; payload: Record<string, unknown> }[];
 /** Konten, deren Sitzungen widerrufen wurden – Anschluss fuer B7 (Audit W2-2). */
 let revokedUserIds: string[];
+/** Was ins Audit-Log ging – Anschluss fuer B8 (Fundpunkt 140). */
+let auditEntries: {
+  action: string;
+  actorId: string | null;
+  actorDisplayName: string | null;
+  targetType: string;
+  targetId: string;
+  ipHint: string | null;
+  metadata: Record<string, unknown>;
+}[];
 
 function build(
   options: {
@@ -51,6 +61,7 @@ function build(
   now = new Date('2026-08-26T12:00:00Z');
   emittedEvents = [];
   revokedUserIds = [];
+  auditEntries = [];
   service = new AuthService({
     repository,
     roles,
@@ -69,6 +80,11 @@ function build(
     sessions: {
       revoked: (userId): void => {
         revokedUserIds.push(userId);
+      },
+    },
+    audit: {
+      record: (entry): void => {
+        auditEntries.push({ ...entry, metadata: { ...entry.metadata } });
       },
     },
   });
@@ -639,6 +655,99 @@ describe('Sitzungen und Token-Rotation (Pflichtenheft §7)', () => {
     await service.logout(sessionId);
 
     await expectErrorCode(service.resolveSession(sessionId), 'AUTH_SESSION_EXPIRED');
+  });
+
+  /**
+   * Fundpunkt 140: „Alle anderen abmelden" gab es nur als Schleife im Browser –
+   * ein `DELETE` je Gerät, nicht atomar und ohne Spur im Audit-Log.
+   */
+  describe('Sammel-Logout „alle anderen abmelden" (Fundpunkt 140)', () => {
+    const AUDIT = { displayName: 'Spieler', ipHint: '203.0.113.x' };
+
+    /** Zwei weitere Anmeldungen desselben Kontos = zwei fremde Geräte. */
+    async function meldeZweiWeitereGeraeteAn(): Promise<string[]> {
+      const erste = await service.login(
+        { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+        CONTEXT,
+      );
+      const zweite = await service.login(
+        { username: 'spieler', password: PASSWORD, altcha: ALTCHA },
+        CONTEXT,
+      );
+
+      return [erste.session?.sessionId ?? '', zweite.session?.sessionId ?? ''];
+    }
+
+    it('widerruft alle fremden Sitzungen und lässt die aktuelle gültig', async () => {
+      const fremde = await meldeZweiWeitereGeraeteAn();
+
+      const verbleibend = await service.revokeOtherSessions(userId, sessionId, AUDIT);
+
+      for (const id of fremde) {
+        expect(repository.sessions.find((s) => s.id === id)?.revokedAt).not.toBeNull();
+      }
+      // Die aufrufende Sitzung bleibt benutzbar – sonst wäre es ein Logout.
+      expect(repository.sessions.find((s) => s.id === sessionId)?.revokedAt).toBeNull();
+      await expect(service.resolveSession(sessionId)).resolves.toBeDefined();
+
+      // Die Antwort ist die neue Liste, damit die Oberfläche nicht raten muss.
+      expect(verbleibend.map((s) => s.id)).toEqual([sessionId]);
+      expect(verbleibend[0]?.current).toBe(true);
+    });
+
+    it('schreibt genau einen Audit-Eintrag mit der Anzahl', async () => {
+      await meldeZweiWeitereGeraeteAn();
+
+      await service.revokeOtherSessions(userId, sessionId, AUDIT);
+
+      expect(auditEntries).toEqual([
+        {
+          action: 'auth.sessionRevoked',
+          actorId: userId,
+          actorDisplayName: 'Spieler',
+          targetType: 'user',
+          targetId: userId,
+          ipHint: '203.0.113.x',
+          metadata: { scope: 'others', revoked: 2 },
+        },
+      ]);
+    });
+
+    it('protokolliert nichts, wenn es gar kein anderes Gerät gab', async () => {
+      // Ein Log voller „0 Sitzungen beendet" macht die echten Einträge
+      // schwerer zu finden (Pflichtenheft §6).
+      const verbleibend = await service.revokeOtherSessions(userId, sessionId, AUDIT);
+
+      expect(auditEntries).toEqual([]);
+      expect(verbleibend.map((s) => s.id)).toEqual([sessionId]);
+    });
+
+    /**
+     * Der Kern der Sache (Audit W2-2): Die Senke adressiert je **Konto**
+     * (`closeAll(userId)`), nicht je Sitzung. Würde sie hier gerufen, schlösse
+     * sie auch den Live-Kanal des aufrufenden Geräts – genau den, der überleben
+     * soll. Dieselbe Begründung wie beim Einzel-Logout, nur eine Ebene höher.
+     */
+    it('meldet dem Verteiler nichts, damit die eigene Live-Verbindung überlebt', async () => {
+      await meldeZweiWeitereGeraeteAn();
+
+      await service.revokeOtherSessions(userId, sessionId, AUDIT);
+
+      expect(revokedUserIds).toEqual([]);
+    });
+
+    it('lässt die Sitzungen anderer Konten unberührt', async () => {
+      const fremder = await service.register(
+        { username: 'fremder', password: PASSWORD, altcha: ALTCHA },
+        CONTEXT,
+      );
+
+      await service.revokeOtherSessions(userId, sessionId, AUDIT);
+
+      expect(
+        repository.sessions.find((s) => s.id === fremder.session.sessionId)?.revokedAt,
+      ).toBeNull();
+    });
   });
 });
 

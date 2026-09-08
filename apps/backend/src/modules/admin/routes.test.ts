@@ -370,18 +370,45 @@ describe('Admin-Routen: Envelope und Berechtigungen', () => {
   });
 });
 
-describe('Herkunft des Requests für das Audit-Log', () => {
+/*
+ * Fundpunkt 152: `ipHintOf` kürzte bis dahin selbst und hatte dabei denselben
+ * Fehler, den W3-9 in `auth/request-context.ts` behoben hatte. Seither ist es
+ * ein Aufruf von `toIpHint` – dieselben Fälle wie dort müssen deshalb hier
+ * dasselbe Ergebnis liefern, sonst wäre die zweite Auslegung nur verschoben.
+ * Die Tiefe ist damit drei statt vier Gruppen (siehe Begründung an `ipHintOf`).
+ */
+describe('Herkunft des Requests für das Audit-Log (Fundpunkt 152)', () => {
   it('kürzt eine IPv4-Adresse auf das Netz', () => {
     expect(ipHintOf({ ip: '203.0.113.42' } as never)).toBe('203.0.113.x');
   });
 
-  it('kürzt eine IPv6-Adresse auf die ersten vier Gruppen', () => {
+  it('kürzt eine IPv6-Adresse nach dem dritten Block', () => {
     expect(ipHintOf({ ip: '2001:db8:1234:5678:9abc:def0:1234:5678' } as never)).toBe(
-      '2001:db8:1234:5678::x',
+      '2001:db8:1234:x',
     );
   });
 
-  it('kommt ohne Adresse zurecht', () => {
+  it('schreibt komprimierte Adressen aus, statt `:::x` zu erzeugen', () => {
+    expect(ipHintOf({ ip: '2001:db8::1' } as never)).toBe('2001:db8:0:x');
+    expect(ipHintOf({ ip: '2001:db8::dead:beef' } as never)).toBe('2001:db8:0:x');
+    expect(ipHintOf({ ip: 'fe80::1' } as never)).toBe('fe80:0:0:x');
+  });
+
+  it('erkennt IPv4 hinter IPv6-Sockets', () => {
+    // Dieselbe Herkunft muss in Audit-Log und Geräteübersicht gleich stehen.
+    expect(ipHintOf({ ip: '::ffff:203.0.113.10' } as never)).toBe('203.0.113.x');
+    expect(ipHintOf({ ip: '::ffff:cb00:710a' } as never)).toBe('203.0.113.x');
+  });
+
+  it('lässt den Zonen-Index weg', () => {
+    expect(ipHintOf({ ip: 'fe80::1%eth0' } as never)).toBe('fe80:0:0:x');
+  });
+
+  it('kommt ohne Adresse zurecht und erfindet nichts', () => {
     expect(ipHintOf({ ip: '' } as never)).toBeNull();
+    // Vorher wurde eine unbrauchbare Eingabe unverkürzt durchgereicht.
+    expect(ipHintOf({ ip: 'keine-adresse' } as never)).toBeNull();
+    expect(ipHintOf({ ip: '203.0.113' } as never)).toBeNull();
+    expect(ipHintOf({ ip: '2001:db8::1::2' } as never)).toBeNull();
   });
 });

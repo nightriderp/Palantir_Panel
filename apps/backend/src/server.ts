@@ -43,11 +43,13 @@ import { registerPanelBackupRoutes } from './modules/panel-backups/routes.js';
 import { createPublicStatsService } from './modules/public-stats/index.js';
 import { registerPublicStatsRoutes } from './modules/public-stats/routes.js';
 import {
+  type AuthAuditSink,
   type AuthEventSink,
   type AuthModuleOptions,
   type AuthService,
   type SessionRevocationSink,
   isAuthError,
+  noopAuthAuditSink,
   noopAuthEventSink,
   registerAuthModule,
 } from './modules/auth/index.js';
@@ -239,11 +241,28 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     revoked: (userId) => closeLiveConnections?.(userId),
   };
 
+  /*
+   * Und dieselbe späte Verdrahtung für das Audit-Log (Fundpunkt 140): B1
+   * protokolliert den Sammel-Logout „alle anderen Geräte abmelden", der
+   * `AuditService` entsteht aber erst mit dem Admin-Modul weiter unten. Bis
+   * dahin verwirft die Weiterleitung still – ohne Datenbank gibt es auch kein
+   * Log, in das sie schreiben könnte.
+   *
+   * Anders als bei den beiden Senken darüber wird hier **nicht** geschluckt,
+   * was `record()` wirft: Ein Sitzungswiderruf, der sich nicht protokollieren
+   * lässt, soll scheitern statt unbemerkt durchzugehen (Pflichtenheft §6).
+   */
+  let auditSink: AuthAuditSink = noopAuthAuditSink;
+  const authAuditSink: AuthAuditSink = {
+    record: (entry) => auditSink.record(entry),
+  };
+
   if (auth !== false) {
     authService = await registerAuthModule(app, {
       ...(auth === true ? {} : auth),
       events: authEventSink,
       sessions: sessionRevocationSink,
+      audit: authAuditSink,
       selfRegistration: async () => (await instanceSettings?.selfRegistrationEnabled()) ?? true,
     });
   }
@@ -343,6 +362,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
     // Ab jetzt kennt die Registrierung den Schalter (Abgleich 12.1.1).
     instanceSettings = admin.instanceSettings;
+
+    /*
+     * Und ab jetzt landet der Sammel-Logout aus B1 im append-only Audit-Log
+     * (Fundpunkt 140, Aktion `auth.sessionRevoked`) – über dieselbe späte
+     * Weiterleitung wie die beiden Senken oben.
+     */
+    auditSink = admin.services.audit;
 
     /*
      * Server-Orchestrierung (B3) inklusive des WebSocket-Endpunkts `/agent`

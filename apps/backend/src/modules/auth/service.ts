@@ -172,6 +172,50 @@ export const noopSessionRevocationSink: SessionRevocationSink = {
   },
 };
 
+/**
+ * Sicherheitsrelevante Vorgänge ins Audit-Log (Pflichtenheft §6, Fundpunkt 140).
+ *
+ * Bewusst eine eigene, schmale Schnittstelle statt einer direkten Abhängigkeit
+ * auf den `AuditService` aus B8 – dasselbe Muster wie `NotificationAuditSink`
+ * in B6: B1 protokolliert bisher genau eine Aktion und soll ohne das
+ * Admin-Modul testbar bleiben.
+ *
+ * `record()` darf werfen, und der Aufrufer fängt das **nicht** ab: Lässt sich
+ * ein Sitzungswiderruf nicht protokollieren, soll der Aufruf scheitern, statt
+ * unbemerkt zu passieren (so beschreibt es `AuditService.record`).
+ */
+export interface AuthAuditSink {
+  record(entry: {
+    action: 'auth.sessionRevoked';
+    actorId: string | null;
+    actorDisplayName: string | null;
+    targetType: 'user';
+    targetId: string;
+    ipHint: string | null;
+    metadata: Record<string, unknown>;
+  }): void | Promise<void>;
+}
+
+/** Audit-Senke, solange B8 nicht eingehängt ist (Tests, Betrieb ohne Datenbank). */
+export const noopAuthAuditSink: AuthAuditSink = {
+  record() {
+    // absichtlich leer
+  },
+};
+
+/**
+ * Angaben zum Handelnden, die ein Audit-Eintrag über den reinen Vorgang hinaus
+ * braucht (Pflichtenheft §6, `AuditLog`).
+ *
+ * Der Anzeigename ist eine **Kopie** zum Zeitpunkt der Aktion – genau wie beim
+ * Admin-Kontext (`contextFrom()` in `modules/admin/routes.ts`): Der Eintrag
+ * bleibt lesbar, auch wenn das Konto später verschwindet.
+ */
+export interface AuthAuditContext {
+  readonly displayName: string | null;
+  readonly ipHint: string | null;
+}
+
 export interface AuthServiceOptions {
   readonly repository: AuthRepository;
   /** Aus B2 – für die Gast-Rolle und die effektiven Rechte am Konto-DTO. */
@@ -193,6 +237,8 @@ export interface AuthServiceOptions {
    * Kontos); ohne Angabe wird nichts gemeldet.
    */
   readonly sessions?: SessionRevocationSink;
+  /** Audit-Log aus B8 (Fundpunkt 140); ohne Angabe wird nichts protokolliert. */
+  readonly audit?: AuthAuditSink;
   /**
    * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
    *
@@ -217,6 +263,8 @@ export class AuthService {
   private readonly events: AuthEventSink;
   /** Empfänger des Sitzungswiderrufs (Audit W2-2). */
   private readonly sessions: SessionRevocationSink;
+  /** Audit-Log aus B8 (Fundpunkt 140). */
+  private readonly audit: AuthAuditSink;
   /**
    * Nimmt die Instanz Selbstregistrierungen an? (Mockup-Abgleich 12.1.1.)
    *
@@ -239,6 +287,7 @@ export class AuthService {
     this.now = options.now ?? ((): Date => new Date());
     this.events = options.events ?? noopAuthEventSink;
     this.sessions = options.sessions ?? noopSessionRevocationSink;
+    this.audit = options.audit ?? noopAuthAuditSink;
     this.selfRegistration = options.selfRegistration ?? null;
     this.defaultRoleName = options.defaultRoleName ?? 'Nutzer';
   }
@@ -829,6 +878,69 @@ export class AuthService {
     }
   }
 
+  /**
+   * Sammel-Logout: alle Sitzungen des Kontos **außer der aktuellen**
+   * (Fundpunkt 140, Lastenheft §3.1).
+   *
+   * Bis dahin gab es nur den Einzel-Widerruf, und die Oberfläche schickte ein
+   * `DELETE` je Gerät. Das war weder atomar (fiel der dritte Aufruf aus, blieben
+   * die restlichen Geräte angemeldet, ohne dass der Nutzer es merkte) noch
+   * sparsam. Ein Aufruf, ein Statement, ein Audit-Eintrag.
+   *
+   * **Nicht** über `revokeEverySession()`: Das räumt bewusst alles ab und ist
+   * dem Sperrfall vorbehalten. Hier bleibt die aufrufende Sitzung gültig – der
+   * Nutzer will die anderen Geräte loswerden, nicht sich selbst.
+   *
+   * **Die Senke für die Live-Kanäle bleibt still, und das ist Absicht**
+   * (Audit W2-2): Der Verteiler adressiert je *Konto*, nicht je Sitzung
+   * (`ChatLiveHub.closeAll(userId)`), er würde also die Verbindung des
+   * aufrufenden Geräts mitschließen – genau die, die überleben soll. Dieselbe
+   * Begründung wie beim Einzel-Logout, nur eine Ebene höher. Die Kanäle der
+   * abgemeldeten Geräte fallen dadurch nicht sofort, aber verlässlich: Der
+   * Chat-Kanal prüft die Sitzung wiederkehrend nach (`isSessionValid` in
+   * `server.ts`), und spätestens beim nächsten Erneuern des Zugriffs-Tokens
+   * (15 Minuten) ist dort ohnehin Schluss. Eine sitzungsgenaue Senke wäre die
+   * saubere Lösung, verlangt aber, dass die drei Verteiler in B6/B7 und der
+   * Orchestrierung die Sitzungs-Id mitführen – das gehört nicht hierher.
+   *
+   * Liefert die danach noch gültigen Sitzungen zurück, damit die Oberfläche mit
+   * demselben Aufruf eine wahrheitsgemäße Liste bekommt und nicht raten muss,
+   * was übrig geblieben ist.
+   */
+  async revokeOtherSessions(
+    userId: string,
+    currentSessionId: string,
+    context: AuthAuditContext,
+  ): Promise<SessionDto[]> {
+    const revoked = await this.revokeSessionsExcept(userId, currentSessionId);
+
+    /*
+     * Nur protokollieren, wenn tatsächlich etwas widerrufen wurde: Ein
+     * wiederholter Klick auf ein Konto ohne weitere Geräte ist kein
+     * sicherheitsrelevanter Vorgang, und ein Log voller „0 Sitzungen beendet"
+     * macht die echten Einträge schwerer zu finden (Pflichtenheft §6).
+     *
+     * Bewusst **nach** dem Widerruf und ohne `try`: Ein nicht schreibbares
+     * Audit-Log lässt den Aufruf scheitern, statt die Aktion stillschweigend
+     * unprotokolliert durchgehen zu lassen.
+     */
+    if (revoked > 0) {
+      await this.audit.record({
+        action: 'auth.sessionRevoked',
+        actorId: userId,
+        actorDisplayName: context.displayName,
+        // Betroffen ist das Konto als Ganzes – eine einzelne Sitzungs-Id gibt es
+        // hier nicht, und die Id der verschonten gehört nicht ins Log.
+        targetType: 'user',
+        targetId: userId,
+        ipHint: context.ipHint,
+        metadata: { scope: 'others', revoked },
+      });
+    }
+
+    return this.listSessions(userId, currentSessionId);
+  }
+
   /** Abmeldung der aktuellen Sitzung. */
   async logout(sessionId: string): Promise<void> {
     const session = await this.repository.findSessionById(sessionId);
@@ -1126,7 +1238,7 @@ export class AuthService {
       mustChangePassword: false,
     });
 
-    await this.revokeOtherSessions(userId, keepSessionId);
+    await this.revokeSessionsExcept(userId, keepSessionId);
 
     return this.loadAccount(user);
   }
@@ -1428,15 +1540,24 @@ export class AuthService {
     await this.roles.assignToUser(userId, guestRole.id);
   }
 
-  private async revokeOtherSessions(userId: string, keepSessionId: string | null): Promise<void> {
-    const sessions = await this.repository.listActiveSessions(userId, this.now().getTime());
-    const now = this.now();
-
-    for (const session of sessions) {
-      if (session.id !== keepSessionId) {
-        await this.repository.revokeSession(session.id, now);
-      }
-    }
+  /**
+   * Widerruft alle Sitzungen des Kontos außer der angegebenen; liefert deren
+   * Anzahl.
+   *
+   * Einziger Weg zu `repository.revokeOtherSessions` – der Passwortwechsel und
+   * der Sammel-Logout (Fundpunkt 140) laufen beide hier durch. Vorher stand
+   * hier eine Schleife über `listActiveSessions` + `revokeSession`; sie konnte
+   * auf halbem Weg abbrechen und einen Teil der Geräte angemeldet lassen. Ein
+   * Statement wirkt ganz oder gar nicht.
+   *
+   * Die Senke für die Live-Kanäle bleibt hier still – siehe die Begründung an
+   * {@link AuthService.revokeOtherSessions}.
+   */
+  private async revokeSessionsExcept(
+    userId: string,
+    keepSessionId: string | null,
+  ): Promise<number> {
+    return this.repository.revokeOtherSessions(userId, keepSessionId, this.now());
   }
 }
 

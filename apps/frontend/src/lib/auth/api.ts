@@ -77,8 +77,11 @@ export const AUTH_ENDPOINTS = {
   /**
    * Übersicht der angemeldeten Geräte (Lastenheft §3.1).
    *
-   * Einen Sammelpfad „alle anderen abmelden" gibt es im Backend nicht – die
-   * Oberfläche ruft dafür `sessionById` je Sitzung einmal auf.
+   * Zwei Vorgänge am selben Pfad: `GET` liefert die Liste, `DELETE` meldet alle
+   * Geräte **außer dem aufrufenden** ab (Fundpunkt 140). Vorher gab es den
+   * Sammelpfad nicht und die Oberfläche rief `sessionById` je Sitzung einmal
+   * auf – viele Anfragen, und bei einem Ausfall mittendrin blieb ein Teil der
+   * Geräte angemeldet.
    */
   sessions: '/auth/sessions',
   /** Eine einzelne Sitzung remote abmelden (Lastenheft §3.1). */
@@ -612,4 +615,19 @@ export function listSessions(): Promise<SessionDto[]> {
  */
 export function revokeSession(sessionId: string): Promise<null> {
   return request(AUTH_ENDPOINTS.sessionById(sessionId), z.null(), { method: 'DELETE' });
+}
+
+/**
+ * Alle anderen Geraete abmelden (Lastenheft §3.1, Fundpunkt 140).
+ *
+ * Ein Aufruf statt eines `DELETE` je Geraet: Das Backend widerruft in einem
+ * Statement alles ausser der aufrufenden Sitzung, protokolliert das im
+ * Audit-Log und antwortet mit den **danach noch gueltigen** Sitzungen. Die
+ * eigene bleibt gueltig, die Cookies bleiben stehen.
+ *
+ * Die Antwort traegt dieselbe Nutzlast wie {@link listSessions} – die Ansicht
+ * uebernimmt sie direkt, statt die Liste aus dem eigenen Zustand zu erraten.
+ */
+export function revokeOtherSessions(): Promise<SessionDto[]> {
+  return request(AUTH_ENDPOINTS.sessions, z.array(sessionDtoSchema), { method: 'DELETE' });
 }

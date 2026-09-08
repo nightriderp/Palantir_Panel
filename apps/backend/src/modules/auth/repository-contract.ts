@@ -447,6 +447,80 @@ export function describeAuthRepositoryContract(baueRepository: AuthRepositoryFab
       expect(await repository.listActiveSessions(nutzer.id, jetzt)).toEqual([]);
     });
 
+    it('widerruft alle Sitzungen außer der aktuellen und zählt sie (Fundpunkt 140)', async () => {
+      /*
+       * Der Sammel-Logout steht und fällt mit zwei Zusicherungen, die beide
+       * Seiten halten müssen: Die ausgenommene Sitzung bleibt gültig, und die
+       * Rückgabe zählt genau die Sitzungen, die dieser Aufruf geschlossen hat –
+       * an ihr hängt der Audit-Eintrag.
+       */
+      const repository = await repo();
+      const nutzer = await repository.createUser({ username: 'sammel', displayName: 'S' });
+      const jetzt = Date.now();
+
+      const aktuelle = await lege(repository, nutzer.id, 'aktuelle');
+      const fremde = await lege(repository, nutzer.id, 'fremde');
+      const schon = await lege(repository, nutzer.id, 'schon-widerrufen');
+      await repository.revokeSession(schon.id, new Date(jetzt));
+
+      const anzahl = await repository.revokeOtherSessions(
+        nutzer.id,
+        aktuelle.id,
+        new Date(jetzt + STUNDE),
+      );
+
+      // Nur `fremde`: Die bereits widerrufene Sitzung zählt nicht noch einmal.
+      expect(anzahl).toBe(1);
+      expect((await repository.listActiveSessions(nutzer.id, jetzt)).map((s) => s.id)).toEqual([
+        aktuelle.id,
+      ]);
+      expect((await repository.findSessionById(fremde.id))?.revokedAt?.getTime()).toBe(
+        jetzt + STUNDE,
+      );
+      // Und der Zeitpunkt der schon widerrufenen Sitzung bleibt, wie er war.
+      expect((await repository.findSessionById(schon.id))?.revokedAt?.getTime()).toBe(jetzt);
+    });
+
+    it('nimmt ohne Sitzungs-Id keine Sitzung aus', async () => {
+      /*
+       * Der Passwortwechsel kann ohne eigene Sitzung ankommen (Aufruf ohne
+       * gültiges Zugriffs-Token). Dann soll er alles abräumen – die Attrappe
+       * verglich vorher gegen `null` und traf damit dieselbe Entscheidung wie
+       * der `ne`-Filter im SQL, aber nur zufällig.
+       */
+      const repository = await repo();
+      const nutzer = await repository.createUser({ username: 'ohne-id', displayName: 'O' });
+      const jetzt = Date.now();
+      await lege(repository, nutzer.id, 'eine');
+      await lege(repository, nutzer.id, 'andere');
+
+      expect(await repository.revokeOtherSessions(nutzer.id, null, new Date(jetzt))).toBe(2);
+      expect(await repository.listActiveSessions(nutzer.id, jetzt)).toEqual([]);
+    });
+
+    it('lässt beim Sammel-Logout die Sitzungen anderer Konten unberührt', async () => {
+      const repository = await repo();
+      const jetzt = Date.now();
+      const einer = await repository.createUser({ username: 'sammel-einer', displayName: 'E' });
+      const anderer = await repository.createUser({ username: 'sammel-anderer', displayName: 'A' });
+      const eigene = await lege(repository, einer.id, 'eigene');
+      const fremde = await lege(repository, anderer.id, 'fremde');
+
+      /*
+       * Auch mit der Id einer *fremden* Sitzung als Ausnahme: Gefiltert wird
+       * immer zusätzlich nach dem Konto, sonst räumte ein untergeschobener Wert
+       * bei einem anderen Nutzer auf.
+       */
+      const anzahl = await repository.revokeOtherSessions(einer.id, fremde.id, new Date(jetzt));
+
+      expect(anzahl).toBe(1);
+      expect(await repository.listActiveSessions(einer.id, jetzt)).toEqual([]);
+      expect((await repository.listActiveSessions(anderer.id, jetzt)).map((s) => s.id)).toEqual([
+        fremde.id,
+      ]);
+      expect((await repository.findSessionById(eigene.id))?.revokedAt).not.toBeNull();
+    });
+
     it('hält die Sitzungen zweier Konten auseinander', async () => {
       const repository = await repo();
       const jetzt = Date.now();

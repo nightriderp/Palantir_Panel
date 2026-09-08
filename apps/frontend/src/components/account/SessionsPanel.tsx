@@ -15,7 +15,7 @@ import {
 } from '@/components/shared';
 import { loadSessions } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { revokeSession } from '@/lib/auth/api';
+import { revokeOtherSessions, revokeSession } from '@/lib/auth/api';
 import { messageForThrown } from '@/lib/auth/errors';
 
 /**
@@ -37,9 +37,13 @@ import { messageForThrown } from '@/lib/auth/errors';
  * Deshalb steht er dort – nur mit anderem Bestätigungstext, und danach geht es
  * zurück zur Anmeldung.
  *
- * Einen Sammelpfad „alle anderen abmelden" gibt es im Backend nicht; die
- * Aktion schickt deshalb ein `DELETE` je Gerät und wertet die Antworten
- * einzeln aus. Was scheitert, bleibt sichtbar in der Liste stehen.
+ * „Alle anderen abmelden" ist **ein** Aufruf (`DELETE /auth/sessions`, Fundpunkt
+ * 140). Vorher schickte die Aktion ein `DELETE` je Gerät und wertete die
+ * Antworten einzeln aus – bei zehn Geräten zehn Anfragen, und fiel eine davon
+ * aus, blieb dieses Gerät angemeldet, während die Erfolgsmeldung für die
+ * übrigen erschien. Jetzt widerruft das Backend in einem Statement und liefert
+ * die verbleibenden Sitzungen zurück; die Liste kommt also aus der Antwort und
+ * nicht aus einer Annahme der Oberfläche.
  */
 
 /** Was der offene Bestätigungsdialog gerade vorhat. */
@@ -85,28 +89,17 @@ export function SessionsPanel() {
   }
 
   async function meldeAlleAnderenAb(): Promise<void> {
-    const ergebnisse = await Promise.allSettled(andere.map((session) => revokeSession(session.id)));
-
-    const erledigt = new Set(
-      andere.filter((_, index) => ergebnisse[index]?.status === 'fulfilled').map(({ id }) => id),
-    );
-    entferne(erledigt);
-
-    const gescheitert = ergebnisse.find(
-      (ergebnis): ergebnis is PromiseRejectedResult => ergebnis.status === 'rejected',
-    );
-
-    if (gescheitert) {
-      // Eine Meldung für alle Fehlschläge – zehn gleiche Toasts helfen nicht.
-      // Die betroffenen Geräte stehen weiter in der Liste.
-      toast.error(messageForThrown(gescheitert.reason));
-      return;
-    }
+    const vorher = andere.length;
+    /*
+     * Ein Aufruf, und die Antwort ist die neue Liste (Fundpunkt 140). Ein
+     * Fehlschlag wirft und wird in `bestaetigen()` gemeldet – dann bleibt die
+     * Liste unverändert stehen, weil das Backend nichts widerrufen hat.
+     */
+    const verbleibend = await revokeOtherSessions();
+    setData(() => verbleibend);
 
     toast.success(
-      erledigt.size === 1
-        ? 'Ein Gerät wurde abgemeldet.'
-        : `${erledigt.size} Geräte wurden abgemeldet.`,
+      vorher === 1 ? 'Ein Gerät wurde abgemeldet.' : `${vorher} Geräte wurden abgemeldet.`,
     );
   }
 
