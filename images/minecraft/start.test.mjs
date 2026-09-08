@@ -304,17 +304,33 @@ describe('start.sh – Heap aus dem RAM-Kontingent', nurMitShell, () => {
 });
 
 describe('start.sh – Aufruf der JVM', nurMitShell, () => {
-  it('legt das temporäre Verzeichnis in den Datenordner, nicht nach /tmp', () => {
-    // `/tmp` ist im Container ein noexec-tmpfs; Netty entpackt dort seine
-    // native Bibliothek und führt sie aus.
+  it('legt das temporäre Verzeichnis in den Datenordner, nicht ins tmpfs', () => {
+    /*
+     * `/tmp` ist im Container ein noexec-tmpfs; Netty und Jansi entpacken dort
+     * ihre nativen Bibliotheken und führen sie aus. Beides muss deshalb in den
+     * Datenordner zeigen, der ohne `noexec` eingehängt wird.
+     *
+     * Geprüft wird, dass der Pfad **im Datenordner liegt** – nicht, dass er
+     * nicht mit `/tmp` beginnt. Der Arbeitsordner dieses Tests ist selbst ein
+     * temporäres Verzeichnis, und auf Linux liegt das unter `/tmp`: Die
+     * Präfix-Prüfung schlug dort an, obwohl der Pfad richtig war, und ging
+     * unter Windows durch, weil das Temp-Verzeichnis dort anders heißt. Ein
+     * Test, der je nach Betriebssystem etwas anderes prüft, belegt nichts.
+     */
     const ordner = arbeitsordner();
     const lauf = starteSkript(ordner, { EULA: 'true' });
     const tmpSchalter = lauf.argv.find((arg) => arg.startsWith('-Djava.io.tmpdir='));
+    const nettySchalter = lauf.argv.find((arg) => arg.startsWith('-Dio.netty.native.workdir='));
 
     assert.ok(tmpSchalter !== undefined, 'kein -Djava.io.tmpdir gesetzt');
-    assert.ok(!tmpSchalter.startsWith('-Djava.io.tmpdir=/tmp'));
-    assert.ok(tmpSchalter.endsWith('/.palantir/tmp'), tmpSchalter);
-    assert.ok(lauf.argv.some((arg) => arg.startsWith('-Dio.netty.native.workdir=')));
+    assert.ok(nettySchalter !== undefined, 'kein -Dio.netty.native.workdir gesetzt');
+
+    const tmpPfad = tmpSchalter.slice('-Djava.io.tmpdir='.length);
+    const nettyPfad = nettySchalter.slice('-Dio.netty.native.workdir='.length);
+    const datenordner = posix(ordner.daten);
+
+    assert.equal(tmpPfad, `${datenordner}/.palantir/tmp`);
+    assert.ok(nettyPfad.startsWith(`${datenordner}/`), nettyPfad);
   });
 
   it('endet mit der Paper-Jar und --nogui', () => {
