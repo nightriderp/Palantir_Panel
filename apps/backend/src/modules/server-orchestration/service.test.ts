@@ -15,6 +15,7 @@ import {
   type ArchiveFormat,
   type AgentCommandName,
   type ApiResponse,
+  type GameTypeDefinition,
   type NodeResourceUsage,
   type ServerCloneJobDto,
   type ServerMemberLevel,
@@ -78,6 +79,27 @@ const HOST: HostNodeRecord = {
 
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
 const NOW = new Date('2026-08-26T12:00:00.000Z');
+
+/**
+ * Spiel-Typ mit Hostname-Routing (Pflichtenheft §2.4, §13).
+ *
+ * In der echten Registry trägt heute keine Definition dieses Merkmal – der
+ * Router dafür läuft noch nicht. Genau deshalb steht der Typ hier: Der
+ * Start-Refuse aus Pflichtenheft §19 wäre sonst nicht prüfbar, und die Lücke
+ * fiele erst dem Ersten auf, der das Merkmal setzt.
+ *
+ * Bis auf das Merkmal und die Kennung derselbe wie der Echo-Testtyp: Geprüft
+ * wird die Weiche, nicht das Spiel.
+ */
+const ROUTED_GAME_TYPE: GameTypeDefinition = {
+  ...TEST_GAME_TYPE,
+  id: 'test-routed',
+  name: 'Test-Server (Hostname-Routing)',
+  supportsVirtualHostRouting: true,
+};
+
+/** Registry für die Routing-Tests: der gewöhnliche Typ und der geroutete. */
+const ROUTING_GAME_TYPES: readonly GameTypeDefinition[] = [TEST_GAME_TYPE, ROUTED_GAME_TYPE];
 
 let idCounter = 0;
 
@@ -616,6 +638,16 @@ function makeHarness(
      * er auf „nicht messbar" und schaltet gar nicht mehr ab.
      */
     gamePhase?: InstallationPhase;
+    /**
+     * Eigene Spiele-Definitionen statt der echten Registry.
+     *
+     * Gebraucht für das Hostname-Routing (Pflichtenheft §19): Heute trägt
+     * keine echte Definition `supportsVirtualHostRouting`, der Fall wäre sonst
+     * nicht prüfbar.
+     */
+    gameTypes?: readonly GameTypeDefinition[];
+    /** `GAME_ROUTER_HOSTNAME`; ohne Angabe läuft kein Hostname-Router. */
+    routerHostname?: string | null;
   } = {},
 ): Harness {
   const repository = new FakeRepository();
@@ -717,7 +749,10 @@ function makeHarness(
   const service = new ServerOrchestrationService({
     repository,
     agents,
-    registry: createGameRegistry(options.gamePhase ?? 1),
+    registry:
+      options.gameTypes === undefined
+        ? createGameRegistry(options.gamePhase ?? 1)
+        : createGameRegistry(options.gamePhase ?? 1, options.gameTypes),
     dns,
     ports: portAllocator,
     resources: createPermissiveResourceGuard(() => undefined),
@@ -733,7 +768,7 @@ function makeHarness(
     config: {
       baseDomain: 'example.tld',
       publicIpv4: '203.0.113.10',
-      routerHostname: null,
+      routerHostname: options.routerHostname ?? null,
       virtualHostPort: 25_565,
       crashLoopPolicy: { maxRestarts: 2, windowMinutes: 10 },
       healthCheckIntervalMs: 5_000,
@@ -1010,6 +1045,67 @@ describe('Starten mit Health-Check (Pflichtenheft §9)', () => {
     }
 
     expect(harness.socket.commands).toHaveLength(before);
+  });
+});
+
+describe('Hostname-Routing ohne Router (Pflichtenheft §19)', () => {
+  const routedInput = (): ReturnType<typeof createInput> =>
+    createInput('mit-routing', ROUTED_GAME_TYPE);
+
+  it('lässt ein Spiel ohne Hostname-Routing unverändert starten', async () => {
+    const harness = makeHarness({ healthy: true, gameTypes: ROUTING_GAME_TYPES });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    const starting = await harness.service.startServer(created.id, OWNER_ID);
+
+    expect(starting.status).toBe('starting');
+    // Der gewöhnliche Weg: A-Eintrag auf die VPS, eigener Port aus dem Pool.
+    expect(harness.dnsRecords.at(-1)?.type).toBe('A');
+  });
+
+  it('lehnt den Start mit GAME_TYPE_NOT_AVAILABLE ab, solange kein Router eingetragen ist', async () => {
+    const harness = makeHarness({ gameTypes: ROUTING_GAME_TYPES });
+
+    // Anlegen bleibt erlaubt: Ein Server ohne laufenden Router richtet keinen
+    // Schaden an, der Betreiber kann den Router nachliefern.
+    const created = await harness.service.createServer(routedInput(), OWNER_ID);
+    const before = harness.socket.commands.length;
+
+    try {
+      await harness.service.startServer(created.id, OWNER_ID);
+      expect.unreachable('Der Start hätte abgelehnt werden müssen.');
+    } catch (error: unknown) {
+      const fehler = error as ServerOrchestrationError;
+
+      expect(fehler.code).toBe('GAME_TYPE_NOT_AVAILABLE');
+      // Die Meldung nennt den Weg heraus, nicht nur „nicht verfügbar".
+      expect(fehler.message).toContain('GAME_ROUTER_HOSTNAME');
+      expect(fehler.message).toContain('/opt/palantir/.env');
+    }
+
+    // Kein Zustandswechsel, kein Agent-Befehl – die Ablehnung greift davor.
+    expect((await harness.service.requireServer(created.id)).status).toBe('stopped');
+    expect(harness.socket.commands).toHaveLength(before);
+    // Und vor allem: kein CNAME, der ins Leere zeigt.
+    expect(harness.dnsRecords.at(-1)?.type).toBe('A');
+  });
+
+  it('startet denselben Server, sobald der Router eingetragen ist', async () => {
+    const harness = makeHarness({
+      healthy: true,
+      gameTypes: ROUTING_GAME_TYPES,
+      routerHostname: 'router.example.tld',
+    });
+    const created = await harness.service.createServer(routedInput(), OWNER_ID);
+
+    const starting = await harness.service.startServer(created.id, OWNER_ID);
+
+    // Die Sperre hängt allein an der Konfiguration – ohne Codeänderung weg.
+    expect(starting.status).toBe('starting');
+    expect(harness.dnsRecords.at(-1)).toMatchObject({
+      type: 'CNAME',
+      content: 'router.example.tld',
+    });
   });
 });
 

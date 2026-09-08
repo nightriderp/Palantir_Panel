@@ -743,6 +743,11 @@ export class ServerOrchestrationService {
 
     assertTransitionAllowed(geladen.status, 'starting');
 
+    const definition = this.deps.registry.require(geladen.gameType);
+
+    // Kein Start in eine Adresse, hinter der nichts steht (Pflichtenheft §19).
+    this.requireHostnameRouterConfigured(definition, geladen.id);
+
     // Verfügbarkeit der Ziel-Node vor der Kapazitätsprüfung: Eine Node in
     // `maintenance` hat volle freie Kapazität und käme durch die Rechnung aus
     // B4 anstandslos durch (WORK_STATUS.md, Gefundener Punkt 24).
@@ -754,10 +759,7 @@ export class ServerOrchestrationService {
      * (Punkt 114). Bewusst hier und nicht im Neustart: Auch ein Start aus dem
      * gestoppten Zustand soll die Änderung mitnehmen.
      */
-    const server = await this.ensureContainerCurrent(
-      geladen,
-      this.deps.registry.require(geladen.gameType),
-    );
+    const server = await this.ensureContainerCurrent(geladen, definition);
 
     // Vor der Reservierung, damit ein fehlender Container ohne offene
     // Transaktion scheitert.
@@ -862,6 +864,41 @@ export class ServerOrchestrationService {
     }
 
     this.assertNodeAcceptsWork(host, 'start');
+  }
+
+  /**
+   * Kein Start, solange der Hostname-Router fehlt (Pflichtenheft §19).
+   *
+   * Ein Spiel mit `supportsVirtualHostRouting` bekommt **keinen** eigenen
+   * öffentlichen Port: Alle Instanzen teilen sich einen einzigen, und
+   * auseinandergehalten werden sie allein über den Hostnamen, den ein
+   * Reverse-Proxy (Infrared) auf die richtige Instanz verteilt
+   * (Pflichtenheft §2.4, §13). Fehlt dieser Dienst, zeigt die Adresse ins
+   * Leere – der Container läuft, das Panel meldet Erfolg, und der Spieler
+   * kommt trotzdem nicht rein. Genau das soll hier auffallen, und zwar dem
+   * Betreiber und mit dem Weg heraus.
+   *
+   * **Beim Starten, nicht beim Anlegen.** Ein angelegter Server ohne Router
+   * richtet keinen Schaden an; der Betreiber kann den Router nachliefern, und
+   * der Server läuft dann ohne Zutun. Ein Anlege-Verbot nähme ihm diese
+   * Vorbereitung.
+   *
+   * **Woran die Sperre hängt:** an `GAME_ROUTER_HOSTNAME`
+   * (`config.routerHostname`) – demselben Wert, aus dem
+   * {@link buildServerDnsRecord} den `CNAME` baut. Ist er gesetzt, gibt es ein
+   * Ziel und die Sperre entfällt von selbst. Ein fest verdrahtetes `false`
+   * müsste beim Ausrollen des Routers erst wieder gesucht werden.
+   */
+  private requireHostnameRouterConfigured(definition: GameTypeDefinition, serverId: string): void {
+    if (!definition.supportsVirtualHostRouting || this.deps.config.routerHostname !== null) {
+      return;
+    }
+
+    throw new ServerOrchestrationError(
+      'GAME_TYPE_NOT_AVAILABLE',
+      `„${definition.name}" wird über den Hostname-Router erreicht: Alle Server dieses Spiel-Typs teilen sich einen öffentlichen Port und werden nur über ihren Hostnamen unterschieden. In dieser Installation ist kein Router eingetragen – GAME_ROUTER_HOSTNAME ist leer –, deshalb würde dieser Server zwar laufen, aber für niemanden erreichbar sein. Abhilfe: den Router in Betrieb nehmen und seinen Hostnamen auf der VPS in /opt/palantir/.env als GAME_ROUTER_HOSTNAME eintragen, dann das Backend neu starten.`,
+      { serverId, gameType: definition.id },
+    );
   }
 
   /**
