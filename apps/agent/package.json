@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src",
+    "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist .turbo"
   },
