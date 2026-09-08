@@ -64,6 +64,7 @@ import {
 import {
   AgentRegistry,
   createAgentBackupGateway,
+  createAgentNodeConnectionSource,
   createAgentStorageEntryRemover,
   GAME_TYPE_DEFINITIONS,
   createAgentStorageScanGateway,
@@ -318,6 +319,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         nodes: createResourceHostNodeRepository(db),
         usage: serverUsage,
       }),
+      // Ende einer Wartung trägt den wirklichen Zustand ein statt pauschal
+      // `offline` – dafür muss B8 fragen können, ob der Agent gerade hängt.
+      nodeConnections: createAgentNodeConnectionSource(agents),
       storageGateway: createAgentStorageScanGateway(agents),
       // Löschen im Speicher-Explorer geht jetzt wirklich an den Agent
       // (Gefundener Punkt 75); vorher meldete es „noch nicht gebaut".

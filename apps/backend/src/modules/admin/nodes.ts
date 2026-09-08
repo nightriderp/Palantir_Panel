@@ -63,6 +63,14 @@ export interface CreateHostNodeData {
   readonly totalResources: NodeResources;
 }
 
+/**
+ * Was tatsächlich in die Zeile geschrieben wird.
+ *
+ * `status` steht hier weiterhin, ist aber nichts, was ein Aufrufer von außen
+ * wählt: Der Dienst leitet ihn aus der Wartungs-Entscheidung und der
+ * Agent-Verbindung ab (siehe {@link HostNodeService.update}). Das Eingabe-DTO
+ * kennt dieses Feld nicht mehr.
+ */
 export interface UpdateHostNodeData {
   readonly name?: string;
   readonly wireguardIp?: string;
@@ -160,6 +168,14 @@ export interface HostNodeService {
   list(ctx: AdminContext): Promise<HostNodeDto[]>;
   get(ctx: AdminContext, nodeId: string): Promise<HostNodeDto>;
   create(ctx: AdminContext, input: CreateHostNodeInput): Promise<HostNodeDto>;
+  /**
+   * Node bearbeiten.
+   *
+   * Der Zustand ist kein Eingabefeld: `maintenance: true` legt die Node still,
+   * `maintenance: false` gibt sie an die automatische Führung zurück und trägt
+   * ein, was gerade wirklich gilt – `online` bei bestehender Agent-Sitzung,
+   * sonst `offline`.
+   */
   update(ctx: AdminContext, nodeId: string, input: UpdateHostNodeInput): Promise<HostNodeDto>;
   remove(ctx: AdminContext, nodeId: string): Promise<void>;
   /** Node laden oder mit `NODE_NOT_FOUND` abbrechen – auch für andere Dienste des Moduls. */
@@ -200,6 +216,23 @@ export interface NodePortBindingSource {
   removeNodeBinding(ctx: AdminContext, rangeId: string): Promise<void>;
 }
 
+/**
+ * Besteht für eine Node gerade eine Agent-Sitzung?
+ *
+ * Die einzige Auskunft, die die Node-Verwaltung von B3 braucht, um eine Node
+ * nach dem Ende der Wartung wieder richtig einzutragen: Ein Agent, der
+ * durchgehend verbunden ist, macht keinen neuen Handshake – der Zustand käme
+ * ohne diese Frage nie von `offline` zurück auf `online`.
+ *
+ * Bewusst so schmal und bewusst synchron: Die Antwort steht in der
+ * `AgentRegistry` im Arbeitsspeicher (Pflichtenheft §2.2), es ist kein
+ * Datenbank- oder Netzzugriff nötig. Fehlt die Auskunft, verhält sich der
+ * Dienst wie bisher – nur eben ohne den Rückweg nach `online`.
+ */
+export interface NodeConnectionSource {
+  isConnected(nodeId: string): boolean;
+}
+
 export interface HostNodeServiceDependencies {
   readonly repository: HostNodeRepository;
   readonly audit: AuditService;
@@ -207,6 +240,8 @@ export interface HostNodeServiceDependencies {
   readonly usage?: NodeUsageSource;
   /** Port-Bereiche der Node – für die Prüfung beim Löschen (Audit W3-6). */
   readonly portBindings?: NodePortBindingSource;
+  /** Offene Agent-Verbindungen – für den Zustand nach dem Ende einer Wartung. */
+  readonly connections?: NodeConnectionSource;
 }
 
 function requireNodeRead(actor: PermissionActor): void {
@@ -284,6 +319,24 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
    * als 500 statt als `NODE_ADDRESS_TAKEN` (409). Die Port-Vergabe in
    * `ports.ts` behandelt dasselbe Rennen seit jeher so.
    */
+  /**
+   * Zustand einer Node, die gerade aus der Wartung entlassen wird.
+   *
+   * `markHostConnected` hebt `offline` nur beim **Handshake** auf `online`. Ein
+   * durchgehend verbundener Agent macht keinen neuen Handshake – ohne diese
+   * Ableitung bliebe die Node bis zu ihrer nächsten Neuverbindung fälschlich
+   * als offline geführt.
+   *
+   * Fehlt die Auskunft (Aufbau ohne Agent-Gateway, etwa in Tests), gilt
+   * `offline` als sichere Annahme: Ein fälschlich `online` geführter Knoten
+   * nähme Server-Starts an, die dann am nicht erreichbaren Agent scheitern; ein
+   * fälschlich `offline` geführter wird beim nächsten Handshake von selbst
+   * richtiggestellt.
+   */
+  function abgeleiteterZustand(nodeId: string): HostNodeStatus {
+    return deps.connections?.isConnected(nodeId) === true ? 'online' : 'offline';
+  }
+
   async function mitAdresskonflikt<T>(schreiben: () => Promise<T>): Promise<T> {
     try {
       return await schreiben();
@@ -350,14 +403,31 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       const node = await requireNode(nodeId);
       await ensureAddressFree(input.name, input.wireguardIp, node.id);
 
-      const updated = await mitAdresskonflikt(() => deps.repository.update(node.id, input));
+      const { maintenance, ...rest } = input;
+      const data: UpdateHostNodeData = {
+        ...rest,
+        ...(maintenance === undefined
+          ? {}
+          : { status: maintenance ? 'maintenance' : abgeleiteterZustand(node.id) }),
+      };
 
+      const updated = await mitAdresskonflikt(() => deps.repository.update(node.id, data));
+
+      /*
+       * Im Audit steht der geschriebene Zustand, nicht nur der Feldname:
+       * „changed: [maintenance]" ließe offen, ob die Node danach `online` oder
+       * `offline` geführt wird – genau das ist beim Ende einer Wartung die
+       * interessante Hälfte.
+       */
       await deps.audit.record(
         entryFor(ctx, {
           action: 'node.updated',
           targetType: 'node',
           targetId: node.id,
-          metadata: { changed: Object.keys(input) },
+          metadata: {
+            changed: Object.keys(input),
+            ...(data.status === undefined ? {} : { status: data.status }),
+          },
         }),
       );
 

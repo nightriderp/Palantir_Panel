@@ -57,6 +57,7 @@ export {
   type HostNodeRepository,
   type HostNodeService,
   type HostNodeServiceDependencies,
+  type NodeConnectionSource,
   type NodePlacement,
   type NodePlacementSource,
   type NodePortBindingSource,

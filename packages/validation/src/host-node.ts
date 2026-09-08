@@ -43,20 +43,26 @@ export const createHostNodeInputSchema = z.object({
 /**
  * Eingabe zum Bearbeiten einer Node – alle Felder optional (Teil-Update).
  *
- * `status` ist enthalten, damit ein Admin eine Node in Wartung nehmen kann.
- * Ob eine Node `online` ist, entscheidet aber die Agent-Verbindung und nicht
- * dieses Feld; das Backend lehnt einen Wechsel nach `online`/`offline`/
- * `degraded` deshalb ab.
+ * Der Zustand einer Node wird **nie** von Hand gesetzt: Ob sie `online` oder
+ * `offline` ist, entscheidet allein die Agent-Verbindung. Von Hand steuerbar
+ * ist deshalb nur die Wartung, und zwar als Ja/Nein statt als Zustand:
+ * `maintenance: true` legt die Node still, `maintenance: false` gibt sie an die
+ * automatische Führung zurück, die dann den wirklichen Zustand einträgt.
+ *
+ * Das Schema ist bewusst `strict()`: Ein mitgeschicktes `status` soll auffallen
+ * und abgelehnt werden. Ohne `strict()` würde Zod das Feld still entfernen, und
+ * der Aufrufer bekäme eine Erfolgsmeldung für etwas, das nicht geschehen ist.
  */
 export const updateHostNodeInputSchema = z
   .object({
     name: hostNodeNameSchema,
     wireguardIp: wireguardIpSchema,
     totalResources: nodeResourcesSchema,
-    status: z.enum(['maintenance', 'offline']),
+    maintenance: z.boolean(),
     statusMessage: z.string().trim().max(200).nullable(),
   })
   .partial()
+  .strict()
   .refine((input) => Object.keys(input).length > 0, {
     message: 'Es muss mindestens ein Feld geändert werden.',
   });

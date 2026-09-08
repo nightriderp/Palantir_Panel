@@ -2,7 +2,12 @@ import { createHostNodeInputSchema, updateHostNodeInputSchema } from '@palantir/
 import { describe, expect, it } from 'vitest';
 import { AGENT_TOKEN_PREFIX, hashAgentToken } from './agent-token.js';
 import { createAuditService } from './audit.js';
-import { type NodePlacementSource, computeCapacity, createHostNodeService } from './nodes.js';
+import {
+  type NodeConnectionSource,
+  type NodePlacementSource,
+  computeCapacity,
+  createHostNodeService,
+} from './nodes.js';
 import { type PortAllocationRecord, type PortRangeRecord, createPortPoolService } from './ports.js';
 import {
   NODE_ID,
@@ -22,6 +27,8 @@ function build(
     /** Port-Bereiche, die es in der Instanz gibt (Audit W3-6). */
     ranges?: PortRangeRecord[];
     allocations?: PortAllocationRecord[];
+    /** Offene Agent-Verbindungen; fehlt sie, kennt der Dienst keine. */
+    connections?: NodeConnectionSource;
   } = {},
 ) {
   const auditRepository = createFakeAuditRepository();
@@ -41,6 +48,7 @@ function build(
     audit,
     portBindings: createPortPoolService({ repository: portRepository, audit }),
     ...(options.placements ? { placements: options.placements } : {}),
+    ...(options.connections ? { connections: options.connections } : {}),
   });
 
   return { service, repository, portRepository, auditRepository };
@@ -185,7 +193,7 @@ describe('Node-Verwaltung', () => {
   it('erlaubt es, eine Node in Wartung zu nehmen', async () => {
     const { service } = build();
     const input = updateHostNodeInputSchema.parse({
-      status: 'maintenance',
+      maintenance: true,
       statusMessage: 'Plattentausch',
     });
 
@@ -193,6 +201,80 @@ describe('Node-Verwaltung', () => {
 
     expect(node.status).toBe('maintenance');
     expect(node.statusMessage).toBe('Plattentausch');
+  });
+
+  /*
+   * Ende der Wartung (Widerspruch zwischen Kommentar und Verhalten in
+   * `validation/host-node.ts`).
+   *
+   * Vorher schrieb das Frontend hier von Hand `offline` – und `markHostConnected`
+   * holt das nur beim **Handshake** zurück. Ein durchgehend verbundener Agent
+   * macht keinen neuen Handshake, die Node blieb also fälschlich als offline
+   * geführt. Jetzt entscheidet die Frage nach der offenen Agent-Sitzung.
+   */
+  it('trägt nach der Wartung `online` ein, wenn der Agent verbunden ist', async () => {
+    const { service } = build({
+      nodes: [nodeRecord({ status: 'maintenance', statusMessage: 'Plattentausch' })],
+      connections: { isConnected: (nodeId) => nodeId === NODE_ID },
+    });
+    const input = updateHostNodeInputSchema.parse({ maintenance: false, statusMessage: null });
+
+    const node = await service.update(ctxWith(actorWith('node.manage')), NODE_ID, input);
+
+    expect(node.status).toBe('online');
+    expect(node.statusMessage).toBeNull();
+  });
+
+  it('trägt nach der Wartung `offline` ein, wenn kein Agent verbunden ist', async () => {
+    const { service } = build({
+      nodes: [nodeRecord({ status: 'maintenance' })],
+      connections: { isConnected: () => false },
+    });
+    const input = updateHostNodeInputSchema.parse({ maintenance: false });
+
+    const node = await service.update(ctxWith(actorWith('node.manage')), NODE_ID, input);
+
+    expect(node.status).toBe('offline');
+  });
+
+  it('nimmt ohne Auskunft über die Verbindungen `offline` an', async () => {
+    // Aufbau ohne Agent-Gateway: `offline` ist die sichere Annahme – ein
+    // fälschlich `online` geführter Knoten nähme Starts an, die dann scheitern.
+    const { service } = build({ nodes: [nodeRecord({ status: 'maintenance' })] });
+    const input = updateHostNodeInputSchema.parse({ maintenance: false });
+
+    const node = await service.update(ctxWith(actorWith('node.manage')), NODE_ID, input);
+
+    expect(node.status).toBe('offline');
+  });
+
+  it('lässt den Zustand unberührt, wenn nur andere Felder geändert werden', async () => {
+    const { service } = build({
+      nodes: [nodeRecord({ status: 'maintenance' })],
+      connections: { isConnected: () => true },
+    });
+    const input = updateHostNodeInputSchema.parse({ name: 'Homeserver II' });
+
+    const node = await service.update(ctxWith(actorWith('node.manage')), NODE_ID, input);
+
+    expect(node.name).toBe('Homeserver II');
+    expect(node.status).toBe('maintenance');
+  });
+
+  it('protokolliert den geschriebenen Zustand, nicht nur den Feldnamen', async () => {
+    const { service, auditRepository } = build({
+      nodes: [nodeRecord({ status: 'maintenance' })],
+      connections: { isConnected: () => true },
+    });
+    const input = updateHostNodeInputSchema.parse({ maintenance: false });
+
+    await service.update(ctxWith(actorWith('node.manage')), NODE_ID, input);
+
+    expect(auditRepository.rows.map((row) => row.action)).toEqual(['node.updated']);
+    expect(auditRepository.rows[0]?.metadata).toEqual({
+      changed: ['maintenance'],
+      status: 'online',
+    });
   });
 
   it('entfernt eine leere Node', async () => {
