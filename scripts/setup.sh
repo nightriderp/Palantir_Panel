@@ -248,7 +248,12 @@ AllowedIPs = ${home_ip}/32
 EOF
 
   # Homeserver: baut die Verbindung aktiv auf und verwirft eingehenden
-  # Tunnelverkehr (PostUp/PostDown, Pflicht - siehe deploy/gamenode/wireguard-firewall.md).
+  # Tunnelverkehr (PostUp/PostDown, Pflicht aus Pflichtenheft §1 - der
+  # Homeserver nimmt zu keinem Zeitpunkt eingehende Verbindungen an, auch nicht
+  # im Tunnel). Die erste nft-Regel lässt nur den Rückverkehr der vom Agent
+  # selbst aufgebauten Verbindung durch, die zweite verwirft alles übrige, das
+  # neu über wg0 hereinkommt - einschließlich SSH. Nach dem Tunnelstart auf dem
+  # Homeserver prüfbar mit:  nft list table inet palantir_wg
   cat >"${wg_dir}/wg0.home.conf" <<EOF
 [Interface]
 Address = ${home_ip}/24

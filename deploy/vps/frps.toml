@@ -10,9 +10,10 @@
 # DNAT auf die Tunnel-Adresse des Homeservers umzuschreiben. Das scheitert an
 # Pflichtenheft §1: Der Homeserver nimmt zu keinem Zeitpunkt eingehende
 # Verbindungen an - auch nicht innerhalb des Tunnels. Umgesetzt ist das als
-# `iifname "wg0" drop` in `/etc/wireguard/wg0.conf` auf dem Homeserver
-# (`deploy/gamenode/wireguard-firewall.md`). Ein Verbindungsversuch der VPS
-# laeuft dort ins Leere - nachgemessen, nicht vermutet.
+# `iifname "wg0" drop` in `/etc/wireguard/wg0.conf` auf dem Homeserver; diese
+# PostUp-Zeile erzeugt `scripts/setup.sh` in wg0.home.conf. Ein
+# Verbindungsversuch der VPS laeuft dort ins Leere - nachgemessen, nicht
+# vermutet.
 #
 # frp dreht die Richtung um: `frpc` auf dem Homeserver waehlt hinaus zu diesem
 # Dienst, und der Spielverkehr fliesst durch diese bestehende Verbindung
