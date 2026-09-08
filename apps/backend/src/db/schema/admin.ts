@@ -170,6 +170,19 @@ export const instanceSettings = pgTable(
     id: integer('id').primaryKey().default(1),
     /** Dürfen sich neue Konten selbst registrieren? Vorgabe: ja, wie bisher. */
     selfRegistrationEnabled: boolean('self_registration_enabled').notNull().default(true),
+    /**
+     * Gewählte Schrift der Oberfläche (Arbeitspaket S-2, `FontDto.id`).
+     *
+     * `null` heißt „Vorgabe der Instanz" – die Oberfläche nimmt dann die
+     * Schrift aus dem Design-System. Bewusst **ohne Fremdschlüssel** auf
+     * `uploaded_fonts`: Der Wert kann auch die Kennung einer mitgelieferten
+     * Schrift sein (`bundled-<slug>`), die gar keine Zeile hat. Dass die
+     * Kennung existiert, prüft der Dienst beim Setzen (`FONT_NOT_FOUND`); dass
+     * sie nicht unter den Füßen verschwindet, der Löschschutz `FONT_IN_USE`.
+     */
+    uiFontId: text('ui_font_id'),
+    /** Dasselbe für dicktengleiche Ausgaben – Konsole, Logs, Serveradressen. */
+    monospaceFontId: text('monospace_font_id'),
     updatedAt: timestamp('updated_at', { withTimezone: true }),
     /**
      * Wer zuletzt geändert hat – für das Audit-Log ohnehin, hier zur Anzeige.

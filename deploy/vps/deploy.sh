@@ -170,6 +170,7 @@ pruefe_besitzer() {
 
 pruefe_besitzer "${REPO_DIR}/data/audit-archive" 'Archivierung des Audit-Logs'
 pruefe_besitzer "${REPO_DIR}/data/panel-backups" 'Sicherungen der Panel-Datenbank'
+pruefe_besitzer "${REPO_DIR}/data/fonts" 'Hochgeladene Schriften der Oberflaeche'
 
 # -----------------------------------------------------------------------------
 # 4. Images holen und Stack starten

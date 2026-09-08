@@ -8,6 +8,10 @@
  * Genau eine Zeile in der Datenbank (`id = 1`). Fehlt sie, gelten die
  * Vorgaben – die Instanz verhält sich dann wie vor dieser Tabelle, und niemand
  * muss eine Zeile anlegen, damit die Anmeldung funktioniert.
+ *
+ * **Seit S-2 stehen hier auch die gewählten Schriften** (`uiFontId`,
+ * `monospaceFontId`). Sie werden gegen den Bestand geprüft, bevor sie
+ * gespeichert werden; die Schriften selbst verwaltet `modules/fonts`.
  */
 
 import { type InstanceSettingsDto } from '@palantir/contracts';
@@ -16,6 +20,8 @@ import { eq } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
 import { instanceSettings } from '../../db/schema.js';
 import { hasPermission, type PermissionActor } from '../rbac/index.js';
+import { type AuditService, entryFor } from './audit.js';
+import { type AdminContext } from './context.js';
 import { AdminError } from './errors.js';
 
 /** Die eine Zeile; der Wert hat keine Bedeutung außer „diese eine". */
@@ -24,21 +30,43 @@ const SINGLETON_ID = 1;
 /** Vorgaben, solange nichts gesetzt wurde. */
 export const DEFAULT_INSTANCE_SETTINGS = Object.freeze({
   selfRegistrationEnabled: true,
+  /** `null` heißt „Vorgabe des Design-Systems", nicht „irgendeine Schrift". */
+  uiFontId: null,
+  monospaceFontId: null,
 });
 
+/** Der gespeicherte Zustand – vollständig, nie eine Teilmenge. */
+export interface InstanceSettingsRecord {
+  readonly selfRegistrationEnabled: boolean;
+  readonly uiFontId: string | null;
+  readonly monospaceFontId: string | null;
+  readonly updatedAt: Date | null;
+}
+
+/** Was geschrieben wird: der vollständige neue Zustand. */
+export type InstanceSettingsSaveData = Omit<InstanceSettingsRecord, 'updatedAt'>;
+
 export interface InstanceSettingsRepository {
-  load(): Promise<{ selfRegistrationEnabled: boolean; updatedAt: Date | null }>;
-  save(input: InstanceSettingsInput, updatedById: string | null): Promise<void>;
+  load(): Promise<InstanceSettingsRecord>;
+  save(data: InstanceSettingsSaveData, updatedById: string | null): Promise<void>;
+}
+
+/**
+ * Prüfung, ob es eine Schrift zu einer Kennung gibt (S-2).
+ *
+ * Bewusst ein schmaler Port und keine Abhängigkeit auf das ganze
+ * Schriften-Modul: Die Einstellungen brauchen von ihm genau diese eine Frage.
+ * Die Gegenrichtung – „ist diese Schrift gerade gewählt?" – läuft über
+ * {@link InstanceSettingsService.selectedFontIds}.
+ */
+export interface FontDirectory {
+  exists(fontId: string): Promise<boolean>;
 }
 
 export interface InstanceSettingsService {
   /** Einstellungen samt Rechteblock – verlangt `user.manage`. */
   get(actor: PermissionActor): Promise<InstanceSettingsDto>;
-  set(
-    actor: PermissionActor,
-    input: InstanceSettingsInput,
-    actorUserId: string | null,
-  ): Promise<InstanceSettingsDto>;
+  set(ctx: AdminContext, input: InstanceSettingsInput): Promise<InstanceSettingsDto>;
   /**
    * Nimmt die Instanz Selbstregistrierungen an?
    *
@@ -46,6 +74,13 @@ export interface InstanceSettingsService {
    * hat naturgemäß keine Sitzung.
    */
   selfRegistrationEnabled(): Promise<boolean>;
+  /**
+   * Die gerade gewählten Schrift-Kennungen (ohne `null`).
+   *
+   * Ebenfalls ohne Rechteprüfung: Die Frage stellt der Löschschutz des
+   * Schriften-Moduls, nicht ein Aufrufer von außen.
+   */
+  selectedFontIds(): Promise<readonly string[]>;
 }
 
 export function createDrizzleInstanceSettingsRepository(
@@ -65,44 +100,54 @@ export function createDrizzleInstanceSettingsRepository(
 
       return {
         selfRegistrationEnabled: row.selfRegistrationEnabled,
+        uiFontId: row.uiFontId,
+        monospaceFontId: row.monospaceFontId,
         updatedAt: row.updatedAt,
       };
     },
 
-    async save(input, updatedById) {
+    async save(data, updatedById) {
+      const werte = {
+        selfRegistrationEnabled: data.selfRegistrationEnabled,
+        uiFontId: data.uiFontId,
+        monospaceFontId: data.monospaceFontId,
+        updatedAt: new Date(),
+        updatedById,
+      };
+
       await db
         .insert(instanceSettings)
-        .values({
-          id: SINGLETON_ID,
-          selfRegistrationEnabled: input.selfRegistrationEnabled,
-          updatedAt: new Date(),
-          updatedById,
-        })
-        .onConflictDoUpdate({
-          target: instanceSettings.id,
-          set: {
-            selfRegistrationEnabled: input.selfRegistrationEnabled,
-            updatedAt: new Date(),
-            updatedById,
-          },
-        });
+        .values({ id: SINGLETON_ID, ...werte })
+        .onConflictDoUpdate({ target: instanceSettings.id, set: werte });
     },
   };
 }
 
 export interface InstanceSettingsDependencies {
   readonly repository: InstanceSettingsRepository;
+  /**
+   * Bestand der Schriften (S-2). Ohne diesen Anschluss lässt sich keine Schrift
+   * auswählen – jede Kennung gilt dann als unbekannt (`FONT_NOT_FOUND`). Das
+   * ist die sichere Vorgabe: Eine ungeprüft gespeicherte Kennung ließe die
+   * Oberfläche auf eine Schrift zeigen, die es nicht gibt.
+   */
+  readonly fonts?: FontDirectory;
+  /**
+   * Audit-Log (Pflichtenheft §6). Das Ab- und Anschalten der Selbstregistrierung
+   * und der Wechsel der Schriften sind instanzweite Änderungen;
+   * `updated_by_id` hält nur den **letzten** Änderer, nicht die Historie.
+   */
+  readonly audit?: AuditService;
 }
 
 export function createInstanceSettingsService(
   deps: InstanceSettingsDependencies,
 ): InstanceSettingsService {
-  function toDto(
-    actor: PermissionActor,
-    record: { selfRegistrationEnabled: boolean; updatedAt: Date | null },
-  ): InstanceSettingsDto {
+  function toDto(actor: PermissionActor, record: InstanceSettingsRecord): InstanceSettingsDto {
     return {
       selfRegistrationEnabled: record.selfRegistrationEnabled,
+      uiFontId: record.uiFontId,
+      monospaceFontId: record.monospaceFontId,
       updatedAt: record.updatedAt?.toISOString() ?? null,
       permissions: { canEdit: hasPermission(actor, 'user.manage') },
     };
@@ -114,6 +159,32 @@ export function createInstanceSettingsService(
     }
   }
 
+  /**
+   * Wendet ein Schrift-Feld der Eingabe an.
+   *
+   * Drei Fälle, wie im Vertrag beschrieben: Feld fehlt → unverändert;
+   * ausdrückliches `null` → zurück auf die Vorgabe; eine Kennung → sie muss
+   * existieren, sonst `FONT_NOT_FOUND`.
+   */
+  async function schriftUebernehmen(
+    bisher: string | null,
+    eingabe: string | null | undefined,
+  ): Promise<string | null> {
+    if (eingabe === undefined) {
+      return bisher;
+    }
+
+    if (eingabe === null) {
+      return null;
+    }
+
+    if (!(await (deps.fonts?.exists(eingabe) ?? Promise.resolve(false)))) {
+      throw new AdminError('FONT_NOT_FOUND');
+    }
+
+    return eingabe;
+  }
+
   return {
     async get(actor) {
       requireUserManage(actor);
@@ -121,34 +192,61 @@ export function createInstanceSettingsService(
       return toDto(actor, await deps.repository.load());
     },
 
-    async set(actor, input, actorUserId) {
-      requireUserManage(actor);
+    async set(ctx, input) {
+      requireUserManage(ctx.actor);
 
-      await deps.repository.save(input, actorUserId);
+      const bisher = await deps.repository.load();
+      const neu: InstanceSettingsSaveData = {
+        selfRegistrationEnabled: input.selfRegistrationEnabled,
+        uiFontId: await schriftUebernehmen(bisher.uiFontId, input.uiFontId),
+        monospaceFontId: await schriftUebernehmen(bisher.monospaceFontId, input.monospaceFontId),
+      };
+
+      await deps.repository.save(neu, ctx.userId);
 
       /*
-       * Hier fehlt der Audit-Eintrag (Pflichtenheft §6): Das Ab- und
-       * Anschalten der Selbstregistrierung ist ein sicherheitsrelevanter
-       * Instanz-Schalter, `updated_by_id` hält aber nur den **letzten**
-       * Änderer – die Historie fehlt.
-       *
-       * Der Eintrag lässt sich noch nicht schreiben, weil der Katalog in
-       * `packages/contracts/src/audit.ts` keine passende Aktion kennt
-       * (`instance.settingsChanged`) und `AUDIT_TARGET_TYPES` keinen passenden
-       * Zieltyp. Der Katalog ist Vertragsgrenze und wird nach CLAUDE.md §6 in
-       * einem eigenen, kleinen Contracts-PR ergänzt – nicht nebenbei hier.
-       *
-       * Sobald die Aktion im Katalog steht: `AuditService` als optionale
-       * Abhängigkeit aufnehmen (wie im Kontingent-Modul) und an dieser Stelle
-       * `action: 'instance.settingsChanged'` mit `actorUserId` als Handelndem
-       * und `{ selfRegistrationEnabled: input.selfRegistrationEnabled }` als
-       * Metadaten protokollieren.
+       * Ein Eintrag für die ganze Änderung, nicht je Feld (siehe
+       * `AUDIT_TARGET_TYPES` im Vertrag): Die Auswahl einer Schrift ist eine
+       * geänderte Instanz-Einstellung, keine Änderung an der Schrift. Die
+       * Metadaten nennen nur die Felder, die sich tatsächlich bewegt haben –
+       * sonst stünde bei jedem Speichern derselbe Block im Log.
        */
-      return toDto(actor, await deps.repository.load());
+      const geaendert: Record<string, unknown> = {};
+
+      if (neu.selfRegistrationEnabled !== bisher.selfRegistrationEnabled) {
+        geaendert.selfRegistrationEnabled = neu.selfRegistrationEnabled;
+      }
+
+      if (neu.uiFontId !== bisher.uiFontId) {
+        geaendert.uiFontId = neu.uiFontId;
+      }
+
+      if (neu.monospaceFontId !== bisher.monospaceFontId) {
+        geaendert.monospaceFontId = neu.monospaceFontId;
+      }
+
+      if (deps.audit && Object.keys(geaendert).length > 0) {
+        await deps.audit.record(
+          entryFor(ctx, {
+            action: 'instance.settingsChanged',
+            targetType: 'instanceSettings',
+            targetId: null,
+            metadata: geaendert,
+          }),
+        );
+      }
+
+      return toDto(ctx.actor, await deps.repository.load());
     },
 
     async selfRegistrationEnabled() {
       return (await deps.repository.load()).selfRegistrationEnabled;
+    },
+
+    async selectedFontIds() {
+      const { uiFontId, monospaceFontId } = await deps.repository.load();
+
+      return [uiFontId, monospaceFontId].filter((id): id is string => id !== null);
     },
   };
 }

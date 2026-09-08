@@ -31,7 +31,11 @@ import {
   createNodeUsageSource,
   registerResourceRoutes,
 } from './modules/resources/index.js';
-import { type InstanceSettingsService } from './modules/admin/instance-settings.js';
+import {
+  type FontDirectory,
+  type InstanceSettingsService,
+} from './modules/admin/instance-settings.js';
+import { createFontModule, registerFontRoutes } from './modules/fonts/index.js';
 import { createQuotaRequestService } from './modules/quota-requests/index.js';
 import { createDrizzleQuotaRequestRepository } from './modules/quota-requests/repository.js';
 import { registerQuotaRequestRoutes } from './modules/quota-requests/routes.js';
@@ -223,6 +227,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
    * verhielt sich die Instanz, bevor es den Schalter gab (Abgleich 12.1.1).
    */
   let instanceSettings: InstanceSettingsService | null = null;
+  /*
+   * Und dieselbe Verdrahtung fuer die Schriften (S-2), diesmal im Kreis: Die
+   * Instanz-Einstellungen pruefen eine gewaehlte Kennung gegen den Bestand, und
+   * der Loeschschutz des Schriften-Moduls fragt umgekehrt die Einstellungen.
+   * Eines von beiden muss zuerst entstehen; die Weiterleitung hier loest das,
+   * ohne eines der Module das andere kennen zu lassen. Bis sie gesetzt ist,
+   * gilt jede Kennung als unbekannt - der sichere Zustand.
+   */
+  let fontDirectory: FontDirectory | null = null;
   const authEventSink: AuthEventSink = {
     emit: (event, payload) => notificationEventSink.emit(event, payload),
   };
@@ -354,6 +367,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         countServersByOwner: (userIds) => serverRepository.countByOwners(userIds),
       },
       ...(env.AUDIT_ARCHIVE_DIR ? { auditArchiveDir: env.AUDIT_ARCHIVE_DIR } : {}),
+      // Auswahl einer Schrift in den Instanz-Einstellungen (S-2) – geprüft
+      // gegen den Bestand des Schriften-Moduls, das gleich darunter entsteht.
+      fonts: { exists: async (id) => (await fontDirectory?.exists(id)) ?? false },
     });
 
     await app.register(async (instance) => {
@@ -369,6 +385,23 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * Weiterleitung wie die beiden Senken oben.
      */
     auditSink = admin.services.audit;
+
+    /*
+     * Schriften der Oberfläche (S-2). Mitgelieferte Dateien kommen aus dem
+     * Auslieferungsverzeichnis des Backend-Images, hochgeladene aus
+     * `FONT_UPLOAD_DIR` (.env.example Abschnitt 18). Der Löschschutz fragt die
+     * Instanz-Einstellungen, welche Schriften gerade gewählt sind.
+     */
+    const fonts = createFontModule({
+      db,
+      uploadDir: env.FONT_UPLOAD_DIR,
+      selection: admin.instanceSettings,
+      audit: admin.services.audit,
+    });
+
+    // Ab hier prüfen die Instanz-Einstellungen eine gewählte Kennung wirklich
+    // (siehe Weiterleitung oben).
+    fontDirectory = fonts.service;
 
     /*
      * Server-Orchestrierung (B3) inklusive des WebSocket-Endpunkts `/agent`
@@ -410,6 +443,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         files: 1,
       },
     });
+
+    /*
+     * Schriften-Routen erst hier: `POST /api/admin/fonts` nimmt die Datei als
+     * `multipart/form-data` entgegen und braucht dafür den oben registrierten
+     * Parser. Die wirksame Grenze setzt die Route selbst
+     * (`FONT_UPLOAD_MAX_SIZE_BYTES`), damit nie mehr gepuffert wird, als eine
+     * Schrift überhaupt groß sein darf.
+     */
+    await app.register(registerFontRoutes({ service: fonts.service }));
 
     /*
      * Notification-Engine (B6, Pflichtenheft §14) inklusive des

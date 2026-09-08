@@ -452,6 +452,23 @@ const envSchema = z.object({
    */
   AUDIT_ARCHIVE_DIR: z.string().min(1).optional(),
 
+  /**
+   * Ablageort der hochgeladenen Schriften auf der VPS (Arbeitspaket S-2,
+   * .env.example Abschnitt 18).
+   *
+   * Die Dateien liegen im Dateisystem und nicht in der Datenbank – wie die
+   * Audit-Archive und die Panel-Abzüge. Ohne gesetzten Wert greift die Vorgabe
+   * `defaultFontUploadDirectory()` (`data/fonts` neben der Auscheckung); im
+   * Docker-Betrieb übersteuert die Compose-Datei die Variable mit dem
+   * Einhängepunkt.
+   *
+   * Bewusst **mit** Vorgabe, anders als bei den Panel-Sicherungen: Ein
+   * fehlender Wert soll die Schriften nicht abschalten, sondern nur an einer
+   * unbequemeren Stelle ablegen. Mitgelieferte Schriften hängen ohnehin nicht
+   * daran – die liegen im Auslieferungsverzeichnis des Images.
+   */
+  FONT_UPLOAD_DIR: optionalEnvString(),
+
   // -- Notification-Engine (B6, Pflichtenheft §14; .env.example Abschnitt 10) --
 
   /**
