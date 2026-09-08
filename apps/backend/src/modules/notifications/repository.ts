@@ -224,6 +224,16 @@ export type PublishAnnouncementHook = (
   connection?: DbConnection,
 ) => Promise<void>;
 
+/**
+ * Dasselbe für {@link NotificationRepository.deleteAnnouncement} (Fundpunkt
+ * 158).
+ *
+ * Ohne Datensatz als Übergabe: Beim Zurückziehen steht der Ankündigungssatz
+ * dem Aufrufer schon vorher zur Verfügung – er hat ihn geladen, um überhaupt
+ * `ANNOUNCEMENT_NOT_FOUND` unterscheiden zu können.
+ */
+export type DeleteAnnouncementHook = (connection?: DbConnection) => Promise<void>;
+
 export interface NotificationRepository {
   // Kanäle
   listChannels(): Promise<NotificationChannelRecord[]>;
@@ -332,7 +342,21 @@ export interface NotificationRepository {
     announcementId: string,
     data: UpdateAnnouncementData,
   ): Promise<AnnouncementRecord | null>;
-  deleteAnnouncement(announcementId: string): Promise<void>;
+  /**
+   * Zieht eine Ankündigung zurück – samt Inbox-Meldungen über den Fremdschlüssel
+   * `on delete cascade`.
+   *
+   * `alsoInTransaction` läuft **innerhalb** derselben Transaktion, nachdem die
+   * Zeile entfernt ist (Fundpunkt 158). Der Dienst schreibt darin den
+   * Audit-Eintrag: Lag er hinter dem Löschen und scheiterte, war die Ankündigung
+   * weg, der Admin sah einen Fehler – und sein zweiter Anlauf endete mit
+   * `ANNOUNCEMENT_NOT_FOUND`. Im Protokoll stand dann dauerhaft nicht, wer sie
+   * entfernt hat. Wirft der Rückruf, wird das Löschen zurückgerollt.
+   */
+  deleteAnnouncement(
+    announcementId: string,
+    alsoInTransaction?: DeleteAnnouncementHook,
+  ): Promise<void>;
   countNotificationsPerAnnouncement(): Promise<ReadonlyMap<string, number>>;
 
   // Zustellung nach außen
@@ -810,8 +834,15 @@ export function createDrizzleNotificationRepository(db: Database): NotificationR
       return row ? toAnnouncement(row) : null;
     },
 
-    async deleteAnnouncement(announcementId) {
-      await db.delete(announcements).where(eq(announcements.id, announcementId));
+    async deleteAnnouncement(announcementId, alsoInTransaction) {
+      await db.transaction(async (tx) => {
+        await tx.delete(announcements).where(eq(announcements.id, announcementId));
+
+        // Noch in der Klammer: der Audit-Eintrag des Dienstes (Fundpunkt 158).
+        // Wirft er, steht die Ankündigung danach noch – und der zweite Anlauf
+        // findet sie wieder.
+        await alsoInTransaction?.(tx);
+      });
     },
 
     async countNotificationsPerAnnouncement() {

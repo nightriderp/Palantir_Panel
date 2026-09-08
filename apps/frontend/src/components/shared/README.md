@@ -203,13 +203,15 @@ das nicht jedes Mal neu herausfinden müssen, gilt folgende Regel.
 
 **Jeder Eintrag der Seitenleiste hat ein Ziel.** In
 [`DashboardNav.tsx`](<../../app/(dashboard)/DashboardNav.tsx>) stehen sie als
-`PlannedEntry`, und `href` ist dort Pflicht (Fundpunkt 155).
+`PlannedEntry`, und `href` ist dort Pflicht (Fundpunkt 155). Dasselbe gilt für den
+Baustein darunter: `SideNavItem.href` ist ebenfalls Pflicht, jede Zeile ist ein Link
+(Fundpunkt 159).
 
 Bis alle Ansichten gebaut waren, kannte die Liste auch noch nicht gebaute Einträge: `href`
 war optional, ein `pending` nannte das zuständige Arbeitspaket, und beim Antippen meldete
 ein Toast „entsteht im Arbeitspaket …“. Seit der letzte Eintrag ein Ziel hat, war dieser
 Zweig unerreichbar – und ohne `pending` meldete er wörtlich „im Arbeitspaket undefined“.
-Beides ist entfernt.
+`SideNavSection` zeichnete solche Einträge als `<button>`; auch dieser Zweig ist entfernt.
 
 **Ein fertiges Arbeitspaket ändert genau eine Zeile:** den Eintrag in die Liste, samt Ziel.
 
