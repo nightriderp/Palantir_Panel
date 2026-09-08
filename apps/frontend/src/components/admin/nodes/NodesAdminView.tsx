@@ -153,7 +153,17 @@ export function NodesAdminView() {
         )}
       </div>
 
-      <AddNodeWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onCreated={reload} />
+      {/*
+        Die bereits geladene Liste geht mit in den Wizard: Daraus entsteht die
+        Warnung, wenn eine bestehende Node noch am gemeinsamen AGENT_TOKEN hängt
+        (Fundpunkt 160). Keine zweite Abfrage, kein neues Contract-Feld.
+      */}
+      <AddNodeWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onCreated={reload}
+        existingNodes={nodes ?? []}
+      />
 
       <ConfirmDialog
         open={pendingToken !== null}
