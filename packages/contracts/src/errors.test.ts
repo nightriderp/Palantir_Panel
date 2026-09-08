@@ -172,6 +172,7 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
       expect(httpStatusForErrorCode('FONT_FILE_INVALID')).toBe(422);
       expect(httpStatusForErrorCode('FONT_BUNDLED_PROTECTED')).toBe(403);
       expect(httpStatusForErrorCode('FONT_IN_USE')).toBe(409);
+      expect(httpStatusForErrorCode('FONT_FAMILY_TAKEN')).toBe(409);
     });
 
     it('trennt das Schriftformat vom Inhaltstyp der Anfrage', () => {
@@ -217,7 +218,7 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     it('vergibt jeden Schrift-Code genau einmal und mit eigener Meldung', () => {
       const fontCodes = ERROR_CODES.filter((code) => code.startsWith('FONT_'));
 
-      expect(fontCodes).toHaveLength(6);
+      expect(fontCodes).toHaveLength(7);
       expect(new Set(fontCodes).size).toBe(fontCodes.length);
       expect(new Set(fontCodes.map(defaultMessageForErrorCode)).size).toBe(fontCodes.length);
     });

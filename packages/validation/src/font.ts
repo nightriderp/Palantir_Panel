@@ -230,6 +230,15 @@ export const uploadFontInputSchema = z.object({
   family: fontFamilyNameSchema,
   variable: z.boolean().optional(),
   weightRange: fontWeightRangeSchema.optional(),
+  /**
+   * Dicktengleich? Angabe des Hochladenden (siehe `FontDto.monospace`).
+   *
+   * Optional mit `false` als Vorgabe: Der häufigere Fall ist eine
+   * Proportionalschrift, und eine falsch als dicktengleich gemeldete Schrift
+   * richtet in der Konsole mehr Schaden an als eine falsch als proportional
+   * gemeldete in der Oberfläche.
+   */
+  monospace: z.boolean().optional(),
 });
 
 export type UploadFontInput = z.infer<typeof uploadFontInputSchema>;

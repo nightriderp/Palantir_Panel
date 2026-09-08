@@ -202,6 +202,33 @@ describe('uploadFontInputSchema', () => {
       }).success,
     ).toBe(true);
   });
+
+  it('nimmt die Angabe „dicktengleich" an und lässt sie weg', () => {
+    const mitAngabe = uploadFontInputSchema.safeParse({
+      label: 'JetBrains Mono',
+      family: 'JetBrains Mono',
+      monospace: true,
+    });
+
+    expect(mitAngabe.success && mitAngabe.data.monospace).toBe(true);
+
+    // Ohne Angabe bleibt das Feld leer – die Vorgabe „proportional" setzt das
+    // Backend, nicht das Schema. So bleibt unterscheidbar, ob jemand die Frage
+    // beantwortet oder übergangen hat.
+    const ohneAngabe = uploadFontInputSchema.safeParse({ label: 'Inter', family: 'Inter' });
+
+    expect(ohneAngabe.success && ohneAngabe.data.monospace).toBeUndefined();
+  });
+
+  it('lehnt eine Zeichenkette statt eines Schalters ab', () => {
+    // Der Weg hierher ist ein Multipart-Formular; dort ist jedes Feld eine
+    // Zeichenkette. Das Umwandeln gehört in die Route, nicht ins Schema –
+    // sonst würde aus jedem beliebigen Text stillschweigend „wahr".
+    expect(
+      uploadFontInputSchema.safeParse({ label: 'Inter', family: 'Inter', monospace: 'true' })
+        .success,
+    ).toBe(false);
+  });
 });
 
 describe('instanceSettingsInputSchema – additive Erweiterung', () => {
