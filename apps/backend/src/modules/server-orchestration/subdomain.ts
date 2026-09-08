@@ -15,12 +15,11 @@
  * Der DNS-Eintrag entsteht erst danach und liegt in `dns/` – ein reservierter
  * Name ohne DNS-Eintrag ist harmlos, ein DNS-Eintrag ohne Datensatz nicht.
  *
- * **Offen (Audit contracts-validation-05):** Die Contracts führen mit
- * `hasValidSubdomainFormat`/`SUBDOMAIN_MAX_LENGTH` eine zweite, weitere
- * Formatregel (63 statt 30 Zeichen), die niemand aufruft. Wirksam ist allein
- * `subdomainSchema`. Das Zusammenlegen ändert `packages/contracts` **und**
- * `packages/validation` und gehört deshalb in einen eigenen, kleinen
- * Contracts-PR (CLAUDE.md §6) – nicht hierher.
+ * `subdomainSchema` leitet Länge und Zeichenvorrat aus `SUBDOMAIN_MIN_LENGTH`,
+ * `SUBDOMAIN_MAX_LENGTH` und `SUBDOMAIN_PATTERN` in den Contracts ab. Es gibt
+ * damit nur noch eine Formatregel – vorher stand im Vertrag eine zweite,
+ * weitere (63 statt 30 Zeichen), die niemand aufrief (Audit
+ * contracts-validation-05).
  */
 
 import {

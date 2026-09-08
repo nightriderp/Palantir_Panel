@@ -10,6 +10,9 @@
 import {
   SCHEDULE_ACTIONS,
   SERVER_MEMBER_LEVELS,
+  SUBDOMAIN_MAX_LENGTH,
+  SUBDOMAIN_MIN_LENGTH,
+  SUBDOMAIN_PATTERN,
   isReservedSubdomain,
   type GameConfigValue,
 } from '@palantir/contracts';
@@ -49,17 +52,27 @@ export const serverNameSchema = z
  * Subdomain eines Servers (Pflichtenheft §13).
  *
  * Regeln wie bei einem DNS-Label: Kleinbuchstaben, Ziffern und Bindestriche,
- * nicht mit Bindestrich beginnen oder enden, 3–30 Zeichen. Zusätzlich sind die
- * reservierten Systemnamen gesperrt. Ob der Name noch frei ist, prüft das
- * Backend gegen die Datenbank (`SUBDOMAIN_TAKEN`).
+ * nicht mit Bindestrich beginnen oder enden. Zusätzlich sind die reservierten
+ * Systemnamen gesperrt. Ob der Name noch frei ist, prüft das Backend gegen die
+ * Datenbank (`SUBDOMAIN_TAKEN`).
+ *
+ * **Länge und Zeichenvorrat kommen aus den Contracts** und stehen nicht mehr
+ * als Zahlen und Regex hier (Audit contracts-validation-05). Vorher gab es zwei
+ * Formatregeln nebeneinander: dieses Schema mit 30 Zeichen – wirksam, weil es
+ * der einzige Weg ins System ist – und `hasValidSubdomainFormat` im Vertrag mit
+ * 63, das niemand aufrief. Wer den Vertrag las, bekam die falsche Auskunft.
  */
 export const subdomainSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .min(3, { message: 'Die Subdomain muss mindestens 3 Zeichen lang sein.' })
-  .max(30, { message: 'Die Subdomain darf höchstens 30 Zeichen lang sein.' })
-  .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, {
+  .min(SUBDOMAIN_MIN_LENGTH, {
+    message: `Die Subdomain muss mindestens ${String(SUBDOMAIN_MIN_LENGTH)} Zeichen lang sein.`,
+  })
+  .max(SUBDOMAIN_MAX_LENGTH, {
+    message: `Die Subdomain darf höchstens ${String(SUBDOMAIN_MAX_LENGTH)} Zeichen lang sein.`,
+  })
+  .regex(SUBDOMAIN_PATTERN, {
     message: 'Erlaubt sind Kleinbuchstaben, Ziffern und Bindestriche – nicht am Anfang oder Ende.',
   })
   .refine((value) => !isReservedSubdomain(value), {

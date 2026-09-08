@@ -1,4 +1,9 @@
-import { RESERVED_SUBDOMAINS } from '@palantir/contracts';
+import {
+  RESERVED_SUBDOMAINS,
+  SUBDOMAIN_MAX_LENGTH,
+  SUBDOMAIN_MIN_LENGTH,
+  hasValidSubdomainFormat,
+} from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { cronExpressionSchema } from './backups.js';
 import {
@@ -49,9 +54,38 @@ describe('subdomainSchema', () => {
   });
 
   it('hält die Längengrenzen ein', () => {
-    expect(subdomainSchema.safeParse('ab').success).toBe(false);
-    expect(subdomainSchema.safeParse('a'.repeat(31)).success).toBe(false);
-    expect(subdomainSchema.safeParse('a'.repeat(30)).success).toBe(true);
+    expect(subdomainSchema.safeParse('a'.repeat(SUBDOMAIN_MIN_LENGTH - 1)).success).toBe(false);
+    expect(subdomainSchema.safeParse('a'.repeat(SUBDOMAIN_MIN_LENGTH)).success).toBe(true);
+    expect(subdomainSchema.safeParse('a'.repeat(SUBDOMAIN_MAX_LENGTH)).success).toBe(true);
+    expect(subdomainSchema.safeParse('a'.repeat(SUBDOMAIN_MAX_LENGTH + 1)).success).toBe(false);
+  });
+
+  /*
+   * Der Grund für das Zusammenlegen (Audit contracts-validation-05): Bis hierher
+   * gab es zwei Formatregeln. Wirksam war dieses Schema mit 30 Zeichen, im
+   * Vertrag stand daneben `hasValidSubdomainFormat` mit 63 – aufgerufen von
+   * niemandem. Ein 40 Zeichen langer Name war nach dem Vertrag in Ordnung und
+   * wurde vom System abgelehnt. Dieser Test hält fest, dass beide dasselbe sagen.
+   */
+  it('sagt dasselbe wie die Formatprüfung im Vertrag', () => {
+    const faelle = [
+      'welt',
+      'welt-1',
+      'a'.repeat(SUBDOMAIN_MIN_LENGTH - 1),
+      'a'.repeat(SUBDOMAIN_MIN_LENGTH),
+      'a'.repeat(SUBDOMAIN_MAX_LENGTH),
+      'a'.repeat(SUBDOMAIN_MAX_LENGTH + 1),
+      '-welt',
+      'welt-',
+      'welt_1',
+      'welt.example',
+    ];
+
+    for (const fall of faelle) {
+      // Ohne reservierte Namen: die Sperrliste ist eine zweite, eigene Frage,
+      // die der Vertrag getrennt beantwortet (`isReservedSubdomain`).
+      expect(subdomainSchema.safeParse(fall).success, fall).toBe(hasValidSubdomainFormat(fall));
+    }
   });
 
   it('sperrt jeden reservierten Systemnamen (Pflichtenheft §13)', () => {

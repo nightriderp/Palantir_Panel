@@ -64,7 +64,7 @@ describe('hasValidSubdomainFormat – erlaubte Formen', () => {
     expect(SUBDOMAIN_MIN_LENGTH).toBe(3);
     // 63 ist die Obergrenze eines DNS-Labels; ein größerer Wert erzeugte einen
     // Namen, den kein Resolver mehr annimmt.
-    expect(SUBDOMAIN_MAX_LENGTH).toBe(63);
+    expect(SUBDOMAIN_MAX_LENGTH).toBe(30);
   });
 });
 
