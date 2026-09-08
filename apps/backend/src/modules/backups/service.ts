@@ -575,6 +575,9 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     try {
       backup = await repository.create({
         serverId: params.server.id,
+        // Die Node kommt vom Server und wird am Backup festgehalten – nach dem
+        // Löschen des Servers gäbe es keinen Weg mehr zu ihr (Fundpunkt 174).
+        hostId: params.server.hostId,
         ownerId: params.server.ownerId,
         type: params.type,
         isExport: params.isExport,
@@ -616,10 +619,15 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
   /** Entfernt ein Backup samt Archiv. Ein bereits fehlendes Archiv ist kein Fehler. */
   async function removeBackupAndArchive(backup: BackupRecord): Promise<number> {
     if (backup.storagePath !== null) {
-      const response = await agent.deleteBackup({
-        backupId: backup.id,
-        storagePath: backup.storagePath,
-      });
+      const response = await agent.deleteBackup(
+        {
+          backupId: backup.id,
+          storagePath: backup.storagePath,
+        },
+        // Das Archiv liegt auf der Node, auf der es entstanden ist – nicht
+        // zwangsläufig auf der Node der Installation (Fundpunkt 174).
+        { hostId: backup.hostId },
+      );
 
       if (!response.success) {
         throw new BackupError(agentErrorCode(response.error.code), response.error.message);
@@ -953,6 +961,9 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       }
 
       const storagePath = backup.storagePath;
+      // Node des Archivs, einmal festgehalten: Der Generator unten läuft über
+      // viele Blöcke und darf sie nicht je Block neu ermitteln (Fundpunkt 174).
+      const archive = { hostId: backup.hostId };
       const expectedChecksum = backup.checksumSha256;
       const fileName =
         `${server?.name ?? 'server'}-${backup.createdAt.toISOString().slice(0, 10)}-${backup.id}.tar.zst`
@@ -966,12 +977,15 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
         const hash = createHash('sha256');
 
         for (;;) {
-          const response = await agent.downloadBackupChunk({
-            backupId: backup.id,
-            storagePath,
-            offset,
-            maxBytes: DOWNLOAD_CHUNK_BYTES,
-          });
+          const response = await agent.downloadBackupChunk(
+            {
+              backupId: backup.id,
+              storagePath,
+              offset,
+              maxBytes: DOWNLOAD_CHUNK_BYTES,
+            },
+            archive,
+          );
 
           if (!response.success) {
             throw new BackupError(agentErrorCode(response.error.code), response.error.message);

@@ -12,6 +12,8 @@ import { type BackupService, createBackupService } from './service.js';
 import {
   type FakeAgent,
   type RecordingEventPublisher,
+  TEST_HOST_ID,
+  TEST_OTHER_HOST_ID,
   fakeAgent,
   fakeServerDirectory,
   fakeUserDirectory,
@@ -1148,5 +1150,122 @@ describe('Aufbewahrung ueber den gesamten Bestand (Audit W1-6, bb-07)', () => {
      */
     expect(ergebnis.removedBackupIds).toEqual([gescheitert.id]);
     expect(await t.repository.findById(fertig.id)).not.toBeNull();
+  });
+});
+
+/**
+ * Eine Sicherung weiß, auf welcher Node sie liegt (Fundpunkt 174).
+ *
+ * Geprüft wird hier die Seite von B5: dass die Node beim Anlegen aus dem Server
+ * übernommen und bei den beiden server-losen Befehlen weitergereicht wird. An
+ * welche Maschine der Befehl daraufhin geht, prüft
+ * `server-orchestration/backup-ports.test.ts` mit zwei laufenden Agents.
+ */
+describe('Node am Backup-Datensatz (Fundpunkt 174)', () => {
+  it('übernimmt beim Anlegen die Node des gesicherten Servers', async () => {
+    const t = aufbau();
+
+    const dto = await t.service.createManual(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.server.id,
+      { stopServer: false },
+    );
+
+    expect((await t.repository.findById(dto.id))?.hostId).toBe(TEST_HOST_ID);
+  });
+
+  it('nimmt die Node des Servers und nicht eine feste Vorgabe', async () => {
+    // Zweiter Server auf der zweiten Node: Stünde hier irgendwo ein fester
+    // Wert, fiele es erst im Mehr-Node-Betrieb auf – also nie im Test.
+    const besitzerId = testId('2');
+    const t = aufbau({
+      server: testServer({ ownerId: besitzerId, hostId: TEST_OTHER_HOST_ID }),
+    });
+
+    const dto = await t.service.createManual(
+      actorMit('backup.manage.own'),
+      t.server.ownerId,
+      t.server.id,
+      { stopServer: false },
+    );
+
+    expect((await t.repository.findById(dto.id))?.hostId).toBe(TEST_OTHER_HOST_ID);
+  });
+
+  it('hält die Node auch bei einem geplanten Lauf fest', async () => {
+    const t = aufbau({ server: testServer({ hostId: TEST_OTHER_HOST_ID }) });
+
+    const dto = await t.service.createScheduled(t.server.id, testId('4'), false);
+
+    expect((await t.repository.findById(dto.id))?.hostId).toBe(TEST_OTHER_HOST_ID);
+  });
+
+  it('löscht das Archiv auf der Node des Backups', async () => {
+    const t = aufbau({
+      bestand: (besitzerId, server) => [
+        testBackup({ serverId: server.id, ownerId: besitzerId, hostId: TEST_OTHER_HOST_ID }),
+      ],
+    });
+    const [backup] = await t.repository.listByOwner(t.besitzerId);
+
+    await t.service.remove(actorMit('backup.manage.any'), t.besitzerId, backup?.id ?? '');
+
+    expect(t.agent.deletedHostIds).toEqual([TEST_OTHER_HOST_ID]);
+  });
+
+  it('holt die Blöcke von der Node des Backups', async () => {
+    const inhalt = Buffer.from('Palantir');
+    const t = aufbau({
+      bestand: (besitzerId, server) => [
+        testBackup({
+          serverId: server.id,
+          ownerId: besitzerId,
+          hostId: TEST_OTHER_HOST_ID,
+          sizeBytes: inhalt.length,
+          checksumSha256: createHash('sha256').update(inhalt).digest('hex'),
+        }),
+      ],
+    });
+    const [backup] = await t.repository.listByOwner(t.besitzerId);
+
+    t.agent.downloadResponses = [
+      ok({
+        backupId: backup?.id ?? '',
+        offset: 0,
+        contentBase64: inhalt.toString('base64'),
+        bytesRead: inhalt.length,
+        totalBytes: inhalt.length,
+        eof: true,
+      }),
+    ];
+
+    const download = await t.service.openDownload(
+      actorMit('backup.manage.any'),
+      t.besitzerId,
+      backup?.id ?? '',
+    );
+
+    for await (const _ of download.chunks()) {
+      // Nur der Vollständigkeit halber durchlaufen; geprüft wird die Node.
+    }
+
+    expect(t.agent.downloadedHostIds).toEqual([TEST_OTHER_HOST_ID]);
+  });
+
+  it('reicht eine Sicherung ohne Node als „unbekannt" weiter, statt eine zu erfinden', async () => {
+    // Zeile von vor der Spalte oder ausgemusterte Node: Der Service tut hier
+    // nichts – die Entscheidung, auf `defaultHost()` zurückzufallen und das zu
+    // melden, gehört ins Gateway, das die Nodes kennt.
+    const t = aufbau({
+      bestand: (besitzerId, server) => [
+        testBackup({ serverId: server.id, ownerId: besitzerId, hostId: null }),
+      ],
+    });
+    const [backup] = await t.repository.listByOwner(t.besitzerId);
+
+    await t.service.remove(actorMit('backup.manage.any'), t.besitzerId, backup?.id ?? '');
+
+    expect(t.agent.deletedHostIds).toEqual([null]);
   });
 });

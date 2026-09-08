@@ -38,11 +38,18 @@ export function testId(prefix = '0'): string {
   return `${prefix.repeat(8).slice(0, 8)}-0000-4000-8000-${String(nextId).padStart(12, '0')}`;
 }
 
+/** Node, auf der die Testserver stehen – fest, damit Tests sie benennen können. */
+export const TEST_HOST_ID = '55555555-5555-4555-8555-555555555555';
+
+/** Zweite Node für Tests, die den Mehr-Node-Betrieb brauchen (Fundpunkt 174). */
+export const TEST_OTHER_HOST_ID = '66666666-6666-4666-8666-666666666666';
+
 export function testServer(overrides: Partial<BackupServerRecord> = {}): BackupServerRecord {
   return {
     id: testId('1'),
     name: 'Wüstensturm',
     ownerId: testId('2'),
+    hostId: TEST_HOST_ID,
     status: 'running',
     dockerContainerId: 'container-1',
     dataHostPath: '/srv/palantir/data/wuestensturm',
@@ -61,6 +68,7 @@ export function testBackup(overrides: Partial<BackupRecord> = {}): BackupRecord 
   return {
     id: testId('3'),
     serverId: testId('1'),
+    hostId: TEST_HOST_ID,
     ownerId: testId('2'),
     type: 'automatic',
     status: 'completed',
@@ -111,6 +119,12 @@ export function fakeUserDirectory(names: Record<string, string> = {}): UserDirec
 export interface FakeAgent extends BackupAgentGateway {
   readonly createdBackupIds: string[];
   readonly deletedStoragePaths: string[];
+  /**
+   * Node, mit der `deleteBackup` bzw. `downloadBackupChunk` aufgerufen wurde
+   * (Fundpunkt 174) – `null`, wenn der Datensatz keine trug.
+   */
+  readonly deletedHostIds: (string | null)[];
+  readonly downloadedHostIds: (string | null)[];
   readonly restoredBackupIds: string[];
   /** Prüfsummen, mit denen der Service `restoreBackup` aufgerufen hat. */
   readonly restoredChecksums: string[];
@@ -129,6 +143,8 @@ export function fakeAgent(overrides: Partial<FakeAgent> = {}): FakeAgent {
     createdBackupIds: [],
     createdExtraFiles: [],
     deletedStoragePaths: [],
+    deletedHostIds: [],
+    downloadedHostIds: [],
     restoredBackupIds: [],
     restoredChecksums: [],
     createResponse: ok({
@@ -173,14 +189,17 @@ export function fakeAgent(overrides: Partial<FakeAgent> = {}): FakeAgent {
       return Promise.resolve(agent.restoreResponse);
     },
 
-    downloadBackupChunk() {
+    downloadBackupChunk(_payload, archive) {
+      agent.downloadedHostIds.push(archive.hostId);
+
       return Promise.resolve(
         agent.downloadResponses.shift() ?? fail('AGENT_COMMAND_FAILED', 'Kein Block hinterlegt.'),
       );
     },
 
-    deleteBackup(payload) {
+    deleteBackup(payload, archive) {
       agent.deletedStoragePaths.push(payload.storagePath);
+      agent.deletedHostIds.push(archive.hostId);
 
       return Promise.resolve(agent.deleteResponse);
     },
@@ -287,6 +306,7 @@ export function inMemoryBackupRepository(seed: readonly BackupRecord[] = []): Ba
       const record: BackupRecord = {
         id: testId('3'),
         serverId: data.serverId,
+        hostId: data.hostId,
         ownerId: data.ownerId,
         type: data.type,
         status: 'pending',

@@ -49,6 +49,7 @@ export {
 
 export {
   type BackupAgentGateway,
+  type BackupArchiveLocation,
   type BackupEventName,
   type BackupEventPayloads,
   type BackupEventPublisher,

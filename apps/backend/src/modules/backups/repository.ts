@@ -19,6 +19,13 @@ export interface BackupRecord {
   readonly id: string;
   /** Gesicherter Server; `null`, sobald er gelöscht wurde (`ON DELETE SET NULL`). */
   readonly serverId: string | null;
+  /**
+   * Node, auf der das Archiv liegt (Fundpunkt 174).
+   *
+   * `null` bei Zeilen von vor dieser Spalte, die keiner Node eindeutig
+   * zuzuordnen waren, und bei ausgemusterten Nodes (`ON DELETE SET NULL`).
+   */
+  readonly hostId: string | null;
   readonly ownerId: string;
   readonly type: BackupType;
   readonly status: BackupStatus;
@@ -39,6 +46,13 @@ export interface BackupRecord {
 
 export interface CreateBackupData {
   readonly serverId: string;
+  /**
+   * Node des gesicherten Servers – hier festgehalten, weil `serverId` später
+   * wegfallen darf (Fundpunkt 174). Pflichtangabe: Wer eine Sicherung anlegt,
+   * kennt den Server und damit dessen Node; ein optionales Feld hieße nur, den
+   * Rückfall auch dort in Kauf zu nehmen, wo die Antwort bekannt ist.
+   */
+  readonly hostId: string;
   readonly ownerId: string;
   readonly type: BackupType;
   readonly isExport: boolean;
@@ -154,6 +168,7 @@ export interface BackupRepository {
 interface BackupRow {
   id: string;
   serverId: string | null;
+  hostId: string | null;
   ownerId: string;
   type: BackupType;
   status: BackupStatus;
@@ -317,6 +332,7 @@ export function createDrizzleBackupRepository(db: Database): BackupRepository {
         .insert(backups)
         .values({
           serverId: data.serverId,
+          hostId: data.hostId,
           ownerId: data.ownerId,
           type: data.type,
           isExport: data.isExport,

@@ -30,6 +30,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { hostNodes } from './resources.js';
 import { gameServers } from './server-orchestration.js';
 import { users } from './users.js';
 
@@ -118,6 +119,11 @@ export const schedules = pgTable(
  * Das Konto überlebt ein Backup dagegen **nicht**: `owner_id` steht auf
  * `RESTRICT`, weil die Archivdatei auf der Node nur der Agent entfernt – siehe
  * die Anmerkung an der Spalte (Audit backend-db-02).
+ *
+ * `host_id` hält fest, auf **welcher** Node das Archiv liegt (Fundpunkt 174).
+ * Weil `server_id` wegfallen darf, wäre die Node sonst mit dem Server
+ * verschwunden – und `DOWNLOAD_BACKUP`/`DELETE_BACKUP` gingen ab der zweiten
+ * Node an die falsche Maschine.
  */
 export const backups = pgTable(
   'backups',
@@ -131,6 +137,36 @@ export const backups = pgTable(
      * Servers darf nicht daran scheitern, dass es noch Sicherungen gibt.
      */
     serverId: uuid('server_id').references(() => gameServers.id, { onDelete: 'set null' }),
+    /**
+     * Node, auf der das Archiv tatsächlich liegt (Fundpunkt 174).
+     *
+     * Bewusst am Backup festgehalten und nicht über `server_id` erschlossen:
+     * Ein Backup überlebt seinen Server (`ON DELETE SET NULL` oben), und mit
+     * dem Server verschwände auch der einzige Weg zu seiner Node. Dieselbe
+     * Linie wie `owner_id` – eine Tatsache, die eine spätere Entscheidung
+     * trägt, wird festgehalten statt aus etwas rekonstruiert, das wegfallen
+     * darf. Solange genau eine Node läuft, ist das folgenlos; ab der zweiten
+     * bestimmt diese Spalte, an welche Maschine `DOWNLOAD_BACKUP` und
+     * `DELETE_BACKUP` gehen (`server-orchestration/backup-ports.ts`).
+     *
+     * `ON DELETE SET NULL` – aus denselben Gründen wie bei `server_id`:
+     *
+     * - `CASCADE` scheidet aus: Mit der Node verschwände der **Datensatz**, die
+     *   einzige Spur, dass es die Sicherung gab (Größe, Besitzer, Ablageort).
+     *   Der Speicherverbrauch je Konto (Lastenheft §3.7) verlöre still einen
+     *   Posten.
+     * - `RESTRICT` scheidet aus: Es ließe das Ausmustern einer Node an
+     *   Sicherungen scheitern, die auf ihr lagen. Anders als bei `owner_id`
+     *   gibt es dafür keinen regulären Ausweg – der Agent, der die Archive
+     *   entfernen müsste, ist mit der Node ja gerade weg. Der Betreiber käme
+     *   nur noch von Hand aus der Sperre.
+     *
+     * `null` heißt damit „Node unbekannt": eine Zeile von vor dieser Spalte,
+     * die keiner Node eindeutig zuzuordnen war, oder eine ausgemusterte Node.
+     * Für diesen Fall bleibt der bisherige Weg über `defaultHost()` – sichtbar
+     * im Log, nicht stillschweigend.
+     */
+    hostId: uuid('host_id').references(() => hostNodes.id, { onDelete: 'set null' }),
     /**
      * Besitzer des Backups; trägt `.own`/`.any` und den Speicherverbrauch je
      * Konto (Lastenheft §3.7).
@@ -181,6 +217,14 @@ export const backups = pgTable(
     index('backups_server_created_idx').on(table.serverId, table.createdAt.desc()),
     index('backups_owner_idx').on(table.ownerId),
     index('backups_status_idx').on(table.status),
+    /**
+     * Trägt das `ON DELETE SET NULL` beim Ausmustern einer Node (Fundpunkt 174,
+     * dieselbe Regel wie in `schema-feinschliff.db.test.ts`: Ein Index kommt
+     * dorthin, wo die Tabelle mit dem Betrieb wächst – Sicherungen tun das).
+     * Ohne ihn läse PostgreSQL für jede gelöschte `host_nodes`-Zeile den
+     * gesamten Bestand.
+     */
+    index('backups_host_id_idx').on(table.hostId),
     /**
      * Trägt das `ON DELETE SET NULL` beim Löschen eines Kontos (Audit
      * backend-db-07). `owner_id` steht auf `RESTRICT` und ist indiziert –
