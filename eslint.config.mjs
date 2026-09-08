@@ -1,5 +1,11 @@
 // Zentrale ESLint-Flat-Config für das gesamte Monorepo.
 // Einzelne Workspaces erweitern diese Datei bei Bedarf (z. B. Next.js in apps/frontend).
+//
+// Wer prüft die Wurzel selbst? `pnpm lint` ist `turbo run lint` und geht nur
+// über die Workspace-Pakete – diese Datei gehört zu keinem davon und lief
+// deshalb in keinem Lauf mit (Fundpunkt 165). Das Wurzel-Skript ruft ESLint
+// jetzt zusätzlich direkt auf den Dateien der obersten Ebene auf, bevor es an
+// Turbo übergibt.
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
