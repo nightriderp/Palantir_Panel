@@ -22,6 +22,7 @@ import {
 } from '@palantir/contracts';
 import { type UploadFontInput } from '@palantir/validation';
 import { createHash, randomUUID } from 'node:crypto';
+import { isUniqueViolation } from '../../db/errors.js';
 import { type AdminContext, type AuditService, entryFor } from '../admin/index.js';
 import { hasPermission, type PermissionActor } from '../rbac/index.js';
 import { type BundledFont, BUNDLED_FONTS, findBundledFont } from './bundled.js';
@@ -141,6 +142,22 @@ function requireManage(actor: PermissionActor): void {
   if (!hasPermission(actor, MANAGE_PERMISSION)) {
     throw new FontError('PERMISSION_DENIED');
   }
+}
+
+/**
+ * Der belegte Familienname – ein Wortlaut für beide Wege, auf denen er auffällt.
+ *
+ * `FONT_FAMILY_TAKEN` (409) und nicht `VALIDATION_FAILED` (400): Die Eingabe ist
+ * für sich genommen in Ordnung, ihr steht nur der Bestand entgegen – ein
+ * Konflikt, den der Aufrufer ausräumt, wie bei `AUTH_USERNAME_TAKEN`. Die
+ * Meldung nennt zusätzlich den Grund, weil die Vorgabemeldung des Katalogs den
+ * Namen nicht kennt.
+ */
+function familyTaken(family: string): FontError {
+  return new FontError(
+    'FONT_FAMILY_TAKEN',
+    `Es gibt bereits eine Schrift mit dem Familiennamen „${family}". Zwei gleichnamige Schriften würden sich in den erzeugten @font-face-Regeln gegenseitig überschreiben.`,
+  );
 }
 
 /**
@@ -329,17 +346,7 @@ export function createFontService(deps: FontServiceDependencies): FontService {
       );
 
       if (belegtMitgeliefert || (await deps.repository.findByFamily(input.family)) !== null) {
-        /*
-         * `FONT_FAMILY_TAKEN` (409) und nicht `VALIDATION_FAILED` (400): Die
-         * Eingabe ist für sich genommen in Ordnung, ihr steht nur der Bestand
-         * entgegen – ein Konflikt, den der Aufrufer ausräumt, wie bei
-         * `AUTH_USERNAME_TAKEN`. Die Meldung nennt zusätzlich den Grund, weil
-         * die Vorgabemeldung des Katalogs den Namen nicht kennt.
-         */
-        throw new FontError(
-          'FONT_FAMILY_TAKEN',
-          `Es gibt bereits eine Schrift mit dem Familiennamen „${input.family}". Zwei gleichnamige Schriften würden sich in den erzeugten @font-face-Regeln gegenseitig überschreiben.`,
-        );
+        throw familyTaken(input.family);
       }
 
       const { variable, weightRange } = resolveWeights(input);
@@ -371,6 +378,20 @@ export function createFontService(deps: FontServiceDependencies): FontService {
         // Ohne Datensatz ist die Datei nicht erreichbar und nicht löschbar –
         // sie würde für immer im Ablageort liegen bleiben.
         await deps.uploads.remove(dateiname);
+
+        /*
+         * Zwei gleichzeitige Uploads desselben Familiennamens (zwei
+         * Administratoren, oder ein zweiter Anlauf auf einen hängenden ersten):
+         * Beide finden über `findByFamily` nichts, den zweiten Insert fängt
+         * `uploaded_fonts_family_lower_idx`. Zwischen Prüfung und Schreiben
+         * liegt keine Transaktion – genau der Fall, für den `isUniqueViolation`
+         * da ist (`db/errors.ts`, Audit W2-9). Ohne diesen Zweig käme der
+         * fachlich benannte Konflikt als `INTERNAL_ERROR` (500) zurück, obwohl
+         * die Vorprüfung denselben Fall mit 409 beantwortet.
+         */
+        if (isUniqueViolation(error)) {
+          throw familyTaken(input.family);
+        }
 
         throw error;
       }
