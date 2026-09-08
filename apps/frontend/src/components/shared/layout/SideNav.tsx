@@ -7,6 +7,15 @@ import { Icon, type IconName } from '../icons/Icon';
 import { serverStatusMeta } from '../server/serverStatus';
 import { cn } from '../utils/cn';
 
+/**
+ * Ein Eintrag der Seitenleiste.
+ *
+ * **Kein `onSelect`** (Fundpunkt 166): Die mobile Schublade schließt sich schon
+ * eine Ebene höher. `AppShell` legt den Klick-Fänger um den ganzen Behälter der
+ * Seitenleiste, und jeder Klick auf einen Eintrag blubbert dorthin – auch der
+ * eines Tastaturnutzers, der mit Eingabe auslöst. Ein zweiter Weg hier war nie
+ * gesetzt und hätte dasselbe doppelt getan.
+ */
 export interface SideNavItem {
   key: string;
   label: string;
@@ -20,8 +29,6 @@ export interface SideNavItem {
    * nirgendwohin führt, gehört gar nicht erst in die Liste.
    */
   href: string;
-  /** Wird beim Anklicken zusätzlich aufgerufen (mobile Schublade schließen). */
-  onSelect?: () => void;
   active?: boolean;
   /** Zähler rechts im Eintrag (z. B. ungelesene Nachrichten). */
   badgeCount?: number;
@@ -64,7 +71,6 @@ export function SideNavSection({ title, titleAside, items, className }: SideNavS
           key={item.key}
           href={item.href}
           aria-current={item.active ? 'page' : undefined}
-          onClick={item.onSelect}
           className={cn(
             'flex items-center gap-2.5 rounded-tile px-2.5 py-2.5 text-base',
             item.active
@@ -95,8 +101,6 @@ export interface SideNavServerSectionProps {
   /** Überschrift der Gruppe, im Mockup „Deine Server". */
   title: string;
   items: readonly SideNavServerItem[];
-  /** Wird beim Anklicken eines Eintrags aufgerufen (mobile Schublade schließen). */
-  onSelect?: () => void;
   className?: string;
 }
 
@@ -111,12 +115,7 @@ export interface SideNavServerSectionProps {
  * Ohne Server rendert die Gruppe nichts, damit bei einem frischen Konto keine
  * leere Überschrift stehen bleibt.
  */
-export function SideNavServerSection({
-  title,
-  items,
-  onSelect,
-  className,
-}: SideNavServerSectionProps) {
+export function SideNavServerSection({ title, items, className }: SideNavServerSectionProps) {
   if (items.length === 0) return null;
 
   return (
@@ -131,7 +130,6 @@ export function SideNavServerSection({
             key={item.id}
             href={item.href}
             aria-current={item.active ? 'page' : undefined}
-            onClick={onSelect}
             className={cn(
               'flex items-center gap-2.5 rounded-tile px-2.5 py-2 text-base',
               item.active
