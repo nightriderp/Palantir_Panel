@@ -1013,6 +1013,31 @@ export function createNotificationService(
             ruleId: null,
             announcementId: angelegt.id,
           })),
+        /*
+         * Der Audit-Eintrag gehört in dieselbe Klammer (Fundpunkt 150). Vorher
+         * stand er hinter dem Commit: Scheiterte er, existierten Ankündigung
+         * und Inbox-Zeilen bereits, der Admin bekam aber einen Fehler zu sehen –
+         * und sein zweiter Anlauf legte eine **zweite** Ankündigung an, weil der
+         * Dedupe-Index je `announcement_id` greift. Jetzt entsteht entweder
+         * alles oder nichts, und die Zusicherung aus §6 („keine
+         * sicherheitsrelevante Aktion ohne Protokoll") gilt weiterhin.
+         */
+        async (angelegt, meldungen, connection) => {
+          await audit.record(
+            {
+              action: 'notification.announcementChanged',
+              actorId,
+              targetType: 'announcement',
+              targetId: angelegt.id,
+              metadata: {
+                operation: 'published',
+                title: angelegt.title,
+                recipientCount: meldungen.length,
+              },
+            },
+            connection,
+          );
+        },
       );
 
       // Erst nach dem Commit an offene Ansichten – vorher gäbe es die Meldungen
@@ -1028,18 +1053,6 @@ export function createNotificationService(
           title: announcement.title,
           body: announcement.body,
           severity: announcement.severity,
-        },
-      });
-
-      await audit.record({
-        action: 'notification.announcementChanged',
-        actorId,
-        targetType: 'announcement',
-        targetId: announcement.id,
-        metadata: {
-          operation: 'published',
-          title: announcement.title,
-          recipientCount: zugestellt.length,
         },
       });
 
@@ -1082,6 +1095,14 @@ export function createNotificationService(
        * Korrektur am Banner soll nicht rückwirkend ändern, was jemand gestern
        * gelesen hat – dieselbe Überlegung wie beim Speichern der Texte
        * (`messages.ts`).
+       *
+       * **Kein Transaktions-Rückruf wie beim Veröffentlichen** (Fundpunkt 150,
+       * geprüft): Hier steht genau ein Update auf einer Zeile, keine zweite
+       * Tabelle daneben. Scheitert der Eintrag, sieht der Admin einen Fehler und
+       * wiederholt – der zweite Anlauf schreibt dieselben Felder ein zweites Mal
+       * und protokolliert dann. Es entsteht nichts doppelt und nichts
+       * Verwaistes, weshalb die zusätzliche Klammer nur Aufwand ohne Wirkung
+       * wäre.
        */
       await audit.record({
         action: 'notification.announcementChanged',

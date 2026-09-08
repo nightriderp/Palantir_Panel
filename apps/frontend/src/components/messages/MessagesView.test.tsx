@@ -1,6 +1,6 @@
 import { type ChatServerEventFrame, type ConversationDto, ok } from '@palantir/contracts';
-import { act, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/shared';
 import { conversation, message } from './testFixtures';
 import { MessagesView } from './MessagesView';
@@ -64,15 +64,15 @@ const SERVER_CHAT = conversation({
   createdAt: '2026-08-28T09:30:00.000Z',
 });
 
-/** `message.sent` für eine Konversation, die nicht in der Übersicht steht. */
-function fremdeNachricht(conversationId: string): ChatServerEventFrame {
+/** `message.sent` von einem fremden Konto; `id` unterscheidet mehrere davon. */
+function fremdeNachricht(conversationId: string, id = 'm-neu'): ChatServerEventFrame {
   return {
     kind: 'event',
     event: 'message.sent',
     sentAt: '2026-08-28T10:00:00.000Z',
     data: {
       conversationId,
-      message: message({ id: 'm-neu', conversationId, senderId: 'u2', content: 'Moin' }),
+      message: message({ id, conversationId, senderId: 'u2', content: 'Moin' }),
     },
   };
 }
@@ -113,6 +113,22 @@ function abzeichen(titel: string): string | null {
   return treffer?.textContent ?? null;
 }
 
+/** Öffnet eine Konversation über die Seitenleiste – wie ein Klick des Nutzers. */
+async function waehle(titel: string): Promise<void> {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(titel) }));
+  });
+}
+
+/** Sichtbarkeit des Tabs setzen; jsdom liefert `visibilityState` sonst fest als „visible". */
+function setzeSichtbarkeit(zustand: 'visible' | 'hidden'): void {
+  Object.defineProperty(document, 'visibilityState', { value: zustand, configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+/** Sammelfenster aus `MessagesView` (`READ_SYNC_THROTTLE_MS`) plus Reserve. */
+const SAMMELFENSTER_MS = 2_000;
+
 beforeEach(() => {
   live.onFrame = null;
   api.fetchConversations.mockReset().mockResolvedValue(ok<ConversationDto[]>([FEMI]));
@@ -120,6 +136,11 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue(ok({ conversationId: 'c1', messages: [], nextCursor: null, limit: 50 }));
   api.markConversationRead.mockReset().mockResolvedValue(ok({ ...FEMI, unreadCount: 0 }));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  setzeSichtbarkeit('visible');
 });
 
 describe('MessagesView – Ungelesen-Zähler (Finding frontend-lib-06)', () => {
@@ -199,5 +220,144 @@ describe('MessagesView – Nachricht für eine unbekannte Konversation (event-fl
     await waitFor(() => {
       expect(api.fetchConversations).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+/**
+ * Lesestand bei eintreffenden Nachrichten (Fundpunkt 144).
+ *
+ * Der Zähler kommt seit W2-19 aus dem DTO. Traf eine fremde Nachricht ein,
+ * während der Nutzer die Konversation offen hatte, wuchs der **Serverstand**
+ * weiter – die Seitenleiste zählte sie beim nächsten Laden der Übersicht mit,
+ * obwohl der Nutzer sie längst gelesen hatte.
+ *
+ * Gewählt wurde das gedrosselte Nachziehen im Frontend statt eines
+ * Lesestand-Frames vom Backend: Nur der Browser weiß, ob jemand hinsieht. Für
+ * das Backend sieht ein Hintergrund-Tab genauso aus wie ein offenes Fenster –
+ * es müsste raten und würde Ungelesenes als gelesen markieren.
+ */
+describe('MessagesView – Lesestand nachziehen (Fundpunkt 144)', () => {
+  it('lässt den Zähler der Seitenleiste in der offenen Konversation nicht steigen', async () => {
+    zeichne();
+    await waitFor(() => {
+      expect(abzeichen('Femi')).toBe('3');
+    });
+
+    await waehle('Femi');
+
+    // Das Auswählen setzt den Lesestand: ein Aufruf, Zähler weg.
+    expect(api.markConversationRead).toHaveBeenCalledTimes(1);
+    expect(abzeichen('Femi')).toBeNull();
+
+    await sende(fremdeNachricht('c1', 'm-a'));
+
+    expect(abzeichen('Femi')).toBeNull();
+  });
+
+  it('zieht den Lesestand einmal nach, auch bei mehreren Nachrichten kurz hintereinander', async () => {
+    zeichne();
+    await waitFor(() => {
+      expect(abzeichen('Femi')).toBe('3');
+    });
+
+    await waehle('Femi');
+    expect(api.markConversationRead).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+
+    await sende(fremdeNachricht('c1', 'm-a'));
+    await sende(fremdeNachricht('c1', 'm-b'));
+    await sende(fremdeNachricht('c1', 'm-c'));
+
+    // Noch nichts: Die drei Nachrichten laufen in dasselbe Sammelfenster.
+    expect(api.markConversationRead).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(SAMMELFENSTER_MS);
+    });
+
+    // Genau ein weiterer Aufruf für alle drei – nicht drei.
+    expect(api.markConversationRead).toHaveBeenCalledTimes(2);
+    expect(api.markConversationRead).toHaveBeenLastCalledWith('c1');
+  });
+
+  it('zählt in einer nicht geöffneten Konversation weiter und meldet nichts als gelesen', async () => {
+    zeichne();
+    await waitFor(() => {
+      expect(abzeichen('Femi')).toBe('3');
+    });
+
+    vi.useFakeTimers();
+
+    // Keine Konversation ausgewählt: Die Nachricht ist ungelesen und bleibt es.
+    await sende(fremdeNachricht('c1', 'm-a'));
+
+    await act(async () => {
+      vi.advanceTimersByTime(SAMMELFENSTER_MS * 2);
+    });
+
+    expect(abzeichen('Femi')).toBe('4');
+    expect(api.markConversationRead).not.toHaveBeenCalled();
+  });
+
+  /** Ein Hintergrund-Tab hat die Konversation offen, gelesen hat dort aber niemand. */
+  it('meldet aus einem nicht sichtbaren Tab nichts als gelesen – und holt es beim Zurückkommen nach', async () => {
+    zeichne();
+    await waitFor(() => {
+      expect(abzeichen('Femi')).toBe('3');
+    });
+
+    await waehle('Femi');
+    expect(api.markConversationRead).toHaveBeenCalledTimes(1);
+
+    setzeSichtbarkeit('hidden');
+    vi.useFakeTimers();
+
+    await sende(fremdeNachricht('c1', 'm-a'));
+
+    await act(async () => {
+      vi.advanceTimersByTime(SAMMELFENSTER_MS * 3);
+    });
+
+    expect(api.markConversationRead).toHaveBeenCalledTimes(1);
+
+    // Zurück im Vordergrund: Jetzt schaut jemand hin, der Lesestand gilt.
+    await act(async () => {
+      setzeSichtbarkeit('visible');
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(SAMMELFENSTER_MS);
+    });
+
+    expect(api.markConversationRead).toHaveBeenCalledTimes(2);
+  });
+
+  it('zieht nichts für eine eigene Nachricht nach', async () => {
+    zeichne();
+    await waitFor(() => {
+      expect(abzeichen('Femi')).toBe('3');
+    });
+
+    await waehle('Femi');
+    expect(api.markConversationRead).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+
+    await sende({
+      kind: 'event',
+      event: 'message.sent',
+      sentAt: '2026-08-28T10:00:00.000Z',
+      data: {
+        conversationId: 'c1',
+        message: message({ id: 'm-eigen', conversationId: 'c1', senderId: 'u1' }),
+      },
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(SAMMELFENSTER_MS * 2);
+    });
+
+    // Die eigene Nachricht ändert am Lesestand nichts – sie war nie ungelesen.
+    expect(api.markConversationRead).toHaveBeenCalledTimes(1);
   });
 });

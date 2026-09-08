@@ -49,6 +49,15 @@ function recordingAudit(): NotificationAuditSink & {
   };
 }
 
+/** Audit-Senke, die den Eintrag nicht schreiben kann (Fundpunkt 150). */
+function failingAudit(): NotificationAuditSink {
+  return {
+    record() {
+      throw new Error('Audit-Log nicht beschreibbar');
+    },
+  };
+}
+
 function build(
   overrides: Partial<NotificationServiceOptions> & { repository?: FakeRepository } = {},
 ) {
@@ -712,10 +721,14 @@ describe('Systemweite Ankündigungen (Lastenheft §3.6)', () => {
     const { service } = build({ repository });
     const transaktion = repository.publishAnnouncement;
 
-    repository.publishAnnouncement = (data) =>
-      transaktion(data, () => {
-        throw new Error('Inbox nicht beschreibbar');
-      });
+    repository.publishAnnouncement = (data, _inboxFor, alsoInTransaction) =>
+      transaktion(
+        data,
+        () => {
+          throw new Error('Inbox nicht beschreibbar');
+        },
+        alsoInTransaction,
+      );
 
     await expect(
       service.publishAnnouncement(adminActor(), ADMIN, {
@@ -728,6 +741,83 @@ describe('Systemweite Ankündigungen (Lastenheft §3.6)', () => {
 
     expect(repository.announcements).toHaveLength(0);
     expect(repository.notifications).toHaveLength(0);
+  });
+
+  /**
+   * Fundpunkt 150: Der Audit-Eintrag lag hinter dem Commit. Scheiterte er,
+   * existierten Ankündigung **und** Inbox-Zeilen, der Admin sah aber einen
+   * Fehler – und sein zweiter Anlauf legte eine zweite Ankündigung an, weil der
+   * Dedupe-Index je `announcement_id` greift.
+   */
+  it('lässt nichts stehen, wenn der Audit-Eintrag scheitert', async () => {
+    const repository = fakeRepository();
+    const { service } = build({ repository, audit: failingAudit() });
+
+    await expect(
+      service.publishAnnouncement(adminActor(), ADMIN, {
+        title: 'Wartung',
+        body: 'Am Sonntag ab 02:00 Uhr.',
+        severity: 'info',
+        expiresAt: null,
+      }),
+    ).rejects.toThrow('Audit-Log nicht beschreibbar');
+
+    expect(repository.announcements).toHaveLength(0);
+    expect(repository.notifications).toHaveLength(0);
+  });
+
+  it('schreibt Ankündigung, Inbox-Zeilen und Audit-Eintrag gemeinsam', async () => {
+    const repository = fakeRepository();
+    const audit = recordingAudit();
+    const { service } = build({ repository, audit });
+
+    const veroeffentlicht = await service.publishAnnouncement(adminActor(), ADMIN, {
+      title: 'Wartung',
+      body: 'Am Sonntag ab 02:00 Uhr.',
+      severity: 'info',
+      expiresAt: null,
+    });
+
+    expect(repository.announcements).toHaveLength(1);
+    expect(repository.notifications).toHaveLength(3);
+    expect(audit.entries).toEqual([
+      { action: 'notification.announcementChanged', targetId: veroeffentlicht.id },
+    ]);
+  });
+
+  /**
+   * Der Eintrag entsteht **vor** dem Commit und damit vor der Zustellung an
+   * offene Ansichten – vorher stand er hinter beidem. Der Reihenfolgennachweis
+   * hält die Klammer fest: Wäre der Eintrag wieder der letzte Schritt, hätte der
+   * Live-Kanal die Meldung schon.
+   */
+  it('protokolliert, bevor die Meldung an offene Ansichten geht', async () => {
+    const repository = fakeRepository();
+    const ablauf: string[] = [];
+    const audit: NotificationAuditSink = {
+      record() {
+        ablauf.push('audit');
+      },
+    };
+    const { service } = build({
+      repository,
+      audit,
+      live: {
+        publish() {
+          ablauf.push('live');
+        },
+      },
+    });
+
+    await service.publishAnnouncement(adminActor(), ADMIN, {
+      title: 'Wartung',
+      body: 'Am Sonntag ab 02:00 Uhr.',
+      severity: 'info',
+      expiresAt: null,
+    });
+
+    expect(ablauf[0]).toBe('audit');
+    expect(ablauf).toContain('live');
   });
 
   /**

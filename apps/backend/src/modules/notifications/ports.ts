@@ -15,6 +15,7 @@
  */
 
 import type { ErrorCode, NotificationChannelType, NotificationDto } from '@palantir/contracts';
+import type { DbConnection } from '../../db/index.js';
 import {
   type FireAndForgetLogger,
   consoleFireAndForgetLogger,
@@ -167,16 +168,26 @@ export const noopLivePublisher: LiveNotificationPublisher = {
  * ohne das Admin-Modul testbar bleiben.
  */
 export interface NotificationAuditSink {
-  record(entry: {
-    action:
-      | 'notification.channelChanged'
-      | 'notification.ruleChanged'
-      | 'notification.announcementChanged';
-    actorId: string | null;
-    targetType: 'notificationChannel' | 'notificationRule' | 'announcement';
-    targetId: string;
-    metadata: Record<string, unknown>;
-  }): void | Promise<void>;
+  record(
+    entry: {
+      action:
+        | 'notification.channelChanged'
+        | 'notification.ruleChanged'
+        | 'notification.announcementChanged';
+      actorId: string | null;
+      targetType: 'notificationChannel' | 'notificationRule' | 'announcement';
+      targetId: string;
+      metadata: Record<string, unknown>;
+    },
+    /**
+     * Laufende Transaktion, in der der Eintrag entstehen soll (Fundpunkt 150).
+     *
+     * Nur `publishAnnouncement` reicht hier etwas durch: Dort entstehen
+     * Ankündigung und Inbox-Zeilen gemeinsam, und der Protokolleintrag gehört
+     * in dieselbe Klammer. Alle übrigen Aufrufe lassen den Parameter weg.
+     */
+    connection?: DbConnection,
+  ): void | Promise<void>;
 }
 
 /** Audit-Senke, solange B8 nicht eingehängt ist. */

@@ -23,6 +23,12 @@ import {
   type ChatEventPayloads,
   type ChatServerEventFrame,
 } from '@palantir/contracts';
+import {
+  WS_HEARTBEAT_INTERVAL_MS,
+  type WebSocketHeartbeatOptions,
+  type WebSocketHeartbeatSocket,
+  startWebSocketHeartbeat,
+} from '../../lib/ws-heartbeat.js';
 
 /*
  * Beide Close-Codes stehen seit dem Contracts-Nachzug W2-C2 im Vertrag
@@ -48,8 +54,14 @@ export { CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS, CHAT_LIVE_CLOSE_CODE_UNAUTHO
  */
 export const CHAT_LIVE_MAX_CONNECTIONS_PER_USER = 10;
 
-/** Abstand zweier Server-Pings am offenen Live-Kanal. */
-export const CHAT_LIVE_HEARTBEAT_INTERVAL_MS = 30_000;
+/**
+ * Abstand zweier Server-Pings am offenen Live-Kanal.
+ *
+ * Seit Fundpunkt 142 dieselbe Zahl wie am Inbox-Kanal: Der Zyklus liegt in
+ * `lib/ws-heartbeat.ts` und wird von beiden Kanälen gerufen. Der Name bleibt
+ * kanal-eigen – wie bei den Close-Codes im Vertrag.
+ */
+export const CHAT_LIVE_HEARTBEAT_INTERVAL_MS = WS_HEARTBEAT_INTERVAL_MS;
 
 /** Der Ausschnitt eines WebSockets, den die Zustellung braucht. */
 export interface ChatSocket {
@@ -233,76 +245,23 @@ export class ChatLiveHub implements ChatDelivery {
   }
 }
 
-/**
- * Der Ausschnitt einer echten WebSocket-Verbindung, den das Lebenszeichen
- * braucht.
- *
- * Absichtlich schmaler als `ws.WebSocket`: So lässt sich der Zyklus ohne Netz
- * prüfen (CLAUDE.md §4).
- */
-export interface ChatHeartbeatSocket {
-  /** Sendet einen Ping-Frame; die Gegenstelle antwortet auf Protokollebene. */
-  ping(): void;
-  /** Reißt die Verbindung ab – ohne Close-Handshake, den es hier nicht mehr gibt. */
-  terminate(): void;
-  on(event: 'pong', listener: () => void): unknown;
-}
-
-export interface ChatHeartbeatOptions {
-  /** Abstand zweier Pings; Vorgabe {@link CHAT_LIVE_HEARTBEAT_INTERVAL_MS}. */
-  readonly intervalMs?: number;
-}
-
-/**
- * Server-seitiges Lebenszeichen einer Live-Verbindung (Audit W2-3,
+/*
+ * Server-seitiges Lebenszeichen (Audit W2-3,
  * `backend-community-visibility-11`, `backend-community-13`).
  *
- * **Warum serverseitig.** Der Client schickt zwar einen `ping`-Frame, den las
- * dieser Kanal aber nie – und selbst wenn: Ein Lebenszeichen, das die
- * Gegenstelle senden muss, erkennt genau den Fall nicht, um den es geht. Eine
- * halboffene Verbindung (Mobilfunk-Abbruch, Proxy-Timeout ohne FIN) meldet sich
- * nicht mehr und feuert auch kein `close`; sie blieb bis zum TCP-Timeout im
- * Verteiler und bekam bei jeder Zustellung ihre Kopie.
+ * Die Mechanik steht seit Fundpunkt 142 in `lib/ws-heartbeat.ts`, weil der
+ * Inbox-Kanal (B6) dieselbe braucht und zwei Abschriften derselben Regel
+ * zwangsläufig auseinanderlaufen. Namen und Aufrufform hier bleiben unverändert
+ * – `routes.ts`, `index.ts` und die Tests rufen weiter `startChatHeartbeat`.
  *
- * **Der Ablauf** ist der übliche für `ws`: Jeder Takt prüft, ob seit dem
- * letzten Ping ein Pong kam. Fehlt er, wird die Verbindung abgerissen
- * (`terminate()`, nicht `close()` – auf einen Handshake antwortet dort niemand
- * mehr). Eine tote Verbindung ist damit nach höchstens zwei Takten weg.
- *
- * Die Rückgabe beendet den Zyklus; sie gehört in dieselbe Aufräumfunktion wie
- * die Abmeldung am Verteiler.
+ * Der Client schickt zwar zusätzlich einen `ping`-Frame, den las dieser Kanal
+ * aber nie – und selbst wenn: Ein Lebenszeichen, das die Gegenstelle senden
+ * muss, erkennt den Fall der halboffenen Verbindung gerade nicht.
  */
-export function startChatHeartbeat(
-  socket: ChatHeartbeatSocket,
-  options: ChatHeartbeatOptions = {},
-): () => void {
-  const intervalMs = options.intervalMs ?? CHAT_LIVE_HEARTBEAT_INTERVAL_MS;
 
-  let lebtNoch = true;
-
-  socket.on('pong', () => {
-    lebtNoch = true;
-  });
-
-  const timer = setInterval(() => {
-    if (!lebtNoch) {
-      clearInterval(timer);
-      socket.terminate();
-
-      return;
-    }
-
-    lebtNoch = false;
-    socket.ping();
-  }, intervalMs);
-
-  // Der Zeitgeber darf das Beenden des Prozesses nicht aufhalten.
-  timer.unref();
-
-  return (): void => {
-    clearInterval(timer);
-  };
-}
+export type ChatHeartbeatSocket = WebSocketHeartbeatSocket;
+export type ChatHeartbeatOptions = WebSocketHeartbeatOptions;
+export const startChatHeartbeat = startWebSocketHeartbeat;
 
 /*
  * Frame-Bauer je Ereignis.

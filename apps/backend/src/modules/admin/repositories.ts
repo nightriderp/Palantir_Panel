@@ -380,8 +380,12 @@ function auditFilters(query: AuditLogQuery) {
  */
 export function createDrizzleAuditLogRepository(db: DbConnection): AuditLogRepository {
   return {
-    async append(entry) {
-      const [row] = await db
+    /**
+     * `connection` ist die laufende Transaktion des auslösenden Vorgangs
+     * (Fundpunkt 150). Ohne sie läuft der Insert wie bisher über den Pool.
+     */
+    async append(entry, connection) {
+      const [row] = await (connection ?? db)
         .insert(auditLog)
         .values({
           action: entry.action,

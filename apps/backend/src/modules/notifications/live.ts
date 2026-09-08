@@ -16,12 +16,14 @@
 
 import { type WebSocket } from '@fastify/websocket';
 import {
+  CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS,
   NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED,
   type NotificationServerFrame,
 } from '@palantir/contracts';
 import { notificationClientFrameSchema } from '@palantir/validation';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
+import { startWebSocketHeartbeat } from '../../lib/ws-heartbeat.js';
 import { createWebSocketOriginGuard } from '../../lib/ws-origin.js';
 import type { Clock, LiveNotificationPayload, LiveNotificationPublisher } from './ports.js';
 import { systemClock } from './ports.js';
@@ -36,6 +38,36 @@ import type { NotificationService } from './service.js';
  * Aufrufer (`index.ts`, Tests) unverändert weiterlaufen.
  */
 export const CLOSE_CODE_UNAUTHORIZED = NOTIFICATION_LIVE_CLOSE_CODE_UNAUTHORIZED;
+
+/**
+ * Close-Code „zu viele gleichzeitige Verbindungen dieses Kontos" (Fundpunkt
+ * 142, Audit W2-3).
+ *
+ * Bewusst **keine zweite Zahl**: Es ist dieselbe 4029 wie am Chat-Kanal, und
+ * das Frontend soll sie an beiden Kanälen gleich lesen (neu verbinden, nur
+ * nicht sofort und nicht hundertfach). Der Vertrag benennt sie bislang nur am
+ * Chat-Kanal (`CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS`); ein eigener Name
+ * `NOTIFICATION_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS` fehlt dort noch – siehe
+ * Bericht. Bis dahin steht der kanal-eigene Name hier, wie schon bei
+ * {@link CLOSE_CODE_UNAUTHORIZED}, und der Wert kommt aus dem Vertrag statt aus
+ * einer erfundenen Konstante.
+ */
+export const CLOSE_CODE_TOO_MANY_CONNECTIONS = CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS;
+
+/**
+ * Wie viele gleichzeitige Live-Verbindungen ein Konto am Inbox-Kanal haben darf
+ * (Fundpunkt 142).
+ *
+ * Dieselbe Zahl und dieselbe Begründung wie am Chat-Kanal
+ * (`CHAT_LIVE_MAX_CONNECTIONS_PER_USER`): Zehn decken den realistischen Fall ab
+ * (mehrere Geräte, mehrere Tabs, ein Reload, dessen alte Verbindung noch nicht
+ * abgeräumt ist) und begrenzen trotzdem den Hebel – jede Meldung wird je
+ * Verbindung einmal gesendet.
+ *
+ * Bewusst eine Konstante und keine Umgebungsvariable: Es gibt keinen
+ * Betriebsfall, in dem hier eine andere Zahl gebraucht würde (CLAUDE.md §8).
+ */
+export const NOTIFICATION_LIVE_MAX_CONNECTIONS_PER_USER = 10;
 
 /** Der Ausschnitt einer WebSocket-Verbindung, den der Hub braucht. */
 export interface LiveSocket {
@@ -81,12 +113,55 @@ export function createNotificationHub(options: NotificationHubOptions = {}): Not
     }
   }
 
+  /**
+   * Schließt die ältesten Verbindungen eines Kontos, bis die Obergrenze wieder
+   * eingehalten ist (Fundpunkt 142, Audit W2-3).
+   *
+   * Ein `Set` behält die Einfügereihenfolge; der erste Eintrag ist damit die
+   * älteste Verbindung. Sie wird zuerst abgemeldet und dann geschlossen – ihr
+   * `close`-Ereignis meldet dieselbe Verbindung gleich noch einmal ab, was
+   * idempotent ist, aber eine Zustellung dazwischen darf es nicht mehr geben.
+   *
+   * Bewusst die ältesten und nicht die neue: Eine halboffene Verbindung
+   * (Mobilfunk, Proxy-Timeout ohne FIN) bleibt bis zum TCP-Timeout im Verteiler
+   * stehen; würde die neue abgewiesen, sperrte sich ein Nutzer mit wackliger
+   * Leitung selbst aus. Konten anderer Nutzer sind nie betroffen – gezählt wird
+   * je Konto.
+   */
+  function trimOldest(userId: string): void {
+    const sockets = connections.get(userId);
+
+    if (!sockets) {
+      return;
+    }
+
+    while (sockets.size > NOTIFICATION_LIVE_MAX_CONNECTIONS_PER_USER) {
+      const aeltester = sockets.values().next().value;
+
+      if (aeltester === undefined) {
+        return;
+      }
+
+      sockets.delete(aeltester);
+
+      try {
+        aeltester.close(
+          CLOSE_CODE_TOO_MANY_CONNECTIONS,
+          'Zu viele gleichzeitige Verbindungen dieses Kontos.',
+        );
+      } catch {
+        // Verbindung ist bereits weg; mehr als schließen war nicht zu tun.
+      }
+    }
+  }
+
   return {
     attach(userId, socket) {
       const existing = connections.get(userId) ?? new Set<LiveSocket>();
 
       existing.add(socket);
       connections.set(userId, existing);
+      trimOldest(userId);
 
       return (): void => {
         const current = connections.get(userId);
@@ -168,6 +243,16 @@ export interface NotificationLiveRouteOptions {
    * Entwicklungsaufbauten ohne konfigurierte Adresse weiter.
    */
   readonly allowedOrigin?: string;
+  /**
+   * Abstand zweier Server-Pings; Vorgabe `WS_HEARTBEAT_INTERVAL_MS` aus
+   * `lib/ws-heartbeat.ts` (Fundpunkt 142).
+   *
+   * Der Betrieb setzt das nicht – die 30 s sind für jeden Aufbau richtig. Der
+   * Parameter besteht, damit ein Test den Takt beobachten kann, ohne eine halbe
+   * Minute zu warten; dieselbe Rolle wie `sessionCheckIntervalMs` am
+   * Chat-Kanal.
+   */
+  readonly heartbeatIntervalMs?: number;
 }
 
 /**
@@ -201,10 +286,30 @@ export function registerNotificationLiveRoute(
       let detach = options.hub.attach(userId, socket);
       let angemeldet = true;
 
-      socket.on('close', () => {
+      /*
+       * Server-seitiges Lebenszeichen (Fundpunkt 142, Audit W2-3): Eine
+       * halboffene Verbindung meldet weder `close` noch `error` und bliebe
+       * sonst bis zum TCP-Timeout im Verteiler – samt ihrer Kopie jeder
+       * Meldung. Derselbe Zyklus wie am Chat-Kanal (`lib/ws-heartbeat.ts`).
+       */
+      const stopHeartbeat = startWebSocketHeartbeat(
+        socket,
+        options.heartbeatIntervalMs === undefined
+          ? {}
+          : { intervalMs: options.heartbeatIntervalMs },
+      );
+
+      const cleanup = (): void => {
+        stopHeartbeat();
         detach();
         angemeldet = false;
-      });
+      };
+
+      socket.on('close', cleanup);
+      // Wie am Chat-Kanal: `error` und `close` können nacheinander kommen, die
+      // Abmeldung ist idempotent – aber ohne `error`-Zweig bliebe ein Zeitgeber
+      // stehen, wenn nur dieses Ereignis feuert.
+      socket.on('error', cleanup);
 
       socket.on('message', (data: unknown) => {
         const parsed = notificationClientFrameSchema.safeParse(parseFrame(String(data)));

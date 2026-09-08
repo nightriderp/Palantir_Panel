@@ -19,7 +19,7 @@ import type {
   NotificationSubjectType,
 } from '@palantir/contracts';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { Database } from '../../db/index.js';
+import type { Database, DbConnection } from '../../db/index.js';
 import {
   announcements,
   notificationChannels,
@@ -207,6 +207,23 @@ export interface DeliveryOutcome {
 // Schnittstelle
 // ---------------------------------------------------------------------------
 
+/**
+ * Arbeit, die noch **innerhalb** der Transaktion von
+ * {@link NotificationRepository.publishAnnouncement} erledigt werden muss
+ * (Fundpunkt 150).
+ *
+ * `connection` ist optional, weil nur die echte Drizzle-Umsetzung eine
+ * Transaktion zu vergeben hat. Die Attrappe in `test-doubles.ts` bildet die
+ * Klammer im Arbeitsspeicher nach und ruft den Rückruf ohne Verbindung – der
+ * Audit-Eintrag geht dann über den gewöhnlichen Weg, was in einem Test ohne
+ * Datenbank genau richtig ist.
+ */
+export type PublishAnnouncementHook = (
+  announcement: AnnouncementRecord,
+  created: readonly NotificationRecord[],
+  connection?: DbConnection,
+) => Promise<void>;
+
 export interface NotificationRepository {
   // Kanäle
   listChannels(): Promise<NotificationChannelRecord[]>;
@@ -295,10 +312,18 @@ export interface NotificationRepository {
    * (`inboxFor`) – die Fachlichkeit bleibt im Dienst, die Transaktionsgrenze
    * hier. Zurück kommen die tatsächlich angelegten Zeilen; der Unique-Index
    * `notifications_announcement_user_idx` kann einzelne verwerfen.
+   *
+   * `alsoInTransaction` läuft **innerhalb** derselben Transaktion, nachdem beide
+   * Einfügungen stehen (Fundpunkt 150). Der Dienst schreibt darin den
+   * Audit-Eintrag: Lag er hinter dem Commit und scheiterte, existierte die
+   * Ankündigung samt Zustellung, der Admin sah aber einen Fehler – und sein
+   * zweiter Anlauf legte eine zweite Ankündigung an. Wirft der Rückruf, wird
+   * alles zurückgerollt.
    */
   publishAnnouncement(
     data: CreateAnnouncementData,
     inboxFor: (announcement: AnnouncementRecord) => readonly CreateNotificationData[],
+    alsoInTransaction?: PublishAnnouncementHook,
   ): Promise<{
     readonly announcement: AnnouncementRecord;
     readonly notifications: readonly NotificationRecord[];
@@ -739,7 +764,7 @@ export function createDrizzleNotificationRepository(db: Database): NotificationR
       return toAnnouncement(row);
     },
 
-    async publishAnnouncement(data, inboxFor) {
+    async publishAnnouncement(data, inboxFor, alsoInTransaction) {
       return db.transaction(async (tx) => {
         const [row] = await tx.insert(announcements).values(data).returning();
 
@@ -751,6 +776,8 @@ export function createDrizzleNotificationRepository(db: Database): NotificationR
         const entries = inboxFor(announcement);
 
         if (entries.length === 0) {
+          await alsoInTransaction?.(announcement, [], tx);
+
           return { announcement, notifications: [] };
         }
 
@@ -763,7 +790,13 @@ export function createDrizzleNotificationRepository(db: Database): NotificationR
           .onConflictDoNothing()
           .returning();
 
-        return { announcement, notifications: rows.map(toNotification) };
+        const created = rows.map(toNotification);
+
+        // Zuletzt und noch in der Klammer: Der Audit-Eintrag des Dienstes
+        // (Fundpunkt 150). Wirft er, rollt Drizzle beide Einfügungen zurück.
+        await alsoInTransaction?.(announcement, created, tx);
+
+        return { announcement, notifications: created };
       });
     },
 

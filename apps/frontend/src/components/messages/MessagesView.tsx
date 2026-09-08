@@ -54,6 +54,35 @@ import {
 
 const PAGE_LIMIT = 50;
 
+/**
+ * Sammelfenster für das Nachziehen des Lesestands (Fundpunkt 144).
+ *
+ * Trifft eine fremde Nachricht ein, während die Konversation offen und das
+ * Fenster sichtbar ist, hat der Nutzer sie faktisch gelesen – der Server weiß
+ * das aber nicht: Sein `unreadCount` wächst, und die Seitenleiste zeigt ihn beim
+ * nächsten Laden der Übersicht mit. Ein Aufruf **je** Nachricht wäre die naive
+ * Antwort; in einem lebhaften Server-Chat sind das Dutzende in einer Minute.
+ * Deshalb werden eintreffende Nachrichten gesammelt und der Lesestand danach
+ * **einmal** nachgezogen.
+ *
+ * Zwei Sekunden sind lang genug, um einen Redeschwall zu einem Aufruf zu bündeln,
+ * und kurz genug, dass der Zähler nicht spürbar hinterherhinkt – gesehen hat man
+ * die Nachricht ohnehin schon, der Aufruf korrigiert nur den Serverstand.
+ */
+const READ_SYNC_THROTTLE_MS = 2_000;
+
+/**
+ * Darf dieses Fenster gerade etwas als gelesen melden? (Fundpunkt 144)
+ *
+ * Nur ein sichtbarer Tab. Ein Hintergrund-Tab hat die Konversation zwar
+ * technisch „offen", gelesen hat dort aber niemand etwas – er dürfte den Zähler
+ * also nicht zurücksetzen, und zwar auch nicht für die anderen Geräte desselben
+ * Kontos, an die das Backend `conversation.read` weiterreicht.
+ */
+function fensterIstSichtbar(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'visible';
+}
+
 export function MessagesView() {
   const { user } = useSession();
   const viewerId = user?.id ?? null;
@@ -118,6 +147,85 @@ export function MessagesView() {
     setThreadLoading(false);
   }, []);
 
+  /*
+   * Den Lesestand serverseitig setzen, sonst gilt er nur auf diesem Geraet und
+   * der Zaehler in der Seitenleiste bliebe stehen. Ein Fehlschlag bleibt still:
+   * gelesen ist die Konversation fuer den Nutzer trotzdem, und eine
+   * Fehlermeldung dafuer waere nur im Weg.
+   *
+   * Zwei Wege führen hierher: das Auswählen einer Konversation und das
+   * gedrosselte Nachziehen bei eintreffenden Nachrichten (Fundpunkt 144).
+   */
+  const pushReadState = useCallback((conversationId: string) => {
+    void markConversationReadOnServer(conversationId).then((result) => {
+      if (result.success) {
+        setState((current) => upsertConversation(current, result.data));
+      }
+    });
+  }, []);
+
+  // -- Lesestand nachziehen (Fundpunkt 144) ----------------------------------
+
+  /** Laufendes Sammelfenster; `null`, wenn gerade keines offen ist. */
+  const readSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Konversation, deren Lesestand noch nachzuziehen ist; `null` = nichts offen. */
+  const readSyncPendingRef = useRef<string | null>(null);
+
+  /**
+   * Ende des Sammelfensters: einmal nachziehen – aber nur, wenn die Konversation
+   * immer noch die offene und das Fenster immer noch sichtbar ist. Trifft eines
+   * von beidem nicht mehr zu, bleibt die Konversation vorgemerkt; der nächste
+   * Wechsel auf „sichtbar" holt es nach.
+   */
+  const flushReadSync = useCallback(() => {
+    readSyncTimerRef.current = null;
+
+    const wanted = readSyncPendingRef.current;
+    if (wanted === null) return;
+    if (wanted !== activeIdRef.current || !fensterIstSichtbar()) return;
+
+    readSyncPendingRef.current = null;
+    pushReadState(wanted);
+  }, [pushReadState]);
+
+  /**
+   * Merkt eine Konversation zum Nachziehen vor und öffnet höchstens **ein**
+   * Sammelfenster: Ein Redeschwall erzeugt damit einen Aufruf, nicht einen je
+   * Nachricht.
+   */
+  const scheduleReadSync = useCallback(
+    (conversationId: string) => {
+      readSyncPendingRef.current = conversationId;
+
+      // Ein Hintergrund-Tab merkt sich den Bedarf, meldet aber nichts als
+      // gelesen – dort hat niemand etwas gelesen.
+      if (!fensterIstSichtbar()) return;
+      if (readSyncTimerRef.current !== null) return;
+
+      readSyncTimerRef.current = setTimeout(flushReadSync, READ_SYNC_THROTTLE_MS);
+    },
+    [flushReadSync],
+  );
+
+  useEffect(() => {
+    // Wird der Tab wieder sichtbar, gilt das Vorgemerkte – jetzt schaut jemand hin.
+    const beiSichtbarkeit = (): void => {
+      const wanted = readSyncPendingRef.current;
+      if (wanted !== null) scheduleReadSync(wanted);
+    };
+
+    document.addEventListener('visibilitychange', beiSichtbarkeit);
+
+    return () => {
+      document.removeEventListener('visibilitychange', beiSichtbarkeit);
+
+      if (readSyncTimerRef.current !== null) {
+        clearTimeout(readSyncTimerRef.current);
+        readSyncTimerRef.current = null;
+      }
+    };
+  }, [scheduleReadSync]);
+
   const selectConversation = useCallback(
     (conversationId: string) => {
       setActiveId(conversationId);
@@ -126,19 +234,12 @@ export function MessagesView() {
         void loadThread(conversationId);
       }
 
-      /*
-       * Den Lesestand auch serverseitig setzen, sonst gilt er nur auf diesem
-       * Geraet und der Zaehler in der Seitenleiste bliebe stehen. Ein
-       * Fehlschlag bleibt still: gelesen ist die Konversation fuer den Nutzer
-       * trotzdem, und eine Fehlermeldung dafuer waere nur im Weg.
-       */
-      void markConversationReadOnServer(conversationId).then((result) => {
-        if (result.success) {
-          setState((current) => upsertConversation(current, result.data));
-        }
-      });
+      // Das Auswählen setzt den Lesestand sofort; ein vorgemerktes Nachziehen
+      // wäre danach gegenstandslos.
+      readSyncPendingRef.current = null;
+      pushReadState(conversationId);
     },
-    [loadThread],
+    [loadThread, pushReadState],
   );
 
   /*
@@ -203,6 +304,18 @@ export function MessagesView() {
           void reloadConversations();
         }
 
+        /*
+         * Fremde Nachricht in der gerade offenen Konversation: Der Zähler in
+         * der Seitenleiste steigt hier zwar nicht (das entscheidet
+         * `applyMessageSent`), der **Serverstand** schon – und beim nächsten
+         * Laden der Übersicht käme er samt dieser Nachricht zurück. Deshalb den
+         * Lesestand nachziehen, gesammelt und nur aus einem sichtbaren Fenster
+         * (Fundpunkt 144).
+         */
+        if (conversationId === activeIdRef.current && frame.data.message.senderId !== viewerId) {
+          scheduleReadSync(conversationId);
+        }
+
         setState((current) =>
           applyMessageSent(current, conversationId, frame.data.message, {
             activeConversationId: activeIdRef.current,
@@ -233,7 +346,7 @@ export function MessagesView() {
         setState((current) => upsertConversation(current, frame.data.conversation));
       }
     },
-    [viewerId, reloadConversations],
+    [viewerId, reloadConversations, scheduleReadSync],
   );
 
   /*
