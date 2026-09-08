@@ -146,6 +146,29 @@ async function starteServer(zusatzUmgebung = {}) {
     get ausgabe() {
       return ausgabe;
     },
+    /**
+     * Wartet, bis eine Zeile auf das Muster passt – statt sofort zu prüfen.
+     *
+     * Der Server schreibt sein Protokoll erst, nachdem er geantwortet hat, und
+     * die Zeile muss danach noch durch die Pipe zum Elternprozess. Wer direkt
+     * nach der Antwort auf `ausgabe` sieht, gewinnt dieses Rennen mal und
+     * verliert es mal; auf einem ausgelasteten CI-Läufer eher öfter. Genau so
+     * ist der Server-List-Ping-Test umgefallen (Fundpunkt 147, zweiter Fall).
+     *
+     * Die Frist ist eine Notbremse, keine Wartezeit: Passt das Muster, kehrt
+     * die Funktion sofort zurück.
+     */
+    async warteAufAusgabe(muster, frist = 5_000) {
+      const ende = Date.now() + frist;
+
+      while (!muster.test(ausgabe)) {
+        if (Date.now() > ende) {
+          throw new Error(`Muster ${String(muster)} blieb aus. Ausgabe:\n${ausgabe}`);
+        }
+
+        await new Promise((fertig) => setTimeout(fertig, 20));
+      }
+    },
     get lebt() {
       return beendetMit === null;
     },
@@ -287,7 +310,7 @@ describe('Spiel-Port: kaputte Clients kosten nur ihre eigene Verbindung', () => 
     assert.equal(status.players.max, 20);
     assert.equal(status.players.online, 0);
     assert.equal(status.description.text, 'Palantir – Test-Server');
-    assert.match(server.ausgabe, /Handshake von .* für "palantir\.example"/u);
+    await server.warteAufAusgabe(/Handshake von .* für "palantir\.example"/u);
   });
 
   test('Bestehendes Verhalten: Anmeldung wird mit Meldung abgewiesen', async () => {
@@ -309,7 +332,7 @@ describe('Spiel-Port: kaputte Clients kosten nur ihre eigene Verbindung', () => 
     await sendeUndWarteAufSchluss(server.port, Buffer.from([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]));
 
     assert.equal(server.lebt, true);
-    assert.match(server.ausgabe, /abgewiesen: Paketlänge ist kein VarInt/u);
+    await server.warteAufAusgabe(/abgewiesen: Paketlänge ist kein VarInt/u);
 
     // Der eigentliche Nachweis: Die nächste Verbindung wird noch bedient.
     const status = await fragStatusAb(server.port);
@@ -324,7 +347,7 @@ describe('Spiel-Port: kaputte Clients kosten nur ihre eigene Verbindung', () => 
     );
 
     assert.equal(server.lebt, true);
-    assert.match(server.ausgabe, /abgewiesen: angekündigte Paketlänge 2097152 Bytes/u);
+    await server.warteAufAusgabe(/abgewiesen: angekündigte Paketlänge 2097152 Bytes/u);
 
     const status = await fragStatusAb(server.port);
     assert.equal(status.players.max, 20);
@@ -342,7 +365,7 @@ describe('Spiel-Port: kaputte Clients kosten nur ihre eigene Verbindung', () => 
     await sendeUndWarteAufSchluss(server.port, bytes, 15_000);
 
     assert.equal(server.lebt, true);
-    assert.match(server.ausgabe, /abgewiesen: Empfangspuffer über 1048576 Bytes/u);
+    await server.warteAufAusgabe(/abgewiesen: Empfangspuffer über 1048576 Bytes/u);
 
     const status = await fragStatusAb(server.port);
     assert.equal(status.players.max, 20);
@@ -353,7 +376,7 @@ describe('Spiel-Port: kaputte Clients kosten nur ihre eigene Verbindung', () => 
     await sendeUndWarteAufSchluss(server.port, Buffer.from([0xff, 0xff, 0xff, 0xff, 0x0f]));
 
     assert.equal(server.lebt, true);
-    assert.match(server.ausgabe, /abgewiesen: angekündigte Paketlänge -\d+ Bytes/u);
+    await server.warteAufAusgabe(/abgewiesen: angekündigte Paketlänge -\d+ Bytes/u);
   });
 
   test('Verbindung ohne Daten: nach der Leerlauf-Frist geschlossen', async () => {
@@ -364,7 +387,7 @@ describe('Spiel-Port: kaputte Clients kosten nur ihre eigene Verbindung', () => 
       `zu früh geschlossen (${String(dauerMs)} ms)`,
     );
     assert.equal(server.lebt, true);
-    assert.match(server.ausgabe, /abgewiesen: Leerlauf über 0\.4 Sekunden/u);
+    await server.warteAufAusgabe(/abgewiesen: Leerlauf über 0\.4 Sekunden/u);
   });
 });
 
