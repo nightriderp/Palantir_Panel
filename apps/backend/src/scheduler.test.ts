@@ -45,6 +45,7 @@ import {
   type ServerRepository,
   type UpdateServerData,
 } from './modules/server-orchestration/repository.js';
+import { type ServerLoadSnapshot, evaluateServerWarnings } from './modules/resources/thresholds.js';
 import { createPermissiveResourceGuard } from './modules/server-orchestration/resource-guard.js';
 import { ServerOrchestrationService } from './modules/server-orchestration/service.js';
 import {
@@ -56,6 +57,7 @@ import {
   type ScheduledTask,
   type SchedulerLogger,
   type SchedulerTimer,
+  type ServerLoadSource,
   type ServerScheduleTicker,
   type TimerHandle,
   autoShutdownTask,
@@ -1189,15 +1191,66 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
     };
   }
 
+  const SERVER_ID = '55555555-5555-4555-8555-555555555555';
+  const BESITZER_ID = '66666666-6666-4666-8666-666666666666';
+  const LIMITS = { ramMb: 4096, cpuCores: 2, diskMb: 20_480 };
+
+  /** Eine Messung, wie B3 sie beim Abtasten des Verlaufs schreibt. */
+  function last(overrides: Partial<ServerLoadSnapshot> = {}): ServerLoadSnapshot {
+    return {
+      serverId: SERVER_ID,
+      nodeId: NODE_ID,
+      ownerId: BESITZER_ID,
+      limits: LIMITS,
+      usedRamMb: 1024,
+      usedCpuCores: 0.2,
+      usedDiskMb: null,
+      ...overrides,
+    };
+  }
+
+  /**
+   * Auswertung wie im Betrieb: Die Node-Ebene liefert vorgegebene Warnungen,
+   * die Server-Ebene rechnet mit der echten Schwellwertfunktion aus B4 – sonst
+   * prüfte der Test nur seine eigene Attrappe.
+   */
+  function evaluator(nodeWarnings: readonly ResourceLowEvent[] = []): NodeWarningEvaluator {
+    return {
+      evaluateAllNodeWarnings: () => Promise.resolve(nodeWarnings),
+      evaluateAllServerWarnings: (loads) =>
+        loads.flatMap((load) =>
+          evaluateServerWarnings({
+            serverId: load.serverId,
+            nodeId: load.nodeId,
+            limits: load.limits,
+            usedRamMb: load.usedRamMb,
+            usedCpuCores: load.usedCpuCores,
+            usedDiskMb: load.usedDiskMb,
+            thresholdPercent: 90,
+            at: new Date('2026-08-30T00:00:00.000Z'),
+          }),
+        ),
+    };
+  }
+
+  /** Messwert-Quelle, die ein Test zwischen zwei Takten ändern kann. */
+  function loadSource(anfang: ServerLoadSnapshot[] = []): ServerLoadSource & {
+    loads: ServerLoadSnapshot[];
+  } {
+    const quelle = {
+      loads: anfang,
+      listServerLoads: (): readonly ServerLoadSnapshot[] => quelle.loads,
+    };
+
+    return quelle;
+  }
+
   it('meldet resource.low, wenn eine Node über dem Schwellwert liegt', async () => {
     const timer = manualTimer();
     const sink = capturingSink();
-    const evaluator: NodeWarningEvaluator = {
-      evaluateAllNodeWarnings: () => Promise.resolve([nodeWarning(91.5)]),
-    };
 
     startScheduler({
-      tasks: [resourceWarningTask(evaluator, sink, silentLog)],
+      tasks: [resourceWarningTask(evaluator([nodeWarning(91.5)]), loadSource(), sink, silentLog)],
       intervalMs: 60_000,
       log: silentLog,
       timer,
@@ -1221,12 +1274,9 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
   it('meldet nichts, solange keine Node über dem Schwellwert liegt', async () => {
     const timer = manualTimer();
     const sink = capturingSink();
-    const evaluator: NodeWarningEvaluator = {
-      evaluateAllNodeWarnings: () => Promise.resolve([]),
-    };
 
     startScheduler({
-      tasks: [resourceWarningTask(evaluator, sink, silentLog)],
+      tasks: [resourceWarningTask(evaluator(), loadSource(), sink, silentLog)],
       intervalMs: 60_000,
       log: silentLog,
       timer,
@@ -1236,6 +1286,137 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
     await settle();
 
     expect(sink.events).toEqual([]);
+  });
+
+  it('meldet einen Server über seinem eigenen Limit an dessen Besitzer', async () => {
+    // Genau der Fall aus Lastenheft §3.3, der bisher fehlte: Die Node hat noch
+    // Luft (keine Node-Warnung), der einzelne Server nicht mehr.
+    const timer = manualTimer();
+    const sink = capturingSink();
+    const quelle = loadSource([last({ usedRamMb: 3900 })]);
+
+    startScheduler({
+      tasks: [resourceWarningTask(evaluator(), quelle, sink, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(sink.events).toHaveLength(1);
+    expect(sink.events[0]?.payload).toMatchObject({
+      scope: 'server',
+      resource: 'ram',
+      nodeId: NODE_ID,
+      serverId: SERVER_ID,
+      // Ohne diesen Eintrag stünde die Warnung nur im Ereignisstrom: Der
+      // Empfängerkreis `resourceOwner` löst sie über `ownerId` auf.
+      ownerId: BESITZER_ID,
+      usedPercent: 95.2,
+      thresholdPercent: 90,
+    });
+  });
+
+  it('schweigt zu einem Server unter seinem Schwellwert', async () => {
+    const timer = manualTimer();
+    const sink = capturingSink();
+
+    startScheduler({
+      tasks: [resourceWarningTask(evaluator(), loadSource([last()]), sink, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(sink.events).toEqual([]);
+  });
+
+  it('macht aus einem fehlenden Messwert keine Warnung', async () => {
+    const timer = manualTimer();
+    const sink = capturingSink();
+    const quelle = loadSource([last({ usedRamMb: null, usedCpuCores: null, usedDiskMb: null })]);
+
+    startScheduler({
+      tasks: [resourceWarningTask(evaluator(), quelle, sink, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    timer.fire();
+    await settle();
+
+    expect(sink.events).toEqual([]);
+  });
+
+  it('meldet nichts zu einem Server, den niemand mehr misst', async () => {
+    /*
+     * Gestoppt, gelöscht oder seit zwei Takten nicht gemessen: Der Server steht
+     * dann gar nicht mehr in der Quelle. Seine letzten Werte sind veraltet –
+     * eine Warnung daraus wäre eine Meldung über einen Zustand, den es nicht
+     * mehr gibt.
+     */
+    const timer = manualTimer();
+    const sink = capturingSink();
+    const quelle = loadSource([last({ usedRamMb: 3900 })]);
+
+    startScheduler({
+      tasks: [resourceWarningTask(evaluator(), quelle, sink, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    quelle.loads = [];
+    timer.fire();
+    await settle();
+
+    expect(sink.events).toEqual([]);
+  });
+
+  it('meldet eine anhaltende Lage einmal je Zustandswechsel, nicht in jedem Takt', async () => {
+    const timer = manualTimer();
+    const sink = capturingSink();
+    const quelle = loadSource([last({ usedRamMb: 3900 })]);
+
+    startScheduler({
+      tasks: [resourceWarningTask(evaluator([nodeWarning(91.5)]), quelle, sink, silentLog)],
+      intervalMs: 60_000,
+      log: silentLog,
+      timer,
+    });
+
+    // Drei Takte über der Schwelle – im Betrieb dauert eine knappe Lage
+    // Minuten bis Stunden an.
+    for (let takt = 0; takt < 3; takt += 1) {
+      timer.fire();
+      await settle();
+    }
+
+    expect(sink.events).toHaveLength(2);
+    expect(sink.events.map((eintrag) => eintrag.payload.scope)).toEqual(['node', 'server']);
+
+    // Wieder unter der Schwelle: keine neue Meldung, aber die Lage gilt als
+    // beendet.
+    quelle.loads = [last()];
+    timer.fire();
+    await settle();
+
+    expect(sink.events).toHaveLength(2);
+
+    // Erneut darüber – das ist ein neuer Zustandswechsel und wieder eine
+    // Meldung wert.
+    quelle.loads = [last({ usedRamMb: 3900 })];
+    timer.fire();
+    await settle();
+
+    expect(sink.events).toHaveLength(3);
+    expect(sink.events[2]?.payload).toMatchObject({ scope: 'server', ownerId: BESITZER_ID });
   });
 });
 

@@ -23,6 +23,7 @@ import type {
   UserResourceLimitRepository,
 } from './ports.js';
 import { type ResourceService, createResourceService } from './service.js';
+import { type ServerLoadSnapshot } from './thresholds.js';
 
 const USER_ID = 'a1e5b6c2-0000-4000-8000-000000000010';
 const NODE_ID = 'a1e5b6c2-0000-4000-8000-000000000001';
@@ -519,5 +520,104 @@ describe('Kapazitätsprüfung über den Service', () => {
     const { service } = buildService({ nodeUsage: { runningRamMb: 1024 } });
 
     expect(await service.evaluateAllNodeWarnings()).toEqual([]);
+  });
+});
+
+/**
+ * Warnungen auf **Server**-Ebene (Lastenheft §3.3).
+ *
+ * Gegenstück zur Node-Ebene: Der Dienst steuert nur den Schwellwert
+ * (`RESOURCE_WARN_SERVER_PERCENT`) bei, die Messwerte bringt der Aufrufer mit.
+ */
+describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
+  const AT = new Date('2026-08-26T12:00:00.000Z');
+  const LIMITS = { ramMb: 4096, cpuCores: 2, diskMb: 20_480 };
+
+  function last(overrides: Partial<ServerLoadSnapshot> = {}): ServerLoadSnapshot {
+    return {
+      serverId: SERVER_ID,
+      nodeId: NODE_ID,
+      ownerId: USER_ID,
+      limits: LIMITS,
+      usedRamMb: 1024,
+      usedCpuCores: 0.2,
+      usedDiskMb: null,
+      ...overrides,
+    };
+  }
+
+  it('misst jeden Server gegen sein eigenes Limit', () => {
+    const { service } = buildService({});
+
+    const warnings = service.evaluateAllServerWarnings([last({ usedRamMb: 3900 })], AT);
+
+    expect(warnings).toEqual([
+      {
+        scope: 'server',
+        resource: 'ram',
+        unit: 'mb',
+        nodeId: NODE_ID,
+        serverId: SERVER_ID,
+        used: 3900,
+        total: 4096,
+        usedPercent: 95.2,
+        thresholdPercent: 90,
+        at: AT.toISOString(),
+      },
+    ]);
+  });
+
+  it('schweigt, solange ein Server unter seinem Schwellwert bleibt', () => {
+    const { service } = buildService({});
+
+    expect(service.evaluateAllServerWarnings([last()], AT)).toEqual([]);
+  });
+
+  it('macht aus einem fehlenden Messwert keine Warnung', () => {
+    // `null` heißt „das Spiel bzw. der Agent liefert diesen Wert nicht" – und
+    // gerade nicht 0, was bei einer Belegung ohne Kontingent eine Warnung wäre.
+    const { service } = buildService({});
+
+    const warnings = service.evaluateAllServerWarnings(
+      [last({ usedRamMb: null, usedCpuCores: null, usedDiskMb: null })],
+      AT,
+    );
+
+    expect(warnings).toEqual([]);
+  });
+
+  it('wertet mehrere Server in einem Durchlauf aus', () => {
+    const { service } = buildService({});
+    const zweiter = 'a1e5b6c2-0000-4000-8000-000000000003';
+
+    const warnings = service.evaluateAllServerWarnings(
+      [last({ usedRamMb: 4000 }), last({ serverId: zweiter, usedRamMb: 100 })],
+      AT,
+    );
+
+    expect(warnings.map((w) => w.serverId)).toEqual([SERVER_ID]);
+  });
+
+  it('bewertet CPU in Kernen, nicht in Prozent eines Kerns', () => {
+    /*
+     * 2,5 ausgelastete Kerne (`cpuPercent` 250) gegen ein Limit von 2 Kernen
+     * sind 125 % – eine Warnung. Dieselbe Zahl als „250 % des Kontingents" oder
+     * als „250 Kerne" gelesen ergäbe entweder Unsinn oder eine Dauerwarnung.
+     */
+    const { service } = buildService({});
+
+    const zuViel = service.evaluateAllServerWarnings([last({ usedCpuCores: 2.5 })], AT);
+
+    expect(zuViel.map((w) => w.resource)).toEqual(['cpu']);
+    expect(zuViel[0]?.usedPercent).toBe(125);
+
+    // Gegenprobe: dieselben 250 % eines Kerns gegen ein Limit von vier Kernen
+    // sind 62,5 % – und damit kein Warnungsgrund.
+    const genug = service.evaluateAllServerWarnings(
+      [last({ usedCpuCores: 2.5, limits: { ...LIMITS, cpuCores: 4 } })],
+      AT,
+    );
+
+    expect(genug).toEqual([]);
   });
 });

@@ -39,6 +39,7 @@ export { type CapacityCheckInput, type NodeCapacitySnapshot, checkCapacity } fro
 
 export {
   type NodeWarningInput,
+  type ServerLoadSnapshot,
   type ServerWarningInput,
   evaluateNodeWarnings,
   evaluateServerWarnings,

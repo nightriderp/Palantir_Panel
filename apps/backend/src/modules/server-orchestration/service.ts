@@ -49,10 +49,13 @@ import { ServerOrchestrationError, isServerOrchestrationError } from './errors.j
 import {
   ClockSkewMonitor,
   LatestQueryCache,
+  ServerLoadRegistry,
   type ServerStatsRepository,
   type StatsSample,
+  cpuCoresFromPercent,
   toStatsHistoryDto,
 } from './stats-history.js';
+import { type ServerLoadSnapshot } from '../resources/index.js';
 import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.js';
 
 /**
@@ -292,6 +295,21 @@ export class ServerOrchestrationService {
    * Wahrheit über denselben Lauf.
    */
   private readonly cloneJobs: CloneJobStore;
+  /**
+   * Zuletzt gemessene Last je laufendem Server – Quelle der Ressourcen-Warnung
+   * auf Server-Ebene (Lastenheft §3.3).
+   *
+   * **Warum zwei Takte als Frist.** Geschrieben wird der Stand einer Node genau
+   * einmal je Durchlauf des Zeitgebers, unmittelbar bevor die Warnungen
+   * ausgewertet werden – im Normalfall ist ein Wert also Sekunden alt. Ist er
+   * älter als zwei Takte, hat mindestens ein vollständiger Durchlauf nichts
+   * gemessen: Der Agent ist abgemeldet, die Node hängt, oder die Abtastung
+   * scheitert. Ein Takt als Frist wäre zu knapp, weil die Abtastung selbst Zeit
+   * braucht und sich der Schreibzeitpunkt dadurch verschiebt; deutlich mehr
+   * hieße, auf einen Zustand hin zu warnen, den seit Minuten niemand mehr
+   * misst.
+   */
+  private readonly serverLoads: ServerLoadRegistry;
 
   constructor(deps: OrchestrationDependencies) {
     this.deps = deps;
@@ -300,6 +318,7 @@ export class ServerOrchestrationService {
       deps.reservation ??
       createInlineCapacityReservation(deps.resources, deps.repository, deps.ports);
     this.cloneJobs = createCloneJobStore({ now: this.now });
+    this.serverLoads = new ServerLoadRegistry(2 * deps.config.statsSampleIntervalMs);
   }
 
   // -------------------------------------------------------------------------
@@ -2333,6 +2352,12 @@ export class ServerOrchestrationService {
    * Server, dessen Messung scheitert, hält die übrigen nicht auf: Eine Lücke im
    * Verlauf ist hinnehmbar, ein abgebrochener Durchlauf wäre eine Lücke für
    * alle.
+   *
+   * Derselbe Durchlauf schreibt den Stand für die Ressourcen-Warnung auf
+   * Server-Ebene mit ({@link listServerLoads}). Nur Server, die hier
+   * tatsächlich gemessen wurden, stehen anschließend darin: Ein gestoppter,
+   * gelöschter oder unmessbarer Server fällt heraus, weil der Stand der Node
+   * vollständig ersetzt wird.
    */
   async sampleServerStats(hostId: string): Promise<readonly string[]> {
     const ablage = this.deps.statsHistory;
@@ -2343,6 +2368,7 @@ export class ServerOrchestrationService {
 
     const moment = this.now();
     const abgetastet: string[] = [];
+    const lasten: ServerLoadSnapshot[] = [];
 
     for (const server of await this.deps.repository.listByHost(hostId)) {
       if (server.status !== 'running') {
@@ -2352,15 +2378,17 @@ export class ServerOrchestrationService {
       try {
         const stats = await this.getStats(server.id);
         const abfrage = this.latestQuery.read(server.id, moment);
+        const ramUsedMb = Math.round(stats.memoryUsedBytes / (1024 * 1024));
+        // Belegter Plattenplatz je Container liefert das Agent-Protokoll
+        // nicht; die Speicherübersicht (B8) misst node-weit.
+        const diskUsedMb = null;
 
         const probe: StatsSample = {
           serverId: server.id,
           recordedAt: moment,
           cpuPercent: stats.cpuPercent,
-          ramUsedMb: Math.round(stats.memoryUsedBytes / (1024 * 1024)),
-          // Belegter Plattenplatz je Container liefert das Agent-Protokoll
-          // nicht; die Speicherübersicht (B8) misst node-weit.
-          diskUsedMb: null,
+          ramUsedMb,
+          diskUsedMb,
           pingMs: abfrage.pingMs,
           playersOnline: abfrage.playersOnline,
           playersMax: abfrage.playersMax,
@@ -2370,6 +2398,17 @@ export class ServerOrchestrationService {
 
         await ablage.insert(probe);
         abgetastet.push(server.id);
+        lasten.push({
+          serverId: server.id,
+          nodeId: server.hostId,
+          ownerId: server.ownerId,
+          limits: server.resourceLimits,
+          usedRamMb: ramUsedMb,
+          // Prozent eines Kerns → Kerne; die Bezugsgröße wird genau hier
+          // festgelegt und nicht im Schwellwert-Modul geraten.
+          usedCpuCores: cpuCoresFromPercent(stats.cpuPercent),
+          usedDiskMb: diskUsedMb,
+        });
       } catch (error: unknown) {
         this.deps.log.warn(
           { serverId: server.id, error: error instanceof Error ? error.message : String(error) },
@@ -2378,7 +2417,22 @@ export class ServerOrchestrationService {
       }
     }
 
+    this.serverLoads.replace(hostId, lasten, moment);
+
     return abgetastet;
+  }
+
+  /**
+   * Zuletzt gemessene Last aller laufenden Server – die Quelle, aus der der
+   * Zeitgeber die Warnungen auf Server-Ebene rechnet (Lastenheft §3.3).
+   *
+   * Ohne eigene Abfrage: Die Werte stammen aus der Abtastung desselben Takts
+   * (siehe {@link sampleServerStats}). Zu alte Stände fallen weg – ein Server,
+   * den seit zwei Takten niemand gemessen hat, ist kein Warnungsgrund, sondern
+   * ein Messproblem.
+   */
+  listServerLoads(): readonly ServerLoadSnapshot[] {
+    return this.serverLoads.list(this.now());
   }
 
   /** Entfernt Stichproben jenseits der Aufbewahrungsfrist (`STATS_HISTORY_RETENTION_HOURS`). */
