@@ -85,3 +85,34 @@ updates:
     ignore:
       - dependency-name: node
         update-types: ['version-update:semver-major']
+
+  # ---------------------------------------------------------------------------
+  # Dasselbe für das Paper-Image (`images/minecraft/Dockerfile`). Es braucht
+  # einen **eigenen** Eintrag, weil Dependabot je Ordner arbeitet und der Eintrag
+  # oben nur `/images/test-minecraft` ansieht – ein zweites Spiel-Image wäre
+  # sonst still von der Pflege ausgenommen.
+  #
+  # Beide Bau-Stufen des Dockerfiles zeigen auf denselben Digest; Dependabot
+  # zieht die `FROM`-Zeilen gemeinsam nach.
+  #
+  # **Auch hier gehört die Zahl in `images/minecraft/VERSION` mit erhöht** und
+  # `dockerImage` in `game-registry.ts` nachgezogen, sonst bricht game-images.yml
+  # auf `main` mit „Versions-Tag gibt es bereits" ab.
+  - package-ecosystem: docker
+    directory: /images/minecraft
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: '[images]'
+    # Hauptfassungen bleiben außen vor, aus demselben Grund wie oben – hier kommt
+    # ein zweiter hinzu: Die Java-Fassung ist keine freie Wahl. Paper nennt eine
+    # Mindestfassung (26.2 verlangt Java 25); ein Sprung auf die nächste
+    # Hauptfassung gehört zusammen mit einer neuen Paper-Fassung entschieden,
+    # nicht als eigener Vorschlag.
+    ignore:
+      - dependency-name: eclipse-temurin
+        update-types: ['version-update:semver-major']
