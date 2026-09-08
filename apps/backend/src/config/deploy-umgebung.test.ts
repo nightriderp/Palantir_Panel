@@ -171,7 +171,7 @@ describe('deploy/vps/docker-compose.yml', () => {
     }
   });
 
-  it('gibt dem Tunnel-Dienst weiterhin nur seine fünf Werte', () => {
+  it('gibt dem Tunnel-Dienst weiterhin nur die Werte seiner Konfiguration', () => {
     const frpsBlock = composeVps.slice(composeVps.indexOf('  frps:'));
     const frpsUmgebung = mappingSchlüssel(frpsBlock, /^ {4}environment:$/);
 
@@ -180,6 +180,9 @@ describe('deploy/vps/docker-compose.yml', () => {
       'FRP_TOKEN',
       'GAME_PORT_RANGE_END',
       'GAME_PORT_RANGE_START',
+      // Der Port des Hostname-Routers liegt außerhalb des Pools und braucht
+      // deshalb einen eigenen `allowPorts`-Eintrag (Pflichtenheft §19).
+      'MINECRAFT_ROUTER_PORT',
       'WIREGUARD_VPS_IP',
     ]);
   });

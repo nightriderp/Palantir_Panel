@@ -288,6 +288,19 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         await this.jobs?.files.ensureDataDirectory(spec.dataVolume.hostPath);
 
         const handle = await this.runtime.create(spec);
+
+        /*
+         * Route des Hostname-Routers, falls der Bauplan die Labels dafuer
+         * traegt (Pflichtenheft §2.4, §13). Ein Container ohne diese Labels -
+         * derzeit jeder - erzeugt keine Datei.
+         *
+         * ERST NACH dem Anlegen: Eine Route ohne Container zeigte ins Leere,
+         * und ein gescheitertes CREATE liesse sie liegen. Umgekehrt ist eine
+         * Sekunde ohne Route folgenlos, denn gestartet wird der Container
+         * ohnehin erst danach.
+         */
+        await this.jobs?.router.writeFromSpec(spec);
+
         return { containerId: handle.containerId, name: handle.name, warnings: handle.warnings };
       }
       case 'START': {
@@ -320,6 +333,16 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         // Nur nach erfolgreichem Entfernen – scheitert DELETE (etwa 409, weil
         // der Container noch läuft), behält er seine Live-Kanäle.
         await this.closeLiveChannels(p.containerId);
+
+        /*
+         * Und die Route mit (Pflichtenheft §2.4, §13). Sie hängt an der
+         * Server-Id, nicht an der Container-Id: Der Befehl nennt nur letztere,
+         * die Id des Servers steht aber im Rahmen jedes Befehls. Eine fehlende
+         * Datei ist kein Fehler - der Regelfall ist ein Server, der nie eine
+         * hatte.
+         */
+        await this.jobs?.router.remove(serverId);
+
         return null;
       }
       case 'GET_STATS': {

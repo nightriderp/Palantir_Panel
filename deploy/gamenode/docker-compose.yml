@@ -5,10 +5,18 @@
 #
 #   docker compose --env-file ../../.env up -d
 #
+# Mit Hostname-Router (Pflichtenheft §2.4, §13) zusätzlich das Profil - dann
+# muss das Spielenetz allerdings schon existieren, also vorher einmal
+# `sudo ./egress-firewall.sh apply`:
+#
+#   docker compose --env-file ../../.env --profile hostname-router up -d
+#
 # GRUNDSATZ (Pflichtenheft §1): Auf dieser Maschine wird KEIN Port
 # veröffentlicht und keine eingehende Verbindung angenommen - weder vom Router
 # noch aus dem WireGuard-Tunnel. Der Agent baut die Verbindung zum Backend
 # selbst auf. Wer hier ein `ports:` ergänzt, hebt die Sicherheitsarchitektur auf.
+# Auch der Hostname-Router hat keines: Er lauscht nur im eigenen
+# Netz-Namensraum, und abgeholt wird er von frpc über das Spielenetz.
 
 services:
   # --- Docker-Socket-Proxy ----------------------------------------------------
@@ -129,6 +137,12 @@ services:
       # Netz der Spielcontainer (Audit security-matrix-02). Muss zu dem Netz
       # passen, das ./egress-firewall.sh anlegt - siehe Hinweis am Dateiende.
       AGENT_CONTAINER_NETWORK: ${AGENT_CONTAINER_NETWORK}
+      # Ablage der Routen-Dateien des Hostname-Routers und der Port, der in
+      # jeder von ihnen steht (Pflichtenheft §2.4, §13). Bleibt AGENT_ROUTER_DIR
+      # in der .env leer, legt der Agent keine an - dann laeuft auch kein
+      # Router. Siehe den Dienst `hostname-router` unten.
+      AGENT_ROUTER_DIR: ${AGENT_ROUTER_DIR}
+      MINECRAFT_ROUTER_PORT: ${MINECRAFT_ROUTER_PORT}
       AGENT_REGISTRY_SERVER: ${AGENT_REGISTRY_SERVER}
       AGENT_REGISTRY_USERNAME: ${AGENT_REGISTRY_USERNAME}
       AGENT_REGISTRY_TOKEN: ${AGENT_REGISTRY_TOKEN}
@@ -149,6 +163,10 @@ services:
       # im Container des Agents.
       - ${AGENT_DATA_DIR:-/srv/palantir/servers}:${AGENT_DATA_DIR:-/srv/palantir/servers}
       - ${AGENT_BACKUP_DIR:-/srv/palantir/backups}:${AGENT_BACKUP_DIR:-/srv/palantir/backups}
+      # Ablage des Hostname-Routers, schreibend: Hier legt der Agent unter
+      # `proxies/` eine Routen-Datei je Server an. Der Router selbst haengt
+      # dasselbe Verzeichnis nur lesend ein.
+      - ${AGENT_ROUTER_DIR:-/srv/palantir/router}:${AGENT_ROUTER_DIR:-/srv/palantir/router}
     # Kein `ports:` - siehe Grundsatz oben.
     networks:
       - palantir
@@ -184,16 +202,93 @@ services:
       FRP_TOKEN: ${FRP_TOKEN}
       GAME_PORT_RANGE_START: ${GAME_PORT_RANGE_START}
       GAME_PORT_RANGE_END: ${GAME_PORT_RANGE_END}
+      # Der Hostname-Router ist der einzige Proxy, der NICHT auf 127.0.0.1
+      # zeigt: Er veroeffentlicht keinen Port, frpc holt ihn deshalb an seiner
+      # festen Adresse im Spielenetz ab (Begruendung im Kopf von frpc.toml).
+      MINECRAFT_ROUTER_PORT: ${MINECRAFT_ROUTER_PORT}
+      GAME_ROUTER_CONTAINER_IP: ${GAME_ROUTER_CONTAINER_IP}
     volumes:
       - ./frpc.toml:/etc/frp/frpc.toml:ro
     command: ['-c', '/etc/frp/frpc.toml']
+
+  # --- Hostname-Router --------------------------------------------------------
+  # Infrared verteilt EINEN oeffentlichen Port (MINECRAFT_ROUTER_PORT, 25565)
+  # auf beliebig viele Minecraft-Server (Pflichtenheft §2.4, §13). Moeglich ist
+  # das, weil der Minecraft-Client den gewuenschten Hostnamen schon im
+  # Handshake mitschickt, bevor irgendetwas anderes passiert.
+  #
+  # WARUM AUF DER GAMENODE UND NICHT AUF DER VPS. Hier stehen die Container.
+  # Der Router erreicht sie direkt im Spielenetz, und fuer den Spielverkehr
+  # genuegt ein einziger frp-Proxy. Auf der VPS braeuchte jeder solche Server
+  # wieder einen eigenen Pool-Port samt Tunnel - genau das, was das
+  # Hostname-Routing einspart.
+  #
+  # KEIN `ports:` - der Grundsatz oben bleibt unangetastet. Der Router lauscht
+  # ausschliesslich im eigenen Netz-Namensraum; abgeholt wird er von frpc, das
+  # im Host-Netz laeuft und seine feste Adresse im Spielenetz anwaehlt. Vom
+  # Router aus der VM heraus ist nichts erreichbar.
+  #
+  # NUR MIT PROFIL. Der Dienst laeuft erst bei
+  #   docker compose --env-file ../../.env --profile hostname-router up -d
+  # Ohne das Profil bleibt er aussen vor, und das externe Netz `palantir-games`
+  # wird gar nicht erst aufgeloest (Compose raeumt Netze weg, an denen nach der
+  # Profil-Auswahl kein Dienst mehr haengt). Eine frische Node kommt damit
+  # unveraendert hoch, auch bevor `egress-firewall.sh apply` gelaufen ist.
+  #
+  # FESTE ADRESSE, kein Zufall: An ihr haengt sowohl die Ausnahme in
+  # `egress-firewall.sh` als auch der Proxy in `frpc.toml`. Das Skript legt das
+  # Netz deshalb mit `--ip-range` an - die automatisch vergebenen Adressen der
+  # Spielcontainer liegen in der unteren Haelfte, die feste Adresse des Routers
+  # ausserhalb davon und kann nie belegt sein.
+  hostname-router:
+    image: haveachin/infrared:${INFRARED_VERSION}@${INFRARED_DIGEST}
+    container_name: palantir-hostname-router
+    profiles: ['hostname-router']
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    cap_drop:
+      - ALL
+    # Das Image ist `FROM scratch` und bringt keinen Benutzer mit; es liefe
+    # sonst als root. Der Dienst liest nur Dateien, die der Agent mit 0644
+    # ablegt - eine beliebige unprivilegierte UID genuegt.
+    user: '65534:65534'
+    mem_limit: ${INFRARED_MEM_LIMIT:-128m}
+    pids_limit: 64
+    environment:
+      # Verzeichnis der Routen-Dateien. Infrared liest beim Start jede Datei
+      # darin und beobachtet den Ordner anschliessend: eine neue Datei wird zur
+      # Route, eine geloeschte nimmt ihre Route mit.
+      INFRARED_CONFIG_PATH: /configs
+    volumes:
+      # Nur lesend - geschrieben wird ausschliesslich vom Agent.
+      - ${AGENT_ROUTER_DIR:-/srv/palantir/router}/proxies:/configs:ro
+      # Ohne mindestens eine Route beendet sich Infrared beim Start mit „no
+      # proxies in gateway" und liefe wegen `restart: always` in eine Schleife.
+      # Der Platzhalter haelt den Dienst am Leben, solange noch kein Server mit
+      # Hostname-Routing existiert; seine Domain ist nach RFC 6761 fuer immer
+      # unaufloesbar und sein Ziel ein Port im eigenen Namensraum, an dem
+      # nichts lauscht.
+      - ./infrared/00-platzhalter.json:/configs/00-platzhalter.json:ro
+    networks:
+      palantir-games:
+        ipv4_address: ${GAME_ROUTER_CONTAINER_IP:-172.31.240.254}
 
 networks:
   # Netz der Palantir-Dienste (Agent, Socket-Proxy). Die SPIELCONTAINER hängen
   # bewusst NICHT hier drin.
   palantir:
     name: palantir
-# --- Spielenetz `palantir-games` (bewusst nicht hier definiert) ---------------
+  # Das Spielenetz - siehe den Abschnitt darunter. `external: true`, weil es
+  # `egress-firewall.sh` anlegt und nicht Compose; die Regeln, der Bridge-Name
+  # und der Adressbereich gehören zusammen und dürfen nicht an zwei Stellen
+  # stehen. Angerührt wird der Eintrag nur, wenn ein Dienst ihn benutzt - das
+  # tut allein der profil-gebundene `hostname-router`.
+  palantir-games:
+    name: ${AGENT_CONTAINER_NETWORK:-palantir-games}
+    external: true
+# --- Spielenetz `palantir-games` (bewusst nicht von Compose angelegt) ---------
 # Die Gameserver-Container laufen in einem eigenen Netz `palantir-games`
 # (Audit security-matrix-02): abgeschaltete Container-zu-Container-
 # Kommunikation (`icc=false`), fester Bridge-Name und festes Subnetz, dazu
@@ -202,13 +297,19 @@ networks:
 # nicht brechen. Der Agent setzt das Netz als `NetworkMode` (Variable
 # `AGENT_CONTAINER_NETWORK`, Vorgabe `palantir-games`).
 #
-# Warum kein Eintrag unter `networks:`? Compose erzeugt nur Netze, an denen auch
-# ein Dienst hängt - die Spielcontainer erzeugt aber der Agent zur Laufzeit,
-# nicht Compose. Ein `external: true` hier wäre zudem eine Startsperre: Auf
-# einer frischen Node gäbe es das Netz beim ersten `docker compose up` noch
-# nicht. Angelegt und mit Regeln versehen wird es deshalb von
+# Angelegt und mit Regeln versehen wird es von
 #
 #   sudo /opt/palantir/deploy/gamenode/egress-firewall.sh apply
 #
-# (dauerhaft über `palantir-egress.service`). Netzname, Bridge-Name und Subnetz
-# stehen dort und müssen zu `AGENT_CONTAINER_NETWORK` in der `.env` passen.
+# (dauerhaft über `palantir-egress.service`) - NICHT von Compose. Netzname,
+# Bridge-Name, Subnetz und Adressbereich stehen dort und müssen zu
+# `AGENT_CONTAINER_NETWORK` in der `.env` passen.
+#
+# Seit dem Hostname-Router steht es trotzdem unter `networks:` - als
+# `external: true`, denn genau ein Dienst hängt darin. Das ist KEINE
+# Startsperre für eine frische Node: Der Router läuft nur mit
+# `--profile hostname-router`, und Compose löst ein externes Netz erst auf,
+# wenn nach der Profil-Auswahl noch ein Dienst daran hängt. Wer den Router
+# benutzt, muss das Netz allerdings vorher haben - also erst
+# `egress-firewall.sh apply`, dann `docker compose up`. Für die Spielcontainer
+# galt diese Reihenfolge ohnehin schon: Ohne das Netz startet keiner.

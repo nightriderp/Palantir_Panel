@@ -50,6 +50,28 @@ const envSchema = z.object({
    */
   AGENT_CONTAINER_NETWORK: z.string().min(1).default('palantir-games'),
   /**
+   * Ablage des Hostname-Routers auf der Node (Pflichtenheft §2.4, §13).
+   *
+   * Darunter liegen `proxies/` – das Verzeichnis, aus dem Infrared seine
+   * Routen liest und das es mit `fsnotify` beobachtet – und `.staging/`, in
+   * dem eine Datei erst fertig geschrieben und dann unteilbar
+   * hinübergeschoben wird.
+   *
+   * **Ohne Wert legt der Agent keine Routen-Dateien an.** Das ist der
+   * Normalfall, solange kein Spieltyp `supportsVirtualHostRouting` auf `true`
+   * stehen hat: Es gäbe nichts zu routen, und ein Agent, der auf ein nicht
+   * vorhandenes Verzeichnis schriebe, scheiterte bei jedem `CREATE`.
+   */
+  AGENT_ROUTER_DIR: z.string().min(1).optional(),
+  /**
+   * Port, auf dem der Hostname-Router lauscht.
+   *
+   * Steht als `listenTo` in jeder Routen-Datei und muss zu `frpc.toml` auf der
+   * Node und zu `allowPorts` in `frps.toml` auf der VPS passen – alle drei
+   * lesen dieselbe Variable der zentralen `.env`.
+   */
+  MINECRAFT_ROUTER_PORT: z.coerce.number().int().min(1).max(65_535).default(25_565),
+  /**
    * Registry, aus der Spiel-Images geholt werden (Gefundener Punkt 111).
    *
    * Öffentliche Images brauchen keine Angabe. Für die eigenen Images aus dem

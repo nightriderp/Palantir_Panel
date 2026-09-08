@@ -31,6 +31,12 @@
 #   3. Optional (Vorgabe: an) eine zweite Kette an `INPUT`, damit die Container
 #      auch die Dienste der Node selbst nicht erreichen. `DOCKER-USER` haengt
 #      an `FORWARD` und sieht Pakete an die Node NICHT.
+#   4. Genau eine Ausnahme von (2), wenn GAME_ROUTER_CONTAINER_IP gesetzt ist:
+#      Der Hostname-Router (Infrared, Pflichtenheft §2.4 und §13) steht selbst
+#      im Spielenetz und waere sonst ein gesperrter Nachbar. Erlaubt ist
+#      ausschliesslich die Richtung Router -> Spielserver auf dem Spielport und
+#      der Rueckweg bestehender Verbindungen; die Begruendung samt Angriffsbild
+#      steht bei der Regel selbst.
 #
 # WAS ES BEWUSST NICHT TUT: Es fasst keine bestehenden Regeln an. Alles liegt in
 # eigenen Ketten mit dem Praefix `PALANTIR-EGRESS`; `remove` nimmt genau die
@@ -81,6 +87,33 @@ GAMES_BRIDGE="${GAMES_BRIDGE:-pal-games0}"
 # mit einem schon vergebenen Docker-Netz, hier einen anderen setzen (und dann
 # `remove` + `apply`).
 GAMES_SUBNET="${GAMES_SUBNET:-172.31.240.0/24}"
+
+# Bereich, aus dem Docker die Adressen der Spielcontainer VERGIBT. Er ist
+# absichtlich kleiner als das Subnetz: Was darueber liegt, bleibt fuer feste
+# Adressen frei - allen voran die des Hostname-Routers. Ohne diese Trennung
+# koennte ein Spielcontainer die Adresse des Routers wegschnappen, waehrend der
+# gerade nicht laeuft; der Router kaeme danach mit "address already in use"
+# nicht mehr hoch, und saemtliche Minecraft-Server waeren dunkel.
+#
+# 172.31.240.1 ist das Gateway, .2 bis .126 sind damit die Spielcontainer. Wer
+# mehr als 125 gleichzeitig laufende Container braucht, vergroessert Subnetz und
+# Bereich gemeinsam.
+GAMES_IP_RANGE="${GAMES_IP_RANGE:-172.31.240.0/25}"
+
+# Feste Adresse des Hostname-Routers (Infrared) im Spielenetz, oder leer.
+#
+# Muss zu GAME_ROUTER_CONTAINER_IP in der zentralen `.env` passen - dort holt
+# sie sich auch `docker-compose.yml` (Dienst `hostname-router`) und `frpc.toml`.
+# Ist der Wert leer, entfaellt die Ausnahme unten vollstaendig und das Regelwerk
+# ist Zeile fuer Zeile dasselbe wie vor dem Router.
+ROUTER_IP="${ROUTER_IP:-$(get_env_value GAME_ROUTER_CONTAINER_IP)}"
+
+# Port, auf dem ein Spielserver IM Container lauscht - das Ziel des Routers.
+# Nicht derselbe Wert wie MINECRAFT_ROUTER_PORT: Der ist der oeffentliche Port,
+# auf dem der Router selbst lauscht. Dass beide 25565 sind, ist ein Zufall der
+# Minecraft-Vorgabe und keine Kopplung.
+ROUTER_TARGET_PORT="${ROUTER_TARGET_PORT:-$(get_env_value GAME_ROUTER_TARGET_PORT)}"
+ROUTER_TARGET_PORT="${ROUTER_TARGET_PORT:-25565}"
 
 # WireGuard-Subnetz (VPS und Homeserver). Aus WIREGUARD_VPS_IP abgeleitet,
 # damit eine abweichende Tunnel-Adresse in der `.env` hier nicht vergessen wird.
@@ -153,7 +186,7 @@ pruefe_voraussetzungen() {
 # -----------------------------------------------------------------------------
 netz_anlegen() {
   if docker network inspect "${GAMES_NETWORK}" >/dev/null 2>&1; then
-    local ist_bridge
+    local ist_bridge ist_bereich
     ist_bridge="$(docker network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "${GAMES_NETWORK}")"
     if [[ "${ist_bridge}" != "${GAMES_BRIDGE}" ]]; then
       warn "Das Netz ${GAMES_NETWORK} existiert, haengt aber an der Bridge '${ist_bridge}' statt '${GAMES_BRIDGE}'."
@@ -161,17 +194,35 @@ netz_anlegen() {
       warn "  docker network rm ${GAMES_NETWORK} && $0 apply"
       fail 'Bridge-Name passt nicht.'
     fi
+
+    # Nur eine Warnung, kein Abbruch: Ein Netz aus der Zeit vor dem
+    # Hostname-Router hat keinen Vergabebereich, und ohne Router stoert das
+    # nicht. Wer ihn einschaltet, braucht die Trennung aber - sonst kann ein
+    # Spielcontainer die feste Adresse des Routers belegen.
+    ist_bereich="$(docker network inspect -f '{{range .IPAM.Config}}{{.IPRange}}{{end}}' "${GAMES_NETWORK}")"
+    if [[ -n "${ROUTER_IP}" && "${ist_bereich}" != "${GAMES_IP_RANGE}" ]]; then
+      warn "Das Netz ${GAMES_NETWORK} vergibt aus '${ist_bereich:-dem ganzen Subnetz}' statt aus '${GAMES_IP_RANGE}'."
+      warn "Die feste Adresse des Routers (${ROUTER_IP}) kann damit von einem Spielcontainer belegt werden."
+      warn 'Zum Nachziehen alle Spielcontainer und den Router stoppen, dann:'
+      warn "  docker network rm ${GAMES_NETWORK} && $0 apply"
+    fi
+
     log "Netz ${GAMES_NETWORK} ist vorhanden (Bridge ${GAMES_BRIDGE})."
     return 0
   fi
 
-  log "Lege Netz ${GAMES_NETWORK} an (Bridge ${GAMES_BRIDGE}, Subnetz ${GAMES_SUBNET}, icc=false)."
+  log "Lege Netz ${GAMES_NETWORK} an (Bridge ${GAMES_BRIDGE}, Subnetz ${GAMES_SUBNET}, Vergabe ${GAMES_IP_RANGE}, icc=false)."
   # KEIN `--internal`: das Netz MUSS ins Internet duerfen, sonst brechen Mod-
   # und Plugin-Downloads. Begrenzt wird ueber die Ketten unten, nicht ueber den
   # Netztreiber.
+  #
+  # `--ip-range` betrifft nur die AUTOMATISCHE Vergabe; eine fest zugewiesene
+  # Adresse darf ueberall im Subnetz liegen. Genau das trennt den Router von den
+  # Spielcontainern.
   docker network create \
     --driver bridge \
     --subnet "${GAMES_SUBNET}" \
+    --ip-range "${GAMES_IP_RANGE}" \
     --opt com.docker.network.bridge.name="${GAMES_BRIDGE}" \
     --opt com.docker.network.bridge.enable_icc=false \
     --opt com.docker.network.bridge.enable_ip_masquerade=true \
@@ -212,6 +263,42 @@ sprung_loesen() {
 
 regeln_forward() {
   kette_bereitstellen "${CHAIN_FWD}"
+
+  # --- Hostname-Router --------------------------------------------------------
+  #
+  # Steht VOR allem anderen, und zwar aus zwei verschiedenen Gruenden:
+  #
+  #   * vor der Sperre gegen Nachbar-Container, denn genau die trifft ihn sonst
+  #     (der Router steht im selben Netz wie die Spielserver);
+  #   * vor der allgemeinen ESTABLISHED-Zeile, denn die springt mit RETURN aus
+  #     dieser Kette heraus - und weiter unten in FORWARD steht die DROP-Regel,
+  #     die Docker wegen `icc=false` selbst gesetzt hat. Deshalb hier ACCEPT und
+  #     nicht RETURN: Nur ACCEPT beendet den Durchlauf der ganzen Kette.
+  #
+  # WAS DAMIT ERLAUBT IST, und nur das: Verbindungen VON der einen festen
+  # Adresse des Routers ZU einem Spielcontainer auf dem einen Spielport. Nichts
+  # davon hilft einem uebernommenen Spielcontainer:
+  #
+  #   * Er ist nicht die Quelle. Sich als der Router auszugeben hiesse, die
+  #     Absenderadresse zu faelschen - das braucht CAP_NET_RAW, und die Container
+  #     laufen mit `CapDrop: ALL` (`apps/agent/src/runtime/hardening.ts`).
+  #     Selbst mit gefaelschter Quelle gingen alle Antworten an den echten
+  #     Router; es waere ein blinder Schuss.
+  #   * Die zweite Zeile erlaubt nur ESTABLISHED/RELATED zurueck zum Router. Eine
+  #     NEUE Verbindung eines Containers zum Router faellt weiterhin unter die
+  #     Sperre gegen Nachbar-Container.
+  #
+  # Unterm Strich erreicht ein uebernommener Spielcontainer nach dieser Ausnahme
+  # genau so viel wie vorher: nichts.
+  if [[ -n "${ROUTER_IP}" ]]; then
+    log "Ausnahme: Router ${ROUTER_IP} darf Spielserver auf Port ${ROUTER_TARGET_PORT} erreichen."
+    iptables -A "${CHAIN_FWD}" -s "${ROUTER_IP}" -d "${GAMES_SUBNET}" \
+      -p tcp --dport "${ROUTER_TARGET_PORT}" \
+      -m comment --comment 'palantir: Hostname-Router -> Spielserver' -j ACCEPT
+    iptables -A "${CHAIN_FWD}" -d "${ROUTER_IP}" \
+      -m conntrack --ctstate ESTABLISHED,RELATED \
+      -m comment --comment 'palantir: Antwort an den Hostname-Router' -j ACCEPT
+  fi
 
   # Antwortverkehr auf selbst aufgebaute Verbindungen. Steht vorn, damit eine
   # erlaubte Verbindung nicht mitten im Ablauf an einer der Sperren scheitert.
@@ -323,8 +410,10 @@ befehl_apply() {
 
 befehl_status() {
   command -v iptables >/dev/null 2>&1 || fail 'iptables ist nicht installiert.'
-  printf 'Netz:   %s (Bridge %s, Subnetz %s)\n' "${GAMES_NETWORK}" "${GAMES_BRIDGE}" "${GAMES_SUBNET}"
-  printf 'Tunnel: %s\n\n' "${WG_SUBNET}"
+  printf 'Netz:   %s (Bridge %s, Subnetz %s, Vergabe %s)\n' \
+    "${GAMES_NETWORK}" "${GAMES_BRIDGE}" "${GAMES_SUBNET}" "${GAMES_IP_RANGE}"
+  printf 'Tunnel: %s\n' "${WG_SUBNET}"
+  printf 'Router: %s\n\n' "${ROUTER_IP:-nicht eingerichtet}"
   if iptables -n -L "${CHAIN_FWD}" -v >/dev/null 2>&1; then
     printf -- '--- %s (Zaehler zeigen Treffer seit "apply") ---\n' "${CHAIN_FWD}"
     iptables -n -L "${CHAIN_FWD}" -v --line-numbers
@@ -385,6 +474,15 @@ Umgebungsvariablen (alle optional):
                               der .env, sonst palantir-games)
   GAMES_BRIDGE                Bridge-Schnittstelle (Vorgabe: pal-games0)
   GAMES_SUBNET                Subnetz des Spielenetzes (Vorgabe 172.31.240.0/24)
+  GAMES_IP_RANGE              Bereich der automatisch vergebenen Adressen
+                              (Vorgabe 172.31.240.0/25); darueber bleibt Platz
+                              fuer feste Adressen wie die des Routers
+  ROUTER_IP                   Feste Adresse des Hostname-Routers (Vorgabe:
+                              GAME_ROUTER_CONTAINER_IP aus der .env). Leer =
+                              kein Router, keine Ausnahme
+  ROUTER_TARGET_PORT          Port des Spielservers IM Container, den der Router
+                              anwaehlen darf (Vorgabe: GAME_ROUTER_TARGET_PORT
+                              aus der .env, sonst 25565)
   WG_SUBNET                   WireGuard-Subnetz (Vorgabe aus WIREGUARD_VPS_IP)
   PALANTIR_EGRESS_ALLOW       Zusaetzlich erlaubte Ziele, durch Leerzeichen
                               getrennt (z. B. "192.168.1.53" fuer einen

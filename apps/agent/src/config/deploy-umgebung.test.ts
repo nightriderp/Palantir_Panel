@@ -101,7 +101,7 @@ describe('deploy/gamenode/docker-compose.yml', () => {
     expect(compose).toContain('DOCKER_SOCKET_PROXY_URL: http://socket-proxy:2375');
   });
 
-  it('gibt dem Tunnel-Dienst weiterhin nur seine fünf Werte', () => {
+  it('gibt dem Tunnel-Dienst weiterhin nur die Werte seiner Konfiguration', () => {
     const frpcUmgebung = mappingSchlüssel(
       compose.slice(compose.indexOf('  frpc:')),
       /^ {4}environment:$/,
@@ -110,8 +110,12 @@ describe('deploy/gamenode/docker-compose.yml', () => {
     expect([...frpcUmgebung].sort()).toEqual([
       'FRP_BIND_PORT',
       'FRP_TOKEN',
+      // Der eine Proxy des Hostname-Routers zeigt nicht auf 127.0.0.1, sondern
+      // auf die feste Adresse des Routers im Spielenetz.
       'GAME_PORT_RANGE_END',
       'GAME_PORT_RANGE_START',
+      'GAME_ROUTER_CONTAINER_IP',
+      'MINECRAFT_ROUTER_PORT',
       'WIREGUARD_VPS_IP',
     ]);
   });
