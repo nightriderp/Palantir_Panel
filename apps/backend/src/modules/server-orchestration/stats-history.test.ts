@@ -13,6 +13,7 @@ import {
   CLOCK_SKEW_LOG_INTERVAL_MS,
   CLOCK_SKEW_TOLERANCE_MS,
   ClockSkewMonitor,
+  LatestDiskUsageCache,
   LatestQueryCache,
   ServerLoadRegistry,
   type StatsSample,
@@ -68,6 +69,69 @@ describe('Umwandlung in das Diagramm-Format', () => {
 
   it('liefert eine leere Reihe, wenn nichts gemessen wurde', () => {
     expect(toStatsHistoryDto(SERVER_ID, 60, 60, []).samples).toEqual([]);
+  });
+});
+
+/**
+ * Zwischenspeicher des Plattenplatzes (Fundpunkt 175).
+ *
+ * Er ist die Brücke zwischen Abtastung und Live-Kanal: Der Wert kommt nur auf
+ * `GET_STATS` an, gebraucht wird er aber bei jedem `STATS_UPDATE`.
+ */
+describe('Zwischenspeicher des Plattenplatzes', () => {
+  const JETZT = new Date('2026-09-01T10:00:00.000Z');
+
+  it('gibt den zuletzt gemessenen Wert zurück', () => {
+    const cache = new LatestDiskUsageCache(5 * 60 * 1000);
+    cache.remember(SERVER_ID, 3_072, JETZT);
+
+    expect(cache.read(SERVER_ID, JETZT)).toBe(3_072);
+  });
+
+  it('kennt einen Server ohne Messung nicht', () => {
+    expect(new LatestDiskUsageCache(60_000).read(SERVER_ID, JETZT)).toBeNull();
+  });
+
+  it('lässt eine ausgebliebene Messung den bekannten Wert nicht löschen', () => {
+    /*
+     * `null` heißt „nicht gemessen": Der Agent kennt das Feld nicht, hat den
+     * Ordner noch nicht durchlaufen oder konnte ihn nicht lesen. Verdrängte das
+     * den bekannten Wert, spränge die Anzeige bei jedem misslungenen Durchlauf
+     * auf „—" – und eine 0 daraus zu machen wäre noch schlimmer: Die
+     * Schwellwert-Prüfung rechnete „0 % belegt" und schwiege auch bei voller
+     * Platte.
+     */
+    const cache = new LatestDiskUsageCache(60_000);
+    cache.remember(SERVER_ID, 3_072, JETZT);
+    cache.remember(SERVER_ID, null, JETZT);
+
+    expect(cache.read(SERVER_ID, JETZT)).toBe(3_072);
+  });
+
+  it('schreibt einen veralteten Wert nicht fort', () => {
+    const cache = new LatestDiskUsageCache(60_000);
+    cache.remember(SERVER_ID, 3_072, JETZT);
+
+    expect(cache.read(SERVER_ID, new Date(JETZT.getTime() + 61_000))).toBeNull();
+  });
+
+  it('lässt einen Wert weit aus der Zukunft verfallen (W2-14)', () => {
+    const cache = new LatestDiskUsageCache(60_000);
+    cache.remember(SERVER_ID, 3_072, new Date(JETZT.getTime() + CLOCK_SKEW_TOLERANCE_MS + 1_000));
+
+    expect(cache.read(SERVER_ID, JETZT)).toBeNull();
+  });
+
+  it('vergisst einen gelöschten Server', () => {
+    /*
+     * Sonst hinge der Wert bis zum Neustart des Backends am gelöschten Server –
+     * kleines, aber unbegrenztes Wachstum (Fundpunkt 137).
+     */
+    const cache = new LatestDiskUsageCache(60_000);
+    cache.remember(SERVER_ID, 3_072, JETZT);
+    cache.forget(SERVER_ID);
+
+    expect(cache.read(SERVER_ID, JETZT)).toBeNull();
   });
 });
 

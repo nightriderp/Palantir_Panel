@@ -357,6 +357,90 @@ export class LatestQueryCache {
   }
 }
 
+/**
+ * Zuletzt gemessener Plattenplatz je Server (Fundpunkt 175).
+ *
+ * **Warum es diesen Zwischenspeicher braucht.** Der belegte Plattenplatz ist
+ * der einzige Messwert, der den Live-Kanal nicht auf demselben Weg erreicht wie
+ * die übrigen. CPU, Arbeitsspeicher und Netzverkehr kommen aus dem
+ * Statistik-Strom der Container-Engine; der Plattenplatz kommt aus einer
+ * eigenen Messung des Agents am Datenordner und hängt deshalb an `GET_STATS` –
+ * an der Abtastung ({@link ServerOrchestrationService.sampleServerStats}), nicht
+ * am Strom. Der Live-Rahmen trug ihn bis hierher nie, und weil das Frontend die
+ * Messwerte je Rahmen vollständig ersetzt, hätte ein Wert aus einer anderen
+ * Quelle mit dem nächsten Rahmen ohnehin wieder auf „—" gestanden.
+ *
+ * Gemerkt wird deshalb hier – dieselbe Rolle, die {@link LatestQueryCache} für
+ * Spielerzahl und Antwortzeit spielt, nur in die andere Richtung: Dort legt das
+ * Backend den Abfragestand neben die Engine-Werte, hier den Plattenplatz neben
+ * **beide** Nutzlasten von `STATS_UPDATE`.
+ *
+ * **Warum kein Wert je Live-Rahmen nachgemessen wird.** Der Agent misst den
+ * Ordner ohnehin höchstens alle fünf Minuten neu (`DEFAULT_DISK_USAGE_TTL_MS`);
+ * ein Baumdurchlauf im Sekundentakt des Statistik-Stroms wäre reine Last für
+ * eine Zahl, die sich in dieser Zeit nicht ändert.
+ *
+ * Wie beim {@link LatestQueryCache}: nur im Speicher, ohne eigene Tabelle, und
+ * ein Neustart des Backends vergisst alles – der nächste Abtast-Takt füllt es
+ * wieder.
+ */
+export class LatestDiskUsageCache {
+  readonly #werte = new Map<string, { usedMb: number; at: number }>();
+  readonly #maxAlterMs: number;
+  readonly #zukunftsToleranzMs: number;
+
+  constructor(maxAlterMs: number, zukunftsToleranzMs: number = CLOCK_SKEW_TOLERANCE_MS) {
+    this.#maxAlterMs = maxAlterMs;
+    this.#zukunftsToleranzMs = zukunftsToleranzMs;
+  }
+
+  /**
+   * Einen gemessenen Wert merken.
+   *
+   * `null` ist **kein** Wert und löscht deshalb nichts: Es heißt „nicht
+   * gemessen" – der Agent kennt das Feld nicht, hat den Ordner noch nicht
+   * durchlaufen oder konnte ihn nicht lesen. Würde `null` den bekannten Wert
+   * verdrängen, spränge die Anzeige bei jedem misslungenen Durchlauf auf „—".
+   * Veraltet der Wert wirklich, verfällt er über {@link read}.
+   */
+  remember(serverId: string, usedMb: number | null, at: Date): void {
+    if (usedMb === null) {
+      return;
+    }
+
+    this.#werte.set(serverId, { usedMb, at: at.getTime() });
+  }
+
+  /**
+   * Der zuletzt gemessene Wert in MiB – oder `null`, wenn er zu alt ist.
+   *
+   * Dieselbe Frist-Logik wie im {@link LatestQueryCache}, in beide Richtungen:
+   * zu alt **und** zu weit in der Zukunft. Ein Wert, den seit Minuten niemand
+   * mehr geliefert hat, beschreibt keinen Ist-Zustand mehr, sondern nur noch,
+   * was einmal war.
+   */
+  read(serverId: string, now: Date): number | null {
+    const eintrag = this.#werte.get(serverId);
+
+    if (eintrag === undefined) {
+      return null;
+    }
+
+    const alter = now.getTime() - eintrag.at;
+
+    if (alter > this.#maxAlterMs || alter < -this.#zukunftsToleranzMs) {
+      return null;
+    }
+
+    return eintrag.usedMb;
+  }
+
+  /** Vergisst einen Server – gelöscht, also gibt es den Ordner nicht mehr. */
+  forget(serverId: string): void {
+    this.#werte.delete(serverId);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Last je Server – Quelle der Warnungen auf Server-Ebene (Lastenheft §3.3)
 // ---------------------------------------------------------------------------

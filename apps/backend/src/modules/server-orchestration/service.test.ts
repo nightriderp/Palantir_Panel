@@ -64,6 +64,7 @@ import {
 import { type DnsProvider, type DnsRecord } from './dns/types.js';
 import {
   ClockSkewMonitor,
+  LatestDiskUsageCache,
   LatestQueryCache,
   type ServerStatsRepository,
   type StatsSample,
@@ -2179,6 +2180,9 @@ describe('Löschen', () => {
      */
     const vergessenQuery = vi.spyOn(LatestQueryCache.prototype, 'forget');
     const vergessenUhr = vi.spyOn(ClockSkewMonitor.prototype, 'forget');
+    // Seit Fundpunkt 175 haengt auch der zuletzt gemessene Plattenplatz am
+    // Server - er muss denselben Weg gehen.
+    const vergessenPlatte = vi.spyOn(LatestDiskUsageCache.prototype, 'forget');
 
     try {
       const harness = makeHarness();
@@ -2188,9 +2192,11 @@ describe('Löschen', () => {
 
       expect(vergessenQuery).toHaveBeenCalledWith(created.id);
       expect(vergessenUhr).toHaveBeenCalledWith(created.id);
+      expect(vergessenPlatte).toHaveBeenCalledWith(created.id);
     } finally {
       vergessenQuery.mockRestore();
       vergessenUhr.mockRestore();
+      vergessenPlatte.mockRestore();
     }
   });
 
@@ -3703,6 +3709,105 @@ describe('Verlauf der Messwerte (Arbeitspaket P5)', () => {
     await harness.service.sampleServerStats(HOST.id);
 
     expect(ablage.proben[0]).toMatchObject({ playersOnline: 7, playersMax: 20, pingMs: 11 });
+  });
+
+  /**
+   * Fundpunkt 175: Der belegte Plattenplatz erreichte die Live-Anzeige nie.
+   *
+   * Er kommt nur auf `GET_STATS` an – der Agent misst ihn am Datenordner, nicht
+   * im Statistik-Strom der Engine. Der Live-Kanal führte ihn deshalb dauerhaft
+   * als `null`, und weil das Frontend die Messwerte je Rahmen vollständig
+   * ersetzt, stand in der Kachel „Platte" immer „—", obwohl Verlauf und
+   * Ressourcen-Warnung die Zahl längst hatten.
+   */
+  it('trägt den abgetasteten Plattenplatz in die folgenden Live-Rahmen (Fundpunkt 175)', async () => {
+    const ablage = fakeAblage();
+    const harness = makeHarness({ statsHistory: ablage });
+    const serverId = await laufenderServer(harness);
+
+    harness.socket.answers.set('GET_STATS', {
+      success: true,
+      data: {
+        containerId: 'container-1',
+        cpuPercent: 42.5,
+        memoryUsedBytes: 1024 * 1024 * 512,
+        memoryLimitBytes: 1024 * 1024 * 2048,
+        networkRxBytes: 5_000,
+        networkTxBytes: 6_000,
+        blockReadBytes: 0,
+        blockWriteBytes: 0,
+        pids: 12,
+        diskUsedBytes: 3 * 1024 * 1024 * 1024,
+        sampledAt: NOW.toISOString(),
+      },
+      error: null,
+    });
+
+    await harness.service.sampleServerStats(HOST.id);
+
+    expect(ablage.proben[0]).toMatchObject({ diskUsedMb: 3_072 });
+
+    // Messwerte der Engine …
+    await harness.service.handleAgentEvent(HOST.id, {
+      kind: 'event',
+      event: 'STATS_UPDATE',
+      serverId,
+      emittedAt: harness.now().toISOString(),
+      payload: {
+        containerId: 'container-1',
+        cpuPercent: 12,
+        memoryUsedBytes: 1024 * 1024 * 256,
+        memoryLimitBytes: 1024 * 1024 * 2048,
+        networkRxBytes: 1,
+        networkTxBytes: 2,
+        blockReadBytes: 0,
+        blockWriteBytes: 0,
+        pids: 4,
+        sampledAt: harness.now().toISOString(),
+      },
+    } as never);
+
+    // … und die Server-Abfrage danach. Sie misst keinen Plattenplatz und darf
+    // den gerade gelieferten Wert deshalb auch nicht löschen: Genau dieses
+    // Überschreiben ließ die Anzeige von einer Zahl auf „—" springen.
+    await harness.service.handleAgentEvent(HOST.id, {
+      kind: 'event',
+      event: 'STATS_UPDATE',
+      serverId,
+      emittedAt: harness.now().toISOString(),
+      payload: { source: 'serverQuery', playersOnline: 7, playersMax: 20, pingMs: 11 },
+    } as never);
+
+    const platten = harness.emitted
+      .filter((e) => e.event === 'server.statsUpdated')
+      .map((e) => (e.payload as { stats: { diskUsedMb: number | null } }).stats.diskUsedMb);
+
+    expect(platten).toEqual([3_072, 3_072]);
+  });
+
+  it('lässt den Plattenplatz im Live-Rahmen leer, solange nichts gemessen ist', async () => {
+    /*
+     * „nicht gemessen" ist etwas anderes als „null Bytes belegt": Aus einer 0
+     * rechnete die Schwellwert-Prüfung „0 % belegt" und schwiege auch dann,
+     * wenn die Platte längst voll wäre. Der Agent des Testaufbaus meldet
+     * `diskUsedBytes` nicht – wie ein älterer Agent oder ein Ordner, den noch
+     * niemand durchlaufen hat.
+     */
+    const harness = makeHarness({ statsHistory: fakeAblage() });
+    const serverId = await laufenderServer(harness);
+
+    await harness.service.sampleServerStats(HOST.id);
+    await harness.service.handleAgentEvent(HOST.id, {
+      kind: 'event',
+      event: 'STATS_UPDATE',
+      serverId,
+      emittedAt: harness.now().toISOString(),
+      payload: { source: 'serverQuery', playersOnline: 1, playersMax: 20, pingMs: 9 },
+    } as never);
+
+    const gemeldet = harness.emitted.find((e) => e.event === 'server.statsUpdated');
+
+    expect(gemeldet?.payload).toMatchObject({ stats: { diskUsedMb: null } });
   });
 
   /*
