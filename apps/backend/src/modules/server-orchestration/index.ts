@@ -544,6 +544,7 @@ export {
   CLOCK_SKEW_TOLERANCE_MS,
   type ClockSkewCheck,
   ClockSkewMonitor,
+  LatestDiskUsageCache,
   LatestQueryCache,
   ServerLoadRegistry,
   type ServerStatsRepository,

@@ -74,35 +74,76 @@ describe('isServerQueryPayload', () => {
 
 describe('liveStatsFromAgentPayload', () => {
   /*
-   * Fundpunkt 168: `diskUsedBytes` ist im Vertrag optional. Ein älterer Agent
-   * kennt das Feld nicht, ein neuer lässt es weg, solange er den Datenordner
-   * noch nicht gemessen hat. Beide Fälle müssen zu `null` werden – „nicht
-   * gemessen", **nicht** „null Bytes belegt": Aus einer 0 rechnete die
-   * Schwellwert-Prüfung „0 % belegt" und schwiege auch bei voller Platte.
+   * Belegter Plattenplatz (Fundpunkte 168 und 175).
+   *
+   * Er steht in keiner der beiden `STATS_UPDATE`-Nutzlasten: Der Agent misst
+   * ihn am Datenordner, nicht im Statistik-Strom der Engine, und meldet ihn
+   * deshalb nur auf `GET_STATS`. Das Backend reicht den zuletzt abgetasteten
+   * Wert hier herein – in **beide** Zweige.
    */
-  it('rechnet den belegten Plattenplatz in MiB um', () => {
+  it('trägt den gemessenen Plattenplatz in den Live-Rahmen', () => {
     const stats = liveStatsFromAgentPayload(
-      { ...RUNTIME_STATS, diskUsedBytes: 3 * 1024 * 1024 * 1024 },
+      RUNTIME_STATS,
       EMPTY_QUERY_SNAPSHOT,
       RECEIVED_AT,
+      3_072,
     );
 
     expect(stats.diskUsedMb).toBe(3_072);
   });
 
-  it('lässt den Plattenplatz leer, wenn der Agent ihn nicht mitschickt', () => {
+  /*
+   * Der wichtigste Fall (Fundpunkt 175). Das Frontend ersetzt die Messwerte je
+   * Rahmen vollständig (`useServerLive`: `setStats(frame.data.stats)`). Stünde
+   * im Zweig der Server-Abfrage weiter ein festes `null`, löschte der nächste
+   * Abfrage-Rahmen den gerade gelieferten Wert wieder – die Kachel „Platte"
+   * spränge im Takt der Abfrage zwischen Zahl und „—".
+   */
+  it('überschreibt den gemessenen Plattenplatz nicht mit der Server-Abfrage', () => {
+    const stats = liveStatsFromAgentPayload(
+      QUERY_PAYLOAD,
+      EMPTY_QUERY_SNAPSHOT,
+      RECEIVED_AT,
+      3_072,
+    );
+
+    expect(stats.diskUsedMb).toBe(3_072);
+    // Was die Abfrage wirklich misst, bleibt davon unberührt.
+    expect(stats.playersOnline).toBe(7);
+    expect(stats.cpuPercent).toBeNull();
+  });
+
+  it('lässt den Plattenplatz leer, solange nichts gemessen ist', () => {
+    /*
+     * „nicht gemessen", **nicht** „null Bytes belegt": Aus einer 0 rechnete die
+     * Schwellwert-Prüfung „0 % belegt" und schwiege auch bei voller Platte.
+     */
     expect(
       liveStatsFromAgentPayload(RUNTIME_STATS, EMPTY_QUERY_SNAPSHOT, RECEIVED_AT).diskUsedMb,
     ).toBeNull();
 
-    // Auch ein unbrauchbarer Wert wird zu "nicht gemessen", nicht zu 0.
     expect(
-      liveStatsFromAgentPayload(
-        { ...RUNTIME_STATS, diskUsedBytes: 'viel' },
-        EMPTY_QUERY_SNAPSHOT,
-        RECEIVED_AT,
-      ).diskUsedMb,
+      liveStatsFromAgentPayload(QUERY_PAYLOAD, EMPTY_QUERY_SNAPSHOT, RECEIVED_AT).diskUsedMb,
     ).toBeNull();
+  });
+
+  it('liest den Plattenplatz nicht aus der Nutzlast des Live-Rahmens', () => {
+    /*
+     * Der Zweig, der `diskUsedBytes` aus der Nutzlast las, war nie erreichbar:
+     * Der Live-Rahmen entsteht aus dem agent-internen `ContainerStats` des
+     * Statistik-Stroms, und das kennt kein Feld für den Plattenplatz. Er ist
+     * entfernt – maßgeblich ist allein der abgetastete Wert. Sonst gäbe es zwei
+     * Quellen für dieselbe Zahl, und welche gewinnt, entschiede der Zufall der
+     * Reihenfolge.
+     */
+    const stats = liveStatsFromAgentPayload(
+      { ...RUNTIME_STATS, diskUsedBytes: 9 * 1024 * 1024 * 1024 },
+      EMPTY_QUERY_SNAPSHOT,
+      RECEIVED_AT,
+      3_072,
+    );
+
+    expect(stats.diskUsedMb).toBe(3_072);
   });
 
   it('rechnet die Messwerte der Container-Runtime in ServerLiveStats um', () => {

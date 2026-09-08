@@ -28,6 +28,35 @@ import { afterAll, describe, expect, it } from 'vitest';
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const DEPLOY_SH = path.resolve(HIER, '../../../../deploy/vps/deploy.sh');
 
+/**
+ * Gibt es eine Bash auf diesem Rechner?
+ *
+ * In der CI (Linux) immer. Auf einem Windows-Entwicklungsrechner liegt sie nur
+ * dann im PATH, wenn Git Bash dort eingetragen ist. Ohne diese Prüfung
+ * scheiterten die beiden ausführenden Tests mit `spawnSync bash ENOENT` — ein
+ * Fehlschlag, der nichts über den Code aussagt. Übersprungen **mit Grund**,
+ * nicht stillschweigend: Eine Suite, die aus Versehen nie läuft, sieht aus wie
+ * eine bestandene (dieselbe Linie wie `test-support/db.ts`).
+ */
+function bashVorhanden(): boolean {
+  try {
+    execFileSync('bash', ['-c', 'true'], { stdio: 'ignore' });
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const MIT_BASH = bashVorhanden();
+const nurMitBash = MIT_BASH ? {} : { skip: true };
+
+if (!MIT_BASH) {
+  console.info(
+    '[deploy.sh] Die ausführenden Tests werden übersprungen: keine bash im PATH. In der CI laufen sie.',
+  );
+}
+
 const aufraeumen: string[] = [];
 
 afterAll(() => {
@@ -80,7 +109,7 @@ function rufeAuf(pfad: string): string {
 }
 
 describe('deploy.sh – Warnung zu den Ablageorten (Fundpunkt 177)', () => {
-  it('warnt, wenn es den Ordner noch gar nicht gibt', () => {
+  it('warnt, wenn es den Ordner noch gar nicht gibt', nurMitBash, () => {
     const ordner = mkdtempSync(path.join(tmpdir(), 'palantir-deploy-'));
     aufraeumen.push(ordner);
 
@@ -92,7 +121,7 @@ describe('deploy.sh – Warnung zu den Ablageorten (Fundpunkt 177)', () => {
     expect(ausgabe).toContain('chown 1000:1000');
   });
 
-  it('schweigt, wenn der Ordner UID 1000 gehört', () => {
+  it('schweigt, wenn der Ordner UID 1000 gehört', nurMitBash, () => {
     const ordner = mkdtempSync(path.join(tmpdir(), 'palantir-deploy-'));
     aufraeumen.push(ordner);
 

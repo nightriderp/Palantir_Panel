@@ -144,9 +144,18 @@ function spielernamen(wert: unknown): readonly ServerLivePlayer[] {
  * - **Server-Abfrage** (`AgentServerQueryPayload`): Spielerzahl und Antwortzeit;
  *   die Engine-Werte bleiben `null`, weil die Abfrage sie nicht misst.
  *
- * Belegter Plattenplatz je Container ist in keiner der beiden Quellen enthalten
- * – dieselbe Lücke wie beim Verlauf (P5); die Speicherübersicht (B8) misst
- * node-weit.
+ * **Der belegte Plattenplatz steht in keiner der beiden Nutzlasten**
+ * (Fundpunkt 175). Er kommt nicht aus dem Statistik-Strom der Engine, sondern
+ * aus einer eigenen Messung des Agents am Datenordner, und die erreicht das
+ * Backend über `GET_STATS` – also über die Abtastung, nicht über den Strom.
+ * Deshalb wird er hier als eigener Wert hereingereicht (`diskUsedMb`), aus dem
+ * Zwischenspeicher der letzten Abtastung (`LatestDiskUsageCache`).
+ *
+ * Er steht bewusst in **beiden** Zweigen. Das Frontend ersetzt die Messwerte je
+ * Rahmen vollständig (`useServerLive`); stünde im Zweig der Server-Abfrage
+ * weiter ein festes `null`, löschte der nächste Abfrage-Rahmen den gerade erst
+ * gelieferten Wert wieder aus der Anzeige – die Platte spränge im Takt der
+ * Abfrage zwischen Zahl und „—".
  *
  * **`updatedAt` kommt vom Backend** (W2-14, orchestration-features-03). Die
  * Nutzlast trägt zwar eigene Zeitstempel (`sampledAt`, `at`) – die stammen aber
@@ -157,11 +166,15 @@ function spielernamen(wert: unknown): readonly ServerLivePlayer[] {
  * Diagramm nicht in zwei Zeitrechnungen laufen.
  *
  * @param receivedAt Zeit des Backends beim Empfang des Ereignisses (ISO-8601).
+ * @param diskUsedMb Zuletzt gemessener Plattenplatz des Datenordners in MiB;
+ *   `null` heißt „nicht gemessen", **nicht** „null Bytes belegt" – aus einer
+ *   fehlenden Messung darf nie eine Warnung entstehen.
  */
 export function liveStatsFromAgentPayload(
   payload: unknown,
   query: ServerQuerySnapshot,
   receivedAt: string,
+  diskUsedMb: number | null = null,
 ): ServerLiveStats {
   const daten = isRecord(payload) ? payload : {};
 
@@ -171,7 +184,7 @@ export function liveStatsFromAgentPayload(
     return {
       cpuPercent: null,
       ramUsedMb: null,
-      diskUsedMb: null,
+      diskUsedMb,
       pingMs: abfrage.pingMs,
       playersOnline: abfrage.playersOnline,
       playersMax: abfrage.playersMax,
@@ -185,18 +198,21 @@ export function liveStatsFromAgentPayload(
   }
 
   const memoryUsedBytes = numberOrNull(daten.memoryUsedBytes);
+
   /*
-   * Optional im Vertrag (Fundpunkt 168): Ein älterer Agent kennt das Feld
-   * nicht, ein neuer lässt es weg, solange er den Datenordner noch nicht
-   * gemessen hat. `numberOrNull` bildet beides auf `null` ab – „nicht
-   * gemessen", nicht „null Bytes belegt".
+   * `daten.diskUsedBytes` wird hier bewusst **nicht** gelesen (Fundpunkt 175).
+   * Das Feld ist zwar im Vertrag vorgesehen (`AgentContainerStats`, optional),
+   * der Live-Rahmen kann es aber gar nicht tragen: Er entsteht aus dem
+   * agent-internen `ContainerStats` des Statistik-Stroms, und das kennt kein
+   * Feld für den Plattenplatz. Der Zweig sah zwei Fundpunkte lang so aus, als
+   * täte er etwas, und war nie erreichbar. Der Wert kommt jetzt von oben,
+   * aus der Abtastung – siehe Kopf dieser Funktion.
    */
-  const diskUsedBytes = numberOrNull(daten.diskUsedBytes);
 
   return {
     cpuPercent: numberOrNull(daten.cpuPercent),
     ramUsedMb: memoryUsedBytes === null ? null : toMebibytes(memoryUsedBytes),
-    diskUsedMb: diskUsedBytes === null ? null : toMebibytes(diskUsedBytes),
+    diskUsedMb,
     pingMs: query.pingMs,
     playersOnline: query.playersOnline,
     playersMax: query.playersMax,

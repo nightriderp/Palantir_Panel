@@ -48,6 +48,7 @@ import { fireAndForget } from '../../lib/fire-and-forget.js';
 import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 import {
   ClockSkewMonitor,
+  LatestDiskUsageCache,
   LatestQueryCache,
   ServerLoadRegistry,
   type ServerStatsRepository,
@@ -277,6 +278,21 @@ export class ServerOrchestrationService {
    * `stats-history.ts`).
    */
   private readonly latestQuery = new LatestQueryCache(5 * 60 * 1000);
+  /**
+   * Zuletzt gemessener Plattenplatz je Server (Fundpunkt 175).
+   *
+   * Gefüllt beim Abtasten ({@link sampleServerStats}) – nur dort kommt der Wert
+   * überhaupt an, weil er an `GET_STATS` hängt und nicht am Statistik-Strom der
+   * Engine. Gelesen beim Live-Ereignis, damit die Anzeige ihn auch zwischen
+   * zwei Abtastungen behält.
+   *
+   * Fünf Minuten Frist, aus derselben Überlegung wie beim `latestQuery`: Der
+   * Agent misst den Datenordner ohnehin höchstens alle fünf Minuten neu
+   * (`DEFAULT_DISK_USAGE_TTL_MS`). Ist der letzte Wert älter, hat nicht die
+   * Messung gestockt, sondern die Zustellung – dann ist „—" ehrlicher als eine
+   * Zahl von vorhin.
+   */
+  private readonly latestDiskUsage = new LatestDiskUsageCache(5 * 60 * 1000);
   /**
    * Abgleich der Agent-Uhr gegen die eigene (W2-14,
    * orchestration-features-03).
@@ -1344,16 +1360,17 @@ export class ServerOrchestrationService {
 
     /*
      * Flüchtigen Zustand des Servers abräumen (Audit orchestration-features-13,
-     * Fundpunkt 137). Beide Speicher liegen nur im Prozess und hingen bisher
+     * Fundpunkt 137). Die Speicher liegen nur im Prozess und hingen bisher
      * bis zum Neustart am gelöschten Server: die zuletzt gemeldete Abfrage
-     * (Spielerzahl, Ping) und der Zeitpunkt der letzten Uhren-Meldung. Kleines,
-     * aber unbegrenztes Wachstum – und ein wiederverwendeter Datensatz gäbe es
-     * nicht, weil Ids nicht wiederkehren.
+     * (Spielerzahl, Ping), der zuletzt gemessene Plattenplatz und der Zeitpunkt
+     * der letzten Uhren-Meldung. Kleines, aber unbegrenztes Wachstum – und ein
+     * wiederverwendeter Datensatz gäbe es nicht, weil Ids nicht wiederkehren.
      *
      * Nach dem Löschen des Datensatzes, nicht davor: Bricht das Löschen ab,
      * bleibt der Server bestehen und behält seine Werte.
      */
     this.latestQuery.forget(serverId);
+    this.latestDiskUsage.forget(serverId);
     this.clockSkew.forget(serverId);
 
     this.deps.events.emit('server.deleted', geloescht);
@@ -2356,10 +2373,19 @@ export class ServerOrchestrationService {
       );
     }
 
+    /*
+     * Der belegte Plattenplatz kommt aus der Abtastung, nicht aus dem
+     * Ereignis (Fundpunkt 175): Keine der beiden `STATS_UPDATE`-Nutzlasten
+     * trägt ihn. Ohne diese Beigabe stünde in jedem Live-Rahmen `null` – und
+     * weil das Frontend die Messwerte je Rahmen vollständig ersetzt, bliebe die
+     * Kachel „Platte" dauerhaft auf „—", obwohl der Wert im Verlauf und in der
+     * Ressourcen-Warnung längst steht.
+     */
     const stats = liveStatsFromAgentPayload(
       frame.payload,
       this.latestQuery.read(server.id, abgleich.recordedAt),
       abgleich.recordedAt.toISOString(),
+      this.latestDiskUsage.read(server.id, abgleich.recordedAt),
     );
 
     if (stats.playersOnline !== null && stats.playersOnline > 0) {
@@ -2433,6 +2459,15 @@ export class ServerOrchestrationService {
           stats.diskUsedBytes === undefined
             ? null
             : Math.round(stats.diskUsedBytes / (1024 * 1024));
+
+        /*
+         * Für den Live-Kanal merken (Fundpunkt 175). Dies ist die **einzige**
+         * Stelle, an der der Plattenplatz überhaupt ankommt: Er hängt an
+         * `GET_STATS` und nicht am Statistik-Strom der Engine. Ohne diese Zeile
+         * bliebe die Kachel „Platte" in der Live-Anzeige dauerhaft leer,
+         * während Verlauf und Ressourcen-Warnung denselben Wert schon führen.
+         */
+        this.latestDiskUsage.remember(server.id, diskUsedMb, moment);
 
         const probe: StatsSample = {
           serverId: server.id,
