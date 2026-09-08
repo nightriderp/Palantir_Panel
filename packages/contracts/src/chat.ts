@@ -47,6 +47,31 @@ export const MESSAGE_PAGE_DEFAULT_LIMIT = 50;
 export const MESSAGE_PAGE_MAX_LIMIT = 200;
 
 // ---------------------------------------------------------------------------
+// Gelöschte Konten (Fundpunkt 141)
+// ---------------------------------------------------------------------------
+
+/**
+ * Anzeigename, der an die Stelle eines entfernten Kontos tritt.
+ *
+ * Steht im Vertrag und nicht je einmal in Backend und Frontend: Der Text
+ * erscheint im Chatverlauf **und** in der Moderationsansicht. Zwei getrennte
+ * Schreibweisen – „Unbekanntes Konto“ an der einen, „Gelöschter Nutzer“ an der
+ * anderen Stelle – hätten dieselbe Lage unterschiedlich benannt und den
+ * Betrachter raten lassen, ob es sich um zwei verschiedene Fälle handelt.
+ *
+ * Die Wortwahl ist eine Vorgabe des Betreibers („unknown user“, hier in der
+ * durchgehend deutschen Oberfläche als „Unbekanntes Konto“). Sie sagt dem
+ * Betrachter bewusst nicht, warum das Konto fort ist – die Nachricht bleibt
+ * lesbar, die Person dahinter nicht mehr benennbar.
+ *
+ * **Der Text ist Anzeige, kein Kennzeichen.** Ein Anzeigename ist frei wählbar
+ * (2–32 Zeichen, `displayNameSchema`); ein bestehendes Konto darf sich genauso
+ * nennen. Wer auswertet, ob es das Konto noch gibt, prüft deshalb
+ * `senderId === null` bzw. `reportedById === null` – niemals diese Zeichenkette.
+ */
+export const DELETED_ACCOUNT_DISPLAY_NAME = 'Unbekanntes Konto';
+
+// ---------------------------------------------------------------------------
 // Conversation
 // ---------------------------------------------------------------------------
 
@@ -178,8 +203,36 @@ export interface MessagePermissions {
 export interface MessageDto {
   id: string;
   conversationId: string;
-  senderId: string;
-  /** Anzeigename des Absenders zum Zeitpunkt der Abfrage. */
+  /**
+   * Absender; `null`, wenn dessen Konto gelöscht wurde (Fundpunkt 141).
+   *
+   * Bis hierher nahm das Löschen eines Kontos dessen Nachrichten mit und mit
+   * ihnen jede Meldung gegen sie – einschließlich der Beweiskopie des
+   * gemeldeten Textes. Das Recht, das eigene Konto löschen zu lassen
+   * (Lastenheft §3.1), hing damit am Tempo der Moderation, und eine offene
+   * Meldung ließ sich durch Löschen des eigenen Kontos aus der Welt schaffen.
+   * Beides ist falsch herum: Die Nachricht bleibt stehen, der Absender wird
+   * geleert.
+   *
+   * `null` und **kein** Platzhalter-Wert: Eine erfundene Kennung – „deleted",
+   * eine Sammel-UUID, ein Schattenkonto – wäre für jeden Vergleich eine
+   * gültige Id. „Mein eigener Beitrag" (`senderId === viewerId`), das
+   * Zusammenfassen aufeinanderfolgender Beiträge desselben Absenders und jeder
+   * Verweis auf ein Profil würden gelöschte Konten fälschlich zu einer Person
+   * verschmelzen: Aus zehn verschwundenen Absendern würde einer. `null` ist an
+   * keiner dieser Stellen ein Treffer und zwingt den Aufrufer, den Fall zu
+   * behandeln, statt ihn stillschweigend falsch zu behandeln.
+   */
+  senderId: string | null;
+  /**
+   * Anzeigename des Absenders zum Zeitpunkt der Abfrage; bei gelöschtem Konto
+   * {@link DELETED_ACCOUNT_DISPLAY_NAME}.
+   *
+   * Bleibt eine Zeichenkette und wird **nie** `null`: Jede Zeile des Verlaufs
+   * braucht etwas Anzeigbares. Wäre das Feld nullbar, entschiede jede Ansicht
+   * für sich, was stattdessen dasteht – genau die Uneinheitlichkeit, die die
+   * Konstante verhindert.
+   */
   senderDisplayName: string;
   /** Inhalt; bei gelöschten Nachrichten leer (`''`). */
   content: string;
@@ -190,6 +243,11 @@ export interface MessageDto {
   /**
    * Wurde die Nachricht im Zuge einer Meldung entfernt (`true`) oder vom
    * Absender selbst (`false`)? `null`, solange sie steht.
+   *
+   * Das Backend entscheidet das und liefert es fertig aus – es darf **nicht**
+   * aus einem Vergleich von Absender und Löschendem abgeleitet werden: Ist das
+   * Absender-Konto gelöscht, sind beide Kennungen `null`, und der Vergleich
+   * behauptete „vom Absender selbst gelöscht" (Fundpunkt 141).
    */
   deletedByModerator: boolean | null;
   /**
@@ -257,7 +315,22 @@ export function isMessageModerationAction(value: string): value is MessageModera
  */
 export interface ReportedMessageDto {
   id: string;
-  senderId: string;
+  /**
+   * Absender der gemeldeten Nachricht; `null`, wenn dessen Konto gelöscht
+   * wurde (Fundpunkt 141) – gleiche Bedeutung und gleiche Begründung wie bei
+   * {@link MessageDto.senderId}.
+   *
+   * Hier wiegt der Fall am schwersten: Verschwand mit dem Konto die Nachricht,
+   * verschwand mit ihr die Meldung und damit `reportedContent`, die einzige
+   * Beweiskopie des gemeldeten Textes. Eine Meldung stand danach nicht etwa
+   * namenlos da – sie war fort. Der Vorgang bleibt jetzt vollständig, nur ohne
+   * Zuordnung zu einem bestehenden Konto.
+   */
+  senderId: string | null;
+  /**
+   * Anzeigename des Absenders; bei gelöschtem Konto
+   * {@link DELETED_ACCOUNT_DISPLAY_NAME}. Nie `null`.
+   */
   senderDisplayName: string;
   /** Inhalt zum Zeitpunkt der Meldung; bleibt lesbar, auch wenn die Nachricht gelöscht wurde. */
   content: string;
@@ -288,7 +361,28 @@ export interface MessageReportDto {
   conversationType: ConversationType;
   /** Nur beim `server_chat` gesetzt. */
   serverId: string | null;
-  reportedById: string;
+  /**
+   * Meldendes Konto; `null`, wenn es gelöscht wurde (Fundpunkt 141).
+   *
+   * Dieselbe Fehlerklasse wie beim Absender, nur von der anderen Seite: Bis
+   * hierher nahm das Löschen des Melder-Kontos die Meldung mit, samt der
+   * Beweiskopie, die für die Entscheidung gebraucht wird. Wer eine Belästigung
+   * meldet und danach – womöglich gerade deswegen – sein Konto löscht, hätte
+   * damit ungewollt seine eigene Meldung zurückgezogen. Die Entscheidung eines
+   * Moderators überlebt das Löschen seines Kontos bereits
+   * ({@link MessageReportDto.resolvedById}); für die meldende Person gilt ab
+   * jetzt dasselbe.
+   *
+   * `null` statt Platzhalter aus demselben Grund wie bei
+   * {@link MessageDto.senderId}: `canView` einer Meldung hängt daran, ob der
+   * Betrachter selbst der Melder ist. Eine Sammelkennung machte jedes gelöschte
+   * Konto zum Melder jeder Meldung eines gelöschten Kontos.
+   */
+  reportedById: string | null;
+  /**
+   * Anzeigename der meldenden Person; bei gelöschtem Konto
+   * {@link DELETED_ACCOUNT_DISPLAY_NAME}. Nie `null`.
+   */
   reportedByDisplayName: string;
   reason: string;
   status: MessageReportStatus;
@@ -352,7 +446,16 @@ export function isChatEventName(value: string): value is ChatEventName {
   return (CHAT_EVENTS as readonly string[]).includes(value);
 }
 
-/** Nutzdaten je Ereignis des Chat-Kanals. */
+/**
+ * Nutzdaten je Ereignis des Chat-Kanals.
+ *
+ * Eine Absender-Kennung steht in **keinem** Frame ein zweites Mal:
+ * `message.sent` trägt den vollständigen {@link MessageDto},
+ * `conversation.created` den {@link ConversationDto}. Der `null`-Fall aus
+ * Fundpunkt 141 kommt damit über den DTO und muss hier nicht getrennt geführt
+ * werden – eine gespiegelte Kennung wäre die zweite Stelle, an der er hätte
+ * vergessen werden können.
+ */
 export type ChatEventPayloads = {
   'message.sent': { conversationId: string; message: MessageDto };
   'message.deleted': {
