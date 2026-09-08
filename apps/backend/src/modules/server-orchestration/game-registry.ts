@@ -25,6 +25,9 @@
  * Benutzerwechsel zur Laufzeit. Die Abfrage über `gamedig` bleibt eingehängt
  * und wartet auf die erste Definition mit `query.kind: 'gamedig'`
  * (WORK_STATUS.md, Gefundener Punkt 113).
+ *
+ * **Minecraft steht seit `images/minecraft` wieder hier** – als eigenes Image,
+ * das genau diese Regeln einhält (`MINECRAFT_PAPER_GAME_TYPE` unten).
  */
 
 import { type GameTypeDefinition, type GameTypeDto } from '@palantir/contracts';
@@ -233,6 +236,214 @@ export const TEST_MINECRAFT_GAME_TYPE: GameTypeDefinition = {
 };
 
 /**
+ * Minecraft mit Paper – das erste echte Spiel (Lastenheft §7 „Ausbaustufe 2",
+ * Anhang A nennt für die Minecraft-Familie ausdrücklich Paper).
+ *
+ * **Eigenes Image, kein fremdes.** `itzg/minecraft-server` stand hier schon
+ * einmal und ist an der Härtung gescheitert (siehe Kopfkommentar). Das Image
+ * unter `images/minecraft` hält die Regeln von sich aus ein: fester Benutzer
+ * UID 1000, kein `chown`, kein Benutzerwechsel zur Laufzeit, geschrieben wird
+ * nur in den Datenordner.
+ *
+ * **`supportsVirtualHostRouting` ist `false`**, obwohl Minecraft genau der Fall
+ * ist, für den das Hostname-Routing gedacht ist (Pflichtenheft §13): Der dafür
+ * nötige Router (Infrared auf `MINECRAFT_ROUTER_PORT`) läuft noch nicht, das ist
+ * ein eigenes Arbeitspaket. Ein `true` erzeugte hier einen CNAME auf einen
+ * Router, den es nicht gibt – der Spieler bekäme eine Adresse, unter der nichts
+ * antwortet. Bis dahin vergibt das Panel einen Port aus dem Bereich
+ * 25000–25564, so wie beim Prüfstand.
+ *
+ * **`startupTimeoutSeconds` ist großzügig**, weil der *erste* Start deutlich
+ * länger dauert als jeder folgende: Die Paper-Jar liegt zwar im Image, sie holt
+ * beim ersten Lauf aber den Server von Mojang nach (der darf nicht weitergegeben
+ * werden), patcht ihn und erzeugt anschließend die Welt. Zehn Minuten decken das
+ * auf einem Homeserver ab; spätere Starts brauchen eine knappe Minute. Der
+ * Health-Check läuft neben dem Request (`service.ts`), es wartet also niemand
+ * darauf.
+ *
+ * **Der Heap kommt aus dem RAM-Kontingent**, aber nicht über eine
+ * Umgebungsvariable: Das Kontingent erreicht den Container nur als cgroup-Grenze
+ * (`HostConfig.Memory`), und `start.sh` rechnet daraus „Kontingent minus
+ * Rücklage". Ohne das nähme die JVM ihren Standard von einem Viertel der Grenze.
+ */
+export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
+  id: 'minecraft-paper',
+  name: 'Minecraft (Paper)',
+  description:
+    'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-minecraft:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 25_565,
+      protocol: 'tcp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  /*
+   * Bewusst kurz gehalten. Aufgenommen ist, was ein Betreiber beim Anlegen
+   * wirklich entscheidet; alles Übrige – `online-mode`, `level-seed`,
+   * `spawn-protection`, Plugins, Ops – setzt er in der Konsole oder über die
+   * Dateiverwaltung direkt in `server.properties`. Das Startskript fasst genau
+   * die Schlüssel an, die hier stehen, und lässt die übrigen unberührt.
+   */
+  configFields: [
+    {
+      key: 'eula',
+      label: 'EULA von Mojang angenommen',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Ein Minecraft-Server darf nur mit Zustimmung zur Endnutzer-Lizenzvereinbarung von Mojang betrieben werden (https://aka.ms/MinecraftEULA). Ohne diese Zustimmung startet der Server nicht.',
+      required: true,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'motd',
+      label: 'Serverbeschreibung',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: 'Steht in der Serverliste des Spielers unter dem Namen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 20,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 200,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'gamemode',
+      label: 'Spielmodus',
+      type: 'select',
+      defaultValue: 'survival',
+      description: 'Gilt für neu verbindende Spieler.',
+      required: false,
+      options: ['survival', 'creative', 'adventure', 'spectator'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'difficulty',
+      label: 'Schwierigkeit',
+      type: 'select',
+      defaultValue: 'normal',
+      description: null,
+      required: false,
+      options: ['peaceful', 'easy', 'normal', 'hard'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'viewDistance',
+      label: 'Sichtweite (Chunks)',
+      type: 'number',
+      defaultValue: 10,
+      description:
+        'Der größte Hebel für den Ressourcenbedarf: Jeder Chunk mehr kostet Arbeitsspeicher und Rechenzeit für jeden Spieler.',
+      required: false,
+      options: [],
+      min: 3,
+      max: 32,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'whitelist',
+      label: 'Nur zugelassene Spieler',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Lässt nur Spieler auf der Whitelist zu. Die Liste selbst wird in der Konsole gepflegt (`palantir-console whitelist add <Name>`).',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    eula: 'EULA',
+    motd: 'MOTD',
+    maxPlayers: 'MAX_PLAYERS',
+    gamemode: 'GAMEMODE',
+    difficulty: 'DIFFICULTY',
+    viewDistance: 'VIEW_DISTANCE',
+    whitelist: 'WHITELIST',
+  },
+  /*
+   * Alle sieben Werte liest `start.sh` beim Start aus der Umgebung und schreibt
+   * sie nach `server.properties`; der laufende Server sieht eine Änderung also
+   * erst nach einem Neustart. Wer die Wirkung sofort will, setzt sie zusätzlich
+   * über die Konsole (`difficulty hard`) – das Panel bleibt trotzdem die Quelle
+   * für den nächsten Start.
+   */
+  restartRequiredFields: [
+    'eula',
+    'motd',
+    'maxPlayers',
+    'gamemode',
+    'difficulty',
+    'viewDistance',
+    'whitelist',
+  ],
+  /*
+   * Realistisch für Paper, nicht die 256 MiB des Prüfstands. 4 GiB sind die
+   * übliche Empfehlung für eine Handvoll Spieler: Davon gehen laut `start.sh`
+   * 3 GiB in den Heap, der Rest deckt Metaspace, Code-Cache und die
+   * Direktpuffer von Netty. Mit 1 GiB liefe der Server, aber unter Last in
+   * Dauer-GC. Der Betreiber kann die Werte im Wizard ändern.
+   */
+  resourceDefaults: {
+    ramMb: 4_096,
+    cpuCores: 2,
+    diskMb: 10_240,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'minecraft',
+    containerPort: 25_565,
+  },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  /*
+   * Das Image schreibt ausschließlich in den Datenordner – auch das temporäre
+   * Verzeichnis der JVM liegt dort (`-Djava.io.tmpdir`), weil `/tmp` als
+   * `noexec`-tmpfs eingehängt wird und Netty seine native Bibliothek dort
+   * entpacken und ausführen würde. `/tmp` bleibt trotzdem beschreibbar: Es ist
+   * der Ort, an dem eine JVM ohne weiteres Zutun landet.
+   */
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  /*
+   * Paper speichert beim Herunterfahren die ganze Welt. 15 Sekunden wie beim
+   * Prüfstand reichten dafür bei einer gewachsenen Welt nicht; danach käme
+   * SIGKILL und mit ihm ein möglicher Datenverlust.
+   */
+  stopTimeoutSeconds: 60,
+  startupTimeoutSeconds: 600,
+  phase: 2,
+};
+
+/**
  * Alle bekannten Spiele-Definitionen.
  *
  * Reihenfolge = Anzeigereihenfolge im Server-erstellen-Wizard (F3).
@@ -240,6 +451,7 @@ export const TEST_MINECRAFT_GAME_TYPE: GameTypeDefinition = {
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
+  MINECRAFT_PAPER_GAME_TYPE,
 ];
 
 /** Ausbaustufe, die diese Installation erreicht hat (Lastenheft §3.5). */

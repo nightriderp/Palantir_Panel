@@ -1,0 +1,10 @@
+{
+  "name": "@palantir/minecraft-image",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Minecraft-Server (Paper) als eigenes Spiel-Image. Diese package.json existiert nur, damit `pnpm test` im Repo-Wurzelverzeichnis die Tests des Startskripts mitlaufen lässt; ins Image kopiert wird sie nicht (siehe Dockerfile).",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "node --test"
+  }
+}

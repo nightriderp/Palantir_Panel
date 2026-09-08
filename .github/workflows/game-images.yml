@@ -62,7 +62,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [test-minecraft]
+        # `minecraft` ist das echte Spiel-Image (Paper), `test-minecraft` der
+        # Prüfstand daneben. Beide bauen unabhängig voneinander –
+        # `fail-fast: false` oben sorgt dafür, dass ein Fehlschlag beim einen den
+        # anderen nicht abwürgt.
+        image: [test-minecraft, minecraft]
 
     steps:
       - name: Repository auschecken

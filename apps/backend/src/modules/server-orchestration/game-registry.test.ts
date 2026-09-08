@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { type ServerOrchestrationError } from './errors.js';
 import {
   GAME_TYPE_DEFINITIONS,
+  MINECRAFT_PAPER_GAME_TYPE,
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
   buildContainerEnv,
@@ -228,5 +229,93 @@ describe('Test-Typ mit Minecraft-Protokoll (Gefundener Punkt 113)', () => {
     expect(Object.keys(TEST_MINECRAFT_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
     // Alle vier liest der Server beim Start - geaendert wirken sie erst danach.
     expect([...(TEST_MINECRAFT_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+});
+
+describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe 2)', () => {
+  it('ist erst ab Ausbaustufe 2 auswählbar', () => {
+    expect(() => createGameRegistry(1).requireSelectable('minecraft-paper')).toThrow();
+    expect(createGameRegistry(2).requireSelectable('minecraft-paper').id).toBe('minecraft-paper');
+  });
+
+  it('zeigt auf eine feste Fassung des eigenen Images', () => {
+    // Ein Spiel-Image-Tag wird nie überschrieben (game-images.yml). Wer
+    // `images/minecraft/VERSION` erhöht, muss diese Zeile nachziehen – sonst
+    // liefe die Node weiter auf der alten Fassung, ohne dass es auffiele.
+    expect(MINECRAFT_PAPER_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-minecraft:1');
+  });
+
+  it('wird über gamedig abgefragt', () => {
+    expect(MINECRAFT_PAPER_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'minecraft',
+      containerPort: 25_565,
+    });
+  });
+
+  it('nimmt einen Port aus dem Bereich, solange kein Hostname-Router läuft', () => {
+    // Infrared läuft noch nicht; ein `true` erzeugte einen CNAME ins Leere.
+    expect(MINECRAFT_PAPER_GAME_TYPE.supportsVirtualHostRouting).toBe(false);
+  });
+
+  it('erlaubt den Import bestehender Weltdaten', () => {
+    expect(MINECRAFT_PAPER_GAME_TYPE.supportsWorldImport).toBe(true);
+  });
+
+  it('bildet jedes Konfigurationsfeld ab und verlangt für jedes einen Neustart', () => {
+    const felder = MINECRAFT_PAPER_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(MINECRAFT_PAPER_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    // Alle liest das Startskript einmalig beim Start aus der Umgebung.
+    expect([...(MINECRAFT_PAPER_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+
+  it('lässt die EULA von Mojang unangenommen, bis der Betreiber zustimmt', () => {
+    const feld = MINECRAFT_PAPER_GAME_TYPE.configFields.find((eintrag) => eintrag.key === 'eula');
+
+    expect(feld?.type).toBe('toggle');
+    expect(feld?.defaultValue).toBe(false);
+    expect(feld?.required).toBe(true);
+    // Nachträglich zustimmen können muss möglich sein, ohne den Server neu
+    // anzulegen.
+    expect(feld?.lockedAfterCreate).toBe(false);
+  });
+
+  it('reicht die Zustimmung als EULA an den Container durch', () => {
+    // Genau diese Zeichenkette vergleicht `images/minecraft/start.sh`. Ein
+    // umbenanntes Feld oder eine andere Variable ließe den Server dauerhaft mit
+    // „EULA nicht angenommen" stehenbleiben.
+    const ohne = buildContainerEnv(
+      MINECRAFT_PAPER_GAME_TYPE,
+      buildServerConfig(MINECRAFT_PAPER_GAME_TYPE),
+    );
+
+    expect(ohne.EULA).toBe('false');
+
+    const mit = buildContainerEnv(
+      MINECRAFT_PAPER_GAME_TYPE,
+      buildServerConfig(MINECRAFT_PAPER_GAME_TYPE, { eula: true }),
+    );
+
+    expect(mit.EULA).toBe('true');
+  });
+
+  it('schreibt nur in den Datenordner und ein tmpfs', () => {
+    expect(MINECRAFT_PAPER_GAME_TYPE.readOnlyRootFilesystem).toBe(true);
+    expect(MINECRAFT_PAPER_GAME_TYPE.dataVolumeContainerPath).toBe('/data');
+    expect(MINECRAFT_PAPER_GAME_TYPE.tmpfsPaths).toEqual(['/tmp']);
+  });
+
+  it('lässt dem ersten Start Zeit und dem Herunterfahren Kulanz', () => {
+    // Der erste Start lädt den Server von Mojang nach, patcht ihn und erzeugt
+    // die Welt; das Herunterfahren speichert sie.
+    expect(MINECRAFT_PAPER_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(600);
+    expect(MINECRAFT_PAPER_GAME_TYPE.stopTimeoutSeconds ?? 0).toBeGreaterThanOrEqual(60);
+  });
+
+  it('empfiehlt Ressourcen, mit denen Paper wirklich läuft', () => {
+    // Mit den 256 MiB des Prüfstands startet keine JVM sinnvoll.
+    expect(MINECRAFT_PAPER_GAME_TYPE.resourceDefaults.ramMb).toBeGreaterThanOrEqual(2_048);
+    expect(MINECRAFT_PAPER_GAME_TYPE.resourceDefaults.cpuCores).toBeGreaterThanOrEqual(1);
   });
 });
