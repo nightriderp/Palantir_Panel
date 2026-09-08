@@ -245,7 +245,17 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
     messages: readonly MessageRecord[],
     extraUserIds: readonly string[] = [],
   ): Promise<MessageDtoContext> {
-    const userIds = [...new Set([...messages.map((m) => m.senderId), ...extraUserIds])];
+    /*
+     * `null`-Kennungen fliegen raus, bevor nachgeschlagen wird (Fundpunkt 141):
+     * Die Nachricht eines gelöschten Kontos trägt keine Absender-Id mehr. Eine
+     * `null` in der Liste ginge als Schlüssel in die `IN`-Abfrage und käme
+     * bestenfalls ohne Treffer zurück – schlimmstenfalls sucht sie eine Spalte
+     * ab, die sie nie finden kann. Den Anzeigenamen setzt `nameOf()` in
+     * `dto.ts` ein.
+     */
+    const userIds = [
+      ...new Set([...messages.map((m) => m.senderId), ...extraUserIds].filter((id) => id !== null)),
+    ];
 
     const [displayNames, reportedByViewer] = await Promise.all([
       users.displayNames(userIds),
@@ -710,7 +720,10 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
        * `computeMessagePermissions` ein. Also einmal laden und je Empfänger
        * ausschließlich die Sicht austauschen.
        */
-      const displayNames = await users.displayNames([message.senderId]);
+      // `viewerId` statt `message.senderId`: derselbe Wert – die Nachricht ist
+      // gerade eben von diesem Konto entstanden –, aber ohne den `null`-Fall
+      // aus Fundpunkt 141, den der Datensatz seit dem `SET NULL` mitbringt.
+      const displayNames = await users.displayNames([viewerId]);
       const reportedByViewer: ReadonlySet<string> = new Set<string>();
 
       /*
@@ -769,7 +782,12 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
        * Reihenfolge. Wer die Löschung beansprucht, entscheidet deshalb das
        * bedingte `UPDATE` (Audit W3-4, `backend-community-12`).
        */
-      const beansprucht = await repository.markMessageDeleted(messageId, viewerId, deletedAt);
+      const beansprucht = await repository.markMessageDeleted(
+        messageId,
+        viewerId,
+        deletedAt,
+        false,
+      );
 
       if (!beansprucht) {
         throw new ChatError('MESSAGE_ALREADY_DELETED');

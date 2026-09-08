@@ -197,6 +197,13 @@
       "when": 1788786802386,
       "tag": "0027_schema_feinschliff_indizes",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788856437963,
+      "tag": "0028_geloeschtes_konto_behaelt_nachrichten",
+      "breakpoints": true
     }
   ]
 }

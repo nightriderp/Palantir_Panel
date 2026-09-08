@@ -139,6 +139,133 @@ describeDatenbank('Chat-Repositories gegen PostgreSQL', (kontext) => {
     ).rejects.toThrow(ChatError);
   });
 
+  it('behält Nachricht und Meldung, wenn sich ein Konto löscht, und leert nur die Kennung', async () => {
+    /*
+     * Fundpunkt 141. Vorher standen `messages.sender_id` und
+     * `message_reports.reported_by_id` auf `ON DELETE CASCADE`: Mit dem Konto
+     * verschwand seine Hälfte **fremder** Unterhaltungen, und mit dem Konto der
+     * meldenden Person die Meldung samt `reported_content` – der einzigen
+     * Beweiskopie des gemeldeten Textes.
+     *
+     * Geprüft wird die Datenbank selbst, nicht der Dienst: Die Kaskade ist eine
+     * Zusage des Schemas, und nur ein echtes `DELETE` zeigt, ob sie hält.
+     */
+    const repository = createDrizzleChatRepository(kontext.db);
+    const absender = await legeNutzerAn(kontext.db);
+    const melder = await legeNutzerAn(kontext.db);
+    const unterhaltung = await repository.createConversation({
+      type: 'dm',
+      serverId: null,
+      dmKey: `loeschung-${absender}`,
+      participantIds: [absender, melder],
+    });
+
+    const nachricht = await repository.createMessage({
+      conversationId: unterhaltung.id,
+      senderId: absender,
+      content: 'Bleibt stehen',
+    });
+
+    const meldung = await repository.createReport({
+      messageId: nachricht.id,
+      reportedById: melder,
+      reason: 'Beleidigung',
+      reportedContent: nachricht.content,
+    });
+
+    await kontext.roh('delete from users where id = $1', [absender]);
+
+    const ohneAbsender = await repository.findMessage(nachricht.id);
+
+    expect(ohneAbsender).not.toBeNull();
+    expect(ohneAbsender?.senderId).toBeNull();
+    // Der Inhalt bleibt – für das Gegenüber bliebe sonst ein halbes Gespräch.
+    expect(ohneAbsender?.content).toBe('Bleibt stehen');
+
+    await kontext.roh('delete from users where id = $1', [melder]);
+
+    const ohneMelder = await repository.findReport(meldung.id);
+
+    expect(ohneMelder).not.toBeNull();
+    expect(ohneMelder?.reportedById).toBeNull();
+    // Die Beweiskopie überlebt beide Löschungen – der Vorgang bleibt
+    // entscheidbar, nur ohne Zuordnung zu bestehenden Konten.
+    expect(ohneMelder?.reportedContent).toBe('Bleibt stehen');
+    expect(ohneMelder?.status).toBe('open');
+  });
+
+  it('zählt die Nachricht eines gelöschten Kontos weiter als ungelesen', async () => {
+    /*
+     * Die gefährlichste Stelle des Fundpunkts, weil sie stillschweigend
+     * scheitert: Die Bedingung „nicht von mir selbst" hieß `sender_id <>
+     * $leser`. In SQL ergibt `NULL <> uuid` weder wahr noch falsch, sondern
+     * `NULL` – und `WHERE` lässt nur durch, was wahr ist. Nachrichten eines
+     * gelöschten Kontos wären damit aus der Zählung gefallen, ohne Fehler und
+     * ohne Warnung; der Leser hätte ungelesene Nachrichten nie angeboten
+     * bekommen. Mit `is null or <>` bleiben sie drin.
+     *
+     * Gegenprobe: Ersetzt man in `unreadCounts` das `or(isNull(…), ne(…))`
+     * wieder durch das bloße `ne(…)`, fällt die zweite Erwartung auf 0.
+     */
+    const repository = createDrizzleChatRepository(kontext.db);
+    const leser = await legeNutzerAn(kontext.db);
+    const absender = await legeNutzerAn(kontext.db);
+    const unterhaltung = await repository.createConversation({
+      type: 'dm',
+      serverId: null,
+      dmKey: `ungelesen-geloescht-${leser}`,
+      participantIds: [leser, absender],
+    });
+
+    await repository.createMessage({
+      conversationId: unterhaltung.id,
+      senderId: absender,
+      content: 'noch ungelesen',
+    });
+
+    expect((await repository.unreadCounts(leser, [unterhaltung.id])).get(unterhaltung.id)).toBe(1);
+
+    await kontext.roh('delete from users where id = $1', [absender]);
+
+    expect((await repository.unreadCounts(leser, [unterhaltung.id])).get(unterhaltung.id)).toBe(1);
+  });
+
+  it('hält fest, ob ein Moderator gelöscht hat – auch wenn danach beide Konten fehlen', async () => {
+    /*
+     * `deletedByModerator` wird geführt und nicht aus `deleted_by_id !==
+     * sender_id` erschlossen (so verlangt es `MessageDto.deletedByModerator`).
+     * Sind Absender **und** Moderator gelöscht, sind beide Kennungen `null`;
+     * der Vergleich ergäbe `false` und die Zeile behauptete „vom Absender
+     * zurückgenommen", wo eine Moderationsentscheidung stand.
+     */
+    const repository = createDrizzleChatRepository(kontext.db);
+    const absender = await legeNutzerAn(kontext.db);
+    const moderator = await legeNutzerAn(kontext.db);
+    const unterhaltung = await repository.createConversation({
+      type: 'dm',
+      serverId: null,
+      dmKey: `herkunft-${absender}`,
+      participantIds: [absender, moderator],
+    });
+
+    const nachricht = await repository.createMessage({
+      conversationId: unterhaltung.id,
+      senderId: absender,
+      content: 'entfernt',
+    });
+
+    await repository.markMessageDeleted(nachricht.id, moderator, new Date(), true);
+
+    await kontext.roh('delete from users where id = $1', [absender]);
+    await kontext.roh('delete from users where id = $1', [moderator]);
+
+    const danach = await repository.findMessage(nachricht.id);
+
+    expect(danach?.senderId).toBeNull();
+    expect(danach?.deletedById).toBeNull();
+    expect(danach?.deletedByModerator).toBe(true);
+  });
+
   it('zählt nur fremde, ungelöschte Nachrichten nach dem Lesestand als ungelesen', async () => {
     const repository = createDrizzleChatRepository(kontext.db);
     const leser = await legeNutzerAn(kontext.db);
@@ -187,7 +314,7 @@ describeDatenbank('Chat-Repositories gegen PostgreSQL', (kontext) => {
       senderId: anderer,
       content: 'zurückgezogen',
     });
-    await repository.markMessageDeleted(geloescht.id, anderer, new Date());
+    await repository.markMessageDeleted(geloescht.id, anderer, new Date(), false);
 
     const anzahl = await repository.unreadCounts(leser, [unterhaltung.id]);
 

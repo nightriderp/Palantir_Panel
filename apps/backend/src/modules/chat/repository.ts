@@ -96,8 +96,20 @@ export interface ChatRepository {
    * Löschung beansprucht hat. `false` heißt, jemand anderes war schneller – der
    * Aufrufer darf dann weder überschreiben noch ein zweites
    * `message.deleted` zustellen.
+   *
+   * `byModerator` hält fest, **wie** gelöscht wurde: als Entscheidung zu einer
+   * Meldung (`true`) oder vom Absender selbst (`false`). Der Aufrufer weiß das
+   * ohnehin – es gibt genau zwei Wege hierher –, und festgehalten überlebt die
+   * Angabe das spätere Löschen beider beteiligter Konten. Aus `deletedById` und
+   * `senderId` ließe sie sich nicht mehr erschließen: Beide Spalten stehen auf
+   * `ON DELETE SET NULL` (Fundpunkt 141).
    */
-  markMessageDeleted(messageId: string, deletedById: string, deletedAt: Date): Promise<boolean>;
+  markMessageDeleted(
+    messageId: string,
+    deletedById: string,
+    deletedAt: Date,
+    byModerator: boolean,
+  ): Promise<boolean>;
 
   // -- Lesezustand (Fundpunkt 95) --------------------------------------------
   /**

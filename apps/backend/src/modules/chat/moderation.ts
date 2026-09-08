@@ -156,11 +156,17 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
     message: MessageRecord,
     conversation: ConversationRecord,
   ): Promise<MessageReportDto> {
-    const userIds = [report.reportedById, message.senderId];
-
-    if (report.resolvedById) {
-      userIds.push(report.resolvedById);
-    }
+    /*
+     * Beide Kennungen können `null` sein (Fundpunkt 141): die des Absenders,
+     * wenn dessen Konto gelöscht wurde, und die der meldenden Person, wenn sie
+     * ihr Konto nach der Meldung löschen ließ. Der Vorgang bleibt trotzdem
+     * vollständig – die Beweiskopie steht in der Meldung selbst. Nachgeschlagen
+     * wird nur, was noch eine Kennung hat; den Rest benennt `nameOf()` in
+     * `dto.ts`.
+     */
+    const userIds = [report.reportedById, message.senderId, report.resolvedById].filter(
+      (id) => id !== null,
+    );
 
     const displayNames = await users.displayNames([...new Set(userIds)]);
 
@@ -368,6 +374,7 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
           message.id,
           moderatorId,
           resolvedAt,
+          true,
         );
 
         if (beansprucht) {
@@ -407,6 +414,10 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
           action: input.action,
           conversationType: conversation.type,
           serverId: conversation.serverId,
+          // Beide `null`, wenn das jeweilige Konto inzwischen gelöscht wurde
+          // (Fundpunkt 141). Bewusst so protokolliert und nicht weggelassen:
+          // „das Konto gibt es nicht mehr" ist eine Aussage, „Feld fehlt" wäre
+          // keine.
           reportedById: report.reportedById,
           messageSenderId: message.senderId,
         },

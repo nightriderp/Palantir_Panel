@@ -71,6 +71,7 @@ function toMessageRecord(row: typeof messages.$inferSelect): MessageRecord {
     createdAt: row.createdAt,
     deletedAt: row.deletedAt,
     deletedById: row.deletedById,
+    deletedByModerator: row.deletedByModerator,
   };
 }
 
@@ -309,6 +310,7 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
       messageId: string,
       deletedById: string,
       deletedAt: Date,
+      byModerator: boolean,
     ): Promise<boolean> {
       /*
        * `deleted_at is null` steht in der Bedingung des `UPDATE` selbst – wie
@@ -320,7 +322,7 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
        */
       const [beansprucht] = await db
         .update(messages)
-        .set({ deletedAt, deletedById })
+        .set({ deletedAt, deletedById, deletedByModerator: byModerator })
         .where(and(eq(messages.id, messageId), isNull(messages.deletedAt)))
         .returning({ id: messages.id });
 
@@ -380,6 +382,16 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
        * Lesestand (per `left join` auf `conversation_reads`; fehlt der Eintrag,
        * gilt alles als ungelesen), nicht vom Aufrufer selbst und nicht gelöscht.
        * Konversationen ohne Treffer fallen aus dem Ergebnis – sie zählen `0`.
+       *
+       * „Nicht vom Aufrufer selbst" steht bewusst als `is null or <>` da und
+       * nicht als bloßes `<>` (Fundpunkt 141). Seit `sender_id` beim Löschen
+       * eines Kontos geleert wird, ist der Vergleich dreiwertig: `NULL <> uuid`
+       * ergibt in SQL weder wahr noch falsch, sondern `NULL`, und eine
+       * `WHERE`-Bedingung lässt nur durch, was wahr ist. Die Nachrichten eines
+       * gelöschten Kontos hätten damit stillschweigend aufgehört, als ungelesen
+       * zu zählen – der Zähler wäre zu niedrig gewesen, ohne dass irgendwo ein
+       * Fehler aufgetreten wäre. Sie kommen von niemandem, den es noch gibt,
+       * also ganz sicher nicht vom Aufrufer.
        */
       const rows = await db
         .select({ conversationId: messages.conversationId, value: count() })
@@ -394,7 +406,7 @@ export function createDrizzleChatRepository(db: Database): ChatRepository {
         .where(
           and(
             inArray(messages.conversationId, [...conversationIds]),
-            ne(messages.senderId, userId),
+            or(isNull(messages.senderId), ne(messages.senderId, userId)),
             isNull(messages.deletedAt),
             or(
               isNull(conversationReads.lastReadAt),
