@@ -156,6 +156,26 @@ interface Zustand {
   readonly tabellenMitTriggern: readonly string[];
 }
 
+/**
+ * SQLSTATEs, mit denen PostgreSQL das Ende einer Verbindung meldet.
+ *
+ * `57P01` ist der Fall aus dem Abbau (`DROP DATABASE … WITH (FORCE)`), die
+ * beiden `08…` decken denselben Vorgang aus Sicht des Treibers ab, wenn er den
+ * Abbruch nicht mehr als Serverantwort, sondern als geschlossenen Kanal sieht.
+ */
+const VERBINDUNGSABBRUCH = new Set(['57P01', '57P02', '57P03', '08006', '08003']);
+
+/** Ist der Fehler ein abgebrochener Verbindungskanal – und nichts Schlimmeres? */
+export function istVerbindungsabbruch(fehler: unknown): boolean {
+  if (typeof fehler !== 'object' || fehler === null || !('code' in fehler)) {
+    return false;
+  }
+
+  const { code } = fehler as { code: unknown };
+
+  return typeof code === 'string' && VERBINDUNGSABBRUCH.has(code);
+}
+
 /** Öffnet eine kurzlebige Verwaltungsverbindung auf die Datenbank aus der URL. */
 async function mitVerwaltung<T>(
   url: string,
@@ -367,6 +387,32 @@ export function describeDatenbank(name: string, suite: (kontext: DatenbankKontex
       await legeDatenbankAn(url, datenbankName);
 
       const pool = new pg.Pool({ connectionString: urlFuer(url, datenbankName) });
+
+      /*
+       * Ein `pg.Pool` ist ein EventEmitter, und ein `error`-Ereignis ohne
+       * Zuhörer wird in Node zu einer unbehandelten Ausnahme. Vitest zählt die
+       * als „Unhandled Error" und beendet den Lauf mit Exit 1 – **auch wenn
+       * jeder einzelne Test bestanden hat**. Genau so ist ein CI-Lauf
+       * gescheitert, dessen Zusammenfassung 2276 bestandene und null
+       * fehlgeschlagene Tests auswies.
+       *
+       * Ausgelöst wird es vom Abbau unten: `DROP DATABASE … WITH (FORCE)`
+       * trennt jede noch offene Verbindung, und die betroffenen Clients melden
+       * das mit SQLSTATE 57P01. Für eine Datenbank, die gerade absichtlich
+       * weggeräumt wird, ist das kein Fehler, sondern die erwartete Folge.
+       *
+       * Verschluckt wird deshalb nur genau diese Klasse; alles andere geht
+       * weiter nach oben, damit ein echter Verbindungsfehler nicht still
+       * verschwindet.
+       */
+      pool.on('error', (fehler: unknown) => {
+        if (istVerbindungsabbruch(fehler)) {
+          return;
+        }
+
+        throw fehler;
+      });
+
       const db = drizzle(pool, { schema });
 
       await migrate(db, { migrationsFolder: MIGRATIONSORDNER });
