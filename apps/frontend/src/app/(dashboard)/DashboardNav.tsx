@@ -128,6 +128,16 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     requires: 'canManageGameTypes',
   },
   {
+    // Schriften der Oberfläche (S-3). Neben „Nutzer" und „Rollen", weil die
+    // Auswahl in den Instanz-Einstellungen liegt und dieselbe Berechtigung
+    // verlangt wie diese (`user.manage`).
+    key: 'admin-schriften',
+    label: 'Schriften',
+    icon: 'palette',
+    href: '/admin/schriften',
+    requires: 'canManageUsers',
+  },
+  {
     key: 'admin-notifications',
     label: 'Benachrichtigungs-Regeln',
     icon: 'bell',

@@ -1,8 +1,11 @@
 /**
  * Routen der Schriftverwaltung (Arbeitspaket S-2).
  *
- * Vier Adressen:
+ * Fünf Adressen:
  *
+ * - `GET /public/fonts.css` – das erzeugte Stylesheet, **ohne Sitzung** (S-3).
+ *   Alle `@font-face`-Regeln und die beiden CSS-Variablen der Auswahl in einem
+ *   Aufruf; siehe `stylesheet.ts` für das Warum.
  * - `GET /api/fonts` – die Liste, für **jedes angemeldete Konto**. Sie ist
  *   keine Verwaltungsansicht: Die Oberfläche baut daraus die
  *   `@font-face`-Regeln, die jede Seite braucht. Sie deshalb wie die
@@ -39,6 +42,7 @@ import { contextFrom } from '../admin/index.js';
 import { isRbacError, replyWithErrorCode, requireActor, requirePermission } from '../rbac/index.js';
 import { FontError, isFontError } from './errors.js';
 import { type FontService, type UploadedFile } from './service.js';
+import { FONT_FILE_ROUTE_PATH, FONT_STYLESHEET_ROUTE_PATH } from './stylesheet.js';
 
 const fontIdParamsSchema = z.object({ id: fontIdSchema });
 
@@ -199,7 +203,39 @@ export function registerFontRoutes(options: FontRouteOptions) {
       }),
     );
 
-    app.get('/api/fonts/:id/file', async (request, reply) => {
+    /*
+     * Das erzeugte Stylesheet – **ohne Sitzung**, wie `/public/stats`.
+     *
+     * Antwortet bewusst nicht im Envelope aus Pflichtenheft §5.1: Empfänger ist
+     * nicht der Anwendungscode, sondern der CSS-Parser des Browsers, und der
+     * kennt nur `text/css`. Dieselbe Ausnahme wie bei der Auslieferung der
+     * Schriftdatei eine Route weiter unten.
+     *
+     * **Zwischenspeicher.** `immutable` wäre hier falsch: Das CSS ändert sich,
+     * sobald der Administrator eine andere Schrift wählt oder eine hochlädt.
+     * Deshalb ein kurzes `max-age` plus `ETag` – innerhalb einer Minute fragt
+     * der Browser gar nicht erst nach, danach fragt er und bekommt in aller
+     * Regel ein leeres 304 statt des ganzen Stylesheets.
+     */
+    app.get(FONT_STYLESHEET_ROUTE_PATH, async (request, reply) => {
+      const { css, fingerprint } = await service.stylesheet();
+      const etag = `"${fingerprint}"`;
+
+      if (request.headers['if-none-match'] === etag) {
+        await reply.header('etag', etag).status(304).send();
+
+        return;
+      }
+
+      await reply
+        .header('content-type', 'text/css; charset=utf-8')
+        .header('x-content-type-options', 'nosniff')
+        .header('etag', etag)
+        .header('cache-control', 'public, max-age=60, must-revalidate')
+        .send(css);
+    });
+
+    app.get(FONT_FILE_ROUTE_PATH, async (request, reply) => {
       try {
         // Die Kennung wird gegen das Vertragsschema geprüft, **bevor** sie
         // irgendwo in die Nähe eines Pfades kommt: erlaubt sind ausschließlich

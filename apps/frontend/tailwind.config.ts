@@ -92,9 +92,36 @@ const config: Config = {
           strong: 'rgba(255,255,255,0.07)',
         },
       },
+      /**
+       * Die beiden Schriftrollen kommen aus CSS-Variablen (Arbeitspaket S-3).
+       *
+       * Gesetzt werden sie vom erzeugten Stylesheet der eigenen Instanz
+       * (`/public/fonts.css`, eingebunden im Root-Layout) – der Betreiber wählt
+       * die Schriften in der Administration unter „Schriften". Vorher standen
+       * hier die beiden Namen wörtlich; eine Auswahl hätte sie nie erreicht.
+       *
+       * **Der zweite Wert im `var(...)` ist wichtig.** Er greift, wenn das
+       * Stylesheet nicht geladen werden konnte. Ohne ihn wäre die ganze
+       * `font-family`-Angabe ungültig und die Fallback-Stacks dahinter
+       * wirkungslos – die Oberfläche fiele auf die Vorgabeschrift des Browsers
+       * zurück statt auf `system-ui` bzw. `ui-monospace`. Die Fallback-Stacks
+       * selbst sind unverändert.
+       */
       fontFamily: {
-        sans: ['"Space Grotesk"', 'system-ui', '-apple-system', '"Segoe UI"', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        sans: [
+          'var(--palantir-font-ui, "Space Grotesk")',
+          'system-ui',
+          '-apple-system',
+          '"Segoe UI"',
+          'sans-serif',
+        ],
+        mono: [
+          'var(--palantir-font-mono, "JetBrains Mono")',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'monospace',
+        ],
       },
       borderRadius: {
         sm: '6px',

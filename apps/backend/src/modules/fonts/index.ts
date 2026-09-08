@@ -28,6 +28,8 @@ import { createNodeFontFileStore, defaultFontUploadDirectory } from './storage.j
 export {
   type BundledFont,
   BUNDLED_FONTS,
+  DEFAULT_MONOSPACE_FONT_ID,
+  DEFAULT_UI_FONT_ID,
   bundledFontDirectory,
   findBundledFont,
 } from './bundled.js';
@@ -50,10 +52,23 @@ export {
   type FontSelectionSource,
   type FontService,
   type FontServiceDependencies,
+  type FontStylesheet,
   type UploadedFile,
   createFontService,
   resolveWeights,
 } from './service.js';
+export {
+  type FontRoleSelection,
+  type StylesheetFont,
+  FONT_FILE_ROUTE_PATH,
+  FONT_STYLESHEET_ROUTE_PATH,
+  MONOSPACE_FONT_CSS_VARIABLE,
+  UI_FONT_CSS_VARIABLE,
+  buildFontStylesheet,
+  cssQuotedString,
+  cssUrl,
+  fontFileHref,
+} from './stylesheet.js';
 export {
   type FontFileStore,
   createNodeFontFileStore,

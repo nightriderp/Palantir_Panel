@@ -118,6 +118,7 @@ const ERWARTETE_ROUTEN = [
   '/admin/notifications',
   '/admin/requests',
   '/admin/roles',
+  '/admin/schriften',
   '/admin/sticker',
   '/admin/storage',
   '/admin/templates',
