@@ -69,6 +69,7 @@ export {
   type NotificationRecord,
   type NotificationRepository,
   type NotificationRuleRecord,
+  type PublishAnnouncementHook,
   type UpdateAnnouncementData,
   type UpdateChannelData,
   type UpdateRuleData,
@@ -104,7 +105,9 @@ export {
   type NotificationHub,
   type NotificationHubOptions,
   type NotificationLiveRouteOptions,
+  CLOSE_CODE_TOO_MANY_CONNECTIONS,
   CLOSE_CODE_UNAUTHORIZED,
+  NOTIFICATION_LIVE_MAX_CONNECTIONS_PER_USER,
   createNotificationHub,
   registerNotificationLiveRoute,
 } from './live.js';

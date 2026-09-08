@@ -29,6 +29,7 @@ import {
   type AuditTargetType,
 } from '@palantir/contracts';
 import type { AuditLogQuery } from '@palantir/validation';
+import type { DbConnection } from '../../db/index.js';
 import { type PermissionActor, hasPermission } from '../rbac/index.js';
 import type { AdminContext } from './context.js';
 import { AdminError } from './errors.js';
@@ -72,7 +73,14 @@ export interface AuditEntryPage {
  * Archivierungsprozess nutzt {@link AuditArchiveRepository}.
  */
 export interface AuditLogRepository {
-  append(entry: AppendAuditEntry): Promise<AuditEntryRecord>;
+  /**
+   * Hängt einen Eintrag an.
+   *
+   * `connection` ist die laufende Transaktion, in der der Eintrag entstehen
+   * soll (Fundpunkt 150). Ohne Angabe schreibt das Repository über seine eigene
+   * Verbindung – das ist der Regelfall und die bisherige Aufrufform.
+   */
+  append(entry: AppendAuditEntry, connection?: DbConnection): Promise<AuditEntryRecord>;
   list(query: AuditLogQuery): Promise<AuditEntryPage>;
 }
 
@@ -121,8 +129,21 @@ export interface AuditService {
    * Hängt einen Eintrag an. Fehler werden **nicht** verschluckt: Lässt sich
    * eine sicherheitsrelevante Aktion nicht protokollieren, soll die Aktion
    * selbst scheitern, statt unbemerkt zu passieren.
+   *
+   * **Mit `connection`** entsteht der Eintrag innerhalb einer bereits laufenden
+   * Transaktion (Fundpunkt 150). Genau das braucht ein Vorgang, dessen fachliche
+   * Zeilen und dessen Protokolleintrag gemeinsam gelten müssen: Bisher lag der
+   * Eintrag hinter dem Commit – scheiterte er, existierte der Vorgang, der Admin
+   * sah aber einen Fehler und legte beim zweiten Anlauf alles ein zweites Mal
+   * an. Innerhalb der Transaktion reißt ein gescheiterter Eintrag den ganzen
+   * Vorgang zurück, und die Zusicherung „keine Aktion ohne Protokoll" gilt auch
+   * dann noch.
+   *
+   * Ohne `connection` bleibt alles wie bisher – die weitaus meisten Aufrufer
+   * protokollieren einen Vorgang, der aus genau einem Schreibzugriff besteht,
+   * und brauchen keine Transaktion.
    */
-  record(entry: AppendAuditEntry): Promise<void>;
+  record(entry: AppendAuditEntry, connection?: DbConnection): Promise<void>;
   /** Seitenweise Abfrage für die Admin-Oberfläche; verlangt `audit.view`. */
   list(ctx: AdminContext, query: AuditLogQuery): Promise<AuditLogPageDto>;
 }
@@ -181,8 +202,8 @@ export function entryFor(
 
 export function createAuditService(repository: AuditLogRepository): AuditService {
   return {
-    async record(entry) {
-      await repository.append(entry);
+    async record(entry, connection) {
+      await repository.append(entry, connection);
     },
 
     async list(ctx, query) {

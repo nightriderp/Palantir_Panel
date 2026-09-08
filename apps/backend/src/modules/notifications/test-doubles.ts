@@ -36,6 +36,7 @@ import type {
   NotificationRecord,
   NotificationRepository,
   NotificationRuleRecord,
+  PublishAnnouncementHook,
   UpdateAnnouncementData,
   UpdateChannelData,
   UpdateRuleData,
@@ -507,10 +508,16 @@ export function fakeRepository(
      * Ankündigung und Inbox-Meldungen in einem Zug – die Transaktion des echten
      * Repositorys, nachgebildet: Scheitert der zweite Teil, bleibt auch der
      * erste nicht stehen (Audit W3-4, `backend-community-18`).
+     *
+     * `alsoInTransaction` läuft mit in der Klammer (Fundpunkt 150): Der
+     * Audit-Eintrag des Dienstes darf hier genauso alles zurückrollen wie in der
+     * echten Transaktion. Eine Verbindung gibt die Attrappe nicht mit – im
+     * Arbeitsspeicher gibt es keine.
      */
-    publishAnnouncement: (
+    publishAnnouncement: async (
       data: CreateAnnouncementData,
       inboxFor: (announcement: AnnouncementRecord) => readonly CreateNotificationData[],
+      alsoInTransaction?: PublishAnnouncementHook,
     ) => {
       const record: AnnouncementRecord = {
         id: testId('7'),
@@ -525,7 +532,11 @@ export function fakeRepository(
       announcements.push(record);
 
       try {
-        return Promise.resolve({ announcement: record, notifications: anlegen(inboxFor(record)) });
+        const angelegt = anlegen(inboxFor(record));
+
+        await alsoInTransaction?.(record, angelegt);
+
+        return { announcement: record, notifications: angelegt };
       } catch (error) {
         notifications.length = marke;
         announcements.pop();
