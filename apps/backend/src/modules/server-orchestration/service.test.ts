@@ -1193,6 +1193,35 @@ describe('Hostname-Routing ohne Router (Pflichtenheft §19)', () => {
     expect(harness.dnsRecords.at(-1)?.type).toBe('A');
   });
 
+  it('prueft den Start eines gerouteten Servers am Hostnamen, nicht an der IP (Fundpunkt 193)', async () => {
+    // Infrared unterscheidet die Server am Namen im Handshake. Eine Sonde auf
+    // die nackte IP wird abgewiesen, obwohl der Server laeuft.
+    const ziele: { host: string; port: number }[] = [];
+    const harness = makeHarness({
+      gameTypes: ROUTING_GAME_TYPES,
+      routerHostname: 'router.example.tld',
+      probe: {
+        check: (target) => {
+          ziele.push({ host: target.host, port: target.port });
+
+          return Promise.resolve({
+            healthy: true,
+            pingMs: 5,
+            playersOnline: null,
+            playersMax: null,
+            reason: null,
+          });
+        },
+      },
+    });
+    const created = await harness.service.createServer(routedInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running', 'error']);
+
+    expect(ziele[0]).toEqual({ host: `${created.subdomain}.example.tld`, port: 25_565 });
+  });
+
   it('startet denselben Server, sobald der Router eingetragen ist', async () => {
     const harness = makeHarness({
       healthy: true,

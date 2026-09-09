@@ -1239,14 +1239,21 @@ export class ServerOrchestrationService {
      * der Check zugleich den Tunnel – ein Server, der auf der Node läuft, aber
      * durch frp nicht durchkommt, ist für Spieler nicht „running".
      *
-     * Für ein Spiel mit `supportsVirtualHostRouting` reicht das nicht: Dort teilen
-     * sich alle Server den Router-Port, und die Sonde müsste den Hostnamen
-     * mitschicken. Das Flag ist noch nirgends gesetzt (PR #307 sperrt den Start);
-     * wer es umlegt, gibt der Sonde den Hostnamen mit.
+     * **Mit Hostname-Routing zählt der Name, nicht die Adresse** (Fundpunkt 193).
+     * Dort teilen sich alle Server den Router-Port; auseinandergehalten werden
+     * sie am Namen, den der Client im Handshake mitschickt. Eine Sonde auf
+     * `publicIpv4:25565` schickt die IP als Namen mit, und Infrared weist sie ab
+     * („no proxy with uid <ip>@:25565"), obwohl der Server läuft – jeder Start
+     * liefe in `error`. Deshalb geht die Sonde auf den Hostnamen des Servers:
+     * Er löst über den CNAME auf dieselbe VPS auf, und `gamedig` trägt ihn als
+     * Ziel in den Handshake ein. Damit prüft der Check denselben Weg wie ein
+     * Spieler, Router eingeschlossen.
      */
     const result = await awaitHealthy({
       target: {
-        host: this.deps.config.publicIpv4,
+        host: definition.supportsVirtualHostRouting
+          ? this.hostnameFor(server)
+          : this.deps.config.publicIpv4,
         port: primary.publicPort,
         query: definition.query,
       },
