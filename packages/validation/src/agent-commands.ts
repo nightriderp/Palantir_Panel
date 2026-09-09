@@ -331,6 +331,9 @@ export const agentServerQueryTargetSchema = z.object({
   containerId: containerIdSchema,
   host: z.string().min(1).optional(),
   hostPort: portNumberSchema,
+  // Ziel der Abfrage über das Spielenetz (Fundpunkt 188); optional, damit ein
+  // älteres Backend den Befehl weiter schicken kann.
+  containerPort: portNumberSchema.optional(),
   query: agentQuerySpecSchema,
   // Untergrenze bewusst im Schema und nicht erst im Job: Ein Intervall von
   // Sekundenbruchteilen wäre für den abgefragten Spielserver eine Last, keine

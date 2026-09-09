@@ -259,6 +259,34 @@ describe('SET_SERVER_QUERY (Pflichtenheft §9)', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('nimmt den Container-Port als Ziel der Abfrage über das Spielenetz an (Fundpunkt 188)', () => {
+    expect(
+      setServerQueryCommandPayloadSchema.safeParse({
+        serverId: SERVER_ID,
+        target: {
+          containerId: 'abc123',
+          hostPort: 30_000,
+          containerPort: 25_565,
+          query: { kind: 'gamedig', protocol: 'minecraft' },
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('prüft den Container-Port genauso streng wie den Host-Port', () => {
+    expect(
+      setServerQueryCommandPayloadSchema.safeParse({
+        serverId: SERVER_ID,
+        target: {
+          containerId: 'abc123',
+          hostPort: 30_000,
+          containerPort: 70_000,
+          query: { kind: 'portConnect' },
+        },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('REMOVE_STORAGE_ENTRY (Lastenheft §3.8)', () => {

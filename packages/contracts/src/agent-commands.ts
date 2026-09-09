@@ -455,13 +455,22 @@ export type AgentQuerySpec = AgentPortConnectQuery | AgentGamedigQuery;
 export interface AgentServerQueryTarget {
   readonly containerId: string;
   /**
-   * Adresse, unter der der Server auf dem Homeserver erreichbar ist. Ohne
-   * Angabe prüft der Agent `127.0.0.1` – die Portbindung liegt auf dem
-   * Homeserver selbst (Pflichtenheft §18: kein Listener im LAN).
+   * Ausdrückliche Adresse, unter der der Server erreichbar ist – zusammen mit
+   * `hostPort`. Ohne Angabe fragt der Agent den Container an seiner Adresse
+   * im Spielenetz auf `containerPort` (Fundpunkt 188): Der Host-Port ist an
+   * `127.0.0.1` der Node gebunden (Pflichtenheft §18), und das ist nicht das
+   * Loopback des Agent-Containers.
    */
   readonly host?: string;
   /** Host-Port aus der Portvergabe, nicht der Container-Port. */
   readonly hostPort: number;
+  /**
+   * Port, auf dem der Server IM Container lauscht (`containerPort` des
+   * primären Ports der Spiel-Definition). Ziel der Abfrage über das
+   * Spielenetz. Optional, damit ältere Backends den Befehl weiter schicken
+   * können – ohne ihn bleibt dem Agent nur `host`/`hostPort`.
+   */
+  readonly containerPort?: number;
   readonly query: AgentQuerySpec;
   /**
    * Abstand zwischen zwei Abfragen. Ohne Angabe gilt der Wert aus der
