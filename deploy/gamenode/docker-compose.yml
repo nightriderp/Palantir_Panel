@@ -149,6 +149,9 @@ services:
       AGENT_SECCOMP_PROFILE_PATH: ${AGENT_SECCOMP_PROFILE_PATH}
       AGENT_QUERY_INTERVAL_SECONDS: ${AGENT_QUERY_INTERVAL_SECONDS}
       AGENT_QUERY_TIMEOUT_MS: ${AGENT_QUERY_TIMEOUT_MS}
+      # Auf einer Node leer: Die Abfrage geht an den Container im Spielenetz
+      # (Fundpunkt 188). Der Wert existiert nur fuer Agents auf dem Docker-Host.
+      AGENT_QUERY_HOST: ${AGENT_QUERY_HOST:-}
       AGENT_DOWNLOAD_BLOCK_MAX_BYTES: ${AGENT_DOWNLOAD_BLOCK_MAX_BYTES}
       AGENT_UPLOAD_ARCHIVE_MAX_BYTES: ${AGENT_UPLOAD_ARCHIVE_MAX_BYTES}
       # Übersteuert den Wert aus der .env: innerhalb des Compose-Netzes heißt
