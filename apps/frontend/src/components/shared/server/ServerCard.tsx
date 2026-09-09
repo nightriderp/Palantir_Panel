@@ -149,7 +149,14 @@ export function ServerCard({
 
         <div className="flex shrink-0 flex-col items-end gap-1">
           <ServerStatusPill status={server.status} />
-          {updateAvailable ? <span className="text-2xs text-warning">Update verfügbar</span> : null}
+          {updateAvailable ? (
+            <span
+              className="text-2xs text-warning"
+              title={'Auf der Detailseite über „Aktualisieren" übernehmen.'}
+            >
+              Update verfügbar
+            </span>
+          ) : null}
           {restartRequired ? <span className="text-2xs text-warning">Neustart nötig</span> : null}
         </div>
 
