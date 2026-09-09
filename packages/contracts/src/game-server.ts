@@ -1,4 +1,4 @@
-import { type GameConfigValues } from './game-type.js';
+import { type ConsoleQuickCommand, type GameConfigValues } from './game-type.js';
 import { type ServerStatus } from './server-lifecycle.js';
 
 /**
@@ -138,6 +138,13 @@ export interface GameServerDto {
   gameType: string;
   /** Anzeigename des Spiels, z. B. „Minecraft (Paper)". */
   gameTypeName: string;
+  /**
+   * Schnellbefehle der Live-Konsole aus der Spiele-Definition
+   * (`GameTypeDefinition.consoleQuickCommands`). Additiv und optional, damit
+   * ältere Backends den DTO weiter liefern; das Backend füllt das Feld immer,
+   * notfalls leer.
+   */
+  consoleQuickCommands?: readonly ConsoleQuickCommand[];
   status: ServerStatus;
   /** Erläuterung zum Status, z. B. letzte Fehlermeldung bei `error`/`crashed`. */
   statusMessage: string | null;
