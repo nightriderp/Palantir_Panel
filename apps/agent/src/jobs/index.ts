@@ -37,8 +37,10 @@
 
 import type { OutboundEvent } from '../connection/ports.js';
 import type { ContainerRuntime } from '../runtime/index.js';
+import type { RconClient } from '../runtime/rcon.js';
 import { BackupJob, DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES } from './backup/backup-job.js';
 import { ArchiveUploadJob, DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES } from './files/archive-upload.js';
+import { RconConsole } from './console/rcon-console.js';
 import { ServerFileJob } from './files/delete.js';
 import { DEFAULT_ROUTER_LISTEN_PORT, HostnameRouterJob } from './router/hostname-routes.js';
 import { createGamedigProbe } from './query/gamedig-probe.js';
@@ -132,6 +134,14 @@ export {
 } from './router/hostname-routes.js';
 
 export {
+  DEFAULT_RCON_TIMEOUT_MS,
+  RconConsole,
+  type RconConsoleOptions,
+} from './console/rcon-console.js';
+
+export { RconError, rconCommand, type RconClient, type RconRequest } from '../runtime/rcon.js';
+
+export {
   resolveWithinAny,
   resolveWithinDirectory,
   serverIdFromContainerName,
@@ -161,6 +171,12 @@ export interface AgentJobs {
    * daran nicht scheitern.
    */
   readonly router: HostnameRouterJob;
+  /**
+   * Konsole über RCON (P2-9) – für Spiele, deren Definition einen
+   * RCON-Anschluss nennt. Der Befehl geht an den Container im Spielenetz, die
+   * Antwort kommt zurück statt nur im Log zu stehen.
+   */
+  readonly rcon: RconConsole;
   /** Beendet alle laufenden Jobs – beim Herunterfahren des Agents. */
   stop(): void;
 }
@@ -209,6 +225,8 @@ export interface CreateAgentJobsOptions {
   readonly probe?: ServerProbe;
   readonly onJobError?: (jobName: string, error: unknown) => void;
   readonly now?: () => Date;
+  /** RCON-Client; ohne Angabe der echte (`rconCommand`). Für Tests. */
+  readonly rconClient?: RconClient;
 }
 
 /**
@@ -279,6 +297,15 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     listenPort: env.MINECRAFT_ROUTER_PORT ?? DEFAULT_ROUTER_LISTEN_PORT,
   });
 
+  const rcon = new RconConsole({
+    runtime: options.runtime,
+    dataDir: env.AGENT_DATA_DIR,
+    // Dasselbe Netz wie die Spielerabfrage: Dort hat der Container seine
+    // Adresse, und nur dort ist der nie veröffentlichte RCON-Port zu erreichen.
+    network: env.AGENT_CONTAINER_NETWORK ?? 'palantir-games',
+    ...(options.rconClient === undefined ? {} : { client: options.rconClient }),
+  });
+
   return {
     scheduler,
     query,
@@ -288,6 +315,7 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     files,
     archiveUploads,
     router,
+    rcon,
     stop: () => {
       query.stopAll();
       scheduler.stopAll();

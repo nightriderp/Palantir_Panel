@@ -16,7 +16,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -256,6 +256,55 @@ describe('start.sh – server.properties', nurMitShell, () => {
     assert.match(inhalt, /^motd=ErsteZweite$/mu);
     assert.doesNotMatch(inhalt, /^Zweite$/mu);
   });
+});
+
+describe('start.sh – RCON (P2-9)', nurMitShell, () => {
+  const passwortDatei = (ordner) => join(ordner.daten, '.palantir', 'rcon.password');
+
+  it('schaltet RCON ein und legt das Passwort dort ab, wo die Spiele-Definition es erwartet', () => {
+    const ordner = arbeitsordner();
+    starteSkript(ordner, { EULA: 'true' });
+
+    const passwort = readFileSync(passwortDatei(ordner), 'utf8').trim();
+    const inhalt = eigenschaften(ordner);
+
+    // 24 Zufallsbytes als Hex – lang genug, ohne Zeichen, die in
+    // `server.properties` Sonderbedeutung hätten.
+    assert.match(passwort, /^[0-9a-f]{48}$/u);
+    assert.match(inhalt, /^enable-rcon=true$/mu);
+    assert.match(inhalt, /^rcon\.port=25575$/mu);
+    assert.match(inhalt, new RegExp(`^rcon\\.password=${passwort}$`, 'mu'));
+    // Sonst sähe jeder Op im Spiel jeden Befehl aus dem Panel.
+    assert.match(inhalt, /^broadcast-rcon-to-ops=false$/mu);
+  });
+
+  it('erzeugt bei jedem Start ein neues Passwort und trägt es nach', () => {
+    const ordner = arbeitsordner();
+    starteSkript(ordner, { EULA: 'true' });
+    const erstes = readFileSync(passwortDatei(ordner), 'utf8').trim();
+
+    starteSkript(ordner, { EULA: 'true' });
+    const zweites = readFileSync(passwortDatei(ordner), 'utf8').trim();
+
+    assert.notEqual(zweites, erstes);
+    const zeilen = eigenschaften(ordner)
+      .split('\n')
+      .map((zeile) => zeile.replace(/\r$/u, ''))
+      .filter((zeile) => zeile.startsWith('rcon.password='));
+    assert.deepEqual(zeilen, [`rcon.password=${zweites}`]);
+  });
+
+  it(
+    'macht die Passwortdatei nur für den Besitzer lesbar',
+    // Unter Windows kennt das Dateisystem diese Rechte nicht; die CI (Linux) prüft es.
+    { skip: process.platform === 'win32' ? 'Keine POSIX-Dateirechte unter Windows.' : false },
+    () => {
+      const ordner = arbeitsordner();
+      starteSkript(ordner, { EULA: 'true' });
+
+      assert.equal(statSync(passwortDatei(ordner)).mode & 0o777, 0o600);
+    },
+  );
 });
 
 describe('start.sh – Heap aus dem RAM-Kontingent', nurMitShell, () => {

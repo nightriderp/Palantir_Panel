@@ -364,6 +364,111 @@ describe('Job-Befehle ohne eingehängtes Job-Modul (A3)', () => {
   });
 });
 
+describe('EXEC_CONSOLE über RCON (P2-9)', () => {
+  let wurzel: string;
+  let jobs: AgentJobs;
+  let mitJobs: ContainerRuntimeAdapter;
+  let anfragen: { host: string; port: number; password: string; command: string }[];
+
+  /** `EXEC_CONSOLE` über den Adapter mit Job-Modul – Anlegen und Starten gehen über `befehl()`. */
+  function konsole(payload: unknown, serverId: string | null = SERVER_ID) {
+    return mitJobs.execute({
+      correlationId: CORRELATION_ID,
+      command: 'EXEC_CONSOLE',
+      serverId,
+      payload,
+    });
+  }
+
+  beforeEach(async () => {
+    wurzel = await fs.mkdtemp(path.join(os.tmpdir(), 'palantir-adapter-rcon-'));
+    anfragen = [];
+    jobs = createAgentJobs(
+      {
+        AGENT_DATA_DIR: path.join(wurzel, 'servers'),
+        AGENT_BACKUP_DIR: path.join(wurzel, 'backups'),
+        AGENT_QUERY_INTERVAL_SECONDS: 60,
+        AGENT_QUERY_TIMEOUT_MS: 1_000,
+        AGENT_DOWNLOAD_BLOCK_MAX_BYTES: 1_048_576,
+        AGENT_CONTAINER_NETWORK: 'spielenetz',
+      },
+      {
+        runtime,
+        emit: () => undefined,
+        rconClient: ({ host, port, password, command }) => {
+          anfragen.push({ host, port, password, command });
+
+          return Promise.resolve(`Antwort auf ${command}`);
+        },
+      },
+    );
+    mitJobs = new ContainerRuntimeAdapter({ runtime, jobs });
+    await fs.mkdir(path.join(wurzel, 'servers', SERVER_ID, '.palantir'), { recursive: true });
+    await fs.writeFile(
+      path.join(wurzel, 'servers', SERVER_ID, '.palantir', 'rcon.password'),
+      'geheim\n',
+    );
+  });
+
+  afterEach(async () => {
+    jobs.stop();
+    await fs.rm(wurzel, { recursive: true, force: true });
+  });
+
+  const RCON = { port: 25_575, passwordFile: '.palantir/rcon.password' };
+
+  it('geht mit `rcon` an den Container im Spielenetz und liefert die Antwort zurück', async () => {
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    runtime.setNetworkAddress(containerId, 'spielenetz', '172.31.240.9');
+    // Der stdin-Weg darf dabei nicht angefasst werden.
+    runtime.setExecHandler(() => ({ exitCode: 0, stdout: 'falscher Weg', stderr: '' }));
+
+    const antwort = await konsole({ containerId, command: ['list'], rcon: RCON });
+
+    expect(isOk(antwort)).toBe(true);
+    expect(antwort.data).toEqual({ exitCode: 0, stdout: 'Antwort auf list', stderr: '' });
+    expect(anfragen).toEqual([
+      { host: '172.31.240.9', port: 25_575, password: 'geheim', command: 'list' },
+    ]);
+  });
+
+  it('bleibt ohne `rcon` beim bisherigen Weg über die Standardeingabe', async () => {
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    runtime.setExecHandler(() => ({ exitCode: 0, stdout: 'stdin', stderr: '' }));
+
+    const antwort = await konsole({ containerId, command: ['list'] });
+
+    expect(antwort.data).toEqual({ exitCode: 0, stdout: 'stdin', stderr: '' });
+    expect(anfragen).toHaveLength(0);
+  });
+
+  it('sagt ohne Job-Modul ehrlich „nicht gebaut" statt zu scheitern', async () => {
+    const ohneJobs = new ContainerRuntimeAdapter({ runtime });
+    const containerId = await containerAnlegen();
+
+    const antwort = await ohneJobs.execute({
+      correlationId: CORRELATION_ID,
+      command: 'EXEC_CONSOLE',
+      serverId: SERVER_ID,
+      payload: { containerId, command: ['list'], rcon: RCON },
+    });
+
+    expect(antwort.error?.code).toBe('AGENT_COMMAND_NOT_IMPLEMENTED');
+  });
+
+  it('meldet eine fehlende Server-Id als Konsolenzeile, nicht als Absturz', async () => {
+    const containerId = await containerAnlegen();
+
+    const antwort = await konsole({ containerId, command: ['list'], rcon: RCON }, null);
+
+    expect(isOk(antwort)).toBe(true);
+    expect((antwort.data as { exitCode: number }).exitCode).toBe(1);
+    expect(anfragen).toHaveLength(0);
+  });
+});
+
 describe('Job-Befehle mit eingehängtem Job-Modul (A3)', () => {
   let wurzel: string;
   let jobs: AgentJobs;

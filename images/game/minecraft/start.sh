@@ -11,7 +11,8 @@
 #   3. Es holt den JVM-Heap aus dem RAM-Kontingent des Containers – die
 #      Rechnung dazu liegt im Basis-Image (`images/base/java/java.sh`).
 #   4. Es legt das Rohr an, über das `palantir-console` Befehle an die
-#      Standardeingabe des Servers gibt.
+#      Standardeingabe des Servers gibt – und ein frisches RCON-Passwort, über
+#      das das Panel die Konsole seit P2-9 vorrangig anspricht.
 #
 # Danach ersetzt es sich per `exec` durch die JVM: kein Benutzerwechsel, kein
 # `chown`, keine Shell zwischen Signal und Server (Pflichtenheft §2.3).
@@ -108,6 +109,23 @@ eigenschaft 'white-list' "${WHITELIST:-false}"
 # lässt bereits anwesende Fremde weiterspielen. Wer den Schalter im Panel
 # umlegt, meint das Ganze.
 eigenschaft 'enforce-whitelist' "${WHITELIST:-false}"
+
+# RCON (P2-9): Das Panel gibt Befehle über RCON, weil so die Antwort zurückkommt,
+# statt nur im Log zu stehen. Das Passwort entsteht bei jedem Start neu und liegt
+# nur im Datenordner (0600) – der Agent liest es von dort, es verlässt die Node
+# nie. Der Port wird nie veröffentlicht; erreichbar ist er nur im Spielenetz.
+# `broadcast-rcon-to-ops` bleibt aus: Sonst sähe jeder Op im Spiel jeden Befehl
+# aus dem Panel.
+RCON_PASSWORT_DATEI="${INTERN}/rcon.password"
+RCON_PASSWORT="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+ALTE_UMASK="$(umask)"
+umask 077
+printf '%s\n' "$RCON_PASSWORT" > "$RCON_PASSWORT_DATEI"
+umask "$ALTE_UMASK"
+eigenschaft 'enable-rcon' 'true'
+eigenschaft 'rcon.port' "${RCON_PORT:-25575}"
+eigenschaft 'rcon.password' "$RCON_PASSWORT"
+eigenschaft 'broadcast-rcon-to-ops' 'false'
 
 ZIEL="${DATENORDNER}/server.properties"
 [ -f "$ZIEL" ] || : > "$ZIEL"

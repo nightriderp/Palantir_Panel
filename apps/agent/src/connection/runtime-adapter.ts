@@ -22,6 +22,7 @@ import {
   type CreateBackupCommandPayload,
   type DeleteBackupCommandPayload,
   type DownloadBackupCommandPayload,
+  type ExecConsoleCommandPayload,
   type FileDeleteCommandPayload,
   type GetStorageBreakdownCommandPayload,
   type RemoveStorageEntryCommandPayload,
@@ -397,7 +398,28 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         };
       }
       case 'EXEC_CONSOLE': {
-        const p = payload as { containerId: string; command: string[] };
+        const p = payload as ExecConsoleCommandPayload;
+
+        if (p.rcon !== undefined) {
+          // Spiele mit RCON-Anschluss (P2-9): Der Befehl geht an den Container
+          // im Spielenetz und die Antwort kommt zurück. Das braucht die Jobs
+          // (Datenordner für das Passwort) und die Server-Id für den Ordner.
+          if (this.jobs === undefined) {
+            throw new MissingAgentJobsError();
+          }
+
+          if (serverId === null) {
+            return {
+              exitCode: 1,
+              stdout: '',
+              stderr: 'RCON braucht die Server-Id im Befehl – sie fehlt.',
+            };
+          }
+
+          const result = await this.jobs.rcon.exec(serverId, p.containerId, p.rcon, p.command);
+          return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+        }
+
         const result = await this.runtime.execConsole(p.containerId, p.command);
         return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
       }
