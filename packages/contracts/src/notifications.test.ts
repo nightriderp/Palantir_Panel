@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WEBSOCKET_EVENTS } from './events.js';
-import { LIVE_SERVER_EVENTS } from './server-live.js';
+import { LIVE_SERVER_EVENTS, LIVE_SERVER_LIST_EVENTS } from './server-live.js';
 import {
   MUTABLE_NOTIFICATION_EVENTS,
   NOTIFIABLE_EVENTS,
@@ -42,8 +42,19 @@ describe('Auslösende Ereignisse (Pflichtenheft §14)', () => {
    * Meldungen je Minute und Server.
    */
   it('enthält kein reines Live-Ereignis des Server-Kanals', () => {
+    // Die Listen-Ereignisse (Fundpunkt 173) sind die Ausnahme mit Absicht:
+    // „angelegt", „geklont", „gelöscht" sind Meldungen **und** halten die
+    // Übersicht aktuell – dasselbe B3-Ereignis speist beide Kanäle.
+    const listenEreignisse: readonly string[] = LIVE_SERVER_LIST_EVENTS;
     for (const event of LIVE_SERVER_EVENTS) {
+      if (listenEreignisse.includes(event)) continue;
       expect(NOTIFIABLE_EVENTS).not.toContain(event);
+    }
+  });
+
+  it('führt die Listen-Ereignisse des Live-Kanals weiterhin als Meldungsanlass (Fundpunkt 173)', () => {
+    for (const event of LIVE_SERVER_LIST_EVENTS) {
+      expect(NOTIFIABLE_EVENTS).toContain(event);
     }
   });
 
