@@ -73,7 +73,7 @@ Die Leerlauf-Frist lässt sich für Tests über `IDLE_TIMEOUT_SECONDS` klein set
 docker run --rm -p 25565:25565 \
   --user 1000:1000 --cap-drop ALL --security-opt no-new-privileges:true \
   --read-only --tmpfs /tmp -v "$PWD/probe:/data" \
-  ghcr.io/nightriderp/palantir-test-minecraft:1
+  ghcr.io/nightriderp/palantir-test-minecraft:2
 ```
 
 Danach in Minecraft unter `localhost` eintragen: Die Serverliste zeigt MOTD und

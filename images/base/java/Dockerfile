@@ -42,9 +42,10 @@
 # unmissverständlich Ubuntu 24.04 stehen.
 #
 # Der Digest wird von `.github/dependabot.yml` (Ökosystem `docker`) nachgehalten.
-# sha256:b4c93a… ist der Multi-Arch-Index (linux/amd64, arm64v8, ppc64le,
-# riscv64, s390x) hinter `eclipse-temurin:25-jre-noble` mit JRE 25.0.4+7.
-FROM eclipse-temurin:25-jre-noble@sha256:b4c93a50fc67612798db73d68ca3b0ee4ebdd51736e59cca370e689b9797037e
+# sha256:1e8020… ist der Multi-Arch-Index (linux/amd64, arm64v8, ppc64le,
+# riscv64, s390x) hinter `eclipse-temurin:25-jre-noble`, Stand 2026-09
+# (Dependabot #317; davor sha256:b4c93a… mit JRE 25.0.4+7).
+FROM eclipse-temurin:25-jre-noble@sha256:1e80201efc21b839ebc9b448b1f9b16aa5f036dd2885148282fe5dae38684fe1
 
 # Feste, nicht-root Identität. Ubuntu 24.04 vergibt UID 1000 bereits an den
 # Benutzer `ubuntu`; dann bleibt es dabei, denn entscheidend ist die Zahl, nicht

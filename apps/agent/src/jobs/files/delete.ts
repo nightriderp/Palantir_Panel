@@ -164,7 +164,7 @@ export class ServerFileJob {
    * Capabilities (`no-new-privileges`, siehe `deploy/gamenode/docker-compose.yml`).
    * Er kann den Ordner also nicht verschenken - er legt ihn an, und damit
    * gehoert er ihm. Genau diese UID verlangen die eigenen Spiel-Images
-   * (SPIEL_IMAGES.md); mehr braucht es nicht.
+   * (`images/README.md`); mehr braucht es nicht.
    *
    * `0o700`, weil derselbe Benutzer schreibt, der auch liest: Spielstaende sind
    * fremde Daten und gehen den Rest des Homeservers nichts an.

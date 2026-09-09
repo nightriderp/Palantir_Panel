@@ -7,7 +7,7 @@ Schema aller Images steht in `images/README.md`.
 | Enthalten           | Fassung                                                                          |
 | ------------------- | -------------------------------------------------------------------------------- |
 | Paper               | 26.2, Build 121 (Kanal `STABLE`), im Image, Prüfsumme im Bau                     |
-| Basis               | `palantir-base-java:1` (`images/base/java`): Temurin 25 JRE, UID 1000, `java.sh` |
+| Basis               | `palantir-base-java:2` (`images/base/java`): Temurin 25 JRE, UID 1000, `java.sh` |
 | Spieltyp-Definition | `minecraft-paper` in `apps/backend/.../game-registry.ts`                         |
 
 ## Warum ein eigenes Image
@@ -153,7 +153,7 @@ docker run --rm -p 25565:25565 \
   --user 1000:1000 --cap-drop ALL --security-opt no-new-privileges:true \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
   -m 4g -e EULA=true -v "$PWD/probe:/data" \
-  ghcr.io/nightriderp/palantir-game-minecraft:2
+  ghcr.io/nightriderp/palantir-game-minecraft:3
 ```
 
 Der Ordner `probe` muss vorher existieren und UID 1000 gehören — auf der Node legt ihn der

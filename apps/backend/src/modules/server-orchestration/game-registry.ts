@@ -140,7 +140,7 @@ export const TEST_MINECRAFT_GAME_TYPE: GameTypeDefinition = {
   name: 'Test-Server (Minecraft-Protokoll)',
   description:
     'Prüfstand für die Kette bis zum Spieler: antwortet auf den Server-List-Ping, erscheint in der Minecraft-Serverliste und weist eine Anmeldung mit einer erklärenden Meldung ab. Kein Spielserver — dafür kommt ein eigenes Image.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-test-minecraft:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-test-minecraft:2',
   // Die Befehle des Prüfstands (`images/test/minecraft/server.mjs`): `players`
   // setzt die gemeldete Spielerzahl und ist damit der Hebel für den
   // Auto-Shutdown, ohne dass jemand wirklich spielt.
@@ -281,7 +281,7 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   name: 'Minecraft (Paper)',
   description:
     'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:2',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:3',
   // Schnellbefehle der Live-Konsole. Nur vollständige Zeilen – `say <Text>`
   // oder `op <Name>` brauchen das Feld. Die Antwort kommt über RCON zurück
   // (`console` unten, P2-9) und steht damit direkt in der Konsole.
