@@ -15,9 +15,6 @@ import { type LiveConnectionState } from '@/lib/live/LiveChannelProvider';
  * Prüfung macht trotzdem das Backend.
  */
 
-/** Häufige Befehle als Schnellzugriff, wie im Mockup. */
-const QUICK_COMMANDS = ['list', 'save-all', 'stop'] as const;
-
 const SOURCE_CLASSES: Record<ServerConsoleLine['source'], string> = {
   stdout: 'text-ink-muted',
   stderr: 'text-danger',
@@ -63,6 +60,7 @@ export function ConsoleTab({ server, lines, connection, onSend, onClear }: Conso
   }
 
   const running = server.status === 'running';
+  const quickCommands = server.consoleQuickCommands ?? [];
   // Während des Hochlaufs ist die Konsole die interessanteste Stelle der
   // Seite – „läuft nicht" wäre dort schlicht falsch (Fundpunkt 184).
   const starting = server.status === 'starting';
@@ -132,13 +130,26 @@ export function ConsoleTab({ server, lines, connection, onSend, onClear }: Conso
 
       {server.permissions.canUseConsole ? (
         <>
-          <div className="flex flex-wrap gap-2">
-            {QUICK_COMMANDS.map((command) => (
-              <Button key={command} size="sm" disabled={!running} onClick={() => send(command)}>
-                {command}
-              </Button>
-            ))}
-          </div>
+          {/*
+           * Schnellbefehle kommen aus der Spiele-Definition, nicht fest von
+           * hier: Was bei Minecraft `list` heißt, heißt beim Prüfstand `help`.
+           * Ohne Einträge gibt es nur das Feld.
+           */}
+          {quickCommands.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {quickCommands.map((quick) => (
+                <Button
+                  key={quick.command}
+                  size="sm"
+                  disabled={!running}
+                  title={quick.command}
+                  onClick={() => send(quick.command)}
+                >
+                  {quick.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
 
           <form
             onSubmit={(event) => {

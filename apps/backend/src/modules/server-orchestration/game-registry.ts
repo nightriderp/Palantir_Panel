@@ -141,6 +141,16 @@ export const TEST_MINECRAFT_GAME_TYPE: GameTypeDefinition = {
   description:
     'Prüfstand für die Kette bis zum Spieler: antwortet auf den Server-List-Ping, erscheint in der Minecraft-Serverliste und weist eine Anmeldung mit einer erklärenden Meldung ab. Kein Spielserver — dafür kommt ein eigenes Image.',
   dockerImage: 'ghcr.io/nightriderp/palantir-test-minecraft:1',
+  // Die Befehle des Prüfstands (`images/test/minecraft/server.mjs`): `players`
+  // setzt die gemeldete Spielerzahl und ist damit der Hebel für den
+  // Auto-Shutdown, ohne dass jemand wirklich spielt.
+  consoleQuickCommands: [
+    { label: 'Hilfe', command: 'help' },
+    { label: 'Status', command: 'status' },
+    { label: '3 Spieler', command: 'players 3' },
+    { label: '0 Spieler', command: 'players 0' },
+    { label: 'Stopp', command: 'stop' },
+  ],
   defaultEnv: {},
   ports: [
     {
@@ -272,6 +282,16 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   description:
     'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
   dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:1',
+  // Schnellbefehle der Live-Konsole. Nur vollständige Zeilen – `say <Text>`
+  // oder `op <Name>` brauchen das Feld. Die Antwort kommt über das Log
+  // (`images/game/minecraft/console.sh`).
+  consoleQuickCommands: [
+    { label: 'Spieler', command: 'list' },
+    { label: 'TPS', command: 'tps' },
+    { label: 'Speichern', command: 'save-all' },
+    { label: 'Whitelist', command: 'whitelist list' },
+    { label: 'Stopp', command: 'stop' },
+  ],
   defaultEnv: {},
   ports: [
     {
