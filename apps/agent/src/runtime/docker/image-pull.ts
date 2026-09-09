@@ -67,8 +67,22 @@ export function belongsToRegistry(image: string, server: string): boolean {
   return image.startsWith(`${server}/`);
 }
 
-/** Kopf `X-Registry-Auth`, wie die Engine ihn erwartet: Base64URL eines JSON-Objekts. */
-function registryAuthHeader(credentials: RegistryCredentials): string {
+/**
+ * Kopf `X-Registry-Auth`, wie die Engine ihn erwartet: base64url (RFC 4648 §5)
+ * eines JSON-Objekts – **mit Padding**.
+ *
+ * Die Engine dekodiert mit Go's `base64.URLEncoding` (moby,
+ * `registry.DecodeAuthConfig`), und das verlangt die `=` am Ende. Node's
+ * `'base64url'` laesst sie weg. Sobald das JSON nicht durch drei teilbar ist –
+ * bei einem 40-stelligen GHCR-Token immer – bricht das Dekodieren am letzten
+ * Block ab, und die Engine wirft den Kopf stillschweigend weg:
+ * `postImagesCreate` ignoriert den Fehler „to increase compatibility with the
+ * existing API" und zieht **anonym**. GHCR antwortet darauf mit `unauthorized`,
+ * obwohl Token und Anmeldung stimmen – so geschehen beim ersten Minecraft-Start
+ * am 2026-09-09 (Fundpunkt 182). Deshalb Standard-base64 mit Padding, und nur
+ * die zwei Zeichen ersetzt, die base64url anders schreibt.
+ */
+export function registryAuthHeader(credentials: RegistryCredentials): string {
   return Buffer.from(
     JSON.stringify({
       username: credentials.username,
@@ -76,7 +90,31 @@ function registryAuthHeader(credentials: RegistryCredentials): string {
       serveraddress: credentials.server,
     }),
     'utf8',
-  ).toString('base64url');
+  )
+    .toString('base64')
+    .replaceAll('+', '-')
+    .replaceAll('/', '_');
+}
+
+/**
+ * Was hinter `unauthorized` und `denied` steckt.
+ *
+ * Beides kaeme sonst als nackte Zeichenkette im Panel an, und von dort kommt
+ * niemand auf `AGENT_REGISTRY_*`. Bei einer Registry heisst `unauthorized`:
+ * Anfrage ohne brauchbare Anmeldung; `denied`: angemeldet, aber ohne Recht.
+ */
+export function registryHinweis(fehler: string, mitZugang: boolean): string {
+  if (/unauthorized/iu.test(fehler)) {
+    return mitZugang
+      ? ' – die Registry hat die Anmeldung nicht angenommen; AGENT_REGISTRY_USERNAME und AGENT_REGISTRY_TOKEN auf der Node pruefen.'
+      : ' – das Image ist privat, und fuer diese Registry sind keine Zugangsdaten gesetzt (AGENT_REGISTRY_SERVER, AGENT_REGISTRY_USERNAME, AGENT_REGISTRY_TOKEN).';
+  }
+
+  if (/denied/iu.test(fehler)) {
+    return ' – die Registry kennt die Anmeldung, aber sie darf dieses Image nicht lesen (Token-Umfang read:packages, Rechte am Paket).';
+  }
+
+  return '';
 }
 
 /**
@@ -134,7 +172,7 @@ export async function pullImage(
 
   if (fehler !== null) {
     throw new ContainerRuntimeError('IMAGE_NOT_FOUND', {
-      message: `Das Image „${image}" konnte nicht geholt werden: ${fehler}`,
+      message: `Das Image „${image}" konnte nicht geholt werden: ${fehler}${registryHinweis(fehler, zugang !== undefined)}`,
       details: { image },
     });
   }
