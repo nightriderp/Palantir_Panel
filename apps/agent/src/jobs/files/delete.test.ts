@@ -137,4 +137,33 @@ describe('ensureDataDirectory (Gefundener Punkt 117)', () => {
 
     expect((await fs.stat(ziel)).mode & 0o777).toBe(0o700);
   });
+
+  it('nennt bei fehlenden Rechten Besitzer und Abhilfe (Fundpunkt 181)', async ({ skip }) => {
+    // Braucht POSIX-Rechte und einen Benutzer, den sie treffen: root darf
+    // ueberall schreiben, und unter Windows ignoriert der Kern den Modus.
+    if (process.platform === 'win32' || process.getuid?.() === 0) {
+      skip();
+
+      return;
+    }
+
+    const gesperrt = path.join(wurzel, 'gesperrt');
+    await fs.mkdir(gesperrt);
+    await fs.chmod(gesperrt, 0o500);
+    const gesperrterJob = new ServerFileJob({
+      runtime: null as unknown as ConstructorParameters<typeof ServerFileJob>[0]['runtime'],
+      dataDir: gesperrt,
+    });
+
+    try {
+      await expect(
+        gesperrterJob.ensureDataDirectory(path.join(gesperrt, 'neuer-server')),
+      ).rejects.toMatchObject({
+        code: 'RUNTIME_ERROR',
+        message: expect.stringContaining(`chown -R 1000:1000 ${gesperrt}`) as string,
+      });
+    } finally {
+      await fs.chmod(gesperrt, 0o700);
+    }
+  });
 });
