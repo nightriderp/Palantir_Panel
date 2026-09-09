@@ -988,6 +988,71 @@ describe('Server anlegen (Lastenheft §3.3)', () => {
     expect(harness.repository.servers.size).toBe(0);
   });
 
+  /*
+   * Fundpunkt 185: `POST /servers` kam erst zurück, wenn der Agent das Image
+   * gezogen und den Container gebaut hatte – Minuten, in denen der Wizard nur
+   * einen drehenden Knopf zeigte. `beginCreateServer()` antwortet nach der
+   * Reservierung im Zustand `creating`; der Rest läuft im Hintergrund.
+   */
+  describe('beginCreateServer – Anlegen antwortet sofort (Fundpunkt 185)', () => {
+    const IMAGE_FEHLT: ApiResponse<unknown> = {
+      success: false,
+      data: null,
+      error: {
+        code: 'AGENT_IMAGE_NOT_FOUND',
+        message: 'Das Container-Image ist auf dem Homeserver nicht vorhanden.',
+      },
+    };
+
+    it('antwortet mit creating und stellt den Container im Hintergrund fertig', async () => {
+      const harness = makeHarness();
+
+      const sofort = await harness.service.beginCreateServer(createInput('sofort'), OWNER_ID);
+
+      // Datensatz und Ports stehen, der Container noch nicht.
+      expect(sofort.status).toBe('creating');
+      expect(sofort.assignedPorts.length).toBeGreaterThan(0);
+
+      const fertig = await settle(harness, sofort.id, ['stopped', 'error']);
+
+      expect(fertig.status).toBe('stopped');
+      expect(fertig.dockerContainerId).not.toBeNull();
+      expect(harness.emitted.map((e) => e.event)).toContain('server.created');
+    });
+
+    it('lässt einen gescheiterten Server als error mit Grund stehen, statt ihn wegzuräumen', async () => {
+      const harness = makeHarness();
+      harness.socket.answers.set('CREATE', IMAGE_FEHLT);
+
+      const sofort = await harness.service.beginCreateServer(createInput('kaputt'), OWNER_ID);
+      const fertig = await settle(harness, sofort.id, ['stopped', 'error']);
+
+      expect(fertig.status).toBe('error');
+      expect(fertig.statusMessage).toContain('nicht vorhanden');
+      // Anders als beim wartenden Weg bleibt der Datensatz: Der Nutzer sieht
+      // die Detailseite und soll dort lesen, woran es lag.
+      expect(harness.repository.servers.size).toBe(1);
+      expect(harness.releasedPorts).toHaveLength(0);
+      expect(harness.emitted.map((e) => e.event)).toContain('server.failed');
+    });
+
+    it('legt beim nächsten Start den fehlenden Container an – „Starten" ist der zweite Versuch', async () => {
+      const harness = makeHarness();
+      harness.socket.answers.set('CREATE', IMAGE_FEHLT);
+
+      const sofort = await harness.service.beginCreateServer(createInput('nochmal'), OWNER_ID);
+      await settle(harness, sofort.id, ['error']);
+
+      // Das Image ist inzwischen da.
+      harness.socket.answers.delete('CREATE');
+      await harness.service.startServer(sofort.id, OWNER_ID);
+      const laeuft = await settle(harness, sofort.id, ['running', 'error']);
+
+      expect(laeuft.status).toBe('running');
+      expect(laeuft.dockerContainerId).not.toBeNull();
+    });
+  });
+
   it('füllt die Konfiguration aus den Vorgabewerten der Spiele-Definition', async () => {
     const harness = makeHarness();
     const server = await harness.service.createServer(createInput(), OWNER_ID);
