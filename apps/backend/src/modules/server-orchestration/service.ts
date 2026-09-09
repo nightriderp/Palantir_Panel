@@ -1151,9 +1151,31 @@ export class ServerOrchestrationService {
       return;
     }
 
+    /*
+     * Geprüft wird der Weg der Spieler, nicht die Node im Tunnel (Fundpunkt 183).
+     *
+     * Bis hierher zielte der Check auf `host.wireguardIp` – und das konnte nie
+     * antworten: Der Agent bindet die Spielports auf der Node absichtlich nur an
+     * `127.0.0.1` (hardening.ts, `DEFAULT_HOST_IP`, damit das Heim-LAN sie nicht
+     * sieht), und die WireGuard-Firewall der Node verwirft jede neue
+     * Verbindung aus dem Tunnel. Jeder Start lief so nach
+     * `startupTimeoutSeconds` in `error`, während das Spiel längst lief und
+     * Spieler drauf waren. Aufgefallen beim ersten echten Minecraft-Start am
+     * 2026-09-09.
+     *
+     * Erreichbar ist der Server von hier aus genau dort, wo ihn auch die Spieler
+     * erreichen: auf der öffentlichen Adresse der VPS, hinter frps. Damit prüft
+     * der Check zugleich den Tunnel – ein Server, der auf der Node läuft, aber
+     * durch frp nicht durchkommt, ist für Spieler nicht „running".
+     *
+     * Für ein Spiel mit `supportsVirtualHostRouting` reicht das nicht: Dort teilen
+     * sich alle Server den Router-Port, und die Sonde müsste den Hostnamen
+     * mitschicken. Das Flag ist noch nirgends gesetzt (PR #307 sperrt den Start);
+     * wer es umlegt, gibt der Sonde den Hostnamen mit.
+     */
     const result = await awaitHealthy({
       target: {
-        host: host.wireguardIp,
+        host: this.deps.config.publicIpv4,
         port: primary.publicPort,
         query: definition.query,
       },
