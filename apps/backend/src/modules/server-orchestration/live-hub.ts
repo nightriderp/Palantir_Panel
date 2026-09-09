@@ -1,9 +1,12 @@
 import {
+  LIVE_SERVER_LIST_TOPIC,
   type LiveServerEventFrame,
   type LiveServerEventName,
   type LiveServerEventPayloads,
+  type LiveServerListEventName,
   type LiveTopic,
   isLiveServerEventName,
+  isLiveServerListEventName,
   isServerStatus,
 } from '@palantir/contracts';
 import { type OrchestrationEventSink } from './service.js';
@@ -34,12 +37,31 @@ export interface LiveSocket {
   close?(code: number, reason?: string): void;
 }
 
+/**
+ * Abo auf die Serverliste (Fundpunkt 173).
+ *
+ * `seesAll` steht für `server.view.any`: Wer alle Server sehen darf, erfährt
+ * von jedem; alle anderen nur von Servern, deren Besitzer oder Mitglied sie
+ * sind. Die Route entscheidet das beim Abonnieren, der Hub prüft nur noch.
+ */
+export interface ListSubscription {
+  readonly seesAll: boolean;
+}
+
+/** Wen ein Listen-Ereignis angeht – steht in der Nutzlast von B3. */
+export interface ListAudience {
+  readonly ownerId: string;
+  readonly memberUserIds: readonly string[];
+}
+
 interface Subscriber {
   readonly socket: LiveSocket;
   /** Konto hinter dieser Verbindung; `null`, wenn unbekannt (Testdoubles). */
   readonly userId: string | null;
   /** Server-Ids, die dieser Socket abonniert hat. */
   readonly topics: Set<string>;
+  /** Abo auf die Serverliste; `null`, solange nicht abonniert. */
+  list: ListSubscription | null;
 }
 
 /** Handle für einen registrierten Socket. */
@@ -56,6 +78,10 @@ export interface LiveRegistration {
    * neben dem Hub führen – zwei Wahrheiten über dieselben Abos.
    */
   subscribedServerIds(): readonly string[];
+  /** Serverliste abonnieren (Fundpunkt 173); ein erneuter Aufruf ersetzt das Abo. */
+  subscribeList(options: ListSubscription): void;
+  unsubscribeList(): void;
+  isListSubscribed(): boolean;
   /** Socket entfernen (bei Verbindungsende). */
   close(): void;
 }
@@ -74,7 +100,7 @@ export class ServerLiveHub {
   }
 
   register(socket: LiveSocket, userId: string | null = null): LiveRegistration {
-    const subscriber: Subscriber = { socket, userId, topics: new Set<string>() };
+    const subscriber: Subscriber = { socket, userId, topics: new Set<string>(), list: null };
     this.#subscribers.add(subscriber);
 
     return {
@@ -82,6 +108,13 @@ export class ServerLiveHub {
       unsubscribe: (serverId) => subscriber.topics.delete(serverId),
       isSubscribed: (serverId) => subscriber.topics.has(serverId),
       subscribedServerIds: () => [...subscriber.topics],
+      subscribeList: (options) => {
+        subscriber.list = { seesAll: options.seesAll };
+      },
+      unsubscribeList: () => {
+        subscriber.list = null;
+      },
+      isListSubscribed: () => subscriber.list !== null,
       close: () => this.#subscribers.delete(subscriber),
     };
   }
@@ -149,6 +182,45 @@ export class ServerLiveHub {
   }
 
   /**
+   * Ein Listen-Ereignis (Fundpunkt 173) an alle senden, die die Liste
+   * abonniert haben **und** den Server sehen dürfen: Besitzer, Mitglieder und
+   * wer `server.view.any` hat. Das Frame trägt nur die Id – die Liste holt
+   * sich der Browser danach über REST.
+   */
+  publishList(event: LiveServerListEventName, serverId: string, audience: ListAudience): void {
+    const frame: LiveServerEventFrame = {
+      kind: 'event',
+      event,
+      topic: LIVE_SERVER_LIST_TOPIC,
+      data: { serverId },
+      sentAt: this.#now().toISOString(),
+    };
+    const raw = JSON.stringify(frame);
+
+    for (const subscriber of this.#subscribers) {
+      if (subscriber.list === null) {
+        continue;
+      }
+
+      const betroffen =
+        subscriber.list.seesAll ||
+        (subscriber.userId !== null &&
+          (subscriber.userId === audience.ownerId ||
+            audience.memberUserIds.includes(subscriber.userId)));
+
+      if (!betroffen) {
+        continue;
+      }
+
+      try {
+        subscriber.socket.send(raw);
+      } catch {
+        // Toter Socket – siehe `publish()`.
+      }
+    }
+  }
+
+  /**
    * Nimmt ein Roh-Ereignis der Orchestrierung entgegen und formt es – sofern es
    * ein Live-Ereignis ist – in ein Frame um. Fremde Ereignisse (reine
    * Notification-Anlässe) werden ignoriert.
@@ -162,6 +234,22 @@ export class ServerLiveHub {
     }
     const serverId = payload.serverId;
     if (typeof serverId !== 'string') {
+      return;
+    }
+
+    if (isLiveServerListEventName(event)) {
+      // Angelegt, geklont, gelöscht: B3 nennt Besitzer und Mitglieder in der
+      // Nutzlast (`emitServerEvent`); ohne sie ließe sich nicht sagen, wer
+      // davon erfahren darf – dann lieber gar nicht.
+      const ownerId = payload.ownerId;
+      const memberUserIds = payload.memberUserIds;
+      if (typeof ownerId !== 'string' || !Array.isArray(memberUserIds)) {
+        return;
+      }
+      this.publishList(event, serverId, {
+        ownerId,
+        memberUserIds: memberUserIds.filter((id): id is string => typeof id === 'string'),
+      });
       return;
     }
 

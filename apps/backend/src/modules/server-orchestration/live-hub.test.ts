@@ -250,3 +250,98 @@ describe('ServerLiveHub – Rauswurf eines Kontos', () => {
     expect(registrierung.subscribedServerIds()).toEqual(['server-2']);
   });
 });
+
+/**
+ * Listen-Thema (Fundpunkt 173): Angelegt, geklont, gelöscht kommen auf der
+ * Liste des Aufrufers an – und nur bei denen, die den Server sehen dürfen.
+ */
+describe('ServerLiveHub – Listen-Thema (Fundpunkt 173)', () => {
+  const BESITZER = 'konto-besitzer';
+  const MITGLIED = 'konto-mitglied';
+  const FREMD = 'konto-fremd';
+  const ADMIN = 'konto-admin';
+
+  const ERWARTET = {
+    kind: 'event',
+    event: 'server.created',
+    topic: { resource: 'serverList', id: 'all' },
+    data: { serverId: 'server-1' },
+    sentAt: '2026-08-29T00:00:00.000Z',
+  };
+
+  it('liefert „angelegt" an Besitzer, Mitglieder und wer alles sehen darf – nicht an Fremde', () => {
+    const hub = new ServerLiveHub(FIXED_NOW);
+    const besitzer = collectingSocket();
+    const mitglied = collectingSocket();
+    const fremd = collectingSocket();
+    const admin = collectingSocket();
+    const ohneAbo = collectingSocket();
+    hub.register(besitzer.socket, BESITZER).subscribeList({ seesAll: false });
+    hub.register(mitglied.socket, MITGLIED).subscribeList({ seesAll: false });
+    hub.register(fremd.socket, FREMD).subscribeList({ seesAll: false });
+    hub.register(admin.socket, ADMIN).subscribeList({ seesAll: true });
+    // Nur den Server abonniert, nicht die Liste: Das Ereignis gehört nicht dorthin.
+    hub.register(ohneAbo.socket, BESITZER).subscribe('server-1');
+
+    hub.ingest('server.created', {
+      serverId: 'server-1',
+      serverName: 'Neu',
+      ownerId: BESITZER,
+      memberUserIds: [MITGLIED],
+      detail: null,
+    });
+
+    // Nur die Id – Name und Rechte holt der Browser über REST.
+    expect(besitzer.frames()).toEqual([ERWARTET]);
+    expect(mitglied.frames()).toEqual([ERWARTET]);
+    expect(admin.frames()).toEqual([ERWARTET]);
+    expect(fremd.frames()).toEqual([]);
+    expect(ohneAbo.frames()).toEqual([]);
+  });
+
+  it('verwirft ein Listen-Ereignis ohne Besitzer in der Nutzlast', () => {
+    const hub = new ServerLiveHub(FIXED_NOW);
+    const admin = collectingSocket();
+    hub.register(admin.socket, ADMIN).subscribeList({ seesAll: true });
+
+    hub.ingest('server.deleted', { serverId: 'server-1' });
+
+    expect(admin.frames()).toEqual([]);
+  });
+
+  it('stellt nach unsubscribeList nichts mehr zu', () => {
+    const hub = new ServerLiveHub(FIXED_NOW);
+    const besitzer = collectingSocket();
+    const reg = hub.register(besitzer.socket, BESITZER);
+    reg.subscribeList({ seesAll: false });
+    expect(reg.isListSubscribed()).toBe(true);
+
+    reg.unsubscribeList();
+    hub.ingest('server.deleted', {
+      serverId: 'server-1',
+      serverName: 'Weg',
+      ownerId: BESITZER,
+      memberUserIds: [],
+      detail: null,
+    });
+
+    expect(reg.isListSubscribed()).toBe(false);
+    expect(besitzer.frames()).toEqual([]);
+  });
+
+  it('gibt einem Socket ohne Konto nur mit seesAll etwas', () => {
+    const hub = new ServerLiveHub(FIXED_NOW);
+    const anonym = collectingSocket();
+    hub.register(anonym.socket).subscribeList({ seesAll: false });
+
+    hub.ingest('server.cloned', {
+      serverId: 'server-1',
+      serverName: 'Klon',
+      ownerId: BESITZER,
+      memberUserIds: [],
+      detail: null,
+    });
+
+    expect(anonym.frames()).toEqual([]);
+  });
+});

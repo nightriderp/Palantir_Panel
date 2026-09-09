@@ -1,13 +1,15 @@
 'use client';
 
 import {
+  LIVE_SERVER_LIST_TOPIC,
   type BackupProgress,
   type ServerCloneJobDto,
   type ServerConsoleLine,
   type ServerLiveStats,
   type ServerStatus,
+  isLiveServerListEventName,
 } from '@palantir/contracts';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchServerLogs } from '../api/servers';
 import { nextRevision } from '../revision';
 import { type LiveConnectionState, useLiveChannel } from './LiveChannelProvider';
@@ -213,10 +215,40 @@ export function useServerListLive(serverIds: readonly string[]): {
    * (Fundpunkt event-flow-04) – siehe `mergeLiveStatus`.
    */
   statusById: Record<string, LiveStatusEntry>;
+  /**
+   * Zählt hoch, wenn sich der Bestand geändert hat (Fundpunkt 173): ein
+   * Server wurde angelegt, geklont oder gelöscht – oder die Verbindung war
+   * zwischendurch weg und könnte so ein Ereignis verpasst haben. Wer die
+   * Liste zeigt, lädt sie dann neu; `0` heißt „noch nichts geschehen".
+   */
+  listRevision: number;
 } {
   const channel = useLiveChannel();
   const [statsById, setStatsById] = useState<Record<string, ServerLiveStats>>({});
   const [statusById, setStatusById] = useState<Record<string, LiveStatusEntry>>({});
+  const [listRevision, setListRevision] = useState(0);
+  const warOffen = useRef(false);
+
+  // Das Listen-Thema ist eines je Konto und hängt nicht an den Ids.
+  useEffect(
+    () =>
+      channel.subscribe(LIVE_SERVER_LIST_TOPIC, (frame) => {
+        if (isLiveServerListEventName(frame.event)) {
+          setListRevision((revision) => revision + 1);
+        }
+      }),
+    [channel],
+  );
+
+  // Nach einem Wiederanlauf einmal neu laden: Was in der Lücke angelegt oder
+  // gelöscht wurde, kam über keinen Kanal – und die Liste hat keinen `resync`.
+  useEffect(() => {
+    if (channel.connection !== 'open') return;
+    if (warOffen.current) {
+      setListRevision((revision) => revision + 1);
+    }
+    warOffen.current = true;
+  }, [channel.connection]);
 
   // Stabiler Schlüssel, damit der Effekt nicht bei jedem Rendern neu läuft.
   const key = serverIds.join(',');
@@ -245,5 +277,5 @@ export function useServerListLive(serverIds: readonly string[]): {
     };
   }, [channel, key]);
 
-  return { connection: channel.connection, statsById, statusById };
+  return { connection: channel.connection, statsById, statusById, listRevision };
 }

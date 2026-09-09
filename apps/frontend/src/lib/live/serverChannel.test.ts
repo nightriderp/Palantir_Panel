@@ -28,6 +28,25 @@ import {
 const TOPIC = { resource: 'server' as const, id: 'server-1' };
 
 describe('parseServerLiveFrame', () => {
+  it('liest ein Listen-Ereignis und weist ein Listen-Thema mit fremder Id ab (Fundpunkt 173)', () => {
+    const liste = { resource: 'serverList', id: 'all' };
+    const roh = JSON.stringify({
+      kind: 'event',
+      event: 'server.created',
+      topic: liste,
+      data: { serverId: 'server-1' },
+      sentAt: '2026-09-09T10:00:00.000Z',
+    });
+
+    expect(parseServerLiveFrame(roh)).toMatchObject({
+      kind: 'event',
+      event: 'server.created',
+      topic: liste,
+      data: { serverId: 'server-1' },
+    });
+    expect(parseServerLiveFrame(roh.replace('"id":"all"', '"id":"server-1"'))).toBeNull();
+  });
+
   it('liest ein Ereignis-Frame', () => {
     const roh = JSON.stringify({
       kind: 'event',

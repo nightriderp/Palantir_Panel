@@ -1,7 +1,7 @@
 import { type BackupProgress, type LiveServerEventFrame } from '@palantir/contracts';
 import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useServerLive } from './useServerLive';
+import { useServerLive, useServerListLive } from './useServerLive';
 
 /**
  * Fundpunkte event-flow-14 (`backupProgress` überlebt den Serverwechsel) und
@@ -255,5 +255,44 @@ describe('useServerLive', () => {
 
     expect(erste).toBeGreaterThan(0);
     expect(zweite).toBeGreaterThan(erste);
+  });
+});
+
+function Liste() {
+  const live = useServerListLive([]);
+
+  return <span data-testid="revision">{live.listRevision}</span>;
+}
+
+function listenFrame(event: 'server.created' | 'server.deleted'): LiveServerEventFrame {
+  return {
+    kind: 'event',
+    event,
+    topic: { resource: 'serverList', id: 'all' },
+    data: { serverId: 'server-neu' },
+    sentAt: '2026-09-09T10:00:00.000Z',
+  };
+}
+
+describe('useServerListLive – Listen-Thema (Fundpunkt 173)', () => {
+  it('zählt die Listen-Revision bei angelegt und gelöscht hoch, sonst nicht', () => {
+    render(<Liste />);
+    expect(screen.getByTestId('revision').textContent).toBe('0');
+
+    sende(listenFrame('server.created'));
+    expect(screen.getByTestId('revision').textContent).toBe('1');
+
+    sende(listenFrame('server.deleted'));
+    expect(screen.getByTestId('revision').textContent).toBe('2');
+
+    // Ein Statuswechsel gehört auf das Server-Thema, nicht auf die Liste.
+    sende({
+      kind: 'event',
+      event: 'server.statusChanged',
+      topic: { resource: 'serverList', id: 'all' },
+      data: { serverId: 'server-neu', status: 'running', statusMessage: null },
+      sentAt: '2026-09-09T10:00:01.000Z',
+    });
+    expect(screen.getByTestId('revision').textContent).toBe('2');
   });
 });
