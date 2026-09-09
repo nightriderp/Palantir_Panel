@@ -93,6 +93,23 @@ ausführbar zu machen wäre die falsche Richtung.
 
 ## Konsole
 
+Das Panel spricht die Konsole **über RCON** an (seit Fassung 2, P2-9). `start.sh` schaltet
+`enable-rcon` ein, erzeugt bei jedem Start ein neues Passwort (24 Zufallsbytes als Hex) und legt
+es unter `/data/.palantir/rcon.password` ab (0600). Der Agent liest es von dort und spricht den
+Container an seiner Adresse im Spielenetz auf Port 25575 an – die Antwort eines Befehls kommt so
+zurück und steht in der Live-Konsole, statt nur im Log zu stehen.
+
+Was das bedeutet:
+
+- Der RCON-Port wird **nie veröffentlicht**. Erreichbar ist er nur im Spielenetz, und dort nur
+  von der festen Adresse des Agents (`deploy/gamenode/egress-firewall.sh`).
+- Das Passwort verlässt die Node nicht. Es steht auch in `server.properties` (`rcon.password`),
+  weil Paper es dort liest – wer den Datei-Manager hat, sieht es; wer den hat, darf ohnehin
+  Befehle geben.
+- `broadcast-rcon-to-ops=false`, sonst sähe jeder Op im Spiel jeden Befehl aus dem Panel.
+
+Daneben bleibt der Weg über die Standardeingabe:
+
 ```
 palantir-console list
 palantir-console say Wartungsarbeiten in 5 Minuten
@@ -101,9 +118,8 @@ palantir-console stop
 ```
 
 `start.sh` legt ein benanntes Rohr an (`/data/.palantir/console.in`) und hängt die
-Standardeingabe des Servers daran; `palantir-console` schreibt hinein. Der Befehl wird damit
-wirklich ausgeführt — **die Antwort steht aber im Live-Log, nicht in der Ausgabe des Befehls**:
-Ein Minecraft-Server antwortet auf seiner Konsole, nicht an den Absender.
+Standardeingabe des Servers daran; `palantir-console` schreibt hinein. Das nutzt, wer `docker
+exec` von Hand macht – die Antwort steht dann im Live-Log, nicht in der Ausgabe des Befehls.
 
 Exit-Codes wie beim Prüfstand: `0` übergeben, `1` Konsole nicht erreichbar, `2` kein Befehl.
 
@@ -137,7 +153,7 @@ docker run --rm -p 25565:25565 \
   --user 1000:1000 --cap-drop ALL --security-opt no-new-privileges:true \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
   -m 4g -e EULA=true -v "$PWD/probe:/data" \
-  ghcr.io/nightriderp/palantir-game-minecraft:1
+  ghcr.io/nightriderp/palantir-game-minecraft:2
 ```
 
 Der Ordner `probe` muss vorher existieren und UID 1000 gehören — auf der Node legt ihn der

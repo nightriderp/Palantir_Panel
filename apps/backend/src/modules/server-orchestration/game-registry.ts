@@ -281,10 +281,10 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   name: 'Minecraft (Paper)',
   description:
     'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:2',
   // Schnellbefehle der Live-Konsole. Nur vollständige Zeilen – `say <Text>`
-  // oder `op <Name>` brauchen das Feld. Die Antwort kommt über das Log
-  // (`images/game/minecraft/console.sh`).
+  // oder `op <Name>` brauchen das Feld. Die Antwort kommt über RCON zurück
+  // (`console` unten, P2-9) und steht damit direkt in der Konsole.
   consoleQuickCommands: [
     { label: 'Spieler', command: 'list' },
     { label: 'TPS', command: 'tps' },
@@ -438,6 +438,18 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
     kind: 'gamedig',
     protocol: 'minecraft',
     containerPort: 25_565,
+  },
+  /*
+   * Konsole über RCON (P2-9) statt über die Standardeingabe: So kommt die
+   * Antwort eines Befehls zurück, statt irgendwo im Log zu stehen. Das Image
+   * (ab Fassung 2) schaltet RCON ein und legt bei jedem Start ein neues
+   * Passwort in den Datenordner; der Port wird nie veröffentlicht und ist nur
+   * aus dem Spielenetz zu erreichen – dort nur vom Agent (`egress-firewall.sh`).
+   */
+  console: {
+    kind: 'rcon',
+    port: 25_575,
+    passwordFile: '.palantir/rcon.password',
   },
   iconUrl: null,
   coverImageUrl: null,

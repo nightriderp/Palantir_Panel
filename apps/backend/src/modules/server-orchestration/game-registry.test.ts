@@ -244,7 +244,7 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
     // liefe die Node weiter auf der alten Fassung, ohne dass es auffiele. Der
     // Name folgt dem Schema `palantir-<Kategorie>-<Name>` (images/README.md).
     expect(MINECRAFT_PAPER_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-minecraft:1',
+      'ghcr.io/nightriderp/palantir-game-minecraft:2',
     );
   });
 
@@ -259,6 +259,16 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
       expect(befehl.command).not.toMatch(/[<>]/u);
       expect(befehl.label.length).toBeGreaterThan(0);
     }
+  });
+
+  it('spricht die Konsole über RCON an (P2-9)', () => {
+    // Port und Datei müssen zu `images/game/minecraft/start.sh` passen: Das
+    // Skript setzt `rcon.port` und legt das Passwort genau dort ab.
+    expect(MINECRAFT_PAPER_GAME_TYPE.console).toEqual({
+      kind: 'rcon',
+      port: 25_575,
+      passwordFile: '.palantir/rcon.password',
+    });
   });
 
   it('wird über gamedig abgefragt', () => {

@@ -3312,10 +3312,38 @@ describe('Konsole', () => {
     });
 
     await harness.service.execConsole(created.id, '  say hallo welt  ');
+    const exec = harness.socket.commands.find((c) => c.command === 'EXEC_CONSOLE');
+    expect((exec?.payload as { command: string[] }).command).toEqual(['say', 'hallo', 'welt']);
+    // Der Prüfstand hat keinen RCON-Anschluss – das Feld fehlt dann ganz.
+    expect(exec?.payload).not.toHaveProperty('rcon');
+  });
+
+  it('nennt dem Agent den RCON-Anschluss aus der Spiele-Definition (P2-9)', async () => {
+    const rconTyp: GameTypeDefinition = {
+      ...TEST_GAME_TYPE,
+      id: 'rcon-spiel',
+      console: { kind: 'rcon', port: 25_575, passwordFile: '.palantir/rcon.password' },
+    };
+    const harness = makeHarness({ gameTypes: [TEST_GAME_TYPE, rconTyp] });
+    const created = await harness.service.createServer(
+      createInput('rcon-server', rconTyp),
+      OWNER_ID,
+    );
+    harness.socket.answers.set('EXEC_CONSOLE', {
+      success: true,
+      data: { exitCode: 0, stdout: 'There are 0 of a max of 20 players online', stderr: '' },
+      error: null,
+    });
+
+    const ergebnis = await harness.service.execConsole(created.id, 'list');
 
     const exec = harness.socket.commands.find((c) => c.command === 'EXEC_CONSOLE');
-
-    expect((exec?.payload as { command: string[] }).command).toEqual(['say', 'hallo', 'welt']);
+    expect(exec?.payload).toMatchObject({
+      command: ['list'],
+      rcon: { port: 25_575, passwordFile: '.palantir/rcon.password' },
+    });
+    // Die Antwort kommt zurück statt nur im Log zu stehen.
+    expect(ergebnis.stdout).toBe('There are 0 of a max of 20 players online');
   });
 });
 

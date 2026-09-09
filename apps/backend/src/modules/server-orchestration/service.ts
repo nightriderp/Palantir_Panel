@@ -2003,7 +2003,20 @@ export class ServerOrchestrationService {
       );
     }
 
-    return session.sendCommand('EXEC_CONSOLE', server.id, { containerId, command: argv });
+    // Spiele mit RCON-Anschluss (P2-9): Der Agent bekommt Port und Passwortdatei
+    // aus der Definition, nicht das Passwort – das bleibt auf der Node. Ohne
+    // `console` bleibt es beim Weg über die Standardeingabe.
+    const konsole = this.deps.registry.require(server.gameType).console;
+    const rcon =
+      konsole?.kind === 'rcon'
+        ? { port: konsole.port, passwordFile: konsole.passwordFile }
+        : undefined;
+
+    return session.sendCommand('EXEC_CONSOLE', server.id, {
+      containerId,
+      command: argv,
+      ...(rcon === undefined ? {} : { rcon }),
+    });
   }
 
   // -------------------------------------------------------------------------
