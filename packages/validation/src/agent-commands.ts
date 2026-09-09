@@ -104,6 +104,20 @@ export const execConsoleCommandPayloadSchema = z.object({
   // Mindestens ein Element: Ein leerer Befehl hätte keine Bedeutung, würde aber
   // je nach Engine unterschiedlich behandelt.
   command: z.array(z.string()).min(1),
+  // RCON statt Standardeingabe (P2-9). Die Passwortdatei liegt relativ zum
+  // Datenordner; ein Pfad, der daraus ausbricht, wird vom Agent abgelehnt,
+  // hier genügt: nicht leer, kein absoluter Pfad.
+  rcon: z
+    .object({
+      port: portNumberSchema,
+      passwordFile: z
+        .string()
+        .min(1)
+        .refine((value) => !value.startsWith('/') && !value.includes('..'), {
+          message: 'Die Passwortdatei muss relativ zum Datenordner liegen.',
+        }),
+    })
+    .optional(),
 });
 
 export const fileListCommandPayloadSchema = z.object({

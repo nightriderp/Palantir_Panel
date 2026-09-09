@@ -139,6 +139,36 @@ export interface GameTypePort {
 }
 
 /**
+ * Konsole über die Standardeingabe des Servers: `EXEC_CONSOLE` startet
+ * `palantir-console <befehl>` im Container, die Antwort steht im Log.
+ */
+export interface StdinConsoleSpec {
+  readonly kind: 'stdin';
+}
+
+/**
+ * Konsole über RCON (Source RCON Protocol, wie Minecraft es spricht): Der
+ * Agent verbindet sich über das Spielenetz mit `port` des Containers, meldet
+ * sich mit dem Passwort aus `passwordFile` an und bekommt die Antwort des
+ * Befehls zurück – statt sie im Log zu suchen.
+ *
+ * `passwordFile` liegt **relativ zum Datenordner** des Servers. Das Image
+ * erzeugt das Passwort bei jedem Start neu und schreibt es dorthin; kein Port
+ * wird veröffentlicht, das Passwort verlässt die Node nie. Erreichbar ist der
+ * RCON-Port nur aus dem Spielenetz von der festen Adresse des Agents
+ * (`egress-firewall.sh`, Ausnahme Agent → Spielserver).
+ */
+export interface RconConsoleSpec {
+  readonly kind: 'rcon';
+  /** Port IM Container, auf dem RCON lauscht (Minecraft: 25575). */
+  readonly port: number;
+  /** Datei mit dem Passwort, relativ zum Datenordner, z. B. `.palantir/rcon.password`. */
+  readonly passwordFile: string;
+}
+
+export type GameConsoleSpec = StdinConsoleSpec | RconConsoleSpec;
+
+/**
  * Ein Schnellbefehl der Live-Konsole – ein Knopf unter dem Eingabefeld.
  *
  * `command` ist die vollständige Zeile, die abgeschickt wird; Befehle, die
@@ -205,6 +235,13 @@ export interface GameTypeDefinition {
   readonly supportsVirtualHostRouting: boolean;
   /** Kann der Wizard bestehende Weltdaten übernehmen (Lastenheft §3.3)? */
   readonly supportsWorldImport: boolean;
+  /**
+   * Wie die Live-Konsole ihre Befehle an den Server bringt (P2-9). Ohne Angabe
+   * `stdin`: `palantir-console` im Container schreibt in die Standardeingabe,
+   * die Antwort kommt über das Log. Mit `rcon` fragt der Agent den Server über
+   * sein RCON-Protokoll und bekommt die Antwort zurück.
+   */
+  readonly console?: GameConsoleSpec;
   /** Beschreibbarer Datenordner im Container – der einzige dauerhaft beschreibbare Ort. */
   readonly dataVolumeContainerPath: string;
   /**
