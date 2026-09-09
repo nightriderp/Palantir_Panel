@@ -1016,6 +1016,43 @@ describe('Starten mit Health-Check (Pflichtenheft §9)', () => {
     expect(harness.emitted.map((e) => e.event)).toContain('server.started');
   });
 
+  it('prüft den Weg der Spieler: öffentliche VPS-Adresse und öffentlicher Port (Fundpunkt 183)', async () => {
+    /*
+     * Bis Fundpunkt 183 zielte die Sonde auf die Node im Tunnel – und das
+     * konnte nie antworten: Spielports sind dort nur an 127.0.0.1 gebunden,
+     * und die WireGuard-Firewall der Node nimmt nichts Neues an. Jeder Start
+     * lief in `error`, während Spieler längst drauf waren. In der CI blieb das
+     * unsichtbar, weil die Sonde gemockt ist – deshalb hält dieser Test das
+     * Ziel fest, nicht nur das Ergebnis.
+     */
+    const ziele: Array<{ host: string; port: number }> = [];
+    const probe: HealthProbe = {
+      check: (target) => {
+        ziele.push({ host: target.host, port: target.port });
+
+        return Promise.resolve({
+          healthy: true,
+          pingMs: 5,
+          playersOnline: null,
+          playersMax: null,
+          reason: null,
+        });
+      },
+    };
+    const harness = makeHarness({ probe });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const running = await settle(harness, created.id, ['running', 'error']);
+
+    const primary = running.assignedPorts.find((zuweisung) => zuweisung.primary);
+
+    expect(running.status).toBe('running');
+    expect(ziele).toHaveLength(1);
+    expect(ziele[0]).toEqual({ host: '203.0.113.10', port: primary?.publicPort });
+    expect(ziele[0]?.host).not.toBe(HOST.wireguardIp);
+  });
+
   it('geht bei gescheitertem Health-Check nach error statt nach running', async () => {
     const harness = makeHarness({ healthy: false });
     const created = await harness.service.createServer(createInput(), OWNER_ID);

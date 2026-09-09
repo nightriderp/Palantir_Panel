@@ -29,9 +29,15 @@ import { GameDig, type QueryResult } from 'gamedig';
 import { type GameQuerySpec } from '@palantir/contracts';
 
 export interface HealthCheckTarget {
-  /** Adresse der Node im WireGuard-Tunnel (Pflichtenheft §2.1). */
+  /**
+   * Öffentliche Adresse der VPS – der Weg der Spieler, hinter frps.
+   *
+   * Nicht die Node im Tunnel: Dort sind die Spielports nur an `127.0.0.1`
+   * gebunden, und die WireGuard-Firewall der Node nimmt nichts Neues an
+   * (Fundpunkt 183, Begründung in `service.ts`, `runStartupHealth`).
+   */
   readonly host: string;
-  /** Host-Port, auf den der primäre Container-Port abgebildet ist. */
+  /** Öffentlicher Port des Servers, den frps auf der VPS veröffentlicht. */
   readonly port: number;
   readonly query: GameQuerySpec;
 }
