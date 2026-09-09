@@ -211,6 +211,26 @@ describe('gamedig-Sonde (Gefundener Punkt 60)', () => {
     expect(aufrufe[0]).toMatchObject({ type: 'minecraft', port: 25_565, maxRetries: 0 });
   });
 
+  it('gibt dem Socket die Hälfte der Frist, dem Versuch die ganze (Fundpunkt 187)', async () => {
+    /*
+     * `minecraft` ist in gamedig ein Verbund aus TCP-Ping und zwei
+     * UDP-Abfragen, der auf alle drei wartet. Die UDP-Abfragen beantwortet ein
+     * Java-Server nicht, sie laufen in die Socket-Frist. Wären beide Fristen
+     * gleich, wäre der Versuch genau dann abgelaufen – der TCP-Ping hatte
+     * längst geantwortet, und jeder Start endete in `error`. Gemessen gegen
+     * den ersten Minecraft-Server: 3000/3000 scheitert, 1500/3000 antwortet.
+     */
+    const aufrufe: Parameters<GamedigQuery>[0][] = [];
+
+    await createGamedigProbe((options) => {
+      aufrufe.push(options);
+
+      return Promise.resolve(antwort());
+    }).check(ziel, 3_000);
+
+    expect(aufrufe[0]).toMatchObject({ socketTimeout: 1_500, attemptTimeout: 3_000 });
+  });
+
   it('meldet einen Fehlschlag als „nicht erreichbar" mit Grund', async () => {
     const ergebnis = await createGamedigProbe(() =>
       Promise.reject(new Error('Server nicht erreichbar (Timeout)')),

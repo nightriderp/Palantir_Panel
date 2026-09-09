@@ -40,6 +40,33 @@ export type GamedigQuery = (options: {
 const standardAbfrage: GamedigQuery = (options) => GameDig.query(options);
 
 /**
+ * Die zwei Fristen, die gamedig kennt, aus der einen Frist der Sonde.
+ *
+ * `socketTimeout` gilt je Socket, `attemptTimeout` für den ganzen Versuch – und
+ * die Socket-Frist muss **deutlich unter** der Versuchs-Frist liegen. Der Typ
+ * `minecraft` ist in gamedig ein Verbund aus drei Protokollen (TCP-Ping,
+ * GameSpy3 per UDP, Bedrock per UDP), und der Verbund wartet auf alle drei. Die
+ * beiden UDP-Abfragen beantwortet ein Java-Server nicht (`enable-query=false`
+ * ist die Vorgabe), sie laufen in die Socket-Frist. Waren beide Fristen gleich,
+ * war der Versuch genau dann abgelaufen, wenn der Verbund fertig wurde: Der
+ * TCP-Ping hatte längst geantwortet, und trotzdem hieß es „Timed out" – die
+ * periodische Abfrage lieferte nie Spielerzahl oder Antwortzeit (Fundpunkt
+ * 187, gemessen gegen den ersten Minecraft-Server am 2026-09-09: 3000/3000
+ * scheitert, 1500/3000 antwortet nach 1,5 s).
+ *
+ * Die Hälfte lässt dem Verbund die andere Hälfte, um nach den UDP-Fristen
+ * fertig zu werden. Dieselbe Rechnung steht im Backend
+ * (`server-orchestration/health-check.ts`): Beide Sonden rufen gamedig gleich
+ * auf, und beide fielen gleich hinein.
+ */
+export function gamedigFristen(timeoutMs: number): {
+  socketTimeout: number;
+  attemptTimeout: number;
+} {
+  return { socketTimeout: Math.max(1, Math.floor(timeoutMs / 2)), attemptTimeout: timeoutMs };
+}
+
+/**
  * Spielernamen aus der Antwort.
  *
  * Namenlose Einträge fallen weg: Manche Server melden Platzhalter ohne Namen,
@@ -89,8 +116,7 @@ export function createGamedigProbe(abfragen: GamedigQuery = standardAbfrage): Se
           type: target.query.protocol,
           host: target.host,
           port: target.port,
-          socketTimeout: timeoutMs,
-          attemptTimeout: timeoutMs,
+          ...gamedigFristen(timeoutMs),
           maxRetries: 0,
         });
 
