@@ -68,9 +68,14 @@ function istRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function leseTopic(value: unknown): LiveTopic | null {
-  if (!istRecord(value) || value.resource !== 'server' || typeof value.id !== 'string') {
-    return null;
+  if (!istRecord(value)) return null;
+
+  // Listen-Thema (Fundpunkt 173): angelegt, geklont, gelöscht.
+  if (value.resource === 'serverList' && value.id === 'all') {
+    return { resource: 'serverList', id: 'all' };
   }
+
+  if (value.resource !== 'server' || typeof value.id !== 'string') return null;
 
   return { resource: 'server', id: value.id };
 }

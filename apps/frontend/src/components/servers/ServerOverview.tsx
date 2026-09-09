@@ -2,7 +2,7 @@
 
 import { type GameServerDto } from '@palantir/contracts';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   ConfirmDialog,
@@ -57,8 +57,14 @@ export function ServerOverview() {
 
   const list = useMemo(() => servers.data ?? [], [servers.data]);
   const serverIds = useMemo(() => list.map((server) => server.id), [list]);
-  const { statsById, statusById } = useServerListLive(serverIds);
+  const { statsById, statusById, listRevision } = useServerListLive(serverIds);
   const dtoRevisions = useDtoRevisions(list);
+
+  // Angelegt, geklont, gelöscht – auch aus einem anderen Tab (Fundpunkt 173).
+  const reload = servers.reload;
+  useEffect(() => {
+    if (listRevision > 0) reload();
+  }, [listRevision, reload]);
 
   /**
    * DTO mit dem zuletzt über den Live-Kanal gemeldeten Status zusammenführen –

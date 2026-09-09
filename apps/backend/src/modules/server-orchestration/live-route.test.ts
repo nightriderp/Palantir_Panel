@@ -34,6 +34,7 @@ import { type ServerOrchestrationService } from './service.js';
 const SERVER_ID = '11111111-1111-4111-8111-111111111111';
 const OWNER_ID = '22222222-2222-4222-8222-222222222222';
 const MITGLIED_ID = '33333333-3333-4333-8333-333333333333';
+const ADMIN_ID = '55555555-5555-4555-8555-555555555555';
 const PANEL = 'https://panel.example.tld';
 
 const SERVER: ServerRecord = {
@@ -75,9 +76,18 @@ const actors: Record<string, PermissionActor> = {
     isOwner: false,
     roles: [{ grantedPermissions: ['server.view.own', 'server.manage.own'] }],
   }),
+  // Sieht alle Server (Fundpunkt 173), ist aber weder Besitzer noch Mitglied.
+  admin: buildPermissionActor({
+    isOwner: false,
+    roles: [{ grantedPermissions: ['server.view.any'] }],
+  }),
 };
 
-const konten: Record<string, string> = { besitzer: OWNER_ID, mitglied: MITGLIED_ID };
+const konten: Record<string, string> = {
+  besitzer: OWNER_ID,
+  mitglied: MITGLIED_ID,
+  admin: ADMIN_ID,
+};
 
 interface Aufbau {
   readonly app: FastifyInstance;
@@ -457,5 +467,83 @@ describe('Close-Codes des Server-Live-Kanals', () => {
   it('nimmt beide Zahlen unverändert aus dem Vertrag', () => {
     expect(LIVE_CLOSE_CODE_UNAUTHORIZED).toBe(SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED);
     expect(LIVE_CLOSE_CODE_FORBIDDEN).toBe(SERVER_LIVE_CLOSE_CODE_FORBIDDEN);
+  });
+});
+
+/**
+ * Listen-Thema (Fundpunkt 173): Die Übersicht erfährt von angelegten und
+ * gelöschten Servern, ohne sie vorher zu kennen.
+ */
+describe('Listen-Thema (Fundpunkt 173)', () => {
+  const LISTE = { resource: 'serverList', id: 'all' };
+
+  it('liefert „angelegt" an Besitzer und wer alles sehen darf, nicht an Fremde', async () => {
+    const { app, hub } = await baueApp();
+    const besitzer = await verbinde(app, 'besitzer');
+    // `mitglied` steht nicht in der Nutzlast unten – aus Sicht der Liste ein Fremder.
+    const fremd = await verbinde(app, 'mitglied');
+    const admin = await verbinde(app, 'admin');
+    for (const kanal of [besitzer, fremd, admin]) {
+      kanal.send({ kind: 'subscribe', topic: LISTE });
+    }
+    await kurzWarten();
+
+    hub.ingest('server.created', {
+      serverId: SERVER_ID,
+      serverName: 'Testserver',
+      ownerId: OWNER_ID,
+      memberUserIds: [],
+      detail: null,
+    });
+    await warteAufFrames(besitzer.frames, 1);
+    await warteAufFrames(admin.frames, 1);
+    await kurzWarten();
+
+    const erwartet = {
+      kind: 'event',
+      event: 'server.created',
+      topic: LISTE,
+      data: { serverId: SERVER_ID },
+    };
+    expect(besitzer.frames).toHaveLength(1);
+    expect(besitzer.frames[0]).toMatchObject(erwartet);
+    expect(admin.frames).toHaveLength(1);
+    expect(admin.frames[0]).toMatchObject(erwartet);
+    expect(fremd.frames).toHaveLength(0);
+  });
+
+  it('beendet das Listen-Abo mit unsubscribe', async () => {
+    const { app, hub } = await baueApp();
+    const besitzer = await verbinde(app, 'besitzer');
+    besitzer.send({ kind: 'subscribe', topic: LISTE });
+    await kurzWarten();
+    besitzer.send({ kind: 'unsubscribe', topic: LISTE });
+    await kurzWarten();
+
+    hub.ingest('server.deleted', {
+      serverId: SERVER_ID,
+      serverName: 'Testserver',
+      ownerId: OWNER_ID,
+      memberUserIds: [],
+      detail: null,
+    });
+    await kurzWarten();
+
+    expect(besitzer.frames).toHaveLength(0);
+  });
+
+  it('weist einen Konsolenbefehl auf der Liste mit einer Rückmeldung ab', async () => {
+    const { app, execConsole } = await baueApp();
+    const besitzer = await verbinde(app, 'besitzer');
+
+    besitzer.send({ kind: 'consoleCommand', topic: LISTE, command: 'list' });
+    await warteAufFrames(besitzer.frames, 1);
+
+    expect(besitzer.frames[0]).toMatchObject({
+      kind: 'error',
+      topic: LISTE,
+      code: 'VALIDATION_FAILED',
+    });
+    expect(execConsole).not.toHaveBeenCalled();
   });
 });

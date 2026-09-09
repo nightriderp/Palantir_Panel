@@ -195,6 +195,29 @@ export function registerServerLiveRoute(
           return;
         }
 
+        if (frame.topic.resource === 'serverList') {
+          // Listen-Thema (Fundpunkt 173): keine Rechteprüfung je Server nötig –
+          // der Hub liefert nur, was Besitzer, Mitglied oder `server.view.any`
+          // sehen dürfen. Ein Konsolenbefehl hat auf der Liste kein Ziel.
+          if (frame.kind === 'subscribe') {
+            registration.subscribeList({
+              seesAll: requireActor(request).permissions.has('server.view.any'),
+            });
+          } else if (frame.kind === 'unsubscribe') {
+            registration.unsubscribeList();
+          } else {
+            reply({
+              kind: 'error',
+              topic: frame.topic,
+              code: 'VALIDATION_FAILED',
+              message: 'Ein Konsolenbefehl braucht einen Server, keine Liste.',
+              sentAt: new Date().toISOString(),
+            });
+          }
+
+          return;
+        }
+
         const serverId = frame.topic.id;
 
         switch (frame.kind) {
@@ -394,7 +417,15 @@ function istRecord(value: unknown): value is Record<string, unknown> {
 
 /** Thema aus einem abgelehnten Frame – nur zur Zuordnung der Fehlermeldung. */
 function leseTopic(value: unknown): LiveTopic | null {
-  if (!istRecord(value) || value.resource !== 'server' || typeof value.id !== 'string') {
+  if (!istRecord(value)) {
+    return null;
+  }
+
+  if (value.resource === 'serverList' && value.id === 'all') {
+    return { resource: 'serverList', id: 'all' };
+  }
+
+  if (value.resource !== 'server' || typeof value.id !== 'string') {
     return null;
   }
 
