@@ -144,6 +144,23 @@ export interface GetLogsCommandPayload {
 export interface ExecConsoleCommandPayload {
   readonly containerId: string;
   readonly command: readonly string[];
+  /**
+   * Gesetzt, geht der Befehl über RCON statt über `palantir-console` im
+   * Container (P2-9): Der Agent verbindet sich über das Spielenetz mit dem
+   * Container auf `port`, meldet sich mit dem Passwort aus `passwordFile`
+   * (relativ zum Datenordner des Servers) an, schickt die Argumente als eine
+   * Zeile und gibt die Antwort des Servers als `stdout` zurück. Fehlt das
+   * Feld, bleibt es beim bisherigen Weg – ältere Definitionen ändern nichts.
+   */
+  readonly rcon?: AgentRconAccess;
+}
+
+/** Zugang zum RCON-Anschluss eines Spielservers, wie das Backend ihn dem Agent nennt. */
+export interface AgentRconAccess {
+  /** Port IM Container. */
+  readonly port: number;
+  /** Datei mit dem Passwort, relativ zum Datenordner des Servers. */
+  readonly passwordFile: string;
 }
 
 /** `FILE_LIST` – Verzeichnisinhalt im Container (nicht rekursiv). */

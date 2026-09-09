@@ -85,6 +85,29 @@ describe('EXEC_CONSOLE', () => {
         .success,
     ).toBe(false);
   });
+
+  it('nimmt einen RCON-Zugang an – Port im Container und Passwortdatei im Datenordner (P2-9)', () => {
+    expect(
+      execConsoleCommandPayloadSchema.safeParse({
+        containerId: 'abc123',
+        command: ['list'],
+        rcon: { port: 25_575, passwordFile: '.palantir/rcon.password' },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('lehnt eine Passwortdatei ab, die aus dem Datenordner ausbricht', () => {
+    for (const passwordFile of ['/etc/passwd', '../nachbar/rcon.password']) {
+      expect(
+        execConsoleCommandPayloadSchema.safeParse({
+          containerId: 'abc123',
+          command: ['list'],
+          rcon: { port: 25_575, passwordFile },
+        }).success,
+        passwordFile,
+      ).toBe(false);
+    }
+  });
 });
 
 describe('FILE_WRITE', () => {
