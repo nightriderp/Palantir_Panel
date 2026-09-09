@@ -1,5 +1,5 @@
 import { type GameServerDto, type LiveServerEventFrame } from '@palantir/contracts';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/shared';
 import { server as serverFixture } from '../testFixtures';
@@ -157,5 +157,62 @@ describe('ServerDetail – Live und REST (event-flow-04)', () => {
     sende(statusFrame('running'));
 
     expect(await screen.findByText('Online')).toBeTruthy();
+  });
+});
+
+/**
+ * Aktualisieren (Fundpunkt 190).
+ *
+ * Eine neue Fassung des Spiel-Images greift erst, wenn der Container neu
+ * gebaut wird – das tut jeder Start. Sichtbar war das bisher nur als Abzeichen
+ * „Update verfügbar"; wer es übernehmen wollte, musste wissen, dass ein
+ * Neustart genau das tut.
+ */
+describe('ServerDetail – Aktualisieren (Fundpunkt 190)', () => {
+  const MIT_UPDATE: GameServerDto = { ...LAEUFT, updateAvailable: true };
+
+  it('bietet den Knopf am laufenden Server an und startet dafür neu', async () => {
+    api.fetchServer.mockResolvedValue({ success: true, data: MIT_UPDATE, error: null });
+    api.runLifecycleAction.mockResolvedValue({
+      success: true,
+      data: { ...MIT_UPDATE, status: 'starting' },
+      error: null,
+    });
+
+    zeichne();
+    fireEvent.click(await screen.findByRole('button', { name: 'Aktualisieren' }));
+
+    // Erst die Rückfrage – ein Klick darf keine Spielrunde beenden.
+    expect(await screen.findByText('Auf die neue Fassung aktualisieren?')).toBeTruthy();
+    expect(api.runLifecycleAction).not.toHaveBeenCalled();
+
+    // Der Kopf traegt denselben Wortlaut; gemeint ist der in der Rueckfrage.
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Aktualisieren' }),
+    );
+
+    await waitFor(() => {
+      expect(api.runLifecycleAction).toHaveBeenCalledWith('srv-1', 'restart');
+    });
+  });
+
+  it('zeigt am gestoppten Server nur den Hinweis – der nächste Start übernimmt', async () => {
+    api.fetchServer.mockResolvedValue({
+      success: true,
+      data: { ...MIT_UPDATE, status: 'stopped' },
+      error: null,
+    });
+
+    zeichne();
+    expect(await screen.findByText('Update verfügbar')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
+  });
+
+  it('bietet den Knopf ohne neue Fassung gar nicht an', async () => {
+    zeichne();
+    await screen.findByText('Online');
+
+    expect(screen.queryByText('Update verfügbar')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
   });
 });

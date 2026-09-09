@@ -50,7 +50,7 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
   const searchParams = useSearchParams();
   const toast = useToast();
 
-  const [confirm, setConfirm] = useState<{ action: 'stop' | 'restart' } | null>(null);
+  const [confirm, setConfirm] = useState<{ action: 'stop' | 'restart' | 'update' } | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -163,6 +163,7 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
         server={server}
         busy={lifecycle.pendingServerId !== null}
         onLifecycle={onLifecycle}
+        onUpdate={() => setConfirm({ action: 'update' })}
         onOpenSettings={() => selectTab('settings')}
         onDelete={() => setDeleteOpen(true)}
         onCopyAddress={copyAddress}
@@ -214,21 +215,29 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
         </>
       )}
 
+      {/*
+       * Aktualisieren läuft über denselben Neustart (Fundpunkt 190): Der Start
+       * baut den Container aus dem heutigen Bauplan neu und zieht dabei die
+       * neue Fassung des Images. Rückfrage und Beschriftung nennen trotzdem
+       * den wirklichen Anlass.
+       */}
       <ConfirmDialog
         open={confirm !== null}
         onClose={() => setConfirm(null)}
         busy={lifecycle.pendingServerId !== null}
-        title={confirm?.action === 'restart' ? 'Server neu starten?' : 'Server stoppen?'}
-        confirmLabel={confirm?.action === 'restart' ? 'Neu starten' : 'Stoppen'}
-        message={
-          confirm?.action === 'restart'
-            ? `„${server.name}" wird heruntergefahren und sofort wieder gestartet. Alle Spieler fliegen dabei kurz heraus.`
-            : `„${server.name}" wird heruntergefahren. Alle Spieler werden getrennt; die Weltdaten bleiben erhalten.`
-        }
+        title={CONFIRM_TEXTS[confirm?.action ?? 'stop'].title}
+        confirmLabel={CONFIRM_TEXTS[confirm?.action ?? 'stop'].confirmLabel}
+        message={CONFIRM_TEXTS[confirm?.action ?? 'stop'].message(server.name)}
         onConfirm={() => {
           const action = confirm?.action;
           setConfirm(null);
-          if (action) void lifecycle.run(server, action);
+          if (action === undefined) return;
+          if (action === 'update') {
+            void lifecycle.run(server, 'restart', { label: 'Server wird aktualisiert …' });
+
+            return;
+          }
+          void lifecycle.run(server, action);
         }}
       />
 
@@ -244,3 +253,28 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
     </div>
   );
 }
+
+/** Rückfragen der Lifecycle-Aktionen – je Anlass ein eigener Wortlaut. */
+const CONFIRM_TEXTS: Record<
+  'stop' | 'restart' | 'update',
+  { title: string; confirmLabel: string; message: (name: string) => string }
+> = {
+  stop: {
+    title: 'Server stoppen?',
+    confirmLabel: 'Stoppen',
+    message: (name) =>
+      `„${name}" wird heruntergefahren. Alle Spieler werden getrennt; die Weltdaten bleiben erhalten.`,
+  },
+  restart: {
+    title: 'Server neu starten?',
+    confirmLabel: 'Neu starten',
+    message: (name) =>
+      `„${name}" wird heruntergefahren und sofort wieder gestartet. Alle Spieler fliegen dabei kurz heraus.`,
+  },
+  update: {
+    title: 'Auf die neue Fassung aktualisieren?',
+    confirmLabel: 'Aktualisieren',
+    message: (name) =>
+      `„${name}" wird dafür neu gestartet und läuft danach auf der neuen Fassung. Alle Spieler fliegen kurz heraus; die Weltdaten bleiben erhalten.`,
+  },
+};

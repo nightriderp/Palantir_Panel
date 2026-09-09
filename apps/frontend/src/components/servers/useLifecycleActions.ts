@@ -21,10 +21,24 @@ const RUNNING_LABEL: Record<LifecycleAction, string> = {
   restart: 'Server wird neu gestartet …',
 };
 
+export interface LifecycleRunOptions {
+  /**
+   * Beschriftung der laufenden Meldung; ohne Angabe die des Befehls.
+   *
+   * Gebraucht für das Aktualisieren (Fundpunkt 190): Es läuft über denselben
+   * Neustart, heißt für den Betreiber aber nicht „wird neu gestartet".
+   */
+  readonly label?: string;
+}
+
 export interface LifecycleActions {
   /** Id des Servers, für den gerade eine Aktion läuft; sonst `null`. */
   pendingServerId: string | null;
-  run: (server: GameServerDto, action: LifecycleAction) => Promise<GameServerDto | null>;
+  run: (
+    server: GameServerDto,
+    action: LifecycleAction,
+    options?: LifecycleRunOptions,
+  ) => Promise<GameServerDto | null>;
 }
 
 export function useLifecycleActions(
@@ -35,9 +49,9 @@ export function useLifecycleActions(
   const [pendingServerId, setPendingServerId] = useState<string | null>(null);
 
   const run = useCallback(
-    async (server: GameServerDto, action: LifecycleAction) => {
+    async (server: GameServerDto, action: LifecycleAction, options?: LifecycleRunOptions) => {
       setPendingServerId(server.id);
-      const toastId = toast.show(RUNNING_LABEL[action], { durationMs: 8000 });
+      const toastId = toast.show(options?.label ?? RUNNING_LABEL[action], { durationMs: 8000 });
 
       const result = await runLifecycleAction(server.id, action);
       setPendingServerId(null);

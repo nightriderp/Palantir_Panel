@@ -30,6 +30,14 @@ export interface DetailHeaderProps {
   server: GameServerDto;
   busy: boolean;
   onLifecycle: (action: LifecycleAction) => void;
+  /**
+   * Übernimmt die neue Fassung des Images (Fundpunkt 190).
+   *
+   * Getrennt von `onLifecycle`, obwohl derselbe Neustart dahintersteht: Für den
+   * Betreiber ist das eine andere Absicht, und die Rückfrage davor nennt einen
+   * anderen Grund.
+   */
+  onUpdate: () => void;
   onOpenSettings: () => void;
   onDelete: () => void;
   onCopyAddress: (address: string) => void;
@@ -39,6 +47,7 @@ export function DetailHeader({
   server,
   busy,
   onLifecycle,
+  onUpdate,
   onOpenSettings,
   onDelete,
   onCopyAddress,
@@ -49,6 +58,15 @@ export function DetailHeader({
   const canUseStartStop =
     action === 'stop' ? server.permissions.canStop : server.permissions.canStart;
   const address = formatServerAddress(server.address);
+
+  /*
+   * Der Knopf erscheint nur am laufenden Server (Fundpunkt 190). Ein
+   * gestoppter braucht ihn nicht: Sein nächster Start baut den Container
+   * ohnehin aus dem heutigen Bauplan – und ein „Aktualisieren", das einen
+   * Server nebenbei hochfährt, wäre eine Überraschung.
+   */
+  const canUpdate =
+    server.updateAvailable && server.permissions.canRestart && server.status === 'running';
 
   return (
     <header className="flex flex-col gap-3 rounded-2xl border border-line bg-hero-gradient p-6">
@@ -71,7 +89,17 @@ export function DetailHeader({
                 <Badge tone="warning">Wartet auf Neustart</Badge>
               </span>
             ) : null}
-            {server.updateAvailable ? <Badge tone="warning">Update verfügbar</Badge> : null}
+            {server.updateAvailable ? (
+              <span
+                title={
+                  canUpdate
+                    ? 'Über „Aktualisieren" wird die neue Fassung übernommen.'
+                    : 'Die neue Fassung wird beim nächsten Start übernommen.'
+                }
+              >
+                <Badge tone="warning">Update verfügbar</Badge>
+              </span>
+            ) : null}
           </div>
 
           <p className="mt-1 text-sm text-ink-soft">
@@ -98,6 +126,18 @@ export function DetailHeader({
         <div className="flex shrink-0 flex-wrap gap-2">
           {server.permissions.canManageSettings ? (
             <IconButton icon="gear" label="Einstellungen" onClick={onOpenSettings} />
+          ) : null}
+
+          {canUpdate ? (
+            <Button
+              variant="secondary"
+              iconLeft="download"
+              disabled={blocked}
+              title="Startet den Server neu und übernimmt dabei die neue Fassung."
+              onClick={onUpdate}
+            >
+              Aktualisieren
+            </Button>
           ) : null}
 
           {canUseStartStop ? (
