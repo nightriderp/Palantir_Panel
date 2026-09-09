@@ -6,7 +6,8 @@
  * Datenordner (`PALANTIR_DATA_DIR`) und ein `java` im PATH, das nur seine
  * Argumente ausgibt. Damit sind genau die Entscheidungen prüfbar, die das
  * Skript trifft – EULA-Sperre, verwaltete Schlüssel in `server.properties`,
- * Heap aus dem RAM-Kontingent, temporäres Verzeichnis, Exit-Codes der Konsole.
+ * Übernahme des Heaps aus der Bibliothek des Basis-Images, temporäres
+ * Verzeichnis, Exit-Codes der Konsole.
  *
  * **Was nicht.** Ob Paper mit diesen Schaltern startet, ob die Jar zur JVM passt
  * und ob die Härtung des Agents im Zusammenspiel hält, zeigt erst ein echter
@@ -32,6 +33,13 @@ const posix = (pfad) => pfad.replace(/\\/gu, '/');
 const HIER = fileURLToPath(new URL('.', import.meta.url));
 const START_SH = posix(join(HIER, 'start.sh'));
 const CONSOLE_SH = posix(join(HIER, 'console.sh'));
+
+/**
+ * Die Shell-Bibliothek des Basis-Images. Im Container liegt sie unter
+ * `/opt/palantir/lib`; hier wird sie aus dem Repository eingebunden
+ * (`PALANTIR_LIB_DIR`), damit das Skript ohne Image prüfbar bleibt.
+ */
+const JAVA_LIB = posix(join(HIER, '..', '..', 'base', 'java'));
 
 /**
  * Steht eine POSIX-Shell zur Verfügung?
@@ -99,6 +107,7 @@ function starteSkript(ordner, env = {}) {
         ...process.env,
         PALANTIR_DATA_DIR: posix(ordner.daten),
         PALANTIR_PAPER_JAR: '/opt/palantir/paper.jar',
+        PALANTIR_LIB_DIR: JAVA_LIB,
         // Ohne diesen Zeiger läse das Skript die cgroup-Dateien des Rechners,
         // auf dem der Test läuft – das Ergebnis hinge dann an der Maschine.
         PALANTIR_MEMORY_LIMIT_FILE: posix(ordner.ohneGrenze),
@@ -250,29 +259,30 @@ describe('start.sh – server.properties', nurMitShell, () => {
 });
 
 describe('start.sh – Heap aus dem RAM-Kontingent', nurMitShell, () => {
-  // Kontingent (MiB) → erwarteter Heap (MiB). Rücklage: ein Viertel des
-  // Kontingents, mindestens 512, höchstens 2048 MiB.
-  const faelle = [
-    [1024, 512],
-    [2048, 1536],
-    [4096, 3072],
-    [8192, 6144],
-    [16_384, 14_336],
-  ];
-
-  for (const [kontingent, heap] of faelle) {
-    it(`rechnet ${kontingent} MiB Kontingent auf ${heap} MiB Heap`, () => {
-      const ordner = arbeitsordner();
-      const lauf = starteSkript(ordner, {
-        EULA: 'true',
-        PALANTIR_MEMORY_LIMIT_FILE: speichergrenze(ordner, kontingent * 1024 * 1024),
-      });
-
-      assert.equal(lauf.status, 0, lauf.stderr);
-      assert.equal(lauf.argv[0], `-Xms${heap}M`);
-      assert.equal(lauf.argv[1], `-Xmx${heap}M`);
+  /*
+   * Die Rechnung selbst – Rücklage, Grenzfälle, cgroup v1 und v2, Fundpunkt
+   * 178 – prüft `images/base/java/java.test.mjs`. Hier zählt nur, dass das
+   * Skript die Bibliothek einbindet und ihr Ergebnis wirklich an die JVM gibt:
+   * Ein Startskript, das die Funktion aufruft und `set --` vergisst, bestünde
+   * jeden Test der Bibliothek und liefe trotzdem mit dem JVM-Standard.
+   */
+  it('gibt den errechneten Heap als erste Schalter an die JVM', () => {
+    const ordner = arbeitsordner();
+    const lauf = starteSkript(ordner, {
+      EULA: 'true',
+      PALANTIR_MEMORY_LIMIT_FILE: speichergrenze(ordner, 4096 * 1024 * 1024),
     });
-  }
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    // 4096 MiB Kontingent, Rücklage ein Viertel (1024) → 3072 MiB Heap.
+    assert.equal(lauf.argv[0], '-Xms3072M');
+    assert.equal(lauf.argv[1], '-Xmx3072M');
+    // Und das Log nennt die Zahlen, die die Bibliothek gesetzt hat.
+    assert.match(
+      lauf.stdout,
+      /RAM-Kontingent 4096 MiB, davon 3072 MiB Heap \(1024 MiB Rücklage\)/u,
+    );
+  });
 
   it('überlässt der JVM die Rechnung, wenn keine Grenze lesbar ist', () => {
     const ordner = arbeitsordner();
@@ -280,55 +290,7 @@ describe('start.sh – Heap aus dem RAM-Kontingent', nurMitShell, () => {
 
     assert.equal(lauf.argv[0], '-XX:MaxRAMPercentage=70');
     assert.ok(!lauf.argv.some((arg) => arg.startsWith('-Xmx')));
-  });
-
-  /*
-   * Fundpunkt 178: `PALANTIR_MEMORY_LIMIT_FILE` ist ein Ersatz, keine
-   * zusätzliche Adresse. Vorher stand die Variable am Anfang einer Suchliste —
-   * eine unlesbare Datei wurde übersprungen, und das Skript las danach doch
-   * `/sys/fs/cgroup/memory.max` der Maschine. Die drei Tests unten wollten
-   * „keine brauchbare Grenze" nachstellen, prüften in Wahrheit aber die Grenze
-   * des Läufers; auf ubuntu-latest steht dort „max", deshalb bestanden sie aus
-   * dem falschen Grund. In einem Container mit RAM-Grenze wären sie umgefallen.
-   */
-  it('liest nur die angegebene Datei, nicht zusätzlich die der Maschine', () => {
-    const ordner = arbeitsordner();
-    const mitGrenze = starteSkript(ordner, {
-      EULA: 'true',
-      PALANTIR_MEMORY_LIMIT_FILE: speichergrenze(ordner, 2048 * 1024 * 1024),
-    });
-
-    // 2048 MiB Kontingent, Rücklage ein Viertel (512) → 1536 MiB Heap.
-    assert.equal(mitGrenze.argv[1], '-Xmx1536M');
-
-    // Und mit einer Adresse, die es nicht gibt, bleibt es beim Rückfall — auch
-    // auf einer Maschine, die selbst eine cgroup-Grenze hat.
-    const ohneGrenze = starteSkript(ordner, {
-      EULA: 'true',
-      PALANTIR_MEMORY_LIMIT_FILE: posix(ordner.ohneGrenze),
-    });
-
-    assert.equal(ohneGrenze.argv[0], '-XX:MaxRAMPercentage=70');
-  });
-
-  it('wertet "max" (cgroup v2 ohne Grenze) nicht als Zahl', () => {
-    const ordner = arbeitsordner();
-    const lauf = starteSkript(ordner, {
-      EULA: 'true',
-      PALANTIR_MEMORY_LIMIT_FILE: speichergrenze(ordner, 'max'),
-    });
-
-    assert.equal(lauf.argv[0], '-XX:MaxRAMPercentage=70');
-  });
-
-  it('wertet die Ersatzzahl von cgroup v1 nicht als Grenze', () => {
-    const ordner = arbeitsordner();
-    const lauf = starteSkript(ordner, {
-      EULA: 'true',
-      PALANTIR_MEMORY_LIMIT_FILE: speichergrenze(ordner, '9223372036854771712'),
-    });
-
-    assert.equal(lauf.argv[0], '-XX:MaxRAMPercentage=70');
+    assert.match(lauf.stdout, /die JVM rechnet selbst/u);
   });
 });
 

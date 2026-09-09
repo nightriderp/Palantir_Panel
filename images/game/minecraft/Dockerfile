@@ -1,43 +1,38 @@
 # Minecraft (Paper) – das erste echte Spiel-Image (Lastenheft §7, Ausbaustufe 2).
 #
-# Der Prüfstand nebenan (`images/test-minecraft`) stellt das Minecraft-Protokoll
+# Der Prüfstand nebenan (`images/test/minecraft`) stellt das Minecraft-Protokoll
 # nach; hier läuft ein echter Server. Die Regeln bleiben dieselben, und sie sind
 # der Grund, warum dieses Image überhaupt existiert: Der naheliegende Weg über
 # `itzg/minecraft-server` ist vor dem Hochlauf gescheitert (Fundpunkt 113,
 # PR #166). Jenes Image startet als `root`, schreibt seinen Datenordner um und
 # wechselt danach den Benutzer – alle drei Schritte scheitern an `CapDrop: ALL`
 # und `no-new-privileges` (Pflichtenheft §2.3) mit „operation not permitted".
-# Die Härtung bleibt, das Image fügt sich:
 #
-#   - fester Benutzer im Dockerfile, UID 1000 – genau die, der der Datenordner
-#     auf dem Homeserver gehört (Fundpunkt 117: der Agent legt ihn als 1000 an
-#     und kann ihn mangels Capabilities niemandem verschenken),
-#   - kein `chown` im Startskript,
-#   - kein Benutzerwechsel zur Laufzeit,
-#   - keine setuid-Binaries im Startpfad,
-#   - geschrieben wird nur in den Datenordner und in `/tmp`.
+# Die Härtung bleibt, das Image fügt sich – und das meiste davon erbt es vom
+# Basis-Image `palantir-base-java` (`images/base/java`): den festen Benutzer
+# UID 1000 (die UID des Datenordners auf dem Homeserver, Fundpunkt 117), die per
+# Digest gepinnte JRE, `/data` als Arbeitsverzeichnis, SIGTERM als Stoppsignal
+# und die Rechnung des Heaps in `/opt/palantir/lib/java.sh`. Hier bleibt, was
+# nur Minecraft betrifft: die Paper-Jar, die EULA, `server.properties`, die
+# Konsole. Kein `chown` im Startskript, kein Benutzerwechsel zur Laufzeit,
+# geschrieben wird nur in den Datenordner und nach `/tmp`.
 #
-# **Basis-Image per Digest gepinnt**, aus demselben Grund wie beim Prüfstand: Der
-# Tag `25-jre-noble` wandert bei jedem Java- und Ubuntu-Patch. Ohne Digest
-# genügte ein `workflow_dispatch` ohne jede Code-Änderung, um hinter dem
-# unveränderlichen Spiel-Tag `:1` eine andere Java-Fassung auszuliefern – und ein
-# Spiel-Tag steht laut game-images.yml für genau einen Inhalt. Der Tag bleibt zur
-# Lesbarkeit davor stehen, gezogen wird der Digest. Nachgehalten von
-# `.github/dependabot.yml` (Ökosystem `docker`).
+# **Warum das Tag `:1` und kein Digest:** Bei einem fremden Image wandert der Tag
+# und nur der Digest steht fest. `palantir-base-java:1` wird dagegen nie
+# überschrieben (spiel-image-bauen.yml) – hinter dem Tag steht für immer
+# derselbe Inhalt, und der pinnt seinerseits Temurin per Digest. Wer die Basis
+# erneuert (neue Fassung dort), setzt `BASIS` hier um und erhöht `VERSION`.
 #
 # **Warum Temurin 25 und nicht 21:** Paper 26.2 verlangt laut
-# `fill.papermc.io/v3/projects/paper/versions/26.2` Java 25 als Mindestfassung.
-# `-noble` statt `25-jre`, weil der unmarkierte Tag zusätzlich Windows-Images im
-# Index führt; hier soll unmissverständlich Ubuntu 24.04 stehen.
-#
-# sha256:b4c93a… ist der Multi-Arch-Index (linux/amd64, arm64v8, ppc64le,
-# riscv64, s390x) hinter `eclipse-temurin:25-jre-noble` mit JRE 25.0.4+7.
+# `fill.papermc.io/v3/projects/paper/versions/26.2` Java 25 als Mindestfassung;
+# genau die trägt `base/java`.
+ARG BASIS=ghcr.io/nightriderp/palantir-base-java:1
 
 # -----------------------------------------------------------------------------
 # Stufe 1: Paper holen und die Prüfsumme prüfen.
 #
 # Die Jar wird **im Bau** geholt und nicht beim ersten Start:
-#   - Ein Spiel-Image-Tag steht für genau einen Inhalt (game-images.yml). Läge
+#   - Ein Spiel-Image-Tag steht für genau einen Inhalt (images/README.md). Läge
 #     die Jar erst zur Laufzeit im Datenordner, hinge die Serverfassung an der
 #     Quelle im Netz statt am Tag – zwei Server aus demselben `:1` liefen dann
 #     unter Umständen auf verschiedenem Paper.
@@ -56,12 +51,15 @@
 # Die Prüfsumme ist die aus der Paper-API und steht direkt neben der URL: Die
 # Quelle adressiert die Datei ohnehin über ihren SHA-256, der Vergleich hier
 # prüft zusätzlich, dass unterwegs nichts ausgetauscht wurde. `curl` kommt nur in
-# dieser Stufe hinzu und landet nie im fertigen Image.
-FROM eclipse-temurin:25-jre-noble@sha256:b4c93a50fc67612798db73d68ca3b0ee4ebdd51736e59cca370e689b9797037e AS paper
+# dieser Stufe hinzu und landet nie im fertigen Image – die Stufe läuft als
+# `root`, weil `apt-get` es braucht, und wird verworfen; ins Laufzeit-Image
+# kommt nur die Jar.
+FROM ${BASIS} AS paper
+USER root
 
 # Fassung und Prüfsumme gehören zusammen und werden gemeinsam getauscht. Wer sie
 # ändert, erhöht die Zahl in `VERSION` und zieht `dockerImage` in der
-# Spieltyp-Definition nach (game-images.yml, Kopfkommentar).
+# Spieltyp-Definition nach (images/README.md).
 ARG PAPER_VERSION=26.2
 ARG PAPER_BUILD=121
 ARG PAPER_SHA256=0de30efb024bc8b83c9c7d507d11802897ad8056b6110ec09fe1a91d126ccb54
@@ -75,18 +73,10 @@ RUN set -eux; \
   echo "${PAPER_SHA256}  /paper.jar" | sha256sum --check --strict -
 
 # -----------------------------------------------------------------------------
-# Stufe 2: das Laufzeit-Image.
-FROM eclipse-temurin:25-jre-noble@sha256:b4c93a50fc67612798db73d68ca3b0ee4ebdd51736e59cca370e689b9797037e
-
-# Feste, nicht-root Identität. Ubuntu 24.04 vergibt UID 1000 bereits an den
-# Benutzer `ubuntu`; dann bleibt es dabei, denn entscheidend ist die Zahl, nicht
-# der Name – der Datenordner auf dem Homeserver gehört UID 1000 (Fundpunkt 117).
-# Ist 1000 frei, entsteht `palantir` mit genau dieser UID.
-RUN set -eux; \
-  if ! getent passwd 1000 > /dev/null; then \
-  groupadd --gid 1000 palantir; \
-  useradd --uid 1000 --gid 1000 --no-create-home --home-dir /data --shell /usr/sbin/nologin palantir; \
-  fi
+# Stufe 2: das Laufzeit-Image. Benutzer, Arbeitsverzeichnis und Stoppsignal
+# kommen aus der Basis; `root` nur für das Hineinkopieren.
+FROM ${BASIS}
+USER root
 
 COPY start.sh console.sh /opt/palantir/
 COPY --from=paper /paper.jar /opt/palantir/paper.jar
@@ -105,18 +95,15 @@ RUN set -eux; \
 
 USER 1000:1000
 
-# Alles Veränderliche liegt im Datenordner; das Wurzeldateisystem darf
-# schreibgeschützt sein. Paper legt `world/`, `logs/`, `plugins/`, `cache/`,
-# `libraries/` und `versions/` relativ zum Arbeitsverzeichnis an – deshalb ist
-# das Arbeitsverzeichnis der Datenordner und nicht `/opt`.
-WORKDIR /data
+# Paper legt `world/`, `logs/`, `plugins/`, `cache/`, `libraries/` und
+# `versions/` relativ zum Arbeitsverzeichnis an – das ist `/data` aus der Basis,
+# also der Datenordner.
 
 EXPOSE 25565
 
 # Sauberes Beenden: Paper hängt am SIGTERM einen Shutdown-Hook, der die Welt
-# speichert. Das Signal muss deshalb bei der JVM ankommen – das Startskript
-# ersetzt sich am Ende per `exec` durch `java`, es steht also keine Shell mehr
-# dazwischen. Die Kulanzzeit setzt die Spieltyp-Definition
+# speichert. Das Signal (STOPSIGNAL aus der Basis) muss bei der JVM ankommen –
+# das Startskript ersetzt sich am Ende per `exec` durch `java`, es steht also
+# keine Shell mehr dazwischen. Die Kulanzzeit setzt die Spieltyp-Definition
 # (`stopTimeoutSeconds`), nicht dieses Image.
-STOPSIGNAL SIGTERM
 ENTRYPOINT ["/opt/palantir/start.sh"]

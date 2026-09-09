@@ -22,7 +22,7 @@
 # Antwort zurückgeben, verlangte dafür aber ein Passwort im Datenordner und einen
 # offenen Port im Container; für den Gewinn ist das zu viel Angriffsfläche.
 #
-# **Exit-Codes** (wie beim Prüfstand, `images/test-minecraft/console.mjs`):
+# **Exit-Codes** (wie beim Prüfstand, `images/test/minecraft/console.mjs`):
 # 0, wenn der Befehl übergeben wurde; 1, wenn die Konsole nicht erreichbar ist
 # oder das Schreiben scheitert; 2, wenn gar kein Befehl übergeben wurde.
 

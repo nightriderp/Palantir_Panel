@@ -43,7 +43,7 @@ updates:
 
   # ---------------------------------------------------------------------------
   # Das Basis-Image des Prüfstands ist seit W3-13 ebenfalls per Digest gepinnt
-  # (`images/test-minecraft/Dockerfile`) und hat damit dasselbe Problem wie die
+  # (`images/test/minecraft/Dockerfile`) und hat damit dasselbe Problem wie die
   # Actions: Ohne Nachpflege bleibt es auf dem Node- und Alpine-Stand vom Tag
   # des Pins stehen. Der Eintrag hier zieht den Digest nach, sobald sich
   # `node:22-alpine` bewegt.
@@ -52,12 +52,12 @@ updates:
   # arbeiten mit wandernden Tags, für sie gäbe es nichts nachzuziehen.
   #
   # **Beim Übernehmen eines solchen Pull Requests gehört die Zahl in
-  # `images/test-minecraft/VERSION` mit erhöht** – ein neuer Digest ist ein
-  # neuer Image-Inhalt, und der braucht laut SPIEL_IMAGES.md §2 eine neue
+  # `images/test/minecraft/VERSION` mit erhöht** – ein neuer Digest ist ein
+  # neuer Image-Inhalt, und der braucht laut images/README.md eine neue
   # Fassung. Wer es vergisst, merkt es sofort: game-images.yml bricht auf `main`
   # mit „Versions-Tag gibt es bereits“ ab.
   - package-ecosystem: docker
-    directory: /images/test-minecraft
+    directory: /images/test/minecraft
     schedule:
       interval: weekly
       day: monday
@@ -87,19 +87,22 @@ updates:
         update-types: ['version-update:semver-major']
 
   # ---------------------------------------------------------------------------
-  # Dasselbe für das Paper-Image (`images/minecraft/Dockerfile`). Es braucht
-  # einen **eigenen** Eintrag, weil Dependabot je Ordner arbeitet und der Eintrag
-  # oben nur `/images/test-minecraft` ansieht – ein zweites Spiel-Image wäre
-  # sonst still von der Pflege ausgenommen.
+  # Dasselbe für das Basis-Image der Java-Spiele (`images/base/java/Dockerfile`).
+  # Es braucht einen **eigenen** Eintrag, weil Dependabot je Ordner arbeitet und
+  # der Eintrag oben nur `/images/test/minecraft` ansieht.
   #
-  # Beide Bau-Stufen des Dockerfiles zeigen auf denselben Digest; Dependabot
-  # zieht die `FROM`-Zeilen gemeinsam nach.
+  # Die Spiel-Images darauf (`images/game/minecraft`) stehen bewusst NICHT hier:
+  # Ihr `FROM` zeigt auf `palantir-base-java:<Fassung>`, ein Tag aus der eigenen
+  # Registry, das nie überschrieben wird – dort gibt es nichts nachzuziehen, was
+  # nicht eine bewusste Entscheidung wäre (images/README.md).
   #
-  # **Auch hier gehört die Zahl in `images/minecraft/VERSION` mit erhöht** und
-  # `dockerImage` in `game-registry.ts` nachgezogen, sonst bricht game-images.yml
-  # auf `main` mit „Versions-Tag gibt es bereits" ab.
+  # **Beim Übernehmen gehört die Zahl in `images/base/java/VERSION` mit erhöht.**
+  # Die Spiel-Images ziehen nicht von selbst nach: Wer den neuen Java-Stand in
+  # einem Spiel will, setzt dort `BASIS` auf die neue Fassung, erhöht dessen
+  # `VERSION` und zieht `dockerImage` in `game-registry.ts` nach – sonst bricht
+  # game-images.yml auf `main` mit „Versions-Tag gibt es bereits" ab.
   - package-ecosystem: docker
-    directory: /images/minecraft
+    directory: /images/base/java
     schedule:
       interval: weekly
       day: monday

@@ -42,7 +42,7 @@ afterEach(async () => {
 function spec(overrides: Partial<ContainerSpec> = {}): ContainerSpec {
   return {
     name: `palantir-${SERVER_ID}`,
-    image: 'ghcr.io/nightriderp/palantir-minecraft:1',
+    image: 'ghcr.io/nightriderp/palantir-game-minecraft:1',
     env: {},
     ports: [],
     resources: { memoryMb: 4096, cpuCores: 2 },

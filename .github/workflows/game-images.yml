@@ -1,7 +1,15 @@
 name: Spiel-Images
 
-# Baut die Spiel-Images aus `images/` und legt sie in der GitHub Container
-# Registry ab.
+# Baut die Images aus `images/` und legt sie in der GitHub Container Registry
+# ab – Basis-Images, Spiel-Images und Prüfstände, alle nach demselben Schema:
+#
+#   images/<Kategorie>/<Name>  →  ghcr.io/<owner>/palantir-<Kategorie>-<Name>:<Fassung>
+#
+# Die Kategorien und was in ihnen zu stehen hat, beschreibt `images/README.md`.
+# Hier zählt nur eine Eigenschaft davon: `base/*` kommt zuerst. Alles andere
+# setzt mit `FROM` auf ein Basis-Image aus dieser Registry auf und wird deshalb
+# erst gebaut, wenn die Basis-Images dieses Laufs dort liegen. Ein Lauf, der
+# beides in einer Matrix baute, kennte diese Reihenfolge nicht.
 #
 # **Warum getrennt von `images.yml`.** Die drei Anwendungs-Images gehören zum
 # Code und entstehen bei jedem Stand auf `main`. Spiel-Images ändern sich in
@@ -13,7 +21,7 @@ name: Spiel-Images
 # `GameTypeDefinition` zeigt auf genau diese Fassung (`:1`), und der Vergleich
 # „Update verfügbar" hängt daran. Wer das Image ändert, erhöht die Zahl in
 # `VERSION` und zieht die Definition nach – ein wanderndes Tag wäre für das
-# Panel unsichtbar (SPIEL_IMAGES.md §2).
+# Panel unsichtbar.
 #
 # **Das Versions-Tag wird deshalb nicht überschrieben** (Audit
 # `infra-images-14`). Vorher baute jeder Lauf `:<VERSION>` neu: Eine Änderung an
@@ -21,16 +29,15 @@ name: Spiel-Images
 # der das Basis-Image neu auflöst – tauschte den Inhalt hinter `:1` aus. Nodes,
 # die `:1` schon lokal haben, ziehen nie nach (der Agent holt nur fehlende
 # Images), neue Nodes bekommen anderes Verhalten, und das Panel meldet kein
-# Update, weil die Zahl gleich blieb. Der Lauf prüft die Fassung deshalb vor dem
-# Bauen auf `^[0-9]+$` (eine leere `VERSION` erzeugte sonst das Tag
-# `palantir-test-minecraft:` und einen kryptischen Buildfehler) und bricht ab,
-# wenn es das Tag in der Registry schon gibt. Wer eine bestehende Fassung
-# wirklich ersetzen will, startet den Lauf von Hand mit `ueberschreiben: true` –
-# dann ist es eine bewusste Entscheidung und steht im Protokoll.
+# Update, weil die Zahl gleich blieb. Der Bau prüft die Fassung deshalb vorher
+# auf `^[0-9]+$` und bricht ab, wenn es das Tag in der Registry schon gibt. Wer
+# eine bestehende Fassung wirklich ersetzen will, startet den Lauf von Hand mit
+# `ueberschreiben: true` – dann ist es eine bewusste Entscheidung und steht im
+# Protokoll.
 #
-# Fremde Actions sind per Commit-SHA gepinnt, der Kommentar dahinter nennt die
-# Fassung (Audit `infra-images-13`, Begründung im Kopf von ci.yml);
-# `.github/dependabot.yml` hält die Pins nach.
+# Die Schritte für ein einzelnes Image stehen in `spiel-image-bauen.yml`
+# (`workflow_call`); die beiden Bau-Jobs unten rufen ihn mit ihrer Matrix auf.
+# Fremde Actions sind dort per Commit-SHA gepinnt (Audit `infra-images-13`).
 
 on:
   push:
@@ -38,6 +45,7 @@ on:
     paths:
       - 'images/**'
       - '.github/workflows/game-images.yml'
+      - '.github/workflows/spiel-image-bauen.yml'
   workflow_dispatch:
     inputs:
       ueberschreiben:
@@ -59,23 +67,30 @@ jobs:
   #
   # **Nur die geänderten.** Solange es ein einziges Image gab, war eine feste
   # Liste richtig: Jede Änderung unter `images/` betraf es. Mit dem zweiten
-  # stimmt das nicht mehr — eine Änderung an `images/minecraft` liess auch
-  # `test-minecraft` bauen, dessen `VERSION` unveraendert bei `1` steht. Die
-  # Schranke unten meldete daraufhin völlig zu Recht „Tag gibt es bereits" und
-  # der Lauf wurde rot, ohne dass jemand etwas falsch gemacht hätte.
+  # stimmt das nicht mehr — eine Änderung am einen liess auch das andere bauen,
+  # dessen `VERSION` unverändert stand. Die Schranke im Bau meldete daraufhin
+  # völlig zu Recht „Tag gibt es bereits" und der Lauf wurde rot, ohne dass
+  # jemand etwas falsch gemacht hätte.
   #
   # Die Schranke selbst bleibt scharf: Wer ein Image ändert und `VERSION`
   # vergisst, steht in der Liste der geänderten Images, das Tag existiert — und
   # der Lauf scheitert. Genau so soll es sein.
   #
   # Die Liste aller Images kommt aus dem Dateisystem, nicht aus einer gepflegten
-  # Aufzählung: Ein drittes Image soll nichts weiter brauchen als seinen Ordner.
+  # Aufzählung: Ein weiteres Image soll nichts weiter brauchen als seinen Ordner
+  # mit einem Dockerfile.
+  #
+  # Ein geändertes Basis-Image zieht die Spiel-Images darauf NICHT mit: Die
+  # zeigen per `FROM` auf eine feste Fassung der Basis, und die bleibt, wie sie
+  # ist. Ein Spiel bekommt die neue Basis erst, wenn jemand sein `FROM`
+  # umstellt – dann steht es selbst in der Liste (images/README.md).
   auswahl:
     name: Auswahl
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      images: ${{ steps.ermitteln.outputs.images }}
+      basis: ${{ steps.ermitteln.outputs.basis }}
+      andere: ${{ steps.ermitteln.outputs.andere }}
 
     steps:
       - name: Repository auschecken
@@ -93,7 +108,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          alle="$(find images -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
+          # Jeder Ordner zwei Ebenen tief mit einem Dockerfile ist ein Image.
+          # `%P` liefert den Pfad relativ zu `images`, also `base/java`.
+          alle="$(find images -mindepth 3 -maxdepth 3 -type f -name Dockerfile -printf '%P\n' \
+            | sed 's#/Dockerfile$##' | sort)"
 
           # Von Hand gestartet gibt es keinen Vergleichspunkt — dann sind alle
           # gemeint. Dasselbe, wenn der Vorher-Stand fehlt (erster Push eines
@@ -104,8 +122,20 @@ jobs:
             echo "Kein Vergleichspunkt — alle Images."
             gewaehlt="${alle}"
           else
-            geaendert="$(git diff --name-only "${VORHER}" "${NACHHER}" -- images/ \
-              | cut -d/ -f2 | sort -u)"
+            # `images/game/minecraft/start.sh` → `game/minecraft`. Eine Datei
+            # direkt unter `images/` (README) ergibt einen Namen ohne
+            # Schrägstrich, den die Schnittmenge unten aussortiert.
+            #
+            # Zwei Arten von Änderungen zählen nicht, weil sie das Image nicht
+            # ändern: ein Ordner, der nur verschoben wurde (`R100`, jede Datei
+            # bitgleich), und die README – die hält jedes `.dockerignore` aus
+            # dem Build-Kontext heraus. Beides liesse sonst ein Image bauen,
+            # dessen Tag es zu Recht schon gibt, und der Lauf würde rot, ohne
+            # dass sich am Inhalt etwas getan hätte.
+            geaendert="$(git diff --name-status -M "${VORHER}" "${NACHHER}" -- images/ \
+              | awk '$1 != "R100" { print $NF }' \
+              | { grep -v '/README\.md$' || true; } \
+              | cut -d/ -f2,3 | sort -u)"
             # Schnittmenge: Ein geloeschter Ordner steht im Diff, aber nicht mehr
             # im Dateisystem — der laesst sich nicht bauen.
             gewaehlt="$(comm -12 <(printf '%s\n' "${alle}") <(printf '%s\n' "${geaendert}"))"
@@ -113,104 +143,64 @@ jobs:
 
           if [ -z "${gewaehlt}" ]; then
             echo "Kein Image geändert — nichts zu bauen."
-            echo 'images=[]' >> "$GITHUB_OUTPUT"
+            echo 'basis=[]' >> "$GITHUB_OUTPUT"
+            echo 'andere=[]' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Zu bauen:"
-          printf '  %s\n' ${gewaehlt}
+          basis="$(printf '%s\n' ${gewaehlt} | grep '^base/' || true)"
+          andere="$(printf '%s\n' ${gewaehlt} | grep -v '^base/' || true)"
+
+          echo "Zu bauen, zuerst:"
+          printf '  %s\n' ${basis:-'(kein Basis-Image)'}
+          echo "danach:"
+          printf '  %s\n' ${andere:-'(nichts weiter)'}
 
           # JSON von Hand statt mit `jq`: Die Namen sind Ordnernamen aus diesem
           # Repository, es gibt also nichts zu maskieren — und eine Abhängigkeit
           # weniger, die auf dem Läufer vorhanden sein muss.
-          liste="$(printf '%s\n' ${gewaehlt} | sed 's/.*/"&"/' | paste -sd, -)"
-          echo "images=[${liste}]" >> "$GITHUB_OUTPUT"
+          als_json() {
+            if [ -z "$1" ]; then
+              printf '[]'
+              return
+            fi
+            printf '[%s]' "$(printf '%s\n' $1 | sed 's/.*/"&"/' | paste -sd, -)"
+          }
 
-  build:
-    name: ${{ matrix.image }}
+          echo "basis=$(als_json "${basis}")" >> "$GITHUB_OUTPUT"
+          echo "andere=$(als_json "${andere}")" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Erst die Basis-Images. `fail-fast: false` sorgt dafür, dass ein Fehlschlag
+  # beim einen das andere nicht abwürgt.
+  basis:
+    name: Basis
     needs: auswahl
-    if: ${{ needs.auswahl.outputs.images != '[]' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+    if: ${{ needs.auswahl.outputs.basis != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        # Aus dem Auswahl-Job: die Images, die dieser Push wirklich geändert hat.
-        # `fail-fast: false` sorgt dafür, dass ein Fehlschlag beim einen den
-        # anderen nicht abwürgt.
-        image: ${{ fromJson(needs.auswahl.outputs.images) }}
+        image: ${{ fromJson(needs.auswahl.outputs.basis) }}
+    uses: ./.github/workflows/spiel-image-bauen.yml
+    with:
+      image: ${{ matrix.image }}
+      ueberschreiben: ${{ inputs.ueberschreiben == true }}
 
-    steps:
-      - name: Repository auschecken
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Fassung lesen
-        id: fassung
-        env:
-          # Wie in deploy.yml: dynamische Werte über die Umgebung, nicht als
-          # `${{ }}` mitten im Skript.
-          IMAGE: ${{ matrix.image }}
-        run: |
-          set -euo pipefail
-          wert="$(tr -d '[:space:]' < "images/${IMAGE}/VERSION")"
-
-          # Streng, weil der Wert gleich als Image-Tag verwendet wird. Eine leere
-          # oder krumme Datei erzeugte sonst ein Tag wie `…:` oder `…:1.0 `.
-          # SPIEL_IMAGES.md §2 kennt nur fortlaufende ganze Zahlen.
-          if ! [[ "${wert}" =~ ^[0-9]+$ ]]; then
-            echo "::error::images/${IMAGE}/VERSION ist keine fortlaufende Zahl: '${wert}'"
-            exit 1
-          fi
-
-          echo "wert=${wert}" >> "$GITHUB_OUTPUT"
-          echo "Fassung: ${wert}"
-
-      - name: Buildx einrichten
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-
-      - name: An GHCR anmelden
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Nach dem Anmelden, weil `imagetools inspect` gegen ghcr.io ein Token
-      # braucht - und vor dem Bauen, weil ein Abbruch danach nichts mehr nützt:
-      # `docker/build-push-action` schiebt das Tag im selben Schritt hoch.
-      - name: Versions-Tag darf es noch nicht geben
-        if: ${{ inputs.ueberschreiben != true }}
-        env:
-          OWNER: ${{ github.repository_owner }}
-          IMAGE: ${{ matrix.image }}
-          FASSUNG: ${{ steps.fassung.outputs.wert }}
-        run: |
-          set -euo pipefail
-          ziel="ghcr.io/${OWNER}/palantir-${IMAGE}:${FASSUNG}"
-          if docker buildx imagetools inspect "${ziel}" >/dev/null 2>&1; then
-            echo "::error::${ziel} gibt es bereits. Ein Spiel-Image-Tag wird nie überschrieben (SPIEL_IMAGES.md §2): Zahl in images/${IMAGE}/VERSION erhöhen und die GameTypeDefinition nachziehen. Nur für einen erneuten Anlauf nach einem abgebrochenen Bau: Lauf von Hand mit 'ueberschreiben' starten."
-            exit 1
-          fi
-          echo "  ${ziel} ist noch frei"
-
-      - name: Bauen und veröffentlichen
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          # Build-Kontext ist der Ordner des Images: Ein Spiel-Image hat mit dem
-          # Monorepo nichts zu tun und soll auch nichts davon sehen.
-          context: images/${{ matrix.image }}
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/palantir-${{ matrix.image }}:${{ steps.fassung.outputs.wert }}
-            ghcr.io/${{ github.repository_owner }}/palantir-${{ matrix.image }}:${{ github.sha }}
-          cache-from: type=gha,scope=game-${{ matrix.image }}
-          cache-to: type=gha,scope=game-${{ matrix.image }},mode=max
-          provenance: false
-
-      - name: Ergebnis melden
-        run: |
-          echo "### palantir-${{ matrix.image }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "ghcr.io/${{ github.repository_owner }}/palantir-${{ matrix.image }}:${{ steps.fassung.outputs.wert }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+  # ---------------------------------------------------------------------------
+  # Dann alles, was darauf aufsetzt. `basis` darf übersprungen sein (kein
+  # Basis-Image geändert), aber nicht gescheitert: Ein Spiel-Image, dessen neue
+  # Basis gerade nicht entstanden ist, baute gegen die alte Fassung – oder gegen
+  # keine. `!cancelled()` statt `always()`, damit ein abgebrochener Lauf nicht
+  # trotzdem weiterbaut.
+  darauf:
+    name: Darauf
+    needs: [auswahl, basis]
+    if: ${{ !cancelled() && needs.auswahl.outputs.andere != '[]' && needs.basis.result != 'failure' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJson(needs.auswahl.outputs.andere) }}
+    uses: ./.github/workflows/spiel-image-bauen.yml
+    with:
+      image: ${{ matrix.image }}
+      ueberschreiben: ${{ inputs.ueberschreiben == true }}

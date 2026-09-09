@@ -3,19 +3,19 @@
 Prüfstand für die Kette des Panels — **kein Spielserver**. Er spricht genau so viel
 Minecraft, dass sich alles daran ablesen lässt, was zwischen Panel und Spiel liegt:
 
-| Geprüft wird             | Woran man es sieht                                                               |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| Portvergabe und frp      | Der Server-List-Ping antwortet auf dem öffentlichen Port                         |
-| Subdomain                | Der Hostname aus dem Handshake steht im Log                                      |
-| Abfrage (`gamedig`)      | Spielerzahl und Antwortzeit erscheinen im Panel, Status wechselt auf `running`   |
-| Konsole (`EXEC_CONSOLE`) | `palantir-console help` antwortet                                                |
-| Live-Logs                | Jede Verbindung erscheint sofort in der Panel-Konsole                            |
-| Auto-Shutdown            | `players 0` über die Konsole lässt die Schonfrist laufen                         |
-| Datenordner              | `server.properties` und `logs/latest.log` entstehen und lassen sich sichern      |
-| Härtung                  | Läuft als `1000:1000`, ohne `chown`, schreibt nur nach `/data` (SPIEL_IMAGES.md) |
+| Geprüft wird             | Woran man es sieht                                                                |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| Portvergabe und frp      | Der Server-List-Ping antwortet auf dem öffentlichen Port                          |
+| Subdomain                | Der Hostname aus dem Handshake steht im Log                                       |
+| Abfrage (`gamedig`)      | Spielerzahl und Antwortzeit erscheinen im Panel, Status wechselt auf `running`    |
+| Konsole (`EXEC_CONSOLE`) | `palantir-console help` antwortet                                                 |
+| Live-Logs                | Jede Verbindung erscheint sofort in der Panel-Konsole                             |
+| Auto-Shutdown            | `players 0` über die Konsole lässt die Schonfrist laufen                          |
+| Datenordner              | `server.properties` und `logs/latest.log` entstehen und lassen sich sichern       |
+| Härtung                  | Läuft als `1000:1000`, ohne `chown`, schreibt nur nach `/data` (images/README.md) |
 
-Ein echter Minecraft-Server kommt später als eigenes Image; die Anforderungen dafür stehen
-in `SPIEL_IMAGES.md` (lokal, nicht im Repo).
+Der echte Minecraft-Server ist `images/game/minecraft`; die Regeln für alle Images und das
+Namensschema stehen in `images/README.md`.
 
 ## Einstellungen
 
@@ -60,7 +60,7 @@ pnpm test
 pnpm --filter @palantir/test-minecraft-image test
 
 # ganz ohne pnpm (Dateiname ausschreiben – ein Verzeichnis nimmt `--test` nicht)
-node --test images/test-minecraft/server.test.mjs
+node --test images/test/minecraft/server.test.mjs
 ```
 
 Die `package.json` daneben existiert nur für diese Verdrahtung; das Image kopiert sie nicht.

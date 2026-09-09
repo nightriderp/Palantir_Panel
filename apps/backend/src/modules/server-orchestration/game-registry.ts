@@ -26,7 +26,7 @@
  * und wartet auf die erste Definition mit `query.kind: 'gamedig'`
  * (WORK_STATUS.md, Gefundener Punkt 113).
  *
- * **Minecraft steht seit `images/minecraft` wieder hier** – als eigenes Image,
+ * **Minecraft steht seit `images/game/minecraft` wieder hier** – als eigenes Image,
  * das genau diese Regeln einhält (`MINECRAFT_PAPER_GAME_TYPE` unten).
  */
 
@@ -122,7 +122,7 @@ export const TEST_GAME_TYPE: GameTypeDefinition = {
  * eine ohne Spiel auskommt und das andere eines nachstellt.
  *
  * **Kein echter Spielserver.** Das Image spricht genau so viel Minecraft, wie
- * für diese Prüfung nötig ist (`images/test-minecraft`); es hält aber dieselben
+ * für diese Prüfung nötig ist (`images/test/minecraft`); es hält aber dieselben
  * Regeln ein wie ein echtes Spiel-Image, sonst wäre die Prüfung wertlos.
  *
  * **`supportsVirtualHostRouting` ist `false`**, obwohl Minecraft der Fall wäre,
@@ -241,7 +241,7 @@ export const TEST_MINECRAFT_GAME_TYPE: GameTypeDefinition = {
  *
  * **Eigenes Image, kein fremdes.** `itzg/minecraft-server` stand hier schon
  * einmal und ist an der Härtung gescheitert (siehe Kopfkommentar). Das Image
- * unter `images/minecraft` hält die Regeln von sich aus ein: fester Benutzer
+ * unter `images/game/minecraft` hält die Regeln von sich aus ein: fester Benutzer
  * UID 1000, kein `chown`, kein Benutzerwechsel zur Laufzeit, geschrieben wird
  * nur in den Datenordner.
  *
@@ -271,7 +271,7 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   name: 'Minecraft (Paper)',
   description:
     'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-minecraft:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:1',
   defaultEnv: {},
   ports: [
     {
