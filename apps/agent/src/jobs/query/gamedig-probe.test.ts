@@ -61,7 +61,12 @@ describe('gamedig-Sonde', () => {
       type: 'minecraft',
       host: '127.0.0.1',
       port: 25_565,
-      socketTimeout: 3_000,
+      // Die Socket-Frist ist die Hälfte der Versuchs-Frist (Fundpunkt 187):
+      // `minecraft` ist ein Verbund aus drei Protokollen, der auf alle wartet;
+      // die UDP-Abfragen laufen in die Socket-Frist. Wären beide gleich, wäre
+      // der Versuch genau dann abgelaufen – der TCP-Ping hatte längst
+      // geantwortet, und trotzdem hieße es „Timed out".
+      socketTimeout: 1_500,
       attemptTimeout: 3_000,
       // Die Abfrage läuft periodisch; ein Wiederholen darunter würde die Frist
       // vervielfachen.

@@ -146,6 +146,35 @@ function zaehlung(wert: unknown): number | null {
  * (`awaitHealthy`). Ein zweiter Wiederholungsmechanismus darunter würde die
  * Frist eines Versuchs vervielfachen und den Hochlauf verschleppen.
  */
+/**
+ * Die zwei Fristen, die gamedig kennt, aus der einen Frist der Sonde.
+ *
+ * `socketTimeout` gilt je Socket, `attemptTimeout` für den ganzen Versuch – und
+ * die Socket-Frist muss **deutlich unter** der Versuchs-Frist liegen. Der Typ
+ * `minecraft` ist in gamedig ein Verbund aus drei Protokollen (TCP-Ping,
+ * GameSpy3 per UDP, Bedrock per UDP), und der Verbund wartet auf alle drei. Die
+ * beiden UDP-Abfragen beantwortet ein Java-Server nicht (`enable-query=false`
+ * ist die Vorgabe), sie laufen in die Socket-Frist. Waren beide Fristen gleich,
+ * war der Versuch genau dann abgelaufen, wenn der Verbund fertig wurde: Der
+ * TCP-Ping hatte längst geantwortet, und trotzdem hieß es „Timed out" –
+ * jeder Start endete in `error`, bei laufendem Spiel (Fundpunkt 187, gemessen
+ * aus dem Backend-Container gegen den ersten Minecraft-Server am 2026-09-09:
+ * 3000/3000 scheitert, 1500/3000 antwortet nach 1,5 s).
+ *
+ * Die Hälfte lässt dem Verbund die andere Hälfte, um nach den UDP-Fristen
+ * fertig zu werden. Ein Java-Server antwortet auf den Ping in Millisekunden,
+ * auch über frp; wer eine Frist von 3 s setzt, bekommt 1,5 s je Socket.
+ *
+ * Dieselbe Rechnung steht im Agent (`jobs/query/gamedig-probe.ts`): Beide
+ * Sonden rufen gamedig gleich auf, und beide fielen gleich hinein.
+ */
+export function gamedigFristen(timeoutMs: number): {
+  socketTimeout: number;
+  attemptTimeout: number;
+} {
+  return { socketTimeout: Math.max(1, Math.floor(timeoutMs / 2)), attemptTimeout: timeoutMs };
+}
+
 export function createGamedigProbe(abfragen: GamedigQuery = (options) => GameDig.query(options)) {
   return {
     async check(target: HealthCheckTarget, timeoutMs: number): Promise<HealthCheckResult> {
@@ -158,8 +187,7 @@ export function createGamedigProbe(abfragen: GamedigQuery = (options) => GameDig
           type: target.query.protocol,
           host: target.host,
           port: target.port,
-          socketTimeout: timeoutMs,
-          attemptTimeout: timeoutMs,
+          ...gamedigFristen(timeoutMs),
           maxRetries: 0,
         });
 
