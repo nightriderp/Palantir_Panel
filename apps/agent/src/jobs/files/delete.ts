@@ -178,7 +178,21 @@ export class ServerFileJob {
     // oder ein untergeschobener Bind-Mount.
     const ziel = resolveWithinDirectory(this.#dataDir, hostPath);
 
-    await mkdir(ziel, { recursive: true, mode: 0o700 });
+    try {
+      await mkdir(ziel, { recursive: true, mode: 0o700 });
+    } catch (fehler: unknown) {
+      if (!istRechteFehler(fehler)) {
+        throw fehler;
+      }
+
+      // Fundpunkt 181: `EACCES: mkdir ...` stand bisher nur im Agent-Log. Das
+      // Panel bekommt stattdessen den Grund und die Abhilfe zu sehen.
+      throw new ContainerRuntimeError('RUNTIME_ERROR', {
+        message: await rechteHinweis(this.#dataDir, ziel),
+        cause: fehler,
+        details: { hostPath, dataDir: this.#dataDir },
+      });
+    }
   }
 
   /** Ergebnis ist `null` wie im Protokoll festgelegt. */
@@ -192,4 +206,37 @@ export class ServerFileJob {
 
     return null;
   }
+}
+
+function istRechteFehler(fehler: unknown): boolean {
+  const code =
+    typeof fehler === 'object' && fehler !== null ? (fehler as { code?: unknown }).code : undefined;
+
+  return code === 'EACCES' || code === 'EPERM';
+}
+
+/**
+ * Meldung fuer den Betreiber, wenn der Datenordner nicht angelegt werden kann:
+ * wem die Wurzel gehoert, als wer der Agent laeuft, und was zu tun ist.
+ */
+async function rechteHinweis(dataDir: string, ziel: string): Promise<string> {
+  const eigeneUid = process.getuid?.();
+  let besitzer: number | undefined;
+
+  try {
+    besitzer = (await stat(dataDir)).uid;
+  } catch {
+    // Die Wurzel selbst ist nicht lesbar oder fehlt - dann sagt die Meldung das.
+  }
+
+  const wurzel =
+    besitzer === undefined
+      ? `${dataDir} fehlt oder ist nicht lesbar`
+      : `${dataDir} gehört UID ${String(besitzer)}`;
+  const agent = eigeneUid === undefined ? 'der Agent' : `der Agent (UID ${String(eigeneUid)})`;
+
+  return (
+    `Der Datenordner ${ziel} lässt sich nicht anlegen: ${wurzel}, ${agent} darf dort nicht schreiben. ` +
+    `Auf der Node als root beheben: chown -R 1000:1000 ${dataDir}`
+  );
 }

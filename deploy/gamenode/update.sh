@@ -109,6 +109,54 @@ git -C "${REPO_DIR}" checkout --quiet --detach "${ziel}"
 
 cd "${COMPOSE_DIR}"
 
+# -----------------------------------------------------------------------------
+# Besitzer der Ablageorte (Fundpunkt 181)
+# -----------------------------------------------------------------------------
+# Der Agent laeuft als UID 1000 ohne Capabilities. Gehoert ein Ablageort root -
+# typisch nach einem `mkdir -p` als root bei der Einrichtung -, scheitert das
+# erste Anlegen eines Servers mit EACCES, und das sah bisher nur, wer ins
+# Agent-Log schaute. Wie `pruefe_besitzer` in deploy/vps/deploy.sh: warnen,
+# nicht abbrechen - ein falscher Besitzer ist kein Grund, das Update zu
+# verweigern, aber einer, es laut zu sagen.
+wert_aus_env() {
+  local zeile
+  zeile="$(grep -E "^${1}=" "${ENV_FILE}" | tail -n 1 || true)"
+  zeile="${zeile#*=}"
+  zeile="${zeile%\"}"
+  zeile="${zeile#\"}"
+  zeile="${zeile%\'}"
+  zeile="${zeile#\'}"
+  printf '%s' "${zeile}"
+}
+
+pruefe_besitzer() {
+  local pfad="$1" zweck="$2"
+
+  [[ -n "${pfad}" ]] || return 0
+
+  if [[ ! -d "${pfad}" ]]; then
+    log "ACHTUNG: ${pfad} gibt es noch nicht (${zweck})."
+    log "         Docker legt die Bind-Quelle sonst als root:root an, und der"
+    log "         Agent schreibt als UID 1000 - das erste Anlegen scheitert."
+    log "         Auf der Node als root vorbereiten:"
+    log "         mkdir -p ${pfad} && chown 1000:1000 ${pfad}"
+
+    return 0
+  fi
+
+  local besitzer
+  besitzer="$(stat -c '%u' "${pfad}" 2>/dev/null || echo '')"
+
+  if [[ -n "${besitzer}" && "${besitzer}" != '1000' ]]; then
+    log "ACHTUNG: ${pfad} gehoert UID ${besitzer}, gebraucht wird UID 1000 (${zweck})."
+    log "         Auf der Node als root beheben: chown -R 1000:1000 ${pfad}"
+  fi
+}
+
+pruefe_besitzer "$(wert_aus_env AGENT_DATA_DIR)" 'Datenordner der Spielserver'
+pruefe_besitzer "$(wert_aus_env AGENT_BACKUP_DIR)" 'Sicherungen der Spielserver'
+pruefe_besitzer "$(wert_aus_env AGENT_ROUTER_DIR)" 'Routen des Hostname-Routers'
+
 # Der Hostname-Router haengt an einem Compose-Profil (Pflichtenheft §2.4, §13).
 # Ohne dieses Argument saehe `up -d --remove-orphans` ihn als verwaisten
 # Container und wuerde ihn bei JEDEM automatischen Update entfernen - alle
