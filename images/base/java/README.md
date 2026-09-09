@@ -19,7 +19,7 @@ sonst in jedem Dockerfile noch einmal stünde: der feste, nicht-root Benutzer, d
 das Arbeitsverzeichnis, das Signal. Ein Spiel-Image setzt darauf auf:
 
 ```dockerfile
-ARG BASIS=ghcr.io/nightriderp/palantir-base-java:1
+ARG BASIS=ghcr.io/nightriderp/palantir-base-java:2
 FROM ${BASIS}
 
 USER root

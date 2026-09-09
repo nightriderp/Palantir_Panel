@@ -17,8 +17,8 @@
 # Konsole. Kein `chown` im Startskript, kein Benutzerwechsel zur Laufzeit,
 # geschrieben wird nur in den Datenordner und nach `/tmp`.
 #
-# **Warum das Tag `:1` und kein Digest:** Bei einem fremden Image wandert der Tag
-# und nur der Digest steht fest. `palantir-base-java:1` wird dagegen nie
+# **Warum ein Versions-Tag und kein Digest:** Bei einem fremden Image wandert der
+# Tag und nur der Digest steht fest. `palantir-base-java:<n>` wird dagegen nie
 # überschrieben (spiel-image-bauen.yml) – hinter dem Tag steht für immer
 # derselbe Inhalt, und der pinnt seinerseits Temurin per Digest. Wer die Basis
 # erneuert (neue Fassung dort), setzt `BASIS` hier um und erhöht `VERSION`.
@@ -26,7 +26,7 @@
 # **Warum Temurin 25 und nicht 21:** Paper 26.2 verlangt laut
 # `fill.papermc.io/v3/projects/paper/versions/26.2` Java 25 als Mindestfassung;
 # genau die trägt `base/java`.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-java:1
+ARG BASIS=ghcr.io/nightriderp/palantir-base-java:2
 
 # -----------------------------------------------------------------------------
 # Stufe 1: Paper holen und die Prüfsumme prüfen.

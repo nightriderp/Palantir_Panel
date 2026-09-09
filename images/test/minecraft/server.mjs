@@ -5,7 +5,7 @@
  * Minecraft, wie es braucht, um die Kette des Panels zu prüfen: Portvergabe, Weiterleitung
  * über frp, Subdomain, Abfrage über `gamedig`, Konsole, Live-Logs, Auto-Shutdown und den
  * Datenordner. Ein echter Spielserver kommt später als eigenes Image; die Anforderungen
- * dafür stehen in SPIEL_IMAGES.md.
+ * dafür stehen in `images/README.md`.
  *
  * Umgesetzt sind drei Dinge aus dem Protokoll (ab 1.7):
  *

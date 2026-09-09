@@ -3,7 +3,7 @@
 # Kein Spielserver - ein Prüfstand für die Kette des Panels: Portvergabe,
 # Weiterleitung über frp, Subdomain, Abfrage über gamedig, Konsole, Live-Logs,
 # Auto-Shutdown, Datenordner. Was ein echtes Spiel-Image erfüllen muss, steht in
-# SPIEL_IMAGES.md; dieses Image hält dieselben Regeln ein, damit der Prüfstand
+# `images/README.md`; dieses Image hält dieselben Regeln ein, damit der Prüfstand
 # etwas wert ist.
 #
 # Basis-Image per Digest gepinnt (Audit `infra-images-14`). Der Tag `22-alpine`

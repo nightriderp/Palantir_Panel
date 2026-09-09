@@ -2,7 +2,7 @@
  * Konsolen-Anschluss des Test-Servers (WORK_STATUS.md, Gefundener Punkt 113).
  *
  * `EXEC_CONSOLE` startet im Container einen Befehl **ohne Shell und ohne
- * Standardeingabe** (siehe SPIEL_IMAGES.md §3). Ein Spielserver braucht dafür
+ * Standardeingabe** (siehe `images/README.md`). Ein Spielserver braucht dafür
  * ein Werkzeug, das einen Befehl entgegennimmt, ihn an den laufenden Prozess
  * gibt und dessen Antwort ausgibt – bei echten Servern ein RCON-Client, hier
  * der Steuerport aus `server.mjs`.
