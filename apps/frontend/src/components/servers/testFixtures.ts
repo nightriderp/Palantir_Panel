@@ -1,4 +1,5 @@
 import {
+  type ConsoleQuickCommand,
   type GameServerDto,
   type GameServerPermissions,
   type GameTypeDto,
@@ -62,6 +63,8 @@ export interface ServerFixtureOptions {
   ownerDisplayName?: string | null;
   hostName?: string | null;
   permissions?: GameServerPermissions;
+  /** Schnellbefehle der Konsole; ohne Angabe keine. */
+  consoleQuickCommands?: readonly ConsoleQuickCommand[];
 }
 
 export function server(options: ServerFixtureOptions): GameServerDto {
@@ -73,6 +76,7 @@ export function server(options: ServerFixtureOptions): GameServerDto {
     ownerDisplayName: options.ownerDisplayName ?? 'Alex',
     gameType: 'testserver',
     gameTypeName: options.gameTypeName ?? 'Testserver',
+    consoleQuickCommands: options.consoleQuickCommands ?? [],
     status: options.status ?? 'stopped',
     statusMessage: null,
     hostId: 'node-1',

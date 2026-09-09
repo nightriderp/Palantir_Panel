@@ -82,6 +82,8 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     ownerDisplayName: server.ownerDisplayName,
     gameType: server.gameType,
     gameTypeName: definition.name,
+    // Immer gesetzt, notfalls leer – das Frontend soll nicht raten müssen.
+    consoleQuickCommands: definition.consoleQuickCommands ?? [],
     status: server.status,
     statusMessage: server.statusMessage,
     hostId: server.hostId,

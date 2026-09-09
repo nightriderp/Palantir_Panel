@@ -248,6 +248,19 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
     );
   });
 
+  it('bringt Schnellbefehle für die Live-Konsole mit – vollständige Zeilen, keine Platzhalter', () => {
+    const befehle = MINECRAFT_PAPER_GAME_TYPE.consoleQuickCommands ?? [];
+
+    expect(befehle.map((b) => b.command)).toContain('list');
+    expect(befehle.map((b) => b.command)).toContain('stop');
+    // Ein Befehl, der eine Eingabe braucht (`say <Text>`), gehört ins Feld,
+    // nicht auf einen Knopf.
+    for (const befehl of befehle) {
+      expect(befehl.command).not.toMatch(/[<>]/u);
+      expect(befehl.label.length).toBeGreaterThan(0);
+    }
+  });
+
   it('wird über gamedig abgefragt', () => {
     expect(MINECRAFT_PAPER_GAME_TYPE.query).toEqual({
       kind: 'gamedig',
