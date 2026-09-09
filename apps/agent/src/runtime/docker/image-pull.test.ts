@@ -8,7 +8,28 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { isContainerRuntimeError } from '../errors.js';
-import { belongsToRegistry, pullErrorFrom, pullImage, splitImageReference } from './image-pull.js';
+import {
+  belongsToRegistry,
+  pullErrorFrom,
+  pullImage,
+  registryAuthHeader,
+  registryHinweis,
+  splitImageReference,
+} from './image-pull.js';
+
+/**
+ * Dekodiert so streng wie Go's `base64.URLEncoding` (moby,
+ * `registry.DecodeAuthConfig`): nur das URL-Alphabet, Länge durch vier teilbar,
+ * Padding mit `=` Pflicht. Node's eigener Dekoder ist nachsichtig und nähme
+ * auch einen Kopf ohne Padding an – genau den, den die Engine wegwirft.
+ */
+function dekodiereWieGo(kopf: string): string {
+  if (kopf.length % 4 !== 0 || !/^[A-Za-z0-9_-]+={0,2}$/u.test(kopf)) {
+    throw new Error(`illegal base64 data: ${kopf}`);
+  }
+
+  return Buffer.from(kopf.replaceAll('-', '+').replaceAll('_', '/'), 'base64').toString('utf8');
+}
 
 describe('splitImageReference', () => {
   it('trennt Name und Fassung', () => {
@@ -68,6 +89,62 @@ describe('pullErrorFrom', () => {
   });
 });
 
+describe('registryAuthHeader', () => {
+  // Ein GHCR-Token: `ghp_` und 36 Zeichen. Mit ihm ist das JSON 106 Byte lang,
+  // also nicht durch drei teilbar – der Fall, in dem Padding gebraucht wird.
+  const token = `ghp_${'a'.repeat(36)}`;
+
+  it('polstert den Kopf so, wie Go ihn dekodiert (Fundpunkt 182)', () => {
+    const kopf = registryAuthHeader({
+      server: 'ghcr.io',
+      username: 'nightriderp',
+      password: token,
+    });
+
+    // Ohne Padding bricht Go's Dekoder am letzten Block ab, die Engine wirft den
+    // Kopf weg und zieht anonym – GHCR meldet dann `unauthorized`.
+    expect(kopf.endsWith('==')).toBe(true);
+    expect(JSON.parse(dekodiereWieGo(kopf))).toEqual({
+      username: 'nightriderp',
+      password: token,
+      serveraddress: 'ghcr.io',
+    });
+  });
+
+  it('bleibt beim URL-Alphabet, auch wo Standard-base64 + oder / schriebe', () => {
+    // `>>>?` ergibt in Standard-base64 `Pj4+Pw==` – das `+` darf hier nicht
+    // durchkommen, Go's URL-Dekoder kennt es nicht.
+    const kopf = registryAuthHeader({ server: '>>>?', username: '???>', password: '>>>?>>>?' });
+
+    expect(kopf).not.toMatch(/[+/]/u);
+    expect(JSON.parse(dekodiereWieGo(kopf))).toEqual({
+      username: '???>',
+      password: '>>>?>>>?',
+      serveraddress: '>>>?',
+    });
+  });
+});
+
+describe('registryHinweis', () => {
+  it('erklärt „unauthorized“ mit Zugangsdaten als abgelehnte Anmeldung', () => {
+    expect(registryHinweis('error from registry: unauthorized', true)).toContain(
+      'AGENT_REGISTRY_TOKEN',
+    );
+  });
+
+  it('erklärt „unauthorized“ ohne Zugangsdaten als fehlende Anmeldung', () => {
+    expect(registryHinweis('unauthorized', false)).toContain('keine Zugangsdaten');
+  });
+
+  it('erklärt „denied“ als fehlendes Recht', () => {
+    expect(registryHinweis('denied', true)).toContain('read:packages');
+  });
+
+  it('schweigt bei anderen Fehlern', () => {
+    expect(registryHinweis('manifest unknown', true)).toBe('');
+  });
+});
+
 describe('pullImage', () => {
   function client(body: string) {
     return {
@@ -107,11 +184,25 @@ describe('pullImage', () => {
     const kopf = options.headers?.['X-Registry-Auth'] ?? '';
 
     expect(kopf.length).toBeGreaterThan(0);
-    expect(JSON.parse(Buffer.from(kopf, 'base64url').toString('utf8'))).toEqual({
+    // Streng wie die Engine, nicht mit Node's nachsichtigem Dekoder: Der nähme
+    // auch einen Kopf ohne Padding an, den die Engine längst weggeworfen hat.
+    expect(JSON.parse(dekodiereWieGo(kopf))).toEqual({
       username: 'wer',
       password: 'geheim',
       serveraddress: 'ghcr.io',
     });
+  });
+
+  it('nennt bei „unauthorized“ die Variablen, an denen es liegt', async () => {
+    const c = client('{"error":"error from registry: unauthorized\\nunauthorized"}');
+
+    const fehler = await pullImage(c as never, 'ghcr.io/nightriderp/spiel:v1', {
+      credentials: { server: 'ghcr.io', username: 'wer', password: 'geheim' },
+      timeoutMs: 1_000,
+    }).catch((e: unknown) => e);
+
+    expect((fehler as Error).message).toContain('unauthorized');
+    expect((fehler as Error).message).toContain('AGENT_REGISTRY_TOKEN');
   });
 
   it('scheitert am Fehler im Stream, obwohl der Status Erfolg meldet', async () => {
