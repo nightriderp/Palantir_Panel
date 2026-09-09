@@ -139,6 +139,20 @@ export interface GameTypePort {
 }
 
 /**
+ * Ein Schnellbefehl der Live-Konsole – ein Knopf unter dem Eingabefeld.
+ *
+ * `command` ist die vollständige Zeile, die abgeschickt wird; Befehle, die
+ * eine Eingabe brauchen (`say <Text>`), gehören nicht hierher, sondern ins
+ * Feld.
+ */
+export interface ConsoleQuickCommand {
+  /** Beschriftung des Knopfs, z. B. „Spieler". */
+  readonly label: string;
+  /** Die Zeile, die an die Konsole geht, z. B. `list`. */
+  readonly command: string;
+}
+
+/**
  * Vollständige Spiele-Definition (Pflichtenheft §11).
  *
  * Änderungen sind bevorzugt additiv (neue optionale Felder).
@@ -171,6 +185,14 @@ export interface GameTypeDefinition {
    * (Lastenheft §3.3). Das Backend setzt daraufhin `pendingRestart` am Server.
    */
   readonly restartRequiredFields?: readonly string[];
+  /**
+   * Schnellbefehle der Live-Konsole (Lastenheft §3.3), je Spiel statt fest im
+   * Frontend: Was bei Minecraft `list` heißt, heißt beim Prüfstand `help` und
+   * bei einem anderen Spiel ganz anders. Ohne Angabe zeigt die Konsole nur das
+   * Eingabefeld. Der Befehl geht denselben Weg wie eine Eingabe von Hand
+   * (`EXEC_CONSOLE`), die Antwort kommt über das Log.
+   */
+  readonly consoleQuickCommands?: readonly ConsoleQuickCommand[];
   readonly resourceDefaults: ServerResourceLimits;
   readonly query: GameQuerySpec;
   readonly iconUrl: string | null;
