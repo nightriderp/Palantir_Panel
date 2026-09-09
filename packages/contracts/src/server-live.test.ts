@@ -3,6 +3,8 @@ import { ERROR_CATALOG } from './errors.js';
 import { WEBSOCKET_EVENTS } from './events.js';
 import {
   LIVE_SERVER_EVENTS,
+  LIVE_SERVER_LIST_EVENTS,
+  LIVE_SERVER_LIST_TOPIC,
   SERVER_LIVE_CLOSE_CODE_FORBIDDEN,
   SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED,
   type LiveClientFrame,
@@ -11,6 +13,7 @@ import {
   type ServerLivePongFrame,
   type ServerLiveResyncFrame,
   isLiveServerEventName,
+  isLiveServerListEventName,
 } from './server-live.js';
 
 describe('LIVE_SERVER_EVENTS', () => {
@@ -35,6 +38,34 @@ describe('LIVE_SERVER_EVENTS', () => {
     // Ein Katalog-Ereignis, das über die Notification-Engine läuft, nicht hier.
     expect(isLiveServerEventName('backup.failed')).toBe(false);
     expect(isLiveServerEventName('server.irgendwas')).toBe(false);
+  });
+});
+
+/**
+ * Listen-Thema (Fundpunkt 173): Angelegt, geklont, gelöscht kommen nicht auf
+ * einem Server an – den gibt es beim Anlegen noch nicht und beim Löschen nicht
+ * mehr –, sondern auf der Liste des Aufrufers.
+ */
+describe('Listen-Thema und Listen-Ereignisse (Fundpunkt 173)', () => {
+  it('führt die Listen-Ereignisse auch unter den Live-Ereignissen', () => {
+    for (const event of LIVE_SERVER_LIST_EVENTS) {
+      expect(LIVE_SERVER_EVENTS).toContain(event);
+      expect(isLiveServerEventName(event)).toBe(true);
+    }
+  });
+
+  it('unterscheidet Listen-Ereignisse von denen eines einzelnen Servers', () => {
+    expect(isLiveServerListEventName('server.created')).toBe(true);
+    expect(isLiveServerListEventName('server.deleted')).toBe(true);
+    expect(isLiveServerListEventName('server.cloned')).toBe(true);
+    expect(isLiveServerListEventName('server.statusChanged')).toBe(false);
+    expect(isLiveServerListEventName('backup.progressed')).toBe(false);
+  });
+
+  it('hat genau ein Listen-Thema mit fester Id', () => {
+    // `id` bleibt, damit der Abo-Schlüssel `resource:id` auf beiden Seiten
+    // derselbe ist wie bei einem Server-Thema.
+    expect(LIVE_SERVER_LIST_TOPIC).toEqual({ resource: 'serverList', id: 'all' });
   });
 });
 

@@ -18,12 +18,36 @@ import { type ServerStatus } from './server-lifecycle.js';
  * verbindet Backend und Homeserver, dieser Kanal Browser und Backend.
  */
 
-/** Ressource, auf die abonniert wird. Aktuell nur einzelne Gameserver. */
-export interface LiveTopic {
+/** Ein einzelner Gameserver: Status, Messwerte, Konsole, Sicherungen. */
+export interface LiveServerTopic {
   resource: 'server';
   /** Id der Ressource, hier die `GameServer.id`. */
   id: string;
 }
+
+/**
+ * Die Serverliste des Aufrufers (Fundpunkt 173).
+ *
+ * Wer die Übersicht offen hat, erfährt hierüber, dass ein Server angelegt,
+ * geklont oder gelöscht wurde – bis dahin zeigte ein zweiter Tab den neuen
+ * Server erst nach dem Neuladen. Das Frame nennt nur die Id; die Liste holt
+ * sich der Browser danach über die REST-Schnittstelle, die ohnehin nur zeigt,
+ * was der Aufrufer sehen darf.
+ *
+ * `id` ist fest `all`: Es gibt genau eine Liste je Konto, und jedes Frame
+ * dieses Kanals trägt weiterhin ein `topic.id` – so bleibt der Schlüssel der
+ * Abos (`resource:id`) auf beiden Seiten derselbe.
+ */
+export interface LiveServerListTopic {
+  resource: 'serverList';
+  id: 'all';
+}
+
+/** Ressource, auf die abonniert wird. */
+export type LiveTopic = LiveServerTopic | LiveServerListTopic;
+
+/** Das eine Listen-Thema – zum Abonnieren und zum Vergleichen. */
+export const LIVE_SERVER_LIST_TOPIC: LiveServerListTopic = { resource: 'serverList', id: 'all' };
 
 /**
  * Close-Code des Server-Live-Kanals für „nicht (mehr) angemeldet".
@@ -112,7 +136,24 @@ export const LIVE_SERVER_EVENTS = [
   'server.consoleLineAppended',
   'serverClone.progressed',
   'backup.progressed',
+  // Auf dem Listen-Thema (Fundpunkt 173): Der Bestand hat sich geändert.
+  'server.created',
+  'server.cloned',
+  'server.deleted',
 ] as const satisfies readonly WebSocketEventName[];
+
+/** Ereignisse, die auf {@link LiveServerListTopic} statt auf einem Server ankommen. */
+export const LIVE_SERVER_LIST_EVENTS = [
+  'server.created',
+  'server.cloned',
+  'server.deleted',
+] as const satisfies readonly LiveServerEventName[];
+
+export type LiveServerListEventName = (typeof LIVE_SERVER_LIST_EVENTS)[number];
+
+export function isLiveServerListEventName(value: string): value is LiveServerListEventName {
+  return (LIVE_SERVER_LIST_EVENTS as readonly string[]).includes(value);
+}
 
 export type LiveServerEventName = (typeof LIVE_SERVER_EVENTS)[number];
 
@@ -164,6 +205,14 @@ export type LiveServerEventPayloads = {
   'server.consoleLineAppended': { serverId: string; line: ServerConsoleLine };
   'serverClone.progressed': { serverId: string; job: ServerCloneJobDto };
   'backup.progressed': { serverId: string; backup: BackupProgress };
+  /*
+   * Listen-Ereignisse (Fundpunkt 173) tragen bewusst nur die Id: Name und
+   * Rechte holt der Browser über die REST-Schnittstelle, sonst stünde hier
+   * ein zweiter, ungeprüfter Weg zum Datensatz.
+   */
+  'server.created': { serverId: string };
+  'server.cloned': { serverId: string };
+  'server.deleted': { serverId: string };
 };
 
 /** Frame, das der Browser vom Backend empfängt. */

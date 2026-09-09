@@ -24,13 +24,14 @@ import { consoleCommandSchema } from './servers.js';
  * Thema, auf das ein Browser sich abonniert.
  *
  * `resource` ist bewusst als Literal geführt und nicht als offener String:
- * Aktuell gibt es nur einzelne Gameserver, eine zweite Ressource käme additiv
+ * ein einzelner Gameserver oder – seit Fundpunkt 173 – die Serverliste des
+ * Aufrufers, deren `id` fest `all` ist. Eine weitere Ressource käme additiv
  * als weiteres Literal dazu.
  */
-export const liveTopicSchema: z.ZodType<LiveTopic> = z.object({
-  resource: z.literal('server'),
-  id: idSchema,
-});
+export const liveTopicSchema: z.ZodType<LiveTopic> = z.discriminatedUnion('resource', [
+  z.object({ resource: z.literal('server'), id: idSchema }),
+  z.object({ resource: z.literal('serverList'), id: z.literal('all') }),
+]);
 
 /**
  * Frames, die der Browser über den Live-Kanal schickt.

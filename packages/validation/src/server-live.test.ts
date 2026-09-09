@@ -12,6 +12,22 @@ describe('Themen des Live-Kanals (Pflichtenheft §5.3)', () => {
   it('lehnt eine unbekannte Ressource ab', () => {
     expect(liveTopicSchema.safeParse({ resource: 'node', id: SERVER_ID }).success).toBe(false);
   });
+
+  it('nimmt das Listen-Thema nur mit der festen Id an (Fundpunkt 173)', () => {
+    const liste = { resource: 'serverList', id: 'all' } as const;
+
+    expect(liveTopicSchema.parse(liste)).toEqual(liste);
+    expect(liveClientFrameSchema.parse({ kind: 'subscribe', topic: liste })).toEqual({
+      kind: 'subscribe',
+      topic: liste,
+    });
+    // Eine Server-Id am Listen-Thema oder `all` an einem Server-Thema wäre
+    // ein Frame aus einem anderen Vertrag.
+    expect(liveTopicSchema.safeParse({ resource: 'serverList', id: SERVER_ID }).success).toBe(
+      false,
+    );
+    expect(liveTopicSchema.safeParse({ resource: 'server', id: 'all' }).success).toBe(false);
+  });
 });
 
 describe('Client-Frames des Live-Kanals (Audit contracts-validation-04)', () => {
