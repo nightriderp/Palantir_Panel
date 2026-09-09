@@ -116,6 +116,7 @@ export type FakeFailableMethod =
   | 'restart'
   | 'remove'
   | 'inspect'
+  | 'networkAddress'
   | 'list'
   | 'getStats'
   | 'getLogs'
@@ -156,6 +157,8 @@ export class FakeContainerRuntime implements ContainerRuntime {
   /** Images des virtuellen Hosts - ueber `seedImage()` befuellt. */
   readonly #images = new Map<string, FakeImage>();
   readonly #fehlerfaelle = new Map<FakeFailableMethod, ContainerRuntimeError>();
+  /** Adressen je Container und Netz - ueber `setNetworkAddress()` befuellt. */
+  readonly #netzAdressen = new Map<string, Map<string, string>>();
   readonly #hardening: HardeningOptions;
   readonly #now: () => Date;
   readonly #maxFileBytes: number;
@@ -288,6 +291,26 @@ export class FakeContainerRuntime implements ContainerRuntime {
   async inspect(containerId: string): Promise<ContainerState> {
     this.#pruefeFehlerfall('inspect');
     return this.#zuState(this.#hole(containerId));
+  }
+
+  async networkAddress(containerId: string, network: string): Promise<string | null> {
+    this.#pruefeFehlerfall('networkAddress');
+    // Wie Docker: Ein Container, den es nicht gibt, hat keine Adresse - kein Fehler.
+    if (!this.#container.has(containerId)) {
+      return null;
+    }
+    return this.#netzAdressen.get(containerId)?.get(network) ?? null;
+  }
+
+  /** Testhilfe: Adresse, die `networkAddress()` fuer diesen Container im Netz liefert. */
+  setNetworkAddress(containerId: string, network: string, address: string | null): void {
+    const adressen = this.#netzAdressen.get(containerId) ?? new Map<string, string>();
+    if (address === null) {
+      adressen.delete(network);
+    } else {
+      adressen.set(network, address);
+    }
+    this.#netzAdressen.set(containerId, adressen);
   }
 
   async list(): Promise<readonly ContainerState[]> {

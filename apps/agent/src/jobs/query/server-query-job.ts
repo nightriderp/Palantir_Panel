@@ -17,6 +17,22 @@
  *
  * Die Ziele kommen über den Befehl `SET_SERVER_QUERY`; der Agent errät weder
  * Port noch Abfrageart, weil er keine Spiele kennt (Pflichtenheft §11).
+ *
+ * **Wohin die Abfrage geht (Fundpunkt 188):** an die Adresse des Containers im
+ * Spielenetz, auf den Port, auf dem der Server IM Container lauscht
+ * (`containerPort` des Ziels). Nicht an den Host-Port: Der ist an `127.0.0.1`
+ * der Node gebunden (Pflichtenheft §18), und der Agent läuft im Compose-Netz –
+ * sein Loopback ist nicht das der Node. Bis dahin fragte der Job
+ * `127.0.0.1:<hostPort>` und bekam auf jeder Node `ECONNREFUSED`; frpc, das
+ * denselben Port erreicht, läuft im Host-Netz. Die Adresse liefert die
+ * Laufzeit (`ContainerRuntime.networkAddress`); sie wird je Server gemerkt und
+ * nach einem Fehlschlag neu aufgelöst, denn ein neu gebauter Container bekommt
+ * eine andere. Den Weg dorthin gibt das Egress-Regelwerk frei
+ * (`deploy/gamenode/egress-firewall.sh`, Ausnahme für den Agent).
+ *
+ * `host` im Ziel oder `AGENT_QUERY_HOST` schalten auf den alten Weg
+ * `<host>:<hostPort>` um – für Umgebungen, in denen der Agent auf dem
+ * Docker-Host selbst läuft und die Host-Ports erreicht.
  */
 
 import type {
@@ -26,10 +42,7 @@ import type {
 } from '@palantir/contracts';
 import type { OutboundEvent } from '../../connection/ports.js';
 import type { JobScheduler } from '../scheduler.js';
-import { createServerProbe, type ServerProbe } from './probe.js';
-
-/** Vorgabe-Adresse: Die Portbindung liegt auf dem Homeserver selbst (Pflichtenheft §18). */
-export const DEFAULT_QUERY_HOST = '127.0.0.1';
+import { createServerProbe, type ServerProbe, type ServerProbeResult } from './probe.js';
 
 export interface ServerQueryJobOptions {
   readonly scheduler: JobScheduler;
@@ -41,7 +54,18 @@ export interface ServerQueryJobOptions {
   readonly defaultIntervalSeconds: number;
   /** Frist einer einzelnen Abfrage (`AGENT_QUERY_TIMEOUT_MS`). */
   readonly timeoutMs: number;
-  readonly defaultHost?: string;
+  /**
+   * Adresse eines Containers im Spielenetz – in der Regel
+   * `runtime.networkAddress(containerId, AGENT_CONTAINER_NETWORK)`. `null`,
+   * wenn der Container dort nicht hängt.
+   */
+  readonly resolveAddress: (containerId: string) => Promise<string | null>;
+  /**
+   * Gesetzt, wird statt des Spielenetzes `<hostOverride>:<hostPort>` gefragt
+   * (`AGENT_QUERY_HOST`). Nur für Umgebungen, in denen der Agent die Host-Ports
+   * der Spielcontainer erreicht.
+   */
+  readonly hostOverride?: string | undefined;
   readonly now?: () => Date;
 }
 
@@ -50,10 +74,22 @@ interface AktivesZiel {
   readonly intervalSeconds: number;
 }
 
+/** Wohin eine Abfrage geht – oder warum sie nirgendwohin gehen kann. */
+type Zieladresse = { readonly host: string; readonly port: number } | { readonly grund: string };
+
 /** Jobname im Scheduler – ein Server hat höchstens einen Abfrage-Job. */
 export function queryJobName(serverId: string): string {
   return `serverQuery:${serverId}`;
 }
+
+const NICHT_ERREICHBAR = (grund: string): ServerProbeResult => ({
+  reachable: false,
+  pingMs: null,
+  playersOnline: null,
+  playersMax: null,
+  players: [],
+  reason: grund,
+});
 
 export class ServerQueryJob {
   readonly #scheduler: JobScheduler;
@@ -61,9 +97,12 @@ export class ServerQueryJob {
   readonly #emit: (event: OutboundEvent) => void;
   readonly #defaultIntervalSeconds: number;
   readonly #timeoutMs: number;
-  readonly #defaultHost: string;
+  readonly #resolveAddress: (containerId: string) => Promise<string | null>;
+  readonly #hostOverride: string | undefined;
   readonly #now: () => Date;
   readonly #ziele = new Map<string, AktivesZiel>();
+  /** Gemerkte Adresse im Spielenetz je Server – fällt nach einem Fehlschlag weg. */
+  readonly #adressen = new Map<string, string>();
 
   constructor(options: ServerQueryJobOptions) {
     this.#scheduler = options.scheduler;
@@ -71,7 +110,8 @@ export class ServerQueryJob {
     this.#emit = options.emit;
     this.#defaultIntervalSeconds = options.defaultIntervalSeconds;
     this.#timeoutMs = options.timeoutMs;
-    this.#defaultHost = options.defaultHost ?? DEFAULT_QUERY_HOST;
+    this.#resolveAddress = options.resolveAddress;
+    this.#hostOverride = options.hostOverride;
     this.#now = options.now ?? (() => new Date());
   }
 
@@ -83,6 +123,10 @@ export class ServerQueryJob {
    * Verbindungsaufbau für alle laufenden Server wiederholen.
    */
   setTarget(serverId: string, target: AgentServerQueryTarget | null): SetServerQueryCommandResult {
+    // Ein neues Ziel kann ein neuer Container sein – die gemerkte Adresse
+    // gehört dann dem alten.
+    this.#adressen.delete(serverId);
+
     if (target === null) {
       this.#scheduler.cancel(queryJobName(serverId));
       this.#ziele.delete(serverId);
@@ -114,6 +158,7 @@ export class ServerQueryJob {
       this.#scheduler.cancel(queryJobName(serverId));
     }
     this.#ziele.clear();
+    this.#adressen.clear();
   }
 
   /**
@@ -122,7 +167,8 @@ export class ServerQueryJob {
    * Ein nicht erreichbarer Server ist hier **kein Fehler**: Das Ergebnis geht
    * mit `reachable: false` ans Backend, damit dort sichtbar ist, dass gemessen
    * wurde und was dabei herauskam. Ein stiller Abbruch würde für das Backend
-   * genauso aussehen wie ein Agent, der gar nicht fragt.
+   * genauso aussehen wie ein Agent, der gar nicht fragt. Dasselbe gilt, wenn
+   * schon die Adresse fehlt – auch das ist ein Messergebnis mit Grund.
    */
   async queryOnce(serverId: string): Promise<void> {
     const eintrag = this.#ziele.get(serverId);
@@ -131,14 +177,21 @@ export class ServerQueryJob {
     }
 
     const { target } = eintrag;
-    const ergebnis = await this.#probe.check(
-      {
-        host: target.host ?? this.#defaultHost,
-        port: target.hostPort,
-        query: target.query,
-      },
-      this.#timeoutMs,
-    );
+    const ziel = await this.#zieladresse(serverId, target);
+
+    const ergebnis =
+      'grund' in ziel
+        ? NICHT_ERREICHBAR(ziel.grund)
+        : await this.#probe.check(
+            { host: ziel.host, port: ziel.port, query: target.query },
+            this.#timeoutMs,
+          );
+
+    if (!ergebnis.reachable) {
+      // Nächste Runde neu auflösen: Vielleicht wurde der Container inzwischen
+      // neu gebaut und hat eine andere Adresse.
+      this.#adressen.delete(serverId);
+    }
 
     const payload: AgentServerQueryPayload = {
       source: 'serverQuery',
@@ -155,5 +208,52 @@ export class ServerQueryJob {
     };
 
     this.#emit({ event: 'STATS_UPDATE', serverId, payload });
+  }
+
+  /**
+   * Adresse und Port, an die diese Abfrage geht.
+   *
+   * Reihenfolge: ausdrückliche Adresse im Ziel, dann `AGENT_QUERY_HOST`
+   * (beides zusammen mit dem Host-Port), sonst der Container im Spielenetz auf
+   * seinem Container-Port.
+   */
+  async #zieladresse(serverId: string, target: AgentServerQueryTarget): Promise<Zieladresse> {
+    const ausdruecklich = target.host ?? this.#hostOverride;
+
+    if (ausdruecklich !== undefined) {
+      return { host: ausdruecklich, port: target.hostPort };
+    }
+
+    if (target.containerPort === undefined) {
+      return {
+        grund: 'Das Abfrageziel nennt keinen Container-Port – das Backend ist älter als der Agent.',
+      };
+    }
+
+    const gemerkt = this.#adressen.get(serverId);
+
+    if (gemerkt !== undefined) {
+      return { host: gemerkt, port: target.containerPort };
+    }
+
+    let adresse: string | null;
+
+    try {
+      adresse = await this.#resolveAddress(target.containerId);
+    } catch (fehler: unknown) {
+      return {
+        grund: `Die Adresse des Containers im Spielenetz ließ sich nicht ermitteln: ${
+          fehler instanceof Error ? fehler.message : String(fehler)
+        }`,
+      };
+    }
+
+    if (adresse === null) {
+      return { grund: 'Der Container hat keine Adresse im Spielenetz – läuft er?' };
+    }
+
+    this.#adressen.set(serverId, adresse);
+
+    return { host: adresse, port: target.containerPort };
   }
 }

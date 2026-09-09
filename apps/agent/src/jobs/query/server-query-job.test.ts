@@ -17,7 +17,16 @@ const ERREICHBAR: ServerProbeResult = {
   reason: null,
 };
 
-function aufbau(ergebnis: ServerProbeResult | (() => ServerProbeResult) = ERREICHBAR) {
+/** Adresse des Containers im Spielenetz, wie `runtime.networkAddress` sie liefert. */
+const NETZ_ADRESSE = '172.31.240.7';
+
+function aufbau(
+  ergebnis: ServerProbeResult | (() => ServerProbeResult) = ERREICHBAR,
+  options: {
+    resolveAddress?: (containerId: string) => Promise<string | null>;
+    hostOverride?: string;
+  } = {},
+) {
   const timers = new FakeTimers();
   const scheduler = new JobScheduler({ timers });
   const events: OutboundEvent[] = [];
@@ -25,6 +34,7 @@ function aufbau(ergebnis: ServerProbeResult | (() => ServerProbeResult) = ERREIC
     typeof ergebnis === 'function' ? ergebnis() : ergebnis,
   );
   const probe: ServerProbe = { check };
+  const resolveAddress = vi.fn(options.resolveAddress ?? (async () => NETZ_ADRESSE));
 
   const job = new ServerQueryJob({
     scheduler,
@@ -32,15 +42,18 @@ function aufbau(ergebnis: ServerProbeResult | (() => ServerProbeResult) = ERREIC
     emit: (event) => events.push(event),
     defaultIntervalSeconds: 60,
     timeoutMs: 3_000,
+    resolveAddress,
+    ...(options.hostOverride === undefined ? {} : { hostOverride: options.hostOverride }),
     now: () => new Date('2026-08-26T12:00:00.000Z'),
   });
 
-  return { timers, scheduler, events, check, job };
+  return { timers, scheduler, events, check, resolveAddress, job };
 }
 
 const ZIEL = {
   containerId: 'container-a',
   hostPort: 30_000,
+  containerPort: 25_565,
   query: { kind: 'portConnect' } as const,
 };
 
@@ -117,23 +130,110 @@ describe('ServerQueryJob – Abfrage und Meldung', () => {
     expect(check).toHaveBeenCalledTimes(3);
   });
 
-  it('prüft den Host-Port auf 127.0.0.1 – die Portbindung liegt am Homeserver', async () => {
-    const { job, check } = aufbau();
+  it('fragt den Container an seiner Adresse im Spielenetz auf dem Container-Port (Fundpunkt 188)', async () => {
+    /*
+     * Nicht `127.0.0.1:<hostPort>`: Der Host-Port ist an 127.0.0.1 der Node
+     * gebunden, und der Agent läuft im Compose-Netz – sein Loopback ist nicht
+     * das der Node. Auf jeder echten Node kam dort ECONNREFUSED.
+     */
+    const { job, check, resolveAddress } = aufbau();
     job.setTarget(SERVER_A, ZIEL);
     await job.queryOnce(SERVER_A);
 
+    expect(resolveAddress).toHaveBeenCalledWith('container-a');
     expect(check).toHaveBeenCalledWith(
-      { host: '127.0.0.1', port: 30_000, query: { kind: 'portConnect' } },
+      { host: NETZ_ADRESSE, port: 25_565, query: { kind: 'portConnect' } },
       3_000,
     );
   });
 
-  it('nimmt eine abweichende Adresse aus dem Ziel', async () => {
-    const { job, check } = aufbau();
+  it('merkt sich die Adresse und löst erst nach einem Fehlschlag neu auf', async () => {
+    let erreichbar = true;
+    const { job, resolveAddress } = aufbau(() =>
+      erreichbar ? ERREICHBAR : { ...ERREICHBAR, reachable: false, pingMs: null },
+    );
+    job.setTarget(SERVER_A, ZIEL);
+
+    await job.queryOnce(SERVER_A);
+    await job.queryOnce(SERVER_A);
+    expect(resolveAddress).toHaveBeenCalledTimes(1);
+
+    // Ein neu gebauter Container hat eine andere Adresse – nach einem
+    // Fehlschlag darf die alte nicht weiter gefragt werden.
+    erreichbar = false;
+    await job.queryOnce(SERVER_A);
+    erreichbar = true;
+    await job.queryOnce(SERVER_A);
+    expect(resolveAddress).toHaveBeenCalledTimes(2);
+  });
+
+  it('vergisst die Adresse, wenn ein neues Ziel gesetzt wird', async () => {
+    const { job, resolveAddress } = aufbau();
+    job.setTarget(SERVER_A, ZIEL);
+    await job.queryOnce(SERVER_A);
+
+    job.setTarget(SERVER_A, { ...ZIEL, containerId: 'container-neu' });
+    await job.queryOnce(SERVER_A);
+
+    expect(resolveAddress).toHaveBeenCalledTimes(2);
+    expect(resolveAddress).toHaveBeenLastCalledWith('container-neu');
+  });
+
+  it('meldet einen Container ohne Adresse im Spielenetz als nicht erreichbar, mit Grund', async () => {
+    const { job, check, events } = aufbau(ERREICHBAR, { resolveAddress: async () => null });
+    job.setTarget(SERVER_A, ZIEL);
+    await job.queryOnce(SERVER_A);
+
+    // Die Sonde wird gar nicht erst gefragt – es gibt kein Ziel.
+    expect(check).not.toHaveBeenCalled();
+    expect(events[0]?.payload).toMatchObject({
+      reachable: false,
+      reason: expect.stringContaining('keine Adresse im Spielenetz') as string,
+    });
+  });
+
+  it('meldet ein Ziel ohne Container-Port als nicht erreichbar, statt zu raten', async () => {
+    const { containerPort: _weg, ...ohnePort } = ZIEL;
+    const { job, check, events } = aufbau();
+    job.setTarget(SERVER_A, ohnePort);
+    await job.queryOnce(SERVER_A);
+
+    expect(check).not.toHaveBeenCalled();
+    expect(events[0]?.payload).toMatchObject({
+      reachable: false,
+      reason: expect.stringContaining('keinen Container-Port') as string,
+    });
+  });
+
+  it('macht aus einem Fehler beim Auflösen ein Messergebnis, keinen Abbruch', async () => {
+    const { job, events } = aufbau(ERREICHBAR, {
+      resolveAddress: () => Promise.reject(new Error('Socket-Proxy antwortet nicht')),
+    });
+    job.setTarget(SERVER_A, ZIEL);
+    await job.queryOnce(SERVER_A);
+
+    expect(events[0]?.payload).toMatchObject({
+      reachable: false,
+      reason: expect.stringContaining('Socket-Proxy antwortet nicht') as string,
+    });
+  });
+
+  it('nimmt eine ausdrückliche Adresse aus dem Ziel, dann mit dem Host-Port', async () => {
+    const { job, check, resolveAddress } = aufbau();
     job.setTarget(SERVER_A, { ...ZIEL, host: '10.10.0.2' });
     await job.queryOnce(SERVER_A);
 
-    expect(check.mock.calls[0]?.[0]).toMatchObject({ host: '10.10.0.2' });
+    expect(resolveAddress).not.toHaveBeenCalled();
+    expect(check.mock.calls[0]?.[0]).toMatchObject({ host: '10.10.0.2', port: 30_000 });
+  });
+
+  it('nimmt AGENT_QUERY_HOST als Adresse, wenn gesetzt – für Agents auf dem Docker-Host', async () => {
+    const { job, check, resolveAddress } = aufbau(ERREICHBAR, { hostOverride: '127.0.0.1' });
+    job.setTarget(SERVER_A, ZIEL);
+    await job.queryOnce(SERVER_A);
+
+    expect(resolveAddress).not.toHaveBeenCalled();
+    expect(check.mock.calls[0]?.[0]).toMatchObject({ host: '127.0.0.1', port: 30_000 });
   });
 
   it('meldet das Ergebnis als STATS_UPDATE mit der Server-Id', async () => {
@@ -222,6 +322,7 @@ describe('ServerQueryJob – Abfrage und Meldung', () => {
       emit: () => undefined,
       defaultIntervalSeconds: 10,
       timeoutMs: 1_000,
+      resolveAddress: async () => NETZ_ADRESSE,
     });
 
     job.setTarget(SERVER_A, ZIEL);

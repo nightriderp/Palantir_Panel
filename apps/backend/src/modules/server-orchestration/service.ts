@@ -981,18 +981,21 @@ export class ServerOrchestrationService {
     }
 
     const definition = this.deps.registry.require(server.gameType);
-    // Der Agent prüft auf dem Host-Port, unter dem der Container veröffentlicht
-    // ist – nicht auf dem Port im Container. Genau diesen Wert bekommt auch
-    // `CREATE_CONTAINER` als `hostPort`.
-    const hostPort = server.assignedPorts.find((zuweisung) => zuweisung.primary)?.publicPort;
+    // Beide Ports gehen mit: der Host-Port, unter dem der Container
+    // veröffentlicht ist (derselbe Wert wie `hostPort` in `CREATE_CONTAINER`),
+    // und der Port IM Container. Der Agent fragt über das Spielenetz auf dem
+    // Container-Port (Fundpunkt 188) – der Host-Port ist an 127.0.0.1 der Node
+    // gebunden, und das ist nicht das Loopback des Agent-Containers.
+    const primary = server.assignedPorts.find((zuweisung) => zuweisung.primary);
 
-    if (hostPort === undefined) {
+    if (primary === undefined) {
       return null;
     }
 
     return {
       containerId: server.dockerContainerId,
-      hostPort,
+      hostPort: primary.publicPort,
+      containerPort: primary.containerPort,
       query:
         definition.query.kind === 'gamedig'
           ? { kind: 'gamedig', protocol: definition.query.protocol }

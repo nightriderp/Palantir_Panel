@@ -95,6 +95,13 @@ const envSchema = z.object({
   /** Frist einer einzelnen Server-Abfrage, bevor sie als fehlgeschlagen gilt. */
   AGENT_QUERY_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
   /**
+   * Nur für Umgebungen, in denen der Agent auf dem Docker-Host selbst läuft
+   * und die Host-Ports der Spielcontainer erreicht (z. B. `127.0.0.1` in der
+   * Entwicklung). Gesetzt, fragt der Agent `<Adresse>:<Host-Port>` statt den
+   * Container im Spielenetz (Fundpunkt 188). Auf einer Node bleibt sie leer.
+   */
+  AGENT_QUERY_HOST: z.string().min(1).optional(),
+  /**
    * Obergrenze eines `DOWNLOAD_BACKUP`-Blocks. Deckelt den vom Backend
    * angeforderten `maxBytes`, damit ein zu großer Wert den Agent nicht
    * umbringt (Lastenheft §3.3).

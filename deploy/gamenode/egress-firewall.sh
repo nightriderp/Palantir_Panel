@@ -37,6 +37,11 @@
 #      ausschliesslich die Richtung Router -> Spielserver auf dem Spielport und
 #      der Rueckweg bestehender Verbindungen; die Begruendung samt Angriffsbild
 #      steht bei der Regel selbst.
+#   5. Eine zweite Ausnahme derselben Bauart fuer den Agent
+#      (GAME_AGENT_CONTAINER_IP, Fundpunkt 188): Er haengt ebenfalls im
+#      Spielenetz und fragt die Spielserver dort periodisch ab - auf jedem
+#      Spielport, denn welcher es ist, haengt am Spiel. Auch hier nur die eine
+#      Richtung und der Rueckweg bestehender Verbindungen.
 #
 # WAS ES BEWUSST NICHT TUT: Es fasst keine bestehenden Regeln an. Alles liegt in
 # eigenen Ketten mit dem Praefix `PALANTIR-EGRESS`; `remove` nimmt genau die
@@ -114,6 +119,15 @@ ROUTER_IP="${ROUTER_IP:-$(get_env_value GAME_ROUTER_CONTAINER_IP)}"
 # Minecraft-Vorgabe und keine Kopplung.
 ROUTER_TARGET_PORT="${ROUTER_TARGET_PORT:-$(get_env_value GAME_ROUTER_TARGET_PORT)}"
 ROUTER_TARGET_PORT="${ROUTER_TARGET_PORT:-25565}"
+
+# Feste Adresse des Agents im Spielenetz (Fundpunkt 188). Muss zu
+# GAME_AGENT_CONTAINER_IP in der zentralen `.env` passen - dieselbe Adresse
+# gibt `docker-compose.yml` dem Dienst `agent`. Von hier aus fragt der Agent die
+# Spielserver periodisch ab; die Ausnahme dafuer steht bei den Regeln. Die
+# Vorgabe ist dieselbe wie in der Compose-Datei, damit eine Node ohne den
+# Eintrag in der `.env` trotzdem stimmig ist.
+AGENT_IP="${AGENT_IP:-$(get_env_value GAME_AGENT_CONTAINER_IP)}"
+AGENT_IP="${AGENT_IP:-172.31.240.253}"
 
 # WireGuard-Subnetz (VPS und Homeserver). Aus WIREGUARD_VPS_IP abgeleitet,
 # damit eine abweichende Tunnel-Adresse in der `.env` hier nicht vergessen wird.
@@ -300,6 +314,30 @@ regeln_forward() {
       -m comment --comment 'palantir: Antwort an den Hostname-Router' -j ACCEPT
   fi
 
+  # --- Agent ------------------------------------------------------------------
+  #
+  # Dieselbe Bauart wie die Ausnahme fuer den Router, aus denselben zwei
+  # Gruenden an dieser Stelle - mit einem Unterschied: Der Agent darf JEDEN
+  # Port eines Spielcontainers erreichen, nicht nur einen. Er fragt die Server
+  # periodisch ueber ihr Spieleprotokoll ab (Pflichtenheft §9, Fundpunkt 188),
+  # und welcher Port das ist, haengt am Spiel; das Backend nennt ihn je Server.
+  # Ueber den Host-Port ginge es nicht: Der ist an 127.0.0.1 der VM gebunden,
+  # und der Agent laeuft im Compose-Netz, nicht im Host-Netz wie frpc.
+  #
+  # Das Angriffsbild ist dasselbe wie beim Router: Quelle ist allein die feste
+  # Adresse des Agents, zurueck kommt nur ESTABLISHED/RELATED. Ein
+  # uebernommener Spielcontainer erreicht den Agent damit genauso wenig wie
+  # vorher - eine NEUE Verbindung an die Agent-Adresse faellt unter die Sperre
+  # gegen Nachbar-Container.
+  if [[ -n "${AGENT_IP}" ]]; then
+    log "Ausnahme: Agent ${AGENT_IP} darf Spielserver abfragen."
+    iptables -A "${CHAIN_FWD}" -s "${AGENT_IP}" -d "${GAMES_SUBNET}" \
+      -m comment --comment 'palantir: Agent -> Spielserver (Abfrage)' -j ACCEPT
+    iptables -A "${CHAIN_FWD}" -d "${AGENT_IP}" \
+      -m conntrack --ctstate ESTABLISHED,RELATED \
+      -m comment --comment 'palantir: Antwort an den Agent' -j ACCEPT
+  fi
+
   # Antwortverkehr auf selbst aufgebaute Verbindungen. Steht vorn, damit eine
   # erlaubte Verbindung nicht mitten im Ablauf an einer der Sperren scheitert.
   iptables -A "${CHAIN_FWD}" -m conntrack --ctstate ESTABLISHED,RELATED \
@@ -413,7 +451,8 @@ befehl_status() {
   printf 'Netz:   %s (Bridge %s, Subnetz %s, Vergabe %s)\n' \
     "${GAMES_NETWORK}" "${GAMES_BRIDGE}" "${GAMES_SUBNET}" "${GAMES_IP_RANGE}"
   printf 'Tunnel: %s\n' "${WG_SUBNET}"
-  printf 'Router: %s\n\n' "${ROUTER_IP:-nicht eingerichtet}"
+  printf 'Router: %s\n' "${ROUTER_IP:-nicht eingerichtet}"
+  printf 'Agent:  %s\n\n' "${AGENT_IP:-nicht eingerichtet}"
   if iptables -n -L "${CHAIN_FWD}" -v >/dev/null 2>&1; then
     printf -- '--- %s (Zaehler zeigen Treffer seit "apply") ---\n' "${CHAIN_FWD}"
     iptables -n -L "${CHAIN_FWD}" -v --line-numbers

@@ -50,6 +50,7 @@ import { DockerHttpClient, type DockerStream, type FetchLike } from './http-clie
 import {
   toContainerState,
   toContainerStats,
+  toNetworkAddress,
   type DockerInspectResponse,
   type DockerStatsResponse,
 } from './mapping.js';
@@ -391,6 +392,20 @@ export class DockerContainerRuntime implements ContainerRuntime {
 
   async inspect(containerId: string): Promise<ContainerState> {
     return toContainerState(await this.#inspectRoh(containerId));
+  }
+
+  async networkAddress(containerId: string, network: string): Promise<string | null> {
+    try {
+      return toNetworkAddress(await this.#inspectRoh(containerId), network);
+    } catch (fehler: unknown) {
+      // Ein Container, den es nicht mehr gibt, hat keine Adresse - das ist
+      // fuer die Abfrage eine Antwort, kein Fehler.
+      if (isContainerRuntimeError(fehler) && fehler.code === 'CONTAINER_NOT_FOUND') {
+        return null;
+      }
+
+      throw fehler;
+    }
   }
 
   async #inspectRoh(containerId: string): Promise<DockerInspectResponse> {
