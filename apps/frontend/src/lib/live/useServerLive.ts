@@ -8,9 +8,15 @@ import {
   type ServerStatus,
 } from '@palantir/contracts';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchServerLogs } from '../api/servers';
 import { nextRevision } from '../revision';
 import { type LiveConnectionState, useLiveChannel } from './LiveChannelProvider';
-import { appendConsoleLine } from './consoleBuffer';
+import {
+  CONSOLE_BACKLOG_LINES,
+  appendConsoleLine,
+  consoleLineFromLog,
+  seedConsoleBacklog,
+} from './consoleBuffer';
 import { type LiveStatusEntry } from './mergeLiveStatus';
 
 /**
@@ -80,6 +86,38 @@ export function useServerLive(serverId: string | null): ServerLiveData {
     setConsoleLines([]);
     setCloneJob(null);
     setBackupProgress(null);
+  }, [serverId]);
+
+  /*
+   * Rückblick beim Öffnen laden (Fundpunkt 184).
+   *
+   * Der Puffer lebt in diesem Hook und stirbt mit der Seite: Wer zur Übersicht
+   * wechselte und zurückkam, sah eine leere Konsole – die Startausgabe war weg,
+   * und der Platzhalter behauptete, es komme gerade keine Ausgabe. Das Backend
+   * hat den Schwanz des Container-Logs (`GET /servers/:id/logs`), das Frontend
+   * rief ihn nur nie auf. Nach bestem Bemühen: Ohne Container (der Server wird
+   * gerade angelegt) oder bei einem Fehler bleibt es beim Live-Strom, eine
+   * Meldung gibt es nicht – die Konsole ist dann so leer wie vorher.
+   */
+  useEffect(() => {
+    if (!serverId) return;
+
+    const controller = new AbortController();
+
+    void fetchServerLogs(serverId, CONSOLE_BACKLOG_LINES, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted || !result.success) return;
+
+        const geladenUm = new Date().toISOString();
+        const backlog = result.data.lines.map((line, index) =>
+          consoleLineFromLog(serverId, line, index, geladenUm),
+        );
+
+        setConsoleLines((lines) => seedConsoleBacklog(lines, backlog));
+      })
+      .catch(() => undefined);
+
+    return () => controller.abort();
   }, [serverId]);
 
   useEffect(() => {

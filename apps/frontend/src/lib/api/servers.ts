@@ -1,6 +1,7 @@
 import {
   type BackupDto,
   type GameServerDto,
+  type GetLogsCommandResult,
   type HostNodeDto,
   type GameTypeDto,
   type ResourceQuotaDto,
@@ -99,6 +100,25 @@ export function fetchStatsHistory(
 ): Promise<ApiResult<ServerStatsHistoryDto>> {
   return apiRequest<ServerStatsHistoryDto>(serverPath(serverId, '/stats/history'), {
     query: { windowMinutes },
+    signal,
+  });
+}
+
+/**
+ * Die letzten Zeilen des Container-Logs – der Rückblick der Live-Konsole beim
+ * Öffnen (Fundpunkt 184).
+ *
+ * Der Puffer der Konsole lebt im Browser und stirbt mit der Seite; ohne diesen
+ * Aufruf war nach jedem Seitenwechsel die Startausgabe weg. Die laufenden
+ * Zeilen kommen weiterhin über den Live-Kanal.
+ */
+export function fetchServerLogs(
+  serverId: string,
+  tail: number,
+  signal?: AbortSignal,
+): Promise<ApiResult<GetLogsCommandResult>> {
+  return apiRequest<GetLogsCommandResult>(serverPath(serverId, '/logs'), {
+    query: { tail },
     signal,
   });
 }

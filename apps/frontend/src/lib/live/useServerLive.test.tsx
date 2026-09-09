@@ -35,6 +35,30 @@ const kanal = vi.hoisted(() => {
 
 vi.mock('./LiveChannelProvider', () => ({ useLiveChannel: () => kanal.api }));
 
+/**
+ * Rückblick der Konsole (Fundpunkt 184): `useServerLive` holt beim Öffnen den
+ * Schwanz des Container-Logs. Das Testdouble liefert je Server die Zeilen, die
+ * hier hinterlegt sind – ohne Eintrag eine Fehlantwort, wie bei einem Server
+ * ohne Container.
+ */
+const logs = vi.hoisted(() => ({
+  zeilen: new Map<
+    string,
+    { stream: 'stdout' | 'stderr'; message: string; timestamp: string | null }[]
+  >(),
+}));
+
+vi.mock('../api/servers', () => ({
+  fetchServerLogs: (serverId: string) => {
+    const zeilen = logs.zeilen.get(serverId);
+    return Promise.resolve(
+      zeilen === undefined
+        ? { success: false, data: null, error: { code: 'SERVER_NOT_RUNNING', message: 'x' } }
+        : { success: true, data: { containerId: 'c', lines: zeilen }, error: null },
+    );
+  },
+}));
+
 function sende(frame: LiveServerEventFrame): void {
   const schluessel = `${frame.topic.resource}:${frame.topic.id}`;
 
@@ -106,12 +130,27 @@ function Anzeige({ serverId }: { serverId: string }) {
       <span data-testid="status">{live.status ?? 'keiner'}</span>
       <span data-testid="revision">{live.statusRevision}</span>
       <span data-testid="cpu">{live.stats?.cpuPercent ?? 'leer'}</span>
+      <span data-testid="konsole">{live.consoleLines.map((line) => line.text).join('|')}</span>
     </div>
   );
 }
 
+function konsolenFrame(serverId: string, id: string, text: string): LiveServerEventFrame {
+  return {
+    kind: 'event',
+    event: 'server.consoleLineAppended',
+    topic: { resource: 'server', id: serverId },
+    sentAt: '2026-09-06T10:00:00.000Z',
+    data: {
+      serverId,
+      line: { id, serverId, source: 'stdout', text, timestamp: '2026-09-06T10:00:00.000Z' },
+    },
+  };
+}
+
 beforeEach(() => {
   kanal.zuhoerer.clear();
+  logs.zeilen.clear();
 });
 
 describe('useServerLive', () => {
@@ -169,6 +208,40 @@ describe('useServerLive', () => {
     // Zahl von vorhin.
     sende(statsFrame('srv-a', null));
     expect(screen.getByTestId('cpu').textContent).toBe('leer');
+  });
+
+  /*
+   * Fundpunkt 184: Der Puffer der Konsole stirbt mit der Seite. Beim Öffnen
+   * holt der Hook deshalb den Schwanz des Container-Logs und legt ihn vor die
+   * Live-Zeilen – sonst ist nach jedem Seitenwechsel die Startausgabe weg.
+   */
+  it('lädt beim Öffnen den Rückblick der Konsole und legt ihn vor die Live-Zeilen (Fundpunkt 184)', async () => {
+    logs.zeilen.set('srv-a', [
+      {
+        stream: 'stdout',
+        message: 'Starting minecraft server',
+        timestamp: '2026-09-06T09:59:00.000Z',
+      },
+      { stream: 'stderr', message: 'Warnung', timestamp: null },
+    ]);
+
+    render(<Anzeige serverId="srv-a" />);
+    sende(konsolenFrame('srv-a', 'live-1', 'Done (3.2s)!'));
+
+    expect((await screen.findByText(/Starting minecraft server/u)).textContent).toBe(
+      'Starting minecraft server|Warnung|Done (3.2s)!',
+    );
+  });
+
+  it('lässt die Konsole ohne Rückblick, wenn der Server keinen Container hat', async () => {
+    render(<Anzeige serverId="srv-b" />);
+    sende(konsolenFrame('srv-b', 'live-1', 'nur live'));
+
+    // Der Aufruf scheitert leise – die Live-Zeile bleibt, sonst nichts.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('konsole').textContent).toBe('nur live');
   });
 
   it('vergibt für jeden Statuswechsel eine höhere Reihenfolgenummer (event-flow-04)', () => {
