@@ -70,7 +70,6 @@ export {
 } from './query/probe.js';
 
 export {
-  DEFAULT_QUERY_HOST,
   ServerQueryJob,
   queryJobName,
   type ServerQueryJobOptions,
@@ -172,6 +171,16 @@ export interface JobsEnv {
   readonly AGENT_BACKUP_DIR: string;
   readonly AGENT_QUERY_INTERVAL_SECONDS: number;
   readonly AGENT_QUERY_TIMEOUT_MS: number;
+  /**
+   * Netz der Spielcontainer – dort fragt der Agent sie ab (Fundpunkt 188).
+   * Optional, damit bestehende Testaufbauten mit der Vorgabe weiterlaufen.
+   */
+  readonly AGENT_CONTAINER_NETWORK?: string;
+  /**
+   * Nur für Agents auf dem Docker-Host selbst: Adresse, unter der die
+   * Host-Ports der Spielcontainer erreichbar sind. Auf einer Node leer.
+   */
+  readonly AGENT_QUERY_HOST?: string | undefined;
   readonly AGENT_DOWNLOAD_BLOCK_MAX_BYTES: number;
   /**
    * Deckel der blockweisen Archiv-Übernahme (agent-conn-02). Optional, damit
@@ -222,6 +231,11 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     emit: options.emit,
     defaultIntervalSeconds: env.AGENT_QUERY_INTERVAL_SECONDS,
     timeoutMs: env.AGENT_QUERY_TIMEOUT_MS,
+    // Die Abfrage geht an den Container im Spielenetz, nicht an den Host-Port
+    // (Fundpunkt 188) – die Adresse kennt nur die Laufzeit.
+    resolveAddress: (containerId) =>
+      options.runtime.networkAddress(containerId, env.AGENT_CONTAINER_NETWORK ?? 'palantir-games'),
+    hostOverride: env.AGENT_QUERY_HOST,
     ...(options.now === undefined ? {} : { now: options.now }),
   });
 

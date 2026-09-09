@@ -149,6 +149,9 @@ services:
       AGENT_SECCOMP_PROFILE_PATH: ${AGENT_SECCOMP_PROFILE_PATH}
       AGENT_QUERY_INTERVAL_SECONDS: ${AGENT_QUERY_INTERVAL_SECONDS}
       AGENT_QUERY_TIMEOUT_MS: ${AGENT_QUERY_TIMEOUT_MS}
+      # Auf einer Node leer: Die Abfrage geht an den Container im Spielenetz
+      # (Fundpunkt 188). Der Wert existiert nur fuer Agents auf dem Docker-Host.
+      AGENT_QUERY_HOST: ${AGENT_QUERY_HOST:-}
       AGENT_DOWNLOAD_BLOCK_MAX_BYTES: ${AGENT_DOWNLOAD_BLOCK_MAX_BYTES}
       AGENT_UPLOAD_ARCHIVE_MAX_BYTES: ${AGENT_UPLOAD_ARCHIVE_MAX_BYTES}
       # Übersteuert den Wert aus der .env: innerhalb des Compose-Netzes heißt
@@ -169,7 +172,22 @@ services:
       - ${AGENT_ROUTER_DIR:-/srv/palantir/router}:${AGENT_ROUTER_DIR:-/srv/palantir/router}
     # Kein `ports:` - siehe Grundsatz oben.
     networks:
-      - palantir
+      palantir: {}
+      # Zusaetzlich im Spielenetz, mit fester Adresse (Fundpunkt 188): Die
+      # periodische Server-Abfrage geht an die Spielcontainer direkt, an ihre
+      # Adresse in diesem Netz. Ueber den Host-Port ginge es nicht - der ist an
+      # 127.0.0.1 der VM gebunden (Pflichtenheft §18), und das ist nicht das
+      # Loopback dieses Containers; frpc erreicht ihn nur, weil es im Host-Netz
+      # laeuft. Die feste Adresse braucht `egress-firewall.sh` fuer die Ausnahme
+      # Agent -> Spielserver; sie liegt wie die des Routers ausserhalb der
+      # automatischen Vergabe. Die Gegenrichtung bleibt gesperrt: Ein
+      # Spielcontainer erreicht den Agent hier genauso wenig wie vorher.
+      #
+      # Folge fuer die Reihenfolge: Das Spielenetz muss VOR dem Stack bestehen
+      # (`egress-firewall.sh apply`, SETUP.md 3.4) - ohne das Netz startet der
+      # Agent nicht mehr. Bis hierher galt das nur fuer den ersten Serverstart.
+      palantir-games:
+        ipv4_address: ${GAME_AGENT_CONTAINER_IP:-172.31.240.253}
 
   # --- Spiele-Tunnel (Clientseite) --------------------------------------------
   # Wählt zur VPS HINAUS und hält die Verbindung offen; der Spielverkehr kommt
@@ -283,8 +301,9 @@ networks:
   # Das Spielenetz - siehe den Abschnitt darunter. `external: true`, weil es
   # `egress-firewall.sh` anlegt und nicht Compose; die Regeln, der Bridge-Name
   # und der Adressbereich gehören zusammen und dürfen nicht an zwei Stellen
-  # stehen. Angerührt wird der Eintrag nur, wenn ein Dienst ihn benutzt - das
-  # tut allein der profil-gebundene `hostname-router`.
+  # stehen. Benutzt wird es vom Agent (Abfrage der Spielserver, Fundpunkt 188)
+  # und vom profil-gebundenen `hostname-router` - deshalb muss es vor `up -d`
+  # bestehen.
   palantir-games:
     name: ${AGENT_CONTAINER_NETWORK:-palantir-games}
     external: true

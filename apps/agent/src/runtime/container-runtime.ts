@@ -91,6 +91,17 @@ export interface ContainerRuntime {
   /** Aktueller Zustand eines Containers - Grundlage des Ist-/Soll-Abgleichs nach Reconnect (Pflichtenheft §2.2). */
   inspect(containerId: string): Promise<ContainerState>;
 
+  /**
+   * Adresse eines Containers in einem Docker-Netz, oder `null`, wenn er dort
+   * nicht haengt - etwa weil er nicht laeuft oder nicht mehr existiert.
+   *
+   * Gebraucht von der periodischen Server-Abfrage (Fundpunkt 188): Der Agent
+   * erreicht einen Spielcontainer nur ueber das gemeinsame Spielenetz, nicht
+   * ueber den Host-Port. Der ist an `127.0.0.1` der Node gebunden
+   * (Pflichtenheft §18), und das ist nicht das Loopback des Agent-Containers.
+   */
+  networkAddress(containerId: string, network: string): Promise<string | null>;
+
   /** Alle von Palantir verwalteten Container - vollstaendiger Ist-Zustand fuer den Reconnect-Abgleich. */
   list(): Promise<readonly ContainerState[]>;
 

@@ -325,6 +325,51 @@ describe('Ist-Zustand', () => {
   });
 });
 
+describe('Adresse im Spielenetz (Fundpunkt 188)', () => {
+  it('liest die Adresse des Containers im genannten Netz aus dem Inspect', async () => {
+    antwortgeber = () =>
+      json({
+        Id: 'c-1',
+        State: { Status: 'running' },
+        NetworkSettings: {
+          Networks: {
+            'palantir-games': { IPAddress: '172.31.240.7' },
+          },
+        },
+      });
+
+    expect(await runtime.networkAddress('c-1', 'palantir-games')).toBe('172.31.240.7');
+    expect(aufrufe[0]).toMatchObject({ method: 'GET', pfad: '/containers/c-1/json' });
+  });
+
+  it('kennt keine Adresse, wenn der Container nicht in diesem Netz haengt', async () => {
+    antwortgeber = () =>
+      json({
+        Id: 'c-1',
+        NetworkSettings: { Networks: { bridge: { IPAddress: '172.17.0.5' } } },
+      });
+
+    expect(await runtime.networkAddress('c-1', 'palantir-games')).toBeNull();
+  });
+
+  it('wertet die leere Adresse eines gestoppten Containers als „keine“', async () => {
+    antwortgeber = () =>
+      json({
+        Id: 'c-1',
+        State: { Status: 'exited' },
+        NetworkSettings: { Networks: { 'palantir-games': { IPAddress: '' } } },
+      });
+
+    expect(await runtime.networkAddress('c-1', 'palantir-games')).toBeNull();
+  });
+
+  it('meldet einen verschwundenen Container als „keine Adresse“, nicht als Fehler', async () => {
+    antwortgeber = () => json({ message: 'No such container' }, 404);
+
+    expect(await runtime.networkAddress('c-weg', 'palantir-games')).toBeNull();
+  });
+});
+
 describe('Images (Pflichtenheft §16, Ergaenzung aus A3)', () => {
   it('liest die Imageliste und bestimmt den Nutzungsstatus aus allen Containern', async () => {
     antwortgeber = (aufruf) => {

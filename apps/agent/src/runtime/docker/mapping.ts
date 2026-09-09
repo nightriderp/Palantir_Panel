@@ -38,6 +38,26 @@ export interface DockerInspectResponse {
     readonly Source?: string;
     readonly Destination?: string;
   }[];
+  /**
+   * Netze, in denen der Container haengt, samt Adresse. Gebraucht fuer die
+   * Abfrage ueber das Spielenetz (Fundpunkt 188).
+   */
+  readonly NetworkSettings?: {
+    readonly Networks?: Record<string, { readonly IPAddress?: string }>;
+  };
+}
+
+/**
+ * Adresse des Containers im genannten Netz, oder `null`.
+ *
+ * Ein gestoppter Container haengt zwar noch im Netz, hat dort aber eine leere
+ * Adresse - Docker gibt `""` zurueck. Das ist fuer die Abfrage dasselbe wie
+ * „nicht da", deshalb `null` statt einer leeren Zeichenkette.
+ */
+export function toNetworkAddress(response: DockerInspectResponse, network: string): string | null {
+  const adresse = response.NetworkSettings?.Networks?.[network]?.IPAddress;
+
+  return typeof adresse === 'string' && adresse.length > 0 ? adresse : null;
 }
 
 export interface DockerStatsResponse {
