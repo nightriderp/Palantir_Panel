@@ -1,0 +1,150 @@
+name: Spiel-Image bauen
+
+# Baustein für game-images.yml: baut EIN Image aus `images/<Kategorie>/<Name>`
+# und legt es als `ghcr.io/<owner>/palantir-<Kategorie>-<Name>:<Fassung>` ab.
+#
+# Als wiederverwendbarer Workflow, weil game-images.yml dieselben Schritte
+# zweimal braucht – erst für die Basis-Images, dann für alles, was darauf
+# aufsetzt. Zwei Jobs mit denselben Schritten drifteten auseinander; ein Job,
+# der beides in einer Matrix baut, kennt keine Reihenfolge.
+#
+# Läuft nie von allein: kein `push`, kein `workflow_dispatch`, nur
+# `workflow_call`. Alles, was den Bau als Ganzes betrifft – Auswahl der Images,
+# Reihenfolge, Nebenläufigkeit, Auslöser –, steht im Aufrufer.
+#
+# Fremde Actions sind per Commit-SHA gepinnt, der Kommentar dahinter nennt die
+# Fassung (Audit `infra-images-13`, Begründung im Kopf von ci.yml);
+# `.github/dependabot.yml` hält die Pins nach.
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: 'Ordner unter images/, als Kategorie/Name (z. B. game/minecraft)'
+        required: true
+        type: string
+      ueberschreiben:
+        description: 'Bestehendes Versions-Tag überschreiben (nur für einen erneuten Anlauf nach einem abgebrochenen Bau)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  bauen:
+    name: ${{ inputs.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Ordner, Namen und Fassung bestimmen
+        id: image
+        env:
+          # Wie in deploy.yml: dynamische Werte über die Umgebung, nicht als
+          # `${{ }}` mitten im Skript.
+          IMAGE: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+
+          # Streng, weil der Wert gleich als Pfad und als Teil eines
+          # Image-Namens verwendet wird. Er kommt aus einem Ordnernamen dieses
+          # Repositorys – aber ein Aufrufer könnte ihm auch etwas anderes geben.
+          if ! [[ "${IMAGE}" =~ ^[a-z0-9-]+/[a-z0-9-]+$ ]]; then
+            echo "::error::'${IMAGE}' ist kein Image-Ordner der Form Kategorie/Name."
+            exit 1
+          fi
+
+          pfad="images/${IMAGE}"
+
+          if [ ! -f "${pfad}/Dockerfile" ]; then
+            echo "::error::${pfad}/Dockerfile fehlt."
+            exit 1
+          fi
+
+          # `base/java` → `palantir-base-java`: Kategorie und Name durch
+          # Bindestrich verbunden, mit dem Präfix aller Palantir-Images.
+          name="palantir-${IMAGE//\//-}"
+
+          fassung="$(tr -d '[:space:]' < "${pfad}/VERSION")"
+
+          # Streng, weil der Wert gleich als Image-Tag verwendet wird. Eine leere
+          # oder krumme Datei erzeugte sonst ein Tag wie `…:` oder `…:1.0 `.
+          # images/README.md kennt nur fortlaufende ganze Zahlen.
+          if ! [[ "${fassung}" =~ ^[0-9]+$ ]]; then
+            echo "::error::${pfad}/VERSION ist keine fortlaufende Zahl: '${fassung}'"
+            exit 1
+          fi
+
+          {
+            echo "pfad=${pfad}"
+            echo "name=${name}"
+            echo "fassung=${fassung}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Image:   ${name}"
+          echo "Fassung: ${fassung}"
+          echo "Kontext: ${pfad}"
+
+      - name: Buildx einrichten
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # Vor dem Bauen, nicht erst vor dem Hochladen: Ein Spiel-Image setzt mit
+      # `FROM` auf ein Basis-Image aus derselben Registry auf, und das ist bei
+      # einem privaten Repository ein privates Paket.
+      - name: An GHCR anmelden
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Nach dem Anmelden, weil `imagetools inspect` gegen ghcr.io ein Token
+      # braucht - und vor dem Bauen, weil ein Abbruch danach nichts mehr nützt:
+      # `docker/build-push-action` schiebt das Tag im selben Schritt hoch.
+      - name: Versions-Tag darf es noch nicht geben
+        if: ${{ inputs.ueberschreiben != true }}
+        env:
+          OWNER: ${{ github.repository_owner }}
+          NAME: ${{ steps.image.outputs.name }}
+          PFAD: ${{ steps.image.outputs.pfad }}
+          FASSUNG: ${{ steps.image.outputs.fassung }}
+        run: |
+          set -euo pipefail
+          ziel="ghcr.io/${OWNER}/${NAME}:${FASSUNG}"
+          if docker buildx imagetools inspect "${ziel}" >/dev/null 2>&1; then
+            echo "::error::${ziel} gibt es bereits. Ein Image-Tag wird nie überschrieben (images/README.md): Zahl in ${PFAD}/VERSION erhöhen und die GameTypeDefinition nachziehen. Nur für einen erneuten Anlauf nach einem abgebrochenen Bau: Lauf von Hand mit 'ueberschreiben' starten."
+            exit 1
+          fi
+          echo "  ${ziel} ist noch frei"
+
+      - name: Bauen und veröffentlichen
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          # Build-Kontext ist der Ordner des Images: Ein Image hat mit dem
+          # Monorepo nichts zu tun und soll auch nichts davon sehen.
+          context: ${{ steps.image.outputs.pfad }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ steps.image.outputs.name }}:${{ steps.image.outputs.fassung }}
+            ghcr.io/${{ github.repository_owner }}/${{ steps.image.outputs.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ steps.image.outputs.name }}
+          cache-to: type=gha,scope=${{ steps.image.outputs.name }},mode=max
+          provenance: false
+
+      - name: Ergebnis melden
+        env:
+          OWNER: ${{ github.repository_owner }}
+          NAME: ${{ steps.image.outputs.name }}
+          FASSUNG: ${{ steps.image.outputs.fassung }}
+        run: |
+          {
+            echo "### ${NAME}"
+            echo '```'
+            echo "ghcr.io/${OWNER}/${NAME}:${FASSUNG}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

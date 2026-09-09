@@ -8,7 +8,8 @@
 #   1. Es hält den Server an, solange die EULA von Mojang nicht angenommen ist.
 #   2. Es schreibt die vom Panel verwalteten Schlüssel in `server.properties`,
 #      ohne die übrigen anzutasten.
-#   3. Es rechnet den JVM-Heap aus dem RAM-Kontingent des Containers.
+#   3. Es holt den JVM-Heap aus dem RAM-Kontingent des Containers – die
+#      Rechnung dazu liegt im Basis-Image (`images/base/java/java.sh`).
 #   4. Es legt das Rohr an, über das `palantir-console` Befehle an die
 #      Standardeingabe des Servers gibt.
 #
@@ -152,91 +153,23 @@ mv "${ZIEL}.neu" "$ZIEL"
 # -----------------------------------------------------------------------------
 # 3. Heap aus dem RAM-Kontingent
 #
-# Das Kontingent des Servers erreicht den Container nur als cgroup-Grenze
-# (`HostConfig.Memory`, siehe `apps/agent/src/runtime/hardening.ts`) – es gibt
-# keine Umgebungsvariable damit. Ohne eigene Rechnung nähme die JVM ihren
-# Standard von einem Viertel der Grenze: Bei 4 GiB Kontingent liefe der Server
-# mit 1 GiB Heap und ginge unter Last in Dauer-GC, obwohl 3 GiB ungenutzt
-# danebenlägen.
-#
-# Gerechnet wird „Kontingent minus Rücklage" statt eines festen Prozentsatzes,
-# weil der Bedarf neben dem Heap kaum mit ihm wächst: Metaspace, Code-Cache,
-# GC-Strukturen, Thread-Stacks und die Direktpuffer von Netty brauchen ein paar
-# hundert MiB, ob der Heap nun 1 oder 12 GiB groß ist. Ein Viertel des
-# Kontingents, mindestens 512 und höchstens 2048 MiB, deckt das ab, ohne bei
-# großen Servern GiB zu verschenken. Reißt der Rest, greift nicht der GC, sondern
-# der Kernel – und der schießt den Container ab.
-#
-# `PALANTIR_MEMORY_LIMIT_FILE` ist ein **Ersatz**, keine zusätzliche Adresse:
-# Ist die Variable gesetzt, wird nur diese Datei gelesen. Vorher stand sie am
-# Anfang einer Suchliste — eine nicht lesbare Datei wurde übersprungen, und das
-# Skript las danach doch die cgroup-Dateien der Maschine. Der Test, der damit
-# „keine Grenze" nachstellen wollte, prüfte deshalb in Wahrheit die Grenze des
-# Läufers; auf einem Läufer ohne Grenze bestand er aus dem falschen Grund
-# (Fundpunkt 178).
-speichergrenze_bytes() {
-  if [ -n "${PALANTIR_MEMORY_LIMIT_FILE:-}" ]; then
-    quellen="${PALANTIR_MEMORY_LIMIT_FILE}"
-  else
-    quellen="/sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes"
-  fi
+# Die Rechnung – Kontingent minus Rücklage, die Grenze aus der cgroup – steht im
+# Basis-Image (`images/base/java/java.sh`, im Container
+# `/opt/palantir/lib/java.sh`), weil sie bei jedem Java-Spiel dieselbe ist.
+# `PALANTIR_LIB_DIR` existiert, damit `start.test.mjs` die Bibliothek aus dem
+# Repository einbinden kann, wo es `/opt/palantir` nicht gibt.
+. "${PALANTIR_LIB_DIR:-/opt/palantir/lib}/java.sh"
 
-  for datei in $quellen; do
-    if [ ! -r "$datei" ]; then
-      continue
-    fi
-
-    wert="$(tr -d '[:space:]' < "$datei")"
-
-    # cgroup v2 schreibt „max", wenn keine Grenze gesetzt ist.
-    case "$wert" in
-      '' | *[!0-9]*) continue ;;
-    esac
-
-    # cgroup v1 meldet stattdessen eine absurd große Zahl. Alles jenseits von
-    # 1 TiB ist keine Grenze, sondern deren Abwesenheit.
-    if [ "$wert" -gt 1099511627776 ]; then
-      continue
-    fi
-
-    printf '%s' "$wert"
-
-    return 0
-  done
-
-  return 1
-}
-
-if grenze="$(speichergrenze_bytes)"; then
-  kontingent_mib=$((grenze / 1048576))
-  ruecklage_mib=$((kontingent_mib / 4))
-
-  if [ "$ruecklage_mib" -lt 512 ]; then
-    ruecklage_mib=512
-  fi
-
-  if [ "$ruecklage_mib" -gt 2048 ]; then
-    ruecklage_mib=2048
-  fi
-
-  heap_mib=$((kontingent_mib - ruecklage_mib))
-
-  # Unter 512 MiB Heap startet Paper nicht sinnvoll. Ein so kleines Kontingent
-  # ist eine Fehlkonfiguration; der Server läuft dann eben knapp und der Kernel
-  # entscheidet, statt dass hier eine unmögliche Zahl gesetzt wird.
-  if [ "$heap_mib" -lt 512 ]; then
-    heap_mib=512
-  fi
-
-  log "RAM-Kontingent ${kontingent_mib} MiB, davon ${heap_mib} MiB Heap (${ruecklage_mib} MiB Rücklage)."
-  set -- "-Xms${heap_mib}M" "-Xmx${heap_mib}M"
+if java_heap_bestimmen; then
+  log "RAM-Kontingent ${JAVA_KONTINGENT_MIB} MiB, davon ${JAVA_HEAP_MIB} MiB Heap (${JAVA_RUECKLAGE_MIB} MiB Rücklage)."
 else
-  # Ohne lesbare cgroup-Datei bleibt nur die Container-Erkennung der JVM selbst.
-  # 70 % statt der voreingestellten 25 % – dieselbe Überlegung wie oben, nur
-  # gröber.
   log 'Die RAM-Grenze des Containers ist nicht lesbar; die JVM rechnet selbst.'
-  set -- '-XX:MaxRAMPercentage=70'
 fi
+
+# Absichtlich ohne Anführungszeichen: Die Schalter sind durch Leerzeichen
+# getrennt und enthalten selbst keine.
+# shellcheck disable=SC2086
+set -- ${JAVA_HEAP_ARGUMENTE}
 
 # -----------------------------------------------------------------------------
 # 4. Temporäres Verzeichnis

@@ -4,8 +4,9 @@ packages:
   # Spiel-Images sind keine Anwendungspakete – sie werden nicht gebaut und haben
   # keine Abhängigkeiten. Sie stehen hier, damit `pnpm test` in der Wurzel (und
   # damit die CI) die Tests mitlaufen lässt, die neben den .mjs-Dateien liegen.
-  # Verzeichnisse ohne package.json ignoriert pnpm.
-  - 'images/*'
+  # Verzeichnisse ohne package.json ignoriert pnpm. Zwei Ebenen, weil die
+  # Images nach Kategorie liegen: `images/<Kategorie>/<Name>` (images/README.md).
+  - 'images/*/*'
   # Dieselbe Überlegung für die Hilfsskripte: `scripts/serve-mockup.test.mjs`
   # läuft über `node --test` und soll in `pnpm test` erscheinen (Maßnahme W3-13).
   - 'scripts'

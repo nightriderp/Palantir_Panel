@@ -240,9 +240,12 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
 
   it('zeigt auf eine feste Fassung des eigenen Images', () => {
     // Ein Spiel-Image-Tag wird nie überschrieben (game-images.yml). Wer
-    // `images/minecraft/VERSION` erhöht, muss diese Zeile nachziehen – sonst
-    // liefe die Node weiter auf der alten Fassung, ohne dass es auffiele.
-    expect(MINECRAFT_PAPER_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-minecraft:1');
+    // `images/game/minecraft/VERSION` erhöht, muss diese Zeile nachziehen – sonst
+    // liefe die Node weiter auf der alten Fassung, ohne dass es auffiele. Der
+    // Name folgt dem Schema `palantir-<Kategorie>-<Name>` (images/README.md).
+    expect(MINECRAFT_PAPER_GAME_TYPE.dockerImage).toBe(
+      'ghcr.io/nightriderp/palantir-game-minecraft:1',
+    );
   });
 
   it('wird über gamedig abgefragt', () => {
@@ -282,7 +285,7 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
   });
 
   it('reicht die Zustimmung als EULA an den Container durch', () => {
-    // Genau diese Zeichenkette vergleicht `images/minecraft/start.sh`. Ein
+    // Genau diese Zeichenkette vergleicht `images/game/minecraft/start.sh`. Ein
     // umbenanntes Feld oder eine andere Variable ließe den Server dauerhaft mit
     // „EULA nicht angenommen" stehenbleiben.
     const ohne = buildContainerEnv(

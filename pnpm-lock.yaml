@@ -216,9 +216,11 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)
 
-  images/minecraft: {}
+  images/base/java: {}
 
-  images/test-minecraft: {}
+  images/game/minecraft: {}
+
+  images/test/minecraft: {}
 
   packages/contracts:
     devDependencies:

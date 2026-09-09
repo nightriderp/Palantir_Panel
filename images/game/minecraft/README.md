@@ -1,14 +1,14 @@
 # Minecraft (Paper)
 
 Das erste echte Spiel-Image (Lastenheft §7, Ausbaustufe 2). Der Prüfstand nebenan
-(`images/test-minecraft`) stellt das Minecraft-Protokoll nach — hier läuft ein Server.
+(`images/test/minecraft`) stellt das Minecraft-Protokoll nach — hier läuft ein Server. Das
+Schema aller Images steht in `images/README.md`.
 
-| Enthalten           | Fassung                                                         |
-| ------------------- | --------------------------------------------------------------- |
-| Paper               | 26.2, Build 121 (Kanal `STABLE`), im Image, Prüfsumme im Bau    |
-| Java                | Eclipse Temurin 25 JRE (Paper 26.2 verlangt mindestens Java 25) |
-| Basis               | `eclipse-temurin:25-jre-noble`, per Digest gepinnt              |
-| Spieltyp-Definition | `minecraft-paper` in `apps/backend/.../game-registry.ts`        |
+| Enthalten           | Fassung                                                                          |
+| ------------------- | -------------------------------------------------------------------------------- |
+| Paper               | 26.2, Build 121 (Kanal `STABLE`), im Image, Prüfsumme im Bau                     |
+| Basis               | `palantir-base-java:1` (`images/base/java`): Temurin 25 JRE, UID 1000, `java.sh` |
+| Spieltyp-Definition | `minecraft-paper` in `apps/backend/.../game-registry.ts`                         |
 
 ## Warum ein eigenes Image
 
@@ -17,13 +17,13 @@ als `root`, schreibt seinen Datenordner um und wechselt danach den Benutzer. All
 Schritte scheitern an `CapDrop: ALL` und `no-new-privileges` (Pflichtenheft §2.3). Die Härtung
 bleibt; dieses Image fügt sich:
 
-| Regel                     | Umsetzung                                                 |
-| ------------------------- | --------------------------------------------------------- |
-| Fester Benutzer, UID 1000 | `USER 1000:1000` im Dockerfile — die UID des Datenordners |
-| Kein `chown` im Start     | `start.sh` fasst keine Rechte an                          |
-| Kein Benutzerwechsel      | `exec java` als derselbe Benutzer, kein `su`, kein `gosu` |
-| Keine setuid-Binaries     | Startpfad ist `/opt/palantir` + die JRE                   |
-| Schreibt nur in `/data`   | Welt, Logs, Plugins, JVM-Temp — alles im Datenordner      |
+| Regel                     | Umsetzung                                                        |
+| ------------------------- | ---------------------------------------------------------------- |
+| Fester Benutzer, UID 1000 | Aus dem Basis-Image; `root` nur im Bau, `USER 1000:1000` am Ende |
+| Kein `chown` im Start     | `start.sh` fasst keine Rechte an                                 |
+| Kein Benutzerwechsel      | `exec java` als derselbe Benutzer, kein `su`, kein `gosu`        |
+| Keine setuid-Binaries     | Startpfad ist `/opt/palantir` + die JRE                          |
+| Schreibt nur in `/data`   | Welt, Logs, Plugins, JVM-Temp — alles im Datenordner             |
 
 ## EULA von Mojang
 
@@ -77,24 +77,10 @@ ausgewertet (das Backend reicht freien Text bewusst als eine Zeichenkette durch,
 ## Arbeitsspeicher
 
 Das RAM-Kontingent des Servers erreicht den Container **nur als cgroup-Grenze**
-(`HostConfig.Memory`), es gibt keine Umgebungsvariable damit. `start.sh` liest die Grenze und
-rechnet:
-
-> Heap = Kontingent − Rücklage, Rücklage = ein Viertel des Kontingents, mindestens 512 und
-> höchstens 2048 MiB.
-
-| Kontingent | Heap      |
-| ---------- | --------- |
-| 1024 MiB   | 512 MiB   |
-| 2048 MiB   | 1536 MiB  |
-| 4096 MiB   | 3072 MiB  |
-| 8192 MiB   | 6144 MiB  |
-| 16384 MiB  | 14336 MiB |
-
-Ein fester Prozentsatz wäre schlechter: Metaspace, Code-Cache, GC-Strukturen, Thread-Stacks
-und die Direktpuffer von Netty brauchen ein paar hundert MiB, ob der Heap nun 1 oder 12 GiB
-groß ist. Reißt dieser Rest, greift nicht der GC, sondern der Kernel. Ist die Grenze nicht
-lesbar, bleibt es bei `-XX:MaxRAMPercentage=70`.
+(`HostConfig.Memory`), es gibt keine Umgebungsvariable damit. Die Rechnung — Heap =
+Kontingent − Rücklage — liegt in `java.sh` des Basis-Images (`images/base/java/README.md`,
+dort auch die Tabelle); `start.sh` bindet die Bibliothek ein und gibt das Ergebnis als erste
+Schalter an die JVM. Ist die Grenze nicht lesbar, bleibt es bei `-XX:MaxRAMPercentage=70`.
 
 ## `/tmp` ist `noexec`
 
@@ -126,8 +112,9 @@ Exit-Codes wie beim Prüfstand: `0` übergeben, `1` Konsole nicht erreichbar, `2
 `start.test.mjs` ruft `start.sh` und `console.sh` mit `sh` auf und schiebt ein `java` in den
 PATH, das nur seine Argumente ausgibt — **kein Docker, kein Minecraft, keine JVM nötig**.
 Geprüft werden die Entscheidungen des Skripts: EULA-Sperre, verwaltete Schlüssel in
-`server.properties` (inklusive fremder Schlüssel, Kommentaren und Dubletten), die
-Heap-Rechnung, das temporäre Verzeichnis und die Exit-Codes der Konsole.
+`server.properties` (inklusive fremder Schlüssel, Kommentaren und Dubletten), die Übernahme
+des Heaps aus dem Basis-Image (die Rechnung selbst prüft `images/base/java/java.test.mjs`),
+das temporäre Verzeichnis und die Exit-Codes der Konsole.
 
 ```bash
 # im Verbund, so wie die CI es tut
@@ -150,7 +137,7 @@ docker run --rm -p 25565:25565 \
   --user 1000:1000 --cap-drop ALL --security-opt no-new-privileges:true \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
   -m 4g -e EULA=true -v "$PWD/probe:/data" \
-  ghcr.io/nightriderp/palantir-minecraft:1
+  ghcr.io/nightriderp/palantir-game-minecraft:1
 ```
 
 Der Ordner `probe` muss vorher existieren und UID 1000 gehören — auf der Node legt ihn der
@@ -158,9 +145,12 @@ Agent an (Fundpunkt 117). Ohne `-e EULA=true` endet der Lauf mit 78 und einer Er
 
 ## Fassung erhöhen
 
-Ein Spiel-Image-Tag wird nie überschrieben. Wer Paper, die JRE oder ein Skript ändert:
+Ein Spiel-Image-Tag wird nie überschrieben. Wer Paper oder ein Skript ändert:
 
 1. neue Prüfsumme aus `https://fill.papermc.io/v3/projects/paper/versions/<Fassung>/builds/latest`
    in den `ARG`-Block des Dockerfiles,
 2. Zahl in `VERSION` erhöhen,
 3. `dockerImage` in `game-registry.ts` auf das neue Tag ziehen (der Test dort hält das fest).
+
+Die JRE kommt aus dem Basis-Image. Eine neue Fassung dort erreicht dieses Image erst, wenn
+`BASIS` im Dockerfile umgestellt wird — dann Schritte 2 und 3.
