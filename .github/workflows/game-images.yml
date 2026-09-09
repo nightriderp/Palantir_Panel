@@ -122,23 +122,49 @@ jobs:
             echo "Kein Vergleichspunkt — alle Images."
             gewaehlt="${alle}"
           else
-            # `images/game/minecraft/start.sh` → `game/minecraft`. Eine Datei
-            # direkt unter `images/` (README) ergibt einen Namen ohne
-            # Schrägstrich, den die Schnittmenge unten aussortiert.
-            #
-            # Zwei Arten von Änderungen zählen nicht, weil sie das Image nicht
-            # ändern: ein Ordner, der nur verschoben wurde (`R100`, jede Datei
-            # bitgleich), und die README – die hält jedes `.dockerignore` aus
-            # dem Build-Kontext heraus. Beides liesse sonst ein Image bauen,
-            # dessen Tag es zu Recht schon gibt, und der Lauf würde rot, ohne
-            # dass sich am Inhalt etwas getan hätte.
-            geaendert="$(git diff --name-status -M "${VORHER}" "${NACHHER}" -- images/ \
-              | awk '$1 != "R100" { print $NF }' \
-              | { grep -v '/README\.md$' || true; } \
-              | cut -d/ -f2,3 | sort -u)"
-            # Schnittmenge: Ein geloeschter Ordner steht im Diff, aber nicht mehr
-            # im Dateisystem — der laesst sich nicht bauen.
-            gewaehlt="$(comm -12 <(printf '%s\n' "${alle}") <(printf '%s\n' "${geaendert}"))"
+            # Was zählt, ist der Bau-Kontext: die Dateien, die ins Image gehen.
+            # README, VERSION, package.json und Tests hält jedes `.dockerignore`
+            # heraus (images/README.md) – eine Änderung daran ändert das Image
+            # nicht. Verglichen wird deshalb nicht die Liste geänderter Dateien,
+            # sondern ein Abdruck des Kontexts: Blob-Hashes und Namen relativ
+            # zum Image-Ordner. Ein Ordner, der nur verschoben wurde, hat
+            # denselben Abdruck wie vorher und wird nicht gebaut – egal, wie
+            # git die Umbenennung im Diff darstellt (bei zwei bitgleichen
+            # `VERSION`-Dateien rät es die Paarung).
+            abdruck() {
+              git ls-tree -r "$1" -- "$2/" \
+                | awk -v wurzel="$2/" '{ pfad = $4; sub("^" wurzel, "", pfad); print $3, pfad }' \
+                | { grep -v -E ' (README\.md|VERSION|package\.json|[^ ]*\.test\.mjs)$' || true; } \
+                | sort | sha256sum | cut -d' ' -f1
+            }
+
+            # Abdrücke aller Image-Ordner im Vorher-Stand, in jeder Tiefe –
+            # damit auch ein Umzug in ein anderes Ordnerschema als Umzug zählt.
+            vorher="$(git ls-tree -r --name-only "${VORHER}" -- images/ \
+              | { grep '/Dockerfile$' || true; } | sed 's#/Dockerfile$##' \
+              | while read -r ordner; do abdruck "${VORHER}" "${ordner}"; done)"
+
+            gewaehlt=''
+            for image in ${alle}; do
+              if printf '%s\n' "${vorher}" | grep -qx "$(abdruck "${NACHHER}" "images/${image}")"; then
+                continue
+              fi
+              gewaehlt="${gewaehlt}${image}"$'\n'
+            done
+
+            # Dazu jedes Image, dessen VERSION an Ort und Stelle erhöht wurde:
+            # Wer die Zahl ändert, will ein neues Tag – auch ohne Änderung am
+            # Inhalt. `--no-renames`, damit ein verschobenes Image (`A`) nicht
+            # als Erhöhung (`M`) durchgeht.
+            for datei in $(git diff --no-renames --name-status "${VORHER}" "${NACHHER}" -- 'images/*/*/VERSION' \
+              | awk '$1 == "M" { print $2 }'); do
+              image="$(printf '%s' "${datei}" | cut -d/ -f2,3)"
+              if ! printf '%s\n' "${gewaehlt}" | grep -qx "${image}"; then
+                gewaehlt="${gewaehlt}${image}"$'\n'
+              fi
+            done
+
+            gewaehlt="$(printf '%s' "${gewaehlt}" | sort -u)"
           fi
 
           if [ -z "${gewaehlt}" ]; then
