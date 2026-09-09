@@ -465,7 +465,9 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
         void actor;
 
         const input = createServerInputSchema.parse(request.body);
-        const server = await service.createServer(input, viewerId);
+        // Antwortet sofort mit `creating` (Fundpunkt 185); Container und DNS
+        // entstehen im Hintergrund, das Ergebnis kommt über den Live-Kanal.
+        const server = await service.beginCreateServer(input, viewerId);
         const context = await dtoContext(request, server.id);
 
         return await reply.status(201).send(

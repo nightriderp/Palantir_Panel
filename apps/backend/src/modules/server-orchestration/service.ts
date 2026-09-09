@@ -383,20 +383,100 @@ export class ServerOrchestrationService {
   // -------------------------------------------------------------------------
 
   /**
-   * Legt einen Server an (Lastenheft §3.3).
+   * Legt einen Server an und wartet, bis er steht (Lastenheft §3.3).
    *
    * Reihenfolge ist bewusst gewählt: erst die Prüfungen, die ohne Nebenwirkung
    * scheitern können (Spiel-Typ, Subdomain, Ressourcen), dann der
-   * Datenbankeintrag, dann die Nebenwirkungen nach außen (Ports, DNS,
-   * Container). Scheitert eine Nebenwirkung, bleibt der Server als `error`
-   * stehen statt zu verschwinden – ein halb angelegter Server mit sichtbarer
-   * Fehlermeldung ist einem stillen Verschwinden vorzuziehen.
+   * Datenbankeintrag samt Ports in einer Reservierung, dann die Nebenwirkungen
+   * nach außen (DNS, Container). Scheitert eine Nebenwirkung, räumt
+   * `rollbackFailedCreate()` auf, solange nie ein Container entstand.
+   *
+   * Der wartende Weg – der Aufrufer bekommt erst nach Image-Zug und
+   * Container-Bau eine Antwort. Für die Route ist das seit Fundpunkt 185 der
+   * falsche Vertrag (siehe {@link beginCreateServer}); hier bleibt er für den
+   * Klon, der ohnehin einen eigenen Fortschritts-Job hat, und für alles, was
+   * ein fertiges Ergebnis braucht.
    */
   async createServer(input: CreateServerInput, ownerId: string): Promise<ServerRecord> {
     return this.createServerInternal(input, ownerId, null);
   }
 
+  /**
+   * Legt einen Server an und antwortet sofort – im Zustand `creating`
+   * (Fundpunkt 185).
+   *
+   * Bis hierher kam `POST /servers` erst zurück, wenn der Agent das Image
+   * gezogen und den Container gebaut hatte: bei einem Spiel-Image Minuten, im
+   * Wizard ein drehender Knopf ohne jede Rückmeldung. Der Zustand `creating`
+   * existiert seit Pflichtenheft §9, war aber nie sichtbar, weil die Anfrage
+   * ihn übersprang.
+   *
+   * Jetzt endet die Anfrage mit der Reservierung: Datensatz und Ports stehen,
+   * der Rest (DNS, Container, Weltdaten) läuft im Hintergrund weiter. Das
+   * Ergebnis kommt als `server.statusChanged` über den Live-Kanal – `stopped`,
+   * wenn der Container steht, `error` mit dem Grund im `statusMessage`, wenn
+   * nicht.
+   *
+   * **Bewusst kein Rückbau bei Fehlschlag:** Der Nutzer sieht die Detailseite
+   * und soll dort lesen, woran es lag, und es mit „Starten" noch einmal
+   * versuchen – `startServer()` legt einen fehlenden Container an
+   * (`ensureContainerCurrent`) – oder löschen. Ein Server, der still
+   * verschwindet, während man ihn ansieht, wäre die schlechtere Antwort. Der
+   * Preis: Subdomain und Ports bleiben belegt, bis jemand löscht. Bei der
+   * wartenden Variante ist das anders, dort gibt es keine Seite, die den Grund
+   * zeigen könnte.
+   */
+  async beginCreateServer(input: CreateServerInput, ownerId: string): Promise<ServerRecord> {
+    const reserviert = await this.reserveServer(input, ownerId, null);
+    const server = await this.requireServer(reserviert.id);
+
+    // `provision()` setzt bei einem Fehlschlag selbst `error` mit Grund und
+    // meldet `server.failed`; hier bleibt nur das Protokoll.
+    void this.provision(server, input.worldImport).catch((error: unknown) => {
+      this.deps.log.warn(
+        { serverId: server.id, error: error instanceof Error ? error.message : String(error) },
+        'Anlegen im Hintergrund gescheitert – der Server bleibt auf error, bis er gestartet oder gelöscht wird',
+      );
+    });
+
+    return server;
+  }
+
   private async createServerInternal(
+    input: CreateServerInput,
+    ownerId: string,
+    clonedFromServerId: string | null,
+  ): Promise<ServerRecord> {
+    const created = await this.reserveServer(input, ownerId, clonedFromServerId);
+
+    try {
+      await this.provision(await this.requireServer(created.id), input.worldImport);
+
+      return await this.requireServer(created.id);
+    } catch (error: unknown) {
+      /*
+       * Aufräumen, statt eine Leiche stehen zu lassen (WORK_STATUS.md,
+       * Gefundener Punkt 112). Ohne das blieb nach einem gescheiterten Anlegen
+       * ein Datensatz auf `error` zurück – samt belegter Subdomain und
+       * belegten Ports. Der zweite Versuch mit derselben Adresse lief dann in
+       * „Diese Subdomain ist bereits vergeben", und der Nutzer musste erst von
+       * Hand löschen. Geräumt wird nur, solange nie ein Container entstand –
+       * die Begründung steht an `rollbackFailedCreate()`.
+       *
+       * Der Fehler selbst geht weiter nach oben: Er ist die Antwort auf den
+       * Anlegen-Versuch, und `server.failed` ist bereits gemeldet.
+       */
+      await this.rollbackFailedCreate(created.id);
+
+      throw error;
+    }
+  }
+
+  /**
+   * Prüfungen, Datensatz und Ports – der Teil des Anlegens, der keine andere
+   * Maschine berührt. Scheitert er, bleibt nichts zurück.
+   */
+  private async reserveServer(
     input: CreateServerInput,
     ownerId: string,
     clonedFromServerId: string | null,
@@ -491,22 +571,10 @@ export class ServerOrchestrationService {
         },
       );
 
-      await this.provision(await this.requireServer(created.id), input.worldImport);
-
-      return await this.requireServer(created.id);
+      return created;
     } catch (error: unknown) {
-      /*
-       * Aufräumen, statt eine Leiche stehen zu lassen (WORK_STATUS.md,
-       * Gefundener Punkt 112). Ohne das blieb nach einem gescheiterten Anlegen
-       * ein Datensatz auf `error` zurück – samt belegter Subdomain und
-       * belegten Ports. Der zweite Versuch mit derselben Adresse lief dann in
-       * „Diese Subdomain ist bereits vergeben", und der Nutzer musste erst von
-       * Hand löschen. Geräumt wird nur, solange nie ein Container entstand –
-       * die Begründung steht an `rollbackFailedCreate()`.
-       *
-       * Der Fehler selbst geht weiter nach oben: Er ist die Antwort auf den
-       * Anlegen-Versuch, und `server.failed` ist bereits gemeldet.
-       */
+      // Scheitert die Vergabe nach dem Insert (Rückfall ohne Transaktion),
+      // darf der Datensatz nicht als Leiche stehen bleiben – siehe `angelegt`.
       if (angelegt.id !== null) {
         await this.rollbackFailedCreate(angelegt.id);
       }
@@ -1353,10 +1421,15 @@ export class ServerOrchestrationService {
      * Ausweg über die API. Der `STOP`-Befehl selbst läuft synchron innerhalb
      * der Anfrage; ein paralleles Löschen hinterlässt keinen Hintergrundlauf.
      */
-    if (server.status === 'starting') {
+    if (server.status === 'starting' || server.status === 'creating') {
+      // `creating` aus demselben Grund (Fundpunkt 185): Seit das Anlegen im
+      // Hintergrund läuft, will `provision()` gleich Container-Id und Zustand
+      // in einen Datensatz schreiben, den es dann nicht mehr gäbe.
       throw new ServerOrchestrationError(
         'SERVER_STATE_CONFLICT',
-        'Der Server ist gerade im Startvorgang und kann erst danach gelöscht werden.',
+        server.status === 'creating'
+          ? 'Der Server wird gerade angelegt und kann erst danach gelöscht werden.'
+          : 'Der Server ist gerade im Startvorgang und kann erst danach gelöscht werden.',
         { serverId, status: server.status },
       );
     }
