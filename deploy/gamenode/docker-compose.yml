@@ -281,14 +281,22 @@ services:
       INFRARED_CONFIG_PATH: /configs
     volumes:
       # Nur lesend - geschrieben wird ausschliesslich vom Agent.
+      #
+      # **Genau ein Mount, und der Platzhalter liegt IM Ordner** (Fundpunkt 191).
+      # Hier stand zusaetzlich `./infrared/00-platzhalter.json:/configs/...:ro`,
+      # also ein zweiter Mount innerhalb des ersten. Docker haengt den Elternteil
+      # zuerst ein; danach liegt `/configs` schreibgeschuetzt da, und der
+      # Einhaengepunkt fuer die Datei darin laesst sich nicht mehr anlegen. Der
+      # Router kam damit nie hoch:
+      #   create mountpoint for /configs/00-platzhalter.json mount:
+      #   ... read-only file system
+      # Den Mount `:ro` aufzugeben waere der falsche Weg gewesen: Docker legte
+      # den Einhaengepunkt dann als leere, root-eigene Datei im Datenordner der
+      # Node an, die nach dem Entfernen des Containers als kaputte Route
+      # liegenbliebe. Stattdessen legt `update.sh` den Platzhalter als
+      # gewoehnliche Routen-Datei in den Ordner - der Agent fasst nur
+      # `<serverId>.json` an und laesst sie in Ruhe.
       - ${AGENT_ROUTER_DIR:-/srv/palantir/router}/proxies:/configs:ro
-      # Ohne mindestens eine Route beendet sich Infrared beim Start mit „no
-      # proxies in gateway" und liefe wegen `restart: always` in eine Schleife.
-      # Der Platzhalter haelt den Dienst am Leben, solange noch kein Server mit
-      # Hostname-Routing existiert; seine Domain ist nach RFC 6761 fuer immer
-      # unaufloesbar und sein Ziel ein Port im eigenen Namensraum, an dem
-      # nichts lauscht.
-      - ./infrared/00-platzhalter.json:/configs/00-platzhalter.json:ro
     networks:
       palantir-games:
         ipv4_address: ${GAME_ROUTER_CONTAINER_IP:-172.31.240.254}

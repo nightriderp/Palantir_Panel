@@ -157,6 +157,33 @@ pruefe_besitzer "$(wert_aus_env AGENT_DATA_DIR)" 'Datenordner der Spielserver'
 pruefe_besitzer "$(wert_aus_env AGENT_BACKUP_DIR)" 'Sicherungen der Spielserver'
 pruefe_besitzer "$(wert_aus_env AGENT_ROUTER_DIR)" 'Routen des Hostname-Routers'
 
+# -----------------------------------------------------------------------------
+# Platzhalter-Route des Hostname-Routers (Fundpunkt 191)
+# -----------------------------------------------------------------------------
+# Ohne mindestens eine Route beendet sich Infrared beim Start mit "no proxies in
+# gateway" und liefe wegen `restart: always` in eine Schleife. Der Platzhalter
+# haelt den Dienst am Leben, solange kein Server mit Hostname-Routing existiert;
+# seine Domain ist nach RFC 6761 fuer immer unaufloesbar und sein Ziel ein Port
+# im eigenen Namensraum, an dem nichts lauscht.
+#
+# Er liegt als gewoehnliche Routen-Datei im Ordner statt als eigener Mount: Ein
+# Mount innerhalb des schreibgeschuetzten `/configs` liess sich nicht anlegen
+# (siehe docker-compose.yml). Der Agent fasst nur `<serverId>.json` an, die
+# Datei bleibt also liegen. `install` schreibt sie bei jedem Lauf neu - so zieht
+# eine Aenderung im Repo nach und eine geloeschte Datei kommt zurueck.
+router_dir="$(wert_aus_env AGENT_ROUTER_DIR)"
+if [[ -n "${router_dir}" && -d "${router_dir}/proxies" ]]; then
+  if install -o 1000 -g 1000 -m 644 \
+    "${COMPOSE_DIR}/infrared/00-platzhalter.json" \
+    "${router_dir}/proxies/00-platzhalter.json" 2>/dev/null; then
+    log "Platzhalter-Route liegt in ${router_dir}/proxies."
+  else
+    log "ACHTUNG: Platzhalter-Route in ${router_dir}/proxies liess sich nicht ablegen."
+    log '         Ohne sie startet der Hostname-Router nicht. Als root ablegen:'
+    log "         install -o 1000 -g 1000 -m 644 ${COMPOSE_DIR}/infrared/00-platzhalter.json ${router_dir}/proxies/00-platzhalter.json"
+  fi
+fi
+
 # Der Hostname-Router haengt an einem Compose-Profil (Pflichtenheft §2.4, §13).
 # Ohne dieses Argument saehe `up -d --remove-orphans` ihn als verwaisten
 # Container und wuerde ihn bei JEDEM automatischen Update entfernen - alle
