@@ -255,13 +255,25 @@ export const TEST_MINECRAFT_GAME_TYPE: GameTypeDefinition = {
  * UID 1000, kein `chown`, kein Benutzerwechsel zur Laufzeit, geschrieben wird
  * nur in den Datenordner.
  *
- * **`supportsVirtualHostRouting` ist `false`**, obwohl Minecraft genau der Fall
- * ist, für den das Hostname-Routing gedacht ist (Pflichtenheft §13): Der dafür
- * nötige Router (Infrared auf `MINECRAFT_ROUTER_PORT`) läuft noch nicht, das ist
- * ein eigenes Arbeitspaket. Ein `true` erzeugte hier einen CNAME auf einen
- * Router, den es nicht gibt – der Spieler bekäme eine Adresse, unter der nichts
- * antwortet. Bis dahin vergibt das Panel einen Port aus dem Bereich
- * 25000–25564, so wie beim Prüfstand.
+ * **`supportsVirtualHostRouting` ist seit 2026-09-09 `true`** (Fundpunkt 192).
+ * Minecraft ist genau der Fall, für den das Hostname-Routing gedacht ist
+ * (Pflichtenheft §13), und der Router läuft seitdem auf der Gamenode: Infrared
+ * lauscht auf `MINECRAFT_ROUTER_PORT`, der Agent legt je Server eine
+ * Routen-Datei an, und der Platzhalter hält den Dienst am Leben, solange keine
+ * existiert. Das Panel vergibt für Minecraft deshalb keinen Port mehr aus dem
+ * Bereich 25000–25564; die Adresse ist der Name allein, und der DNS-Eintrag ist
+ * ein CNAME auf `GAME_ROUTER_HOSTNAME` statt ein A-Eintrag auf die VPS.
+ *
+ * **Was das für bestehende Server heißt.** Sie behalten ihren Pool-Port und
+ * ihren A-Eintrag in der Datenbank; ihr Container-Abdruck ändert sich durch die
+ * neuen Beschriftungen, sie werden beim nächsten Start neu gebaut und verlieren
+ * dabei die Host-Bindung. Über den Namen ohne Port bleiben sie erreichbar, über
+ * die im Panel angezeigte Portnummer nicht mehr. Sauber ist, sie einmal neu
+ * anzulegen.
+ *
+ * **Die Sperre bleibt.** Ohne `GAME_ROUTER_HOSTNAME` verweigert das Backend den
+ * Start (`GAME_TYPE_NOT_AVAILABLE`, Pflichtenheft §19) – ein Server soll nicht
+ * in eine Adresse starten, hinter der kein Router steht.
  *
  * **`startupTimeoutSeconds` ist großzügig**, weil der *erste* Start deutlich
  * länger dauert als jeder folgende: Die Paper-Jar liegt zwar im Image, sie holt
@@ -453,7 +465,7 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   },
   iconUrl: null,
   coverImageUrl: null,
-  supportsVirtualHostRouting: false,
+  supportsVirtualHostRouting: true,
   supportsWorldImport: true,
   dataVolumeContainerPath: '/data',
   /*

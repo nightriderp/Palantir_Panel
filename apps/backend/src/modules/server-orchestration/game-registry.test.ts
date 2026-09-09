@@ -261,6 +261,13 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
     }
   });
 
+  it('läuft über den Hostname-Router und bekommt deshalb keinen Port (Fundpunkt 192)', () => {
+    // Der Router läuft seit 2026-09-09 auf der Gamenode. Steht das wieder auf
+    // `false`, bekämen Minecraft-Server erneut einen Pool-Port, und bestehende
+    // verlören beim nächsten Start ihre Adresse ohne Port.
+    expect(MINECRAFT_PAPER_GAME_TYPE.supportsVirtualHostRouting).toBe(true);
+  });
+
   it('spricht die Konsole über RCON an (P2-9)', () => {
     // Port und Datei müssen zu `images/game/minecraft/start.sh` passen: Das
     // Skript setzt `rcon.port` und legt das Passwort genau dort ab.
@@ -277,11 +284,6 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
       protocol: 'minecraft',
       containerPort: 25_565,
     });
-  });
-
-  it('nimmt einen Port aus dem Bereich, solange kein Hostname-Router läuft', () => {
-    // Infrared läuft noch nicht; ein `true` erzeugte einen CNAME ins Leere.
-    expect(MINECRAFT_PAPER_GAME_TYPE.supportsVirtualHostRouting).toBe(false);
   });
 
   it('erlaubt den Import bestehender Weltdaten', () => {
