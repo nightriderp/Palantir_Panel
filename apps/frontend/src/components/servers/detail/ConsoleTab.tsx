@@ -63,6 +63,9 @@ export function ConsoleTab({ server, lines, connection, onSend, onClear }: Conso
   }
 
   const running = server.status === 'running';
+  // Während des Hochlaufs ist die Konsole die interessanteste Stelle der
+  // Seite – „läuft nicht" wäre dort schlicht falsch (Fundpunkt 184).
+  const starting = server.status === 'starting';
 
   return (
     <div className="flex flex-col gap-3">
@@ -108,7 +111,9 @@ export function ConsoleTab({ server, lines, connection, onSend, onClear }: Conso
             <p className="py-8 text-center text-ink-faint">
               {running
                 ? 'Noch keine Ausgabe erfasst.'
-                : 'Der Server läuft nicht – es kommt gerade keine Ausgabe.'}
+                : starting
+                  ? 'Der Server startet – die Ausgabe erscheint gleich.'
+                  : 'Der Server läuft nicht – es kommt gerade keine Ausgabe.'}
             </p>
           ) : (
             lines.map((line) => (

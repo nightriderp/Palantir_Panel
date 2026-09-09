@@ -1,6 +1,11 @@
 import { type ServerConsoleLine } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
-import { appendConsoleLine, appendConsoleLines } from './consoleBuffer';
+import {
+  appendConsoleLine,
+  appendConsoleLines,
+  consoleLineFromLog,
+  seedConsoleBacklog,
+} from './consoleBuffer';
 
 function line(id: string, text = `Zeile ${id}`): ServerConsoleLine {
   return {
@@ -47,6 +52,83 @@ describe('appendConsoleLines', () => {
 
     expect(after).toHaveLength(4);
     expect(after.map((entry) => entry.id)).toEqual(['6', '7', '8', '9']);
+  });
+});
+
+/*
+ * Fundpunkt 184: Der Rückblick beim Öffnen kommt aus dem Container-Log und
+ * kennt die Ids des Live-Kanals nicht.
+ */
+describe('consoleLineFromLog', () => {
+  it('übersetzt eine Log-Zeile mit stabiler Id und dem Strom als Quelle', () => {
+    const zeile = consoleLineFromLog(
+      'server-1',
+      { stream: 'stderr', message: 'Warnung', timestamp: '2026-09-09T14:46:00.000Z' },
+      3,
+      '2026-09-09T15:00:00.000Z',
+    );
+
+    expect(zeile).toEqual({
+      id: 'backlog:server-1:3',
+      serverId: 'server-1',
+      source: 'stderr',
+      text: 'Warnung',
+      timestamp: '2026-09-09T14:46:00.000Z',
+    });
+  });
+
+  it('nimmt den Ladezeitpunkt, wenn die Engine keinen Zeitstempel liefert', () => {
+    const zeile = consoleLineFromLog(
+      'server-1',
+      { stream: 'stdout', message: 'ohne Zeit', timestamp: null },
+      0,
+      '2026-09-09T15:00:00.000Z',
+    );
+
+    expect(zeile.timestamp).toBe('2026-09-09T15:00:00.000Z');
+  });
+});
+
+describe('seedConsoleBacklog', () => {
+  it('legt den Rückblick vor die Live-Zeilen', () => {
+    const live = [line('live-1', 'Done!')];
+    const backlog = [line('backlog:0', 'Starting'), line('backlog:1', 'Loading')];
+
+    expect(seedConsoleBacklog(live, backlog).map((entry) => entry.text)).toEqual([
+      'Starting',
+      'Loading',
+      'Done!',
+    ]);
+  });
+
+  it('lässt Zeilen weg, die schon live da sind – gleicher Zeitstempel, gleicher Text', () => {
+    // Die Ids unterscheiden sich immer (das Log kennt keine); die Naht darf
+    // trotzdem nicht doppelt erscheinen.
+    const live = [line('live-1', 'Done!')];
+    const backlog = [line('backlog:0', 'Starting'), line('backlog:1', 'Done!')];
+
+    expect(seedConsoleBacklog(live, backlog).map((entry) => entry.id)).toEqual([
+      'backlog:0',
+      'live-1',
+    ]);
+  });
+
+  it('hält die Grenze und behält dabei die jüngsten Zeilen', () => {
+    const live = [line('live-1', 'neu')];
+    const backlog = Array.from({ length: 5 }, (_, index) =>
+      line(`backlog:${index}`, `alt ${index}`),
+    );
+
+    const after = seedConsoleBacklog(live, backlog, 3);
+
+    expect(after.map((entry) => entry.text)).toEqual(['alt 3', 'alt 4', 'neu']);
+  });
+
+  it('lässt das Original unberührt', () => {
+    const live = [line('live-1', 'neu')];
+    seedConsoleBacklog(live, [line('backlog:0', 'alt')]);
+
+    expect(live).toHaveLength(1);
   });
 });
 
