@@ -7,6 +7,7 @@ import {
   Panel,
   clampedPercentOf,
   cpuQuotaPercent,
+  formatCores,
   formatDateTime,
   formatDuration,
   formatMegabytes,
@@ -110,7 +111,8 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       value: server.assignedPorts.length > 0 ? server.assignedPorts.join(', ') : 'keine',
     },
     { label: 'Arbeitsspeicher', value: formatMegabytes(server.resourceLimits.ramMb) },
-    { label: 'CPU', value: `${server.resourceLimits.cpuCores} Kerne` },
+    // Fundpunkt 220 (UI-35): Die Angabe stand hier von Hand - und damit "1 Kerne".
+    { label: 'CPU', value: formatCores(server.resourceLimits.cpuCores) },
     { label: 'Speicherplatz', value: formatMegabytes(server.resourceLimits.diskMb) },
     { label: 'Besitzer', value: server.ownerDisplayName ?? 'nicht sichtbar' },
     { label: 'Mitverwalter', value: String(server.memberCount) },

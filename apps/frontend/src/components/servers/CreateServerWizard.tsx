@@ -18,6 +18,7 @@ import {
   TextField,
   ToggleRow,
   cn,
+  formatCores,
   formatMegabytes,
   useToast,
 } from '@/components/shared';
@@ -156,7 +157,7 @@ function GameTile({
 
       <span className="text-xs text-ink-faint">
         Empfohlen: {formatMegabytes(game.resourceDefaults.ramMb)} RAM ·{' '}
-        {game.resourceDefaults.cpuCores} Kerne
+        {formatCores(game.resourceDefaults.cpuCores)}
       </span>
     </button>
   );

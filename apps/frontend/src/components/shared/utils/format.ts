@@ -163,6 +163,21 @@ export function cpuQuotaPercent(
   return clampPercent(cpuPercent / cpuCores);
 }
 
+/**
+ * CPU-Kerne mit deutschem Dezimalkomma und richtiger Einzahl, z. B. `7,5 Kerne`
+ * oder `1 Kern`.
+ *
+ * Herkunft: lag bis zum Audit vom 2026-09-10 bei F2 (`nodes/nodeStatus.ts`),
+ * weil nur die Node-Karte Kerne beschriftete. Die Serverdetails schrieben
+ * daneben `${cpuCores} Kerne` von Hand hin – und damit „1 Kerne" (Fundpunkt
+ * 220, UI-35). Mit dem zweiten Anzeigeort gehört die Funktion hierher, dieselbe
+ * Begründung wie bei {@link formatBytes}.
+ */
+export function formatCores(cores: number): string {
+  const rounded = Math.round(cores * 10) / 10;
+  return `${formatNumber(rounded)} ${rounded === 1 ? 'Kern' : 'Kerne'}`;
+}
+
 /** Spieleranzahl als `3 / 20`; `—`, solange keine Zahlen vorliegen. */
 export function formatPlayers(
   online: number | null | undefined,

@@ -48,6 +48,15 @@ export interface ServerCardProps {
   updateAvailable?: boolean;
   /** Hinweis „Neustart nötig" über der Statuszeile. */
   restartRequired?: boolean;
+  /**
+   * Läuft für **diesen** Server gerade eine Lebenszyklus-Anfrage?
+   * (Fundpunkt 220.)
+   *
+   * Dann sperren Starten/Stoppen und Neustart, und der Knopf sagt, dass etwas
+   * unterwegs ist. Gemessen war der Knopf über die gesamte Laufzeit der
+   * Anfrage bedienbar – zwei schnelle Klicks schickten zwei `POST …/start`.
+   */
+  pending?: boolean;
   onTogglePin?: (server: GameServerDto) => void;
   onStart?: (server: GameServerDto) => void;
   onStop?: (server: GameServerDto) => void;
@@ -93,6 +102,7 @@ export function ServerCard({
   adminAccess = false,
   updateAvailable = false,
   restartRequired = false,
+  pending = false,
   onTogglePin,
   onStart,
   onStop,
@@ -291,11 +301,11 @@ export function ServerCard({
           <Button
             variant={action === 'stop' ? 'danger' : 'success'}
             className="flex-1"
-            disabled={actionBlocked}
+            disabled={actionBlocked || pending}
             title={actionBlocked ? meta.description : undefined}
             onClick={() => (action === 'stop' ? onStop?.(server) : onStart?.(server))}
           >
-            {action === 'stop' ? 'Stoppen' : 'Starten'}
+            {pending ? 'Läuft …' : action === 'stop' ? 'Stoppen' : 'Starten'}
           </Button>
         ) : null}
 
@@ -303,7 +313,7 @@ export function ServerCard({
           <IconButton
             icon="restart"
             label="Neustart"
-            disabled={actionBlocked}
+            disabled={actionBlocked || pending}
             onClick={() => onRestart?.(server)}
           />
         ) : null}

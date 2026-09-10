@@ -243,6 +243,7 @@ export function ServerOverview() {
                 pinned={isPinned(server.id)}
                 updateAvailable={server.updateAvailable}
                 restartRequired={server.pendingRestart}
+                pending={lifecycle.pendingServerId === server.id}
                 onTogglePin={(entry) => void anheften(entry)}
                 onStart={(entry) => void lifecycle.run(entry, 'start')}
                 onStop={(entry) => setConfirm({ action: 'stop', server: entry })}

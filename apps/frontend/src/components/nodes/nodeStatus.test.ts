@@ -1,9 +1,8 @@
 import { type GameTypeDto, type HostNodeDto } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
-import { formatMegabytes, percentOf } from '@/components/shared';
+import { formatCores, formatMegabytes, percentOf } from '@/components/shared';
 import {
   NODE_EXPLAINERS,
-  formatCores,
   nodeHasRoomFor,
   nodeMetrics,
   nodeStatusMeta,

@@ -4,7 +4,13 @@ import {
   type HostNodeStatus,
   type ServerResourceLimits,
 } from '@palantir/contracts';
-import { type Tone, formatMegabytes, formatNumber, percentOf } from '@/components/shared';
+import {
+  type Tone,
+  formatCores,
+  formatMegabytes,
+  formatNumber,
+  percentOf,
+} from '@/components/shared';
 
 /**
  * Ableitungen für die Node-Ansicht aus Nutzersicht (Lastenheft §3.7).
@@ -121,12 +127,6 @@ function toneForFill(percent: number | null): Tone {
   if (percent >= CRITICAL_PERCENT) return 'danger';
   if (percent >= WARN_PERCENT) return 'warning';
   return 'brand';
-}
-
-/** CPU-Kerne mit deutschem Dezimalkomma, z. B. `7,5 Kerne`. */
-export function formatCores(cores: number): string {
-  const rounded = Math.round(cores * 10) / 10;
-  return `${formatNumber(rounded)} ${rounded === 1 ? 'Kern' : 'Kerne'}`;
 }
 
 /**

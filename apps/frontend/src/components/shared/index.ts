@@ -127,6 +127,7 @@ export {
   cpuQuotaPercent,
   formatBytes,
   formatChatTime,
+  formatCores,
   formatDate,
   formatDateTime,
   formatRelativeTime,
