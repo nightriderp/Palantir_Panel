@@ -5,7 +5,7 @@ import { useState, type ReactNode } from 'react';
 import {
   MetricTile,
   Panel,
-  clampPercent,
+  clampedPercentOf,
   cpuQuotaPercent,
   formatDateTime,
   formatDuration,
@@ -48,11 +48,6 @@ export interface OverviewTabProps {
    * Server-Details die volle Breite ein.
    */
   console?: ReactNode;
-}
-
-function ratio(used: number | null | undefined, total: number): number | null {
-  if (used === null || used === undefined || total <= 0) return null;
-  return clampPercent((used / total) * 100);
 }
 
 export function OverviewTab({ server, stats, console: consolePanel = null }: OverviewTabProps) {
@@ -164,9 +159,11 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           label="Platte"
           value={formatMegabytes(stats?.diskUsedMb)}
           note={
-            ratio(stats?.diskUsedMb, server.resourceLimits.diskMb) === null
+            clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb) === null
               ? undefined
-              : `${ratio(stats?.diskUsedMb, server.resourceLimits.diskMb)} % belegt`
+              : `${formatPercent(
+                  clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb),
+                )} belegt`
           }
         />
         <MetricTile label="Ping" value={formatPing(anzeige?.pingMs)} />

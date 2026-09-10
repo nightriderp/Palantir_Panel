@@ -1,6 +1,6 @@
 import { type GameTypeDto, type HostNodeDto } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
-import { formatMegabytes } from '@/components/shared';
+import { formatMegabytes, percentOf } from '@/components/shared';
 import {
   NODE_EXPLAINERS,
   formatCores,
@@ -8,7 +8,6 @@ import {
   nodeMetrics,
   nodeStatusMeta,
   nodesSummary,
-  percentOf,
   smallestGameType,
   startCapacityHint,
 } from './nodeStatus';
@@ -101,7 +100,7 @@ describe('nodeMetrics - Ueberbuchung (Fundpunkt 209)', () => {
   it('benennt, um wie viel zu viel gebucht ist', () => {
     const metrics = nodeMetrics(ueberbucht);
 
-    expect(metrics.find((m) => m.key === 'ram')?.overbookedLabel).toBe('4 GB überbucht');
+    expect(metrics.find((m) => m.key === 'ram')?.overbookedLabel).toBe('4 GiB überbucht');
     expect(metrics.find((m) => m.key === 'cpu')?.overbookedLabel).toBe('1 Kern überbucht');
   });
 
@@ -127,7 +126,7 @@ describe('nodeMetrics', () => {
 
   /*
    * Fundpunkt 203: Der Balken zeigt die gebuchte Zahl, darunter steht die, gegen
-   * die ein Start tatsaechlich geprueft wird. Ohne sie wirkte "2 GB frei" wie
+   * die ein Start tatsaechlich geprueft wird. Ohne sie wirkte "2 GiB frei" wie
    * eine Absage - waehrend die API denselben Server annahm.
    */
   it('nennt die laufende Belegung, wenn sie von der gebuchten abweicht', () => {
@@ -142,7 +141,7 @@ describe('nodeMetrics', () => {
       }),
     );
 
-    expect(metrics.find((m) => m.key === 'ram')?.runningLabel).toBe('davon 20 GB laufend');
+    expect(metrics.find((m) => m.key === 'ram')?.runningLabel).toBe('davon 20 GiB laufend');
     expect(metrics.find((m) => m.key === 'cpu')?.runningLabel).toBe('davon 6 Kerne laufend');
     // Bei der Platte zaehlen beide Zahlen ueber alle Zustaende - kein Zusatz.
     expect(metrics.find((m) => m.key === 'disk')?.runningLabel).toBeUndefined();
@@ -209,7 +208,7 @@ describe('nodesSummary', () => {
 
     const ram = summary.find((entry) => entry.key === 'ram');
     expect(ram?.label).toBe('RAM gebucht');
-    // 2 × 8192 MB vergeben – nicht die 2 × 8192 MB, die frei sind.
+    // 2 × 8192 MiB vergeben – nicht die 2 × 8192 MiB, die frei sind.
     expect(ram?.value).toBe(formatMegabytes(2 * 8192));
 
     const disk = summary.find((entry) => entry.key === 'disk');

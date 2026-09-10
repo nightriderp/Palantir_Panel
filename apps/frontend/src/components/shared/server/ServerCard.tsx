@@ -6,9 +6,10 @@ import { Button, IconButton } from '../primitives/Button';
 import { type Tone } from '../primitives/Badge';
 import { cn } from '../utils/cn';
 import {
-  clampPercent,
+  clampedPercentOf,
   cpuQuotaPercent,
   formatMegabytes,
+  formatPercent,
   formatPing,
   formatPlayers,
   formatServerAddress,
@@ -76,11 +77,6 @@ function pingTone(pingMs: number | null): Tone {
   return 'success';
 }
 
-function ratio(used: number | null | undefined, total: number): number | null {
-  if (used == null || total <= 0) return null;
-  return clampPercent((used / total) * 100);
-}
-
 /**
  * Zentrale Serverkarte der Übersicht (Lastenheft §3.3, Mockup `ServerCard.dc.html`).
  *
@@ -114,8 +110,8 @@ export function ServerCard({
   // hier `clampPercent`, und ein Server mit vier Kernen sah bei einem
   // ausgelasteten Kern voll aus.
   const cpuPercent = cpuQuotaPercent(live?.cpuPercent, server.resourceLimits.cpuCores);
-  const ramPercent = ratio(live?.ramUsedMb, server.resourceLimits.ramMb);
-  const diskPercent = ratio(stats?.diskUsedMb, server.resourceLimits.diskMb);
+  const ramPercent = clampedPercentOf(live?.ramUsedMb, server.resourceLimits.ramMb);
+  const diskPercent = clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb);
   const pingMs = live?.pingMs ?? null;
 
   const address = formatServerAddress(server.address);
@@ -209,13 +205,13 @@ export function ServerCard({
       <div className="mt-4 grid grid-cols-4 gap-1.5">
         <MetricRing
           label="CPU"
-          value={cpuPercent == null ? '—' : `${cpuPercent}%`}
+          value={formatPercent(cpuPercent)}
           percent={cpuPercent}
           tone={loadTone(cpuPercent)}
         />
         <MetricRing
           label="RAM"
-          value={ramPercent == null ? '—' : `${ramPercent}%`}
+          value={formatPercent(ramPercent)}
           percent={ramPercent}
           tone={loadTone(ramPercent)}
         />

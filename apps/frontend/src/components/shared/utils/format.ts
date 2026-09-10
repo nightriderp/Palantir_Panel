@@ -16,24 +16,43 @@ export function formatNumber(value: number): string {
 }
 
 /**
- * Speichergröße aus Megabyte in eine lesbare Angabe.
+ * Einheiten der Größenangaben (Fundpunkt 208).
  *
- * Basis 1024, wie überall sonst im Projekt bei Container-Limits.
+ * Gerechnet wird mit **1024** – so sind die Container-Limits gesetzt
+ * (`ramMb`, `diskMb` sind MiB), so meldet der Agent, so rechnet die
+ * Kapazitätsprüfung. Beschriftet wurde bis zum Audit vom 2026-09-10 trotzdem
+ * mit „MB/GB/TB": 53 248 MiB standen als „52 GB" da, obwohl 52 GiB = 55,8 GB
+ * sind. Bei einer 2-TB-Platte macht das rund 250 GB Unterschied – genug, dass
+ * ein Betreiber die Zahl neben `df -h` legt und sich fragt, welche stimmt.
+ *
+ * Zwei Wege wären richtig gewesen: 1024 mit IEC-Kürzeln oder 1000 mit
+ * SI-Kürzeln. Es ist der erste geworden, weil die Basis nicht frei wählbar ist –
+ * sie steckt in den Limits – und weil `df -h` auf der Node dieselben Zahlen
+ * zeigt.
+ *
+ * Wer das anders will, ändert genau diese Liste (und die Feldbeschriftungen,
+ * die sie zitieren): Die Rechnung darunter bleibt dieselbe.
  */
-export function formatMegabytes(valueMb: number | null | undefined): string {
-  if (valueMb == null || Number.isNaN(valueMb)) return '—';
-  if (valueMb < 1024) return `${NUMBER_FORMAT.format(Math.round(valueMb))} MB`;
-  const gb = valueMb / 1024;
-  if (gb < 1024) {
-    return `${NUMBER_FORMAT.format(Math.round(gb * 10) / 10)} GB`;
-  }
-  return `${NUMBER_FORMAT.format(Math.round((gb / 1024) * 100) / 100)} TB`;
-}
+const GROESSEN_EINHEITEN = ['B', 'KiB', 'MiB', 'GiB', 'TiB'] as const;
 
-const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+/** Ab hier zählt jede Stufe: 1 KiB = 1024 B. */
+const SCHRITT = 1024;
 
 /**
- * Byte-Größe lesbar machen, Basis 1024 – wie überall sonst im Projekt.
+ * Drei geltende Ziffern, ohne Nullen am Ende – die Schreibweise, die auch
+ * `df -h` und `ls -lh` benutzen.
+ *
+ * Vorher rundeten die beiden Formatierer unterschiedlich: `formatMegabytes`
+ * gab Gigabyte auf eine, Terabyte auf zwei Stellen aus, `formatBytes` alles auf
+ * eine. Dieselbe Größe sah damit je nach Anzeigeort anders aus.
+ */
+function mitDreiZiffern(wert: number): string {
+  const stellen = wert >= 100 ? 0 : wert >= 10 ? 1 : 2;
+  return NUMBER_FORMAT.format(Math.round(wert * 10 ** stellen) / 10 ** stellen);
+}
+
+/**
+ * Byte-Größe lesbar machen, Basis 1024 (siehe {@link GROESSEN_EINHEITEN}).
  *
  * Verzeichnisse und unbekannte Größen liefern `—` statt „0 B", damit eine
  * fehlende Angabe nicht wie eine leere Datei aussieht.
@@ -45,15 +64,29 @@ const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
  */
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes == null || Number.isNaN(bytes)) return '—';
-  if (bytes < 1024) return `${NUMBER_FORMAT.format(Math.round(bytes))} B`;
 
   let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
-    value /= 1024;
-    unit += 1;
+  let einheit = 0;
+  while (Math.abs(value) >= SCHRITT && einheit < GROESSEN_EINHEITEN.length - 1) {
+    value /= SCHRITT;
+    einheit += 1;
   }
-  return `${NUMBER_FORMAT.format(Math.round(value * 10) / 10)} ${BYTE_UNITS[unit]}`;
+
+  // Ganze Bytes bleiben ganz: „1.536 B" wäre eine Nachkommastelle, die es
+  // nicht gibt.
+  const zahl = einheit === 0 ? NUMBER_FORMAT.format(Math.round(value)) : mitDreiZiffern(value);
+  return `${zahl} ${GROESSEN_EINHEITEN[einheit]}`;
+}
+
+/**
+ * Speichergröße aus Mebibyte in eine lesbare Angabe.
+ *
+ * Dieselbe Rechnung wie {@link formatBytes} – seit Fundpunkt 208 wörtlich
+ * dieselbe, nicht mehr eine zweite mit eigener Rundung.
+ */
+export function formatMegabytes(valueMb: number | null | undefined): string {
+  if (valueMb == null || Number.isNaN(valueMb)) return '—';
+  return formatBytes(valueMb * SCHRITT * SCHRITT);
 }
 
 /** Dauer in Sekunden als `2 h 15 min`; `—` bei fehlender oder negativer Angabe. */
@@ -81,6 +114,30 @@ export function formatPercent(value: number | null | undefined): string {
 export function clampPercent(value: number): number {
   if (Number.isNaN(value)) return 0;
   return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+/**
+ * Anteil in Prozent, auf ganze Zahlen gerundet; `null`, wenn die Bezugsgröße
+ * fehlt oder null ist.
+ *
+ * **Nicht** begrenzt: Eine überbuchte Node steht bei 114 %, und genau das soll
+ * sie zeigen (Fundpunkt 209). Wer einen Balken füllt, nimmt
+ * {@link clampedPercentOf} oder deckelt selbst.
+ *
+ * Stand bis zum Audit vom 2026-09-10 dreimal im Frontend (Fundpunkt 208):
+ * einmal hier als `percentOf` in der Node-Ansicht und zweimal als `ratio` –
+ * mit unterschiedlicher Begrenzung.
+ */
+export function percentOf(used: number, total: number): number | null {
+  if (!Number.isFinite(total) || total <= 0) return null;
+  return Math.round((used / total) * 100);
+}
+
+/** Wie {@link percentOf}, aber auf 0–100 begrenzt – für Balken und Ringe. */
+export function clampedPercentOf(used: number | null | undefined, total: number): number | null {
+  if (used == null) return null;
+  const anteil = percentOf(used, total);
+  return anteil === null ? null : clampPercent(anteil);
 }
 
 /**

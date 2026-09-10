@@ -129,7 +129,7 @@ describe('buildStatusMetrics', () => {
       statsById: {},
     });
 
-    expect(valueOf(metrics, 'cpu')).toBe('40%');
+    expect(valueOf(metrics, 'cpu')).toBe('40 %');
     expect(valueOf(metrics, 'nodes')).toBe('2/3');
   });
 
@@ -140,8 +140,8 @@ describe('buildStatusMetrics', () => {
       statsById: {},
     });
 
-    expect(valueOf(metrics, 'ram')).toBe('4 GB/16 GB');
-    expect(valueOf(metrics, 'disk')).toBe('100 GB/500 GB');
+    expect(valueOf(metrics, 'ram')).toBe('4 GiB/16 GiB');
+    expect(valueOf(metrics, 'disk')).toBe('100 GiB/500 GiB');
   });
 
   it('zeigt einen Strich, solange keine Node eine Plattenbelegung meldet', () => {
@@ -172,7 +172,7 @@ describe('buildStatusMetrics', () => {
       statsById: {},
     });
 
-    expect(valueOf(metrics, 'disk')).toBe('100 GB/500 GB');
+    expect(valueOf(metrics, 'disk')).toBe('100 GiB/500 GiB');
   });
 
   it('zählt auch eine Node ohne Plattenwert nicht mit, wenn sie sonst misst', () => {
@@ -197,10 +197,10 @@ describe('buildStatusMetrics', () => {
       statsById: {},
     });
 
-    // 100 GB + 50 GB gemessen, Nenner 500 GB + 200 GB – die Node ohne
+    // 100 GiB + 50 GiB gemessen, Nenner 500 GiB + 200 GiB – die Node ohne
     // Plattenwert steuert zu keiner der beiden Seiten etwas bei.
-    expect(valueOf(metrics, 'disk')).toBe('150 GB/700 GB');
-    expect(valueOf(metrics, 'cpu')).toBe('40%');
+    expect(valueOf(metrics, 'disk')).toBe('150 GiB/700 GiB');
+    expect(valueOf(metrics, 'cpu')).toBe('40 %');
     expect(valueOf(metrics, 'nodes')).toBe('2/3');
   });
 
@@ -212,7 +212,7 @@ describe('buildStatusMetrics', () => {
     });
 
     // Buchungen kennt jede Node – eine fehlende Messung ändert daran nichts.
-    expect(valueOf(metrics, 'ram')).toBe('8 GB/32 GB');
+    expect(valueOf(metrics, 'ram')).toBe('8 GiB/32 GiB');
   });
 
   it('blendet Bewegung, Fehler und Updates nur ein, wenn es etwas zu melden gibt', () => {
