@@ -127,6 +127,17 @@ const nutzerverwalter = buildPermissionActor({
   isOwner: false,
   roles: [{ grantedPermissions: ['user.manage'] }],
 });
+/*
+ * Ein Konto mit dem vollen Katalog, aber ohne Owner-Status: der gewoehnliche
+ * Verwalter. Seit Fundpunkt 196 gilt „niemand vergibt ein Recht, das er nicht
+ * selbst hat" – wer eine Rolle anlegt, aendert oder zuweist, muss ihr Buendel
+ * tragen koennen. Die Faelle, in denen es nicht um diese Schranke geht, laufen
+ * deshalb ueber ihn statt ueber den reinen Rollenverwalter.
+ */
+const vollverwalter = buildPermissionActor({
+  isOwner: false,
+  roles: [{ grantedPermissions: [...PERMISSIONS] }],
+});
 const gast = buildPermissionActor({ isOwner: false, roles: [{ grantedPermissions: [] }] });
 
 /** Erwartet, dass der Aufruf mit genau diesem Fehlercode aus dem Katalog scheitert. */
@@ -234,7 +245,7 @@ describe('Rollen-Service', () => {
   });
 
   it('liefert vollständige DTOs inklusive permissions-Objekt (Pflichtenheft §5.2)', async () => {
-    const roles = await service.list(rollenverwalter);
+    const roles = await service.list(vollverwalter);
     const guest = roles.find((role) => role.name === GUEST_ROLE_NAME);
 
     expect(guest).toMatchObject({
@@ -249,10 +260,10 @@ describe('Rollen-Service', () => {
 
   it('zählt die Mitglieder je Rolle', async () => {
     const nutzer = await repository.findByName('Nutzer');
-    await service.assignToUser(rollenverwalter, 'user-1', nutzer!.id);
-    await service.assignToUser(rollenverwalter, 'user-2', nutzer!.id);
+    await service.assignToUser(vollverwalter, 'user-1', nutzer!.id);
+    await service.assignToUser(vollverwalter, 'user-2', nutzer!.id);
 
-    const roles = await service.list(rollenverwalter);
+    const roles = await service.list(vollverwalter);
 
     expect(roles.find((role) => role.name === 'Nutzer')?.memberCount).toBe(2);
   });
@@ -291,13 +302,97 @@ describe('Rollen-Service', () => {
     );
   });
 
-  it('lässt Rollenverwalter die Verwaltungsrolle weiterhin zuweisen', async () => {
+  it('verwehrt auch Rollenverwaltern eine Rolle, die mehr kann als sie selbst', async () => {
+    // Fundpunkt 196: Vorher durfte jeder mit role.manage die Rolle „Admin"
+    // vergeben – und sich damit den vollen Katalog verschaffen. Jetzt zaehlt,
+    // ob er das Buendel selbst traegt.
     const admin = await repository.findByName('Admin');
-    await expect(service.assignToUser(rollenverwalter, 'user-1', admin!.id)).resolves.not.toThrow();
+    await expectRbacError(
+      service.assignToUser(rollenverwalter, 'user-1', admin!.id),
+      'PERMISSION_DENIED',
+    );
+  });
+
+  it('lässt einen Verwalter mit vollem Katalog die Verwaltungsrolle zuweisen', async () => {
+    const admin = await repository.findByName('Admin');
+    await expect(service.assignToUser(vollverwalter, 'user-1', admin!.id)).resolves.not.toThrow();
+  });
+
+  /*
+   * Fundpunkt 196 (critical, am laufenden System reproduziert): `role.manage`
+   * war faktisch ein Generalschluessel. Ein Konto mit ausschliesslich diesem
+   * Recht konnte eine Rolle anlegen oder die eigene bearbeiten, den vollen
+   * Katalog eintragen und trug ihn eine Anfrage spaeter. Die folgenden Faelle
+   * halten die Schranke an jeder Stelle fest, an der ein Buendel entsteht,
+   * sich aendert oder den Besitzer wechselt.
+   */
+  describe('Rechteausweitung ueber das Rollensystem (Fundpunkt 196)', () => {
+    it('verwehrt das Anlegen einer Rolle mit Rechten, die der Handelnde nicht hat', async () => {
+      await expectRbacError(
+        service.create(rollenverwalter, { name: 'Hintertuer', permissions: ['user.manage'] }),
+        'PERMISSION_DENIED',
+      );
+    });
+
+    it('lässt das Anlegen einer Rolle innerhalb der eigenen Rechte zu', async () => {
+      const rolle = await service.create(rollenverwalter, {
+        name: 'Rollenpflege',
+        permissions: ['role.manage'],
+      });
+
+      expect(rolle.grantedPermissions).toEqual(['role.manage']);
+    });
+
+    it('verwehrt das Aufwerten einer Rolle auf mehr, als der Handelnde selbst hat', async () => {
+      const eigene = await service.create(rollenverwalter, {
+        name: 'Rollenpflege',
+        permissions: ['role.manage'],
+      });
+
+      await expectRbacError(
+        service.update(rollenverwalter, eigene.id, { permissions: [...PERMISSIONS] }),
+        'PERMISSION_DENIED',
+      );
+    });
+
+    it('verwehrt das Leeren einer Rolle, die der Handelnde nicht selbst tragen koennte', async () => {
+      // Die Gegenrichtung: Wer „Admin" nicht vergeben darf, darf sie auch nicht
+      // entwerten – sonst bliebe die Rechteentziehung als Weg, das
+      // Rollensystem zu uebernehmen.
+      const admin = await repository.findByName('Admin');
+
+      await expectRbacError(
+        service.update(rollenverwalter, admin!.id, { permissions: [] }),
+        'PERMISSION_DENIED',
+      );
+    });
+
+    it('verwehrt das Loeschen einer Rolle, die der Handelnde nicht selbst tragen koennte', async () => {
+      const admin = await repository.findByName('Admin');
+
+      await expectRbacError(service.remove(rollenverwalter, admin!.id), 'PERMISSION_DENIED');
+    });
+
+    it('verwehrt das Entziehen einer Rolle, die der Handelnde nicht selbst tragen koennte', async () => {
+      const admin = await repository.findByName('Admin');
+
+      await expectRbacError(
+        service.removeFromUser(rollenverwalter, 'user-1', admin!.id),
+        'PERMISSION_DENIED',
+      );
+    });
+
+    it('laesst den Owner alles, ohne Sonderfall im Code', async () => {
+      const admin = await repository.findByName('Admin');
+
+      await expect(service.update(owner, admin!.id, { permissions: [] })).resolves.toMatchObject({
+        grantedPermissions: [],
+      });
+    });
   });
 
   it('legt neue Rollen immer ungeschützt an', async () => {
-    const role = await service.create(rollenverwalter, {
+    const role = await service.create(vollverwalter, {
       name: 'Backup-Beauftragter',
       description: 'Darf fremde Backups verwalten.',
       permissions: ['backup.manage.any'] as Permission[],
@@ -310,23 +405,23 @@ describe('Rollen-Service', () => {
 
   it('lehnt einen bereits vergebenen Namen ab – auch in anderer Schreibweise', async () => {
     await expectRbacError(
-      service.create(rollenverwalter, { name: 'admin', permissions: [] }),
+      service.create(vollverwalter, { name: 'admin', permissions: [] }),
       'ROLE_NAME_TAKEN',
     );
   });
 
   it('meldet unbekannte Rollen mit ROLE_NOT_FOUND', async () => {
-    await expectRbacError(service.get(rollenverwalter, 'gibt-es-nicht'), 'ROLE_NOT_FOUND');
+    await expectRbacError(service.get(vollverwalter, 'gibt-es-nicht'), 'ROLE_NOT_FOUND');
     await expectRbacError(
-      service.update(rollenverwalter, 'gibt-es-nicht', { name: 'X' }),
+      service.update(vollverwalter, 'gibt-es-nicht', { name: 'X' }),
       'ROLE_NOT_FOUND',
     );
-    await expectRbacError(service.remove(rollenverwalter, 'gibt-es-nicht'), 'ROLE_NOT_FOUND');
+    await expectRbacError(service.remove(vollverwalter, 'gibt-es-nicht'), 'ROLE_NOT_FOUND');
   });
 
   it('bearbeitet editierbare Rollen', async () => {
     const moderator = await repository.findByName('Moderator');
-    const updated = await service.update(rollenverwalter, moderator!.id, {
+    const updated = await service.update(vollverwalter, moderator!.id, {
       name: 'Chat-Moderator',
       permissions: ['message.moderate'] as Permission[],
     });
@@ -339,7 +434,7 @@ describe('Rollen-Service', () => {
     const moderator = await repository.findByName('Moderator');
 
     await expect(
-      service.update(rollenverwalter, moderator!.id, { name: 'Moderator' }),
+      service.update(vollverwalter, moderator!.id, { name: 'Moderator' }),
     ).resolves.toMatchObject({ name: 'Moderator' });
   });
 
@@ -347,7 +442,7 @@ describe('Rollen-Service', () => {
     const moderator = await repository.findByName('Moderator');
 
     await expectRbacError(
-      service.update(rollenverwalter, moderator!.id, { name: 'Nutzer' }),
+      service.update(vollverwalter, moderator!.id, { name: 'Nutzer' }),
       'ROLE_NAME_TAKEN',
     );
   });
@@ -362,7 +457,7 @@ describe('Rollen-Service', () => {
 
   it('löscht editierbare Rollen', async () => {
     const moderator = await repository.findByName('Moderator');
-    await service.remove(rollenverwalter, moderator!.id);
+    await service.remove(vollverwalter, moderator!.id);
 
     expect(await repository.findByName('Moderator')).toBeNull();
   });
@@ -370,8 +465,8 @@ describe('Rollen-Service', () => {
   it('berechnet die effektiven Rechte eines Nutzers aus seinen Rollen', async () => {
     const nutzer = await repository.findByName('Nutzer');
     const moderator = await repository.findByName('Moderator');
-    await service.assignToUser(rollenverwalter, 'user-1', nutzer!.id);
-    await service.assignToUser(rollenverwalter, 'user-1', moderator!.id);
+    await service.assignToUser(vollverwalter, 'user-1', nutzer!.id);
+    await service.assignToUser(vollverwalter, 'user-1', moderator!.id);
 
     const actor = await service.loadActor('user-1', false);
 
@@ -395,8 +490,8 @@ describe('Rollen-Service', () => {
 
   it('entzieht eine zugewiesene Rolle wieder', async () => {
     const nutzer = await repository.findByName('Nutzer');
-    await service.assignToUser(rollenverwalter, 'user-1', nutzer!.id);
-    await service.removeFromUser(rollenverwalter, 'user-1', nutzer!.id);
+    await service.assignToUser(vollverwalter, 'user-1', nutzer!.id);
+    await service.removeFromUser(vollverwalter, 'user-1', nutzer!.id);
 
     expect((await service.loadActor('user-1', false)).permissions.size).toBe(0);
   });

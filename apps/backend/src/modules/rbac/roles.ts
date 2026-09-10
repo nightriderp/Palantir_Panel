@@ -17,6 +17,7 @@ import {
   type PermissionActor,
   buildPermissionActor,
   computeRolePermissions,
+  hasAllPermissions,
   hasAnyPermission,
   hasPermission,
 } from './permissions.js';
@@ -175,16 +176,79 @@ export function grantsAdministration(role: RoleRecord): boolean {
 }
 
 /**
- * Schranke gegen Rechteausweitung: `user.manage` allein darf Rollen zuweisen und
- * abziehen (Pflichtenheft §8), aber keine Rolle, die ihrerseits `role.manage`/
- * `user.manage` verleiht – sonst könnte ein reiner Konten-Admin sich selbst die
- * „Admin"-Rolle mit vollem Katalog geben. Solche Rollen setzen `role.manage`
- * voraus. Gilt für Zuweisen und Entziehen gleichermaßen.
+ * Der Grundsatz des Rollensystems: **Niemand vergibt ein Recht, das er nicht
+ * selbst hat** (Audit 2026-09-10, Fundpunkte 196 und 197).
+ *
+ * Vorher stand die Schranke nur beim Zuweisen und fragte allein, ob das Bündel
+ * `role.manage`/`user.manage` enthält. Damit war `role.manage` faktisch ein
+ * Generalschlüssel: Ein Konto mit ausschließlich diesem Recht konnte die
+ * **eigene** Rolle bearbeiten, den vollen Katalog eintragen und trug ihn eine
+ * Anfrage später. Reproduziert am laufenden System: `PATCH /admin/roles/<eigene
+ * Rolle>` mit allen 19 Permissions → 200, danach jedes Recht gesetzt, und
+ * `GET /admin/audit` antwortete 200 statt 403.
+ *
+ * Die Regel gilt deshalb an **allen** Stellen, an denen ein Bündel entsteht,
+ * sich ändert oder den Besitzer wechselt: anlegen, bearbeiten, löschen,
+ * zuweisen, entziehen. Der Owner steht außerhalb des Rollensystems und hält
+ * ohnehin jede Permission (`buildPermissionActor`), er läuft also ohne
+ * Sonderfall durch.
+ *
+ * Nicht Gegenstand dieser Schranke ist der **Rang des Zielkontos** – ob also
+ * ein Konto einem höherrangigen eine Rolle entziehen darf. Dafür fehlt dem
+ * Rollen-Service die Information, ob das Ziel Owner ist; B1 führt die Regel
+ * bereits für Eingriffe am Konto (`requireAdminTargetAllowed`).
  */
-function requireAssignmentAllowed(actor: PermissionActor, role: RoleRecord): void {
-  if (grantsAdministration(role) && !hasPermission(actor, 'role.manage')) {
+function requirePermissionsWithinActor(
+  actor: PermissionActor,
+  permissions: readonly Permission[],
+): void {
+  if (!hasAllPermissions(actor, permissions)) {
     throw new RbacError('PERMISSION_DENIED');
   }
+}
+
+/**
+ * Wie {@link requirePermissionsWithinActor}, aber für eine bestehende Rolle.
+ *
+ * Gebraucht wird das auch dort, wo **nichts hinzukommt**: Wer die Rolle „Admin"
+ * nicht selbst tragen könnte, darf sie auch nicht leeren oder löschen – sonst
+ * bliebe statt der Rechteausweitung die Rechteentziehung als Weg, das
+ * Rollensystem zu übernehmen.
+ */
+function requireRoleWithinActor(actor: PermissionActor, role: RoleRecord): void {
+  requirePermissionsWithinActor(actor, role.permissions);
+}
+
+/**
+ * Schranke beim Zuweisen und Entziehen.
+ *
+ * Zwei Regeln, bewusst getrennt, weil Pflichtenheft §8 das Zuweisen
+ * ausdrücklich an `user.manage` delegiert:
+ *
+ * 1. **Gewöhnliche Rollen** darf ein reiner Konten-Verwalter weiterhin
+ *    vergeben, auch wenn er ihre Rechte selbst nicht trägt. Wer Konten
+ *    verwaltet, soll die Rolle „Nutzer" austeilen können, ohne selbst Server
+ *    anlegen zu dürfen – das ist der Zweck der Delegation und keine
+ *    Rechteausweitung: Der Handelnde gewinnt dabei nichts.
+ * 2. **Rollen, die selbst Verwaltung verleihen**, brauchen `role.manage` – und
+ *    seit Fundpunkt 196 zusätzlich, dass der Handelnde das Bündel selbst
+ *    tragen könnte. Sonst hätte ein Konto mit ausschließlich `role.manage` sich
+ *    die vorhandene Rolle „Admin" einfach selbst zuweisen können; die Schranke
+ *    beim Bearbeiten wäre dann folgenlos geblieben.
+ *
+ * Gilt fürs Entziehen gleichermaßen: Wer „Admin" nicht vergeben darf, darf sie
+ * auch niemandem wegnehmen.
+ */
+function requireAssignmentAllowed(actor: PermissionActor, role: RoleRecord): void {
+  if (!grantsAdministration(role)) {
+    return;
+  }
+
+  if (!hasPermission(actor, 'role.manage')) {
+    throw new RbacError('PERMISSION_DENIED');
+  }
+
+  requireRoleWithinActor(actor, role);
 }
 
 function toDto(actor: PermissionActor, role: RoleRecord, memberCount: number): RoleDto {
@@ -261,6 +325,7 @@ export function createRoleService(repository: RoleRepository): RoleService {
 
     async create(actor, input) {
       requireRoleManagement(actor);
+      requirePermissionsWithinActor(actor, input.permissions);
       await ensureNameFree(input.name);
 
       // Neue Rollen sind immer editierbar; der Schutzstatus ist der
@@ -284,6 +349,17 @@ export function createRoleService(repository: RoleRepository): RoleService {
         throw new RbacError('ROLE_PROTECTED');
       }
 
+      /*
+       * Nur wenn sich das Bündel ändert, und dann in beide Richtungen: was
+       * dasteht und was daraus werden soll (Fundpunkt 196). Ein reiner
+       * Namenswechsel bleibt jedem mit `role.manage` offen – dabei wandert
+       * kein Recht.
+       */
+      if (input.permissions !== undefined) {
+        requireRoleWithinActor(actor, role);
+        requirePermissionsWithinActor(actor, input.permissions);
+      }
+
       if (input.name !== undefined) {
         await ensureNameFree(input.name, role.id);
       }
@@ -303,6 +379,7 @@ export function createRoleService(repository: RoleRepository): RoleService {
         throw new RbacError('ROLE_PROTECTED');
       }
 
+      requireRoleWithinActor(actor, role);
       await repository.remove(role.id);
     },
 

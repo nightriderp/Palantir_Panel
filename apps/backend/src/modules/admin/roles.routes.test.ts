@@ -56,7 +56,8 @@ async function buildApp(): Promise<FastifyInstance> {
   const actors: Record<string, PermissionActor> = {
     owner: ownerActor(),
     gast: actorWith(),
-    roleAdmin: actorWith('role.manage'),
+    // Fundpunkt 196: legt Rollen mit `ROLE_PERMISSION_BUNDLE` an, traegt es deshalb selbst.
+    roleAdmin: actorWith('role.manage', ...ROLE_PERMISSION_BUNDLE),
     userAdmin: actorWith('user.manage'),
   };
 
