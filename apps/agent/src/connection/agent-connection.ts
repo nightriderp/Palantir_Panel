@@ -227,6 +227,7 @@ export class AgentConnection {
   private handleClose(info: TransportCloseInfo): void {
     this.clearHandshakeTimer();
     this.transport = null;
+    this.raeumeBefehlsspuren();
 
     if (info.unauthorized) {
       // Kein Abbruch: Ein korrigiertes Token soll ohne Neustart des Agents
@@ -401,20 +402,63 @@ export class AgentConnection {
     this.enqueueCommand(frame);
   }
 
+  /**
+   * Räumt die Befehls-Warteschlangen nach einem Verbindungsabbruch
+   * (Fundpunkt 227).
+   *
+   * `commandLanes` hält je Server eine Promise-Kette, an die sich jeder neue
+   * Befehl per `.then()` anhängt – das ist die Reihenfolge-Zusicherung.
+   * Bleibt eine dieser Ketten unaufgelöst, weil ein Befehl beim Abbruch mitten
+   * in der Ausführung hing (etwa in einem Docker-Strom ohne Frist), hängt sich
+   * **jeder folgende** Befehl desselben Servers daran – und läuft nie mehr,
+   * auch nach erfolgreichem Wiederaufbau nicht.
+   *
+   * Die Ketten sind reine Reihenfolge und tragen keinen Zustand; sie zu
+   * verwerfen kostet nichts. Ein Befehl, der wirklich noch läuft, läuft
+   * weiter – er hängt nur nicht mehr an dieser Map.
+   */
+  private raeumeBefehlsspuren(): void {
+    const spuren = this.commandLanes.size;
+    this.commandLanes.clear();
+    const laufende = this.correlations.forgetInFlight();
+
+    if (spuren > 0 || laufende > 0) {
+      this.log.info('Befehls-Warteschlangen nach Abbruch geräumt', { spuren, laufende });
+    }
+  }
+
   /** Hängt den Befehl an die Warteschlange seines Servers an. */
   private enqueueCommand(frame: BackendCommandFrame): void {
     const lane = frame.serverId ?? NODE_LANE;
     const vorgaenger = this.commandLanes.get(lane) ?? Promise.resolve();
-    const naechster = vorgaenger.then(() => this.executeCommand(frame));
+    /*
+     * Beide Zweige, nicht nur der glückliche (Fundpunkt 227): Wirft irgendetwas
+     * **nach** `runtime.execute()` – `correlations.complete()`, das
+     * `JSON.stringify()` beim Senden –, bricht die Kette sonst dauerhaft ab.
+     * Jeder folgende Befehl desselben Servers hinge an einer abgelehnten
+     * Promise, und die Aufräum-Klausel unten liefe ebenfalls nie.
+     */
+    const naechster = vorgaenger.then(
+      () => this.executeCommand(frame),
+      () => this.executeCommand(frame),
+    );
 
     this.commandLanes.set(lane, naechster);
-    void naechster.then(() => {
-      // Nur aufräumen, wenn seitdem nichts Neues angehängt wurde – sonst würde
-      // die Map bei einem dauerhaft laufenden Agent unbegrenzt wachsen.
-      if (this.commandLanes.get(lane) === naechster) {
-        this.commandLanes.delete(lane);
-      }
-    });
+    void naechster
+      .catch((error: unknown) => {
+        this.log.error('Befehl in der Warteschlange fehlgeschlagen', {
+          correlationId: frame.correlationId,
+          command: frame.command,
+          fehler: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        // Nur aufräumen, wenn seitdem nichts Neues angehängt wurde – sonst
+        // würde die Map bei einem dauerhaft laufenden Agent unbegrenzt wachsen.
+        if (this.commandLanes.get(lane) === naechster) {
+          this.commandLanes.delete(lane);
+        }
+      });
   }
 
   private async executeCommand(frame: BackendCommandFrame): Promise<void> {
@@ -512,7 +556,26 @@ export class AgentConnection {
       this.log.warn('Frame nicht gesendet – keine Verbindung', { kind: frame.kind });
       return false;
     }
-    transport.send(JSON.stringify(frame));
+
+    /*
+     * `JSON.stringify` kann werfen (Fundpunkt 227): ein Ergebnis mit einem
+     * Ringschluss, ein `BigInt` aus einer Fremdbibliothek. Vorher riss dieser
+     * Wurf die Befehls-Warteschlange des Servers auf Dauer ab – und zwar an
+     * einer Stelle, an der der Agent längst fertig gearbeitet hatte.
+     */
+    let roh: string;
+    try {
+      roh = JSON.stringify(frame);
+    } catch (error: unknown) {
+      this.log.error('Frame nicht gesendet – nicht serialisierbar', {
+        kind: frame.kind,
+        fehler: error instanceof Error ? error.message : String(error),
+      });
+
+      return false;
+    }
+
+    transport.send(roh);
     return true;
   }
 

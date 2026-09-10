@@ -787,3 +787,106 @@ describe('Protokolltreue der ausgehenden Frames', () => {
     h.connection.stop();
   });
 });
+
+/**
+ * Befehls-Warteschlangen nach einem Abbruch (Fundpunkt 227).
+ *
+ * `commandLanes` haelt je Server eine Promise-Kette, an die sich jeder neue
+ * Befehl anhaengt. Blieb eine Kette unaufgeloest - weil ein Befehl beim Abbruch
+ * mitten in der Ausfuehrung hing -, lief **kein** weiterer Befehl desselben
+ * Servers mehr, auch nach erfolgreichem Wiederaufbau nicht.
+ */
+describe('Warteschlangen nach Abbruch (Fundpunkt 227)', () => {
+  it('laesst nach einem Abbruch mit haengendem Befehl wieder Befehle durch', async () => {
+    const gelaufen: string[] = [];
+    const h = harness({
+      execute: (execution) => {
+        gelaufen.push(execution.correlationId);
+
+        // Der erste Befehl haengt - wie ein Docker-Strom ohne Antwort.
+        if (execution.correlationId === CORRELATION_ID) {
+          return new Promise<never>(() => undefined);
+        }
+
+        return Promise.resolve(ok({ containerId: 'abc123' }));
+      },
+    });
+
+    h.connection.start();
+    const erster = await verbinden(h);
+    erster.empfangen(befehl());
+    await flush();
+
+    // Verbindung reisst ab, waehrend der Befehl haengt.
+    erster.handlers.onClose({ code: 1006, reason: 'weg', unauthorized: false });
+    await flush();
+
+    vi.advanceTimersByTime(1_000);
+    const zweiter = await verbinden(h);
+
+    // Zweiter Befehl an denselben Server - vorher lief er nie.
+    zweiter.empfangen(befehl({ correlationId: ANDERE_ID }));
+    await flush();
+
+    expect(gelaufen).toContain(ANDERE_ID);
+  });
+
+  it('nimmt nach dem Abbruch dieselbe Kennung wieder an', async () => {
+    const h = harness();
+
+    h.connection.start();
+    const erster = await verbinden(h);
+    erster.empfangen(befehl());
+    await flush();
+
+    erster.handlers.onClose({ code: 1006, reason: 'weg', unauthorized: false });
+    await flush();
+    vi.advanceTimersByTime(1_000);
+    const zweiter = await verbinden(h);
+
+    h.ausgefuehrt.length = 0;
+    zweiter.empfangen(befehl());
+    await flush();
+
+    /*
+     * Der Befehl war abgeschlossen, bevor die Verbindung abriss - das Ergebnis
+     * liegt im Speicher, und das Duplikat wird daraus beantwortet statt erneut
+     * ausgefuehrt. Genau diese Zusicherung darf das Raeumen nicht kosten.
+     */
+    expect(h.ausgefuehrt).toEqual([]);
+    expect(zweiter.framesVomTyp('commandResult').some((frame) => frame.duplicate === true)).toBe(
+      true,
+    );
+  });
+
+  it('bricht die Kette nicht, wenn ein Befehl nach der Ausfuehrung wirft', async () => {
+    const gelaufen: string[] = [];
+    const h = harness({
+      execute: (execution) => {
+        gelaufen.push(execution.correlationId);
+
+        if (execution.correlationId === CORRELATION_ID) {
+          // Ein Ergebnis, das sich nicht serialisieren laesst: `JSON.stringify`
+          // wirft beim Senden - also nach `runtime.execute()`.
+          const kreis: Record<string, unknown> = {};
+          kreis.selbst = kreis;
+
+          return Promise.resolve(ok(kreis));
+        }
+
+        return Promise.resolve(ok({ containerId: 'abc123' }));
+      },
+    });
+
+    h.connection.start();
+    const transport = await verbinden(h);
+
+    transport.empfangen(befehl());
+    await flush();
+    transport.empfangen(befehl({ correlationId: ANDERE_ID }));
+    await flush();
+
+    // Vorher blieb die Kette abgelehnt zurueck und der zweite Befehl lief nie.
+    expect(gelaufen).toContain(ANDERE_ID);
+  });
+});

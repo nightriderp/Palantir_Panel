@@ -69,6 +69,16 @@ export interface DockerStream {
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+/**
+ * Frist bis zu den Kopfzeilen eines Datenstroms (Fundpunkt 227).
+ *
+ * Gilt **nur** fuer den Aufbau: Sobald die Antwort begonnen hat, darf der
+ * Koerper beliebig lange schweigen - ein Logstrom tut genau das. Dieselben
+ * dreissig Sekunden wie fuer eine gewoehnliche Anfrage; wer so lange nicht
+ * einmal mit Kopfzeilen antwortet, antwortet nicht mehr.
+ */
+export const STREAM_HEADER_TIMEOUT_MS = DEFAULT_REQUEST_TIMEOUT_MS;
+
 /** Macht aus einem Web-ReadableStream ein `AsyncIterable`, ohne auf Node-Interna zu bauen. */
 export async function* streamToAsyncIterable(
   stream: ReadableStream<Uint8Array>,
@@ -291,9 +301,28 @@ export class DockerHttpClient {
           details: { method, pfad },
         });
 
-      // Keine Frist - weder fuer die Antwort noch fuer Stille im Koerper. Das
-      // ist der ganze Grund fuer diesen Weg.
+      /*
+       * Keine Frist fuer **Stille im Koerper** - das ist der ganze Grund fuer
+       * diesen Weg: Ein Logstrom darf stundenlang schweigen.
+       *
+       * Fuer den **Aufbau** gilt das nicht (Fundpunkt 227). Antwortet der
+       * Socket-Proxy gar nicht - Verbindung angenommen, aber keine Kopfzeilen -,
+       * wurde diese Promise weder erfuellt noch abgelehnt. Der Aufrufer wartete
+       * fuer immer, und im Agent blieb die Befehls-Warteschlange dieses Servers
+       * dauerhaft haengen (siehe `raeumeBefehlsspuren`).
+       *
+       * Die Frist laeuft nur bis zu den Kopfzeilen und wird dort geloescht.
+       */
+      const aufbauFrist = setTimeout(() => {
+        anfrage.destroy(
+          new ContainerRuntimeError('RUNTIME_UNAVAILABLE', {
+            message: 'Der Docker-Socket-Proxy hat den Datenstrom nicht begonnen.',
+            details: { method, pfad, fristMs: STREAM_HEADER_TIMEOUT_MS },
+          }),
+        );
+      }, STREAM_HEADER_TIMEOUT_MS);
       const anfrage = modul.request(ziel, { method, headers }, (antwort) => {
+        clearTimeout(aufbauFrist);
         const status = antwort.statusCode ?? 0;
         const geduldet = (options.tolerateStatus ?? []).includes(status);
 
@@ -326,7 +355,11 @@ export class DockerHttpClient {
         });
       });
 
-      anfrage.on('error', (ursache) => reject(nichtErreichbar(ursache)));
+      anfrage.on('error', (ursache: unknown) => {
+        clearTimeout(aufbauFrist);
+        // Der Abbruch durch die Frist traegt bereits den passenden Fehler.
+        reject(ursache instanceof ContainerRuntimeError ? ursache : nichtErreichbar(ursache));
+      });
 
       if (body !== undefined) {
         anfrage.write(body);
