@@ -20,11 +20,25 @@ export interface AppShellProps {
 }
 
 /**
+ * Ziel des Sprunglinks – dasselbe Wort steht im `id`-Attribut des Inhalts.
+ */
+const INHALT_ID = 'inhalt';
+
+/**
  * Seitenrahmen des eingeloggten Bereichs: Seitenleiste, Kopfleiste, Inhalt.
  *
  * Mobile-First (Lastenheft §4): unterhalb von 768px verschwindet die
  * Seitenleiste und wird über die Menü-Schaltfläche als Schublade eingeblendet.
  * Ab `md` steht sie dauerhaft daneben.
+ *
+ * **Sprung zum Inhalt** (Fundpunkt 217, WCAG 2.4.1): Gemessen waren es 22
+ * Tabulatorschritte durch Navigation und Kopfleiste, bevor der eigentliche
+ * Inhalt an der Reihe war – auf jeder Seite neu. Der erste Tabulatorschritt
+ * blendet jetzt einen Sprunglink ein; sichtbar wird er nur, solange er den
+ * Fokus hat.
+ *
+ * Die Kopfleiste ist ein `<header>` und der Inhalt trägt eine `id`: Erst damit
+ * kann eine Vorlesehilfe die Bereiche überhaupt anspringen.
  */
 export function AppShell({
   sidebar,
@@ -48,6 +62,17 @@ export function AppShell({
 
   return (
     <div className="flex h-screen overflow-hidden bg-canvas bg-app-glow">
+      {/*
+        Erster Tabulatorschritt der Seite. `sr-only` hält ihn aus der Anzeige,
+        `focus:not-sr-only` holt ihn zurück, sobald er den Fokus hat.
+      */}
+      <a
+        href={`#${INHALT_ID}`}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:border focus:border-brand-line focus:bg-surface focus:px-4 focus:py-2 focus:text-base focus:text-ink"
+      >
+        Zum Inhalt springen
+      </a>
+
       {navOpen ? (
         <div
           aria-hidden
@@ -92,7 +117,7 @@ export function AppShell({
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="relative z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-4 border-b border-line bg-surface-deep/75 px-5 py-2">
+        <header className="relative z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-4 border-b border-line bg-surface-deep/75 px-5 py-2">
           <button
             type="button"
             onClick={() => setNavOpen(true)}
@@ -103,12 +128,14 @@ export function AppShell({
             <Icon name="menu" size={22} />
           </button>
           {topbar}
-        </div>
+        </header>
 
         {banner}
         {header}
 
-        <main className="flex-1 overflow-y-auto p-5">{children}</main>
+        <main id={INHALT_ID} tabIndex={-1} className="flex-1 overflow-y-auto p-5">
+          {children}
+        </main>
       </div>
     </div>
   );
