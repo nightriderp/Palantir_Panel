@@ -136,6 +136,8 @@ export interface BackupAgentGateway {
 export interface BackupEventPayloads {
   'backup.failed': NotificationEventPayloads['backup.failed'];
   'backup.progressed': LiveServerEventPayloads['backup.progressed'];
+  /** Fortschritt einer Wiederherstellung (Fundpunkt 225) – wie `backup.progressed` rein für offene Ansichten. */
+  'backupRestore.progressed': LiveServerEventPayloads['backupRestore.progressed'];
 }
 
 export type BackupEventName = keyof BackupEventPayloads;
@@ -158,6 +160,10 @@ export interface BackupEventPublisher {
   publish(
     event: 'backup.progressed',
     payload: BackupEventPayloads['backup.progressed'],
+  ): void | Promise<void>;
+  publish(
+    event: 'backupRestore.progressed',
+    payload: BackupEventPayloads['backupRestore.progressed'],
   ): void | Promise<void>;
 }
 

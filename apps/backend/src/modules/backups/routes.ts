@@ -53,6 +53,10 @@ const requireBackupManage = requireAnyPermission('backup.manage.own', 'backup.ma
 
 const serverParamsSchema = z.object({ serverId: z.string().uuid() });
 const backupParamsSchema = z.object({ backupId: z.string().uuid() });
+const restoreJobParamsSchema = z.object({
+  backupId: z.string().uuid(),
+  jobId: z.string().uuid(),
+});
 const ownerParamsSchema = z.object({ userId: z.string().uuid() });
 
 export interface BackupRoutesOptions {
@@ -235,7 +239,44 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
         try {
           const { backupId } = backupParamsSchema.parse(request.params);
 
+          /*
+           * 202 statt 200 (Fundpunkt 225): Die Antwort ist der Auftrag, nicht
+           * das Ergebnis - das Entpacken laeuft weiter, wenn diese Anfrage
+           * laengst beantwortet ist.
+           */
+          void reply.status(202);
+
           return ok(await backups.restore(requireActor(request), userIdOf(request), backupId));
+        } catch (error) {
+          await handleError(reply, error);
+
+          return undefined;
+        }
+      },
+    );
+
+    /** Stand einer Wiederherstellung - das Gegenstueck zum Fortschritts-Ereignis. */
+    app.get(
+      '/backups/:backupId/restore/:jobId',
+      { preHandler: requireBackupManage },
+      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
+        try {
+          const { backupId, jobId } = restoreJobParamsSchema.parse(request.params);
+          const job = await backups.findRestoreJob(
+            requireActor(request),
+            userIdOf(request),
+            backupId,
+            jobId,
+          );
+
+          if (job === null) {
+            throw new BackupError(
+              'BACKUP_NOT_FOUND',
+              'Der Wiederherstellungs-Auftrag ist unbekannt.',
+            );
+          }
+
+          return ok(job);
         } catch (error) {
           await handleError(reply, error);
 

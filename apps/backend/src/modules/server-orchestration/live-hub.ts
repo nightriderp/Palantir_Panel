@@ -302,6 +302,19 @@ export class ServerLiveHub {
         });
         return;
       }
+      case 'backupRestore.progressed': {
+        // Fundpunkt 225: derselbe Weg wie beim Klon-Auftrag - das Ereignis
+        // traegt den vollstaendigen Auftrag, die Ansicht fragt nichts nach.
+        const job = payload.job;
+        if (job === null || typeof job !== 'object') {
+          return;
+        }
+        this.publish('backupRestore.progressed', {
+          serverId,
+          job: job as LiveServerEventPayloads['backupRestore.progressed']['job'],
+        });
+        return;
+      }
       case 'server.consoleLineAppended': {
         // B3 emittiert das Ereignis mit einer fertigen `ServerConsoleLine`
         // (`service.ts`, `handleLogLine`, Gefundener Punkt 101); hier wird sie
