@@ -153,6 +153,12 @@ export interface AccountRateLimitOptions {
   /** Vorgang – bestimmt Fenster, Anzahl und den Schlüsselraum. */
   readonly scope: AbuseLimitScope;
   /**
+   * Bereits vorhandener Zähler, wenn ein zweiter Weg denselben Vorgang bremsen
+   * soll (Fundpunkt 202: Konsolenbefehl über REST **und** über den Live-Kanal).
+   * Ohne Angabe entsteht ein eigener.
+   */
+  readonly limiter?: AccountRateLimiter;
+  /**
    * Konto-Id des Aufrufers aus der Sitzung (B1); `null`, wenn niemand
    * angemeldet ist.
    *
@@ -180,7 +186,7 @@ export interface AccountRateLimitOptions {
  * `requirePermission()` hängen, dann fällt er gar nicht erst an.
  */
 export function accountRateLimit(options: AccountRateLimitOptions): preHandlerHookHandler {
-  const limiter = createAccountRateLimiter(options.scope);
+  const limiter = options.limiter ?? createAccountRateLimiter(options.scope);
 
   return async function abuseLimitGuard(request, reply): Promise<void> {
     const userId = options.resolveUserId(request);

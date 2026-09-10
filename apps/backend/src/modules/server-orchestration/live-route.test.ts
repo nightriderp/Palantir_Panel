@@ -23,6 +23,7 @@ import {
 import { liveClientFrameSchema } from '@palantir/validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type PermissionActor, registerRbac } from '../rbac/index.js';
+import { type AccountRateLimiter, createAccountRateLimiter } from '../../lib/abuse-limits.js';
 import { buildPermissionActor } from '../rbac/permissions.js';
 import { ALLE_GAME_TYPE_DEFINITIONS, createGameRegistry } from './game-registry.js';
 import { ServerLiveHub } from './live-hub.js';
@@ -100,6 +101,8 @@ interface Aufbau {
 interface AufbauOptionen {
   readonly allowedOrigin?: string;
   readonly subscriptionCheckIntervalMs?: number;
+  /** Zaehler fuer Konsolenbefehle (Fundpunkt 202) – im Test mit engem Budget. */
+  readonly consoleLimiter?: AccountRateLimiter;
 }
 
 let offen: FastifyInstance | null = null;
@@ -154,6 +157,7 @@ async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
     ...(optionen.subscriptionCheckIntervalMs === undefined
       ? {}
       : { subscriptionCheckIntervalMs: optionen.subscriptionCheckIntervalMs }),
+    ...(optionen.consoleLimiter === undefined ? {} : { consoleLimiter: optionen.consoleLimiter }),
   });
 
   await app.ready();
@@ -229,6 +233,48 @@ describe('Eingehende Frames gegen den Vertrag (contracts-validation-04)', () => 
     expect(antwort).toMatchObject({ kind: 'error', code: 'VALIDATION_FAILED' });
     expect(antwort).toMatchObject({ topic: { resource: 'server', id: SERVER_ID } });
     expect(execConsole).not.toHaveBeenCalled();
+  });
+
+  /*
+   * Fundpunkt 202: Die Bremse von 60 Befehlen je Minute hing ausschliesslich an
+   * der REST-Route. Ueber diesen Kanal konnte jeder, der die Konsole benutzen
+   * darf, beliebig viele Befehle absetzen - jeder ein Roundtrip zum Agent und
+   * von dort in den Container.
+   */
+  it('bremst Konsolenbefehle auch ueber den Live-Kanal (Fundpunkt 202)', async () => {
+    const { app, execConsole } = await baueApp({
+      // Ein Befehl je Minute genuegt, um die Schranke zu zeigen.
+      consoleLimiter: createAccountRateLimiter('server.console', {
+        windowSeconds: 60,
+        maxAttempts: 1,
+      }),
+    });
+    const kanal = await verbinde(app);
+
+    kanal.send({ kind: 'subscribe', topic: { resource: 'server', id: SERVER_ID } });
+    await warteAufFrames(kanal.frames, 1);
+
+    kanal.send({
+      kind: 'consoleCommand',
+      topic: { resource: 'server', id: SERVER_ID },
+      command: 'list',
+    });
+    await warteAufFrames(kanal.frames, 3);
+
+    kanal.send({
+      kind: 'consoleCommand',
+      topic: { resource: 'server', id: SERVER_ID },
+      command: 'list',
+    });
+    await warteAufFrames(kanal.frames, 4);
+
+    expect(kanal.frames.at(-1)).toMatchObject({
+      kind: 'error',
+      code: 'RATE_LIMITED',
+      topic: { resource: 'server', id: SERVER_ID },
+    });
+    // Der zweite Befehl hat den Agent nicht mehr erreicht.
+    expect(execConsole).toHaveBeenCalledTimes(1);
   });
 
   it('lehnt einen mehrzeiligen Konsolenbefehl ab – dieselbe Regel wie auf dem REST-Weg', async () => {
