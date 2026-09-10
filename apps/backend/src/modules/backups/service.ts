@@ -43,6 +43,9 @@ import { type PermissionActor } from '../rbac/index.js';
 import { BackupError } from './errors.js';
 import {
   type BackupAgentGateway,
+  type BackupAuditAction,
+  type BackupAuditContext,
+  type BackupAuditSink,
   type BackupEventPublisher,
   type BackupServerRecord,
   type Clock,
@@ -51,6 +54,7 @@ import {
   type ServerExportManifestSource,
   type UserDirectory,
   fireAndForgetJobRunner,
+  noopBackupAuditSink,
   noopEventPublisher,
   systemClock,
 } from './ports.js';
@@ -108,6 +112,11 @@ export interface BackupServiceOptions {
   readonly agent: BackupAgentGateway;
   readonly events?: BackupEventPublisher;
   /**
+   * Audit-Log aus B8 (Fundpunkt 237). Ohne Angabe wird nichts protokolliert –
+   * so bleibt das Modul ohne Admin-Modul zusammenbaubar.
+   */
+  readonly audit?: BackupAuditSink;
+  /**
    * Quelle des Export-Manifests (P8). Ohne Angabe enthält ein Export nur die
    * Weltdaten – das Verhalten vor P8.
    */
@@ -136,6 +145,7 @@ export interface BackupService {
     actorUserId: string,
     serverId: string,
     input: CreateBackupInput,
+    context?: BackupAuditContext,
   ): Promise<BackupDto>;
   /** Vollständiger Datenexport – ein manuelles Backup mit `isExport` (Lastenheft §3.3). */
   createExport(
@@ -143,10 +153,16 @@ export interface BackupService {
     actorUserId: string,
     serverId: string,
     input: CreateBackupInput,
+    context?: BackupAuditContext,
   ): Promise<BackupDto>;
   /** Geplantes Backup aus einem Zeitplan – ohne Aufrufer, deshalb ohne Rechteprüfung. */
   createScheduled(serverId: string, scheduleId: string, stopServer: boolean): Promise<BackupDto>;
-  remove(actor: PermissionActor, actorUserId: string, backupId: string): Promise<void>;
+  remove(
+    actor: PermissionActor,
+    actorUserId: string,
+    backupId: string,
+    context?: BackupAuditContext,
+  ): Promise<void>;
   /**
    * Wiederherstellung anstossen (Fundpunkt 225).
    *
@@ -159,6 +175,7 @@ export interface BackupService {
     actor: PermissionActor,
     actorUserId: string,
     backupId: string,
+    context?: BackupAuditContext,
   ): Promise<BackupRestoreJobDto>;
   /** Stand einer laufenden oder gerade beendeten Wiederherstellung. */
   findRestoreJob(
@@ -234,7 +251,41 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
   const events = options.events ?? noopEventPublisher;
   const now = options.now ?? systemClock;
   const runJob = options.runJob ?? fireAndForgetJobRunner;
+  const audit = options.audit ?? noopBackupAuditSink;
   const restoreJobs = createRestoreJobStore({ now: () => now() });
+
+  /**
+   * Schreibt einen Eintrag ins Audit-Log (Fundpunkt 237).
+   *
+   * **Ohne Kontext kein Eintrag.** Protokolliert wird, wer etwas getan hat –
+   * und das weiß nur der HTTP-Pfad. Die Vorgänge ohne Aufrufer laufen bewusst
+   * daran vorbei: das geplante Backup (`createScheduled`), der
+   * Aufbewahrungslauf und der Kehraus abgerissener Läufe. Sie sind
+   * Betriebsvorgänge, keine Eingriffe; ein Protokoll, das bei jedem
+   * nächtlichen Lauf eine Zeile je gelöschtem Backup schreibt, verdeckt genau
+   * die Zeilen, wegen derer es geführt wird. Sichtbar bleiben sie in der
+   * Sicherungsliste selbst.
+   */
+  async function protokolliere(
+    action: BackupAuditAction,
+    backupId: string,
+    context: BackupAuditContext | undefined,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    if (context === undefined) {
+      return;
+    }
+
+    await audit.record({
+      action,
+      actorId: context.actorId,
+      actorDisplayName: context.actorDisplayName,
+      targetType: 'backup',
+      targetId: backupId,
+      ipHint: context.ipHint,
+      metadata,
+    });
+  }
 
   /** Meldet den Auftragsstand an den Live-Kanal (Contract `backupRestore.progressed`). */
   function publishRestoreJob(job: BackupRestoreJobDto): void {
@@ -840,7 +891,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       });
     },
 
-    async createManual(actor, actorUserId, serverId, input) {
+    async createManual(actor, actorUserId, serverId, input, context) {
       const server = await loadServerOrFail(serverId);
 
       if (!canManageBackupsOf(actor, isOwnServer(actorUserId, server))) {
@@ -856,10 +907,17 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
         stopServer: input.stopServer,
       });
 
+      await protokolliere('backup.created', backup.id, context, {
+        serverId: server.id,
+        serverName: server.name,
+        isExport: false,
+        stopServer: input.stopServer,
+      });
+
       return toDto(actor, actorUserId, backup, { serverName: server.name, isOwn: true });
     },
 
-    async createExport(actor, actorUserId, serverId, input) {
+    async createExport(actor, actorUserId, serverId, input, context) {
       const server = await loadServerOrFail(serverId);
 
       if (!canManageBackupsOf(actor, isOwnServer(actorUserId, server))) {
@@ -898,6 +956,13 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
         extraFiles,
       });
 
+      await protokolliere('backup.created', backup.id, context, {
+        serverId: server.id,
+        serverName: server.name,
+        isExport: true,
+        stopServer: input.stopServer,
+      });
+
       return toDto(actor, actorUserId, backup, { serverName: server.name, isOwn: true });
     },
 
@@ -926,14 +991,23 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       );
     },
 
-    async remove(actor, actorUserId, backupId) {
+    async remove(actor, actorUserId, backupId, context) {
       const { backup } = await loadManageableBackup(actor, actorUserId, backupId);
 
       if (backup.status === 'pending' || backup.status === 'running') {
         throw new BackupError('BACKUP_NOT_READY');
       }
 
-      await removeBackupAndArchive(backup);
+      const freigegeben = await removeBackupAndArchive(backup);
+
+      // Erst nach dem Löschen: Ein gescheiterter Lauf hat nichts entfernt und
+      // gehört nicht ins Protokoll.
+      await protokolliere('backup.deleted', backup.id, context, {
+        serverId: backup.serverId,
+        type: backup.type,
+        isExport: backup.isExport,
+        freedBytes: freigegeben,
+      });
     },
 
     async findRestoreJob(actor, actorUserId, backupId, jobId) {
@@ -947,7 +1021,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       return job !== null && job.backupId === backupId ? job : null;
     },
 
-    async restore(actor, actorUserId, backupId) {
+    async restore(actor, actorUserId, backupId, context) {
       const { backup } = await loadManageableBackup(actor, actorUserId, backupId);
 
       if (backup.status !== 'completed' || backup.storagePath === null) {
@@ -987,6 +1061,18 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
        */
       const job = restoreJobs.create({ serverId: server.id, backupId: backup.id });
       publishRestoreJob(job);
+
+      /*
+       * Der Eintrag entsteht beim **Anstoßen**, nicht beim Ergebnis: Der Vorgang
+       * überschreibt ab hier den Datenordner des Servers, und genau das ist das
+       * Protokollwürdige. Ob das Entpacken durchläuft, steht anschließend am
+       * Auftrag (`backupRestore.progressed`).
+       */
+      await protokolliere('backup.restored', backup.id, context, {
+        serverId: server.id,
+        serverName: server.name,
+        jobId: job.id,
+      });
 
       runJob(async () => {
         const laufend = restoreJobs.update(job.id, {

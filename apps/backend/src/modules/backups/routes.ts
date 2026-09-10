@@ -34,7 +34,9 @@ import {
   requireAnyPermission,
   requirePermission,
 } from '../rbac/index.js';
+import { toIpHint } from '../auth/request-context.js';
 import { BackupError, isBackupError, isScheduleError } from './errors.js';
+import type { BackupAuditContext } from './ports.js';
 import type { BackupScheduleService } from './schedules.js';
 import type { BackupDownload, BackupDownloadChunk, BackupService } from './service.js';
 
@@ -50,6 +52,24 @@ import type { BackupDownload, BackupDownloadChunk, BackupService } from './servi
  * damit Aktionen an, die am Guard scheiterten.
  */
 const requireBackupManage = requireAnyPermission('backup.manage.own', 'backup.manage.any');
+
+/**
+ * Wer den Vorgang ausgelöst hat – für das Audit-Log (Fundpunkt 237).
+ *
+ * `adminIdentity` hängt das Auth-Modul beim Auflösen der Sitzung an den
+ * Request (`modules/auth/plugin.ts`); der Anzeigename ist dort bereits eine
+ * Kopie zum Zeitpunkt der Aktion. Läuft das Auth-Modul nicht – Tests des
+ * Grundgerüsts –, bleiben beide Felder `null` und der Eintrag ist ein
+ * Systemeintrag. Bis hierher käme eine solche Anfrage ohnehin nicht: Ohne
+ * Sitzung gibt es keinen Actor.
+ */
+function auditContextOf(request: FastifyRequest): BackupAuditContext {
+  return {
+    actorId: request.adminIdentity?.userId ?? null,
+    actorDisplayName: request.adminIdentity?.displayName ?? null,
+    ipHint: toIpHint(request.ip),
+  };
+}
 
 const serverParamsSchema = z.object({ serverId: z.string().uuid() });
 const backupParamsSchema = z.object({ backupId: z.string().uuid() });
@@ -148,6 +168,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
             userIdOf(request),
             serverId,
             input,
+            auditContextOf(request),
           );
 
           // 202: Der Lauf ist angenommen, aber noch nicht fertig – das Backup
@@ -184,6 +205,7 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
             userIdOf(request),
             serverId,
             input,
+            auditContextOf(request),
           );
 
           reply.status(202);
@@ -221,7 +243,12 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { backupId } = backupParamsSchema.parse(request.params);
-          await backups.remove(requireActor(request), userIdOf(request), backupId);
+          await backups.remove(
+            requireActor(request),
+            userIdOf(request),
+            backupId,
+            auditContextOf(request),
+          );
 
           return ok(null);
         } catch (error) {
@@ -246,7 +273,14 @@ export function registerBackupRoutes(options: BackupRoutesOptions) {
            */
           void reply.status(202);
 
-          return ok(await backups.restore(requireActor(request), userIdOf(request), backupId));
+          return ok(
+            await backups.restore(
+              requireActor(request),
+              userIdOf(request),
+              backupId,
+              auditContextOf(request),
+            ),
+          );
         } catch (error) {
           await handleError(reply, error);
 

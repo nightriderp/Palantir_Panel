@@ -179,6 +179,61 @@ export const noopEventPublisher: BackupEventPublisher = {
   },
 };
 
+/**
+ * Vorgänge der Sicherungen, die ins Audit-Log gehören (Fundpunkt 237).
+ *
+ * Die drei Aktionen standen seit jeher im Katalog
+ * (`packages/contracts/src/audit.ts`), und die Admin-Oberfläche beschriftet sie
+ * bereits – geschrieben hat sie niemand. Wer eine fremde Sicherung löschte oder
+ * zurückspielte, hinterließ keine Zeile; im Protokoll fehlte damit ausgerechnet
+ * der Vorgang, der Serverdaten überschreibt.
+ */
+export type BackupAuditAction = 'backup.created' | 'backup.restored' | 'backup.deleted';
+
+/**
+ * Wer den Vorgang ausgelöst hat, in der Form, die der Eintrag braucht.
+ *
+ * Der Anzeigename ist eine **Kopie** zum Zeitpunkt der Aktion (Pflichtenheft
+ * §6): Der Eintrag bleibt lesbar, auch wenn das Konto später umbenannt wird
+ * oder verschwindet.
+ */
+export interface BackupAuditContext {
+  readonly actorId: string | null;
+  readonly actorDisplayName: string | null;
+  readonly ipHint: string | null;
+}
+
+/**
+ * Schmale Sicht auf `AuditService.record()` aus B8.
+ *
+ * Bewusst nicht der ganze Dienst: B5 schreibt drei Aktionen und soll ohne das
+ * Admin-Modul testbar bleiben – dieselbe Trennung wie bei {@link
+ * BackupEventPublisher} gegenüber B6.
+ *
+ * `record()` darf werfen, und der Aufrufer fängt das **nicht** ab: Lässt sich
+ * eine sicherheitsrelevante Aktion nicht protokollieren, soll die Aktion selbst
+ * scheitern, statt unbemerkt zu passieren (so beschreibt es
+ * `AuditService.record`).
+ */
+export interface BackupAuditSink {
+  record(entry: {
+    action: BackupAuditAction;
+    actorId: string | null;
+    actorDisplayName: string | null;
+    targetType: 'backup';
+    targetId: string;
+    ipHint: string | null;
+    metadata: Record<string, unknown>;
+  }): void | Promise<void>;
+}
+
+/** Senke, solange B8 nicht eingehängt ist (Tests, Betrieb ohne Datenbank). */
+export const noopBackupAuditSink: BackupAuditSink = {
+  record() {
+    // absichtlich leer
+  },
+};
+
 /** Zeitquelle – austauschbar, damit Aufbewahrungsregel und Zeitpläne testbar bleiben. */
 export type Clock = () => Date;
 

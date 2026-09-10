@@ -741,6 +741,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       // Frist, ab der ein hängender Lauf als vom Neustart abgerissen gilt
       // (Audit W1-6, bb-03) – aufgeräumt wird er vom Zeitgeber.
       orphanAfterMs: env.BACKUP_ORPHAN_AFTER_MS,
+      // Anlegen, Zurückspielen und Löschen einer Sicherung stehen im
+      // Audit-Katalog und wurden bis Fundpunkt 237 nie geschrieben.
+      audit: admin.services.audit,
     });
 
     const backupSchedules = createBackupScheduleService({
