@@ -79,6 +79,26 @@ export interface InstanceSettingsDto {
    * gelöscht, fällt nur ihre Rolle auf die Vorgabe zurück.
    */
   monospaceFontId?: string | null;
+  /**
+   * Kennungen der Spieltypen, die der Administrator ausgeschaltet hat
+   * (Wunsch des Betreibers, 2026-09-11).
+   *
+   * Der Katalog selbst bleibt Code (Pflichtenheft §11) — hier steht nur, was
+   * eine Instanz davon **nicht** anbietet. Ein ausgeschalteter Typ verschwindet
+   * aus dem Anlegen-Wizard und trägt im `GameTypeDto` `available: false` mit
+   * einem eigenen `unavailableReason`.
+   *
+   * **Laufende Server bleiben laufen.** Ausschalten ist eine Aussage über das
+   * Angebot, nicht über den Bestand: Sonst hätte der Betreiber einen Server,
+   * den er nicht mehr stoppen könnte.
+   *
+   * Eine Kennung, die es im Katalog nicht (mehr) gibt, ist unschädlich — sie
+   * schaltet nichts ab und bleibt stehen, bis jemand sie entfernt.
+   *
+   * Optional, damit ältere Konsumenten gültig bleiben (CLAUDE.md §3); ein
+   * fehlendes Feld ist dasselbe wie die leere Liste.
+   */
+  disabledGameTypes?: readonly string[];
   /** ISO-8601 der letzten Änderung; `null`, solange nie etwas geändert wurde. */
   updatedAt: string | null;
   permissions: InstanceSettingsPermissions;

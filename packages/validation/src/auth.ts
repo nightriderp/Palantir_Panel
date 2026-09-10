@@ -342,6 +342,14 @@ export const instanceSettingsInputSchema = z.object({
   uiFontId: fontIdSchema.nullable().optional(),
   /** Schrift für dicktengleiche Ausgaben (Konsole, Logs, Serveradressen). */
   monospaceFontId: fontIdSchema.nullable().optional(),
+  /**
+   * Ausgeschaltete Spieltypen (Kennungen aus der Registry).
+   *
+   * Keine Prüfung gegen den Katalog an dieser Stelle: Der Vertrag kennt ihn
+   * nicht, und eine Kennung, die es nicht gibt, schaltet auch nichts ab. Die
+   * Obergrenze steht trotzdem da, damit niemand eine Liste ohne Ende schickt.
+   */
+  disabledGameTypes: z.array(z.string().trim().min(1).max(64)).max(200).optional(),
 });
 
 /**
