@@ -1487,8 +1487,23 @@ export class ServerOrchestrationService {
    * dazwischen ab, bleibt ein Server ohne Container übrig – den kann man erneut
    * löschen. Andersherum bliebe ein Container ohne Server übrig, den niemand
    * mehr zuordnen kann (der Soll/Ist-Abgleich meldet ihn dann als verwaist).
+   *
+   * **`erzwingen`** (Fundpunkt 226): Ohne verbundenen Agent ließ sich ein
+   * Server bisher **nie** löschen – `AGENT_NOT_CONNECTED`, und zwar dauerhaft.
+   * Eine ausgemusterte Node hinterließ damit Server, die niemand mehr
+   * loswurde, samt belegter Subdomain und belegtem Port. Mit `erzwingen` fällt
+   * nur der Container-Befehl aus; DNS-Eintrag, Portfreigabe und Datensatz
+   * verschwinden wie sonst auch.
+   *
+   * Der Container bleibt dann auf der Node liegen. Das ist die kleinere
+   * Hypothek: Kommt die Node je zurück, meldet der Soll/Ist-Abgleich ihn als
+   * verwaist, und die Speicherverwaltung räumt ihn weg. Ein unlöschbarer
+   * Server dagegen blockiert dauerhaft Adresse und Port.
+   *
+   * `erzwingen` ist **kein** „Aufräumen überspringen": Ist der Agent erreichbar,
+   * läuft der gewöhnliche Weg – geprüft wird die Verbindung, nicht der Wunsch.
    */
-  async deleteServer(serverId: string): Promise<void> {
+  async deleteServer(serverId: string, optionen: { erzwingen?: boolean } = {}): Promise<void> {
     const server = await this.requireServer(serverId);
 
     /*
@@ -1531,11 +1546,14 @@ export class ServerOrchestrationService {
       // Wiederholungsversuch hinter dem bereits entfernten Container und nicht
       // erneut davor.
       await this.deps.repository.update(server.id, { dockerContainerId: null });
-    } else if (server.dockerContainerId !== null) {
-      throw new ServerOrchestrationError('AGENT_NOT_CONNECTED', undefined, {
-        hostId: server.hostId,
-        serverId,
-      });
+    } else if (server.dockerContainerId !== null && optionen.erzwingen !== true) {
+      throw new ServerOrchestrationError(
+        'AGENT_NOT_CONNECTED',
+        'Die Node ist nicht verbunden, der Container lässt sich deshalb nicht entfernen. ' +
+          'Der Server kann trotzdem gelöscht werden – der Container bleibt dann auf der Node ' +
+          'liegen und taucht dort als verwaister Posten auf.',
+        { hostId: server.hostId, serverId },
+      );
     }
 
     await this.deps.dns.deleteRecord(this.hostnameFor(server));

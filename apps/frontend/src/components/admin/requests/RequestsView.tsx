@@ -4,19 +4,16 @@ import {
   type LinkedAccountProfileDto,
   type RegistrationRequestDto,
   type RegistrationRequestStatus,
-  type RoleDto,
 } from '@palantir/contracts';
 import { useMemo, useState } from 'react';
 import {
   Badge,
   Button,
   DangerConfirmDialog,
-  FormModal,
   PageHeader,
   Panel,
   SegmentedControl,
   TextField,
-  ToggleRow,
   cn,
   formatDate,
   serverInitials,
@@ -27,7 +24,6 @@ import {
   approveRegistrationRequest,
   blockRegistrationRequest,
   fetchRegistrationRequests,
-  fetchRoles,
   unblockRegistrationRequest,
 } from '@/lib/api/admin';
 import { type ApiResult, errorText } from '@/lib/api/client';

@@ -53,6 +53,13 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
   const [confirm, setConfirm] = useState<{ action: 'stop' | 'restart' | 'update' } | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  /**
+   * Ist das Löschen an der fehlenden Node gescheitert? (Fundpunkt 226.)
+   *
+   * Dann bleibt der Dialog stehen und bietet den zweiten Weg an, statt den
+   * Nutzer mit einem Fehler zurückzulassen, aus dem es keinen Ausweg gab.
+   */
+  const [nodeFehlt, setNodeFehlt] = useState(false);
 
   const resource = useApiResource<GameServerDto>(
     (signal) => fetchServer(serverId, signal),
@@ -113,17 +120,29 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
     setConfirm({ action });
   }
 
-  async function remove() {
+  async function remove(erzwingen = false) {
     setDeleting(true);
-    const result = await deleteServer(serverId);
+    const result = await deleteServer(serverId, erzwingen ? { erzwingen: true } : {});
     setDeleting(false);
-    setDeleteOpen(false);
 
     if (!result.success) {
+      // Die Node ist weg: Der Dialog bleibt offen und bietet den zweiten Weg.
+      if (result.error?.code === 'AGENT_NOT_CONNECTED' && !erzwingen) {
+        setNodeFehlt(true);
+        return;
+      }
+
+      setDeleteOpen(false);
       toast.error(errorText(result));
       return;
     }
-    toast.success('Server gelöscht.');
+
+    setDeleteOpen(false);
+    toast.success(
+      erzwingen
+        ? 'Server gelöscht. Der Container bleibt auf der Node liegen, bis sie wieder erreichbar ist.'
+        : 'Server gelöscht.',
+    );
     router.push('/servers');
   }
 
@@ -246,12 +265,32 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
 
       <DangerConfirmDialog
         open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
+        onClose={() => {
+          setDeleteOpen(false);
+          setNodeFehlt(false);
+        }}
         busy={deleting}
         title="Server löschen?"
         confirmationPhrase={server.name}
-        message={`„${server.name}" wird endgültig gelöscht, inklusive aller Welten und Sicherungen.`}
-        onConfirm={() => void remove()}
+        confirmLabel={nodeFehlt ? 'Trotzdem löschen' : 'Endgültig löschen'}
+        message={
+          nodeFehlt ? (
+            <>
+              <p>
+                „{server.name}“ wird endgültig gelöscht, inklusive aller Welten und Sicherungen.
+              </p>
+              <p className="mt-2 rounded border border-warning-line bg-warning-soft px-2.5 py-2 text-warning">
+                Die Node „{server.hostName ?? 'unbekannt'}“ ist nicht verbunden – der Container
+                lässt sich dort gerade nicht entfernen. „Trotzdem löschen“ gibt Adresse und Port
+                frei und entfernt den Eintrag; der Container bleibt auf der Node liegen und taucht
+                dort als verwaister Posten auf, sobald sie sich wieder meldet.
+              </p>
+            </>
+          ) : (
+            `„${server.name}" wird endgültig gelöscht, inklusive aller Welten und Sicherungen.`
+          )
+        }
+        onConfirm={() => void remove(nodeFehlt)}
       />
     </div>
   );
