@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 import {
   MetricTile,
   Panel,
+  SegmentedControl,
   clampedPercentOf,
   cpuQuotaPercent,
   formatCores,
@@ -37,8 +38,23 @@ import { StatsHistoryChart } from './StatsHistoryChart';
  * Bildschirmen untereinander.
  */
 
-/** Zeitfenster der Verlaufsdarstellung. */
-const HISTORY_WINDOW_MINUTES = 60;
+/**
+ * Wählbare Zeitfenster der Verlaufsdarstellung (Fundpunkt 222).
+ *
+ * Das Fenster stand fest auf 60 Minuten, obwohl das Backend die Stichproben
+ * `STATS_HISTORY_RETENTION_HOURS` lang aufhebt – vorgegeben 48 Stunden. Wer
+ * wissen wollte, ob ein Server über Nacht vollgelaufen ist, konnte es an dieser
+ * Stelle nicht sehen, obwohl die Zahlen dalagen. Die Route nimmt jedes Fenster
+ * entgegen und kappt selbst an der Aufbewahrungsfrist.
+ */
+const HISTORY_WINDOWS = [
+  { minutes: 60, label: '1 Std.' },
+  { minutes: 360, label: '6 Std.' },
+  { minutes: 1440, label: '24 Std.' },
+  { minutes: 2880, label: '48 Std.' },
+] as const;
+
+const HISTORY_WINDOW_DEFAULT = 60;
 
 export interface OverviewTabProps {
   server: GameServerDto;
@@ -53,6 +69,7 @@ export interface OverviewTabProps {
 
 export function OverviewTab({ server, stats, console: consolePanel = null }: OverviewTabProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyWindow, setHistoryWindow] = useState<number>(HISTORY_WINDOW_DEFAULT);
 
   /*
    * Der Verlauf wird beim Öffnen der Ansicht geladen, nicht erst beim Aufklappen
@@ -63,8 +80,8 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
    * Detailansicht; wer den Verlauf aufklappt, spart ihn dafür.
    */
   const history = useApiResource<ServerStatsHistoryDto>(
-    (signal) => fetchStatsHistory(server.id, HISTORY_WINDOW_MINUTES, signal),
-    [server.id],
+    (signal) => fetchStatsHistory(server.id, historyWindow, signal),
+    [server.id, historyWindow],
   );
 
   const live = hasLiveStats(server.status) ? stats : null;
@@ -239,6 +256,23 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           ) : null}
           {history.error ? <p className="text-base text-danger">{history.error}</p> : null}
 
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm text-ink-muted">
+              {history.data === null
+                ? 'Zeitraum'
+                : `${formatNumber(history.data.samples.length)} Messpunkte`}
+            </span>
+            <SegmentedControl
+              label="Zeitraum des Verlaufs"
+              value={String(historyWindow)}
+              onChange={(wert) => setHistoryWindow(Number(wert))}
+              items={HISTORY_WINDOWS.map((fenster) => ({
+                key: String(fenster.minutes),
+                label: fenster.label,
+              }))}
+            />
+          </div>
+
           {history.data ? (
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
               <StatsHistoryChart
@@ -249,12 +283,14 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
                 // nicht bei „ein Kern". Sonst sieht ein Vier-Kern-Server schon
                 // bei einem ausgelasteten Kern nach Vollausschlag aus.
                 max={server.resourceLimits.cpuCores * 100}
+                formatValue={(wert) => formatCores(wert / 100)}
               />
               <StatsHistoryChart
                 samples={history.data.samples}
                 metric="ramUsedMb"
                 label="Arbeitsspeicher"
                 max={server.resourceLimits.ramMb}
+                formatValue={formatMegabytes}
               />
               <StatsHistoryChart
                 samples={history.data.samples}
