@@ -18,6 +18,7 @@ import {
   type GameServerPermissions,
   type ServerMemberLevel,
   buildServerHostname,
+  type GameTypeDefinition,
 } from '@palantir/contracts';
 import { type PermissionActor } from '../rbac/index.js';
 import { type GameRegistry } from './game-registry.js';
@@ -62,8 +63,43 @@ export function updateAvailable(imageRef: string | null, definitionImage: string
   return imageRef !== null && imageRef !== definitionImage;
 }
 
+/**
+ * Ersatz-Definition für einen Spieltyp, den der Katalog nicht mehr kennt
+ * (Fundpunkt 247).
+ *
+ * Der Server bleibt sichtbar und – vor allem – löschbar. Alles, was eine
+ * gültige Definition bräuchte, steht auf der vorsichtigen Seite: kein
+ * Hostname-Routing (also zeigt die Adresse ihren Port), keine Konsole, keine
+ * Schnellbefehle, kein Update-Hinweis. Der Name ist die rohe Kennung – wer sie
+ * sieht, weiß sofort, was fehlt.
+ */
+function ersatzDefinition(
+  gameType: string,
+): Pick<
+  GameTypeDefinition,
+  'name' | 'dockerImage' | 'supportsVirtualHostRouting' | 'consoleQuickCommands' | 'console'
+> {
+  return {
+    name: `Unbekannter Spieltyp (${gameType})`,
+    // Gleich der gespeicherten Fassung zu setzen ist nicht möglich – deshalb
+    // ein Wert, der nie zu einem Image passt, und `updateAvailable` unten
+    // fängt den Fall ausdrücklich ab.
+    dockerImage: '',
+    supportsVirtualHostRouting: false,
+    consoleQuickCommands: [],
+    console: { kind: 'none' },
+  };
+}
+
 export function toGameServerDto(server: ServerRecord, context: ServerDtoContext): GameServerDto {
-  const definition = context.registry.require(server.gameType);
+  /*
+   * Fundpunkt 247: `require()` würde werfen – und in der Serverliste nähme ein
+   * einzelner Datensatz mit unbekannter Kennung allen Konten die ganze
+   * Übersicht (gemessen: `GET /api/servers` → 404 GAME_TYPE_NOT_FOUND, nachdem
+   * die Prüfstands-Spieltypen aus dem Katalog genommen wurden).
+   */
+  const bekannt = context.registry.find(server.gameType);
+  const definition = bekannt ?? ersatzDefinition(server.gameType);
 
   const permissions: GameServerPermissions = computeGameServerPermissions(context.actor, {
     ownerId: server.ownerId,
@@ -115,7 +151,10 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
      */
     dockerContainerId: permissions.canManageSettings ? server.dockerContainerId : null,
     pendingRestart: server.restartRequired,
-    updateAvailable: updateAvailable(server.imageRef, definition.dockerImage),
+    // Ohne bekannte Definition gibt es keine Soll-Fassung, gegen die sich
+    // vergleichen ließe (Fundpunkt 247).
+    updateAvailable:
+      bekannt === null ? false : updateAvailable(server.imageRef, bekannt.dockerImage),
     memberCount: context.memberCount,
     pinned: context.pinned ?? false,
     lastStartedAt: server.lastStartedAt,
