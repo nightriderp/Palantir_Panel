@@ -147,12 +147,29 @@ function normalisiereZeitstempel(wert: string): string | null {
   return Number.isNaN(datum.getTime()) ? null : datum.toISOString();
 }
 
+/**
+ * Obergrenze fuer eine einzelne NDJSON-Zeile, in Byte (Fundpunkt 228).
+ *
+ * Der Rest-Puffer wuchs unbegrenzt, solange kein `\n` kam. Die Quelle ist zwar
+ * der Docker-Daemon selbst und damit kein Angreifer - aber ein Daemon, der aus
+ * einem Fehler heraus einen endlosen Strom ohne Zeilenumbruch schickt, haette
+ * den Agent mitgenommen. Eine Zeile ist ein Ereignis oder eine
+ * Fortschrittsmeldung; ein MiB ist dafuer reichlich.
+ */
+export const MAX_NDJSON_LINE_BYTES = 1024 * 1024;
+
 /** Liest einen NDJSON-Stream (ein JSON-Objekt je Zeile). */
 export async function* readNdjson(source: AsyncIterable<Uint8Array>): AsyncGenerator<unknown> {
   let rest = '';
 
   for await (const chunk of source) {
     rest += Buffer.from(chunk).toString('utf8');
+
+    if (Buffer.byteLength(rest, 'utf8') > MAX_NDJSON_LINE_BYTES) {
+      throw new Error(
+        `Der NDJSON-Strom lieferte mehr als ${String(MAX_NDJSON_LINE_BYTES)} Byte ohne Zeilenumbruch.`,
+      );
+    }
     const zeilen = rest.split('\n');
     rest = zeilen.pop() ?? '';
 

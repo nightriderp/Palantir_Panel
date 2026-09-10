@@ -132,3 +132,43 @@ describe('collectStream', () => {
     expect(puffer.toString('utf8')).toBe('abcd');
   });
 });
+
+/**
+ * Grenze des Rest-Puffers (Fundpunkt 228).
+ *
+ * Der Rest wuchs unbegrenzt, solange kein Zeilenumbruch kam. Die Quelle ist der
+ * Docker-Daemon selbst - aber ein Daemon, der aus einem Fehler heraus einen
+ * endlosen Strom ohne Umbruch schickt, haette den Agent mitgenommen.
+ */
+describe('readNdjson - Grenze des Rest-Puffers (Fundpunkt 228)', () => {
+  async function* endlosOhneUmbruch(): AsyncGenerator<Uint8Array> {
+    const stueck = Buffer.alloc(64 * 1024, 'a');
+
+    for (let i = 0; i < 32; i += 1) {
+      yield stueck;
+    }
+  }
+
+  it('bricht ab, statt weiter zu puffern', async () => {
+    const lesen = async () => {
+      for await (const _ of readNdjson(endlosOhneUmbruch())) {
+        void _;
+      }
+    };
+
+    await expect(lesen()).rejects.toThrow(/Zeilenumbruch/);
+  });
+
+  it('liest gewoehnliche Zeilen unveraendert', async () => {
+    async function* quelle(): AsyncGenerator<Uint8Array> {
+      yield Buffer.from('{"a":1}\n{"b":2}\n', 'utf8');
+    }
+
+    const gelesen: unknown[] = [];
+    for await (const eintrag of readNdjson(quelle())) {
+      gelesen.push(eintrag);
+    }
+
+    expect(gelesen).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+});

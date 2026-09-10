@@ -59,6 +59,16 @@ export interface DockerRequestOptions {
    * grosszuegig.
    */
   readonly timeoutMs?: number;
+  /**
+   * Obergrenze fuer `requestBuffer`, in Byte (Fundpunkt 228).
+   *
+   * Ohne Angabe wird gelesen, was kommt - das ist fuer kurze JSON-Antworten
+   * richtig. Wo die Engine ein Archiv liefert, dessen Groesse der Aufrufer
+   * nicht kennt, gehoert eine Grenze davor: Sonst zieht ein einziger Aufruf
+   * beliebig viel durch den Speicher des Agents, und das trifft alle Server
+   * der Node.
+   */
+  readonly maxBytes?: number;
 }
 
 export interface DockerStream {
@@ -238,7 +248,42 @@ export class DockerHttpClient {
     options: DockerRequestOptions = {},
   ): Promise<Buffer> {
     const antwort = await this.#send(method, pfad, options, this.#signal(options));
-    return Buffer.from(await antwort.arrayBuffer());
+
+    if (options.maxBytes === undefined) {
+      return Buffer.from(await antwort.arrayBuffer());
+    }
+
+    /*
+     * Mit Grenze wird stueckweise gelesen (Fundpunkt 228): `arrayBuffer()`
+     * haette den ganzen Koerper schon im Speicher, bevor irgendjemand ihn
+     * messen kann. Die Engine schickt Archive ohne `Content-Length`, ein Blick
+     * in die Kopfzeilen genuegt also nicht.
+     */
+    const koerper = antwort.body;
+
+    if (koerper === null) {
+      return Buffer.alloc(0);
+    }
+
+    const teile: Buffer[] = [];
+    let gelesen = 0;
+
+    for await (const stueck of streamToAsyncIterable(koerper)) {
+      gelesen += stueck.byteLength;
+
+      if (gelesen > options.maxBytes) {
+        await koerper.cancel().catch(() => undefined);
+
+        throw new ContainerRuntimeError('ARCHIVE_TOO_LARGE', {
+          message: 'Die Antwort der Container-Engine ist groesser als das erlaubte Limit.',
+          details: { method, pfad, maxBytes: options.maxBytes },
+        });
+      }
+
+      teile.push(Buffer.from(stueck));
+    }
+
+    return Buffer.concat(teile);
   }
 
   /**
