@@ -60,7 +60,17 @@ export function ConsoleTab({ server, lines, connection, onSend, onClear }: Conso
   }
 
   const running = server.status === 'running';
-  const quickCommands = server.consoleQuickCommands ?? [];
+  /*
+   * Nimmt dieses Spiel überhaupt Befehle entgegen? Valheim liest weder seine
+   * Standardeingabe noch spricht es RCON (`supportsConsole` im DTO).
+   *
+   * Die Ausgabe bleibt trotzdem stehen – sie ist bei so einem Server die
+   * einzige Stelle, an der man beim Hochlaufen zusehen kann. Gesperrt wird nur
+   * die Eingabe. Ein Feld, das Zeilen annimmt, die nirgends ankommen, wäre
+   * schlimmer als ein graues.
+   */
+  const befehleMoeglich = server.supportsConsole !== false;
+  const quickCommands = befehleMoeglich ? (server.consoleQuickCommands ?? []) : [];
   // Während des Hochlaufs ist die Konsole die interessanteste Stelle der
   // Seite – „läuft nicht" wäre dort schlicht falsch (Fundpunkt 184).
   const starting = server.status === 'starting';
@@ -164,16 +174,34 @@ export function ConsoleTab({ server, lines, connection, onSend, onClear }: Conso
             <input
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder={running ? 'Befehl eingeben …' : 'Der Server läuft nicht.'}
+              placeholder={
+                befehleMoeglich
+                  ? running
+                    ? 'Befehl eingeben …'
+                    : 'Der Server läuft nicht.'
+                  : `${server.gameTypeName} nimmt keine Befehle entgegen.`
+              }
               aria-label="Konsolenbefehl"
-              disabled={!running}
+              disabled={!running || !befehleMoeglich}
               autoComplete="off"
-              className="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink outline-none"
+              className="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink outline-none disabled:text-ink-disabled"
             />
-            <Button type="submit" size="sm" variant="primary" disabled={!running}>
+            <Button
+              type="submit"
+              size="sm"
+              variant="primary"
+              disabled={!running || !befehleMoeglich}
+            >
               Senden
             </Button>
           </form>
+
+          {befehleMoeglich ? null : (
+            <p className="text-xs text-ink-faint">
+              Dieses Spiel kennt keine Serverkonsole – weder über die Standardeingabe noch über
+              RCON. Was hier steht, ist die Ausgabe des Servers; Befehle nimmt er keine entgegen.
+            </p>
+          )}
 
           {error ? (
             <p role="alert" className="text-xs text-danger">
