@@ -492,6 +492,9 @@ async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
     // `listMembers` läuft bei jedem DTO-Aufbau mit und taugt deshalb nicht als
     // Mitschrift der Leseroute – diese wird über ihren Antwortkörper geprüft.
     listMembers: async () => [...mitglieder.values()],
+    // Sammelabfrage der Liste (Fundpunkt 231) - dieselbe Auskunft, eine Runde.
+    listMembersOf: async (serverIds: readonly string[]) =>
+      new Map(serverIds.map((id) => [id, [...mitglieder.values()]])),
     listAll: async () => [SERVER],
     listByOwnerOrMembership: async () => [SERVER],
     isSubdomainTaken: async () => false,

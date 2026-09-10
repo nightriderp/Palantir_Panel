@@ -69,6 +69,7 @@ function fakeRepository() {
   return {
     pins,
     listMembers: async () => [],
+    listMembersOf: async (serverIds: readonly string[]) => new Map(serverIds.map((id) => [id, []])),
     listPinnedServerIds: async (userId: string) => pins.get(userId) ?? new Set<string>(),
     pinServer: async (userId: string, serverId: string) => {
       const vorhanden = pins.get(userId) ?? new Set<string>();

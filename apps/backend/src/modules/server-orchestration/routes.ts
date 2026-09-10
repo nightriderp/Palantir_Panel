@@ -237,10 +237,13 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     request: FastifyRequest,
     serverId: string,
     angeheftet?: ReadonlySet<string>,
+    vorgeladeneMitglieder?: readonly ServerMemberRecord[],
   ): Promise<ServerDtoContext> {
     const actor = requireActor(request);
     const viewerId = request.viewerUserId ?? null;
-    const members = await repository.listMembers(serverId);
+    // Vorgeladen aus der Sammelabfrage der Liste (Fundpunkt 231); einzeln nur
+    // dort, wo genau ein Server gefragt ist.
+    const members = vorgeladeneMitglieder ?? (await repository.listMembers(serverId));
     const pins = angeheftet ?? (await pinnedIdsOf(viewerId));
 
     return {
@@ -359,9 +362,16 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
       const dtos = [];
       const angeheftet = await pinnedIdsOf(viewerId);
+      // Eine Abfrage für alle Mitglieder statt einer je Server (Fundpunkt 231).
+      const mitglieder = await repository.listMembersOf(servers.map((server) => server.id));
 
       for (const server of servers) {
-        const context = await dtoContext(request, server.id, angeheftet);
+        const context = await dtoContext(
+          request,
+          server.id,
+          angeheftet,
+          mitglieder.get(server.id) ?? [],
+        );
         const dto = toGameServerDto(server, {
           ...context,
           recentCrashCount: service.recentCrashCount(server),
