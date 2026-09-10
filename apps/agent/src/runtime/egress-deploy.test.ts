@@ -279,6 +279,31 @@ describe('Hostname-Router in den Deploy-Dateien', () => {
 
     expect(String(platzhalter['domainName']).endsWith('.invalid')).toBe(true);
     expect(platzhalter['listenTo']).toBe(':25565');
-    expect(compose).toContain('00-platzhalter.json:/configs/00-platzhalter.json:ro');
+
+    /*
+     * Genau ein Mount, und der Platzhalter liegt IM Ordner (Fundpunkt 191,
+     * #335). Vorher stand hier zusaetzlich
+     * `./infrared/00-platzhalter.json:/configs/00-platzhalter.json:ro` – ein
+     * zweiter Mount innerhalb des ersten, mit dem der Router gar nicht mehr
+     * hochkam. `update.sh` legt die Datei seitdem als gewoehnliche
+     * Routen-Datei in den Ordner.
+     */
+    expect(compose).toContain('/proxies:/configs:ro');
+
+    /*
+     * Ohne die Kommentarzeilen: Der Abschnitt erklaert den alten Mount
+     * ausfuehrlich, und die Erklaerung soll stehen bleiben duerfen.
+     */
+    const composeOhneKommentare = compose
+      .split('\n')
+      .filter((zeile) => !zeile.trimStart().startsWith('#'))
+      .join('\n');
+
+    expect(composeOhneKommentare).not.toContain('00-platzhalter.json:/configs/');
+
+    // Eingerichtet wird sie beim Ausrollen, nicht von Docker.
+    const update = readFileSync(path.join(repoRoot, 'deploy', 'gamenode', 'update.sh'), 'utf8');
+
+    expect(update).toContain('proxies/00-platzhalter.json');
   });
 });
