@@ -278,12 +278,19 @@ export interface ServerLiveErrorFrame {
   /**
    * Code aus dem Katalog (`errors.ts`), kein Freitext.
    *
-   * Bewusst auf die beiden Fälle eingeschränkt, die auf diesem Kanal überhaupt
-   * entstehen können: Das Frame verletzt das Schema, oder das Konto darf den
-   * Befehl nicht absetzen. `Extract` statt einer losen Union, damit ein
-   * Tippfehler schon beim Übersetzen auffällt.
+   * Bewusst auf die drei Fälle eingeschränkt, die auf diesem Kanal überhaupt
+   * entstehen können: Das Frame verletzt das Schema, das Konto darf den Befehl
+   * nicht absetzen, oder es setzt zu viele davon ab. `Extract` statt einer
+   * losen Union, damit ein Tippfehler schon beim Übersetzen auffällt.
+   *
+   * `RATE_LIMITED` kam mit dem Audit vom 2026-09-10 dazu (Fundpunkt 202): Die
+   * Bremse für Konsolenbefehle hing ausschliesslich an der REST-Route
+   * (`POST /api/servers/:id/console`, 60 je Minute); derselbe Befehl über
+   * diesen Kanal kannte keine Grenze. Damit die Ablehnung dort nicht stumm
+   * bleibt, braucht das Fehler-Frame den Code – auf dem REST-Weg trägt ihn die
+   * Antwort samt `retry-after` längst.
    */
-  code: Extract<ErrorCode, 'VALIDATION_FAILED' | 'PERMISSION_DENIED'>;
+  code: Extract<ErrorCode, 'VALIDATION_FAILED' | 'PERMISSION_DENIED' | 'RATE_LIMITED'>;
   message: string;
   /** ISO-8601-Zeitstempel des Versands. */
   sentAt: string;

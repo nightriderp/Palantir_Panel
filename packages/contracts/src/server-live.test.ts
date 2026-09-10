@@ -122,10 +122,14 @@ describe('Frames des Server-Live-Kanals', () => {
   });
 
   it('lässt im error-Frame nur Codes zu, die im Katalog stehen', () => {
-    // Der Typ ist auf zwei Codes eingeschränkt; der Test hält fest, dass beide
+    // Der Typ ist auf drei Codes eingeschränkt; der Test hält fest, dass alle
     // tatsächlich im Katalog geführt werden – ein Tippfehler im Vertrag fiele
-    // sonst erst im Browser auf.
-    const codes: ServerLiveErrorFrame['code'][] = ['VALIDATION_FAILED', 'PERMISSION_DENIED'];
+    // sonst erst im Browser auf. `RATE_LIMITED` kam mit Fundpunkt 202 dazu.
+    const codes: ServerLiveErrorFrame['code'][] = [
+      'VALIDATION_FAILED',
+      'PERMISSION_DENIED',
+      'RATE_LIMITED',
+    ];
 
     for (const code of codes) {
       expect(ERROR_CATALOG[code]).toBeDefined();
