@@ -221,13 +221,14 @@ describe('ServerDetail – Aktualisieren (Fundpunkt 190)', () => {
 
 /**
  * Nicht jeder Spielserver nimmt Befehle entgegen: Valheim liest weder seine
- * Standardeingabe noch spricht es RCON. Bis dahin zeigte das Panel trotzdem ein
- * Eingabefeld, dessen Zeilen in einem ungelesenen Rohr verschwanden.
+ * Standardeingabe noch spricht es RCON.
  *
- * Zwei Bedingungen, zwei Bedeutungen: `canUseConsole` sagt, ob der Aufrufer
- * darf, `supportsConsole`, ob es am Spiel etwas zu bedienen gibt.
+ * **Das Fenster bleibt trotzdem** (Wunsch des Betreibers, 2026-09-11). Die
+ * Ausgabe ist bei so einem Server die einzige Stelle, an der man beim
+ * Hochlaufen zusehen kann; gesperrt wird allein die Eingabe. Ein Feld, das
+ * Zeilen annimmt, die nirgends ankommen, waere schlimmer als ein graues.
  */
-describe('Live-Konsole nur, wenn das Spiel eine hat', () => {
+describe('Live-Konsole bei einem Spiel ohne Konsole', () => {
   const MIT_RECHT = serverFixture({
     id: 'srv-1',
     name: 'Welt',
@@ -243,7 +244,7 @@ describe('Live-Konsole nur, wenn das Spiel eine hat', () => {
     expect(await screen.findByLabelText('Konsolenbefehl')).toBeTruthy();
   });
 
-  it('blendet sie aus, wenn das Spiel keine hat – und sagt, warum', async () => {
+  it('zeigt die Ausgabe auch ohne Konsole, sperrt aber die Eingabe', async () => {
     api.fetchServer.mockResolvedValue({
       success: true,
       data: { ...MIT_RECHT, supportsConsole: false },
@@ -253,9 +254,32 @@ describe('Live-Konsole nur, wenn das Spiel eine hat', () => {
     zeichne();
     await screen.findByText('Online');
 
-    expect(screen.queryByLabelText('Konsolenbefehl')).toBeNull();
-    // Sonst suchte jemand die Konsole, die bei jedem anderen Spiel dort steht.
-    expect(screen.getByText('vom Spiel nicht unterstützt')).toBeTruthy();
+    // Das Fenster ist da - die Ausgabe des Containers laeuft weiter.
+    expect(screen.getByRole('log', { name: 'Konsolenausgabe' })).toBeTruthy();
+
+    const feld = screen.getByLabelText('Konsolenbefehl');
+    expect(feld.hasAttribute('disabled')).toBe(true);
+    // Und es steht dabei, warum - sonst haelt es jemand fuer eine Stoerung.
+    expect(feld.getAttribute('placeholder')).toMatch(/keine Befehle entgegen/u);
+    expect(screen.getByRole('button', { name: 'Senden' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText(/kennt keine Serverkonsole/u)).toBeTruthy();
+  });
+
+  it('bietet auch keine Schnellbefehle an, die ins Leere gingen', async () => {
+    api.fetchServer.mockResolvedValue({
+      success: true,
+      data: {
+        ...MIT_RECHT,
+        supportsConsole: false,
+        consoleQuickCommands: [{ label: 'Spieler', command: 'list' }],
+      },
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Online');
+
+    expect(screen.queryByRole('button', { name: 'Spieler' })).toBeNull();
   });
 });
 

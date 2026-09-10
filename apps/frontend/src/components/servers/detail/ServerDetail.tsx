@@ -203,10 +203,11 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
               server={server}
               stats={live.stats}
               console={
-                // Zwei Bedingungen, zwei Bedeutungen: `canUseConsole` sagt, ob
-                // der Aufrufer darf, `supportsConsole`, ob es am Spiel etwas zu
-                // bedienen gibt (Valheim: nein).
-                server.permissions.canUseConsole && server.supportsConsole !== false ? (
+                // Auch bei einem Spiel ohne Konsole (Valheim) – dort ist die
+                // Ausgabe gerade das Interessante, nur das Eingabefeld bleibt
+                // gesperrt. Das entscheidet `ConsoleTab` anhand von
+                // `supportsConsole`; hier zählt allein das Recht.
+                server.permissions.canUseConsole ? (
                   <ConsoleTab
                     server={server}
                     lines={live.consoleLines}

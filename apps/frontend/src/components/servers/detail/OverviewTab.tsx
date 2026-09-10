@@ -135,11 +135,6 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
 
   const detailRows: Array<{ label: string; value: string }> = [
     { label: 'Spiel', value: server.gameTypeName },
-    // Nur, wenn es etwas zu erklären gibt: Sonst suchte jemand die Konsole, die
-    // bei jedem anderen Spiel an dieser Stelle steht.
-    ...(server.supportsConsole === false
-      ? [{ label: 'Konsole', value: 'vom Spiel nicht unterstützt' }]
-      : []),
     { label: 'Node', value: server.hostName ?? 'nicht sichtbar' },
     { label: 'Subdomain', value: server.subdomain },
     {
