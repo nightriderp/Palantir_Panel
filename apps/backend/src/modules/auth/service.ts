@@ -202,9 +202,14 @@ export type AuthAuditAction =
   | 'auth.loginFailed'
   | 'auth.loggedOut'
   | 'auth.sessionRevoked'
+  | 'auth.passwordChanged'
   | 'auth.passwordResetByAdmin'
+  | 'auth.twoFactorEnabled'
   | 'auth.twoFactorDisabled'
-  | 'user.registered';
+  | 'auth.methodLinked'
+  | 'auth.methodUnlinked'
+  | 'user.registered'
+  | 'user.deleted';
 
 export interface AuthAuditSink {
   record(entry: {
@@ -1260,7 +1265,11 @@ export class AuthService {
   }
 
   /** Passwort als weitere Login-Methode ergänzen (Lastenheft §3.1). */
-  async linkPassword(userId: string, input: LinkPasswordInput): Promise<AccountDto> {
+  async linkPassword(
+    userId: string,
+    input: LinkPasswordInput,
+    context: RequestContext = { ipHint: null, deviceInfo: null },
+  ): Promise<AccountDto> {
     await this.requireUser(userId);
 
     if (await this.repository.findAuthMethod(userId, 'password')) {
@@ -1296,6 +1305,13 @@ export class AuthService {
       throw error;
     }
 
+    await this.protokolliere({
+      action: 'auth.methodLinked',
+      user: updated,
+      ipHint: context.ipHint,
+      metadata: { method: 'password' },
+    });
+
     return this.loadAccount(updated);
   }
 
@@ -1316,7 +1332,11 @@ export class AuthService {
    * `deleteAccount` bestätigt dann über den Anzeigenamen, und ein späteres
    * `linkPassword` vergibt eine neue Kennung.
    */
-  async unlinkMethod(userId: string, type: AuthMethodType): Promise<AccountDto> {
+  async unlinkMethod(
+    userId: string,
+    type: AuthMethodType,
+    context: RequestContext = { ipHint: null, deviceInfo: null },
+  ): Promise<AccountDto> {
     const user = await this.requireUser(userId);
     const methods = await this.repository.listAuthMethods(userId);
     const target = methods.find((method) => method.type === type);
@@ -1337,6 +1357,13 @@ export class AuthService {
       type === 'password' && user.username !== null
         ? await this.repository.setUsername(userId, null)
         : user;
+
+    await this.protokolliere({
+      action: 'auth.methodUnlinked',
+      user: updated,
+      ipHint: context.ipHint,
+      metadata: { method: type },
+    });
 
     return this.loadAccount(updated);
   }
@@ -1374,6 +1401,7 @@ export class AuthService {
     userId: string,
     input: ChangePasswordInput,
     keepSessionId: string | null,
+    context: RequestContext = { ipHint: null, deviceInfo: null },
   ): Promise<AccountDto> {
     const user = await this.requireUser(userId);
     const method = await this.repository.findAuthMethod(userId, 'password');
@@ -1392,6 +1420,13 @@ export class AuthService {
     });
 
     await this.revokeSessionsExcept(userId, keepSessionId);
+
+    await this.protokolliere({
+      action: 'auth.passwordChanged',
+      user,
+      ipHint: context.ipHint,
+      metadata: { username: user.username },
+    });
 
     return this.loadAccount(user);
   }
@@ -1484,7 +1519,11 @@ export class AuthService {
   }
 
   /** Schließt die 2FA-Einrichtung mit einem gültigen Code ab. */
-  async confirmTwoFactor(userId: string, code: string): Promise<AccountDto> {
+  async confirmTwoFactor(
+    userId: string,
+    code: string,
+    context: RequestContext = { ipHint: null, deviceInfo: null },
+  ): Promise<AccountDto> {
     const user = await this.requireUser(userId);
     const method = await this.repository.findAuthMethod(userId, 'password');
 
@@ -1502,11 +1541,22 @@ export class AuthService {
 
     await this.repository.updateAuthMethod(method.id, { totpConfirmedAt: this.now() });
 
+    await this.protokolliere({
+      action: 'auth.twoFactorEnabled',
+      user,
+      ipHint: context.ipHint,
+      metadata: { username: user.username },
+    });
+
     return this.loadAccount(user);
   }
 
   /** 2FA abschalten – verlangt Passwort **und** gültigen Code (Pflichtenheft §7). */
-  async disableTwoFactor(userId: string, input: DisableTwoFactorInput): Promise<AccountDto> {
+  async disableTwoFactor(
+    userId: string,
+    input: DisableTwoFactorInput,
+    context: RequestContext = { ipHint: null, deviceInfo: null },
+  ): Promise<AccountDto> {
     const user = await this.requireUser(userId);
     const method = await this.repository.findAuthMethod(userId, 'password');
 
@@ -1525,6 +1575,15 @@ export class AuthService {
     await this.repository.updateAuthMethod(method.id, {
       totpSecret: null,
       totpConfirmedAt: null,
+    });
+
+    // Dieselbe Aktion wie beim Eingriff eines Verwalters - der Unterschied
+    // steht in der Nutzlast (`byAdmin`), nicht im Namen.
+    await this.protokolliere({
+      action: 'auth.twoFactorDisabled',
+      user,
+      ipHint: context.ipHint,
+      metadata: { username: user.username, byAdmin: false },
     });
 
     return this.loadAccount(user);
@@ -1588,7 +1647,11 @@ export class AuthService {
    * je nach Fall `ACCOUNT_HAS_SERVERS` oder `ACCOUNT_HAS_BACKUPS` (beide 409)
    * mit einem Satz, der sagt, was zuerst wegmuss.
    */
-  async deleteAccount(userId: string, input: DeleteAccountInput): Promise<void> {
+  async deleteAccount(
+    userId: string,
+    input: DeleteAccountInput,
+    context: RequestContext = { ipHint: null, deviceInfo: null },
+  ): Promise<void> {
     const user = await this.requireUser(userId);
 
     if (user.isOwner) {
@@ -1643,6 +1706,23 @@ export class AuthService {
     // Bewusst **nach** dem Löschen: Scheitert es doch, bleibt das Konto so, wie
     // es war, statt abgemeldet und trotzdem vorhanden.
     await this.revokeEverySession(userId, this.now());
+
+    /*
+     * Nach dem Loeschen protokolliert (Fundpunkt 198): Das Konto gibt es dann
+     * nicht mehr, der Eintrag zeigt deshalb auf niemanden - Anzeigename und
+     * Kennung stehen in der Nutzlast. Ein Audit-Eintrag mit Fremdschluessel auf
+     * eine geloeschte Zeile waere entweder ein Fehler oder eine Kaskade, die
+     * genau die Spur mitnimmt, um die es hier geht.
+     */
+    await this.audit.record({
+      action: 'user.deleted',
+      actorId: null,
+      actorDisplayName: user.displayName,
+      targetType: null,
+      targetId: null,
+      ipHint: context.ipHint,
+      metadata: { username: user.username, displayName: user.displayName, selbst: true },
+    });
   }
 
   /**

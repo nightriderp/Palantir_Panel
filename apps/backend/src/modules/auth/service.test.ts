@@ -1333,6 +1333,83 @@ describe('Rangschutz der Admin-Eingriffe (Fundpunkte 119 und 124)', () => {
    * Signal, an dem ein Angriff auf ein Konto ueberhaupt sichtbar wird - die
    * Anmeldebremse zaehlt nur je IP und hinterlaesst nichts.
    */
+  /**
+   * Die uebrigen Vorgaenge am eigenen Konto (Fundpunkt 198, zweiter Teil).
+   *
+   * Passwortwechsel, 2FA an und aus, geloeste Anmeldeverfahren und die
+   * Kontoloeschung standen bis zum Audit nicht im Protokoll - obwohl der
+   * Katalog die Aktionen kennt und die Oberflaeche sie uebersetzt. Wer ein
+   * uebernommenes Konto aufraeumte, hinterliess keine Spur.
+   */
+  describe('Audit-Eintraege der Kontopflege (Fundpunkt 198)', () => {
+    async function konto(name = 'pflege') {
+      const { account } = await service.register(
+        { username: name, password: PASSWORD, altcha: ALTCHA },
+        CONTEXT,
+      );
+      auditEntries.length = 0;
+
+      return account;
+    }
+
+    it('protokolliert den Passwortwechsel, ohne Passwoerter zu nennen', async () => {
+      const account = await konto();
+
+      await service.changePassword(
+        account.id,
+        { currentPassword: PASSWORD, newPassword: 'Neues-Passwort-2026!' },
+        null,
+        CONTEXT,
+      );
+
+      const eintrag = auditEntries.find((e) => e.action === 'auth.passwordChanged');
+      expect(eintrag?.actorId).toBe(account.id);
+      expect(eintrag?.ipHint).toBe(CONTEXT.ipHint);
+      expect(JSON.stringify(auditEntries)).not.toContain('Neues-Passwort-2026!');
+      expect(JSON.stringify(auditEntries)).not.toContain(PASSWORD);
+    });
+
+    it('protokolliert das Einschalten und Abschalten der zweiten Stufe', async () => {
+      const account = await konto('mit-2fa');
+      const start = await service.beginTwoFactorSetup(account.id);
+      const code = generateTotp(start.secret, now.getTime());
+      auditEntries.length = 0;
+
+      await service.confirmTwoFactor(account.id, code, CONTEXT);
+
+      expect(auditEntries.map((e) => e.action)).toContain('auth.twoFactorEnabled');
+
+      auditEntries.length = 0;
+      await service.disableTwoFactor(
+        account.id,
+        { password: PASSWORD, code: generateTotp(start.secret, now.getTime()) },
+        CONTEXT,
+      );
+
+      const aus = auditEntries.find((e) => e.action === 'auth.twoFactorDisabled');
+      // Derselbe Name wie beim Eingriff eines Verwalters - der Unterschied
+      // steht in der Nutzlast.
+      expect(aus?.metadata).toMatchObject({ byAdmin: false });
+    });
+
+    it('protokolliert die Loeschung des eigenen Kontos ohne Verweis auf die geloeschte Zeile', async () => {
+      const account = await konto('geht-weg');
+
+      await service.deleteAccount(
+        account.id,
+        { confirmName: 'geht-weg', password: PASSWORD },
+        CONTEXT,
+      );
+
+      const eintrag = auditEntries.find((e) => e.action === 'user.deleted');
+      expect(eintrag).toBeDefined();
+      // Das Konto gibt es nicht mehr - der Eintrag zeigt auf niemanden.
+      expect(eintrag?.targetId).toBeNull();
+      expect(eintrag?.targetType).toBeNull();
+      expect(eintrag?.metadata).toMatchObject({ username: 'geht-weg', selbst: true });
+    });
+  });
+
   describe('Audit-Eintraege der Anmeldung (Fundpunkt 198)', () => {
     it('protokolliert die erfolgreiche Anmeldung', async () => {
       const { account } = await service.register(
