@@ -1,6 +1,7 @@
 import {
   type GameServerDto,
   type HostNodeDto,
+  type HostNodeUsageSource,
   type ServerLiveStats,
   isFaultedServerStatus,
   isTransitionalServerStatus,
@@ -40,6 +41,14 @@ export interface StatusMetric {
   label: string;
   /** Fertig formatierter Wert, z. B. `4/7` oder `18,5 GB/32 GB`. */
   value: string;
+  /**
+   * Woher die Zahl stammt – „gemessen", „gebucht", „teils gemessen"
+   * (Fundpunkt 204). Steht klein hinter der Beschriftung.
+   *
+   * `undefined`, wenn sich die Frage nicht stellt (Serverzahlen zählt niemand
+   * zweimal) oder der Vertrag die Herkunft nicht mitliefert.
+   */
+  origin?: string;
   tone: StatusMetricTone;
   /** Erklärt, worüber die Zahl gebildet wird – erscheint als Tooltip. */
   note: string;
@@ -61,6 +70,47 @@ export interface StatusSummaryInput {
 function sumDefined(values: readonly (number | null | undefined)[]): number | null {
   const known = values.filter((value): value is number => value != null);
   return known.length === 0 ? null : known.reduce((total, value) => total + value, 0);
+}
+
+/**
+ * Herkunft der Zahlen einer Kennzahl (Fundpunkt 204).
+ *
+ * Die Auslastung einer Node ist entweder gemessen oder aus den Kontingenten der
+ * angelegten Server gerechnet. Welcher Fall gilt, entscheidet das Backend je
+ * Node und bei **jedem** Abruf neu: Ist die letzte Messung älter als fünf
+ * Minuten (`MEASUREMENT_MAX_AGE_MS`), fällt es stillschweigend auf die
+ * Buchungen zurück. In der Prüfung sprang dieselbe Kachel dadurch von 1,26 TB
+ * auf 216 GB, ohne dass sich an der Anzeige irgendetwas änderte – wer das
+ * sieht, sucht den Fehler bei sich statt bei der Node.
+ *
+ * Deshalb steht die Herkunft jetzt an der Kachel. Fehlt `source` – der Vertrag
+ * führt es als optional –, bleibt sie ungenannt statt geraten.
+ */
+function herkunft(quellen: readonly (HostNodeUsageSource | undefined)[]): {
+  label?: string;
+  satz: string;
+} {
+  if (quellen.length === 0 || quellen.some((quelle) => quelle === undefined)) {
+    return { satz: '' };
+  }
+
+  const gemessen = quellen.filter((quelle) => quelle === 'measured').length;
+
+  if (gemessen === quellen.length) {
+    return { label: 'gemessen', satz: ' Vom Agent auf der Node gemessen.' };
+  }
+
+  if (gemessen === 0) {
+    return {
+      label: 'gebucht',
+      satz: ' Keine frische Messung – gerechnet aus den Kontingenten der angelegten Server.',
+    };
+  }
+
+  return {
+    label: 'teils gemessen',
+    satz: ` Gemessen auf ${gemessen} von ${quellen.length} Nodes; die übrigen zählen ihre Kontingente.`,
+  };
 }
 
 /**
@@ -107,16 +157,16 @@ export function buildStatusMetrics({
      * Zähler und Nenner müssen deshalb aus **derselben** Menge stammen – sonst
      * misst der Bruch zwei verschiedene Grundgesamtheiten gegeneinander.
      */
-    const cpuValues = online
-      .map((node) => node.usage?.cpuPercent)
-      .filter((value): value is number => value != null);
-    const cpuSum = sumDefined(cpuValues);
+    const cpuNodes = online.filter((node) => node.usage?.cpuPercent != null);
+    const cpuSum = sumDefined(cpuNodes.map((node) => node.usage?.cpuPercent));
+    const cpuHerkunft = herkunft(cpuNodes.map((node) => node.usage?.source));
     metrics.push({
       key: 'cpu',
       label: 'CPU',
-      value: cpuSum === null ? '—' : `${Math.round(cpuSum / cpuValues.length)}%`,
+      value: cpuSum === null ? '—' : `${Math.round(cpuSum / cpuNodes.length)}%`,
+      ...(cpuHerkunft.label === undefined ? {} : { origin: cpuHerkunft.label }),
       tone: 'warning',
-      note: 'Durchschnitt über die Maschinen der verbundenen Nodes, die Messwerte melden – nicht über einzelne Container.',
+      note: `Durchschnitt über die Maschinen der verbundenen Nodes, die Messwerte melden – nicht über einzelne Container.${cpuHerkunft.satz}`,
     });
 
     // RAM ist der **gebuchte** Anteil (Summe der Server-Limits), nicht der
@@ -129,27 +179,36 @@ export function buildStatusMetrics({
       key: 'ram',
       label: 'RAM',
       value: `${formatMegabytes(ramUsed)}/${formatMegabytes(ramTotal)}`,
+      // Steht hier fest, nicht aus `usage.source`: Diese Kachel liest
+      // `capacity.allocated` und wechselt nie die Bedeutung.
+      origin: 'gebucht',
       tone: 'accent',
       note: 'Summe des gebuchten Arbeitsspeichers über alle Nodes – gebucht, nicht gemessen.',
     });
 
     /*
-     * Platte dagegen ist die **gemessene** Belegung: Daten liegen auch dann auf
-     * der Node, wenn der Server gestoppt ist. Der Nenner ist deshalb nur der
-     * Platz der Nodes, die ihre Belegung gemeldet haben. Zählte er alle mit,
-     * zeigte eine Node ohne Messung ihren gesamten Platz als „frei" – zwei
-     * Nodes à 500 GB, eine ohne Messung, ergäben „100 GB/1000 GB" statt
-     * „100 GB/500 GB".
+     * Platte dagegen ist die **belegte**, nicht die gebuchte: Daten liegen auch
+     * dann auf der Node, wenn der Server gestoppt ist. Der Nenner ist deshalb
+     * nur der Platz der Nodes, die eine Belegung nennen. Zählte er alle mit,
+     * zeigte eine Node ohne Zahl ihren gesamten Platz als „frei" – zwei Nodes à
+     * 500 GB, eine ohne Zahl, ergäben „100 GB/1000 GB" statt „100 GB/500 GB".
+     *
+     * Der Filter wählt **nicht** die gemessenen Nodes aus (Fundpunkt 204): Das
+     * Backend liefert für jede Node eine Zahl und schaltet nur intern von der
+     * Messung auf die Kontingente um. Was hier steht, sagt `usage.source` –
+     * und seit dem Audit auch die Kachel selbst.
      */
-    const gemessen = nodes.filter((node) => node.usage?.diskUsedMb != null);
-    const diskUsed = sumDefined(gemessen.map((node) => node.usage?.diskUsedMb));
-    const diskTotal = gemessen.reduce((total, node) => total + node.capacity.total.diskMb, 0);
+    const mitZahl = nodes.filter((node) => node.usage?.diskUsedMb != null);
+    const diskUsed = sumDefined(mitZahl.map((node) => node.usage?.diskUsedMb));
+    const diskTotal = mitZahl.reduce((total, node) => total + node.capacity.total.diskMb, 0);
+    const diskHerkunft = herkunft(mitZahl.map((node) => node.usage?.source));
     metrics.push({
       key: 'disk',
       label: 'Disk',
       value: diskUsed === null ? '—' : `${formatMegabytes(diskUsed)}/${formatMegabytes(diskTotal)}`,
+      ...(diskHerkunft.label === undefined ? {} : { origin: diskHerkunft.label }),
       tone: 'warning',
-      note: 'Summe der gemessenen Plattenbelegung über die Nodes, für die eine Messung vorliegt.',
+      note: `Summe der Plattenbelegung über die Nodes, die eine Zahl nennen.${diskHerkunft.satz}`,
     });
 
     metrics.push({

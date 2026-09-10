@@ -55,6 +55,11 @@ export function GlobalStatus({ metrics }: GlobalStatusProps) {
             {metric.value}
           </span>
           <span className="text-xs text-ink-soft">{metric.label}</span>
+          {metric.origin === undefined ? null : (
+            // Fundpunkt 204: Ohne dieses Wort wechselte dieselbe Kachel
+            // stillschweigend zwischen gemessener und gebuchter Zahl.
+            <span className="text-2xs text-ink-faint">{metric.origin}</span>
+          )}
         </span>
       ))}
     </div>
