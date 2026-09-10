@@ -290,6 +290,34 @@ export function classifyEntry(
         blockedReason: null,
       };
     }
+
+    default:
+      /*
+       * Eine Postenart, die dieser Code nicht kennt (Audit 2026-09-10,
+       * Fundpunkt 224).
+       *
+       * Über die Union ist die Fallunterscheidung vollständig – der Wert kommt
+       * aber aus `storage_snapshots.entries`, einer `jsonb`-Spalte, und die
+       * prüft zur Laufzeit niemand nach. Beim **Empfang** tut es
+       * `agentStorageEntrySchema` Posten für Posten, ausdrücklich damit ein
+       * einzelner Ordner nicht die ganze Übersicht zerlegt; beim **Lesen** aus
+       * der Datenbank fehlte dieselbe Vorsicht. Ohne diesen Zweig lieferte
+       * `classifyEntry` `undefined`, `toStorageEntryDto` griff darauf zu und
+       * die ganze Node-Platz-Seite antwortete mit HTTP 500 – dauerhaft, denn
+       * der Scan liegt gespeichert, und über die Oberfläche gibt es keinen Weg
+       * zurück.
+       *
+       * Erreichbar wird das, sobald eine spätere Agent-Fassung eine Postenart
+       * ergänzt und das Schema mitzieht, dieser Code aber nicht. Die Zeile ist
+       * dann nicht löschbar (`notClearlyOrphaned`) und steht unter `other` –
+       * sichtbar, aber ohne Wirkung. Der Rest der Seite bleibt benutzbar.
+       */
+      return {
+        kind: 'other',
+        label: entry.path ?? 'Unbekannter Posten',
+        serverId: entry.serverId,
+        blockedReason: 'notClearlyOrphaned',
+      };
   }
 }
 

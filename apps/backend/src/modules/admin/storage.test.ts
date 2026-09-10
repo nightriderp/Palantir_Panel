@@ -1,4 +1,4 @@
-import { httpStatusForErrorCode } from '@palantir/contracts';
+import { type AgentStorageEntry, httpStatusForErrorCode } from '@palantir/contracts';
 import { startStorageScanInputSchema } from '@palantir/validation';
 import { describe, expect, it } from 'vitest';
 import { createAuditService } from './audit.js';
@@ -300,6 +300,45 @@ describe('Storage-Explorer: löschbare Posten (Lastenheft §3.8)', () => {
  * dessen Datenordner über den Speicher-Explorer löschbar. Die Sperre griff nur
  * für `serverData`.
  */
+/*
+ * Fundpunkt 224: Die Fallunterscheidung ueber `entry.kind` ist ueber die Union
+ * vollstaendig - der Wert kommt aber aus einer `jsonb`-Spalte und wird beim
+ * Lesen nicht nachgeprueft. Ohne `default`-Zweig lieferte `classifyEntry`
+ * `undefined`, und die ganze Node-Platz-Seite antwortete mit HTTP 500 -
+ * dauerhaft, denn der Scan liegt gespeichert.
+ */
+describe('Storage-Explorer: unbekannte Postenart legt die Seite nicht lahm (Fundpunkt 224)', () => {
+  it('zeigt sie als „other" und gesperrt, der Rest der Liste bleibt lesbar', async () => {
+    const unbekannt = {
+      ...agentEntry({ path: '/srv/palantir/neuartig', serverId: null, inUse: false }),
+      // Eine Fassung des Agents, die dieser Code noch nicht kennt.
+      kind: 'nochNichtErfunden',
+    } as unknown as AgentStorageEntry;
+    const backup = agentEntry({
+      kind: 'backup',
+      path: '/srv/palantir/backups/beispiel.tar.gz',
+      backupFileName: 'beispiel.tar.gz',
+      serverId: null,
+      inUse: false,
+    });
+
+    const { storage } = buildService({ entries: [unbekannt, backup] });
+
+    const snapshot = await storage.getSnapshot(ctxWith(actorWith('node.manage')), NODE_ID);
+    const eintraege = snapshot.breakdown?.entries ?? [];
+
+    expect(eintraege).toHaveLength(2);
+    expect(eintraege[0]).toMatchObject({
+      kind: 'other',
+      label: '/srv/palantir/neuartig',
+      deleteBlockedReason: 'notClearlyOrphaned',
+    });
+    expect(eintraege[0]?.permissions.canDelete).toBe(false);
+    // Der bekannte Posten daneben bleibt unveraendert loeschbar.
+    expect(eintraege[1]?.permissions.canDelete).toBe(true);
+  });
+});
+
 describe('Storage-Explorer: verwaister Ordner eines bekannten Servers (Fundpunkt 136)', () => {
   /** Datenordner, benannt nach der Server-Id, aber ohne Container auf der Node. */
   const ohneContainer = agentEntry({
