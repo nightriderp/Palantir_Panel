@@ -1,7 +1,7 @@
 'use client';
 
 import { type GameServerDto, type ServerLiveStats } from '@palantir/contracts';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   MetricTile,
   Panel,
@@ -56,6 +56,20 @@ const HISTORY_WINDOWS = [
 
 const HISTORY_WINDOW_DEFAULT = 60;
 
+/**
+ * Wie alt darf die letzte festgehaltene Messung sein, um noch in die Kacheln zu
+ * dürfen? (Nachtrag zu Fundpunkt 206.)
+ *
+ * Die Kacheln zeigen den **jetzigen** Zustand. Eine drei Stunden alte Messung
+ * dort hinzuschreiben wäre eine andere Aussage, auch mit Zeitstempel daneben.
+ * Der Wert hängt bewusst nicht am gewählten Verlaufsfenster: Sonst änderte ein
+ * Klick auf „48 Std." nebenbei, was die Kacheln behaupten.
+ *
+ * Eine Stunde ist grosszügig – der Agent meldet im Sekundentakt, sobald er
+ * verbunden ist.
+ */
+const FALLBACK_MAX_AGE_MS = 60 * 60 * 1000;
+
 export interface OverviewTabProps {
   server: GameServerDto;
   stats: ServerLiveStats | null;
@@ -90,9 +104,18 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
    * Letzte festgehaltene Messung – Ersatz, solange über den Live-Kanal nichts
    * kommt. Nur bei einem Server, der überhaupt Messwerte hat: Bei einem
    * gestoppten stünde dort sonst der Zustand von vorhin, als liefe er noch.
+   *
+   * Und nur, solange sie frisch genug ist (siehe {@link FALLBACK_MAX_AGE_MS}).
    */
-  const letzteMessung =
-    live === null && hasLiveStats(server.status) ? (history.data?.samples.at(-1) ?? null) : null;
+  const letzteMessung = useMemo(() => {
+    if (live !== null || !hasLiveStats(server.status)) return null;
+
+    const juengste = history.data?.samples.at(-1) ?? null;
+    if (juengste === null) return null;
+
+    const alter = Date.now() - new Date(juengste.updatedAt).getTime();
+    return Number.isFinite(alter) && alter <= FALLBACK_MAX_AGE_MS ? juengste : null;
+  }, [live, server.status, history.data]);
 
   /** Was die Kacheln zeigen: der Live-Wert, sonst die letzte Messung. */
   const anzeige = live ?? letzteMessung;
@@ -206,8 +229,8 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         </p>
       ) : live === null && hasLiveStats(server.status) && !history.loading ? (
         <p className="text-xs text-ink-faint">
-          Für diesen Server liegen noch keine Messwerte vor. Meldet sich die Node wieder, füllen
-          sich die Kacheln von selbst.
+          In der letzten Stunde hat dieser Server keine Messwerte gemeldet. Meldet sich die Node
+          wieder, füllen sich die Kacheln von selbst; ältere Zahlen stehen im Verlauf.
         </p>
       ) : null}
 
