@@ -23,7 +23,7 @@ import { type ContainerRuntime } from '../../runtime/container-runtime.js';
 import { ContainerRuntimeError } from '../../runtime/errors.js';
 import { resolveWithinRoot } from '../../runtime/paths.js';
 import { type DataVolumePaths } from '../../runtime/types.js';
-import { resolveWithinDirectory } from '../paths.js';
+import { assertOhnePfadausbruch, resolveWithinDirectory } from '../paths.js';
 
 export interface DeleteServerFileOptions {
   /** Verzeichnis samt Inhalt entfernen. Ohne das scheitert ein nicht-leeres. */
@@ -82,6 +82,15 @@ export async function deleteServerFile(
     // Zweite Schranke, diesmal im Host-Pfadraum: Der Datenordner muss dort
     // liegen, wo der Agent ueberhaupt arbeiten darf.
     resolveWithinDirectory(options.allowedRoot, aufDemHost);
+
+    /*
+     * Dritte Schranke, und die einzige gegen Verknuepfungen (Fundpunkt 201):
+     * Die beiden vorherigen vergleichen Zeichenketten. Der Datenordner haengt
+     * im Spielcontainer; wer dort Code ausfuehren darf - bei Paper genuegt eine
+     * hochgeladene Erweiterung - legt `ln -s <fremder Server> welt/link`, und
+     * `rm` auf dem Host folgte dem Link.
+     */
+    await assertOhnePfadausbruch(options.allowedRoot, aufDemHost);
   }
 
   let istVerzeichnis: boolean;

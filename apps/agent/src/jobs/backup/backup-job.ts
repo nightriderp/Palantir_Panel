@@ -33,7 +33,7 @@ import type {
   RestoreBackupCommandResult,
 } from '@palantir/contracts';
 import { ContainerRuntimeError, type ContainerRuntime } from '../../runtime/index.js';
-import { resolveWithinDirectory } from '../paths.js';
+import { assertOhnePfadausbruch, resolveWithinDirectory } from '../paths.js';
 import { checksumOfFile, packDirectory, unpackArchive } from './tar-gz.js';
 
 /** Obergrenze eines einzelnen `DOWNLOAD_BACKUP`-Blocks (`AGENT_DOWNLOAD_BLOCK_MAX_BYTES`). */
@@ -89,6 +89,9 @@ export class BackupJob {
   async createBackup(payload: CreateBackupCommandPayload): Promise<CreateBackupCommandResult> {
     const startedAt = this.#now().toISOString();
     const quelle = resolveWithinDirectory(this.#dataDir, payload.sourcePath);
+    // Gegen Verknuepfungen hilft erst der Blick aufs Dateisystem (Fundpunkt 201):
+    // Sonst wanderten fremde Serverdaten in das Archiv.
+    await assertOhnePfadausbruch(this.#dataDir, quelle);
     await this.#erwarteVerzeichnis(quelle, payload.sourcePath);
 
     const archiv = this.archivePathFor(payload.serverId, payload.backupId);
@@ -179,19 +182,16 @@ export class BackupJob {
     const ziel = resolveWithinDirectory(this.#dataDir, payload.targetPath);
 
     /*
-     * Das Datenverzeichnis selbst ist kein gültiges Ziel: `resolveWithinDirectory`
-     * gibt die Wurzel zurück, wenn der Kandidat auf sie zeigt (`.`, `''`, der
-     * absolute Pfad selbst) – und geleert würde dann der Datenordner **aller**
-     * Server der Node (Fundpunkt 201). Wiederhergestellt wird immer in den
-     * Ordner genau eines Servers.
+     * Das Datenverzeichnis selbst ist kein gültiges Ziel – das lehnt seit
+     * Fundpunkt 201 bereits `resolveWithinDirectory` ab. Hier stand dafür eine
+     * eigene Prüfung; mit der Schranke in `paths.ts` ist sie überflüssig.
+     *
+     * Was ein Zeichenkettenvergleich nicht sieht, ist eine Verknüpfung: Der
+     * Datenordner hängt im Spielcontainer, und wer dort Code ausführen darf –
+     * bei Paper genügt eine hochgeladene Erweiterung – legt
+     * `ln -s <fremder Server> ...`. Geleert würde sonst der fremde Ordner.
      */
-    if (path.resolve(ziel) === path.resolve(this.#dataDir)) {
-      throw new ContainerRuntimeError('INVALID_PATH', {
-        message:
-          'Wiederhergestellt wird in den Ordner eines Servers, nicht in das Datenverzeichnis.',
-        details: { dataDir: this.#dataDir, targetPath: payload.targetPath },
-      });
-    }
+    await assertOhnePfadausbruch(this.#dataDir, ziel);
 
     let angehalten = false;
 

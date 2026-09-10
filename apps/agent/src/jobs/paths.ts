@@ -20,8 +20,20 @@
  * Parallelstruktur ohne Gewinn (CLAUDE.md §3, §5).
  */
 
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ContainerRuntimeError } from '../runtime/index.js';
+
+export interface ResolveOptionen {
+  /**
+   * Die Wurzel selbst als Ergebnis zulassen.
+   *
+   * Vorgabe `false`: Fast jeder Aufrufer meint einen Pfad **in** der Wurzel,
+   * und die beiden, die das Ergebnis zum Löschen benutzen, meinten es ganz
+   * sicher (Fundpunkt 201).
+   */
+  readonly erlaubeWurzel?: boolean;
+}
 
 /**
  * Löst `candidate` gegen `root` auf und stellt sicher, dass das Ergebnis
@@ -31,9 +43,16 @@ import { ContainerRuntimeError } from '../runtime/index.js';
  * Präfix-Vergleich der Zeichenketten: `/srv/palantir/servers-alt` beginnt mit
  * `/srv/palantir/servers`, liegt aber nicht darin.
  *
+ * Rein lexikalisch – gegen symbolische Verknüpfungen hilft erst
+ * {@link assertOhnePfadausbruch}, und die kostet einen Dateisystemzugriff.
+ *
  * @throws {ContainerRuntimeError} `INVALID_PATH`
  */
-export function resolveWithinDirectory(root: string, candidate: string): string {
+export function resolveWithinDirectory(
+  root: string,
+  candidate: string,
+  optionen: ResolveOptionen = {},
+): string {
   if (root.includes('\0') || candidate.includes('\0')) {
     throw new ContainerRuntimeError('INVALID_PATH', {
       message: 'Pfade dürfen kein NUL-Byte enthalten.',
@@ -46,6 +65,23 @@ export function resolveWithinDirectory(root: string, candidate: string): string 
   const relativ = path.relative(wurzel, ziel);
 
   if (relativ === '') {
+    /*
+     * Die Wurzel selbst ist kein gültiger Pfad (Audit 2026-09-10,
+     * Fundpunkt 201).
+     *
+     * Vorher gab die Funktion sie zurück, und zwei Aufrufer löschten danach
+     * rekursiv: `RESTORE_BACKUP` leerte mit `targetPath: '.'` den Datenordner
+     * **aller** Server der Node, `REMOVE_STORAGE_ENTRY` entfernte denselben
+     * Baum. Ein Kandidat, der auf nichts innerhalb der Wurzel zeigt, ist kein
+     * Ziel – wer die Wurzel wirklich meint, sagt es mit `erlaubeWurzel`.
+     */
+    if (optionen.erlaubeWurzel !== true) {
+      throw new ContainerRuntimeError('INVALID_PATH', {
+        message: 'Das Verzeichnis selbst ist kein gültiges Ziel – erwartet wird ein Pfad darin.',
+        details: { root: wurzel, candidate },
+      });
+    }
+
     return ziel;
   }
 
@@ -85,6 +121,93 @@ export function resolveWithinAny(roots: readonly string[], candidate: string): s
     message: 'Der Pfad liegt außerhalb der erlaubten Verzeichnisse.',
     details: { candidate, roots },
   });
+}
+
+/**
+ * Prüft, dass der Pfad auch **nach** Auflösung aller Verknüpfungen noch in
+ * `root` liegt (Audit 2026-09-10, Fundpunkt 201).
+ *
+ * {@link resolveWithinDirectory} vergleicht Zeichenketten. Das genügt gegen
+ * `..` und absolute Pfade, nicht aber gegen eine symbolische Verknüpfung: Der
+ * Datenordner ist in den Spielcontainer eingehängt, und wer dort Code
+ * ausführen darf – bei Paper reicht eine hochgeladene Erweiterung – legt darin
+ * `ln -s /srv/palantir/servers/<fremd> welt/link`. Der Agent läuft auf dem Host
+ * und öffnet den Pfad mit `node:fs`; ohne diese Prüfung folgt er dem Link über
+ * alle Server der Node hinweg.
+ *
+ * Aufgelöst wird der **längste vorhandene** Teil des Pfades: Ein Ziel, das noch
+ * nicht existiert (frisch angelegter Ordner, Datei vor dem Schreiben), soll
+ * nicht daran scheitern, dass `realpath` es nicht findet. Was darunter noch
+ * entsteht, kann keine Verknüpfung mehr sein, die vor der Prüfung lag.
+ *
+ * Bewusst getrennt von {@link resolveWithinDirectory}: Diese Prüfung kostet
+ * einen Dateisystemzugriff und gehört deshalb dorthin, wo anschließend
+ * wirklich geöffnet, geschrieben oder gelöscht wird – nicht in jede
+ * Pfadberechnung.
+ *
+ * @throws {ContainerRuntimeError} `INVALID_PATH`
+ */
+export async function assertOhnePfadausbruch(root: string, ziel: string): Promise<void> {
+  const wurzel = await echterPfad(path.resolve(root));
+  const aufgeloest = await echterPfad(path.resolve(ziel));
+  const relativ = path.relative(wurzel, aufgeloest);
+
+  if (relativ !== '' && (relativ.startsWith('..') || path.isAbsolute(relativ))) {
+    throw new ContainerRuntimeError('INVALID_PATH', {
+      message: 'Der Pfad führt über eine Verknüpfung aus dem erlaubten Verzeichnis heraus.',
+      details: { root: wurzel, target: ziel, resolved: aufgeloest },
+    });
+  }
+}
+
+/**
+ * Wie {@link assertOhnePfadausbruch}, aber gegen mehrere erlaubte Wurzeln –
+ * das Gegenstück zu {@link resolveWithinAny}.
+ */
+export async function assertOhnePfadausbruchInEinem(
+  roots: readonly string[],
+  ziel: string,
+): Promise<void> {
+  const aufgeloest = await echterPfad(path.resolve(ziel));
+
+  for (const root of roots) {
+    const wurzel = await echterPfad(path.resolve(root));
+    const relativ = path.relative(wurzel, aufgeloest);
+
+    if (relativ === '' || (!relativ.startsWith('..') && !path.isAbsolute(relativ))) {
+      return;
+    }
+  }
+
+  throw new ContainerRuntimeError('INVALID_PATH', {
+    message: 'Der Pfad führt über eine Verknüpfung aus den erlaubten Verzeichnissen heraus.',
+    details: { roots, target: ziel, resolved: aufgeloest },
+  });
+}
+
+/** `realpath` des längsten vorhandenen Teils; nicht Vorhandenes bleibt stehen. */
+async function echterPfad(kandidat: string): Promise<string> {
+  let vorhanden = kandidat;
+  const rest: string[] = [];
+
+  for (;;) {
+    try {
+      const aufgeloest = await fs.realpath(vorhanden);
+
+      return rest.length === 0 ? aufgeloest : path.join(aufgeloest, ...rest.reverse());
+    } catch {
+      const eltern = path.dirname(vorhanden);
+
+      if (eltern === vorhanden) {
+        // Bis zur Wurzel des Dateisystems nichts gefunden – dann bleibt der
+        // Pfad, wie er ist; der lexikalische Vergleich hat bereits gegriffen.
+        return kandidat;
+      }
+
+      rest.push(path.basename(vorhanden));
+      vorhanden = eltern;
+    }
+  }
 }
 
 /** UUID-Format der Entitäts-Ids – Ordnernamen der Server folgen ihm. */
