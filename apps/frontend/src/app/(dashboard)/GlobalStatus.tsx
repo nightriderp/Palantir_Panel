@@ -12,10 +12,12 @@ import { type StatusMetric, type StatusMetricTone } from './shellSummary';
  *
  * **Unterhalb von 768px** entfällt die Beschriftung „Gesamtstatus", wie im
  * Mockup: dort ist die Zeile für die Menü-Schaltfläche und die Zahlen zu eng.
- * Die Kennzahlen selbst bleiben alle da – sie stehen dort in einer Zeile, die
- * sich seitlich schieben lässt (Fundpunkt 219). Vorher brachen sie um und
- * belegten mit sieben Zeilen die halbe Bildschirmhöhe; der eigentliche Inhalt
- * begann unter dem Falz.
+ * Die Kennzahlen selbst bleiben alle da – sie rücken dort unter die Symbole in
+ * eine eigene, volle Zeile, die sich seitlich schieben lässt (Fundpunkt 219).
+ * Vorher brachen sie um und belegten mit sieben Zeilen die halbe
+ * Bildschirmhöhe; der eigentliche Inhalt begann unter dem Falz. Neben den
+ * Symbolen bliebe für sie nur ein 150 Pixel breiter Streifen – deshalb
+ * `order-last` und die volle Breite statt eines Restplatzes.
  */
 
 const DOT_CLASSES: Record<StatusMetricTone, string> = {
@@ -49,7 +51,7 @@ export function GlobalStatus({ metrics }: GlobalStatusProps) {
       dem Falz. Unterhalb von `md` steht sie deshalb in einer Zeile und laesst
       sich seitlich schieben; ab `md` bricht sie wie bisher um.
     */
-    <div className="flex min-w-0 flex-1 items-center gap-x-4.5 gap-y-1.5 overflow-x-auto md:flex-wrap md:overflow-x-visible">
+    <div className="order-last flex w-full min-w-0 items-center gap-x-4.5 gap-y-1.5 overflow-x-auto md:order-none md:w-auto md:flex-1 md:flex-wrap md:overflow-x-visible">
       <span className="hidden shrink-0 text-xs uppercase tracking-[0.1em] text-ink-soft md:inline">
         Gesamtstatus
       </span>
