@@ -95,9 +95,10 @@ export interface GameTypeDto {
  *
  * `portConnect` prüft nur, ob sich eine TCP-Verbindung aufbauen lässt, und
  * liefert deshalb keine Spielerzahlen. `gamedig` fragt das Spieleprotokoll ab
- * und liefert zusätzlich Spielerzahl und Ping.
+ * und liefert zusätzlich Spielerzahl und Ping. `none` fragt gar nicht – für
+ * Spiele, an die keine Frage geht, die eine Antwort brächte.
  */
-export const GAME_QUERY_KINDS = ['portConnect', 'gamedig'] as const;
+export const GAME_QUERY_KINDS = ['portConnect', 'gamedig', 'none'] as const;
 
 export type GameQueryKind = (typeof GAME_QUERY_KINDS)[number];
 
@@ -138,7 +139,32 @@ export interface GamedigQuerySpec {
   readonly requiresConfigFlag?: string;
 }
 
-export type GameQuerySpec = PortConnectQuerySpec | GamedigQuerySpec;
+/**
+ * **Dieses Spiel lässt sich nicht abfragen.**
+ *
+ * Es gibt Server, an die keine Frage geht, die eine Antwort brächte: Palworld
+ * beantwortet nur seine eigene REST-Schnittstelle und die verlangt das
+ * Administrator-Passwort; andere Spiele sprechen ausschließlich UDP, wo ein
+ * Verbindungsversuch nichts beweist.
+ *
+ * Der Start gilt dann als geglückt, sobald der Container läuft — mehr ist
+ * über so einen Server nicht in Erfahrung zu bringen, und die falsche Aussage
+ * wäre die schlechtere. Der Preis ist derselbe wie bei
+ * {@link GamedigQuerySpec.requiresConfigFlag}: keine Spielerzahl, kein Ping,
+ * kein automatischer Stopp bei 0 Spielern.
+ */
+export interface NoQuerySpec {
+  readonly kind: 'none';
+  /**
+   * Container-Port, der die Adresse des Spielers trägt.
+   *
+   * Steht auch hier, obwohl nichts abgefragt wird: Die Portzuweisung und die
+   * angezeigte Adresse hängen daran, nicht nur die Sonde.
+   */
+  readonly containerPort: number;
+}
+
+export type GameQuerySpec = PortConnectQuerySpec | GamedigQuerySpec | NoQuerySpec;
 
 export type GameTypePortProtocol = 'tcp' | 'udp';
 
