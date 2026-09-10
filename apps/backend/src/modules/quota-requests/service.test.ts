@@ -321,14 +321,27 @@ describe('Bescheiden', () => {
     expect(auditRepository.rows).toEqual([]);
   });
 
-  it('protokolliert die Ablehnung nicht als Kontingent-Änderung', async () => {
-    // Eine Ablehnung ändert kein Kontingent. Für den Vorgang selbst fehlt im
-    // Katalog (`packages/contracts/src/audit.ts`) noch eine eigene Aktion.
+  it('protokolliert die Ablehnung als eigene Aktion (Fundpunkt 237)', async () => {
+    /*
+     * Eine Ablehnung ändert kein Kontingent – sie darf deshalb nicht als
+     * `user.limitsChanged` erscheinen. Bis hierher hinterließ sie aber gar
+     * nichts, obwohl `quotaRequest.rejected` im Katalog steht
+     * (`packages/contracts/src/audit.ts`) und die Oberfläche die Aktion schon
+     * beschriftet. Wer hinterher fragte, warum ein Konto sein Kontingent nicht
+     * bekommen hat, fand im Protokoll keine Zeile dazu.
+     */
     const { service, auditRepository } = build({ vorhanden: [record()] });
 
-    await service.reject(adminActor, ADMIN_ID, 'req-1', {});
+    await service.reject(adminActor, ADMIN_ID, 'req-1', { note: 'Node ist voll.' });
 
-    expect(auditRepository.rows).toEqual([]);
+    expect(auditRepository.rows).toHaveLength(1);
+    expect(auditRepository.rows[0]).toMatchObject({
+      action: 'quotaRequest.rejected',
+      actorId: ADMIN_ID,
+      targetType: 'quotaRequest',
+      targetId: 'req-1',
+      metadata: { userId: USER_ID, decisionNote: 'Node ist voll.' },
+    });
   });
 
   it('entscheidet genau einmal', async () => {

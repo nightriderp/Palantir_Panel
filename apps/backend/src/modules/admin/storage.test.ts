@@ -615,6 +615,34 @@ describe('Storage-Explorer: Scan on demand (Pflichtenheft §16)', () => {
     expect(repository.snapshot?.entries).toHaveLength(1);
   });
 
+  it('protokolliert den Scan (Fundpunkt 237)', async () => {
+    /*
+     * `storage.scanned` stand im Katalog (`packages/contracts/src/audit.ts`),
+     * die Oberflaeche beschriftet die Aktion sogar schon – geschrieben wurde
+     * sie nie. Der Lauf ist kein Lesevorgang: Er laesst den Agent den ganzen
+     * Datentraeger durchgehen und ersetzt die gespeicherte Uebersicht, und
+     * genau die entscheidet danach, was sich loeschen laesst.
+     */
+    const { storage, auditRepository } = buildService({
+      gateway: breakdownGateway([agentEntry()]),
+    });
+
+    await storage.scan(
+      ctxWith(actorWith('node.manage')),
+      NODE_ID,
+      startStorageScanInputSchema.parse({}),
+    );
+
+    expect(auditRepository.rows).toHaveLength(1);
+    expect(auditRepository.rows[0]).toMatchObject({
+      action: 'storage.scanned',
+      actorId: USER_ID,
+      targetType: 'node',
+      targetId: NODE_ID,
+      metadata: { entryCount: 1 },
+    });
+  });
+
   it('nimmt fremde Ordner an, statt den ganzen Scan zu verwerfen', async () => {
     // Audit-Fundstelle contracts-validation-02: Auf dem Homeserver liegt ein
     // von Hand angelegter Ordner `alt-server`. Der Agent kennt keinen Container
