@@ -34,6 +34,7 @@ const api = vi.hoisted(() => ({
   fetchInstanceSettings: vi.fn(),
   fetchUserServers: vi.fn(),
   resetUserPassword: vi.fn(),
+  approveRegistrationRequest: vi.fn(),
 }));
 
 const sitzung = vi.hoisted(() => ({ account: null as AccountDto | null }));
@@ -49,6 +50,7 @@ vi.mock('@/lib/api/admin', async (importOriginal) => ({
   fetchInstanceSettings: api.fetchInstanceSettings,
   fetchUserServers: api.fetchUserServers,
   resetUserPassword: api.resetUserPassword,
+  approveRegistrationRequest: api.approveRegistrationRequest,
 }));
 
 /** Alle instanzweiten Flags aus – der strengste Fall, wie bei den Server-Tests. */
@@ -273,5 +275,67 @@ describe('UsersView – „Server einsehen" (spec-lastenheft-07)', () => {
         /besitzt 3 Server, die dir hier nicht angezeigt werden können/,
       ),
     );
+  });
+});
+
+/**
+ * Freigeben aus der Nutzerliste (Fundpunkt 214).
+ *
+ * Der Statusfilter „Wartet auf Freigabe" zeigte die wartenden Konten, ohne sie
+ * freigeben zu koennen - die Aktion lag nur unter „Anfragen". Der Eintrag
+ * traegt `canApprove`; die Ansicht las es nicht.
+ */
+describe('UsersView - Freigeben (Fundpunkt 214)', () => {
+  const WARTEND = eintrag({
+    userId: 'user-2',
+    displayName: 'Neuling',
+    status: 'pending',
+    roleNames: ['Gast'],
+    roles: [{ id: 'role-gast', name: 'Gast' }],
+    permissions: { canView: true, canApprove: true, canBlock: true, canUnblock: false },
+  });
+
+  /** Wie `zeichne()`, wartet aber auf das wartende Konto. */
+  async function zeichneWartend() {
+    const ergebnis = render(
+      <ToastProvider>
+        <UsersView />
+      </ToastProvider>,
+    );
+    await screen.findByText('Neuling');
+    return ergebnis;
+  }
+
+  it('bietet den Knopf an, wenn der Eintrag ihn erlaubt', async () => {
+    api.fetchRegistrationRequests.mockResolvedValue(ok([WARTEND]));
+
+    await zeichneWartend();
+
+    expect(screen.getByRole('button', { name: 'Freigeben' })).toBeTruthy();
+  });
+
+  it('laesst den Knopf weg, wo der Contract ihn nicht erlaubt', async () => {
+    api.fetchRegistrationRequests.mockResolvedValue(ok([eintrag()]));
+
+    await zeichne();
+
+    expect(screen.queryByRole('button', { name: 'Freigeben' })).toBeNull();
+  });
+
+  it('schickt die Freigabe ohne Rollenauswahl mit leerer Eingabe', async () => {
+    api.fetchRegistrationRequests.mockResolvedValue(ok([WARTEND]));
+    api.approveRegistrationRequest.mockResolvedValue(ok(WARTEND));
+
+    await zeichneWartend();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Freigeben' }));
+
+    // Im Dialog heisst der Knopf genauso - genommen wird der aus dem Dialog.
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Freigeben' }));
+
+    await waitFor(() => {
+      expect(api.approveRegistrationRequest).toHaveBeenCalledWith('user-2', {});
+    });
   });
 });
