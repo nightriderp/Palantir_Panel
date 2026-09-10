@@ -147,7 +147,15 @@ export function emptyNodeUsageSource(): NodeUsageSource {
 
 const NO_RESOURCES: NodeResources = { ramMb: 0, cpuCores: 0, diskMb: 0 };
 
-/** Rest nie unter null – ein überbuchter Wert wäre für die Anzeige unbrauchbar. */
+/**
+ * Rest nie unter null – ein negativer freier Rest wäre keine brauchbare Zahl.
+ *
+ * Damit verschwindet die Überbuchung aber nicht (Fundpunkt 209): Wie viel zu
+ * viel gebucht ist, steht als Differenz von `total` und `allocated` weiterhin
+ * im DTO, und die Node-Karte schreibt es an die Stelle, an der sonst der freie
+ * Rest steht. Hier bei null abzuschneiden und dort „0 GB frei" zu schreiben
+ * wäre dieselbe Auskunft wie bei einer exakt vollen Node gewesen.
+ */
 function subtract(total: NodeResources, allocated: NodeResources): NodeResources {
   return {
     ramMb: Math.max(0, total.ramMb - allocated.ramMb),

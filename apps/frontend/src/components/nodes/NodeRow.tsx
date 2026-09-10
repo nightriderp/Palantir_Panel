@@ -18,7 +18,7 @@ export interface NodeRowProps {
  * Farbe und Radius bleiben Tokens.
  */
 function MeterBar({ metric }: { metric: NodeMetric }) {
-  const width = metric.percent ?? 0;
+  const width = Math.min(100, metric.percent ?? 0);
 
   return (
     <div>
@@ -29,8 +29,20 @@ function MeterBar({ metric }: { metric: NodeMetric }) {
             {metric.usedLabel} / {metric.totalLabel}
           </span>
         </span>
-        <span className="shrink-0 text-ink-faint">
-          {metric.percent === null ? 'Keine Angabe' : `${metric.freeLabel} frei`}
+        {/*
+          Fundpunkt 209: Ist mehr gebucht als vorhanden, stand hier „0 GB frei" -
+          dieselbe Auskunft wie bei einer exakt vollen Node. Wie viel zu viel
+          gebucht ist, sagt jetzt der rote Text an derselben Stelle.
+        */}
+        <span
+          className={cn(
+            'shrink-0',
+            metric.overbookedLabel === undefined ? 'text-ink-faint' : 'font-semibold text-danger',
+          )}
+        >
+          {metric.percent === null
+            ? 'Keine Angabe'
+            : (metric.overbookedLabel ?? `${metric.freeLabel} frei`)}
         </span>
       </div>
       {metric.runningLabel === undefined ? null : (
@@ -44,7 +56,9 @@ function MeterBar({ metric }: { metric: NodeMetric }) {
         aria-label={metric.label}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={metric.percent ?? undefined}
+        // Ueber 100 waere fuer eine Vorlesehilfe ausserhalb des Bereichs; wie
+        // weit darueber, steht als Text daneben (Fundpunkt 209).
+        aria-valuenow={metric.percent === null ? undefined : Math.min(100, metric.percent)}
       >
         <div
           className={cn('h-full rounded-sm', TONE_DOT_CLASSES[metric.tone])}
