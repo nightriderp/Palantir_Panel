@@ -33,6 +33,11 @@ function MeterBar({ metric }: { metric: NodeMetric }) {
           {metric.percent === null ? 'Keine Angabe' : `${metric.freeLabel} frei`}
         </span>
       </div>
+      {metric.runningLabel === undefined ? null : (
+        // Fundpunkt 203: Die zweite Zahl, gegen die ein Start tatsaechlich
+        // geprueft wird - ohne sie wirkte die erste wie eine Absage.
+        <div className="mt-0.5 text-2xs text-ink-faint">{metric.runningLabel}</div>
+      )}
       <div
         className="mt-1.5 h-1.5 overflow-hidden rounded-sm bg-fill-strong"
         role="progressbar"
