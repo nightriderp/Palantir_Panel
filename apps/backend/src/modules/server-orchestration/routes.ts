@@ -34,7 +34,7 @@ import {
 import { type MultipartFile } from '@fastify/multipart';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { accountRateLimit } from '../../lib/abuse-limits.js';
+import { type AccountRateLimiter, accountRateLimit } from '../../lib/abuse-limits.js';
 import { attachmentContentDisposition } from '../../lib/content-disposition.js';
 import { requireActor, requireApproved, requirePermission } from '../rbac/index.js';
 import { type ServerDtoContext, toGameServerDto } from './dto.js';
@@ -47,6 +47,13 @@ import { type ServerOrchestrationService } from './service.js';
 import { checkSubdomain } from './subdomain.js';
 
 export interface ServerRoutesOptions {
+  /**
+   * Zaehler fuer Konsolenbefehle, geteilt mit dem Live-Kanal (Fundpunkt 202).
+   *
+   * Ohne Angabe entsteht ein eigener - so bleibt die Bremse in Tests wirksam,
+   * nur eben getrennt von der des WebSocket-Wegs gezaehlt.
+   */
+  readonly consoleLimiter?: AccountRateLimiter;
   readonly service: ServerOrchestrationService;
   readonly repository: ServerRepository;
   readonly registry: GameRegistry;
@@ -214,6 +221,9 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   const consoleLimit = accountRateLimit({
     scope: 'server.console',
     resolveUserId: (request) => request.viewerUserId ?? null,
+    // Denselben Zaehler benutzt der Live-Kanal (Fundpunkt 202) - sonst haette
+    // ein Konto zweimal 60 Befehle je Minute.
+    limiter: options.consoleLimiter,
   });
 
   /**

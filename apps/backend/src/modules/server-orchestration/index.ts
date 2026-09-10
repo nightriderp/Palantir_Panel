@@ -27,6 +27,7 @@ import { type Database, type DbConnection } from '../../db/client.js';
 import { registerAgentRoute } from './agent-route.js';
 import { AgentRegistry } from './agent-gateway.js';
 import { ServerLiveHub, createLiveFanoutSink } from './live-hub.js';
+import { createAccountRateLimiter } from '../../lib/abuse-limits.js';
 import { registerServerLiveRoute } from './live-route.js';
 import { DEFAULT_AUTO_SHUTDOWN } from './auto-shutdown.js';
 import { createCloudflareDnsProvider } from './dns/cloudflare.js';
@@ -347,7 +348,16 @@ export function registerServerOrchestration(
     executor: service,
   });
 
+  /*
+   * Ein Zaehler fuer beide Wege in die Konsole (Fundpunkt 202). Die Bremse hing
+   * bisher nur an der REST-Route; derselbe Befehl ueber den Live-Kanal kannte
+   * keine Grenze. Wuerde jeder Weg seinen eigenen Zaehler fuehren, haette ein
+   * Konto zweimal 60 Befehle je Minute.
+   */
+  const consoleLimiter = createAccountRateLimiter('server.console');
+
   registerServerRoutes(app, {
+    consoleLimiter,
     service,
     repository,
     registry,
@@ -360,6 +370,7 @@ export function registerServerOrchestration(
   // Ereignis-Frames und Konsolenbefehle. Ohne ihn bliebe die Live-Anzeige im
   // Frontend dauerhaft „unterbrochen".
   registerServerLiveRoute(app, {
+    consoleLimiter,
     hub: liveHub,
     service,
     repository,

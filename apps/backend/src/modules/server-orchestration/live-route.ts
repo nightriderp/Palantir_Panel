@@ -9,6 +9,11 @@ import {
   type ServerLiveExtraFrame,
 } from '@palantir/contracts';
 import { liveClientFrameSchema } from '@palantir/validation';
+import {
+  ABUSE_LIMIT_ERROR_CODE,
+  type AccountRateLimiter,
+  createAccountRateLimiter,
+} from '../../lib/abuse-limits.js';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
 import { createWebSocketOriginGuard } from '../../lib/ws-origin.js';
 import { requireActor } from '../rbac/index.js';
@@ -67,6 +72,21 @@ export interface ServerLiveRouteOptions {
   readonly allowedOrigin?: string;
   /** Abstand der wiederkehrenden Abo-Prüfung; Vorgabe 60 s. Nur für Tests gedacht. */
   readonly subscriptionCheckIntervalMs?: number;
+  /**
+   * Zähler für Konsolenbefehle (Audit 2026-09-10, Fundpunkt 202).
+   *
+   * Die Bremse hing bisher ausschliesslich am REST-Weg
+   * (`POST /api/servers/:id/console`, 60 Befehle je Minute). Derselbe Befehl
+   * über diesen Kanal kannte keine Grenze: Wer die Konsole benutzen darf,
+   * konnte über den offenen Socket beliebig viele Befehle absetzen, jeder davon
+   * ein Roundtrip zum Agent und von dort in den Container.
+   *
+   * Damit beide Wege sich **einen** Zähler teilen, reicht `index.ts` denselben
+   * herein, den auch die Route benutzt. Ohne Angabe entsteht ein eigener – so
+   * bleibt die Bremse in Tests und Entwicklungsaufbauten wirksam, nur eben
+   * getrennt gezählt.
+   */
+  readonly consoleLimiter?: AccountRateLimiter;
 }
 
 export function registerServerLiveRoute(
@@ -74,6 +94,7 @@ export function registerServerLiveRoute(
   options: ServerLiveRouteOptions,
 ): void {
   const { hub, service, repository, registry, baseDomain } = options;
+  const consoleLimiter = options.consoleLimiter ?? createAccountRateLimiter('server.console');
 
   /** Berechnet den DTO eines Servers aus Sicht des Aufrufers. */
   async function serverDtoFor(request: FastifyRequest, serverId: string) {
@@ -259,6 +280,24 @@ export function registerServerLiveRoute(
             const command = frame.command.trim();
             if (command.length === 0) {
               return;
+            }
+
+            const konto = request.viewerUserId ?? null;
+
+            if (konto !== null) {
+              const entscheidung = consoleLimiter.consume(konto);
+
+              if (!entscheidung.allowed) {
+                reply({
+                  kind: 'error',
+                  topic: frame.topic,
+                  code: ABUSE_LIMIT_ERROR_CODE,
+                  message: `Zu viele Konsolenbefehle. Bitte in ${String(entscheidung.retryAfterSeconds)} Sekunden erneut versuchen.`,
+                  sentAt: new Date().toISOString(),
+                });
+
+                return;
+              }
             }
 
             try {
