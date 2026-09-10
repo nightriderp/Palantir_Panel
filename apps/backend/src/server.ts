@@ -84,6 +84,7 @@ import {
   createServerNameSource,
   createServerNodePlacementSource,
   LIVE_CLOSE_CODE_UNAUTHORIZED,
+  type GameRegistry,
   registerServerOrchestration,
 } from './modules/server-orchestration/index.js';
 import { effectiveUploadLimitBytes } from './modules/server-orchestration/files.js';
@@ -341,8 +342,16 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * vor jedem Start (Pflichtenheft §10) – bewusst eine Quelle, nicht zwei
      * (siehe `modules/resources/node-usage.ts`).
      */
+    /*
+     * Der Katalog entsteht erst weiter unten (`registerServerOrchestration`),
+     * der Schalter dazu gehört aber der Verwaltung, die hier gebaut wird.
+     * Deshalb ein Halter statt einer Reihenfolge, die es nicht geben kann.
+     */
+    let spieleKatalog: GameRegistry | null = null;
+
     const admin = createAdminModule({
       db,
+      onDisabledGameTypesChanged: (ids) => spieleKatalog?.setDisabledGameTypes(ids),
       // Für den Archivlauf: Der Advisory-Lock gehört der Verbindung, die ihn
       // nimmt, und braucht deshalb den Pool selbst (Audit W2-16).
       pool: getPool(),
@@ -514,6 +523,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       service: orchestration,
       schedules: serverSchedules,
       liveHub,
+      registry: spieltypen,
     } = registerServerOrchestration(app, {
       db,
       agents,
@@ -540,6 +550,31 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       ensureServerChat: async (serverId) => ensureServerChat?.(serverId),
       events: notifications.eventSink,
     });
+
+    /*
+     * Der Stand beim Hochfahren. Danach hält ihn der Anschluss oben aktuell,
+     * den die Verwaltung beim Speichern ruft – die Registry liest die
+     * Einstellung nie selbst.
+     *
+     * **Bewusst nicht abgewartet.** Ein `await` hier machte den Start von einer
+     * Datenbankabfrage abhängig: Ist die Datenbank in dem Moment nicht
+     * erreichbar, käme das Backend gar nicht erst hoch – wegen einer Zeile, die
+     * bestimmt, welche Spiele im Wizard stehen. Scheitert die Abfrage, bleibt
+     * es beim Vorgabezustand „nichts abgeschaltet", und die Warnung sagt, warum;
+     * das nächste Speichern in der Verwaltung zieht es gerade.
+     */
+    spieleKatalog = spieltypen;
+    void admin.instanceSettings
+      .disabledGameTypes()
+      .then((ids) => {
+        spieltypen.setDisabledGameTypes(ids);
+      })
+      .catch((error: unknown) => {
+        app.log.warn(
+          { err: error },
+          'Abgeschaltete Spieltypen nicht gelesen – vorerst steht jeder Typ zur Auswahl',
+        );
+      });
 
     /*
      * Chat & Moderation (B7, Pflichtenheft §15) inklusive des Live-Kanals

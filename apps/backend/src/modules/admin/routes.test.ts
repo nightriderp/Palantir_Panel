@@ -92,6 +92,7 @@ async function buildTestApp(): Promise<FastifyInstance> {
         Promise.resolve({
           selfRegistrationEnabled: true,
           uiFontId: null,
+          disabledGameTypes: [],
           monospaceFontId: null,
           updatedAt: null,
         }),

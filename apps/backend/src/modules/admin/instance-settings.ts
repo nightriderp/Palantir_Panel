@@ -33,6 +33,8 @@ export const DEFAULT_INSTANCE_SETTINGS = Object.freeze({
   /** `null` heißt „Vorgabe des Design-Systems", nicht „irgendeine Schrift". */
   uiFontId: null,
   monospaceFontId: null,
+  /** Ohne Angabe bietet die Instanz jeden Spieltyp ihrer Ausbaustufe an. */
+  disabledGameTypes: [] as readonly string[],
 });
 
 /** Der gespeicherte Zustand – vollständig, nie eine Teilmenge. */
@@ -40,6 +42,7 @@ export interface InstanceSettingsRecord {
   readonly selfRegistrationEnabled: boolean;
   readonly uiFontId: string | null;
   readonly monospaceFontId: string | null;
+  readonly disabledGameTypes: readonly string[];
   readonly updatedAt: Date | null;
 }
 
@@ -74,6 +77,8 @@ export interface InstanceSettingsService {
    * hat naturgemäß keine Sitzung.
    */
   selfRegistrationEnabled(): Promise<boolean>;
+  /** Ausgeschaltete Spieltypen – für den Stand beim Hochfahren. */
+  disabledGameTypes(): Promise<readonly string[]>;
   /**
    * Die gerade gewählten Schrift-Kennungen (ohne `null`).
    *
@@ -111,6 +116,7 @@ export function createDrizzleInstanceSettingsRepository(
         selfRegistrationEnabled: row.selfRegistrationEnabled,
         uiFontId: row.uiFontId,
         monospaceFontId: row.monospaceFontId,
+        disabledGameTypes: row.disabledGameTypes,
         updatedAt: row.updatedAt,
       };
     },
@@ -120,6 +126,7 @@ export function createDrizzleInstanceSettingsRepository(
         selfRegistrationEnabled: data.selfRegistrationEnabled,
         uiFontId: data.uiFontId,
         monospaceFontId: data.monospaceFontId,
+        disabledGameTypes: [...data.disabledGameTypes],
         updatedAt: new Date(),
         updatedById,
       };
@@ -147,6 +154,17 @@ export interface InstanceSettingsDependencies {
    * `updated_by_id` hält nur den **letzten** Änderer, nicht die Historie.
    */
   readonly audit?: AuditService;
+  /**
+   * Wird gerufen, nachdem die Liste der abgeschalteten Spieltypen gespeichert
+   * wurde.
+   *
+   * Der Empfänger ist die Spiele-Registry (`GameRegistry.setDisabledGameTypes`).
+   * Sie ist synchron und liest die Einstellung nicht selbst; wer sie ändert,
+   * sagt es ihr. Ohne den Anschluss bleibt der Schalter wirkungslos, bis das
+   * Backend neu startet – deshalb ist er in `server.ts` gesetzt und hier nur
+   * optional, damit ein Test die Einstellungen ohne Registry prüfen kann.
+   */
+  readonly onDisabledGameTypesChanged?: (ids: readonly string[]) => void;
 }
 
 export function createInstanceSettingsService(
@@ -157,6 +175,7 @@ export function createInstanceSettingsService(
       selfRegistrationEnabled: record.selfRegistrationEnabled,
       uiFontId: record.uiFontId,
       monospaceFontId: record.monospaceFontId,
+      disabledGameTypes: record.disabledGameTypes,
       updatedAt: record.updatedAt?.toISOString() ?? null,
       permissions: { canEdit: hasPermission(actor, 'user.manage') },
     };
@@ -209,9 +228,26 @@ export function createInstanceSettingsService(
         selfRegistrationEnabled: input.selfRegistrationEnabled,
         uiFontId: await schriftUebernehmen(bisher.uiFontId, input.uiFontId),
         monospaceFontId: await schriftUebernehmen(bisher.monospaceFontId, input.monospaceFontId),
+        /*
+         * Fehlt das Feld, bleibt es, wie es war – wie bei den Schriften. Ein
+         * älterer Aufrufer, der die Liste nicht kennt, schaltet damit nicht
+         * versehentlich alles wieder ein.
+         *
+         * Sortiert und ohne Dubletten, damit der Vergleich unten nicht auf
+         * eine geänderte Reihenfolge anspringt.
+         */
+        disabledGameTypes:
+          input.disabledGameTypes === undefined
+            ? bisher.disabledGameTypes
+            : [...new Set(input.disabledGameTypes)].sort(),
       };
 
       await deps.repository.save(neu, ctx.userId);
+
+      // Die Registry ist synchron und liest die Einstellung nicht selbst
+      // (siehe `GameRegistry.setDisabledGameTypes`); wer sie ändert, sagt es
+      // ihr.
+      deps.onDisabledGameTypesChanged?.(neu.disabledGameTypes);
 
       /*
        * Ein Eintrag für die ganze Änderung, nicht je Feld (siehe
@@ -234,6 +270,10 @@ export function createInstanceSettingsService(
         geaendert.monospaceFontId = neu.monospaceFontId;
       }
 
+      if (neu.disabledGameTypes.join(',') !== [...bisher.disabledGameTypes].sort().join(',')) {
+        geaendert.disabledGameTypes = neu.disabledGameTypes;
+      }
+
       if (deps.audit && Object.keys(geaendert).length > 0) {
         await deps.audit.record(
           entryFor(ctx, {
@@ -250,6 +290,10 @@ export function createInstanceSettingsService(
 
     async selfRegistrationEnabled() {
       return (await deps.repository.load()).selfRegistrationEnabled;
+    },
+
+    async disabledGameTypes() {
+      return (await deps.repository.load()).disabledGameTypes;
     },
 
     async selectedFontIds() {
