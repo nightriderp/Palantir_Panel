@@ -145,6 +145,19 @@ export interface GameServerDto {
    * notfalls leer.
    */
   consoleQuickCommands?: readonly ConsoleQuickCommand[];
+  /**
+   * Nimmt dieses Spiel überhaupt Konsolenbefehle entgegen
+   * (`GameTypeDefinition.console` ist nicht `{ kind: 'none' }`)?
+   *
+   * Getrennt von `permissions.canUseConsole`: Das eine sagt, ob der Aufrufer
+   * darf, das andere, ob es etwas zu bedienen gibt. Beides muss zutreffen,
+   * damit die Oberfläche ein Eingabefeld zeigt.
+   *
+   * Additiv und optional, damit ältere Backends den DTO weiter liefern; das
+   * Backend füllt das Feld immer. Fehlt es, ist `true` die richtige Annahme —
+   * bis auf Valheim hat jedes Spiel eine Konsole.
+   */
+  supportsConsole?: boolean;
   status: ServerStatus;
   /** Erläuterung zum Status, z. B. letzte Fehlermeldung bei `error`/`crashed`. */
   statusMessage: string | null;
