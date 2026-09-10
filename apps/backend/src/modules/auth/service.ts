@@ -184,9 +184,28 @@ export const noopSessionRevocationSink: SessionRevocationSink = {
  * ein Sitzungswiderruf nicht protokollieren, soll der Aufruf scheitern, statt
  * unbemerkt zu passieren (so beschreibt es `AuditService.record`).
  */
+/**
+ * Die Vorgänge, die B1 protokolliert.
+ *
+ * Bis zum Audit vom 2026-09-10 stand hier nur `auth.sessionRevoked` – und damit
+ * blieb ausgerechnet der wirksamste Eingriff spurlos: Ein Verwalter setzte über
+ * `POST /auth/admin/users/:id/password-reset` das Passwort eines fremden Kontos
+ * zurück, bekam das Einmalpasswort im Klartext zurück, und die Zeilenzahl im
+ * Audit-Log blieb gleich (reproduziert, Fundpunkt 198). Wer ein Konto übernimmt,
+ * hinterließ nichts, und die Aufklärung danach hatte nichts in der Hand.
+ *
+ * Die drei Aktionen standen im Katalog (`packages/contracts/src/audit.ts`)
+ * bereits bereit; geschrieben wurden sie nie.
+ */
+export type AuthAuditAction =
+  | 'auth.sessionRevoked'
+  | 'auth.passwordResetByAdmin'
+  | 'auth.twoFactorDisabled'
+  | 'user.registered';
+
 export interface AuthAuditSink {
   record(entry: {
-    action: 'auth.sessionRevoked';
+    action: AuthAuditAction;
     actorId: string | null;
     actorDisplayName: string | null;
     targetType: 'user';
@@ -214,6 +233,18 @@ export const noopAuthAuditSink: AuthAuditSink = {
 export interface AuthAuditContext {
   readonly displayName: string | null;
   readonly ipHint: string | null;
+}
+
+/**
+ * Wie {@link AuthAuditContext}, zusätzlich mit der Kennung des Handelnden.
+ *
+ * Bei den Selbstbedienungs-Wegen sind Handelnder und Betroffener dasselbe Konto,
+ * die Kennung steht dort ohnehin als Parameter. Bei einem Admin-Eingriff sind es
+ * zwei verschiedene – und genau die Zuordnung „wer hat wen angefasst" ist der
+ * Zweck des Eintrags.
+ */
+export interface AuthAdminAuditContext extends AuthAuditContext {
+  readonly actorId: string;
 }
 
 export interface AuthServiceOptions {
@@ -498,6 +529,7 @@ export class AuthService {
     actor: PermissionActor,
     input: CreateUserInput,
     roleIds: readonly string[],
+    context: AuthAdminAuditContext,
   ): Promise<AccountDto> {
     if (await this.repository.usernameExists(input.username)) {
       throw new AuthError('AUTH_USERNAME_TAKEN');
@@ -549,6 +581,22 @@ export class AuthService {
     for (const roleId of zuweisen) {
       await this.roles.assignToUser(user.id, roleId);
     }
+
+    /*
+     * Ein von Hand angelegtes Konto ist der eine Weg ins Panel, der an der
+     * Warteliste vorbeigeht – und damit an der einzigen Stelle, an der sonst
+     * jemand hinsieht. `role.assigned` schreibt B8 nur beim spaeteren Zuweisen;
+     * die Rollen der ersten Stunde stehen deshalb hier in der Nutzlast.
+     */
+    await this.audit.record({
+      action: 'user.registered',
+      actorId: context.actorId,
+      actorDisplayName: context.displayName,
+      targetType: 'user',
+      targetId: user.id,
+      ipHint: context.ipHint,
+      metadata: { username: user.username, roleIds: [...zuweisen], byAdmin: true },
+    });
 
     return this.loadAccount(user);
   }
@@ -1255,6 +1303,7 @@ export class AuthService {
   async resetPasswordAsAdmin(
     actor: PermissionActor,
     targetUserId: string,
+    context: AuthAdminAuditContext,
   ): Promise<PasswordResetResultDto> {
     const user = await this.requireUser(targetUserId);
     await this.requireAdminTargetAllowed(actor, user);
@@ -1271,6 +1320,22 @@ export class AuthService {
       mustChangePassword: true,
     });
     await this.revokeEverySession(user.id, this.now());
+
+    /*
+     * Nach der Tat und ohne `try`: Lässt sich der Eingriff nicht protokollieren,
+     * soll der Aufruf scheitern, statt unbemerkt durchzugehen – dieselbe Regel
+     * wie beim Sitzungswiderruf. Das Einmalpasswort steht ausdrücklich **nicht**
+     * im Log; festgehalten wird, dass es eines gab.
+     */
+    await this.audit.record({
+      action: 'auth.passwordResetByAdmin',
+      actorId: context.actorId,
+      actorDisplayName: context.displayName,
+      targetType: 'user',
+      targetId: user.id,
+      ipHint: context.ipHint,
+      metadata: { username: user.username, sessionsRevoked: true, mustChangePassword: true },
+    });
 
     return { userId: user.id, temporaryPassword };
   }
@@ -1368,7 +1433,11 @@ export class AuthService {
    * Route über den Guard aus B2. Owner- und Verwaltungskonten unterliegen
    * zusätzlich der Rangregel ({@link requireAdminTargetAllowed}, Fundpunkt 124).
    */
-  async disableTwoFactorAsAdmin(actor: PermissionActor, targetUserId: string): Promise<void> {
+  async disableTwoFactorAsAdmin(
+    actor: PermissionActor,
+    targetUserId: string,
+    context: AuthAdminAuditContext,
+  ): Promise<void> {
     const user = await this.requireUser(targetUserId);
     await this.requireAdminTargetAllowed(actor, user);
 
@@ -1381,6 +1450,18 @@ export class AuthService {
     await this.repository.updateAuthMethod(method.id, {
       totpSecret: null,
       totpConfirmedAt: null,
+    });
+
+    // Der zweite Faktor eines fremden Kontos faellt weg – ohne Eintrag waere
+    // hinterher nicht feststellbar, wer ihn abgeschaltet hat (Fundpunkt 198).
+    await this.audit.record({
+      action: 'auth.twoFactorDisabled',
+      actorId: context.actorId,
+      actorDisplayName: context.displayName,
+      targetType: 'user',
+      targetId: user.id,
+      ipHint: context.ipHint,
+      metadata: { username: user.username, byAdmin: true },
     });
   }
 

@@ -60,7 +60,12 @@ import { AuthError, isAuthError } from './errors.js';
 import type { PendingAuthorization } from './providers.js';
 import { type RateLimiter, rateLimitKey } from './rate-limit.js';
 import { describeDevice, toIpHint } from './request-context.js';
-import type { AuthService, IssuedSession, RequestContext } from './service.js';
+import type {
+  AuthAdminAuditContext,
+  AuthService,
+  IssuedSession,
+  RequestContext,
+} from './service.js';
 import { signAccessToken } from './tokens.js';
 
 export interface AuthRouteOptions {
@@ -143,6 +148,20 @@ function landingPath(account: AccountDto): string {
   }
 
   return account.awaitingApproval ? FRONTEND_PENDING_PATH : FRONTEND_HOME_PATH;
+}
+
+/**
+ * Handelnder und Herkunft eines Admin-Eingriffs fuer das Audit-Log.
+ *
+ * Der Aufrufer steht in `authUser`; ohne ihn kaeme die Anfrage gar nicht an
+ * einer Route mit `requirePermission` an (Fundpunkt 198).
+ */
+function adminAuditContextOf(request: FastifyRequest): AuthAdminAuditContext {
+  return {
+    actorId: requireUserId(request),
+    displayName: request.authUser?.displayName ?? null,
+    ipHint: toIpHint(request.ip),
+  };
 }
 
 /** Ableitungen aus dem Request, die an einer neuen Sitzung hängen. */
@@ -897,6 +916,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
           requireActor(request),
           input,
           input.roleIds ?? [],
+          adminAuditContextOf(request),
         );
 
         await reply.status(201).send(ok({ account }));
@@ -912,6 +932,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
         const result: PasswordResetResultDto = await service.resetPasswordAsAdmin(
           requireActor(request),
           request.params.userId,
+          adminAuditContextOf(request),
         );
 
         await reply.send(ok(result));
@@ -924,7 +945,11 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     { preHandler: requirePermission('user.manage') },
     async (request, reply) => {
       await handle(reply, async () => {
-        await service.disableTwoFactorAsAdmin(requireActor(request), request.params.userId);
+        await service.disableTwoFactorAsAdmin(
+          requireActor(request),
+          request.params.userId,
+          adminAuditContextOf(request),
+        );
 
         await reply.send(ok(null));
       });

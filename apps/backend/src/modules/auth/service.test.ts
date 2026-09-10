@@ -47,6 +47,19 @@ const VOLL_ADMIN = buildPermissionActor({
   roles: [{ grantedPermissions: ['user.manage', 'role.manage'] }],
 });
 
+/**
+ * Handelnder eines Admin-Eingriffs fuer das Audit-Log (Fundpunkt 198).
+ *
+ * Konto-Anlage, Passwort-Reset und 2FA-Abschaltung schreiben seitdem einen
+ * Eintrag; ohne ihn waere hinterher nicht feststellbar, wer ein fremdes Konto
+ * angefasst hat.
+ */
+const ADMIN_AUDIT = {
+  actorId: '99999999-9999-4999-8999-999999999999',
+  displayName: 'Test-Admin',
+  ipHint: '203.0.113.x',
+};
+
 let repository: FakeAuthRepository;
 let roles: FakeRoleRepository;
 let now: Date;
@@ -428,7 +441,7 @@ describe('2FA (Pflichtenheft §7)', () => {
 
   it('lässt sich vom Admin abschalten – der einzige Weg an einer verlorenen 2FA vorbei', async () => {
     await enableTwoFactor();
-    await service.disableTwoFactorAsAdmin(VOLL_ADMIN, userId);
+    await service.disableTwoFactorAsAdmin(VOLL_ADMIN, userId, ADMIN_AUDIT);
 
     const account = await service.loadAccount(repository.users[0]!);
     expect(account.twoFactorEnabled).toBe(false);
@@ -1096,7 +1109,7 @@ describe('Passwortwechsel und Admin-Reset (Lastenheft §3.1)', () => {
   });
 
   it('erzeugt beim Admin-Reset ein Einmal-Passwort und sperrt das Konto neu', async () => {
-    const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, userId);
+    const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, userId, ADMIN_AUDIT);
 
     expect(result.temporaryPassword.length).toBeGreaterThan(12);
     // Das Klartext-Passwort steht nirgends in der Ablage.
@@ -1113,7 +1126,7 @@ describe('Passwortwechsel und Admin-Reset (Lastenheft §3.1)', () => {
   });
 
   it('räumt das Wechsel-Kennzeichen nach dem Passwortwechsel ab', async () => {
-    const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, userId);
+    const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, userId, ADMIN_AUDIT);
     const outcome = await service.login(
       { username: 'spieler', password: result.temporaryPassword, altcha: ALTCHA },
       CONTEXT,
@@ -1134,7 +1147,7 @@ describe('Passwortwechsel und Admin-Reset (Lastenheft §3.1)', () => {
 
   it('meldet ein unbekanntes Konto beim Reset', async () => {
     await expectErrorCode(
-      service.resetPasswordAsAdmin(VOLL_ADMIN, '00000000-0000-4000-8000-000000000000'),
+      service.resetPasswordAsAdmin(VOLL_ADMIN, '00000000-0000-4000-8000-000000000000', ADMIN_AUDIT),
       'USER_NOT_FOUND',
     );
   });
@@ -1168,6 +1181,7 @@ describe('Selbstregistrierung und Konto-Anlage (Mockup-Abgleich 12.1.1)', () => 
       VOLL_ADMIN,
       { username: 'vom-admin', password: PASSWORD },
       [],
+      ADMIN_AUDIT,
     );
 
     // Ein Konto ganz ohne Rolle waere weder freigeschaltet noch wartend: Es
@@ -1183,6 +1197,7 @@ describe('Selbstregistrierung und Konto-Anlage (Mockup-Abgleich 12.1.1)', () => 
       VOLL_ADMIN,
       { username: 'vom-admin', password: PASSWORD },
       [],
+      ADMIN_AUDIT,
     );
 
     expect(account.username).toBe('vom-admin');
@@ -1193,7 +1208,12 @@ describe('Selbstregistrierung und Konto-Anlage (Mockup-Abgleich 12.1.1)', () => 
     await service.register({ username: 'spieler', password: PASSWORD, altcha: ALTCHA }, CONTEXT);
 
     await expectErrorCode(
-      service.createUserAsAdmin(VOLL_ADMIN, { username: 'spieler', password: PASSWORD }, []),
+      service.createUserAsAdmin(
+        VOLL_ADMIN,
+        { username: 'spieler', password: PASSWORD },
+        [],
+        ADMIN_AUDIT,
+      ),
       'AUTH_USERNAME_TAKEN',
     );
   });
@@ -1217,9 +1237,12 @@ describe('Rangschutz der Admin-Eingriffe (Fundpunkte 119 und 124)', () => {
 
   it('lässt user.manage allein keine Rolle mit Verwaltungsrechten vergeben', async () => {
     await expectErrorCode(
-      service.createUserAsAdmin(KONTEN_ADMIN, { username: 'neu', password: PASSWORD }, [
-        adminRolleId,
-      ]),
+      service.createUserAsAdmin(
+        KONTEN_ADMIN,
+        { username: 'neu', password: PASSWORD },
+        [adminRolleId],
+        ADMIN_AUDIT,
+      ),
       'PERMISSION_DENIED',
     );
 
@@ -1232,6 +1255,7 @@ describe('Rangschutz der Admin-Eingriffe (Fundpunkte 119 und 124)', () => {
       VOLL_ADMIN,
       { username: 'neu', password: PASSWORD },
       [adminRolleId],
+      ADMIN_AUDIT,
     );
 
     expect(account.roles.map((rolle) => rolle.name)).toEqual(['Admin']);
@@ -1239,9 +1263,12 @@ describe('Rangschutz der Admin-Eingriffe (Fundpunkte 119 und 124)', () => {
 
   it('meldet eine unbekannte Rolle als ROLE_NOT_FOUND statt als Datenbankfehler', async () => {
     await expectErrorCode(
-      service.createUserAsAdmin(VOLL_ADMIN, { username: 'neu', password: PASSWORD }, [
-        '00000000-0000-4000-8000-000000000000',
-      ]),
+      service.createUserAsAdmin(
+        VOLL_ADMIN,
+        { username: 'neu', password: PASSWORD },
+        ['00000000-0000-4000-8000-000000000000'],
+        ADMIN_AUDIT,
+      ),
       'ROLE_NOT_FOUND',
     );
     expect(repository.users.some((user) => user.username === 'neu')).toBe(false);
@@ -1255,11 +1282,11 @@ describe('Rangschutz der Admin-Eingriffe (Fundpunkte 119 und 124)', () => {
     await repository.setOwner(account.id);
 
     await expectErrorCode(
-      service.resetPasswordAsAdmin(VOLL_ADMIN, account.id),
+      service.resetPasswordAsAdmin(VOLL_ADMIN, account.id, ADMIN_AUDIT),
       'AUTH_OWNER_PROTECTED',
     );
     await expectErrorCode(
-      service.disableTwoFactorAsAdmin(VOLL_ADMIN, account.id),
+      service.disableTwoFactorAsAdmin(VOLL_ADMIN, account.id, ADMIN_AUDIT),
       'AUTH_OWNER_PROTECTED',
     );
     // Der Reset ist nie gelaufen: die Sitzung der Registrierung lebt noch.
@@ -1274,17 +1301,92 @@ describe('Rangschutz der Admin-Eingriffe (Fundpunkte 119 und 124)', () => {
     await roles.assignToUser(account.id, adminRolleId);
 
     await expectErrorCode(
-      service.resetPasswordAsAdmin(KONTEN_ADMIN, account.id),
+      service.resetPasswordAsAdmin(KONTEN_ADMIN, account.id, ADMIN_AUDIT),
       'PERMISSION_DENIED',
     );
     await expectErrorCode(
-      service.disableTwoFactorAsAdmin(KONTEN_ADMIN, account.id),
+      service.disableTwoFactorAsAdmin(KONTEN_ADMIN, account.id, ADMIN_AUDIT),
       'PERMISSION_DENIED',
     );
 
     // Mit role.manage geht es – dieselbe Regel wie beim Zuweisen der Rolle.
-    const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, account.id);
+    const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, account.id, ADMIN_AUDIT);
     expect(result.temporaryPassword.length).toBeGreaterThan(12);
+  });
+
+  /*
+   * Fundpunkt 198 (high, reproduziert): Die drei wirksamsten Eingriffe eines
+   * Verwalters an einem fremden Konto standen in keinem Protokoll. Der
+   * Passwort-Reset gibt ein Klartext-Einmalpasswort heraus - wer damit ein
+   * Konto uebernahm, hinterliess nichts.
+   */
+  describe('Audit-Eintraege der Admin-Eingriffe (Fundpunkt 198)', () => {
+    it('protokolliert den Passwort-Reset ohne das Passwort selbst', async () => {
+      const { account } = await service.register(
+        { username: 'spieler2', password: PASSWORD, altcha: ALTCHA },
+        CONTEXT,
+      );
+      auditEntries.length = 0;
+
+      const result = await service.resetPasswordAsAdmin(VOLL_ADMIN, account.id, ADMIN_AUDIT);
+
+      expect(auditEntries).toEqual([
+        {
+          action: 'auth.passwordResetByAdmin',
+          actorId: ADMIN_AUDIT.actorId,
+          actorDisplayName: 'Test-Admin',
+          targetType: 'user',
+          targetId: account.id,
+          ipHint: '203.0.113.x',
+          metadata: { username: 'spieler2', sessionsRevoked: true, mustChangePassword: true },
+        },
+      ]);
+      // Das Einmalpasswort taucht im Log nirgends auf.
+      expect(JSON.stringify(auditEntries)).not.toContain(result.temporaryPassword);
+    });
+
+    it('protokolliert die Abschaltung fremder 2FA', async () => {
+      const { account } = await service.register(
+        { username: 'mit2fa', password: PASSWORD, altcha: ALTCHA },
+        CONTEXT,
+      );
+      const setup = await service.beginTwoFactorSetup(account.id);
+      await service.confirmTwoFactor(account.id, generateTotp(setup.secret, now.getTime()));
+      auditEntries.length = 0;
+
+      await service.disableTwoFactorAsAdmin(VOLL_ADMIN, account.id, ADMIN_AUDIT);
+
+      expect(auditEntries).toEqual([
+        {
+          action: 'auth.twoFactorDisabled',
+          actorId: ADMIN_AUDIT.actorId,
+          actorDisplayName: 'Test-Admin',
+          targetType: 'user',
+          targetId: account.id,
+          ipHint: '203.0.113.x',
+          metadata: { username: 'mit2fa', byAdmin: true },
+        },
+      ]);
+    });
+
+    it('protokolliert das von Hand angelegte Konto samt Rollen', async () => {
+      auditEntries.length = 0;
+
+      const account = await service.createUserAsAdmin(
+        VOLL_ADMIN,
+        { username: 'vom-admin', password: PASSWORD },
+        [],
+        ADMIN_AUDIT,
+      );
+      const eintrag = auditEntries.find((e) => e.action === 'user.registered');
+
+      expect(eintrag).toMatchObject({
+        actorId: ADMIN_AUDIT.actorId,
+        targetType: 'user',
+        targetId: account.id,
+        metadata: { username: 'vom-admin', byAdmin: true },
+      });
+    });
   });
 
   it('lässt user.manage allein gewöhnliche Konten weiterhin zurücksetzen', async () => {
@@ -1293,7 +1395,7 @@ describe('Rangschutz der Admin-Eingriffe (Fundpunkte 119 und 124)', () => {
       CONTEXT,
     );
 
-    const result = await service.resetPasswordAsAdmin(KONTEN_ADMIN, account.id);
+    const result = await service.resetPasswordAsAdmin(KONTEN_ADMIN, account.id, ADMIN_AUDIT);
     expect(result.userId).toBe(account.id);
   });
 });
