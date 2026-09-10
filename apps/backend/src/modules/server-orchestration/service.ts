@@ -1070,6 +1070,13 @@ export class ServerOrchestrationService {
       return null;
     }
 
+    // Ein Auftrag, der nicht zu erfüllen ist, gehört nicht gestellt: Valheim
+    // ohne `-public 1` beantwortet keine Abfrage, und der Agent liefe alle paar
+    // Sekunden in eine Frist (`antwortetAufAbfragen`).
+    if (!this.antwortetAufAbfragen(server)) {
+      return null;
+    }
+
     const definition = this.deps.registry.require(server.gameType);
     // Beide Ports gehen mit: der Host-Port, unter dem der Container
     // veröffentlicht ist (derselbe Wert wie `hostPort` in `CREATE_CONTAINER`),
@@ -1290,6 +1297,34 @@ export class ServerOrchestrationService {
      * Ziel in den Handshake ein. Damit prüft der Check denselben Weg wie ein
      * Spieler, Router eingeschlossen.
      */
+    /*
+     * **Ein Server, den niemand abfragen kann, ist deshalb nicht krank.**
+     *
+     * Valheim mit `-public 0` beantwortet keine A2S-Abfrage (siehe
+     * `antwortetAufAbfragen`). Eine Sonde darauf läuft zwangsläufig in die
+     * Frist, und der Server landete nach zwanzig Minuten in `error`, während
+     * Spieler darauf unterwegs sind. Der Start gilt hier deshalb als geglückt,
+     * sobald der Container läuft – mehr ist über diesen Server nicht in
+     * Erfahrung zu bringen, und die falsche Aussage wäre die schlechtere.
+     *
+     * Der Preis steht in der Beschreibung des Feldes: keine Spielerzahl, kein
+     * Ping, kein automatischer Stopp bei 0 Spielern.
+     */
+    if (!this.antwortetAufAbfragen(server)) {
+      this.deps.log.info(
+        { serverId, gameType: server.gameType },
+        'Start ohne Abfrage bestaetigt - dieser Server beantwortet in seiner Einstellung keine Abfragen',
+      );
+      await this.transition(server, { type: 'healthCheckPassed' });
+      await this.emitServerEvent(
+        anlass === 'restart' ? 'server.restarted' : 'server.started',
+        serverId,
+        { pingMs: null },
+      );
+
+      return;
+    }
+
     const result = await awaitHealthy({
       target: {
         host: definition.supportsVirtualHostRouting
@@ -2038,6 +2073,20 @@ export class ServerOrchestrationService {
    */
   async execConsole(serverId: string, commandLine: string): Promise<ExecConsoleCommandResult> {
     const { server, session, containerId } = await this.requireLiveTarget(serverId);
+
+    // Spiele ohne Konsole (`{ kind: 'none' }`, z. B. Valheim): Das Frontend
+    // blendet das Eingabefeld aus, aber die Route steht offen. Ein Befehl, der
+    // stillschweigend in einem ungelesenen Rohr verschwände, wäre schlimmer
+    // als eine Absage – der Aufrufer hälte ihn für ausgeführt.
+    const konsole = this.deps.registry.require(server.gameType).console;
+    if (konsole?.kind === 'none') {
+      throw new ServerOrchestrationError(
+        'CONSOLE_NOT_SUPPORTED',
+        `${this.deps.registry.require(server.gameType).name} nimmt keine Konsolenbefehle entgegen.`,
+        { serverId },
+      );
+    }
+
     const argv = commandLine
       .trim()
       .split(/\s+/)
@@ -2054,7 +2103,6 @@ export class ServerOrchestrationService {
     // Spiele mit RCON-Anschluss (P2-9): Der Agent bekommt Port und Passwortdatei
     // aus der Definition, nicht das Passwort – das bleibt auf der Node. Ohne
     // `console` bleibt es beim Weg über die Standardeingabe.
-    const konsole = this.deps.registry.require(server.gameType).console;
     const rcon =
       konsole?.kind === 'rcon'
         ? { port: konsole.port, passwordFile: konsole.passwordFile }
@@ -2813,10 +2861,36 @@ export class ServerOrchestrationService {
    */
   private playerCountAvailableFor(server: ServerRecord): boolean {
     try {
-      return this.deps.registry.require(server.gameType).query.kind === 'gamedig';
+      return (
+        this.deps.registry.require(server.gameType).query.kind === 'gamedig' &&
+        this.antwortetAufAbfragen(server)
+      );
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Beantwortet dieser Server in seiner Einstellung überhaupt Abfragen?
+   *
+   * Für fast jedes Spiel ja – die Frage stellt sich nur, wo die
+   * Spiele-Definition ein Konfigurationsfeld nennt, an dem es hängt
+   * (`GamedigQuerySpec.requiresConfigFlag`). Valheim ist der Fall: Ohne
+   * `-public 1` meldet sich der Server nicht beim Steam-Verzeichnis an und
+   * beantwortet keine A2S-Abfrage. Erreichbar bleibt er; nur sehen kann
+   * Palantir ihn nicht.
+   *
+   * Wer das übergeht, lässt jeden solchen Start in `error` laufen, obwohl
+   * gespielt wird – dieselbe Klasse wie die Fundpunkte 183, 187, 193 und 246.
+   */
+  private antwortetAufAbfragen(server: ServerRecord): boolean {
+    const query = this.deps.registry.require(server.gameType).query;
+
+    if (query.kind !== 'gamedig' || query.requiresConfigFlag === undefined) {
+      return true;
+    }
+
+    return server.configJson[query.requiresConfigFlag] === true;
   }
 
   /**

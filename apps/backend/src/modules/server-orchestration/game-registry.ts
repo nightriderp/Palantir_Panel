@@ -643,9 +643,14 @@ export const VALHEIM_GAME_TYPE: GameTypeDefinition = {
       key: 'public',
       label: 'In der Serverliste zeigen',
       type: 'toggle',
-      defaultValue: false,
+      // Vorgabe „an", obwohl „nur wer die Adresse kennt" die zurückhaltendere
+      // Einstellung wäre: Valheim beantwortet ohne sie überhaupt keine Abfrage,
+      // und dann sieht das Panel weder Spielerzahl noch Ping (`query` unten).
+      // Wer sie ausschaltet, soll das entscheiden — nicht durch eine Vorgabe
+      // hineinrutschen und sich wundern, warum die Kachel leer bleibt.
+      defaultValue: true,
       description:
-        'Aus heißt: nur wer die Adresse kennt, findet den Server. Das Passwort gilt in beiden Fällen.',
+        'Aus heißt: nur wer die Adresse kennt, findet den Server — das Passwort gilt ohnehin in beiden Fällen. Valheim beantwortet dann allerdings keine Abfragen mehr: Das Panel zeigt weder Spielerzahl noch Ping, und der automatische Stopp bei 0 Spielern greift nicht.',
       required: false,
       options: [],
       min: null,
@@ -679,7 +684,25 @@ export const VALHEIM_GAME_TYPE: GameTypeDefinition = {
     kind: 'gamedig',
     protocol: 'valheim',
     containerPort: 2457,
+    /*
+     * **Ohne `-public 1` antwortet Valheim auf keine Abfrage.** Die Bibliothek
+     * sagt es selbst (`gamedig/GAMES_LIST.md`, Abschnitt Valheim): Der Server
+     * meldet sich nur im öffentlichen Modus beim Steam-Verzeichnis an, und nur
+     * dann beantwortet er A2S. Erreichbar ist er trotzdem – wer Adresse und
+     * Passwort hat, spielt.
+     *
+     * Ohne diese Zeile hielte der Start-Check ihn für tot, und der Server liefe
+     * nach zwanzig Minuten in `error`, während Spieler darauf unterwegs sind.
+     * Dieselbe Klasse wie die Fundpunkte 183, 187, 193 und 246.
+     */
+    requiresConfigFlag: 'public',
   },
+  /*
+   * Valheim nimmt keine Befehle entgegen – weder über die Standardeingabe noch
+   * über RCON. Ohne diese Angabe gälte `stdin`, und das Panel zeigte ein
+   * Eingabefeld, dessen Zeilen in einem Rohr verschwinden, das niemand liest.
+   */
+  console: { kind: 'none' },
   iconUrl: null,
   coverImageUrl: null,
   supportsVirtualHostRouting: false,

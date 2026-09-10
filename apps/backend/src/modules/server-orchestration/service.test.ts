@@ -1270,6 +1270,86 @@ describe('Periodische Server-Abfrage (Gefundener Punkt 74)', () => {
     });
   });
 
+  /*
+   * Valheim mit `-public 0` (Fundpunkt 248).
+   *
+   * Der Server meldet sich dann nicht beim Steam-Verzeichnis an und
+   * beantwortet keine A2S-Abfrage - erreichbar bleibt er trotzdem. Die Sonde
+   * in diesen Tests antwortet nie; wuerde sie befragt, bliebe der Server auf
+   * `starting` stehen und `settle` liefe in seine Grenze.
+   */
+  describe('Spiel, das in seiner Einstellung keine Abfrage beantwortet', () => {
+    const HEIMLICH: GameTypeDefinition = {
+      ...TEST_GAME_TYPE,
+      id: 'heimliches-spiel',
+      // Das Feld muss es geben: `buildServerConfig` uebernimmt nur Schluessel,
+      // die in der Definition stehen - ein fremder faellt beim Anlegen weg.
+      configFields: [
+        ...TEST_GAME_TYPE.configFields,
+        {
+          key: 'public',
+          label: 'In der Serverliste zeigen',
+          type: 'toggle',
+          defaultValue: true,
+          description: null,
+          required: false,
+          options: [],
+          min: null,
+          max: null,
+          lockedAfterCreate: false,
+        },
+      ],
+      envMapping: { ...TEST_GAME_TYPE.envMapping, public: 'PUBLIC' },
+      query: {
+        kind: 'gamedig',
+        protocol: 'valheim',
+        containerPort: 8080,
+        requiresConfigFlag: 'public',
+      },
+    };
+
+    async function starte(oeffentlich: boolean) {
+      const harness = makeHarness({
+        gameTypes: [TEST_GAME_TYPE, HEIMLICH],
+        probe: healthyProbe('pending'),
+      });
+      const created = await harness.service.createServer(
+        { ...createInput('heimlich', HEIMLICH), config: { public: oeffentlich } },
+        OWNER_ID,
+      );
+
+      await harness.service.startServer(created.id, OWNER_ID);
+
+      return { harness, id: created.id };
+    }
+
+    it('bestaetigt den Start, sobald der Container laeuft', async () => {
+      const { harness, id } = await starte(false);
+
+      const server = await settle(harness, id, ['running', 'error']);
+
+      // Ohne diesen Zweig liefe der Server nach `startupTimeoutSeconds` in
+      // `error`, waehrend Spieler darauf unterwegs sind.
+      expect(server.status).toBe('running');
+    });
+
+    it('stellt dem Agent keinen Auftrag, der nicht zu erfuellen ist', async () => {
+      const { harness, id } = await starte(false);
+      await settle(harness, id, ['running', 'error']);
+
+      expect(abfragen(harness)).toHaveLength(0);
+    });
+
+    it('fragt dagegen ab, sobald das Feld an ist', async () => {
+      const { harness, id } = await starte(true);
+
+      // Die Sonde antwortet nie - der Server bleibt also im Startvorgang, und
+      // genau das beweist, dass gefragt wird.
+      expect((await harness.service.requireServer(id)).status).toBe('starting');
+      expect(abfragen(harness)).toHaveLength(1);
+    });
+  });
+
   it('beendet die Abfrage beim Stoppen', async () => {
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
@@ -3402,6 +3482,25 @@ describe('Konsole', () => {
     });
     // Die Antwort kommt zurück statt nur im Log zu stehen.
     expect(ergebnis.stdout).toBe('There are 0 of a max of 20 players online');
+  });
+
+  it('weist einen Befehl ab, wenn das Spiel gar keine Konsole hat', async () => {
+    // Valheim liest weder Standardeingabe noch RCON. Ein Befehl, der
+    // stillschweigend in einem ungelesenen Rohr verschwaende, waere schlimmer
+    // als eine Absage – der Aufrufer hielte ihn fuer ausgefuehrt.
+    const stumm: GameTypeDefinition = {
+      ...TEST_GAME_TYPE,
+      id: 'stummes-spiel',
+      console: { kind: 'none' },
+    };
+    const harness = makeHarness({ gameTypes: [TEST_GAME_TYPE, stumm] });
+    const created = await harness.service.createServer(createInput('stumm', stumm), OWNER_ID);
+
+    await expect(harness.service.execConsole(created.id, 'list')).rejects.toMatchObject({
+      code: 'CONSOLE_NOT_SUPPORTED',
+    });
+    // Der Agent hat den Befehl nie gesehen.
+    expect(harness.socket.commands.some((c) => c.command === 'EXEC_CONSOLE')).toBe(false);
   });
 });
 

@@ -2,7 +2,7 @@ import { type GameServerDto, type LiveServerEventFrame } from '@palantir/contrac
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/shared';
-import { server as serverFixture } from '../testFixtures';
+import { ownerPermissions, server as serverFixture } from '../testFixtures';
 import { ServerDetail } from './ServerDetail';
 
 /**
@@ -214,5 +214,45 @@ describe('ServerDetail – Aktualisieren (Fundpunkt 190)', () => {
 
     expect(screen.queryByText('Update verfügbar')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
+  });
+});
+
+/**
+ * Nicht jeder Spielserver nimmt Befehle entgegen: Valheim liest weder seine
+ * Standardeingabe noch spricht es RCON. Bis dahin zeigte das Panel trotzdem ein
+ * Eingabefeld, dessen Zeilen in einem ungelesenen Rohr verschwanden.
+ *
+ * Zwei Bedingungen, zwei Bedeutungen: `canUseConsole` sagt, ob der Aufrufer
+ * darf, `supportsConsole`, ob es am Spiel etwas zu bedienen gibt.
+ */
+describe('Live-Konsole nur, wenn das Spiel eine hat', () => {
+  const MIT_RECHT = serverFixture({
+    id: 'srv-1',
+    name: 'Welt',
+    status: 'running',
+    permissions: ownerPermissions(),
+  });
+
+  it('zeigt sie bei einem Spiel mit Konsole', async () => {
+    api.fetchServer.mockResolvedValue({ success: true, data: MIT_RECHT, error: null });
+
+    zeichne();
+
+    expect(await screen.findByLabelText('Konsolenbefehl')).toBeTruthy();
+  });
+
+  it('blendet sie aus, wenn das Spiel keine hat – und sagt, warum', async () => {
+    api.fetchServer.mockResolvedValue({
+      success: true,
+      data: { ...MIT_RECHT, supportsConsole: false },
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Online');
+
+    expect(screen.queryByLabelText('Konsolenbefehl')).toBeNull();
+    // Sonst suchte jemand die Konsole, die bei jedem anderen Spiel dort steht.
+    expect(screen.getByText('vom Spiel nicht unterstützt')).toBeTruthy();
   });
 });
