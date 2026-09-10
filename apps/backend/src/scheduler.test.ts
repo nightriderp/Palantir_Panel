@@ -68,6 +68,7 @@ import {
   serverScheduleTask,
   statsSamplingTask,
   resourceWarningTask,
+  stateReconcileTask,
   startScheduler,
 } from './scheduler.js';
 
@@ -1533,5 +1534,89 @@ describe('Zeitgeber: Kehraus der Sicherungen (Audit W1-6)', () => {
     // Aufbewahrung laufen trotzdem.
     expect(backups.laeufe).toEqual(['retention']);
     expect(panel.laeufe).toEqual(['panel']);
+  });
+});
+
+/**
+ * Periodischer Soll/Ist-Abgleich (Fundpunkt 232).
+ *
+ * `AgentSession.requestState()` gab es seit A1 - aufgerufen hat sie niemand.
+ * Abgeglichen wurde deshalb nur beim Verbindungsaufbau des Agents: Wer einen
+ * Container auf der Node von Hand stoppte, sah im Panel bis zum naechsten
+ * Neustart des Agents "laeuft".
+ */
+describe('stateReconcileTask (Fundpunkt 232)', () => {
+  function aufbau(hostIds: readonly string[]) {
+    const gefragt: string[] = [];
+    let jetzt = 0;
+
+    const aufgabe = stateReconcileTask(
+      { connectedHostIds: () => hostIds },
+      {
+        requestState: (hostId) => {
+          gefragt.push(hostId);
+        },
+      },
+      mitschreibendesLog(),
+      { intervalMs: 5 * 60 * 1000, now: () => new Date(jetzt) },
+    );
+
+    return {
+      gefragt,
+      aufgabe,
+      stelleUhr(ms: number) {
+        jetzt = ms;
+      },
+    };
+  }
+
+  it('fragt jede verbundene Node nach ihrem Ist-Zustand', async () => {
+    const t = aufbau(['node-a', 'node-b']);
+
+    await t.aufgabe.run();
+
+    expect(t.gefragt).toEqual(['node-a', 'node-b']);
+  });
+
+  it('fragt nicht in jedem Takt, sondern im eigenen Abstand', async () => {
+    const t = aufbau(['node-a']);
+
+    await t.aufgabe.run();
+    // Eine Minute spaeter - der Zeitgeber laeuft, der Abgleich nicht.
+    t.stelleUhr(60_000);
+    await t.aufgabe.run();
+
+    expect(t.gefragt).toEqual(['node-a']);
+
+    t.stelleUhr(5 * 60 * 1000 + 1);
+    await t.aufgabe.run();
+
+    expect(t.gefragt).toEqual(['node-a', 'node-a']);
+  });
+
+  it('laesst eine abreissende Node die uebrigen nicht mitreissen', async () => {
+    const gefragt: string[] = [];
+    const aufgabe = stateReconcileTask(
+      { connectedHostIds: () => ['kaputt', 'heil'] },
+      {
+        requestState: (hostId) => {
+          if (hostId === 'kaputt') throw new Error('Verbindung weg');
+          gefragt.push(hostId);
+        },
+      },
+      mitschreibendesLog(),
+    );
+
+    await aufgabe.run();
+
+    expect(gefragt).toEqual(['heil']);
+  });
+
+  it('fragt niemanden, wenn keine Node verbunden ist', async () => {
+    const t = aufbau([]);
+
+    await t.aufgabe.run();
+
+    expect(t.gefragt).toEqual([]);
   });
 });

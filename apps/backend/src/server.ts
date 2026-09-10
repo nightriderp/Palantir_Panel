@@ -95,6 +95,7 @@ import {
   resourceWarningTask,
   serverScheduleTask,
   startScheduler,
+  stateReconcileTask,
   statsSamplingTask,
 } from './scheduler.js';
 
@@ -816,6 +817,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         // diesem Durchlauf geschrieben hat.
         resourceWarningTask(resources, orchestration, notifications.eventSink, app.log),
         panelBackupTask(panelBackups, app.log),
+        // Fundpunkt 232: Fragt die verbundenen Nodes periodisch nach ihrem
+        // Ist-Zustand. Die Antwort laeuft durch denselben Weg wie beim
+        // Verbindungsaufbau (`onStateReport` -> `service.reconcile`).
+        stateReconcileTask(
+          agents,
+          { requestState: (hostId) => agents.get(hostId)?.requestState() },
+          app.log,
+        ),
         // Abgerissene Läufe und die Aufbewahrungsfrist (Audit W1-6,
         // Fundpunkte 130 und 131). Eigener Abstand innerhalb des Takts: Hier
         // ist nichts minutengenau fällig.

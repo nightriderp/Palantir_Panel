@@ -449,6 +449,87 @@ function warnungsSchluessel(warning: ResourceLowEvent): string {
  * Backends darf eine anhaltende Lage einmal neu gemeldet werden – das ist keine
  * Flut, aber ein Hinweis, dass sie den Neustart überdauert hat.
  */
+/**
+ * Wie oft nach dem Ist-Zustand der Nodes gefragt wird (Fundpunkt 232).
+ *
+ * Fünf Minuten: Ein Abgleich ist eine Frage und eine Antwort je Node, keine
+ * Last. Häufiger brächte nichts – wer einen Container von Hand stoppt, wartet
+ * ohnehin nicht auf die Sekunde; seltener ließe die Übersicht zu lange etwas
+ * behaupten, das nicht mehr stimmt.
+ */
+export const STATE_RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Fordert den Ist-Zustands-Bericht einer Node an (A1, Pflichtenheft §2.2).
+ *
+ * Bewusst ohne Rückgabe: Der Bericht kommt als eigenes Frame und läuft durch
+ * denselben Weg wie beim Verbindungsaufbau (`onStateReport` →
+ * `service.reconcile`). Der Zeitgeber stösst nur an.
+ */
+export interface StateRequester {
+  requestState(hostId: string): void;
+}
+
+/**
+ * Periodischer Soll/Ist-Abgleich (Fundpunkt 232).
+ *
+ * `AgentSession.requestState()` gab es seit A1 – **aufgerufen hat sie
+ * niemand**. Abgeglichen wurde deshalb nur beim Verbindungsaufbau des Agents:
+ * Wer einen Container auf der Node von Hand stoppte, sah im Panel bis zum
+ * nächsten Neustart des Agents „läuft". Genau dafür ist der Bericht da.
+ *
+ * Eigener Abstand innerhalb des Takts, wie beim Kehraus der Sicherungen: Der
+ * Zeitgeber läuft jede Minute, hier ist nichts minutengenau fällig.
+ */
+export function stateReconcileTask(
+  agents: ConnectedHosts,
+  requester: StateRequester,
+  log: SchedulerLogger,
+  options: { intervalMs?: number; now?: () => Date } = {},
+): ScheduledTask {
+  const intervalMs = options.intervalMs ?? STATE_RECONCILE_INTERVAL_MS;
+  const now = options.now ?? ((): Date => new Date());
+  let letzterLauf: number | null = null;
+
+  return {
+    name: 'stateReconcile',
+    run(): Promise<void> {
+      const jetzt = now().getTime();
+
+      if (letzterLauf !== null && jetzt - letzterLauf < intervalMs) {
+        return Promise.resolve();
+      }
+
+      letzterLauf = jetzt;
+
+      const hostIds = agents.connectedHostIds();
+
+      for (const hostId of hostIds) {
+        try {
+          requester.requestState(hostId);
+        } catch (error: unknown) {
+          // Eine Node, deren Verbindung gerade abreisst, haelt die uebrigen
+          // nicht auf (dieselbe Regel wie in `proNodeSicher`).
+          log.error(
+            {
+              task: 'stateReconcile',
+              hostId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'Node im Durchlauf des Zeitgebers übersprungen',
+          );
+        }
+      }
+
+      if (hostIds.length > 0) {
+        log.debug({ hostIds }, 'Ist-Zustand der Nodes angefordert');
+      }
+
+      return Promise.resolve();
+    },
+  };
+}
+
 export function resourceWarningTask(
   resources: NodeWarningEvaluator,
   servers: ServerLoadSource,
