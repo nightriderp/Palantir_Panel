@@ -33,7 +33,12 @@ import type {
   RemoveStorageEntryCommandResult,
 } from '@palantir/contracts';
 import { ContainerRuntimeError, type ContainerRuntime } from '../../runtime/index.js';
-import { resolveWithinAny, resolveWithinDirectory, serverIdFromContainerName } from '../paths.js';
+import {
+  assertOhnePfadausbruchInEinem,
+  resolveWithinAny,
+  resolveWithinDirectory,
+  serverIdFromContainerName,
+} from '../paths.js';
 import { directorySize, type DirectorySize } from './directory-size.js';
 
 export interface StorageScannerOptions {
@@ -237,6 +242,18 @@ export class StorageScanner {
     if (payload.kind === 'orphaned') {
       await this.#erwarteOhneContainer(pfad);
     }
+
+    /*
+     * Erst hier, nicht in der Pfadberechnung: Die Pruefung kostet einen
+     * Dateisystemzugriff und gehoert dorthin, wo gleich geloescht wird
+     * (Fundpunkt 201). Ein Link im eigenen Datenordner - fuer einen
+     * Serverbesitzer ueber eine hochgeladene Erweiterung erreichbar - zeigte
+     * sonst auf fremde Serverdaten, und `fs.rm` folgte ihm.
+     */
+    await assertOhnePfadausbruchInEinem(
+      payload.kind === 'backup' ? [this.#backupDir] : [this.#dataDir, this.#backupDir],
+      pfad,
+    );
 
     const stat = await statOderNull(pfad);
     if (stat === null) {
