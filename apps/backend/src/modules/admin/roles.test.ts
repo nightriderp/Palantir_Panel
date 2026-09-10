@@ -9,7 +9,7 @@
 
 import { GUEST_ROLE_NAME } from '@palantir/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { isRbacError } from '../rbac/index.js';
+import { buildPermissionActor, isRbacError } from '../rbac/index.js';
 import { createAuditService } from './audit.js';
 import { AdminError } from './errors.js';
 import type { RoleAdminService } from './roles.js';
@@ -240,5 +240,56 @@ describe('Zuweisen und Entziehen', () => {
     );
 
     expect(repository.assignments).toHaveLength(0);
+  });
+});
+
+/**
+ * Rangschutz am Zielkonto (Fundpunkt 197).
+ *
+ * Die Teilmengen-Regel aus PR #343 sichert, dass niemand ein Recht **vergibt**,
+ * das er selbst nicht hat. Sie sagt nichts darueber, wem er eines wegnimmt: Ein
+ * Konto mit `role.manage` durfte an den Rollen jedes Kontos drehen, auch an
+ * denen des Owners.
+ */
+describe('Rangschutz am Zielkonto (Fundpunkt 197)', () => {
+  const OWNER_USER_ID = '77777777-7777-4777-8777-777777777777';
+
+  function serviceMitOwner() {
+    return createTestRoleAdminService({
+      repository,
+      audit: createAuditService(auditRepository),
+      knownUserIds: [USER_ID, OWNER_USER_ID],
+      ownerUserIds: [OWNER_USER_ID],
+    });
+  }
+
+  it('laesst einen Rollen-Verwalter nicht an die Rollen des Owners', async () => {
+    const dienst = serviceMitOwner();
+
+    await expectErrorCode(
+      dienst.assignToUser(roleAdminCtx(), NUTZER_ROLE_ID, OWNER_USER_ID),
+      'PERMISSION_DENIED',
+    );
+    await expectErrorCode(
+      dienst.removeFromUser(roleAdminCtx(), NUTZER_ROLE_ID, OWNER_USER_ID),
+      'PERMISSION_DENIED',
+    );
+  });
+
+  it('laesst den Owner selbst gewaehren', async () => {
+    const dienst = serviceMitOwner();
+    const ownerCtx = ctxWith(buildPermissionActor({ isOwner: true, roles: [] }));
+
+    await expect(
+      dienst.assignToUser(ownerCtx, NUTZER_ROLE_ID, OWNER_USER_ID),
+    ).resolves.toBeDefined();
+  });
+
+  it('aendert nichts an gewoehnlichen Konten', async () => {
+    const dienst = serviceMitOwner();
+
+    await expect(
+      dienst.assignToUser(roleAdminCtx(), NUTZER_ROLE_ID, USER_ID),
+    ).resolves.toBeDefined();
   });
 });
