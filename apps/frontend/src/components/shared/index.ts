@@ -119,6 +119,7 @@ export {
 export { HIGHLIGHT_PARAM, useHighlight, type Highlight } from './utils/useHighlight';
 export {
   clampPercent,
+  clampedPercentOf,
   cpuQuotaPercent,
   formatBytes,
   formatChatTime,
@@ -133,5 +134,6 @@ export {
   formatPlayers,
   formatServerAddress,
   formatTime,
+  percentOf,
   serverInitials,
 } from './utils/format';

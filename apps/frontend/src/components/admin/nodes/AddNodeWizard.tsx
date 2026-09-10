@@ -221,7 +221,7 @@ export function AddNodeWizard({
           inputProps={{ required: true }}
         />
         <div className="grid gap-3 sm:grid-cols-3">
-          <NumberField label="RAM" labelAside="GB" min={1} value={ramGb} onChange={setRamGb} />
+          <NumberField label="RAM" labelAside="GiB" min={1} value={ramGb} onChange={setRamGb} />
           <NumberField
             label="CPU-Kerne"
             min={1}
@@ -231,7 +231,7 @@ export function AddNodeWizard({
           />
           <NumberField
             label="Speicher"
-            labelAside="GB"
+            labelAside="GiB"
             min={1}
             value={diskGb}
             onChange={setDiskGb}

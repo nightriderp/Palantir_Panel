@@ -64,7 +64,7 @@ export function QuotaRequestDialog({
         </p>
 
         <TextField
-          label="Arbeitsspeicher (MB)"
+          label="Arbeitsspeicher (MiB)"
           hint={
             quota.ram.limit === null
               ? 'Aktuell ohne Grenze – hier ist nichts zu beantragen.'

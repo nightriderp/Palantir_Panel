@@ -4,7 +4,7 @@ import {
   type HostNodeStatus,
   type ServerResourceLimits,
 } from '@palantir/contracts';
-import { type Tone, formatMegabytes, formatNumber } from '@/components/shared';
+import { type Tone, formatMegabytes, formatNumber, percentOf } from '@/components/shared';
 
 /**
  * Ableitungen für die Node-Ansicht aus Nutzersicht (Lastenheft §3.7).
@@ -121,12 +121,6 @@ function toneForFill(percent: number | null): Tone {
   if (percent >= CRITICAL_PERCENT) return 'danger';
   if (percent >= WARN_PERCENT) return 'warning';
   return 'brand';
-}
-
-/** Anteil in Prozent; `null`, wenn die Bezugsgröße fehlt oder 0 ist. */
-export function percentOf(used: number, total: number): number | null {
-  if (!Number.isFinite(total) || total <= 0) return null;
-  return Math.round((used / total) * 100);
 }
 
 /** CPU-Kerne mit deutschem Dezimalkomma, z. B. `7,5 Kerne`. */

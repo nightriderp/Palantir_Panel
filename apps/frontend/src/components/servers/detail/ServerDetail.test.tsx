@@ -288,8 +288,8 @@ describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
     zeichne();
     await screen.findByText('Online');
 
-    // 2048 MB von 4 GB Kontingent - vorher stand hier ein Strich.
-    expect(await screen.findByText('2 GB')).toBeTruthy();
+    // 2048 MiB von 4 GiB Kontingent - vorher stand hier ein Strich.
+    expect(await screen.findByText('2 GiB')).toBeTruthy();
     // 250 % eines Kerns bei zwei Kernen: 125 %, begrenzt auf 100 (Fundpunkt 205).
     expect(screen.getByText('2,5 von 2 Kernen')).toBeTruthy();
     expect(screen.getByText(/Keine laufenden Messwerte/)).toBeTruthy();

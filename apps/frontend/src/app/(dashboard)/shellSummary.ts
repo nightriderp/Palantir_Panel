@@ -6,7 +6,12 @@ import {
   isFaultedServerStatus,
   isTransitionalServerStatus,
 } from '@palantir/contracts';
-import { formatMegabytes, formatNumber, serverInitials } from '@/components/shared/utils/format';
+import {
+  formatMegabytes,
+  formatNumber,
+  formatPercent,
+  serverInitials,
+} from '@/components/shared/utils/format';
 
 /**
  * Rechnungen für den Rahmen des eingeloggten Bereichs: die Kennzahlen der
@@ -163,7 +168,7 @@ export function buildStatusMetrics({
     metrics.push({
       key: 'cpu',
       label: 'CPU',
-      value: cpuSum === null ? '—' : `${Math.round(cpuSum / cpuNodes.length)}%`,
+      value: cpuSum === null ? '—' : formatPercent(cpuSum / cpuNodes.length),
       ...(cpuHerkunft.label === undefined ? {} : { origin: cpuHerkunft.label }),
       tone: 'warning',
       note: `Durchschnitt über die Maschinen der verbundenen Nodes, die Messwerte melden – nicht über einzelne Container.${cpuHerkunft.satz}`,
