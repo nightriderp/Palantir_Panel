@@ -4,28 +4,29 @@ Die Grundlage für Java-Spiel-Images (`images/game/minecraft` ist das erste). Ke
 Image hat keinen `ENTRYPOINT` und startet für sich allein nichts. Das Schema aller Images
 steht in `images/README.md`.
 
-| Enthalten                   | Fassung                                                          |
-| --------------------------- | ---------------------------------------------------------------- |
-| Java                        | Eclipse Temurin 25 JRE, `eclipse-temurin:25-jre-noble`, Digest   |
-| Benutzer                    | UID 1000 — die UID des Datenordners auf der Node (Fundpunkt 117) |
-| `/opt/palantir/lib/java.sh` | Heap aus der cgroup-Grenze (siehe unten)                         |
-| Arbeitsverzeichnis          | `/data`, dort hängt der Agent den Datenordner ein                |
-| Stoppsignal                 | `SIGTERM`                                                        |
+| Enthalten                   | Fassung                                                    |
+| --------------------------- | ---------------------------------------------------------- |
+| Grundlage                   | `palantir-base-linux` — Benutzer, `/data`, Konsole, `curl` |
+| Java                        | Eclipse Temurin 25 JRE als Tarball, per SHA-256 gepinnt    |
+| `/opt/palantir/lib/java.sh` | Heap aus der cgroup-Grenze (siehe unten)                   |
+
+Seit Fassung 3 sitzt dieses Image auf der gemeinsamen Wurzel `palantir-base-linux`, nicht mehr
+auf `eclipse-temurin`. Benutzer, Arbeitsverzeichnis, Stoppsignal, `palantir-console` und
+`palantir.sh` kommen von dort; hier bleiben JRE und Heap-Rechnung. Die JRE ist deshalb der
+Tarball von Adoptium statt eines fremden Images — derselbe Inhalt ohne dessen eigene Grundlage.
 
 ## Was ein Spiel-Image davon erbt
 
 Alles, was die Härtung des Agents (Pflichtenheft §2.3) von jedem Java-Server verlangt und was
-sonst in jedem Dockerfile noch einmal stünde: der feste, nicht-root Benutzer, die gepinnte JRE,
-das Arbeitsverzeichnis, das Signal. Ein Spiel-Image setzt darauf auf:
+sonst in jedem Dockerfile noch einmal stünde. Ein Spiel-Image setzt darauf auf:
 
 ```dockerfile
-ARG BASIS=ghcr.io/nightriderp/palantir-base-java:2
+ARG BASIS=ghcr.io/nightriderp/palantir-base-java:3
 FROM ${BASIS}
 
 USER root
-COPY start.sh console.sh /opt/palantir/
-RUN chmod 0755 /opt/palantir/start.sh /opt/palantir/console.sh \
-  && ln -s /opt/palantir/console.sh /usr/local/bin/palantir-console
+COPY start.sh /opt/palantir/
+RUN chmod 0755 /opt/palantir/start.sh
 USER 1000:1000
 
 EXPOSE 25565
@@ -95,7 +96,8 @@ Ohne POSIX-Shell im PATH überspringt sich die Datei mit einem Hinweis.
 ## Fassung erhöhen
 
 Das Tag `palantir-base-java:<n>` wird nie überschrieben; deshalb reicht einem Spiel-Image das
-Tag, wo es bei fremden Images den Digest bräuchte. Wer die JRE, Ubuntu oder `java.sh` ändert:
+Tag, wo es bei fremden Images den Digest bräuchte. Wer die JRE, die Wurzel oder `java.sh`
+ändert:
 
 1. Zahl in `VERSION` erhöhen — der Bau legt `:<n+1>` an, `:<n>` bleibt, wie es ist.
 2. Die Spiel-Images ziehen **nicht** von selbst nach. Wer den neuen Stand in einem Spiel will,
@@ -104,3 +106,15 @@ Tag, wo es bei fremden Images den Digest bräuchte. Wer die JRE, Ubuntu oder `ja
 
 Eine Java-Hauptfassung je Basis-Image: Ein Spiel, das eine ältere braucht (alte
 Minecraft-Fassungen, Forge-Modpacks), bekommt `base/java21` daneben — keinen Schalter hier.
+
+## Die JRE nachziehen
+
+Dependabot kann das nicht mehr: Seit Fassung 3 steht hier kein fremdes Image, sondern ein
+Tarball mit Prüfsumme. Die aktuellen Werte liefert die Adoptium-Schnittstelle:
+
+```bash
+curl -s "https://api.adoptium.net/v3/assets/latest/25/hotspot?architecture=x64&image_type=jre&os=linux&vendor=eclipse"
+```
+
+Aus der Antwort gehören `binary.package.link` nach `JRE_URL` und `binary.package.checksum` nach
+`JRE_SHA256` im Dockerfile, dazu die Fassung nach `JRE_VERSION`. Danach `VERSION` erhöhen.

@@ -8,14 +8,20 @@
 # wechselt danach den Benutzer – alle drei Schritte scheitern an `CapDrop: ALL`
 # und `no-new-privileges` (Pflichtenheft §2.3) mit „operation not permitted".
 #
-# Die Härtung bleibt, das Image fügt sich – und das meiste davon erbt es vom
-# Basis-Image `palantir-base-java` (`images/base/java`): den festen Benutzer
-# UID 1000 (die UID des Datenordners auf dem Homeserver, Fundpunkt 117), die per
-# Digest gepinnte JRE, `/data` als Arbeitsverzeichnis, SIGTERM als Stoppsignal
-# und die Rechnung des Heaps in `/opt/palantir/lib/java.sh`. Hier bleibt, was
-# nur Minecraft betrifft: die Paper-Jar, die EULA, `server.properties`, die
-# Konsole. Kein `chown` im Startskript, kein Benutzerwechsel zur Laufzeit,
-# geschrieben wird nur in den Datenordner und nach `/tmp`.
+# Die Härtung bleibt, das Image fügt sich – und das meiste davon erbt es. Von
+# `palantir-base-java` die JRE und die Rechnung des Heaps
+# (`/opt/palantir/lib/java.sh`), von der Wurzel `palantir-base-linux` darunter
+# den festen Benutzer UID 1000 (die UID des Datenordners auf dem Homeserver,
+# Fundpunkt 117), `/data` als Arbeitsverzeichnis, SIGTERM als Stoppsignal,
+# `palantir-console` und die Bibliothek `palantir.sh`.
+#
+# Hier bleibt, was nur Minecraft betrifft: die Paper-Jar, die EULA,
+# `server.properties`, RCON. Kein `chown` im Startskript, kein Benutzerwechsel
+# zur Laufzeit, geschrieben wird nur in den Datenordner und nach `/tmp`.
+#
+# **`console.sh` liegt seit Fassung 4 nicht mehr hier.** Der Anschluss ist bei
+# jedem Server gleich, der Befehle von der Standardeingabe liest; er steht
+# deshalb in der Wurzel und kommt von dort.
 #
 # **Warum ein Versions-Tag und kein Digest:** Bei einem fremden Image wandert der
 # Tag und nur der Digest steht fest. `palantir-base-java:<n>` wird dagegen nie
@@ -26,7 +32,7 @@
 # **Warum Temurin 25 und nicht 21:** Paper 26.2 verlangt laut
 # `fill.papermc.io/v3/projects/paper/versions/26.2` Java 25 als Mindestfassung;
 # genau die trägt `base/java`.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-java:2
+ARG BASIS=ghcr.io/nightriderp/palantir-base-java:3
 
 # -----------------------------------------------------------------------------
 # Stufe 1: Paper holen und die Prüfsumme prüfen.
@@ -78,20 +84,15 @@ RUN set -eux; \
 FROM ${BASIS}
 USER root
 
-COPY start.sh console.sh /opt/palantir/
+COPY start.sh /opt/palantir/
 COPY --from=paper /paper.jar /opt/palantir/paper.jar
 
 # Rechte hier statt im Kontext: Ein Arbeitsplatz unter Windows gibt das
 # Ausführungsbit nicht mit, und ein Image, das je nach Auscheck-Plattform anders
-# aussieht, ist keins.
-#
-# `palantir-console` muss ohne Shell aufrufbar sein: `EXEC_CONSOLE` übergibt eine
-# Argumentliste, kein Kommando für `sh -c` – und die Zeile aus der Panel-Konsole
-# wird an Leerzeichen zerlegt, argv[0] ist also genau dieser Name.
+# aussieht, ist keins. `palantir-console` samt Verweis kommt aus der Wurzel.
 RUN set -eux; \
-  chmod 0755 /opt/palantir/start.sh /opt/palantir/console.sh; \
-  chmod 0444 /opt/palantir/paper.jar; \
-  ln -s /opt/palantir/console.sh /usr/local/bin/palantir-console
+  chmod 0755 /opt/palantir/start.sh; \
+  chmod 0444 /opt/palantir/paper.jar
 
 USER 1000:1000
 
