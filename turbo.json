@@ -1,7 +1,16 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
-  "globalDependencies": [".env", "tsconfig.base.json", "eslint.config.mjs", ".prettierignore"],
+  "//": "globalDependencies: Dateien ausserhalb der Pakete, die in den Hash JEDER Aufgabe eingehen. `deploy/**`, `images/**` und `.env.example` stehen hier, seit ein Test das ohne sie bezahlt hat (Audit 2026-09-10): `apps/agent/src/runtime/egress-deploy.test.ts` liest `deploy/gamenode/docker-compose.yml`. #335 aenderte die Datei, der Test blieb stehen - und weil sie ausserhalb von `apps/agent` liegt, aenderte sich der Hash des Pakets nicht. Die CI stellt ihren Turborepo-Cache ueber `restore-keys` wieder her und spielte das alte Ergebnis ab: `@palantir/agent#test` lief seitdem gar nicht mehr, main war rot und niemand sah es. Wer hier etwas ergaenzt, macht Laeufe teurer - das ist der Preis dafuer, dass ein gruener Lauf etwas bedeutet.",
+  "globalDependencies": [
+    ".env",
+    ".env.example",
+    "tsconfig.base.json",
+    "eslint.config.mjs",
+    ".prettierignore",
+    "deploy/**",
+    "images/**"
+  ],
   "globalEnv": ["NODE_ENV"],
   "tasks": {
     "build": {
