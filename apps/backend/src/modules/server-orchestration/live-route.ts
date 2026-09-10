@@ -22,6 +22,7 @@ import { type ServerLiveHub } from './live-hub.js';
 import {
   LIVE_CLOSE_CODE_FORBIDDEN,
   LIVE_CLOSE_CODE_UNAUTHORIZED,
+  LIVE_CLOSE_CODE_TOO_SLOW,
   LIVE_MAX_FRAME_BYTES,
   SUBSCRIPTION_CHECK_INTERVAL_MS,
 } from './live-frames.js';
@@ -153,6 +154,11 @@ export function registerServerLiveRoute(
         {
           send: (data: string) => {
             socket.send(data);
+          },
+          // Fundpunkt 229: Der Hub entscheidet damit, ob dieser Abonnent noch
+          // mitkommt.
+          get bufferedAmount() {
+            return socket.bufferedAmount;
           },
           close: (code: number, reason?: string) => {
             socket.close(code, reason);
@@ -377,9 +383,18 @@ export function registerServerLiveRoute(
       socket.on('message', (raw: unknown) => {
         const text = bufferToString(raw);
 
-        // Grenze vor dem Parsen: Ein mehrere Megabyte großes „Frame" soll gar
-        // nicht erst durch `JSON.parse` (security-matrix-05 für diesen Kanal).
+        /*
+         * Grenze vor dem Parsen: Ein mehrere Megabyte großes „Frame" soll gar
+         * nicht erst durch `JSON.parse` (security-matrix-05 für diesen Kanal).
+         *
+         * Geschlossen statt still verworfen (Fundpunkt 229): Wer ein Frame
+         * dieser Größe schickt, spricht nicht den Vertrag dieses Kanals – und
+         * still zu verwerfen hiesse, ihn beliebig oft schicken zu lassen. Das
+         * größte gültige Frame ist ein Konsolenbefehl von 512 Zeichen.
+         */
         if (Buffer.byteLength(text, 'utf8') > LIVE_MAX_FRAME_BYTES) {
+          socket.close(LIVE_CLOSE_CODE_TOO_SLOW, 'Nachricht zu groß für diesen Kanal.');
+
           return;
         }
 

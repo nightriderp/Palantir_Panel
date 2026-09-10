@@ -345,3 +345,102 @@ describe('ServerLiveHub – Listen-Thema (Fundpunkt 173)', () => {
     expect(anonym.frames()).toEqual([]);
   });
 });
+
+/**
+ * Ein Abonnent, der nicht mitkommt (Fundpunkt 229).
+ *
+ * Ein Server, der Zeilen ausspuckt - Minecraft beim Weltaufbau, ein Absturz in
+ * einer Schleife -, fuellt den Sendepuffer eines langsamen Browsers. `ws`
+ * puffert unbegrenzt; der Arbeitsspeicher des Backends waechst dann im Takt der
+ * Konsolenausgabe, und zwar je offener Ansicht.
+ */
+describe('Langsamer Abonnent (Fundpunkt 229)', () => {
+  const SERVER_ID = '11111111-1111-4111-8111-111111111111';
+
+  function langsamerSocket(gestaut: number) {
+    const gesendet: string[] = [];
+    const geschlossen: { code: number; reason?: string }[] = [];
+
+    return {
+      gesendet,
+      geschlossen,
+      socket: {
+        send: (data: string) => {
+          gesendet.push(data);
+        },
+        close: (code: number, reason?: string) => {
+          geschlossen.push({ code, reason });
+        },
+        get bufferedAmount() {
+          return gestaut;
+        },
+      },
+    };
+  }
+
+  it('schliesst die Verbindung, statt weiter zu senden', () => {
+    const hub = new ServerLiveHub();
+    const doppel = langsamerSocket(2 * 1024 * 1024);
+    const registrierung = hub.register(doppel.socket, 'user-1');
+    registrierung.subscribe(SERVER_ID);
+
+    hub.publish('server.statusChanged', {
+      serverId: SERVER_ID,
+      status: 'running',
+      statusMessage: null,
+    });
+
+    expect(doppel.gesendet).toEqual([]);
+    expect(doppel.geschlossen[0]?.code).toBe(1009);
+    expect(hub.socketCount).toBe(0);
+  });
+
+  it('laesst einen Abonnenten mit ruhigem Puffer in Ruhe', () => {
+    const hub = new ServerLiveHub();
+    const doppel = langsamerSocket(1024);
+    const registrierung = hub.register(doppel.socket, 'user-1');
+    registrierung.subscribe(SERVER_ID);
+
+    hub.publish('server.statusChanged', {
+      serverId: SERVER_ID,
+      status: 'running',
+      statusMessage: null,
+    });
+
+    expect(doppel.gesendet.length).toBe(1);
+    expect(doppel.geschlossen).toEqual([]);
+  });
+
+  it('nimmt einem Testdouble ohne Puffer-Angabe nichts uebel', () => {
+    const hub = new ServerLiveHub();
+    const gesendet: string[] = [];
+    const registrierung = hub.register({ send: (data: string) => gesendet.push(data) }, 'user-1');
+    registrierung.subscribe(SERVER_ID);
+
+    hub.publish('server.statusChanged', {
+      serverId: SERVER_ID,
+      status: 'running',
+      statusMessage: null,
+    });
+
+    expect(gesendet.length).toBe(1);
+  });
+
+  it('wirft nur den langsamen ab, nicht die uebrigen', () => {
+    const hub = new ServerLiveHub();
+    const langsam = langsamerSocket(5 * 1024 * 1024);
+    const flott = langsamerSocket(0);
+    hub.register(langsam.socket, 'user-1').subscribe(SERVER_ID);
+    hub.register(flott.socket, 'user-2').subscribe(SERVER_ID);
+
+    hub.publish('server.statusChanged', {
+      serverId: SERVER_ID,
+      status: 'running',
+      statusMessage: null,
+    });
+
+    expect(langsam.gesendet).toEqual([]);
+    expect(flott.gesendet.length).toBe(1);
+    expect(hub.socketCount).toBe(1);
+  });
+});
