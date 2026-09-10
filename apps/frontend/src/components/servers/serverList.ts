@@ -13,6 +13,11 @@ export const SERVER_FILTERS = ['all', 'online', 'offline'] as const;
 
 export type ServerFilter = (typeof SERVER_FILTERS)[number];
 
+/** Prüft einen Filterwert aus der Adresszeile (Fundpunkt 213). */
+export function isServerFilter(wert: string): wert is ServerFilter {
+  return (SERVER_FILTERS as readonly string[]).includes(wert);
+}
+
 /** Beschriftungen des Umschalters über der Liste (Lastenheft §4: Deutsch). */
 export const SERVER_FILTER_LABELS: Record<ServerFilter, string> = {
   all: 'Alle',
