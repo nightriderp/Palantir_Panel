@@ -182,14 +182,21 @@ pruefe_besitzer "$(wert_aus_env AGENT_ROUTER_DIR)" 'Routen des Hostname-Routers'
 router_dir="$(wert_aus_env AGENT_ROUTER_DIR)"
 platzhalter_quelle="${COMPOSE_DIR}/infrared/00-platzhalter.json"
 platzhalter_ziel="${router_dir}/proxies/00-platzhalter.json"
+platzhalter_geschrieben=0
 
 if [[ -n "${router_dir}" && -d "${router_dir}/proxies" ]]; then
   if cmp -s "${platzhalter_quelle}" "${platzhalter_ziel}"; then
     : # Unveraendert - nichts anfassen, sonst faellt Infrared der Lauscher weg.
   elif install -o 1000 -g 1000 -m 644 "${platzhalter_quelle}" "${platzhalter_ziel}" 2>/dev/null; then
     log "Platzhalter-Route in ${router_dir}/proxies geschrieben."
-    log '         Hinweis: Infrared kann dabei seinen Lauscher verlieren (Fundpunkt 195).'
-    log "         Pruefen: docker logs palantir-hostname-router | grep 'Creating listener'"
+    # Gemessen am 2026-09-10 (Fundpunkt 195): Der Platzhalter registriert sich
+    # als erster Proxy und besitzt damit den Lauscher auf dem Router-Port. Wird
+    # seine Datei ersetzt, schliesst Infrared den Proxy - und der Lauscher geht
+    # mit. Danach registriert Infrared weiter jede Route und meldet
+    # "All proxies are online", nimmt aber keine Verbindung mehr an. Nur ein
+    # Neustart bringt ihn zurueck. Die Routen-Datei eines Servers zu entfernen
+    # ist dagegen harmlos, das wurde eigens nachgemessen.
+    platzhalter_geschrieben=1
   else
     log "ACHTUNG: Platzhalter-Route in ${router_dir}/proxies liess sich nicht ablegen."
     log '         Ohne sie startet der Hostname-Router nicht. Als root ablegen:'
@@ -221,6 +228,15 @@ docker compose --env-file "${ENV_FILE}" "${PROFIL[@]}" pull --quiet
 # laufende Spielrunde beenden.
 log 'Starte die Dienste der Gamenode neu ...'
 docker compose --env-file "${ENV_FILE}" "${PROFIL[@]}" up -d --remove-orphans
+
+# Wurde die Platzhalter-Route ersetzt, muss der Router einmal neu (siehe oben).
+# `up -d` fasst ihn dabei nicht an: Die Datei liegt im Datenordner der Node und
+# gehoert nicht mehr zur Compose-Konfiguration des Dienstes.
+if [[ "${platzhalter_geschrieben}" -eq 1 && -n "$(docker ps -aq --filter 'name=^palantir-hostname-router$')" ]]; then
+  log 'Platzhalter-Route hat sich geaendert - starte den Hostname-Router neu.'
+  docker compose --env-file "${ENV_FILE}" "${PROFIL[@]}" restart hostname-router ||
+    log 'ACHTUNG: Neustart des Hostname-Routers misslungen - er nimmt jetzt womoeglich keine Verbindungen an.'
+fi
 
 # -----------------------------------------------------------------------------
 # Ergebnis pruefen
