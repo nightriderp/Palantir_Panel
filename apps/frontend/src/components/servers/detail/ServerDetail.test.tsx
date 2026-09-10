@@ -266,6 +266,10 @@ describe('Live-Konsole nur, wenn das Spiel eine hat', () => {
  * Verlaufsdiagramm derselben Ansicht eine Kurve zeichnete.
  */
 describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
+  /**
+   * Frisch gemessen: Die Kacheln nehmen nur Werte aus der letzten Stunde -
+   * eine aeltere Messung waere eine andere Aussage als "so sieht es jetzt aus".
+   */
   const MESSUNG = {
     cpuPercent: 250,
     ramUsedMb: 2048,
@@ -275,7 +279,13 @@ describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
     playersMax: 20,
     networkRxBytes: 1024,
     networkTxBytes: 2048,
-    updatedAt: '2026-09-10T12:00:00.000Z',
+    updatedAt: new Date().toISOString(),
+  };
+
+  /** Dieselbe Messung, nur drei Stunden alt. */
+  const ALTE_MESSUNG = {
+    ...MESSUNG,
+    updatedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
   };
 
   it('nimmt die letzte Messung aus dem Verlauf, wenn der Kanal schweigt', async () => {
@@ -306,8 +316,26 @@ describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
     zeichne();
     await screen.findByText('Online');
 
-    expect(await screen.findByText('Noch keine Messwerte für diesen Server.')).toBeTruthy();
+    expect(
+      await screen.findByText(/In der letzten Stunde hat dieser Server keine Messwerte/),
+    ).toBeTruthy();
     expect(screen.queryByText('Der Server läuft nicht.')).toBeNull();
+  });
+
+  it('nimmt eine drei Stunden alte Messung nicht in die Kacheln', async () => {
+    api.fetchStatsHistory.mockResolvedValue({
+      success: true,
+      data: { serverId: 'srv-1', windowMinutes: 60, samples: [ALTE_MESSUNG] },
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Online');
+
+    expect(
+      await screen.findByText(/In der letzten Stunde hat dieser Server keine Messwerte/),
+    ).toBeTruthy();
+    expect(screen.queryByText('2,5 von 2 Kernen')).toBeNull();
   });
 
   it('bleibt beim gestoppten Server bei der alten Auskunft', async () => {
