@@ -286,6 +286,38 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
     await expect(repository.unpinServer(nutzer, serverId)).resolves.toBeUndefined();
   });
 
+  /*
+   * Fundpunkt 231: Die Serverliste baute je Server eine eigene
+   * Mitglieder-Abfrage - bei neun Servern zehn Abfragen. Die Sammelabfrage
+   * liefert dieselbe Auskunft in einer Runde.
+   */
+  it('liefert die Mitglieder mehrerer Server in einer Abfrage', async () => {
+    const repository = createDrizzleServerRepository(kontext.db);
+    const besitzer = await legeNutzerAn(kontext.db);
+    const mitglied = await legeNutzerAn(kontext.db, { displayName: 'Mitspielerin' });
+    const node = await legeNodeAn(kontext.db);
+    const mitMitglied = await legeServerAn(kontext.db, { ownerId: besitzer, hostId: node });
+    const ohneMitglied = await legeServerAn(kontext.db, { ownerId: besitzer, hostId: node });
+
+    await repository.upsertMember(mitMitglied, mitglied, 'manager');
+
+    const karte = await repository.listMembersOf([mitMitglied, ohneMitglied]);
+
+    expect(karte.get(mitMitglied)).toHaveLength(1);
+    expect(karte.get(mitMitglied)?.[0]?.displayName).toBe('Mitspielerin');
+    // Server ohne Mitglieder fehlen in der Karte - der Aufrufer liest sie als
+    // leere Liste.
+    expect(karte.get(ohneMitglied)).toBeUndefined();
+    // Dieselbe Auskunft wie die Einzelabfrage.
+    expect(karte.get(mitMitglied)).toEqual(await repository.listMembers(mitMitglied));
+  });
+
+  it('fragt ohne Server-Ids gar nicht erst nach', async () => {
+    const repository = createDrizzleServerRepository(kontext.db);
+
+    expect((await repository.listMembersOf([])).size).toBe(0);
+  });
+
   it('ersetzt die Stufe eines vorhandenen Mitglieds statt eine zweite Zeile anzulegen', async () => {
     const repository = createDrizzleServerRepository(kontext.db);
     const besitzer = await legeNutzerAn(kontext.db);

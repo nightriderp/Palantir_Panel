@@ -96,16 +96,21 @@ const viewerIds: Record<string, string> = { admin: ADMIN_ID, alex: ALEX_ID };
 function fakeRepository() {
   const memberships = new Map<string, readonly string[]>([[ALEX_ID, [BEA_EIGEN.id]]]);
 
+  const mitgliederVon = (serverId: string) =>
+    [...memberships]
+      .filter(([, serverIds]) => serverIds.includes(serverId))
+      .map(([userId]) => ({
+        userId,
+        displayName: 'Alex',
+        level: 'viewer' as const,
+        addedAt: '2026-08-30T09:30:00.000Z',
+      }));
+
   return {
-    listMembers: async (serverId: string) =>
-      [...memberships]
-        .filter(([, serverIds]) => serverIds.includes(serverId))
-        .map(([userId]) => ({
-          userId,
-          displayName: 'Alex',
-          level: 'viewer' as const,
-          addedAt: '2026-08-30T09:30:00.000Z',
-        })),
+    listMembers: async (serverId: string) => mitgliederVon(serverId),
+    // Sammelabfrage der Liste (Fundpunkt 231) - dieselbe Auskunft, eine Runde.
+    listMembersOf: async (serverIds: readonly string[]) =>
+      new Map(serverIds.map((id) => [id, mitgliederVon(id)])),
     listPinnedServerIds: async () => new Set<string>(),
     listAll: vi.fn(async () => [ALEX_EIGEN, BEA_EIGEN] as readonly ServerRecord[]),
     listByOwnerOrMembership: vi.fn(async (userId: string) => {

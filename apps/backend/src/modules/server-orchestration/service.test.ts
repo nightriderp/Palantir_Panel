@@ -270,6 +270,18 @@ class FakeRepository implements ServerRepository {
     return Promise.resolve();
   }
 
+  async listMembersOf(
+    serverIds: readonly string[],
+  ): Promise<ReadonlyMap<string, readonly ServerMemberRecord[]>> {
+    const karte = new Map<string, readonly ServerMemberRecord[]>();
+
+    for (const serverId of serverIds) {
+      karte.set(serverId, await this.listMembers(serverId));
+    }
+
+    return karte;
+  }
+
   listMembers(serverId: string): Promise<readonly ServerMemberRecord[]> {
     return Promise.resolve(
       [...(this.members.get(serverId) ?? new Map()).entries()].map(([userId, level]) => ({

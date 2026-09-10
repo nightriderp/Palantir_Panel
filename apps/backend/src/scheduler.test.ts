@@ -868,6 +868,10 @@ class SweepRepository implements ServerRepository {
     return this.nichtGebraucht('listMembers');
   }
 
+  listMembersOf(): Promise<ReadonlyMap<string, readonly ServerMemberRecord[]>> {
+    return this.nichtGebraucht('listMembersOf');
+  }
+
   memberLevel(): Promise<ServerMemberLevel | null> {
     return this.nichtGebraucht('memberLevel');
   }

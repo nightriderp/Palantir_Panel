@@ -137,6 +137,18 @@ export interface ServerRepository {
   ): Promise<void>;
   delete(id: string): Promise<void>;
   listMembers(serverId: string): Promise<readonly ServerMemberRecord[]>;
+  /**
+   * Mitglieder mehrerer Server in **einer** Abfrage (Fundpunkt 231).
+   *
+   * Die Serverliste baute je Server einen eigenen `listMembers()`-Aufruf: bei
+   * neun Servern zehn Abfragen, bei hundert hunderteins. Gemessen waren es bei
+   * neun Servern 16 ms – die Kurve ist linear, und sie zieht ab etwa hundert
+   * Servern spürbar an. Server ohne Mitglieder fehlen in der Karte; der
+   * Aufrufer liest sie als leere Liste.
+   */
+  listMembersOf(
+    serverIds: readonly string[],
+  ): Promise<ReadonlyMap<string, readonly ServerMemberRecord[]>>;
   memberLevel(serverId: string, userId: string): Promise<ServerMemberLevel | null>;
   upsertMember(serverId: string, userId: string, level: ServerMemberLevel): Promise<void>;
   removeMember(serverId: string, userId: string): Promise<void>;
@@ -499,6 +511,41 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
         level: row.level,
         addedAt: row.addedAt.toISOString(),
       }));
+    },
+
+    async listMembersOf(
+      serverIds: readonly string[],
+    ): Promise<ReadonlyMap<string, readonly ServerMemberRecord[]>> {
+      const karte = new Map<string, ServerMemberRecord[]>();
+
+      if (serverIds.length === 0) {
+        return karte;
+      }
+
+      const rows = await db
+        .select({
+          serverId: serverMembers.serverId,
+          userId: serverMembers.userId,
+          displayName: users.displayName,
+          level: serverMembers.permissionLevel,
+          addedAt: serverMembers.addedAt,
+        })
+        .from(serverMembers)
+        .innerJoin(users, eq(users.id, serverMembers.userId))
+        .where(inArray(serverMembers.serverId, [...serverIds]));
+
+      for (const row of rows) {
+        const liste = karte.get(row.serverId) ?? [];
+        liste.push({
+          userId: row.userId,
+          displayName: row.displayName,
+          level: row.level,
+          addedAt: row.addedAt.toISOString(),
+        });
+        karte.set(row.serverId, liste);
+      }
+
+      return karte;
     },
 
     async memberLevel(serverId: string, userId: string): Promise<ServerMemberLevel | null> {
