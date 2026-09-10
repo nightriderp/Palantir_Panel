@@ -52,6 +52,7 @@ export {
   SliderField,
   TextAreaField,
   TextField,
+  Checkbox,
   Toggle,
   ToggleRow,
   type DateFieldProps,
@@ -62,6 +63,7 @@ export {
   type SliderFieldProps,
   type TextAreaFieldProps,
   type TextFieldProps,
+  type CheckboxProps,
   type ToggleProps,
   type ToggleRowProps,
 } from './form/Fields';

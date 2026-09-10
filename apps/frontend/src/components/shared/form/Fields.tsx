@@ -443,6 +443,54 @@ export function SliderField({
   );
 }
 
+export interface CheckboxProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  /** Beschriftung für Vorlesehilfen – daneben steht in Tabellen kein Text. */
+  label: string;
+  /**
+   * Teilauswahl: weder an noch aus. Für die Kopfzeile einer Tabelle, in der
+   * einige, aber nicht alle Zeilen ausgewählt sind.
+   */
+  indeterminate?: boolean;
+  disabled?: boolean;
+}
+
+/**
+ * Kontrollkästchen für Mehrfachauswahl in Tabellen (Fundpunkt 211).
+ *
+ * Bewusst das native Element und kein nachgebauter Knopf wie bei
+ * {@link Toggle}: Tastatur, Vorlesehilfen und der Zwischenzustand
+ * („indeterminate") kommen damit fertig aus dem Browser. Gefärbt wird über
+ * `accent-color`, wie schon beim Schieberegler darüber.
+ *
+ * Unterschied zum Schalter: Ein {@link Toggle} schaltet sofort etwas um, ein
+ * Kästchen wählt nur aus – gehandelt wird danach an anderer Stelle.
+ */
+export function Checkbox({
+  checked,
+  onChange,
+  label,
+  indeterminate = false,
+  disabled,
+}: CheckboxProps) {
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      ref={(element) => {
+        // Nur über die Eigenschaft erreichbar, nicht als Attribut.
+        if (element) element.indeterminate = indeterminate && !checked;
+      }}
+      onChange={(event) => onChange(event.target.checked)}
+      className={cn('h-4 w-4 shrink-0 accent-brand', disabled && 'cursor-not-allowed opacity-50')}
+    />
+  );
+}
+
 export interface ToggleProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
