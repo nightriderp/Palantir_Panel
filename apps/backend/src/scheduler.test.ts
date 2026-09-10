@@ -69,6 +69,7 @@ import {
   statsSamplingTask,
   resourceWarningTask,
   stateReconcileTask,
+  dataHousekeepingTask,
   startScheduler,
 } from './scheduler.js';
 
@@ -1622,5 +1623,110 @@ describe('stateReconcileTask (Fundpunkt 232)', () => {
     await t.aufgabe.run();
 
     expect(t.gefragt).toEqual([]);
+  });
+});
+
+/**
+ * Kehraus der mitwachsenden Tabellen (Fundpunkt 230).
+ *
+ * `sessions`, `notifications` und `notification_deliveries` wuchsen mit jeder
+ * Anmeldung und jeder Meldung und wurden nie kleiner.
+ */
+describe('dataHousekeepingTask (Fundpunkt 230)', () => {
+  function aufbau(retentionDays = 90) {
+    const rufe: { name: string; wert: unknown }[] = [];
+    let jetzt = 10 * 24 * 60 * 60 * 1000;
+
+    const aufgabe = dataHousekeepingTask(
+      {
+        deleteDeadSessions: (now, graceMs) => {
+          rufe.push({ name: 'sitzungen', wert: { now: now.getTime(), graceMs } });
+
+          return Promise.resolve(3);
+        },
+        deleteReadNotificationsBefore: (cutoff) => {
+          rufe.push({ name: 'meldungen', wert: cutoff.getTime() });
+
+          return Promise.resolve(5);
+        },
+        deleteFinishedDeliveriesBefore: (cutoff) => {
+          rufe.push({ name: 'zustellungen', wert: cutoff.getTime() });
+
+          return Promise.resolve(7);
+        },
+      },
+      mitschreibendesLog(),
+      { retentionDays, intervalMs: 5 * 60 * 1000, now: () => new Date(jetzt) },
+    );
+
+    return {
+      rufe,
+      aufgabe,
+      stelleUhr(ms: number) {
+        jetzt = ms;
+      },
+    };
+  }
+
+  it('raeumt Sitzungen, gelesene Meldungen und Zustellversuche', async () => {
+    const t = aufbau();
+
+    await t.aufgabe.run();
+
+    expect(t.rufe.map((ruf) => ruf.name)).toEqual(['sitzungen', 'meldungen', 'zustellungen']);
+  });
+
+  it('rechnet den Stichtag aus der Aufbewahrungsfrist', async () => {
+    const t = aufbau(30);
+
+    await t.aufgabe.run();
+
+    const jetzt = 10 * 24 * 60 * 60 * 1000;
+    const erwartet = jetzt - 30 * 24 * 60 * 60 * 1000;
+    expect(t.rufe.find((ruf) => ruf.name === 'meldungen')?.wert).toBe(erwartet);
+  });
+
+  it('laesst Meldungen in Ruhe, wenn die Frist auf 0 steht', async () => {
+    const t = aufbau(0);
+
+    await t.aufgabe.run();
+
+    // Sitzungen bleiben: Eine abgelaufene Sitzung ist unabhaengig von der
+    // Aufbewahrung der Meldungen eine tote Zeile.
+    expect(t.rufe.map((ruf) => ruf.name)).toEqual(['sitzungen']);
+  });
+
+  it('haelt den eigenen Abstand ein', async () => {
+    const t = aufbau();
+
+    await t.aufgabe.run();
+    t.stelleUhr(10 * 24 * 60 * 60 * 1000 + 60_000);
+    await t.aufgabe.run();
+
+    expect(t.rufe.filter((ruf) => ruf.name === 'sitzungen')).toHaveLength(1);
+  });
+
+  it('laesst einen Fehlschlag die uebrigen Schritte nicht abwuergen', async () => {
+    const rufe: string[] = [];
+    const aufgabe = dataHousekeepingTask(
+      {
+        deleteDeadSessions: () => Promise.reject(new Error('Datenbank weg')),
+        deleteReadNotificationsBefore: () => {
+          rufe.push('meldungen');
+
+          return Promise.resolve(1);
+        },
+        deleteFinishedDeliveriesBefore: () => {
+          rufe.push('zustellungen');
+
+          return Promise.resolve(1);
+        },
+      },
+      mitschreibendesLog(),
+      { retentionDays: 90 },
+    );
+
+    await expect(aufgabe.run()).resolves.toBeUndefined();
+    expect(rufe).toEqual(['meldungen', 'zustellungen']);
   });
 });

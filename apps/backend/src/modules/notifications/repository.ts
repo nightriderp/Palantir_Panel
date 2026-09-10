@@ -18,7 +18,7 @@ import type {
   NotificationSeverity,
   NotificationSubjectType,
 } from '@palantir/contracts';
-import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { Database, DbConnection } from '../../db/index.js';
 import {
   announcements,
@@ -283,6 +283,32 @@ export interface NotificationRepository {
   /** Setzt den Lesestatus; ohne `ids` gilt der Vorgang für alle Meldungen des Kontos. */
   markRead(userId: string, ids: readonly string[] | null, read: boolean): Promise<number>;
   deleteNotification(notificationId: string): Promise<void>;
+  /**
+   * Kehraus der Inbox (Fundpunkt 230).
+   *
+   * Entfernt **gelesene** Meldungen, die älter sind als die Frist, samt ihrer
+   * Zustellversuche (`on delete cascade`). Ungelesene bleiben unangetastet,
+   * gleich wie alt sie sind: Sie sind das, wofür die Inbox da ist.
+   *
+   * Die Tabelle wuchs mit jeder zugestellten Meldung und wurde nie kleiner –
+   * bei einem Server, der einmal im Absturz-Kreis hängt, sind das schnell
+   * tausende Zeilen je Konto.
+   *
+   * Liefert die Zahl der entfernten Meldungen.
+   */
+  deleteReadNotificationsBefore(cutoff: Date): Promise<number>;
+  /**
+   * Zustellversuche jenseits der Frist entfernen (Fundpunkt 230).
+   *
+   * Der Versuch ist ein technisches Protokoll: Wann ging welche Meldung über
+   * welchen Kanal hinaus, und was kam zurück. Nach einigen Wochen beantwortet
+   * er keine Frage mehr, die jemand stellt – die Meldung selbst steht ohnehin
+   * in der Inbox.
+   *
+   * Betroffen sind nur **abgeschlossene** Versuche (`sent` oder `failed`):
+   * Etwas, das noch auf seine Zustellung wartet, wird nicht weggeräumt.
+   */
+  deleteFinishedDeliveriesBefore(cutoff: Date): Promise<number>;
   countUnread(userId: string): Promise<number>;
 
   // Persönliche Zustell-Einstellung (Gefundener Punkt 93)
@@ -695,6 +721,29 @@ export function createDrizzleNotificationRepository(db: Database): NotificationR
           ),
         )
         .returning({ id: notifications.id });
+
+      return rows.length;
+    },
+
+    async deleteReadNotificationsBefore(cutoff) {
+      const rows = await db
+        .delete(notifications)
+        .where(and(isNotNull(notifications.readAt), lt(notifications.createdAt, cutoff)))
+        .returning({ id: notifications.id });
+
+      return rows.length;
+    },
+
+    async deleteFinishedDeliveriesBefore(cutoff) {
+      const rows = await db
+        .delete(notificationDeliveries)
+        .where(
+          and(
+            inArray(notificationDeliveries.status, ['delivered', 'failed']),
+            lt(notificationDeliveries.createdAt, cutoff),
+          ),
+        )
+        .returning({ id: notificationDeliveries.id });
 
       return rows.length;
     },

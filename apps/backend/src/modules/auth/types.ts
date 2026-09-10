@@ -220,6 +220,24 @@ export interface AuthRepository {
     },
   ): Promise<SessionRecord | null>;
   revokeSession(id: string, revokedAt: Date): Promise<void>;
+  /**
+   * Löscht Sitzungen, die niemand mehr brauchen kann (Fundpunkt 230).
+   *
+   * Betroffen sind zwei Sorten, beide tote Zeilen:
+   *
+   * - **abgelaufen** – `expiresAt` liegt vor `jetzt`. Ein abgelaufener
+   *   Refresh-Token wird nicht wieder gültig.
+   * - **widerrufen und älter als die Kulanzfrist** – nach einem Widerruf
+   *   bleibt die Zeile nur so lange interessant, wie ein gestohlener Token
+   *   noch auftauchen und die Diebstahlerkennung auslösen könnte.
+   *
+   * Die Tabelle wuchs bisher mit jeder Anmeldung und wurde nie kleiner: Auf
+   * einer Instanz mit fünfzig Konten sind das über ein Jahr einige zehntausend
+   * Zeilen, die jede Abfrage über `sessions` mitschleppt.
+   *
+   * Liefert die Zahl der entfernten Zeilen.
+   */
+  deleteDeadSessions(now: Date, revokedGraceMs: number): Promise<number>;
   /** Widerruft alle noch offenen Sitzungen eines Kontos. */
   revokeAllSessions(userId: string, revokedAt: Date): Promise<void>;
   /**

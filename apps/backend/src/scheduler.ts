@@ -685,6 +685,107 @@ export const BACKUP_HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
  * einer nicht erreichbaren Node scheitert, darf den Kehraus der abgerissenen
  * Läufe nicht mitreißen – und umgekehrt.
  */
+/** Abstand des Kehrauses – wie beim Backup-Kehraus fünf Minuten. */
+export const DATA_HOUSEKEEPING_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Was der Kehraus an Sitzungen und Meldungen wegräumen darf (Fundpunkt 230). */
+export interface DataHousekeeper {
+  /** Abgelaufene und länger widerrufene Sitzungen; liefert die Anzahl. */
+  deleteDeadSessions(now: Date, revokedGraceMs: number): Promise<number>;
+  /** Gelesene Meldungen vor dem Stichtag; liefert die Anzahl. */
+  deleteReadNotificationsBefore(cutoff: Date): Promise<number>;
+  /** Abgeschlossene Zustellversuche vor dem Stichtag; liefert die Anzahl. */
+  deleteFinishedDeliveriesBefore(cutoff: Date): Promise<number>;
+}
+
+/**
+ * Kehraus der mitwachsenden Tabellen (Fundpunkt 230).
+ *
+ * `sessions`, `notifications` und `notification_deliveries` wuchsen mit jeder
+ * Anmeldung und jeder Meldung und wurden nie kleiner. Auf einer Instanz mit
+ * fünfzig Konten sind das über ein Jahr einige zehntausend Zeilen, die jede
+ * Abfrage mitschleppt – und ein Server, der einmal im Absturz-Kreis hängt,
+ * legt Tausende auf einmal nach.
+ *
+ * **Nicht dabei:** `messages` und `arcade_scores`. Beides sind Inhalte, die
+ * Nutzer selbst angelegt haben; wie lange sie bleiben, entscheidet der
+ * Betreiber, nicht dieser Kehraus (CLAUDE.md §1). Ebenso wenig das Audit-Log:
+ * Seine Archivierung ist ausdrücklich ein Handkommando, damit der Zeitpunkt
+ * sichtbar bleibt (`audit-archive.ts`).
+ */
+export function dataHousekeepingTask(
+  daten: DataHousekeeper,
+  log: SchedulerLogger,
+  options: {
+    /** Aufbewahrung gelesener Meldungen in Tagen; `0` schaltet ab. */
+    retentionDays: number;
+    /**
+     * Wie lange eine widerrufene Sitzung noch stehen bleibt.
+     *
+     * Nach einem Widerruf ist die Zeile nur so lange interessant, wie ein
+     * gestohlener Token noch auftauchen und die Diebstahlerkennung auslösen
+     * könnte. Eine Woche ist grosszügig.
+     */
+    revokedGraceMs?: number;
+    intervalMs?: number;
+    now?: () => Date;
+  },
+): ScheduledTask {
+  const intervalMs = options.intervalMs ?? DATA_HOUSEKEEPING_INTERVAL_MS;
+  const revokedGraceMs = options.revokedGraceMs ?? 7 * 24 * 60 * 60 * 1000;
+  const now = options.now ?? ((): Date => new Date());
+  let letzterLauf: number | null = null;
+
+  async function sicher(schritt: string, lauf: () => Promise<number>): Promise<number> {
+    try {
+      return await lauf();
+    } catch (error: unknown) {
+      log.error(
+        { schritt, error: error instanceof Error ? error.message : String(error) },
+        'Kehraus der Daten fehlgeschlagen',
+      );
+
+      return 0;
+    }
+  }
+
+  return {
+    name: 'dataHousekeeping',
+    async run(): Promise<void> {
+      const jetzt = now();
+
+      if (letzterLauf !== null && jetzt.getTime() - letzterLauf < intervalMs) {
+        return;
+      }
+
+      letzterLauf = jetzt.getTime();
+
+      const sitzungen = await sicher('Sitzungen', () =>
+        daten.deleteDeadSessions(jetzt, revokedGraceMs),
+      );
+
+      // `0` heisst „nicht aufräumen" - dann bleiben Meldungen für immer stehen.
+      if (options.retentionDays <= 0) {
+        if (sitzungen > 0) log.debug({ sitzungen }, 'Kehraus der Daten ausgeführt');
+
+        return;
+      }
+
+      const stichtag = new Date(jetzt.getTime() - options.retentionDays * 24 * 60 * 60 * 1000);
+      const meldungen = await sicher('gelesene Meldungen', () =>
+        daten.deleteReadNotificationsBefore(stichtag),
+      );
+      const zustellungen = await sicher('Zustellversuche', () =>
+        daten.deleteFinishedDeliveriesBefore(stichtag),
+      );
+
+      if (sitzungen > 0 || meldungen > 0 || zustellungen > 0) {
+        log.debug({ sitzungen, meldungen, zustellungen }, 'Kehraus der Daten ausgeführt');
+      }
+    },
+  };
+}
+
 export function backupHousekeepingTask(
   backups: BackupHousekeeper,
   panel: PanelBackupHousekeeper,

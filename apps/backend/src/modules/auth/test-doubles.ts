@@ -377,6 +377,21 @@ export function createFakeAuthRepository(): FakeAuthRepository {
       return Promise.resolve(updated);
     },
 
+    deleteDeadSessions: (now, revokedGraceMs) => {
+      const grenze = now.getTime() - revokedGraceMs;
+      const vorher = sessions.length;
+      const bleiben = sessions.filter(
+        (session) =>
+          session.expiresAt.getTime() >= now.getTime() &&
+          (session.revokedAt === null || session.revokedAt.getTime() >= grenze),
+      );
+
+      sessions.length = 0;
+      sessions.push(...bleiben);
+
+      return Promise.resolve(vorher - sessions.length);
+    },
+
     revokeSession: (id, revokedAt) => {
       const index = sessions.findIndex((session) => session.id === id);
       const current = sessions[index];
