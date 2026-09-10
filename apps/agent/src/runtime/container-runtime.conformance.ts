@@ -7,6 +7,17 @@
  * unveraendert gegen einen echten Docker-Host haengen, um zu pruefen, ob der
  * Fake noch dasselbe Verhalten zeigt.
  *
+ * **Was das offen laesst (Fundpunkt 235).** Solange nur der Fake hier haengt,
+ * belegt eine gruene Suite nicht, dass die Docker-Fassung dasselbe tut. Ein
+ * Unterschied war belegt und ist behoben: `execConsole` auf einem gestoppten
+ * Container meldete dort `CONTAINER_STATE_CONFLICT` statt
+ * `CONTAINER_NOT_RUNNING`, weil die Docker-Fassung den Laufzustand nicht selbst
+ * prueft, sondern die Antwort der Engine deutet (`http-client.ts`,
+ * `codeFuerStatus`). Die Vertragspunkte, die sich ohne Docker-Host nachstellen
+ * lassen, prueft `docker/docker-container-runtime.test.ts` jetzt einzeln gegen
+ * die Antworten der Engine. Ein Lauf dieser Suite gegen einen echten Host
+ * bleibt offen - er braucht eine Node mit Docker, kein Testdouble.
+ *
  * Bewusst keine `.test.ts`-Datei: sie wird von den Testdateien importiert und
  * nicht selbst als Testdatei eingesammelt.
  */

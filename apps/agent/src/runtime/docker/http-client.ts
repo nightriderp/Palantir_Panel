@@ -458,9 +458,28 @@ function codeFuerStatus(
     return notFoundCode ?? 'CONTAINER_NOT_FOUND';
   }
   if (status === 409) {
-    return /already in use|name.*conflict/i.test(meldung)
-      ? 'CONTAINER_NAME_CONFLICT'
-      : 'CONTAINER_STATE_CONFLICT';
+    if (/already in use|name.*conflict/i.test(meldung)) {
+      return 'CONTAINER_NAME_CONFLICT';
+    }
+
+    /*
+     * Fundpunkt 235: Der Vertrag verspricht `CONTAINER_NOT_RUNNING`, wenn ein
+     * Befehl einen laufenden Container braucht und keinen findet - die
+     * Fake-Fassung hielt das ein, die Docker-Fassung nicht. Die Engine meldet
+     * genau diesen Fall mit 409 und der Meldung „Container … is not running";
+     * daraus wurde hier bisher ein `CONTAINER_STATE_CONFLICT`, und der
+     * Konsolenbefehl auf einem gestoppten Server kam im Panel als
+     * unverstaendlicher Zustandsfehler an statt als „laeuft nicht".
+     *
+     * Die Unterscheidung sitzt hier und nicht in `execConsole`: Eine Pruefung
+     * dort kostete jeden Konsolenbefehl eine zusaetzliche Runde zur Engine,
+     * und dieselbe Antwort kommt auch von `pause` und `attach`.
+     */
+    if (/is not running|not running/i.test(meldung)) {
+      return 'CONTAINER_NOT_RUNNING';
+    }
+
+    return 'CONTAINER_STATE_CONFLICT';
   }
   if (status === 503 || status === 502 || status === 504) {
     return 'RUNTIME_UNAVAILABLE';

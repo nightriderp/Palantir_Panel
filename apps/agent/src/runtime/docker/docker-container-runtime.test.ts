@@ -531,6 +531,40 @@ describe('EXEC_CONSOLE', () => {
     await expect(runtime.execConsole('c-1', [])).rejects.toBeInstanceOf(Error);
     expect(aufrufe).toEqual([]);
   });
+
+  it('meldet einen gestoppten Container als CONTAINER_NOT_RUNNING (Fundpunkt 235)', async () => {
+    /*
+     * Der Vertrag (`container-runtime.conformance.ts`, EXEC_CONSOLE) verlangt
+     * genau diesen Code, und die Fake-Fassung hielt ihn ein. Die Docker-Fassung
+     * prueft den Laufzustand nicht selbst - sie deutet die Antwort der Engine,
+     * und die lautet 409 mit „is not running". Bis hierher wurde daraus ein
+     * `CONTAINER_STATE_CONFLICT`: im Panel ein Zustandsfehler ohne Aussage,
+     * statt „der Server laeuft nicht".
+     */
+    antwortgeber = () => json({ message: 'Container 0123456789ab is not running' }, 409);
+
+    await expect(runtime.execConsole('c-1', ['rcon-cli', 'list'])).rejects.toMatchObject({
+      code: 'CONTAINER_NOT_RUNNING',
+    });
+  });
+
+  it('bleibt bei einem echten Zustandskonflikt beim bisherigen Code', async () => {
+    // Gegenprobe zur Zeile darueber: Nicht jede 409 ist ein nicht laufender
+    // Container - sonst verschwaende die Unterscheidung wieder.
+    antwortgeber = () => json({ message: 'container is marked for removal' }, 409);
+
+    await expect(runtime.execConsole('c-1', ['rcon-cli', 'list'])).rejects.toMatchObject({
+      code: 'CONTAINER_STATE_CONFLICT',
+    });
+  });
+
+  it('meldet einen unbekannten Container als CONTAINER_NOT_FOUND', async () => {
+    antwortgeber = () => json({ message: 'No such container: c-9' }, 404);
+
+    await expect(runtime.execConsole('c-9', ['rcon-cli', 'list'])).rejects.toMatchObject({
+      code: 'CONTAINER_NOT_FOUND',
+    });
+  });
 });
 
 describe('Kanal-Grenze (Audit contracts-validation-12)', () => {
