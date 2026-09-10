@@ -87,6 +87,24 @@ export class CorrelationStore {
     return this.completed.size;
   }
 
+  /**
+   * Vergisst alle laufenden Befehle (Fundpunkt 227).
+   *
+   * Nach einem Verbindungsabbruch kann kein Ergebnis mehr zugestellt werden –
+   * die Markierung beschreibt dann einen Befehl, dessen Antwort niemand mehr
+   * bekommt. Sie stehen zu lassen hiesse, den Speicher mit jeder abgerissenen
+   * Verbindung ein Stück wachsen zu lassen.
+   *
+   * Die **abgeschlossenen** Ergebnisse bleiben: Genau sie beantworten ein
+   * Duplikat, das das Backend nach dem Wiederaufbau noch einmal schickt.
+   */
+  forgetInFlight(): number {
+    const anzahl = this.inFlight.size;
+    this.inFlight.clear();
+
+    return anzahl;
+  }
+
   /** Läuft ein Befehl mit dieser ID gerade? */
   isInFlight(correlationId: CorrelationId): boolean {
     return this.inFlight.has(correlationId);
