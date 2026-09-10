@@ -33,6 +33,7 @@ import {
 import { type ApiResult, errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
+import { ApproveDialog } from './ApproveDialog';
 import { QuotaRequestSection } from './QuotaRequestSection';
 import { registrationStatusLabel, registrationStatusTone } from '../labels';
 
@@ -283,60 +284,6 @@ export function RequestsView() {
         />
       ) : null}
     </div>
-  );
-}
-
-/** Freigabe mit optionaler Rollenauswahl (ohne Auswahl vergibt das Backend „Nutzer"). */
-function ApproveDialog({
-  request,
-  busy,
-  onClose,
-  onSubmit,
-}: {
-  request: RegistrationRequestDto;
-  busy: boolean;
-  onClose: () => void;
-  onSubmit: (roleIds: string[]) => void;
-}) {
-  const [selected, setSelected] = useState<string[]>([]);
-  const roles = useApiResource<RoleDto[]>((signal) => fetchRoles(signal), []);
-
-  // Die geschützte Gast-Rolle steht nicht zur Auswahl: Freigeben heißt gerade,
-  // sie zu ersetzen (registration-request.ts).
-  const assignable = (roles.data ?? []).filter((role) => !role.isProtected);
-
-  function toggle(roleId: string, on: boolean) {
-    setSelected((current) => (on ? [...current, roleId] : current.filter((id) => id !== roleId)));
-  }
-
-  return (
-    <FormModal
-      open
-      onClose={onClose}
-      title={`„${request.displayName}" freigeben`}
-      description={'Ohne Auswahl erhält das Konto die Standardrolle „Nutzer".'}
-      submitLabel="Freigeben"
-      busy={busy}
-      onSubmit={() => onSubmit(selected)}
-    >
-      {roles.loading ? (
-        <p className="text-sm text-ink-faint">Rollen werden geladen …</p>
-      ) : assignable.length === 0 ? (
-        <p className="text-sm text-ink-faint">Keine zusätzlichen Rollen verfügbar.</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {assignable.map((role) => (
-            <ToggleRow
-              key={role.id}
-              title={role.name}
-              description={role.description ?? undefined}
-              checked={selected.includes(role.id)}
-              onChange={(on) => toggle(role.id, on)}
-            />
-          ))}
-        </div>
-      )}
-    </FormModal>
   );
 }
 

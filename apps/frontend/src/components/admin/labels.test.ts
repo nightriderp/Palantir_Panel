@@ -45,7 +45,17 @@ const nonEmpty = (value: string) => value.trim().length > 0;
 
 describe('Beschriftungen sind vollständig', () => {
   it('übersetzt jede bekannte Audit-Aktion', () => {
-    for (const action of AUDIT_ACTIONS) expect(nonEmpty(auditActionLabel(action))).toBe(true);
+    /*
+     * Fundpunkt 223: Hier stand nur „nicht leer". `auditActionLabel` faellt
+     * aber auf den rohen Code zurueck, und der ist nie leer - drei Aktionen
+     * (`node.agentTokenIssued`, `font.uploaded`, `font.deleted`) standen
+     * deshalb unuebersetzt im Log, ohne dass es auffiel. Geprueft wird jetzt,
+     * dass die Beschriftung etwas anderes ist als der Code.
+     */
+    for (const action of AUDIT_ACTIONS) {
+      expect(nonEmpty(auditActionLabel(action))).toBe(true);
+      expect(auditActionLabel(action)).not.toBe(action);
+    }
   });
 
   it('übersetzt jeden Audit-Objekttyp', () => {

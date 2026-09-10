@@ -74,6 +74,10 @@ const AUDIT_ACTION_LABELS: Partial<Record<AuditAction, string>> = {
   'node.created': 'Node angelegt',
   'node.updated': 'Node geändert',
   'node.deleted': 'Node entfernt',
+  // Fundpunkt 223: Diese drei standen roh im Log ("node.agentTokenIssued"),
+  // obwohl der Katalog sie kennt - die Tabelle war beim Nachziehen vergessen
+  // worden. Gerade das Agent-Token ist kein Eintrag, den man ueberlesen will.
+  'node.agentTokenIssued': 'Agent-Token ausgestellt',
   'address.rangeCreated': 'Port-Bereich angelegt',
   'address.rangeUpdated': 'Port-Bereich geändert',
   'address.rangeDeleted': 'Port-Bereich gelöscht',
@@ -88,6 +92,8 @@ const AUDIT_ACTION_LABELS: Partial<Record<AuditAction, string>> = {
   'notification.ruleChanged': 'Regel geändert',
   'notification.announcementChanged': 'Ankündigung geändert',
   'message.moderated': 'Nachricht moderiert',
+  'font.uploaded': 'Schrift hochgeladen',
+  'font.deleted': 'Schrift gelöscht',
 };
 
 export function auditActionLabel(action: AuditAction): string {

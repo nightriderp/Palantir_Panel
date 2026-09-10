@@ -34,6 +34,7 @@ import {
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import {
   assignRole,
+  approveRegistrationRequest,
   blockRegistrationRequest,
   clearUserLimits,
   createUser,
@@ -52,6 +53,7 @@ import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
 import { quotaLabel, registrationStatusLabel, registrationStatusTone } from '../labels';
+import { ApproveDialog } from '../requests/ApproveDialog';
 import { InstanceSettingsCard } from './InstanceSettingsCard';
 
 /**
@@ -83,6 +85,7 @@ type Dialog =
   | { kind: 'roles'; user: RegistrationRequestDto }
   | { kind: 'servers'; user: RegistrationRequestDto }
   | { kind: 'limits'; user: RegistrationRequestDto }
+  | { kind: 'approve'; user: RegistrationRequestDto }
   | { kind: 'block'; user: RegistrationRequestDto }
   | { kind: 'resetTwoFactor'; user: RegistrationRequestDto }
   | { kind: 'resetPassword'; user: RegistrationRequestDto }
@@ -160,6 +163,29 @@ export function UsersView() {
     setBusy(false);
     if (result.success) {
       toast.success(`„${target.displayName}" ist gesperrt.`);
+      setDialog(null);
+      resource.reload();
+    } else {
+      toast.error(errorText(result));
+    }
+  }
+
+  /**
+   * Freigeben (Fundpunkt 214) – derselbe Aufruf wie in der Warteliste.
+   *
+   * Nach der Freigabe steht das Konto nicht mehr unter „Wartet auf Freigabe":
+   * Die Liste wird neu geholt, und der Eintrag wandert in den Filter
+   * „Freigegeben". Genau das soll man sehen.
+   */
+  async function doApprove(target: RegistrationRequestDto, roleIds: string[]) {
+    setBusy(true);
+    const result = await approveRegistrationRequest(
+      target.userId,
+      roleIds.length > 0 ? { roleIds } : {},
+    );
+    setBusy(false);
+    if (result.success) {
+      toast.success(`„${target.displayName}" ist freigeschaltet.`);
       setDialog(null);
       resource.reload();
     } else {
@@ -352,6 +378,22 @@ export function UsersView() {
                     >
                       2FA
                     </Button>
+                    {/*
+                      Fundpunkt 214: Der Statusfilter „Wartet auf Freigabe"
+                      zeigte die wartenden Konten, ohne sie freigeben zu
+                      können – die Aktion lag nur unter „Anfragen". Wer über
+                      die Nutzerliste kam, sah das Konto und keinen Weg.
+                    */}
+                    {entry.permissions.canApprove ? (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        iconLeft="check"
+                        onClick={() => setDialog({ kind: 'approve', user: entry })}
+                      >
+                        Freigeben
+                      </Button>
+                    ) : null}
                     {entry.permissions.canBlock ? (
                       <Button
                         variant="danger"
@@ -379,6 +421,15 @@ export function UsersView() {
           </tbody>
         </AdminTable>
       )}
+
+      {dialog?.kind === 'approve' ? (
+        <ApproveDialog
+          request={dialog.user}
+          busy={busy}
+          onClose={() => setDialog(null)}
+          onSubmit={(roleIds) => void doApprove(dialog.user, roleIds)}
+        />
+      ) : null}
 
       {dialog?.kind === 'create' ? (
         <CreateUserDialog
