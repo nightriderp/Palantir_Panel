@@ -361,3 +361,18 @@ function slotLabel(slot: ResourceQuotaSlot, format: (value: number) => string): 
 
   return slot.limit === null ? `${belegt} / —` : `${belegt} / ${format(slot.limit)}`;
 }
+
+/**
+ * Liegt ein Konto über seinem Kontingent? (Fundpunkt 221.)
+ *
+ * Am Prüfstand stand „8 GiB / 4 GiB · 1 / 1" in derselben Grauschrift wie jede
+ * andere Zeile – eine doppelte Überschreitung, die niemandem auffällt. Die
+ * Zahlen stehen im DTO, gesagt hat es nur keiner.
+ */
+export function quotaExceeded(quota: RegistrationRequestQuota | null | undefined): boolean {
+  if (quota === null || quota === undefined) {
+    return false;
+  }
+
+  return [quota.ram, quota.servers].some((slot) => slot.limit !== null && slot.used > slot.limit);
+}

@@ -52,7 +52,12 @@ import {
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
-import { quotaLabel, registrationStatusLabel, registrationStatusTone } from '../labels';
+import {
+  quotaExceeded,
+  quotaLabel,
+  registrationStatusLabel,
+  registrationStatusTone,
+} from '../labels';
 import { ApproveDialog } from '../requests/ApproveDialog';
 import { InstanceSettingsCard } from './InstanceSettingsCard';
 
@@ -316,15 +321,37 @@ export function UsersView() {
                   </span>
                 </Td>
                 <Td className="text-ink-muted">
-                  {entry.roleNames.length > 0 ? entry.roleNames.join(', ') : '—'}
+                  {/*
+                    Fundpunkt 221: Der Owner steht ausserhalb des Rollensystems
+                    und trug deshalb das Abzeichen „Gast" - seine eigene Zeile
+                    las sich wie ein Konto, das noch auf Freischaltung wartet.
+                  */}
+                  {entry.isOwner === true ? (
+                    <Badge tone="brand">Owner</Badge>
+                  ) : entry.roleNames.length > 0 ? (
+                    entry.roleNames.join(', ')
+                  ) : (
+                    '—'
+                  )}
                 </Td>
                 <Td>
                   <Badge tone={registrationStatusTone(entry.status)} withDot>
                     {registrationStatusLabel(entry.status)}
                   </Badge>
                 </Td>
-                <Td className="whitespace-nowrap font-mono text-xs text-ink-muted">
+                {/*
+                  Fundpunkt 221: Eine doppelte Ueberschreitung stand in
+                  derselben Grauschrift wie jede andere Zeile.
+                */}
+                <Td
+                  className={cn(
+                    'whitespace-nowrap font-mono text-xs',
+                    quotaExceeded(entry.quota) ? 'font-semibold text-warning' : 'text-ink-muted',
+                  )}
+                  title={quotaExceeded(entry.quota) ? 'Über dem Kontingent' : undefined}
+                >
                   {quotaLabel(entry.quota)}
+                  {quotaExceeded(entry.quota) ? ' ⚠' : ''}
                 </Td>
                 {/* Serveranzahl aus dem DTO (Gefundener Punkt 90) – vorher
                     filterte die Ansicht dafür die ganze Serverliste im Browser. */}

@@ -131,6 +131,9 @@ export function toRegistrationRequestDto(
     banned: user.banned,
     profiles: [...user.profiles],
     roleNames: user.roles.map((role) => role.name),
+    // Fundpunkt 221: Der Owner traegt keine Rolle und bekam deshalb "Gast"
+    // angezeigt - in seiner eigenen Zeile.
+    isOwner: user.isOwner,
     // Dieselben Rollen mit Id (Gefundener Punkt 90): Die Oberflaeche muss die
     // Namen nicht mehr ueber /admin/roles zurueckrechnen.
     roles: user.roles.map((role) => ({ id: role.id, name: role.name })),

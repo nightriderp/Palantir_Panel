@@ -4,6 +4,7 @@ import { type QuotaRequestDto } from '@palantir/contracts';
 import { useState } from 'react';
 import {
   Badge,
+  ConfirmDialog,
   Button,
   Panel,
   formatDateTime,
@@ -31,6 +32,15 @@ import { AdminError, AdminLoading } from '../common';
 export function QuotaRequestSection() {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  /**
+   * Anfrage, deren Genehmigung noch bestätigt werden muss (Fundpunkt 221).
+   *
+   * „Genehmigen" änderte das Kontingent eines Kontos sofort und dauerhaft –
+   * am Prüfstand gemessen 4096 → 16384 MB und 1 → 3 Server, mit einem Klick,
+   * ohne Rückfrage und ohne Weg zurück. Ablehnen bleibt ohne Dialog: Es ändert
+   * nichts am Konto, die Anfrage lässt sich neu stellen.
+   */
+  const [zuGenehmigen, setZuGenehmigen] = useState<QuotaRequestDto | null>(null);
 
   const resource = useApiResource<QuotaRequestDto[]>(
     (signal) => fetchQuotaRequests({ status: 'pending' }, signal),
@@ -125,7 +135,7 @@ export function QuotaRequestSection() {
                     <Button
                       size="sm"
                       disabled={busy === request.id}
-                      onClick={() => void entscheiden(request, 'approve')}
+                      onClick={() => setZuGenehmigen(request)}
                     >
                       Genehmigen
                     </Button>
@@ -135,6 +145,40 @@ export function QuotaRequestSection() {
             </li>
           ))}
         </ul>
+      )}
+
+      {zuGenehmigen === null ? null : (
+        <ConfirmDialog
+          open
+          onClose={() => setZuGenehmigen(null)}
+          busy={busy === zuGenehmigen.id}
+          title="Kontingent anheben?"
+          confirmLabel="Genehmigen"
+          message={
+            <>
+              <p>
+                „{zuGenehmigen.userDisplayName}“ bekommt dauerhaft mehr Kontingent. Es gibt keinen
+                Weg zurück über diese Liste – ändern lässt es sich danach nur noch unter „Nutzer →
+                Kontingent“.
+              </p>
+              <ul className="mt-2 flex flex-col gap-1 text-sm text-ink-muted">
+                {zuGenehmigen.requestedRamMb === null ? null : (
+                  <li>Arbeitsspeicher: {formatMegabytes(zuGenehmigen.requestedRamMb)}</li>
+                )}
+                {zuGenehmigen.requestedMaxConcurrentServers === null ? null : (
+                  <li>
+                    Gleichzeitige Server: {formatNumber(zuGenehmigen.requestedMaxConcurrentServers)}
+                  </li>
+                )}
+              </ul>
+            </>
+          }
+          onConfirm={() => {
+            const anfrage = zuGenehmigen;
+            setZuGenehmigen(null);
+            void entscheiden(anfrage, 'approve');
+          }}
+        />
       )}
     </section>
   );

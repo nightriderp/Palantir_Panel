@@ -339,3 +339,69 @@ describe('UsersView - Freigeben (Fundpunkt 214)', () => {
     });
   });
 });
+
+/**
+ * Owner-Abzeichen und Ueberschreitung (Fundpunkt 221).
+ *
+ * Der Owner traegt keine Rolle und bekam deshalb "Gast" angezeigt - seine
+ * eigene Zeile las sich wie ein Konto, das noch auf Freischaltung wartet. Und
+ * eine doppelte Kontingent-Ueberschreitung stand in derselben Grauschrift wie
+ * jede andere Zeile.
+ */
+describe('UsersView - Owner und Kontingent (Fundpunkt 221)', () => {
+  const slot = (limit: number | null, used: number) => ({
+    resource: 'ram' as const,
+    unit: 'mb' as const,
+    limit,
+    used,
+    remaining: limit === null ? null : Math.max(0, limit - used),
+  });
+
+  it('nennt den Owner Owner, nicht Gast', async () => {
+    api.fetchRegistrationRequests.mockResolvedValue(
+      ok([eintrag({ displayName: 'Alex', roleNames: ['Gast'], isOwner: true })]),
+    );
+
+    await zeichne();
+
+    expect(screen.getByText('Owner')).toBeTruthy();
+    expect(screen.queryByText('Gast')).toBeNull();
+  });
+
+  it('hebt eine Ueberschreitung des Kontingents hervor', async () => {
+    api.fetchRegistrationRequests.mockResolvedValue(
+      ok([
+        eintrag({
+          displayName: 'Alex',
+          quota: {
+            ram: slot(4096, 8192),
+            servers: { ...slot(1, 1), resource: 'servers' as const, unit: 'count' as const },
+          },
+        }),
+      ]),
+    );
+
+    await zeichne();
+
+    const zelle = screen.getByTitle('Über dem Kontingent');
+    expect(zelle.className).toContain('text-warning');
+  });
+
+  it('laesst eine Zeile im Rahmen unauffaellig', async () => {
+    api.fetchRegistrationRequests.mockResolvedValue(
+      ok([
+        eintrag({
+          displayName: 'Alex',
+          quota: {
+            ram: slot(8192, 4096),
+            servers: { ...slot(3, 1), resource: 'servers' as const, unit: 'count' as const },
+          },
+        }),
+      ]),
+    );
+
+    await zeichne();
+
+    expect(screen.queryByTitle('Über dem Kontingent')).toBeNull();
+  });
+});
