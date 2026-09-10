@@ -54,6 +54,14 @@ function valueOf(metrics: ReturnType<typeof buildStatusMetrics>, key: string): s
   return metrics.find((metric) => metric.key === key)?.value;
 }
 
+function originOf(metrics: ReturnType<typeof buildStatusMetrics>, key: string): string | undefined {
+  return metrics.find((metric) => metric.key === key)?.origin;
+}
+
+function noteOf(metrics: ReturnType<typeof buildStatusMetrics>, key: string): string | undefined {
+  return metrics.find((metric) => metric.key === key)?.note;
+}
+
 describe('buildStatusMetrics', () => {
   it('zählt nur laufende Server als online', () => {
     const metrics = buildStatusMetrics({
@@ -233,6 +241,99 @@ describe('buildStatusMetrics', () => {
     expect(valueOf(unruhig, 'motion')).toBe('2');
     expect(valueOf(unruhig, 'faulted')).toBe('2');
     expect(valueOf(unruhig, 'update')).toBe('1');
+  });
+});
+
+/*
+ * Fundpunkt 204: Dieselbe Kachel zeigte einmal die gemessene, einmal die
+ * gebuchte Zahl - in der Pruefung sprang die Platte von 1,26 TB auf 216 GB,
+ * ohne dass sich an der Anzeige etwas aenderte. Das Backend schaltet nach
+ * fuenf Minuten ohne Messwert um; die Leiste nannte es nicht.
+ */
+describe('Herkunft der Kopfzahlen (Fundpunkt 204)', () => {
+  const gemessen = (diskUsedMb: number) => ({
+    cpuPercent: 40,
+    ramUsedMb: 3072,
+    diskUsedMb,
+    sampledAt: '2026-08-31T12:00:00.000Z',
+    source: 'measured' as const,
+  });
+
+  const gebucht = (diskUsedMb: number) => ({
+    cpuPercent: 40,
+    ramUsedMb: 3072,
+    diskUsedMb,
+    sampledAt: '2026-08-31T12:00:00.000Z',
+    source: 'reserved' as const,
+  });
+
+  it('nennt eine gemessene Platte gemessen', () => {
+    const metrics = buildStatusMetrics({
+      servers: [],
+      nodes: [node({ usage: gemessen(102400) })],
+      statsById: {},
+    });
+
+    expect(originOf(metrics, 'disk')).toBe('gemessen');
+    expect(originOf(metrics, 'cpu')).toBe('gemessen');
+  });
+
+  it('nennt die Ersatzrechnung gebucht', () => {
+    const metrics = buildStatusMetrics({
+      servers: [],
+      nodes: [node({ usage: gebucht(20480) })],
+      statsById: {},
+    });
+
+    expect(originOf(metrics, 'disk')).toBe('gebucht');
+    expect(noteOf(metrics, 'disk')).toContain('Keine frische Messung');
+  });
+
+  it('macht eine gemischte Lage sichtbar, statt sie zu verschweigen', () => {
+    const metrics = buildStatusMetrics({
+      servers: [],
+      nodes: [
+        node({ id: 'n1', usage: gemessen(102400) }),
+        node({ id: 'n2', usage: gebucht(20480) }),
+      ],
+      statsById: {},
+    });
+
+    expect(originOf(metrics, 'disk')).toBe('teils gemessen');
+    expect(noteOf(metrics, 'disk')).toContain('Gemessen auf 1 von 2 Nodes');
+  });
+
+  it('behauptet keine Herkunft, wenn der Vertrag sie nicht mitliefert', () => {
+    const metrics = buildStatusMetrics({
+      servers: [],
+      // `usage()` ohne `source` - so antwortet ein aelteres Backend.
+      nodes: [node()],
+      statsById: {},
+    });
+
+    expect(originOf(metrics, 'disk')).toBeUndefined();
+    expect(originOf(metrics, 'cpu')).toBeUndefined();
+  });
+
+  it('nennt den RAM immer gebucht, weil er nie gemessen ist', () => {
+    const metrics = buildStatusMetrics({
+      servers: [],
+      nodes: [node({ usage: gemessen(102400) })],
+      statsById: {},
+    });
+
+    expect(originOf(metrics, 'ram')).toBe('gebucht');
+  });
+
+  it('laesst die Serverzahlen ohne Zusatz', () => {
+    const metrics = buildStatusMetrics({
+      servers: [server({ id: 'a', status: 'running' })],
+      nodes: null,
+      statsById: {},
+    });
+
+    expect(originOf(metrics, 'servers')).toBeUndefined();
+    expect(originOf(metrics, 'players')).toBeUndefined();
   });
 });
 
