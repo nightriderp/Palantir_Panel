@@ -38,6 +38,25 @@ export interface ServerJobBase {
   finishedAt: string | null;
 }
 
+/**
+ * Wiederherstellung einer Sicherung (Fundpunkt 225).
+ *
+ * Dieselbe Begründung wie beim Klon-Auftrag: Ein Archiv von zwanzig Gigabyte
+ * braucht Minuten zum Entpacken, und die Frist des Agent-Befehls steht auf zwei
+ * Stunden (`BACKUP_COMMAND_TIMEOUT_MS`). Bis zum Audit vom 2026-09-10 hing die
+ * HTTP-Anfrage genau so lange – jeder Vermittler davor (Browser, Traefik) gab
+ * vorher auf, und der Nutzer sah einen Fehlschlag, während die
+ * Wiederherstellung in Ruhe zu Ende lief.
+ *
+ * Der Auftrag trägt deshalb dieselben Felder wie der Klon: Zustand, Schritt,
+ * Fehlertext, Zeiten. Einen Prozentwert liefert der Agent beim Entpacken heute
+ * nicht; `progressPercent` steht dann auf 0 und der Schritt sagt, was läuft.
+ */
+export interface BackupRestoreJobDto extends ServerJobBase {
+  /** Die Sicherung, die zurückgespielt wird. */
+  backupId: string;
+}
+
 /** Klon-Auftrag (Pflichtenheft §9: neue, eigene Subdomain ist Pflicht). */
 export interface ServerCloneJobDto extends ServerJobBase {
   /** Der neu entstehende Server; `null`, bis er angelegt ist. */
