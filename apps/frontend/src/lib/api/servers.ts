@@ -1,5 +1,6 @@
 import {
   type BackupDto,
+  type BackupRestoreJobDto,
   type GameServerDto,
   type GetLogsCommandResult,
   type HostNodeDto,
@@ -362,8 +363,15 @@ export function createBackup(
   });
 }
 
-export function restoreBackup(backupId: string): Promise<ApiResult<BackupDto>> {
-  return apiRequest<BackupDto>(backupPath(backupId, '/restore'), { method: 'POST' });
+/**
+ * Wiederherstellung anstoßen (Fundpunkt 225).
+ *
+ * Die Antwort ist der **Auftrag**, nicht das Ergebnis: Das Entpacken läuft
+ * weiter, wenn diese Anfrage längst beantwortet ist. Der Fortschritt kommt über
+ * den Live-Kanal (`backupRestore.progressed`).
+ */
+export function restoreBackup(backupId: string): Promise<ApiResult<BackupRestoreJobDto>> {
+  return apiRequest<BackupRestoreJobDto>(backupPath(backupId, '/restore'), { method: 'POST' });
 }
 
 export function deleteBackup(backupId: string): Promise<ApiResult<null>> {
