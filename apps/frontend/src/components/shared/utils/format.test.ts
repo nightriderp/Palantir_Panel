@@ -4,6 +4,7 @@ import {
   cpuQuotaPercent,
   formatBytes,
   formatChatTime,
+  formatCores,
   formatDate,
   formatDateTime,
   formatDuration,
@@ -200,6 +201,15 @@ describe('formatChatTime', () => {
  * klemmte den Wert bei 100 fest, die Detailkachel schrieb "250 %" hin - beides
  * beschreibt denselben Zustand falsch.
  */
+describe('formatCores', () => {
+  it('nutzt deutsches Dezimalkomma und die Einzahl', () => {
+    expect(formatCores(7.5)).toBe('7,5 Kerne');
+    // Fundpunkt 220 (UI-35): Die Serverdetails schrieben „1 Kerne".
+    expect(formatCores(1)).toBe('1 Kern');
+    expect(formatCores(2)).toBe('2 Kerne');
+  });
+});
+
 describe('cpuQuotaPercent', () => {
   it('rechnet Kernprozente in den Anteil am Kontingent um', () => {
     // 2,5 ausgelastete Kerne von vier: 62,5 % - gerundet 63.

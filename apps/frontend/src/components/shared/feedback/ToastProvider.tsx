@@ -19,7 +19,13 @@ export type ToastVariant = 'info' | 'success' | 'warning' | 'error';
 
 export interface ToastOptions {
   variant?: ToastVariant;
-  /** Anzeigedauer in Millisekunden (Standard 2600, wie im Mockup). */
+  /**
+   * Anzeigedauer in Millisekunden; `0` heißt „bleibt stehen, bis jemand sie
+   * wegklickt".
+   *
+   * Ohne Angabe entscheidet die Art der Meldung (Fundpunkt 220, siehe
+   * {@link VARIANT_DURATION_MS}).
+   */
   durationMs?: number;
 }
 
@@ -54,7 +60,25 @@ export interface ToastApi {
 
 const ToastContext = createContext<ToastApi | null>(null);
 
-const DEFAULT_DURATION_MS = 2600;
+/**
+ * Anzeigedauer je Art der Meldung (Fundpunkt 220).
+ *
+ * Am laufenden System gemessen: Ein Klick auf „Starten" bei nicht verbundener
+ * Node beantwortete das Backend mit `503 AGENT_NOT_CONNECTED`; der Satz „Der
+ * Homeserver ist derzeit nicht verbunden." war nach **2,8 Sekunden** wieder
+ * weg. Wer während des Klicks kurz wegsah, sah nur, dass nichts passiert ist.
+ *
+ * Für eine Erfolgsmeldung sind 2,6 Sekunden richtig – sie bestätigt etwas, das
+ * ohnehin auf dem Bildschirm passiert. Eine **Fehlermeldung** ist die einzige
+ * Stelle, an der die Begründung steht; sie bleibt deshalb stehen, bis jemand
+ * sie wegklickt. Eine Warnung liegt dazwischen.
+ */
+const VARIANT_DURATION_MS: Record<ToastVariant, number> = {
+  info: 2600,
+  success: 2600,
+  warning: 8000,
+  error: 0,
+};
 
 /**
  * Stellt die Toast-Funktion für den gesamten eingeloggten Bereich bereit.
@@ -81,17 +105,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (message: string, options?: ToastOptions) => {
       counter.current += 1;
       const id = `toast-${counter.current}`;
+      const variant = options?.variant ?? 'info';
       const toast: Toast = {
         id,
         message,
-        variant: options?.variant ?? 'info',
-        durationMs: options?.durationMs ?? DEFAULT_DURATION_MS,
+        variant,
+        durationMs: options?.durationMs ?? VARIANT_DURATION_MS[variant],
       };
       setToasts((current) => [...current, toast]);
-      timers.current.set(
-        id,
-        setTimeout(() => dismiss(id), toast.durationMs),
-      );
+
+      // `0` heißt „bleibt stehen": kein Zeitgeber, nur der Schließen-Knopf.
+      if (toast.durationMs > 0) {
+        timers.current.set(
+          id,
+          setTimeout(() => dismiss(id), toast.durationMs),
+        );
+      }
+
       return id;
     },
     [dismiss],
