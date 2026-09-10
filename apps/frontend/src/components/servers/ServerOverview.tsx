@@ -13,6 +13,8 @@ import {
   SegmentedControl,
   ServerCard,
   useToast,
+  istSuchbegriff,
+  useUrlFilter,
 } from '@/components/shared';
 import { openDirectConversation } from '@/lib/api/chat';
 import { errorText } from '@/lib/api/client';
@@ -26,6 +28,7 @@ import {
   SERVER_FILTERS,
   SERVER_FILTER_LABELS,
   type ServerFilter,
+  isServerFilter,
   groupServers,
 } from './serverList';
 import { useLifecycleActions } from './useLifecycleActions';
@@ -48,8 +51,13 @@ export function ServerOverview() {
   const toast = useToast();
   const { user } = useSession();
 
-  const [filter, setFilter] = useState<ServerFilter>('all');
-  const [search, setSearch] = useState('');
+  /*
+   * Filter und Suche stehen in der Adresse (Fundpunkt 213): Vorher liess sich
+   * die gefilterte Ansicht niemandem schicken, ein Neuladen warf sie weg, und
+   * der Zurueck-Knopf sprang an ihr vorbei auf die vorige Seite.
+   */
+  const [filter, setFilter] = useUrlFilter<ServerFilter>('filter', 'all', isServerFilter);
+  const [search, setSearch] = useUrlFilter<string>('q', '', istSuchbegriff);
   const [confirm, setConfirm] = useState<PendingConfirm>(null);
 
   const servers = useApiResource<GameServerDto[]>((signal) => fetchServers(signal), []);

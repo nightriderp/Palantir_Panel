@@ -121,6 +121,7 @@ export {
   NOTIFICATION_SEVERITY_TONES,
 } from './utils/labels';
 export { HIGHLIGHT_PARAM, useHighlight, type Highlight } from './utils/useHighlight';
+export { istSuchbegriff, useUrlFilter } from './utils/useUrlFilter';
 export {
   clampPercent,
   clampedPercentOf,

@@ -7,6 +7,7 @@ import {
   type RegistrationRequestStatus,
   type RoleDto,
   type UserResourceLimitDto,
+  isRegistrationRequestStatus,
 } from '@palantir/contracts';
 import { useMemo, useState, type FormEvent } from 'react';
 import {
@@ -30,6 +31,8 @@ import {
   serverInitials,
   useHighlight,
   useToast,
+  istSuchbegriff,
+  useUrlFilter,
 } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import {
@@ -114,8 +117,17 @@ export function UsersView() {
 
   // Sprung aus einer Meldung „Neue Registrierung" (Gefundener Punkt 103).
   const highlight = useHighlight();
-  const [status, setStatus] = useState<RegistrationRequestStatus>('approved');
-  const [search, setSearch] = useState('');
+  /*
+   * Auch hier stehen Filter und Suche in der Adresse (Fundpunkt 213) - der
+   * Link auf "alle gesperrten Konten" ist genau der, den ein Betreiber
+   * weitergibt.
+   */
+  const [status, setStatus] = useUrlFilter<RegistrationRequestStatus>(
+    'status',
+    'approved',
+    isRegistrationRequestStatus,
+  );
+  const [search, setSearch] = useUrlFilter<string>('q', '', istSuchbegriff);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [busy, setBusy] = useState(false);
 
