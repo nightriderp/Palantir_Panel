@@ -9,6 +9,7 @@ import {
   isLiveServerListEventName,
   isServerStatus,
 } from '@palantir/contracts';
+import { LIVE_CLOSE_CODE_TOO_SLOW, LIVE_MAX_BUFFERED_BYTES } from './live-frames.js';
 import { type OrchestrationEventSink } from './service.js';
 
 /**
@@ -28,6 +29,14 @@ import { type OrchestrationEventSink } from './service.js';
 /** Das Wenige, das der Hub von einem WebSocket braucht – erleichtert Tests. */
 export interface LiveSocket {
   send(data: string): void;
+  /**
+   * Wie viel im Sendepuffer wartet, in Byte (Fundpunkt 229).
+   *
+   * Optional, damit ein Testdouble weiterhin mit `{ send }` auskommt: Fehlt die
+   * Angabe, wird nichts abgeschnitten – dann kann der Hub nicht wissen, ob sich
+   * etwas staut.
+   */
+  readonly bufferedAmount?: number;
   /**
    * Verbindung schließen – gebraucht für {@link ServerLiveHub.closeAll}.
    *
@@ -172,6 +181,13 @@ export class ServerLiveHub {
       if (!subscriber.topics.has(topic.id)) {
         continue;
       }
+
+      // Fundpunkt 229: Wer nicht hinterherkommt, wird abgeworfen statt
+      // weitergefüttert – siehe `LIVE_MAX_BUFFERED_BYTES`.
+      if (this.#zuLangsam(subscriber)) {
+        continue;
+      }
+
       try {
         subscriber.socket.send(raw);
       } catch {
@@ -179,6 +195,35 @@ export class ServerLiveHub {
         // Sendefehler an einen Abonnenten darf die übrigen nicht abschneiden.
       }
     }
+  }
+
+  /**
+   * Kommt dieser Abonnent noch mit? (Fundpunkt 229.)
+   *
+   * Staut sich mehr als {@link LIVE_MAX_BUFFERED_BYTES} vor ihm, wird die
+   * Verbindung geschlossen und abgemeldet. Der Browser baut sie neu auf und
+   * beginnt mit einem frischen Stand; weiterzusenden hiesse, den Speicher des
+   * Backends im Takt der Konsolenausgabe wachsen zu lassen.
+   */
+  #zuLangsam(subscriber: Subscriber): boolean {
+    const gestaut = subscriber.socket.bufferedAmount;
+
+    if (gestaut === undefined || gestaut <= LIVE_MAX_BUFFERED_BYTES) {
+      return false;
+    }
+
+    this.#subscribers.delete(subscriber);
+
+    try {
+      subscriber.socket.close?.(
+        LIVE_CLOSE_CODE_TOO_SLOW,
+        'Die Verbindung kam mit den Meldungen nicht mehr hinterher.',
+      );
+    } catch {
+      // Verbindung ist bereits weg; mehr als schliessen war nicht zu tun.
+    }
+
+    return true;
   }
 
   /**
