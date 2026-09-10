@@ -1,4 +1,9 @@
-import { type BackupDto, type BackupProgress, type GameServerDto } from '@palantir/contracts';
+import {
+  type BackupDto,
+  type BackupProgress,
+  type BackupRestoreJobDto,
+  type GameServerDto,
+} from '@palantir/contracts';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/shared';
@@ -65,7 +70,7 @@ function fortschritt(overrides: Partial<BackupProgress> = {}): BackupProgress {
 function zeichne(anfangsFortschritt: BackupProgress | null) {
   const baum = (progress: BackupProgress | null) => (
     <ToastProvider>
-      <BackupsTab server={SERVER} backupProgress={progress} />
+      <BackupsTab server={SERVER} backupProgress={progress} restoreJob={null} />
     </ToastProvider>
   );
 
@@ -152,5 +157,73 @@ describe('BackupsTab – Live-Fortschritt (event-flow-05)', () => {
       expect(screen.getByText('Läuft …')).toBeTruthy();
     });
     expect(api.fetchBackups).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Wiederherstellung als Auftrag (Fundpunkt 225).
+ *
+ * Vorher wartete die Anfrage bis zu zwei Stunden auf den Agent; der Nutzer sah
+ * einen Fehlschlag, sobald ein Vermittler davor aufgab. Jetzt kommt der
+ * Auftrag sofort zurueck, und der Fortschritt laeuft ueber den Live-Kanal.
+ */
+describe('BackupsTab - Wiederherstellung (Fundpunkt 225)', () => {
+  const AUFTRAG: BackupRestoreJobDto = {
+    id: '99999999-9999-4999-8999-999999999999',
+    serverId: SERVER.id,
+    backupId: 'backup-1',
+    status: 'running',
+    progressPercent: 0,
+    step: 'Archiv wird geprüft und entpackt',
+    statusMessage: null,
+    startedAt: '2026-09-10T12:00:00.000Z',
+    finishedAt: null,
+  };
+
+  function zeichneMitAuftrag(job: BackupRestoreJobDto | null) {
+    return render(
+      <ToastProvider>
+        <BackupsTab server={SERVER} backupProgress={null} restoreJob={job} />
+      </ToastProvider>,
+    );
+  }
+
+  it('zeigt den laufenden Auftrag mit seinem Schritt', () => {
+    zeichneMitAuftrag(AUFTRAG);
+
+    expect(screen.getByText('Wiederherstellung')).toBeTruthy();
+    expect(screen.getByText('Archiv wird geprüft und entpackt')).toBeTruthy();
+    expect(screen.getByText('Läuft')).toBeTruthy();
+  });
+
+  it('sagt es, wenn der Auftrag fertig ist', () => {
+    zeichneMitAuftrag({
+      ...AUFTRAG,
+      status: 'completed',
+      progressPercent: 100,
+      step: 'Fertig',
+      finishedAt: '2026-09-10T12:05:00.000Z',
+    });
+
+    expect(screen.getByText('Wiederherstellung abgeschlossen')).toBeTruthy();
+    // „Fertig" steht sowohl als Zustand als auch als Schritt da.
+    expect(screen.getAllByText('Fertig').length).toBeGreaterThan(0);
+  });
+
+  it('nennt den Grund eines Fehlschlags', () => {
+    zeichneMitAuftrag({
+      ...AUFTRAG,
+      status: 'failed',
+      statusMessage: 'Das Archiv liess sich nicht entpacken.',
+      finishedAt: '2026-09-10T12:05:00.000Z',
+    });
+
+    expect(screen.getByText('Das Archiv liess sich nicht entpacken.')).toBeTruthy();
+  });
+
+  it('zeigt ohne Auftrag keinen Balken', () => {
+    zeichneMitAuftrag(null);
+
+    expect(screen.queryByText('Wiederherstellung')).toBeNull();
   });
 });

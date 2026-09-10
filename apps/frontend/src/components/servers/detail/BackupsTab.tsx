@@ -4,6 +4,7 @@ import {
   AUTOMATIC_BACKUP_RETENTION_DAYS,
   type BackupDto,
   type BackupProgress,
+  type BackupRestoreJobDto,
   type GameServerDto,
 } from '@palantir/contracts';
 import { useEffect, useState } from 'react';
@@ -31,6 +32,7 @@ import {
 import { useApiResource } from '@/lib/api/useApiResource';
 import { formatBytes } from '../formatDetail';
 import { consistencyMeta } from '@/components/my-backups/backupsView';
+import { JobProgress } from './JobProgress';
 
 /**
  * Reiter „Backups" der Detailansicht (Lastenheft §3.3).
@@ -54,10 +56,26 @@ export interface BackupsTabProps {
    * „Läuft …" stehen, obwohl der Abschluss längst im Browser angekommen war.
    */
   backupProgress: BackupProgress | null;
+  /**
+   * Laufende oder gerade beendete Wiederherstellung (Fundpunkt 225).
+   *
+   * Vorher wartete die Anfrage bis zu zwei Stunden auf den Agent, und der
+   * Nutzer sah einen Fehlschlag, sobald ein Vermittler davor aufgab. Jetzt
+   * antwortet das Backend sofort mit dem Auftrag, und der Fortschritt kommt
+   * über den Live-Kanal hierher.
+   */
+  restoreJob: BackupRestoreJobDto | null;
 }
 
-export function BackupsTab({ server, backupProgress }: BackupsTabProps) {
+export function BackupsTab({ server, backupProgress, restoreJob }: BackupsTabProps) {
   const toast = useToast();
+  /**
+   * Auftrag aus der eigenen Antwort – bis das erste Ereignis eintrifft.
+   *
+   * Ohne ihn bliebe die Anzeige zwischen Klick und erstem Frame leer, und der
+   * Nutzer klickte ein zweites Mal.
+   */
+  const [lokalerAuftrag, setLokalerAuftrag] = useState<BackupRestoreJobDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [stopServer, setStopServer] = useState(false);
   const [pendingRestore, setPendingRestore] = useState<BackupDto | null>(null);
@@ -136,6 +154,10 @@ export function BackupsTab({ server, backupProgress }: BackupsTabProps) {
       toast.error(errorText(result));
       return;
     }
+
+    // Der Auftrag aus der Antwort steht sofort da; der Live-Kanal schreibt ihn
+    // danach fort (Fundpunkt 225).
+    setLokalerAuftrag(result.data);
     toast.success('Die Wiederherstellung läuft. Der Server startet danach neu.');
   }
 
@@ -154,6 +176,17 @@ export function BackupsTab({ server, backupProgress }: BackupsTabProps) {
   }
 
   const list = (backups.data ?? []).filter((backup) => !backup.isExport);
+
+  /*
+   * Der Live-Kanal gewinnt, sobald er etwas zu diesem Auftrag sagt: Er ist der
+   * juengere Stand. Ein Auftrag zu einer anderen Sicherung geht diesen Reiter
+   * nichts an - er kann nur zu einem Server gehoeren, aber der Nutzer koennte
+   * ihn in der Zwischenzeit gewechselt haben.
+   */
+  const aktuellerAuftrag =
+    restoreJob !== null && (lokalerAuftrag === null || restoreJob.id === lokalerAuftrag.id)
+      ? restoreJob
+      : lokalerAuftrag;
 
   return (
     <div className="flex flex-col gap-3">
@@ -176,6 +209,21 @@ export function BackupsTab({ server, backupProgress }: BackupsTabProps) {
           </Button>
         </div>
       ) : null}
+
+      {/*
+        Fundpunkt 225: Die Wiederherstellung laeuft als Auftrag. Der Balken
+        zeigt, dass etwas passiert - und was, wenn es schiefging.
+      */}
+      {aktuellerAuftrag === null ? null : (
+        <JobProgress
+          job={aktuellerAuftrag}
+          title={
+            aktuellerAuftrag.status === 'completed'
+              ? 'Wiederherstellung abgeschlossen'
+              : 'Wiederherstellung'
+          }
+        />
+      )}
 
       {backups.loading && backups.data === null ? (
         <Panel variant="outline" className="text-center text-base text-ink-muted">

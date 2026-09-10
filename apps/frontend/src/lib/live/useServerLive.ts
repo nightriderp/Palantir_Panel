@@ -3,6 +3,7 @@
 import {
   LIVE_SERVER_LIST_TOPIC,
   type BackupProgress,
+  type BackupRestoreJobDto,
   type ServerCloneJobDto,
   type ServerConsoleLine,
   type ServerLiveStats,
@@ -47,6 +48,13 @@ export interface ServerLiveData {
   cloneJob: ServerCloneJobDto | null;
   /** Zuletzt gemeldeter Stand einer Sicherung dieses Servers (Gefundener Punkt 51). */
   backupProgress: BackupProgress | null;
+  /**
+   * Laufende oder gerade beendete Wiederherstellung (Fundpunkt 225).
+   *
+   * Wie beim Klon trägt das Ereignis den vollständigen Auftrag; die Ansicht
+   * fragt nichts nach.
+   */
+  restoreJob: BackupRestoreJobDto | null;
   /** Konsolenbefehl senden; `false`, wenn die Verbindung gerade fehlt. */
   sendConsoleCommand: (command: string) => boolean;
   clearConsole: () => void;
@@ -61,6 +69,7 @@ export function useServerLive(serverId: string | null): ServerLiveData {
   const [stats, setStats] = useState<ServerLiveStats | null>(null);
   const [consoleLines, setConsoleLines] = useState<ServerConsoleLine[]>([]);
   const [cloneJob, setCloneJob] = useState<ServerCloneJobDto | null>(null);
+  const [restoreJob, setRestoreJob] = useState<BackupRestoreJobDto | null>(null);
   /**
    * Stand der zuletzt gemeldeten Sicherung dieses Servers (Gefundener Punkt 51).
    *
@@ -155,6 +164,9 @@ export function useServerLive(serverId: string | null): ServerLiveData {
         case 'backup.progressed':
           setBackupProgress(frame.data.backup);
           break;
+        case 'backupRestore.progressed':
+          setRestoreJob(frame.data.job);
+          break;
       }
     });
   }, [channel, serverId]);
@@ -183,6 +195,7 @@ export function useServerLive(serverId: string | null): ServerLiveData {
       consoleLines,
       cloneJob,
       backupProgress,
+      restoreJob,
       sendConsoleCommand,
       clearConsole,
     }),
@@ -195,6 +208,7 @@ export function useServerLive(serverId: string | null): ServerLiveData {
       consoleLines,
       cloneJob,
       backupProgress,
+      restoreJob,
       sendConsoleCommand,
       clearConsole,
     ],

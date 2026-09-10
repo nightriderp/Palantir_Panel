@@ -221,7 +221,11 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
 
           {activeTab === 'files' ? <FilesTab server={server} /> : null}
           {activeTab === 'backups' ? (
-            <BackupsTab server={server} backupProgress={live.backupProgress} />
+            <BackupsTab
+              server={server}
+              backupProgress={live.backupProgress}
+              restoreJob={live.restoreJob}
+            />
           ) : null}
           {activeTab === 'tasks' ? <TasksTab server={server} /> : null}
 
