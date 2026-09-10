@@ -1,14 +1,27 @@
-# Minecraft (Paper)
+# Minecraft
 
 Das erste echte Spiel-Image (Lastenheft §7, Ausbaustufe 2). Der Prüfstand nebenan
 (`images/test/minecraft`) stellt das Minecraft-Protokoll nach — hier läuft ein Server. Das
 Schema aller Images steht in `images/README.md`.
 
-| Enthalten           | Fassung                                                                          |
-| ------------------- | -------------------------------------------------------------------------------- |
-| Paper               | 26.2, Build 121 (Kanal `STABLE`), im Image, Prüfsumme im Bau                     |
-| Basis               | `palantir-base-java:2` (`images/base/java`): Temurin 25 JRE, UID 1000, `java.sh` |
-| Spieltyp-Definition | `minecraft-paper` in `apps/backend/.../game-registry.ts`                         |
+| Enthalten             | Fassung                                                                          |
+| --------------------- | -------------------------------------------------------------------------------- |
+| Paper                 | 26.2, Build 121 (Kanal `STABLE`), im Image, Prüfsumme im Bau                     |
+| Vanilla               | 26.2, beim ersten Start geholt, Prüfsumme im Image                               |
+| Basis                 | `palantir-base-java:3` (`images/base/java`): Temurin 25 JRE, UID 1000, `java.sh` |
+| Spieltyp-Definitionen | `minecraft-paper` und `minecraft-vanilla` in `apps/backend/.../game-registry.ts` |
+
+## Zwei Ausgaben, ein Image
+
+`MINECRAFT_EDITION` entscheidet: `paper` (Vorgabe) oder `vanilla`. Alles andere ist gleich —
+EULA, `server.properties`, RCON, Heap, Konsole, Hostname-Routing. Ein zweites Image wäre eine
+zweite Abschrift desselben Startskripts gewesen; das Panel unterscheidet die beiden ohnehin
+über zwei Spieltyp-Definitionen, nicht über zwei Images.
+
+| Ausgabe   | Jar                                              | Wofür                                                       |
+| --------- | ------------------------------------------------ | ----------------------------------------------------------- |
+| `paper`   | `/opt/palantir/paper.jar`, im Image              | Schneller, Plugins, der Normalfall                          |
+| `vanilla` | `/data/.palantir/vanilla/minecraft_server-*.jar` | So, wie Mojang das Spiel meint: Redstone, Mobs, Datenpakete |
 
 ## Warum ein eigenes Image
 
@@ -51,6 +64,17 @@ _ersten_ Start selbst nach und patcht ihn. Das ist der eine Download, der sich n
 verlegen lässt; er braucht Internet auf der Node (die Egress-Regeln erlauben es) und ist der
 Grund für die großzügige Startzeit-Grenze.
 
+Aus demselben Grund liegt **die Vanilla-Jar nicht im Image**. `start.sh` holt sie beim ersten
+Start nach `/data/.palantir/vanilla/` und prüft sie gegen die SHA-256 aus dem Dockerfile; beim
+zweiten Start ist sie da und es passiert nichts. Die Adresse ist über den SHA-1 des Inhalts
+gebildet (`piston-data.mojang.com/v1/objects/<sha1>/server.jar`), die Serverfassung hängt also
+trotzdem am Image-Tag. Was nicht zur Prüfsumme passt, wird verworfen und der Start endet mit
+Exit-Code 69 (`EX_UNAVAILABLE`) — unterscheidbar von 78 (Einstellung falsch) und von einem
+Absturz.
+
+Sie liegt im internen Unterordner und nicht neben den Welten: Sie gehört Palantir, nicht dem
+Betreiber, und hat in der Dateiverwaltung nichts zu suchen.
+
 ## Einstellungen
 
 Alles über Umgebungsvariablen, gesetzt vom Panel über `envMapping` der Spiel-Definition. Das
@@ -68,6 +92,7 @@ und lassen sich über die Dateiverwaltung setzen.
 | `VIEW_DISTANCE`               | `10`                  | `view-distance`                   |
 | `WHITELIST`                   | `false`               | `white-list`, `enforce-whitelist` |
 | `SERVER_PORT`                 | `25565`               | `server-port`                     |
+| `MINECRAFT_EDITION`           | `paper`               | keiner — wählt die Jar            |
 | `PALANTIR_STARTUP_PARAMETERS` | –                     | zusätzliche JVM-Schalter          |
 
 `PALANTIR_STARTUP_PARAMETERS` zerfällt an Leerzeichen; Anführungszeichen werden nicht
@@ -125,12 +150,16 @@ Exit-Codes wie beim Prüfstand: `0` übergeben, `1` Konsole nicht erreichbar, `2
 
 ## Tests
 
-`start.test.mjs` ruft `start.sh` und `console.sh` mit `sh` auf und schiebt ein `java` in den
-PATH, das nur seine Argumente ausgibt — **kein Docker, kein Minecraft, keine JVM nötig**.
-Geprüft werden die Entscheidungen des Skripts: EULA-Sperre, verwaltete Schlüssel in
-`server.properties` (inklusive fremder Schlüssel, Kommentaren und Dubletten), die Übernahme
-des Heaps aus dem Basis-Image (die Rechnung selbst prüft `images/base/java/java.test.mjs`),
-das temporäre Verzeichnis und die Exit-Codes der Konsole.
+`start.test.mjs` ruft `start.sh` mit `sh` auf und schiebt ein `java` in den PATH, das nur seine
+Argumente ausgibt — **kein Docker, kein Minecraft, keine JVM nötig**. Geprüft werden die
+Entscheidungen des Skripts: EULA-Sperre, verwaltete Schlüssel in `server.properties`
+(inklusive fremder Schlüssel, Kommentaren und Dubletten), die Übernahme des Heaps aus dem
+Basis-Image (die Rechnung selbst prüft `images/base/java/java.test.mjs`), das temporäre
+Verzeichnis und die Wahl der Jar. Für Vanilla steht statt `curl` eine Attrappe im PATH, die
+eine kleine Datei ausliefert — ein Test, der 60 MiB von Mojang lädt, prüfte die Leitung.
+
+`palantir-console` steht seit Fassung 4 in der Wurzel (`images/base/linux`) und wird dort
+geprüft.
 
 ```bash
 # im Verbund, so wie die CI es tut
@@ -142,9 +171,9 @@ pnpm --filter @palantir/minecraft-image test
 
 Ohne POSIX-Shell im PATH überspringt sich die Datei mit einem Hinweis, statt zu scheitern.
 
-**Nicht geprüft und nur im echten Lauf sichtbar:** ob Paper mit diesen Schaltern startet, ob
-die Jar zur JVM passt, ob der Nachladevorgang von Mojang innerhalb der Startzeit-Grenze bleibt
-und ob `gamedig` den Server erkennt.
+**Nicht geprüft und nur im echten Lauf sichtbar:** ob Paper oder Vanilla mit diesen Schaltern
+startet, ob die Jar zur JVM passt, ob der Nachladevorgang von Mojang innerhalb der
+Startzeit-Grenze bleibt und ob `gamedig` den Server erkennt.
 
 ## Von Hand prüfen
 
@@ -153,8 +182,11 @@ docker run --rm -p 25565:25565 \
   --user 1000:1000 --cap-drop ALL --security-opt no-new-privileges:true \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
   -m 4g -e EULA=true -v "$PWD/probe:/data" \
-  ghcr.io/nightriderp/palantir-game-minecraft:3
+  ghcr.io/nightriderp/palantir-game-minecraft:5
 ```
+
+Dieselbe Zeile mit `-e MINECRAFT_EDITION=vanilla` startet den Server von Mojang; der erste Lauf
+holt dann rund 60 MiB und braucht Netz.
 
 Der Ordner `probe` muss vorher existieren und UID 1000 gehören — auf der Node legt ihn der
 Agent an (Fundpunkt 117). Ohne `-e EULA=true` endet der Lauf mit 78 und einer Erklärung.
@@ -163,10 +195,15 @@ Agent an (Fundpunkt 117). Ohne `-e EULA=true` endet der Lauf mit 78 und einer Er
 
 Ein Spiel-Image-Tag wird nie überschrieben. Wer Paper oder ein Skript ändert:
 
-1. neue Prüfsumme aus `https://fill.papermc.io/v3/projects/paper/versions/<Fassung>/builds/latest`
-   in den `ARG`-Block des Dockerfiles,
+1. **Paper:** neue Prüfsumme aus
+   `https://fill.papermc.io/v3/projects/paper/versions/<Fassung>/builds/latest` in den
+   `ARG`-Block des Dockerfiles.
+   **Vanilla:** Fassung, Adresse und SHA-256 in den `ENV`-Block; die Befehle dafür stehen als
+   Kommentar daneben. Die dort genannte `javaVersion` muss zu `base/java` passen.
 2. Zahl in `VERSION` erhöhen,
 3. `dockerImage` in `game-registry.ts` auf das neue Tag ziehen (der Test dort hält das fest).
+   Beide Definitionen teilen sich die Zeile — `minecraft-vanilla` übernimmt sie von
+   `minecraft-paper`.
 
 Die JRE kommt aus dem Basis-Image. Eine neue Fassung dort erreicht dieses Image erst, wenn
 `BASIS` im Dockerfile umgestellt wird — dann Schritte 2 und 3.

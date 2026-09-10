@@ -6,11 +6,11 @@ Alles, was der Agent auf einer Node als Container startet, entsteht hier — nac
 images/<Kategorie>/<Name>   →   ghcr.io/nightriderp/palantir-<Kategorie>-<Name>:<Fassung>
 ```
 
-| Kategorie | Was darin steht                                                                                               | Beispiel                                     |
-| --------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `base`    | Grundlage je Laufzeit: Benutzer, Bibliotheken, Konventionen der Härtung. Kein Spiel, kein `ENTRYPOINT`.       | `base/linux` → `palantir-base-linux`         |
-| `game`    | Ein Spielserver, aufgesetzt auf ein Basis-Image. Bekommt eine Spieltyp-Definition in `game-registry.ts`.      | `game/minecraft` → `palantir-game-minecraft` |
-| `test`    | Prüfstände: kein Spiel, sondern ein Nachbau, an dem sich die Kette des Panels ohne echtes Spiel prüfen lässt. | `test/minecraft` → `palantir-test-minecraft` |
+| Kategorie | Was darin steht                                                                                                     | Beispiel                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `base`    | Grundlage je Laufzeit: Benutzer, Bibliotheken, Konventionen der Härtung. Kein Spiel, kein `ENTRYPOINT`.             | `base/linux` → `palantir-base-linux`         |
+| `game`    | Ein Spielserver, aufgesetzt auf ein Basis-Image. Bekommt mindestens eine Spieltyp-Definition in `game-registry.ts`. | `game/minecraft` → `palantir-game-minecraft` |
+| `test`    | Prüfstände: kein Spiel, sondern ein Nachbau, an dem sich die Kette des Panels ohne echtes Spiel prüfen lässt.       | `test/minecraft` → `palantir-test-minecraft` |
 
 Der Ordnername ist der Image-Name; eine gepflegte Liste gibt es nicht. Ein neues Image braucht
 seinen Ordner mit `Dockerfile` und `VERSION`, sonst nichts.
@@ -69,6 +69,11 @@ diese Zeichenkette festhält.
 
 Das Minecraft-Image (`game/minecraft`) ist die Vorlage: EULA als Pflichtfeld, verwaltete
 Schlüssel in `server.properties`, Heap aus dem Basis-Image, Konsole über ein benanntes Rohr.
+
+**Ein Image kann mehrere Spieltypen bedienen.** `game/minecraft` tut es: Paper und Vanilla
+teilen sich alles außer der Jar, ein Schalter in der Umgebung (`MINECRAFT_EDITION`) wählt aus,
+und im Panel stehen zwei Definitionen darauf. Das lohnt genau dann, wenn sich zwei Spieltypen
+sonst ein abgeschriebenes Startskript teilten — nicht als Regel.
 
 ## Bau und Veröffentlichung
 

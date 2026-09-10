@@ -293,7 +293,7 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   name: 'Minecraft (Paper)',
   description:
     'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:4',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:5',
   // Schnellbefehle der Live-Konsole. Nur vollständige Zeilen – `say <Text>`
   // oder `op <Name>` brauchen das Feld. Die Antwort kommt über RCON zurück
   // (`console` unten, P2-9) und steht damit direkt in der Konsole.
@@ -488,6 +488,47 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
 };
 
 /**
+ * Minecraft in der Ausgabe von Mojang (Wunsch des Betreibers, 2026-09-10).
+ *
+ * **Dasselbe Image, ein anderer Schalter.** Beide Ausgaben laufen aus
+ * `palantir-game-minecraft`; das Startskript entscheidet über
+ * `MINECRAFT_EDITION`, welche Jar es startet. Alles Übrige – EULA,
+ * `server.properties`, RCON, Heap, Konsole, Hostname-Routing – ist gleich, und
+ * deshalb ist diese Definition eine Abwandlung der Paper-Definition und keine
+ * zweite Abschrift: Ein neues Feld dort gilt hier sofort mit.
+ *
+ * **Die Jar kommt nicht aus dem Image.** Paper darf weitergegeben werden, der
+ * Server von Mojang nicht. Er wird beim ersten Start in den Datenordner geholt
+ * und gegen die Prüfsumme aus dem Image geprüft (`images/game/minecraft`). Der
+ * Preis steht im Startskript: Der erste Start braucht Netz.
+ *
+ * **Warum überhaupt, wenn Paper schneller ist.** Paper ist ein Nachbau. Er
+ * verhält sich an vielen Stellen absichtlich anders – Redstone,
+ * Mob-Verhalten, Spawn-Regeln –, und wer eine Welt so spielen will, wie Mojang
+ * sie meint, oder ein Datenpaket testet, braucht den Server von Mojang. Plugins
+ * gibt es dafür nicht.
+ */
+export const MINECRAFT_VANILLA_GAME_TYPE: GameTypeDefinition = {
+  ...MINECRAFT_PAPER_GAME_TYPE,
+  id: 'minecraft-vanilla',
+  name: 'Minecraft (Vanilla)',
+  description:
+    'Minecraft-Server, wie Mojang ihn ausliefert – ohne Nachbau, ohne Plugins. Die Serverdateien werden beim ersten Start geholt; der dauert deshalb länger. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
+  defaultEnv: { MINECRAFT_EDITION: 'vanilla' },
+  /*
+   * Wie bei Paper, ohne `tps`: Das ist ein Paper-Befehl, den der Server von
+   * Mojang mit „Unknown command" beantwortet. Ein Schnellbefehl, der nichts
+   * tut, ist schlechter als keiner.
+   */
+  consoleQuickCommands: [
+    { label: 'Spieler', command: 'list' },
+    { label: 'Speichern', command: 'save-all' },
+    { label: 'Whitelist', command: 'whitelist list' },
+    { label: 'Stopp', command: 'stop' },
+  ],
+};
+
+/**
  * Alle bekannten Spiele-Definitionen.
  *
  * Reihenfolge = Anzeigereihenfolge im Server-erstellen-Wizard (F3).
@@ -663,6 +704,7 @@ export const VALHEIM_GAME_TYPE: GameTypeDefinition = {
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
+  MINECRAFT_VANILLA_GAME_TYPE,
   VALHEIM_GAME_TYPE,
 ];
 

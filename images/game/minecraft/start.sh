@@ -1,8 +1,9 @@
 #!/bin/sh
 #
-# Startskript des Paper-Images.
+# Startskript des Minecraft-Images – für beide Ausgaben, Paper und Vanilla
+# (`MINECRAFT_EDITION`).
 #
-# Es tut genau vier Dinge, und jedes davon hat einen Grund, der ohne diesen Text
+# Es tut genau fünf Dinge, und jedes davon hat einen Grund, der ohne diesen Text
 # nicht zu erraten wäre:
 #
 #   1. Es hält den Server an, solange die EULA von Mojang nicht angenommen ist.
@@ -10,9 +11,17 @@
 #      ohne die übrigen anzutasten.
 #   3. Es holt den JVM-Heap aus dem RAM-Kontingent des Containers – die
 #      Rechnung dazu liegt im Basis-Image (`images/base/java/java.sh`).
-#   4. Es legt das Rohr an, über das `palantir-console` Befehle an die
+#   4. Es bestimmt die Server-Jar: Paper liegt im Image, den Server von Mojang
+#      holt es beim ersten Start in den Datenordner – der darf nicht
+#      weitergegeben werden, kann also nicht im Image liegen.
+#   5. Es legt das Rohr an, über das `palantir-console` Befehle an die
 #      Standardeingabe des Servers gibt – und ein frisches RCON-Passwort, über
 #      das das Panel die Konsole seit P2-9 vorrangig anspricht.
+#
+# **Warum eine Datei für beide Ausgaben.** Alles außer der Jar ist gleich: EULA,
+# `server.properties`, RCON, Heap, temporäres Verzeichnis, Konsole. Zwei Images
+# hießen zwei Kopien davon, die auseinanderdriften; das Panel unterscheidet die
+# beiden ohnehin über die Spieltyp-Definition und nicht über das Image.
 #
 # Danach ersetzt es sich per `exec` durch die JVM: kein Benutzerwechsel, kein
 # `chown`, keine Shell zwischen Signal und Server (Pflichtenheft §2.3).
@@ -33,6 +42,10 @@ set -eu
 
 DATENORDNER="$PALANTIR_DATENORDNER"
 PAPER_JAR="${PALANTIR_PAPER_JAR:-/opt/palantir/paper.jar}"
+# `paper` oder `vanilla`. Beide Ausgaben laufen aus diesem einen Image: Sie
+# teilen sich EULA, `server.properties`, RCON, Heap und Konsole – der Unterschied
+# ist die Jar und woher sie kommt (Abschnitt 3).
+AUSGABE="${MINECRAFT_EDITION:-paper}"
 INTERN="$PALANTIR_INTERN"
 KONSOLE="$PALANTIR_KONSOLE"
 JAVA_TMP="${INTERN}/tmp"
@@ -42,6 +55,14 @@ JAVA_TMP="${INTERN}/tmp"
 log() {
   palantir_log "$@"
 }
+
+case "$AUSGABE" in
+  paper | vanilla) ;;
+  *)
+    log "Unbekannte Ausgabe: ${AUSGABE}. Erlaubt sind \"paper\" und \"vanilla\"."
+    exit 78
+    ;;
+esac
 
 # -----------------------------------------------------------------------------
 # 1. EULA von Mojang
@@ -210,6 +231,10 @@ set -- "$@" "-Djava.io.tmpdir=${JAVA_TMP}" "-Dio.netty.native.workdir=${JAVA_TMP
 # Empfohlene JVM-Schalter von PaperMC selbst
 # (`fill.papermc.io/v3/projects/paper/versions/26.2` → `java.flags.recommended`),
 # ohne `-Xms`/`-Xmx`: die stehen oben und kommen aus dem Kontingent.
+#
+# Vanilla bekommt sie ebenfalls. Es sind Einstellungen des G1-Sammlers, keine
+# Paper-Erweiterungen – jede HotSpot-JVM versteht sie, und der Grund dafür (eine
+# Pause statt eines Rucks im Spiel) ist bei Mojangs Server derselbe.
 set -- "$@" \
   -XX:+UseG1GC \
   -XX:+ParallelRefProcEnabled \
@@ -242,10 +267,53 @@ if [ -n "${PALANTIR_STARTUP_PARAMETERS:-}" ]; then
   set -- "$@" ${PALANTIR_STARTUP_PARAMETERS}
 fi
 
-set -- "$@" -jar "$PAPER_JAR" --nogui
+# -----------------------------------------------------------------------------
+# 5. Die Server-Jar
+#
+# **Paper** liegt im Image (`/opt/palantir/paper.jar`). Es darf weitergegeben
+# werden (GPLv3), also ist das der bessere Ort: Ein Image-Tag steht damit für
+# genau eine Serverfassung, und der Start braucht kein Netz.
+#
+# **Der Server von Mojang darf das nicht.** Für die Ausgabe `vanilla` kann die
+# Jar deshalb nicht im Image liegen – sie wird beim ersten Start in den
+# Datenordner geholt und dort auf ihre Prüfsumme geprüft
+# (`palantir_datei_holen` aus der Wurzel). Beim zweiten Start ist sie da und es
+# passiert nichts. Adresse, Fassung und Prüfsumme stehen im Dockerfile und
+# gehören damit zum Image-Tag; was nicht zur Summe passt, wird verworfen statt
+# ausgeführt.
+#
+# Sie liegt im internen Unterordner, nicht neben den Welten: Sie gehört
+# Palantir, nicht dem Betreiber, und hat in der Dateiverwaltung nichts zu
+# suchen.
+if [ "$AUSGABE" = 'paper' ]; then
+  SERVER_JAR="$PAPER_JAR"
+else
+  if [ -z "${MINECRAFT_VANILLA_URL:-}" ] || [ -z "${MINECRAFT_VANILLA_SHA256:-}" ]; then
+    log 'Der Ausgabe "vanilla" fehlen MINECRAFT_VANILLA_URL oder MINECRAFT_VANILLA_SHA256.'
+    log 'Beide setzt das Image (Dockerfile); ohne sie ist nicht bestimmbar, welcher'
+    log 'Server geholt werden soll.'
+    exit 78
+  fi
+
+  VANILLA_ORDNER="${INTERN}/vanilla"
+  mkdir -p "$VANILLA_ORDNER"
+  SERVER_JAR="${VANILLA_ORDNER}/minecraft_server-${MINECRAFT_VANILLA_VERSION:-unbekannt}.jar"
+
+  # Exit-Code 69 ist `EX_UNAVAILABLE`: Der Server ist in Ordnung, nur die Quelle
+  # war nicht zu erreichen oder hat etwas Falsches geliefert. Unterscheidbar von
+  # 78 (Konfiguration) und von einem Absturz.
+  if ! palantir_datei_holen \
+    "$MINECRAFT_VANILLA_URL" "$MINECRAFT_VANILLA_SHA256" "$SERVER_JAR"; then
+    log 'Der Server von Mojang konnte nicht geholt werden. Der Start bricht ab;'
+    log 'ein erneuter Start versucht es wieder.'
+    exit 69
+  fi
+fi
+
+set -- "$@" -jar "$SERVER_JAR" --nogui
 
 # -----------------------------------------------------------------------------
-# 5. Konsole
+# 6. Konsole
 #
 # Ein Minecraft-Server liest Befehle von der Standardeingabe. `EXEC_CONSOLE`
 # startet im Container aber einen eigenen Prozess ohne Verbindung dorthin – ein
@@ -260,7 +328,7 @@ set -- "$@" -jar "$PAPER_JAR" --nogui
 # der Server hielte das für „Konsole beendet".
 palantir_konsole_oeffnen
 
-log "Startet Paper: java $*"
+log "Startet Minecraft (${AUSGABE}): java $*"
 
 # `exec` und `3>&-`: Die JVM wird PID 1 (bekommt SIGTERM direkt) und behält vom
 # Rohr nur die Standardeingabe.

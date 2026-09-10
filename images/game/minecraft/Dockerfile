@@ -1,4 +1,11 @@
-# Minecraft (Paper) – das erste echte Spiel-Image (Lastenheft §7, Ausbaustufe 2).
+# Minecraft – das erste echte Spiel-Image (Lastenheft §7, Ausbaustufe 2).
+#
+# **Zwei Ausgaben aus einem Image** (Wunsch des Betreibers, 2026-09-10: „will
+# auch Minecraft Vanilla zur Auswahl haben"): `MINECRAFT_EDITION=paper` (Vorgabe)
+# und `=vanilla`. Alles außer der Jar ist bei beiden gleich – EULA,
+# `server.properties`, RCON, Heap, Konsole –, und das Panel unterscheidet sie
+# über zwei Spieltyp-Definitionen, nicht über zwei Images. Zwei Images hießen
+# zwei Kopien desselben Startskripts.
 #
 # Der Prüfstand nebenan (`images/test/minecraft`) stellt das Minecraft-Protokoll
 # nach; hier läuft ein echter Server. Die Regeln bleiben dieselben, und sie sind
@@ -96,9 +103,35 @@ RUN set -eux; \
 
 USER 1000:1000
 
+# -----------------------------------------------------------------------------
+# Die zweite Ausgabe: Vanilla, der Server von Mojang.
+#
+# Er darf **nicht** weitergegeben werden und kann deshalb nicht im Image liegen.
+# Das Startskript holt ihn bei der Ausgabe `vanilla` in den Datenordner und
+# prüft die Prüfsumme; hier stehen nur Adresse und Summe.
+#
+# Damit hängt die Serverfassung trotzdem am Image-Tag und nicht an dem, was die
+# Quelle gerade liefert: Die Adresse ist über den SHA-1 des Inhalts gebildet
+# (`piston-data.mojang.com/v1/objects/<sha1>/server.jar`), und die SHA-256 hier
+# prüft ein zweites Mal. Wer die Fassung wechselt, tauscht alle drei Werte und
+# erhöht `VERSION`.
+#
+# Neue Werte holen (`26.3` ersetzen; die Java-Mindestfassung steht im selben
+# Dokument unter `javaVersion` und muss zu `base/java` passen):
+#
+#   meta=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest_v2.json \
+#     | jq -r '.versions[] | select(.id == "26.3") | .url')
+#   curl -s "$meta" | jq '.downloads.server, .javaVersion'
+#   curl -sL <url> | sha256sum
+ENV MINECRAFT_VANILLA_VERSION=26.2
+ENV MINECRAFT_VANILLA_URL=https://piston-data.mojang.com/v1/objects/823e2250d24b3ddac457a60c92a6a941943fcd6a/server.jar
+ENV MINECRAFT_VANILLA_SHA256=cdacdfb25898de5e4b4b0e5ddcc2722f77067e46605709c2d886c000ebb63ec5
+
 # Paper legt `world/`, `logs/`, `plugins/`, `cache/`, `libraries/` und
 # `versions/` relativ zum Arbeitsverzeichnis an – das ist `/data` aus der Basis,
-# also der Datenordner.
+# also der Datenordner. Vanilla legt dort dasselbe an, dazu `bundler/`: Die Jar
+# von Mojang ist ein Bündel, das seine Bestandteile beim ersten Start neben sich
+# auspackt.
 
 EXPOSE 25565
 

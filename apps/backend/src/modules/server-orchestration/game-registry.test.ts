@@ -4,6 +4,7 @@ import { type ServerOrchestrationError } from './errors.js';
 import {
   GAME_TYPE_DEFINITIONS,
   MINECRAFT_PAPER_GAME_TYPE,
+  MINECRAFT_VANILLA_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
@@ -297,6 +298,54 @@ describe('Valheim – erstes Spiel aus Steam (Anhang A, Phase 3)', () => {
   });
 });
 
+describe('Minecraft (Vanilla) – zweite Ausgabe aus demselben Image', () => {
+  it('ist neben Paper auswählbar, ab derselben Ausbaustufe', () => {
+    const registry = createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS);
+
+    expect(registry.requireSelectable('minecraft-vanilla').id).toBe('minecraft-vanilla');
+    expect(() =>
+      createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('minecraft-vanilla'),
+    ).toThrow();
+  });
+
+  it('läuft aus demselben Image und unterscheidet sich nur über die Umgebung', () => {
+    // Ein zweites Image wäre eine zweite Abschrift desselben Startskripts.
+    expect(MINECRAFT_VANILLA_GAME_TYPE.dockerImage).toBe(MINECRAFT_PAPER_GAME_TYPE.dockerImage);
+    expect(MINECRAFT_VANILLA_GAME_TYPE.defaultEnv).toEqual({ MINECRAFT_EDITION: 'vanilla' });
+    // Paper ist die Vorgabe des Startskripts und setzt deshalb nichts.
+    expect(MINECRAFT_PAPER_GAME_TYPE.defaultEnv).toEqual({});
+  });
+
+  it('übernimmt Felder, Ports, Konsole und Routing von Paper', () => {
+    // Die Definition ist eine Abwandlung, keine Abschrift: Ein neues Feld bei
+    // Paper gilt hier sofort mit. Dieser Test hält genau das fest.
+    expect(MINECRAFT_VANILLA_GAME_TYPE.configFields).toEqual(
+      MINECRAFT_PAPER_GAME_TYPE.configFields,
+    );
+    expect(MINECRAFT_VANILLA_GAME_TYPE.envMapping).toEqual(MINECRAFT_PAPER_GAME_TYPE.envMapping);
+    expect(MINECRAFT_VANILLA_GAME_TYPE.ports).toEqual(MINECRAFT_PAPER_GAME_TYPE.ports);
+    expect(MINECRAFT_VANILLA_GAME_TYPE.console).toEqual(MINECRAFT_PAPER_GAME_TYPE.console);
+    expect(MINECRAFT_VANILLA_GAME_TYPE.supportsVirtualHostRouting).toBe(true);
+  });
+
+  it('bietet keinen Schnellbefehl an, den der Server von Mojang nicht kennt', () => {
+    const befehle = (MINECRAFT_VANILLA_GAME_TYPE.consoleQuickCommands ?? []).map((b) => b.command);
+
+    // `tps` ist ein Paper-Befehl; Vanilla antwortet mit „Unknown command".
+    expect(befehle).not.toContain('tps');
+    expect(befehle).toContain('list');
+    expect(befehle).toContain('stop');
+  });
+
+  it('bekommt die Ausgabe als Umgebungsvariable in den Container', () => {
+    // Der Weg vom Feld zur Umgebung: `defaultEnv` zuerst, die Felder darauf.
+    const umgebung = buildContainerEnv(MINECRAFT_VANILLA_GAME_TYPE, { eula: true });
+
+    expect(umgebung['MINECRAFT_EDITION']).toBe('vanilla');
+    expect(umgebung['EULA']).toBe('true');
+  });
+});
+
 describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe 2)', () => {
   it('ist erst ab Ausbaustufe 2 auswählbar', () => {
     expect(() =>
@@ -313,7 +362,7 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
     // liefe die Node weiter auf der alten Fassung, ohne dass es auffiele. Der
     // Name folgt dem Schema `palantir-<Kategorie>-<Name>` (images/README.md).
     expect(MINECRAFT_PAPER_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-minecraft:4',
+      'ghcr.io/nightriderp/palantir-game-minecraft:5',
     );
   });
 
