@@ -169,18 +169,31 @@ pruefe_besitzer "$(wert_aus_env AGENT_ROUTER_DIR)" 'Routen des Hostname-Routers'
 # Er liegt als gewoehnliche Routen-Datei im Ordner statt als eigener Mount: Ein
 # Mount innerhalb des schreibgeschuetzten `/configs` liess sich nicht anlegen
 # (siehe docker-compose.yml). Der Agent fasst nur `<serverId>.json` an, die
-# Datei bleibt also liegen. `install` schreibt sie bei jedem Lauf neu - so zieht
-# eine Aenderung im Repo nach und eine geloeschte Datei kommt zurueck.
+# Datei bleibt also liegen.
+#
+# **NUR schreiben, wenn sie fehlt oder abweicht** (Fundpunkt 195). Der erste
+# Anlauf schrieb sie bei jedem Lauf neu. Infrared beobachtet den Ordner und
+# sieht darin ein Loeschen samt Neuanlegen; dabei ging in Fassung 1.3.4 der
+# Lauscher auf dem Router-Port verloren. Danach registrierte Infrared weiter
+# brav jede Route, nahm aber keine Verbindung mehr an - frpc bekam
+# `connection refused`, und jeder Serverstart lief in `error`, obwohl Router,
+# Routen und Spielserver in Ordnung waren. Ein `cmp` davor kostet nichts und
+# haelt den Wachhund still.
 router_dir="$(wert_aus_env AGENT_ROUTER_DIR)"
+platzhalter_quelle="${COMPOSE_DIR}/infrared/00-platzhalter.json"
+platzhalter_ziel="${router_dir}/proxies/00-platzhalter.json"
+
 if [[ -n "${router_dir}" && -d "${router_dir}/proxies" ]]; then
-  if install -o 1000 -g 1000 -m 644 \
-    "${COMPOSE_DIR}/infrared/00-platzhalter.json" \
-    "${router_dir}/proxies/00-platzhalter.json" 2>/dev/null; then
-    log "Platzhalter-Route liegt in ${router_dir}/proxies."
+  if cmp -s "${platzhalter_quelle}" "${platzhalter_ziel}"; then
+    : # Unveraendert - nichts anfassen, sonst faellt Infrared der Lauscher weg.
+  elif install -o 1000 -g 1000 -m 644 "${platzhalter_quelle}" "${platzhalter_ziel}" 2>/dev/null; then
+    log "Platzhalter-Route in ${router_dir}/proxies geschrieben."
+    log '         Hinweis: Infrared kann dabei seinen Lauscher verlieren (Fundpunkt 195).'
+    log "         Pruefen: docker logs palantir-hostname-router | grep 'Creating listener'"
   else
     log "ACHTUNG: Platzhalter-Route in ${router_dir}/proxies liess sich nicht ablegen."
     log '         Ohne sie startet der Hostname-Router nicht. Als root ablegen:'
-    log "         install -o 1000 -g 1000 -m 644 ${COMPOSE_DIR}/infrared/00-platzhalter.json ${router_dir}/proxies/00-platzhalter.json"
+    log "         install -o 1000 -g 1000 -m 644 ${platzhalter_quelle} ${platzhalter_ziel}"
   fi
 fi
 
