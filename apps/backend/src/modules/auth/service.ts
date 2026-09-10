@@ -198,6 +198,9 @@ export const noopSessionRevocationSink: SessionRevocationSink = {
  * bereits bereit; geschrieben wurden sie nie.
  */
 export type AuthAuditAction =
+  | 'auth.loginSucceeded'
+  | 'auth.loginFailed'
+  | 'auth.loggedOut'
   | 'auth.sessionRevoked'
   | 'auth.passwordResetByAdmin'
   | 'auth.twoFactorDisabled'
@@ -208,8 +211,13 @@ export interface AuthAuditSink {
     action: AuthAuditAction;
     actorId: string | null;
     actorDisplayName: string | null;
-    targetType: 'user';
-    targetId: string;
+    /**
+     * `null` beim Fehlversuch auf einen Namen, den es nicht gibt: Dann gibt es
+     * kein Konto, auf das der Eintrag zeigen koennte - der versuchte Name steht
+     * in der Nutzlast. Der DTO fuehrt beide Felder ohnehin als `nullable`.
+     */
+    targetType: 'user' | null;
+    targetId: string | null;
     ipHint: string | null;
     metadata: Record<string, unknown>;
   }): void | Promise<void>;
@@ -602,6 +610,35 @@ export class AuthService {
   }
 
   /**
+   * Ein Vorgang am eigenen Konto ins Protokoll (Fundpunkt 198).
+   *
+   * Handelnder und Betroffener sind hier dasselbe Konto – anders als bei den
+   * Admin-Eingriffen, wo beides auseinanderfällt. Ist das Konto unbekannt
+   * (Fehlversuch auf einen Namen, den es nicht gibt), bleiben Handelnder und
+   * Ziel leer und der versuchte Name steht in der Nutzlast.
+   *
+   * Ohne `try`: Lässt sich der Vorgang nicht protokollieren, soll der Aufruf
+   * scheitern, statt unbemerkt durchzugehen – dieselbe Regel wie beim
+   * Sitzungswiderruf.
+   */
+  private async protokolliere(eintrag: {
+    action: AuthAuditAction;
+    user: UserRecord | null;
+    ipHint: string | null;
+    metadata: Record<string, unknown>;
+  }): Promise<void> {
+    await this.audit.record({
+      action: eintrag.action,
+      actorId: eintrag.user?.id ?? null,
+      actorDisplayName: eintrag.user?.displayName ?? null,
+      targetType: eintrag.user ? 'user' : null,
+      targetId: eintrag.user?.id ?? null,
+      ipHint: eintrag.ipHint,
+      metadata: eintrag.metadata,
+    });
+  }
+
+  /**
    * Login mit Anzeigename und Passwort.
    *
    * Auch bei unbekanntem Konto wird ein Argon2-Vergleich gegen einen
@@ -617,12 +654,34 @@ export class AuthService {
       : await this.burnPasswordComparison(input.password);
 
     if (!user || !method || !passwordMatches) {
+      /*
+       * Fehlversuche gehoeren ins Protokoll (Fundpunkt 198): Sie sind das
+       * einzige Signal, an dem ein Angriff auf ein Konto ueberhaupt sichtbar
+       * wird - die Anmeldebremse zaehlt nur je IP und hinterlaesst nichts.
+       *
+       * Ist der Name unbekannt, zeigt der Eintrag auf kein Konto; der versuchte
+       * Name steht in der Nutzlast. Das Passwort steht nirgends.
+       */
+      await this.protokolliere({
+        action: 'auth.loginFailed',
+        user,
+        ipHint: context.ipHint,
+        metadata: { username: input.username, reason: 'credentials' },
+      });
+
       throw new AuthError('AUTH_INVALID_CREDENTIALS');
     }
 
     // Erst nach erfolgreicher Passwortprüfung: dass ein Konto gesperrt ist,
     // erfährt nur, wer die Zugangsdaten ohnehin kennt.
     if (user.banned) {
+      await this.protokolliere({
+        action: 'auth.loginFailed',
+        user,
+        ipHint: context.ipHint,
+        metadata: { username: user.username, reason: 'banned' },
+      });
+
       throw new AuthError('AUTH_ACCOUNT_BANNED');
     }
 
@@ -648,6 +707,13 @@ export class AuthService {
     await this.repository.updateAuthMethod(method.id, { lastUsedAt: this.now() });
 
     const session = await this.issueSession(user.id, context);
+
+    await this.protokolliere({
+      action: 'auth.loginSucceeded',
+      user,
+      ipHint: context.ipHint,
+      metadata: { username: user.username, method: 'password', twoFactor: false },
+    });
 
     return {
       result: { status: 'authenticated', account: await this.loadAccount(user) },
@@ -694,14 +760,36 @@ export class AuthService {
     }
 
     if (!verifyTotp(method.totpSecret, code, this.now().getTime())) {
+      /*
+       * Der zweite Schritt ist der interessantere Fehlversuch: Wer hier
+       * scheitert, kannte Name **und** Passwort. Genau dieser Eintrag
+       * unterscheidet einen vertippten Code von jemandem, der die Zugangsdaten
+       * bereits hat (Fundpunkt 198).
+       */
+      await this.protokolliere({
+        action: 'auth.loginFailed',
+        user,
+        ipHint: context.ipHint,
+        metadata: { username: user.username, reason: 'twoFactor' },
+      });
+
       throw new AuthError('AUTH_TWO_FACTOR_INVALID');
     }
 
     await this.repository.updateAuthMethod(method.id, { lastUsedAt: this.now() });
 
+    const sitzung = await this.issueSession(user.id, context);
+
+    await this.protokolliere({
+      action: 'auth.loginSucceeded',
+      user,
+      ipHint: context.ipHint,
+      metadata: { username: user.username, method: 'password', twoFactor: true },
+    });
+
     return {
       account: await this.loadAccount(user),
-      session: await this.issueSession(user.id, context),
+      session: sitzung,
     };
   }
 
@@ -989,12 +1077,29 @@ export class AuthService {
     return this.listSessions(userId, currentSessionId);
   }
 
-  /** Abmeldung der aktuellen Sitzung. */
-  async logout(sessionId: string): Promise<void> {
+  /**
+   * Abmeldung der aktuellen Sitzung.
+   *
+   * `context` ist optional, weil die Herkunft des Requests nur die Route kennt;
+   * ohne sie steht der Eintrag ohne IP-Hinweis da, was der DTO ohnehin zulässt.
+   * Protokolliert wird nur, wenn wirklich eine gültige Sitzung endete – ein
+   * zweiter Klick auf „Abmelden" ist kein Vorgang (Fundpunkt 198, dieselbe
+   * Zurückhaltung wie bei `revokeOtherSessions`).
+   */
+  async logout(sessionId: string, context?: AuthAuditContext): Promise<void> {
     const session = await this.repository.findSessionById(sessionId);
 
     if (session && !session.revokedAt) {
       await this.repository.revokeSession(sessionId, this.now());
+
+      const user = await this.repository.findUserById(session.userId);
+
+      await this.protokolliere({
+        action: 'auth.loggedOut',
+        user,
+        ipHint: context?.ipHint ?? null,
+        metadata: { sessionId },
+      });
     }
   }
 

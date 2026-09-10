@@ -72,8 +72,10 @@ let auditEntries: {
   action: string;
   actorId: string | null;
   actorDisplayName: string | null;
-  targetType: string;
-  targetId: string;
+  // `null`, wenn der Vorgang auf kein Konto zeigt - etwa ein Fehlversuch auf
+  // einen Namen, den es nicht gibt (Fundpunkt 198).
+  targetType: string | null;
+  targetId: string | null;
   ipHint: string | null;
   metadata: Record<string, unknown>;
 }[];
@@ -726,6 +728,9 @@ describe('Sitzungen und Token-Rotation (Pflichtenheft §7)', () => {
 
     it('schreibt genau einen Audit-Eintrag mit der Anzahl', async () => {
       await meldeZweiWeitereGeraeteAn();
+      // Die Anmeldungen der Vorbereitung stehen seit Fundpunkt 198 selbst im
+      // Protokoll; geprueft wird hier die Wirkung des Sammel-Logouts.
+      auditEntries.length = 0;
 
       await service.revokeOtherSessions(userId, sessionId, AUDIT);
 
@@ -743,6 +748,8 @@ describe('Sitzungen und Token-Rotation (Pflichtenheft §7)', () => {
     });
 
     it('protokolliert nichts, wenn es gar kein anderes Gerät gab', async () => {
+      auditEntries.length = 0;
+
       // Ein Log voller „0 Sitzungen beendet" macht die echten Einträge
       // schwerer zu finden (Pflichtenheft §6).
       const verbleibend = await service.revokeOtherSessions(userId, sessionId, AUDIT);
@@ -1320,6 +1327,111 @@ describe('Rangschutz der Admin-Eingriffe (Fundpunkte 119 und 124)', () => {
    * Passwort-Reset gibt ein Klartext-Einmalpasswort heraus - wer damit ein
    * Konto uebernahm, hinterliess nichts.
    */
+  /*
+   * Fundpunkt 198, zweiter Teil: Anmeldung, Fehlversuch und Abmeldung standen
+   * im Katalog, wurden aber nie geschrieben. Der Fehlversuch ist das einzige
+   * Signal, an dem ein Angriff auf ein Konto ueberhaupt sichtbar wird - die
+   * Anmeldebremse zaehlt nur je IP und hinterlaesst nichts.
+   */
+  describe('Audit-Eintraege der Anmeldung (Fundpunkt 198)', () => {
+    it('protokolliert die erfolgreiche Anmeldung', async () => {
+      const { account } = await service.register(
+        { username: 'anmelder', password: PASSWORD, altcha: ALTCHA },
+        CONTEXT,
+      );
+      auditEntries.length = 0;
+
+      await service.login({ username: 'anmelder', password: PASSWORD, altcha: ALTCHA }, CONTEXT);
+
+      expect(auditEntries).toEqual([
+        {
+          action: 'auth.loginSucceeded',
+          actorId: account.id,
+          actorDisplayName: 'anmelder',
+          targetType: 'user',
+          targetId: account.id,
+          ipHint: CONTEXT.ipHint,
+          metadata: { username: 'anmelder', method: 'password', twoFactor: false },
+        },
+      ]);
+    });
+
+    it('protokolliert den Fehlversuch bei falschem Passwort', async () => {
+      const { account } = await service.register(
+        { username: 'anmelder', password: PASSWORD, altcha: ALTCHA },
+        CONTEXT,
+      );
+      auditEntries.length = 0;
+
+      await expectErrorCode(
+        service.login(
+          { username: 'anmelder', password: 'falsch-falsch-falsch', altcha: ALTCHA },
+          CONTEXT,
+        ),
+        'AUTH_INVALID_CREDENTIALS',
+      );
+
+      expect(auditEntries).toEqual([
+        {
+          action: 'auth.loginFailed',
+          actorId: account.id,
+          actorDisplayName: 'anmelder',
+          targetType: 'user',
+          targetId: account.id,
+          ipHint: CONTEXT.ipHint,
+          metadata: { username: 'anmelder', reason: 'credentials' },
+        },
+      ]);
+      // Das versuchte Passwort steht nirgends im Protokoll.
+      expect(JSON.stringify(auditEntries)).not.toContain('falsch-falsch-falsch');
+    });
+
+    it('protokolliert den Fehlversuch auf einen Namen, den es nicht gibt', async () => {
+      auditEntries.length = 0;
+
+      await expectErrorCode(
+        service.login({ username: 'gibt-es-nicht', password: PASSWORD, altcha: ALTCHA }, CONTEXT),
+        'AUTH_INVALID_CREDENTIALS',
+      );
+
+      expect(auditEntries).toEqual([
+        {
+          action: 'auth.loginFailed',
+          actorId: null,
+          actorDisplayName: null,
+          targetType: null,
+          targetId: null,
+          ipHint: CONTEXT.ipHint,
+          metadata: { username: 'gibt-es-nicht', reason: 'credentials' },
+        },
+      ]);
+    });
+
+    it('protokolliert die Abmeldung genau einmal', async () => {
+      const { account, session } = await service.register(
+        { username: 'anmelder', password: PASSWORD, altcha: ALTCHA },
+        CONTEXT,
+      );
+      auditEntries.length = 0;
+
+      await service.logout(session.sessionId, { displayName: 'anmelder', ipHint: '203.0.113.x' });
+      // Ein zweiter Klick auf „Abmelden" ist kein Vorgang.
+      await service.logout(session.sessionId, { displayName: 'anmelder', ipHint: '203.0.113.x' });
+
+      expect(auditEntries).toEqual([
+        {
+          action: 'auth.loggedOut',
+          actorId: account.id,
+          actorDisplayName: 'anmelder',
+          targetType: 'user',
+          targetId: account.id,
+          ipHint: '203.0.113.x',
+          metadata: { sessionId: session.sessionId },
+        },
+      ]);
+    });
+  });
+
   describe('Audit-Eintraege der Admin-Eingriffe (Fundpunkt 198)', () => {
     it('protokolliert den Passwort-Reset ohne das Passwort selbst', async () => {
       const { account } = await service.register(
