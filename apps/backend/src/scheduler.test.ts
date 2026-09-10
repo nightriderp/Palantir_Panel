@@ -32,6 +32,7 @@ import {
 import {
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
+  ALLE_GAME_TYPE_DEFINITIONS,
   createGameRegistry,
 } from './modules/server-orchestration/game-registry.js';
 import { type HealthProbe } from './modules/server-orchestration/health-check.js';
@@ -959,7 +960,7 @@ function makeSweepHarness(server: ServerRecord): SweepHarness {
   const service = new ServerOrchestrationService({
     repository,
     agents,
-    registry: createGameRegistry(1),
+    registry: createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS),
     dns: {
       upsertRecord: () => Promise.resolve('rec-1'),
       deleteRecord: () => Promise.resolve(),

@@ -129,6 +129,8 @@ export type GamedigQuery = (options: {
   type: string;
   host: string;
   port: number;
+  /** Genau diesen Port abfragen, ohne den Versatz je Spiel (Fundpunkt 196). */
+  givenPortOnly: boolean;
   socketTimeout: number;
   attemptTimeout: number;
   maxRetries: number;
@@ -187,6 +189,19 @@ export function createGamedigProbe(abfragen: GamedigQuery = (options) => GameDig
           type: target.query.protocol,
           host: target.host,
           port: target.port,
+          /*
+           * **Genau dieser Port, kein Versatz** (Fundpunkt 196).
+           *
+           * `gamedig` rechnet je Spiel einen Versatz auf den übergebenen Port:
+           * bei Minecraft null, bei Valheim eins, weil dessen Serverliste
+           * neben dem Spiel-Port antwortet. Hinter frp trägt aber jeder
+           * Container-Port eine eigene, frei vergebene öffentliche Nummer –
+           * „eins weiter" trifft dort nicht den Abfrage-Port, sondern einen
+           * fremden Server oder gar nichts. Palantir gibt den Port deshalb
+           * selbst vor: `query.containerPort` in der Spieltyp-Definition sagt,
+           * welcher gemeint ist.
+           */
+          givenPortOnly: true,
           ...gamedigFristen(timeoutMs),
           maxRetries: 0,
         });

@@ -37,6 +37,7 @@ import {
   type InstallationPhase,
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
+  ALLE_GAME_TYPE_DEFINITIONS,
   createGameRegistry,
 } from './game-registry.js';
 import { type HealthCheckResult, type HealthProbe } from './health-check.js';
@@ -752,7 +753,7 @@ function makeHarness(
     agents,
     registry:
       options.gameTypes === undefined
-        ? createGameRegistry(options.gamePhase ?? 1)
+        ? createGameRegistry(options.gamePhase ?? 1, ALLE_GAME_TYPE_DEFINITIONS)
         : createGameRegistry(options.gamePhase ?? 1, options.gameTypes),
     dns,
     ports: portAllocator,

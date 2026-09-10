@@ -1076,7 +1076,10 @@ export class ServerOrchestrationService {
     // und der Port IM Container. Der Agent fragt über das Spielenetz auf dem
     // Container-Port (Fundpunkt 188) – der Host-Port ist an 127.0.0.1 der Node
     // gebunden, und das ist nicht das Loopback des Agent-Containers.
-    const primary = server.assignedPorts.find((zuweisung) => zuweisung.primary);
+    const primary =
+      server.assignedPorts.find(
+        (zuweisung) => zuweisung.containerPort === definition.query.containerPort,
+      ) ?? server.assignedPorts.find((zuweisung) => zuweisung.primary);
 
     if (primary === undefined) {
       return null;
@@ -1085,7 +1088,9 @@ export class ServerOrchestrationService {
     return {
       containerId: server.dockerContainerId,
       hostPort: primary.publicPort,
-      containerPort: primary.containerPort,
+      // Der Port, den die Definition zur Abfrage nennt – bei Valheim der
+      // Abfrage-Port neben dem Spiel-Port (Fundpunkt 196).
+      containerPort: definition.query.containerPort,
       query:
         definition.query.kind === 'gamedig'
           ? { kind: 'gamedig', protocol: definition.query.protocol }
@@ -1230,7 +1235,21 @@ export class ServerOrchestrationService {
     const definition = this.deps.registry.require(server.gameType);
     const host = await this.deps.repository.findHost(server.hostId);
 
-    const primary = server.assignedPorts.find((assignment) => assignment.primary);
+    /*
+     * **Geprüft wird der Abfrage-Port, nicht der Spiel-Port** (Fundpunkt 196).
+     *
+     * Bei den meisten Spielen ist das derselbe (Minecraft antwortet auf 25565
+     * auf beides). Valheim nicht: Dort läuft das Spiel auf 2456 und die
+     * Serverliste antwortet auf 2457. Welcher Port gemeint ist, sagt die
+     * Definition über `query.containerPort`; hier wird die öffentliche Nummer
+     * gesucht, die frp diesem Container-Port gegeben hat. Findet sich keine,
+     * bleibt es beim Haupt-Port – so verhält sich jede Definition ohne eigenen
+     * Abfrage-Port wie bisher.
+     */
+    const primary =
+      server.assignedPorts.find(
+        (assignment) => assignment.containerPort === definition.query.containerPort,
+      ) ?? server.assignedPorts.find((assignment) => assignment.primary);
 
     if (host === null || primary === undefined) {
       await this.transition(server, {

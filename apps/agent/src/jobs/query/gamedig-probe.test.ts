@@ -61,6 +61,10 @@ describe('gamedig-Sonde', () => {
       type: 'minecraft',
       host: '127.0.0.1',
       port: 25_565,
+      // Hinter frp traegt jeder Container-Port eine eigene oeffentliche
+      // Nummer; gamedig darf keinen eigenen Versatz darauf rechnen
+      // (Fundpunkt 196).
+      givenPortOnly: true,
       // Die Socket-Frist ist die Hälfte der Versuchs-Frist (Fundpunkt 187):
       // `minecraft` ist ein Verbund aus drei Protokollen, der auf alle wartet;
       // die UDP-Abfragen laufen in die Socket-Frist. Wären beide gleich, wäre

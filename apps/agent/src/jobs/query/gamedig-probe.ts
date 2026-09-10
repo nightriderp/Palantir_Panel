@@ -32,6 +32,8 @@ export type GamedigQuery = (options: {
   type: string;
   host: string;
   port: number;
+  /** Genau diesen Port abfragen, ohne den Versatz je Spiel (Fundpunkt 196). */
+  givenPortOnly: boolean;
   socketTimeout: number;
   attemptTimeout: number;
   maxRetries: number;
@@ -116,6 +118,15 @@ export function createGamedigProbe(abfragen: GamedigQuery = standardAbfrage): Se
           type: target.query.protocol,
           host: target.host,
           port: target.port,
+          /*
+           * **Genau dieser Port, kein Versatz** (Fundpunkt 196). `gamedig`
+           * rechnet je Spiel einen Versatz auf den übergebenen Port – bei
+           * Valheim eins, weil dessen Serverliste neben dem Spiel-Port
+           * antwortet. Welcher Port gemeint ist, sagt die Spieltyp-Definition
+           * über `query.containerPort`; ein zweites Rechnen hier machte daraus
+           * einen dritten Port.
+           */
+          givenPortOnly: true,
           ...gamedigFristen(timeoutMs),
           maxRetries: 0,
         });

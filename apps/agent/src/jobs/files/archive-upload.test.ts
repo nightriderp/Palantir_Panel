@@ -129,6 +129,8 @@ describe('ArchiveUploadJob (Gefundener Punkt 106)', () => {
     expect(await reste()).toEqual([]);
   });
 
+  // 100 MiB wandern hier wirklich auf die Platte; die Vorgabefrist von 5 s
+  // reicht dafuer auf einem langsamen Dateisystem nicht.
   it('nimmt eine Übertragung von 100 MiB an – die Datei-Grenze gilt hier nicht', async () => {
     /*
      * Audit agent-runtime-02/agent-conn-02: `UPLOAD_ARCHIVE_BLOCK` existiert,
@@ -148,7 +150,7 @@ describe('ArchiveUploadJob (Gefundener Punkt 106)', () => {
 
     expect(offset).toBe(100 * 1024 * 1024);
     expect(await reste()).toHaveLength(1);
-  });
+  }, 60_000);
 
   it('lehnt eine Übertragung über dem Deckel ab, ohne die Platte anzufassen', async () => {
     // 600 MiB > 512 MiB: Der Deckel greift vor jedem Dateizugriff, damit ein

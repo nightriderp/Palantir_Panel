@@ -1,0 +1,19 @@
+# Build-Kontext dieses Images ist der Ordner selbst (siehe
+# .github/workflows/spiel-image-bauen.yml) - das .dockerignore im
+# Repo-Wurzelverzeichnis greift hier also nicht.
+#
+# Der Dockerfile kopiert nur start.sh namentlich; ohne diese
+# Liste wandern die
+# uebrigen Dateien aber trotzdem in den Kontext und damit in den
+# Build-Cache-Schluessel - jede Testaenderung wuerde das Image neu bauen.
+package.json
+*.test.mjs
+
+# Ergebnisse lokaler Laeufe (turbo, pnpm). In der CI existieren sie nicht, auf
+# einem Arbeitsrechner schon.
+.turbo
+node_modules
+
+# Beschreibung und Fassung liest der Workflow, nicht der Build.
+README.md
+VERSION

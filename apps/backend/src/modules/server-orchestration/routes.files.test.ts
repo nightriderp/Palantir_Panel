@@ -18,7 +18,7 @@ import { registerErrorHandler } from '../../error-handler.js';
 import { type PermissionActor, registerRbac } from '../rbac/index.js';
 import { buildPermissionActor } from '../rbac/permissions.js';
 import { ServerOrchestrationError } from './errors.js';
-import { createGameRegistry } from './game-registry.js';
+import { ALLE_GAME_TYPE_DEFINITIONS, createGameRegistry } from './game-registry.js';
 import { type ServerRecord, type ServerRepository } from './repository.js';
 import { registerServerRoutes } from './routes.js';
 import { type ServerOrchestrationService } from './service.js';
@@ -215,7 +215,7 @@ async function buildApp(
   registerServerRoutes(app, {
     service,
     repository,
-    registry: createGameRegistry(1),
+    registry: createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS),
     baseDomain: 'example.tld',
     // Geplante Aufgaben stehen in `routes.schedules.test.ts` unter Test.
     schedules: {
