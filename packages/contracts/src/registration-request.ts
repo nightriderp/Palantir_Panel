@@ -125,6 +125,18 @@ export interface RegistrationRequestDto {
   /** Namen der aktuell zugewiesenen Rollen – bei `pending` nur „Gast". */
   roleNames: string[];
   /**
+   * Ist dieses Konto der Owner der Instanz? (Fundpunkt 221.)
+   *
+   * Der Owner steht ausserhalb des Rollensystems: Er traegt keine Rolle und
+   * bekommt deshalb in `roleNames` die Standardrolle „Gast" zu sehen. In der
+   * Nutzerliste las sich seine eigene Zeile damit wie ein Konto, das noch auf
+   * seine Freischaltung wartet – ausgerechnet beim Betreiber.
+   *
+   * Optional, damit der Vertrag fuer sich stehen kann (CLAUDE.md §3): Fehlt das
+   * Feld, zeigt die Oberflaeche die Rollen wie bisher.
+   */
+  isOwner?: boolean;
+  /**
    * Dieselben Rollen **mit Id** (WORK_STATUS.md, Gefundener Punkt 90).
    *
    * `roleNames` bleibt für die reine Anzeige. Die Oberfläche musste die Namen
