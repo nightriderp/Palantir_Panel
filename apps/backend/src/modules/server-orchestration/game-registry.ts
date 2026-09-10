@@ -752,6 +752,20 @@ export interface GameRegistry {
   requireSelectable(id: string): GameTypeDefinition;
   /** DTOs für das Frontend – ohne Betriebsinterna des Homeservers. */
   toDtoList(): readonly GameTypeDto[];
+  /**
+   * Definition zu einer Kennung, **ohne** zu werfen (Fundpunkt 247).
+   *
+   * Für Anzeigen, die einen vorhandenen Server beschreiben: Ein Server in der
+   * Datenbank kann eine Kennung tragen, die der Katalog nicht mehr kennt –
+   * genau das ist am Prüfstand passiert, als die Prüfstands-Spieltypen aus
+   * `GAME_TYPE_DEFINITIONS` genommen wurden (#346). Danach beantwortete
+   * `GET /api/servers` die **ganze** Liste mit `404 GAME_TYPE_NOT_FOUND`, und
+   * zwar für jedes Konto: Ein einzelner Datensatz nahm allen die Übersicht.
+   *
+   * Anlegen und Starten benutzen weiterhin {@link require} bzw.
+   * {@link requireSelectable} – dort ist ein unbekannter Typ ein echter Fehler.
+   */
+  find(id: string): GameTypeDefinition | null;
 }
 
 /** Wandelt eine Definition in ihr DTO (Pflichtenheft §5.2, §11). */
@@ -810,6 +824,7 @@ export function createGameRegistry(
   return {
     list: () => definitions,
     require,
+    find: (id: string) => byId.get(id) ?? null,
     requireSelectable(id: string): GameTypeDefinition {
       const definition = require(id);
 
