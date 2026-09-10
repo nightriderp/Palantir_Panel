@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampPercent,
+  cpuQuotaPercent,
   formatBytes,
   formatChatTime,
   formatDate,
@@ -191,5 +192,29 @@ describe('formatChatTime', () => {
 
   it('liefert — ohne brauchbare Angabe', () => {
     expect(formatChatTime(null, jetzt)).toBe('—');
+  });
+});
+
+/*
+ * Fundpunkt 205: `cpuPercent` zaehlt in Prozent eines Kerns. Die Serverkarte
+ * klemmte den Wert bei 100 fest, die Detailkachel schrieb "250 %" hin - beides
+ * beschreibt denselben Zustand falsch.
+ */
+describe('cpuQuotaPercent', () => {
+  it('rechnet Kernprozente in den Anteil am Kontingent um', () => {
+    // 2,5 ausgelastete Kerne von vier: 62,5 % - gerundet 63.
+    expect(cpuQuotaPercent(250, 4)).toBe(63);
+    expect(cpuQuotaPercent(100, 4)).toBe(25);
+    expect(cpuQuotaPercent(100, 1)).toBe(100);
+  });
+
+  it('begrenzt einen Ausreisser ueber dem Kontingent auf 100', () => {
+    expect(cpuQuotaPercent(450, 4)).toBe(100);
+  });
+
+  it('liefert null ohne Messwert oder ohne Kontingent', () => {
+    expect(cpuQuotaPercent(null, 4)).toBeNull();
+    expect(cpuQuotaPercent(undefined, 4)).toBeNull();
+    expect(cpuQuotaPercent(50, 0)).toBeNull();
   });
 });

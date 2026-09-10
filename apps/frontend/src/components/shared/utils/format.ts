@@ -83,6 +83,29 @@ export function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+/**
+ * Anteil der CPU-Last am Kontingent des Servers, in Prozent (Fundpunkt 205).
+ *
+ * `ServerLiveStats.cpuPercent` zählt in Prozent **eines Kerns**: `250` heißt
+ * 2,5 ausgelastete Kerne, nicht „250 % von irgendetwas". Der Vertrag sagt
+ * ausdrücklich, dass die Umrechnung in die Ansicht gehört – getan hat sie
+ * niemand. Die Serverkarte klemmte den Wert stattdessen bei 100 fest: Ein
+ * Server mit vier Kernen sah bei **einem** ausgelasteten Kern voll aus, und
+ * die Detailkachel schrieb „250 %" hin, als sei etwas kaputt.
+ *
+ * Über dem Kontingent wird auf 100 begrenzt: Mehr als sein Limit bekommt ein
+ * Container nicht dauerhaft, kurze Ausreißer sind Messrauschen.
+ */
+export function cpuQuotaPercent(
+  cpuPercent: number | null | undefined,
+  cpuCores: number,
+): number | null {
+  if (cpuPercent == null || Number.isNaN(cpuPercent) || cpuCores <= 0) return null;
+
+  // `cpuPercent / (cpuCores * 100) * 100` – gekürzt.
+  return clampPercent(cpuPercent / cpuCores);
+}
+
 /** Spieleranzahl als `3 / 20`; `—`, solange keine Zahlen vorliegen. */
 export function formatPlayers(
   online: number | null | undefined,

@@ -7,6 +7,7 @@ import { type Tone } from '../primitives/Badge';
 import { cn } from '../utils/cn';
 import {
   clampPercent,
+  cpuQuotaPercent,
   formatMegabytes,
   formatPing,
   formatPlayers,
@@ -109,7 +110,10 @@ export function ServerCard({
   const permissions = server.permissions;
   const live = hasLiveStats(server.status) ? (stats ?? null) : null;
 
-  const cpuPercent = live?.cpuPercent == null ? null : clampPercent(live.cpuPercent);
+  // Fundpunkt 205: `cpuPercent` zählt in Prozent **eines** Kerns. Vorher stand
+  // hier `clampPercent`, und ein Server mit vier Kernen sah bei einem
+  // ausgelasteten Kern voll aus.
+  const cpuPercent = cpuQuotaPercent(live?.cpuPercent, server.resourceLimits.cpuCores);
   const ramPercent = ratio(live?.ramUsedMb, server.resourceLimits.ramMb);
   const diskPercent = ratio(stats?.diskUsedMb, server.resourceLimits.diskMb);
   const pingMs = live?.pingMs ?? null;

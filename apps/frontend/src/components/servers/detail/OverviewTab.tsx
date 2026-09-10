@@ -6,6 +6,7 @@ import {
   MetricTile,
   Panel,
   clampPercent,
+  cpuQuotaPercent,
   formatDateTime,
   formatDuration,
   formatMegabytes,
@@ -115,7 +116,23 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       {/* Rasterregel wie im Mockup: die Kacheln verteilen sich selbst, statt
           bei einer festen Spaltenzahl umzubrechen. */}
       <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
-        <MetricTile label="CPU-Last" value={formatPercent(live?.cpuPercent)} />
+        {/*
+          Fundpunkt 205: `cpuPercent` zählt in Prozent **eines** Kerns – hier
+          stand deshalb bei einem Server mit vier Kernen schon mal „250 %".
+          Die Kachel zeigt jetzt den Anteil am eigenen Kontingent, der Zusatz
+          darunter die Kerne selbst.
+        */}
+        <MetricTile
+          label="CPU-Last"
+          value={formatPercent(cpuQuotaPercent(live?.cpuPercent, server.resourceLimits.cpuCores))}
+          note={
+            live?.cpuPercent == null
+              ? undefined
+              : `${formatNumber(Math.round(live.cpuPercent / 10) / 10)} von ${formatNumber(
+                  server.resourceLimits.cpuCores,
+                )} Kernen`
+          }
+        />
         <MetricTile
           label="Arbeitsspeicher"
           value={formatMegabytes(live?.ramUsedMb)}
@@ -187,7 +204,10 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
                 samples={history.data.samples}
                 metric="cpuPercent"
                 label="CPU-Auslastung"
-                max={100}
+                // Fundpunkt 205: Die Achse endet beim Kontingent des Servers,
+                // nicht bei „ein Kern". Sonst sieht ein Vier-Kern-Server schon
+                // bei einem ausgelasteten Kern nach Vollausschlag aus.
+                max={server.resourceLimits.cpuCores * 100}
               />
               <StatsHistoryChart
                 samples={history.data.samples}
