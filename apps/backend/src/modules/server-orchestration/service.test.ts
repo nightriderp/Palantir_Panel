@@ -3079,6 +3079,34 @@ describe('Lifecycle-Konsistenz (Audit W2-10)', () => {
     ).toBe(true);
   });
 
+  it('prueft beim Start das Kontingent des Besitzers, nicht des Handelnden (Fundpunkt 199)', async () => {
+    /*
+     * Wer klickt, ist nicht, wem die Ressourcen zugerechnet werden. Vorher
+     * stand hier die Kennung des Handelnden: Ein Konto am Limit liess seinen
+     * Server von einem Mitverwalter starten und lief dauerhaft darueber.
+     */
+    const geprueft: string[] = [];
+    const harness = makeHarness({
+      healthy: 'pending',
+      buildReservation: (repository, ports) => ({
+        async reserve(request, write) {
+          geprueft.push(request.userId);
+
+          return write({ servers: repository, ports });
+        },
+      }),
+    });
+
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    geprueft.length = 0;
+
+    const mitverwalter = '44444444-4444-4444-8444-444444444444';
+    await harness.service.startServer(created.id, mitverwalter);
+
+    expect(geprueft).toEqual([OWNER_ID]);
+  });
+
   it('meldet server.statusChanged erst nach dem Commit der Reservierung (event-flow-11)', async () => {
     /*
      * Innerhalb der Reservierung ist die Zeile noch ungeschrieben. Ging das

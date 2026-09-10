@@ -875,9 +875,31 @@ export class ServerOrchestrationService {
     // einer die Belegung schreibt, und überbuchten die Node (TOCTOU,
     // WORK_STATUS.md Punkt 98, Pflichtenheft §10). Der Agent-Befehl und der
     // Health-Check laufen bewusst **außerhalb** der Sperre.
+    /*
+     * Geprüft wird das Kontingent des **Besitzers**, nicht des Handelnden
+     * (Audit 2026-09-10, Fundpunkt 199).
+     *
+     * Vorher stand hier `actorUserId`. Wer klickt, ist aber nicht, wem die
+     * Ressourcen zugerechnet werden: Ein Konto am Limit liess seinen Server
+     * von einem Mitverwalter der Stufe „Bedienen" starten und lief dauerhaft
+     * darüber – in der eigenen Kontingent-Anzeige tauchte der laufende Server
+     * anschliessend sehr wohl auf. Umgekehrt konnte ein Verwalter mit engem
+     * eigenem Kontingent fremde Server nicht mehr starten.
+     *
+     * Das Anlegen rechnete von Anfang an gegen den Besitzer
+     * (`beginCreateServer`), und der Zeitplan-Ausführer reicht ebenfalls
+     * `server.ownerId` durch (`schedules.ts:199`) – der Startpfad war die
+     * einzige Abweichung.
+     *
+     * `actorUserId` bleibt in der Signatur: Er benennt den Auslöser, den der
+     * Aufrufer aus der Sitzung mitgibt, und trägt bis in den Neustart durch.
+     * Für die Kapazität ist er ohne Bedeutung.
+     */
+    void actorUserId;
+
     const reserviert = await this.reservation.reserve(
       {
-        userId: actorUserId,
+        userId: server.ownerId,
         hostId: server.hostId,
         serverId: server.id,
         requested: server.resourceLimits,
