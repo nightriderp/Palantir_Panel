@@ -26,6 +26,7 @@ import {
   formatDate,
   formatNumber,
   formatServerAddress,
+  quotaCountingLabel,
   serverInitials,
   useHighlight,
   useToast,
@@ -745,7 +746,7 @@ function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () =
           label="Arbeitsspeicher"
           unit="MiB"
           value={ram}
-          usageHint={`belegt: ${dto.usage.runningRamMb} MiB (laufend)`}
+          usageHint={`belegt: ${dto.usage.runningRamMb} MiB (${quotaCountingLabel('ram')})`}
           disabled={!canEdit || busy}
           onChange={setRam}
         />
@@ -753,7 +754,7 @@ function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () =
           label="CPU"
           unit="Kerne"
           value={cpu}
-          usageHint={`belegt: ${dto.usage.runningCpuCores} Kerne (laufend)`}
+          usageHint={`belegt: ${dto.usage.runningCpuCores} Kerne (${quotaCountingLabel('cpu')})`}
           disabled={!canEdit || busy}
           onChange={setCpu}
         />
@@ -761,7 +762,7 @@ function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () =
           label="Speicherplatz"
           unit="MiB"
           value={disk}
-          usageHint={`belegt: ${dto.usage.allocatedDiskMb} MiB (alle Server)`}
+          usageHint={`belegt: ${dto.usage.allocatedDiskMb} MiB (${quotaCountingLabel('disk')})`}
           disabled={!canEdit || busy}
           onChange={setDisk}
         />

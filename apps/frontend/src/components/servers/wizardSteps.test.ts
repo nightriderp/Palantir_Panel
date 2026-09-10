@@ -242,6 +242,39 @@ describe('quotaBlockReason', () => {
     expect(quotaBlockReason(over, state({ ramMb: 1 }))).toContain('RAM-Kontingent');
   });
 
+  /*
+   * Fundpunkt 210: Im selben Kontingent stand „RAM 8 GiB von 16 GiB" neben
+   * „Platte 104 GiB von 10 GiB" - beides unter „benutzt". Der Unterschied ist
+   * keine Ueberschreitung, sondern die andere Zaehlregel. Die Meldung nennt sie
+   * jetzt, statt den Nutzer raten zu lassen.
+   */
+  it('nennt bei der Platte, dass auch gestoppte Server zaehlen', () => {
+    const reason = quotaBlockReason(
+      quota({ disk: 10_240 }, { disk: 106_496 }),
+      state({ diskMb: 20_480 }),
+    );
+
+    expect(reason).toContain('alle Server, auch gestoppte');
+  });
+
+  it('nennt beim RAM, dass nur laufende Server zaehlen', () => {
+    const reason = quotaBlockReason(quota({ ram: 8192 }, { ram: 7168 }), state({ ramMb: 2048 }));
+
+    expect(reason).toContain('laufende Server');
+    expect(reason).toContain('1 GiB frei von 8 GiB');
+  });
+
+  it('schweigt zur Regel, wenn der Vertrag sie nicht mitliefert', () => {
+    const ohneRegel = quota({ ram: 8192 }, { ram: 7168 });
+    const reason = quotaBlockReason(
+      { ...ohneRegel, ram: { ...ohneRegel.ram, counting: undefined } },
+      state({ ramMb: 2048 }),
+    );
+
+    expect(reason).toContain('RAM-Kontingent');
+    expect(reason).not.toContain('laufende Server');
+  });
+
   it('prüft CPU und Speicherplatz ebenfalls', () => {
     expect(quotaBlockReason(quota({ cpu: 2 }, { cpu: 1 }), state({ cpuCores: 2 }))).toContain(
       'CPU-Kontingent',

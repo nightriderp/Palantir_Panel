@@ -6,9 +6,10 @@ import {
   type HostNodeDto,
   type SubdomainAvailabilityDto,
   type ResourceQuotaDto,
+  type ResourceQuotaSlot,
 } from '@palantir/contracts';
 import { serverNameSchema, subdomainSchema } from '@palantir/validation';
-import { formatMegabytes } from '@/components/shared';
+import { QUOTA_COUNTING_LABELS, formatMegabytes } from '@/components/shared';
 
 /**
  * Ablauflogik des „Server erstellen"-Wizards (Lastenheft §3.3).
@@ -116,6 +117,19 @@ export function missingConfigFields(
  * Backends: RAM und CPU zählen laufende Server, Speicherplatz alle, die
  * Serveranzahl die gleichzeitig laufenden.
  */
+/**
+ * Halbsatz „belegt zählen …" für eine Kachel (Fundpunkt 210).
+ *
+ * Ohne ihn liest sich „Speicher-Kontingent: 0 B frei von 10 GiB" wie ein
+ * Fehler, solange die Belegung aus gestoppten Servern stammt. Fehlt `counting`
+ * – der Vertrag führt es als optional –, bleibt die Regel ungenannt.
+ */
+function zaehlung(slot: ResourceQuotaSlot): string {
+  return slot.counting === undefined
+    ? 'belegt'
+    : `belegt zählen ${QUOTA_COUNTING_LABELS[slot.counting]}`;
+}
+
 export function quotaBlockReason(
   quota: ResourceQuotaDto | null,
   state: WizardState,
@@ -125,16 +139,24 @@ export function quotaBlockReason(
 
   // Der neue Server zählt als einer mehr – bleibt kein Rest, ist Schluss.
   if (servers.remaining !== null && servers.remaining < 1) {
-    return `Dein Kontingent erlaubt höchstens ${servers.limit} Server gleichzeitig.`;
+    return `Dein Kontingent erlaubt höchstens ${servers.limit} Server gleichzeitig (${zaehlung(
+      servers,
+    )}).`;
   }
   if (ram.remaining !== null && state.ramMb > ram.remaining) {
-    return `Dein RAM-Kontingent von ${formatMegabytes(ram.limit ?? 0)} reicht dafür nicht aus.`;
+    return `RAM-Kontingent: ${formatMegabytes(ram.remaining)} frei von ${formatMegabytes(
+      ram.limit ?? 0,
+    )} (${zaehlung(ram)}) – gebraucht werden ${formatMegabytes(state.ramMb)}.`;
   }
   if (cpu.remaining !== null && state.cpuCores > cpu.remaining) {
-    return `Dein CPU-Kontingent von ${cpu.limit} Kernen reicht dafür nicht aus.`;
+    return `CPU-Kontingent: ${cpu.remaining} von ${cpu.limit} Kernen frei (${zaehlung(
+      cpu,
+    )}) – gebraucht werden ${state.cpuCores}.`;
   }
   if (disk.remaining !== null && state.diskMb > disk.remaining) {
-    return `Dein Speicher-Kontingent von ${formatMegabytes(disk.limit ?? 0)} reicht dafür nicht aus.`;
+    return `Speicher-Kontingent: ${formatMegabytes(disk.remaining)} frei von ${formatMegabytes(
+      disk.limit ?? 0,
+    )} (${zaehlung(disk)}) – gebraucht werden ${formatMegabytes(state.diskMb)}.`;
   }
   return null;
 }
