@@ -724,11 +724,199 @@ export const VALHEIM_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * Terraria – das erste Spiel ohne Laufzeit-Basis dazwischen (Anhang A, Phase 3).
+ *
+ * **Was daran anders ist als bei Valheim.** Der Server bringt sein Mono und
+ * seine Bibliotheken selbst mit; das Image sitzt deshalb unmittelbar auf
+ * `palantir-base-linux`, ohne SteamCMD und ohne JVM. Und er spricht **TCP** –
+ * damit reicht dem Health-Check ein Verbindungsversuch (`portConnect`), es
+ * braucht keine Spieleabfrage. Der Preis steht in `playerCountAvailableFor`:
+ * Ein Port-Connect sagt nur, dass der Port Verbindungen annimmt, nicht wie
+ * viele Leute spielen – der automatische Stopp bleibt hier wirkungslos.
+ *
+ * (Es gäbe eine Abfrage über `gamedig`, aber nur mit der Server-Erweiterung
+ * TShock und einem REST-Token. Das ist ein anderes Spiel-Image, kein Schalter.)
+ *
+ * **Die Konsole ist der Weg über die Standardeingabe** – Terraria kennt kein
+ * RCON. `palantir-console` schreibt in das Rohr, das das Startskript anlegt;
+ * die Antwort steht im Log, nicht in der Rückgabe des Befehls.
+ *
+ * **`stopTimeoutSeconds` ist großzügig**, weil das Speichern der Welt hier am
+ * Stopp hängt: Terraria speichert bei SIGTERM nicht, das Startskript schickt
+ * deshalb `exit` in die Konsole und wartet. Läuft die Kulanzzeit ab, kommt
+ * SIGKILL – und die Welt steht auf dem Stand des letzten selbsttätigen
+ * Speicherns.
+ */
+export const TERRARIA_GAME_TYPE: GameTypeDefinition = {
+  id: 'terraria',
+  name: 'Terraria',
+  description:
+    'Terraria-Server von Re-Logic. Die Serverdateien werden beim ersten Start geholt; die Welt wird beim ersten Start erzeugt, was je nach Größe einige Minuten dauert.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-terraria:1',
+  // Vollständige Zeilen, wie sie die Konsole von Terraria versteht. `say <Text>`
+  // braucht eine Eingabe und gehört deshalb ins Feld, nicht auf einen Knopf.
+  consoleQuickCommands: [
+    { label: 'Spieler', command: 'playing' },
+    { label: 'Speichern', command: 'save' },
+    { label: 'Zeit', command: 'time' },
+    { label: 'Stopp', command: 'exit' },
+  ],
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 7777,
+      protocol: 'tcp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'worldName',
+      label: 'Name der Welt',
+      type: 'text',
+      defaultValue: 'Palantir',
+      description:
+        'Legt zugleich den Dateinamen fest (`welten/<Name>.wld`). Eine Umbenennung erzeugt beim nächsten Start eine neue, leere Welt – die alte bleibt liegen.',
+      required: true,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'size',
+      label: 'Weltgröße',
+      type: 'select',
+      defaultValue: 'mittel',
+      description: 'Gilt nur beim Erzeugen der Welt. Eine bestehende Welt wächst davon nicht.',
+      required: false,
+      options: ['klein', 'mittel', 'groß'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'difficulty',
+      label: 'Spielart',
+      type: 'select',
+      defaultValue: 'klassisch',
+      description: 'Gilt nur beim Erzeugen der Welt.',
+      required: false,
+      options: ['klassisch', 'experte', 'meister', 'reise'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'seed',
+      label: 'Startwert (Seed)',
+      type: 'text',
+      defaultValue: '',
+      description:
+        'Leer lassen für eine zufällige Welt. Gilt nur beim Erzeugen; besondere Startwerte wie „for the worthy" ändern das Spiel deutlich.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 8,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 255,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen, wenn jeder mit der Adresse beitreten darf.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'motd',
+      label: 'Begrüßung',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: 'Steht im Chat, sobald jemand beitritt.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    worldName: 'TERRARIA_WORLD',
+    size: 'TERRARIA_SIZE',
+    difficulty: 'TERRARIA_DIFFICULTY',
+    seed: 'TERRARIA_SEED',
+    maxPlayers: 'MAX_PLAYERS',
+    password: 'TERRARIA_PASSWORD',
+    motd: 'MOTD',
+  },
+  // Alle sieben liest das Startskript einmalig beim Start aus der Umgebung und
+  // schreibt sie nach `serverconfig.txt`.
+  restartRequiredFields: [
+    'worldName',
+    'size',
+    'difficulty',
+    'seed',
+    'maxPlayers',
+    'password',
+    'motd',
+  ],
+  /*
+   * Ein Terraria-Server ist genügsam: Er hält eine Welt im Speicher und rechnet
+   * auf einem Kern. 2 GiB und ein Kern decken eine große Welt mit einer
+   * Handvoll Spielern ab; der Betreiber kann im Wizard mehr geben.
+   */
+  resourceDefaults: {
+    ramMb: 2_048,
+    cpuCores: 1,
+    diskMb: 5_120,
+  },
+  query: {
+    kind: 'portConnect',
+    containerPort: 7777,
+  },
+  console: { kind: 'stdin' },
+  iconUrl: null,
+  coverImageUrl: null,
+  // Der Router liest den Namen aus dem Minecraft-Handshake; Terrarias Protokoll
+  // kennt nichts dergleichen. Die Adresse behält ihren Port.
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  // Speichern hängt am Stopp: Das Startskript schickt `exit` und wartet.
+  stopTimeoutSeconds: 120,
+  // Der erste Start holt 46 MiB und erzeugt danach die Welt – eine große Welt
+  // braucht auf einem Homeserver mehrere Minuten.
+  startupTimeoutSeconds: 900,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
   MINECRAFT_VANILLA_GAME_TYPE,
   VALHEIM_GAME_TYPE,
+  TERRARIA_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */

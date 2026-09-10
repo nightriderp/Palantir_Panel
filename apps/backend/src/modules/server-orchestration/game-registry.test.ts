@@ -5,6 +5,7 @@ import {
   GAME_TYPE_DEFINITIONS,
   MINECRAFT_PAPER_GAME_TYPE,
   MINECRAFT_VANILLA_GAME_TYPE,
+  TERRARIA_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
@@ -314,6 +315,62 @@ describe('Valheim – erstes Spiel aus Steam (Anhang A, Phase 3)', () => {
     // Gut ein Gigabyte. Mit der Frist von Minecraft (600 s) liefe der erste
     // Start auf einer langsamen Leitung in `error`, obwohl alles stimmt.
     expect(VALHEIM_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(1_200);
+  });
+});
+
+describe('Terraria – erstes Spiel ohne Laufzeit-Basis (Anhang A, Phase 3)', () => {
+  it('ist erst ab Ausbaustufe 3 auswählbar', () => {
+    expect(() =>
+      createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('terraria'),
+    ).toThrow();
+    expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('terraria').id).toBe(
+      'terraria',
+    );
+  });
+
+  it('zeigt auf eine feste Fassung des eigenen Images', () => {
+    expect(TERRARIA_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-terraria:1');
+  });
+
+  it('kommt mit einem Verbindungsversuch als Health-Check aus', () => {
+    // Terraria spricht TCP - anders als Valheim braucht es keine
+    // Spieleabfrage, um zu wissen, ob der Server da ist. Eine echte Abfrage
+    // gaebe es nur mit der Erweiterung TShock und einem REST-Token.
+    expect(TERRARIA_GAME_TYPE.query).toEqual({ kind: 'portConnect', containerPort: 7777 });
+    expect(TERRARIA_GAME_TYPE.ports).toEqual([
+      { containerPort: 7777, protocol: 'tcp', primary: true, label: 'Spiel-Port' },
+    ]);
+  });
+
+  it('hat eine Konsole über die Standardeingabe, aber kein RCON', () => {
+    expect(TERRARIA_GAME_TYPE.console).toEqual({ kind: 'stdin' });
+    // `exit` ist bei Terraria der Befehl, der die Welt speichert - er steht
+    // deshalb als Schnellbefehl da, nicht nur als Knopf "Stoppen" im Kopf.
+    expect((TERRARIA_GAME_TYPE.consoleQuickCommands ?? []).map((b) => b.command)).toContain('exit');
+  });
+
+  it('gibt dem Stopp Zeit, die Welt zu speichern', () => {
+    // Terraria speichert bei SIGTERM nicht; das Startskript schickt `exit` und
+    // wartet. Mit einer knappen Frist käme SIGKILL mitten hinein.
+    expect(TERRARIA_GAME_TYPE.stopTimeoutSeconds ?? 0).toBeGreaterThanOrEqual(120);
+  });
+
+  it('bildet jedes Feld auf eine Umgebungsvariable ab', () => {
+    const felder = TERRARIA_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(TERRARIA_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    expect([...(TERRARIA_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+
+  it('bietet Weltgröße und Spielart als Wörter an, nicht als Zahlen', () => {
+    // Terraria kennt nur 1/2/3 und 0/1/2/3. Ein Auswahlfeld mit diesen Zahlen
+    // waere fuer den Betreiber nicht zu entziffern; uebersetzt wird im
+    // Startskript.
+    const groesse = TERRARIA_GAME_TYPE.configFields.find((feld) => feld.key === 'size');
+    const spielart = TERRARIA_GAME_TYPE.configFields.find((feld) => feld.key === 'difficulty');
+
+    expect(groesse?.options).toEqual(['klein', 'mittel', 'groß']);
+    expect(spielart?.options).toEqual(['klassisch', 'experte', 'meister', 'reise']);
   });
 });
 

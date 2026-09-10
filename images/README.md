@@ -20,13 +20,13 @@ seinen Ordner mit `Dockerfile` und `VERSION`, sonst nichts.
 Ein Basis-Image je Laufzeit. Es bringt mit, was **jeder** Server dieser Laufzeit unter der
 Härtung des Agents braucht (Pflichtenheft §2.3), und nichts, was nur ein Spiel braucht.
 
-| Image         | Laufzeit                                                                            | Stand     |
-| ------------- | ----------------------------------------------------------------------------------- | --------- |
-| `base/linux`  | Die gemeinsame Wurzel: Benutzer, Datenordner, Konsole, `curl`. Trägt alles Übrige.  | vorhanden |
-| `base/java`   | Eclipse Temurin JRE (Java 25) — Minecraft (Paper, Fabric, Forge), andere JVM-Server | vorhanden |
-| `base/steam`  | SteamCMD samt 32-Bit-Bibliotheken — mit Abstand die größte Gruppe                   | vorhanden |
-| `base/dotnet` | .NET-Laufzeit für Server, die keine eigene mitbringen                               | geplant   |
-| `base/proton` | Windows-Server unter Proton/Wine — Spiele ohne Linux-Fassung                        | geplant   |
+| Image         | Laufzeit                                                                                    | Stand     |
+| ------------- | ------------------------------------------------------------------------------------------- | --------- |
+| `base/linux`  | Die gemeinsame Wurzel: Benutzer, Datenordner, Konsole, `curl`, `unzip`. Trägt alles Übrige. | vorhanden |
+| `base/java`   | Eclipse Temurin JRE (Java 25) — Minecraft (Paper, Fabric, Forge), andere JVM-Server         | vorhanden |
+| `base/steam`  | SteamCMD samt 32-Bit-Bibliotheken — mit Abstand die größte Gruppe                           | vorhanden |
+| `base/dotnet` | .NET-Laufzeit für Server, die keine eigene mitbringen                                       | geplant   |
+| `base/proton` | Windows-Server unter Proton/Wine — Spiele ohne Linux-Fassung                                | geplant   |
 
 **Die Wurzel ist `base/linux`.** Seit dem 10. September 2026 setzen die Laufzeit-Basen darauf
 auf, statt jede für sich ein fremdes Image zu nehmen: Benutzer, Datenordner, Stoppsignal und

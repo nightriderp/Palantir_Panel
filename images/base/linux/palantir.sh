@@ -14,9 +14,15 @@
 #
 # **Was hier hineingehört.** Was jedes Spiel braucht, unabhängig von Laufzeit
 # und Hersteller: der Datenordner und sein interner Unterordner, das Rohr für
-# die Konsole, das Holen einer Datei mit geprüfter Prüfsumme. Was nur eine
-# Laufzeit braucht, steht eine Ebene höher (`base/java/java.sh` rechnet den
-# JVM-Heap), was nur ein Spiel braucht, in dessen Startskript.
+# die Konsole, das Holen und Auspacken einer Datei mit geprüfter Prüfsumme, das
+# Verschmelzen einer `schlüssel=wert`-Konfiguration. Was nur eine Laufzeit
+# braucht, steht eine Ebene höher (`base/java/java.sh` rechnet den JVM-Heap),
+# was nur ein Spiel braucht, in dessen Startskript.
+#
+# **Das Verschmelzen stand bis Fassung 1 im Startskript von Minecraft.** Es ist
+# dort in gleicher Form geblieben, weil jenes Image auf `base/java:3` und damit
+# auf `base/linux:1` sitzt; wenn es das nächste Mal eine neue Fassung bekommt,
+# gehört die Kopie dort heraus.
 
 # -----------------------------------------------------------------------------
 # Orte
@@ -128,4 +134,94 @@ palantir_datei_holen() {
 
   mv "${palantir_ziel}.laedt" "$palantir_ziel"
   palantir_log "Geholt und geprüft: $(basename "$palantir_ziel")"
+}
+
+# `palantir_zip_auspacken <archiv> <zielordner>`
+#
+# Packt ein Zip aus. Eine eigene Funktion, weil zwei Kleinigkeiten sonst in
+# jedem Startskript stünden: `-q`, damit nicht jede der hundert Dateien im Log
+# landet, und das Anlegen des Zielordners.
+#
+# Das Ausführungsbit überlebt den Weg durch ein Zip nicht zuverlässig – wer eine
+# Binärdatei auspackt, setzt es danach selbst (`chmod 0755`).
+palantir_zip_auspacken() {
+  palantir_archiv="$1"
+  palantir_ziel="$2"
+
+  mkdir -p "$palantir_ziel"
+
+  if ! unzip -q -o "$palantir_archiv" -d "$palantir_ziel"; then
+    palantir_log "Das Archiv liess sich nicht auspacken: $(basename "$palantir_archiv")"
+
+    return 1
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# Einstellungen verschmelzen
+# -----------------------------------------------------------------------------
+# `palantir_schluessel_verschmelzen <verwaltete> <zieldatei>`
+#
+# Für jede Konfigurationsdatei aus `schlüssel=wert`-Zeilen – Terrarias
+# `serverconfig.txt`, Minecrafts `server.properties`, die INI-Dateien vieler
+# Steam-Spiele.
+#
+# **Das Panel verwaltet genau die Schlüssel, für die es ein Feld gibt.** Alles
+# andere gehört dem Betreiber: Er darf die Datei über die Dateiverwaltung
+# bearbeiten, und ein Start, der solche Änderungen jedes Mal wegwirft, wäre eine
+# böse Überraschung. Ein verwalteter Schlüssel behält deshalb seine Zeile und
+# bekommt den neuen Wert, ein fehlender wird angehängt, alles Übrige –
+# Kommentare, Reihenfolge, fremde Schlüssel – bleibt stehen.
+#
+# Doppelte Schlüssel: Die erste Zeile bekommt den verwalteten Wert, die weiteren
+# fallen weg. Sonst überschriebe eine alte Dublette weiter unten die frische
+# Einstellung – die meisten Leser nehmen den letzten Treffer.
+palantir_schluessel_verschmelzen() {
+  palantir_verwaltet="$1"
+  palantir_ziel="$2"
+
+  [ -f "$palantir_ziel" ] || : > "$palantir_ziel"
+
+  awk '
+    NR == FNR {
+      trenner = index($0, "=")
+      if (trenner > 0) {
+        schluessel = substr($0, 1, trenner - 1)
+        if (!(schluessel in wert)) reihenfolge[++anzahl] = schluessel
+        wert[schluessel] = substr($0, trenner + 1)
+      }
+      next
+    }
+    {
+      trenner = index($0, "=")
+      if ($0 ~ /^[ \t]*[#!]/ || trenner == 0) { print; next }
+      schluessel = substr($0, 1, trenner - 1)
+      if (schluessel in wert) {
+        if (!(schluessel in geschrieben)) {
+          print schluessel "=" wert[schluessel]
+          geschrieben[schluessel] = 1
+        }
+        next
+      }
+      print
+    }
+    END {
+      for (i = 1; i <= anzahl; i++)
+        if (!(reihenfolge[i] in geschrieben))
+          print reihenfolge[i] "=" wert[reihenfolge[i]]
+    }
+  ' "$palantir_verwaltet" "$palantir_ziel" > "${palantir_ziel}.neu"
+
+  mv "${palantir_ziel}.neu" "$palantir_ziel"
+}
+
+# `palantir_eigenschaft <datei> <schlüssel> <wert>`
+#
+# Hängt eine Zeile an die Liste der verwalteten Schlüssel an.
+#
+# Zeilenumbrüche im Wert zerrissen die Datei und machten aus dem Rest der Zeile
+# einen eigenen Schlüssel – sie fallen weg. Alles andere geht unverändert durch,
+# auch `§` und `\uXXXX` in einer Serverbeschreibung.
+palantir_eigenschaft() {
+  printf '%s=%s\n' "$2" "$(printf '%s' "$3" | tr -d '\r\n')" >> "$1"
 }
