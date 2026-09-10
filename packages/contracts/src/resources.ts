@@ -55,6 +55,44 @@ export function unitForResource(resource: ResourceKind): ResourceUnit {
   return RESOURCE_UNITS[resource];
 }
 
+/**
+ * Welche Server in eine Belegung eingehen (Fundpunkt 210).
+ *
+ * - `running` – nur laufende und startende Server. Sie belegen RAM, Kerne und
+ *   einen Platz in der Zahl gleichzeitiger Server tatsächlich; ein gestoppter
+ *   Server belegt davon nichts.
+ * - `all` – alle angelegten Server, gleich in welchem Zustand. So zählt die
+ *   Platte: Der Datenordner bleibt liegen, wenn der Server aus ist.
+ */
+export type ResourceQuotaCounting = 'running' | 'all';
+
+/**
+ * Zählregel je Ressourcenart – dieselbe Tabellenform wie {@link RESOURCE_UNITS}.
+ *
+ * Die Regel steckte bisher nur in den Feldnamen von {@link UserResourceUsage}
+ * (`runningRamMb` gegenüber `allocatedDiskMb`) und war der Oberfläche damit
+ * nicht zugänglich: Im Kontingent standen beide Zählweisen unter derselben
+ * Überschrift „benutzt". Am laufenden System sah das so aus – ein Konto mit
+ * einem laufenden und einem gestoppten Server:
+ *
+ * ```
+ * ram     limit 16384  used   8192   (nur laufende)
+ * disk    limit 10240  used 106496   (alle)
+ * ```
+ *
+ * Beides ist für sich richtig. Nur muss dazustehen, welche Zahl gemeint ist.
+ */
+export const RESOURCE_COUNTING = {
+  ram: 'running',
+  cpu: 'running',
+  disk: 'all',
+  servers: 'running',
+} as const satisfies Record<ResourceKind, ResourceQuotaCounting>;
+
+export function countingForResource(resource: ResourceKind): ResourceQuotaCounting {
+  return RESOURCE_COUNTING[resource];
+}
+
 // ---------------------------------------------------------------------------
 // Node (Entität `HostNode`, Pflichtenheft §6)
 // ---------------------------------------------------------------------------
@@ -283,6 +321,20 @@ export interface ResourceQuotaSlot {
   used: number;
   /** Rest bis zum Limit, nie negativ; `null`, wenn kein Limit gilt. */
   remaining: number | null;
+  /**
+   * Welche Server in `used` gezählt sind (Fundpunkt 210).
+   *
+   * Steht hier, weil ein DTO mit zwei Zählregeln sonst wie ein Fehler aussieht:
+   * „Platte 104 GB von 10 GB" neben „RAM 8 GB von 16 GB" liest sich wie eine
+   * zehnfache Überschreitung, ist aber schlicht die andere Regel – die Platte
+   * zählt auch gestoppte Server. Wer die Zahl anzeigt, kann jetzt dazuschreiben,
+   * welche gemeint ist, statt sie zu erraten.
+   *
+   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3):
+   * {@link resourceQuotaSlot} füllt das Feld immer, ein von Hand gebauter Slot
+   * darf es weglassen – dann nennt die Anzeige die Regel nicht.
+   */
+  counting?: ResourceQuotaCounting;
 }
 
 /**
@@ -330,5 +382,6 @@ export function resourceQuotaSlot(
     limit,
     used,
     remaining: limit === null ? null : Math.max(0, limit - used),
+    counting: countingForResource(resource),
   };
 }

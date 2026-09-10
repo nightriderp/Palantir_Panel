@@ -3,6 +3,7 @@ import {
   HOST_NODE_STATUSES,
   NO_USER_RESOURCE_LIMITS,
   RESOURCE_UNITS,
+  countingForResource,
   isHostNodeStatus,
   resourceQuotaSlot,
   unitForResource,
@@ -57,6 +58,7 @@ describe('resourceQuotaSlot (Arbeitspaket P6)', () => {
       limit: 8192,
       used: 2048,
       remaining: 6144,
+      counting: 'running',
     });
   });
 
@@ -67,10 +69,22 @@ describe('resourceQuotaSlot (Arbeitspaket P6)', () => {
       limit: null,
       used: 3,
       remaining: null,
+      counting: 'running',
     });
   });
 
   it('gibt bei Überbelegung 0 statt eines negativen Rests zurück', () => {
     expect(resourceQuotaSlot('servers', 2, 5).remaining).toBe(0);
+  });
+
+  /*
+   * Fundpunkt 210: Ein DTO, zwei Zaehlregeln - RAM, Kerne und Serverzahl zaehlen
+   * nur laufende Server, die Platte alle. Beides ist richtig; unter derselben
+   * Ueberschrift "benutzt" sah es aus wie ein Fehler.
+   */
+  it('nennt die Zaehlregel der Ressource', () => {
+    expect(resourceQuotaSlot('disk', 10_240, 106_496).counting).toBe('all');
+    expect(resourceQuotaSlot('ram', 16_384, 8192).counting).toBe('running');
+    expect(countingForResource('servers')).toBe('running');
   });
 });
