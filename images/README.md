@@ -8,7 +8,7 @@ images/<Kategorie>/<Name>   →   ghcr.io/nightriderp/palantir-<Kategorie>-<Name
 
 | Kategorie | Was darin steht                                                                                               | Beispiel                                     |
 | --------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `base`    | Grundlage je Laufzeit: Benutzer, Bibliotheken, Konventionen der Härtung. Kein Spiel, kein `ENTRYPOINT`.       | `base/java` → `palantir-base-java`           |
+| `base`    | Grundlage je Laufzeit: Benutzer, Bibliotheken, Konventionen der Härtung. Kein Spiel, kein `ENTRYPOINT`.       | `base/linux` → `palantir-base-linux`         |
 | `game`    | Ein Spielserver, aufgesetzt auf ein Basis-Image. Bekommt eine Spieltyp-Definition in `game-registry.ts`.      | `game/minecraft` → `palantir-game-minecraft` |
 | `test`    | Prüfstände: kein Spiel, sondern ein Nachbau, an dem sich die Kette des Panels ohne echtes Spiel prüfen lässt. | `test/minecraft` → `palantir-test-minecraft` |
 
@@ -20,11 +20,18 @@ seinen Ordner mit `Dockerfile` und `VERSION`, sonst nichts.
 Ein Basis-Image je Laufzeit. Es bringt mit, was **jeder** Server dieser Laufzeit unter der
 Härtung des Agents braucht (Pflichtenheft §2.3), und nichts, was nur ein Spiel braucht.
 
-| Image          | Laufzeit                                                                            | Stand     |
-| -------------- | ----------------------------------------------------------------------------------- | --------- |
-| `base/java`    | Eclipse Temurin JRE (Java 25) — Minecraft (Paper, Fabric, Forge), andere JVM-Server | vorhanden |
-| `base/linux`   | Native Linux-Server, typisch über SteamCMD (Valheim, Satisfactory, …)               | geplant   |
-| `base/windows` | Windows-Server unter Wine/Proton — Spiele ohne Linux-Fassung                        | geplant   |
+| Image         | Laufzeit                                                                            | Stand     |
+| ------------- | ----------------------------------------------------------------------------------- | --------- |
+| `base/linux`  | Die gemeinsame Wurzel: Benutzer, Datenordner, Konsole, `curl`. Trägt alles Übrige.  | vorhanden |
+| `base/java`   | Eclipse Temurin JRE (Java 25) — Minecraft (Paper, Fabric, Forge), andere JVM-Server | vorhanden |
+| `base/steam`  | SteamCMD samt 32-Bit-Bibliotheken — mit Abstand die größte Gruppe                   | geplant   |
+| `base/dotnet` | .NET-Laufzeit für Server, die keine eigene mitbringen                               | geplant   |
+| `base/proton` | Windows-Server unter Proton/Wine — Spiele ohne Linux-Fassung                        | geplant   |
+
+**Die Wurzel ist `base/linux`.** Seit dem 10. September 2026 setzen die Laufzeit-Basen darauf
+auf, statt jede für sich ein fremdes Image zu nehmen: Benutzer, Datenordner, Stoppsignal und
+`palantir-console` stünden sonst in jeder noch einmal und drifteten auseinander. `base/java`
+trug sie bis Fassung 2 selbst.
 
 Was jedes Basis-Image festlegt:
 

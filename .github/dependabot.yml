@@ -119,3 +119,28 @@ updates:
     ignore:
       - dependency-name: eclipse-temurin
         update-types: ['version-update:semver-major']
+
+  # ---------------------------------------------------------------------------
+  # Und dasselbe fuer die gemeinsame Wurzel (`images/base/linux/Dockerfile`).
+  # Sie pinnt `ubuntu` per Digest; darauf sitzen alle Laufzeit-Basen und die
+  # Spiel-Images, die nichts weiter brauchen als ein Linux.
+  #
+  # **Beim Uebernehmen gehoert die Zahl in `images/base/linux/VERSION` mit
+  # erhoeht** - und wer den neuen Stand in einer Laufzeit-Basis will, setzt dort
+  # `BASIS` um und erhoeht deren `VERSION`. Von selbst zieht nichts nach; das
+  # ist Absicht (images/README.md).
+  - package-ecosystem: docker
+    directory: /images/base/linux
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: '[images]'
+    # Eine neue Ubuntu-Hauptfassung ist ein Umzug der ganzen Kette und gehoert
+    # entschieden, nicht vorgeschlagen.
+    ignore:
+      - dependency-name: ubuntu
+        update-types: ['version-update:semver-major']
