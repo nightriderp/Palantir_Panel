@@ -119,6 +119,7 @@ export {
 export { HIGHLIGHT_PARAM, useHighlight, type Highlight } from './utils/useHighlight';
 export {
   clampPercent,
+  cpuQuotaPercent,
   formatBytes,
   formatChatTime,
   formatDate,
