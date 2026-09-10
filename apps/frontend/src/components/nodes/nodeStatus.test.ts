@@ -84,6 +84,39 @@ describe('formatCores', () => {
   });
 });
 
+/*
+ * Fundpunkt 209: Gemessen am Pruefstand stand `allocated 32768` bei `total
+ * 28672` - die Karte schrieb "0 B frei", also dieselbe Auskunft wie bei einer
+ * exakt vollen Node.
+ */
+describe('nodeMetrics - Ueberbuchung (Fundpunkt 209)', () => {
+  const ueberbucht = node({
+    capacity: {
+      total: { ramMb: 28_672, cpuCores: 8, diskMb: 512_000 },
+      allocated: { ramMb: 32_768, cpuCores: 9, diskMb: 20_480 },
+      available: { ramMb: 0, cpuCores: 0, diskMb: 491_520 },
+    },
+  });
+
+  it('benennt, um wie viel zu viel gebucht ist', () => {
+    const metrics = nodeMetrics(ueberbucht);
+
+    expect(metrics.find((m) => m.key === 'ram')?.overbookedLabel).toBe('4 GB überbucht');
+    expect(metrics.find((m) => m.key === 'cpu')?.overbookedLabel).toBe('1 Kern überbucht');
+  });
+
+  it('laesst die Angabe weg, wo nichts ueberbucht ist', () => {
+    const metrics = nodeMetrics(ueberbucht);
+
+    expect(metrics.find((m) => m.key === 'disk')?.overbookedLabel).toBeUndefined();
+    expect(nodeMetrics(node()).every((m) => m.overbookedLabel === undefined)).toBe(true);
+  });
+
+  it('faerbt den ueberbuchten Balken rot', () => {
+    expect(nodeMetrics(ueberbucht).find((m) => m.key === 'ram')?.tone).toBe('danger');
+  });
+});
+
 describe('nodeMetrics', () => {
   it('rechnet Belegung aus capacity, nicht aus usage', () => {
     const metrics = nodeMetrics(node());

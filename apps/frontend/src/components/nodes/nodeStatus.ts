@@ -99,6 +99,16 @@ export interface NodeMetric {
    * Anzeige auf die gebuchte Zahl zurück.
    */
   runningLabel?: string;
+  /**
+   * Steht anstelle des freien Rests, wenn mehr gebucht ist, als die Node hat –
+   * z. B. „4 GB überbucht" (Fundpunkt 209).
+   *
+   * Der Vertrag klemmt `available` bei null ab, was für sich richtig ist: Ein
+   * negativer freier Rest wäre keine brauchbare Zahl. Nur stand dort dann
+   * „0 GB frei", und das ist etwas anderes als „4 GB zu viel". Die Differenz
+   * lässt sich aus `total` und `allocated` ausrechnen – beide stehen im DTO.
+   */
+  overbookedLabel?: string;
   tone: Tone;
 }
 
@@ -152,6 +162,10 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
   const laufend = (gebucht: number, laeuft: number, formatiere: (wert: number) => string) =>
     gebucht === laeuft ? undefined : `davon ${formatiere(laeuft)} laufend`;
 
+  /** „4 GB überbucht", sonst nichts (Fundpunkt 209). */
+  const zuViel = (gebucht: number, gesamt: number, formatiere: (wert: number) => string) =>
+    gebucht > gesamt ? `${formatiere(gebucht - gesamt)} überbucht` : undefined;
+
   const cpuPercent = percentOf(allocated.cpuCores, total.cpuCores);
   const ramPercent = percentOf(allocated.ramMb, total.ramMb);
   const diskPercent = percentOf(allocated.diskMb, total.diskMb);
@@ -164,6 +178,9 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
       totalLabel: formatCores(total.cpuCores),
       freeLabel: formatCores(available.cpuCores),
       percent: cpuPercent,
+      ...(zuViel(allocated.cpuCores, total.cpuCores, formatCores) === undefined
+        ? {}
+        : { overbookedLabel: zuViel(allocated.cpuCores, total.cpuCores, formatCores) }),
       ...(laufend(allocated.cpuCores, running.cpuCores, formatCores) === undefined
         ? {}
         : { runningLabel: laufend(allocated.cpuCores, running.cpuCores, formatCores) }),
@@ -176,6 +193,9 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
       totalLabel: formatMegabytes(total.ramMb),
       freeLabel: formatMegabytes(available.ramMb),
       percent: ramPercent,
+      ...(zuViel(allocated.ramMb, total.ramMb, formatMegabytes) === undefined
+        ? {}
+        : { overbookedLabel: zuViel(allocated.ramMb, total.ramMb, formatMegabytes) }),
       ...(laufend(allocated.ramMb, running.ramMb, formatMegabytes) === undefined
         ? {}
         : { runningLabel: laufend(allocated.ramMb, running.ramMb, formatMegabytes) }),
@@ -188,6 +208,9 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
       totalLabel: formatMegabytes(total.diskMb),
       freeLabel: formatMegabytes(available.diskMb),
       percent: diskPercent,
+      ...(zuViel(allocated.diskMb, total.diskMb, formatMegabytes) === undefined
+        ? {}
+        : { overbookedLabel: zuViel(allocated.diskMb, total.diskMb, formatMegabytes) }),
       tone: toneForFill(diskPercent),
     },
   ];
