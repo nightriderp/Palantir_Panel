@@ -418,3 +418,120 @@ describe('start.sh – Aufruf der JVM', nurMitShell, () => {
     assert.ok(lauf.argv.indexOf('-XX:+UseStringDeduplication') < lauf.argv.indexOf('-jar'));
   });
 });
+
+/**
+ * Legt eine `curl`-Attrappe in den PATH-Ordner des Arbeitsordners und gibt die
+ * SHA-256 des Inhalts zurück, den sie ausliefert.
+ *
+ * Netz gibt es im Test nicht — und selbst wenn: Ein Test, der 60 MiB von Mojang
+ * lädt, prüft die Leitung, nicht das Skript. Die Attrappe kopiert stattdessen
+ * eine kleine Datei an die Stelle, die `--output` nennt; für alles Weitere ist
+ * es dieselbe Datei mit derselben Prüfsumme.
+ */
+function curlAttrappe(ordner, inhalt) {
+  const quelle = join(ordner.wurzel, 'quelle.jar');
+  writeFileSync(quelle, inhalt);
+
+  const attrappe = join(ordner.bin, 'curl');
+  writeFileSync(
+    attrappe,
+    [
+      '#!/bin/sh',
+      'ziel=""',
+      'for a in "$@"; do',
+      '  case "$vorher" in --output) ziel="$a";; esac',
+      '  vorher="$a"',
+      'done',
+      `cp "${posix(quelle)}" "$ziel"`,
+      '',
+    ].join('\n'),
+  );
+  chmodSync(attrappe, 0o755);
+
+  // Die Summe kommt aus der Datei selbst und nicht aus einer Zeichenkette im
+  // Test: `sha256sum` ist das Werkzeug, das auch das Skript benutzt.
+  return spawnSync('sh', ['-c', 'sha256sum "$1" | cut -d" " -f1', '_', posix(quelle)], {
+    encoding: 'utf8',
+  }).stdout.trim();
+}
+
+const VANILLA_UMGEBUNG = {
+  EULA: 'true',
+  MINECRAFT_EDITION: 'vanilla',
+  MINECRAFT_VANILLA_VERSION: '26.2',
+  MINECRAFT_VANILLA_URL: 'https://beispiel.invalid/server.jar',
+};
+
+describe('start.sh – Paper oder Vanilla', nurMitShell, () => {
+  it('nimmt ohne Angabe Paper aus dem Image', () => {
+    const ordner = arbeitsordner();
+    const lauf = starteSkript(ordner, { EULA: 'true' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.deepEqual(lauf.argv.slice(-3), ['-jar', '/opt/palantir/paper.jar', '--nogui']);
+    // Für Paper wird nichts geholt: Die Jar liegt im Image.
+    assert.doesNotMatch(lauf.stdout, /Hole /u);
+  });
+
+  it('weist eine unbekannte Ausgabe ab, bevor irgendetwas geschieht', () => {
+    const ordner = arbeitsordner();
+    const lauf = starteSkript(ordner, { EULA: 'true', MINECRAFT_EDITION: 'forge' });
+
+    assert.equal(lauf.status, 78);
+    assert.match(lauf.stdout, /Unbekannte Ausgabe/u);
+    assert.deepEqual(lauf.argv, []);
+    // Auch die EULA-Datei nicht: Die Prüfung steht vor allem anderen.
+    assert.throws(() => readFileSync(join(ordner.daten, 'eula.txt'), 'utf8'));
+  });
+
+  it('holt den Server von Mojang in den internen Ordner und startet ihn', () => {
+    const ordner = arbeitsordner();
+    const summe = curlAttrappe(ordner, 'nicht wirklich eine Jar');
+
+    const lauf = starteSkript(ordner, { ...VANILLA_UMGEBUNG, MINECRAFT_VANILLA_SHA256: summe });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    const erwartet = posix(join(ordner.daten, '.palantir', 'vanilla', 'minecraft_server-26.2.jar'));
+    assert.deepEqual(lauf.argv.slice(-3), ['-jar', erwartet, '--nogui']);
+    // Nicht zwischen den Welten des Betreibers, sondern in `.palantir`.
+    assert.equal(readFileSync(erwartet, 'utf8'), 'nicht wirklich eine Jar');
+  });
+
+  it('lädt beim zweiten Start nicht erneut', () => {
+    const ordner = arbeitsordner();
+    const summe = curlAttrappe(ordner, 'nicht wirklich eine Jar');
+    const umgebung = { ...VANILLA_UMGEBUNG, MINECRAFT_VANILLA_SHA256: summe };
+
+    assert.match(starteSkript(ordner, umgebung).stdout, /Geholt und geprüft/u);
+    assert.match(starteSkript(ordner, umgebung).stdout, /Vorhanden und unverändert/u);
+  });
+
+  it('startet nicht mit einer Jar, deren Prüfsumme nicht passt', () => {
+    const ordner = arbeitsordner();
+    curlAttrappe(ordner, 'etwas ganz anderes');
+
+    const lauf = starteSkript(ordner, {
+      ...VANILLA_UMGEBUNG,
+      MINECRAFT_VANILLA_SHA256: '0'.repeat(64),
+    });
+
+    // 69 ist EX_UNAVAILABLE: die Quelle war das Problem, nicht die Einstellung.
+    assert.equal(lauf.status, 69);
+    assert.match(lauf.stdout, /Die Prüfsumme passt nicht/u);
+    assert.deepEqual(lauf.argv, []);
+  });
+
+  it('verlangt Adresse und Prüfsumme, statt eine leere Jar zu starten', () => {
+    const ordner = arbeitsordner();
+    const lauf = starteSkript(ordner, {
+      EULA: 'true',
+      MINECRAFT_EDITION: 'vanilla',
+      MINECRAFT_VANILLA_URL: '',
+      MINECRAFT_VANILLA_SHA256: '',
+    });
+
+    assert.equal(lauf.status, 78);
+    assert.match(lauf.stdout, /MINECRAFT_VANILLA_URL/u);
+    assert.deepEqual(lauf.argv, []);
+  });
+});
