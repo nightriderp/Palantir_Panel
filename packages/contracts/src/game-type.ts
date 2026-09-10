@@ -119,6 +119,23 @@ export interface GamedigQuerySpec {
   readonly kind: 'gamedig';
   readonly protocol: string;
   readonly containerPort: number;
+  /**
+   * Schlüssel eines Konfigurationsfeldes, ohne dessen Zustimmung der Server
+   * **auf keine Abfrage antwortet**.
+   *
+   * Valheim ist der Fall, für den das Feld entstanden ist: Ein Server mit
+   * `-public 0` meldet sich nicht beim Steam-Verzeichnis an und beantwortet
+   * darum keine A2S-Abfrage. Erreichbar ist er trotzdem — wer die Adresse und
+   * das Passwort hat, spielt. Ohne diese Angabe hielte Palantir ihn für tot:
+   * Der Start liefe in die Frist und endete in `error`, während Spieler darauf
+   * unterwegs sind.
+   *
+   * Steht das Feld auf etwas anderem als `true`, ist die Abfrage unmöglich —
+   * es gibt keine Spielerzahl, keinen Ping, und der Start gilt als geglückt,
+   * sobald der Container läuft. Ohne die Angabe ist jede Abfrage möglich; für
+   * jedes andere Spiel ändert sich nichts.
+   */
+  readonly requiresConfigFlag?: string;
 }
 
 export type GameQuerySpec = PortConnectQuerySpec | GamedigQuerySpec;
@@ -166,7 +183,23 @@ export interface RconConsoleSpec {
   readonly passwordFile: string;
 }
 
-export type GameConsoleSpec = StdinConsoleSpec | RconConsoleSpec;
+/**
+ * **Dieses Spiel hat keine Konsole.**
+ *
+ * Nicht jeder Spielserver nimmt überhaupt Befehle entgegen: Valheim liest weder
+ * seine Standardeingabe noch spricht es RCON. Ohne diese Angabe gälte `stdin`,
+ * und das Panel zeigte ein Eingabefeld, dessen Zeilen in einem Rohr
+ * verschwinden, das niemand liest — ein Knopf ohne Wirkung ist schlechter als
+ * keiner.
+ *
+ * Das ist eine Aussage über das Spiel, nicht über den Aufrufer: Wer die
+ * Berechtigung `canUseConsole` hat, behält sie; es gibt nur nichts zu bedienen.
+ */
+export interface NoConsoleSpec {
+  readonly kind: 'none';
+}
+
+export type GameConsoleSpec = StdinConsoleSpec | RconConsoleSpec | NoConsoleSpec;
 
 /**
  * Ein Schnellbefehl der Live-Konsole – ein Knopf unter dem Eingabefeld.

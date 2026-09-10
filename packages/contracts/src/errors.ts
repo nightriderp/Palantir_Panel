@@ -601,6 +601,19 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Dieser Spiel-Typ steht in dieser Ausbaustufe noch nicht zur Verfügung.',
   },
   /**
+   * Das Spiel nimmt keine Konsolenbefehle entgegen (`GameTypeDefinition.console`
+   * ist `{ kind: 'none' }`) — Valheim liest weder Standardeingabe noch RCON.
+   *
+   * 409 und nicht 403: Es ist keine Frage der Berechtigung. Wer `canUseConsole`
+   * hat, darf weiterhin; es gibt an diesem Server nur nichts zu bedienen. Das
+   * Frontend blendet das Eingabefeld deshalb aus, statt einen Fehler zu zeigen —
+   * der Code deckt den Weg über die API ab.
+   */
+  CONSOLE_NOT_SUPPORTED: {
+    httpStatus: 409,
+    defaultMessage: 'Dieses Spiel nimmt keine Konsolenbefehle entgegen.',
+  },
+  /**
    * Der DNS-Eintrag konnte bei Cloudflare nicht angelegt oder entfernt werden
    * (Pflichtenheft §13). 502: der Fehler liegt beim nachgelagerten Dienst.
    */

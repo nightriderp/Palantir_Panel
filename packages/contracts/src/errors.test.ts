@@ -54,6 +54,8 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     expect(httpStatusForErrorCode('SERVER_HEALTH_CHECK_FAILED')).toBe(504);
     expect(httpStatusForErrorCode('GAME_TYPE_NOT_FOUND')).toBe(404);
     expect(httpStatusForErrorCode('GAME_TYPE_NOT_AVAILABLE')).toBe(409);
+    // Keine Frage der Berechtigung, sondern des Spiels - deshalb 409, nicht 403.
+    expect(httpStatusForErrorCode('CONSOLE_NOT_SUPPORTED')).toBe(409);
     expect(httpStatusForErrorCode('SUBDOMAIN_INVALID')).toBe(400);
     expect(httpStatusForErrorCode('DNS_UPDATE_FAILED')).toBe(502);
     expect(httpStatusForErrorCode('AGENT_NOT_CONNECTED')).toBe(503);
