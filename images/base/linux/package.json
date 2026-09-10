@@ -1,0 +1,10 @@
+{
+  "name": "@palantir/base-linux-image",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Gemeinsame Wurzel aller Spiel-Images. Diese package.json existiert nur, damit `pnpm test` im Repo-Wurzelverzeichnis die Tests der Shell-Bibliothek mitlaufen laesst; ins Image kopiert wird sie nicht (siehe .dockerignore).",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "node --test"
+  }
+}
