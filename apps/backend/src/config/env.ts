@@ -256,12 +256,16 @@ const envSchema = z.object({
    * Proxy-Liste von `frpc` (`deploy/vps/frps.toml`,
    * `deploy/gamenode/frpc.toml`). Sie dürfen nicht auseinanderlaufen: Ein Port
    * ohne Tunnel ergibt einen Server, der startet, „läuft" meldet und trotzdem
-   * nicht erreichbar ist. Das Ende liegt unter {@link MINECRAFT_ROUTER_PORT},
-   * damit dieser nicht aus dem Pool vergeben werden kann.
+   * nicht erreichbar ist. {@link MINECRAFT_ROUTER_PORT} darf nicht **im**
+   * Bereich liegen, damit er nicht aus dem Pool vergeben werden kann; wo er
+   * sonst liegt – darunter oder darüber –, ist gleichgültig.
    *
-   * Beide Bedingungen – `START <= END` und `END < MINECRAFT_ROUTER_PORT` –
+   * Beide Bedingungen – `START <= END` und „Router-Port nicht im Bereich" –
    * prüft seit Audit W3-6 der `superRefine` weiter unten; vorher standen sie
-   * nur hier im Text (backend-core-06).
+   * nur hier im Text (backend-core-06). Bis zum Audit vom 2026-09-10 verlangte
+   * die zweite Prüfung zusätzlich `END < MINECRAFT_ROUTER_PORT` und wies damit
+   * auch einen Bereich ab, der vollständig **über** dem Router-Port liegt
+   * (Fundpunkt 244) – etwa 26000–27999 neben Port 25565.
    */
   GAME_PORT_RANGE_START: z.coerce.number().int().min(1).max(65_535).default(25_000),
   GAME_PORT_RANGE_END: z.coerce.number().int().min(1).max(65_535).default(25_564),
@@ -622,7 +626,11 @@ const envSchemaMitPrüfungen = envSchema
      * - Liegt `MINECRAFT_ROUTER_PORT` im Bereich, kann ein Gameserver genau den
      *   Port bekommen, über den das Hostname-Routing aller Minecraft-Server
      *   läuft – danach kollidieren beide, und den Port wieder herauszulösen
-     *   hieße, einem laufenden Server die Adresse zu nehmen.
+     *   hieße, einem laufenden Server die Adresse zu nehmen. Geprüft wird genau
+     *   das: **im** Bereich. Die frühere Fassung verlangte
+     *   `END < MINECRAFT_ROUTER_PORT` und wies deshalb auch einen Bereich ab,
+     *   der vollständig darüber liegt (Fundpunkt 244) – 26000–27999 neben Port
+     *   25565 ist kollisionsfrei, das Backend startete trotzdem nicht.
      *
      * Beides gilt unabhängig von `NODE_ENV`, deshalb steht die Prüfung vor dem
      * Ausstieg für die Entwicklung. Ein Startabbruch mit Klartext ist billiger
@@ -639,16 +647,20 @@ const envSchemaMitPrüfungen = envSchema
           'später an der Port-Vergabe. Werte in der zentralen .env im Repo-Root tauschen ' +
           '(siehe .env.example Abschnitt „Öffentlicher Portbereich").',
       });
-    } else if (werte.GAME_PORT_RANGE_END >= werte.MINECRAFT_ROUTER_PORT) {
+    } else if (
+      werte.MINECRAFT_ROUTER_PORT >= werte.GAME_PORT_RANGE_START &&
+      werte.MINECRAFT_ROUTER_PORT <= werte.GAME_PORT_RANGE_END
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['GAME_PORT_RANGE_END'],
         message:
-          `GAME_PORT_RANGE_END (${werte.GAME_PORT_RANGE_END}) muss unter ` +
-          `MINECRAFT_ROUTER_PORT (${werte.MINECRAFT_ROUTER_PORT}) liegen (Pflichtenheft §2.4). ` +
-          'Sonst steht der Port des Hostname-Routers im vergebbaren Pool und kann einem ' +
-          'einzelnen Gameserver zufallen – das Minecraft-Routing bräche danach für alle. ' +
-          'Werte in der zentralen .env im Repo-Root anpassen (siehe .env.example).',
+          `MINECRAFT_ROUTER_PORT (${werte.MINECRAFT_ROUTER_PORT}) liegt im vergebbaren ` +
+          `Bereich ${werte.GAME_PORT_RANGE_START}–${werte.GAME_PORT_RANGE_END} ` +
+          '(Pflichtenheft §2.4). Dann kann der Port des Hostname-Routers einem einzelnen ' +
+          'Gameserver zufallen – das Minecraft-Routing bräche danach für alle. Bereich oder ' +
+          'Router-Port in der zentralen .env im Repo-Root verschieben, sodass der Router-Port ' +
+          'außerhalb liegt (darunter oder darüber, siehe .env.example).',
       });
     }
 

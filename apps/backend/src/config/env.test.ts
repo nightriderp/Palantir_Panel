@@ -366,6 +366,44 @@ describe('Port-Invariante des Spiele-Bereichs', () => {
 
     expect(ergebnis.success).toBe(true);
   });
+
+  /*
+   * Fundpunkt 244: Die Prüfung verlangte `END < MINECRAFT_ROUTER_PORT` und wies
+   * damit auch einen Bereich ab, der vollständig **über** dem Router-Port
+   * liegt. 26000–27999 neben Port 25565 ist kollisionsfrei – das Backend
+   * startete trotzdem nicht, mit einer Meldung, die auf die falsche Ursache
+   * zeigte.
+   */
+  it('lässt einen Bereich oberhalb des Router-Ports durch', () => {
+    const ergebnis = umgebungLesen({
+      GAME_PORT_RANGE_START: '26000',
+      GAME_PORT_RANGE_END: '27999',
+      MINECRAFT_ROUTER_PORT: '25565',
+    });
+
+    expect(ergebnis.success).toBe(true);
+  });
+
+  it('weist einen Bereich ab, der den Router-Port einschließt', () => {
+    const ergebnis = umgebungLesen({
+      GAME_PORT_RANGE_START: '25000',
+      GAME_PORT_RANGE_END: '26000',
+      MINECRAFT_ROUTER_PORT: '25565',
+    });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toContain('GAME_PORT_RANGE_END');
+  });
+
+  it('weist auch den Grenzfall ab, in dem der Bereich genau am Router-Port endet', () => {
+    const ergebnis = umgebungLesen({
+      GAME_PORT_RANGE_START: '25000',
+      GAME_PORT_RANGE_END: '25565',
+      MINECRAFT_ROUTER_PORT: '25565',
+    });
+
+    expect(ergebnis.success).toBe(false);
+  });
 });
 
 /**

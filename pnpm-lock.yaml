@@ -218,7 +218,13 @@ importers:
 
   images/base/java: {}
 
+  images/base/linux: {}
+
+  images/base/steam: {}
+
   images/game/minecraft: {}
+
+  images/game/valheim: {}
 
   images/test/minecraft: {}
 
