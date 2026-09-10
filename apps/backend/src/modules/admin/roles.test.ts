@@ -34,7 +34,14 @@ let service: RoleAdminService;
 let auditRepository: FakeAuditRepository;
 let repository: ReturnType<typeof createFakeRoleRepository>;
 
-const roleAdminCtx = () => ctxWith(actorWith('role.manage'));
+/*
+ * Seit Fundpunkt 196 gilt „niemand vergibt ein Recht, das er nicht selbst hat".
+ * Der Rollen-Verwalter dieser Faelle legt Rollen mit `ROLE_PERMISSION_BUNDLE`
+ * an und loescht sie wieder – er muss das Buendel also selbst tragen. Geprueft
+ * wird hier das Audit-Protokoll, nicht die Rechteschranke; die hat einen
+ * eigenen Fall in `rbac/roles.test.ts`.
+ */
+const roleAdminCtx = () => ctxWith(actorWith('role.manage', ...ROLE_PERMISSION_BUNDLE));
 const userAdminCtx = () => ctxWith(actorWith('user.manage'));
 
 /** Erwartet, dass ein Aufruf mit genau diesem Fehlercode scheitert. */
