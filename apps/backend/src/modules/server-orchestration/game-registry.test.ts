@@ -244,7 +244,7 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
     // liefe die Node weiter auf der alten Fassung, ohne dass es auffiele. Der
     // Name folgt dem Schema `palantir-<Kategorie>-<Name>` (images/README.md).
     expect(MINECRAFT_PAPER_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-minecraft:3',
+      'ghcr.io/nightriderp/palantir-game-minecraft:4',
     );
   });
 

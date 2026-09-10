@@ -1,13 +1,16 @@
 /**
- * Prüfungen für `start.sh` und `console.sh` – ohne Docker und ohne Minecraft.
+ * Prüfungen für `start.sh` – ohne Docker und ohne Minecraft.
  *
- * **Was hier geprüft werden kann.** Beide Dateien sind POSIX-Shell-Skripte. Sie
- * lassen sich mit `sh` ausführen, wenn zwei Dinge gestellt werden: ein
+ * **Was hier geprüft werden kann.** Die Datei ist ein POSIX-Shell-Skript. Sie
+ * lässt sich mit `sh` ausführen, wenn zwei Dinge gestellt werden: ein
  * Datenordner (`PALANTIR_DATA_DIR`) und ein `java` im PATH, das nur seine
  * Argumente ausgibt. Damit sind genau die Entscheidungen prüfbar, die das
  * Skript trifft – EULA-Sperre, verwaltete Schlüssel in `server.properties`,
- * Übernahme des Heaps aus der Bibliothek des Basis-Images, temporäres
- * Verzeichnis, Exit-Codes der Konsole.
+ * RCON, Übernahme des Heaps aus der Bibliothek des Basis-Images, temporäres
+ * Verzeichnis.
+ *
+ * `palantir-console` steht seit Fassung 4 nicht mehr hier, sondern in der
+ * Wurzel (`images/base/linux`) – und wird dort geprüft.
  *
  * **Was nicht.** Ob Paper mit diesen Schaltern startet, ob die Jar zur JVM passt
  * und ob die Härtung des Agents im Zusammenspiel hält, zeigt erst ein echter
@@ -16,7 +19,15 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -32,14 +43,21 @@ const posix = (pfad) => pfad.replace(/\\/gu, '/');
 
 const HIER = fileURLToPath(new URL('.', import.meta.url));
 const START_SH = posix(join(HIER, 'start.sh'));
-const CONSOLE_SH = posix(join(HIER, 'console.sh'));
 
 /**
- * Die Shell-Bibliothek des Basis-Images. Im Container liegt sie unter
- * `/opt/palantir/lib`; hier wird sie aus dem Repository eingebunden
- * (`PALANTIR_LIB_DIR`), damit das Skript ohne Image prüfbar bleibt.
+ * Die Shell-Bibliotheken der Basis-Images. Im Container liegen beide unter
+ * `/opt/palantir/lib`: `palantir.sh` aus der Wurzel `base/linux` und `java.sh`
+ * aus `base/java`. Im Repository liegen sie in zwei Ordnern, deshalb legt der
+ * Test einmal einen Ordner an, der beide enthält, und zeigt mit
+ * `PALANTIR_LIB_DIR` dorthin – so bleibt das Skript ohne Image prüfbar.
  */
-const JAVA_LIB = posix(join(HIER, '..', '..', 'base', 'java'));
+const LIB_ORDNER = (() => {
+  const ziel = mkdtempSync(join(tmpdir(), 'palantir-lib-'));
+  copyFileSync(join(HIER, '..', '..', 'base', 'linux', 'palantir.sh'), join(ziel, 'palantir.sh'));
+  copyFileSync(join(HIER, '..', '..', 'base', 'java', 'java.sh'), join(ziel, 'java.sh'));
+
+  return posix(ziel);
+})();
 
 /**
  * Steht eine POSIX-Shell zur Verfügung?
@@ -107,7 +125,7 @@ function starteSkript(ordner, env = {}) {
         ...process.env,
         PALANTIR_DATA_DIR: posix(ordner.daten),
         PALANTIR_PAPER_JAR: '/opt/palantir/paper.jar',
-        PALANTIR_LIB_DIR: JAVA_LIB,
+        PALANTIR_LIB_DIR: LIB_ORDNER,
         // Ohne diesen Zeiger läse das Skript die cgroup-Dateien des Rechners,
         // auf dem der Test läuft – das Ergebnis hinge dann an der Maschine.
         PALANTIR_MEMORY_LIMIT_FILE: posix(ordner.ohneGrenze),
@@ -398,61 +416,5 @@ describe('start.sh – Aufruf der JVM', nurMitShell, () => {
 
     assert.ok(lauf.argv.includes('-Dpalantir.test=1'));
     assert.ok(lauf.argv.indexOf('-XX:+UseStringDeduplication') < lauf.argv.indexOf('-jar'));
-  });
-});
-
-describe('console.sh', nurMitShell, () => {
-  const starteKonsole = (ordner, argumente) =>
-    spawnSync('sh', [CONSOLE_SH, ...argumente], {
-      encoding: 'utf8',
-      timeout: 30_000,
-      env: { ...process.env, PALANTIR_DATA_DIR: posix(ordner.daten) },
-    });
-
-  it('lehnt einen leeren Aufruf mit 2 ab', () => {
-    const ordner = arbeitsordner();
-    const lauf = starteKonsole(ordner, []);
-
-    assert.equal(lauf.status, 2);
-    assert.match(lauf.stderr, /Aufruf: palantir-console/u);
-  });
-
-  it('meldet mit 1, wenn der Server nicht läuft', () => {
-    const ordner = arbeitsordner();
-    const lauf = starteKonsole(ordner, ['list']);
-
-    assert.equal(lauf.status, 1);
-    assert.match(lauf.stderr, /nicht erreichbar/u);
-  });
-
-  it('gibt die ganze Zeile an die Standardeingabe des Servers weiter', () => {
-    const ordner = arbeitsordner();
-    // Legt das benannte Rohr an; die java-Attrappe endet sofort wieder.
-    starteSkript(ordner, { EULA: 'true' });
-
-    const rohr = posix(join(ordner.daten, '.palantir', 'console.in'));
-    const gelesen = posix(join(ordner.wurzel, 'gelesen.txt'));
-
-    // Ein Leser muss offen sein – im Betrieb ist das die JVM, deren
-    // Standardeingabe an diesem Rohr hängt.
-    const lauf = spawnSync(
-      'sh',
-      [
-        '-c',
-        'test -p "$1" || exit 9; (head -n 1 <"$1" >"$2") & sh "$3" say Hallo Welt; wait',
-        '_',
-        rohr,
-        gelesen,
-        CONSOLE_SH,
-      ],
-      {
-        encoding: 'utf8',
-        timeout: 30_000,
-        env: { ...process.env, PALANTIR_DATA_DIR: posix(ordner.daten) },
-      },
-    );
-
-    assert.equal(lauf.status, 0, `${lauf.stdout}${lauf.stderr}`);
-    assert.equal(readFileSync(join(ordner.wurzel, 'gelesen.txt'), 'utf8').trim(), 'say Hallo Welt');
   });
 });

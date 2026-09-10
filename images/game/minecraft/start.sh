@@ -24,22 +24,23 @@
 
 set -eu
 
-# Der Datenordner steht im Image fest auf `/data` (WORKDIR im Dockerfile). Die
-# Variable existiert, damit sich das Skript außerhalb eines Containers prüfen
-# lässt – und für den seltenen Fall eines abweichenden `dataVolumeContainerPath`
-# in der Spieltyp-Definition.
-DATENORDNER="${PALANTIR_DATA_DIR:-/data}"
-PAPER_JAR="${PALANTIR_PAPER_JAR:-/opt/palantir/paper.jar}"
+# Die gemeinsamen Bausteine der Wurzel (`images/base/linux/palantir.sh`): der
+# Datenordner und sein interner Unterordner, das Konsolen-Rohr, das Holen einer
+# Datei mit geprüfter Prüfsumme. `PALANTIR_LIB_DIR` existiert, damit
+# `start.test.mjs` die Bibliotheken aus dem Repository einbinden kann, wo es
+# `/opt/palantir` nicht gibt.
+. "${PALANTIR_LIB_DIR:-/opt/palantir/lib}/palantir.sh"
 
-# Alles, was Palantir selbst im Datenordner ablegt, liegt in einem eigenen
-# Unterordner: Der Datei-Manager zeigt dem Betreiber sonst Betriebsinterna
-# zwischen seinen Welten und Plugins.
-INTERN="${DATENORDNER}/.palantir"
-KONSOLE="${INTERN}/console.in"
+DATENORDNER="$PALANTIR_DATENORDNER"
+PAPER_JAR="${PALANTIR_PAPER_JAR:-/opt/palantir/paper.jar}"
+INTERN="$PALANTIR_INTERN"
+KONSOLE="$PALANTIR_KONSOLE"
 JAVA_TMP="${INTERN}/tmp"
 
+# Kurzname für die Zeilen unten; geschrieben wird über die gemeinsame Funktion,
+# damit jedes Spiel-Image dasselbe Präfix trägt.
 log() {
-  printf '[palantir] %s\n' "$*"
+  palantir_log "$@"
 }
 
 # -----------------------------------------------------------------------------
@@ -64,7 +65,8 @@ if [ "${EULA:-false}" != "true" ]; then
   exit 78
 fi
 
-mkdir -p "$INTERN" "$JAVA_TMP"
+palantir_intern_anlegen
+mkdir -p "$JAVA_TMP"
 
 # Paper liest die Zustimmung aus dieser Datei. Sie wird bei jedem Start neu
 # geschrieben: Sie ist die Folge der Zustimmung im Panel, nicht eine zweite,
@@ -251,13 +253,12 @@ set -- "$@" -jar "$PAPER_JAR" --nogui
 # das über einen Steuerport; hier genügt ein benanntes Rohr, weil der Server
 # ohnehin Zeilen von stdin erwartet.
 #
-# `3<>` öffnet das Rohr zum Lesen **und** Schreiben. Das ist der Kern: Ein nur
-# zum Lesen geöffnetes Rohr liefert EOF, sobald der letzte Schreiber geht – der
-# Server hielte das für „Konsole beendet" und fährt herunter. So bleibt die
-# Beschreibung dauerhaft schreibbar, auch wenn gerade niemand etwas schickt.
-rm -f "$KONSOLE"
-mkfifo -m 600 "$KONSOLE"
-exec 3<> "$KONSOLE"
+# Das Anlegen selbst steht in der Wurzel (`palantir_konsole_oeffnen`): Es ist
+# bei jedem Server gleich, der Befehle von der Standardeingabe liest. Die
+# Funktion legt das Rohr an und öffnet es auf Deskriptor 3 – bewusst zum Lesen
+# **und** Schreiben, sonst liefert es EOF, sobald der letzte Schreiber geht, und
+# der Server hielte das für „Konsole beendet".
+palantir_konsole_oeffnen
 
 log "Startet Paper: java $*"
 
