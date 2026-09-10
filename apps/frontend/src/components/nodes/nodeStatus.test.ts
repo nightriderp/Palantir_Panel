@@ -92,6 +92,49 @@ describe('nodeMetrics', () => {
     expect(ram?.tone).toBe('brand');
   });
 
+  /*
+   * Fundpunkt 203: Der Balken zeigt die gebuchte Zahl, darunter steht die, gegen
+   * die ein Start tatsaechlich geprueft wird. Ohne sie wirkte "2 GB frei" wie
+   * eine Absage - waehrend die API denselben Server annahm.
+   */
+  it('nennt die laufende Belegung, wenn sie von der gebuchten abweicht', () => {
+    const metrics = nodeMetrics(
+      node({
+        capacity: {
+          total: { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
+          allocated: { ramMb: 26_624, cpuCores: 8, diskMb: 86_016 },
+          running: { ramMb: 20_480, cpuCores: 6, diskMb: 86_016 },
+          available: { ramMb: 2_048, cpuCores: 0, diskMb: 1_913_984 },
+        },
+      }),
+    );
+
+    expect(metrics.find((m) => m.key === 'ram')?.runningLabel).toBe('davon 20 GB laufend');
+    expect(metrics.find((m) => m.key === 'cpu')?.runningLabel).toBe('davon 6 Kerne laufend');
+    // Bei der Platte zaehlen beide Zahlen ueber alle Zustaende - kein Zusatz.
+    expect(metrics.find((m) => m.key === 'disk')?.runningLabel).toBeUndefined();
+  });
+
+  it('schweigt, wenn gebucht und laufend uebereinstimmen', () => {
+    const metrics = nodeMetrics(
+      node({
+        capacity: {
+          total: { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
+          allocated: { ramMb: 20_480, cpuCores: 6, diskMb: 86_016 },
+          running: { ramMb: 20_480, cpuCores: 6, diskMb: 86_016 },
+          available: { ramMb: 8_192, cpuCores: 2, diskMb: 1_913_984 },
+        },
+      }),
+    );
+
+    expect(metrics.every((m) => m.runningLabel === undefined)).toBe(true);
+  });
+
+  it('faellt ohne capacity.running auf die gebuchte Zahl zurueck', () => {
+    // Aeltere Antworten kennen das Feld nicht (additiv, CLAUDE.md §3).
+    expect(nodeMetrics(node()).every((m) => m.runningLabel === undefined)).toBe(true);
+  });
+
   it('färbt eine fast volle Node rot', () => {
     const full = node({
       capacity: {

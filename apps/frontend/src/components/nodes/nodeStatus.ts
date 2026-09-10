@@ -91,6 +91,14 @@ export interface NodeMetric {
   freeLabel: string;
   /** Füllgrad 0–100; `null`, wenn die Node keine Ausstattung meldet. */
   percent: number | null;
+  /**
+   * Zusatz unter dem Balken, z. B. „davon 20 GB laufend" (Fundpunkt 203).
+   *
+   * `undefined`, wenn es nichts zu unterscheiden gibt: bei der Platte zählen
+   * beide Zahlen über alle Zustände, und ohne `capacity.running` fällt die
+   * Anzeige auf die gebuchte Zahl zurück.
+   */
+  runningLabel?: string;
   tone: Tone;
 }
 
@@ -120,15 +128,29 @@ export function formatCores(cores: number): string {
 /**
  * Die drei Balken einer Node-Karte.
  *
- * Grundlage ist ausschließlich `capacity` (Gesamt, vergeben, frei) und **nicht**
- * zusätzlich `usage`: Beide Felder enthalten laut Pflichtenheft §10 derzeit
- * dieselbe Zahl – die reservierten Limits der Server, nicht den vom
- * Betriebssystem gemessenen Verbrauch. Zwei Anzeigen für einen Wert würden nur
- * so aussehen, als gäbe es zwei Messungen. Was die Zahl bedeutet, sagt der
- * Erklärtext (siehe {@link NODE_EXPLAINERS}).
+ * Der Balken zeigt `allocated` – die Summe der Limits **aller** dort angelegten
+ * Server. Das ist die Zahl, an der `available` hängt: Was die Node bereithalten
+ * muss, wenn alles gleichzeitig läuft.
+ *
+ * Darunter steht seit dem Audit vom 2026-09-10 (Fundpunkt 203) die zweite
+ * Zahl: `running`, gegen die Anlegen und Starten tatsächlich geprüft werden.
+ * Vorher stand hier der Satz, `capacity` und `usage` enthielten „dieselbe
+ * Zahl" – das stimmte nie, und genau diese Verwechslung führte dazu, dass die
+ * Seite „2 GB frei" auswies, während `POST /api/servers` einen 6-GB-Server
+ * annahm. Zwei Zahlen mit Namen sind besser als eine ohne.
+ *
+ * Die gemessene Auslastung (`usage`) bleibt hier bewusst aussen vor: Sie
+ * wechselt nach fünf Minuten ohne Messwert selbst auf die Reservierungsrechnung
+ * (Fundpunkt 204) und gehört erst dann in die Karte, wenn sie ihre Herkunft
+ * mitnennt.
  */
 export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
   const { total, allocated, available } = node.capacity;
+  const running = node.capacity.running ?? allocated;
+
+  /** Nur zeigen, wenn beide Zahlen wirklich auseinandergehen. */
+  const laufend = (gebucht: number, laeuft: number, formatiere: (wert: number) => string) =>
+    gebucht === laeuft ? undefined : `davon ${formatiere(laeuft)} laufend`;
 
   const cpuPercent = percentOf(allocated.cpuCores, total.cpuCores);
   const ramPercent = percentOf(allocated.ramMb, total.ramMb);
@@ -142,6 +164,9 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
       totalLabel: formatCores(total.cpuCores),
       freeLabel: formatCores(available.cpuCores),
       percent: cpuPercent,
+      ...(laufend(allocated.cpuCores, running.cpuCores, formatCores) === undefined
+        ? {}
+        : { runningLabel: laufend(allocated.cpuCores, running.cpuCores, formatCores) }),
       tone: toneForFill(cpuPercent),
     },
     {
@@ -151,6 +176,9 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
       totalLabel: formatMegabytes(total.ramMb),
       freeLabel: formatMegabytes(available.ramMb),
       percent: ramPercent,
+      ...(laufend(allocated.ramMb, running.ramMb, formatMegabytes) === undefined
+        ? {}
+        : { runningLabel: laufend(allocated.ramMb, running.ramMb, formatMegabytes) }),
       tone: toneForFill(ramPercent),
     },
     {
