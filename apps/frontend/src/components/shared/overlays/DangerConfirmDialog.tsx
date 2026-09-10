@@ -38,8 +38,20 @@ export interface DangerConfirmDialogProps {
  * löschen, Sicherung löschen).
  *
  * Ist `confirmationPhrase` gesetzt, bleibt die Schaltfläche gesperrt, bis der
- * Text exakt eingegeben wurde – bewusst ohne Groß-/Kleinschreibungs-Toleranz,
- * damit die Bestätigung eine bewusste Handlung bleibt.
+ * Text eingegeben wurde – bewusst ohne Groß-/Kleinschreibungs-Toleranz, damit
+ * die Bestätigung eine bewusste Handlung bleibt.
+ *
+ * Zwei Nachbesserungen aus dem Audit (Fundpunkt 216):
+ *
+ * 1. **Kopieren.** Der abzutippende Name stand nur als Text da. Wer ihn nicht
+ *    fehlerfrei abtippte, kam nicht weiter – bei einem Namen wie
+ *    „Survival-Welt (2026)" ist das keine Seltenheit. Die Schaltfläche daneben
+ *    nimmt ihm das ab; abtippen bleibt möglich.
+ * 2. **Leerzeichen am Rand.** Verglichen wurde zeichengenau, auch führende und
+ *    folgende Leerzeichen. Kopiert man den Namen aus einer Tabelle, hängt oft
+ *    eines dran – der Knopf blieb grau, ohne zu sagen warum. Beide Seiten
+ *    werden jetzt am Rand beschnitten, und solange etwas dasteht, das nicht
+ *    passt, sagt der Dialog es.
  */
 export function DangerConfirmDialog({
   open,
@@ -55,15 +67,52 @@ export function DangerConfirmDialog({
   extraBlocked = false,
 }: DangerConfirmDialogProps) {
   const inputId = useId();
+  const hintId = useId();
   const [typed, setTyped] = useState('');
+  /** `null` = noch nichts kopiert, sonst die Rückmeldung am Knopf. */
+  const [kopierstand, setKopierstand] = useState<'ok' | 'fehler' | null>(null);
 
   // Beim Öffnen und Schließen zurücksetzen, damit eine frühere Eingabe nicht
   // versehentlich die nächste Löschung freischaltet.
   useEffect(() => {
     setTyped('');
+    setKopierstand(null);
   }, [open, confirmationPhrase]);
 
-  const unlocked = (confirmationPhrase == null || typed === confirmationPhrase) && !extraBlocked;
+  /*
+   * „Kopiert" verschwindet nach zwei Sekunden wieder. Die Rückmeldung steht
+   * bewusst am Knopf und nicht als Toast: Der Dialog liegt über der Seite, eine
+   * Meldung am Bildschirmrand wäre hier die schwächere Antwort - und der
+   * Basis-Dialog des Design-Systems soll keinen Provider voraussetzen, den ein
+   * Aufrufer vielleicht nicht hat.
+   */
+  useEffect(() => {
+    if (kopierstand !== 'ok') return;
+    const timer = setTimeout(() => setKopierstand(null), 2000);
+    return () => clearTimeout(timer);
+  }, [kopierstand]);
+
+  const passt = confirmationPhrase == null || typed.trim() === confirmationPhrase.trim();
+  const unlocked = passt && !extraBlocked;
+  const danebengetippt = confirmationPhrase != null && typed.trim() !== '' && !passt;
+
+  function kopieren(): void {
+    if (confirmationPhrase == null) return;
+
+    // `navigator.clipboard` gibt es nur in einem sicheren Kontext; fehlt es,
+    // sagt der Dialog das, statt an einer undefinierten Eigenschaft zu
+    // scheitern (wie in `PasswordResultDialog` der Nutzerverwaltung).
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+    if (!clipboard) {
+      setKopierstand('fehler');
+      return;
+    }
+
+    void clipboard
+      .writeText(confirmationPhrase)
+      .then(() => setKopierstand('ok'))
+      .catch(() => setKopierstand('fehler'));
+  }
 
   return (
     <Modal
@@ -93,13 +142,35 @@ export function DangerConfirmDialog({
             Gib <span className="font-mono text-ink">{confirmationPhrase}</span> ein, um zu
             bestätigen.
           </label>
-          <input
-            id={inputId}
-            value={typed}
-            onChange={(event) => setTyped(event.target.value)}
-            autoComplete="off"
-            className="mt-2 w-full rounded-md border border-line-strong bg-fill px-3 py-2.5 text-base text-ink outline-none focus-visible:border-brand"
-          />
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              id={inputId}
+              value={typed}
+              onChange={(event) => setTyped(event.target.value)}
+              autoComplete="off"
+              aria-describedby={danebengetippt ? hintId : undefined}
+              className="w-full min-w-0 rounded-md border border-line-strong bg-fill px-3 py-2.5 text-base text-ink outline-none focus-visible:border-brand"
+            />
+            <Button
+              variant="secondary"
+              iconLeft="copy"
+              onClick={kopieren}
+              disabled={busy}
+              title={`„${confirmationPhrase}" kopieren`}
+            >
+              {kopierstand === 'ok' ? 'Kopiert' : 'Kopieren'}
+            </Button>
+          </div>
+          {kopierstand === 'fehler' ? (
+            <p className="mt-1.5 text-sm text-warning">
+              Kopieren ist hier nicht möglich – bitte von Hand abtippen.
+            </p>
+          ) : null}
+          {danebengetippt ? (
+            <p id={hintId} className="mt-1.5 text-sm text-ink-faint">
+              Stimmt noch nicht überein.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </Modal>
