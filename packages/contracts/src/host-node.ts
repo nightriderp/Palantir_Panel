@@ -26,16 +26,42 @@ import { type HostNodeStatus, type NodeResources } from './resources.js';
 /**
  * Kapazität einer Node (Lastenheft §3.7).
  *
- * `allocated` ist die Summe der Ressourcen-Limits aller auf dieser Node
- * angelegten Server – also der reservierte, nicht der tatsächlich genutzte
- * Anteil. `available` ist `total - allocated`, nie kleiner als 0.
+ * **Drei Zahlen, drei Bedeutungen** – bis zum Audit vom 2026-09-10 waren es
+ * zwei, und die Oberfläche zeigte die falsche (Fundpunkt 203):
  *
- * Gefüllt wird `allocated` aus der Belegung, die B4 als `NodeResourceUsage`
- * berechnet – dieselbe Zahl, hier nur in der Form der Übersicht.
+ * - `allocated` – Summe der Limits **aller** dort angelegten Server, gleich in
+ *   welchem Zustand. Das ist der Platz, den die Node bereithalten muss, wenn
+ *   alles gleichzeitig liefe, und die richtige Zahl für die Frage „passt hier
+ *   noch ein Server hin".
+ * - `running` – Summe der Limits der Server, die **gerade laufen oder
+ *   starten**; bei der Platte über alle Zustände, denn ein Datenordner bleibt
+ *   liegen, wenn der Server aus ist. Genau diese Zahl prüft die harte
+ *   Kapazitätsschranke vor jedem Anlegen und jedem Start (Pflichtenheft §10).
+ * - `available` – `total - allocated`, nie kleiner als 0.
+ *
+ * Der Unterschied ist kein Feinschliff: Auf einer Node mit 28 GB, davon 26 GB
+ * gebucht und 20 GB laufend, wies die Übersicht „2 GB frei" aus und lehnte den
+ * Assistenten ab – während `POST /api/servers` denselben Server mit 6 GB
+ * anstandslos annahm, weil die Schranke gegen `running` rechnet. Wer beide
+ * Zahlen nebeneinander zeigt, macht daraus eine Aussage statt eines
+ * Widerspruchs.
+ *
+ * Frühere Fassungen dieses Kommentars behaupteten, `allocated` komme aus
+ * derselben Rechnung wie `NodeResourceUsage`. Das stimmte nie: `allocated`
+ * entsteht in `createServerNodePlacementSource` über alle Zustände,
+ * `NodeResourceUsage` in `usage-repository.ts` nur über die laufenden.
  */
 export interface HostNodeCapacity {
   total: NodeResources;
   allocated: NodeResources;
+  /**
+   * Belegung, gegen die Anlegen und Starten geprüft werden (Fundpunkt 203).
+   *
+   * Optional, weil additiv (CLAUDE.md §3): Das Backend füllt das Feld immer,
+   * ältere Aufrufer und Testdaten kommen ohne aus. Wer es liest, fällt
+   * sinnvollerweise auf `allocated` zurück – das ist die vorsichtigere Zahl.
+   */
+  running?: NodeResources;
   available: NodeResources;
 }
 
