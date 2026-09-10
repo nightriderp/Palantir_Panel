@@ -2,7 +2,7 @@ import { type BackupStatus } from './backup.js';
 import { type ErrorCode } from './errors.js';
 import { type WebSocketEventName } from './events.js';
 import { type ServerLiveStats } from './game-server.js';
-import { type ServerCloneJobDto } from './server-jobs.js';
+import { type BackupRestoreJobDto, type ServerCloneJobDto } from './server-jobs.js';
 import { type ServerStatus } from './server-lifecycle.js';
 
 /**
@@ -136,6 +136,7 @@ export const LIVE_SERVER_EVENTS = [
   'server.consoleLineAppended',
   'serverClone.progressed',
   'backup.progressed',
+  'backupRestore.progressed',
   // Auf dem Listen-Thema (Fundpunkt 173): Der Bestand hat sich geändert.
   'server.created',
   'server.cloned',
@@ -205,6 +206,13 @@ export type LiveServerEventPayloads = {
   'server.consoleLineAppended': { serverId: string; line: ServerConsoleLine };
   'serverClone.progressed': { serverId: string; job: ServerCloneJobDto };
   'backup.progressed': { serverId: string; backup: BackupProgress };
+  /**
+   * Fortschritt einer Wiederherstellung (Fundpunkt 225).
+   *
+   * Wie beim Klon trägt das Ereignis den vollständigen Auftrag – die Ansicht
+   * muss nichts nachfragen, um den Zustand zu kennen.
+   */
+  'backupRestore.progressed': { serverId: string; job: BackupRestoreJobDto };
   /*
    * Listen-Ereignisse (Fundpunkt 173) tragen bewusst nur die Id: Name und
    * Rechte holt der Browser über die REST-Schnittstelle, sonst stünde hier
