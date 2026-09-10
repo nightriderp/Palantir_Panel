@@ -3,6 +3,9 @@ import {
   type BackupType,
   type NotifiableEventName,
   type NotificationSeverity,
+  type ResourceKind,
+  type ResourceQuotaCounting,
+  countingForResource,
 } from '@palantir/contracts';
 import { type Tone } from '../primitives/Badge';
 
@@ -36,6 +39,28 @@ import { type Tone } from '../primitives/Badge';
  * Servers"): Die Liste beschreibt, was passiert ist – im Regel-Editor als
  * Auslöser, in der Inbox als Herkunft der Meldung.
  */
+/**
+ * Wie eine Belegung gezählt wird, in einem Halbsatz (Fundpunkt 210).
+ *
+ * Gemessen am laufenden System stand im selben Kontingent „RAM 8 GiB von
+ * 16 GiB" neben „Platte 104 GiB von 10 GiB" – beides unter der Überschrift
+ * „benutzt". Der Unterschied ist keine Ueberschreitung, sondern die andere
+ * Zählregel: Die Platte zählt auch gestoppte Server, weil ihr Datenordner
+ * liegen bleibt.
+ *
+ * Welche Regel für welche Ressource gilt, sagt der Vertrag
+ * ({@link countingForResource}); hier steht nur, wie sie auf Deutsch heißt.
+ */
+export const QUOTA_COUNTING_LABELS: Record<ResourceQuotaCounting, string> = {
+  running: 'laufende Server',
+  all: 'alle Server, auch gestoppte',
+};
+
+/** Kurzform für {@link QUOTA_COUNTING_LABELS} über die Ressourcenart. */
+export function quotaCountingLabel(resource: ResourceKind): string {
+  return QUOTA_COUNTING_LABELS[countingForResource(resource)];
+}
+
 export const NOTIFIABLE_EVENT_LABELS: Record<NotifiableEventName, string> = {
   'server.created': 'Server erstellt',
   'server.started': 'Server gestartet',
