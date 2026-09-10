@@ -267,6 +267,11 @@ describe('Valheim – erstes Spiel aus Steam (Anhang A, Phase 3)', () => {
       kind: 'gamedig',
       protocol: 'valheim',
       containerPort: 2457,
+      // Und ohne `-public 1` antwortet dieser Port gar nicht (gamedig,
+      // GAMES_LIST.md): Der Server meldet sich dann nicht beim
+      // Steam-Verzeichnis an. Ohne diese Zeile liefe jeder private Server in
+      // die Startfrist, obwohl gespielt wird.
+      requiresConfigFlag: 'public',
     });
   });
 
@@ -275,8 +280,22 @@ describe('Valheim – erstes Spiel aus Steam (Anhang A, Phase 3)', () => {
     // nichts dergleichen. Und Valheim nimmt weder ueber die Standardeingabe
     // noch ueber RCON Befehle entgegen.
     expect(VALHEIM_GAME_TYPE.supportsVirtualHostRouting).toBe(false);
-    expect(VALHEIM_GAME_TYPE.console).toBeUndefined();
+    // Ausdruecklich `none` und nicht weggelassen: Ohne Angabe gaelte `stdin`,
+    // und das Panel zeigte ein Eingabefeld ohne Wirkung.
+    expect(VALHEIM_GAME_TYPE.console).toEqual({ kind: 'none' });
     expect(VALHEIM_GAME_TYPE.consoleQuickCommands ?? []).toEqual([]);
+  });
+
+  it('zeigt den Server in der Serverliste, solange niemand widerspricht', () => {
+    // Die zurueckhaltendere Vorgabe waere `false`. Sie ist es trotzdem nicht:
+    // Ohne `-public 1` beantwortet Valheim keine Abfrage, und dann bleibt die
+    // Kachel ohne Spielerzahl und ohne Ping. Wer das will, soll es waehlen -
+    // nicht durch eine Vorgabe hineinrutschen.
+    const oeffentlich = VALHEIM_GAME_TYPE.configFields.find((feld) => feld.key === 'public');
+
+    expect(oeffentlich?.defaultValue).toBe(true);
+    // Und die Beschreibung sagt, was daran haengt.
+    expect(oeffentlich?.description).toMatch(/Spielerzahl/u);
   });
 
   it('verlangt ein Passwort und bildet jedes Feld auf eine Umgebungsvariable ab', () => {

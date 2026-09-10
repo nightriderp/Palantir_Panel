@@ -84,6 +84,9 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     gameTypeName: definition.name,
     // Immer gesetzt, notfalls leer – das Frontend soll nicht raten müssen.
     consoleQuickCommands: definition.consoleQuickCommands ?? [],
+    // Ohne Angabe hat ein Spiel eine Konsole über die Standardeingabe; nur
+    // `{ kind: 'none' }` sagt ausdrücklich, dass es keine gibt (Valheim).
+    supportsConsole: definition.console?.kind !== 'none',
     status: server.status,
     statusMessage: server.statusMessage,
     hostId: server.hostId,

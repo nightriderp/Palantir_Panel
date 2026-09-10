@@ -184,7 +184,10 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
               server={server}
               stats={live.stats}
               console={
-                server.permissions.canUseConsole ? (
+                // Zwei Bedingungen, zwei Bedeutungen: `canUseConsole` sagt, ob
+                // der Aufrufer darf, `supportsConsole`, ob es am Spiel etwas zu
+                // bedienen gibt (Valheim: nein).
+                server.permissions.canUseConsole && server.supportsConsole !== false ? (
                   <ConsoleTab
                     server={server}
                     lines={live.consoleLines}

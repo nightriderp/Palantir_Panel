@@ -42,6 +42,17 @@ darauf, und hinter frp trägt jeder Container-Port eine eigene öffentliche Numm
 Hostname-Routing gibt es hier nicht: Der Router liest den Namen aus dem Minecraft-Handshake, ein
 UDP-Spiel liefert nichts dergleichen. Valheim behält seinen Port in der Adresse.
 
+**Ohne `-public 1` antwortet der Abfrage-Port überhaupt nicht.** Ein Server im privaten Modus
+meldet sich nicht beim Steam-Verzeichnis an und beantwortet keine A2S-Abfrage — erreichbar ist er
+trotzdem, wer Adresse und Passwort hat, spielt. Das Panel weiß dann aber nichts über ihn: keine
+Spielerzahl, kein Ping, und der automatische Stopp bei 0 Spielern greift nicht. Der Start gilt in
+diesem Fall als geglückt, sobald der Container läuft (`query.requiresConfigFlag` in der
+Spieltyp-Definition). Deshalb steht der Schalter „In der Serverliste zeigen" auf **an**.
+
+Eine zweite Eigenheit derselben Art: Ein Server mit `-crossplay` in den Startparametern meldet die
+Spielerzahl immer als 0 (gamedig, Fehlerbericht 539). Der Server läuft, der Ping stimmt — nur der
+automatische Stopp hält ihn für leer.
+
 ## Der erste Start dauert
 
 SteamCMD lädt gut ein Gigabyte. Die Startfrist der Spieltyp-Definition ist deshalb auf zwanzig

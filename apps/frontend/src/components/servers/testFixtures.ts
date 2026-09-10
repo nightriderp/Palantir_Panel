@@ -65,6 +65,8 @@ export interface ServerFixtureOptions {
   permissions?: GameServerPermissions;
   /** Schnellbefehle der Konsole; ohne Angabe keine. */
   consoleQuickCommands?: readonly ConsoleQuickCommand[];
+  /** Nimmt das Spiel Konsolenbefehle entgegen? Ohne Angabe ja. */
+  supportsConsole?: boolean;
 }
 
 export function server(options: ServerFixtureOptions): GameServerDto {
@@ -77,6 +79,7 @@ export function server(options: ServerFixtureOptions): GameServerDto {
     gameType: 'testserver',
     gameTypeName: options.gameTypeName ?? 'Testserver',
     consoleQuickCommands: options.consoleQuickCommands ?? [],
+    supportsConsole: options.supportsConsole ?? true,
     status: options.status ?? 'stopped',
     statusMessage: null,
     hostId: 'node-1',
