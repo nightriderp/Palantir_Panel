@@ -87,38 +87,15 @@ updates:
         update-types: ['version-update:semver-major']
 
   # ---------------------------------------------------------------------------
-  # Dasselbe für das Basis-Image der Java-Spiele (`images/base/java/Dockerfile`).
-  # Es braucht einen **eigenen** Eintrag, weil Dependabot je Ordner arbeitet und
-  # der Eintrag oben nur `/images/test/minecraft` ansieht.
+  # **`/images/base/java` steht hier bewusst nicht (mehr).** Bis Fassung 2 zog
+  # es `eclipse-temurin` per Digest und hatte damit dasselbe Problem wie die
+  # Actions. Seit Fassung 3 sitzt es auf `palantir-base-linux` und holt die JRE
+  # als Tarball von Adoptium, gepinnt über `JRE_URL` und `JRE_SHA256` — beides
+  # kein Docker-Gegenstand, den Dependabot kennt. Ein Eintrag hier fände nichts
+  # mehr; nachgezogen wird die JRE von Hand (`images/base/java/README.md`).
   #
-  # Die Spiel-Images darauf (`images/game/minecraft`) stehen bewusst NICHT hier:
-  # Ihr `FROM` zeigt auf `palantir-base-java:<Fassung>`, ein Tag aus der eigenen
-  # Registry, das nie überschrieben wird – dort gibt es nichts nachzuziehen, was
-  # nicht eine bewusste Entscheidung wäre (images/README.md).
-  #
-  # **Beim Übernehmen gehört die Zahl in `images/base/java/VERSION` mit erhöht.**
-  # Die Spiel-Images ziehen nicht von selbst nach: Wer den neuen Java-Stand in
-  # einem Spiel will, setzt dort `BASIS` auf die neue Fassung, erhöht dessen
-  # `VERSION` und zieht `dockerImage` in `game-registry.ts` nach – sonst bricht
-  # game-images.yml auf `main` mit „Versions-Tag gibt es bereits" ab.
-  - package-ecosystem: docker
-    directory: /images/base/java
-    schedule:
-      interval: weekly
-      day: monday
-      time: '06:00'
-      timezone: Europe/Berlin
-    open-pull-requests-limit: 2
-    commit-message:
-      prefix: '[images]'
-    # Hauptfassungen bleiben außen vor, aus demselben Grund wie oben – hier kommt
-    # ein zweiter hinzu: Die Java-Fassung ist keine freie Wahl. Paper nennt eine
-    # Mindestfassung (26.2 verlangt Java 25); ein Sprung auf die nächste
-    # Hauptfassung gehört zusammen mit einer neuen Paper-Fassung entschieden,
-    # nicht als eigener Vorschlag.
-    ignore:
-      - dependency-name: eclipse-temurin
-        update-types: ['version-update:semver-major']
+  # Aus demselben Grund fehlen `base/steam` und alle Spiel-Images: Ihr `FROM`
+  # zeigt auf ein Tag der eigenen Registry, das nie überschrieben wird.
 
   # ---------------------------------------------------------------------------
   # Und dasselbe fuer die gemeinsame Wurzel (`images/base/linux/Dockerfile`).
@@ -139,8 +116,19 @@ updates:
     open-pull-requests-limit: 2
     commit-message:
       prefix: '[images]'
-    # Eine neue Ubuntu-Hauptfassung ist ein Umzug der ganzen Kette und gehoert
-    # entschieden, nicht vorgeschlagen.
+    # Eine neue Ubuntu-Fassung ist ein Umzug der ganzen Kette und gehoert
+    # entschieden, nicht vorgeschlagen — **Haupt- und Nebenfassung**.
+    #
+    # Die Nebenfassung steht hier, seit Dependabot 24.04 auf 24.10 heben wollte
+    # (PR #341, geschlossen). Bei Ubuntu ist das keine kleinere Anhebung,
+    # sondern ein Wechsel der Gattung: Gerade Nebenfassungen im April sind LTS
+    # (24.04 wird bis 2029 gepflegt), ungerade dazwischen sind
+    # Zwischenfassungen mit neun Monaten Unterstützung — 24.10 war bereits
+    # abgekündigt, als der Vorschlag kam. Eine Wurzel, auf der jedes Spiel-Image
+    # sitzt, gehört auf LTS.
+    #
+    # Der Digest von `ubuntu:24.04` wird weiterhin nachgezogen; genau dafür
+    # existiert dieser Eintrag.
     ignore:
       - dependency-name: ubuntu
-        update-types: ['version-update:semver-major']
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
