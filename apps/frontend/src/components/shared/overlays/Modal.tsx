@@ -40,6 +40,30 @@ export interface ModalProps {
 }
 
 /**
+ * Auswahl für „was kann den Fokus bekommen".
+ *
+ * Bewusst ohne Sichtbarkeitsprüfung über `offsetParent`: Im Test-DOM (jsdom)
+ * hat kein Element eine Ausdehnung, dort fiele die Prüfung immer negativ aus
+ * und der Fokusfang wäre genau da nicht prüfbar, wo er beschrieben ist.
+ * Ausgeblendetes fängt stattdessen `[hidden]` und `aria-hidden` ab.
+ */
+const FOKUSSIERBAR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+  '[contenteditable="true"]',
+].join(', ');
+
+function fokussierbareIn(wurzel: HTMLElement): HTMLElement[] {
+  return [...wurzel.querySelectorAll<HTMLElement>(FOKUSSIERBAR)].filter(
+    (element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
+  );
+}
+
+/**
  * Basis-Dialog des Design-Systems.
  *
  * Verhalten: Escape schließt, Klick auf den Hintergrund schließt, der Fokus
@@ -48,6 +72,16 @@ export interface ModalProps {
  * `DangerConfirmDialog` und `FormModal` – die hier drauf aufbauen.
  *
  * Beides – Escape und Hintergrund – ist gesperrt, solange `busy` gesetzt ist.
+ *
+ * **Fokus bleibt im Dialog** (Fundpunkt 215): Tab und Umschalt+Tab laufen im
+ * Kreis durch die Bedienelemente des Dialogs, statt hinter ihm in die Seite zu
+ * wandern – dort ließ sich vorher mit der Tastatur alles bedienen, was der
+ * Dialog gerade verdeckt. Beim Schließen bekommt das Element den Fokus zurück,
+ * das ihn beim Öffnen hatte; sonst landete er wieder am Seitenanfang.
+ *
+ * Der Rest der Seite wird bewusst **nicht** `inert` gesetzt: Der Dialog steckt
+ * im React-Baum seines Aufrufers (kein Portal), er hätte also seinen eigenen
+ * Vorfahren stillzulegen. Für Vorlesehilfen sagt `aria-modal="true"` dasselbe.
  */
 export function Modal({
   open,
@@ -74,17 +108,54 @@ export function Modal({
    */
   const pressStartedOnBackdrop = useRef(false);
 
+  /** Wohin der Fokus zurückgeht, wenn der Dialog schließt (Fundpunkt 215). */
+  const fokusVorher = useRef<HTMLElement | null>(null);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      if (busy) return;
-      onClose();
+      if (event.key === 'Escape') {
+        if (busy) return;
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const dialog = dialogRef.current;
+      if (dialog === null) return;
+
+      const elemente = fokussierbareIn(dialog);
+      const aktiv = document.activeElement;
+
+      // Ein Dialog ohne Bedienelemente: Der Fokus bleibt trotzdem drin.
+      if (elemente.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const erstes = elemente[0] as HTMLElement;
+      const letztes = elemente[elemente.length - 1] as HTMLElement;
+      const drinnen = aktiv instanceof Node && dialog.contains(aktiv);
+
+      if (event.shiftKey && (!drinnen || aktiv === erstes || aktiv === dialog)) {
+        event.preventDefault();
+        letztes.focus();
+        return;
+      }
+
+      if (!event.shiftKey && (!drinnen || aktiv === letztes)) {
+        event.preventDefault();
+        erstes.focus();
+      }
     },
     [busy, onClose],
   );
 
   useEffect(() => {
     if (!open) return;
+    fokusVorher.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.addEventListener('keydown', handleKeyDown);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -92,6 +163,12 @@ export function Modal({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = previousOverflow;
+
+      // Nur zurückgeben, wenn es das Element noch gibt: Ein Dialog, der die
+      // Zeile löscht, aus der er geöffnet wurde, hat kein Ziel mehr.
+      const zurueck = fokusVorher.current;
+      fokusVorher.current = null;
+      if (zurueck !== null && zurueck.isConnected) zurueck.focus();
     };
   }, [open, handleKeyDown]);
 
