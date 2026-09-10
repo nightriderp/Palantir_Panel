@@ -553,7 +553,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       const refreshToken = request.cookies[REFRESH_COOKIE_NAME];
 
       if (request.authSessionId) {
-        await service.logout(request.authSessionId);
+        await service.logout(request.authSessionId, {
+          displayName: request.authUser?.displayName ?? null,
+          ipHint: toIpHint(request.ip),
+        });
       } else if (refreshToken) {
         await service.logoutByRefreshToken(refreshToken);
       }
