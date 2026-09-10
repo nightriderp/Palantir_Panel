@@ -12,7 +12,16 @@ import {
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { fetchBackupOverview } from '@/lib/api/admin';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
+import {
+  AdminAccessNotice,
+  AdminError,
+  AdminLoading,
+  AdminTable,
+  Blaetterleiste,
+  SortTh,
+  Td,
+} from '../common';
+import { useSeitenteilung, useTabellenSortierung } from '../tableSort';
 import { PanelBackupSection } from './PanelBackupSection';
 
 /**
@@ -24,17 +33,41 @@ import { PanelBackupSection } from './PanelBackupSection';
  * in diese Übersicht.
  */
 
+/** Spalten einer {@link BucketTable} (Fundpunkt 212). */
+const EIMER_SPALTEN = ['name', 'anzahl', 'speicher'] as const;
+
+type EimerSpalte = (typeof EIMER_SPALTEN)[number];
+
 function BucketTable({
   title,
   emptyLabel,
   buckets,
   nameHeader,
+  praefix,
 }: {
   title: string;
   emptyLabel: string;
   buckets: BackupStorageBucket[];
   nameHeader: string;
+  /**
+   * Beide Tabellen stehen auf derselben Seite – ohne eigene Kennung schrieben
+   * sie in dasselbe `?sort=` und stellten sich gegenseitig um.
+   */
+  praefix: string;
 }) {
+  /*
+   * Vorgabe „Speicher absteigend" (Fundpunkt 212): Diese Übersicht beantwortet
+   * genau eine Frage – wessen Sicherungen belegen den Platz. Vorher stand oben,
+   * was das Backend zufällig zuerst zusammengezählt hatte.
+   */
+  const sortierung = useTabellenSortierung<EimerSpalte>(EIMER_SPALTEN, 'speicher', 'desc', praefix);
+  const sortiert = sortierung.sortiere(buckets, {
+    name: (eimer) => eimer.name ?? null,
+    anzahl: (eimer) => eimer.backupCount,
+    speicher: (eimer) => eimer.totalSizeBytes,
+  });
+  const seite = useSeitenteilung(sortiert, praefix);
+
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-base font-semibold text-ink">{title}</h2>
@@ -44,13 +77,33 @@ function BucketTable({
         <AdminTable>
           <thead>
             <tr>
-              <Th>{nameHeader}</Th>
-              <Th className="text-right">Backups</Th>
-              <Th className="text-right">Speicher</Th>
+              <SortTh
+                aktiv={sortierung.schluessel === 'name'}
+                richtung={sortierung.richtung}
+                onSort={() => sortierung.umschalten('name')}
+              >
+                {nameHeader}
+              </SortTh>
+              <SortTh
+                className="text-right"
+                aktiv={sortierung.schluessel === 'anzahl'}
+                richtung={sortierung.richtung}
+                onSort={() => sortierung.umschalten('anzahl')}
+              >
+                Backups
+              </SortTh>
+              <SortTh
+                className="text-right"
+                aktiv={sortierung.schluessel === 'speicher'}
+                richtung={sortierung.richtung}
+                onSort={() => sortierung.umschalten('speicher')}
+              >
+                Speicher
+              </SortTh>
             </tr>
           </thead>
           <tbody>
-            {buckets.map((bucket) => (
+            {seite.zeilen.map((bucket) => (
               <tr key={bucket.id ?? bucket.name ?? 'unbekannt'}>
                 <Td className="text-ink">{bucket.name ?? 'Unbekannt'}</Td>
                 <Td className="text-right">{formatNumber(bucket.backupCount)}</Td>
@@ -60,6 +113,12 @@ function BucketTable({
           </tbody>
         </AdminTable>
       )}
+      <Blaetterleiste
+        seite={seite.seite}
+        seiten={seite.seiten}
+        gesamt={seite.gesamt}
+        onBlaettern={seite.blaettere}
+      />
     </section>
   );
 }
@@ -124,12 +183,14 @@ export function BackupsView() {
             nameHeader="Nutzer"
             emptyLabel="Keine Backups vorhanden."
             buckets={overview.perUser}
+            praefix="nutzer"
           />
           <BucketTable
             title="Nach Server"
             nameHeader="Server"
             emptyLabel="Keine Backups vorhanden."
             buckets={overview.perServer}
+            praefix="server"
           />
 
           <p className="text-sm text-ink-faint">Stand: {formatDateTime(overview.generatedAt)}</p>

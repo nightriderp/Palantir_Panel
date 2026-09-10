@@ -6,7 +6,7 @@ import {
   type StorageEntryKind,
   type StorageSnapshotDto,
 } from '@palantir/contracts';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   Badge,
   Button,
@@ -33,7 +33,51 @@ import {
 } from '@/lib/api/admin';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
+import {
+  AdminAccessNotice,
+  AdminError,
+  AdminLoading,
+  AdminTable,
+  Blaetterleiste,
+  SortTh,
+  Td,
+  Th,
+} from '../common';
+import { useSeitenteilung, useTabellenSortierung, type TabellenSortierung } from '../tableSort';
+
+/**
+ * Sortierbare Spalten der Postenliste (Fundpunkt 212). Vorgabe ist „Größe
+ * absteigend": Wer die Speicherübersicht aufruft, sucht fast immer das, was am
+ * meisten Platz belegt – vorher kamen die Posten in der Reihenfolge, in der der
+ * Agent sie gefunden hat, also in keiner.
+ */
+const POSTEN_SPALTEN = ['eintrag', 'kategorie', 'groesse', 'status'] as const;
+
+type PostenSpalte = (typeof POSTEN_SPALTEN)[number];
+
+/** Kopfzelle der Postenliste. */
+function PostenKopf({
+  sortierung,
+  schluessel,
+  className,
+  children,
+}: {
+  sortierung: TabellenSortierung<PostenSpalte>;
+  schluessel: PostenSpalte;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <SortTh
+      className={className}
+      aktiv={sortierung.schluessel === schluessel}
+      richtung={sortierung.richtung}
+      onSort={() => sortierung.umschalten(schluessel)}
+    >
+      {children}
+    </SortTh>
+  );
+}
 import { storageBlockReasonLabel, storageKindLabel } from '../labels';
 
 /**
@@ -286,10 +330,19 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
   const snapshot = resource.data;
   const breakdown = snapshot?.breakdown ?? null;
 
+  const sortierung = useTabellenSortierung<PostenSpalte>(POSTEN_SPALTEN, 'groesse', 'desc');
+
   const entries = useMemo(() => {
     const all = breakdown?.entries ?? [];
-    return kindFilter ? all.filter((entry) => entry.kind === kindFilter) : all;
-  }, [breakdown, kindFilter]);
+    const gefiltert = kindFilter ? all.filter((entry) => entry.kind === kindFilter) : all;
+
+    return sortierung.sortiere(gefiltert, {
+      eintrag: (entry) => entry.label,
+      kategorie: (entry) => storageKindLabel(entry.kind),
+      groesse: (entry) => entry.sizeBytes,
+      status: (entry) => (entry.inUse ? 'In Benutzung' : 'Ungenutzt'),
+    });
+  }, [breakdown, kindFilter, sortierung]);
 
   /** Nur diese Posten lassen sich überhaupt anhaken – der Contract entscheidet. */
   const loeschbar = useMemo(
@@ -310,6 +363,14 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
   );
 
   const auswahlBytes = auswahl.reduce((summe, entry) => summe + entry.sizeBytes, 0);
+
+  /*
+   * Geblättert wird über die gefilterte Liste; das Anhaken bleibt bewusst
+   * seitenübergreifend. „Alle auswählen" meint alle löschbaren Posten des
+   * Filters, nicht nur die fünfundzwanzig, die gerade dastehen – sonst hinge
+   * das Ergebnis einer Sammellöschung daran, auf welcher Seite man steht.
+   */
+  const seite = useSeitenteilung(entries);
 
   function hakeAn(id: string, an: boolean): void {
     setAngehakt((vorher) => {
@@ -506,15 +567,23 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
                       />
                     )}
                   </Th>
-                  <Th>Eintrag</Th>
-                  <Th>Kategorie</Th>
-                  <Th className="text-right">Größe</Th>
-                  <Th>Status</Th>
+                  <PostenKopf sortierung={sortierung} schluessel="eintrag">
+                    Eintrag
+                  </PostenKopf>
+                  <PostenKopf sortierung={sortierung} schluessel="kategorie">
+                    Kategorie
+                  </PostenKopf>
+                  <PostenKopf sortierung={sortierung} schluessel="groesse" className="text-right">
+                    Größe
+                  </PostenKopf>
+                  <PostenKopf sortierung={sortierung} schluessel="status">
+                    Status
+                  </PostenKopf>
                   <Th className="text-right">Aktion</Th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map((entry) => (
+                {seite.zeilen.map((entry) => (
                   <tr key={entry.id}>
                     <Td>
                       {entry.permissions.canDelete ? (
@@ -565,6 +634,13 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
               </tbody>
             </AdminTable>
           )}
+
+          <Blaetterleiste
+            seite={seite.seite}
+            seiten={seite.seiten}
+            gesamt={seite.gesamt}
+            onBlaettern={seite.blaettere}
+          />
         </>
       )}
 
