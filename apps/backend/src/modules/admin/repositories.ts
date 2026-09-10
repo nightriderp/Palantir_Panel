@@ -595,6 +595,16 @@ export function createDrizzleRoleMemberLookup(db: Database): RoleMemberLookup {
 
       return row !== undefined;
     },
+
+    async isOwner(userId) {
+      const [row] = await db
+        .select({ isOwner: users.isOwner })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      return row?.isOwner === true;
+    },
   };
 }
 

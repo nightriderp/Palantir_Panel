@@ -43,6 +43,17 @@ import { AdminError } from './errors.js';
  */
 export interface RoleMemberLookup {
   exists(userId: string): Promise<boolean>;
+  /**
+   * Ist dieses Konto der Owner der Instanz? (Fundpunkt 197.)
+   *
+   * `exists()` allein sagt nur, dass es das Konto gibt – der Rollen-Service
+   * konnte den **Rang** des Zielkontos deshalb nicht kennen und liess jeden mit
+   * `role.manage` an den Rollen jedes Kontos, auch an denen des Owners.
+   *
+   * Optional, damit eine schlanke Attrappe weiterhin mit `exists` auskommt:
+   * Fehlt die Auskunft, bleibt es beim bisherigen Verhalten.
+   */
+  isOwner?(userId: string): Promise<boolean>;
 }
 
 export interface RoleAdminService {
@@ -67,6 +78,36 @@ export function createRoleAdminService(deps: RoleAdminServiceDependencies): Role
   async function requireUser(userId: string): Promise<void> {
     if (!(await deps.users.exists(userId))) {
       throw new AdminError('USER_NOT_FOUND');
+    }
+  }
+
+  /**
+   * Rangschutz am Zielkonto (Fundpunkt 197).
+   *
+   * Die Rollen des Owners aendert nur der Owner. Ohne diese Pruefung durfte
+   * jedes Konto mit `role.manage` an ihnen drehen: Die Teilmengen-Regel aus
+   * PR #343 sichert, dass niemand Rechte **vergibt**, die er selbst nicht hat -
+   * sie sagt aber nichts darueber, wem er sie wegnimmt.
+   *
+   * Der Owner ist der einzige Rang, den das Modell kennt (`users.is_owner`);
+   * unter den uebrigen Konten gibt es keine Ordnung, die sich hier pruefen
+   * liesse. Genau diesen einen Fall deckt die Regel ab, statt eine Rangordnung
+   * zu erfinden, die es nicht gibt.
+   */
+  async function requireRangUeberZielkonto(ctx: AdminContext, userId: string): Promise<void> {
+    if (ctx.actor.isOwner) {
+      return;
+    }
+
+    // Fehlt die Auskunft (schlanke Attrappe), bleibt es beim bisherigen
+    // Verhalten - die Schnittstelle fuehrt sie als optional.
+    const zielIstOwner = (await deps.users.isOwner?.(userId)) ?? false;
+
+    if (zielIstOwner) {
+      throw new AdminError(
+        'PERMISSION_DENIED',
+        'Die Rollen des Owner-Kontos aendert nur der Owner selbst.',
+      );
     }
   }
 
@@ -147,6 +188,7 @@ export function createRoleAdminService(deps: RoleAdminServiceDependencies): Role
 
     async assignToUser(ctx, roleId, userId) {
       await requireUser(userId);
+      await requireRangUeberZielkonto(ctx, userId);
       await deps.roles.assignToUser(ctx.actor, userId, roleId);
 
       const role = await deps.roles.get(ctx.actor, roleId);
@@ -167,6 +209,7 @@ export function createRoleAdminService(deps: RoleAdminServiceDependencies): Role
 
     async removeFromUser(ctx, roleId, userId) {
       await requireUser(userId);
+      await requireRangUeberZielkonto(ctx, userId);
       await deps.roles.removeFromUser(ctx.actor, userId, roleId);
 
       const role = await deps.roles.get(ctx.actor, roleId);

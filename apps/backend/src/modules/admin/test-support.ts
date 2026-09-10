@@ -571,13 +571,19 @@ export function createTestRoleAdminService(options: {
   repository: RoleRepository;
   audit: AuditService;
   knownUserIds?: readonly string[];
+  /** Konten, die als Owner gelten – für den Rangschutz (Fundpunkt 197). */
+  ownerUserIds?: readonly string[];
 }): RoleAdminService {
   const known = options.knownUserIds ?? [USER_ID];
+  const owners = options.ownerUserIds ?? [];
 
   return createRoleAdminService({
     roles: createRoleService(options.repository),
     audit: options.audit,
-    users: { exists: (userId) => Promise.resolve(known.includes(userId)) },
+    users: {
+      exists: (userId) => Promise.resolve(known.includes(userId)),
+      isOwner: (userId) => Promise.resolve(owners.includes(userId)),
+    },
   });
 }
 
