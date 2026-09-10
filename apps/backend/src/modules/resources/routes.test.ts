@@ -226,6 +226,7 @@ describe('GET /me/resource-quota', () => {
       limit: 8192,
       used: 2048,
       remaining: 6144,
+      counting: 'running',
     });
     expect(body.data.cpu.remaining).toBe(3);
     expect(body.data.disk.remaining).toBe(30_720);

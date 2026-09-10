@@ -201,6 +201,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
       limit: 8192,
       used: 2048,
       remaining: 6144,
+      counting: 'running',
     });
     expect(quota.cpu).toEqual({
       resource: 'cpu',
@@ -208,6 +209,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
       limit: 4,
       used: 1.5,
       remaining: 2.5,
+      counting: 'running',
     });
     // Speicherplatz zählt alle Server, nicht nur die laufenden.
     expect(quota.disk).toEqual({
@@ -216,6 +218,8 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
       limit: 51_200,
       used: 20_480,
       remaining: 30_720,
+      // Fundpunkt 210: Genau diese Zeile stand vorher nur im Kommentar darueber.
+      counting: 'all',
     });
     // Die Serveranzahl zählt die gleichzeitig laufenden – wie in `capacity.ts`.
     expect(quota.servers).toEqual({
@@ -224,6 +228,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
       limit: 2,
       used: 1,
       remaining: 1,
+      counting: 'running',
     });
     expect(quota.updatedAt).toBe('2026-08-01T00:00:00.000Z');
   });
