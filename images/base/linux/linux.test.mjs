@@ -277,3 +277,136 @@ describe('palantir.sh – Dateien holen', nurMitShell, () => {
     assert.equal(readFileSync(join(ordner.daten, 'x.bin'), 'utf8'), INHALT);
   });
 });
+
+/**
+ * Einstellungen verschmelzen (seit Fassung 2).
+ *
+ * Die Funktion stand bis dahin im Startskript von Minecraft und gilt für jede
+ * Konfigurationsdatei aus `schlüssel=wert`-Zeilen. Geprüft wird das
+ * Versprechen, das sie gibt: Was das Panel verwaltet, bekommt den neuen Wert –
+ * alles andere bleibt, wie der Betreiber es hinterlassen hat.
+ */
+describe('palantir.sh – Einstellungen verschmelzen', nurMitShell, () => {
+  /** Schreibt die verwalteten Schlüssel und verschmilzt sie in die Zieldatei. */
+  function verschmelzen(ordner, paare, vorhanden = null) {
+    const verwaltet = join(ordner.wurzel, 'verwaltet.txt');
+    const ziel = join(ordner.daten, 'config.txt');
+
+    writeFileSync(verwaltet, '');
+    if (vorhanden !== null) writeFileSync(ziel, vorhanden);
+
+    const zeilen = paare
+      .map(([schluessel, wert]) => `palantir_eigenschaft "$1" '${schluessel}' '${wert}'`)
+      .join('; ');
+
+    const lauf = spawnSync(
+      'sh',
+      [
+        '-c',
+        `set -eu; . "$3"; ${zeilen}; palantir_schluessel_verschmelzen "$1" "$2"`,
+        '_',
+        posix(verwaltet),
+        posix(ziel),
+        PALANTIR_SH,
+      ],
+      { encoding: 'utf8', timeout: 30_000, env: { ...process.env } },
+    );
+
+    return { lauf, inhalt: lauf.status === 0 ? readFileSync(ziel, 'utf8') : '' };
+  }
+
+  it('legt die verwalteten Schlüssel an, wenn es die Datei noch nicht gibt', () => {
+    const { lauf, inhalt } = verschmelzen(datenordner(), [
+      ['port', '7777'],
+      ['motd', 'Ein Palantir-Server'],
+    ]);
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.match(inhalt, /^port=7777$/mu);
+    assert.match(inhalt, /^motd=Ein Palantir-Server$/mu);
+  });
+
+  it('lässt Kommentare und fremde Schlüssel des Betreibers stehen', () => {
+    const { inhalt } = verschmelzen(
+      datenordner(),
+      [['port', '7777']],
+      ['# von Hand', 'npcstream=60', 'port=1234', ''].join('\n'),
+    );
+
+    assert.match(inhalt, /^# von Hand$/mu);
+    assert.match(inhalt, /^npcstream=60$/mu);
+    // Derselbe Platz, neuer Wert.
+    assert.match(inhalt, /^port=7777$/mu);
+    assert.doesNotMatch(inhalt, /^port=1234$/mu);
+  });
+
+  it('ersetzt einen doppelt vorhandenen Schlüssel genau einmal', () => {
+    // Die meisten Leser nehmen den letzten Treffer: Bliebe die zweite Zeile
+    // stehen, überschriebe eine alte Dublette die frische Einstellung.
+    const { inhalt } = verschmelzen(
+      datenordner(),
+      [['port', '7777']],
+      ['port=1234', 'motd=hallo', 'port=4321', ''].join('\n'),
+    );
+
+    assert.deepEqual(
+      inhalt.split('\n').filter((zeile) => zeile.startsWith('port=')),
+      ['port=7777'],
+    );
+    assert.match(inhalt, /^motd=hallo$/mu);
+  });
+
+  it('macht aus einem mehrzeiligen Wert keine zweite Zeile', () => {
+    const { inhalt } = verschmelzen(datenordner(), [['motd', 'erste\nzweite']]);
+
+    assert.match(inhalt, /^motd=erstezweite$/mu);
+  });
+});
+
+/**
+ * Auspacken (seit Fassung 2).
+ *
+ * Ein Zip lässt sich mit Bordmitteln einer POSIX-Shell nicht öffnen; deshalb
+ * liegt `unzip` seit dieser Fassung im Image. Der Test baut sich sein Archiv
+ * selbst – ohne `zip` im PATH wird übersprungen.
+ */
+describe('palantir.sh – Archiv auspacken', nurMitShell, () => {
+  const werkzeugeDa = spawnSync('sh', ['-c', 'command -v zip && command -v unzip']).status === 0;
+  const nurMitZip = { skip: werkzeugeDa ? false : 'zip/unzip nicht im PATH.' };
+
+  it('packt in den Zielordner aus und legt ihn an', nurMitZip, () => {
+    const ordner = datenordner();
+    const quelle = join(ordner.wurzel, 'inhalt.txt');
+    writeFileSync(quelle, 'hallo');
+    const archiv = join(ordner.wurzel, 'archiv.zip');
+    spawnSync('sh', [
+      '-c',
+      'cd "$(dirname "$1")" && zip -q "$2" "$(basename "$1")"',
+      '_',
+      posix(quelle),
+      posix(archiv),
+    ]);
+
+    const lauf = mitBibliothek(
+      ordner,
+      `palantir_zip_auspacken "${posix(archiv)}" "$PALANTIR_DATENORDNER/entpackt"`,
+    );
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.equal(readFileSync(join(ordner.daten, 'entpackt', 'inhalt.txt'), 'utf8'), 'hallo');
+  });
+
+  it('meldet ein kaputtes Archiv, statt still weiterzumachen', nurMitZip, () => {
+    const ordner = datenordner();
+    const archiv = join(ordner.wurzel, 'kaputt.zip');
+    writeFileSync(archiv, 'das ist kein Archiv');
+
+    const lauf = mitBibliothek(
+      ordner,
+      `palantir_zip_auspacken "${posix(archiv)}" "$PALANTIR_DATENORDNER/entpackt" || echo GESCHEITERT`,
+    );
+
+    assert.match(lauf.stdout, /GESCHEITERT/u);
+    assert.match(lauf.stdout, /liess sich nicht auspacken/u);
+  });
+});
