@@ -84,6 +84,34 @@ describe('Node-Kapazität (Lastenheft §3.7)', () => {
     expect(capacity.available).toEqual({ ramMb: 24_576, cpuCores: 6, diskMb: 1_900_000 });
   });
 
+  /*
+   * Fundpunkt 203: Die Uebersicht zeigte nur `allocated` (alle Zustaende), die
+   * harte Schranke rechnet aber gegen die laufenden Server. Auf einer Node mit
+   * 28 GB, davon 26 GB gebucht und 20 GB laufend, wies die Seite "2 GB frei"
+   * aus - und `POST /api/servers` nahm einen 6-GB-Server an.
+   */
+  it('fuehrt gebucht und laufend getrennt', () => {
+    const capacity = computeCapacity(
+      { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
+      { ramMb: 26_624, cpuCores: 8, diskMb: 86_016 },
+      { ramMb: 20_480, cpuCores: 6, diskMb: 86_016 },
+    );
+
+    expect(capacity.allocated.ramMb).toBe(26_624);
+    expect(capacity.running?.ramMb).toBe(20_480);
+    // `available` bleibt die vorsichtige Zahl: was die Node bereithalten muss.
+    expect(capacity.available.ramMb).toBe(2_048);
+  });
+
+  it('faellt ohne eigene Angabe auf die gebuchte Zahl zurueck', () => {
+    const capacity = computeCapacity(
+      { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
+      { ramMb: 26_624, cpuCores: 8, diskMb: 86_016 },
+    );
+
+    expect(capacity.running).toEqual(capacity.allocated);
+  });
+
   it('meldet nie einen negativen Rest, auch wenn überbucht wurde', () => {
     const capacity = computeCapacity(
       { ramMb: 8_192, cpuCores: 4, diskMb: 100_000 },

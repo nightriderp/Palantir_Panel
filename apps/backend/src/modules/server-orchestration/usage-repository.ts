@@ -24,8 +24,18 @@ import { type DbConnection } from '../../db/client.js';
 import { gameServers } from '../../db/schema.js';
 import { type ServerUsageRepository, type UsageQueryOptions } from '../resources/index.js';
 
-/** Zustände, in denen ein Server RAM und CPU tatsächlich belegt. */
-const CONSUMING_STATUSES = new Set(['running', 'starting']);
+/**
+ * Zustände, in denen ein Server RAM und CPU tatsächlich belegt.
+ *
+ * Exportiert, seit die Node-Übersicht dieselbe Zahl anzeigen soll, gegen die
+ * hier geprüft wird (Fundpunkt 203). Eine zweite Liste in `admin-ports.ts`
+ * wäre genau die Art Abweichung, die niemand bemerkt, bis die Übersicht Platz
+ * zeigt und der Start ihn verweigert (CLAUDE.md §3).
+ *
+ * Die Platte gehört bewusst **nicht** dazu: Ein Datenordner bleibt liegen,
+ * wenn der Server aus ist.
+ */
+export const CONSUMING_STATUSES = new Set(['running', 'starting']);
 
 interface UsageRow {
   readonly status: string;

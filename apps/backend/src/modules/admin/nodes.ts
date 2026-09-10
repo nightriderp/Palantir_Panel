@@ -104,7 +104,15 @@ export interface HostNodeRepository {
 /** Was auf einer Node an Servern liegt – geliefert von B3. */
 export interface NodePlacement {
   readonly serverCount: number;
+  /** Summe der Limits **aller** dort angelegten Server, gleich in welchem Zustand. */
   readonly allocated: NodeResources;
+  /**
+   * Belegung, gegen die Anlegen und Starten geprueft werden (Fundpunkt 203):
+   * RAM und CPU nur der laufenden und startenden Server, die Platte ueber alle
+   * Zustaende. Optional, damit eine Quelle ohne diese Zahl weiter gueltig ist -
+   * dann faellt die Anzeige auf `allocated` zurueck, die vorsichtigere Zahl.
+   */
+  readonly running?: NodeResources;
 }
 
 /**
@@ -151,8 +159,15 @@ function subtract(total: NodeResources, allocated: NodeResources): NodeResources
 export function computeCapacity(
   total: NodeResources,
   allocated: NodeResources = NO_RESOURCES,
+  running: NodeResources = allocated,
 ): HostNodeCapacity {
-  return { total, allocated, available: subtract(total, allocated) };
+  /*
+   * `available` bleibt bewusst `total - allocated` (Fundpunkt 203): Was frei
+   * ist, richtet sich nach dem, was die Node bereithalten muss, wenn alles
+   * laeuft - nicht danach, was gerade zufaellig aus ist. `running` steht
+   * daneben und sagt, wogegen die harte Schranke rechnet.
+   */
+  return { total, allocated, running, available: subtract(total, allocated) };
 }
 
 export function computeHostNodePermissions(actor: PermissionActor): HostNodePermissions {
@@ -272,7 +287,11 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       wireguardIp: node.wireguardIp,
       status: node.status,
       statusMessage: node.statusMessage,
-      capacity: computeCapacity(node.totalResources, placement?.allocated ?? NO_RESOURCES),
+      capacity: computeCapacity(
+        node.totalResources,
+        placement?.allocated ?? NO_RESOURCES,
+        placement?.running ?? placement?.allocated ?? NO_RESOURCES,
+      ),
       usage: usage ?? null,
       serverCount: placement?.serverCount ?? 0,
       lastSeenAt: node.lastSeenAt?.toISOString() ?? null,

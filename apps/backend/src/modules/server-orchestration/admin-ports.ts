@@ -42,6 +42,7 @@ import {
 } from '../admin/index.js';
 import { type AgentRegistry } from './agent-gateway.js';
 import { isServerOrchestrationError } from './errors.js';
+import { CONSUMING_STATUSES } from './usage-repository.js';
 
 const NO_RESOURCES: NodeResources = { ramMb: 0, cpuCores: 0, diskMb: 0 };
 
@@ -53,29 +54,73 @@ const NO_RESOURCES: NodeResources = { ramMb: 0, cpuCores: 0, diskMb: 0 };
  * `admin/nodes.ts`). Ein gestoppter Server zählt mit: Sein Datenordner liegt
  * weiter auf der Platte, und beim nächsten Start soll die Node den Platz haben.
  */
+/** Eine Serverzeile, so viel wie die Belegungsrechnung davon braucht. */
+export interface BelegungsZeile {
+  readonly hostId: string;
+  readonly status: string;
+  readonly resourceLimits: NodeResources;
+}
+
+/**
+ * Rechnet die Zeilen zu `gebucht` und `laufend` je Node zusammen
+ * (Fundpunkt 203).
+ *
+ * Ausgelagert und exportiert, damit die Regel ohne laufende Datenbank pruefbar
+ * bleibt (CLAUDE.md §4) - sie ist der Grund, warum Uebersicht und
+ * Kapazitaetsschranke frueher auseinanderliefen.
+ *
+ * `allocated` zaehlt alle Zustaende. `running` nimmt RAM und CPU nur von den
+ * Servern, die laufen oder starten (`CONSUMING_STATUSES` aus
+ * `usage-repository.ts`, dieselbe Liste, die die Schranke benutzt); die Platte
+ * zaehlt auch dort ueber alle Zustaende, denn der Datenordner bleibt liegen,
+ * wenn der Server aus ist.
+ */
+export function fasseBelegungZusammen(
+  rows: readonly BelegungsZeile[],
+): ReadonlyMap<string, NodePlacement> {
+  const byNode = new Map<
+    string,
+    { serverCount: number; allocated: NodeResources; running: NodeResources }
+  >();
+
+  for (const row of rows) {
+    const entry = byNode.get(row.hostId) ?? {
+      serverCount: 0,
+      allocated: NO_RESOURCES,
+      running: NO_RESOURCES,
+    };
+    const laeuft = CONSUMING_STATUSES.has(row.status);
+
+    byNode.set(row.hostId, {
+      serverCount: entry.serverCount + 1,
+      allocated: {
+        ramMb: entry.allocated.ramMb + row.resourceLimits.ramMb,
+        cpuCores: entry.allocated.cpuCores + row.resourceLimits.cpuCores,
+        diskMb: entry.allocated.diskMb + row.resourceLimits.diskMb,
+      },
+      running: {
+        ramMb: entry.running.ramMb + (laeuft ? row.resourceLimits.ramMb : 0),
+        cpuCores: entry.running.cpuCores + (laeuft ? row.resourceLimits.cpuCores : 0),
+        diskMb: entry.running.diskMb + row.resourceLimits.diskMb,
+      },
+    });
+  }
+
+  return byNode;
+}
+
 export function createServerNodePlacementSource(db: Database): NodePlacementSource {
   return {
     async load(): Promise<ReadonlyMap<string, NodePlacement>> {
       const rows = await db
-        .select({ hostId: gameServers.hostId, resourceLimits: gameServers.resourceLimits })
+        .select({
+          hostId: gameServers.hostId,
+          status: gameServers.status,
+          resourceLimits: gameServers.resourceLimits,
+        })
         .from(gameServers);
 
-      const byNode = new Map<string, { serverCount: number; allocated: NodeResources }>();
-
-      for (const row of rows) {
-        const entry = byNode.get(row.hostId) ?? { serverCount: 0, allocated: NO_RESOURCES };
-
-        byNode.set(row.hostId, {
-          serverCount: entry.serverCount + 1,
-          allocated: {
-            ramMb: entry.allocated.ramMb + row.resourceLimits.ramMb,
-            cpuCores: entry.allocated.cpuCores + row.resourceLimits.cpuCores,
-            diskMb: entry.allocated.diskMb + row.resourceLimits.diskMb,
-          },
-        });
-      }
-
-      return byNode;
+      return fasseBelegungZusammen(rows);
     },
   };
 }
