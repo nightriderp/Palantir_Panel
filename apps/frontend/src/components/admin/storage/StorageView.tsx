@@ -10,6 +10,7 @@ import { useMemo, useState } from 'react';
 import {
   Badge,
   Button,
+  Checkbox,
   DangerConfirmDialog,
   MetricTile,
   PageHeader,
@@ -265,6 +266,17 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
   const [kindFilter, setKindFilter] = useState<StorageEntryKind | ''>('');
   const [toDelete, setToDelete] = useState<StorageEntryDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /**
+   * Angehakte Posten (Fundpunkt 211).
+   *
+   * Gehalten werden Ids, nicht Einträge: Nach einem Scan sind die Objekte neu,
+   * die Ids dieselben. Was es nicht mehr gibt, fällt beim Ableiten unten
+   * heraus – ein `useEffect` zum Aufräumen wäre eine zweite Wahrheit.
+   */
+  const [angehakt, setAngehakt] = useState<ReadonlySet<string>>(new Set());
+  /** Mehrfachlöschung läuft; zeigt „3 von 12" am Dialog. */
+  const [sammelStand, setSammelStand] = useState<{ fertig: number; gesamt: number } | null>(null);
+  const [sammelDialog, setSammelDialog] = useState(false);
 
   const resource = useApiResource<StorageSnapshotDto>(
     (signal) => fetchStorageSnapshot(nodeId, signal),
@@ -278,6 +290,46 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
     const all = breakdown?.entries ?? [];
     return kindFilter ? all.filter((entry) => entry.kind === kindFilter) : all;
   }, [breakdown, kindFilter]);
+
+  /** Nur diese Posten lassen sich überhaupt anhaken – der Contract entscheidet. */
+  const loeschbar = useMemo(
+    () => entries.filter((entry) => entry.permissions.canDelete),
+    [entries],
+  );
+
+  /**
+   * Die tatsächliche Auswahl: angehakt **und** noch da **und** im Filter.
+   *
+   * Wer die Kategorie wechselt, verliert seine Auswahl nicht – sie ist nur so
+   * lange unsichtbar, bis der Filter sie wieder zeigt. Gelöscht wird immer nur,
+   * was auch dasteht.
+   */
+  const auswahl = useMemo(
+    () => loeschbar.filter((entry) => angehakt.has(entry.id)),
+    [loeschbar, angehakt],
+  );
+
+  const auswahlBytes = auswahl.reduce((summe, entry) => summe + entry.sizeBytes, 0);
+
+  function hakeAn(id: string, an: boolean): void {
+    setAngehakt((vorher) => {
+      const naechste = new Set(vorher);
+      if (an) naechste.add(id);
+      else naechste.delete(id);
+      return naechste;
+    });
+  }
+
+  function alleAnhaken(an: boolean): void {
+    setAngehakt((vorher) => {
+      const naechste = new Set(vorher);
+      for (const entry of loeschbar) {
+        if (an) naechste.add(entry.id);
+        else naechste.delete(entry.id);
+      }
+      return naechste;
+    });
+  }
 
   async function runScan() {
     setScanning(true);
@@ -302,6 +354,43 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
       resource.reload();
     } else {
       toast.error(errorText(result));
+    }
+  }
+
+  /**
+   * Mehrere Posten nacheinander entfernen (Fundpunkt 211).
+   *
+   * Bewusst **nacheinander** und nicht parallel: Jeder Posten geht als eigener
+   * Befehl an den Agent, und zwölf gleichzeitige Löschbefehle auf einer Node
+   * sind kein Fortschritt, sondern eine Warteschlange mit mehr Risiko. Ein
+   * Fehlschlag hält die übrigen nicht auf – am Ende steht, was durchkam und
+   * was nicht.
+   */
+  async function sammelLoeschen(): Promise<void> {
+    const posten = auswahl;
+    if (posten.length === 0) return;
+
+    setSammelStand({ fertig: 0, gesamt: posten.length });
+    const gescheitert: string[] = [];
+
+    for (const [index, entry] of posten.entries()) {
+      const result = await deleteStorageEntry(nodeId, entry.id);
+      if (!result.success) gescheitert.push(entry.label);
+      setSammelStand({ fertig: index + 1, gesamt: posten.length });
+    }
+
+    setSammelStand(null);
+    setSammelDialog(false);
+    setAngehakt(new Set());
+    resource.reload();
+
+    const geschafft = posten.length - gescheitert.length;
+    if (gescheitert.length === 0) {
+      toast.success(`${geschafft} Posten gelöscht.`);
+    } else if (geschafft === 0) {
+      toast.error(`Nichts gelöscht: ${gescheitert.join(', ')}`);
+    } else {
+      toast.error(`${geschafft} gelöscht, fehlgeschlagen: ${gescheitert.join(', ')}`);
     }
   }
 
@@ -382,6 +471,23 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
             />
           </div>
 
+          {auswahl.length > 0 ? (
+            // Fundpunkt 211: Erscheint erst mit der ersten Auswahl – eine
+            // dauerhaft sichtbare Leiste wäre Platz für nichts.
+            <Panel className="flex flex-wrap items-center justify-between gap-3 border-brand-line">
+              <span className="text-sm text-ink-muted">
+                {formatNumber(auswahl.length)} Posten ausgewählt ·{' '}
+                <span className="font-mono">{formatBytes(auswahlBytes)}</span>
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => setAngehakt(new Set())}>Auswahl aufheben</Button>
+                <Button variant="danger" iconLeft="trash" onClick={() => setSammelDialog(true)}>
+                  Ausgewählte löschen
+                </Button>
+              </div>
+            </Panel>
+          ) : null}
+
           {entries.length === 0 ? (
             <Panel className="text-center text-sm text-ink-faint">
               Keine Einträge in dieser Kategorie.
@@ -390,6 +496,16 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
             <AdminTable>
               <thead>
                 <tr>
+                  <Th className="w-10">
+                    {loeschbar.length === 0 ? null : (
+                      <Checkbox
+                        checked={auswahl.length === loeschbar.length}
+                        indeterminate={auswahl.length > 0}
+                        onChange={alleAnhaken}
+                        label="Alle löschbaren Posten auswählen"
+                      />
+                    )}
+                  </Th>
                   <Th>Eintrag</Th>
                   <Th>Kategorie</Th>
                   <Th className="text-right">Größe</Th>
@@ -400,6 +516,15 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
               <tbody>
                 {entries.map((entry) => (
                   <tr key={entry.id}>
+                    <Td>
+                      {entry.permissions.canDelete ? (
+                        <Checkbox
+                          checked={angehakt.has(entry.id)}
+                          onChange={(an) => hakeAn(entry.id, an)}
+                          label={`„${entry.label}" auswählen`}
+                        />
+                      ) : null}
+                    </Td>
                     <Td className="text-ink">
                       <div className="flex flex-col">
                         <span>{entry.label}</span>
@@ -442,6 +567,36 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
           )}
         </>
       )}
+
+      {sammelDialog ? (
+        <DangerConfirmDialog
+          open
+          onClose={() => setSammelDialog(false)}
+          title={`${auswahl.length} Posten löschen?`}
+          confirmLabel={
+            sammelStand === null
+              ? 'Endgültig löschen'
+              : `${sammelStand.fertig} von ${sammelStand.gesamt} …`
+          }
+          busy={sammelStand !== null}
+          onConfirm={() => void sammelLoeschen()}
+          message={
+            <>
+              <p>
+                {formatBytes(auswahlBytes)} werden unwiderruflich von der Node entfernt. Die Posten
+                gehen einer nach dem anderen hinaus; ein Fehlschlag hält die übrigen nicht auf.
+              </p>
+              <ul className="mt-2 max-h-40 overflow-y-auto text-sm text-ink-faint">
+                {auswahl.map((entry) => (
+                  <li key={entry.id} className="truncate">
+                    {entry.label} · {formatBytes(entry.sizeBytes)}
+                  </li>
+                ))}
+              </ul>
+            </>
+          }
+        />
+      ) : null}
 
       {toDelete ? (
         <DangerConfirmDialog
