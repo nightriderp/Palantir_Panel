@@ -41,6 +41,13 @@
 # sha256:224a18… ist der Multi-Arch-Index hinter `ubuntu:24.04`, Stand 2026-09.
 # 24.04 und nicht 26.04: Dieselbe Grundlage wie das bisherige `eclipse-temurin`
 # in `base/java`, der Umzug ändert damit die Laufzeitumgebung nicht mit.
+#
+# **Und nur LTS.** Bei Ubuntu ist die Nebenfassung keine kleinere Anhebung: Die
+# Fassungen vom April gerader Jahre werden fünf Jahre gepflegt, alle anderen
+# neun Monate. Ein Vorschlag auf 24.10 kam (Dependabot, PR #341) und war
+# abzulehnen — jene Fassung war zu dem Zeitpunkt schon abgekündigt. Auf dieser
+# Wurzel sitzt jedes Spiel-Image; sie gehört auf LTS. `.github/dependabot.yml`
+# übergeht Haupt- **und** Nebenfassungen und zieht nur noch den Digest nach.
 FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
 
 # Ein Schritt, damit die Paketlisten nicht in einer eigenen Schicht liegen
