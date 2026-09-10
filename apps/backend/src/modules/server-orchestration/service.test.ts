@@ -579,6 +579,10 @@ interface Harness {
   readonly service: ServerOrchestrationService;
   readonly repository: FakeRepository;
   readonly socket: AnsweringSocket;
+  /** Sitzungsverzeichnis – damit ein Test die Node abhängen kann (Fundpunkt 226). */
+  readonly agents: AgentRegistry;
+  /** Die angemeldete Sitzung dieser Node. */
+  readonly session: AgentSession;
   readonly emitted: { event: string; payload: Record<string, unknown> }[];
   readonly dnsRecords: DnsRecord[];
   readonly deletedDnsNames: string[];
@@ -794,6 +798,8 @@ function makeHarness(
     service,
     repository,
     socket,
+    agents,
+    session,
     emitted,
     dnsRecords,
     deletedDnsNames,
@@ -4449,5 +4455,63 @@ describe('Verlauf der Messwerte (Arbeitspaket P5)', () => {
       harness.advance(1);
       expect(harness.service.listServerLoads()).toEqual([]);
     });
+  });
+});
+
+/**
+ * Loeschen, wenn die Node nicht mehr antwortet (Fundpunkt 226).
+ *
+ * Bisher endete jeder Versuch mit `AGENT_NOT_CONNECTED` - dauerhaft. Eine
+ * ausgemusterte Node hinterliess damit Server, die niemand mehr loswurde, samt
+ * belegter Subdomain und belegtem Port.
+ */
+describe('Server einer unerreichbaren Node loeschen (Fundpunkt 226)', () => {
+  async function mitContainerUndOhneNode() {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    // Node weg: keine Sitzung mehr im Verzeichnis.
+    harness.agents.unregister(harness.session);
+    harness.socket.commands.length = 0;
+
+    return { harness, created };
+  }
+
+  it('weist ohne Node ab und sagt, dass es trotzdem geht', async () => {
+    const { harness, created } = await mitContainerUndOhneNode();
+
+    await expect(harness.service.deleteServer(created.id)).rejects.toMatchObject({
+      code: 'AGENT_NOT_CONNECTED',
+    });
+    expect(harness.repository.servers.size).toBe(1);
+  });
+
+  it('loescht mit `erzwingen` Datensatz, DNS-Eintrag und Portzuweisung', async () => {
+    const { harness, created } = await mitContainerUndOhneNode();
+
+    await harness.service.deleteServer(created.id, { erzwingen: true });
+
+    expect(harness.repository.servers.size).toBe(0);
+    expect(harness.deletedDnsNames.length).toBeGreaterThan(0);
+    expect(harness.releasedPorts).toContain(created.id);
+    // Kein Befehl an einen Agent, den es nicht gibt.
+    expect(harness.socket.commands).toEqual([]);
+  });
+
+  it('nimmt den gewoehnlichen Weg, solange die Node antwortet', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    harness.socket.commands.length = 0;
+
+    // `erzwingen` ist kein "Aufraeumen ueberspringen": Der Container wird
+    // entfernt, weil er sich entfernen laesst.
+    await harness.service.deleteServer(created.id, { erzwingen: true });
+
+    expect(harness.socket.commands.map((c) => c.command)).toContain('DELETE');
+    expect(harness.repository.servers.size).toBe(0);
   });
 });

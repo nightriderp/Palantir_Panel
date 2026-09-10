@@ -136,8 +136,22 @@ export function runLifecycleAction(
   return apiRequest<GameServerDto>(serverPath(serverId, `/${action}`), { method: 'POST' });
 }
 
-export function deleteServer(serverId: string): Promise<ApiResult<null>> {
-  return apiRequest<null>(serverPath(serverId), { method: 'DELETE' });
+/**
+ * Server löschen.
+ *
+ * `erzwingen` (Fundpunkt 226) löscht auch ohne verbundene Node: Der Container
+ * bleibt dort liegen, alles andere – DNS-Eintrag, Port, Datensatz – verschwindet
+ * wie sonst. Das Backend prüft die Verbindung trotzdem; ist die Node erreichbar,
+ * läuft der gewöhnliche Weg samt Container-Befehl.
+ */
+export function deleteServer(
+  serverId: string,
+  optionen: { erzwingen?: boolean } = {},
+): Promise<ApiResult<null>> {
+  return apiRequest<null>(serverPath(serverId), {
+    method: 'DELETE',
+    ...(optionen.erzwingen === true ? { query: { force: 'true' } } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------

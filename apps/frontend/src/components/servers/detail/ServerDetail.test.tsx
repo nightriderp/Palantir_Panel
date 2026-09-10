@@ -38,6 +38,7 @@ const api = vi.hoisted(() => ({
   fetchServer: vi.fn(),
   runLifecycleAction: vi.fn(),
   fetchStatsHistory: vi.fn(),
+  deleteServer: vi.fn(),
 }));
 
 vi.mock('@/lib/live/LiveChannelProvider', () => ({ useLiveChannel: () => kanal.api }));
@@ -53,6 +54,7 @@ vi.mock('@/lib/api/servers', async (importOriginal) => ({
   fetchServer: api.fetchServer,
   runLifecycleAction: api.runLifecycleAction,
   fetchStatsHistory: api.fetchStatsHistory,
+  deleteServer: api.deleteServer,
 }));
 
 const LAEUFT = serverFixture({ id: 'srv-1', name: 'Welt', status: 'running' });
@@ -353,5 +355,75 @@ describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
     // gerade nicht laeuft - sie saehe aus wie der aktuelle Zustand.
     expect(await screen.findByText('Der Server läuft nicht.')).toBeTruthy();
     expect(screen.queryByText(/Keine laufenden Messwerte/)).toBeNull();
+  });
+});
+
+/**
+ * Loeschen, wenn die Node nicht antwortet (Fundpunkt 226).
+ *
+ * Vorher endete der Versuch mit einer Fehlermeldung und der Dialog schloss sich
+ * - der Server blieb dauerhaft stehen, samt belegter Subdomain und belegtem
+ * Port. Jetzt bleibt der Dialog offen und bietet den zweiten Weg an.
+ */
+describe('ServerDetail - Loeschen ohne Node (Fundpunkt 226)', () => {
+  async function bisZumLoeschdialog() {
+    zeichne();
+    await screen.findByText('Online');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByLabelText(/bestätigen/), {
+      target: { value: LAEUFT.name },
+    });
+
+    return dialog;
+  }
+
+  it('bleibt offen und erklaert den zweiten Weg', async () => {
+    api.deleteServer.mockResolvedValue({
+      success: false,
+      data: null,
+      error: { code: 'AGENT_NOT_CONNECTED', message: 'Die Node ist nicht verbunden.' },
+    });
+
+    const dialog = await bisZumLoeschdialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Endgültig löschen' }));
+
+    expect(await screen.findByRole('button', { name: 'Trotzdem löschen' })).toBeTruthy();
+    expect(screen.getByText(/Container bleibt auf der Node liegen/)).toBeTruthy();
+  });
+
+  it('schickt beim zweiten Klick die erzwungene Loeschung', async () => {
+    api.deleteServer
+      .mockResolvedValueOnce({
+        success: false,
+        data: null,
+        error: { code: 'AGENT_NOT_CONNECTED', message: 'Die Node ist nicht verbunden.' },
+      })
+      .mockResolvedValueOnce({ success: true, data: null, error: null });
+
+    const dialog = await bisZumLoeschdialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Endgültig löschen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Trotzdem löschen' }));
+
+    await waitFor(() => {
+      expect(api.deleteServer).toHaveBeenLastCalledWith('srv-1', { erzwingen: true });
+    });
+  });
+
+  it('bietet den zweiten Weg nicht bei jedem Fehler an', async () => {
+    api.deleteServer.mockResolvedValue({
+      success: false,
+      data: null,
+      error: { code: 'SERVER_STATE_CONFLICT', message: 'Der Server wird gerade angelegt.' },
+    });
+
+    const dialog = await bisZumLoeschdialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Endgültig löschen' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Trotzdem löschen' })).toBeNull();
+    });
   });
 });

@@ -569,9 +569,17 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   app.delete('/api/servers/:id', async (request, reply) => {
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
+      /*
+       * `force=true` löscht auch ohne verbundenen Agent (Fundpunkt 226).
+       * Bewusst kein `z.coerce.boolean()`: Das macht aus der Zeichenkette
+       * `'false'` ein `true` – jede nicht leere Zeichenkette ist wahr.
+       */
+      const { force } = z
+        .object({ force: z.enum(['true', 'false']).optional() })
+        .parse(request.query);
 
       await loadAuthorized(request, id, 'canDelete');
-      await service.deleteServer(id);
+      await service.deleteServer(id, { erzwingen: force === 'true' });
 
       return await reply.send(ok(null));
     } catch (error: unknown) {
