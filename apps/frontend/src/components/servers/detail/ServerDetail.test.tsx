@@ -256,3 +256,74 @@ describe('Live-Konsole nur, wenn das Spiel eine hat', () => {
     expect(screen.getByText('vom Spiel nicht unterstützt')).toBeTruthy();
   });
 });
+
+/**
+ * Letzte festgehaltene Messung statt leerer Kacheln (Fundpunkt 206) und die
+ * Netzwerk-Auskunft, die den Zustand mit dem Messwert verwechselte (207).
+ *
+ * Gemessen am Pruefstand: Ein laufender Server ohne verbundenen Agent zeigte
+ * ueberall Striche und darunter "Der Server laeuft nicht.", waehrend das
+ * Verlaufsdiagramm derselben Ansicht eine Kurve zeichnete.
+ */
+describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
+  const MESSUNG = {
+    cpuPercent: 250,
+    ramUsedMb: 2048,
+    diskUsedMb: 10_240,
+    pingMs: 24,
+    playersOnline: 3,
+    playersMax: 20,
+    networkRxBytes: 1024,
+    networkTxBytes: 2048,
+    updatedAt: '2026-09-10T12:00:00.000Z',
+  };
+
+  it('nimmt die letzte Messung aus dem Verlauf, wenn der Kanal schweigt', async () => {
+    api.fetchStatsHistory.mockResolvedValue({
+      success: true,
+      data: { serverId: 'srv-1', windowMinutes: 60, samples: [MESSUNG] },
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Online');
+
+    // 2048 MB von 4 GB Kontingent - vorher stand hier ein Strich.
+    expect(await screen.findByText('2 GB')).toBeTruthy();
+    // 250 % eines Kerns bei zwei Kernen: 125 %, begrenzt auf 100 (Fundpunkt 205).
+    expect(screen.getByText('2,5 von 2 Kernen')).toBeTruthy();
+    expect(screen.getByText(/Keine laufenden Messwerte/)).toBeTruthy();
+    expect(screen.queryByText('Der Server läuft nicht.')).toBeNull();
+  });
+
+  it('sagt beim laufenden Server ohne jede Messung nicht, er laufe nicht', async () => {
+    api.fetchStatsHistory.mockResolvedValue({
+      success: true,
+      data: { serverId: 'srv-1', windowMinutes: 60, samples: [] },
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Online');
+
+    expect(await screen.findByText('Noch keine Messwerte für diesen Server.')).toBeTruthy();
+    expect(screen.queryByText('Der Server läuft nicht.')).toBeNull();
+  });
+
+  it('bleibt beim gestoppten Server bei der alten Auskunft', async () => {
+    api.fetchServer.mockResolvedValue({ success: true, data: mitStatus('stopped'), error: null });
+    api.fetchStatsHistory.mockResolvedValue({
+      success: true,
+      data: { serverId: 'srv-1', windowMinutes: 60, samples: [MESSUNG] },
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Offline');
+
+    // Die Messung von vorhin gehoert nicht in die Kacheln eines Servers, der
+    // gerade nicht laeuft - sie saehe aus wie der aktuelle Zustand.
+    expect(await screen.findByText('Der Server läuft nicht.')).toBeTruthy();
+    expect(screen.queryByText(/Keine laufenden Messwerte/)).toBeNull();
+  });
+});

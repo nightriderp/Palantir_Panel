@@ -15,6 +15,7 @@ import {
   formatPing,
   formatPlayers,
   formatServerAddress,
+  formatTime,
   hasLiveStats,
 } from '@/components/shared';
 import { fetchStatsHistory } from '@/lib/api/servers';
@@ -57,12 +58,31 @@ function ratio(used: number | null | undefined, total: number): number | null {
 export function OverviewTab({ server, stats, console: consolePanel = null }: OverviewTabProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  /*
+   * Der Verlauf wird beim Öffnen der Ansicht geladen, nicht erst beim Aufklappen
+   * (Fundpunkt 206). Er ist der einzige Weg an Messwerte, die schon in der
+   * Datenbank liegen: Der Live-Kanal sendet nur, wenn der Agent etwas meldet –
+   * und meldet er nichts, blieben die Kacheln leer, während das Diagramm
+   * darunter für denselben Server eine Kurve zeichnete. Ein Aufruf mehr je
+   * Detailansicht; wer den Verlauf aufklappt, spart ihn dafür.
+   */
   const history = useApiResource<ServerStatsHistoryDto>(
     (signal) => fetchStatsHistory(server.id, HISTORY_WINDOW_MINUTES, signal),
-    historyOpen ? [server.id] : null,
+    [server.id],
   );
 
   const live = hasLiveStats(server.status) ? stats : null;
+
+  /**
+   * Letzte festgehaltene Messung – Ersatz, solange über den Live-Kanal nichts
+   * kommt. Nur bei einem Server, der überhaupt Messwerte hat: Bei einem
+   * gestoppten stünde dort sonst der Zustand von vorhin, als liefe er noch.
+   */
+  const letzteMessung =
+    live === null && hasLiveStats(server.status) ? (history.data?.samples.at(-1) ?? null) : null;
+
+  /** Was die Kacheln zeigen: der Live-Wert, sonst die letzte Messung. */
+  const anzeige = live ?? letzteMessung;
   const address = formatServerAddress(server.address);
 
   /*
@@ -124,18 +144,20 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         */}
         <MetricTile
           label="CPU-Last"
-          value={formatPercent(cpuQuotaPercent(live?.cpuPercent, server.resourceLimits.cpuCores))}
+          value={formatPercent(
+            cpuQuotaPercent(anzeige?.cpuPercent, server.resourceLimits.cpuCores),
+          )}
           note={
-            live?.cpuPercent == null
+            anzeige?.cpuPercent == null
               ? undefined
-              : `${formatNumber(Math.round(live.cpuPercent / 10) / 10)} von ${formatNumber(
+              : `${formatNumber(Math.round(anzeige.cpuPercent / 10) / 10)} von ${formatNumber(
                   server.resourceLimits.cpuCores,
                 )} Kernen`
           }
         />
         <MetricTile
           label="Arbeitsspeicher"
-          value={formatMegabytes(live?.ramUsedMb)}
+          value={formatMegabytes(anzeige?.ramUsedMb)}
           note={`von ${formatMegabytes(server.resourceLimits.ramMb)}`}
         />
         <MetricTile
@@ -147,11 +169,31 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
               : `${ratio(stats?.diskUsedMb, server.resourceLimits.diskMb)} % belegt`
           }
         />
-        <MetricTile label="Ping" value={formatPing(live?.pingMs)} />
+        <MetricTile label="Ping" value={formatPing(anzeige?.pingMs)} />
         <MetricTile label="Laufzeit" value={formatDuration(uptimeSeconds)} />
         {/* Nicht im Mockup, aber die Zahl liegt vor und gehoert zum Zustand. */}
-        <MetricTile label="Spieler" value={formatPlayers(live?.playersOnline, live?.playersMax)} />
+        <MetricTile
+          label="Spieler"
+          value={formatPlayers(anzeige?.playersOnline, anzeige?.playersMax)}
+        />
       </div>
+
+      {/*
+        Fundpunkt 206: Woher die Zahlen kommen, wenn sie nicht live sind – und
+        wenn gar keine da sind, warum. Vorher standen dort wortlos Striche,
+        während das Diagramm eine Zeile tiefer eine Kurve zeichnete.
+      */}
+      {letzteMessung !== null ? (
+        <p className="text-xs text-ink-faint">
+          Keine laufenden Messwerte – gezeigt wird die letzte festgehaltene Messung von{' '}
+          {formatTime(letzteMessung.updatedAt)} Uhr.
+        </p>
+      ) : live === null && hasLiveStats(server.status) && !history.loading ? (
+        <p className="text-xs text-ink-faint">
+          Für diesen Server liegen noch keine Messwerte vor. Meldet sich die Node wieder, füllen
+          sich die Kacheln von selbst.
+        </p>
+      ) : null}
 
       {/*
         Spielerliste (Gefundener Punkt 51). Sie erscheint nur, wenn die Abfrage
@@ -227,23 +269,40 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
 
       <Panel variant="plain" className="flex flex-col gap-2">
         <h3 className="text-base font-semibold">Netzwerkaktivität</h3>
-        {live === null ? (
-          <p className="text-sm text-ink-faint">Der Server läuft nicht.</p>
+        {anzeige === null ? (
+          /*
+           * Fundpunkt 207: Hier stand „Der Server läuft nicht." auch dann, wenn
+           * er lief – die Bedingung fragte nach dem Messwert, geantwortet hat
+           * sie über den Zustand. Das sind zwei verschiedene Dinge.
+           */
+          <p className="text-sm text-ink-faint">
+            {hasLiveStats(server.status)
+              ? 'Noch keine Messwerte für diesen Server.'
+              : 'Der Server läuft nicht.'}
+          </p>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <MetricTile label="Eingehend" value={formatBytes(live.networkRxBytes)} />
-              <MetricTile label="Ausgehend" value={formatBytes(live.networkTxBytes)} />
+              <MetricTile label="Eingehend" value={formatBytes(anzeige.networkRxBytes)} />
+              <MetricTile label="Ausgehend" value={formatBytes(anzeige.networkTxBytes)} />
               {/*
                * Paket-Zaehler wie im Entwurf (Abgleich 4.8). Sie stehen nur da,
                * wenn die Runtime sie meldet - ein aelterer Agent laesst die
                * Felder weg, und zwei Kacheln mit "—" waeren dann nur Fuellsel.
                */}
-              {live.networkRxPackets === undefined || live.networkRxPackets === null ? null : (
-                <MetricTile label="Pakete eingehend" value={formatNumber(live.networkRxPackets)} />
+              {anzeige.networkRxPackets === undefined ||
+              anzeige.networkRxPackets === null ? null : (
+                <MetricTile
+                  label="Pakete eingehend"
+                  value={formatNumber(anzeige.networkRxPackets)}
+                />
               )}
-              {live.networkTxPackets === undefined || live.networkTxPackets === null ? null : (
-                <MetricTile label="Pakete ausgehend" value={formatNumber(live.networkTxPackets)} />
+              {anzeige.networkTxPackets === undefined ||
+              anzeige.networkTxPackets === null ? null : (
+                <MetricTile
+                  label="Pakete ausgehend"
+                  value={formatNumber(anzeige.networkTxPackets)}
+                />
               )}
             </div>
             <p className="text-xs text-ink-faint">
