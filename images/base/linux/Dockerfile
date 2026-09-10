@@ -41,7 +41,7 @@
 # sha256:224a18… ist der Multi-Arch-Index hinter `ubuntu:24.04`, Stand 2026-09.
 # 24.04 und nicht 26.04: Dieselbe Grundlage wie das bisherige `eclipse-temurin`
 # in `base/java`, der Umzug ändert damit die Laufzeitumgebung nicht mit.
-FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+FROM ubuntu:24.10@sha256:cdf755952ed117f6126ff4e65810bf93767d4c38f5c7185b50ec1f1078b464cc
 
 # Ein Schritt, damit die Paketlisten nicht in einer eigenen Schicht liegen
 # bleiben. `tzdata`, weil Server ihre Logzeilen sonst in UTC schreiben und der
