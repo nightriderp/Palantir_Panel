@@ -140,9 +140,24 @@ export class BackupJob {
    * anschließend aus: Was danach mit dem Server passiert, entscheidet der
    * Lifecycle im Backend (Pflichtenheft §9), nicht der Agent.
    *
-   * Das Zielverzeichnis wird vorher geleert. Ein Zurückspielen „über" einen
+   * Das Zielverzeichnis wird geleert. Ein Zurückspielen „über" einen
    * bestehenden Stand hinterließe sonst Dateien, die es im Backup nicht mehr
    * gibt – der wiederhergestellte Stand wäre dann keiner.
+   *
+   * **Erst auspacken, dann leeren** (Audit 2026-09-10, Fundpunkt 200). Vorher
+   * stand das Leeren zuerst: Ging das Auspacken danach schief – volle Platte,
+   * abgerissene Verbindung, Absturz des Agents –, war die alte Welt weg und die
+   * neue unvollständig. Ein Nutzer, der eine Sicherung zurückspielen wollte,
+   * stand ohne beides da.
+   *
+   * Ausgepackt wird deshalb in einen Nachbarordner im selben Datenverzeichnis
+   * (also auf demselben Dateisystem, damit das Verschieben ein Umbenennen
+   * bleibt). Erst wenn das vollständig gelungen ist, wird das Ziel geleert und
+   * der neue Stand hineingezogen. Das verbleibende Fenster umfasst nur noch
+   * Umbenennungen – kein Entpacken, keine Prüfsumme, keine Netzverbindung.
+   *
+   * Beim Packen gibt es denselben Schutz schon (`tar-gz.ts`): Das Archiv
+   * entsteht unter einem Zwischennamen und wird erst am Ende umbenannt.
    */
   async restoreBackup(payload: RestoreBackupCommandPayload): Promise<RestoreBackupCommandResult> {
     const startedAt = this.#now().toISOString();
@@ -162,6 +177,22 @@ export class BackupJob {
     }
 
     const ziel = resolveWithinDirectory(this.#dataDir, payload.targetPath);
+
+    /*
+     * Das Datenverzeichnis selbst ist kein gültiges Ziel: `resolveWithinDirectory`
+     * gibt die Wurzel zurück, wenn der Kandidat auf sie zeigt (`.`, `''`, der
+     * absolute Pfad selbst) – und geleert würde dann der Datenordner **aller**
+     * Server der Node (Fundpunkt 201). Wiederhergestellt wird immer in den
+     * Ordner genau eines Servers.
+     */
+    if (path.resolve(ziel) === path.resolve(this.#dataDir)) {
+      throw new ContainerRuntimeError('INVALID_PATH', {
+        message:
+          'Wiederhergestellt wird in den Ordner eines Servers, nicht in das Datenverzeichnis.',
+        details: { dataDir: this.#dataDir, targetPath: payload.targetPath },
+      });
+    }
+
     let angehalten = false;
 
     if (payload.containerId !== undefined) {
@@ -169,8 +200,7 @@ export class BackupJob {
       angehalten = true;
     }
 
-    await this.#leere(ziel);
-    const ergebnis = await unpackArchive(archiv, ziel);
+    const ergebnis = await this.#packeAusUndTausche(archiv, ziel);
 
     return {
       backupId: payload.backupId,
@@ -281,6 +311,49 @@ export class BackupJob {
 
   async #starteWieder(containerId: string): Promise<void> {
     await this.#runtime.start(containerId);
+  }
+
+  /**
+   * Packt in einen Nachbarordner aus und tauscht erst danach (Fundpunkt 200).
+   *
+   * Der Zwischenordner liegt im Datenverzeichnis neben dem Ziel: dasselbe
+   * Dateisystem, also bleibt das Verschieben ein Umbenennen und kostet keine
+   * zweite Kopie der Weltdaten. Sein Name traegt Zeitstempel und Zufall, damit
+   * zwei Laeufe sich nicht ins Gehege kommen; ein Rest aus einem abgestuerzten
+   * Lauf wird beim naechsten Mal nicht mit ausgepackt, weil jeder Lauf seinen
+   * eigenen Ordner bekommt.
+   *
+   * Aufgeraeumt wird in jedem Fall - auch wenn das Auspacken scheitert. Bleibt
+   * ein Rest liegen (Prozess hart beendet), stoert er niemanden: Er liegt neben
+   * dem Serverordner und faengt mit einem Punkt an.
+   */
+  async #packeAusUndTausche(
+    archiv: string,
+    ziel: string,
+  ): Promise<Awaited<ReturnType<typeof unpackArchive>>> {
+    const zwischen = path.join(
+      this.#dataDir,
+      `.wiederherstellung-${path.basename(ziel)}-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+    );
+
+    try {
+      await this.#leere(zwischen);
+      const ergebnis = await unpackArchive(archiv, zwischen);
+
+      // Ab hier nur noch Umbenennungen: kein Entpacken, keine Pruefsumme, kein
+      // Netz. Das ist das Fenster, das frueher das Auspacken selbst umfasste.
+      await this.#leere(ziel);
+
+      for (const eintrag of await fs.readdir(zwischen)) {
+        await fs.rename(path.join(zwischen, eintrag), path.join(ziel, eintrag));
+      }
+
+      return ergebnis;
+    } finally {
+      await fs.rm(zwischen, { recursive: true, force: true });
+    }
   }
 
   async #leere(verzeichnis: string): Promise<void> {

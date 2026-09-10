@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -216,6 +216,68 @@ describe('RESTORE_BACKUP', () => {
     await expect(fs.readFile(path.join(datenordner, 'server.properties'), 'utf8')).resolves.toBe(
       'max-players=20\n',
     );
+  });
+
+  /*
+   * Fundpunkt 200 (high): Vorher wurde das Ziel VOR dem Auspacken geleert.
+   * Ging das Auspacken danach schief, war die alte Welt weg und die neue
+   * unvollstaendig - ein Nutzer, der eine Sicherung zurueckspielen wollte,
+   * stand ohne beides da.
+   */
+  it('laesst den alten Stand stehen, wenn das Auspacken scheitert', async () => {
+    await fs.writeFile(path.join(datenordner, 'welt.dat'), 'wertvoll');
+
+    // Ein Archiv, das die Pruefsummenpruefung besteht und trotzdem kein Archiv
+    // ist: Die Pruefsumme wird ueber genau diese Bytes gebildet.
+    const kaputt = path.join(backupDir, 'kaputt.tar.gz');
+    const inhalt = randomBytes(512);
+    await fs.writeFile(kaputt, inhalt);
+    const pruefsumme = createHash('sha256').update(inhalt).digest('hex');
+
+    await expect(
+      job.restoreBackup({
+        backupId: BACKUP_ID,
+        serverId: SERVER_ID,
+        storagePath: 'kaputt.tar.gz',
+        targetPath: datenordner,
+        expectedChecksum: pruefsumme,
+      }),
+    ).rejects.toThrow();
+
+    await expect(fs.readFile(path.join(datenordner, 'welt.dat'), 'utf8')).resolves.toBe('wertvoll');
+  });
+
+  it('laesst keinen Zwischenordner zurueck', async () => {
+    const { storagePath, checksumSha256 } = await gesichert();
+
+    await job.restoreBackup({
+      backupId: BACKUP_ID,
+      serverId: SERVER_ID,
+      storagePath,
+      targetPath: datenordner,
+      expectedChecksum: checksumSha256,
+    });
+
+    const uebrig = (await fs.readdir(dataDir)).filter((e) => e.startsWith('.wiederherstellung-'));
+
+    expect(uebrig).toEqual([]);
+  });
+
+  it('verweigert das Datenverzeichnis selbst als Ziel', async () => {
+    // `resolveWithinDirectory` gibt die Wurzel zurueck, wenn der Kandidat auf
+    // sie zeigt - geleert wuerde sonst der Datenordner ALLER Server der Node
+    // (Fundpunkt 201).
+    const { storagePath, checksumSha256 } = await gesichert();
+
+    await expect(
+      job.restoreBackup({
+        backupId: BACKUP_ID,
+        serverId: SERVER_ID,
+        storagePath,
+        targetPath: '.',
+        expectedChecksum: checksumSha256,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_PATH' });
   });
 
   it('räumt Dateien weg, die es im Backup nicht mehr gibt', async () => {
