@@ -453,6 +453,32 @@ export function fakeRepository(
       return Promise.resolve(changed);
     },
 
+    deleteReadNotificationsBefore: (cutoff) => {
+      const vorher = notifications.length;
+      const bleiben = notifications.filter(
+        (eintrag) => eintrag.readAt === null || eintrag.createdAt.getTime() >= cutoff.getTime(),
+      );
+
+      notifications.length = 0;
+      notifications.push(...bleiben);
+
+      return Promise.resolve(vorher - notifications.length);
+    },
+
+    deleteFinishedDeliveriesBefore: (cutoff) => {
+      const vorher = deliveries.length;
+      const bleiben = deliveries.filter(
+        (eintrag) =>
+          !['delivered', 'failed'].includes(eintrag.status) ||
+          eintrag.createdAt.getTime() >= cutoff.getTime(),
+      );
+
+      deliveries.length = 0;
+      deliveries.push(...bleiben);
+
+      return Promise.resolve(vorher - deliveries.length);
+    },
+
     deleteNotification: (id) => {
       const index = notifications.findIndex((entry) => entry.id === id);
 

@@ -6,7 +6,7 @@
  */
 
 import { type AuthMethodType, PENDING_BACKUP_STATUSES } from '@palantir/contracts';
-import { and, count, desc, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index.js';
 import { authMethods, sessions } from '../../db/schema/auth.js';
 import { backups } from '../../db/schema/backups.js';
@@ -363,6 +363,22 @@ export function createDrizzleAuthRepository(db: Database): AuthRepository {
         .returning();
 
       return row ? toSession(row) : null;
+    },
+
+    async deleteDeadSessions(now, revokedGraceMs) {
+      const grenze = new Date(now.getTime() - revokedGraceMs);
+
+      const entfernt = await db
+        .delete(sessions)
+        .where(
+          or(
+            lt(sessions.expiresAt, now),
+            and(isNotNull(sessions.revokedAt), lt(sessions.revokedAt, grenze)),
+          ),
+        )
+        .returning({ id: sessions.id });
+
+      return entfernt.length;
     },
 
     async revokeSession(id, revokedAt) {

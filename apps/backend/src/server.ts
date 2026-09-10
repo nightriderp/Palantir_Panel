@@ -54,11 +54,13 @@ import {
   type SessionRevocationSink,
   isAuthError,
   noopAuthAuditSink,
+  createDrizzleAuthRepository,
   noopAuthEventSink,
   registerAuthModule,
 } from './modules/auth/index.js';
 import {
   CLOSE_CODE_UNAUTHORIZED as NOTIFICATION_CLOSE_CODE_UNAUTHORIZED,
+  createDrizzleNotificationRepository,
   registerNotifications,
 } from './modules/notifications/index.js';
 import {
@@ -94,6 +96,7 @@ import {
   panelBackupTask,
   resourceWarningTask,
   serverScheduleTask,
+  dataHousekeepingTask,
   startScheduler,
   stateReconcileTask,
   statsSamplingTask,
@@ -817,6 +820,24 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         // diesem Durchlauf geschrieben hat.
         resourceWarningTask(resources, orchestration, notifications.eventSink, app.log),
         panelBackupTask(panelBackups, app.log),
+        /*
+         * Fundpunkt 230: Sitzungen, gelesene Meldungen und abgeschlossene
+         * Zustellversuche wachsen sonst ohne Ende. Die beiden Repositories
+         * gehoeren verschiedenen Modulen - der Zeitgeber kennt nur die drei
+         * Methoden, die er braucht.
+         */
+        dataHousekeepingTask(
+          {
+            deleteDeadSessions: (now, graceMs) =>
+              createDrizzleAuthRepository(db).deleteDeadSessions(now, graceMs),
+            deleteReadNotificationsBefore: (cutoff) =>
+              createDrizzleNotificationRepository(db).deleteReadNotificationsBefore(cutoff),
+            deleteFinishedDeliveriesBefore: (cutoff) =>
+              createDrizzleNotificationRepository(db).deleteFinishedDeliveriesBefore(cutoff),
+          },
+          app.log,
+          { retentionDays: env.NOTIFICATION_RETENTION_DAYS },
+        ),
         // Fundpunkt 232: Fragt die verbundenen Nodes periodisch nach ihrem
         // Ist-Zustand. Die Antwort laeuft durch denselben Weg wie beim
         // Verbindungsaufbau (`onStateReport` -> `service.reconcile`).

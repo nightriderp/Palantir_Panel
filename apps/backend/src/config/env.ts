@@ -245,6 +245,15 @@ const envSchema = z.object({
    */
   BACKUP_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(7_200_000),
 
+  /**
+   * Aufbewahrungsfrist gelesener Meldungen und abgeschlossener Zustellversuche
+   * in Tagen (Fundpunkt 230).
+   *
+   * Ungelesene Meldungen bleiben unabhängig davon stehen – sie sind das, wofür
+   * die Inbox da ist. `0` schaltet den Kehraus ab.
+   */
+  NOTIFICATION_RETENTION_DAYS: z.coerce.number().int().min(0).max(3_650).default(90),
+
   /** DNS-Automatisierung über Cloudflare (§13); ohne beide Werte passiert nichts. */
   CLOUDFLARE_API_TOKEN: optionalEnvString(),
   CLOUDFLARE_ZONE_ID: optionalEnvString(),
