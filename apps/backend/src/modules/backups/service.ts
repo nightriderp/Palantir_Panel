@@ -23,6 +23,7 @@ import { createHash } from 'node:crypto';
 import {
   type ArchiveExtraFile,
   type BackupDto,
+  type BackupRestoreJobDto,
   type BackupOverviewDto,
   type BackupStorageBucket,
   type ErrorCode,
@@ -66,6 +67,7 @@ import type {
   StorageAggregate,
 } from './repository.js';
 import { isRetentionProtected, retentionExpiresAt, selectExpiredBackups } from './retention.js';
+import { createRestoreJobStore } from './restore-jobs.js';
 
 /**
  * Größe eines Blocks beim Herunterladen.
@@ -145,7 +147,26 @@ export interface BackupService {
   /** Geplantes Backup aus einem Zeitplan – ohne Aufrufer, deshalb ohne Rechteprüfung. */
   createScheduled(serverId: string, scheduleId: string, stopServer: boolean): Promise<BackupDto>;
   remove(actor: PermissionActor, actorUserId: string, backupId: string): Promise<void>;
-  restore(actor: PermissionActor, actorUserId: string, backupId: string): Promise<BackupDto>;
+  /**
+   * Wiederherstellung anstossen (Fundpunkt 225).
+   *
+   * Antwortet mit dem **Auftrag**, nicht mit dem Ergebnis: Das Entpacken läuft
+   * im Hintergrund weiter, der Fortschritt kommt über
+   * `backupRestore.progressed`, und der Stand ist über
+   * {@link BackupService.findRestoreJob} abrufbar.
+   */
+  restore(
+    actor: PermissionActor,
+    actorUserId: string,
+    backupId: string,
+  ): Promise<BackupRestoreJobDto>;
+  /** Stand einer laufenden oder gerade beendeten Wiederherstellung. */
+  findRestoreJob(
+    actor: PermissionActor,
+    actorUserId: string,
+    backupId: string,
+    jobId: string,
+  ): Promise<BackupRestoreJobDto | null>;
   openDownload(
     actor: PermissionActor,
     actorUserId: string,
@@ -213,6 +234,26 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
   const events = options.events ?? noopEventPublisher;
   const now = options.now ?? systemClock;
   const runJob = options.runJob ?? fireAndForgetJobRunner;
+  const restoreJobs = createRestoreJobStore({ now: () => now() });
+
+  /** Meldet den Auftragsstand an den Live-Kanal (Contract `backupRestore.progressed`). */
+  function publishRestoreJob(job: BackupRestoreJobDto): void {
+    void events.publish('backupRestore.progressed', { serverId: job.serverId, job });
+  }
+
+  /** Beendet einen Auftrag und meldet ihn – auf diesen Aufruf wartet niemand mehr. */
+  function beendeRestore(
+    jobId: string,
+    status: 'completed' | 'failed',
+    statusMessage?: string,
+  ): void {
+    const fertig =
+      statusMessage === undefined
+        ? restoreJobs.finish(jobId, status)
+        : restoreJobs.finish(jobId, status, statusMessage);
+
+    if (fertig !== null) publishRestoreJob(fertig);
+  }
   const orphanAfterMs = options.orphanAfterMs ?? DEFAULT_BACKUP_ORPHAN_AFTER_MS;
 
   async function loadServerOrFail(serverId: string): Promise<BackupServerRecord> {
@@ -895,6 +936,17 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       await removeBackupAndArchive(backup);
     },
 
+    async findRestoreJob(actor, actorUserId, backupId, jobId) {
+      // Dieselbe Rechteprüfung wie beim Anstossen: Ohne Zugriff auf die
+      // Sicherung gibt es auch keine Auskunft über ihren Auftrag.
+      await loadManageableBackup(actor, actorUserId, backupId);
+
+      const job = restoreJobs.find(jobId);
+
+      // Ein Auftrag an einer anderen Sicherung wird wie ein fehlender gemeldet.
+      return job !== null && job.backupId === backupId ? job : null;
+    },
+
     async restore(actor, actorUserId, backupId) {
       const { backup } = await loadManageableBackup(actor, actorUserId, backupId);
 
@@ -923,34 +975,69 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
         throw new BackupError('BACKUP_ALREADY_RUNNING');
       }
 
-      const response = await agent.restoreBackup({
-        backupId: backup.id,
-        serverId: server.id,
-        storagePath: backup.storagePath,
-        targetPath: server.dataHostPath,
-        // Der Agent prüft das Archiv damit vor dem Entpacken; die Verifikation
-        // gehört dorthin, wo das Archiv gelesen wird (Fundpunkt 99).
-        expectedChecksum: backup.checksumSha256,
-        ...(server.dockerContainerId === null ? {} : { containerId: server.dockerContainerId }),
+      const storagePath = backup.storagePath;
+      const expectedChecksum = backup.checksumSha256;
+
+      /*
+       * Ab hier läuft es im Hintergrund (Fundpunkt 225). Vorher wartete die
+       * HTTP-Anfrage auf `agent.restoreBackup()` – und dessen Frist steht auf
+       * zwei Stunden (`BACKUP_COMMAND_TIMEOUT_MS`). Jeder Vermittler davor gab
+       * vorher auf; der Nutzer sah einen Fehlschlag, während das Entpacken in
+       * Ruhe zu Ende lief.
+       */
+      const job = restoreJobs.create({ serverId: server.id, backupId: backup.id });
+      publishRestoreJob(job);
+
+      runJob(async () => {
+        const laufend = restoreJobs.update(job.id, {
+          status: 'running',
+          step: 'Archiv wird geprüft und entpackt',
+        });
+
+        if (laufend !== null) publishRestoreJob(laufend);
+
+        try {
+          const response = await agent.restoreBackup({
+            backupId: backup.id,
+            serverId: server.id,
+            storagePath,
+            targetPath: server.dataHostPath,
+            // Der Agent prüft das Archiv damit vor dem Entpacken; die
+            // Verifikation gehört dorthin, wo das Archiv gelesen wird
+            // (Fundpunkt 99).
+            expectedChecksum,
+            ...(server.dockerContainerId === null ? {} : { containerId: server.dockerContainerId }),
+          });
+
+          if (!response.success) {
+            beendeRestore(job.id, 'failed', response.error.message);
+
+            return;
+          }
+
+          const parsed = restoreBackupCommandResultSchema.safeParse(response.data);
+
+          if (!parsed.success) {
+            beendeRestore(
+              job.id,
+              'failed',
+              'Der Agent hat kein gültiges Ergebnis zur Wiederherstellung geliefert.',
+            );
+
+            return;
+          }
+
+          beendeRestore(job.id, 'completed');
+        } catch (error) {
+          beendeRestore(
+            job.id,
+            'failed',
+            error instanceof Error ? error.message : 'Unbekannter Fehler beim Wiederherstellen.',
+          );
+        }
       });
 
-      if (!response.success) {
-        throw new BackupError(agentErrorCode(response.error.code), response.error.message);
-      }
-
-      const parsed = restoreBackupCommandResultSchema.safeParse(response.data);
-
-      if (!parsed.success) {
-        throw new BackupError(
-          'AGENT_COMMAND_INVALID',
-          'Der Agent hat kein gültiges Ergebnis zur Wiederherstellung geliefert.',
-        );
-      }
-
-      return toDto(actor, actorUserId, backup, {
-        serverName: server.name,
-        isOwn: isOwnServer(actorUserId, server),
-      });
+      return job;
     },
 
     async openDownload(actor, actorUserId, backupId) {

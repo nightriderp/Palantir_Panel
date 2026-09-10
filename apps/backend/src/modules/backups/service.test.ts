@@ -602,7 +602,15 @@ describe('Löschen, Wiederherstellen und Export', () => {
     const t = aufbau();
     const dto = await fertigesBackup(t);
 
-    await t.service.restore(actorMit('backup.manage.own'), t.besitzerId, dto.id);
+    /*
+     * Fundpunkt 225: Die Antwort ist der Auftrag, nicht das Ergebnis - das
+     * Entpacken laeuft im Hintergrund. `fertig()` laesst ihn durchlaufen.
+     */
+    const job = await t.service.restore(actorMit('backup.manage.own'), t.besitzerId, dto.id);
+    expect(job.status).toBe('queued');
+    expect(t.agent.restoredBackupIds).toEqual([]);
+
+    await t.fertig();
 
     expect(t.agent.restoredBackupIds).toEqual([dto.id]);
   });
@@ -613,6 +621,7 @@ describe('Löschen, Wiederherstellen und Export', () => {
     const dto = await fertigesBackup(t);
 
     await t.service.restore(actorMit('backup.manage.own'), t.besitzerId, dto.id);
+    await t.fertig();
 
     expect(t.agent.restoredChecksums).toEqual(['a'.repeat(64)]);
   });
@@ -1267,5 +1276,102 @@ describe('Node am Backup-Datensatz (Fundpunkt 174)', () => {
     await t.service.remove(actorMit('backup.manage.any'), t.besitzerId, backup?.id ?? '');
 
     expect(t.agent.deletedHostIds).toEqual([null]);
+  });
+});
+
+/**
+ * Wiederherstellung als Auftrag (Fundpunkt 225).
+ *
+ * Vorher wartete die HTTP-Anfrage auf den Agent-Befehl, und dessen Frist steht
+ * auf zwei Stunden. Jeder Vermittler davor gab vorher auf; der Nutzer sah einen
+ * Fehlschlag, waehrend das Entpacken in Ruhe zu Ende lief.
+ */
+describe('Wiederherstellung als Auftrag (Fundpunkt 225)', () => {
+  /** Ein abgeschlossenes Backup, wie es die Wiederherstellung voraussetzt. */
+  async function fertigesBackup(t: ReturnType<typeof aufbau>) {
+    const dto = await t.service.createManual(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.server.id,
+      { stopServer: false },
+    );
+    await t.fertig();
+
+    return dto;
+  }
+
+  it('antwortet sofort mit einem Auftrag und meldet ihn im Kanal', async () => {
+    const t = aufbau();
+    const dto = await fertigesBackup(t);
+    t.events.published.length = 0;
+
+    const job = await t.service.restore(actorMit('backup.manage.own'), t.besitzerId, dto.id);
+
+    expect(job.backupId).toBe(dto.id);
+    expect(job.status).toBe('queued');
+    expect(job.finishedAt).toBeNull();
+    expect(t.events.published.map((e) => e.event)).toContain('backupRestore.progressed');
+  });
+
+  it('fuehrt den Auftrag zu Ende und meldet das Ergebnis', async () => {
+    const t = aufbau();
+    const dto = await fertigesBackup(t);
+
+    const job = await t.service.restore(actorMit('backup.manage.own'), t.besitzerId, dto.id);
+    await t.fertig();
+
+    const stand = await t.service.findRestoreJob(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      dto.id,
+      job.id,
+    );
+
+    expect(stand?.status).toBe('completed');
+    expect(stand?.progressPercent).toBe(100);
+    expect(stand?.finishedAt).not.toBeNull();
+  });
+
+  it('schreibt einen Fehlschlag in den Auftrag, statt zu werfen', async () => {
+    const t = aufbau();
+    const dto = await fertigesBackup(t);
+    t.agent.restoreResponse = {
+      success: false,
+      data: null,
+      error: { code: 'AGENT_COMMAND_FAILED', message: 'Das Archiv liess sich nicht entpacken.' },
+    };
+
+    const job = await t.service.restore(actorMit('backup.manage.own'), t.besitzerId, dto.id);
+    // Kein Wurf: Auf diesen Hintergrundlauf wartet niemand mehr.
+    await t.fertig();
+
+    const stand = await t.service.findRestoreJob(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      dto.id,
+      job.id,
+    );
+
+    expect(stand?.status).toBe('failed');
+    expect(stand?.statusMessage).not.toBeNull();
+  });
+
+  it('kennt keinen Auftrag an einer fremden Sicherung', async () => {
+    const t = aufbau();
+    const dto = await fertigesBackup(t);
+
+    const job = await t.service.restore(actorMit('backup.manage.own'), t.besitzerId, dto.id);
+    await t.fertig();
+
+    const stand = await t.service.findRestoreJob(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      dto.id,
+      // Auftragskennung, die es an dieser Sicherung nicht gibt.
+      '00000000-0000-4000-8000-000000000000',
+    );
+
+    expect(stand).toBeNull();
+    void job;
   });
 });

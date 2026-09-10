@@ -664,6 +664,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
         if (event === 'backup.progressed' && 'backup' in payload) {
           liveHub.publish(event, payload);
+
+          return;
+        }
+
+        // Fundpunkt 225: derselbe Weg wie der Backup-Fortschritt - reine
+        // Anzeige, kein Benachrichtigungsanlass.
+        if (event === 'backupRestore.progressed' && 'job' in payload) {
+          liveHub.publish(event, payload);
         }
       },
     };
