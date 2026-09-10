@@ -86,6 +86,24 @@ export const DEFAULT_MAX_FILE_BYTES = AGENT_FILE_CHANNEL_MAX_BYTES;
 export const DEFAULT_MAX_ARCHIVE_BYTES = MAX_EXTRACTED_BYTES;
 
 /**
+ * Wie viel Archiv `listFiles` hoechstens durch den Speicher zieht
+ * (Fundpunkt 228).
+ *
+ * Die Engine kennt keinen Aufruf „nur die Namen": `GET /archive` liefert den
+ * Ordner **rekursiv und mit Inhalten**. Fuer die Anzeige der ersten Ebene wurde
+ * damit der ganze Baum geholt - bei einer gewachsenen Minecraft-Welt sind das
+ * Gigabyte, und sie liefen durch den gemeinsamen Agent-Prozess, also zu Lasten
+ * aller Server der Node. Ausloesen konnte das jeder Nutzer mit Zugriff auf den
+ * Datei-Manager seines eigenen Servers.
+ *
+ * 128 MiB sind grosszuegig fuer Konfigurations- und Weltordner und klein genug,
+ * dass ein Fehlgriff die Node nicht umwirft. Wird die Grenze erreicht, meldet
+ * der Agent `ARCHIVE_TOO_LARGE`, statt weiterzulesen - eine ehrliche Absage
+ * statt eines Speicherfressers.
+ */
+export const DEFAULT_MAX_LISTING_BYTES = 128 * 1024 * 1024;
+
+/**
  * Obergrenze fuer die gesammelte Ausgabe eines Konsolenbefehls (`execConsole`).
  *
  * Ein RCON-/Konsolenkommando liefert normalerweise wenige Zeilen; ein Befehl mit
@@ -111,6 +129,11 @@ export interface DockerContainerRuntimeOptions {
   readonly maxFileBytes?: number;
   /** Groessenlimit fuer `extractArchive`. Vorgabe: {@link DEFAULT_MAX_ARCHIVE_BYTES}. */
   readonly maxArchiveBytes?: number;
+  /**
+   * Groessenlimit fuer das Archiv, aus dem `listFiles` die Namen liest.
+   * Vorgabe: {@link DEFAULT_MAX_LISTING_BYTES}.
+   */
+  readonly maxListingBytes?: number;
   /** Wird gerufen, wenn ein Hintergrund-Stream unerwartet abbricht. */
   readonly onStreamError?: (fehler: unknown, kontext: Readonly<Record<string, unknown>>) => void;
   /**
@@ -187,6 +210,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
   readonly #client: DockerHttpClient;
   readonly #hardening: HardeningOptions;
   readonly #maxFileBytes: number;
+  readonly #maxListingBytes: number;
   readonly #maxArchiveBytes: number;
   readonly #registry: RegistryCredentials | undefined;
   readonly #pullTimeoutMs: number;
@@ -223,6 +247,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
     this.#pullTimeoutMs = options.pullTimeoutMs ?? DEFAULT_PULL_TIMEOUT_MS;
     this.#hardening = options.hardening;
     this.#maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
+    this.#maxListingBytes = options.maxListingBytes ?? DEFAULT_MAX_LISTING_BYTES;
     this.#maxArchiveBytes = options.maxArchiveBytes ?? DEFAULT_MAX_ARCHIVE_BYTES;
     this.#onStreamError =
       options.onStreamError ??
@@ -678,6 +703,10 @@ export class DockerContainerRuntime implements ContainerRuntime {
     const archiv = await this.#client.requestBuffer('GET', `${this.#pfad(containerId)}/archive`, {
       query: { path: pfad },
       notFoundCode: 'FILE_NOT_FOUND',
+      // Fundpunkt 228: Die Engine packt den Ordner rekursiv **mit Inhalten**
+      // ein; ohne Grenze zieht das Auflisten eines Weltordners Gigabyte durch
+      // den Agent.
+      maxBytes: this.#maxListingBytes,
     });
 
     // Die Engine packt das Verzeichnis samt Namen ein: `<basename>/<eintrag>`.
