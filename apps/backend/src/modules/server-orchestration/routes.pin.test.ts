@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { registerErrorHandler } from '../../error-handler.js';
 import { type PermissionActor, registerRbac } from '../rbac/index.js';
 import { buildPermissionActor } from '../rbac/permissions.js';
-import { createGameRegistry } from './game-registry.js';
+import { ALLE_GAME_TYPE_DEFINITIONS, createGameRegistry } from './game-registry.js';
 import { type ServerRecord, type ServerRepository } from './repository.js';
 import { registerServerRoutes } from './routes.js';
 import { type ServerOrchestrationService } from './service.js';
@@ -109,7 +109,7 @@ function buildApp(repository: ReturnType<typeof fakeRepository>): FastifyInstanc
   registerServerRoutes(app, {
     service,
     repository: repository as unknown as ServerRepository,
-    registry: createGameRegistry(1),
+    registry: createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS),
     baseDomain: 'example.tld',
     schedules: {
       list: async () => [],

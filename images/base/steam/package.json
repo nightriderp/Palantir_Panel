@@ -1,0 +1,10 @@
+{
+  "name": "@palantir/base-steam-image",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Basis-Image fuer Spiele aus Steam. Diese package.json existiert nur, damit `pnpm test` im Repo-Wurzelverzeichnis die Tests der Shell-Skripte mitlaufen laesst; ins Image kopiert wird sie nicht (siehe .dockerignore).",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "node --test"
+  }
+}

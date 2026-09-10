@@ -24,7 +24,7 @@ import { liveClientFrameSchema } from '@palantir/validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type PermissionActor, registerRbac } from '../rbac/index.js';
 import { buildPermissionActor } from '../rbac/permissions.js';
-import { createGameRegistry } from './game-registry.js';
+import { ALLE_GAME_TYPE_DEFINITIONS, createGameRegistry } from './game-registry.js';
 import { ServerLiveHub } from './live-hub.js';
 import { LIVE_CLOSE_CODE_FORBIDDEN, LIVE_CLOSE_CODE_UNAUTHORIZED } from './live-frames.js';
 import { LIVE_BOOT_ID, registerServerLiveRoute } from './live-route.js';
@@ -148,7 +148,7 @@ async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
     hub,
     service,
     repository,
-    registry: createGameRegistry(1),
+    registry: createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS),
     baseDomain: 'example.tld',
     ...(optionen.allowedOrigin === undefined ? {} : { allowedOrigin: optionen.allowedOrigin }),
     ...(optionen.subscriptionCheckIntervalMs === undefined

@@ -492,10 +492,184 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
  *
  * Reihenfolge = Anzeigereihenfolge im Server-erstellen-Wizard (F3).
  */
-export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
+/**
+ * Die Prüfstände (Wunsch des Betreibers, 2026-09-10: „entferne die Vorlagen,
+ * die zum Testen da waren").
+ *
+ * Sie stehen **nicht** mehr in {@link GAME_TYPE_DEFINITIONS} und werden im
+ * Panel deshalb nicht mehr als Vorlage angeboten. Gelöscht sind sie trotzdem
+ * nicht: Die halbe Testkette des Backends steht auf ihnen – sie sind die
+ * einzigen Spieltypen, die sich ohne echtes Spiel starten lassen, und
+ * `test-echo` ist die Vorlage in fast jedem Test dieses Moduls. Ein Test, der
+ * sie braucht, reicht {@link ALLE_GAME_TYPE_DEFINITIONS} an
+ * {@link createGameRegistry} weiter.
+ *
+ * Ein Server, der noch auf einem Prüfstand läuft, bleibt bedienbar: `require()`
+ * findet die Definition weiterhin, sobald die Liste sie enthält. Zum Zeitpunkt
+ * der Umstellung gab es keinen.
+ */
+export const PRUEFSTAND_GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
+];
+
+/**
+ * Valheim – das erste Spiel aus Steam (Anhang A, Phase 3).
+ *
+ * **Was daran neu ist**, ist nicht das Spiel, sondern woher die Serverdateien
+ * kommen: Paper liegt als Jar im Image, Valheim holt SteamCMD bei jedem Start
+ * in den Datenordner (`images/base/steam`). Die Fassung des Spiels hängt damit
+ * an Valve, nicht am Image-Tag – der Preis dafür, dass Gigabyte an Spieldaten
+ * nicht in einer Registry liegen (Entscheidung des Betreibers, 2026-09-10).
+ *
+ * **UDP, nicht TCP.** Valheim spricht zwei Ports: 2456 für das Spiel, 2457 für
+ * die Abfrage der Serverliste. Beide gehen über den Tunnel; `frpc.toml` legt zu
+ * jedem Pool-Port ohnehin einen TCP- **und** einen UDP-Proxy an.
+ *
+ * **Kein Hostname-Routing.** Der Router liest den Namen aus dem
+ * Minecraft-Handshake; ein UDP-Spiel liefert nichts dergleichen. Valheim behält
+ * deshalb seinen Port in der Adresse.
+ *
+ * **Keine Konsole.** Valheim liest keine Befehle von der Standardeingabe und
+ * kennt kein RCON. Das Startskript legt das Rohr trotzdem an, damit sich der
+ * Anschluss verhält wie überall sonst; Schnellbefehle gibt es keine.
+ *
+ * **Die Startfrist ist großzügig**, weil der erste Start die Serverdateien
+ * herunterlädt – gut ein Gigabyte über SteamCMD. Spätere Starts prüfen nur, ob
+ * etwas Neues da ist, und brauchen eine knappe Minute.
+ */
+export const VALHEIM_GAME_TYPE: GameTypeDefinition = {
+  id: 'valheim',
+  name: 'Valheim',
+  description:
+    'Überlebensspiel in der Welt der Wikinger. Der Server holt seine Dateien beim Start selbst über Steam; ein Passwort ist Pflicht, sonst startet Valheim nicht.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-valheim:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 2456,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+    {
+      containerPort: 2457,
+      protocol: 'udp',
+      primary: false,
+      label: 'Abfrage-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Name in der Serverliste',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: 'Unter diesem Namen taucht der Server in der Liste auf.',
+      required: true,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'world',
+      label: 'Welt',
+      type: 'text',
+      defaultValue: 'Dedicated',
+      description:
+        'Name der Weltdatei. Ein neuer Name legt eine neue Welt an; ein vorhandener setzt die bestehende fort.',
+      required: true,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Passwort',
+      type: 'password',
+      defaultValue: '',
+      description:
+        'Mindestens fünf Zeichen. Valheim verlangt es und lehnt es ab, wenn es im Server- oder Weltnamen vorkommt.',
+      required: true,
+      options: [],
+      min: 5,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'public',
+      label: 'In der Serverliste zeigen',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Aus heißt: nur wer die Adresse kennt, findet den Server. Das Passwort gilt in beiden Fällen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'VALHEIM_NAME',
+    world: 'VALHEIM_WORLD',
+    password: 'VALHEIM_PASSWORD',
+    public: 'VALHEIM_PUBLIC',
+  },
+  // Alle vier liest das Startskript einmalig beim Start aus der Umgebung.
+  restartRequiredFields: ['serverName', 'world', 'password', 'public'],
+  /*
+   * Valheim ist bekannt dafür, mit der Weltgröße hungrig zu werden. Vier
+   * Gigabyte tragen eine Handvoll Spieler; der Betreiber kann die Werte im
+   * Wizard ändern.
+   */
+  resourceDefaults: {
+    ramMb: 4096,
+    cpuCores: 2,
+    diskMb: 10_240,
+  },
+  /*
+   * Abgefragt wird der **Abfrage-Port**, nicht der Spiel-Port: Auf 2456 läuft
+   * das Spielprotokoll, die Serverliste antwortet daneben auf 2457.
+   */
+  query: {
+    kind: 'gamedig',
+    protocol: 'valheim',
+    containerPort: 2457,
+  },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: false,
+  dataVolumeContainerPath: '/data',
+  /*
+   * Geschrieben wird nur in den Datenordner: dorthin holt SteamCMD die
+   * Serverdateien, dort liegen die Welten. `/tmp` bleibt beschreibbar, weil ein
+   * Unity-Server ohne weiteres Zutun dort landet.
+   */
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  /*
+   * Valheim speichert die Welt beim Herunterfahren. Eine Minute ist reichlich
+   * und billiger als eine beschädigte Welt.
+   */
+  stopTimeoutSeconds: 60,
+  startupTimeoutSeconds: 1_200,
+  phase: 3,
+};
+
+/** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
+export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
+  VALHEIM_GAME_TYPE,
+];
+
+/** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */
+export const ALLE_GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
+  ...PRUEFSTAND_GAME_TYPE_DEFINITIONS,
+  ...GAME_TYPE_DEFINITIONS,
 ];
 
 /** Ausbaustufe, die diese Installation erreicht hat (Lastenheft §3.5). */

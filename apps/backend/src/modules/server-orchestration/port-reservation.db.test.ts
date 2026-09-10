@@ -30,7 +30,7 @@ import {
   createDrizzlePortPoolRepository,
 } from '../admin/repositories.js';
 import { createDrizzleCapacityReservation } from './capacity-reservation.js';
-import { createGameRegistry } from './game-registry.js';
+import { ALLE_GAME_TYPE_DEFINITIONS, createGameRegistry } from './game-registry.js';
 import { type PortPoolPort } from './ports.js';
 import { type CreateServerData } from './repository.js';
 import { type ResourceCheckRequest } from './resource-guard.js';
@@ -38,7 +38,7 @@ import { type ResourceCheckRequest } from './resource-guard.js';
 const SCHWELLEN = { nodePercent: 90, serverPercent: 90 };
 
 /** Ein Spiel mit genau einem TCP-Port und ohne Hostname-Routing. */
-const SPIEL = createGameRegistry(1).require('test-echo');
+const SPIEL = createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS).require('test-echo');
 
 function warte(millisekunden: number): Promise<void> {
   return new Promise((fertig) => setTimeout(fertig, millisekunden));

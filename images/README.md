@@ -24,7 +24,7 @@ Härtung des Agents braucht (Pflichtenheft §2.3), und nichts, was nur ein Spiel
 | ------------- | ----------------------------------------------------------------------------------- | --------- |
 | `base/linux`  | Die gemeinsame Wurzel: Benutzer, Datenordner, Konsole, `curl`. Trägt alles Übrige.  | vorhanden |
 | `base/java`   | Eclipse Temurin JRE (Java 25) — Minecraft (Paper, Fabric, Forge), andere JVM-Server | vorhanden |
-| `base/steam`  | SteamCMD samt 32-Bit-Bibliotheken — mit Abstand die größte Gruppe                   | geplant   |
+| `base/steam`  | SteamCMD samt 32-Bit-Bibliotheken — mit Abstand die größte Gruppe                   | vorhanden |
 | `base/dotnet` | .NET-Laufzeit für Server, die keine eigene mitbringen                               | geplant   |
 | `base/proton` | Windows-Server unter Proton/Wine — Spiele ohne Linux-Fassung                        | geplant   |
 

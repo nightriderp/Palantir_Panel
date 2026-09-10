@@ -14,7 +14,7 @@ import { registerErrorHandler } from '../../error-handler.js';
 import { type PermissionActor, registerRbac } from '../rbac/index.js';
 import { buildPermissionActor } from '../rbac/permissions.js';
 import { ServerOrchestrationError } from './errors.js';
-import { createGameRegistry } from './game-registry.js';
+import { ALLE_GAME_TYPE_DEFINITIONS, createGameRegistry } from './game-registry.js';
 import { type ServerRecord, type ServerRepository } from './repository.js';
 import { registerServerRoutes } from './routes.js';
 import { type ServerScheduleRecord } from './schedule-repository.js';
@@ -168,7 +168,7 @@ async function buildApp(options: { fehler?: ServerOrchestrationError } = {}): Pr
   registerServerRoutes(app, {
     service,
     repository,
-    registry: createGameRegistry(1),
+    registry: createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS),
     baseDomain: 'example.tld',
     schedules,
     // Weltdaten-Uploads stehen in `routes.world-import.test.ts` unter Test.

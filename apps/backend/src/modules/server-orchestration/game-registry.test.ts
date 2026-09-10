@@ -4,10 +4,12 @@ import { type ServerOrchestrationError } from './errors.js';
 import {
   GAME_TYPE_DEFINITIONS,
   MINECRAFT_PAPER_GAME_TYPE,
+  VALHEIM_GAME_TYPE,
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
   buildContainerEnv,
   buildServerConfig,
+  ALLE_GAME_TYPE_DEFINITIONS,
   createGameRegistry,
   primaryPortOf,
   requiresRestartAfterChange,
@@ -22,9 +24,15 @@ const PHASE_2_GAME: GameTypeDefinition = {
 };
 
 describe('Spiele-Registry (Pflichtenheft §11)', () => {
-  it('enthält den minimalen Test-Typ für Phase 1 (Lastenheft §3.5)', () => {
+  it('bietet die Prüfstände nicht mehr als Vorlage an, behält sie aber', () => {
+    // Wunsch des Betreibers 2026-09-10. Geloescht sind sie nicht: Die halbe
+    // Testkette steht auf ihnen, und ein Server, der noch auf einem laeuft,
+    // muss bedienbar bleiben.
     expect(TEST_GAME_TYPE.phase).toBe(1);
-    expect(GAME_TYPE_DEFINITIONS).toContain(TEST_GAME_TYPE);
+    expect(GAME_TYPE_DEFINITIONS).not.toContain(TEST_GAME_TYPE);
+    expect(GAME_TYPE_DEFINITIONS).not.toContain(TEST_MINECRAFT_GAME_TYPE);
+    expect(ALLE_GAME_TYPE_DEFINITIONS).toContain(TEST_GAME_TYPE);
+    expect(ALLE_GAME_TYPE_DEFINITIONS).toContain(MINECRAFT_PAPER_GAME_TYPE);
   });
 
   it('prüft den Test-Typ über einen generischen Port-Connect-Test', () => {
@@ -205,8 +213,12 @@ describe('Test-Typ mit Minecraft-Protokoll (Gefundener Punkt 113)', () => {
   it('ist erst ab Ausbaustufe 2 auswaehlbar', () => {
     // Phase 1 kennt ihn, darf ihn aber nicht anlegen - das ist der Schalter des
     // Betreibers (`INSTALLATION_PHASE`), keine Entscheidung im Code.
-    expect(() => createGameRegistry(1).requireSelectable('test-minecraft')).toThrow();
-    expect(createGameRegistry(2).requireSelectable('test-minecraft').id).toBe('test-minecraft');
+    expect(() =>
+      createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('test-minecraft'),
+    ).toThrow();
+    expect(
+      createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('test-minecraft').id,
+    ).toBe('test-minecraft');
   });
 
   it('wird ueber gamedig abgefragt, nicht ueber einen offenen Port', () => {
@@ -232,10 +244,67 @@ describe('Test-Typ mit Minecraft-Protokoll (Gefundener Punkt 113)', () => {
   });
 });
 
+describe('Valheim – erstes Spiel aus Steam (Anhang A, Phase 3)', () => {
+  it('ist erst ab Ausbaustufe 3 auswählbar', () => {
+    expect(() => createGameRegistry(2).requireSelectable('valheim')).toThrow();
+    expect(createGameRegistry(3).requireSelectable('valheim').id).toBe('valheim');
+  });
+
+  it('spricht UDP auf zwei Ports', () => {
+    // Der Tunnel legt zu jedem Pool-Port einen TCP- und einen UDP-Proxy an
+    // (frpc.toml); ein UDP-Spiel braucht hier also nichts Besonderes.
+    expect(VALHEIM_GAME_TYPE.ports).toEqual([
+      { containerPort: 2456, protocol: 'udp', primary: true, label: 'Spiel-Port' },
+      { containerPort: 2457, protocol: 'udp', primary: false, label: 'Abfrage-Port' },
+    ]);
+  });
+
+  it('fragt den Abfrage-Port ab, nicht den Spiel-Port (Fundpunkt 196)', () => {
+    // Valheim antwortet auf der Serverliste neben dem Spiel-Port. Steht hier
+    // 2456, laeuft jeder Start in die Frist, obwohl der Server lebt.
+    expect(VALHEIM_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'valheim',
+      containerPort: 2457,
+    });
+  });
+
+  it('kennt kein Hostname-Routing und keine Konsole', () => {
+    // Der Router liest den Namen aus dem Minecraft-Handshake; UDP liefert
+    // nichts dergleichen. Und Valheim nimmt weder ueber die Standardeingabe
+    // noch ueber RCON Befehle entgegen.
+    expect(VALHEIM_GAME_TYPE.supportsVirtualHostRouting).toBe(false);
+    expect(VALHEIM_GAME_TYPE.console).toBeUndefined();
+    expect(VALHEIM_GAME_TYPE.consoleQuickCommands ?? []).toEqual([]);
+  });
+
+  it('verlangt ein Passwort und bildet jedes Feld auf eine Umgebungsvariable ab', () => {
+    const passwort = VALHEIM_GAME_TYPE.configFields.find((feld) => feld.key === 'password');
+
+    expect(passwort?.required).toBe(true);
+    // Valheim lehnt kuerzere ab; das Startskript prueft es ein zweites Mal.
+    expect(passwort?.min).toBe(5);
+
+    const felder = VALHEIM_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+    expect(Object.keys(VALHEIM_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    expect([...(VALHEIM_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+
+  it('gibt dem ersten Start Zeit für den Download über SteamCMD', () => {
+    // Gut ein Gigabyte. Mit der Frist von Minecraft (600 s) liefe der erste
+    // Start auf einer langsamen Leitung in `error`, obwohl alles stimmt.
+    expect(VALHEIM_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(1_200);
+  });
+});
+
 describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe 2)', () => {
   it('ist erst ab Ausbaustufe 2 auswählbar', () => {
-    expect(() => createGameRegistry(1).requireSelectable('minecraft-paper')).toThrow();
-    expect(createGameRegistry(2).requireSelectable('minecraft-paper').id).toBe('minecraft-paper');
+    expect(() =>
+      createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('minecraft-paper'),
+    ).toThrow();
+    expect(
+      createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('minecraft-paper').id,
+    ).toBe('minecraft-paper');
   });
 
   it('zeigt auf eine feste Fassung des eigenen Images', () => {
