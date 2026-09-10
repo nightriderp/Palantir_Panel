@@ -807,6 +807,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       const account: AccountDto = await service.unlinkMethod(
         userId,
         type as (typeof AUTH_METHOD_TYPES)[number],
+        contextOf(request),
       );
 
       await reply.send(ok({ account }));
@@ -819,7 +820,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     await handle(reply, async () => {
       const userId = requireUserId(request);
       const input = parseBody(linkPasswordInputSchema, request.body);
-      const account: AccountDto = await service.linkPassword(userId, input);
+      const account: AccountDto = await service.linkPassword(userId, input, contextOf(request));
 
       await reply.status(201).send(ok({ account }));
     });
@@ -833,6 +834,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
         userId,
         input,
         request.authSessionId,
+        contextOf(request),
       );
 
       await reply.send(ok({ account }));
@@ -854,7 +856,11 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     await handle(reply, async () => {
       const userId = requireUserId(request);
       const input = parseBody(confirmTwoFactorInputSchema, request.body, 'AUTH_TWO_FACTOR_INVALID');
-      const account: AccountDto = await service.confirmTwoFactor(userId, input.code);
+      const account: AccountDto = await service.confirmTwoFactor(
+        userId,
+        input.code,
+        contextOf(request),
+      );
 
       await reply.send(ok({ account }));
     });
@@ -864,7 +870,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     await handle(reply, async () => {
       const userId = requireUserId(request);
       const input = parseBody(disableTwoFactorInputSchema, request.body, 'AUTH_TWO_FACTOR_INVALID');
-      const account: AccountDto = await service.disableTwoFactor(userId, input);
+      const account: AccountDto = await service.disableTwoFactor(userId, input, contextOf(request));
 
       await reply.send(ok({ account }));
     });
@@ -889,7 +895,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       const userId = requireUserId(request);
       const input = parseBody(deleteAccountInputSchema, request.body, 'AUTH_INVALID_CREDENTIALS');
 
-      await service.deleteAccount(userId, input);
+      await service.deleteAccount(userId, input, contextOf(request));
 
       clearSessionCookies(reply, options.cookies);
       await reply.send(ok(null));
