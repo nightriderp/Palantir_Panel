@@ -87,7 +87,7 @@ Einmalig auf der Gamenode:
 
 ```bash
 mkdir -p /srv/palantir/steam-konto && chown 1000:1000 /srv/palantir/steam-konto
-docker run -it --rm -v /srv/palantir/steam-konto:/konto   ghcr.io/nightriderp/palantir-base-steam:5 palantir-steam-anmelden DEIN_STEAM_NAME
+docker run -it --rm -v /srv/palantir/steam-konto:/konto   ghcr.io/nightriderp/palantir-base-steam:6 palantir-steam-anmelden DEIN_STEAM_NAME
 ```
 
 `palantir-steam-anmelden` steckt im Image, und das hat einen Grund: Ruft man SteamCMD von Hand
