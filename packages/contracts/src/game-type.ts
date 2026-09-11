@@ -203,6 +203,36 @@ export interface GameTypePort {
   readonly primary: boolean;
   /** Beschriftung für die Oberfläche, z. B. „Spiel-Port" oder „RCON". */
   readonly label: string;
+  /**
+   * **Im Container dieselbe Nummer wie draußen.**
+   *
+   * Sonst gilt: Der Container lauscht auf seiner festen Nummer, der Pool vergibt
+   * nach außen eine beliebige freie, und dazwischen wird übersetzt. Der Spieler
+   * bekommt die öffentliche zu sehen, und alles ist gut.
+   *
+   * Es gibt aber Spiele, die ihre eigene Portnummer **weitersagen** – an ein
+   * Verzeichnis oder an den Client, der gerade sucht. Assetto Corsa
+   * Competizione ist so eins: Der Server meldet dem Lobby-Dienst die Nummern aus
+   * seiner `configuration.json`, und wer sie dort abholt, verbindet sich
+   * dorthin. Steht drinnen 9231 und draußen 25010, zeigt die Auskunft auf einen
+   * Port, den es nicht gibt – der Server läuft, und niemand kommt herein.
+   *
+   * Mit dieser Angabe wird die zugewiesene öffentliche Nummer auch die Nummer im
+   * Container. Im Container ist das gefahrlos: Jeder hat seinen eigenen
+   * Netzwerk-Namensraum, es kollidiert nichts. Das Spiel-Image erfährt sie über
+   * {@link GameTypePort.envVar} und trägt sie in seine Konfiguration ein.
+   */
+  readonly usesPublicPortNumber?: boolean;
+  /**
+   * Umgebungsvariable, in der das Spiel-Image die **öffentliche** Portnummer
+   * dieses Ports vorfindet.
+   *
+   * Ohne Angabe erfährt das Image sie nicht – und braucht sie in aller Regel
+   * auch nicht: Es lauscht auf seiner festen Nummer und weiß nichts von der
+   * Übersetzung davor. Wer sie braucht, ist ein Spiel, das seine Adresse selbst
+   * weitersagt (siehe {@link GameTypePort.usesPublicPortNumber}).
+   */
+  readonly envVar?: string;
 }
 
 /**
