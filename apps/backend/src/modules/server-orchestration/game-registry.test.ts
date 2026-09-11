@@ -11,6 +11,8 @@ import {
   PALWORLD_GAME_TYPE,
   PROJECT_ZOMBOID_GAME_TYPE,
   RUST_GAME_TYPE,
+  SATISFACTORY_GAME_TYPE,
+  SDTD_GAME_TYPE,
   TERRARIA_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TEST_GAME_TYPE,
@@ -815,5 +817,77 @@ describe('Minecraft mit Mods: Fabric und NeoForge', () => {
 
     expect(registry.requireSelectable('minecraft-fabric').id).toBe('minecraft-fabric');
     expect(registry.requireSelectable('minecraft-neoforge').id).toBe('minecraft-neoforge');
+  });
+});
+
+/**
+ * Satisfactory und 7 Days to Die (Anhang A, Phase 3).
+ *
+ * Beide standen gestern noch auf der Liste der zurueckgestellten Spiele: Sie
+ * brauchen **eine** oeffentliche Nummer fuer TCP und UDP, und die konnte der
+ * Port-Pool nicht vergeben.
+ */
+describe('Satisfactory und 7 Days to Die', () => {
+  it('sind ab Ausbaustufe 3 auswaehlbar und zeigen auf feste Image-Fassungen', () => {
+    const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
+
+    expect(registry.requireSelectable('satisfactory').id).toBe('satisfactory');
+    expect(registry.requireSelectable('seven-days-to-die').id).toBe('seven-days-to-die');
+    expect(SATISFACTORY_GAME_TYPE.dockerImage).toBe(
+      'ghcr.io/nightriderp/palantir-game-satisfactory:1',
+    );
+    expect(SDTD_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-sdtd:1');
+  });
+
+  it('verlangen fuer den Spiel-Port beide Protokolle', () => {
+    // Der Client leitet die zweite Adresse nicht ab, er benutzt dieselbe
+    // Nummer. Zwei getrennte Eintraege bekaemen zwei verschiedene.
+    expect(SATISFACTORY_GAME_TYPE.ports).toEqual([
+      { containerPort: 7_777, protocol: 'both', primary: true, label: 'Spiel-Port' },
+    ]);
+    expect(SDTD_GAME_TYPE.ports[0]).toEqual({
+      containerPort: 26_900,
+      protocol: 'both',
+      primary: true,
+      label: 'Spiel-Port',
+    });
+  });
+
+  it('fragt 7 Days to Die auf dem Abfrage-Port ab, nicht auf dem Spiel-Port', () => {
+    // `gamedig` rechnet hier +1; hinter frp traegt jeder Container-Port aber
+    // eine eigene oeffentliche Nummer (Fundpunkt 246).
+    expect(SDTD_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'sdtd',
+      containerPort: 26_901,
+    });
+  });
+
+  it('bietet bei beiden keine Konsole an', () => {
+    // Satisfactory verwaltet sich im Spiel, 7 Days to Die ueber Telnet - und
+    // das spricht der Agent nicht.
+    expect(SATISFACTORY_GAME_TYPE.console).toEqual({ kind: 'none' });
+    expect(SDTD_GAME_TYPE.console).toEqual({ kind: 'none' });
+  });
+
+  it('kommt Satisfactory ganz ohne Felder aus', () => {
+    // Alles, was es einzustellen gibt, steht im Spiel. Ein Formularfeld, das
+    // danach nichts mehr bewirkt, waere eine Falle.
+    expect(SATISFACTORY_GAME_TYPE.configFields).toEqual([]);
+  });
+
+  it('sperrt bei 7 Days to Die, was in die Karte eingeht', () => {
+    for (const schluessel of ['world', 'seed', 'worldSize', 'gameName']) {
+      expect(
+        SDTD_GAME_TYPE.configFields.find((feld) => feld.key === schluessel)?.lockedAfterCreate,
+      ).toBe(true);
+    }
+  });
+
+  it('bildet jedes Feld auf eine Umgebungsvariable ab', () => {
+    const felder = SDTD_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(SDTD_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    expect([...(SDTD_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
   });
 });
