@@ -7,12 +7,15 @@
 # ein anonymer Abruf endet mit „No subscription". Es braucht ein Konto, das ACC
 # besitzt.
 #
-# Deshalb zwei Wege, und beide ohne Passwort im Panel:
+# Deshalb drei Wege, und keiner davon mit einem Passwort im Panel:
 #
 #   1. **Steam-Konto.** Der Betreiber meldet sich einmal von Hand auf der Node
 #      an; der Token wird schreibgeschützt eingehängt, im Panel steht nur der
 #      Benutzername. Dann holt und aktualisiert sich der Server selbst.
-#   2. **Von Hand.** Den Serverordner aus der eigenen ACC-Installation über den
+#   2. **Eigenes Archiv.** Der Serverordner liegt als ZIP an einer Adresse, die
+#      die Node erreicht; Adresse und Prüfsumme stehen im Panel. Der einzige Weg
+#      ganz ohne Steam-Anmeldung.
+#   3. **Von Hand.** Den Serverordner aus der eigenen ACC-Installation über den
 #      Datei-Manager nach `/data/server` legen. Er wiegt keine hundert Megabyte.
 #
 # Was das Image tut: die drei Konfigurationsdateien schreiben – **in UTF-16 LE
@@ -57,24 +60,89 @@ if [ -n "${STEAM_LOGIN:-}" ]; then
     log '  mkdir -p /srv/palantir/steam-konto'
     log '  chown 1000:1000 /srv/palantir/steam-konto'
     log '  docker run -it --rm -v /srv/palantir/steam-konto:/heim -e HOME=/heim \'
-    log '    ghcr.io/nightriderp/palantir-base-steam:3 \'
+    log '    ghcr.io/nightriderp/palantir-base-steam:4 \'
     log "    /opt/steamcmd/steamcmd.sh +login ${STEAM_LOGIN} +quit"
   fi
 fi
 
 # -----------------------------------------------------------------------------
-# 2. Sind die Serverdateien da?
+# 2. Serverdateien aus einem eigenen Archiv – ohne Steam
+#
+# Der zweite Weg, und der einzige ohne Anmeldung: Der Betreiber legt das Archiv
+# einmal an eine Adresse, die die Node erreicht (die eigene VPS genügt), und
+# trägt sie im Panel ein. Geholt wird nur, wenn die Serverdateien fehlen – ein
+# Archiv aktualisiert sich nicht von selbst, und ein Download bei jedem Start
+# wäre hundert Megabyte für nichts.
+#
+# **Die Prüfsumme ist Bedingung, nicht Zierde.** Was hier ankommt, wird unter
+# Proton ausgeführt; ohne Prüfsumme wäre jede halbe Übertragung und jede falsche
+# Adresse ein ausgeführtes Programm unbekannter Herkunft. Sie ist außerdem das,
+# woran der zweite Start erkennt, dass er nichts tun muss.
+if [ ! -f "$BINAERDATEI" ] && [ -n "${ACC_ARCHIV_URL:-}" ]; then
+  if [ -z "${ACC_ARCHIV_SHA256:-}" ]; then
+    log 'Zur Adresse des Archivs fehlt die Prüfsumme – ohne sie wird nichts geholt.'
+    log ''
+    log 'Sie steht dort, wo das Archiv liegt:'
+    log ''
+    log '  sha256sum acc-server.zip'
+    log ''
+    log 'Die Zeichenkette davor gehört ins Feld „Prüfsumme des Archivs".'
+  else
+    case "$ACC_ARCHIV_URL" in
+      *.tar.gz | *.tgz | *.tar.xz) ARCHIV="${PALANTIR_INTERN}/acc-server.tar" ;;
+      *) ARCHIV="${PALANTIR_INTERN}/acc-server.zip" ;;
+    esac
+
+    log "Hole die Serverdateien von ${ACC_ARCHIV_URL}"
+
+    if palantir_datei_holen "$ACC_ARCHIV_URL" "$ACC_ARCHIV_SHA256" "$ARCHIV"; then
+      mkdir -p "$SERVER"
+
+      case "$ARCHIV" in
+        *.tar) palantir_tar_auspacken "$ARCHIV" "$SERVER" ;;
+        *) palantir_zip_auspacken "$ARCHIV" "$SERVER" ;;
+      esac
+
+      # Das Archiv wird nicht aufgehoben: Es wiegt so viel wie die Dateien
+      # selbst und wird nur wieder gebraucht, wenn jemand den Serverordner
+      # löscht – dann holt der nächste Start es erneut.
+      rm -f "$ARCHIV"
+
+      # **Ein Ordner zu tief.** Wer den Serverordner im Dateiexplorer einpackt,
+      # hat den Ordnernamen mit im Archiv; dann läge `accServer.exe` eine Ebene
+      # darunter und dieses Skript fände sie nicht. Das ist der häufigste
+      # Fehler beim Packen und eine Meldung nicht wert – es lässt sich beheben.
+      if [ ! -f "$BINAERDATEI" ]; then
+        INNEN="$(find "$SERVER" -mindepth 2 -maxdepth 2 -name accServer.exe -print 2> /dev/null | head -n 1)"
+
+        if [ -n "$INNEN" ]; then
+          OBERORDNER="$(dirname "$INNEN")"
+          log "Das Archiv trägt einen Ordner namens $(basename "$OBERORDNER") – hole den Inhalt heraus."
+          (cd "$OBERORDNER" && tar -cf - .) | (cd "$SERVER" && tar -xf -)
+          rm -rf "$OBERORDNER"
+        fi
+      fi
+    fi
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# 3. Sind die Serverdateien da?
 if [ ! -f "$BINAERDATEI" ]; then
   log 'Die Serverdateien fehlen.'
   log ''
   log 'Kunos gibt den dedizierten Server nur an ein Steam-Konto heraus, das ACC'
-  log 'besitzt – anonym geht er nicht. Es gibt zwei Wege:'
+  log 'besitzt – anonym geht er nicht. Es gibt drei Wege:'
   log ''
   log '1. Steam-Konto: In den Einstellungen des Servers den Steam-Benutzernamen'
   log '   eintragen und auf der Node einmal anmelden (siehe oben). Danach holt'
   log '   und aktualisiert sich der Server selbst.'
   log ''
-  log '2. Von Hand: Den Ordner aus deiner eigenen ACC-Installation'
+  log '2. Eigenes Archiv: Den Serverordner als ZIP an eine Adresse legen, die'
+  log '   diese Node erreicht, und Adresse samt Prüfsumme in den Einstellungen'
+  log '   eintragen. Dann holt sich jeder neue Server die Dateien von dort.'
+  log ''
+  log '3. Von Hand: Den Ordner aus deiner eigenen ACC-Installation'
   log ''
   log '     steamapps/common/Assetto Corsa Competizione Dedicated Server'
   log ''
@@ -86,7 +154,7 @@ fi
 mkdir -p "$CFG"
 
 # -----------------------------------------------------------------------------
-# 3. UTF-16 LE
+# 4. UTF-16 LE
 #
 # **Die eine Stolperstelle dieses Spiels.** ACC liest seine Konfiguration als
 # UTF-16 LE mit Marke. Eine Datei in UTF-8 wird nicht etwa abgelehnt – sie wird
@@ -112,7 +180,7 @@ json_schalter() {
 }
 
 # -----------------------------------------------------------------------------
-# 4. configuration.json
+# 5. configuration.json
 #
 # Die beiden Portnummern kommen vom Panel und sind **dieselben wie draußen**
 # (`usesPublicPortNumber` in der Spieltyp-Definition). Das ist bei diesem Spiel
@@ -136,7 +204,7 @@ PLAETZE="${ACC_MAX_CAR_SLOTS:-30}"
 } | utf16_schreiben "${CFG}/configuration.json"
 
 # -----------------------------------------------------------------------------
-# 5. settings.json
+# 6. settings.json
 {
   printf '{\n'
   printf '  "serverName": "%s",\n' "$(json_text "${ACC_NAME:-Ein Palantir-Server}")"
@@ -160,7 +228,7 @@ PLAETZE="${ACC_MAX_CAR_SLOTS:-30}"
 } | utf16_schreiben "${CFG}/settings.json"
 
 # -----------------------------------------------------------------------------
-# 6. event.json
+# 7. event.json
 #
 # Drei Sitzungen, wie sie ein Rennwochenende hat: freies Training, Qualifikation,
 # Rennen. Wer mehr will (mehrere Trainings, Sprint), legt sich seine eigene
@@ -194,7 +262,7 @@ PLAETZE="${ACC_MAX_CAR_SLOTS:-30}"
 # Datei-Manager daneben – dieses Skript schreibt nur, was das Panel kennt.
 
 # -----------------------------------------------------------------------------
-# 7. Proton und Start
+# 8. Proton und Start
 proton_vorbereiten
 
 # ACC nimmt keine Befehle entgegen. Das Rohr entsteht trotzdem, damit sich das

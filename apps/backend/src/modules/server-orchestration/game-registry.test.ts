@@ -1265,7 +1265,7 @@ describe('Assetto Corsa Competizione', () => {
     expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('acc').id).toBe(
       'acc',
     );
-    expect(ACC_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-acc:2');
+    expect(ACC_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-acc:3');
   });
 
   it('traegt bei beiden Ports drinnen die oeffentliche Nummer', () => {
@@ -1340,5 +1340,31 @@ describe('Spiele mit Steam-Anmeldung', () => {
     expect(
       ACC_GAME_TYPE.configFields.find((feld) => feld.key === 'steamAccount')?.defaultValue,
     ).toBe('');
+  });
+});
+
+/**
+ * Der dritte Weg zu den ACC-Serverdateien: ein eigenes Archiv (2026-09-11).
+ */
+describe('Assetto Corsa Competizione: eigenes Archiv', () => {
+  it('bietet Adresse und Pruefsumme als Felder an', () => {
+    const felder = ACC_GAME_TYPE.configFields;
+
+    expect(felder.find((feld) => feld.key === 'filesUrl')?.type).toBe('text');
+    expect(felder.find((feld) => feld.key === 'filesSha256')?.type).toBe('text');
+  });
+
+  it('laesst beide leer - keiner der drei Wege ist Vorgabe', () => {
+    for (const schluessel of ['filesUrl', 'filesSha256', 'steamAccount']) {
+      expect(
+        ACC_GAME_TYPE.configFields.find((feld) => feld.key === schluessel)?.defaultValue,
+        schluessel,
+      ).toBe('');
+    }
+  });
+
+  it('reicht beide an das Image durch', () => {
+    expect(ACC_GAME_TYPE.envMapping?.filesUrl).toBe('ACC_ARCHIV_URL');
+    expect(ACC_GAME_TYPE.envMapping?.filesSha256).toBe('ACC_ARCHIV_SHA256');
   });
 });

@@ -1,17 +1,17 @@
 # Assetto Corsa Competizione (`palantir-game-acc`)
 
-Anonym gibt Valve diesen Server nicht heraus — deshalb zwei Wege zu den Dateien, beide ohne Passwort im Panel.
+Anonym gibt Valve diesen Server nicht heraus — deshalb drei Wege zu den Dateien, keiner davon mit einem Passwort im Panel.
 
-| Sache         | Wert                                                    |
-| ------------- | ------------------------------------------------------- |
-| Basis         | `palantir-base-proton:3`                                |
-| Serverdateien | `/data/server` — über Steam-Konto oder Datei-Manager    |
-| Ports         | 9231/udp Spiel, 9232/tcp Verbindungsaufbau              |
-| Konsole       | keine                                                   |
-| Abfrage       | keine                                                   |
-| Konfiguration | `cfg/configuration.json`, `settings.json`, `event.json` |
+| Sache         | Wert                                                     |
+| ------------- | -------------------------------------------------------- |
+| Basis         | `palantir-base-proton:3`                                 |
+| Serverdateien | `/data/server` — Steam-Konto, eigenes Archiv oder Upload |
+| Ports         | 9231/udp Spiel, 9232/tcp Verbindungsaufbau               |
+| Konsole       | keine                                                    |
+| Abfrage       | keine                                                    |
+| Konfiguration | `cfg/configuration.json`, `settings.json`, `event.json`  |
 
-## Zwei Wege zu den Serverdateien
+## Drei Wege zu den Serverdateien
 
 Kunos gibt den dedizierten Server **nicht anonym** heraus: Er ist ein Werkzeug am Elternspiel
 (Anwendung 1430110, Eltern 805550). Nachgemessen:
@@ -43,7 +43,28 @@ einem Container ohne Eingabe fest. Stattdessen steht im Log, was zu tun ist.
 Node hat, kann damit herunterladen, was das Konto besitzt. Er gehört dem Benutzer 1000 und
 niemandem sonst — und nicht in ein Backup, das das Haus verlässt.
 
-### 2. Von Hand (ohne Steam-Konto)
+### 2. Eigenes Archiv (der Weg ganz ohne Steam)
+
+Den Serverordner **als ZIP oder tar.gz** an eine Adresse legen, die die Node erreicht — die eigene
+VPS genügt. Dann im Panel zwei Felder füllen:
+
+| Feld                       | Inhalt                                 |
+| -------------------------- | -------------------------------------- |
+| Adresse des Server-Archivs | `https://…/acc-server.zip`             |
+| Prüfsumme des Archivs      | Ausgabe von `sha256sum acc-server.zip` |
+
+**Die Prüfsumme ist Bedingung, nicht Zierde.** Was hier ankommt, wird unter Proton ausgeführt; ohne
+sie wäre jede halbe Übertragung und jede falsche Adresse ein ausgeführtes Programm unbekannter
+Herkunft. Sie ist außerdem das, woran der zweite Start erkennt, dass er nichts tun muss.
+
+Geholt wird **nur, wenn die Serverdateien fehlen** — ein Archiv aktualisiert sich nicht von selbst,
+und ein Download bei jedem Start wäre hundert Megabyte für nichts. Bei einem ACC-Update tauschst du
+das Archiv aus, löschst den Ordner `server` im Datei-Manager und startest neu.
+
+Packt jemand den Ordner samt Namen ein (der häufigste Fehler), liegt `accServer.exe` eine Ebene zu
+tief. Das Startskript zieht den Inhalt dann selbst hoch und sagt es im Log.
+
+### 3. Von Hand (ohne Steam-Konto)
 
 Den Ordner aus der eigenen ACC-Installation über den **Datei-Manager** nach `server` im Datenordner
 legen; als ZIP hochladen und entpacken geht auch:

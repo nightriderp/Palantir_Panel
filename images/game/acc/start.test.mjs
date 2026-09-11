@@ -46,6 +46,29 @@ const SH_VORHANDEN = spawnSync('sh', ['-c', 'exit 0']).error === undefined;
 const ICONV_DA = SH_VORHANDEN && spawnSync('sh', ['-c', 'command -v iconv']).status === 0;
 const nurMitShell = { skip: SH_VORHANDEN ? false : 'Keine POSIX-Shell (sh) im PATH.' };
 const nurMitIconv = { skip: ICONV_DA ? false : 'Kein iconv im PATH.' };
+/**
+ * Kann `tar` hier mit Pfaden umgehen, die einen Laufwerksbuchstaben tragen?
+ *
+ * Unter Windows nicht: GNU tar haelt das `C:` fuer einen Rechnernamen und
+ * versucht, sich dorthin zu verbinden. Im Container - und damit in der CI -
+ * gibt es keine Laufwerksbuchstaben, dort laufen diese Pruefungen.
+ */
+const TAR_MIT_LAUFWERK = (() => {
+  if (!SH_VORHANDEN) return false;
+  const ordner = mkdtempSync(join(tmpdir(), 'palantir-tar-'));
+  const lauf = spawnSync('sh', [
+    '-c',
+    'cd "$1" && printf x > a && tar -czf "$1/t.tar.gz" a',
+    '_',
+    posix(ordner),
+  ]);
+  spawnSync('sh', ['-c', 'rm -rf "$1"', '_', posix(ordner)]);
+
+  return lauf.status === 0;
+})();
+const nurMitTar = {
+  skip: TAR_MIT_LAUFWERK ? false : 'tar kommt hier nicht mit Laufwerksbuchstaben zurecht.',
+};
 
 const aufraeumen = [];
 
@@ -115,21 +138,72 @@ function arbeitsordner({ mitServerdateien = true, mitSteamCmd = false, mitToken 
   return { wurzel, daten, proton, vorlage, protokoll, konto };
 }
 
-function starte(ordner, extra = {}) {
-  return spawnSync('sh', [START_SH], {
+/**
+ * Legt ein Archiv an und stellt ein `curl` daneben, das es „herunterlaedt".
+ *
+ * Geprueft wird der Weg drumherum - Pruefsumme, Auspacken, ein Ordner zu tief -,
+ * nicht das Netz. `.tar.gz` und nicht `.zip`, weil `tar` ueberall vorhanden ist;
+ * der Zweig fuer ZIP ist derselbe eine Aufruf.
+ */
+function mitArchiv(ordner, { imUnterordner = false } = {}) {
+  const bin = join(ordner.wurzel, 'bin');
+  const bau = join(ordner.wurzel, 'bau');
+  const inhalt = imUnterordner ? join(bau, 'Assetto Corsa Competizione Dedicated Server') : bau;
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(join(inhalt, 'cfg'), { recursive: true });
+  writeFileSync(join(inhalt, 'accServer.exe'), 'exe\n');
+  writeFileSync(join(inhalt, 'cfg', 'entrylist.json'), 'meine Fahrer\n');
+
+  const archiv = join(ordner.wurzel, 'acc.tar.gz');
+  spawnSync('sh', ['-c', 'cd "$1" && tar -czf "$2" .', '_', posix(bau), posix(archiv)]);
+
+  const summe = spawnSync('sh', ['-c', 'sha256sum "$1" | cut -d" " -f1', '_', posix(archiv)], {
     encoding: 'utf8',
-    timeout: 60_000,
-    env: {
-      ...process.env,
-      PALANTIR_DATA_DIR: posix(ordner.daten),
-      PALANTIR_LIB_DIR: LIB_ORDNER,
-      PALANTIR_PROTON_DIR: posix(ordner.proton),
-      PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
-      PALANTIR_STEAM_KONTO_DIR: posix(ordner.konto),
-      PALANTIR_PROTON_VERSION: 'GE-Proton-Test',
-      ...extra,
+  }).stdout.trim();
+
+  // Der Ersatz schreibt mit, dass er gerufen wurde - daran haengt die Pruefung,
+  // dass ein zweiter Start nichts mehr holt.
+  const protokoll = join(ordner.wurzel, 'curl-aufrufe.txt');
+  writeFileSync(
+    join(bin, 'curl'),
+    [
+      '#!/bin/sh',
+      `printf '%s\\n' "$*" >> "${posix(protokoll)}"`,
+      'ziel=""',
+      'for a in "$@"; do',
+      '  case "$vorher" in --output) ziel="$a";; esac',
+      '  vorher="$a"',
+      'done',
+      `cp "${posix(archiv)}" "$ziel"`,
+      '',
+    ].join('\n'),
+  );
+  spawnSync('sh', ['-c', 'chmod 0755 "$1"', '_', posix(join(bin, 'curl'))]);
+
+  return { bin: posix(bin), summe, protokoll };
+}
+
+function starte(ordner, extra = {}, bin = null) {
+  return spawnSync(
+    'sh',
+    bin === null
+      ? [START_SH]
+      : ['-c', 'PATH="$(cd "$1" && pwd):$PATH"; export PATH; exec sh "$2"', '_', bin, START_SH],
+    {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: {
+        ...process.env,
+        PALANTIR_DATA_DIR: posix(ordner.daten),
+        PALANTIR_LIB_DIR: LIB_ORDNER,
+        PALANTIR_PROTON_DIR: posix(ordner.proton),
+        PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+        PALANTIR_STEAM_KONTO_DIR: posix(ordner.konto),
+        PALANTIR_PROTON_VERSION: 'GE-Proton-Test',
+        ...extra,
+      },
     },
-  });
+  );
 }
 
 /** Liest eine der Konfigurationsdateien und rechnet sie aus UTF-16 zurück. */
@@ -198,6 +272,86 @@ describe('start.sh – mit Steam-Konto', nurMitIconv, () => {
 
     assert.equal(lauf.status, 0, lauf.stderr);
     assert.ok(!existsSync(ordner.protokoll));
+  });
+});
+
+describe('start.sh – eigenes Archiv (ohne Steam)', nurMitIconv, () => {
+  it('holt es, prueft die Pruefsumme und packt es aus', nurMitTar, () => {
+    const ordner = arbeitsordner({ mitServerdateien: false });
+    const archiv = mitArchiv(ordner);
+
+    const lauf = starte(
+      ordner,
+      { ACC_ARCHIV_URL: 'https://example.tld/acc.tar.gz', ACC_ARCHIV_SHA256: archiv.summe },
+      archiv.bin,
+    );
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.ok(existsSync(join(ordner.daten, 'server', 'accServer.exe')));
+    // Was im Archiv lag, bleibt liegen - auch die Fahrerliste.
+    assert.ok(existsSync(join(ordner.daten, 'server', 'cfg', 'entrylist.json')));
+  });
+
+  it('zieht den Inhalt hoch, wenn das Archiv einen Ordner traegt', nurMitTar, () => {
+    // Der haeufigste Fehler beim Packen: Wer den Serverordner im Dateiexplorer
+    // einpackt, hat seinen Namen mit im Archiv.
+    const ordner = arbeitsordner({ mitServerdateien: false });
+    const archiv = mitArchiv(ordner, { imUnterordner: true });
+
+    const lauf = starte(
+      ordner,
+      { ACC_ARCHIV_URL: 'https://example.tld/acc.tar.gz', ACC_ARCHIV_SHA256: archiv.summe },
+      archiv.bin,
+    );
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.ok(existsSync(join(ordner.daten, 'server', 'accServer.exe')));
+  });
+
+  it('holt ohne Pruefsumme gar nichts und sagt, wie man sie bekommt', () => {
+    // Was hier ankommt, wird unter Proton ausgefuehrt.
+    const ordner = arbeitsordner({ mitServerdateien: false });
+    const archiv = mitArchiv(ordner);
+
+    const lauf = starte(ordner, { ACC_ARCHIV_URL: 'https://example.tld/acc.tar.gz' }, archiv.bin);
+
+    assert.equal(lauf.status, 78);
+    assert.match(lauf.stdout, /fehlt die Pruefsumme|fehlt die Prüfsumme/u);
+    assert.match(lauf.stdout, /sha256sum/u);
+    assert.ok(!existsSync(archiv.protokoll));
+  });
+
+  it('holt nichts, wenn die Serverdateien schon da sind', () => {
+    // Ein Archiv aktualisiert sich nicht von selbst; ein Download bei jedem
+    // Start waere hundert Megabyte fuer nichts.
+    const ordner = arbeitsordner();
+    const archiv = mitArchiv(ordner);
+
+    const lauf = starte(
+      ordner,
+      { ACC_ARCHIV_URL: 'https://example.tld/acc.tar.gz', ACC_ARCHIV_SHA256: archiv.summe },
+      archiv.bin,
+    );
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.ok(!existsSync(archiv.protokoll));
+  });
+
+  it('verwirft ein Archiv, dessen Pruefsumme nicht passt', () => {
+    const ordner = arbeitsordner({ mitServerdateien: false });
+    const archiv = mitArchiv(ordner);
+
+    const lauf = starte(
+      ordner,
+      {
+        ACC_ARCHIV_URL: 'https://example.tld/acc.tar.gz',
+        ACC_ARCHIV_SHA256: 'a'.repeat(64),
+      },
+      archiv.bin,
+    );
+
+    assert.equal(lauf.status, 78);
+    assert.ok(!existsSync(join(ordner.daten, 'server', 'accServer.exe')));
   });
 });
 

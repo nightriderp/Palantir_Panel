@@ -2990,7 +2990,7 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   name: 'Assetto Corsa Competizione',
   description:
     'ACC-Server unter Proton. Die Serverdateien bringst du selbst mit – lade den Ordner „Assetto Corsa Competizione Dedicated Server" aus deiner Steam-Installation über den Datei-Manager nach „server".',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:2',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:3',
   defaultEnv: {},
   ports: [
     {
@@ -3030,6 +3030,32 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
       defaultValue: '',
       description:
         'Das Konto, das ACC besitzt – anonym gibt Valve den Server nicht heraus. Leer lassen, wenn du die Serverdateien selbst über den Datei-Manager hochlädst. Ein Passwort wird hier nie verlangt: Die Anmeldung passiert einmalig auf der Node.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'filesUrl',
+      label: 'Adresse des Server-Archivs',
+      type: 'text',
+      defaultValue: '',
+      description:
+        'Der Weg ohne Steam: Lege den Serverordner als ZIP an eine Adresse, die die Node erreicht, und trage sie hier ein. Geholt wird nur, wenn die Serverdateien fehlen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'filesSha256',
+      label: 'Prüfsumme des Archivs (SHA-256)',
+      type: 'text',
+      defaultValue: '',
+      description:
+        'Bedingung, wenn eine Adresse gesetzt ist: „sha256sum acc-server.zip" dort, wo das Archiv liegt. Was hier ankommt, wird ausgeführt.',
       required: false,
       options: [],
       min: null,
@@ -3209,6 +3235,8 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   envMapping: {
     serverName: 'ACC_NAME',
     steamAccount: 'STEAM_LOGIN',
+    filesUrl: 'ACC_ARCHIV_URL',
+    filesSha256: 'ACC_ARCHIV_SHA256',
     track: 'ACC_TRACK',
     carGroup: 'ACC_CAR_GROUP',
     maxCarSlots: 'ACC_MAX_CAR_SLOTS',
@@ -3225,6 +3253,8 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   restartRequiredFields: [
     'serverName',
     'steamAccount',
+    'filesUrl',
+    'filesSha256',
     'track',
     'carGroup',
     'maxCarSlots',
