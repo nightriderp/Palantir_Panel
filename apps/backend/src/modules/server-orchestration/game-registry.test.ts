@@ -1265,7 +1265,7 @@ describe('Assetto Corsa Competizione', () => {
     expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('acc').id).toBe(
       'acc',
     );
-    expect(ACC_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-acc:4');
+    expect(ACC_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-acc:5');
   });
 
   it('traegt bei beiden Ports drinnen die oeffentliche Nummer', () => {

@@ -29,7 +29,7 @@ Einmalig auf der Gamenode — Passwort und Steam-Guard-Code werden dort abgefrag
 
 ```bash
 mkdir -p /srv/palantir/steam-konto && chown 1000:1000 /srv/palantir/steam-konto
-docker run -it --rm -v /srv/palantir/steam-konto:/konto ghcr.io/nightriderp/palantir-base-steam:5 palantir-steam-anmelden DEIN_STEAM_NAME
+docker run -it --rm -v /srv/palantir/steam-konto:/konto ghcr.io/nightriderp/palantir-base-steam:6 palantir-steam-anmelden DEIN_STEAM_NAME
 ```
 
 Danach im Panel bei den Einstellungen des Servers den **Steam-Benutzernamen** eintragen. Der
@@ -87,6 +87,19 @@ Auskunft auf einen Port, den es nicht gibt — der Server liefe, wäre gesund, u
 Die Spieltyp-Definition sagt deshalb `usesPublicPortNumber: true`; das Panel vergibt die öffentliche
 Nummer, reicht sie als `ACC_UDP_PORT`/`ACC_TCP_PORT` herein, und das Startskript trägt genau sie in
 die Konfiguration ein.
+
+## Wo `accServer.exe` liegt, hängt vom Weg ab
+
+SteamCMD legt den Server in einen **Unterordner**, ein selbst gepacktes Archiv trägt oft den
+Ordnernamen mit, und wer von Hand hochlädt, trifft die Wurzel. Dreimal derselbe Inhalt, dreimal eine
+andere Tiefe.
+
+Das Startskript **sucht** die Datei deshalb (bis vier Ebenen tief) und nimmt ihren Ordner als
+Serverordner; `cfg/` legt es daneben. Liegt sie nicht in der Wurzel, steht im Log, wo sie liegt —
+das hilft, wenn man sie später im Datei-Manager sucht.
+
+Findet es sie gar nicht, zeigt das Log, **was stattdessen im Ordner liegt**. Ein halber Download
+sieht anders aus als ein Archiv mit fremdem Aufbau.
 
 ## UTF-16 — die Stolperstelle dieses Spiels
 
