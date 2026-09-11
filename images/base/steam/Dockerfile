@@ -76,9 +76,15 @@ RUN set -eux; \
   test -x /opt/steamcmd/steamcmd.sh
 
 COPY steam.sh /opt/palantir/lib/steam.sh
+# Das Werkzeug für die einmalige Anmeldung an einem Steam-Konto (Fassung 5).
+# Es gehört ins Image und nicht in eine Anleitung: Wer es von Hand nachbaut,
+# vergisst eine der drei Feinheiten – schreibbare Kopie, `HOME`, Ablageort des
+# Tokens – und bekommt eine Fehlermeldung, die von etwas anderem spricht.
+COPY steam-anmelden.sh /usr/local/bin/palantir-steam-anmelden
 
 # Rechte hier statt im Kontext: Ein Arbeitsplatz unter Windows gibt Dateirechte
-# nicht mit. Die Bibliothek wird eingebunden, nicht ausgeführt – nur lesbar.
-RUN chmod 0444 /opt/palantir/lib/steam.sh
+# nicht mit. Die Bibliothek wird eingebunden, nicht ausgeführt – nur lesbar;
+# das Werkzeug wird aufgerufen.
+RUN set -eux;   chmod 0444 /opt/palantir/lib/steam.sh;   chmod 0555 /usr/local/bin/palantir-steam-anmelden
 
 USER 1000:1000

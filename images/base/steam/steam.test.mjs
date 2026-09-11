@@ -12,7 +12,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -247,5 +247,123 @@ describe('steam_app_holen mit Konto', nurMitShell, () => {
     const protokoll = readFileSync(ordner.protokoll, 'utf8');
     assert.match(protokoll, /\+login nightrider/u);
     assert.ok(!protokoll.includes('anonymous'));
+  });
+});
+
+/**
+ * Das Werkzeug fuer die einmalige Anmeldung (`palantir-steam-anmelden`).
+ *
+ * Es nimmt dem Betreiber die drei Feinheiten ab, an denen der Aufruf von Hand
+ * scheitert - und die erste davon ist heute wirklich passiert: SteamCMD
+ * aktualisiert sich in sein eigenes Verzeichnis, und /opt/steamcmd gehoert
+ * root. Als Benutzer 1000 endet das in "Steamcmd needs to be online to
+ * update", was von etwas ganz anderem spricht.
+ */
+describe('palantir-steam-anmelden', nurMitShell, () => {
+  const WERKZEUG = posix(join(HIER, 'steam-anmelden.sh'));
+
+  /**
+   * Ein SteamCMD-Ersatz, der sich verhaelt wie der echte: Er schreibt in sein
+   * eigenes Verzeichnis (daran scheitert der Aufruf ohne Kopie) und legt bei
+   * Erfolg eine Anmeldung unter `$HOME/Steam/config` ab.
+   */
+  function aufbauMitAnmeldung({ gelingt = true } = {}) {
+    const ordner = aufbau();
+    const konto = join(ordner.wurzel, 'konto');
+    mkdirSync(konto, { recursive: true });
+
+    writeFileSync(
+      join(ordner.vorlage, 'steamcmd.sh'),
+      [
+        '#!/bin/sh',
+        `printf '%s\\n' "$*" >> "${posix(ordner.protokoll)}"`,
+        '# Wie der echte: schreibt beim Start in sein eigenes Verzeichnis.',
+        'printf \'aktualisiert\\n\' > "$(dirname "$0")/selbstaktualisierung"',
+        ...(gelingt
+          ? [
+              'mkdir -p "$HOME/Steam/config"',
+              'printf \'mein-token\\n\' > "$HOME/Steam/config/config.vdf"',
+            ]
+          : []),
+        'exit 0',
+        '',
+      ].join('\n'),
+    );
+    spawnSync('sh', ['-c', 'chmod 0755 "$1"', '_', posix(join(ordner.vorlage, 'steamcmd.sh'))]);
+
+    return { ...ordner, konto };
+  }
+
+  function anmelden(ordner, argumente = ['nightrider'], extra = {}) {
+    return spawnSync('sh', [WERKZEUG, ...argumente], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        PALANTIR_STEAM_KONTO_DIR: posix(ordner.konto),
+        PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+        ...extra,
+      },
+    });
+  }
+
+  it('legt den Token dorthin, wo die Spiel-Images ihn suchen', () => {
+    const ordner = aufbauMitAnmeldung();
+
+    const lauf = anmelden(ordner);
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.equal(
+      readFileSync(join(ordner.konto, 'Steam', 'config', 'config.vdf'), 'utf8'),
+      'mein-token\n',
+    );
+  });
+
+  it('arbeitet in einer Kopie, nicht in der Vorlage', () => {
+    // Der Fehler, der heute aufgetreten ist: SteamCMD aktualisiert sich in sein
+    // eigenes Verzeichnis, und das gehoert im Image root.
+    const ordner = aufbauMitAnmeldung();
+
+    anmelden(ordner);
+
+    assert.ok(!existsSync(join(ordner.vorlage, 'selbstaktualisierung')));
+  });
+
+  it('reicht den Benutzernamen an SteamCMD durch', () => {
+    const ordner = aufbauMitAnmeldung();
+
+    anmelden(ordner, ['master7524']);
+
+    assert.match(readFileSync(ordner.protokoll, 'utf8'), /\+login master7524/u);
+  });
+
+  it('verlangt einen Benutzernamen', () => {
+    const ordner = aufbauMitAnmeldung();
+
+    const lauf = anmelden(ordner, []);
+
+    assert.equal(lauf.status, 64);
+    assert.match(lauf.stderr, /Anmeldename/u);
+  });
+
+  it('sagt es, wenn der Ordner gar nicht eingehaengt ist', () => {
+    const ordner = aufbauMitAnmeldung();
+
+    const lauf = anmelden(ordner, ['nightrider'], {
+      PALANTIR_STEAM_KONTO_DIR: posix(join(ordner.wurzel, 'gibtsnicht')),
+    });
+
+    assert.equal(lauf.status, 66);
+    assert.match(lauf.stderr, /eingehängt|eingehaengt/u);
+  });
+
+  it('sagt es, wenn die Anmeldung nichts hinterlassen hat', () => {
+    // Der haeufigste Fall: falscher Benutzername. SteamCMD endet dann mit 0.
+    const ordner = aufbauMitAnmeldung({ gelingt: false });
+
+    const lauf = anmelden(ordner);
+
+    assert.equal(lauf.status, 75);
+    assert.match(lauf.stderr, /keine Anmeldung hinterlassen/u);
   });
 });

@@ -59,9 +59,8 @@ if [ -n "${STEAM_LOGIN:-}" ]; then
     log ''
     log '  mkdir -p /srv/palantir/steam-konto'
     log '  chown 1000:1000 /srv/palantir/steam-konto'
-    log '  docker run -it --rm -v /srv/palantir/steam-konto:/heim -e HOME=/heim \'
-    log '    ghcr.io/nightriderp/palantir-base-steam:4 \'
-    log "    /opt/steamcmd/steamcmd.sh +login ${STEAM_LOGIN} +quit"
+    log '  docker run -it --rm -v /srv/palantir/steam-konto:/konto \'
+    log "    ghcr.io/nightriderp/palantir-base-steam:5 palantir-steam-anmelden ${STEAM_LOGIN}"
   fi
 fi
 
