@@ -168,10 +168,34 @@ export type GameQuerySpec = PortConnectQuerySpec | GamedigQuerySpec | NoQuerySpe
 
 export type GameTypePortProtocol = 'tcp' | 'udp';
 
+/**
+ * Was eine Spiele-Definition über einen Port sagen darf.
+ *
+ * `both` heißt: **dieselbe öffentliche Nummer für TCP und UDP**. Nicht „zwei
+ * Ports", sondern einer, der beide Protokolle trägt.
+ *
+ * Es gibt Spiele, bei denen das keine Bequemlichkeit ist, sondern Bedingung:
+ * Satisfactory und 7 Days to Die leiten die zweite Adresse aus der ersten ab –
+ * der Client rechnet nicht, er nimmt dieselbe Nummer. Zwei getrennte Einträge
+ * bekämen aus dem Pool zwei verschiedene Nummern, und damit bräche das
+ * Beitreten.
+ *
+ * Eine Zuweisung (`ServerPortAssignment`) kennt dieses Wort **nicht**: Aus
+ * einem Port mit `both` werden zwei Zuweisungen mit derselben öffentlichen
+ * Nummer, eine je Protokoll. So bleibt alles dahinter – Portvergabe in der
+ * Datenbank, Veröffentlichung am Container, Tunnel – bei genau zwei
+ * Protokollen.
+ */
+export type GameTypePortDeclaration = GameTypePortProtocol | 'both';
+
 /** Ein Standard-Port einer Spiele-Definition. */
 export interface GameTypePort {
   readonly containerPort: number;
-  readonly protocol: GameTypePortProtocol;
+  /**
+   * `tcp`, `udp` – oder `both` für eine Nummer, die beide Protokolle trägt
+   * (siehe {@link GameTypePortDeclaration}).
+   */
+  readonly protocol: GameTypePortDeclaration;
   /**
    * `true` beim Port, den der Spieler benutzt. Genau einer je Definition; er
    * landet als sichtbarer Port in der Verbindungsadresse (Pflichtenheft §13).
