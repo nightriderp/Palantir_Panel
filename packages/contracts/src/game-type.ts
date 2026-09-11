@@ -392,6 +392,27 @@ export interface GameTypeDefinition {
    */
   readonly stopCommand?: string;
   /**
+   * **Die Serverdateien gibt es nur gegen eine Steam-Anmeldung.**
+   *
+   * Die meisten Spiele aus Anhang A geben ihren dedizierten Server anonym
+   * heraus – SteamCMD holt ihn ohne Konto. Manche tun das nicht: Assetto Corsa
+   * Competizione ist ein **Werkzeug am Elternspiel**, und ein anonymer Abruf
+   * endet mit `Failed to install app '1430110' (No subscription)`. Es braucht
+   * ein Konto, das das Spiel besitzt.
+   *
+   * Ein Passwort steht deshalb trotzdem nirgends im Panel. Der Betreiber meldet
+   * sich **einmal von Hand auf der Node** bei SteamCMD an; SteamCMD legt dort
+   * einen Anmelde-Token ab. Diese Angabe sorgt dafür, dass Container dieses
+   * Spieltyps den Ordner mit dem Token **schreibgeschützt eingehängt**
+   * bekommen – und nur sie. Welches Konto gemeint ist, sagt ein
+   * Konfigurationsfeld des Servers; der Benutzername allein ist kein Geheimnis.
+   *
+   * Ohne die Angabe sieht ein Container den Ordner nicht. Das ist der Grund,
+   * warum es sie gibt: Ein Token, den jeder Spielserver lesen kann, wäre ein
+   * Token, den jedes Spiel-Image verlieren kann.
+   */
+  readonly requiresSteamAccount?: boolean;
+  /**
    * Wie lange nach dem Start auf einen erfolgreichen Health-Check gewartet wird,
    * bevor der Start als gescheitert gilt (Pflichtenheft §9). Ein Spiel, das
    * seine Welt erst generieren muss, braucht hier mehr Zeit als ein Test-Typ.
