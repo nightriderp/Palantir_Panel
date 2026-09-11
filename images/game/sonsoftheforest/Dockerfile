@@ -7,7 +7,7 @@
 # Drei Ports, alle UDP: 8766 Spiel, 27016 Abfrage, 9700 Abgleich der Weltdaten
 # beim Beitreten. Ohne den dritten hängt der Spieler im Ladebildschirm, ohne
 # dass der Server etwas meldet.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:2
+ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:4
 FROM ${BASIS}
 
 USER root

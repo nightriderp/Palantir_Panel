@@ -907,7 +907,7 @@ describe('Enshrouded unter Proton', () => {
     expect(
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('enshrouded').id,
     ).toBe('enshrouded');
-    expect(ENSHROUDED_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-enshrouded:1');
+    expect(ENSHROUDED_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-enshrouded:2');
   });
 
   it('fragt den Abfrage-Port ab, nicht den Spiel-Port', () => {
@@ -947,7 +947,7 @@ describe('V Rising unter Proton', () => {
     expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('vrising').id).toBe(
       'vrising',
     );
-    expect(VRISING_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-vrising:1');
+    expect(VRISING_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-vrising:2');
   });
 
   it('haengt die Abfrage an die Sichtbarkeit', () => {
@@ -1005,7 +1005,7 @@ describe('Sons of the Forest unter Proton', () => {
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('sonsoftheforest').id,
     ).toBe('sonsoftheforest');
     expect(SONS_OF_THE_FOREST_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-sonsoftheforest:1',
+      'ghcr.io/nightriderp/palantir-game-sonsoftheforest:2',
     );
   });
 
@@ -1109,7 +1109,7 @@ describe('Abiotic Factor unter Proton', () => {
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('abioticfactor').id,
     ).toBe('abioticfactor');
     expect(ABIOTIC_FACTOR_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-abioticfactor:1',
+      'ghcr.io/nightriderp/palantir-game-abioticfactor:2',
     );
   });
 
@@ -1154,7 +1154,7 @@ describe('ARK: Survival Ascended', () => {
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('arkascended').id,
     ).toBe('arkascended');
     expect(ARK_ASCENDED_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-arkascended:1',
+      'ghcr.io/nightriderp/palantir-game-arkascended:2',
     );
   });
 
@@ -1265,7 +1265,7 @@ describe('Assetto Corsa Competizione', () => {
     expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('acc').id).toBe(
       'acc',
     );
-    expect(ACC_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-acc:6');
+    expect(ACC_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-acc:7');
   });
 
   it('traegt bei beiden Ports drinnen die oeffentliche Nummer', () => {

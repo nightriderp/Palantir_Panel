@@ -6,7 +6,7 @@
 #
 # Die Ports sind beide UDP: 15636 für das Spiel, 15637 für die Abfrage. Anders
 # als bei Satisfactory braucht keiner von beiden ein zweites Protokoll.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:1
+ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:4
 FROM ${BASIS}
 
 USER root

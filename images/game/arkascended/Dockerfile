@@ -9,7 +9,7 @@
 # Zwei Ports, beide UDP: 7777 für das Spiel, 27015 für die Abfrage. RCON
 # (TCP 27020) wird **nicht** veröffentlicht; es erreicht allein der Agent aus
 # dem Spielenetz.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-proton10:1
+ARG BASIS=ghcr.io/nightriderp/palantir-base-proton10:2
 FROM ${BASIS}
 
 USER root

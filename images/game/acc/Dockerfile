@@ -11,7 +11,7 @@
 # Zwei Ports: UDP für die Fahrzeugpositionen, TCP für den Verbindungsaufbau.
 # Beide tragen im Container dieselbe Nummer wie draußen
 # (`usesPublicPortNumber`), weil ACC sie dem Lobby-Dienst selbst meldet.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:3
+ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:4
 FROM ${BASIS}
 
 USER root
