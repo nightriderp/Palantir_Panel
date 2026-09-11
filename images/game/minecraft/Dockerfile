@@ -1,8 +1,7 @@
 # Minecraft – das erste echte Spiel-Image (Lastenheft §7, Ausbaustufe 2).
 #
-# **Zwei Ausgaben aus einem Image** (Wunsch des Betreibers, 2026-09-10: „will
-# auch Minecraft Vanilla zur Auswahl haben"): `MINECRAFT_EDITION=paper` (Vorgabe)
-# und `=vanilla`. Alles außer der Jar ist bei beiden gleich – EULA,
+# **Vier Ausgaben aus einem Image**: `MINECRAFT_EDITION=paper` (Vorgabe),
+# `=vanilla`, `=fabric` und `=neoforge` (die beiden letzten seit Fassung 6). Alles außer der Jar ist bei beiden gleich – EULA,
 # `server.properties`, RCON, Heap, Konsole –, und das Panel unterscheidet sie
 # über zwei Spieltyp-Definitionen, nicht über zwei Images. Zwei Images hießen
 # zwei Kopien desselben Startskripts.
@@ -126,6 +125,31 @@ USER 1000:1000
 ENV MINECRAFT_VANILLA_VERSION=26.2
 ENV MINECRAFT_VANILLA_URL=https://piston-data.mojang.com/v1/objects/823e2250d24b3ddac457a60c92a6a941943fcd6a/server.jar
 ENV MINECRAFT_VANILLA_SHA256=cdacdfb25898de5e4b4b0e5ddcc2722f77067e46605709c2d886c000ebb63ec5
+
+# -----------------------------------------------------------------------------
+# Die beiden Mod-Ausgaben (seit Fassung 6).
+#
+# **Fabric** ist eine kleine Starter-Jar, die den Rest beim ersten Lauf selbst
+# nachzieht. Die Adresse setzt sich aus drei Fassungen zusammen - Spiel, Loader,
+# Installationsprogramm - und liefert fuer dasselbe Tripel byteweise dieselbe
+# Datei; deshalb laesst sie sich ueberhaupt per Pruefsumme festnageln.
+#
+#   curl -s https://meta.fabricmc.net/v2/versions/loader | head -c 200
+#   curl -s https://meta.fabricmc.net/v2/versions/installer | head -c 200
+#   curl -sL https://meta.fabricmc.net/v2/versions/loader/26.2/0.19.5/1.1.2/server/jar | sha256sum
+ENV MINECRAFT_FABRIC_VERSION=26.2-0.19.5
+ENV MINECRAFT_FABRIC_URL=https://meta.fabricmc.net/v2/versions/loader/26.2/0.19.5/1.1.2/server/jar
+ENV MINECRAFT_FABRIC_SHA256=f1d2bafd0b3b97630b0cdd8e890cd102db3dbe60877a38a5c813aa929e691127
+
+# **NeoForge** kommt als Installationsprogramm: Es legt beim ersten Start einen
+# Baum aus Bibliotheken an und schreibt eine Argumentdatei, die der Start
+# einbindet. Eine einzelne Server-Jar gibt es dort nicht.
+#
+#   curl -s https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml | tail -20
+#   curl -sL https://maven.neoforged.net/releases/net/neoforged/neoforge/26.2.0.86/neoforge-26.2.0.86-installer.jar | sha256sum
+ENV MINECRAFT_NEOFORGE_VERSION=26.2.0.86
+ENV MINECRAFT_NEOFORGE_URL=https://maven.neoforged.net/releases/net/neoforged/neoforge/26.2.0.86/neoforge-26.2.0.86-installer.jar
+ENV MINECRAFT_NEOFORGE_SHA256=8202c68fda16d985e832b50a24d31a6ff4b8571511c42f4856c18f684e8d0d6e
 
 # Paper legt `world/`, `logs/`, `plugins/`, `cache/`, `libraries/` und
 # `versions/` relativ zum Arbeitsverzeichnis an – das ist `/data` aus der Basis,
