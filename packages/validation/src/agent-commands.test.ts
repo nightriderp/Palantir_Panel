@@ -12,6 +12,7 @@ import {
   getLogsCommandPayloadSchema,
   removeStorageEntryCommandPayloadSchema,
   setServerQueryCommandPayloadSchema,
+  restartCommandPayloadSchema,
   stopCommandPayloadSchema,
   uploadArchiveBlockCommandPayloadSchema,
 } from './agent-commands.js';
@@ -173,6 +174,51 @@ describe('FILE_UPLOAD (Arbeitspaket P2)', () => {
         contentBase64: 'kein base64 !!!',
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('STOP mit Stopp-Befehl', () => {
+  it('nimmt Befehl und RCON-Zugang an', () => {
+    expect(
+      stopCommandPayloadSchema.safeParse({
+        containerId: 'abc123',
+        timeoutSeconds: 180,
+        stopCommand: ['DoExit'],
+        rcon: { port: 27_020, passwordFile: '.palantir/rcon.password' },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('lehnt einen leeren Befehl ab', () => {
+    // Er haette keine Bedeutung, wuerde aber je nach Weg unterschiedlich
+    // behandelt - genau wie bei EXEC_CONSOLE.
+    expect(
+      stopCommandPayloadSchema.safeParse({ containerId: 'abc123', stopCommand: [] }).success,
+    ).toBe(false);
+  });
+
+  it('laesst die Passwortdatei nicht aus dem Datenordner ausbrechen', () => {
+    for (const passwordFile of ['/etc/shadow', '../../etc/shadow']) {
+      expect(
+        stopCommandPayloadSchema.safeParse({
+          containerId: 'abc123',
+          stopCommand: ['quit'],
+          rcon: { port: 28_016, passwordFile },
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('reicht bei RESTART keinen Stopp-Befehl durch', () => {
+    // RESTART wird fuer Spielserver nicht benutzt (das Backend macht Stopp +
+    // Start, damit der Health-Check dazwischen greift). Das Schema kennt das
+    // Feld deshalb nicht - und laesst es fallen, statt es weiterzureichen.
+    const geprueft = restartCommandPayloadSchema.parse({
+      containerId: 'abc123',
+      stopCommand: ['quit'],
+    });
+
+    expect(geprueft).toEqual({ containerId: 'abc123' });
   });
 });
 

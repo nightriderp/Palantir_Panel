@@ -101,6 +101,29 @@ export interface StopCommandPayload {
   readonly containerId: string;
   /** Kulanzzeit; ohne Angabe gilt der Wert aus dem `CREATE`-Aufruf. */
   readonly timeoutSeconds?: number;
+  /**
+   * Befehl, der den Server **selbst** herunterfährt – zu schicken **vor** dem
+   * Signal (`GameTypeDefinition.stopCommand`).
+   *
+   * Der Agent schickt ihn über denselben Weg wie `EXEC_CONSOLE` – über RCON,
+   * wenn {@link StopCommandPayload.rcon} gesetzt ist, sonst über
+   * `palantir-console` im Container –, wartet bis zu `timeoutSeconds` darauf,
+   * dass der Container von selbst endet, und stoppt erst danach wie bisher.
+   *
+   * **Nichts daran darf den Stopp verhindern.** Scheitert der Befehl oder
+   * bleibt der Server stehen, greift das Signal wie ohne diese Angabe. Ein
+   * Server, der sich nicht stoppen lässt, wäre schlimmer als eine verlorene
+   * Viertelstunde Spielfortschritt.
+   *
+   * Eine Argumentliste und kein Kommandostring, aus demselben Grund wie bei
+   * {@link ExecConsoleCommandPayload.command}: keine Shell-Interpolation.
+   */
+  readonly stopCommand?: readonly string[];
+  /**
+   * Zugang zum RCON-Anschluss, wenn {@link StopCommandPayload.stopCommand} über
+   * RCON gehen soll. Ohne das Feld geht er über die Standardeingabe.
+   */
+  readonly rcon?: AgentRconAccess;
 }
 
 /** `RESTART` – stoppen und wieder starten. */
