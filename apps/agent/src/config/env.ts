@@ -39,6 +39,20 @@ const envSchema = z.object({
   /** Basisverzeichnis der Backups; für Restore-Mounts ebenfalls zugelassen. */
   AGENT_BACKUP_DIR: z.string().min(1).default('/srv/palantir/backups'),
   /**
+   * Ordner mit der Steam-Anmeldung des Betreibers.
+   *
+   * Ein paar Spiele geben ihren dedizierten Server nicht anonym heraus
+   * (Assetto Corsa Competizione: „No subscription"). Der Betreiber meldet sich
+   * einmal von Hand auf der Node an; der Token liegt dann hier, und Container
+   * von Spieltypen mit `requiresSteamAccount` bekommen den Ordner eingehängt.
+   *
+   * **Nur lesend**: Der Agent lässt für diesen Ordner keine beschreibbare
+   * Einhängung zu, auch nicht auf Geheiß des Backends (`readOnlyHostRoots`).
+   * Der Token ist die Anmeldung an einem Steam-Konto; ein Spielserver, der ihn
+   * ändern oder löschen könnte, wäre ein Spielserver zu viel.
+   */
+  AGENT_STEAM_ACCOUNT_DIR: z.string().min(1).default('/srv/palantir/steam-konto'),
+  /**
    * Docker-Netz der Gameserver-Container (Audit security-matrix-02).
    *
    * Vorgabe `palantir-games`: ein eigenes Bridge-Netz ohne

@@ -20,6 +20,12 @@ export interface RuntimeEnv {
   readonly AGENT_DATA_DIR: string;
   readonly AGENT_BACKUP_DIR: string;
   /**
+   * Ordner mit der Steam-Anmeldung (`AGENT_STEAM_ACCOUNT_DIR`). Ohne Angabe
+   * bleibt es bei der Vorgabe - ein Aufbau, der ihn nicht kennt, haengt ihn
+   * schlicht nirgends ein.
+   */
+  readonly AGENT_STEAM_ACCOUNT_DIR?: string;
+  /**
    * Docker-Netz der Gameserver-Container (security-matrix-02). Ohne Angabe
    * greift `DEFAULT_GAME_NETWORK` aus der Haertung - in keinem Fall `bridge`.
    */
@@ -59,8 +65,17 @@ export function createContainerRuntimeFromEnv(
 
   const hardening: HardeningOptions = {
     // Bind-Mounts sind auf die Palantir-Verzeichnisse begrenzt; Backups werden
-    // fuer den Restore ebenfalls gemountet (A3).
-    allowedHostRoots: [env.AGENT_DATA_DIR, env.AGENT_BACKUP_DIR],
+    // fuer den Restore ebenfalls gemountet (A3), die Steam-Anmeldung fuer die
+    // Spiele, die ohne Konto nicht an ihre Serverdateien kommen.
+    allowedHostRoots: [
+      env.AGENT_DATA_DIR,
+      env.AGENT_BACKUP_DIR,
+      ...(env.AGENT_STEAM_ACCOUNT_DIR === undefined ? [] : [env.AGENT_STEAM_ACCOUNT_DIR]),
+    ],
+    // Und die Steam-Anmeldung ausschliesslich lesend - siehe `env.ts`.
+    ...(env.AGENT_STEAM_ACCOUNT_DIR === undefined
+      ? {}
+      : { readOnlyHostRoots: [env.AGENT_STEAM_ACCOUNT_DIR] }),
     ...(defaultHostIp === undefined ? {} : { defaultHostIp }),
     ...(netz === undefined ? {} : { networkMode: netz }),
     ...ladeSeccompProfil(env.AGENT_SECCOMP_PROFILE_PATH),
