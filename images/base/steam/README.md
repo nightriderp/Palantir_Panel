@@ -87,7 +87,7 @@ Einmalig auf der Gamenode:
 
 ```bash
 mkdir -p /srv/palantir/steam-konto && chown 1000:1000 /srv/palantir/steam-konto
-docker run -it --rm -v /srv/palantir/steam-konto:/heim -e HOME=/heim   ghcr.io/nightriderp/palantir-base-steam:3 /opt/steamcmd/steamcmd.sh +login DEIN_STEAM_NAME +quit
+docker run -it --rm -v /srv/palantir/steam-konto:/heim -e HOME=/heim   ghcr.io/nightriderp/palantir-base-steam:4 /opt/steamcmd/steamcmd.sh +login DEIN_STEAM_NAME +quit
 ```
 
 Danach liegt der Token unter `/srv/palantir/steam-konto/Steam/config/config.vdf`. Container von
