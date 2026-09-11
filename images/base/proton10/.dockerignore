@@ -1,0 +1,17 @@
+# Build-Kontext dieses Images ist der Ordner selbst (siehe
+# .github/workflows/spiel-image-bauen.yml) - das .dockerignore im
+# Repo-Wurzelverzeichnis greift hier also nicht.
+#
+# Der Dockerfile kopiert aus diesem Ordner gar nichts: Proton kommt aus dem
+# Netz, die Bibliothek aus palantir-base-proton:2. Ohne diese Liste wanderten
+# README und VERSION trotzdem in den Kontext und damit in den
+# Build-Cache-Schluessel - eine Aenderung am Text wuerde das Image neu bauen.
+
+# Ergebnisse lokaler Laeufe (turbo, pnpm). In der CI existieren sie nicht, auf
+# einem Arbeitsrechner schon.
+.turbo
+node_modules
+
+# Beschreibung und Fassung liest der Workflow, nicht der Build.
+README.md
+VERSION

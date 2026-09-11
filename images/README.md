@@ -20,13 +20,14 @@ seinen Ordner mit `Dockerfile` und `VERSION`, sonst nichts.
 Ein Basis-Image je Laufzeit. Es bringt mit, was **jeder** Server dieser Laufzeit unter der
 Härtung des Agents braucht (Pflichtenheft §2.3), und nichts, was nur ein Spiel braucht.
 
-| Image         | Laufzeit                                                                                          | Stand     |
-| ------------- | ------------------------------------------------------------------------------------------------- | --------- |
-| `base/linux`  | Die gemeinsame Wurzel: Benutzer, Datenordner, Konsole, `curl`, `unzip`, `xz`. Trägt alles Übrige. | vorhanden |
-| `base/java`   | Eclipse Temurin JRE (Java 25) — Minecraft (Paper, Fabric, Forge), andere JVM-Server               | vorhanden |
-| `base/steam`  | SteamCMD samt 32-Bit-Bibliotheken — mit Abstand die größte Gruppe                                 | vorhanden |
-| `base/dotnet` | .NET 10 — Vintage Story, andere .NET-Server                                                       | vorhanden |
-| `base/proton` | Windows-Server unter Proton (samt Xvfb) — Enshrouded, V Rising, Sons of the Forest                | vorhanden |
+| Image           | Laufzeit                                                                                          | Stand     |
+| --------------- | ------------------------------------------------------------------------------------------------- | --------- |
+| `base/linux`    | Die gemeinsame Wurzel: Benutzer, Datenordner, Konsole, `curl`, `unzip`, `xz`. Trägt alles Übrige. | vorhanden |
+| `base/java`     | Eclipse Temurin JRE (Java 25) — Minecraft (Paper, Fabric, Forge), andere JVM-Server               | vorhanden |
+| `base/steam`    | SteamCMD samt 32-Bit-Bibliotheken — mit Abstand die größte Gruppe                                 | vorhanden |
+| `base/dotnet`   | .NET 10 — Vintage Story, andere .NET-Server                                                       | vorhanden |
+| `base/proton`   | Windows-Server unter Proton (samt Xvfb) — Enshrouded, V Rising, Sons of the Forest                | vorhanden |
+| `base/proton10` | Dieselbe Umgebung mit GE-Proton 10 — ARK: Survival Ascended haengt unter 11                       | vorhanden |
 
 **Die Wurzel ist `base/linux`.** Seit dem 10. September 2026 setzen die Laufzeit-Basen darauf
 auf, statt jede für sich ein fremdes Image zu nehmen: Benutzer, Datenordner, Stoppsignal und

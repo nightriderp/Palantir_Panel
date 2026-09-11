@@ -2705,6 +2705,247 @@ export const ABIOTIC_FACTOR_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * ARK: Survival Ascended – das größte Spiel dieser Liste (Anhang A, Phase 3).
+ *
+ * **Es läuft auf einer eigenen Proton-Fassung.** GE-Proton 11 bleibt beim Start
+ * dieses Servers hängen; das Image steht deshalb auf `base/proton10`
+ * (GE-Proton10-34). Entscheidung des Betreibers vom 2026-09-11 – die Alternative
+ * wäre gewesen, ARK draußen zu lassen.
+ *
+ * **Das Verwalter-Passwort ist zugleich das RCON-Passwort.** ARK kennt dafür
+ * kein eigenes Feld: Wer RCON spricht, ist Verwalter. Bleibt das Feld leer,
+ * erzeugt das Image ein zufälliges – dann hat das Panel seine Konsole, und im
+ * Spiel wird niemand Verwalter.
+ *
+ * **Die Karte ist nach dem Anlegen gesperrt.** Jede Karte hat ihren eigenen
+ * Spielstand; ein Wechsel ließe den bisherigen liegen und begänne von vorn.
+ */
+export const ARK_ASCENDED_GAME_TYPE: GameTypeDefinition = {
+  id: 'arkascended',
+  name: 'ARK: Survival Ascended',
+  description:
+    'ARK-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt zweistellig viele Gigabyte und richtet die Windows-Umgebung ein; das dauert eine Weile.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-arkascended:1',
+  consoleQuickCommands: [
+    { label: 'Spieler', command: 'ListPlayers' },
+    { label: 'Speichern', command: 'SaveWorld' },
+    { label: 'Stoppen', command: 'DoExit' },
+  ],
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 7_777,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+    {
+      containerPort: 27_015,
+      protocol: 'udp',
+      primary: false,
+      label: 'Abfrage-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: 'Ein Fragezeichen darin wird entfernt – ARK trennt seine Einstellungen damit.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'map',
+      label: 'Karte',
+      type: 'select',
+      defaultValue: 'TheIsland_WP',
+      description: 'Nach dem Anlegen fest – jede Karte hat ihren eigenen Spielstand.',
+      required: false,
+      options: [
+        'TheIsland_WP',
+        'TheCenter_WP',
+        'ScorchedEarth_WP',
+        'Aberration_WP',
+        'Extinction_WP',
+        'Ragnarok_WP',
+        'Astraeos_WP',
+        'LostColony_WP',
+      ],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 20,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 127,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Server-Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen heißt: jeder mit der Adresse kommt herein.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'adminPassword',
+      label: 'Passwort für Verwalter',
+      type: 'password',
+      defaultValue: '',
+      description:
+        'Gilt im Spiel für „enablecheats" und zugleich für die Konsole des Panels. Leer lassen heißt: Das Panel bekommt seine Konsole, im Spiel wird niemand Verwalter.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'autoSaveMinutes',
+      label: 'Selbsttätig speichern (Minuten)',
+      type: 'number',
+      /*
+       * Niedriger als ARKs eigene Vorgabe, und das aus einem Grund: ARK
+       * speichert beim Stoppsignal **nicht**, und der Befehl dafür ginge über
+       * RCON – einen RCON-Sprecher hat das Image nicht. Was seit dem letzten
+       * Speichern geschehen ist, ist nach einem Stopp fort.
+       */
+      defaultValue: 10,
+      description: 'ARK speichert beim Stoppen nicht – was danach kommt, ist die Rettung.',
+      required: false,
+      options: [],
+      min: 1,
+      max: 60,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'crossplay',
+      label: 'Spieler aus dem Microsoft Store zulassen',
+      type: 'toggle',
+      defaultValue: false,
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'battlEye',
+      label: 'BattlEye einschalten',
+      type: 'toggle',
+      // Vorgabe aus: Unter Proton ist der Dienst eine zusätzliche Fehlerquelle,
+      // und ein Server, der daran nicht startet, sieht aus wie einer, der gar
+      // nicht startet.
+      defaultValue: false,
+      description: 'Unter Proton nicht erprobt – ein Server, der daran scheitert, sagt es nicht.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'mods',
+      label: 'Mods (Kennungen, mit Komma getrennt)',
+      type: 'text',
+      defaultValue: '',
+      description: 'Der Server holt sie selbst von CurseForge.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'ARK_NAME',
+    map: 'ARK_MAP',
+    maxPlayers: 'MAX_PLAYERS',
+    password: 'ARK_PASSWORD',
+    adminPassword: 'ARK_ADMIN_PASSWORD',
+    autoSaveMinutes: 'ARK_AUTOSAVE',
+    crossplay: 'ARK_CROSSPLAY',
+    battlEye: 'ARK_BATTLEYE',
+    mods: 'ARK_MODS',
+  },
+  restartRequiredFields: [
+    'serverName',
+    'map',
+    'maxPlayers',
+    'password',
+    'adminPassword',
+    'autoSaveMinutes',
+    'crossplay',
+    'battlEye',
+    'mods',
+  ],
+  /*
+   * Der anspruchsvollste Server dieser Liste – anspruchsvoller noch als Rust.
+   * Studio Wildcard nennt 16 GiB; die Serverdateien allein wiegen um die
+   * fünfzig Gigabyte, und unter Proton läuft eine zweite Umgebung mit.
+   */
+  resourceDefaults: {
+    ramMb: 16_384,
+    cpuCores: 6,
+    diskMb: 81_920,
+  },
+  /*
+   * **Keine Abfrage, und das ist kein Versehen.** ARK: Survival Ascended
+   * beantwortet keine A2S-Abfrage mehr; es meldet sich beim Verzeichnis von
+   * Epic an, und genau dort fragt `gamedig` nach — nach `ADDRESS_s` gleich der
+   * abgefragten Adresse. Hinter dem Rückwärtstunnel steht bei Epic die Adresse
+   * der VPS, gefragt wird nach der des Containers: Der Eintrag wird nie
+   * gefunden. Dieselbe Klasse wie bei Vintage Story.
+   *
+   * Der Preis ist derselbe wie bei Palworld: keine Spielerzahl, kein Ping, kein
+   * selbsttätiges Abschalten bei null Spielern. Der Start gilt als geglückt,
+   * sobald der Container läuft.
+   */
+  query: {
+    kind: 'none',
+    containerPort: 7_777,
+  },
+  console: {
+    kind: 'rcon',
+    port: 27_020,
+    passwordFile: '.palantir/rcon.password',
+  },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 180,
+  /*
+   * Eine ganze Stunde, und das ist keine Vorsicht: Der erste Start holt
+   * zweistellig viele Gigabyte über SteamCMD und legt danach den Wine-Prefix
+   * an. Auf einer gewöhnlichen Hausleitung ist das der Löwenanteil.
+   */
+  startupTimeoutSeconds: 3_600,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
@@ -2724,6 +2965,7 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   SONS_OF_THE_FOREST_GAME_TYPE,
   VINTAGE_STORY_GAME_TYPE,
   ABIOTIC_FACTOR_GAME_TYPE,
+  ARK_ASCENDED_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */
