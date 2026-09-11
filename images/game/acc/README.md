@@ -29,12 +29,14 @@ Einmalig auf der Gamenode — Passwort und Steam-Guard-Code werden dort abgefrag
 
 ```bash
 mkdir -p /srv/palantir/steam-konto && chown 1000:1000 /srv/palantir/steam-konto
-docker run -it --rm -v /srv/palantir/steam-konto:/heim -e HOME=/heim   ghcr.io/nightriderp/palantir-base-steam:3 /opt/steamcmd/steamcmd.sh +login DEIN_STEAM_NAME +quit
+docker run -it --rm -v /srv/palantir/steam-konto:/konto ghcr.io/nightriderp/palantir-base-steam:5 palantir-steam-anmelden DEIN_STEAM_NAME
 ```
 
 Danach im Panel bei den Einstellungen des Servers den **Steam-Benutzernamen** eintragen. Der
 Container bekommt den Ordner mit dem Token schreibgeschützt eingehängt (`requiresSteamAccount`),
 und der Server holt und **aktualisiert** sich von da an selbst — wie jedes andere Spiel aus Steam.
+
+`palantir-steam-anmelden` steckt im Image: Von Hand aufgerufen scheitert SteamCMD daran, dass es sich in sein eigenes Verzeichnis aktualisieren will — das gehört `root`, gelaufen wird als Benutzer 1000, und die Meldung darauf lautet irreführend „Steamcmd needs to be online to update".
 
 Ohne Token wird SteamCMD gar nicht erst gerufen: Ein Login, der nach einem Passwort fragt, hinge in
 einem Container ohne Eingabe fest. Stattdessen steht im Log, was zu tun ist.

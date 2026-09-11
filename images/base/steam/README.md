@@ -87,8 +87,15 @@ Einmalig auf der Gamenode:
 
 ```bash
 mkdir -p /srv/palantir/steam-konto && chown 1000:1000 /srv/palantir/steam-konto
-docker run -it --rm -v /srv/palantir/steam-konto:/heim -e HOME=/heim   ghcr.io/nightriderp/palantir-base-steam:4 /opt/steamcmd/steamcmd.sh +login DEIN_STEAM_NAME +quit
+docker run -it --rm -v /srv/palantir/steam-konto:/konto   ghcr.io/nightriderp/palantir-base-steam:5 palantir-steam-anmelden DEIN_STEAM_NAME
 ```
+
+`palantir-steam-anmelden` steckt im Image, und das hat einen Grund: Ruft man SteamCMD von Hand
+auf, scheitert es an einer von drei Feinheiten. Es aktualisiert sich beim Start **in sein eigenes
+Verzeichnis** – das gehört im Image `root`, gelaufen wird als Benutzer 1000, und die Meldung darauf
+lautet „Steamcmd needs to be online to update", was von etwas ganz anderem spricht. Dazu muss `HOME`
+stimmen, und der Token muss dort landen, wo die Spiel-Images ihn suchen. Das Werkzeug nimmt alle
+drei ab.
 
 Danach liegt der Token unter `/srv/palantir/steam-konto/Steam/config/config.vdf`. Container von
 Spieltypen mit `requiresSteamAccount` bekommen den Ordner **schreibgeschützt** eingehängt — und nur

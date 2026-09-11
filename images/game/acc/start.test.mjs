@@ -259,7 +259,7 @@ describe('start.sh – mit Steam-Konto', nurMitIconv, () => {
 
     assert.equal(lauf.status, 78);
     assert.match(lauf.stdout, /keine Anmeldung/u);
-    assert.match(lauf.stdout, /steamcmd\.sh \+login nightrider/u);
+    assert.match(lauf.stdout, /palantir-steam-anmelden nightrider/u);
     // Ohne Token wird SteamCMD gar nicht erst gerufen - ein Login, der nach
     // einem Passwort fragt, haenge in einem Container ohne Eingabe fest.
     assert.ok(!existsSync(ordner.protokoll));

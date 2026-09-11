@@ -2990,7 +2990,7 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   name: 'Assetto Corsa Competizione',
   description:
     'ACC-Server unter Proton. Die Serverdateien bringst du selbst mit – lade den Ordner „Assetto Corsa Competizione Dedicated Server" aus deiner Steam-Installation über den Datei-Manager nach „server".',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:3',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:4',
   defaultEnv: {},
   ports: [
     {
