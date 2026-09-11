@@ -39,7 +39,16 @@ interface Aufbau {
   events: RecordingEventPublisher;
   server: BackupServerRecord;
   besitzerId: string;
+  /** Was ins Audit-Log ging (Fundpunkt 237). */
+  protokoll: { action: string; targetId: string; metadata: Record<string, unknown> }[];
 }
+
+/** Aufrufkontext, wie ihn die Route aus dem Request baut. */
+const AUFRUFER = {
+  actorId: testId('2'),
+  actorDisplayName: 'Alex',
+  ipHint: '10.0.0.x',
+};
 
 /**
  * Baut den Service mit Testdoubles auf.
@@ -76,6 +85,7 @@ function aufbau(
   const agent = fakeAgent();
   const events = recordingEventPublisher();
   const offeneJobs: (() => Promise<void>)[] = [];
+  const protokoll: { action: string; targetId: string; metadata: Record<string, unknown> }[] = [];
 
   const service = createBackupService({
     repository: options.repositoryUmhuellung?.(repository) ?? repository,
@@ -114,6 +124,15 @@ function aufbau(
     runJob: (job) => {
       offeneJobs.push(job);
     },
+    audit: {
+      record(entry) {
+        protokoll.push({
+          action: entry.action,
+          targetId: entry.targetId,
+          metadata: entry.metadata,
+        });
+      },
+    },
   });
 
   return {
@@ -123,6 +142,7 @@ function aufbau(
     events,
     server,
     besitzerId,
+    protokoll,
     async fertig() {
       while (offeneJobs.length > 0) {
         await offeneJobs.shift()?.();
@@ -1373,5 +1393,110 @@ describe('Wiederherstellung als Auftrag (Fundpunkt 225)', () => {
 
     expect(stand).toBeNull();
     void job;
+  });
+});
+
+describe('Protokolleintraege der Sicherungen (Fundpunkt 237)', () => {
+  async function fertigesBackup(t: ReturnType<typeof aufbau>) {
+    const dto = await t.service.createManual(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.server.id,
+      { stopServer: false },
+      AUFRUFER,
+    );
+    await t.fertig();
+
+    return dto;
+  }
+
+  it('haelt das Anlegen fest', async () => {
+    const t = aufbau();
+
+    const dto = await t.service.createManual(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.server.id,
+      { stopServer: false },
+      AUFRUFER,
+    );
+
+    expect(t.protokoll).toEqual([
+      {
+        action: 'backup.created',
+        targetId: dto.id,
+        metadata: {
+          serverId: t.server.id,
+          serverName: t.server.name,
+          isExport: false,
+          stopServer: false,
+        },
+      },
+    ]);
+  });
+
+  it('unterscheidet den Export vom gewoehnlichen Backup', async () => {
+    const t = aufbau();
+
+    await t.service.createExport(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      t.server.id,
+      { stopServer: false },
+      AUFRUFER,
+    );
+
+    expect(t.protokoll[0]?.metadata.isExport).toBe(true);
+  });
+
+  it('haelt das Zurueckspielen beim Anstossen fest', async () => {
+    const t = aufbau();
+    const dto = await fertigesBackup(t);
+    t.protokoll.length = 0;
+
+    const job = await t.service.restore(
+      actorMit('backup.manage.own'),
+      t.besitzerId,
+      dto.id,
+      AUFRUFER,
+    );
+
+    // Der Eintrag entsteht beim Anstossen: Ab hier wird der Datenordner
+    // ueberschrieben, und genau das ist das Protokollwuerdige.
+    expect(t.protokoll).toEqual([
+      {
+        action: 'backup.restored',
+        targetId: dto.id,
+        metadata: { serverId: t.server.id, serverName: t.server.name, jobId: job.id },
+      },
+    ]);
+  });
+
+  it('haelt das Loeschen fest', async () => {
+    const t = aufbau();
+    const dto = await fertigesBackup(t);
+    t.protokoll.length = 0;
+
+    await t.service.remove(actorMit('backup.manage.own'), t.besitzerId, dto.id, AUFRUFER);
+
+    expect(t.protokoll).toHaveLength(1);
+    expect(t.protokoll[0]).toMatchObject({
+      action: 'backup.deleted',
+      targetId: dto.id,
+      metadata: { serverId: t.server.id, type: 'manual', isExport: false },
+    });
+  });
+
+  it('protokolliert Betriebsvorgaenge ohne Aufrufer nicht', async () => {
+    const t = aufbau();
+
+    // Geplantes Backup und Aufbewahrungslauf haben keinen Handelnden. Eine
+    // Zeile je naechtlichem Lauf verdeckte genau die Zeilen, wegen derer das
+    // Protokoll gefuehrt wird; sichtbar bleiben sie in der Sicherungsliste.
+    await t.service.createScheduled(t.server.id, testId('9'), false);
+    await t.fertig();
+    await t.service.applyRetention(t.server.id);
+
+    expect(t.protokoll).toEqual([]);
   });
 });
