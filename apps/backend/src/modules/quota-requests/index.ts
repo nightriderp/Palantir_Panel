@@ -93,6 +93,21 @@ export interface QuotaWriter {
   ): Promise<unknown>;
 }
 
+/**
+ * Herkunft der Entscheidung fuer das Audit-Log.
+ *
+ * Am Pruefstand aufgefallen: `quotaRequest.rejected` und `user.limitsChanged`
+ * standen als einzige Eintraege ohne `ipHint` im Protokoll, waehrend jeder
+ * Eintrag aus B3 und B8 einen traegt. Eine Entscheidung ueber fremde
+ * Ressourcen soll dieselbe Spur hinterlassen wie jeder andere Eingriff.
+ *
+ * Optional, damit ein Aufruf ohne Request (Tests, Wartungslaeufe) nicht
+ * gezwungen ist, eine Adresse zu erfinden.
+ */
+export interface QuotaDecisionContext {
+  readonly ipHint: string | null;
+}
+
 export interface QuotaRequestService {
   /** Anfrage stellen – für das eigene Konto. */
   create(
@@ -110,12 +125,14 @@ export interface QuotaRequestService {
     actorUserId: string | null,
     id: string,
     input: DecideQuotaRequestInput,
+    context?: QuotaDecisionContext,
   ): Promise<QuotaRequestDto>;
   reject(
     actor: PermissionActor,
     actorUserId: string | null,
     id: string,
     input: DecideQuotaRequestInput,
+    context?: QuotaDecisionContext,
   ): Promise<QuotaRequestDto>;
   /** Zurückziehen – nur der Antragsteller, nur solange offen. */
   withdraw(actor: PermissionActor, userId: string, id: string): Promise<void>;
@@ -188,6 +205,7 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
     id: string,
     status: 'approved' | 'rejected',
     input: DecideQuotaRequestInput,
+    context?: QuotaDecisionContext,
   ): Promise<QuotaRequestDto> {
     requireUserManage(actor);
 
@@ -255,6 +273,7 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
         action: 'user.limitsChanged',
         actorId: actorUserId,
         actorDisplayName: entschieden.decidedByDisplayName,
+        ipHint: context?.ipHint ?? null,
         targetType: 'user',
         targetId: entschieden.userId,
         metadata: {
@@ -280,6 +299,7 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
         action: 'quotaRequest.rejected',
         actorId: actorUserId,
         actorDisplayName: entschieden.decidedByDisplayName,
+        ipHint: context?.ipHint ?? null,
         // Zielart `quotaRequest` und nicht `user`: Gegenstand der Entscheidung
         // ist die Anfrage. Das betroffene Konto steht in den Metadaten - beim
         // genehmigten Fall ist es umgekehrt, weil sich dort das Kontingent des
@@ -343,9 +363,11 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
       return rows.map((row) => toQuotaRequestDto(actor, null, row));
     },
 
-    approve: (actor, actorUserId, id, input) => decide(actor, actorUserId, id, 'approved', input),
+    approve: (actor, actorUserId, id, input, context) =>
+      decide(actor, actorUserId, id, 'approved', input, context),
 
-    reject: (actor, actorUserId, id, input) => decide(actor, actorUserId, id, 'rejected', input),
+    reject: (actor, actorUserId, id, input, context) =>
+      decide(actor, actorUserId, id, 'rejected', input, context),
 
     async withdraw(actor, userId, id) {
       const record = await requireRecord(id);

@@ -332,12 +332,22 @@ describe('Bescheiden', () => {
      */
     const { service, auditRepository } = build({ vorhanden: [record()] });
 
-    await service.reject(adminActor, ADMIN_ID, 'req-1', { note: 'Node ist voll.' });
+    await service.reject(
+      adminActor,
+      ADMIN_ID,
+      'req-1',
+      { note: 'Node ist voll.' },
+      { ipHint: '10.0.0.x' },
+    );
 
     expect(auditRepository.rows).toHaveLength(1);
     expect(auditRepository.rows[0]).toMatchObject({
       action: 'quotaRequest.rejected',
       actorId: ADMIN_ID,
+      // Am Pruefstand aufgefallen: Die Entscheidung stand als einziger Eintrag
+      // ohne Herkunft im Protokoll, waehrend jeder Eintrag aus B3 und B8 eine
+      // traegt.
+      ipHint: '10.0.0.x',
       targetType: 'quotaRequest',
       targetId: 'req-1',
       metadata: { userId: USER_ID, decisionNote: 'Node ist voll.' },
