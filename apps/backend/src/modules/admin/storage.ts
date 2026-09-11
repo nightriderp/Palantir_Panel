@@ -604,6 +604,30 @@ export function createStorageExplorerService(
 
       await deps.repository.saveSnapshot(snapshot);
 
+      /*
+       * Fundpunkt 237: `storage.scanned` stand im Katalog
+       * (`packages/contracts/src/audit.ts`) und wurde nie geschrieben - die
+       * Oberflaeche beschriftet die Aktion sogar schon (`admin/labels.ts`).
+       *
+       * Der Lauf ist kein Lesevorgang: Er laesst den Agent den ganzen
+       * Datentraeger der Node durchgehen und ersetzt anschliessend die
+       * gespeicherte Uebersicht. Genau diese Uebersicht entscheidet danach,
+       * was sich loeschen laesst - der Scan gehoert deshalb neben das
+       * `storage.entryDeleted`, das er vorbereitet.
+       */
+      await deps.audit.record(
+        entryFor(ctx, {
+          action: 'storage.scanned',
+          targetType: 'node',
+          targetId: nodeId,
+          metadata: {
+            entryCount: entries.length,
+            usedBytes: snapshot.usedBytes,
+            includeImages: input.includeImages,
+          },
+        }),
+      );
+
       return toSnapshotDto(ctx.actor, nodeId, snapshot);
     },
 

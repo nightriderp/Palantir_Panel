@@ -263,6 +263,34 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
           maxConcurrentServers: entschieden.requestedMaxConcurrentServers,
         },
       });
+    } else {
+      /*
+       * Fundpunkt 237: Die Ablehnung stand im Katalog und wurde nie
+       * geschrieben. Die Genehmigung hinterlaesst wenigstens ein
+       * `user.limitsChanged` – eine Ablehnung hinterliess gar nichts. Wer
+       * hinterher fragt, warum ein Konto sein Kontingent nicht bekommen hat,
+       * fand im Protokoll keine Zeile dazu, obwohl die Oberflaeche die Aktion
+       * bereits beschriftet (`admin/labels.ts`).
+       *
+       * Der Vermerk der Entscheidung geht mit in die Metadaten: Er ist die
+       * Begruendung, und ohne ihn saehe der Eintrag aus wie eine Ablehnung
+       * ohne Grund.
+       */
+      await deps.audit?.record({
+        action: 'quotaRequest.rejected',
+        actorId: actorUserId,
+        actorDisplayName: entschieden.decidedByDisplayName,
+        // Zielart `quotaRequest` und nicht `user`: Gegenstand der Entscheidung
+        // ist die Anfrage. Das betroffene Konto steht in den Metadaten - beim
+        // genehmigten Fall ist es umgekehrt, weil sich dort das Kontingent des
+        // Kontos aendert.
+        targetType: 'quotaRequest',
+        targetId: entschieden.id,
+        metadata: {
+          userId: entschieden.userId,
+          decisionNote: entschieden.decisionNote,
+        },
+      });
     }
 
     return toQuotaRequestDto(actor, actorUserId, entschieden);
