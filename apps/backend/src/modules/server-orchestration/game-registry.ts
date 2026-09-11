@@ -2965,6 +2965,292 @@ export const ARK_ASCENDED_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * Assetto Corsa Competizione – der erste Spieltyp, dessen Serverdateien der
+ * Betreiber selbst mitbringt (Anhang A, Phase 3).
+ *
+ * **Warum:** Kunos gibt den dedizierten Server nur an ein Steam-Konto heraus,
+ * das ACC besitzt (Werkzeug 1430110 am Elternspiel 805550); anonym geht er
+ * nicht. Fremde Zugangsdaten gehören nicht in dieses Panel (Entscheidung des
+ * Betreibers) – und sie sind hier auch nicht nötig: Der Server wiegt keine
+ * hundert Megabyte und liegt in jeder ACC-Installation. Über den Datei-Manager
+ * landet er in `/data/server`; das Image sagt im Log, was zu tun ist, solange er
+ * fehlt.
+ *
+ * **Beide Ports tragen drinnen die öffentliche Nummer**
+ * (`usesPublicPortNumber`). ACC meldet dem Lobby-Dienst die Nummern aus seiner
+ * eigenen Konfiguration; eine Übersetzung davor zeigte auf einen Port, den es
+ * nicht gibt.
+ *
+ * **Keine Abfrage:** `gamedig` kennt kein ACC-Protokoll, und der Server
+ * beantwortet auch keins.
+ */
+export const ACC_GAME_TYPE: GameTypeDefinition = {
+  id: 'acc',
+  name: 'Assetto Corsa Competizione',
+  description:
+    'ACC-Server unter Proton. Die Serverdateien bringst du selbst mit – lade den Ordner „Assetto Corsa Competizione Dedicated Server" aus deiner Steam-Installation über den Datei-Manager nach „server".',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 9_231,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port (Fahrzeugpositionen)',
+      usesPublicPortNumber: true,
+      envVar: 'ACC_UDP_PORT',
+    },
+    {
+      containerPort: 9_232,
+      protocol: 'tcp',
+      primary: false,
+      label: 'Verbindungsaufbau',
+      usesPublicPortNumber: true,
+      envVar: 'ACC_TCP_PORT',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'track',
+      label: 'Strecke',
+      type: 'select',
+      defaultValue: 'monza',
+      description: 'Weitere Strecken gehen über eine eigene event.json im Datei-Manager.',
+      required: false,
+      options: [
+        'monza',
+        'spa',
+        'nurburgring',
+        'brands_hatch',
+        'silverstone',
+        'paul_ricard',
+        'misano',
+        'barcelona',
+        'zandvoort',
+        'hungaroring',
+        'zolder',
+        'kyalami',
+        'mount_panorama',
+        'suzuka',
+        'laguna_seca',
+        'imola',
+        'donington',
+        'oulton_park',
+        'snetterton',
+        'watkins_glen',
+        'cota',
+        'indianapolis',
+        'red_bull_ring',
+        'valencia',
+      ],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'carGroup',
+      label: 'Fahrzeugklasse',
+      type: 'select',
+      defaultValue: 'FreeForAll',
+      description: null,
+      required: false,
+      options: ['FreeForAll', 'GT3', 'GT4', 'GT2', 'Cup', 'ST', 'TCX'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxCarSlots',
+      label: 'Fahrzeugplätze',
+      type: 'number',
+      defaultValue: 24,
+      description: 'Die Strecke kann weniger zulassen – dann gilt ihre Boxenzahl.',
+      required: false,
+      options: [],
+      min: 1,
+      max: 82,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'adminPassword',
+      label: 'Passwort für Verwalter',
+      type: 'password',
+      defaultValue: '',
+      description: 'Damit gibt es im Spiel Befehle wie /dq und /clear.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Passwort zum Beitreten',
+      type: 'password',
+      defaultValue: '',
+      description: 'Gesetzt heißt: privater Server. Leer heißt: öffentlich.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'spectatorPassword',
+      label: 'Passwort für Zuschauer',
+      type: 'password',
+      defaultValue: '',
+      description: 'Muss sich vom Beitritts-Passwort unterscheiden, wenn beide gesetzt sind.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'registerToLobby',
+      label: 'In der Serverliste zeigen',
+      type: 'toggle',
+      defaultValue: true,
+      description: 'Aus heißt: nur über die Direktverbindung erreichbar.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'safetyRatingRequirement',
+      label: 'Mindest-Sicherheitswertung (SA)',
+      type: 'number',
+      defaultValue: -1,
+      description: '−1 heißt: keine Anforderung.',
+      required: false,
+      options: [],
+      min: -1,
+      max: 99,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'racecraftRatingRequirement',
+      label: 'Mindest-Rennkönnen (RC)',
+      type: 'number',
+      defaultValue: -1,
+      description: '−1 heißt: keine Anforderung.',
+      required: false,
+      options: [],
+      min: -1,
+      max: 99,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'practiceMinutes',
+      label: 'Freies Training (Minuten)',
+      type: 'number',
+      defaultValue: 20,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 480,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'qualifyingMinutes',
+      label: 'Qualifikation (Minuten)',
+      type: 'number',
+      defaultValue: 15,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 480,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'raceMinutes',
+      label: 'Rennen (Minuten)',
+      type: 'number',
+      defaultValue: 30,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 1_440,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'ACC_NAME',
+    track: 'ACC_TRACK',
+    carGroup: 'ACC_CAR_GROUP',
+    maxCarSlots: 'ACC_MAX_CAR_SLOTS',
+    adminPassword: 'ACC_ADMIN_PASSWORD',
+    password: 'ACC_PASSWORD',
+    spectatorPassword: 'ACC_SPECTATOR_PASSWORD',
+    registerToLobby: 'ACC_REGISTER_TO_LOBBY',
+    safetyRatingRequirement: 'ACC_SAFETY_RATING',
+    racecraftRatingRequirement: 'ACC_RACECRAFT_RATING',
+    practiceMinutes: 'ACC_PRACTICE_MINUTES',
+    qualifyingMinutes: 'ACC_QUALIFYING_MINUTES',
+    raceMinutes: 'ACC_RACE_MINUTES',
+  },
+  restartRequiredFields: [
+    'serverName',
+    'track',
+    'carGroup',
+    'maxCarSlots',
+    'adminPassword',
+    'password',
+    'spectatorPassword',
+    'registerToLobby',
+    'safetyRatingRequirement',
+    'racecraftRatingRequirement',
+    'practiceMinutes',
+    'qualifyingMinutes',
+    'raceMinutes',
+  ],
+  /*
+   * Genügsam für ein Rennspiel: Der Server rechnet Physik für zwei Dutzend
+   * Fahrzeuge, aber er lädt keine Welt. Die Serverdateien wiegen keine hundert
+   * Megabyte; der Platz ist für Ergebnisse und Protokolle.
+   */
+  resourceDefaults: {
+    ramMb: 4_096,
+    cpuCores: 2,
+    diskMb: 10_240,
+  },
+  query: {
+    kind: 'none',
+    containerPort: 9_231,
+  },
+  console: { kind: 'none' },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: false,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 60,
+  // Kein Download, aber der Wine-Prefix entsteht beim ersten Start.
+  startupTimeoutSeconds: 900,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
@@ -2985,6 +3271,7 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   VINTAGE_STORY_GAME_TYPE,
   ABIOTIC_FACTOR_GAME_TYPE,
   ARK_ASCENDED_GAME_TYPE,
+  ACC_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */

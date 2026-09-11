@@ -8,6 +8,7 @@ import {
   MINECRAFT_FABRIC_GAME_TYPE,
   MINECRAFT_NEOFORGE_GAME_TYPE,
   ABIOTIC_FACTOR_GAME_TYPE,
+  ACC_GAME_TYPE,
   ARK_ASCENDED_GAME_TYPE,
   ENSHROUDED_GAME_TYPE,
   FACTORIO_GAME_TYPE,
@@ -1252,5 +1253,60 @@ describe('Stopp-Befehl', () => {
     expect(ARK_ASCENDED_GAME_TYPE.stopCommand).toBe('DoExit');
     expect(RUST_GAME_TYPE.stopCommand).toBe('quit');
     expect(PALWORLD_GAME_TYPE.stopCommand).toBe('Shutdown 1');
+  });
+});
+
+/**
+ * Assetto Corsa Competizione - der erste Spieltyp, dessen Serverdateien der
+ * Betreiber selbst mitbringt (Anhang A, Phase 3).
+ */
+describe('Assetto Corsa Competizione', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+    expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('acc').id).toBe(
+      'acc',
+    );
+    expect(ACC_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-acc:1');
+  });
+
+  it('traegt bei beiden Ports drinnen die oeffentliche Nummer', () => {
+    // ACC meldet dem Lobby-Dienst die Nummern aus seiner eigenen
+    // Konfiguration; eine Uebersetzung davor zeigte auf einen Port, den es
+    // nicht gibt.
+    for (const port of ACC_GAME_TYPE.ports) {
+      expect(port.usesPublicPortNumber, String(port.containerPort)).toBe(true);
+      expect(port.envVar, String(port.containerPort)).toBeDefined();
+    }
+
+    expect(ACC_GAME_TYPE.ports.map((port) => port.envVar)).toEqual([
+      'ACC_UDP_PORT',
+      'ACC_TCP_PORT',
+    ]);
+  });
+
+  it('wird nicht abgefragt und hat keine Konsole', () => {
+    // `gamedig` kennt kein ACC-Protokoll, und der Server beantwortet auch keins.
+    expect(ACC_GAME_TYPE.query).toEqual({ kind: 'none', containerPort: 9_231 });
+    expect(ACC_GAME_TYPE.console).toEqual({ kind: 'none' });
+  });
+
+  it('bietet keine Weltuebernahme an', () => {
+    // Es gibt keine Welt - und der Serverordner gehoert hier ohnehin dem
+    // Betreiber, der ihn selbst hochlaedt.
+    expect(ACC_GAME_TYPE.supportsWorldImport).toBe(false);
+  });
+
+  it('bildet jedes Feld auf eine Umgebungsvariable ab', () => {
+    const felder = ACC_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(ACC_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    expect([...(ACC_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+
+  it('nennt in jedem Auswahlfeld auch seine Vorgabe', () => {
+    for (const feld of ACC_GAME_TYPE.configFields) {
+      if (feld.type !== 'select') continue;
+
+      expect(feld.options, feld.key).toContain(feld.defaultValue);
+    }
   });
 });

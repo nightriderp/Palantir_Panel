@@ -89,6 +89,48 @@ export interface BuildContainerSpecInput {
 }
 
 /**
+ * Traegt dieser Container-Port die oeffentliche Nummer (`usesPublicPortNumber`)?
+ *
+ * Gesucht wird ueber die Container-Nummer, weil die Zuweisung sie fuehrt. Bei
+ * `protocol: 'both'` gibt es zwei Zuweisungen mit derselben Nummer - beide
+ * finden dieselbe Deklaration, und das ist richtig so.
+ */
+function spiegeltNummer(definition: GameTypeDefinition, containerPort: number): boolean {
+  return (
+    definition.ports.find((port) => port.containerPort === containerPort)?.usesPublicPortNumber ===
+    true
+  );
+}
+
+/**
+ * Die oeffentlichen Portnummern als Umgebungsvariablen - nur fuer Ports, deren
+ * Deklaration eine nennt (`envVar`).
+ *
+ * Ein Spiel, das seine Adresse selbst weitersagt, muss sie kennen; alle anderen
+ * erfahren nichts davon und bekommen auch keine leere Variable: Die aenderte den
+ * Fingerabdruck jedes bestehenden Containers und baute ihn einmal umsonst neu
+ * (Punkt 114).
+ */
+function portNummernEnv(
+  definition: GameTypeDefinition,
+  zuweisungen: ServerRecord['assignedPorts'],
+): Record<string, string> {
+  const env: Record<string, string> = {};
+
+  for (const zuweisung of zuweisungen) {
+    const name = definition.ports.find(
+      (port) => port.containerPort === zuweisung.containerPort,
+    )?.envVar;
+
+    if (name !== undefined) {
+      env[name] = String(zuweisung.publicPort);
+    }
+  }
+
+  return env;
+}
+
+/**
  * Den Bauplan aus Server und Spiel-Definition zusammensetzen.
  *
  * Einzige Quelle für `CREATE` – beim ersten Anlegen wie beim Neuaufbau. Zwei
@@ -135,10 +177,20 @@ export function buildContainerSpec({
       ...(server.startupParameters.trim() === ''
         ? {}
         : { [STARTUP_PARAMETERS_ENV]: server.startupParameters.trim() }),
+      ...portNummernEnv(definition, server.assignedPorts),
     },
     command: definition.defaultCommand,
     ports: hostBindings.map((assignment) => ({
-      containerPort: assignment.containerPort,
+      /*
+       * Drinnen dieselbe Nummer wie draußen, wenn die Definition es verlangt
+       * (`usesPublicPortNumber`): Spiele, die ihre eigene Portnummer
+       * weitersagen – Assetto Corsa Competizione meldet sie dem Lobby-Dienst –,
+       * vertragen keine Übersetzung davor. Im Container ist das gefahrlos, jeder
+       * hat seinen eigenen Netzwerk-Namensraum.
+       */
+      containerPort: spiegeltNummer(definition, assignment.containerPort)
+        ? assignment.publicPort
+        : assignment.containerPort,
       hostPort: assignment.publicPort,
       protocol: assignment.protocol,
     })),
