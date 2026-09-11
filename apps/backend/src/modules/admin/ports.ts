@@ -126,7 +126,17 @@ export function computePortAllocationPermissions(
 
 /** Was ein Server an Ports braucht (Aufruf aus B3). */
 export interface PortRequest {
-  readonly protocol: PortProtocol;
+  /**
+   * `tcp`, `udp` – oder `both` für eine Nummer, die in **beiden**
+   * Protokoll-Bereichen frei ist und in beiden vergeben wird.
+   *
+   * Der Aufrufer bekommt dann zwei Zuordnungen je angefragter Nummer zurück.
+   * Gebraucht wird das von Spielen, die die zweite Adresse aus der ersten
+   * ableiten, statt sie zu erfragen (Satisfactory, 7 Days to Die): Zwei
+   * getrennte Anfragen bekämen zwei verschiedene Nummern, und damit bräche das
+   * Beitreten.
+   */
+  readonly protocol: PortProtocol | 'both';
   readonly count: number;
   /**
    * Node, auf der der Server liegt – begrenzt die Auswahl auf passende Bereiche.
@@ -230,6 +240,42 @@ function findFreePort(
     for (let port = range.startPort; port <= range.endPort; port += 1) {
       if (!taken.has(port)) {
         return { rangeId: range.id, port };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Eine Nummer, die in **beiden** Protokollen frei ist.
+ *
+ * Die Bereiche stehen je Protokoll getrennt in der Verwaltung; in der Praxis
+ * decken sie denselben Zahlenraum ab (`GAME_PORT_RANGE_START` bis `_END` je
+ * einmal für TCP und UDP). Gesucht wird deshalb entlang der TCP-Bereiche und
+ * für jede Nummer geprüft, ob sie auch in einem UDP-Bereich liegt und dort
+ * frei ist. Liegt kein UDP-Bereich über demselben Raum, findet sich nichts –
+ * das ist richtig so: Eine Nummer zu vergeben, die nur halb existiert, wäre
+ * eine Zusage, die niemand einhalten kann.
+ */
+function findFreePortPair(
+  tcpRanges: readonly PortRangeRecord[],
+  udpRanges: readonly PortRangeRecord[],
+  takenTcp: ReadonlySet<number>,
+  takenUdp: ReadonlySet<number>,
+): { tcpRangeId: string; udpRangeId: string; port: number } | null {
+  for (const range of tcpRanges) {
+    for (let port = range.startPort; port <= range.endPort; port += 1) {
+      if (takenTcp.has(port) || takenUdp.has(port)) {
+        continue;
+      }
+
+      const udp = udpRanges.find(
+        (kandidat) => port >= kandidat.startPort && port <= kandidat.endPort,
+      );
+
+      if (udp) {
+        return { tcpRangeId: range.id, udpRangeId: udp.id, port };
       }
     }
   }
@@ -536,8 +582,76 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
 
       const created: PortAllocationRecord[] = [];
 
+      /** Bereiche, die für diese Anfrage überhaupt infrage kommen. */
+      function brauchbar(protokoll: PortProtocol, nodeId: string | null | undefined) {
+        return (
+          ranges
+            .filter((range) => range.enabled && range.protocol === protokoll)
+            /*
+             * Ohne Node-Angabe nur ungebundene Bereiche (Audit W3-6,
+             * backend-admin-resources-09).
+             */
+            .filter((range) =>
+              nodeId === undefined || nodeId === null
+                ? range.nodeId === null
+                : range.nodeId === null || range.nodeId === nodeId,
+            )
+            .sort((a, b) => a.startPort - b.startPort)
+        );
+      }
+
+      function belegt(protokoll: PortProtocol): Set<number> {
+        const vorhanden = takenByProtocol.get(protokoll) ?? new Set<number>();
+        takenByProtocol.set(protokoll, vorhanden);
+
+        return vorhanden;
+      }
+
       try {
         for (const request of requests) {
+          if (request.protocol === 'both') {
+            const tcpRanges = brauchbar('tcp', request.nodeId);
+            const udpRanges = brauchbar('udp', request.nodeId);
+            const takenTcp = belegt('tcp');
+            const takenUdp = belegt('udp');
+
+            for (let index = 0; index < request.count; index += 1) {
+              const found = findFreePortPair(tcpRanges, udpRanges, takenTcp, takenUdp);
+
+              if (!found) {
+                throw new AdminError('PORT_POOL_EXHAUSTED');
+              }
+
+              takenTcp.add(found.port);
+              takenUdp.add(found.port);
+
+              /*
+               * Beide Zeilen oder keine: Scheitert die zweite, wäre die erste
+               * eine Nummer, die als vergeben gilt und niemandem gehört. Der
+               * `catch` weiter unten räumt alles Eingefügte wieder ab –
+               * einschließlich dieser einen.
+               */
+              created.push(
+                await deps.repository.insertAllocation({
+                  rangeId: found.tcpRangeId,
+                  port: found.port,
+                  protocol: 'tcp',
+                  serverId,
+                }),
+              );
+              created.push(
+                await deps.repository.insertAllocation({
+                  rangeId: found.udpRangeId,
+                  port: found.port,
+                  protocol: 'udp',
+                  serverId,
+                }),
+              );
+            }
+
+            continue;
+          }
+
           const usable = ranges
             .filter((range) => range.enabled && range.protocol === request.protocol)
             /*

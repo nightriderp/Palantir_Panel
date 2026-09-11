@@ -436,3 +436,65 @@ describe('Node-gebundene Bereiche', () => {
     expect(repository.ranges).toHaveLength(1);
   });
 });
+
+/**
+ * Eine Nummer fuer beide Protokolle (`protocol: 'both'`).
+ *
+ * Satisfactory und 7 Days to Die leiten die zweite Adresse aus der ersten ab,
+ * statt sie zu erfragen. Zwei getrennte Anfragen bekaemen zwei verschiedene
+ * Nummern - deshalb sucht der Pool hier eine, die in beiden Bereichen frei ist.
+ */
+describe('Port-Paare fuer beide Protokolle', () => {
+  const beideBereiche = () => [
+    portRange({ id: 'tcp-1', protocol: 'tcp', startPort: 27_000, endPort: 27_002 }),
+    portRange({ id: 'udp-1', protocol: 'udp', startPort: 27_000, endPort: 27_002 }),
+  ];
+
+  it('vergibt dieselbe Nummer zweimal - einmal je Protokoll', async () => {
+    const { service } = build(beideBereiche());
+
+    const vergeben = await service.allocateForServer(SERVER_ID, [{ protocol: 'both', count: 1 }]);
+
+    expect(vergeben).toHaveLength(2);
+    expect(vergeben.map((eintrag) => eintrag.port)).toEqual([27_000, 27_000]);
+    expect(vergeben.map((eintrag) => eintrag.protocol).sort()).toEqual(['tcp', 'udp']);
+  });
+
+  it('ueberspringt eine Nummer, die auch nur in einem Protokoll belegt ist', async () => {
+    // Der haeufige Fall: Ein anderer Server hat 27000 als UDP. Die Nummer ist
+    // damit fuer ein Paar verbraucht, obwohl TCP frei waere.
+    const { service } = build(beideBereiche(), [
+      {
+        id: 'zuordnung-fremd',
+        rangeId: 'udp-1',
+        port: 27_000,
+        protocol: 'udp',
+        serverId: 'fremd',
+        allocatedAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+    ]);
+
+    const vergeben = await service.allocateForServer(SERVER_ID, [{ protocol: 'both', count: 1 }]);
+
+    expect(vergeben.map((eintrag) => eintrag.port)).toEqual([27_001, 27_001]);
+  });
+
+  it('vergibt mehrere Paare ohne Ueberschneidung', async () => {
+    const { service } = build(beideBereiche());
+
+    const vergeben = await service.allocateForServer(SERVER_ID, [{ protocol: 'both', count: 2 }]);
+
+    expect([...new Set(vergeben.map((eintrag) => eintrag.port))]).toEqual([27_000, 27_001]);
+    expect(vergeben).toHaveLength(4);
+  });
+
+  it('findet nichts, wenn es ueber dem Zahlenraum keinen zweiten Bereich gibt', async () => {
+    // Eine Nummer zu vergeben, die nur halb existiert, waere eine Zusage, die
+    // niemand einhalten kann.
+    const { service } = build([portRange({ id: 'udp-1', protocol: 'udp' })]);
+
+    await expect(
+      service.allocateForServer(SERVER_ID, [{ protocol: 'both', count: 1 }]),
+    ).rejects.toMatchObject({ code: 'PORT_POOL_EXHAUSTED' });
+  });
+});

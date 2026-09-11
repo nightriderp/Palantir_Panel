@@ -45,7 +45,11 @@ export interface PortPoolPort {
   allocateForServer(
     serverId: string,
     requests: readonly {
-      readonly protocol: 'tcp' | 'udp';
+      /**
+       * `both` verlangt **eine Nummer für beide Protokolle** und liefert zwei
+       * Zuordnungen je Stück zurück (siehe `PortRequest` in B8).
+       */
+      readonly protocol: 'tcp' | 'udp' | 'both';
       readonly count: number;
       readonly nodeId?: string | null;
     }[],
@@ -70,23 +74,40 @@ export function createPortAllocator(pool: PortPoolPort): PortAllocator {
       // Bei Hostname-Routing bekommt der primäre Port keinen eigenen aus dem Pool.
       const fromPool = definition.ports.filter((port) => !(usesSharedPort && port.primary));
 
-      const counts = new Map<'tcp' | 'udp', number>();
+      const counts = new Map<'tcp' | 'udp' | 'both', number>();
 
       for (const port of fromPool) {
         counts.set(port.protocol, (counts.get(port.protocol) ?? 0) + 1);
       }
 
-      const allocated =
-        fromPool.length === 0
+      /*
+       * **Zwei Anfragen statt einer**, sobald ein Port beide Protokolle trägt.
+       *
+       * Der Pool antwortet auf `both` mit zwei Zuordnungen je Nummer – eine
+       * TCP, eine UDP, beide mit derselben Zahl. Kommen sie im selben Rutsch
+       * mit den einfachen Ports zurück, lässt sich nicht mehr sagen, welche
+       * zusammengehören: Die Antwort trägt nur Nummer und Protokoll. Getrennt
+       * gefragt ist die Zuordnung eindeutig.
+       *
+       * Beide Aufrufe laufen in derselben Reservierung (`portPoolFor(tx)`) –
+       * ein Abbruch dazwischen lässt keine halbe Vergabe stehen.
+       */
+      const einfach = [...counts.entries()]
+        .filter(([protocol]) => protocol !== 'both')
+        .map(([protocol, count]) => ({
+          protocol: protocol as 'tcp' | 'udp',
+          count,
+          nodeId: options.nodeId,
+        }));
+      const paarAnzahl = counts.get('both') ?? 0;
+
+      const allocated = einfach.length === 0 ? [] : await pool.allocateForServer(serverId, einfach);
+      const paare =
+        paarAnzahl === 0
           ? []
-          : await pool.allocateForServer(
-              serverId,
-              [...counts.entries()].map(([protocol, count]) => ({
-                protocol,
-                count,
-                nodeId: options.nodeId,
-              })),
-            );
+          : await pool.allocateForServer(serverId, [
+              { protocol: 'both', count: paarAnzahl, nodeId: options.nodeId },
+            ]);
 
       const queues = new Map<'tcp' | 'udp', number[]>();
 
@@ -96,17 +117,60 @@ export function createPortAllocator(pool: PortPoolPort): PortAllocator {
         queues.set(entry.protocol, queue);
       }
 
+      // Je Nummer kamen zwei Zeilen zurück; gebraucht wird die Zahl einmal.
+      const paarNummern = [...new Set(paare.map((eintrag) => eintrag.port))].sort((a, b) => a - b);
+
       const assignments: ServerPortAssignment[] = [];
 
       for (const port of definition.ports) {
         if (usesSharedPort && port.primary) {
+          /*
+           * Der geteilte Router-Port ist TCP: Infrared liest den Namen aus dem
+           * Minecraft-Handshake, und den gibt es nur über TCP. Ein Spiel mit
+           * `both` und Hostname-Routing gibt es nicht – und gäbe es eins,
+           * müsste hier eine Entscheidung stehen statt einer Annahme.
+           */
           assignments.push({
             publicPort: options.virtualHostPort as number,
             containerPort: port.containerPort,
-            protocol: port.protocol,
+            protocol: port.protocol === 'both' ? 'tcp' : port.protocol,
             label: port.label,
             primary: true,
           });
+          continue;
+        }
+
+        if (port.protocol === 'both') {
+          const nummer = paarNummern.shift();
+
+          if (nummer === undefined) {
+            throw new ServerOrchestrationError('PORT_POOL_EXHAUSTED', undefined, {
+              serverId,
+              protocol: 'both',
+            });
+          }
+
+          /*
+           * Zwei Zuweisungen, eine Nummer. `primary` trägt nur die erste –
+           * die Regel „genau ein primärer Port je Server" bliebe sonst
+           * verletzt. Für die angezeigte Adresse macht es keinen Unterschied:
+           * Beide tragen dieselbe öffentliche Nummer, das ist ja der Zweck.
+           */
+          assignments.push({
+            publicPort: nummer,
+            containerPort: port.containerPort,
+            protocol: 'tcp',
+            label: port.label,
+            primary: port.primary,
+          });
+          assignments.push({
+            publicPort: nummer,
+            containerPort: port.containerPort,
+            protocol: 'udp',
+            label: port.label,
+            primary: false,
+          });
+
           continue;
         }
 

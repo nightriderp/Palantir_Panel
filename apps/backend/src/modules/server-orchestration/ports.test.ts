@@ -29,7 +29,11 @@ const ROUTED_GAME: GameTypeDefinition = {
 
 interface Recorded {
   readonly serverId: string;
-  readonly requests: readonly { protocol: 'tcp' | 'udp'; count: number; nodeId?: string | null }[];
+  readonly requests: readonly {
+    protocol: 'tcp' | 'udp' | 'both';
+    count: number;
+    nodeId?: string | null;
+  }[];
 }
 
 /** Pool, der ab `nextPort` fortlaufend vergibt und die Anfragen mitschreibt. */
@@ -57,6 +61,14 @@ function fakePool(options: { nextPort?: number; exhausted?: boolean } = {}): {
 
         for (const request of requests) {
           for (let i = 0; i < request.count; i += 1) {
+            if (request.protocol === 'both') {
+              // Wie der echte Pool: eine Nummer, zwei Zeilen.
+              const nummer = next++;
+              allocated.push({ port: nummer, protocol: 'tcp' });
+              allocated.push({ port: nummer, protocol: 'udp' });
+              continue;
+            }
+
             allocated.push({ port: next++, protocol: request.protocol });
           }
         }
@@ -212,5 +224,82 @@ describe('visiblePortOf() (Pflichtenheft §13)', () => {
 
   it('liefert null ohne Portzuweisung', () => {
     expect(visiblePortOf([], false)).toBeNull();
+  });
+});
+
+/**
+ * Ein Port, der beide Protokolle traegt (Satisfactory, 7 Days to Die).
+ *
+ * Diese Spiele leiten die zweite Adresse aus der ersten ab, statt sie zu
+ * erfragen: Zwei getrennte Eintraege bekaemen zwei verschiedene Nummern, und
+ * damit braeche das Beitreten.
+ */
+describe('Ein Port fuer beide Protokolle', () => {
+  const BEIDE: GameTypeDefinition = {
+    ...TEST_GAME_TYPE,
+    ports: [{ containerPort: 7777, protocol: 'both', primary: true, label: 'Spiel-Port' }],
+  };
+
+  it('fragt den Pool getrennt nach dem Paar', async () => {
+    const { pool, calls } = fakePool();
+
+    await createPortAllocator(pool).allocate(SERVER_ID, BEIDE, { nodeId: NODE_ID });
+
+    // Eine Anfrage, und zwar mit `both` - der Pool sucht dann eine Nummer, die
+    // in beiden Bereichen frei ist.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.requests).toEqual([{ protocol: 'both', count: 1, nodeId: NODE_ID }]);
+  });
+
+  it('macht daraus zwei Zuweisungen mit derselben Nummer', async () => {
+    const { pool } = fakePool({ nextPort: 25_000 });
+
+    const zuweisungen = await createPortAllocator(pool).allocate(SERVER_ID, BEIDE, {
+      nodeId: NODE_ID,
+    });
+
+    expect(zuweisungen).toHaveLength(2);
+    expect(zuweisungen.map((z) => z.protocol).sort()).toEqual(['tcp', 'udp']);
+    expect(new Set(zuweisungen.map((z) => z.publicPort))).toEqual(new Set([25_000]));
+    expect(new Set(zuweisungen.map((z) => z.containerPort))).toEqual(new Set([7777]));
+  });
+
+  it('haelt an genau einem primaeren Port fest', async () => {
+    // Fuer die angezeigte Adresse ist es einerlei - beide tragen dieselbe
+    // Nummer. Fuer jeden Code, der den primaeren Port sucht, ist es das nicht.
+    const { pool } = fakePool();
+
+    const zuweisungen = await createPortAllocator(pool).allocate(SERVER_ID, BEIDE, {
+      nodeId: NODE_ID,
+    });
+
+    expect(zuweisungen.filter((z) => z.primary)).toHaveLength(1);
+  });
+
+  it('mischt sich nicht mit den einfachen Ports', async () => {
+    const gemischt: GameTypeDefinition = {
+      ...TEST_GAME_TYPE,
+      ports: [
+        { containerPort: 7777, protocol: 'both', primary: true, label: 'Spiel-Port' },
+        { containerPort: 15_000, protocol: 'udp', primary: false, label: 'Abfrage' },
+      ],
+    };
+    const { pool, calls } = fakePool({ nextPort: 25_000 });
+
+    const zuweisungen = await createPortAllocator(pool).allocate(SERVER_ID, gemischt, {
+      nodeId: NODE_ID,
+    });
+
+    // Zwei Aufrufe: erst die einfachen, dann das Paar. Im selben Rutsch liesse
+    // sich nicht mehr sagen, welche Zeilen zusammengehoeren.
+    expect(calls).toHaveLength(2);
+    expect(zuweisungen).toHaveLength(3);
+
+    const paar = zuweisungen.filter((z) => z.containerPort === 7777);
+    expect(new Set(paar.map((z) => z.publicPort)).size).toBe(1);
+    // Und der einfache Port hat eine andere Nummer bekommen.
+    expect(zuweisungen.find((z) => z.containerPort === 15_000)?.publicPort).not.toBe(
+      paar[0]?.publicPort,
+    );
   });
 });
