@@ -222,7 +222,17 @@ importers:
 
   images/base/steam: {}
 
+  images/game/factorio: {}
+
   images/game/minecraft: {}
+
+  images/game/palworld: {}
+
+  images/game/projectzomboid: {}
+
+  images/game/rust: {}
+
+  images/game/terraria: {}
 
   images/game/valheim: {}
 
