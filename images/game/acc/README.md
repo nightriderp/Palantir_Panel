@@ -1,33 +1,59 @@
 # Assetto Corsa Competizione (`palantir-game-acc`)
 
-Der erste Spieltyp, dessen **Serverdateien der Betreiber selbst mitbringt**.
+Anonym gibt Valve diesen Server nicht heraus — deshalb zwei Wege zu den Dateien, beide ohne Passwort im Panel.
 
 | Sache         | Wert                                                    |
 | ------------- | ------------------------------------------------------- |
-| Basis         | `palantir-base-proton:2`                                |
-| Serverdateien | `/data/server` — **vom Betreiber hochgeladen**          |
+| Basis         | `palantir-base-proton:3`                                |
+| Serverdateien | `/data/server` — über Steam-Konto oder Datei-Manager    |
 | Ports         | 9231/udp Spiel, 9232/tcp Verbindungsaufbau              |
 | Konsole       | keine                                                   |
 | Abfrage       | keine                                                   |
 | Konfiguration | `cfg/configuration.json`, `settings.json`, `event.json` |
 
-## Warum das Image die Dateien nicht holt
+## Zwei Wege zu den Serverdateien
 
-Kunos gibt den dedizierten Server nur an ein Steam-Konto heraus, das ACC besitzt: Er ist ein
-**Werkzeug am Elternspiel** (Anwendung 1430110, Eltern 805550), und anonym liefert SteamCMD ihn
-nicht aus. Fremde Zugangsdaten gehören nicht in dieses Panel — das ist eine Entscheidung des
-Betreibers vom 2026-09-11, und sie gilt weiter.
+Kunos gibt den dedizierten Server **nicht anonym** heraus: Er ist ein Werkzeug am Elternspiel
+(Anwendung 1430110, Eltern 805550). Nachgemessen:
 
-Sie sind hier auch nicht nötig: Der ganze Server wiegt keine hundert Megabyte und liegt in jeder
-ACC-Installation bereit:
+```
+Connecting anonymously to Steam Public...OK
+ERROR! Failed to install app '1430110' (No subscription)
+```
+
+Es braucht ein Konto, das ACC besitzt. **Ein Passwort steht deshalb trotzdem nirgends im Panel.**
+
+### 1. Steam-Konto (der Server lädt selbst)
+
+Einmalig auf der Gamenode — Passwort und Steam-Guard-Code werden dort abgefragt, per SSH:
+
+```bash
+mkdir -p /srv/palantir/steam-konto && chown 1000:1000 /srv/palantir/steam-konto
+docker run -it --rm -v /srv/palantir/steam-konto:/heim -e HOME=/heim   ghcr.io/nightriderp/palantir-base-steam:3 /opt/steamcmd/steamcmd.sh +login DEIN_STEAM_NAME +quit
+```
+
+Danach im Panel bei den Einstellungen des Servers den **Steam-Benutzernamen** eintragen. Der
+Container bekommt den Ordner mit dem Token schreibgeschützt eingehängt (`requiresSteamAccount`),
+und der Server holt und **aktualisiert** sich von da an selbst — wie jedes andere Spiel aus Steam.
+
+Ohne Token wird SteamCMD gar nicht erst gerufen: Ein Login, der nach einem Passwort fragt, hinge in
+einem Container ohne Eingabe fest. Stattdessen steht im Log, was zu tun ist.
+
+**Was der Token wert ist:** Er ist die Anmeldung an diesem Steam-Konto. Wer Wurzelrechte auf der
+Node hat, kann damit herunterladen, was das Konto besitzt. Er gehört dem Benutzer 1000 und
+niemandem sonst — und nicht in ein Backup, das das Haus verlässt.
+
+### 2. Von Hand (ohne Steam-Konto)
+
+Den Ordner aus der eigenen ACC-Installation über den **Datei-Manager** nach `server` im Datenordner
+legen; als ZIP hochladen und entpacken geht auch:
 
 ```
 steamapps/common/Assetto Corsa Competizione Dedicated Server
 ```
 
-Diesen Ordner über den **Datei-Manager des Panels** nach `server` im Datenordner legen — als ZIP
-hochladen und entpacken geht auch. Fehlt er, sagt das Image im Log genau das und beendet sich mit
-Rückgabewert 78; es startet nicht in ein leeres Verzeichnis hinein.
+Dann bleibt das Feld für den Benutzernamen leer. Der Preis: Bei einem ACC-Update lädst du den Ordner
+neu hoch.
 
 ## Die Ports tragen drinnen dieselbe Nummer wie draußen
 

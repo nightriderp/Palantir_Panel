@@ -2,13 +2,18 @@
 #
 # Startskript des Images für Assetto Corsa Competizione.
 #
-# **Die Serverdateien bringt der Betreiber selbst mit.** Bei Kunos ist der
-# dedizierte Server ein Steam-Werkzeug am Elternspiel (Anwendung 1430110, Eltern
-# 805550): Anonym gibt SteamCMD ihn nicht heraus, es braucht ein Konto, das ACC
-# besitzt. Fremde Zugangsdaten gehören nicht in dieses Panel (Entscheidung des
-# Betreibers) – und sie sind hier auch nicht nötig: Der ganze Server wiegt keine
-# hundert Megabyte und liegt in jeder ACC-Installation bereit. Wer ihn über den
-# Datei-Manager nach `/data/server` legt, hat alles, was dieses Image braucht.
+# **Anonym gibt es die Serverdateien nicht.** Bei Kunos ist der dedizierte
+# Server ein Steam-Werkzeug am Elternspiel (Anwendung 1430110, Eltern 805550);
+# ein anonymer Abruf endet mit „No subscription". Es braucht ein Konto, das ACC
+# besitzt.
+#
+# Deshalb zwei Wege, und beide ohne Passwort im Panel:
+#
+#   1. **Steam-Konto.** Der Betreiber meldet sich einmal von Hand auf der Node
+#      an; der Token wird schreibgeschützt eingehängt, im Panel steht nur der
+#      Benutzername. Dann holt und aktualisiert sich der Server selbst.
+#   2. **Von Hand.** Den Serverordner aus der eigenen ACC-Installation über den
+#      Datei-Manager nach `/data/server` legen. Er wiegt keine hundert Megabyte.
 #
 # Was das Image tut: die drei Konfigurationsdateien schreiben – **in UTF-16 LE
 # mit Byte-Reihenfolge-Marke**, denn UTF-8 liest ACC still falsch – und
@@ -30,28 +35,58 @@ log() {
 palantir_intern_anlegen
 
 # -----------------------------------------------------------------------------
-# 1. Sind die Serverdateien da?
+# 1. Serverdateien holen – wenn ein Steam-Konto hinterlegt ist
+#
+# Anonym gibt Valve diese Anwendung nicht heraus („No subscription"): Sie ist
+# ein Werkzeug am Elternspiel. Steht im Panel ein Steam-Benutzername, liegt auf
+# der Node auch ein Anmelde-Token bereit – dann holt und **aktualisiert** sich
+# der Server selbst, wie bei jedem anderen Spiel aus Steam.
+ACC_ANWENDUNG=1430110
 BINAERDATEI="${SERVER}/accServer.exe"
 
+if [ -n "${STEAM_LOGIN:-}" ]; then
+  if steam_konto_uebernehmen; then
+    # Windows-Fassung: `proton_app_holen` setzt die Plattform vor der Anmeldung.
+    proton_app_holen "$ACC_ANWENDUNG" "$SERVER" || true
+  else
+    log "Für das Konto ${STEAM_LOGIN} liegt auf dieser Node keine Anmeldung."
+    log ''
+    log 'Einmalig auf der Gamenode anmelden – Passwort und Steam-Guard-Code'
+    log 'werden dort abgefragt, nicht im Panel:'
+    log ''
+    log '  mkdir -p /srv/palantir/steam-konto'
+    log '  chown 1000:1000 /srv/palantir/steam-konto'
+    log '  docker run -it --rm -v /srv/palantir/steam-konto:/heim -e HOME=/heim \'
+    log '    ghcr.io/nightriderp/palantir-base-steam:3 \'
+    log "    /opt/steamcmd/steamcmd.sh +login ${STEAM_LOGIN} +quit"
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# 2. Sind die Serverdateien da?
 if [ ! -f "$BINAERDATEI" ]; then
-  log 'Die Serverdateien fehlen – und dieses Image kann sie nicht holen.'
+  log 'Die Serverdateien fehlen.'
   log ''
   log 'Kunos gibt den dedizierten Server nur an ein Steam-Konto heraus, das ACC'
-  log 'besitzt; fremde Zugangsdaten gehören nicht in dieses Panel. Der Server'
-  log 'liegt aber in deiner eigenen ACC-Installation:'
+  log 'besitzt – anonym geht er nicht. Es gibt zwei Wege:'
   log ''
-  log '  steamapps/common/Assetto Corsa Competizione Dedicated Server'
+  log '1. Steam-Konto: In den Einstellungen des Servers den Steam-Benutzernamen'
+  log '   eintragen und auf der Node einmal anmelden (siehe oben). Danach holt'
+  log '   und aktualisiert sich der Server selbst.'
   log ''
-  log 'Diesen Ordner (accServer.exe und cfg/) über den Datei-Manager des Panels'
-  log 'nach "server" im Datenordner hochladen, dann den Server neu starten.'
-  log 'Als ZIP hochladen und entpacken geht auch – der Datei-Manager kann das.'
+  log '2. Von Hand: Den Ordner aus deiner eigenen ACC-Installation'
+  log ''
+  log '     steamapps/common/Assetto Corsa Competizione Dedicated Server'
+  log ''
+  log '   (accServer.exe und cfg/) über den Datei-Manager nach "server" im'
+  log '   Datenordner hochladen. Als ZIP hochladen und entpacken geht auch.'
   exit 78
 fi
 
 mkdir -p "$CFG"
 
 # -----------------------------------------------------------------------------
-# 2. UTF-16 LE
+# 3. UTF-16 LE
 #
 # **Die eine Stolperstelle dieses Spiels.** ACC liest seine Konfiguration als
 # UTF-16 LE mit Marke. Eine Datei in UTF-8 wird nicht etwa abgelehnt – sie wird
@@ -77,7 +112,7 @@ json_schalter() {
 }
 
 # -----------------------------------------------------------------------------
-# 3. configuration.json
+# 4. configuration.json
 #
 # Die beiden Portnummern kommen vom Panel und sind **dieselben wie draußen**
 # (`usesPublicPortNumber` in der Spieltyp-Definition). Das ist bei diesem Spiel
@@ -101,7 +136,7 @@ PLAETZE="${ACC_MAX_CAR_SLOTS:-30}"
 } | utf16_schreiben "${CFG}/configuration.json"
 
 # -----------------------------------------------------------------------------
-# 4. settings.json
+# 5. settings.json
 {
   printf '{\n'
   printf '  "serverName": "%s",\n' "$(json_text "${ACC_NAME:-Ein Palantir-Server}")"
@@ -125,7 +160,7 @@ PLAETZE="${ACC_MAX_CAR_SLOTS:-30}"
 } | utf16_schreiben "${CFG}/settings.json"
 
 # -----------------------------------------------------------------------------
-# 5. event.json
+# 6. event.json
 #
 # Drei Sitzungen, wie sie ein Rennwochenende hat: freies Training, Qualifikation,
 # Rennen. Wer mehr will (mehrere Trainings, Sprint), legt sich seine eigene
@@ -159,7 +194,7 @@ PLAETZE="${ACC_MAX_CAR_SLOTS:-30}"
 # Datei-Manager daneben – dieses Skript schreibt nur, was das Panel kennt.
 
 # -----------------------------------------------------------------------------
-# 6. Proton und Start
+# 7. Proton und Start
 proton_vorbereiten
 
 # ACC nimmt keine Befehle entgegen. Das Rohr entsteht trotzdem, damit sich das

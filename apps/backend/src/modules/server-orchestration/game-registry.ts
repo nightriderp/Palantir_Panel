@@ -2990,7 +2990,7 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   name: 'Assetto Corsa Competizione',
   description:
     'ACC-Server unter Proton. Die Serverdateien bringst du selbst mit – lade den Ordner „Assetto Corsa Competizione Dedicated Server" aus deiner Steam-Installation über den Datei-Manager nach „server".',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:2',
   defaultEnv: {},
   ports: [
     {
@@ -3017,6 +3017,19 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
       type: 'text',
       defaultValue: 'Ein Palantir-Server',
       description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'steamAccount',
+      label: 'Steam-Benutzername',
+      type: 'text',
+      defaultValue: '',
+      description:
+        'Das Konto, das ACC besitzt – anonym gibt Valve den Server nicht heraus. Leer lassen, wenn du die Serverdateien selbst über den Datei-Manager hochlädst. Ein Passwort wird hier nie verlangt: Die Anmeldung passiert einmalig auf der Node.',
       required: false,
       options: [],
       min: null,
@@ -3195,6 +3208,7 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   ],
   envMapping: {
     serverName: 'ACC_NAME',
+    steamAccount: 'STEAM_LOGIN',
     track: 'ACC_TRACK',
     carGroup: 'ACC_CAR_GROUP',
     maxCarSlots: 'ACC_MAX_CAR_SLOTS',
@@ -3210,6 +3224,7 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   },
   restartRequiredFields: [
     'serverName',
+    'steamAccount',
     'track',
     'carGroup',
     'maxCarSlots',
@@ -3246,7 +3261,14 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   readOnlyRootFilesystem: true,
   tmpfsPaths: ['/tmp'],
   stopTimeoutSeconds: 60,
-  // Kein Download, aber der Wine-Prefix entsteht beim ersten Start.
+  /*
+   * Ohne Konto gibt Valve diese Anwendung nicht heraus: Der Container bekommt
+   * deshalb den Ordner mit der Anmeldung des Betreibers schreibgeschützt
+   * eingehängt. Ist keine hinterlegt, sagt das Image im Log, was zu tun ist –
+   * und der Weg über den Datei-Manager bleibt daneben bestehen.
+   */
+  requiresSteamAccount: true,
+  // Der erste Start holt die Serverdateien und legt den Wine-Prefix an.
   startupTimeoutSeconds: 900,
   phase: 3,
 };

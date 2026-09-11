@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { TEST_GAME_TYPE } from './game-registry.js';
 import {
   STARTUP_PARAMETERS_ENV,
+  STEAM_KONTO_CONTAINER_PATH,
+  STEAM_KONTO_HOST_PATH,
   VIRTUAL_HOST_HOSTNAME_LABEL,
   VIRTUAL_HOST_TARGET_PORT_LABEL,
   buildContainerSpec,
@@ -345,5 +347,54 @@ describe('Portnummer im Bauplan', () => {
     // Eine leere Variable an jedem Container aenderte den Fingerabdruck aller
     // bestehenden und baute sie einmal umsonst neu (Punkt 114).
     expect(Object.keys(spec(TEST_GAME_TYPE).env)).not.toContain('TEST_PUBLIC_PORT');
+  });
+});
+
+/**
+ * Die Steam-Anmeldung im Bauplan (2026-09-11).
+ *
+ * Ein paar Spiele geben ihren dedizierten Server nicht anonym heraus. Fuer sie
+ * liegt auf der Node ein Anmelde-Token; er wird schreibgeschuetzt eingehaengt -
+ * und nur bei diesen Spielen.
+ */
+describe('Steam-Anmeldung im Bauplan', () => {
+  const MIT_KONTO: GameTypeDefinition = {
+    ...TEST_GAME_TYPE,
+    id: 'test-steam-konto',
+    requiresSteamAccount: true,
+  };
+
+  function spec(definition: GameTypeDefinition) {
+    return buildContainerSpec({
+      server: server(),
+      definition,
+      containerName: 'palantir-s1',
+      dataHostPath: '/srv/palantir/s1',
+      hostname: 'mein-server.example.tld',
+    });
+  }
+
+  it('haengt den Ordner schreibgeschuetzt ein, wenn das Spiel ihn braucht', () => {
+    expect(spec(MIT_KONTO).extraMounts).toEqual([
+      {
+        hostPath: STEAM_KONTO_HOST_PATH,
+        containerPath: STEAM_KONTO_CONTAINER_PATH,
+        readOnly: true,
+      },
+    ]);
+  });
+
+  it('zeigt ihn keinem anderen Container', () => {
+    // Ein Token, den jeder Spielserver lesen kann, waere ein Token, den jedes
+    // Spiel-Image verlieren kann.
+    expect(spec(TEST_GAME_TYPE).extraMounts).toBeUndefined();
+  });
+
+  it('aendert den Fingerabdruck, wenn die Einhaengung dazukommt', () => {
+    // Sonst liefe ein bestehender Container ohne den Ordner weiter, und das
+    // Panel meldete nichts.
+    expect(containerSpecFingerprint(spec(MIT_KONTO))).not.toBe(
+      containerSpecFingerprint(spec(TEST_GAME_TYPE)),
+    );
   });
 });

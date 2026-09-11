@@ -11,7 +11,14 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -48,7 +55,7 @@ after(() => {
   }
 });
 
-function arbeitsordner({ mitServerdateien = true } = {}) {
+function arbeitsordner({ mitServerdateien = true, mitSteamCmd = false, mitToken = false } = {}) {
   const wurzel = mkdtempSync(join(tmpdir(), 'palantir-acc-'));
   aufraeumen.push(wurzel);
 
@@ -73,7 +80,39 @@ function arbeitsordner({ mitServerdateien = true } = {}) {
   );
   spawnSync('sh', ['-c', 'chmod 0755 "$1"', '_', posix(join(proton, 'proton'))]);
 
-  return { wurzel, daten, proton, vorlage };
+  // Ein SteamCMD, das seine Argumente aufschreibt und die Serverdatei anlegt –
+  // so, wie der echte sie nach dem Herunterladen hinterlässt.
+  const protokoll = join(wurzel, 'steam-aufrufe.txt');
+
+  if (mitSteamCmd) {
+    writeFileSync(
+      join(vorlage, 'steamcmd.sh'),
+      [
+        '#!/bin/sh',
+        `printf '%s\\n' "$*" >> "${posix(protokoll)}"`,
+        'ziel=""',
+        'for a in "$@"; do',
+        '  case "$vorher" in +force_install_dir) ziel="$a";; esac',
+        '  vorher="$a"',
+        'done',
+        'mkdir -p "$ziel"',
+        'printf \'exe\\n\' > "$ziel/accServer.exe"',
+        'exit 0',
+        '',
+      ].join('\n'),
+    );
+    spawnSync('sh', ['-c', 'chmod 0755 "$1"', '_', posix(join(vorlage, 'steamcmd.sh'))]);
+  }
+
+  // Der Anmelde-Token, so wie SteamCMD ihn auf der Node hinterlässt.
+  const konto = join(wurzel, 'steam-konto');
+
+  if (mitToken) {
+    mkdirSync(join(konto, 'Steam', 'config'), { recursive: true });
+    writeFileSync(join(konto, 'Steam', 'config', 'config.vdf'), 'mein-token\n');
+  }
+
+  return { wurzel, daten, proton, vorlage, protokoll, konto };
 }
 
 function starte(ordner, extra = {}) {
@@ -86,6 +125,7 @@ function starte(ordner, extra = {}) {
       PALANTIR_LIB_DIR: LIB_ORDNER,
       PALANTIR_PROTON_DIR: posix(ordner.proton),
       PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+      PALANTIR_STEAM_KONTO_DIR: posix(ordner.konto),
       PALANTIR_PROTON_VERSION: 'GE-Proton-Test',
       ...extra,
     },
@@ -103,15 +143,61 @@ function konfig(ordner, name) {
 }
 
 describe('start.sh – ohne Serverdateien', nurMitShell, () => {
-  it('sagt, wo sie herkommen, statt wortlos zu scheitern', () => {
-    // Dieses Image kann sie nicht holen: Kunos gibt den Server nur an ein Konto
-    // heraus, das ACC besitzt.
+  it('nennt beide Wege, statt wortlos zu scheitern', () => {
+    // Anonym gibt Valve die Anwendung nicht heraus. Es bleiben das Steam-Konto
+    // und der Datei-Manager - beide gehoeren in die Meldung.
     const lauf = starte(arbeitsordner({ mitServerdateien: false }));
 
     assert.equal(lauf.status, 78);
     assert.match(lauf.stdout, /Serverdateien fehlen/u);
+    assert.match(lauf.stdout, /Steam-Benutzernamen/u);
     assert.match(lauf.stdout, /Assetto Corsa Competizione Dedicated Server/u);
     assert.match(lauf.stdout, /Datei-Manager/u);
+  });
+});
+
+describe('start.sh – mit Steam-Konto', nurMitIconv, () => {
+  it('holt die Serverdateien selbst, als Windows-Fassung und mit dem Konto', () => {
+    // Die Reihenfolge ist die Stolperstelle: `+@sSteamCmdForcePlatformType`
+    // muss vor `+login` stehen, sonst laedt SteamCMD wortlos die Linux-Fassung.
+    const ordner = arbeitsordner({
+      mitServerdateien: false,
+      mitSteamCmd: true,
+      mitToken: true,
+    });
+
+    const lauf = starte(ordner, { STEAM_LOGIN: 'nightrider' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    const aufrufe = readFileSync(ordner.protokoll, 'utf8');
+    assert.match(aufrufe, /\+@sSteamCmdForcePlatformType windows/u);
+    assert.match(aufrufe, /\+login nightrider/u);
+    assert.match(aufrufe, /\+app_update 1430110/u);
+    assert.ok(!aufrufe.includes('anonymous'));
+  });
+
+  it('sagt, was zu tun ist, wenn auf der Node keine Anmeldung liegt', () => {
+    // Der haeufigste Fall beim ersten Versuch: Benutzername eingetragen, aber
+    // die einmalige Anmeldung auf der Node vergessen.
+    const ordner = arbeitsordner({ mitServerdateien: false, mitSteamCmd: true });
+
+    const lauf = starte(ordner, { STEAM_LOGIN: 'nightrider' });
+
+    assert.equal(lauf.status, 78);
+    assert.match(lauf.stdout, /keine Anmeldung/u);
+    assert.match(lauf.stdout, /steamcmd\.sh \+login nightrider/u);
+    // Ohne Token wird SteamCMD gar nicht erst gerufen - ein Login, der nach
+    // einem Passwort fragt, haenge in einem Container ohne Eingabe fest.
+    assert.ok(!existsSync(ordner.protokoll));
+  });
+
+  it('rührt SteamCMD nicht an, wenn kein Konto eingetragen ist', () => {
+    const ordner = arbeitsordner({ mitSteamCmd: true });
+
+    const lauf = starte(ordner);
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.ok(!existsSync(ordner.protokoll));
   });
 });
 

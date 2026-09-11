@@ -1265,7 +1265,7 @@ describe('Assetto Corsa Competizione', () => {
     expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('acc').id).toBe(
       'acc',
     );
-    expect(ACC_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-acc:1');
+    expect(ACC_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-acc:2');
   });
 
   it('traegt bei beiden Ports drinnen die oeffentliche Nummer', () => {
@@ -1308,5 +1308,37 @@ describe('Assetto Corsa Competizione', () => {
 
       expect(feld.options, feld.key).toContain(feld.defaultValue);
     }
+  });
+});
+
+/**
+ * Die Steam-Anmeldung (2026-09-11) - fuer alle Spiele zugleich.
+ */
+describe('Spiele mit Steam-Anmeldung', () => {
+  it('verlangt sie nur dort, wo anonym wirklich nicht reicht', () => {
+    // Heute ist das genau ein Spiel. Jedes weitere soll hier auffallen: Die
+    // Einhaengung ist ein Zugestaendnis, keine Bequemlichkeit.
+    const mitKonto = ALLE_GAME_TYPE_DEFINITIONS.filter(
+      (definition) => definition.requiresSteamAccount === true,
+    ).map((definition) => definition.id);
+
+    expect(mitKonto).toEqual(['acc']);
+  });
+
+  it('bietet dafuer ein Feld fuer den Benutzernamen an - und keins fuer ein Passwort', () => {
+    const felder = ACC_GAME_TYPE.configFields;
+
+    expect(felder.find((feld) => feld.key === 'steamAccount')?.type).toBe('text');
+    // Ein Passwort wird nie im Panel verlangt: Die Anmeldung passiert einmalig
+    // auf der Node.
+    expect(
+      felder.some((feld) => feld.key.toLowerCase().includes('steam') && feld.type === 'password'),
+    ).toBe(false);
+  });
+
+  it('laesst das Feld leer - der Weg ueber den Datei-Manager bleibt', () => {
+    expect(
+      ACC_GAME_TYPE.configFields.find((feld) => feld.key === 'steamAccount')?.defaultValue,
+    ).toBe('');
   });
 });
