@@ -911,12 +911,389 @@ export const TERRARIA_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * Factorio – ein Server ohne Steam (Anhang A, Phase 3).
+ *
+ * **Was daran anders ist.** Wube gibt den Headless-Server als eigenes Archiv
+ * heraus; es braucht kein Steam-Konto und keine Anwendungsnummer. Das Image
+ * sitzt deshalb unmittelbar auf `palantir-base-linux`, wie Terraria.
+ *
+ * **Die Konsole geht über RCON.** Factorio spricht das Source-RCON-Protokoll,
+ * dasselbe wie Minecraft — die Antwort eines Befehls kommt also zurück, statt
+ * im Log zu stehen. Das Passwort entsteht bei jedem Start neu und liegt nur im
+ * Datenordner; der Port wird nie veröffentlicht.
+ *
+ * **Kein Feld für die öffentliche Serverliste.** Dafür verlangt Factorio ein
+ * Konto bei Wube (Benutzername und Token). Zugangsdaten Dritter gehören nicht
+ * ins Panel (Entscheidung des Betreibers, 2026-09-11); das Startskript kann es,
+ * die Felder fehlen bewusst.
+ */
+export const FACTORIO_GAME_TYPE: GameTypeDefinition = {
+  id: 'factorio',
+  name: 'Factorio',
+  description:
+    'Factorio-Server von Wube. Die Serverdateien werden beim ersten Start geholt, die Karte beim ersten Start erzeugt. Die Konsole läuft über RCON.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-factorio:1',
+  // Befehle der Factorio-Konsole beginnen mit einem Schrägstrich.
+  consoleQuickCommands: [
+    { label: 'Spieler', command: '/players' },
+    { label: 'Speichern', command: '/save' },
+    { label: 'Admins', command: '/admins' },
+    { label: 'Fassung', command: '/version' },
+  ],
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 34_197,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'motd',
+      label: 'Beschreibung',
+      type: 'text',
+      defaultValue: '',
+      description: 'Steht neben dem Namen, wenn jemand den Server ansieht.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'map',
+      label: 'Name der Karte',
+      type: 'text',
+      defaultValue: 'palantir',
+      description:
+        'Legt den Dateinamen fest (`karten/<Name>.zip`). Ein neuer Name erzeugt beim nächsten Start eine neue Karte – die alte bleibt liegen.',
+      required: true,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'seed',
+      label: 'Startwert (Seed)',
+      type: 'text',
+      defaultValue: '',
+      description: 'Leer lassen für eine zufällige Karte. Gilt nur beim Erzeugen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 0,
+      description: '0 heißt: keine Grenze.',
+      required: false,
+      options: [],
+      min: 0,
+      max: 500,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen, wenn jeder mit der Adresse beitreten darf.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'autosaveMinutes',
+      label: 'Selbsttätig speichern (Minuten)',
+      type: 'number',
+      defaultValue: 10,
+      description: 'Der Server hält dabei kurz an; fünf Stände bleiben erhalten.',
+      required: false,
+      options: [],
+      min: 1,
+      max: 120,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'FACTORIO_NAME',
+    motd: 'MOTD',
+    map: 'FACTORIO_MAP',
+    seed: 'FACTORIO_SEED',
+    maxPlayers: 'MAX_PLAYERS',
+    password: 'FACTORIO_PASSWORD',
+    autosaveMinutes: 'FACTORIO_AUTOSAVE_MINUTES',
+  },
+  restartRequiredFields: [
+    'serverName',
+    'motd',
+    'map',
+    'seed',
+    'maxPlayers',
+    'password',
+    'autosaveMinutes',
+  ],
+  /*
+   * Factorio ist sparsam, solange die Fabrik klein ist – und wächst mit ihr.
+   * 4 GiB und zwei Kerne tragen eine gewachsene Karte mit einer Handvoll
+   * Spielern; die Rechenzeit geht in die Simulation, nicht in die Grafik.
+   */
+  resourceDefaults: {
+    ramMb: 4_096,
+    cpuCores: 2,
+    diskMb: 10_240,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'factorio',
+    containerPort: 34_197,
+  },
+  console: {
+    kind: 'rcon',
+    port: 27_015,
+    passwordFile: '.palantir/rcon.password',
+  },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  // Factorio speichert beim Stoppsignal selbst; eine Minute reicht auch für
+  // eine große Karte.
+  stopTimeoutSeconds: 60,
+  // Der erste Start holt 55 MiB und erzeugt danach die Karte.
+  startupTimeoutSeconds: 600,
+  phase: 3,
+};
+
+/**
+ * Project Zomboid – zweites Spiel aus Steam (Anhang A, Phase 3).
+ *
+ * **Zwei Eigenheiten, die ohne Vorwarnung Zeit kosten.** Ohne
+ * `-adminpassword` fragt der Server beim ersten Start interaktiv danach und
+ * wartet – im Container ohne Aussicht auf eine Antwort; das Feld ist deshalb
+ * Pflicht. Und der Servername wird zum Dateinamen der Einstellungen und zum
+ * Namen des Weltordners: Ein Leerzeichen darin führt zu Pfaden, die niemand
+ * wiederfindet, weshalb ihn das Startskript auf Buchstaben, Ziffern, `-` und
+ * `_` begrenzt.
+ *
+ * **Die Abfrage hängt am öffentlichen Modus** (`requiresConfigFlag`), wie bei
+ * Valheim: Ein Server, der sich nicht beim Steam-Verzeichnis anmeldet,
+ * beantwortet keine A2S-Abfrage. Erreichbar bleibt er.
+ */
+export const PROJECT_ZOMBOID_GAME_TYPE: GameTypeDefinition = {
+  id: 'project-zomboid',
+  name: 'Project Zomboid',
+  description:
+    'Project-Zomboid-Server. Die Serverdateien holt SteamCMD beim ersten Start; das dauert einige Minuten. Ein Administrator-Passwort ist Pflicht.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-projectzomboid:1',
+  consoleQuickCommands: [
+    { label: 'Spieler', command: 'players' },
+    { label: 'Speichern', command: 'save' },
+    { label: 'Stopp', command: 'quit' },
+  ],
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 16_261,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+    {
+      containerPort: 16_262,
+      protocol: 'udp',
+      primary: false,
+      label: 'Verbindungs-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Kennung des Servers',
+      type: 'text',
+      defaultValue: 'palantir',
+      description:
+        'Wird zum Dateinamen der Einstellungen und zum Namen des Weltordners – nur Buchstaben, Ziffern, - und _. Nicht der Name, den Spieler sehen.',
+      required: true,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'publicName',
+      label: 'Angezeigter Name',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: 'So steht der Server in der Serverliste.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'motd',
+      label: 'Beschreibung',
+      type: 'text',
+      defaultValue: '',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'adminPassword',
+      label: 'Administrator-Passwort',
+      type: 'password',
+      defaultValue: '',
+      description:
+        'Pflicht. Ohne es fragt der Server beim ersten Start danach und wartet – im Container ohne Aussicht auf eine Antwort.',
+      required: true,
+      options: [],
+      min: 5,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Passwort für Spieler',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen, wenn jeder mit der Adresse beitreten darf.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 16,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 100,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'pvp',
+      label: 'Spieler gegen Spieler',
+      type: 'toggle',
+      defaultValue: true,
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'public',
+      label: 'In der Serverliste zeigen',
+      type: 'toggle',
+      // Wie bei Valheim: Ohne den öffentlichen Modus beantwortet der Server
+      // keine Abfrage, und das Panel sieht weder Spielerzahl noch Ping.
+      defaultValue: true,
+      description:
+        'Aus heißt: nur wer die Adresse kennt, findet den Server. Das Panel sieht dann allerdings weder Spielerzahl noch Ping, und der automatische Stopp bei 0 Spielern greift nicht.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'ZOMBOID_NAME',
+    publicName: 'ZOMBOID_PUBLIC_NAME',
+    motd: 'MOTD',
+    adminPassword: 'ZOMBOID_ADMIN_PASSWORD',
+    password: 'ZOMBOID_PASSWORD',
+    maxPlayers: 'MAX_PLAYERS',
+    pvp: 'ZOMBOID_PVP',
+    public: 'ZOMBOID_PUBLIC',
+  },
+  restartRequiredFields: [
+    'serverName',
+    'publicName',
+    'motd',
+    'adminPassword',
+    'password',
+    'maxPlayers',
+    'pvp',
+    'public',
+  ],
+  /*
+   * Project Zomboid hält die geladenen Zellen der Welt im Speicher; mit
+   * wachsender Spielerzahl wächst der Bedarf spürbar. 4 GiB tragen die
+   * vorgegebenen 16 Spieler.
+   */
+  resourceDefaults: {
+    ramMb: 4_096,
+    cpuCores: 2,
+    diskMb: 10_240,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'projectzomboid',
+    containerPort: 16_261,
+    requiresConfigFlag: 'public',
+  },
+  console: { kind: 'stdin' },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  // Gespeichert wird beim Konsolenbefehl `quit`, den das Startskript beim
+  // Stoppsignal schickt – das braucht bei einer gewachsenen Welt Zeit.
+  stopTimeoutSeconds: 120,
+  // Der erste Start holt mehrere Gigabyte über SteamCMD.
+  startupTimeoutSeconds: 1_200,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
   MINECRAFT_VANILLA_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TERRARIA_GAME_TYPE,
+  FACTORIO_GAME_TYPE,
+  PROJECT_ZOMBOID_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */

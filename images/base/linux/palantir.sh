@@ -157,6 +157,27 @@ palantir_zip_auspacken() {
   fi
 }
 
+# `palantir_tar_auspacken <archiv> <zielordner>`
+#
+# Dasselbe für die andere Hälfte der Archive. `tar` erkennt die Packung selbst;
+# für `.tar.xz` liegt `xz-utils` seit Fassung 3 im Abbild.
+#
+# **Ohne `--strip-components`**: Ob ein Archiv einen obersten Ordner trägt, ist
+# eine Eigenschaft des Archivs und gehört in das Startskript, das es kennt –
+# nicht in eine Vorgabe hier, die dann bei der Hälfte falsch ist.
+palantir_tar_auspacken() {
+  palantir_archiv="$1"
+  palantir_ziel="$2"
+
+  mkdir -p "$palantir_ziel"
+
+  if ! tar -x -f "$palantir_archiv" -C "$palantir_ziel"; then
+    palantir_log "Das Archiv liess sich nicht auspacken: $(basename "$palantir_archiv")"
+
+    return 1
+  fi
+}
+
 # -----------------------------------------------------------------------------
 # Einstellungen verschmelzen
 # -----------------------------------------------------------------------------

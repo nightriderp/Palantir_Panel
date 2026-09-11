@@ -28,7 +28,13 @@
 # Paket unter einer festen Adresse und tauscht den Inhalt aus – der Bau bricht
 # dann mit „Prüfsumme passt nicht" ab, und das ist die Absicht. Wie die Werte
 # erneuert werden, steht im README.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-linux:1
+# **Warum `:2` und nicht die neueste Wurzel.** Beide Basis-Images baut derselbe
+# Lauf, und die Basis-Matrix läuft parallel (game-images.yml) – ein `FROM` auf
+# eine Wurzel-Fassung, die im selben Lauf erst entsteht, fände sie nicht. `:2`
+# bringt mit `palantir_schluessel_verschmelzen` alles mit, was hier gebraucht
+# wird; auf `:3` (xz) geht es, wenn ein Spiel es braucht – dann in einem
+# eigenen Lauf.
+ARG BASIS=ghcr.io/nightriderp/palantir-base-linux:2
 
 FROM ${BASIS}
 USER root

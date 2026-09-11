@@ -5,6 +5,8 @@ import {
   GAME_TYPE_DEFINITIONS,
   MINECRAFT_PAPER_GAME_TYPE,
   MINECRAFT_VANILLA_GAME_TYPE,
+  FACTORIO_GAME_TYPE,
+  PROJECT_ZOMBOID_GAME_TYPE,
   TERRARIA_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TEST_GAME_TYPE,
@@ -603,5 +605,89 @@ describe('Abgeschaltete Spieltypen', () => {
         .toDtoList()
         .every((dto) => dto.unavailableReason?.includes('Administrator') !== true),
     ).toBe(true);
+  });
+});
+
+/**
+ * Factorio und Project Zomboid (Anhang A, Phase 3).
+ *
+ * Gemeinsam geprueft, weil sie dieselben zwei Fragen anders beantworten: woher
+ * die Serverdateien kommen und wie das Panel den Server bedient.
+ */
+describe('Factorio und Project Zomboid', () => {
+  it('sind ab Ausbaustufe 3 auswaehlbar', () => {
+    const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
+
+    expect(registry.requireSelectable('factorio').id).toBe('factorio');
+    expect(registry.requireSelectable('project-zomboid').id).toBe('project-zomboid');
+  });
+
+  it('zeigen auf feste Fassungen der eigenen Images', () => {
+    expect(FACTORIO_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-factorio:1');
+    expect(PROJECT_ZOMBOID_GAME_TYPE.dockerImage).toBe(
+      'ghcr.io/nightriderp/palantir-game-projectzomboid:1',
+    );
+  });
+
+  it('schliesst Factorio seine Konsole ueber RCON an, nicht ueber die Standardeingabe', () => {
+    // Factorio spricht das Source-RCON-Protokoll wie Minecraft - die Antwort
+    // eines Befehls kommt damit zurueck, statt im Log zu stehen.
+    expect(FACTORIO_GAME_TYPE.console).toEqual({
+      kind: 'rcon',
+      port: 27_015,
+      passwordFile: '.palantir/rcon.password',
+    });
+    // Und seine Befehle beginnen mit einem Schraegstrich.
+    for (const befehl of FACTORIO_GAME_TYPE.consoleQuickCommands ?? []) {
+      expect(befehl.command.startsWith('/')).toBe(true);
+    }
+  });
+
+  it('haengt die Abfrage von Project Zomboid am oeffentlichen Modus', () => {
+    // Dieselbe Eigenheit wie bei Valheim: Ohne Anmeldung beim Steam-Verzeichnis
+    // beantwortet der Server keine A2S-Abfrage, erreichbar bleibt er trotzdem.
+    expect(PROJECT_ZOMBOID_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'projectzomboid',
+      containerPort: 16_261,
+      requiresConfigFlag: 'public',
+    });
+    expect(
+      PROJECT_ZOMBOID_GAME_TYPE.configFields.find((feld) => feld.key === 'public')?.defaultValue,
+    ).toBe(true);
+  });
+
+  it('macht das Administrator-Passwort von Project Zomboid zur Pflicht', () => {
+    // Ohne `-adminpassword` fragt der Server interaktiv danach und wartet.
+    const feld = PROJECT_ZOMBOID_GAME_TYPE.configFields.find(
+      (eintrag) => eintrag.key === 'adminPassword',
+    );
+
+    expect(feld?.required).toBe(true);
+    expect(feld?.min).toBe(5);
+  });
+
+  it('sperrt die Kennung von Project Zomboid nach dem Anlegen', () => {
+    // Sie ist der Dateiname der Einstellungen und der Name des Weltordners;
+    // eine Aenderung liesse die alte Welt zurueck.
+    expect(
+      PROJECT_ZOMBOID_GAME_TYPE.configFields.find((feld) => feld.key === 'serverName')
+        ?.lockedAfterCreate,
+    ).toBe(true);
+  });
+
+  it('bilden jedes Feld auf eine Umgebungsvariable ab', () => {
+    for (const typ of [FACTORIO_GAME_TYPE, PROJECT_ZOMBOID_GAME_TYPE]) {
+      const felder = typ.configFields.map((feld) => feld.key).sort();
+
+      expect(Object.keys(typ.envMapping ?? {}).sort()).toEqual(felder);
+      expect([...(typ.restartRequiredFields ?? [])].sort()).toEqual(felder);
+    }
+  });
+
+  it('bietet bei Factorio kein Feld fuer die oeffentliche Serverliste an', () => {
+    // Die verlangt ein Konto bei Wube; Zugangsdaten Dritter gehoeren nicht ins
+    // Panel (Entscheidung des Betreibers, 2026-09-11).
+    expect(FACTORIO_GAME_TYPE.configFields.some((feld) => feld.key === 'public')).toBe(false);
   });
 });
