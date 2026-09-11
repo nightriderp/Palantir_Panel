@@ -1286,6 +1286,311 @@ export const PROJECT_ZOMBOID_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * Rust – dritter Server aus Steam (Anhang A, Phase 3).
+ *
+ * **Die Konsole geht über RCON, aber nur mit einem Schalter.** Rust kann beide
+ * Protokolle und nimmt von sich aus WebSocket; das Startskript setzt deshalb
+ * `+rcon.web 0` und damit das Source-Protokoll, das der Agent spricht.
+ *
+ * **Weltgröße und Startwert sind nach dem Anlegen gesperrt.** Beides geht in
+ * die Erzeugung der Karte ein – eine Änderung erzeugte eine andere Welt, und
+ * alles Gebaute stünde nicht mehr darin.
+ */
+export const RUST_GAME_TYPE: GameTypeDefinition = {
+  id: 'rust',
+  name: 'Rust',
+  description:
+    'Rust-Server. Die Serverdateien holt SteamCMD beim ersten Start; das sind mehrere Gigabyte, und die Karte wird danach erzeugt – der erste Start dauert entsprechend.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-rust:1',
+  consoleQuickCommands: [
+    { label: 'Server', command: 'serverinfo' },
+    { label: 'Spieler', command: 'playerlist' },
+    { label: 'Speichern', command: 'server.save' },
+  ],
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 28_015,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'motd',
+      label: 'Beschreibung',
+      type: 'text',
+      defaultValue: '',
+      description: 'Steht in der Serverliste unter dem Namen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 50,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 500,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'worldSize',
+      label: 'Weltgröße',
+      type: 'number',
+      defaultValue: 3000,
+      description:
+        'Kantenlänge der Karte. Größer heißt mehr Platz, mehr Arbeitsspeicher und eine längere Erzeugung beim ersten Start.',
+      required: false,
+      options: [],
+      min: 1000,
+      max: 6000,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'seed',
+      label: 'Startwert (Seed)',
+      type: 'text',
+      defaultValue: '',
+      description: 'Leer lassen für Rusts eigene Vorgabe. Geht in die Erzeugung der Karte ein.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'saveIntervalSeconds',
+      label: 'Selbsttätig speichern (Sekunden)',
+      type: 'number',
+      defaultValue: 300,
+      description: null,
+      required: false,
+      options: [],
+      min: 60,
+      max: 3600,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'RUST_NAME',
+    motd: 'MOTD',
+    maxPlayers: 'MAX_PLAYERS',
+    worldSize: 'RUST_WORLD_SIZE',
+    seed: 'RUST_SEED',
+    saveIntervalSeconds: 'RUST_SAVE_INTERVAL',
+  },
+  restartRequiredFields: [
+    'serverName',
+    'motd',
+    'maxPlayers',
+    'worldSize',
+    'seed',
+    'saveIntervalSeconds',
+  ],
+  /*
+   * Rust ist der anspruchsvollste Server dieser Liste: Die ganze Karte liegt im
+   * Speicher, und die Erzeugung beim ersten Start rechnet lange auf allen
+   * Kernen. 8 GiB und vier Kerne sind die untere Grenze für eine Karte von
+   * 3000; die Serverdateien allein wiegen über zehn Gigabyte.
+   */
+  resourceDefaults: {
+    ramMb: 8_192,
+    cpuCores: 4,
+    diskMb: 30_720,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'rust',
+    containerPort: 28_015,
+  },
+  console: {
+    kind: 'rcon',
+    port: 28_016,
+    passwordFile: '.palantir/rcon.password',
+  },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 120,
+  // Erster Start: über zehn Gigabyte holen, danach die Karte erzeugen.
+  startupTimeoutSeconds: 1_800,
+  phase: 3,
+};
+
+/**
+ * Palworld – vierter Server aus Steam (Anhang A, Phase 3).
+ *
+ * **Es gibt keine Abfrage** (`query.kind: 'none'`). Palworld beantwortet nur
+ * seine eigene REST-Schnittstelle, und die verlangt Benutzer und
+ * Administrator-Passwort; `gamedig` nennt sie selbst „experimental". Der Start
+ * gilt deshalb als geglückt, sobald der Container läuft – es gibt keine
+ * Spielerzahl, keinen Ping und keinen automatischen Stopp.
+ *
+ * **Das Administrator-Passwort ist zugleich das RCON-Passwort.** Palworld kennt
+ * dafür kein zweites Feld: Wer RCON spricht, ist Administrator. Das Startskript
+ * erzeugt es bei jedem Start neu und legt es dort ab, wo das Panel es erwartet;
+ * im Panel gibt es deshalb **kein** Feld dafür.
+ */
+export const PALWORLD_GAME_TYPE: GameTypeDefinition = {
+  id: 'palworld',
+  name: 'Palworld',
+  description:
+    'Palworld-Server. Die Serverdateien holt SteamCMD beim ersten Start. Das Panel kann diesen Server nicht abfragen – es zeigt weder Spielerzahl noch Ping.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-palworld:1',
+  // Die RCON-Befehle von Palworld beginnen mit einem Schrägstrich.
+  consoleQuickCommands: [
+    { label: 'Server', command: '/Info' },
+    { label: 'Spieler', command: '/ShowPlayers' },
+    { label: 'Speichern', command: '/Save' },
+  ],
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 8_211,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description:
+        'Anführungszeichen, Kommas und Klammern fallen weg – die Einstellungen von Palworld stehen in einer einzigen Zeile, die daran zerbräche.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'motd',
+      label: 'Beschreibung',
+      type: 'text',
+      defaultValue: '',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen, wenn jeder mit der Adresse beitreten darf.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 32,
+      description: 'Palworld selbst lässt höchstens 32 zu.',
+      required: false,
+      options: [],
+      min: 1,
+      max: 32,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'pvp',
+      label: 'Spieler gegen Spieler',
+      type: 'toggle',
+      defaultValue: false,
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'deathPenalty',
+      label: 'Was beim Tod verloren geht',
+      type: 'select',
+      defaultValue: 'All',
+      description: 'None: nichts. Item: nur das Inventar. All: alles, samt Ausrüstung und Pals.',
+      required: false,
+      options: ['None', 'Item', 'ItemAndEquipment', 'All'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'PALWORLD_NAME',
+    motd: 'MOTD',
+    password: 'PALWORLD_PASSWORD',
+    maxPlayers: 'MAX_PLAYERS',
+    pvp: 'PALWORLD_PVP',
+    deathPenalty: 'PALWORLD_DEATH_PENALTY',
+  },
+  restartRequiredFields: ['serverName', 'motd', 'password', 'maxPlayers', 'pvp', 'deathPenalty'],
+  /*
+   * Pocketpair nennt 16 GiB für volle 32 Spieler. 8 GiB tragen eine kleine
+   * Runde; wer mehr Leute erwartet, erhöht im Wizard.
+   */
+  resourceDefaults: {
+    ramMb: 8_192,
+    cpuCores: 4,
+    diskMb: 20_480,
+  },
+  query: {
+    kind: 'none',
+    containerPort: 8_211,
+  },
+  console: {
+    kind: 'rcon',
+    port: 25_575,
+    passwordFile: '.palantir/rcon.password',
+  },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 120,
+  startupTimeoutSeconds: 1_800,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
@@ -1294,6 +1599,8 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   TERRARIA_GAME_TYPE,
   FACTORIO_GAME_TYPE,
   PROJECT_ZOMBOID_GAME_TYPE,
+  RUST_GAME_TYPE,
+  PALWORLD_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */

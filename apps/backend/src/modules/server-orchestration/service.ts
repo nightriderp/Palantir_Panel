@@ -2904,6 +2904,14 @@ export class ServerOrchestrationService {
   private antwortetAufAbfragen(server: ServerRecord): boolean {
     const query = this.deps.registry.require(server.gameType).query;
 
+    // `none` heisst: Es gibt keine Frage, die eine Antwort braechte (Palworld
+    // beantwortet nur seine eigene REST-Schnittstelle, und die verlangt das
+    // Administrator-Passwort). Eine Sonde darauf liefe zwangslaeufig in die
+    // Frist.
+    if (query.kind === 'none') {
+      return false;
+    }
+
     if (query.kind !== 'gamedig' || query.requiresConfigFlag === undefined) {
       return true;
     }
