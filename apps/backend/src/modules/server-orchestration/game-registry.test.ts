@@ -8,6 +8,7 @@ import {
   MINECRAFT_FABRIC_GAME_TYPE,
   MINECRAFT_NEOFORGE_GAME_TYPE,
   ABIOTIC_FACTOR_GAME_TYPE,
+  ARK_ASCENDED_GAME_TYPE,
   ENSHROUDED_GAME_TYPE,
   FACTORIO_GAME_TYPE,
   PALWORLD_GAME_TYPE,
@@ -1139,5 +1140,81 @@ describe('Abiotic Factor unter Proton', () => {
 
     expect(Object.keys(ABIOTIC_FACTOR_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
     expect([...(ABIOTIC_FACTOR_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+});
+
+/**
+ * ARK: Survival Ascended - das groesste Spiel der Liste, auf einer eigenen
+ * Proton-Fassung (Anhang A, Phase 3).
+ */
+describe('ARK: Survival Ascended', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+    expect(
+      createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('arkascended').id,
+    ).toBe('arkascended');
+    expect(ARK_ASCENDED_GAME_TYPE.dockerImage).toBe(
+      'ghcr.io/nightriderp/palantir-game-arkascended:1',
+    );
+  });
+
+  it('wird nicht abgefragt - Epics Verzeichnis kennt nur die Adresse der VPS', () => {
+    // ARK beantwortet keine A2S-Abfrage mehr. `gamedig` fragt stattdessen bei
+    // Epic nach `ADDRESS_s` gleich der abgefragten Adresse - hinter dem
+    // Rueckwaertstunnel eine andere als die, die dort steht.
+    expect(ARK_ASCENDED_GAME_TYPE.query).toEqual({
+      kind: 'none',
+      containerPort: 7_777,
+    });
+  });
+
+  it('spricht RCON, und das Passwort liegt im Datenordner', () => {
+    // Der RCON-Port steht bewusst nicht in `ports`: Er wird nicht
+    // veroeffentlicht, erreichbar ist er allein fuer den Agent.
+    expect(ARK_ASCENDED_GAME_TYPE.console).toEqual({
+      kind: 'rcon',
+      port: 27_020,
+      passwordFile: '.palantir/rcon.password',
+    });
+    expect(ARK_ASCENDED_GAME_TYPE.ports.map((port) => port.containerPort)).not.toContain(27_020);
+  });
+
+  it('sperrt die Karte nach dem Anlegen', () => {
+    // Jede Karte hat ihren eigenen Spielstand; ein Wechsel liesse den
+    // bisherigen liegen.
+    const karte = ARK_ASCENDED_GAME_TYPE.configFields.find((feld) => feld.key === 'map');
+
+    expect(karte?.lockedAfterCreate).toBe(true);
+    expect(karte?.options).toContain('TheIsland_WP');
+    expect(karte?.options).toContain(karte?.defaultValue);
+  });
+
+  it('speichert oefter, als ARK es vorgibt', () => {
+    // ARK speichert beim Stoppsignal nicht, und der Befehl dafuer ginge ueber
+    // RCON - einen RCON-Sprecher hat das Image nicht.
+    const feld = ARK_ASCENDED_GAME_TYPE.configFields.find(
+      (kandidat) => kandidat.key === 'autoSaveMinutes',
+    );
+
+    expect(feld?.defaultValue).toBe(10);
+  });
+
+  it('laesst BattlEye und Crossplay aus, solange niemand sie will', () => {
+    for (const schluessel of ['battlEye', 'crossplay']) {
+      expect(
+        ARK_ASCENDED_GAME_TYPE.configFields.find((feld) => feld.key === schluessel)?.defaultValue,
+      ).toBe(false);
+    }
+  });
+
+  it('gibt dem ersten Start eine Stunde', () => {
+    // Zweistellig viele Gigabyte ueber SteamCMD, danach der Wine-Prefix.
+    expect(ARK_ASCENDED_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(3_600);
+  });
+
+  it('bildet jedes Feld auf eine Umgebungsvariable ab', () => {
+    const felder = ARK_ASCENDED_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(ARK_ASCENDED_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    expect([...(ARK_ASCENDED_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
   });
 });
