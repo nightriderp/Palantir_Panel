@@ -2091,6 +2091,343 @@ export const ENSHROUDED_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * V Rising – zweites Spiel unter Proton (Anhang A, Phase 3).
+ *
+ * **Das erste Windows-Spiel mit einer echten Konsole.** V Rising spricht das
+ * Source-RCON-Protokoll; das Image schaltet es ein und legt bei jedem Start ein
+ * neues Passwort in den Datenordner. Veröffentlicht wird der RCON-Port nicht.
+ *
+ * **Die Abfrage hängt an der Sichtbarkeit** (`requiresConfigFlag`), wie bei
+ * Valheim: Ein Server, der sich nicht beim Steam-Verzeichnis anmeldet,
+ * beantwortet keine A2S-Abfrage. Erreichbar bleibt er – wer die Adresse hat,
+ * spielt.
+ *
+ * **Der Name des Spielstands ist nach dem Anlegen gesperrt.** Er ist der Name
+ * des Ordners unter `Saves/`; eine Änderung ließe den Server eine neue Welt
+ * beginnen und die alte liegen.
+ */
+export const VRISING_GAME_TYPE: GameTypeDefinition = {
+  id: 'vrising',
+  name: 'V Rising',
+  description:
+    'V-Rising-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-vrising:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 9_876,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+    {
+      containerPort: 9_877,
+      protocol: 'udp',
+      primary: false,
+      label: 'Abfrage-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'description',
+      label: 'Beschreibung',
+      type: 'text',
+      defaultValue: '',
+      description: 'Steht in den Einzelheiten der Serverliste und im Chat beim Verbinden.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 40,
+      description: 'Mehr als 128 nimmt der Server nicht an.',
+      required: false,
+      options: [],
+      min: 1,
+      max: 128,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Server-Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen heißt: jeder mit der Adresse kommt herein.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'difficulty',
+      label: 'Schwierigkeit',
+      type: 'select',
+      defaultValue: 'Difficulty_Normal',
+      description: null,
+      required: false,
+      options: ['Difficulty_Easy', 'Difficulty_Normal', 'Difficulty_Brutal'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'saveName',
+      label: 'Name des Spielstands',
+      type: 'text',
+      defaultValue: 'welt',
+      description:
+        'Der Ordner unter „Saves". Nach dem Anlegen fest – ein neuer Name wäre eine neue Welt.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'public',
+      label: 'In der Serverliste zeigen',
+      type: 'toggle',
+      // Wie bei Valheim: Ohne diesen Schalter beantwortet der Server keine
+      // Abfrage, und das Panel sieht weder Spielerzahl noch Ping (`query`
+      // unten). Wer ihn ausschaltet, soll das entscheiden.
+      defaultValue: true,
+      description: 'Aus heißt: erreichbar, aber weder in der Liste noch mit Spielerzahl im Panel.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'VRISING_NAME',
+    description: 'VRISING_DESCRIPTION',
+    maxPlayers: 'MAX_PLAYERS',
+    password: 'VRISING_PASSWORD',
+    difficulty: 'VRISING_DIFFICULTY',
+    saveName: 'VRISING_SAVE_NAME',
+    public: 'VRISING_PUBLIC',
+  },
+  restartRequiredFields: [
+    'serverName',
+    'description',
+    'maxPlayers',
+    'password',
+    'difficulty',
+    'saveName',
+    'public',
+  ],
+  /*
+   * Stunlock nennt 8 GiB für eine volle Runde. Dazu kommt, dass unter Proton
+   * eine zweite Umgebung mitläuft; die Serverdateien selbst sind klein.
+   */
+  resourceDefaults: {
+    ramMb: 6_144,
+    cpuCores: 3,
+    diskMb: 15_360,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'vrising',
+    // Nicht der Spiel-Port: V Rising antwortet auf der Serverliste daneben.
+    containerPort: 9_877,
+    requiresConfigFlag: 'public',
+  },
+  console: {
+    kind: 'rcon',
+    port: 25_575,
+    passwordFile: '.palantir/rcon.password',
+  },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 120,
+  // Windows-Dateien holen **und** den Wine-Prefix anlegen.
+  startupTimeoutSeconds: 1_800,
+  phase: 3,
+};
+
+/**
+ * Sons of the Forest – drittes Spiel unter Proton (Anhang A, Phase 3).
+ *
+ * **Drei Ports statt zwei.** Neben Spiel und Abfrage gibt es einen dritten, der
+ * beim Beitreten die Weltdaten abgleicht. Fehlt er, verbindet sich der Spieler,
+ * der Server meldet nichts – und der Ladebildschirm bleibt stehen.
+ *
+ * **Keine Konsole:** weder Standardeingabe noch RCON. Das Panel zeigt die
+ * Ausgabe mit ausgegrautem Eingabefeld.
+ */
+export const SONS_OF_THE_FOREST_GAME_TYPE: GameTypeDefinition = {
+  id: 'sonsoftheforest',
+  name: 'Sons of the Forest',
+  description:
+    'Sons-of-the-Forest-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-sonsoftheforest:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 8_766,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+    {
+      containerPort: 27_016,
+      protocol: 'udp',
+      primary: false,
+      label: 'Abfrage-Port',
+    },
+    {
+      containerPort: 9_700,
+      protocol: 'udp',
+      primary: false,
+      label: 'Abgleich der Weltdaten',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 8,
+      description: 'Sons of the Forest selbst lässt höchstens 8 zu.',
+      required: false,
+      options: [],
+      min: 1,
+      max: 8,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Server-Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen heißt: jeder mit der Adresse kommt herein.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'gameMode',
+      label: 'Spielart',
+      type: 'select',
+      defaultValue: 'Normal',
+      description: null,
+      required: false,
+      options: ['Peaceful', 'Normal', 'Hard', 'HardSurvival'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'saveSlot',
+      label: 'Speicherplatz',
+      type: 'number',
+      defaultValue: 1,
+      description:
+        'Welcher der Spielstände fortgesetzt wird. Nach dem Anlegen fest – ein anderer Platz wäre eine andere Welt.',
+      required: false,
+      options: [],
+      min: 1,
+      max: 5,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'saveIntervalSeconds',
+      label: 'Selbsttätig speichern (Sekunden)',
+      type: 'number',
+      defaultValue: 600,
+      description: null,
+      required: false,
+      options: [],
+      min: 60,
+      max: 3_600,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'SOTF_NAME',
+    maxPlayers: 'MAX_PLAYERS',
+    password: 'SOTF_PASSWORD',
+    gameMode: 'SOTF_GAME_MODE',
+    saveSlot: 'SOTF_SAVE_SLOT',
+    saveIntervalSeconds: 'SOTF_SAVE_INTERVAL',
+  },
+  restartRequiredFields: [
+    'serverName',
+    'maxPlayers',
+    'password',
+    'gameMode',
+    'saveSlot',
+    'saveIntervalSeconds',
+  ],
+  /*
+   * Endnight nennt 8 GiB für acht Spieler; die Serverdateien wiegen um die
+   * fünfzehn Gigabyte, und unter Proton läuft eine zweite Umgebung mit.
+   */
+  resourceDefaults: {
+    ramMb: 8_192,
+    cpuCores: 4,
+    diskMb: 30_720,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'sotf',
+    // Nicht der Spiel-Port: Sons of the Forest antwortet auf der Serverliste
+    // daneben.
+    containerPort: 27_016,
+  },
+  console: { kind: 'none' },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 120,
+  // Windows-Dateien holen **und** den Wine-Prefix anlegen.
+  startupTimeoutSeconds: 1_800,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
@@ -2106,6 +2443,8 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   SATISFACTORY_GAME_TYPE,
   SDTD_GAME_TYPE,
   ENSHROUDED_GAME_TYPE,
+  VRISING_GAME_TYPE,
+  SONS_OF_THE_FOREST_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */

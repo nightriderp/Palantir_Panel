@@ -14,7 +14,9 @@ import {
   RUST_GAME_TYPE,
   SATISFACTORY_GAME_TYPE,
   SDTD_GAME_TYPE,
+  SONS_OF_THE_FOREST_GAME_TYPE,
   TERRARIA_GAME_TYPE,
+  VRISING_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
@@ -929,5 +931,114 @@ describe('Enshrouded unter Proton', () => {
 
   it('hat keine Konsole', () => {
     expect(ENSHROUDED_GAME_TYPE.console).toEqual({ kind: 'none' });
+  });
+});
+
+/**
+ * V Rising - zweites Spiel unter Proton, und das erste Windows-Spiel mit einer
+ * echten Konsole (Anhang A, Phase 3).
+ */
+describe('V Rising unter Proton', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+    expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('vrising').id).toBe(
+      'vrising',
+    );
+    expect(VRISING_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-vrising:1');
+  });
+
+  it('haengt die Abfrage an die Sichtbarkeit', () => {
+    // Ein Server ohne Eintrag im Steam-Verzeichnis beantwortet keine
+    // A2S-Abfrage. Ohne diese Angabe hielte das Panel ihn fuer tot, waehrend
+    // Spieler darauf unterwegs sind (Fundpunkt 248).
+    expect(VRISING_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'vrising',
+      containerPort: 9_877,
+      requiresConfigFlag: 'public',
+    });
+    expect(VRISING_GAME_TYPE.configFields.find((feld) => feld.key === 'public')?.type).toBe(
+      'toggle',
+    );
+  });
+
+  it('spricht RCON, und das Passwort liegt im Datenordner', () => {
+    // Der RCON-Port steht bewusst nicht in `ports`: Er wird nicht
+    // veroeffentlicht, erreichbar ist er allein fuer den Agent.
+    expect(VRISING_GAME_TYPE.console).toEqual({
+      kind: 'rcon',
+      port: 25_575,
+      passwordFile: '.palantir/rcon.password',
+    });
+    expect(VRISING_GAME_TYPE.ports.map((port) => port.containerPort)).not.toContain(25_575);
+  });
+
+  it('sperrt den Namen des Spielstands nach dem Anlegen', () => {
+    // Er ist der Name des Ordners unter `Saves/`; eine Aenderung begaenne eine
+    // neue Welt und liesse die alte liegen.
+    expect(
+      VRISING_GAME_TYPE.configFields.find((feld) => feld.key === 'saveName')?.lockedAfterCreate,
+    ).toBe(true);
+  });
+
+  it('gibt dem ersten Start Zeit fuer Windows-Dateien und Wine-Prefix', () => {
+    expect(VRISING_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(1_800);
+  });
+
+  it('bildet jedes Feld auf eine Umgebungsvariable ab', () => {
+    const felder = VRISING_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(VRISING_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    expect([...(VRISING_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+});
+
+/**
+ * Sons of the Forest - drittes Spiel unter Proton (Anhang A, Phase 3).
+ */
+describe('Sons of the Forest unter Proton', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+    expect(
+      createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('sonsoftheforest').id,
+    ).toBe('sonsoftheforest');
+    expect(SONS_OF_THE_FOREST_GAME_TYPE.dockerImage).toBe(
+      'ghcr.io/nightriderp/palantir-game-sonsoftheforest:1',
+    );
+  });
+
+  it('vergibt drei Ports, nicht zwei', () => {
+    // Der dritte gleicht beim Beitreten die Weltdaten ab. Fehlt er, verbindet
+    // sich der Spieler und bleibt im Ladebildschirm haengen - ohne dass der
+    // Server etwas meldet.
+    expect(SONS_OF_THE_FOREST_GAME_TYPE.ports.map((port) => port.containerPort)).toEqual([
+      8_766, 27_016, 9_700,
+    ]);
+    expect(SONS_OF_THE_FOREST_GAME_TYPE.ports.every((port) => port.protocol === 'udp')).toBe(true);
+    expect(SONS_OF_THE_FOREST_GAME_TYPE.ports.filter((port) => port.primary)).toHaveLength(1);
+  });
+
+  it('fragt den Abfrage-Port ab, nicht den Spiel-Port', () => {
+    expect(SONS_OF_THE_FOREST_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'sotf',
+      containerPort: 27_016,
+    });
+  });
+
+  it('hat keine Konsole', () => {
+    expect(SONS_OF_THE_FOREST_GAME_TYPE.console).toEqual({ kind: 'none' });
+  });
+
+  it('sperrt den Speicherplatz nach dem Anlegen', () => {
+    expect(
+      SONS_OF_THE_FOREST_GAME_TYPE.configFields.find((feld) => feld.key === 'saveSlot')
+        ?.lockedAfterCreate,
+    ).toBe(true);
+  });
+
+  it('bildet jedes Feld auf eine Umgebungsvariable ab', () => {
+    const felder = SONS_OF_THE_FOREST_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(SONS_OF_THE_FOREST_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    expect([...(SONS_OF_THE_FOREST_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
   });
 });
