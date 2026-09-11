@@ -115,8 +115,25 @@ export interface HostNodeDto {
   id: string;
   /** Anzeigename, z. B. „Homeserver". */
   name: string;
-  /** Feste interne Adresse im Tunnel-Netz (Pflichtenheft §2.1). */
-  wireguardIp: string;
+  /**
+   * Feste interne Adresse im Tunnel-Netz (Pflichtenheft §2.1).
+   *
+   * **`null` ohne `node.manage`** (Fundpunkt 240, **Breaking Change** am
+   * bestehenden Feld). Die Node-Übersicht ist eine Nutzeransicht – wer einen
+   * Server anlegt, wählt dort eine Node aus und braucht dafür Name, Zustand und
+   * freie Kapazität. Die Tunnel-Adresse des Homeservers braucht er nicht; sie
+   * ist die Anschrift, unter der der Agent erreichbar ist, und gehört zur
+   * Einrichtung, nicht zur Auswahl.
+   *
+   * Bis hierher stand sie in jeder Antwort: Die Seed-Rolle „Nutzer" trägt
+   * `node.view`, also las **jedes freigeschaltete Konto** über
+   * `GET /admin/nodes` die WireGuard-Adressen aller Nodes mit.
+   *
+   * Bewusst am DTO und nicht am Recht: Ein `node.view` ohne diese Adresse ist
+   * das, was die Übersicht braucht – und die Sperre hält auch dann, wenn jemand
+   * später eine eigene Rolle mit `node.view` anlegt.
+   */
+  wireguardIp: string | null;
   status: HostNodeStatus;
   /** Erläuterung zum Status, z. B. Grund einer Wartung; `null`, wenn nichts vorliegt. */
   statusMessage: string | null;
