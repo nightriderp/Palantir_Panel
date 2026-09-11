@@ -77,9 +77,30 @@ USER root
 # Grafikkarte noch Zuschauer hat. Gestartet wird er nicht von selbst, sondern
 # vom Startskript des Spiels (`proton_bildschirm_starten`); Enshrouded kommt
 # ohne aus.
+#
+# **Der Spiegel ist ein Bau-Argument, kein Inhalt.** Zweimal hintereinander ist
+# dieser Bau am 2026-09-11 in die Frist gelaufen, ohne dass am Image etwas
+# gewesen wäre: `archive.ubuntu.com` gab die Paketlisten mit rund zwanzig
+# Kilobyte in der Sekunde heraus – allein `apt-get update` brauchte vierzehn
+# Minuten, beim zweiten Anlauf über vierzig. Die Läufer von GitHub stehen bei
+# Azure, und der Spiegel dort liegt im selben Netz. Die Vorgabe zeigt deshalb
+# dorthin; wer woanders baut, setzt `--build-arg APT_SPIEGEL=archive.ubuntu.com`.
+#
+# Am Inhalt des Images ändert das nichts – dieselben Pakete aus demselben
+# Archiv, nur über einen anderen Weg geholt. `security.ubuntu.com` bleibt, wie
+# es ist: Diese Listen kamen auch an den schlechten Tagen in zwei Sekunden. Die
+# Quellenliste wird danach zurückgesetzt, damit im ausgelieferten Image nicht
+# ein Spiegel steht, den niemand gewählt hat.
+ARG APT_SPIEGEL=azure.archive.ubuntu.com
+
 RUN set -eux; \
+  for quelle in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do \
+  if [ -f "$quelle" ]; then \
+  sed -i "s|://archive\.ubuntu\.com/|://${APT_SPIEGEL}/|" "$quelle"; \
+  fi; \
+  done; \
   dpkg --add-architecture i386; \
-  apt-get update; \
+  apt-get update -o Acquire::Languages=none; \
   apt-get install -y --no-install-recommends \
   python3-minimal \
   xvfb \
@@ -94,6 +115,11 @@ RUN set -eux; \
   libdbus-1-3 libdbus-1-3:i386 \
   libusb-1.0-0 libusb-1.0-0:i386 \
   zlib1g zlib1g:i386; \
+  for quelle in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do \
+  if [ -f "$quelle" ]; then \
+  sed -i "s|://${APT_SPIEGEL}/|://archive.ubuntu.com/|" "$quelle"; \
+  fi; \
+  done; \
   rm -rf /var/lib/apt/lists/*
 
 COPY --from=proton /opt/proton /opt/proton
