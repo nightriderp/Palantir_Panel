@@ -16,6 +16,7 @@ import {
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { accountRateLimit } from '../../lib/abuse-limits.js';
+import { toIpHint } from '../auth/request-context.js';
 import {
   RbacError,
   isRbacError,
@@ -155,6 +156,7 @@ export function registerQuotaRequestRoutes(options: QuotaRequestRouteOptions) {
             options.actorUserId(request),
             id,
             input,
+            { ipHint: toIpHint(request.ip) },
           );
         }),
     );
@@ -172,6 +174,7 @@ export function registerQuotaRequestRoutes(options: QuotaRequestRouteOptions) {
             options.actorUserId(request),
             id,
             input,
+            { ipHint: toIpHint(request.ip) },
           );
         }),
     );
