@@ -1218,3 +1218,39 @@ describe('ARK: Survival Ascended', () => {
     expect([...(ARK_ASCENDED_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
   });
 });
+
+/**
+ * Der Stopp-Befehl vor dem Signal (`stopCommand`) - die Regeln, die fuer alle
+ * Spiele zugleich gelten.
+ */
+describe('Stopp-Befehl', () => {
+  it('setzt ihn nur dort, wo es auch eine Konsole gibt', () => {
+    // Ohne Konsole gibt es keinen Weg fuer den Befehl; das Backend schickte ihn
+    // gar nicht erst mit, und die Definition behauptete etwas Falsches.
+    for (const definition of ALLE_GAME_TYPE_DEFINITIONS) {
+      if (definition.stopCommand === undefined) continue;
+
+      expect(definition.console?.kind, definition.id).not.toBe('none');
+      expect(definition.stopCommand.trim().length, definition.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('laesst die Spiele in Ruhe, deren Startskript das Signal selbst abfaengt', () => {
+    // Terraria (`exit`), Project Zomboid (`quit`) und Vintage Story (`/stop`)
+    // fangen SIGTERM im Startskript ab und schreiben den Befehl selbst in das
+    // Konsolen-Rohr. Ein `stopCommand` dazu schickte ihn zweimal.
+    for (const definition of [
+      TERRARIA_GAME_TYPE,
+      PROJECT_ZOMBOID_GAME_TYPE,
+      VINTAGE_STORY_GAME_TYPE,
+    ]) {
+      expect(definition.stopCommand, definition.id).toBeUndefined();
+    }
+  });
+
+  it('gibt ihn den drei Spielen, die ueber RCON sprechen und sonst nichts speichern', () => {
+    expect(ARK_ASCENDED_GAME_TYPE.stopCommand).toBe('DoExit');
+    expect(RUST_GAME_TYPE.stopCommand).toBe('quit');
+    expect(PALWORLD_GAME_TYPE.stopCommand).toBe('Shutdown 1');
+  });
+});

@@ -30,6 +30,7 @@ import {
   type ServerFileContentDto,
   type ServerFileListDto,
   type ServerResourceLimits,
+  type StopCommandPayload,
   buildServerHostname,
 } from '@palantir/contracts';
 import {
@@ -45,6 +46,16 @@ import { randomUUID } from 'node:crypto';
 import { type DnsProvider } from './dns/types.js';
 import { type CloneJobProgress, type CloneJobStore, createCloneJobStore } from './clone-jobs.js';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
+
+/**
+ * Zuschlag auf die Frist eines `STOP`-Befehls.
+ *
+ * Die Kulanzzeit sagt, wie lange der Container brauchen darf; dieser Zuschlag
+ * deckt den Weg dorthin und zurueck – Verbindung, Warteschlange, das Schliessen
+ * der Live-Kanaele. Fuenfzehn Sekunden sind grosszuegig und immer noch weit
+ * davon entfernt, einen haengenden Homeserver unbemerkt zu lassen.
+ */
+const STOPP_ZUSCHLAG_MS = 15_000;
 import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 import {
   ClockSkewMonitor,
@@ -1433,9 +1444,12 @@ export class ServerOrchestrationService {
   private async dispatchStop(server: ServerRecord, anlass: StopReason = 'manual'): Promise<void> {
     const containerId = this.requireContainerId(server);
     const session = this.deps.agents.require(server.hostId);
+    const nutzlast = this.stoppNutzlast(server, containerId);
 
     try {
-      await session.sendCommand('STOP', server.id, { containerId });
+      await session.sendCommand('STOP', server.id, nutzlast.payload, {
+        timeoutMs: nutzlast.fristMs,
+      });
       await this.transition(server, { type: 'stopSucceeded' });
 
       if (anlass === 'manual') {
@@ -1449,6 +1463,60 @@ export class ServerOrchestrationService {
 
       throw error;
     }
+  }
+
+  /**
+   * Baut die Nutzlast für `STOP` – und die Frist, in der sie beantwortet sein
+   * muss.
+   *
+   * **Der Stopp-Befehl** (`GameTypeDefinition.stopCommand`) geht mit, wenn das
+   * Spiel einen nennt und eine Konsole hat: Der Agent schickt ihn, wartet auf
+   * das Ende des Containers und greift erst danach zum Signal. Spiele, deren
+   * Startskript das Signal selbst abfängt (Terraria, Project Zomboid, Vintage
+   * Story), nennen keinen – sonst käme der Befehl zweimal.
+   *
+   * **Die Frist war das eigentliche Versäumnis.** Ein Befehl muss binnen
+   * dreißig Sekunden beantwortet sein (Vorgabe des Gateways), ein Container
+   * darf sich aber bis zu seiner Kulanzzeit Zeit lassen – bei ARK drei Minuten.
+   * Ein Stopp, der länger brauchte, lief in die Frist und wurde als
+   * fehlgeschlagen gemeldet, obwohl er gerade lief. Die Frist richtet sich
+   * deshalb nach dem, was der Stopp tatsächlich dauern darf: Kulanzzeit, bei
+   * einem Stopp-Befehl zweimal (einmal fürs Warten, einmal fürs Signal), plus
+   * Luft für den Weg hin und zurück.
+   */
+  private stoppNutzlast(
+    server: ServerRecord,
+    containerId: string,
+  ): { payload: StopCommandPayload; fristMs: number } {
+    const definition = this.deps.registry.require(server.gameType);
+    const konsole = definition.console;
+    const argv =
+      definition.stopCommand
+        ?.trim()
+        .split(/\s+/)
+        .filter((teil) => teil.length > 0) ?? [];
+    // Ohne Konsole gibt es keinen Weg für den Befehl – dann bleibt es beim
+    // Signal, auch wenn die Definition einen nennt.
+    const mitBefehl = argv.length > 0 && konsole !== undefined && konsole.kind !== 'none';
+    const rcon =
+      konsole?.kind === 'rcon'
+        ? { port: konsole.port, passwordFile: konsole.passwordFile }
+        : undefined;
+
+    // Ohne eigene Angabe gilt, was die Container-Engine vorgibt: zehn Sekunden.
+    const kulanzSekunden = definition.stopTimeoutSeconds ?? 10;
+
+    return {
+      payload: {
+        containerId,
+        ...(definition.stopTimeoutSeconds === undefined
+          ? {}
+          : { timeoutSeconds: definition.stopTimeoutSeconds }),
+        ...(mitBefehl ? { stopCommand: argv } : {}),
+        ...(mitBefehl && rcon !== undefined ? { rcon } : {}),
+      },
+      fristMs: kulanzSekunden * (mitBefehl ? 2 : 1) * 1_000 + STOPP_ZUSCHLAG_MS,
+    };
   }
 
   /**

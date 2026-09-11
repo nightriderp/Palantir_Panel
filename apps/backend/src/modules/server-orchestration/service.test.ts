@@ -103,6 +103,35 @@ const ROUTED_GAME_TYPE: GameTypeDefinition = {
 /** Registry für die Routing-Tests: der gewöhnliche Typ und der geroutete. */
 const ROUTING_GAME_TYPES: readonly GameTypeDefinition[] = [TEST_GAME_TYPE, ROUTED_GAME_TYPE];
 
+/**
+ * Ein Spiel, das beim Stoppsignal nicht speichert und seine Konsole über RCON
+ * führt – wie ARK, Rust und Palworld.
+ */
+const STOPP_BEFEHL_GAME_TYPE: GameTypeDefinition = {
+  ...TEST_GAME_TYPE,
+  id: 'test-stopbefehl',
+  name: 'Test-Server (Stopp-Befehl)',
+  stopCommand: 'save-and-quit jetzt',
+  stopTimeoutSeconds: 60,
+  console: { kind: 'rcon', port: 27_020, passwordFile: '.palantir/rcon.password' },
+};
+
+/**
+ * Dasselbe Spiel ohne Konsole: Der Befehl in der Definition hat dann keinen
+ * Weg, und das Backend darf ihn erst gar nicht mitschicken.
+ */
+const STOPP_OHNE_KONSOLE_GAME_TYPE: GameTypeDefinition = {
+  ...STOPP_BEFEHL_GAME_TYPE,
+  id: 'test-stopbefehl-ohne-konsole',
+  console: { kind: 'none' },
+};
+
+const STOPP_GAME_TYPES: readonly GameTypeDefinition[] = [
+  TEST_GAME_TYPE,
+  STOPP_BEFEHL_GAME_TYPE,
+  STOPP_OHNE_KONSOLE_GAME_TYPE,
+];
+
 let idCounter = 0;
 
 const nextId = (): string => `44444444-4444-4444-8444-${String(++idCounter).padStart(12, '0')}`;
@@ -1624,6 +1653,58 @@ describe('Stoppen', () => {
     expect(stopped.status).toBe('stopped');
     expect(harness.socket.commands.map((c) => c.command)).toContain('STOP');
     expect(harness.emitted.map((e) => e.event)).toContain('server.stopped');
+  });
+
+  it('schickt den Stopp-Befehl des Spiels mit, samt RCON-Zugang', async () => {
+    // Spiele, die bei SIGTERM nicht speichern, bekommen ihren Befehl vor dem
+    // Signal - der Agent schickt ihn und wartet auf das Ende.
+    const harness = makeHarness({ gameTypes: STOPP_GAME_TYPES });
+    const created = await harness.service.createServer(
+      createInput('mit-stopbefehl', STOPP_BEFEHL_GAME_TYPE),
+      OWNER_ID,
+    );
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    await harness.service.stopServer(created.id);
+
+    const stopp = harness.socket.commands.find((befehl) => befehl.command === 'STOP');
+    expect(stopp?.payload).toMatchObject({
+      timeoutSeconds: 60,
+      // Zerlegt wie eine Konsoleneingabe - es gibt keine Shell dazwischen.
+      stopCommand: ['save-and-quit', 'jetzt'],
+      rcon: { port: 27_020, passwordFile: '.palantir/rcon.password' },
+    });
+  });
+
+  it('schickt keinen Stopp-Befehl, wenn das Spiel gar keine Konsole hat', async () => {
+    // Sonst ginge er in ein Rohr, das niemand liest, und der Agent wartete die
+    // volle Kulanzzeit auf ein Ende, das so nie kommt.
+    const harness = makeHarness({ gameTypes: STOPP_GAME_TYPES });
+    const created = await harness.service.createServer(
+      createInput('ohne-konsole', STOPP_OHNE_KONSOLE_GAME_TYPE),
+      OWNER_ID,
+    );
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    await harness.service.stopServer(created.id);
+
+    const stopp = harness.socket.commands.find((befehl) => befehl.command === 'STOP');
+    expect(stopp?.payload).not.toHaveProperty('stopCommand');
+    expect(stopp?.payload).not.toHaveProperty('rcon');
+  });
+
+  it('schickt ohne Stopp-Befehl in der Definition nur die Kulanzzeit', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    await harness.service.stopServer(created.id);
+
+    const stopp = harness.socket.commands.find((befehl) => befehl.command === 'STOP');
+    expect(stopp?.payload).not.toHaveProperty('stopCommand');
   });
 
   it('lehnt das Stoppen eines gestoppten Servers ab', async () => {
