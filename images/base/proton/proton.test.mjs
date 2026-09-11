@@ -153,3 +153,107 @@ describe('proton.sh – ein Windows-Programm aufrufen', nurMitShell, () => {
     assert.deepEqual(argumente, ['run', '/pfad/server.exe', '-arg']);
   });
 });
+
+describe('proton.sh – der Bildschirm, den es nicht gibt', nurMitShell, () => {
+  /**
+   * Statt eines echten Xvfb ein Skript im PATH, das den Anschluss anlegt, den
+   * der echte anlegen würde, und dann liegen bleibt. Geprüft wird das
+   * Drumherum – Aufruf, Warten, `DISPLAY` –, nicht der X-Server.
+   */
+  function mitFalschemXvfb(ordner, xvfbZeilen, rumpf) {
+    const bin = join(ordner.wurzel, 'bin');
+    const sockel = join(ordner.wurzel, 'x11');
+    mkdirSync(bin, { recursive: true });
+    mkdirSync(sockel, { recursive: true });
+
+    writeFileSync(join(bin, 'Xvfb'), ['#!/bin/sh', ...xvfbZeilen, ''].join('\n'));
+    spawnSync('sh', ['-c', 'chmod 0755 "$1"', '_', posix(join(bin, 'Xvfb'))]);
+
+    return spawnSync(
+      'sh',
+      [
+        '-c',
+        `PATH="$(cd "$4" && pwd):$PATH"; export PATH; set -eu; . "$1"; . "$2"; . "$3"; ${rumpf}`,
+        '_',
+        PALANTIR_SH,
+        STEAM_SH,
+        PROTON_SH,
+        posix(bin),
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          PALANTIR_DATA_DIR: posix(ordner.daten),
+          PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+          PALANTIR_PROTON_DIR: posix(ordner.proton),
+          PALANTIR_X11_SOCKET_DIR: posix(sockel),
+        },
+      },
+    );
+  }
+
+  it('startet Xvfb und setzt DISPLAY', () => {
+    const ordner = arbeitsordner();
+
+    const lauf = mitFalschemXvfb(
+      ordner,
+      [
+        'for a in "$@"; do printf \'xvfb %s\\n\' "$a"; done',
+        // Das tut der echte auch: Er öffnet einen Anschluss unter dem Namen
+        // des Bildschirms.
+        'touch "${PALANTIR_X11_SOCKET_DIR}/X1"',
+        'sleep 1',
+      ],
+      'proton_bildschirm_starten; printf "display %s\\n" "$DISPLAY"',
+    );
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.match(lauf.stdout, /display :1\n/u);
+    assert.match(lauf.stdout, /xvfb -screen\nxvfb 0\nxvfb 1024x768x24/u);
+  });
+
+  it('gibt auf, wenn kein Anschluss entsteht – statt das Spiel ins Leere zu starten', () => {
+    // Ein Xvfb, das nichts öffnet: Der Server liefe sonst an, fände keinen
+    // Bildschirm und beendete sich mit einer Meldung aus Unity, die von einem
+    // fehlenden Bildschirm nichts sagt.
+    const lauf = mitFalschemXvfb(
+      arbeitsordner(),
+      ['sleep 1'],
+      'proton_bildschirm_starten || printf "aufgegeben %s\\n" "$?"',
+    );
+
+    assert.match(lauf.stdout, /aufgegeben 1\n/u);
+    assert.match(lauf.stdout, /keinen Anschluss/u);
+  });
+
+  it('sagt es, wenn Xvfb im Image fehlt', () => {
+    const ordner = arbeitsordner();
+    // Der PATH wird erst **in** der Shell geleert: Von außen fände sich auch
+    // `sh` nicht mehr, und der Test prüfte gar nichts.
+    const lauf = spawnSync(
+      'sh',
+      [
+        '-c',
+        'set -eu; . "$1"; . "$2"; . "$3"; PATH=/nirgendwo; export PATH;' +
+          ' proton_bildschirm_starten || printf "aufgegeben %s\\n" "$?"',
+        '_',
+        PALANTIR_SH,
+        STEAM_SH,
+        PROTON_SH,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          PALANTIR_DATA_DIR: posix(ordner.daten),
+        },
+      },
+    );
+
+    assert.match(lauf.stdout, /Xvfb fehlt im Image/u);
+    assert.match(lauf.stdout, /aufgegeben 1\n/u);
+  });
+});

@@ -69,11 +69,20 @@ USER root
 # gebraucht wird, fehlt bewusst. Sollte ein Spiel etwas vermissen, sagt Wine es
 # im Log mit dem Namen der Bibliothek – dann gehört sie hierher und die Fassung
 # steigt.
+#
+# `xvfb` ist der Nachzügler (Fassung 2): Ein X-Server, der sein Bild in den
+# Arbeitsspeicher zeichnet und wegwirft. Die Spiele auf Unity-Grundlage
+# (V Rising, Sons of the Forest) verlangen unter Wine eine X11-Verbindung und
+# beenden sich sonst gleich nach dem Start – auf einem Server, der weder
+# Grafikkarte noch Zuschauer hat. Gestartet wird er nicht von selbst, sondern
+# vom Startskript des Spiels (`proton_bildschirm_starten`); Enshrouded kommt
+# ohne aus.
 RUN set -eux; \
   dpkg --add-architecture i386; \
   apt-get update; \
   apt-get install -y --no-install-recommends \
   python3-minimal \
+  xvfb \
   libfreetype6 libfreetype6:i386 \
   libgnutls30t64 libgnutls30t64:i386 \
   libgcrypt20 libgcrypt20:i386 \

@@ -10,6 +10,7 @@ Spiel; das Image hat keinen `ENTRYPOINT`.
 | Proton                        | GE-Proton11-6, im Image, per SHA-256 gepinnt            |
 | Python 3                      | `proton` ist ein Python-Skript                          |
 | Wine-Bibliotheken             | 64 und 32 Bit, auf einen Server ohne Bildschirm gekürzt |
+| Xvfb                          | ein Bildschirm im Arbeitsspeicher, für Unity-Server     |
 | `/opt/palantir/lib/proton.sh` | Windows-Dateien holen, Orte setzen, Programm aufrufen   |
 
 ## Drei Entscheidungen
@@ -54,6 +55,25 @@ schreibt Proton in ein Zuhause, das es im Container nicht gibt, und scheitert mi
 einen Pfad, den niemand gesetzt hat.
 
 **`proton_lauf <programm> [argumente]`** ruft ein Windows-Programm über `proton run` auf.
+
+## Der Bildschirm, den es nicht gibt
+
+Ein Server hat keine Grafikkarte und niemand sieht ihm zu. Die Spiele auf Unity-Grundlage stört das
+trotzdem: **V Rising und Sons of the Forest verlangen unter Wine eine X11-Verbindung** und beenden
+sich sonst gleich nach dem Start – mit einer Meldung, die von einem fehlenden Bildschirm nichts
+sagt. Xvfb ist ein X-Server, der sein Bild in den Arbeitsspeicher zeichnet und wegwirft.
+
+```sh
+proton_bildschirm_starten   # startet Xvfb, wartet auf den Anschluss, setzt DISPLAY
+```
+
+**Er startet nicht von selbst.** Enshrouded ist ein gewöhnliches Windows-Konsolenprogramm und
+kommt ohne aus; ein Bildschirm, den niemand braucht, kostet nur Arbeitsspeicher. Wer ein neues
+Spiel einbaut, probiert es zuerst ohne.
+
+Gewartet wird bis zu zehn Sekunden auf den Anschluss (`/tmp/.X11-unix/X1`). Ohne dieses Warten
+liefe das Spiel manchmal in einen Bildschirm, der eine Zehntelsekunde später da gewesen wäre – ein
+Fehler, der sich je nach Auslastung der Node anders verhält.
 
 ## Pfade im Prefix
 
