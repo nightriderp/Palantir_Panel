@@ -47,6 +47,11 @@ log() {
 #
 # Gesucht wird deshalb, und der Fundort ist der Serverordner. `cfg/` liegt bei
 # ACC immer daneben.
+#
+# **Gross- und Kleinschreibung zaehlt hier nicht.** Die Datei kommt aus einer
+# Windows-Welt, in der sie beides sein darf; unter Linux ist `accServer.exe`
+# etwas anderes als `AccServer.exe`, und ein Suchlauf, der daran scheitert,
+# saehe aus wie eine fehlende Datei.
 exe_suchen() {
   if [ -f "${SERVER_WURZEL}/accServer.exe" ]; then
     printf '%s' "${SERVER_WURZEL}/accServer.exe"
@@ -54,7 +59,7 @@ exe_suchen() {
     return 0
   fi
 
-  find "$SERVER_WURZEL" -maxdepth 4 -name accServer.exe -print 2> /dev/null | head -n 1
+  find "$SERVER_WURZEL" -maxdepth 6 -iname 'accserver*.exe' -print 2> /dev/null | head -n 1
 }
 
 palantir_intern_anlegen
@@ -148,12 +153,16 @@ if [ -n "$BINAERDATEI" ]; then
 else
   log 'Die Serverdateien fehlen.'
   log ''
-  log 'Was im Serverordner liegt:'
+  log 'Was im Serverordner liegt (bis drei Ebenen tief):'
   # Der Blick in den Ordner spart eine Runde: Ist dort etwas, aber nicht das
   # Erwartete, sieht man sofort, was schiefging – ein halber Download, ein
-  # Archiv mit fremdem Aufbau, ein leerer Ordner.
-  ls -A "$SERVER_WURZEL" 2> /dev/null | head -n 12 | while read -r eintrag; do
-    log "  ${eintrag}"
+  # Archiv mit fremdem Aufbau, ein leerer Ordner. Die Ordner zuerst, dann die
+  # Dateien; dreissig Zeilen reichen, um den Aufbau zu erkennen.
+  {
+    find "$SERVER_WURZEL" -maxdepth 3 -type d 2> /dev/null | head -n 15
+    find "$SERVER_WURZEL" -maxdepth 3 -type f 2> /dev/null | head -n 15
+  } | while read -r eintrag; do
+    log "  ${eintrag#"${SERVER_WURZEL}"}"
   done
   log ''
   log 'Kunos gibt den dedizierten Server nur an ein Steam-Konto heraus, das ACC'
