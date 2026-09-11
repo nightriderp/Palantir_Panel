@@ -134,6 +134,32 @@ describe('Node-Kapazität (Lastenheft §3.7)', () => {
   });
 });
 
+describe('Tunnel-Adresse (Fundpunkt 240)', () => {
+  it('bleibt fuer ein Konto mit node.view leer', async () => {
+    const { service } = build();
+
+    /*
+     * Die Seed-Rolle "Nutzer" traegt `node.view`, damit der Anlegen-Assistent
+     * eine Node zur Auswahl stellen kann. Bis Fundpunkt 240 las damit jedes
+     * freigeschaltete Konto die WireGuard-Adressen aller Nodes mit.
+     */
+    const [node] = await service.list(ctxWith(actorWith('node.view')));
+
+    expect(node?.wireguardIp).toBeNull();
+    // Alles, wofuer die Uebersicht da ist, steht weiterhin drin.
+    expect(node?.name).not.toBe('');
+    expect(node?.capacity).toBeDefined();
+  });
+
+  it('steht fuer ein Konto mit node.manage drin', async () => {
+    const { service } = build();
+
+    const [node] = await service.list(ctxWith(actorWith('node.manage')));
+
+    expect(node?.wireguardIp).not.toBeNull();
+  });
+});
+
 describe('Node-Verwaltung', () => {
   it('zeigt Nodes auch mit node.manage allein – wer verwaltet, muss sehen können', async () => {
     const { service } = build();
