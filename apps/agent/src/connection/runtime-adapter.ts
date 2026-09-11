@@ -28,6 +28,7 @@ import {
   type RemoveStorageEntryCommandPayload,
   type RestoreBackupCommandPayload,
   type SetServerQueryCommandPayload,
+  type StopCommandPayload,
   type UploadArchiveBlockCommandPayload,
   type AgentContainerStatus,
   type ApiResponse,
@@ -313,8 +314,16 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         return null;
       }
       case 'STOP': {
-        const p = payload as { containerId: string; timeoutSeconds?: number };
-        await this.runtime.stop(p.containerId, optionalTimeout(p.timeoutSeconds));
+        const p = payload as StopCommandPayload;
+
+        // Erst den Server bitten, sich selbst zu beenden – dann erst das
+        // Signal. Wenn er schon weg ist, wäre `stop()` folgenlos; der Aufruf
+        // bleibt trotzdem stehen, damit ein Container im Zustand `created`
+        // oder `paused` genauso endet wie vorher.
+        if (!(await this.selbstBeenden(p, serverId))) {
+          await this.runtime.stop(p.containerId, optionalTimeout(p.timeoutSeconds));
+        }
+
         await this.closeLiveChannels(p.containerId);
         return null;
       }
@@ -541,6 +550,104 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         containerId,
         fehler: fehler instanceof Error ? fehler.message : String(fehler),
       });
+    }
+  }
+
+  /**
+   * Bittet den Server, sich selbst zu beenden – **vor** dem Stoppsignal.
+   *
+   * Gibt `true` zurück, wenn er das getan hat; dann braucht es kein Signal
+   * mehr. **Jeder andere Ausgang gibt `false`**, und der Aufrufer stoppt wie
+   * bisher: keine Angabe in der Nutzlast, kein Durchkommen zur Konsole, ein
+   * Befehl, den das Spiel nicht kennt, ein Server, der stehen bleibt. Ein
+   * Container, der sich nicht stoppen lässt, wäre schlimmer als eine verlorene
+   * Viertelstunde Spielfortschritt (Pflichtenheft §9).
+   *
+   * Warum es das überhaupt gibt: Terraria, Project Zomboid und Vintage Story
+   * speichern bei SIGTERM nicht und fangen es deshalb in ihrem Startskript ab –
+   * das geht, weil sie ihre Standardeingabe lesen. Wo die Konsole über RCON
+   * läuft (ARK, Rust, Palworld), kann ein Spiel-Image das nicht: Ein
+   * RCON-Sprecher gehört nicht hinein. Der Agent spricht RCON ohnehin.
+   */
+  private async selbstBeenden(
+    payload: StopCommandPayload,
+    serverId: string | null,
+  ): Promise<boolean> {
+    const befehl = payload.stopCommand;
+
+    if (befehl === undefined || befehl.length === 0) {
+      return false;
+    }
+
+    const notiz = (grund: string, einzelheiten: Record<string, unknown> = {}): false => {
+      this.log.warn(`Stopp-Befehl übersprungen: ${grund}`, {
+        containerId: payload.containerId,
+        befehl: befehl.join(' '),
+        ...einzelheiten,
+      });
+
+      return false;
+    };
+
+    let ergebnis;
+
+    try {
+      if (payload.rcon === undefined) {
+        ergebnis = await this.runtime.execConsole(payload.containerId, befehl);
+      } else if (this.jobs === undefined) {
+        return notiz('Dieser Agent hat kein Job-Modul, RCON geht nicht.');
+      } else if (serverId === null) {
+        return notiz('RCON braucht die Server-Id im Befehl – sie fehlt.');
+      } else {
+        ergebnis = await this.jobs.rcon.exec(serverId, payload.containerId, payload.rcon, befehl);
+      }
+    } catch (fehler) {
+      return notiz('Die Konsole hat ihn nicht angenommen.', {
+        fehler: fehler instanceof Error ? fehler.message : String(fehler),
+      });
+    }
+
+    if (ergebnis.exitCode !== 0) {
+      // Der Server hat den Befehl abgelehnt – auf sein Ende zu warten hieße,
+      // die volle Kulanzzeit zu verschenken.
+      return notiz('Der Server hat ihn abgelehnt.', {
+        exitCode: ergebnis.exitCode,
+        stderr: ergebnis.stderr.slice(0, 200),
+      });
+    }
+
+    return this.aufEndeWarten(payload.containerId, payload.timeoutSeconds ?? 0);
+  }
+
+  /**
+   * Wartet, bis der Container nicht mehr läuft – höchstens `sekunden` lang.
+   *
+   * Dieselbe Frist wie die Kulanzzeit des Signals: Wer seinem Server zwei
+   * Minuten zum Herunterfahren gibt, meint sie auch, wenn er es sich selbst tun
+   * lässt. Geprüft wird sofort und danach halbsekündlich – ein Server, der
+   * schnell fertig ist, hält den Stopp nicht länger auf als nötig.
+   */
+  private async aufEndeWarten(containerId: string, sekunden: number): Promise<boolean> {
+    const frist = Date.now() + sekunden * 1_000;
+
+    for (;;) {
+      try {
+        const zustand = await this.runtime.inspect(containerId);
+
+        if (zustand.status !== 'running' && zustand.status !== 'restarting') {
+          return true;
+        }
+      } catch {
+        // Weg ist weg: Findet die Runtime den Container nicht mehr, ist das
+        // genau das Ende, auf das hier gewartet wird.
+        return true;
+      }
+
+      if (Date.now() >= frist) {
+        return false;
+      }
+
+      await new Promise((fertig) => setTimeout(fertig, 500));
     }
   }
 

@@ -1436,6 +1436,12 @@ export const RUST_GAME_TYPE: GameTypeDefinition = {
   dataVolumeContainerPath: '/data',
   readOnlyRootFilesystem: true,
   tmpfsPaths: ['/tmp'],
+  /*
+   * Rust speichert beim Stoppsignal nicht; `quit` tut es und beendet danach.
+   * Der Agent schickt den Befehl über RCON und wartet auf das Ende, bevor
+   * das Signal kommt.
+   */
+  stopCommand: 'quit',
   stopTimeoutSeconds: 120,
   // Erster Start: über zehn Gigabyte holen, danach die Karte erzeugen.
   startupTimeoutSeconds: 1_800,
@@ -1574,6 +1580,13 @@ export const PALWORLD_GAME_TYPE: GameTypeDefinition = {
     kind: 'none',
     containerPort: 8_211,
   },
+  /*
+   * `Shutdown 1` speichert und beendet nach einer Sekunde; ein nacktes
+   * Stoppsignal lässt Palworld die Welt seit dem letzten selbsttätigen
+   * Speichern liegen. Die Sekunde ist die Vorwarnung für die Spieler, die
+   * das Spiel selbst vorsieht.
+   */
+  stopCommand: 'Shutdown 1',
   console: {
     kind: 'rcon',
     port: 25_575,
@@ -2936,6 +2949,12 @@ export const ARK_ASCENDED_GAME_TYPE: GameTypeDefinition = {
   dataVolumeContainerPath: '/data',
   readOnlyRootFilesystem: true,
   tmpfsPaths: ['/tmp'],
+  /*
+   * ARK speichert beim Stoppsignal nicht – `DoExit` tut es. Bis zur
+   * Umsetzung des Stopp-Befehls stand hier nur die Empfehlung, vorher von
+   * Hand `SaveWorld` zu schicken; jetzt nimmt der Agent es ab.
+   */
+  stopCommand: 'DoExit',
   stopTimeoutSeconds: 180,
   /*
    * Eine ganze Stunde, und das ist keine Vorsicht: Der erste Start holt

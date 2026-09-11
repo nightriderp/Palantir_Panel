@@ -469,6 +469,99 @@ describe('EXEC_CONSOLE über RCON (P2-9)', () => {
   });
 });
 
+describe('STOP mit Stopp-Befehl (Spiele, die bei SIGTERM nicht speichern)', () => {
+  it('schickt ihn über die Konsole und lässt das Signal weg, wenn der Server geht', async () => {
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+
+    const gesehen: string[][] = [];
+    // Ein Server, der auf den Befehl hin ordentlich herunterfährt.
+    runtime.setExecHandler(async (id, kommando) => {
+      gesehen.push([...kommando]);
+      await runtime.stop(id);
+
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+    const signal = vi.spyOn(runtime, 'stop');
+
+    const antwort = await befehl('STOP', {
+      containerId,
+      timeoutSeconds: 30,
+      stopCommand: ['save-and-quit'],
+    });
+
+    expect(isOk(antwort)).toBe(true);
+    expect(gesehen).toEqual([['save-and-quit']]);
+    expect((await runtime.inspect(containerId)).status).toBe('exited');
+    // Das Signal ist nicht mehr nötig - der Server ist schon weg. Die eine
+    // Aufrufaufzeichnung stammt aus dem Konsolen-Handler oben.
+    expect(signal).toHaveBeenCalledTimes(1);
+  });
+
+  it('stoppt wie bisher, wenn der Server trotzdem stehen bleibt', async () => {
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    // Nimmt den Befehl an und tut nichts - der schlimmste Fall, weil er sich
+    // wie Erfolg anfühlt.
+    runtime.setExecHandler(() => ({ exitCode: 0, stdout: '', stderr: '' }));
+
+    // `timeoutSeconds: 0` heißt: einmal nachsehen, dann das Signal. Ohne das
+    // wartete der Test so lange wie ein echter Stopp.
+    const antwort = await befehl('STOP', {
+      containerId,
+      timeoutSeconds: 0,
+      stopCommand: ['save-and-quit'],
+    });
+
+    expect(isOk(antwort)).toBe(true);
+    expect((await runtime.inspect(containerId)).status).toBe('exited');
+  });
+
+  it('stoppt wie bisher, wenn die Konsole den Befehl ablehnt', async () => {
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    runtime.setExecHandler(() => ({ exitCode: 1, stdout: '', stderr: 'kenne ich nicht' }));
+
+    const antwort = await befehl('STOP', {
+      containerId,
+      timeoutSeconds: 30,
+      stopCommand: ['gibtsnicht'],
+    });
+
+    // Ein Container, der sich nicht stoppen lässt, wäre schlimmer als eine
+    // verlorene Viertelstunde Spielfortschritt.
+    expect(isOk(antwort)).toBe(true);
+    expect((await runtime.inspect(containerId)).status).toBe('exited');
+  });
+
+  it('stoppt wie bisher, wenn die Konsole gar nicht erreichbar ist', async () => {
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    runtime.failNext('execConsole', new ContainerRuntimeError('RUNTIME_ERROR'));
+
+    const antwort = await befehl('STOP', {
+      containerId,
+      timeoutSeconds: 30,
+      stopCommand: ['save-and-quit'],
+    });
+
+    expect(isOk(antwort)).toBe(true);
+    expect((await runtime.inspect(containerId)).status).toBe('exited');
+  });
+
+  it('rührt die Konsole ohne Stopp-Befehl nicht an', async () => {
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    const konsole = vi.fn(() => ({ exitCode: 0, stdout: '', stderr: '' }));
+    runtime.setExecHandler(konsole);
+
+    await befehl('STOP', { containerId });
+
+    expect(konsole).not.toHaveBeenCalled();
+    expect((await runtime.inspect(containerId)).status).toBe('exited');
+  });
+});
+
 describe('Job-Befehle mit eingehängtem Job-Modul (A3)', () => {
   let wurzel: string;
   let jobs: AgentJobs;

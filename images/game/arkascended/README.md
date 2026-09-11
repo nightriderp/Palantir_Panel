@@ -50,14 +50,17 @@ nach der des Containers: Der Eintrag wird nie gefunden. Dieselbe Klasse wie bei 
 
 Deshalb `query: { kind: 'none' }` — der Start gilt als geglückt, sobald der Container läuft.
 
-## ARK speichert beim Stoppen nicht
+## ARK speichert beim Stoppsignal nicht — der Agent nimmt es ab
 
-Der Befehl dafür (`DoExit`) ginge über RCON, und einen RCON-Sprecher hat dieses Image nicht. Was
-seit dem letzten selbsttätigen Speichern geschehen ist, ist nach einem Stopp fort — deshalb steht
-`AutoSavePeriodMinutes` auf 10 statt auf ARKs eigener Vorgabe.
+Von sich aus speichert ARK beim Stoppen nicht; `DoExit` tut es. Ein Spiel-Image kann diesen Befehl
+nicht selbst schicken, weil er über RCON geht und ein RCON-Sprecher nicht in ein Spiel-Image gehört.
 
-**Wer sauber stoppen will, schickt vorher `SaveWorld` über die Konsole des Panels.** Der
-Schnellbefehl dafür ist da.
+Deshalb steht er in der Spieltyp-Definition (`stopCommand: 'DoExit'`): **Der Agent schickt ihn vor
+dem Signal, wartet, bis der Server von selbst endet, und greift erst danach zum Signal.** Klappt das
+nicht — Konsole klemmt, Server bleibt stehen —, passiert genau das, was ohne die Angabe passierte.
+
+`AutoSavePeriodMinutes` steht trotzdem auf 10 statt auf ARKs Vorgabe: Ein Absturz fragt nicht nach,
+und die Node kann auch mitten im Spiel ausgehen.
 
 ## Die Spielstände müssen aus dem Serverordner heraus
 
