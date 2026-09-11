@@ -5,7 +5,7 @@
 # braucht unter Wine einen Bildschirm – deshalb `base/proton:2` mit Xvfb.
 #
 # Zwei Ports, beide UDP: 7777 für das Spiel, 27015 für die Abfrage.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:2
+ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:4
 FROM ${BASIS}
 
 USER root

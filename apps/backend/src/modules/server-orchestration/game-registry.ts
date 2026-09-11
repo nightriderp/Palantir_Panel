@@ -1989,7 +1989,7 @@ export const ENSHROUDED_GAME_TYPE: GameTypeDefinition = {
   name: 'Enshrouded',
   description:
     'Enshrouded-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-enshrouded:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-enshrouded:2',
   defaultEnv: {},
   ports: [
     {
@@ -2125,7 +2125,7 @@ export const VRISING_GAME_TYPE: GameTypeDefinition = {
   name: 'V Rising',
   description:
     'V-Rising-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-vrising:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-vrising:2',
   defaultEnv: {},
   ports: [
     {
@@ -2298,7 +2298,7 @@ export const SONS_OF_THE_FOREST_GAME_TYPE: GameTypeDefinition = {
   name: 'Sons of the Forest',
   description:
     'Sons-of-the-Forest-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-sonsoftheforest:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-sonsoftheforest:2',
   defaultEnv: {},
   ports: [
     {
@@ -2614,7 +2614,7 @@ export const ABIOTIC_FACTOR_GAME_TYPE: GameTypeDefinition = {
   name: 'Abiotic Factor',
   description:
     'Abiotic-Factor-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-abioticfactor:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-abioticfactor:2',
   defaultEnv: {},
   ports: [
     {
@@ -2739,7 +2739,7 @@ export const ARK_ASCENDED_GAME_TYPE: GameTypeDefinition = {
   name: 'ARK: Survival Ascended',
   description:
     'ARK-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt zweistellig viele Gigabyte und richtet die Windows-Umgebung ein; das dauert eine Weile.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-arkascended:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-arkascended:2',
   consoleQuickCommands: [
     { label: 'Spieler', command: 'ListPlayers' },
     { label: 'Speichern', command: 'SaveWorld' },
@@ -2990,7 +2990,7 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   name: 'Assetto Corsa Competizione',
   description:
     'ACC-Server unter Proton. Die Serverdateien bringst du selbst mit – lade den Ordner „Assetto Corsa Competizione Dedicated Server" aus deiner Steam-Installation über den Datei-Manager nach „server".',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:6',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:7',
   defaultEnv: {},
   ports: [
     {

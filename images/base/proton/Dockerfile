@@ -59,8 +59,19 @@ USER root
 
 # **Was Proton außer sich selbst braucht.**
 #
-# `python3-minimal`, weil `proton` ein Python-Skript ist – das übersieht man
-# leicht und merkt es erst an „exec format error".
+# `python3`, weil `proton` ein Python-Skript ist – das übersieht man leicht und
+# merkt es erst an „exec format error".
+#
+# **Und zwar `python3`, nicht `python3-minimal`** (Fassung 4, 2026-09-11): Das
+# Minimal-Paket bringt den Interpreter, aber nicht seine Standardbibliothek.
+# `proton` braucht sie ab der zehnten Zeile:
+#
+#   File "/opt/proton/proton", line 10, in <module>
+#     import shutil
+#   ModuleNotFoundError: No module named 'shutil'
+#
+# Aufgefallen ist das beim allerersten echten Proton-Start auf der Node – bis
+# dahin war jedes dieser Images gebaut, aber nie gelaufen.
 #
 # Der Rest sind die Bibliotheken, die Wine zur Laufzeit nachlädt, jeweils in
 # 64 und 32 Bit: Ein Windows-Programm ist oft 32-bittig, und selbst ein
@@ -102,7 +113,7 @@ RUN set -eux; \
   dpkg --add-architecture i386; \
   apt-get update -o Acquire::Languages=none; \
   apt-get install -y --no-install-recommends \
-  python3-minimal \
+  python3 \
   xvfb \
   libfreetype6 libfreetype6:i386 \
   libgnutls30t64 libgnutls30t64:i386 \

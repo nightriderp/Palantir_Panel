@@ -7,7 +7,7 @@
 # Beide Spiel-Ports sind UDP: 9876 für das Spiel, 9877 für die Steam-Abfrage.
 # RCON (TCP 25575) wird **nicht** veröffentlicht; es erreicht allein der Agent
 # aus dem Spielenetz.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:2
+ARG BASIS=ghcr.io/nightriderp/palantir-base-proton:4
 FROM ${BASIS}
 
 USER root

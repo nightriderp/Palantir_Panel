@@ -11,7 +11,7 @@
 # Kein Spiel; das Image hat keinen `ENTRYPOINT`.
 #
 # **Die Bibliothek wird nicht abgeschrieben.** `proton.sh` kommt aus
-# `palantir-base-proton:2` – dieselbe Datei, nicht eine Kopie, die auseinander
+# `palantir-base-proton:3` – dieselbe Datei, nicht eine Kopie, die auseinander
 # driftet. Ein Bau dieses Images setzt deshalb voraus, dass es dieses Tag in der
 # Registry gibt; es gibt es seit dem 2026-09-11. Die Basis-Matrix läuft parallel
 # (game-images.yml), also darf hier nie auf eine Fassung gezeigt werden, die im
@@ -22,8 +22,8 @@
 #   curl -s https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases \
 #     | grep -o 'GE-Proton10-[0-9]*' | head -1
 #   curl -sL <url> | sha256sum
-ARG BASIS=ghcr.io/nightriderp/palantir-base-steam:2
-ARG BIBLIOTHEK=ghcr.io/nightriderp/palantir-base-proton:2
+ARG BASIS=ghcr.io/nightriderp/palantir-base-steam:6
+ARG BIBLIOTHEK=ghcr.io/nightriderp/palantir-base-proton:3
 
 # -----------------------------------------------------------------------------
 # Stufe 1: Proton holen, Prüfsumme prüfen, auspacken.
@@ -57,7 +57,7 @@ USER root
 
 # Dieselbe Liste wie in `base/proton`, aus demselben Grund: Es sind die
 # Bibliotheken, die Wine zur Laufzeit nachlädt, jeweils in 64 und 32 Bit, auf
-# einen Server ohne Bildschirm gekürzt. Dazu `python3-minimal` (`proton` ist ein
+# einen Server ohne Bildschirm gekürzt. Dazu `python3` (`proton` ist ein
 # Python-Skript) und `xvfb` – den Bildschirm, den es nicht gibt.
 #
 # Der Spiegel ist ein Bau-Argument: `archive.ubuntu.com` gab die Paketlisten am
@@ -75,7 +75,7 @@ RUN set -eux; \
   dpkg --add-architecture i386; \
   apt-get update -o Acquire::Languages=none; \
   apt-get install -y --no-install-recommends \
-  python3-minimal \
+  python3 \
   xvfb \
   libfreetype6 libfreetype6:i386 \
   libgnutls30t64 libgnutls30t64:i386 \
