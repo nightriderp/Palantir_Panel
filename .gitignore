@@ -14,8 +14,16 @@ out/
 
 # Umgebung / Secrets – niemals ins Repository (Pflichtenheft §12.1)
 .env
-.env.local
-.env.*.local
+# Und jede Kopie davon: `.env.sicherung`, `.env.vor-dem-umbau`, `.env.local`.
+# Solche Dateien entstehen beim Herumprobieren in Minuten und tragen saemtliche
+# Geheimnisse der Instanz. Bisher deckte die Liste nur `.env` selbst - eine
+# Sicherungskopie stand sofort als `??` im `git status`, und dieses Repository
+# ist oeffentlich (Fundpunkt 248). Deckt `.env.local` und `.env.<name>.local`
+# mit ab, die vorher einzeln dastanden.
+.env.*
+# Die Vorlage ist der eine gewollte Fall: Sie enthaelt keine Werte, nur Namen
+# und Erklaerungen (Pflichtenheft §12.1), und gehoert verfolgt.
+!.env.example
 *.key
 *.pem
 wireguard/
