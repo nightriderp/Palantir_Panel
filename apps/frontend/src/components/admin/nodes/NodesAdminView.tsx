@@ -231,7 +231,14 @@ function NodeRow({
             <h2 className="text-xl font-semibold text-ink">{node.name}</h2>
             <Badge tone={status.tone}>{status.label}</Badge>
           </div>
-          <p className="mt-0.5 font-mono text-xs text-ink-faint">{node.wireguardIp}</p>
+          {/*
+            Fundpunkt 240: Die Tunnel-Adresse kommt nur noch fuer Verwalter aus
+            dem Backend. Fehlt sie, steht hier nichts statt eines leeren
+            Platzes - die Zeile traegt sonst keine Aussage.
+          */}
+          {node.wireguardIp === null ? null : (
+            <p className="mt-0.5 font-mono text-xs text-ink-faint">{node.wireguardIp}</p>
+          )}
         </div>
         {node.permissions.canManage ? (
           <div className="flex shrink-0 gap-2">

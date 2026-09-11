@@ -289,10 +289,19 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
     placement: NodePlacement | undefined,
     usage: HostNodeUsage | undefined,
   ): HostNodeDto {
+    const permissions = computeHostNodePermissions(actor);
+
     return {
       id: node.id,
       name: node.name,
-      wireguardIp: node.wireguardIp,
+      /*
+       * Nur fuer Verwalter (Fundpunkt 240). Die Uebersicht ist eine
+       * Nutzeransicht - die Seed-Rolle "Nutzer" traegt `node.view`, damit der
+       * Anlegen-Assistent eine Node zur Auswahl stellen kann. Die Tunnel-Adresse
+       * gehoert zur Einrichtung, nicht zur Auswahl, und stand bis hierher in
+       * jeder Antwort.
+       */
+      wireguardIp: permissions.canManage ? node.wireguardIp : null,
       status: node.status,
       statusMessage: node.statusMessage,
       capacity: computeCapacity(
@@ -305,7 +314,7 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       lastSeenAt: node.lastSeenAt?.toISOString() ?? null,
       hasAgentToken: node.hasAgentToken,
       createdAt: node.createdAt.toISOString(),
-      permissions: computeHostNodePermissions(actor),
+      permissions,
     };
   }
 

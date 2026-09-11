@@ -130,7 +130,11 @@ export function AddNodeWizard({
   if (created) {
     const steps = buildNodeSetupSteps({
       name: created.name,
-      wireguardIp: created.wireguardIp,
+      // Seit Fundpunkt 240 traegt das DTO die Tunnel-Adresse nur fuer Verwalter.
+      // Wer eine Node anlegt, ist einer - der Rueckfall auf das eben
+      // ausgefuellte Feld ist trotzdem der ehrlichere Weg als eine Zusicherung
+      // an den Compiler: Es ist derselbe Wert, nur ohne Umweg.
+      wireguardIp: created.wireguardIp ?? wireguardIp.trim(),
       nodeId: created.id,
       // Der Rückfallweg auf das geteilte AGENT_TOKEN gilt nur bei genau einer
       // Node – die eben angelegte ist die erste (Fundpunkt 160).
