@@ -124,11 +124,15 @@ function speicherRepository(vorhanden: PanelBackupRecord[] = []): PanelBackupRep
   };
 }
 
-function dumper(groesse = 4_096): DatabaseDumper & { readonly pfade: string[] } {
+function dumper(
+  groesse = 4_096,
+  endung = '.sql.gz',
+): DatabaseDumper & { readonly pfade: string[] } {
   const pfade: string[] = [];
 
   return {
     pfade,
+    extension: endung,
     async dump(targetPath) {
       pfade.push(targetPath);
 
@@ -192,9 +196,24 @@ describe('Panel-Sicherungen', () => {
     expect(abzug.pfade).toEqual([dto.storagePath]);
   });
 
+  it('uebernimmt die Endung des Dumpers in den Dateinamen (Fundpunkt 241)', async () => {
+    /*
+     * Der Name sagt beim Blick ins Verzeichnis, ob die Datei einen Schluessel
+     * braucht. Waere er fest, hiesse eine verschluesselte Sicherung weiterhin
+     * `.sql.gz` - und wer sie mit gunzip oeffnen will, bekaeme Unsinn statt
+     * einer Ansage.
+     */
+    const abzug = dumper(8_192, '.sql.gz.enc');
+    const dto = await baue({ dumper: abzug }).start(ADMIN, 'manual');
+
+    expect(dto.storagePath?.endsWith('.sql.gz.enc')).toBe(true);
+    expect(abzug.pfade).toEqual([dto.storagePath]);
+  });
+
   it('haelt einen gescheiterten Abzug mit Grund fest, statt zu werfen', async () => {
     const service = baue({
       dumper: {
+        extension: '.sql.gz',
         async dump() {
           throw new Error('pg_dump endete mit Code 1.');
         },

@@ -63,6 +63,15 @@ export interface PanelBackupRepository {
  * `pg_dump` prüfbar bleibt (CLAUDE.md §4).
  */
 export interface DatabaseDumper {
+  /**
+   * Endung, die der Abzug dieses Dumpers trägt – `.sql.gz` oder `.sql.gz.enc`.
+   *
+   * Ob verschlüsselt wird, weiß der Dumper; der Dienst erfährt es hierüber
+   * (Fundpunkt 241). Die Alternative wäre ein zweites Kennzeichen in den
+   * Abhängigkeiten gewesen – und damit zwei Stellen, die sich widersprechen
+   * können, während der Dateiname am Ende doch nur eine Wahrheit verträgt.
+   */
+  readonly extension: string;
   /** Schreibt den Abzug und liefert die Größe der Datei in Byte. */
   dump(targetPath: string): Promise<number>;
 }
@@ -133,11 +142,16 @@ export interface PanelBackupDependencies {
 const STUNDE_MS = 3_600_000;
 const TAG_MS = 86_400_000;
 
-/** Dateiname eines Abzugs – sortierbar und ohne Zeichen, die Pfade sprengen. */
-export function backupFileName(at: Date): string {
+/**
+ * Dateiname eines Abzugs – sortierbar und ohne Zeichen, die Pfade sprengen.
+ *
+ * Die Endung kommt vom Dumper: Sie sagt beim Blick ins Verzeichnis, ob die
+ * Datei einen Schlüssel braucht, ohne dass jemand hineinsehen muss.
+ */
+export function backupFileName(at: Date, endung = '.sql.gz'): string {
   const stempel = at.toISOString().replace(/[:.]/g, '-');
 
-  return `palantir-${stempel}.sql.gz`;
+  return `palantir-${stempel}${endung}`;
 }
 
 export function toPanelBackupDto(
@@ -197,7 +211,7 @@ export function createPanelBackupService(deps: PanelBackupDependencies): PanelBa
       throw new PanelBackupError('PANEL_BACKUP_ALREADY_RUNNING');
     }
 
-    const pfad = `${verzeichnis.replace(/[\\/]+$/, '')}/${backupFileName(jetzt())}`;
+    const pfad = `${verzeichnis.replace(/[\\/]+$/, '')}/${backupFileName(jetzt(), deps.dumper.extension)}`;
     let lauf: PanelBackupRecord;
 
     try {

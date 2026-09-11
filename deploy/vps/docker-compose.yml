@@ -124,6 +124,14 @@ x-backend-umgebung: &backend-umgebung
   PANEL_BACKUP_DIR: ${PANEL_BACKUP_DIR}
   PANEL_BACKUP_INTERVAL_HOURS: ${PANEL_BACKUP_INTERVAL_HOURS}
   PANEL_BACKUP_RETENTION_DAYS: ${PANEL_BACKUP_RETENTION_DAYS}
+  # Der oeffentliche Schluessel, mit dem jede Sicherung verschluesselt wird
+  # (Fundpunkt 241). Hier ausdruecklich NICHT uebersteuert: Ein fest gesetzter
+  # Pfad liesse jeden Lauf scheitern, solange dort noch keine Datei liegt.
+  # Im Docker-Betrieb steht deshalb der Pfad IM CONTAINER in der .env, also
+  # /data/panel-backup-key/<name>.pub; die Datei selbst gehoert auf der VPS
+  # nach <repo>/data/panel-backup-key/ (Einhaengung beim Backend-Dienst unten).
+  # Leer = unverschluesselt, der Zustand bestehender Installationen.
+  PANEL_BACKUP_PUBLIC_KEY_FILE: ${PANEL_BACKUP_PUBLIC_KEY_FILE}
   PG_DUMP_BINARY: ${PG_DUMP_BINARY}
   # 18. Schriften der Oberfläche (Abschnitt 18) - wieder ein Pfad des HOSTS, den
   # der Backend-Dienst unten übersteuert.
@@ -421,6 +429,12 @@ services:
       # braucht. Ebenfalls dem Benutzer `node` (UID 1000) übereignen, sonst
       # scheitert `pg_dump` am Schreiben.
       - ../../data/panel-backups:/data/panel-backups
+      # Der oeffentliche Schluessel der Panel-Sicherungen (Fundpunkt 241).
+      # Nur lesend: Der Container soll ihn benutzen, nicht ersetzen koennen.
+      # Das Verzeichnis darf leer bleiben - ohne PANEL_BACKUP_PUBLIC_KEY_FILE
+      # in der .env wird nichts daraus gelesen. Der PRIVATE Schluessel gehoert
+      # nicht hierher und ueberhaupt nicht auf die VPS.
+      - ../../data/panel-backup-key:/data/panel-backup-key:ro
       # Hochgeladene Schriften (Arbeitspaket S-2). Ohne diese Einhängung lägen
       # sie im Dateisystem des Containers und wären beim nächsten Deployment
       # weg - die Oberfläche fiele dann auf die Vorgabeschrift zurück, ohne
