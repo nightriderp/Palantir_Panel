@@ -6,7 +6,9 @@ import {
   MINECRAFT_PAPER_GAME_TYPE,
   MINECRAFT_VANILLA_GAME_TYPE,
   FACTORIO_GAME_TYPE,
+  PALWORLD_GAME_TYPE,
   PROJECT_ZOMBOID_GAME_TYPE,
+  RUST_GAME_TYPE,
   TERRARIA_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TEST_GAME_TYPE,
@@ -689,5 +691,68 @@ describe('Factorio und Project Zomboid', () => {
     // Die verlangt ein Konto bei Wube; Zugangsdaten Dritter gehoeren nicht ins
     // Panel (Entscheidung des Betreibers, 2026-09-11).
     expect(FACTORIO_GAME_TYPE.configFields.some((feld) => feld.key === 'public')).toBe(false);
+  });
+});
+
+/**
+ * Rust und Palworld (Anhang A, Phase 3).
+ *
+ * Beide sprechen Source-RCON, und beide beantworten die Frage nach der
+ * Spielerzahl verschieden: Rust ueber A2S, Palworld gar nicht.
+ */
+describe('Rust und Palworld', () => {
+  it('sind ab Ausbaustufe 3 auswaehlbar und zeigen auf feste Image-Fassungen', () => {
+    const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
+
+    expect(registry.requireSelectable('rust').id).toBe('rust');
+    expect(registry.requireSelectable('palworld').id).toBe('palworld');
+    expect(RUST_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-rust:1');
+    expect(PALWORLD_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-palworld:1');
+  });
+
+  it('laesst Palworld gar nicht abfragen', () => {
+    // Palworld beantwortet nur seine eigene REST-Schnittstelle, und die
+    // verlangt das Administrator-Passwort. Ein `portConnect` bewiese nichts:
+    // Der Spiel-Port ist UDP.
+    expect(PALWORLD_GAME_TYPE.query).toEqual({ kind: 'none', containerPort: 8_211 });
+  });
+
+  it('fragt Rust auf dem Spiel-Port ab', () => {
+    // Das Startskript setzt `+server.queryport` auf denselben Wert - sonst
+    // braeuchte der Server eine zweite oeffentliche Nummer.
+    expect(RUST_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'rust',
+      containerPort: 28_015,
+    });
+  });
+
+  it('schliesst beide ihre Konsole ueber RCON an', () => {
+    expect(RUST_GAME_TYPE.console?.kind).toBe('rcon');
+    expect(PALWORLD_GAME_TYPE.console?.kind).toBe('rcon');
+    // Palworld kennt kein eigenes RCON-Passwort - es ist das
+    // Administrator-Passwort, und deshalb gibt es dafuer kein Feld im Panel.
+    expect(PALWORLD_GAME_TYPE.configFields.some((feld) => feld.key === 'adminPassword')).toBe(
+      false,
+    );
+  });
+
+  it('sperrt bei Rust, was in die Karte eingeht', () => {
+    // Weltgroesse und Startwert erzeugen die Karte; eine Aenderung erzeugte
+    // eine andere Welt, und alles Gebaute staende nicht mehr darin.
+    for (const schluessel of ['worldSize', 'seed']) {
+      expect(
+        RUST_GAME_TYPE.configFields.find((feld) => feld.key === schluessel)?.lockedAfterCreate,
+      ).toBe(true);
+    }
+  });
+
+  it('bilden jedes Feld auf eine Umgebungsvariable ab', () => {
+    for (const typ of [RUST_GAME_TYPE, PALWORLD_GAME_TYPE]) {
+      const felder = typ.configFields.map((feld) => feld.key).sort();
+
+      expect(Object.keys(typ.envMapping ?? {}).sort()).toEqual(felder);
+      expect([...(typ.restartRequiredFields ?? [])].sort()).toEqual(felder);
+    }
   });
 });
