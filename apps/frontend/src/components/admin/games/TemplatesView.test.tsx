@@ -151,6 +151,30 @@ describe('Templates: das Angebot der Instanz', () => {
     expect(screen.getByText('Valheim')).toBeTruthy();
   });
 
+  it('nennt oben, wie viele Vorlagen angeboten werden', async () => {
+    api.fetchInstanceSettings.mockResolvedValue({
+      success: true,
+      data: einstellungen({ disabledGameTypes: ['valheim'] }),
+      error: null,
+    });
+
+    zeichne();
+
+    expect(await screen.findByText('1 von 2 Vorlagen werden angeboten.')).toBeTruthy();
+  });
+
+  it('schreibt die Beschreibung nicht in die Kachel, sondern daran', async () => {
+    // Mit dreizehn Spielen wurde die Liste laenger als der Bildschirm. Die
+    // Beschreibung braucht niemand beim Umschalten - sie haengt als Titel am
+    // Namen, fuer den, der sie sucht.
+    zeichne();
+
+    const name = await screen.findByText('Minecraft (Paper)');
+
+    expect(screen.queryByText('Ein Minecraft-Server.')).toBeNull();
+    expect(name.getAttribute('title')).toBe('Ein Minecraft-Server.');
+  });
+
   it('schickt beim Ausschalten den vollständigen Zustand', async () => {
     api.fetchInstanceSettings.mockResolvedValue({
       success: true,

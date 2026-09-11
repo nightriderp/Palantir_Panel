@@ -3,7 +3,7 @@
 import { type GameTypeDto, type InstanceSettingsDto } from '@palantir/contracts';
 import { useState } from 'react';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
-import { PageHeader, Panel, ToggleRow, useToast } from '@/components/shared';
+import { PageHeader, Panel, Toggle, cn, useToast } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
 import { fetchInstanceSettings, updateInstanceSettings } from '@/lib/api/admin';
 import { fetchGameTypes } from '@/lib/api/servers';
@@ -101,6 +101,9 @@ export function TemplatesView() {
   }
 
   const darfAendern = stand?.permissions.canEdit ?? false;
+  // Was die Instanz tatsächlich anbietet: eingeschaltet **und** von der
+  // Ausbaustufe freigegeben.
+  const angeboten = liste.filter((spiel) => spiel.available && !ausgeschaltet.has(spiel.id)).length;
 
   return (
     <>
@@ -109,6 +112,9 @@ export function TemplatesView() {
       <div className="flex flex-col gap-4 p-5">
         <Panel variant="outline">
           <p className="text-sm text-ink-soft">
+            <strong className="text-ink">
+              {angeboten} von {liste.length} Vorlagen werden angeboten.
+            </strong>{' '}
             Neue Spiele kommen über ein Deployment, nicht über diese Seite (Lastenheft §6). Hier
             entscheidest du nur, was im Anlegen-Wizard zur Auswahl steht.{' '}
             <strong className="text-ink">Laufende Server bleiben laufen</strong> – ein
@@ -124,29 +130,53 @@ export function TemplatesView() {
         {liste.length === 0 ? (
           <AdminLoading label="Vorlagen werden geladen …" />
         ) : (
-          <div className="flex flex-col gap-2">
+          /*
+           * Kacheln statt einer Liste (Wunsch des Betreibers, 2026-09-11).
+           *
+           * Mit dreizehn Spielen wurde die Liste länger als der Bildschirm, und
+           * jede Zeile trug eine Beschreibung, die man beim Umschalten nicht
+           * braucht. Die Kachel zeigt nur Name und Schalter; die Beschreibung
+           * steht als Titel daran, für den, der sie sucht.
+           */
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {liste.map((spiel) => {
               const an = !ausgeschaltet.has(spiel.id);
               /*
                * Die Phasen-Sperre ist keine Entscheidung des Administrators:
                * Was die Instanz in ihrer Ausbaustufe noch gar nicht anbieten
                * kann, lässt sich auch nicht einschalten. Der Schalter bleibt
-               * sichtbar, damit die Zeile nicht anders aussieht als die
-               * übrigen – und trägt den Grund als Beschreibung.
+               * sichtbar, damit die Kachel nicht anders aussieht als die
+               * übrigen – und trägt den Grund darunter.
                */
               const phasenGesperrt = !spiel.available && an;
+              const hinweis = phasenGesperrt
+                ? (spiel.unavailableReason ?? null)
+                : an
+                  ? null
+                  : 'Nicht im Wizard';
 
               return (
-                <Panel key={spiel.id} variant="outline">
-                  <ToggleRow
-                    title={spiel.name}
-                    description={
-                      phasenGesperrt
-                        ? (spiel.unavailableReason ?? spiel.description)
-                        : an
-                          ? spiel.description
-                          : 'Ausgeschaltet – steht im Wizard nicht zur Auswahl.'
-                    }
+                <Panel
+                  key={spiel.id}
+                  variant="outline"
+                  padding="sm"
+                  // Ausgeschaltet blasser: Was angeboten wird, soll sich beim
+                  // Überfliegen vom Rest abheben.
+                  className={cn('flex items-center gap-3', !an && 'opacity-60')}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink" title={spiel.description}>
+                      {spiel.name}
+                    </p>
+                    {hinweis === null ? null : (
+                      <p className="truncate text-xs text-ink-faint" title={hinweis}>
+                        {hinweis}
+                      </p>
+                    )}
+                  </div>
+
+                  <Toggle
+                    label={spiel.name}
                     checked={an}
                     disabled={busy !== null || !darfAendern || phasenGesperrt}
                     onChange={(next) => void umschalten(spiel, next)}
