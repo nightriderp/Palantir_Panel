@@ -48,6 +48,21 @@ RUN set -eux; \
   rm -rf /var/lib/apt/lists/*
 
 # Adresse und Prüfsumme gehören zusammen und werden gemeinsam getauscht.
+#
+# **`chmod` nach dem Auspacken** (Fassung 4, 2026-09-11): Valve gibt seinem
+# Archiv die Rechte `0764` – für „andere" also kein Ausführungsrecht:
+#
+#   -rwxrw-r--  steamcmd.sh
+#   -rwxrw-r--  linux32/steamcmd
+#
+# Im Container gehören die Dateien `root`, gelaufen wird als Benutzer 1000. Zur
+# Laufzeit fällt das nie auf, weil `steam_vorbereiten` SteamCMD erst in den
+# Datenordner kopiert und die Kopie dem Benutzer 1000 gehört. Wer es direkt
+# aufruft – etwa für die einmalige Anmeldung an einem Steam-Konto –, bekommt
+# „Permission denied" und sucht den Fehler bei sich.
+#
+# `a+rX` setzt das Ausführungsrecht nur dort, wo schon eines war: Aus `0764`
+# wird `0755`, eine gewöhnliche Datei bleibt eine gewöhnliche Datei.
 ARG STEAMCMD_URL=https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
 ARG STEAMCMD_SHA256=cebf0046bfd08cf45da6bc094ae47aa39ebf4155e5ede41373b579b8f1071e7c
 
@@ -57,6 +72,7 @@ RUN set -eux; \
   mkdir -p /opt/steamcmd; \
   tar --extract --file /steamcmd.tar.gz --directory /opt/steamcmd; \
   rm -f /steamcmd.tar.gz; \
+  chmod -R a+rX /opt/steamcmd; \
   test -x /opt/steamcmd/steamcmd.sh
 
 COPY steam.sh /opt/palantir/lib/steam.sh
