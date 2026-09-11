@@ -71,7 +71,7 @@ proton_app_holen() {
     palantir_log "SteamCMD holt Anwendung ${proton_anwendung} (Windows, Versuch ${proton_versuch} von 3) ..."
 
     if "$STEAM_CMD" +@sSteamCmdForcePlatformType windows \
-      +force_install_dir "$proton_ziel" +login anonymous \
+      +force_install_dir "$proton_ziel" +login "${STEAM_LOGIN:-anonymous}" \
       +app_update "$proton_anwendung" +quit; then
       palantir_log "Anwendung ${proton_anwendung} ist auf dem Stand."
 

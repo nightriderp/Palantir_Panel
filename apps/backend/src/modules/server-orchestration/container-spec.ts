@@ -70,6 +70,20 @@ export const STARTUP_PARAMETERS_ENV = 'PALANTIR_STARTUP_PARAMETERS';
  * `palantir.serverId` unten. Die Gegenstücke stehen im Agent
  * (`apps/agent/src/runtime/hardening.ts`).
  */
+/**
+ * Der Ordner mit der Steam-Anmeldung auf der Node – und wo er im Container
+ * auftaucht.
+ *
+ * Fest verdrahtet wie {@link dataHostPathFor} in `service.ts`: Die Ablage auf
+ * der Node ist Vereinbarung zwischen Agent und Backend, keine Einstellung.
+ *
+ * Eingehaengt wird er **schreibgeschuetzt** und **nur** bei Spieltypen mit
+ * `requiresSteamAccount`. Ein Token, den jeder Spielserver lesen kann, waere
+ * ein Token, den jedes Spiel-Image verlieren kann.
+ */
+export const STEAM_KONTO_HOST_PATH = '/srv/palantir/steam-konto';
+export const STEAM_KONTO_CONTAINER_PATH = '/opt/palantir/steam-konto';
+
 export const VIRTUAL_HOST_HOSTNAME_LABEL = 'palantir.virtualHost.hostname';
 export const VIRTUAL_HOST_TARGET_PORT_LABEL = 'palantir.virtualHost.targetPort';
 
@@ -202,6 +216,22 @@ export function buildContainerSpec({
       hostPath: dataHostPath,
       containerPath: definition.dataVolumeContainerPath,
     },
+    /*
+     * Die Steam-Anmeldung nur für die Spiele, die ohne sie nicht an ihre
+     * Serverdateien kommen – schreibgeschützt. Alle anderen Container sehen den
+     * Ordner nicht einmal.
+     */
+    ...(definition.requiresSteamAccount === true
+      ? {
+          extraMounts: [
+            {
+              hostPath: STEAM_KONTO_HOST_PATH,
+              containerPath: STEAM_KONTO_CONTAINER_PATH,
+              readOnly: true,
+            },
+          ],
+        }
+      : {}),
     readOnlyRootFilesystem: definition.readOnlyRootFilesystem,
     tmpfsPaths: definition.tmpfsPaths,
     labels: {

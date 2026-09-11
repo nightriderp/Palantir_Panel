@@ -30,7 +30,7 @@
 #   curl -s https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest \
 #     | grep -o 'GE-Proton[0-9-]*'
 #   curl -sL <url> | sha256sum
-ARG BASIS=ghcr.io/nightriderp/palantir-base-steam:2
+ARG BASIS=ghcr.io/nightriderp/palantir-base-steam:3
 
 # -----------------------------------------------------------------------------
 # Stufe 1: Proton holen, Prüfsumme prüfen, auspacken.
