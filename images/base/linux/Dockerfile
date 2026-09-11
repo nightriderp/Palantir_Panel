@@ -19,13 +19,19 @@
 #   - `palantir-console`: der Konsolen-Anschluss für Server, die Befehle von der
 #     Standardeingabe lesen,
 #   - `curl` und die Wurzelzertifikate,
-#   - `unzip` (seit Fassung 2).
+#   - `unzip` (seit Fassung 2) und `xz-utils` (seit Fassung 3).
 #
 # **Warum `unzip`** (seit Fassung 2): Wenn die Serverdateien im Datenordner
 # landen und nicht im Image, kommen sie als Archiv – und ein Zip lässt sich mit
 # Bordmitteln einer POSIX-Shell nicht auspacken (`tar` kann es nicht). Terraria
 # ist der erste Fall, Minecraft Bedrock und die Mod-Loader der Java-Welt sind
 # die nächsten. Das Paket wiegt rund 400 KB.
+#
+# **Warum `xz-utils`** (seit Fassung 3): Dieselbe Frage für die andere Hälfte
+# der Archive. `tar` liegt im Abbild, aber ohne `xz` kann es `.tar.xz` nicht
+# lesen – und genau so gibt Factorio seinen Server heraus. Ob das Paket in
+# `ubuntu:24.04` ohnehin steckt, ist keine Zusage, auf die sich ein Image
+# stützen sollte: Was gebraucht wird, wird genannt.
 #
 # **Warum `curl` im Laufzeit-Image** (Entscheidung des Betreibers, 2026-09-10):
 # Serverdateien kommen in den Datenordner, nicht ins Image. Der erste Start holt
@@ -62,7 +68,7 @@ FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca0
 # Betreiber im Panel Zeiten sieht, die zu nichts passen.
 RUN set -eux; \
   apt-get update; \
-  apt-get install -y --no-install-recommends ca-certificates curl tzdata unzip; \
+  apt-get install -y --no-install-recommends ca-certificates curl tzdata unzip xz-utils; \
   rm -rf /var/lib/apt/lists/*; \
   if ! getent passwd 1000 > /dev/null; then \
   groupadd --gid 1000 palantir; \

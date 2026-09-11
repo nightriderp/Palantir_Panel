@@ -12,7 +12,7 @@ Spielserver unter der Härtung des Agents braucht. Das Schema aller Images steht
 | Stoppsignal                     | `SIGTERM`                                                                    |
 | `/opt/palantir/lib/palantir.sh` | Orte, Konsolen-Rohr, Dateien holen und auspacken, Einstellungen verschmelzen |
 | `palantir-console`              | Konsolen-Anschluss für Server, die von der Standardeingabe lesen             |
-| Werkzeuge                       | `curl`, `unzip`, Wurzelzertifikate, `tzdata`                                 |
+| Werkzeuge                       | `curl`, `unzip`, `xz-utils`, Wurzelzertifikate, `tzdata`                     |
 
 ## Wer darauf aufsetzt
 
@@ -51,7 +51,7 @@ Ein Startskript bindet sie ein, es führt sie nicht aus:
 ```
 
 Danach stehen `$PALANTIR_DATENORDNER`, `$PALANTIR_INTERN` und `$PALANTIR_KONSOLE` bereit, dazu
-sieben Funktionen.
+acht Funktionen.
 
 **`palantir_log`** schreibt eine Zeile mit dem gemeinsamen Präfix `[palantir]`.
 
@@ -71,6 +71,11 @@ EOF, sobald der letzte Schreiber geht, und der Server hielte das für „Konsole
 
 **`palantir_datei_holen <quelle> <sha256> <ziel>`** holt eine Datei und prüft ihre Prüfsumme. Ist
 sie schon da und unverändert, passiert nichts.
+
+**`palantir_tar_auspacken <archiv> <zielordner>`** tut dasselbe für `.tar`, `.tar.gz` und
+`.tar.xz` (seit Fassung 3) — Factorio gibt seinen Server so heraus. Ohne `--strip-components`: Ob
+ein Archiv einen obersten Ordner trägt, ist eine Eigenschaft des Archivs und gehört in das
+Startskript, das es kennt.
 
 **`palantir_zip_auspacken <archiv> <zielordner>`** packt ein Zip aus (seit Fassung 2). Ein Zip
 lässt sich mit Bordmitteln einer POSIX-Shell nicht öffnen — `tar` kann es nicht —, deshalb liegt
