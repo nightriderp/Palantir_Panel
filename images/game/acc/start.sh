@@ -28,11 +28,33 @@ set -eu
 . "${PALANTIR_LIB_DIR:-/opt/palantir/lib}/steam.sh"
 . "${PALANTIR_LIB_DIR:-/opt/palantir/lib}/proton.sh"
 
-SERVER="${PALANTIR_DATENORDNER}/server"
-CFG="${SERVER}/cfg"
+# Wohin die Serverdateien kommen – gleich auf welchem der drei Wege.
+SERVER_WURZEL="${PALANTIR_DATENORDNER}/server"
 
 log() {
   palantir_log "$@"
+}
+
+# -----------------------------------------------------------------------------
+# `accServer.exe` suchen, statt ihren Ort zu raten
+#
+# Wo sie liegt, hängt davon ab, woher die Dateien kommen: SteamCMD legt den
+# Server in einen Unterordner, ein selbst gepacktes Archiv trägt oft den
+# Ordnernamen mit, und wer von Hand hochlädt, trifft die Wurzel. Dreimal
+# derselbe Inhalt, dreimal eine andere Tiefe – und beim ersten echten Lauf am
+# 2026-09-11 lag sie nicht dort, wo dieses Skript sie erwartete: „Success! App
+# '1430110' fully installed" und trotzdem „Die Serverdateien fehlen."
+#
+# Gesucht wird deshalb, und der Fundort ist der Serverordner. `cfg/` liegt bei
+# ACC immer daneben.
+exe_suchen() {
+  if [ -f "${SERVER_WURZEL}/accServer.exe" ]; then
+    printf '%s' "${SERVER_WURZEL}/accServer.exe"
+
+    return 0
+  fi
+
+  find "$SERVER_WURZEL" -maxdepth 4 -name accServer.exe -print 2> /dev/null | head -n 1
 }
 
 palantir_intern_anlegen
@@ -45,12 +67,11 @@ palantir_intern_anlegen
 # der Node auch ein Anmelde-Token bereit – dann holt und **aktualisiert** sich
 # der Server selbst, wie bei jedem anderen Spiel aus Steam.
 ACC_ANWENDUNG=1430110
-BINAERDATEI="${SERVER}/accServer.exe"
 
 if [ -n "${STEAM_LOGIN:-}" ]; then
   if steam_konto_uebernehmen; then
     # Windows-Fassung: `proton_app_holen` setzt die Plattform vor der Anmeldung.
-    proton_app_holen "$ACC_ANWENDUNG" "$SERVER" || true
+    proton_app_holen "$ACC_ANWENDUNG" "$SERVER_WURZEL" || true
   else
     log "Für das Konto ${STEAM_LOGIN} liegt auf dieser Node keine Anmeldung."
     log ''
@@ -60,7 +81,7 @@ if [ -n "${STEAM_LOGIN:-}" ]; then
     log '  mkdir -p /srv/palantir/steam-konto'
     log '  chown 1000:1000 /srv/palantir/steam-konto'
     log '  docker run -it --rm -v /srv/palantir/steam-konto:/konto \'
-    log "    ghcr.io/nightriderp/palantir-base-steam:5 palantir-steam-anmelden ${STEAM_LOGIN}"
+    log "    ghcr.io/nightriderp/palantir-base-steam:6 palantir-steam-anmelden ${STEAM_LOGIN}"
   fi
 fi
 
@@ -77,7 +98,7 @@ fi
 # Proton ausgeführt; ohne Prüfsumme wäre jede halbe Übertragung und jede falsche
 # Adresse ein ausgeführtes Programm unbekannter Herkunft. Sie ist außerdem das,
 # woran der zweite Start erkennt, dass er nichts tun muss.
-if [ ! -f "$BINAERDATEI" ] && [ -n "${ACC_ARCHIV_URL:-}" ]; then
+if [ -z "$(exe_suchen)" ] && [ -n "${ACC_ARCHIV_URL:-}" ]; then
   if [ -z "${ACC_ARCHIV_SHA256:-}" ]; then
     log 'Zur Adresse des Archivs fehlt die Prüfsumme – ohne sie wird nichts geholt.'
     log ''
@@ -95,40 +116,45 @@ if [ ! -f "$BINAERDATEI" ] && [ -n "${ACC_ARCHIV_URL:-}" ]; then
     log "Hole die Serverdateien von ${ACC_ARCHIV_URL}"
 
     if palantir_datei_holen "$ACC_ARCHIV_URL" "$ACC_ARCHIV_SHA256" "$ARCHIV"; then
-      mkdir -p "$SERVER"
+      mkdir -p "$SERVER_WURZEL"
 
       case "$ARCHIV" in
-        *.tar) palantir_tar_auspacken "$ARCHIV" "$SERVER" ;;
-        *) palantir_zip_auspacken "$ARCHIV" "$SERVER" ;;
+        *.tar) palantir_tar_auspacken "$ARCHIV" "$SERVER_WURZEL" ;;
+        *) palantir_zip_auspacken "$ARCHIV" "$SERVER_WURZEL" ;;
       esac
 
       # Das Archiv wird nicht aufgehoben: Es wiegt so viel wie die Dateien
       # selbst und wird nur wieder gebraucht, wenn jemand den Serverordner
       # löscht – dann holt der nächste Start es erneut.
       rm -f "$ARCHIV"
-
-      # **Ein Ordner zu tief.** Wer den Serverordner im Dateiexplorer einpackt,
-      # hat den Ordnernamen mit im Archiv; dann läge `accServer.exe` eine Ebene
-      # darunter und dieses Skript fände sie nicht. Das ist der häufigste
-      # Fehler beim Packen und eine Meldung nicht wert – es lässt sich beheben.
-      if [ ! -f "$BINAERDATEI" ]; then
-        INNEN="$(find "$SERVER" -mindepth 2 -maxdepth 2 -name accServer.exe -print 2> /dev/null | head -n 1)"
-
-        if [ -n "$INNEN" ]; then
-          OBERORDNER="$(dirname "$INNEN")"
-          log "Das Archiv trägt einen Ordner namens $(basename "$OBERORDNER") – hole den Inhalt heraus."
-          (cd "$OBERORDNER" && tar -cf - .) | (cd "$SERVER" && tar -xf -)
-          rm -rf "$OBERORDNER"
-        fi
-      fi
     fi
   fi
 fi
 
 # -----------------------------------------------------------------------------
-# 3. Sind die Serverdateien da?
-if [ ! -f "$BINAERDATEI" ]; then
+# 3. Sind die Serverdateien da – und wo?
+BINAERDATEI="$(exe_suchen)"
+
+if [ -n "$BINAERDATEI" ]; then
+  SERVER="$(dirname "$BINAERDATEI")"
+  CFG="${SERVER}/cfg"
+
+  if [ "$SERVER" != "$SERVER_WURZEL" ]; then
+    # Kein Fehler, nur wissenswert: SteamCMD legt den Server in einen
+    # Unterordner, und ein selbst gepacktes Archiv trägt oft den Ordnernamen
+    # mit. Wer im Datei-Manager sucht, soll wissen, wo.
+    log "Der Server liegt in ${SERVER#"${PALANTIR_DATENORDNER}/"}."
+  fi
+else
   log 'Die Serverdateien fehlen.'
+  log ''
+  log 'Was im Serverordner liegt:'
+  # Der Blick in den Ordner spart eine Runde: Ist dort etwas, aber nicht das
+  # Erwartete, sieht man sofort, was schiefging – ein halber Download, ein
+  # Archiv mit fremdem Aufbau, ein leerer Ordner.
+  ls -A "$SERVER_WURZEL" 2> /dev/null | head -n 12 | while read -r eintrag; do
+    log "  ${eintrag}"
+  done
   log ''
   log 'Kunos gibt den dedizierten Server nur an ein Steam-Konto heraus, das ACC'
   log 'besitzt – anonym geht er nicht. Es gibt drei Wege:'

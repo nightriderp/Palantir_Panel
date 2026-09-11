@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -292,9 +292,10 @@ describe('start.sh – eigenes Archiv (ohne Steam)', nurMitIconv, () => {
     assert.ok(existsSync(join(ordner.daten, 'server', 'cfg', 'entrylist.json')));
   });
 
-  it('zieht den Inhalt hoch, wenn das Archiv einen Ordner traegt', nurMitTar, () => {
+  it('findet sie auch, wenn das Archiv einen Ordner traegt', nurMitTar, () => {
     // Der haeufigste Fehler beim Packen: Wer den Serverordner im Dateiexplorer
-    // einpackt, hat seinen Namen mit im Archiv.
+    // einpackt, hat seinen Namen mit im Archiv. Gesucht wird, nicht geraten -
+    // der Fundort ist dann der Serverordner.
     const ordner = arbeitsordner({ mitServerdateien: false });
     const archiv = mitArchiv(ordner, { imUnterordner: true });
 
@@ -305,7 +306,15 @@ describe('start.sh – eigenes Archiv (ohne Steam)', nurMitIconv, () => {
     );
 
     assert.equal(lauf.status, 0, lauf.stderr);
-    assert.ok(existsSync(join(ordner.daten, 'server', 'accServer.exe')));
+    const exe = join(
+      ordner.daten,
+      'server',
+      'Assetto Corsa Competizione Dedicated Server',
+      'accServer.exe',
+    );
+    assert.ok(existsSync(exe));
+    // Und die Konfiguration landet daneben, nicht in der Wurzel.
+    assert.ok(existsSync(join(dirname(exe), 'cfg', 'configuration.json')));
   });
 
   it('holt ohne Pruefsumme gar nichts und sagt, wie man sie bekommt', () => {
@@ -352,6 +361,39 @@ describe('start.sh – eigenes Archiv (ohne Steam)', nurMitIconv, () => {
 
     assert.equal(lauf.status, 78);
     assert.ok(!existsSync(join(ordner.daten, 'server', 'accServer.exe')));
+  });
+});
+
+describe('start.sh – wo accServer.exe liegt', nurMitIconv, () => {
+  it('findet sie im Unterordner, in den SteamCMD sie legt', () => {
+    // Beim ersten echten Lauf am 2026-09-11 stand im Log "Success! App
+    // '1430110' fully installed" und direkt darunter "Die Serverdateien
+    // fehlen": Valve legt den Server in einen Unterordner.
+    const ordner = arbeitsordner({ mitServerdateien: false });
+    const tief = join(ordner.daten, 'server', 'server');
+    mkdirSync(tief, { recursive: true });
+    writeFileSync(join(tief, 'accServer.exe'), 'exe\n');
+
+    const lauf = starte(ordner);
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.match(lauf.stdout, /Der Server liegt in server\/server/u);
+    // Die Konfiguration gehoert neben die Datei, nicht in die Wurzel.
+    assert.ok(existsSync(join(tief, 'cfg', 'configuration.json')));
+  });
+
+  it('sagt bei leerem Ordner, was dort liegt', () => {
+    // Der Blick in den Ordner spart eine Runde: Ein halber Download sieht
+    // anders aus als ein Archiv mit fremdem Aufbau.
+    const ordner = arbeitsordner({ mitServerdateien: false });
+    mkdirSync(join(ordner.daten, 'server'), { recursive: true });
+    writeFileSync(join(ordner.daten, 'server', 'irgendwas.txt'), 'da\n');
+
+    const lauf = starte(ordner);
+
+    assert.equal(lauf.status, 78);
+    assert.match(lauf.stdout, /Was im Serverordner liegt/u);
+    assert.match(lauf.stdout, /irgendwas\.txt/u);
   });
 });
 
