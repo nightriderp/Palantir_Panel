@@ -33,7 +33,14 @@ jobs:
   bauen:
     name: ${{ inputs.image }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Zwanzig Minuten waren zu knapp: Am 2026-09-11 brauchte allein
+    # `apt-get update` in `base/proton` vierzehn davon, weil der Ubuntu-Spiegel
+    # die Paketlisten im Schneckentempo herausgab (zehn Megabyte i386-Listen in
+    # neun Minuten). Der Bau wurde mitten im Herunterladen abgebrochen, und die
+    # beiden Spiel-Images darauf fielen mit ihm. Die Frist ist keine Zusage über
+    # die Bauzeit, sondern ein Notaus gegen einen hängenden Lauf – dafür sind
+    # fünfundvierzig Minuten immer noch früh genug.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write

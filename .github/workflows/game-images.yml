@@ -48,6 +48,10 @@ on:
       - '.github/workflows/spiel-image-bauen.yml'
   workflow_dispatch:
     inputs:
+      images:
+        description: 'Nur diese Images bauen, durch Leerzeichen getrennt (z. B. "base/proton game/vrising"); leer = alle'
+        type: string
+        default: ''
       ueberschreiben:
         description: 'Bestehendes Versions-Tag überschreiben (nur für einen erneuten Anlauf nach einem abgebrochenen Bau)'
         type: boolean
@@ -105,6 +109,7 @@ jobs:
           VORHER: ${{ github.event.before }}
           NACHHER: ${{ github.sha }}
           ANLASS: ${{ github.event_name }}
+          NUR: ${{ inputs.images }}
         run: |
           set -euo pipefail
 
@@ -113,10 +118,28 @@ jobs:
           alle="$(find images -mindepth 3 -maxdepth 3 -type f -name Dockerfile -printf '%P\n' \
             | sed 's#/Dockerfile$##' | sort)"
 
-          # Von Hand gestartet gibt es keinen Vergleichspunkt — dann sind alle
+          # Von Hand gestartet und mit Namen versehen: genau die und sonst
+          # nichts. Dafür gibt es einen Grund, der öfter vorkommt als gedacht —
+          # ein Bau, der mittendrin abgebrochen ist (Frist, Netz, abgewürgt).
+          # Dann fehlt genau ein Image in der Registry, und ein Lauf über alle
+          # scheiterte an jedem anderen, dessen Versions-Tag es schon gibt.
+          if [ "${ANLASS}" != 'push' ] && [ -n "${NUR:-}" ]; then
+            echo "Von Hand gewählt: ${NUR}"
+            gewaehlt=''
+            for image in ${NUR}; do
+              if ! printf '%s\n' "${alle}" | grep -qx "${image}"; then
+                echo "Kein solches Image: ${image}" >&2
+                echo "Es gibt:" >&2
+                printf '  %s\n' ${alle} >&2
+                exit 1
+              fi
+              gewaehlt="${gewaehlt}${image}"$'\n'
+            done
+            gewaehlt="$(printf '%s' "${gewaehlt}" | sort -u)"
+          # Sonst von Hand gestartet: kein Vergleichspunkt, also sind alle
           # gemeint. Dasselbe, wenn der Vorher-Stand fehlt (erster Push eines
           # Branches) oder nicht mehr existiert (Force-Push, Verdichtung).
-          if [ "${ANLASS}" != 'push' ] || [ -z "${VORHER}" ] \
+          elif [ "${ANLASS}" != 'push' ] || [ -z "${VORHER}" ] \
             || [ "${VORHER}" = '0000000000000000000000000000000000000000' ] \
             || ! git cat-file -e "${VORHER}^{commit}" 2>/dev/null; then
             echo "Kein Vergleichspunkt — alle Images."
