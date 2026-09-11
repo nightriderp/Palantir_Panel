@@ -210,3 +210,54 @@ describe('Spec-Pruefung', () => {
     expect(() => assertValidContainerSpec(spec(), optionen)).not.toThrow();
   });
 });
+
+/**
+ * Die Steam-Anmeldung: erlaubt, aber nur lesend (2026-09-11).
+ *
+ * Sie liegt einmal auf der Node und geht an jeden Container, dessen Spiel ohne
+ * Konto nicht an seine Serverdateien kommt. Das Backend schickt sie
+ * schreibgeschuetzt; hier steht die zweite Linie.
+ */
+describe('Nur lesend einzuhaengende Wurzeln', () => {
+  const STEAM_WURZEL = '/srv/palantir/steam-konto';
+
+  const steamOptionen: HardeningOptions = {
+    allowedHostRoots: [DATEN_WURZEL, STEAM_WURZEL],
+    readOnlyHostRoots: [STEAM_WURZEL],
+  };
+
+  const mitEinhaengung = (readOnly: boolean | undefined): ContainerSpec =>
+    spec({
+      extraMounts: [
+        {
+          hostPath: STEAM_WURZEL,
+          containerPath: '/opt/palantir/steam-konto',
+          ...(readOnly === undefined ? {} : { readOnly }),
+        },
+      ],
+    });
+
+  it('laesst die Einhaengung zu, wenn sie schreibgeschuetzt ist', () => {
+    expect(() => buildCreateContainerBody(mitEinhaengung(true), steamOptionen)).not.toThrow();
+  });
+
+  it('lehnt sie ab, wenn sie beschreibbar waere', () => {
+    // Ein Spielserver, der den Token aendern oder loeschen koennte, waere ein
+    // Spielserver zu viel.
+    expect(() => buildCreateContainerBody(mitEinhaengung(false), steamOptionen)).toThrow(
+      /nur schreibgeschuetzt/u,
+    );
+  });
+
+  it('lehnt sie auch ohne ausdrueckliche Angabe ab', () => {
+    // Ohne `readOnly` haengt Docker beschreibbar ein - das Schweigen ist hier
+    // die gefaehrliche Antwort.
+    expect(() => buildCreateContainerBody(mitEinhaengung(undefined), steamOptionen)).toThrow(
+      /nur schreibgeschuetzt/u,
+    );
+  });
+
+  it('laesst den Datenordner beschreibbar, wie bisher', () => {
+    expect(() => buildCreateContainerBody(spec(), steamOptionen)).not.toThrow();
+  });
+});

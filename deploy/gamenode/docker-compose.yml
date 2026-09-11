@@ -134,6 +134,11 @@ services:
       AGENT_NODE_ID: ${AGENT_NODE_ID}
       AGENT_DATA_DIR: ${AGENT_DATA_DIR}
       AGENT_BACKUP_DIR: ${AGENT_BACKUP_DIR}
+      # Ordner mit der Steam-Anmeldung. Er wird hier bewusst NICHT in den
+      # Agent-Container eingehängt: Der Agent liest den Token nie, er reicht
+      # nur den Host-Pfad an die Engine weiter. Was ihn nicht braucht, soll ihn
+      # auch nicht sehen.
+      AGENT_STEAM_ACCOUNT_DIR: ${AGENT_STEAM_ACCOUNT_DIR:-/srv/palantir/steam-konto}
       # Netz der Spielcontainer (Audit security-matrix-02). Muss zu dem Netz
       # passen, das ./egress-firewall.sh anlegt - siehe Hinweis am Dateiende.
       AGENT_CONTAINER_NETWORK: ${AGENT_CONTAINER_NETWORK}

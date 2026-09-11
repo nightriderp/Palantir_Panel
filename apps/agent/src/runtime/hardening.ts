@@ -124,6 +124,19 @@ export interface HardeningOptions {
    * `AGENT_DATA_DIR`, fuer Restores zusaetzlich `AGENT_BACKUP_DIR`).
    */
   readonly allowedHostRoots: readonly string[];
+  /**
+   * Wurzelverzeichnisse, die **nur lesend** eingehaengt werden duerfen.
+   *
+   * Gedacht fuer Geheimnisse, die mehrere Container teilen: die Steam-Anmeldung
+   * des Betreibers (`AGENT_STEAM_ACCOUNT_DIR`) liegt einmal auf der Node und
+   * geht an jeden Container, dessen Spiel ohne Konto nicht an seine
+   * Serverdateien kommt. Das Backend schickt sie schon schreibgeschuetzt; hier
+   * steht die zweite Linie, denn ein Spielserver, der den Token aendern oder
+   * loeschen koennte, waere ein Spielserver zu viel.
+   *
+   * Ohne Angabe aendert sich nichts - jede erlaubte Wurzel bleibt beschreibbar.
+   */
+  readonly readOnlyHostRoots?: readonly string[];
   /** Inhalt eines Seccomp-Profils als JSON-String. Ohne Angabe: Standardprofil der Engine. */
   readonly seccompProfile?: string;
   /** Host-Interface fuer Portbindungen, wenn der Spec keines nennt. */
@@ -210,12 +223,38 @@ export function assertValidContainerSpec(spec: ContainerSpec, options: Hardening
 
   for (const mount of [spec.dataVolume, ...(spec.extraMounts ?? [])]) {
     assertAbsoluteContainerPath(mount.containerPath);
-    assertHostPathAllowed(options.allowedHostRoots, mount.hostPath);
+    const hostPath = assertHostPathAllowed(options.allowedHostRoots, mount.hostPath);
+
+    if (mount.readOnly !== true && istNurLesend(options.readOnlyHostRoots, hostPath)) {
+      throw invalidSpec('Dieser Host-Pfad darf nur schreibgeschuetzt eingehaengt werden.', {
+        hostPath,
+      });
+    }
   }
 
   for (const tmpfsPath of spec.tmpfsPaths ?? []) {
     assertAbsoluteContainerPath(tmpfsPath);
   }
+}
+
+/**
+ * Liegt der Pfad in einer Wurzel, die nur lesend eingehaengt werden darf?
+ *
+ * Derselbe Vergleich wie bei den erlaubten Wurzeln: Die Wurzel selbst zaehlt
+ * mit, ein Nachbar mit gleichem Namensanfang nicht.
+ */
+function istNurLesend(wurzeln: readonly string[] | undefined, hostPath: string): boolean {
+  for (const wurzel of wurzeln ?? []) {
+    try {
+      assertHostPathAllowed([wurzel], hostPath);
+
+      return true;
+    } catch {
+      // Naechste Wurzel probieren.
+    }
+  }
+
+  return false;
 }
 
 function bindString(mount: VolumeMount, allowedHostRoots: readonly string[]): string {
