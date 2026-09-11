@@ -1956,6 +1956,141 @@ export const SDTD_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * Enshrouded – das erste Spiel unter Proton (Anhang A, Phase 3).
+ *
+ * **Es gibt nur einen Windows-Server.** Das gilt für die halbe Liste aus
+ * Anhang A: V Rising, Sons of the Forest, ARK: Survival Ascended. Sie laufen
+ * unter Proton – der Wine-Abwandlung, die Valve für Steam pflegt und gegen die
+ * diese Spiele auch geprüft werden (`images/base/proton`).
+ *
+ * **Der erste Start dauert deutlich länger als sonst**: SteamCMD holt die
+ * Windows-Dateien, und Proton legt danach einen Wine-Prefix an – ein ganzes
+ * Windows-Dateisystem in Miniatur. Beides passiert genau einmal.
+ *
+ * **Keine Konsole**: Enshrouded nimmt weder über die Standardeingabe noch über
+ * RCON Befehle entgegen.
+ */
+export const ENSHROUDED_GAME_TYPE: GameTypeDefinition = {
+  id: 'enshrouded',
+  name: 'Enshrouded',
+  description:
+    'Enshrouded-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-enshrouded:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 15_636,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+    {
+      containerPort: 15_637,
+      protocol: 'udp',
+      primary: false,
+      label: 'Abfrage-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 16,
+      description: 'Enshrouded selbst lässt höchstens 16 zu.',
+      required: false,
+      options: [],
+      min: 1,
+      max: 16,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'adminPassword',
+      label: 'Passwort für Verwalter',
+      type: 'password',
+      defaultValue: '',
+      description: 'Wer sich damit verbindet, darf alles – auch hinauswerfen und sperren.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Passwort für Mitspieler',
+      type: 'password',
+      defaultValue: '',
+      description: 'Darf bauen und an Truhen, aber niemanden hinauswerfen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'guestPassword',
+      label: 'Passwort für Gäste',
+      type: 'password',
+      defaultValue: '',
+      description: 'Darf zusehen und mitspielen, aber nichts am Bau ändern.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'ENSHROUDED_NAME',
+    maxPlayers: 'MAX_PLAYERS',
+    adminPassword: 'ENSHROUDED_ADMIN_PASSWORD',
+    password: 'ENSHROUDED_PASSWORD',
+    guestPassword: 'ENSHROUDED_GUEST_PASSWORD',
+  },
+  restartRequiredFields: ['serverName', 'maxPlayers', 'adminPassword', 'password', 'guestPassword'],
+  /*
+   * Keen Games nennt 16 GiB für volle 16 Spieler. 8 GiB tragen eine kleine
+   * Runde; dazu kommt, dass unter Proton eine zweite Umgebung mitläuft.
+   */
+  resourceDefaults: {
+    ramMb: 8_192,
+    cpuCores: 4,
+    diskMb: 20_480,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'enshrouded',
+    // Nicht der Spiel-Port: Enshrouded antwortet auf der Serverliste daneben.
+    containerPort: 15_637,
+  },
+  console: { kind: 'none' },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 120,
+  // Windows-Dateien holen **und** den Wine-Prefix anlegen.
+  startupTimeoutSeconds: 1_800,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
@@ -1970,6 +2105,7 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   PALWORLD_GAME_TYPE,
   SATISFACTORY_GAME_TYPE,
   SDTD_GAME_TYPE,
+  ENSHROUDED_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */

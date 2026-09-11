@@ -7,6 +7,7 @@ import {
   MINECRAFT_VANILLA_GAME_TYPE,
   MINECRAFT_FABRIC_GAME_TYPE,
   MINECRAFT_NEOFORGE_GAME_TYPE,
+  ENSHROUDED_GAME_TYPE,
   FACTORIO_GAME_TYPE,
   PALWORLD_GAME_TYPE,
   PROJECT_ZOMBOID_GAME_TYPE,
@@ -889,5 +890,44 @@ describe('Satisfactory und 7 Days to Die', () => {
 
     expect(Object.keys(SDTD_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
     expect([...(SDTD_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+});
+
+/**
+ * Enshrouded - das erste Spiel unter Proton (Anhang A, Phase 3).
+ */
+describe('Enshrouded unter Proton', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+    expect(
+      createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('enshrouded').id,
+    ).toBe('enshrouded');
+    expect(ENSHROUDED_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-enshrouded:1');
+  });
+
+  it('fragt den Abfrage-Port ab, nicht den Spiel-Port', () => {
+    expect(ENSHROUDED_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'enshrouded',
+      containerPort: 15_637,
+    });
+  });
+
+  it('gibt dem ersten Start Zeit fuer Windows-Dateien und Wine-Prefix', () => {
+    // SteamCMD holt die Windows-Fassung, danach legt Proton ein ganzes
+    // Windows-Dateisystem in Miniatur an.
+    expect(ENSHROUDED_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(1_800);
+  });
+
+  it('bietet die drei Rollen als Passwortfelder an', () => {
+    const felder = ENSHROUDED_GAME_TYPE.configFields.map((feld) => feld.key);
+
+    expect(felder).toContain('adminPassword');
+    expect(felder).toContain('password');
+    expect(felder).toContain('guestPassword');
+    expect(Object.keys(ENSHROUDED_GAME_TYPE.envMapping ?? {}).sort()).toEqual([...felder].sort());
+  });
+
+  it('hat keine Konsole', () => {
+    expect(ENSHROUDED_GAME_TYPE.console).toEqual({ kind: 'none' });
   });
 });
