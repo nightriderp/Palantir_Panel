@@ -74,12 +74,44 @@ export const startCommandPayloadSchema = z.object({
   containerId: containerIdSchema,
 });
 
+/**
+ * Zugang zum RCON-Anschluss, wie das Backend ihn dem Agent nennt.
+ *
+ * Die Passwortdatei liegt relativ zum Datenordner; ein Pfad, der daraus
+ * ausbricht, wird vom Agent abgelehnt, hier genügt: nicht leer, kein absoluter
+ * Pfad.
+ */
+const rconAccessSchema = z.object({
+  port: portNumberSchema,
+  passwordFile: z
+    .string()
+    .min(1)
+    .refine((value) => !value.startsWith('/') && !value.includes('..'), {
+      message: 'Die Passwortdatei muss relativ zum Datenordner liegen.',
+    }),
+});
+
 export const stopCommandPayloadSchema = z.object({
   containerId: containerIdSchema,
   timeoutSeconds: z.number().int().nonnegative().optional(),
+  // Der Befehl, mit dem der Server sich selbst herunterfährt – vor dem Signal.
+  // Mindestens ein Element, wie bei `EXEC_CONSOLE`: Ein leerer Befehl hätte
+  // keine Bedeutung.
+  stopCommand: z.array(z.string()).min(1).optional(),
+  rcon: rconAccessSchema.optional(),
 });
 
-export const restartCommandPayloadSchema = stopCommandPayloadSchema;
+/**
+ * `RESTART` ist bewusst **keine** Abwandlung von `STOP`: Der Neustart eines
+ * Spielservers läuft im Backend als Stopp + Start, damit der Health-Check
+ * dazwischen greift. Diesen Befehl nimmt deshalb niemand für ein Spiel in die
+ * Hand – ein `stopCommand`, das hier still angenommen und nie geschickt würde,
+ * wäre eine Falle.
+ */
+export const restartCommandPayloadSchema = z.object({
+  containerId: containerIdSchema,
+  timeoutSeconds: z.number().int().nonnegative().optional(),
+});
 
 export const deleteCommandPayloadSchema = z.object({
   containerId: containerIdSchema,
@@ -104,20 +136,8 @@ export const execConsoleCommandPayloadSchema = z.object({
   // Mindestens ein Element: Ein leerer Befehl hätte keine Bedeutung, würde aber
   // je nach Engine unterschiedlich behandelt.
   command: z.array(z.string()).min(1),
-  // RCON statt Standardeingabe (P2-9). Die Passwortdatei liegt relativ zum
-  // Datenordner; ein Pfad, der daraus ausbricht, wird vom Agent abgelehnt,
-  // hier genügt: nicht leer, kein absoluter Pfad.
-  rcon: z
-    .object({
-      port: portNumberSchema,
-      passwordFile: z
-        .string()
-        .min(1)
-        .refine((value) => !value.startsWith('/') && !value.includes('..'), {
-          message: 'Die Passwortdatei muss relativ zum Datenordner liegen.',
-        }),
-    })
-    .optional(),
+  // RCON statt Standardeingabe (P2-9).
+  rcon: rconAccessSchema.optional(),
 });
 
 export const fileListCommandPayloadSchema = z.object({

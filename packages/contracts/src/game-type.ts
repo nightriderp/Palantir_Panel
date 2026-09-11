@@ -337,6 +337,31 @@ export interface GameTypeDefinition {
   /** Kulanzzeit für SIGTERM vor SIGKILL. */
   readonly stopTimeoutSeconds?: number;
   /**
+   * Befehl, der den Server **selbst** herunterfährt – geschickt **vor** dem
+   * Stoppsignal.
+   *
+   * Es gibt eine ganze Reihe von Spielen, die bei SIGTERM nicht speichern:
+   * Terraria will `exit`, Project Zomboid `quit`, Vintage Story `/stop`,
+   * ARK `DoExit`, Rust `quit`. Wo das Spiel seine Standardeingabe liest, fängt
+   * das Startskript das Signal ab und schreibt den Befehl selbst in das
+   * Konsolen-Rohr. **Wo die Konsole über RCON geht, kann das Image das nicht:**
+   * Ein RCON-Sprecher gehört nicht in ein Spiel-Image. Dann bleibt nur der Weg
+   * über den Agent, der ohnehin RCON spricht.
+   *
+   * Der Ablauf ist deshalb: Der Agent schickt diesen Befehl über den Weg, den
+   * {@link GameTypeDefinition.console} nennt (Standardeingabe oder RCON),
+   * wartet, bis der Container von selbst endet, und greift erst danach zum
+   * Signal. Endet der Server nicht – weil der Befehl falsch war, die Konsole
+   * klemmt oder das Spiel ihn nicht kennt –, passiert genau das, was ohne diese
+   * Angabe passierte; es geht also nichts verloren, was heute funktioniert.
+   *
+   * Eine Zeile, wie ein Spieler sie tippen würde; der Aufrufer zerlegt sie in
+   * Argumente. Ohne Angabe bleibt es beim Signal allein – und für die Spiele,
+   * deren Startskript das Signal schon abfängt, soll das auch so bleiben: Beides
+   * zugleich schickte den Befehl zweimal.
+   */
+  readonly stopCommand?: string;
+  /**
    * Wie lange nach dem Start auf einen erfolgreichen Health-Check gewartet wird,
    * bevor der Start als gescheitert gilt (Pflichtenheft §9). Ein Spiel, das
    * seine Welt erst generieren muss, braucht hier mehr Zeit als ein Test-Typ.
