@@ -2586,6 +2586,125 @@ export const VINTAGE_STORY_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * Abiotic Factor – viertes Spiel unter Proton (Anhang A, Phase 3).
+ *
+ * **Ohne Konfigurationsdatei:** Alles, was das Panel setzt, steht auf der
+ * Befehlszeile. Die `Game.ini` im Serverordner bleibt dem Betreiber – ein
+ * Startskript, das sie schriebe, räumte weg, was er dort eingestellt hat.
+ *
+ * **Der Name des Spielstands ist nach dem Anlegen gesperrt.** Er benennt den
+ * Ordner unter `Saved/SaveGames`; ein anderer Name begänne eine neue Welt.
+ */
+export const ABIOTIC_FACTOR_GAME_TYPE: GameTypeDefinition = {
+  id: 'abioticfactor',
+  name: 'Abiotic Factor',
+  description:
+    'Abiotic-Factor-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-abioticfactor:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 7_777,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+    {
+      containerPort: 27_015,
+      protocol: 'udp',
+      primary: false,
+      label: 'Abfrage-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 6,
+      description: 'Das Spiel ist auf sechs ausgelegt; mehr geht, ist aber nicht erprobt.',
+      required: false,
+      options: [],
+      min: 1,
+      max: 16,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Server-Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen heißt: jeder mit der Adresse kommt herein.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'worldName',
+      label: 'Name der Welt',
+      type: 'text',
+      defaultValue: 'Cascade',
+      description:
+        'Der Ordner unter „SaveGames". Nach dem Anlegen fest – ein neuer Name wäre eine neue Welt.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+  ],
+  envMapping: {
+    serverName: 'ABIOTIC_NAME',
+    maxPlayers: 'MAX_PLAYERS',
+    password: 'ABIOTIC_PASSWORD',
+    worldName: 'ABIOTIC_WORLD',
+  },
+  restartRequiredFields: ['serverName', 'maxPlayers', 'password', 'worldName'],
+  /*
+   * Ein Unreal-Server für sechs Spieler; der Hersteller nennt 4 GiB. Sechs
+   * geben Luft, und unter Proton läuft eine zweite Umgebung mit.
+   */
+  resourceDefaults: {
+    ramMb: 6_144,
+    cpuCores: 3,
+    diskMb: 20_480,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'abioticfactor',
+    // Nicht der Spiel-Port: Abiotic Factor antwortet auf der Serverliste
+    // daneben.
+    containerPort: 27_015,
+  },
+  console: { kind: 'none' },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 120,
+  // Windows-Dateien holen **und** den Wine-Prefix anlegen.
+  startupTimeoutSeconds: 1_800,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
@@ -2604,6 +2723,7 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   VRISING_GAME_TYPE,
   SONS_OF_THE_FOREST_GAME_TYPE,
   VINTAGE_STORY_GAME_TYPE,
+  ABIOTIC_FACTOR_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */

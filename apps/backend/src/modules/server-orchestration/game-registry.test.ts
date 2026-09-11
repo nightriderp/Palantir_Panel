@@ -7,6 +7,7 @@ import {
   MINECRAFT_VANILLA_GAME_TYPE,
   MINECRAFT_FABRIC_GAME_TYPE,
   MINECRAFT_NEOFORGE_GAME_TYPE,
+  ABIOTIC_FACTOR_GAME_TYPE,
   ENSHROUDED_GAME_TYPE,
   FACTORIO_GAME_TYPE,
   PALWORLD_GAME_TYPE,
@@ -1094,5 +1095,49 @@ describe('Vintage Story', () => {
 
     expect(Object.keys(VINTAGE_STORY_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
     expect([...(VINTAGE_STORY_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+});
+
+/**
+ * Abiotic Factor - viertes Spiel unter Proton (Anhang A, Phase 3).
+ */
+describe('Abiotic Factor unter Proton', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+    expect(
+      createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('abioticfactor').id,
+    ).toBe('abioticfactor');
+    expect(ABIOTIC_FACTOR_GAME_TYPE.dockerImage).toBe(
+      'ghcr.io/nightriderp/palantir-game-abioticfactor:1',
+    );
+  });
+
+  it('fragt den Abfrage-Port ab, nicht den Spiel-Port', () => {
+    expect(ABIOTIC_FACTOR_GAME_TYPE.query).toEqual({
+      kind: 'gamedig',
+      protocol: 'abioticfactor',
+      containerPort: 27_015,
+    });
+  });
+
+  it('hat keine Konsole', () => {
+    expect(ABIOTIC_FACTOR_GAME_TYPE.console).toEqual({ kind: 'none' });
+  });
+
+  it('sperrt den Namen der Welt nach dem Anlegen', () => {
+    expect(
+      ABIOTIC_FACTOR_GAME_TYPE.configFields.find((feld) => feld.key === 'worldName')
+        ?.lockedAfterCreate,
+    ).toBe(true);
+  });
+
+  it('gibt dem ersten Start Zeit fuer Windows-Dateien und Wine-Prefix', () => {
+    expect(ABIOTIC_FACTOR_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(1_800);
+  });
+
+  it('bildet jedes Feld auf eine Umgebungsvariable ab', () => {
+    const felder = ABIOTIC_FACTOR_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(ABIOTIC_FACTOR_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    expect([...(ABIOTIC_FACTOR_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
   });
 });
