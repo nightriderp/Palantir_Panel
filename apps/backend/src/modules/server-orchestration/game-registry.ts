@@ -1661,6 +1661,301 @@ export const MINECRAFT_NEOFORGE_GAME_TYPE: GameTypeDefinition = {
   },
 };
 
+/**
+ * Satisfactory (Anhang A, Phase 3).
+ *
+ * **Der Port trägt beide Protokolle.** Seit Update 1.0 läuft alles über eine
+ * Nummer – Spiel, Abfrage und die Schnittstelle des Server-Managers im Spiel.
+ * Der Client leitet die zweite Adresse nicht ab, er benutzt dieselbe; mit zwei
+ * getrennten Einträgen bekäme er zwei verschiedene Nummern aus dem Pool, und
+ * das Beitreten bräche. Genau dafür gibt es `protocol: 'both'`.
+ *
+ * **Es gibt fast nichts einzustellen**, und das ist keine Lücke: Servername,
+ * Passwörter und Spielstand vergibt der erste Spieler im Spiel, wenn er den
+ * Server übernimmt. Ein Formularfeld, das danach nichts mehr bewirkt, wäre eine
+ * Falle.
+ */
+export const SATISFACTORY_GAME_TYPE: GameTypeDefinition = {
+  id: 'satisfactory',
+  name: 'Satisfactory',
+  description:
+    'Satisfactory-Server. Die Serverdateien holt SteamCMD beim ersten Start – das sind über zehn Gigabyte. Eingerichtet wird der Server danach im Spiel: Der erste Spieler übernimmt ihn und vergibt Name und Passwörter.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-satisfactory:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 7_777,
+      protocol: 'both',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  // Kein einziges Feld: Alles, was es einzustellen gibt, steht im Spiel.
+  configFields: [],
+  envMapping: {},
+  restartRequiredFields: [],
+  /*
+   * Satisfactory rechnet die ganze Fabrik durch – Bänder, Maschinen, Züge.
+   * 8 GiB und vier Kerne tragen eine mittlere Fabrik mit einer Handvoll
+   * Spielern; die Serverdateien allein wiegen über zehn Gigabyte.
+   */
+  resourceDefaults: {
+    ramMb: 8_192,
+    cpuCores: 4,
+    diskMb: 25_600,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'satisfactory',
+    containerPort: 7_777,
+  },
+  /*
+   * Keine Konsole: Der Server nimmt weder über die Standardeingabe noch über
+   * RCON Befehle entgegen – verwaltet wird er über den Server-Manager im Spiel.
+   */
+  console: { kind: 'none' },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 120,
+  startupTimeoutSeconds: 1_800,
+  phase: 3,
+};
+
+/**
+ * 7 Days to Die (Anhang A, Phase 3).
+ *
+ * **Auch hier trägt der Spiel-Port beide Protokolle**, dazu kommen zwei
+ * UDP-Ports daneben. Die Abfrage läuft auf dem ersten davon: `gamedig` rechnet
+ * für dieses Spiel einen Versatz von +1 auf den Spiel-Port – hinter frp trägt
+ * jeder Container-Port aber eine eigene öffentliche Nummer, deshalb nennt
+ * `query.containerPort` den Abfrage-Port ausdrücklich (Fundpunkt 246).
+ *
+ * **Keine Konsole.** Die Verwaltung läuft bei diesem Server über Telnet, und
+ * das spricht der Agent nicht; eingeschaltet wäre es ein zweiter Weg hinein,
+ * den niemand abgesichert hat. Das Startskript lässt es deshalb aus.
+ */
+export const SDTD_GAME_TYPE: GameTypeDefinition = {
+  id: 'seven-days-to-die',
+  name: '7 Days to Die',
+  description:
+    '7-Days-to-Die-Server. Die Serverdateien holt SteamCMD beim ersten Start; eine selbst erzeugte Welt braucht danach einige Minuten. Die Konsole des Spiels läuft über Telnet und bleibt deshalb aus.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-sdtd:1',
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 26_900,
+      protocol: 'both',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+    {
+      containerPort: 26_901,
+      protocol: 'udp',
+      primary: false,
+      label: 'Abfrage-Port',
+    },
+    {
+      containerPort: 26_902,
+      protocol: 'udp',
+      primary: false,
+      label: 'Spiel-Port 2',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'motd',
+      label: 'Beschreibung',
+      type: 'text',
+      defaultValue: '',
+      description: 'Steht in der Serverliste unter dem Namen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen, wenn jeder mit der Adresse beitreten darf.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 8,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 64,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'world',
+      label: 'Welt',
+      type: 'select',
+      defaultValue: 'Navezgane',
+      description:
+        'Navezgane ist die Karte des Spiels; „RWG" erzeugt eine eigene aus dem Startwert. Gilt nur beim Erzeugen.',
+      required: false,
+      options: ['Navezgane', 'RWG'],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'seed',
+      label: 'Startwert (Seed)',
+      type: 'text',
+      defaultValue: 'palantir',
+      description: 'Nur für „RWG": Derselbe Startwert erzeugt dieselbe Karte.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'worldSize',
+      label: 'Kantenlänge der Karte',
+      type: 'number',
+      defaultValue: 6144,
+      description: 'Nur für „RWG". Größer heißt mehr Platz und eine längere Erzeugung.',
+      required: false,
+      options: [],
+      min: 2048,
+      max: 16_384,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'gameName',
+      label: 'Name des Spielstands',
+      type: 'text',
+      defaultValue: 'Palantir',
+      description: 'Legt den Ordner des Spielstands fest. Ein neuer Name fängt von vorn an.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: true,
+    },
+    {
+      key: 'difficulty',
+      label: 'Schwierigkeit',
+      type: 'select',
+      defaultValue: '2',
+      description: '0 ist am leichtesten, 5 am schwersten.',
+      required: false,
+      options: ['0', '1', '2', '3', '4', '5'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'dayLengthMinutes',
+      label: 'Länge eines Tages (Minuten)',
+      type: 'number',
+      defaultValue: 60,
+      description: null,
+      required: false,
+      options: [],
+      min: 10,
+      max: 240,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'public',
+      label: 'In der Serverliste zeigen',
+      type: 'toggle',
+      defaultValue: true,
+      description: 'Aus heißt: nur wer die Adresse kennt, findet den Server.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'SDTD_NAME',
+    motd: 'MOTD',
+    password: 'SDTD_PASSWORD',
+    maxPlayers: 'MAX_PLAYERS',
+    world: 'SDTD_WORLD',
+    seed: 'SDTD_SEED',
+    worldSize: 'SDTD_WORLD_SIZE',
+    gameName: 'SDTD_GAME_NAME',
+    difficulty: 'SDTD_DIFFICULTY',
+    dayLengthMinutes: 'SDTD_DAY_LENGTH',
+    public: 'SDTD_PUBLIC',
+  },
+  restartRequiredFields: [
+    'serverName',
+    'motd',
+    'password',
+    'maxPlayers',
+    'world',
+    'seed',
+    'worldSize',
+    'gameName',
+    'difficulty',
+    'dayLengthMinutes',
+    'public',
+  ],
+  /*
+   * Eine selbst erzeugte Karte von 6144 hält der Server samt Horde im
+   * Speicher. 8 GiB und vier Kerne sind die untere Grenze.
+   */
+  resourceDefaults: {
+    ramMb: 8_192,
+    cpuCores: 4,
+    diskMb: 25_600,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'sdtd',
+    // Nicht 26900: `gamedig` rechnet für dieses Spiel +1, und hinter frp trägt
+    // jeder Container-Port eine eigene öffentliche Nummer (Fundpunkt 246).
+    containerPort: 26_901,
+  },
+  console: { kind: 'none' },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 120,
+  startupTimeoutSeconds: 1_800,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
@@ -1673,6 +1968,8 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   PROJECT_ZOMBOID_GAME_TYPE,
   RUST_GAME_TYPE,
   PALWORLD_GAME_TYPE,
+  SATISFACTORY_GAME_TYPE,
+  SDTD_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */
