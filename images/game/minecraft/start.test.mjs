@@ -535,3 +535,128 @@ describe('start.sh – Paper oder Vanilla', nurMitShell, () => {
     assert.deepEqual(lauf.argv, []);
   });
 });
+
+/**
+ * Die beiden Mod-Ausgaben (seit Fassung 6).
+ *
+ * Fabric ist eine Starter-Jar wie die von Mojang, nur aus einer anderen Quelle
+ * - dort ist wenig zu pruefen. NeoForge ist der interessante Fall: Es gibt gar
+ * keine Server-Jar, sondern ein Installationsprogramm und eine Argumentdatei,
+ * die der Start einbindet. Die Attrappe `java` gibt ihre Argumente aus; fuer
+ * den Installationslauf legt sie die Argumentdatei an.
+ */
+describe('start.sh - Mod-Ausgaben', nurMitShell, () => {
+  const NEOFORGE = '26.2.0.86';
+
+  /** Ein `java`, das beim `--installServer` die Argumentdatei hinterlaesst. */
+  function javaMitInstallation(ordner) {
+    const datei = join(ordner.bin, 'java');
+    writeFileSync(
+      datei,
+      [
+        '#!/bin/sh',
+        'ziel=""',
+        'installiert=""',
+        'for a in "$@"; do',
+        '  printf \'%s\\n\' "$a"',
+        '  case "$vorher" in --installServer) ziel="$a"; installiert=1;; esac',
+        '  vorher="$a"',
+        'done',
+        'if [ -n "$installiert" ]; then',
+        `  ordner="$ziel/libraries/net/neoforged/neoforge/${NEOFORGE}"`,
+        '  mkdir -p "$ordner"',
+        '  printf \'%s\\n\' "-p alles" > "$ordner/unix_args.txt"',
+        'fi',
+        'exit 0',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(datei, 0o755);
+  }
+
+  it('holt die Starter-Jar von Fabric und legt den Mod-Ordner an', () => {
+    const ordner = arbeitsordner();
+    const quelle = join(ordner.wurzel, 'quelle.jar');
+    writeFileSync(quelle, 'fabric');
+    const summe = spawnSync('sh', ['-c', 'sha256sum "$1" | cut -d" " -f1', '_', posix(quelle)], {
+      encoding: 'utf8',
+    }).stdout.trim();
+    curlAttrappe(ordner, 'fabric');
+
+    const lauf = starteSkript(ordner, {
+      EULA: 'true',
+      MINECRAFT_EDITION: 'fabric',
+      MINECRAFT_FABRIC_VERSION: '26.2-0.19.5',
+      MINECRAFT_FABRIC_URL: 'https://beispiel.invalid/fabric.jar',
+      MINECRAFT_FABRIC_SHA256: summe,
+    });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    const erwartet = posix(
+      join(ordner.daten, '.palantir', 'fabric', 'fabric-server-26.2-0.19.5.jar'),
+    );
+    assert.deepEqual(lauf.argv.slice(-3), ['-jar', erwartet, '--nogui']);
+    // Ein Mod im falschen Ordner ist der haeufigste Grund, warum "der Server
+    // die Mods nicht laedt" - deshalb entsteht er von selbst.
+    assert.ok(statSync(join(ordner.daten, 'mods')).isDirectory());
+  });
+
+  it('richtet NeoForge einmal ein und bindet danach die Argumentdatei ein', () => {
+    const ordner = arbeitsordner();
+    javaMitInstallation(ordner);
+    const quelle = join(ordner.wurzel, 'quelle.jar');
+    writeFileSync(quelle, 'installer');
+    const summe = spawnSync('sh', ['-c', 'sha256sum "$1" | cut -d" " -f1', '_', posix(quelle)], {
+      encoding: 'utf8',
+    }).stdout.trim();
+    curlAttrappe(ordner, 'installer');
+
+    const umgebung = {
+      EULA: 'true',
+      MINECRAFT_EDITION: 'neoforge',
+      MINECRAFT_NEOFORGE_VERSION: NEOFORGE,
+      MINECRAFT_NEOFORGE_URL: 'https://beispiel.invalid/neoforge.jar',
+      MINECRAFT_NEOFORGE_SHA256: summe,
+    };
+
+    const erster = starteSkript(ordner, umgebung);
+
+    assert.equal(erster.status, 0, erster.stderr);
+    assert.ok(erster.argv.includes('--installServer'), 'Einrichtung lief nicht');
+
+    const argumente = posix(
+      join(
+        ordner.daten,
+        '.palantir',
+        'neoforge',
+        'libraries',
+        'net',
+        'neoforged',
+        'neoforge',
+        NEOFORGE,
+        'unix_args.txt',
+      ),
+    );
+    // `nogui` ohne Bindestriche und kein `-jar`: NeoForge hat keine einzelne
+    // Server-Jar.
+    assert.deepEqual(erster.argv.slice(-2), [`@${argumente}`, 'nogui']);
+    // Nicht `--nogui` und kein `-jar` am Ende: NeoForge hat keine einzelne
+    // Server-Jar. (Weiter vorn steht sehr wohl ein `-jar` – das ist der Aufruf
+    // des Installationsprogramms.)
+    assert.ok(!erster.argv.slice(-3).includes('-jar'));
+
+    const zweiter = starteSkript(ordner, umgebung);
+
+    // Beim zweiten Start ist die Argumentdatei da - eingerichtet wird nicht
+    // erneut, das dauerte jedes Mal Minuten.
+    assert.ok(!zweiter.argv.includes('--installServer'));
+    assert.deepEqual(zweiter.argv.slice(-2), [`@${argumente}`, 'nogui']);
+  });
+
+  it('weist eine Ausgabe ab, die es nicht gibt', () => {
+    const lauf = starteSkript(arbeitsordner(), { EULA: 'true', MINECRAFT_EDITION: 'forge' });
+
+    assert.equal(lauf.status, 78);
+    assert.match(lauf.stdout, /paper, vanilla, fabric und neoforge/u);
+  });
+});

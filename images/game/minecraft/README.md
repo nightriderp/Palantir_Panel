@@ -8,20 +8,44 @@ Schema aller Images steht in `images/README.md`.
 | --------------------- | -------------------------------------------------------------------------------- |
 | Paper                 | 26.2, Build 121 (Kanal `STABLE`), im Image, Prüfsumme im Bau                     |
 | Vanilla               | 26.2, beim ersten Start geholt, Prüfsumme im Image                               |
+| Fabric                | Loader 0.19.5 für 26.2, beim ersten Start geholt                                 |
+| NeoForge              | 26.2.0.86, beim ersten Start eingerichtet                                        |
 | Basis                 | `palantir-base-java:3` (`images/base/java`): Temurin 25 JRE, UID 1000, `java.sh` |
-| Spieltyp-Definitionen | `minecraft-paper` und `minecraft-vanilla` in `apps/backend/.../game-registry.ts` |
+| Spieltyp-Definitionen | vier, von `minecraft-paper` bis `minecraft-neoforge`, in `game-registry.ts`      |
 
-## Zwei Ausgaben, ein Image
+## Vier Ausgaben, ein Image
 
-`MINECRAFT_EDITION` entscheidet: `paper` (Vorgabe) oder `vanilla`. Alles andere ist gleich —
-EULA, `server.properties`, RCON, Heap, Konsole, Hostname-Routing. Ein zweites Image wäre eine
-zweite Abschrift desselben Startskripts gewesen; das Panel unterscheidet die beiden ohnehin
-über zwei Spieltyp-Definitionen, nicht über zwei Images.
+`MINECRAFT_EDITION` entscheidet. Alles andere ist gleich — EULA, `server.properties`, RCON, Heap,
+Konsole, Hostname-Routing. Vier Images wären vier Abschriften desselben Startskripts; das Panel
+unterscheidet sie ohnehin über vier Spieltyp-Definitionen, nicht über vier Images.
 
-| Ausgabe   | Jar                                              | Wofür                                                       |
-| --------- | ------------------------------------------------ | ----------------------------------------------------------- |
-| `paper`   | `/opt/palantir/paper.jar`, im Image              | Schneller, Plugins, der Normalfall                          |
-| `vanilla` | `/data/.palantir/vanilla/minecraft_server-*.jar` | So, wie Mojang das Spiel meint: Redstone, Mobs, Datenpakete |
+| Ausgabe    | Woher der Server kommt                           | Wofür                                                       |
+| ---------- | ------------------------------------------------ | ----------------------------------------------------------- |
+| `paper`    | `/opt/palantir/paper.jar`, im Image              | Schneller, Plugins, der Normalfall                          |
+| `vanilla`  | `/data/.palantir/vanilla/minecraft_server-*.jar` | So, wie Mojang das Spiel meint: Redstone, Mobs, Datenpakete |
+| `fabric`   | `/data/.palantir/fabric/fabric-server-*.jar`     | Mods, leichter Loader, schnell bei neuen Spielfassungen     |
+| `neoforge` | `/data/.palantir/neoforge/` (ganzer Baum)        | Mods, was die großen Modpacks verlangen                     |
+
+### Die beiden Mod-Ausgaben
+
+**Mods kommen über die Dateiverwaltung** in den Ordner `mods` im Datenordner. Das Startskript legt
+ihn an, damit der Betreiber ihn vorfindet — ein Mod im falschen Ordner ist der häufigste Grund,
+warum „der Server die Mods nicht lädt".
+
+**Fabric** ist eine kleine Starter-Jar (180 KB), die den Rest beim ersten Lauf selbst nachzieht.
+Ihre Adresse setzt sich aus drei Fassungen zusammen — Spiel, Loader, Installationsprogramm — und
+liefert für dasselbe Tripel byteweise dieselbe Datei; nur deshalb lässt sie sich per Prüfsumme
+festnageln.
+
+**NeoForge** kommt als Installationsprogramm. Es legt beim ersten Start einen Baum aus Bibliotheken
+an und schreibt eine Argumentdatei; eine einzelne Server-Jar gibt es dort gar nicht. Der Start
+bindet die Datei mit `@datei` ein, und `nogui` steht dahinter **ohne** Bindestriche — anders als
+bei allen anderen Ausgaben. Eingerichtet wird genau einmal: Ein späterer Start findet die
+Argumentdatei vor.
+
+**Die Fassung des Loaders steht im Image, nicht im Panel.** Sie muss zur Spielfassung passen und zu
+den Mods, die der Betreiber einsetzt; eine freie Eingabe wäre eine Einladung zu einem Server, der
+beim Start mit einem Stapelabzug endet. Wer eine andere braucht, bekommt eine neue Image-Fassung.
 
 ## Warum ein eigenes Image
 

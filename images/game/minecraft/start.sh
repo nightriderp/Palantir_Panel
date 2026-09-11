@@ -57,9 +57,10 @@ log() {
 }
 
 case "$AUSGABE" in
-  paper | vanilla) ;;
+  paper | vanilla | fabric | neoforge) ;;
   *)
-    log "Unbekannte Ausgabe: ${AUSGABE}. Erlaubt sind \"paper\" und \"vanilla\"."
+    log "Unbekannte Ausgabe: ${AUSGABE}."
+    log 'Erlaubt sind paper, vanilla, fabric und neoforge.'
     exit 78
     ;;
 esac
@@ -285,8 +286,78 @@ fi
 # Sie liegt im internen Unterordner, nicht neben den Welten: Sie gehört
 # Palantir, nicht dem Betreiber, und hat in der Dateiverwaltung nichts zu
 # suchen.
+#
+# **Die beiden Mod-Ausgaben** kommen ebenfalls aus dem Netz, aber anders. Fabric
+# ist eine kleine Starter-Jar, die den Rest beim ersten Lauf selbst nachzieht.
+# NeoForge kommt als Installationsprogramm: Es legt einen Baum aus Bibliotheken
+# an und schreibt eine Argumentdatei, die beim Start eingebunden wird – es gibt
+# dort gar keine einzelne Server-Jar mehr.
+if [ "$AUSGABE" = 'fabric' ] || [ "$AUSGABE" = 'neoforge' ]; then
+  # Mods kommen über die Dateiverwaltung. Der Ordner entsteht hier, damit der
+  # Betreiber ihn vorfindet, statt ihn erst anlegen zu müssen – ein Mod im
+  # falschen Ordner ist der häufigste Grund, warum „der Server die Mods nicht
+  # lädt".
+  mkdir -p "${DATENORDNER}/mods"
+fi
+
 if [ "$AUSGABE" = 'paper' ]; then
   SERVER_JAR="$PAPER_JAR"
+elif [ "$AUSGABE" = 'fabric' ]; then
+  if [ -z "${MINECRAFT_FABRIC_URL:-}" ] || [ -z "${MINECRAFT_FABRIC_SHA256:-}" ]; then
+    log 'Der Ausgabe "fabric" fehlen MINECRAFT_FABRIC_URL oder MINECRAFT_FABRIC_SHA256.'
+    exit 78
+  fi
+
+  FABRIC_ORDNER="${INTERN}/fabric"
+  mkdir -p "$FABRIC_ORDNER"
+  SERVER_JAR="${FABRIC_ORDNER}/fabric-server-${MINECRAFT_FABRIC_VERSION:-unbekannt}.jar"
+
+  if ! palantir_datei_holen "$MINECRAFT_FABRIC_URL" "$MINECRAFT_FABRIC_SHA256" "$SERVER_JAR"; then
+    log 'Die Starter-Jar von Fabric konnte nicht geholt werden.'
+    exit 69
+  fi
+elif [ "$AUSGABE" = 'neoforge' ]; then
+  if [ -z "${MINECRAFT_NEOFORGE_URL:-}" ] || [ -z "${MINECRAFT_NEOFORGE_SHA256:-}" ]; then
+    log 'Der Ausgabe "neoforge" fehlen MINECRAFT_NEOFORGE_URL oder MINECRAFT_NEOFORGE_SHA256.'
+    exit 78
+  fi
+
+  NEOFORGE_FASSUNG="${MINECRAFT_NEOFORGE_VERSION:-unbekannt}"
+  NEOFORGE_ORDNER="${INTERN}/neoforge"
+  # Die Argumentdatei ist zugleich das Zeichen, dass die Installation
+  # durchgelaufen ist: Sie entsteht als Letztes.
+  NEOFORGE_ARGUMENTE="${NEOFORGE_ORDNER}/libraries/net/neoforged/neoforge/${NEOFORGE_FASSUNG}/unix_args.txt"
+
+  if [ ! -f "$NEOFORGE_ARGUMENTE" ]; then
+    NEOFORGE_INSTALLER="${INTERN}/neoforge-installer-${NEOFORGE_FASSUNG}.jar"
+
+    if ! palantir_datei_holen \
+      "$MINECRAFT_NEOFORGE_URL" "$MINECRAFT_NEOFORGE_SHA256" "$NEOFORGE_INSTALLER"; then
+      log 'Das Installationsprogramm von NeoForge konnte nicht geholt werden.'
+      exit 69
+    fi
+
+    mkdir -p "$NEOFORGE_ORDNER"
+    log "Richtet NeoForge ${NEOFORGE_FASSUNG} ein – das dauert beim ersten Start einige Minuten ..."
+
+    # Das Installationsprogramm holt den Server von Mojang und die Bibliotheken
+    # und legt sie in den genannten Ordner. Es braucht Netz und läuft genau
+    # einmal; ein späterer Start findet die Argumentdatei vor.
+    if ! java -jar "$NEOFORGE_INSTALLER" --installServer "$NEOFORGE_ORDNER"; then
+      log 'Die Einrichtung von NeoForge ist gescheitert.'
+      log "Den Ordner .palantir/neoforge im Datenordner löschen und neu starten fängt von vorn an."
+      rm -f "$NEOFORGE_INSTALLER"
+      exit 69
+    fi
+
+    rm -f "$NEOFORGE_INSTALLER"
+
+    if [ ! -f "$NEOFORGE_ARGUMENTE" ]; then
+      log "Nach der Einrichtung fehlt ${NEOFORGE_ARGUMENTE}."
+      log 'Passt MINECRAFT_NEOFORGE_VERSION zu MINECRAFT_NEOFORGE_URL?'
+      exit 69
+    fi
+  fi
 else
   if [ -z "${MINECRAFT_VANILLA_URL:-}" ] || [ -z "${MINECRAFT_VANILLA_SHA256:-}" ]; then
     log 'Der Ausgabe "vanilla" fehlen MINECRAFT_VANILLA_URL oder MINECRAFT_VANILLA_SHA256.'
@@ -310,7 +381,14 @@ else
   fi
 fi
 
-set -- "$@" -jar "$SERVER_JAR" --nogui
+# NeoForge hat keine einzelne Server-Jar: Der Start bindet die Argumentdatei
+# ein, die das Installationsprogramm geschrieben hat (`@datei`), und `nogui`
+# steht dahinter **ohne** Bindestriche – anders als bei allen anderen Ausgaben.
+if [ "$AUSGABE" = 'neoforge' ]; then
+  set -- "$@" "@${NEOFORGE_ARGUMENTE}" nogui
+else
+  set -- "$@" -jar "$SERVER_JAR" --nogui
+fi
 
 # -----------------------------------------------------------------------------
 # 6. Konsole

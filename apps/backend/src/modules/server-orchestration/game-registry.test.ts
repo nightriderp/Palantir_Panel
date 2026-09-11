@@ -5,6 +5,8 @@ import {
   GAME_TYPE_DEFINITIONS,
   MINECRAFT_PAPER_GAME_TYPE,
   MINECRAFT_VANILLA_GAME_TYPE,
+  MINECRAFT_FABRIC_GAME_TYPE,
+  MINECRAFT_NEOFORGE_GAME_TYPE,
   FACTORIO_GAME_TYPE,
   PALWORLD_GAME_TYPE,
   PROJECT_ZOMBOID_GAME_TYPE,
@@ -442,7 +444,7 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
     // liefe die Node weiter auf der alten Fassung, ohne dass es auffiele. Der
     // Name folgt dem Schema `palantir-<Kategorie>-<Name>` (images/README.md).
     expect(MINECRAFT_PAPER_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-minecraft:5',
+      'ghcr.io/nightriderp/palantir-game-minecraft:6',
     );
   });
 
@@ -754,5 +756,64 @@ describe('Rust und Palworld', () => {
       expect(Object.keys(typ.envMapping ?? {}).sort()).toEqual(felder);
       expect([...(typ.restartRequiredFields ?? [])].sort()).toEqual(felder);
     }
+  });
+});
+
+/**
+ * Minecraft mit Mods (Anhang A, Phase 3).
+ *
+ * Dieselbe Pruefung wie bei Vanilla: Die Definitionen sind Abwandlungen der
+ * Paper-Definition, kein zweites Mal abgeschrieben - ein neues Feld dort gilt
+ * hier sofort mit.
+ */
+describe('Minecraft mit Mods: Fabric und NeoForge', () => {
+  const MOD_TYPEN = [MINECRAFT_FABRIC_GAME_TYPE, MINECRAFT_NEOFORGE_GAME_TYPE];
+
+  it('laufen aus demselben Image wie Paper und Vanilla', () => {
+    for (const typ of MOD_TYPEN) {
+      expect(typ.dockerImage).toBe(MINECRAFT_PAPER_GAME_TYPE.dockerImage);
+    }
+
+    expect(MINECRAFT_FABRIC_GAME_TYPE.defaultEnv).toEqual({ MINECRAFT_EDITION: 'fabric' });
+    expect(MINECRAFT_NEOFORGE_GAME_TYPE.defaultEnv).toEqual({ MINECRAFT_EDITION: 'neoforge' });
+  });
+
+  it('uebernehmen Felder, Ports, Konsole und Routing von Paper', () => {
+    for (const typ of MOD_TYPEN) {
+      expect(typ.configFields).toEqual(MINECRAFT_PAPER_GAME_TYPE.configFields);
+      expect(typ.envMapping).toEqual(MINECRAFT_PAPER_GAME_TYPE.envMapping);
+      expect(typ.ports).toEqual(MINECRAFT_PAPER_GAME_TYPE.ports);
+      expect(typ.console).toEqual(MINECRAFT_PAPER_GAME_TYPE.console);
+      expect(typ.supportsVirtualHostRouting).toBe(true);
+    }
+  });
+
+  it('bieten keinen Schnellbefehl an, den nur Paper kennt', () => {
+    for (const typ of MOD_TYPEN) {
+      expect((typ.consoleQuickCommands ?? []).map((b) => b.command)).not.toContain('tps');
+    }
+  });
+
+  it('geben dem ersten Start mehr Zeit als Paper', () => {
+    // Fabric zieht den Server von Mojang erst beim ersten Lauf nach; NeoForge
+    // richtet sich ein und holt dabei hundert Bibliotheken.
+    expect(MINECRAFT_FABRIC_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThan(
+      MINECRAFT_PAPER_GAME_TYPE.startupTimeoutSeconds,
+    );
+    expect(MINECRAFT_NEOFORGE_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThan(
+      MINECRAFT_FABRIC_GAME_TYPE.startupTimeoutSeconds,
+    );
+  });
+
+  it('gibt NeoForge mehr Arbeitsspeicher mit als Paper', () => {
+    // Ein Modpack ist der Grund, warum jemand NeoForge nimmt.
+    expect(MINECRAFT_NEOFORGE_GAME_TYPE.resourceDefaults.ramMb).toBeGreaterThanOrEqual(6_144);
+  });
+
+  it('sind ab Ausbaustufe 2 auswaehlbar wie Paper', () => {
+    const registry = createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS);
+
+    expect(registry.requireSelectable('minecraft-fabric').id).toBe('minecraft-fabric');
+    expect(registry.requireSelectable('minecraft-neoforge').id).toBe('minecraft-neoforge');
   });
 });

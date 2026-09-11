@@ -293,7 +293,7 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   name: 'Minecraft (Paper)',
   description:
     'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:5',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:6',
   // Schnellbefehle der Live-Konsole. Nur vollständige Zeilen – `say <Text>`
   // oder `op <Name>` brauchen das Feld. Die Antwort kommt über RCON zurück
   // (`console` unten, P2-9) und steht damit direkt in der Konsole.
@@ -1591,10 +1591,82 @@ export const PALWORLD_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * Minecraft mit Mods: Fabric und NeoForge (Anhang A, Phase 3).
+ *
+ * **Dasselbe Image, ein anderer Schalter** – wie bei Vanilla. Alles außer der
+ * Jar ist gleich: EULA, `server.properties`, RCON, Heap, Konsole,
+ * Hostname-Routing. Beide Definitionen sind deshalb Abwandlungen der
+ * Paper-Definition und keine Abschriften.
+ *
+ * **Mods kommen über die Dateiverwaltung** in den Ordner `mods` im Datenordner.
+ * Das Startskript legt ihn an, damit der Betreiber ihn vorfindet: Ein Mod im
+ * falschen Ordner ist der häufigste Grund, warum „der Server die Mods nicht
+ * lädt".
+ *
+ * **Die Fassung des Loaders steht im Image**, nicht im Panel. Sie muss zur
+ * Spielfassung passen und zu den Mods, die der Betreiber einsetzt – eine freie
+ * Eingabe wäre eine Einladung zu einem Server, der beim Start mit einem
+ * Stapelabzug endet. Wer eine andere braucht, bekommt eine neue Image-Fassung.
+ */
+export const MINECRAFT_FABRIC_GAME_TYPE: GameTypeDefinition = {
+  ...MINECRAFT_PAPER_GAME_TYPE,
+  id: 'minecraft-fabric',
+  name: 'Minecraft (Fabric)',
+  description:
+    'Minecraft mit dem Mod-Loader Fabric – der leichtere der beiden, mit schneller Unterstützung für neue Spielfassungen. Mods gehören in den Ordner „mods" im Datenordner.',
+  defaultEnv: { MINECRAFT_EDITION: 'fabric' },
+  // Wie bei Vanilla ohne `tps`: Das ist ein Paper-Befehl.
+  consoleQuickCommands: [
+    { label: 'Spieler', command: 'list' },
+    { label: 'Speichern', command: 'save-all' },
+    { label: 'Whitelist', command: 'whitelist list' },
+    { label: 'Stopp', command: 'stop' },
+  ],
+  /*
+   * Der erste Start holt die Starter-Jar, danach zieht sie den Server von
+   * Mojang und die Bibliotheken nach – und erst dann entsteht die Welt.
+   */
+  startupTimeoutSeconds: 900,
+};
+
+export const MINECRAFT_NEOFORGE_GAME_TYPE: GameTypeDefinition = {
+  ...MINECRAFT_PAPER_GAME_TYPE,
+  id: 'minecraft-neoforge',
+  name: 'Minecraft (NeoForge)',
+  description:
+    'Minecraft mit dem Mod-Loader NeoForge – der Nachfolger von Forge, den die meisten großen Modpacks verlangen. Der erste Start richtet ihn ein und dauert einige Minuten. Mods gehören in den Ordner „mods" im Datenordner.',
+  defaultEnv: { MINECRAFT_EDITION: 'neoforge' },
+  consoleQuickCommands: [
+    { label: 'Spieler', command: 'list' },
+    { label: 'Speichern', command: 'save-all' },
+    { label: 'Whitelist', command: 'whitelist list' },
+    { label: 'Stopp', command: 'stop' },
+  ],
+  /*
+   * Länger als bei Fabric: Der erste Start lädt nicht nur, er richtet ein –
+   * das Installationsprogramm holt den Server von Mojang und hundert
+   * Bibliotheken und legt einen Baum daraus an.
+   */
+  startupTimeoutSeconds: 1_200,
+  /*
+   * Ein Modpack ist der Grund, warum jemand NeoForge nimmt, und Modpacks sind
+   * hungrig. 6 GiB sind die untere Grenze, bei der ein mittleres Paket nicht
+   * in Dauer-GC läuft.
+   */
+  resourceDefaults: {
+    ramMb: 6_144,
+    cpuCores: 2,
+    diskMb: 15_360,
+  },
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
   MINECRAFT_VANILLA_GAME_TYPE,
+  MINECRAFT_FABRIC_GAME_TYPE,
+  MINECRAFT_NEOFORGE_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TERRARIA_GAME_TYPE,
   FACTORIO_GAME_TYPE,
