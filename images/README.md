@@ -25,7 +25,7 @@ Härtung des Agents braucht (Pflichtenheft §2.3), und nichts, was nur ein Spiel
 | `base/linux`  | Die gemeinsame Wurzel: Benutzer, Datenordner, Konsole, `curl`, `unzip`, `xz`. Trägt alles Übrige. | vorhanden |
 | `base/java`   | Eclipse Temurin JRE (Java 25) — Minecraft (Paper, Fabric, Forge), andere JVM-Server               | vorhanden |
 | `base/steam`  | SteamCMD samt 32-Bit-Bibliotheken — mit Abstand die größte Gruppe                                 | vorhanden |
-| `base/dotnet` | .NET-Laufzeit für Server, die keine eigene mitbringen                                             | geplant   |
+| `base/dotnet` | .NET 10 — Vintage Story, andere .NET-Server                                                       | vorhanden |
 | `base/proton` | Windows-Server unter Proton (samt Xvfb) — Enshrouded, V Rising, Sons of the Forest                | vorhanden |
 
 **Die Wurzel ist `base/linux`.** Seit dem 10. September 2026 setzen die Laufzeit-Basen darauf

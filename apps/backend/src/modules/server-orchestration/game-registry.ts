@@ -2428,6 +2428,164 @@ export const SONS_OF_THE_FOREST_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * Vintage Story – das erste Spiel ohne Steam und ohne Java (Anhang A, Phase 3).
+ *
+ * **Keine Abfrage, und das ist kein Versehen.** `gamedig` kennt ein Protokoll
+ * für Vintage Story, aber es fragt nicht den Server: Es lädt das Verzeichnis
+ * des Herstellers und sucht darin den Eintrag zur öffentlichen Adresse. Hinter
+ * dem Rückwärtstunnel steht dort die Adresse der VPS, gefragt wird nach der des
+ * Containers – der Eintrag wird nie gefunden. Ein Server, der sich gar nicht
+ * anmeldet, steht ohnehin in keinem Verzeichnis.
+ *
+ * **Ein Port, TCP.** Anders als bei den Steam-Spielen gibt es keinen zweiten
+ * für die Abfrage.
+ */
+export const VINTAGE_STORY_GAME_TYPE: GameTypeDefinition = {
+  id: 'vintagestory',
+  name: 'Vintage Story',
+  description:
+    'Vintage-Story-Server. Die Serverdateien holt der erste Start beim Hersteller und prüft sie gegen eine feste Prüfsumme; Steam ist nicht beteiligt.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-vintagestory:1',
+  consoleQuickCommands: [
+    { label: 'Spieler', command: '/list clients' },
+    { label: 'Speichern', command: '/autosavenow' },
+    { label: 'Stoppen', command: '/stop' },
+  ],
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 42_420,
+      protocol: 'tcp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'description',
+      label: 'Beschreibung',
+      type: 'text',
+      defaultValue: '',
+      description: 'Steht im Verzeichnis und in den Einzelheiten des Servers.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'welcomeMessage',
+      label: 'Begrüßung',
+      type: 'text',
+      defaultValue: '',
+      description: 'Was ein Spieler beim Betreten im Chat liest.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 16,
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 128,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'password',
+      label: 'Server-Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen heißt: jeder mit der Adresse kommt herein.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'public',
+      label: 'Im Verzeichnis des Herstellers zeigen',
+      type: 'toggle',
+      /*
+       * Vorgabe „aus", anders als bei den Steam-Spielen: Dort hängt die Abfrage
+       * daran, und ein privater Server ließe das Panel ohne Spielerzahl
+       * zurück. Vintage Story wird ohnehin nicht abgefragt – hier kostet die
+       * zurückhaltende Vorgabe nichts, und ein Server, der ohne Zutun des
+       * Betreibers in einem fremden Verzeichnis steht, ist eine Überraschung.
+       */
+      defaultValue: false,
+      description: 'Aus heißt: erreichbar, aber nur für den, der die Adresse hat.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'VS_NAME',
+    description: 'VS_DESCRIPTION',
+    welcomeMessage: 'VS_WELCOME',
+    maxPlayers: 'MAX_PLAYERS',
+    password: 'VS_PASSWORD',
+    public: 'VS_PUBLIC',
+  },
+  restartRequiredFields: [
+    'serverName',
+    'description',
+    'welcomeMessage',
+    'maxPlayers',
+    'password',
+    'public',
+  ],
+  /*
+   * Vintage Story ist genügsam: Der Hersteller nennt 2 GiB für eine kleine
+   * Runde. Vier geben Luft für die Welt, die mit der Zeit wächst; die
+   * Serverdateien wiegen keine zweihundert Megabyte.
+   */
+  resourceDefaults: {
+    ramMb: 4_096,
+    cpuCores: 2,
+    diskMb: 10_240,
+  },
+  query: {
+    kind: 'none',
+    containerPort: 42_420,
+  },
+  console: { kind: 'stdin' },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  stopTimeoutSeconds: 120,
+  // Fünfzig Megabyte holen und auspacken, danach die Welt erzeugen.
+  startupTimeoutSeconds: 600,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
@@ -2445,6 +2603,7 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   ENSHROUDED_GAME_TYPE,
   VRISING_GAME_TYPE,
   SONS_OF_THE_FOREST_GAME_TYPE,
+  VINTAGE_STORY_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */

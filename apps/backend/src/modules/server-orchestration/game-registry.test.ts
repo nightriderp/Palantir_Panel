@@ -18,6 +18,7 @@ import {
   TERRARIA_GAME_TYPE,
   VRISING_GAME_TYPE,
   VALHEIM_GAME_TYPE,
+  VINTAGE_STORY_GAME_TYPE,
   TEST_GAME_TYPE,
   TEST_MINECRAFT_GAME_TYPE,
   buildContainerEnv,
@@ -1040,5 +1041,58 @@ describe('Sons of the Forest unter Proton', () => {
 
     expect(Object.keys(SONS_OF_THE_FOREST_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
     expect([...(SONS_OF_THE_FOREST_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
+  });
+});
+
+/**
+ * Vintage Story - das erste Spiel ohne Steam und ohne Java (Anhang A, Phase 3).
+ */
+describe('Vintage Story', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+    expect(
+      createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('vintagestory').id,
+    ).toBe('vintagestory');
+    expect(VINTAGE_STORY_GAME_TYPE.dockerImage).toBe(
+      'ghcr.io/nightriderp/palantir-game-vintagestory:1',
+    );
+  });
+
+  it('wird gar nicht abgefragt - und das ist kein Versehen', () => {
+    // `gamedig` fragt bei diesem Spiel nicht den Server, sondern das
+    // Verzeichnis des Herstellers, und sucht darin die oeffentliche Adresse.
+    // Hinter dem Rueckwaertstunnel steht dort die Adresse der VPS, gefragt wird
+    // nach der des Containers - der Eintrag wird nie gefunden.
+    expect(VINTAGE_STORY_GAME_TYPE.query).toEqual({
+      kind: 'none',
+      containerPort: 42_420,
+    });
+  });
+
+  it('spricht ueber die Standardeingabe', () => {
+    expect(VINTAGE_STORY_GAME_TYPE.console).toEqual({ kind: 'stdin' });
+    expect(VINTAGE_STORY_GAME_TYPE.consoleQuickCommands?.map((befehl) => befehl.command)).toContain(
+      '/stop',
+    );
+  });
+
+  it('braucht genau einen Port, und der ist TCP', () => {
+    expect(VINTAGE_STORY_GAME_TYPE.ports).toHaveLength(1);
+    expect(VINTAGE_STORY_GAME_TYPE.ports[0]?.protocol).toBe('tcp');
+    expect(VINTAGE_STORY_GAME_TYPE.ports[0]?.primary).toBe(true);
+  });
+
+  it('meldet den Server nicht von sich aus beim Hersteller an', () => {
+    // Anders als bei den Steam-Spielen haengt keine Abfrage daran; die
+    // zurueckhaltende Vorgabe kostet hier nichts.
+    expect(
+      VINTAGE_STORY_GAME_TYPE.configFields.find((feld) => feld.key === 'public')?.defaultValue,
+    ).toBe(false);
+  });
+
+  it('bildet jedes Feld auf eine Umgebungsvariable ab', () => {
+    const felder = VINTAGE_STORY_GAME_TYPE.configFields.map((feld) => feld.key).sort();
+
+    expect(Object.keys(VINTAGE_STORY_GAME_TYPE.envMapping ?? {}).sort()).toEqual(felder);
+    expect([...(VINTAGE_STORY_GAME_TYPE.restartRequiredFields ?? [])].sort()).toEqual(felder);
   });
 });
