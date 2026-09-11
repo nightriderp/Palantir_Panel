@@ -1,3 +1,4 @@
+import { type GameTypeDefinition } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { TEST_GAME_TYPE } from './game-registry.js';
 import {
@@ -285,5 +286,64 @@ describe('Hostname-Routing im Bauplan', () => {
     });
 
     expect(containerSpecFingerprint(anderer)).toBe(containerSpecFingerprint(spec()));
+  });
+});
+
+/**
+ * Ein Port, der drinnen dieselbe Nummer traegt wie draussen
+ * (`usesPublicPortNumber`).
+ *
+ * Gewoehnlich lauscht der Container auf seiner festen Nummer und der Pool
+ * vergibt nach aussen eine beliebige freie. Spiele, die ihre eigene Nummer
+ * weitersagen - Assetto Corsa Competizione meldet sie dem Lobby-Dienst -,
+ * vertragen diese Uebersetzung nicht.
+ */
+describe('Portnummer im Bauplan', () => {
+  const GESPIEGELT: GameTypeDefinition = {
+    ...TEST_GAME_TYPE,
+    id: 'test-gespiegelt',
+    ports: [
+      {
+        containerPort: 8080,
+        protocol: 'tcp',
+        primary: true,
+        label: 'Test-Port',
+        usesPublicPortNumber: true,
+        envVar: 'TEST_PUBLIC_PORT',
+      },
+    ],
+  };
+
+  function spec(definition: GameTypeDefinition) {
+    return buildContainerSpec({
+      server: server(),
+      definition,
+      containerName: 'palantir-s1',
+      dataHostPath: '/srv/palantir/s1',
+      hostname: 'mein-server.example.tld',
+    });
+  }
+
+  it('uebersetzt gewoehnlich zwischen drinnen und draussen', () => {
+    expect(spec(TEST_GAME_TYPE).ports).toEqual([
+      { containerPort: 8080, hostPort: 27_000, protocol: 'tcp' },
+    ]);
+  });
+
+  it('nimmt mit `usesPublicPortNumber` drinnen dieselbe Nummer', () => {
+    expect(spec(GESPIEGELT).ports).toEqual([
+      { containerPort: 27_000, hostPort: 27_000, protocol: 'tcp' },
+    ]);
+  });
+
+  it('nennt dem Image die oeffentliche Nummer', () => {
+    // Ohne sie koennte das Image sie nicht in seine Konfiguration schreiben.
+    expect(spec(GESPIEGELT).env.TEST_PUBLIC_PORT).toBe('27000');
+  });
+
+  it('setzt ohne `envVar` keine Variable', () => {
+    // Eine leere Variable an jedem Container aenderte den Fingerabdruck aller
+    // bestehenden und baute sie einmal umsonst neu (Punkt 114).
+    expect(Object.keys(spec(TEST_GAME_TYPE).env)).not.toContain('TEST_PUBLIC_PORT');
   });
 });
