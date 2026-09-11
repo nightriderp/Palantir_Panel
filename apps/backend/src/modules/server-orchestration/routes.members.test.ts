@@ -94,8 +94,20 @@ interface Aufrufe {
   remove: string[];
 }
 
-async function buildApp(): Promise<{ app: FastifyInstance; aufrufe: Aufrufe }> {
+/** Was ins Audit-Log ging (Fundpunkt 237). */
+interface Protokollzeile {
+  action: string;
+  targetId: string;
+  metadata: Record<string, unknown>;
+}
+
+async function buildApp(): Promise<{
+  app: FastifyInstance;
+  aufrufe: Aufrufe;
+  protokoll: Protokollzeile[];
+}> {
   const aufrufe: Aufrufe = { upsert: [], remove: [] };
+  const protokoll: Protokollzeile[] = [];
   const mitglieder = new Map<string, ServerMemberRecord>([[MANAGER_ID, MANAGER]]);
 
   const service = {
@@ -165,10 +177,19 @@ async function buildApp(): Promise<{ app: FastifyInstance; aufrufe: Aufrufe }> {
       take: async () => null,
       sweep: async () => 0,
     },
+    audit: {
+      record(entry) {
+        protokoll.push({
+          action: entry.action,
+          targetId: entry.targetId,
+          metadata: entry.metadata,
+        });
+      },
+    },
   });
   await app.ready();
 
-  return { app, aufrufe };
+  return { app, aufrufe, protokoll };
 }
 
 async function call(
@@ -332,5 +353,55 @@ describe('Routen der Mitgliederverwaltung', () => {
     expect(response.statusCode).toBe(403);
     expect(response.json().error.code).toBe('PERMISSION_DENIED');
     expect(aufrufe.remove).toHaveLength(0);
+  });
+});
+
+describe('Mitgliederwechsel im Protokoll (Fundpunkt 237)', () => {
+  it('haelt das Eintragen fest', async () => {
+    const { app, protokoll } = await buildApp();
+    offen = app;
+
+    await call(app, 'PUT', `/api/servers/${SERVER_ID}/members`, {
+      payload: { userId: NEU_ID, level: 'operator' },
+    });
+
+    // `server.memberAdded` stand seit jeher im Katalog und wurde nie
+    // geschrieben: Wer jemandem Zugriff auf einen fremden Server gab, tat das
+    // spurlos.
+    expect(protokoll).toEqual([
+      {
+        action: 'server.memberAdded',
+        targetId: SERVER_ID,
+        metadata: { userId: NEU_ID, level: 'operator' },
+      },
+    ]);
+  });
+
+  it('haelt das Entfernen fest', async () => {
+    const { app, protokoll } = await buildApp();
+    offen = app;
+
+    await call(app, 'DELETE', `/api/servers/${SERVER_ID}/members/${MANAGER_ID}`);
+
+    expect(protokoll).toEqual([
+      {
+        action: 'server.memberRemoved',
+        targetId: SERVER_ID,
+        metadata: { userId: MANAGER_ID },
+      },
+    ]);
+  });
+
+  it('protokolliert nichts, wenn die Rechte fehlen', async () => {
+    const { app, protokoll } = await buildApp();
+    offen = app;
+
+    await call(app, 'DELETE', `/api/servers/${SERVER_ID}/members/${MANAGER_ID}`, {
+      actor: 'manager',
+    });
+
+    // Ein abgewiesener Versuch hat nichts geaendert – er gehoert nicht als
+    // Aenderung ins Protokoll.
+    expect(protokoll).toEqual([]);
   });
 });

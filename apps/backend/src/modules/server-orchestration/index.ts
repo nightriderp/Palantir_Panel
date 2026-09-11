@@ -44,7 +44,7 @@ import {
 } from './resource-guard.js';
 import { createDrizzleServerUsageRepository } from './usage-repository.js';
 import { createDrizzleServerRepository } from './repository.js';
-import { registerServerRoutes } from './routes.js';
+import { type ServerAuditSink, registerServerRoutes } from './routes.js';
 import { createDrizzleServerScheduleRepository } from './schedule-repository.js';
 import { createDrizzleServerStatsRepository } from './stats-history.js';
 import { type ServerScheduleService, createServerScheduleService } from './schedules.js';
@@ -127,6 +127,13 @@ export interface ServerOrchestrationOptions {
   readonly agents?: AgentRegistry;
   /** Nur für Tests: eigener DNS-Anbieter. */
   readonly dns?: DnsProvider;
+  /**
+   * Audit-Log aus B8 (Fundpunkt 237). Ohne Angabe wird nichts protokolliert.
+   *
+   * Wie bei der Ereignis-Senke: B3 kennt B8 nicht und bekommt nur die schmale
+   * Schnittstelle gereicht.
+   */
+  readonly audit?: ServerAuditSink;
 }
 
 /**
@@ -373,6 +380,7 @@ export function registerServerOrchestration(
     baseDomain: env.PALANTIR_DOMAIN,
     schedules,
     worldArchives,
+    ...(options.audit === undefined ? {} : { audit: options.audit }),
   });
 
   // Browserseitiger Live-Kanal `/live` (Pflichtenheft §5.3): Abos je Server,

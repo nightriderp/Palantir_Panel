@@ -33,6 +33,7 @@ import {
 } from '@palantir/validation';
 import { type MultipartFile } from '@fastify/multipart';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import { toIpHint } from '../auth/request-context.js';
 import { z } from 'zod';
 import { type AccountRateLimiter, accountRateLimit } from '../../lib/abuse-limits.js';
 import { attachmentContentDisposition } from '../../lib/content-disposition.js';
@@ -45,6 +46,54 @@ import { type ServerScheduleService, toScheduleDto } from './schedules.js';
 import { type WorldArchiveStore } from './world-import.js';
 import { type ServerOrchestrationService } from './service.js';
 import { checkSubdomain } from './subdomain.js';
+
+/**
+ * Vorgänge am Server, die ins Audit-Log gehören (Fundpunkt 237).
+ *
+ * Die sechs Aktionen standen seit jeher im Katalog
+ * (`packages/contracts/src/audit.ts`), und die Admin-Oberfläche beschriftet sie
+ * bereits – geschrieben hat sie niemand. B3 hatte überhaupt keine Audit-Senke:
+ * Wer einen fremden Server löschte, hinterließ keine Zeile.
+ */
+export type ServerAuditAction =
+  | 'server.created'
+  | 'server.deleted'
+  | 'server.cloned'
+  | 'server.settingsChanged'
+  | 'server.memberAdded'
+  | 'server.memberRemoved';
+
+/**
+ * Schmale Sicht auf `AuditService.record()` aus B8.
+ *
+ * Bewusst nicht der ganze Dienst – dieselbe Trennung wie bei
+ * `OrchestrationEventSink` gegenüber B6: B3 kennt B8 nicht, `server.ts` reicht
+ * die Umsetzung herein.
+ *
+ * Die Einträge entstehen **in den Routen** und nicht im Dienst. Protokolliert
+ * wird, wer etwas getan hat, und das weiß nur der HTTP-Pfad; die Vorgänge ohne
+ * Aufrufer (Zeitgeber, Soll/Ist-Abgleich, Auto-Shutdown) laufen bewusst daran
+ * vorbei. Sie sind Betriebsvorgänge, keine Eingriffe – dieselbe Abgrenzung wie
+ * bei den Sicherungen in B5.
+ */
+export interface ServerAuditSink {
+  record(entry: {
+    action: ServerAuditAction;
+    actorId: string | null;
+    actorDisplayName: string | null;
+    targetType: 'server';
+    targetId: string;
+    ipHint: string | null;
+    metadata: Record<string, unknown>;
+  }): void | Promise<void>;
+}
+
+/** Senke, solange B8 nicht eingehängt ist (Tests, Betrieb ohne Datenbank). */
+export const noopServerAuditSink: ServerAuditSink = {
+  record() {
+    // absichtlich leer
+  },
+};
 
 export interface ServerRoutesOptions {
   /**
@@ -62,6 +111,11 @@ export interface ServerRoutesOptions {
   readonly schedules: ServerScheduleService;
   /** Zwischenspeicher der Weltdaten-Archive des Wizards (Lastenheft §3.3, P4). */
   readonly worldArchives: WorldArchiveStore;
+  /**
+   * Audit-Log aus B8 (Fundpunkt 237). Ohne Angabe wird nichts protokolliert –
+   * so bleiben die Routen ohne Admin-Modul einhängbar.
+   */
+  readonly audit?: ServerAuditSink;
 }
 
 const serverIdParamsSchema = z.object({ id: z.string().uuid() });
@@ -208,6 +262,33 @@ async function replyWithError(reply: FastifyReply, error: unknown): Promise<void
 
 export function registerServerRoutes(app: FastifyInstance, options: ServerRoutesOptions): void {
   const { service, repository, registry, baseDomain, schedules, worldArchives } = options;
+  const audit = options.audit ?? noopServerAuditSink;
+
+  /**
+   * Schreibt einen Eintrag ins Audit-Log (Fundpunkt 237).
+   *
+   * `adminIdentity` hängt B1 beim Auflösen der Sitzung an den Request
+   * (`modules/auth/plugin.ts`); der Anzeigename ist dort bereits eine Kopie zum
+   * Zeitpunkt der Aktion (Pflichtenheft §6). Läuft das Auth-Modul nicht, bleibt
+   * beides `null` und der Eintrag ist ein Systemeintrag – bis hierher käme eine
+   * solche Anfrage ohnehin nicht, weil ohne Sitzung kein Actor existiert.
+   */
+  async function protokolliere(
+    request: FastifyRequest,
+    action: ServerAuditAction,
+    serverId: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    await audit.record({
+      action,
+      actorId: request.adminIdentity?.userId ?? null,
+      actorDisplayName: request.adminIdentity?.displayName ?? null,
+      targetType: 'server',
+      targetId: serverId,
+      ipHint: toIpHint(request.ip),
+      metadata,
+    });
+  }
 
   /*
    * Missbrauchsgrenze der Konsole je Konto (Audit W2-3, `security-matrix-05`
@@ -488,6 +569,14 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
         // Antwortet sofort mit `creating` (Fundpunkt 185); Container und DNS
         // entstehen im Hintergrund, das Ergebnis kommt über den Live-Kanal.
         const server = await service.beginCreateServer(input, viewerId);
+
+        await protokolliere(request, 'server.created', server.id, {
+          name: server.name,
+          gameType: server.gameType,
+          hostId: server.hostId,
+          subdomain: server.subdomain,
+        });
+
         const context = await dtoContext(request, server.id);
 
         return await reply.status(201).send(
@@ -512,6 +601,18 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
       const input = updateServerSettingsInputSchema.parse(request.body);
       const server = await service.updateServer(id, input);
+
+      /*
+       * Die geänderten Felder, nicht ihre Werte im Ganzen: Der Eintrag soll
+       * lesbar bleiben und keine vollständige Konfigurationskopie je Änderung
+       * tragen. Die Ressourcen-Grenzen stehen ausdrücklich mit drin – wer einem
+       * Server mehr Arbeitsspeicher gibt, verschiebt ein Kontingent.
+       */
+      await protokolliere(request, 'server.settingsChanged', id, {
+        felder: Object.keys(input).sort(),
+        ...(input.resourceLimits === undefined ? {} : { resourceLimits: input.resourceLimits }),
+      });
+
       const context = await dtoContext(request, id);
 
       return await reply.send(
@@ -547,8 +648,19 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       await loadAuthorized(request, id, 'canClone');
 
       const input = cloneServerInputSchema.parse(request.body);
+      const job = await service.cloneServer(id, input, viewerId);
 
-      return await reply.status(202).send(ok(await service.cloneServer(id, input, viewerId)));
+      // Wie beim Zurückspielen einer Sicherung: Der Eintrag entsteht beim
+      // Anstoßen. Ob der Klon durchläuft, steht danach am Auftrag
+      // (`serverClone.progressed`).
+      await protokolliere(request, 'server.cloned', id, {
+        name: input.name,
+        subdomain: input.subdomain,
+        jobId: job.id,
+        includeWorldData: input.includeWorldData,
+      });
+
+      return await reply.status(202).send(ok(job));
     } catch (error: unknown) {
       return replyWithError(reply, error);
     }
@@ -588,8 +700,20 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
         .object({ force: z.enum(['true', 'false']).optional() })
         .parse(request.query);
 
-      await loadAuthorized(request, id, 'canDelete');
+      const { server } = await loadAuthorized(request, id, 'canDelete');
+
+      // Name und Spieltyp **vor** dem Löschen abgelesen: Danach gibt es den
+      // Datensatz nicht mehr, und ein Eintrag mit nackter Id beantwortet die
+      // Frage „welcher Server war das" nicht.
+      const beschreibung = {
+        name: server.name,
+        gameType: server.gameType,
+        hostId: server.hostId,
+        force: force === 'true',
+      };
+
       await service.deleteServer(id, { erzwingen: force === 'true' });
+      await protokolliere(request, 'server.deleted', id, beschreibung);
 
       return await reply.send(ok(null));
     } catch (error: unknown) {
@@ -1073,6 +1197,11 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
           throw new ServerOrchestrationError('USER_NOT_FOUND');
         }
 
+        await protokolliere(request, 'server.memberAdded', id, {
+          userId: input.userId,
+          level: input.level,
+        });
+
         return ok(toServerMemberDto(record, dto.permissions));
       } catch (error: unknown) {
         await replyWithError(reply, error);
@@ -1090,6 +1219,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
         await loadAuthorized(request, id, 'canManageMembers');
         await repository.removeMember(id, userId);
+        await protokolliere(request, 'server.memberRemoved', id, { userId });
 
         // `null` wie im Vertrag und im Frontend (`removeMember` in
         // `lib/api/servers.ts`): Die Oberfläche streicht den Eintrag selbst und

@@ -431,6 +431,8 @@ function leereMitschrift(): Mitschrift {
 interface Aufbau {
   readonly app: FastifyInstance;
   readonly mitschrift: Mitschrift;
+  /** Was ins Audit-Log ging (Fundpunkt 237). */
+  readonly protokoll: { action: string; targetId: string; metadata: Record<string, unknown> }[];
 }
 
 interface AufbauOptionen {
@@ -440,6 +442,7 @@ interface AufbauOptionen {
 
 async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
   const mitschrift = leereMitschrift();
+  const protokoll: { action: string; targetId: string; metadata: Record<string, unknown> }[] = [];
   const mitglieder = new Map<string, ServerMemberRecord>(
     MITGLIEDER.map((eintrag) => [eintrag.userId, eintrag]),
   );
@@ -560,11 +563,20 @@ async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
       take: async () => null,
       sweep: async () => 0,
     },
+    audit: {
+      record(entry) {
+        protokoll.push({
+          action: entry.action,
+          targetId: entry.targetId,
+          metadata: entry.metadata,
+        });
+      },
+    },
   });
 
   await app.ready();
 
-  return { app, mitschrift };
+  return { app, mitschrift, protokoll };
 }
 
 function rufe(app: FastifyInstance, akteur: AkteurName, aktion: Aktion) {
@@ -829,5 +841,53 @@ describe('Mitgliederliste je Aufrufer', () => {
 
     expect(daten).toHaveLength(MITGLIEDER.length);
     expect(daten.some((eintrag) => eintrag.canEdit)).toBe(false);
+  });
+});
+
+describe('Server-Lebenszyklus im Protokoll (Fundpunkt 237)', () => {
+  it('haelt das Loeschen mit Name und Spieltyp fest', async () => {
+    const { app, protokoll } = await baueApp();
+    offen = app;
+
+    await rufe(app, 'besitzer', AKTIONEN.loeschen);
+
+    /*
+     * Name und Spieltyp werden **vor** dem Loeschen abgelesen: Danach gibt es
+     * den Datensatz nicht mehr, und ein Eintrag mit nackter Id beantwortet die
+     * Frage „welcher Server war das" nicht.
+     */
+    expect(protokoll).toEqual([
+      {
+        action: 'server.deleted',
+        targetId: SERVER_ID,
+        metadata: {
+          name: SERVER.name,
+          gameType: SERVER.gameType,
+          hostId: SERVER.hostId,
+          force: false,
+        },
+      },
+    ]);
+  });
+
+  it('haelt bei Einstellungen die geaenderten Felder fest, nicht die ganze Konfiguration', async () => {
+    const { app, protokoll } = await baueApp();
+    offen = app;
+
+    await rufe(app, 'besitzer', AKTIONEN.einstellungen);
+
+    expect(protokoll).toHaveLength(1);
+    expect(protokoll[0]?.action).toBe('server.settingsChanged');
+    expect(protokoll[0]?.targetId).toBe(SERVER_ID);
+    expect(protokoll[0]?.metadata.felder).toEqual(Object.keys(EINSTELLUNGEN).sort());
+  });
+
+  it('protokolliert nichts, wenn die Rechte fehlen', async () => {
+    const { app, protokoll } = await baueApp();
+    offen = app;
+
+    await rufe(app, 'fremd', AKTIONEN.loeschen);
+
+    expect(protokoll).toEqual([]);
   });
 });

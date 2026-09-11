@@ -549,6 +549,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
        */
       ensureServerChat: async (serverId) => ensureServerChat?.(serverId),
       events: notifications.eventSink,
+      // Anlegen, Loeschen, Klonen, Einstellungen und Mitglieder stehen im
+      // Audit-Katalog und wurden bis Fundpunkt 237 nie geschrieben.
+      audit: admin.services.audit,
     });
 
     /*
