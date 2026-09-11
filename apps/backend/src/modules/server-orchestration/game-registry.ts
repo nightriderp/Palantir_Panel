@@ -941,6 +941,19 @@ export interface GameRegistry {
   /** DTOs für das Frontend – ohne Betriebsinterna des Homeservers. */
   toDtoList(): readonly GameTypeDto[];
   /**
+   * Welche Spieltypen der Administrator ausgeschaltet hat
+   * (`InstanceSettingsDto.disabledGameTypes`).
+   *
+   * **Warum die Registry das mitgeteilt bekommt und nicht selbst nachschlägt.**
+   * Ihre Methoden sind synchron, die Einstellung steht in der Datenbank. Sie
+   * bei jedem Aufruf zu lesen hieße, `requireSelectable` und `toDtoList`
+   * asynchron zu machen – quer durch das Modul, für eine Zeile, die sich
+   * höchstens einmal am Tag ändert. Stattdessen sagt es ihr, wer sie ändert:
+   * der Start (einmal beim Hochfahren) und das Speichern in der Verwaltung.
+   * Ein veralteter Stand ist damit nicht möglich.
+   */
+  setDisabledGameTypes(ids: readonly string[]): void;
+  /**
    * Definition zu einer Kennung, **ohne** zu werfen (Fundpunkt 247).
    *
    * Für Anzeigen, die einen vorhandenen Server beschreiben: Ein Server in der
@@ -960,8 +973,9 @@ export interface GameRegistry {
 export function toGameTypeDto(
   definition: GameTypeDefinition,
   phase: InstallationPhase,
+  abgeschaltet = false,
 ): GameTypeDto {
-  const available = definition.phase <= phase;
+  const available = definition.phase <= phase && !abgeschaltet;
 
   return {
     id: definition.id,
@@ -977,9 +991,19 @@ export function toGameTypeDto(
     resourceDefaults: definition.resourceDefaults,
     configFields: [...definition.configFields],
     available,
-    unavailableReason: available
-      ? null
-      : `Kommt in Ausbaustufe ${String(definition.phase)} (Lastenheft §3.5).`,
+    /*
+     * Zwei Gründe, zwei Sätze. „Kommt in Ausbaustufe 3" ist eine Zusage,
+     * „vom Administrator ausgeschaltet" eine Entscheidung – wer das eine
+     * liest, wartet, wer das andere liest, fragt den Administrator. Die
+     * Ausbaustufe steht zuerst: Was es hier noch gar nicht geben kann, ist
+     * nicht ausgeschaltet, sondern noch nicht da.
+     */
+    unavailableReason:
+      definition.phase > phase
+        ? `Kommt in Ausbaustufe ${String(definition.phase)} (Lastenheft §3.5).`
+        : abgeschaltet
+          ? 'Vom Administrator ausgeschaltet.'
+          : null,
   };
 }
 
@@ -999,6 +1023,10 @@ export function createGameRegistry(
     throw new Error('Die Spiele-Registry enthält doppelte Kennungen.');
   }
 
+  // Kennungen, die es im Katalog nicht gibt, stören nicht: Sie schalten nichts
+  // ab und bleiben stehen, bis jemand sie in der Verwaltung entfernt.
+  let abgeschaltet: ReadonlySet<string> = new Set();
+
   function require(id: string): GameTypeDefinition {
     const definition = byId.get(id);
 
@@ -1013,6 +1041,9 @@ export function createGameRegistry(
     list: () => definitions,
     require,
     find: (id: string) => byId.get(id) ?? null,
+    setDisabledGameTypes(ids) {
+      abgeschaltet = new Set(ids);
+    },
     requireSelectable(id: string): GameTypeDefinition {
       const definition = require(id);
 
@@ -1024,9 +1055,29 @@ export function createGameRegistry(
         });
       }
 
+      /*
+       * Ausgeschaltet zählt hier genauso wie „noch nicht da": Derselbe
+       * Fehlercode, damit das Frontend nichts Neues lernen muss – der
+       * Unterschied steht im `unavailableReason` des DTOs.
+       *
+       * **Nur das Anlegen ist gesperrt.** `require()` findet den Typ
+       * weiterhin, ein laufender Server bleibt also bedienbar. Sonst hätte
+       * der Betreiber nach dem Ausschalten einen Server, den er nicht mehr
+       * stoppen könnte.
+       */
+      if (abgeschaltet.has(id)) {
+        throw new ServerOrchestrationError('GAME_TYPE_NOT_AVAILABLE', undefined, {
+          gameType: id,
+          reason: 'disabled',
+        });
+      }
+
       return definition;
     },
-    toDtoList: () => definitions.map((definition) => toGameTypeDto(definition, phase)),
+    toDtoList: () =>
+      definitions.map((definition) =>
+        toGameTypeDto(definition, phase, abgeschaltet.has(definition.id)),
+      ),
   };
 }
 

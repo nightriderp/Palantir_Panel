@@ -32,7 +32,7 @@ import { registerServerLiveRoute } from './live-route.js';
 import { DEFAULT_AUTO_SHUTDOWN } from './auto-shutdown.js';
 import { createCloudflareDnsProvider } from './dns/cloudflare.js';
 import { type DnsProvider, createNoopDnsProvider } from './dns/types.js';
-import { createGameRegistry } from './game-registry.js';
+import { type GameRegistry, createGameRegistry } from './game-registry.js';
 import { createHealthProbe } from './health-check.js';
 import { type PortPoolPort, createPortAllocator } from './ports.js';
 import { buildResourceService, resourceWarningThresholdsFromEnv } from '../resources/index.js';
@@ -149,6 +149,15 @@ export interface ServerOrchestrationRegistration {
    * bedienen müssen.
    */
   readonly liveHub: ServerLiveHub;
+  /**
+   * Der Spiele-Katalog dieser Instanz.
+   *
+   * Geht mit hinaus, weil die Verwaltung ihm sagen muss, welche Spieltypen
+   * ausgeschaltet sind. Er liest die Einstellung nicht selbst – seine
+   * Methoden sind synchron, die Einstellung steht in der Datenbank
+   * (`GameRegistry.setDisabledGameTypes`).
+   */
+  readonly registry: GameRegistry;
 }
 
 export function registerServerOrchestration(
@@ -393,7 +402,13 @@ export function registerServerOrchestration(
    * aufzubauen wäre die Alternative gewesen; ein Hub je Ereignisquelle hätte
    * dieselben Abonnenten mehrfach bedient.
    */
-  return { service, schedules, liveHub };
+  /*
+   * Die Registry geht mit hinaus, weil die Verwaltung ihr sagen muss, welche
+   * Spieltypen ausgeschaltet sind (`setDisabledGameTypes`). Sie liest die
+   * Einstellung nicht selbst – ihre Methoden sind synchron, die Einstellung
+   * steht in der Datenbank.
+   */
+  return { service, schedules, liveHub, registry };
 }
 
 export { ServerLiveHub, createLiveFanoutSink } from './live-hub.js';

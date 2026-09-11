@@ -38,6 +38,7 @@ function createFakeRepository(seed: Partial<InstanceSettingsRecord> = {}): FakeR
     selfRegistrationEnabled: true,
     uiFontId: null,
     monospaceFontId: null,
+    disabledGameTypes: [],
     updatedAt: null,
     ...seed,
   };
@@ -181,5 +182,71 @@ describe('Instanz-Einstellungen: Berechtigungen', () => {
     const { service } = aufbauen({ selfRegistrationEnabled: false });
 
     expect(await service.selfRegistrationEnabled()).toBe(false);
+  });
+});
+
+/**
+ * Abgeschaltete Spieltypen (Wunsch des Betreibers, 2026-09-11).
+ *
+ * Der Katalog bleibt Code; hier steht nur, was diese Instanz davon nicht
+ * anbietet. Geprüft wird, dass die Liste sauber gespeichert wird, dass ein
+ * Aufrufer ohne das Feld nichts umschaltet – und dass die Registry davon
+ * erfährt, denn sie liest die Einstellung nicht selbst.
+ */
+describe('Instanz-Einstellungen: abgeschaltete Spieltypen', () => {
+  it('speichert die Liste ohne Dubletten und in fester Reihenfolge', async () => {
+    const { service, repository } = aufbauen();
+
+    const dto = await service.set(ADMIN, {
+      selfRegistrationEnabled: true,
+      disabledGameTypes: ['valheim', 'terraria', 'valheim'],
+    });
+
+    expect(repository.stand().disabledGameTypes).toEqual(['terraria', 'valheim']);
+    expect(dto.disabledGameTypes).toEqual(['terraria', 'valheim']);
+  });
+
+  it('lässt die Liste unberührt, wenn ein Aufrufer das Feld nicht kennt', async () => {
+    // Wie bei den Schriften: Ein älterer Aufrufer schaltet nicht versehentlich
+    // alles wieder ein, nur weil er das Feld nicht mitschickt.
+    const { service, repository } = aufbauen({ disabledGameTypes: ['valheim'] });
+
+    await service.set(ADMIN, { selfRegistrationEnabled: false });
+
+    expect(repository.stand().disabledGameTypes).toEqual(['valheim']);
+  });
+
+  it('sagt der Registry Bescheid, sobald sich die Liste ändert', async () => {
+    const gemeldet: string[][] = [];
+    const repository = createFakeRepository();
+    const service = createInstanceSettingsService({
+      repository,
+      onDisabledGameTypesChanged: (ids) => {
+        gemeldet.push([...ids]);
+      },
+    });
+
+    await service.set(ADMIN, {
+      selfRegistrationEnabled: true,
+      disabledGameTypes: ['terraria'],
+    });
+
+    expect(gemeldet).toEqual([['terraria']]);
+  });
+
+  it('protokolliert die Änderung, aber nicht eine bloß andere Reihenfolge', async () => {
+    const { service, audit } = aufbauen({ disabledGameTypes: ['terraria', 'valheim'] });
+
+    await service.set(ADMIN, {
+      selfRegistrationEnabled: true,
+      disabledGameTypes: ['valheim', 'terraria'],
+    });
+
+    expect(audit.rows).toHaveLength(0);
+
+    await service.set(ADMIN, { selfRegistrationEnabled: true, disabledGameTypes: [] });
+
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]?.metadata).toEqual({ disabledGameTypes: [] });
   });
 });

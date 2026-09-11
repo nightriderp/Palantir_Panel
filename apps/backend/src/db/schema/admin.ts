@@ -183,6 +183,18 @@ export const instanceSettings = pgTable(
     uiFontId: text('ui_font_id'),
     /** Dasselbe für dicktengleiche Ausgaben – Konsole, Logs, Serveradressen. */
     monospaceFontId: text('monospace_font_id'),
+    /**
+     * Kennungen der Spieltypen, die der Administrator ausgeschaltet hat.
+     *
+     * `jsonb` und keine eigene Tabelle: Es ist eine Liste kurzer Zeichenketten
+     * ohne Fremdschlüssel – der Katalog steht im Code, nicht in der Datenbank
+     * (Pflichtenheft §11). Eine Zeile je abgeschaltetem Typ brächte eine
+     * Tabelle, die nie jemand verknüpft.
+     */
+    disabledGameTypes: jsonb('disabled_game_types')
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     updatedAt: timestamp('updated_at', { withTimezone: true }),
     /**
      * Wer zuletzt geändert hat – für das Audit-Log ohnehin, hier zur Anzeige.

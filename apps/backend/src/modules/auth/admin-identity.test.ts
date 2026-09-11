@@ -184,6 +184,7 @@ beforeEach(async () => {
           Promise.resolve({
             selfRegistrationEnabled: true,
             uiFontId: null,
+            disabledGameTypes: [],
             monospaceFontId: null,
             updatedAt: null,
           }),

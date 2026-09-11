@@ -111,6 +111,13 @@ export interface AdminModuleOptions {
    * unbekannt (`FONT_NOT_FOUND`), was der sichere Zustand ist.
    */
   readonly fonts?: FontDirectory;
+  /**
+   * Wird gerufen, wenn der Administrator die Liste der abgeschalteten
+   * Spieltypen speichert. Empfänger ist die Spiele-Registry aus B3; ohne
+   * diesen Anschluss wirkte der Schalter erst nach einem Neustart des
+   * Backends (`GameRegistry.setDisabledGameTypes`).
+   */
+  readonly onDisabledGameTypesChanged?: (ids: readonly string[]) => void;
 }
 
 export interface AdminModule {
@@ -192,6 +199,9 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     // Änderungen an instanzweiten Schaltern gehören ins Log (Pflichtenheft §6).
     audit,
     ...(options.fonts ? { fonts: options.fonts } : {}),
+    ...(options.onDisabledGameTypesChanged
+      ? { onDisabledGameTypesChanged: options.onDisabledGameTypesChanged }
+      : {}),
   });
 
   const registrationRequests = createRegistrationRequestService({

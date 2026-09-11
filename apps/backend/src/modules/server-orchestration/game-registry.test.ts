@@ -541,3 +541,67 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
     expect(MINECRAFT_PAPER_GAME_TYPE.resourceDefaults.cpuCores).toBeGreaterThanOrEqual(1);
   });
 });
+
+/**
+ * Der Administrator kann Spieltypen ausschalten (Wunsch des Betreibers,
+ * 2026-09-11).
+ *
+ * Die Registry liest die Einstellung nicht selbst – ihre Methoden sind
+ * synchron, die Einstellung steht in der Datenbank. Sie bekommt sie gesagt.
+ */
+describe('Abgeschaltete Spieltypen', () => {
+  function registryMitAbschaltung(ids: readonly string[]) {
+    const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
+    registry.setDisabledGameTypes(ids);
+
+    return registry;
+  }
+
+  it('nimmt einen abgeschalteten Typ aus der Auswahl', () => {
+    const registry = registryMitAbschaltung(['valheim']);
+
+    expect(() => registry.requireSelectable('valheim')).toThrow();
+    expect(registry.requireSelectable('minecraft-paper').id).toBe('minecraft-paper');
+  });
+
+  it('lässt einen laufenden Server bedienbar', () => {
+    // Sonst hätte der Betreiber nach dem Ausschalten einen Server, den er
+    // nicht mehr stoppen könnte: `require` steht hinter jedem Lebenszyklus.
+    const registry = registryMitAbschaltung(['valheim']);
+
+    expect(registry.require('valheim').id).toBe('valheim');
+    expect(registry.find('valheim')?.id).toBe('valheim');
+  });
+
+  it('nennt im DTO den Grund, und zwar den richtigen', () => {
+    const registry = registryMitAbschaltung(['minecraft-paper']);
+    const dtos = new Map(registry.toDtoList().map((dto) => [dto.id, dto]));
+
+    expect(dtos.get('minecraft-paper')?.available).toBe(false);
+    expect(dtos.get('minecraft-paper')?.unavailableReason).toMatch(/Administrator/u);
+    expect(dtos.get('valheim')?.available).toBe(true);
+  });
+
+  it('sagt bei einer gesperrten Ausbaustufe weiter die Ausbaustufe', () => {
+    // „Kommt in Ausbaustufe 3" ist eine Zusage, „ausgeschaltet" eine
+    // Entscheidung. Was es hier noch gar nicht geben kann, ist nicht
+    // ausgeschaltet.
+    const registry = createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS);
+    registry.setDisabledGameTypes(['valheim']);
+
+    const dto = registry.toDtoList().find((eintrag) => eintrag.id === 'valheim');
+
+    expect(dto?.available).toBe(false);
+    expect(dto?.unavailableReason).toMatch(/Ausbaustufe 3/u);
+  });
+
+  it('übergeht eine Kennung, die es im Katalog nicht gibt', () => {
+    const registry = registryMitAbschaltung(['gibtsnicht']);
+
+    expect(
+      registry
+        .toDtoList()
+        .every((dto) => dto.unavailableReason?.includes('Administrator') !== true),
+    ).toBe(true);
+  });
+});
