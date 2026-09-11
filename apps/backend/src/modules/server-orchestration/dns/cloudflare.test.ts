@@ -214,6 +214,125 @@ describe('Cloudflare-Client', () => {
   });
 });
 
+/**
+ * Wiederholungen (2026-09-11).
+ *
+ * Ein einziger Aussetzer auf dem Weg zu Cloudflare - eine Zeitueberschreitung
+ * nach zehn Sekunden - hat das Anlegen eines Servers scheitern lassen und ihn
+ * auf `error` stehen lassen. Cloudflare antwortete in derselben Minute wieder
+ * in 430 Millisekunden.
+ */
+describe('Cloudflare-Client: Wiederholungen', () => {
+  const record = {
+    name: 'meinserver.example.tld',
+    type: 'A' as const,
+    content: '203.0.113.10',
+    proxied: false,
+  };
+
+  /** Ein `fetch`, das die ersten `fehlschlaege` Aufrufe abbrechen laesst. */
+  function mitAussetzern(fehlschlaege: number, danach: { status: number; body: unknown }[]) {
+    const aufrufe: string[] = [];
+    let index = 0;
+
+    const impl = ((url: string, init: RequestInit = {}): Promise<Response> => {
+      aufrufe.push(init.method ?? 'GET');
+
+      if (index++ < fehlschlaege) {
+        const fehler = new Error('This operation was aborted');
+        fehler.name = 'AbortError';
+
+        return Promise.reject(fehler);
+      }
+
+      const antwort = danach[index - 1 - fehlschlaege] ?? {
+        status: 200,
+        body: { success: true, errors: [], result: [] },
+      };
+
+      return Promise.resolve({
+        ok: antwort.status < 400,
+        status: antwort.status,
+        json: () => Promise.resolve(antwort.body),
+      } as Response);
+    }) as unknown as typeof fetch;
+
+    return { impl, aufrufe };
+  }
+
+  it('uebersteht einen Aussetzer und legt den Eintrag doch noch an', async () => {
+    const { impl, aufrufe } = mitAussetzern(1, [ok([]), ok({ id: 'rec-1' })]);
+    const provider = createCloudflareDnsProvider({
+      apiToken: 't',
+      zoneId: 'z',
+      fetchImpl: impl,
+    });
+
+    await expect(provider.upsertRecord(record)).resolves.toBe('rec-1');
+    // Erster Anlauf abgebrochen, zweiter gesucht, dritter angelegt.
+    expect(aufrufe).toEqual(['GET', 'GET', 'POST']);
+  });
+
+  it('gibt nach drei Anlaeufen auf und nennt den echten Grund', async () => {
+    const { impl, aufrufe } = mitAussetzern(9, []);
+    const provider = createCloudflareDnsProvider({
+      apiToken: 't',
+      zoneId: 'z',
+      fetchImpl: impl,
+    });
+
+    await expect(provider.upsertRecord(record)).rejects.toMatchObject({
+      code: 'DNS_UPDATE_FAILED',
+      message: expect.stringContaining('This operation was aborted'),
+    });
+    expect(aufrufe).toHaveLength(3);
+  });
+
+  it('wiederholt auch bei 429 und 5xx', async () => {
+    for (const status of [429, 503]) {
+      const { impl, aufrufe } = mitAussetzern(0, [
+        { status, body: { success: false, errors: [], result: null } },
+        ok([]),
+        ok({ id: 'rec-1' }),
+      ]);
+      const provider = createCloudflareDnsProvider({
+        apiToken: 't',
+        zoneId: 'z',
+        fetchImpl: impl,
+      });
+
+      await expect(provider.upsertRecord(record)).resolves.toBe('rec-1');
+      expect(aufrufe, String(status)).toEqual(['GET', 'GET', 'POST']);
+    }
+  });
+
+  it('wiederholt nicht, wenn Cloudflare die Anfrage wirklich ablehnt', async () => {
+    // Ein falscher Token wird beim zweiten Anlauf nicht richtiger - und drei
+    // Anlaeufe verzoegerten nur die Meldung an den Nutzer.
+    const { impl, aufrufe } = mitAussetzern(0, [
+      {
+        status: 403,
+        body: {
+          success: false,
+          errors: [{ code: 9109, message: 'Invalid access token' }],
+          result: null,
+        },
+      },
+    ]);
+    const provider = createCloudflareDnsProvider({
+      apiToken: 't',
+      zoneId: 'z',
+      fetchImpl: impl,
+    });
+
+    await expect(provider.upsertRecord(record)).rejects.toMatchObject({
+      code: 'DNS_UPDATE_FAILED',
+      message: expect.stringContaining('Invalid access token'),
+    });
+    expect(aufrufe).toHaveLength(1);
+  });
+});
+
 describe('DNS-Anbieter ohne Cloudflare-Zugang', () => {
   it('protokolliert jeden übersprungenen Vorgang, statt ihn zu verschweigen', async () => {
     const messages: string[] = [];

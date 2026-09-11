@@ -49,11 +49,42 @@ interface CloudflareRecord {
   readonly content: string;
 }
 
+/** Anlaeufe je Aufruf – einer plus zwei Wiederholungen. */
+const ANLAEUFE = 3;
+
+/**
+ * Wartezeit vor dem naechsten Anlauf, in Millisekunden.
+ *
+ * Kurz genug, dass ein Nutzer davon nichts merkt (ein Anlegen dauert ohnehin
+ * Sekunden), lang genug, dass ein Aussetzer vorbei sein kann.
+ */
+const wartezeit = (anlauf: number): number => 500 * anlauf;
+
+/**
+ * Ein Fehlschlag, der beim naechsten Anlauf anders ausgehen kann.
+ *
+ * Traegt den echten Fehler mit sich: Geben alle Anlaeufe auf, wird genau er
+ * geworfen – der Aufrufer soll nicht an einer Huelle vorbeilesen muessen.
+ */
+class VorlaeufigerFehler extends Error {
+  readonly grund: ServerOrchestrationError;
+
+  constructor(grund: ServerOrchestrationError) {
+    super(grund.message);
+    this.name = 'VorlaeufigerFehler';
+    this.grund = grund;
+  }
+}
+
 export function createCloudflareDnsProvider(options: CloudflareDnsOptions): DnsProvider {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 10_000;
 
-  async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  /**
+   * Ein Anlauf. Wirft bei einem Netzfehler einen {@link VorlaeufigerFehler},
+   * bei einer Ablehnung durch Cloudflare den endgültigen Fehler.
+   */
+  async function versuch<T>(path: string, init: RequestInit = {}): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => {
       controller.abort();
@@ -79,29 +110,82 @@ export function createCloudflareDnsProvider(options: CloudflareDnsOptions): DnsP
           body.errors.map((error) => `${String(error.code)}: ${error.message}`).join(', ') ||
           `HTTP ${String(response.status)}`;
 
-        throw new ServerOrchestrationError(
+        const fehler = new ServerOrchestrationError(
           'DNS_UPDATE_FAILED',
           `Cloudflare hat die Anfrage abgelehnt (${reason}).`,
           { path, status: response.status },
         );
+
+        /*
+         * Ein Nein bleibt ein Nein – außer es ist keins: 429 heißt „gleich
+         * wieder", 5xx heißt „bei mir ist gerade etwas kaputt". Beides geht
+         * beim nächsten Anlauf oft durch, ein falscher Token nie.
+         */
+        if (response.status === 429 || response.status >= 500) {
+          throw new VorlaeufigerFehler(fehler);
+        }
+
+        throw fehler;
       }
 
       return body.result;
     } catch (error: unknown) {
-      if (error instanceof ServerOrchestrationError) {
+      if (error instanceof ServerOrchestrationError || error instanceof VorlaeufigerFehler) {
         throw error;
       }
 
       const cause = error instanceof Error ? error.message : String(error);
 
-      throw new ServerOrchestrationError(
-        'DNS_UPDATE_FAILED',
-        `Cloudflare war nicht erreichbar (${cause}).`,
-        { path },
+      // Netzfehler und Zeitüberschreitungen (`This operation was aborted`):
+      // Genau die Art Aussetzer, die ein zweiter Anlauf überlebt.
+      throw new VorlaeufigerFehler(
+        new ServerOrchestrationError(
+          'DNS_UPDATE_FAILED',
+          `Cloudflare war nicht erreichbar (${cause}).`,
+          { path },
+        ),
       );
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * Drei Anläufe für einen Aufruf.
+   *
+   * **Warum das nötig ist** (2026-09-11): Ein einziger Aussetzer auf dem Weg zu
+   * Cloudflare – eine Zeitüberschreitung nach zehn Sekunden – hat das Anlegen
+   * eines Servers scheitern lassen und ihn auf `error` stehen lassen. Cloudflare
+   * antwortete in derselben Minute wieder in 430 Millisekunden; es war nichts
+   * kaputt außer diesem einen Aufruf.
+   *
+   * **Warum das gefahrlos ist:** Jeder Aufruf hier ist wiederholbar.
+   * `upsertRecord` sucht erst und legt dann an – ist der Eintrag beim ersten
+   * Anlauf doch noch entstanden, findet ihn der zweite und ändert ihn, statt
+   * einen zweiten anzulegen. `deleteRecord` sucht ebenso und nimmt einen
+   * fehlenden Eintrag hin.
+   */
+  async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+    let letzter: ServerOrchestrationError | null = null;
+
+    for (let anlauf = 1; anlauf <= ANLAEUFE; anlauf += 1) {
+      try {
+        return await versuch<T>(path, init);
+      } catch (error: unknown) {
+        if (!(error instanceof VorlaeufigerFehler)) {
+          throw error;
+        }
+
+        letzter = error.grund;
+
+        if (anlauf < ANLAEUFE) {
+          await new Promise((fertig) => setTimeout(fertig, wartezeit(anlauf)));
+        }
+      }
+    }
+
+    // Unerreichbar: Die Schleife läuft mindestens einmal und setzt `letzter`.
+    throw letzter ?? new ServerOrchestrationError('DNS_UPDATE_FAILED', undefined, { path });
   }
 
   async function findRecordId(name: string, type?: string): Promise<string | null> {
