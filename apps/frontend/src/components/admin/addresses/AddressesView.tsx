@@ -8,7 +8,7 @@ import {
   type PortProtocol,
   type PortRangeDto,
 } from '@palantir/contracts';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Badge,
   Button,
@@ -38,7 +38,43 @@ import {
 } from '@/lib/api/admin';
 import { type ApiResult, errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
+import {
+  AdminAccessNotice,
+  AdminError,
+  AdminLoading,
+  AdminTable,
+  Blaetterleiste,
+  SortTh,
+  Td,
+  Th,
+} from '../common';
+import { useSeitenteilung, useTabellenSortierung, type TabellenSortierung } from '../tableSort';
+
+/** Sortierbare Spalten der Adressliste (Fundpunkt 212). */
+const ADRESS_SPALTEN = ['server', 'spiel', 'node', 'subdomain'] as const;
+
+type AdressSpalte = (typeof ADRESS_SPALTEN)[number];
+
+/** Kopfzelle der Adressliste. */
+function AdressKopf({
+  sortierung,
+  schluessel,
+  children,
+}: {
+  sortierung: TabellenSortierung<AdressSpalte>;
+  schluessel: AdressSpalte;
+  children: ReactNode;
+}) {
+  return (
+    <SortTh
+      aktiv={sortierung.schluessel === schluessel}
+      richtung={sortierung.richtung}
+      onSort={() => sortierung.umschalten(schluessel)}
+    >
+      {children}
+    </SortTh>
+  );
+}
 
 /**
  * Adressen – öffentlicher Port-Bereich der VPS (Lastenheft §3.7, Pflichtenheft §2.4).
@@ -413,6 +449,21 @@ function ServerAddressTable() {
   const servers = useApiResource<GameServerDto[]>((signal) => fetchAllServers(signal), []);
   const list = servers.data ?? [];
 
+  /*
+   * Sortierung und Seitenteilung (Fundpunkt 212). Vorgabe ist der Name – die
+   * Liste beantwortet die Frage „welche Adresse hat Server X", und dafür will
+   * man ihn finden, nicht suchen. Eigene Kennung `adr`, weil auf derselben
+   * Seite noch die Tabelle der verwaisten Zuordnungen steht.
+   */
+  const sortierung = useTabellenSortierung<AdressSpalte>(ADRESS_SPALTEN, 'server', 'asc', 'adr');
+  const sortiert = sortierung.sortiere(list, {
+    server: (server) => server.name,
+    spiel: (server) => server.gameTypeName,
+    node: (server) => server.hostName ?? null,
+    subdomain: (server) => server.subdomain,
+  });
+  const seite = useSeitenteilung(sortiert, 'adr');
+
   return (
     <Panel className="flex flex-col gap-3">
       <div>
@@ -432,15 +483,23 @@ function ServerAddressTable() {
         <AdminTable>
           <thead>
             <tr>
-              <Th>Server</Th>
-              <Th>Spiel</Th>
-              <Th>Node</Th>
-              <Th>Subdomain</Th>
+              <AdressKopf sortierung={sortierung} schluessel="server">
+                Server
+              </AdressKopf>
+              <AdressKopf sortierung={sortierung} schluessel="spiel">
+                Spiel
+              </AdressKopf>
+              <AdressKopf sortierung={sortierung} schluessel="node">
+                Node
+              </AdressKopf>
+              <AdressKopf sortierung={sortierung} schluessel="subdomain">
+                Subdomain
+              </AdressKopf>
               <Th>Verbindungsadresse</Th>
             </tr>
           </thead>
           <tbody>
-            {list.map((server) => (
+            {seite.zeilen.map((server) => (
               <tr key={server.id}>
                 <Td className="text-ink">{server.name}</Td>
                 <Td>{server.gameTypeName}</Td>
@@ -454,6 +513,13 @@ function ServerAddressTable() {
           </tbody>
         </AdminTable>
       )}
+
+      <Blaetterleiste
+        seite={seite.seite}
+        seiten={seite.seiten}
+        gesamt={seite.gesamt}
+        onBlaettern={seite.blaettere}
+      />
     </Panel>
   );
 }

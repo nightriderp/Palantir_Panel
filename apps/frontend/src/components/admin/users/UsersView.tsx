@@ -9,7 +9,7 @@ import {
   type UserResourceLimitDto,
   isRegistrationRequestStatus,
 } from '@palantir/contracts';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Badge,
   Button,
@@ -54,7 +54,17 @@ import {
 } from '@/lib/api/admin';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
+import {
+  AdminAccessNotice,
+  AdminError,
+  AdminLoading,
+  AdminTable,
+  Blaetterleiste,
+  SortTh,
+  Td,
+  Th,
+} from '../common';
+import { useSeitenteilung, useTabellenSortierung, type TabellenSortierung } from '../tableSort';
 import {
   quotaExceeded,
   quotaLabel,
@@ -87,6 +97,38 @@ import { InstanceSettingsCard } from './InstanceSettingsCard';
  */
 
 const STATUS_FILTERS: RegistrationRequestStatus[] = ['approved', 'pending', 'blocked'];
+
+/**
+ * Sortierbare Spalten (Fundpunkt 212).
+ *
+ * „Kontingent" fehlt mit Absicht: Die Spalte fasst vier Grenzen in einer Zeile
+ * zusammen, eine Reihenfolge darüber wäre eine erfundene. Wer nach Belegung
+ * sucht, sortiert nach „Server".
+ */
+const NUTZER_SPALTEN = ['name', 'rollen', 'zustand', 'server', 'erstellt'] as const;
+
+type NutzerSpalte = (typeof NUTZER_SPALTEN)[number];
+
+/** Kopfzelle der Nutzertabelle – spart das dreifache Durchreichen je Spalte. */
+function Spalte({
+  sortierung,
+  schluessel,
+  children,
+}: {
+  sortierung: TabellenSortierung<NutzerSpalte>;
+  schluessel: NutzerSpalte;
+  children: ReactNode;
+}) {
+  return (
+    <SortTh
+      aktiv={sortierung.schluessel === schluessel}
+      richtung={sortierung.richtung}
+      onSort={() => sortierung.umschalten(schluessel)}
+    >
+      {children}
+    </SortTh>
+  );
+}
 
 type Dialog =
   | { kind: 'create' }
@@ -153,6 +195,26 @@ export function UsersView() {
     const term = search.trim().toLowerCase();
     return term ? list.filter((entry) => entry.displayName.toLowerCase().includes(term)) : list;
   }, [resource.data, search]);
+
+  /*
+   * Sortierung und Seitenteilung (Fundpunkt 212). Vorgabe ist „Erstellt
+   * aufsteigend" – genau die Reihenfolge, in der die Route die Konten schon
+   * liefert. So sieht beim Aufschlagen niemand eine andere Liste als bisher,
+   * und die Adresse bleibt leer, solange nichts umgestellt wurde.
+   */
+  const sortierung = useTabellenSortierung<NutzerSpalte>(NUTZER_SPALTEN, 'erstellt', 'asc');
+  const sortiert = useMemo(
+    () =>
+      sortierung.sortiere(filtered, {
+        name: (entry) => entry.displayName,
+        rollen: (entry) => (entry.isOwner === true ? 'Owner' : entry.roleNames.join(', ')),
+        zustand: (entry) => registrationStatusLabel(entry.status),
+        server: (entry) => entry.serverCount ?? null,
+        erstellt: (entry) => entry.registeredAt,
+      }),
+    [filtered, sortierung],
+  );
+  const seite = useSeitenteilung(sortiert);
 
   /**
    * Passwort zurücksetzen – nur aus dem Bestätigungsdialog heraus aufgerufen
@@ -303,17 +365,27 @@ export function UsersView() {
         <AdminTable>
           <thead>
             <tr>
-              <Th>Benutzer</Th>
-              <Th>Rollen</Th>
-              <Th>Zustand</Th>
+              <Spalte sortierung={sortierung} schluessel="name">
+                Benutzer
+              </Spalte>
+              <Spalte sortierung={sortierung} schluessel="rollen">
+                Rollen
+              </Spalte>
+              <Spalte sortierung={sortierung} schluessel="zustand">
+                Zustand
+              </Spalte>
               <Th>Kontingent</Th>
-              <Th>Server</Th>
-              <Th>Erstellt</Th>
+              <Spalte sortierung={sortierung} schluessel="server">
+                Server
+              </Spalte>
+              <Spalte sortierung={sortierung} schluessel="erstellt">
+                Erstellt
+              </Spalte>
               <Th>Aktion</Th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((entry) => (
+            {seite.zeilen.map((entry) => (
               // Tabellenzeile statt Karte: Ein Rahmen liegt bei
               // zusammengezogenen Rahmen schief, die Flaeche traegt hier.
               <tr
@@ -460,6 +532,13 @@ export function UsersView() {
           </tbody>
         </AdminTable>
       )}
+
+      <Blaetterleiste
+        seite={seite.seite}
+        seiten={seite.seiten}
+        gesamt={seite.gesamt}
+        onBlaettern={seite.blaettere}
+      />
 
       {dialog?.kind === 'approve' ? (
         <ApproveDialog

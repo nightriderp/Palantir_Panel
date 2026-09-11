@@ -66,9 +66,19 @@ export function AdminTable({ children, className }: { children: ReactNode; class
 }
 
 /** Kopfzelle einer {@link AdminTable}. */
-export function Th({ children, className }: { children?: ReactNode; className?: string }) {
+export function Th({
+  children,
+  className,
+  ariaSort,
+}: {
+  children?: ReactNode;
+  className?: string;
+  /** Sortierzustand dieser Spalte für Vorlesehilfen (Fundpunkt 212). */
+  ariaSort?: 'ascending' | 'descending' | 'none';
+}) {
   return (
     <th
+      aria-sort={ariaSort}
       className={cn(
         'border-b border-line px-3.5 py-2.5 text-left text-2xs font-semibold uppercase tracking-[0.08em] text-ink-soft',
         className,
@@ -76,6 +86,86 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
     >
       {children}
     </th>
+  );
+}
+
+/**
+ * Kopfzelle, die sich anklicken lässt (Fundpunkt 212).
+ *
+ * Der Pfeil zeigt die Richtung; `aria-sort` sagt dasselbe einer Vorlesehilfe.
+ * Bewusst ein `<button>` in der Zelle und nicht ein Klick auf das `<th>`: Nur
+ * so ist die Spalte auch mit der Tastatur erreichbar.
+ */
+export function SortTh({
+  children,
+  className,
+  aktiv,
+  richtung,
+  onSort,
+}: {
+  children?: ReactNode;
+  className?: string;
+  aktiv: boolean;
+  richtung: 'asc' | 'desc';
+  onSort: () => void;
+}) {
+  return (
+    <Th
+      className={className}
+      ariaSort={aktiv ? (richtung === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={onSort}
+        className={cn(
+          'inline-flex items-center gap-1 uppercase tracking-[0.08em]',
+          aktiv ? 'text-ink' : 'text-ink-soft hover:text-ink-muted',
+        )}
+      >
+        {children}
+        <span aria-hidden className="text-[0.7em]">
+          {aktiv ? (richtung === 'asc' ? '▲' : '▼') : '↕'}
+        </span>
+      </button>
+    </Th>
+  );
+}
+
+/**
+ * Blätterleiste unter einer Tabelle (Fundpunkt 212).
+ *
+ * Erscheint erst ab der zweiten Seite: Eine Leiste mit „Seite 1 von 1" ist
+ * Platz für nichts.
+ */
+export function Blaetterleiste({
+  seite,
+  seiten,
+  gesamt,
+  onBlaettern,
+}: {
+  seite: number;
+  seiten: number;
+  gesamt: number;
+  onBlaettern: (zu: number) => void;
+}) {
+  if (seiten <= 1) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1">
+      <span className="text-xs text-ink-faint">
+        Seite {seite} von {seiten} · {gesamt} Einträge
+      </span>
+      <div className="flex items-center gap-2">
+        <Button size="sm" disabled={seite <= 1} onClick={() => onBlaettern(seite - 1)}>
+          Zurück
+        </Button>
+        <Button size="sm" disabled={seite >= seiten} onClick={() => onBlaettern(seite + 1)}>
+          Weiter
+        </Button>
+      </div>
+    </div>
   );
 }
 

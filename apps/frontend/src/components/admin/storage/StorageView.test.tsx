@@ -220,6 +220,23 @@ describe('Node-Platz – Mehrfachauswahl (Fundpunkt 211)', () => {
     expect(screen.getByText(/2 Posten ausgewählt/)).toBeTruthy();
   });
 
+  it('sortiert die Posten nach Groesse, groesste zuerst (Fundpunkt 212)', async () => {
+    zeichne();
+    await screen.findByText('Sicherung A');
+
+    /*
+     * Der Agent liefert die Posten in der Reihenfolge, in der er sie findet -
+     * hier A (1 GiB), B (2 GiB), Welt (5 GiB). Wer die Speicheruebersicht
+     * aufruft, sucht aber das Grosse zuerst.
+     */
+    const zeilen = screen.getAllByRole('row').slice(1);
+    expect(zeilen.map((zeile) => zeile.textContent?.split('/')[0])).toEqual([
+      expect.stringContaining('Welt'),
+      expect.stringContaining('Sicherung B'),
+      expect.stringContaining('Sicherung A'),
+    ]);
+  });
+
   it('schickt die angehakten Posten einen nach dem anderen', async () => {
     zeichne();
     await screen.findByText('Sicherung A');
@@ -231,8 +248,10 @@ describe('Node-Platz – Mehrfachauswahl (Fundpunkt 211)', () => {
     await waitFor(() => {
       expect(api.deleteStorageEntry).toHaveBeenCalledTimes(2);
     });
-    expect(api.deleteStorageEntry).toHaveBeenNthCalledWith(1, NODE_ID, SICHERUNG_A.id);
-    expect(api.deleteStorageEntry).toHaveBeenNthCalledWith(2, NODE_ID, SICHERUNG_B.id);
+    // In der Reihenfolge der Tabelle, und die steht seit Fundpunkt 212 auf
+    // „Groesse absteigend": B (2 GiB) vor A (1 GiB).
+    expect(api.deleteStorageEntry).toHaveBeenNthCalledWith(1, NODE_ID, SICHERUNG_B.id);
+    expect(api.deleteStorageEntry).toHaveBeenNthCalledWith(2, NODE_ID, SICHERUNG_A.id);
   });
 
   it('haelt bei einem Fehlschlag nicht an und benennt ihn', async () => {
@@ -254,6 +273,6 @@ describe('Node-Platz – Mehrfachauswahl (Fundpunkt 211)', () => {
     await waitFor(() => {
       expect(api.deleteStorageEntry).toHaveBeenCalledTimes(2);
     });
-    expect(await screen.findByText(/1 gelöscht, fehlgeschlagen: Sicherung A/)).toBeTruthy();
+    expect(await screen.findByText(/1 gelöscht, fehlgeschlagen: Sicherung B/)).toBeTruthy();
   });
 });
