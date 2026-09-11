@@ -27,6 +27,28 @@ const PALANTIR_SH = posix(join(HIER, '..', 'linux', 'palantir.sh'));
 
 const SH_VORHANDEN = spawnSync('sh', ['-c', 'exit 0']).error === undefined;
 const nurMitShell = { skip: SH_VORHANDEN ? false : 'Keine POSIX-Shell (sh) im PATH.' };
+/**
+ * Laesst sich hier ein Ordner schreibgeschuetzt machen?
+ *
+ * Unter Windows nicht: `chmod 0555` geht durch, und geschrieben werden darf
+ * trotzdem. Im Container - und damit in der CI - schon.
+ */
+const SCHREIBSCHUTZ_MOEGLICH = (() => {
+  if (!SH_VORHANDEN) return false;
+  const ordner = mkdtempSync(join(tmpdir(), 'palantir-ro-'));
+  const lauf = spawnSync('sh', [
+    '-c',
+    'chmod 0555 "$1" && ! (printf x > "$1/probe" 2>/dev/null)',
+    '_',
+    posix(ordner),
+  ]);
+  spawnSync('sh', ['-c', 'chmod 0755 "$1"; rm -rf "$1"', '_', posix(ordner)]);
+
+  return lauf.status === 0;
+})();
+const nurMitSchreibschutz = {
+  skip: SCHREIBSCHUTZ_MOEGLICH ? false : 'Hier laesst sich kein Ordner schreibgeschuetzt machen.',
+};
 
 const aufraeumen = [];
 
@@ -365,5 +387,42 @@ describe('palantir-steam-anmelden', nurMitShell, () => {
 
     assert.equal(lauf.status, 75);
     assert.match(lauf.stderr, /keine Anmeldung hinterlassen/u);
+  });
+});
+
+/**
+ * Der Ablageort wird VOR der Anmeldung geprueft (2026-09-11).
+ *
+ * Am Ende zu erfahren, dass eine Datei nicht geschrieben werden darf, heisst:
+ * Passwort noch einmal eingeben und die Anmeldung in der Steam-App noch einmal
+ * bestaetigen. Genau so ist es passiert - der Unterordner `Steam/` stammte aus
+ * einem frueheren Lauf als `root`.
+ */
+describe('palantir-steam-anmelden: Vorpruefung', nurMitSchreibschutz, () => {
+  const WERKZEUG = posix(join(HIER, 'steam-anmelden.sh'));
+
+  it('bricht ab, bevor SteamCMD ueberhaupt gerufen wird', () => {
+    const ordner = aufbau();
+    const konto = join(ordner.wurzel, 'konto');
+    // Ein Unterordner, in den nicht geschrieben werden darf - so wie ein
+    // Ueberbleibsel aus einem Lauf als `root`.
+    mkdirSync(join(konto, 'Steam', 'config'), { recursive: true });
+    spawnSync('sh', ['-c', 'chmod 0555 "$1"', '_', posix(join(konto, 'Steam', 'config'))]);
+
+    const lauf = spawnSync('sh', [WERKZEUG, 'nightrider'], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        PALANTIR_STEAM_KONTO_DIR: posix(konto),
+        PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+      },
+    });
+
+    assert.equal(lauf.status, 77);
+    assert.match(lauf.stderr, /chown -R 1000:1000/u);
+    assert.match(lauf.stderr, /nichts zu verlieren/u);
+    // Entscheidend: SteamCMD wurde nicht gerufen.
+    assert.ok(!existsSync(ordner.protokoll));
   });
 });

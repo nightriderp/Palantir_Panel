@@ -19,7 +19,7 @@
 # Aufruf auf der Gamenode:
 #
 #   docker run -it --rm -v /srv/palantir/steam-konto:/konto \
-#     ghcr.io/nightriderp/palantir-base-steam:5 palantir-steam-anmelden NAME
+#     ghcr.io/nightriderp/palantir-base-steam:6 palantir-steam-anmelden NAME
 #
 # Passwort und Steam-Guard-Code fragt SteamCMD dort ab – sie gehen nie durch das
 # Panel und stehen nirgendwo in einer Datei.
@@ -54,7 +54,33 @@ if [ ! -w "$KONTO" ]; then
   echo 'Auf der Node einmal den Besitzer setzen – 1000 ist der Benutzer, unter' >&2
   echo 'dem die Spielcontainer laufen:' >&2
   echo '' >&2
-  echo '  chown 1000:1000 /srv/palantir/steam-konto' >&2
+  echo '  chown -R 1000:1000 /srv/palantir/steam-konto' >&2
+  exit 77
+fi
+
+# --- Der Ablageort, und zwar VOR der Anmeldung -------------------------------
+#
+# **Warum hier und nicht am Ende**: Am Ende hat der Betreiber sein Passwort
+# eingegeben und die Anmeldung in der Steam-App bestätigt – und *dann* zu
+# erfahren, dass eine Datei nicht geschrieben werden darf, heißt: alles noch
+# einmal. Genau so ist es am 2026-09-11 passiert.
+#
+# Der häufige Fall ist ein Überbleibsel: Wer den Container einmal als `root`
+# laufen ließ, hat `Steam/` dort als `root` angelegt. Der Mount selbst gehört
+# dann dem Benutzer 1000, der Unterordner nicht – die Prüfung oben geht durch,
+# das Kopieren später nicht.
+ZIEL="${KONTO}/Steam/config"
+
+if ! mkdir -p "$ZIEL" 2> /dev/null || [ ! -w "$ZIEL" ]; then
+  echo "In ${ZIEL} darf dieser Container nicht schreiben." >&2
+  echo '' >&2
+  echo 'Das kommt von einem früheren Lauf als „root" – der Unterordner gehört' >&2
+  echo 'dann ihm. Auf der Node einmal:' >&2
+  echo '' >&2
+  echo '  chown -R 1000:1000 /srv/palantir/steam-konto' >&2
+  echo '' >&2
+  echo 'Danach diesen Befehl noch einmal. (Die Anmeldung ist bis hierher' >&2
+  echo 'nicht passiert – es gibt nichts zu verlieren.)' >&2
   exit 77
 fi
 
@@ -82,11 +108,13 @@ if [ ! -f "${ARBEIT}/Steam/config/config.vdf" ]; then
   exit 75
 fi
 
-mkdir -p "${KONTO}/Steam/config"
-cp -a "${ARBEIT}/Steam/config/." "${KONTO}/Steam/config/"
+# `cp` ohne `-a`: Die Zeitstempel und den Besitzer der Vorlage zu erhalten ist
+# hier nichts wert und scheitert auf einer fremden Einhängung mit „Operation not
+# permitted", obwohl die Dateien längst geschrieben sind.
+cp "${ARBEIT}/Steam/config/"* "$ZIEL/"
 # Der Token ist die Anmeldung an diesem Konto; er geht niemanden sonst an.
-chmod -R go-rwx "${KONTO}/Steam/config" 2> /dev/null || true
+chmod -R go-rwx "$ZIEL" 2> /dev/null || true
 
 echo ''
-echo "Fertig. Der Token liegt in ${KONTO}/Steam/config."
+echo "Fertig. Der Token liegt in ${ZIEL}."
 echo 'Jetzt im Panel den Steam-Benutzernamen beim Server eintragen und starten.'
