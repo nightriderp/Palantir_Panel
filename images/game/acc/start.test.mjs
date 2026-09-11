@@ -382,6 +382,20 @@ describe('start.sh – wo accServer.exe liegt', nurMitIconv, () => {
     assert.ok(existsSync(join(tief, 'cfg', 'configuration.json')));
   });
 
+  it('findet sie auch bei anderer Gross-/Kleinschreibung', () => {
+    // Die Datei kommt aus einer Windows-Welt, in der beides erlaubt ist; unter
+    // Linux waere `AccServer.exe` sonst eine fehlende Datei.
+    const ordner = arbeitsordner({ mitServerdateien: false });
+    const tief = join(ordner.daten, 'server', 'server');
+    mkdirSync(tief, { recursive: true });
+    writeFileSync(join(tief, 'AccServer.exe'), 'exe' + String.fromCharCode(10));
+
+    const lauf = starte(ordner);
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.ok(existsSync(join(tief, 'cfg', 'configuration.json')));
+  });
+
   it('sagt bei leerem Ordner, was dort liegt', () => {
     // Der Blick in den Ordner spart eine Runde: Ein halber Download sieht
     // anders aus als ein Archiv mit fremdem Aufbau.
