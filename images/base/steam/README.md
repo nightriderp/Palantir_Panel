@@ -69,6 +69,43 @@ curl -sL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz 
 
 Die neue Summe nach `STEAMCMD_SHA256` im Dockerfile, dann `VERSION` erhöhen.
 
+## Wenn ein Spiel anonym nicht zu haben ist
+
+Die meisten Spiele geben ihren dedizierten Server anonym heraus. Ein paar nicht — Assetto Corsa
+Competizione ist ein Werkzeug am Elternspiel, und ein anonymer Abruf endet so:
+
+```
+ERROR! Failed to install app '1430110' (No subscription)
+```
+
+Für diese Spiele braucht SteamCMD ein Konto, das das Spiel besitzt. **Ein Passwort steht deshalb
+trotzdem nirgends im Panel:** Der Betreiber meldet sich einmal von Hand auf der Node an, SteamCMD
+legt dabei einen Token ab, und spätere Anmeldungen kommen ohne Passwort und ohne Steam-Guard-Code
+aus.
+
+Einmalig auf der Gamenode:
+
+```bash
+mkdir -p /srv/palantir/steam-konto && chown 1000:1000 /srv/palantir/steam-konto
+docker run -it --rm -v /srv/palantir/steam-konto:/heim -e HOME=/heim   ghcr.io/nightriderp/palantir-base-steam:3 /opt/steamcmd/steamcmd.sh +login DEIN_STEAM_NAME +quit
+```
+
+Danach liegt der Token unter `/srv/palantir/steam-konto/Steam/config/config.vdf`. Container von
+Spieltypen mit `requiresSteamAccount` bekommen den Ordner **schreibgeschützt** eingehängt — und nur
+sie.
+
+```sh
+steam_konto_uebernehmen   # kopiert den Token dorthin, wo SteamCMD ihn sucht
+STEAM_LOGIN=name          # dann meldet `steam_app_holen` sich damit an statt anonym
+```
+
+Kopiert wird er, weil SteamCMD in seine Konfiguration schreibt — auf einer schreibgeschützten
+Einhängung bräche schon der Login ab.
+
+**Was der Token wert ist:** Er ist die Anmeldung an diesem Steam-Konto. Wer Wurzelrechte auf der
+Node hat, kann damit herunterladen, was das Konto besitzt. Er gehört deshalb dem Benutzer 1000 und
+niemandem sonst, und er gehört nicht in ein Backup, das das Haus verlässt.
+
 ## Tests
 
 `steam.test.mjs` ruft die Bibliothek mit `sh` auf, ohne Docker und ohne Steam. Statt SteamCMD steht

@@ -67,7 +67,7 @@ function aufbau({ exitCode = 0 } = {}) {
 }
 
 /** Führt Shell aus, die beide Bibliotheken eingebunden hat. */
-function mitBibliothek(ordner, rumpf) {
+function mitBibliothek(ordner, rumpf, extra = {}) {
   return spawnSync('sh', ['-c', `set -eu; . "$1"; . "$2"; ${rumpf}`, '_', PALANTIR_SH, STEAM_SH], {
     encoding: 'utf8',
     timeout: 30_000,
@@ -75,6 +75,7 @@ function mitBibliothek(ordner, rumpf) {
       ...process.env,
       PALANTIR_DATA_DIR: posix(ordner.daten),
       PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+      ...extra,
     },
   });
 }
@@ -158,5 +159,93 @@ describe('steam_app_holen', nurMitShell, () => {
     assert.equal(aufrufe.length, 3);
     assert.match(lauf.stdout, /GESCHEITERT/u);
     assert.match(lauf.stdout, /dreimal gescheitert/u);
+  });
+});
+
+/**
+ * Der Anmelde-Token (2026-09-11).
+ *
+ * Ein paar Spiele geben ihren dedizierten Server nicht anonym heraus - Assetto
+ * Corsa Competizione endet mit "No subscription". Fuer sie meldet sich der
+ * Betreiber einmal von Hand auf der Node an; der Token wird schreibgeschuetzt
+ * eingehaengt, und diese Bibliothek uebernimmt ihn.
+ */
+describe('steam_konto_uebernehmen', nurMitShell, () => {
+  /** Legt einen Token-Ordner an, so wie SteamCMD ihn hinterlaesst. */
+  function mitToken(ordner, unterordner) {
+    const konto = join(ordner.wurzel, 'steam-konto');
+    const ziel = unterordner === '' ? konto : join(konto, ...unterordner.split('/'));
+    mkdirSync(ziel, { recursive: true });
+    writeFileSync(join(ziel, 'config.vdf'), 'mein-token\n');
+
+    return posix(konto);
+  }
+
+  it('kopiert den Token dorthin, wo SteamCMD ihn sucht', () => {
+    // Kopiert und nicht direkt benutzt: SteamCMD schreibt in seine
+    // Konfiguration, und die Einhaengung ist schreibgeschuetzt.
+    const ordner = aufbau();
+    const konto = mitToken(ordner, 'Steam/config');
+
+    const lauf = mitBibliothek(
+      ordner,
+      'palantir_intern_anlegen; steam_konto_uebernehmen; cat "$STEAM_HEIM/Steam/config/config.vdf"',
+      { PALANTIR_STEAM_KONTO_DIR: konto },
+    );
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.match(lauf.stdout, /mein-token/u);
+  });
+
+  it('findet ihn auch, wenn nur die eine Datei dort liegt', () => {
+    const ordner = aufbau();
+    const konto = mitToken(ordner, '');
+
+    const lauf = mitBibliothek(
+      ordner,
+      'palantir_intern_anlegen; steam_konto_uebernehmen; cat "$STEAM_HEIM/Steam/config/config.vdf"',
+      { PALANTIR_STEAM_KONTO_DIR: konto },
+    );
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.match(lauf.stdout, /mein-token/u);
+  });
+
+  it('meldet ohne Token einen Fehlschlag, statt still weiterzumachen', () => {
+    // Der Aufrufer entscheidet, was das heisst - bei einem Spiel, das ohne
+    // Konto gar nicht laedt, ist es das Ende.
+    const ordner = aufbau();
+
+    const lauf = mitBibliothek(
+      ordner,
+      'palantir_intern_anlegen; steam_konto_uebernehmen || printf "kein Token (%s)\n" "$?"',
+      { PALANTIR_STEAM_KONTO_DIR: posix(join(ordner.wurzel, 'gibtsnicht')) },
+    );
+
+    assert.match(lauf.stdout, /kein Token \(1\)/u);
+  });
+});
+
+describe('steam_app_holen mit Konto', nurMitShell, () => {
+  it('meldet sich anonym an, solange niemand etwas anderes sagt', () => {
+    const ordner = aufbau();
+
+    mitBibliothek(ordner, 'palantir_intern_anlegen; steam_app_holen 730 "$PALANTIR_DATENORDNER/s"');
+
+    assert.match(readFileSync(ordner.protokoll, 'utf8'), /\+login anonymous/u);
+  });
+
+  it('nimmt den Benutzernamen aus STEAM_LOGIN', () => {
+    const ordner = aufbau();
+
+    mitBibliothek(
+      ordner,
+      'palantir_intern_anlegen; steam_app_holen 1430110 "$PALANTIR_DATENORDNER/s"',
+      { STEAM_LOGIN: 'nightrider' },
+    );
+
+    const protokoll = readFileSync(ordner.protokoll, 'utf8');
+    assert.match(protokoll, /\+login nightrider/u);
+    assert.ok(!protokoll.includes('anonymous'));
   });
 });

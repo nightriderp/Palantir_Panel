@@ -21,6 +21,11 @@ STEAM_VORLAGE="${PALANTIR_STEAMCMD_DIR:-/opt/steamcmd}"
 STEAM_HEIM="${PALANTIR_INTERN}/steam"
 STEAM_CMD="${STEAM_HEIM}/steamcmd.sh"
 
+# Der Ordner mit dem Anmelde-Token, schreibgeschützt eingehängt (siehe
+# `steam_konto_uebernehmen`). Nur Container von Spieltypen mit
+# `requiresSteamAccount` bekommen ihn überhaupt zu sehen.
+STEAM_KONTO="${PALANTIR_STEAM_KONTO_DIR:-/opt/palantir/steam-konto}"
+
 # -----------------------------------------------------------------------------
 # `steam_vorbereiten`
 # -----------------------------------------------------------------------------
@@ -67,6 +72,11 @@ steam_vorbereiten() {
 # Verbindungsfehler ab, der beim nächsten Versuch weg ist. Ein Serverstart, der
 # daran scheitert, wäre für den Betreiber nicht zu unterscheiden von einem
 # echten Fehler.
+#
+# **Anonym, außer `STEAM_LOGIN` sagt etwas anderes.** Ein paar Spiele geben ihren
+# Server nur an ein Konto heraus, das sie besitzt; dann steht der Benutzername
+# in `STEAM_LOGIN`, und der Token liegt eingehängt bereit
+# (`steam_konto_uebernehmen`). Für alle anderen ändert sich nichts.
 steam_app_holen() {
   steam_anwendung="$1"
   steam_ziel="$2"
@@ -79,7 +89,7 @@ steam_app_holen() {
   while [ "$steam_versuch" -le 3 ]; do
     palantir_log "SteamCMD holt Anwendung ${steam_anwendung} (Versuch ${steam_versuch} von 3) ..."
 
-    if "$STEAM_CMD" +force_install_dir "$steam_ziel" +login anonymous \
+    if "$STEAM_CMD" +force_install_dir "$steam_ziel" +login "${STEAM_LOGIN:-anonymous}" \
       +app_update "$steam_anwendung" +quit; then
       palantir_log "Anwendung ${steam_anwendung} ist auf dem Stand."
 
@@ -90,6 +100,48 @@ steam_app_holen() {
   done
 
   palantir_log "SteamCMD ist dreimal gescheitert; die Anwendung ${steam_anwendung} fehlt."
+
+  return 1
+}
+
+# -----------------------------------------------------------------------------
+# `steam_konto_uebernehmen`
+# -----------------------------------------------------------------------------
+# Übernimmt den Anmelde-Token des Betreibers in das Zuhause von SteamCMD.
+#
+# **Warum es das gibt:** Ein paar Spiele geben ihren dedizierten Server nicht
+# anonym heraus – Assetto Corsa Competizione ist so eins („No subscription").
+# Für sie braucht SteamCMD ein Konto, das das Spiel besitzt.
+#
+# **Warum trotzdem kein Passwort im Panel steht:** Der Betreiber meldet sich
+# einmal von Hand auf der Node an. SteamCMD legt dabei einen Token ab, mit dem
+# spätere Anmeldungen ohne Passwort und ohne Steam-Guard-Code auskommen. Nur
+# dieser Token wird eingehängt, schreibgeschützt, und nur bei Spieltypen, die
+# ihn brauchen.
+#
+# **Warum kopiert und nicht direkt benutzt:** SteamCMD schreibt in seine
+# Konfiguration – schon ein erfolgreicher Login aktualisiert sie. Auf einer
+# schreibgeschützten Einhängung bräche das ab.
+#
+# Rückgabe 0, wenn ein Token da ist; 1, wenn nicht. Der Aufrufer entscheidet,
+# ob das ein Fehler ist.
+steam_konto_uebernehmen() {
+  steam_vorbereiten
+
+  # Zwei Stellen, weil zwei Wege dorthin führen: So legt SteamCMD es ab, wenn
+  # der Ordner als `HOME` dient (der dokumentierte Weg) – und so, wenn jemand
+  # nur die eine Datei hinüberkopiert hat.
+  for steam_quelle in "${STEAM_KONTO}/Steam/config" "${STEAM_KONTO}/config" "$STEAM_KONTO"; do
+    if [ -f "${steam_quelle}/config.vdf" ]; then
+      mkdir -p "${STEAM_HEIM}/Steam/config"
+      cp -a "${steam_quelle}/." "${STEAM_HEIM}/Steam/config/"
+      # Der Token gehört niemandem sonst.
+      chmod -R go-rwx "${STEAM_HEIM}/Steam/config" 2> /dev/null || true
+      palantir_log "Steam-Anmeldung übernommen aus ${steam_quelle}."
+
+      return 0
+    fi
+  done
 
   return 1
 }
