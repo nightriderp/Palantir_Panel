@@ -138,6 +138,11 @@ export function NodesAdminView() {
             <NodeRow
               key={node.id}
               node={node}
+              // Ab der zweiten Node weist das Backend den gemeinsamen Token ab
+              // (Fundpunkt 149) - dann ist ein fehlendes Node-Token kein
+              // Hinweis mehr, sondern der Grund, warum der Agent nicht
+              // hereinkommt (Fundpunkt 239).
+              mehrereNodes={nodes.length > 1}
               busy={busyId === node.id}
               onToggleMaintenance={() => toggleMaintenance(node)}
               onIssueToken={() => setPendingToken(node)}
@@ -210,12 +215,15 @@ export function NodesAdminView() {
 
 function NodeRow({
   node,
+  mehrereNodes,
   busy,
   onToggleMaintenance,
   onIssueToken,
   onDelete,
 }: {
   node: HostNodeDto;
+  /** Sind mehrere Nodes eingetragen? Entscheidet den Ton des Token-Hinweises. */
+  mehrereNodes: boolean;
   busy: boolean;
   onToggleMaintenance: () => void;
   onIssueToken: () => void;
@@ -283,11 +291,27 @@ function NodeRow({
         das gemeinsame AGENT_TOKEN aus der zentralen .env – bei mehreren Nodes
         genau der Zustand, den man sehen will (Gefundener Punkt 110).
       */}
-      <p className="mt-1 text-xs text-ink-faint">
-        {node.hasAgentToken === true
-          ? 'Eigenes Agent-Token vergeben.'
-          : 'Kein eigenes Agent-Token – der Agent meldet sich über das gemeinsame AGENT_TOKEN.'}
-      </p>
+      {/*
+        Fundpunkt 239: Bei genau einer Node ist das gemeinsame Token der
+        vorgesehene Rueckfallweg - eine Feststellung. Ab der zweiten weist das
+        Backend die Verbindung ab (Fundpunkt 149), und dieselbe Zeile beschreibt
+        dann den Grund, warum der Agent nicht hereinkommt. Die graue Schrift
+        haette das verschwiegen.
+      */}
+      {node.hasAgentToken === true ? (
+        <p className="mt-1 text-xs text-ink-faint">Eigenes Agent-Token vergeben.</p>
+      ) : mehrereNodes ? (
+        <p className="mt-1 text-xs font-medium text-warning">
+          Kein eigenes Agent-Token. Es sind mehrere Nodes eingetragen – das gemeinsame AGENT_TOKEN
+          wird abgewiesen, der Agent dieser Node kommt damit nicht herein. Über „Agent-Token
+          erzeugen“ eines vergeben und auf dem Homeserver als AGENT_TOKEN eintragen.
+        </p>
+      ) : (
+        <p className="mt-1 text-xs text-ink-faint">
+          Kein eigenes Agent-Token – der Agent meldet sich über das gemeinsame AGENT_TOKEN. Das
+          trägt, solange es bei dieser einen Node bleibt.
+        </p>
+      )}
     </Panel>
   );
 }
