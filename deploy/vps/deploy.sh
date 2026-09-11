@@ -191,6 +191,33 @@ pruefe_besitzer "${REPO_DIR}/data/audit-archive" 'Archivierung des Audit-Logs'
 pruefe_besitzer "${REPO_DIR}/data/panel-backups" 'Sicherungen der Panel-Datenbank'
 pruefe_besitzer "${REPO_DIR}/data/fonts" 'Hochgeladene Schriften der Oberflaeche'
 
+# Der oeffentliche Schluessel der Panel-Sicherungen (Fundpunkt 241). Steht in der
+# .env ein Pfad, muss die Datei auch da sein - sonst scheitert nicht das
+# Deployment, sondern erst die naechste naechtliche Sicherung, und zwar still im
+# Protokoll. Geprueft wird auf der HOST-Seite der Einhaengung: In der .env steht
+# der Pfad im Container (/data/panel-backup-key/...), auf der Platte liegt er
+# unter <repo>/data/panel-backup-key/.
+schluessel_pfad="$(grep -E '^[[:space:]]*PANEL_BACKUP_PUBLIC_KEY_FILE=' "${ENV_FILE}" \
+  | tail -n 1 | cut -d= -f2- | tr -d '"'"'"'\r' || true)"
+
+if [[ -n "${schluessel_pfad}" ]]; then
+  host_pfad="${schluessel_pfad/#\/data\/panel-backup-key/${REPO_DIR}/data/panel-backup-key}"
+
+  if [[ -f "${host_pfad}" ]]; then
+    log "Panel-Sicherungen werden verschluesselt (${host_pfad})."
+  else
+    log "ACHTUNG: PANEL_BACKUP_PUBLIC_KEY_FILE zeigt auf ${schluessel_pfad},"
+    log "         auf der Platte erwartet unter ${host_pfad} - da liegt nichts."
+    log "         Jede Panel-Sicherung wird scheitern, bis die Datei da ist."
+    log "         Schluesselpaar erzeugen (NICHT auf der VPS):"
+    log "         pnpm --filter @palantir/backend panel:schluessel"
+  fi
+else
+  log "Hinweis: PANEL_BACKUP_PUBLIC_KEY_FILE ist leer - die Panel-Sicherungen"
+  log "         liegen unverschluesselt unter data/panel-backups, mit jedem Konto"
+  log "         und jedem Geheimnis der Instanz darin."
+fi
+
 # -----------------------------------------------------------------------------
 # 4. Images holen und Stack starten
 # -----------------------------------------------------------------------------

@@ -16,6 +16,8 @@
     "ports:bestand": "tsx src/db/ports-bestandsserver.ts",
     "db:check": "drizzle-kit check",
     "audit:archive": "tsx src/db/archive-audit.ts",
+    "panel:schluessel": "tsx src/modules/panel-backups/schluessel-kommando.ts",
+    "panel:entschluesseln": "tsx src/modules/panel-backups/entschluesseln-kommando.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",

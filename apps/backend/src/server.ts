@@ -840,11 +840,26 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       dumper: createPgDumpDumper({
         databaseUrl: env.DATABASE_URL ?? '',
         binary: env.PG_DUMP_BINARY,
+        publicKeyFile: env.PANEL_BACKUP_PUBLIC_KEY_FILE,
       }),
       files: createNodeBackupFileRemover(),
       intervalHours: env.PANEL_BACKUP_INTERVAL_HOURS === 0 ? null : env.PANEL_BACKUP_INTERVAL_HOURS,
       retentionDays: env.PANEL_BACKUP_RETENTION_DAYS === 0 ? null : env.PANEL_BACKUP_RETENTION_DAYS,
     });
+
+    /*
+     * Fundpunkt 241: Ohne Schluessel bleibt der Abzug im Klartext liegen - mit
+     * jedem Konto, jedem TOTP-Geheimnis und jeder Webhook-Adresse der Instanz.
+     * Das ist eine zulaessige Wahl (bestehende Installationen laufen so), aber
+     * keine, die unbemerkt bleiben soll. Nur wenn ueberhaupt gesichert wird:
+     * Ohne Verzeichnis entsteht ohnehin keine Datei.
+     */
+    if ((env.PANEL_BACKUP_DIR ?? '') !== '' && (env.PANEL_BACKUP_PUBLIC_KEY_FILE ?? '') === '') {
+      app.log.warn(
+        'Panel-Sicherungen werden unverschluesselt abgelegt: PANEL_BACKUP_PUBLIC_KEY_FILE ist nicht gesetzt. ' +
+          'Schluesselpaar erzeugen mit `pnpm --filter @palantir/backend panel:schluessel`.',
+      );
+    }
 
     await app.register(registerPanelBackupRoutes({ service: panelBackups }));
 

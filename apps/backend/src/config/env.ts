@@ -378,6 +378,22 @@ const envSchema = z.object({
   PANEL_BACKUP_RETENTION_DAYS: z.coerce.number().int().min(0).max(365).default(14),
 
   /**
+   * Pfad zum **öffentlichen** Schlüssel, mit dem jede Panel-Sicherung
+   * verschlüsselt wird (Fundpunkt 241).
+   *
+   * Der Abzug enthält jedes Konto, jede Rolle, die TOTP-Geheimnisse und die
+   * Webhook-Adressen der Instanz. Ohne diese Angabe liegt er im Klartext im
+   * Sicherungsverzeichnis – das Backend weist beim Start darauf hin.
+   *
+   * Hier steht bewusst nur der **öffentliche** Teil: Er kann verschlüsseln und
+   * sonst nichts. Der private Schlüssel gehört zum Betreiber und wird
+   * ausschließlich beim Zurückspielen gebraucht; ein Geheimnis auf derselben
+   * Maschine wie die Sicherung wäre keines. Erzeugt wird das Paar mit
+   * `pnpm --filter @palantir/backend panel:schluessel`.
+   */
+  PANEL_BACKUP_PUBLIC_KEY_FILE: optionalEnvString(),
+
+  /**
    * Programm für den Abzug; nur nötig, wenn `pg_dump` nicht im `PATH` steht.
    *
    * Die Fassung muss zur Datenbank passen: Ein älteres `pg_dump` lehnt eine
