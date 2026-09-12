@@ -3087,6 +3087,7 @@ export class ServerOrchestrationService {
         dockerContainerId: server.dockerContainerId,
       })),
       frame.containers,
+      frame.reason,
     );
 
     this.deps.log.info(

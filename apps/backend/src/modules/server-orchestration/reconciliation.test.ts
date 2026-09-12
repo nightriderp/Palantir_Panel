@@ -212,6 +212,7 @@ describe('Container fehlt', () => {
     const plan = planReconciliation(
       [expected({ status: 'creating', dockerContainerId: null })],
       [],
+      'connected',
     );
 
     expect(plan.actions[0]?.kind).toBe('markCreateInterrupted');
@@ -221,6 +222,73 @@ describe('Container fehlt', () => {
     const plan = planReconciliation([expected({ status: 'stopped', dockerContainerId: null })], []);
 
     expect(plan.actions).toEqual([]);
+  });
+});
+
+/**
+ * Fundpunkt 272: Der Abgleich lief ursprünglich nur nach einem Reconnect. Seit
+ * Fundpunkt 232 fragt das Backend den Ist-Zustand zusätzlich alle fünf Minuten
+ * ab – und traf damit Server, die gerade angelegt wurden.
+ *
+ * Passiert ist das bei Assetto Corsa Competizione am 2026-09-13: Der Takt sah
+ * `creating` ohne Container, verbuchte das Anlegen als abgebrochen, und Sekunden
+ * später scheiterte das echte Anlegen an dem Zustand, den der Abgleich ihm
+ * untergeschoben hatte. Ein Proton-Image ist mehrere Gigabyte groß; sein Zug
+ * dauert länger als der Abstand zweier Berichte.
+ */
+describe('Ein laufendes Anlegen', () => {
+  const angelegt = expected({ status: 'creating', dockerContainerId: null });
+
+  it('bleibt beim angeforderten Bericht unberührt', () => {
+    const plan = planReconciliation([angelegt], [], 'requested');
+
+    expect(plan.actions).toEqual([]);
+    expect(plan.unchangedServerIds).toEqual(['server-1']);
+  });
+
+  it('gilt nach einem Reconnect weiterhin als unterbrochen', () => {
+    const plan = planReconciliation([angelegt], [], 'connected');
+
+    expect(plan.actions[0]?.kind).toBe('markCreateInterrupted');
+  });
+
+  it('wird ohne Angabe des Anlasses als Reconnect gelesen', () => {
+    // Die strengere Lesart ist die Vorgabe: Wer den Anlass nicht kennt, darf
+    // nicht annehmen, dass gerade jemand daran arbeitet.
+    const plan = planReconciliation([angelegt], []);
+
+    expect(plan.actions[0]?.kind).toBe('markCreateInterrupted');
+  });
+
+  it('bleibt auch dann unberührt, wenn der Container schon steht', () => {
+    // Dieselbe Stelle, ein paar Sekunden später: Der Container ist da, das
+    // Anlegen aber noch nicht abgeschlossen. Ihn jetzt als `stopped` zu
+    // verbuchen nähme dem Anlegen denselben Zustand weg.
+    const plan = planReconciliation(
+      [expected({ status: 'creating' })],
+      [observed({ status: 'created' })],
+      'requested',
+    );
+
+    expect(plan.actions).toEqual([]);
+  });
+
+  it('hält andere Server des Berichts nicht auf', () => {
+    const plan = planReconciliation(
+      [angelegt, expected({ id: 'server-2', status: 'running', dockerContainerId: 'container-2' })],
+      [
+        observed({
+          serverId: 'server-2',
+          containerId: 'container-2',
+          status: 'exited',
+          exitCode: 1,
+        }),
+      ],
+      'requested',
+    );
+
+    expect(plan.actions).toHaveLength(1);
+    expect(plan.actions[0]).toMatchObject({ kind: 'markCrashed', serverId: 'server-2' });
   });
 });
 
