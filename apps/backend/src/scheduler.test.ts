@@ -988,6 +988,7 @@ function makeSweepHarness(server: ServerRecord): SweepHarness {
       healthCheckIntervalMs: 5_000,
       healthCheckAttemptTimeoutMs: 1_000,
       createTimeoutMs: 900_000,
+      fileListTimeoutMs: 180_000,
       maxUploadBytes: 2 * 1024 * 1024 * 1024,
       maxWorldArchiveBytes: 64 * 1024 * 1024,
       statsHistoryRetentionHours: 48,

@@ -150,6 +150,14 @@ export interface OrchestrationConfig {
    * MB mit.
    */
   readonly createTimeoutMs: number;
+  /**
+   * Frist für `FILE_LIST` (Fundpunkt 275).
+   *
+   * Ebenfalls länger als die übliche Befehlsfrist: Die Engine packt für jede
+   * Auflistung den ganzen Ordner ein. Die Begründung steht an
+   * `AGENT_FILE_LIST_TIMEOUT_MS`.
+   */
+  readonly fileListTimeoutMs: number;
   readonly defaultAutoShutdown: ServerAutoShutdown;
   /**
    * Maximale Upload-Größe pro Datei aus `MAX_UPLOAD_SIZE_BYTES` (Pflichtenheft
@@ -2219,10 +2227,12 @@ export class ServerOrchestrationService {
     const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
     const relativ = normalizeRelativePath(relativePath);
 
-    const result = await session.sendCommand('FILE_LIST', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, relativ),
-    });
+    const result = await session.sendCommand(
+      'FILE_LIST',
+      server.id,
+      { containerId, path: toContainerPath(dataRoot, relativ) },
+      { timeoutMs: this.deps.config.fileListTimeoutMs },
+    );
 
     return toServerFileListDto(server.id, dataRoot, relativ, result.entries, {
       writable: options.writable,
@@ -2411,10 +2421,12 @@ export class ServerOrchestrationService {
     const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
     const elternPfad = parentPathOf(relativePath) ?? '';
 
-    const result = await session.sendCommand('FILE_LIST', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, elternPfad),
-    });
+    const result = await session.sendCommand(
+      'FILE_LIST',
+      server.id,
+      { containerId, path: toContainerPath(dataRoot, elternPfad) },
+      { timeoutMs: this.deps.config.fileListTimeoutMs },
+    );
     const name = path.posix.basename(relativePath);
 
     return (
