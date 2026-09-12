@@ -241,6 +241,36 @@ export class DockerHttpClient {
     return this.#send(method, pfad, options, this.#signal(options));
   }
 
+  /**
+   * Anfrage, deren Antwort **stueckweise** durchgereicht wird, ohne sie zu
+   * sammeln (Fundpunkt 274).
+   *
+   * Fuer alles, was sich im Vorbeigehen auswerten laesst - das Auflisten eines
+   * Ordners liest aus dem TAR-Strom nur die Koepfe. `requestBuffer` waere dort
+   * die falsche Form: Es haelt am Ende das ganze Archiv im Speicher, auch wenn
+   * der Aufrufer davon nichts braucht, und muss deshalb eine Groessengrenze
+   * ziehen, an der ein grosser Datenordner scheitert.
+   *
+   * Wer hier abbricht (vorzeitiges `break`), schliesst den Koerper ueber
+   * `return()` des Generators - der `finally`-Block raeumt die Verbindung ab.
+   */
+  async *requestChunks(
+    method: string,
+    pfad: string,
+    options: DockerRequestOptions = {},
+  ): AsyncGenerator<Uint8Array> {
+    const antwort = await this.#send(method, pfad, options, this.#signal(options));
+    const koerper = antwort.body;
+
+    if (koerper === null) return;
+
+    try {
+      yield* streamToAsyncIterable(koerper);
+    } finally {
+      await koerper.cancel().catch(() => undefined);
+    }
+  }
+
   /** Anfrage, deren Antwort vollstaendig als Puffer gelesen wird (TAR-Download, Exec-Ausgabe). */
   async requestBuffer(
     method: string,
