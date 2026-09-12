@@ -240,3 +240,148 @@ export function createTar(dateien: readonly TarFileInput[]): Buffer {
   bloecke.push(Buffer.alloc(BLOCK_SIZE * 2));
   return Buffer.concat(bloecke);
 }
+
+/**
+ * Ein Eintrag ohne seinen Inhalt - alles, was eine Auflistung braucht.
+ *
+ * Die Trennung ist der ganze Punkt von {@link parseTarHeaders}: Name, Groesse,
+ * Rechte und Zeitstempel stehen im 512-Byte-Kopf, der Inhalt dahinter. Wer nur
+ * auflisten will, braucht den Inhalt nie.
+ */
+export type TarEntryHeader = Omit<TarEntry, 'content'>;
+
+/**
+ * Liest die Koepfe eines TAR-Stroms, ohne die Inhalte in den Speicher zu holen
+ * (Fundpunkt 274).
+ *
+ * `parseTar` nimmt einen fertigen Puffer - das setzt voraus, dass das ganze
+ * Archiv schon im Speicher liegt. Fuer das Auflisten eines Ordners ist das die
+ * falsche Form: Die Engine packt rekursiv **mit Inhalten** ein, und ein
+ * Datenordner mit Wine-Prefix und SteamCMD-Kopie ist schnell ein Gigabyte gross.
+ * Der Datei-Manager scheiterte deshalb an der Grenze aus Fundpunkt 228, statt
+ * eine Liste zu zeigen.
+ *
+ * Hier wird stattdessen gestroemt: Jeder Kopf wird gelesen, der zugehoerige
+ * Inhalt **uebersprungen**. Der Speicherbedarf haengt damit an der Zahl der
+ * Eintraege, nicht an der Groesse der Dateien - ein Ordner mit einer 40 GB
+ * grossen Weltdatei kostet genauso wenig wie einer mit einer leeren.
+ *
+ * Uebertragen werden die Bytes weiterhin: Die Engine kennt keinen Aufruf, der
+ * nur die Namen liefert. Das ist Zeit, aber kein Speicher - und Zeit laesst
+ * sich aushalten, ein voller Agent-Prozess nicht.
+ */
+export async function* parseTarHeaders(
+  stuecke: AsyncIterable<Uint8Array>,
+): AsyncGenerator<TarEntryHeader> {
+  const strom = new Blockleser(stuecke);
+  let ueberschriebenerName: string | undefined;
+
+  for (;;) {
+    const kopf = await strom.liesGenau(BLOCK_SIZE);
+    if (kopf === null || istNullblock(kopf)) return;
+
+    const groesse = leseOktal(kopf, 124, 12);
+    const typFlag = leseString(kopf, 156, 1);
+    // Der Inhalt steht in vollen Bloecken; der Rest des letzten ist Fuellung.
+    const gepolstert = Math.ceil(groesse / BLOCK_SIZE) * BLOCK_SIZE;
+
+    // PAX-Kopfsatz und GNU-Langname tragen den Namen des naechsten Eintrags -
+    // die beiden muessen gelesen werden. Sie sind klein (ein Pfad), nicht die
+    // Nutzdaten, um die es hier geht.
+    if (typFlag === 'x' || typFlag === 'X' || typFlag === 'L') {
+      const inhalt = await strom.liesGenau(gepolstert);
+      if (inhalt === null) return;
+
+      const nutz = inhalt.subarray(0, groesse);
+      ueberschriebenerName =
+        typFlag === 'L'
+          ? nutz.toString('utf8').replace(/\0+$/u, '')
+          : (parsePaxRecords(nutz)['path'] ?? ueberschriebenerName);
+      continue;
+    }
+
+    await strom.ueberspringe(gepolstert);
+
+    // Globaler PAX-Kopfsatz und GNU-Langlink interessieren hier nicht.
+    if (typFlag === 'g' || typFlag === 'K') continue;
+
+    const prefix = leseString(kopf, 345, 155);
+    const basisName = leseString(kopf, 0, 100);
+    const name = ueberschriebenerName ?? (prefix.length > 0 ? `${prefix}/${basisName}` : basisName);
+    ueberschriebenerName = undefined;
+
+    if (name.length === 0) continue;
+
+    yield {
+      name,
+      type: typAusFlag(typFlag),
+      size: groesse,
+      mode: (leseOktal(kopf, 100, 8) & 0o7777).toString(8),
+      modifiedAt: new Date(leseOktal(kopf, 136, 12) * 1000).toISOString(),
+    };
+  }
+}
+
+/**
+ * Macht aus beliebig geschnittenen Stromstuecken die Bloecke, die TAR braucht.
+ *
+ * Ein Stueck aus dem Netz endet irgendwo - mitten im Kopf, mitten im Inhalt.
+ * Gehalten wird immer nur der angebrochene Rest.
+ */
+class Blockleser {
+  readonly #quelle: AsyncIterator<Uint8Array>;
+  #rest: Buffer = Buffer.alloc(0);
+  #amEnde = false;
+
+  constructor(stuecke: AsyncIterable<Uint8Array>) {
+    this.#quelle = stuecke[Symbol.asyncIterator]();
+  }
+
+  /** Holt das naechste Stueck an den Rest; `false`, wenn der Strom zu Ende ist. */
+  async #nachschub(): Promise<boolean> {
+    if (this.#amEnde) return false;
+
+    const naechstes = await this.#quelle.next();
+    if (naechstes.done === true) {
+      this.#amEnde = true;
+      return false;
+    }
+
+    this.#rest =
+      this.#rest.length === 0
+        ? Buffer.from(naechstes.value)
+        : Buffer.concat([this.#rest, Buffer.from(naechstes.value)]);
+
+    return true;
+  }
+
+  /**
+   * Genau `anzahl` Bytes - oder `null`, wenn der Strom vorher endet.
+   *
+   * Ein abgeschnittenes Archiv ist kein Fehlerfall, den es zu melden gaebe: Es
+   * kommt vor, wenn ein Container waehrend des Lesens verschwindet. Die bis
+   * dahin gelesenen Eintraege bleiben gueltig.
+   */
+  async liesGenau(anzahl: number): Promise<Buffer | null> {
+    while (this.#rest.length < anzahl) {
+      if (!(await this.#nachschub())) return null;
+    }
+
+    const block = this.#rest.subarray(0, anzahl);
+    this.#rest = this.#rest.subarray(anzahl);
+    return block;
+  }
+
+  /** Wie {@link liesGenau}, nur dass die Bytes verworfen werden. */
+  async ueberspringe(anzahl: number): Promise<void> {
+    let offen = anzahl;
+
+    while (offen > 0) {
+      if (this.#rest.length === 0 && !(await this.#nachschub())) return;
+
+      const weg = Math.min(offen, this.#rest.length);
+      this.#rest = this.#rest.subarray(weg);
+      offen -= weg;
+    }
+  }
+}

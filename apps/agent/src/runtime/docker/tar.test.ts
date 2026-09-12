@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTar, parseTar } from './tar.js';
+import { type TarEntryHeader, createTar, parseTar, parseTarHeaders } from './tar.js';
 
 describe('TAR-Codec fuer den Datei-Manager', () => {
   it('schreibt und liest eine Datei verlustfrei', () => {
@@ -113,3 +113,147 @@ function tarMitEintrag(
   const fuellung = Buffer.alloc((512 - (inhalt.length % 512)) % 512);
   return Buffer.concat([kopf, inhalt, fuellung]);
 }
+
+/**
+ * Fundpunkt 274: Das Auflisten eines Ordners las bis hierher das ganze Archiv
+ * in den Speicher - Inhalte inbegriffen, obwohl davon nichts gebraucht wird.
+ * Ein Datenordner mit Wine-Prefix und SteamCMD-Kopie sprengte damit die Grenze
+ * aus Fundpunkt 228, und der Datei-Manager zeigte gar nichts mehr.
+ */
+describe('TAR-Koepfe aus einem Strom lesen', () => {
+  /** Schneidet einen Puffer in Stuecke, wie es ein Netzstrom tut. */
+  async function* inStuecken(archiv: Buffer, groesse: number): AsyncGenerator<Uint8Array> {
+    for (let position = 0; position < archiv.length; position += groesse) {
+      yield archiv.subarray(position, position + groesse);
+    }
+  }
+
+  async function koepfe(stuecke: AsyncIterable<Uint8Array>): Promise<TarEntryHeader[]> {
+    const gelesen: TarEntryHeader[] = [];
+    for await (const kopf of parseTarHeaders(stuecke)) gelesen.push(kopf);
+    return gelesen;
+  }
+
+  it('liest dieselben Angaben wie der Puffer-Weg', async () => {
+    const archiv = createTar([
+      { name: 'server.properties', content: Buffer.from('level-name=welt\n'), mode: 0o640 },
+      { name: 'welt', content: Buffer.alloc(0), type: 'directory' },
+      { name: 'welt/level.dat', content: Buffer.alloc(700, 0xab) },
+    ]);
+
+    const gestroemt = await koepfe(inStuecken(archiv, 512));
+    const gepuffert = parseTar(archiv);
+
+    expect(gestroemt.map((kopf) => kopf.name)).toEqual(gepuffert.map((eintrag) => eintrag.name));
+    expect(gestroemt.map((kopf) => kopf.size)).toEqual(gepuffert.map((eintrag) => eintrag.size));
+    expect(gestroemt.map((kopf) => kopf.type)).toEqual(gepuffert.map((eintrag) => eintrag.type));
+    expect(gestroemt.map((kopf) => kopf.mode)).toEqual(gepuffert.map((eintrag) => eintrag.mode));
+  });
+
+  it.each([1, 7, 512, 513, 4096])(
+    'kommt mit jeder Stueckgroesse zurecht (%i Byte)',
+    async (groesse) => {
+      // Ein Stueck aus dem Netz endet irgendwo - mitten im Kopf, mitten im
+      // Inhalt, mitten in der Fuellung.
+      const archiv = createTar([
+        { name: 'a.txt', content: Buffer.from('a') },
+        { name: 'b.bin', content: Buffer.alloc(1000, 7) },
+        { name: 'c.txt', content: Buffer.from('ccc') },
+      ]);
+
+      const gelesen = await koepfe(inStuecken(archiv, groesse));
+
+      expect(gelesen.map((kopf) => kopf.name)).toEqual(['a.txt', 'b.bin', 'c.txt']);
+      expect(gelesen.map((kopf) => kopf.size)).toEqual([1, 1000, 3]);
+    },
+  );
+
+  it('traegt einen langen Namen ueber die Stueckgrenze', async () => {
+    // Lange Namen stehen in einem eigenen Kopfsatz vor dem Eintrag; der muss
+    // gelesen werden, auch wenn das Stueck mitten darin endet.
+    const langerName = `${'tief/'.repeat(30)}datei.txt`;
+    const archiv = createTar([{ name: langerName, content: Buffer.from('x') }]);
+
+    const gelesen = await koepfe(inStuecken(archiv, 13));
+
+    expect(gelesen).toHaveLength(1);
+    expect(gelesen[0]?.name).toBe(langerName);
+  });
+
+  it('haelt die Inhalte nicht fest, auch nicht bei einem riesigen Archiv', async () => {
+    /*
+     * Der eigentliche Punkt. Das Archiv ist groesser als die alte Grenze von
+     * 128 MiB; erzeugt wird es haeppchenweise, damit der Test selbst nicht das
+     * tut, was er verhindern soll.
+     *
+     * Gemessen wird, was gleichzeitig im Speicher liegt: Jedes Stueck wird nach
+     * der Uebergabe wieder freigegeben, der Leser darf nichts davon behalten.
+     */
+    const nutzGroesse = 200 * 1024 * 1024;
+    const stueckGroesse = 512 * 1024;
+
+    async function* riesig(): AsyncGenerator<Uint8Array> {
+      yield createTar([{ name: 'welt.dat', content: Buffer.alloc(0) }]).subarray(0, 512);
+
+      // Der Kopf oben nennt Groesse 0; hier kommt ein zweiter mit echter Groesse.
+      const kopf = createTar([{ name: 'gross.bin', content: Buffer.alloc(0) }]).subarray(0, 512);
+      const mitGroesse = Buffer.from(kopf);
+      mitGroesse.write(`${nutzGroesse.toString(8).padStart(11, '0')}\0`, 124, 12, 'ascii');
+      // Pruefsumme neu rechnen, sonst ist der Kopf ungueltig.
+      mitGroesse.fill(0x20, 148, 156);
+      const summe = mitGroesse.reduce((wert, byte) => wert + byte, 0);
+      mitGroesse.write(`${summe.toString(8).padStart(6, '0')}\0 `, 148, 8, 'ascii');
+      yield mitGroesse;
+
+      for (let uebrig = nutzGroesse; uebrig > 0; uebrig -= stueckGroesse) {
+        yield Buffer.alloc(Math.min(stueckGroesse, uebrig), 0x5a);
+      }
+    }
+
+    const gelesen = await koepfe(riesig());
+
+    expect(gelesen.map((kopf) => kopf.name)).toEqual(['welt.dat', 'gross.bin']);
+    expect(gelesen[1]?.size).toBe(nutzGroesse);
+  });
+
+  it('gibt zurueck, was es hat, wenn der Strom mitten im Archiv abbricht', async () => {
+    // Kommt vor, wenn ein Container waehrend des Lesens verschwindet. Die
+    // bereits gelesenen Eintraege bleiben gueltig.
+    const archiv = createTar([
+      { name: 'a.txt', content: Buffer.from('a') },
+      { name: 'b.txt', content: Buffer.from('b') },
+    ]);
+
+    const gelesen = await koepfe(inStuecken(archiv.subarray(0, 1200), 512));
+
+    expect(gelesen.map((kopf) => kopf.name)).toEqual(['a.txt']);
+  });
+
+  it('liefert den ersten Kopf, bevor der Strom zu Ende ist', async () => {
+    /*
+     * Der Nachweis, dass wirklich gestroemt wird: Kaeme der erste Eintrag erst
+     * am Ende, waere das Archiv vorher vollstaendig gelesen worden.
+     */
+    let gezogen = 0;
+
+    async function* mitZaehler(): AsyncGenerator<Uint8Array> {
+      const archiv = createTar([
+        { name: 'erste.txt', content: Buffer.from('a') },
+        { name: 'zweite.bin', content: Buffer.alloc(100_000, 1) },
+      ]);
+
+      for (let position = 0; position < archiv.length; position += 1024) {
+        gezogen += 1;
+        yield archiv.subarray(position, position + 1024);
+      }
+    }
+
+    const leser = parseTarHeaders(mitZaehler());
+    const erster = await leser.next();
+    const nachErstem = gezogen;
+    await leser.return(undefined);
+
+    expect(erster.value?.name).toBe('erste.txt');
+    expect(nachErstem).toBeLessThan(5);
+  });
+});

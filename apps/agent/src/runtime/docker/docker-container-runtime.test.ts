@@ -23,6 +23,7 @@ import {
   DockerContainerRuntime,
   ENGINE_RECONNECT_INITIAL_MS,
   ENGINE_RECONNECT_MAX_MS,
+  MAX_LISTING_ENTRIES,
 } from './docker-container-runtime.js';
 import { DockerHttpClient } from './http-client.js';
 import { createTar } from './tar.js';
@@ -616,6 +617,61 @@ describe('Datei-Manager', () => {
 
     expect(archivAufruf()?.query.get('path')).toBe('/data');
     expect(eintraege.map((eintrag) => eintrag.name)).toEqual(['server.properties']);
+  });
+
+  it('listet auch einen Datenordner, der groesser ist als der Arbeitsspeicher-Vorrat', async () => {
+    /*
+     * Fundpunkt 274, der Fall aus dem Betrieb: Ein Spielserver unter Proton
+     * legt Wine-Prefix und SteamCMD-Kopie in den Datenordner - zusammen leicht
+     * ein Gigabyte. Die Engine packt beim Auflisten rekursiv **mit Inhalten**
+     * ein; wurde das Archiv erst gesammelt, scheiterte es an der Grenze von
+     * 128 MiB, und der Datei-Manager meldete nur noch, der Befehl sei
+     * fehlgeschlagen.
+     *
+     * Der Koerper entsteht hier haeppchenweise, damit der Test nicht selbst
+     * anlegt, was er verhindern soll.
+     */
+    const kopfteil = createTar([
+      { name: 'data/configuration.json', content: Buffer.from('{}') },
+      { name: 'data/.palantir', content: Buffer.alloc(0), type: 'directory' },
+      { name: 'data/.palantir/proton/gross.bin', content: Buffer.alloc(0) },
+    ]);
+    const fuellung = 300 * 1024 * 1024;
+
+    antwortgeber = mitDatenVolume(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(steuerung) {
+              steuerung.enqueue(kopfteil);
+              // Der Prefix: viele Bytes, die niemanden interessieren.
+              for (let uebrig = fuellung; uebrig > 0; uebrig -= 1024 * 1024) {
+                steuerung.enqueue(Buffer.alloc(Math.min(1024 * 1024, uebrig), 0x5a));
+              }
+              steuerung.close();
+            },
+          }),
+        ),
+    );
+
+    const eintraege = await runtime.listFiles('c-1', '/data');
+
+    expect(eintraege.map((eintrag) => eintrag.name)).toEqual(['.palantir', 'configuration.json']);
+  });
+
+  it('schneidet eine Auflistung ab, statt unbegrenzt zu sammeln', async () => {
+    // Nicht die Groesse der Dateien ist die verbliebene Gefahr, sondern die
+    // Zahl der Namen: Die landen als Liste im Speicher und gehen ans Panel.
+    const viele = Array.from({ length: MAX_LISTING_ENTRIES + 50 }, (_, nummer) => ({
+      name: `data/datei-${nummer}.txt`,
+      content: Buffer.alloc(0),
+    }));
+
+    antwortgeber = mitDatenVolume(() => new Response(createTar(viele)));
+
+    const eintraege = await runtime.listFiles('c-1', '/data');
+
+    expect(eintraege).toHaveLength(MAX_LISTING_ENTRIES);
   });
 
   it('prueft die Groesse per HEAD, bevor eine Datei geladen wird', async () => {
