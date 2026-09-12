@@ -322,6 +322,43 @@ if [[ -n "${ohne_check}" ]]; then
 fi
 docker compose --env-file "${ENV_FILE}" ps --format 'table {{.Service}}\t{{.Status}}'
 
+# -----------------------------------------------------------------------------
+# 6. Alte Abbilder aufraeumen
+# -----------------------------------------------------------------------------
+# Jedes Deployment zieht ein neues Backend- und ein neues Frontend-Abbild und
+# laesst das bisherige liegen. Am 13.09.2026 hatten sich so 110 Abbilder mit
+# 13,7 GB angesammelt - auf einer Platte mit 38 GB. Nach einem Prune von Hand
+# blieben 6 Abbilder mit 1,58 GB uebrig, die Belegung fiel von 52 % auf 15 %.
+# Ohne diesen Schritt steht dasselbe in wenigen Wochen wieder an.
+#
+# Bewusst erst hier, nach der Gesundheitspruefung: Scheitert das Deployment,
+# bricht das Skript oben mit `fail` ab und es wird nichts geloescht.
+#
+# `-a` klingt schlimmer, als es ist: Docker fasst kein Abbild an, das ein
+# Container benutzt - auch kein beendeter. Uebrig bleibt also genau die gerade
+# laufende Fassung. Der Rueckwaertsgang laeuft ohnehin ueber
+# `deploy.sh <alter-commit>` und zieht die Abbilder anhand des SHA neu aus der
+# Registry (siehe Rueckfall am Ende dieser Datei); ein lokaler Vorrat spart dabei
+# nur den Zug selbst, rund eine Minute.
+#
+# Der Bau-Zwischenspeicher (`docker builder prune`) wird ausdruecklich NICHT
+# angefasst: Am 13.09. waren dessen 22 Eintraege mit 1,27 GB allesamt in
+# Benutzung, und auf der VPS wird ohnehin nichts gebaut.
+#
+# Ein Fehlschlag beim Aufraeumen darf das Deployment nicht kippen - der Stack
+# laeuft an dieser Stelle bereits gesund. Das `if` haelt `set -e` von genau
+# diesem Aufruf fern; gemeldet wird der Fehler trotzdem.
+log 'Raeume alte Abbilder auf ...'
+if aufraeum_ausgabe="$(docker image prune -af 2>&1)"; then
+  # Die letzte Zeile ist "Total reclaimed space: ..." - mehr braucht das
+  # Protokoll nicht, die Liste der geloeschten Ebenen ist lang und nutzlos.
+  log "$(printf '%s' "${aufraeum_ausgabe}" | tail -n 1)"
+else
+  log 'Hinweis: Das Aufraeumen der Abbilder ist fehlgeschlagen. Das Deployment'
+  log '         selbst ist davon unberuehrt - der Stack laeuft. Ausgabe:'
+  printf '%s\n' "${aufraeum_ausgabe}" >&2
+fi
+
 log "Fertig: ${vorher} -> ${ziel}"
 
 # Rückfall (von Hand, siehe docs/ci-cd.md §4): Dieses Skript mit dem vorherigen
