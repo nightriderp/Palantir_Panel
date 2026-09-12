@@ -390,6 +390,12 @@ class AnsweringSocket implements AgentSocket {
   session: AgentSession | null = null;
   /** Antwort je Befehl; ohne Eintrag wird Erfolg mit `null` gemeldet. */
   readonly answers = new Map<AgentCommandName, ApiResponse<unknown>>();
+  /**
+   * Befehle, auf die dieser Agent **nicht** antwortet - fuer alles, was die
+   * Frist betrifft. Ein Agent, der schweigt, ist der Normalfall bei einem
+   * Befehl, der laenger braucht als erwartet.
+   */
+  readonly schweigt = new Set<AgentCommandName>();
 
   send(data: string): void {
     const frame = JSON.parse(data) as {
@@ -404,6 +410,8 @@ class AnsweringSocket implements AgentSocket {
     }
 
     this.commands.push({ command: frame.command, payload: frame.payload });
+
+    if (this.schweigt.has(frame.command)) return;
 
     const result =
       this.answers.get(frame.command) ?? this.defaultAnswerFor(frame.command, frame.payload);
@@ -821,6 +829,7 @@ function makeHarness(
       healthCheckIntervalMs: 5_000,
       healthCheckAttemptTimeoutMs: 1_000,
       createTimeoutMs: 900_000,
+      fileListTimeoutMs: 180_000,
       maxUploadBytes: options.maxUploadBytes ?? 2 * 1024 * 1024 * 1024,
       maxWorldArchiveBytes: options.maxWorldArchiveBytes ?? 64 * 1024 * 1024,
       statsHistoryRetentionHours: options.statsHistoryRetentionHours ?? 48,
@@ -3641,6 +3650,42 @@ describe('Datei-Manager (Arbeitspaket P2)', () => {
   function befehle(harness: Harness, command: string) {
     return harness.socket.commands.filter((eintrag) => eintrag.command === command);
   }
+
+  it('gibt dem Auflisten eine eigene, laengere Frist als anderen Befehlen', async () => {
+    /*
+     * Fundpunkt 275. Die Container-Engine kennt keinen Aufruf „nur die Namen":
+     * Sie packt fuer jede Auflistung den ganzen Ordner ein, rekursiv und mit
+     * Inhalten. Bei einem Server unter Proton liegen Wine-Prefix und
+     * SteamCMD-Kopie im Datenordner - Zehntausende kleiner Dateien.
+     *
+     * Mit der ueblichen Frist von 30 s verwarf das Backend den Befehl, waehrend
+     * der Agent noch las; die Antwort kam an und landete als „Ergebnis ohne
+     * offenen Befehl verworfen" im Log. Im Panel stand „Die Ausfuehrung des
+     * Befehls auf dem Homeserver ist fehlgeschlagen", obwohl nichts
+     * fehlgeschlagen war.
+     */
+    const harness = makeHarness();
+    const id = await angelegterServer(harness);
+    harness.socket.schweigt.add('FILE_LIST');
+
+    vi.useFakeTimers();
+
+    try {
+      const offen = harness.service.listFiles(id, '', { writable: true });
+      const beobachtet = offen.catch((fehler: unknown) => fehler);
+      const nochOffen = Symbol('nochOffen');
+
+      // Die uebliche Befehlsfrist ist laengst um - dieser Befehl steht noch.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(await Promise.race([beobachtet, Promise.resolve(nochOffen)])).toBe(nochOffen);
+
+      // Unbegrenzt wartet er aber nicht.
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(await beobachtet).toMatchObject({ code: 'AGENT_COMMAND_TIMEOUT' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('listet relativ zum Datenordner und schickt dem Agent den absoluten Pfad', async () => {
     const harness = makeHarness();

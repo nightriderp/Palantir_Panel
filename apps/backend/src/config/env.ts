@@ -233,6 +233,25 @@ const envSchema = z.object({
    */
   AGENT_CREATE_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
   /**
+   * Frist für `FILE_LIST` (Fundpunkt 275).
+   *
+   * Eigener Wert, weil das Auflisten nicht so billig ist, wie es aussieht: Die
+   * Container-Engine kennt keinen Aufruf „nur die Namen" und packt für jede
+   * Auflistung den ganzen Ordner ein – rekursiv und mit Inhalten. Bei einem
+   * Server unter Proton liegen Wine-Prefix und SteamCMD-Kopie im Datenordner;
+   * das sind Zehntausende kleiner Dateien, und sie einzupacken ist
+   * Kopfbewegung auf der Platte, nicht Durchsatz.
+   *
+   * Mit der üblichen Frist von 30 s verwarf das Backend den Befehl, während der
+   * Agent noch las – der Datei-Manager zeigte „Die Ausführung des Befehls auf
+   * dem Homeserver ist fehlgeschlagen", obwohl nichts fehlgeschlagen war.
+   *
+   * Drei Minuten sind die Obergrenze, ab der eine Auflistung als hängend gelten
+   * darf. Sie ist die Notbremse, keine Zusage: Die eigentliche Abhilfe ist,
+   * dass Prefix und SteamCMD-Kopie gar nicht erst im Datenordner liegen.
+   */
+  AGENT_FILE_LIST_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
+  /**
    * Frist für `CREATE_BACKUP` und `RESTORE_BACKUP` (Audit W1-5, bb-02).
    *
    * Der Agent antwortet auf diese beiden Befehle erst, wenn er fertig ist – das

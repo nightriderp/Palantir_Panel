@@ -84,6 +84,11 @@ x-backend-umgebung: &backend-umgebung
   AGENT_SOURCE_ALLOWLIST: ${AGENT_SOURCE_ALLOWLIST}
   AGENT_COMMAND_TIMEOUT_MS: ${AGENT_COMMAND_TIMEOUT_MS}
   AGENT_CREATE_TIMEOUT_MS: ${AGENT_CREATE_TIMEOUT_MS}
+  # Mit Rueckfall, weil bestehende .env-Dateien die Variable nicht kennen: Ohne
+  # ihn setzte Compose einen leeren Wert ein, und das Schema laesst nur eine
+  # positive Zahl zu - das Backend kaeme nach dem Deployment nicht mehr hoch.
+  # Der Wert entspricht der Vorgabe in `env.ts`; beide gehoeren zusammen.
+  AGENT_FILE_LIST_TIMEOUT_MS: ${AGENT_FILE_LIST_TIMEOUT_MS:-180000}
   BACKUP_COMMAND_TIMEOUT_MS: ${BACKUP_COMMAND_TIMEOUT_MS}
   # 9. DNS-Automatisierung (Abschnitt 9)
   CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
