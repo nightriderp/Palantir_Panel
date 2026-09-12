@@ -37,9 +37,22 @@
  *
  * {@link reconciliationTargetStatuses} macht diese Zuordnung prüfbar: Der Test
  * fährt alle Kombinationen gegen die Tabelle aus den Contracts.
+ *
+ * **Der Anlass entscheidet mit** (Fundpunkt 272). Bis Fundpunkt 232 lief der
+ * Abgleich ausschließlich nach einem Reconnect – jede Abweichung war dann
+ * zwangsläufig während der Trennung entstanden, und der Plan durfte sie als
+ * abgeschlossene Tatsache lesen. Seither fragt das Backend den Ist-Zustand
+ * zusätzlich alle fünf Minuten ab, und für einen Server im Zustand `creating`
+ * stimmt diese Lesart nicht mehr: Dort läuft das Anlegen womöglich gerade noch.
+ * Deshalb nimmt {@link planReconciliation} den Anlass entgegen und lässt bei
+ * `requested` genau diesen Zustand unberührt.
  */
 
-import { type AgentContainerState, type ServerStatus } from '@palantir/contracts';
+import {
+  type AgentContainerState,
+  type AgentStateReportReason,
+  type ServerStatus,
+} from '@palantir/contracts';
 
 /** Der Teil eines Servers, den der Abgleich braucht (Soll-Seite). */
 export interface ExpectedServer {
@@ -161,10 +174,14 @@ function looksLikeCrash(state: AgentContainerState): boolean {
  *
  * @param expected Soll-Zustand aus der Datenbank – **alle** Server der Node.
  * @param observed Ist-Zustand, wie der Agent ihn vollständig gemeldet hat.
+ * @param anlass Warum der Bericht kam. `connected` ist die Vorgabe: Sie ist die
+ *   strengere Lesart (alles, was abweicht, ist während der Trennung passiert)
+ *   und war bis Fundpunkt 272 die einzige.
  */
 export function planReconciliation(
   expected: readonly ExpectedServer[],
   observed: readonly AgentContainerState[],
+  anlass: AgentStateReportReason = 'connected',
 ): ReconciliationPlan {
   const byContainerId = new Map<string, AgentContainerState>();
 
@@ -182,7 +199,7 @@ export function planReconciliation(
   const unchangedServerIds: string[] = [];
 
   for (const server of expected) {
-    const action = planForServer(server, byContainerId);
+    const action = laeuftGeradeAn(server, anlass) ? null : planForServer(server, byContainerId);
 
     if (action === null) {
       unchangedServerIds.push(server.id);
@@ -205,6 +222,29 @@ export function planReconciliation(
   }
 
   return { actions, unchangedServerIds };
+}
+
+/**
+ * Wird dieser Server gerade angelegt, während der Abgleich hinsieht?
+ *
+ * `creating` heißt nicht „angefangen und liegengeblieben", sondern „das Backend
+ * arbeitet daran": `beginCreateServer()` antwortet sofort und zieht Image und
+ * Container im Hintergrund weiter (Fundpunkt 185). Bei einem Spiel-Image sind
+ * das Minuten – bei den Proton-Images mit ihren mehreren Gigabyte auch mal mehr
+ * als die fünf, in denen der nächste angeforderte Bericht fällig ist.
+ *
+ * Genau da lag Fundpunkt 272: Der Takt traf ein laufendes Anlegen, sah
+ * `creating` ohne Container und verbuchte es als abgebrochen. Der Server stand
+ * auf `error`, während der Container gerade entstand; Sekunden später scheiterte
+ * das echte Anlegen an dem Zustand, den der Abgleich ihm untergeschoben hatte
+ * („Der Zustand des Servers hat sich zwischenzeitlich geändert").
+ *
+ * Nach einem Reconnect (`connected`) gilt das Gegenteil, und deshalb bleibt es
+ * dort beim alten Verhalten: Mit der Verbindung ist auch der Befehl an den
+ * Homeserver verloren gegangen – dort arbeitet niemand mehr daran.
+ */
+function laeuftGeradeAn(server: ExpectedServer, anlass: AgentStateReportReason): boolean {
+  return anlass === 'requested' && server.status === 'creating';
 }
 
 function planForServer(
