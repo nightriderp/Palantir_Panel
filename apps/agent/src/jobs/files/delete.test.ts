@@ -174,6 +174,63 @@ describe('ensureDataDirectory (Gefundener Punkt 117)', () => {
  * Daher kamen beide bisherigen Fehler: die Speichergrenze aus Fundpunkt 228 und
  * die Laufzeit aus Fundpunkt 275. Auf dem Host ist es ein `readdir`.
  */
+describe('ServerFileJob liest und schreibt host-seitig (Fundpunkt 281)', () => {
+  /**
+   * Job mit einer Runtime, die nur eines kann: sagen, wo der Datenordner liegt.
+   *
+   * Genau das ist die Rollenteilung, um die es geht - der Zugriff selbst
+   * braucht die Container-Engine nicht mehr.
+   */
+  function job(maxFileBytes = 1024): ServerFileJob {
+    return new ServerFileJob({
+      runtime: {
+        dataVolumePaths: () => Promise.resolve(volume),
+      } as unknown as ConstructorParameters<typeof ServerFileJob>[0]['runtime'],
+      dataDir: wurzel,
+      maxFileBytes,
+    });
+  }
+
+  it('liest eine Datei', async () => {
+    const inhalt = await job().read({ containerId: 'c-1', path: '/data/server.properties' });
+
+    expect(inhalt.toString('utf8')).toBe('motd=x');
+  });
+
+  it('schreibt ueber eine vorhandene Datei', async () => {
+    // `FILE_WRITE` ist der Editor des Datei-Managers: Wer speichert, meint die
+    // Datei, die er gerade bearbeitet hat.
+    await job().write({ containerId: 'c-1', path: '/data/server.properties' }, Buffer.from('neu'));
+
+    await expect(fs.readFile(path.join(wurzel, 'server.properties'), 'utf8')).resolves.toBe('neu');
+  });
+
+  it('laedt hoch, ohne eine vorhandene Datei anzutasten', async () => {
+    await expect(
+      job().upload({ containerId: 'c-1', path: '/data/server.properties' }, Buffer.from('weg')),
+    ).rejects.toMatchObject({ code: 'FILE_EXISTS' });
+
+    await expect(fs.readFile(path.join(wurzel, 'server.properties'), 'utf8')).resolves.toBe(
+      'motd=x',
+    );
+  });
+
+  it('laedt mit overwrite trotzdem hoch', async () => {
+    await job().upload(
+      { containerId: 'c-1', path: '/data/server.properties', overwrite: true },
+      Buffer.from('neu'),
+    );
+
+    await expect(fs.readFile(path.join(wurzel, 'server.properties'), 'utf8')).resolves.toBe('neu');
+  });
+
+  it('haelt die Groessengrenze ein', async () => {
+    await expect(
+      job(2).write({ containerId: 'c-1', path: '/data/gross.txt' }, Buffer.from('zu lang')),
+    ).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+  });
+});
+
 describe('listServerDirectory (Fundpunkt 276)', () => {
   it('listet die direkte Ebene und rechnet auf Container-Pfade zurueck', async () => {
     const eintraege = await listServerDirectory(volume, '/data');

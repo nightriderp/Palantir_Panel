@@ -468,8 +468,14 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         };
       }
       case 'FILE_READ': {
+        /*
+         * Host-seitig im Job-Modul (Fundpunkt 281), wie Auflisten und Loeschen.
+         * Ueber den Archiv-Endpunkt war das der Umweg: ein `HEAD` fuer Groesse
+         * und Typ, danach ein TAR, aus dem die eine Datei wieder ausgepackt
+         * wurde. `stat` und `readFile` beantworten beides in einem Zug.
+         */
         const p = payload as { containerId: string; path: string };
-        const content = await this.runtime.readFile(p.containerId, p.path);
+        const content = await this.requireJobs().files.read(p);
         return {
           containerId: p.containerId,
           path: p.path,
@@ -479,8 +485,7 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
       }
       case 'FILE_WRITE': {
         const p = payload as { containerId: string; path: string; contentBase64: string };
-        await this.runtime.writeFile(p.containerId, p.path, Buffer.from(p.contentBase64, 'base64'));
-        return null;
+        return this.requireJobs().files.write(p, Buffer.from(p.contentBase64, 'base64'));
       }
       case 'FILE_DELETE':
         // Loeschen laeuft host-seitig im Job-Modul (A3), nicht ueber die
@@ -494,13 +499,11 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
           contentBase64: string;
           overwrite?: boolean;
         };
-        await this.runtime.uploadFile(
-          p.containerId,
-          p.path,
-          Buffer.from(p.contentBase64, 'base64'),
-          { ...(p.overwrite === undefined ? {} : { overwrite: p.overwrite }) },
-        );
-        return null;
+        // Host-seitig (Fundpunkt 281). Ohne `overwrite` entscheidet dort das
+        // Anlegen selbst, ob die Datei schon da ist - die Engine bot kein
+        // "nur anlegen, wenn nicht vorhanden", und zwischen Pruefung und
+        // Schreiben passte ein zweiter Upload.
+        return this.requireJobs().files.upload(p, Buffer.from(p.contentBase64, 'base64'));
       }
       case 'UPLOAD_ARCHIVE_BLOCK':
         // Blockweise Uebertragung: Das Zusammensetzen ist Dateisystemarbeit und
@@ -858,6 +861,12 @@ export const JOB_COMMANDS: ReadonlySet<AgentCommandName> = new Set([
   // Seit Fundpunkt 276 ebenfalls host-seitig: Auflisten ist
   // Dateisystemarbeit, nicht Sache der Container-Runtime.
   'FILE_LIST',
+  // Und seit Fundpunkt 281 auch Lesen und Schreiben. Damit laeuft der ganze
+  // Datei-Manager ueber das Job-Modul; in der Container-Runtime bleibt vom
+  // Dateizugriff nur noch das Entpacken eines Archivs.
+  'FILE_READ',
+  'FILE_WRITE',
+  'FILE_UPLOAD',
 ]);
 
 /** Nutzdaten von `CREATE`, wie sie das Schema liefert. */
