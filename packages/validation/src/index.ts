@@ -253,6 +253,8 @@ export {
   notificationChannelTypeSchema,
   notificationClientFrameSchema,
   notificationPreferencesInputSchema,
+  pushSubscriptionInputSchema,
+  pushUnsubscribeInputSchema,
   notificationQuerySchema,
   notificationRecipientScopeSchema,
   notificationSeveritySchema,

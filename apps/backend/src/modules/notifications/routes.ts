@@ -21,6 +21,8 @@ import {
   createNotificationRuleInputSchema,
   markNotificationsReadInputSchema,
   notificationPreferencesInputSchema,
+  pushSubscriptionInputSchema,
+  pushUnsubscribeInputSchema,
   notificationQuerySchema,
   updateAnnouncementInputSchema,
   updateNotificationChannelInputSchema,
@@ -179,7 +181,74 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
       },
     );
 
-    // -- Kanäle (Admin) ------------------------------------------------------
+    // -- Web-Push -----------------------------------------------------------
+
+    /*
+     * Was der Browser zum Anmelden braucht. Der oeffentliche VAPID-Schluessel
+     * ist kein Geheimnis - er steht in jedem Abonnement -, verlangt aber eine
+     * Sitzung wie alles hier: Ohne Konto gibt es nichts zu abonnieren.
+     */
+    app.get(
+      '/notifications/push/config',
+      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
+        try {
+          userIdOf(request);
+
+          return ok(notifications.pushConfig());
+        } catch (error) {
+          await handleError(reply, error);
+
+          return undefined;
+        }
+      },
+    );
+
+    /*
+     * Geraet anmelden. Zweimal dieselbe Adresse frischt die Zeile auf, statt
+     * eine zweite anzulegen - sonst kaeme jede Meldung doppelt an.
+     */
+    app.post(
+      '/notifications/push/subscriptions',
+      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
+        try {
+          const input = pushSubscriptionInputSchema.parse(request.body ?? {});
+          const kennung = request.headers['user-agent'];
+
+          await notifications.subscribePush(userIdOf(request), input, {
+            // Gekuerzt: Zur Wiedererkennung in der eigenen Geraeteliste reicht
+            // der Anfang; die volle Zeichenkette waere ein Fingerabdruck
+            // (Pflichtenheft §18).
+            userAgent: typeof kennung === 'string' ? kennung.slice(0, 120) : null,
+          });
+
+          return ok(null);
+        } catch (error) {
+          await handleError(reply, error);
+
+          return undefined;
+        }
+      },
+    );
+
+    /* Geraet abmelden. Konto und Adresse muessen zusammenpassen. */
+    app.delete(
+      '/notifications/push/subscriptions',
+      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
+        try {
+          const input = pushUnsubscribeInputSchema.parse(request.body ?? {});
+
+          await notifications.unsubscribePush(userIdOf(request), input.endpoint);
+
+          return ok(null);
+        } catch (error) {
+          await handleError(reply, error);
+
+          return undefined;
+        }
+      },
+    );
+
+    // -- Kanaele (Admin) ------------------------------------------------------
 
     app.get(
       '/admin/notification-channels',

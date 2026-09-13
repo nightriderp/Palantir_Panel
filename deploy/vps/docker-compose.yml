@@ -95,6 +95,12 @@ x-backend-umgebung: &backend-umgebung
   CLOUDFLARE_ZONE_ID: ${CLOUDFLARE_ZONE_ID}
   # 10. Benachrichtigungen (Abschnitt 10)
   DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+  # Web-Push. Ohne vollstaendiges Schluesselpaar bleibt der Versand aus; die
+  # Vorgaben halten das Backend startfaehig, wenn eine bestehende .env die
+  # Variablen noch nicht kennt.
+  VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+  VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+  VAPID_SUBJECT: ${VAPID_SUBJECT:-}
   NOTIFICATION_DELIVERY_TIMEOUT_MS: ${NOTIFICATION_DELIVERY_TIMEOUT_MS}
   NOTIFICATION_RETENTION_DAYS: ${NOTIFICATION_RETENTION_DAYS}
   # 11. Messwerte und Dateien (Abschnitt 11)
