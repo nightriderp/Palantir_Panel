@@ -19,6 +19,8 @@ import {
   formatServerAddress,
   formatTime,
   hasLiveStats,
+  lastTon,
+  pingTon,
 } from '@/components/shared';
 import { fetchStatsHistory } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
@@ -179,6 +181,7 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           value={formatPercent(
             cpuQuotaPercent(anzeige?.cpuPercent, server.resourceLimits.cpuCores),
           )}
+          tone={lastTon(cpuQuotaPercent(anzeige?.cpuPercent, server.resourceLimits.cpuCores))}
           note={
             anzeige?.cpuPercent == null
               ? undefined
@@ -190,11 +193,15 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         <MetricTile
           label="Arbeitsspeicher"
           value={formatMegabytes(anzeige?.ramUsedMb)}
+          // Der Arbeitsspeicher trägt überall die zweite Markenfarbe – auf der
+          // Kachel der Übersicht wie hier.
+          tone={anzeige?.ramUsedMb == null ? undefined : 'brand'}
           note={`von ${formatMegabytes(server.resourceLimits.ramMb)}`}
         />
         <MetricTile
           label="Platte"
           value={formatMegabytes(stats?.diskUsedMb)}
+          tone={stats?.diskUsedMb == null ? undefined : 'warning'}
           note={
             clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb) === null
               ? undefined
@@ -203,7 +210,11 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
                 )} belegt`
           }
         />
-        <MetricTile label="Ping" value={formatPing(anzeige?.pingMs)} />
+        <MetricTile
+          label="Ping"
+          value={formatPing(anzeige?.pingMs)}
+          tone={pingTon(anzeige?.pingMs)}
+        />
         <MetricTile label="Laufzeit" value={formatDuration(uptimeSeconds)} />
         {/* Nicht im Mockup, aber die Zahl liegt vor und gehoert zum Zustand. */}
         <MetricTile

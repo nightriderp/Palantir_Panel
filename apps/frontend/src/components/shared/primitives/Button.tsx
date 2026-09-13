@@ -31,11 +31,17 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 }
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: 'bg-brand-gradient text-white border border-transparent hover:brightness-110',
-  secondary: 'bg-fill text-ink border border-line-strong hover:bg-fill-strong',
+  /**
+   * Die Primäraktion trägt zusätzlich einen farbigen Schein nach unten. Ohne
+   * ihn steht der Verlauf flach in der Fläche; mit ihm hebt sich der eine
+   * wichtige Knopf einer Ansicht sichtbar ab.
+   */
+  primary:
+    'bg-brand-gradient text-white border border-transparent shadow-glow hover:brightness-110',
+  secondary: 'bg-fill text-ink border border-line-strong hover:border-ink-disabled',
   success: 'bg-success-soft text-success border border-success-line hover:brightness-110',
   danger: 'bg-danger-soft text-danger border border-danger-line hover:brightness-110',
-  ghost: 'bg-transparent text-brand border border-transparent hover:text-brand-bright',
+  ghost: 'bg-transparent text-ink-muted border border-transparent hover:bg-fill hover:text-ink',
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
@@ -70,6 +76,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-md font-semibold',
+        // Der Druck sitzt auf `:active`, also schon beim Zeiger-Runter statt
+        // erst beim Klick. Wer Bewegung abgeschaltet hat, bekommt nur den
+        // Farbwechsel.
+        'transition-[color,background-color,border-color,transform] duration-100',
+        'active:scale-[0.97] motion-reduce:active:scale-100',
         'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100',
         SIZE_CLASSES[size],
         VARIANT_CLASSES[variant],

@@ -77,6 +77,7 @@ export { FormModal, type FormModalProps } from './overlays/FormModal';
 export { ServerCard, type ServerCardProps } from './server/ServerCard';
 export { ServerStatusPill, type ServerStatusPillProps } from './server/ServerStatusPill';
 export { MetricRing, type MetricRingProps } from './server/MetricRing';
+export { lastTon, pingTon } from './server/metricTone';
 export {
   SERVER_STATUS_META,
   hasLiveStats,

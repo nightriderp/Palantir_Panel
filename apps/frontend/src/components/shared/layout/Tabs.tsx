@@ -36,7 +36,7 @@ export function Tabs<TKey extends string = string>({
   return (
     <div
       role="tablist"
-      className={cn('flex gap-5.5 overflow-x-auto border-b border-line', className)}
+      className={cn('flex gap-1 overflow-x-auto border-b border-line', className)}
     >
       {items.map((item) => {
         const active = item.key === activeKey;
@@ -50,10 +50,11 @@ export function Tabs<TKey extends string = string>({
             title={item.locked ? item.lockedReason : undefined}
             onClick={() => onChange(item.key)}
             className={cn(
-              'whitespace-nowrap border-b-2 px-1 py-2.5 text-base',
-              active
-                ? 'border-brand font-semibold text-ink'
-                : 'border-transparent text-ink-muted hover:text-ink',
+              // Die Fläche des Reiters ist der Knopf: breiter Innenabstand statt
+              // eines schmalen Worts mit Lücke daneben. Das trifft sich auf dem
+              // Telefon besser und gibt der Leiste eine ruhige Kante.
+              '-mb-px whitespace-nowrap rounded-t-lg border-b-2 px-4 py-2.5 text-base font-semibold transition-colors',
+              active ? 'border-brand text-ink' : 'border-transparent text-ink-muted hover:text-ink',
               item.locked &&
                 'cursor-not-allowed border-transparent text-ink-disabled hover:text-ink-disabled',
             )}

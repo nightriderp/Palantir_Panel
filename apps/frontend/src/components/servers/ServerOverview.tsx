@@ -238,7 +238,14 @@ export function ServerOverview() {
             <span className="font-mono text-ink-faint">· {group.servers.length}</span>
           </h2>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {/*
+            Spaltenzahl aus der Breite statt aus festen Haltepunkten: Das
+            Raster nimmt so viele Kacheln, wie bei mindestens 320px Breite
+            hineinpassen. Mit `xl:grid-cols-3` blieb auf einem breiten
+            Bildschirm rechts ein Drittel leer, während die Kacheln
+            auseinandergezogen wurden.
+          */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
             {group.servers.map((server) => (
               <ServerCard
                 key={server.id}

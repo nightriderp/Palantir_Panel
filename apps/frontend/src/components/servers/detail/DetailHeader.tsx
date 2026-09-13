@@ -69,11 +69,11 @@ export function DetailHeader({
     server.updateAvailable && server.permissions.canRestart && server.status === 'running';
 
   return (
-    <header className="flex flex-col gap-3 rounded-2xl border border-line bg-hero-gradient p-6">
-      <div className="flex flex-wrap items-start gap-4">
+    <header className="flex flex-col gap-3 rounded-2xl border border-line bg-hero-gradient p-4.5">
+      <div className="flex flex-wrap items-start gap-3.5">
         <span
           aria-hidden
-          className="flex h-[62px] w-[62px] shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-2xl font-bold text-canvas"
+          className="flex h-13 w-13 shrink-0 items-center justify-center rounded-xl bg-brand-gradient font-mono text-xl font-bold text-canvas"
         >
           {serverInitials(server.name)}
         </span>
@@ -82,7 +82,7 @@ export function DetailHeader({
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Der Seitenkopf traegt bereits das `h1`; hier steht derselbe Name
                 als Ueberschrift der Karte. */}
-            <h2 className="truncate text-4xl font-bold">{server.name}</h2>
+            <h2 className="truncate text-3xl font-bold">{server.name}</h2>
             <ServerStatusPill status={server.status} />
             {server.pendingRestart ? (
               <span title="Neue Einstellungen greifen beim nächsten Neustart.">
