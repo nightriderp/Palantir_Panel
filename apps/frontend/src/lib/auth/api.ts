@@ -74,6 +74,10 @@ export const AUTH_ENDPOINTS = {
   twoFactorDisable: '/auth/2fa/disable',
   /** Eigenes Konto endgültig löschen (Lastenheft §3.1). */
   account: '/auth/account',
+  /** Eigenes Profilbild setzen oder entfernen. */
+  avatar: '/auth/avatar',
+  /** Bild eines Kontos – Adresse für `<img src>`, keine JSON-Antwort. */
+  avatarOf: (userId: string) => `/users/${encodeURIComponent(userId)}/avatar`,
   /**
    * Übersicht der angemeldeten Geräte (Lastenheft §3.1).
    *
@@ -435,7 +439,14 @@ async function sende<TSchema extends z.ZodTypeAny>(
       credentials: 'include',
       headers: {
         Accept: 'application/json',
-        ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        /*
+         * `FormData` bringt seine eigene Grenzkennung mit; setzt man hier
+         * `application/json` darüber, kommt beim Backend ein Rumpf an, den es
+         * nicht zerlegen kann. Der Browser setzt den richtigen Kopf selbst.
+         */
+        ...(init.body === undefined || init.body instanceof FormData
+          ? {}
+          : { 'Content-Type': 'application/json' }),
         ...(csrfToken === null ? {} : { [CSRF_HEADER_NAME]: csrfToken }),
         ...init.headers,
       },
@@ -553,6 +564,46 @@ export function updateProfile(input: UpdateProfileInput): Promise<AccountDto> {
     method: 'PATCH',
     body: JSON.stringify(input),
   }).then((result) => result.account);
+}
+
+/**
+ * Profilbild hochladen (Lastenheft §3.1).
+ *
+ * Zugeschnitten und verkleinert wird vorher im Browser (`ImageCropper`); hier
+ * geht nur noch die fertige Datei über die Leitung. Das Backend prüft Typ,
+ * Größe und Signatur.
+ */
+export function uploadAvatar(file: File): Promise<AccountDto> {
+  const form = new FormData();
+  form.append('file', file);
+
+  return request(AUTH_ENDPOINTS.avatar, accountEnvelopeSchema, {
+    method: 'POST',
+    body: form,
+  }).then((result) => result.account);
+}
+
+/** Profilbild entfernen – danach stehen wieder die Initialen. */
+export function removeAvatar(): Promise<AccountDto> {
+  return request(AUTH_ENDPOINTS.avatar, accountEnvelopeSchema, {
+    method: 'DELETE',
+  }).then((result) => result.account);
+}
+
+/**
+ * Adresse des Profilbildes eines Kontos.
+ *
+ * Der Zeitstempel hängt als Parameter daran: Ohne ihn zeigte der Browser nach
+ * einem neuen Bild weiter das alte aus seinem Zwischenspeicher. `null`, wenn
+ * das Konto kein Bild hat – dann zeigt die Oberfläche die Initialen.
+ */
+export function avatarUrl(
+  userId: string,
+  avatarUpdatedAt: string | null | undefined,
+): string | null {
+  if (avatarUpdatedAt === null || avatarUpdatedAt === undefined) return null;
+
+  return `${apiUrl(AUTH_ENDPOINTS.avatarOf(userId))}?v=${encodeURIComponent(avatarUpdatedAt)}`;
 }
 
 /** Ein Passwort-Verfahren nachtraeglich anlegen (Konto ohne Passwort). */

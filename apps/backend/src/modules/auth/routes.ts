@@ -38,6 +38,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 import { replyWithErrorCode, requireActor, requirePermission } from '../rbac/index.js';
+import { AVATAR_MAX_BYTES } from './avatar.js';
 import {
   type AltchaOptions,
   type AltchaSolutionLedger,
@@ -885,6 +886,92 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       const account: AccountDto = await service.updateProfile(userId, input);
 
       await reply.send(ok({ account }));
+    });
+  });
+
+  // -- Profilbild -----------------------------------------------------------
+
+  /**
+   * Eigenes Profilbild setzen.
+   *
+   * Die Größengrenze geht **an `@fastify/multipart`** und greift damit vor dem
+   * Puffern: Mehr als {@link AVATAR_MAX_BYTES} landet nie im Speicher, auch
+   * wenn die globale Grenze aus `server.ts` höher liegt (sie bedient den
+   * Datei-Manager mit ganz anderen Größen). Dasselbe Vorgehen wie beim
+   * Schriften-Upload.
+   */
+  app.post('/auth/avatar', async (request, reply) => {
+    await handle(reply, async () => {
+      const userId = requireUserId(request);
+
+      if (!request.isMultipart()) {
+        throw new AuthError(
+          'VALIDATION_FAILED',
+          'Das Bild muss als multipart/form-data gesendet werden.',
+        );
+      }
+
+      const datei = await request.file({
+        limits: { fileSize: AVATAR_MAX_BYTES },
+        // `throwFileSizeLimit: false`: Sonst wirft `toBuffer()` den
+        // Bibliotheksfehler; hier zählt allein `truncated`, damit die Antwort
+        // den Code aus unserem Katalog trägt.
+        throwFileSizeLimit: false,
+      });
+
+      if (datei === undefined) {
+        throw new AuthError('VALIDATION_FAILED', 'Im Upload fehlt das Feld „file".');
+      }
+
+      const data = await datei.toBuffer();
+
+      if (datei.file.truncated) {
+        throw new AuthError('FILE_TOO_LARGE');
+      }
+
+      const account: AccountDto = await service.setAvatar(userId, {
+        mimeType: datei.mimetype,
+        data,
+      });
+
+      await reply.send(ok({ account }));
+    });
+  });
+
+  app.delete('/auth/avatar', async (request, reply) => {
+    await handle(reply, async () => {
+      const userId = requireUserId(request);
+      const account: AccountDto = await service.removeAvatar(userId);
+
+      await reply.send(ok({ account }));
+    });
+  });
+
+  /**
+   * Das Bild eines Kontos ausliefern.
+   *
+   * Verlangt eine Sitzung, aber kein besonderes Recht: Profilbilder stehen in
+   * Nachrichten, Listen und auf Serverkarten – wer das Panel benutzt, sieht die
+   * Konten ohnehin. Ohne Sitzung wäre es eine offene Personendatenbank.
+   *
+   * Die Antwort trägt `private` im Cache-Header: Der Browser des Betrachters
+   * darf das Bild behalten, ein Zwischenspeicher auf dem Weg nicht.
+   */
+  app.get<{ Params: { userId: string } }>('/users/:userId/avatar', async (request, reply) => {
+    await handle(reply, async () => {
+      requireUserId(request);
+
+      const avatar = await service.findAvatar(request.params.userId);
+
+      if (avatar === null) {
+        throw new AuthError('USER_NOT_FOUND', 'Dieses Konto hat kein Profilbild.');
+      }
+
+      await reply
+        .header('content-type', avatar.mimeType)
+        .header('cache-control', 'private, max-age=300')
+        .header('last-modified', avatar.updatedAt.toUTCString())
+        .send(avatar.data);
     });
   });
 

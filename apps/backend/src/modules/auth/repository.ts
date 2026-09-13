@@ -33,6 +33,7 @@ function toUser(row: UserRow): UserRecord {
     displayName: row.displayName,
     isOwner: row.isOwner,
     banned: row.banned,
+    avatarUpdatedAt: row.avatarUpdatedAt,
     createdAt: row.createdAt,
   };
 }
@@ -155,6 +156,52 @@ export function createDrizzleAuthRepository(db: Database): AuthRepository {
       }
 
       return toUser(row);
+    },
+
+    async setAvatar(id, avatar) {
+      const [row] = await db
+        .update(users)
+        .set(
+          avatar === null
+            ? { avatarData: null, avatarMimeType: null, avatarUpdatedAt: null }
+            : {
+                avatarData: avatar.data,
+                avatarMimeType: avatar.mimeType,
+                avatarUpdatedAt: new Date(),
+              },
+        )
+        .where(eq(users.id, id))
+        .returning();
+
+      if (!row) {
+        throw new Error('Konto konnte nicht aktualisiert werden.');
+      }
+
+      return toUser(row);
+    },
+
+    async findAvatar(id) {
+      /*
+       * Eigene Abfrage statt eines Feldes am Konto: Die Bytes werden nur hier
+       * gebraucht, und `findUserById` laeuft bei jeder Anfrage mit einer
+       * Sitzung. Ein Bild, das durch jede Anmeldung wandert, waere teuer fuer
+       * nichts.
+       */
+      const [row] = await db
+        .select({
+          data: users.avatarData,
+          mimeType: users.avatarMimeType,
+          updatedAt: users.avatarUpdatedAt,
+        })
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
+
+      if (!row || row.data === null || row.mimeType === null || row.updatedAt === null) {
+        return null;
+      }
+
+      return { data: row.data, mimeType: row.mimeType, updatedAt: row.updatedAt };
     },
 
     async deleteUser(id) {

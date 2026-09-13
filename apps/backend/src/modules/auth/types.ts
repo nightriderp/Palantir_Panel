@@ -17,7 +17,21 @@ export interface UserRecord {
   readonly displayName: string;
   readonly isOwner: boolean;
   readonly banned: boolean;
+  /**
+   * Wann das Profilbild zuletzt gesetzt wurde; `null`, wenn das Konto keines
+   * hat. Die Bytes stehen bewusst **nicht** hier: Sie werden nur beim
+   * Ausliefern des Bildes gebraucht, und der Datensatz geht durch jede
+   * Anmeldung.
+   */
+  readonly avatarUpdatedAt: Date | null;
   readonly createdAt: Date;
+}
+
+/** Das Bild selbst – nur fuer die Route, die es ausliefert. */
+export interface UserAvatar {
+  readonly data: Buffer;
+  readonly mimeType: string;
+  readonly updatedAt: Date;
 }
 
 /** Login-Methode (Entität `AuthMethod`, Pflichtenheft §6). */
@@ -161,6 +175,16 @@ export interface AuthRepository {
    * jederzeit ändern.
    */
   setDisplayName(id: string, displayName: string): Promise<UserRecord>;
+  /**
+   * Setzt oder entfernt das Profilbild (`null` = entfernen).
+   *
+   * Bild, Typ und Zeitstempel wandern zusammen, weil sie nur zusammen einen
+   * Sinn ergeben: Ein Bild ohne Typ liesse sich nicht ausliefern, ein
+   * Zeitstempel ohne Bild zeigte auf nichts.
+   */
+  setAvatar(id: string, avatar: { data: Buffer; mimeType: string } | null): Promise<UserRecord>;
+  /** Liest das Bild eines Kontos; `null`, wenn es keines hat. */
+  findAvatar(id: string): Promise<UserAvatar | null>;
   deleteUser(id: string): Promise<void>;
   /**
    * Zählt, was der Selbstlöschung im Weg steht (Audit W2-11, backend-db-02/05).

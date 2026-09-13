@@ -1109,6 +1109,145 @@ describe('Anzeigename ändern (Lastenheft §3.1)', () => {
   });
 });
 
+describe('Profilbild über HTTP (Lastenheft §3.1)', () => {
+  /** Kleinstes gültiges PNG-Gerüst – acht Bytes Signatur genügen der Prüfung. */
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(32),
+  ]);
+
+  /** Multipart-Rumpf von Hand - `app.inject` bringt keinen Formular-Bauer mit. */
+  function multipart(data: Buffer, contentType: string): { payload: Buffer; type: string } {
+    const grenze = '----palantirtest';
+    // Multipart verlangt CRLF: Mit reinem Zeilenumbruch bricht der Parser mit
+    // „Unexpected end of multipart data“ ab.
+    const kopf = Buffer.from(
+      `--${grenze}\r\nContent-Disposition: form-data; name="file"; filename="bild"\r\n` +
+        `Content-Type: ${contentType}\r\n\r\n`,
+      'utf8',
+    );
+    const fuss = Buffer.from(`\r\n--${grenze}--\r\n`, 'utf8');
+
+    return {
+      payload: Buffer.concat([kopf, data, fuss]),
+      type: `multipart/form-data; boundary=${grenze}`,
+    };
+  }
+
+  it('nimmt ein Bild an und meldet den Zeitstempel im Konto', async () => {
+    const { jar, account } = await registerAccount('spieler');
+    const form = multipart(png, 'image/png');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/avatar',
+      headers: {
+        cookie: cookieHeader(jar),
+        [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '',
+        'content-type': form.type,
+      },
+      payload: form.payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{ data: { account: AccountDto } }>().data.account;
+    expect(body.id).toBe(account.id);
+    expect(body.avatarUpdatedAt).toEqual(expect.any(String));
+  });
+
+  it('liefert das Bild danach mit seinem Typ aus', async () => {
+    const { jar, account } = await registerAccount('spieler');
+    const form = multipart(png, 'image/png');
+
+    await app.inject({
+      method: 'POST',
+      url: '/auth/avatar',
+      headers: {
+        cookie: cookieHeader(jar),
+        [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '',
+        'content-type': form.type,
+      },
+      payload: form.payload,
+    });
+
+    const bild = await app.inject({
+      method: 'GET',
+      url: `/users/${account.id}/avatar`,
+      headers: { cookie: cookieHeader(jar) },
+    });
+
+    expect(bild.statusCode).toBe(200);
+    expect(bild.headers['content-type']).toBe('image/png');
+    // Kein öffentlicher Zwischenspeicher: Das Bild gehört einer Person.
+    expect(String(bild.headers['cache-control'])).toContain('private');
+  });
+
+  it('lehnt eine Datei ab, die sich nur als Bild ausgibt', async () => {
+    const { jar } = await registerAccount('spieler');
+    const form = multipart(Buffer.from('MZ nicht wirklich ein Bild'), 'image/png');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/avatar',
+      headers: {
+        cookie: cookieHeader(jar),
+        [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '',
+        'content-type': form.type,
+      },
+      payload: form.payload,
+    });
+
+    expect(response.statusCode).toBe(415);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('UNSUPPORTED_MEDIA_TYPE');
+  });
+
+  it('entfernt das Bild wieder', async () => {
+    const { jar, account } = await registerAccount('spieler');
+    const form = multipart(png, 'image/png');
+
+    await app.inject({
+      method: 'POST',
+      url: '/auth/avatar',
+      headers: {
+        cookie: cookieHeader(jar),
+        [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '',
+        'content-type': form.type,
+      },
+      payload: form.payload,
+    });
+
+    const geloescht = await app.inject({
+      method: 'DELETE',
+      url: '/auth/avatar',
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '' },
+    });
+
+    expect(geloescht.statusCode).toBe(200);
+    expect(geloescht.json<{ data: { account: AccountDto } }>().data.account.avatarUpdatedAt).toBe(
+      null,
+    );
+
+    const bild = await app.inject({
+      method: 'GET',
+      url: `/users/${account.id}/avatar`,
+      headers: { cookie: cookieHeader(jar) },
+    });
+
+    expect(bild.statusCode).toBe(404);
+  });
+
+  it('gibt das Bild nicht ohne Anmeldung heraus', async () => {
+    const { account } = await registerAccount('spieler');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/users/${account.id}/avatar`,
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+});
+
 describe('Admin-Eingriffe hinter dem RBAC-Guard aus B2', () => {
   it('verlangt eine Anmeldung', async () => {
     const response = await app.inject({

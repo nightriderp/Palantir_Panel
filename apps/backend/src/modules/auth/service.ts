@@ -69,7 +69,14 @@ import {
   signTwoFactorToken,
   verifyTwoFactorToken,
 } from './tokens.js';
-import type { AuthMethodRecord, AuthRepository, SessionRecord, UserRecord } from './types.js';
+import type {
+  AuthMethodRecord,
+  AuthRepository,
+  SessionRecord,
+  UserAvatar,
+  UserRecord,
+} from './types.js';
+import { pruefeAvatar } from './avatar.js';
 
 /**
  * Kulanzfrist auf den eben ersetzten Refresh-Token (Pflichtenheft §7).
@@ -1388,6 +1395,43 @@ export class AuthService {
     const updated = await this.repository.setDisplayName(userId, input.displayName);
 
     return this.loadAccount(updated);
+  }
+
+  /**
+   * Profilbild setzen (Lastenheft §3.1, Konto-Bereich).
+   *
+   * Zugeschnitten und verkleinert wird im Browser; hier wird nur geprüft, was
+   * sich ohne Bildbibliothek prüfen lässt – Typ, Größe und Signatur (siehe
+   * `avatar.ts`). Das Bild ersetzt ein vorhandenes; eine Fassungsgeschichte
+   * gibt es bewusst nicht.
+   */
+  async setAvatar(userId: string, upload: { mimeType: string; data: Buffer }): Promise<AccountDto> {
+    await this.requireUser(userId);
+
+    const geprueft = pruefeAvatar(upload);
+    const updated = await this.repository.setAvatar(userId, geprueft);
+
+    return this.loadAccount(updated);
+  }
+
+  /** Profilbild entfernen – danach zeigt die Oberfläche wieder die Initialen. */
+  async removeAvatar(userId: string): Promise<AccountDto> {
+    await this.requireUser(userId);
+
+    const updated = await this.repository.setAvatar(userId, null);
+
+    return this.loadAccount(updated);
+  }
+
+  /**
+   * Das Bild eines beliebigen Kontos für die Auslieferung.
+   *
+   * Bewusst ohne weitere Rechteprüfung, aber nur mit Sitzung (die Route
+   * verlangt sie): Profilbilder erscheinen in Nachrichten, Serverkarten und
+   * Listen – wer das Panel benutzt, sieht die Namen der anderen ohnehin.
+   */
+  async findAvatar(userId: string): Promise<UserAvatar | null> {
+    return this.repository.findAvatar(userId);
   }
 
   /**

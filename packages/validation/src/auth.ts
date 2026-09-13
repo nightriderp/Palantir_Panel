@@ -217,6 +217,12 @@ export const accountDtoSchema: z.ZodType<AccountDto> = z.object({
    * vergessen – jede Sperr-Anzeige lief still ins Leere.
    */
   mustChangePassword: z.boolean().optional(),
+  /**
+   * Zeitstempel des Profilbildes (Arbeitspaket F-Konto). Optional wie im
+   * Vertrag: Ein Backend ohne das Feld liefert weiterhin ein gültiges Konto,
+   * die Oberfläche zeigt dann die Initialen.
+   */
+  avatarUpdatedAt: z.string().datetime({ offset: true }).nullable().optional(),
   createdAt: z.string().datetime({ offset: true }),
   permissions: globalPermissionsSchema,
 });
