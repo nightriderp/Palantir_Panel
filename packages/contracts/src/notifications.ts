@@ -640,3 +640,41 @@ export type NotificationServerFrame =
     }
   | { kind: 'subscribed'; data: { unreadCount: number }; sentAt: string }
   | { kind: 'pong'; sentAt: string };
+
+// ---------------------------------------------------------------------------
+// Web-Push (Lastenheft §3.6, erweitert)
+// ---------------------------------------------------------------------------
+
+/**
+ * Was der Browser braucht, um sich für Push anzumelden.
+ *
+ * `publicKey` ist der oeffentliche VAPID-Schluessel der Instanz — oeffentlich im
+ * Wortsinn: Er steht in jedem Abonnement und ist kein Geheimnis. `null`, wenn
+ * der Betreiber kein Schluesselpaar hinterlegt hat; dann bietet die Oberflaeche
+ * Push gar nicht erst an, statt einen Knopf zu zeigen, der nie funktioniert.
+ */
+export interface PushConfigDto {
+  publicKey: string | null;
+}
+
+/**
+ * Ein Push-Abonnement, wie der Browser es ausstellt
+ * (`PushSubscription.toJSON()`).
+ *
+ * Bewusst genau diese drei Felder: Die Adresse benennt den Zustelldienst des
+ * Browsers, die beiden Schluessel verschluesseln die Nutzlast fuer genau dieses
+ * Geraet. Das Panel kann eine Meldung damit **nicht** mitlesen, wenn sie einmal
+ * unterwegs ist — es verschluesselt sie selbst.
+ */
+export interface PushSubscriptionInput {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
+/** Abmeldung eines Geraetes — die Adresse identifiziert das Abonnement. */
+export interface PushUnsubscribeInput {
+  endpoint: string;
+}

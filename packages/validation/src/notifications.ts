@@ -15,6 +15,8 @@ import {
   NOTIFICATION_RECIPIENT_SCOPES,
   NOTIFICATION_SEVERITIES,
   NOTIFICATION_SUBJECT_TYPES,
+  type PushSubscriptionInput,
+  type PushUnsubscribeInput,
 } from '@palantir/contracts';
 import { z } from 'zod';
 import { idSchema } from './common.js';
@@ -282,3 +284,29 @@ export type NotificationPreferencesInput = z.infer<typeof notificationPreference
 export type CreateAnnouncementInput = z.infer<typeof createAnnouncementInputSchema>;
 export type UpdateAnnouncementInput = z.infer<typeof updateAnnouncementInputSchema>;
 export type NotificationClientFrameInput = z.infer<typeof notificationClientFrameSchema>;
+
+/**
+ * Abonnement, wie der Browser es ausstellt (Web-Push).
+ *
+ * Die Adresse muss eine `https`-Adresse sein: Die Zustelldienste der Browser
+ * sprechen nichts anderes, und eine andere Adresse waere ein Versuch, das
+ * Panel als Absender gegen ein fremdes Ziel zu benutzen.
+ */
+export const pushSubscriptionInputSchema: z.ZodType<PushSubscriptionInput> = z
+  .object({
+    endpoint: z.string().url().startsWith('https://').max(1000),
+    keys: z
+      .object({
+        // Base64url ohne Polster; Laenge ist durch das Verfahren festgelegt.
+        p256dh: z.string().min(16).max(200),
+        auth: z.string().min(8).max(100),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const pushUnsubscribeInputSchema: z.ZodType<PushUnsubscribeInput> = z
+  .object({
+    endpoint: z.string().url().startsWith('https://').max(1000),
+  })
+  .strict();
