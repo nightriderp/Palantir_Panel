@@ -181,6 +181,36 @@ describe('installProcessGuards()', () => {
     expect(lines[0]?.message).toContain('läuft weiter');
   });
 
+  it('loggt eine Laufzeit-Warnung samt Stack (Fundpunkt 291)', () => {
+    /*
+     * Node schreibt Warnungen roh auf stderr, an pino vorbei: Im JSON-Strom des
+     * Containers stehen sie ohne Zeitstempel und ohne den Stack, der sie
+     * erklaert. Genau der macht den Unterschied zwischen "irgendwo im Backend
+     * benutzt jemand eine veraltete Schnittstelle" und einer Zeilennummer - er
+     * haengt am Warnungs-Objekt, auch ohne `--trace-deprecation`.
+     */
+    const { lines, log } = makeLog();
+    const target = new EventEmitter();
+    const shutdown = vi.fn(() => Promise.resolve());
+
+    const warnung = new Error('Calling client.query() when the client is already executing');
+    warnung.name = 'DeprecationWarning';
+    warnung.stack = [
+      'DeprecationWarning: ...',
+      '    at Client.query (pg/lib/client.js:762:7)',
+    ].join('\n');
+
+    installProcessGuards({ log, shutdown, target });
+    target.emit('warning', warnung);
+
+    expect(shutdown).not.toHaveBeenCalled();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      level: 'warn',
+      details: { warnung: 'DeprecationWarning', stack: warnung.stack },
+    });
+  });
+
   it('beendet bei einer unbehandelten Ausnahme geordnet mit Exit-Code 1', () => {
     const { lines, log } = makeLog();
     const target = new EventEmitter();
