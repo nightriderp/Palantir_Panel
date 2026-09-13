@@ -152,5 +152,10 @@ export const config = {
   // Alles außer Next-Interna und Dateien mit Endung (statische Assets). Damit
   // greift die Sperre auf jede echte Seite, ohne den Asset-Auslieferung zu
   // bremsen.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.).*)'],
+  //
+  // `fassung` ist ausgenommen: Die Route sagt nur, welche Fassung des Panels
+  // gerade ausgeliefert wird (für den Hinweis auf ein Deployment). Sie ist
+  // keine Seite, trägt nichts Persönliches – und mit Sperre bekäme der Abruf
+  // die Anmeldeseite als HTML zurück statt einer Antwort.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|fassung|.*\\.).*)'],
 };

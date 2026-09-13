@@ -145,7 +145,7 @@ describe('UsersView – Passwort zurücksetzen (frontend-lib-02)', () => {
   it('fragt vor dem Zurücksetzen nach und nennt das Ende aller Sitzungen', async () => {
     await zeichne();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Passwort' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Passwort zurücksetzen' }));
 
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('heading', { name: /Passwort von .*Alex.* zurücksetzen\?/ }));
@@ -156,7 +156,7 @@ describe('UsersView – Passwort zurücksetzen (frontend-lib-02)', () => {
   it('setzt beim Abbrechen nichts zurück', async () => {
     await zeichne();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Passwort' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Passwort zurücksetzen' }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Abbrechen' }));
 
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -166,7 +166,7 @@ describe('UsersView – Passwort zurücksetzen (frontend-lib-02)', () => {
   it('setzt erst nach der Bestätigung zurück und zeigt das Einmal-Passwort', async () => {
     await zeichne();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Passwort' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Passwort zurücksetzen' }));
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Zurücksetzen' }),
     );
@@ -185,7 +185,7 @@ describe('UsersView – Passwort zurücksetzen (frontend-lib-02)', () => {
 
     await zeichne();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Passwort' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Passwort zurücksetzen' }));
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Zurücksetzen' }),
     );
@@ -197,7 +197,7 @@ describe('UsersView – Passwort zurücksetzen (frontend-lib-02)', () => {
   it('meldet ohne Zwischenablage einen Fehler, statt zu scheitern', async () => {
     await zeichne();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Passwort' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Passwort zurücksetzen' }));
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Zurücksetzen' }),
     );

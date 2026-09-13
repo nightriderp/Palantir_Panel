@@ -5,6 +5,7 @@ import { type ScheduleInput, scheduleInputSchema } from '@palantir/validation';
 import { useState } from 'react';
 import {
   Badge,
+  type Tone,
   Button,
   DangerConfirmDialog,
   EmptyState,
@@ -49,6 +50,13 @@ const RUN_RESULT_LABELS: Record<NonNullable<ScheduleDto['lastRunResult']>, strin
   success: 'erfolgreich',
   failed: 'fehlgeschlagen',
   skipped: 'übersprungen',
+};
+
+/** Farbe des letzten Ausgangs – „übersprungen" ist ein Hinweis, kein Fehler. */
+const RUN_RESULT_TONES: Record<NonNullable<ScheduleDto['lastRunResult']>, Tone> = {
+  success: 'success',
+  failed: 'danger',
+  skipped: 'warning',
 };
 
 /** Zeitzone des Browsers – Vorgabe für neue Aufgaben. */
@@ -231,12 +239,25 @@ export function TasksTab({ server }: TasksTabProps) {
                     {schedule.command ? ` („${schedule.command}")` : ''} ·{' '}
                     {describeCron(schedule.cronExpression)} · {schedule.timezone}
                   </p>
-                  <p className="mt-0.5 text-xs text-ink-disabled">
-                    Zuletzt: {formatDateTime(schedule.lastRunAt)}
-                    {schedule.lastRunResult
-                      ? ` (${RUN_RESULT_LABELS[schedule.lastRunResult]})`
-                      : ''}{' '}
-                    · Nächster Lauf: {formatDateTime(schedule.nextRunAt)}
+                  {/*
+                    Der Ausgang des letzten Laufs als Pille statt als Klammer
+                    im Fließtext (Vorbild hafenmeister). „Zuletzt: 12.09.2026,
+                    03:00 (Fehlgeschlagen)" stand in derselben grauen Zeile wie
+                    der Zeitplan – ein fehlgeschlagener Lauf sah aus wie eine
+                    Zeitangabe.
+                  */}
+                  <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-disabled">
+                    {schedule.lastRunResult ? (
+                      <Badge tone={RUN_RESULT_TONES[schedule.lastRunResult]} withDot>
+                        zuletzt {RUN_RESULT_LABELS[schedule.lastRunResult].toLowerCase()}
+                      </Badge>
+                    ) : (
+                      <span>noch nie gelaufen</span>
+                    )}
+                    {schedule.lastRunAt === null ? null : (
+                      <span>· {formatDateTime(schedule.lastRunAt)}</span>
+                    )}
+                    <span>· Nächster Lauf: {formatDateTime(schedule.nextRunAt)}</span>
                   </p>
                 </div>
 

@@ -44,6 +44,7 @@ const SERVER: ServerRecord = {
   ownerDisplayName: 'Besitzer',
   hostId: '44444444-4444-4444-8444-444444444444',
   hostName: 'homeserver',
+  hostStatus: 'online',
   name: 'Testserver',
   gameType: 'test-echo',
   status: 'running',

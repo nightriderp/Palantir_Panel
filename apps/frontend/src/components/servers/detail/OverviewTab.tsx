@@ -19,6 +19,8 @@ import {
   formatServerAddress,
   formatTime,
   hasLiveStats,
+  lastTon,
+  pingTon,
 } from '@/components/shared';
 import { fetchStatsHistory } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
@@ -163,6 +165,27 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
     },
   ];
 
+  /**
+   * Warum eine Kachel leer ist – als Zusatz unter dem Strich.
+   *
+   * Vorbild hafenmeister: Dort steht unter jedem fehlenden Wert der Grund
+   * („noch keine Messwerte", „Node nicht verbunden"). Bei uns stand in dem Fall
+   * nur ein Strich, und ein Strich beantwortet nicht, ob gerade nichts gemessen
+   * wird, der Server steht oder die Node weg ist. Die Sätze darüber und der
+   * Verlauf darunter erklären es, aber eben nicht in der Kachel selbst.
+   *
+   * Die Reihenfolge ist die der Ursachen: Steht der Server, ist die Node
+   * nebensächlich; ist die Node weg, wartet man nicht auf Messwerte, sondern
+   * sieht nach ihr.
+   */
+  const fehlgrund = !hasLiveStats(server.status)
+    ? 'Server läuft nicht'
+    : server.hostStatus === 'offline'
+      ? 'Node nicht verbunden'
+      : server.hostStatus === 'maintenance'
+        ? 'Node in Wartung'
+        : 'noch keine Messwerte';
+
   return (
     <div className="flex flex-col gap-4">
       {/* Rasterregel wie im Mockup: die Kacheln verteilen sich selbst, statt
@@ -179,9 +202,10 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           value={formatPercent(
             cpuQuotaPercent(anzeige?.cpuPercent, server.resourceLimits.cpuCores),
           )}
+          tone={lastTon(cpuQuotaPercent(anzeige?.cpuPercent, server.resourceLimits.cpuCores))}
           note={
             anzeige?.cpuPercent == null
-              ? undefined
+              ? fehlgrund
               : `${formatNumber(Math.round(anzeige.cpuPercent / 10) / 10)} von ${formatNumber(
                   server.resourceLimits.cpuCores,
                 )} Kernen`
@@ -190,24 +214,44 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         <MetricTile
           label="Arbeitsspeicher"
           value={formatMegabytes(anzeige?.ramUsedMb)}
-          note={`von ${formatMegabytes(server.resourceLimits.ramMb)}`}
+          // Der Arbeitsspeicher trägt überall die zweite Markenfarbe – auf der
+          // Kachel der Übersicht wie hier.
+          tone={anzeige?.ramUsedMb == null ? undefined : 'brand'}
+          note={
+            anzeige?.ramUsedMb == null
+              ? fehlgrund
+              : `von ${formatMegabytes(server.resourceLimits.ramMb)}`
+          }
         />
         <MetricTile
           label="Platte"
           value={formatMegabytes(stats?.diskUsedMb)}
+          tone={stats?.diskUsedMb == null ? undefined : 'warning'}
           note={
-            clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb) === null
-              ? undefined
-              : `${formatPercent(
-                  clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb),
-                )} belegt`
+            stats?.diskUsedMb == null
+              ? 'noch nicht gemessen'
+              : clampedPercentOf(stats.diskUsedMb, server.resourceLimits.diskMb) === null
+                ? 'ohne Buchung kein Anteil'
+                : `${formatPercent(
+                    clampedPercentOf(stats.diskUsedMb, server.resourceLimits.diskMb),
+                  )} belegt`
           }
         />
-        <MetricTile label="Ping" value={formatPing(anzeige?.pingMs)} />
-        <MetricTile label="Laufzeit" value={formatDuration(uptimeSeconds)} />
+        <MetricTile
+          label="Ping"
+          value={formatPing(anzeige?.pingMs)}
+          tone={pingTon(anzeige?.pingMs)}
+          note={anzeige?.pingMs == null ? fehlgrund : 'Umlaufzeit zum Node'}
+        />
+        <MetricTile
+          label="Laufzeit"
+          value={formatDuration(uptimeSeconds)}
+          note={uptimeSeconds === null ? 'Server läuft nicht' : 'seit dem letzten Start'}
+        />
         {/* Nicht im Mockup, aber die Zahl liegt vor und gehoert zum Zustand. */}
         <MetricTile
           label="Spieler"
+          note={anzeige?.playersOnline == null ? fehlgrund : undefined}
           value={formatPlayers(anzeige?.playersOnline, anzeige?.playersMax)}
         />
       </div>

@@ -219,6 +219,13 @@ export interface NodesSummaryEntry {
   label: string;
   value: string;
   note: string;
+  /**
+   * Farbe der Zahl. Die vier Kacheln zeigen vier verschiedene Größen, und ohne
+   * Farbe liest sich die Zeile als ein Block weißer Zahlen. Die Zuordnung ist
+   * dieselbe wie überall im Panel: erreichbar = grün, Belegung = Markenfarbe,
+   * freier Platz = gelb.
+   */
+  tone: Tone;
 }
 
 /**
@@ -244,24 +251,28 @@ export function nodesSummary(nodes: HostNodeDto[]): NodesSummaryEntry[] {
       label: 'Nodes online',
       value: `${formatNumber(online)}/${formatNumber(nodes.length)}`,
       note: 'Erreichbare Nodes gegenüber allen eingerichteten.',
+      tone: online === nodes.length ? 'success' : online === 0 ? 'danger' : 'warning',
     },
     {
       key: 'servers',
       label: 'Server verteilt',
       value: formatNumber(servers),
       note: 'Angelegte Gameserver auf allen Nodes zusammen.',
+      tone: 'neutral',
     },
     {
       key: 'ram',
       label: 'RAM gebucht',
       value: formatMegabytes(bookedRamMb),
       note: 'Für vorhandene Server fest reserviert.',
+      tone: 'brand',
     },
     {
       key: 'disk',
       label: 'Platte frei',
       value: formatMegabytes(freeDiskMb),
       note: 'Platz für Weltdaten und Backups.',
+      tone: 'warning',
     },
   ];
 }

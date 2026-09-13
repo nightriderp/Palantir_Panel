@@ -43,6 +43,24 @@ const config: Config = {
           DEFAULT: '#1a1c24',
           muted: '#14161d',
           deep: '#12141b',
+          /**
+           * Grund der Live-Konsole – dunkler als jede Karte, damit das
+           * Terminalfenster sich von der Seite absetzt.
+           */
+          console: '#0c0e13',
+        },
+        /**
+         * Die drei Ampelpunkte in der Titelzeile der Konsole.
+         *
+         * Bewusst die bekannten Fensterfarben und keine Statusfarben des
+         * Panels: Sie sagen „hier ist ein Terminal", nicht „hier ist ein
+         * Fehler". Rot aus `danger` zu nehmen hiesse, dass ein ruhender
+         * Konsolenkasten dauerhaft eine Störung anzeigt.
+         */
+        terminal: {
+          close: '#ff5f57',
+          minimize: '#febc2e',
+          zoom: '#28c840',
         },
         /** Textfarben, von kräftig nach zurückhaltend. */
         ink: {
@@ -135,8 +153,22 @@ const config: Config = {
       spacing: {
         4.5: '1.125rem', // 18px
         5.5: '1.375rem', // 22px
+        /**
+         * Durchmesser der Kennzahlen-Ringe auf der Server-Kachel (54px).
+         *
+         * Eigenes Maß statt `h-14`, weil Ring, Bogenstärke und die Zahl in der
+         * Mitte aufeinander abgestimmt sind: `MetricRing` zeichnet auf einem
+         * 80er-Feld mit Radius 33 und Stärke 7, und dieses Verhältnis stimmt
+         * genau bei 54px. Wer die Größe ändert, ändert sie hier – nicht in der
+         * Komponente.
+         */
+        ring: '3.375rem', // 54px
+        /** Kachel im Kopf der Server-Detailseite. */
+        13: '3.25rem', // 52px
       },
       boxShadow: {
+        /** Schein unter der Primäraktion – hebt den einen wichtigen Knopf heraus. */
+        glow: '0 4px 18px rgba(124,92,255,0.3)',
         /** Popover, Dropdown, Toast. */
         panel: '0 16px 40px rgba(0,0,0,0.5)',
         /** Modal-Dialog. */

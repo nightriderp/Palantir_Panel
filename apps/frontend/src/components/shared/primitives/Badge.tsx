@@ -41,14 +41,27 @@ export interface BadgeProps {
   withDot?: boolean;
   /** Lässt den Punkt pulsieren, solange etwas aktiv ist. */
   pulse?: boolean;
+  /**
+   * Erklärung am Mauszeiger. Eine Pille trägt zwei, drei Wörter – was sie
+   * bedeutet, passt oft nicht hinein.
+   */
+  title?: string;
   className?: string;
   children: ReactNode;
 }
 
 /** Kleiner Zustands- oder Zählerhinweis in Pillenform. */
-export function Badge({ tone = 'neutral', withDot, pulse, className, children }: BadgeProps) {
+export function Badge({
+  tone = 'neutral',
+  withDot,
+  pulse,
+  title,
+  className,
+  children,
+}: BadgeProps) {
   return (
     <span
+      title={title}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
         TONE_PILL_CLASSES[tone],

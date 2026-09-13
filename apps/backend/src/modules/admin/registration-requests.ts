@@ -54,6 +54,15 @@ export interface WaitlistRole {
 export interface WaitlistUserRecord {
   readonly id: string;
   readonly displayName: string;
+  /**
+   * Anmeldename. Der Anzeigename daneben ist frei wählbar und nicht eindeutig;
+   * gesucht und angeschrieben wird über diesen hier.
+   *
+   * `null` bei einem Konto ohne eigenen Anmeldenamen – die Spalte lässt das
+   * zu, weil ein Konto auch allein über Discord, Twitch oder Steam entstehen
+   * kann. Dann bleibt das Feld im DTO weg, statt einen leeren Namen zu zeigen.
+   */
+  readonly username: string | null;
   readonly isOwner: boolean;
   readonly banned: boolean;
   readonly createdAt: Date;
@@ -127,6 +136,10 @@ export function toRegistrationRequestDto(
   return {
     userId: user.id,
     displayName: user.displayName,
+    // Ohne eigenen Anmeldenamen (reines OAuth-Konto) bleibt das Feld weg – der
+    // Vertrag führt es optional, und `null` wäre eine andere Aussage als „gibt
+    // es nicht".
+    ...(user.username === null ? {} : { username: user.username }),
     status: statusOf(user),
     banned: user.banned,
     profiles: [...user.profiles],

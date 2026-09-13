@@ -13,6 +13,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Badge,
   Button,
+  IconButton,
   ConfirmDialog,
   DangerConfirmDialog,
   Icon,
@@ -401,7 +402,24 @@ export function UsersView() {
                     >
                       {serverInitials(entry.displayName)}
                     </span>
-                    <span className="text-ink">{entry.displayName}</span>
+                    {/*
+                      Anzeigename und Anmeldename untereinander: Der Anzeigename
+                      ist frei wählbar und nicht eindeutig – bei zwei Konten
+                      „Chris Knapp" war nicht zu erkennen, welches gemeint ist.
+                      Gesucht und angeschrieben wird über den Anmeldenamen.
+
+                      Das Feld ist im Vertrag optional (Contracts-PR #453):
+                      Antwortet ein älteres Backend ohne `username`, bleibt es
+                      wie bisher beim Anzeigenamen allein.
+                    */}
+                    <span className="min-w-0">
+                      <span className="block truncate text-ink">{entry.displayName}</span>
+                      {entry.username === undefined ? null : (
+                        <span className="block truncate font-mono text-xs text-ink-faint">
+                          @{entry.username}
+                        </span>
+                      )}
+                    </span>
                   </span>
                 </Td>
                 <Td className="text-ink-muted">
@@ -446,49 +464,47 @@ export function UsersView() {
                   {formatDate(entry.registeredAt)}
                 </Td>
                 <Td>
-                  <span className="flex flex-wrap gap-2">
-                    <Button
-                      variant="secondary"
+                  {/*
+                    Die fünf Verwaltungsschritte stehen als Symbolknöpfe, die
+                    zustandsändernden daneben weiter mit Wort. Beschriftet
+                    waren es bis zu acht Knöpfe je Zeile: Sie brachen um, und
+                    eine Zeile wurde so hoch, dass auf den Bildschirm kaum ein
+                    Konto passte. Der Sinn der Tabelle – viele Konten
+                    nebeneinander sehen – ging dabei verloren.
+                  */}
+                  <span className="flex flex-nowrap items-center justify-end gap-1.5">
+                    <IconButton
                       size="sm"
-                      iconLeft="shield"
+                      icon="shield"
+                      label="Rollen"
                       onClick={() => setDialog({ kind: 'roles', user: entry })}
-                    >
-                      Rollen
-                    </Button>
+                    />
                     {canViewAnyServer ? (
-                      <Button
-                        variant="secondary"
+                      <IconButton
                         size="sm"
-                        iconLeft="server"
+                        icon="server"
+                        label="Server einsehen"
                         onClick={() => setDialog({ kind: 'servers', user: entry })}
-                      >
-                        Server einsehen
-                      </Button>
+                      />
                     ) : null}
-                    <Button
-                      variant="secondary"
+                    <IconButton
                       size="sm"
-                      iconLeft="database"
+                      icon="database"
+                      label="Kontingent"
                       onClick={() => setDialog({ kind: 'limits', user: entry })}
-                    >
-                      Kontingent
-                    </Button>
-                    <Button
-                      variant="secondary"
+                    />
+                    <IconButton
                       size="sm"
-                      iconLeft="key"
+                      icon="key"
+                      label="Passwort zurücksetzen"
                       onClick={() => setDialog({ kind: 'resetPassword', user: entry })}
-                    >
-                      Passwort
-                    </Button>
-                    <Button
-                      variant="secondary"
+                    />
+                    <IconButton
                       size="sm"
-                      iconLeft="lock"
+                      icon="lock"
+                      label="Zwei-Faktor zurücksetzen"
                       onClick={() => setDialog({ kind: 'resetTwoFactor', user: entry })}
-                    >
-                      2FA
-                    </Button>
+                    />
                     {/*
                       Fundpunkt 214: Der Statusfilter „Wartet auf Freigabe"
                       zeigte die wartenden Konten, ohne sie freigeben zu

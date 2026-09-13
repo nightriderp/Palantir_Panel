@@ -9,6 +9,7 @@
 
 import {
   type GameConfigValues,
+  type HostNodeStatus,
   type ServerMemberLevel,
   type ServerResourceLimits,
   type ServerStatus,
@@ -26,6 +27,8 @@ export interface ServerRecord {
   readonly ownerDisplayName: string | null;
   readonly hostId: string;
   readonly hostName: string | null;
+  /** Verbindungszustand der Node; `null`, wenn die Node fehlt. */
+  readonly hostStatus: HostNodeStatus | null;
   readonly name: string;
   readonly gameType: string;
   readonly status: ServerStatus;
@@ -251,6 +254,7 @@ type ServerJoinRow = {
   server: typeof gameServers.$inferSelect;
   ownerDisplayName: string | null;
   hostName: string | null;
+  hostStatus: HostNodeStatus | null;
 };
 
 function toRecord(row: ServerJoinRow): ServerRecord {
@@ -262,6 +266,7 @@ function toRecord(row: ServerJoinRow): ServerRecord {
     ownerDisplayName: row.ownerDisplayName,
     hostId: server.hostId,
     hostName: row.hostName,
+    hostStatus: row.hostStatus,
     name: server.name,
     gameType: server.gameType,
     status: server.status,
@@ -291,6 +296,10 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
     server: gameServers,
     ownerDisplayName: users.displayName,
     hostName: hostNodes.name,
+    // Der Zustand der Node kommt aus demselben Join wie ihr Name: Die
+    // Detailansicht soll sagen koennen, ob Messwerte fehlen, weil noch nichts
+    // gemessen wurde – oder weil die Node gar nicht verbunden ist.
+    hostStatus: hostNodes.status,
   };
 
   /**

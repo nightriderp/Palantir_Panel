@@ -7,6 +7,7 @@ import {
   Icon,
   IconButton,
   ServerStatusPill,
+  StartupProgress,
   formatServerAddress,
   isLifecycleActionBlocked,
   serverInitials,
@@ -69,11 +70,11 @@ export function DetailHeader({
     server.updateAvailable && server.permissions.canRestart && server.status === 'running';
 
   return (
-    <header className="flex flex-col gap-3 rounded-2xl border border-line bg-hero-gradient p-6">
-      <div className="flex flex-wrap items-start gap-4">
+    <header className="flex flex-col gap-3 rounded-2xl border border-line bg-hero-gradient p-4.5">
+      <div className="flex flex-wrap items-start gap-3.5">
         <span
           aria-hidden
-          className="flex h-[62px] w-[62px] shrink-0 items-center justify-center rounded-xl bg-brand-gradient text-2xl font-bold text-canvas"
+          className="flex h-13 w-13 shrink-0 items-center justify-center rounded-xl bg-brand-gradient font-mono text-xl font-bold text-canvas"
         >
           {serverInitials(server.name)}
         </span>
@@ -82,7 +83,7 @@ export function DetailHeader({
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Der Seitenkopf traegt bereits das `h1`; hier steht derselbe Name
                 als Ueberschrift der Karte. */}
-            <h2 className="truncate text-4xl font-bold">{server.name}</h2>
+            <h2 className="truncate text-3xl font-bold">{server.name}</h2>
             <ServerStatusPill status={server.status} />
             {server.pendingRestart ? (
               <span title="Neue Einstellungen greifen beim nächsten Neustart.">
@@ -167,14 +168,11 @@ export function DetailHeader({
       </div>
 
       {meta.transitional ? (
-        <div>
-          <div className="relative h-1 overflow-hidden rounded-sm bg-fill-strong">
-            <div className="absolute inset-y-0 left-0 w-[30%] animate-startup-sweep bg-gradient-to-r from-transparent via-warning to-transparent" />
-          </div>
-          <p className="mt-1.5 text-xs text-warning">
-            {meta.label} Bei größeren Welten kann das einen Moment dauern.
-          </p>
-        </div>
+        <StartupProgress
+          label={meta.label}
+          note={server.statusMessage ?? 'Bei größeren Welten kann das einen Moment dauern.'}
+          since={server.lastStartedAt}
+        />
       ) : null}
 
       {meta.faulted ? (

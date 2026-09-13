@@ -280,7 +280,10 @@ export function BackupsTab({ server, backupProgress, restoreJob }: BackupsTabPro
                         <a
                           href={backupDownloadUrl(backup.id)}
                           download
-                          className="text-xs text-brand"
+                          // Wie im Dateimanager: umrandeter Chip statt farbigem
+                          // Text, sonst steht der einzige Link zwischen lauter
+                          // Schaltflächen.
+                          className="rounded-md border border-line bg-fill px-2.5 py-1 text-xs text-ink-muted transition-colors hover:text-ink"
                         >
                           Herunterladen
                         </a>

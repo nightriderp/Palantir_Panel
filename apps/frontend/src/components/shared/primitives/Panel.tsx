@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { TONE_TEXT_CLASSES, type Tone } from './Badge';
 import { cn } from '../utils/cn';
 
 export interface PanelProps {
@@ -42,15 +43,36 @@ export interface MetricTileProps {
   value: ReactNode;
   /** Erläuterung unter dem Wert. */
   note?: string;
+  /**
+   * Farbe des Werts. Ohne Angabe steht er in der Textfarbe.
+   *
+   * Gedacht für Kacheln, die dieselbe Größe wie ein Ring auf der Kachel zeigen:
+   * CPU, Arbeitsspeicher, Platte und Ping tragen dort je eine feste Farbe, und
+   * die Detailseite soll dieselbe Zuordnung benutzen – sonst heißt derselbe
+   * Wert eine Seite weiter anders.
+   */
+  tone?: Tone;
   className?: string;
 }
 
 /** Kennzahlen-Kachel („Übersicht"-Tab, Node-Ansicht, Admin-Bereiche). */
-export function MetricTile({ label, value, note, className }: MetricTileProps) {
+export function MetricTile({ label, value, note, tone, className }: MetricTileProps) {
   return (
     <Panel variant="raised" padding="sm" className={cn('rounded-xl', className)}>
-      <div className="text-xs uppercase tracking-[0.08em] text-ink-soft">{label}</div>
-      <div className="mt-1.5 font-mono text-2xl font-semibold">{value}</div>
+      {/*
+        Beschriftung in normaler Schreibweise. Versalien mit gesperrtem Satz
+        lasen sich in einer Reihe von sechs Kacheln als Balken aus Grossbuchstaben
+        – die Zahl darunter soll die Kachel tragen, nicht ihr Etikett.
+      */}
+      <div className="text-xs text-ink-soft">{label}</div>
+      <div
+        className={cn(
+          'mt-1.5 font-mono text-2xl font-semibold',
+          tone ? TONE_TEXT_CLASSES[tone] : undefined,
+        )}
+      >
+        {value}
+      </div>
       {note ? <div className="mt-1 text-xs text-ink-faint">{note}</div> : null}
     </Panel>
   );

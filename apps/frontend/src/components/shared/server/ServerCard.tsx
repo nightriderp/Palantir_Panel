@@ -3,7 +3,7 @@
 import { type GameServerDto, type ServerLiveStats } from '@palantir/contracts';
 import { Icon } from '../icons/Icon';
 import { Button, IconButton } from '../primitives/Button';
-import { type Tone } from '../primitives/Badge';
+import { Badge, type Tone } from '../primitives/Badge';
 import { cn } from '../utils/cn';
 import {
   clampedPercentOf,
@@ -16,6 +16,8 @@ import {
   serverInitials,
 } from '../utils/format';
 import { MetricRing } from './MetricRing';
+import { StartupProgress } from './StartupProgress';
+import { lastTon, pingTon } from './metricTone';
 import { ServerStatusPill } from './ServerStatusPill';
 import {
   hasLiveStats,
@@ -70,20 +72,20 @@ export interface ServerCardProps {
   className?: string;
 }
 
-/** Auslastungsgrad in eine Ampel-Farbe übersetzen. */
+/**
+ * Auslastungsgrad in eine Ampel-Farbe übersetzen.
+ *
+ * Die Schwellen stehen in `metricTone.ts` und gelten auch für die Kacheln der
+ * Detailseite; hier wird nur der fehlende Wert auf „neutral" abgebildet,
+ * weil der Ring immer eine Farbe braucht.
+ */
 function loadTone(percent: number | null): Tone {
-  if (percent == null) return 'neutral';
-  if (percent > 75) return 'danger';
-  if (percent > 50) return 'warning';
-  return 'brand';
+  return lastTon(percent) ?? 'neutral';
 }
 
 /** Latenz in eine Ampel-Farbe übersetzen. */
 function pingTone(pingMs: number | null): Tone {
-  if (pingMs == null) return 'neutral';
-  if (pingMs > 60) return 'danger';
-  if (pingMs > 35) return 'warning';
-  return 'success';
+  return pingTon(pingMs) ?? 'neutral';
 }
 
 /**
@@ -136,38 +138,44 @@ export function ServerCard({
   return (
     <article
       className={cn(
-        'relative flex flex-col overflow-hidden rounded-2xl border border-line p-4',
+        // Ein einziger Abstand für die ganze Spalte statt eines eigenen
+        // `mt-*` je Abschnitt: So steht überall derselbe Rhythmus, auch wenn
+        // ein Abschnitt (Fehlerzeile, Startbalken, fremder Server) wegfällt.
+        'relative flex flex-col gap-3.5 overflow-hidden rounded-2xl border border-line p-4.5',
         isOwn ? 'bg-card-gradient' : 'bg-transparent',
         className,
       )}
     >
-      <header className="flex items-start gap-2.5">
+      <header className="flex items-start gap-3">
         <span
           aria-hidden
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-tile bg-brand-gradient text-base font-bold text-canvas"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-gradient font-mono text-sm font-bold text-canvas"
         >
           {serverInitials(server.name)}
         </span>
 
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-lg font-bold">{server.name}</h3>
+          <h3 className="truncate text-lg font-semibold">{server.name}</h3>
           <p className="truncate text-sm text-ink-soft">
             {server.gameTypeName}
             {!isOwn && server.ownerDisplayName ? ` · ${server.ownerDisplayName}` : ''}
           </p>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-1">
+        {/*
+          Hinweise als getönte Pillen statt als nackter Text: Neben der
+          Statuspille standen sie vorher als zwei magere Zeilen und lasen sich
+          wie Kleingedrucktes – dabei sind es Zustände des Servers wie der
+          Status selbst.
+        */}
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
           <ServerStatusPill status={server.status} />
           {updateAvailable ? (
-            <span
-              className="text-2xs text-warning"
-              title={'Auf der Detailseite über „Aktualisieren" übernehmen.'}
-            >
+            <Badge tone="warning" title={'Auf der Detailseite über „Aktualisieren" übernehmen.'}>
               Update verfügbar
-            </span>
+            </Badge>
           ) : null}
-          {restartRequired ? <span className="text-2xs text-warning">Neustart nötig</span> : null}
+          {restartRequired ? <Badge tone="warning">Neustart nötig</Badge> : null}
         </div>
 
         {permissions.canManageSettings && onTogglePin ? (
@@ -178,13 +186,13 @@ export function ServerCard({
             aria-label={pinned ? 'Anpinnung lösen' : 'Server anpinnen'}
             title={pinned ? 'Anpinnung lösen' : 'Server anpinnen'}
             className={cn(
-              'shrink-0 rounded-sm p-0.5',
-              pinned ? 'text-brand' : 'text-ink-faint hover:text-ink-muted',
+              'flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors',
+              pinned ? 'bg-brand-soft text-brand' : 'bg-fill text-ink-faint hover:text-ink',
             )}
           >
             <svg
-              width={15}
-              height={15}
+              width={14}
+              height={14}
               viewBox="0 0 24 24"
               fill={pinned ? 'currentColor' : 'none'}
               stroke="currentColor"
@@ -198,21 +206,27 @@ export function ServerCard({
       </header>
 
       {meta.transitional ? (
-        <div className="mt-3">
-          <div className="relative h-1 overflow-hidden rounded-sm bg-fill-strong">
-            <div className="absolute inset-y-0 left-0 w-[30%] animate-startup-sweep bg-gradient-to-r from-transparent via-warning to-transparent" />
-          </div>
-          <p className="mt-1.5 text-xs text-warning">{meta.label}</p>
-        </div>
+        <StartupProgress
+          compact
+          label={meta.label}
+          note={server.statusMessage}
+          since={server.lastStartedAt}
+        />
       ) : null}
 
       {meta.faulted ? (
-        <p className="mt-3 rounded border border-danger-line bg-danger-soft px-2.5 py-2 text-sm text-danger">
+        // Einzeilig abgeschnitten: Die vollständige Meldung steht auf der
+        // Detailseite. Eine dreizeilige Fehlermeldung schob vorher die ganze
+        // Kachel auseinander, und im Raster standen daneben zwei halbleere.
+        <p
+          className="truncate rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"
+          title={server.statusMessage ?? meta.description}
+        >
           {server.statusMessage ?? meta.description}
         </p>
       ) : null}
 
-      <div className="mt-4 grid grid-cols-4 gap-1.5">
+      <div className="flex justify-around">
         <MetricRing
           label="CPU"
           value={formatPercent(cpuPercent)}
@@ -239,38 +253,59 @@ export function ServerCard({
         />
       </div>
 
-      <div className="mt-3.5 flex flex-wrap items-center gap-2.5 text-sm">
-        <span className="flex items-center gap-1 text-ink-muted">
-          <Icon name="user" size={12} />
+      {/*
+        Spieler, Node und Adresse in einer umbrechenden Zeile aus gleich
+        gebauten Chips. Vorher waren das drei Bausteine in drei Höhen: eine
+        Textzeile, eine zweite Textzeile und darunter ein Rahmenknopf. Als
+        Chips stehen sie nebeneinander, brechen bei schmalen Kacheln sauber um
+        und sparen eine ganze Zeile Höhe.
+      */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="flex items-center gap-1.5 rounded-md bg-fill px-2.5 py-1.5 text-ink-soft">
+          <Icon name="user" size={13} />
           {formatPlayers(live?.playersOnline, live?.playersMax)}
         </span>
-        {server.hostName ? <span className="text-ink-faint">Node: {server.hostName}</span> : null}
-      </div>
+        {server.hostName ? (
+          <span className="rounded-md bg-fill px-2.5 py-1.5 text-ink-soft">
+            Node: <span className="text-ink">{server.hostName}</span>
+          </span>
+        ) : null}
 
-      {showAddress ? (
-        onCopyAddress ? (
-          <button
-            type="button"
-            onClick={() => onCopyAddress(address, server)}
-            title="Adresse kopieren"
-            className="mt-2 flex w-fit items-center gap-1.5 rounded border border-line bg-fill px-2.5 py-1.5 font-mono text-xs text-ink-muted"
+        {showAddress ? (
+          onCopyAddress ? (
+            <button
+              type="button"
+              onClick={() => onCopyAddress(address, server)}
+              title="Verbindungsadresse kopieren"
+              className="flex min-w-0 items-center gap-1.5 rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-ink-faint transition-colors hover:text-ink"
+            >
+              <Icon name="copy" size={11} />
+              <span className="truncate">{address}</span>
+            </button>
+          ) : (
+            <span className="flex min-w-0 items-center gap-1.5 rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-ink-faint">
+              <Icon name="copy" size={11} />
+              <span className="truncate">{address}</span>
+            </span>
+          )
+        ) : (
+          // Ausgegraut statt weggelassen: Die Kachel sieht für alle gleich aus,
+          // nur die Angabe fehlt – und wer sie nicht bekommt, sieht, dass es
+          // dort etwas gibt. Ausgeliefert wird sie ohne das Recht ohnehin nicht.
+          <span
+            title="Für deine Rolle nicht freigegeben."
+            className="flex min-w-0 cursor-not-allowed items-center gap-1.5 rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-ink-disabled"
           >
             <Icon name="copy" size={11} />
-            {address}
-          </button>
-        ) : (
-          <span className="mt-2 w-fit rounded border border-line bg-fill px-2.5 py-1.5 font-mono text-xs text-ink-muted">
-            {address}
+            <span className="truncate">nicht freigegeben</span>
           </span>
-        )
-      ) : (
-        <p className="mt-2 text-xs text-ink-faint">Adresse nicht freigegeben</p>
-      )}
+        )}
+      </div>
 
       {!isOwn ? (
-        <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
+        <div className="flex items-center gap-2 border-t border-line pt-3.5">
           {adminAccess ? (
-            <span className="flex items-center gap-1 text-xs text-warning">
+            <span className="flex items-center gap-1.5 rounded-md bg-warning-soft px-2 py-1 text-2xs uppercase tracking-[0.06em] text-warning">
               <Icon name="shield" size={12} />
               Admin-Zugriff
             </span>
@@ -296,7 +331,7 @@ export function ServerCard({
 
       <div className="flex-1" />
 
-      <footer className="mt-3.5 flex gap-2">
+      <footer className="flex gap-2 border-t border-line pt-3.5">
         {canUseStartStop ? (
           <Button
             variant={action === 'stop' ? 'danger' : 'success'}

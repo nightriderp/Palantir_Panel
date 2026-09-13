@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../icons/Icon';
 import { LogoMark } from '../icons/LogoMark';
 import { cn } from '../utils/cn';
+import { useDrawerDrag, useMediaQuery } from './useDrawerDrag';
 
 export interface AppShellProps {
   /** Inhalt der Seitenleiste – üblicherweise mehrere `SideNavSection`. */
@@ -23,6 +24,18 @@ export interface AppShellProps {
  * Ziel des Sprunglinks – dasselbe Wort steht im `id`-Attribut des Inhalts.
  */
 const INHALT_ID = 'inhalt';
+
+/**
+ * Breite der Schublade in Bildpunkten – dieselbe Zahl wie `w-[250px]` unten.
+ *
+ * Sie steht hier als Zahl, weil die Geste rechnet: Sie ist die Strecke
+ * zwischen „ganz offen" und „ganz zu". Wer die Klasse ändert, ändert sie hier
+ * mit.
+ */
+const DRAWER_WIDTH = 250;
+
+/** Unterhalb dieser Breite ist die Seitenleiste eine Schublade (Tailwind `md`). */
+const MOBILE_QUERY = '(max-width: 767px)';
 
 /**
  * Seitenrahmen des eingeloggten Bereichs: Seitenleiste, Kopfleiste, Inhalt.
@@ -49,6 +62,22 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const scrimRef = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * Die Geste gilt nur auf dem Telefon. Ab `md` ist die Seitenleiste eine feste
+   * Spalte, und ein Zug daran hätte nichts zu verschieben.
+   */
+  const mobil = useMediaQuery(MOBILE_QUERY);
+  const drag = useDrawerDrag({
+    open: navOpen,
+    onClose: () => setNavOpen(false),
+    panelRef,
+    scrimRef,
+    width: DRAWER_WIDTH,
+    enabled: mobil,
+  });
 
   // Escape schließt die mobile Schublade.
   useEffect(() => {
@@ -73,18 +102,36 @@ export function AppShell({
         Zum Inhalt springen
       </a>
 
-      {navOpen ? (
-        <div
-          aria-hidden
-          onClick={() => setNavOpen(false)}
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-        />
-      ) : null}
+      {/*
+        Der Schleier bleibt stehen, auch wenn die Schublade zu ist: Während
+        eines Zuges wird seine Deckkraft von der Geste gesetzt (siehe
+        `useDrawerDrag`), und ein Element, das erst beim Öffnen entsteht, hätte
+        dafür nichts zum Anfassen. Geschlossen ist er durchsichtig und nimmt
+        keine Klicks an.
+      */}
+      <div
+        ref={scrimRef}
+        aria-hidden
+        onClick={() => setNavOpen(false)}
+        className={cn(
+          'fixed inset-0 z-40 bg-black/50 transition-opacity md:hidden',
+          navOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )}
+      />
 
       <nav
+        ref={panelRef}
         aria-label="Hauptnavigation"
+        onPointerDown={drag.onPointerDown}
+        onPointerMove={drag.onPointerMove}
+        onPointerUp={drag.onPointerUp}
+        onPointerCancel={drag.onPointerUp}
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex h-screen w-[250px] shrink-0 flex-col border-r border-line bg-surface-deep/95 backdrop-blur-[10px] transition-transform md:static md:translate-x-0 md:bg-surface-deep/65',
+          'fixed inset-y-0 left-0 z-40 flex h-screen w-[250px] shrink-0 touch-pan-y flex-col border-r border-line bg-surface-deep/95 backdrop-blur-[10px] md:static md:translate-x-0 md:bg-surface-deep/65',
+          // Der Übergang gilt nur ab `md`: Auf dem Telefon führt die Geste den
+          // Transform Bild für Bild selbst, und eine CSS-Dauer daneben würde
+          // ihn gegen den Finger verzögern.
+          'md:transition-transform',
           navOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >

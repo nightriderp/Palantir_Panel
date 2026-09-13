@@ -147,6 +147,7 @@ export function NodesView() {
                   label={entry.label}
                   value={entry.value}
                   note={entry.note}
+                  tone={entry.tone}
                 />
               ))}
             </div>

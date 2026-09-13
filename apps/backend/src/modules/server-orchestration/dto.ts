@@ -127,6 +127,8 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     statusMessage: server.statusMessage,
     hostId: server.hostId,
     hostName: server.hostName,
+    // Gleiche Sichtbarkeitsregel wie beim Namen der Node.
+    hostStatus: server.hostStatus,
     subdomain: server.subdomain,
     address: permissions.canViewAddress
       ? {
