@@ -1,0 +1,77 @@
+name: Shell-Lint
+
+# Prüft die Shell-Skripte des Repositories mit ShellCheck (Arbeitspaket HM-4).
+#
+# Warum es diesen Lauf gibt: Die 27 `.sh`-Dateien sind der einzige Teil des
+# Projekts, den weder TypeScript noch Vitest absichert - und es sind nicht die
+# harmlosen. Darunter stehen das Ausrollen auf der VPS (`deploy/vps/deploy.sh`),
+# die Selbstaktualisierung der Gamenode, die Egress-Firewall und die
+# Startskripte aller Spiel-Images. Ein Tippfehler in einer Verzweigung fällt
+# dort erst im Betrieb auf, und zwar an der unangenehmsten Stelle.
+#
+# ShellCheck ist auf den GitHub-Runnern vorinstalliert; der Lauf kostet Sekunden
+# und braucht weder Node noch pnpm.
+#
+# **Fremde Actions sind per Commit-SHA gepinnt** (Begründung im Kopf von
+# `ci.yml`): Ein Tag wie `@v4` ist verschiebbar, ein SHA nicht.
+# `.github/dependabot.yml` hält die Pins nach.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.sh'
+      - '.github/workflows/shell-lint.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.sh'
+      - '.github/workflows/shell-lint.yml'
+  # Für einen vollständigen Lauf von Hand, etwa nach einer neuen
+  # ShellCheck-Fassung auf den Runnern.
+  workflow_dispatch:
+
+concurrency:
+  group: shell-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Skripte prüfen
+        run: |
+          set -euo pipefail
+
+          # `git ls-files` statt `find`: Was nicht im Repository steht, geht den
+          # Lauf nichts an - weder ein Skript aus `node_modules` noch eines, das
+          # jemand lokal liegen hat.
+          mapfile -t dateien < <(git ls-files '*.sh')
+
+          if [ ${#dateien[@]} -eq 0 ]; then
+            echo 'Keine Shell-Skripte gefunden.'
+            exit 0
+          fi
+
+          echo "Geprüft werden ${#dateien[@]} Datei(en):"
+          printf '  %s\n' "${dateien[@]}"
+          shellcheck --version
+
+          # `--severity=warning` lässt Stil-Hinweise (info/style) aus: Sie sind
+          # Geschmack, und ein Lauf, der bei Geschmack rot wird, wird abgestellt.
+          #
+          # SC1091 ausgenommen: Die Startskripte der Spiel-Images binden die
+          # Bibliothek über einen erst zur Laufzeit bekannten Pfad ein
+          # (`. "${PALANTIR_LIB_DIR:-/opt/palantir/lib}/palantir.sh"`). Außerhalb
+          # des Containers gibt es die Datei nicht, ShellCheck kann ihr also
+          # nicht folgen - das ist erwartet und kein Befund.
+          shellcheck --severity=warning --exclude=SC1091 "${dateien[@]}"

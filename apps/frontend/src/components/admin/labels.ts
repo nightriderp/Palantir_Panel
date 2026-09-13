@@ -94,6 +94,7 @@ const AUDIT_ACTION_LABELS: Partial<Record<AuditAction, string>> = {
   'message.moderated': 'Nachricht moderiert',
   'font.uploaded': 'Schrift hochgeladen',
   'font.deleted': 'Schrift gelöscht',
+  'access.denied': 'Zugriff abgewiesen',
 };
 
 export function auditActionLabel(action: AuditAction): string {
