@@ -8,7 +8,13 @@ import { buildLoggerOptions } from './config/logging.js';
 import { createTrustProxy } from './config/trusted-proxy.js';
 import { getDb, getPool } from './db/index.js';
 import { registerErrorHandler } from './error-handler.js';
-import { createAdminModule, ipHintOf, registerAdminRoutes } from './modules/admin/index.js';
+import { fireAndForget } from './lib/fire-and-forget.js';
+import {
+  type AuditService,
+  createAdminModule,
+  ipHintOf,
+  registerAdminRoutes,
+} from './modules/admin/index.js';
 import {
   CHAT_LIVE_CLOSE_CODE_UNAUTHORIZED,
   createChatModule,
@@ -275,6 +281,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     record: (entry) => auditSink.record(entry),
   };
 
+  /*
+   * Dasselbe für die abgewiesenen Zugriffe aus B2 (HM-3): Der Guard steht
+   * unmittelbar nach dieser Stelle, der `AuditService` entsteht erst mit dem
+   * Admin-Modul weiter unten.
+   *
+   * Bewusst eine zweite Variable statt `auditSink`: Die ist auf die
+   * Auth-Aktionen eingeschnürt (`AuthAuditAction`), und `access.denied` gehört
+   * nicht dazu. Bis zur Verdrahtung bleibt sie `null` - ohne Datenbank gibt es
+   * kein Log, in das sie schreiben könnte.
+   */
+  let auditDienst: AuditService | null = null;
+
   if (auth !== false) {
     authService = await registerAuthModule(app, {
       ...(auth === true ? {} : auth),
@@ -293,6 +311,55 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       }
 
       return options.resolveActor?.(request) ?? null;
+    },
+
+    /*
+     * Abgewiesene Zugriffe ins Audit-Log (HM-3, Pflichtenheft §6 und §8).
+     *
+     * Wer der Handelnde ist, weiß erst diese Stelle: `rbac` kennt nur den
+     * Actor mit seinen Rechten, nicht das Konto dahinter (dieselbe Umkehr wie
+     * bei `resolveActor` darüber).
+     *
+     * Ohne Konto wird nichts geschrieben. Das ist hier doppelt gesichert - der
+     * Guard meldet bei `AUTH_REQUIRED` ohnehin nicht -, aber ein Eintrag ohne
+     * `actorId` wäre auch nutzlos: Er sagte nur, dass irgendwer irgendwo
+     * abgeprallt ist.
+     */
+    onDenied({ request, verlangt }): void {
+      const konto = request.authUser;
+
+      if (!konto || !auditDienst) {
+        return;
+      }
+
+      /*
+       * Nicht abgewartet, und das mit Absicht: Die 403-Antwort soll nicht auf
+       * einen Datenbankschreibvorgang warten. `fireAndForget` ist die einzige
+       * zulaessige Form dafuer (Audit W0-5) - es faengt die Ablehnung und
+       * schreibt sie mit Kontext ins Log, statt den Prozess mitzunehmen.
+       *
+       * Scheitert das Schreiben, bleibt es bei der 403: Eine korrekte
+       * Abweisung in einen 500er zu verwandeln, weil das Protokoll klemmt,
+       * waere die schlechtere Antwort - und zwar fuer genau den Aufrufer, der
+       * ohnehin nichts durfte.
+       */
+      fireAndForget(
+        auditDienst.record({
+          action: 'access.denied',
+          actorId: konto.id,
+          actorDisplayName: konto.displayName,
+          // Gekuerzte Adresse wie bei jedem anderen Eintrag (Pflichtenheft §18)
+          // - nicht `request.ip` roh.
+          ipHint: ipHintOf(request),
+          metadata: {
+            methode: request.method,
+            route: request.routeOptions.url ?? request.url.split('?')[0],
+            verlangt: [...verlangt],
+          },
+        }),
+        app.log,
+        { vorgang: 'Audit-Eintrag fuer abgewiesenen Zugriff', konto: konto.id },
+      );
     },
   });
 
@@ -398,6 +465,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * Weiterleitung wie die beiden Senken oben.
      */
     auditSink = admin.services.audit;
+    // Und ab jetzt landen auch die abgewiesenen Zugriffe aus B2 im Log (HM-3).
+    auditDienst = admin.services.audit;
 
     /*
      * Schriften der Oberfläche (S-2). Mitgelieferte Dateien kommen aus dem

@@ -133,6 +133,27 @@ export const AUDIT_ACTIONS = [
   'font.uploaded',
   /** Hochgeladene Schrift gelöscht; mitgelieferte lassen sich nicht löschen. */
   'font.deleted',
+
+  // Abgewiesene Zugriffe (Arbeitspaket HM-3)
+  /**
+   * Ein angemeldetes Konto wurde an einem Guard abgewiesen (`PERMISSION_DENIED`,
+   * 403).
+   *
+   * Die einzige Aktion des Katalogs, die **keinen** Vorgang festhält, sondern
+   * einen verhinderten: Alle anderen Einträge entstehen, weil etwas geschehen
+   * ist. Hier ist genau das Gegenteil der Fall, und gerade deshalb gehört der
+   * Eintrag ins Log – ein Konto, das der Reihe nach an fremden Servern,
+   * Rollen und Node-Einstellungen abprallt, ist sonst nirgends zu sehen
+   * (Pflichtenheft §6, §8).
+   *
+   * Ohne Sitzung wird **nicht** protokolliert: Das wäre `AUTH_REQUIRED` (401),
+   * es gäbe kein Konto, auf das der Eintrag zeigen könnte, und jeder
+   * Unangemeldete könnte das Log füllen.
+   *
+   * `targetType` bleibt leer – abgewiesen wird ein Weg, kein Objekt. Route,
+   * Methode und die verlangten Rechte stehen in den Metadaten.
+   */
+  'access.denied',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
