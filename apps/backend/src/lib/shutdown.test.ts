@@ -181,7 +181,7 @@ describe('installProcessGuards()', () => {
     expect(lines[0]?.message).toContain('läuft weiter');
   });
 
-  it('loggt eine Laufzeit-Warnung samt Stack (Fundpunkt 291)', () => {
+  it('loggt eine Laufzeit-Warnung samt Stack (Fundpunkt 292)', () => {
     /*
      * Node schreibt Warnungen roh auf stderr, an pino vorbei: Im JSON-Strom des
      * Containers stehen sie ohne Zeitstempel und ohne den Stack, der sie

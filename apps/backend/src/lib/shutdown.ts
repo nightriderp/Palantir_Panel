@@ -154,7 +154,7 @@ export interface ProcessGuardOptions {
  * - `uncaughtException`: loggen, geordnet beenden. Nach einer synchronen
  *   Ausnahme außerhalb jedes Handlers ist der Zustand des Prozesses nicht mehr
  *   verlässlich; weiterzulaufen wäre Raten.
- * - `warning`: loggen, weiterlaufen (Fundpunkt 291). Node schreibt Warnungen
+ * - `warning`: loggen, weiterlaufen (Fundpunkt 292). Node schreibt Warnungen
  *   sonst roh auf stderr, an pino vorbei - im JSON-Strom des Containers stehen
  *   sie dann als Fremdkörper ohne Zeitstempel, und **ohne den Stack**, der sie
  *   erklärt. Den trägt das Warnungs-Objekt selbst; `--trace-deprecation` würde
