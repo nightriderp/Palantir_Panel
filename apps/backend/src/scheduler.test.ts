@@ -727,6 +727,7 @@ function runningServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
     ownerDisplayName: 'Besitzerin',
     hostId: HOST.id,
     hostName: HOST.name,
+    hostStatus: 'online',
     name: 'Wüstensturm',
     gameType: TEST_MINECRAFT_GAME_TYPE.id,
     status: 'running',

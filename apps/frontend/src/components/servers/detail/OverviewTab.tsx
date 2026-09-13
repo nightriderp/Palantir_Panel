@@ -174,11 +174,17 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
    * wird, der Server steht oder die Node weg ist. Die Sätze darüber und der
    * Verlauf darunter erklären es, aber eben nicht in der Kachel selbst.
    *
-   * „Node nicht verbunden" unterscheidet das DTO nicht – es führt nur den
-   * Namen der Node, nicht ihren Zustand (`GameServerDto.hostName`). Solange
-   * das so ist, bleibt es bei den beiden Fällen, die hier entscheidbar sind.
+   * Die Reihenfolge ist die der Ursachen: Steht der Server, ist die Node
+   * nebensächlich; ist die Node weg, wartet man nicht auf Messwerte, sondern
+   * sieht nach ihr.
    */
-  const fehlgrund = !hasLiveStats(server.status) ? 'Server läuft nicht' : 'noch keine Messwerte';
+  const fehlgrund = !hasLiveStats(server.status)
+    ? 'Server läuft nicht'
+    : server.hostStatus === 'offline'
+      ? 'Node nicht verbunden'
+      : server.hostStatus === 'maintenance'
+        ? 'Node in Wartung'
+        : 'noch keine Messwerte';
 
   return (
     <div className="flex flex-col gap-4">

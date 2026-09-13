@@ -27,6 +27,7 @@ function server(overrides: Partial<ServerRecord> = {}): ServerRecord {
     ownerDisplayName: 'Ich',
     hostId: 'n1',
     hostName: 'Homeserver',
+    hostStatus: 'online',
     name: 'Mein Server',
     gameType: TEST_GAME_TYPE.id,
     status: 'stopped',
