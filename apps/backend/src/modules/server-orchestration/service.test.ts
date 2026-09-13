@@ -1977,9 +1977,19 @@ describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
 
     await expect(harness.service.deleteServer(created.id)).resolves.toBeUndefined();
 
-    // Ohne Container gibt es nichts mehr zu löschen – und nichts, woran das
-    // Löschen scheitern könnte.
-    expect(harness.socket.commands.map((c) => c.command)).not.toContain('DELETE');
+    /*
+     * Nichts, woran das Löschen scheitern könnte: Die tote Id geht nicht noch
+     * einmal hinaus. Seit Fundpunkt 289 sieht das Löschen ohne bekannte Id
+     * trotzdem über den festen Namen nach - ein Container kann dort stehen,
+     * ohne dass die Datenbank je seine Id erfahren hat.
+     */
+    const zurToten = harness.socket.commands.filter(
+      (c) =>
+        c.command === 'DELETE' &&
+        (c.payload as { containerId?: string }).containerId !== `palantir-${created.id}`,
+    );
+
+    expect(zurToten).toEqual([]);
     expect(harness.repository.servers.size).toBe(0);
   });
 
@@ -2507,6 +2517,57 @@ describe('Löschen', () => {
     expect(harness.emitted.map((e) => e.event)).toContain('server.deleted');
   });
 
+  it('sieht auch ohne bekannte Container-Id auf der Node nach (Fundpunkt 289)', async () => {
+    /*
+     * Eine leere `dockerContainerId` hiess bisher „es gibt keinen Container".
+     * Das stimmt nicht immer: Gibt das Backend ein `CREATE` nach seiner Frist
+     * auf, arbeitet der Agent weiter und legt den Container danach trotzdem an
+     * - die Id erreicht die Datenbank nie. Wird der Server dann geloescht,
+     * bleibt der Container auf der Node stehen, und niemand kann ihn noch
+     * entfernen: Der Datensatz mit seiner Id ist weg. Am 13.09.2026 auf der
+     * VPS gefunden, zwei ACC-Testserver vom 11.09.
+     */
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const server = await harness.service.requireServer(created.id);
+
+    harness.repository.servers.set(created.id, { ...server, dockerContainerId: null });
+    harness.socket.commands.length = 0;
+
+    await harness.service.deleteServer(created.id);
+
+    const geloescht = harness.socket.commands.filter((befehl) => befehl.command === 'DELETE');
+
+    expect(geloescht).toHaveLength(1);
+    // Adressiert ueber den festen Namen, nicht ueber eine Id, die es nicht gibt.
+    expect(geloescht[0]?.payload).toMatchObject({ containerId: `palantir-${created.id}` });
+    expect(harness.repository.servers.size).toBe(0);
+  });
+
+  it('loescht auch, wenn der Aufraeumversuch ins Leere geht (Fundpunkt 289)', async () => {
+    /*
+     * Der Regelfall: Ein Server ohne Id hat auch keinen Container. Der
+     * Aufraeumversuch ist auf gut Glueck - er darf das Loeschen niemals
+     * aufhalten.
+     */
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const server = await harness.service.requireServer(created.id);
+
+    harness.repository.servers.set(created.id, { ...server, dockerContainerId: null });
+    harness.socket.answers.set('DELETE', {
+      success: false,
+      data: null,
+      error: { code: 'AGENT_CONTAINER_NOT_FOUND', message: 'Kein solcher Container.' },
+    });
+
+    await harness.service.deleteServer(created.id);
+
+    expect(harness.repository.servers.size).toBe(0);
+    expect(harness.emitted.map((e) => e.event)).toContain('server.deleted');
+    expect(harness.logged.filter((line) => line.level === 'error')).toEqual([]);
+  });
+
   it('vergisst die fluechtigen Speicherstaende des Servers (orchestration-features-13)', async () => {
     /*
      * `LatestQueryCache` und `ClockSkewMonitor` liegen nur im Prozess und
@@ -2582,7 +2643,18 @@ describe('Löschen', () => {
 
     await expect(harness.service.deleteServer(created.id)).resolves.toBeUndefined();
 
-    expect(harness.socket.commands.map((c) => c.command)).not.toContain('DELETE');
+    /*
+     * Der zweite Anlauf geht nicht noch einmal gegen die tote Id. Über den
+     * festen Namen sieht er seit Fundpunkt 289 trotzdem nach - dort kann ein
+     * Container stehen, dessen Id die Datenbank nie erfahren hat.
+     */
+    const zurToten = harness.socket.commands.filter(
+      (c) =>
+        c.command === 'DELETE' &&
+        (c.payload as { containerId?: string }).containerId !== `palantir-${created.id}`,
+    );
+
+    expect(zurToten).toEqual([]);
     expect(harness.repository.servers.size).toBe(0);
     expect(harness.releasedPorts).toEqual([created.id]);
   });
