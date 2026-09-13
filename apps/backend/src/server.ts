@@ -374,6 +374,41 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
    * `options.database` sticht die Umgebung, damit Tests den Zustand selbst
    * festlegen können statt ihn von der Maschine zu erben.
    */
+  /*
+   * Datei-Uploads: Datei-Manager (P2, Lastenheft §3.3), Weltdaten-Archive des
+   * Wizards (P4) und das Profilbild (Konto-Bereich).
+   *
+   * **Neue Abhängigkeit `@fastify/multipart` (CLAUDE.md §1).** Das Frontend
+   * lädt Dateien als `multipart/form-data` hoch (`uploadFile()` in
+   * `lib/api/servers.ts`); Fastify bringt dafür keinen Parser mit, und ein
+   * selbst gebauter wäre genau die Sorte Code, die man nicht selbst schreiben
+   * will.
+   *
+   * `fileSize` ist hier nur das Sicherheitsnetz für jede Multipart-Route,
+   * nicht die fachliche Grenze: Der Datei-Manager setzt seine wirksame Grenze
+   * (`MAX_UPLOAD_SIZE_BYTES`, höchstens die 64 MiB des Agent-Kanals) je
+   * Aufruf selbst, damit nie mehr gepuffert wird, als der Dienst annimmt
+   * (Fundpunkt 123); der Weltdaten-Upload zählt beim Schreiben auf die Platte
+   * gegen `MAX_WORLD_ARCHIVE_BYTES`, das Profilbild gegen `AVATAR_MAX_BYTES`.
+   * Hier steht deshalb die größte der wirksamen Grenzen – mehr kann keine
+   * Route brauchen. `files: 1`, weil alle genau eine Datei je Aufruf
+   * entgegennehmen.
+   *
+   * **Vor der Datenbank-Weiche**, seit auch der Konto-Bereich eine
+   * Multipart-Route hat: Das Auth-Modul läuft ohne Datenbank-Module (Tests),
+   * und ohne Parser antwortete `POST /auth/avatar` dort mit 415 statt den
+   * Upload anzunehmen.
+   */
+  await app.register(multipart, {
+    limits: {
+      fileSize: Math.max(
+        effectiveUploadLimitBytes(env.MAX_UPLOAD_SIZE_BYTES),
+        env.MAX_WORLD_ARCHIVE_BYTES,
+      ),
+      files: 1,
+    },
+  });
+
   const withDatabase = options.database ?? env.DATABASE_URL !== undefined;
 
   if (withDatabase) {
@@ -496,35 +531,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * authentifiziert über das Pre-Shared-Token.
      */
     await app.register(websocket);
-
-    /*
-     * Datei-Uploads des Datei-Managers (P2, Lastenheft §3.3) und des Wizards
-     * (Weltdaten-Archive, P4).
-     *
-     * **Neue Abhängigkeit `@fastify/multipart` (CLAUDE.md §1).** Das Frontend
-     * lädt Dateien als `multipart/form-data` hoch (`uploadFile()` in
-     * `lib/api/servers.ts`); Fastify bringt dafür keinen Parser mit, und ein
-     * selbst gebauter wäre genau die Sorte Code, die man nicht selbst schreiben
-     * will.
-     *
-     * `fileSize` ist hier nur das Sicherheitsnetz für jede Multipart-Route,
-     * nicht die fachliche Grenze: Der Datei-Manager setzt seine wirksame Grenze
-     * (`MAX_UPLOAD_SIZE_BYTES`, höchstens die 64 MiB des Agent-Kanals) je
-     * Aufruf selbst, damit nie mehr gepuffert wird, als der Dienst annimmt
-     * (Fundpunkt 123); der Weltdaten-Upload zählt beim Schreiben auf die Platte
-     * gegen `MAX_WORLD_ARCHIVE_BYTES`. Hier steht deshalb die größere der
-     * beiden wirksamen Grenzen – mehr kann keine Route brauchen. `files: 1`,
-     * weil beide genau eine Datei je Aufruf entgegennehmen.
-     */
-    await app.register(multipart, {
-      limits: {
-        fileSize: Math.max(
-          effectiveUploadLimitBytes(env.MAX_UPLOAD_SIZE_BYTES),
-          env.MAX_WORLD_ARCHIVE_BYTES,
-        ),
-        files: 1,
-      },
-    });
 
     /*
      * Schriften-Routen erst hier: `POST /api/admin/fonts` nimmt die Datei als

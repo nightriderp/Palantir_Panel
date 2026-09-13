@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type AccountDto } from '@palantir/contracts';
 import { Badge, Icon, cn, useToast, type IconName } from '@/components/shared';
-import { logout } from '@/lib/auth/api';
+import { avatarUrl, logout } from '@/lib/auth/api';
 import { messageForThrown } from '@/lib/auth/errors';
 
 /**
@@ -18,6 +18,7 @@ import { messageForThrown } from '@/lib/auth/errors';
  */
 export function UserMenu({ user }: { user: AccountDto | null }) {
   const [open, setOpen] = useState(false);
+  const bild = user === null ? null : avatarUrl(user.id, user.avatarUpdatedAt);
   const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const toast = useToast();
@@ -77,8 +78,20 @@ export function UserMenu({ user }: { user: AccountDto | null }) {
           open && 'bg-fill text-ink',
         )}
       >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-fill-strong text-ink-muted">
-          <Icon name="user" size={14} />
+        {/*
+          Das eigene Profilbild, sonst wie bisher das Sinnbild. Es steht hier,
+          weil das Kontomenü die einzige Stelle ist, an der das eigene Konto auf
+          jeder Seite sichtbar ist – wer eins hochlädt, will es dort sehen.
+        */}
+        <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-fill-strong text-ink-muted">
+          {bild === null ? (
+            <Icon name="user" size={14} />
+          ) : (
+            /* Adresse der API, zur Bauzeit unbekannt – `next/image` bräuchte
+               dafür eine konfigurierte Domain. */
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={bild} alt="" className="h-full w-full object-cover" />
+          )}
         </span>
         <span className="hidden max-w-[12rem] truncate sm:inline">{user.displayName}</span>
         <Icon name="menu" size={12} />

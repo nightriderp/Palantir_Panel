@@ -73,6 +73,7 @@ export { Modal, type ModalProps } from './overlays/Modal';
 export { ConfirmDialog, type ConfirmDialogProps } from './overlays/ConfirmDialog';
 export { DangerConfirmDialog, type DangerConfirmDialogProps } from './overlays/DangerConfirmDialog';
 export { FormModal, type FormModalProps } from './overlays/FormModal';
+export { ImageCropper, type ImageCropperProps } from './overlays/ImageCropper';
 
 export { ServerCard, type ServerCardProps } from './server/ServerCard';
 export { ServerStatusPill, type ServerStatusPillProps } from './server/ServerStatusPill';

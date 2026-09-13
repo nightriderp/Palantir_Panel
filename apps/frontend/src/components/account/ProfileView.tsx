@@ -10,13 +10,23 @@ import {
   ConfirmDialog,
   DangerConfirmDialog,
   Icon,
+  ImageCropper,
   PageHeader,
   Panel,
   formatDate,
   useToast,
 } from '@/components/shared';
 import { OAUTH_PROVIDER_META } from '@/lib/auth/providers';
-import { AUTH_ENDPOINTS, apiUrl, deleteAccount, unlinkMethod, updateProfile } from '@/lib/auth/api';
+import {
+  AUTH_ENDPOINTS,
+  apiUrl,
+  avatarUrl,
+  deleteAccount,
+  removeAvatar,
+  unlinkMethod,
+  updateProfile,
+  uploadAvatar,
+} from '@/lib/auth/api';
 import { messageForThrown } from '@/lib/auth/errors';
 import { loadAccount } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
@@ -178,6 +188,106 @@ export function ProfileView() {
 }
 
 /**
+ * Profilbild: anzeigen, wählen, zuschneiden, entfernen (Lastenheft §3.1).
+ *
+ * Das Bild wird **im Browser** zugeschnitten und verkleinert (`ImageCropper`);
+ * hochgeladen geht nur das Ergebnis. Damit braucht das Backend keine
+ * Bildbibliothek – und keinen Dekodierer für fremde Daten, was die
+ * unangenehmere Hälfte davon wäre.
+ *
+ * Ohne Bild bleibt es beim Anfangsbuchstaben, wie überall sonst im Panel.
+ */
+function AvatarPicker({
+  account,
+  onChanged,
+}: {
+  account: AccountDto;
+  onChanged: (account: AccountDto) => void;
+}) {
+  const toast = useToast();
+  const [auswahl, setAuswahl] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const bild = avatarUrl(account.id, account.avatarUpdatedAt);
+
+  async function hochladen(datei: File) {
+    setAuswahl(null);
+    setBusy(true);
+    try {
+      onChanged(await uploadAvatar(datei));
+      toast.success('Profilbild gespeichert.');
+    } catch (error) {
+      toast.error(messageForThrown(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function entfernen() {
+    setBusy(true);
+    try {
+      onChanged(await removeAvatar());
+      toast.success('Profilbild entfernt.');
+    } catch (error) {
+      toast.error(messageForThrown(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-1.5">
+      <label
+        className="relative flex h-16 w-16 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-brand-soft text-4xl font-bold text-brand"
+        title="Profilbild wählen"
+      >
+        {bild === null ? (
+          account.displayName.slice(0, 1).toUpperCase()
+        ) : (
+          /* Die Adresse zeigt auf die API und ist zur Bauzeit unbekannt;
+             `next/image` bräuchte dafür eine konfigurierte Domain. */
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={bild} alt="" className="h-full w-full object-cover" />
+        )}
+
+        <span className="absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-2xs font-semibold text-white">
+          Ändern
+        </span>
+
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="hidden"
+          disabled={busy}
+          aria-label="Profilbild wählen"
+          onChange={(event) => {
+            const datei = event.target.files?.[0];
+            if (datei) setAuswahl(datei);
+            // Zurücksetzen, damit dieselbe Datei erneut gewählt werden kann.
+            event.target.value = '';
+          }}
+        />
+      </label>
+
+      {bild === null ? null : (
+        <Button variant="ghost" size="sm" disabled={busy} onClick={() => void entfernen()}>
+          Entfernen
+        </Button>
+      )}
+
+      {auswahl === null ? null : (
+        <ImageCropper
+          file={auswahl}
+          title="Profilbild zuschneiden"
+          hint="Ziehen zum Verschieben, Regler zum Vergrößern."
+          onCancel={() => setAuswahl(null)}
+          onDone={(datei) => void hochladen(datei)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * Kopf der Kontokarte: Avatar, Anzeigename und Anmeldekennung.
  *
  * Der Anzeigename ist bearbeitbar (Lastenheft §3.1) – so wie im Entwurf ein
@@ -226,12 +336,7 @@ function IdentityHeader({
 
   return (
     <form onSubmit={speichern} className="flex items-start gap-4">
-      <span
-        aria-hidden
-        className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-brand-soft text-4xl font-bold text-brand"
-      >
-        {account.displayName.slice(0, 1).toUpperCase()}
-      </span>
+      <AvatarPicker account={account} onChanged={onChanged} />
 
       <div className="min-w-0 flex-1">
         <input

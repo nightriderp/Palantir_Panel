@@ -18,7 +18,26 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { boolean, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  customType,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+
+/**
+ * Rohbytes in Postgres (`bytea`).
+ *
+ * Drizzle bringt für `bytea` keinen eigenen Spaltentyp mit; der Treiber
+ * liefert und nimmt aber `Buffer`. Deshalb hier einmal benannt, statt an der
+ * Spalte mit einem `any` zu arbeiten.
+ */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+});
 
 export const users = pgTable(
   'users',
@@ -46,6 +65,36 @@ export const users = pgTable(
      */
     isOwner: boolean('is_owner').notNull().default(false),
     banned: boolean('banned').notNull().default(false),
+    /**
+     * Profilbild des Kontos – als Bytes an der Zeile, nicht als Datei.
+     *
+     * ⚠️ Bewusst in der Datenbank, gegen die Faustregel „keine Blobs in die
+     * DB": Ein Panel dieser Größe hat ein paar Dutzend Konten, das sind ein
+     * paar Megabyte. Dafür fällt zweierlei weg. Erstens die Sicherung – der
+     * nächtliche `pg_dump` läuft ohnehin, ein Bilderordner müsste eigens in
+     * den Plan und wäre beim Vergessen unwiederbringlich. Zweitens die
+     * Deploy-Falle: Ein Verzeichnis unter `/opt/palantir` müsste **außerhalb**
+     * des Release-Ordners liegen, sonst räumt jedes Deployment es ab.
+     *
+     * **Anders als bei den Schriften** (`uploaded_fonts`), und das mit Absicht:
+     * Eine Schriftdatei ist bis zu 8 MiB groß und geht bei jedem Seitenaufruf
+     * über die Leitung – die liegt deshalb als Datei im Ablageort. Ein
+     * Profilbild ist nach dem Zuschneiden im Browser wenige Zehntel davon und
+     * wird selten geladen. Bei dieser Größe wiegt der Vorteil schwerer, dass
+     * es ohne Zutun im nächtlichen Abzug steckt.
+     *
+     * Verkleinert und zugeschnitten wird im Browser (höchstens 512×512); das
+     * Backend prüft nur Größe und Typ und braucht damit keine Bildbibliothek.
+     */
+    avatarData: bytea('avatar_data'),
+    /** MIME-Typ des Bildes; nur gesetzt, wenn auch `avatarData` gesetzt ist. */
+    avatarMimeType: text('avatar_mime_type'),
+    /**
+     * Wann das Bild zuletzt gesetzt wurde. Steht als `avatarUpdatedAt` im
+     * `AccountDto` und hängt dort an der Bild-Adresse, damit der Browser nach
+     * einem neuen Bild nicht das alte aus seinem Zwischenspeicher zeigt.
+     */
+    avatarUpdatedAt: timestamp('avatar_updated_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

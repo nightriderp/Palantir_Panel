@@ -17,7 +17,13 @@ import {
 } from '@palantir/contracts';
 import type { RoleRecord, RoleRepository } from '../rbac/index.js';
 import { AuthError } from './errors.js';
-import type { AuthMethodRecord, AuthRepository, SessionRecord, UserRecord } from './types.js';
+import type {
+  AuthMethodRecord,
+  AuthRepository,
+  SessionRecord,
+  UserAvatar,
+  UserRecord,
+} from './types.js';
 import type { ProviderAdapter, ProviderIdentity, ProviderRegistry } from './providers.js';
 
 /** Gameserver, wie ihn der Fake für die Löschsperre kennt (Audit W2-11). */
@@ -47,6 +53,8 @@ export interface FakeAuthRepository extends AuthRepository {
 
 export function createFakeAuthRepository(): FakeAuthRepository {
   const users: UserRecord[] = [];
+  /** Profilbilder der Attrappe – wie in der Datenbank getrennt vom Konto. */
+  const avatare = new Map<string, UserAvatar>();
   const methods: AuthMethodRecord[] = [];
   const sessions: SessionRecord[] = [];
   const ownedServers: FakeOwnedServer[] = [];
@@ -97,6 +105,7 @@ export function createFakeAuthRepository(): FakeAuthRepository {
         displayName: data.displayName,
         isOwner: false,
         banned: false,
+        avatarUpdatedAt: null,
         createdAt: new Date('2026-08-26T10:00:00Z'),
       };
 
@@ -179,6 +188,27 @@ export function createFakeAuthRepository(): FakeAuthRepository {
 
       return Promise.resolve(updated);
     },
+
+    setAvatar: (id, avatar) => {
+      const index = users.findIndex((user) => user.id === id);
+      const current = users[index];
+
+      if (!current) {
+        return Promise.reject(new Error('Konto konnte nicht aktualisiert werden.'));
+      }
+
+      const updated: UserRecord = {
+        ...current,
+        avatarUpdatedAt: avatar === null ? null : new Date('2026-09-13T18:00:00Z'),
+      };
+      users[index] = updated;
+      if (avatar === null) avatare.delete(id);
+      else avatare.set(id, { ...avatar, updatedAt: new Date('2026-09-13T18:00:00Z') });
+
+      return Promise.resolve(updated);
+    },
+
+    findAvatar: (id) => Promise.resolve(avatare.get(id) ?? null),
 
     deleteUser: (id) => {
       /*

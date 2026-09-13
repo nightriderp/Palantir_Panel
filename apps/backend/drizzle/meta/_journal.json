@@ -225,6 +225,13 @@
       "when": 1789082695350,
       "tag": "0031_spieltypen_abschaltbar",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789315998519,
+      "tag": "0032_profilbild_am_konto",
+      "breakpoints": true
     }
   ]
 }

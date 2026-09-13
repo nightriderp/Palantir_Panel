@@ -108,6 +108,9 @@ export function toAccountDto(input: {
       toLinkedAuthMethod(method, { totalMethods: input.methods.length }),
     ),
     mustChangePassword: passwordMethod?.mustChangePassword ?? false,
+    // Nur der Zeitstempel; das Bild selbst liegt hinter `/users/:userId/avatar`
+    // und wird vom Browser wie jedes andere Bild geladen.
+    avatarUpdatedAt: input.user.avatarUpdatedAt?.toISOString() ?? null,
     createdAt: input.user.createdAt.toISOString(),
     permissions: computeGlobalPermissions(input.actor),
   };
