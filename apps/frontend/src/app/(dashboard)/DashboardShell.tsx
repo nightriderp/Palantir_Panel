@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { type ConversationDto, type GameServerDto, type HostNodeDto } from '@palantir/contracts';
-import { AppShell, StatusDot, ToastProvider } from '@/components/shared';
+import { AppShell, DeployBanner, StatusDot, ToastProvider } from '@/components/shared';
 import { UserMenu } from '@/components/account/UserMenu';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { fetchConversations } from '@/lib/api/chat';
@@ -180,6 +180,12 @@ function Shell({ children, versionLabel }: { children: ReactNode; versionLabel: 
         </span>
       }
     >
+      {/*
+        Der Hinweis auf eine neue Fassung steht über dem Seiteninhalt und damit
+        auf jeder Seite des Panels – nach einem Deployment läuft im offenen
+        Browser sonst altes Frontend gegen neue API weiter.
+      */}
+      <DeployBanner current={versionLabel} />
       {children}
     </AppShell>
   );

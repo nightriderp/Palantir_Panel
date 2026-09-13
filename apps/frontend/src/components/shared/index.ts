@@ -78,6 +78,7 @@ export { ServerCard, type ServerCardProps } from './server/ServerCard';
 export { ServerStatusPill, type ServerStatusPillProps } from './server/ServerStatusPill';
 export { MetricRing, type MetricRingProps } from './server/MetricRing';
 export { lastTon, pingTon } from './server/metricTone';
+export { StartupProgress, type StartupProgressProps } from './server/StartupProgress';
 export {
   SERVER_STATUS_META,
   hasLiveStats,
@@ -89,6 +90,7 @@ export {
 
 export { AppShell, type AppShellProps } from './layout/AppShell';
 export { PageHeader, type PageHeaderProps } from './layout/PageHeader';
+export { DeployBanner, type DeployBannerProps } from './layout/DeployBanner';
 export {
   SideNavSection,
   SideNavServerSection,

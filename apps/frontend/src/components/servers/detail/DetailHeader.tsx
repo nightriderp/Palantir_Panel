@@ -7,6 +7,7 @@ import {
   Icon,
   IconButton,
   ServerStatusPill,
+  StartupProgress,
   formatServerAddress,
   isLifecycleActionBlocked,
   serverInitials,
@@ -167,14 +168,11 @@ export function DetailHeader({
       </div>
 
       {meta.transitional ? (
-        <div>
-          <div className="relative h-1 overflow-hidden rounded-sm bg-fill-strong">
-            <div className="absolute inset-y-0 left-0 w-[30%] animate-startup-sweep bg-gradient-to-r from-transparent via-warning to-transparent" />
-          </div>
-          <p className="mt-1.5 text-xs text-warning">
-            {meta.label} Bei größeren Welten kann das einen Moment dauern.
-          </p>
-        </div>
+        <StartupProgress
+          label={meta.label}
+          note={server.statusMessage ?? 'Bei größeren Welten kann das einen Moment dauern.'}
+          since={server.lastStartedAt}
+        />
       ) : null}
 
       {meta.faulted ? (

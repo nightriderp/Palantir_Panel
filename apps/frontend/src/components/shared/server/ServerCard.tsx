@@ -16,6 +16,7 @@ import {
   serverInitials,
 } from '../utils/format';
 import { MetricRing } from './MetricRing';
+import { StartupProgress } from './StartupProgress';
 import { lastTon, pingTon } from './metricTone';
 import { ServerStatusPill } from './ServerStatusPill';
 import {
@@ -205,12 +206,12 @@ export function ServerCard({
       </header>
 
       {meta.transitional ? (
-        <div>
-          <div className="relative h-1 overflow-hidden rounded-sm bg-fill-strong">
-            <div className="absolute inset-y-0 left-0 w-[30%] animate-startup-sweep bg-gradient-to-r from-transparent via-warning to-transparent" />
-          </div>
-          <p className="mt-1.5 text-xs text-warning">{meta.label}</p>
-        </div>
+        <StartupProgress
+          compact
+          label={meta.label}
+          note={server.statusMessage}
+          since={server.lastStartedAt}
+        />
       ) : null}
 
       {meta.faulted ? (

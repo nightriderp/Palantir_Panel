@@ -1,5 +1,14 @@
 import { type HostNodeDto } from '@palantir/contracts';
-import { Icon, Panel, TONE_DOT_CLASSES, cn, formatDate, formatNumber } from '@/components/shared';
+import {
+  Icon,
+  Panel,
+  TONE_DOT_CLASSES,
+  TONE_TEXT_CLASSES,
+  cn,
+  formatDate,
+  formatDateTime,
+  formatNumber,
+} from '@/components/shared';
 import { NodeStatusPill } from './NodeStatusPill';
 import { type NodeMetric, nodeMetrics, nodeStatusMeta } from './nodeStatus';
 
@@ -22,34 +31,18 @@ function MeterBar({ metric }: { metric: NodeMetric }) {
 
   return (
     <div>
+      {/*
+        Beschriftung links, Zahl rechts – und die Zahl in der Farbe des
+        Balkens. Vorher standen Beschriftung, Belegung und Rest als ein Band
+        aus Text über dem Balken; welche Zahl zu welchem Balken gehörte, musste
+        man sich zusammensuchen.
+      */}
       <div className="flex items-baseline justify-between gap-2 text-2xs text-ink-soft">
-        <span className="truncate">
-          {metric.label} ·{' '}
-          <span className="font-mono text-ink-muted">
-            {metric.usedLabel} / {metric.totalLabel}
-          </span>
-        </span>
-        {/*
-          Fundpunkt 209: Ist mehr gebucht als vorhanden, stand hier „0 GB frei" -
-          dieselbe Auskunft wie bei einer exakt vollen Node. Wie viel zu viel
-          gebucht ist, sagt jetzt der rote Text an derselben Stelle.
-        */}
-        <span
-          className={cn(
-            'shrink-0',
-            metric.overbookedLabel === undefined ? 'text-ink-faint' : 'font-semibold text-danger',
-          )}
-        >
-          {metric.percent === null
-            ? 'Keine Angabe'
-            : (metric.overbookedLabel ?? `${metric.freeLabel} frei`)}
+        <span className="truncate">{metric.label}</span>
+        <span className={cn('shrink-0 font-mono', TONE_TEXT_CLASSES[metric.tone])}>
+          {metric.usedLabel} / {metric.totalLabel}
         </span>
       </div>
-      {metric.runningLabel === undefined ? null : (
-        // Fundpunkt 203: Die zweite Zahl, gegen die ein Start tatsaechlich
-        // geprueft wird - ohne sie wirkte die erste wie eine Absage.
-        <div className="mt-0.5 text-2xs text-ink-faint">{metric.runningLabel}</div>
-      )}
       <div
         className="mt-1.5 h-1.5 overflow-hidden rounded-sm bg-fill-strong"
         role="progressbar"
@@ -61,9 +54,37 @@ function MeterBar({ metric }: { metric: NodeMetric }) {
         aria-valuenow={metric.percent === null ? undefined : Math.min(100, metric.percent)}
       >
         <div
-          className={cn('h-full rounded-sm', TONE_DOT_CLASSES[metric.tone])}
+          className={cn(
+            'h-full rounded-sm transition-[width] duration-500',
+            TONE_DOT_CLASSES[metric.tone],
+          )}
           style={{ width: `${width}%` }}
         />
+      </div>
+
+      {/*
+        Unter dem Balken der Rest – und die beiden Sonderfälle:
+
+        Fundpunkt 209: Ist mehr gebucht als vorhanden, stand hier „0 GB frei",
+        dieselbe Auskunft wie bei einer exakt vollen Node. Wie viel zu viel
+        gebucht ist, sagt jetzt der rote Text.
+
+        Fundpunkt 203: Daneben die zweite Zahl, gegen die ein Start tatsächlich
+        geprüft wird – ohne sie wirkte die erste wie eine Absage.
+      */}
+      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-2xs">
+        <span
+          className={
+            metric.overbookedLabel === undefined ? 'text-ink-faint' : 'font-semibold text-danger'
+          }
+        >
+          {metric.percent === null
+            ? 'Keine Angabe'
+            : (metric.overbookedLabel ?? `${metric.freeLabel} frei`)}
+        </span>
+        {metric.runningLabel === undefined ? null : (
+          <span className="text-ink-faint">{metric.runningLabel}</span>
+        )}
       </div>
     </div>
   );
@@ -97,24 +118,43 @@ export function NodeRow({ node, className }: NodeRowProps) {
     <Panel variant="raised" padding="sm" className={cn('flex flex-col gap-3', className)}>
       <div className="grid items-center gap-x-5 gap-y-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
         <div className="flex min-w-0 items-center gap-2.5">
+          {/*
+            Der Zustandspunkt leuchtet (Vorbild hafenmeister): ein Schein in
+            seiner eigenen Farbe. In einer Liste aus drei, vier Zeilen ist das
+            die Angabe, die man zuerst sucht – als flacher 10-px-Punkt ging sie
+            neben Namen und Balken unter.
+          */}
           <span
             aria-hidden
             className={cn(
-              'inline-block h-2.5 w-2.5 shrink-0 rounded-full',
-              TONE_DOT_CLASSES[meta.tone],
+              'inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-current shadow-[0_0_8px_currentColor]',
+              TONE_TEXT_CLASSES[meta.tone],
               meta.pulse && 'animate-pulse-dot',
             )}
           />
+          {/* Symbolkachel vor dem Namen – sie macht aus der Zeile eine Node
+              statt einer weiteren Textzeile. */}
+          <span
+            aria-hidden
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-fill text-ink-soft"
+          >
+            <Icon name="server" size={17} />
+          </span>
           <div className="min-w-0">
-            <div className="truncate text-md font-semibold">{node.name}</div>
-            {cpu ? (
-              <div className="truncate text-2xs text-ink-faint">
-                {cpu.label} ·{' '}
-                <span className="font-mono">
-                  {cpu.usedLabel} / {cpu.totalLabel}
-                </span>
-              </div>
-            ) : null}
+            <div className="truncate font-mono text-md font-semibold">{node.name}</div>
+            <div className="truncate text-2xs text-ink-faint">
+              {cpu ? (
+                <>
+                  {cpu.label} ·{' '}
+                  <span className="font-mono">
+                    {cpu.usedLabel} / {cpu.totalLabel}
+                  </span>
+                </>
+              ) : null}
+              {node.lastSeenAt === null ? null : (
+                <> · zuletzt gesehen {formatDateTime(node.lastSeenAt)}</>
+              )}
+            </div>
           </div>
         </div>
 
