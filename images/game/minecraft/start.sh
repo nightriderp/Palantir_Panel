@@ -47,7 +47,6 @@ PAPER_JAR="${PALANTIR_PAPER_JAR:-/opt/palantir/paper.jar}"
 # ist die Jar und woher sie kommt (Abschnitt 3).
 AUSGABE="${MINECRAFT_EDITION:-paper}"
 INTERN="$PALANTIR_INTERN"
-KONSOLE="$PALANTIR_KONSOLE"
 JAVA_TMP="${INTERN}/tmp"
 
 # Kurzname für die Zeilen unten; geschrieben wird über die gemeinsame Funktion,
