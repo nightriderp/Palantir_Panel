@@ -57,6 +57,15 @@ export interface BackupServerRecord {
   readonly dockerContainerId: string | null;
   /** Datenordner des Servers auf dem Homeserver (`CreateCommandPayload.dataVolume.hostPath`). */
   readonly dataHostPath: string;
+  /**
+   * Kennung des Spieltyps (Arbeitspaket HM-10).
+   *
+   * B5 fragt damit nach {@link GameTypeDefinition.quiesceCommands}: Ein Spiel,
+   * das seinen Schreibstopp kennt, wird gesichert, ohne dass die Spieler es
+   * merken. Der Spieltyp-Katalog gehoert B3; B5 bekommt die Befehle daraus als
+   * fertige Angabe und legt selbst keine zweite Auslegung an (CLAUDE.md §3).
+   */
+  readonly gameType: string;
   /** Mitverwalter (`ServerMember`, Pflichtenheft §6) – zählen bei `.own` mit. */
   readonly memberUserIds: readonly string[];
 }

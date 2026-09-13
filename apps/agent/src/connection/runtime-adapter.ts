@@ -19,7 +19,9 @@
 import {
   type AgentCommandName,
   type AgentContainerState,
+  type AgentRconAccess,
   type CreateBackupCommandPayload,
+  type CreateBackupCommandResult,
   type DeleteBackupCommandPayload,
   type DownloadBackupCommandPayload,
   type ExecConsoleCommandPayload,
@@ -40,6 +42,12 @@ import {
 } from '@palantir/contracts';
 import { AGENT_COMMAND_PAYLOAD_SCHEMAS } from '@palantir/validation';
 import type { AgentJobs } from '../jobs/index.js';
+import type { QuiesceMarker } from '../jobs/backup/quiesce-marker.js';
+import {
+  mitSchreibstopp,
+  offeneSchreibstoppsAufheben,
+  type SchreibstoppUmgebung,
+} from './schreibstopp.js';
 import { type ConnectionLogger, consoleLogger } from './agent-connection.js';
 import {
   type ContainerRuntime,
@@ -121,6 +129,13 @@ export interface RuntimeAdapterOptions {
    * testbar, und ein Agent-Aufbau ohne Jobs sagt ehrlich, was er nicht kann.
    */
   readonly jobs?: AgentJobs;
+  /**
+   * Merkzettel offener Schreibstopps (HM-10).
+   *
+   * Ohne ihn wird trotzdem still gestellt und wieder aufgehoben - es fehlt nur
+   * das zweite Netz fuer den Fall, dass der Agent mitten im Fenster stirbt.
+   */
+  readonly quiesceMarker?: QuiesceMarker;
 }
 
 /**
@@ -144,6 +159,7 @@ export type OutboundEventSink = (event: OutboundEvent) => void;
 export class ContainerRuntimeAdapter implements AgentRuntimePort {
   private readonly runtime: ContainerRuntime;
   private readonly jobs: AgentJobs | undefined;
+  private readonly quiesceMarker: QuiesceMarker | undefined;
   private readonly log: ConnectionLogger;
   private unsubscribe: Unsubscribe | null = null;
   /**
@@ -163,6 +179,7 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
   constructor(options: RuntimeAdapterOptions) {
     this.runtime = options.runtime;
     this.jobs = options.jobs;
+    this.quiesceMarker = options.quiesceMarker;
     this.log = options.logger ?? consoleLogger;
   }
 
@@ -512,7 +529,7 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
       // das vorher geprüft.
 
       case 'CREATE_BACKUP':
-        return this.requireJobs().backups.createBackup(payload as CreateBackupCommandPayload);
+        return this.sichernMitSchreibstopp(payload as CreateBackupCommandPayload);
       case 'RESTORE_BACKUP':
         return this.requireJobs().backups.restoreBackup(payload as RestoreBackupCommandPayload);
       case 'DOWNLOAD_BACKUP':
@@ -560,6 +577,100 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         fehler: fehler instanceof Error ? fehler.message : String(fehler),
       });
     }
+  }
+
+  /**
+   * Sichert einen Server und stellt ihn dafür still, wenn das Backend es
+   * verlangt (Arbeitspaket HM-10).
+   *
+   * Das Wie steht in `schreibstopp.ts`; hier wird nur zusammengesteckt, was das
+   * Modul braucht: eine Konsole, den Merkzettel und das Packen selbst.
+   */
+  private sichernMitSchreibstopp(
+    payload: CreateBackupCommandPayload,
+  ): Promise<CreateBackupCommandResult> {
+    const jobs = this.requireJobs();
+
+    return mitSchreibstopp(payload, this.schreibstoppUmgebung(), () =>
+      jobs.backups.createBackup(payload),
+    );
+  }
+
+  /**
+   * Hebt beim Start des Agents jeden Schreibstopp auf, der noch offen ist
+   * (Arbeitspaket HM-10).
+   */
+  offeneSchreibstoppsAufheben(): Promise<number> {
+    return offeneSchreibstoppsAufheben(this.schreibstoppUmgebung());
+  }
+
+  private schreibstoppUmgebung(): SchreibstoppUmgebung {
+    return {
+      konsole: (containerId, serverId, zeile, rcon, zweck) =>
+        this.konsolenbefehl(containerId, serverId, zeile, rcon, zweck),
+      ...(this.quiesceMarker === undefined ? {} : { marker: this.quiesceMarker }),
+      log: this.log,
+    };
+  }
+
+  /**
+   * Schickt **eine** Zeile an die Konsole eines Servers.
+   *
+   * Derselbe Weg wie beim Stopp-Befehl: über RCON, wenn ein Zugang dabei ist,
+   * sonst über die Standardeingabe des Containers. Gibt `false` zurück, wenn der
+   * Befehl nicht ankam oder der Server ihn abgelehnt hat – und schreibt in
+   * beiden Fällen eine Meldung, denn ein stiller Fehlschlag beim Schreibstopp
+   * hieße: Das Archiv sieht aus wie ein sauberer Stand und ist keiner.
+   */
+  private async konsolenbefehl(
+    containerId: string,
+    serverId: string,
+    zeile: string,
+    rcon: AgentRconAccess | undefined,
+    zweck: string,
+  ): Promise<boolean> {
+    // Wie bei EXEC_CONSOLE und stopCommand: eine Argumentliste, keine Shell.
+    const befehl = zeile.split(' ').filter((teil) => teil.length > 0);
+
+    if (befehl.length === 0) {
+      return false;
+    }
+
+    const notiz = (grund: string, einzelheiten: Record<string, unknown> = {}): false => {
+      this.log.warn(`${zweck} übersprungen: ${grund}`, {
+        containerId,
+        serverId,
+        befehl: zeile,
+        ...einzelheiten,
+      });
+
+      return false;
+    };
+
+    let ergebnis;
+
+    try {
+      if (rcon === undefined) {
+        ergebnis = await this.runtime.execConsole(containerId, befehl);
+      } else if (this.jobs === undefined) {
+        return notiz('Dieser Agent hat kein Job-Modul, RCON geht nicht.');
+      } else {
+        ergebnis = await this.jobs.rcon.exec(serverId, containerId, rcon, befehl);
+      }
+    } catch (fehler) {
+      return notiz('Die Konsole hat ihn nicht angenommen.', {
+        fehler: fehler instanceof Error ? fehler.message : String(fehler),
+      });
+    }
+
+    if (ergebnis.exitCode !== 0) {
+      return notiz('Der Server hat ihn abgelehnt.', {
+        exitCode: ergebnis.exitCode,
+        stderr: ergebnis.stderr.slice(0, 200),
+      });
+    }
+
+    return true;
   }
 
   /**

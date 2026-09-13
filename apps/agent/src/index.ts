@@ -5,7 +5,9 @@ import {
   createWebSocketTransportFactory,
   startRuntimeLink,
 } from './connection/index.js';
+import path from 'node:path';
 import { createAgentJobs } from './jobs/index.js';
+import { QuiesceMarker } from './jobs/backup/quiesce-marker.js';
 import { createContainerRuntimeFromEnv } from './runtime/index.js';
 import { env } from './config/env.js';
 import { AGENT_VERSION } from './version.js';
@@ -57,7 +59,14 @@ function main(): void {
     },
   });
 
-  const adapter = new ContainerRuntimeAdapter({ runtime, jobs });
+  /*
+   * Merkzettel offener Schreibstopps (HM-10). Er liegt im Ablageordner des
+   * Agents und nicht im Datenordner eines Servers: Dort waere er ueber den
+   * Datei-Manager sichtbar und loeschbar und wanderte in jede Sicherung.
+   */
+  const quiesceMarker = new QuiesceMarker(path.join(env.AGENT_BACKUP_DIR, '.schreibstopp'));
+
+  const adapter = new ContainerRuntimeAdapter({ runtime, jobs, quiesceMarker });
 
   const connection = new AgentConnection({
     transportFactory: createWebSocketTransportFactory({
@@ -82,6 +91,30 @@ function main(): void {
   });
 
   halter.verbindung = connection;
+
+  /*
+   * Vor der ersten Verbindung: Ein Merkzettel, der einen Prozessstart ueberlebt
+   * hat, gehoert zu einer Sicherung, die mitten im Schreibstopp abgerissen ist
+   * (HM-10). Der Spielserver laeuft dann weiter, nimmt Spieler an und schreibt
+   * nichts mehr auf die Platte - beim naechsten Absturz waere alles seit der
+   * Sicherung weg.
+   *
+   * Der Start haengt nicht daran: Was nicht gelingt, bleibt liegen und wird beim
+   * naechsten Mal erneut versucht.
+   */
+  void adapter
+    .offeneSchreibstoppsAufheben()
+    .then((anzahl) => {
+      if (anzahl > 0) {
+        console.warn('[agent] Offene Schreibstopps aufgehoben', { anzahl });
+      }
+    })
+    .catch((fehler: unknown) => {
+      console.warn('[agent] Offene Schreibstopps konnten nicht aufgehoben werden', {
+        fehler: fehler instanceof Error ? fehler.message : String(fehler),
+      });
+    });
+
   connection.start();
 
   let beendet = false;

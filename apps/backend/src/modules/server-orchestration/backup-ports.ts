@@ -63,6 +63,7 @@ export function createDrizzleBackupServerDirectory(db: Database): ServerDirector
         hostId: gameServers.hostId,
         status: gameServers.status,
         dockerContainerId: gameServers.dockerContainerId,
+        gameType: gameServers.gameType,
       })
       .from(gameServers)
       .where(
@@ -101,6 +102,7 @@ export function createDrizzleBackupServerDirectory(db: Database): ServerDirector
       status: row.status,
       dockerContainerId: row.dockerContainerId,
       dataHostPath: dataHostPathFor(row.id),
+      gameType: row.gameType,
       memberUserIds: membersByServer.get(row.id) ?? [],
     }));
   }
