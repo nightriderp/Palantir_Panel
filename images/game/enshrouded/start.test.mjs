@@ -184,4 +184,29 @@ describe('start.sh – Start unter Proton', nurMitShell, () => {
 
     assert.deepEqual(lauf.argv, ['run', `${posix(ordner.daten)}/server/enshrouded_server.exe`]);
   });
+
+  it('hängt eigene Startparameter hinten an (Fundpunkt 262)', () => {
+    // Das Feld steht im Panel und stand hier bis Fassung 3 ohne Wirkung da -
+    // ein Knopf, der nichts tut, ist schlimmer als kein Knopf.
+    const ordner = arbeitsordner();
+
+    const lauf = starte(ordner, { PALANTIR_STARTUP_PARAMETERS: '-log -useperfthreads' });
+
+    assert.deepEqual(lauf.argv, [
+      'run',
+      `${posix(ordner.daten)}/server/enshrouded_server.exe`,
+      '-log',
+      '-useperfthreads',
+    ]);
+  });
+
+  it('bleibt ohne Startparameter genau wie vorher', () => {
+    // Die Gegenrichtung: Ein leeres Feld darf kein leeres Argument erzeugen -
+    // das saehe der Server als Parameter.
+    const ordner = arbeitsordner();
+
+    const lauf = starte(ordner, { PALANTIR_STARTUP_PARAMETERS: '' });
+
+    assert.deepEqual(lauf.argv, ['run', `${posix(ordner.daten)}/server/enshrouded_server.exe`]);
+  });
 });

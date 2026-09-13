@@ -907,7 +907,7 @@ describe('Enshrouded unter Proton', () => {
     expect(
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('enshrouded').id,
     ).toBe('enshrouded');
-    expect(ENSHROUDED_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-enshrouded:2');
+    expect(ENSHROUDED_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-enshrouded:3');
   });
 
   it('fragt den Abfrage-Port ab, nicht den Spiel-Port', () => {
