@@ -77,6 +77,17 @@ F3_ARBEITSPAKETE.md
 docs/
 deploy/gamenode/wireguard-firewall.md
 
+# Betriebsunterlagen aus Arbeitspaket HM-8. `geheimnisse.md` nennt keinen einzigen
+# echten Wert, wohl aber fuer jedes Geheimnis Ablageort, lesenden Prozess und
+# Rotationsfolge - also die Landkarte. `stolperpunkte.md` traegt Vorfaelle samt
+# Pfaden und Fehlerbildern zusammen. Beides gehoert dem Betrieb, nicht der
+# Oeffentlichkeit. Der Eintrag steht hier und nicht in `.git/info/exclude`,
+# damit er auf jeder Auscheckung gilt (Fundpunkt 248: dort lag genau der
+# Unterschied zwischen "faellt nicht auf" und "ist geschuetzt").
+geheimnisse.md
+stolperpunkte.md
+VERGLEICH_HAFENMEISTER_13_09_2026.md
+
 # Arbeitsverzeichnis paralleler Sitzungen: eigene Worktrees und die lokale
 # Startkonfiguration der Entwicklungsumgebung. Kein Teil des Repositories -
 # .prettierignore fuehrt es aus demselben Grund. Ohne diesen Eintrag taucht ein
