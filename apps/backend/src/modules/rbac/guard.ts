@@ -114,6 +114,34 @@ export async function replyWithRbacError(reply: FastifyReply, error: RbacError):
 }
 
 /**
+ * Kennzeichen an jedem hier gebauten Guard (Arbeitspaket HM-9).
+ *
+ * Trägt die Rechte, die der Guard verlangt – bei {@link requireApproved} eine
+ * leere Liste, denn dort geht es um den Zustand des Kontos und nicht um ein
+ * Recht aus dem Katalog.
+ *
+ * Damit lässt sich einer Route ansehen, ob sie überhaupt bewacht ist:
+ * `routen-rechte.test.ts` geht beim Aufbau des Servers alle registrierten
+ * Routen durch und schlägt fehl, sobald eine weder dieses Kennzeichen noch
+ * einen begründeten Eintrag in seiner Ausnahmeliste trägt. Der Name der
+ * Funktion taugte dafür nicht: Er ist eine Zusicherung, die niemand gibt.
+ *
+ * `Symbol.for` statt eines eigenen Symbols, damit die Marke auch dann passt,
+ * wenn Testlauf und Anwendung dieses Modul über verschiedene Pfade laden.
+ */
+export const RBAC_GUARD_RECHTE = Symbol.for('palantir.rbac.guardRechte');
+
+/** Ein Guard aus diesem Modul, an seinem Kennzeichen erkennbar. */
+export interface RbacGuard extends preHandlerHookHandler {
+  readonly [RBAC_GUARD_RECHTE]: readonly Permission[];
+}
+
+/** Trägt eine Route einen Guard aus diesem Modul? */
+export function istRbacGuard(kandidat: unknown): kandidat is RbacGuard {
+  return typeof kandidat === 'function' && RBAC_GUARD_RECHTE in kandidat;
+}
+
+/**
  * @param verlangt Die Rechte, um die es geht – sie gehen an
  *                 {@link RbacOptions.onDenied}. `null` unterdrückt die Meldung
  *                 (siehe {@link requireApproved}).
@@ -122,7 +150,9 @@ function createGuard(
   check: (actor: PermissionActor) => boolean,
   verlangt: readonly Permission[] | null,
 ): preHandlerHookHandler {
-  return async function permissionGuard(request, reply): Promise<void> {
+  // Die Anmerkung traegt die Typen von `request` und `reply` herein: An einer
+  // Variablen steht der Rueckgabetyp der Funktion nicht mehr daneben.
+  const guard: preHandlerHookHandler = async function permissionGuard(request, reply) {
     const actor = request.permissionActor;
 
     if (!actor) {
@@ -139,6 +169,15 @@ function createGuard(
       return;
     }
   };
+
+  // Nicht aufzählbar: Der Guard soll sich beim Protokollieren oder Vergleichen
+  // von Hooks genauso verhalten wie zuvor.
+  Object.defineProperty(guard, RBAC_GUARD_RECHTE, {
+    value: verlangt ?? [],
+    enumerable: false,
+  });
+
+  return guard;
 }
 
 /** Route verlangt genau diese Permission. */
