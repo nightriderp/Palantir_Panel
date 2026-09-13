@@ -435,16 +435,19 @@ services:
       # läuft auf DERSELBEN Maschine, und ein UDP-Paket, das über die eigene
       # öffentliche Adresse zurückkommt, trägt den Absender des Docker-Gateways.
       # `gamedig` verwirft es dann - jeder Start eines UDP-Spiels lief so in
-      # `error`, während Spieler drauf waren. Über `extra_hosts` unten zeigt der
-      # Name auf das Gateway; geprüft wird weiterhin der ganze Weg durch frps
-      # bis zum Spielserver auf der Node. Die ausführliche Begründung steht in
-      # `.env.example` an HEALTH_CHECK_HOST.
-      HEALTH_CHECK_HOST: ${HEALTH_CHECK_HOST:-host.docker.internal}
-    # Macht `host.docker.internal` im Container auflösbar (Docker setzt den
-    # Namen auf das Gateway der Bridge). Ohne diesen Eintrag gäbe es den Namen
-    # unter Linux nicht, und der Health-Check liefe ins Leere.
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      # `error`, während Spieler drauf waren.
+      #
+      # `gateway` ist kein Rechnername, sondern die Ansage an das Backend, das
+      # Gateway seiner eigenen Route zu nehmen - genau die Adresse, auf die
+      # zurückgeschrieben wird. `host.docker.internal` taugt dafür NICHT: Der
+      # Name zeigt auf das Gateway der Standard-Bridge (172.17.0.1), der
+      # Container hängt aber am Netz `palantir` (172.20.0.1). Auf der VPS
+      # gemessen - über den einen Namen scheitert die Abfrage, über die
+      # Gateway-Adresse antwortet derselbe Server in 42 ms.
+      #
+      # Geprüft wird weiterhin der ganze Weg durch frps bis zum Spielserver auf
+      # der Node. Die ausführliche Begründung steht in `.env.example`.
+      HEALTH_CHECK_HOST: ${HEALTH_CHECK_HOST:-gateway}
     volumes:
       # Archive des Audit-Logs (Pflichtenheft §6). Ohne diese Einhängung
       # schriebe der Archivierungslauf in das Dateisystem des Containers - und
