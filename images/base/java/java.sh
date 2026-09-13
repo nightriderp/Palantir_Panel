@@ -132,6 +132,9 @@ java_heap_bestimmen() {
     JAVA_HEAP_MIB=512
   fi
 
+  # shellcheck disable=SC2034  # Ausgabe der Bibliothek: gelesen wird sie im
+  # Spiel-Image (images/game/minecraft/start.sh), und so weit sieht shellcheck
+  # nicht. Die Zuweisung darüber (Zeile 110) trifft denselben Fall.
   JAVA_HEAP_ARGUMENTE="-Xms${JAVA_HEAP_MIB}M -Xmx${JAVA_HEAP_MIB}M"
 
   return 0

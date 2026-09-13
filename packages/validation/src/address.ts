@@ -48,6 +48,7 @@ export const createPortRangeInputSchema = z
     nodeId: idSchema.nullish(),
     enabled: z.boolean().default(true),
   })
+  .strict()
   .refine(rangeBoundsRefinement.check, {
     message: rangeBoundsRefinement.message,
     path: ['endPort'],
@@ -67,6 +68,7 @@ export const updatePortRangeInputSchema = z
     endPort: publicPortSchema,
     enabled: z.boolean(),
   })
+  .strict()
   .partial()
   .refine((input) => Object.keys(input).length > 0, {
     message: 'Es muss mindestens ein Feld geändert werden.',

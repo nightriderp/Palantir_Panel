@@ -30,6 +30,31 @@ declare module 'fastify' {
     /** Effektive Rechte des Aufrufers; `null`, solange niemand angemeldet ist. */
     permissionActor: PermissionActor | null;
   }
+
+  interface FastifyInstance {
+    /**
+     * Empfänger abgewiesener Zugriffe; `null`, wenn niemand zuhört.
+     *
+     * Am Server hängend statt als Modulzustand: Tests bauen mehrere Instanzen
+     * nebeneinander, und eine Senke, die zwischen ihnen geteilt würde, machte
+     * jeden dieser Tests von der Reihenfolge abhängig.
+     */
+    rbacAbweisungMelden: ((abweisung: RbacAbweisung) => void) | null;
+  }
+}
+
+/**
+ * Ein abgewiesener Zugriff (403), so wie ihn der Guard sieht.
+ *
+ * Bewusst der rohe Request statt fertiger Felder: Wer der Handelnde ist, weiß
+ * das Auth-Modul (`request.authUser`), nicht die RBAC-Schicht. Diese Umkehr ist
+ * dieselbe wie bei {@link RbacOptions.resolveActor} – sonst müsste `rbac` die
+ * Typen von `auth` kennen, nur um einen Namen ins Log zu schreiben.
+ */
+export interface RbacAbweisung {
+  readonly request: FastifyRequest;
+  /** Die Rechte, an denen es gescheitert ist – mindestens eines. */
+  readonly verlangt: readonly Permission[];
 }
 
 export interface RbacOptions {
@@ -41,6 +66,19 @@ export interface RbacOptions {
    * Fehlerpfad der Anwendung.
    */
   resolveActor(request: FastifyRequest): Promise<PermissionActor | null> | PermissionActor | null;
+
+  /**
+   * Meldet einen abgewiesenen Zugriff (Arbeitspaket HM-3, Pflichtenheft §6).
+   *
+   * Wird gerufen, bevor die 403-Antwort rausgeht, und **nur** bei einer
+   * fehlenden Permission – nicht bei `AUTH_REQUIRED` (dann gibt es kein Konto,
+   * auf das ein Eintrag zeigen könnte, und jeder Unangemeldete könnte das Log
+   * füllen) und nicht bei {@link requireApproved} (siehe dort).
+   *
+   * Optional: Ohne Senke verhält sich der Guard wie bisher. Die Antwort hängt
+   * nicht daran – wer hier etwas Langsames tut, verzögert die Abweisung.
+   */
+  onDenied?(abweisung: RbacAbweisung): void;
 }
 
 /**
@@ -54,6 +92,7 @@ export interface RbacOptions {
  */
 export function registerRbac(app: FastifyInstance, options: RbacOptions): void {
   app.decorateRequest('permissionActor', null);
+  app.decorate('rbacAbweisungMelden', options.onDenied ?? null);
 
   app.addHook('onRequest', async (request: FastifyRequest): Promise<void> => {
     request.permissionActor = await options.resolveActor(request);
@@ -74,7 +113,15 @@ export async function replyWithRbacError(reply: FastifyReply, error: RbacError):
   await replyWithErrorCode(reply, error.code, error.message);
 }
 
-function createGuard(check: (actor: PermissionActor) => boolean): preHandlerHookHandler {
+/**
+ * @param verlangt Die Rechte, um die es geht – sie gehen an
+ *                 {@link RbacOptions.onDenied}. `null` unterdrückt die Meldung
+ *                 (siehe {@link requireApproved}).
+ */
+function createGuard(
+  check: (actor: PermissionActor) => boolean,
+  verlangt: readonly Permission[] | null,
+): preHandlerHookHandler {
   return async function permissionGuard(request, reply): Promise<void> {
     const actor = request.permissionActor;
 
@@ -84,6 +131,10 @@ function createGuard(check: (actor: PermissionActor) => boolean): preHandlerHook
     }
 
     if (!check(actor)) {
+      if (verlangt) {
+        request.server.rbacAbweisungMelden?.({ request, verlangt });
+      }
+
       await replyWithErrorCode(reply, 'PERMISSION_DENIED');
       return;
     }
@@ -92,21 +143,21 @@ function createGuard(check: (actor: PermissionActor) => boolean): preHandlerHook
 
 /** Route verlangt genau diese Permission. */
 export function requirePermission(permission: Permission): preHandlerHookHandler {
-  return createGuard((actor) => hasPermission(actor, permission));
+  return createGuard((actor) => hasPermission(actor, permission), [permission]);
 }
 
 /** Route verlangt mindestens eine der genannten Permissions. */
 export function requireAnyPermission(
   ...permissions: readonly [Permission, ...Permission[]]
 ): preHandlerHookHandler {
-  return createGuard((actor) => hasAnyPermission(actor, permissions));
+  return createGuard((actor) => hasAnyPermission(actor, permissions), permissions);
 }
 
 /** Route verlangt alle genannten Permissions. */
 export function requireAllPermissions(
   ...permissions: readonly [Permission, ...Permission[]]
 ): preHandlerHookHandler {
-  return createGuard((actor) => hasAllPermissions(actor, permissions));
+  return createGuard((actor) => hasAllPermissions(actor, permissions), permissions);
 }
 
 /**
@@ -126,7 +177,15 @@ export function requireAllPermissions(
  * {@link requirePermission}, damit das Frontend nicht drei Fälle kennen muss.
  */
 export function requireApproved(): preHandlerHookHandler {
-  return createGuard((actor) => actor.approved);
+  /*
+   * Bewusst ohne Meldung ans Audit-Log (HM-3): Ein Konto in der Warteliste
+   * prallt an JEDER Route ab, und die Oberfläche fragt nach der Anmeldung
+   * weiter. Aus einem bekannten, harmlosen Zustand – die Freischaltung steht
+   * aus, das Panel sagt es dem Konto selbst – entstünden so im Minutentakt
+   * Einträge und begrüben die interessanten unter sich. Gemeldet wird die
+   * fehlende Permission: Da hat jemand eine Rolle und will darüber hinaus.
+   */
+  return createGuard((actor) => actor.approved, null);
 }
 
 /**

@@ -34,11 +34,13 @@ export const wireguardIpSchema = z
   .ip({ version: 'v4', message: 'Erwartet wird eine IPv4-Adresse aus dem Tunnel-Netz.' });
 
 /** Eingabe zum Anlegen einer Node (F10 → Backend). */
-export const createHostNodeInputSchema = z.object({
-  name: hostNodeNameSchema,
-  wireguardIp: wireguardIpSchema,
-  totalResources: nodeResourcesSchema,
-});
+export const createHostNodeInputSchema = z
+  .object({
+    name: hostNodeNameSchema,
+    wireguardIp: wireguardIpSchema,
+    totalResources: nodeResourcesSchema,
+  })
+  .strict();
 
 /**
  * Eingabe zum Bearbeiten einer Node – alle Felder optional (Teil-Update).

@@ -55,23 +55,27 @@ export const discordWebhookUrlSchema = z
  * aus der zentralen `.env` (Pflichtenheft §12.1). So kommt der Standardkanal
  * einer Instanz ohne ein Geheimnis in der Datenbank aus.
  */
-export const discordWebhookTargetInputSchema = z.object({
-  webhookUrl: discordWebhookUrlSchema.optional(),
-  username: z
-    .string()
-    .trim()
-    .min(1)
-    .max(80, { message: 'Der Absendername darf höchstens 80 Zeichen lang sein.' })
-    .optional(),
-});
+export const discordWebhookTargetInputSchema = z
+  .object({
+    webhookUrl: discordWebhookUrlSchema.optional(),
+    username: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80, { message: 'Der Absendername darf höchstens 80 Zeichen lang sein.' })
+      .optional(),
+  })
+  .strict();
 
 /** Eingabe zum Anlegen eines Kanals (F10 → Backend). */
-export const createNotificationChannelInputSchema = z.object({
-  name: notificationChannelNameSchema,
-  type: notificationChannelTypeSchema.default('discordWebhook'),
-  target: discordWebhookTargetInputSchema.default({}),
-  enabled: z.boolean().default(true),
-});
+export const createNotificationChannelInputSchema = z
+  .object({
+    name: notificationChannelNameSchema,
+    type: notificationChannelTypeSchema.default('discordWebhook'),
+    target: discordWebhookTargetInputSchema.default({}),
+    enabled: z.boolean().default(true),
+  })
+  .strict();
 
 /**
  * Eingabe zum Ändern eines Kanals (F10 → Backend).
@@ -87,6 +91,7 @@ export const updateNotificationChannelInputSchema = z
     target: discordWebhookTargetInputSchema.optional(),
     enabled: z.boolean().optional(),
   })
+  .strict()
   .refine((value) => Object.keys(value).length > 0, {
     message: 'Es wurde kein zu änderndes Feld angegeben.',
   });
@@ -110,6 +115,7 @@ export const createNotificationRuleInputSchema = z
     severity: notificationSeveritySchema.nullable().default(null),
     enabled: z.boolean().default(true),
   })
+  .strict()
   .refine((value) => value.recipientScope !== 'role' || value.recipientRoleId !== null, {
     message: 'Für den Empfängerkreis „Rolle" muss eine Rolle gewählt werden.',
     path: ['recipientRoleId'],
@@ -133,6 +139,7 @@ export const updateNotificationRuleInputSchema = z
     severity: notificationSeveritySchema.nullable().optional(),
     enabled: z.boolean().optional(),
   })
+  .strict()
   .refine((value) => Object.keys(value).length > 0, {
     message: 'Es wurde kein zu änderndes Feld angegeben.',
   });
@@ -167,13 +174,15 @@ const unreadOnlyQuerySchema = z
  * Die Obergrenze von 100 hält eine einzelne Antwort klein – die Inbox wächst
  * dauerhaft und wird nie vollständig geliefert.
  */
-export const notificationQuerySchema = z.object({
-  unreadOnly: unreadOnlyQuerySchema,
-  event: notifiableEventSchema.optional(),
-  severity: notificationSeveritySchema.optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(25),
-  offset: z.coerce.number().int().min(0).default(0),
-});
+export const notificationQuerySchema = z
+  .object({
+    unreadOnly: unreadOnlyQuerySchema,
+    event: notifiableEventSchema.optional(),
+    severity: notificationSeveritySchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    offset: z.coerce.number().int().min(0).default(0),
+  })
+  .strict();
 
 /**
  * Persönliche Zustell-Einstellung eines Kontos (Gefundener Punkt 93).
@@ -185,9 +194,13 @@ export const notificationQuerySchema = z.object({
  * `announcement.published` fehlt bewusst in der Auswahl – eine Ankündigung ist
  * die Mitteilung des Betreibers an alle (siehe `MUTABLE_NOTIFICATION_EVENTS`).
  */
-export const notificationPreferencesInputSchema = z.object({
-  mutedEvents: z.array(z.enum(MUTABLE_NOTIFICATION_EVENTS)).max(MUTABLE_NOTIFICATION_EVENTS.length),
-});
+export const notificationPreferencesInputSchema = z
+  .object({
+    mutedEvents: z
+      .array(z.enum(MUTABLE_NOTIFICATION_EVENTS))
+      .max(MUTABLE_NOTIFICATION_EVENTS.length),
+  })
+  .strict();
 
 /**
  * Mehrere Meldungen auf einmal als gelesen markieren (F6 → Backend).
@@ -195,10 +208,12 @@ export const notificationPreferencesInputSchema = z.object({
  * Ohne `ids` gilt der Vorgang für **alle** ungelesenen Meldungen des Kontos –
  * das ist der „Alle als gelesen markieren"-Knopf.
  */
-export const markNotificationsReadInputSchema = z.object({
-  ids: z.array(idSchema).max(200).optional(),
-  read: z.boolean().default(true),
-});
+export const markNotificationsReadInputSchema = z
+  .object({
+    ids: z.array(idSchema).max(200).optional(),
+    read: z.boolean().default(true),
+  })
+  .strict();
 
 /** Titel einer systemweiten Ankündigung (Lastenheft §3.6). */
 export const announcementTitleSchema = z
@@ -221,13 +236,15 @@ export const announcementBodySchema = z
   .max(1800, { message: 'Der Text darf höchstens 1800 Zeichen lang sein.' });
 
 /** Eingabe zum Veröffentlichen einer systemweiten Ankündigung (F10 → Backend). */
-export const createAnnouncementInputSchema = z.object({
-  title: announcementTitleSchema,
-  body: announcementBodySchema,
-  severity: notificationSeveritySchema.default('info'),
-  /** Ende der Banner-Anzeige (ISO-8601); ohne Angabe läuft die Ankündigung nicht ab. */
-  expiresAt: z.string().datetime({ offset: true }).nullable().default(null),
-});
+export const createAnnouncementInputSchema = z
+  .object({
+    title: announcementTitleSchema,
+    body: announcementBodySchema,
+    severity: notificationSeveritySchema.default('info'),
+    /** Ende der Banner-Anzeige (ISO-8601); ohne Angabe läuft die Ankündigung nicht ab. */
+    expiresAt: z.string().datetime({ offset: true }).nullable().default(null),
+  })
+  .strict();
 
 /** Eingabe zum Ändern einer bereits veröffentlichten Ankündigung. */
 export const updateAnnouncementInputSchema = z
@@ -237,6 +254,7 @@ export const updateAnnouncementInputSchema = z
     severity: notificationSeveritySchema.optional(),
     expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
   })
+  .strict()
   .refine((value) => Object.keys(value).length > 0, {
     message: 'Es wurde kein zu änderndes Feld angegeben.',
   });

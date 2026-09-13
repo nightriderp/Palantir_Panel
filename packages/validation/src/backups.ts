@@ -42,19 +42,23 @@ export const cronExpressionSchema = z
  * angehalten wird. Ohne Angabe wird **nicht** angehalten: ein unerwarteter
  * Serverstopp mitten im Spiel wäre die unangenehmere Überraschung.
  */
-export const createBackupInputSchema = z.object({
-  stopServer: z.boolean().default(false),
-});
+export const createBackupInputSchema = z
+  .object({
+    stopServer: z.boolean().default(false),
+  })
+  .strict();
 
 /** Eingabe für den vollständigen Datenexport (Lastenheft §3.3). */
 export const createServerExportInputSchema = createBackupInputSchema;
 
 /** Eingabe zum Setzen des Backup-Zeitplans eines Servers (F3 → Backend). */
-export const updateBackupScheduleInputSchema = z.object({
-  enabled: z.boolean(),
-  cronExpression: cronExpressionSchema,
-  stopServer: z.boolean().default(false),
-});
+export const updateBackupScheduleInputSchema = z
+  .object({
+    enabled: z.boolean(),
+    cronExpression: cronExpressionSchema,
+    stopServer: z.boolean().default(false),
+  })
+  .strict();
 
 /**
  * Filter der globalen Backup-Übersicht (F10 → Backend).
@@ -62,12 +66,14 @@ export const updateBackupScheduleInputSchema = z.object({
  * Alle Felder optional: ohne Filter liefert die Übersicht den vollständigen
  * Stand aller Nutzer.
  */
-export const backupOverviewQuerySchema = z.object({
-  ownerId: idSchema.optional(),
-  serverId: idSchema.optional(),
-  type: backupTypeSchema.optional(),
-  status: backupStatusSchema.optional(),
-});
+export const backupOverviewQuerySchema = z
+  .object({
+    ownerId: idSchema.optional(),
+    serverId: idSchema.optional(),
+    type: backupTypeSchema.optional(),
+    status: backupStatusSchema.optional(),
+  })
+  .strict();
 
 // -- Antwort-Schemas ---------------------------------------------------------
 

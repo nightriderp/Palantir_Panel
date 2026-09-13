@@ -64,9 +64,11 @@ export const getStorageBreakdownResultSchema = z.object({
 });
 
 /** Anfrage, einen neuen Scan anzustoßen (Scan on demand, Pflichtenheft §16). */
-export const startStorageScanInputSchema = z.object({
-  includeImages: z.boolean().default(true),
-});
+export const startStorageScanInputSchema = z
+  .object({
+    includeImages: z.boolean().default(true),
+  })
+  .strict();
 
 /**
  * Anfrage, einen Eintrag zu löschen.
@@ -76,9 +78,11 @@ export const startStorageScanInputSchema = z.object({
  * Datenordner eines aktiven Servers wird hier mit
  * `STORAGE_ENTRY_NOT_DELETABLE` abgelehnt (Lastenheft §3.8).
  */
-export const deleteStorageEntryInputSchema = z.object({
-  entryId: z.string().trim().min(1).max(400),
-});
+export const deleteStorageEntryInputSchema = z
+  .object({
+    entryId: z.string().trim().min(1).max(400),
+  })
+  .strict();
 
 export type AgentStorageEntryInput = z.infer<typeof agentStorageEntrySchema>;
 export type GetStorageBreakdownResult = z.infer<typeof getStorageBreakdownResultSchema>;

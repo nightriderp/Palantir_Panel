@@ -225,21 +225,23 @@ export const fontWeightRangeSchema = z
  * zählt die Angabe aus dem Formular; fehlt beides, gilt die Schrift als
  * statisch mit dem Gewicht 400.
  */
-export const uploadFontInputSchema = z.object({
-  label: fontLabelSchema,
-  family: fontFamilyNameSchema,
-  variable: z.boolean().optional(),
-  weightRange: fontWeightRangeSchema.optional(),
-  /**
-   * Dicktengleich? Angabe des Hochladenden (siehe `FontDto.monospace`).
-   *
-   * Optional mit `false` als Vorgabe: Der häufigere Fall ist eine
-   * Proportionalschrift, und eine falsch als dicktengleich gemeldete Schrift
-   * richtet in der Konsole mehr Schaden an als eine falsch als proportional
-   * gemeldete in der Oberfläche.
-   */
-  monospace: z.boolean().optional(),
-});
+export const uploadFontInputSchema = z
+  .object({
+    label: fontLabelSchema,
+    family: fontFamilyNameSchema,
+    variable: z.boolean().optional(),
+    weightRange: fontWeightRangeSchema.optional(),
+    /**
+     * Dicktengleich? Angabe des Hochladenden (siehe `FontDto.monospace`).
+     *
+     * Optional mit `false` als Vorgabe: Der häufigere Fall ist eine
+     * Proportionalschrift, und eine falsch als dicktengleich gemeldete Schrift
+     * richtet in der Konsole mehr Schaden an als eine falsch als proportional
+     * gemeldete in der Oberfläche.
+     */
+    monospace: z.boolean().optional(),
+  })
+  .strict();
 
 export type UploadFontInput = z.infer<typeof uploadFontInputSchema>;
 export type FontWeightRangeInput = z.infer<typeof fontWeightRangeSchema>;

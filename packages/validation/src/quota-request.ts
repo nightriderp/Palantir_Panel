@@ -33,6 +33,7 @@ export const createQuotaRequestInputSchema = z
       .min(10, { message: 'Bitte begründe deine Anfrage in einem Satz.' })
       .max(500, { message: 'Bitte fasse dich kürzer (höchstens 500 Zeichen).' }),
   })
+  .strict()
   .refine(
     (input) =>
       input.requestedRamMb !== null && input.requestedRamMb !== undefined
@@ -46,18 +47,22 @@ export const createQuotaRequestInputSchema = z
   );
 
 /** Entscheidung des Administrators; die Anmerkung ist freiwillig. */
-export const decideQuotaRequestInputSchema = z.object({
-  note: z.string().trim().max(500).optional(),
-});
+export const decideQuotaRequestInputSchema = z
+  .object({
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict();
 
 export const quotaRequestStatusSchema: z.ZodType<QuotaRequestStatus> = z.enum(
   QUOTA_REQUEST_STATUSES as [QuotaRequestStatus, ...QuotaRequestStatus[]],
 );
 
 /** Filter der Admin-Liste; ohne Angabe kommen die offenen. */
-export const quotaRequestQuerySchema = z.object({
-  status: quotaRequestStatusSchema.optional(),
-});
+export const quotaRequestQuerySchema = z
+  .object({
+    status: quotaRequestStatusSchema.optional(),
+  })
+  .strict();
 
 export type CreateQuotaRequestInput = z.infer<typeof createQuotaRequestInputSchema>;
 export type DecideQuotaRequestInput = z.infer<typeof decideQuotaRequestInputSchema>;

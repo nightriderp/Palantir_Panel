@@ -62,6 +62,7 @@ export {
 export { createDrizzleRoleRepository } from './repository.js';
 
 export {
+  type RbacAbweisung,
   type RbacOptions,
   registerRbac,
   replyWithErrorCode,
