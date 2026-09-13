@@ -118,6 +118,20 @@ export interface RegistrationRequestDto {
   /** Id des wartenden Kontos – die Warteliste ist eine Sicht auf `User`, keine eigene Entität. */
   userId: string;
   displayName: string;
+  /**
+   * Anmeldename des Kontos.
+   *
+   * Der Anzeigename ist frei wählbar und muss nicht eindeutig sein: In der
+   * Nutzerverwaltung standen zwei Konten „Chris Knapp" untereinander, ohne
+   * dass sich sagen ließ, welches gemeint ist – angemeldet, gesucht und
+   * angeschrieben wird aber über diesen Namen.
+   *
+   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3): Fehlt das
+   * Feld, zeigt die Oberfläche wie bisher nur den Anzeigenamen. Ein Konto ohne
+   * Passwort-Verfahren (nur Discord, Twitch oder Steam) hat trotzdem einen –
+   * er entsteht bei der Registrierung.
+   */
+  username?: string;
   status: RegistrationRequestStatus;
   banned: boolean;
   /** Verknüpfte Login-Methoden mit den verfügbaren Profilangaben. */
