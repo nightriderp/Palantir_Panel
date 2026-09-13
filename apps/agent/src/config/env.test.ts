@@ -75,3 +75,55 @@ describe('Umgebungsschema des Agents', () => {
     );
   });
 });
+
+/**
+ * Untergrenze und Platzhalter des Agent-Tokens (Arbeitspaket HM-2).
+ *
+ * Dasselbe Geheimnis, zwei Seiten: Das Backend verlangt für `AGENT_TOKEN` seit
+ * jeher 32 Zeichen, der Agent nahm bis hierher jedes nicht-leere entgegen. Ein
+ * schwaches oder stehengebliebenes Token startete den Agent also anstandslos,
+ * und der Fehler zeigte sich erst als abgelehnter Handshake - dessen Meldung
+ * über die Ursache nichts sagt.
+ *
+ * Die Node bekommt eine eigene Kopie der zentralen `.env` (SETUP.md §3.4), auf
+ * der `scripts/setup.sh` nicht zwingend gelaufen ist. Der Platzhalter kann hier
+ * also ankommen, auch wenn die VPS längst saubere Werte trägt.
+ */
+describe('Agent-Token: Untergrenze und Platzhalter', () => {
+  const fehlerPfade = (ergebnis: ReturnType<typeof umgebungLesen>): string[] =>
+    ergebnis.success ? [] : ergebnis.error.issues.map((issue) => issue.path.join('.'));
+
+  it('weist ein zu kurzes Token ab', () => {
+    const ergebnis = umgebungLesen({ AGENT_TOKEN: 'CHANGE_ME' });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toContain('AGENT_TOKEN');
+  });
+
+  it('nimmt ein Token je Node an (Präfix und 43 Base64URL-Zeichen)', () => {
+    // So sieht ein Token aus `POST /admin/nodes/:nodeId/agent-token` aus. Die
+    // Untergrenze darf genau diesen Weg nicht verbauen.
+    const ergebnis = umgebungLesen({ AGENT_TOKEN: `pal_agent_${'a'.repeat(43)}` });
+
+    expect(ergebnis.success).toBe(true);
+  });
+
+  it('weist einen ausreichend langen Platzhalter in Produktion ab', () => {
+    const ergebnis = umgebungLesen({
+      NODE_ENV: 'production',
+      AGENT_TOKEN: 'CHANGE_ME'.repeat(4),
+    });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toContain('AGENT_TOKEN');
+  });
+
+  it('lässt den Platzhalter außerhalb der Produktion durch', () => {
+    const ergebnis = umgebungLesen({
+      NODE_ENV: 'development',
+      AGENT_TOKEN: 'CHANGE_ME'.repeat(4),
+    });
+
+    expect(ergebnis.success).toBe(true);
+  });
+});
