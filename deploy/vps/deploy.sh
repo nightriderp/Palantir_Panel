@@ -113,6 +113,57 @@ log "Ziel-Commit: ${ziel}"
 [[ -d "${REPO_DIR}/.git" ]] || fail "${REPO_DIR} ist keine Git-Auscheckung."
 [[ -f "${ENV_FILE}" ]] || fail "${ENV_FILE} fehlt - siehe SETUP.md Abschnitt 1."
 
+# -----------------------------------------------------------------------------
+# 2a. Keine Platzhalter aus der Vorlage (Fundpunkt 283)
+# -----------------------------------------------------------------------------
+# `.env.example` liefert drei Werte mit `CHANGE_ME` aus. Einen davon faengt das
+# Backend seit HM-2 beim Start ab - aber nur die, die in seinem Schema stehen.
+# `POSTGRES_PASSWORD` und `FRP_TOKEN` kommen dort nie an: Der eine gehoert dem
+# Datenbank-Container, der andere frps und frpc, und beide bekommen ihre
+# Umgebung direkt aus der `.env`.
+#
+# Blieben sie stehen, haette die Datenbank ein oeffentlich bekanntes Passwort
+# und dem Spiele-Tunnel fehlte seine zweite Schranke. `scripts/setup.sh` fuellt
+# beide - aber der laeuft einmal bei der Einrichtung, und danach sieht niemand
+# mehr hin. Diese Pruefung sieht bei JEDEM Ausrollen hin.
+#
+# Bewusst allgemein statt auf die beiden Namen: Ein kuenftiger Platzhalter
+# desselben Musters faellt damit von selbst auf. Und bewusst hier ganz oben -
+# ein Abbruch kostet dann nichts, es ist noch nichts geholt und nichts
+# ausgetauscht.
+#
+# Gemeldet werden nur die NAMEN. Ein Deployment-Protokoll landet in GitHub
+# Actions, und dort hat kein Wert aus der `.env` etwas verloren.
+platzhalter_offen() {
+  local treffer
+
+  # Nur Zuweisungen, keine Kommentare: Das Muster verlangt am Zeilenanfang
+  # einen Variablennamen. `# POSTGRES_PASSWORD=CHANGE_ME` in der Vorlage faellt
+  # damit durch.
+  treffer="$(grep -nE "^[[:space:]]*[A-Z_][A-Z0-9_]*=.*CHANGE_ME" "${ENV_FILE}" || true)"
+
+  [[ -n "${treffer}" ]] || return 0
+
+  printf '%s\n' "${treffer}" |
+    sed -E "s/^([0-9]+):[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/  - \\2 (Zeile \\1)/"
+}
+
+offene_platzhalter="$(platzhalter_offen)"
+
+if [[ -n "${offene_platzhalter}" ]]; then
+  log "In ${ENV_FILE} steht noch der Platzhalter CHANGE_ME aus der Vorlage:"
+  printf '%s\n' "${offene_platzhalter}" | while IFS= read -r zeile; do log "${zeile}"; done
+  log '   So kommen sie weg:'
+  log '   - FRP_TOKEN: auf BEIDEN Maschinen denselben neuen Wert eintragen'
+  log "     (openssl rand -hex 32), danach frps und frpc neu starten."
+  log '   - POSTGRES_PASSWORD: reicht nicht in der .env allein - das Image setzt'
+  log '     es nur beim ersten Anlegen des Datenverzeichnisses. In der laufenden'
+  log '     Datenbank: ALTER ROLE <benutzer> WITH PASSWORD '"'"'<neu>'"'"';'
+  log '     danach denselben Wert in POSTGRES_PASSWORD und in DATABASE_URL.'
+  log '   - Uebrige: scripts/setup.sh fuellt sie, oder von Hand.'
+  fail 'Es wird nichts ausgerollt, solange ein Platzhalter aus der Vorlage in Betrieb ist.'
+fi
+
 vorher="$(git -C "${REPO_DIR}" rev-parse HEAD)"
 log "Aktueller Stand: ${vorher}"
 
