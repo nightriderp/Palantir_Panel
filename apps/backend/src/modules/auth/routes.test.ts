@@ -219,7 +219,20 @@ describe('Registrierung über HTTP (Lastenheft §3.1)', () => {
 
     expect(access?.httpOnly).toBe(true);
     expect(access?.sameSite?.toLowerCase()).toBe('lax');
-    expect(access?.secure).toBe(env.COOKIE_SECURE);
+    /*
+     * `?? false` ist hier keine Nachsicht, sondern die Übersetzung (Fundpunkt
+     * 273): `Secure` ist ein Attribut ohne Wert. Ist es nicht gesetzt, steht es
+     * gar nicht im `Set-Cookie`, und der Parser liefert `undefined` – nicht
+     * `false`. Ohne diese Zeile scheitert der Test auf jeder Maschine, deren
+     * `.env` `COOKIE_SECURE=false` trägt; in der CI ist es gesetzt, dort fiel es
+     * nie auf. Ein dauerhaft roter Test auf der Entwicklungsmaschine ist
+     * schlimmer als keiner: Er gewöhnt einem das Hinsehen ab.
+     *
+     * Schwächer wird die Zusicherung dadurch nicht. Fehlt das Attribut, obwohl
+     * `COOKIE_SECURE=true` gesetzt ist, ergibt `undefined ?? false` weiterhin
+     * `false` – und der Test fällt.
+     */
+    expect(access?.secure ?? false).toBe(env.COOKIE_SECURE);
 
     /*
      * Der Refresh-Token liegt auf `/`, damit die Route-Sperre des Frontends
