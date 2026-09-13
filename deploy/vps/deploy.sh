@@ -197,13 +197,17 @@ sicherung_ziehen() {
   # sonst bricht das Deployment hier ab. Bewusst mit Abbruch statt mit einer
   # Warnung: Ein Deployment ohne Rueckweg ist genau das, was hier abgeschafft
   # wird.
-  if ! mkdir -m 700 -p "${DUMP_DIR}" 2>/dev/null; then
+  # `umask` statt `mkdir -m`: Mit `-p` gilt `-m` nur fuer den letzten Ordner
+  # (ShellCheck SC2174), ein zwischendurch angelegter Elternteil bekaeme die
+  # Standardmaske. Die Maske gilt fuer alles, was hier entsteht, und schliesst
+  # zugleich das Fenster zwischen Anlegen und dem `chmod` darunter.
+  if ! (umask 077 && mkdir -p "${DUMP_DIR}") 2>/dev/null; then
     fail "Sicherungsordner ${DUMP_DIR} laesst sich nicht anlegen ($(dirname "${DUMP_DIR}") gehoert root). Einmalig als root auf der VPS: install -d -m 700 -o $(id -un) -g $(id -gn) ${DUMP_DIR}"
   fi
 
   # Rechte bei JEDEM Lauf durchsetzen, nicht nur beim Anlegen (Fundpunkt 287).
   #
-  # `mkdir -m` wirkt nur auf einen Ordner, den dieser Aufruf tatsaechlich
+  # Die Maske oben wirkt nur auf einen Ordner, den dieser Aufruf tatsaechlich
   # anlegt - ein bereits vorhandener behaelt seinen Modus. Genau so entstand
   # der Fundpunkt: Der erste Lauf legte den Ordner mit der Standardmaske als
   # 755 an. Ein Abzug traegt jeden Passwort-Hash, jedes TOTP-Geheimnis und
