@@ -1,7 +1,7 @@
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest, type RouteOptions } from 'fastify';
 import { env } from './config/env.js';
 import { cookieDomainUmfasstSpielhosts } from './config/cookie-domain.js';
 import { buildLoggerOptions } from './config/logging.js';
@@ -152,6 +152,20 @@ export interface BuildServerOptions {
   resolveActor?: (
     request: FastifyRequest,
   ) => Promise<PermissionActor | null> | PermissionActor | null;
+
+  /**
+   * Wird für **jede** registrierte Route gerufen (Arbeitspaket HM-9).
+   *
+   * Fastifys `onRoute`-Hook greift nur für Routen, die nach dem Einhängen
+   * registriert werden – von außen ist er deshalb nicht nachzurüsten: Wenn
+   * diese Funktion zurückkommt, steht schon alles. Der Haken hängt darum ganz
+   * oben im Aufbau, noch vor dem ersten Modul.
+   *
+   * Einziger Nutzer ist `modules/rbac/routen-rechte.test.ts`: Er sammelt damit
+   * die Routen ein und prüft, dass jede einen Guard trägt. Lesend – wer hier
+   * die Route verändert, ändert den laufenden Server.
+   */
+  readonly onRoute?: (route: RouteOptions) => void;
 }
 
 /**
@@ -176,6 +190,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     // Host-Port des Backends (Audit W2-6, backend-core-10).
     trustProxy: createTrustProxy(env.TRUSTED_PROXY_ADDRESSES),
   });
+
+  // Vor allen Modulen: Fastify meldet an `onRoute` nur, was danach kommt
+  // (Arbeitspaket HM-9, siehe BuildServerOptions.onRoute).
+  if (options.onRoute) {
+    app.addHook('onRoute', options.onRoute);
+  }
 
   /*
    * Geltungsbereich der Sitzungs-Cookies gegen die Spielserver-Hosts prüfen
