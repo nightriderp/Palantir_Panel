@@ -104,6 +104,23 @@ proton_vorbereiten
 # Panel nur die Ausgabe zeigt.
 palantir_konsole_oeffnen
 
+# Startparameter des Betreibers (Fundpunkt 262).
+#
+# Beim ersten Proton-Image ist das durchgerutscht: Jedes andere Spiel-Image
+# hängt sie hinten an die Befehlszeile, hier fehlte es. Folge war ein Feld im
+# Panel, das dasteht und nichts bewirkt – schlimmer als kein Feld, denn wer es
+# füllt, wartet auf eine Wirkung, die nie kommt.
+#
+# Enshrouded selbst nimmt seine Einstellungen aus der JSON-Datei oben und kennt
+# nur wenige Schalter auf der Befehlszeile. Das ändert nichts an der Zusage: Was
+# der Betreiber hier einträgt, kommt beim Server an. Was der Server damit
+# anfängt, entscheidet er.
+if [ -n "${PALANTIR_STARTUP_PARAMETERS:-}" ]; then
+  # Absichtlich ohne Anführungszeichen: die Wortzerlegung ist der Zweck.
+  # shellcheck disable=SC2086
+  set -- ${PALANTIR_STARTUP_PARAMETERS}
+fi
+
 log "Startet Enshrouded auf Port ${PORT} (Abfrage ${ABFRAGE_PORT}) unter Proton"
 
 cd "$SERVER"
@@ -111,4 +128,4 @@ cd "$SERVER"
 # Ohne `exec`: Zwischen Signal und Spielserver stehen hier ohnehin Proton und
 # Wine. Das Signal erreicht die Shell, die es an die Gruppe weiterreicht – mehr
 # ist bei einem Server, der nichts entgegennimmt, nicht zu holen.
-proton_lauf "$BINAERDATEI" 0<&3 3>&-
+proton_lauf "$BINAERDATEI" "$@" 0<&3 3>&-

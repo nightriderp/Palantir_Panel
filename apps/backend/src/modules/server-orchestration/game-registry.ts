@@ -2003,7 +2003,7 @@ export const ENSHROUDED_GAME_TYPE: GameTypeDefinition = {
   name: 'Enshrouded',
   description:
     'Enshrouded-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-enshrouded:2',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-enshrouded:3',
   defaultEnv: {},
   ports: [
     {
