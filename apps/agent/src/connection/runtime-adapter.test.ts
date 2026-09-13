@@ -294,7 +294,7 @@ describe('Nutzdaten-Prüfung', () => {
 
       expect(antwort.error?.code).toBe('AGENT_COMMAND_INVALID');
       // Kein Dateizugriff: Der Datenordner des Containers ist unberührt.
-      expect(await runtime.listFiles(containerId, '/data')).toEqual([]);
+      expect(runtime.dateipfade(containerId, '/data')).toEqual([]);
     },
   );
 });

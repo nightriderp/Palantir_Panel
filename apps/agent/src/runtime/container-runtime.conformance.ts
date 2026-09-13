@@ -216,17 +216,6 @@ export function runContainerRuntimeConformance(
         });
       });
 
-      it('listet nur die direkte Ebene eines Verzeichnisses', async () => {
-        const id = await angelegt();
-        await runtime.writeFile(id, '/data/server.properties', Buffer.from('x'));
-        await runtime.writeFile(id, '/data/welt/level.dat', Buffer.from('y'));
-
-        const eintraege = await runtime.listFiles(id, '/data');
-        expect(eintraege.map((e) => e.name)).toEqual(['server.properties', 'welt']);
-        expect(eintraege.find((e) => e.name === 'welt')?.type).toBe('directory');
-        expect(eintraege.find((e) => e.name === 'server.properties')?.type).toBe('file');
-      });
-
       it('lehnt relative Pfade ab', async () => {
         const id = await angelegt();
         await expect(runtime.readFile(id, 'data/../../etc/shadow')).rejects.toMatchObject({

@@ -81,7 +81,7 @@ describe('ArchiveUploadJob (Gefundener Punkt 106)', () => {
 
     expect(letzter.receivedBytes).toBe(daten.byteLength);
     expect(letzter.extract).toMatchObject({ fileCount: 2, skipped: [] });
-    expect(await runtime.listFiles(containerId, '/data/welt')).toHaveLength(1);
+    expect(runtime.dateipfade(containerId, '/data/welt')).toHaveLength(1);
   });
 
   it('räumt die Zwischendatei nach dem Entpacken weg', async () => {

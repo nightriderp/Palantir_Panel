@@ -37,7 +37,6 @@ import {
   type DataVolumePaths,
   type ExecResult,
   type ExtractArchiveResult,
-  type FileEntry,
   type GetLogsOptions,
   type LogLine,
   type RemoveImageOptions,
@@ -55,7 +54,7 @@ import {
   type DockerStatsResponse,
 } from './mapping.js';
 import { LogLineAssembler, demuxDockerStream, readNdjson } from './stream.js';
-import { type TarFileInput, createTar, parseTar, parseTarHeaders } from './tar.js';
+import { type TarFileInput, createTar, parseTar } from './tar.js';
 
 /**
  * Obergrenze fuer Dateien, die der Datei-Manager im Speicher bewegt.
@@ -84,28 +83,6 @@ export const DEFAULT_MAX_FILE_BYTES = AGENT_FILE_CHANNEL_MAX_BYTES;
  * wurde. Die gewollte Grenze ist die des Entpackens.
  */
 export const DEFAULT_MAX_ARCHIVE_BYTES = MAX_EXTRACTED_BYTES;
-
-/**
- * Wie viele Eintraege eine Auflistung hoechstens zurueckgibt (Fundpunkt 274).
- *
- * Die Engine kennt keinen Aufruf „nur die Namen": `GET /archive` liefert den
- * Ordner **rekursiv und mit Inhalten**. Fuer die Anzeige der ersten Ebene wurde
- * damit der ganze Baum geholt - bei einer gewachsenen Minecraft-Welt sind das
- * Gigabyte, und sie liefen durch den gemeinsamen Agent-Prozess, also zu Lasten
- * aller Server der Node.
- *
- * Fundpunkt 228 hat dagegen eine Byte-Grenze gezogen (128 MiB) und damit den
- * Speicher gerettet, aber die Auflistung selbst geopfert: Ein Datenordner mit
- * Wine-Prefix und SteamCMD-Kopie ist groesser als das, und der Datei-Manager
- * zeigte dort gar nichts mehr. Seit {@link parseTarHeaders} wird der Strom
- * gelesen, statt ihn zu sammeln - die Inhalte laufen durch, ohne im Speicher
- * zu landen, und eine Byte-Grenze braucht es nicht mehr.
- *
- * Was bleibt, ist die Zahl der gesammelten Eintraege. Zwanzigtausend Namen in
- * einem Ordner sind fuer eine Anzeige ohnehin nicht mehr zu gebrauchen; bis
- * dahin wird gelesen, danach abgeschnitten.
- */
-export const MAX_LISTING_ENTRIES = 20_000;
 
 /**
  * Obergrenze fuer die gesammelte Ausgabe eines Konsolenbefehls (`execConsole`).
@@ -692,64 +669,6 @@ export class DockerContainerRuntime implements ContainerRuntime {
     const normalisiert = path.posix.normalize(wurzel);
     this.#datenVolumeWurzeln.set(containerId, normalisiert);
     return normalisiert;
-  }
-
-  /**
-   * Listet die direkte Ebene eines Ordners auf.
-   *
-   * Die Engine kennt keinen Aufruf „nur die Namen": `GET /archive` liefert den
-   * Ordner rekursiv **und mit Inhalten**. Gelesen werden davon nur die
-   * 512-Byte-Koepfe, die Inhalte werden im Vorbeigehen uebersprungen
-   * (Fundpunkt 274) - der Speicherbedarf haengt damit an der Zahl der
-   * Eintraege, nicht an der Groesse der Dateien.
-   *
-   * Vorher wurde das Archiv erst vollstaendig gepuffert und dann zerlegt. Das
-   * kostete so viel Speicher, wie der Ordner gross war, und brauchte deshalb
-   * die Grenze aus Fundpunkt 228 - an der ein Datenordner mit Wine-Prefix und
-   * SteamCMD-Kopie zuverlaessig scheiterte: Der Datei-Manager zeigte statt
-   * einer Liste nur noch „Die Ausfuehrung des Befehls ist fehlgeschlagen".
-   */
-  async listFiles(containerId: string, verzeichnis: string): Promise<readonly FileEntry[]> {
-    const wurzel = await this.#datenVolumeWurzel(containerId);
-    const pfad = resolveWithinRoot(wurzel, verzeichnis);
-    const stuecke = this.#client.requestChunks('GET', `${this.#pfad(containerId)}/archive`, {
-      query: { path: pfad },
-      notFoundCode: 'FILE_NOT_FOUND',
-    });
-
-    // Die Engine packt das Verzeichnis samt Namen ein: `<basename>/<eintrag>`.
-    const basisName = path.posix.basename(pfad);
-    const praefix = basisName.length === 0 ? '' : `${basisName}/`;
-
-    const eintraege: FileEntry[] = [];
-
-    for await (const eintrag of parseTarHeaders(stuecke)) {
-      if (!eintrag.name.startsWith(praefix)) continue;
-
-      const relativ = eintrag.name.slice(praefix.length).replace(/\/$/u, '');
-      // Nur die direkte Ebene - `listFiles` ist bewusst nicht rekursiv.
-      if (relativ.length === 0 || relativ.includes('/')) continue;
-
-      /*
-       * Eine Grenze braucht es weiterhin, nur eine andere: Nicht die Groesse
-       * des Archivs ist das Risiko, sondern die Zahl der Eintraege, die hier
-       * gesammelt werden. Ein Ordner mit Hunderttausenden Dateien waere fuer
-       * die Anzeige ohnehin unbrauchbar; abgeschnitten wird an einer Stelle,
-       * an der noch niemand ernsthaft sucht.
-       */
-      if (eintraege.length >= MAX_LISTING_ENTRIES) break;
-
-      eintraege.push({
-        name: relativ,
-        path: path.posix.join(pfad, relativ),
-        type: eintrag.type,
-        sizeBytes: eintrag.size,
-        modifiedAt: eintrag.modifiedAt,
-        mode: eintrag.mode,
-      });
-    }
-
-    return eintraege.sort((a, b) => a.name.localeCompare(b.name, 'de'));
   }
 
   async readFile(containerId: string, datei: string): Promise<Buffer> {

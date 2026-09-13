@@ -24,7 +24,7 @@
  * | `GET_STATS`           | `getStats`           |
  * | `GET_LOGS`            | `getLogs`            |
  * | `EXEC_CONSOLE`        | `execConsole`        |
- * | `FILE_LIST`           | `listFiles`          |
+ * | `FILE_LIST`           | (host-seitig, siehe `jobs/files/delete.ts`) |
  * | `FILE_READ`           | `readFile`           |
  * | `FILE_WRITE`          | `writeFile`          |
  * | `FILE_DELETE`         | (host-seitig, siehe `jobs/files/delete.ts`) |
@@ -52,7 +52,6 @@ import {
   type DataVolumePaths,
   type ExecResult,
   type ExtractArchiveResult,
-  type FileEntry,
   type GetLogsOptions,
   type LogLine,
   type RemoveImageOptions,
@@ -141,9 +140,6 @@ export interface ContainerRuntime {
    * Shell-Injection werden kann.
    */
   execConsole(containerId: string, command: readonly string[]): Promise<ExecResult>;
-
-  /** `FILE_LIST`: Verzeichnisinhalt im Container (nicht rekursiv). */
-  listFiles(containerId: string, path: string): Promise<readonly FileEntry[]>;
 
   /** `FILE_READ`: Dateiinhalt aus dem Container lesen. */
   readFile(containerId: string, path: string): Promise<Buffer>;
