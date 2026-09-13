@@ -216,11 +216,23 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)
 
+  images/base/dotnet: {}
+
   images/base/java: {}
 
   images/base/linux: {}
 
+  images/base/proton: {}
+
   images/base/steam: {}
+
+  images/game/abioticfactor: {}
+
+  images/game/acc: {}
+
+  images/game/arkascended: {}
+
+  images/game/enshrouded: {}
 
   images/game/factorio: {}
 
@@ -232,9 +244,19 @@ importers:
 
   images/game/rust: {}
 
+  images/game/satisfactory: {}
+
+  images/game/sdtd: {}
+
+  images/game/sonsoftheforest: {}
+
   images/game/terraria: {}
 
   images/game/valheim: {}
+
+  images/game/vintagestory: {}
+
+  images/game/vrising: {}
 
   images/test/minecraft: {}
 
