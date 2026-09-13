@@ -323,3 +323,53 @@ export type NotificationPreferencesRow = typeof notificationPreferences.$inferSe
 export type NewNotificationPreferencesRow = typeof notificationPreferences.$inferInsert;
 export type NotificationDeliveryRow = typeof notificationDeliveries.$inferSelect;
 export type NewNotificationDeliveryRow = typeof notificationDeliveries.$inferInsert;
+
+/**
+ * Push-Abonnement eines Geraetes (Web-Push).
+ *
+ * Ein Konto kann mehrere haben - Telefon, Arbeitsrechner, Zweitbrowser -, und
+ * jedes bringt eigene Schluessel mit. Die Adresse (`endpoint`) zeigt auf den
+ * Zustelldienst des jeweiligen Browserherstellers und ist die Kennung des
+ * Abonnements; deshalb ist sie eindeutig und nicht das Paar aus Konto und
+ * Geraet.
+ *
+ * ⚠️ `p256dh` und `auth` sind **keine** Geheimnisse des Panels, sondern die des
+ * Geraetes: Mit ihnen verschluesselt der Absender die Nutzlast so, dass allein
+ * dieser Browser sie lesen kann. Sie verlassen den Server deshalb nie in einem
+ * DTO - der Browser hat sie ohnehin.
+ *
+ * Faellt ein Abonnement dauerhaft aus (der Zustelldienst antwortet mit 404 oder
+ * 410, weil der Browser es verworfen hat), loescht der Versand die Zeile. Ein
+ * Abonnement, das niemand mehr annimmt, ist kein Fehler, sondern ein
+ * abgemeldetes Geraet.
+ */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    /**
+     * Womit das Abonnement angelegt wurde - allein zur Wiedererkennung in der
+     * eigenen Geraeteliste ("Firefox auf Windows"). Gekuerzt gespeichert, damit
+     * daraus kein Bewegungsprofil wird (Pflichtenheft §18).
+     */
+    userAgent: text('user_agent'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (table) => [
+    // Dieselbe Adresse gibt es genau einmal: Ein zweites Anmelden desselben
+    // Browsers soll die Zeile auffrischen, nicht eine zweite anlegen - sonst
+    // kaeme jede Meldung doppelt an.
+    uniqueIndex('push_subscriptions_endpoint_idx').on(table.endpoint),
+    index('push_subscriptions_user_idx').on(table.userId),
+  ],
+);
+
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+export type NewPushSubscriptionRow = typeof pushSubscriptions.$inferInsert;

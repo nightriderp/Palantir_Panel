@@ -97,7 +97,14 @@ const OHNE_GUARD = new Map<string, Grund>([
   ['GET /health', GRUENDE.oeffentlich],
   ['GET /public/stats', GRUENDE.oeffentlich],
   ['GET /public/fonts.css', GRUENDE.oeffentlich],
-  ['GET /users/:userId/avatar', GRUENDE.oeffentlich],
+  /*
+   * Korrigiert: Die Route verlangt eine Sitzung (`requireUserId`), gibt dann
+   * aber das Bild jedes Kontos heraus - Profilbilder stehen in Listen, in
+   * Nachrichten und auf Serverkarten. Sie ist also nicht oeffentlich, sondern
+   * "nur Sitzung"; als oeffentlich gefuehrt laese die Aufstellung sich so, als
+   * gaebe das Panel Bilder ohne Anmeldung heraus.
+   */
+  ['GET /users/:userId/avatar', GRUENDE.nurSitzung],
   ['GET /auth/altcha/challenge', GRUENDE.oeffentlich],
   ['POST /auth/register', GRUENDE.oeffentlich],
   ['POST /auth/login', GRUENDE.oeffentlich],
@@ -128,6 +135,12 @@ const OHNE_GUARD = new Map<string, Grund>([
   ['DELETE /notifications/:notificationId', GRUENDE.eigenesKonto],
   ['GET /notifications/preferences', GRUENDE.eigenesKonto],
   ['PUT /notifications/preferences', GRUENDE.eigenesKonto],
+  // Web-Push: Der oeffentliche Schluessel ist kein Geheimnis, verlangt aber
+  // eine Sitzung - ohne Konto gibt es nichts zu abonnieren. An- und Abmelden
+  // wirken ausschliesslich auf die Geraete des eigenen Kontos.
+  ['GET /notifications/push/config', GRUENDE.nurSitzung],
+  ['POST /notifications/push/subscriptions', GRUENDE.eigenesKonto],
+  ['DELETE /notifications/push/subscriptions', GRUENDE.eigenesKonto],
 
   // -- nur Sitzung ------------------------------------------------------------
   ['GET /api/fonts', GRUENDE.nurSitzung],

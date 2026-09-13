@@ -11,6 +11,8 @@
  * nicht – sie bekommen diese Senke beim Aufbau ihres Services gereicht.
  */
 
+import { createDrizzlePushSubscriptionStore } from './push-repository.js';
+import { createWebPushSender } from './web-push.js';
 import {
   type NotifiableEventName,
   type NotificationEvent,
@@ -148,6 +150,11 @@ export interface NotificationModuleOptions {
   readonly transport?: NotificationTransport;
   readonly directory?: RecipientDirectory;
   readonly jobs?: JobRunner;
+  /**
+   * VAPID-Schluesselpaar der Instanz. Fehlt es, gibt es keinen Push-Versand -
+   * die Oberflaeche bietet ihn dann gar nicht erst an.
+   */
+  readonly vapid?: { publicKey: string; privateKey: string; subject: string };
 }
 
 export interface NotificationModule {
@@ -173,6 +180,23 @@ export function createNotificationModule(options: NotificationModuleOptions): No
     ...(options.jobs === undefined ? {} : { jobs: options.jobs }),
     ...(options.log === undefined ? {} : { log: options.log }),
     defaultWebhookUrl: options.defaultWebhookUrl ?? null,
+    /*
+     * Push nur mit Schluesselpaar. Die Attrappe bauen wir hier nicht: Ohne
+     * Schluessel gibt es keinen Versand, und der Dienst laeuft ohne die
+     * Option unveraendert weiter.
+     */
+    ...(options.vapid === undefined
+      ? {}
+      : {
+          push: {
+            store: createDrizzlePushSubscriptionStore(options.db),
+            sender: createWebPushSender({
+              ...options.vapid,
+              ...(options.log === undefined ? {} : { log: options.log }),
+            }),
+            publicKey: options.vapid.publicKey,
+          },
+        }),
   });
 
   return { service, eventSink: createNotificationEventSink(service, options.log), hub };

@@ -19,12 +19,20 @@
  */
 
 import {
+  sendToUser,
+  toPushConfigDto,
+  type PushSender,
+  type PushSubscriptionStore,
+} from './push.js';
+import {
   type AnnouncementDto,
   type NotifiableEventName,
   type NotificationDeliveryDto,
   type NotificationEvent,
   type NotificationPageDto,
   type NotificationPreferencesDto,
+  type PushConfigDto,
+  type PushSubscriptionInput,
   type NotificationRuleDto,
   type NotificationChannelDto,
   type NotificationSeverity,
@@ -107,6 +115,19 @@ export interface NotificationServiceOptions {
   readonly roles?: RoleNameLookup;
   readonly transport: NotificationTransport;
   readonly live?: LiveNotificationPublisher;
+  /**
+   * Versand an die Geraete eines Kontos (Web-Push).
+   *
+   * Optional: Ohne hinterlegtes VAPID-Schluesselpaar gibt es keinen Versand,
+   * und der Dienst laeuft unveraendert weiter - die Meldung steht dann wie
+   * bisher in der Inbox und im Live-Kanal.
+   */
+  readonly push?: {
+    store: PushSubscriptionStore;
+    sender: PushSender;
+    /** Oeffentlicher VAPID-Schluessel, den die Oberflaeche zum Anmelden braucht. */
+    publicKey: string;
+  };
   readonly audit?: NotificationAuditSink;
   /**
    * `DISCORD_WEBHOOK_URL` aus der zentralen `.env` (Pflichtenheft §12.1).
@@ -178,6 +199,18 @@ export interface NotificationService {
     input: NotificationPreferencesInput,
   ): Promise<NotificationPreferencesDto>;
   markRead(viewerId: string, input: MarkNotificationsReadInput): Promise<number>;
+
+  // Web-Push (gehoert dem Geraet des Empfaengers)
+  /** Oeffentlicher Schluessel der Instanz; `publicKey: null` = Push ist aus. */
+  pushConfig(): PushConfigDto;
+  /** Geraet anmelden. Dieselbe Adresse frischt die vorhandene Zeile auf. */
+  subscribePush(
+    viewerId: string,
+    input: PushSubscriptionInput,
+    context: { userAgent: string | null },
+  ): Promise<void>;
+  /** Geraet abmelden. */
+  unsubscribePush(viewerId: string, endpoint: string): Promise<void>;
   deleteNotification(viewerId: string, notificationId: string): Promise<void>;
   countUnread(viewerId: string): Promise<number>;
 
@@ -220,6 +253,7 @@ export function createNotificationService(
   const { repository, directory, transport } = options;
   const roles = options.roles ?? noopRoleNameLookup;
   const live = options.live ?? noopLivePublisher;
+  const push = options.push;
   const audit = options.audit ?? noopAuditSink;
   const now: Clock = options.now ?? systemClock;
   const log = options.log ?? silentLogger;
@@ -408,6 +442,32 @@ export function createNotificationService(
         notification: toNotificationDto(record, { viewerId: record.userId }),
         unreadCount,
       });
+
+      /*
+       * Push haengt bewusst genau hier: an dem, was ohnehin entstanden ist.
+       * Damit gelten fuer den Versand dieselben Regeln, derselbe
+       * Empfaengerkreis und dieselben persoenlichen Abbestellungen wie fuer die
+       * Inbox - ohne dass irgendwo eine zweite Entscheidung darueber faellt,
+       * wer etwas bekommt.
+       *
+       * Nicht abgewartet (`jobs`): Eine Push-Zustellung geht ueber das Netz
+       * zu einem fremden Dienst; sie darf den ausloesenden Vorgang weder
+       * aufhalten noch scheitern lassen (Pflichtenheft §14) - genauso wie der
+       * Discord-Versand.
+       */
+      if (push !== undefined) {
+        jobs(() =>
+          sendToUser(push, record.userId, {
+            title: record.title,
+            body: record.body,
+            url: '/notifications',
+            // Meldungen zum selben Betreff ersetzen einander auf dem
+            // Sperrbildschirm, statt sich zu stapeln; ohne Betreff trennt das
+            // Ereignis.
+            tag: record.subjectId ?? record.event,
+          }).then(() => undefined),
+        );
+      }
     }
   }
 
@@ -886,6 +946,36 @@ export function createNotificationService(
         targetId: ruleId,
         metadata: { operation: 'deleted', event: rule.event },
       });
+    },
+
+    pushConfig() {
+      return toPushConfigDto(push?.publicKey);
+    },
+
+    async subscribePush(viewerId, input, context) {
+      if (push === undefined) {
+        // Ohne Schluesselpaar gibt es nichts zu abonnieren. Ein stilles "ok"
+        // waere schlimmer als die Absage: Die Oberflaeche zeigte dann ein
+        // eingeschaltetes Geraet, an das nie etwas geht.
+        throw new NotificationError(
+          'VALIDATION_FAILED',
+          'Für diese Instanz ist kein Push-Versand eingerichtet.',
+        );
+      }
+
+      await push.store.save({
+        userId: viewerId,
+        endpoint: input.endpoint,
+        p256dh: input.keys.p256dh,
+        auth: input.keys.auth,
+        userAgent: context.userAgent,
+      });
+    },
+
+    async unsubscribePush(viewerId, endpoint) {
+      // Ohne Einrichtung gibt es auch nichts zu loeschen - aber die Abmeldung
+      // darf trotzdem nicht scheitern: Der Browser raeumt hier auf.
+      await push?.store.remove(viewerId, endpoint);
     },
 
     async getPreferences(viewerId) {

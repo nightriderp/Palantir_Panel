@@ -40,12 +40,14 @@
     "gamedig": "^5.3.3",
     "jose": "^5.9.6",
     "pg": "^8.23.0",
+    "web-push": "3.6.7",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/gamedig": "^5.0.3",
     "@types/node": "^22.10.5",
     "@types/pg": "^8.23.1",
+    "@types/web-push": "^3.6.4",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
