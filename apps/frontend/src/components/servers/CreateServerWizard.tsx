@@ -19,6 +19,7 @@ import {
   ToggleRow,
   cn,
   formatCores,
+  serverInitials,
   formatMegabytes,
   useToast,
 } from '@/components/shared';
@@ -123,41 +124,48 @@ function GameTile({
       disabled={!game.available}
       aria-pressed={selected}
       className={cn(
-        'flex flex-col gap-2 rounded-2xl border p-4 text-left',
-        selected ? 'border-brand bg-brand-soft' : 'border-line bg-card-gradient',
+        'flex items-start gap-3 rounded-2xl border p-3.5 text-left transition-colors',
+        selected
+          ? 'border-brand bg-brand-soft'
+          : 'border-line bg-card-gradient hover:border-line-strong',
         !game.available && 'cursor-not-allowed opacity-60',
       )}
     >
+      {/*
+        Kachel statt Titelbild-Platzhalter: Ohne hinterlegtes Bild stand hier
+        ein 80 Pixel hoher leerer Kasten mit dem Wort „Titelbild" – bei
+        neunzehn Spieltypen also neunzehn leere Kästen, und die Liste passte
+        nicht mehr auf einen Bildschirm. Gibt es ein Bild, sitzt es in
+        derselben Kachel.
+      */}
       <span
         aria-hidden
-        className="flex h-20 items-center justify-center rounded-tile bg-fill text-2xs uppercase tracking-[0.1em] text-ink-faint"
+        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-fill font-mono text-sm font-bold text-brand"
       >
         {game.coverImageUrl ? (
           /* Die Adresse kommt aus der Spiele-Registry und ist zur Bauzeit unbekannt;
              `next/image` bräuchte dafür eine konfigurierte Domain. */
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={game.coverImageUrl}
-            alt=""
-            className="h-full w-full rounded-tile object-cover"
-          />
+          <img src={game.coverImageUrl} alt="" className="h-full w-full object-cover" />
         ) : (
-          'Titelbild'
+          serverInitials(game.name)
         )}
       </span>
 
-      <span className="flex items-center gap-2">
-        <span className="text-lg font-bold">{game.name}</span>
-        {!game.available ? <Badge tone="warning">Kommt später</Badge> : null}
-      </span>
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-lg font-semibold">{game.name}</span>
+          {!game.available ? <Badge tone="warning">Kommt später</Badge> : null}
+        </span>
 
-      <span className="text-sm text-ink-soft">
-        {game.available ? game.description : (game.unavailableReason ?? game.description)}
-      </span>
+        <span className="text-sm text-ink-soft">
+          {game.available ? game.description : (game.unavailableReason ?? game.description)}
+        </span>
 
-      <span className="text-xs text-ink-faint">
-        Empfohlen: {formatMegabytes(game.resourceDefaults.ramMb)} RAM ·{' '}
-        {formatCores(game.resourceDefaults.cpuCores)}
+        <span className="text-xs text-ink-faint">
+          Empfohlen: {formatMegabytes(game.resourceDefaults.ramMb)} RAM ·{' '}
+          {formatCores(game.resourceDefaults.cpuCores)}
+        </span>
       </span>
     </button>
   );
@@ -276,7 +284,7 @@ export function CreateServerWizard() {
             {gameTypes.loading ? <p className="text-base text-ink-muted">Wird geladen …</p> : null}
             {gameTypes.error ? <p className="text-base text-danger">{gameTypes.error}</p> : null}
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3">
               {(gameTypes.data ?? []).map((game) => (
                 <GameTile
                   key={game.id}
