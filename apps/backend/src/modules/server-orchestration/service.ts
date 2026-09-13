@@ -734,6 +734,30 @@ export class ServerOrchestrationService {
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : 'Unbekannter Fehler.';
 
+      /*
+       * Nachsehen, ob doch ein Container entstanden ist (Fundpunkt 289).
+       *
+       * Der Fall ist das `CREATE`, das in die Frist des Backends lief, während
+       * der Agent weiterarbeitete: Der Container entsteht danach trotzdem, und
+       * in der Datenbank steht keine Id, mit der ihn später noch jemand
+       * entfernen könnte.
+       *
+       * **Nur dann.** Steht die Id bereits (das `CREATE` kam durch, erst die
+       * Weltdaten-Übernahme scheiterte), gehört der Container dem Datensatz -
+       * und wird über den regulären Weg entfernt, der die Id danach auch
+       * austrägt. Hier auf den Namen zu schiessen hiesse, einen Datensatz mit
+       * einer Id auf einen Container zurückzulassen, den es nicht mehr gibt.
+       *
+       * Auf gut Glück und ohne Folgen: Gibt es keinen, meldet der Agent das,
+       * und der Fehlschlag des Anlegens bleibt der Fehlschlag des Anlegens.
+       */
+      const stand = await this.deps.repository.findById(server.id);
+      const session = this.deps.agents.get(server.hostId);
+
+      if (session !== null && (stand === null || stand.dockerContainerId === null)) {
+        await this.removeContainerByName(session, server.id);
+      }
+
       await this.transition(server, { type: 'createFailed', reason });
       await this.emitServerEvent('server.failed', server, { detail: reason });
 
@@ -771,6 +795,45 @@ export class ServerOrchestrationService {
    * Jeder Aufrufer schreibt anschließend `dockerContainerId = null`, damit ein
    * zweiter Anlauf nicht wieder hier landet.
    */
+  /**
+   * Aufräumversuch über den festen Container-Namen (Fundpunkt 289).
+   *
+   * Für die Fälle, in denen das Backend keine Container-Id hat, auf der Node
+   * aber trotzdem einer stehen kann: ein `CREATE`, das nach der Frist des
+   * Backends aufgegeben, vom Agent aber zu Ende gebracht wurde.
+   *
+   * **Ein Fehlschlag ist hier kein Fehler.** „Gibt es nicht" ist der
+   * Regelfall - die allermeisten Server ohne Id haben auch keinen Container.
+   * Und ein Löschvorgang darf nicht daran scheitern, dass ein Aufräumversuch
+   * auf gut Glück nicht durchkam; der Container taucht dann weiter als
+   * verwaister Posten im Abgleich auf, genau wie bisher.
+   */
+  private async removeContainerByName(session: AgentSession, serverId: string): Promise<void> {
+    const name = containerNameFor(serverId);
+
+    try {
+      await session.sendCommand('DELETE', serverId, { containerId: name, force: true });
+
+      this.deps.log.info(
+        { serverId, containerName: name },
+        'Verwaister Container ohne bekannte Id auf der Node entfernt',
+      );
+    } catch (error: unknown) {
+      if (isServerOrchestrationError(error) && error.code === 'AGENT_CONTAINER_NOT_FOUND') {
+        return;
+      }
+
+      this.deps.log.warn(
+        {
+          serverId,
+          containerName: name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Aufraeumversuch ueber den Container-Namen fehlgeschlagen - das Loeschen laeuft weiter',
+      );
+    }
+  }
+
   private async removeContainer(
     session: AgentSession,
     serverId: string,
@@ -1644,6 +1707,29 @@ export class ServerOrchestrationService {
       // Wiederholungsversuch hinter dem bereits entfernten Container und nicht
       // erneut davor.
       await this.deps.repository.update(server.id, { dockerContainerId: null });
+    } else if (server.dockerContainerId === null && session !== null) {
+      /*
+       * **Auch ohne bekannte Container-Id nachsehen** (Fundpunkt 289).
+       *
+       * Eine leere `dockerContainerId` hiess bisher „es gibt keinen Container".
+       * Das stimmt nicht immer: Gibt das Backend ein `CREATE` nach seiner Frist
+       * auf (`AGENT_CREATE_TIMEOUT_MS`, bei den Proton-Images eine
+       * Viertelstunde), arbeitet der Agent weiter - er zieht ja gerade
+       * mehrere Gigabyte - und legt den Container danach trotzdem an. Die Id
+       * erreicht die Datenbank nie. Wird der Server dann geloescht, bleibt der
+       * Container auf der Node stehen, und der Abgleich meldet ihn bei jeder
+       * Verbindung als verwaist, ohne dass ihn noch irgendetwas entfernen
+       * koennte: Der Datensatz mit seiner Id ist weg.
+       *
+       * Am 13.09.2026 auf der VPS gefunden - zwei ACC-Testserver vom 11.09.,
+       * beide im Panel geloescht, beide auf der Node noch da.
+       *
+       * Adressiert wird ueber den Namen statt ueber die Id: Der steht fest
+       * (`containerNameFor`), Docker nimmt ihn an derselben Stelle an, und er
+       * kann keinen fremden Server treffen - er leitet sich aus der Id genau
+       * dieses Servers ab.
+       */
+      await this.removeContainerByName(session, server.id);
     } else if (server.dockerContainerId !== null && optionen.erzwingen !== true) {
       throw new ServerOrchestrationError(
         'AGENT_NOT_CONNECTED',
