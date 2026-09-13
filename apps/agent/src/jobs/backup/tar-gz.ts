@@ -143,7 +143,11 @@ interface Eintrag {
   readonly linkname: string | null;
 }
 
-async function* sammle(wurzel: string, unterordner: string): AsyncGenerator<Eintrag> {
+async function* sammle(
+  wurzel: string,
+  unterordner: string,
+  ausschluss: ReadonlySet<string> = new Set(),
+): AsyncGenerator<Eintrag> {
   const verzeichnis = path.join(wurzel, unterordner);
   const eintraege = await fs.readdir(verzeichnis, { withFileTypes: true });
   // Sortiert, damit dasselbe Verzeichnis immer dasselbe Archiv ergibt – das
@@ -152,6 +156,10 @@ async function* sammle(wurzel: string, unterordner: string): AsyncGenerator<Eint
   eintraege.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
   for (const eintrag of eintraege) {
+    // Nur auf der obersten Ebene: Ein `.palantir` tief in den Weltdaten gehoert
+    // dem Spiel und nicht der Maschine.
+    if (unterordner === '' && ausschluss.has(eintrag.name)) continue;
+
     const absolut = path.join(verzeichnis, eintrag.name);
     const relativ = unterordner === '' ? eintrag.name : `${unterordner}/${eintrag.name}`;
     const stat = await fs.lstat(absolut);
@@ -167,7 +175,7 @@ async function* sammle(wurzel: string, unterordner: string): AsyncGenerator<Eint
         mtimeSeconds,
         linkname: null,
       };
-      yield* sammle(wurzel, relativ);
+      yield* sammle(wurzel, relativ, ausschluss);
       continue;
     }
 
@@ -236,6 +244,7 @@ async function* tarBloecke(
   zaehler: { dateien: number },
   zusatz: readonly ZusatzDatei[],
   mtimeSeconds: number,
+  ausschluss: ReadonlySet<string>,
 ): AsyncGenerator<Buffer> {
   // Zuerst die Zusatzdateien: So steht das Manifest am Anfang des Archivs und
   // laesst sich lesen, ohne mehrere Gigabyte Weltdaten zu entpacken.
@@ -244,7 +253,7 @@ async function* tarBloecke(
     zaehler.dateien += 1;
   }
 
-  for await (const eintrag of sammle(wurzel, '')) {
+  for await (const eintrag of sammle(wurzel, '', ausschluss)) {
     const typ: TarTyp = eintrag.typ === 'directory' ? '5' : eintrag.typ === 'symlink' ? '2' : '0';
 
     if (Buffer.byteLength(eintrag.relativ, 'utf8') > 99) {
@@ -312,6 +321,19 @@ export interface PackOptions {
   readonly extraFiles?: readonly ZusatzDatei[];
   /** Zeitstempel der Zusatzdateien; ohne Angabe der Zeitpunkt des Packens. */
   readonly now?: () => Date;
+  /**
+   * Namen **unmittelbar unter der Wurzel**, die nicht ins Archiv kommen
+   * (Fundpunkt 280).
+   *
+   * Bewusst nur die oberste Ebene und keine Muster: Was hier ausgeschlossen
+   * wird, ist eine Entscheidung des Aufrufers ueber einen bekannten Ordner, kein
+   * frei gestaltbarer Filter. Ein Muster laedt dazu ein, aus Versehen
+   * Spielstaende auszuschliessen - und das faellt erst auf, wenn jemand eine
+   * Sicherung braucht.
+   *
+   * Ohne Angabe wandert alles ins Archiv, wie bisher.
+   */
+  readonly ausschluss?: readonly string[];
 }
 
 export async function packDirectory(
@@ -326,6 +348,7 @@ export async function packDirectory(
   const zaehler = { dateien: 0 };
   const zusatz = options.extraFiles ?? [];
   const mtimeSeconds = Math.floor((options.now ?? ((): Date => new Date()))().getTime() / 1000);
+  const ausschluss = new Set(options.ausschluss ?? []);
 
   const messen = new Transform({
     transform(stueck: Buffer, _kodierung, weiter) {
@@ -337,7 +360,7 @@ export async function packDirectory(
 
   try {
     await pipeline(
-      Readable.from(tarBloecke(sourceDir, zaehler, zusatz, mtimeSeconds)),
+      Readable.from(tarBloecke(sourceDir, zaehler, zusatz, mtimeSeconds, ausschluss)),
       createGzip(),
       messen,
       createWriteStream(archivePath),
