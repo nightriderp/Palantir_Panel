@@ -43,6 +43,24 @@ const config: Config = {
           DEFAULT: '#1a1c24',
           muted: '#14161d',
           deep: '#12141b',
+          /**
+           * Grund der Live-Konsole – dunkler als jede Karte, damit das
+           * Terminalfenster sich von der Seite absetzt.
+           */
+          console: '#0c0e13',
+        },
+        /**
+         * Die drei Ampelpunkte in der Titelzeile der Konsole.
+         *
+         * Bewusst die bekannten Fensterfarben und keine Statusfarben des
+         * Panels: Sie sagen „hier ist ein Terminal", nicht „hier ist ein
+         * Fehler". Rot aus `danger` zu nehmen hiesse, dass ein ruhender
+         * Konsolenkasten dauerhaft eine Störung anzeigt.
+         */
+        terminal: {
+          close: '#ff5f57',
+          minimize: '#febc2e',
+          zoom: '#28c840',
         },
         /** Textfarben, von kräftig nach zurückhaltend. */
         ink: {

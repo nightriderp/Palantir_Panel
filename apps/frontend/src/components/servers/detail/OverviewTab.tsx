@@ -165,6 +165,21 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
     },
   ];
 
+  /**
+   * Warum eine Kachel leer ist – als Zusatz unter dem Strich.
+   *
+   * Vorbild hafenmeister: Dort steht unter jedem fehlenden Wert der Grund
+   * („noch keine Messwerte", „Node nicht verbunden"). Bei uns stand in dem Fall
+   * nur ein Strich, und ein Strich beantwortet nicht, ob gerade nichts gemessen
+   * wird, der Server steht oder die Node weg ist. Die Sätze darüber und der
+   * Verlauf darunter erklären es, aber eben nicht in der Kachel selbst.
+   *
+   * „Node nicht verbunden" unterscheidet das DTO nicht – es führt nur den
+   * Namen der Node, nicht ihren Zustand (`GameServerDto.hostName`). Solange
+   * das so ist, bleibt es bei den beiden Fällen, die hier entscheidbar sind.
+   */
+  const fehlgrund = !hasLiveStats(server.status) ? 'Server läuft nicht' : 'noch keine Messwerte';
+
   return (
     <div className="flex flex-col gap-4">
       {/* Rasterregel wie im Mockup: die Kacheln verteilen sich selbst, statt
@@ -184,7 +199,7 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           tone={lastTon(cpuQuotaPercent(anzeige?.cpuPercent, server.resourceLimits.cpuCores))}
           note={
             anzeige?.cpuPercent == null
-              ? undefined
+              ? fehlgrund
               : `${formatNumber(Math.round(anzeige.cpuPercent / 10) / 10)} von ${formatNumber(
                   server.resourceLimits.cpuCores,
                 )} Kernen`
@@ -196,29 +211,41 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           // Der Arbeitsspeicher trägt überall die zweite Markenfarbe – auf der
           // Kachel der Übersicht wie hier.
           tone={anzeige?.ramUsedMb == null ? undefined : 'brand'}
-          note={`von ${formatMegabytes(server.resourceLimits.ramMb)}`}
+          note={
+            anzeige?.ramUsedMb == null
+              ? fehlgrund
+              : `von ${formatMegabytes(server.resourceLimits.ramMb)}`
+          }
         />
         <MetricTile
           label="Platte"
           value={formatMegabytes(stats?.diskUsedMb)}
           tone={stats?.diskUsedMb == null ? undefined : 'warning'}
           note={
-            clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb) === null
-              ? undefined
-              : `${formatPercent(
-                  clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb),
-                )} belegt`
+            stats?.diskUsedMb == null
+              ? 'noch nicht gemessen'
+              : clampedPercentOf(stats.diskUsedMb, server.resourceLimits.diskMb) === null
+                ? 'ohne Buchung kein Anteil'
+                : `${formatPercent(
+                    clampedPercentOf(stats.diskUsedMb, server.resourceLimits.diskMb),
+                  )} belegt`
           }
         />
         <MetricTile
           label="Ping"
           value={formatPing(anzeige?.pingMs)}
           tone={pingTon(anzeige?.pingMs)}
+          note={anzeige?.pingMs == null ? fehlgrund : 'Umlaufzeit zum Node'}
         />
-        <MetricTile label="Laufzeit" value={formatDuration(uptimeSeconds)} />
+        <MetricTile
+          label="Laufzeit"
+          value={formatDuration(uptimeSeconds)}
+          note={uptimeSeconds === null ? 'Server läuft nicht' : 'seit dem letzten Start'}
+        />
         {/* Nicht im Mockup, aber die Zahl liegt vor und gehoert zum Zustand. */}
         <MetricTile
           label="Spieler"
+          note={anzeige?.playersOnline == null ? fehlgrund : undefined}
           value={formatPlayers(anzeige?.playersOnline, anzeige?.playersMax)}
         />
       </div>

@@ -59,7 +59,12 @@ export interface MetricTileProps {
 export function MetricTile({ label, value, note, tone, className }: MetricTileProps) {
   return (
     <Panel variant="raised" padding="sm" className={cn('rounded-xl', className)}>
-      <div className="text-xs uppercase tracking-[0.08em] text-ink-soft">{label}</div>
+      {/*
+        Beschriftung in normaler Schreibweise. Versalien mit gesperrtem Satz
+        lasen sich in einer Reihe von sechs Kacheln als Balken aus Grossbuchstaben
+        – die Zahl darunter soll die Kachel tragen, nicht ihr Etikett.
+      */}
+      <div className="text-xs text-ink-soft">{label}</div>
       <div
         className={cn(
           'mt-1.5 font-mono text-2xl font-semibold',

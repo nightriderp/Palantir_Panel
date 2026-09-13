@@ -275,8 +275,14 @@ export function CreateServerWizard() {
 
       <StepIndicator current={step} />
 
-      {/* Ohne umschließende Karte, wie im Mockup: der Wizard ist die Seite. */}
-      <div className="flex flex-col gap-5">
+      {/*
+        Der Schritt steht in einer Karte, die Schrittanzeige darüber frei auf
+        der Seite (Vorbild hafenmeister). Ohne Karte verlief der Assistent
+        randlos in den Seitenhintergrund: Felder, Spielauswahl und die
+        Zurück/Weiter-Leiste sahen aus wie drei Dinge nebeneinander statt wie
+        ein Schritt, an dem man gerade arbeitet.
+      */}
+      <div className="flex flex-col gap-5 rounded-2xl border border-line bg-card-gradient p-4.5">
         {step === 'game' ? (
           <>
             <h2 className="text-xl font-bold">Wähle dein Spiel</h2>
