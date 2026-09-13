@@ -983,6 +983,7 @@ function makeSweepHarness(server: ServerRecord): SweepHarness {
     config: {
       baseDomain: 'example.tld',
       publicIpv4: '203.0.113.10',
+      healthCheckHost: '198.51.100.7',
       routerHostname: null,
       virtualHostPort: 25_565,
       crashLoopPolicy: { maxRestarts: 2, windowMinutes: 10 },

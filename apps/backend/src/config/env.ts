@@ -469,6 +469,35 @@ const envSchema = z.object({
   CRASH_LOOP_MAX_RESTARTS: z.coerce.number().int().min(0).max(50).default(3),
   CRASH_LOOP_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1_440).default(10),
 
+  /**
+   * Adresse, über die der Health-Check die Spielserver abfragt (Fundpunkt 288).
+   *
+   * Leer lassen heisst: `VPS_PUBLIC_IP` – der Weg der Spieler, hinter frps.
+   * Das ist die richtige Antwort für jeden Aufbau, in dem das Backend woanders
+   * steht als frps.
+   *
+   * **Auf der VPS steht beides auf derselben Maschine, und dort taugt die
+   * eigene öffentliche Adresse für UDP nicht.** Das Paket geht aus dem
+   * Backend-Container hinaus, über die öffentliche Adresse wieder herein und
+   * kommt auch beantwortet zurück – aber die NAT-Schleife des Hosts schreibt
+   * den Absender auf das Docker-Gateway um. `gamedig` nimmt eine UDP-Antwort
+   * nur von genau der Adresse an, die es gefragt hat, und verwirft sie. Jeder
+   * Versuch endete in „UDP - Timed out", und jeder Start eines UDP-Spiels lief
+   * nach seiner vollen Startfrist in `error`, während Spieler darauf waren
+   * (Valheim, 2026-09-13).
+   *
+   * Bei TCP stellt sich die Frage nicht: Dort gehört die Antwort zu einer
+   * Verbindung, nicht zu einer Absenderadresse. Deshalb fiel es erst mit dem
+   * ersten UDP-Spiel im Betrieb auf und nie bei Minecraft.
+   *
+   * Auf der VPS steht deshalb `host.docker.internal` (das Compose-File legt den
+   * Namen über `extra_hosts` auf das Gateway). Geprüft wird damit weiterhin der
+   * ganze Weg durch frps bis zum Spielserver auf der Node – nur die letzte
+   * Schleife über die öffentliche Adresse der VPS selbst fällt weg, und die
+   * beweisen die Spieler.
+   */
+  HEALTH_CHECK_HOST: optionalEnvString(),
+
   /** Health-Check beim Start (§9): Abstand und Frist eines einzelnen Versuchs. */
   HEALTH_CHECK_INTERVAL_MS: z.coerce.number().int().positive().default(3_000),
   HEALTH_CHECK_ATTEMPT_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
