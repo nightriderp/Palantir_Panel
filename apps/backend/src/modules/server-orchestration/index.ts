@@ -22,6 +22,7 @@
  */
 
 import { type FastifyInstance, type FastifyRequest } from 'fastify';
+import { standardGatewayDesContainers } from '../../config/docker-gateway.js';
 import { env } from '../../config/env.js';
 import { type Database, type DbConnection } from '../../db/client.js';
 import { type AgentSessionHandlers } from './agent-gateway.js';
@@ -191,6 +192,39 @@ export function registerServerOrchestration(
     },
   };
 
+  /*
+   * Adresse für den Health-Check (Fundpunkt 288).
+   *
+   * `gateway` ist kein Rechnername, sondern die Ansage „nimm das Gateway meiner
+   * eigenen Route". Genau darauf schreibt die NAT-Schleife des Hosts den
+   * Absender der Antwort um, und nur diese eine Adresse lässt `gamedig` gelten.
+   * Findet sich keine Standardroute (jedes System ausser Linux), bleibt es beim
+   * Weg der Spieler - ohne Gateway ist das Backend nicht in einem Container,
+   * und dann stellt sich die Frage nicht.
+   */
+  const healthCheckHost = ((): string => {
+    if (env.HEALTH_CHECK_HOST === undefined) {
+      return env.VPS_PUBLIC_IP;
+    }
+
+    if (env.HEALTH_CHECK_HOST !== 'gateway') {
+      return env.HEALTH_CHECK_HOST;
+    }
+
+    const gateway = standardGatewayDesContainers();
+
+    if (gateway === null) {
+      app.log.warn(
+        { fallback: env.VPS_PUBLIC_IP },
+        'HEALTH_CHECK_HOST=gateway, aber es fuehrt keine Standardroute - der Health-Check nimmt die oeffentliche Adresse',
+      );
+
+      return env.VPS_PUBLIC_IP;
+    }
+
+    return gateway;
+  })();
+
   const repository = createDrizzleServerRepository(options.db);
   const registry = createGameRegistry(env.INSTALLATION_PHASE);
   const agents = options.agents ?? new AgentRegistry();
@@ -270,8 +304,7 @@ export function registerServerOrchestration(
     config: {
       baseDomain: env.PALANTIR_DOMAIN,
       publicIpv4: env.VPS_PUBLIC_IP,
-      // Ohne eigene Angabe bleibt es beim Weg der Spieler (Fundpunkt 288).
-      healthCheckHost: env.HEALTH_CHECK_HOST ?? env.VPS_PUBLIC_IP,
+      healthCheckHost,
       routerHostname: env.GAME_ROUTER_HOSTNAME ?? null,
       virtualHostPort: env.MINECRAFT_ROUTER_PORT,
       crashLoopPolicy: {

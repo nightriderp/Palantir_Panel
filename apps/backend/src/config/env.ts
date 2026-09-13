@@ -490,11 +490,16 @@ const envSchema = z.object({
    * Verbindung, nicht zu einer Absenderadresse. Deshalb fiel es erst mit dem
    * ersten UDP-Spiel im Betrieb auf und nie bei Minecraft.
    *
-   * Auf der VPS steht deshalb `host.docker.internal` (das Compose-File legt den
-   * Namen über `extra_hosts` auf das Gateway). Geprüft wird damit weiterhin der
-   * ganze Weg durch frps bis zum Spielserver auf der Node – nur die letzte
-   * Schleife über die öffentliche Adresse der VPS selbst fällt weg, und die
-   * beweisen die Spieler.
+   * Der Sonderwert `gateway` ist kein Rechnername, sondern die Ansage, das
+   * Gateway der eigenen Route zu nehmen – genau die Adresse, auf die der
+   * Rückweg umgeschrieben wird (`docker-gateway.ts`). Das Compose-File der VPS
+   * setzt ihn. `host.docker.internal` taugt dafür nicht: Der Name zeigt auf das
+   * Gateway der Standard-Bridge und nicht auf das des Netzes, an dem der
+   * Container hängt.
+   *
+   * Geprüft wird damit weiterhin der ganze Weg durch frps bis zum Spielserver
+   * auf der Node – nur die letzte Schleife über die öffentliche Adresse der VPS
+   * selbst fällt weg, und die beweisen die Spieler.
    */
   HEALTH_CHECK_HOST: optionalEnvString(),
 
