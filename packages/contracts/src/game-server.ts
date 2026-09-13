@@ -1,4 +1,5 @@
 import { type ConsoleQuickCommand, type GameConfigValues } from './game-type.js';
+import { type HostNodeStatus } from './resources.js';
 import { type ServerStatus } from './server-lifecycle.js';
 
 /**
@@ -164,6 +165,21 @@ export interface GameServerDto {
   hostId: string;
   /** Anzeigename der Node; `null`, wenn für den Aufrufer nicht sichtbar. */
   hostName: string | null;
+  /**
+   * Verbindungszustand der Node, auf der dieser Server liegt.
+   *
+   * Ohne ihn lässt sich in der Detailansicht nicht sagen, **warum** keine
+   * Messwerte da sind: „noch keine Messwerte" und „die Node ist gar nicht
+   * verbunden" sehen im Panel gleich aus, sind für den Betreiber aber zwei
+   * verschiedene Lagen – die eine wartet man ab, die andere sieht man sich an.
+   * Dieselbe Angabe steht in `HostNodeDto`, die Serverlisten holen die
+   * Node-Liste aber nicht mit.
+   *
+   * `null`, wenn der Aufrufer die Node nicht sehen darf – wie bei `hostName`.
+   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3): Fehlt das
+   * Feld, bleibt die Oberfläche bei ihrer bisherigen, unschärferen Auskunft.
+   */
+  hostStatus?: HostNodeStatus | null;
   subdomain: string;
   /** `null`, wenn die Adresse für den Aufrufer nicht freigegeben ist. */
   address: ServerAddress | null;
