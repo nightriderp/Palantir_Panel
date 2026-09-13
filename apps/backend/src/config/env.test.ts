@@ -492,3 +492,78 @@ describe('Produktions-Pflichtwerte', () => {
     expect(ergebnis.success).toBe(true);
   });
 });
+
+/**
+ * Platzhalter aus der Vorlage (Arbeitspaket HM-2).
+ *
+ * `.env.example` liefert die Auth-Geheimnisse leer aus - die fängt die
+ * Mindestlänge ab. Drei Werte stehen dort aber ausgefüllt mit `CHANGE_ME`, und
+ * einer davon kommt im Backend an: die `DATABASE_URL`. Als Zeichenkette ist sie
+ * gültig, das Backend startet also und scheitert erst beim ersten Zugriff an
+ * einer Passwortprüfung, deren Meldung den Platzhalter nicht erwähnt.
+ *
+ * `scripts/setup.sh` füllt die Werte bei der Ersteinrichtung, läuft aber genau
+ * einmal - eine von Hand gepflegte `.env` sieht er nie wieder.
+ */
+describe('Platzhalter aus der Vorlage', () => {
+  const produktion = {
+    NODE_ENV: 'production',
+    VPS_PUBLIC_IP: '203.0.113.10',
+    WIREGUARD_HOME_IP: '10.10.0.2',
+    PALANTIR_DOMAIN: 'beispiel.tld',
+  };
+
+  const fehlerPfade = (ergebnis: ReturnType<typeof umgebungLesen>): string[] =>
+    ergebnis.success ? [] : ergebnis.error.issues.map((issue) => issue.path.join('.'));
+
+  it('weist die DATABASE_URL der Vorlage in Produktion ab', () => {
+    const ergebnis = umgebungLesen({
+      ...produktion,
+      DATABASE_URL: 'postgresql://palantir:CHANGE_ME@postgres:5432/palantir',
+    });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toContain('DATABASE_URL');
+  });
+
+  it('greift auch, wo die Mindestlänge nicht mehr greift', () => {
+    // 36 Zeichen: lang genug für `geheimnis()`, trotzdem offensichtlich der
+    // Platzhalter. Genau diesen Fall kann eine Längenprüfung nicht sehen.
+    const ergebnis = umgebungLesen({ ...produktion, JWT_SECRET: 'CHANGE_ME'.repeat(4) });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toContain('JWT_SECRET');
+  });
+
+  it('nennt jede betroffene Variable, nicht nur die erste', () => {
+    const ergebnis = umgebungLesen({
+      ...produktion,
+      DATABASE_URL: 'postgresql://palantir:CHANGE_ME@postgres:5432/palantir',
+      JWT_SECRET: 'CHANGE_ME'.repeat(4),
+    });
+
+    expect(ergebnis.success).toBe(false);
+    expect(fehlerPfade(ergebnis)).toEqual(expect.arrayContaining(['DATABASE_URL', 'JWT_SECRET']));
+  });
+
+  it('lässt den Platzhalter außerhalb der Produktion durch', () => {
+    // Wer seine lokale Datenbank tatsächlich so nennt, soll nicht aufgehalten
+    // werden - derselbe Maßstab wie bei COOKIE_SECURE.
+    const ergebnis = umgebungLesen({
+      NODE_ENV: 'development',
+      DATABASE_URL: 'postgresql://palantir:CHANGE_ME@localhost:5432/palantir',
+    });
+
+    expect(ergebnis.success).toBe(true);
+  });
+
+  it('nimmt eine ausgefüllte Produktions-Umgebung an', () => {
+    const ergebnis = umgebungLesen({
+      ...produktion,
+      DATABASE_URL: 'postgresql://palantir:echt-geheim@postgres:5432/palantir',
+      JWT_SECRET: 'x'.repeat(64),
+    });
+
+    expect(ergebnis.success).toBe(true);
+  });
+});
