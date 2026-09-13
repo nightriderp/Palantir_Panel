@@ -46,7 +46,6 @@ import {
   type DataVolumePaths,
   type ExecResult,
   type ExtractArchiveResult,
-  type FileEntry,
   type GetLogsOptions,
   type LogLine,
   type LogStreamName,
@@ -121,7 +120,6 @@ export type FakeFailableMethod =
   | 'getStats'
   | 'getLogs'
   | 'execConsole'
-  | 'listFiles'
   | 'readFile'
   | 'writeFile'
   | 'dataVolumePaths'
@@ -434,49 +432,6 @@ export class FakeContainerRuntime implements ContainerRuntime {
 
   // ---------------------------------------------------------------- Datei-Manager
 
-  async listFiles(containerId: string, verzeichnis: string): Promise<readonly FileEntry[]> {
-    this.#pruefeFehlerfall('listFiles');
-    const container = this.#hole(containerId);
-    const basis = resolveWithinRoot(container.spec.dataVolume.containerPath, verzeichnis);
-    const praefix = basis === '/' ? '/' : `${basis}/`;
-
-    const eintraege = new Map<string, FileEntry>();
-
-    for (const [pfad, datei] of container.dateien) {
-      if (!pfad.startsWith(praefix)) continue;
-
-      const relativ = pfad.slice(praefix.length);
-      const trenner = relativ.indexOf('/');
-
-      if (trenner === -1) {
-        eintraege.set(relativ, {
-          name: relativ,
-          path: pfad,
-          type: 'file',
-          sizeBytes: datei.content.length,
-          modifiedAt: datei.modifiedAt,
-          mode: datei.mode,
-        });
-        continue;
-      }
-
-      // Unterverzeichnisse ergeben sich implizit aus den Dateipfaden.
-      const ordner = relativ.slice(0, trenner);
-      if (!eintraege.has(ordner)) {
-        eintraege.set(ordner, {
-          name: ordner,
-          path: path.posix.join(basis, ordner),
-          type: 'directory',
-          sizeBytes: 0,
-          modifiedAt: datei.modifiedAt,
-          mode: '755',
-        });
-      }
-    }
-
-    return [...eintraege.values()].sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  }
-
   async readFile(containerId: string, datei: string): Promise<Buffer> {
     this.#pruefeFehlerfall('readFile');
     const container = this.#hole(containerId);
@@ -515,8 +470,8 @@ export class FakeContainerRuntime implements ContainerRuntime {
   /**
    * `FILE_UPLOAD` - wie {@link writeFile}, aber mit Existenzpruefung.
    *
-   * Als Verzeichnis gilt hier - wie in {@link listFiles} - jeder Pfad, unter dem
-   * mindestens eine Datei liegt; auch der belegt den Namen.
+   * Als Verzeichnis gilt hier jeder Pfad, unter dem mindestens eine Datei
+   * liegt; auch der belegt den Namen.
    */
   async uploadFile(
     containerId: string,
@@ -550,8 +505,7 @@ export class FakeContainerRuntime implements ContainerRuntime {
    *
    * Gelesen wird mit derselben Funktion wie in der Docker-Runtime; nur das
    * Ablegen unterscheidet sich (Map statt Engine). Verzeichniseintraege legt
-   * die Fake-Runtime nicht ab - sie leitet Verzeichnisse in {@link listFiles}
-   * aus den Dateipfaden ab.
+   * die Fake-Runtime nicht ab - sie leitet sie aus den Dateipfaden ab.
    */
   async extractArchive(
     containerId: string,
@@ -617,6 +571,24 @@ export class FakeContainerRuntime implements ContainerRuntime {
   /** Laesst den naechsten Aufruf der genannten Methode mit diesem Fehler scheitern. */
   failNext(methode: FakeFailableMethod, fehler: ContainerRuntimeError): void {
     this.#fehlerfaelle.set(methode, fehler);
+  }
+
+  /**
+   * Testhilfe: alle Dateipfade im Container, sortiert.
+   *
+   * Bis Fundpunkt 279 nahmen Tests dafuer `listFiles()`. Die Methode ist mit der
+   * container-seitigen Auflistung weggefallen - was blieb, ist der Bedarf, im
+   * Test nachzusehen, was tatsaechlich abgelegt wurde. Der eigene Name sagt, was
+   * es ist: keine Faehigkeit der Runtime, sondern ein Blick von aussen.
+   *
+   * Mit `unter` laesst sich auf ein Verzeichnis einschraenken; gezaehlt wird
+   * dann alles darunter, auch tiefer liegende Dateien.
+   */
+  dateipfade(containerId: string, unter?: string): string[] {
+    const container = this.#hole(containerId);
+    const praefix = unter === undefined ? '' : unter.endsWith('/') ? unter : `${unter}/`;
+
+    return [...container.dateien.keys()].filter((pfad) => pfad.startsWith(praefix)).sort();
   }
 
   /** Antwortverhalten fuer `execConsole()` festlegen. */
