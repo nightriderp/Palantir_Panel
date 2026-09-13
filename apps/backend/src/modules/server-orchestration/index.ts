@@ -24,7 +24,9 @@
 import { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { env } from '../../config/env.js';
 import { type Database, type DbConnection } from '../../db/client.js';
+import { type AgentSessionHandlers } from './agent-gateway.js';
 import { registerAgentRoute } from './agent-route.js';
+import { fakeAgentEnabled, startFakeAgents } from './fake-agent.js';
 import { AgentRegistry } from './agent-gateway.js';
 import { ServerLiveHub, createLiveFanoutSink } from './live-hub.js';
 import { createAccountRateLimiter } from '../../lib/abuse-limits.js';
@@ -290,58 +292,66 @@ export function registerServerOrchestration(
     },
   });
 
+  /*
+   * Die Behandlung eingehender Agent-Meldungen steht als eigener Wert, weil
+   * die Entwicklungs-Attrappe weiter unten dieselbe braucht: Sie soll durch
+   * genau denselben Weg laufen wie ein echter Agent, nicht durch einen
+   * zweiten, der auseinanderlaufen kann.
+   */
+  const agentHandlers: AgentSessionHandlers = {
+    onStateReport: (hostId, frame) => service.reconcile(hostId, frame),
+    onEvent: (hostId, frame) => service.handleAgentEvent(hostId, frame),
+    // Verbindungszustand der Node fortschreiben (Pflichtenheft §6). Bewusst
+    // in einem eigenen try/catch: Scheitert das Schreiben, bleibt die Node in
+    // der Anzeige veraltet – das ist hinnehmbar, ein Abbruch der gerade
+    // aufgebauten Agent-Verbindung wäre es nicht.
+    onConnected: async (hostId): Promise<void> => {
+      try {
+        await repository.markHostConnected(hostId);
+      } catch (error) {
+        log.error(
+          { hostId, error: error instanceof Error ? error.message : String(error) },
+          'Node-Status konnte nicht auf online gesetzt werden',
+        );
+      }
+
+      /*
+       * Periodische Server-Abfragen neu setzen (Gefundener Punkt 74). Der
+       * Agent hält seine Ziele im Arbeitsspeicher und hat sie nach einem
+       * Neustart vergessen; der Befehl ist idempotent, das Wiederholen also
+       * folgenlos. Eigenes try/catch aus demselben Grund wie oben: Eine
+       * fehlende Abfrage kostet Messwerte, ein Abbruch die Verbindung.
+       */
+      try {
+        const gesetzt = await service.refreshServerQueries(hostId);
+
+        if (gesetzt.length > 0) {
+          log.info({ hostId, server: gesetzt.length }, 'Server-Abfragen neu gesetzt');
+        }
+      } catch (error) {
+        log.error(
+          { hostId, error: error instanceof Error ? error.message : String(error) },
+          'Server-Abfragen konnten nicht gesetzt werden',
+        );
+      }
+    },
+    onDisconnected: async (hostId, getrenntSeit): Promise<void> => {
+      try {
+        // `getrenntSeit` verhindert, dass eine verspätete Abmeldung eine
+        // inzwischen übernommene Verbindung offline schreibt (event-flow-12).
+        await repository.markHostDisconnected(hostId, getrenntSeit);
+      } catch (error) {
+        log.error(
+          { hostId, error: error instanceof Error ? error.message : String(error) },
+          'Node-Status konnte nicht auf offline gesetzt werden',
+        );
+      }
+    },
+  };
+
   registerAgentRoute(app, {
     agents,
-    handlers: {
-      onStateReport: (hostId, frame) => service.reconcile(hostId, frame),
-      onEvent: (hostId, frame) => service.handleAgentEvent(hostId, frame),
-      // Verbindungszustand der Node fortschreiben (Pflichtenheft §6). Bewusst
-      // in einem eigenen try/catch: Scheitert das Schreiben, bleibt die Node in
-      // der Anzeige veraltet – das ist hinnehmbar, ein Abbruch der gerade
-      // aufgebauten Agent-Verbindung wäre es nicht.
-      onConnected: async (hostId): Promise<void> => {
-        try {
-          await repository.markHostConnected(hostId);
-        } catch (error) {
-          log.error(
-            { hostId, error: error instanceof Error ? error.message : String(error) },
-            'Node-Status konnte nicht auf online gesetzt werden',
-          );
-        }
-
-        /*
-         * Periodische Server-Abfragen neu setzen (Gefundener Punkt 74). Der
-         * Agent hält seine Ziele im Arbeitsspeicher und hat sie nach einem
-         * Neustart vergessen; der Befehl ist idempotent, das Wiederholen also
-         * folgenlos. Eigenes try/catch aus demselben Grund wie oben: Eine
-         * fehlende Abfrage kostet Messwerte, ein Abbruch die Verbindung.
-         */
-        try {
-          const gesetzt = await service.refreshServerQueries(hostId);
-
-          if (gesetzt.length > 0) {
-            log.info({ hostId, server: gesetzt.length }, 'Server-Abfragen neu gesetzt');
-          }
-        } catch (error) {
-          log.error(
-            { hostId, error: error instanceof Error ? error.message : String(error) },
-            'Server-Abfragen konnten nicht gesetzt werden',
-          );
-        }
-      },
-      onDisconnected: async (hostId, getrenntSeit): Promise<void> => {
-        try {
-          // `getrenntSeit` verhindert, dass eine verspätete Abmeldung eine
-          // inzwischen übernommene Verbindung offline schreibt (event-flow-12).
-          await repository.markHostDisconnected(hostId, getrenntSeit);
-        } catch (error) {
-          log.error(
-            { hostId, error: error instanceof Error ? error.message : String(error) },
-            'Node-Status konnte nicht auf offline gesetzt werden',
-          );
-        }
-      },
-    },
+    handlers: agentHandlers,
     log,
     token: env.AGENT_TOKEN,
     // Quelladressen-Allowlist des Agent-Kanals (Fundpunkt 121); leer = keine Prüfung.
@@ -355,6 +365,49 @@ export function registerServerOrchestration(
     countHosts: () => repository.countHosts(),
     commandTimeoutMs: env.AGENT_COMMAND_TIMEOUT_MS,
   });
+
+  /*
+   * Attrappe statt echtem Agent – nur in der Entwicklung und nur, wenn
+   * `DEV_FAKE_AGENT=true` gesetzt ist (siehe `fake-agent.ts`, dort stehen die
+   * drei Verriegelungen). Ohne sie steht in der Entwicklungsdatenbank eine
+   * Node, an der nie ein Agent hängt: Dateimanager, Konsole und Messwerte
+   * lassen sich dann nicht ansehen.
+   *
+   * Bewusst nicht abgewartet: Der Start des Backends darf nicht daran hängen,
+   * und scheitert es, sagt die Warnung warum – die Oberfläche verhält sich
+   * dann wie bisher.
+   */
+  if (fakeAgentEnabled(process.env, log)) {
+    void startFakeAgents({
+      agents,
+      handlers: agentHandlers,
+      log,
+      /*
+       * Die Nodes ergeben sich aus den vorhandenen Servern plus der
+       * Vorgabe-Node. Eine eigene Abfrage dafür gäbe es nicht – und eine
+       * Repository-Methode nur für die Attrappe wäre eine Erweiterung des
+       * Vertrags für etwas, das im Betrieb nie läuft.
+       */
+      listHostIds: async () => {
+        const ids = new Set((await repository.listAll()).map((server) => server.hostId));
+        const vorgabe = await repository.defaultHost();
+        if (vorgabe !== null) ids.add(vorgabe.id);
+
+        return [...ids];
+      },
+      listServers: async (hostId) =>
+        (await repository.listByHost(hostId)).map((server) => ({
+          id: server.id,
+          containerId: server.dockerContainerId,
+          running: server.status === 'running',
+        })),
+    }).catch((error: unknown) => {
+      log.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Attrappe für den Agent konnte nicht starten',
+      );
+    });
+  }
 
   // Geplante Aufgaben (Lastenheft §3.3). Sie führen `restart` und `command`
   // über denselben Dienst aus, den auch die Routen benutzen – kein zweiter Weg
