@@ -264,12 +264,19 @@ export function FilesTab({ server }: FilesTabProps) {
             {data.entries.map((entry) => (
               <li
                 key={entry.path}
-                className="grid grid-cols-1 gap-1 px-3.5 py-2.5 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center sm:gap-3"
+                className="grid grid-cols-1 gap-1 px-3.5 py-2.5 transition-colors hover:bg-fill sm:grid-cols-[1fr_auto_auto_auto] sm:items-center sm:gap-3"
               >
+                {/*
+                  Dateinamen in der dicktengleichen Schrift: In einem
+                  Datenordner stehen `server.properties`, `ops.json` und
+                  `world_nether` untereinander – Buchstabenformen und
+                  Punkte lesen sich dort deutlich verlässlicher, und die
+                  Spalte bleibt ruhig.
+                */}
                 <button
                   type="button"
                   onClick={() => void openFile(entry)}
-                  className="flex min-w-0 items-center gap-2 text-left text-base text-ink"
+                  className="flex min-w-0 items-center gap-2 text-left font-mono text-sm text-ink"
                 >
                   <Icon name={entryIcon(entry)} size={14} className="shrink-0 text-ink-faint" />
                   <span className="truncate">{entry.name}</span>
@@ -282,11 +289,17 @@ export function FilesTab({ server }: FilesTabProps) {
                   {formatDateTime(entry.modifiedAt)}
                 </span>
 
+                {/*
+                  Die beiden Aktionen als umrandete Chips statt als farbiger
+                  Text: Zwischen mono-Dateinamen und Zahlen war ein blaues
+                  „Herunterladen" nicht als Schaltfläche zu erkennen, und
+                  „Löschen" stand direkt daneben.
+                */}
                 <span className="flex gap-2 sm:justify-end">
                   {entry.downloadable ? (
                     <a
                       href={fileDownloadUrl(server.id, entry.path)}
-                      className="text-xs text-brand"
+                      className="rounded-md border border-line bg-fill px-2.5 py-1 text-xs text-ink-muted transition-colors hover:text-ink"
                       download
                     >
                       Herunterladen
@@ -296,7 +309,7 @@ export function FilesTab({ server }: FilesTabProps) {
                     <button
                       type="button"
                       onClick={() => setPendingDelete(entry)}
-                      className="text-xs text-danger"
+                      className="rounded-md border border-danger-line bg-danger-soft px-2.5 py-1 text-xs text-danger transition-colors hover:brightness-110"
                     >
                       Löschen
                     </button>
