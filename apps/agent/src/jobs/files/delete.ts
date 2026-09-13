@@ -18,13 +18,14 @@
 
 import { lstat, mkdir, readdir, rm, rmdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { FileDeleteCommandPayload } from '@palantir/contracts';
+import { AGENT_FILE_CHANNEL_MAX_BYTES, type FileDeleteCommandPayload } from '@palantir/contracts';
 import { type FileEntry } from '../../runtime/types.js';
 import { type ContainerRuntime } from '../../runtime/container-runtime.js';
 import { ContainerRuntimeError } from '../../runtime/errors.js';
 import { resolveWithinRoot } from '../../runtime/paths.js';
 import { type DataVolumePaths } from '../../runtime/types.js';
 import { assertOhnePfadausbruch, resolveWithinDirectory } from '../paths.js';
+import { readServerFile, writeServerFile } from './inhalt.js';
 
 export interface DeleteServerFileOptions {
   /** Verzeichnis samt Inhalt entfernen. Ohne das scheitert ein nicht-leeres. */
@@ -243,6 +244,14 @@ export interface ServerFileJobOptions {
   readonly runtime: ContainerRuntime;
   /** `AGENT_DATA_DIR` – die Wurzel, unterhalb derer der Agent arbeiten darf. */
   readonly dataDir: string;
+  /**
+   * Groessengrenze fuer `FILE_READ`, `FILE_WRITE` und `FILE_UPLOAD`
+   * (Fundpunkt 281).
+   *
+   * Dieselbe Zahl, die vorher in der Container-Runtime stand: die Grenze des
+   * Agent-Kanals. Eine Datei, die groesser ist, kaeme ohnehin nicht durch.
+   */
+  readonly maxFileBytes?: number;
 }
 
 /**
@@ -253,10 +262,12 @@ export interface ServerFileJobOptions {
 export class ServerFileJob {
   readonly #runtime: ContainerRuntime;
   readonly #dataDir: string;
+  readonly #maxFileBytes: number;
 
   constructor(options: ServerFileJobOptions) {
     this.#runtime = options.runtime;
     this.#dataDir = path.resolve(options.dataDir);
+    this.#maxFileBytes = options.maxFileBytes ?? AGENT_FILE_CHANNEL_MAX_BYTES;
   }
 
   /**
@@ -313,6 +324,52 @@ export class ServerFileJob {
     const volume = await this.#runtime.dataVolumePaths(payload.containerId);
 
     return listServerDirectory(volume, payload.path, { allowedRoot: this.#dataDir });
+  }
+
+  /**
+   * `FILE_READ` als Job (Fundpunkt 281) - aus demselben Grund wie Auflisten und
+   * Loeschen: Die Runtime sagt, **wo** der Datenordner liegt, gelesen wird er
+   * hier.
+   */
+  async read(payload: { containerId: string; path: string }): Promise<Buffer> {
+    const volume = await this.#runtime.dataVolumePaths(payload.containerId);
+
+    return readServerFile(volume, payload.path, this.#maxFileBytes, {
+      allowedRoot: this.#dataDir,
+    });
+  }
+
+  /** `FILE_WRITE` als Job (Fundpunkt 281). Ueberschreibt eine vorhandene Datei. */
+  async write(payload: { containerId: string; path: string }, inhalt: Buffer): Promise<null> {
+    const volume = await this.#runtime.dataVolumePaths(payload.containerId);
+
+    await writeServerFile(volume, payload.path, inhalt, this.#maxFileBytes, {
+      allowedRoot: this.#dataDir,
+      overwrite: true,
+    });
+
+    return null;
+  }
+
+  /**
+   * `FILE_UPLOAD` als Job (Fundpunkt 281) - wie {@link ServerFileJob.write},
+   * aber ohne `overwrite` wird eine vorhandene Datei **nicht** angetastet.
+   *
+   * Anders als ueber den Archiv-Endpunkt ist das hier atomar: Das Anlegen
+   * selbst entscheidet, nicht eine Pruefung davor.
+   */
+  async upload(
+    payload: { containerId: string; path: string; overwrite?: boolean },
+    inhalt: Buffer,
+  ): Promise<null> {
+    const volume = await this.#runtime.dataVolumePaths(payload.containerId);
+
+    await writeServerFile(volume, payload.path, inhalt, this.#maxFileBytes, {
+      allowedRoot: this.#dataDir,
+      ...(payload.overwrite === undefined ? {} : { overwrite: payload.overwrite }),
+    });
+
+    return null;
   }
 
   /** Ergebnis ist `null` wie im Protokoll festgelegt. */

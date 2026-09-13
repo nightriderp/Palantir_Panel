@@ -230,25 +230,6 @@ describe('Befehl → Runtime-Aufruf', () => {
     expect(isOk(antwort)).toBe(true);
     expect(antwort.data).toEqual({ exitCode: 0, stdout: 'pong', stderr: '' });
   });
-
-  it('schreibt und liest eine Datei Base64-kodiert', async () => {
-    const containerId = await containerAnlegen();
-    await befehl('START', { containerId });
-    const inhalt = 'max-players=20';
-
-    const schreiben = await befehl('FILE_WRITE', {
-      containerId,
-      path: '/data/server.properties',
-      contentBase64: Buffer.from(inhalt).toString('base64'),
-    });
-    expect(isOk(schreiben)).toBe(true);
-
-    const lesen = await befehl('FILE_READ', { containerId, path: '/data/server.properties' });
-    expect(isOk(lesen)).toBe(true);
-    const daten = lesen.data as { contentBase64: string; sizeBytes: number };
-    expect(Buffer.from(daten.contentBase64, 'base64').toString()).toBe(inhalt);
-    expect(daten.sizeBytes).toBe(Buffer.byteLength(inhalt));
-  });
 });
 
 describe('Nutzdaten-Prüfung', () => {
