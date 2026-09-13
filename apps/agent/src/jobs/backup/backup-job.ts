@@ -36,6 +36,25 @@ import { ContainerRuntimeError, type ContainerRuntime } from '../../runtime/inde
 import { assertOhnePfadausbruch, resolveWithinDirectory } from '../paths.js';
 import { checksumOfFile, packDirectory, unpackArchive } from './tar-gz.js';
 
+/**
+ * Der interne Ordner eines Spielservers (Fundpunkt 280).
+ *
+ * `PALANTIR_INTERN` zeigt in jedem Image auf `${Datenordner}/.palantir`
+ * (`images/base/linux/palantir.sh`). Dort liegt, was die **Maschine** braucht
+ * und beim Start neu entsteht: das Konsolen-Rohr, der Wine-Prefix, die
+ * SteamCMD-Kopie, heruntergeladene Archive, erzeugte Konfigurationen.
+ *
+ * Das gehoert nicht in eine Sicherung. Bei einem ACC-Server sind das rund
+ * 650 MB je Abzug, und beim Zurueckspielen ist ein Wine-Prefix von einer anderen
+ * Maschine eher schaedlich als nuetzlich.
+ *
+ * Der Name steht hier und nicht in der Nutzlast: Er ist eine Zusage der
+ * Basis-Images an den Agent, keine Entscheidung des Backends. Wandert der Ordner
+ * eines Tages ganz aus dem Datenordner heraus, faellt diese Zeile weg - bis
+ * dahin ist sie die kleine Loesung, die kein Image anfasst.
+ */
+const INTERNER_ORDNER = '.palantir';
+
 /** Obergrenze eines einzelnen `DOWNLOAD_BACKUP`-Blocks (`AGENT_DOWNLOAD_BLOCK_MAX_BYTES`). */
 export const DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -111,6 +130,8 @@ export class BackupJob {
           inhalt: Buffer.from(datei.contentBase64, 'base64'),
         })),
         now: this.#now,
+        // Maschinenkram bleibt draussen (Fundpunkt 280).
+        ausschluss: [INTERNER_ORDNER],
       });
 
       return {
@@ -342,9 +363,23 @@ export class BackupJob {
       await this.#leere(zwischen);
       const ergebnis = await unpackArchive(archiv, zwischen);
 
-      // Ab hier nur noch Umbenennungen: kein Entpacken, keine Pruefsumme, kein
-      // Netz. Das ist das Fenster, das frueher das Auspacken selbst umfasste.
-      await this.#leere(ziel);
+      /*
+       * Ab hier nur noch Umbenennungen: kein Entpacken, keine Pruefsumme, kein
+       * Netz. Das ist das Fenster, das frueher das Auspacken selbst umfasste.
+       *
+       * Der interne Ordner bleibt stehen (Fundpunkt 280) - aber nur, wenn das
+       * Archiv keinen mitbringt. Archive von vor dieser Aenderung tragen ihn
+       * noch; dann gewinnt der aus dem Archiv, sonst scheiterte das Umbenennen
+       * an einem Ordner, der schon da ist.
+       *
+       * Warum ueberhaupt bewahren: Was dort liegt, gehoert der Maschine und
+       * entsteht beim Start neu. Es mit zu loeschen kostet bei einem
+       * Proton-Server einen langen ersten Start, ohne dass irgendjemand etwas
+       * davon haette.
+       */
+      const archivBringtIntern = (await fs.readdir(zwischen)).includes(INTERNER_ORDNER);
+
+      await this.#leere(ziel, archivBringtIntern ? [] : [INTERNER_ORDNER]);
 
       for (const eintrag of await fs.readdir(zwischen)) {
         await fs.rename(path.join(zwischen, eintrag), path.join(ziel, eintrag));
@@ -356,9 +391,20 @@ export class BackupJob {
     }
   }
 
-  async #leere(verzeichnis: string): Promise<void> {
+  /**
+   * Leert ein Verzeichnis, laesst aber `behalte` stehen.
+   *
+   * Ohne Angabe geht alles - so wird der Zwischenordner geleert, in den gleich
+   * ausgepackt wird.
+   */
+  async #leere(verzeichnis: string, behalte: readonly string[] = []): Promise<void> {
     await fs.mkdir(verzeichnis, { recursive: true });
+
+    const bleibt = new Set(behalte);
+
     for (const eintrag of await fs.readdir(verzeichnis)) {
+      if (bleibt.has(eintrag)) continue;
+
       await fs.rm(path.join(verzeichnis, eintrag), { recursive: true, force: true });
     }
   }

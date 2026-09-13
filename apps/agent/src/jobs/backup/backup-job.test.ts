@@ -10,7 +10,7 @@ import {
   type ContainerSpec,
 } from '../../runtime/index.js';
 import { BackupJob } from './backup-job.js';
-import { unpackArchive } from './tar-gz.js';
+import { packDirectory, unpackArchive } from './tar-gz.js';
 
 const SERVER_ID = '3f1d6f4e-1b1e-4b6a-9a3f-2c1d4e5f6a7b';
 const BACKUP_ID = '11111111-2222-4333-8444-555555555555';
@@ -159,6 +159,74 @@ describe('CREATE_BACKUP', () => {
     await expect(
       job.createBackup(createNutzlast({ sourcePath: path.join(wurzel, 'fremd') })),
     ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+  });
+});
+
+describe('CREATE_BACKUP laesst den internen Ordner draussen (Fundpunkt 280)', () => {
+  /** Legt `.palantir` mit etwas Inhalt an - so wie es ein Image beim Start tut. */
+  async function internAnlegen(): Promise<void> {
+    const intern = path.join(datenordner, '.palantir');
+    await fs.mkdir(path.join(intern, 'proton', 'pfx'), { recursive: true });
+    await fs.writeFile(path.join(intern, 'proton', 'pfx', 'gross.bin'), 'x'.repeat(4096));
+    await fs.writeFile(path.join(intern, 'rcon.password'), 'geheim\n');
+  }
+
+  /** Alle Pfade im Archiv. */
+  async function imArchiv(storagePath: string): Promise<string[]> {
+    const ziel = path.join(wurzel, `entpackt-${Math.random().toString(36).slice(2)}`);
+    await unpackArchive(storagePath, ziel);
+
+    const gefunden: string[] = [];
+
+    async function lauf(ordner: string, praefix: string): Promise<void> {
+      for (const eintrag of await fs.readdir(ordner, { withFileTypes: true })) {
+        const relativ = praefix === '' ? eintrag.name : `${praefix}/${eintrag.name}`;
+        gefunden.push(relativ);
+
+        if (eintrag.isDirectory()) await lauf(path.join(ordner, eintrag.name), relativ);
+      }
+    }
+
+    await lauf(ziel, '');
+
+    return gefunden;
+  }
+
+  it('packt die Weltdaten, aber nicht `.palantir`', async () => {
+    await internAnlegen();
+
+    const ergebnis = await job.createBackup(createNutzlast());
+    const pfade = await imArchiv(ergebnis.storagePath);
+
+    expect(pfade).toContain('server.properties');
+    expect(pfade.some((pfad) => pfad.startsWith('.palantir'))).toBe(false);
+  });
+
+  it('schliesst nur die oberste Ebene aus', async () => {
+    // Ein `.palantir` tief in den Weltdaten gehoert dem Spiel, nicht der
+    // Maschine - es waere ein Datenverlust, es mit auszuschliessen.
+    const tief = path.join(datenordner, 'welt', '.palantir');
+    await fs.mkdir(tief, { recursive: true });
+    await fs.writeFile(path.join(tief, 'spielstand.dat'), 'wertvoll');
+    await internAnlegen();
+
+    const ergebnis = await job.createBackup(createNutzlast());
+    const pfade = await imArchiv(ergebnis.storagePath);
+
+    expect(pfade).toContain('welt/.palantir/spielstand.dat');
+    expect(pfade).not.toContain('.palantir/rcon.password');
+  });
+
+  it('macht das Archiv damit kleiner', async () => {
+    // Der Grund fuer den ganzen Fundpunkt: Bei einem ACC-Server sind das rund
+    // 650 MB je Abzug.
+    const ohneIntern = await job.createBackup(createNutzlast());
+    const kleiner = ohneIntern.sizeBytes;
+
+    await internAnlegen();
+    const mitIntern = await job.createBackup(createNutzlast());
+
+    expect(mitIntern.sizeBytes).toBe(kleiner);
   });
 });
 
@@ -404,6 +472,62 @@ describe('RESTORE_BACKUP', () => {
         expectedChecksum: checksumSha256,
       }),
     ).rejects.toMatchObject({ code: 'INVALID_PATH' });
+  });
+});
+
+describe('RESTORE_BACKUP und der interne Ordner (Fundpunkt 280)', () => {
+  it('laesst `.palantir` stehen, wenn das Archiv keinen mitbringt', async () => {
+    // Was dort liegt, gehoert der Maschine und entsteht beim Start neu. Es
+    // mitzuloeschen kostet bei einem Proton-Server einen langen ersten Start,
+    // ohne dass irgendjemand etwas davon haette.
+    const intern = path.join(datenordner, '.palantir');
+    await fs.mkdir(intern, { recursive: true });
+    await fs.writeFile(path.join(intern, 'rcon.password'), 'geheim\n');
+
+    const gesichert = await job.createBackup(createNutzlast());
+    await fs.writeFile(path.join(datenordner, 'server.properties'), 'kaputt\n');
+
+    await job.restoreBackup({
+      backupId: BACKUP_ID,
+      serverId: SERVER_ID,
+      storagePath: gesichert.storagePath,
+      targetPath: datenordner,
+      expectedChecksum: gesichert.checksumSha256,
+    });
+
+    await expect(fs.readFile(path.join(intern, 'rcon.password'), 'utf8')).resolves.toBe('geheim\n');
+    await expect(fs.readFile(path.join(datenordner, 'server.properties'), 'utf8')).resolves.toBe(
+      'max-players=20\n',
+    );
+  });
+
+  it('laesst den aus dem Archiv gewinnen, wenn es einen mitbringt', async () => {
+    /*
+     * Archive von vor dieser Aenderung tragen `.palantir` noch. Dann muss der
+     * aus dem Archiv gewinnen - sonst scheiterte das Umbenennen an einem
+     * Ordner, der schon da ist, und das Zurueckspielen braeche ab.
+     */
+    const intern = path.join(datenordner, '.palantir');
+    await fs.mkdir(intern, { recursive: true });
+    await fs.writeFile(path.join(intern, 'rcon.password'), 'aus dem archiv\n');
+
+    // Ein Archiv im alten Stil: ohne Ausschluss gepackt.
+    const archiv = path.join(backupDir, SERVER_ID, 'alt.tar.gz');
+    const alt = await packDirectory(datenordner, archiv, {});
+
+    await fs.writeFile(path.join(intern, 'rcon.password'), 'inzwischen anders\n');
+
+    await job.restoreBackup({
+      backupId: BACKUP_ID,
+      serverId: SERVER_ID,
+      storagePath: archiv,
+      targetPath: datenordner,
+      expectedChecksum: alt.checksumSha256,
+    });
+
+    await expect(fs.readFile(path.join(intern, 'rcon.password'), 'utf8')).resolves.toBe(
+      'aus dem archiv\n',
+    );
   });
 });
 
