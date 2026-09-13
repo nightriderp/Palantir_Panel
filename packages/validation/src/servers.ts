@@ -171,26 +171,30 @@ export const consoleCommandSchema = z
  * Das Archiv selbst wird getrennt hochgeladen; hier steht nur der Verweis auf
  * den abgeschlossenen Upload.
  */
-export const worldImportInputSchema = z.object({
-  /** Id des zuvor hochgeladenen Archivs. */
-  uploadId: idSchema,
-  /** Ursprünglicher Dateiname – erscheint in der Zusammenfassung des Wizards. */
-  fileName: z.string().trim().min(1).max(255),
-});
+export const worldImportInputSchema = z
+  .object({
+    /** Id des zuvor hochgeladenen Archivs. */
+    uploadId: idSchema,
+    /** Ursprünglicher Dateiname – erscheint in der Zusammenfassung des Wizards. */
+    fileName: z.string().trim().min(1).max(255),
+  })
+  .strict();
 
 /** Eingaben des „Server erstellen"-Wizards (Lastenheft §3.3). */
-export const createServerInputSchema = z.object({
-  gameType: z.string().trim().min(1, { message: 'Bitte ein Spiel wählen.' }),
-  name: serverNameSchema,
-  subdomain: subdomainSchema,
-  /** Ziel-Node; das Backend prüft die freie Kapazität erneut. */
-  hostId: idSchema,
-  resourceLimits: serverResourceLimitsSchema,
-  config: gameConfigValuesSchema,
-  startupParameters: startupParametersSchema,
-  autoShutdownEnabled: z.boolean(),
-  worldImport: worldImportInputSchema.nullable(),
-});
+export const createServerInputSchema = z
+  .object({
+    gameType: z.string().trim().min(1, { message: 'Bitte ein Spiel wählen.' }),
+    name: serverNameSchema,
+    subdomain: subdomainSchema,
+    /** Ziel-Node; das Backend prüft die freie Kapazität erneut. */
+    hostId: idSchema,
+    resourceLimits: serverResourceLimitsSchema,
+    config: gameConfigValuesSchema,
+    startupParameters: startupParametersSchema,
+    autoShutdownEnabled: z.boolean(),
+    worldImport: worldImportInputSchema.nullable(),
+  })
+  .strict();
 
 export type CreateServerInput = z.infer<typeof createServerInputSchema>;
 
@@ -201,19 +205,21 @@ export type CreateServerInput = z.infer<typeof createServerInputSchema>;
  * liefe über einen neuen DNS-Eintrag und ist in Version 1 nicht vorgesehen
  * (Pflichtenheft §13).
  */
-export const updateServerSettingsInputSchema = z.object({
-  name: serverNameSchema,
-  resourceLimits: serverResourceLimitsSchema,
-  config: gameConfigValuesSchema,
-  startupParameters: startupParametersSchema,
-  autoShutdownEnabled: z.boolean(),
-  autoShutdownTimeoutMinutes: z
-    .number()
-    .int()
-    .min(5, { message: 'Der Timeout beträgt mindestens 5 Minuten.' })
-    .max(1440, { message: 'Der Timeout beträgt höchstens 24 Stunden.' })
-    .nullable(),
-});
+export const updateServerSettingsInputSchema = z
+  .object({
+    name: serverNameSchema,
+    resourceLimits: serverResourceLimitsSchema,
+    config: gameConfigValuesSchema,
+    startupParameters: startupParametersSchema,
+    autoShutdownEnabled: z.boolean(),
+    autoShutdownTimeoutMinutes: z
+      .number()
+      .int()
+      .min(5, { message: 'Der Timeout beträgt mindestens 5 Minuten.' })
+      .max(1440, { message: 'Der Timeout beträgt höchstens 24 Stunden.' })
+      .nullable(),
+  })
+  .strict();
 
 export type UpdateServerSettingsInput = z.infer<typeof updateServerSettingsInputSchema>;
 
@@ -223,28 +229,30 @@ export type UpdateServerSettingsInput = z.infer<typeof updateServerSettingsInput
  * Die neue Subdomain ist Pflicht und wird nach denselben Regeln geprüft wie
  * beim Anlegen – zwei Server dürfen sich nie eine Adresse teilen.
  */
-export const cloneServerInputSchema = z.object({
-  name: serverNameSchema,
-  subdomain: subdomainSchema,
-  includeWorldData: z.boolean(),
-  /**
-   * Quellserver für die Dauer der Weltdaten-Kopie anhalten
-   * (WORK_STATUS.md, Gefundener Punkt 107).
-   *
-   * Ohne Anhalten schreibt ein laufender Spielserver weiter in die Dateien,
-   * die gerade gepackt werden – die Kopie kann dann einen halb geschriebenen
-   * Spielstand enthalten. Dieselbe Wahl bietet B5 beim Sichern und beim Export
-   * bereits an (`stopServer`).
-   *
-   * Optional und ohne Angabe `false`: Den Server eines Nutzers ungefragt
-   * abzuschalten wäre ein Eingriff, um den niemand gebeten hat. Angehalten wird
-   * nur, wenn es ausdrücklich gewünscht ist; der Agent versetzt den Container
-   * danach in seinen vorherigen Zustand zurück. Ohne Weltdaten-Kopie
-   * (`includeWorldData: false`) hat das Feld keine Wirkung – dann wird nichts
-   * gepackt.
-   */
-  stopSourceServer: z.boolean().optional(),
-});
+export const cloneServerInputSchema = z
+  .object({
+    name: serverNameSchema,
+    subdomain: subdomainSchema,
+    includeWorldData: z.boolean(),
+    /**
+     * Quellserver für die Dauer der Weltdaten-Kopie anhalten
+     * (WORK_STATUS.md, Gefundener Punkt 107).
+     *
+     * Ohne Anhalten schreibt ein laufender Spielserver weiter in die Dateien,
+     * die gerade gepackt werden – die Kopie kann dann einen halb geschriebenen
+     * Spielstand enthalten. Dieselbe Wahl bietet B5 beim Sichern und beim Export
+     * bereits an (`stopServer`).
+     *
+     * Optional und ohne Angabe `false`: Den Server eines Nutzers ungefragt
+     * abzuschalten wäre ein Eingriff, um den niemand gebeten hat. Angehalten wird
+     * nur, wenn es ausdrücklich gewünscht ist; der Agent versetzt den Container
+     * danach in seinen vorherigen Zustand zurück. Ohne Weltdaten-Kopie
+     * (`includeWorldData: false`) hat das Feld keine Wirkung – dann wird nichts
+     * gepackt.
+     */
+    stopSourceServer: z.boolean().optional(),
+  })
+  .strict();
 
 export type CloneServerInput = z.infer<typeof cloneServerInputSchema>;
 
@@ -271,6 +279,7 @@ export const scheduleInputSchema = z
     timezone: z.string().trim().min(1).max(64),
     enabled: z.boolean(),
   })
+  .strict()
   .refine((input) => input.action !== 'command' || input.command !== null, {
     message: 'Für die Aktion „Konsolenbefehl" muss ein Befehl angegeben werden.',
     path: ['command'],
@@ -281,10 +290,12 @@ export type ScheduleInput = z.infer<typeof scheduleInputSchema>;
 export const serverMemberLevelSchema = z.enum(SERVER_MEMBER_LEVELS);
 
 /** Mitverwalter hinzufügen oder seine Stufe ändern (Lastenheft §3.3). */
-export const serverMemberInputSchema = z.object({
-  userId: idSchema,
-  level: serverMemberLevelSchema,
-});
+export const serverMemberInputSchema = z
+  .object({
+    userId: idSchema,
+    level: serverMemberLevelSchema,
+  })
+  .strict();
 
 export type ServerMemberInput = z.infer<typeof serverMemberInputSchema>;
 

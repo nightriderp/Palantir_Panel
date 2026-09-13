@@ -43,11 +43,13 @@ export const roleDescriptionSchema = z
   .max(200, { message: 'Die Beschreibung darf höchstens 200 Zeichen lang sein.' });
 
 /** Eingabe zum Anlegen einer Rolle (F10 → Backend). */
-export const createRoleInputSchema = z.object({
-  name: roleNameSchema,
-  description: roleDescriptionSchema.nullish(),
-  permissions: rolePermissionsBundleSchema.default([]),
-});
+export const createRoleInputSchema = z
+  .object({
+    name: roleNameSchema,
+    description: roleDescriptionSchema.nullish(),
+    permissions: rolePermissionsBundleSchema.default([]),
+  })
+  .strict();
 
 /**
  * Eingabe zum Bearbeiten einer Rolle – alle Felder optional (Teil-Update).
@@ -61,6 +63,7 @@ export const updateRoleInputSchema = z
     description: roleDescriptionSchema.nullable(),
     permissions: rolePermissionsBundleSchema,
   })
+  .strict()
   .partial()
   .refine((input) => Object.keys(input).length > 0, {
     message: 'Es muss mindestens ein Feld geändert werden.',

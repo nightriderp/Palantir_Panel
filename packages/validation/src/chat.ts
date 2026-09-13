@@ -58,19 +58,25 @@ export const messageReportReasonSchema = z
   });
 
 /** Beginnt eine Direktnachricht mit genau einem anderen Konto (Lastenheft §3.6). */
-export const createDirectConversationInputSchema = z.object({
-  recipientId: idSchema,
-});
+export const createDirectConversationInputSchema = z
+  .object({
+    recipientId: idSchema,
+  })
+  .strict();
 
 /** Neue Nachricht in einer bestehenden Konversation. */
-export const sendMessageInputSchema = z.object({
-  content: messageContentSchema,
-});
+export const sendMessageInputSchema = z
+  .object({
+    content: messageContentSchema,
+  })
+  .strict();
 
 /** Meldung zu genau einer Nachricht. */
-export const reportMessageInputSchema = z.object({
-  reason: messageReportReasonSchema,
-});
+export const reportMessageInputSchema = z
+  .object({
+    reason: messageReportReasonSchema,
+  })
+  .strict();
 
 /**
  * Entscheidung eines Moderators zu einer Meldung.
@@ -78,10 +84,12 @@ export const reportMessageInputSchema = z.object({
  * `note` ist freiwillig und geht in den Audit-Eintrag ein – die Entscheidung
  * selbst steht als benannte Aktion daneben, nicht als Freitext.
  */
-export const resolveMessageReportInputSchema = z.object({
-  action: messageModerationActionSchema,
-  note: z.string().trim().min(1).max(MESSAGE_MODERATION_NOTE_MAX_LENGTH).nullish(),
-});
+export const resolveMessageReportInputSchema = z
+  .object({
+    action: messageModerationActionSchema,
+    note: z.string().trim().min(1).max(MESSAGE_MODERATION_NOTE_MAX_LENGTH).nullish(),
+  })
+  .strict();
 
 /**
  * Blättern im Nachrichtenverlauf.
@@ -90,22 +98,26 @@ export const resolveMessageReportInputSchema = z.object({
  * wird – bewusst eine Id und kein Zeitstempel: Zwei Nachrichten können
  * denselben Zeitstempel tragen, eine Id ist eindeutig.
  */
-export const messagePageQuerySchema = z.object({
-  before: idSchema.optional(),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(MESSAGE_PAGE_MAX_LIMIT)
-    .default(MESSAGE_PAGE_DEFAULT_LIMIT),
-});
+export const messagePageQuerySchema = z
+  .object({
+    before: idSchema.optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(MESSAGE_PAGE_MAX_LIMIT)
+      .default(MESSAGE_PAGE_DEFAULT_LIMIT),
+  })
+  .strict();
 
 /** Filter der Moderationsübersicht. Ohne Angabe werden die offenen Meldungen gezeigt. */
-export const messageReportQuerySchema = z.object({
-  status: messageReportStatusSchema.default('open'),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
+export const messageReportQuerySchema = z
+  .object({
+    status: messageReportStatusSchema.default('open'),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    offset: z.coerce.number().int().min(0).default(0),
+  })
+  .strict();
 
 // ---------------------------------------------------------------------------
 // Ausgabe-Schemas (Fundpunkt 141)

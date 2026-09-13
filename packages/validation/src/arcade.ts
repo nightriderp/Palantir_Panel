@@ -27,9 +27,11 @@ export const arcadeScoreValueSchema = z
   .max(ARCADE_SCORE_MAX, { message: 'Punktestand ist unplausibel hoch.' });
 
 /** Rumpf des Absende-Aufrufs `POST /arcade/scores`. */
-export const submitArcadeScoreInputSchema = z.object({
-  gameId: arcadeGameIdSchema,
-  score: arcadeScoreValueSchema,
-});
+export const submitArcadeScoreInputSchema = z
+  .object({
+    gameId: arcadeGameIdSchema,
+    score: arcadeScoreValueSchema,
+  })
+  .strict();
 
 export type SubmitArcadeScoreInput = z.infer<typeof submitArcadeScoreInputSchema>;
