@@ -2,7 +2,7 @@
 
 import { type FormEvent, useState } from 'react';
 import { type AccountDto, type TwoFactorSetupDto } from '@palantir/contracts';
-import { Button, Icon, Panel, TextField, useToast } from '@/components/shared';
+import { Button, Icon, Panel, QrCode, TextField, useToast } from '@/components/shared';
 import {
   beginTwoFactorSetup,
   changePassword,
@@ -209,25 +209,39 @@ export function TwoFactorSection({ account, onChanged }: SectionProps) {
       ) : setup ? (
         <form className="mt-4 flex flex-col gap-3" onSubmit={onConfirm}>
           <p className="text-sm text-ink-soft">
-            Füge das Geheimnis in deiner Authenticator-App hinzu (oder öffne die
-            <code className="mx-1 rounded bg-fill px-1 text-xs">otpauth</code>-Adresse) und gib dann
-            den angezeigten Code ein.
+            Scanne den Code mit deiner Authenticator-App und gib die sechs Ziffern ein, die sie
+            danach anzeigt. Sitzt die App auf demselben Gerät, nimm stattdessen das Geheimnis
+            darunter.
           </p>
-          <div className="rounded-md border border-line bg-fill p-3">
-            <p className="text-2xs uppercase tracking-wide text-ink-faint">Geheimnis</p>
-            <div className="mt-1 flex items-center gap-2">
-              <code className="flex-1 break-all font-mono text-sm text-ink">{setup.secret}</code>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                iconLeft="copy"
-                onClick={copySecret}
-              >
-                Kopieren
-              </Button>
+          <div className="flex flex-col gap-3 rounded-md border border-line bg-fill p-3 sm:flex-row">
+            {/*
+              Der Code trägt dieselbe `otpauth`-Adresse, die darunter als Text
+              steht – er ist die Abkürzung, nicht der einzige Weg. Wer am selben
+              Gerät sitzt wie seine App, kann nichts abfotografieren.
+            */}
+            <QrCode
+              value={setup.otpauthUri}
+              size={148}
+              label="QR-Code zum Einrichten der Zwei-Faktor-Authentifizierung"
+              className="mx-auto shrink-0 sm:mx-0"
+            />
+
+            <div className="min-w-0 flex-1">
+              <p className="text-2xs uppercase tracking-wide text-ink-faint">Geheimnis</p>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="flex-1 break-all font-mono text-sm text-ink">{setup.secret}</code>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  iconLeft="copy"
+                  onClick={copySecret}
+                >
+                  Kopieren
+                </Button>
+              </div>
+              <p className="mt-2 break-all text-2xs text-ink-faint">{setup.otpauthUri}</p>
             </div>
-            <p className="mt-2 break-all text-2xs text-ink-faint">{setup.otpauthUri}</p>
           </div>
           <TextField
             label="Code aus der App"
