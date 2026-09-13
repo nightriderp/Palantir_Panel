@@ -91,33 +91,37 @@ export const altchaSolutionPayloadSchema = z
  * verraten, wie das hinterlegte Passwort aussieht. Falsche Zugangsdaten
  * beantwortet das Backend einheitlich mit `AUTH_INVALID_CREDENTIALS`.
  */
-export const loginInputSchema = z.object({
-  username: z.string().trim().min(1, { message: 'Bitte gib deinen Benutzernamen ein.' }),
-  password: z.string().min(1, { message: 'Bitte gib dein Passwort ein.' }),
-  /**
-   * Gelöste ALTCHA-Challenge – **Pflichtfeld** (Breaking Change aus R5).
-   *
-   * Pflichtenheft §7 und §18 verlangen den Spam-Schutz ausdrücklich auch beim
-   * **Login**, nicht nur bei der Registrierung – sonst steht das Passwortfeld
-   * für automatisiertes Durchprobieren offen und es bliebe allein das
-   * IP-Rate-Limit. B1 hat das Feld zunächst als `optional()` eingeführt, weil
-   * das Frontend es noch nicht mitschickte; abgelehnt hat das Backend einen
-   * Login ohne gültigen Nachweis trotzdem immer. Seit R5 schickt `LoginView`
-   * ihn mit, deshalb steht die Pflicht jetzt auch im Schema: ein fehlender
-   * Nachweis soll schon im Formular auffallen und nicht erst als
-   * `AUTH_CAPTCHA_INVALID` aus dem Backend zurückkommen.
-   */
-  altcha: altchaSolutionPayloadSchema,
-});
+export const loginInputSchema = z
+  .object({
+    username: z.string().trim().min(1, { message: 'Bitte gib deinen Benutzernamen ein.' }),
+    password: z.string().min(1, { message: 'Bitte gib dein Passwort ein.' }),
+    /**
+     * Gelöste ALTCHA-Challenge – **Pflichtfeld** (Breaking Change aus R5).
+     *
+     * Pflichtenheft §7 und §18 verlangen den Spam-Schutz ausdrücklich auch beim
+     * **Login**, nicht nur bei der Registrierung – sonst steht das Passwortfeld
+     * für automatisiertes Durchprobieren offen und es bliebe allein das
+     * IP-Rate-Limit. B1 hat das Feld zunächst als `optional()` eingeführt, weil
+     * das Frontend es noch nicht mitschickte; abgelehnt hat das Backend einen
+     * Login ohne gültigen Nachweis trotzdem immer. Seit R5 schickt `LoginView`
+     * ihn mit, deshalb steht die Pflicht jetzt auch im Schema: ein fehlender
+     * Nachweis soll schon im Formular auffallen und nicht erst als
+     * `AUTH_CAPTCHA_INVALID` aus dem Backend zurückkommen.
+     */
+    altcha: altchaSolutionPayloadSchema,
+  })
+  .strict();
 
 /** Registrierung eines Passwort-Kontos (Lastenheft §3.1). */
-export const registerInputSchema = z.object({
-  username: usernameSchema,
-  password: passwordSchema,
-  /** Optional – ohne Angabe übernimmt das Backend den Benutzernamen. */
-  displayName: displayNameSchema.optional(),
-  altcha: altchaSolutionPayloadSchema,
-});
+export const registerInputSchema = z
+  .object({
+    username: usernameSchema,
+    password: passwordSchema,
+    /** Optional – ohne Angabe übernimmt das Backend den Benutzernamen. */
+    displayName: displayNameSchema.optional(),
+    altcha: altchaSolutionPayloadSchema,
+  })
+  .strict();
 
 /**
  * Zweiter Anmeldeschritt (Pflichtenheft §7).
@@ -137,11 +141,13 @@ export const twoFactorCodeSchema = z
       .regex(/^[A-Za-z0-9]+$/, { message: 'Der Code darf nur Buchstaben und Ziffern enthalten.' }),
   );
 
-export const twoFactorInputSchema = z.object({
-  /** Kurzlebiger Zwischen-Token aus dem ersten Schritt – kein Access-Token. */
-  twoFactorToken: z.string().min(1),
-  code: twoFactorCodeSchema,
-});
+export const twoFactorInputSchema = z
+  .object({
+    /** Kurzlebiger Zwischen-Token aus dem ersten Schritt – kein Access-Token. */
+    twoFactorToken: z.string().min(1),
+    code: twoFactorCodeSchema,
+  })
+  .strict();
 
 // -- Antwort-Schemas (Frontend prüft, statt blind zu vertrauen) --------------
 
@@ -267,6 +273,7 @@ export const changePasswordInputSchema = z
     currentPassword: z.string().min(1, { message: 'Bitte gib dein aktuelles Passwort ein.' }),
     newPassword: passwordSchema,
   })
+  .strict()
   .refine((input) => input.currentPassword !== input.newPassword, {
     message: 'Das neue Passwort muss sich vom bisherigen unterscheiden.',
     path: ['newPassword'],
@@ -276,15 +283,19 @@ export const changePasswordInputSchema = z
  * Passwort als weiteres Anmeldeverfahren zu einem Provider-Konto hinzufügen
  * (Lastenheft §3.1). Nur im eingeloggten Zustand (Pflichtenheft §7).
  */
-export const linkPasswordInputSchema = z.object({
-  username: usernameSchema,
-  password: passwordSchema,
-});
+export const linkPasswordInputSchema = z
+  .object({
+    username: usernameSchema,
+    password: passwordSchema,
+  })
+  .strict();
 
 /** Bestätigung der 2FA-Einrichtung mit einem gültigen Code (Pflichtenheft §7). */
-export const confirmTwoFactorInputSchema = z.object({
-  code: totpCodeSchema,
-});
+export const confirmTwoFactorInputSchema = z
+  .object({
+    code: totpCodeSchema,
+  })
+  .strict();
 
 /**
  * 2FA abschalten: verlangt Passwort **und** gültigen Code.
@@ -292,10 +303,12 @@ export const confirmTwoFactorInputSchema = z.object({
  * Beides, damit weder ein übernommenes Gerät noch ein abgegriffenes Passwort
  * allein reicht, um den zweiten Faktor zu entfernen.
  */
-export const disableTwoFactorInputSchema = z.object({
-  password: z.string().min(1, { message: 'Bitte gib dein Passwort ein.' }),
-  code: totpCodeSchema,
-});
+export const disableTwoFactorInputSchema = z
+  .object({
+    password: z.string().min(1, { message: 'Bitte gib dein Passwort ein.' }),
+    code: totpCodeSchema,
+  })
+  .strict();
 
 /**
  * Eigenes Profil ändern (Lastenheft §3.1).
@@ -305,9 +318,11 @@ export const disableTwoFactorInputSchema = z.object({
  * nicht als `registerInputSchema.partial()`, damit ein späteres Feld hier
  * dazukommen kann, ohne die Registrierung zu berühren.
  */
-export const updateProfileInputSchema = z.object({
-  displayName: displayNameSchema,
-});
+export const updateProfileInputSchema = z
+  .object({
+    displayName: displayNameSchema,
+  })
+  .strict();
 
 /**
  * Konto durch einen Administrator anlegen (Mockup-Abgleich 12.1.1).
@@ -319,12 +334,14 @@ export const updateProfileInputSchema = z.object({
  * `roleIds` leer heißt „Standardrolle" – dieselbe, die eine Freigabe über die
  * Warteliste vergibt. Ein so angelegtes Konto ist sofort freigeschaltet.
  */
-export const createUserInputSchema = z.object({
-  username: usernameSchema,
-  password: passwordSchema,
-  displayName: displayNameSchema.optional(),
-  roleIds: z.array(idSchema).optional(),
-});
+export const createUserInputSchema = z
+  .object({
+    username: usernameSchema,
+    password: passwordSchema,
+    displayName: displayNameSchema.optional(),
+    roleIds: z.array(idSchema).optional(),
+  })
+  .strict();
 
 /**
  * Instanz-Einstellungen setzen (Mockup-Abgleich 12.1.1).
@@ -336,21 +353,23 @@ export const createUserInputSchema = z.object({
  * mehr abgewählt werden. Ältere Aufrufer, die nur den Registrierungsschalter
  * kennen, bleiben unverändert gültig (CLAUDE.md §3).
  */
-export const instanceSettingsInputSchema = z.object({
-  selfRegistrationEnabled: z.boolean(),
-  /** Schrift der Oberfläche; `null` = Vorgabe der Instanz. */
-  uiFontId: fontIdSchema.nullable().optional(),
-  /** Schrift für dicktengleiche Ausgaben (Konsole, Logs, Serveradressen). */
-  monospaceFontId: fontIdSchema.nullable().optional(),
-  /**
-   * Ausgeschaltete Spieltypen (Kennungen aus der Registry).
-   *
-   * Keine Prüfung gegen den Katalog an dieser Stelle: Der Vertrag kennt ihn
-   * nicht, und eine Kennung, die es nicht gibt, schaltet auch nichts ab. Die
-   * Obergrenze steht trotzdem da, damit niemand eine Liste ohne Ende schickt.
-   */
-  disabledGameTypes: z.array(z.string().trim().min(1).max(64)).max(200).optional(),
-});
+export const instanceSettingsInputSchema = z
+  .object({
+    selfRegistrationEnabled: z.boolean(),
+    /** Schrift der Oberfläche; `null` = Vorgabe der Instanz. */
+    uiFontId: fontIdSchema.nullable().optional(),
+    /** Schrift für dicktengleiche Ausgaben (Konsole, Logs, Serveradressen). */
+    monospaceFontId: fontIdSchema.nullable().optional(),
+    /**
+     * Ausgeschaltete Spieltypen (Kennungen aus der Registry).
+     *
+     * Keine Prüfung gegen den Katalog an dieser Stelle: Der Vertrag kennt ihn
+     * nicht, und eine Kennung, die es nicht gibt, schaltet auch nichts ab. Die
+     * Obergrenze steht trotzdem da, damit niemand eine Liste ohne Ende schickt.
+     */
+    disabledGameTypes: z.array(z.string().trim().min(1).max(64)).max(200).optional(),
+  })
+  .strict();
 
 /**
  * Selbstständige Konto-Löschung (Lastenheft §3.1).
@@ -360,13 +379,15 @@ export const instanceSettingsInputSchema = z.object({
  * das Backend anhand der verknüpften Verfahren – reine Provider-Konten haben
  * keins.
  */
-export const deleteAccountInputSchema = z.object({
-  confirmName: z
-    .string()
-    .trim()
-    .min(1, { message: 'Bitte tippe deinen Namen zur Bestätigung ab.' }),
-  password: z.string().min(1).optional(),
-});
+export const deleteAccountInputSchema = z
+  .object({
+    confirmName: z
+      .string()
+      .trim()
+      .min(1, { message: 'Bitte tippe deinen Namen zur Bestätigung ab.' }),
+    password: z.string().min(1).optional(),
+  })
+  .strict();
 
 // -- Antwort-Schemas ---------------------------------------------------------
 

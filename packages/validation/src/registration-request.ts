@@ -13,11 +13,13 @@ import { idSchema } from './common.js';
 export const registrationRequestStatusSchema = z.enum(REGISTRATION_REQUEST_STATUSES);
 
 /** Filter der Wartelisten-Übersicht. Ohne Angabe werden die wartenden Konten gezeigt. */
-export const registrationRequestQuerySchema = z.object({
-  status: registrationRequestStatusSchema.default('pending'),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
+export const registrationRequestQuerySchema = z
+  .object({
+    status: registrationRequestStatusSchema.default('pending'),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    offset: z.coerce.number().int().min(0).default(0),
+  })
+  .strict();
 
 /**
  * Freigabe eines wartenden Kontos.
@@ -26,14 +28,18 @@ export const registrationRequestQuerySchema = z.object({
  * Ohne Angabe vergibt das Backend die Seed-Rolle „Nutzer" – der Regelfall aus
  * Lastenheft §2.
  */
-export const approveRegistrationRequestInputSchema = z.object({
-  roleIds: z.array(idSchema).max(20).optional(),
-});
+export const approveRegistrationRequestInputSchema = z
+  .object({
+    roleIds: z.array(idSchema).max(20).optional(),
+  })
+  .strict();
 
 /** Sperre eines Kontos (Lastenheft §3.1: jederzeit, unabhängig von der Rolle). */
-export const blockRegistrationRequestInputSchema = z.object({
-  reason: z.string().trim().min(1).max(200).nullish(),
-});
+export const blockRegistrationRequestInputSchema = z
+  .object({
+    reason: z.string().trim().min(1).max(200).nullish(),
+  })
+  .strict();
 
 export type RegistrationRequestQuery = z.infer<typeof registrationRequestQuerySchema>;
 export type ApproveRegistrationRequestInput = z.infer<typeof approveRegistrationRequestInputSchema>;

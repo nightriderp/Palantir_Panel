@@ -41,9 +41,21 @@ describe('Rollen-/Permission-Schemas (Pflichtenheft §8)', () => {
     expect(updateRoleInputSchema.safeParse({ name: 'Neuer Name' }).success).toBe(true);
   });
 
-  it('nimmt isProtected beim Bearbeiten nicht entgegen (Schutzstatus ist nicht setzbar)', () => {
-    const parsed = updateRoleInputSchema.parse({ name: 'Gast', isProtected: false });
+  it('weist isProtected beim Bearbeiten ab (Schutzstatus ist nicht setzbar)', () => {
+    /*
+     * Bis HM-6 stand hier, dass Zod das Feld still entfernt - was stimmte, aber
+     * die schwächere Zusicherung war: Der Aufrufer bekam eine Erfolgsmeldung
+     * für etwas, das nicht geschehen ist. Seit `.strict()` fällt der Versuch
+     * auf, und das ist die Zusicherung, die der Name dieses Tests immer schon
+     * behauptet hat.
+     */
+    const ergebnis = updateRoleInputSchema.safeParse({ name: 'Gast', isProtected: false });
 
-    expect(parsed).not.toHaveProperty('isProtected');
+    expect(ergebnis.success).toBe(false);
+    expect(
+      ergebnis.success
+        ? []
+        : ergebnis.error.issues.filter((grund) => grund.code === 'unrecognized_keys'),
+    ).toHaveLength(1);
   });
 });

@@ -74,6 +74,7 @@ export const userResourceLimitsInputSchema = z
     maxDiskMb: megabytesSchema.nullish(),
     maxConcurrentServers: serverCountSchema.nullish(),
   })
+  .strict()
   .refine((input) => Object.keys(input).length > 0, {
     message: 'Es muss mindestens ein Kontingent-Feld angegeben werden.',
   });

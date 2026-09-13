@@ -25,15 +25,17 @@ export const auditTargetTypeSchema = z.enum(AUDIT_TARGET_TYPES);
 export const auditMetadataSchema = z.record(z.unknown());
 
 /** Nutzlast eines neuen Eintrags (nur Anhängen, nie Ändern). */
-export const appendAuditEntryInputSchema = z.object({
-  action: auditActionSchema,
-  actorId: idSchema.nullish(),
-  actorDisplayName: z.string().trim().max(100).nullish(),
-  targetType: auditTargetTypeSchema.nullish(),
-  targetId: z.string().trim().max(200).nullish(),
-  ipHint: z.string().trim().max(64).nullish(),
-  metadata: auditMetadataSchema.default({}),
-});
+export const appendAuditEntryInputSchema = z
+  .object({
+    action: auditActionSchema,
+    actorId: idSchema.nullish(),
+    actorDisplayName: z.string().trim().max(100).nullish(),
+    targetType: auditTargetTypeSchema.nullish(),
+    targetId: z.string().trim().max(200).nullish(),
+    ipHint: z.string().trim().max(64).nullish(),
+    metadata: auditMetadataSchema.default({}),
+  })
+  .strict();
 
 /**
  * Filter der Audit-Log-Abfrage (F10).
@@ -54,6 +56,7 @@ export const auditLogQuerySchema = z
     limit: z.coerce.number().int().min(1).max(200).default(50),
     offset: z.coerce.number().int().min(0).default(0),
   })
+  .strict()
   /*
    * Zeitvergleich, kein Zeichenkettenvergleich (contracts-validation-07).
    *
