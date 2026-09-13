@@ -655,6 +655,13 @@ function makeHarness(
     healthy?: boolean | 'pending';
     /** Eigene Probe, wenn ein Test den Health-Check von Hand beantworten will (Audit W0-5). */
     probe?: HealthProbe;
+    /**
+     * Adresse, über die die Sonde fragt (Fundpunkt 288).
+     *
+     * Ohne Angabe bewusst **eine andere** als `publicIpv4`: So fällt auf, wenn
+     * jemand wieder die Adresse der DNS-Einträge in die Sonde reicht.
+     */
+    healthCheckHost?: string;
     /** Eigene, serialisierende Reservierung – für den TOCTOU-Test (Punkt 98). */
     buildReservation?: (repository: FakeRepository, ports: PortAllocator) => CapacityReservation;
     /** Upload-Grenze, um sie im Test ohne 64-MiB-Puffer zu erreichen (P2). */
@@ -824,6 +831,7 @@ function makeHarness(
     config: {
       baseDomain: 'example.tld',
       publicIpv4: '203.0.113.10',
+      healthCheckHost: options.healthCheckHost ?? '198.51.100.7',
       routerHostname: options.routerHostname ?? null,
       virtualHostPort: 25_565,
       crashLoopPolicy: { maxRestarts: 2, windowMinutes: 10 },
@@ -1139,7 +1147,7 @@ describe('Starten mit Health-Check (Pflichtenheft §9)', () => {
     expect(harness.emitted.map((e) => e.event)).toContain('server.started');
   });
 
-  it('prüft den Weg der Spieler: öffentliche VPS-Adresse und öffentlicher Port (Fundpunkt 183)', async () => {
+  it('prüft den Weg der Spieler: eigene Sonden-Adresse und öffentlicher Port (Fundpunkte 183, 288)', async () => {
     /*
      * Bis Fundpunkt 183 zielte die Sonde auf die Node im Tunnel – und das
      * konnte nie antworten: Spielports sind dort nur an 127.0.0.1 gebunden,
@@ -1147,6 +1155,13 @@ describe('Starten mit Health-Check (Pflichtenheft §9)', () => {
      * lief in `error`, während Spieler längst drauf waren. In der CI blieb das
      * unsichtbar, weil die Sonde gemockt ist – deshalb hält dieser Test das
      * Ziel fest, nicht nur das Ergebnis.
+     *
+     * Welche Adresse das ist, sagt seit Fundpunkt 288 `healthCheckHost` und
+     * nicht mehr `publicIpv4`: Läuft das Backend auf derselben Maschine wie
+     * frps, kommt eine UDP-Antwort über die eigene öffentliche Adresse mit
+     * umgeschriebenem Absender zurück und wird verworfen. Der Test hält
+     * deshalb auch fest, dass die Adresse der DNS-Einträge hier **nicht**
+     * steht.
      */
     const ziele: Array<{ host: string; port: number }> = [];
     const probe: HealthProbe = {
@@ -1172,8 +1187,9 @@ describe('Starten mit Health-Check (Pflichtenheft §9)', () => {
 
     expect(running.status).toBe('running');
     expect(ziele).toHaveLength(1);
-    expect(ziele[0]).toEqual({ host: '203.0.113.10', port: primary?.publicPort });
+    expect(ziele[0]).toEqual({ host: '198.51.100.7', port: primary?.publicPort });
     expect(ziele[0]?.host).not.toBe(HOST.wireguardIp);
+    expect(ziele[0]?.host).not.toBe('203.0.113.10');
   });
 
   it('geht bei gescheitertem Health-Check nach error statt nach running', async () => {
@@ -2838,6 +2854,52 @@ describe('Prozess-Schutz: Zwischenzustände und Dubletten (Audit W0-5, Fundpunkt
     expect(harness.socket.commands.map((befehl) => befehl.command)).toContain('STOP');
     expect((await harness.service.requireServer(created.id)).status).toBe('stopped');
   });
+
+  it('arbeitet den Plan weiter ab, während ein Health-Check noch läuft (Fundpunkt 288)', async () => {
+    /*
+     * Der Abgleich wartete auf den Health-Check, den er selbst angestossen
+     * hatte. Der läuft bis zur vollen Startfrist des Spiels – bei den
+     * Steam-Spielen zwanzig Minuten und mehr. So lange blieb alles dahinter
+     * liegen: der verlorene Stopp-Befehl des nächsten Servers ebenso wie die
+     * Meldung über einen verwaisten Container. Auf der VPS am 2026-09-13
+     * beobachtet, die Waisen-Warnungen kamen zwanzig Minuten zu spät.
+     *
+     * Die Probe antwortet hier nie. Vor der Korrektur kehrt `reconcile` damit
+     * überhaupt nicht zurück – der Test läuft in seine Frist statt in eine
+     * Zusicherung.
+     */
+    const harness = makeHarness({ probe: healthyProbe('pending') });
+    const prueft = await harness.service.createServer(createInput('prueft'), OWNER_ID);
+    const stoppt = await harness.service.createServer(createInput('stoppt'), OWNER_ID);
+
+    const imStart = await harness.service.requireServer(prueft.id);
+    const imStopp = await harness.service.requireServer(stoppt.id);
+
+    harness.repository.servers.set(prueft.id, { ...imStart, status: 'starting' });
+    harness.repository.servers.set(stoppt.id, { ...imStopp, status: 'stopping' });
+    harness.socket.commands.length = 0;
+
+    const laeuft = (server: ServerRecord) => ({
+      serverId: server.id,
+      containerId: server.dockerContainerId ?? server.id,
+      status: 'running' as const,
+      exitCode: null,
+      startedAt: NOW.toISOString(),
+      observedAt: NOW.toISOString(),
+    });
+
+    await harness.service.reconcile(HOST.id, {
+      kind: 'stateReport',
+      reason: 'connected',
+      // Der wartende Server steht zuerst: Genau seine Korrektur hielt den Plan auf.
+      containers: [laeuft(imStart), laeuft(imStopp)],
+      reportedAt: NOW.toISOString(),
+    });
+
+    expect(harness.socket.commands.map((befehl) => befehl.command)).toContain('STOP');
+    // Und der Health-Check läuft weiter – er ist nicht abgebrochen, nur nebenher.
+    expect((await harness.service.requireServer(prueft.id)).status).toBe('starting');
+  });
 });
 
 describe('Gemessene Node-Ressourcen (Pflichtenheft §11)', () => {
@@ -2952,7 +3014,12 @@ describe('Soll/Ist-Abgleich (Pflichtenheft §2.2)', () => {
   });
 
   it('prüft einen unerwartet laufenden Container über den Health-Check', async () => {
-    // `running` setzt einen bestandenen Health-Check voraus – auch im Abgleich.
+    /*
+     * `running` setzt einen bestandenen Health-Check voraus – auch im Abgleich.
+     *
+     * Der Check läuft seit Fundpunkt 288 neben dem Abgleich statt in ihm; auf
+     * den Zustand wird deshalb gewartet wie nach einem regulären Start.
+     */
     const harness = makeHarness({ healthy: true });
     const created = await harness.service.createServer(createInput(), OWNER_ID);
 
@@ -2972,7 +3039,7 @@ describe('Soll/Ist-Abgleich (Pflichtenheft §2.2)', () => {
       reportedAt: NOW.toISOString(),
     });
 
-    expect((await harness.service.requireServer(created.id)).status).toBe('running');
+    expect((await settle(harness, created.id, ['running', 'error'])).status).toBe('running');
   });
 
   it('markiert einen Server, dessen Container verschwunden ist, als error', async () => {

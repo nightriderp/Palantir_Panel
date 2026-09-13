@@ -136,6 +136,19 @@ export interface OrchestrationEventSink {
 export interface OrchestrationConfig {
   readonly baseDomain: string;
   readonly publicIpv4: string;
+  /**
+   * Adresse, über die der Health-Check die Spielserver abfragt (Fundpunkt 288).
+   *
+   * Normalerweise dieselbe wie {@link publicIpv4} – der Weg der Spieler. Läuft
+   * das Backend aber auf derselben Maschine wie frps, taugt die eigene
+   * öffentliche Adresse für UDP nicht: Die Antwort kommt mit umgeschriebenem
+   * Absender zurück (Docker-Gateway statt Ziel), und `gamedig` verwirft sie.
+   * Dann steht hier die Adresse des Hosts aus Sicht des Containers.
+   *
+   * Getrennt von {@link publicIpv4}, weil diese in den DNS-Einträgen der
+   * Spielserver landet: Ein Gateway-Name gehört dort nicht hin.
+   */
+  readonly healthCheckHost: string;
   /** Ziel der `CNAME`-Einträge bei Hostname-Routing; `null`, wenn keiner läuft. */
   readonly routerHostname: string | null;
   readonly virtualHostPort: number;
@@ -1315,6 +1328,15 @@ export class ServerOrchestrationService {
      * Er löst über den CNAME auf dieselbe VPS auf, und `gamedig` trägt ihn als
      * Ziel in den Handshake ein. Damit prüft der Check denselben Weg wie ein
      * Spieler, Router eingeschlossen.
+     *
+     * **Welche Adresse das ist, sagt `healthCheckHost`** (Fundpunkt 288). Bei
+     * UDP-Spielen ist die öffentliche Adresse der VPS aus dem Backend-Container
+     * heraus die falsche: Das Paket geht hinaus und kommt zurück, aber die
+     * NAT-Schleife des Hosts schreibt den Absender auf das Docker-Gateway um.
+     * `gamedig` verwirft eine UDP-Antwort, deren Absender nicht das Ziel ist –
+     * jeder Versuch endete in „UDP - Timed out", und jeder Start eines
+     * UDP-Spiels lief nach seiner ganzen Frist in `error`, während Spieler
+     * darauf waren. Die Begründung im Langen steht an `HEALTH_CHECK_HOST`.
      */
     /*
      * **Ein Server, den niemand abfragen kann, ist deshalb nicht krank.**
@@ -1348,7 +1370,7 @@ export class ServerOrchestrationService {
       target: {
         host: definition.supportsVirtualHostRouting
           ? this.hostnameFor(server)
-          : this.deps.config.publicIpv4,
+          : this.deps.config.healthCheckHost,
         port: primary.publicPort,
         query: definition.query,
       },
@@ -3195,7 +3217,25 @@ export class ServerOrchestrationService {
             await this.transition(server, { type: 'startRequested' });
           }
 
-          await this.awaitStartupHealth(server.id);
+          /*
+           * **Der Abgleich wartet nicht auf den Health-Check** (Fundpunkt 288).
+           *
+           * Die Prüfung läuft bis zu `startupTimeoutSeconds` – bei den
+           * Steam-Spielen zwanzig Minuten und mehr. Hing der Plan daran, blieb
+           * alles dahinter liegen: ein Stopp-Befehl, der erneut abgeschickt
+           * gehört, ein abgestürzter Nachbar, die Meldung über einen verwaisten
+           * Container. Beobachtet am 2026-09-13 auf der VPS – die beiden
+           * Waisen-Warnungen erschienen erst zwanzig Minuten nach dem Abgleich,
+           * der sie gefunden hatte.
+           *
+           * Derselbe Weg wie nach einem regulären Start (`finishStart`): Der
+           * Zustandswechsel wird über `server.statusChanged` gemeldet, nicht
+           * über die Rückkehr dieses Aufrufs.
+           */
+          fireAndForget(this.awaitStartupHealth(server.id), this.deps.log, {
+            vorgang: 'Health-Check aus dem Soll/Ist-Abgleich',
+            serverId: server.id,
+          });
 
           return;
       }

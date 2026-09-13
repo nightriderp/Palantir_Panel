@@ -270,6 +270,8 @@ export function registerServerOrchestration(
     config: {
       baseDomain: env.PALANTIR_DOMAIN,
       publicIpv4: env.VPS_PUBLIC_IP,
+      // Ohne eigene Angabe bleibt es beim Weg der Spieler (Fundpunkt 288).
+      healthCheckHost: env.HEALTH_CHECK_HOST ?? env.VPS_PUBLIC_IP,
       routerHostname: env.GAME_ROUTER_HOSTNAME ?? null,
       virtualHostPort: env.MINECRAFT_ROUTER_PORT,
       crashLoopPolicy: {
