@@ -249,19 +249,6 @@ describe('Befehl → Runtime-Aufruf', () => {
     expect(Buffer.from(daten.contentBase64, 'base64').toString()).toBe(inhalt);
     expect(daten.sizeBytes).toBe(Buffer.byteLength(inhalt));
   });
-
-  it('listet ein Verzeichnis auf', async () => {
-    const containerId = await containerAnlegen();
-    await befehl('START', { containerId });
-    runtime.seedFile(containerId, '/data/eula.txt', Buffer.from('eula=true'));
-
-    const antwort = await befehl('FILE_LIST', { containerId, path: '/data' });
-
-    expect(isOk(antwort)).toBe(true);
-    const daten = antwort.data as { path: string; entries: { name: string }[] };
-    expect(daten.path).toBe('/data');
-    expect(daten.entries.map((e) => e.name)).toContain('eula.txt');
-  });
 });
 
 describe('Nutzdaten-Prüfung', () => {

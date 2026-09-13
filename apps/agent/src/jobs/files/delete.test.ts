@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type DataVolumePaths } from '../../runtime/types.js';
-import { ServerFileJob, deleteServerFile } from './delete.js';
+import { ServerFileJob, deleteServerFile, listServerDirectory } from './delete.js';
 
 let wurzel: string;
 let volume: DataVolumePaths;
@@ -165,5 +165,87 @@ describe('ensureDataDirectory (Gefundener Punkt 117)', () => {
     } finally {
       await fs.chmod(gesperrt, 0o700);
     }
+  });
+});
+
+/**
+ * Fundpunkt 276: Auflisten lief bis hierher ueber die Container-Runtime, also
+ * ueber `GET /archive` - und das packt den Ordner rekursiv **mit Inhalten** ein.
+ * Daher kamen beide bisherigen Fehler: die Speichergrenze aus Fundpunkt 228 und
+ * die Laufzeit aus Fundpunkt 275. Auf dem Host ist es ein `readdir`.
+ */
+describe('listServerDirectory (Fundpunkt 276)', () => {
+  it('listet die direkte Ebene und rechnet auf Container-Pfade zurueck', async () => {
+    const eintraege = await listServerDirectory(volume, '/data');
+
+    expect(eintraege.map((eintrag) => eintrag.name)).toEqual(['leer', 'server.properties', 'welt']);
+    expect(eintraege.map((eintrag) => eintrag.path)).toEqual([
+      '/data/leer',
+      '/data/server.properties',
+      '/data/welt',
+    ]);
+  });
+
+  it('steigt nicht in Unterverzeichnisse ab', async () => {
+    // Der Unterschied zum Archiv-Weg: Dort kam der ganze Baum, und die Ebene
+    // wurde hinterher herausgefiltert.
+    const eintraege = await listServerDirectory(volume, '/data');
+
+    expect(eintraege.map((eintrag) => eintrag.name)).not.toContain('level.dat');
+  });
+
+  it('listet auch ein Unterverzeichnis', async () => {
+    const eintraege = await listServerDirectory(volume, '/data/welt');
+
+    expect(eintraege.map((eintrag) => eintrag.name)).toEqual(['level.dat']);
+    expect(eintraege[0]?.path).toBe('/data/welt/level.dat');
+  });
+
+  it('nennt Art, Groesse, Rechte und Zeitstempel', async () => {
+    const eintraege = await listServerDirectory(volume, '/data');
+    const datei = eintraege.find((eintrag) => eintrag.name === 'server.properties');
+    const ordner = eintraege.find((eintrag) => eintrag.name === 'welt');
+
+    expect(datei).toMatchObject({ type: 'file', sizeBytes: 'motd=x'.length });
+    expect(ordner?.type).toBe('directory');
+    expect(datei?.mode).toMatch(/^[0-7]{3,4}$/u);
+    expect(Number.isNaN(Date.parse(datei?.modifiedAt ?? ''))).toBe(false);
+  });
+
+  it('meldet ein fehlendes Verzeichnis als FILE_NOT_FOUND', async () => {
+    await expect(listServerDirectory(volume, '/data/gibtsnicht')).rejects.toMatchObject({
+      code: 'FILE_NOT_FOUND',
+    });
+  });
+
+  it('meldet eine Datei als ungueltigen Pfad', async () => {
+    await expect(listServerDirectory(volume, '/data/server.properties')).rejects.toMatchObject({
+      code: 'INVALID_PATH',
+    });
+  });
+
+  it('laesst niemanden aus dem Datenordner heraus', async () => {
+    await expect(
+      listServerDirectory(volume, '/data/../../etc', { allowedRoot: wurzel }),
+    ).rejects.toBeDefined();
+  });
+
+  it('bleibt bezahlbar, wenn die Dateien gross sind', async () => {
+    /*
+     * Der eigentliche Punkt. Ueber den Archiv-Endpunkt haette die Engine diese
+     * Datei vollstaendig eingepackt und uebertragen, nur damit ihr Name in der
+     * Liste steht. Hier wird sie nicht einmal geoeffnet.
+     */
+    const gross = path.join(wurzel, 'welt.dat');
+    await fs.writeFile(gross, Buffer.alloc(8 * 1024 * 1024, 0x5a));
+
+    const vorher = Date.now();
+    const eintraege = await listServerDirectory(volume, '/data');
+    const gedauert = Date.now() - vorher;
+
+    expect(eintraege.find((eintrag) => eintrag.name === 'welt.dat')?.sizeBytes).toBe(
+      8 * 1024 * 1024,
+    );
+    expect(gedauert).toBeLessThan(1000);
   });
 });
