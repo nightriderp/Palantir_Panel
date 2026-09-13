@@ -32,6 +32,7 @@ function waitlistUser(overrides: Partial<WaitlistUserRecord> = {}): WaitlistUser
   return {
     id: USER_ID,
     displayName: 'Neuling',
+    username: 'neuling',
     isOwner: false,
     banned: false,
     createdAt: new Date('2026-08-20T12:00:00.000Z'),

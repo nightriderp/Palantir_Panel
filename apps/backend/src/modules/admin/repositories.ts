@@ -695,6 +695,7 @@ export function createDrizzleRegistrationRequestRepository(
     return userRows.map((row) => ({
       id: row.id,
       displayName: row.displayName,
+      username: row.username,
       isOwner: row.isOwner,
       banned: row.banned,
       createdAt: row.createdAt,
