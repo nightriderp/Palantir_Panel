@@ -58,6 +58,36 @@ sperrpfad() {
 }
 LOCK_FILE="${PALANTIR_LOCK_FILE:-$(sperrpfad)}"
 
+# Ablage der Sicherungen, die dieses Skript unmittelbar vor dem Ausrollen zieht
+# (Abschnitt 3b). Bewusst neben den uebrigen Ablageorten unter data/, aber NICHT
+# mit ihnen verwechseln: data/panel-backups schreibt das Backend aus dem
+# Container heraus als UID 1000, hier schreibt der Deploy-Benutzer auf dem Host.
+# Ein `chown 1000` waere hier also falsch.
+DUMP_DIR="${REPO_DIR}/data/pre-deploy"
+DUMP_KEEP_STANDARD=10
+
+# Liest einen Wert aus der .env (letzte Zuweisung gewinnt, alles rechts vom
+# ersten `=`). Bewusst kein `source`: die Datei traegt Geheimnisse, und sie soll
+# nicht die Umgebung dieses Skripts fuellen.
+env_wert() {
+  local zeile
+  zeile="$(grep -E "^[[:space:]]*${1}=" "${ENV_FILE}" | tail -n 1 || true)"
+  zeile="${zeile#*=}"
+  zeile="${zeile%\"}"
+  zeile="${zeile#\"}"
+  zeile="${zeile%\'}"
+  zeile="${zeile#\'}"
+  printf '%s' "${zeile}" | tr -d '\r'
+}
+
+# `docker compose` im Stack-Verzeichnis, ohne das Arbeitsverzeichnis des Skripts
+# zu verschieben - das passiert erst in Abschnitt 4. Gebraucht wird das von der
+# Sicherung (3b, laeuft davor) und vom Rueckrollen (laeuft danach, aber aus einer
+# Falle heraus, in der das Arbeitsverzeichnis nicht feststeht).
+compose_im_stack() {
+  (cd "${COMPOSE_DIR}" && docker compose --env-file "${ENV_FILE}" "$@")
+}
+
 # -----------------------------------------------------------------------------
 # 1. Eingabe prüfen
 # -----------------------------------------------------------------------------
@@ -120,7 +150,139 @@ if ! git -C "${REPO_DIR}" merge-base --is-ancestor "${ziel}" origin/main; then
   fail "${ziel} liegt nicht auf main - es wird nichts ausgerollt. (Bei einem sehr alten Stand zuerst die Historie vertiefen: git -C ${REPO_DIR} fetch --unshallow origin main)"
 fi
 
+# -----------------------------------------------------------------------------
+# 3b. Sicherung, bevor irgendetwas ausgetauscht wird
+# -----------------------------------------------------------------------------
+# Der Dienst `migrate` wandert beim Hochfahren ueber die Datenbank. Eine
+# Migration, die eine Spalte oder Tabelle entfernt oder umbenennt, ist danach
+# nicht mehr rueckgaengig zu machen: Das Zurueckrollen weiter unten tauscht die
+# ANWENDUNG zurueck, die Datenbank steht dann aber schon weiter. Deshalb zuerst
+# ein Abzug; scheitert er, wird gar nicht erst ausgerollt.
+#
+# Bewusst VOR der Auscheckung und damit mit der Konfiguration, die gerade
+# laeuft: Die Sicherung soll den Stand festhalten, der jetzt in Betrieb ist -
+# nicht einen, der erst noch erprobt wird.
+#
+# ⚠️ Das ersetzt die geplante Panel-Sicherung NICHT (Abschnitt 17 der .env,
+# `data/panel-backups`). Diese hier ist der gezielte Stand eines Deployments und
+# wird nach `PRE_DEPLOY_DUMP_KEEP` Laeufen wieder weggeraeumt.
+sicherung_ziehen() {
+  local datei behalten groesse
+
+  # ⚠️ `${REPO_DIR}/data` gehoert auf der VPS root (Stand 13.09.2026), der
+  # Deploy-Benutzer kann darin nichts anlegen. Der Ordner ist deshalb EINMALIG
+  # als root vorzubereiten - und zwar vor dem ersten Tag nach dieser Aenderung,
+  # sonst bricht das Deployment hier ab. Bewusst mit Abbruch statt mit einer
+  # Warnung: Ein Deployment ohne Rueckweg ist genau das, was hier abgeschafft
+  # wird.
+  if ! mkdir -p "${DUMP_DIR}" 2>/dev/null; then
+    fail "Sicherungsordner ${DUMP_DIR} laesst sich nicht anlegen ($(dirname "${DUMP_DIR}") gehoert root). Einmalig als root auf der VPS: install -d -o $(id -un) -g $(id -gn) ${DUMP_DIR}"
+  fi
+
+  # Die Datenbank muss laufen, sonst gibt es nichts zu sichern. `--wait` haengt
+  # am Healthcheck des Dienstes (`pg_isready`), die Frist verhindert, dass ein
+  # kaputter Datenordner den Lauf endlos offen haelt.
+  log 'Stelle die Datenbank bereit ...'
+  if ! compose_im_stack up -d --wait --wait-timeout 120 postgres; then
+    fail 'Die Datenbank wurde nicht bereit - es wird nichts ausgerollt.'
+  fi
+
+  datei="${DUMP_DIR}/vor-${ziel:0:12}-$(date -u '+%Y%m%dT%H%M%SZ').sql.gz"
+
+  # Das Passwort bleibt im Container: `sh -c` mit EINFACHEN Anfuehrungszeichen
+  # wird vom Host nicht ersetzt, sondern erst von der Shell im Container - die
+  # ihre eigenen POSTGRES_*-Variablen kennt. Ein `-e PGPASSWORD=...` von aussen
+  # stuende dagegen in der Prozessliste des Hosts.
+  #
+  # `set -o pipefail` (Kopf der Datei) sorgt dafuer, dass ein Fehler von pg_dump
+  # nicht von einem erfolgreichen gzip verdeckt wird.
+  log 'Sichere die Datenbank ...'
+  if ! compose_im_stack exec -T postgres \
+    sh -c 'PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}"' \
+    | gzip -c >"${datei}"; then
+    rm -f "${datei}"
+    fail 'Die Sicherung ist fehlgeschlagen - es wird nicht migriert und nicht ausgerollt.'
+  fi
+
+  groesse="$(du -h "${datei}" | cut -f1)"
+  log "    Sicherung: ${datei} (${groesse})"
+  log "    Zurueckspielen: gunzip -c ${datei} | docker compose exec -T postgres psql -U <benutzer> -d <datenbank>"
+
+  # Aufbewahrung: die juengsten N behalten, der Rest geht. Ohne das fuellt sich
+  # die Platte schleichend - dasselbe Muster wie bei den Abbildern in
+  # Abschnitt 6. `find -printf` statt `ls`, damit die Sortierung nicht am
+  # Dateinamen haengt.
+  behalten="$(env_wert PRE_DEPLOY_DUMP_KEEP)"
+  [[ "${behalten}" =~ ^[0-9]+$ ]] || behalten="${DUMP_KEEP_STANDARD}"
+
+  if [[ "${behalten}" -gt 0 ]]; then
+    find "${DUMP_DIR}" -maxdepth 1 -type f -name 'vor-*.sql.gz' -printf '%T@ %p\n' \
+      | sort -rn \
+      | tail -n +"$((behalten + 1))" \
+      | cut -d' ' -f2- \
+      | while read -r alt; do
+        log "    Raeume alte Sicherung weg: $(basename "${alt}")"
+        rm -f "${alt}"
+      done
+  fi
+}
+
+sicherung_ziehen
+
+# -----------------------------------------------------------------------------
+# 3c. Rueckweg, falls der neue Stand nicht hochkommt
+# -----------------------------------------------------------------------------
+# Bis hierher ist nichts ausgetauscht, ein Abbruch ist folgenlos. Ab der
+# Auscheckung gilt das nicht mehr: Auscheckung und laufende Container koennen
+# auseinanderlaufen, und ohne Rueckweg bliebe die VPS mit einem halb
+# ausgetauschten Stand stehen, bis jemand von Hand eingreift.
+#
+# Zwei Schalter statt einer pauschalen Falle, damit nur zurueckgenommen wird,
+# was tatsaechlich angefasst wurde.
+checkout_verschoben=0
+stack_angefasst=0
+
+zurueck_bei_fehler() {
+  local ausgang=$? release_vorher
+
+  [[ "${ausgang}" -ne 0 ]] || exit "${ausgang}"
+
+  if [[ "${checkout_verschoben}" -eq 1 ]]; then
+    log "Setze die Auscheckung auf ${vorher:0:12} zurueck."
+    git -C "${REPO_DIR}" checkout --quiet --detach "${vorher}" \
+      || log 'ACHTUNG: Das Zuruecksetzen der Auscheckung ist misslungen - von Hand pruefen.'
+  fi
+
+  if [[ "${stack_angefasst}" -eq 1 ]]; then
+    if [[ "${vorher}" == "${ziel}" ]]; then
+      # Derselbe Stand lief schon vorher. Ihn erneut zu starten waere kein
+      # Rueckrollen, sondern ein zweiter Versuch mit genau dem, was gerade
+      # gescheitert ist - schlimmer als nichts zu tun.
+      log 'Kein Rueckweg: es lief bereits derselbe Commit. Der Stack bleibt, wie er ist.'
+    else
+      release_vorher="$(git -C "${REPO_DIR}" describe --tags --exact-match "${vorher}" 2>/dev/null || git -C "${REPO_DIR}" rev-parse --short "${vorher}")"
+      log "Rolle den Stack zurueck auf ${vorher:0:12} (${release_vorher}) ..."
+
+      # Die Abbilder zum alten Commit liegen unter seinem SHA in der Registry;
+      # umgehaengt werden muss dafuer nichts. Die Compose-Datei kommt aus der
+      # eben zurueckgesetzten Auscheckung - eine Aenderung an ihr faellt damit
+      # mit zurueck.
+      if PALANTIR_VERSION="${vorher}" PALANTIR_RELEASE="${release_vorher}" \
+        compose_im_stack up -d --remove-orphans; then
+        log 'Der vorherige Stand laeuft wieder.'
+      else
+        log 'ACHTUNG: Das Zurueckrollen ist misslungen. Der Stack ist NICHT betriebsbereit -'
+        log "         von Hand: cd ${COMPOSE_DIR} && PALANTIR_VERSION=${vorher} docker compose --env-file ${ENV_FILE} up -d"
+      fi
+    fi
+  fi
+
+  exit "${ausgang}"
+}
+trap zurueck_bei_fehler EXIT
+
 git -C "${REPO_DIR}" checkout --quiet --detach "${ziel}"
+checkout_verschoben=1
 
 # Versions-Tag des ausgerollten Commits bestimmen - das ist die Version, die im
 # Panel unten links steht. Sie wird nirgends von Hand gepflegt: Ein Deployment
@@ -242,6 +404,7 @@ PALANTIR_VERSION="${ziel}" docker compose --env-file "${ENV_FILE}" pull --quiet
 # Frontend warten per service_completed_successfully darauf. Die Reihenfolge
 # steht in der Compose-Datei, nicht hier.
 log 'Starte den Stack ...'
+stack_angefasst=1
 PALANTIR_VERSION="${ziel}" docker compose --env-file "${ENV_FILE}" up -d --remove-orphans
 
 # -----------------------------------------------------------------------------
@@ -311,7 +474,7 @@ for versuch in $(seq 1 30); do
   if [[ "${versuch}" -eq 30 ]]; then
     log "Noch nicht gesund:${ungesund}"
     docker compose --env-file "${ENV_FILE}" ps --all
-    fail 'Dienste wurden nicht rechtzeitig gesund. Der vorherige Stand läuft NICHT mehr - siehe Rückfall unten.'
+    fail 'Dienste wurden nicht rechtzeitig gesund. Es wird auf den vorherigen Stand zurueckgerollt (Abschnitt 3c).'
   fi
   sleep 5
 done
@@ -361,9 +524,19 @@ fi
 
 log "Fertig: ${vorher} -> ${ziel}"
 
-# Rückfall (von Hand, siehe docs/ci-cd.md §4): Dieses Skript mit dem vorherigen
-# SHA erneut aufrufen - die VPS zieht die Images anhand des SHA, dafuer muss
-# nichts umgehaengt werden. Damit die Gamenode mitkommt, gehoert danach in GHCR
-# das Tag `prod` und der Zweig `prod` ebenfalls auf diesen SHA zurueck.
-# Achtung: Migrationen sind vorwärtsgerichtet - ein Rückfall der Anwendung setzt
-# voraus, dass die Migrationen abwärtskompatibel geschrieben wurden.
+# Rückfall, zwei Fälle:
+#
+# 1. **Der neue Stand kommt gar nicht hoch.** Dann rollt dieses Skript selbst
+#    zurueck (Abschnitt 3c): Auscheckung zurueck, vorheriger Commit wieder als
+#    PALANTIR_VERSION, Stack neu gestartet. Es ist nichts von Hand zu tun; in
+#    GHCR und am Zweig `prod` aendert sich dabei nichts, weil deploy.yml beides
+#    erst nach einem erfolgreichen Lauf umhaengt.
+#
+# 2. **Der Fehler faellt spaeter auf.** Dann dieses Skript mit dem vorherigen
+#    SHA erneut aufrufen (siehe docs/ci-cd.md §4) - die VPS zieht die Abbilder
+#    anhand des SHA. Damit die Gamenode mitkommt, gehoert danach in GHCR das Tag
+#    `prod` und der Zweig `prod` ebenfalls auf diesen SHA zurueck.
+#
+# Achtung in beiden Faellen: Migrationen sind vorwärtsgerichtet. Der Abzug aus
+# Abschnitt 3b ist der Rueckweg fuer das Schema - er macht destruktive
+# Migrationen nicht harmlos, er macht sie nur ueberlebbar.
