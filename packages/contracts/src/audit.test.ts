@@ -45,6 +45,17 @@ describe('Audit-Log-Contract (Pflichtenheft §6)', () => {
     expect(isAuditTargetType('quotaRequest')).toBe(true);
   });
 
+  it('kennt den abgewiesenen Zugriff (Arbeitspaket HM-3, Pflichtenheft §6 und §8)', () => {
+    expect(isAuditAction('access.denied')).toBe(true);
+  });
+
+  it('braucht für den abgewiesenen Zugriff keinen eigenen Objekttyp', () => {
+    // Abgewiesen wird ein Weg, kein Objekt: Der Eintrag trägt `targetType:
+    // null`, Route und Methode stehen in den Metadaten. Ein Objekttyp
+    // `route` waere ein zweiter Katalog, den niemand filtert.
+    expect(isAuditTargetType('route')).toBe(false);
+  });
+
   it('protokolliert Hochladen und Löschen einer Schrift (Lastenheft §3.10)', () => {
     expect(isAuditAction('font.uploaded')).toBe(true);
     expect(isAuditAction('font.deleted')).toBe(true);

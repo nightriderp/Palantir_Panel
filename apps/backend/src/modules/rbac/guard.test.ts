@@ -2,6 +2,8 @@ import { ok } from '@palantir/contracts';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { describe, expect, it } from 'vitest';
 import {
+  type RbacAbweisung,
+  type RbacOptions,
   registerRbac,
   requireAllPermissions,
   requireAnyPermission,
@@ -17,7 +19,7 @@ import { type PermissionActor, buildPermissionActor } from './permissions.js';
  * über den Header `x-test-actor` gesteuert, damit der Guard ohne Auth-Modul
  * prüfbar ist.
  */
-async function buildTestApp(): Promise<FastifyInstance> {
+async function buildTestApp(onDenied?: RbacOptions['onDenied']): Promise<FastifyInstance> {
   const actors: Record<string, PermissionActor> = {
     owner: buildPermissionActor({ isOwner: true, roles: [] }),
     gast: buildPermissionActor({ isOwner: false, roles: [{ grantedPermissions: [] }] }),
@@ -53,6 +55,7 @@ async function buildTestApp(): Promise<FastifyInstance> {
 
       return typeof header === 'string' ? (actors[header] ?? null) : null;
     },
+    ...(onDenied ? { onDenied } : {}),
   });
 
   app.get('/nur-moderation', { preHandler: requirePermission('message.moderate') }, async () =>
@@ -210,5 +213,107 @@ describe('requireApproved (Freischaltung)', () => {
 
   it('verlangt keine Permission: ein Moderator ohne user.manage kommt durch', async () => {
     expect(await ruf('moderator')).toEqual({ status: 200, code: undefined });
+  });
+});
+
+/**
+ * Abgewiesene Zugriffe melden (Arbeitspaket HM-3, Pflichtenheft §6 und §8).
+ *
+ * Der Guard antwortete bisher mit `PERMISSION_DENIED` und schrieb nichts mit.
+ * Ein Konto, das der Reihe nach an fremden Servern, Rollen und
+ * Node-Einstellungen abprallt, war damit nirgends zu sehen.
+ *
+ * Geprüft wird hier die Meldung selbst, nicht das Schreiben ins Log: Wer der
+ * Handelnde ist, weiß erst `server.ts` (`request.authUser`), und dort hängt
+ * auch der `AuditService`.
+ */
+describe('Meldung abgewiesener Zugriffe', () => {
+  const sammeln = (): { meldungen: RbacAbweisung[]; onDenied: (a: RbacAbweisung) => void } => {
+    const meldungen: RbacAbweisung[] = [];
+
+    return { meldungen, onDenied: (abweisung) => meldungen.push(abweisung) };
+  };
+
+  it('meldet die verlangte Permission mit dem Request', async () => {
+    const { meldungen, onDenied } = sammeln();
+    const app = await buildTestApp(onDenied);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/nur-moderation',
+      headers: { 'x-test-actor': 'gast' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(meldungen).toHaveLength(1);
+    expect(meldungen[0]?.verlangt).toEqual(['message.moderate']);
+    expect(meldungen[0]?.request.url).toBe('/nur-moderation');
+  });
+
+  it('nennt bei requireAnyPermission alle in Frage kommenden Rechte', async () => {
+    const { meldungen, onDenied } = sammeln();
+    const app = await buildTestApp(onDenied);
+
+    await app.inject({
+      method: 'GET',
+      url: '/verwaltung',
+      headers: { 'x-test-actor': 'moderator' },
+    });
+
+    expect(meldungen[0]?.verlangt).toEqual(['user.manage', 'role.manage']);
+  });
+
+  it('meldet nicht, wenn niemand angemeldet ist (401)', async () => {
+    // Ohne Sitzung gibt es kein Konto, auf das ein Eintrag zeigen könnte - und
+    // jeder Unangemeldete könnte sonst das Log füllen.
+    const { meldungen, onDenied } = sammeln();
+    const app = await buildTestApp(onDenied);
+
+    const response = await app.inject({ method: 'GET', url: '/nur-moderation' });
+
+    expect(response.statusCode).toBe(401);
+    expect(meldungen).toHaveLength(0);
+  });
+
+  it('meldet die fehlende Freischaltung nicht', async () => {
+    // Ein Konto in der Warteliste prallt an jeder Route ab; daraus entstünden
+    // im Minutentakt Einträge über einen bekannten, harmlosen Zustand.
+    const { meldungen, onDenied } = sammeln();
+    const app = await buildTestApp(onDenied);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/nur-freigeschaltet',
+      headers: { 'x-test-actor': 'wartend' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(meldungen).toHaveLength(0);
+  });
+
+  it('meldet nichts, wenn der Zugriff durchgeht', async () => {
+    const { meldungen, onDenied } = sammeln();
+    const app = await buildTestApp(onDenied);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/nur-moderation',
+      headers: { 'x-test-actor': 'moderator' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(meldungen).toHaveLength(0);
+  });
+
+  it('läuft ohne Senke wie bisher', async () => {
+    const app = await buildTestApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/nur-moderation',
+      headers: { 'x-test-actor': 'gast' },
+    });
+
+    expect(response.statusCode).toBe(403);
   });
 });

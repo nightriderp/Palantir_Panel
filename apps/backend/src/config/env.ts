@@ -58,6 +58,32 @@ const geheimnis = (name: string): z.ZodType<string | undefined> =>
   z.string().min(MIN_SECRET_LENGTH, geheimnisFehler(name)).optional();
 
 /**
+ * Platzhalter aus `.env.example` (Arbeitspaket HM-2).
+ *
+ * Die Vorlage liefert die Auth-Geheimnisse leer aus – die fängt die
+ * Mindestlänge oben bzw. {@link requireAuthSecrets} ab. Drei Werte stehen dort
+ * aber **ausgefüllt** mit `CHANGE_ME`, und einer davon kommt hier an:
+ * `DATABASE_URL=postgresql://palantir:CHANGE_ME@postgres:5432/palantir`. Als
+ * Zeichenkette ist das gültig, das Backend startet also – und scheitert erst
+ * beim ersten Zugriff an einer Passwortprüfung, deren Meldung den Platzhalter
+ * nicht erwähnt.
+ *
+ * `scripts/setup.sh` füllt die Werte bei der Ersteinrichtung und warnt sonst.
+ * Er läuft aber genau einmal; eine von Hand gepflegte oder aus der Vorlage
+ * kopierte `.env` sieht er nie wieder.
+ *
+ * Geprüft wird gegen **jeden** gelesenen Wert, nicht gegen eine Liste: Ein
+ * künftiger Platzhalter in einer neuen Variablen ist damit von selbst erfasst.
+ *
+ * ⚠️ `POSTGRES_PASSWORD` und `FRP_TOKEN` stehen ebenfalls als `CHANGE_ME` in
+ * der Vorlage, kommen hier aber nicht an: Sie gehören dem Datenbank-Container
+ * bzw. frps, und die Umgebungsliste je Dienst (Audit W2-23) reicht sie dem
+ * Backend bewusst nicht durch. Sie gehören auf die Deployment-Seite
+ * (WORK_STATUS.md, Gefundener Punkt 283).
+ */
+const PLATZHALTER = 'CHANGE_ME';
+
+/**
  * Vorgabe der Proxy-Vertrauensliste (Audit W2-6, backend-core-10).
  *
  * Enthalten sind die Adressbereiche, aus denen im ausgelieferten Aufbau ein
@@ -725,6 +751,30 @@ const envSchemaMitPrüfungen = envSchema
           `(Vorgabe außerhalb der Produktion: ${PRODUKTIONS_VORGABEN[name].vorgabe}). ` +
           `${PRODUKTIONS_VORGABEN[name].zweck} ` +
           'Wert in der zentralen .env im Repo-Root eintragen (siehe .env.example).',
+      });
+    }
+
+    /*
+     * Platzhalter aus der Vorlage (Arbeitspaket HM-2, siehe {@link PLATZHALTER}).
+     *
+     * Bewusst nur in der Produktion: In der Entwicklung soll niemand aufgehalten
+     * werden, der seine lokale Datenbank tatsächlich so nennt – derselbe Maßstab
+     * wie bei COOKIE_SECURE und den Vorgaben oben.
+     */
+    for (const [name, wert] of Object.entries(werte)) {
+      if (typeof wert !== 'string' || !wert.includes(PLATZHALTER)) {
+        continue;
+      }
+
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [name],
+        message:
+          `${name} enthält noch den Platzhalter ${PLATZHALTER} aus .env.example. ` +
+          'Mit NODE_ENV=production ist das kein gültiger Wert: Entweder er trägt ein ' +
+          'Geheimnis, das damit öffentlich bekannt wäre, oder eine Verbindung, die so ' +
+          'nicht zustande kommt. Wert in der zentralen .env im Repo-Root eintragen ' +
+          '(scripts/setup.sh erzeugt die Geheimnisse).',
       });
     }
   })
