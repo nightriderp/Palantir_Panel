@@ -122,6 +122,20 @@ export interface AccountDto {
    * (Lastenheft §3.1). Ergänzt in B1, optional für bestehende Aufrufer.
    */
   mustChangePassword?: boolean;
+  /**
+   * Wann das Profilbild zuletzt gesetzt wurde (ISO-8601), oder `null`, wenn das
+   * Konto keines hat.
+   *
+   * Das Bild selbst kommt **nicht** im DTO: Es liegt hinter einer eigenen
+   * Route (`GET /api/users/:userId/avatar`), damit der Browser es wie jedes
+   * Bild laden und zwischenspeichern kann. Der Zeitstempel ist der Schlüssel
+   * dazu – die Oberfläche hängt ihn an die Adresse und bekommt nach einem
+   * neuen Bild sofort das neue statt des gespeicherten alten.
+   *
+   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3): Fehlt das
+   * Feld, zeigt die Oberfläche wie bisher die Initialen.
+   */
+  avatarUpdatedAt?: string | null;
   /** ISO-8601-Zeitstempel. */
   createdAt: string;
   /** Instanzweite Rechte des Kontos (Pflichtenheft §5.2 und §8). */
