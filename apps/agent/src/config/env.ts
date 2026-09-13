@@ -10,6 +10,32 @@ import { z } from 'zod';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 loadDotenv({ path: path.join(repoRoot, '.env') });
 
+/**
+ * Mindestlänge des Agent-Tokens (Arbeitspaket HM-2).
+ *
+ * Dieselbe Untergrenze wie im Backend (`MIN_SECRET_LENGTH` in
+ * `apps/backend/src/config/env.ts`). Hier stand bis dahin `min(1)` – für
+ * dasselbe Geheimnis, nur von der anderen Seite gelesen. Ein schwaches oder
+ * versehentlich stehengebliebenes Token startete den Agent also anstandslos,
+ * und der Fehler zeigte sich erst als abgelehnter Handshake, dessen Meldung
+ * über die Ursache nichts sagt.
+ *
+ * Beide vorgesehenen Token liegen deutlich darüber: `scripts/setup.sh` erzeugt
+ * 64 Zeichen, ein Token je Node (`POST /admin/nodes/:nodeId/agent-token`)
+ * besteht aus Präfix und 43 Base64URL-Zeichen.
+ */
+const MIN_SECRET_LENGTH = 32;
+
+/**
+ * Platzhalter aus `.env.example` (Arbeitspaket HM-2).
+ *
+ * Gegenstück zur gleichnamigen Prüfung im Backend. Die Node bekommt eine eigene
+ * Kopie der zentralen `.env` (SETUP.md §3.4), auf der `scripts/setup.sh` nicht
+ * zwingend gelaufen ist - der Platzhalter kann hier also ankommen, auch wenn
+ * die VPS längst saubere Werte trägt.
+ */
+const PLATZHALTER = 'CHANGE_ME';
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
@@ -22,7 +48,15 @@ const envSchema = z.object({
    * vergeben) oder – bei genau einem Homeserver – das gemeinsame `AGENT_TOKEN`
    * aus der zentralen `.env` des Backends.
    */
-  AGENT_TOKEN: z.string().min(1).optional(),
+  AGENT_TOKEN: z
+    .string()
+    .min(
+      MIN_SECRET_LENGTH,
+      `AGENT_TOKEN muss mindestens ${String(MIN_SECRET_LENGTH)} Zeichen lang sein ` +
+        '(scripts/setup.sh erzeugt 64; ein Token je Node ist noch länger). Dieselbe ' +
+        'Untergrenze prüft das Backend für denselben Wert.',
+    )
+    .optional(),
   /**
    * Node, für die sich dieser Agent hält (`HostNode.id`).
    *
@@ -143,6 +177,36 @@ const envSchema = z.object({
 });
 
 /**
+ * Schema samt der Prüfungen, die mehr als eine Variable betreffen.
+ *
+ * Getrennt gehalten, weil `envSchema.shape` weiter unten die Namensliste
+ * liefert – ein `superRefine` macht daraus ein `ZodEffects` ohne `.shape`.
+ * Gleiche Aufteilung wie im Backend (`envSchemaMitPrüfungen`).
+ */
+const envSchemaMitPrüfungen = envSchema.superRefine((werte, ctx) => {
+  if (werte.NODE_ENV !== 'production') {
+    return;
+  }
+
+  // Platzhalter aus der Vorlage (siehe {@link PLATZHALTER}). Wie im Backend nur
+  // in der Produktion und gegen jeden gelesenen Wert statt gegen eine Liste.
+  for (const [name, wert] of Object.entries(werte)) {
+    if (typeof wert !== 'string' || !wert.includes(PLATZHALTER)) {
+      continue;
+    }
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [name],
+      message:
+        `${name} enthält noch den Platzhalter ${PLATZHALTER} aus .env.example. ` +
+        'Mit NODE_ENV=production ist das kein gültiger Wert. Die .env dieser Node ' +
+        'eintragen (siehe SETUP.md §3.4); Geheimnisse erzeugt scripts/setup.sh.',
+    });
+  }
+});
+
+/**
  * Namen aller Umgebungsvariablen, die der Agent liest.
  *
  * Aus dem Schema selbst abgeleitet, damit die `environment:`-Liste des
@@ -188,8 +252,8 @@ export function leereWerteAlsUngesetzt(
  */
 export function umgebungLesen(
   werte: Record<string, string | undefined>,
-): z.SafeParseReturnType<unknown, z.infer<typeof envSchema>> {
-  return envSchema.safeParse(leereWerteAlsUngesetzt(werte));
+): z.SafeParseReturnType<unknown, z.infer<typeof envSchemaMitPrüfungen>> {
+  return envSchemaMitPrüfungen.safeParse(leereWerteAlsUngesetzt(werte));
 }
 
 const parsed = umgebungLesen(process.env);
