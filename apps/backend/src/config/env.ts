@@ -556,6 +556,23 @@ const envSchema = z.object({
    */
   DISCORD_WEBHOOK_URL: optionalEnvString(),
   /**
+   * VAPID-Schluesselpaar fuer Web-Push (Benachrichtigungen auf Geraete, auch
+   * wenn das Panel geschlossen ist).
+   *
+   * Alle drei gehoeren zusammen: Ohne vollstaendiges Paar gibt es keinen
+   * Push-Versand, und die Oberflaeche bietet ihn gar nicht erst an. Der
+   * oeffentliche Schluessel ist kein Geheimnis (er steht in jedem Abonnement),
+   * der private sehr wohl - er gehoert wie jedes andere Geheimnis in die
+   * zentrale `.env` und nie in die Datenbank (CLAUDE.md §2).
+   *
+   * `VAPID_SUBJECT` ist die Kontaktadresse des Betreibers (`mailto:` oder
+   * `https:`); die Zustelldienste der Browserhersteller verlangen sie, um bei
+   * Auffaelligkeiten jemanden erreichen zu koennen.
+   */
+  VAPID_PUBLIC_KEY: optionalEnvString(),
+  VAPID_PRIVATE_KEY: optionalEnvString(),
+  VAPID_SUBJECT: optionalEnvString(),
+  /**
    * Frist eines einzelnen Versandversuchs an einen externen Kanal.
    *
    * Der Versand läuft im Hintergrund und kann den auslösenden Vorgang nicht

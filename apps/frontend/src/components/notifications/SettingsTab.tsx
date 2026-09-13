@@ -3,6 +3,7 @@
 import { FormMessage, Icon, Panel, ToggleRow } from '@/components/shared';
 import { NOTIFICATION_GROUPS } from './notificationView';
 import { DesktopToggle } from './DesktopToggle';
+import { PushToggle } from './PushToggle';
 import { type NotificationPreferences, withGroup } from './preferences';
 import { mutableGroups, useMutedEvents } from './useMutedEvents';
 
@@ -82,6 +83,13 @@ export function SettingsTab({ preferences, onChange }: SettingsTabProps) {
         <h2 className="text-base font-semibold text-ink">Browser-Mitteilungen</h2>
         {/* Derselbe Schalter steht über dem Posteingang – gemeinsamer Zustand. */}
         <DesktopToggle preferences={preferences} onChange={onChange} />
+        {/*
+          Darunter der zweite Weg: Push erreicht das Gerät auch bei
+          geschlossenem Panel. Er gehört bewusst nicht zu den Einstellungen des
+          Kontos – jeder Browser meldet sich einzeln an – und erscheint gar
+          nicht, wenn die Instanz keinen Schlüssel hinterlegt hat.
+        */}
+        <PushToggle />
       </section>
 
       <section className="flex flex-col gap-2.5">

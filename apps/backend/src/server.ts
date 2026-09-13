@@ -578,6 +578,22 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       defaultWebhookUrl: env.DISCORD_WEBHOOK_URL ?? null,
       deliveryTimeoutMs: env.NOTIFICATION_DELIVERY_TIMEOUT_MS,
       /*
+       * Web-Push nur mit vollstaendigem Schluesselpaar. Ein halbes Paar waere
+       * schlimmer als keines: Die Oberflaeche zeigte den Schalter, das Anmelden
+       * gelaenge, und die Meldungen kaemen nie an.
+       */
+      ...(env.VAPID_PUBLIC_KEY !== undefined &&
+      env.VAPID_PRIVATE_KEY !== undefined &&
+      env.VAPID_SUBJECT !== undefined
+        ? {
+            vapid: {
+              publicKey: env.VAPID_PUBLIC_KEY,
+              privateKey: env.VAPID_PRIVATE_KEY,
+              subject: env.VAPID_SUBJECT,
+            },
+          }
+        : {}),
+      /*
        * Klartext-Namen der Zielrollen für die Regelübersicht (F10, Gefundener
        * Punkt 84). B6 kennt B2 nicht direkt, sondern bekommt nur die schmale
        * Funktion „Id → Name" gereicht (Port `RoleNameLookup`); die Daten kommen
