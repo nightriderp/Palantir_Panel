@@ -134,11 +134,22 @@ proton_bildschirm_starten() {
   # Spiel vorher, scheiterte es an einem Bildschirm, der gleich danach da
   # gewesen wäre – ein Fehler, der sich je nach Auslastung der Node anders
   # verhält und deshalb schwer zu deuten ist.
+  #
+  # Die Frist steht in Sekunden und ist einstellbar (Fundpunkt 290). Im Betrieb
+  # bleibt es bei zehn; der Test des Fehlerwegs setzt sie herunter, denn er
+  # wartet absichtlich auf ein Xvfb, das nie einen Anschluss öffnet. Mit der
+  # festen Frist dauerte genau dieser eine Test zwanzig Sekunden und lief unter
+  # der Last der vollen Testkette in die Zeitgrenze des Testläufers – eine
+  # Prüfung, die von der Auslastung der Maschine abhängt, prüft nichts
+  # Verlässliches.
+  proton_frist="${PALANTIR_PROTON_BILDSCHIRM_FRIST_S:-10}"
   proton_wartezeit=0
 
   while [ ! -e "$proton_sockel" ]; do
-    if [ "$proton_wartezeit" -ge 100 ]; then
-      palantir_log "Xvfb hat nach 10 Sekunden keinen Anschluss geöffnet (${proton_sockel})."
+    # Zehn Schritte je Sekunde: Ein Bildschirm, der schnell da ist, hält den
+    # Start nicht länger auf als nötig.
+    if [ "$proton_wartezeit" -ge "$((proton_frist * 10))" ]; then
+      palantir_log "Xvfb hat nach ${proton_frist} Sekunden keinen Anschluss geöffnet (${proton_sockel})."
 
       return 1
     fi

@@ -160,7 +160,7 @@ describe('proton.sh – der Bildschirm, den es nicht gibt', nurMitShell, () => {
    * der echte anlegen würde, und dann liegen bleibt. Geprüft wird das
    * Drumherum – Aufruf, Warten, `DISPLAY` –, nicht der X-Server.
    */
-  function mitFalschemXvfb(ordner, xvfbZeilen, rumpf) {
+  function mitFalschemXvfb(ordner, xvfbZeilen, rumpf, zusatz = {}) {
     const bin = join(ordner.wurzel, 'bin');
     const sockel = join(ordner.wurzel, 'x11');
     mkdirSync(bin, { recursive: true });
@@ -189,6 +189,7 @@ describe('proton.sh – der Bildschirm, den es nicht gibt', nurMitShell, () => {
           PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
           PALANTIR_PROTON_DIR: posix(ordner.proton),
           PALANTIR_X11_SOCKET_DIR: posix(sockel),
+          ...zusatz,
         },
       },
     );
@@ -222,10 +223,33 @@ describe('proton.sh – der Bildschirm, den es nicht gibt', nurMitShell, () => {
       arbeitsordner(),
       ['sleep 1'],
       'proton_bildschirm_starten || printf "aufgegeben %s\\n" "$?"',
+      // Eine Sekunde statt zehn (Fundpunkt 290). Geprueft wird, DASS aufgegeben
+      // wird und was dabei im Log steht - nicht, wie lange gewartet wurde. Mit
+      // der vollen Frist dauerte dieser eine Test zwanzig Sekunden und lief
+      // unter der Last der vollen Kette in die Zeitgrenze des Testlaeufers.
+      { PALANTIR_PROTON_BILDSCHIRM_FRIST_S: '1' },
     );
 
     assert.match(lauf.stdout, /aufgegeben 1\n/u);
     assert.match(lauf.stdout, /keinen Anschluss/u);
+    // Die Meldung nennt die Frist, die tatsaechlich galt - nicht eine fest
+    // verdrahtete Zahl, die daneben laege, sobald jemand sie verstellt.
+    assert.match(lauf.stdout, /nach 1 Sekunden/u);
+  });
+
+  it('wartet ohne Angabe zehn Sekunden', () => {
+    // Die Vorgabe gehoert festgehalten: Sie ist der Wert, der im Betrieb gilt,
+    // und der Test darueber setzt sie herunter - ohne diese Zeile fiele eine
+    // versehentlich geaenderte Vorgabe niemandem auf.
+    const lauf = mitFalschemXvfb(
+      arbeitsordner(),
+      // Ein Xvfb, das sofort einen Anschluss oeffnet: Die Frist wird nie
+      // erreicht, der Lauf bleibt kurz.
+      ['touch "${PALANTIR_X11_SOCKET_DIR}/X1"', 'sleep 1'],
+      'proton_bildschirm_starten; printf "frist %s\\n" "${proton_frist}"',
+    );
+
+    assert.match(lauf.stdout, /frist 10\n/u);
   });
 
   it('sagt es, wenn Xvfb im Image fehlt', () => {
