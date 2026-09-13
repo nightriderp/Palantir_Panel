@@ -134,6 +134,7 @@ export interface ProcessGuardTarget {
     listener: (reason: unknown, promise: Promise<unknown>) => void,
   ): unknown;
   on(event: 'uncaughtException', listener: (error: Error, origin: string) => void): unknown;
+  on(event: 'warning', listener: (warning: Error) => void): unknown;
 }
 
 export interface ProcessGuardOptions {
@@ -153,6 +154,12 @@ export interface ProcessGuardOptions {
  * - `uncaughtException`: loggen, geordnet beenden. Nach einer synchronen
  *   Ausnahme außerhalb jedes Handlers ist der Zustand des Prozesses nicht mehr
  *   verlässlich; weiterzulaufen wäre Raten.
+ * - `warning`: loggen, weiterlaufen (Fundpunkt 291). Node schreibt Warnungen
+ *   sonst roh auf stderr, an pino vorbei - im JSON-Strom des Containers stehen
+ *   sie dann als Fremdkörper ohne Zeitstempel, und **ohne den Stack**, der sie
+ *   erklärt. Den trägt das Warnungs-Objekt selbst; `--trace-deprecation` würde
+ *   ihn nur zusätzlich auf stderr drucken. Ohne diesen Wächter weiss man, dass
+ *   eine veraltete Schnittstelle benutzt wird, aber nicht von wem.
  */
 export function installProcessGuards(options: ProcessGuardOptions): void {
   const target: ProcessGuardTarget = options.target ?? process;
@@ -164,6 +171,13 @@ export function installProcessGuards(options: ProcessGuardOptions): void {
         stack: reason instanceof Error ? reason.stack : undefined,
       },
       'Unbehandelte Promise-Ablehnung – der Prozess läuft weiter',
+    );
+  });
+
+  target.on('warning', (warning: Error) => {
+    options.log.warn(
+      { warnung: warning.name, error: warning.message, stack: warning.stack },
+      'Warnung aus der Laufzeit - der Prozess laeuft weiter',
     );
   });
 
