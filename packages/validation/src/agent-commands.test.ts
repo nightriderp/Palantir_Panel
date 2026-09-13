@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { getStorageBreakdownPayloadSchema } from './storage.js';
 import {
   AGENT_COMMAND_PAYLOAD_SCHEMAS,
+  createBackupCommandPayloadSchema,
   createCommandPayloadSchema,
   execConsoleCommandPayloadSchema,
   fileDeleteCommandPayloadSchema,
@@ -219,6 +220,62 @@ describe('STOP mit Stopp-Befehl', () => {
     });
 
     expect(geprueft).toEqual({ containerId: 'abc123' });
+  });
+});
+
+describe('CREATE_BACKUP mit Schreibstopp (HM-10)', () => {
+  const GRUNDLAST = {
+    backupId: '2f1c8a6e-3b4d-4f2a-9c5e-7d8b1a0f6e23',
+    serverId: 'a7d3f0b1-5c2e-4a89-b6d4-1e9f2c3a5b70',
+    sourcePath: '/srv/palantir/servers/abc',
+  };
+
+  it('nimmt Befehle und Gegenbefehle an', () => {
+    expect(
+      createBackupCommandPayloadSchema.safeParse({
+        ...GRUNDLAST,
+        containerId: 'abc123',
+        quiesce: { commands: ['save-off', 'save-all'], resumeCommands: ['save-on'] },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('laesst den Schreibstopp weg - dann wird gepackt wie bisher', () => {
+    expect(createBackupCommandPayloadSchema.safeParse(GRUNDLAST).success).toBe(true);
+  });
+
+  it('lehnt Befehle ohne Gegenbefehle ab', () => {
+    // Der Kern der Sache: Ein Server, der still gestellt wird und nie wieder
+    // schreibt, verliert beim naechsten Absturz alles seit der Sicherung. Das
+    // soll kein Aufrufer aus Versehen schicken koennen.
+    expect(
+      createBackupCommandPayloadSchema.safeParse({
+        ...GRUNDLAST,
+        quiesce: { commands: ['save-off'] },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('lehnt leere Listen ab', () => {
+    for (const quiesce of [
+      { commands: [], resumeCommands: ['save-on'] },
+      { commands: ['save-off'], resumeCommands: [] },
+    ]) {
+      expect(createBackupCommandPayloadSchema.safeParse({ ...GRUNDLAST, quiesce }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it('lehnt einen leeren Befehl in der Liste ab', () => {
+    // Dieselbe Ueberlegung wie bei stopCommand: Er haette keine Bedeutung,
+    // wuerde aber je nach Weg unterschiedlich behandelt.
+    expect(
+      createBackupCommandPayloadSchema.safeParse({
+        ...GRUNDLAST,
+        quiesce: { commands: ['save-off', ''], resumeCommands: ['save-on'] },
+      }).success,
+    ).toBe(false);
   });
 });
 

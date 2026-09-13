@@ -385,6 +385,47 @@ export interface CreateBackupCommandPayload {
   readonly stopContainer?: boolean;
   /** Kulanzzeit für das Anhalten; ohne Angabe gilt der Wert aus `CREATE`. */
   readonly stopTimeoutSeconds?: number;
+  /**
+   * Befehle, die den Server vor dem Packen still stellen, und die Gegenbefehle
+   * danach (Arbeitspaket HM-10).
+   *
+   * Der dritte Weg neben „im laufenden Betrieb packen" und
+   * {@link CreateBackupCommandPayload.stopContainer}: dem Spiel sagen, dass es
+   * kurz nicht schreiben soll. Die Spieler bleiben dabei auf dem Server.
+   *
+   * Die Werte kommen aus `GameTypeDefinition.quiesceCommands` und
+   * `resumeCommands` und stehen hier, weil der Agent den Spieltyp-Katalog nicht
+   * kennt – er bekommt seine Befehle vom Backend, wie bei `stopCommand` auch.
+   *
+   * **Ohne `quiesce` ändert sich nichts:** gepackt wird wie bisher. `resume`
+   * ohne `quiesce` wird nicht geschickt.
+   */
+  readonly quiesce?: QuiesceSpec;
+}
+
+/**
+ * Ruhigstellen eines Servers für die Dauer einer Sicherung (HM-10).
+ *
+ * Beide Listen gehören zusammen und werden nur gemeinsam gesetzt. Getrennt wäre
+ * `quiesce` ohne `resume` ein Server, der nie wieder schreibt.
+ */
+export interface QuiesceSpec {
+  /** Vor dem Packen, in dieser Reihenfolge. Mindestens ein Eintrag. */
+  readonly commands: readonly string[];
+  /**
+   * Nach dem Packen, in dieser Reihenfolge – **auch wenn das Packen scheitert.**
+   * Mindestens ein Eintrag.
+   */
+  readonly resumeCommands: readonly string[];
+  /**
+   * Zugang zur Konsole, wenn sie über RCON läuft.
+   *
+   * Ohne Angabe geht der Befehl in die Standardeingabe des Containers – der
+   * Weg, den Minecraft und die meisten anderen Spiele nehmen. Dasselbe Feld an
+   * derselben Stelle wie bei {@link StopCommandPayload.rcon}: Der Agent spricht
+   * RCON ohnehin, ein Spiel-Image kann es nicht.
+   */
+  readonly rcon?: AgentRconAccess;
 }
 
 /**

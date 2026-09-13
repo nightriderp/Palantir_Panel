@@ -392,6 +392,44 @@ export interface GameTypeDefinition {
    */
   readonly stopCommand?: string;
   /**
+   * Befehle, die den Server vor einer Sicherung **still stellen** – geschickt
+   * über denselben Weg wie {@link GameTypeDefinition.stopCommand}.
+   *
+   * Heute hat eine Sicherung zwei Zustände und keinen dritten: entweder sie
+   * packt den Datenordner im laufenden Betrieb, dann ist der Spielstand in sich
+   * widersprüchlich (bei Minecraft nachweislich falsche Spielerposition und halb
+   * geschriebene Chunks), oder der Container wird angehalten
+   * ({@link CreateBackupCommandPayload.stopContainer}) – und das merkt jeder
+   * Spieler.
+   *
+   * Der dritte Weg ist der, den Serverbetreiber von Hand nehmen: dem Spiel
+   * sagen, dass es kurz nicht schreiben soll. Bei Minecraft `save-off` und
+   * `save-all`, danach {@link GameTypeDefinition.resumeCommands} mit `save-on`.
+   * Die Spieler bleiben dabei drauf.
+   *
+   * **Ohne Angabe ändert sich nichts.** Ein Spieltyp ohne diese Befehle wird
+   * gesichert wie bisher, und das ist die Vorgabe: Ein Befehl, den das Spiel
+   * nicht kennt, wäre schlimmer als keiner.
+   *
+   * Je Eintrag eine Zeile, wie ein Spieler sie tippen würde. Die Reihenfolge
+   * gilt – bei Minecraft muss `save-all` nach `save-off` kommen, sonst ist der
+   * Stand auf der Platte nicht der, den das Archiv aufnimmt.
+   */
+  readonly quiesceCommands?: readonly string[];
+  /**
+   * Befehle, die den Schreibstopp aus {@link GameTypeDefinition.quiesceCommands}
+   * wieder aufheben.
+   *
+   * **Sie müssen auch dann laufen, wenn die Sicherung scheitert.** Ein Server,
+   * der dauerhaft im Schreibstopp steht, verliert beim nächsten Absturz alles
+   * seit der Sicherung – das ist schlimmer als eine misslungene Sicherung. Wie
+   * der Agent das absichert, steht bei ihm; der Vertrag hält nur fest, dass es
+   * eine Pflicht ist und keine Kür.
+   *
+   * Ohne {@link GameTypeDefinition.quiesceCommands} haben sie keine Wirkung.
+   */
+  readonly resumeCommands?: readonly string[];
+  /**
    * **Die Serverdateien gibt es nur gegen eine Steam-Anmeldung.**
    *
    * Die meisten Spiele aus Anhang A geben ihren dedizierten Server anonym

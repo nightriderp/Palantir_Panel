@@ -282,6 +282,21 @@ export const archiveExtraFileSchema = z.object({
     .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
 });
 
+/**
+ * Ruhigstellen für die Dauer einer Sicherung (HM-10).
+ *
+ * Beide Listen sind Pflicht, sobald das Objekt da ist. `commands` ohne
+ * `resumeCommands` wäre ein Server, der nie wieder schreibt – das soll kein
+ * Aufrufer aus Versehen schicken können, deshalb steht die Kopplung im Schema
+ * und nicht nur im Kommentar am Vertrag.
+ */
+export const quiesceSpecSchema = z.object({
+  commands: z.array(z.string().min(1)).min(1).max(8),
+  resumeCommands: z.array(z.string().min(1)).min(1).max(8),
+  /** Nur wenn die Konsole ueber RCON laeuft; sonst geht es in die Standardeingabe. */
+  rcon: rconAccessSchema.optional(),
+});
+
 export const createBackupCommandPayloadSchema = z.object({
   backupId: idSchema,
   serverId: idSchema,
@@ -291,6 +306,8 @@ export const createBackupCommandPayloadSchema = z.object({
   containerId: containerIdSchema.optional(),
   stopContainer: z.boolean().optional(),
   stopTimeoutSeconds: z.number().int().nonnegative().optional(),
+  /** Schreibstopp statt Anhalten (HM-10); ohne Angabe wird gepackt wie bisher. */
+  quiesce: quiesceSpecSchema.optional(),
 });
 
 export const restoreBackupCommandPayloadSchema = z.object({
