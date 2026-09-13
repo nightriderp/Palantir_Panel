@@ -16,9 +16,10 @@
  * die beiden Pfade.
  */
 
-import { mkdir, rm, rmdir, stat } from 'node:fs/promises';
+import { lstat, mkdir, readdir, rm, rmdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileDeleteCommandPayload } from '@palantir/contracts';
+import { type FileEntry } from '../../runtime/types.js';
 import { type ContainerRuntime } from '../../runtime/container-runtime.js';
 import { ContainerRuntimeError } from '../../runtime/errors.js';
 import { resolveWithinRoot } from '../../runtime/paths.js';
@@ -138,6 +139,106 @@ export async function deleteServerFile(
   }
 }
 
+/**
+ * Listet die direkte Ebene eines Ordners - host-seitig (Fundpunkt 276).
+ *
+ * **Warum nicht ueber die Container-Runtime.** Die Engine-API kennt keinen
+ * Aufruf „nur die Namen": `GET /archive` liefert den Ordner **rekursiv und mit
+ * Inhalten**. Fuer eine Auflistung wurde damit der ganze Baum uebertragen, nur
+ * um die 512-Byte-Koepfe daraus zu lesen. Das hat zweimal weh getan:
+ *
+ * - Fundpunkt 228: Der Agent zog das Archiv vollstaendig in den Speicher, bei
+ *   einer gewachsenen Welt Gigabyte - und das im gemeinsamen Agent-Prozess.
+ *   Dagegen kam eine Grenze von 128 MiB, ueber der es gar keine Liste mehr gab.
+ * - Fundpunkt 274/275: Seit der Strom nur noch gelesen statt gesammelt wird,
+ *   kommt die Liste zwar wieder - aber die Engine muss weiterhin den ganzen
+ *   Ordner einpacken. Bei einem Server unter Proton liegen Wine-Prefix und
+ *   SteamCMD-Kopie im Datenordner; das dauerte laenger als die Befehlsfrist.
+ *
+ * Beide Fehler haben dieselbe Wurzel, und es ist nicht die Groesse des Ordners:
+ * Auflisten ist Dateisystemarbeit, und der Agent hat den Datenordner selbst
+ * gemountet (`AGENT_DATA_DIR`). Genau so macht es {@link deleteServerFile}
+ * schon - die Begruendung steht im Kopf dieser Datei. `readdir` kostet, was ein
+ * Verzeichnis an Eintraegen hat, und nicht, was seine Dateien wiegen.
+ *
+ * Dieselben drei Schranken wie beim Loeschen: Container-Pfadraum, Host-Pfadraum,
+ * und gegen Verknuepfungen.
+ */
+export async function listServerDirectory(
+  volume: DataVolumePaths,
+  ziel: string,
+  options: DeleteServerFileOptions = {},
+): Promise<FileEntry[]> {
+  const wurzel = path.posix.normalize(volume.containerPath);
+  const imContainer = resolveWithinRoot(wurzel, ziel);
+
+  const relativ = path.posix.relative(wurzel, imContainer);
+  const aufDemHost =
+    relativ.length === 0
+      ? path.resolve(volume.hostPath)
+      : path.resolve(volume.hostPath, ...relativ.split('/'));
+
+  if (options.allowedRoot !== undefined) {
+    resolveWithinDirectory(options.allowedRoot, aufDemHost);
+    await assertOhnePfadausbruch(options.allowedRoot, aufDemHost);
+  }
+
+  let roh;
+
+  try {
+    roh = await readdir(aufDemHost, { withFileTypes: true });
+  } catch (fehler: unknown) {
+    if (istNichtVorhanden(fehler)) {
+      throw new ContainerRuntimeError('FILE_NOT_FOUND', {
+        message: 'Das Verzeichnis gibt es nicht.',
+        details: { path: ziel },
+      });
+    }
+
+    if ((fehler as NodeJS.ErrnoException).code === 'ENOTDIR') {
+      throw new ContainerRuntimeError('INVALID_PATH', {
+        message: 'Der Pfad ist kein Verzeichnis.',
+        details: { path: ziel },
+      });
+    }
+
+    throw fehler;
+  }
+
+  const eintraege: FileEntry[] = [];
+
+  for (const eintrag of roh) {
+    /*
+     * `lstat`, nicht `stat`: Eine Verknuepfung soll als Verknuepfung erscheinen
+     * und nicht als das, worauf sie zeigt. Sonst zeigte die Liste die Groesse
+     * eines fremden Ziels an - und ein Verweis ins Leere waere ein Fehler statt
+     * eines Eintrags.
+     */
+    let angaben;
+
+    try {
+      angaben = await lstat(path.join(aufDemHost, eintrag.name));
+    } catch (fehler: unknown) {
+      // Zwischen `readdir` und `lstat` kann der Server die Datei entfernt
+      // haben. Das ist kein Grund, die ganze Auflistung scheitern zu lassen.
+      if (istNichtVorhanden(fehler)) continue;
+
+      throw fehler;
+    }
+
+    eintraege.push({
+      name: eintrag.name,
+      path: path.posix.join(imContainer, eintrag.name),
+      type: angaben.isDirectory() ? 'directory' : angaben.isSymbolicLink() ? 'symlink' : 'file',
+      sizeBytes: angaben.size,
+      modifiedAt: angaben.mtime.toISOString(),
+      mode: (angaben.mode & 0o7777).toString(8),
+    });
+  }
+
+  return eintraege.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+}
+
 export interface ServerFileJobOptions {
   readonly runtime: ContainerRuntime;
   /** `AGENT_DATA_DIR` – die Wurzel, unterhalb derer der Agent arbeiten darf. */
@@ -202,6 +303,16 @@ export class ServerFileJob {
         details: { hostPath, dataDir: this.#dataDir },
       });
     }
+  }
+
+  /**
+   * `FILE_LIST` als Job (Fundpunkt 276) - aus demselben Grund wie das Loeschen:
+   * Die Runtime sagt, **wo** der Datenordner liegt, gelesen wird er hier.
+   */
+  async list(payload: { containerId: string; path: string }): Promise<readonly FileEntry[]> {
+    const volume = await this.#runtime.dataVolumePaths(payload.containerId);
+
+    return listServerDirectory(volume, payload.path, { allowedRoot: this.#dataDir });
   }
 
   /** Ergebnis ist `null` wie im Protokoll festgelegt. */

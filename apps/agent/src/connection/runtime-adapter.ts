@@ -433,8 +433,17 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
       }
       case 'FILE_LIST': {
+        /*
+         * Host-seitig im Job-Modul (A3), aus demselben Grund wie das Loeschen
+         * (Fundpunkt 276): Die Engine-API kennt keinen Aufruf "nur die Namen",
+         * sie packt fuer jede Auflistung den ganzen Ordner ein - rekursiv und
+         * mit Inhalten. Bei einem Server unter Proton sind das Wine-Prefix und
+         * SteamCMD-Kopie obendrauf, und das dauerte laenger als die
+         * Befehlsfrist. `readdir` kostet, was ein Verzeichnis an Eintraegen
+         * hat, nicht was seine Dateien wiegen.
+         */
         const p = payload as { containerId: string; path: string };
-        const entries = await this.runtime.listFiles(p.containerId, p.path);
+        const entries = await this.requireJobs().files.list(p);
         return {
           containerId: p.containerId,
           path: p.path,
@@ -735,6 +744,9 @@ export const JOB_COMMANDS: ReadonlySet<AgentCommandName> = new Set([
   // konnte „nicht gebaut" nicht mehr von „hat nicht funktioniert" trennen.
   'FILE_DELETE',
   'UPLOAD_ARCHIVE_BLOCK',
+  // Seit Fundpunkt 276 ebenfalls host-seitig: Auflisten ist
+  // Dateisystemarbeit, nicht Sache der Container-Runtime.
+  'FILE_LIST',
 ]);
 
 /** Nutzdaten von `CREATE`, wie sie das Schema liefert. */
