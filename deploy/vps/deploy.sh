@@ -166,6 +166,28 @@ fi
 # ⚠️ Das ersetzt die geplante Panel-Sicherung NICHT (Abschnitt 17 der .env,
 # `data/panel-backups`). Diese hier ist der gezielte Stand eines Deployments und
 # wird nach `PRE_DEPLOY_DUMP_KEEP` Laeufen wieder weggeraeumt.
+#
+# **Warum diese Abzuege NICHT verschluesselt werden** (Fundpunkt 287): Inhaltlich
+# sind sie so heikel wie eine Panel-Sicherung - jeder Passwort-Hash, jedes
+# TOTP-Geheimnis, jede Webhook-Adresse. Der Unterschied ist der Zweck. Eine
+# Panel-Sicherung ist dafuer da, die Maschine zu verlassen; deshalb traegt sie
+# den oeffentlichen Schluessel des Betreibers, und der private liegt
+# ausdruecklich woanders.
+#
+# Dieser Abzug hier ist das Gegenteil: der Rueckweg fuer ein Deployment, das in
+# den naechsten Minuten schiefgeht. Ihn mit demselben Schluessel zu versehen
+# hiesse, im Ernstfall erst den privaten Schluessel von ausserhalb zu holen und
+# eine Passphrase einzutippen (`panel:entschluesseln` fragt danach) - genau dann,
+# wenn es schnell gehen muss und womoeglich niemand am Platz ist. Eine Sicherung,
+# die man im Ernstfall nicht aufbekommt, ist keine.
+#
+# Die Schranke ist deshalb eine andere: Der Ordner steht auf 700, die Abzuege auf
+# 600, beide gehoeren dem Deploy-Benutzer, und `PRE_DEPLOY_DUMP_KEEP` begrenzt,
+# wie lange sie ueberhaupt herumliegen. Gegen root auf der VPS hilft ohnehin
+# nichts davon - wer dort root ist, liest auch die laufende Datenbank.
+#
+# Wer sie dennoch aus dem Haus tragen will (auf ein anderes Blech, in ein
+# fremdes Backup), verschluesselt sie beim Wegtragen - nicht hier.
 sicherung_ziehen() {
   local datei behalten groesse
 
@@ -175,9 +197,27 @@ sicherung_ziehen() {
   # sonst bricht das Deployment hier ab. Bewusst mit Abbruch statt mit einer
   # Warnung: Ein Deployment ohne Rueckweg ist genau das, was hier abgeschafft
   # wird.
-  if ! mkdir -p "${DUMP_DIR}" 2>/dev/null; then
-    fail "Sicherungsordner ${DUMP_DIR} laesst sich nicht anlegen ($(dirname "${DUMP_DIR}") gehoert root). Einmalig als root auf der VPS: install -d -o $(id -un) -g $(id -gn) ${DUMP_DIR}"
+  # `umask` statt `mkdir -m`: Mit `-p` gilt `-m` nur fuer den letzten Ordner
+  # (ShellCheck SC2174), ein zwischendurch angelegter Elternteil bekaeme die
+  # Standardmaske. Die Maske gilt fuer alles, was hier entsteht, und schliesst
+  # zugleich das Fenster zwischen Anlegen und dem `chmod` darunter.
+  if ! (umask 077 && mkdir -p "${DUMP_DIR}") 2>/dev/null; then
+    fail "Sicherungsordner ${DUMP_DIR} laesst sich nicht anlegen ($(dirname "${DUMP_DIR}") gehoert root). Einmalig als root auf der VPS: install -d -m 700 -o $(id -un) -g $(id -gn) ${DUMP_DIR}"
   fi
+
+  # Rechte bei JEDEM Lauf durchsetzen, nicht nur beim Anlegen (Fundpunkt 287).
+  #
+  # Die Maske oben wirkt nur auf einen Ordner, den dieser Aufruf tatsaechlich
+  # anlegt - ein bereits vorhandener behaelt seinen Modus. Genau so entstand
+  # der Fundpunkt: Der erste Lauf legte den Ordner mit der Standardmaske als
+  # 755 an. Ein Abzug traegt jeden Passwort-Hash, jedes TOTP-Geheimnis und
+  # jede Webhook-Adresse der Instanz - dieselbe Vertraulichkeit wie eine
+  # Panel-Sicherung. Jeder lokale Nutzer der VPS konnte darin lesen.
+  #
+  # Der Ordner ist die tragende Schranke: Ohne x-Recht darauf kommt niemand
+  # an die Dateien, gleich welchen Modus die tragen.
+  chmod 700 "${DUMP_DIR}" 2>/dev/null ||
+    log "ACHTUNG: ${DUMP_DIR} liess sich nicht auf 700 setzen - Abzuege sind moeglicherweise mitlesbar."
 
   # Die Datenbank muss laufen, sonst gibt es nichts zu sichern. `--wait` haengt
   # am Healthcheck des Dienstes (`pg_isready`), die Frist verhindert, dass ein
@@ -197,12 +237,28 @@ sicherung_ziehen() {
   # `set -o pipefail` (Kopf der Datei) sorgt dafuer, dass ein Fehler von pg_dump
   # nicht von einem erfolgreichen gzip verdeckt wird.
   log 'Sichere die Datenbank ...'
-  if ! compose_im_stack exec -T postgres \
-    sh -c 'PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}"' \
-    | gzip -c >"${datei}"; then
+
+  # Zweite Schranke am Abzug selbst (Fundpunkt 287): Die Umleitung legt die
+  # Datei an, bevor irgendetwas hineinfliesst - ohne diese Maske entstuende
+  # sie mit den Vorgaben des Aufrufers, und zwischen Anlegen und einem
+  # nachtraeglichen `chmod` laege ein Fenster, in dem sie lesbar waere.
+  # `umask` gilt nur in dieser Subshell, damit nichts weiter unten davon
+  # ueberrascht wird.
+  if ! (
+    umask 077
+    compose_im_stack exec -T postgres \
+      sh -c 'PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}"' \
+      | gzip -c >"${datei}"
+  ); then
     rm -f "${datei}"
     fail 'Die Sicherung ist fehlgeschlagen - es wird nicht migriert und nicht ausgerollt.'
   fi
+
+  # Abzuege aus der Zeit vor dieser Aenderung liegen noch mit der
+  # Standardmaske da. Sie sind durch den Ordner geschuetzt; die Dateien
+  # ziehen wir trotzdem nach, damit ein spaeter geoeffneter Ordner sie nicht
+  # freilegt.
+  chmod 600 "${DUMP_DIR}"/vor-*.sql.gz 2>/dev/null || true
 
   groesse="$(du -h "${datei}" | cut -f1)"
   log "    Sicherung: ${datei} (${groesse})"
