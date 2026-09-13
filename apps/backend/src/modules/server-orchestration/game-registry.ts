@@ -304,6 +304,20 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
     { label: 'Whitelist', command: 'whitelist list' },
     { label: 'Stopp', command: 'stop' },
   ],
+  /*
+   * Schreibstopp fuer die Dauer einer Sicherung (Arbeitspaket HM-10).
+   *
+   * Die Reihenfolge zaehlt: `save-off` haelt den Server davon ab, weiter zu
+   * schreiben, `save-all` legt den aktuellen Stand noch einmal vollstaendig ab.
+   * Andersherum packte das Archiv einen Stand, an dem der Server danach noch
+   * weiterschreibt - genau der Zustand, den die Sicherung vermeiden soll.
+   *
+   * Das ist der Weg, den Serverbetreiber von Hand nehmen. Die Spieler bleiben
+   * dabei drauf; sie merken hoechstens, dass ein Sprung zurueckreicht, falls der
+   * Server in genau diesem Fenster abstuerzt.
+   */
+  quiesceCommands: ['save-off', 'save-all'],
+  resumeCommands: ['save-on'],
   defaultEnv: {},
   ports: [
     {

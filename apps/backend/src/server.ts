@@ -832,6 +832,30 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       // `palantir-server.json` mit ins Archiv (P8, Lastenheft §3.3). B5 kennt
       // die Entität `GameServer` nicht; die Quelle stellt B3.
       manifests: createDrizzleServerExportManifestSource(db),
+      /*
+       * Schreibstopp statt Anhalten (Arbeitspaket HM-10). B5 kennt den
+       * Spieltyp-Katalog nicht - er bekommt hier die beiden Befehlslisten und
+       * den Konsolenzugang als fertige Angabe, wie der Agent sie braucht. Nennt
+       * ein Spieltyp keine Befehle, kommt `undefined` zurueck und es wird
+       * gesichert wie bisher.
+       */
+      quiesceFor: (gameType) => {
+        const definition = spieltypen.find(gameType);
+
+        if (definition?.quiesceCommands === undefined || definition.resumeCommands === undefined) {
+          return undefined;
+        }
+
+        const konsole = definition.console;
+
+        return {
+          commands: definition.quiesceCommands,
+          resumeCommands: definition.resumeCommands,
+          ...(konsole?.kind === 'rcon'
+            ? { rcon: { port: konsole.port, passwordFile: konsole.passwordFile } }
+            : {}),
+        };
+      },
       events: backupEvents,
       // Hintergrundläufe (Backup, Restore) melden Fehlschläge über `app.log`
       // statt als unbehandelte Ablehnung (Audit W0-5, bb-05).

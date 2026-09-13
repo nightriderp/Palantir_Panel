@@ -50,6 +50,9 @@ export function testServer(overrides: Partial<BackupServerRecord> = {}): BackupS
     name: 'Wüstensturm',
     ownerId: testId('2'),
     hostId: TEST_HOST_ID,
+    // Ein Spieltyp ohne Schreibstopp (HM-10): Die Tests sollen den bisherigen
+    // Weg beschreiben, nicht den neuen.
+    gameType: 'minecraft-vanilla',
     status: 'running',
     dockerContainerId: 'container-1',
     dataHostPath: '/srv/palantir/data/wuestensturm',

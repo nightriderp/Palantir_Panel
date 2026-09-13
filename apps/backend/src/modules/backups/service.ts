@@ -21,6 +21,7 @@
 
 import { createHash } from 'node:crypto';
 import {
+  type QuiesceSpec,
   type ArchiveExtraFile,
   type BackupDto,
   type BackupRestoreJobDto,
@@ -121,6 +122,16 @@ export interface BackupServiceOptions {
    * Weltdaten – das Verhalten vor P8.
    */
   readonly manifests?: ServerExportManifestSource;
+  /**
+   * Nennt je Spieltyp den Schreibstopp fuer eine Sicherung (Arbeitspaket HM-10).
+   *
+   * Gibt sie `undefined` zurueck oder fehlt sie ganz, wird gesichert wie bisher
+   * - im laufenden Betrieb oder mit angehaltenem Container. Als Funktion und
+   * nicht als Registry-Abhaengigkeit, damit B5 den Spieltyp-Katalog aus B3 nicht
+   * kennen muss: Es braucht zwei Listen und einen Konsolenzugang, nicht die
+   * ganze Definition.
+   */
+  readonly quiesceFor?: (gameType: string) => QuiesceSpec | undefined;
   readonly now?: Clock;
   readonly runJob?: JobRunner;
   /**
@@ -252,6 +263,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
   const now = options.now ?? systemClock;
   const runJob = options.runJob ?? fireAndForgetJobRunner;
   const audit = options.audit ?? noopBackupAuditSink;
+  const quiesceFor = options.quiesceFor ?? ((): undefined => undefined);
   const restoreJobs = createRestoreJobStore({ now: () => now() });
 
   /**
@@ -494,6 +506,36 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
     }
   }
 
+  /**
+   * Schreibstopp statt Anhalten (Arbeitspaket HM-10).
+   *
+   * Bis hierher hatte eine Sicherung zwei Zustaende und keinen dritten: im
+   * laufenden Betrieb packen, dann ist der Spielstand in sich widerspruechlich -
+   * oder den Container anhalten, dann merkt es jeder Spieler. Der dritte Weg ist
+   * der, den Serverbetreiber von Hand nehmen: dem Spiel sagen, dass es kurz
+   * nicht schreiben soll.
+   *
+   * Er kommt nur zum Zug, wenn es tatsaechlich etwas still zu stellen gibt:
+   *
+   * - **Kein Container** heisst, es laeuft nichts, was schreiben koennte.
+   * - **Wird ohnehin angehalten**, ist der Stand schon sauber; ein Schreibstopp
+   *   obendrauf ginge an einen Server, der gerade herunterfaehrt.
+   * - **Kein Schreibstopp im Katalog**: Ein Befehl, den das Spiel nicht kennt,
+   *   waere schlimmer als keiner.
+   */
+  function schreibstoppFuer(
+    server: BackupServerRecord,
+    stopServer: boolean,
+  ): { quiesce?: QuiesceSpec } {
+    if (stopServer || server.dockerContainerId === null) {
+      return {};
+    }
+
+    const quiesce = quiesceFor(server.gameType);
+
+    return quiesce === undefined ? {} : { quiesce };
+  }
+
   async function runBackupJob(
     backupId: string,
     server: BackupServerRecord,
@@ -510,6 +552,7 @@ export function createBackupService(options: BackupServiceOptions): BackupServic
       ...(extraFiles.length === 0 ? {} : { extraFiles }),
       ...(server.dockerContainerId === null ? {} : { containerId: server.dockerContainerId }),
       stopContainer: stopServer,
+      ...schreibstoppFuer(server, stopServer),
     });
 
     if (!response.success) {
