@@ -115,6 +115,7 @@ export {
 } from './agent-protocol.js';
 
 export {
+  type AgentRconAccess,
   ARCHIVE_FORMATS,
   IMPLEMENTED_AGENT_COMMANDS,
   type AgentCommandPayloads,
@@ -169,6 +170,7 @@ export {
   type RestartCommandPayload,
   type RestoreBackupCommandPayload,
   type RestoreBackupCommandResult,
+  type QuiesceSpec,
   type SetServerQueryCommandPayload,
   type SetServerQueryCommandResult,
   type StartCommandPayload,
