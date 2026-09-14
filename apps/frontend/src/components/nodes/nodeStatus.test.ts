@@ -13,10 +13,9 @@ import {
 
 function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
   const total = { ramMb: 16384, cpuCores: 8, diskMb: 512_000 };
-  const allocated = { ramMb: 8192, cpuCores: 4, diskMb: 128_000 };
+  const allocated = { ramMb: 8192, diskMb: 128_000 };
   const available = {
     ramMb: total.ramMb - allocated.ramMb,
-    cpuCores: total.cpuCores - allocated.cpuCores,
     diskMb: total.diskMb - allocated.diskMb,
   };
   return {
@@ -45,7 +44,7 @@ function gameType(id: string, ramMb: number, diskMb: number, available = true): 
     supportsVirtualHostRouting: false,
     supportsWorldImport: false,
     defaultPorts: [],
-    resourceDefaults: { ramMb, cpuCores: 1, diskMb },
+    resourceDefaults: { ramMb, diskMb },
     configFields: [],
     available,
     unavailableReason: available ? null : 'Kommt später',
@@ -91,8 +90,8 @@ describe('nodeMetrics - Ueberbuchung (Fundpunkt 209)', () => {
   const ueberbucht = node({
     capacity: {
       total: { ramMb: 28_672, cpuCores: 8, diskMb: 512_000 },
-      allocated: { ramMb: 32_768, cpuCores: 9, diskMb: 20_480 },
-      available: { ramMb: 0, cpuCores: 0, diskMb: 491_520 },
+      allocated: { ramMb: 32_768, diskMb: 20_480 },
+      available: { ramMb: 0, diskMb: 491_520 },
     },
   });
 
@@ -100,7 +99,6 @@ describe('nodeMetrics - Ueberbuchung (Fundpunkt 209)', () => {
     const metrics = nodeMetrics(ueberbucht);
 
     expect(metrics.find((m) => m.key === 'ram')?.overbookedLabel).toBe('4 GiB überbucht');
-    expect(metrics.find((m) => m.key === 'cpu')?.overbookedLabel).toBe('1 Kern überbucht');
   });
 
   it('laesst die Angabe weg, wo nichts ueberbucht ist', () => {
@@ -133,15 +131,14 @@ describe('nodeMetrics', () => {
       node({
         capacity: {
           total: { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
-          allocated: { ramMb: 26_624, cpuCores: 8, diskMb: 86_016 },
-          running: { ramMb: 20_480, cpuCores: 6, diskMb: 86_016 },
-          available: { ramMb: 2_048, cpuCores: 0, diskMb: 1_913_984 },
+          allocated: { ramMb: 26_624, diskMb: 86_016 },
+          running: { ramMb: 20_480, diskMb: 86_016 },
+          available: { ramMb: 2_048, diskMb: 1_913_984 },
         },
       }),
     );
 
     expect(metrics.find((m) => m.key === 'ram')?.runningLabel).toBe('davon 20 GiB laufend');
-    expect(metrics.find((m) => m.key === 'cpu')?.runningLabel).toBe('davon 6 Kerne laufend');
     // Bei der Platte zaehlen beide Zahlen ueber alle Zustaende - kein Zusatz.
     expect(metrics.find((m) => m.key === 'disk')?.runningLabel).toBeUndefined();
   });
@@ -151,9 +148,9 @@ describe('nodeMetrics', () => {
       node({
         capacity: {
           total: { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
-          allocated: { ramMb: 20_480, cpuCores: 6, diskMb: 86_016 },
-          running: { ramMb: 20_480, cpuCores: 6, diskMb: 86_016 },
-          available: { ramMb: 8_192, cpuCores: 2, diskMb: 1_913_984 },
+          allocated: { ramMb: 20_480, diskMb: 86_016 },
+          running: { ramMb: 20_480, diskMb: 86_016 },
+          available: { ramMb: 8_192, diskMb: 1_913_984 },
         },
       }),
     );
@@ -170,8 +167,8 @@ describe('nodeMetrics', () => {
     const full = node({
       capacity: {
         total: { ramMb: 16384, cpuCores: 8, diskMb: 512_000 },
-        allocated: { ramMb: 16000, cpuCores: 8, diskMb: 512_000 },
-        available: { ramMb: 384, cpuCores: 0, diskMb: 0 },
+        allocated: { ramMb: 16000, diskMb: 512_000 },
+        available: { ramMb: 384, diskMb: 0 },
       },
     });
     const ram = nodeMetrics(full).find((m) => m.key === 'ram');
@@ -181,9 +178,9 @@ describe('nodeMetrics', () => {
   it('meldet fehlende Ausstattung als null-Prozent', () => {
     const empty = node({
       capacity: {
-        total: { ramMb: 0, cpuCores: 0, diskMb: 0 },
-        allocated: { ramMb: 0, cpuCores: 0, diskMb: 0 },
-        available: { ramMb: 0, cpuCores: 0, diskMb: 0 },
+        total: { ramMb: 0, cpuCores: 8, diskMb: 0 },
+        allocated: { ramMb: 0, diskMb: 0 },
+        available: { ramMb: 0, diskMb: 0 },
       },
     });
     expect(nodeMetrics(empty).every((m) => m.percent === null)).toBe(true);
@@ -234,8 +231,8 @@ describe('smallestGameType', () => {
 describe('nodeHasRoomFor', () => {
   it('prüft alle drei Ressourcen', () => {
     const n = node();
-    expect(nodeHasRoomFor(n, { ramMb: 8192, cpuCores: 4, diskMb: 384_000 })).toBe(true);
-    expect(nodeHasRoomFor(n, { ramMb: 8193, cpuCores: 4, diskMb: 384_000 })).toBe(false);
+    expect(nodeHasRoomFor(n, { ramMb: 8192, diskMb: 384_000 })).toBe(true);
+    expect(nodeHasRoomFor(n, { ramMb: 8193, diskMb: 384_000 })).toBe(false);
   });
 });
 
@@ -260,8 +257,8 @@ describe('startCapacityHint', () => {
     const cramped = node({
       capacity: {
         total: { ramMb: 16384, cpuCores: 8, diskMb: 512_000 },
-        allocated: { ramMb: 16000, cpuCores: 8, diskMb: 511_000 },
-        available: { ramMb: 384, cpuCores: 0, diskMb: 1000 },
+        allocated: { ramMb: 16000, diskMb: 511_000 },
+        available: { ramMb: 384, diskMb: 1000 },
       },
     });
     const hint = startCapacityHint([cramped], types);

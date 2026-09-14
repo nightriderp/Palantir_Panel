@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampPercent,
-  cpuQuotaPercent,
   formatBytes,
   formatChatTime,
   formatCores,
@@ -207,24 +206,5 @@ describe('formatCores', () => {
     // Fundpunkt 220 (UI-35): Die Serverdetails schrieben „1 Kerne".
     expect(formatCores(1)).toBe('1 Kern');
     expect(formatCores(2)).toBe('2 Kerne');
-  });
-});
-
-describe('cpuQuotaPercent', () => {
-  it('rechnet Kernprozente in den Anteil am Kontingent um', () => {
-    // 2,5 ausgelastete Kerne von vier: 62,5 % - gerundet 63.
-    expect(cpuQuotaPercent(250, 4)).toBe(63);
-    expect(cpuQuotaPercent(100, 4)).toBe(25);
-    expect(cpuQuotaPercent(100, 1)).toBe(100);
-  });
-
-  it('begrenzt einen Ausreisser ueber dem Kontingent auf 100', () => {
-    expect(cpuQuotaPercent(450, 4)).toBe(100);
-  });
-
-  it('liefert null ohne Messwert oder ohne Kontingent', () => {
-    expect(cpuQuotaPercent(null, 4)).toBeNull();
-    expect(cpuQuotaPercent(undefined, 4)).toBeNull();
-    expect(cpuQuotaPercent(50, 0)).toBeNull();
   });
 });

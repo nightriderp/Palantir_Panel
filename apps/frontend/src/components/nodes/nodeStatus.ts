@@ -9,6 +9,7 @@ import {
   formatCores,
   formatMegabytes,
   formatNumber,
+  formatPercent,
   percentOf,
 } from '@/components/shared';
 
@@ -83,7 +84,7 @@ export function nodeStatusMeta(status: HostNodeStatus): NodeStatusMeta {
 // Auslastung und freie Kapazität
 // ---------------------------------------------------------------------------
 
-export type NodeMetricKey = 'cpu' | 'ram' | 'disk';
+export type NodeMetricKey = 'ram' | 'disk';
 
 export interface NodeMetric {
   key: NodeMetricKey;
@@ -148,6 +149,27 @@ function toneForFill(percent: number | null): Tone {
  * (Fundpunkt 204) und gehört erst dann in die Karte, wenn sie ihre Herkunft
  * mitnennt.
  */
+/**
+ * Die CPU-Zeile der Node-Karte.
+ *
+ * Bis zum Wegfall der CPU-Zuweisung stand hier „Kerne gebucht · 3 / 8" – die
+ * Summe der zugewiesenen Anteile gegen die Kerne der Maschine. Zugewiesen wird
+ * nichts mehr, die Summe wäre dauerhaft null.
+ *
+ * Was bleibt, ist die **echte** Auslastung: Die Node meldet ihre Systemlast
+ * (`cpuLoad1m`), das Backend rechnet sie auf die Kerne um und liefert sie als
+ * `usage.cpuPercent`. Fehlt die Messung – Node offline, Agent gerade neu
+ * gestartet –, steht nur noch die Ausstattung da. Eine erfundene Null wäre die
+ * schlechtere Antwort: Sie sähe aus wie eine ruhige Node statt wie eine, über
+ * die man nichts weiß.
+ */
+export function nodeCpuLabel(node: HostNodeDto): string {
+  const kerne = formatCores(node.capacity.total.cpuCores);
+  const last = node.usage?.cpuPercent;
+
+  return last == null ? kerne : `${kerne} · ${formatPercent(last)} Last`;
+}
+
 export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
   const { total, allocated, available } = node.capacity;
   const running = node.capacity.running ?? allocated;
@@ -160,26 +182,10 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
   const zuViel = (gebucht: number, gesamt: number, formatiere: (wert: number) => string) =>
     gebucht > gesamt ? `${formatiere(gebucht - gesamt)} überbucht` : undefined;
 
-  const cpuPercent = percentOf(allocated.cpuCores, total.cpuCores);
   const ramPercent = percentOf(allocated.ramMb, total.ramMb);
   const diskPercent = percentOf(allocated.diskMb, total.diskMb);
 
   return [
-    {
-      key: 'cpu',
-      label: 'Kerne gebucht',
-      usedLabel: formatCores(allocated.cpuCores),
-      totalLabel: formatCores(total.cpuCores),
-      freeLabel: formatCores(available.cpuCores),
-      percent: cpuPercent,
-      ...(zuViel(allocated.cpuCores, total.cpuCores, formatCores) === undefined
-        ? {}
-        : { overbookedLabel: zuViel(allocated.cpuCores, total.cpuCores, formatCores) }),
-      ...(laufend(allocated.cpuCores, running.cpuCores, formatCores) === undefined
-        ? {}
-        : { runningLabel: laufend(allocated.cpuCores, running.cpuCores, formatCores) }),
-      tone: toneForFill(cpuPercent),
-    },
     {
       key: 'ram',
       label: 'RAM gebucht',
@@ -320,9 +326,7 @@ export interface StartCapacityHint {
 /** Passt der Bedarf in die freie Kapazität dieser Node? */
 export function nodeHasRoomFor(node: HostNodeDto, needed: ServerResourceLimits): boolean {
   const free = node.capacity.available;
-  return (
-    free.ramMb >= needed.ramMb && free.cpuCores >= needed.cpuCores && free.diskMb >= needed.diskMb
-  );
+  return free.ramMb >= needed.ramMb && free.diskMb >= needed.diskMb;
 }
 
 /**
@@ -362,7 +366,7 @@ export function startCapacityHint(
     title: 'Der Platz reicht für keinen weiteren Server',
     description: `Selbst der sparsamste Spieltyp („${smallest.name}") braucht ${formatMegabytes(
       smallest.limits.ramMb,
-    )} Arbeitsspeicher, ${formatCores(smallest.limits.cpuCores)} und ${formatMegabytes(
+    )} Arbeitsspeicher und ${formatMegabytes(
       smallest.limits.diskMb,
     )} Speicherplatz – so viel ist auf keiner verbundenen Node mehr frei. Ein nicht mehr genutzter Server, den du löschst, gibt seinen Platz sofort wieder frei.`,
   };

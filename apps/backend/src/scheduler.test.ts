@@ -707,7 +707,7 @@ const SERVER_ID = '66666666-6666-4666-8666-666666666666';
 const OWNER_ID = '77777777-7777-4777-8777-777777777777';
 const NOW = new Date('2026-08-26T12:00:00.000Z');
 
-const RESOURCE_LIMITS: ServerResourceLimits = { ramMb: 2048, cpuCores: 2, diskMb: 10_240 };
+const RESOURCE_LIMITS: ServerResourceLimits = { ramMb: 2048, diskMb: 10_240 };
 
 /**
  * Ein laufender Server.
@@ -1203,7 +1203,7 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
 
   const SERVER_ID = '55555555-5555-4555-8555-555555555555';
   const BESITZER_ID = '66666666-6666-4666-8666-666666666666';
-  const LIMITS = { ramMb: 4096, cpuCores: 2, diskMb: 20_480 };
+  const LIMITS = { ramMb: 4096, diskMb: 20_480 };
 
   /** Eine Messung, wie B3 sie beim Abtasten des Verlaufs schreibt. */
   function last(overrides: Partial<ServerLoadSnapshot> = {}): ServerLoadSnapshot {
@@ -1213,7 +1213,6 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
       ownerId: BESITZER_ID,
       limits: LIMITS,
       usedRamMb: 1024,
-      usedCpuCores: 0.2,
       usedDiskMb: null,
       ...overrides,
     };
@@ -1234,7 +1233,6 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
             nodeId: load.nodeId,
             limits: load.limits,
             usedRamMb: load.usedRamMb,
-            usedCpuCores: load.usedCpuCores,
             usedDiskMb: load.usedDiskMb,
             thresholdPercent: 90,
             at: new Date('2026-08-30T00:00:00.000Z'),
@@ -1349,7 +1347,7 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
   it('macht aus einem fehlenden Messwert keine Warnung', async () => {
     const timer = manualTimer();
     const sink = capturingSink();
-    const quelle = loadSource([last({ usedRamMb: null, usedCpuCores: null, usedDiskMb: null })]);
+    const quelle = loadSource([last({ usedRamMb: null, usedDiskMb: null })]);
 
     startScheduler({
       tasks: [resourceWarningTask(evaluator(), quelle, sink, silentLog)],

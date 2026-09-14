@@ -247,7 +247,17 @@ export interface ServerExportManifest {
     config: Record<string, string | number | boolean>;
     resourceLimits: {
       ramMb: number;
-      cpuCores: number;
+      /**
+       * Nur in Archiven von vor dem Wegfall der CPU-Zuweisung.
+       *
+       * Das Feld wird nicht mehr geschrieben; ein Container bekommt seit dem
+       * Wegfall alle Kerne der Node. Es bleibt optional stehen, statt die
+       * Formatversion zu heben: Archive, die es noch tragen, sollen ohne
+       * Sonderfall lesbar bleiben.
+       *
+       * @deprecated
+       */
+      cpuCores?: number;
       diskMb: number;
     };
     autoShutdownEnabled: boolean;

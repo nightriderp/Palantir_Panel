@@ -21,6 +21,7 @@ import {
   type HostNodePermissions,
   type HostNodeStatus,
   type HostNodeUsage,
+  type NodeAssignedResources,
   type NodeResources,
 } from '@palantir/contracts';
 import type { CreateHostNodeInput, UpdateHostNodeInput } from '@palantir/validation';
@@ -105,14 +106,14 @@ export interface HostNodeRepository {
 export interface NodePlacement {
   readonly serverCount: number;
   /** Summe der Limits **aller** dort angelegten Server, gleich in welchem Zustand. */
-  readonly allocated: NodeResources;
+  readonly allocated: NodeAssignedResources;
   /**
    * Belegung, gegen die Anlegen und Starten geprueft werden (Fundpunkt 203):
-   * RAM und CPU nur der laufenden und startenden Server, die Platte ueber alle
+   * RAM nur von den laufenden und startenden Servern, die Platte ueber alle
    * Zustaende. Optional, damit eine Quelle ohne diese Zahl weiter gueltig ist -
    * dann faellt die Anzeige auf `allocated` zurueck, die vorsichtigere Zahl.
    */
-  readonly running?: NodeResources;
+  readonly running?: NodeAssignedResources;
 }
 
 /**
@@ -145,7 +146,7 @@ export function emptyNodeUsageSource(): NodeUsageSource {
   return { load: async () => new Map() };
 }
 
-const NO_RESOURCES: NodeResources = { ramMb: 0, cpuCores: 0, diskMb: 0 };
+const NO_RESOURCES: NodeAssignedResources = { ramMb: 0, diskMb: 0 };
 
 /**
  * Rest nie unter null – ein negativer freier Rest wäre keine brauchbare Zahl.
@@ -156,18 +157,17 @@ const NO_RESOURCES: NodeResources = { ramMb: 0, cpuCores: 0, diskMb: 0 };
  * Rest steht. Hier bei null abzuschneiden und dort „0 GB frei" zu schreiben
  * wäre dieselbe Auskunft wie bei einer exakt vollen Node gewesen.
  */
-function subtract(total: NodeResources, allocated: NodeResources): NodeResources {
+function subtract(total: NodeResources, allocated: NodeAssignedResources): NodeAssignedResources {
   return {
     ramMb: Math.max(0, total.ramMb - allocated.ramMb),
-    cpuCores: Math.max(0, total.cpuCores - allocated.cpuCores),
     diskMb: Math.max(0, total.diskMb - allocated.diskMb),
   };
 }
 
 export function computeCapacity(
   total: NodeResources,
-  allocated: NodeResources = NO_RESOURCES,
-  running: NodeResources = allocated,
+  allocated: NodeAssignedResources = NO_RESOURCES,
+  running: NodeAssignedResources = allocated,
 ): HostNodeCapacity {
   /*
    * `available` bleibt bewusst `total - allocated` (Fundpunkt 203): Was frei

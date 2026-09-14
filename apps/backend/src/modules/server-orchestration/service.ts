@@ -65,7 +65,6 @@ import {
   ServerLoadRegistry,
   type ServerStatsRepository,
   type StatsSample,
-  cpuCoresFromPercent,
   toStatsHistoryDto,
 } from './stats-history.js';
 import { type ServerLoadSnapshot } from '../resources/index.js';
@@ -1250,10 +1249,7 @@ export class ServerOrchestrationService {
     try {
       await session.sendCommand('UPDATE_RESOURCES', server.id, {
         containerId,
-        resources: {
-          memoryMb: server.resourceLimits.ramMb,
-          cpuCores: server.resourceLimits.cpuCores,
-        },
+        resources: { memoryMb: server.resourceLimits.ramMb },
       });
     } catch (error: unknown) {
       this.deps.log.warn(
@@ -3045,9 +3041,6 @@ export class ServerOrchestrationService {
           ownerId: server.ownerId,
           limits: server.resourceLimits,
           usedRamMb: ramUsedMb,
-          // Prozent eines Kerns → Kerne; die Bezugsgröße wird genau hier
-          // festgelegt und nicht im Schwellwert-Modul geraten.
-          usedCpuCores: cpuCoresFromPercent(stats.cpuPercent),
           usedDiskMb: diskUsedMb,
         });
       } catch (error: unknown) {

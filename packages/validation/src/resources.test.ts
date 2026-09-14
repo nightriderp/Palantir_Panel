@@ -24,13 +24,13 @@ describe('userResourceLimitsInputSchema', () => {
     const parsed = userResourceLimitsInputSchema.parse({ maxRamMb: 8192 });
 
     expect(parsed).toEqual({ maxRamMb: 8192 });
-    expect('maxCpuCores' in parsed).toBe(false);
+    expect('maxDiskMb' in parsed).toBe(false);
   });
 
   it('unterscheidet „nicht genannt" von ausdrücklichem null (Limit aufheben)', () => {
-    const parsed = userResourceLimitsInputSchema.parse({ maxCpuCores: null });
+    const parsed = userResourceLimitsInputSchema.parse({ maxDiskMb: null });
 
-    expect(parsed).toEqual({ maxCpuCores: null });
+    expect(parsed).toEqual({ maxDiskMb: null });
   });
 
   it('erlaubt 0 als ausdrückliche Sperre', () => {

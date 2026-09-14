@@ -3655,7 +3655,6 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
   /** Belegung aus den Attrappen-Servern – gezählt wie `usage-repository.ts`. */
   function summarize(servers: readonly ServerRecord[]): UserResourceUsage & NodeResourceUsage {
     let runningRamMb = 0;
-    let runningCpuCores = 0;
     let allocatedDiskMb = 0;
     let runningServers = 0;
 
@@ -3664,14 +3663,12 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
 
       if (server.status === 'running' || server.status === 'starting') {
         runningRamMb += server.resourceLimits.ramMb;
-        runningCpuCores += server.resourceLimits.cpuCores;
         runningServers += 1;
       }
     }
 
     return {
       runningRamMb,
-      runningCpuCores,
       allocatedDiskMb,
       runningServers,
       totalServers: servers.length,
@@ -3719,7 +3716,7 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
                 name: HOST.name,
                 wireguardIp: HOST.wireguardIp,
                 status: 'online',
-                totalResources: { ramMb: NODE_RAM_MB, cpuCores: 64, diskMb: 1_000_000 },
+                totalResources: { ramMb: NODE_RAM_MB, cpuCores: 8, diskMb: 1_000_000 },
                 measuredUsage: null,
               }
             : null,
@@ -4826,7 +4823,6 @@ describe('Verlauf der Messwerte (Arbeitspaket P5)', () => {
           // 512 MiB der Attrappe.
           usedRamMb: 512,
           // 42,5 % **eines Kerns** sind 0,425 Kerne – nicht 42,5.
-          usedCpuCores: 0.425,
           // Belegter Plattenplatz je Container fehlt im Agent-Protokoll; `null`
           // darf nie zu einer Warnung führen.
           usedDiskMb: null,

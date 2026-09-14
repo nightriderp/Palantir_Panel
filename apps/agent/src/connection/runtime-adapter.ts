@@ -383,7 +383,6 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
          */
         await this.runtime.updateResources(p.containerId, {
           memoryMb: p.resources.memoryMb,
-          cpuCores: p.resources.cpuCores,
           ...(p.resources.pidsLimit === undefined ? {} : { pidsLimit: p.resources.pidsLimit }),
         });
 
@@ -893,7 +892,7 @@ type CreatePayload = {
   env: Record<string, string>;
   command?: string[];
   ports: { containerPort: number; hostPort: number; protocol: 'tcp' | 'udp' }[];
-  resources: { memoryMb: number; cpuCores: number; pidsLimit?: number };
+  resources: { memoryMb: number; pidsLimit?: number };
   dataVolume: { hostPath: string; containerPath: string; readOnly?: boolean };
   extraMounts?: { hostPath: string; containerPath: string; readOnly?: boolean }[];
   readOnlyRootFilesystem?: boolean;
@@ -927,7 +926,6 @@ export function toContainerSpec(payload: CreatePayload, serverId?: string | null
     })),
     resources: {
       memoryMb: payload.resources.memoryMb,
-      cpuCores: payload.resources.cpuCores,
       ...(payload.resources.pidsLimit === undefined
         ? {}
         : { pidsLimit: payload.resources.pidsLimit }),

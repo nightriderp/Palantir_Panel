@@ -140,28 +140,17 @@ export function clampedPercentOf(used: number | null | undefined, total: number)
   return anteil === null ? null : clampPercent(anteil);
 }
 
-/**
- * Anteil der CPU-Last am Kontingent des Servers, in Prozent (Fundpunkt 205).
+/*
+ * Kein `cpuQuotaPercent` mehr.
  *
- * `ServerLiveStats.cpuPercent` zählt in Prozent **eines Kerns**: `250` heißt
- * 2,5 ausgelastete Kerne, nicht „250 % von irgendetwas". Der Vertrag sagt
- * ausdrücklich, dass die Umrechnung in die Ansicht gehört – getan hat sie
- * niemand. Die Serverkarte klemmte den Wert stattdessen bei 100 fest: Ein
- * Server mit vier Kernen sah bei **einem** ausgelasteten Kern voll aus, und
- * die Detailkachel schrieb „250 %" hin, als sei etwas kaputt.
- *
- * Über dem Kontingent wird auf 100 begrenzt: Mehr als sein Limit bekommt ein
- * Container nicht dauerhaft, kurze Ausreißer sind Messrauschen.
+ * Die Funktion rechnete `ServerLiveStats.cpuPercent` (Prozent **eines** Kerns)
+ * auf das CPU-Kontingent des Servers um. Mit dem Wegfall der CPU-Zuweisung gibt
+ * es dieses Kontingent nicht mehr, und damit keine Bezugsgröße: Ein Container
+ * darf alle Kerne der Node sehen. Die Ansichten zeigen deshalb die
+ * ausgelasteten Kerne als Zahl ({@link formatCores}), nicht als Füllstand gegen
+ * eine geratene Obergrenze – und die Funktion hatte danach keinen Aufrufer
+ * mehr.
  */
-export function cpuQuotaPercent(
-  cpuPercent: number | null | undefined,
-  cpuCores: number,
-): number | null {
-  if (cpuPercent == null || Number.isNaN(cpuPercent) || cpuCores <= 0) return null;
-
-  // `cpuPercent / (cpuCores * 100) * 100` – gekürzt.
-  return clampPercent(cpuPercent / cpuCores);
-}
 
 /**
  * CPU-Kerne mit deutschem Dezimalkomma und richtiger Einzahl, z. B. `7,5 Kerne`

@@ -64,35 +64,34 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       ownerId: besitzer,
       hostId: node,
       status: 'running',
-      resourceLimits: { ramMb: 1024, cpuCores: 1, diskMb: 5000 },
+      resourceLimits: { ramMb: 1024, diskMb: 5000 },
     });
     // starting zählt mit: der Container läuft dort bereits.
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
       status: 'starting',
-      resourceLimits: { ramMb: 2048, cpuCores: 0.5, diskMb: 6000 },
+      resourceLimits: { ramMb: 2048, diskMb: 6000 },
     });
     // stopped belegt nur den Datenordner.
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
       status: 'stopped',
-      resourceLimits: { ramMb: 4096, cpuCores: 2, diskMb: 7000 },
+      resourceLimits: { ramMb: 4096, diskMb: 7000 },
     });
     // creating ebenso – der Ordner steht schon, der Container noch nicht.
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
       status: 'creating',
-      resourceLimits: { ramMb: 8192, cpuCores: 4, diskMb: 8000 },
+      resourceLimits: { ramMb: 8192, diskMb: 8000 },
     });
 
     const belegung = await usage.usageForUser(besitzer);
 
     expect(belegung).toEqual({
       runningRamMb: 1024 + 2048,
-      runningCpuCores: 1.5,
       allocatedDiskMb: 5000 + 6000 + 7000 + 8000,
       runningServers: 2,
       totalServers: 4,
@@ -108,13 +107,13 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       ownerId: besitzer,
       hostId: node,
       status: 'stopped',
-      resourceLimits: { ramMb: 8192, cpuCores: 2, diskMb: 8192 },
+      resourceLimits: { ramMb: 8192, diskMb: 8192 },
     });
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
       status: 'stopped',
-      resourceLimits: { ramMb: 1024, cpuCores: 1, diskMb: 1024 },
+      resourceLimits: { ramMb: 1024, diskMb: 1024 },
     });
 
     const ohne = await usage.usageForUser(besitzer, { excludeServerId: eigener });
@@ -133,13 +132,13 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       ownerId: besitzer,
       hostId: nodeA,
       status: 'running',
-      resourceLimits: { ramMb: 1024, cpuCores: 1, diskMb: 1000 },
+      resourceLimits: { ramMb: 1024, diskMb: 1000 },
     });
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: nodeB,
       status: 'running',
-      resourceLimits: { ramMb: 2048, cpuCores: 2, diskMb: 2000 },
+      resourceLimits: { ramMb: 2048, diskMb: 2000 },
     });
 
     expect((await usage.usageForNode(nodeA)).runningRamMb).toBe(1024);
@@ -157,13 +156,13 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       ownerId: ersterNutzer,
       hostId: node,
       status: 'running',
-      resourceLimits: { ramMb: 1024, cpuCores: 1, diskMb: 1000 },
+      resourceLimits: { ramMb: 1024, diskMb: 1000 },
     });
     await legeServerAn(kontext.db, {
       ownerId: zweiterNutzer,
       hostId: node,
       status: 'stopped',
-      resourceLimits: { ramMb: 2048, cpuCores: 2, diskMb: 2000 },
+      resourceLimits: { ramMb: 2048, diskMb: 2000 },
     });
 
     const belegung = await usage.usageForUsers([ersterNutzer, zweiterNutzer, ohneServer]);
@@ -189,7 +188,7 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
         gameType: 'minecraft',
         subdomain: 'erster',
         assignedPorts: [],
-        resourceLimits: { ramMb: 1024, cpuCores: 1, diskMb: 6000 },
+        resourceLimits: { ramMb: 1024, diskMb: 6000 },
         configJson: {},
         startupParameters: '',
         autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 10 },
@@ -334,7 +333,7 @@ function anfrage(userId: string, hostId: string): ResourceCheckRequest {
     userId,
     hostId,
     serverId: null,
-    requested: { ramMb: 1024, cpuCores: 1, diskMb: 6000 },
+    requested: { ramMb: 1024, diskMb: 6000 },
     intent: 'create',
   };
 }
@@ -348,7 +347,7 @@ function neuerServer(ownerId: string, hostId: string, subdomain: string): Create
     gameType: 'minecraft',
     subdomain,
     assignedPorts: [],
-    resourceLimits: { ramMb: 1024, cpuCores: 1, diskMb: 6000 },
+    resourceLimits: { ramMb: 1024, diskMb: 6000 },
     configJson: {},
     startupParameters: '',
     autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 10 },

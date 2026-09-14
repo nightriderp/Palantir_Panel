@@ -24,11 +24,14 @@ export const megabytesSchema = z
   .max(1024 * 1024 * 64, { message: 'Die Speichermenge ist unplausibel groß.' });
 
 /**
- * CPU-Anteil in Kernen.
+ * CPU-Kerne einer Node.
  *
- * Nachkommastellen sind erlaubt (Docker rechnet mit Bruchteilen von Kernen),
- * aber auf zwei Stellen begrenzt – feiner steuert die Container-Engine ohnehin
- * nicht sinnvoll, und krumme Werte erschweren das Nachrechnen im Support-Fall.
+ * Nachkommastellen sind erlaubt (eine VM bekommt auch 7,5 von 8 Kernen), aber
+ * auf zwei Stellen begrenzt – krumme Werte erschweren das Nachrechnen im
+ * Support-Fall.
+ *
+ * Gilt seit dem Wegfall der CPU-Zuweisung nur noch für die **Node**: Server
+ * bekommen keinen Anteil mehr zugewiesen, sie teilen sich die Kerne.
  */
 export const cpuCoresSchema = z
   .number()
@@ -70,7 +73,6 @@ export const nodeResourcesSchema = z.object({
 export const userResourceLimitsInputSchema = z
   .object({
     maxRamMb: megabytesSchema.nullish(),
-    maxCpuCores: cpuCoresSchema.nullish(),
     maxDiskMb: megabytesSchema.nullish(),
     maxConcurrentServers: serverCountSchema.nullish(),
   })

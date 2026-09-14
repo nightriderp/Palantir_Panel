@@ -130,7 +130,6 @@ export { istSuchbegriff, useUrlFilter } from './utils/useUrlFilter';
 export {
   clampPercent,
   clampedPercentOf,
-  cpuQuotaPercent,
   formatBytes,
   formatChatTime,
   formatCores,

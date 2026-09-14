@@ -44,7 +44,7 @@ function serverMit(gameType: string): ServerRecord {
     assignedPorts: [
       { publicPort: 25_001, containerPort: 25_565, protocol: 'tcp', label: 'Spiel', primary: true },
     ],
-    resourceLimits: { ramMb: 2048, cpuCores: 1, diskMb: 10_240 },
+    resourceLimits: { ramMb: 2048, diskMb: 10_240 },
     configJson: {},
     startupParameters: '',
     autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 10 },

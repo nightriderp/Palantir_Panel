@@ -19,7 +19,7 @@ const SPEC: ContainerSpec = {
   image: 'palantir/testserver:1',
   env: {},
   ports: [],
-  resources: { memoryMb: 512, cpuCores: 1 },
+  resources: { memoryMb: 512 },
   dataVolume: { hostPath: `/srv/palantir/servers/${SERVER_ID}`, containerPath: '/data' },
 };
 

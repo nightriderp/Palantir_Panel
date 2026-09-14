@@ -119,7 +119,7 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
           primary: true,
         },
       ],
-      resourceLimits: { ramMb: 4096, cpuCores: 2, diskMb: 20_480 },
+      resourceLimits: { ramMb: 4096, diskMb: 20_480 },
       configJson: { motd: 'Hallo' },
       startupParameters: '-Xmx4G',
       autoShutdown: { enabled: true, idleTimeoutMinutes: 15, graceMinutes: 5 },
@@ -364,7 +364,7 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
 
     await repository.updateMeasuredResources(node, {
       ramMb: 16_384,
-      cpuCores: 4,
+      cpuCores: 8,
       diskMb: 500_000,
       usage: {
         ramAvailableMb: 8192,
@@ -376,7 +376,7 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
 
     await repository.updateMeasuredResources(node, {
       ramMb: 16_384,
-      cpuCores: 4,
+      cpuCores: 8,
       diskMb: 600_000,
     });
 

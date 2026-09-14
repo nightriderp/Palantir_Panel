@@ -23,11 +23,10 @@ function input(overrides: {
   thresholds?: Partial<CapacityCheckInput['thresholds']>;
 }): CapacityCheckInput {
   return {
-    requested: { ramMb: 4096, cpuCores: 2, diskMb: 20_480, ...overrides.requested },
+    requested: { ramMb: 4096, diskMb: 20_480, ...overrides.requested },
     userLimits: overrides.userLimits ?? NO_USER_RESOURCE_LIMITS,
     userUsage: {
       runningRamMb: 0,
-      runningCpuCores: 0,
       allocatedDiskMb: 0,
       runningServers: 0,
       totalServers: 0,
@@ -35,10 +34,9 @@ function input(overrides: {
     },
     node: {
       nodeId: NODE_ID,
-      total: { ramMb: 32_768, cpuCores: 16, diskMb: 2_097_152, ...overrides.nodeTotal },
+      total: { ramMb: 32_768, cpuCores: 8, diskMb: 2_097_152, ...overrides.nodeTotal },
       usage: {
         runningRamMb: 0,
-        runningCpuCores: 0,
         allocatedDiskMb: 0,
         runningServers: 0,
         totalServers: 0,
@@ -82,20 +80,18 @@ describe('checkCapacity – kein Nutzer-Kontingent gesetzt', () => {
   it('behandelt einzelne null-Felder wie „kein Limit" und prüft die übrigen', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 16_384, cpuCores: 1 },
+        requested: { ramMb: 16_384 },
         userLimits: {
           maxRamMb: null,
-          maxCpuCores: 4,
           maxDiskMb: null,
           maxConcurrentServers: null,
         },
-        userUsage: { runningRamMb: 60_000, runningCpuCores: 1 },
+        userUsage: { runningRamMb: 60_000 },
         nodeUsage: { runningRamMb: 20_000 },
       }),
     );
 
-    // RAM ist beim Nutzer unbegrenzt – nur die Node-Grenze schlägt an,
-    // das CPU-Kontingent (1 + 1 <= 4) nicht.
+    // RAM ist beim Nutzer unbegrenzt – nur die Node-Grenze schlägt an.
     expect(result.violations.map((v) => `${v.scope}.${v.resource}`)).toEqual(['node.ram']);
   });
 });
@@ -104,16 +100,14 @@ describe('checkCapacity – Limit exakt erreicht', () => {
   it('erlaubt den Start, wenn das Nutzer-Kontingent punktgenau aufgeht', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 2048, cpuCores: 1.5, diskMb: 10_240 },
+        requested: { ramMb: 2048, diskMb: 10_240 },
         userLimits: {
           maxRamMb: 8192,
-          maxCpuCores: 4,
           maxDiskMb: 51_200,
           maxConcurrentServers: 3,
         },
         userUsage: {
           runningRamMb: 6144,
-          runningCpuCores: 2.5,
           allocatedDiskMb: 40_960,
           runningServers: 2,
         },
@@ -127,8 +121,8 @@ describe('checkCapacity – Limit exakt erreicht', () => {
   it('erlaubt den Start, wenn die Node punktgenau aufgeht', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 2768, cpuCores: 4, diskMb: 152 },
-        nodeUsage: { runningRamMb: 30_000, runningCpuCores: 12, allocatedDiskMb: 2_097_000 },
+        requested: { ramMb: 2768, diskMb: 152 },
+        nodeUsage: { runningRamMb: 30_000, allocatedDiskMb: 2_097_000 },
       }),
     );
 
@@ -150,17 +144,19 @@ describe('checkCapacity – Limit exakt erreicht', () => {
     ]);
   });
 
-  it('rechnet CPU-Bruchteile ohne Fließkomma-Artefakt', () => {
-    // 0.1 + 0.2 > 0.3 ist in IEEE-754 wahr – ohne Toleranz schlüge das fehl.
+  it('kennt keine CPU-Grenze mehr', () => {
+    // Die CPU-Zuweisung ist entfallen: Ein Server nimmt sich die Kerne, die er
+    // braucht. Es darf deshalb keinen Weg mehr geben, auf dem ein Start an
+    // einer CPU-Schranke scheitert – weder am Kontingent noch an der Node.
     const result = checkCapacity(
       input({
-        requested: { cpuCores: 0.2 },
-        userLimits: { ...NO_USER_RESOURCE_LIMITS, maxCpuCores: 0.3 },
-        userUsage: { runningCpuCores: 0.1 },
+        requested: { ramMb: 1024, diskMb: 1024 },
+        userLimits: NO_USER_RESOURCE_LIMITS,
       }),
     );
 
-    expect(result.violations.filter((v) => v.resource === 'cpu')).toEqual([]);
+    expect(result.allowed).toBe(true);
+    expect(result.violations.map((v) => v.resource)).not.toContain('cpu');
   });
 });
 
@@ -168,21 +164,20 @@ describe('checkCapacity – Node voll trotz freiem Nutzer-Kontingent', () => {
   it('lehnt ab, obwohl das Kontingent des Nutzers reichlich Luft hat', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 8192, cpuCores: 2, diskMb: 20_480 },
+        requested: { ramMb: 8192, diskMb: 20_480 },
         userLimits: {
           maxRamMb: 65_536,
-          maxCpuCores: 32,
           maxDiskMb: 4_194_304,
           maxConcurrentServers: 50,
         },
-        userUsage: { runningRamMb: 1024, runningCpuCores: 0.5, allocatedDiskMb: 4096 },
-        nodeUsage: { runningRamMb: 31_000, runningCpuCores: 15.5, allocatedDiskMb: 2_090_000 },
+        userUsage: { runningRamMb: 1024, allocatedDiskMb: 4096 },
+        nodeUsage: { runningRamMb: 31_000, allocatedDiskMb: 2_090_000 },
       }),
     );
 
     expect(result.allowed).toBe(false);
-    expect(result.violations.map((v) => v.scope)).toEqual(['node', 'node', 'node']);
-    expect(result.violations.map((v) => v.resource)).toEqual(['ram', 'cpu', 'disk']);
+    expect(result.violations.map((v) => v.scope)).toEqual(['node', 'node']);
+    expect(result.violations.map((v) => v.resource)).toEqual(['ram', 'disk']);
   });
 
   it('nennt beide Ebenen, wenn Kontingent und Node gleichzeitig überschritten sind', () => {
@@ -256,7 +251,7 @@ describe('checkCapacity – Warnungen', () => {
   it('warnt, wenn der Start die Node über den Schwellwert hebt', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 4096, cpuCores: 1, diskMb: 1024 },
+        requested: { ramMb: 4096, diskMb: 1024 },
         nodeUsage: { runningRamMb: 24_000 },
       }),
     );

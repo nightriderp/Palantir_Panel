@@ -178,7 +178,6 @@ describe('Belegung je Node (Fundpunkt 203)', () => {
 
     expect(belegung.get(BELEGUNG_NODE)?.allocated).toEqual({
       ramMb: 26_624,
-      cpuCores: 8,
       diskMb: 86_016,
     });
     expect(belegung.get(BELEGUNG_NODE)?.serverCount).toBe(4);
@@ -189,7 +188,6 @@ describe('Belegung je Node (Fundpunkt 203)', () => {
 
     expect(belegung.get(BELEGUNG_NODE)?.running).toEqual({
       ramMb: 20_480,
-      cpuCores: 6,
       // Die Platte zaehlt auch hier ueber alle Zustaende: Der Datenordner
       // bleibt liegen, wenn der Server aus ist.
       diskMb: 86_016,
@@ -205,7 +203,6 @@ describe('Belegung je Node (Fundpunkt 203)', () => {
 
     expect(belegung.get(BELEGUNG_NODE)?.running).toEqual({
       ramMb: 0,
-      cpuCores: 0,
       diskMb: 30_720,
     });
     expect(belegung.get(BELEGUNG_NODE)?.allocated.ramMb).toBe(9_216);

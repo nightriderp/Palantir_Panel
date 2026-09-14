@@ -18,9 +18,11 @@
  * Richtung. `HostNodeUsage.source` sagt, welcher der beiden Fälle vorliegt.
  *
  * `cpuPercent` bezieht sich – wie in `HostNodeUsage` beschrieben – auf die
- * gesamte Node: 100 bedeutet „alle Kerne der VM reserviert", nicht „ein Kern
+ * gesamte Node: 100 bedeutet „alle Kerne der VM ausgelastet", nicht „ein Kern
  * ausgelastet" (anders als `AgentContainerStats.cpuPercent`, das je Container
- * misst).
+ * misst). Er kommt seit dem Wegfall der CPU-Zuweisung **nur** aus der Messung
+ * (`cpuLoad1m`); ohne sie bleibt er `null`, weil es keine zweite Quelle mehr
+ * gibt, aus der sich eine CPU-Auslastung ableiten liesse.
  */
 
 import { type HostNodeUsage } from '@palantir/contracts';
@@ -92,7 +94,13 @@ export function createNodeUsageSource(deps: NodeUsageSourceDependencies): NodeUs
           return [
             node.id,
             {
-              cpuPercent: percentOf(usage.runningCpuCores, node.totalResources.cpuCores),
+              /*
+               * Ohne Messung gibt es zur CPU nichts zu sagen. Bis zum Wegfall
+               * der CPU-Zuweisung stand hier die Summe der zugewiesenen Kerne –
+               * die gibt es nicht mehr, und eine dauerhafte 0 % sähe aus wie
+               * eine leere Node statt wie eine unbekannte.
+               */
+              cpuPercent: null,
               ramUsedMb: usage.runningRamMb,
               diskUsedMb: usage.allocatedDiskMb,
               sampledAt,

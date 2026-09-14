@@ -1,0 +1,1 @@
+ALTER TABLE "user_resource_limits" DROP COLUMN "max_cpu_cores";

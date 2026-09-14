@@ -35,12 +35,19 @@ export interface AgentPortMapping {
   readonly protocol: AgentPortProtocol;
 }
 
-/** Feste CPU-/RAM-Grenzen je Container – nicht optional (Pflichtenheft §2.3). */
+/**
+ * Grenzen je Container (Pflichtenheft §2.3).
+ *
+ * **Ohne CPU-Anteil.** Bis dahin trug jeder Container eine feste Kerngrenze
+ * (`NanoCpus`), die der Nutzer beim Anlegen angeben musste. Sie ist auf Wunsch
+ * des Betreibers entfallen: Ein Server soll sich nehmen dürfen, was er braucht,
+ * und die Kerne teilt der Scheduler des Kernels unter den laufenden Containern
+ * auf. Was bleibt, ist die RAM-Grenze – sie ist der Schutz davor, dass ein
+ * einzelner Server die Node mitreißt.
+ */
 export interface AgentResourceLimits {
   /** Harte RAM-Grenze in MiB. */
   readonly memoryMb: number;
-  /** CPU-Anteil in Kernen, Nachkommastellen erlaubt (z. B. 1.5). */
-  readonly cpuCores: number;
   /** Obergrenze für Prozesse/Threads im Container (Fork-Bomb-Schutz). */
   readonly pidsLimit?: number;
 }
@@ -170,8 +177,7 @@ export interface UpdateResourcesCommandPayload {
    *
    * `pidsLimit` bleibt bewusst mit drin, obwohl es heute niemand ändert: Die
    * Engine setzt beim Aktualisieren, was dasteht, und ein ausgelassenes Feld
-   * hieße dort „unbegrenzt". Wer nur den RAM meint, schickt die übrigen Werte
-   * unverändert mit.
+   * hieße dort „unbegrenzt". Wer nur den RAM meint, schickt es unverändert mit.
    */
   readonly resources: AgentResourceLimits;
 }

@@ -49,7 +49,7 @@ function serverRecord(overrides: Partial<ServerRecord> & Pick<ServerRecord, 'id'
     subdomain: 'testserver',
     dnsRecordId: null,
     assignedPorts: [],
-    resourceLimits: { ramMb: 2048, cpuCores: 2, diskMb: 10_240 },
+    resourceLimits: { ramMb: 2048, diskMb: 10_240 },
     configJson: {},
     startupParameters: '',
     autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 15 },

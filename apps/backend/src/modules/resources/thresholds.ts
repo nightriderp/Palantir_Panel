@@ -25,8 +25,21 @@ import {
   unitForResource,
 } from '@palantir/contracts';
 
-/** Ressourcenarten, für die es eine Warnung geben kann – eine Anzahl wird nie „knapp". */
-type WarnableResource = 'ram' | 'cpu' | 'disk';
+/**
+ * Ressourcenarten, für die es eine Warnung geben kann – eine Anzahl wird nie
+ * „knapp".
+ *
+ * **Ohne CPU**, seit die CPU-Zuweisung entfallen ist: Beide Warnungen rechneten
+ * gegen zugewiesene Kerne – die Node gegen die Summe der Zuweisungen, der
+ * Server gegen seine eigene. Ohne Zuweisung ist diese Summe immer null, und
+ * eine Warnung, die nie auslösen kann, ist schlechter als keine.
+ *
+ * Eine CPU-Warnung bliebe möglich, aber auf anderer Grundlage: Die Node meldet
+ * ihre echte Systemlast (`AgentNodeStats.cpuLoad1m`) neben der Kernzahl. Das
+ * wäre eine eigene Auswertung und steht bewusst noch aus, statt hier eine
+ * Zuweisungs-Rechnung weiterzuschleppen, die nichts mehr misst.
+ */
+type WarnableResource = 'ram' | 'disk';
 
 /**
  * Belegung in Prozent, auf eine Nachkommastelle gerundet.
@@ -92,14 +105,13 @@ export interface NodeWarningInput {
 /**
  * Warnungen auf Node-Ebene.
  *
- * RAM und CPU werden gegen die laufenden Server gemessen, Speicherplatz gegen
- * alle Server – ein gestoppter Server gibt seinen Datenordner nicht frei.
+ * RAM wird gegen die laufenden Server gemessen, Speicherplatz gegen alle
+ * Server – ein gestoppter Server gibt seinen Datenordner nicht frei.
  */
 export function evaluateNodeWarnings(input: NodeWarningInput): ResourceLowEvent[] {
   return buildWarnings(
     [
       { resource: 'ram', used: input.usage.runningRamMb, total: input.total.ramMb },
-      { resource: 'cpu', used: input.usage.runningCpuCores, total: input.total.cpuCores },
       { resource: 'disk', used: input.usage.allocatedDiskMb, total: input.total.diskMb },
     ],
     { scope: 'node', nodeId: input.nodeId, serverId: null },
@@ -116,15 +128,10 @@ export interface ServerWarningInput {
   /**
    * Gemessener Verbrauch in **absoluten** Werten.
    *
-   * Bewusst nicht als Prozentwert übergeben: `ServerLiveStats.cpuPercent` misst
-   * Prozent **eines Kerns** (250 = 2,5 ausgelastete Kerne) und gerade nicht
-   * Prozent des Kontingents. Die Umrechnung in Kerne macht der Aufrufer, damit
-   * die Bezugsgröße nicht in diesem Modul geraten wird. `null` heißt „das Spiel
-   * bzw. der Agent liefert diesen Wert nicht" – dafür gibt es dann auch keine
-   * Warnung.
+   * `null` heißt „das Spiel bzw. der Agent liefert diesen Wert nicht" – dafür
+   * gibt es dann auch keine Warnung.
    */
   readonly usedRamMb: number | null;
-  readonly usedCpuCores: number | null;
   readonly usedDiskMb: number | null;
   /** Schwellwert in Prozent (`RESOURCE_WARN_SERVER_PERCENT`). */
   readonly thresholdPercent: number;
@@ -139,10 +146,9 @@ export interface ServerWarningInput {
  * kennt die Messstelle (B3) nicht – er kommt aus der Konfiguration und wird
  * erst im Ressourcen-Dienst dazugelegt.
  *
- * `usedCpuCores` ist wie oben in **absoluten Kernen** angegeben, nicht als
- * `cpuPercent`: Der Vertrag misst dort Prozent *eines Kerns* (250 = 2,5
- * ausgelastete Kerne) und ausdrücklich nicht Prozent des Kontingents. Die
- * Umrechnung gehört an die Messstelle.
+ * Ein CPU-Wert steht hier nicht mehr: Ohne Zuweisung gibt es keine Bezugsgröße
+ * je Server, gegen die sich „knapp" messen liesse (siehe
+ * {@link WarnableResource}).
  */
 export interface ServerLoadSnapshot {
   readonly serverId: string;
@@ -157,7 +163,6 @@ export interface ServerLoadSnapshot {
   readonly ownerId: string;
   readonly limits: ServerResourceLimits;
   readonly usedRamMb: number | null;
-  readonly usedCpuCores: number | null;
   readonly usedDiskMb: number | null;
 }
 
@@ -167,10 +172,6 @@ export function evaluateServerWarnings(input: ServerWarningInput): ResourceLowEv
 
   if (input.usedRamMb !== null) {
     candidates.push({ resource: 'ram', used: input.usedRamMb, total: input.limits.ramMb });
-  }
-
-  if (input.usedCpuCores !== null) {
-    candidates.push({ resource: 'cpu', used: input.usedCpuCores, total: input.limits.cpuCores });
   }
 
   if (input.usedDiskMb !== null) {

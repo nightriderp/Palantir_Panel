@@ -553,7 +553,7 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
   it('empfiehlt Ressourcen, mit denen Paper wirklich läuft', () => {
     // Mit den 256 MiB des Prüfstands startet keine JVM sinnvoll.
     expect(MINECRAFT_PAPER_GAME_TYPE.resourceDefaults.ramMb).toBeGreaterThanOrEqual(2_048);
-    expect(MINECRAFT_PAPER_GAME_TYPE.resourceDefaults.cpuCores).toBeGreaterThanOrEqual(1);
+    expect(MINECRAFT_PAPER_GAME_TYPE.resourceDefaults.diskMb).toBeGreaterThanOrEqual(2_048);
   });
 });
 

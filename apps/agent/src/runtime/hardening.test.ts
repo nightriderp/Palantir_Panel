@@ -22,7 +22,7 @@ function spec(ueberschreibung: Partial<ContainerSpec> = {}): ContainerSpec {
     image: 'palantir/testserver:1',
     env: { SERVER_PORT: '25565' },
     ports: [{ containerPort: 25565, hostPort: 30001, protocol: 'tcp' }],
-    resources: { memoryMb: 2048, cpuCores: 2 },
+    resources: { memoryMb: 2048 },
     dataVolume: { hostPath: `${DATEN_WURZEL}/srv-1`, containerPath: '/data' },
     serverId: 'a3f1c2d4-0000-4000-8000-000000000001',
     ...ueberschreibung,
@@ -67,15 +67,19 @@ describe('Container-Haertung (Pflichtenheft §2.3)', () => {
     }
   });
 
-  it('setzt feste CPU- und RAM-Grenzen und deaktiviert Swap', () => {
-    const body = buildCreateContainerBody(
-      spec({ resources: { memoryMb: 1024, cpuCores: 1.5 } }),
-      optionen,
-    );
+  it('setzt eine feste RAM-Grenze und deaktiviert Swap', () => {
+    const body = buildCreateContainerBody(spec({ resources: { memoryMb: 1024 } }), optionen);
     expect(body.HostConfig.Memory).toBe(1024 * 1024 * 1024);
     // Gleicher Wert wie Memory bedeutet: kein Swap - das RAM-Limit ist nicht umgehbar.
     expect(body.HostConfig.MemorySwap).toBe(body.HostConfig.Memory);
-    expect(body.HostConfig.NanoCpus).toBe(1_500_000_000);
+  });
+
+  it('setzt keine CPU-Grenze mehr', () => {
+    // Die Zuweisung ist auf Wunsch des Betreibers entfallen: Jeder Container
+    // sieht alle Kerne der Node, der Scheduler teilt sie auf. Stuende hier noch
+    // ein `NanoCpus`, waere der Regler weg und die Grenze trotzdem da.
+    const body = buildCreateContainerBody(spec(), optionen);
+    expect(body.HostConfig).not.toHaveProperty('NanoCpus');
   });
 
   it('begrenzt die Prozessanzahl gegen Fork-Bomben', () => {
@@ -83,10 +87,8 @@ describe('Container-Haertung (Pflichtenheft §2.3)', () => {
       DEFAULT_PIDS_LIMIT,
     );
     expect(
-      buildCreateContainerBody(
-        spec({ resources: { memoryMb: 512, cpuCores: 1, pidsLimit: 64 } }),
-        optionen,
-      ).HostConfig.PidsLimit,
+      buildCreateContainerBody(spec({ resources: { memoryMb: 512, pidsLimit: 64 } }), optionen)
+        .HostConfig.PidsLimit,
     ).toBe(64);
   });
 
@@ -164,9 +166,11 @@ describe('Spec-Pruefung', () => {
   }
 
   it('lehnt fehlende oder unsinnige Ressourcen-Grenzen ab', () => {
-    erwarteFehler({ resources: { memoryMb: 0, cpuCores: 1 } }, 'INVALID_CONTAINER_SPEC');
-    erwarteFehler({ resources: { memoryMb: 512, cpuCores: 0 } }, 'INVALID_CONTAINER_SPEC');
-    erwarteFehler({ resources: { memoryMb: 512, cpuCores: -1 } }, 'INVALID_CONTAINER_SPEC');
+    erwarteFehler({ resources: { memoryMb: 0 } }, 'INVALID_CONTAINER_SPEC');
+    erwarteFehler({ resources: { memoryMb: -512 } }, 'INVALID_CONTAINER_SPEC');
+    erwarteFehler({ resources: { memoryMb: 512.5 } }, 'INVALID_CONTAINER_SPEC');
+    // Unterhalb von MIN_MEMORY_MB startet kein Container.
+    erwarteFehler({ resources: { memoryMb: 8 } }, 'INVALID_CONTAINER_SPEC');
   });
 
   it('lehnt Bind-Mounts ausserhalb der erlaubten Verzeichnisse ab', () => {

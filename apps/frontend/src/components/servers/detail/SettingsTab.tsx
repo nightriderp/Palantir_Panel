@@ -384,7 +384,6 @@ export function SettingsTab({
 
           <ResourceFields
             ramMb={draft.resourceLimits.ramMb}
-            cpuCores={draft.resourceLimits.cpuCores}
             diskMb={draft.resourceLimits.diskMb}
             onChange={(values) =>
               setDraft((current) => ({

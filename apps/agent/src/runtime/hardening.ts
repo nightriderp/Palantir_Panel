@@ -90,7 +90,6 @@ export interface DockerHostConfig {
   readonly PortBindings: Record<string, Array<{ HostIp: string; HostPort: string }>>;
   readonly Memory: number;
   readonly MemorySwap: number;
-  readonly NanoCpus: number;
   readonly PidsLimit: number;
   readonly ReadonlyRootfs: boolean;
   readonly Tmpfs: Record<string, string>;
@@ -150,7 +149,6 @@ export interface HardeningOptions {
 
 const CONTAINER_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,127}$/;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const MAX_CPU_CORES = 256;
 const MIN_MEMORY_MB = 16;
 
 function invalidSpec(message: string, details?: Record<string, unknown>): ContainerRuntimeError {
@@ -175,15 +173,10 @@ export function assertValidContainerSpec(spec: ContainerSpec, options: Hardening
     throw invalidSpec('Es ist kein Image angegeben.');
   }
 
-  const { memoryMb, cpuCores, pidsLimit } = spec.resources;
+  const { memoryMb, pidsLimit } = spec.resources;
   if (!Number.isInteger(memoryMb) || memoryMb < MIN_MEMORY_MB) {
     throw invalidSpec(`Die RAM-Grenze muss eine ganze Zahl ab ${MIN_MEMORY_MB} MiB sein.`, {
       memoryMb,
-    });
-  }
-  if (!Number.isFinite(cpuCores) || cpuCores <= 0 || cpuCores > MAX_CPU_CORES) {
-    throw invalidSpec(`Die CPU-Grenze muss groesser als 0 und hoechstens ${MAX_CPU_CORES} sein.`, {
-      cpuCores,
     });
   }
   if (pidsLimit !== undefined && (!Number.isInteger(pidsLimit) || pidsLimit < 1)) {
@@ -341,7 +334,13 @@ export function buildCreateContainerBody(
       // Gleicher Wert wie Memory => kein Swap. Sonst koennte ein Container sein
       // RAM-Limit ueber die Auslagerungsdatei des Hosts umgehen.
       MemorySwap: memoryBytes,
-      NanoCpus: Math.round(spec.resources.cpuCores * 1_000_000_000),
+      /*
+       * Kein `NanoCpus`: Die CPU-Zuweisung ist auf Wunsch des Betreibers
+       * entfallen. Jeder Container darf alle Kerne der Node sehen, der
+       * Scheduler des Kernels teilt sie unter den laufenden auf. Die
+       * RAM-Grenze bleibt - sie ist der Schutz davor, dass ein einzelner
+       * Server die Node mitreisst.
+       */
       PidsLimit: spec.resources.pidsLimit ?? DEFAULT_PIDS_LIMIT,
       ReadonlyRootfs: readOnlyRootfs,
       Tmpfs: tmpfs,

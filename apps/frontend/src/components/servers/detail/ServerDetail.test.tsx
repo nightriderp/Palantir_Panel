@@ -326,8 +326,10 @@ describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
 
     // 2048 MiB von 4 GiB Kontingent - vorher stand hier ein Strich.
     expect(await screen.findByText('2 GiB')).toBeTruthy();
-    // 250 % eines Kerns bei zwei Kernen: 125 %, begrenzt auf 100 (Fundpunkt 205).
-    expect(screen.getByText('2,5 von 2 Kernen')).toBeTruthy();
+    // 250 % eines Kerns sind 2,5 ausgelastete Kerne. Seit dem Wegfall der
+    // CPU-Zuweisung steht dort die absolute Zahl – es gibt keine servereigene
+    // Bezugsgroesse mehr, gegen die sich ein Prozentwert bilden liesse.
+    expect(screen.getByText('2,5 Kerne')).toBeTruthy();
     expect(screen.getByText(/Keine laufenden Messwerte/)).toBeTruthy();
     expect(screen.queryByText('Der Server läuft nicht.')).toBeNull();
   });

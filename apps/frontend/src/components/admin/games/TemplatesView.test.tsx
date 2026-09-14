@@ -90,7 +90,7 @@ function spiel(overrides: Partial<GameTypeDto> = {}): GameTypeDto {
     supportsVirtualHostRouting: true,
     supportsWorldImport: true,
     defaultPorts: [25_565],
-    resourceDefaults: { ramMb: 4096, cpuCores: 2, diskMb: 10_240 },
+    resourceDefaults: { ramMb: 4096, diskMb: 10_240 },
     configFields: [],
     available: true,
     unavailableReason: null,

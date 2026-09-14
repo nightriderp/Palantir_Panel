@@ -36,11 +36,13 @@ import {
 import { evaluateNodeWarnings } from './thresholds.js';
 
 /**
- * Toleranz beim Vergleich von CPU-Anteilen.
+ * Toleranz beim Vergleich.
  *
- * CPU-Kontingente sind Fließkommazahlen (z. B. 1.5 Kerne). `0.1 + 0.2 > 0.3`
- * ist in IEEE-754 wahr – ohne Toleranz würde ein exakt ausgeschöpftes
- * Kontingent gelegentlich fälschlich als überschritten gelten.
+ * Stammt aus der Zeit der CPU-Kontingente, die Fließkommazahlen waren
+ * (`0.1 + 0.2 > 0.3` ist in IEEE-754 wahr). RAM und Platte zählen in ganzen
+ * MiB; die Toleranz bleibt trotzdem stehen, damit ein exakt ausgeschöpftes
+ * Kontingent unter keinen Umständen als überschritten gilt – Gleichstand ist
+ * laut Pflichtenheft §10 erlaubt.
  */
 const FLOAT_TOLERANCE = 1e-9;
 
@@ -106,21 +108,6 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
     );
   }
 
-  if (
-    userLimits.maxCpuCores !== null &&
-    exceeds(userUsage.runningCpuCores, requested.cpuCores, userLimits.maxCpuCores)
-  ) {
-    violations.push(
-      toViolation(
-        'user',
-        'cpu',
-        userLimits.maxCpuCores,
-        userUsage.runningCpuCores,
-        requested.cpuCores,
-      ),
-    );
-  }
-
   // Speicherplatz zählt über alle Server des Nutzers – auch gestoppte belegen ihn.
   if (
     userLimits.maxDiskMb !== null &&
@@ -153,18 +140,6 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
     );
   }
 
-  if (exceeds(node.usage.runningCpuCores, requested.cpuCores, node.total.cpuCores)) {
-    violations.push(
-      toViolation(
-        'node',
-        'cpu',
-        node.total.cpuCores,
-        node.usage.runningCpuCores,
-        requested.cpuCores,
-      ),
-    );
-  }
-
   if (exceeds(node.usage.allocatedDiskMb, requested.diskMb, node.total.diskMb)) {
     violations.push(
       toViolation('node', 'disk', node.total.diskMb, node.usage.allocatedDiskMb, requested.diskMb),
@@ -192,7 +167,6 @@ function projectUsageAfterStart(
 ): NodeResourceUsage {
   return {
     runningRamMb: usage.runningRamMb + requested.ramMb,
-    runningCpuCores: usage.runningCpuCores + requested.cpuCores,
     allocatedDiskMb: usage.allocatedDiskMb + requested.diskMb,
     runningServers: usage.runningServers + 1,
     totalServers: usage.totalServers + 1,

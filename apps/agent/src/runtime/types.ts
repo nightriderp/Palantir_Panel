@@ -28,12 +28,18 @@ export const CONTAINER_STATUSES = [
   'unknown',
 ] as const satisfies readonly ContainerStatus[];
 
-/** Feste CPU-/RAM-Grenzen je Container (Pflichtenheft §2.3 - nicht optional). */
+/**
+ * Grenzen je Container (Pflichtenheft §2.3).
+ *
+ * **Ohne CPU-Anteil.** Bis dahin trug jeder Container eine feste Kerngrenze
+ * (`NanoCpus`). Sie ist auf Wunsch des Betreibers entfallen: Ein Server soll
+ * sich nehmen duerfen, was er braucht, und die Kerne teilt der Scheduler des
+ * Kernels unter den laufenden Containern auf. Die RAM-Grenze bleibt - sie ist
+ * der Schutz davor, dass ein einzelner Server die Node mitreisst.
+ */
 export interface ResourceLimits {
   /** Harte RAM-Grenze in MiB. */
   readonly memoryMb: number;
-  /** CPU-Anteil in Kernen, Nachkommastellen erlaubt (z. B. 1.5). */
-  readonly cpuCores: number;
   /**
    * Obergrenze fuer Prozesse/Threads im Container (Fork-Bomb-Schutz).
    * Ohne Angabe greift {@link DEFAULT_PIDS_LIMIT}.

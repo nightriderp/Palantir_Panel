@@ -1,12 +1,10 @@
 import {
-  SERVER_CPU_MAX_CORES,
-  SERVER_CPU_MIN_CORES,
   SERVER_DISK_MAX_MB,
   SERVER_DISK_MIN_MB,
   SERVER_RAM_MAX_MB,
   SERVER_RAM_MIN_MB,
 } from '@palantir/validation';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ResourceFields } from './ResourceFields';
@@ -22,12 +20,11 @@ import { ResourceFields } from './ResourceFields';
  * prüft.
  */
 
-function zeichne(werte?: { ramMb?: number; cpuCores?: number; diskMb?: number }) {
+function zeichne(werte?: { ramMb?: number; diskMb?: number }) {
   const geaendert = vi.fn();
   render(
     <ResourceFields
       ramMb={werte?.ramMb ?? 4096}
-      cpuCores={werte?.cpuCores ?? 2}
       diskMb={werte?.diskMb ?? 10240}
       onChange={geaendert}
     />,
@@ -52,13 +49,12 @@ describe('ResourceFields – Grenzen aus @palantir/validation (frontend-lib-09)'
     });
   });
 
-  it('übernimmt die CPU-Grenzen unverändert aus dem Schema', () => {
+  it('zeigt kein CPU-Feld mehr', () => {
+    // Die Zuweisung ist entfallen: Ein Server nimmt sich die Kerne, die er
+    // braucht. Ein Feld dafür wäre ein Versprechen, das nichts einlöst.
     zeichne();
 
-    expect(grenzen('CPU-Kerne')).toEqual({
-      min: String(SERVER_CPU_MIN_CORES),
-      max: String(SERVER_CPU_MAX_CORES),
-    });
+    expect(screen.queryByLabelText('CPU-Kerne')).toBeNull();
   });
 
   it('nimmt die Platten-Untergrenze aus dem Schema und zeigt eine praktische Reglerweite', () => {
@@ -95,15 +91,5 @@ describe('ResourceFields – Grenzen aus @palantir/validation (frontend-lib-09)'
 
     expect(Number(regler.max)).toBe(einTerabyte);
     expect(regler.value).toBe(String(einTerabyte));
-  });
-
-  it('meldet ein geleertes CPU-Feld nicht als 0 nach oben (frontend-lib-13)', () => {
-    const { geaendert } = zeichne({ cpuCores: 4 });
-
-    const feld = screen.getByLabelText('CPU-Kerne') as HTMLInputElement;
-    fireEvent.change(feld, { target: { value: '' } });
-
-    expect(geaendert).not.toHaveBeenCalled();
-    expect(feld.value).toBe('');
   });
 });

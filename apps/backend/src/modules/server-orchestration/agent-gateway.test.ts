@@ -592,7 +592,7 @@ describe('Befehle und Korrelations-IDs (Pflichtenheft §5.3)', () => {
       image: 'test:1',
       env: {},
       ports: [],
-      resources: { memoryMb: 256, cpuCores: 0.5 },
+      resources: { memoryMb: 256 },
       dataVolume: { hostPath: '/srv/x', containerPath: '/data' },
     });
 

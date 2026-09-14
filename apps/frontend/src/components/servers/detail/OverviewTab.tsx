@@ -7,7 +7,6 @@ import {
   Panel,
   SegmentedControl,
   clampedPercentOf,
-  cpuQuotaPercent,
   formatCores,
   formatDateTime,
   formatDuration,
@@ -19,7 +18,6 @@ import {
   formatServerAddress,
   formatTime,
   hasLiveStats,
-  lastTon,
   pingTon,
 } from '@/components/shared';
 import { fetchStatsHistory } from '@/lib/api/servers';
@@ -148,8 +146,6 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       value: server.assignedPorts.length > 0 ? server.assignedPorts.join(', ') : 'keine',
     },
     { label: 'Arbeitsspeicher', value: formatMegabytes(server.resourceLimits.ramMb) },
-    // Fundpunkt 220 (UI-35): Die Angabe stand hier von Hand - und damit "1 Kerne".
-    { label: 'CPU', value: formatCores(server.resourceLimits.cpuCores) },
     { label: 'Speicherplatz', value: formatMegabytes(server.resourceLimits.diskMb) },
     { label: 'Besitzer', value: server.ownerDisplayName ?? 'nicht sichtbar' },
     { label: 'Mitverwalter', value: String(server.memberCount) },
@@ -192,24 +188,22 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           bei einer festen Spaltenzahl umzubrechen. */}
       <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
         {/*
-          Fundpunkt 205: `cpuPercent` zählt in Prozent **eines** Kerns – hier
-          stand deshalb bei einem Server mit vier Kernen schon mal „250 %".
-          Die Kachel zeigt jetzt den Anteil am eigenen Kontingent, der Zusatz
-          darunter die Kerne selbst.
+          `cpuPercent` zählt in Prozent **eines** Kerns: 250 heißt 2,5
+          ausgelastete Kerne. Bis zum Wegfall der CPU-Zuweisung stand hier der
+          Anteil am eigenen Kontingent; ohne Zuweisung gibt es diese
+          Bezugsgröße nicht mehr.
+
+          Die Kachel zeigt deshalb die Kerne selbst – eine absolute Zahl ohne
+          erfundenen Nenner. Ein Prozentwert gegen die Kerne der Node wäre
+          möglich, aber der DTO trägt sie nicht; sie steht in der
+          Node-Übersicht, wo sie hingehört.
         */}
         <MetricTile
           label="CPU-Last"
-          value={formatPercent(
-            cpuQuotaPercent(anzeige?.cpuPercent, server.resourceLimits.cpuCores),
-          )}
-          tone={lastTon(cpuQuotaPercent(anzeige?.cpuPercent, server.resourceLimits.cpuCores))}
-          note={
-            anzeige?.cpuPercent == null
-              ? fehlgrund
-              : `${formatNumber(Math.round(anzeige.cpuPercent / 10) / 10)} von ${formatNumber(
-                  server.resourceLimits.cpuCores,
-                )} Kernen`
+          value={
+            anzeige?.cpuPercent == null ? '—' : formatCores(Math.round(anzeige.cpuPercent) / 100)
           }
+          note={anzeige?.cpuPercent == null ? fehlgrund : 'ausgelastet, ohne feste Obergrenze'}
         />
         <MetricTile
           label="Arbeitsspeicher"
@@ -341,10 +335,12 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
                 samples={history.data.samples}
                 metric="cpuPercent"
                 label="CPU-Auslastung"
-                // Fundpunkt 205: Die Achse endet beim Kontingent des Servers,
-                // nicht bei „ein Kern". Sonst sieht ein Vier-Kern-Server schon
-                // bei einem ausgelasteten Kern nach Vollausschlag aus.
-                max={server.resourceLimits.cpuCores * 100}
+                // Keine feste Achsenobergrenze mehr: Sie war das Kontingent
+                // des Servers, und das gibt es seit dem Wegfall der
+                // CPU-Zuweisung nicht. Der Verlauf skaliert jetzt auf seinen
+                // eigenen Höchstwert – so bleibt der Kurvenverlauf lesbar,
+                // statt an einer geratenen Obergrenze zu kleben.
+                max={null}
                 formatValue={(wert) => formatCores(wert / 100)}
               />
               <StatsHistoryChart

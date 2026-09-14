@@ -128,7 +128,7 @@ function spec(ueberschreibung: Partial<ContainerSpec> = {}): ContainerSpec {
     image: 'palantir/testserver:1',
     env: { EULA: 'true' },
     ports: [{ containerPort: 25565, hostPort: 30001, protocol: 'tcp' }],
-    resources: { memoryMb: 1024, cpuCores: 1 },
+    resources: { memoryMb: 1024 },
     dataVolume: { hostPath: `${DATEN_WURZEL}/srv-1`, containerPath: '/data' },
     ...ueberschreibung,
   };
@@ -184,7 +184,6 @@ describe('CREATE', () => {
         ReadonlyRootfs: true,
         Memory: 1024 * 1024 * 1024,
         MemorySwap: 1024 * 1024 * 1024,
-        NanoCpus: 1_000_000_000,
         RestartPolicy: { Name: 'no' },
         Binds: [`${DATEN_WURZEL}/srv-1:/data:rw`],
         // Eigenes Netz mit Egress-Regeln statt `bridge` (security-matrix-02).
@@ -1146,10 +1145,10 @@ describe('Erwarteter Stopp (Unterdrueckung von CRASHED)', () => {
 });
 
 describe('UPDATE_RESOURCES', () => {
-  it('setzt beide Grenzen ueber den Update-Endpunkt der Engine', async () => {
+  it('setzt die RAM-Grenze ueber den Update-Endpunkt der Engine', async () => {
     antwortgeber = () => new Response(null, { status: 200 });
 
-    await runtime.updateResources('c-1', { memoryMb: 4096, cpuCores: 2.5 });
+    await runtime.updateResources('c-1', { memoryMb: 4096 });
 
     const aufruf = aufrufe[0];
     expect(aufruf?.method).toBe('POST');
@@ -1161,8 +1160,9 @@ describe('UPDATE_RESOURCES', () => {
       // Gleich Memory: kein Swap, sonst umginge der Container seine Grenze
       // ueber die Auslagerungsdatei des Hosts.
       MemorySwap: 4096 * 1024 * 1024,
-      NanoCpus: 2_500_000_000,
     });
+    // Keine CPU-Grenze mehr - wie beim Anlegen.
+    expect(gesendet).not.toHaveProperty('NanoCpus');
   });
 
   it('schickt den Fork-Bomb-Schutz mit, statt ihn auf unbegrenzt fallen zu lassen', async () => {
@@ -1171,7 +1171,7 @@ describe('UPDATE_RESOURCES', () => {
     // Verschieben des RAM-Reglers weg.
     antwortgeber = () => new Response(null, { status: 200 });
 
-    await runtime.updateResources('c-1', { memoryMb: 1024, cpuCores: 1 });
+    await runtime.updateResources('c-1', { memoryMb: 1024 });
 
     const gesendet = JSON.parse(aufrufe[0]?.body ?? '{}') as { PidsLimit?: number };
     expect(gesendet.PidsLimit).toBe(512);
@@ -1180,7 +1180,7 @@ describe('UPDATE_RESOURCES', () => {
   it('uebernimmt eine abweichende Prozessgrenze', async () => {
     antwortgeber = () => new Response(null, { status: 200 });
 
-    await runtime.updateResources('c-1', { memoryMb: 1024, cpuCores: 1, pidsLimit: 64 });
+    await runtime.updateResources('c-1', { memoryMb: 1024, pidsLimit: 64 });
 
     const gesendet = JSON.parse(aufrufe[0]?.body ?? '{}') as { PidsLimit?: number };
     expect(gesendet.PidsLimit).toBe(64);
@@ -1189,7 +1189,7 @@ describe('UPDATE_RESOURCES', () => {
   it('meldet einen unbekannten Container als CONTAINER_NOT_FOUND', async () => {
     antwortgeber = () => json({ message: 'No such container: c-weg' }, 404);
 
-    await expect(runtime.updateResources('c-weg', { memoryMb: 1024, cpuCores: 1 })).rejects.toThrow(
+    await expect(runtime.updateResources('c-weg', { memoryMb: 1024 })).rejects.toThrow(
       /CONTAINER_NOT_FOUND|No such container/,
     );
   });

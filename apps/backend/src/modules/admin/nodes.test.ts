@@ -69,7 +69,7 @@ function allocation(overrides: Partial<PortAllocationRecord> = {}): PortAllocati
 
 function placements(
   serverCount: number,
-  allocated = { ramMb: 8_192, cpuCores: 2, diskMb: 100_000 },
+  allocated = { ramMb: 8_192, diskMb: 100_000 },
 ): NodePlacementSource {
   return { load: async () => new Map([[NODE_ID, { serverCount, allocated }]]) };
 }
@@ -78,10 +78,10 @@ describe('Node-Kapazität (Lastenheft §3.7)', () => {
   it('zieht den reservierten Anteil vom Gesamtbestand ab', () => {
     const capacity = computeCapacity(
       { ramMb: 32_768, cpuCores: 8, diskMb: 2_000_000 },
-      { ramMb: 8_192, cpuCores: 2, diskMb: 100_000 },
+      { ramMb: 8_192, diskMb: 100_000 },
     );
 
-    expect(capacity.available).toEqual({ ramMb: 24_576, cpuCores: 6, diskMb: 1_900_000 });
+    expect(capacity.available).toEqual({ ramMb: 24_576, diskMb: 1_900_000 });
   });
 
   /*
@@ -93,8 +93,8 @@ describe('Node-Kapazität (Lastenheft §3.7)', () => {
   it('fuehrt gebucht und laufend getrennt', () => {
     const capacity = computeCapacity(
       { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
-      { ramMb: 26_624, cpuCores: 8, diskMb: 86_016 },
-      { ramMb: 20_480, cpuCores: 6, diskMb: 86_016 },
+      { ramMb: 26_624, diskMb: 86_016 },
+      { ramMb: 20_480, diskMb: 86_016 },
     );
 
     expect(capacity.allocated.ramMb).toBe(26_624);
@@ -106,7 +106,7 @@ describe('Node-Kapazität (Lastenheft §3.7)', () => {
   it('faellt ohne eigene Angabe auf die gebuchte Zahl zurueck', () => {
     const capacity = computeCapacity(
       { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
-      { ramMb: 26_624, cpuCores: 8, diskMb: 86_016 },
+      { ramMb: 26_624, diskMb: 86_016 },
     );
 
     expect(capacity.running).toEqual(capacity.allocated);
@@ -114,11 +114,11 @@ describe('Node-Kapazität (Lastenheft §3.7)', () => {
 
   it('meldet nie einen negativen Rest, auch wenn überbucht wurde', () => {
     const capacity = computeCapacity(
-      { ramMb: 8_192, cpuCores: 4, diskMb: 100_000 },
-      { ramMb: 16_384, cpuCores: 8, diskMb: 200_000 },
+      { ramMb: 8_192, cpuCores: 8, diskMb: 100_000 },
+      { ramMb: 16_384, diskMb: 200_000 },
     );
 
-    expect(capacity.available).toEqual({ ramMb: 0, cpuCores: 0, diskMb: 0 });
+    expect(capacity.available).toEqual({ ramMb: 0, diskMb: 0 });
   });
 
   it('setzt ohne Belegung available gleich total', async () => {
@@ -126,7 +126,13 @@ describe('Node-Kapazität (Lastenheft §3.7)', () => {
 
     const [node] = await service.list(ctxWith(actorWith('node.view')));
 
-    expect(node?.capacity.available).toEqual(node?.capacity.total);
+    // `available` traegt seit dem Wegfall der CPU-Zuweisung keine Kernzahl
+    // mehr: Zugewiesen wird nur noch RAM und Platte, frei ist deshalb auch nur
+    // davon etwas (`NodeAssignedResources`).
+    expect(node?.capacity.available).toEqual({
+      ramMb: node?.capacity.total.ramMb,
+      diskMb: node?.capacity.total.diskMb,
+    });
     expect(node?.serverCount).toBe(0);
     // Solange B4 keine Messwerte liefert, bleibt die Auslastung leer –
     // statt einer erfundenen Null.
@@ -182,7 +188,7 @@ describe('Node-Verwaltung', () => {
     const input = createHostNodeInputSchema.parse({
       name: 'Zweitserver',
       wireguardIp: '10.10.0.3',
-      totalResources: { ramMb: 16_384, cpuCores: 4, diskMb: 500_000 },
+      totalResources: { ramMb: 16_384, cpuCores: 8, diskMb: 500_000 },
     });
 
     await expect(service.create(ctxWith(actorWith('node.view')), input)).rejects.toMatchObject({
@@ -195,7 +201,7 @@ describe('Node-Verwaltung', () => {
     const input = createHostNodeInputSchema.parse({
       name: 'Zweitserver',
       wireguardIp: '10.10.0.2',
-      totalResources: { ramMb: 16_384, cpuCores: 4, diskMb: 500_000 },
+      totalResources: { ramMb: 16_384, cpuCores: 8, diskMb: 500_000 },
     });
 
     await expect(service.create(ctxWith(actorWith('node.manage')), input)).rejects.toMatchObject({
@@ -223,7 +229,7 @@ describe('Node-Verwaltung', () => {
     const input = createHostNodeInputSchema.parse({
       name: 'Zweitserver',
       wireguardIp: '10.10.0.9',
-      totalResources: { ramMb: 16_384, cpuCores: 4, diskMb: 500_000 },
+      totalResources: { ramMb: 16_384, cpuCores: 8, diskMb: 500_000 },
     });
 
     await expect(service.create(ctxWith(actorWith('node.manage')), input)).rejects.toMatchObject({
@@ -236,7 +242,7 @@ describe('Node-Verwaltung', () => {
     const input = createHostNodeInputSchema.parse({
       name: 'Zweitserver',
       wireguardIp: '10.10.0.3',
-      totalResources: { ramMb: 16_384, cpuCores: 4, diskMb: 500_000 },
+      totalResources: { ramMb: 16_384, cpuCores: 8, diskMb: 500_000 },
     });
 
     await service.create(ctxWith(actorWith('node.manage')), input);

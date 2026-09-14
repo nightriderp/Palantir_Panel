@@ -23,7 +23,8 @@ import {
   type ApiResponse,
   type GetStorageBreakdownCommandPayload,
   type GetStorageBreakdownCommandResult,
-  type NodeResources,
+  type NodeAssignedResources,
+  type ServerResourceLimits,
   type RemovableStorageEntryKind,
   type RemoveStorageEntryCommandPayload,
   type StorageEntryDto,
@@ -44,7 +45,7 @@ import { type AgentRegistry } from './agent-gateway.js';
 import { isServerOrchestrationError } from './errors.js';
 import { CONSUMING_STATUSES } from './usage-repository.js';
 
-const NO_RESOURCES: NodeResources = { ramMb: 0, cpuCores: 0, diskMb: 0 };
+const NO_RESOURCES: NodeAssignedResources = { ramMb: 0, diskMb: 0 };
 
 /**
  * Belegung je Node aus `game_servers`.
@@ -58,7 +59,7 @@ const NO_RESOURCES: NodeResources = { ramMb: 0, cpuCores: 0, diskMb: 0 };
 export interface BelegungsZeile {
   readonly hostId: string;
   readonly status: string;
-  readonly resourceLimits: NodeResources;
+  readonly resourceLimits: ServerResourceLimits;
 }
 
 /**
@@ -69,7 +70,7 @@ export interface BelegungsZeile {
  * bleibt (CLAUDE.md §4) - sie ist der Grund, warum Uebersicht und
  * Kapazitaetsschranke frueher auseinanderliefen.
  *
- * `allocated` zaehlt alle Zustaende. `running` nimmt RAM und CPU nur von den
+ * `allocated` zaehlt alle Zustaende. `running` nimmt den RAM nur von den
  * Servern, die laufen oder starten (`CONSUMING_STATUSES` aus
  * `usage-repository.ts`, dieselbe Liste, die die Schranke benutzt); die Platte
  * zaehlt auch dort ueber alle Zustaende, denn der Datenordner bleibt liegen,
@@ -80,7 +81,7 @@ export function fasseBelegungZusammen(
 ): ReadonlyMap<string, NodePlacement> {
   const byNode = new Map<
     string,
-    { serverCount: number; allocated: NodeResources; running: NodeResources }
+    { serverCount: number; allocated: NodeAssignedResources; running: NodeAssignedResources }
   >();
 
   for (const row of rows) {
@@ -95,12 +96,10 @@ export function fasseBelegungZusammen(
       serverCount: entry.serverCount + 1,
       allocated: {
         ramMb: entry.allocated.ramMb + row.resourceLimits.ramMb,
-        cpuCores: entry.allocated.cpuCores + row.resourceLimits.cpuCores,
         diskMb: entry.allocated.diskMb + row.resourceLimits.diskMb,
       },
       running: {
         ramMb: entry.running.ramMb + (laeuft ? row.resourceLimits.ramMb : 0),
-        cpuCores: entry.running.cpuCores + (laeuft ? row.resourceLimits.cpuCores : 0),
         diskMb: entry.running.diskMb + row.resourceLimits.diskMb,
       },
     });

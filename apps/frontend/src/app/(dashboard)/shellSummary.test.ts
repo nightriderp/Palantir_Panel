@@ -23,8 +23,8 @@ function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
     statusMessage: null,
     capacity: {
       total: { ramMb: 16384, cpuCores: 8, diskMb: 512000 },
-      allocated: { ramMb: 4096, cpuCores: 2, diskMb: 20480 },
-      available: { ramMb: 12288, cpuCores: 6, diskMb: 491520 },
+      allocated: { ramMb: 4096, diskMb: 20480 },
+      available: { ramMb: 12288, diskMb: 491520 },
     },
     usage: usage(40),
     serverCount: 1,
@@ -189,8 +189,8 @@ describe('buildStatusMetrics', () => {
           usage: usage(90, 51200),
           capacity: {
             total: { ramMb: 16384, cpuCores: 8, diskMb: 204800 },
-            allocated: { ramMb: 4096, cpuCores: 2, diskMb: 20480 },
-            available: { ramMb: 12288, cpuCores: 6, diskMb: 184320 },
+            allocated: { ramMb: 4096, diskMb: 20480 },
+            available: { ramMb: 12288, diskMb: 184320 },
           },
         }),
       ],

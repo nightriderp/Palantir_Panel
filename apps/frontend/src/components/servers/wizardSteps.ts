@@ -39,7 +39,6 @@ export interface WizardState {
   subdomain: string;
   hostId: string | null;
   ramMb: number;
-  cpuCores: number;
   diskMb: number;
   config: GameConfigValues;
   startupParameters: string;
@@ -55,7 +54,6 @@ export const INITIAL_WIZARD_STATE: WizardState = {
   subdomain: '',
   hostId: null,
   ramMb: 2048,
-  cpuCores: 2,
   diskMb: 10240,
   config: {},
   startupParameters: '',
@@ -83,7 +81,6 @@ export function applyGameType(state: WizardState, gameType: GameTypeDto): Wizard
     ...state,
     gameType: gameType.id,
     ramMb: gameType.resourceDefaults.ramMb,
-    cpuCores: gameType.resourceDefaults.cpuCores,
     diskMb: gameType.resourceDefaults.diskMb,
     config: defaultConfigValues(gameType),
     worldImport: gameType.supportsWorldImport ? state.worldImport : null,
@@ -135,7 +132,7 @@ export function quotaBlockReason(
   state: WizardState,
 ): string | null {
   if (!quota) return null;
-  const { ram, cpu, disk, servers } = quota;
+  const { ram, disk, servers } = quota;
 
   // Der neue Server zählt als einer mehr – bleibt kein Rest, ist Schluss.
   if (servers.remaining !== null && servers.remaining < 1) {
@@ -147,11 +144,6 @@ export function quotaBlockReason(
     return `RAM-Kontingent: ${formatMegabytes(ram.remaining)} frei von ${formatMegabytes(
       ram.limit ?? 0,
     )} (${zaehlung(ram)}) – gebraucht werden ${formatMegabytes(state.ramMb)}.`;
-  }
-  if (cpu.remaining !== null && state.cpuCores > cpu.remaining) {
-    return `CPU-Kontingent: ${cpu.remaining} von ${cpu.limit} Kernen frei (${zaehlung(
-      cpu,
-    )}) – gebraucht werden ${state.cpuCores}.`;
   }
   if (disk.remaining !== null && state.diskMb > disk.remaining) {
     return `Speicher-Kontingent: ${formatMegabytes(disk.remaining)} frei von ${formatMegabytes(
@@ -182,9 +174,6 @@ export function nodeBlockReason(node: HostNodeDto | null, state: WizardState): s
   }
   if (state.diskMb > free.diskMb) {
     return `Auf „${node.name}" sind nur noch ${formatMegabytes(free.diskMb)} Speicherplatz frei.`;
-  }
-  if (state.cpuCores > free.cpuCores) {
-    return `Auf „${node.name}" sind nur noch ${free.cpuCores} CPU-Kerne frei.`;
   }
   return null;
 }
@@ -281,7 +270,6 @@ export function buildSummaryRows(
     },
     { label: 'Node', value: context.node?.name ?? '—' },
     { label: 'Arbeitsspeicher', value: formatMegabytes(state.ramMb) },
-    { label: 'CPU', value: `${state.cpuCores} Kerne` },
     { label: 'Speicherplatz', value: formatMegabytes(state.diskMb) },
     {
       label: 'Automatisch abschalten',

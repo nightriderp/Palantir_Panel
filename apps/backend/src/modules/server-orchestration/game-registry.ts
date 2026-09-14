@@ -93,7 +93,6 @@ export const TEST_GAME_TYPE: GameTypeDefinition = {
   restartRequiredFields: ['greeting', 'motdEnabled'],
   resourceDefaults: {
     ramMb: 256,
-    cpuCores: 0.5,
     diskMb: 1_024,
   },
   query: {
@@ -223,7 +222,6 @@ export const TEST_MINECRAFT_GAME_TYPE: GameTypeDefinition = {
   restartRequiredFields: ['motd', 'maxPlayers', 'fakePlayers', 'startupDelaySeconds'],
   resourceDefaults: {
     ramMb: 256,
-    cpuCores: 0.5,
     diskMb: 1_024,
   },
   query: {
@@ -457,7 +455,6 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 4_096,
-    cpuCores: 2,
     diskMb: 10_240,
   },
   query: {
@@ -687,7 +684,6 @@ export const VALHEIM_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 4096,
-    cpuCores: 2,
     diskMb: 10_240,
   },
   /*
@@ -900,7 +896,6 @@ export const TERRARIA_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 2_048,
-    cpuCores: 1,
     diskMb: 5_120,
   },
   query: {
@@ -1076,7 +1071,6 @@ export const FACTORIO_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 4_096,
-    cpuCores: 2,
     diskMb: 10_240,
   },
   query: {
@@ -1275,7 +1269,6 @@ export const PROJECT_ZOMBOID_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 4_096,
-    cpuCores: 2,
     diskMb: 10_240,
   },
   query: {
@@ -1430,7 +1423,6 @@ export const RUST_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 8_192,
-    cpuCores: 4,
     diskMb: 30_720,
   },
   query: {
@@ -1587,7 +1579,6 @@ export const PALWORLD_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 8_192,
-    cpuCores: 4,
     diskMb: 20_480,
   },
   query: {
@@ -1683,7 +1674,6 @@ export const MINECRAFT_NEOFORGE_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 6_144,
-    cpuCores: 2,
     diskMb: 15_360,
   },
 };
@@ -1728,7 +1718,6 @@ export const SATISFACTORY_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 8_192,
-    cpuCores: 4,
     diskMb: 25_600,
   },
   query: {
@@ -1960,7 +1949,6 @@ export const SDTD_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 8_192,
-    cpuCores: 4,
     diskMb: 25_600,
   },
   query: {
@@ -2095,7 +2083,6 @@ export const ENSHROUDED_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 8_192,
-    cpuCores: 4,
     diskMb: 20_480,
   },
   query: {
@@ -2269,7 +2256,6 @@ export const VRISING_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 6_144,
-    cpuCores: 3,
     diskMb: 15_360,
   },
   query: {
@@ -2431,7 +2417,6 @@ export const SONS_OF_THE_FOREST_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 8_192,
-    cpuCores: 4,
     diskMb: 30_720,
   },
   query: {
@@ -2592,7 +2577,6 @@ export const VINTAGE_STORY_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 4_096,
-    cpuCores: 2,
     diskMb: 10_240,
   },
   query: {
@@ -2708,7 +2692,6 @@ export const ABIOTIC_FACTOR_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 6_144,
-    cpuCores: 3,
     diskMb: 20_480,
   },
   query: {
@@ -2932,7 +2915,6 @@ export const ARK_ASCENDED_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 16_384,
-    cpuCores: 6,
     diskMb: 81_920,
   },
   /*
@@ -3289,7 +3271,6 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
    */
   resourceDefaults: {
     ramMb: 4_096,
-    cpuCores: 2,
     diskMb: 10_240,
   },
   query: {

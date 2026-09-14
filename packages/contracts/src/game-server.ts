@@ -32,7 +32,6 @@ export interface GameServerPermissions {
 /** Ressourcen-Limits eines Servers (Pflichtenheft §6, `GameServer.resourceLimits`). */
 export interface ServerResourceLimits {
   ramMb: number;
-  cpuCores: number;
   diskMb: number;
 }
 
@@ -71,11 +70,13 @@ export interface ServerLiveStats {
    * Punkt 23).
    *
    * `250` heißt also 2,5 ausgelastete Kerne, nicht „250 % von irgendetwas".
-   * Bezugsgröße ist bewusst **nicht** das CPU-Kontingent des Servers und auch
-   * nicht die Node: Der Wert kommt unverändert aus
-   * `AgentContainerStats.cpuPercent`, und dieselbe Größe hält der Verlauf in
-   * `server_stats_samples.cpu_percent` fest. Wer einen Anteil am eigenen Limit
-   * anzeigen will, teilt selbst durch `resourceLimits.cpuCores * 100` – die
+   * Der Wert kommt unverändert aus `AgentContainerStats.cpuPercent`, und
+   * dieselbe Größe hält der Verlauf in `server_stats_samples.cpu_percent` fest.
+   *
+   * Eine **Bezugsgröße nennt der Vertrag nicht**, weil es seit dem Wegfall der
+   * CPU-Zuweisung keine servereigene mehr gibt: Ein Container bekommt alle
+   * Kerne der Node und teilt sie sich mit den übrigen. Wer einen Anteil
+   * anzeigen will, nimmt die Kerne der Node (`NodeResources.cpuCores`) – die
    * Umrechnung gehört in die Ansicht, nicht in den Vertrag.
    *
    * `null`, solange keine Messung vorliegt.

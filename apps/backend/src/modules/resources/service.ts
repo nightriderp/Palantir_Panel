@@ -216,7 +216,6 @@ export interface ResourceServiceDependencies {
 /** Belegung eines Nutzers ohne Server – Vorgabe für die Sammelabfrage. */
 const EMPTY_USAGE: UserResourceUsage = {
   runningRamMb: 0,
-  runningCpuCores: 0,
   allocatedDiskMb: 0,
   runningServers: 0,
   totalServers: 0,
@@ -229,8 +228,6 @@ function mergeLimits(
 ): UserResourceLimits {
   return {
     maxRamMb: input.maxRamMb === undefined ? current.maxRamMb : (input.maxRamMb ?? null),
-    maxCpuCores:
-      input.maxCpuCores === undefined ? current.maxCpuCores : (input.maxCpuCores ?? null),
     maxDiskMb: input.maxDiskMb === undefined ? current.maxDiskMb : (input.maxDiskMb ?? null),
     maxConcurrentServers:
       input.maxConcurrentServers === undefined
@@ -353,15 +350,14 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
 
       /*
        * Die Zuordnung Ressource → Belegungsfeld ist dieselbe wie in
-       * `capacity.ts`: RAM und CPU zählen nur laufende Server, Speicherplatz
-       * zählt alle, und die Serveranzahl meint die gleichzeitig laufenden.
+       * `capacity.ts`: RAM zählt nur laufende Server, Speicherplatz zählt alle,
+       * und die Serveranzahl meint die gleichzeitig laufenden.
        * Weicht das hier ab, zeigt die Oberfläche einen anderen Rest an, als die
        * Prüfung beim Start zulässt.
        */
       return {
         userId: record.userId,
         ram: resourceQuotaSlot('ram', record.limits.maxRamMb, usage.runningRamMb),
-        cpu: resourceQuotaSlot('cpu', record.limits.maxCpuCores, usage.runningCpuCores),
         disk: resourceQuotaSlot('disk', record.limits.maxDiskMb, usage.allocatedDiskMb),
         servers: resourceQuotaSlot(
           'servers',
@@ -460,7 +456,6 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
           nodeId: load.nodeId,
           limits: load.limits,
           usedRamMb: load.usedRamMb,
-          usedCpuCores: load.usedCpuCores,
           usedDiskMb: load.usedDiskMb,
           thresholdPercent: deps.thresholds.serverPercent,
           ...(at ? { at } : {}),

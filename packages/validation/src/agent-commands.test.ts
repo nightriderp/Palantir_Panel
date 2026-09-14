@@ -336,16 +336,16 @@ describe('UPDATE_RESOURCES', () => {
   it('nimmt vollständige Grenzen an', () => {
     const ergebnis = updateResourcesCommandPayloadSchema.safeParse({
       containerId: CONTAINER,
-      resources: { memoryMb: 4096, cpuCores: 2 },
+      resources: { memoryMb: 4096 },
     });
 
     expect(ergebnis.success).toBe(true);
   });
 
-  it('nimmt eine Nachkommastelle bei den Kernen an', () => {
+  it('nimmt eine abweichende Prozessgrenze an', () => {
     const ergebnis = updateResourcesCommandPayloadSchema.safeParse({
       containerId: CONTAINER,
-      resources: { memoryMb: 4096, cpuCores: 1.5 },
+      resources: { memoryMb: 4096, pidsLimit: 64 },
     });
 
     expect(ergebnis.success).toBe(true);
@@ -354,12 +354,7 @@ describe('UPDATE_RESOURCES', () => {
   it('lehnt Grenzen ab, mit denen der Container nie hätte entstehen dürfen', () => {
     // Dasselbe Schema wie bei CREATE: Ein Container soll nachträglich keine
     // Werte annehmen können, die beim Anlegen abgelehnt worden wären.
-    for (const resources of [
-      { memoryMb: 0, cpuCores: 2 },
-      { memoryMb: -1024, cpuCores: 2 },
-      { memoryMb: 4096, cpuCores: 0 },
-      { memoryMb: 2048.5, cpuCores: 2 },
-    ]) {
+    for (const resources of [{ memoryMb: 0 }, { memoryMb: -1024 }, { memoryMb: 2048.5 }]) {
       const ergebnis = updateResourcesCommandPayloadSchema.safeParse({
         containerId: CONTAINER,
         resources,
@@ -369,12 +364,12 @@ describe('UPDATE_RESOURCES', () => {
     }
   });
 
-  it('verlangt die Grenzen vollständig, nicht als Teil-Angabe', () => {
+  it('verlangt die RAM-Grenze, statt sie auslassen zu lassen', () => {
     // Die Engine setzt beim Aktualisieren, was dasteht; ein ausgelassenes Feld
     // hiesse dort „unbegrenzt".
     const ergebnis = updateResourcesCommandPayloadSchema.safeParse({
       containerId: CONTAINER,
-      resources: { memoryMb: 4096 },
+      resources: {},
     });
 
     expect(ergebnis.success).toBe(false);

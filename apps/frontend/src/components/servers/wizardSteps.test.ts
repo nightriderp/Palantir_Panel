@@ -27,9 +27,9 @@ const NODE: HostNodeDto = {
   status: 'online',
   statusMessage: null,
   capacity: {
-    total: { ramMb: 32768, cpuCores: 16, diskMb: 1024000 },
-    allocated: { ramMb: 16384, cpuCores: 8, diskMb: 512000 },
-    available: { ramMb: 16384, cpuCores: 8, diskMb: 512000 },
+    total: { ramMb: 32768, cpuCores: 8, diskMb: 1024000 },
+    allocated: { ramMb: 16384, diskMb: 512000 },
+    available: { ramMb: 16384, diskMb: 512000 },
   },
   usage: null,
   serverCount: 6,
@@ -39,14 +39,13 @@ const NODE: HostNodeDto = {
 };
 
 /** Node mit genau den angegebenen freien Werten. */
-function nodeWithFree(free: { ramMb?: number; cpuCores?: number; diskMb?: number }): HostNodeDto {
+function nodeWithFree(free: { ramMb?: number; diskMb?: number }): HostNodeDto {
   return {
     ...NODE,
     capacity: {
       ...NODE.capacity,
       available: {
         ramMb: free.ramMb ?? NODE.capacity.available.ramMb,
-        cpuCores: free.cpuCores ?? NODE.capacity.available.cpuCores,
         diskMb: free.diskMb ?? NODE.capacity.available.diskMb,
       },
     },
@@ -85,7 +84,7 @@ function context(overrides: Partial<WizardContext> = {}): WizardContext {
 
 describe('defaultConfigValues / applyGameType', () => {
   const withFields = gameType({
-    resourceDefaults: { ramMb: 8192, cpuCores: 4, diskMb: 40960 },
+    resourceDefaults: { ramMb: 8192, diskMb: 40960 },
     configFields: [
       {
         key: 'maxPlayers',
@@ -122,7 +121,6 @@ describe('defaultConfigValues / applyGameType', () => {
     const next = applyGameType(state({ name: 'Bereits getippt' }), withFields);
 
     expect(next.ramMb).toBe(8192);
-    expect(next.cpuCores).toBe(4);
     expect(next.diskMb).toBe(40960);
     expect(next.name).toBe('Bereits getippt');
     expect(next.subdomain).toBe('survival');
@@ -204,7 +202,6 @@ describe('quotaBlockReason', () => {
     return {
       userId: '33333333-3333-4333-8333-333333333333',
       ram: slot('ram'),
-      cpu: slot('cpu'),
       disk: slot('disk'),
       servers: slot('servers'),
       updatedAt: null,
@@ -275,10 +272,7 @@ describe('quotaBlockReason', () => {
     expect(reason).not.toContain('laufende Server');
   });
 
-  it('prüft CPU und Speicherplatz ebenfalls', () => {
-    expect(quotaBlockReason(quota({ cpu: 2 }, { cpu: 1 }), state({ cpuCores: 2 }))).toContain(
-      'CPU-Kontingent',
-    );
+  it('prüft den Speicherplatz ebenfalls', () => {
     expect(
       quotaBlockReason(quota({ disk: 20480 }, { disk: 10240 }), state({ diskMb: 20480 })),
     ).toContain('Speicher-Kontingent');
@@ -295,15 +289,12 @@ describe('nodeBlockReason', () => {
     expect(nodeBlockReason({ ...NODE, status: 'maintenance' }, state())).toContain('Wartung');
   });
 
-  it('meldet zu wenig freien Arbeitsspeicher, CPU oder Platte', () => {
+  it('meldet zu wenig freien Arbeitsspeicher oder Platte', () => {
     expect(nodeBlockReason(nodeWithFree({ ramMb: 1024 }), state({ ramMb: 4096 }))).toContain(
       'Arbeitsspeicher',
     );
     expect(nodeBlockReason(nodeWithFree({ diskMb: 1024 }), state({ diskMb: 20480 }))).toContain(
       'Speicherplatz',
-    );
-    expect(nodeBlockReason(nodeWithFree({ cpuCores: 1 }), state({ cpuCores: 4 }))).toContain(
-      'CPU-Kerne',
     );
   });
 

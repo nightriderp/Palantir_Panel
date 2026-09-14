@@ -39,7 +39,6 @@ export const agentPortMappingSchema = z.object({
 
 export const agentResourceLimitsSchema = z.object({
   memoryMb: z.number().int().positive(),
-  cpuCores: z.number().positive(),
   pidsLimit: z.number().int().positive().optional(),
 });
 

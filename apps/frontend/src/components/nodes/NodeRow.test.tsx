@@ -5,7 +5,7 @@ import { NodeRow } from './NodeRow';
 
 function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
   const total = { ramMb: 16384, cpuCores: 8, diskMb: 512_000 };
-  const allocated = { ramMb: 8192, cpuCores: 4, diskMb: 128_000 };
+  const allocated = { ramMb: 8192, diskMb: 128_000 };
   return {
     id: 'n1',
     name: 'Wohnzimmer-PC',
@@ -17,7 +17,6 @@ function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
       allocated,
       available: {
         ramMb: total.ramMb - allocated.ramMb,
-        cpuCores: total.cpuCores - allocated.cpuCores,
         diskMb: total.diskMb - allocated.diskMb,
       },
     },

@@ -12,7 +12,7 @@ function spec(ueberschreibung: Partial<ContainerSpec> = {}): ContainerSpec {
     image: 'palantir/testserver:1',
     env: {},
     ports: [{ containerPort: 25565, hostPort: 30001, protocol: 'tcp' }],
-    resources: { memoryMb: 1024, cpuCores: 1 },
+    resources: { memoryMb: 1024 },
     dataVolume: { hostPath: `${FAKE_DATA_ROOT}/srv-1`, containerPath: '/data' },
     ...ueberschreibung,
   };

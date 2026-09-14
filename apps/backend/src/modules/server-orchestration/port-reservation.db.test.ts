@@ -213,7 +213,7 @@ function anfrage(userId: string, hostId: string): ResourceCheckRequest {
     userId,
     hostId,
     serverId: null,
-    requested: { ramMb: 1024, cpuCores: 1, diskMb: 6000 },
+    requested: { ramMb: 1024, diskMb: 6000 },
     intent: 'create',
   };
 }
@@ -226,7 +226,7 @@ function neuerServer(ownerId: string, hostId: string, subdomain: string): Create
     gameType: SPIEL.id,
     subdomain,
     assignedPorts: [],
-    resourceLimits: { ramMb: 1024, cpuCores: 1, diskMb: 6000 },
+    resourceLimits: { ramMb: 1024, diskMb: 6000 },
     configJson: {},
     startupParameters: '',
     autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 10 },

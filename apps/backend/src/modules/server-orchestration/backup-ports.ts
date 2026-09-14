@@ -362,7 +362,6 @@ export function createDrizzleServerExportManifestSource(
           config: row.configJson,
           resourceLimits: {
             ramMb: row.resourceLimits.ramMb,
-            cpuCores: row.resourceLimits.cpuCores,
             diskMb: row.resourceLimits.diskMb,
           },
           autoShutdownEnabled: row.autoShutdown.enabled,

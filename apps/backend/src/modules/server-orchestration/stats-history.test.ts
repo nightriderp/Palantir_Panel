@@ -19,7 +19,6 @@ import {
   LatestQueryCache,
   ServerLoadRegistry,
   type StatsSample,
-  cpuCoresFromPercent,
   toLiveStats,
   toStatsHistoryDto,
 } from './stats-history.js';
@@ -427,33 +426,6 @@ describe('Uhrenabgleich mit dem Agent', () => {
   });
 });
 
-/**
- * Umrechnung von `cpuPercent` in Kerne (Lastenheft §3.3, Warnung auf
- * Server-Ebene).
- *
- * Die Stelle, an der ein stiller Faktor 100 entstehen kann: Der Vertrag misst
- * Prozent **eines Kerns**, die Schwellwertprüfung rechnet in Kernen gegen
- * `resourceLimits.cpuCores`. Wer beides verwechselt, bekommt entweder in jedem
- * Takt eine Warnung oder nie eine – und merkt es lange nicht.
- */
-describe('cpuPercent in Kerne', () => {
-  it('liest einen Wert über 100 als mehrere Kerne', () => {
-    // 250 % eines Kerns sind 2,5 ausgelastete Kerne – nicht 250 % des
-    // Kontingents. Gegenprobe zur naheliegenden Fehlrechnung.
-    expect(cpuCoresFromPercent(250)).toBe(2.5);
-    expect(cpuCoresFromPercent(380)).toBe(3.8);
-  });
-
-  it('rechnet Werte unter 100 auf einen Bruchteil eines Kerns', () => {
-    expect(cpuCoresFromPercent(42.5)).toBe(0.425);
-    expect(cpuCoresFromPercent(0)).toBe(0);
-  });
-
-  it('macht aus „kein Messwert" keine Null', () => {
-    expect(cpuCoresFromPercent(null)).toBeNull();
-  });
-});
-
 describe('Stand der Server-Last', () => {
   const JETZT = new Date('2026-09-01T10:00:00.000Z');
   const TAKT_MS = 60_000;
@@ -463,9 +435,8 @@ describe('Stand der Server-Last', () => {
       serverId: SERVER_ID,
       nodeId: NODE_ID,
       ownerId: OWNER_ID,
-      limits: { ramMb: 4096, cpuCores: 2, diskMb: 20_480 },
+      limits: { ramMb: 4096, diskMb: 20_480 },
       usedRamMb: 3900,
-      usedCpuCores: 0.4,
       usedDiskMb: null,
       ...overrides,
     };

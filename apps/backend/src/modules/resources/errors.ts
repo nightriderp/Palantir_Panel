@@ -19,8 +19,6 @@ function formatAmount(value: number, unit: ResourceUnit): string {
   switch (unit) {
     case 'mb':
       return `${value} MiB`;
-    case 'cores':
-      return `${value} CPU-Kerne`;
     case 'count':
       return `${value}`;
   }
@@ -32,13 +30,11 @@ function describeViolation(violation: CapacityViolation): string {
     violation.scope === 'user'
       ? {
           ram: 'Das RAM-Kontingent des Nutzers',
-          cpu: 'Das CPU-Kontingent des Nutzers',
           disk: 'Das Speicher-Kontingent des Nutzers',
           servers: 'Die zulässige Anzahl gleichzeitig laufender Server',
         }[violation.resource]
       : {
           ram: 'Der freie Arbeitsspeicher der Node',
-          cpu: 'Die freie CPU-Kapazität der Node',
           disk: 'Der freie Speicherplatz der Node',
           servers: 'Die Serverkapazität der Node',
         }[violation.resource];

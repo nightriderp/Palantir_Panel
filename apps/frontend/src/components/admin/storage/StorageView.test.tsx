@@ -91,8 +91,8 @@ function node(): HostNodeDto {
     statusMessage: null,
     capacity: {
       total: { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
-      allocated: { ramMb: 8192, cpuCores: 2, diskMb: 20_480 },
-      available: { ramMb: 20_480, cpuCores: 6, diskMb: 1_979_520 },
+      allocated: { ramMb: 8192, diskMb: 20_480 },
+      available: { ramMb: 20_480, diskMb: 1_979_520 },
     },
     usage: null,
     serverCount: 2,

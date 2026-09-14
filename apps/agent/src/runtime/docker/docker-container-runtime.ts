@@ -368,12 +368,13 @@ export class DockerContainerRuntime implements ContainerRuntime {
      * - `PidsLimit` steht mit, weil die Engine beim Aktualisieren setzt, was
      *   dasteht: Ein ausgelassenes Feld hiesse "unbegrenzt", und der
      *   Fork-Bomb-Schutz waere nach dem ersten Verschieben des RAM-Reglers weg.
+     * - `NanoCpus` fehlt aus demselben Grund, aus dem es beim Anlegen fehlt:
+     *   Die CPU-Zuweisung ist entfallen, jeder Container sieht alle Kerne.
      */
     await this.#client.requestVoid('POST', `${this.#pfad(containerId)}/update`, {
       body: {
         Memory: memoryBytes,
         MemorySwap: memoryBytes,
-        NanoCpus: Math.round(resources.cpuCores * 1_000_000_000),
         PidsLimit: resources.pidsLimit ?? DEFAULT_PIDS_LIMIT,
       },
     });
