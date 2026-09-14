@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ConfirmDialog } from './ConfirmDialog';
@@ -317,5 +318,70 @@ describe('DangerConfirmDialog - Bestaetigung abtippen (Fundpunkt 216)', () => {
     zeichne();
 
     expect(screen.queryByText('Stimmt noch nicht überein.')).toBeNull();
+  });
+});
+
+/**
+ * Der Fokus bleibt stehen, wenn der Aufrufer neu rendert.
+ *
+ * Der Öffnen-Effekt des Dialogs hing über `handleKeyDown` an `onClose` – und das
+ * ist an fast jeder Aufrufstelle eine Pfeilfunktion im JSX, also bei jedem
+ * Rendern des Aufrufers eine neue. Der Effekt lief damit erneut und setzte den
+ * Fokus zurück auf den Dialog.
+ *
+ * Sichtbar wurde es dort, wo nebenher etwas hereinkommt: Im Löschdialog eines
+ * laufenden Servers meldet der Live-Kanal Messwerte und Konsolenzeilen, die
+ * Detailansicht rendert neu – wer den Servernamen abtippte, verlor den Fokus
+ * nach Millisekunden und musste erneut ins Feld klicken.
+ */
+describe('Modal – Fokus beim Rendern des Aufrufers', () => {
+  /** Aufrufer, der neu rendert und `onClose` inline übergibt – der Normalfall. */
+  function Aufrufer({ phrase }: { phrase?: string }) {
+    const [takt, setTakt] = useState(0);
+
+    return (
+      <div>
+        <button type="button" onClick={() => setTakt((n) => n + 1)}>
+          Live-Frame {takt}
+        </button>
+        <DangerConfirmDialog
+          open
+          onClose={() => {}}
+          onConfirm={() => {}}
+          title="Server löschen"
+          message="Alles weg."
+          {...(phrase === undefined ? {} : { confirmationPhrase: phrase })}
+        />
+      </div>
+    );
+  }
+
+  it('lässt den Fokus im Bestätigungsfeld, während der Aufrufer neu rendert', () => {
+    render(<Aufrufer phrase="Survival-Welt" />);
+
+    const feld = screen.getByLabelText(/bestätigen/) as HTMLInputElement;
+    feld.focus();
+    expect(document.activeElement).toBe(feld);
+
+    fireEvent.click(screen.getByText(/Live-Frame/));
+    fireEvent.click(screen.getByText(/Live-Frame/));
+
+    expect(document.activeElement).toBe(feld);
+  });
+
+  it('verliert die bereits getippte Eingabe dabei nicht', () => {
+    render(<Aufrufer phrase="Survival-Welt" />);
+
+    const feld = screen.getByLabelText(/bestätigen/) as HTMLInputElement;
+    fireEvent.change(feld, { target: { value: 'Survival-' } });
+    fireEvent.click(screen.getByText(/Live-Frame/));
+
+    expect(feld.value).toBe('Survival-');
+  });
+
+  it('setzt den Fokus beim Öffnen weiterhin in den Dialog', () => {
+    render(<Aufrufer />);
+
+    expect(document.activeElement).toBe(screen.getByRole('dialog'));
   });
 });

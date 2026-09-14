@@ -152,16 +152,30 @@ export function Modal({
     [busy, onClose],
   );
 
+  /*
+   * Öffnen und Schließen – und **nur** das.
+   *
+   * Der Effekt hängt allein an `open`, weil er den Fokus umsetzt: Jeder weitere
+   * Auslöser zöge ihn dem Nutzer mitten in der Eingabe wieder weg. Genau das
+   * passierte, solange `handleKeyDown` mit in der Liste stand: Es hängt an
+   * `onClose`, und `onClose` wird an fast jeder Aufrufstelle als Pfeilfunktion
+   * im JSX übergeben – neue Identität bei jedem Rendern des Aufrufers. Wer im
+   * Löschdialog eines laufenden Servers den Namen abtippte, verlor den Fokus
+   * nach Millisekunden: Der Live-Kanal meldet Messwerte und Konsolenzeilen, die
+   * Detailansicht rendert neu, der Effekt lief erneut – Aufräumen gab den Fokus
+   * nach draußen zurück, der neue Lauf setzte ihn auf den Dialog.
+   *
+   * Die Tastatur steht deshalb im eigenen Effekt darunter. Sie darf mitlaufen,
+   * ohne den Fokus anzufassen.
+   */
   useEffect(() => {
     if (!open) return;
     fokusVorher.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    document.addEventListener('keydown', handleKeyDown);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     dialogRef.current?.focus();
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = previousOverflow;
 
       // Nur zurückgeben, wenn es das Element noch gibt: Ein Dialog, der die
@@ -170,6 +184,18 @@ export function Modal({
       fokusVorher.current = null;
       if (zurueck !== null && zurueck.isConnected) zurueck.focus();
     };
+  }, [open]);
+
+  /**
+   * Escape und der Fokusfang auf Tab.
+   *
+   * Wechselt der Rückruf die Identität, wird nur der Zuhörer getauscht – am
+   * Fokus ändert sich dabei nichts (siehe oben).
+   */
+  useEffect(() => {
+    if (!open) return;
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [open, handleKeyDown]);
 
   if (!open) return null;
