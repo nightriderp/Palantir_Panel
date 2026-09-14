@@ -34,6 +34,15 @@ export const WEBSOCKET_EVENTS = [
   'resource.low',
   'user.registered',
   'message.reported',
+  /**
+   * Ein Konto hat den Betreiber um mehr Kontingent oder um Kapazität gebeten
+   * (Mockup-Abgleich 12.3.1).
+   *
+   * Bis hierher entstand die Anfrage still in der Datenbank: Sie stand auf der
+   * Admin-Seite, bis jemand sie aufrief. Wer fragt, wartet aber auf eine
+   * Antwort – und wer entscheidet, kann nicht raten, dass etwas offen ist.
+   */
+  'quotaRequest.created',
 
   // -- Server-Orchestrierung (B3, Pflichtenheft §9 und §13) -------------------
 

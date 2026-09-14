@@ -31,6 +31,7 @@ import {
   type RestoreBackupCommandPayload,
   type SetServerQueryCommandPayload,
   type StopCommandPayload,
+  type UpdateResourcesCommandPayload,
   type UploadArchiveBlockCommandPayload,
   type AgentContainerStatus,
   type ApiResponse,
@@ -369,6 +370,21 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
          * hatte.
          */
         await this.jobs?.router.remove(serverId);
+
+        return null;
+      }
+      case 'UPDATE_RESOURCES': {
+        const p = payload as UpdateResourcesCommandPayload;
+
+        /*
+         * Kein Neustart, kein Neuanlegen: Die Engine setzt beide Grenzen im
+         * laufenden Betrieb. Ein Container im Zustand `created` oder `exited`
+         * nimmt den Befehl ebenfalls an - dort wirkt er ab dem naechsten Start.
+         */
+        await this.runtime.updateResources(p.containerId, {
+          memoryMb: p.resources.memoryMb,
+          ...(p.resources.pidsLimit === undefined ? {} : { pidsLimit: p.resources.pidsLimit }),
+        });
 
         return null;
       }
@@ -876,7 +892,7 @@ type CreatePayload = {
   env: Record<string, string>;
   command?: string[];
   ports: { containerPort: number; hostPort: number; protocol: 'tcp' | 'udp' }[];
-  resources: { memoryMb: number; cpuCores: number; pidsLimit?: number };
+  resources: { memoryMb: number; pidsLimit?: number };
   dataVolume: { hostPath: string; containerPath: string; readOnly?: boolean };
   extraMounts?: { hostPath: string; containerPath: string; readOnly?: boolean }[];
   readOnlyRootFilesystem?: boolean;
@@ -910,7 +926,6 @@ export function toContainerSpec(payload: CreatePayload, serverId?: string | null
     })),
     resources: {
       memoryMb: payload.resources.memoryMb,
-      cpuCores: payload.resources.cpuCores,
       ...(payload.resources.pidsLimit === undefined
         ? {}
         : { pidsLimit: payload.resources.pidsLimit }),

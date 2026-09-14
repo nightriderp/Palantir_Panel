@@ -87,8 +87,6 @@ describe('Kapazitätsprüfung über einer Transaktion (Fundpunkt 293)', () => {
       usageForUser: () =>
         zaehler.abfrage({
           runningRamMb: 0,
-          runningCpuCores: 0,
-          allocatedDiskMb: 0,
           runningServers: 0,
           totalServers: 0,
         }),
@@ -96,8 +94,6 @@ describe('Kapazitätsprüfung über einer Transaktion (Fundpunkt 293)', () => {
       usageForNode: () =>
         zaehler.abfrage({
           runningRamMb: 0,
-          runningCpuCores: 0,
-          allocatedDiskMb: 0,
           runningServers: 0,
           totalServers: 0,
         }),
@@ -113,7 +109,7 @@ describe('Kapazitätsprüfung über einer Transaktion (Fundpunkt 293)', () => {
     const ergebnis = await service.assertStartCapacity({
       ownerId: USER_ID,
       nodeId: NODE_ID,
-      requested: { ramMb: 4096, cpuCores: 2, diskMb: 20_480 },
+      requested: { ramMb: 4096, diskMb: 20_480 },
     });
 
     expect(ergebnis.allowed).toBe(true);

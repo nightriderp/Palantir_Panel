@@ -28,25 +28,34 @@
 /**
  * Ressourcenarten, die Palantir bewirtschaftet.
  *
- * `servers` ist die Anzahl gleichzeitig laufender Server – nur im
- * Nutzer-Kontingent relevant, nicht auf Node-Ebene und nie Anlass für eine
- * Warnung (eine Node hat keine Obergrenze an Servern, nur an RAM/CPU/Platz).
+ * Nicht jede Art kommt überall vor:
+ *
+ * - `ram` – Nutzer-Kontingent **und** Node-Kapazität.
+ * - `disk` – nur noch **Node**-Kapazität. Zugewiesen wird kein Speicherplatz
+ *   mehr; geprüft wird der gemessene freie Platz des Dateisystems.
+ * - `servers` – nur im Nutzer-Kontingent, und nie Anlass für eine Warnung:
+ *   Eine Anzahl wird nicht „knapp".
  */
-export type ResourceKind = 'ram' | 'cpu' | 'disk' | 'servers';
+export type ResourceKind = 'ram' | 'disk' | 'servers';
 
-/** Einheit, in der eine {@link ResourceKind} gezählt wird. */
-export type ResourceUnit = 'mb' | 'cores' | 'count';
+/**
+ * Einheit, in der eine {@link ResourceKind} gezählt wird.
+ *
+ * `cores` ist mit der CPU-Zuweisung entfallen: Kerne werden keiner Ressourcenart
+ * mehr zugeordnet. Die Kernzahl einer Node steht weiterhin in
+ * {@link NodeResources} – aber nicht als Kontingent, sondern als Ausstattung.
+ */
+export type ResourceUnit = 'mb' | 'count';
 
 /**
  * Einheit je Ressourcenart.
  *
  * Bewusst als Tabelle statt als Feld an jeder Struktur abgeleitet: die Zuordnung
- * ist fest und soll nicht an mehreren Stellen wiederholt werden. MiB und Kerne
- * folgen den Feldnamen aus Pflichtenheft §6 (`maxRamMb`, `maxCpuCores`).
+ * ist fest und soll nicht an mehreren Stellen wiederholt werden. MiB folgt den
+ * Feldnamen aus Pflichtenheft §6 (`maxRamMb`).
  */
 export const RESOURCE_UNITS = {
   ram: 'mb',
-  cpu: 'cores',
   disk: 'mb',
   servers: 'count',
 } as const satisfies Record<ResourceKind, ResourceUnit>;
@@ -84,7 +93,6 @@ export type ResourceQuotaCounting = 'running' | 'all';
  */
 export const RESOURCE_COUNTING = {
   ram: 'running',
-  cpu: 'running',
   disk: 'all',
   servers: 'running',
 } as const satisfies Record<ResourceKind, ResourceQuotaCounting>;
@@ -129,16 +137,36 @@ export interface NodeResources {
 }
 
 /**
+ * Summe dessen, was die Server einer Node **zugewiesen** bekommen haben.
+ *
+ * Bewusst ein eigener Typ neben {@link NodeResources}, obwohl beide Zahlen
+ * tragen: Das eine ist die Ausstattung der Maschine, das andere die Summe der
+ * Zuweisungen darauf. Sie unterscheiden sich inzwischen auch in den Feldern –
+ * eine Node hat Kerne und eine Platte, zugewiesen wird nur noch
+ * Arbeitsspeicher. Beides unter einem Typ zu führen hieße, Zahlen
+ * mitzuschleppen, die nur noch auf einer der beiden Seiten eine Bedeutung
+ * haben.
+ *
+ * Was eine Node an Platz übrig hat, steht deshalb nicht hier, sondern in der
+ * Messung (`HostNodeUsage.diskUsedMb`).
+ */
+export interface NodeAssignedResources {
+  ramMb: number;
+}
+
+/**
  * Belegung einer Node durch alle Server aller Nutzer.
  *
- * RAM und CPU zählen nur **laufende** Server, weil ein gestoppter Container
- * nichts davon belegt. Speicherplatz zählt **alle** Server: der Datenordner
- * bleibt auch im gestoppten Zustand liegen.
+ * Gezählt werden nur **laufende** Server, weil ein gestoppter Container keinen
+ * Arbeitsspeicher belegt.
+ *
+ * **Ohne Speicherplatz.** Er wurde aus den Zuweisungen der Server summiert –
+ * die gibt es nicht mehr. Was eine Node an Platz übrig hat, misst der Agent am
+ * Dateisystem (`MeasuredNodeUsage.diskAvailableMb`); das ist die einzige Zahl,
+ * die wirklich sagt, ob noch etwas hinpasst.
  */
 export interface NodeResourceUsage {
   runningRamMb: number;
-  runningCpuCores: number;
-  allocatedDiskMb: number;
   runningServers: number;
   totalServers: number;
 }
@@ -157,29 +185,23 @@ export interface NodeResourceUsage {
  */
 export interface UserResourceLimits {
   maxRamMb: number | null;
-  maxCpuCores: number | null;
-  maxDiskMb: number | null;
   maxConcurrentServers: number | null;
 }
 
 /** Kontingent eines Nutzers ohne jede Beschränkung – der Standardfall. */
 export const NO_USER_RESOURCE_LIMITS: UserResourceLimits = Object.freeze({
   maxRamMb: null,
-  maxCpuCores: null,
-  maxDiskMb: null,
   maxConcurrentServers: null,
 });
 
 /**
  * Belegung durch die Server eines einzelnen Nutzers.
  *
- * Gleiche Zählweise wie bei {@link NodeResourceUsage}: RAM/CPU nur laufend,
- * Speicherplatz über alle Server.
+ * Gleiche Zählweise wie bei {@link NodeResourceUsage}: nur laufende Server, und
+ * ohne Speicherplatz – zugewiesen wird keiner mehr.
  */
 export interface UserResourceUsage {
   runningRamMb: number;
-  runningCpuCores: number;
-  allocatedDiskMb: number;
   runningServers: number;
   totalServers: number;
 }
@@ -213,8 +235,21 @@ export interface UserResourceLimitDto {
 // Kapazitätsprüfung (Pflichtenheft §10)
 // ---------------------------------------------------------------------------
 
-/** Welche der beiden Prüfungen aus Pflichtenheft §10 angeschlagen hat. */
-export type CapacityScope = 'user' | 'node';
+/**
+ * Woher eine Feststellung der Kapazitätsprüfung stammt (Pflichtenheft §10).
+ *
+ * - `user` – das Kontingent, das ein Administrator dem Konto gesetzt hat.
+ * - `node` – die **Buchhaltung** der Node: Summe der RAM-Zuweisungen der
+ *   laufenden Server gegen die Ausstattung der Maschine.
+ * - `nodeMeasured` – der **Ist-Zustand** der Node, wie der Agent ihn misst:
+ *   tatsächlich freier Arbeitsspeicher und freier Platz auf dem Dateisystem,
+ *   inklusive allem, was neben den Gameservern darauf läuft.
+ *
+ * Die letzten beiden können auseinandergehen, und beide Richtungen kommen vor:
+ * Server, die ihre Zuweisung nicht ausnutzen, lassen mehr frei als die
+ * Buchhaltung sagt; andere Dienste auf dem Homeserver weniger.
+ */
+export type CapacityScope = 'user' | 'node' | 'nodeMeasured';
 
 /**
  * Angeforderte Ressourcen eines Serverstarts.
@@ -224,8 +259,17 @@ export type CapacityScope = 'user' | 'node';
  * (Erstellungs-Wizard in F3) läuft.
  */
 export interface RequestedServerResources {
+  /** Die RAM-Zuweisung, mit der der Server starten soll. */
   ramMb: number;
-  cpuCores: number;
+  /**
+   * **Geschätzter** Platzbedarf in MiB – keine Zuweisung.
+   *
+   * Der Wert kommt aus der Spiele-Definition
+   * (`GameTypeDefinition.resourceDefaults.diskMb`) und begrenzt nichts: Ein
+   * Server darf wachsen, so weit die Platte reicht. Er ist allein die
+   * Grundlage der Frage „passt das voraussichtlich noch auf diese Node" –
+   * geprüft gegen den **gemessenen** freien Platz.
+   */
   diskMb: number;
 }
 
@@ -256,7 +300,7 @@ export interface ResourceLowEvent {
   /** `node`: Auslastung der Ziel-VM. `server`: ein einzelner Server nahe an seinem eigenen Limit. */
   scope: 'node' | 'server';
   /** `servers` kommt hier nie vor – eine Anzahl ist keine knapp werdende Ressource. */
-  resource: 'ram' | 'cpu' | 'disk';
+  resource: 'ram' | 'disk';
   unit: ResourceUnit;
   nodeId: string;
   /** Nur bei `scope: 'server'` gesetzt. */
@@ -283,6 +327,24 @@ export interface CapacityCheckResult {
   allowed: boolean;
   violations: CapacityViolation[];
   warnings: ResourceLowEvent[];
+  /**
+   * Feststellungen, die den Vorgang **nicht** verbieten, aber eine Rückfrage
+   * wert sind (Wunsch des Betreibers: „möchtest du trotzdem den Server
+   * starten").
+   *
+   * Der Unterschied zu {@link CapacityViolation}en in `violations` ist keiner
+   * der Rechnung, sondern einer der Zuständigkeit: Ein Kontingent hat jemand
+   * gesetzt, und wer es überschreitet, umgeht eine Entscheidung. Eine knappe
+   * Node ist dagegen eine Beobachtung über die eigene Maschine – darauf darf
+   * der Betreiber antworten „ich weiß, starte trotzdem".
+   *
+   * `allowed` bleibt davon unberührt: Es sagt nur, ob eine **Grenze**
+   * überschritten wäre. Wer die Rückfrage stellen will, sieht hier nach.
+   *
+   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3) – ein
+   * Ergebnis ohne das Feld hat schlicht nichts anzumerken.
+   */
+  concerns?: CapacityViolation[];
 }
 
 /**
@@ -355,8 +417,6 @@ export interface ResourceQuotaSlot {
 export interface ResourceQuotaDto {
   userId: string;
   ram: ResourceQuotaSlot;
-  cpu: ResourceQuotaSlot;
-  disk: ResourceQuotaSlot;
   servers: ResourceQuotaSlot;
   /** ISO-8601-Zeitstempel der letzten Kontingent-Änderung; `null`, solange keins gesetzt wurde. */
   updatedAt: string | null;

@@ -68,8 +68,6 @@ export interface ResourceRoutesOptions {
 function limitsMetadata(eintrag: UserResourceLimitDto): Record<string, unknown> {
   return {
     maxRamMb: eintrag.limits.maxRamMb,
-    maxCpuCores: eintrag.limits.maxCpuCores,
-    maxDiskMb: eintrag.limits.maxDiskMb,
     maxConcurrentServers: eintrag.limits.maxConcurrentServers,
   };
 }

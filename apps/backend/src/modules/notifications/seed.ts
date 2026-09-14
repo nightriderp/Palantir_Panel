@@ -7,14 +7,16 @@
  * Regel von Hand anlegte. Ein abgestürzter Server meldete sich also bei
  * niemandem, und das fiel erst auf, wenn jemand nachsah.
  *
- * **Warum genau diese sieben.** Sie decken die im Lastenheft §3.6 genannten
+ * **Warum genau diese.** Sie decken die im Lastenheft §3.6 genannten
  * Fälle ab und niemanden darüber hinaus:
  *
  * - `server.crashed`, `server.failed`, `backup.failed`, `autoShutdown.triggered`
  *   gehen an den **Besitzer** der betroffenen Ressource – ihn betrifft es, und
  *   nur er kann etwas tun.
- * - `user.registered` geht an die **Admin-Rolle**: die Freischaltung neuer
- *   Konten ist eine Betreiberaufgabe.
+ * - `user.registered` und `quotaRequest.created` gehen an die **Admin-Rolle**:
+ *   Konten freischalten und Anfragen bescheiden sind Betreiberaufgaben. Wer
+ *   fragt, wartet auf eine Antwort; wer entscheidet, kann nicht raten, dass
+ *   etwas offen ist.
  * - `resource.low` geht an **beide** (Fundpunkt 167). B4 rechnet die Warnung
  *   seit dem Anschluss der Server-Ebene eigens je Server aus und liefert dabei
  *   dessen `ownerId` mit – ohne Besitzer-Regel landete genau diese Warnung
@@ -73,6 +75,9 @@ export const OWNER_RULE_EVENTS: readonly NotifiableEventName[] = [
 export const ADMIN_RULE_EVENTS: readonly NotifiableEventName[] = [
   'user.registered',
   'resource.low',
+  // Wer den Betreiber um etwas bittet, wartet auf eine Antwort. Ohne diese
+  // Regel stand die Anfrage still auf der Admin-Seite, bis jemand nachsah.
+  'quotaRequest.created',
 ];
 
 /**

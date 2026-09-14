@@ -18,7 +18,7 @@ describe('usedPercent', () => {
 });
 
 describe('evaluateNodeWarnings', () => {
-  const total = { ramMb: 32_768, cpuCores: 16, diskMb: 2_097_152 };
+  const total = { ramMb: 32_768, cpuCores: 8, diskMb: 2_097_152 };
 
   it('meldet jede Ressource über dem Schwellwert einzeln', () => {
     const warnings = evaluateNodeWarnings({
@@ -26,11 +26,11 @@ describe('evaluateNodeWarnings', () => {
       total,
       usage: {
         runningRamMb: 30_000,
-        runningCpuCores: 2,
-        allocatedDiskMb: 2_000_000,
         runningServers: 4,
         totalServers: 9,
       },
+      // Die Platte kommt aus der Messung, nicht aus Zuweisungen.
+      usedDiskMb: 2_000_000,
       thresholdPercent: 85,
       at: AT,
     });
@@ -53,11 +53,9 @@ describe('evaluateNodeWarnings', () => {
   it('warnt genau ab dem Schwellwert, nicht erst darüber', () => {
     const warnings = evaluateNodeWarnings({
       nodeId: NODE_ID,
-      total: { ramMb: 100, cpuCores: 16, diskMb: 1000 },
+      total: { ramMb: 100, cpuCores: 8, diskMb: 1000 },
       usage: {
         runningRamMb: 85,
-        runningCpuCores: 0,
-        allocatedDiskMb: 0,
         runningServers: 1,
         totalServers: 1,
       },
@@ -71,11 +69,9 @@ describe('evaluateNodeWarnings', () => {
   it('schweigt unterhalb des Schwellwerts', () => {
     const warnings = evaluateNodeWarnings({
       nodeId: NODE_ID,
-      total: { ramMb: 100, cpuCores: 16, diskMb: 1000 },
+      total: { ramMb: 100, cpuCores: 8, diskMb: 1000 },
       usage: {
         runningRamMb: 84,
-        runningCpuCores: 0,
-        allocatedDiskMb: 0,
         runningServers: 1,
         totalServers: 1,
       },
@@ -88,7 +84,7 @@ describe('evaluateNodeWarnings', () => {
 });
 
 describe('evaluateServerWarnings', () => {
-  const limits = { ramMb: 4096, cpuCores: 2, diskMb: 20_480 };
+  const limits = { ramMb: 4096, diskMb: 20_480 };
 
   it('misst gegen das eigene Limit des Servers', () => {
     const warnings = evaluateServerWarnings({
@@ -96,8 +92,6 @@ describe('evaluateServerWarnings', () => {
       nodeId: NODE_ID,
       limits,
       usedRamMb: 3900,
-      usedCpuCores: 0.4,
-      usedDiskMb: 1024,
       thresholdPercent: 90,
       at: AT,
     });
@@ -124,12 +118,10 @@ describe('evaluateServerWarnings', () => {
       nodeId: NODE_ID,
       limits,
       usedRamMb: null,
-      usedCpuCores: null,
-      usedDiskMb: 20_000,
       thresholdPercent: 90,
       at: AT,
     });
 
-    expect(warnings.map((w) => w.resource)).toEqual(['disk']);
+    expect(warnings).toEqual([]);
   });
 });

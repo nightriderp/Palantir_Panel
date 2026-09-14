@@ -19,32 +19,47 @@ function formatAmount(value: number, unit: ResourceUnit): string {
   switch (unit) {
     case 'mb':
       return `${value} MiB`;
-    case 'cores':
-      return `${value} CPU-Kerne`;
     case 'count':
       return `${value}`;
   }
 }
 
+/**
+ * Betreff einer Feststellung – je Herkunft (`scope`) eine eigene Sprache.
+ *
+ * `node` und `nodeMeasured` auseinanderzuhalten ist keine Wortklauberei: Die
+ * eine Zahl ist gebucht, die andere gemessen. Wer liest „der freie
+ * Arbeitsspeicher der Node reicht nicht", während `htop` 8 GiB frei zeigt,
+ * sucht den Fehler an der falschen Stelle.
+ */
+function describeSubject(violation: CapacityViolation): string {
+  switch (violation.scope) {
+    case 'user':
+      return {
+        ram: 'Das RAM-Kontingent des Nutzers',
+        disk: 'Das Speicher-Kontingent des Nutzers',
+        servers: 'Die zulässige Anzahl gleichzeitig laufender Server',
+      }[violation.resource];
+    case 'node':
+      return {
+        ram: 'Der zugewiesene Arbeitsspeicher der Node',
+        disk: 'Der zugewiesene Speicherplatz der Node',
+        servers: 'Die Serverkapazität der Node',
+      }[violation.resource];
+    case 'nodeMeasured':
+      return {
+        ram: 'Der gemessene freie Arbeitsspeicher der Node',
+        disk: 'Der gemessene freie Speicherplatz der Node',
+        servers: 'Die gemessene Serverkapazität der Node',
+      }[violation.resource];
+  }
+}
+
 function describeViolation(violation: CapacityViolation): string {
   const { limit, requested, unit, used } = violation;
-  const subject =
-    violation.scope === 'user'
-      ? {
-          ram: 'Das RAM-Kontingent des Nutzers',
-          cpu: 'Das CPU-Kontingent des Nutzers',
-          disk: 'Das Speicher-Kontingent des Nutzers',
-          servers: 'Die zulässige Anzahl gleichzeitig laufender Server',
-        }[violation.resource]
-      : {
-          ram: 'Der freie Arbeitsspeicher der Node',
-          cpu: 'Die freie CPU-Kapazität der Node',
-          disk: 'Der freie Speicherplatz der Node',
-          servers: 'Die Serverkapazität der Node',
-        }[violation.resource];
 
   return (
-    `${subject} reicht nicht: belegt ${formatAmount(used, unit)} ` +
+    `${describeSubject(violation)} reicht nicht: belegt ${formatAmount(used, unit)} ` +
     `+ angefordert ${formatAmount(requested, unit)} ` +
     `> Grenze ${formatAmount(limit, unit)}.`
   );
@@ -78,6 +93,22 @@ export class ResourceError extends AppError {
   /** Ablehnung wegen überschrittener Grenzen (Pflichtenheft §10). */
   static limitExceeded(violations: readonly CapacityViolation[]): ResourceError {
     return new ResourceError('RESOURCE_LIMIT_EXCEEDED', describeViolations(violations), violations);
+  }
+
+  /**
+   * Rückfrage statt Ablehnung: Die Node hat wenig frei, verboten ist der Start
+   * aber nicht (siehe `RESOURCE_CONFIRMATION_REQUIRED`).
+   *
+   * Die Meldung nennt die Zahlen – sie geht ins Log und in die Antwort; die
+   * Oberfläche übersetzt wie überall über den **Code**, nicht über diesen
+   * Freitext (Pflichtenheft §5.1).
+   */
+  static confirmationRequired(concerns: readonly CapacityViolation[]): ResourceError {
+    return new ResourceError(
+      'RESOURCE_CONFIRMATION_REQUIRED',
+      describeViolations(concerns),
+      concerns,
+    );
   }
 }
 

@@ -210,7 +210,6 @@ export function buildContainerSpec({
     })),
     resources: {
       memoryMb: server.resourceLimits.ramMb,
-      cpuCores: server.resourceLimits.cpuCores,
     },
     dataVolume: {
       hostPath: dataHostPath,

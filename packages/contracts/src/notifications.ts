@@ -24,6 +24,7 @@
 
 import { type WebSocketEventName } from './events.js';
 import { type WithPermissions } from './permissions.js';
+import { type QuotaRequestTrigger } from './quota-request.js';
 
 // ---------------------------------------------------------------------------
 // Ereignisse, auf die eine Regel hören darf
@@ -65,6 +66,9 @@ export const NOTIFIABLE_EVENTS = [
   // Konten und Moderation (B1/B7)
   'user.registered',
   'message.reported',
+
+  // Kontingent- und Kapazitätsanfragen (Mockup-Abgleich 12.3.1)
+  'quotaRequest.created',
 
   // Systemweite Ankündigungen durch den Admin (Lastenheft §3.6)
   'announcement.published',
@@ -181,7 +185,9 @@ export interface NotificationEventPayloads {
   };
   'resource.low': NotificationEventBase & {
     scope: 'node' | 'server';
-    resource: 'ram' | 'cpu' | 'disk';
+    // Kein `cpu` mehr: Seit dem Wegfall der CPU-Zuweisung gibt es keine
+    // Bezugsgroesse, gegen die sich eine CPU-Warnung rechnen liesse.
+    resource: 'ram' | 'disk';
     nodeId: string;
     /** Nur bei `scope: 'server'` gesetzt. */
     serverId: string | null;
@@ -220,6 +226,19 @@ export interface NotificationEventPayloads {
     title: string;
     body: string;
     severity: NotificationSeverity;
+  };
+  'quotaRequest.created': NotificationEventBase & {
+    quotaRequestId: string;
+    userId: string;
+    displayName: string;
+    /** Woran der Antragsteller geraten ist (siehe {@link QuotaRequestTrigger}). */
+    trigger: QuotaRequestTrigger;
+    /** Gewünschter Arbeitsspeicher in MiB; `null`, wenn nicht Teil der Anfrage. */
+    requestedRamMb: number | null;
+    /** Gewünschte Zahl gleichzeitig laufender Server; `null`, wenn nicht Teil der Anfrage. */
+    requestedMaxConcurrentServers: number | null;
+    /** Begründung des Antragstellers – der Grund, warum ein Mensch entscheidet. */
+    reason: string;
   };
 }
 
@@ -449,6 +468,7 @@ export const MUTABLE_NOTIFICATION_EVENTS = [
   'resource.low',
   'user.registered',
   'message.reported',
+  'quotaRequest.created',
 ] as const satisfies readonly NotifiableEventName[];
 
 /** Ein Ereignis, das sich abbestellen lässt. */

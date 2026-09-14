@@ -193,6 +193,7 @@ export {
   setServerQueryCommandResultSchema,
   startCommandPayloadSchema,
   stopCommandPayloadSchema,
+  updateResourcesCommandPayloadSchema,
 } from './agent-commands.js';
 export {
   type LiveClientFrameInput,
@@ -201,10 +202,6 @@ export {
   liveTopicSchema,
 } from './server-live.js';
 export {
-  SERVER_CPU_MAX_CORES,
-  SERVER_CPU_MIN_CORES,
-  SERVER_DISK_MAX_MB,
-  SERVER_DISK_MIN_MB,
   SERVER_RAM_MAX_MB,
   SERVER_RAM_MIN_MB,
   type CloneServerInput,

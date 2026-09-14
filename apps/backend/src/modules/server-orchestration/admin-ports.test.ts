@@ -149,14 +149,8 @@ describe('Verbindungsauskunft für die Node-Verwaltung', () => {
 const BELEGUNG_NODE = '11111111-1111-4111-8111-111111111111';
 const BELEGUNG_ZWEITE = '22222222-2222-4222-8222-222222222222';
 
-function belegungsZeile(
-  status: string,
-  ramMb: number,
-  cpuCores: number,
-  diskMb: number,
-  hostId = BELEGUNG_NODE,
-) {
-  return { hostId, status, resourceLimits: { ramMb, cpuCores, diskMb } };
+function belegungsZeile(status: string, ramMb: number, hostId = BELEGUNG_NODE) {
+  return { hostId, status, resourceLimits: { ramMb } };
 }
 
 /*
@@ -167,54 +161,40 @@ function belegungsZeile(
  */
 describe('Belegung je Node (Fundpunkt 203)', () => {
   const vierServer = [
-    belegungsZeile('running', 8_192, 2, 20_480),
-    belegungsZeile('stopped', 4_096, 1, 10_240),
-    belegungsZeile('starting', 12_288, 4, 51_200),
-    belegungsZeile('stopping', 2_048, 1, 4_096),
+    belegungsZeile('running', 8_192),
+    belegungsZeile('stopped', 4_096),
+    belegungsZeile('starting', 12_288),
+    belegungsZeile('stopping', 2_048),
   ];
 
   it('zaehlt gebucht ueber alle Zustaende', () => {
     const belegung = fasseBelegungZusammen(vierServer);
 
-    expect(belegung.get(BELEGUNG_NODE)?.allocated).toEqual({
-      ramMb: 26_624,
-      cpuCores: 8,
-      diskMb: 86_016,
-    });
+    expect(belegung.get(BELEGUNG_NODE)?.allocated).toEqual({ ramMb: 26_624 });
     expect(belegung.get(BELEGUNG_NODE)?.serverCount).toBe(4);
   });
 
-  it('zaehlt laufend nur RAM und CPU der laufenden und startenden Server', () => {
+  it('zaehlt laufend nur den RAM der laufenden und startenden Server', () => {
     const belegung = fasseBelegungZusammen(vierServer);
 
-    expect(belegung.get(BELEGUNG_NODE)?.running).toEqual({
-      ramMb: 20_480,
-      cpuCores: 6,
-      // Die Platte zaehlt auch hier ueber alle Zustaende: Der Datenordner
-      // bleibt liegen, wenn der Server aus ist.
-      diskMb: 86_016,
-    });
+    expect(belegung.get(BELEGUNG_NODE)?.running).toEqual({ ramMb: 20_480 });
   });
 
   it('zaehlt error, crashed und creating nicht als laufend', () => {
     const belegung = fasseBelegungZusammen([
-      belegungsZeile('error', 1_024, 0.5, 2_048),
-      belegungsZeile('crashed', 6_144, 2, 20_480),
-      belegungsZeile('creating', 2_048, 1, 8_192),
+      belegungsZeile('error', 1_024),
+      belegungsZeile('crashed', 6_144),
+      belegungsZeile('creating', 2_048),
     ]);
 
-    expect(belegung.get(BELEGUNG_NODE)?.running).toEqual({
-      ramMb: 0,
-      cpuCores: 0,
-      diskMb: 30_720,
-    });
+    expect(belegung.get(BELEGUNG_NODE)?.running).toEqual({ ramMb: 0 });
     expect(belegung.get(BELEGUNG_NODE)?.allocated.ramMb).toBe(9_216);
   });
 
   it('haelt die Nodes auseinander', () => {
     const belegung = fasseBelegungZusammen([
-      belegungsZeile('running', 8_192, 2, 20_480),
-      belegungsZeile('running', 1_024, 1, 4_096, BELEGUNG_ZWEITE),
+      belegungsZeile('running', 8_192),
+      belegungsZeile('running', 1_024, BELEGUNG_ZWEITE),
     ]);
 
     expect(belegung.get(BELEGUNG_NODE)?.running?.ramMb).toBe(8_192);

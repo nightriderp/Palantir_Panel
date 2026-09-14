@@ -21,7 +21,11 @@
  * Ergänzungen sind additiv.
  */
 
-import { type HostNodeStatus, type NodeResources } from './resources.js';
+import {
+  type HostNodeStatus,
+  type NodeAssignedResources,
+  type NodeResources,
+} from './resources.js';
 
 /**
  * Kapazität einer Node (Lastenheft §3.7).
@@ -52,8 +56,9 @@ import { type HostNodeStatus, type NodeResources } from './resources.js';
  * `NodeResourceUsage` in `usage-repository.ts` nur über die laufenden.
  */
 export interface HostNodeCapacity {
+  /** Ausstattung der Maschine – als einzige Größe hier mit Kernzahl. */
   total: NodeResources;
-  allocated: NodeResources;
+  allocated: NodeAssignedResources;
   /**
    * Belegung, gegen die Anlegen und Starten geprüft werden (Fundpunkt 203).
    *
@@ -61,8 +66,8 @@ export interface HostNodeCapacity {
    * ältere Aufrufer und Testdaten kommen ohne aus. Wer es liest, fällt
    * sinnvollerweise auf `allocated` zurück – das ist die vorsichtigere Zahl.
    */
-  running?: NodeResources;
-  available: NodeResources;
+  running?: NodeAssignedResources;
+  available: NodeAssignedResources;
 }
 
 /**

@@ -943,6 +943,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           // Damit eine Genehmigung dieselbe Spur hinterlaesst wie das Setzen
           // von Hand (Pflichtenheft §6).
           audit: admin.services.audit,
+          /*
+           * Damit eine gestellte Anfrage den Betreiber erreicht, statt still in
+           * der Tabelle zu stehen. Hier ohne die spaete Weiterleitung von oben:
+           * B6 steht an dieser Stelle laengst.
+           */
+          events: notifications.eventSink,
         }),
         actorUserId: (request) => request.authUser?.id ?? null,
       }),

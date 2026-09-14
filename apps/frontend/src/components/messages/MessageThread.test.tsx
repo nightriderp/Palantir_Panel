@@ -50,7 +50,7 @@ function zeige(messages: MessageDto[], viewerId: string | null) {
       error={null}
       onRetry={vi.fn()}
       sending={false}
-      onSend={vi.fn()}
+      onSend={vi.fn(async () => true)}
       loadingOlder={false}
       onLoadOlder={vi.fn()}
       onReport={vi.fn()}

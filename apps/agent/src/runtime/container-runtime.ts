@@ -64,6 +64,7 @@ import {
   type LogLine,
   type RemoveImageOptions,
   type RemoveOptions,
+  type ResourceLimits,
   type StopOptions,
   type WatchOptions,
 } from './types.js';
@@ -93,6 +94,23 @@ export interface ContainerRuntime {
 
   /** `DELETE`: Container entfernen. Bind-Mounts auf dem Host bleiben unberuehrt. */
   remove(containerId: string, options?: RemoveOptions): Promise<void>;
+
+  /**
+   * `UPDATE_RESOURCES`: RAM- und CPU-Grenze eines **bestehenden** Containers
+   * aendern - auch waehrend er laeuft.
+   *
+   * Bis hierher standen beide Grenzen fest, sobald `create()` durch war: Eine
+   * geaenderte Zuweisung im Panel landete in dessen Datenbank und erreichte den
+   * Container nie, auch nicht ueber `restart()` - der benutzt dieselbe
+   * Container-Id weiter. Die Engine kann beides im laufenden Betrieb setzen.
+   *
+   * **Idempotent**: Dieselben Werte ein zweites Mal sind folgenlos.
+   *
+   * Die Grenzen werden **vollstaendig** uebergeben, nicht als Teil-Angabe: Die
+   * Engine setzt, was dasteht, und ein ausgelassenes Feld hiesse dort
+   * "unbegrenzt".
+   */
+  updateResources(containerId: string, resources: ResourceLimits): Promise<void>;
 
   /** Aktueller Zustand eines Containers - Grundlage des Ist-/Soll-Abgleichs nach Reconnect (Pflichtenheft §2.2). */
   inspect(containerId: string): Promise<ContainerState>;

@@ -20,31 +20,37 @@ function input(overrides: {
   userUsage?: Partial<CapacityCheckInput['userUsage']>;
   nodeTotal?: Partial<CapacityCheckInput['node']['total']>;
   nodeUsage?: Partial<CapacityCheckInput['node']['usage']>;
+  /** Gemessener freier Platz; `null` steht fuer „keine frische Messung". */
+  freeDiskMb?: number | null;
+  /** Gemessener freier Arbeitsspeicher; `null` steht fuer „keine frische Messung". */
+  freeRamMb?: number | null;
+  intent?: CapacityCheckInput['intent'];
   thresholds?: Partial<CapacityCheckInput['thresholds']>;
 }): CapacityCheckInput {
   return {
-    requested: { ramMb: 4096, cpuCores: 2, diskMb: 20_480, ...overrides.requested },
+    requested: { ramMb: 4096, diskMb: 20_480, ...overrides.requested },
     userLimits: overrides.userLimits ?? NO_USER_RESOURCE_LIMITS,
     userUsage: {
       runningRamMb: 0,
-      runningCpuCores: 0,
-      allocatedDiskMb: 0,
       runningServers: 0,
       totalServers: 0,
       ...overrides.userUsage,
     },
     node: {
       nodeId: NODE_ID,
-      total: { ramMb: 32_768, cpuCores: 16, diskMb: 2_097_152, ...overrides.nodeTotal },
+      total: { ramMb: 32_768, cpuCores: 8, diskMb: 2_097_152, ...overrides.nodeTotal },
       usage: {
         runningRamMb: 0,
-        runningCpuCores: 0,
-        allocatedDiskMb: 0,
         runningServers: 0,
         totalServers: 0,
         ...overrides.nodeUsage,
       },
+      freeDiskMb: overrides.freeDiskMb === undefined ? 2_000_000 : overrides.freeDiskMb,
+      // Vorgabe: eine gemessene, vollstaendig freie Maschine. So schlaegt die
+      // Messung nur dort an, wo ein Test sie ausdruecklich setzt.
+      freeRamMb: overrides.freeRamMb === undefined ? 32_768 : overrides.freeRamMb,
     },
+    intent: overrides.intent ?? 'start',
     thresholds: { nodePercent: 85, serverPercent: 90, ...overrides.thresholds },
     at: AT,
   };
@@ -58,7 +64,7 @@ describe('checkCapacity – kein Nutzer-Kontingent gesetzt', () => {
     expect(result.violations).toEqual([]);
   });
 
-  it('prüft die Node trotzdem – ein Konto ohne Limit umgeht sie nicht', () => {
+  it('fragt bei einer vollen Node nach, statt abzulehnen', () => {
     const result = checkCapacity(
       input({
         requested: { ramMb: 8192 },
@@ -66,8 +72,11 @@ describe('checkCapacity – kein Nutzer-Kontingent gesetzt', () => {
       }),
     );
 
-    expect(result.allowed).toBe(false);
-    expect(result.violations).toEqual([
+    // Keine Grenze ist überschritten – die Maschine ist nur voll. Das ist eine
+    // Rückfrage an den Betreiber, keine Ablehnung.
+    expect(result.allowed).toBe(true);
+    expect(result.violations).toEqual([]);
+    expect(result.concerns).toEqual([
       {
         scope: 'node',
         resource: 'ram',
@@ -82,21 +91,19 @@ describe('checkCapacity – kein Nutzer-Kontingent gesetzt', () => {
   it('behandelt einzelne null-Felder wie „kein Limit" und prüft die übrigen', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 16_384, cpuCores: 1 },
+        requested: { ramMb: 16_384 },
         userLimits: {
           maxRamMb: null,
-          maxCpuCores: 4,
-          maxDiskMb: null,
           maxConcurrentServers: null,
         },
-        userUsage: { runningRamMb: 60_000, runningCpuCores: 1 },
+        userUsage: { runningRamMb: 60_000 },
         nodeUsage: { runningRamMb: 20_000 },
       }),
     );
 
-    // RAM ist beim Nutzer unbegrenzt – nur die Node-Grenze schlägt an,
-    // das CPU-Kontingent (1 + 1 <= 4) nicht.
-    expect(result.violations.map((v) => `${v.scope}.${v.resource}`)).toEqual(['node.ram']);
+    // RAM ist beim Nutzer unbegrenzt – abgelehnt wird nichts, angemerkt die Node.
+    expect(result.violations).toEqual([]);
+    expect(result.concerns?.map((v) => `${v.scope}.${v.resource}`)).toEqual(['node.ram']);
   });
 });
 
@@ -104,17 +111,13 @@ describe('checkCapacity – Limit exakt erreicht', () => {
   it('erlaubt den Start, wenn das Nutzer-Kontingent punktgenau aufgeht', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 2048, cpuCores: 1.5, diskMb: 10_240 },
+        requested: { ramMb: 2048, diskMb: 10_240 },
         userLimits: {
           maxRamMb: 8192,
-          maxCpuCores: 4,
-          maxDiskMb: 51_200,
           maxConcurrentServers: 3,
         },
         userUsage: {
           runningRamMb: 6144,
-          runningCpuCores: 2.5,
-          allocatedDiskMb: 40_960,
           runningServers: 2,
         },
       }),
@@ -127,8 +130,8 @@ describe('checkCapacity – Limit exakt erreicht', () => {
   it('erlaubt den Start, wenn die Node punktgenau aufgeht', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 2768, cpuCores: 4, diskMb: 152 },
-        nodeUsage: { runningRamMb: 30_000, runningCpuCores: 12, allocatedDiskMb: 2_097_000 },
+        requested: { ramMb: 2768, diskMb: 152 },
+        nodeUsage: { runningRamMb: 30_000 },
       }),
     );
 
@@ -150,42 +153,46 @@ describe('checkCapacity – Limit exakt erreicht', () => {
     ]);
   });
 
-  it('rechnet CPU-Bruchteile ohne Fließkomma-Artefakt', () => {
-    // 0.1 + 0.2 > 0.3 ist in IEEE-754 wahr – ohne Toleranz schlüge das fehl.
+  it('kennt keine CPU-Grenze mehr', () => {
+    // Die CPU-Zuweisung ist entfallen: Ein Server nimmt sich die Kerne, die er
+    // braucht. Es darf deshalb keinen Weg mehr geben, auf dem ein Start an
+    // einer CPU-Schranke scheitert – weder am Kontingent noch an der Node.
     const result = checkCapacity(
       input({
-        requested: { cpuCores: 0.2 },
-        userLimits: { ...NO_USER_RESOURCE_LIMITS, maxCpuCores: 0.3 },
-        userUsage: { runningCpuCores: 0.1 },
+        requested: { ramMb: 1024, diskMb: 1024 },
+        userLimits: NO_USER_RESOURCE_LIMITS,
       }),
     );
 
-    expect(result.violations.filter((v) => v.resource === 'cpu')).toEqual([]);
+    expect(result.allowed).toBe(true);
+    expect(result.violations.map((v) => v.resource)).not.toContain('cpu');
   });
 });
 
 describe('checkCapacity – Node voll trotz freiem Nutzer-Kontingent', () => {
-  it('lehnt ab, obwohl das Kontingent des Nutzers reichlich Luft hat', () => {
+  it('merkt beides an, wenn Buchung und Messung eng sind', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 8192, cpuCores: 2, diskMb: 20_480 },
+        requested: { ramMb: 8192, diskMb: 20_480 },
         userLimits: {
           maxRamMb: 65_536,
-          maxCpuCores: 32,
-          maxDiskMb: 4_194_304,
           maxConcurrentServers: 50,
         },
-        userUsage: { runningRamMb: 1024, runningCpuCores: 0.5, allocatedDiskMb: 4096 },
-        nodeUsage: { runningRamMb: 31_000, runningCpuCores: 15.5, allocatedDiskMb: 2_090_000 },
+        userUsage: { runningRamMb: 1024 },
+        nodeUsage: { runningRamMb: 31_000 },
+        // Gemessen sind nur noch 10 GiB Platte frei – der Server braucht 20.
+        freeDiskMb: 10_240,
       }),
     );
 
-    expect(result.allowed).toBe(false);
-    expect(result.violations.map((v) => v.scope)).toEqual(['node', 'node', 'node']);
-    expect(result.violations.map((v) => v.resource)).toEqual(['ram', 'cpu', 'disk']);
+    expect(result.allowed).toBe(true);
+    expect(result.concerns?.map((v) => `${v.scope}.${v.resource}`)).toEqual([
+      'node.ram',
+      'nodeMeasured.disk',
+    ]);
   });
 
-  it('nennt beide Ebenen, wenn Kontingent und Node gleichzeitig überschritten sind', () => {
+  it('trennt die Grenze des Nutzers von der Enge der Node', () => {
     const result = checkCapacity(
       input({
         requested: { ramMb: 16_384 },
@@ -194,10 +201,11 @@ describe('checkCapacity – Node voll trotz freiem Nutzer-Kontingent', () => {
       }),
     );
 
-    expect(result.violations.map((v) => `${v.scope}.${v.resource}`)).toEqual([
-      'user.ram',
-      'node.ram',
-    ]);
+    // Das Kontingent lehnt ab; die volle Node steht daneben als Anmerkung –
+    // ein `force` hätte hier nichts zu bestellen.
+    expect(result.allowed).toBe(false);
+    expect(result.violations.map((v) => `${v.scope}.${v.resource}`)).toEqual(['user.ram']);
+    expect(result.concerns?.map((v) => `${v.scope}.${v.resource}`)).toEqual(['node.ram']);
   });
 });
 
@@ -236,19 +244,130 @@ describe('checkCapacity – Anzahl gleichzeitiger Server', () => {
   });
 });
 
-describe('checkCapacity – Zählweise des Speicherplatzes', () => {
-  it('misst Speicher gegen alle Server, nicht nur die laufenden', () => {
+describe('checkCapacity – Speicherplatz aus der Messung', () => {
+  it('lehnt das Anlegen ab, wenn der gemessene freie Platz nicht reicht', () => {
     const result = checkCapacity(
       input({
+        intent: 'create',
         requested: { diskMb: 20_480 },
-        userLimits: { ...NO_USER_RESOURCE_LIMITS, maxDiskMb: 51_200 },
-        // Kein laufender Server, aber drei gestoppte belegen bereits Platz.
-        userUsage: { runningServers: 0, totalServers: 3, allocatedDiskMb: 40_960 },
+        // 2 TiB Gesamtgroesse, davon nur noch 10 GiB frei.
+        freeDiskMb: 10_240,
       }),
     );
 
     expect(result.allowed).toBe(false);
-    expect(result.violations[0]).toMatchObject({ scope: 'user', resource: 'disk', used: 40_960 });
+    expect(result.violations[0]).toMatchObject({
+      scope: 'nodeMeasured',
+      resource: 'disk',
+      // `used` ist der tatsaechlich belegte Platz, nicht eine Summe von
+      // Zuweisungen: Gesamt minus frei.
+      used: 2_097_152 - 10_240,
+      requested: 20_480,
+    });
+  });
+
+  it('fragt beim Start nur nach, statt abzulehnen', () => {
+    const result = checkCapacity(input({ requested: { diskMb: 20_480 }, freeDiskMb: 10_240 }));
+
+    expect(result.allowed).toBe(true);
+    expect(result.concerns?.map((v) => `${v.scope}.${v.resource}`)).toEqual(['nodeMeasured.disk']);
+  });
+
+  it('laesst Gleichstand zu – erst darueber wird abgelehnt', () => {
+    const anlegen = (diskMb: number) =>
+      checkCapacity(input({ intent: 'create', requested: { diskMb }, freeDiskMb: 20_480 })).allowed;
+
+    expect(anlegen(20_480)).toBe(true);
+    expect(anlegen(20_481)).toBe(false);
+  });
+
+  it('prueft die Platte gar nicht, wenn keine Messung vorliegt', () => {
+    /*
+     * Node offline, Agent frisch gestartet, Messung veraltet: Dann gibt es
+     * keine Auskunft. Das Anlegen soll daran nicht scheitern - lieber ein
+     * Server, der spaeter an die Grenze laeuft, als einer, der wegen einer
+     * fehlenden Zahl gar nicht erst entsteht.
+     */
+    const result = checkCapacity(
+      input({ intent: 'create', requested: { diskMb: 999_999_999 }, freeDiskMb: null }),
+    );
+
+    expect(result.allowed).toBe(true);
+    expect(result.violations.map((v) => v.resource)).not.toContain('disk');
+  });
+
+  it('kennt kein Platten-Kontingent des Nutzers mehr', () => {
+    // Es summierte Zuweisungen, die es nicht mehr gibt.
+    const result = checkCapacity(
+      input({ requested: { diskMb: 1024 }, userLimits: NO_USER_RESOURCE_LIMITS }),
+    );
+
+    expect(result.violations.filter((v) => v.scope === 'user')).toEqual([]);
+  });
+});
+
+/*
+ * Die Zahl, an der ein Start wirklich scheitert: Der Kernel gibt keinen
+ * Speicher her, den es nicht gibt. Die Buchhaltung kann derweil sagen, es sei
+ * alles frei – wenn neben den Gameservern noch etwas anderes auf dem
+ * Homeserver laeuft, stimmt das eben nicht.
+ */
+describe('checkCapacity – gemessener freier Arbeitsspeicher', () => {
+  it('merkt an, wenn die Messung weniger frei sieht als die Buchung', () => {
+    const result = checkCapacity(
+      input({
+        requested: { ramMb: 8192 },
+        // Gebucht ist nichts, gemessen sind nur 4 GiB frei: Daneben laeuft
+        // etwas, das die Buchhaltung nicht kennt.
+        nodeUsage: { runningRamMb: 0 },
+        freeRamMb: 4096,
+      }),
+    );
+
+    expect(result.allowed).toBe(true);
+    expect(result.concerns).toEqual([
+      {
+        scope: 'nodeMeasured',
+        resource: 'ram',
+        unit: 'mb',
+        limit: 32_768,
+        used: 32_768 - 4096,
+        requested: 8192,
+      },
+    ]);
+  });
+
+  it('laesst Gleichstand zu – erst darueber wird gefragt', () => {
+    const frei = (ramMb: number) =>
+      checkCapacity(input({ requested: { ramMb }, freeRamMb: 4096 })).concerns ?? [];
+
+    expect(frei(4096)).toEqual([]);
+    expect(frei(4097)).toHaveLength(1);
+  });
+
+  it('schweigt ohne frische Messung', () => {
+    const result = checkCapacity(input({ requested: { ramMb: 32_768 }, freeRamMb: null }));
+
+    expect(result.concerns).toEqual([]);
+  });
+
+  it('fragt beim Anlegen gar nicht nach RAM – ein neuer Server laeuft nicht', () => {
+    const result = checkCapacity(
+      input({
+        intent: 'create',
+        requested: { ramMb: 32_768, diskMb: 1024 },
+        userLimits: { ...NO_USER_RESOURCE_LIMITS, maxRamMb: 1024, maxConcurrentServers: 0 },
+        userUsage: { runningRamMb: 30_000, runningServers: 9 },
+        nodeUsage: { runningRamMb: 32_000 },
+        freeRamMb: 128,
+      }),
+    );
+
+    // Der Platz reicht, alles andere zaehlt erst beim Start: Das Anlegen geht
+    // durch, ohne Ablehnung und ohne Rueckfrage.
+    expect(result.allowed).toBe(true);
+    expect(result.violations).toEqual([]);
+    expect(result.concerns).toEqual([]);
   });
 });
 
@@ -256,7 +375,7 @@ describe('checkCapacity – Warnungen', () => {
   it('warnt, wenn der Start die Node über den Schwellwert hebt', () => {
     const result = checkCapacity(
       input({
-        requested: { ramMb: 4096, cpuCores: 1, diskMb: 1024 },
+        requested: { ramMb: 4096, diskMb: 1024 },
         nodeUsage: { runningRamMb: 24_000 },
       }),
     );
@@ -288,11 +407,26 @@ describe('checkCapacity – Warnungen', () => {
     const result = checkCapacity(
       input({
         requested: { ramMb: 40_000 },
-        nodeUsage: { runningRamMb: 30_000 },
+        userLimits: { ...NO_USER_RESOURCE_LIMITS, maxRamMb: 8192 },
+        nodeUsage: { runningRamMb: 24_000 },
       }),
     );
 
     expect(result.allowed).toBe(false);
     expect(result.warnings).toEqual([]);
+  });
+
+  it('warnt sehr wohl zu einem Start, zu dem nur nachgefragt wird', () => {
+    // Die Rückfrage ist keine Ablehnung: Der Start kann stattfinden, und dann
+    // steht die Node hinterher über dem Schwellwert.
+    const result = checkCapacity(
+      input({
+        requested: { ramMb: 4096, diskMb: 1024 },
+        nodeUsage: { runningRamMb: 30_000 },
+      }),
+    );
+
+    expect(result.concerns).toHaveLength(1);
+    expect(result.warnings.map((w) => w.resource)).toEqual(['ram']);
   });
 });

@@ -36,6 +36,7 @@ function record(overrides: Partial<QuotaRequestRecord> = {}): QuotaRequestRecord
     id: 'req-1',
     userId: USER_ID,
     userDisplayName: 'Antragsteller',
+    trigger: 'quota',
     requestedRamMb: 8192,
     requestedMaxConcurrentServers: null,
     reason: 'Der Server läuft mit 4 GB regelmäßig voll.',
@@ -53,6 +54,8 @@ interface Aufbau {
   gesetzteLimits: Array<{ userId: string; input: Record<string, unknown> }>;
   gespeichert: QuotaRequestRecord[];
   auditRepository: ReturnType<typeof createFakeAuditRepository>;
+  /** Was die Notification-Engine zu sehen bekommen hätte. */
+  gemeldet: Array<{ event: string; payload: Record<string, unknown> }>;
 }
 
 interface BuildOptions {
@@ -97,6 +100,7 @@ function build(options: BuildOptions = {}): Aufbau {
       const neu = record({
         id: `req-${String(gespeichert.length + 1)}`,
         userId: input.userId,
+        trigger: input.trigger,
         requestedRamMb: input.requestedRamMb,
         requestedMaxConcurrentServers: input.requestedMaxConcurrentServers,
         reason: input.reason,
@@ -189,16 +193,24 @@ function build(options: BuildOptions = {}): Aufbau {
   };
 
   const auditRepository = createFakeAuditRepository();
+  const gemeldet: Array<{ event: string; payload: Record<string, unknown> }> = [];
 
   return {
     service: createQuotaRequestService({
       repository,
       quotas,
       audit: createAuditService(auditRepository),
+      events: {
+        emit: (event, payload) => {
+          gemeldet.push({ event, payload: payload as unknown as Record<string, unknown> });
+        },
+      },
+      now: () => new Date('2026-09-01T10:00:00.000Z'),
     }),
     gesetzteLimits,
     gespeichert,
     auditRepository,
+    gemeldet,
   };
 }
 
@@ -248,6 +260,63 @@ describe('Anfrage stellen', () => {
     );
   });
 
+  /*
+   * Der Betreiber hat genau das beanstandet: Eine Anfrage stand still in der
+   * Tabelle, und wer entscheiden soll, musste zufällig nachsehen. Ohne diese
+   * Meldung erreicht eine Bitte niemanden.
+   */
+  it('meldet die gestellte Anfrage an die Notification-Engine', async () => {
+    const { service, gemeldet } = build();
+
+    await service.create(plainActor, USER_ID, {
+      requestedRamMb: 8192,
+      reason: 'Der Server läuft mit 4 GB regelmäßig voll.',
+    });
+
+    expect(gemeldet).toHaveLength(1);
+    expect(gemeldet[0]?.event).toBe('quotaRequest.created');
+    expect(gemeldet[0]?.payload).toMatchObject({
+      userId: USER_ID,
+      // Der Antragsteller ist hier zugleich der Auslöser.
+      actorId: USER_ID,
+      trigger: 'quota',
+      requestedRamMb: 8192,
+      reason: 'Der Server läuft mit 4 GB regelmäßig voll.',
+      at: '2026-09-01T10:00:00.000Z',
+    });
+  });
+
+  it('meldet nichts, wenn die Anfrage gar nicht angelegt wurde', async () => {
+    // Eine Nachricht über eine Anfrage, die es nicht gibt, schämt sich der
+    // Empfänger.
+    const { service, gemeldet } = build({ vorhanden: [record()] });
+
+    await expectCode(
+      service.create(plainActor, USER_ID, { requestedRamMb: 16_384, reason: 'Noch mehr, bitte.' }),
+      'QUOTA_REQUEST_ALREADY_OPEN',
+    );
+    expect(gemeldet).toEqual([]);
+  });
+
+  /*
+   * Die zweite Sorte Bitte (`trigger: 'nodeCapacity'`): „die Maschine ist zu
+   * eng". Sie nennt keinen Wunsch – es gibt keine Zahl zu beantragen, sondern
+   * Platz zu schaffen.
+   */
+  it('nimmt eine Kapazitätsmeldung ohne jeden Wunsch entgegen', async () => {
+    const { service, gemeldet } = build();
+
+    const dto = await service.create(plainActor, USER_ID, {
+      trigger: 'nodeCapacity',
+      reason: '„Welt" ließ sich nicht starten: Auf der Node ist zu wenig frei.',
+    });
+
+    expect(dto.trigger).toBe('nodeCapacity');
+    expect(dto.requestedRamMb).toBeNull();
+    expect(dto.requestedMaxConcurrentServers).toBeNull();
+    expect(gemeldet[0]?.payload).toMatchObject({ trigger: 'nodeCapacity', requestedRamMb: null });
+  });
+
   it('stört sich nicht an einer bereits entschiedenen Anfrage', async () => {
     const { service } = build({ vorhanden: [record({ status: 'rejected' })] });
 
@@ -269,6 +338,32 @@ describe('Bescheiden', () => {
     expect(dto.status).toBe('approved');
     // Nur RAM war beantragt – die Serverzahl bleibt unberührt.
     expect(gesetzteLimits).toEqual([{ userId: USER_ID, input: { maxRamMb: 8192 } }]);
+  });
+
+  /*
+   * Eine Kapazitätsmeldung hat nichts zu genehmigen: Kein Kontingent stand im
+   * Weg. „Genehmigt" heißt hier „ich habe mich gekümmert" – und darf deshalb
+   * weder eine Grenze anfassen noch im Protokoll eine Änderung behaupten, die
+   * nicht stattgefunden hat.
+   */
+  it('setzt bei einer Kapazitätsmeldung kein Kontingent', async () => {
+    const { service, gesetzteLimits, auditRepository } = build({
+      vorhanden: [
+        record({
+          trigger: 'nodeCapacity',
+          requestedRamMb: null,
+          requestedMaxConcurrentServers: null,
+        }),
+      ],
+    });
+
+    const dto = await service.approve(adminActor, ADMIN_ID, 'req-1', {});
+
+    expect(dto.status).toBe('approved');
+    expect(gesetzteLimits).toEqual([]);
+    expect(auditRepository.rows.map((eintrag) => eintrag.action)).toEqual([
+      'quotaRequest.approved',
+    ]);
   });
 
   it('lässt die Anfrage offen, wenn das Kontingent nicht gesetzt werden kann', async () => {

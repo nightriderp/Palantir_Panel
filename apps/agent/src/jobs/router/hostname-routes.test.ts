@@ -45,7 +45,7 @@ function spec(overrides: Partial<ContainerSpec> = {}): ContainerSpec {
     image: 'ghcr.io/nightriderp/palantir-game-minecraft:1',
     env: {},
     ports: [],
-    resources: { memoryMb: 4096, cpuCores: 2 },
+    resources: { memoryMb: 4096 },
     dataVolume: { hostPath: '/srv/palantir/servers/x', containerPath: '/data' },
     serverId: SERVER_ID,
     labels: {

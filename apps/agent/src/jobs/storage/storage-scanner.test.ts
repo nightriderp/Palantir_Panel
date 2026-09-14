@@ -23,7 +23,7 @@ function spec(serverId: string, image = 'palantir/testserver:1'): ContainerSpec 
     image,
     env: {},
     ports: [],
-    resources: { memoryMb: 512, cpuCores: 1 },
+    resources: { memoryMb: 512 },
     dataVolume: { hostPath: '/srv/palantir/servers/x', containerPath: '/data' },
   };
 }

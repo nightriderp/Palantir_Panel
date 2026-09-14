@@ -674,7 +674,6 @@ export {
   ServerLoadRegistry,
   type ServerStatsRepository,
   type StatsSample,
-  cpuCoresFromPercent,
   createDrizzleServerStatsRepository,
   toLiveStats,
   toStatsHistoryDto,

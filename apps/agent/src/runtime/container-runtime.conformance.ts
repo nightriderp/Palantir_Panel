@@ -94,9 +94,9 @@ export function runContainerRuntimeConformance(
       });
 
       it('lehnt einen Spec ohne gueltige Ressourcen-Grenzen ab', async () => {
-        await expect(
-          runtime.create(spec({ resources: { memoryMb: 0, cpuCores: 0 } })),
-        ).rejects.toBeInstanceOf(ContainerRuntimeError);
+        await expect(runtime.create(spec({ resources: { memoryMb: 0 } }))).rejects.toBeInstanceOf(
+          ContainerRuntimeError,
+        );
       });
     });
 

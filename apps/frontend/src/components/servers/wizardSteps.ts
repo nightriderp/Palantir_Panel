@@ -39,7 +39,13 @@ export interface WizardState {
   subdomain: string;
   hostId: string | null;
   ramMb: number;
-  cpuCores: number;
+  /**
+   * Geschätzter Platzbedarf des gewählten Spiels in MiB – **keine Zuweisung**.
+   *
+   * Der Wert kommt aus `resourceDefaults` und wandert nicht in die Anlage-
+   * Anfrage: Ein Server nimmt sich den Platz, den er braucht. Er dient der
+   * Übersicht und der Frage, ob das voraussichtlich noch auf die Node passt.
+   */
   diskMb: number;
   config: GameConfigValues;
   startupParameters: string;
@@ -55,7 +61,6 @@ export const INITIAL_WIZARD_STATE: WizardState = {
   subdomain: '',
   hostId: null,
   ramMb: 2048,
-  cpuCores: 2,
   diskMb: 10240,
   config: {},
   startupParameters: '',
@@ -83,7 +88,6 @@ export function applyGameType(state: WizardState, gameType: GameTypeDto): Wizard
     ...state,
     gameType: gameType.id,
     ramMb: gameType.resourceDefaults.ramMb,
-    cpuCores: gameType.resourceDefaults.cpuCores,
     diskMb: gameType.resourceDefaults.diskMb,
     config: defaultConfigValues(gameType),
     worldImport: gameType.supportsWorldImport ? state.worldImport : null,
@@ -105,6 +109,19 @@ export function missingConfigFields(
 }
 
 /**
+ * Halbsatz „belegt zählen …" für eine Kachel (Fundpunkt 210).
+ *
+ * Ohne ihn liest sich „RAM-Kontingent: 0 B frei von 10 GiB" wie ein Fehler,
+ * solange die Belegung aus Servern stammt, die gerade laufen. Fehlt `counting`
+ * – der Vertrag führt es als optional –, bleibt die Regel ungenannt.
+ */
+function zaehlung(slot: ResourceQuotaSlot): string {
+  return slot.counting === undefined
+    ? 'belegt'
+    : `belegt zählen ${QUOTA_COUNTING_LABELS[slot.counting]}`;
+}
+
+/**
  * Überschreiten die gewünschten Werte das Kontingent des Nutzers?
  *
  * Erste der beiden Prüfungen aus Pflichtenheft §10. `remaining === null` heißt
@@ -114,28 +131,15 @@ export function missingConfigFields(
  * Der Rest steht fertig gerechnet im DTO (`ResourceQuotaSlot.remaining`, nie
  * negativ) – hier wird nichts aus Limit und Belegung nachgerechnet. Damit gilt
  * automatisch dieselbe Zählweise wie in der harten Kapazitätsprüfung des
- * Backends: RAM und CPU zählen laufende Server, Speicherplatz alle, die
- * Serveranzahl die gleichzeitig laufenden.
+ * Backends: RAM und die Serveranzahl zählen die laufenden Server. Platz und
+ * Kerne stehen hier nicht mehr – beides wird nicht mehr zugewiesen.
  */
-/**
- * Halbsatz „belegt zählen …" für eine Kachel (Fundpunkt 210).
- *
- * Ohne ihn liest sich „Speicher-Kontingent: 0 B frei von 10 GiB" wie ein
- * Fehler, solange die Belegung aus gestoppten Servern stammt. Fehlt `counting`
- * – der Vertrag führt es als optional –, bleibt die Regel ungenannt.
- */
-function zaehlung(slot: ResourceQuotaSlot): string {
-  return slot.counting === undefined
-    ? 'belegt'
-    : `belegt zählen ${QUOTA_COUNTING_LABELS[slot.counting]}`;
-}
-
 export function quotaBlockReason(
   quota: ResourceQuotaDto | null,
   state: WizardState,
 ): string | null {
   if (!quota) return null;
-  const { ram, cpu, disk, servers } = quota;
+  const { ram, servers } = quota;
 
   // Der neue Server zählt als einer mehr – bleibt kein Rest, ist Schluss.
   if (servers.remaining !== null && servers.remaining < 1) {
@@ -148,16 +152,6 @@ export function quotaBlockReason(
       ram.limit ?? 0,
     )} (${zaehlung(ram)}) – gebraucht werden ${formatMegabytes(state.ramMb)}.`;
   }
-  if (cpu.remaining !== null && state.cpuCores > cpu.remaining) {
-    return `CPU-Kontingent: ${cpu.remaining} von ${cpu.limit} Kernen frei (${zaehlung(
-      cpu,
-    )}) – gebraucht werden ${state.cpuCores}.`;
-  }
-  if (disk.remaining !== null && state.diskMb > disk.remaining) {
-    return `Speicher-Kontingent: ${formatMegabytes(disk.remaining)} frei von ${formatMegabytes(
-      disk.limit ?? 0,
-    )} (${zaehlung(disk)}) – gebraucht werden ${formatMegabytes(state.diskMb)}.`;
-  }
   return null;
 }
 
@@ -167,7 +161,12 @@ export function quotaBlockReason(
  * Zweite Prüfung aus Pflichtenheft §10 – sie greift unabhängig davon, ob das
  * Nutzer-Kontingent noch Luft hätte.
  */
-export function nodeBlockReason(node: HostNodeDto | null, state: WizardState): string | null {
+export function nodeBlockReason(
+  node: HostNodeDto | null,
+  state: WizardState,
+  /** Geschätzter Platzbedarf des gewählten Spiels; ohne Angabe bleibt die Platte außen vor. */
+  geschaetzterPlatzMb = 0,
+): string | null {
   if (!node) return null;
   if (node.status !== 'online') {
     return node.status === 'maintenance'
@@ -180,12 +179,21 @@ export function nodeBlockReason(node: HostNodeDto | null, state: WizardState): s
   if (state.ramMb > free.ramMb) {
     return `Auf „${node.name}" sind nur noch ${formatMegabytes(free.ramMb)} Arbeitsspeicher frei.`;
   }
-  if (state.diskMb > free.diskMb) {
-    return `Auf „${node.name}" sind nur noch ${formatMegabytes(free.diskMb)} Speicherplatz frei.`;
+
+  /*
+   * Der Platz kommt aus der Messung der Node, nicht aus der freien Zuweisung –
+   * zugewiesen wird keiner mehr. Ohne Messung bleibt die Prüfung aus: Fehlt die
+   * Auskunft, soll der Wizard nicht behaupten, es passe nichts mehr.
+   */
+  const belegt = node.usage?.diskUsedMb;
+  const geschaetzt = geschaetzterPlatzMb;
+
+  if (belegt != null && node.capacity.total.diskMb - belegt < geschaetzt) {
+    return `Auf „${node.name}" sind nur noch ${formatMegabytes(
+      node.capacity.total.diskMb - belegt,
+    )} Speicherplatz frei; dieses Spiel braucht voraussichtlich ${formatMegabytes(geschaetzt)}.`;
   }
-  if (state.cpuCores > free.cpuCores) {
-    return `Auf „${node.name}" sind nur noch ${free.cpuCores} CPU-Kerne frei.`;
-  }
+
   return null;
 }
 
@@ -231,7 +239,10 @@ export function stepBlockReason(
       if (!context.subdomainCheck.available) return context.subdomainCheck.message;
 
       if (!state.hostId) return 'Wähle eine Node.';
-      return nodeBlockReason(context.node, state) ?? quotaBlockReason(context.quota, state);
+      return (
+        nodeBlockReason(context.node, state, context.gameType?.resourceDefaults.diskMb ?? 0) ??
+        quotaBlockReason(context.quota, state)
+      );
     }
 
     case 'options': {
@@ -281,8 +292,7 @@ export function buildSummaryRows(
     },
     { label: 'Node', value: context.node?.name ?? '—' },
     { label: 'Arbeitsspeicher', value: formatMegabytes(state.ramMb) },
-    { label: 'CPU', value: `${state.cpuCores} Kerne` },
-    { label: 'Speicherplatz', value: formatMegabytes(state.diskMb) },
+    { label: 'Speicherplatz', value: `rund ${formatMegabytes(state.diskMb)}` },
     {
       label: 'Automatisch abschalten',
       value: state.autoShutdownEnabled ? 'An' : 'Aus',

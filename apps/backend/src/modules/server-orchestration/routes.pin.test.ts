@@ -43,7 +43,7 @@ const SERVER: ServerRecord = {
   subdomain: 'testserver',
   dnsRecordId: null,
   assignedPorts: [],
-  resourceLimits: { ramMb: 2048, cpuCores: 2, diskMb: 10_240 },
+  resourceLimits: { ramMb: 2048 },
   configJson: {},
   startupParameters: '',
   autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 15 },

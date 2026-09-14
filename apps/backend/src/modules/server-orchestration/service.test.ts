@@ -15,6 +15,7 @@ import {
   type ArchiveFormat,
   type AgentCommandName,
   type ApiResponse,
+  type GameConfigValues,
   type GameTypeDefinition,
   type NodeResourceUsage,
   type ServerCloneJobDto,
@@ -1841,6 +1842,196 @@ describe('Neustart', () => {
     expect(ereignisse).toContain('server.failed');
     expect(ereignisse).not.toContain('server.restarted');
   });
+
+  /*
+   * Etappe 4: Die Enge der Node ist beim Start eine Rückfrage. Ein Neustart
+   * darf nicht in sie hineinlaufen – ein laufender Server gibt zurück, was er
+   * sich gleich wieder nimmt, und die Messung der Node ist dafür zu alt. Die
+   * geplanten Neustarts (`schedules.ts`) würden sonst an einer Frage
+   * scheitern, die niemand beantworten kann.
+   */
+  it('fragt beim Neustart eines laufenden Servers nicht nach freier Kapazität', async () => {
+    const mitgeschrieben: { erzwingen: boolean }[] = [];
+    const harness = makeHarness({
+      buildReservation: (repository, ports) => {
+        const inner = createInlineCapacityReservation(
+          createPermissiveResourceGuard(() => undefined),
+          repository,
+          ports,
+        );
+
+        return {
+          reserve(request, write) {
+            mitgeschrieben.push({ erzwingen: request.force === true });
+
+            return inner.reserve(request, write);
+          },
+        };
+      },
+    });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    await harness.service.restartServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    // Erst das Anlegen, dann der gewöhnliche Start – beide fragen nach.
+    expect(mitgeschrieben.slice(0, 2).map((e) => e.erzwingen)).toEqual([false, false]);
+    // Der Neustart des laufenden Servers nicht.
+    expect(mitgeschrieben.at(-1)?.erzwingen).toBe(true);
+  });
+
+  it('fragt beim Neustart eines gestoppten Servers sehr wohl nach', async () => {
+    // Hier kommt Last hinzu: Der Server lief nicht, er nimmt sich den
+    // Arbeitsspeicher neu.
+    const mitgeschrieben: { erzwingen: boolean }[] = [];
+    const harness = makeHarness({
+      buildReservation: (repository, ports) => {
+        const inner = createInlineCapacityReservation(
+          createPermissiveResourceGuard(() => undefined),
+          repository,
+          ports,
+        );
+
+        return {
+          reserve(request, write) {
+            mitgeschrieben.push({ erzwingen: request.force === true });
+
+            return inner.reserve(request, write);
+          },
+        };
+      },
+    });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.restartServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    expect(mitgeschrieben.at(-1)?.erzwingen).toBe(false);
+  });
+});
+
+/**
+ * Geänderte Grenzen erreichen den Container (`UPDATE_RESOURCES`).
+ *
+ * Vorher landete eine geänderte Zuweisung nur in der Datenbank: Der laufende
+ * Container behielt seine Grenze, und `restartRequired` wurde dafür nicht
+ * gesetzt – die Oberfläche sagte also nicht einmal, dass etwas offen ist.
+ * Wirksam wurde die Änderung erst beim nächsten Start, und zwar über einen
+ * vollständigen Neuaufbau des Containers (`resources` steckt im Fingerabdruck
+ * des Bauplans).
+ */
+describe('Grenzen eines bestehenden Containers ändern', () => {
+  const einstellungen = (server: ServerRecord, ramMb: number, config: GameConfigValues = {}) => ({
+    name: server.name,
+    resourceLimits: { ...server.resourceLimits, ramMb },
+    config,
+    startupParameters: server.startupParameters,
+    autoShutdownEnabled: server.autoShutdown.enabled,
+    autoShutdownTimeoutMinutes: server.autoShutdown.idleTimeoutMinutes,
+  });
+
+  const grenzbefehle = (harness: Harness) =>
+    harness.socket.commands.filter((c) => c.command === 'UPDATE_RESOURCES');
+
+  it('setzt die neue Grenze sofort am Container, ohne Neustart', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    harness.socket.commands.length = 0;
+
+    await harness.service.updateServer(created.id, einstellungen(created, 4096));
+
+    expect(grenzbefehle(harness)).toHaveLength(1);
+    expect(grenzbefehle(harness)[0]?.payload).toMatchObject({
+      containerId: created.dockerContainerId,
+      resources: { memoryMb: 4096 },
+    });
+    // Weder gestoppt noch neu gebaut - der Server läuft weiter.
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('STOP');
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('DELETE');
+    expect((await harness.service.requireServer(created.id)).status).toBe('running');
+  });
+
+  it('baut den Container beim nächsten Start nicht mehr neu, wenn nur die Grenzen anders sind', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const ersterContainer = created.dockerContainerId;
+
+    await harness.service.updateServer(created.id, einstellungen(created, 4096));
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const gestartet = await settle(harness, created.id, ['running']);
+
+    // Der Container ist auf dem neuen Stand, also nicht veraltet: Ein
+    // `DELETE`/`CREATE` dafür wäre reine Arbeit ohne Wirkung.
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('DELETE');
+    expect(gestartet.dockerContainerId).toBe(ersterContainer);
+  });
+
+  it('baut trotzdem neu, wenn zusätzlich die Konfiguration geändert wurde', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const ersterContainer = created.dockerContainerId;
+
+    await harness.service.updateServer(
+      created.id,
+      einstellungen(created, 4096, { greeting: 'Neuer Text', motdEnabled: true }),
+    );
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const gestartet = await settle(harness, created.id, ['running']);
+
+    // Umgebungsvariablen bekommt ein Container nur beim Anlegen - der
+    // Fingerabdruck darf hier nicht übernommen worden sein.
+    expect(harness.socket.commands.map((c) => c.command)).toContain('DELETE');
+    expect(gestartet.dockerContainerId).not.toBe(ersterContainer);
+  });
+
+  it('holt die Grenzen beim nächsten Start nach, wenn der Agent beim Speichern getrennt war', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.agents.unregister(harness.session);
+    await harness.service.updateServer(created.id, einstellungen(created, 4096));
+    expect(grenzbefehle(harness)).toHaveLength(0);
+
+    harness.agents.register(harness.session);
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    const befehle = harness.socket.commands.map((c) => c.command);
+    // Vor dem Start, damit der Container mit der richtigen Grenze anläuft.
+    expect(befehle.indexOf('UPDATE_RESOURCES')).toBeLessThan(befehle.indexOf('START'));
+    expect(grenzbefehle(harness)[0]?.payload).toMatchObject({
+      resources: { memoryMb: 4096 },
+    });
+  });
+
+  it('lässt das Speichern gelingen, wenn der Agent den Befehl nicht annimmt', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.socket.answers.set('UPDATE_RESOURCES', {
+      success: false,
+      data: null,
+      error: { code: 'AGENT_COMMAND_FAILED', message: 'Engine mag nicht.' },
+    });
+
+    const gespeichert = await harness.service.updateServer(
+      created.id,
+      einstellungen(created, 4096),
+    );
+
+    // Die Einstellung gilt; der Container zieht beim nächsten Start nach.
+    expect(gespeichert.resourceLimits.ramMb).toBe(4096);
+  });
 });
 
 describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
@@ -3532,24 +3723,17 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
   /** Belegung aus den Attrappen-Servern – gezählt wie `usage-repository.ts`. */
   function summarize(servers: readonly ServerRecord[]): UserResourceUsage & NodeResourceUsage {
     let runningRamMb = 0;
-    let runningCpuCores = 0;
-    let allocatedDiskMb = 0;
     let runningServers = 0;
 
     for (const server of servers) {
-      allocatedDiskMb += server.resourceLimits.diskMb;
-
       if (server.status === 'running' || server.status === 'starting') {
         runningRamMb += server.resourceLimits.ramMb;
-        runningCpuCores += server.resourceLimits.cpuCores;
         runningServers += 1;
       }
     }
 
     return {
       runningRamMb,
-      runningCpuCores,
-      allocatedDiskMb,
       runningServers,
       totalServers: servers.length,
     };
@@ -3596,7 +3780,7 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
                 name: HOST.name,
                 wireguardIp: HOST.wireguardIp,
                 status: 'online',
-                totalResources: { ramMb: NODE_RAM_MB, cpuCores: 64, diskMb: 1_000_000 },
+                totalResources: { ramMb: NODE_RAM_MB, cpuCores: 8, diskMb: 1_000_000 },
                 measuredUsage: null,
               }
             : null,
@@ -3663,10 +3847,15 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
 
-    // Die Ablehnung kommt aus B4 (`ResourceError`) und trägt den Katalog-Code
-    // RESOURCE_LIMIT_EXCEEDED – derselbe Code wie im Betrieb.
+    /*
+     * Die Ablehnung kommt aus B4 (`ResourceError`). Seit die Enge der Node eine
+     * Rückfrage ist und keine Grenze, trägt sie `RESOURCE_CONFIRMATION_REQUIRED`.
+     * Entscheidend für Punkt 98 bleibt dasselbe wie vorher: Der zweite Start
+     * sieht die Belegung des ersten und läuft nicht blind durch – sonst stünden
+     * hier zwei belegende Server statt einem.
+     */
     const error = (rejected[0] as PromiseRejectedResult).reason as { readonly code: string };
-    expect(error.code).toBe('RESOURCE_LIMIT_EXCEEDED');
+    expect(error.code).toBe('RESOURCE_CONFIRMATION_REQUIRED');
 
     // Genau ein Server belegt jetzt RAM (starting/running) – die Node ist nicht
     // überbucht.
@@ -4703,10 +4892,8 @@ describe('Verlauf der Messwerte (Arbeitspaket P5)', () => {
           // 512 MiB der Attrappe.
           usedRamMb: 512,
           // 42,5 % **eines Kerns** sind 0,425 Kerne – nicht 42,5.
-          usedCpuCores: 0.425,
           // Belegter Plattenplatz je Container fehlt im Agent-Protokoll; `null`
           // darf nie zu einer Warnung führen.
-          usedDiskMb: null,
         },
       ]);
     });

@@ -36,7 +36,7 @@ const CREATE_PAYLOAD = {
   image: 'palantir/testserver:1',
   env: { EULA: 'true' },
   ports: [{ containerPort: 25565, hostPort: 30000, protocol: 'tcp' as const }],
-  resources: { memoryMb: 2048, cpuCores: 2 },
+  resources: { memoryMb: 2048 },
   dataVolume: { hostPath: `/srv/palantir/servers/${SERVER_ID}`, containerPath: '/data' },
 };
 
@@ -57,6 +57,7 @@ const GUELTIGE_NUTZDATEN: Record<ImplementedAgentCommandName, unknown> = {
   STOP: { containerId: 'c-1' },
   RESTART: { containerId: 'c-1' },
   DELETE: { containerId: 'c-1' },
+  UPDATE_RESOURCES: { containerId: 'c-1', resources: { memoryMb: 2048 } },
   GET_STATS: { containerId: 'c-1' },
   GET_LOGS: { containerId: 'c-1' },
   EXEC_CONSOLE: { containerId: 'c-1', command: ['list'] },

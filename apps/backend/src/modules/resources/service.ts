@@ -39,9 +39,11 @@ import {
 } from '../rbac/permissions.js';
 import { type CapacityCheckInput, checkCapacity } from './capacity.js';
 import { ResourceError } from './errors.js';
+import { MEASUREMENT_MAX_AGE_MS } from './node-usage.js';
 import type {
   HostNodeRecord,
   HostNodeRepository,
+  MeasuredNodeUsage,
   ServerUsageRepository,
   UserResourceLimitRecord,
   UserResourceLimitRepository,
@@ -103,6 +105,21 @@ export interface StartCapacityRequest {
    * noch keinen Server, dann bleibt das Feld leer.
    */
   readonly excludeServerId?: string;
+  /**
+   * Anlass der Prüfung (siehe {@link CapacityCheckInput.intent}).
+   *
+   * Ohne Angabe `start` – das ist der strengere der beiden Fälle, und ein
+   * vergessenes Feld soll nicht versehentlich Prüfungen abschalten.
+   */
+  readonly intent?: 'create' | 'start';
+  /**
+   * Eine knappe Node ist dem Aufrufer bekannt und er will trotzdem starten.
+   *
+   * Wirkt ausschließlich auf `concerns` – ein überschrittenes Nutzer-Kontingent
+   * lässt sich hiermit **nicht** umgehen. Wer eine Grenze umgehen könnte,
+   * indem er ein Feld setzt, hätte keine Grenze.
+   */
+  readonly force?: boolean;
   /** Zeitstempel für die Warn-Nutzlasten – injizierbar für Tests. */
   readonly at?: Date;
 }
@@ -153,9 +170,15 @@ export interface ResourceService {
    */
   checkStartCapacity(request: StartCapacityRequest): Promise<CapacityCheckResult>;
   /**
-   * Wie {@link ResourceService.checkStartCapacity}, wirft aber bei Ablehnung
-   * einen {@link ResourceError} mit `RESOURCE_LIMIT_EXCEEDED`. Das ist der
-   * Aufruf, den der Lifecycle-Befehl `START` in B3 nutzt.
+   * Wie {@link ResourceService.checkStartCapacity}, wirft aber:
+   *
+   * - `RESOURCE_LIMIT_EXCEEDED`, wenn eine **Grenze** überschritten ist – das
+   *   Kontingent des Nutzers. Daran lässt sich von hier aus nichts drehen.
+   * - `RESOURCE_CONFIRMATION_REQUIRED`, wenn nur die Node eng ist. Diese
+   *   Rückfrage beantwortet der Aufrufer mit
+   *   {@link StartCapacityRequest.force}.
+   *
+   * Das ist der Aufruf, den der Lifecycle-Befehl `START` in B3 nutzt.
    */
   assertStartCapacity(request: StartCapacityRequest): Promise<CapacityCheckResult>;
 
@@ -216,8 +239,6 @@ export interface ResourceServiceDependencies {
 /** Belegung eines Nutzers ohne Server – Vorgabe für die Sammelabfrage. */
 const EMPTY_USAGE: UserResourceUsage = {
   runningRamMb: 0,
-  runningCpuCores: 0,
-  allocatedDiskMb: 0,
   runningServers: 0,
   totalServers: 0,
 };
@@ -229,9 +250,6 @@ function mergeLimits(
 ): UserResourceLimits {
   return {
     maxRamMb: input.maxRamMb === undefined ? current.maxRamMb : (input.maxRamMb ?? null),
-    maxCpuCores:
-      input.maxCpuCores === undefined ? current.maxCpuCores : (input.maxCpuCores ?? null),
-    maxDiskMb: input.maxDiskMb === undefined ? current.maxDiskMb : (input.maxDiskMb ?? null),
     maxConcurrentServers:
       input.maxConcurrentServers === undefined
         ? current.maxConcurrentServers
@@ -304,8 +322,29 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
     }
   }
 
+  /**
+   * Die Messung der Node – oder `null`, wenn keine frische vorliegt.
+   *
+   * Dieselbe Frist wie in der Node-Übersicht ({@link MEASUREMENT_MAX_AGE_MS}):
+   * Eine Auslastung von vor zwei Stunden beschreibt keinen Ist-Zustand mehr.
+   * Ohne Messung entfallen die Prüfungen, die auf ihr beruhen – weder das
+   * Anlegen noch der Start soll daran scheitern, dass eine Auskunft fehlt.
+   */
+  function frischeMessung(node: HostNodeRecord, jetzt: Date): MeasuredNodeUsage | null {
+    const gemessen = node.measuredUsage;
+
+    if (gemessen === null) {
+      return null;
+    }
+
+    return jetzt.getTime() - gemessen.observedAt.getTime() > MEASUREMENT_MAX_AGE_MS
+      ? null
+      : gemessen;
+  }
+
   async function buildCheckInput(request: StartCapacityRequest): Promise<CapacityCheckInput> {
     const node = await loadNodeOrFail(request.nodeId);
+    const gemessen = frischeMessung(node, request.at ?? new Date());
     const usageOptions = request.excludeServerId
       ? { excludeServerId: request.excludeServerId }
       : undefined;
@@ -335,7 +374,14 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
       // Die harte Node-Prüfung unten greift trotzdem.
       userLimits: limitRecord?.limits ?? NO_USER_RESOURCE_LIMITS,
       userUsage,
-      node: { nodeId: node.id, total: node.totalResources, usage: nodeUsage },
+      node: {
+        nodeId: node.id,
+        total: node.totalResources,
+        usage: nodeUsage,
+        freeDiskMb: gemessen?.diskAvailableMb ?? null,
+        freeRamMb: gemessen?.ramAvailableMb ?? null,
+      },
+      intent: request.intent ?? 'start',
       thresholds: deps.thresholds,
       ...(request.at ? { at: request.at } : {}),
     };
@@ -381,16 +427,14 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
 
       /*
        * Die Zuordnung Ressource → Belegungsfeld ist dieselbe wie in
-       * `capacity.ts`: RAM und CPU zählen nur laufende Server, Speicherplatz
-       * zählt alle, und die Serveranzahl meint die gleichzeitig laufenden.
+       * `capacity.ts`: RAM zählt nur laufende Server, Speicherplatz zählt alle,
+       * und die Serveranzahl meint die gleichzeitig laufenden.
        * Weicht das hier ab, zeigt die Oberfläche einen anderen Rest an, als die
        * Prüfung beim Start zulässt.
        */
       return {
         userId: record.userId,
         ram: resourceQuotaSlot('ram', record.limits.maxRamMb, usage.runningRamMb),
-        cpu: resourceQuotaSlot('cpu', record.limits.maxCpuCores, usage.runningCpuCores),
-        disk: resourceQuotaSlot('disk', record.limits.maxDiskMb, usage.allocatedDiskMb),
         servers: resourceQuotaSlot(
           'servers',
           record.limits.maxConcurrentServers,
@@ -443,6 +487,17 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
         throw ResourceError.limitExceeded(result.violations);
       }
 
+      /*
+       * Die Grenze war frei, die Node ist es nicht: Rückfrage statt Ablehnung.
+       * `force` überspringt sie – aber erst nach der harten Prüfung oben, damit
+       * ein gesetztes Kontingent auch mit `force` gilt.
+       */
+      const concerns = result.concerns ?? [];
+
+      if (request.force !== true && concerns.length > 0) {
+        throw ResourceError.confirmationRequired(concerns);
+      }
+
       return result;
     },
 
@@ -488,8 +543,6 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
           nodeId: load.nodeId,
           limits: load.limits,
           usedRamMb: load.usedRamMb,
-          usedCpuCores: load.usedCpuCores,
-          usedDiskMb: load.usedDiskMb,
           thresholdPercent: deps.thresholds.serverPercent,
           ...(at ? { at } : {}),
         }),

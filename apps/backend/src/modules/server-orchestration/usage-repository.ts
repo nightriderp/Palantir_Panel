@@ -8,10 +8,11 @@
  *
  * Zählweise (aus `resources/ports.ts`, hier eingehalten):
  * - `running*`: nur Server in `running` **oder** `starting` – sie belegen RAM
- *   und CPU tatsächlich. `starting` zählt mit, weil der Container dort bereits
- *   läuft; ihn auszulassen würde zwei gleichzeitige Starts beide durchwinken.
- * - `allocatedDiskMb`: **alle** Server, unabhängig vom Zustand – der Datenordner
- *   bleibt auch im gestoppten Zustand liegen.
+ *   tatsächlich. `starting` zählt mit, weil der Container dort bereits läuft;
+ *   ihn auszulassen würde zwei gleichzeitige Starts beide durchwinken.
+ *
+ * Der Speicherplatz steht hier nicht mehr: Zugewiesen wird keiner, und was
+ * wirklich belegt ist, misst der Agent am Dateisystem der Node.
  */
 
 import {
@@ -25,7 +26,7 @@ import { gameServers } from '../../db/schema.js';
 import { type ServerUsageRepository, type UsageQueryOptions } from '../resources/index.js';
 
 /**
- * Zustände, in denen ein Server RAM und CPU tatsächlich belegt.
+ * Zustände, in denen ein Server RAM tatsächlich belegt.
  *
  * Exportiert, seit die Node-Übersicht dieselbe Zahl anzeigen soll, gegen die
  * hier geprüft wird (Fundpunkt 203). Eine zweite Liste in `admin-ports.ts`
@@ -44,26 +45,19 @@ interface UsageRow {
 
 function summarize(rows: readonly UsageRow[]): UserResourceUsage & NodeResourceUsage {
   let runningRamMb = 0;
-  let runningCpuCores = 0;
-  let allocatedDiskMb = 0;
   let runningServers = 0;
 
   for (const row of rows) {
-    allocatedDiskMb += row.resourceLimits.diskMb;
-
     if (!CONSUMING_STATUSES.has(row.status)) {
       continue;
     }
 
     runningRamMb += row.resourceLimits.ramMb;
-    runningCpuCores += row.resourceLimits.cpuCores;
     runningServers += 1;
   }
 
   return {
     runningRamMb,
-    runningCpuCores,
-    allocatedDiskMb,
     runningServers,
     totalServers: rows.length,
   };

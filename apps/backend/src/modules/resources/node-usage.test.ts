@@ -57,8 +57,6 @@ describe('Auslastung je Node (Lastenheft §3.7)', () => {
   it('rechnet die Belegung aus `game_servers` in `HostNodeUsage` um', async () => {
     const usage = usageRepository({
       runningRamMb: 4096,
-      runningCpuCores: 2,
-      allocatedDiskMb: 120_000,
       runningServers: 2,
       totalServers: 5,
     });
@@ -73,11 +71,11 @@ describe('Auslastung je Node (Lastenheft §3.7)', () => {
 
     expect(usage.calls).toEqual([NODE.id]);
     expect(result.get(NODE.id)).toEqual({
-      // 2 von 8 Kernen – bezogen auf die ganze Node, nicht auf einen Kern.
-      cpuPercent: 25,
+      // Ohne Messung gibt es weder zur CPU noch zur Platte etwas zu sagen: Beide
+      // wurden aus Zuweisungen gerechnet, die es nicht mehr gibt.
+      cpuPercent: null,
       ramUsedMb: 4096,
-      // Speicherplatz zählt über alle Server, auch die gestoppten.
-      diskUsedMb: 120_000,
+      diskUsedMb: null,
       sampledAt: AT.toISOString(),
       // Ohne Messung des Agents bleibt es die Rechnung aus den Kontingenten
       // (Gefundener Punkt 96).
@@ -96,8 +94,6 @@ describe('Auslastung je Node (Lastenheft §3.7)', () => {
 
     const usage = usageRepository({
       runningRamMb: 4096,
-      runningCpuCores: 2,
-      allocatedDiskMb: 120_000,
       runningServers: 2,
       totalServers: 5,
     });
@@ -138,8 +134,6 @@ describe('Auslastung je Node (Lastenheft §3.7)', () => {
       ]),
       usage: usageRepository({
         runningRamMb: 4096,
-        runningCpuCores: 2,
-        allocatedDiskMb: 120_000,
         runningServers: 2,
         totalServers: 5,
       }),
@@ -151,11 +145,9 @@ describe('Auslastung je Node (Lastenheft §3.7)', () => {
 
   it('meldet keinen Prozentwert, wenn die Node keine Kerne führt', async () => {
     const source = createNodeUsageSource({
-      nodes: nodeRepository([{ ...NODE, totalResources: { ramMb: 0, cpuCores: 0, diskMb: 0 } }]),
+      nodes: nodeRepository([{ ...NODE, totalResources: { ramMb: 0, cpuCores: 8, diskMb: 0 } }]),
       usage: usageRepository({
         runningRamMb: 0,
-        runningCpuCores: 0,
-        allocatedDiskMb: 0,
         runningServers: 0,
         totalServers: 0,
       }),
@@ -170,8 +162,6 @@ describe('Auslastung je Node (Lastenheft §3.7)', () => {
       nodes: nodeRepository([]),
       usage: usageRepository({
         runningRamMb: 0,
-        runningCpuCores: 0,
-        allocatedDiskMb: 0,
         runningServers: 0,
         totalServers: 0,
       }),

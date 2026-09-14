@@ -7,7 +7,7 @@ import { Badge, type Tone } from '../primitives/Badge';
 import { cn } from '../utils/cn';
 import {
   clampedPercentOf,
-  cpuQuotaPercent,
+  formatCores,
   formatMegabytes,
   formatPercent,
   formatPing,
@@ -118,12 +118,15 @@ export function ServerCard({
   const permissions = server.permissions;
   const live = hasLiveStats(server.status) ? (stats ?? null) : null;
 
-  // Fundpunkt 205: `cpuPercent` zählt in Prozent **eines** Kerns. Vorher stand
-  // hier `clampPercent`, und ein Server mit vier Kernen sah bei einem
-  // ausgelasteten Kern voll aus.
-  const cpuPercent = cpuQuotaPercent(live?.cpuPercent, server.resourceLimits.cpuCores);
+  /*
+   * `cpuPercent` zaehlt in Prozent **eines** Kerns (250 = 2,5 Kerne). Die
+   * Kachel zeigte bis zum Wegfall der CPU-Zuweisung den Anteil am Kontingent
+   * des Servers; ohne Zuweisung gibt es die Bezugsgroesse nicht mehr. Ein
+   * Fuellbalken braucht aber einen Nenner - deshalb faellt der CPU-Balken hier
+   * weg und die Kerne stehen als Zahl daneben.
+   */
+  const cpuCores = live?.cpuPercent == null ? null : Math.round(live.cpuPercent) / 100;
   const ramPercent = clampedPercentOf(live?.ramUsedMb, server.resourceLimits.ramMb);
-  const diskPercent = clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb);
   const pingMs = live?.pingMs ?? null;
 
   const address = formatServerAddress(server.address);
@@ -227,11 +230,18 @@ export function ServerCard({
       ) : null}
 
       <div className="flex justify-around">
+        {/*
+          Ohne CPU-Zuweisung gibt es keinen Nenner fuer einen Fuellstand: Der
+          Container darf alle Kerne der Node sehen, und wieviele das sind, steht
+          nicht im Server-DTO (sondern in der Node-Uebersicht). Der Ring zeigt
+          deshalb die Zahl ohne Bogen - eine ehrliche Angabe statt eines
+          Fuellstands gegen eine geratene Obergrenze.
+        */}
         <MetricRing
           label="CPU"
-          value={formatPercent(cpuPercent)}
-          percent={cpuPercent}
-          tone={loadTone(cpuPercent)}
+          value={cpuCores == null ? '—' : formatCores(cpuCores)}
+          percent={null}
+          title="Ausgelastete Kerne. Ein Server hat keine feste CPU-Grenze mehr; die Kerne der Node stehen in der Node-Übersicht."
         />
         <MetricRing
           label="RAM"
@@ -239,11 +249,16 @@ export function ServerCard({
           percent={ramPercent}
           tone={loadTone(ramPercent)}
         />
+        {/*
+          Wie bei der CPU: ohne Zuweisung kein Nenner fuer einen Fuellstand.
+          Der belegte Platz des Datenordners steht als Zahl; wie voll die Platte
+          der Node ist, sagt die Node-Uebersicht.
+        */}
         <MetricRing
           label="Disk"
           value={formatMegabytes(stats?.diskUsedMb)}
-          percent={diskPercent}
-          tone={loadTone(diskPercent)}
+          percent={null}
+          title="Belegter Platz des Datenordners. Ein Server hat keine feste Platten-Grenze mehr; wie voll die Node ist, steht in der Node-Übersicht."
         />
         <MetricRing
           label="Ping"

@@ -553,24 +553,17 @@ export class LatestEngineStatsCache {
 // Last je Server – Quelle der Warnungen auf Server-Ebene (Lastenheft §3.3)
 // ---------------------------------------------------------------------------
 
-/**
- * `cpuPercent` in absolute Kerne.
+/*
+ * Kein `cpuCoresFromPercent` mehr.
  *
- * `ServerLiveStats.cpuPercent` und `AgentContainerStats.cpuPercent` messen
- * Prozent **eines Kerns**: `250` heißt 2,5 ausgelastete Kerne – ausdrücklich
- * nicht 250 % irgendeines Kontingents. Die Schwellwertprüfung rechnet dagegen
- * in Kernen gegen `resourceLimits.cpuCores`.
- *
- * Die Umrechnung steht deshalb hier, an der Messstelle, und nicht im
- * Schwellwert-Modul: Wer dort einen Prozentwert entgegennähme, müsste dessen
- * Bezugsgröße raten. Ein Fehler an dieser Stelle fällt lange nicht auf – er
- * erzeugt entweder Dauerwarnungen (Faktor 100 zu hoch) oder gar keine.
- *
- * `null` bleibt `null`: „kein Messwert" ist keine 0.
+ * Die Funktion rechnete `cpuPercent` in absolute Kerne um, weil die
+ * Schwellwertprüfung in Kernen gegen `resourceLimits.cpuCores` rechnete. Mit
+ * dem Wegfall der CPU-Zuweisung gibt es diese Bezugsgröße nicht mehr, und die
+ * Server-Warnung für CPU ist entfallen (siehe `WarnableResource` in
+ * `resources/thresholds.ts`). Die Umrechnung hatte danach keinen Aufrufer
+ * mehr – entfernt statt stehen gelassen, wie beim `acknowledged`-Ereignis der
+ * State Machine (Audit orchestration-core-13).
  */
-export function cpuCoresFromPercent(cpuPercent: number | null): number | null {
-  return cpuPercent === null ? null : cpuPercent / 100;
-}
 
 /**
  * Zuletzt gemessene Last der laufenden Server, je Node.

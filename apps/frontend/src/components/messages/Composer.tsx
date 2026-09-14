@@ -23,7 +23,17 @@ export interface ComposerProps {
   canSend: boolean;
   /** Läuft gerade ein Sendevorgang? Sperrt den Knopf, ohne die Eingabe zu leeren. */
   sending: boolean;
-  onSend: (content: string) => void;
+  /**
+   * Sendet die Nachricht und meldet, ob sie angekommen ist.
+   *
+   * Der Rückgabewert entscheidet über den Entwurf: Erst bei `true` wird das
+   * Feld geleert. Vorher verschwand der Text, sobald der Knopf gedrückt war –
+   * eine abgelehnte Nachricht (Backend weg, Drosselung nach 30 Nachrichten je
+   * Minute) hinterließ nur einen roten Hinweis und ein leeres Feld, und das
+   * Getippte war weg. Dieselbe Form wie in der Server-Konsole
+   * (`ConsoleTab.onSend`).
+   */
+  onSend: (content: string) => Promise<boolean>;
 }
 
 const WARN_THRESHOLD = MESSAGE_MAX_LENGTH - 100;
@@ -43,22 +53,26 @@ export function Composer({ canSend, sending, onSend }: ComposerProps) {
   const trimmed = draft.trim();
   const canSubmit = trimmed.length > 0 && trimmed.length <= MESSAGE_MAX_LENGTH && !sending;
 
-  function submit() {
+  async function submit() {
     if (!canSubmit) return;
-    onSend(trimmed);
-    setDraft('');
+
+    // Der Entwurf bleibt stehen, bis das Senden bestätigt ist – siehe
+    // `ComposerProps.onSend`. Der Knopf ist währenddessen über `sending`
+    // gesperrt, doppelt abschicken geht also nicht.
+    const angekommen = await onSend(trimmed);
+    if (angekommen) setDraft('');
     areaRef.current?.focus();
   }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    submit();
+    void submit();
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      submit();
+      void submit();
     }
   }
 

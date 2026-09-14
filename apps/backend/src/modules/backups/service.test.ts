@@ -109,7 +109,7 @@ function aufbau(
                         subdomain: 'testserver',
                         startupParameters: '',
                         config: {},
-                        resourceLimits: { ramMb: 2048, cpuCores: 2, diskMb: 10_240 },
+                        resourceLimits: { ramMb: 2048 },
                         autoShutdownEnabled: false,
                         autoShutdownTimeoutMinutes: 30,
                         createdAt: JETZT.toISOString(),

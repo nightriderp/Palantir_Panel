@@ -55,7 +55,7 @@ const PASSWORD = 'ein-sehr-langes-passwort';
 const NEW_NODE = {
   name: 'Homeserver-2',
   wireguardIp: '10.10.0.3',
-  totalResources: { ramMb: 16_384, cpuCores: 4, diskMb: 1_000_000 },
+  totalResources: { ramMb: 16_384, cpuCores: 8, diskMb: 1_000_000 },
 };
 
 let app: FastifyInstance;

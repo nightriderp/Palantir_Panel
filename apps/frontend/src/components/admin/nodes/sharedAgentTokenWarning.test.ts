@@ -19,7 +19,11 @@ function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
     wireguardIp: '10.10.0.2',
     status: 'online',
     statusMessage: null,
-    capacity: { total, allocated: { ramMb: 0, cpuCores: 0, diskMb: 0 }, available: total },
+    capacity: {
+      total,
+      allocated: { ramMb: 0 },
+      available: { ramMb: total.ramMb },
+    },
     usage: null,
     serverCount: 0,
     lastSeenAt: null,

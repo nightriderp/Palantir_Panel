@@ -75,6 +75,20 @@ const SAMPLES: Record<string, NotificationEvent> = {
       reason: 'Beleidigung',
     },
   },
+  'quotaRequest.created': {
+    event: 'quotaRequest.created',
+    payload: {
+      at: '2026-08-26T12:00:00.000Z',
+      actorId: 'usr',
+      quotaRequestId: 'req',
+      userId: 'usr',
+      displayName: 'Antragsteller',
+      trigger: 'quota',
+      requestedRamMb: 16_384,
+      requestedMaxConcurrentServers: null,
+      reason: 'Vier Gigabyte reichen für die Runde nicht mehr.',
+    },
+  },
   'announcement.published': {
     event: 'announcement.published',
     payload: {
@@ -173,6 +187,40 @@ describe('Textbildung (Pflichtenheft §14)', () => {
     expect(rendered.title).toBe('Wartung am Sonntag');
     expect(rendered.body).toBe('Ab 02:00 Uhr steht das Panel kurz still.');
     expect(rendered.severity).toBe('warning');
+  });
+
+  /*
+   * Zwei Sorten Bitte unter einem Ereignis (`QuotaRequestTrigger`). Der Titel
+   * muss sie auseinanderhalten: Der Betreiber tut Verschiedenes, je nachdem ob
+   * eine Grenze im Weg steht oder die Maschine voll ist.
+   */
+  describe('Anfrage an die Administration', () => {
+    it('nennt bei einer Kontingent-Anfrage den Wunsch und die Begründung', () => {
+      const rendered = renderNotification(SAMPLES['quotaRequest.created'] as NotificationEvent);
+
+      expect(rendered.title).toBe('Antragsteller beantragt mehr Kontingent');
+      expect(rendered.body).toContain('16384 MiB RAM');
+      expect(rendered.body).toContain('Vier Gigabyte reichen');
+      expect(rendered.subject).toEqual({ type: 'user', id: 'usr', displayName: 'Antragsteller' });
+    });
+
+    it('spricht bei einer Kapazitätsmeldung von der Node, nicht vom Kontingent', () => {
+      const vorlage = SAMPLES['quotaRequest.created'] as NotificationEvent;
+      const rendered = renderNotification({
+        ...vorlage,
+        payload: {
+          ...vorlage.payload,
+          trigger: 'nodeCapacity',
+          requestedRamMb: null,
+          reason: '„Welt" ließ sich nicht starten.',
+        },
+      } as NotificationEvent);
+
+      expect(rendered.title).toBe('Antragsteller meldet zu wenig freie Kapazität');
+      expect(rendered.body).toContain('freien Ressourcen der Node');
+      // Kein erfundener Wunsch: Es gibt keinen.
+      expect(rendered.body).not.toContain('MiB RAM');
+    });
   });
 });
 

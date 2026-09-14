@@ -115,6 +115,16 @@ export const AUDIT_ACTIONS = [
    * nichts am Konto und braucht deshalb eine eigene Aktion, sonst bliebe die
    * Entscheidung unsichtbar.
    */
+  /**
+   * Eine Anfrage wurde genehmigt, ohne dass sich ein Kontingent ändert
+   * (`trigger: 'nodeCapacity'`).
+   *
+   * Eine Kontingent-Genehmigung steht weiterhin als `user.limitsChanged` im
+   * Protokoll – für das Log zählt dort, dass sich die Grenze eines fremden
+   * Kontos geändert hat. Bei einer Kapazitätsmeldung ändert sich keine: Der
+   * Eintrag hält fest, dass der Betreiber sie als erledigt beschieden hat.
+   */
+  'quotaRequest.approved',
   'quotaRequest.rejected',
 
   // Benachrichtigungen und Moderation (B6/B7)

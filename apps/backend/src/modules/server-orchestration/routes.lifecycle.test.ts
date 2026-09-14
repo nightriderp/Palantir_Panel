@@ -74,7 +74,7 @@ const SERVER: ServerRecord = {
   subdomain: 'testserver',
   dnsRecordId: null,
   assignedPorts: [],
-  resourceLimits: { ramMb: 2048, cpuCores: 2, diskMb: 10_240 },
+  resourceLimits: { ramMb: 2048 },
   configJson: {},
   startupParameters: '',
   autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 15 },
@@ -126,7 +126,7 @@ const KONSOLE: ExecConsoleCommandResult = { exitCode: 0, stdout: 'pong', stderr:
 /** Gültiger Rumpf für `PATCH /api/servers/:id` – die Rechteprüfung liegt davor. */
 const EINSTELLUNGEN = {
   name: 'Testserver',
-  resourceLimits: { ramMb: 2048, cpuCores: 2, diskMb: 10_240 },
+  resourceLimits: { ramMb: 2048 },
   config: {},
   startupParameters: '',
   autoShutdownEnabled: false,
@@ -402,9 +402,9 @@ const MATRIX: Record<AkteurName, Record<AktionsName, Erwartung>> = {
 
 /** Was der Dienst bzw. das Repository tatsächlich zu sehen bekommen hat. */
 interface Mitschrift {
-  start: { serverId: string; actorUserId: string }[];
+  start: { serverId: string; actorUserId: string; erzwingen?: boolean }[];
   stopp: string[];
-  neustart: { serverId: string; actorUserId: string }[];
+  neustart: { serverId: string; actorUserId: string; erzwingen?: boolean }[];
   loeschen: string[];
   einstellungen: string[];
   freigeben: { userId: string; level: ServerMemberLevel }[];
@@ -451,9 +451,14 @@ async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
   const service = {
     requireServer: async () => SERVER,
     recentCrashCount: () => 0,
-    startServer: async (serverId: string, actorUserId: string) => {
+    startServer: async (
+      serverId: string,
+      actorUserId: string,
+      _anlass?: string,
+      startOptionen?: { erzwingen?: boolean },
+    ) => {
       if (optionen.startFehler !== undefined) throw optionen.startFehler;
-      mitschrift.start.push({ serverId, actorUserId });
+      mitschrift.start.push({ serverId, actorUserId, erzwingen: startOptionen?.erzwingen });
 
       return SERVER;
     },
@@ -462,8 +467,16 @@ async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
 
       return SERVER;
     },
-    restartServer: async (serverId: string, actorUserId: string) => {
-      mitschrift.neustart.push({ serverId, actorUserId });
+    restartServer: async (
+      serverId: string,
+      actorUserId: string,
+      neustartOptionen?: { erzwingen?: boolean },
+    ) => {
+      mitschrift.neustart.push({
+        serverId,
+        actorUserId,
+        erzwingen: neustartOptionen?.erzwingen,
+      });
 
       return SERVER;
     },
@@ -644,7 +657,64 @@ describe('Envelope und Weitergabe an den Dienst', () => {
 
     await rufe(app, 'verwalter', AKTIONEN.start);
 
-    expect(mitschrift.start).toEqual([{ serverId: SERVER_ID, actorUserId: VERWALTER_ID }]);
+    expect(mitschrift.start).toEqual([
+      { serverId: SERVER_ID, actorUserId: VERWALTER_ID, erzwingen: false },
+    ]);
+  });
+
+  /*
+   * `?force=true` beantwortet die Rückfrage der Kapazitätsprüfung
+   * (`RESOURCE_CONFIRMATION_REQUIRED`). Ohne das Flag darf nichts erzwungen
+   * werden – sonst wäre die Frage keine.
+   */
+  it('reicht ein bestätigtes „trotzdem starten" an den Dienst weiter', async () => {
+    const { app, mitschrift } = await baueApp();
+    offen = app;
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/servers/${SERVER_ID}/start?force=true`,
+      headers: { 'x-test-actor': 'besitzer' },
+    });
+
+    expect(mitschrift.start[0]?.erzwingen).toBe(true);
+  });
+
+  it('erzwingt ohne das Flag nichts', async () => {
+    const { app, mitschrift } = await baueApp();
+    offen = app;
+
+    await rufe(app, 'besitzer', AKTIONEN.start);
+    await rufe(app, 'besitzer', AKTIONEN.neustart);
+
+    expect(mitschrift.start[0]?.erzwingen).toBe(false);
+    expect(mitschrift.neustart[0]?.erzwingen).toBe(false);
+  });
+
+  it('nimmt `force` auch am Neustart entgegen', async () => {
+    const { app, mitschrift } = await baueApp();
+    offen = app;
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/servers/${SERVER_ID}/restart?force=true`,
+      headers: { 'x-test-actor': 'besitzer' },
+    });
+
+    expect(mitschrift.neustart[0]?.erzwingen).toBe(true);
+  });
+
+  it('macht aus RESOURCE_CONFIRMATION_REQUIRED eine 409-Antwort', async () => {
+    // 409 und nicht 403: Ein Wiederholen **hilft** hier – mit `force`.
+    const { app } = await baueApp({
+      startFehler: new ServerOrchestrationError('RESOURCE_CONFIRMATION_REQUIRED'),
+    });
+    offen = app;
+
+    const antwort = await rufe(app, 'besitzer', AKTIONEN.start);
+
+    expect(antwort.statusCode).toBe(409);
+    expect(antwort.json().error.code).toBe('RESOURCE_CONFIRMATION_REQUIRED');
   });
 
   it('liefert bei Erfolg das vollständige DTO samt permissions-Objekt (Pflichtenheft §5.2)', async () => {

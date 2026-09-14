@@ -13,7 +13,11 @@
  * von B8 additiv erweiterbar. Vermerkt in WORK_STATUS.md unter „Gefundene Punkte".
  */
 
-import { type HostNodeStatus, type QuotaRequestStatus } from '@palantir/contracts';
+import {
+  type HostNodeStatus,
+  type QuotaRequestStatus,
+  type QuotaRequestTrigger,
+} from '@palantir/contracts';
 import { sql } from 'drizzle-orm';
 import {
   doublePrecision,
@@ -119,12 +123,19 @@ export const hostNodes = pgTable(
  *
  * `user_id` ist zugleich Primärschlüssel: je Nutzer gibt es höchstens einen
  * Datensatz. Fehlt der Datensatz ganz, gilt kein Limit – genauso wie bei einem
- * Datensatz, dessen vier Spalten alle `NULL` sind. Beide Fälle behandelt der
+ * Datensatz, dessen Grenzspalten alle `NULL` sind. Beide Fälle behandelt der
  * Service identisch (`NO_USER_RESOURCE_LIMITS`).
  *
- * Alle vier Grenzen sind **nullable**; `NULL` heißt ausdrücklich „für diese
+ * Alle Grenzen sind **nullable**; `NULL` heißt ausdrücklich „für diese
  * Ressource gilt kein Limit" und ist nicht mit `0` zu verwechseln – `0` ist eine
  * gesetzte Grenze, die jeden Start ablehnt.
+ *
+ * `max_cpu_cores` und `max_disk_mb` sind mit dem Wegfall der jeweiligen
+ * Zuweisung entfallen: Server bekommen weder einen Kernanteil noch ein
+ * Platzkontingent zugewiesen, die Belegung wäre damit dauerhaft null und das
+ * Kontingent nie erreichbar. Eine Spalte, die nichts mehr begrenzen kann,
+ * bleibt nicht als Beruhigung stehen. Wie viel Platz eine Node noch hat, steht
+ * in der Messung (`node_usage_samples`) und wird beim Anlegen dagegen geprüft.
  *
  * Löscht der Betreiber ein Konto, verschwindet das Kontingent mit
  * (`ON DELETE CASCADE`) – ein verwaister Eintrag hätte keine Bedeutung.
@@ -134,8 +145,6 @@ export const userResourceLimits = pgTable('user_resource_limits', {
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
   maxRamMb: integer('max_ram_mb'),
-  maxCpuCores: doublePrecision('max_cpu_cores'),
-  maxDiskMb: integer('max_disk_mb'),
   maxConcurrentServers: integer('max_concurrent_servers'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -164,6 +173,15 @@ export const quotaRequests = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * Woran der Antragsteller geraten ist (`QuotaRequestTrigger`).
+     *
+     * Vorgabe `quota`: Bis zur Unterscheidung gab es nur diese eine Sorte, und
+     * so bleiben die bestehenden Zeilen das, was sie waren. Bewusst `text` mit
+     * Vorgabe statt eines Enum-Typs – wie `status` daneben auch, und eine
+     * weitere Sorte Bitte soll keine Migration des Typs verlangen.
+     */
+    trigger: text('trigger').$type<QuotaRequestTrigger>().notNull().default('quota'),
     /** Gewünschter Arbeitsspeicher in MB; `null`, wenn nicht Teil der Anfrage. */
     requestedRamMb: integer('requested_ram_mb'),
     /** Gewünschte Zahl gleichzeitig laufender Server; `null`, wenn nicht Teil der Anfrage. */

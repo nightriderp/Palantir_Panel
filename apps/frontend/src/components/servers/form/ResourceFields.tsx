@@ -1,17 +1,16 @@
 'use client';
 
-import {
-  SERVER_CPU_MAX_CORES,
-  SERVER_CPU_MIN_CORES,
-  SERVER_DISK_MAX_MB,
-  SERVER_DISK_MIN_MB,
-  SERVER_RAM_MAX_MB,
-  SERVER_RAM_MIN_MB,
-} from '@palantir/validation';
-import { NumberField, SliderField, formatMegabytes } from '@/components/shared';
+import { SERVER_RAM_MAX_MB, SERVER_RAM_MIN_MB } from '@palantir/validation';
+import { SliderField, formatMegabytes } from '@/components/shared';
 
 /**
  * Ressourcen-Konfiguration eines Servers (Lastenheft §3.3, Pflichtenheft §10).
+ *
+ * **Nur noch der Arbeitsspeicher.** CPU-Anteil und Speicherplatz sind auf
+ * Wunsch des Betreibers entfallen: Ein Server nimmt sich die Kerne und den
+ * Platz, die er braucht. Ob auf der Node noch Platz ist, prüft das Backend
+ * beim Anlegen gegen die Messung – nicht gegen eine Angabe aus diesem
+ * Formular.
  *
  * Gleiche Felder im Wizard und in den Einstellungen. Die Grenzen sind die
  * Formatgrenzen aus `@palantir/validation` – importiert, nicht abgeschrieben
@@ -31,12 +30,9 @@ import { NumberField, SliderField, formatMegabytes } from '@/components/shared';
 
 /** Schrittweite der Regler – wie im Mockup. */
 const RAM_STEP_MB = 256;
-const DISK_STEP_MB = 1024;
-const CPU_STEP_CORES = 0.5;
 
 /** Praktische Reglerweite (Mockup); siehe Kopfkommentar. */
 const RAM_SLIDER_MB = 32_768;
-const DISK_SLIDER_MB = 512_000;
 
 /**
  * Rechter Anschlag eines Reglers: die praktische Weite, gedehnt auf einen
@@ -48,22 +44,13 @@ function reglerMax(praktisch: number, wert: number, schema: number): number {
 
 export interface ResourceFieldsProps {
   ramMb: number;
-  cpuCores: number;
-  diskMb: number;
-  onChange: (values: { ramMb?: number; cpuCores?: number; diskMb?: number }) => void;
+  onChange: (values: { ramMb?: number }) => void;
   disabled?: boolean;
   /** Warnung unter dem RAM-Regler, z. B. „Übersteigt den freien Speicher". */
   warning?: string | null;
 }
 
-export function ResourceFields({
-  ramMb,
-  cpuCores,
-  diskMb,
-  onChange,
-  disabled,
-  warning,
-}: ResourceFieldsProps) {
+export function ResourceFields({ ramMb, onChange, disabled, warning }: ResourceFieldsProps) {
   return (
     <div className="flex flex-col gap-4">
       <SliderField
@@ -77,36 +64,6 @@ export function ResourceFields({
         error={warning ?? null}
         onChange={(value) => onChange({ ramMb: value })}
       />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <NumberField
-          label="CPU-Kerne"
-          hint="Halbe Kerne sind erlaubt, z. B. 1,5."
-          min={SERVER_CPU_MIN_CORES}
-          max={SERVER_CPU_MAX_CORES}
-          step={CPU_STEP_CORES}
-          value={cpuCores}
-          disabled={disabled}
-          // Ein leeres Feld meldet `null`; dann bleibt der zuletzt gültige Wert
-          // im Entwurf stehen, statt ihn auf 0 zu setzen (frontend-lib-13). Das
-          // Feld selbst bleibt leer, bis wieder eine Zahl darin steht.
-          onChange={(value) => {
-            if (value === null) return;
-            onChange({ cpuCores: value });
-          }}
-        />
-
-        <SliderField
-          label="Speicherplatz"
-          labelAside={formatMegabytes(diskMb)}
-          min={SERVER_DISK_MIN_MB}
-          max={reglerMax(DISK_SLIDER_MB, diskMb, SERVER_DISK_MAX_MB)}
-          step={DISK_STEP_MB}
-          value={diskMb}
-          disabled={disabled}
-          onChange={(value) => onChange({ diskMb: value })}
-        />
-      </div>
     </div>
   );
 }

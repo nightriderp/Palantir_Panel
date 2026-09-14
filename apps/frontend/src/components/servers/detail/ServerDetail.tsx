@@ -20,6 +20,7 @@ import { useDtoRevision } from '@/lib/live/useDtoRevision';
 import { type LiveStatusEntry, mergeLiveStatus } from '@/lib/live/mergeLiveStatus';
 import { useServerLive } from '@/lib/live/useServerLive';
 import { buildServerTabs, resolveServerTab, type ServerTabKey } from '../serverTabs';
+import { LifecycleConfirmDialog } from '../LifecycleConfirmDialog';
 import { useLifecycleActions } from '../useLifecycleActions';
 import { BackupsTab } from './BackupsTab';
 import { ConsoleTab } from './ConsoleTab';
@@ -297,6 +298,8 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
         }
         onConfirm={() => void remove(nodeFehlt)}
       />
+
+      <LifecycleConfirmDialog confirmation={lifecycle.confirmation} />
     </div>
   );
 }

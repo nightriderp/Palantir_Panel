@@ -43,15 +43,32 @@ const NODE: HostNodeRecord = {
   name: 'homeserver',
   wireguardIp: '10.10.0.2',
   status: 'online',
-  totalResources: { ramMb: 32_768, cpuCores: 16, diskMb: 2_097_152 },
+  totalResources: { ramMb: 32_768, cpuCores: 8, diskMb: 2_097_152 },
   measuredUsage: null,
 };
+
+const JETZT = new Date('2026-09-14T12:00:00.000Z');
+
+/** Node mit frischer Messung – Vorgabe: Platte reichlich frei. */
+function nodeMitMessung(gemessen: {
+  ramAvailableMb: number;
+  diskAvailableMb?: number;
+  observedAt?: Date;
+}): HostNodeRecord {
+  return {
+    ...NODE,
+    measuredUsage: {
+      ramAvailableMb: gemessen.ramAvailableMb,
+      diskAvailableMb: gemessen.diskAvailableMb ?? 2_000_000,
+      cpuLoad1m: null,
+      observedAt: gemessen.observedAt ?? JETZT,
+    },
+  };
+}
 
 function emptyUserUsage(): UserResourceUsage {
   return {
     runningRamMb: 0,
-    runningCpuCores: 0,
-    allocatedDiskMb: 0,
     runningServers: 0,
     totalServers: 0,
   };
@@ -60,8 +77,6 @@ function emptyUserUsage(): UserResourceUsage {
 function emptyNodeUsage(): NodeResourceUsage {
   return {
     runningRamMb: 0,
-    runningCpuCores: 0,
-    allocatedDiskMb: 0,
     runningServers: 0,
     totalServers: 0,
   };
@@ -182,11 +197,9 @@ function buildService(options?: {
 describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
   it('liefert je Ressource Limit, Belegung und Rest', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 8192, maxCpuCores: 4, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
       userUsage: {
         runningRamMb: 2048,
-        runningCpuCores: 1.5,
-        allocatedDiskMb: 20_480,
         runningServers: 1,
         totalServers: 3,
       },
@@ -203,24 +216,6 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
       remaining: 6144,
       counting: 'running',
     });
-    expect(quota.cpu).toEqual({
-      resource: 'cpu',
-      unit: 'cores',
-      limit: 4,
-      used: 1.5,
-      remaining: 2.5,
-      counting: 'running',
-    });
-    // Speicherplatz zählt alle Server, nicht nur die laufenden.
-    expect(quota.disk).toEqual({
-      resource: 'disk',
-      unit: 'mb',
-      limit: 51_200,
-      used: 20_480,
-      remaining: 30_720,
-      // Fundpunkt 210: Genau diese Zeile stand vorher nur im Kommentar darueber.
-      counting: 'all',
-    });
     // Die Serveranzahl zählt die gleichzeitig laufenden – wie in `capacity.ts`.
     expect(quota.servers).toEqual({
       resource: 'servers',
@@ -235,7 +230,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
 
   it('meldet ohne Limit `null` als Limit und Rest, nennt die Belegung aber weiter', async () => {
     const { service } = buildService({
-      userUsage: { runningRamMb: 4096, allocatedDiskMb: 10_240, runningServers: 2 },
+      userUsage: { runningRamMb: 4096, runningServers: 2 },
     });
 
     const quota = await service.getOwnQuota({ actor: plainActor, userId: USER_ID });
@@ -243,14 +238,13 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
     expect(quota.ram.limit).toBeNull();
     expect(quota.ram.remaining).toBeNull();
     expect(quota.ram.used).toBe(4096);
-    expect(quota.disk.remaining).toBeNull();
     expect(quota.servers.remaining).toBeNull();
     expect(quota.updatedAt).toBeNull();
   });
 
   it('gibt bei überschrittenem Limit 0 statt eines negativen Rests zurück', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 4096, maxCpuCores: null, maxDiskMb: null, maxConcurrentServers: 1 },
+      limits: { maxRamMb: 4096, maxConcurrentServers: 1 },
       userUsage: { runningRamMb: 6144, runningServers: 3 },
     });
 
@@ -311,7 +305,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
 describe('Kontingent lesen und setzen', () => {
   it('liefert den vollständigen DTO inkl. permissions-Objekt und Belegung', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 8192, maxCpuCores: 4, maxDiskMb: null, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
       userUsage: { runningRamMb: 2048, runningServers: 1, totalServers: 3 },
     });
 
@@ -320,7 +314,7 @@ describe('Kontingent lesen und setzen', () => {
     expect(dto.userId).toBe(USER_ID);
     expect(dto.userDisplayName).toBe('Testnutzer');
     expect(dto.limits.maxRamMb).toBe(8192);
-    expect(dto.limits.maxDiskMb).toBeNull();
+    expect(dto.limits.maxConcurrentServers).toBe(2);
     expect(dto.usage.totalServers).toBe(3);
     expect(dto.permissions).toEqual({ canView: true, canEdit: true });
   });
@@ -346,33 +340,31 @@ describe('Kontingent lesen und setzen', () => {
 
   it('setzt ein Teil-Update, ohne die übrigen Felder anzutasten', async () => {
     const { service, stored } = buildService({
-      limits: { maxRamMb: 8192, maxCpuCores: 4, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
     await service.setUserLimits(adminActor, USER_ID, { maxRamMb: 16_384 });
 
     expect(stored.record?.limits).toEqual({
       maxRamMb: 16_384,
-      maxCpuCores: 4,
-      maxDiskMb: 51_200,
       maxConcurrentServers: 2,
     });
   });
 
   it('hebt eine einzelne Grenze über ausdrückliches null auf', async () => {
     const { service, stored } = buildService({
-      limits: { maxRamMb: 8192, maxCpuCores: 4, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
-    await service.setUserLimits(adminActor, USER_ID, { maxCpuCores: null });
+    await service.setUserLimits(adminActor, USER_ID, { maxConcurrentServers: null });
 
-    expect(stored.record?.limits.maxCpuCores).toBeNull();
+    expect(stored.record?.limits.maxConcurrentServers).toBeNull();
     expect(stored.record?.limits.maxRamMb).toBe(8192);
   });
 
   it('hebt mit clearUserLimits das gesamte Kontingent auf', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 8192, maxCpuCores: 4, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
     const dto = await service.clearUserLimits(adminActor, USER_ID);
@@ -393,7 +385,7 @@ describe('Kontingent lesen und setzen', () => {
 describe('Kontingente für Listen (Mockup-Abgleich 12.1.3)', () => {
   it('liefert je Konto Arbeitsspeicher und Serveranzahl', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 8192, maxCpuCores: null, maxDiskMb: null, maxConcurrentServers: 3 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 3 },
       userUsage: { runningRamMb: 4096, runningServers: 1 },
     });
 
@@ -435,7 +427,7 @@ describe('Kapazitätsprüfung über den Service', () => {
     const result = await service.assertStartCapacity({
       ownerId: USER_ID,
       nodeId: NODE_ID,
-      requested: { ramMb: 4096, cpuCores: 2, diskMb: 20_480 },
+      requested: { ramMb: 4096, diskMb: 20_480 },
     });
 
     expect(result.allowed).toBe(true);
@@ -451,7 +443,7 @@ describe('Kapazitätsprüfung über den Service', () => {
       .assertStartCapacity({
         ownerId: USER_ID,
         nodeId: NODE_ID,
-        requested: { ramMb: 2048, cpuCores: 1, diskMb: 1024 },
+        requested: { ramMb: 2048, diskMb: 1024 },
       })
       .catch((thrown: unknown) => thrown);
 
@@ -465,17 +457,94 @@ describe('Kapazitätsprüfung über den Service', () => {
     expect(error.message).toContain('4096 MiB');
   });
 
-  it('lehnt bei voller Node ab, obwohl der Nutzer gar kein Kontingent hat', async () => {
+  it('merkt eine volle Node an, statt abzulehnen', async () => {
     const { service } = buildService({ nodeUsage: { runningRamMb: 32_000 } });
 
     const result = await service.checkStartCapacity({
       ownerId: USER_ID,
       nodeId: NODE_ID,
-      requested: { ramMb: 4096, cpuCores: 1, diskMb: 1024 },
+      requested: { ramMb: 4096, diskMb: 1024 },
     });
 
-    expect(result.allowed).toBe(false);
-    expect(result.violations.map((v) => v.scope)).toEqual(['node']);
+    expect(result.allowed).toBe(true);
+    expect(result.concerns?.map((v) => v.scope)).toEqual(['node']);
+  });
+
+  /*
+   * Die weiche Prüfung aus Etappe 4: „aktuell laufen zu viele Server bzw. der
+   * aktuell frei verfügbare RAM reicht nicht – möchtest du trotzdem starten?"
+   * Sie fragt, sie verbietet nicht; beantwortet wird sie mit `force`.
+   */
+  describe('Rückfrage statt Ablehnung (RESOURCE_CONFIRMATION_REQUIRED)', () => {
+    async function starte(options: {
+      nodeUsage?: Partial<NodeResourceUsage>;
+      limits?: UserResourceLimits;
+      userUsage?: Partial<UserResourceUsage>;
+      node?: HostNodeRecord;
+      force?: boolean;
+    }): Promise<unknown> {
+      const { service } = buildService({
+        ...(options.nodeUsage ? { nodeUsage: options.nodeUsage } : {}),
+        ...(options.limits ? { limits: options.limits } : {}),
+        ...(options.userUsage ? { userUsage: options.userUsage } : {}),
+        ...(options.node ? { node: options.node } : {}),
+      });
+
+      return service
+        .assertStartCapacity({
+          ownerId: USER_ID,
+          nodeId: NODE_ID,
+          requested: { ramMb: 4096, diskMb: 1024 },
+          ...(options.force === undefined ? {} : { force: options.force }),
+          at: JETZT,
+        })
+        .catch((thrown: unknown) => thrown);
+    }
+
+    it('fragt nach, wenn die gebuchte Belegung nicht mehr passt', async () => {
+      const antwort = await starte({ nodeUsage: { runningRamMb: 32_000 } });
+
+      expect(isResourceError(antwort)).toBe(true);
+      expect(isResourceError(antwort) ? antwort.code : null).toBe('RESOURCE_CONFIRMATION_REQUIRED');
+    });
+
+    it('fragt nach, wenn die Messung weniger frei sieht als gebucht', async () => {
+      // Gebucht ist nichts – gemessen sind nur 1 GiB frei, weil neben den
+      // Gameservern noch etwas anderes auf dem Homeserver läuft.
+      const antwort = await starte({ node: nodeMitMessung({ ramAvailableMb: 1024 }) });
+
+      expect(isResourceError(antwort) ? antwort.code : null).toBe('RESOURCE_CONFIRMATION_REQUIRED');
+      expect(isResourceError(antwort) ? antwort.message : '').toContain('gemessene freie');
+    });
+
+    it('lässt `force` die Rückfrage übergehen', async () => {
+      const antwort = await starte({ nodeUsage: { runningRamMb: 32_000 }, force: true });
+
+      expect(isResourceError(antwort)).toBe(false);
+      expect(antwort).toMatchObject({ allowed: true });
+    });
+
+    it('lässt `force` ein Nutzer-Kontingent **nicht** übergehen', async () => {
+      // Eine Grenze hat jemand gesetzt; ein Feld in der Anfrage darf sie nicht
+      // aufheben, sonst wäre sie keine.
+      const antwort = await starte({
+        limits: { ...NO_USER_RESOURCE_LIMITS, maxRamMb: 4096 },
+        userUsage: { runningRamMb: 4096 },
+        force: true,
+      });
+
+      expect(isResourceError(antwort) ? antwort.code : null).toBe('RESOURCE_LIMIT_EXCEEDED');
+    });
+
+    it('ignoriert eine veraltete Messung, statt auf ihr zu bestehen', async () => {
+      const vorZweiStunden = new Date(JETZT.getTime() - 2 * 60 * 60 * 1000);
+      const antwort = await starte({
+        node: nodeMitMessung({ ramAvailableMb: 0, observedAt: vorZweiStunden }),
+      });
+
+      expect(isResourceError(antwort)).toBe(false);
+      expect(antwort).toMatchObject({ allowed: true });
+    });
   });
 
   it('reicht excludeServerId an beide Belegungsabfragen durch', async () => {
@@ -484,7 +553,7 @@ describe('Kapazitätsprüfung über den Service', () => {
     await service.checkStartCapacity({
       ownerId: USER_ID,
       nodeId: NODE_ID,
-      requested: { ramMb: 1024, cpuCores: 1, diskMb: 1024 },
+      requested: { ramMb: 1024, diskMb: 1024 },
       excludeServerId: SERVER_ID,
     });
 
@@ -498,7 +567,7 @@ describe('Kapazitätsprüfung über den Service', () => {
       service.checkStartCapacity({
         ownerId: USER_ID,
         nodeId: NODE_ID,
-        requested: { ramMb: 1024, cpuCores: 1, diskMb: 1024 },
+        requested: { ramMb: 1024, diskMb: 1024 },
       }),
     ).rejects.toMatchObject({ code: 'NODE_NOT_FOUND' });
   });
@@ -536,7 +605,7 @@ describe('Kapazitätsprüfung über den Service', () => {
  */
 describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
   const AT = new Date('2026-08-26T12:00:00.000Z');
-  const LIMITS = { ramMb: 4096, cpuCores: 2, diskMb: 20_480 };
+  const LIMITS = { ramMb: 4096, diskMb: 20_480 };
 
   function last(overrides: Partial<ServerLoadSnapshot> = {}): ServerLoadSnapshot {
     return {
@@ -545,8 +614,6 @@ describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
       ownerId: USER_ID,
       limits: LIMITS,
       usedRamMb: 1024,
-      usedCpuCores: 0.2,
-      usedDiskMb: null,
       ...overrides,
     };
   }
@@ -583,10 +650,7 @@ describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
     // gerade nicht 0, was bei einer Belegung ohne Kontingent eine Warnung wäre.
     const { service } = buildService({});
 
-    const warnings = service.evaluateAllServerWarnings(
-      [last({ usedRamMb: null, usedCpuCores: null, usedDiskMb: null })],
-      AT,
-    );
+    const warnings = service.evaluateAllServerWarnings([last({ usedRamMb: null })], AT);
 
     expect(warnings).toEqual([]);
   });
@@ -603,26 +667,14 @@ describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
     expect(warnings.map((w) => w.serverId)).toEqual([SERVER_ID]);
   });
 
-  it('bewertet CPU in Kernen, nicht in Prozent eines Kerns', () => {
-    /*
-     * 2,5 ausgelastete Kerne (`cpuPercent` 250) gegen ein Limit von 2 Kernen
-     * sind 125 % – eine Warnung. Dieselbe Zahl als „250 % des Kontingents" oder
-     * als „250 Kerne" gelesen ergäbe entweder Unsinn oder eine Dauerwarnung.
-     */
+  it('warnt nicht mehr wegen CPU – es gibt keine Bezugsgroesse je Server', () => {
+    // Die Server-Warnung fuer CPU rechnete gegen `resourceLimits.cpuCores`.
+    // Mit dem Wegfall der Zuweisung gibt es dieses Limit nicht mehr, und eine
+    // Warnung ohne Bezugsgroesse waere geraten.
     const { service } = buildService({});
 
-    const zuViel = service.evaluateAllServerWarnings([last({ usedCpuCores: 2.5 })], AT);
+    const warnungen = service.evaluateAllServerWarnings([last({ usedRamMb: 4000 })], AT);
 
-    expect(zuViel.map((w) => w.resource)).toEqual(['cpu']);
-    expect(zuViel[0]?.usedPercent).toBe(125);
-
-    // Gegenprobe: dieselben 250 % eines Kerns gegen ein Limit von vier Kernen
-    // sind 62,5 % – und damit kein Warnungsgrund.
-    const genug = service.evaluateAllServerWarnings(
-      [last({ usedCpuCores: 2.5, limits: { ...LIMITS, cpuCores: 4 } })],
-      AT,
-    );
-
-    expect(genug).toEqual([]);
+    expect(warnungen.map((w) => w.resource)).not.toContain('cpu');
   });
 });

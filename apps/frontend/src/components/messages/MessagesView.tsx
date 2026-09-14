@@ -358,9 +358,18 @@ export function MessagesView() {
 
   // -- Senden / Löschen / Melden --------------------------------------------
 
-  async function send(content: string) {
+  /**
+   * Eine Nachricht senden. `true`, wenn sie angekommen ist.
+   *
+   * Der Rückgabewert steuert den Entwurf im Eingabefeld (siehe
+   * `ComposerProps.onSend`): Bei `false` bleibt das Getippte stehen, damit eine
+   * abgelehnte Nachricht nicht verloren geht – abgelehnt wird nicht nur bei
+   * unerreichbarem Backend, sondern auch bei der Drosselung auf 30 Nachrichten
+   * je Minute (`abuse-limits.ts`).
+   */
+  async function send(content: string): Promise<boolean> {
     const id = activeIdRef.current;
-    if (!id) return;
+    if (!id) return false;
     setSending(true);
     const result = await sendMessage(id, { content });
     setSending(false);
@@ -373,9 +382,13 @@ export function MessagesView() {
           viewerId,
         }),
       );
-    } else {
-      toast.error(errorText(result));
+
+      return true;
     }
+
+    toast.error(errorText(result));
+
+    return false;
   }
 
   async function confirmDelete() {
@@ -507,7 +520,7 @@ export function MessagesView() {
                 error={threadError}
                 onRetry={() => void loadThread(activeConversation.id)}
                 sending={sending}
-                onSend={(content) => void send(content)}
+                onSend={(content) => send(content)}
                 loadingOlder={loadingOlder}
                 onLoadOlder={() => void loadOlder()}
                 onReport={(message) => setReportTarget(message)}

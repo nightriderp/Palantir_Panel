@@ -269,6 +269,25 @@ export const ERROR_CATALOG = {
     httpStatus: 403,
     defaultMessage: 'Das zulässige Ressourcen-Kontingent ist ausgeschöpft.',
   },
+  /**
+   * Der Start ist nicht verboten, aber die Ziel-Node hat gerade wenig frei
+   * (Pflichtenheft §10; Wunsch des Betreibers: „eine simple Überprüfung auf
+   * Ressourcenverfügbarkeit").
+   *
+   * 409, nicht 403: Anders als bei `RESOURCE_LIMIT_EXCEEDED` **hilft** ein
+   * Wiederholen – nämlich mit `force=true`. Der Aufrufer soll fragen und darf
+   * dann entscheiden; das Panel hält niemanden von seiner eigenen Maschine ab.
+   *
+   * Bewusst ein eigener Code und keine Variante von `RESOURCE_LIMIT_EXCEEDED`:
+   * Das eine ist eine Grenze, die jemand gesetzt hat, das andere eine
+   * Beobachtung über den Ist-Zustand. Eine Oberfläche, die beides gleich
+   * behandelt, bietet entweder ein sinnloses „trotzdem" auf einem Kontingent
+   * an oder gar keins auf einer vollen Node.
+   */
+  RESOURCE_CONFIRMATION_REQUIRED: {
+    httpStatus: 409,
+    defaultMessage: 'Auf der Ziel-Node ist gerade wenig frei – der Start ist nicht sicher möglich.',
+  },
   /** Gewünschte Subdomain ist belegt oder reserviert (Pflichtenheft §13). 409: Konflikt mit vorhandenem Zustand. */
   SUBDOMAIN_TAKEN: {
     httpStatus: 409,

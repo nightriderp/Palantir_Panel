@@ -27,9 +27,9 @@ const NODE: HostNodeDto = {
   status: 'online',
   statusMessage: null,
   capacity: {
-    total: { ramMb: 32768, cpuCores: 16, diskMb: 1024000 },
-    allocated: { ramMb: 16384, cpuCores: 8, diskMb: 512000 },
-    available: { ramMb: 16384, cpuCores: 8, diskMb: 512000 },
+    total: { ramMb: 32768, cpuCores: 8, diskMb: 1024000 },
+    allocated: { ramMb: 16384 },
+    available: { ramMb: 16384 },
   },
   usage: null,
   serverCount: 6,
@@ -38,18 +38,29 @@ const NODE: HostNodeDto = {
   permissions: { canView: true, canManage: false, canManageStorage: false },
 };
 
-/** Node mit genau den angegebenen freien Werten. */
-function nodeWithFree(free: { ramMb?: number; cpuCores?: number; diskMb?: number }): HostNodeDto {
+/**
+ * Node mit genau den angegebenen freien Werten.
+ *
+ * RAM kommt aus der freien Zuweisung, der Platz aus der Messung – zugewiesen
+ * wird keiner mehr. Ohne `freiDiskMb` bleibt die Node ungemessen.
+ */
+function nodeWithFree(free: { ramMb?: number; freiDiskMb?: number }): HostNodeDto {
   return {
     ...NODE,
     capacity: {
       ...NODE.capacity,
-      available: {
-        ramMb: free.ramMb ?? NODE.capacity.available.ramMb,
-        cpuCores: free.cpuCores ?? NODE.capacity.available.cpuCores,
-        diskMb: free.diskMb ?? NODE.capacity.available.diskMb,
-      },
+      available: { ramMb: free.ramMb ?? NODE.capacity.available.ramMb },
     },
+    usage:
+      free.freiDiskMb === undefined
+        ? NODE.usage
+        : {
+            cpuPercent: null,
+            ramUsedMb: null,
+            diskUsedMb: NODE.capacity.total.diskMb - free.freiDiskMb,
+            sampledAt: '2026-08-01T10:00:00.000Z',
+            source: 'measured',
+          },
   };
 }
 
@@ -85,7 +96,7 @@ function context(overrides: Partial<WizardContext> = {}): WizardContext {
 
 describe('defaultConfigValues / applyGameType', () => {
   const withFields = gameType({
-    resourceDefaults: { ramMb: 8192, cpuCores: 4, diskMb: 40960 },
+    resourceDefaults: { ramMb: 8192, diskMb: 40960 },
     configFields: [
       {
         key: 'maxPlayers',
@@ -122,7 +133,6 @@ describe('defaultConfigValues / applyGameType', () => {
     const next = applyGameType(state({ name: 'Bereits getippt' }), withFields);
 
     expect(next.ramMb).toBe(8192);
-    expect(next.cpuCores).toBe(4);
     expect(next.diskMb).toBe(40960);
     expect(next.name).toBe('Bereits getippt');
     expect(next.subdomain).toBe('survival');
@@ -204,8 +214,6 @@ describe('quotaBlockReason', () => {
     return {
       userId: '33333333-3333-4333-8333-333333333333',
       ram: slot('ram'),
-      cpu: slot('cpu'),
-      disk: slot('disk'),
       servers: slot('servers'),
       updatedAt: null,
       permissions: { canView: true, canEdit: false },
@@ -243,20 +251,10 @@ describe('quotaBlockReason', () => {
   });
 
   /*
-   * Fundpunkt 210: Im selben Kontingent stand „RAM 8 GiB von 16 GiB" neben
-   * „Platte 104 GiB von 10 GiB" - beides unter „benutzt". Der Unterschied ist
-   * keine Ueberschreitung, sondern die andere Zaehlregel. Die Meldung nennt sie
-   * jetzt, statt den Nutzer raten zu lassen.
+   * Fundpunkt 210: Im Kontingent stand „RAM 8 GiB von 16 GiB" unter
+   * „benutzt", ohne zu sagen, welche Server dabei zaehlen. Die Meldung nennt
+   * die Regel jetzt, statt den Nutzer raten zu lassen.
    */
-  it('nennt bei der Platte, dass auch gestoppte Server zaehlen', () => {
-    const reason = quotaBlockReason(
-      quota({ disk: 10_240 }, { disk: 106_496 }),
-      state({ diskMb: 20_480 }),
-    );
-
-    expect(reason).toContain('alle Server, auch gestoppte');
-  });
-
   it('nennt beim RAM, dass nur laufende Server zaehlen', () => {
     const reason = quotaBlockReason(quota({ ram: 8192 }, { ram: 7168 }), state({ ramMb: 2048 }));
 
@@ -274,15 +272,6 @@ describe('quotaBlockReason', () => {
     expect(reason).toContain('RAM-Kontingent');
     expect(reason).not.toContain('laufende Server');
   });
-
-  it('prüft CPU und Speicherplatz ebenfalls', () => {
-    expect(quotaBlockReason(quota({ cpu: 2 }, { cpu: 1 }), state({ cpuCores: 2 }))).toContain(
-      'CPU-Kontingent',
-    );
-    expect(
-      quotaBlockReason(quota({ disk: 20480 }, { disk: 10240 }), state({ diskMb: 20480 })),
-    ).toContain('Speicher-Kontingent');
-  });
 });
 
 describe('nodeBlockReason', () => {
@@ -295,16 +284,22 @@ describe('nodeBlockReason', () => {
     expect(nodeBlockReason({ ...NODE, status: 'maintenance' }, state())).toContain('Wartung');
   });
 
-  it('meldet zu wenig freien Arbeitsspeicher, CPU oder Platte', () => {
+  it('meldet zu wenig freien Arbeitsspeicher', () => {
     expect(nodeBlockReason(nodeWithFree({ ramMb: 1024 }), state({ ramMb: 4096 }))).toContain(
       'Arbeitsspeicher',
     );
-    expect(nodeBlockReason(nodeWithFree({ diskMb: 1024 }), state({ diskMb: 20480 }))).toContain(
+  });
+
+  it('meldet zu wenig gemessenen freien Platz für den Schätzwert des Spiels', () => {
+    expect(nodeBlockReason(nodeWithFree({ freiDiskMb: 1024 }), state(), 20_480)).toContain(
       'Speicherplatz',
     );
-    expect(nodeBlockReason(nodeWithFree({ cpuCores: 1 }), state({ cpuCores: 4 }))).toContain(
-      'CPU-Kerne',
-    );
+  });
+
+  it('lässt eine ungemessene Node beim Platz durch, statt sie zu sperren', () => {
+    // Ohne Messung wäre jede Absage geraten – der Platz wird nicht zugewiesen,
+    // also gibt es keine Zahl, gegen die man sonst prüfen könnte.
+    expect(nodeBlockReason(NODE, state(), 20_480)).toBeNull();
   });
 
   it('lässt Gleichstand zu – erst darüber wird abgelehnt', () => {

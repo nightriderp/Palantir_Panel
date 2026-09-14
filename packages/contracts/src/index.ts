@@ -175,6 +175,7 @@ export {
   type SetServerQueryCommandResult,
   type StartCommandPayload,
   type StopCommandPayload,
+  type UpdateResourcesCommandPayload,
   type UploadArchiveBlockCommandPayload,
   type UploadArchiveBlockCommandResult,
   isArchiveFormat,

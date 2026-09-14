@@ -17,15 +17,17 @@ describe('Agent-Protokoll – Befehle (Pflichtenheft §5.3)', () => {
     // periodische Spielerabfrage, Lastenheft §3.8 Speicher freigeben),
     // FILE_DELETE und FILE_UPLOAD die aus WELLE 0 (Datei-Manager, Lastenheft
     // §3.3), FILE_EXTRACT die aus P4 (Weltdaten-Übernahme, Lastenheft §3.3)
-    // und UPLOAD_ARCHIVE_BLOCK die aus Gefundenem Punkt 106 (dasselbe Archiv,
-    // aber blockweise statt in einem Frame) – alle in Pflichtenheft §5.3
-    // nachgetragen.
+    // UPLOAD_ARCHIVE_BLOCK die aus Gefundenem Punkt 106 (dasselbe Archiv,
+    // aber blockweise statt in einem Frame) und UPDATE_RESOURCES die für die
+    // nachträglich änderbaren Grenzen eines Containers – alle in Pflichtenheft
+    // §5.3 nachgetragen.
     expect([...AGENT_COMMANDS]).toEqual([
       'CREATE',
       'START',
       'STOP',
       'RESTART',
       'DELETE',
+      'UPDATE_RESOURCES',
       'GET_STATS',
       'GET_LOGS',
       'EXEC_CONSOLE',

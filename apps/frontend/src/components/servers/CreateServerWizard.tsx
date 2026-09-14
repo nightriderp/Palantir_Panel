@@ -18,7 +18,6 @@ import {
   TextField,
   ToggleRow,
   cn,
-  formatCores,
   serverInitials,
   formatMegabytes,
   useToast,
@@ -162,9 +161,13 @@ function GameTile({
           {game.available ? game.description : (game.unavailableReason ?? game.description)}
         </span>
 
+        {/*
+          RAM ist ein Vorschlag für die Zuweisung, der Platz nur eine Schätzung –
+          zugewiesen wird er nicht mehr. „rund" sagt das, ohne es zu erklären.
+        */}
         <span className="text-xs text-ink-faint">
-          Empfohlen: {formatMegabytes(game.resourceDefaults.ramMb)} RAM ·{' '}
-          {formatCores(game.resourceDefaults.cpuCores)}
+          Empfohlen: {formatMegabytes(game.resourceDefaults.ramMb)} RAM · rund{' '}
+          {formatMegabytes(game.resourceDefaults.diskMb)} Platz
         </span>
       </span>
     </button>
@@ -239,7 +242,7 @@ export function CreateServerWizard() {
       name: state.name.trim(),
       subdomain: state.subdomain.trim().toLowerCase(),
       hostId: state.hostId,
-      resourceLimits: { ramMb: state.ramMb, cpuCores: state.cpuCores, diskMb: state.diskMb },
+      resourceLimits: { ramMb: state.ramMb },
       config: state.config,
       startupParameters: state.startupParameters.trim(),
       autoShutdownEnabled: state.autoShutdownEnabled,
@@ -351,12 +354,7 @@ export function CreateServerWizard() {
               error={nodes.error}
             />
 
-            <ResourceFields
-              ramMb={state.ramMb}
-              cpuCores={state.cpuCores}
-              diskMb={state.diskMb}
-              onChange={(values) => patch(values)}
-            />
+            <ResourceFields ramMb={state.ramMb} onChange={(values) => patch(values)} />
           </>
         ) : null}
 
