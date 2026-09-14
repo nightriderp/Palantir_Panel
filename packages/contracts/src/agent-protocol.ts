@@ -70,6 +70,17 @@ export const AGENT_COMMANDS = [
   'STOP',
   'RESTART',
   'DELETE',
+  /**
+   * Die Grenzen eines bestehenden Containers ändern (RAM, CPU).
+   *
+   * Ergänzung zum Katalog aus Pflichtenheft §5.3, dort nachgetragen. Ohne
+   * diesen Befehl standen beide Grenzen fest, sobald der Container angelegt
+   * war: Eine geänderte Zuweisung landete in der Datenbank des Panels und
+   * erreichte den Container nie – auch nicht über einen Neustart, weil `START`
+   * und `RESTART` dieselbe Container-Id weiterbenutzen. Die Container-Engine
+   * kann beides im laufenden Betrieb setzen; genau das nutzt dieser Befehl.
+   */
+  'UPDATE_RESOURCES',
   'GET_STATS',
   'GET_LOGS',
   'EXEC_CONSOLE',

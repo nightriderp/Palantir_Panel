@@ -57,6 +57,7 @@ const GUELTIGE_NUTZDATEN: Record<ImplementedAgentCommandName, unknown> = {
   STOP: { containerId: 'c-1' },
   RESTART: { containerId: 'c-1' },
   DELETE: { containerId: 'c-1' },
+  UPDATE_RESOURCES: { containerId: 'c-1', resources: { memoryMb: 2048, cpuCores: 2 } },
   GET_STATS: { containerId: 'c-1' },
   GET_LOGS: { containerId: 'c-1' },
   EXEC_CONSOLE: { containerId: 'c-1', command: ['list'] },

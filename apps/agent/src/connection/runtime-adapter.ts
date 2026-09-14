@@ -31,6 +31,7 @@ import {
   type RestoreBackupCommandPayload,
   type SetServerQueryCommandPayload,
   type StopCommandPayload,
+  type UpdateResourcesCommandPayload,
   type UploadArchiveBlockCommandPayload,
   type AgentContainerStatus,
   type ApiResponse,
@@ -369,6 +370,22 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
          * hatte.
          */
         await this.jobs?.router.remove(serverId);
+
+        return null;
+      }
+      case 'UPDATE_RESOURCES': {
+        const p = payload as UpdateResourcesCommandPayload;
+
+        /*
+         * Kein Neustart, kein Neuanlegen: Die Engine setzt beide Grenzen im
+         * laufenden Betrieb. Ein Container im Zustand `created` oder `exited`
+         * nimmt den Befehl ebenfalls an - dort wirkt er ab dem naechsten Start.
+         */
+        await this.runtime.updateResources(p.containerId, {
+          memoryMb: p.resources.memoryMb,
+          cpuCores: p.resources.cpuCores,
+          ...(p.resources.pidsLimit === undefined ? {} : { pidsLimit: p.resources.pidsLimit }),
+        });
 
         return null;
       }

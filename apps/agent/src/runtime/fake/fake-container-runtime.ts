@@ -51,6 +51,7 @@ import {
   type LogStreamName,
   type RemoveImageOptions,
   type RemoveOptions,
+  type ResourceLimits,
   type StopOptions,
   type UploadFileOptions,
   type WatchOptions,
@@ -93,6 +94,14 @@ interface FakeDatei {
 interface FakeContainer {
   readonly id: string;
   readonly spec: ContainerSpec;
+  /**
+   * Die aktuell wirksamen Grenzen.
+   *
+   * Beim Anlegen die aus dem Spec, danach das, was `updateResources()` daraus
+   * gemacht hat - `spec` bleibt der Stand von damals, damit sichtbar bleibt,
+   * womit der Container einmal entstanden ist.
+   */
+  resources: ResourceLimits;
   readonly createBody: DockerCreateContainerBody;
   status: ContainerStatus;
   exitCode: number | null;
@@ -114,6 +123,7 @@ export type FakeFailableMethod =
   | 'stop'
   | 'restart'
   | 'remove'
+  | 'updateResources'
   | 'inspect'
   | 'networkAddress'
   | 'list'
@@ -215,6 +225,7 @@ export class FakeContainerRuntime implements ContainerRuntime {
     this.#container.set(id, {
       id,
       spec,
+      resources: { ...spec.resources },
       createBody,
       status: 'created',
       exitCode: null,
@@ -270,6 +281,13 @@ export class FakeContainerRuntime implements ContainerRuntime {
     container.finishedAt = null;
     container.exitCode = null;
     this.#emitStatus(containerId, 'running', vorher, null);
+  }
+
+  async updateResources(containerId: string, resources: ResourceLimits): Promise<void> {
+    this.#pruefeFehlerfall('updateResources');
+    // Wie bei der Engine: Gilt in jedem Zustand, auch fuer einen gestoppten
+    // Container - dort ab dem naechsten Start.
+    this.#hole(containerId).resources = { ...resources };
   }
 
   async remove(containerId: string, options: RemoveOptions = {}): Promise<void> {
@@ -564,6 +582,11 @@ export class FakeContainerRuntime implements ContainerRuntime {
   }
 
   /** Spec, mit dem der Container angelegt wurde. */
+  /** Die aktuell wirksamen Grenzen - nach `updateResources()` die neuen. */
+  getResources(containerId: string): ResourceLimits {
+    return this.#hole(containerId).resources;
+  }
+
   getSpec(containerId: string): ContainerSpec {
     return this.#hole(containerId).spec;
   }

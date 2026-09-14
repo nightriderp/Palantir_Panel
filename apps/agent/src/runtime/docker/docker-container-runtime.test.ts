@@ -1145,6 +1145,56 @@ describe('Erwarteter Stopp (Unterdrueckung von CRASHED)', () => {
   });
 });
 
+describe('UPDATE_RESOURCES', () => {
+  it('setzt beide Grenzen ueber den Update-Endpunkt der Engine', async () => {
+    antwortgeber = () => new Response(null, { status: 200 });
+
+    await runtime.updateResources('c-1', { memoryMb: 4096, cpuCores: 2.5 });
+
+    const aufruf = aufrufe[0];
+    expect(aufruf?.method).toBe('POST');
+    expect(aufruf?.pfad).toBe('/containers/c-1/update');
+
+    const gesendet = JSON.parse(aufruf?.body ?? '{}') as Record<string, number>;
+    expect(gesendet).toMatchObject({
+      Memory: 4096 * 1024 * 1024,
+      // Gleich Memory: kein Swap, sonst umginge der Container seine Grenze
+      // ueber die Auslagerungsdatei des Hosts.
+      MemorySwap: 4096 * 1024 * 1024,
+      NanoCpus: 2_500_000_000,
+    });
+  });
+
+  it('schickt den Fork-Bomb-Schutz mit, statt ihn auf unbegrenzt fallen zu lassen', async () => {
+    // Die Engine setzt beim Aktualisieren, was dasteht. Ein ausgelassenes
+    // `PidsLimit` hiesse dort „unbegrenzt" – der Schutz waere nach dem ersten
+    // Verschieben des RAM-Reglers weg.
+    antwortgeber = () => new Response(null, { status: 200 });
+
+    await runtime.updateResources('c-1', { memoryMb: 1024, cpuCores: 1 });
+
+    const gesendet = JSON.parse(aufrufe[0]?.body ?? '{}') as { PidsLimit?: number };
+    expect(gesendet.PidsLimit).toBe(512);
+  });
+
+  it('uebernimmt eine abweichende Prozessgrenze', async () => {
+    antwortgeber = () => new Response(null, { status: 200 });
+
+    await runtime.updateResources('c-1', { memoryMb: 1024, cpuCores: 1, pidsLimit: 64 });
+
+    const gesendet = JSON.parse(aufrufe[0]?.body ?? '{}') as { PidsLimit?: number };
+    expect(gesendet.PidsLimit).toBe(64);
+  });
+
+  it('meldet einen unbekannten Container als CONTAINER_NOT_FOUND', async () => {
+    antwortgeber = () => json({ message: 'No such container: c-weg' }, 404);
+
+    await expect(runtime.updateResources('c-weg', { memoryMb: 1024, cpuCores: 1 })).rejects.toThrow(
+      /CONTAINER_NOT_FOUND|No such container/,
+    );
+  });
+});
+
 describe('DELETE: Zustand nur bei Erfolg freigeben', () => {
   let engineStream: ReturnType<typeof steuerbarerStream>;
   let events: ContainerRuntimeEvent[];

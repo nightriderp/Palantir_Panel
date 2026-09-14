@@ -15,6 +15,7 @@ import {
   type ArchiveFormat,
   type AgentCommandName,
   type ApiResponse,
+  type GameConfigValues,
   type GameTypeDefinition,
   type NodeResourceUsage,
   type ServerCloneJobDto,
@@ -1840,6 +1841,128 @@ describe('Neustart', () => {
 
     expect(ereignisse).toContain('server.failed');
     expect(ereignisse).not.toContain('server.restarted');
+  });
+});
+
+/**
+ * Geänderte Grenzen erreichen den Container (`UPDATE_RESOURCES`).
+ *
+ * Vorher landete eine geänderte Zuweisung nur in der Datenbank: Der laufende
+ * Container behielt seine Grenze, und `restartRequired` wurde dafür nicht
+ * gesetzt – die Oberfläche sagte also nicht einmal, dass etwas offen ist.
+ * Wirksam wurde die Änderung erst beim nächsten Start, und zwar über einen
+ * vollständigen Neuaufbau des Containers (`resources` steckt im Fingerabdruck
+ * des Bauplans).
+ */
+describe('Grenzen eines bestehenden Containers ändern', () => {
+  const einstellungen = (server: ServerRecord, ramMb: number, config: GameConfigValues = {}) => ({
+    name: server.name,
+    resourceLimits: { ...server.resourceLimits, ramMb },
+    config,
+    startupParameters: server.startupParameters,
+    autoShutdownEnabled: server.autoShutdown.enabled,
+    autoShutdownTimeoutMinutes: server.autoShutdown.idleTimeoutMinutes,
+  });
+
+  const grenzbefehle = (harness: Harness) =>
+    harness.socket.commands.filter((c) => c.command === 'UPDATE_RESOURCES');
+
+  it('setzt die neue Grenze sofort am Container, ohne Neustart', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    harness.socket.commands.length = 0;
+
+    await harness.service.updateServer(created.id, einstellungen(created, 4096));
+
+    expect(grenzbefehle(harness)).toHaveLength(1);
+    expect(grenzbefehle(harness)[0]?.payload).toMatchObject({
+      containerId: created.dockerContainerId,
+      resources: { memoryMb: 4096 },
+    });
+    // Weder gestoppt noch neu gebaut - der Server läuft weiter.
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('STOP');
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('DELETE');
+    expect((await harness.service.requireServer(created.id)).status).toBe('running');
+  });
+
+  it('baut den Container beim nächsten Start nicht mehr neu, wenn nur die Grenzen anders sind', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const ersterContainer = created.dockerContainerId;
+
+    await harness.service.updateServer(created.id, einstellungen(created, 4096));
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const gestartet = await settle(harness, created.id, ['running']);
+
+    // Der Container ist auf dem neuen Stand, also nicht veraltet: Ein
+    // `DELETE`/`CREATE` dafür wäre reine Arbeit ohne Wirkung.
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('DELETE');
+    expect(gestartet.dockerContainerId).toBe(ersterContainer);
+  });
+
+  it('baut trotzdem neu, wenn zusätzlich die Konfiguration geändert wurde', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const ersterContainer = created.dockerContainerId;
+
+    await harness.service.updateServer(
+      created.id,
+      einstellungen(created, 4096, { greeting: 'Neuer Text', motdEnabled: true }),
+    );
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    const gestartet = await settle(harness, created.id, ['running']);
+
+    // Umgebungsvariablen bekommt ein Container nur beim Anlegen - der
+    // Fingerabdruck darf hier nicht übernommen worden sein.
+    expect(harness.socket.commands.map((c) => c.command)).toContain('DELETE');
+    expect(gestartet.dockerContainerId).not.toBe(ersterContainer);
+  });
+
+  it('holt die Grenzen beim nächsten Start nach, wenn der Agent beim Speichern getrennt war', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.agents.unregister(harness.session);
+    await harness.service.updateServer(created.id, einstellungen(created, 4096));
+    expect(grenzbefehle(harness)).toHaveLength(0);
+
+    harness.agents.register(harness.session);
+    harness.socket.commands.length = 0;
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    const befehle = harness.socket.commands.map((c) => c.command);
+    // Vor dem Start, damit der Container mit der richtigen Grenze anläuft.
+    expect(befehle.indexOf('UPDATE_RESOURCES')).toBeLessThan(befehle.indexOf('START'));
+    expect(grenzbefehle(harness)[0]?.payload).toMatchObject({
+      resources: { memoryMb: 4096 },
+    });
+  });
+
+  it('lässt das Speichern gelingen, wenn der Agent den Befehl nicht annimmt', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    harness.socket.answers.set('UPDATE_RESOURCES', {
+      success: false,
+      data: null,
+      error: { code: 'AGENT_COMMAND_FAILED', message: 'Engine mag nicht.' },
+    });
+
+    const gespeichert = await harness.service.updateServer(
+      created.id,
+      einstellungen(created, 4096),
+    );
+
+    // Die Einstellung gilt; der Container zieht beim nächsten Start nach.
+    expect(gespeichert.resourceLimits.ramMb).toBe(4096);
   });
 });
 

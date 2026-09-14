@@ -119,6 +119,19 @@ export const deleteCommandPayloadSchema = z.object({
   force: z.boolean().optional(),
 });
 
+/**
+ * `UPDATE_RESOURCES` – die Grenzen eines bestehenden Containers ändern.
+ *
+ * Dasselbe Grenzen-Schema wie beim Anlegen: Es sind dieselben Werte, nur zu
+ * einem späteren Zeitpunkt. Eine eigene, lockerere Fassung hier würde bedeuten,
+ * dass ein Container nachträglich Werte annehmen kann, mit denen er nie hätte
+ * angelegt werden dürfen.
+ */
+export const updateResourcesCommandPayloadSchema = z.object({
+  containerId: containerIdSchema,
+  resources: agentResourceLimitsSchema,
+});
+
 export const getStatsCommandPayloadSchema = z.object({
   containerId: containerIdSchema,
 });
@@ -486,6 +499,7 @@ export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   STOP: stopCommandPayloadSchema,
   RESTART: restartCommandPayloadSchema,
   DELETE: deleteCommandPayloadSchema,
+  UPDATE_RESOURCES: updateResourcesCommandPayloadSchema,
   GET_STATS: getStatsCommandPayloadSchema,
   GET_LOGS: getLogsCommandPayloadSchema,
   EXEC_CONSOLE: execConsoleCommandPayloadSchema,

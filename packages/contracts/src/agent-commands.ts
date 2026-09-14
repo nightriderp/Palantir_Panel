@@ -141,6 +141,41 @@ export interface DeleteCommandPayload {
   readonly force?: boolean;
 }
 
+/**
+ * `UPDATE_RESOURCES` – die Grenzen eines **bestehenden** Containers ändern.
+ *
+ * Bis hierher standen RAM- und CPU-Grenze ausschließlich in
+ * {@link CreateCommandPayload} und damit fest, sobald der Container angelegt
+ * war: Das Panel schrieb eine geänderte Zuweisung in seine Datenbank, der
+ * Container lief weiter mit dem Wert von damals, und auch ein Neustart änderte
+ * daran nichts – `START` benutzt dieselbe Container-Id, `RESTART` ebenso. Die
+ * Zahl in der Oberfläche war damit ein Versprechen, das niemand einlöste.
+ *
+ * Die Container-Engine kann beides im laufenden Betrieb setzen; deshalb ein
+ * eigener Befehl statt „beim nächsten Start neu anlegen". Ein Neuanlegen wäre
+ * der schwerere Weg und nähme dem Nutzer die laufende Partie.
+ *
+ * **Idempotent**: Derselbe Befehl mit denselben Werten ist folgenlos. Das
+ * Backend darf ihn deshalb nach jedem Speichern schicken, ohne vorher zu
+ * vergleichen.
+ *
+ * Gilt für einen Container in **jedem** Zustand – auch für einen gestoppten;
+ * dort wirkt er ab dem nächsten Start. Ein Container, den es nicht mehr gibt,
+ * endet wie überall mit `AGENT_CONTAINER_NOT_FOUND`.
+ */
+export interface UpdateResourcesCommandPayload {
+  readonly containerId: string;
+  /**
+   * Die neuen Grenzen – vollständig, nicht als Teil-Angabe.
+   *
+   * `pidsLimit` bleibt bewusst mit drin, obwohl es heute niemand ändert: Die
+   * Engine setzt beim Aktualisieren, was dasteht, und ein ausgelassenes Feld
+   * hieße dort „unbegrenzt". Wer nur den RAM meint, schickt die übrigen Werte
+   * unverändert mit.
+   */
+  readonly resources: AgentResourceLimits;
+}
+
 /** `GET_STATS` – einmalige Momentaufnahme der Auslastung. */
 export interface GetStatsCommandPayload {
   readonly containerId: string;
@@ -874,6 +909,7 @@ export interface AgentCommandPayloads {
   readonly STOP: StopCommandPayload;
   readonly RESTART: RestartCommandPayload;
   readonly DELETE: DeleteCommandPayload;
+  readonly UPDATE_RESOURCES: UpdateResourcesCommandPayload;
   readonly GET_STATS: GetStatsCommandPayload;
   readonly GET_LOGS: GetLogsCommandPayload;
   readonly EXEC_CONSOLE: ExecConsoleCommandPayload;
@@ -900,6 +936,7 @@ export interface AgentCommandResults {
   readonly STOP: null;
   readonly RESTART: null;
   readonly DELETE: null;
+  readonly UPDATE_RESOURCES: null;
   readonly GET_STATS: AgentContainerStats;
   readonly GET_LOGS: GetLogsCommandResult;
   readonly EXEC_CONSOLE: ExecConsoleCommandResult;
@@ -945,6 +982,7 @@ export const IMPLEMENTED_AGENT_COMMANDS = [
   'STOP',
   'RESTART',
   'DELETE',
+  'UPDATE_RESOURCES',
   'GET_STATS',
   'GET_LOGS',
   'EXEC_CONSOLE',

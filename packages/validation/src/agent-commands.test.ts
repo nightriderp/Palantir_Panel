@@ -13,6 +13,7 @@ import {
   getLogsCommandPayloadSchema,
   removeStorageEntryCommandPayloadSchema,
   setServerQueryCommandPayloadSchema,
+  updateResourcesCommandPayloadSchema,
   restartCommandPayloadSchema,
   stopCommandPayloadSchema,
   uploadArchiveBlockCommandPayloadSchema,
@@ -326,6 +327,57 @@ describe('Optionale Felder', () => {
   it('lässt GET_STORAGE_BREAKDOWN ohne Nutzdaten zu', () => {
     // Node-weiter Befehl; includeImages ist optional und ohne Angabe true.
     expect(getStorageBreakdownPayloadSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('UPDATE_RESOURCES', () => {
+  const CONTAINER = 'abc123';
+
+  it('nimmt vollständige Grenzen an', () => {
+    const ergebnis = updateResourcesCommandPayloadSchema.safeParse({
+      containerId: CONTAINER,
+      resources: { memoryMb: 4096, cpuCores: 2 },
+    });
+
+    expect(ergebnis.success).toBe(true);
+  });
+
+  it('nimmt eine Nachkommastelle bei den Kernen an', () => {
+    const ergebnis = updateResourcesCommandPayloadSchema.safeParse({
+      containerId: CONTAINER,
+      resources: { memoryMb: 4096, cpuCores: 1.5 },
+    });
+
+    expect(ergebnis.success).toBe(true);
+  });
+
+  it('lehnt Grenzen ab, mit denen der Container nie hätte entstehen dürfen', () => {
+    // Dasselbe Schema wie bei CREATE: Ein Container soll nachträglich keine
+    // Werte annehmen können, die beim Anlegen abgelehnt worden wären.
+    for (const resources of [
+      { memoryMb: 0, cpuCores: 2 },
+      { memoryMb: -1024, cpuCores: 2 },
+      { memoryMb: 4096, cpuCores: 0 },
+      { memoryMb: 2048.5, cpuCores: 2 },
+    ]) {
+      const ergebnis = updateResourcesCommandPayloadSchema.safeParse({
+        containerId: CONTAINER,
+        resources,
+      });
+
+      expect(ergebnis.success, JSON.stringify(resources)).toBe(false);
+    }
+  });
+
+  it('verlangt die Grenzen vollständig, nicht als Teil-Angabe', () => {
+    // Die Engine setzt beim Aktualisieren, was dasteht; ein ausgelassenes Feld
+    // hiesse dort „unbegrenzt".
+    const ergebnis = updateResourcesCommandPayloadSchema.safeParse({
+      containerId: CONTAINER,
+      resources: { memoryMb: 4096 },
+    });
+
+    expect(ergebnis.success).toBe(false);
   });
 });
 

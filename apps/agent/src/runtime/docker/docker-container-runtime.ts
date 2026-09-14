@@ -28,6 +28,7 @@ import { MAX_EXTRACTED_BYTES, type ArchiveKind, readArchive } from '../archive.j
 import { resolveWithinRoot } from '../paths.js';
 import {
   DEFAULT_LOG_TAIL,
+  DEFAULT_PIDS_LIMIT,
   type ContainerHandle,
   type ContainerSpec,
   type ContainerImage,
@@ -41,6 +42,7 @@ import {
   type LogLine,
   type RemoveImageOptions,
   type RemoveOptions,
+  type ResourceLimits,
   type StopOptions,
   type UploadFileOptions,
   type WatchOptions,
@@ -351,6 +353,30 @@ export class DockerContainerRuntime implements ContainerRuntime {
     } finally {
       if (!ausgeloest) this.#erwarteterStopp.delete(containerId);
     }
+  }
+
+  async updateResources(containerId: string, resources: ResourceLimits): Promise<void> {
+    const memoryBytes = resources.memoryMb * 1024 * 1024;
+
+    /*
+     * Dieselben Felder wie beim Anlegen (`hardening.ts`), aus demselben Grund:
+     *
+     * - `MemorySwap` gleich `Memory` heisst "kein Swap". Ohne das Feld liesse
+     *   die Engine den Container seine RAM-Grenze ueber die Auslagerungsdatei
+     *   des Hosts umgehen - und ein Update, das dieses Feld ausspart, setzt es
+     *   auf den Vorgabewert zurueck.
+     * - `PidsLimit` steht mit, weil die Engine beim Aktualisieren setzt, was
+     *   dasteht: Ein ausgelassenes Feld hiesse "unbegrenzt", und der
+     *   Fork-Bomb-Schutz waere nach dem ersten Verschieben des RAM-Reglers weg.
+     */
+    await this.#client.requestVoid('POST', `${this.#pfad(containerId)}/update`, {
+      body: {
+        Memory: memoryBytes,
+        MemorySwap: memoryBytes,
+        NanoCpus: Math.round(resources.cpuCores * 1_000_000_000),
+        PidsLimit: resources.pidsLimit ?? DEFAULT_PIDS_LIMIT,
+      },
+    });
   }
 
   async remove(containerId: string, options: RemoveOptions = {}): Promise<void> {

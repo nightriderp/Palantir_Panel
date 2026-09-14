@@ -193,6 +193,7 @@ export {
   setServerQueryCommandResultSchema,
   startCommandPayloadSchema,
   stopCommandPayloadSchema,
+  updateResourcesCommandPayloadSchema,
 } from './agent-commands.js';
 export {
   type LiveClientFrameInput,

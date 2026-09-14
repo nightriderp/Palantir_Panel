@@ -1201,6 +1201,93 @@ export class ServerOrchestrationService {
   }
 
   /**
+   * Die Grenzen des Containers auf den Stand des Datensatzes bringen.
+   *
+   * **Was vorher passierte.** Eine geänderte Zuweisung landete nur in der
+   * Datenbank. Der laufende Container behielt seine Grenze – und `restartRequired`
+   * wurde dafür nicht gesetzt, die Oberfläche sagte also nicht einmal, dass
+   * etwas offen ist. Wirksam wurde die Änderung erst beim nächsten Start, und
+   * zwar auf dem teuersten Weg: `resources` steckt im Fingerabdruck des
+   * Bauplans, `ensureContainerCurrent` sah einen veralteten Container und baute
+   * ihn samt `DELETE`/`CREATE` neu.
+   *
+   * **Was jetzt passiert.** Die Container-Engine kann beide Grenzen im
+   * laufenden Betrieb setzen. Gelingt das, ist der Container auf dem neuen
+   * Stand – und damit **nicht mehr veraltet**: Der Fingerabdruck wird
+   * mitgeschrieben, sonst bliebe der überflüssige Neuaufbau beim nächsten Start
+   * stehen, obwohl die Grenzen längst stimmen.
+   *
+   * Der Fingerabdruck wird nur dann übernommen, wenn die Grenzen die **einzige**
+   * Abweichung sind. Geprüft wird das, indem derselbe Bauplan ein zweites Mal
+   * mit den **alten** Grenzen gebaut wird: Trifft er den gespeicherten
+   * Fingerabdruck, hat sich sonst nichts geändert. Steckt noch eine geänderte
+   * Konfiguration darin, bleibt der Container veraltet und wird beim nächsten
+   * Start neu gebaut – Umgebungsvariablen bekommt er nur beim Anlegen.
+   *
+   * **Scheitert bewusst leise**, dieselbe Abwägung wie bei
+   * {@link applyServerQuery}: Weder das Speichern noch ein Start soll daran
+   * scheitern, dass der Zusatzbefehl nicht ankommt. Der Fingerabdruck bleibt
+   * dann stehen, und der Neuaufbau beim nächsten Start ist das Netz darunter.
+   */
+  private async applyResourceLimits(
+    server: ServerRecord,
+    /** Grenzen vor der Änderung; ohne Angabe wird der Fingerabdruck nie übernommen. */
+    vorher?: ServerResourceLimits,
+  ): Promise<void> {
+    const containerId = server.dockerContainerId;
+
+    if (containerId === null) {
+      // Noch kein Container – die Grenzen kommen mit `CREATE`.
+      return;
+    }
+
+    const session = this.deps.agents.get(server.hostId);
+
+    if (session === null) {
+      return;
+    }
+
+    try {
+      await session.sendCommand('UPDATE_RESOURCES', server.id, {
+        containerId,
+        resources: {
+          memoryMb: server.resourceLimits.ramMb,
+          cpuCores: server.resourceLimits.cpuCores,
+        },
+      });
+    } catch (error: unknown) {
+      this.deps.log.warn(
+        {
+          serverId: server.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Ressourcengrenzen konnten nicht am Container gesetzt werden',
+      );
+
+      return;
+    }
+
+    if (vorher === undefined) {
+      return;
+    }
+
+    const definition = this.deps.registry.require(server.gameType);
+    const altHash = containerSpecFingerprint(
+      this.containerSpecFor({ ...server, resourceLimits: vorher }, definition),
+    );
+
+    if (altHash !== server.containerSpecHash) {
+      // Es hat sich mehr geändert als die Grenzen – der Neuaufbau beim nächsten
+      // Start bleibt nötig.
+      return;
+    }
+
+    await this.deps.repository.update(server.id, {
+      containerSpecHash: containerSpecFingerprint(this.containerSpecFor(server, definition)),
+    });
+  }
+
+  /**
    * Periodische Abfrage für einen Server setzen oder beenden.
    *
    * `active: false` schickt `target: null` – der Agent stellt die Abfrage dann
@@ -1278,6 +1365,20 @@ export class ServerOrchestrationService {
     containerId: string,
     anlass: StartIntent = 'start',
   ): Promise<void> {
+    /*
+     * Die Grenzen vor dem Start noch einmal setzen – als Netz, nicht als
+     * Hauptweg.
+     *
+     * Der Hauptweg ist `ensureContainerCurrent`: Blieb der Fingerabdruck
+     * stehen, weil der Befehl beim Speichern nicht ankam, ist der Container
+     * veraltet und wird ohnehin neu gebaut – mit den richtigen Grenzen. Was
+     * dieser Aufruf zusätzlich abdeckt, ist der Fall, in dem der Fingerabdruck
+     * stimmt, die Grenzen am Container aber nicht: ein von Hand veränderter
+     * Container, eine halb durchgelaufene Änderung. Idempotent und ein Befehl,
+     * also billiger als die Möglichkeit, mit einer falschen Grenze zu starten.
+     */
+    await this.applyResourceLimits({ ...server, ...started, dockerContainerId: containerId });
+
     try {
       await session.sendCommand('START', server.id, { containerId });
     } catch (error: unknown) {
@@ -1810,7 +1911,15 @@ export class ServerOrchestrationService {
       restartRequired: restartRequired ? true : undefined,
     });
 
-    return this.requireServer(serverId);
+    const aktualisiert = await this.requireServer(serverId);
+
+    // Die geänderten Grenzen sofort am Container setzen – die Engine kann das
+    // im laufenden Betrieb, ein Neustart ist dafür nicht nötig. Die alten
+    // Grenzen gehen mit, damit der Fingerabdruck nachgezogen werden kann, wenn
+    // sie die einzige Änderung waren (siehe `applyResourceLimits`).
+    await this.applyResourceLimits(aktualisiert, server.resourceLimits);
+
+    return aktualisiert;
   }
 
   /**
