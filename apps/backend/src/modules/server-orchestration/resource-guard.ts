@@ -43,10 +43,19 @@ export interface ResourceCheckRequest {
   /**
    * Anlass der Prüfung.
    *
-   * `create` prüft zusätzlich `maxConcurrentServers`, `start` nur die
-   * tatsächlich belegten Ressourcen – ein gestoppter Server belegt kein RAM.
+   * `create` prüft allein, ob der Platz auf der Node reicht – ein angelegter
+   * Server läuft nicht und belegt weder RAM noch einen Platz im Kontingent
+   * „gleichzeitig laufender Server". `start` prüft das Kontingent hart und die
+   * Enge der Node als Rückfrage (siehe {@link ResourceCheckRequest.force}).
    */
   readonly intent: 'create' | 'start';
+  /**
+   * Der Aufrufer kennt die enge Lage auf der Node und will trotzdem starten.
+   *
+   * Hebt ausschließlich die Rückfrage auf (`RESOURCE_CONFIRMATION_REQUIRED`),
+   * nie eine Grenze: Ein erschöpftes Nutzer-Kontingent lehnt weiterhin ab.
+   */
+  readonly force?: boolean;
 }
 
 export type ResourceCheckResult =
@@ -66,10 +75,11 @@ export interface ResourceGuard {
 /**
  * Bindet die Prüfung aus B4 an (`assertStartCapacity()`, Pflichtenheft §10).
  *
- * B4 prüft beides in einem Aufruf – Nutzer-Kontingent und harte
- * Node-Kapazität – und wirft bei Ablehnung selbst einen Fehler mit
- * `RESOURCE_LIMIT_EXCEEDED`. Dieser Adapter reicht ihn unverändert weiter; B3
- * legt nichts drauf und nichts daneben.
+ * B4 prüft beides in einem Aufruf – Nutzer-Kontingent und Zustand der Node –
+ * und wirft bei Ablehnung selbst: `RESOURCE_LIMIT_EXCEEDED` für eine
+ * überschrittene Grenze, `RESOURCE_CONFIRMATION_REQUIRED` für eine enge Node,
+ * die der Aufrufer mit `force` übergehen darf. Dieser Adapter reicht beide
+ * unverändert weiter; B3 legt nichts drauf und nichts daneben.
  *
  * `excludeServerId` ist beim Start eines bereits angelegten Servers zwingend:
  * Sein Datenordner steckt schon in der Belegung und würde sonst doppelt zählen.
@@ -81,6 +91,8 @@ export function createResourceGuardFromService(service: {
     readonly nodeId: string;
     readonly requested: RequestedServerResources;
     readonly excludeServerId?: string;
+    readonly intent?: 'create' | 'start';
+    readonly force?: boolean;
   }): Promise<unknown>;
 }): ResourceGuard {
   return {
@@ -89,6 +101,10 @@ export function createResourceGuardFromService(service: {
         ownerId: request.userId,
         nodeId: request.hostId,
         requested: request.requested,
+        // Der Anlass entscheidet in B4, welche Feststellung eine Grenze ist und
+        // welche eine Rückfrage – er darf hier nicht verlorengehen.
+        intent: request.intent,
+        ...(request.force === true ? { force: true } : {}),
         ...(request.serverId === null ? {} : { excludeServerId: request.serverId }),
       });
 

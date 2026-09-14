@@ -131,7 +131,7 @@ describe('ServerDetail – Live und REST (event-flow-04)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Starten' }));
 
     await waitFor(() => {
-      expect(api.runLifecycleAction).toHaveBeenCalledWith('srv-1', 'start');
+      expect(api.runLifecycleAction).toHaveBeenCalledWith('srv-1', 'start', {});
     });
 
     // Ohne den Abgleich bliebe hier „Offline" stehen: Der Live-Status von
@@ -194,7 +194,7 @@ describe('ServerDetail – Aktualisieren (Fundpunkt 190)', () => {
     );
 
     await waitFor(() => {
-      expect(api.runLifecycleAction).toHaveBeenCalledWith('srv-1', 'restart');
+      expect(api.runLifecycleAction).toHaveBeenCalledWith('srv-1', 'restart', {});
     });
   });
 

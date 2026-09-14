@@ -130,11 +130,24 @@ export function fetchServerLogs(
 
 export type LifecycleAction = 'start' | 'stop' | 'restart';
 
+/**
+ * `erzwingen` beantwortet die Rückfrage der Kapazitätsprüfung mit „ja, trotzdem
+ * starten" (`RESOURCE_CONFIRMATION_REQUIRED`).
+ *
+ * Es übergeht allein die enge Lage auf der Node – ein erschöpftes
+ * Nutzer-Kontingent (`RESOURCE_LIMIT_EXCEEDED`) lehnt weiterhin ab, und daran
+ * lässt sich von hier aus nichts drehen. `stop` kennt die Frage nicht; das
+ * Flag bleibt dort ohne Wirkung.
+ */
 export function runLifecycleAction(
   serverId: string,
   action: LifecycleAction,
+  optionen: { erzwingen?: boolean } = {},
 ): Promise<ApiResult<GameServerDto>> {
-  return apiRequest<GameServerDto>(serverPath(serverId, `/${action}`), { method: 'POST' });
+  return apiRequest<GameServerDto>(serverPath(serverId, `/${action}`), {
+    method: 'POST',
+    ...(optionen.erzwingen === true ? { query: { force: 'true' } } : {}),
+  });
 }
 
 /**

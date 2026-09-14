@@ -932,11 +932,16 @@ export class ServerOrchestrationService {
    * `anlass` reicht bis zum Ende des Health-Checks durch und entscheidet dort,
    * ob `server.started` oder `server.restarted` gemeldet wird (Audit
    * event-flow-09).
+   *
+   * `erzwingen` beantwortet die Rückfrage der Kapazitätsprüfung mit „ja, ich
+   * weiß" (`RESOURCE_CONFIRMATION_REQUIRED`). Es übergeht ausschließlich die
+   * Enge der Node – ein erschöpftes Nutzer-Kontingent lehnt weiterhin ab.
    */
   async startServer(
     serverId: string,
     actorUserId: string,
     anlass: StartIntent = 'start',
+    optionen: { readonly erzwingen?: boolean } = {},
   ): Promise<ServerRecord> {
     const geladen = await this.requireServer(serverId);
 
@@ -1002,6 +1007,7 @@ export class ServerOrchestrationService {
           diskMb: this.deps.registry.require(server.gameType).resourceDefaults.diskMb,
         },
         intent: 'start',
+        ...(optionen.erzwingen === true ? { force: true } : {}),
       },
       (scope) => this.applyTransition(server, { type: 'startRequested' }, scope.servers),
     );
@@ -1732,14 +1738,29 @@ export class ServerOrchestrationService {
    * Starts. Der Stopp davor meldet nichts (siehe {@link stopServer}), sodass
    * aus drei Meldungen eine wird.
    */
-  async restartServer(serverId: string, actorUserId: string): Promise<ServerRecord> {
+  async restartServer(
+    serverId: string,
+    actorUserId: string,
+    optionen: { readonly erzwingen?: boolean } = {},
+  ): Promise<ServerRecord> {
     const server = await this.requireServer(serverId);
+    const lief = server.status === 'running' || server.status === 'starting';
 
-    if (server.status === 'running' || server.status === 'starting') {
+    if (lief) {
       await this.stopServer(serverId, 'restart');
     }
 
-    return this.startServer(serverId, actorUserId, 'restart');
+    /*
+     * Ein laufender Server bringt beim Neustart keine neue Last auf die Node:
+     * Er gibt zurück, was er sich gleich wieder nimmt. Die Rückfrage „die Node
+     * ist eng, trotzdem starten?" wäre hier eine Frage zu einer Belegung, die
+     * sich gar nicht ändert – und sie träfe die geplanten Neustarts
+     * (`schedules.ts`) als Abbruch, den niemand beantworten kann. Ein Neustart
+     * eines **gestoppten** Servers fügt sehr wohl Last hinzu und wird gefragt.
+     */
+    return this.startServer(serverId, actorUserId, 'restart', {
+      erzwingen: optionen.erzwingen === true || lief,
+    });
   }
 
   /**

@@ -119,6 +119,14 @@ export interface ServerRoutesOptions {
 }
 
 const serverIdParamsSchema = z.object({ id: z.string().uuid() });
+/**
+ * `?force=true` – dieselbe Frage an drei Routen: Löschen ohne Agent
+ * (Fundpunkt 226) und Starten bzw. Neustarten trotz enger Node.
+ *
+ * Bewusst kein `z.coerce.boolean()`: Das macht aus der Zeichenkette `'false'`
+ * ein `true` – jede nicht leere Zeichenkette ist wahr.
+ */
+const forceQuerySchema = z.object({ force: z.enum(['true', 'false']).optional() });
 const scheduleParamsSchema = z.object({ id: z.string().uuid(), scheduleId: z.string().uuid() });
 const cloneJobParamsSchema = z.object({ id: z.string().uuid(), jobId: z.string().uuid() });
 
@@ -691,14 +699,8 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   app.delete('/api/servers/:id', async (request, reply) => {
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
-      /*
-       * `force=true` löscht auch ohne verbundenen Agent (Fundpunkt 226).
-       * Bewusst kein `z.coerce.boolean()`: Das macht aus der Zeichenkette
-       * `'false'` ein `true` – jede nicht leere Zeichenkette ist wahr.
-       */
-      const { force } = z
-        .object({ force: z.enum(['true', 'false']).optional() })
-        .parse(request.query);
+      // `force=true` löscht auch ohne verbundenen Agent (Fundpunkt 226).
+      const { force } = forceQuerySchema.parse(request.query);
 
       const { server } = await loadAuthorized(request, id, 'canDelete');
 
@@ -723,9 +725,19 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
   // -- Lifecycle (Pflichtenheft §9) -------------------------------------------
 
+  /*
+   * `?force=true` beantwortet die Rückfrage der Kapazitätsprüfung
+   * (`RESOURCE_CONFIRMATION_REQUIRED`) mit „ja, trotzdem starten".
+   *
+   * Bewusst in der Query und nicht im Rumpf: Der Aufruf hat keinen, und die
+   * Löschroute nimmt ihr `force` an derselben Stelle entgegen – zwei Wege für
+   * dieselbe Frage wären einer zu viel. Ein `force` übergeht nur die Enge der
+   * Node; ein erschöpftes Nutzer-Kontingent lehnt weiterhin ab.
+   */
   app.post('/api/servers/:id/start', async (request, reply) => {
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
+      const { force } = forceQuerySchema.parse(request.query);
       const viewerId = request.viewerUserId;
 
       if (viewerId === undefined || viewerId === null) {
@@ -734,7 +746,9 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
       await loadAuthorized(request, id, 'canStart');
 
-      const server = await service.startServer(id, viewerId);
+      const server = await service.startServer(id, viewerId, 'start', {
+        erzwingen: force === 'true',
+      });
       const context = await dtoContext(request, id);
 
       return await reply.send(
@@ -775,6 +789,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   app.post('/api/servers/:id/restart', async (request, reply) => {
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
+      const { force } = forceQuerySchema.parse(request.query);
       const viewerId = request.viewerUserId;
 
       if (viewerId === undefined || viewerId === null) {
@@ -783,7 +798,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
 
       await loadAuthorized(request, id, 'canRestart');
 
-      const server = await service.restartServer(id, viewerId);
+      const server = await service.restartServer(id, viewerId, { erzwingen: force === 'true' });
       const context = await dtoContext(request, id);
 
       return await reply.send(

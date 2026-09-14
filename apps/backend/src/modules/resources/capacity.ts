@@ -1,13 +1,17 @@
 /**
  * Kapazitätsprüfung vor jedem Serverstart (Pflichtenheft §10, Lastenheft §3.4).
  *
- * **Beide Prüfungen greifen, nicht nur eine:**
+ * **Zwei Prüfungen, zwei Gewichte:**
  *
- * 1. das optionale Kontingent des Nutzers – jedes seiner vier Felder ist einzeln
- *    abschaltbar (`null` = kein Limit);
- * 2. die harte, globale Kapazität der Ziel-Node – unabhängig davon, ob das
- *    Nutzer-Kontingent noch Luft hätte. Eine volle Node lehnt auch einen Nutzer
- *    ohne jedes Kontingent ab.
+ * 1. das optionale Kontingent des Nutzers – jedes seiner Felder ist einzeln
+ *    abschaltbar (`null` = kein Limit). Es ist eine **Grenze**: Überschreitung
+ *    lehnt ab, unabhängig davon, wie leer die Node ist.
+ * 2. der Zustand der Ziel-Node – unabhängig davon, ob das Nutzer-Kontingent
+ *    noch Luft hätte. Beim Starten ist das eine **Rückfrage** und keine
+ *    Grenze: Der Betreiber darf seine eigene Maschine an den Rand fahren, wenn
+ *    er es weiß (`CapacityCheckResult.concerns`). Beim Anlegen zählt davon
+ *    einzig der Platz – und der hart, weil ihn die Spieldateien wirklich
+ *    belegen.
  *
  * Diese Datei kennt bewusst weder Datenbank noch HTTP und rechnet nur auf
  * übergebenen Werten – sie ist damit vollständig ohne Infrastruktur testbar
@@ -73,6 +77,20 @@ export interface NodeCapacitySnapshot {
    * unten entfällt aus demselben Grund.
    */
   readonly freeDiskMb: number | null;
+  /**
+   * **Gemessener** freier Arbeitsspeicher der Node, in MiB.
+   *
+   * Die Gegenzahl zur Buchhaltung: `usage.runningRamMb` ist die Summe der
+   * Zuweisungen aller laufenden Server, das hier ist, was `free`/`os.freemem()`
+   * auf der Maschine tatsächlich übrig sieht – abzüglich allem, was neben den
+   * Gameservern darauf läuft. Beide Richtungen kommen vor: Server, die ihre
+   * Zuweisung nicht ausnutzen, lassen mehr frei; ein Datenbankdienst daneben
+   * weniger.
+   *
+   * `null` heißt **nicht gemessen** (Node offline, Messung veraltet) – dann
+   * findet diese Prüfung nicht statt.
+   */
+  readonly freeRamMb: number | null;
 }
 
 export interface CapacityCheckInput {
@@ -83,6 +101,25 @@ export interface CapacityCheckInput {
   /** Belegung durch die übrigen Server des Besitzers. */
   readonly userUsage: UserResourceUsage;
   readonly node: NodeCapacitySnapshot;
+  /**
+   * Anlass der Prüfung – er entscheidet, welche Feststellung eine Grenze ist
+   * und welche eine Rückfrage.
+   *
+   * `create`: Ein Server wird angelegt. Er läuft danach nicht, verbraucht also
+   * weder Arbeitsspeicher noch einen Platz im Kontingent „gleichzeitig
+   * laufender Server" – beide zählen ausdrücklich nur laufende
+   * (`ResourceQuotaCounting`). Was er sofort belegt, ist Plattenplatz, sobald
+   * der erste Start die Spieldateien holt. Deshalb ist der Platz beim Anlegen
+   * die **einzige** harte Schranke (Wunsch des Betreibers: „das Erstellen an
+   * sich sollte immer klappen bzw. beim Erstellen nur die Speicherkapazität
+   * prüfen").
+   *
+   * `start`: Jetzt zählt alles. Das Kontingent des Nutzers bleibt eine harte
+   * Grenze – sie hat ein Administrator gesetzt. Die Enge der Node wandert
+   * dagegen nach `concerns`: Ob er seine eigene Maschine an den Rand fährt,
+   * entscheidet der Betreiber, nicht das Panel.
+   */
+  readonly intent: 'create' | 'start';
   readonly thresholds: ResourceWarningThresholds;
   /** Zeitstempel für die Warn-Nutzlasten – injizierbar, damit Tests nicht von der Uhr abhängen. */
   readonly at?: Date;
@@ -104,21 +141,56 @@ function toViolation(
 }
 
 /**
- * Beide Prüfungen aus Pflichtenheft §10.
+ * Beide Prüfungen aus Pflichtenheft §10 – getrennt nach Grenze und Rückfrage.
+ *
+ * Das Ergebnis hat zwei Listen, und der Unterschied ist einer der
+ * Zuständigkeit (siehe {@link CapacityCheckInput.intent}):
+ *
+ * - `violations` – eine **Grenze**, die jemand gesetzt hat. Der Vorgang wird
+ *   abgelehnt; `allowed` ist dann `false`.
+ * - `concerns` – eine **Beobachtung** über den Zustand der Node. Der Vorgang
+ *   bleibt erlaubt; wer will, fragt vorher nach.
  *
  * Es wird nicht beim ersten Treffer abgebrochen: die Antwort nennt **alle**
- * überschrittenen Grenzen, damit der Betreiber nicht nach jeder Anpassung
- * erneut in dieselbe Ablehnung läuft.
+ * Feststellungen, damit der Betreiber nicht nach jeder Anpassung erneut in
+ * dieselbe Ablehnung läuft.
  *
  * Warnungen entstehen nur, wenn der Start erlaubt ist. Sie beschreiben die
  * Auslastung der Node **nach** diesem Start – eine Warnung zu einem Start, der
  * gar nicht stattfindet, wäre irreführend.
  */
 export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
-  const { node, requested, thresholds, userLimits, userUsage } = input;
+  const { intent, node, requested, thresholds, userLimits, userUsage } = input;
   const violations: CapacityViolation[] = [];
+  const concerns: CapacityViolation[] = [];
 
-  // --- 1. Nutzer-Kontingent (optional, je Feld abschaltbar) -----------------
+  /*
+   * Die Platte gegen die **Messung**, nicht gegen Zuweisungen (siehe
+   * `NodeCapacitySnapshot.freeDiskMb`). `used` ist der tatsächlich belegte
+   * Platz, damit die Meldung dieselbe Sprache spricht wie die übrigen:
+   * „belegt X + angefordert Y > Grenze Z".
+   */
+  const belegterPlatzMb = node.freeDiskMb === null ? null : node.total.diskMb - node.freeDiskMb;
+  const platzKnapp =
+    belegterPlatzMb !== null && exceeds(belegterPlatzMb, requested.diskMb, node.total.diskMb);
+
+  if (intent === 'create') {
+    /*
+     * Anlegen prüft nur den Platz – und den hart. Ein angelegter Server läuft
+     * nicht: Er belegt kein RAM und keinen Platz im Kontingent „gleichzeitig
+     * laufender Server". Was er belegt, sind die Spieldateien, sobald der erste
+     * Start sie holt; dafür muss der Platz da sein.
+     */
+    if (platzKnapp && belegterPlatzMb !== null) {
+      violations.push(
+        toViolation('nodeMeasured', 'disk', node.total.diskMb, belegterPlatzMb, requested.diskMb),
+      );
+    }
+
+    return { allowed: violations.length === 0, violations, warnings: [], concerns };
+  }
+
+  // --- 1. Nutzer-Kontingent: harte Grenze, ein Administrator hat sie gesetzt.
   if (
     userLimits.maxRamMb !== null &&
     exceeds(userUsage.runningRamMb, requested.ramMb, userLimits.maxRamMb)
@@ -137,24 +209,36 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
     );
   }
 
-  // --- 2. Harte Node-Kapazität (immer, unabhängig vom Kontingent) ----------
+  // --- 2. Zustand der Node: Rückfrage, keine Grenze ------------------------
+
+  // „Es laufen gerade zu viele Server" – die Summe der Zuweisungen über der
+  // Ausstattung der Maschine.
   if (exceeds(node.usage.runningRamMb, requested.ramMb, node.total.ramMb)) {
-    violations.push(
+    concerns.push(
       toViolation('node', 'ram', node.total.ramMb, node.usage.runningRamMb, requested.ramMb),
     );
   }
 
   /*
-   * Die Platte gegen die **Messung**, nicht gegen Zuweisungen (siehe
-   * `NodeCapacitySnapshot.freeDiskMb`). `used` ist der tatsächlich belegte
-   * Platz, damit die Meldung dieselbe Sprache spricht wie die übrigen:
-   * „belegt X + angefordert Y > Grenze Z".
+   * „Der aktuell frei verfügbare RAM reicht nicht" – gemessen, nicht gebucht.
+   * Das ist die Zahl, an der ein Start wirklich scheitert: Der Kernel gibt
+   * keinen Speicher her, den es nicht gibt, egal wie die Buchhaltung aussieht.
+   * Gerechnet wird in derselben Form wie überall sonst (belegt + angefordert >
+   * Grenze), damit die Meldung nicht aus der Reihe fällt.
    */
-  const belegterPlatzMb = node.freeDiskMb === null ? null : node.total.diskMb - node.freeDiskMb;
+  if (node.freeRamMb !== null) {
+    const belegterRamMb = Math.max(0, node.total.ramMb - node.freeRamMb);
 
-  if (belegterPlatzMb !== null && exceeds(belegterPlatzMb, requested.diskMb, node.total.diskMb)) {
-    violations.push(
-      toViolation('node', 'disk', node.total.diskMb, belegterPlatzMb, requested.diskMb),
+    if (exceeds(belegterRamMb, requested.ramMb, node.total.ramMb)) {
+      concerns.push(
+        toViolation('nodeMeasured', 'ram', node.total.ramMb, belegterRamMb, requested.ramMb),
+      );
+    }
+  }
+
+  if (platzKnapp && belegterPlatzMb !== null) {
+    concerns.push(
+      toViolation('nodeMeasured', 'disk', node.total.diskMb, belegterPlatzMb, requested.diskMb),
     );
   }
 
@@ -171,7 +255,7 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
       })
     : [];
 
-  return { allowed, violations, warnings };
+  return { allowed, violations, warnings, concerns };
 }
 
 /** Belegung der Node, wie sie nach dem geprüften Start aussähe. */

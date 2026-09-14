@@ -235,8 +235,21 @@ export interface UserResourceLimitDto {
 // Kapazitätsprüfung (Pflichtenheft §10)
 // ---------------------------------------------------------------------------
 
-/** Welche der beiden Prüfungen aus Pflichtenheft §10 angeschlagen hat. */
-export type CapacityScope = 'user' | 'node';
+/**
+ * Woher eine Feststellung der Kapazitätsprüfung stammt (Pflichtenheft §10).
+ *
+ * - `user` – das Kontingent, das ein Administrator dem Konto gesetzt hat.
+ * - `node` – die **Buchhaltung** der Node: Summe der RAM-Zuweisungen der
+ *   laufenden Server gegen die Ausstattung der Maschine.
+ * - `nodeMeasured` – der **Ist-Zustand** der Node, wie der Agent ihn misst:
+ *   tatsächlich freier Arbeitsspeicher und freier Platz auf dem Dateisystem,
+ *   inklusive allem, was neben den Gameservern darauf läuft.
+ *
+ * Die letzten beiden können auseinandergehen, und beide Richtungen kommen vor:
+ * Server, die ihre Zuweisung nicht ausnutzen, lassen mehr frei als die
+ * Buchhaltung sagt; andere Dienste auf dem Homeserver weniger.
+ */
+export type CapacityScope = 'user' | 'node' | 'nodeMeasured';
 
 /**
  * Angeforderte Ressourcen eines Serverstarts.
@@ -314,6 +327,24 @@ export interface CapacityCheckResult {
   allowed: boolean;
   violations: CapacityViolation[];
   warnings: ResourceLowEvent[];
+  /**
+   * Feststellungen, die den Vorgang **nicht** verbieten, aber eine Rückfrage
+   * wert sind (Wunsch des Betreibers: „möchtest du trotzdem den Server
+   * starten").
+   *
+   * Der Unterschied zu {@link CapacityViolation}en in `violations` ist keiner
+   * der Rechnung, sondern einer der Zuständigkeit: Ein Kontingent hat jemand
+   * gesetzt, und wer es überschreitet, umgeht eine Entscheidung. Eine knappe
+   * Node ist dagegen eine Beobachtung über die eigene Maschine – darauf darf
+   * der Betreiber antworten „ich weiß, starte trotzdem".
+   *
+   * `allowed` bleibt davon unberührt: Es sagt nur, ob eine **Grenze**
+   * überschritten wäre. Wer die Rückfrage stellen will, sieht hier nach.
+   *
+   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3) – ein
+   * Ergebnis ohne das Feld hat schlicht nichts anzumerken.
+   */
+  concerns?: CapacityViolation[];
 }
 
 /**

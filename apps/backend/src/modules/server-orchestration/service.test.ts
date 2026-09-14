@@ -1842,6 +1842,74 @@ describe('Neustart', () => {
     expect(ereignisse).toContain('server.failed');
     expect(ereignisse).not.toContain('server.restarted');
   });
+
+  /*
+   * Etappe 4: Die Enge der Node ist beim Start eine Rückfrage. Ein Neustart
+   * darf nicht in sie hineinlaufen – ein laufender Server gibt zurück, was er
+   * sich gleich wieder nimmt, und die Messung der Node ist dafür zu alt. Die
+   * geplanten Neustarts (`schedules.ts`) würden sonst an einer Frage
+   * scheitern, die niemand beantworten kann.
+   */
+  it('fragt beim Neustart eines laufenden Servers nicht nach freier Kapazität', async () => {
+    const mitgeschrieben: { erzwingen: boolean }[] = [];
+    const harness = makeHarness({
+      buildReservation: (repository, ports) => {
+        const inner = createInlineCapacityReservation(
+          createPermissiveResourceGuard(() => undefined),
+          repository,
+          ports,
+        );
+
+        return {
+          reserve(request, write) {
+            mitgeschrieben.push({ erzwingen: request.force === true });
+
+            return inner.reserve(request, write);
+          },
+        };
+      },
+    });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    await harness.service.restartServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    // Erst das Anlegen, dann der gewöhnliche Start – beide fragen nach.
+    expect(mitgeschrieben.slice(0, 2).map((e) => e.erzwingen)).toEqual([false, false]);
+    // Der Neustart des laufenden Servers nicht.
+    expect(mitgeschrieben.at(-1)?.erzwingen).toBe(true);
+  });
+
+  it('fragt beim Neustart eines gestoppten Servers sehr wohl nach', async () => {
+    // Hier kommt Last hinzu: Der Server lief nicht, er nimmt sich den
+    // Arbeitsspeicher neu.
+    const mitgeschrieben: { erzwingen: boolean }[] = [];
+    const harness = makeHarness({
+      buildReservation: (repository, ports) => {
+        const inner = createInlineCapacityReservation(
+          createPermissiveResourceGuard(() => undefined),
+          repository,
+          ports,
+        );
+
+        return {
+          reserve(request, write) {
+            mitgeschrieben.push({ erzwingen: request.force === true });
+
+            return inner.reserve(request, write);
+          },
+        };
+      },
+    });
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+
+    await harness.service.restartServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    expect(mitgeschrieben.at(-1)?.erzwingen).toBe(false);
+  });
 });
 
 /**
@@ -3779,10 +3847,15 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
 
-    // Die Ablehnung kommt aus B4 (`ResourceError`) und trägt den Katalog-Code
-    // RESOURCE_LIMIT_EXCEEDED – derselbe Code wie im Betrieb.
+    /*
+     * Die Ablehnung kommt aus B4 (`ResourceError`). Seit die Enge der Node eine
+     * Rückfrage ist und keine Grenze, trägt sie `RESOURCE_CONFIRMATION_REQUIRED`.
+     * Entscheidend für Punkt 98 bleibt dasselbe wie vorher: Der zweite Start
+     * sieht die Belegung des ersten und läuft nicht blind durch – sonst stünden
+     * hier zwei belegende Server statt einem.
+     */
     const error = (rejected[0] as PromiseRejectedResult).reason as { readonly code: string };
-    expect(error.code).toBe('RESOURCE_LIMIT_EXCEEDED');
+    expect(error.code).toBe('RESOURCE_CONFIRMATION_REQUIRED');
 
     // Genau ein Server belegt jetzt RAM (starting/running) – die Node ist nicht
     // überbucht.

@@ -47,6 +47,25 @@ const NODE: HostNodeRecord = {
   measuredUsage: null,
 };
 
+const JETZT = new Date('2026-09-14T12:00:00.000Z');
+
+/** Node mit frischer Messung – Vorgabe: Platte reichlich frei. */
+function nodeMitMessung(gemessen: {
+  ramAvailableMb: number;
+  diskAvailableMb?: number;
+  observedAt?: Date;
+}): HostNodeRecord {
+  return {
+    ...NODE,
+    measuredUsage: {
+      ramAvailableMb: gemessen.ramAvailableMb,
+      diskAvailableMb: gemessen.diskAvailableMb ?? 2_000_000,
+      cpuLoad1m: null,
+      observedAt: gemessen.observedAt ?? JETZT,
+    },
+  };
+}
+
 function emptyUserUsage(): UserResourceUsage {
   return {
     runningRamMb: 0,
@@ -438,7 +457,7 @@ describe('Kapazitätsprüfung über den Service', () => {
     expect(error.message).toContain('4096 MiB');
   });
 
-  it('lehnt bei voller Node ab, obwohl der Nutzer gar kein Kontingent hat', async () => {
+  it('merkt eine volle Node an, statt abzulehnen', async () => {
     const { service } = buildService({ nodeUsage: { runningRamMb: 32_000 } });
 
     const result = await service.checkStartCapacity({
@@ -447,8 +466,85 @@ describe('Kapazitätsprüfung über den Service', () => {
       requested: { ramMb: 4096, diskMb: 1024 },
     });
 
-    expect(result.allowed).toBe(false);
-    expect(result.violations.map((v) => v.scope)).toEqual(['node']);
+    expect(result.allowed).toBe(true);
+    expect(result.concerns?.map((v) => v.scope)).toEqual(['node']);
+  });
+
+  /*
+   * Die weiche Prüfung aus Etappe 4: „aktuell laufen zu viele Server bzw. der
+   * aktuell frei verfügbare RAM reicht nicht – möchtest du trotzdem starten?"
+   * Sie fragt, sie verbietet nicht; beantwortet wird sie mit `force`.
+   */
+  describe('Rückfrage statt Ablehnung (RESOURCE_CONFIRMATION_REQUIRED)', () => {
+    async function starte(options: {
+      nodeUsage?: Partial<NodeResourceUsage>;
+      limits?: UserResourceLimits;
+      userUsage?: Partial<UserResourceUsage>;
+      node?: HostNodeRecord;
+      force?: boolean;
+    }): Promise<unknown> {
+      const { service } = buildService({
+        ...(options.nodeUsage ? { nodeUsage: options.nodeUsage } : {}),
+        ...(options.limits ? { limits: options.limits } : {}),
+        ...(options.userUsage ? { userUsage: options.userUsage } : {}),
+        ...(options.node ? { node: options.node } : {}),
+      });
+
+      return service
+        .assertStartCapacity({
+          ownerId: USER_ID,
+          nodeId: NODE_ID,
+          requested: { ramMb: 4096, diskMb: 1024 },
+          ...(options.force === undefined ? {} : { force: options.force }),
+          at: JETZT,
+        })
+        .catch((thrown: unknown) => thrown);
+    }
+
+    it('fragt nach, wenn die gebuchte Belegung nicht mehr passt', async () => {
+      const antwort = await starte({ nodeUsage: { runningRamMb: 32_000 } });
+
+      expect(isResourceError(antwort)).toBe(true);
+      expect(isResourceError(antwort) ? antwort.code : null).toBe('RESOURCE_CONFIRMATION_REQUIRED');
+    });
+
+    it('fragt nach, wenn die Messung weniger frei sieht als gebucht', async () => {
+      // Gebucht ist nichts – gemessen sind nur 1 GiB frei, weil neben den
+      // Gameservern noch etwas anderes auf dem Homeserver läuft.
+      const antwort = await starte({ node: nodeMitMessung({ ramAvailableMb: 1024 }) });
+
+      expect(isResourceError(antwort) ? antwort.code : null).toBe('RESOURCE_CONFIRMATION_REQUIRED');
+      expect(isResourceError(antwort) ? antwort.message : '').toContain('gemessene freie');
+    });
+
+    it('lässt `force` die Rückfrage übergehen', async () => {
+      const antwort = await starte({ nodeUsage: { runningRamMb: 32_000 }, force: true });
+
+      expect(isResourceError(antwort)).toBe(false);
+      expect(antwort).toMatchObject({ allowed: true });
+    });
+
+    it('lässt `force` ein Nutzer-Kontingent **nicht** übergehen', async () => {
+      // Eine Grenze hat jemand gesetzt; ein Feld in der Anfrage darf sie nicht
+      // aufheben, sonst wäre sie keine.
+      const antwort = await starte({
+        limits: { ...NO_USER_RESOURCE_LIMITS, maxRamMb: 4096 },
+        userUsage: { runningRamMb: 4096 },
+        force: true,
+      });
+
+      expect(isResourceError(antwort) ? antwort.code : null).toBe('RESOURCE_LIMIT_EXCEEDED');
+    });
+
+    it('ignoriert eine veraltete Messung, statt auf ihr zu bestehen', async () => {
+      const vorZweiStunden = new Date(JETZT.getTime() - 2 * 60 * 60 * 1000);
+      const antwort = await starte({
+        node: nodeMitMessung({ ramAvailableMb: 0, observedAt: vorZweiStunden }),
+      });
+
+      expect(isResourceError(antwort)).toBe(false);
+      expect(antwort).toMatchObject({ allowed: true });
+    });
   });
 
   it('reicht excludeServerId an beide Belegungsabfragen durch', async () => {

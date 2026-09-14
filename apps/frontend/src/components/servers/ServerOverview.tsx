@@ -31,6 +31,7 @@ import {
   isServerFilter,
   groupServers,
 } from './serverList';
+import { LifecycleConfirmDialog } from './LifecycleConfirmDialog';
 import { useLifecycleActions } from './useLifecycleActions';
 import { usePinnedServers } from './usePinnedServers';
 
@@ -292,6 +293,8 @@ export function ServerOverview() {
           void lifecycle.run(server, action);
         }}
       />
+
+      <LifecycleConfirmDialog confirmation={lifecycle.confirmation} />
     </div>
   );
 }

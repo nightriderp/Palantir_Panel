@@ -43,6 +43,7 @@ import { MEASUREMENT_MAX_AGE_MS } from './node-usage.js';
 import type {
   HostNodeRecord,
   HostNodeRepository,
+  MeasuredNodeUsage,
   ServerUsageRepository,
   UserResourceLimitRecord,
   UserResourceLimitRepository,
@@ -104,6 +105,21 @@ export interface StartCapacityRequest {
    * noch keinen Server, dann bleibt das Feld leer.
    */
   readonly excludeServerId?: string;
+  /**
+   * Anlass der Prüfung (siehe {@link CapacityCheckInput.intent}).
+   *
+   * Ohne Angabe `start` – das ist der strengere der beiden Fälle, und ein
+   * vergessenes Feld soll nicht versehentlich Prüfungen abschalten.
+   */
+  readonly intent?: 'create' | 'start';
+  /**
+   * Eine knappe Node ist dem Aufrufer bekannt und er will trotzdem starten.
+   *
+   * Wirkt ausschließlich auf `concerns` – ein überschrittenes Nutzer-Kontingent
+   * lässt sich hiermit **nicht** umgehen. Wer eine Grenze umgehen könnte,
+   * indem er ein Feld setzt, hätte keine Grenze.
+   */
+  readonly force?: boolean;
   /** Zeitstempel für die Warn-Nutzlasten – injizierbar für Tests. */
   readonly at?: Date;
 }
@@ -154,9 +170,15 @@ export interface ResourceService {
    */
   checkStartCapacity(request: StartCapacityRequest): Promise<CapacityCheckResult>;
   /**
-   * Wie {@link ResourceService.checkStartCapacity}, wirft aber bei Ablehnung
-   * einen {@link ResourceError} mit `RESOURCE_LIMIT_EXCEEDED`. Das ist der
-   * Aufruf, den der Lifecycle-Befehl `START` in B3 nutzt.
+   * Wie {@link ResourceService.checkStartCapacity}, wirft aber:
+   *
+   * - `RESOURCE_LIMIT_EXCEEDED`, wenn eine **Grenze** überschritten ist – das
+   *   Kontingent des Nutzers. Daran lässt sich von hier aus nichts drehen.
+   * - `RESOURCE_CONFIRMATION_REQUIRED`, wenn nur die Node eng ist. Diese
+   *   Rückfrage beantwortet der Aufrufer mit
+   *   {@link StartCapacityRequest.force}.
+   *
+   * Das ist der Aufruf, den der Lifecycle-Befehl `START` in B3 nutzt.
    */
   assertStartCapacity(request: StartCapacityRequest): Promise<CapacityCheckResult>;
 
@@ -286,28 +308,28 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
   }
 
   /**
-   * Der gemessene freie Platz der Node – oder `null`, wenn keine frische
-   * Messung vorliegt.
+   * Die Messung der Node – oder `null`, wenn keine frische vorliegt.
    *
    * Dieselbe Frist wie in der Node-Übersicht ({@link MEASUREMENT_MAX_AGE_MS}):
    * Eine Auslastung von vor zwei Stunden beschreibt keinen Ist-Zustand mehr.
-   * Ohne Messung findet die Platten-Prüfung nicht statt – das Anlegen soll
-   * nicht daran scheitern, dass eine Auskunft fehlt.
+   * Ohne Messung entfallen die Prüfungen, die auf ihr beruhen – weder das
+   * Anlegen noch der Start soll daran scheitern, dass eine Auskunft fehlt.
    */
-  function gemessenerFreierPlatz(node: HostNodeRecord, jetzt: Date): number | null {
+  function frischeMessung(node: HostNodeRecord, jetzt: Date): MeasuredNodeUsage | null {
     const gemessen = node.measuredUsage;
 
     if (gemessen === null) {
       return null;
     }
 
-    const alter = jetzt.getTime() - gemessen.observedAt.getTime();
-
-    return alter > MEASUREMENT_MAX_AGE_MS ? null : gemessen.diskAvailableMb;
+    return jetzt.getTime() - gemessen.observedAt.getTime() > MEASUREMENT_MAX_AGE_MS
+      ? null
+      : gemessen;
   }
 
   async function buildCheckInput(request: StartCapacityRequest): Promise<CapacityCheckInput> {
     const node = await loadNodeOrFail(request.nodeId);
+    const gemessen = frischeMessung(node, request.at ?? new Date());
     const usageOptions = request.excludeServerId
       ? { excludeServerId: request.excludeServerId }
       : undefined;
@@ -328,8 +350,10 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
         nodeId: node.id,
         total: node.totalResources,
         usage: nodeUsage,
-        freeDiskMb: gemessenerFreierPlatz(node, request.at ?? new Date()),
+        freeDiskMb: gemessen?.diskAvailableMb ?? null,
+        freeRamMb: gemessen?.ramAvailableMb ?? null,
       },
+      intent: request.intent ?? 'start',
       thresholds: deps.thresholds,
       ...(request.at ? { at: request.at } : {}),
     };
@@ -433,6 +457,17 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
 
       if (!result.allowed) {
         throw ResourceError.limitExceeded(result.violations);
+      }
+
+      /*
+       * Die Grenze war frei, die Node ist es nicht: Rückfrage statt Ablehnung.
+       * `force` überspringt sie – aber erst nach der harten Prüfung oben, damit
+       * ein gesetztes Kontingent auch mit `force` gilt.
+       */
+      const concerns = result.concerns ?? [];
+
+      if (request.force !== true && concerns.length > 0) {
+        throw ResourceError.confirmationRequired(concerns);
       }
 
       return result;
