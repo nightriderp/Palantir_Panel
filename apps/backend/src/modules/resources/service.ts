@@ -257,6 +257,21 @@ function mergeLimits(
   };
 }
 
+/**
+ * ⚠️ **Dieser Dienst läuft auch über einer Transaktion** (Fundpunkt 293).
+ *
+ * `capacity-reservation.ts` baut ihn mit Repositories über dem
+ * Transaktions-Handle, damit Prüfung und Schreiben unter einer Sperre
+ * zusammenliegen. Eine Transaktion ist genau **eine** Verbindung: Was von dort
+ * aus aufgerufen wird, darf seine Abfragen nicht nebeneinander absetzen –
+ * `pg` verwarnt heute und wirft mit `pg@9`.
+ *
+ * Betroffen ist der Weg der Kapazitätsprüfung (`check()` →
+ * `buildCheckInput()`); der ist deshalb nacheinander geschrieben.
+ * `listQuotaSummaries()` und `evaluateAllNodeWarnings()` fragen weiterhin
+ * parallel – sie laufen ausschließlich über dem Pool (Verwaltung), wo jede
+ * Abfrage ihre eigene Verbindung bekommt und die Gleichzeitigkeit etwas bringt.
+ */
 export function createResourceService(deps: ResourceServiceDependencies): ResourceService {
   async function loadUserOrFail(userId: string): Promise<UserResourceLimitRecord> {
     const record = await deps.limits.findByUserId(userId);
@@ -334,11 +349,24 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
       ? { excludeServerId: request.excludeServerId }
       : undefined;
 
-    const [limitRecord, userUsage, nodeUsage] = await Promise.all([
-      deps.limits.findByUserId(request.ownerId),
-      deps.usage.usageForUser(request.ownerId, usageOptions),
-      deps.usage.usageForNode(request.nodeId, usageOptions),
-    ]);
+    /*
+     * **Nacheinander, nicht nebeneinander** (Fundpunkt 293).
+     *
+     * Diese drei Abfragen laufen bei einer Reservierung über dem
+     * **Transaktions-Handle** der Kapazitätsprüfung
+     * (`capacity-reservation.ts`: Die Repositories entstehen dort über `tx`).
+     * Eine Transaktion ist genau eine Verbindung – drei gleichzeitige Abfragen
+     * darauf reiht `pg` heute ein und verwarnt, mit `pg@9` wird daraus ein
+     * Fehler. Über dem Pool war dieselbe Zeile harmlos: Dort bekommt jede
+     * Abfrage ihre eigene Verbindung.
+     *
+     * Der Preis ist keiner: Innerhalb der Transaktion arbeitet PostgreSQL die
+     * drei ohnehin nacheinander ab – `pg` hat sie nur vorher in seine eigene
+     * Schlange gelegt. Es sind drei Index-Zugriffe.
+     */
+    const limitRecord = await deps.limits.findByUserId(request.ownerId);
+    const userUsage = await deps.usage.usageForUser(request.ownerId, usageOptions);
+    const nodeUsage = await deps.usage.usageForNode(request.nodeId, usageOptions);
 
     return {
       requested: request.requested,

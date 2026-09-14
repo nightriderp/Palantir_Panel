@@ -2986,7 +2986,7 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   name: 'Assetto Corsa Competizione',
   description:
     'ACC-Server unter Proton. Die Serverdateien bringst du selbst mit – lade den Ordner „Assetto Corsa Competizione Dedicated Server" aus deiner Steam-Installation über den Datei-Manager nach „server".',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:7',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-acc:8',
   defaultEnv: {},
   ports: [
     {
@@ -3159,8 +3159,23 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
       key: 'registerToLobby',
       label: 'In der Serverliste zeigen',
       type: 'toggle',
-      defaultValue: true,
-      description: 'Aus heißt: nur über die Direktverbindung erreichbar.',
+      /*
+       * Vorgabe AUS (Fundpunkt 270). Der Server meldet dem Lobby-Dienst die
+       * Adresse, unter der er selbst hinausspricht - das ist die der Node, denn
+       * der Spieleverkehr kommt ueber einen Rueckwaertstunnel herein und geht
+       * direkt hinaus. Unter dieser Adresse ist nichts erreichbar, eingehender
+       * Verkehr ins Heimnetz ist ausgeschlossen (Pflichtenheft §1), und ACC
+       * kennt keine Einstellung, mit der sich eine andere Adresse melden liesse.
+       *
+       * Ein Eintrag, den niemand erreicht, ist schlechter als keiner: Spieler
+       * finden den Server, versuchen beizutreten und scheitern - und der
+       * Betreiber sucht den Fehler bei sich.
+       */
+      defaultValue: false,
+      description:
+        'Hinter dem Tunnel meldet der Server die falsche Adresse — Spieler fänden ihn, kämen ' +
+        'aber nicht herein. Beitreten geht über die Direktverbindung. Nur einschalten, wenn die ' +
+        'Node selbst am Netz hängt.',
       required: false,
       options: [],
       min: null,

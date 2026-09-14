@@ -19,10 +19,15 @@ function spec(ueberschreibung: Partial<ContainerSpec> = {}): ContainerSpec {
 }
 
 // Der Fake muss denselben Vertrag erfuellen wie die Docker-Implementierung.
-runContainerRuntimeConformance('FakeContainerRuntime', async () => ({
-  runtime: new FakeContainerRuntime(),
-  spec,
-}));
+runContainerRuntimeConformance('FakeContainerRuntime', async () => {
+  const runtime = new FakeContainerRuntime();
+
+  return {
+    runtime,
+    spec,
+    leseDatei: (containerId, pfad) => runtime.dateiInhalt(containerId, pfad),
+  };
+});
 
 describe('FakeContainerRuntime – Testhilfen', () => {
   let runtime: FakeContainerRuntime;
@@ -140,19 +145,15 @@ describe('FakeContainerRuntime – Testhilfen', () => {
     expect(ergebnis.stdout).toBe('ausgefuehrt: say hallo');
   });
 
-  it('nimmt vorbereitete Dateien entgegen', async () => {
+  it('nimmt vorbereitete Dateien entgegen', () => {
     runtime.seedFile(id, '/data/eula.txt', Buffer.from('eula=true'));
-    expect((await runtime.readFile(id, '/data/eula.txt')).toString('utf8')).toBe('eula=true');
+    expect(runtime.dateiInhalt(id, '/data/eula.txt').toString('utf8')).toBe('eula=true');
   });
 
-  it('begrenzt die Dateigroesse', async () => {
-    const klein = new FakeContainerRuntime({ maxFileBytes: 8 });
-    await klein.connect();
-    const kleinId = (await klein.create(spec())).containerId;
-
-    await expect(
-      klein.writeFile(kleinId, '/data/gross.bin', Buffer.alloc(9)),
-    ).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+  it('meldet eine nicht vorbereitete Datei als FILE_NOT_FOUND', () => {
+    expect(() => runtime.dateiInhalt(id, '/data/fehlt.txt')).toThrowError(
+      expect.objectContaining({ code: 'FILE_NOT_FOUND' }),
+    );
   });
 
   it('vergibt fortlaufende, deterministische IDs', async () => {

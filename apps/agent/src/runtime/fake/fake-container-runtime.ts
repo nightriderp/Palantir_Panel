@@ -32,7 +32,6 @@ import {
   type DockerCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
-import { AGENT_FILE_CHANNEL_MAX_BYTES } from '@palantir/contracts';
 import { MAX_EXTRACTED_BYTES, type ArchiveKind, readArchive } from '../archive.js';
 import { assertAbsoluteContainerPath, resolveWithinRoot } from '../paths.js';
 import {
@@ -53,7 +52,6 @@ import {
   type RemoveOptions,
   type ResourceLimits,
   type StopOptions,
-  type UploadFileOptions,
   type WatchOptions,
 } from '../types.js';
 
@@ -66,13 +64,7 @@ export interface FakeContainerRuntimeOptions {
   /** Zeitquelle, damit Tests deterministisch bleiben. */
   readonly now?: () => Date;
   /**
-   * Groessenlimit fuer `readFile`/`writeFile`. Vorgabe wie in der
-   * Docker-Runtime: {@link AGENT_FILE_CHANNEL_MAX_BYTES} aus dem Vertrag.
-   */
-  readonly maxFileBytes?: number;
-  /**
-   * Groessenlimit fuer `extractArchive` - getrennt von `maxFileBytes` wie in der
-   * Docker-Runtime (Audit agent-runtime-02). Vorgabe:
+   * Groessenlimit fuer `extractArchive` (Audit agent-runtime-02). Vorgabe:
    * {@link MAX_EXTRACTED_BYTES}.
    */
   readonly maxArchiveBytes?: number;
@@ -130,10 +122,7 @@ export type FakeFailableMethod =
   | 'getStats'
   | 'getLogs'
   | 'execConsole'
-  | 'readFile'
-  | 'writeFile'
   | 'dataVolumePaths'
-  | 'uploadFile'
   | 'extractArchive'
   | 'watch'
   | 'listImages'
@@ -169,7 +158,6 @@ export class FakeContainerRuntime implements ContainerRuntime {
   readonly #netzAdressen = new Map<string, Map<string, string>>();
   readonly #hardening: HardeningOptions;
   readonly #now: () => Date;
-  readonly #maxFileBytes: number;
   readonly #maxArchiveBytes: number;
 
   #naechsteId = 1;
@@ -179,7 +167,6 @@ export class FakeContainerRuntime implements ContainerRuntime {
   constructor(options: FakeContainerRuntimeOptions = {}) {
     this.#hardening = options.hardening ?? { allowedHostRoots: [FAKE_DATA_ROOT] };
     this.#now = options.now ?? (() => new Date());
-    this.#maxFileBytes = options.maxFileBytes ?? AGENT_FILE_CHANNEL_MAX_BYTES;
     this.#maxArchiveBytes = options.maxArchiveBytes ?? MAX_EXTRACTED_BYTES;
   }
 
@@ -450,74 +437,6 @@ export class FakeContainerRuntime implements ContainerRuntime {
 
   // ---------------------------------------------------------------- Datei-Manager
 
-  async readFile(containerId: string, datei: string): Promise<Buffer> {
-    this.#pruefeFehlerfall('readFile');
-    const container = this.#hole(containerId);
-    const pfad = resolveWithinRoot(container.spec.dataVolume.containerPath, datei);
-
-    const eintrag = container.dateien.get(pfad);
-    if (eintrag === undefined) {
-      throw new ContainerRuntimeError('FILE_NOT_FOUND', { details: { path: pfad } });
-    }
-    if (eintrag.content.length > this.#maxFileBytes) {
-      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
-        details: { path: pfad, sizeBytes: eintrag.content.length, maxBytes: this.#maxFileBytes },
-      });
-    }
-    return eintrag.content;
-  }
-
-  async writeFile(containerId: string, datei: string, inhalt: Buffer): Promise<void> {
-    this.#pruefeFehlerfall('writeFile');
-    const container = this.#hole(containerId);
-    const pfad = resolveWithinRoot(container.spec.dataVolume.containerPath, datei);
-
-    if (inhalt.length > this.#maxFileBytes) {
-      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
-        details: { path: pfad, sizeBytes: inhalt.length, maxBytes: this.#maxFileBytes },
-      });
-    }
-
-    container.dateien.set(pfad, {
-      content: inhalt,
-      mode: container.dateien.get(pfad)?.mode ?? '644',
-      modifiedAt: this.#jetzt(),
-    });
-  }
-
-  /**
-   * `FILE_UPLOAD` - wie {@link writeFile}, aber mit Existenzpruefung.
-   *
-   * Als Verzeichnis gilt hier jeder Pfad, unter dem mindestens eine Datei
-   * liegt; auch der belegt den Namen.
-   */
-  async uploadFile(
-    containerId: string,
-    datei: string,
-    inhalt: Buffer,
-    options: UploadFileOptions = {},
-  ): Promise<void> {
-    this.#pruefeFehlerfall('uploadFile');
-    const container = this.#hole(containerId);
-    const pfad = resolveWithinRoot(container.spec.dataVolume.containerPath, datei);
-
-    if (inhalt.length > this.#maxFileBytes) {
-      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
-        details: { path: pfad, sizeBytes: inhalt.length, maxBytes: this.#maxFileBytes },
-      });
-    }
-
-    if (options.overwrite !== true && this.#existiert(container, pfad)) {
-      throw new ContainerRuntimeError('FILE_EXISTS', { details: { path: pfad } });
-    }
-
-    container.dateien.set(pfad, {
-      content: inhalt,
-      mode: container.dateien.get(pfad)?.mode ?? '644',
-      modifiedAt: this.#jetzt(),
-    });
-  }
-
   /**
    * `FILE_EXTRACT` - Archiv in den Datenordner entpacken (Arbeitspaket P4).
    *
@@ -614,6 +533,25 @@ export class FakeContainerRuntime implements ContainerRuntime {
     return [...container.dateien.keys()].filter((pfad) => pfad.startsWith(praefix)).sort();
   }
 
+  /**
+   * Testhilfe: Inhalt einer abgelegten Datei.
+   *
+   * Bis Fundpunkt 291 nahmen Tests dafuer `readFile()`. Die Methode ist mit dem
+   * container-seitigen Weg weggefallen - was blieb, ist der Bedarf, im Test
+   * nachzusehen, was tatsaechlich abgelegt wurde. Wie bei {@link dateipfade}
+   * sagt der eigene Name, dass es ein Blick von aussen ist und keine Faehigkeit
+   * der Runtime.
+   */
+  dateiInhalt(containerId: string, pfad: string): Buffer {
+    const datei = this.#hole(containerId).dateien.get(pfad);
+
+    if (datei === undefined) {
+      throw new ContainerRuntimeError('FILE_NOT_FOUND', { details: { path: pfad } });
+    }
+
+    return datei.content;
+  }
+
   /** Antwortverhalten fuer `execConsole()` festlegen. */
   setExecHandler(handler: FakeExecHandler | undefined): void {
     this.#execHandler = handler;
@@ -694,17 +632,6 @@ export class FakeContainerRuntime implements ContainerRuntime {
 
   #jetzt(): string {
     return this.#now().toISOString();
-  }
-
-  /** Ist der Pfad belegt - als Datei oder als (impliziter) Ordner? */
-  #existiert(container: FakeContainer, pfad: string): boolean {
-    if (container.dateien.has(pfad)) return true;
-
-    const praefix = `${pfad}/`;
-    for (const kandidat of container.dateien.keys()) {
-      if (kandidat.startsWith(praefix)) return true;
-    }
-    return false;
   }
 
   #hole(containerId: string): FakeContainer {

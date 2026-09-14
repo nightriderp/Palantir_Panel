@@ -34,6 +34,19 @@ import { type ContainerSpec } from './types.js';
 export interface ConformanceKontext {
   readonly runtime: ContainerRuntime;
   readonly spec: (ueberschreibung?: Partial<ContainerSpec>) => ContainerSpec;
+  /**
+   * Liest eine Datei aus dem Datenordner - **an der Runtime vorbei**
+   * (Fundpunkt 291).
+   *
+   * `FILE_EXTRACT` ist der letzte Dateibefehl, den die Container-Runtime noch
+   * ausfuehrt; Lesen und Schreiben laufen seit Fundpunkt 281 host-seitig. Die
+   * Pruefung, ob das Entpackte auch angekommen ist, braucht trotzdem einen
+   * Blick in den Datenordner - nur eben keinen, den die Schnittstelle anbietet.
+   *
+   * Wer die Suite aufruft, weiss, wie er hineinsieht: der Fake in seine Map,
+   * ein Lauf gegen einen echten Docker-Host ueber das Dateisystem der Node.
+   */
+  readonly leseDatei: (containerId: string, pfad: string) => Promise<Buffer> | Buffer;
 }
 
 export function runContainerRuntimeConformance(
@@ -43,12 +56,14 @@ export function runContainerRuntimeConformance(
   describe(`ContainerRuntime-Vertrag: ${name}`, () => {
     let runtime: ContainerRuntime;
     let spec: ConformanceKontext['spec'];
+    let leseDatei: ConformanceKontext['leseDatei'];
     let events: ContainerRuntimeEvent[];
 
     beforeEach(async () => {
       const kontext = await erzeugeKontext();
       runtime = kontext.runtime;
       spec = kontext.spec;
+      leseDatei = kontext.leseDatei;
       events = [];
       await runtime.connect();
       runtime.on((event) => events.push(event));
@@ -192,72 +207,6 @@ export function runContainerRuntimeConformance(
       });
     });
 
-    describe('FILE_LIST / FILE_READ / FILE_WRITE', () => {
-      it('schreibt und liest eine Datei', async () => {
-        const id = await angelegt();
-        await runtime.writeFile(id, '/data/server.properties', Buffer.from('max-players=20'));
-
-        const inhalt = await runtime.readFile(id, '/data/server.properties');
-        expect(inhalt.toString('utf8')).toBe('max-players=20');
-      });
-
-      it('ueberschreibt eine vorhandene Datei', async () => {
-        const id = await angelegt();
-        await runtime.writeFile(id, '/data/a.txt', Buffer.from('alt'));
-        await runtime.writeFile(id, '/data/a.txt', Buffer.from('neu'));
-
-        expect((await runtime.readFile(id, '/data/a.txt')).toString('utf8')).toBe('neu');
-      });
-
-      it('meldet eine fehlende Datei als FILE_NOT_FOUND', async () => {
-        const id = await angelegt();
-        await expect(runtime.readFile(id, '/data/fehlt.txt')).rejects.toMatchObject({
-          code: 'FILE_NOT_FOUND',
-        });
-      });
-
-      it('lehnt relative Pfade ab', async () => {
-        const id = await angelegt();
-        await expect(runtime.readFile(id, 'data/../../etc/shadow')).rejects.toMatchObject({
-          code: 'INVALID_PATH',
-        });
-      });
-    });
-
-    describe('FILE_UPLOAD (Arbeitspaket P2)', () => {
-      it('legt eine neue Datei an', async () => {
-        const id = await angelegt();
-        await runtime.uploadFile(id, '/data/welt.zip', Buffer.from('PK'));
-
-        expect((await runtime.readFile(id, '/data/welt.zip')).toString('utf8')).toBe('PK');
-      });
-
-      it('lehnt einen belegten Zielpfad ohne overwrite mit FILE_EXISTS ab', async () => {
-        const id = await angelegt();
-        await runtime.writeFile(id, '/data/welt.zip', Buffer.from('alt'));
-
-        await expect(
-          runtime.uploadFile(id, '/data/welt.zip', Buffer.from('neu')),
-        ).rejects.toMatchObject({ code: 'FILE_EXISTS' });
-        expect((await runtime.readFile(id, '/data/welt.zip')).toString('utf8')).toBe('alt');
-      });
-
-      it('ersetzt eine vorhandene Datei mit overwrite', async () => {
-        const id = await angelegt();
-        await runtime.writeFile(id, '/data/welt.zip', Buffer.from('alt'));
-        await runtime.uploadFile(id, '/data/welt.zip', Buffer.from('neu'), { overwrite: true });
-
-        expect((await runtime.readFile(id, '/data/welt.zip')).toString('utf8')).toBe('neu');
-      });
-
-      it('lehnt einen Pfad ausserhalb des Datenordners ab', async () => {
-        const id = await angelegt();
-        await expect(
-          runtime.uploadFile(id, '/data/../etc/passwd', Buffer.from('x')),
-        ).rejects.toMatchObject({ code: 'INVALID_PATH' });
-      });
-    });
-
     describe('FILE_EXTRACT (Arbeitspaket P4)', () => {
       /** Kleines tar.gz - dasselbe Format, in dem der Agent auch sichert. */
       function weltArchiv(): Buffer {
@@ -276,9 +225,7 @@ export function runContainerRuntimeConformance(
 
         expect(ergebnis.fileCount).toBe(1);
         expect(ergebnis.skipped).toEqual([]);
-        expect((await runtime.readFile(id, '/data/welt/level.dat')).toString('utf8')).toBe(
-          'spielstand',
-        );
+        expect((await leseDatei(id, '/data/welt/level.dat')).toString('utf8')).toBe('spielstand');
       });
 
       it('entpackt in einen Unterordner', async () => {
@@ -286,7 +233,7 @@ export function runContainerRuntimeConformance(
 
         await runtime.extractArchive(id, 'import', weltArchiv(), 'tar.gz');
 
-        expect((await runtime.readFile(id, '/data/import/welt/level.dat')).toString('utf8')).toBe(
+        expect((await leseDatei(id, '/data/import/welt/level.dat')).toString('utf8')).toBe(
           'spielstand',
         );
       });

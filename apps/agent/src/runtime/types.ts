@@ -222,16 +222,6 @@ export interface DataVolumePaths {
   readonly hostPath: string;
 }
 
-/** Zusatzangaben zu `uploadFile()` (`FILE_UPLOAD`, Arbeitspaket P2). */
-export interface UploadFileOptions {
-  /**
-   * Bestehende Datei am Zielpfad ersetzen. Ohne Angabe scheitert der Upload auf
-   * einen belegten Pfad mit `FILE_EXISTS` - das ist der einzige
-   * Verhaltensunterschied zu `writeFile()`.
-   */
-  readonly overwrite?: boolean;
-}
-
 /**
  * Ergebnis von `extractArchive()` (`FILE_EXTRACT`, Arbeitspaket P4).
  *

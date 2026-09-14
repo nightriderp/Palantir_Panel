@@ -120,6 +120,52 @@ describe('Auto-Shutdown (Pflichtenheft §9)', () => {
     expect(decision).toEqual({ action: 'keepRunning', reason: 'activityUnknown' });
   });
 
+  it('zaehlt den Leerlauf ab dem Start, wenn die letzte Aktivitaet aelter ist (Fundpunkt 294)', () => {
+    /*
+     * Der Fall vom 14.09.2026, zweimal hintereinander auf der VPS: Ein Server
+     * lief am Vorabend leer, wurde am naechsten Tag von Hand gestartet und ging
+     * 16 Minuten spaeter wieder aus - "Der Server war 1148 Minuten ohne
+     * Spieler". Gezaehlt wurde seit dem Vorabend, also war die Frist schon in
+     * der Sekunde des Starts abgelaufen; uebrig blieb die Schonfrist.
+     *
+     * Was vor dem aktuellen Lauf war, sagt ueber diesen Lauf nichts.
+     */
+    const decision = decideAutoShutdown(
+      input({ lastStartedAt: minutesAgo(20), lastActivityAt: minutesAgo(1_148) }),
+    );
+
+    expect(decision).toEqual({ action: 'keepRunning', reason: 'idleBelowTimeout' });
+  });
+
+  it('schaltet ab, sobald der Leerlauf SEIT DEM START lang genug ist', () => {
+    // Gegenstueck zum Fall darueber: Dieselbe alte Aktivitaet, aber der Start
+    // liegt jetzt weit genug zurueck. Sonst wuerde die Korrektur den
+    // Auto-Shutdown ganz aushebeln.
+    const decision = decideAutoShutdown(
+      input({ lastStartedAt: minutesAgo(31), lastActivityAt: minutesAgo(1_148) }),
+    );
+
+    expect(decision.action).toBe('shutdown');
+  });
+
+  it('zaehlt weiterhin ab der Aktivitaet, wenn die nach dem Start liegt', () => {
+    // Der Normalfall: Jemand hat gespielt und ist gegangen. Der Start ist alt,
+    // die Aktivitaet juenger - gezaehlt wird ab der Aktivitaet.
+    const decision = decideAutoShutdown(
+      input({ lastStartedAt: minutesAgo(300), lastActivityAt: minutesAgo(10) }),
+    );
+
+    expect(decision).toEqual({ action: 'keepRunning', reason: 'idleBelowTimeout' });
+  });
+
+  it('nimmt bei unlesbarer Aktivitaet den Start statt gar nichts', () => {
+    const decision = decideAutoShutdown(
+      input({ lastActivityAt: 'kein-datum', lastStartedAt: minutesAgo(40) }),
+    );
+
+    expect(decision.action).toBe('shutdown');
+  });
+
   it('erlaubt eine Schonfrist von null Minuten', () => {
     const decision = decideAutoShutdown(
       input({
