@@ -226,7 +226,7 @@ function neuerServer(ownerId: string, hostId: string, subdomain: string): Create
     gameType: SPIEL.id,
     subdomain,
     assignedPorts: [],
-    resourceLimits: { ramMb: 1024, diskMb: 6000 },
+    resourceLimits: { ramMb: 1024 },
     configJson: {},
     startupParameters: '',
     autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 10 },

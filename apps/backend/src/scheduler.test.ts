@@ -707,7 +707,7 @@ const SERVER_ID = '66666666-6666-4666-8666-666666666666';
 const OWNER_ID = '77777777-7777-4777-8777-777777777777';
 const NOW = new Date('2026-08-26T12:00:00.000Z');
 
-const RESOURCE_LIMITS: ServerResourceLimits = { ramMb: 2048, diskMb: 10_240 };
+const RESOURCE_LIMITS: ServerResourceLimits = { ramMb: 2048 };
 
 /**
  * Ein laufender Server.
@@ -1213,7 +1213,6 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
       ownerId: BESITZER_ID,
       limits: LIMITS,
       usedRamMb: 1024,
-      usedDiskMb: null,
       ...overrides,
     };
   }
@@ -1233,7 +1232,6 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
             nodeId: load.nodeId,
             limits: load.limits,
             usedRamMb: load.usedRamMb,
-            usedDiskMb: load.usedDiskMb,
             thresholdPercent: 90,
             at: new Date('2026-08-30T00:00:00.000Z'),
           }),
@@ -1347,7 +1345,7 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
   it('macht aus einem fehlenden Messwert keine Warnung', async () => {
     const timer = manualTimer();
     const sink = capturingSink();
-    const quelle = loadSource([last({ usedRamMb: null, usedDiskMb: null })]);
+    const quelle = loadSource([last({ usedRamMb: null })]);
 
     startScheduler({
       tasks: [resourceWarningTask(evaluator(), quelle, sink, silentLog)],

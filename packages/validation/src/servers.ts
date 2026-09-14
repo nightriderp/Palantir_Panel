@@ -87,8 +87,10 @@ export const subdomainSchema = z
  * gültige Verwaltungsaussage, ein Server mit 0 MB Arbeitsspeicher wäre dagegen
  * nicht startfähig.
  *
- * **Ohne CPU-Anteil** – der ist auf Wunsch des Betreibers entfallen: Ein Server
- * nimmt sich die Kerne, die er braucht, und der Scheduler teilt sie auf.
+ * **Nur noch Arbeitsspeicher.** CPU-Anteil und Speicherplatz sind auf Wunsch
+ * des Betreibers entfallen: Ein Server nimmt sich die Kerne und den Platz, die
+ * er braucht. Was von der Platte noch frei ist, prüft das Backend beim Anlegen
+ * gegen die **Messung** der Node, nicht gegen eine Summe von Zuweisungen.
  *
  * Ob die Werte tatsächlich vergeben werden dürfen, entscheidet immer das
  * Backend gegen Nutzer-Kontingent und freie Node-Kapazität
@@ -107,19 +109,10 @@ export const SERVER_RAM_MIN_MB = 512;
 /** Obergrenze Arbeitsspeicher je Server in MiB (256 GB). */
 export const SERVER_RAM_MAX_MB = 262_144;
 
-/** Untergrenze Speicherplatz je Server in MiB (1 GB). */
-export const SERVER_DISK_MIN_MB = 1024;
-
-/** Obergrenze Speicherplatz je Server in MiB (4 TB). */
-export const SERVER_DISK_MAX_MB = 4_194_304;
-
 export const serverResourceLimitsSchema = z.object({
   ramMb: megabytesSchema
     .min(SERVER_RAM_MIN_MB, { message: 'Mindestens 512 MB Arbeitsspeicher.' })
     .max(SERVER_RAM_MAX_MB, { message: 'Höchstens 256 GB Arbeitsspeicher.' }),
-  diskMb: megabytesSchema
-    .min(SERVER_DISK_MIN_MB, { message: 'Mindestens 1 GB Speicherplatz.' })
-    .max(SERVER_DISK_MAX_MB, { message: 'Höchstens 4 TB Speicherplatz.' }),
 });
 
 /** Startparameter als eine Zeile (Lastenheft §3.3). */

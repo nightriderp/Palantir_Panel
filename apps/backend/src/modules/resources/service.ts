@@ -39,6 +39,7 @@ import {
 } from '../rbac/permissions.js';
 import { type CapacityCheckInput, checkCapacity } from './capacity.js';
 import { ResourceError } from './errors.js';
+import { MEASUREMENT_MAX_AGE_MS } from './node-usage.js';
 import type {
   HostNodeRecord,
   HostNodeRepository,
@@ -216,7 +217,6 @@ export interface ResourceServiceDependencies {
 /** Belegung eines Nutzers ohne Server – Vorgabe für die Sammelabfrage. */
 const EMPTY_USAGE: UserResourceUsage = {
   runningRamMb: 0,
-  allocatedDiskMb: 0,
   runningServers: 0,
   totalServers: 0,
 };
@@ -228,7 +228,6 @@ function mergeLimits(
 ): UserResourceLimits {
   return {
     maxRamMb: input.maxRamMb === undefined ? current.maxRamMb : (input.maxRamMb ?? null),
-    maxDiskMb: input.maxDiskMb === undefined ? current.maxDiskMb : (input.maxDiskMb ?? null),
     maxConcurrentServers:
       input.maxConcurrentServers === undefined
         ? current.maxConcurrentServers
@@ -286,6 +285,27 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
     }
   }
 
+  /**
+   * Der gemessene freie Platz der Node – oder `null`, wenn keine frische
+   * Messung vorliegt.
+   *
+   * Dieselbe Frist wie in der Node-Übersicht ({@link MEASUREMENT_MAX_AGE_MS}):
+   * Eine Auslastung von vor zwei Stunden beschreibt keinen Ist-Zustand mehr.
+   * Ohne Messung findet die Platten-Prüfung nicht statt – das Anlegen soll
+   * nicht daran scheitern, dass eine Auskunft fehlt.
+   */
+  function gemessenerFreierPlatz(node: HostNodeRecord, jetzt: Date): number | null {
+    const gemessen = node.measuredUsage;
+
+    if (gemessen === null) {
+      return null;
+    }
+
+    const alter = jetzt.getTime() - gemessen.observedAt.getTime();
+
+    return alter > MEASUREMENT_MAX_AGE_MS ? null : gemessen.diskAvailableMb;
+  }
+
   async function buildCheckInput(request: StartCapacityRequest): Promise<CapacityCheckInput> {
     const node = await loadNodeOrFail(request.nodeId);
     const usageOptions = request.excludeServerId
@@ -304,7 +324,12 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
       // Die harte Node-Prüfung unten greift trotzdem.
       userLimits: limitRecord?.limits ?? NO_USER_RESOURCE_LIMITS,
       userUsage,
-      node: { nodeId: node.id, total: node.totalResources, usage: nodeUsage },
+      node: {
+        nodeId: node.id,
+        total: node.totalResources,
+        usage: nodeUsage,
+        freeDiskMb: gemessenerFreierPlatz(node, request.at ?? new Date()),
+      },
       thresholds: deps.thresholds,
       ...(request.at ? { at: request.at } : {}),
     };
@@ -358,7 +383,6 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
       return {
         userId: record.userId,
         ram: resourceQuotaSlot('ram', record.limits.maxRamMb, usage.runningRamMb),
-        disk: resourceQuotaSlot('disk', record.limits.maxDiskMb, usage.allocatedDiskMb),
         servers: resourceQuotaSlot(
           'servers',
           record.limits.maxConcurrentServers,
@@ -456,7 +480,6 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
           nodeId: load.nodeId,
           limits: load.limits,
           usedRamMb: load.usedRamMb,
-          usedDiskMb: load.usedDiskMb,
           thresholdPercent: deps.thresholds.serverPercent,
           ...(at ? { at } : {}),
         }),

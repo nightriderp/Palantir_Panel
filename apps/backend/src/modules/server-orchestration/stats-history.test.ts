@@ -435,9 +435,8 @@ describe('Stand der Server-Last', () => {
       serverId: SERVER_ID,
       nodeId: NODE_ID,
       ownerId: OWNER_ID,
-      limits: { ramMb: 4096, diskMb: 20_480 },
+      limits: { ramMb: 4096 },
       usedRamMb: 3900,
-      usedDiskMb: null,
       ...overrides,
     };
   }

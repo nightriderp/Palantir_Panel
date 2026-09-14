@@ -50,7 +50,6 @@ const NODE: HostNodeRecord = {
 function emptyUserUsage(): UserResourceUsage {
   return {
     runningRamMb: 0,
-    allocatedDiskMb: 0,
     runningServers: 0,
     totalServers: 0,
   };
@@ -59,7 +58,6 @@ function emptyUserUsage(): UserResourceUsage {
 function emptyNodeUsage(): NodeResourceUsage {
   return {
     runningRamMb: 0,
-    allocatedDiskMb: 0,
     runningServers: 0,
     totalServers: 0,
   };
@@ -180,10 +178,9 @@ function buildService(options?: {
 describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
   it('liefert je Ressource Limit, Belegung und Rest', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 8192, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
       userUsage: {
         runningRamMb: 2048,
-        allocatedDiskMb: 20_480,
         runningServers: 1,
         totalServers: 3,
       },
@@ -200,16 +197,6 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
       remaining: 6144,
       counting: 'running',
     });
-    // Speicherplatz zählt alle Server, nicht nur die laufenden.
-    expect(quota.disk).toEqual({
-      resource: 'disk',
-      unit: 'mb',
-      limit: 51_200,
-      used: 20_480,
-      remaining: 30_720,
-      // Fundpunkt 210: Genau diese Zeile stand vorher nur im Kommentar darueber.
-      counting: 'all',
-    });
     // Die Serveranzahl zählt die gleichzeitig laufenden – wie in `capacity.ts`.
     expect(quota.servers).toEqual({
       resource: 'servers',
@@ -224,7 +211,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
 
   it('meldet ohne Limit `null` als Limit und Rest, nennt die Belegung aber weiter', async () => {
     const { service } = buildService({
-      userUsage: { runningRamMb: 4096, allocatedDiskMb: 10_240, runningServers: 2 },
+      userUsage: { runningRamMb: 4096, runningServers: 2 },
     });
 
     const quota = await service.getOwnQuota({ actor: plainActor, userId: USER_ID });
@@ -232,14 +219,13 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
     expect(quota.ram.limit).toBeNull();
     expect(quota.ram.remaining).toBeNull();
     expect(quota.ram.used).toBe(4096);
-    expect(quota.disk.remaining).toBeNull();
     expect(quota.servers.remaining).toBeNull();
     expect(quota.updatedAt).toBeNull();
   });
 
   it('gibt bei überschrittenem Limit 0 statt eines negativen Rests zurück', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 4096, maxDiskMb: null, maxConcurrentServers: 1 },
+      limits: { maxRamMb: 4096, maxConcurrentServers: 1 },
       userUsage: { runningRamMb: 6144, runningServers: 3 },
     });
 
@@ -300,7 +286,7 @@ describe('Eigenes Kontingent (getOwnQuota, P6)', () => {
 describe('Kontingent lesen und setzen', () => {
   it('liefert den vollständigen DTO inkl. permissions-Objekt und Belegung', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 8192, maxDiskMb: null, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
       userUsage: { runningRamMb: 2048, runningServers: 1, totalServers: 3 },
     });
 
@@ -309,7 +295,7 @@ describe('Kontingent lesen und setzen', () => {
     expect(dto.userId).toBe(USER_ID);
     expect(dto.userDisplayName).toBe('Testnutzer');
     expect(dto.limits.maxRamMb).toBe(8192);
-    expect(dto.limits.maxDiskMb).toBeNull();
+    expect(dto.limits.maxConcurrentServers).toBe(2);
     expect(dto.usage.totalServers).toBe(3);
     expect(dto.permissions).toEqual({ canView: true, canEdit: true });
   });
@@ -335,32 +321,31 @@ describe('Kontingent lesen und setzen', () => {
 
   it('setzt ein Teil-Update, ohne die übrigen Felder anzutasten', async () => {
     const { service, stored } = buildService({
-      limits: { maxRamMb: 8192, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
     await service.setUserLimits(adminActor, USER_ID, { maxRamMb: 16_384 });
 
     expect(stored.record?.limits).toEqual({
       maxRamMb: 16_384,
-      maxDiskMb: 51_200,
       maxConcurrentServers: 2,
     });
   });
 
   it('hebt eine einzelne Grenze über ausdrückliches null auf', async () => {
     const { service, stored } = buildService({
-      limits: { maxRamMb: 8192, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
-    await service.setUserLimits(adminActor, USER_ID, { maxDiskMb: null });
+    await service.setUserLimits(adminActor, USER_ID, { maxConcurrentServers: null });
 
-    expect(stored.record?.limits.maxDiskMb).toBeNull();
+    expect(stored.record?.limits.maxConcurrentServers).toBeNull();
     expect(stored.record?.limits.maxRamMb).toBe(8192);
   });
 
   it('hebt mit clearUserLimits das gesamte Kontingent auf', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 8192, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
     const dto = await service.clearUserLimits(adminActor, USER_ID);
@@ -381,7 +366,7 @@ describe('Kontingent lesen und setzen', () => {
 describe('Kontingente für Listen (Mockup-Abgleich 12.1.3)', () => {
   it('liefert je Konto Arbeitsspeicher und Serveranzahl', async () => {
     const { service } = buildService({
-      limits: { maxRamMb: 8192, maxDiskMb: null, maxConcurrentServers: 3 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 3 },
       userUsage: { runningRamMb: 4096, runningServers: 1 },
     });
 
@@ -533,7 +518,6 @@ describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
       ownerId: USER_ID,
       limits: LIMITS,
       usedRamMb: 1024,
-      usedDiskMb: null,
       ...overrides,
     };
   }
@@ -570,10 +554,7 @@ describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
     // gerade nicht 0, was bei einer Belegung ohne Kontingent eine Warnung wäre.
     const { service } = buildService({});
 
-    const warnings = service.evaluateAllServerWarnings(
-      [last({ usedRamMb: null, usedDiskMb: null })],
-      AT,
-    );
+    const warnings = service.evaluateAllServerWarnings([last({ usedRamMb: null })], AT);
 
     expect(warnings).toEqual([]);
   });

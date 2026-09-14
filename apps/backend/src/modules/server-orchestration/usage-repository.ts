@@ -10,8 +10,9 @@
  * - `running*`: nur Server in `running` **oder** `starting` – sie belegen RAM
  *   tatsächlich. `starting` zählt mit, weil der Container dort bereits läuft;
  *   ihn auszulassen würde zwei gleichzeitige Starts beide durchwinken.
- * - `allocatedDiskMb`: **alle** Server, unabhängig vom Zustand – der Datenordner
- *   bleibt auch im gestoppten Zustand liegen.
+ *
+ * Der Speicherplatz steht hier nicht mehr: Zugewiesen wird keiner, und was
+ * wirklich belegt ist, misst der Agent am Dateisystem der Node.
  */
 
 import {
@@ -44,12 +45,9 @@ interface UsageRow {
 
 function summarize(rows: readonly UsageRow[]): UserResourceUsage & NodeResourceUsage {
   let runningRamMb = 0;
-  let allocatedDiskMb = 0;
   let runningServers = 0;
 
   for (const row of rows) {
-    allocatedDiskMb += row.resourceLimits.diskMb;
-
     if (!CONSUMING_STATUSES.has(row.status)) {
       continue;
     }
@@ -60,7 +58,6 @@ function summarize(rows: readonly UsageRow[]): UserResourceUsage & NodeResourceU
 
   return {
     runningRamMb,
-    allocatedDiskMb,
     runningServers,
     totalServers: rows.length,
   };

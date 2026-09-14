@@ -1,5 +1,3 @@
-import { type ServerResourceLimits } from './game-server.js';
-
 /**
  * Spiele-Registry als DTO (Pflichtenheft §11).
  *
@@ -53,6 +51,26 @@ export interface GameConfigField {
 }
 
 /**
+ * Was ein Server dieses Spiels voraussichtlich braucht.
+ *
+ * **Zwei verschiedene Dinge unter einem Dach**, und der Unterschied ist seit
+ * dem Wegfall der Speicherplatz-Zuweisung wichtig:
+ *
+ * - `ramMb` ist ein **Vorschlag für die Zuweisung**. Der Nutzer sieht ihn im
+ *   Wizard und kann ihn ändern; am Container wird er zur harten Grenze.
+ * - `diskMb` ist eine **Schätzung**, keine Zuweisung. Niemand gibt sie an,
+ *   nichts begrenzt danach – sie ist allein die Grundlage der Frage „passt
+ *   dieser Server voraussichtlich noch auf die Node", geprüft gegen den
+ *   gemessenen freien Platz.
+ */
+export interface GameResourceEstimate {
+  /** Vorschlag für die RAM-Zuweisung in MiB. */
+  ramMb: number;
+  /** Geschätzter Platzbedarf in MiB – begrenzt nichts. */
+  diskMb: number;
+}
+
+/**
  * Spieltyp, wie ihn der Wizard und die Server-Einstellungen sehen.
  *
  * `available === false` bedeutet: der Typ steht fachlich noch nicht bereit
@@ -72,7 +90,7 @@ export interface GameTypeDto {
   /** Kann der Wizard bestehende Weltdaten übernehmen (Lastenheft §3.3)? */
   supportsWorldImport: boolean;
   defaultPorts: number[];
-  resourceDefaults: ServerResourceLimits;
+  resourceDefaults: GameResourceEstimate;
   configFields: GameConfigField[];
   available: boolean;
   /** Grund, wenn `available === false`, z. B. „Kommt in Phase 2". */
@@ -336,7 +354,7 @@ export interface GameTypeDefinition {
    * (`EXEC_CONSOLE`), die Antwort kommt über das Log.
    */
   readonly consoleQuickCommands?: readonly ConsoleQuickCommand[];
-  readonly resourceDefaults: ServerResourceLimits;
+  readonly resourceDefaults: GameResourceEstimate;
   readonly query: GameQuerySpec;
   readonly iconUrl: string | null;
   readonly coverImageUrl: string | null;

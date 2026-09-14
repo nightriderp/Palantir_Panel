@@ -153,10 +153,7 @@ describe('Admin-Routen: Envelope und Berechtigungen', () => {
     expect(body.error).toBeNull();
     expect(body.data).toHaveLength(1);
     // Freie Kapazität ist vorhanden – ohne Belegung entspricht sie der Gesamtausstattung.
-    expect(body.data[0].capacity.available).toEqual({
-      ramMb: 32_768,
-      diskMb: 2_000_000,
-    });
+    expect(body.data[0].capacity.available).toEqual({ ramMb: 32_768 });
     expect(body.data[0].status).toBe('online');
     expect(body.data[0].permissions).toEqual({
       canView: true,

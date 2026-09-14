@@ -562,7 +562,8 @@ export class ServerOrchestrationService {
           userId: ownerId,
           hostId: host.id,
           serverId: null,
-          requested: resourceLimits,
+          // Der Platzbedarf ist die Schätzung des Spiels, keine Zuweisung.
+          requested: { ...resourceLimits, diskMb: definition.resourceDefaults.diskMb },
           intent: 'create',
         },
         async (scope) => {
@@ -996,7 +997,10 @@ export class ServerOrchestrationService {
         userId: server.ownerId,
         hostId: server.hostId,
         serverId: server.id,
-        requested: server.resourceLimits,
+        requested: {
+          ...server.resourceLimits,
+          diskMb: this.deps.registry.require(server.gameType).resourceDefaults.diskMb,
+        },
         intent: 'start',
       },
       (scope) => this.applyTransition(server, { type: 'startRequested' }, scope.servers),
@@ -3041,7 +3045,6 @@ export class ServerOrchestrationService {
           ownerId: server.ownerId,
           limits: server.resourceLimits,
           usedRamMb: ramUsedMb,
-          usedDiskMb: diskUsedMb,
         });
       } catch (error: unknown) {
         this.deps.log.warn(

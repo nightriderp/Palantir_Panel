@@ -57,7 +57,6 @@ const actors: Record<string, PermissionActor> = {
 
 const emptyUsage = {
   runningRamMb: 0,
-  allocatedDiskMb: 0,
   runningServers: 0,
   totalServers: 0,
 } as const;
@@ -202,10 +201,9 @@ afterEach(async () => {
 describe('GET /me/resource-quota', () => {
   it('liefert je Ressource Limit, Belegung und Rest im Envelope-Format', async () => {
     app = await buildApp({
-      limits: { maxRamMb: 8192, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
       userUsage: {
         runningRamMb: 2048,
-        allocatedDiskMb: 20_480,
         runningServers: 1,
         totalServers: 3,
       },
@@ -226,7 +224,6 @@ describe('GET /me/resource-quota', () => {
       remaining: 6144,
       counting: 'running',
     });
-    expect(body.data.disk.remaining).toBe(30_720);
     expect(body.data.servers.remaining).toBe(1);
     // Eigenes Kontingent: sehen ja, ändern nur mit `user.manage`.
     expect(body.data.permissions).toEqual({ canView: true, canEdit: false });
@@ -272,7 +269,7 @@ describe('GET /me/resource-quota', () => {
 describe('GET /admin/users/:userId/limits', () => {
   it('liefert den DTO im Envelope-Format inkl. permissions-Objekt', async () => {
     app = await buildApp({
-      limits: { maxRamMb: 8192, maxDiskMb: null, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
     const response = await call(app, 'GET', `/admin/users/${USER_ID}/limits`, {
@@ -311,7 +308,7 @@ describe('GET /admin/users/:userId/limits', () => {
 describe('PUT /admin/users/:userId/limits', () => {
   it('setzt ein Teil-Update und lässt die übrigen Felder stehen', async () => {
     app = await buildApp({
-      limits: { maxRamMb: 8192, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
     const response = await call(app, 'PUT', `/admin/users/${USER_ID}/limits`, {
@@ -323,39 +320,42 @@ describe('PUT /admin/users/:userId/limits', () => {
     expect(response.statusCode).toBe(200);
     expect(body.data.limits).toEqual({
       maxRamMb: 16_384,
-      maxDiskMb: 51_200,
       maxConcurrentServers: 2,
     });
   });
 
   it('hebt eine einzelne Grenze über ausdrückliches null auf', async () => {
     app = await buildApp({
-      limits: { maxRamMb: 8192, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
     const response = await call(app, 'PUT', `/admin/users/${USER_ID}/limits`, {
       actor: 'userAdmin',
-      payload: { maxDiskMb: null },
+      payload: { maxConcurrentServers: null },
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json<{ data: UserResourceLimitDto }>().data.limits.maxDiskMb).toBeNull();
+    expect(
+      response.json<{ data: UserResourceLimitDto }>().data.limits.maxConcurrentServers,
+    ).toBeNull();
   });
 
-  it('weist ein CPU-Kontingent ab, statt es still zu schlucken', async () => {
-    // Die CPU-Zuweisung ist entfallen; ein Kontingent darauf könnte nie greifen.
+  it('weist ein CPU- oder Platten-Kontingent ab, statt es still zu schlucken', async () => {
+    // Beide Zuweisungen sind entfallen; ein Kontingent darauf könnte nie greifen.
     // Das Schema ist `strict()`, damit ein Aufrufer das erfährt, statt eine
     // Grenze zu setzen, die nichts begrenzt.
     app = await buildApp({
-      limits: { maxRamMb: 8192, maxDiskMb: null, maxConcurrentServers: null },
+      limits: { maxRamMb: 8192, maxConcurrentServers: null },
     });
 
-    const response = await call(app, 'PUT', `/admin/users/${USER_ID}/limits`, {
-      actor: 'userAdmin',
-      payload: { maxCpuCores: 4 },
-    });
+    for (const payload of [{ maxCpuCores: 4 }, { maxDiskMb: 51_200 }]) {
+      const response = await call(app, 'PUT', `/admin/users/${USER_ID}/limits`, {
+        actor: 'userAdmin',
+        payload,
+      });
 
-    expect(response.statusCode).toBe(400);
+      expect(response.statusCode, JSON.stringify(payload)).toBe(400);
+    }
   });
 
   it('lehnt einen negativen Wert mit VALIDATION_FAILED ab', async () => {
@@ -410,7 +410,6 @@ describe('Audit-Log der Kontingent-Änderungen (Gefundener Punkt 53)', () => {
         targetId: USER_ID,
         metadata: {
           maxRamMb: 16_384,
-          maxDiskMb: null,
           maxConcurrentServers: null,
         },
       },
@@ -419,7 +418,7 @@ describe('Audit-Log der Kontingent-Änderungen (Gefundener Punkt 53)', () => {
 
   it('hält das Aufheben als solches fest', async () => {
     app = await buildApp({
-      limits: { maxRamMb: 8192, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
     await call(app, 'DELETE', `/admin/users/${USER_ID}/limits`, { actor: 'userAdmin' });
@@ -446,7 +445,7 @@ describe('Audit-Log der Kontingent-Änderungen (Gefundener Punkt 53)', () => {
 describe('DELETE /admin/users/:userId/limits', () => {
   it('hebt das gesamte Kontingent auf', async () => {
     app = await buildApp({
-      limits: { maxRamMb: 8192, maxDiskMb: 51_200, maxConcurrentServers: 2 },
+      limits: { maxRamMb: 8192, maxConcurrentServers: 2 },
     });
 
     const response = await call(app, 'DELETE', `/admin/users/${USER_ID}/limits`, {

@@ -119,7 +119,7 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
           primary: true,
         },
       ],
-      resourceLimits: { ramMb: 4096, diskMb: 20_480 },
+      resourceLimits: { ramMb: 4096 },
       configJson: { motd: 'Hallo' },
       startupParameters: '-Xmx4G',
       autoShutdown: { enabled: true, idleTimeoutMinutes: 15, graceMinutes: 5 },

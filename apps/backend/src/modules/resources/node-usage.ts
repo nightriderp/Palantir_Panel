@@ -102,7 +102,8 @@ export function createNodeUsageSource(deps: NodeUsageSourceDependencies): NodeUs
                */
               cpuPercent: null,
               ramUsedMb: usage.runningRamMb,
-              diskUsedMb: usage.allocatedDiskMb,
+              // Wie bei der CPU: ohne Messung keine Aussage zur Platte.
+              diskUsedMb: null,
               sampledAt,
               source: 'reserved',
             },

@@ -360,10 +360,7 @@ export function createDrizzleServerExportManifestSource(
           subdomain: row.subdomain,
           startupParameters: row.startupParameters,
           config: row.configJson,
-          resourceLimits: {
-            ramMb: row.resourceLimits.ramMb,
-            diskMb: row.resourceLimits.diskMb,
-          },
+          resourceLimits: { ramMb: row.resourceLimits.ramMb },
           autoShutdownEnabled: row.autoShutdown.enabled,
           autoShutdownTimeoutMinutes: row.autoShutdown.idleTimeoutMinutes,
           createdAt: row.createdAt.toISOString(),

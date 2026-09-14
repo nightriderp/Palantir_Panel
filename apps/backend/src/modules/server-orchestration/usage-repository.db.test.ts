@@ -64,28 +64,28 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       ownerId: besitzer,
       hostId: node,
       status: 'running',
-      resourceLimits: { ramMb: 1024, diskMb: 5000 },
+      resourceLimits: { ramMb: 1024 },
     });
     // starting zählt mit: der Container läuft dort bereits.
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
       status: 'starting',
-      resourceLimits: { ramMb: 2048, diskMb: 6000 },
+      resourceLimits: { ramMb: 2048 },
     });
     // stopped belegt nur den Datenordner.
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
       status: 'stopped',
-      resourceLimits: { ramMb: 4096, diskMb: 7000 },
+      resourceLimits: { ramMb: 4096 },
     });
     // creating ebenso – der Ordner steht schon, der Container noch nicht.
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
       status: 'creating',
-      resourceLimits: { ramMb: 8192, diskMb: 8000 },
+      resourceLimits: { ramMb: 8192 },
     });
 
     const belegung = await usage.usageForUser(besitzer);
@@ -107,18 +107,17 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       ownerId: besitzer,
       hostId: node,
       status: 'stopped',
-      resourceLimits: { ramMb: 8192, diskMb: 8192 },
+      resourceLimits: { ramMb: 8192 },
     });
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
       status: 'stopped',
-      resourceLimits: { ramMb: 1024, diskMb: 1024 },
+      resourceLimits: { ramMb: 1024 },
     });
 
     const ohne = await usage.usageForUser(besitzer, { excludeServerId: eigener });
 
-    expect(ohne.allocatedDiskMb).toBe(1024);
     expect(ohne.totalServers).toBe(1);
   });
 
@@ -132,13 +131,13 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       ownerId: besitzer,
       hostId: nodeA,
       status: 'running',
-      resourceLimits: { ramMb: 1024, diskMb: 1000 },
+      resourceLimits: { ramMb: 1024 },
     });
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: nodeB,
       status: 'running',
-      resourceLimits: { ramMb: 2048, diskMb: 2000 },
+      resourceLimits: { ramMb: 2048 },
     });
 
     expect((await usage.usageForNode(nodeA)).runningRamMb).toBe(1024);
@@ -156,20 +155,19 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       ownerId: ersterNutzer,
       hostId: node,
       status: 'running',
-      resourceLimits: { ramMb: 1024, diskMb: 1000 },
+      resourceLimits: { ramMb: 1024 },
     });
     await legeServerAn(kontext.db, {
       ownerId: zweiterNutzer,
       hostId: node,
       status: 'stopped',
-      resourceLimits: { ramMb: 2048, diskMb: 2000 },
+      resourceLimits: { ramMb: 2048 },
     });
 
     const belegung = await usage.usageForUsers([ersterNutzer, zweiterNutzer, ohneServer]);
 
     expect(belegung.get(ersterNutzer)?.runningRamMb).toBe(1024);
     expect(belegung.get(zweiterNutzer)?.runningRamMb).toBe(0);
-    expect(belegung.get(zweiterNutzer)?.allocatedDiskMb).toBe(2000);
     // Konten ohne Server fehlen in der Map – der Aufrufer liest sie als 0.
     expect(belegung.has(ohneServer)).toBe(false);
     expect(await usage.usageForUsers([])).toEqual(new Map());
@@ -188,7 +186,7 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
         gameType: 'minecraft',
         subdomain: 'erster',
         assignedPorts: [],
-        resourceLimits: { ramMb: 1024, diskMb: 6000 },
+        resourceLimits: { ramMb: 1024 },
         configJson: {},
         startupParameters: '',
         autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 10 },
@@ -307,7 +305,7 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
     const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN, ohnePortvergabe);
     const besitzer = await legeNutzerAn(kontext.db);
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 1_000_000 });
-    await setzeKontingent(kontext.db, besitzer, { maxDiskMb: 4000 });
+    await setzeKontingent(kontext.db, besitzer, { maxRamMb: 512 });
 
     let geschrieben = false;
 
@@ -347,7 +345,7 @@ function neuerServer(ownerId: string, hostId: string, subdomain: string): Create
     gameType: 'minecraft',
     subdomain,
     assignedPorts: [],
-    resourceLimits: { ramMb: 1024, diskMb: 6000 },
+    resourceLimits: { ramMb: 1024 },
     configJson: {},
     startupParameters: '',
     autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 10 },

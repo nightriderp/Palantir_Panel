@@ -1,8 +1,8 @@
 import {
+  type GameResourceEstimate,
   type GameTypeDto,
   type HostNodeDto,
   type HostNodeStatus,
-  type ServerResourceLimits,
 } from '@palantir/contracts';
 import {
   type Tone,
@@ -183,7 +183,14 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
     gebucht > gesamt ? `${formatiere(gebucht - gesamt)} überbucht` : undefined;
 
   const ramPercent = percentOf(allocated.ramMb, total.ramMb);
-  const diskPercent = percentOf(allocated.diskMb, total.diskMb);
+
+  /*
+   * Die Platte kommt aus der **Messung**, nicht aus Zuweisungen (siehe
+   * `nodeDiskMetric`): Zugewiesen wird kein Speicherplatz mehr, und die alte
+   * Summe hatte mit dem belegten Platz ohnehin nichts zu tun.
+   */
+  const diskUsedMb = node.usage?.diskUsedMb ?? null;
+  const diskPercent = diskUsedMb === null ? null : percentOf(diskUsedMb, total.diskMb);
 
   return [
     {
@@ -204,13 +211,12 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
     {
       key: 'disk',
       label: 'Platte belegt',
-      usedLabel: formatMegabytes(allocated.diskMb),
+      usedLabel: formatMegabytes(diskUsedMb),
       totalLabel: formatMegabytes(total.diskMb),
-      freeLabel: formatMegabytes(available.diskMb),
+      // `formatMegabytes(null)` ergibt „—": ohne Messung steht dort ein
+      // Gedankenstrich statt einer erfundenen Zahl.
+      freeLabel: formatMegabytes(diskUsedMb === null ? null : total.diskMb - diskUsedMb),
       percent: diskPercent,
-      ...(zuViel(allocated.diskMb, total.diskMb, formatMegabytes) === undefined
-        ? {}
-        : { overbookedLabel: zuViel(allocated.diskMb, total.diskMb, formatMegabytes) }),
       tone: toneForFill(diskPercent),
     },
   ];
@@ -249,7 +255,19 @@ export function nodesSummary(nodes: HostNodeDto[]): NodesSummaryEntry[] {
   const online = nodes.filter((node) => node.status === 'online').length;
   const servers = nodes.reduce((sum, node) => sum + node.serverCount, 0);
   const bookedRamMb = nodes.reduce((sum, node) => sum + node.capacity.allocated.ramMb, 0);
-  const freeDiskMb = nodes.reduce((sum, node) => sum + node.capacity.available.diskMb, 0);
+  /*
+   * Freier Platz nur aus den Nodes, die gerade messen. Eine Node ohne Messung
+   * geht mit 0 in die Summe – sie hat nicht null frei, sie sagt es nur nicht.
+   * Das untertreibt eher, und das ist bei „wie viel ist noch frei" die
+   * richtige Richtung.
+   */
+  const freeDiskMb = nodes.reduce(
+    (sum, node) =>
+      node.usage?.diskUsedMb == null
+        ? sum
+        : sum + Math.max(0, node.capacity.total.diskMb - node.usage.diskUsedMb),
+    0,
+  );
 
   return [
     {
@@ -289,7 +307,8 @@ export function nodesSummary(nodes: HostNodeDto[]): NodesSummaryEntry[] {
 
 export interface SmallestGameType {
   name: string;
-  limits: ServerResourceLimits;
+  /** RAM-Vorschlag und geschätzter Platzbedarf des Spiels. */
+  bedarf: GameResourceEstimate;
 }
 
 /**
@@ -313,7 +332,7 @@ export function smallestGameType(gameTypes: GameTypeDto[]): SmallestGameType | n
     return a.diskMb < b.diskMb ? current : best;
   });
 
-  return { name: smallest.name, limits: smallest.resourceDefaults };
+  return { name: smallest.name, bedarf: smallest.resourceDefaults };
 }
 
 export interface StartCapacityHint {
@@ -323,10 +342,21 @@ export interface StartCapacityHint {
   description: string;
 }
 
-/** Passt der Bedarf in die freie Kapazität dieser Node? */
-export function nodeHasRoomFor(node: HostNodeDto, needed: ServerResourceLimits): boolean {
-  const free = node.capacity.available;
-  return free.ramMb >= needed.ramMb && free.diskMb >= needed.diskMb;
+/**
+ * Passt der Bedarf auf diese Node?
+ *
+ * Der Arbeitsspeicher wird gegen die freie Zuweisung gehalten, die Platte gegen
+ * die **Messung** – zugewiesen wird sie nicht mehr. Ohne Messung zählt die
+ * Platte nicht mit: Fehlt die Auskunft, soll der Hinweis nicht behaupten, es
+ * passe nichts mehr.
+ */
+export function nodeHasRoomFor(node: HostNodeDto, needed: GameResourceEstimate): boolean {
+  if (node.capacity.available.ramMb < needed.ramMb) return false;
+
+  const belegt = node.usage?.diskUsedMb;
+  if (belegt == null) return true;
+
+  return node.capacity.total.diskMb - belegt >= needed.diskMb;
 }
 
 /**
@@ -360,14 +390,14 @@ export function startCapacityHint(
   const smallest = smallestGameType(gameTypes);
   if (smallest === null) return null;
 
-  if (onlineNodes.some((node) => nodeHasRoomFor(node, smallest.limits))) return null;
+  if (onlineNodes.some((node) => nodeHasRoomFor(node, smallest.bedarf))) return null;
 
   return {
     title: 'Der Platz reicht für keinen weiteren Server',
     description: `Selbst der sparsamste Spieltyp („${smallest.name}") braucht ${formatMegabytes(
-      smallest.limits.ramMb,
-    )} Arbeitsspeicher und ${formatMegabytes(
-      smallest.limits.diskMb,
+      smallest.bedarf.ramMb,
+    )} Arbeitsspeicher und rund ${formatMegabytes(
+      smallest.bedarf.diskMb,
     )} Speicherplatz – so viel ist auf keiner verbundenen Node mehr frei. Ein nicht mehr genutzter Server, den du löschst, gibt seinen Platz sofort wieder frei.`,
   };
 }

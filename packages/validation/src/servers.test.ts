@@ -7,8 +7,6 @@ import {
 import { describe, expect, it } from 'vitest';
 import { cronExpressionSchema } from './backups.js';
 import {
-  SERVER_DISK_MAX_MB,
-  SERVER_DISK_MIN_MB,
   SERVER_RAM_MAX_MB,
   SERVER_RAM_MIN_MB,
   cloneServerInputSchema,
@@ -29,7 +27,7 @@ function createInput(overrides: Record<string, unknown> = {}) {
     name: 'Survival Runde',
     subdomain: 'survival',
     hostId: VALID_ID,
-    resourceLimits: { ramMb: 4096, diskMb: 20480 },
+    resourceLimits: { ramMb: 4096 },
     config: { maxPlayers: 20, motd: 'Willkommen' },
     startupParameters: '-Xmx4G',
     autoShutdownEnabled: true,
@@ -109,54 +107,41 @@ describe('serverNameSchema', () => {
 
 describe('serverResourceLimitsSchema', () => {
   it('nimmt gültige Werte an', () => {
-    expect(serverResourceLimitsSchema.parse({ ramMb: 1024, diskMb: 10240 })).toEqual({
-      ramMb: 1024,
-      diskMb: 10240,
-    });
+    expect(serverResourceLimitsSchema.parse({ ramMb: 1024 })).toEqual({ ramMb: 1024 });
   });
 
-  it('kennt keinen CPU-Anteil mehr', () => {
-    // Die Zuweisung ist entfallen: Ein Server nimmt sich die Kerne, die er
-    // braucht. Ein mitgeschicktes Feld darf nicht still übernommen werden und
-    // dann als Grenze im Container landen.
+  it('kennt weder CPU-Anteil noch Speicherplatz mehr', () => {
+    // Beides ist als Zuweisung entfallen: Ein Server nimmt sich die Kerne und
+    // den Platz, die er braucht. Mitgeschickte Felder duerfen nicht still
+    // uebernommen werden und dann als Grenze im Container landen.
     const ergebnis = serverResourceLimitsSchema.parse({
       ramMb: 1024,
       cpuCores: 2,
       diskMb: 10240,
     });
 
-    expect(ergebnis).not.toHaveProperty('cpuCores');
+    expect(ergebnis).toEqual({ ramMb: 1024 });
   });
 
   it('führt die exportierten Grenzen und das Schema an einer Quelle (Audit frontend-lib-09)', () => {
     // Das Frontend baut daraus Regler; laufen Konstante und Schema
     // auseinander, kappt die Oberfläche gültige Werte beim Speichern.
-    const anDenGrenzen = { ramMb: SERVER_RAM_MAX_MB, diskMb: SERVER_DISK_MAX_MB };
-    const anDenUntergrenzen = { ramMb: SERVER_RAM_MIN_MB, diskMb: SERVER_DISK_MIN_MB };
-
-    expect(serverResourceLimitsSchema.parse(anDenGrenzen)).toEqual(anDenGrenzen);
-    expect(serverResourceLimitsSchema.parse(anDenUntergrenzen)).toEqual(anDenUntergrenzen);
-    expect(
-      serverResourceLimitsSchema.safeParse({ ...anDenGrenzen, ramMb: SERVER_RAM_MAX_MB + 1 })
-        .success,
-    ).toBe(false);
-    expect(
-      serverResourceLimitsSchema.safeParse({
-        ...anDenUntergrenzen,
-        diskMb: SERVER_DISK_MIN_MB - 1,
-      }).success,
-    ).toBe(false);
-  });
-
-  it('lehnt Werte unterhalb der Untergrenzen ab', () => {
-    expect(serverResourceLimitsSchema.safeParse({ ramMb: 256, diskMb: 10240 }).success).toBe(false);
-    expect(serverResourceLimitsSchema.safeParse({ ramMb: 1024, diskMb: 512 }).success).toBe(false);
+    expect(serverResourceLimitsSchema.parse({ ramMb: SERVER_RAM_MAX_MB })).toEqual({
+      ramMb: SERVER_RAM_MAX_MB,
+    });
+    expect(serverResourceLimitsSchema.parse({ ramMb: SERVER_RAM_MIN_MB })).toEqual({
+      ramMb: SERVER_RAM_MIN_MB,
+    });
+    expect(serverResourceLimitsSchema.safeParse({ ramMb: SERVER_RAM_MAX_MB + 1 }).success).toBe(
+      false,
+    );
+    expect(serverResourceLimitsSchema.safeParse({ ramMb: SERVER_RAM_MIN_MB - 1 }).success).toBe(
+      false,
+    );
   });
 
   it('lehnt gebrochene MB-Angaben ab', () => {
-    expect(serverResourceLimitsSchema.safeParse({ ramMb: 1024.5, diskMb: 10240 }).success).toBe(
-      false,
-    );
+    expect(serverResourceLimitsSchema.safeParse({ ramMb: 1024.5 }).success).toBe(false);
   });
 });
 

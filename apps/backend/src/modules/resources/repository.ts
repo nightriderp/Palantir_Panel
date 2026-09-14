@@ -104,7 +104,6 @@ export function createDrizzleUserResourceLimitRepository(
       limits: row.limits
         ? {
             maxRamMb: row.limits.maxRamMb,
-            maxDiskMb: row.limits.maxDiskMb,
             maxConcurrentServers: row.limits.maxConcurrentServers,
           }
         : NO_USER_RESOURCE_LIMITS,
@@ -137,7 +136,6 @@ export function createDrizzleUserResourceLimitRepository(
       for (const row of rows) {
         gefunden.set(row.userId, {
           maxRamMb: row.maxRamMb,
-          maxDiskMb: row.maxDiskMb,
           maxConcurrentServers: row.maxConcurrentServers,
         });
       }
@@ -165,14 +163,12 @@ export function createDrizzleUserResourceLimitRepository(
 
 const EMPTY_USER_USAGE: UserResourceUsage = {
   runningRamMb: 0,
-  allocatedDiskMb: 0,
   runningServers: 0,
   totalServers: 0,
 };
 
 const EMPTY_NODE_USAGE: NodeResourceUsage = {
   runningRamMb: 0,
-  allocatedDiskMb: 0,
   runningServers: 0,
   totalServers: 0,
 };

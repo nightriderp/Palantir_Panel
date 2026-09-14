@@ -53,6 +53,26 @@ export interface NodeCapacitySnapshot {
   readonly total: NodeResources;
   /** Belegung durch alle Server aller Nutzer, ohne den zu prüfenden Server. */
   readonly usage: NodeResourceUsage;
+  /**
+   * **Gemessener** freier Platz auf dem Dateisystem der Node, in MiB.
+   *
+   * Bis zum Wegfall der Speicherplatz-Zuweisung wurde hier die Summe der
+   * zugewiesenen `diskMb` gegen die Gesamtgröße gerechnet – eine Zahl, die mit
+   * dem tatsächlich belegten Platz nichts zu tun hatte: Ein Server mit 100 GB
+   * Zuweisung und 2 GB Weltdaten blockierte 100 GB, ein anderer durfte über
+   * seine Zuweisung hinaus wachsen, ohne dass es jemand merkte.
+   *
+   * Gemessen wird per `statfs` auf `AGENT_DATA_DIR` (`MeasuredNodeUsage`), also
+   * inklusive allem, was neben den Gameservern auf der Node liegt. Genau das
+   * ist die Zahl, die entscheidet, ob noch etwas hinpasst.
+   *
+   * `null` heißt **nicht gemessen** – Node offline, Agent frisch gestartet,
+   * Messung veraltet. Dann findet die Platten-Prüfung nicht statt: Ein Anlegen
+   * soll nicht daran scheitern, dass eine Auskunft fehlt (Wunsch des
+   * Betreibers: „das Erstellen an sich sollte immer klappen"). Die Warnung
+   * unten entfällt aus demselben Grund.
+   */
+  readonly freeDiskMb: number | null;
 }
 
 export interface CapacityCheckInput {
@@ -108,22 +128,6 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
     );
   }
 
-  // Speicherplatz zählt über alle Server des Nutzers – auch gestoppte belegen ihn.
-  if (
-    userLimits.maxDiskMb !== null &&
-    exceeds(userUsage.allocatedDiskMb, requested.diskMb, userLimits.maxDiskMb)
-  ) {
-    violations.push(
-      toViolation(
-        'user',
-        'disk',
-        userLimits.maxDiskMb,
-        userUsage.allocatedDiskMb,
-        requested.diskMb,
-      ),
-    );
-  }
-
   if (
     userLimits.maxConcurrentServers !== null &&
     exceeds(userUsage.runningServers, 1, userLimits.maxConcurrentServers)
@@ -140,9 +144,17 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
     );
   }
 
-  if (exceeds(node.usage.allocatedDiskMb, requested.diskMb, node.total.diskMb)) {
+  /*
+   * Die Platte gegen die **Messung**, nicht gegen Zuweisungen (siehe
+   * `NodeCapacitySnapshot.freeDiskMb`). `used` ist der tatsächlich belegte
+   * Platz, damit die Meldung dieselbe Sprache spricht wie die übrigen:
+   * „belegt X + angefordert Y > Grenze Z".
+   */
+  const belegterPlatzMb = node.freeDiskMb === null ? null : node.total.diskMb - node.freeDiskMb;
+
+  if (belegterPlatzMb !== null && exceeds(belegterPlatzMb, requested.diskMb, node.total.diskMb)) {
     violations.push(
-      toViolation('node', 'disk', node.total.diskMb, node.usage.allocatedDiskMb, requested.diskMb),
+      toViolation('node', 'disk', node.total.diskMb, belegterPlatzMb, requested.diskMb),
     );
   }
 
@@ -152,6 +164,8 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
         nodeId: node.nodeId,
         total: node.total,
         usage: projectUsageAfterStart(node.usage, requested),
+        // Auch die Warnung rechnet mit dem Platz **nach** diesem Start.
+        usedDiskMb: belegterPlatzMb === null ? null : belegterPlatzMb + requested.diskMb,
         thresholdPercent: thresholds.nodePercent,
         ...(input.at ? { at: input.at } : {}),
       })
@@ -167,7 +181,6 @@ function projectUsageAfterStart(
 ): NodeResourceUsage {
   return {
     runningRamMb: usage.runningRamMb + requested.ramMb,
-    allocatedDiskMb: usage.allocatedDiskMb + requested.diskMb,
     runningServers: usage.runningServers + 1,
     totalServers: usage.totalServers + 1,
   };

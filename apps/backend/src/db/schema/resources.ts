@@ -119,17 +119,19 @@ export const hostNodes = pgTable(
  *
  * `user_id` ist zugleich Primärschlüssel: je Nutzer gibt es höchstens einen
  * Datensatz. Fehlt der Datensatz ganz, gilt kein Limit – genauso wie bei einem
- * Datensatz, dessen vier Spalten alle `NULL` sind. Beide Fälle behandelt der
+ * Datensatz, dessen Grenzspalten alle `NULL` sind. Beide Fälle behandelt der
  * Service identisch (`NO_USER_RESOURCE_LIMITS`).
  *
  * Alle Grenzen sind **nullable**; `NULL` heißt ausdrücklich „für diese
  * Ressource gilt kein Limit" und ist nicht mit `0` zu verwechseln – `0` ist eine
  * gesetzte Grenze, die jeden Start ablehnt.
  *
- * `max_cpu_cores` ist mit dem Wegfall der CPU-Zuweisung entfallen: Server
- * bekommen keinen Kernanteil mehr zugewiesen, die Belegung wäre damit dauerhaft
- * null und das Kontingent nie erreichbar. Eine Spalte, die nichts mehr
- * begrenzen kann, bleibt nicht als Beruhigung stehen.
+ * `max_cpu_cores` und `max_disk_mb` sind mit dem Wegfall der jeweiligen
+ * Zuweisung entfallen: Server bekommen weder einen Kernanteil noch ein
+ * Platzkontingent zugewiesen, die Belegung wäre damit dauerhaft null und das
+ * Kontingent nie erreichbar. Eine Spalte, die nichts mehr begrenzen kann,
+ * bleibt nicht als Beruhigung stehen. Wie viel Platz eine Node noch hat, steht
+ * in der Messung (`node_usage_samples`) und wird beim Anlegen dagegen geprüft.
  *
  * Löscht der Betreiber ein Konto, verschwindet das Kontingent mit
  * (`ON DELETE CASCADE`) – ein verwaister Eintrag hätte keine Bedeutung.
@@ -139,7 +141,6 @@ export const userResourceLimits = pgTable('user_resource_limits', {
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
   maxRamMb: integer('max_ram_mb'),
-  maxDiskMb: integer('max_disk_mb'),
   maxConcurrentServers: integer('max_concurrent_servers'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

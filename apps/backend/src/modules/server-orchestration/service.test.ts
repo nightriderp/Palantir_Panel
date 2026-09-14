@@ -3655,12 +3655,9 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
   /** Belegung aus den Attrappen-Servern – gezählt wie `usage-repository.ts`. */
   function summarize(servers: readonly ServerRecord[]): UserResourceUsage & NodeResourceUsage {
     let runningRamMb = 0;
-    let allocatedDiskMb = 0;
     let runningServers = 0;
 
     for (const server of servers) {
-      allocatedDiskMb += server.resourceLimits.diskMb;
-
       if (server.status === 'running' || server.status === 'starting') {
         runningRamMb += server.resourceLimits.ramMb;
         runningServers += 1;
@@ -3669,7 +3666,6 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
 
     return {
       runningRamMb,
-      allocatedDiskMb,
       runningServers,
       totalServers: servers.length,
     };
@@ -4825,7 +4821,6 @@ describe('Verlauf der Messwerte (Arbeitspaket P5)', () => {
           // 42,5 % **eines Kerns** sind 0,425 Kerne – nicht 42,5.
           // Belegter Plattenplatz je Container fehlt im Agent-Protokoll; `null`
           // darf nie zu einer Warnung führen.
-          usedDiskMb: null,
         },
       ]);
     });

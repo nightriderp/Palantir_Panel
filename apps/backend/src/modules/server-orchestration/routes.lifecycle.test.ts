@@ -74,7 +74,7 @@ const SERVER: ServerRecord = {
   subdomain: 'testserver',
   dnsRecordId: null,
   assignedPorts: [],
-  resourceLimits: { ramMb: 2048, diskMb: 10_240 },
+  resourceLimits: { ramMb: 2048 },
   configJson: {},
   startupParameters: '',
   autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 15 },
@@ -126,7 +126,7 @@ const KONSOLE: ExecConsoleCommandResult = { exitCode: 0, stdout: 'pong', stderr:
 /** Gültiger Rumpf für `PATCH /api/servers/:id` – die Rechteprüfung liegt davor. */
 const EINSTELLUNGEN = {
   name: 'Testserver',
-  resourceLimits: { ramMb: 2048, diskMb: 10_240 },
+  resourceLimits: { ramMb: 2048 },
   config: {},
   startupParameters: '',
   autoShutdownEnabled: false,

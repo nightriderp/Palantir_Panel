@@ -26,10 +26,11 @@ describe('evaluateNodeWarnings', () => {
       total,
       usage: {
         runningRamMb: 30_000,
-        allocatedDiskMb: 2_000_000,
         runningServers: 4,
         totalServers: 9,
       },
+      // Die Platte kommt aus der Messung, nicht aus Zuweisungen.
+      usedDiskMb: 2_000_000,
       thresholdPercent: 85,
       at: AT,
     });
@@ -55,7 +56,6 @@ describe('evaluateNodeWarnings', () => {
       total: { ramMb: 100, cpuCores: 8, diskMb: 1000 },
       usage: {
         runningRamMb: 85,
-        allocatedDiskMb: 0,
         runningServers: 1,
         totalServers: 1,
       },
@@ -72,7 +72,6 @@ describe('evaluateNodeWarnings', () => {
       total: { ramMb: 100, cpuCores: 8, diskMb: 1000 },
       usage: {
         runningRamMb: 84,
-        allocatedDiskMb: 0,
         runningServers: 1,
         totalServers: 1,
       },
@@ -93,7 +92,6 @@ describe('evaluateServerWarnings', () => {
       nodeId: NODE_ID,
       limits,
       usedRamMb: 3900,
-      usedDiskMb: 1024,
       thresholdPercent: 90,
       at: AT,
     });
@@ -120,11 +118,10 @@ describe('evaluateServerWarnings', () => {
       nodeId: NODE_ID,
       limits,
       usedRamMb: null,
-      usedDiskMb: 20_000,
       thresholdPercent: 90,
       at: AT,
     });
 
-    expect(warnings.map((w) => w.resource)).toEqual(['disk']);
+    expect(warnings).toEqual([]);
   });
 });

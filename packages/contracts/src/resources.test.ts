@@ -38,7 +38,6 @@ describe('NO_USER_RESOURCE_LIMITS', () => {
   it('setzt jedes Feld auf null – „kein Limit" ist der Standardfall', () => {
     expect(NO_USER_RESOURCE_LIMITS).toEqual({
       maxRamMb: null,
-      maxDiskMb: null,
       maxConcurrentServers: null,
     });
   });

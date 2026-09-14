@@ -20,6 +20,8 @@ function input(overrides: {
   userUsage?: Partial<CapacityCheckInput['userUsage']>;
   nodeTotal?: Partial<CapacityCheckInput['node']['total']>;
   nodeUsage?: Partial<CapacityCheckInput['node']['usage']>;
+  /** Gemessener freier Platz; `null` steht fuer „keine frische Messung". */
+  freeDiskMb?: number | null;
   thresholds?: Partial<CapacityCheckInput['thresholds']>;
 }): CapacityCheckInput {
   return {
@@ -27,7 +29,6 @@ function input(overrides: {
     userLimits: overrides.userLimits ?? NO_USER_RESOURCE_LIMITS,
     userUsage: {
       runningRamMb: 0,
-      allocatedDiskMb: 0,
       runningServers: 0,
       totalServers: 0,
       ...overrides.userUsage,
@@ -37,11 +38,11 @@ function input(overrides: {
       total: { ramMb: 32_768, cpuCores: 8, diskMb: 2_097_152, ...overrides.nodeTotal },
       usage: {
         runningRamMb: 0,
-        allocatedDiskMb: 0,
         runningServers: 0,
         totalServers: 0,
         ...overrides.nodeUsage,
       },
+      freeDiskMb: overrides.freeDiskMb === undefined ? 2_000_000 : overrides.freeDiskMb,
     },
     thresholds: { nodePercent: 85, serverPercent: 90, ...overrides.thresholds },
     at: AT,
@@ -83,7 +84,6 @@ describe('checkCapacity – kein Nutzer-Kontingent gesetzt', () => {
         requested: { ramMb: 16_384 },
         userLimits: {
           maxRamMb: null,
-          maxDiskMb: null,
           maxConcurrentServers: null,
         },
         userUsage: { runningRamMb: 60_000 },
@@ -103,12 +103,10 @@ describe('checkCapacity – Limit exakt erreicht', () => {
         requested: { ramMb: 2048, diskMb: 10_240 },
         userLimits: {
           maxRamMb: 8192,
-          maxDiskMb: 51_200,
           maxConcurrentServers: 3,
         },
         userUsage: {
           runningRamMb: 6144,
-          allocatedDiskMb: 40_960,
           runningServers: 2,
         },
       }),
@@ -122,7 +120,7 @@ describe('checkCapacity – Limit exakt erreicht', () => {
     const result = checkCapacity(
       input({
         requested: { ramMb: 2768, diskMb: 152 },
-        nodeUsage: { runningRamMb: 30_000, allocatedDiskMb: 2_097_000 },
+        nodeUsage: { runningRamMb: 30_000 },
       }),
     );
 
@@ -167,11 +165,12 @@ describe('checkCapacity – Node voll trotz freiem Nutzer-Kontingent', () => {
         requested: { ramMb: 8192, diskMb: 20_480 },
         userLimits: {
           maxRamMb: 65_536,
-          maxDiskMb: 4_194_304,
           maxConcurrentServers: 50,
         },
-        userUsage: { runningRamMb: 1024, allocatedDiskMb: 4096 },
-        nodeUsage: { runningRamMb: 31_000, allocatedDiskMb: 2_090_000 },
+        userUsage: { runningRamMb: 1024 },
+        nodeUsage: { runningRamMb: 31_000 },
+        // Gemessen sind nur noch 10 GiB frei – der Server braucht 20.
+        freeDiskMb: 10_240,
       }),
     );
 
@@ -231,19 +230,56 @@ describe('checkCapacity – Anzahl gleichzeitiger Server', () => {
   });
 });
 
-describe('checkCapacity – Zählweise des Speicherplatzes', () => {
-  it('misst Speicher gegen alle Server, nicht nur die laufenden', () => {
+describe('checkCapacity – Speicherplatz aus der Messung', () => {
+  it('lehnt ab, wenn der gemessene freie Platz nicht reicht', () => {
     const result = checkCapacity(
       input({
         requested: { diskMb: 20_480 },
-        userLimits: { ...NO_USER_RESOURCE_LIMITS, maxDiskMb: 51_200 },
-        // Kein laufender Server, aber drei gestoppte belegen bereits Platz.
-        userUsage: { runningServers: 0, totalServers: 3, allocatedDiskMb: 40_960 },
+        // 2 TiB Gesamtgroesse, davon nur noch 10 GiB frei.
+        freeDiskMb: 10_240,
       }),
     );
 
     expect(result.allowed).toBe(false);
-    expect(result.violations[0]).toMatchObject({ scope: 'user', resource: 'disk', used: 40_960 });
+    expect(result.violations[0]).toMatchObject({
+      scope: 'node',
+      resource: 'disk',
+      // `used` ist der tatsaechlich belegte Platz, nicht eine Summe von
+      // Zuweisungen: Gesamt minus frei.
+      used: 2_097_152 - 10_240,
+      requested: 20_480,
+    });
+  });
+
+  it('laesst Gleichstand zu – erst darueber wird abgelehnt', () => {
+    expect(
+      checkCapacity(input({ requested: { diskMb: 20_480 }, freeDiskMb: 20_480 })).allowed,
+    ).toBe(true);
+    expect(
+      checkCapacity(input({ requested: { diskMb: 20_481 }, freeDiskMb: 20_480 })).allowed,
+    ).toBe(false);
+  });
+
+  it('prueft die Platte gar nicht, wenn keine Messung vorliegt', () => {
+    /*
+     * Node offline, Agent frisch gestartet, Messung veraltet: Dann gibt es
+     * keine Auskunft. Das Anlegen soll daran nicht scheitern - lieber ein
+     * Server, der spaeter an die Grenze laeuft, als einer, der wegen einer
+     * fehlenden Zahl gar nicht erst entsteht.
+     */
+    const result = checkCapacity(input({ requested: { diskMb: 999_999_999 }, freeDiskMb: null }));
+
+    expect(result.allowed).toBe(true);
+    expect(result.violations.map((v) => v.resource)).not.toContain('disk');
+  });
+
+  it('kennt kein Platten-Kontingent des Nutzers mehr', () => {
+    // Es summierte Zuweisungen, die es nicht mehr gibt.
+    const result = checkCapacity(
+      input({ requested: { diskMb: 1024 }, userLimits: NO_USER_RESOURCE_LIMITS }),
+    );
+
+    expect(result.violations.filter((v) => v.scope === 'user')).toEqual([]);
   });
 });
 

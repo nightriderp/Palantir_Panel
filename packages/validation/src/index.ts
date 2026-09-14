@@ -202,8 +202,6 @@ export {
   liveTopicSchema,
 } from './server-live.js';
 export {
-  SERVER_DISK_MAX_MB,
-  SERVER_DISK_MIN_MB,
   SERVER_RAM_MAX_MB,
   SERVER_RAM_MIN_MB,
   type CloneServerInput,

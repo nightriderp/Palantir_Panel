@@ -32,8 +32,8 @@ function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
     statusMessage: null,
     capacity: {
       total,
-      allocated: { ramMb: 0, diskMb: 0 },
-      available: { ramMb: total.ramMb, diskMb: total.diskMb },
+      allocated: { ramMb: 0 },
+      available: { ramMb: total.ramMb },
     },
     usage: null,
     serverCount: 0,

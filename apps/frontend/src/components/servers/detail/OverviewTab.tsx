@@ -6,13 +6,11 @@ import {
   MetricTile,
   Panel,
   SegmentedControl,
-  clampedPercentOf,
   formatCores,
   formatDateTime,
   formatDuration,
   formatMegabytes,
   formatNumber,
-  formatPercent,
   formatPing,
   formatPlayers,
   formatServerAddress,
@@ -146,7 +144,6 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       value: server.assignedPorts.length > 0 ? server.assignedPorts.join(', ') : 'keine',
     },
     { label: 'Arbeitsspeicher', value: formatMegabytes(server.resourceLimits.ramMb) },
-    { label: 'Speicherplatz', value: formatMegabytes(server.resourceLimits.diskMb) },
     { label: 'Besitzer', value: server.ownerDisplayName ?? 'nicht sichtbar' },
     { label: 'Mitverwalter', value: String(server.memberCount) },
     { label: 'Angelegt', value: formatDateTime(server.createdAt) },
@@ -217,19 +214,17 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
               : `von ${formatMegabytes(server.resourceLimits.ramMb)}`
           }
         />
+        {/*
+          Der gemessene Platzbedarf des Datenordners. Ein Anteil stand hier bis
+          zum Wegfall der Speicherplatz-Zuweisung – gegen das Kontingent des
+          Servers. Das gibt es nicht mehr: Ein Server darf wachsen, so weit die
+          Platte der Node reicht. Wie voll die ist, steht in der
+          Node-Übersicht.
+        */}
         <MetricTile
           label="Platte"
           value={formatMegabytes(stats?.diskUsedMb)}
-          tone={stats?.diskUsedMb == null ? undefined : 'warning'}
-          note={
-            stats?.diskUsedMb == null
-              ? 'noch nicht gemessen'
-              : clampedPercentOf(stats.diskUsedMb, server.resourceLimits.diskMb) === null
-                ? 'ohne Buchung kein Anteil'
-                : `${formatPercent(
-                    clampedPercentOf(stats.diskUsedMb, server.resourceLimits.diskMb),
-                  )} belegt`
-          }
+          note={stats?.diskUsedMb == null ? 'noch nicht gemessen' : 'Datenordner, ohne Obergrenze'}
         />
         <MetricTile
           label="Ping"

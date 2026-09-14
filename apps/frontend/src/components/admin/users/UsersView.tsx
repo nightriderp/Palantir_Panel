@@ -872,17 +872,13 @@ function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () =
   const canEdit = dto.permissions.canEdit;
 
   const [ram, setRam] = useState(() => limitToField(dto.limits.maxRamMb));
-  const [disk, setDisk] = useState(() => limitToField(dto.limits.maxDiskMb));
   const [servers, setServers] = useState(() => limitToField(dto.limits.maxConcurrentServers));
   const [busy, setBusy] = useState(false);
 
-  const hasLimit =
-    dto.limits.maxRamMb !== null ||
-    dto.limits.maxDiskMb !== null ||
-    dto.limits.maxConcurrentServers !== null;
+  const hasLimit = dto.limits.maxRamMb !== null || dto.limits.maxConcurrentServers !== null;
 
   async function save() {
-    const fields = [ram, disk, servers];
+    const fields = [ram, servers];
     if (fields.some((field) => field.trim() !== '' && Number.isNaN(Number(field)))) {
       toast.error('Bitte nur Zahlen eingeben oder das Feld leer lassen.');
       return;
@@ -891,7 +887,6 @@ function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () =
     setBusy(true);
     const result = await setUserLimits(dto.userId, {
       maxRamMb: fieldToLimit(ram),
-      maxDiskMb: fieldToLimit(disk),
       maxConcurrentServers: fieldToLimit(servers),
     });
     setBusy(false);
@@ -931,14 +926,6 @@ function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () =
           usageHint={`belegt: ${dto.usage.runningRamMb} MiB (${quotaCountingLabel('ram')})`}
           disabled={!canEdit || busy}
           onChange={setRam}
-        />
-        <LimitField
-          label="Speicherplatz"
-          unit="MiB"
-          value={disk}
-          usageHint={`belegt: ${dto.usage.allocatedDiskMb} MiB (${quotaCountingLabel('disk')})`}
-          disabled={!canEdit || busy}
-          onChange={setDisk}
         />
         <LimitField
           label="Gleichzeitige Server"

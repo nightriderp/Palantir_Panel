@@ -32,7 +32,6 @@ export interface GameServerPermissions {
 /** Ressourcen-Limits eines Servers (Pflichtenheft §6, `GameServer.resourceLimits`). */
 export interface ServerResourceLimits {
   ramMb: number;
-  diskMb: number;
 }
 
 /**

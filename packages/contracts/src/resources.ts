@@ -28,9 +28,13 @@
 /**
  * Ressourcenarten, die Palantir bewirtschaftet.
  *
- * `servers` ist die Anzahl gleichzeitig laufender Server – nur im
- * Nutzer-Kontingent relevant, nicht auf Node-Ebene und nie Anlass für eine
- * Warnung (eine Node hat keine Obergrenze an Servern, nur an RAM und Platz).
+ * Nicht jede Art kommt überall vor:
+ *
+ * - `ram` – Nutzer-Kontingent **und** Node-Kapazität.
+ * - `disk` – nur noch **Node**-Kapazität. Zugewiesen wird kein Speicherplatz
+ *   mehr; geprüft wird der gemessene freie Platz des Dateisystems.
+ * - `servers` – nur im Nutzer-Kontingent, und nie Anlass für eine Warnung:
+ *   Eine Anzahl wird nicht „knapp".
  */
 export type ResourceKind = 'ram' | 'disk' | 'servers';
 
@@ -48,7 +52,7 @@ export type ResourceUnit = 'mb' | 'count';
  *
  * Bewusst als Tabelle statt als Feld an jeder Struktur abgeleitet: die Zuordnung
  * ist fest und soll nicht an mehreren Stellen wiederholt werden. MiB folgt den
- * Feldnamen aus Pflichtenheft §6 (`maxRamMb`, `maxDiskMb`).
+ * Feldnamen aus Pflichtenheft §6 (`maxRamMb`).
  */
 export const RESOURCE_UNITS = {
   ram: 'mb',
@@ -137,26 +141,32 @@ export interface NodeResources {
  *
  * Bewusst ein eigener Typ neben {@link NodeResources}, obwohl beide Zahlen
  * tragen: Das eine ist die Ausstattung der Maschine, das andere die Summe der
- * Zuweisungen darauf. Seit dem Wegfall der CPU-Zuweisung unterscheiden sie sich
- * auch in den Feldern – eine Node hat Kerne, eine Zuweisung nicht mehr. Beides
- * unter einem Typ zu führen hieße, eine Kernzahl mitzuschleppen, die nur noch
- * auf einer der beiden Seiten eine Bedeutung hat.
+ * Zuweisungen darauf. Sie unterscheiden sich inzwischen auch in den Feldern –
+ * eine Node hat Kerne und eine Platte, zugewiesen wird nur noch
+ * Arbeitsspeicher. Beides unter einem Typ zu führen hieße, Zahlen
+ * mitzuschleppen, die nur noch auf einer der beiden Seiten eine Bedeutung
+ * haben.
+ *
+ * Was eine Node an Platz übrig hat, steht deshalb nicht hier, sondern in der
+ * Messung (`HostNodeUsage.diskUsedMb`).
  */
 export interface NodeAssignedResources {
   ramMb: number;
-  diskMb: number;
 }
 
 /**
  * Belegung einer Node durch alle Server aller Nutzer.
  *
- * RAM zählt nur **laufende** Server, weil ein gestoppter Container nichts davon
- * belegt. Speicherplatz zählt **alle** Server: der Datenordner bleibt auch im
- * gestoppten Zustand liegen.
+ * Gezählt werden nur **laufende** Server, weil ein gestoppter Container keinen
+ * Arbeitsspeicher belegt.
+ *
+ * **Ohne Speicherplatz.** Er wurde aus den Zuweisungen der Server summiert –
+ * die gibt es nicht mehr. Was eine Node an Platz übrig hat, misst der Agent am
+ * Dateisystem (`MeasuredNodeUsage.diskAvailableMb`); das ist die einzige Zahl,
+ * die wirklich sagt, ob noch etwas hinpasst.
  */
 export interface NodeResourceUsage {
   runningRamMb: number;
-  allocatedDiskMb: number;
   runningServers: number;
   totalServers: number;
 }
@@ -175,26 +185,23 @@ export interface NodeResourceUsage {
  */
 export interface UserResourceLimits {
   maxRamMb: number | null;
-  maxDiskMb: number | null;
   maxConcurrentServers: number | null;
 }
 
 /** Kontingent eines Nutzers ohne jede Beschränkung – der Standardfall. */
 export const NO_USER_RESOURCE_LIMITS: UserResourceLimits = Object.freeze({
   maxRamMb: null,
-  maxDiskMb: null,
   maxConcurrentServers: null,
 });
 
 /**
  * Belegung durch die Server eines einzelnen Nutzers.
  *
- * Gleiche Zählweise wie bei {@link NodeResourceUsage}: RAM nur laufend,
- * Speicherplatz über alle Server.
+ * Gleiche Zählweise wie bei {@link NodeResourceUsage}: nur laufende Server, und
+ * ohne Speicherplatz – zugewiesen wird keiner mehr.
  */
 export interface UserResourceUsage {
   runningRamMb: number;
-  allocatedDiskMb: number;
   runningServers: number;
   totalServers: number;
 }
@@ -239,7 +246,17 @@ export type CapacityScope = 'user' | 'node';
  * (Erstellungs-Wizard in F3) läuft.
  */
 export interface RequestedServerResources {
+  /** Die RAM-Zuweisung, mit der der Server starten soll. */
   ramMb: number;
+  /**
+   * **Geschätzter** Platzbedarf in MiB – keine Zuweisung.
+   *
+   * Der Wert kommt aus der Spiele-Definition
+   * (`GameTypeDefinition.resourceDefaults.diskMb`) und begrenzt nichts: Ein
+   * Server darf wachsen, so weit die Platte reicht. Er ist allein die
+   * Grundlage der Frage „passt das voraussichtlich noch auf diese Node" –
+   * geprüft gegen den **gemessenen** freien Platz.
+   */
   diskMb: number;
 }
 
@@ -369,7 +386,6 @@ export interface ResourceQuotaSlot {
 export interface ResourceQuotaDto {
   userId: string;
   ram: ResourceQuotaSlot;
-  disk: ResourceQuotaSlot;
   servers: ResourceQuotaSlot;
   /** ISO-8601-Zeitstempel der letzten Kontingent-Änderung; `null`, solange keins gesetzt wurde. */
   updatedAt: string | null;

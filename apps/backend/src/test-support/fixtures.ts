@@ -117,7 +117,7 @@ export async function legeServerAn(db: Database, vorgabe: ServerVorgabe): Promis
       gameType: vorgabe.gameType ?? 'minecraft',
       status: vorgabe.status ?? 'stopped',
       subdomain: vorgabe.subdomain ?? `server${String(nummer)}`,
-      resourceLimits: vorgabe.resourceLimits ?? { ramMb: 2048, diskMb: 10_240 },
+      resourceLimits: vorgabe.resourceLimits ?? { ramMb: 2048 },
       configJson: {},
       autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 10 },
     })
@@ -165,14 +165,12 @@ export async function setzeKontingent(
   userId: string,
   grenzen: {
     readonly maxRamMb?: number | null;
-    readonly maxDiskMb?: number | null;
     readonly maxConcurrentServers?: number | null;
   },
 ): Promise<void> {
   await db.insert(userResourceLimits).values({
     userId,
     maxRamMb: grenzen.maxRamMb ?? null,
-    maxDiskMb: grenzen.maxDiskMb ?? null,
     maxConcurrentServers: grenzen.maxConcurrentServers ?? null,
   });
 }

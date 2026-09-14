@@ -27,7 +27,6 @@ import {
   TextField,
   ToggleRow,
   formatDateTime,
-  formatMegabytes,
   useToast,
 } from '@/components/shared';
 import {
@@ -384,7 +383,6 @@ export function SettingsTab({
 
           <ResourceFields
             ramMb={draft.resourceLimits.ramMb}
-            diskMb={draft.resourceLimits.diskMb}
             onChange={(values) =>
               setDraft((current) => ({
                 ...current,
@@ -563,9 +561,8 @@ export function SettingsTab({
         <Panel variant="plain" className="flex flex-col gap-3 border-danger-line">
           <h3 className="text-base font-semibold text-danger">Server löschen</h3>
           <p className="text-sm text-ink-muted">
-            Entfernt den Server endgültig, inklusive aller Weltdaten und Sicherungen (
-            {formatMegabytes(server.resourceLimits.diskMb)} Kontingent werden frei). Vorher am
-            besten einen Export ziehen.
+            Entfernt den Server endgültig, inklusive aller Weltdaten und Sicherungen. Der Platz auf
+            der Node wird damit frei. Vorher am besten einen Export ziehen.
           </p>
           <div>
             <Button variant="danger" onClick={() => setDeleteOpen(true)}>

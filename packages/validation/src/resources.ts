@@ -73,7 +73,6 @@ export const nodeResourcesSchema = z.object({
 export const userResourceLimitsInputSchema = z
   .object({
     maxRamMb: megabytesSchema.nullish(),
-    maxDiskMb: megabytesSchema.nullish(),
     maxConcurrentServers: serverCountSchema.nullish(),
   })
   .strict()

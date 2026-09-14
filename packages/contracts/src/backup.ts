@@ -258,7 +258,13 @@ export interface ServerExportManifest {
        * @deprecated
        */
       cpuCores?: number;
-      diskMb: number;
+      /**
+       * Nur in Archiven von vor dem Wegfall der Speicherplatz-Zuweisung –
+       * dieselbe Überlegung wie bei `cpuCores`.
+       *
+       * @deprecated
+       */
+      diskMb?: number;
     };
     autoShutdownEnabled: boolean;
     autoShutdownTimeoutMinutes: number;

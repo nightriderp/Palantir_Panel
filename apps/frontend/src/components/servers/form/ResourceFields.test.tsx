@@ -1,9 +1,4 @@
-import {
-  SERVER_DISK_MAX_MB,
-  SERVER_DISK_MIN_MB,
-  SERVER_RAM_MAX_MB,
-  SERVER_RAM_MIN_MB,
-} from '@palantir/validation';
+import { SERVER_RAM_MAX_MB, SERVER_RAM_MIN_MB } from '@palantir/validation';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -20,15 +15,9 @@ import { ResourceFields } from './ResourceFields';
  * prüft.
  */
 
-function zeichne(werte?: { ramMb?: number; diskMb?: number }) {
+function zeichne(werte?: { ramMb?: number }) {
   const geaendert = vi.fn();
-  render(
-    <ResourceFields
-      ramMb={werte?.ramMb ?? 4096}
-      diskMb={werte?.diskMb ?? 10240}
-      onChange={geaendert}
-    />,
-  );
+  render(<ResourceFields ramMb={werte?.ramMb ?? 4096} onChange={geaendert} />);
   return { geaendert };
 }
 
@@ -49,21 +38,14 @@ describe('ResourceFields – Grenzen aus @palantir/validation (frontend-lib-09)'
     });
   });
 
-  it('zeigt kein CPU-Feld mehr', () => {
-    // Die Zuweisung ist entfallen: Ein Server nimmt sich die Kerne, die er
-    // braucht. Ein Feld dafür wäre ein Versprechen, das nichts einlöst.
+  it('zeigt weder ein CPU- noch ein Platten-Feld mehr', () => {
+    // Beide Zuweisungen sind entfallen: Ein Server nimmt sich die Kerne und den
+    // Platz, die er braucht. Ein Feld dafür wäre ein Versprechen, das nichts
+    // einlöst.
     zeichne();
 
     expect(screen.queryByLabelText('CPU-Kerne')).toBeNull();
-  });
-
-  it('nimmt die Platten-Untergrenze aus dem Schema und zeigt eine praktische Reglerweite', () => {
-    zeichne();
-
-    expect(grenzen('Speicherplatz')).toEqual({
-      min: String(SERVER_DISK_MIN_MB),
-      max: '512000',
-    });
+    expect(screen.queryByLabelText('Speicherplatz')).toBeNull();
   });
 
   it('bildet einen Server mit 64 GB RAM ab, statt ihn am Anschlag zu kappen', () => {
@@ -76,20 +58,9 @@ describe('ResourceFields – Grenzen aus @palantir/validation (frontend-lib-09)'
     expect(regler.value).toBe(String(sechzigVierGb));
   });
 
-  it('dehnt die Regler nie über die Schema-Obergrenze hinaus', () => {
-    zeichne({ ramMb: SERVER_RAM_MAX_MB, diskMb: SERVER_DISK_MAX_MB });
+  it('dehnt den Regler nie über die Schema-Obergrenze hinaus', () => {
+    zeichne({ ramMb: SERVER_RAM_MAX_MB });
 
     expect(grenzen('Arbeitsspeicher').max).toBe(String(SERVER_RAM_MAX_MB));
-    expect(grenzen('Speicherplatz').max).toBe(String(SERVER_DISK_MAX_MB));
-  });
-
-  it('dehnt den Platten-Regler auf einen größeren Bestandswert', () => {
-    const einTerabyte = 1_048_576;
-    zeichne({ diskMb: einTerabyte });
-
-    const regler = screen.getByLabelText('Speicherplatz') as HTMLInputElement;
-
-    expect(Number(regler.max)).toBe(einTerabyte);
-    expect(regler.value).toBe(String(einTerabyte));
   });
 });

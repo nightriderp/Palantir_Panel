@@ -13,11 +13,8 @@ import {
 
 function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
   const total = { ramMb: 16384, cpuCores: 8, diskMb: 512_000 };
-  const allocated = { ramMb: 8192, diskMb: 128_000 };
-  const available = {
-    ramMb: total.ramMb - allocated.ramMb,
-    diskMb: total.diskMb - allocated.diskMb,
-  };
+  const allocated = { ramMb: 8192 };
+  const available = { ramMb: total.ramMb - allocated.ramMb };
   return {
     id: 'n1',
     name: 'Homeserver',
@@ -25,7 +22,18 @@ function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
     status: 'online',
     statusMessage: null,
     capacity: { total, allocated, available },
-    usage: null,
+    /*
+     * Die Node misst. Der Platz steht nur noch hier – zugewiesen wird keiner
+     * mehr. Der RAM-Wert weicht bewusst von der Buchung ab: Die Karte rechnet
+     * beim RAM aus `capacity`, und das soll ein Test auch zeigen können.
+     */
+    usage: {
+      cpuPercent: 12,
+      ramUsedMb: 15_000,
+      diskUsedMb: 128_000,
+      sampledAt: '2026-08-27T10:00:00.000Z',
+      source: 'measured',
+    },
     serverCount: 3,
     lastSeenAt: '2026-08-27T10:00:00.000Z',
     createdAt: '2026-08-01T10:00:00.000Z',
@@ -90,8 +98,8 @@ describe('nodeMetrics - Ueberbuchung (Fundpunkt 209)', () => {
   const ueberbucht = node({
     capacity: {
       total: { ramMb: 28_672, cpuCores: 8, diskMb: 512_000 },
-      allocated: { ramMb: 32_768, diskMb: 20_480 },
-      available: { ramMb: 0, diskMb: 491_520 },
+      allocated: { ramMb: 32_768 },
+      available: { ramMb: 0 },
     },
   });
 
@@ -131,9 +139,9 @@ describe('nodeMetrics', () => {
       node({
         capacity: {
           total: { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
-          allocated: { ramMb: 26_624, diskMb: 86_016 },
-          running: { ramMb: 20_480, diskMb: 86_016 },
-          available: { ramMb: 2_048, diskMb: 1_913_984 },
+          allocated: { ramMb: 26_624 },
+          running: { ramMb: 20_480 },
+          available: { ramMb: 2_048 },
         },
       }),
     );
@@ -148,9 +156,9 @@ describe('nodeMetrics', () => {
       node({
         capacity: {
           total: { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
-          allocated: { ramMb: 20_480, diskMb: 86_016 },
-          running: { ramMb: 20_480, diskMb: 86_016 },
-          available: { ramMb: 8_192, diskMb: 1_913_984 },
+          allocated: { ramMb: 20_480 },
+          running: { ramMb: 20_480 },
+          available: { ramMb: 8_192 },
         },
       }),
     );
@@ -167,8 +175,8 @@ describe('nodeMetrics', () => {
     const full = node({
       capacity: {
         total: { ramMb: 16384, cpuCores: 8, diskMb: 512_000 },
-        allocated: { ramMb: 16000, diskMb: 512_000 },
-        available: { ramMb: 384, diskMb: 0 },
+        allocated: { ramMb: 16000 },
+        available: { ramMb: 384 },
       },
     });
     const ram = nodeMetrics(full).find((m) => m.key === 'ram');
@@ -179,9 +187,10 @@ describe('nodeMetrics', () => {
     const empty = node({
       capacity: {
         total: { ramMb: 0, cpuCores: 8, diskMb: 0 },
-        allocated: { ramMb: 0, diskMb: 0 },
-        available: { ramMb: 0, diskMb: 0 },
+        allocated: { ramMb: 0 },
+        available: { ramMb: 0 },
       },
+      usage: null,
     });
     expect(nodeMetrics(empty).every((m) => m.percent === null)).toBe(true);
   });
@@ -229,10 +238,20 @@ describe('smallestGameType', () => {
 });
 
 describe('nodeHasRoomFor', () => {
-  it('prüft alle drei Ressourcen', () => {
+  it('prüft den RAM gegen die freie Buchung', () => {
     const n = node();
     expect(nodeHasRoomFor(n, { ramMb: 8192, diskMb: 384_000 })).toBe(true);
     expect(nodeHasRoomFor(n, { ramMb: 8193, diskMb: 384_000 })).toBe(false);
+  });
+
+  it('prüft den Platz gegen die Messung, nicht gegen eine Buchung', () => {
+    const n = node();
+    expect(nodeHasRoomFor(n, { ramMb: 1024, diskMb: 384_001 })).toBe(false);
+  });
+
+  it('lässt eine ungemessene Node beim Platz durch', () => {
+    // Ohne Messung gibt es keine Zahl; eine Absage wäre geraten.
+    expect(nodeHasRoomFor(node({ usage: null }), { ramMb: 1024, diskMb: 9_000_000 })).toBe(true);
   });
 });
 
@@ -257,8 +276,8 @@ describe('startCapacityHint', () => {
     const cramped = node({
       capacity: {
         total: { ramMb: 16384, cpuCores: 8, diskMb: 512_000 },
-        allocated: { ramMb: 16000, diskMb: 511_000 },
-        available: { ramMb: 384, diskMb: 1000 },
+        allocated: { ramMb: 16000 },
+        available: { ramMb: 384 },
       },
     });
     const hint = startCapacityHint([cramped], types);

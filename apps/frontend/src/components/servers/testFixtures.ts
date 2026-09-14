@@ -87,7 +87,7 @@ export function server(options: ServerFixtureOptions): GameServerDto {
     subdomain: options.subdomain ?? name.toLowerCase().replace(/[^a-z0-9]/g, ''),
     address: { hostname: `${options.subdomain ?? 'welt'}.example.tld`, port: null },
     assignedPorts: [],
-    resourceLimits: { ramMb: 4096, diskMb: 20480 },
+    resourceLimits: { ramMb: 4096 },
     autoShutdownEnabled: true,
     autoShutdownTimeoutMinutes: 30,
     startupParameters: '',

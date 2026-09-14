@@ -127,7 +127,6 @@ export function ServerCard({
    */
   const cpuCores = live?.cpuPercent == null ? null : Math.round(live.cpuPercent) / 100;
   const ramPercent = clampedPercentOf(live?.ramUsedMb, server.resourceLimits.ramMb);
-  const diskPercent = clampedPercentOf(stats?.diskUsedMb, server.resourceLimits.diskMb);
   const pingMs = live?.pingMs ?? null;
 
   const address = formatServerAddress(server.address);
@@ -250,11 +249,16 @@ export function ServerCard({
           percent={ramPercent}
           tone={loadTone(ramPercent)}
         />
+        {/*
+          Wie bei der CPU: ohne Zuweisung kein Nenner fuer einen Fuellstand.
+          Der belegte Platz des Datenordners steht als Zahl; wie voll die Platte
+          der Node ist, sagt die Node-Uebersicht.
+        */}
         <MetricRing
           label="Disk"
           value={formatMegabytes(stats?.diskUsedMb)}
-          percent={diskPercent}
-          tone={loadTone(diskPercent)}
+          percent={null}
+          title="Belegter Platz des Datenordners. Ein Server hat keine feste Platten-Grenze mehr; wie voll die Node ist, steht in der Node-Übersicht."
         />
         <MetricRing
           label="Ping"

@@ -96,6 +96,15 @@ export interface NodeWarningInput {
   readonly nodeId: string;
   readonly total: NodeResources;
   readonly usage: NodeResourceUsage;
+  /**
+   * **Gemessener** belegter Platz auf dem Dateisystem der Node, in MiB.
+   *
+   * `null` heißt „nicht gemessen" – dann gibt es keine Platten-Warnung. Eine
+   * aus Zuweisungen gerechnete Zahl gibt es seit dem Wegfall der
+   * Speicherplatz-Zuweisung nicht mehr, und eine erfundene wäre schlechter als
+   * keine: Sie würde entweder dauernd warnen oder nie.
+   */
+  readonly usedDiskMb?: number | null;
   /** Schwellwert in Prozent (`RESOURCE_WARN_NODE_PERCENT`). */
   readonly thresholdPercent: number;
   /** Zeitstempel der Auswertung – injizierbar, damit Tests nicht von der Uhr abhängen. */
@@ -105,14 +114,17 @@ export interface NodeWarningInput {
 /**
  * Warnungen auf Node-Ebene.
  *
- * RAM wird gegen die laufenden Server gemessen, Speicherplatz gegen alle
- * Server – ein gestoppter Server gibt seinen Datenordner nicht frei.
+ * RAM wird gegen die laufenden Server gerechnet – die Summe ihrer Zuweisungen.
+ * Der Speicherplatz kommt dagegen aus der **Messung** der Node (`usedDiskMb`),
+ * seit es keine Zuweisung mehr gibt, gegen die sich rechnen liesse.
  */
 export function evaluateNodeWarnings(input: NodeWarningInput): ResourceLowEvent[] {
   return buildWarnings(
     [
       { resource: 'ram', used: input.usage.runningRamMb, total: input.total.ramMb },
-      { resource: 'disk', used: input.usage.allocatedDiskMb, total: input.total.diskMb },
+      ...(input.usedDiskMb === null || input.usedDiskMb === undefined
+        ? []
+        : [{ resource: 'disk' as const, used: input.usedDiskMb, total: input.total.diskMb }]),
     ],
     { scope: 'node', nodeId: input.nodeId, serverId: null },
     input.thresholdPercent,
@@ -130,9 +142,12 @@ export interface ServerWarningInput {
    *
    * `null` heißt „das Spiel bzw. der Agent liefert diesen Wert nicht" – dafür
    * gibt es dann auch keine Warnung.
+   *
+   * Ein Platten-Wert steht hier nicht mehr: Er wurde gegen die Zuweisung des
+   * Servers gerechnet, und die gibt es nicht mehr. Ob der Platte auf der Node
+   * eng wird, sagt die Node-Warnung – aus der Messung des Dateisystems.
    */
   readonly usedRamMb: number | null;
-  readonly usedDiskMb: number | null;
   /** Schwellwert in Prozent (`RESOURCE_WARN_SERVER_PERCENT`). */
   readonly thresholdPercent: number;
   readonly at?: Date;
@@ -163,19 +178,14 @@ export interface ServerLoadSnapshot {
   readonly ownerId: string;
   readonly limits: ServerResourceLimits;
   readonly usedRamMb: number | null;
-  readonly usedDiskMb: number | null;
 }
 
-/** Warnungen auf Server-Ebene: Verbrauch gegen das eigene Limit des Servers. */
+/** Warnungen auf Server-Ebene: Verbrauch gegen die eigene RAM-Grenze des Servers. */
 export function evaluateServerWarnings(input: ServerWarningInput): ResourceLowEvent[] {
   const candidates: WarningCandidate[] = [];
 
   if (input.usedRamMb !== null) {
     candidates.push({ resource: 'ram', used: input.usedRamMb, total: input.limits.ramMb });
-  }
-
-  if (input.usedDiskMb !== null) {
-    candidates.push({ resource: 'disk', used: input.usedDiskMb, total: input.limits.diskMb });
   }
 
   return buildWarnings(

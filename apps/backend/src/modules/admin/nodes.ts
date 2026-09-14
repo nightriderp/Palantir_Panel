@@ -146,7 +146,7 @@ export function emptyNodeUsageSource(): NodeUsageSource {
   return { load: async () => new Map() };
 }
 
-const NO_RESOURCES: NodeAssignedResources = { ramMb: 0, diskMb: 0 };
+const NO_RESOURCES: NodeAssignedResources = { ramMb: 0 };
 
 /**
  * Rest nie unter null – ein negativer freier Rest wäre keine brauchbare Zahl.
@@ -158,10 +158,7 @@ const NO_RESOURCES: NodeAssignedResources = { ramMb: 0, diskMb: 0 };
  * wäre dieselbe Auskunft wie bei einer exakt vollen Node gewesen.
  */
 function subtract(total: NodeResources, allocated: NodeAssignedResources): NodeAssignedResources {
-  return {
-    ramMb: Math.max(0, total.ramMb - allocated.ramMb),
-    diskMb: Math.max(0, total.diskMb - allocated.diskMb),
-  };
+  return { ramMb: Math.max(0, total.ramMb - allocated.ramMb) };
 }
 
 export function computeCapacity(
