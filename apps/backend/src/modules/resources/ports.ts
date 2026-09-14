@@ -102,9 +102,11 @@ export interface UsageQueryOptions {
  *
  * Zählweise, an die sich jede Umsetzung halten muss:
  * - `running*`: nur Server im Zustand `running` bzw. `starting` – sie belegen
- *   RAM und CPU tatsächlich.
- * - `allocatedDiskMb`: **alle** Server, unabhängig vom Zustand – der Datenordner
- *   bleibt auch im gestoppten Zustand liegen.
+ *   den RAM tatsächlich.
+ * - `totalServers`: **alle** Server, unabhängig vom Zustand.
+ *
+ * Der Platz steht hier nicht mehr: Er wird nicht zugewiesen, sondern auf der
+ * Node gemessen (`NodeCapacitySnapshot.freeDiskMb`).
  */
 export interface ServerUsageRepository {
   usageForUser(userId: string, options?: UsageQueryOptions): Promise<UserResourceUsage>;

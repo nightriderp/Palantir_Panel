@@ -87,8 +87,6 @@ describe('Kapazitätsprüfung über einer Transaktion (Fundpunkt 293)', () => {
       usageForUser: () =>
         zaehler.abfrage({
           runningRamMb: 0,
-          runningCpuCores: 0,
-          allocatedDiskMb: 0,
           runningServers: 0,
           totalServers: 0,
         }),
@@ -96,8 +94,6 @@ describe('Kapazitätsprüfung über einer Transaktion (Fundpunkt 293)', () => {
       usageForNode: () =>
         zaehler.abfrage({
           runningRamMb: 0,
-          runningCpuCores: 0,
-          allocatedDiskMb: 0,
           runningServers: 0,
           totalServers: 0,
         }),

@@ -25,7 +25,7 @@ import {
 } from '../../test-support/fixtures.js';
 import { isResourceError } from '../resources/index.js';
 import { createDrizzleCapacityReservation } from './capacity-reservation.js';
-import { type CreateServerData } from './repository.js';
+import { type CreateServerData, type ServerRepository } from './repository.js';
 import { type ResourceCheckRequest } from './resource-guard.js';
 import { createDrizzleServerUsageRepository } from './usage-repository.js';
 
@@ -54,12 +54,12 @@ function ohnePortvergabe(): {
 }
 
 describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
-  it('zählt RAM und CPU nur für running und starting, Platte für alle Zustände', async () => {
+  it('zählt RAM nur für running und starting, die Server selbst für alle Zustände', async () => {
     const usage = createDrizzleServerUsageRepository(kontext.db);
     const besitzer = await legeNutzerAn(kontext.db);
     const node = await legeNodeAn(kontext.db);
 
-    // 1024 MiB / 1 Kern / 5000 MiB Platte – laufend, zählt vollständig.
+    // 1024 MiB zugewiesen – laufend, zählt vollständig.
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
@@ -73,14 +73,14 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       status: 'starting',
       resourceLimits: { ramMb: 2048 },
     });
-    // stopped belegt nur den Datenordner.
+    // stopped belegt kein RAM – der Container läuft nicht.
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
       status: 'stopped',
       resourceLimits: { ramMb: 4096 },
     });
-    // creating ebenso – der Ordner steht schon, der Container noch nicht.
+    // creating ebenso – der Datensatz steht schon, der Container noch nicht.
     await legeServerAn(kontext.db, {
       ownerId: besitzer,
       hostId: node,
@@ -92,7 +92,6 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
 
     expect(belegung).toEqual({
       runningRamMb: 1024 + 2048,
-      allocatedDiskMb: 5000 + 6000 + 7000 + 8000,
       runningServers: 2,
       totalServers: 4,
     });
@@ -179,43 +178,40 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 10_000 });
 
     const angelegt = await reservierung.reserve(anfrage(besitzer, node), async ({ servers }) =>
-      servers.create({
-        ownerId: besitzer,
-        hostId: node,
-        name: 'Erster',
-        gameType: 'minecraft',
-        subdomain: 'erster',
-        assignedPorts: [],
-        resourceLimits: { ramMb: 1024 },
-        configJson: {},
-        startupParameters: '',
-        autoShutdown: { enabled: false, idleTimeoutMinutes: 30, graceMinutes: 10 },
-        clonedFromServerId: null,
-      }),
+      servers.create(neuerServer(besitzer, node, 'erster')),
     );
 
     expect(angelegt.status).toBe('creating');
   });
 
-  it('lässt von zwei gleichzeitigen Reservierungen nur eine durch', async () => {
+  it('lässt von zwei gleichzeitigen Starts nur einen durch', async () => {
     /*
-     * Der Kern von Punkt 98: Beide Vorgänge starten, bevor einer von beiden
+     * Der Kern von Punkt 98: Beide Vorgänge prüfen, bevor einer von beiden
      * geschrieben hat. Ohne `pg_advisory_xact_lock` bestünden beide die Prüfung
-     * gegen dieselbe (leere) Belegung und die Node wäre überbucht.
+     * gegen dieselbe (leere) Belegung und das Kontingent wäre überbucht.
      *
-     * Gemessen wird am Platzbedarf, nicht am RAM: Ein frisch angelegter Server
-     * steht in `creating` und belegt damit laut Zählregel Platte, aber kein RAM.
+     * Gemessen wird am Kontingent „gleichzeitig laufende Server", und der
+     * Anlass ist deshalb der **Start**, nicht das Anlegen: Seit die Platte
+     * nicht mehr zugewiesen, sondern gemessen wird, prüft das Anlegen allein
+     * den freien Platz der Node – und den ändert kein Datensatz, den eine
+     * Reservierung schreibt. Zwei gleichzeitige Anlegevorgänge sind damit gar
+     * kein Wettlauf mehr. Der Start dagegen schreibt `starting`, und genau das
+     * sieht die zweite Reservierung, sobald sie an die Sperre kommt.
      */
     const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN, ohnePortvergabe);
     const besitzer = await legeNutzerAn(kontext.db);
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 10_000 });
+    await setzeKontingent(kontext.db, besitzer, { maxConcurrentServers: 1 });
+
+    const eins = await legeServerAn(kontext.db, gestoppt(besitzer, node));
+    const zwei = await legeServerAn(kontext.db, gestoppt(besitzer, node));
 
     const ergebnisse = await Promise.allSettled([
-      reservierung.reserve(anfrage(besitzer, node), ({ servers }) =>
-        servers.create(neuerServer(besitzer, node, 'eins')),
+      reservierung.reserve(startAnfrage(besitzer, node, eins), ({ servers }) =>
+        starte(servers, eins),
       ),
-      reservierung.reserve(anfrage(besitzer, node), ({ servers }) =>
-        servers.create(neuerServer(besitzer, node, 'zwei')),
+      reservierung.reserve(startAnfrage(besitzer, node, zwei), ({ servers }) =>
+        starte(servers, zwei),
       ),
     ]);
 
@@ -230,8 +226,10 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
     expect(isResourceError(grund)).toBe(true);
     expect(isResourceError(grund) ? grund.code : null).toBe('RESOURCE_LIMIT_EXCEEDED');
 
-    // Und in der Datenbank steht genau ein Server – nicht zwei.
-    const zeilen = await kontext.roh('select count(*)::int as anzahl from game_servers');
+    // Und in der Datenbank steht genau ein startender Server – nicht zwei.
+    const zeilen = await kontext.roh(
+      "select count(*)::int as anzahl from game_servers where status = 'starting'",
+    );
     expect(zeilen[0]?.anzahl).toBe(1);
   });
 
@@ -252,6 +250,10 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
     const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN, ohnePortvergabe);
     const besitzer = await legeNutzerAn(kontext.db);
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 10_000 });
+    await setzeKontingent(kontext.db, besitzer, { maxConcurrentServers: 1 });
+
+    const gehaltener = await legeServerAn(kontext.db, gestoppt(besitzer, node));
+    const wartender = await legeServerAn(kontext.db, gestoppt(besitzer, node));
 
     let freigeben: () => void = () => undefined;
     const gehalten = new Promise<void>((fertig) => {
@@ -267,13 +269,14 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
       };
     });
 
-    const erste = reservierung.reserve(anfrage(besitzer, node), async ({ servers }) => {
-      const server = await servers.create(neuerServer(besitzer, node, 'gehalten'));
-      sperreErreicht();
-      await gehalten;
-
-      return server;
-    });
+    const erste = reservierung.reserve(
+      startAnfrage(besitzer, node, gehaltener),
+      async ({ servers }) => {
+        await starte(servers, gehaltener);
+        sperreErreicht();
+        await gehalten;
+      },
+    );
 
     // Ab hier steht fest: Die erste Reservierung ist in ihrer Transaktion und
     // hält die Sperre. Alles Weitere misst die Sperre, nicht das Wettrennen.
@@ -281,9 +284,7 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
 
     let zweiteFertig = false;
     const zweite = reservierung
-      .reserve(anfrage(besitzer, node), ({ servers }) =>
-        servers.create(neuerServer(besitzer, node, 'wartend')),
-      )
+      .reserve(startAnfrage(besitzer, node, wartender), ({ servers }) => starte(servers, wartender))
       .catch((fehler: unknown) => fehler)
       .then((ergebnis) => {
         zweiteFertig = true;
@@ -307,21 +308,24 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 1_000_000 });
     await setzeKontingent(kontext.db, besitzer, { maxRamMb: 512 });
 
+    const server = await legeServerAn(kontext.db, gestoppt(besitzer, node));
+
     let geschrieben = false;
 
     const fehler = await reservierung
-      .reserve(anfrage(besitzer, node), async ({ servers }) => {
+      .reserve(startAnfrage(besitzer, node, server), async ({ servers }) => {
         geschrieben = true;
 
-        return servers.create(neuerServer(besitzer, node, 'darfnicht'));
+        await starte(servers, server);
       })
       .catch((ursache: unknown) => ursache);
 
     expect(geschrieben).toBe(false);
     expect(isResourceError(fehler) ? fehler.code : null).toBe('RESOURCE_LIMIT_EXCEEDED');
 
-    const zeilen = await kontext.roh('select count(*)::int as anzahl from game_servers');
-    expect(zeilen[0]?.anzahl).toBe(0);
+    // Der Server steht unverändert da, wo er stand.
+    const zeilen = await kontext.roh('select status from game_servers');
+    expect(zeilen[0]?.status).toBe('stopped');
   });
 });
 
@@ -334,6 +338,50 @@ function anfrage(userId: string, hostId: string): ResourceCheckRequest {
     requested: { ramMb: 1024, diskMb: 6000 },
     intent: 'create',
   };
+}
+
+/**
+ * Dieselbe Anfrage, nur als Start eines vorhandenen Servers.
+ *
+ * `serverId` ist nicht Beiwerk: Die Prüfung rechnet den Server, um den es geht,
+ * aus der Belegung heraus – sonst zählte seine eigene Zuweisung gegen ihn.
+ */
+function startAnfrage(userId: string, hostId: string, serverId: string): ResourceCheckRequest {
+  return {
+    userId,
+    hostId,
+    serverId,
+    requested: { ramMb: 1024, diskMb: 6000 },
+    intent: 'start',
+  };
+}
+
+/** Ein gestoppter Server mit genau der Zuweisung aus {@link startAnfrage}. */
+function gestoppt(
+  ownerId: string,
+  hostId: string,
+): { ownerId: string; hostId: string; status: 'stopped'; resourceLimits: { ramMb: number } } {
+  return { ownerId, hostId, status: 'stopped', resourceLimits: { ramMb: 1024 } };
+}
+
+/**
+ * Der Schreibschritt eines Starts – derselbe, den der Dienst über
+ * `applyTransition` ausführt: `stopped` → `starting`, und nur von dort aus.
+ */
+function starte(servers: ServerRepository, id: string): Promise<void> {
+  const jetzt = new Date().toISOString();
+
+  return servers.persistLifecycle(
+    id,
+    {
+      status: 'starting',
+      statusMessage: null,
+      statusChangedAt: jetzt,
+      lastStartedAt: jetzt,
+      crashTimestamps: [],
+    },
+    'stopped',
+  );
 }
 
 /** Bauplan eines Servers, der genau die Anfrage aus {@link anfrage} belegt. */
