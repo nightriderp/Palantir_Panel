@@ -42,6 +42,10 @@ export interface AutoShutdownInput {
   /**
    * ISO-8601-Zeitstempel, zu dem zuletzt Spieler gesehen wurden. `null`, wenn
    * seit dem Start nie jemand verbunden war – dann zählt die Zeit ab dem Start.
+   *
+   * Der Wert überlebt einen Neustart des Servers und kann deshalb älter sein
+   * als {@link lastStartedAt}; gezählt wird ab dem späteren der beiden
+   * (Fundpunkt 294).
    */
   readonly lastActivityAt: string | null;
   /**
@@ -86,6 +90,27 @@ export type AutoShutdownKeepReason =
 export type AutoShutdownDecision =
   | { readonly action: 'keepRunning'; readonly reason: AutoShutdownKeepReason }
   | { readonly action: 'shutdown'; readonly idleMinutes: number };
+
+/**
+ * Der spätere zweier Zeitpunkte; `null`, wenn keiner brauchbar ist.
+ *
+ * Unlesbare Angaben fallen durch: Eine Zeichenkette, die kein Datum ist, darf
+ * nicht als „ganz früh" durchgehen und die andere Angabe verdrängen.
+ */
+function spaeterer(aIso: string | null, bIso: string | null): string | null {
+  const a = aIso === null ? Number.NaN : Date.parse(aIso);
+  const b = bIso === null ? Number.NaN : Date.parse(bIso);
+
+  if (!Number.isFinite(a)) {
+    return Number.isFinite(b) ? bIso : null;
+  }
+
+  if (!Number.isFinite(b)) {
+    return aIso;
+  }
+
+  return a >= b ? aIso : bIso;
+}
 
 function minutesBetween(fromIso: string, now: Date): number | null {
   const from = Date.parse(fromIso);
@@ -144,9 +169,23 @@ export function decideAutoShutdown(input: AutoShutdownInput): AutoShutdownDecisi
     return { action: 'keepRunning', reason: 'activityUnknown' };
   }
 
-  // Ohne Aktivitätszeitpunkt zählt die Zeit ab dem Start: seit dem Start war
-  // niemand da, also ist der Server seit dem Start inaktiv.
-  const referenceIso = input.lastActivityAt ?? input.lastStartedAt;
+  /*
+   * Der Leerlauf zählt ab dem **späteren** von beidem (Fundpunkt 294).
+   *
+   * Ohne Aktivitätszeitpunkt ist es der Start: Seit dem Start war niemand da,
+   * also ist der Server seit dem Start inaktiv.
+   *
+   * Mit einem Aktivitätszeitpunkt war es bisher immer dieser - auch wenn er vor
+   * dem laufenden Start lag. Für einen Server, der gestern Abend leer lief,
+   * heute neu gestartet wird und noch auf seine Spieler wartet, war die
+   * Leerlauf-Frist damit schon in der Sekunde des Starts abgelaufen: Er ging
+   * nach der Schonfrist wieder aus, während jemand darauf wartete. Am
+   * 14.09.2026 zweimal hintereinander so passiert ("Der Server war 1148 Minuten
+   * ohne Spieler" - gezählt seit dem Vorabend, 16 Minuten nach dem Start).
+   *
+   * Was vor dem aktuellen Lauf war, sagt über diesen Lauf nichts.
+   */
+  const referenceIso = spaeterer(input.lastActivityAt, input.lastStartedAt);
 
   if (referenceIso === null) {
     return { action: 'keepRunning', reason: 'activityUnknown' };
