@@ -58,14 +58,20 @@ export function directRecipientsOf(
       return input.payload.ownerId === null ? [] : [input.payload.ownerId];
 
     /*
-     * Diese drei Ereignisse haben keinen Besitzer: Eine neue Registrierung, eine
-     * gemeldete Nachricht und eine systemweite Ankündigung gehören keiner
-     * Ressource eines einzelnen Nutzers. Regeln darauf nutzen `role` oder
-     * `allUsers`.
+     * Diese vier Ereignisse haben keinen Besitzer: Eine neue Registrierung, eine
+     * gemeldete Nachricht, eine systemweite Ankündigung und eine Anfrage an den
+     * Betreiber gehören keiner Ressource eines einzelnen Nutzers. Regeln darauf
+     * nutzen `role` oder `allUsers`.
+     *
+     * Bei der Anfrage ist das besonders zu betonen: Der Antragsteller steht
+     * zwar in der Nutzlast, aber er ist nicht der Empfänger – er hat sie
+     * gestellt. Sie an ihn zuzustellen hieße, ihm seine eigene Bitte in die
+     * Inbox zu legen.
      */
     case 'user.registered':
     case 'message.reported':
     case 'announcement.published':
+    case 'quotaRequest.created':
       return [];
 
     default: {

@@ -253,6 +253,13 @@
       "when": 1789385749730,
       "tag": "0035_plattenkontingent_entfaellt",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789406412485,
+      "tag": "0036_anfrage_kennt_ihren_anlass",
+      "breakpoints": true
     }
   ]
 }

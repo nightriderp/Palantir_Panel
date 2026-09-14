@@ -12,7 +12,12 @@
  * (Kontingente) noch allein in B8 (Administration).
  */
 
-import { type QuotaRequestDto, type QuotaRequestStatus } from '@palantir/contracts';
+import {
+  type NotificationEventPayloads,
+  type QuotaRequestDto,
+  type QuotaRequestStatus,
+  type QuotaRequestTrigger,
+} from '@palantir/contracts';
 import {
   type CreateQuotaRequestInput,
   type DecideQuotaRequestInput,
@@ -31,6 +36,7 @@ export interface QuotaRequestRecord {
   readonly id: string;
   readonly userId: string;
   readonly userDisplayName: string;
+  readonly trigger: QuotaRequestTrigger;
   readonly requestedRamMb: number | null;
   readonly requestedMaxConcurrentServers: number | null;
   readonly reason: string;
@@ -44,6 +50,7 @@ export interface QuotaRequestRecord {
 export interface QuotaRequestRepository {
   create(input: {
     userId: string;
+    trigger: QuotaRequestTrigger;
     requestedRamMb: number | null;
     requestedMaxConcurrentServers: number | null;
     reason: string;
@@ -138,8 +145,37 @@ export interface QuotaRequestService {
   withdraw(actor: PermissionActor, userId: string, id: string): Promise<void>;
 }
 
+/**
+ * Meldet eine gestellte Anfrage an die Notification-Engine (B6).
+ *
+ * Bis hierher entstand die Anfrage still: Sie stand in der Datenbank und auf
+ * der Admin-Seite, und wer sie stellte, wartete darauf, dass jemand zufällig
+ * nachsieht. Der Betreiber hat genau das beanstandet – er will eine Nachricht
+ * bekommen.
+ *
+ * Bewusst dieselbe schmale Form wie bei B1 und B3 (`emit(event, payload)`):
+ * Dieses Modul kennt B6 nicht, es meldet nur. `emit()` wirft nie
+ * (Pflichtenheft §14) – eine Anfrage, die an einer Benachrichtigung
+ * scheitert, wäre die schlechtere Antwort.
+ */
+export interface QuotaRequestEventSink {
+  emit(
+    event: 'quotaRequest.created',
+    payload: NotificationEventPayloads['quotaRequest.created'],
+  ): void;
+}
+
 export interface QuotaRequestDependencies {
   readonly repository: QuotaRequestRepository;
+  /**
+   * Senke für `quotaRequest.created`; ohne Angabe wird nichts gemeldet.
+   *
+   * Optional, damit Tests des Ablaufs ohne B6 auskommen – wie bei
+   * {@link QuotaRequestDependencies.audit} auch.
+   */
+  readonly events?: QuotaRequestEventSink;
+  /** Zeitquelle für die Nutzlast – austauschbar, damit Tests nicht an der Uhr hängen. */
+  readonly now?: () => Date;
   /** Zum Setzen des Kontingents bei einer Genehmigung. */
   readonly quotas: QuotaWriter;
   /**
@@ -166,6 +202,7 @@ export function toQuotaRequestDto(
     id: record.id,
     userId: record.userId,
     userDisplayName: record.userDisplayName,
+    trigger: record.trigger,
     requestedRamMb: record.requestedRamMb,
     requestedMaxConcurrentServers: record.requestedMaxConcurrentServers,
     reason: record.reason,
@@ -235,7 +272,31 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
       throw new QuotaRequestError('QUOTA_REQUEST_INVALID_STATE');
     }
 
-    if (status === 'approved') {
+    /*
+     * Eine Kapazitätsmeldung hat nichts zu genehmigen (`trigger: 'nodeCapacity'`):
+     * Kein Kontingent stand im Weg, sondern die Maschine. „Genehmigt" heißt hier
+     * „ich habe mich gekümmert" – das Kontingent bleibt unberührt, und ins
+     * Protokoll geht die Entscheidung über die Anfrage statt einer
+     * Kontingentänderung, die nicht stattgefunden hat.
+     */
+    const kontingentBetroffen =
+      entschieden.requestedRamMb !== null || entschieden.requestedMaxConcurrentServers !== null;
+
+    if (status === 'approved' && !kontingentBetroffen) {
+      await deps.audit?.record({
+        action: 'quotaRequest.approved',
+        actorId: actorUserId,
+        actorDisplayName: entschieden.decidedByDisplayName,
+        ipHint: context?.ipHint ?? null,
+        targetType: 'quotaRequest',
+        targetId: entschieden.id,
+        metadata: {
+          userId: entschieden.userId,
+          trigger: entschieden.trigger,
+          decisionNote: entschieden.decisionNote,
+        },
+      });
+    } else if (status === 'approved') {
       /*
        * Das Kontingent erst nach dem Anspruch: Eine genehmigte Anfrage ohne das
        * versprochene Kontingent wäre falsch, deshalb wird die Anfrage wieder
@@ -327,6 +388,7 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
       try {
         record = await deps.repository.create({
           userId,
+          trigger: input.trigger ?? 'quota',
           requestedRamMb: input.requestedRamMb ?? null,
           requestedMaxConcurrentServers: input.requestedMaxConcurrentServers ?? null,
           reason: input.reason,
@@ -345,6 +407,25 @@ export function createQuotaRequestService(deps: QuotaRequestDependencies): Quota
 
         throw error;
       }
+
+      /*
+       * Erst nach dem Schreiben melden: Eine Nachricht über eine Anfrage, die
+       * es nicht gibt, schämt sich der Empfänger. Umgekehrt darf eine
+       * gescheiterte Meldung die Anfrage nicht mitreißen – `emit()` wirft
+       * deshalb nie (Pflichtenheft §14).
+       */
+      deps.events?.emit('quotaRequest.created', {
+        at: (deps.now?.() ?? new Date()).toISOString(),
+        // Der Antragsteller ist hier zugleich der Auslöser.
+        actorId: userId,
+        quotaRequestId: record.id,
+        userId: record.userId,
+        displayName: record.userDisplayName,
+        trigger: record.trigger,
+        requestedRamMb: record.requestedRamMb,
+        requestedMaxConcurrentServers: record.requestedMaxConcurrentServers,
+        reason: record.reason,
+      });
 
       return toQuotaRequestDto(actor, userId, record);
     },

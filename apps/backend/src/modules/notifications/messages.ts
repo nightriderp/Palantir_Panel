@@ -39,6 +39,30 @@ const RESOURCE_LABELS = {
   disk: 'Speicherplatz',
 } as const;
 
+/**
+ * „Gewünscht: 16384 MiB RAM, 4 Server" – der beantragte Teil in einem Satz.
+ *
+ * Ohne Wunsch gibt es nichts zu nennen; das kommt bei einer Kontingent-Anfrage
+ * nicht vor (das Schema verlangt einen), aber die Nutzlast kommt über eine
+ * bewusst schmale Senke und wird hier nicht erzwungen – dieselbe Überlegung
+ * wie bei {@link withDetail}.
+ */
+function quotaWish(payload: {
+  requestedRamMb: number | null;
+  requestedMaxConcurrentServers: number | null;
+}): string {
+  const teile = [
+    payload.requestedRamMb === null ? null : `${String(payload.requestedRamMb)} MiB RAM`,
+    payload.requestedMaxConcurrentServers === null
+      ? null
+      : `${String(payload.requestedMaxConcurrentServers)} gleichzeitige Server`,
+  ].filter((teil): teil is string => teil !== null);
+
+  return teile.length === 0
+    ? 'Die Anfrage nennt keinen Wunsch.'
+    : `Gewünscht: ${teile.join(', ')}.`;
+}
+
 function serverSubject(payload: { serverId: string; serverName: string }): NotificationSubject {
   return { type: 'server', id: payload.serverId, displayName: payload.serverName };
 }
@@ -219,6 +243,38 @@ export function renderNotification(input: NotificationEvent): RenderedNotificati
         severity: 'warning',
         subject: { type: 'message', id: input.payload.messageId, displayName: null },
       };
+
+    /*
+     * Zwei Sorten Bitte unter einem Ereignis (siehe `QuotaRequestTrigger`), und
+     * sie verlangen Verschiedenes: Die eine hebt eine Grenze, die andere
+     * schafft Platz auf der Maschine. Der Titel sagt deshalb, worum es geht,
+     * bevor jemand die Anfrage öffnet.
+     *
+     * Die Begründung steht mit im Text: Sie ist das, woran ein Mensch
+     * entscheidet – eine Meldung, die nur „X hat etwas beantragt" sagt, zwingt
+     * zum Nachsehen, bevor man weiß, ob es eilt.
+     */
+    case 'quotaRequest.created': {
+      const kapazitaet = input.payload.trigger === 'nodeCapacity';
+
+      return {
+        title: kapazitaet
+          ? `${input.payload.displayName} meldet zu wenig freie Kapazität`
+          : `${input.payload.displayName} beantragt mehr Kontingent`,
+        body: withDetail(
+          kapazitaet
+            ? 'Ein Start ist an den freien Ressourcen der Node geraten.'
+            : quotaWish(input.payload),
+          input.payload.reason,
+        ),
+        severity: 'info',
+        subject: {
+          type: 'user',
+          id: input.payload.userId,
+          displayName: input.payload.displayName,
+        },
+      };
+    }
 
     case 'announcement.published':
       return {

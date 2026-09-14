@@ -1,0 +1,1 @@
+ALTER TABLE "quota_requests" ADD COLUMN "trigger" text DEFAULT 'quota' NOT NULL;

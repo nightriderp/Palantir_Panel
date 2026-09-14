@@ -59,7 +59,7 @@ export interface NotificationGroup {
  * Ereignisse zu Themen zusammengefasst.
  *
  * Der Einstellungs-Reiter arbeitet auf Gruppen statt auf einzelnen Ereignissen:
- * Vierzehn Schalter wären auf einem Smartphone unbrauchbar, und „Serverstatus"
+ * Ein Schalter je Ereignis wäre auf einem Smartphone unbrauchbar, und „Serverstatus"
  * ist das, was jemand tatsächlich an- oder abschalten will. Die Aufteilung
  * folgt der Nennung im Lastenheft §3.6 („Serverstatus, Backup-Fehler,
  * automatisches Abschalten, neue Registrierungen, Ressourcen-Warnungen").
@@ -101,16 +101,19 @@ export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = [
   {
     key: 'resource',
     label: 'Ressourcen-Warnungen',
-    description: 'Arbeitsspeicher, CPU oder Speicherplatz erreichen die Warnschwelle.',
+    description: 'Arbeitsspeicher oder Speicherplatz erreichen die Warnschwelle.',
     icon: 'warning',
     events: ['resource.low'],
   },
   {
     key: 'account',
     label: 'Konten und Moderation',
-    description: 'Neue Registrierungen und gemeldete Nachrichten.',
+    description: 'Neue Registrierungen, gemeldete Nachrichten und Anfragen an die Administration.',
     icon: 'users',
-    events: ['user.registered', 'message.reported'],
+    // Die Anfrage gehört hierher und nicht zu den Ressourcen-Warnungen: Sie
+    // meldet keinen Schwellwert, sondern dass ein Mensch auf eine Antwort
+    // wartet – wie eine Registrierung, die freigeschaltet werden will.
+    events: ['user.registered', 'message.reported', 'quotaRequest.created'],
   },
   {
     key: 'announcement',

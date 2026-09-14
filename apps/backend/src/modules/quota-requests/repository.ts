@@ -20,6 +20,7 @@ export function createDrizzleQuotaRequestRepository(db: DbConnection): QuotaRequ
     id: quotaRequests.id,
     userId: quotaRequests.userId,
     userDisplayName: users.displayName,
+    trigger: quotaRequests.trigger,
     requestedRamMb: quotaRequests.requestedRamMb,
     requestedMaxConcurrentServers: quotaRequests.requestedMaxConcurrentServers,
     reason: quotaRequests.reason,
@@ -44,6 +45,7 @@ export function createDrizzleQuotaRequestRepository(db: DbConnection): QuotaRequ
         .insert(quotaRequests)
         .values({
           userId: input.userId,
+          trigger: input.trigger,
           requestedRamMb: input.requestedRamMb,
           requestedMaxConcurrentServers: input.requestedMaxConcurrentServers,
           reason: input.reason,

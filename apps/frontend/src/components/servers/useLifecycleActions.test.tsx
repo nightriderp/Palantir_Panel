@@ -16,10 +16,15 @@ import { useLifecycleActions } from './useLifecycleActions';
  */
 
 const laufen = vi.fn();
+const anfragen = vi.fn();
 
 vi.mock('@/lib/api/servers', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   runLifecycleAction: (...args: unknown[]) => laufen(...args) as unknown,
+}));
+
+vi.mock('@/lib/api/quota-requests', () => ({
+  createQuotaRequest: (...args: unknown[]) => anfragen(...args) as unknown,
 }));
 
 const SERVER = serverFixture({ id: 'srv-1', name: 'Welt', status: 'stopped' });
@@ -51,6 +56,7 @@ function zeichne() {
 
 beforeEach(() => {
   laufen.mockReset();
+  anfragen.mockReset();
 });
 
 describe('useLifecycleActions – Rückfrage bei enger Node', () => {
@@ -104,6 +110,70 @@ describe('useLifecycleActions – Rückfrage bei enger Node', () => {
       expect(laufen).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByText('Trotzdem starten?')).toBeNull();
+  });
+
+  /*
+   * Der dritte Weg, den der Betreiber wollte: Wer die Node nicht selbst
+   * freiräumen kann, soll nicht zwischen „aufgeben" und „auf gut Glück"
+   * wählen müssen.
+   */
+  describe('Administration benachrichtigen', () => {
+    async function oeffneMeldung() {
+      laufen.mockResolvedValue(fehler('RESOURCE_CONFIRMATION_REQUIRED'));
+      zeichne();
+      fireEvent.click(screen.getByRole('button', { name: 'Starten' }));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Administration benachrichtigen' }),
+      );
+
+      return screen.findByRole('button', { name: 'Melden' });
+    }
+
+    it('bietet den Knopf in der Rückfrage an und öffnet die Meldung', async () => {
+      await oeffneMeldung();
+
+      expect(screen.getByText('Administration benachrichtigen')).toBeTruthy();
+      // Die Rückfrage ist weg: Es wird gemeldet, nicht gestartet.
+      expect(screen.queryByText('Trotzdem starten?')).toBeNull();
+    });
+
+    it('belässt die Begründung nicht leer, sondern schlägt den Befund vor', async () => {
+      await oeffneMeldung();
+
+      const feld = screen.getByLabelText('Was ist passiert?') as HTMLInputElement;
+
+      expect(feld.value).toContain('Welt');
+      expect(feld.value).toContain('starten');
+    });
+
+    it('schickt die Meldung als Kapazitätsanfrage ohne Wunsch', async () => {
+      anfragen.mockResolvedValue({ success: true, data: {}, error: null });
+      const melden = await oeffneMeldung();
+
+      fireEvent.click(melden);
+
+      await waitFor(() => {
+        expect(anfragen).toHaveBeenCalledTimes(1);
+      });
+      const eingabe = anfragen.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(eingabe.trigger).toBe('nodeCapacity');
+      expect(eingabe.requestedRamMb).toBeUndefined();
+      expect(eingabe.requestedMaxConcurrentServers).toBeUndefined();
+      expect(String(eingabe.reason)).toContain('Welt');
+    });
+
+    it('startet den Server dabei nicht doch noch', async () => {
+      anfragen.mockResolvedValue({ success: true, data: {}, error: null });
+      const melden = await oeffneMeldung();
+
+      fireEvent.click(melden);
+
+      await waitFor(() => {
+        expect(anfragen).toHaveBeenCalledTimes(1);
+      });
+      // Nur der erste, abgelehnte Versuch – kein erzwungener hinterher.
+      expect(laufen).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('fragt nicht zweimal, wenn schon erzwungen wurde', async () => {

@@ -11,6 +11,11 @@
  * sind die Grenzen, an die man beim Anlegen und Starten tatsächlich stößt; CPU
  * und Plattenplatz hängen an denselben Servern und würden die Anfrage zu einem
  * Formular machen.
+ *
+ * Daneben trägt derselbe Vorgang eine zweite Sorte Bitte: nicht „gib mir mehr
+ * Kontingent", sondern „die Maschine ist voll, bitte sieh nach". Beides ist
+ * „ein Konto wendet sich an den Betreiber und wartet auf eine Antwort";
+ * {@link QuotaRequestTrigger} hält sie auseinander.
  */
 
 /**
@@ -33,6 +38,32 @@ export const QUOTA_REQUEST_STATUSES: readonly QuotaRequestStatus[] = [
   'withdrawn',
 ] as const;
 
+/**
+ * Woran der Antragsteller geraten ist.
+ *
+ * Es sind zwei verschiedene Bitten, und der Betreiber tut jeweils etwas
+ * anderes:
+ *
+ * - `quota` – „mein Kontingent reicht nicht". Der Betreiber hebt die Grenze,
+ *   und genau das tut eine Genehmigung: Sie schreibt die beantragten Werte ins
+ *   Kontingent.
+ * - `nodeCapacity` – „die Maschine ist zu eng". Hier gibt es nichts zu
+ *   genehmigen: Kein Kontingent steht im Weg, sondern der Arbeitsspeicher oder
+ *   der Plattenplatz der Node. Der Betreiber räumt auf, rüstet nach oder
+ *   verteilt Server um – die Entscheidung heisst dann „erledigt", nicht
+ *   „genehmigt".
+ *
+ * Deshalb hängt an diesem Feld auch, was eine Anfrage überhaupt tragen muss:
+ * Eine `quota`-Anfrage nennt mindestens einen Wunsch, eine `nodeCapacity`-Anfrage
+ * nur ihre Begründung.
+ */
+export type QuotaRequestTrigger = 'quota' | 'nodeCapacity';
+
+export const QUOTA_REQUEST_TRIGGERS: readonly QuotaRequestTrigger[] = [
+  'quota',
+  'nodeCapacity',
+] as const;
+
 /** Was der Aufrufer mit dieser Anfrage tun darf (Pflichtenheft §5.2). */
 export interface QuotaRequestPermissions {
   /** Genehmigen oder ablehnen – verlangt `user.manage` und einen offenen Antrag. */
@@ -47,8 +78,20 @@ export interface QuotaRequestDto {
   userId: string;
   userDisplayName: string;
   /**
+   * Woran der Antragsteller geraten ist (siehe {@link QuotaRequestTrigger}).
+   *
+   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3): Anfragen
+   * aus der Zeit vor der Unterscheidung tragen das Feld nicht, und sie waren
+   * alle Kontingent-Anfragen – fehlt es, gilt `quota`.
+   */
+  trigger?: QuotaRequestTrigger;
+  /**
    * Gewünschter Arbeitsspeicher in MB; `null`, wenn die Anfrage ihn nicht
-   * betrifft. Mindestens eines der beiden Wunschfelder ist gesetzt.
+   * betrifft.
+   *
+   * Bei `trigger: 'quota'` ist mindestens eines der beiden Wunschfelder
+   * gesetzt. Eine `nodeCapacity`-Anfrage lässt beide leer – sie bittet nicht
+   * um eine Zahl, sondern um Platz auf der Maschine.
    */
   requestedRamMb: number | null;
   /** Gewünschte Zahl gleichzeitig laufender Server; `null`, wenn nicht Teil der Anfrage. */

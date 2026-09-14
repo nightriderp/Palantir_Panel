@@ -13,7 +13,11 @@
  * von B8 additiv erweiterbar. Vermerkt in WORK_STATUS.md unter „Gefundene Punkte".
  */
 
-import { type HostNodeStatus, type QuotaRequestStatus } from '@palantir/contracts';
+import {
+  type HostNodeStatus,
+  type QuotaRequestStatus,
+  type QuotaRequestTrigger,
+} from '@palantir/contracts';
 import { sql } from 'drizzle-orm';
 import {
   doublePrecision,
@@ -169,6 +173,15 @@ export const quotaRequests = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * Woran der Antragsteller geraten ist (`QuotaRequestTrigger`).
+     *
+     * Vorgabe `quota`: Bis zur Unterscheidung gab es nur diese eine Sorte, und
+     * so bleiben die bestehenden Zeilen das, was sie waren. Bewusst `text` mit
+     * Vorgabe statt eines Enum-Typs – wie `status` daneben auch, und eine
+     * weitere Sorte Bitte soll keine Migration des Typs verlangen.
+     */
+    trigger: text('trigger').$type<QuotaRequestTrigger>().notNull().default('quota'),
     /** Gewünschter Arbeitsspeicher in MB; `null`, wenn nicht Teil der Anfrage. */
     requestedRamMb: integer('requested_ram_mb'),
     /** Gewünschte Zahl gleichzeitig laufender Server; `null`, wenn nicht Teil der Anfrage. */

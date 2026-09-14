@@ -87,6 +87,7 @@ const AUDIT_ACTION_LABELS: Partial<Record<AuditAction, string>> = {
   'storage.entryDeleted': 'Speicher-Eintrag gelöscht',
   'audit.archived': 'Audit-Log archiviert',
   'instance.settingsChanged': 'Instanz-Einstellungen geändert',
+  'quotaRequest.approved': 'Anfrage als erledigt beschieden',
   'quotaRequest.rejected': 'Kontingent-Anfrage abgelehnt',
   'notification.channelChanged': 'Kanal geändert',
   'notification.ruleChanged': 'Regel geändert',

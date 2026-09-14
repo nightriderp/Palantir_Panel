@@ -109,6 +109,15 @@ export function QuotaRequestSection() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    {/*
+                      Eine Kapazitätsmeldung nennt keine Zahl – sie bittet nicht
+                      um ein Kontingent, sondern um Platz auf der Maschine. Ohne
+                      diese Kachel sähe sie aus wie eine Anfrage, bei der jemand
+                      vergessen hat, etwas einzutragen.
+                    */}
+                    {request.trigger === 'nodeCapacity' ? (
+                      <Badge tone="warning">Kapazität der Node</Badge>
+                    ) : null}
                     {request.requestedRamMb === null ? null : (
                       <Badge tone="brand">{formatMegabytes(request.requestedRamMb)} RAM</Badge>
                     )}
@@ -152,26 +161,43 @@ export function QuotaRequestSection() {
           open
           onClose={() => setZuGenehmigen(null)}
           busy={busy === zuGenehmigen.id}
-          title="Kontingent anheben?"
-          confirmLabel="Genehmigen"
+          title={
+            zuGenehmigen.trigger === 'nodeCapacity'
+              ? 'Als erledigt beschieden?'
+              : 'Kontingent anheben?'
+          }
+          confirmLabel={zuGenehmigen.trigger === 'nodeCapacity' ? 'Erledigt' : 'Genehmigen'}
           message={
-            <>
+            zuGenehmigen.trigger === 'nodeCapacity' ? (
+              /*
+               * Hier ändert sich kein Kontingent: Es stand keines im Weg. Der
+               * Text darf deshalb nichts versprechen, was das Genehmigen nicht
+               * tut – es schliesst die Meldung, mehr nicht.
+               */
               <p>
-                „{zuGenehmigen.userDisplayName}“ bekommt dauerhaft mehr Kontingent. Es gibt keinen
-                Weg zurück über diese Liste – ändern lässt es sich danach nur noch unter „Nutzer →
-                Kontingent“.
+                „{zuGenehmigen.userDisplayName}“ hat zu wenig freie Kapazität gemeldet. Die Meldung
+                wird geschlossen; am Kontingent des Kontos ändert sich dabei nichts.
               </p>
-              <ul className="mt-2 flex flex-col gap-1 text-sm text-ink-muted">
-                {zuGenehmigen.requestedRamMb === null ? null : (
-                  <li>Arbeitsspeicher: {formatMegabytes(zuGenehmigen.requestedRamMb)}</li>
-                )}
-                {zuGenehmigen.requestedMaxConcurrentServers === null ? null : (
-                  <li>
-                    Gleichzeitige Server: {formatNumber(zuGenehmigen.requestedMaxConcurrentServers)}
-                  </li>
-                )}
-              </ul>
-            </>
+            ) : (
+              <>
+                <p>
+                  „{zuGenehmigen.userDisplayName}“ bekommt dauerhaft mehr Kontingent. Es gibt keinen
+                  Weg zurück über diese Liste – ändern lässt es sich danach nur noch unter „Nutzer →
+                  Kontingent“.
+                </p>
+                <ul className="mt-2 flex flex-col gap-1 text-sm text-ink-muted">
+                  {zuGenehmigen.requestedRamMb === null ? null : (
+                    <li>Arbeitsspeicher: {formatMegabytes(zuGenehmigen.requestedRamMb)}</li>
+                  )}
+                  {zuGenehmigen.requestedMaxConcurrentServers === null ? null : (
+                    <li>
+                      Gleichzeitige Server:{' '}
+                      {formatNumber(zuGenehmigen.requestedMaxConcurrentServers)}
+                    </li>
+                  )}
+                </ul>
+              </>
+            )
           }
           onConfirm={() => {
             const anfrage = zuGenehmigen;

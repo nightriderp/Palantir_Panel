@@ -77,6 +77,9 @@ export const NOTIFIABLE_EVENT_LABELS: Record<NotifiableEventName, string> = {
   'resource.low': 'Ressourcen werden knapp',
   'user.registered': 'Neue Registrierung',
   'message.reported': 'Nachricht gemeldet',
+  // Deckt beide Sorten ab (`QuotaRequestTrigger`): mehr Kontingent beantragt
+  // **und** zu wenig freie Kapazität gemeldet. Eine Regel gilt für beide.
+  'quotaRequest.created': 'Anfrage an die Administration',
   'announcement.published': 'Ankündigung veröffentlicht',
 };
 
