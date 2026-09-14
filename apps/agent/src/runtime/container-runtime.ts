@@ -25,11 +25,19 @@
  * | `GET_LOGS`            | `getLogs`            |
  * | `EXEC_CONSOLE`        | `execConsole`        |
  * | `FILE_LIST`           | (host-seitig, siehe `jobs/files/delete.ts`) |
- * | `FILE_READ`           | `readFile`           |
- * | `FILE_WRITE`          | `writeFile`          |
+ * | `FILE_READ`           | (host-seitig, siehe `jobs/files/inhalt.ts`) |
+ * | `FILE_WRITE`          | (host-seitig, siehe `jobs/files/inhalt.ts`) |
  * | `FILE_DELETE`         | (host-seitig, siehe `jobs/files/delete.ts`) |
- * | `FILE_UPLOAD`         | `uploadFile`         |
+ * | `FILE_UPLOAD`         | (host-seitig, siehe `jobs/files/inhalt.ts`) |
  * | `FILE_EXTRACT`        | `extractArchive`     |
+ *
+ * Dass von den sechs Dateibefehlen nur noch `FILE_EXTRACT` hier steht, ist das
+ * Ergebnis von Fundpunkt 105 und seinen Nachfolgern: Ein gestoppter Container
+ * nimmt keine Befehle an, und gerade dann will man an die Dateien. Seit
+ * Fundpunkt 281 laufen auch Lesen, Schreiben und Hochladen ueber den
+ * Bind-Mount; Fundpunkt 291 hat die darunterliegenden Runtime-Methoden
+ * entfernt, nachdem sie niemand mehr aufrief. `extractArchive` bleibt, weil
+ * das Entpacken die Eigentuemer-Kennung des Containers braucht.
  *
  * `CREATE_BACKUP`, `RESTORE_BACKUP` und `GET_STORAGE_BREAKDOWN` aus derselben
  * Liste sind Dateisystem- und Job-Aufgaben und gehoeren zu A3, nicht zur
@@ -57,7 +65,6 @@ import {
   type RemoveImageOptions,
   type RemoveOptions,
   type StopOptions,
-  type UploadFileOptions,
   type WatchOptions,
 } from './types.js';
 
@@ -141,12 +148,6 @@ export interface ContainerRuntime {
    */
   execConsole(containerId: string, command: readonly string[]): Promise<ExecResult>;
 
-  /** `FILE_READ`: Dateiinhalt aus dem Container lesen. */
-  readFile(containerId: string, path: string): Promise<Buffer>;
-
-  /** `FILE_WRITE`: Datei im Container schreiben bzw. ueberschreiben. */
-  writeFile(containerId: string, path: string, content: Buffer): Promise<void>;
-
   /**
    * Wo der Datenordner eines Containers liegt - im Container und auf dem Host.
    *
@@ -159,20 +160,6 @@ export interface ContainerRuntime {
    * und gehoert nicht in die Container-Runtime (CLAUDE.md §4).
    */
   dataVolumePaths(containerId: string): Promise<DataVolumePaths>;
-
-  /**
-   * `FILE_UPLOAD`: hochgeladene Datei im Datenordner ablegen.
-   *
-   * Unterscheidet sich von {@link writeFile} in genau einem Punkt: Der Zielpfad
-   * wird **vor** dem Schreiben geprueft und ein belegter Pfad ohne `overwrite`
-   * mit `FILE_EXISTS` abgelehnt.
-   */
-  uploadFile(
-    containerId: string,
-    path: string,
-    content: Buffer,
-    options?: UploadFileOptions,
-  ): Promise<void>;
 
   /**
    * `FILE_EXTRACT`: ein hochgeladenes Archiv in den Datenordner entpacken
