@@ -88,6 +88,42 @@ Die Spieltyp-Definition sagt deshalb `usesPublicPortNumber: true`; das Panel ver
 Nummer, reicht sie als `ACC_UDP_PORT`/`ACC_TCP_PORT` herein, und das Startskript trägt genau sie in
 die Konfiguration ein.
 
+## Die Serverliste bleibt aus — und warum das so bleiben sollte
+
+**Vorgabe: „In der Serverliste zeigen" ist aus.** Das ist keine Vorsicht, sondern die Folge des
+Aufbaus.
+
+Der Spieleverkehr kommt über einen Rückwärtstunnel herein: Die Node wählt zur VPS hinaus, und
+Spieler verbinden sich zur VPS. **Hinaus** spricht der Server aber direkt über die
+Internetleitung der Node. Der Lobby-Dienst kennt nur die Adresse, unter der ein Server sich bei
+ihm meldet — und das ist die der Node, nicht die der VPS.
+
+Unter dieser Adresse ist nichts erreichbar. Eingehender Verkehr ins Heimnetz ist ausgeschlossen
+(Pflichtenheft §1), und genau das ist der Sinn der Sache.
+
+ACC kennt **keine** Einstellung, mit der ein Server eine abweichende Adresse melden könnte. Damit
+bleiben zwei Ausgänge, und beide sind schlecht:
+
+- Die Registrierung scheitert (`RegisterToLobby error`), weil die Ports unter der gemeldeten
+  Adresse nicht erreichbar sind.
+- Oder sie gelingt, und in der Liste steht ein Server, zu dem niemand durchkommt.
+
+**Der zweite ist der schlimmere.** Spieler finden den Server, versuchen beizutreten, scheitern —
+und der Betreiber sucht den Fehler bei sich.
+
+### Wie Spieler stattdessen beitreten
+
+Über die Direktverbindung. In der `serverList.json` des Spielers steht die Adresse der **VPS**
+samt der Portnummern, die im Panel stehen; der Eintrag erscheint dann unter „LAN". Die Ports
+tragen drinnen dieselbe Nummer wie draußen (siehe oben), es ist also genau die Nummer aus dem
+Panel.
+
+### Wann der Schalter doch sinnvoll ist
+
+Wenn die Node selbst am Netz hängt — eigene öffentliche Adresse, Ports von außen erreichbar, kein
+Tunnel dazwischen. Dann meldet der Server dieselbe Adresse, unter der er auch erreichbar ist, und
+die Liste stimmt. Für diesen Fall bleibt der Schalter im Panel.
+
 ## Wo `accServer.exe` liegt, hängt vom Weg ab
 
 SteamCMD legt den Server in einen **Unterordner**, ein selbst gepacktes Archiv trägt oft den
