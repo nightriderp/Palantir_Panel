@@ -438,6 +438,30 @@ describe('start.sh – die Konfigurationsdateien', nurMitIconv, () => {
     assert.equal(inhalt.udpPort, 25_010);
   });
 
+  it('lässt die Serverliste aus, solange niemand sie einschaltet (Fundpunkt 270)', () => {
+    /*
+     * Hinter dem Rückwärtstunnel meldet der Server dem Lobby-Dienst die Adresse
+     * der Node, nicht die der VPS - und unter der ist nichts erreichbar. Ein
+     * Eintrag, den niemand erreicht, ist schlechter als keiner: Spieler finden
+     * den Server, versuchen beizutreten und scheitern.
+     */
+    const ordner = arbeitsordner();
+
+    starte(ordner);
+
+    assert.equal(konfig(ordner, 'configuration.json').registerToLobby, 0);
+  });
+
+  it('schaltet die Serverliste ein, wenn der Betreiber es sagt', () => {
+    // Fuer eine Node, die selbst am Netz haengt: Dann meldet der Server
+    // dieselbe Adresse, unter der er auch erreichbar ist.
+    const ordner = arbeitsordner();
+
+    starte(ordner, { ACC_REGISTER_TO_LOBBY: '1' });
+
+    assert.equal(konfig(ordner, 'configuration.json').registerToLobby, 1);
+  });
+
   it('lässt Platz für Zuschauer über den Fahrzeugplätzen', () => {
     const ordner = arbeitsordner();
 

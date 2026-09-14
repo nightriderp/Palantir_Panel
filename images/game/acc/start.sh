@@ -232,7 +232,16 @@ PLAETZE="${ACC_MAX_CAR_SLOTS:-30}"
   # Fahrer, Zuschauer und die Verbindungen, die eine Startaufstellung braucht.
   printf '  "maxConnections": %s,\n' "$((PLAETZE + 10))"
   printf '  "lanDiscovery": %s,\n' "${ACC_LAN_DISCOVERY:-1}"
-  printf '  "registerToLobby": %s,\n' "${ACC_REGISTER_TO_LOBBY:-1}"
+  # Vorgabe AUS (Fundpunkt 270). Hinter dem Rueckwaertstunnel meldet der
+  # Server dem Lobby-Dienst die Adresse der Node, nicht die der VPS - und
+  # unter der ist nichts erreichbar, denn eingehender Verkehr ins Heimnetz
+  # ist ausgeschlossen (Pflichtenheft §1). ACC kennt keine Einstellung, mit
+  # der sich eine abweichende Adresse melden liesse. Ein Eintrag in der
+  # Serverliste, den niemand erreicht, ist schlechter als keiner: Spieler
+  # finden den Server, versuchen beizutreten und scheitern.
+  #
+  # Wer die Node direkt am Netz haengen hat, schaltet es im Panel wieder ein.
+  printf '  "registerToLobby": %s,\n' "${ACC_REGISTER_TO_LOBBY:-0}"
   printf '  "configVersion": 1\n'
   printf '}\n'
 } | utf16_schreiben "${CFG}/configuration.json"
