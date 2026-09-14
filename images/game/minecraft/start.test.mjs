@@ -19,12 +19,14 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -73,9 +75,23 @@ const aufraeumen = [];
 
 after(() => {
   for (const pfad of aufraeumen) {
-    spawnSync('sh', ['-c', 'rm -rf "$1"', '_', posix(pfad)]);
+    // Aufgeräumt wird ohne Shell: Ein Prozess je Arbeitsordner kostet auf einem
+    // Windows-Arbeitsplatz mehr als das Löschen selbst (siehe Frist unten).
+    rmSync(pfad, { recursive: true, force: true });
   }
 });
+
+/**
+ * Wie lange ein Lauf von `start.sh` dauern darf.
+ *
+ * Das Skript wartet auf nichts – die Zeit steckt im Starten der Shell und der
+ * `java`-Attrappe. Allein dauert ein Lauf unter einer Sekunde; unter der
+ * Parallelität von `turbo run test` ein Vielfaches davon, weil sich alle
+ * Pakete dieselbe Maschine teilen. Eine Frist, die von der Maschinenlast
+ * abhängt, ist keine (Fundpunkt 290, hier 295) – deshalb großzügig und an
+ * einer Stelle, statt fest verdrahtet an jedem Aufruf.
+ */
+const LAUF_FRIST_MS = Number(process.env.PALANTIR_MINECRAFT_TEST_FRIST_MS ?? 120_000);
 
 /** Legt einen Arbeitsordner mit Datenordner und `java`-Attrappe an. */
 function arbeitsordner() {
@@ -120,7 +136,7 @@ function starteSkript(ordner, env = {}) {
     ],
     {
       encoding: 'utf8',
-      timeout: 30_000,
+      timeout: LAUF_FRIST_MS,
       env: {
         ...process.env,
         PALANTIR_DATA_DIR: posix(ordner.daten),
@@ -135,6 +151,17 @@ function starteSkript(ordner, env = {}) {
       },
     },
   );
+
+  // Eine abgelaufene Frist sah bisher aus wie ein Skript, das nichts ausgibt:
+  // `status` ist null, stdout leer, und die Zusicherung scheiterte an einer
+  // Argumentliste statt an der Ursache. Die Meldung nennt jetzt die Frist, die
+  // tatsächlich galt – nicht eine fest verdrahtete Zahl.
+  if (ergebnis.error?.code === 'ETIMEDOUT' || ergebnis.signal === 'SIGTERM') {
+    assert.fail(
+      `start.sh wurde nach ${LAUF_FRIST_MS} ms abgebrochen (PALANTIR_MINECRAFT_TEST_FRIST_MS). ` +
+        'Das Skript wartet auf nichts – die Maschine war vermutlich ausgelastet.',
+    );
+  }
 
   return {
     ...ergebnis,
@@ -449,10 +476,10 @@ function curlAttrappe(ordner, inhalt) {
   chmodSync(attrappe, 0o755);
 
   // Die Summe kommt aus der Datei selbst und nicht aus einer Zeichenkette im
-  // Test: `sha256sum` ist das Werkzeug, das auch das Skript benutzt.
-  return spawnSync('sh', ['-c', 'sha256sum "$1" | cut -d" " -f1', '_', posix(quelle)], {
-    encoding: 'utf8',
-  }).stdout.trim();
+  // Test. Gerechnet wird sie in Node statt mit `sha256sum` in einer eigenen
+  // Shell: Es ist derselbe Algorithmus über denselben Bytes, kostet aber keinen
+  // Prozess – und Prozesse sind hier der teure Teil (Fundpunkt 295).
+  return createHash('sha256').update(readFileSync(quelle)).digest('hex');
 }
 
 const VANILLA_UMGEBUNG = {
@@ -576,12 +603,7 @@ describe('start.sh - Mod-Ausgaben', nurMitShell, () => {
 
   it('holt die Starter-Jar von Fabric und legt den Mod-Ordner an', () => {
     const ordner = arbeitsordner();
-    const quelle = join(ordner.wurzel, 'quelle.jar');
-    writeFileSync(quelle, 'fabric');
-    const summe = spawnSync('sh', ['-c', 'sha256sum "$1" | cut -d" " -f1', '_', posix(quelle)], {
-      encoding: 'utf8',
-    }).stdout.trim();
-    curlAttrappe(ordner, 'fabric');
+    const summe = curlAttrappe(ordner, 'fabric');
 
     const lauf = starteSkript(ordner, {
       EULA: 'true',
@@ -604,12 +626,7 @@ describe('start.sh - Mod-Ausgaben', nurMitShell, () => {
   it('richtet NeoForge einmal ein und bindet danach die Argumentdatei ein', () => {
     const ordner = arbeitsordner();
     javaMitInstallation(ordner);
-    const quelle = join(ordner.wurzel, 'quelle.jar');
-    writeFileSync(quelle, 'installer');
-    const summe = spawnSync('sh', ['-c', 'sha256sum "$1" | cut -d" " -f1', '_', posix(quelle)], {
-      encoding: 'utf8',
-    }).stdout.trim();
-    curlAttrappe(ordner, 'installer');
+    const summe = curlAttrappe(ordner, 'installer');
 
     const umgebung = {
       EULA: 'true',
