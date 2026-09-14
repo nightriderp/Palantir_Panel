@@ -25,7 +25,7 @@ export interface MessageThreadProps {
   error: string | null;
   onRetry: () => void;
   sending: boolean;
-  onSend: (content: string) => void;
+  onSend: (content: string) => Promise<boolean>;
   loadingOlder: boolean;
   onLoadOlder: () => void;
   onReport: (message: MessageDto) => void;
