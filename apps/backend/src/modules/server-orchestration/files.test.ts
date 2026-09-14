@@ -172,7 +172,7 @@ describe('toServerFileListDto()', () => {
 
 describe('Kanal-Grenze', () => {
   it('bleibt unter der Vorgabe der Umgebungsvariable', () => {
-    // Spiegelt DEFAULT_MAX_FILE_BYTES des Agents; größere Dateien lehnt er ab.
+    // Dieselbe Grenze, gegen die der Agent puffert; größere Dateien lehnt er ab.
     expect(AGENT_FILE_CHANNEL_MAX_BYTES).toBe(64 * 1024 * 1024);
   });
 

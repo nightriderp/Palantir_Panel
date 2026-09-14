@@ -16,10 +16,8 @@
  */
 
 import { gzipSync } from 'node:zlib';
-import { AGENT_FILE_CHANNEL_MAX_BYTES } from '@palantir/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  DEFAULT_MAX_FILE_BYTES,
   DockerContainerRuntime,
   ENGINE_RECONNECT_INITIAL_MS,
   ENGINE_RECONNECT_MAX_MS,
@@ -567,19 +565,6 @@ describe('EXEC_CONSOLE', () => {
   });
 });
 
-describe('Kanal-Grenze (Audit contracts-validation-12)', () => {
-  it('nimmt die Datei-Grenze aus dem Vertrag', () => {
-    /*
-     * Backend und Agent muessen dieselbe Zahl kennen: Das Backend puffert nichts
-     * Groesseres, der Agent lehnt Groesseres mit AGENT_FILE_TOO_LARGE ab. Vorher
-     * stand die 64 MiB auf beiden Seiten als eigenes Literal, verbunden nur
-     * durch einen Kommentar. Das Gegenstueck steht in
-     * `apps/backend/.../files.test.ts`.
-     */
-    expect(DEFAULT_MAX_FILE_BYTES).toBe(AGENT_FILE_CHANNEL_MAX_BYTES);
-  });
-});
-
 describe('Datei-Manager', () => {
   /** Beantwortet den Inspect-Aufruf (Datenvolume-Grenze) und reicht den Rest durch. */
   function mitDatenVolume(
@@ -601,64 +586,10 @@ describe('Datei-Manager', () => {
     return aufrufe.find((aufruf) => aufruf.pfad === '/containers/c-1/archive');
   }
 
-  it('prueft die Groesse per HEAD, bevor eine Datei geladen wird', async () => {
-    const stat = Buffer.from(JSON.stringify({ name: 'gross.bin', size: 999_999_999 })).toString(
-      'base64',
-    );
-    antwortgeber = mitDatenVolume(
-      () => new Response(null, { status: 200, headers: { 'X-Docker-Container-Path-Stat': stat } }),
-    );
-
-    await expect(runtime.readFile('c-1', '/data/gross.bin')).rejects.toMatchObject({
-      code: 'FILE_TOO_LARGE',
-    });
-    // Der Inhalt wurde gar nicht erst angefordert: nur der HEAD auf /archive, kein GET.
-    expect(archivAufruf()?.method).toBe('HEAD');
-    expect(
-      aufrufe.some((aufruf) => aufruf.method === 'GET' && aufruf.pfad.endsWith('/archive')),
-    ).toBe(false);
-  });
-
-  it('liest nicht, wenn die Engine keinen verwertbaren Stat-Kopf liefert', async () => {
-    // Audit agent-runtime-06: Frueher galt die Groesse dann als 0, die Pruefung
-    // ging durch und `requestBuffer` lud das ganze Archiv ohne Grenze in den
-    // Speicher. Jetzt faellt der Zugriff geschlossen.
-    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
-
-    await expect(runtime.readFile('c-1', '/data/ohne-stat.bin')).rejects.toMatchObject({
-      code: 'FILE_TOO_LARGE',
-    });
-    expect(archivAufruf()?.method).toBe('HEAD');
-    expect(
-      aufrufe.some((aufruf) => aufruf.method === 'GET' && aufruf.pfad.endsWith('/archive')),
-    ).toBe(false);
-  });
-
-  it('entpackt ein Archiv oberhalb der Datei-Grenze', async () => {
-    /*
-     * Audit agent-runtime-02: `extractArchive` hing an derselben Grenze wie der
-     * Datei-Editor (64 MiB). Damit scheiterte genau der Fall am letzten Block,
-     * fuer den die blockweise Uebertragung gebaut wurde - ein gewachsener
-     * Weltordner. Hier steht die Datei-Grenze bewusst winzig.
-     */
-    await runtime.dispose();
-    runtime = new DockerContainerRuntime({
-      client: new DockerHttpClient({ baseUrl: PROXY_URL, fetchImpl: stubFetch }),
-      hardening: { allowedHostRoots: [DATEN_WURZEL] },
-      onStreamError: () => undefined,
-      maxFileBytes: 16,
-    });
-    aufrufe = [];
-    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
-
-    const archiv = gzipSync(createTar([{ name: 'welt/level.dat', content: Buffer.alloc(512, 7) }]));
-    expect(archiv.byteLength).toBeGreaterThan(16);
-
-    const ergebnis = await runtime.extractArchive('c-1', '', archiv, 'tar.gz');
-
-    expect(ergebnis.fileCount).toBe(1);
-    expect(aufrufe.some((aufruf) => aufruf.method === 'PUT')).toBe(true);
-  });
+  /** Kleinstes gueltiges Archiv - der Inhalt spielt fuer die Pfadpruefung keine Rolle. */
+  function weltArchiv(): Buffer {
+    return gzipSync(createTar([{ name: 'welt/level.dat', content: Buffer.from('spielstand') }]));
+  }
 
   it('lehnt ein Archiv oberhalb der Archiv-Grenze ab, ohne es zu lesen', async () => {
     await runtime.dispose();
@@ -679,44 +610,19 @@ describe('Datei-Manager', () => {
     expect(aufrufe.some((aufruf) => aufruf.method === 'PUT')).toBe(false);
   });
 
-  it('liest eine Datei aus dem TAR-Strom', async () => {
-    const stat = Buffer.from(JSON.stringify({ name: 'eula.txt', size: 9 })).toString('base64');
-    antwortgeber = mitDatenVolume((aufruf) => {
-      if (aufruf.method === 'HEAD') {
-        return new Response(null, { headers: { 'X-Docker-Container-Path-Stat': stat } });
-      }
-      return new Response(createTar([{ name: 'eula.txt', content: Buffer.from('eula=true') }]));
-    });
-
-    const inhalt = await runtime.readFile('c-1', '/data/eula.txt');
-    expect(inhalt.toString('utf8')).toBe('eula=true');
-  });
-
-  it('meldet eine fehlende Datei als FILE_NOT_FOUND', async () => {
-    antwortgeber = mitDatenVolume(() => json({ message: 'Could not find the file' }, 404));
-
-    await expect(runtime.readFile('c-1', '/data/fehlt.txt')).rejects.toMatchObject({
-      code: 'FILE_NOT_FOUND',
-    });
-  });
-
-  it('laedt beim Schreiben ein TAR in das Zielverzeichnis hoch', async () => {
+  /*
+   * Die Pfadsperre wird seit Fundpunkt 291 am Entpacken geprueft und nicht mehr
+   * am Lesen: `FILE_EXTRACT` ist der letzte Dateibefehl, den diese Runtime
+   * ausfuehrt. Geprueft wird dieselbe Stelle - `resolveWithinRoot` gegen die
+   * Wurzel aus dem Container-Label -, nur eben ueber den Aufruf, den es noch
+   * gibt.
+   */
+  it('sperrt das Entpacken auf das Datenvolume ein (absoluter Fremdpfad)', async () => {
     antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
 
-    await runtime.writeFile('c-1', '/data/server.properties', Buffer.from('max-players=20'));
-
-    const archiv = archivAufruf();
-    expect(archiv?.method).toBe('PUT');
-    // Zielangabe ist das Verzeichnis; der Dateiname steckt im Archiv.
-    expect(archiv?.query.get('path')).toBe('/data');
-  });
-
-  it('sperrt den Datei-Manager auf das Datenvolume ein (absoluter Fremdpfad)', async () => {
-    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
-
-    await expect(runtime.readFile('c-1', '/etc/passwd')).rejects.toMatchObject({
-      code: 'INVALID_PATH',
-    });
+    await expect(
+      runtime.extractArchive('c-1', '/etc/cron.d', weltArchiv(), 'tar.gz'),
+    ).rejects.toMatchObject({ code: 'INVALID_PATH' });
     // Der Ausbruch wird vor jedem Archiv-Zugriff abgefangen.
     expect(archivAufruf()).toBeUndefined();
   });
@@ -724,18 +630,18 @@ describe('Datei-Manager', () => {
   it('lehnt einen ueber .. maskierten Ausbruch ab', async () => {
     antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
 
-    await expect(runtime.readFile('c-1', '/data/../etc/passwd')).rejects.toMatchObject({
-      code: 'INVALID_PATH',
-    });
+    await expect(
+      runtime.extractArchive('c-1', '/data/../etc', weltArchiv(), 'tar.gz'),
+    ).rejects.toMatchObject({ code: 'INVALID_PATH' });
     expect(archivAufruf()).toBeUndefined();
   });
 
   it('lehnt relative Ausbruchspfade ab, ohne die Engine zu behelligen', async () => {
     antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
 
-    await expect(runtime.readFile('c-1', '../../etc/shadow')).rejects.toMatchObject({
-      code: 'INVALID_PATH',
-    });
+    await expect(
+      runtime.extractArchive('c-1', '../../etc', weltArchiv(), 'tar.gz'),
+    ).rejects.toMatchObject({ code: 'INVALID_PATH' });
     expect(archivAufruf()).toBeUndefined();
   });
 
@@ -743,59 +649,8 @@ describe('Datei-Manager', () => {
     // Der erlaubte Bereich ist pro Spiel verschieden; hier /srv statt /data.
     antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }), '/srv/game');
 
-    await expect(runtime.readFile('c-1', '/data/server.properties')).rejects.toMatchObject({
-      code: 'INVALID_PATH',
-    });
-    expect(archivAufruf()).toBeUndefined();
-  });
-
-  it('lehnt einen Upload auf einen belegten Pfad ohne overwrite ab (AGENT_FILE_EXISTS)', async () => {
-    const stat = Buffer.from(JSON.stringify({ name: 'welt.zip', size: 12 })).toString('base64');
-    antwortgeber = mitDatenVolume((aufruf) => {
-      if (aufruf.method === 'HEAD') {
-        return new Response(null, { headers: { 'X-Docker-Container-Path-Stat': stat } });
-      }
-      return new Response(null, { status: 200 });
-    });
-
     await expect(
-      runtime.uploadFile('c-1', '/data/welt.zip', Buffer.from('PK')),
-    ).rejects.toMatchObject({ code: 'FILE_EXISTS' });
-    // Geschrieben wurde nichts: nur der HEAD, kein PUT.
-    expect(aufrufe.some((aufruf) => aufruf.method === 'PUT')).toBe(false);
-  });
-
-  it('schreibt den Upload bei belegtem Pfad mit overwrite trotzdem', async () => {
-    const stat = Buffer.from(JSON.stringify({ name: 'welt.zip', size: 12 })).toString('base64');
-    antwortgeber = mitDatenVolume((aufruf) => {
-      if (aufruf.method === 'HEAD') {
-        return new Response(null, { headers: { 'X-Docker-Container-Path-Stat': stat } });
-      }
-      return new Response(null, { status: 200 });
-    });
-
-    await runtime.uploadFile('c-1', '/data/welt.zip', Buffer.from('PK'), { overwrite: true });
-
-    expect(aufrufe.some((aufruf) => aufruf.method === 'PUT')).toBe(true);
-  });
-
-  it('legt einen Upload auf einen freien Pfad ohne Rueckfrage an', async () => {
-    antwortgeber = mitDatenVolume((aufruf) => {
-      if (aufruf.method === 'HEAD') return json({ message: 'not found' }, 404);
-      return new Response(null, { status: 200 });
-    });
-
-    await runtime.uploadFile('c-1', '/data/neu.zip', Buffer.from('PK'));
-
-    const put = aufrufe.find((aufruf) => aufruf.method === 'PUT');
-    expect(put?.query.get('path')).toBe('/data');
-  });
-
-  it('sperrt den Upload auf das Datenvolume ein', async () => {
-    antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }));
-
-    await expect(
-      runtime.uploadFile('c-1', '/etc/cron.d/palantir', Buffer.from('x')),
+      runtime.extractArchive('c-1', '/data/import', weltArchiv(), 'tar.gz'),
     ).rejects.toMatchObject({ code: 'INVALID_PATH' });
     expect(archivAufruf()).toBeUndefined();
   });
@@ -833,7 +688,7 @@ describe('Datei-Manager', () => {
     // Container ohne Palantir-Label (fremd oder von Hand angelegt): kein Zugriff.
     antwortgeber = mitDatenVolume(() => new Response(null, { status: 200 }), null);
 
-    await expect(runtime.readFile('c-1', '/data/server.properties')).rejects.toMatchObject({
+    await expect(runtime.extractArchive('c-1', '', weltArchiv(), 'tar.gz')).rejects.toMatchObject({
       code: 'INVALID_PATH',
     });
     expect(archivAufruf()).toBeUndefined();

@@ -23,7 +23,6 @@ import {
   buildCreateContainerBody,
   type HardeningOptions,
 } from '../hardening.js';
-import { AGENT_FILE_CHANNEL_MAX_BYTES } from '@palantir/contracts';
 import { MAX_EXTRACTED_BYTES, type ArchiveKind, readArchive } from '../archive.js';
 import { resolveWithinRoot } from '../paths.js';
 import {
@@ -42,7 +41,6 @@ import {
   type RemoveImageOptions,
   type RemoveOptions,
   type StopOptions,
-  type UploadFileOptions,
   type WatchOptions,
 } from '../types.js';
 import { DockerHttpClient, type DockerStream, type FetchLike } from './http-client.js';
@@ -54,28 +52,13 @@ import {
   type DockerStatsResponse,
 } from './mapping.js';
 import { LogLineAssembler, demuxDockerStream, readNdjson } from './stream.js';
-import { type TarFileInput, createTar, parseTar } from './tar.js';
-
-/**
- * Obergrenze fuer Dateien, die der Datei-Manager im Speicher bewegt.
- *
- * Bewusst deutlich unter dem Upload-Limit aus `MAX_UPLOAD_SIZE_BYTES` (2 GB):
- * `readFile`/`writeFile` halten den Inhalt komplett im Speicher. Der
- * vollstaendige Export der Serverdaten (Lastenheft §3.3) laeuft nicht hierueber,
- * sondern als Backup-Job in A3.
- *
- * Der Wert kommt aus dem Vertrag (Audit contracts-validation-12): Es ist
- * dieselbe Grenze, gegen die das Backend puffert - vorher stand die 64 MiB
- * zweimal als Literal im Code, und nur ein Kommentar hielt beide Seiten
- * zusammen.
- */
-export const DEFAULT_MAX_FILE_BYTES = AGENT_FILE_CHANNEL_MAX_BYTES;
+import { type TarFileInput, createTar } from './tar.js';
 
 /**
  * Obergrenze fuer ein **Archiv**, das entpackt werden soll (Audit
  * agent-runtime-02).
  *
- * Bewusst nicht {@link DEFAULT_MAX_FILE_BYTES}: `UPLOAD_ARCHIVE_BLOCK` existiert
+ * Bewusst nicht die Datei-Grenze des Kanals: `UPLOAD_ARCHIVE_BLOCK` existiert
  * genau deshalb, weil ein gewachsener Weltordner die 64 MiB des Agent-Kanals
  * sprengt (`jobs/files/archive-upload.ts`). Praeft `extractArchive` das
  * zusammengesetzte Archiv gegen die Datei-Grenze, scheitert die blockweise
@@ -106,8 +89,6 @@ export const DEFAULT_PULL_TIMEOUT_MS = 15 * 60 * 1_000;
 export interface DockerContainerRuntimeOptions {
   readonly client: DockerHttpClient;
   readonly hardening: HardeningOptions;
-  /** Groessenlimit fuer `readFile`/`writeFile`. Vorgabe: {@link DEFAULT_MAX_FILE_BYTES}. */
-  readonly maxFileBytes?: number;
   /** Groessenlimit fuer `extractArchive`. Vorgabe: {@link DEFAULT_MAX_ARCHIVE_BYTES}. */
   readonly maxArchiveBytes?: number;
   /** Wird gerufen, wenn ein Hintergrund-Stream unerwartet abbricht. */
@@ -185,7 +166,6 @@ function istAbbruch(fehler: unknown): boolean {
 export class DockerContainerRuntime implements ContainerRuntime {
   readonly #client: DockerHttpClient;
   readonly #hardening: HardeningOptions;
-  readonly #maxFileBytes: number;
   readonly #maxArchiveBytes: number;
   readonly #registry: RegistryCredentials | undefined;
   readonly #pullTimeoutMs: number;
@@ -221,7 +201,6 @@ export class DockerContainerRuntime implements ContainerRuntime {
     this.#registry = options.registry;
     this.#pullTimeoutMs = options.pullTimeoutMs ?? DEFAULT_PULL_TIMEOUT_MS;
     this.#hardening = options.hardening;
-    this.#maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
     this.#maxArchiveBytes = options.maxArchiveBytes ?? DEFAULT_MAX_ARCHIVE_BYTES;
     this.#onStreamError =
       options.onStreamError ??
@@ -671,88 +650,6 @@ export class DockerContainerRuntime implements ContainerRuntime {
     return normalisiert;
   }
 
-  async readFile(containerId: string, datei: string): Promise<Buffer> {
-    const wurzel = await this.#datenVolumeWurzel(containerId);
-    const pfad = resolveWithinRoot(wurzel, datei);
-    const eintragStat = await this.#pfadStat(containerId, pfad);
-
-    /*
-     * Der Pfad existiert, aber die Engine nennt keine Groesse: dann wird nicht
-     * gelesen (Audit agent-runtime-06). Frueher galt die Groesse in dem Fall
-     * als 0, die Pruefung unten ging durch und `requestBuffer` lud das ganze
-     * `/archive` ohne jede Grenze in den Speicher - genau die Absicherung, die
-     * der Kommentar in `#pfadStat` behauptete, gab es nicht. Faellt lieber
-     * geschlossen: Der Datei-Manager zeigt eine Datei nicht an, statt dass der
-     * Agent am Speicher stirbt.
-     *
-     * `null` als ganzer Eintrag heisst dagegen „nicht vorhanden"; das beantwortet
-     * der Lesezugriff darunter wie bisher mit `FILE_NOT_FOUND`.
-     */
-    if (eintragStat !== null && eintragStat.sizeBytes === null) {
-      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
-        message: 'Die Groesse der Datei ist nicht bestimmbar; sie wird nicht gelesen.',
-        details: { path: pfad, maxBytes: this.#maxFileBytes },
-      });
-    }
-
-    const groesse = eintragStat?.sizeBytes ?? 0;
-
-    if (groesse > this.#maxFileBytes) {
-      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
-        details: { path: pfad, sizeBytes: groesse, maxBytes: this.#maxFileBytes },
-      });
-    }
-
-    const archiv = await this.#client.requestBuffer('GET', `${this.#pfad(containerId)}/archive`, {
-      query: { path: pfad },
-      notFoundCode: 'FILE_NOT_FOUND',
-    });
-
-    const eintrag = parseTar(archiv).find((kandidat) => kandidat.type === 'file');
-    if (eintrag === undefined) {
-      throw new ContainerRuntimeError('FILE_NOT_FOUND', {
-        message: 'Der Pfad verweist auf keine lesbare Datei.',
-        details: { path: pfad },
-      });
-    }
-    return eintrag.content;
-  }
-
-  async writeFile(containerId: string, datei: string, inhalt: Buffer): Promise<void> {
-    const wurzel = await this.#datenVolumeWurzel(containerId);
-    const pfad = resolveWithinRoot(wurzel, datei);
-
-    this.#pruefeGroesse(pfad, inhalt);
-    await this.#schreibeDatei(containerId, pfad, inhalt);
-  }
-
-  /**
-   * `FILE_UPLOAD` - wie {@link writeFile}, aber mit vorheriger Existenzpruefung.
-   *
-   * Die Pruefung ist kein Ersatz fuer eine atomare Anlage: Zwischen `HEAD` und
-   * `PUT` kann ein zweiter Upload dieselbe Datei anlegen. Die Engine bietet
-   * kein „nur anlegen, wenn nicht vorhanden" an; die Pruefung faengt den Fall
-   * ab, um den es hier geht - der Nutzer laedt versehentlich auf einen belegten
-   * Namen und wuerde die vorhandene Datei sonst unbemerkt verlieren.
-   */
-  async uploadFile(
-    containerId: string,
-    datei: string,
-    inhalt: Buffer,
-    options: UploadFileOptions = {},
-  ): Promise<void> {
-    const wurzel = await this.#datenVolumeWurzel(containerId);
-    const pfad = resolveWithinRoot(wurzel, datei);
-
-    this.#pruefeGroesse(pfad, inhalt);
-
-    if (options.overwrite !== true && (await this.#pfadStat(containerId, pfad)) !== null) {
-      throw new ContainerRuntimeError('FILE_EXISTS', { details: { path: pfad } });
-    }
-
-    await this.#schreibeDatei(containerId, pfad, inhalt);
-  }
-
   /**
    * `FILE_EXTRACT` - ein hochgeladenes Archiv in den Datenordner entpacken
    * (Weltdaten-Uebernahme, Arbeitspaket P4).
@@ -840,70 +737,8 @@ export class DockerContainerRuntime implements ContainerRuntime {
 
   // ---------------------------------------------------------------- Intern
 
-  #pruefeGroesse(pfad: string, inhalt: Buffer): void {
-    if (inhalt.length > this.#maxFileBytes) {
-      throw new ContainerRuntimeError('FILE_TOO_LARGE', {
-        details: { path: pfad, sizeBytes: inhalt.length, maxBytes: this.#maxFileBytes },
-      });
-    }
-  }
-
-  /** Einzelne Datei als Tar in ihr Zielverzeichnis entpacken lassen. */
-  async #schreibeDatei(containerId: string, pfad: string, inhalt: Buffer): Promise<void> {
-    const zielVerzeichnis = path.posix.dirname(pfad);
-    const archiv = createTar([{ name: path.posix.basename(pfad), content: inhalt }]);
-
-    await this.#client.requestVoid('PUT', `${this.#pfad(containerId)}/archive`, {
-      query: { path: zielVerzeichnis },
-      rawBody: archiv,
-      notFoundCode: 'FILE_NOT_FOUND',
-    });
-  }
-
   #pfad(containerId: string): string {
     return `/containers/${encodeURIComponent(containerId)}`;
-  }
-
-  /**
-   * Groesse und Art eines Pfades im Container, ohne ihn zu laden (HEAD auf
-   * `/archive`). `null`, wenn der Pfad nicht existiert - darauf bauen die
-   * Existenzpruefung des Uploads und das idempotente Loeschen auf.
-   */
-  async #pfadStat(
-    containerId: string,
-    pfad: string,
-  ): Promise<{ sizeBytes: number | null; istVerzeichnis: boolean } | null> {
-    let antwort: Response;
-    try {
-      antwort = await this.#client.requestRaw('HEAD', `${this.#pfad(containerId)}/archive`, {
-        query: { path: pfad },
-        notFoundCode: 'FILE_NOT_FOUND',
-      });
-    } catch (fehler: unknown) {
-      if (isContainerRuntimeError(fehler) && fehler.code === 'FILE_NOT_FOUND') return null;
-      throw fehler;
-    }
-
-    // `sizeBytes: null` heisst „Pfad existiert, Groesse unbekannt" - und ist
-    // etwas anderes als eine leere Datei. Wer die Groesse braucht, muss den
-    // Fall behandeln (`readFile` lehnt ab); wer nur die Existenz prueft
-    // (`uploadFile`, Loeschen), kommt weiter wie bisher.
-    const kopfzeile = antwort.headers.get('x-docker-container-path-stat');
-    if (kopfzeile === null) return { sizeBytes: null, istVerzeichnis: false };
-
-    try {
-      const stat = JSON.parse(Buffer.from(kopfzeile, 'base64').toString('utf8')) as {
-        size?: number;
-        mode?: number;
-      };
-      return {
-        sizeBytes: stat.size ?? null,
-        // Go-`FileMode`: das oberste Bit (1 << 31) steht fuer „Verzeichnis".
-        istVerzeichnis: ((stat.mode ?? 0) & 0x8000_0000) !== 0,
-      };
-    } catch {
-      return { sizeBytes: null, istVerzeichnis: false };
-    }
   }
 
   #setzeStatus(

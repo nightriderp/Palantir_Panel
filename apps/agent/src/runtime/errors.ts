@@ -38,9 +38,9 @@ export const RUNTIME_ERROR_CATALOG = {
    * agent-conn-02).
    *
    * Bewusst getrennt von {@link FILE_TOO_LARGE}: Dort geht es um die Grenze des
-   * Datei-Managers (`readFile`/`writeFile`/`FILE_UPLOAD`, Vorgabe 64 MiB), die
-   * gerade **nicht** fuer Archive gelten darf - die blockweise Uebertragung
-   * existiert genau deshalb, weil ein gewachsener Weltordner groesser ist. Fuer
+   * Datei-Managers (`jobs/files/inhalt.ts`, Vorgabe 64 MiB), die gerade
+   * **nicht** fuer Archive gelten darf - die blockweise Uebertragung existiert
+   * genau deshalb, weil ein gewachsener Weltordner groesser ist. Fuer
    * Archive gilt die eigene, groessere Grenze (`MAX_EXTRACTED_BYTES`).
    */
   ARCHIVE_TOO_LARGE: 'Das Archiv ist groesser als das erlaubte Limit.',
@@ -48,7 +48,7 @@ export const RUNTIME_ERROR_CATALOG = {
    * Der Zielpfad eines Uploads ist bereits belegt und `overwrite` ist nicht
    * gesetzt (`FILE_UPLOAD`, Arbeitspaket P2).
    *
-   * Bewusst nur beim Upload und nicht beim Schreiben: `writeFile` gehoert zum
+   * Bewusst nur beim Upload und nicht beim Schreiben: Das Schreiben gehoert zum
    * eingebauten Editor und ueberschreibt still, weil dort genau die Datei
    * zurueckgespeichert wird, die vorher gelesen wurde. Ein Upload legt dagegen
    * eine neue Datei ab - dass dabei unbemerkt eine gleichnamige verschwindet,
