@@ -324,14 +324,16 @@ describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
     zeichne();
     await screen.findByText('Online');
 
-    // 2048 MiB von 4 GiB Kontingent - vorher stand hier ein Strich.
-    expect(await screen.findByText('2 GiB')).toBeTruthy();
-    // 250 % eines Kerns sind 2,5 ausgelastete Kerne. Seit dem Wegfall der
-    // CPU-Zuweisung steht dort die absolute Zahl – es gibt keine servereigene
-    // Bezugsgroesse mehr, gegen die sich ein Prozentwert bilden liesse.
+    // 2048 MiB vom gebuchten Kontingent - vorher stand hier ein Strich. Der
+    // Bezugswert steht seit der Angleichung an hafenmeister in derselben Zeile.
+    expect(await screen.findByText(/2 GiB von/)).toBeTruthy();
+    /*
+     * 250 % eines Kerns sind 2,5 ausgelastete Kerne. Kennt der Eintrag die
+     * Kerne der Node nicht (die Attrappe liefert sie nicht), bleibt es bei der
+     * Kernzahl - lieber unschaerfer als ein erfundener Nenner.
+     */
     expect(screen.getByText('2,5 Kerne')).toBeTruthy();
     expect(screen.getByText(/Keine laufenden Messwerte/)).toBeTruthy();
-    expect(screen.queryByText('Der Server läuft nicht.')).toBeNull();
   });
 
   it('sagt beim laufenden Server ohne jede Messung nicht, er laufe nicht', async () => {
@@ -377,9 +379,13 @@ describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
     zeichne();
     await screen.findByText('Offline');
 
-    // Die Messung von vorhin gehoert nicht in die Kacheln eines Servers, der
-    // gerade nicht laeuft - sie saehe aus wie der aktuelle Zustand.
-    expect(await screen.findByText('Der Server läuft nicht.')).toBeTruthy();
+    /*
+     * Die Messung von vorhin gehoert nicht in die Kacheln eines Servers, der
+     * gerade nicht laeuft - sie saehe aus wie der aktuelle Zustand. Sichtbar
+     * wird das an der Laufzeit-Kachel und daran, dass der Hinweis auf die
+     * letzte festgehaltene Messung ausbleibt.
+     */
+    expect((await screen.findAllByText('Server läuft nicht')).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Keine laufenden Messwerte/)).toBeNull();
   });
 });

@@ -54,8 +54,16 @@ function valueOf(metrics: ReturnType<typeof buildStatusMetrics>, key: string): s
   return metrics.find((metric) => metric.key === key)?.value;
 }
 
-function originOf(metrics: ReturnType<typeof buildStatusMetrics>, key: string): string | undefined {
-  return metrics.find((metric) => metric.key === key)?.origin;
+/**
+ * Die Herkunft steht seit der Angleichung an hafenmeister im Tooltip, nicht
+ * mehr als eigenes Wort in der Zeile - geprüft wird deshalb der Satz.
+ */
+function noteHas(
+  metrics: ReturnType<typeof buildStatusMetrics>,
+  key: string,
+  text: string,
+): boolean {
+  return (metrics.find((metric) => metric.key === key)?.note ?? '').includes(text);
 }
 
 function noteOf(metrics: ReturnType<typeof buildStatusMetrics>, key: string): string | undefined {
@@ -140,8 +148,11 @@ describe('buildStatusMetrics', () => {
       statsById: {},
     });
 
-    expect(valueOf(metrics, 'ram')).toBe('4 GiB/16 GiB');
-    expect(valueOf(metrics, 'disk')).toBe('100 GiB/500 GiB');
+    // Prozent in der Zeile, die absoluten Zahlen im Tooltip (hafenmeister-Stil).
+    expect(valueOf(metrics, 'ram')).toBe('25 %');
+    expect(valueOf(metrics, 'disk')).toBe('20 %');
+    expect(noteHas(metrics, 'ram', '4 GiB von 16 GiB')).toBe(true);
+    expect(noteHas(metrics, 'disk', '100 GiB von 500 GiB')).toBe(true);
   });
 
   it('zeigt einen Strich, solange keine Node eine Plattenbelegung meldet', () => {
@@ -172,7 +183,8 @@ describe('buildStatusMetrics', () => {
       statsById: {},
     });
 
-    expect(valueOf(metrics, 'disk')).toBe('100 GiB/500 GiB');
+    expect(valueOf(metrics, 'disk')).toBe('20 %');
+    expect(noteHas(metrics, 'disk', '100 GiB von 500 GiB')).toBe(true);
   });
 
   it('zählt auch eine Node ohne Plattenwert nicht mit, wenn sie sonst misst', () => {
@@ -199,7 +211,8 @@ describe('buildStatusMetrics', () => {
 
     // 100 GiB + 50 GiB gemessen, Nenner 500 GiB + 200 GiB – die Node ohne
     // Plattenwert steuert zu keiner der beiden Seiten etwas bei.
-    expect(valueOf(metrics, 'disk')).toBe('150 GiB/700 GiB');
+    expect(valueOf(metrics, 'disk')).toBe('21 %');
+    expect(noteHas(metrics, 'disk', '150 GiB von 700 GiB')).toBe(true);
     expect(valueOf(metrics, 'cpu')).toBe('40 %');
     expect(valueOf(metrics, 'nodes')).toBe('2/3');
   });
@@ -212,7 +225,8 @@ describe('buildStatusMetrics', () => {
     });
 
     // Buchungen kennt jede Node – eine fehlende Messung ändert daran nichts.
-    expect(valueOf(metrics, 'ram')).toBe('8 GiB/32 GiB');
+    expect(valueOf(metrics, 'ram')).toBe('25 %');
+    expect(noteHas(metrics, 'ram', '8 GiB von 32 GiB')).toBe(true);
   });
 
   it('blendet Bewegung, Fehler und Updates nur ein, wenn es etwas zu melden gibt', () => {
@@ -274,8 +288,8 @@ describe('Herkunft der Kopfzahlen (Fundpunkt 204)', () => {
       statsById: {},
     });
 
-    expect(originOf(metrics, 'disk')).toBe('gemessen');
-    expect(originOf(metrics, 'cpu')).toBe('gemessen');
+    expect(noteHas(metrics, 'disk', 'Vom Agent auf der Node gemessen')).toBe(true);
+    expect(noteHas(metrics, 'cpu', 'Vom Agent auf der Node gemessen')).toBe(true);
   });
 
   it('nennt die Ersatzrechnung gebucht', () => {
@@ -285,8 +299,7 @@ describe('Herkunft der Kopfzahlen (Fundpunkt 204)', () => {
       statsById: {},
     });
 
-    expect(originOf(metrics, 'disk')).toBe('gebucht');
-    expect(noteOf(metrics, 'disk')).toContain('Keine frische Messung');
+    expect(noteHas(metrics, 'disk', 'Keine frische Messung')).toBe(true);
   });
 
   it('macht eine gemischte Lage sichtbar, statt sie zu verschweigen', () => {
@@ -299,8 +312,7 @@ describe('Herkunft der Kopfzahlen (Fundpunkt 204)', () => {
       statsById: {},
     });
 
-    expect(originOf(metrics, 'disk')).toBe('teils gemessen');
-    expect(noteOf(metrics, 'disk')).toContain('Gemessen auf 1 von 2 Nodes');
+    expect(noteHas(metrics, 'disk', 'Gemessen auf 1 von 2 Nodes')).toBe(true);
   });
 
   it('behauptet keine Herkunft, wenn der Vertrag sie nicht mitliefert', () => {
@@ -311,29 +323,29 @@ describe('Herkunft der Kopfzahlen (Fundpunkt 204)', () => {
       statsById: {},
     });
 
-    expect(originOf(metrics, 'disk')).toBeUndefined();
-    expect(originOf(metrics, 'cpu')).toBeUndefined();
+    expect(noteHas(metrics, 'disk', 'gemessen')).toBe(false);
+    expect(noteHas(metrics, 'cpu', 'gemessen')).toBe(false);
   });
 
-  it('nennt den RAM immer gebucht, weil er nie gemessen ist', () => {
+  it('nennt den RAM im Tooltip immer gebucht, weil er nie gemessen ist', () => {
     const metrics = buildStatusMetrics({
       servers: [],
       nodes: [node({ usage: gemessen(102400) })],
       statsById: {},
     });
 
-    expect(originOf(metrics, 'ram')).toBe('gebucht');
+    expect(noteHas(metrics, 'ram', 'gebucht, nicht gemessen')).toBe(true);
   });
 
-  it('laesst die Serverzahlen ohne Zusatz', () => {
+  it('laesst die Serverzahlen ohne Herkunftssatz', () => {
     const metrics = buildStatusMetrics({
       servers: [server({ id: 'a', status: 'running' })],
       nodes: null,
       statsById: {},
     });
 
-    expect(originOf(metrics, 'servers')).toBeUndefined();
-    expect(originOf(metrics, 'players')).toBeUndefined();
+    expect(noteHas(metrics, 'servers', 'gemessen')).toBe(false);
+    expect(noteHas(metrics, 'players', 'gemessen')).toBe(false);
   });
 });
 

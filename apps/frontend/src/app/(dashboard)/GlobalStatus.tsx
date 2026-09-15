@@ -1,7 +1,14 @@
 'use client';
 
-import { cn } from '@/components/shared';
+import { useEffect, useRef, useState } from 'react';
+import { MetricChart, cn } from '@/components/shared';
 import { type StatusMetric, type StatusMetricTone } from './shellSummary';
+import {
+  type StatusSample,
+  appendStatusSample,
+  statusSeries,
+  statusSpanLabel,
+} from './statusHistory';
 
 /**
  * Gesamtstatus-Leiste in der Kopfzeile (Mockup „Gesamtstatus").
@@ -18,6 +25,12 @@ import { type StatusMetric, type StatusMetricTone } from './shellSummary';
  * Bildschirmhöhe; der eigentliche Inhalt begann unter dem Falz. Neben den
  * Symbolen bliebe für sie nur ein 150 Pixel breiter Streifen – deshalb
  * `order-last` und die volle Breite statt eines Restplatzes.
+ *
+ * **Der Verlauf beim Überfahren** ist aus hafenmeister übernommen: Unter der
+ * Kennzahl klappt eine kleine Kurve auf, die zeigt, wohin die Zahl gerade
+ * läuft. Sie wird im Browser gesammelt (`statusHistory.ts`) und reicht nur so
+ * weit zurück, wie die Seite offen ist – das Fenster sagt es dazu, damit
+ * niemand mehr erwartet, als da ist.
  */
 
 const DOT_CLASSES: Record<StatusMetricTone, string> = {
@@ -41,6 +54,41 @@ export interface GlobalStatusProps {
 }
 
 export function GlobalStatus({ metrics }: GlobalStatusProps) {
+  const [history, setHistory] = useState<StatusSample[]>([]);
+  const [offen, setOffen] = useState<string | null>(null);
+
+  /*
+    Die fertigen Kennzahlen für die Aufzeichnung – über ein Ref, damit der
+    Effekt an den Daten hängt und nicht an jedem Rendern.
+  */
+  const metricsRef = useRef<readonly StatusMetric[]>(metrics);
+  metricsRef.current = metrics;
+
+  /**
+   * Aufzeichnen, sobald neue Werte da sind.
+   *
+   * Der Effekt hängt an `metrics`: Die Liste entsteht bei jedem Abruf der
+   * Shell neu, also läuft er in deren Takt und nicht bei jedem Rendern.
+   */
+  useEffect(() => {
+    if (metrics.length === 0) return;
+
+    setHistory((bisher) => {
+      const values: Record<string, number> = {};
+
+      for (const metric of metricsRef.current) {
+        /*
+          Nur echte Zahlen. „Unbekannt" wird ausgelassen, nicht als 0
+          eingetragen – sonst zeigte die Kurve einen Einbruch, wo in Wahrheit
+          nur niemand geantwortet hat.
+        */
+        if (typeof metric.numeric === 'number') values[metric.key] = metric.numeric;
+      }
+
+      return appendStatusSample(bisher, { ts: Date.now(), values });
+    });
+  }, [metrics]);
+
   // Solange nichts geladen ist, bleibt die Leiste leer statt „0/0" zu behaupten.
   if (metrics.length === 0) return <div className="flex-1" />;
 
@@ -56,23 +104,65 @@ export function GlobalStatus({ metrics }: GlobalStatusProps) {
         Gesamtstatus
       </span>
 
-      {metrics.map((metric) => (
-        <span key={metric.key} title={metric.note} className="flex shrink-0 items-center gap-1.5">
+      {metrics.map((metric) => {
+        const punkte = metric.format === undefined ? [] : statusSeries(history, metric.key);
+        const zeigtVerlauf = offen === metric.key && punkte.length > 0;
+
+        return (
           <span
-            aria-hidden
-            className={cn('h-1.5 w-1.5 shrink-0 rounded-full', DOT_CLASSES[metric.tone])}
-          />
-          <span className={cn('font-mono text-base font-semibold', VALUE_CLASSES[metric.tone])}>
-            {metric.value}
+            key={metric.key}
+            title={metric.note}
+            className="relative flex shrink-0 items-center gap-1.5"
+            /*
+              Auch über die Tastatur erreichbar – wer nicht mit der Maus
+              arbeitet, käme sonst nie an den Verlauf. Ohne Punkte bleibt die
+              Kennzahl aus der Tabulator-Reihenfolge: ein Halt, der nichts
+              öffnet, ist nur im Weg.
+            */
+            tabIndex={punkte.length > 0 ? 0 : -1}
+            onMouseEnter={() => setOffen(metric.key)}
+            onMouseLeave={() => setOffen((aktuell) => (aktuell === metric.key ? null : aktuell))}
+            onFocus={() => setOffen(metric.key)}
+            onBlur={() => setOffen((aktuell) => (aktuell === metric.key ? null : aktuell))}
+          >
+            <span
+              aria-hidden
+              className={cn('h-1.5 w-1.5 shrink-0 rounded-full', DOT_CLASSES[metric.tone])}
+            />
+            <span className={cn('font-mono text-base font-semibold', VALUE_CLASSES[metric.tone])}>
+              {metric.value}
+            </span>
+            <span className="text-xs text-ink-soft">{metric.label}</span>
+
+            {zeigtVerlauf ? (
+              /*
+                ⚠️ `pointer-events-none`: Das Fenster schwebt unter der Zeile und
+                darf nichts abfangen. Ohne das läge es beim Wandern der Maus
+                zwischen zwei Kennzahlen im Weg und flackerte.
+              */
+              <div className="pointer-events-none absolute left-0 top-[calc(100%+8px)] z-50 w-60 rounded-xl border border-line bg-surface p-2.5 shadow-lg">
+                <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                  <span className="text-xs font-semibold text-ink">{metric.label}</span>
+                  <span className="text-2xs text-ink-faint">{statusSpanLabel(punkte)}</span>
+                </div>
+
+                <MetricChart
+                  compact
+                  points={punkte}
+                  label={`Verlauf ${metric.label}`}
+                  formatValue={metric.format}
+                  emptyHint="Noch keine zwei Messungen."
+                />
+
+                {/* Damit niemand mehr erwartet, als da ist. */}
+                <div className="mt-1 text-2xs leading-snug text-ink-faint">
+                  Seit dem Öffnen der Seite – diese Werte werden nicht gespeichert.
+                </div>
+              </div>
+            ) : null}
           </span>
-          <span className="text-xs text-ink-soft">{metric.label}</span>
-          {metric.origin === undefined ? null : (
-            // Fundpunkt 204: Ohne dieses Wort wechselte dieselbe Kachel
-            // stillschweigend zwischen gemessener und gebuchter Zahl.
-            <span className="text-2xs text-ink-faint">{metric.origin}</span>
-          )}
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }

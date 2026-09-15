@@ -226,6 +226,7 @@ class FakeRepository implements ServerRepository {
       hostId: data.hostId,
       hostName: HOST.name,
       hostStatus: 'online',
+      hostCpuCores: 8,
       name: data.name,
       gameType: data.gameType,
       status: 'creating',
