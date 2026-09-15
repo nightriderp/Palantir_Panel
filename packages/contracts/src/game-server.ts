@@ -180,6 +180,22 @@ export interface GameServerDto {
    * Feld, bleibt die Oberfläche bei ihrer bisherigen, unschärferen Auskunft.
    */
   hostStatus?: HostNodeStatus | null;
+  /**
+   * Kerne der Node, auf der dieser Server läuft – Bezugsgröße der CPU-Anzeige.
+   *
+   * `ServerLiveStats.cpuPercent` zählt in Prozent **eines** Kerns: 250 heißt
+   * 2,5 ausgelastete Kerne. Ohne die Kerne der Node lässt sich daraus kein
+   * Anteil bilden, und die Detailansicht musste die nackte Kernzahl zeigen -
+   * „2,5 Kerne" sagt nicht, ob die Maschine am Anschlag läuft oder sich
+   * langweilt. Dieselbe Angabe steht in `HostNodeDto.capacity`, die
+   * Detailansicht holt die Node-Liste aber nicht mit, und ein Konto ohne
+   * `canViewNodes` bekäme sie ohnehin nicht.
+   *
+   * `null`, wenn der Aufrufer die Node nicht sehen darf – wie bei `hostName`
+   * und `hostStatus`. Optional, damit der Vertrag für sich stehen kann
+   * (CLAUDE.md §3): Fehlt das Feld, bleibt die Oberfläche bei der Kernzahl.
+   */
+  hostCpuCores?: number | null;
   subdomain: string;
   /** `null`, wenn die Adresse für den Aufrufer nicht freigegeben ist. */
   address: ServerAddress | null;
