@@ -151,8 +151,8 @@ describe('buildStatusMetrics', () => {
     // Prozent in der Zeile, die absoluten Zahlen im Tooltip (hafenmeister-Stil).
     expect(valueOf(metrics, 'ram')).toBe('25 %');
     expect(valueOf(metrics, 'disk')).toBe('20 %');
-    expect(noteHas(metrics, 'ram', '4 GiB von 16 GiB')).toBe(true);
-    expect(noteHas(metrics, 'disk', '100 GiB von 500 GiB')).toBe(true);
+    expect(noteHas(metrics, 'ram', '4,29 GB von 17,2 GB')).toBe(true);
+    expect(noteHas(metrics, 'disk', '107 GB von 537 GB')).toBe(true);
   });
 
   it('zeigt einen Strich, solange keine Node eine Plattenbelegung meldet', () => {
@@ -184,7 +184,7 @@ describe('buildStatusMetrics', () => {
     });
 
     expect(valueOf(metrics, 'disk')).toBe('20 %');
-    expect(noteHas(metrics, 'disk', '100 GiB von 500 GiB')).toBe(true);
+    expect(noteHas(metrics, 'disk', '107 GB von 537 GB')).toBe(true);
   });
 
   it('zählt auch eine Node ohne Plattenwert nicht mit, wenn sie sonst misst', () => {
@@ -209,10 +209,10 @@ describe('buildStatusMetrics', () => {
       statsById: {},
     });
 
-    // 100 GiB + 50 GiB gemessen, Nenner 500 GiB + 200 GiB – die Node ohne
+    // 100 GiB + 50 GiB gemessen, Nenner 500 GiB + 200 GiB - angezeigt in GB – die Node ohne
     // Plattenwert steuert zu keiner der beiden Seiten etwas bei.
     expect(valueOf(metrics, 'disk')).toBe('21 %');
-    expect(noteHas(metrics, 'disk', '150 GiB von 700 GiB')).toBe(true);
+    expect(noteHas(metrics, 'disk', '161 GB von 752 GB')).toBe(true);
     expect(valueOf(metrics, 'cpu')).toBe('40 %');
     expect(valueOf(metrics, 'nodes')).toBe('2/3');
   });
@@ -226,7 +226,7 @@ describe('buildStatusMetrics', () => {
 
     // Buchungen kennt jede Node – eine fehlende Messung ändert daran nichts.
     expect(valueOf(metrics, 'ram')).toBe('25 %');
-    expect(noteHas(metrics, 'ram', '8 GiB von 32 GiB')).toBe(true);
+    expect(noteHas(metrics, 'ram', '8,59 GB von 34,4 GB')).toBe(true);
   });
 
   it('blendet Bewegung, Fehler und Updates nur ein, wenn es etwas zu melden gibt', () => {

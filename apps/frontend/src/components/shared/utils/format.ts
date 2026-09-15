@@ -18,25 +18,32 @@ export function formatNumber(value: number): string {
 /**
  * Einheiten der Größenangaben (Fundpunkt 208).
  *
- * Gerechnet wird mit **1024** – so sind die Container-Limits gesetzt
- * (`ramMb`, `diskMb` sind MiB), so meldet der Agent, so rechnet die
- * Kapazitätsprüfung. Beschriftet wurde bis zum Audit vom 2026-09-10 trotzdem
- * mit „MB/GB/TB": 53 248 MiB standen als „52 GB" da, obwohl 52 GiB = 55,8 GB
- * sind. Bei einer 2-TB-Platte macht das rund 250 GB Unterschied – genug, dass
- * ein Betreiber die Zahl neben `df -h` legt und sich fragt, welche stimmt.
+ * **Angezeigt wird in SI-Einheiten: kB, MB, GB, TB mit 1000er-Schritten**
+ * (Wunsch des Betreibers, 15.09.2026 - „finds fuer die Anzeige schoener").
  *
- * Zwei Wege wären richtig gewesen: 1024 mit IEC-Kürzeln oder 1000 mit
- * SI-Kürzeln. Es ist der erste geworden, weil die Basis nicht frei wählbar ist –
- * sie steckt in den Limits – und weil `df -h` auf der Node dieselben Zahlen
- * zeigt.
+ * Gespeichert und gerechnet wird weiterhin in Mebibyte: So sind die
+ * Container-Limits gesetzt (`ramMb`, `diskMb` sind MiB), so meldet der Agent,
+ * so rechnet die Kapazitaetspruefung. Umgerechnet wird deshalb **richtig** und
+ * nicht nur umbeschriftet: 4096 MiB sind 4,29 GB, nicht „4 GB".
  *
- * Wer das anders will, ändert genau diese Liste (und die Feldbeschriftungen,
- * die sie zitieren): Die Rechnung darunter bleibt dieselbe.
+ * Das ist der Punkt, an dem der Audit vom 2026-09-10 haengenblieb. Dort standen
+ * 53 248 MiB als „52 GB" da, obwohl 52 GiB = 55,8 GB sind - die Zahl war um
+ * 250 GB daneben, wenn man sie neben `df -h` legte. Die Loesung war damals
+ * IEC-Kuerzel; jetzt ist es der andere richtige Weg, SI mit korrekter
+ * Umrechnung. Falsch waere allein die dritte Moeglichkeit: 1024er-Zahlen mit
+ * SI-Kuerzeln.
+ *
+ * ⚠️ Die EINGABEFELDER sind davon nicht beruehrt: Wer in der Node-Verwaltung
+ * „8 GiB" eintraegt, traegt weiterhin Mebibyte ein. Sie tragen ihre Einheit
+ * selbst am Feld; eine halbe Umstellung waere schlimmer als gar keine.
  */
-const GROESSEN_EINHEITEN = ['B', 'KiB', 'MiB', 'GiB', 'TiB'] as const;
+const GROESSEN_EINHEITEN = ['B', 'kB', 'MB', 'GB', 'TB'] as const;
 
-/** Ab hier zählt jede Stufe: 1 KiB = 1024 B. */
-const SCHRITT = 1024;
+/** Ab hier zaehlt jede Stufe: 1 kB = 1000 B (SI). */
+const SCHRITT = 1000;
+
+/** Ein Mebibyte in Byte - die Groesse, in der Limits und Messwerte stehen. */
+const MEBIBYTE = 1024 * 1024;
 
 /**
  * Drei geltende Ziffern, ohne Nullen am Ende – die Schreibweise, die auch
@@ -52,7 +59,7 @@ function mitDreiZiffern(wert: number): string {
 }
 
 /**
- * Byte-Größe lesbar machen, Basis 1024 (siehe {@link GROESSEN_EINHEITEN}).
+ * Byte-Größe lesbar machen, Basis 1000 in SI-Einheiten (siehe {@link GROESSEN_EINHEITEN}).
  *
  * Verzeichnisse und unbekannte Größen liefern `—` statt „0 B", damit eine
  * fehlende Angabe nicht wie eine leere Datei aussieht.
@@ -82,11 +89,13 @@ export function formatBytes(bytes: number | null | undefined): string {
  * Speichergröße aus Mebibyte in eine lesbare Angabe.
  *
  * Dieselbe Rechnung wie {@link formatBytes} – seit Fundpunkt 208 wörtlich
- * dieselbe, nicht mehr eine zweite mit eigener Rundung.
+ * dieselbe, nicht mehr eine zweite mit eigener Rundung. Die Umrechnung geht
+ * über echte Bytes (1 MiB = 1 048 576 B), damit aus Mebibyte auch dann
+ * richtige Gigabyte werden, wenn die Anzeige in SI-Einheiten steht.
  */
 export function formatMegabytes(valueMb: number | null | undefined): string {
   if (valueMb == null || Number.isNaN(valueMb)) return '—';
-  return formatBytes(valueMb * SCHRITT * SCHRITT);
+  return formatBytes(valueMb * MEBIBYTE);
 }
 
 /** Dauer in Sekunden als `2 h 15 min`; `—` bei fehlender oder negativer Angabe. */

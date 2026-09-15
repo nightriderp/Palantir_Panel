@@ -206,8 +206,8 @@ describe('Node-Platz – Mehrfachauswahl (Fundpunkt 211)', () => {
 
     fireEvent.click(screen.getByLabelText('„Sicherung B" auswählen'));
 
-    // Anzahl und Summe stehen in derselben Zeile - 2 GiB ist die Groesse von B.
-    expect(screen.getByText(/1 Posten ausgewählt/).textContent).toContain('2 GiB');
+    // Anzahl und Summe stehen in derselben Zeile - B ist 2 GiB gross, in SI 2,15 GB.
+    expect(screen.getByText(/1 Posten ausgewählt/).textContent).toContain('2,15 GB');
   });
 
   it('wählt über die Kopfzeile nur die löschbaren Posten aus', async () => {

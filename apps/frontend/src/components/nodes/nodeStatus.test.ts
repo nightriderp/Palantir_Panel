@@ -106,7 +106,7 @@ describe('nodeMetrics - Ueberbuchung (Fundpunkt 209)', () => {
   it('benennt, um wie viel zu viel gebucht ist', () => {
     const metrics = nodeMetrics(ueberbucht);
 
-    expect(metrics.find((m) => m.key === 'ram')?.overbookedLabel).toBe('4 GiB überbucht');
+    expect(metrics.find((m) => m.key === 'ram')?.overbookedLabel).toBe('4,29 GB überbucht');
   });
 
   it('laesst die Angabe weg, wo nichts ueberbucht ist', () => {
@@ -146,7 +146,7 @@ describe('nodeMetrics', () => {
       }),
     );
 
-    expect(metrics.find((m) => m.key === 'ram')?.runningLabel).toBe('davon 20 GiB laufend');
+    expect(metrics.find((m) => m.key === 'ram')?.runningLabel).toBe('davon 21,5 GB laufend');
     // Bei der Platte zaehlen beide Zahlen ueber alle Zustaende - kein Zusatz.
     expect(metrics.find((m) => m.key === 'disk')?.runningLabel).toBeUndefined();
   });

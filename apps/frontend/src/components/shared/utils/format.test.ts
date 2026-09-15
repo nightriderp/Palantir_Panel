@@ -27,17 +27,18 @@ describe('clampPercent', () => {
 });
 
 describe('formatMegabytes', () => {
-  it('bleibt unterhalb von 1 GiB bei Megabyte', () => {
-    expect(formatMegabytes(512)).toBe('512 MiB');
+  it('bleibt unterhalb von 1 GB bei Megabyte', () => {
+    // 512 MiB sind 537 MB - umgerechnet, nicht umbeschriftet.
+    expect(formatMegabytes(512)).toBe('537 MB');
   });
 
-  it('rechnet ab 1024 MiB in Gigabyte um', () => {
-    expect(formatMegabytes(2048)).toBe('2 GiB');
-    expect(formatMegabytes(1536)).toBe('1,5 GiB');
+  it('rechnet in Gigabyte um', () => {
+    expect(formatMegabytes(2048)).toBe('2,15 GB');
+    expect(formatMegabytes(1536)).toBe('1,61 GB');
   });
 
   it('rechnet sehr große Werte in Terabyte um', () => {
-    expect(formatMegabytes(2 * 1024 * 1024)).toBe('2 TiB');
+    expect(formatMegabytes(2 * 1024 * 1024)).toBe('2,2 TB');
   });
 
   it('zeigt fehlende Werte als Gedankenstrich', () => {
@@ -123,18 +124,18 @@ describe('formatBytes', () => {
     expect(formatBytes(undefined)).toBe('—');
   });
 
-  it('rechnet mit Basis 1024 und rundet auf eine Nachkommastelle', () => {
+  it('rechnet mit Basis 1000 und drei geltenden Ziffern', () => {
     expect(formatBytes(0)).toBe('0 B');
     expect(formatBytes(512)).toBe('512 B');
-    expect(formatBytes(1024)).toBe('1 KiB');
-    expect(formatBytes(1536)).toBe('1,5 KiB');
-    expect(formatBytes(1024 * 1024)).toBe('1 MiB');
-    expect(formatBytes(1024 ** 3)).toBe('1 GiB');
-    expect(formatBytes(1024 ** 4)).toBe('1 TiB');
+    expect(formatBytes(1000)).toBe('1 kB');
+    expect(formatBytes(1500)).toBe('1,5 kB');
+    expect(formatBytes(1000 ** 2)).toBe('1 MB');
+    expect(formatBytes(1000 ** 3)).toBe('1 GB');
+    expect(formatBytes(1000 ** 4)).toBe('1 TB');
   });
 
   it('bleibt bei sehr großen Werten in TB', () => {
-    expect(formatBytes(5 * 1024 ** 4)).toBe('5 TiB');
+    expect(formatBytes(5 * 1000 ** 4)).toBe('5 TB');
   });
 });
 

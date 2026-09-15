@@ -202,6 +202,8 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
   it('nennt die Spielerzahl in der Kachel', async () => {
     zeichne();
 
-    expect(await screen.findByText('3 / 10')).toBeTruthy();
+    // Zahl gross, „/ 10" klein daneben - wie im Entwurf.
+    expect(await screen.findByText('3')).toBeTruthy();
+    expect(screen.getByText('/ 10')).toBeTruthy();
   });
 });
