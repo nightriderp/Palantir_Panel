@@ -210,6 +210,22 @@ export interface GameServerDto {
    * Pflichtenheft §9); er stand nur nie im Vertrag.
    */
   statusChangedAt?: string;
+  /**
+   * Summe aller bisherigen Laufzeiten in Sekunden, **ohne** die laufende
+   * Sitzung.
+   *
+   * Die Detailansicht zeigt gross die laufende Sitzung (seit
+   * {@link lastStartedAt}, als tickende Uhr) und klein die Gesamtlaufzeit; die
+   * ist die Summe hier plus der laufenden Sitzung. Getrennt gefuehrt, weil nur
+   * so beides ohne Raten geht: Aus `createdAt` laesst sich keine Laufzeit
+   * ableiten - ein Server, der seit einem Jahr steht, ist ein Jahr alt und war
+   * vielleicht zwei Stunden an.
+   *
+   * Gezaehlt wird beim Verlassen des Zustands `running`; die laufende Sitzung
+   * steht deshalb noch nicht darin. Optional, damit der Vertrag fuer sich
+   * stehen kann: Fehlt das Feld, zeigt die Oberflaeche nur die Sitzung.
+   */
+  totalUptimeSeconds?: number;
   subdomain: string;
   /** `null`, wenn die Adresse für den Aufrufer nicht freigegeben ist. */
   address: ServerAddress | null;
