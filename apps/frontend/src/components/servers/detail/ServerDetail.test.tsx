@@ -356,7 +356,10 @@ describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
 
     // 2048 MiB vom gebuchten Kontingent - vorher stand hier ein Strich. Der
     // Bezugswert steht seit der Angleichung an hafenmeister in derselben Zeile.
-    expect(await screen.findByText(/2 GiB von/)).toBeTruthy();
+    // Wert und Bezug stehen seit dem Entwurfs-Stil in zwei Elementen: die Zahl
+    // gross, „von 4 GiB" klein daneben.
+    expect(await screen.findByText('2 GiB')).toBeTruthy();
+    expect(screen.getByText(/von 4 GiB/)).toBeTruthy();
     /*
      * 250 % eines Kerns sind 2,5 ausgelastete Kerne. Kennt der Eintrag die
      * Kerne der Node nicht (die Attrappe liefert sie nicht), bleibt es bei der
