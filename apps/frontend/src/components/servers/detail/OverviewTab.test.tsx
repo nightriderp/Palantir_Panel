@@ -160,6 +160,20 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
     });
   });
 
+  it('faerbt die Kacheln nach der Ampel', async () => {
+    /*
+     * Gruen heisst „alles im gruenen Bereich", gelb „wird langsam knapp", rot
+     * „wird knapp" - dieselben Schwellen wie auf der Kachel der Uebersicht
+     * (`lastTon`: ab 55 % gelb, ab 82 % rot). 250 % eines Kerns von 8 Kernen
+     * sind rund 31 %, also gruen.
+     */
+    zeichne();
+
+    const wert = await screen.findByText('31 %');
+
+    expect(wert.className).toContain('text-success');
+  });
+
   it('klappt auch dann auf, wenn der gewaehlte Zeitraum leer ist', async () => {
     /*
      * Hier ging die Funktion verloren: Die Kacheln liessen sich nur oeffnen,

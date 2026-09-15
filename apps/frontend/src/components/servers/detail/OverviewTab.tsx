@@ -19,6 +19,7 @@ import {
   formatServerAddress,
   formatTime,
   hasLiveStats,
+  lastTon,
   pingTon,
 } from '@/components/shared';
 import { fetchStatsHistory } from '@/lib/api/servers';
@@ -173,19 +174,33 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
    */
   const cpuAnzeige = useMemo(() => {
     const prozentJeKern = anzeige?.cpuPercent ?? null;
-    if (prozentJeKern === null) return { wert: '—', anteil: null };
+    if (prozentJeKern === null) return { wert: '—', bezug: null, anteil: null };
 
     const kerne = server.hostCpuCores ?? null;
     if (kerne === null || kerne <= 0) {
-      return { wert: formatCores(Math.round(prozentJeKern) / 100), anteil: null };
+      return { wert: formatCores(Math.round(prozentJeKern) / 100), bezug: null, anteil: null };
     }
 
     const anteil = Math.min(100, prozentJeKern / kerne);
     return {
-      wert: `${formatPercent(anteil)} von ${formatNumber(kerne)} Kernen`,
+      wert: formatPercent(anteil),
+      // Der Bezug steht klein daneben, nicht in derselben Groesse: Die Zahl
+      // traegt die Kachel, „von 8 Kernen" erklaert sie nur (Entwurf des
+      // Betreibers).
+      bezug: `von ${formatNumber(kerne)} Kernen`,
       anteil,
     };
   }, [anzeige?.cpuPercent, server.hostCpuCores]);
+
+  /** Wert gross, Bezug klein daneben - das Muster aller Kacheln mit Nenner. */
+  const mitBezug = (wert: string, bezug: string | null): ReactNode =>
+    bezug === null ? (
+      wert
+    ) : (
+      <>
+        {wert} <span className="text-base font-normal text-ink-soft">{bezug}</span>
+      </>
+    );
 
   /** Anteil am gebuchten Arbeitsspeicher – Füllstand des Balkens. */
   const ramAnteil =
@@ -359,7 +374,15 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         */}
         <MetricTile
           label="CPU-Last"
-          value={cpuAnzeige.wert}
+          value={mitBezug(cpuAnzeige.wert, cpuAnzeige.bezug)}
+          /*
+            Ampel wie im Entwurf: gruen heisst „alles im gruenen Bereich", gelb
+            „wird langsam knapp", rot „wird knapp". Die Schwellen stehen an
+            einer Stelle fuer das ganze Panel (`lastTon`: ab 55 % gelb, ab 82 %
+            rot) - derselbe Messwert soll auf der Kachel der Uebersicht nicht
+            anders heissen als hier.
+          */
+          tone={lastTon(cpuAnzeige.anteil)}
           note={anzeige?.cpuPercent == null ? fehlgrund : undefined}
           {...(cpuAnzeige.anteil === null ? {} : { percent: cpuAnzeige.anteil })}
           onClick={() => klappe('cpu')}
@@ -370,11 +393,17 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           value={
             anzeige?.ramUsedMb == null
               ? '—'
-              : `${formatMegabytes(anzeige.ramUsedMb)} von ${formatMegabytes(server.resourceLimits.ramMb)}`
+              : mitBezug(
+                  formatMegabytes(anzeige.ramUsedMb),
+                  `von ${formatMegabytes(server.resourceLimits.ramMb)}`,
+                )
           }
-          // Der Arbeitsspeicher trägt überall die zweite Markenfarbe – auf der
-          // Kachel der Übersicht wie hier.
-          tone={anzeige?.ramUsedMb == null ? undefined : 'brand'}
+          /*
+            Auch der Arbeitsspeicher traegt jetzt die Ampel statt der festen
+            Markenfarbe: Er ist ein Fuellstand gegen das gebuchte Kontingent,
+            und genau dort ist „wird knapp" die Auskunft, auf die es ankommt.
+          */
+          tone={lastTon(ramAnteil)}
           note={anzeige?.ramUsedMb == null ? fehlgrund : undefined}
           {...(ramAnteil === null ? {} : { percent: ramAnteil })}
           onClick={() => klappe('ram')}
@@ -418,6 +447,9 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         <MetricTile
           label="Spieler"
           value={formatPlayers(anzeige?.playersOnline, anzeige?.playersMax)}
+          // Eine volle Runde ist keine Warnung, sondern der Normalfall - hier
+          // gibt es keine Ampel, nur „es laeuft".
+          tone={anzeige?.playersOnline == null ? undefined : 'success'}
           note={anzeige?.playersOnline == null ? fehlgrund : undefined}
           {...(anzeige?.playersOnline == null ||
           anzeige.playersMax == null ||
@@ -441,6 +473,8 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         <MetricTile
           label="Laufzeit"
           value={formatDuration(uptimeSeconds)}
+          tone={uptimeSeconds === null ? undefined : 'success'}
+          {...(uptimeSeconds === null ? {} : { percent: 100 })}
           note={uptimeSeconds === null ? 'Server läuft nicht' : 'seit dem letzten Start'}
         />
       </div>
