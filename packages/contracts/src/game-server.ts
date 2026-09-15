@@ -196,6 +196,20 @@ export interface GameServerDto {
    * (CLAUDE.md §3): Fehlt das Feld, bleibt die Oberfläche bei der Kernzahl.
    */
   hostCpuCores?: number | null;
+  /**
+   * Seit wann der Server in seinem jetzigen Zustand ist (ISO-8601).
+   *
+   * Gebraucht für die Uhr an einem laufenden Übergang: „Startet … seit 2:14
+   * min". Bis hierher nahm die Oberfläche dafür {@link lastStartedAt} - den
+   * Zeitpunkt des letzten ERFOLGREICHEN Starts. Der wird aber erst gesetzt,
+   * wenn der Server `running` erreicht; während des Startens stand dort der
+   * Start von vorhin, und die Uhr zählte von dort: „seit 105:07 min" für einen
+   * Server, der seit zwei Minuten hochfährt (im Betrieb gesehen, 15.09.2026).
+   *
+   * Die Datenbank führt den Wert seit jeher (`status_changed_at`,
+   * Pflichtenheft §9); er stand nur nie im Vertrag.
+   */
+  statusChangedAt?: string;
   subdomain: string;
   /** `null`, wenn die Adresse für den Aufrufer nicht freigegeben ist. */
   address: ServerAddress | null;
