@@ -115,6 +115,27 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
     expect(ram.getAttribute('aria-expanded')).toBe('true');
   });
 
+  it('sagt bei genau einer Messung, dass es fuer eine Linie nicht reicht', async () => {
+    // Genau die Lage aus dem Betrieb: Server eine Stunde gestanden, seit
+    // zwanzig Sekunden wieder da - ein Messpunkt in der letzten Stunde.
+    api.fetchStatsHistory.mockResolvedValue({
+      success: true,
+      data: {
+        serverId: 'srv-1',
+        windowMinutes: 60,
+        intervalSeconds: 60,
+        samples: [MESSUNG('2026-09-15T10:00:00.000Z')],
+      },
+      error: null,
+    });
+
+    zeichne();
+
+    fireEvent.click(await screen.findByRole('button', { name: /CPU-Last/ }));
+
+    expect(await screen.findByText(/nur eine Messung vor/)).toBeTruthy();
+  });
+
   it('zeigt unter der Ping-Kachel die Netzwerkaktivitaet in vier Kurven', async () => {
     zeichne();
 
@@ -139,7 +160,15 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
     });
   });
 
-  it('bietet keinen Aufklapper an, solange es keinen Verlauf gibt', async () => {
+  it('klappt auch dann auf, wenn der gewaehlte Zeitraum leer ist', async () => {
+    /*
+     * Hier ging die Funktion verloren: Die Kacheln liessen sich nur oeffnen,
+     * wenn im GERADE gewaehlten Zeitraum schon zwei Messpunkte lagen. Ein
+     * Server, der eine Stunde stand und seit zwanzig Sekunden laeuft, hat in
+     * der letzten Stunde einen - in vierundzwanzig Stunden aber hundertelf.
+     * Die Kacheln boten dann gar nichts an, und die Seite sah aus, als gaebe
+     * es die Funktion nicht (gemeldet vom Betreiber, 15.09.2026).
+     */
     api.fetchStatsHistory.mockResolvedValue({
       success: true,
       data: { serverId: 'srv-1', windowMinutes: 60, intervalSeconds: 60, samples: [] },
@@ -147,13 +176,13 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
     });
 
     zeichne();
-    await screen.findByText('CPU-Last');
 
-    /*
-     * Eine Kachel, die sich als Schaltfläche anbietet und dann ein leeres Feld
-     * öffnet, ist schlimmer als eine stille Kachel.
-     */
-    expect(screen.queryByRole('button', { name: /CPU-Last/ })).toBeNull();
+    const kachel = await screen.findByRole('button', { name: /CPU-Last/ });
+    fireEvent.click(kachel);
+
+    // Statt eines leeren Feldes steht dort, was fehlt - samt Zeitraum-Wahl.
+    expect(await screen.findByText(/In diesem Zeitraum liegt keine Messung vor/)).toBeTruthy();
+    expect(screen.getByLabelText('Zeitraum des Verlaufs')).toBeTruthy();
   });
 
   it('nennt die Spielerzahl in der Kachel', async () => {

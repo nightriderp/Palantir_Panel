@@ -277,12 +277,21 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
   }, [history.data]);
 
   /**
-   * Gibt es überhaupt einen Verlauf zum Aufklappen?
+   * Wie viele Messpunkte der gewaehlte Zeitraum hergibt.
    *
-   * Eine Kachel, die sich als Schaltfläche anbietet und dann ein leeres Feld
-   * öffnet, ist schlimmer als eine stille Kachel.
+   * ⚠️ Das entscheidet **nicht** mehr, ob sich eine Kachel aufklappen laesst.
+   * Genau das tat es bis hierher - und machte die Funktion unsichtbar, sobald
+   * das Fenster leer war: Ein Server, der eine Stunde stand und seit zwanzig
+   * Sekunden laeuft, hat in der letzten Stunde genau einen Messpunkt, in
+   * vierundzwanzig Stunden aber hundertelf. Die Kacheln boten dann gar keinen
+   * Aufklapper an, und der Nutzer sah eine Seite ohne die Funktion, die es
+   * geben sollte (gemeldet vom Betreiber, 15.09.2026).
+   *
+   * Jetzt klappt jede der vier Kacheln immer auf; der Bereich darunter sagt,
+   * wenn fuer diesen Zeitraum nichts vorliegt - und die Zeitraum-Wahl steht
+   * genau dort, wo man sie dann braucht.
    */
-  const hatVerlauf = (history.data?.samples.length ?? 0) > 1;
+  const messpunkte = history.data?.samples.length ?? 0;
 
   const detailRows: Array<{ label: string; value: string }> = [
     { label: 'Spiel', value: server.gameTypeName },
@@ -353,7 +362,8 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           value={cpuAnzeige.wert}
           note={anzeige?.cpuPercent == null ? fehlgrund : undefined}
           {...(cpuAnzeige.anteil === null ? {} : { percent: cpuAnzeige.anteil })}
-          {...(hatVerlauf ? { onClick: () => klappe('cpu'), expanded: istOffen('cpu') } : {})}
+          onClick={() => klappe('cpu')}
+          expanded={istOffen('cpu')}
         />
         <MetricTile
           label="Arbeitsspeicher"
@@ -367,7 +377,8 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           tone={anzeige?.ramUsedMb == null ? undefined : 'brand'}
           note={anzeige?.ramUsedMb == null ? fehlgrund : undefined}
           {...(ramAnteil === null ? {} : { percent: ramAnteil })}
-          {...(hatVerlauf ? { onClick: () => klappe('ram'), expanded: istOffen('ram') } : {})}
+          onClick={() => klappe('ram')}
+          expanded={istOffen('ram')}
         />
         {/*
           Der gemessene Platzbedarf des Datenordners. Ein Anteil stand hier bis
@@ -396,7 +407,8 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
             ? {}
             : // 200 ms als volle Skala: Darüber ist die Strecke ohnehin zu lang.
               { percent: Math.min(100, (anzeige.pingMs / 200) * 100) })}
-          {...(hatVerlauf ? { onClick: () => klappe('ping'), expanded: istOffen('ping') } : {})}
+          onClick={() => klappe('ping')}
+          expanded={istOffen('ping')}
         />
         {/*
           Die Spielerzahl steht wieder in der Reihe (Wunsch des Betreibers,
@@ -412,9 +424,8 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           anzeige.playersMax <= 0
             ? {}
             : { percent: (anzeige.playersOnline / anzeige.playersMax) * 100 })}
-          {...(hatVerlauf
-            ? { onClick: () => klappe('spieler'), expanded: istOffen('spieler') }
-            : {})}
+          onClick={() => klappe('spieler')}
+          expanded={istOffen('spieler')}
         />
         {/*
           Kein Aufklapper: Den Plattenplatz misst der Agent in eigenem,
@@ -462,9 +473,7 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         <Panel variant="plain" className="flex animate-fade-up flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-ink-muted">
-              {history.data === null
-                ? 'Zeitraum'
-                : `${formatNumber(history.data.samples.length)} Messpunkte`}
+              {history.data === null ? 'Zeitraum' : `${formatNumber(messpunkte)} Messpunkte`}
             </span>
             <SegmentedControl
               label="Zeitraum des Verlaufs"
@@ -482,7 +491,19 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           ) : null}
           {history.error ? <p className="text-base text-danger">{history.error}</p> : null}
 
-          {history.data === null ? null : offeneKachel === 'cpu' ? (
+          {/*
+            Der leere Zeitraum sagt es selbst, statt ein leeres Feld zu zeigen.
+            Genau hier ging die Funktion frueher verloren: Ein Server, der eine
+            Stunde stand, hat in der letzten Stunde nichts - in vierundzwanzig
+            aber alles. Die Zeitraum-Wahl steht gleich darueber.
+          */}
+          {history.data !== null && messpunkte < 2 && !history.loading ? (
+            <p className="text-base text-ink-muted">
+              In diesem Zeitraum liegt {messpunkte === 0 ? 'keine Messung' : 'nur eine Messung'} vor
+              – für eine Linie braucht es zwei. Ein größerer Zeitraum hilft, sobald der Server eine
+              Weile lief.
+            </p>
+          ) : history.data === null ? null : offeneKachel === 'cpu' ? (
             <StatsHistoryChart
               samples={history.data.samples}
               metric="cpuPercent"
