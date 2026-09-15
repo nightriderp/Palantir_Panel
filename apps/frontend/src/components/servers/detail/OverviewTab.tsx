@@ -3,6 +3,8 @@
 import { type GameServerDto, type ServerLiveStats } from '@palantir/contracts';
 import { useMemo, useState, type ReactNode } from 'react';
 import {
+  type ChartPoint,
+  MetricChart,
   MetricTile,
   Panel,
   SegmentedControl,
@@ -96,28 +98,21 @@ type VerlaufsKachel = (typeof VERLAUFS_KACHELN)[number];
 
 export function OverviewTab({ server, stats, console: consolePanel = null }: OverviewTabProps) {
   /**
-   * Welche Verlaeufe offen sind – mehrere zugleich.
+   * Welcher Verlauf offen ist – immer genau einer.
    *
-   * Erst hing der Verlauf an genau einer Kachel; wer CPU und Arbeitsspeicher
-   * nebeneinander sehen wollte, musste hin- und herklicken. Jetzt klappt jede
-   * Kachel fuer sich auf, und die offenen Kurven stehen als kleine Bilder
-   * nebeneinander - vier kleine sagen mehr als ein grosses (Wunsch des
-   * Betreibers, 15.09.2026).
+   * Ein Klick auf eine andere Kachel TAUSCHT: Der bisherige Verlauf schliesst
+   * sich, der neue geht auf. Kurz standen mehrere zugleich offen; in der Praxis
+   * sammelte sich damit untereinander, was man laengst angesehen hatte, und die
+   * Seite wuchs mit jedem Klick (Wunsch des Betreibers, 15.09.2026).
    */
-  const [offeneKacheln, setOffeneKacheln] = useState<readonly VerlaufsKachel[]>([]);
+  const [offeneKachel, setOffeneKachel] = useState<VerlaufsKachel | null>(null);
   const [historyWindow, setHistoryWindow] = useState<number>(HISTORY_WINDOW_DEFAULT);
 
   const klappe = (kachel: VerlaufsKachel): void => {
-    setOffeneKacheln((aktuell) =>
-      aktuell.includes(kachel)
-        ? aktuell.filter((offen) => offen !== kachel)
-        : // In der Reihenfolge der Kacheln, nicht in der des Klickens: Sonst
-          // springen die Bilder, sobald man eine zweite Kachel oeffnet.
-          VERLAUFS_KACHELN.filter((name) => name === kachel || aktuell.includes(name)),
-    );
+    setOffeneKachel((aktuell) => (aktuell === kachel ? null : kachel));
   };
 
-  const istOffen = (kachel: VerlaufsKachel): boolean => offeneKacheln.includes(kachel);
+  const istOffen = (kachel: VerlaufsKachel): boolean => offeneKachel === kachel;
 
   /*
    * Der Verlauf wird beim Öffnen der Ansicht geladen, nicht erst beim Aufklappen
@@ -197,6 +192,89 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
     anzeige?.ramUsedMb == null || server.resourceLimits.ramMb <= 0
       ? null
       : (anzeige.ramUsedMb / server.resourceLimits.ramMb) * 100;
+
+  /**
+   * Die vier Netzwerk-Kurven: Rate statt Summe.
+   *
+   * Der Agent meldet **Zaehler** - Bytes und Pakete seit dem Start des
+   * Containers. Eine Kurve daraus stiege nur monoton an und saehe fuer jeden
+   * Server gleich aus; interessant ist, wie viel je Zeiteinheit dazukommt.
+   * Gerechnet wird deshalb die Steigung zwischen zwei Messpunkten.
+   *
+   * Ein Neustart setzt die Zaehler zurueck. Ein negativer Sprung ist also kein
+   * negativer Verkehr, sondern der Schnitt zwischen zwei Laeufen - solche
+   * Paare fallen heraus, statt einen Ausschlag nach unten zu zeichnen.
+   */
+  const netzKurven = useMemo(() => {
+    const samples = history.data?.samples ?? [];
+
+    const reihe = (lies: (sample: ServerLiveStats) => number | null | undefined): ChartPoint[] => {
+      const punkte: ChartPoint[] = [];
+
+      for (let i = 1; i < samples.length; i += 1) {
+        const vorher = samples[i - 1];
+        const jetzt = samples[i];
+        if (vorher === undefined || jetzt === undefined) continue;
+
+        const a = lies(vorher);
+        const b = lies(jetzt);
+        if (a == null || b == null || b < a) continue;
+
+        const sekunden = (Date.parse(jetzt.updatedAt) - Date.parse(vorher.updatedAt)) / 1000;
+        if (!Number.isFinite(sekunden) || sekunden <= 0) continue;
+
+        punkte.push({ ts: Date.parse(jetzt.updatedAt), value: (b - a) / sekunden });
+      }
+
+      return punkte;
+    };
+
+    const proSekunde = (formatiere: (wert: number) => string) => (wert: number) =>
+      `${formatiere(wert)}/s`;
+
+    /** Die Summe seit dem letzten Start - der letzte Zaehlerstand. */
+    const summe = (
+      lies: (sample: ServerLiveStats) => number | null | undefined,
+      formatiere: (wert: number) => string,
+    ): string => {
+      const letzter = samples.at(-1);
+      const wert = letzter === undefined ? null : lies(letzter);
+      return wert == null ? '—' : formatiere(wert);
+    };
+
+    const zahl = (wert: number): string => formatNumber(Math.round(wert));
+
+    return [
+      {
+        label: 'Eingehend',
+        punkte: reihe((sample) => sample.networkRxBytes),
+        summe: summe((sample) => sample.networkRxBytes, formatBytes),
+        formatiere: proSekunde(formatBytes),
+        leerHinweis: 'Noch kein Verkehr gemessen.',
+      },
+      {
+        label: 'Ausgehend',
+        punkte: reihe((sample) => sample.networkTxBytes),
+        summe: summe((sample) => sample.networkTxBytes, formatBytes),
+        formatiere: proSekunde(formatBytes),
+        leerHinweis: 'Noch kein Verkehr gemessen.',
+      },
+      {
+        label: 'Pakete eingehend',
+        punkte: reihe((sample) => sample.networkRxPackets),
+        summe: summe((sample) => sample.networkRxPackets, zahl),
+        formatiere: proSekunde(zahl),
+        leerHinweis: 'Dieser Agent meldet keine Paketzahlen.',
+      },
+      {
+        label: 'Pakete ausgehend',
+        punkte: reihe((sample) => sample.networkTxPackets),
+        summe: summe((sample) => sample.networkTxPackets, zahl),
+        formatiere: proSekunde(zahl),
+        leerHinweis: 'Dieser Agent meldet keine Paketzahlen.',
+      },
+    ];
+  }, [history.data]);
 
   /**
    * Gibt es überhaupt einen Verlauf zum Aufklappen?
@@ -374,17 +452,13 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       ) : null}
 
       {/*
-        Die offenen Verlaeufe, als kleine Bilder nebeneinander.
+        Der Verlauf der angeklickten Kachel - und nur dieser.
 
-        Jede Kachel klappt fuer sich auf, und mehrere duerfen zugleich offen
-        sein: Vier kleine Kurven nebeneinander beantworten "haengt der Ping mit
-        der Last zusammen" auf einen Blick, ein grosses Bild je Klick nicht
-        (Wunsch des Betreibers, 15.09.2026).
-
-        Der gewaehlte Zeitraum gilt fuer alle - wer den CPU-Verlauf auf 24
-        Stunden stellt, meint nicht nur die CPU.
+        Der gewaehlte Zeitraum gilt fuer alle: Wer die CPU auf 24 Stunden
+        stellt und dann auf den Arbeitsspeicher wechselt, meint denselben
+        Zeitraum.
       */}
-      {offeneKacheln.length > 0 ? (
+      {offeneKachel === null ? null : (
         <Panel variant="plain" className="flex animate-fade-up flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-ink-muted">
@@ -408,114 +482,80 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           ) : null}
           {history.error ? <p className="text-base text-danger">{history.error}</p> : null}
 
-          {history.data === null ? null : (
-            <div
-              className={
-                offeneKacheln.length === 1
-                  ? 'grid grid-cols-1 gap-3'
-                  : 'grid grid-cols-1 gap-3 md:grid-cols-2'
+          {history.data === null ? null : offeneKachel === 'cpu' ? (
+            <StatsHistoryChart
+              samples={history.data.samples}
+              metric="cpuPercent"
+              label="CPU-Auslastung"
+              // Keine feste Achsenobergrenze: Sie war das Kontingent des
+              // Servers, und das gibt es seit dem Wegfall der CPU-Zuweisung
+              // nicht. Der Verlauf skaliert auf seinen eigenen Hoechstwert -
+              // so bleibt er lesbar, statt an einer Grenze zu kleben.
+              max={null}
+              formatValue={(wert) =>
+                server.hostCpuCores == null || server.hostCpuCores <= 0
+                  ? formatCores(wert / 100)
+                  : formatPercent(Math.min(100, wert / server.hostCpuCores))
               }
-            >
-              {istOffen('cpu') ? (
-                <StatsHistoryChart
-                  samples={history.data.samples}
-                  metric="cpuPercent"
-                  label="CPU-Auslastung"
-                  // Keine feste Achsenobergrenze: Sie war das Kontingent des
-                  // Servers, und das gibt es seit dem Wegfall der CPU-Zuweisung
-                  // nicht. Der Verlauf skaliert auf seinen eigenen Hoechstwert -
-                  // so bleibt er lesbar, statt an einer Grenze zu kleben.
-                  max={null}
-                  formatValue={(wert) =>
-                    server.hostCpuCores == null || server.hostCpuCores <= 0
-                      ? formatCores(wert / 100)
-                      : formatPercent(Math.min(100, wert / server.hostCpuCores))
-                  }
-                />
-              ) : null}
-              {istOffen('ram') ? (
-                <StatsHistoryChart
-                  samples={history.data.samples}
-                  metric="ramUsedMb"
-                  label="Arbeitsspeicher"
-                  max={server.resourceLimits.ramMb}
-                  formatValue={formatMegabytes}
-                />
-              ) : null}
-              {istOffen('ping') ? (
-                <StatsHistoryChart
-                  samples={history.data.samples}
-                  metric="pingMs"
-                  label="Ping zum Node"
-                  max={null}
-                  formatValue={(wert) => formatPing(Math.round(wert))}
-                />
-              ) : null}
-              {istOffen('spieler') ? (
-                <StatsHistoryChart
-                  samples={history.data.samples}
-                  metric="playersOnline"
-                  label="Spieler online"
-                  max={anzeige?.playersMax ?? null}
-                  formatValue={(wert) => formatNumber(Math.round(wert))}
-                />
-              ) : null}
+            />
+          ) : offeneKachel === 'ram' ? (
+            <StatsHistoryChart
+              samples={history.data.samples}
+              metric="ramUsedMb"
+              label="Arbeitsspeicher"
+              max={server.resourceLimits.ramMb}
+              formatValue={formatMegabytes}
+            />
+          ) : offeneKachel === 'spieler' ? (
+            <StatsHistoryChart
+              samples={history.data.samples}
+              metric="playersOnline"
+              label="Spieler online"
+              max={anzeige?.playersMax ?? null}
+              formatValue={(wert) => formatNumber(Math.round(wert))}
+            />
+          ) : (
+            /*
+              Die Ping-Kachel oeffnet die Netzwerkaktivitaet - vier Kurven
+              statt der Karte, die frueher dauerhaft weiter unten stand
+              (Wunsch des Betreibers, 15.09.2026). Beides gehoert zur
+              Anbindung des Servers: Wie schnell die Strecke antwortet und was
+              ueber sie laeuft.
+            */
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {netzKurven.map((kurve) => (
+                <div key={kurve.label} className="flex flex-col gap-1.5">
+                  {/*
+                    Beschriftung ueber dem Bild, nicht darin: Sie steht auch
+                    dann da, wenn es fuer eine Linie noch nicht reicht - sonst
+                    haette man ein namenloses Feld mit einem Hinweis darin.
+                  */}
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-2xs uppercase tracking-[0.08em] text-ink-soft">
+                      {kurve.label}
+                    </span>
+                    <span className="font-mono text-2xs text-ink-muted">{kurve.summe}</span>
+                  </div>
+                  <MetricChart
+                    points={kurve.punkte}
+                    label={kurve.label}
+                    formatValue={kurve.formatiere}
+                    emptyHint={kurve.leerHinweis}
+                  />
+                </div>
+              ))}
             </div>
           )}
-        </Panel>
-      ) : null}
 
-      {/*
-        Netzwerkzahlen in einer eigenen Karte. Sie hingen kurzzeitig an der
-        Ping-Kachel (so macht es hafenmeister, weil dort kein Ping-Verlauf
-        existiert); bei uns oeffnet die Ping-Kachel ihre eigene Kurve, und die
-        Summen brauchen einen festen Platz.
-      */}
-      <Panel variant="plain" className="flex flex-col gap-2">
-        <h3 className="text-base font-semibold">Netzwerkaktivität</h3>
-        {anzeige === null ? (
-          /*
-           * Fundpunkt 207: Hier stand „Der Server läuft nicht." auch dann,
-           * wenn er lief - die Bedingung fragte nach dem Messwert, geantwortet
-           * hat sie über den Zustand. Das sind zwei verschiedene Dinge.
-           */
-          <p className="text-sm text-ink-faint">
-            {hasLiveStats(server.status)
-              ? 'Noch keine Messwerte für diesen Server.'
-              : 'Der Server läuft nicht.'}
-          </p>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <MetricTile label="Eingehend" value={formatBytes(anzeige.networkRxBytes)} />
-              <MetricTile label="Ausgehend" value={formatBytes(anzeige.networkTxBytes)} />
-              {/*
-               * Paket-Zaehler wie im Entwurf (Abgleich 4.8). Sie stehen nur da,
-               * wenn die Runtime sie meldet - ein aelterer Agent laesst die
-               * Felder weg, und zwei Kacheln mit "—" waeren nur Fuellsel.
-               */}
-              {anzeige.networkRxPackets === undefined ||
-              anzeige.networkRxPackets === null ? null : (
-                <MetricTile
-                  label="Pakete eingehend"
-                  value={formatNumber(anzeige.networkRxPackets)}
-                />
-              )}
-              {anzeige.networkTxPackets === undefined ||
-              anzeige.networkTxPackets === null ? null : (
-                <MetricTile
-                  label="Pakete ausgehend"
-                  value={formatNumber(anzeige.networkTxPackets)}
-                />
-              )}
-            </div>
+          {offeneKachel === 'ping' ? (
             <p className="text-xs text-ink-faint">
-              Die Summen zählen ab dem letzten Start des Servers. Weil aller Spiel-Verkehr über das
-              Relay läuft, ist das zugleich der Verkehr durch die Panel-VPS.
+              Rate je Messpunkt, gerechnet aus den Zaehlern des Agents. Die Summen seit dem letzten
+              Start stehen in der Kachel-Beschriftung; weil aller Spiel-Verkehr ueber das Relay
+              laeuft, ist das zugleich der Verkehr durch die Panel-VPS.
             </p>
-          </>
-        )}
-      </Panel>
+          ) : null}
+        </Panel>
+      )}
 
       {/*
         Die Namen der verbundenen Spieler (Gefundener Punkt 51).

@@ -88,25 +88,44 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
     expect(screen.queryByText('CPU-Auslastung')).toBeNull();
   });
 
-  it('haelt mehrere Verlaeufe zugleich offen', async () => {
+  it('tauscht den Verlauf, statt mehrere offen zu halten', async () => {
     /*
-     * Vier kleine Kurven nebeneinander beantworten „haengt der Ping mit der
-     * Last zusammen" auf einen Blick; ein grosses Bild je Klick nicht.
+     * Wunsch des Betreibers: Ein Klick auf eine andere Kachel schliesst den
+     * bisherigen Verlauf und oeffnet den neuen. Kurz standen mehrere zugleich
+     * offen; dabei sammelte sich untereinander, was man laengst angesehen
+     * hatte, und die Seite wuchs mit jedem Klick.
      */
     zeichne();
 
     const cpu = await screen.findByRole('button', { name: /CPU-Last/ });
-    const ping = await screen.findByRole('button', { name: /Ping/ });
+    const ram = await screen.findByRole('button', { name: /Arbeitsspeicher/ });
 
     fireEvent.click(cpu);
-    fireEvent.click(ping);
+    await waitFor(() => {
+      expect(screen.getByText('CPU-Auslastung')).toBeTruthy();
+    });
+
+    fireEvent.click(ram);
+    await waitFor(() => {
+      expect(screen.getByText('Arbeitsspeicher', { selector: 'figcaption span' })).toBeTruthy();
+    });
+
+    expect(screen.queryByText('CPU-Auslastung')).toBeNull();
+    expect(cpu.getAttribute('aria-expanded')).toBe('false');
+    expect(ram.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('zeigt unter der Ping-Kachel die Netzwerkaktivitaet in vier Kurven', async () => {
+    zeichne();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Ping/ }));
 
     await waitFor(() => {
-      expect(screen.getByText('Ping zum Node')).toBeTruthy();
+      expect(screen.getByText('Eingehend')).toBeTruthy();
     });
-    expect(screen.getByText('CPU-Auslastung')).toBeTruthy();
-    expect(cpu.getAttribute('aria-expanded')).toBe('true');
-    expect(ping.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Ausgehend')).toBeTruthy();
+    expect(screen.getByText('Pakete eingehend')).toBeTruthy();
+    expect(screen.getByText('Pakete ausgehend')).toBeTruthy();
   });
 
   it('zeigt die Spielerzahl wieder als Kachel, mit eigenem Verlauf', async () => {
