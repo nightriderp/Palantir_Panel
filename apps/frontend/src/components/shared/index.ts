@@ -79,6 +79,12 @@ export { QrCode, type QrCodeProps } from './primitives/QrCode';
 export { ServerCard, type ServerCardProps } from './server/ServerCard';
 export { ServerStatusPill, type ServerStatusPillProps } from './server/ServerStatusPill';
 export { MetricRing, type MetricRingProps } from './server/MetricRing';
+export {
+  MetricChart,
+  rundeAuf,
+  type ChartPoint,
+  type MetricChartProps,
+} from './charts/MetricChart';
 export { lastTon, pingTon } from './server/metricTone';
 export { StartupProgress, type StartupProgressProps } from './server/StartupProgress';
 export {

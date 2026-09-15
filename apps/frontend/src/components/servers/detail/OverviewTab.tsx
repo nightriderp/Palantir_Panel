@@ -11,6 +11,7 @@ import {
   formatDuration,
   formatMegabytes,
   formatNumber,
+  formatPercent,
   formatPing,
   formatPlayers,
   formatServerAddress,
@@ -79,9 +80,23 @@ export interface OverviewTabProps {
   console?: ReactNode;
 }
 
+/**
+ * Was unter den Kacheln aufgeklappt ist – immer nur eines.
+ *
+ * Vorbild hafenmeister: Der Verlauf hängt an der Kachel, zu der er gehört. Bei
+ * uns stand er als eigener Block darunter, gleichzeitig für alle Kennzahlen;
+ * wer die CPU ansehen wollte, bekam drei Diagramme, von denen zwei ihn nicht
+ * interessierten.
+ */
+type AufgeklappteKachel = 'cpu' | 'ram' | 'netz';
+
 export function OverviewTab({ server, stats, console: consolePanel = null }: OverviewTabProps) {
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [offeneKachel, setOffeneKachel] = useState<AufgeklappteKachel | null>(null);
   const [historyWindow, setHistoryWindow] = useState<number>(HISTORY_WINDOW_DEFAULT);
+
+  const klappe = (kachel: AufgeklappteKachel): void => {
+    setOffeneKachel((aktuell) => (aktuell === kachel ? null : kachel));
+  };
 
   /*
    * Der Verlauf wird beim Öffnen der Ansicht geladen, nicht erst beim Aufklappen
@@ -130,6 +145,45 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
     server.status === 'running' && server.lastStartedAt !== null
       ? (Date.now() - new Date(server.lastStartedAt).getTime()) / 1000
       : null;
+
+  /**
+   * CPU als Anteil der Node-Kerne (hafenmeister-Stil).
+   *
+   * `cpuPercent` zählt in Prozent **eines** Kerns: 250 heißt 2,5 ausgelastete
+   * Kerne. Mit den Kernen der Node wird daraus ein Anteil - „31 % von 8 Kernen"
+   * beantwortet die Frage, die „2,5 Kerne" offen lässt. Kennt der Eintrag die
+   * Kerne nicht (älteres Backend, Node nicht sichtbar), bleibt es bei der
+   * Kernzahl: lieber eine unschärfere Auskunft als ein erfundener Nenner.
+   */
+  const cpuAnzeige = useMemo(() => {
+    const prozentJeKern = anzeige?.cpuPercent ?? null;
+    if (prozentJeKern === null) return { wert: '—', anteil: null };
+
+    const kerne = server.hostCpuCores ?? null;
+    if (kerne === null || kerne <= 0) {
+      return { wert: formatCores(Math.round(prozentJeKern) / 100), anteil: null };
+    }
+
+    const anteil = Math.min(100, prozentJeKern / kerne);
+    return {
+      wert: `${formatPercent(anteil)} von ${formatNumber(kerne)} Kernen`,
+      anteil,
+    };
+  }, [anzeige?.cpuPercent, server.hostCpuCores]);
+
+  /** Anteil am gebuchten Arbeitsspeicher – Füllstand des Balkens. */
+  const ramAnteil =
+    anzeige?.ramUsedMb == null || server.resourceLimits.ramMb <= 0
+      ? null
+      : (anzeige.ramUsedMb / server.resourceLimits.ramMb) * 100;
+
+  /**
+   * Gibt es überhaupt einen Verlauf zum Aufklappen?
+   *
+   * Eine Kachel, die sich als Schaltfläche anbietet und dann ein leeres Feld
+   * öffnet, ist schlimmer als eine stille Kachel.
+   */
+  const hatVerlauf = (history.data?.samples.length ?? 0) > 1;
 
   const detailRows: Array<{ label: string; value: string }> = [
     { label: 'Spiel', value: server.gameTypeName },
@@ -197,22 +251,28 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         */}
         <MetricTile
           label="CPU-Last"
-          value={
-            anzeige?.cpuPercent == null ? '—' : formatCores(Math.round(anzeige.cpuPercent) / 100)
-          }
-          note={anzeige?.cpuPercent == null ? fehlgrund : 'ausgelastet, ohne feste Obergrenze'}
+          value={cpuAnzeige.wert}
+          note={anzeige?.cpuPercent == null ? fehlgrund : undefined}
+          {...(cpuAnzeige.anteil === null ? {} : { percent: cpuAnzeige.anteil })}
+          {...(hatVerlauf
+            ? { onClick: () => klappe('cpu'), expanded: offeneKachel === 'cpu' }
+            : {})}
         />
         <MetricTile
           label="Arbeitsspeicher"
-          value={formatMegabytes(anzeige?.ramUsedMb)}
+          value={
+            anzeige?.ramUsedMb == null
+              ? '—'
+              : `${formatMegabytes(anzeige.ramUsedMb)} von ${formatMegabytes(server.resourceLimits.ramMb)}`
+          }
           // Der Arbeitsspeicher trägt überall die zweite Markenfarbe – auf der
           // Kachel der Übersicht wie hier.
           tone={anzeige?.ramUsedMb == null ? undefined : 'brand'}
-          note={
-            anzeige?.ramUsedMb == null
-              ? fehlgrund
-              : `von ${formatMegabytes(server.resourceLimits.ramMb)}`
-          }
+          note={anzeige?.ramUsedMb == null ? fehlgrund : undefined}
+          {...(ramAnteil === null ? {} : { percent: ramAnteil })}
+          {...(hatVerlauf
+            ? { onClick: () => klappe('ram'), expanded: offeneKachel === 'ram' }
+            : {})}
         />
         {/*
           Der gemessene Platzbedarf des Datenordners. Ein Anteil stand hier bis
@@ -221,27 +281,46 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
           Platte der Node reicht. Wie voll die ist, steht in der
           Node-Übersicht.
         */}
+        {/*
+          Die Ping-Kachel klappt die Netzwerkzahlen auf, nicht eine Ping-Kurve:
+          Beides gehört zur Anbindung des Servers, und ein gespeicherter Ping
+          existiert nicht - er ist eine Eigenschaft der Verbindung, kein
+          Messwert am Server. Vorbild hafenmeister.
+
+          ⚠️ Der Ping gilt dem NODE, nicht diesem Server: Alle Server darauf
+          teilen sich den Wert. Der Hinweis steht deshalb an der Kachel, sonst
+          hält es jemand für eine Eigenschaft des Servers.
+        */}
+        <MetricTile
+          label="Ping"
+          value={formatPing(anzeige?.pingMs)}
+          tone={pingTon(anzeige?.pingMs)}
+          note={anzeige?.pingMs == null ? fehlgrund : undefined}
+          {...(anzeige?.pingMs == null
+            ? {}
+            : // 200 ms als volle Skala: Darüber ist die Strecke ohnehin zu lang.
+              { percent: Math.min(100, (anzeige.pingMs / 200) * 100) })}
+          onClick={() => klappe('netz')}
+          expanded={offeneKachel === 'netz'}
+          toggleTitle={
+            offeneKachel === 'netz' ? 'Netzwerkzahlen schließen' : 'Netzwerkzahlen anzeigen'
+          }
+        />
+        {/*
+          Kein Aufklapper: Den Plattenplatz misst der Agent in eigenem,
+          langsamerem Takt - ein Verlauf aus so wenigen Messungen ist keine
+          Kurve. Ohne Obergrenze auch kein Balken; ein Server darf wachsen, so
+          weit die Platte der Node reicht.
+        */}
         <MetricTile
           label="Platte"
           value={formatMegabytes(stats?.diskUsedMb)}
           note={stats?.diskUsedMb == null ? 'noch nicht gemessen' : 'Datenordner, ohne Obergrenze'}
         />
         <MetricTile
-          label="Ping"
-          value={formatPing(anzeige?.pingMs)}
-          tone={pingTon(anzeige?.pingMs)}
-          note={anzeige?.pingMs == null ? fehlgrund : 'Umlaufzeit zum Node'}
-        />
-        <MetricTile
           label="Laufzeit"
           value={formatDuration(uptimeSeconds)}
           note={uptimeSeconds === null ? 'Server läuft nicht' : 'seit dem letzten Start'}
-        />
-        {/* Nicht im Mockup, aber die Zahl liegt vor und gehoert zum Zustand. */}
-        <MetricTile
-          label="Spieler"
-          note={anzeige?.playersOnline == null ? fehlgrund : undefined}
-          value={formatPlayers(anzeige?.playersOnline, anzeige?.playersMax)}
         />
       </div>
 
@@ -263,56 +342,23 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       ) : null}
 
       {/*
-        Spielerliste (Gefundener Punkt 51). Sie erscheint nur, wenn die Abfrage
-        Namen liefert: Der generische Port-Connect-Test kennt keine, und manche
-        Server geben nur einen Auszug heraus. Eine leere Liste hieße „keine
-        Angabe" – und die als „niemand da" darzustellen wäre gelogen; die
-        belastbare Zahl steht in der Kachel oben.
+        Der Verlauf haengt an der Kachel, die ihn oeffnet - immer nur einer.
+        Vorbild hafenmeister: Bis hierher stand er als eigener Block unter den
+        Kacheln, gleichzeitig fuer alle Kennzahlen; wer die CPU ansehen wollte,
+        bekam drei Diagramme, von denen zwei ihn nicht interessierten.
       */}
-      {live?.players && live.players.length > 0 ? (
-        <Panel variant="plain" className="flex flex-col gap-2">
-          <h3 className="text-base font-semibold">
-            Verbundene Spieler
-            {live.playersOnline !== null && live.playersOnline > live.players.length
-              ? ` (${live.players.length} von ${live.playersOnline} genannt)`
-              : null}
-          </h3>
-          <ul className="flex flex-wrap gap-2">
-            {live.players.map((spieler) => (
-              <li
-                key={spieler.name}
-                className="rounded-md border border-line bg-surface-deep px-2.5 py-1 font-mono text-sm text-ink-muted"
-              >
-                {spieler.name}
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      ) : null}
-
-      <div>
-        <button
-          type="button"
-          onClick={() => setHistoryOpen((open) => !open)}
-          className="text-sm text-brand hover:text-brand-bright"
-        >
-          {historyOpen ? 'Verlauf schließen' : 'Verlauf anzeigen'}
-        </button>
-      </div>
-
-      {historyOpen ? (
-        <Panel variant="plain" className="flex flex-col gap-3">
-          {history.loading ? (
-            <p className="text-base text-ink-muted">Verlauf wird geladen …</p>
-          ) : null}
-          {history.error ? <p className="text-base text-danger">{history.error}</p> : null}
-
+      {offeneKachel === 'cpu' || offeneKachel === 'ram' ? (
+        <Panel variant="plain" className="flex animate-fade-up flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-ink-muted">
               {history.data === null
                 ? 'Zeitraum'
                 : `${formatNumber(history.data.samples.length)} Messpunkte`}
             </span>
+            {/*
+              Der gewaehlte Zeitraum gilt fuer jede Kurve dieser Seite - wer den
+              CPU-Verlauf auf 24 Stunden stellt, meint nicht nur die CPU.
+            */}
             <SegmentedControl
               label="Zeitraum des Verlaufs"
               value={String(historyWindow)}
@@ -324,81 +370,127 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
             />
           </div>
 
-          {history.data ? (
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-              <StatsHistoryChart
-                samples={history.data.samples}
-                metric="cpuPercent"
-                label="CPU-Auslastung"
-                // Keine feste Achsenobergrenze mehr: Sie war das Kontingent
-                // des Servers, und das gibt es seit dem Wegfall der
-                // CPU-Zuweisung nicht. Der Verlauf skaliert jetzt auf seinen
-                // eigenen Höchstwert – so bleibt der Kurvenverlauf lesbar,
-                // statt an einer geratenen Obergrenze zu kleben.
-                max={null}
-                formatValue={(wert) => formatCores(wert / 100)}
-              />
-              <StatsHistoryChart
-                samples={history.data.samples}
-                metric="ramUsedMb"
-                label="Arbeitsspeicher"
-                max={server.resourceLimits.ramMb}
-                formatValue={formatMegabytes}
-              />
-              <StatsHistoryChart
-                samples={history.data.samples}
-                metric="playersOnline"
-                label="Spieler online"
-              />
-            </div>
+          {history.loading ? (
+            <p className="text-base text-ink-muted">Verlauf wird geladen …</p>
           ) : null}
+          {history.error ? <p className="text-base text-danger">{history.error}</p> : null}
+
+          {history.data === null ? null : offeneKachel === 'cpu' ? (
+            <StatsHistoryChart
+              samples={history.data.samples}
+              metric="cpuPercent"
+              label="CPU-Auslastung"
+              // Keine feste Achsenobergrenze: Sie war das Kontingent des
+              // Servers, und das gibt es seit dem Wegfall der CPU-Zuweisung
+              // nicht. Der Verlauf skaliert auf seinen eigenen Hoechstwert -
+              // so bleibt er lesbar, statt an einer geratenen Grenze zu kleben.
+              max={null}
+              formatValue={(wert) => formatCores(wert / 100)}
+            />
+          ) : (
+            <StatsHistoryChart
+              samples={history.data.samples}
+              metric="ramUsedMb"
+              label="Arbeitsspeicher"
+              max={server.resourceLimits.ramMb}
+              formatValue={formatMegabytes}
+            />
+          )}
         </Panel>
       ) : null}
 
-      <Panel variant="plain" className="flex flex-col gap-2">
-        <h3 className="text-base font-semibold">Netzwerkaktivität</h3>
-        {anzeige === null ? (
-          /*
-           * Fundpunkt 207: Hier stand „Der Server läuft nicht." auch dann, wenn
-           * er lief – die Bedingung fragte nach dem Messwert, geantwortet hat
-           * sie über den Zustand. Das sind zwei verschiedene Dinge.
-           */
-          <p className="text-sm text-ink-faint">
-            {hasLiveStats(server.status)
-              ? 'Noch keine Messwerte für diesen Server.'
-              : 'Der Server läuft nicht.'}
-          </p>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <MetricTile label="Eingehend" value={formatBytes(anzeige.networkRxBytes)} />
-              <MetricTile label="Ausgehend" value={formatBytes(anzeige.networkTxBytes)} />
-              {/*
-               * Paket-Zaehler wie im Entwurf (Abgleich 4.8). Sie stehen nur da,
-               * wenn die Runtime sie meldet - ein aelterer Agent laesst die
-               * Felder weg, und zwei Kacheln mit "—" waeren dann nur Fuellsel.
-               */}
-              {anzeige.networkRxPackets === undefined ||
-              anzeige.networkRxPackets === null ? null : (
-                <MetricTile
-                  label="Pakete eingehend"
-                  value={formatNumber(anzeige.networkRxPackets)}
-                />
-              )}
-              {anzeige.networkTxPackets === undefined ||
-              anzeige.networkTxPackets === null ? null : (
-                <MetricTile
-                  label="Pakete ausgehend"
-                  value={formatNumber(anzeige.networkTxPackets)}
-                />
-              )}
-            </div>
-            <p className="text-xs text-ink-faint">
-              Die Summen zählen ab dem letzten Start des Servers. Weil aller Spiel-Verkehr über das
-              Relay läuft, ist das zugleich der Verkehr durch die Panel-VPS.
+      {/*
+        Die Netzwerkzahlen haengen an der Ping-Kachel: Beides gehoert zur
+        Anbindung des Servers. Vorher stand die Karte dauerhaft weiter unten,
+        auch bei einem Server, der nie Verkehr hatte.
+      */}
+      {offeneKachel === 'netz' ? (
+        <Panel variant="plain" className="flex animate-fade-up flex-col gap-2">
+          <h3 className="text-base font-semibold">Netzwerkaktivität</h3>
+          {anzeige === null ? (
+            /*
+             * Fundpunkt 207: Hier stand „Der Server läuft nicht." auch dann,
+             * wenn er lief - die Bedingung fragte nach dem Messwert,
+             * geantwortet hat sie über den Zustand. Das sind zwei Dinge.
+             */
+            <p className="text-sm text-ink-faint">
+              {hasLiveStats(server.status)
+                ? 'Noch keine Messwerte für diesen Server.'
+                : 'Der Server läuft nicht.'}
             </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <MetricTile label="Eingehend" value={formatBytes(anzeige.networkRxBytes)} />
+                <MetricTile label="Ausgehend" value={formatBytes(anzeige.networkTxBytes)} />
+                {/*
+                 * Paket-Zaehler wie im Entwurf (Abgleich 4.8). Sie stehen nur
+                 * da, wenn die Runtime sie meldet - ein aelterer Agent laesst
+                 * die Felder weg, und zwei Kacheln mit "—" waeren Fuellsel.
+                 */}
+                {anzeige.networkRxPackets === undefined ||
+                anzeige.networkRxPackets === null ? null : (
+                  <MetricTile
+                    label="Pakete eingehend"
+                    value={formatNumber(anzeige.networkRxPackets)}
+                  />
+                )}
+                {anzeige.networkTxPackets === undefined ||
+                anzeige.networkTxPackets === null ? null : (
+                  <MetricTile
+                    label="Pakete ausgehend"
+                    value={formatNumber(anzeige.networkTxPackets)}
+                  />
+                )}
+              </div>
+              <p className="text-xs text-ink-faint">
+                Die Summen zählen ab dem letzten Start des Servers. Weil aller Spiel-Verkehr über
+                das Relay läuft, ist das zugleich der Verkehr durch die Panel-VPS.
+              </p>
+            </>
+          )}
+        </Panel>
+      ) : null}
+
+      {/*
+        Spieler in einer eigenen Karte statt als sechste Kachel - wie bei
+        hafenmeister. Die Zahl steht oben, die Namen darunter, soweit die
+        Abfrage sie hergibt: Der generische Port-Connect-Test kennt keine, und
+        manche Server geben nur einen Auszug heraus (Gefundener Punkt 51). Eine
+        leere Liste hiesse „keine Angabe" - sie als „niemand da" darzustellen
+        waere gelogen, deshalb traegt die Zahl die Karte.
+      */}
+      <Panel variant="plain" className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-base font-semibold">Spieler online</h3>
+          <span className="font-mono text-2xl font-semibold text-brand">
+            {formatPlayers(anzeige?.playersOnline, anzeige?.playersMax)}
+          </span>
+        </div>
+
+        {anzeige?.playersOnline == null ? (
+          <p className="text-xs text-ink-faint">{fehlgrund}</p>
+        ) : null}
+
+        {live?.players && live.players.length > 0 ? (
+          <>
+            <ul className="flex flex-wrap gap-2">
+              {live.players.map((spieler) => (
+                <li
+                  key={spieler.name}
+                  className="rounded-md border border-line bg-surface-deep px-2.5 py-1 font-mono text-sm text-ink-muted"
+                >
+                  {spieler.name}
+                </li>
+              ))}
+            </ul>
+            {live.playersOnline !== null && live.playersOnline > live.players.length ? (
+              <p className="text-xs text-ink-faint">
+                {`${formatNumber(live.players.length)} von ${formatNumber(live.playersOnline)} Namen genannt - mehr gibt die Abfrage dieses Spiels nicht heraus.`}
+              </p>
+            ) : null}
           </>
-        )}
+        ) : null}
       </Panel>
 
       <div

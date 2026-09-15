@@ -29,6 +29,8 @@ export interface ServerRecord {
   readonly hostName: string | null;
   /** Verbindungszustand der Node; `null`, wenn die Node fehlt. */
   readonly hostStatus: HostNodeStatus | null;
+  /** Kerne der Node – Bezugsgroesse der CPU-Anzeige (`cpuPercent` je Kern). */
+  readonly hostCpuCores: number | null;
   readonly name: string;
   readonly gameType: string;
   readonly status: ServerStatus;
@@ -255,6 +257,7 @@ type ServerJoinRow = {
   ownerDisplayName: string | null;
   hostName: string | null;
   hostStatus: HostNodeStatus | null;
+  hostCpuCores: number | null;
 };
 
 function toRecord(row: ServerJoinRow): ServerRecord {
@@ -267,6 +270,7 @@ function toRecord(row: ServerJoinRow): ServerRecord {
     hostId: server.hostId,
     hostName: row.hostName,
     hostStatus: row.hostStatus,
+    hostCpuCores: row.hostCpuCores,
     name: server.name,
     gameType: server.gameType,
     status: server.status,
@@ -300,6 +304,10 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
     // Detailansicht soll sagen koennen, ob Messwerte fehlen, weil noch nichts
     // gemessen wurde – oder weil die Node gar nicht verbunden ist.
     hostStatus: hostNodes.status,
+    // Und die Kerne aus demselben Join: Sie sind die Bezugsgroesse der
+    // CPU-Anzeige - `cpuPercent` zaehlt in Prozent EINES Kerns, ein Anteil
+    // entsteht erst mit der Kernzahl der Maschine.
+    hostCpuCores: hostNodes.totalCpuCores,
   };
 
   /**

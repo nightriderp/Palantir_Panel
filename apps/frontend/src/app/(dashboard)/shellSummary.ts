@@ -46,17 +46,30 @@ export interface StatusMetric {
   label: string;
   /** Fertig formatierter Wert, z. B. `4/7` oder `18,5 GB/32 GB`. */
   value: string;
-  /**
-   * Woher die Zahl stammt – „gemessen", „gebucht", „teils gemessen"
-   * (Fundpunkt 204). Steht klein hinter der Beschriftung.
-   *
-   * `undefined`, wenn sich die Frage nicht stellt (Serverzahlen zählt niemand
-   * zweimal) oder der Vertrag die Herkunft nicht mitliefert.
-   */
-  origin?: string;
   tone: StatusMetricTone;
-  /** Erklärt, worüber die Zahl gebildet wird – erscheint als Tooltip. */
+  /**
+   * Erklärt, worüber die Zahl gebildet wird – erscheint als Tooltip.
+   *
+   * Hier steht seit der Angleichung an hafenmeister auch die **Herkunft**
+   * („gemessen", „gebucht", „teils gemessen", Fundpunkt 204). Sie stand bis
+   * dahin als eigenes Wort in der Zeile; die Zeile zeigt jetzt Prozentwerte wie
+   * das Schwesterprojekt, und ein viertes Wort je Kennzahl sprengte sie. Die
+   * Auskunft bleibt: Wer wissen will, ob eine Zahl gemessen oder gebucht ist,
+   * fährt darüber.
+   */
   note: string;
+  /**
+   * Der Zahlenwert hinter der Anzeige – Grundlage der Kurve beim Überfahren.
+   *
+   * `null` heisst „gerade unbekannt" und wird **nicht** aufgezeichnet. Eine 0
+   * einzutragen wäre dieselbe Unwahrheit wie ein „0 %" in der Kachel: Ein Node,
+   * der nichts meldet, ist nicht ein Node bei null. Fehlt das Feld ganz, gibt
+   * es für diese Kennzahl keine Kurve (etwa „mit Update": Die Zahl ändert sich
+   * beim Ausrollen, nicht im Messtakt).
+   */
+  numeric?: number | null;
+  /** Wie der Wert in der Kurve beschriftet wird. */
+  format?: (value: number) => string;
 }
 
 export interface StatusSummaryInput {
@@ -69,6 +82,25 @@ export interface StatusSummaryInput {
   nodes: readonly HostNodeDto[] | null;
   /** Live-Messwerte je Server-Id; leer, solange über den Kanal nichts kam. */
   statsById: Readonly<Record<string, ServerLiveStats>>;
+}
+
+/** Wie eine Prozentzahl in der Kurve beschriftet wird. */
+const prozentFormat = (wert: number): string => `${String(Math.round(wert))} %`;
+
+/** Wie eine Stückzahl in der Kurve beschriftet wird. */
+const zahlFormat = (wert: number): string => formatNumber(Math.round(wert));
+
+/**
+ * Anteil in Prozent, `null` ohne brauchbaren Nenner.
+ *
+ * Die Kopfzeile zeigt seit der Angleichung an hafenmeister Prozentwerte statt
+ * absoluter Zahlen: „18,5 GB/32 GB" beantwortet „wie voll" erst nach einer
+ * Kopfrechnung, „58 %" sofort. Die absoluten Zahlen stehen weiterhin in der
+ * Node-Übersicht, wo der Platz dafür da ist.
+ */
+function anteil(belegt: number | null, gesamt: number): number | null {
+  if (belegt === null || gesamt <= 0) return null;
+  return (belegt / gesamt) * 100;
 }
 
 /** Summe einer Zahl über alle Einträge, `null`-Werte übersprungen. */
@@ -88,34 +120,30 @@ function sumDefined(values: readonly (number | null | undefined)[]): number | nu
  * auf 216 GB, ohne dass sich an der Anzeige irgendetwas änderte – wer das
  * sieht, sucht den Fehler bei sich statt bei der Node.
  *
- * Deshalb steht die Herkunft jetzt an der Kachel. Fehlt `source` – der Vertrag
- * führt es als optional –, bleibt sie ungenannt statt geraten.
+ * Deshalb steht die Herkunft jetzt am Tooltip der Kennzahl. Fehlt `source` –
+ * der Vertrag führt es als optional –, bleibt sie ungenannt statt geraten.
+ *
+ * Bis zur Angleichung an hafenmeister stand zusätzlich ein Kurzwort
+ * („gemessen", „gebucht") in der Zeile selbst. Die Zeile zeigt jetzt
+ * Prozentwerte wie das Schwesterprojekt, und ein viertes Wort je Kennzahl
+ * sprengte sie; der Satz hier trägt dieselbe Auskunft.
  */
-function herkunft(quellen: readonly (HostNodeUsageSource | undefined)[]): {
-  label?: string;
-  satz: string;
-} {
+function herkunftssatz(quellen: readonly (HostNodeUsageSource | undefined)[]): string {
   if (quellen.length === 0 || quellen.some((quelle) => quelle === undefined)) {
-    return { satz: '' };
+    return '';
   }
 
   const gemessen = quellen.filter((quelle) => quelle === 'measured').length;
 
   if (gemessen === quellen.length) {
-    return { label: 'gemessen', satz: ' Vom Agent auf der Node gemessen.' };
+    return ' Vom Agent auf der Node gemessen.';
   }
 
   if (gemessen === 0) {
-    return {
-      label: 'gebucht',
-      satz: ' Keine frische Messung – gerechnet aus den Kontingenten der angelegten Server.',
-    };
+    return ' Keine frische Messung – gerechnet aus den Kontingenten der angelegten Server.';
   }
 
-  return {
-    label: 'teils gemessen',
-    satz: ` Gemessen auf ${gemessen} von ${quellen.length} Nodes; die übrigen zählen ihre Kontingente.`,
-  };
+  return ` Gemessen auf ${String(gemessen)} von ${String(quellen.length)} Nodes; die übrigen zählen ihre Kontingente.`;
 }
 
 /**
@@ -136,9 +164,11 @@ export function buildStatusMetrics({
   metrics.push({
     key: 'servers',
     label: 'Server online',
-    value: `${running.length}/${servers.length}`,
+    value: `${String(running.length)}/${String(servers.length)}`,
     tone: 'success',
     note: 'Anteil laufender Server insgesamt.',
+    numeric: running.length,
+    format: zahlFormat,
   });
 
   // Spielerzahlen kommen ausschließlich über den Live-Kanal und fehlen, solange
@@ -150,6 +180,8 @@ export function buildStatusMetrics({
     value: players === null ? '—' : formatNumber(players),
     tone: 'brand',
     note: 'Summe über alle laufenden Server, die Zahlen melden.',
+    numeric: players,
+    format: zahlFormat,
   });
 
   if (nodes !== null) {
@@ -164,14 +196,15 @@ export function buildStatusMetrics({
      */
     const cpuNodes = online.filter((node) => node.usage?.cpuPercent != null);
     const cpuSum = sumDefined(cpuNodes.map((node) => node.usage?.cpuPercent));
-    const cpuHerkunft = herkunft(cpuNodes.map((node) => node.usage?.source));
+    const cpuHerkunft = herkunftssatz(cpuNodes.map((node) => node.usage?.source));
     metrics.push({
       key: 'cpu',
       label: 'CPU',
       value: cpuSum === null ? '—' : formatPercent(cpuSum / cpuNodes.length),
-      ...(cpuHerkunft.label === undefined ? {} : { origin: cpuHerkunft.label }),
       tone: 'warning',
-      note: `Durchschnitt über die Maschinen der verbundenen Nodes, die Messwerte melden – nicht über einzelne Container.${cpuHerkunft.satz}`,
+      note: `Durchschnitt über die Maschinen der verbundenen Nodes, die Messwerte melden – nicht über einzelne Container.${cpuHerkunft}`,
+      numeric: cpuSum === null ? null : cpuSum / cpuNodes.length,
+      format: prozentFormat,
     });
 
     // RAM ist der **gebuchte** Anteil (Summe der Server-Limits), nicht der
@@ -180,15 +213,21 @@ export function buildStatusMetrics({
     // bewusst über alle Nodes, anders als CPU und Platte darüber.
     const ramUsed = nodes.reduce((total, node) => total + node.capacity.allocated.ramMb, 0);
     const ramTotal = nodes.reduce((total, node) => total + node.capacity.total.ramMb, 0);
+    const ramAnteil = anteil(ramUsed, ramTotal);
     metrics.push({
       key: 'ram',
       label: 'RAM',
-      value: `${formatMegabytes(ramUsed)}/${formatMegabytes(ramTotal)}`,
-      // Steht hier fest, nicht aus `usage.source`: Diese Kachel liest
-      // `capacity.allocated` und wechselt nie die Bedeutung.
-      origin: 'gebucht',
+      value: ramAnteil === null ? '—' : formatPercent(ramAnteil),
       tone: 'accent',
-      note: 'Summe des gebuchten Arbeitsspeichers über alle Nodes – gebucht, nicht gemessen.',
+      /*
+        Die Herkunft steht hier fest, nicht aus `usage.source`: Diese Kennzahl
+        liest `capacity.allocated` und wechselt nie die Bedeutung. Seit die
+        Zeile Prozente zeigt, nennt der Tooltip auch die absoluten Zahlen -
+        sonst wäre mit dem Nenner die Grösse der Instanz verschwunden.
+      */
+      note: `Summe des gebuchten Arbeitsspeichers über alle Nodes – gebucht, nicht gemessen. ${formatMegabytes(ramUsed)} von ${formatMegabytes(ramTotal)}.`,
+      numeric: ramAnteil,
+      format: prozentFormat,
     });
 
     /*
@@ -206,14 +245,18 @@ export function buildStatusMetrics({
     const mitZahl = nodes.filter((node) => node.usage?.diskUsedMb != null);
     const diskUsed = sumDefined(mitZahl.map((node) => node.usage?.diskUsedMb));
     const diskTotal = mitZahl.reduce((total, node) => total + node.capacity.total.diskMb, 0);
-    const diskHerkunft = herkunft(mitZahl.map((node) => node.usage?.source));
+    const diskHerkunft = herkunftssatz(mitZahl.map((node) => node.usage?.source));
+    const diskAnteil = anteil(diskUsed, diskTotal);
     metrics.push({
       key: 'disk',
       label: 'Disk',
-      value: diskUsed === null ? '—' : `${formatMegabytes(diskUsed)}/${formatMegabytes(diskTotal)}`,
-      ...(diskHerkunft.label === undefined ? {} : { origin: diskHerkunft.label }),
+      value: diskAnteil === null ? '—' : formatPercent(diskAnteil),
       tone: 'warning',
-      note: `Summe der Plattenbelegung über die Nodes, die eine Zahl nennen.${diskHerkunft.satz}`,
+      note: `Summe der Plattenbelegung über die Nodes, die eine Zahl nennen. ${
+        diskUsed === null ? '' : `${formatMegabytes(diskUsed)} von ${formatMegabytes(diskTotal)}. `
+      }${diskHerkunft.trim()}`,
+      numeric: diskAnteil,
+      format: prozentFormat,
     });
 
     metrics.push({
@@ -222,6 +265,8 @@ export function buildStatusMetrics({
       value: `${online.length}/${nodes.length}`,
       tone: online.length === nodes.length ? 'accent' : 'warning',
       note: 'Verbundene Nodes gegenüber allen registrierten.',
+      numeric: online.length,
+      format: zahlFormat,
     });
   }
 
@@ -236,6 +281,8 @@ export function buildStatusMetrics({
       // Lifecycle kennt mit `creating` einen dritten Übergang, und die Leiste
       // soll keinen davon verschweigen.
       note: 'Server, die gerade angelegt werden, starten oder stoppen.',
+      numeric: inMotion,
+      format: zahlFormat,
     });
   }
 
@@ -247,6 +294,8 @@ export function buildStatusMetrics({
       value: formatNumber(faulted),
       tone: 'danger',
       note: 'Server im Fehlerzustand oder abgestürzt.',
+      numeric: faulted,
+      format: zahlFormat,
     });
   }
 
@@ -257,6 +306,11 @@ export function buildStatusMetrics({
       label: 'mit Update',
       value: formatNumber(withUpdate),
       tone: 'warning',
+      /*
+        Bewusst OHNE `numeric`: Eine Kurve „wie viele Updates lagen in den
+        letzten Minuten an" beantwortet keine Frage - die Zahl ändert sich beim
+        Ausrollen einer neuen Image-Fassung, nicht im Messtakt.
+      */
       note: 'Server mit verfügbarem Image-Update.',
     });
   }

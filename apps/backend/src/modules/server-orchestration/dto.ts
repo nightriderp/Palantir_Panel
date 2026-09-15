@@ -129,6 +129,9 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     hostName: server.hostName,
     // Gleiche Sichtbarkeitsregel wie beim Namen der Node.
     hostStatus: server.hostStatus,
+    // Bezugsgroesse der CPU-Anzeige: `cpuPercent` zaehlt je Kern, ein Anteil
+    // entsteht erst mit der Kernzahl der Maschine.
+    hostCpuCores: server.hostCpuCores,
     subdomain: server.subdomain,
     address: permissions.canViewAddress
       ? {

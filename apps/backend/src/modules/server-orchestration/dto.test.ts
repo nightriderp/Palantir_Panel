@@ -40,6 +40,7 @@ function serverMit(gameType: string): ServerRecord {
     hostId: '33333333-3333-4333-8333-333333333333',
     hostName: 'Homeserver',
     hostStatus: 'online',
+    hostCpuCores: 8,
     subdomain: 'alt',
     assignedPorts: [
       { publicPort: 25_001, containerPort: 25_565, protocol: 'tcp', label: 'Spiel', primary: true },
@@ -76,6 +77,17 @@ describe('toGameServerDto – unbekannter Spieltyp (Fundpunkt 247)', () => {
   const ohnePruefstaende = createGameRegistry(3, [
     ...ALLE_GAME_TYPE_DEFINITIONS.filter((definition) => definition.id !== TEST_GAME_TYPE.id),
   ]);
+
+  it('reicht die Kerne der Node durch – Bezugsgroesse der CPU-Anzeige', () => {
+    /*
+     * `cpuPercent` zaehlt in Prozent EINES Kerns. Ohne diese Zahl kann die
+     * Detailansicht daraus keinen Anteil bilden und zeigt die nackte Kernzahl -
+     * "2,5 Kerne" sagt nicht, ob die Maschine am Anschlag laeuft.
+     */
+    const dto = toGameServerDto(serverMit(TEST_GAME_TYPE.id), kontext(ohnePruefstaende));
+
+    expect(dto.hostCpuCores).toBe(8);
+  });
 
   it('baut den DTO trotzdem, statt zu werfen', () => {
     const dto = toGameServerDto(serverMit(TEST_GAME_TYPE.id), kontext(ohnePruefstaende));

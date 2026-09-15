@@ -9,6 +9,7 @@ import {
   clampedPercentOf,
   formatCores,
   formatMegabytes,
+  formatNumber,
   formatPercent,
   formatPing,
   formatPlayers,
@@ -126,6 +127,16 @@ export function ServerCard({
    * weg und die Kerne stehen als Zahl daneben.
    */
   const cpuCores = live?.cpuPercent == null ? null : Math.round(live.cpuPercent) / 100;
+  /*
+    CPU als Anteil der Node-Kerne, wie bei hafenmeister: `cpuPercent` zaehlt in
+    Prozent EINES Kerns, die Kerne der Maschine machen daraus einen Fuellstand.
+    Kennt der Eintrag sie nicht (aelteres Backend, Node nicht sichtbar), bleibt
+    es bei der Kernzahl ohne Bogen - lieber unschaerfer als ein geratener Nenner.
+  */
+  const cpuPercent =
+    live?.cpuPercent == null || server.hostCpuCores == null || server.hostCpuCores <= 0
+      ? null
+      : Math.min(100, live.cpuPercent / server.hostCpuCores);
   const ramPercent = clampedPercentOf(live?.ramUsedMb, server.resourceLimits.ramMb);
   const pingMs = live?.pingMs ?? null;
 
@@ -239,9 +250,20 @@ export function ServerCard({
         */}
         <MetricRing
           label="CPU"
-          value={cpuCores == null ? '—' : formatCores(cpuCores)}
-          percent={null}
-          title="Ausgelastete Kerne. Ein Server hat keine feste CPU-Grenze mehr; die Kerne der Node stehen in der Node-Übersicht."
+          value={
+            cpuPercent !== null
+              ? formatPercent(cpuPercent)
+              : cpuCores == null
+                ? '—'
+                : formatCores(cpuCores)
+          }
+          percent={cpuPercent}
+          {...(cpuPercent === null ? {} : { tone: loadTone(cpuPercent) })}
+          title={
+            cpuPercent === null
+              ? 'Ausgelastete Kerne. Die Kerne der Node sind hier nicht bekannt – ohne sie gibt es keinen Anteil.'
+              : `Anteil an den ${formatNumber(server.hostCpuCores ?? 0)} Kernen der Node – alle Server teilen sie sich.`
+          }
         />
         <MetricRing
           label="RAM"
