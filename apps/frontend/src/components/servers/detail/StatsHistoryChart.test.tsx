@@ -30,9 +30,9 @@ function messwert(overrides: Partial<ServerLiveStats>): ServerLiveStats {
 
 /** Die Punkte des Linienzugs als Zahlenpaare. */
 function punkte(): Array<[number, number]> {
-  const linien = document.querySelectorAll('polyline');
-  // Die zweite Linie ist der Zug selbst; die erste ist die Fläche darunter.
-  const zug = linien[1];
+  // Seit dem Entwurfs-Stil gibt es nur noch EINEN Linienzug: Die Flaeche
+  // darunter ist drei Haarlinien gewichen, und die sind `line`, nicht `polyline`.
+  const zug = document.querySelector('polyline');
   if (!zug) throw new Error('Kein Linienzug gezeichnet.');
 
   return (zug.getAttribute('points') ?? '')

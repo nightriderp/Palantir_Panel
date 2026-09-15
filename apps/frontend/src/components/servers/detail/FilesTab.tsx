@@ -64,9 +64,23 @@ function breadcrumbs(path: string): Array<{ label: string; path: string }> {
   return crumbs;
 }
 
-function entryIcon(entry: ServerFileEntryDto) {
-  if (entry.type === 'directory') return 'layers' as const;
-  return 'clipboard' as const;
+/**
+ * Symbol und Farbe eines Eintrags (Entwurf des Betreibers, 15.09.2026).
+ *
+ * Bis hierher standen hier `layers` und `clipboard` - Platzhalter aus dem
+ * vorhandenen Satz, die weder nach Ordner noch nach Datei aussahen. Der Ordner
+ * ist gefuellt und bernsteinfarben, die Datei eine Kontur in der ruhigen
+ * Textfarbe: In einer langen Liste tragen genau diese zwei Unterschiede die
+ * Unterscheidung.
+ */
+function entryIcon(entry: ServerFileEntryDto): {
+  name: 'folder' | 'file';
+  filled: boolean;
+  className: string;
+} {
+  return entry.type === 'directory'
+    ? { name: 'folder', filled: true, className: 'shrink-0 text-warning' }
+    : { name: 'file', filled: false, className: 'shrink-0 text-ink-faint' };
 }
 
 export interface FilesTabProps {
@@ -278,7 +292,7 @@ export function FilesTab({ server }: FilesTabProps) {
                   onClick={() => void openFile(entry)}
                   className="flex min-w-0 items-center gap-2 text-left font-mono text-sm text-ink"
                 >
-                  <Icon name={entryIcon(entry)} size={14} className="shrink-0 text-ink-faint" />
+                  <Icon size={14} {...entryIcon(entry)} />
                   <span className="truncate">{entry.name}</span>
                 </button>
 

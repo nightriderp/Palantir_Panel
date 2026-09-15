@@ -126,7 +126,7 @@ export function MetricTile({
           `aria-hidden`, weil er nichts sagt, was der Wert darüber nicht schon
           nennt - vorgelesen wäre er eine zweite, ungenauere Zahl.
         */
-        <div aria-hidden className="mt-2.5 h-1 overflow-hidden rounded-full bg-fill">
+        <div aria-hidden className="mt-2.5 h-[5px] overflow-hidden rounded-full bg-fill">
           <div
             className={cn(
               'h-full rounded-full transition-[width] duration-500 ease-out',

@@ -30,6 +30,15 @@ export const ICON_PATHS = {
   close: 'M6 6l12 12M18 6L6 18',
   users: 'M8 12a4 4 0 100-8 4 4 0 000 8zM2 21a6 6 0 0112 0M17 8a3 3 0 010 6M22 21a5 5 0 00-6-5',
   user: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0',
+  /**
+   * Ordner und Datei aus dem Entwurf „Outpost Panel" (Betreiber, 15.09.2026).
+   *
+   * Der Ordner ist das einzige **gefuellte** Symbol des Satzes - so steht er im
+   * Entwurf, und in einer langen Dateiliste traegt genau diese Fuellung die
+   * Unterscheidung: Ordner zuerst, Dateien darunter, auf einen Blick.
+   */
+  folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  file: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6',
   layers: 'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5M3 17l9 5 9-5',
   clipboard: 'M9 3h6v3H9zM6 6h12v15H6zM9 11h6M9 15h6',
   inbox: 'M4 4h16l-2 10H6zM2 14h6l2 3h4l2-3h6',
@@ -69,16 +78,24 @@ export interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name' | 'child
    * weil daneben fast immer Text steht.
    */
   title?: string;
+  /**
+   * Gefuellt statt Kontur.
+   *
+   * Die Ausnahme von der Regel dieses Satzes, und bewusst eine: Der Ordner aus
+   * dem Entwurf des Betreibers ist gefuellt, und in einer langen Dateiliste
+   * traegt genau diese Fuellung die Unterscheidung zur Datei.
+   */
+  filled?: boolean;
 }
 
-export function Icon({ name, size = 16, title, className, ...rest }: IconProps) {
+export function Icon({ name, size = 16, title, filled, className, ...rest }: IconProps) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
+      fill={filled === true ? 'currentColor' : 'none'}
+      stroke={filled === true ? 'none' : 'currentColor'}
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
