@@ -160,6 +160,32 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
     });
   });
 
+  it('zeigt gross die laufende Sitzung und klein die Gesamtlaufzeit', async () => {
+    /*
+     * Wunsch des Betreibers: oben die Uhr seit dem letzten Start, klein
+     * darunter, wie lange der Server insgesamt schon lief. Der Zaehler im
+     * Vertrag endet mit dem letzten abgeschlossenen Lauf - die laufende
+     * Sitzung rechnet die Ansicht dazu.
+     */
+    const jetzt = new Date('2026-09-15T12:00:00.000Z');
+    vi.setSystemTime(jetzt);
+
+    zeichne({
+      server: {
+        ...serverFixture({ id: 'srv-1', status: 'running' }),
+        hostCpuCores: 8,
+        lastStartedAt: '2026-09-15T11:00:00.000Z',
+        totalUptimeSeconds: 7200,
+      },
+    });
+
+    // Eine Stunde laeuft die Sitzung, zwei Stunden stehen im Zaehler.
+    expect(await screen.findByText('1 h 00 min')).toBeTruthy();
+    expect(screen.getByText(/insgesamt 3 h/)).toBeTruthy();
+
+    vi.useRealTimers();
+  });
+
   it('faerbt die Kacheln nach der Ampel', async () => {
     /*
      * Gruen heisst „alles im gruenen Bereich", gelb „wird langsam knapp", rot

@@ -39,6 +39,8 @@ export interface ServerRecord {
   readonly lastStartedAt: string | null;
   readonly lastActivityAt: string | null;
   readonly crashTimestamps: readonly string[];
+  /** Summe der abgeschlossenen Laufzeiten in Sekunden, ohne die laufende. */
+  readonly totalUptimeSeconds: number;
   readonly dockerContainerId: string | null;
   /** Image, mit dem der Container angelegt wurde; `null` ohne Container. */
   readonly imageRef: string | null;
@@ -94,6 +96,8 @@ export interface PersistLifecycleData {
   readonly statusChangedAt: string;
   readonly lastStartedAt: string | null;
   readonly crashTimestamps: readonly string[];
+  /** Summe der abgeschlossenen Laufzeiten in Sekunden, ohne die laufende. */
+  readonly totalUptimeSeconds: number;
 }
 
 export interface HostNodeRecord {
@@ -279,6 +283,7 @@ function toRecord(row: ServerJoinRow): ServerRecord {
     lastStartedAt: toIso(server.lastStartedAt),
     lastActivityAt: toIso(server.lastActivityAt),
     crashTimestamps: server.crashTimestamps,
+    totalUptimeSeconds: server.totalUptimeSeconds,
     dockerContainerId: server.dockerContainerId,
     imageRef: server.imageRef,
     containerSpecHash: server.containerSpecHash,
@@ -457,6 +462,7 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
           statusChangedAt: new Date(data.statusChangedAt),
           lastStartedAt: data.lastStartedAt === null ? null : new Date(data.lastStartedAt),
           crashTimestamps: [...data.crashTimestamps],
+          totalUptimeSeconds: data.totalUptimeSeconds,
           updatedAt: new Date(),
         })
         .where(and(eq(gameServers.id, id), eq(gameServers.status, expectedStatus)))

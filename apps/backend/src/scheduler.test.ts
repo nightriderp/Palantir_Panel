@@ -737,6 +737,7 @@ function runningServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
     lastStartedAt: NOW.toISOString(),
     lastActivityAt: null,
     crashTimestamps: [],
+    totalUptimeSeconds: 0,
     dockerContainerId: 'container-1',
     imageRef: 'ghcr.io/test:1',
     containerSpecHash: null,

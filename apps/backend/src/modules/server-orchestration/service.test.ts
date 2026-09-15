@@ -235,6 +235,7 @@ class FakeRepository implements ServerRepository {
       lastStartedAt: null,
       lastActivityAt: null,
       crashTimestamps: [],
+      totalUptimeSeconds: 0,
       dockerContainerId: null,
       imageRef: null,
       containerSpecHash: null,

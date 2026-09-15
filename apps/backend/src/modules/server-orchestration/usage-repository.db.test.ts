@@ -379,6 +379,7 @@ function starte(servers: ServerRepository, id: string): Promise<void> {
       statusChangedAt: jetzt,
       lastStartedAt: jetzt,
       crashTimestamps: [],
+      totalUptimeSeconds: 0,
     },
     'stopped',
   );

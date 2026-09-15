@@ -143,6 +143,7 @@ export {
   formatDateTime,
   formatRelativeTime,
   formatDuration,
+  formatUptimeClock,
   formatMegabytes,
   formatNumber,
   formatPercent,
