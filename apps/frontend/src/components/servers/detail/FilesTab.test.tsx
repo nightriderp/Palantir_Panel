@@ -100,6 +100,24 @@ beforeEach(() => {
 });
 
 describe('FilesTab – Löschen (Audit contract-drift-03)', () => {
+  it('zeichnet Ordner gefuellt und Dateien als Kontur (Entwurf des Betreibers)', async () => {
+    /*
+     * Bis hierher standen dort `layers` und `clipboard` - Platzhalter, die
+     * weder nach Ordner noch nach Datei aussahen. In einer langen Liste tragen
+     * genau diese zwei Unterschiede die Unterscheidung.
+     */
+    zeichne([VERZEICHNIS, eintrag()]);
+
+    await screen.findByText(VERZEICHNIS.name);
+
+    const symbole = document.querySelectorAll('svg');
+    const gefuellt = Array.from(symbole).filter(
+      (svg) => svg.getAttribute('fill') === 'currentColor',
+    );
+
+    expect(gefuellt.length).toBeGreaterThan(0);
+  });
+
   it('nimmt den Inhalt eines Verzeichnisses nur nach ausdrücklicher Bestätigung mit', async () => {
     zeichne([VERZEICHNIS]);
 

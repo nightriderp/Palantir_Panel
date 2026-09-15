@@ -105,9 +105,6 @@ export function MetricChart({
       linie,
       obergrenze,
       letzter: values[values.length - 1] ?? 0,
-      // Die Fläche unter der Linie – sie macht den Verlauf auf einen Blick
-      // lesbar, ohne eine zweite Farbe einzuführen.
-      flaeche: `0,${String(hoehe)} ${linie} ${String(VIEW_WIDTH)},${String(hoehe)}`,
     };
   }, [points, max, hoehe]);
 
@@ -153,12 +150,27 @@ export function MetricChart({
           className="h-full w-full"
           style={{ height: hoehe }}
         >
-          <polygon points={bild.flaeche} className="fill-brand/15" />
+          {/*
+            Haarlinien oben, Mitte, unten statt einer Fuellflaeche - derselbe
+            Stil wie im grossen Verlauf (Entwurf des Betreibers, 15.09.2026).
+          */}
+          {[1, hoehe / 2, hoehe - 1].map((y) => (
+            <line
+              key={y}
+              x1={0}
+              y1={y}
+              x2={VIEW_WIDTH}
+              y2={y}
+              className="stroke-line"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
           <polyline
             points={bild.linie}
             fill="none"
             className="stroke-brand"
-            strokeWidth={1.5}
+            strokeWidth={2}
             strokeLinejoin="round"
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"

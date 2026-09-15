@@ -98,9 +98,6 @@ export function StatsHistoryChart({
       punkte,
       obergrenze,
       letzter: values[values.length - 1] ?? 0,
-      // Die Fläche unter der Linie – sie macht den Verlauf auf einen Blick
-      // lesbar, ohne eine zweite Farbe einzuführen.
-      flaeche: `0,${VIEW_HEIGHT} ${punkte} ${VIEW_WIDTH},${VIEW_HEIGHT}`,
     };
   }, [samples, metric, max]);
 
@@ -146,24 +143,35 @@ export function StatsHistoryChart({
           preserveAspectRatio="none"
           className="min-w-0 flex-1"
         >
-          {/* Hilfslinie auf halber Höhe – ohne sie fehlt jeder Bezug. */}
-          <line
-            x1={0}
-            y1={VIEW_HEIGHT / 2}
-            x2={VIEW_WIDTH}
-            y2={VIEW_HEIGHT / 2}
-            stroke="currentColor"
-            strokeWidth={1}
-            strokeDasharray="4 4"
-            className="text-line"
-          />
-          <polyline points={bild.flaeche} fill="currentColor" className="text-brand opacity-15" />
+          {/*
+            Drei durchgezogene Haarlinien - oben, Mitte, unten - statt einer
+            gestrichelten und einer Fuellflaeche darunter (Entwurf des
+            Betreibers, 15.09.2026). Die Flaeche machte kurze Ausschlaege zu
+            einem Farbblock; die drei Linien geben der Kurve einen Rahmen, ohne
+            selbst ins Auge zu fallen.
+          */}
+          {[1, VIEW_HEIGHT / 2, VIEW_HEIGHT - 1].map((y) => (
+            <line
+              key={y}
+              x1={0}
+              y1={y}
+              x2={VIEW_WIDTH}
+              y2={y}
+              stroke="currentColor"
+              strokeWidth={1}
+              className="text-line"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
           <polyline
             points={bild.punkte}
             fill="none"
             stroke="currentColor"
             strokeWidth={2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
             className="text-brand"
+            vectorEffect="non-scaling-stroke"
           />
         </svg>
       </div>
