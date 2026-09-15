@@ -32,6 +32,7 @@ function stateWith(overrides: Partial<ServerLifecycleState> = {}): ServerLifecyc
     statusChangedAt: T0.toISOString(),
     lastStartedAt: null,
     crashTimestamps: [],
+    totalUptimeSeconds: 0,
     ...overrides,
   };
 }
@@ -490,6 +491,63 @@ describe('Auto-Shutdown-Schonfrist (Pflichtenheft §9)', () => {
     expect(gestartet.state.status).toBe('starting');
     expect(gestartet.state.crashTimestamps).toEqual([T0.toISOString()]);
     expect(apply(gestartet.state, { type: 'healthCheckPassed' }).state.crashTimestamps).toEqual([]);
+  });
+});
+
+describe('Gesamtlaufzeit (Vertrag totalUptimeSeconds)', () => {
+  const gestartet = stateWith({
+    status: 'running',
+    lastStartedAt: '2026-08-26T10:00:00.000Z',
+    totalUptimeSeconds: 3600,
+  });
+
+  it('bucht die Sitzung, wenn der Server running verlaesst', () => {
+    // Zwei Stunden gelaufen (10:00 bis 12:00), eine Stunde stand schon da.
+    const ergebnis = apply(gestartet, { type: 'stopRequested' });
+
+    expect(ergebnis.state.totalUptimeSeconds).toBe(3600 + 7200);
+  });
+
+  it('bucht denselben Lauf nicht zweimal', () => {
+    /*
+     * Der Weg `running -> stopping -> stopped` kaeme sonst zweimal vorbei:
+     * einmal beim Anhalten und noch einmal beim Ende. Gebucht wird nur der
+     * Uebergang aus `running` heraus.
+     */
+    const gestoppt = apply(gestartet, { type: 'stopRequested' }).state;
+    const fertig = apply(gestoppt, { type: 'observedStopped', reason: 'fertig' });
+
+    expect(fertig.state.totalUptimeSeconds).toBe(3600 + 7200);
+  });
+
+  it('bucht auch einen Absturz', () => {
+    const ergebnis = apply(gestartet, { type: 'crashed', reason: 'Beendet.', exitCode: 1 });
+
+    expect(ergebnis.state.totalUptimeSeconds).toBe(3600 + 7200);
+  });
+
+  it('verwirft eine negative Spanne, statt sie abzuziehen', () => {
+    // Zurueckgestellte Uhr: Der Start liegt scheinbar in der Zukunft. Das ist
+    // keine Laufzeit - und erst recht keine negative.
+    const ergebnis = apply(
+      stateWith({
+        status: 'running',
+        lastStartedAt: '2026-08-26T13:00:00.000Z',
+        totalUptimeSeconds: 42,
+      }),
+      { type: 'stopRequested' },
+    );
+
+    expect(ergebnis.state.totalUptimeSeconds).toBe(42);
+  });
+
+  it('laesst den Zaehler in Ruhe, solange der Server laeuft', () => {
+    const ergebnis = apply(
+      stateWith({ status: 'starting', lastStartedAt: null, totalUptimeSeconds: 99 }),
+      { type: 'healthCheckPassed' },
+    );
+
+    expect(ergebnis.state.totalUptimeSeconds).toBe(99);
   });
 });
 

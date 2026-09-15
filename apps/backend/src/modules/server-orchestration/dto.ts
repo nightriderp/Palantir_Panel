@@ -135,6 +135,8 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     // Seit wann dieser Zustand gilt - die Uhr an einem laufenden Uebergang
     // ("Startet ... seit 2:14 min") zaehlt von hier, nicht vom letzten Start.
     statusChangedAt: server.statusChangedAt,
+    // Ohne die laufende Sitzung; die rechnet die Oberflaeche dazu.
+    totalUptimeSeconds: server.totalUptimeSeconds,
     subdomain: server.subdomain,
     address: permissions.canViewAddress
       ? {

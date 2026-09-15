@@ -53,6 +53,7 @@ function serverMit(gameType: string): ServerRecord {
     dockerContainerId: null,
     imageRef: 'ghcr.io/nightriderp/palantir-test-echo:1',
     crashTimestamps: [],
+    totalUptimeSeconds: 0,
     createdAt: new Date('2026-08-01T10:00:00.000Z'),
     statusChangedAt: new Date('2026-09-01T10:00:00.000Z'),
     lastStartedAt: null,

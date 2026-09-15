@@ -52,6 +52,11 @@ export interface ServerLifecycleState {
   readonly lastStartedAt: string | null;
   /** Absturz-Zeitpunkte im gleitenden Fenster des Crash-Loop-Schutzes. */
   readonly crashTimestamps: readonly string[];
+  /**
+   * Summe der abgeschlossenen Laufzeiten in Sekunden, ohne die laufende
+   * Sitzung (Vertrag `GameServerDto.totalUptimeSeconds`).
+   */
+  readonly totalUptimeSeconds: number;
 }
 
 /**
@@ -140,6 +145,7 @@ export function initialLifecycleState(now: Date): ServerLifecycleState {
     statusChangedAt: now.toISOString(),
     lastStartedAt: null,
     crashTimestamps: [],
+    totalUptimeSeconds: 0,
   };
 }
 
@@ -228,12 +234,33 @@ export function applyLifecycleEvent(
 
   assertTransitionAllowed(state.status, target);
 
+  /*
+   * Laufzeit buchen, sobald der Server `running` verlaesst.
+   *
+   * Genau dort steht fest, wie lange die Sitzung gedauert hat - und nur dort:
+   * Der Weg `running -> stopping -> stopped` kaeme sonst zweimal vorbei und
+   * zaehlte doppelt. Ohne `lastStartedAt` gibt es nichts zu rechnen (ein Server
+   * kann `running` nur ueber `healthCheckPassed` erreichen, das den Zeitpunkt
+   * setzt; die Bedingung ist die Absicherung dagegen, dass ein Datensatz aus
+   * aelterer Zeit ohne ihn dasteht).
+   *
+   * Eine negative Spanne - zurueckgestellte Uhr, Zeitumstellung - wird
+   * verworfen statt abgezogen: Sie waere keine Laufzeit.
+   */
+  const sitzungSekunden =
+    state.status === 'running' && target !== 'running' && state.lastStartedAt !== null
+      ? Math.max(0, (now.getTime() - Date.parse(state.lastStartedAt)) / 1000)
+      : 0;
+
   const base: ServerLifecycleState = {
     status: target,
     statusMessage: messageFor(event),
     statusChangedAt: now.toISOString(),
     lastStartedAt: state.lastStartedAt,
     crashTimestamps: state.crashTimestamps,
+    totalUptimeSeconds: Number.isFinite(sitzungSekunden)
+      ? state.totalUptimeSeconds + Math.round(sitzungSekunden)
+      : state.totalUptimeSeconds,
   };
 
   if (event.type === 'crashed') {

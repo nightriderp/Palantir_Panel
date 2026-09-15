@@ -75,6 +75,19 @@ export const gameServers = pgTable(
      * des Backends darf den Schutz nicht zurücksetzen.
      */
     crashTimestamps: text('crash_timestamps').array().$type<string[]>().notNull().default([]),
+    /**
+     * Summe der abgeschlossenen Laufzeiten in Sekunden, **ohne** die laufende
+     * Sitzung (Vertrag `GameServerDto.totalUptimeSeconds`).
+     *
+     * Gezaehlt wird beim Verlassen des Zustands `running`: Dort steht fest, wie
+     * lange die Sitzung gedauert hat. Die laufende Sitzung rechnet die
+     * Oberflaeche selbst dazu - so bleibt der Wert auch dann richtig, wenn das
+     * Backend mitten im Lauf neu startet.
+     *
+     * `bigint` mit `mode: 'number'`: Sekunden bleiben lange im sicheren Bereich
+     * von JavaScript (2^53 Sekunden sind rund 285 Millionen Jahre).
+     */
+    totalUptimeSeconds: bigint('total_uptime_seconds', { mode: 'number' }).notNull().default(0),
 
     // -- Container & Netz ------------------------------------------------------
     dockerContainerId: text('docker_container_id'),

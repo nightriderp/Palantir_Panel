@@ -7,6 +7,7 @@ import {
   formatDate,
   formatDateTime,
   formatDuration,
+  formatUptimeClock,
   formatMegabytes,
   formatPercent,
   formatPing,
@@ -115,6 +116,30 @@ describe('Datums- und Zeitformate', () => {
 
   it('gibt die Uhrzeit ohne Datum aus', () => {
     expect(formatTime(iso)).toMatch(/^\d{2}:\d{2}$/);
+  });
+});
+
+describe('formatUptimeClock', () => {
+  it('zeigt Sekunden, solange es keine Minute ist', () => {
+    expect(formatUptimeClock(22)).toBe('22 s');
+  });
+
+  it('zeigt Minuten mit laufender Sekunde - es ist eine Uhr', () => {
+    // `formatDuration` gaebe hier "4 min" und staende eine Minute lang still.
+    expect(formatUptimeClock(249)).toBe('4:09 min');
+  });
+
+  it('zeigt Stunden mit zweistelliger Minute', () => {
+    expect(formatUptimeClock(12 * 3600 + 4 * 60 + 9)).toBe('12 h 04 min');
+  });
+
+  it('zeigt Tage, Stunden und Minuten', () => {
+    expect(formatUptimeClock(3 * 86_400 + 12 * 3600 + 4 * 60)).toBe('3 d 12 h 04 min');
+  });
+
+  it('meldet fehlende und negative Angaben als Strich', () => {
+    expect(formatUptimeClock(null)).toBe('—');
+    expect(formatUptimeClock(-5)).toBe('—');
   });
 });
 

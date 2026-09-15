@@ -186,6 +186,7 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
       statusChangedAt: new Date().toISOString(),
       lastStartedAt: null,
       crashTimestamps: [],
+      totalUptimeSeconds: 0,
     };
 
     await repository.persistLifecycle(serverId, wechsel, 'stopped');
@@ -216,6 +217,7 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
           statusChangedAt: new Date().toISOString(),
           lastStartedAt: null,
           crashTimestamps: [],
+          totalUptimeSeconds: 0,
         },
         'stopped',
       )
@@ -245,6 +247,7 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
         statusChangedAt: new Date().toISOString(),
         lastStartedAt: null,
         crashTimestamps: zeitpunkte,
+        totalUptimeSeconds: 0,
       },
       'running',
     );

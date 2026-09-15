@@ -113,6 +113,31 @@ export function formatDuration(seconds: number | null | undefined): string {
   return `${total} s`;
 }
 
+/**
+ * Laufzeit als tickende Uhr: `3 d 12 h 04 min`, `12 h 04 min`, `4:09 min`, `22 s`.
+ *
+ * Unterschied zu {@link formatDuration}: Die gibt eine **Dauer** an und rundet
+ * grob („3 d 12 h") - gut fuer „insgesamt", schlecht fuer eine Uhr, die jede
+ * Sekunde neu gezeichnet wird und dabei minutenlang dieselbe Zahl zeigte. Hier
+ * bleibt die naechstkleinere Einheit stehen, damit sichtbar ist, dass sie laeuft.
+ */
+export function formatUptimeClock(seconds: number | null | undefined): string {
+  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return '—';
+
+  const gesamt = Math.floor(seconds);
+  const tage = Math.floor(gesamt / 86_400);
+  const stunden = Math.floor((gesamt % 86_400) / 3600);
+  const minuten = Math.floor((gesamt % 3600) / 60);
+  const rest = gesamt % 60;
+
+  const zweistellig = (wert: number): string => String(wert).padStart(2, '0');
+
+  if (tage > 0) return `${String(tage)} d ${String(stunden)} h ${zweistellig(minuten)} min`;
+  if (stunden > 0) return `${String(stunden)} h ${zweistellig(minuten)} min`;
+  if (minuten > 0) return `${String(minuten)}:${zweistellig(rest)} min`;
+  return `${String(rest)} s`;
+}
+
 /** Prozentwert, auf ganze Prozent gerundet und auf 0–100 begrenzt. */
 export function formatPercent(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return '—';

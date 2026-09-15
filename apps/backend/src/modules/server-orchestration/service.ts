@@ -3569,6 +3569,7 @@ export class ServerOrchestrationService {
         statusChangedAt: server.statusChangedAt,
         lastStartedAt: server.lastStartedAt,
         crashTimestamps: server.crashTimestamps,
+        totalUptimeSeconds: server.totalUptimeSeconds,
       },
       event,
       { now: this.now(), crashLoopPolicy: this.deps.config.crashLoopPolicy },

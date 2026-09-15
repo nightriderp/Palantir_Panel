@@ -44,6 +44,7 @@ function serverRecord(overrides: Partial<ServerRecord> & Pick<ServerRecord, 'id'
     lastStartedAt: null,
     lastActivityAt: null,
     crashTimestamps: [],
+    totalUptimeSeconds: 0,
     dockerContainerId: 'container-1',
     imageRef: 'ghcr.io/test:1',
     containerSpecHash: null,

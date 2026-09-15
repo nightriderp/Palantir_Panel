@@ -1,0 +1,1 @@
+ALTER TABLE "game_servers" ADD COLUMN "total_uptime_seconds" bigint DEFAULT 0 NOT NULL;

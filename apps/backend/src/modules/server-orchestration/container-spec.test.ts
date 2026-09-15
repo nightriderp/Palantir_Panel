@@ -37,6 +37,7 @@ function server(overrides: Partial<ServerRecord> = {}): ServerRecord {
     lastStartedAt: null,
     lastActivityAt: null,
     crashTimestamps: [],
+    totalUptimeSeconds: 0,
     dockerContainerId: 'container-1',
     imageRef: TEST_GAME_TYPE.dockerImage,
     containerSpecHash: null,

@@ -1,7 +1,7 @@
 'use client';
 
 import { type GameServerDto, type ServerLiveStats } from '@palantir/contracts';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   type ChartPoint,
   MetricChart,
@@ -17,6 +17,7 @@ import {
   formatPing,
   formatPlayers,
   formatServerAddress,
+  formatUptimeClock,
   formatTime,
   hasLiveStats,
   lastTon,
@@ -152,16 +153,47 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
   const address = formatServerAddress(server.address);
 
   /*
-   * Laufzeit seit dem letzten erfolgreichen Start (Mockup „Laufzeit").
-   * Nur wenn der Server auch laeuft: bei einem gestoppten Server stuende dort
-   * sonst die Zeit seit dem letzten Start von irgendwann, was wie eine laufende
-   * Uhr aussaehe. Gerechnet wird beim Rendern - die Anzeige aktualisiert sich
-   * mit dem naechsten Messwert, das genuegt fuer eine Angabe in Stunden.
+   * Laufzeit der laufenden Sitzung - als tickende Uhr.
+   *
+   * Nur wenn der Server auch laeuft: Bei einem gestoppten stuende dort sonst
+   * die Zeit seit dem letzten Start von irgendwann, was wie eine laufende Uhr
+   * aussaehe.
+   *
+   * Der Sekundenzeiger laeuft ueber einen eigenen Takt, nicht ueber die
+   * Messwerte: Die kommen im Minutentakt, und eine Uhr, die minutenweise
+   * springt, ist keine. Der Takt haengt am Zustand - ein gestoppter Server
+   * laesst nichts ticken.
    */
+  const [jetzt, setJetzt] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (server.status !== 'running') return;
+
+    const takt = window.setInterval(() => {
+      setJetzt(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(takt);
+    };
+  }, [server.status]);
+
   const uptimeSeconds =
     server.status === 'running' && server.lastStartedAt !== null
-      ? (Date.now() - new Date(server.lastStartedAt).getTime()) / 1000
+      ? (jetzt - new Date(server.lastStartedAt).getTime()) / 1000
       : null;
+
+  /**
+   * Gesamtlaufzeit: die gebuchten Laeufe plus die laufende Sitzung.
+   *
+   * Der Zaehler im Vertrag endet mit dem letzten abgeschlossenen Lauf - die
+   * laufende Sitzung steht noch nicht darin, sonst muesste sie jede Sekunde in
+   * die Datenbank. Addiert wird deshalb hier.
+   */
+  const gesamtLaufzeit =
+    server.totalUptimeSeconds === undefined
+      ? null
+      : server.totalUptimeSeconds + (uptimeSeconds ?? 0);
 
   /**
    * CPU als Anteil der Node-Kerne (hafenmeister-Stil).
@@ -528,10 +560,23 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         />
         <MetricTile
           label="Laufzeit"
-          value={formatDuration(uptimeSeconds)}
+          value={formatUptimeClock(uptimeSeconds)}
           tone={uptimeSeconds === null ? undefined : 'success'}
           {...(uptimeSeconds === null ? {} : { percent: 100 })}
-          note={uptimeSeconds === null ? 'Server läuft nicht' : 'seit dem letzten Start'}
+          /*
+            Gross die laufende Sitzung, klein die Gesamtlaufzeit (Wunsch des
+            Betreibers, 15.09.2026). Ohne den Zaehler - aelteres Backend -
+            bleibt es bei der bisherigen Auskunft.
+          */
+          note={
+            gesamtLaufzeit === null
+              ? uptimeSeconds === null
+                ? 'Server läuft nicht'
+                : 'seit dem letzten Start'
+              : `insgesamt ${formatDuration(gesamtLaufzeit)}${
+                  uptimeSeconds === null ? ' · Server läuft nicht' : ''
+                }`
+          }
         />
       </div>
 
