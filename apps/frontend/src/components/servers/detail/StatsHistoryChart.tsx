@@ -27,7 +27,7 @@ import { formatTime } from '@/components/shared';
 export interface StatsHistoryChartProps {
   samples: readonly ServerLiveStats[];
   /** Welcher Wert dargestellt wird. */
-  metric: 'cpuPercent' | 'ramUsedMb' | 'playersOnline';
+  metric: 'cpuPercent' | 'ramUsedMb' | 'pingMs' | 'playersOnline';
   label: string;
   /**
    * Obergrenze der Achse – das Kontingent des Servers, wo es eines gibt.

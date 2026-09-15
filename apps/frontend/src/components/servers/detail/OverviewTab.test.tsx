@@ -88,7 +88,11 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
     expect(screen.queryByText('CPU-Auslastung')).toBeNull();
   });
 
-  it('haelt immer nur einen Bereich offen', async () => {
+  it('haelt mehrere Verlaeufe zugleich offen', async () => {
+    /*
+     * Vier kleine Kurven nebeneinander beantworten „haengt der Ping mit der
+     * Last zusammen" auf einen Blick; ein grosses Bild je Klick nicht.
+     */
     zeichne();
 
     const cpu = await screen.findByRole('button', { name: /CPU-Last/ });
@@ -97,13 +101,23 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
     fireEvent.click(cpu);
     fireEvent.click(ping);
 
-    // Der Ping öffnet die Netzwerkzahlen, nicht eine Ping-Kurve: Ein
-    // gespeicherter Ping existiert nicht, er gehört der Verbindung.
     await waitFor(() => {
-      expect(screen.getByText('Netzwerkaktivität')).toBeTruthy();
+      expect(screen.getByText('Ping zum Node')).toBeTruthy();
     });
-    expect(cpu.getAttribute('aria-expanded')).toBe('false');
-    expect(screen.queryByText('CPU-Auslastung')).toBeNull();
+    expect(screen.getByText('CPU-Auslastung')).toBeTruthy();
+    expect(cpu.getAttribute('aria-expanded')).toBe('true');
+    expect(ping.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('zeigt die Spielerzahl wieder als Kachel, mit eigenem Verlauf', async () => {
+    zeichne();
+
+    const spieler = await screen.findByRole('button', { name: /Spieler/ });
+    fireEvent.click(spieler);
+
+    await waitFor(() => {
+      expect(screen.getByText('Spieler online')).toBeTruthy();
+    });
   });
 
   it('bietet keinen Aufklapper an, solange es keinen Verlauf gibt', async () => {
@@ -123,10 +137,9 @@ describe('OverviewTab – Kacheln im hafenmeister-Stil', () => {
     expect(screen.queryByRole('button', { name: /CPU-Last/ })).toBeNull();
   });
 
-  it('zeigt die Spielerzahl in einer eigenen Karte statt als sechste Kachel', async () => {
+  it('nennt die Spielerzahl in der Kachel', async () => {
     zeichne();
 
-    expect(await screen.findByText('Spieler online')).toBeTruthy();
-    expect(screen.getByText('3 / 10')).toBeTruthy();
+    expect(await screen.findByText('3 / 10')).toBeTruthy();
   });
 });
