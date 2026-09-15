@@ -192,6 +192,20 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
     };
   }, [anzeige?.cpuPercent, server.hostCpuCores]);
 
+  /**
+   * Zahl und Einheit trennen: „4,4" gross, „GB" klein daneben.
+   *
+   * `formatMegabytes` liefert beides in einer Zeichenkette; getrennt wird am
+   * letzten Leerzeichen. Vorbild ist der Entwurf des Betreibers, in dem die
+   * Zahl die Kachel traegt und die Einheit nur danebensteht.
+   */
+  const zahlUndEinheit = (formatiert: string): { zahl: string; einheit: string | null } => {
+    const schnitt = formatiert.lastIndexOf(' ');
+    return schnitt < 0
+      ? { zahl: formatiert, einheit: null }
+      : { zahl: formatiert.slice(0, schnitt), einheit: formatiert.slice(schnitt + 1) };
+  };
+
   /** Wert gross, Bezug klein daneben - das Muster aller Kacheln mit Nenner. */
   const mitBezug = (wert: string, bezug: string | null): ReactNode =>
     bezug === null ? (
@@ -290,6 +304,28 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       },
     ];
   }, [history.data]);
+
+  /** Ueberschrift des aufgeklappten Verlaufs - Kennzahl und Einheit. */
+  const verlaufsTitel = useMemo(() => {
+    switch (offeneKachel) {
+      case 'cpu':
+        return {
+          titel: 'CPU-Verlauf',
+          einheit:
+            server.hostCpuCores == null || server.hostCpuCores <= 0
+              ? 'in Kernen'
+              : `in Prozent von ${formatNumber(server.hostCpuCores)} Kernen`,
+        };
+      case 'ram':
+        return { titel: 'Arbeitsspeicher-Verlauf', einheit: 'belegt' };
+      case 'spieler':
+        return { titel: 'Spieler-Verlauf', einheit: 'verbundene Spieler' };
+      case 'ping':
+        return { titel: 'Netzwerk-Verlauf', einheit: 'Rate je Sekunde' };
+      default:
+        return { titel: 'Verlauf', einheit: '' };
+    }
+  }, [offeneKachel, server.hostCpuCores]);
 
   /**
    * Wie viele Messpunkte der gewaehlte Zeitraum hergibt.
@@ -394,10 +430,16 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
             anzeige?.ramUsedMb == null
               ? '—'
               : mitBezug(
-                  formatMegabytes(anzeige.ramUsedMb),
-                  `von ${formatMegabytes(server.resourceLimits.ramMb)}`,
+                  zahlUndEinheit(formatMegabytes(anzeige.ramUsedMb)).zahl,
+                  zahlUndEinheit(formatMegabytes(anzeige.ramUsedMb)).einheit,
                 )
           }
+          /*
+            Der gebuchte Wert steht nicht mehr als „von 4 GB" daneben - das
+            sagt schon der Balken darunter, und die Kachel liest sich als Zahl
+            statt als Satz (Entwurf des Betreibers). Die genaue Buchung steht
+            in den Server-Details.
+          */
           /*
             Auch der Arbeitsspeicher traegt jetzt die Ampel statt der festen
             Markenfarbe: Er ist ein Fuellstand gegen das gebuchte Kontingent,
@@ -446,7 +488,14 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         */}
         <MetricTile
           label="Spieler"
-          value={formatPlayers(anzeige?.playersOnline, anzeige?.playersMax)}
+          value={
+            anzeige?.playersOnline == null
+              ? '—'
+              : mitBezug(
+                  formatNumber(anzeige.playersOnline),
+                  anzeige.playersMax == null ? null : `/ ${formatNumber(anzeige.playersMax)}`,
+                )
+          }
           // Eine volle Runde ist keine Warnung, sondern der Normalfall - hier
           // gibt es keine Ampel, nur „es laeuft".
           tone={anzeige?.playersOnline == null ? undefined : 'success'}
@@ -467,7 +516,14 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
         */}
         <MetricTile
           label="Platte"
-          value={formatMegabytes(stats?.diskUsedMb)}
+          value={
+            stats?.diskUsedMb == null
+              ? '—'
+              : mitBezug(
+                  zahlUndEinheit(formatMegabytes(stats.diskUsedMb)).zahl,
+                  zahlUndEinheit(formatMegabytes(stats.diskUsedMb)).einheit,
+                )
+          }
           note={stats?.diskUsedMb == null ? 'noch nicht gemessen' : 'Datenordner, ohne Obergrenze'}
         />
         <MetricTile

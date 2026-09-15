@@ -259,7 +259,7 @@ describe('quotaBlockReason', () => {
     const reason = quotaBlockReason(quota({ ram: 8192 }, { ram: 7168 }), state({ ramMb: 2048 }));
 
     expect(reason).toContain('laufende Server');
-    expect(reason).toContain('1 GiB frei von 8 GiB');
+    expect(reason).toContain('1,07 GB frei von 8,59 GB');
   });
 
   it('schweigt zur Regel, wenn der Vertrag sie nicht mitliefert', () => {
