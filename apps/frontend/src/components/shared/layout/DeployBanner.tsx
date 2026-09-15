@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button } from '../primitives/Button';
-import { Icon } from '../icons/Icon';
+import { Button, IconButton } from '../primitives/Button';
 
 export interface DeployBannerProps {
   /** Fassung, mit der diese Seite ausgeliefert wurde (Server-seitig gesetzt). */
@@ -31,6 +30,7 @@ const DEFAULT_INTERVAL_MS = 60_000;
  */
 export function DeployBanner({ current, intervalMs = DEFAULT_INTERVAL_MS }: DeployBannerProps) {
   const [neueFassung, setNeueFassung] = useState<string | null>(null);
+  const [weggeklickt, setWeggeklickt] = useState<string | null>(null);
 
   useEffect(() => {
     let abgebrochen = false;
@@ -62,21 +62,75 @@ export function DeployBanner({ current, intervalMs = DEFAULT_INTERVAL_MS }: Depl
     };
   }, [current, intervalMs]);
 
-  if (neueFassung === null) return null;
+  // Weggeklickt gilt für genau diese Fassung: Erscheint später eine noch
+  // neuere, meldet sich der Hinweis wieder. Ein „nie wieder" gibt es nicht -
+  // eine veraltete Seite bleibt ein Problem, auch wenn man es wegwischt.
+  if (neueFassung === null || weggeklickt === neueFassung) return null;
 
   return (
+    /*
+      Schwebende Karte unten rechts statt eines Balkens über der ganzen Seite.
+      Der Balken schob bei jedem Deployment den gesamten Inhalt nach unten -
+      mitten in die Arbeit hinein. Die Karte legt sich daneben, bleibt sichtbar
+      und lässt sich wegklicken; auf dem Telefon nimmt sie die volle Breite.
+    */
     <div
       role="status"
-      className="flex flex-wrap items-center gap-3 border-b border-brand-line bg-brand-soft px-4 py-2.5 text-sm md:px-7"
+      aria-live="polite"
+      className="fixed inset-x-3 bottom-3 z-40 animate-fade-up sm:inset-x-auto sm:right-5 sm:bottom-5 sm:w-[22rem]"
     >
-      <Icon name="download" size={14} className="shrink-0 text-brand" />
-      <span className="min-w-0 flex-1">
-        Das Panel läuft jetzt in <span className="font-mono text-brand">{neueFassung}</span> – diese
-        Seite zeigt noch <span className="font-mono text-ink-muted">{current}</span>.
-      </span>
-      <Button size="sm" variant="primary" onClick={() => window.location.reload()}>
-        Neu laden
-      </Button>
+      <div className="flex flex-col gap-3 rounded-2xl border border-brand-line bg-surface/95 p-4 shadow-panel backdrop-blur">
+        <div className="flex items-start gap-3">
+          {/*
+            Der pulsierende Punkt ist dieselbe Sprache wie am laufenden Server:
+            hier ist gerade etwas passiert. Er ersetzt das Download-Symbol -
+            heruntergeladen wird nichts, die neue Fassung liegt schon bereit.
+          */}
+          <span className="mt-1 flex h-2 w-2 shrink-0 animate-pulse-dot rounded-full bg-brand shadow-glow" />
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-semibold text-ink">Neue Fassung verfügbar</p>
+            <p className="mt-1 text-sm text-ink-muted">
+              Diese Seite läuft noch mit{' '}
+              <span className="rounded bg-fill px-1.5 py-0.5 font-mono text-xs text-ink-soft">
+                {current}
+              </span>
+              , ausgeliefert wird{' '}
+              <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-xs text-brand">
+                {neueFassung}
+              </span>
+              .
+            </p>
+          </div>
+          <IconButton
+            icon="close"
+            label="Hinweis schließen"
+            size="sm"
+            onClick={() => {
+              setWeggeklickt(neueFassung);
+            }}
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="primary"
+            className="flex-1"
+            onClick={() => window.location.reload()}
+          >
+            Jetzt neu laden
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setWeggeklickt(neueFassung);
+            }}
+          >
+            Später
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

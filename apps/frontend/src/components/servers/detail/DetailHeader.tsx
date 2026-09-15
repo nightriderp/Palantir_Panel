@@ -171,7 +171,18 @@ export function DetailHeader({
         <StartupProgress
           label={meta.label}
           note={server.statusMessage ?? 'Bei größeren Welten kann das einen Moment dauern.'}
-          since={server.lastStartedAt}
+          /*
+            Seit wann dieser Übergang läuft - `statusChangedAt`, nicht
+            `lastStartedAt`.
+
+            Letzteres ist der Zeitpunkt des letzten ERFOLGREICHEN Starts; er
+            wird erst gesetzt, wenn der Server `running` erreicht. Während des
+            Startens stand dort deshalb der Start von vorhin, und die Uhr zählte
+            von dort: "Startet … seit 105:07 min" für einen Server, der seit
+            zwei Minuten hochfährt (im Betrieb gesehen, 15.09.2026). Ein
+            gestoppter und neu gestarteter Server zählte die Standzeit mit.
+          */
+          since={server.statusChangedAt}
         />
       ) : null}
 

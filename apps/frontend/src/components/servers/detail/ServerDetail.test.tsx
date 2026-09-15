@@ -291,6 +291,36 @@ describe('Live-Konsole bei einem Spiel ohne Konsole', () => {
  * ueberall Striche und darunter "Der Server laeuft nicht.", waehrend das
  * Verlaufsdiagramm derselben Ansicht eine Kurve zeichnete.
  */
+describe('ServerDetail - Uhr am laufenden Uebergang', () => {
+  it('zaehlt ab dem Zustandswechsel, nicht ab dem letzten Start', async () => {
+    /*
+     * `lastStartedAt` ist der letzte ERFOLGREICHE Start; waehrend des Startens
+     * steht dort der Start von vorhin. Die Uhr zaehlte von dort und meldete
+     * "Startet ... seit 105:07 min" fuer einen Server, der seit zwei Minuten
+     * hochfaehrt (im Betrieb gesehen, 15.09.2026).
+     */
+    const jetzt = new Date('2026-09-15T12:00:00.000Z');
+    vi.setSystemTime(jetzt);
+
+    api.fetchServer.mockResolvedValue({
+      success: true,
+      data: {
+        ...mitStatus('starting'),
+        // Vor zwei Stunden lief er zuletzt, seit zwei Minuten faehrt er hoch.
+        lastStartedAt: '2026-09-15T10:00:00.000Z',
+        statusChangedAt: '2026-09-15T11:58:00.000Z',
+      },
+      error: null,
+    });
+
+    zeichne();
+
+    expect(await screen.findByText(/seit 2:00 min/)).toBeTruthy();
+
+    vi.useRealTimers();
+  });
+});
+
 describe('ServerDetail - Messwerte ohne Live-Kanal (Fundpunkt 206/207)', () => {
   /**
    * Frisch gemessen: Die Kacheln nehmen nur Werte aus der letzten Stunde -
