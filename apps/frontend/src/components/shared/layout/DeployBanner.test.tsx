@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DeployBanner } from './DeployBanner';
 
@@ -27,6 +27,22 @@ describe('DeployBanner', () => {
     await waitFor(() => expect(screen.getByRole('status')).toBeDefined());
     expect(screen.getByRole('status').textContent).toContain('v1.27.0');
     expect(screen.getByRole('status').textContent).toContain('v1.26.0');
+  });
+
+  it('laesst sich wegklicken und bleibt fuer diese Fassung weg', async () => {
+    /*
+     * Ein "nie wieder" gibt es nicht: Eine veraltete Seite bleibt ein Problem,
+     * auch wenn man den Hinweis wegwischt. Weggeklickt gilt deshalb genau fuer
+     * die eine Fassung - erscheint spaeter eine noch neuere, meldet er sich.
+     */
+    vi.stubGlobal('fetch', antwortMit({ release: 'v1.27.0' }));
+
+    render(<DeployBanner current="v1.26.0" />);
+
+    await waitFor(() => expect(screen.getByRole('status')).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'Später' }));
+
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('bleibt still, wenn dieselbe Fassung läuft', async () => {
