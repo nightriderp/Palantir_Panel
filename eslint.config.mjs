@@ -26,7 +26,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
-      // `any` ist laut CLAUDE.md §4 nur mit Begründung im Kommentar erlaubt –
+      // `any` ist laut Entwicklungsregeln §4 nur mit Begründung im Kommentar erlaubt –
       // die Regel bleibt daher als Warnung aktiv statt abgeschaltet.
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [

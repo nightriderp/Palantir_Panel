@@ -583,7 +583,7 @@ const envSchema = z.object({
    * Standard-Discord-Webhook der Instanz.
    *
    * Kanäle ohne eigene URL greifen darauf zurück; so kommt der Standardkanal
-   * ohne ein Geheimnis in der Datenbank aus (CLAUDE.md §2). Bewusst optional:
+   * ohne ein Geheimnis in der Datenbank aus (Entwicklungsregeln §2). Bewusst optional:
    * Ohne den Wert läuft das Backend unverändert, solche Kanäle sind dann aber
    * nicht versandfähig (`deliverable: false` am DTO) und werden beim Auslösen
    * übersprungen. Die Zustellung in die Inbox im Panel hängt nicht daran.
@@ -597,7 +597,7 @@ const envSchema = z.object({
    * Push-Versand, und die Oberflaeche bietet ihn gar nicht erst an. Der
    * oeffentliche Schluessel ist kein Geheimnis (er steht in jedem Abonnement),
    * der private sehr wohl - er gehoert wie jedes andere Geheimnis in die
-   * zentrale `.env` und nie in die Datenbank (CLAUDE.md §2).
+   * zentrale `.env` und nie in die Datenbank (Entwicklungsregeln §2).
    *
    * `VAPID_SUBJECT` ist die Kontaktadresse des Betreibers (`mailto:` oder
    * `https:`); die Zustelldienste der Browserhersteller verlangen sie, um bei
@@ -621,7 +621,7 @@ const envSchema = z.object({
   // verständlichen Meldung ab, wenn eines fehlt. So bleibt das Backend für
   // Tests und den Health-Endpunkt startbar, ohne dass irgendwo ein Standardwert
   // eingebaut wäre – ein hartkodiertes Fallback-Secret wäre eine Hintertür
-  // (CLAUDE.md §2).
+  // (Entwicklungsregeln §2).
 
   /** Signaturschlüssel des kurzlebigen Access-JWT (HS256), mindestens 32 Zeichen. */
   JWT_SECRET: geheimnis('JWT_SECRET'),
@@ -874,7 +874,7 @@ export function leereWerteAlsUngesetzt(
  *
  * Ausgelagert und exportiert, damit die Prüfungen (Mindestlängen der
  * Geheimnisse, `COOKIE_SECURE` in Produktion) ohne Neuladen des Moduls
- * testbar sind (CLAUDE.md §4).
+ * testbar sind (Entwicklungsregeln §4).
  */
 export function umgebungLesen(
   werte: Record<string, string | undefined>,
@@ -948,7 +948,7 @@ export interface AuthSecrets {
 
 /**
  * Liefert die Auth-Geheimnisse oder bricht mit einer verständlichen Meldung ab
- * (Pflichtenheft §12.1, CLAUDE.md §2: keine Secrets im Code, keine Standardwerte
+ * (Pflichtenheft §12.1, Entwicklungsregeln §2: keine Secrets im Code, keine Standardwerte
  * für Geheimnisse).
  *
  * Wird beim Registrieren des Auth-Moduls aufgerufen, nicht beim Import – so

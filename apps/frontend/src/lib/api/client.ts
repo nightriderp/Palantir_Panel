@@ -22,7 +22,7 @@ import { messageForErrorCode } from '@/lib/auth/errors';
  * derselben Form, aber mit einem eigenen Code aus `TRANSPORT_ERROR_CODES`.
  * Diese Codes stehen bewusst **nicht** im Katalog aus `@palantir/contracts`:
  * sie entstehen im Browser und dürfen nie aus einer Backend-Route kommen.
- * Freitext-Fehler gibt es auch hier keine (CLAUDE.md §5).
+ * Freitext-Fehler gibt es auch hier keine (Entwicklungsregeln §5).
  */
 
 /**

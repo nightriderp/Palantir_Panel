@@ -20,7 +20,7 @@
  *   (Fundpunkte 119 und 124).
  *
  * Datenbank und HTTP stecken hinter {@link AuthRepository} bzw. bleiben in
- * `routes.ts`; diese Datei ist damit ohne Infrastruktur testbar (CLAUDE.md §4).
+ * `routes.ts`; diese Datei ist damit ohne Infrastruktur testbar (Entwicklungsregeln §4).
  */
 
 import {

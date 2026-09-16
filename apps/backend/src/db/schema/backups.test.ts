@@ -8,7 +8,7 @@
  *
  * Wie `users.test.ts` liest dieser Test die **Migrationen** und nicht die
  * Schema-Datei: Nur was in `drizzle/` steht, kommt in der Datenbank an
- * (CLAUDE.md §4). Eine Schema-Datei ohne zugehörige Migration hätte auf der
+ * (Entwicklungsregeln §4). Eine Schema-Datei ohne zugehörige Migration hätte auf der
  * laufenden Instanz keine Wirkung.
  */
 

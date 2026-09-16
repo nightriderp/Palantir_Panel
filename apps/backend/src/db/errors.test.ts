@@ -3,7 +3,7 @@ import { isForeignKeyViolation, isUniqueViolation } from './errors.js';
 
 /**
  * `pg` legt den SQLSTATE als `code`-Feld auf den geworfenen Fehler – hier
- * nachgebildet, damit die Erkennung ohne Datenbank prüfbar bleibt (CLAUDE.md §4).
+ * nachgebildet, damit die Erkennung ohne Datenbank prüfbar bleibt (Entwicklungsregeln §4).
  */
 function pgFehler(code: string): Error {
   return Object.assign(new Error(`duplicate key value violates unique constraint`), { code });

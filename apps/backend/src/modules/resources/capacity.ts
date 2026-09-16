@@ -15,7 +15,7 @@
  *
  * Diese Datei kennt bewusst weder Datenbank noch HTTP und rechnet nur auf
  * übergebenen Werten – sie ist damit vollständig ohne Infrastruktur testbar
- * (CLAUDE.md §4, analog zu `rbac/permissions.ts`).
+ * (Entwicklungsregeln §4, analog zu `rbac/permissions.ts`).
  *
  * **Zählweise der Belegung:** `used` ist stets die Belegung **ohne** den zu
  * prüfenden Server. Wer einen bereits angelegten Server startet, muss dessen

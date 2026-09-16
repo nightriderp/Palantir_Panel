@@ -709,7 +709,7 @@ export interface DataHousekeeper {
  *
  * **Nicht dabei:** `messages` und `arcade_scores`. Beides sind Inhalte, die
  * Nutzer selbst angelegt haben; wie lange sie bleiben, entscheidet der
- * Betreiber, nicht dieser Kehraus (CLAUDE.md §1). Ebenso wenig das Audit-Log:
+ * Betreiber, nicht dieser Kehraus (Entwicklungsregeln §1). Ebenso wenig das Audit-Log:
  * Seine Archivierung ist ausdrücklich ein Handkommando, damit der Zeitpunkt
  * sichtbar bleibt (`audit-archive.ts`).
  */

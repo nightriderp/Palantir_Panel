@@ -13,7 +13,7 @@
  *
  * **Warum der Katalog im Contract liegt:** Backend (Validierung der `gameId`,
  * Titel der Bestenliste) und Frontend (Auswahlseite, Überschriften) müssen
- * dieselbe Liste kennen (CLAUDE.md §3). Die reine Darstellung – Farben,
+ * dieselbe Liste kennen (Entwicklungsregeln §3). Die reine Darstellung – Farben,
  * Steuerungshinweise, Spiellogik – bleibt im Frontend.
  *
  * **`ArcadeScore` gegenüber Pflichtenheft §6:** Dort stehen `userId`, `gameId`,
@@ -165,7 +165,7 @@ export interface ArcadePersonalStatsDto {
 
 /**
  * Serverseitig berechnetes `permissions`-Objekt der Bestenliste
- * (Pflichtenheft §5.2, CLAUDE.md §3).
+ * (Pflichtenheft §5.2, Entwicklungsregeln §3).
  *
  * Der Arcade-Bereich kennt keine eigene Permission im Katalog: Spielen darf
  * jedes angemeldete Konto. `canSubmit` ist deshalb schlicht „ist angemeldet"

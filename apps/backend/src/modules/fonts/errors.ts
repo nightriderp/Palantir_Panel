@@ -2,7 +2,7 @@
  * Fehler der Schriftverwaltung (Arbeitspaket S-2).
  *
  * Benannte Codes aus dem Katalog in `@palantir/contracts`, kein Freitext
- * (CLAUDE.md §5) – gleicher Aufbau wie `PanelBackupError` und `AdminError`.
+ * (Entwicklungsregeln §5) – gleicher Aufbau wie `PanelBackupError` und `AdminError`.
  */
 
 import { type ErrorCode } from '@palantir/contracts';

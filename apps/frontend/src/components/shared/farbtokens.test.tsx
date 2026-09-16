@@ -19,7 +19,7 @@ import { MetricRing } from './server/MetricRing';
  * Farbpalette aus der Konfiguration.
  *
  * `Config['theme']` ist bis auf Index-Signaturen untypisiert; ein `unknown` mit
- * anschließender Prüfung ist deshalb ehrlicher als ein `any` (CLAUDE.md §4).
+ * anschließender Prüfung ist deshalb ehrlicher als ein `any` (Entwicklungsregeln §4).
  */
 const palette = (tailwindConfig.theme?.extend?.colors ?? {}) as unknown as Record<string, unknown>;
 

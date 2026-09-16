@@ -223,7 +223,7 @@ describe('Zuweisen und Entziehen', () => {
 
   it('lehnt ein unbekanntes Konto mit USER_NOT_FOUND ab', async () => {
     // Ohne diese Prüfung liefe die Konto-Id in die Fremdschlüsselbedingung von
-    // `user_roles` und käme als roher Datenbankfehler zurück (CLAUDE.md §5).
+    // `user_roles` und käme als roher Datenbankfehler zurück (Entwicklungsregeln §5).
     await expectErrorCode(
       service.assignToUser(userAdminCtx(), NUTZER_ROLE_ID, OTHER_USER_ID),
       'USER_NOT_FOUND',

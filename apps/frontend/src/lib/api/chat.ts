@@ -18,7 +18,7 @@ import { type ApiResult, apiRequest } from './client';
  * Nur der **Teilnehmerweg** unter `/api/chat`. Die Moderationsrouten
  * (`/api/moderation/reports`) gehören zum Admin-Bereich (F10) und haben hier
  * bewusst nichts zu suchen – es gibt in F5 keinen Pfad, über den ein Moderator
- * in fremde Konversationen sähe (Pflichtenheft §15, CLAUDE.md §2).
+ * in fremde Konversationen sähe (Pflichtenheft §15, Entwicklungsregeln §2).
  *
  * Ergebnisse sind immer der Response-Envelope aus Pflichtenheft §5.1; hier wird
  * nichts ausgepackt und nichts geworfen – wie in den übrigen `lib/api`-Modulen.

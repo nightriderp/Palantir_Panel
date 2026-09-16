@@ -1952,7 +1952,7 @@ export class ServerOrchestrationService {
    * Der Agent liest es, prüft jeden Eintrag gegen den Datenordner und legt die
    * Dateien über den Archiv-Endpunkt der Engine ab (`FILE_EXTRACT`). Das
    * Backend fasst dabei kein Dateisystem an – der einzige Weg auf das
-   * Datenvolume bleibt der Agent (CLAUDE.md §4).
+   * Datenvolume bleibt der Agent (Entwicklungsregeln §4).
    */
   private async importWorldData(
     server: ServerRecord,
@@ -2295,7 +2295,7 @@ export class ServerOrchestrationService {
    * Datenordner des Klons entpackt (`RESTORE_BACKUP`) und das Zwischenarchiv
    * wieder entfernt (`DELETE_BACKUP`). Alle drei Befehle sind seit A3 umgesetzt;
    * ein eigener Kopier-Befehl wäre eine vierte Art, dieselbe Dateisystemarbeit
-   * zu beschreiben (CLAUDE.md §3). Der Umweg über das Archiv bringt außerdem die
+   * zu beschreiben (Entwicklungsregeln §3). Der Umweg über das Archiv bringt außerdem die
    * Prüfsumme mit: `RESTORE_BACKUP` vergleicht sie, bevor es etwas schreibt
    * (Fundpunkt 99).
    *

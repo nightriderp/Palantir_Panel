@@ -6,7 +6,7 @@
  * `GET_STORAGE_BREAKDOWN` erreichbar. Der belegte Plattenplatz **je Server**
  * (Fundpunkt 168) braucht dieselbe Rechnung, und zwar für genau einen Ordner.
  * Statt einer zweiten Implementierung steht sie jetzt hier, und beide Aufrufer
- * benutzen sie (CLAUDE.md §3: keine Parallelstrukturen).
+ * benutzen sie (Entwicklungsregeln §3: keine Parallelstrukturen).
  *
  * **Warum das Dateisystem und nicht die Container-Engine.** Der Datenordner ist
  * ein Bind-Mount auf der Node; der Agent hat ihn selbst gemountet
@@ -14,7 +14,7 @@
  * wie bei `FILE_DELETE` (`jobs/files/delete.ts`). Die Container-Engine kennt die
  * Belegung eines Bind-Mounts ohnehin nicht; sie zählt nur die
  * Schreib-Schicht des Containers. Diese Datei spricht deshalb nicht mit Docker
- * und braucht dafür auch keine `ContainerRuntime` (CLAUDE.md §4).
+ * und braucht dafür auch keine `ContainerRuntime` (Entwicklungsregeln §4).
  */
 
 import type { Dirent } from 'node:fs';

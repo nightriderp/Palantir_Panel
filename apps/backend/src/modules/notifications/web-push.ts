@@ -9,7 +9,7 @@ import {
 /**
  * Versand über die Zustelldienste der Browserhersteller (Web-Push, RFC 8030).
  *
- * **Neue Abhängigkeit `web-push` (CLAUDE.md §1).** Eine Push-Nachricht ist nicht
+ * **Neue Abhängigkeit `web-push` (Entwicklungsregeln §1).** Eine Push-Nachricht ist nicht
  * einfach ein HTTP-Aufruf: Sie wird mit ECDH und HKDF für genau ein Gerät
  * verschlüsselt (RFC 8291) und mit einem signierten VAPID-Token abgesendet
  * (RFC 8292). Das ist Kryptografie mit festgelegten Kurven, Zählweisen und

@@ -12,7 +12,7 @@
  * - und keinen Zweig, der für den Owner mehr erlaubte.
  *
  * Wer eine solche Methode ergänzt, hebt die Zusicherung aus Pflichtenheft §15
- * und §18 auf – das ist keine Erweiterung, sondern ein Bruch (CLAUDE.md §2).
+ * und §18 auf – das ist keine Erweiterung, sondern ein Bruch (Entwicklungsregeln §2).
  *
  * Jede Moderationsentscheidung landet im Audit-Log (`message.moderated`).
  */

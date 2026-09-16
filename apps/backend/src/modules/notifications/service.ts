@@ -10,7 +10,7 @@
  *    füllen,
  * 4. den externen Kanal **im Hintergrund** bedienen.
  *
- * **Die wichtigste Zusicherung** (Pflichtenheft §14, CLAUDE.md §5):
+ * **Die wichtigste Zusicherung** (Pflichtenheft §14, Entwicklungsregeln §5):
  * {@link NotificationService.publish} wirft nie. Weder ein nicht erreichbarer
  * Discord-Webhook noch ein Datenbankfehler beim Schreiben der Inbox darf einen
  * Serverstart, ein Backup oder eine Registrierung scheitern lassen. Alles, was

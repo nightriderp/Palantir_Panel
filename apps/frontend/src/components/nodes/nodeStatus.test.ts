@@ -167,7 +167,7 @@ describe('nodeMetrics', () => {
   });
 
   it('faellt ohne capacity.running auf die gebuchte Zahl zurueck', () => {
-    // Aeltere Antworten kennen das Feld nicht (additiv, CLAUDE.md §3).
+    // Aeltere Antworten kennen das Feld nicht (additiv, Entwicklungsregeln §3).
     expect(nodeMetrics(node()).every((m) => m.runningLabel === undefined)).toBe(true);
   });
 

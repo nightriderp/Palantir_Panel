@@ -85,7 +85,7 @@ export const ADMIN_RULE_EVENTS: readonly NotifiableEventName[] = [
  *
  * Eigener, enger Port statt der vollen `NotificationRepository`: Das Seeding
  * legt an und liest nach, mehr nicht - und laesst sich damit ohne Datenbank
- * pruefen (CLAUDE.md §4).
+ * pruefen (Entwicklungsregeln §4).
  */
 export interface NotificationRuleSeedStore {
   /** Id der Seed-Rolle „Admin"; `null`, wenn sie fehlt. */

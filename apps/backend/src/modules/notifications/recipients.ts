@@ -5,7 +5,7 @@
  * Ereignisses (`resourceOwner`, `serverMembers`) und brauchen keinen
  * Datenbankzugriff. Nur `role` und `allUsers` fragen das
  * {@link RecipientDirectory}. Diese Trennung steht hier als reine Funktion,
- * damit sie ohne Datenbank prüfbar bleibt (CLAUDE.md §4).
+ * damit sie ohne Datenbank prüfbar bleibt (Entwicklungsregeln §4).
  */
 
 import type { NotificationEvent, NotificationRecipientScope } from '@palantir/contracts';

@@ -8,7 +8,7 @@
  *
  * `userId` ist deshalb `string | null` und **nicht** optional weggelassen: Ein
  * Aufruf ohne angemeldetes Konto sieht keine einzige Konversation. Es gibt hier
- * bewusst keinen „System"-Kontext, der das umginge (CLAUDE.md §2).
+ * bewusst keinen „System"-Kontext, der das umginge (Entwicklungsregeln §2).
  */
 
 import { type PermissionActor } from '../rbac/index.js';

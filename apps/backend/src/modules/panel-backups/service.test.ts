@@ -4,7 +4,7 @@
  * Geprüft wird der Ablauf, nicht `pg_dump`: Der Abzug ist eingespeist
  * ({@link DatabaseDumper}), damit die Fälle „Abzug scheitert",
  * „Aufbewahrungsfrist" und „Takt" ohne Datenbank und ohne Dateisystem prüfbar
- * bleiben (CLAUDE.md §4).
+ * bleiben (Entwicklungsregeln §4).
  */
 
 import { describe, expect, it } from 'vitest';

@@ -2,7 +2,7 @@
  * Datensätze und Persistenz-Schnittstelle des Auth-Moduls.
  *
  * Die Datenbank steckt hinter {@link AuthRepository}, damit die fachlichen
- * Regeln in `service.ts` ohne laufende Datenbank testbar bleiben (CLAUDE.md §4,
+ * Regeln in `service.ts` ohne laufende Datenbank testbar bleiben (Entwicklungsregeln §4,
  * analog zum `RoleRepository` in B2 und zum `ContainerRuntime` des Agents).
  */
 

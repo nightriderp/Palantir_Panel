@@ -20,7 +20,7 @@
  *    Reihenfolge zweier HTTP-Requests abhängt, ist keines.
  * 2. **Owner-Konto in `db:seed` anlegen.** Verworfen. Der Seed-Lauf müsste dann
  *    ein Passwort kennen – entweder aus der `.env` (ein weiteres Geheimnis im
- *    Klartext, CLAUDE.md §2) oder als erzeugter Wert, den der Betreiber aus der
+ *    Klartext, Entwicklungsregeln §2) oder als erzeugter Wert, den der Betreiber aus der
  *    Konsolenausgabe abschreibt. Außerdem entstünde ein zweiter Weg, ein Konto
  *    anzulegen, der an Registrierung, Passwortregeln und `AuthMethod` vorbeiläuft.
  * 3. **Einmaliger Einrichtungsschritt auf einem bestehenden Konto.** Gewählt.

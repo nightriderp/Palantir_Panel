@@ -4,7 +4,7 @@
  * Alle Antworten laufen über `ok()`/`fail()` aus `@palantir/contracts` – der
  * Envelope wird nirgends von Hand gebaut (Pflichtenheft §5.1). Fehler tragen
  * benannte Codes aus dem Katalog; ein Freitext-Fehler kommt hier nicht vor
- * (CLAUDE.md §5).
+ * (Entwicklungsregeln §5).
  *
  * **Berechtigungen:** Der Zugriff läuft über den Guard aus B2
  * (`requirePermission`) für die grobe Schranke und über das `permissions`-Objekt

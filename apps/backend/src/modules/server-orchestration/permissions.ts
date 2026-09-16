@@ -2,7 +2,7 @@
  * Das `permissions`-Objekt eines Gameservers (Pflichtenheft §5.2, §8).
  *
  * Baut auf `computePermissionFlags()` aus dem RBAC-Modul (B2) auf – keine
- * zweite Rechteberechnung (CLAUDE.md §3, WORK_STATUS „Gefundene Punkte" Nr. 12).
+ * zweite Rechteberechnung (Entwicklungsregeln §3, WORK_STATUS „Gefundene Punkte" Nr. 12).
  *
  * Zwei Achsen greifen ineinander:
  *

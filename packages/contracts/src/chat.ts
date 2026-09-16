@@ -12,7 +12,7 @@
  * Moderator zu sehen bekommt, steht abschließend in {@link ReportedMessageDto}:
  * genau die gemeldete Nachricht, sonst nichts. Wer hier ein Feld ergänzt, das
  * darüber hinausgeht, hebt die Zusicherung auf – das ist keine Erweiterung,
- * sondern ein Bruch (CLAUDE.md §2).
+ * sondern ein Bruch (Entwicklungsregeln §2).
  *
  * Die Berechtigung zur Moderation ist `message.moderate` aus B2
  * (`permissions.ts`), am Konto-DTO sichtbar als
@@ -141,7 +141,7 @@ export interface ConversationDto {
    * Serverseitig geführt, damit der Zähler über Geräte hinweg gilt und nicht,
    * wie zuvor, nur lokal in einer Sitzung.
    *
-   * **Additiv und optional** (CLAUDE.md §3): Das Backend liefert das Feld stets
+   * **Additiv und optional** (Entwicklungsregeln §3): Das Backend liefert das Feld stets
    * mit; optional getippt, damit bestehende Ansichten, die es noch nicht
    * auswerten, unverändert übersetzen. Fehlt es, ist wie „0" zu behandeln.
    */
@@ -431,7 +431,7 @@ export interface MessageReportPageDto {
  * Ereignisse des Chat-Kanals.
  *
  * Die Namen stehen zugleich im Katalog `WEBSOCKET_EVENTS`; das `satisfies`
- * erzwingt das beim Übersetzen (CLAUDE.md §5).
+ * erzwingt das beim Übersetzen (Entwicklungsregeln §5).
  */
 export const CHAT_EVENTS = [
   'message.sent',

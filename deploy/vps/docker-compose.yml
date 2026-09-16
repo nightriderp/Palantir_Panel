@@ -289,7 +289,7 @@ services:
   # --- Migrationen ------------------------------------------------------------
   # Läuft einmal bis zum Ende und beendet sich. Backend und Frontend warten über
   # `service_completed_successfully` darauf - so startet die Anwendung nie gegen
-  # ein veraltetes Schema (CLAUDE.md §4: Änderungen nur über Migrationen).
+  # ein veraltetes Schema (Entwicklungsregeln §4: Änderungen nur über Migrationen).
   migrate:
     image: ghcr.io/nightriderp/palantir-backend:${PALANTIR_VERSION}
     container_name: palantir-migrate

@@ -1,5 +1,5 @@
 /**
- * Tests der Kapazitätsprüfung (CLAUDE.md §4 – zwingend für diese Logik).
+ * Tests der Kapazitätsprüfung (Entwicklungsregeln §4 – zwingend für diese Logik).
  *
  * Die Rahmenwerte der Node entsprechen der Hardware aus Lastenheft §5
  * (32 GB RAM, 16 Threads, 2 TB nutzbar), stehen hier aber als Testdaten und

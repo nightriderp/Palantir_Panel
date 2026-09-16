@@ -15,7 +15,7 @@
  * vorhandenen Wege der Orchestrierung: `restart` über den Lifecycle (mit
  * Ressourcenprüfung und Health-Check), `command` über die Konsole und damit
  * über den Agent-Kanal. Kein zweiter Weg an der State Machine vorbei
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  *
  * **Kein eigener Timer.** `tick()` ist eine aufrufbare Funktion; den Takt gibt
  * `scheduler.ts` vor – dieselbe Aufteilung wie beim Backup-Zeitplan.

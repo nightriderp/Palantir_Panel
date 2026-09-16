@@ -3,7 +3,7 @@
  *
  * Diese Datei ist die **einzige** Stelle, an der das Erzeugungs-Payload eines
  * Containers gebaut wird. Damit gilt die Haertung fuer jede Container-Ansteuerung
- * und nicht nur fuer die erste Implementierung (CLAUDE.md §2). Wer einen
+ * und nicht nur fuer die erste Implementierung (Entwicklungsregeln §2). Wer einen
  * Container anlegt, kommt an `buildCreateContainerBody()` nicht vorbei.
  *
  * Gesetzt wird immer:
@@ -17,7 +17,7 @@
  *     Crash-Loop-Schutz (Pflichtenheft §9), nicht die Container-Engine
  *   - rotierendes Logging, damit ein schreibfreudiger Server die Platte nicht fuellt
  *
- * **Hinweis zum Seccomp-Profil (dokumentierte Entscheidung, CLAUDE.md §8):**
+ * **Hinweis zum Seccomp-Profil (dokumentierte Entscheidung, Entwicklungsregeln §8):**
  * Ohne `seccomp=`-Eintrag wendet die Container-Engine ihr Standardprofil an,
  * das bereits rund vier Dutzend gefaehrliche Syscalls sperrt. Ein eigenes,
  * vollstaendiges Whitelist-Profil von Hand zu pflegen ist fehleranfaellig und

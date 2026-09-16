@@ -29,7 +29,7 @@
  * Agent (A3); hier steht ausschließlich die Entscheidung."
  *
  * Diese Aufteilung ist kein Zuschnitt aus Bequemlichkeit, sondern folgt
- * CLAUDE.md §3 und §4: Die Regel gehört an eine Stelle und muss ohne laufenden
+ * Entwicklungsregeln §3 und §4: Die Regel gehört an eine Stelle und muss ohne laufenden
  * Homeserver prüfbar sein; die Messung gehört dorthin, wo sie überhaupt möglich
  * ist. Der Agent liefert deshalb die Zahlen, die das Backend nicht selbst
  * erheben kann, und entscheidet nichts.

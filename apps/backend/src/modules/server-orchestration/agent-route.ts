@@ -5,7 +5,7 @@
  * Protokoll-Logik selbst steht in `agent-gateway.ts` und kennt weder Fastify
  * noch `ws` – deshalb liegt hier so wenig wie möglich.
  *
- * **Neue Abhängigkeit `@fastify/websocket`** (CLAUDE.md §1): Das Agent-Protokoll
+ * **Neue Abhängigkeit `@fastify/websocket`** (Entwicklungsregeln §1): Das Agent-Protokoll
  * aus Pflichtenheft §2.2/§5.3 verlangt eine persistente, vom Agent ausgehende
  * WebSocket-Verbindung; Fastify kann WebSockets ohne dieses Plugin nicht
  * annehmen. Es ist das offizielle Fastify-Plugin und setzt auf `ws` auf –

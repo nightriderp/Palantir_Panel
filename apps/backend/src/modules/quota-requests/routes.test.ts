@@ -9,7 +9,7 @@
  * security-matrix-06).
  *
  * Der Service ist ein Fake nach dem Muster von `resources/routes.test.ts` –
- * ohne laufende Datenbank (CLAUDE.md §4).
+ * ohne laufende Datenbank (Entwicklungsregeln §4).
  */
 
 import { type QuotaRequestDto } from '@palantir/contracts';

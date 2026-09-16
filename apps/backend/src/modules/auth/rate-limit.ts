@@ -5,14 +5,14 @@
  * die Zeitstempel der Versuche gehalten und beim Zugriff auf das Fenster
  * beschnitten.
  *
- * Bewusst ohne zusätzliche Abhängigkeit und ohne Datenbank/Redis (CLAUDE.md §1):
+ * Bewusst ohne zusätzliche Abhängigkeit und ohne Datenbank/Redis (Entwicklungsregeln §1):
  * Palantir läuft als eine Backend-Instanz auf einer VPS (Pflichtenheft §1), ein
  * geteilter Zähler bringt dort nichts. Sollte das Backend später mehrfach
  * laufen, wird diese Datei ausgetauscht – die Schnittstelle
  * {@link RateLimiter} bleibt.
  *
  * Kennt weder HTTP noch Datenbank und ist damit ohne Infrastruktur testbar
- * (CLAUDE.md §4); die Uhrzeit kommt von außen.
+ * (Entwicklungsregeln §4); die Uhrzeit kommt von außen.
  */
 
 export interface RateLimitDecision {

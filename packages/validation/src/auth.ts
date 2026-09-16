@@ -4,7 +4,7 @@
  * Gegenstück zu `AccountDto`, `LoginResult` und den ALTCHA-Typen aus
  * `@palantir/contracts`. Backend (Request-Validierung) und Frontend
  * (Formularprüfung, Antwort-Prüfung) nutzen dieselben Schemas – kein zweiter,
- * abweichender Regelsatz (CLAUDE.md §3).
+ * abweichender Regelsatz (Entwicklungsregeln §3).
  */
 
 import {
@@ -357,7 +357,7 @@ export const createUserInputSchema = z
  * „unverändert", ein ausdrückliches `null` heißt „zurück auf die Vorgabe der
  * Instanz". Ohne diese Unterscheidung könnte eine einmal gewählte Schrift nicht
  * mehr abgewählt werden. Ältere Aufrufer, die nur den Registrierungsschalter
- * kennen, bleiben unverändert gültig (CLAUDE.md §3).
+ * kennen, bleiben unverändert gültig (Entwicklungsregeln §3).
  */
 export const instanceSettingsInputSchema = z
   .object({

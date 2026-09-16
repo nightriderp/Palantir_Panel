@@ -9,7 +9,7 @@
  * Abfragen.
  *
  * Der Dienst ist ein Fake nach dem Muster von `quota-requests/routes.test.ts` –
- * ohne laufende Datenbank (CLAUDE.md §4).
+ * ohne laufende Datenbank (Entwicklungsregeln §4).
  */
 
 import { type ArcadeLeaderboardDto, type ArcadeSubmitResultDto } from '@palantir/contracts';

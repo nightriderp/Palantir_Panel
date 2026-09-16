@@ -3,7 +3,7 @@
  *
  * Hier werden die Drizzle-Repositories mit den Services verdrahtet. Die
  * Services selbst kennen keine Datenbank – deshalb lassen sie sich in Tests mit
- * Attrappen betreiben (CLAUDE.md §4), und deshalb steht diese Verdrahtung an
+ * Attrappen betreiben (Entwicklungsregeln §4), und deshalb steht diese Verdrahtung an
  * genau einer Stelle.
  *
  * Die Anschlusspunkte an andere Arbeitspakete sind optional und haben eine

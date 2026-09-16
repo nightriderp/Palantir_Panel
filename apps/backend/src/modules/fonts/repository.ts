@@ -3,7 +3,7 @@
  *
  * Wie in den übrigen Modulen liegt die Datenbank hinter einem Port: Der Dienst
  * kennt nur {@link FontRepository}, und die Regeln lassen sich mit einer
- * Attrappe prüfen (CLAUDE.md §4). Die mitgelieferten Schriften kommen **nicht**
+ * Attrappe prüfen (Entwicklungsregeln §4). Die mitgelieferten Schriften kommen **nicht**
  * hierher – sie stehen in `bundled.ts`.
  */
 

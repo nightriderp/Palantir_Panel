@@ -3,7 +3,7 @@
  *
  * Analog zum `ContainerRuntime`-Interface des Agents: die fachlichen Regeln in
  * `capacity.ts` und `service.ts` bleiben dadurch ohne laufende Datenbank
- * testbar (CLAUDE.md §4).
+ * testbar (Entwicklungsregeln §4).
  *
  * Zwei der drei Schnittstellen bedient dieses Paket selbst (Drizzle-Umsetzung in
  * `repository.ts`). {@link ServerUsageRepository} bleibt bewusst offen:

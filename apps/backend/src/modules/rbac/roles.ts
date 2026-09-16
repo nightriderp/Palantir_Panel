@@ -6,7 +6,7 @@
  * angelegt; die ersten drei sind danach vollständig editierbar.
  *
  * Die Datenbank steckt hinter {@link RoleRepository}, damit die Regeln dieses
- * Moduls ohne laufende Datenbank testbar bleiben (CLAUDE.md §4, analog zum
+ * Moduls ohne laufende Datenbank testbar bleiben (Entwicklungsregeln §4, analog zum
  * `ContainerRuntime`-Interface des Agents).
  */
 

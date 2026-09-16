@@ -5,7 +5,7 @@
  * `GET/PUT /containers/{id}/archive` an - Inhalte gehen als TAR-Strom rein und
  * raus. Es gibt keinen Endpunkt, der ein Verzeichnis auflistet.
  *
- * Bewusste Entscheidung (CLAUDE.md §1): statt einer neuen Abhaengigkeit
+ * Bewusste Entscheidung (Entwicklungsregeln §1): statt einer neuen Abhaengigkeit
  * (`tar-stream`) oder eines `ls`-Aufrufs im Container steht hier ein kleiner
  * eigener Codec. Ein `ls` im Container waere die schlechtere Loesung, weil es
  * eine Shell im Image voraussetzt - die es bei read-only Root-Filesystem und

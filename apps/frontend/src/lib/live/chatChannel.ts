@@ -8,7 +8,7 @@ import {
  * Reine Bausteine des Chat-Live-Kanals (Pflichtenheft §5.3, Arbeitspaket B7).
  *
  * Adresse und Frame-Auswertung stehen bewusst getrennt vom React-Hook: So sind
- * beide ohne WebSocket prüfbar (CLAUDE.md §4) – dasselbe Vorgehen wie bei
+ * beide ohne WebSocket prüfbar (Entwicklungsregeln §4) – dasselbe Vorgehen wie bei
  * `notificationChannel.ts` (F6) und `backoff.ts` (F3).
  *
  * **Kein `subscribe`, kein `pong`.** Anders als der Inbox-Kanal schickt der

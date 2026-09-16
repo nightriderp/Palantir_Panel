@@ -48,7 +48,7 @@ import {
  * wirkt nur in dieser Datei. Die Kosten des Hashings zu senken, hätte eine Naht
  * in `passwords.ts` gebraucht – die gibt es nicht, und sie nachzurüsten hieße,
  * den Produktivpfad der Passwortprüfung für Tests abzuschwächen oder
- * wegzumocken (CLAUDE.md §2). Der Test soll gerade die echte Kette prüfen.
+ * wegzumocken (Entwicklungsregeln §2). Der Test soll gerade die echte Kette prüfen.
  *
  * 30 s sind großzügig gegenüber dem Gemessenen und fangen einen echten Hänger
  * (nicht aufgelöstes Promise, Deadlock) trotzdem ab, statt ihn laufen zu lassen.
@@ -382,7 +382,7 @@ describe('Login über HTTP', () => {
 
   it('lehnt einen Login ohne ALTCHA-Nachweis ab', async () => {
     // Pflichtenheft §7 und §18 verlangen den Spam-Schutz auch beim Login. Ein
-    // stilles Durchwinken wäre ein Auth-Bypass (CLAUDE.md §2).
+    // stilles Durchwinken wäre ein Auth-Bypass (Entwicklungsregeln §2).
     const response = await app.inject({
       method: 'POST',
       url: '/auth/login',

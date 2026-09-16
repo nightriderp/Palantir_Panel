@@ -4,7 +4,7 @@
  * Reiner Datenzugriff – jede fachliche Regel (wer darf lesen, wer darf melden,
  * was sieht ein Moderator) liegt in `visibility.ts`, `permissions.ts` und den
  * Diensten daneben. Dadurch laufen alle Regeln in Tests ohne PostgreSQL
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  *
  * **Bewusst unvollständig:** Es gibt hier keine Methode, die Nachrichten über
  * Konversationsgrenzen hinweg sucht oder auflistet, und keine, die eine

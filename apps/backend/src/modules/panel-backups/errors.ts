@@ -2,7 +2,7 @@
  * Fehler der Panel-Sicherungen.
  *
  * Benannte Codes aus dem Katalog in `@palantir/contracts`, kein Freitext
- * (CLAUDE.md §5) – gleicher Aufbau wie `ResourceError` und `QuotaRequestError`.
+ * (Entwicklungsregeln §5) – gleicher Aufbau wie `ResourceError` und `QuotaRequestError`.
  */
 
 import { type ErrorCode } from '@palantir/contracts';

@@ -7,10 +7,10 @@
  *
  * Umgesetzt mit `fetch` aus der Node-Standardbibliothek statt mit dem
  * offiziellen Cloudflare-SDK: Für vier Aufrufe rechtfertigt sich keine weitere
- * Abhängigkeit (CLAUDE.md §1).
+ * Abhängigkeit (Entwicklungsregeln §1).
  *
  * Jeder Fehler des Anbieters wird zu `DNS_UPDATE_FAILED` – der Katalog-Code aus
- * Pflichtenheft §5.1, kein Freitext (CLAUDE.md §5).
+ * Pflichtenheft §5.1, kein Freitext (Entwicklungsregeln §5).
  */
 
 import { ServerOrchestrationError } from '../errors.js';

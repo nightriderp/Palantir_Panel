@@ -398,7 +398,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
    * Datei-Uploads: Datei-Manager (P2, Lastenheft §3.3), Weltdaten-Archive des
    * Wizards (P4) und das Profilbild (Konto-Bereich).
    *
-   * **Neue Abhängigkeit `@fastify/multipart` (CLAUDE.md §1).** Das Frontend
+   * **Neue Abhängigkeit `@fastify/multipart` (Entwicklungsregeln §1).** Das Frontend
    * lädt Dateien als `multipart/form-data` hoch (`uploadFile()` in
    * `lib/api/servers.ts`); Fastify bringt dafür keinen Parser mit, und ein
    * selbst gebauter wäre genau die Sorte Code, die man nicht selbst schreiben

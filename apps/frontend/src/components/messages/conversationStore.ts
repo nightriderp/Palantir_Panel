@@ -5,7 +5,7 @@ import { type ConversationDto, type MessageDto, type MessagePageDto } from '@pal
  *
  * Die gesamte Logik, die den Zustand aus REST-Antworten und Live-Ereignissen
  * fortschreibt, liegt hier – ohne React, ohne WebSocket, ohne DOM. Dadurch ist
- * sie für sich prüfbar (CLAUDE.md §4), analog zu `notificationView.ts` (F6). Die
+ * sie für sich prüfbar (Entwicklungsregeln §4), analog zu `notificationView.ts` (F6). Die
  * React-Ansicht hält diesen Zustand in `useState` und ruft nur diese Funktionen
  * auf; sie treffen jede Entscheidung darüber, was oben steht, was als ungelesen
  * gilt und wie eine gelöschte Nachricht aussieht.

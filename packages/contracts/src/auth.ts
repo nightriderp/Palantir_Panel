@@ -5,7 +5,7 @@
  * Strukturen aus, das Frontend (F1) stellt sie dar. Die Berechtigungslogik
  * bleibt vollständig im Backend – das Frontend wertet ausschließlich das
  * `permissions`-Objekt und die daneben stehenden Zustandsfelder aus
- * (CLAUDE.md §3).
+ * (Entwicklungsregeln §3).
  *
  * Ergänzungen sind additiv (neue optionale Felder). Das Entfernen oder
  * Umbenennen eines bestehenden Feldes ist ein Breaking Change und im Commit/PR
@@ -76,7 +76,7 @@ export interface LinkedAuthMethod {
  *
  * Das vollständige `RoleDto` inklusive Permission-Bündel gehört in die
  * Rollenverwaltung (F10); am Konto genügt der Name für die Anzeige. Rechte
- * leitet das Frontend niemals daraus ab (CLAUDE.md §3).
+ * leitet das Frontend niemals daraus ab (Entwicklungsregeln §3).
  */
 export interface AccountRoleSummary {
   id: string;
@@ -132,7 +132,7 @@ export interface AccountDto {
    * dazu – die Oberfläche hängt ihn an die Adresse und bekommt nach einem
    * neuen Bild sofort das neue statt des gespeicherten alten.
    *
-   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3): Fehlt das
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3): Fehlt das
    * Feld, zeigt die Oberfläche wie bisher die Initialen.
    */
   avatarUpdatedAt?: string | null;

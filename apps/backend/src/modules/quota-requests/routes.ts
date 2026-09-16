@@ -73,7 +73,7 @@ export function registerQuotaRequestRoutes(options: QuotaRequestRouteOptions) {
     /**
      * Konto des Aufrufers – ohne Anmeldung gibt es hier nichts zu tun.
      *
-     * Benannter Code statt eines nackten `Error` (CLAUDE.md §5): Sonst hängt es
+     * Benannter Code statt eines nackten `Error` (Entwicklungsregeln §5): Sonst hängt es
      * an der Auswertungsreihenfolge der Argumente, ob ein anonymer Aufruf als
      * `AUTH_REQUIRED` (401) oder als `INTERNAL_ERROR` (500) endet
      * (backend-admin-resources-05).

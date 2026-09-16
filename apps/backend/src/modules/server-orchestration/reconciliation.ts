@@ -11,7 +11,7 @@
  * dafür die State Machine und den Agent benutzt. Die Trennung ist Absicht –
  * so ist der heikelste Teil (was passiert mit einem Server, der während der
  * Trennung abgestürzt ist?) ohne Datenbank und ohne Homeserver prüfbar
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  *
  * **Zuordnung Container-Zustand → Lifecycle-Zustand:** Der Agent meldet die
  * beobachtbaren Container-Zustände (`AGENT_CONTAINER_STATUSES`), nicht die

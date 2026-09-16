@@ -27,7 +27,7 @@
  * **Warum das hier und nicht in der Container-Runtime.** Es ist reine
  * Dateisystemarbeit, so wie Datenordner, Sicherungen und die
  * Speicherübersicht. Die Runtime bleibt die einzige Stelle, die mit Docker
- * spricht (CLAUDE.md §4); mit dem Router hat sie nichts zu tun.
+ * spricht (Entwicklungsregeln §4); mit dem Router hat sie nichts zu tun.
  *
  * **Erzeugte Konfiguration.** Der Hostname kommt aus einem Formular des
  * Nutzers und landet in einer Datei, die ein fremder Prozess ausliest – wie
@@ -51,7 +51,7 @@ import { resolveWithinDirectory } from '../paths.js';
  * `apps/backend/src/modules/server-orchestration/container-spec.ts`. Bewusst
  * als Zeichenkette und nicht über `packages/contracts`: Für `palantir.serverId`
  * gilt dasselbe, und die Vertragsgrenze führt keine Namenskonstanten
- * (CLAUDE.md §3).
+ * (Entwicklungsregeln §3).
  */
 export const VIRTUAL_HOST_HOSTNAME_LABEL = 'palantir.virtualHost.hostname';
 export const VIRTUAL_HOST_TARGET_PORT_LABEL = 'palantir.virtualHost.targetPort';

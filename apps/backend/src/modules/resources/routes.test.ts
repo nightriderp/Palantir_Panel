@@ -7,7 +7,7 @@
  * Antwort ankommen statt als unerwarteter Fehler mit Status 500.
  *
  * Die Repositories sind schlichte Fakes wie in `service.test.ts` – ohne
- * laufende Datenbank (CLAUDE.md §4).
+ * laufende Datenbank (Entwicklungsregeln §4).
  */
 
 import {

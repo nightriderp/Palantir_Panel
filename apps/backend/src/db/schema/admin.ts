@@ -12,7 +12,7 @@
  * (`schema/resources.ts`), weil die harte Kapazitätsprüfung aus Pflichtenheft §10
  * ohne sie keine Datenquelle hätte. B8 verwaltet dieselbe Tabelle und hat sie
  * dort **additiv** um `status_message` und `last_seen_at` erweitert – keine
- * zweite Node-Tabelle daneben (CLAUDE.md §3).
+ * zweite Node-Tabelle daneben (Entwicklungsregeln §3).
  *
  * **`audit_log` ist append-only.** Das ist nicht nur eine Regel im
  * Anwendungscode: Die zugehörige Migration legt zusätzlich einen Trigger an,
@@ -53,7 +53,7 @@ import { users } from './users.js';
  * Ob sich zwei Bereiche überschneiden, prüft der Service beim Anlegen – eine
  * Ausschluss-Bedingung in der Datenbank bräuchte die Erweiterung `btree_gist`,
  * und eine zusätzliche Erweiterung ist für diesen einen Fall nicht
- * gerechtfertigt (CLAUDE.md §1).
+ * gerechtfertigt (Entwicklungsregeln §1).
  */
 export const portRanges = pgTable(
   'port_ranges',

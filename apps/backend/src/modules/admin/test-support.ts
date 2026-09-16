@@ -2,7 +2,7 @@
  * Attrappen für die Tests des Admin-Moduls.
  *
  * Alle Regeln dieses Moduls sind ohne laufende PostgreSQL-Instanz prüfbar
- * (CLAUDE.md §4) – genau dafür stehen die Repositories hinter Schnittstellen.
+ * (Entwicklungsregeln §4) – genau dafür stehen die Repositories hinter Schnittstellen.
  *
  * Die Datei liegt bewusst neben dem Modul und nicht in einem `__mocks__`-Ordner:
  * Sie gehört zum Modul und ändert sich mit ihm.

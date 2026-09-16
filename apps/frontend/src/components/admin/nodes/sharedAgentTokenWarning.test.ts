@@ -68,7 +68,7 @@ describe('buildSharedAgentTokenWarning', () => {
     // Was passiert: erst beim nächsten Verbindungsaufbau, nicht sofort.
     expect(text).toContain('Close-Code 4401');
     expect(text).toContain('beim nächsten Verbindungsaufbau');
-    // Was zu tun ist – mit exaktem Pfad und Maschine (CLAUDE.md §9).
+    // Was zu tun ist – mit exaktem Pfad und Maschine (Entwicklungsregeln §9).
     expect(text).toContain('Agent-Token');
     expect(text).toContain('Homeserver');
     expect(text).toContain('/opt/palantir/.env');

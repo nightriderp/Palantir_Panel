@@ -13,7 +13,7 @@
  * rein lesender Aufruf mit dem Web-API-Key.
  *
  * Alle Netzaufrufe laufen über ein einspeisbares `fetch`, damit die Abläufe
- * ohne Netzzugang testbar bleiben (CLAUDE.md §4).
+ * ohne Netzzugang testbar bleiben (Entwicklungsregeln §4).
  */
 
 import { createHash, randomBytes } from 'node:crypto';

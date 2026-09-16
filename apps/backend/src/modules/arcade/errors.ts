@@ -3,7 +3,7 @@
  *
  * Aufbau bewusst analog zu `ChatError` und `ServerOrchestrationError`: eine
  * eigene Klasse auf Basis von {@link AppError}, deren Code aus dem Katalog in
- * `@palantir/contracts` stammt – kein Freitext (CLAUDE.md §5). Erst dadurch
+ * `@palantir/contracts` stammt – kein Freitext (Entwicklungsregeln §5). Erst dadurch
  * erkennt der globale Fehler-Handler den Fehler als bewusst formulierte Antwort
  * des Backends und nicht als beliebigen Laufzeitfehler.
  *

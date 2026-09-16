@@ -14,7 +14,7 @@ import { ALTCHA_ALGORITHM, type AltchaChallenge, type AltchaSolution } from '@pa
  * Der hier nötige Anteil ist eine Schleife über die Web-Crypto-API; das
  * Aussehen kommt aus den F2-Tokens und die Texte sind deutsch (Lastenheft §4).
  * Eine neue Laufzeit-Abhängigkeit wäre dafür nicht zu rechtfertigen
- * (CLAUDE.md §1).
+ * (Entwicklungsregeln §1).
  */
 
 /** Ergebnis einer gelösten Aufgabe. */

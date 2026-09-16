@@ -3,9 +3,9 @@
  *
  * Der Katalog ist bewusst **wachsend**: neue Fehlerfälle werden hier als
  * benannter Code mit HTTP-Status-Zuordnung ergänzt – niemals als Freitext-String
- * am Aufrufort (CLAUDE.md §5). Ergänzungen sind additiv; das Entfernen oder
+ * am Aufrufort (Entwicklungsregeln §5). Ergänzungen sind additiv; das Entfernen oder
  * Umbenennen eines bestehenden Codes ist ein Breaking Change und im Commit/PR
- * als solcher zu kennzeichnen (CLAUDE.md §3).
+ * als solcher zu kennzeichnen (Entwicklungsregeln §3).
  *
  * Der Startsatz stammt aus Pflichtenheft §5.1. Die HTTP-Status-Zuordnung ist
  * dort nicht festgelegt und wird hier definiert (siehe Kommentare je Eintrag).

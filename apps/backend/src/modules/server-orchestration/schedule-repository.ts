@@ -5,7 +5,7 @@
  * Gelesen und geschrieben wird die **bestehende** Tabelle `schedules` aus
  * `db/schema/backups.ts`. Sie ist von Anfang an allgemein angelegt; der
  * Backup-Zeitplan (B5) ist nur die Zeile mit `action = 'backup'`. Eine zweite
- * Zeitplan-Tabelle daneben wäre genau die parallele Struktur, die CLAUDE.md §3
+ * Zeitplan-Tabelle daneben wäre genau die parallele Struktur, die Entwicklungsregeln §3
  * ausschließt – und der Zeitgeber müsste zwei Fälligkeitsabfragen führen.
  *
  * Die Abgrenzung läuft deshalb über die Aktion: Dieses Repository sieht
@@ -155,7 +155,7 @@ export function createDrizzleServerScheduleRepository(db: DbConnection): ServerS
         /*
          * `INSERT ... RETURNING` ohne Zeile ist ein Widerspruch und bleibt
          * deshalb ein Serverfehler – aber als benannter Code statt als rohem
-         * `Error` (Audit W2-9, `orchestration-features-11`; CLAUDE.md §5). Die
+         * `Error` (Audit W2-9, `orchestration-features-11`; Entwicklungsregeln §5). Die
          * Antwort ist dieselbe 500, die Route muss den Fall aber nicht mehr am
          * globalen Handler vorbeireichen.
          */

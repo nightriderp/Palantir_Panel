@@ -87,7 +87,7 @@ export interface RbacOptions {
  * Bewusst als normale Funktion statt als Fastify-Plugin: `app.decorateRequest`
  * wirkt sonst nur innerhalb des Plugin-Kontexts, und ein zusätzliches
  * `fastify-plugin` als Abhängigkeit wäre dafür nicht gerechtfertigt
- * (CLAUDE.md §1). Auf der Wurzel-Instanz aufrufen, bevor Routen registriert
+ * (Entwicklungsregeln §1). Auf der Wurzel-Instanz aufrufen, bevor Routen registriert
  * werden.
  */
 export function registerRbac(app: FastifyInstance, options: RbacOptions): void {

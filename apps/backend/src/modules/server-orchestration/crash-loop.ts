@@ -12,7 +12,7 @@
  * „erfolgreich gestartet" zu gelten, sammelt sonst über Wochen Zähler an.
  *
  * Diese Datei kennt weder Datenbank noch Agent: reine Werte, vollständig ohne
- * Infrastruktur testbar (CLAUDE.md §4).
+ * Infrastruktur testbar (Entwicklungsregeln §4).
  */
 
 /** Regelwerk des Schutzes. Die Werte kommen aus der Konfiguration (`.env`). */

@@ -6,7 +6,7 @@ import { type ArcadeGameId } from '@palantir/contracts';
  * Jedes Spiel ist als **reine Logik** über {@link ArcadeGame} beschrieben:
  * Zustand plus Funktionen, die den Zustand fortschreiben, Eingaben anwenden und
  * ihn auf ein Canvas zeichnen. So lässt sich die Spiellogik ohne Browser testen
- * (CLAUDE.md §4); nur das Zeichnen bleibt ungetestet.
+ * (Entwicklungsregeln §4); nur das Zeichnen bleibt ungetestet.
  *
  * Alle Spiele sind eigenständig entwickelt – keine geschützten Assets, Marken
  * oder Original-Level (Lastenheft §3.9).

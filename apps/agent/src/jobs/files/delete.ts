@@ -12,7 +12,7 @@
  *
  * Der Agent hat den Datenordner selbst gemountet (`AGENT_DATA_DIR`), kommt also
  * ohne Umweg an die Dateien. Das ist Dateisystemarbeit und gehoert deshalb
- * hierher und nicht in die Container-Runtime (CLAUDE.md §4) – die liefert nur
+ * hierher und nicht in die Container-Runtime (Entwicklungsregeln §4) – die liefert nur
  * die beiden Pfade.
  */
 
