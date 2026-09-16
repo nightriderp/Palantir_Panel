@@ -31,6 +31,7 @@ export function permissions(overrides: Partial<GameServerPermissions> = {}) {
     canManageSchedules: false,
     canUseConsole: false,
     canTransferOwnership: false,
+    canUpdate: false,
     ...overrides,
   } satisfies GameServerPermissions;
 }
@@ -51,6 +52,7 @@ export function ownerPermissions(): GameServerPermissions {
     canManageFiles: true,
     canManageSchedules: true,
     canUseConsole: true,
+    canUpdate: true,
   });
 }
 
