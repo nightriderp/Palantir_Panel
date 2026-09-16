@@ -69,6 +69,7 @@ const AUDIT_ACTION_LABELS: Partial<Record<AuditAction, string>> = {
   'server.memberAdded': 'Mitglied hinzugefügt',
   'server.memberRemoved': 'Mitglied entfernt',
   'server.ownerTransferred': 'Besitzer gewechselt',
+  'server.imageUpdated': 'Image-Fassung übernommen',
   'backup.created': 'Backup erstellt',
   'backup.restored': 'Backup wiederhergestellt',
   'backup.deleted': 'Backup gelöscht',
