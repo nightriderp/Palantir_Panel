@@ -40,6 +40,16 @@ export interface RecipientDirectory {
   listActiveUserIds(): Promise<string[]>;
   /** Alle Träger einer Rolle – auch gesperrte bleiben hier außen vor. */
   listUserIdsWithRole(roleId: string): Promise<string[]>;
+  /**
+   * Die Konten mit Besitzer-Kennzeichen (`users.is_owner`).
+   *
+   * Gebraucht bei Regeln an eine **Rolle**: `isOwner` liegt ausserhalb des
+   * Rollensystems und garantiert immer alle Rechte (Pflichtenheft §6) - ein
+   * Besitzer traegt deshalb oft gar keine Rolle. Ohne diesen Nachschlag fiel
+   * genau die Person aus jeder Verwaltungs-Meldung heraus, die als Einzige
+   * immer handeln kann.
+   */
+  listOwnerUserIds(): Promise<string[]>;
   /** Anzeigenamen zu bereits bekannten Konto-Ids (Admin-Ansichten). */
   findDisplayNames(userIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }

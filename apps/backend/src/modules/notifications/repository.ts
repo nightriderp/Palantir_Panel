@@ -980,6 +980,15 @@ export function createDrizzleRecipientDirectory(db: Database): RecipientDirector
       return rows.map((row) => row.id);
     },
 
+    async listOwnerUserIds() {
+      const rows = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.isOwner, true), eq(users.banned, false)));
+
+      return rows.map((row) => row.id);
+    },
+
     async findDisplayNames(userIds) {
       if (userIds.length === 0) {
         return new Map<string, string>();
