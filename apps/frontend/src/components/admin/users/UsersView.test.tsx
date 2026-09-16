@@ -99,7 +99,13 @@ function eintrag(overrides: Partial<RegistrationRequestDto> = {}): RegistrationR
     roles: [{ id: 'role-1', name: 'Nutzer' }],
     serverCount: 1,
     registeredAt: '2026-08-02T10:00:00.000Z',
-    permissions: { canView: true, canApprove: false, canBlock: true, canUnblock: false, canDelete: true },
+    permissions: {
+      canView: true,
+      canApprove: false,
+      canBlock: true,
+      canUnblock: false,
+      canDelete: true,
+    },
     ...overrides,
   };
 }
@@ -292,7 +298,13 @@ describe('UsersView - Freigeben (Fundpunkt 214)', () => {
     status: 'pending',
     roleNames: ['Gast'],
     roles: [{ id: 'role-gast', name: 'Gast' }],
-    permissions: { canView: true, canApprove: true, canBlock: true, canUnblock: false, canDelete: true },
+    permissions: {
+      canView: true,
+      canApprove: true,
+      canBlock: true,
+      canUnblock: false,
+      canDelete: true,
+    },
   });
 
   /** Wie `zeichne()`, wartet aber auf das wartende Konto. */
