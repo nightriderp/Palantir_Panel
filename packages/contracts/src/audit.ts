@@ -74,6 +74,13 @@ export const AUDIT_ACTIONS = [
   'server.settingsChanged',
   'server.memberAdded',
   'server.memberRemoved',
+  /**
+   * Besitzer eines Servers gewechselt (Lastenheft §3.7, Pflichtenheft §7) –
+   * durch einen Administrator, einzeln oder beim Löschen eines Kontos mit
+   * Übergang aller Server. Alter und neuer Besitzer stehen in den Metadaten;
+   * der Eintrag zeigt auf den Server, denn der bleibt bestehen.
+   */
+  'server.ownerTransferred',
 
   // Backups (B5)
   'backup.created',

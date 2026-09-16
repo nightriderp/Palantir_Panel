@@ -82,6 +82,14 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     expect(defaultMessageForErrorCode('ACCOUNT_HAS_SERVERS')).toContain('Gameserver');
   });
 
+  it('kennt das untaugliche Zielkonto eines Besitzübergangs (Pflichtenheft §7)', () => {
+    // Die Anfrage ist unzulässig (400), kein Konflikt: Ein gesperrtes oder
+    // wartendes Konto übernimmt keine Server. Ein unbekanntes Konto bleibt
+    // dagegen `USER_NOT_FOUND`.
+    expect(httpStatusForErrorCode('TRANSFER_TARGET_INVALID')).toBe(400);
+    expect(defaultMessageForErrorCode('TRANSFER_TARGET_INVALID')).toContain('übernehmen');
+  });
+
   it('trennt ungültigen von unerfüllbarem Cron-Ausdruck (Audit bb-14)', () => {
     // Beide 400 – der eine Ausdruck ist unlesbar, der andere lesbar, aber nie
     // erfüllbar (z. B. 30. Februar).

@@ -156,7 +156,17 @@ describe('Verwaltung fremder Server über .any', () => {
       canDelete: true,
       canManageMembers: true,
       canManageBackups: true,
+      canTransferOwnership: true,
     });
+  });
+
+  it('lässt den Besitzerwechsel nur über server.manage.any zu', () => {
+    // Der Besitzer selbst gibt seinen Server nicht weiter (Pflichtenheft §7):
+    // Weitergabe ist Verwaltung, nicht Besitz.
+    expect(computeGameServerPermissions(actor, context()).canTransferOwnership).toBe(false);
+    expect(
+      computeGameServerPermissions(admin, context({ viewerId: OTHER })).canTransferOwnership,
+    ).toBe(true);
   });
 
   it('braucht für fremde Server ausdrücklich .any', () => {

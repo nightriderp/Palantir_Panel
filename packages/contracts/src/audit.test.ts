@@ -30,6 +30,8 @@ describe('Audit-Log-Contract (Pflichtenheft §6)', () => {
         'address.portReleased',
         'storage.entryDeleted',
         'audit.archived',
+        // Besitzübergang beim Löschen eines Kontos und einzeln (Pflichtenheft §7)
+        'server.ownerTransferred',
       ]),
     );
   });

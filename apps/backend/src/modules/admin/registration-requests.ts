@@ -126,6 +126,10 @@ export function computeRegistrationRequestPermissions(
     // aussperren lassen (Lastenheft §2).
     canBlock: canManage && !user.isOwner && !user.banned,
     canUnblock: canManage && user.banned,
+    // Die Rangregel (Konten mit Verwaltungsrolle nur mit `role.manage`) prüft
+    // der Auth-Dienst beim Löschen selbst; hier nur, was ohne Rollenabfrage
+    // feststeht. Das Owner-Konto ist nie löschbar (Lastenheft §2).
+    canDelete: canManage && !user.isOwner,
   };
 }
 

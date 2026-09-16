@@ -30,6 +30,7 @@ export function permissions(overrides: Partial<GameServerPermissions> = {}) {
     canManageFiles: false,
     canManageSchedules: false,
     canUseConsole: false,
+    canTransferOwnership: false,
     ...overrides,
   } satisfies GameServerPermissions;
 }

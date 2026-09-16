@@ -192,6 +192,7 @@ describe('permissions-Objekt für DTOs (Pflichtenheft §5.2)', () => {
         canManageFiles: { scope: 'server.manage', isOwn },
         canManageSchedules: { scope: 'server.manage', isOwn },
         canUseConsole: { scope: 'server.manage', isOwn },
+        canTransferOwnership: 'server.manage.any',
       },
     );
 
