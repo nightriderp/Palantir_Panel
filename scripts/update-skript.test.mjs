@@ -54,7 +54,8 @@ if (FEHLEND.length > 0 && process.platform !== 'win32') {
 const UEBERSPRINGEN = FEHLEND.length > 0 ? `fehlende Werkzeuge: ${FEHLEND.join(', ')}` : false;
 
 /** Hat die Maschine ein echtes `flock`? Sonst stellt der Sandkasten eines. */
-const FLOCK_FEHLT = spawnSync('bash', ['-c', 'command -v flock'], { encoding: 'utf8' }).status !== 0;
+const FLOCK_FEHLT =
+  spawnSync('bash', ['-c', 'command -v flock'], { encoding: 'utf8' }).status !== 0;
 
 /** Das gestellte `docker`: schreibt mit, meldet die Dienste gesund. */
 const DOCKER_STUB = `#!/usr/bin/env bash
@@ -173,7 +174,17 @@ function sandkasten() {
     git(arbeit, 'push', '--quiet', 'origin', `refs/tags/${tag}`);
   }
 
-  return { wurzel, repo, stub, alt, neu, liste, leereListe, signiere, dockerLog: path.join(wurzel, 'docker.log') };
+  return {
+    wurzel,
+    repo,
+    stub,
+    alt,
+    neu,
+    liste,
+    leereListe,
+    signiere,
+    dockerLog: path.join(wurzel, 'docker.log'),
+  };
 }
 
 function aktualisieren(kasten, zusatz = {}) {
