@@ -252,7 +252,21 @@ export interface NotificationLiveRouteOptions {
    * Chat-Kanal.
    */
   readonly heartbeatIntervalMs?: number;
+  /**
+   * Gilt die Sitzung hinter dieser Verbindung noch? (Review 2026-09-16,
+   * Befund 3.2.)
+   *
+   * Bis dahin prüfte nur der Handshake; eine abgelaufene oder widerrufene
+   * Sitzung bekam ihre Meldungen weiter, bis der Browser die Seite schloss.
+   * Dasselbe Muster wie am Chat-Kanal: `false` schließt mit 4401, ein Fehler
+   * beim Nachsehen lässt den Kanal offen.
+   */
+  isSessionValid?(request: FastifyRequest): Promise<boolean>;
+  /** Abstand der Sitzungsprüfung; Vorgabe 60 s. Nur für Tests gedacht. */
+  readonly sessionCheckIntervalMs?: number;
 }
+
+const SESSION_CHECK_INTERVAL_MS = 60_000;
 
 /**
  * Hängt den WebSocket-Endpunkt ein (Standardpfad `/live/notifications`).
@@ -298,7 +312,33 @@ export function registerNotificationLiveRoute(
           : { intervalMs: options.heartbeatIntervalMs },
       );
 
+      const check = options.isSessionValid;
+      const sessionTimer =
+        check === undefined
+          ? null
+          : setInterval(() => {
+              void (async (): Promise<void> => {
+                let valid = true;
+
+                try {
+                  valid = await check(request);
+                } catch {
+                  return;
+                }
+
+                if (!valid) {
+                  socket.close(CLOSE_CODE_UNAUTHORIZED, 'Sitzung nicht mehr gültig.');
+                }
+              })();
+            }, options.sessionCheckIntervalMs ?? SESSION_CHECK_INTERVAL_MS);
+
+      // Der Zeitgeber darf das Beenden des Prozesses nicht aufhalten.
+      sessionTimer?.unref();
+
       const cleanup = (): void => {
+        if (sessionTimer !== null) {
+          clearInterval(sessionTimer);
+        }
         stopHeartbeat();
         detach();
         angemeldet = false;
