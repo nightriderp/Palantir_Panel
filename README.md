@@ -6,8 +6,9 @@ per Knopfdruck, ohne technisches Vorwissen und ohne kommerziellen Hosting-Anbiet
 
 Aktiv in Entwicklung.
 
-> **Hinweis zum Umfang dieses Repositories:** Öffentlich ist der Code. Die
-> Projektunterlagen – Lastenheft, Pflichtenheft, Arbeitsaufteilung, Einrichtungsanleitung,
+> **Hinweis zum Umfang dieses Repositories:** Öffentlich ist der Code und die
+> Einrichtungsanleitung für den Betrieb ([deploy/README.md](deploy/README.md)). Die
+> übrigen Projektunterlagen – Lastenheft, Pflichtenheft, Arbeitsaufteilung,
 > Statusverfolgung und Design-Mockups – liegen bewusst nur lokal beim Team und sind hier
 > nicht enthalten. Ältere Commits enthalten sie noch; die Historie wurde nicht
 > umgeschrieben.
@@ -76,9 +77,18 @@ eigenen, kleinen Pull Request.
 
 ## Voraussetzungen
 
-- Node.js ≥ 20.11
+- Node.js ≥ 24
 - pnpm 9
 - Docker / Docker Compose (für Datenbank und Gameserver-Container)
+
+---
+
+## Einrichtung im Betrieb
+
+Von zwei leeren Maschinen (VPS und Homeserver) zu einer laufenden Installation:
+[deploy/README.md](deploy/README.md). Die Anleitung nennt bei jedem Schritt Maschine, Pfad
+und Befehl; alle installationsspezifischen Werte stehen als Platzhalter und gehören in die
+zentrale `.env` (`.env.example` beschreibt jeden davon).
 
 ---
 
