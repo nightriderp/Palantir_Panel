@@ -308,13 +308,53 @@ describe('Live-Konsole bei einem Spiel ohne Konsole', () => {
 });
 
 /**
- * Letzte festgehaltene Messung statt leerer Kacheln (Fundpunkt 206) und die
- * Netzwerk-Auskunft, die den Zustand mit dem Messwert verwechselte (207).
+ * Datensatz nach einem Zustandswechsel (Fundpunkt 314).
  *
- * Gemessen am Pruefstand: Ein laufender Server ohne verbundenen Agent zeigte
- * ueberall Striche und darunter "Der Server laeuft nicht.", waehrend das
- * Verlaufsdiagramm derselben Ansicht eine Kurve zeichnete.
+ * Der Live-Kanal traegt nur `status` und `statusMessage`. Alles andere im DTO
+ * - `lastStartedAt`, `totalUptimeSeconds`, `dockerContainerId` - bleibt sonst
+ * auf dem Stand des ersten Abrufs, und die Laufzeit-Uhr zaehlt nach einem
+ * fremden Start weiter von gestern.
  */
+describe('ServerDetail - Datensatz nach einem Zustandswechsel', () => {
+  it('holt den Server neu, wenn der Live-Kanal einen Wechsel meldet', async () => {
+    /*
+     * Der Live-Kanal traegt nur `status` und `statusMessage`; alles andere im
+     * DTO bliebe auf dem Stand des ersten Abrufs stehen. Fuer die Laufzeit-Uhr
+     * heisst das: Wird der Server anderswo gestartet - zweites Fenster,
+     * Mitverwalter, oder nach dem automatischen Abschalten -, zaehlt sie hier
+     * weiter vom alten `lastStartedAt`. Im Betrieb gesehen: "19 h 08 min" fuer
+     * eine Sitzung, die seit dreizehn Minuten lief.
+     */
+    api.fetchServer.mockResolvedValue({ success: true, data: LAEUFT, error: null });
+
+    zeichne();
+    await screen.findByText('Online');
+
+    const abrufeVorher = api.fetchServer.mock.calls.length;
+
+    sende(statusFrame('stopped'));
+
+    await waitFor(() => {
+      expect(api.fetchServer.mock.calls.length).toBeGreaterThan(abrufeVorher);
+    });
+  });
+
+  it('holt ohne Meldung des Kanals nichts nach', async () => {
+    // Ausgeloest wird der Abruf allein von einer Meldung. Bleibt der Kanal
+    // still, bleibt es beim einen Abruf des Aufbaus - kein Takt, kein Polling.
+    api.fetchServer.mockResolvedValue({ success: true, data: LAEUFT, error: null });
+
+    zeichne();
+    await screen.findByText('Online');
+
+    const abrufeVorher = api.fetchServer.mock.calls.length;
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(api.fetchServer.mock.calls.length).toBe(abrufeVorher);
+  });
+});
+
 describe('ServerDetail - Uhr am laufenden Uebergang', () => {
   it('zaehlt ab dem Zustandswechsel, nicht ab dem letzten Start', async () => {
     /*

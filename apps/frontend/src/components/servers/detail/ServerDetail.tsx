@@ -2,7 +2,7 @@
 
 import { type GameServerDto } from '@palantir/contracts';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   ConfirmDialog,
@@ -112,6 +112,33 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
     () => (resource.data ? mergeLiveStatus(resource.data, dtoRevision, liveStatus) : null),
     [resource.data, dtoRevision, liveStatus],
   );
+
+  /**
+   * Nach einem Zustandswechsel den Datensatz neu holen (Fundpunkt 314).
+   *
+   * Der Live-Kanal traegt nur `status` und `statusMessage`; alles andere im DTO
+   * bleibt auf dem Stand des ersten Abrufs stehen. Fuer eine Pille genuegte das
+   * - fuer die Laufzeit-Uhr nicht: Wird der Server anderswo gestartet (zweites
+   * Fenster, Mitverwalter, oder nach dem automatischen Abschalten), bleibt
+   * `lastStartedAt` in dieser Ansicht das alte, und die Uhr zaehlt weiter von
+   * vorgestern. Im Betrieb gesehen: "19 h 08 min" fuer eine Sitzung, die seit
+   * dreizehn Minuten lief.
+   *
+   * Ausloeser ist die Zahl der Meldungen, nicht der gemeldete Zustand: Der
+   * Kanal schickt beim Abonnieren keinen Ist-Zustand, jedes Frame ist also ein
+   * echtes Ereignis. Ein Vergleich mit `resource.data.status` waere hier falsch
+   * - solange der REST-Stand juenger ist als die Meldung (Fundpunkt
+   * event-flow-04), bleiben beide absichtlich verschieden, und der Abgleich
+   * liefe im Kreis.
+   */
+  useEffect(() => {
+    if (live.statusRevision === 0) return;
+
+    resource.reload();
+    // Nur die Meldung zaehlt; `resource` haengt mit drin, weil `reload` daraus
+    // kommt, darf den Abruf aber nicht selbst ausloesen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.statusRevision]);
 
   const tabs = useMemo(() => (server ? buildServerTabs(server.permissions) : []), [server]);
   const activeTab = resolveServerTab(searchParams.get('tab'), tabs);
