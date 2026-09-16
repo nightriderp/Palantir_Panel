@@ -11,6 +11,7 @@ import { QuiesceMarker } from './jobs/backup/quiesce-marker.js';
 import { createContainerRuntimeFromEnv } from './runtime/index.js';
 import { env } from './config/env.js';
 import { AGENT_VERSION } from './version.js';
+import { startLebenszeichen } from './lebenszeichen.js';
 
 /**
  * Einstiegspunkt des Homeserver-Agents.
@@ -117,6 +118,17 @@ function main(): void {
 
   connection.start();
 
+  // Lebenszeichen für den Docker-Healthcheck (Review 2026-09-16, Befund 8.3):
+  // nur die Ereignisschleife, nicht die Verbindung – siehe `lebenszeichen.ts`.
+  const lebenszeichen = startLebenszeichen({
+    zustand: () => (connection.isReady ? 'verbunden' : 'getrennt'),
+    onError: (fehler) => {
+      console.warn('[agent] Lebenszeichen konnte nicht geschrieben werden', {
+        fehler: fehler instanceof Error ? fehler.message : String(fehler),
+      });
+    },
+  });
+
   let beendet = false;
 
   const shutdown = (grund: string, exitCode = 0): void => {
@@ -128,6 +140,7 @@ function main(): void {
 
     beendet = true;
     console.info(`[agent] Beende auf ${grund}`);
+    lebenszeichen.stop();
     jobs.stop();
     runtimeLink.stop();
     adapter.stop();

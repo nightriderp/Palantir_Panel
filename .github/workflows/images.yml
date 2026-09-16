@@ -76,6 +76,23 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.app }},mode=max
           provenance: false
 
+      # Schwachstellen-Scan des gerade gebauten Images (Review 2026-09-16,
+      # Befund 8.6). Kritische Lücken **mit** verfügbarer Korrektur lassen den
+      # Lauf scheitern – dann gibt es keinen Stand, auf den `prod` zeigen
+      # könnte. Lücken ohne Korrektur stehen im Bericht, halten aber nichts
+      # auf: Gegen sie hilft kein Neubau.
+      - name: Schwachstellen-Scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/palantir-${{ matrix.app }}:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Ergebnis melden
         run: |
           echo "### palantir-${{ matrix.app }}" >> "$GITHUB_STEP_SUMMARY"
