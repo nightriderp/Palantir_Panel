@@ -312,6 +312,15 @@ export function removeMember(serverId: string, userId: string): Promise<ApiResul
   });
 }
 
+/**
+ * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9). Am laufenden
+ * Server als Neustart, am gestoppten nur als Neuaufbau ohne Start. Antwort:
+ * der Server mit der neuen Fassung.
+ */
+export function updateServerImage(serverId: string): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(serverPath(serverId, '/update'), { method: 'POST' });
+}
+
 // ---------------------------------------------------------------------------
 // Backups und vollständiger Export (Arbeitspaket B5)
 // ---------------------------------------------------------------------------

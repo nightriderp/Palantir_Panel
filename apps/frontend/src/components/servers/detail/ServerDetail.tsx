@@ -13,7 +13,12 @@ import {
   Tabs,
   useToast,
 } from '@/components/shared';
-import { type LifecycleAction, deleteServer, fetchServer } from '@/lib/api/servers';
+import {
+  type LifecycleAction,
+  deleteServer,
+  fetchServer,
+  updateServerImage,
+} from '@/lib/api/servers';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { useDtoRevision } from '@/lib/live/useDtoRevision';
@@ -54,6 +59,8 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
   const [confirm, setConfirm] = useState<{ action: 'stop' | 'restart' | 'update' } | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  /** Läuft gerade ein „Aktualisieren" (Pflichtenheft §9)? Sperrt die Kopfzeile wie ein Lifecycle-Befehl. */
+  const [updating, setUpdating] = useState(false);
   /**
    * Ist das Löschen an der fehlenden Node gescheitert? (Fundpunkt 226.)
    *
@@ -121,6 +128,30 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
     setConfirm({ action });
   }
 
+  /**
+   * Neue Image-Fassung übernehmen (Pflichtenheft §9). Kein Lifecycle-Befehl:
+   * Das Backend entscheidet, ob es dafür neu startet (laufender Server) oder
+   * nur den Container neu baut (gestoppter Server).
+   */
+  async function aktualisieren() {
+    if (!server) return;
+    setUpdating(true);
+    const result = await updateServerImage(server.id);
+    setUpdating(false);
+
+    if (!result.success) {
+      toast.error(errorText(result));
+      return;
+    }
+
+    resource.setData(result.data);
+    toast.success(
+      result.data.status === 'stopped'
+        ? `„${result.data.name}" läuft beim nächsten Start auf der neuen Fassung.`
+        : `„${result.data.name}" wird auf die neue Fassung gebracht.`,
+    );
+  }
+
   async function remove(erzwingen = false) {
     setDeleting(true);
     const result = await deleteServer(serverId, erzwingen ? { erzwingen: true } : {});
@@ -181,7 +212,7 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
 
       <DetailHeader
         server={server}
-        busy={lifecycle.pendingServerId !== null}
+        busy={lifecycle.pendingServerId !== null || updating}
         onLifecycle={onLifecycle}
         onUpdate={() => setConfirm({ action: 'update' })}
         onOpenSettings={() => selectTab('settings')}
@@ -244,15 +275,14 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
       )}
 
       {/*
-       * Aktualisieren läuft über denselben Neustart (Fundpunkt 190): Der Start
-       * baut den Container aus dem heutigen Bauplan neu und zieht dabei die
-       * neue Fassung des Images. Rückfrage und Beschriftung nennen trotzdem
-       * den wirklichen Anlass.
+       * Aktualisieren ist seit dem Review 2026-09-16 kein Neustart mehr,
+       * sondern ein eigener Vorgang (Pflichtenheft §9): Der Server behält seine
+       * Fassung, bis der Besitzer sie hier übernimmt.
        */}
       <ConfirmDialog
         open={confirm !== null}
         onClose={() => setConfirm(null)}
-        busy={lifecycle.pendingServerId !== null}
+        busy={lifecycle.pendingServerId !== null || updating}
         title={CONFIRM_TEXTS[confirm?.action ?? 'stop'].title}
         confirmLabel={CONFIRM_TEXTS[confirm?.action ?? 'stop'].confirmLabel}
         message={CONFIRM_TEXTS[confirm?.action ?? 'stop'].message(server.name)}
@@ -261,7 +291,7 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
           setConfirm(null);
           if (action === undefined) return;
           if (action === 'update') {
-            void lifecycle.run(server, 'restart', { label: 'Server wird aktualisiert …' });
+            void aktualisieren();
 
             return;
           }
@@ -325,6 +355,6 @@ const CONFIRM_TEXTS: Record<
     title: 'Auf die neue Fassung aktualisieren?',
     confirmLabel: 'Aktualisieren',
     message: (name) =>
-      `„${name}" wird dafür neu gestartet und läuft danach auf der neuen Fassung. Alle Spieler fliegen kurz heraus; die Weltdaten bleiben erhalten.`,
+      `„${name}" läuft danach auf der neuen Fassung. Ein laufender Server wird dafür neu gestartet – alle Spieler fliegen kurz heraus; ein gestoppter wird nur neu gebaut. Die Weltdaten bleiben in beiden Fällen erhalten.`,
   },
 };

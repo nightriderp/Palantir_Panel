@@ -61,7 +61,8 @@ export type ServerAuditAction =
   | 'server.cloned'
   | 'server.settingsChanged'
   | 'server.memberAdded'
-  | 'server.memberRemoved';
+  | 'server.memberRemoved'
+  | 'server.imageUpdated';
 
 /**
  * Schmale Sicht auf `AuditService.record()` aus B8.
@@ -806,6 +807,49 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
           toGameServerDto(server, {
             ...context,
             recentCrashCount: service.recentCrashCount(server),
+          }),
+        ),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  /**
+   * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9, Review
+   * 2026-09-16). Der Server behält seine Fassung sonst über Neustarts hinweg;
+   * hier wird sie ausdrücklich gewechselt – am laufenden Server als Stopp +
+   * Start, am gestoppten nur als Neuaufbau. Recht wie Starten und Stoppen
+   * (`canUpdate`).
+   */
+  app.post('/api/servers/:id/update', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const viewerId = request.viewerUserId;
+
+      if (viewerId === undefined || viewerId === null) {
+        throw new ServerOrchestrationError('AUTH_REQUIRED');
+      }
+
+      await loadAuthorized(request, id, 'canUpdate');
+
+      const ergebnis = await service.updateServerImage(id, viewerId);
+
+      if (ergebnis.previousImage !== ergebnis.image) {
+        await protokolliere(request, 'server.imageUpdated', id, {
+          from: ergebnis.previousImage,
+          to: ergebnis.image,
+          restarted: ergebnis.restarted,
+        });
+      }
+
+      const context = await dtoContext(request, id);
+
+      return await reply.send(
+        ok(
+          toGameServerDto(ergebnis.server, {
+            ...context,
+            recentCrashCount: service.recentCrashCount(ergebnis.server),
           }),
         ),
       );

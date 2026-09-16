@@ -773,6 +773,13 @@ export class ServerOrchestrationService {
     return buildContainerSpec({
       server,
       definition,
+      /*
+       * Die Fassung des Servers, nicht die der Definition (Pflichtenheft §9,
+       * Review 2026-09-16): Ein Server behält sein Image, bis jemand
+       * „Aktualisieren" drückt (`updateServerImage`). Ohne gespeicherte Fassung
+       * – neu angelegt oder vor dieser Spalte entstanden – gilt die Definition.
+       */
+      image: server.imageRef ?? definition.dockerImage,
       containerName: containerNameFor(server.id),
       dataHostPath: dataHostPathFor(server.id),
       // Derselbe Name, den auch der DNS-Eintrag trägt (`provision`) – bei
@@ -1761,6 +1768,68 @@ export class ServerOrchestrationService {
     return this.startServer(serverId, actorUserId, 'restart', {
       erzwingen: optionen.erzwingen === true || lief,
     });
+  }
+
+  /**
+   * Übernimmt die neue Fassung des Spiel-Images (Pflichtenheft §9, Review
+   * 2026-09-16, Befund 2.9).
+   *
+   * Ein Server behält seine Fassung (`imageRef`) über Starts und Neustarts
+   * hinweg – `containerSpecFor` baut den Container immer mit der gespeicherten
+   * Fassung. Erst dieser Aufruf schreibt die Fassung der Definition an den
+   * Server; danach weicht der Fingerabdruck ab, und `ensureContainerCurrent`
+   * baut den Container neu. Am laufenden Server geschieht das als Stopp +
+   * Start, am gestoppten nur als Neuaufbau ohne Start – ein „Aktualisieren",
+   * das nebenbei hochfährt, wäre eine Überraschung.
+   *
+   * Der Weltstand liegt im Datenvolume (`dataHostPath`), das jeder Neuaufbau
+   * unverändert wieder einhängt; das Image trägt nur Laufzeit und Serverdateien.
+   *
+   * Idempotent: Trägt der Server die Fassung schon, passiert nichts.
+   */
+  async updateServerImage(
+    serverId: string,
+    actorUserId: string,
+  ): Promise<{
+    readonly server: ServerRecord;
+    readonly previousImage: string | null;
+    readonly image: string;
+    readonly restarted: boolean;
+  }> {
+    const server = await this.requireServer(serverId);
+    const definition = this.deps.registry.require(server.gameType);
+    const ziel = definition.dockerImage;
+
+    if (server.imageRef === ziel) {
+      return { server, previousImage: server.imageRef, image: ziel, restarted: false };
+    }
+
+    const lief = server.status === 'running' || server.status === 'starting';
+
+    if (!lief) {
+      // Nur `stopped`, `error` und `crashed` lassen einen Neuaufbau zu; ein
+      // Server mitten im Anlegen oder Stoppen wechselt seine Fassung nicht.
+      if (server.status !== 'stopped' && server.status !== 'error' && server.status !== 'crashed') {
+        throw new ServerOrchestrationError('SERVER_STATE_CONFLICT', undefined, {
+          serverId,
+          status: server.status,
+        });
+      }
+    }
+
+    // Erst die Fassung schreiben: Danach passt der Fingerabdruck nicht mehr,
+    // und der nächste Neuaufbau nimmt genau dieses Image.
+    await this.deps.repository.update(serverId, { imageRef: ziel });
+
+    if (lief) {
+      const neu = await this.restartServer(serverId, actorUserId, { erzwingen: true });
+
+      return { server: neu, previousImage: server.imageRef, image: ziel, restarted: true };
+    }
+
+    const neu = await this.ensureContainerCurrent(await this.requireServer(serverId), definition);
+
+    return { server: neu, previousImage: server.imageRef, image: ziel, restarted: false };
   }
 
   /**

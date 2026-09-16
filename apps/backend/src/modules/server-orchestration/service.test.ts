@@ -2067,11 +2067,12 @@ describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
     expect(gestartet.restartRequired).toBe(false);
   });
 
-  it('baut vor dem Start neu, wenn die Definition ein neueres Image nennt', async () => {
+  it('behält beim Neuaufbau die gespeicherte Image-Fassung des Servers (Pflichtenheft §9)', async () => {
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
 
-    // So sieht ein Deployment mit neuer Spiel-Fassung aus.
+    // Der Bauplan ist veraltet (etwa geänderte Härtung), die Fassung nicht:
+    // Der Neuaufbau nimmt das Image des Servers, nicht das der Definition.
     harness.repository.servers.set(created.id, {
       ...harness.repository.servers.get(created.id)!,
       imageRef: 'ghcr.io/test/echo:alt',
@@ -2084,7 +2085,7 @@ describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
     const gestartet = await settle(harness, created.id, ['running']);
 
     expect(harness.socket.commands.map((c) => c.command)).toContain('CREATE');
-    expect(gestartet.imageRef).toBe(TEST_GAME_TYPE.dockerImage);
+    expect(gestartet.imageRef).toBe('ghcr.io/test/echo:alt');
   });
 
   /**
@@ -4980,5 +4981,86 @@ describe('Server einer unerreichbaren Node loeschen (Fundpunkt 226)', () => {
 
     expect(harness.socket.commands.map((c) => c.command)).toContain('DELETE');
     expect(harness.repository.servers.size).toBe(0);
+  });
+});
+
+describe('Image-Fassung je Server (Pflichtenheft §9, Review 2026-09-16)', () => {
+  /** Eine Definition, deren Image sich nach dem Anlegen ändert – wie ein Deployment. */
+  type WandelbareDefinition = { -readonly [K in keyof GameTypeDefinition]: GameTypeDefinition[K] };
+
+  function mitWandelbarerDefinition() {
+    const definition: WandelbareDefinition = { ...TEST_GAME_TYPE };
+    const harness = makeHarness({ gameTypes: [definition] });
+
+    return { harness, definition };
+  }
+
+  it('lässt einen laufenden Server bei neuer Definition unverändert und meldet nur „Update verfügbar"', async () => {
+    const { harness, definition } = mitWandelbarerDefinition();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    definition.dockerImage = 'ghcr.io/test/echo:2';
+    harness.socket.commands.length = 0;
+
+    // Ein Neustart ist kein „Aktualisieren": Der Container wird nicht neu gebaut.
+    await harness.service.restartServer(created.id, OWNER_ID);
+    const neugestartet = await settle(harness, created.id, ['running']);
+
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('CREATE');
+    expect(neugestartet.imageRef).toBe(TEST_GAME_TYPE.dockerImage);
+  });
+
+  it('übernimmt die neue Fassung am laufenden Server als Stopp, Neuaufbau und Start', async () => {
+    const { harness, definition } = mitWandelbarerDefinition();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    definition.dockerImage = 'ghcr.io/test/echo:2';
+    harness.socket.commands.length = 0;
+
+    const ergebnis = await harness.service.updateServerImage(created.id, OWNER_ID);
+    const aktualisiert = await settle(harness, created.id, ['running']);
+
+    expect(ergebnis.restarted).toBe(true);
+    expect(ergebnis.previousImage).toBe(TEST_GAME_TYPE.dockerImage);
+    expect(ergebnis.image).toBe('ghcr.io/test/echo:2');
+    expect(aktualisiert.imageRef).toBe('ghcr.io/test/echo:2');
+    const befehle = harness.socket.commands.map((c) => c.command);
+    expect(befehle).toContain('STOP');
+    expect(befehle).toContain('CREATE');
+    expect(befehle).toContain('START');
+    // Der Weltstand bleibt: derselbe Datenordner wird wieder eingehängt.
+    const create = harness.socket.commands.find((c) => c.command === 'CREATE');
+    expect(JSON.stringify(create?.payload)).toContain(created.id);
+  });
+
+  it('baut am gestoppten Server nur neu, ohne ihn zu starten', async () => {
+    const { harness, definition } = mitWandelbarerDefinition();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    definition.dockerImage = 'ghcr.io/test/echo:2';
+    harness.socket.commands.length = 0;
+
+    const ergebnis = await harness.service.updateServerImage(created.id, OWNER_ID);
+
+    expect(ergebnis.restarted).toBe(false);
+    expect(ergebnis.server.imageRef).toBe('ghcr.io/test/echo:2');
+    expect(ergebnis.server.status).toBe('stopped');
+    const befehle = harness.socket.commands.map((c) => c.command);
+    expect(befehle).toContain('CREATE');
+    expect(befehle).not.toContain('START');
+  });
+
+  it('tut nichts, wenn der Server die Fassung schon trägt', async () => {
+    const { harness } = mitWandelbarerDefinition();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    harness.socket.commands.length = 0;
+
+    const ergebnis = await harness.service.updateServerImage(created.id, OWNER_ID);
+
+    expect(ergebnis.restarted).toBe(false);
+    expect(harness.socket.commands).toHaveLength(0);
   });
 });
