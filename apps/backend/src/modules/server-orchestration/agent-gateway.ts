@@ -153,6 +153,27 @@ export interface AgentSessionHandlers {
    * Handler, die das Argument nicht nehmen, bleiben gültig.
    */
   onDisconnected?(hostId: string, getrenntSeit: Date): Promise<void> | void;
+  /**
+   * Der Agent hat sich mit `hello` vorgestellt – **vor** der Entscheidung, ob
+   * die Protokollversion passt (Review 2026-09-16, Befund 11.3).
+   *
+   * Bis dahin war ein Agent mit falscher Fassung unsichtbar: Log-Eintrag,
+   * Verbindung zu, Node „offline", Agent versucht es endlos erneut. Wer die
+   * Node-Übersicht baut, kann mit dieser Meldung sagen, *warum* die Node nicht
+   * verbunden ist. Optional und synchron; Fehler dürfen den Handshake nicht
+   * aufhalten.
+   */
+  onHello?(hostId: string, info: AgentHelloInfo): void;
+}
+
+/** Was ein Agent im `hello` über sich sagt, samt Urteil des Backends. */
+export interface AgentHelloInfo {
+  readonly agentVersion: string;
+  readonly protocolVersion: number;
+  readonly expectedProtocolVersion: number;
+  /** `false`: Der Handshake wurde wegen der Protokollversion abgewiesen. */
+  readonly compatible: boolean;
+  readonly reportedAt: Date;
 }
 
 export interface AgentSessionOptions {
@@ -440,7 +461,26 @@ export class AgentSession {
       return;
     }
 
-    if (protocolVersion !== AGENT_PROTOCOL_VERSION) {
+    const compatible = protocolVersion === AGENT_PROTOCOL_VERSION;
+
+    // Vor dem Urteil melden, damit auch ein abgewiesener Agent sichtbar wird
+    // (Befund 11.3). Ein Fehler im Handler darf den Handshake nicht anhalten.
+    try {
+      this.handlers.onHello?.(this.hostId, {
+        agentVersion,
+        protocolVersion,
+        expectedProtocolVersion: AGENT_PROTOCOL_VERSION,
+        compatible,
+        reportedAt: this.now(),
+      });
+    } catch (error) {
+      this.log.error(
+        { hostId: this.hostId, error: error instanceof Error ? error.message : String(error) },
+        'onHello-Handler fehlgeschlagen',
+      );
+    }
+
+    if (!compatible) {
       this.log.error(
         { hostId: this.hostId, agentVersion, protocolVersion, expected: AGENT_PROTOCOL_VERSION },
         'Agent spricht eine andere Protokollversion',
@@ -761,6 +801,24 @@ export class AgentRegistry {
    * Nodes, deren Abmeldung gerade läuft.
    */
   private readonly abmeldungen = new Map<string, Promise<void>>();
+
+  /**
+   * Letztes `hello` je Node (Review 2026-09-16, Befund 11.3) – auch das
+   * abgewiesene. Nur im Arbeitsspeicher, wie alles hier: Der Agent meldet sich
+   * binnen einer Minute erneut, und nach einem Neustart des Backends ist eine
+   * alte Fassungsangabe ohnehin nichts wert.
+   */
+  private readonly hellos = new Map<string, AgentHelloInfo>();
+
+  /** Merkt sich, was ein Agent zuletzt über sich gesagt hat. */
+  noteHello(hostId: string, info: AgentHelloInfo): void {
+    this.hellos.set(hostId, info);
+  }
+
+  /** Letztes `hello` einer Node; `null`, wenn sich seit dem Start keiner gemeldet hat. */
+  helloOf(hostId: string): AgentHelloInfo | null {
+    return this.hellos.get(hostId) ?? null;
+  }
 
   /**
    * Trägt eine Verbindung ein.

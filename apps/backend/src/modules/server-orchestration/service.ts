@@ -3331,9 +3331,13 @@ export class ServerOrchestrationService {
         id: server.id,
         status: server.status,
         dockerContainerId: server.dockerContainerId,
+        statusChangedAt: server.statusChangedAt,
       })),
       frame.containers,
       frame.reason,
+      // Ein laufendes Anlegen überlebt einen Reconnect, solange die
+      // `CREATE`-Frist läuft (Review 2026-09-16, Befund 11.2).
+      { createGraceMs: this.deps.config.createTimeoutMs },
     );
 
     this.deps.log.info(
