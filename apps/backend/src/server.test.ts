@@ -10,7 +10,10 @@ describe('Backend-Grundgerüst', () => {
     const response = await app.inject({ method: 'GET', url: '/health' });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
+    // `database` haengt davon ab, ob eine Datenbank erreichbar ist (CI: ja,
+    // lokal ohne DATABASE_URL: `skipped`); die Probe selbst prueft
+    // `routes/health.test.ts`.
+    expect(response.json()).toMatchObject({
       success: true,
       data: { status: 'ok', service: 'backend' },
       error: null,
