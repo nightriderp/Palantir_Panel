@@ -50,6 +50,7 @@ import {
   type ServerMemberRecord,
   type ServerRecord,
   type ServerRepository,
+  type TransferCandidateRecord,
   type UpdateServerData,
 } from './repository.js';
 import {
@@ -343,6 +344,28 @@ class FakeRepository implements ServerRepository {
     this.members.get(serverId)?.delete(userId);
 
     return Promise.resolve();
+  }
+
+  /**
+   * Konten, die einen Server übernehmen könnten (Pflichtenheft §7). Wer hier
+   * nicht steht, ist der Attrappe unbekannt (`USER_NOT_FOUND`).
+   */
+  readonly candidates = new Map<string, TransferCandidateRecord>();
+
+  transferOwner(serverId: string, newOwnerId: string): Promise<void> {
+    const current = this.servers.get(serverId);
+
+    if (current !== undefined) {
+      this.servers.set(serverId, { ...current, ownerId: newOwnerId });
+    }
+
+    this.members.get(serverId)?.delete(newOwnerId);
+
+    return Promise.resolve();
+  }
+
+  findTransferCandidate(userId: string): Promise<TransferCandidateRecord | null> {
+    return Promise.resolve(this.candidates.get(userId) ?? null);
   }
 
   /**
@@ -4980,5 +5003,90 @@ describe('Server einer unerreichbaren Node loeschen (Fundpunkt 226)', () => {
 
     expect(harness.socket.commands.map((c) => c.command)).toContain('DELETE');
     expect(harness.repository.servers.size).toBe(0);
+  });
+});
+
+describe('Besitzerwechsel (Lastenheft §3.7, Pflichtenheft §7)', () => {
+  const NEU = '77777777-7777-4777-8777-777777777777';
+
+  function kandidat(overrides: Partial<TransferCandidateRecord> = {}): TransferCandidateRecord {
+    return {
+      id: NEU,
+      displayName: 'Neuer Besitzer',
+      banned: false,
+      isOwner: false,
+      roleNames: ['Nutzer'],
+      ...overrides,
+    };
+  }
+
+  it('übergibt den Server, streicht die Mitgliedschaft des neuen Besitzers und meldet die Liste', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+    await harness.repository.upsertMember(id, NEU, 'operator');
+    harness.repository.candidates.set(NEU, kandidat());
+
+    const ergebnis = await harness.service.transferOwnership(id, NEU);
+
+    expect(ergebnis.server.ownerId).toBe(NEU);
+    expect(ergebnis.previousOwnerId).toBe(OWNER_ID);
+    expect(ergebnis.newOwnerDisplayName).toBe('Neuer Besitzer');
+    // Der Besitzer steht nie in der Mitgliederliste (Pflichtenheft §8).
+    expect(await harness.repository.memberLevel(id, NEU)).toBeNull();
+
+    const ereignis = harness.emitted.find((eintrag) => eintrag.event === 'server.ownerTransferred');
+    expect(ereignis?.payload).toMatchObject({ serverId: id, ownerId: NEU });
+    // Der alte Besitzer soll den Wechsel in seiner Übersicht sehen.
+    expect(ereignis?.payload.memberUserIds).toContain(OWNER_ID);
+  });
+
+  it('lehnt ein gesperrtes Konto ab', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+    harness.repository.candidates.set(NEU, kandidat({ banned: true }));
+
+    await expect(harness.service.transferOwnership(id, NEU)).rejects.toMatchObject({
+      code: 'TRANSFER_TARGET_INVALID',
+    });
+    expect(harness.repository.servers.get(id)?.ownerId).toBe(OWNER_ID);
+  });
+
+  it('lehnt ein noch nicht freigeschaltetes Konto ab', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+    // Ohne Rolle jenseits von „Gast" wartet das Konto noch (rbac/approval.ts).
+    harness.repository.candidates.set(NEU, kandidat({ roleNames: [] }));
+
+    await expect(harness.service.transferOwnership(id, NEU)).rejects.toMatchObject({
+      code: 'TRANSFER_TARGET_INVALID',
+    });
+  });
+
+  it('lässt den Owner der Instanz übernehmen, auch ohne Rolle', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+    harness.repository.candidates.set(NEU, kandidat({ isOwner: true, roleNames: [] }));
+
+    const ergebnis = await harness.service.transferOwnership(id, NEU);
+
+    expect(ergebnis.server.ownerId).toBe(NEU);
+  });
+
+  it('meldet ein unbekanntes Konto als USER_NOT_FOUND', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+
+    await expect(harness.service.transferOwnership(id, NEU)).rejects.toMatchObject({
+      code: 'USER_NOT_FOUND',
+    });
+  });
+
+  it('lehnt den bisherigen Besitzer als Ziel ab', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+
+    await expect(harness.service.transferOwnership(id, OWNER_ID)).rejects.toMatchObject({
+      code: 'TRANSFER_TARGET_INVALID',
+    });
   });
 });

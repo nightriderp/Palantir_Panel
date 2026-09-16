@@ -22,6 +22,7 @@ import {
   PageHeader,
   Panel,
   SegmentedControl,
+  SelectField,
   ServerStatusPill,
   ToggleRow,
   cn,
@@ -42,6 +43,7 @@ import {
   blockRegistrationRequest,
   clearUserLimits,
   createUser,
+  deleteUserAsAdmin,
   fetchInstanceSettings,
   fetchRegistrationRequests,
   fetchRoles,
@@ -141,6 +143,7 @@ type Dialog =
   | { kind: 'resetTwoFactor'; user: RegistrationRequestDto }
   | { kind: 'resetPassword'; user: RegistrationRequestDto }
   | { kind: 'password'; user: RegistrationRequestDto; temporary: string }
+  | { kind: 'delete'; user: RegistrationRequestDto }
   | null;
 
 export function UsersView() {
@@ -505,6 +508,15 @@ export function UsersView() {
                       label="Zwei-Faktor zurücksetzen"
                       onClick={() => setDialog({ kind: 'resetTwoFactor', user: entry })}
                     />
+                    {entry.permissions.canDelete ? (
+                      <IconButton
+                        size="sm"
+                        icon="trash"
+                        label="Konto löschen"
+                        variant="danger"
+                        onClick={() => setDialog({ kind: 'delete', user: entry })}
+                      />
+                    ) : null}
                     {/*
                       Fundpunkt 214: Der Statusfilter „Wartet auf Freigabe"
                       zeigte die wartenden Konten, ohne sie freigeben zu
@@ -643,7 +655,121 @@ export function UsersView() {
           onClose={() => setDialog(null)}
         />
       ) : null}
+
+      {dialog?.kind === 'delete' ? (
+        <DeleteUserDialog
+          user={dialog.user}
+          selfId={user?.id ?? null}
+          onClose={() => setDialog(null)}
+          onDeleted={() => {
+            setDialog(null);
+            resource.reload();
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * Konto löschen mit Besitzübergang (Lastenheft §3.7, Pflichtenheft §7).
+ *
+ * Der Name wird wie bei der Selbst-Löschung abgetippt, damit in einer langen
+ * Liste nicht das falsche Konto trifft. Zur Übernahme stehen die
+ * freigeschalteten Konten zur Wahl; vorgegeben ist der Administrator selbst.
+ */
+function DeleteUserDialog({
+  user,
+  selfId,
+  onClose,
+  onDeleted,
+}: {
+  user: RegistrationRequestDto;
+  selfId: string | null;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const toast = useToast();
+  const [target, setTarget] = useState(selfId ?? '');
+  const [busy, setBusy] = useState(false);
+  const kandidaten = useApiResource<RegistrationRequestDto[]>(
+    (signal) => fetchRegistrationRequests({ status: 'approved', limit: 200, offset: 0 }, signal),
+    [user.userId],
+  );
+
+  const options = (kandidaten.data ?? [])
+    .filter((eintrag) => eintrag.userId !== user.userId)
+    .map((eintrag) => ({
+      value: eintrag.userId,
+      label:
+        eintrag.userId === selfId
+          ? `Ich selbst (${eintrag.displayName})`
+          : eintrag.username
+            ? `${eintrag.displayName} (@${eintrag.username})`
+            : eintrag.displayName,
+    }));
+
+  // Der Administrator selbst steht immer zur Wahl, auch bevor die Liste da ist.
+  if (selfId !== null && !options.some((option) => option.value === selfId)) {
+    options.unshift({ value: selfId, label: 'Ich selbst' });
+  }
+
+  const anzahlServer = user.serverCount ?? null;
+
+  async function loeschen() {
+    setBusy(true);
+    const result = await deleteUserAsAdmin(user.userId, {
+      confirmName: user.username ?? user.displayName,
+      ...(target !== '' && target !== selfId ? { transferToUserId: target } : {}),
+    });
+    setBusy(false);
+    if (result.success) {
+      const anzahl = result.data.transferredServerIds.length;
+      toast.success(
+        anzahl === 0
+          ? `„${user.displayName}" wurde gelöscht.`
+          : `„${user.displayName}" wurde gelöscht; ${formatNumber(anzahl)} Server ${anzahl === 1 ? 'ist' : 'sind'} übergegangen.`,
+      );
+      onDeleted();
+    } else {
+      toast.error(errorText(result));
+    }
+  }
+
+  return (
+    <DangerConfirmDialog
+      open
+      onClose={onClose}
+      title={`Konto „${user.displayName}" löschen?`}
+      confirmLabel="Konto löschen"
+      busy={busy}
+      confirmationPhrase={user.username ?? user.displayName}
+      extraBlocked={target === ''}
+      onConfirm={() => void loeschen()}
+      message={
+        <>
+          <p>
+            Das Konto wird endgültig gelöscht, mit allen Anmeldeverfahren, Rollen und Sitzungen.
+            {anzahlServer === null
+              ? ' Server und Sicherungen des Kontos gehen an das gewählte Konto über.'
+              : anzahlServer === 0
+                ? ' Dem Konto gehört kein Server.'
+                : ` ${formatNumber(anzahlServer)} Server samt Sicherungen ${anzahlServer === 1 ? 'geht' : 'gehen'} an das gewählte Konto über – nichts wird gelöscht.`}
+          </p>
+        </>
+      }
+      extra={
+        <SelectField
+          label="Server und Sicherungen übernehmen soll"
+          value={target}
+          onChange={setTarget}
+          options={options}
+          placeholder={kandidaten.loading ? 'Konten werden geladen …' : 'Konto wählen …'}
+          disabled={busy}
+          {...(kandidaten.error ? { error: kandidaten.error } : {})}
+        />
+      }
+    />
   );
 }
 

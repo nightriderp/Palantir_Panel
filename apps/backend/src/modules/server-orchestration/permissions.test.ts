@@ -163,7 +163,15 @@ describe('Verwaltung fremder Server über .any', () => {
   it('lässt den Besitzerwechsel nur über server.manage.any zu', () => {
     // Der Besitzer selbst gibt seinen Server nicht weiter (Pflichtenheft §7):
     // Weitergabe ist Verwaltung, nicht Besitz.
-    expect(computeGameServerPermissions(actor, context()).canTransferOwnership).toBe(false);
+    const besitzer = actorWith(
+      'server.view.own',
+      'server.manage.own',
+      'server.delete.own',
+      'backup.manage.own',
+      'server.create',
+    );
+
+    expect(computeGameServerPermissions(besitzer, context()).canTransferOwnership).toBe(false);
     expect(
       computeGameServerPermissions(admin, context({ viewerId: OTHER })).canTransferOwnership,
     ).toBe(true);

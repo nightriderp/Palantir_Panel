@@ -46,6 +46,7 @@ import { randomUUID } from 'node:crypto';
 import { type DnsProvider } from './dns/types.js';
 import { type CloneJobProgress, type CloneJobStore, createCloneJobStore } from './clone-jobs.js';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
+import { hasNonGuestRole, isAwaitingApproval } from '../rbac/approval.js';
 
 /**
  * Zuschlag auf die Frist eines `STOP`-Befehls.
@@ -1786,6 +1787,82 @@ export class ServerOrchestrationService {
    * `erzwingen` ist **kein** „Aufräumen überspringen": Ist der Agent erreichbar,
    * läuft der gewöhnliche Weg – geprüft wird die Verbindung, nicht der Wunsch.
    */
+  /**
+   * Besitzer eines Servers wechseln (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * Ein Verwaltungsvorgang (`server.manage.any`, geprüft in der Route), kein
+   * Recht des Besitzers. Das Zielkonto muss freigeschaltet und nicht gesperrt
+   * sein – dieselbe Regel wie beim Anlegen eines Servers; ein Konto, das das
+   * Panel gar nicht benutzen darf, soll keinen Server tragen. Der Owner der
+   * Instanz kann übernehmen wie jedes andere freigeschaltete Konto.
+   *
+   * Meldet danach `server.ownerTransferred` auf dem Listen-Thema: Der Server
+   * bleibt, verschwindet aber aus der Übersicht des alten und erscheint in der
+   * des neuen Besitzers. Der alte Besitzer steht dafür in der Nutzlast neben
+   * den Mitgliedern – er ist keines mehr, soll die Änderung aber sehen.
+   */
+  async transferOwnership(
+    serverId: string,
+    newOwnerId: string,
+  ): Promise<{
+    readonly server: ServerRecord;
+    readonly previousOwnerId: string;
+    readonly previousOwnerDisplayName: string | null;
+    readonly newOwnerDisplayName: string;
+  }> {
+    const server = await this.requireServer(serverId);
+
+    if (server.ownerId === newOwnerId) {
+      throw new ServerOrchestrationError(
+        'TRANSFER_TARGET_INVALID',
+        'Dieses Konto besitzt den Server bereits.',
+        { serverId, newOwnerId },
+      );
+    }
+
+    const candidate = await this.deps.repository.findTransferCandidate(newOwnerId);
+
+    if (candidate === null) {
+      throw new ServerOrchestrationError('USER_NOT_FOUND', undefined, { userId: newOwnerId });
+    }
+
+    if (
+      candidate.banned ||
+      isAwaitingApproval({
+        isOwner: candidate.isOwner,
+        hasNonGuestRole: hasNonGuestRole(candidate.roleNames.map((name) => ({ name }))),
+      })
+    ) {
+      throw new ServerOrchestrationError('TRANSFER_TARGET_INVALID', undefined, {
+        serverId,
+        newOwnerId,
+        banned: candidate.banned,
+      });
+    }
+
+    await this.deps.repository.transferOwner(serverId, newOwnerId);
+
+    const updated = await this.requireServer(serverId);
+    const members = await this.deps.repository.listMembers(serverId);
+
+    this.deps.events.emit('server.ownerTransferred', {
+      serverId,
+      serverName: updated.name,
+      ownerId: newOwnerId,
+      // Der alte Besitzer ist kein Mitglied mehr, soll den Wechsel aber sehen;
+      // der Hub adressiert Besitzer, Mitglieder und `server.view.any`.
+      memberUserIds: [...members.map((member) => member.userId), server.ownerId],
+      detail: null,
+    });
+
+    return {
+      server: updated,
+      previousOwnerId: server.ownerId,
+      previousOwnerDisplayName: server.ownerDisplayName,
+      newOwnerDisplayName: candidate.displayName,
+    };
+  }
+
   async deleteServer(serverId: string, optionen: { erzwingen?: boolean } = {}): Promise<void> {
     const server = await this.requireServer(serverId);
 
