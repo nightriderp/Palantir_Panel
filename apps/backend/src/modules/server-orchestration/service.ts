@@ -22,7 +22,6 @@ import {
   type AgentServerQueryTarget,
   type AgentStateReportFrame,
   type ExecConsoleCommandResult,
-  type FileExtractCommandResult,
   type GetLogsCommandResult,
   type GameConfigValues,
   type GameTypeDefinition,
@@ -41,9 +40,8 @@ import { type AgentGatewayLogger, type AgentRegistry, type AgentSession } from '
 import { decideAutoShutdown } from './auto-shutdown.js';
 import { type CrashLoopPolicy, evaluateCrashLoop } from './crash-loop.js';
 import { buildServerDnsRecord } from './dns/cloudflare.js';
-import { randomUUID } from 'node:crypto';
 import { type DnsProvider } from './dns/types.js';
-import { type CloneJobProgress, type CloneJobStore, createCloneJobStore } from './clone-jobs.js';
+import { randomUUID } from 'node:crypto';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
 import { hasNonGuestRole, isAwaitingApproval } from '../rbac/approval.js';
 
@@ -66,7 +64,7 @@ import {
   type ServerStatsRepository,
 } from './stats-history.js';
 import { type ServerLoadSnapshot } from '../resources/index.js';
-import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.js';
+import { type WorldArchiveStore } from './world-import.js';
 
 /**
  * Verweis auf ein hochgeladenes Weltdaten-Archiv (P4).
@@ -74,7 +72,6 @@ import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.
  * Aus `CreateServerInput` abgeleitet statt eigenständig deklariert – die
  * Eingabe ist der Vertrag, eine zweite Formulierung könnte davon abweichen.
  */
-type WorldImportInput = NonNullable<CreateServerInput['worldImport']>;
 import {
   type ContainerCreateSpec,
   buildContainerSpec,
@@ -101,6 +98,8 @@ import {
   querySnapshotFromPayload,
 } from './live-events.js';
 import { planReconciliation } from './reconciliation.js';
+import { ServerCloneService } from './clone-service.js';
+import { type WorldImportInput, WorldImportTransfer } from './world-import-transfer.js';
 import {
   type ServerFileAccessOptions,
   type ServerFileUploadOptions,
@@ -117,7 +116,7 @@ import {
   applyLifecycleEvent,
   assertTransitionAllowed,
 } from './state-machine.js';
-import { normalizeSubdomain, resolveAvailableSubdomain } from './subdomain.js';
+import { resolveAvailableSubdomain } from './subdomain.js';
 
 /** Ereignisse, die der Dienst nach außen meldet (Pflichtenheft §14). */
 export interface OrchestrationEventSink {
@@ -277,15 +276,7 @@ export function dataHostPathFor(serverId: string): string {
   return `/srv/palantir/servers/${serverId}`;
 }
 
-/**
- * Blockgroesse beim Uebertragen eines Weltarchivs an den Agent.
- *
- * Dieselbe Groesse wie beim Herunterladen eines Backups (`DOWNLOAD_CHUNK_BYTES`
- * in B5): 4 MiB roh werden Base64-kodiert zu rund 5,5 MiB JSON - gross genug,
- * dass ein grosses Archiv nicht in Zehntausenden Runden geht, und klein genug,
- * dass ein Block die Verbindung zum Agent nicht fuer andere Befehle blockiert.
- */
-export const WORLD_IMPORT_CHUNK_BYTES = 4 * 1024 * 1024;
+export { WORLD_IMPORT_CHUNK_BYTES } from './world-import-transfer.js';
 
 export class ServerOrchestrationService {
   private readonly deps: OrchestrationDependencies;
@@ -341,13 +332,15 @@ export class ServerOrchestrationService {
    */
   private readonly clockSkew = new ClockSkewMonitor();
   /**
-   * Laufende und kürzlich beendete Klon-Aufträge (P7).
+   * Klon-Aufträge (P7) – Auftragsspeicher und Ablauf in `clone-service.ts`.
    *
    * Im Dienst und nicht in den Abhängigkeiten: Ein Auftrag beschreibt einen
    * Vorgang **dieses** Prozesses; ein zweiter Speicher daneben wäre eine zweite
    * Wahrheit über denselben Lauf.
    */
-  private readonly cloneJobs: CloneJobStore;
+  private readonly clones: ServerCloneService;
+  /** Weltdaten-Übernahme beim Anlegen (Befund 2.1) – eigene Klasse. */
+  private readonly worldImport: WorldImportTransfer;
   /**
    * Zuletzt gemessene Last je laufendem Server – Quelle der Ressourcen-Warnung
    * auf Server-Ebene (Lastenheft §3.3).
@@ -374,7 +367,27 @@ export class ServerOrchestrationService {
     this.reservation =
       deps.reservation ??
       createInlineCapacityReservation(deps.resources, deps.repository, deps.ports);
-    this.cloneJobs = createCloneJobStore({ now: this.now });
+    this.worldImport = new WorldImportTransfer({
+      agents: deps.agents,
+      ...(deps.worldArchives === undefined ? {} : { worldArchives: deps.worldArchives }),
+      config: deps.config,
+      log: deps.log,
+    });
+    this.clones = new ServerCloneService({
+      repository: deps.repository,
+      agents: deps.agents,
+      events: deps.events,
+      log: deps.log,
+      now: this.now,
+      requireServer: (serverId) => this.requireServer(serverId),
+      createServer: (input, ownerId, clonedFromServerId) =>
+        this.createServerInternal(input, ownerId, clonedFromServerId),
+      dataHostPathFor,
+      markFailed: async (server, reason) => {
+        await this.transition(server, { type: 'failed', reason });
+      },
+      emitServerEvent: (event, server, extra) => this.emitServerEvent(event, server, extra),
+    });
     this.serverLoads = new ServerLoadRegistry(2 * deps.config.statsSampleIntervalMs);
     this.files = new ServerFileService({
       registry: deps.registry,
@@ -724,7 +737,7 @@ export class ServerOrchestrationService {
       // Antwort. Der Container läuft dafür nicht; geschrieben wird über den
       // Archiv-Endpunkt der Engine, der auch bei gestopptem Container arbeitet.
       if (worldImport !== null) {
-        await this.importWorldData(server, created.containerId, worldImport);
+        await this.worldImport.importWorldData(server, created.containerId, worldImport);
       }
 
       await this.transition(server, { type: 'createSucceeded' });
@@ -2098,441 +2111,21 @@ export class ServerOrchestrationService {
     return aktualisiert;
   }
 
-  /**
-   * Übernimmt ein hochgeladenes Weltdaten-Archiv in den frischen Datenordner
-   * (Lastenheft §3.3 „Migration von anderen Hosting-Anbietern", P4).
-   *
-   * Das Archiv liegt seit dem Wizard-Schritt auf der VPS (`world-import.ts`)
-   * und wird hier **einmalig** abgeholt. Entpackt wird es auf dem Homeserver:
-   * Der Agent liest es, prüft jeden Eintrag gegen den Datenordner und legt die
-   * Dateien über den Archiv-Endpunkt der Engine ab (`FILE_EXTRACT`). Das
-   * Backend fasst dabei kein Dateisystem an – der einzige Weg auf das
-   * Datenvolume bleibt der Agent (Entwicklungsregeln §4).
-   */
-  private async importWorldData(
-    server: ServerRecord,
-    containerId: string,
-    worldImport: WorldImportInput,
-  ): Promise<void> {
-    const store = this.deps.worldArchives;
+  // Weltdaten-Übernahme (P4) und Klonen (P7) leben seit dem Review 2026-09-16
+  // (Befund 2.1) in `world-import-transfer.ts` und `clone-service.ts`; hier
+  // bleiben die Durchreichungen für die Routen.
 
-    if (store === undefined) {
-      throw new ServerOrchestrationError(
-        'WORLD_ARCHIVE_NOT_FOUND',
-        'Für Weltdaten-Übernahmen ist kein Zwischenspeicher eingerichtet.',
-        { serverId: server.id },
-      );
-    }
-
-    /*
-     * Der Verweis gilt nur für das Konto, das hochgeladen hat
-     * (orchestration-features-09). `server.ownerId` ist genau dieses Konto: Der
-     * Wizard lädt hoch und legt danach den Server an, und ein geklonter Server
-     * bringt gar keinen `worldImport` mit. Eine fremde `uploadId` sieht damit
-     * aus wie eine abgelaufene.
-     */
-    const archiv = await store.take(worldImport.uploadId, server.ownerId);
-
-    if (archiv === null) {
-      throw new ServerOrchestrationError('WORLD_ARCHIVE_NOT_FOUND', undefined, {
-        serverId: server.id,
-        uploadId: worldImport.uploadId,
-      });
-    }
-
-    try {
-      const grenze = this.deps.config.maxWorldArchiveBytes;
-
-      if (archiv.sizeBytes > grenze) {
-        throw new ServerOrchestrationError(
-          'FILE_TOO_LARGE',
-          `Das Archiv überschreitet die zulässige Größe von ${String(grenze)} Byte.`,
-          { serverId: server.id, sizeBytes: archiv.sizeBytes },
-        );
-      }
-
-      const session = this.deps.agents.require(server.hostId);
-      const ergebnis = await this.sendWorldArchive(session, server, containerId, archiv);
-
-      this.deps.log.info(
-        {
-          serverId: server.id,
-          fileName: worldImport.fileName,
-          sizeBytes: archiv.sizeBytes,
-          fileCount: ergebnis.fileCount,
-          extractedBytes: ergebnis.extractedBytes,
-          skipped: ergebnis.skipped,
-        },
-        'Weltdaten übernommen',
-      );
-    } finally {
-      // Auch nach einem Fehler: Das Archiv gehört dem Nutzer und hat nach dem
-      // Versuch nichts mehr auf der VPS verloren.
-      await archiv.release();
-    }
-  }
-
-  /**
-   * Ein Archiv blockweise an den Agent geben (Gefundener Punkt 106).
-   *
-   * Früher ging es in einem `FILE_EXTRACT` über den Kanal und war damit auf
-   * `AGENT_FILE_CHANNEL_MAX_BYTES` (64 MiB) begrenzt – für die Migration eines
-   * gewachsenen Servers zu wenig. Jetzt fließt es in Blöcken; der Agent hängt
-   * sie auf dem Homeserver aneinander und entpackt beim letzten.
-   *
-   * `transferId` ist die `uploadId` des Zwischenspeichers: Sie ist bereits
-   * eindeutig, und ein zweiter Anlauf desselben Imports trifft damit auf
-   * dieselbe Datei, statt eine weitere anzulegen.
-   */
-  private async sendWorldArchive(
-    session: AgentSession,
-    server: ServerRecord,
-    containerId: string,
-    archiv: StoredWorldArchive,
-  ): Promise<FileExtractCommandResult> {
-    let offset = 0;
-
-    for (;;) {
-      const block = await archiv.read(offset, WORLD_IMPORT_CHUNK_BYTES);
-      // Der letzte Block ist der, nach dem nichts mehr kommt. Ein leeres Archiv
-      // gibt es nicht (der Upload prüft das Format), ein leerer letzter Block
-      // also auch nicht – außer die Datei ist unterwegs geschrumpft.
-      const last = offset + block.byteLength >= archiv.sizeBytes;
-
-      const antwort = await session.sendCommand('UPLOAD_ARCHIVE_BLOCK', server.id, {
-        containerId,
-        transferId: archiv.uploadId,
-        offset,
-        contentBase64: block.toString('base64'),
-        last,
-        // Wurzel des Datenordners – ein Weltarchiv bringt seine eigene
-        // Ordnerstruktur mit.
-        path: '',
-        format: archiv.format,
-      });
-
-      offset += block.byteLength;
-
-      if (antwort.extract !== null) {
-        return antwort.extract;
-      }
-
-      if (block.byteLength === 0) {
-        // Kein Fortschritt und kein Ergebnis: weiterzudrehen hieße, für immer
-        // zu drehen.
-        throw new ServerOrchestrationError(
-          'WORLD_ARCHIVE_INVALID',
-          'Die Übertragung des Archivs endete ohne Ergebnis.',
-          { serverId: server.id, uploadId: archiv.uploadId, offset },
-        );
-      }
-    }
-  }
-
-  /**
-   * Klont einen Server (Pflichtenheft §9, Lastenheft §3.3).
-   *
-   * „Erzeugt einen neuen `GameServer`-Datensatz mit kopierter Konfiguration und
-   * zwingend neuer, eigener Subdomain (gleiche Prüf-/Formatregeln wie bei
-   * Neuerstellung); Weltdaten werden optional mitkopiert, Fortschritt wird im
-   * Frontend angezeigt."
-   *
-   * **Auftrag statt langer Antwort (P7).** Der Aufruf liefert sofort den
-   * `ServerCloneJobDto`; die eigentliche Arbeit läuft im Hintergrund weiter und
-   * meldet sich über `serverClone.progressed`. Vorher gab dieselbe Methode erst
-   * nach dem vollständigen Anlegen einen Serverdatensatz zurück – bei einer
-   * mitkopierten Welt wären das Minuten mit offener Verbindung, und das
-   * Frontend erwartete ohnehin schon den Auftrag.
-   *
-   * Die neue Subdomain ist Pflicht und durchläuft dieselbe Prüfkette –
-   * `createServerInternal()` wird dafür bewusst wiederverwendet. Eine bereits
-   * vergebene Subdomain fällt deshalb **vor** dem Auftrag auf und wird als
-   * Fehler beantwortet, nicht als fehlgeschlagener Auftrag: Ein Auftrag, der
-   * nie eine Chance hatte, wäre nur ein Umweg zur selben Meldung.
-   */
-  async cloneServer(
+  cloneServer(
     sourceServerId: string,
     input: CloneServerInput,
     ownerId: string,
   ): Promise<ServerCloneJobDto> {
-    const source = await this.requireServer(sourceServerId);
-
-    // Vorab dieselbe Prüfung, die `createServerInternal()` gleich noch einmal
-    // macht: Sie ist die einzige, die schon feststeht, bevor irgendetwas läuft.
-    if (await this.deps.repository.isSubdomainTaken(normalizeSubdomain(input.subdomain))) {
-      throw new ServerOrchestrationError('SUBDOMAIN_TAKEN', undefined, {
-        subdomain: input.subdomain,
-      });
-    }
-
-    const job = this.cloneJobs.create({
-      sourceServerId,
-      targetName: input.name,
-      targetSubdomain: input.subdomain,
-      includeWorldData: input.includeWorldData,
-    });
-
-    this.publishCloneJob(job);
-
-    // Bewusst nicht abgewartet: Der Aufrufer bekommt den Auftrag sofort. Der
-    // Hintergrundlauf fängt jeden Fehler selbst ab und schreibt ihn in den
-    // Auftrag; das Netz darunter fängt, was daran vorbeigeht (Fundpunkt 126).
-    fireAndForget(this.runCloneJob(job.id, source, input, ownerId), this.deps.log, {
-      vorgang: 'Klon-Auftrag',
-      serverId: sourceServerId,
-      jobId: job.id,
-    });
-
-    return job;
+    return this.clones.cloneServer(sourceServerId, input, ownerId);
   }
 
   /** Stand eines Klon-Auftrags (Route `GET /api/servers/:id/clone/:jobId`). */
   findCloneJob(sourceServerId: string, jobId: string): ServerCloneJobDto | null {
-    const job = this.cloneJobs.find(jobId);
-
-    // Ein Auftrag an einem anderen Server wird wie ein fehlender gemeldet – die
-    // Antwort soll nicht verraten, was an fremden Servern läuft.
-    return job !== null && job.serverId === sourceServerId ? job : null;
-  }
-
-  /** Meldet den Auftragsstand an den Live-Kanal (Contract `serverClone.progressed`). */
-  private publishCloneJob(job: ServerCloneJobDto): void {
-    this.deps.events.emit('serverClone.progressed', { serverId: job.serverId, job });
-  }
-
-  private advanceCloneJob(jobId: string, progress: CloneJobProgress): void {
-    const job = this.cloneJobs.update(jobId, progress);
-
-    if (job !== null) {
-      this.publishCloneJob(job);
-    }
-  }
-
-  /**
-   * Der eigentliche Klon-Lauf.
-   *
-   * Fehler beenden den Auftrag mit `failed` und einem Text, statt zu werfen:
-   * Auf diesen Aufruf wartet niemand mehr.
-   */
-  private async runCloneJob(
-    jobId: string,
-    source: ServerRecord,
-    input: CloneServerInput,
-    ownerId: string,
-  ): Promise<void> {
-    /*
-     * Der bereits angelegte Zielserver – gebraucht im Fehlerfall (Audit
-     * orchestration-features-04). Bleibt `null`, solange `createServerInternal`
-     * nicht durch ist; scheitert das Anlegen selbst, hat sein Rollback den
-     * Datensatz schon entfernt.
-     */
-    let ziel: ServerRecord | null = null;
-
-    try {
-      this.advanceCloneJob(jobId, {
-        status: 'running',
-        progressPercent: 5,
-        step: 'Server wird angelegt',
-      });
-
-      const clone = await this.createServerInternal(
-        {
-          name: input.name,
-          gameType: source.gameType,
-          subdomain: input.subdomain,
-          hostId: source.hostId,
-          resourceLimits: source.resourceLimits,
-          config: { ...source.configJson },
-          startupParameters: source.startupParameters,
-          autoShutdownEnabled: source.autoShutdown.enabled,
-          worldImport: null,
-        },
-        ownerId,
-        source.id,
-      );
-
-      ziel = clone;
-
-      this.advanceCloneJob(jobId, {
-        targetServerId: clone.id,
-        progressPercent: input.includeWorldData ? 30 : 90,
-        step: input.includeWorldData ? 'Weltdaten werden gesichert' : 'Klon wird abgeschlossen',
-      });
-
-      if (input.includeWorldData) {
-        await this.copyWorldData(
-          jobId,
-          source,
-          await this.requireServer(clone.id),
-          input.stopSourceServer === true,
-        );
-      }
-
-      await this.emitServerEvent('server.cloned', clone, {
-        sourceServerId: source.id,
-        copiedWorldData: input.includeWorldData,
-      });
-
-      const fertig = this.cloneJobs.finish(jobId, 'completed');
-
-      if (fertig !== null) {
-        this.publishCloneJob(fertig);
-      }
-    } catch (error: unknown) {
-      const grund = error instanceof Error ? error.message : 'Unbekannter Fehler.';
-
-      /*
-       * Der Zielserver darf nicht unauffällig stehen bleiben (Audit
-       * orchestration-features-04): Der Klon-Auftrag ist nach 15 Minuten
-       * vergessen, danach deutete nichts mehr darauf hin, dass diesem Server
-       * die Welt fehlt – der Nutzer startet ihn und spielt auf leerer Welt
-       * weiter.
-       */
-      if (ziel !== null) {
-        await this.markCloneTargetFailed(ziel, grund);
-      }
-
-      const gescheitert = this.cloneJobs.finish(jobId, 'failed', grund);
-
-      this.deps.log.error(
-        { jobId, sourceServerId: source.id, targetServerId: ziel?.id ?? null, error: grund },
-        'Klon fehlgeschlagen',
-      );
-
-      if (gescheitert !== null) {
-        this.publishCloneJob(gescheitert);
-      }
-    }
-  }
-
-  /**
-   * Markiert einen Klon, dessen Weltdaten-Übernahme gescheitert ist, als
-   * `error` – mit einem Hinweis, der den Grund benennt.
-   *
-   * Bewusst **kein** Löschen: Auf der Node liegen bereits Container und
-   * Datenordner, und je nachdem, wie weit `RESTORE_BACKUP` gekommen ist, auch
-   * schon Teile der Welt. Sie ungefragt wegzuräumen wäre der schlechtere
-   * Eingriff – dieselbe Begründung wie an `rollbackFailedCreate()`. Der Nutzer
-   * sieht den Fehlerzustand samt Meldung und entscheidet selbst.
-   *
-   * Scheitert das Markieren, bleibt es beim Log: Der Klon-Auftrag ist die
-   * eigentliche Antwort auf den Vorgang, und der wird ohnehin als `failed`
-   * gemeldet.
-   */
-  private async markCloneTargetFailed(clone: ServerRecord, grund: string): Promise<void> {
-    const hinweis = `Die Weltdaten des Ursprungsservers konnten nicht übernommen werden: ${grund} Der Server ist angelegt, seine Welt aber leer.`;
-
-    try {
-      const aktuell = await this.deps.repository.findById(clone.id);
-
-      if (aktuell === null) {
-        return;
-      }
-
-      await this.transition(aktuell, { type: 'failed', reason: hinweis });
-      await this.emitServerEvent('server.failed', aktuell.id, { detail: hinweis });
-    } catch (error: unknown) {
-      this.deps.log.warn(
-        {
-          serverId: clone.id,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Gescheiterter Klon konnte nicht als fehlerhaft markiert werden',
-      );
-    }
-  }
-
-  /**
-   * Kopiert die Weltdaten in den Klon (Lastenheft §3.3, Arbeitspaket P7).
-   *
-   * **Über die vorhandene Backup-Mechanik, nicht über einen neuen Befehl.** Der
-   * Datenordner wird auf dem Homeserver gepackt (`CREATE_BACKUP`), in den
-   * Datenordner des Klons entpackt (`RESTORE_BACKUP`) und das Zwischenarchiv
-   * wieder entfernt (`DELETE_BACKUP`). Alle drei Befehle sind seit A3 umgesetzt;
-   * ein eigener Kopier-Befehl wäre eine vierte Art, dieselbe Dateisystemarbeit
-   * zu beschreiben (Entwicklungsregeln §3). Der Umweg über das Archiv bringt außerdem die
-   * Prüfsumme mit: `RESTORE_BACKUP` vergleicht sie, bevor es etwas schreibt
-   * (Fundpunkt 99).
-   *
-   * **Der Quellserver wird nicht angehalten.** Er gehört dem Nutzer und läuft
-   * womöglich mit Spielern darauf; ihn für einen Klon abzuschalten wäre ein
-   * Eingriff, um den niemand gebeten hat. Die Kopie entspricht damit einer
-   * Sicherung im laufenden Betrieb – dieselbe Einschränkung, die
-   * `BackupDto.containerStopped` beschreibt.
-   *
-   * Das Zwischenarchiv wird auch dann entfernt, wenn das Zurückspielen
-   * scheitert: Sonst bliebe eine vollständige Kopie der Welt ohne Besitzer auf
-   * der Platte liegen.
-   */
-  private async copyWorldData(
-    jobId: string,
-    source: ServerRecord,
-    clone: ServerRecord,
-    stopSource: boolean,
-  ): Promise<void> {
-    const session = this.deps.agents.require(source.hostId);
-    const archivId = randomUUID();
-
-    /*
-     * `stopContainer` kommt aus der Anfrage (`stopSourceServer`, Gefundener
-     * Punkt 107): Ein laufender Spielserver schreibt weiter in die Dateien, die
-     * gerade gepackt werden, und die Kopie enthielte dann einen halb
-     * geschriebenen Spielstand. Angehalten wird nur auf ausdrücklichen Wunsch –
-     * den Server eines Nutzers ungefragt abzuschalten wäre ein Eingriff, um den
-     * niemand gebeten hat. Der Agent versetzt den Container danach in seinen
-     * vorherigen Zustand zurück (`backup-job.ts`).
-     */
-    const gesichert = await session.sendCommand('CREATE_BACKUP', source.id, {
-      backupId: archivId,
-      serverId: source.id,
-      sourcePath: dataHostPathFor(source.id),
-      ...(source.dockerContainerId === null ? {} : { containerId: source.dockerContainerId }),
-      stopContainer: stopSource,
-    });
-
-    this.advanceCloneJob(jobId, {
-      progressPercent: 60,
-      step: gesichert.containerStopped
-        ? 'Weltdaten werden übertragen (Quellserver angehalten)'
-        : 'Weltdaten werden übertragen',
-      totalBytes: gesichert.sizeBytes,
-    });
-
-    try {
-      await session.sendCommand('RESTORE_BACKUP', clone.id, {
-        backupId: archivId,
-        serverId: clone.id,
-        storagePath: gesichert.storagePath,
-        targetPath: dataHostPathFor(clone.id),
-        expectedChecksum: gesichert.checksumSha256,
-        ...(clone.dockerContainerId === null ? {} : { containerId: clone.dockerContainerId }),
-      });
-    } finally {
-      try {
-        await session.sendCommand('DELETE_BACKUP', source.id, {
-          backupId: archivId,
-          storagePath: gesichert.storagePath,
-        });
-      } catch (error: unknown) {
-        // Ein liegengebliebenes Zwischenarchiv ist ärgerlich, aber kein Grund,
-        // einen sonst gelungenen Klon als gescheitert zu melden. Der
-        // Speicher-Explorer (B8) findet es als verwaisten Posten.
-        this.deps.log.warn(
-          {
-            sourceServerId: source.id,
-            storagePath: gesichert.storagePath,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          'Zwischenarchiv des Klons konnte nicht entfernt werden',
-        );
-      }
-    }
-
-    this.advanceCloneJob(jobId, {
-      progressPercent: 90,
-      step: 'Klon wird abgeschlossen',
-      copiedBytes: gesichert.sizeBytes,
-    });
+    return this.clones.findCloneJob(sourceServerId, jobId);
   }
 
   // -------------------------------------------------------------------------
