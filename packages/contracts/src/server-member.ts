@@ -31,8 +31,39 @@ export interface ServerMemberDto {
   level: ServerMemberLevel;
   /** ISO-8601-Zeitstempel der Freigabe. */
   addedAt: string;
-  /** Darf der Aufrufer diese Zuordnung ändern oder entfernen? */
+  /**
+   * Darf der Aufrufer diese Zuordnung ändern oder entfernen?
+   *
+   * Älteres Einzel-Flag; bleibt, weil Oberfläche und Tests es lesen. Die
+   * Rechte je Vorgang stehen seit dem Review 2026-09-16 (Befund 2.2) in
+   * {@link ServerMemberDto.permissions} – dort steht auch das Warum.
+   */
   canEdit: boolean;
+  /**
+   * Rechte des Aufrufers an dieser Zuordnung (Pflichtenheft §5.2).
+   *
+   * Optional, damit dieser Vertrag für sich stehen kann (Entwicklungsregeln
+   * §3): Fehlt das Objekt, gilt `canEdit` für beide Vorgänge. Das Backend füllt
+   * es immer.
+   */
+  permissions?: ServerMemberPermissions;
+}
+
+/**
+ * Serverseitig berechnete Rechte an einer Mitglieds-Zuordnung (Pflichtenheft
+ * §5.2, Review 2026-09-16 Befund 2.2).
+ *
+ * Bis dahin trug das DTO nur `canEdit`, und die Oberfläche leitete daraus
+ * beide Vorgänge ab. Zwei Felder statt einem, weil die Entscheidung im Backend
+ * liegen soll: Heute hängen beide an `canManageMembers`, morgen kann das
+ * Entfernen des letzten Verwalters oder das Anheben über die eigene Stufe
+ * gesondert verboten sein, ohne dass die Oberfläche etwas davon wissen muss.
+ */
+export interface ServerMemberPermissions {
+  /** Stufe dieser Zuordnung ändern (`PUT /api/servers/:id/members`). */
+  canChangeLevel: boolean;
+  /** Zuordnung entfernen (`DELETE /api/servers/:id/members/:userId`). */
+  canRemove: boolean;
 }
 
 // ---------------------------------------------------------------------------
