@@ -348,6 +348,10 @@ export function registerServerOrchestration(
   const agentHandlers: AgentSessionHandlers = {
     onStateReport: (hostId, frame) => service.reconcile(hostId, frame),
     onEvent: (hostId, frame) => service.handleAgentEvent(hostId, frame),
+    // Fassung und Protokollurteil für die Node-Übersicht (Befund 11.3).
+    onHello: (hostId, info) => {
+      agents.noteHello(hostId, info);
+    },
     // Verbindungszustand der Node fortschreiben (Pflichtenheft §6). Bewusst
     // in einem eigenen try/catch: Scheitert das Schreiben, bleibt die Node in
     // der Anzeige veraltet – das ist hinnehmbar, ein Abbruch der gerade

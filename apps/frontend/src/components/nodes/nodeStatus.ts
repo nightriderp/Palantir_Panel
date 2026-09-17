@@ -170,6 +170,46 @@ export function nodeCpuLabel(node: HostNodeDto): string {
   return last == null ? kerne : `${kerne} · ${formatPercent(last)} Last`;
 }
 
+// ---------------------------------------------------------------------------
+// Agent-Fassung
+// ---------------------------------------------------------------------------
+
+export interface NodeAgentHint {
+  /** Kurzform für die Unterzeile, z. B. „Agent 1.4.2". */
+  label: string;
+  /** Warnung im Klartext, wenn der Agent nicht zu dieser Fassung des Panels passt; sonst `null`. */
+  warning: string | null;
+}
+
+/**
+ * Was die Übersicht über den Agent der Node sagt (Review 2026-09-16, Befund
+ * 11.3).
+ *
+ * Ein Agent mit falscher Protokollversion wird vom Backend abgewiesen und
+ * versucht es endlos erneut; die Node stand dabei schlicht „offline". Hier
+ * bekommt der Betreiber den Grund und den Handgriff – ohne ins Backend-Log
+ * schauen zu müssen. `null`, solange sich seit dem Start des Backends kein
+ * Agent gemeldet hat.
+ */
+export function nodeAgentHint(node: HostNodeDto): NodeAgentHint | null {
+  const agent = node.agent;
+
+  if (agent === undefined || agent === null) {
+    return null;
+  }
+
+  const label = `Agent ${agent.version}`;
+
+  if (agent.compatible) {
+    return { label, warning: null };
+  }
+
+  return {
+    label,
+    warning: `Der Agent ${agent.version} passt nicht zu dieser Fassung des Panels (Protokoll ${formatNumber(agent.protocolVersion)}, erwartet ${formatNumber(agent.expectedProtocolVersion)}). Bitte den Agent auf dem Homeserver aktualisieren – bis dahin bleibt die Node offline.`,
+  };
+}
+
 export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
   const { total, allocated, available } = node.capacity;
   const running = node.capacity.running ?? allocated;

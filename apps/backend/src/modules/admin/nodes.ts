@@ -16,6 +16,7 @@
  */
 
 import {
+  type HostNodeAgentInfo,
   type HostNodeCapacity,
   type HostNodeDto,
   type HostNodePermissions,
@@ -251,6 +252,12 @@ export interface NodePortBindingSource {
  */
 export interface NodeConnectionSource {
   isConnected(nodeId: string): boolean;
+  /**
+   * Letztes `hello` des Agents dieser Node – auch ein abgewiesenes (Review
+   * 2026-09-16, Befund 11.3). Optional, damit bestehende Quellen gültig
+   * bleiben; `null`, wenn sich seit dem Start des Backends keiner gemeldet hat.
+   */
+  lastHello?(nodeId: string): HostNodeAgentInfo | null;
 }
 
 export interface HostNodeServiceDependencies {
@@ -310,6 +317,7 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       serverCount: placement?.serverCount ?? 0,
       lastSeenAt: node.lastSeenAt?.toISOString() ?? null,
       hasAgentToken: node.hasAgentToken,
+      agent: deps.connections?.lastHello?.(node.id) ?? null,
       createdAt: node.createdAt.toISOString(),
       permissions,
     };
