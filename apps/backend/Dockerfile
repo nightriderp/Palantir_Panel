@@ -35,6 +35,10 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/backend ./apps/backend
+# Der Agent ist Dev-Abhaengigkeit des Backends (Integrationstest, Review
+# 2026-09-16 Befund 7.1); `--filter @palantir/backend...` baut ihn mit, also
+# muessen seine Quellen im Bau-Kontext liegen. In die Laufzeitstufe kommt er nicht.
+COPY apps/agent ./apps/agent
 # `...` baut die Workspace-Abhängigkeiten (contracts, validation) mit.
 RUN pnpm --filter @palantir/backend... build
 
