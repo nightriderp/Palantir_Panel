@@ -67,7 +67,7 @@ export interface BelegungsZeile {
  * (Fundpunkt 203).
  *
  * Ausgelagert und exportiert, damit die Regel ohne laufende Datenbank pruefbar
- * bleibt (CLAUDE.md §4) - sie ist der Grund, warum Uebersicht und
+ * bleibt (Entwicklungsregeln §4) - sie ist der Grund, warum Uebersicht und
  * Kapazitaetsschranke frueher auseinanderliefen.
  *
  * `allocated` zaehlt alle Zustaende. `running` nimmt den RAM nur von den

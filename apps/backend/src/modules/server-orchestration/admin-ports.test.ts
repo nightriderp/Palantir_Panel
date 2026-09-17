@@ -4,7 +4,7 @@
  *
  * Geprüft wird die Zuordnung „Posten → Agent-Befehl" und die Grenze, welche
  * Arten überhaupt hierüber verschwinden dürfen. Der Agent wird dafür durch eine
- * Sitzung ersetzt, die nur die Befehle mitschreibt (CLAUDE.md §4).
+ * Sitzung ersetzt, die nur die Befehle mitschreibt (Entwicklungsregeln §4).
  */
 
 import { type StorageEntryDto } from '@palantir/contracts';

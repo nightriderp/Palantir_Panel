@@ -20,7 +20,7 @@
 import { type ErrorCode, defaultMessageForErrorCode } from '@palantir/contracts';
 
 export abstract class AppError extends Error {
-  /** Benannter Code aus dem Katalog in `@palantir/contracts` (CLAUDE.md §5). */
+  /** Benannter Code aus dem Katalog in `@palantir/contracts` (Entwicklungsregeln §5). */
   readonly code: ErrorCode;
 
   protected constructor(code: ErrorCode, message?: string) {

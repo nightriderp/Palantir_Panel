@@ -179,14 +179,14 @@ export interface RegistrationRequestService {
  *
  * Bewusst nur diese eine Methode statt des ganzen `ResourceService`: Die
  * Warteliste braucht Kontingente zum Anzeigen und sonst nichts aus B4, und eine
- * eigene Zählung hier wäre die Parallelstruktur, die CLAUDE.md §3 ausschließt.
+ * eigene Zählung hier wäre die Parallelstruktur, die Entwicklungsregeln §3 ausschließt.
  */
 /**
  * Serveranzahl mehrerer Konten - erfuellt von der Server-Orchestrierung (B3).
  *
  * Wie {@link QuotaSummaryReader} bewusst nur diese eine Methode: Die Uebersicht
  * braucht eine Zahl, keine Serverliste, und eine eigene Zaehlung hier waere die
- * Parallelstruktur, die CLAUDE.md §3 ausschliesst.
+ * Parallelstruktur, die Entwicklungsregeln §3 ausschliesst.
  */
 export interface ServerCountReader {
   countServersByOwner(userIds: readonly string[]): Promise<ReadonlyMap<string, number>>;

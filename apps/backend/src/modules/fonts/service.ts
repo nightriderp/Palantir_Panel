@@ -4,7 +4,7 @@
  * Der Dienst kennt weder Fastify noch das Dateisystem noch Drizzle: Er spricht
  * über {@link FontRepository} und {@link FontFileStore}. Damit sind seine Regeln
  * – und das sind die interessanten Teile: Löschschutz, Formatprüfung,
- * Namenskollision – ohne Datenbank und ohne Platte prüfbar (CLAUDE.md §4).
+ * Namenskollision – ohne Datenbank und ohne Platte prüfbar (Entwicklungsregeln §4).
  *
  * **Zwei Quellen, eine Liste.** Mitgelieferte Schriften kommen aus `bundled.ts`
  * (Katalog im Code, Dateien im Auslieferungsverzeichnis), hochgeladene aus der
@@ -168,7 +168,7 @@ function familyTaken(family: string): FontError {
  * `fvar`-Tabelle: Deren Auswertung setzte einen eigenen WOFF2-Entpacker voraus
  * (Brotli-Strom plus das eigene Tabellenverzeichnis des Formats), also einen
  * Parser über fremdbestimmte Daten – eine Abhängigkeit bzw. ein Stück Code
- * dieser Größe wird nicht nebenbei eingeführt (CLAUDE.md §1). Damit zählt hier
+ * dieser Größe wird nicht nebenbei eingeführt (Entwicklungsregeln §1). Damit zählt hier
  * immer das Formular; fehlt auch das, gilt der Vertragsfall „statisch, 400".
  *
  * `variable` gilt nur zusammen mit einem echten Bereich: Ein Schalter ohne

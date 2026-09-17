@@ -29,7 +29,7 @@ const LAUFENDER_CONTAINER: AgentContainerState = {
 /**
  * Testdouble der Übertragung (Pflichtenheft §2.5): Die Verbindungslogik wird
  * ohne echten Server geprüft – und ohne Auth-Bypass, denn das Token gehört zur
- * WebSocket-Implementierung, nicht hierher (CLAUDE.md §2).
+ * WebSocket-Implementierung, nicht hierher (Entwicklungsregeln §2).
  */
 class FakeTransport implements Transport {
   readonly gesendet: string[] = [];

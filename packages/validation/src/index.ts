@@ -7,7 +7,7 @@
  * Enthalten sind bisher die paket-übergreifende Basis (ID-Format, Schema zum
  * Response-Envelope) und die Frame-Schemas des Agent-Protokolls. Fachliche
  * Schemas werden zusammen mit den zugehörigen Typen aus `@palantir/contracts`
- * über eigene, kleine PRs ergänzt (CLAUDE.md §3 und §6).
+ * über eigene, kleine PRs ergänzt (Entwicklungsregeln §3 und §6).
  */
 
 export { type Id, idSchema } from './common.js';

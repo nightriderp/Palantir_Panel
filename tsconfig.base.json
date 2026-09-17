@@ -6,7 +6,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
 
-    /* Strict-Modus (CLAUDE.md §4) – bewusst über "strict" hinaus verschärft */
+    /* Strict-Modus (Entwicklungsregeln §4) – bewusst über "strict" hinaus verschärft */
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,

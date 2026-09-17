@@ -190,7 +190,7 @@ export interface ReservationScope {
  * zweite Reservierung die Belegung der ersten bereits sieht.
  *
  * Die Kapazitätslogik selbst bleibt die aus B4 – hier kommt ausschließlich der
- * transaktionale Rahmen dazu (CLAUDE.md §3/§4).
+ * transaktionale Rahmen dazu (Entwicklungsregeln §3/§4).
  */
 export interface CapacityReservation {
   /**

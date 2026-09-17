@@ -4,7 +4,7 @@
  * Der Kern dieser Tests ist die Zusicherung „genau ein Konto trägt diesen
  * Status". Sie hängt in der Datenbank am partiellen Unique-Index
  * `users_single_owner_idx`; das Fake-Repository bildet ihn nach, damit die
- * Regel auch ohne laufende Datenbank prüfbar bleibt (CLAUDE.md §4).
+ * Regel auch ohne laufende Datenbank prüfbar bleibt (Entwicklungsregeln §4).
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';

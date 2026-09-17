@@ -82,7 +82,7 @@ describe('useApiResource – abgelehnte Ladefunktion (Fundpunkt frontend-lib-12)
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
-    // Katalogtext, nicht der Freitext aus dem Envelope (CLAUDE.md §5).
+    // Katalogtext, nicht der Freitext aus dem Envelope (Entwicklungsregeln §5).
     expect(result.current.error).not.toBe('egal');
     expect(result.current.error).not.toBeNull();
   });

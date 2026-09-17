@@ -20,7 +20,7 @@
  * über die Tabelle `game_servers` gezählt wird (siehe `ports.ts`).
  *
  * Die Datenstrukturen selbst stehen in `@palantir/contracts`, damit Backend,
- * Frontend und Agent dieselben Typen sehen (CLAUDE.md §3).
+ * Frontend und Agent dieselben Typen sehen (Entwicklungsregeln §3).
  */
 
 import { getDb } from '../../db/index.js';

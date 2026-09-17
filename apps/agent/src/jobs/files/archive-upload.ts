@@ -12,7 +12,7 @@
  * **Warum im Job-Modul.** Das Zusammensetzen ist Dateisystemarbeit auf dem
  * Homeserver und gehoert damit nach A3 - die Container-Runtime bekommt am Ende
  * ein fertiges Archiv und macht damit dasselbe wie bei `FILE_EXTRACT`
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  *
  * **Gesamtgroessen-Deckel** (Audit agent-conn-02). Die Uebertragung war frueher
  * unbegrenzt: Ein fehlerhaftes oder kompromittiertes Backend konnte mit

@@ -3,11 +3,11 @@
  *
  * Die Webhook-URL kommt **ausschließlich** aus der zentralen `.env`
  * (`DISCORD_WEBHOOK_URL`) oder aus dem Kanal-Datensatz, den ein Admin gepflegt
- * hat – niemals aus dem Code (CLAUDE.md §2).
+ * hat – niemals aus dem Code (Entwicklungsregeln §2).
  *
  * Keine neue Abhängigkeit: Der Versand läuft über das in Node 22 eingebaute
  * `fetch`. Eine HTTP-Bibliothek für einen einzigen POST wäre nicht zu
- * rechtfertigen (CLAUDE.md §1).
+ * rechtfertigen (Entwicklungsregeln §1).
  */
 
 import type { ErrorCode } from '@palantir/contracts';

@@ -154,7 +154,7 @@ export interface ResourceService {
    * (`UserResourceLimitRepository` und `ServerUsageRepository.usageForUser`) –
    * eine zweite Rechnung entsteht hier nicht. Den Rest je Ressource leitet
    * `resourceQuotaSlot()` aus dem Vertrag ab, damit Backend und Frontend
-   * dieselbe Regel sehen (CLAUDE.md §3).
+   * dieselbe Regel sehen (Entwicklungsregeln §3).
    *
    * Keine Permission nötig: das eigene Kontingent darf jedes angemeldete Konto
    * sehen. `canEdit` bleibt davon unberührt und verlangt weiterhin

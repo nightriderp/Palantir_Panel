@@ -4,7 +4,7 @@
  * Der Dienst (`service.ts`) kennt ausschließlich diese Schnittstelle und nie
  * Drizzle. Das ist derselbe Schnitt wie bei `RoleRepository` in B2 und hat
  * denselben Grund: Die fachlichen Abläufe – Lifecycle, Crash-Loop, Klonen –
- * sind so ohne laufende Datenbank prüfbar (CLAUDE.md §4).
+ * sind so ohne laufende Datenbank prüfbar (Entwicklungsregeln §4).
  */
 
 import {

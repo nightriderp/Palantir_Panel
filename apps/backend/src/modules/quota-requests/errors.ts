@@ -2,7 +2,7 @@
  * Fehler der Kontingent-Anfragen.
  *
  * Jeder Fehler trägt einen benannten Code aus dem Katalog in
- * `@palantir/contracts` – kein Freitext (CLAUDE.md §5). Aufbau bewusst identisch
+ * `@palantir/contracts` – kein Freitext (Entwicklungsregeln §5). Aufbau bewusst identisch
  * zu `RbacError` und `ResourceError`, damit Routen alle gleich behandeln.
  */
 

@@ -2,7 +2,7 @@
  * Auswertung von Cron-Ausdrücken für geplante Aufgaben (Pflichtenheft §6,
  * Entität `Schedule`; Lastenheft §3.3).
  *
- * **Warum eine eigene, kleine Umsetzung und keine Bibliothek** (CLAUDE.md §1):
+ * **Warum eine eigene, kleine Umsetzung und keine Bibliothek** (Entwicklungsregeln §1):
  * Gebraucht wird genau zweierlei – „passt dieser Ausdruck auf diese Minute?“ und
  * „wann ist der nächste Lauf?“. Beides ist mit den fünf Standardfeldern
  * überschaubar und vollständig testbar. Eine zusätzliche Abhängigkeit für rund

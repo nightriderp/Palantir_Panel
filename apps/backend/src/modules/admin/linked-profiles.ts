@@ -9,7 +9,7 @@
  * `providerAvatarUrl`, Pflichtenheft §7).
  *
  * Bewusst eine reine Abbildungsfunktion ohne Datenbank: So ist die Zuordnung
- * ohne laufendes PostgreSQL prüfbar (CLAUDE.md §4), und der Datenzugriff bleibt
+ * ohne laufendes PostgreSQL prüfbar (Entwicklungsregeln §4), und der Datenzugriff bleibt
  * in `repositories.ts`.
  */
 

@@ -3,7 +3,7 @@
  *
  * Geprüft wird die Zuordnung „Antwort von gamedig → {@link ServerProbeResult}" –
  * ohne Netz und ohne laufenden Spielserver: Die Abfrage-Funktion wird
- * hereingereicht (CLAUDE.md §4).
+ * hereingereicht (Entwicklungsregeln §4).
  */
 
 import { describe, expect, it, vi } from 'vitest';

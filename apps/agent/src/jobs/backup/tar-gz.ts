@@ -9,7 +9,7 @@
  * fließen die Daten deshalb durchgängig als Strom von der Platte über `gzip` in
  * die Zieldatei und zurück.
  *
- * **Warum keine Bibliothek:** Wie A2 bei seinem TAR-Codec (CLAUDE.md §1 – neue
+ * **Warum keine Bibliothek:** Wie A2 bei seinem TAR-Codec (Entwicklungsregeln §1 – neue
  * Abhängigkeiten werden begründet, nicht eingebaut, weil es bequem ist). Das
  * geschriebene Format ist USTAR mit der GNU-Erweiterung für lange Namen; das
  * lesen `tar`, `7-Zip` und der Codec von A2 gleichermaßen, ein Archiv bleibt

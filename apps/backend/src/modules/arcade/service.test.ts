@@ -27,7 +27,7 @@ type FakeRepository = ArcadeRepository & {
 /**
  * In-Memory-Attrappe des Repositories – bildet die Aggregate (Bestwert je
  * Konto, Rang, Versuchszahl) genauso nach wie die SQL-Abfragen, damit die
- * Service-Logik ohne Datenbank prüfbar ist (CLAUDE.md §4).
+ * Service-Logik ohne Datenbank prüfbar ist (Entwicklungsregeln §4).
  *
  * Zwei Eigenschaften des echten Repositories sind hier ausdrücklich
  * nachgebildet, weil die Service-Tests sie brauchen (Audit W3-5):

@@ -8,8 +8,8 @@
  *     `triggered`, `registered`, `reported`); Zustandsbeschreibungen wie `low`
  *     nur dort, wo kein Vorgang, sondern ein erreichter Schwellwert gemeldet wird
  *
- * Neue Events werden ausschließlich nach diesem Muster ergänzt (CLAUDE.md §5)
- * und zusätzlich im Katalog in Pflichtenheft §14 nachgetragen (CLAUDE.md §8).
+ * Neue Events werden ausschließlich nach diesem Muster ergänzt (Entwicklungsregeln §5)
+ * und zusätzlich im Katalog in Pflichtenheft §14 nachgetragen (Entwicklungsregeln §8).
  * Diese Liste enthält bewusst nur die im Pflichtenheft bereits genannten Namen.
  */
 

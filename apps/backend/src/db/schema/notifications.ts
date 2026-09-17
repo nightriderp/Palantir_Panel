@@ -46,7 +46,7 @@ import { users } from './users.js';
  * Sie wird deshalb nie in einem DTO ausgeliefert (`NotificationChannelDto`
  * trägt nur eine gekürzte Kurzform). Für den Standardkanal einer Instanz bleibt
  * die Spalte `null` – dann gilt `DISCORD_WEBHOOK_URL` aus der zentralen `.env`
- * (Pflichtenheft §12.1, CLAUDE.md §2: kein Geheimnis im Code, und hier auch
+ * (Pflichtenheft §12.1, Entwicklungsregeln §2: kein Geheimnis im Code, und hier auch
  * keines in der Datenbank, solange es nicht sein muss).
  */
 export const notificationChannels = pgTable(
@@ -288,7 +288,7 @@ export const notificationDeliveries = pgTable(
     event: text('event').$type<NotifiableEventName>().notNull(),
     status: text('status').$type<NotificationDeliveryStatus>().notNull().default('pending'),
     attempts: integer('attempts').notNull().default(0),
-    /** Benannter Code aus `ERROR_CATALOG` bei `status = 'failed'` – nie Freitext (CLAUDE.md §5). */
+    /** Benannter Code aus `ERROR_CATALOG` bei `status = 'failed'` – nie Freitext (Entwicklungsregeln §5). */
     failureCode: text('failure_code'),
     failureMessage: text('failure_message'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

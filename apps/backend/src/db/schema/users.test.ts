@@ -6,7 +6,7 @@
  * Dieser Test liest die **Migration** statt der Schema-Datei: Nur was in
  * `drizzle/` steht, kommt tatsächlich in der Datenbank an. Eine Schema-Datei,
  * zu der die Migration fehlt, hätte auf der laufenden Instanz keine Wirkung
- * (CLAUDE.md §4: Schema-Änderungen ausschließlich über Migrationen).
+ * (Entwicklungsregeln §4: Schema-Änderungen ausschließlich über Migrationen).
  */
 
 import { readFileSync, readdirSync } from 'node:fs';

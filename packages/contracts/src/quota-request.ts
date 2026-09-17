@@ -80,7 +80,7 @@ export interface QuotaRequestDto {
   /**
    * Woran der Antragsteller geraten ist (siehe {@link QuotaRequestTrigger}).
    *
-   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3): Anfragen
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3): Anfragen
    * aus der Zeit vor der Unterscheidung tragen das Feld nicht, und sie waren
    * alle Kontingent-Anfragen – fehlt es, gilt `quota`.
    */

@@ -15,7 +15,7 @@ import {
  * Reine Bausteine des Server-Live-Kanals (`/live`, Pflichtenheft §5.3).
  *
  * Frame-Auswertung und Lebenszeichen stehen bewusst getrennt vom Provider: So
- * sind beide ohne WebSocket und ohne React prüfbar (CLAUDE.md §4) – dasselbe
+ * sind beide ohne WebSocket und ohne React prüfbar (Entwicklungsregeln §4) – dasselbe
  * Vorgehen wie bei `notificationChannel.ts`, `backoff.ts` und
  * `consoleBuffer.ts`.
  *

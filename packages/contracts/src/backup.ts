@@ -138,7 +138,7 @@ export interface BackupDto {
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
-  /** Benannter Fehlercode bei `status === 'failed'`, sonst `null` – nie Freitext (CLAUDE.md §5). */
+  /** Benannter Fehlercode bei `status === 'failed'`, sonst `null` – nie Freitext (Entwicklungsregeln §5). */
   failureCode: ErrorCode | null;
   failureMessage: string | null;
   /**

@@ -3,7 +3,7 @@
  *
  * Gegenstück zu `chat.ts` aus `@palantir/contracts`. Backend und Frontend
  * prüfen gegen dieselben Schemas – es gibt keinen zweiten, abweichenden
- * Regelsatz im Backend (CLAUDE.md §3).
+ * Regelsatz im Backend (Entwicklungsregeln §3).
  *
  * **Kein Schema für eine Moderationssuche.** Die Übersicht der Moderation
  * filtert ausschließlich nach dem Bearbeitungsstand einer Meldung. Ein Filter

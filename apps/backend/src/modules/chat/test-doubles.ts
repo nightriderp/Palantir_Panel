@@ -2,7 +2,7 @@
  * Attrappen für die Tests des Chat-Moduls.
  *
  * Alle Regeln dieses Moduls sind ohne laufende PostgreSQL-Instanz prüfbar
- * (CLAUDE.md §4) – genau dafür stehen Persistenz und die Anschlüsse an B1/B3/B8
+ * (Entwicklungsregeln §4) – genau dafür stehen Persistenz und die Anschlüsse an B1/B3/B8
  * hinter Schnittstellen.
  *
  * Die Datei liegt bewusst neben dem Modul und nicht in einem `__mocks__`-Ordner:

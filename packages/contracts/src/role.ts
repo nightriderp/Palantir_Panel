@@ -6,7 +6,7 @@
  * (`User.isOwner`) steht außerhalb des Rollensystems und hat immer alle
  * Permissions.
  *
- * **Feldbenennung (bewusste Abweichung, CLAUDE.md §8):** Pflichtenheft §6 nennt
+ * **Feldbenennung (bewusste Abweichung, Entwicklungsregeln §8):** Pflichtenheft §6 nennt
  * das Permission-Bündel der Entität `permissions`. Im DTO ist `permissions`
  * jedoch durchgängig für das serverseitig berechnete Flags-Objekt aus §5.2
  * reserviert – über alle DTOs hinweg gleich, damit das Frontend sich darauf
@@ -61,6 +61,6 @@ export interface RoleDto {
  * **Nicht** zur Erkennung des Wartezustands verwenden: ob ein Konto noch auf
  * Freischaltung wartet, sagt das Backend über `AccountDto.awaitingApproval`
  * (`auth.ts`). Ein Rückschluss aus dem Rollennamen wäre eine Rechteableitung im
- * Frontend (Pflichtenheft §5.2, CLAUDE.md §3).
+ * Frontend (Pflichtenheft §5.2, Entwicklungsregeln §3).
  */
 export const GUEST_ROLE_NAME = 'Gast';

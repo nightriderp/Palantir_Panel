@@ -20,7 +20,7 @@
  * (Guard `requireApproved()`, W2-15) und ein anonymer Aufruf.
  *
  * Ohne Datenbank und ohne Agent: Dienst und Repository sind Attrappen, der
- * Zugriff läuft über `app.inject()` (CLAUDE.md §4).
+ * Zugriff läuft über `app.inject()` (Entwicklungsregeln §4).
  */
 
 import {

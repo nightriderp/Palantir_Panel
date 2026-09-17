@@ -17,7 +17,7 @@
  * benannten Fehlerkatalog (`RUNTIME_ERROR_CATALOG`), und der Adapter in A1
  * bildet ihn bereits vollständig auf den API-Katalog ab. Ein zweiter Katalog
  * für dieselben Fälle (`INVALID_PATH`, `FILE_NOT_FOUND`, ...) wäre eine
- * Parallelstruktur ohne Gewinn (CLAUDE.md §3, §5).
+ * Parallelstruktur ohne Gewinn (Entwicklungsregeln §3, §5).
  */
 
 import fs from 'node:fs/promises';

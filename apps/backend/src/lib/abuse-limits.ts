@@ -27,7 +27,7 @@
  *
  * **Warum Konstanten und keine Umgebungsvariablen.** Sechs weitere Schalter in
  * der `.env` wären sechs Möglichkeiten, den Schutz versehentlich abzuschalten,
- * und keine davon hat einen Betriebsfall (CLAUDE.md §8: „lieber feste,
+ * und keine davon hat einen Betriebsfall (Entwicklungsregeln §8: „lieber feste,
  * begründete Grenzen"). Die Zahlen stehen in {@link ABUSE_LIMITS} mit ihrer
  * Begründung.
  *

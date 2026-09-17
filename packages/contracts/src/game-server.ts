@@ -7,7 +7,7 @@ import { type ServerStatus } from './server-lifecycle.js';
  *
  * Berechtigungslogik lebt ausschließlich im Backend. Das Frontend zeigt oder
  * versteckt Bedienelemente **nur** anhand dieser Flags und leitet nie selbst
- * etwas aus Rollen ab (CLAUDE.md §3, Pflichtenheft §8).
+ * etwas aus Rollen ab (Entwicklungsregeln §3, Pflichtenheft §8).
  */
 export interface GameServerPermissions {
   /** Server überhaupt sichtbar (Karte, Detailseite). */
@@ -190,7 +190,7 @@ export interface GameServerDto {
    * Node-Liste aber nicht mit.
    *
    * `null`, wenn der Aufrufer die Node nicht sehen darf – wie bei `hostName`.
-   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3): Fehlt das
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3): Fehlt das
    * Feld, bleibt die Oberfläche bei ihrer bisherigen, unschärferen Auskunft.
    */
   hostStatus?: HostNodeStatus | null;
@@ -207,7 +207,7 @@ export interface GameServerDto {
    *
    * `null`, wenn der Aufrufer die Node nicht sehen darf – wie bei `hostName`
    * und `hostStatus`. Optional, damit der Vertrag für sich stehen kann
-   * (CLAUDE.md §3): Fehlt das Feld, bleibt die Oberfläche bei der Kernzahl.
+   * (Entwicklungsregeln §3): Fehlt das Feld, bleibt die Oberfläche bei der Kernzahl.
    */
   hostCpuCores?: number | null;
   /**

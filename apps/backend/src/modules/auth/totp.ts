@@ -1,13 +1,13 @@
 /**
  * TOTP nach RFC 6238 (Pflichtenheft §7: 2FA optional für Passwort-Konten).
  *
- * Bewusst ohne zusätzliche Abhängigkeit umgesetzt (CLAUDE.md §1): das Verfahren
+ * Bewusst ohne zusätzliche Abhängigkeit umgesetzt (Entwicklungsregeln §1): das Verfahren
  * ist HMAC-SHA1 über einen Zeitzähler und lässt sich mit den Testvektoren aus
  * RFC 4226 und RFC 6238 vollständig prüfen – siehe `totp.test.ts`. Alles, was
  * hier gebraucht wird, steht in `node:crypto`.
  *
  * Diese Datei kennt weder Datenbank noch HTTP und ist deshalb ohne
- * Infrastruktur testbar (CLAUDE.md §4).
+ * Infrastruktur testbar (Entwicklungsregeln §4).
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';

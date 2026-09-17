@@ -90,7 +90,7 @@ export interface ServerOrchestrationOptions {
    * Verbindung.
    *
    * Pflicht: B3 vergibt oeffentliche Ports ausdruecklich nicht selbst
-   * (Pflichtenheft §2.4, CLAUDE.md §6).
+   * (Pflichtenheft §2.4, Entwicklungsregeln §6).
    *
    * Nicht der fertige Dienst, sondern die Fabrik dazu (Fundpunkt 135): Die
    * Vergabe eines neuen Servers läuft innerhalb der Reservierungs-Transaktion
@@ -105,7 +105,7 @@ export interface ServerOrchestrationOptions {
    * Ohne Angabe bleibt es beim gemeinsamen `AGENT_TOKEN` und der vorgegebenen
    * Node – der Stand für eine Installation mit genau einem Homeserver. B3
    * fragt die Nodes nicht selbst ab; die Zuordnung liefert B8, wie beim
-   * Port-Pool (CLAUDE.md §6).
+   * Port-Pool (Entwicklungsregeln §6).
    */
   resolveHostIdByAgentToken?(token: string): Promise<string | null>;
   /**

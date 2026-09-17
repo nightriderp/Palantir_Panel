@@ -8,7 +8,7 @@
  * Homeserver passieren kann: das Dateisystem anfassen.
  *
  * **Container-Zugriffe laufen ausschließlich über `ContainerRuntime`**
- * (CLAUDE.md §4). Der Job hält den Container an, wenn das Backend das verlangt,
+ * (Entwicklungsregeln §4). Der Job hält den Container an, wenn das Backend das verlangt,
  * und bringt ihn danach in den vorherigen Zustand zurück – mehr Umgang mit
  * Containern hat er nicht.
  *

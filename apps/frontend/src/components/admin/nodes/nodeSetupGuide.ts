@@ -5,7 +5,7 @@
  * Node-Werten gefüllte Kurzfassung für den Wizard.
  *
  * Bewusst rein und ohne React, damit die erzeugten Befehle/Pfade ohne gerendertes
- * Bauteil prüfbar sind (CLAUDE.md §4). Es werden hier **keine** Geheimnisse
+ * Bauteil prüfbar sind (Entwicklungsregeln §4). Es werden hier **keine** Geheimnisse
  * erzeugt: Das Agent-Token vergibt das Backend auf ausdrücklichen Klick
  * („Agent-Token" in der Node-Liste) und zeigt es genau einmal an; diese
  * Anleitung verweist nur darauf und nennt als Rückfallweg das geteilte
@@ -13,7 +13,7 @@
  * überhaupt gilt (siehe {@link NodeSetupParams.sharedTokenFallback}).
  */
 
-/** Auf welcher Maschine ein Schritt ausgeführt wird (CLAUDE.md §9). */
+/** Auf welcher Maschine ein Schritt ausgeführt wird (Entwicklungsregeln §9). */
 export type SetupMachine = 'homeserver' | 'vps';
 
 export interface NodeSetupStep {

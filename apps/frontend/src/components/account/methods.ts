@@ -11,7 +11,7 @@ import {
  *
  * Bewusst ohne React/DOM, damit die Regeln – welcher Anbieter ist noch frei,
  * hat das Konto ein Passwort – ohne gerendertes Bauteil prüfbar sind
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  */
 
 /** Beschriftung je Verfahren für Anzeige und Vorlesbarkeit. */

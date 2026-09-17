@@ -25,7 +25,7 @@
  *   eine Meldung öffnen soll.
  *
  * Wer eine dieser Stellen aufweicht, ändert nicht das Modul, sondern eine
- * Zusicherung des Pflichtenhefts (CLAUDE.md §2).
+ * Zusicherung des Pflichtenhefts (Entwicklungsregeln §2).
  *
  * **Anschlüsse an andere Arbeitspakete:**
  * - B2 liefert `message.moderate` und den Guard.

@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * Geprüft wird die Verdrahtung der Ansicht, nicht das Widget selbst: Es steht
  * als Test-Double da, das bei **jeder Montage** eine neue Aufgabe holt und löst
  * – genau das tut das echte Widget in seinem Effekt. Kein Bypass, sondern ein
- * Ersatz an der Modulgrenze (CLAUDE.md §2, wie in `LoginView.test.tsx`).
+ * Ersatz an der Modulgrenze (Entwicklungsregeln §2, wie in `LoginView.test.tsx`).
  */
 
 const replace = vi.fn();

@@ -6,7 +6,7 @@
  *
  * - {@link createNotificationHub} – hält die offenen Verbindungen je Konto und
  *   kennt weder Fastify noch `ws`. Damit ist die Zustelllogik ohne Netzwerk
- *   prüfbar (CLAUDE.md §4).
+ *   prüfbar (Entwicklungsregeln §4).
  * - {@link registerNotificationLiveRoute} – der schmale Anschluss an Fastify.
  *
  * **Der Empfänger kommt aus der Sitzung**, nicht aus einem Frame: Ein Client
@@ -64,7 +64,7 @@ export const CLOSE_CODE_TOO_MANY_CONNECTIONS = NOTIFICATION_LIVE_CLOSE_CODE_TOO_
  * Verbindung einmal gesendet.
  *
  * Bewusst eine Konstante und keine Umgebungsvariable: Es gibt keinen
- * Betriebsfall, in dem hier eine andere Zahl gebraucht würde (CLAUDE.md §8).
+ * Betriebsfall, in dem hier eine andere Zahl gebraucht würde (Entwicklungsregeln §8).
  */
 export const NOTIFICATION_LIVE_MAX_CONNECTIONS_PER_USER = 10;
 

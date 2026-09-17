@@ -6,7 +6,7 @@
  * „Gast", Eindeutigkeit des Namens, Berechtigungsprüfung und die Berechnung des
  * `permissions`-Objekts liegen vollständig im `RoleService` aus B2
  * (`modules/rbac/roles.ts`) und werden hier **nicht** ein zweites Mal gebaut
- * (CLAUDE.md §3).
+ * (Entwicklungsregeln §3).
  *
  * **Was hier dazukommt:** das Audit-Log. Rollenänderungen sind
  * sicherheitsrelevant und gehören damit ins append-only Protokoll
@@ -24,7 +24,7 @@
  * Zusätzlich prüft dieses Modul beim Zuweisen und Entziehen, ob das Konto
  * überhaupt existiert. Ohne die Prüfung liefe eine unbekannte Konto-Id in die
  * Fremdschlüsselbedingung von `user_roles` und käme als roher Datenbankfehler
- * zurück statt als `USER_NOT_FOUND` aus dem Katalog (CLAUDE.md §5).
+ * zurück statt als `USER_NOT_FOUND` aus dem Katalog (Entwicklungsregeln §5).
  */
 
 import type { RoleDto } from '@palantir/contracts';

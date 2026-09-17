@@ -7,7 +7,7 @@
  * `setUserLimits`/`clearUserLimits`, aber keine HTTP-Route – die
  * Kontingent-Verwaltung in F10 hatte deshalb keinen Endpunkt. Diese drei Routen
  * hängen den bestehenden Service an `/admin/users/:userId/limits`, ohne eine
- * zweite Kontingent-Logik zu bauen (CLAUDE.md §3).
+ * zweite Kontingent-Logik zu bauen (Entwicklungsregeln §3).
  *
  * Wie in den übrigen Modulen läuft die Berechtigung doppelt: der
  * `preHandler`-Guard aus B2 (`user.manage`) lehnt früh ab, der Service prüft

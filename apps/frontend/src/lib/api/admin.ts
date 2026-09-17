@@ -391,7 +391,7 @@ export function deletePanelBackup(id: string): Promise<ApiResult<null>> {
  * Stand bis dahin zweimal für denselben Endpunkt (`GET /admin/nodes`): einmal
  * hier für die Node-Verwaltung und den Storage-Explorer, einmal in `nodes.ts`
  * für Dashboard und Node-Ansicht. Änderte sich Pfad oder Query, musste es
- * zweimal geschehen (CLAUDE.md §3, keine Parallelstrukturen). Die Definition
+ * zweimal geschehen (Entwicklungsregeln §3, keine Parallelstrukturen). Die Definition
  * liegt jetzt in `nodes.ts` – dort steht auch die Begründung, warum eine
  * Nutzeransicht einen `/admin`-Pfad ruft; hier wird sie nur weitergereicht,
  * damit die bisherigen Aufrufer unverändert aus `@/lib/api/admin` importieren.

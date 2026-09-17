@@ -12,7 +12,7 @@
 # ein wartbares Pinning.
 #
 # **Der Pull Request geht durch dieselbe Schwelle wie jeder andere.** `main` ist
-# durch ein Ruleset geschützt (CLAUDE.md §6); ci.yml läuft, jemand sieht sich
+# durch ein Ruleset geschützt (Entwicklungsregeln §6); ci.yml läuft, jemand sieht sich
 # den neuen SHA an und merged. Automatisch wird nichts übernommen.
 version: 2
 
@@ -38,7 +38,7 @@ updates:
           - '*'
     open-pull-requests-limit: 3
     commit-message:
-      # CLAUDE.md §6 verlangt das Kürzel des Arbeitspakets im Betreff.
+      # Entwicklungsregeln §6 verlangt das Kürzel des Arbeitspakets im Betreff.
       prefix: '[ci]'
 
   # ---------------------------------------------------------------------------

@@ -69,7 +69,7 @@ export interface AuditEntryPage {
  *
  * **Bewusst unvollständig:** Weder `update` noch `remove` sind vorgesehen. Wer
  * hier eine solche Methode ergänzt, hebt die Zusicherung aus Pflichtenheft §6
- * auf – das ist keine Erweiterung, sondern ein Bruch (CLAUDE.md §2). Der
+ * auf – das ist keine Erweiterung, sondern ein Bruch (Entwicklungsregeln §2). Der
  * Archivierungsprozess nutzt {@link AuditArchiveRepository}.
  */
 export interface AuditLogRepository {

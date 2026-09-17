@@ -33,7 +33,7 @@ function main(): void {
 
   if (!env.AGENT_TOKEN) {
     // Kein Verbindungsversuch ohne Pre-Shared-Token – auch nicht "vorläufig"
-    // (Pflichtenheft §2.2, CLAUDE.md §2).
+    // (Pflichtenheft §2.2, Entwicklungsregeln §2).
     console.error(
       '[agent] AGENT_TOKEN ist nicht gesetzt – ohne Pre-Shared-Token wird keine Verbindung aufgebaut. Wert in der zentralen .env im Repo-Root ergänzen.',
     );

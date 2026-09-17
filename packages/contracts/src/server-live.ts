@@ -128,7 +128,7 @@ export interface ServerStatsHistoryDto {
  *
  * Die Namen stehen zugleich im Katalog `WEBSOCKET_EVENTS` – das
  * `satisfies` erzwingt das beim Übersetzen, damit hier kein Name entsteht, den
- * der Katalog nicht kennt (CLAUDE.md §5).
+ * der Katalog nicht kennt (Entwicklungsregeln §5).
  */
 export const LIVE_SERVER_EVENTS = [
   'server.statusChanged',

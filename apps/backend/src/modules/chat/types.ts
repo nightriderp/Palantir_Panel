@@ -5,7 +5,7 @@
  * beschreiben, was das Modul von anderen Arbeitspaketen braucht. Beides steht
  * hier zusammen, damit `visibility.ts`, `permissions.ts` und `dto.ts` ohne
  * Kenntnis von Drizzle auskommen und in Tests mit Attrappen laufen
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  */
 
 import {

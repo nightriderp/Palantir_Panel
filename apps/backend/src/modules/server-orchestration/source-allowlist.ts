@@ -10,13 +10,13 @@
  * der Port an `0.0.0.0`, bleibt dann immer noch mehr als nur das
  * Pre-Shared-Token als Hürde.
  *
- * Bewusst ohne Bibliothek (CLAUDE.md §1): IPv4-Netze in CIDR-Schreibweise und
+ * Bewusst ohne Bibliothek (Entwicklungsregeln §1): IPv4-Netze in CIDR-Schreibweise und
  * einzelne Adressen sind alles, was der Betrieb braucht. IPv6 wird trotzdem
  * verstanden – ein Backend, das auf `::` lauscht, sieht die Gegenstelle als
  * `::ffff:10.10.0.2`, und die muss dieselbe Liste treffen wie `10.10.0.2`.
  *
  * Reine Funktionen ohne Fastify, damit die Prüfung für sich getestet werden
- * kann (CLAUDE.md §4: Tests für Auth-nahe Logik).
+ * kann (Entwicklungsregeln §4: Tests für Auth-nahe Logik).
  */
 
 /** Eine Adresse als Zahl; `bits` unterscheidet IPv4 (32) von IPv6 (128). */

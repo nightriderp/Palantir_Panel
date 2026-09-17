@@ -3,7 +3,7 @@ import { type InstanceSettingsDto } from './instance.js';
 
 describe('Instanz-Einstellungen (Mockup-Abgleich 12.1.1)', () => {
   it('bleibt ohne die Schrift-Felder gültig (additive Erweiterung)', () => {
-    // Der Nachweis aus CLAUDE.md §3: Ein Datensatz, wie ihn ein Konsument vor
+    // Der Nachweis aus Entwicklungsregeln §3: Ein Datensatz, wie ihn ein Konsument vor
     // der Schrift-Erweiterung erzeugt hat, muss weiterhin dem DTO genügen.
     // Fehlte hier eines der neuen Felder als Pflichtfeld, bräche schon der
     // Typecheck – der Test ist damit auch ein Build-Test.

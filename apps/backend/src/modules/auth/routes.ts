@@ -7,7 +7,7 @@
  * liegt im Service.
  *
  * Fehler tragen ausschließlich benannte Codes aus dem Katalog in
- * `@palantir/contracts` – kein Freitext (CLAUDE.md §5).
+ * `@palantir/contracts` – kein Freitext (Entwicklungsregeln §5).
  */
 
 import {

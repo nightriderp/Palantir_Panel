@@ -133,7 +133,7 @@ export interface RegistrationRequestDto {
    * dass sich sagen ließ, welches gemeint ist – angemeldet, gesucht und
    * angeschrieben wird aber über diesen Namen.
    *
-   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3): Fehlt das
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3): Fehlt das
    * Feld, zeigt die Oberfläche wie bisher nur den Anzeigenamen. Ein Konto ohne
    * Passwort-Verfahren (nur Discord, Twitch oder Steam) hat trotzdem einen –
    * er entsteht bei der Registrierung.
@@ -153,7 +153,7 @@ export interface RegistrationRequestDto {
    * Nutzerliste las sich seine eigene Zeile damit wie ein Konto, das noch auf
    * seine Freischaltung wartet – ausgerechnet beim Betreiber.
    *
-   * Optional, damit der Vertrag fuer sich stehen kann (CLAUDE.md §3): Fehlt das
+   * Optional, damit der Vertrag fuer sich stehen kann (Entwicklungsregeln §3): Fehlt das
    * Feld, zeigt die Oberflaeche die Rollen wie bisher.
    */
   isOwner?: boolean;
@@ -165,7 +165,7 @@ export interface RegistrationRequestDto {
    * richtigen Häkchen zu setzen – das geht schief, sobald zwei Rollen denselben
    * Namen tragen oder eine umbenannt wird.
    *
-   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3).
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3).
    */
   roles?: RegistrationRequestRole[];
   /**
@@ -181,7 +181,7 @@ export interface RegistrationRequestDto {
   /**
    * Kontingent des Kontos für die Spalte „Kontingent" (Mockup-Abgleich 12.1.3).
    *
-   * Optional, damit dieser Vertrag für sich stehen kann (CLAUDE.md §3): Ein
+   * Optional, damit dieser Vertrag für sich stehen kann (Entwicklungsregeln §3): Ein
    * Konsument, der das Feld nicht kennt, bleibt gültig. `null` heißt „nicht
    * ermittelbar" – etwa, wenn die Belegung gerade nicht gelesen werden konnte;
    * ein Kontingent ohne jede Grenze ist dagegen ein Objekt mit `limit: null` in

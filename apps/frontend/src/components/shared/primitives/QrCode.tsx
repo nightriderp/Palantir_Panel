@@ -23,7 +23,7 @@ export interface QrCodeProps {
 /**
  * QR-Code als SVG.
  *
- * **Neue Abhängigkeit `qrcode-generator` (CLAUDE.md §1).** Die Kodierung eines
+ * **Neue Abhängigkeit `qrcode-generator` (Entwicklungsregeln §1).** Die Kodierung eines
  * QR-Codes ist Reed-Solomon-Fehlerkorrektur samt Maskenwahl – genau die Sorte
  * Code, die man nicht selbst schreibt. Gewählt wurde die kleinste ernsthafte
  * Umsetzung: eine Datei, **keine** eigenen Abhängigkeiten, MIT. Das übliche

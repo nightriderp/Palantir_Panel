@@ -11,7 +11,7 @@ import { AuthRequestError } from '@/lib/auth/errors';
  * Geprüft wird die Verdrahtung der Ansicht, nicht das Widget selbst: Es steht
  * hier als Test-Double, das den gelösten Nachweis sofort meldet – das Rechnen
  * an der Aufgabe ist in `lib/auth/altcha.test.ts` abgedeckt. Kein Bypass,
- * sondern ein Ersatz an der Modulgrenze (CLAUDE.md §2, wie in B1).
+ * sondern ein Ersatz an der Modulgrenze (Entwicklungsregeln §2, wie in B1).
  */
 
 const replace = vi.fn();
@@ -139,7 +139,7 @@ describe('LoginView – ALTCHA (Pflichtenheft §7, §18)', () => {
 /**
  * Zweiter Anmeldeschritt (Audit W3-12, `frontend-app-10` / `test-gaps-06`).
  *
- * Der Schritt ist ein Auth-Flow im Sinne von CLAUDE.md §4 und war bisher ohne
+ * Der Schritt ist ein Auth-Flow im Sinne von Entwicklungsregeln §4 und war bisher ohne
  * Test: Der Zwischen-Token aus dem ersten Schritt liegt nur im Speicher der
  * Ansicht, und ob er unverändert im zweiten Aufruf landet, hing an nichts.
  */

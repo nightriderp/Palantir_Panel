@@ -18,15 +18,8 @@ pnpm-lock.yaml
 # `pnpm format:check` beim Betreiber scheitern, ohne dass eine im Repository
 # sichtbare Datei schuld waere - und niemand sonst kann den Fehler nachstellen.
 # Genau so lag es bei wireguard-firewall.md (Fundpunkt 164).
-LASTENHEFT.md
-PFLICHTENHEFT.md
-STRUKTUR.md
-CLAUDE.md
-SETUP.md
-WORK_STATUS.md
-SITZUNGS_PROMPTS.md
-NACHARBEIT_PROMPTS.md
-F3_ARBEITSPAKETE.md
+/*.md
+!/README.md
 docs/
 deploy/gamenode/wireguard-firewall.md
 
@@ -44,5 +37,7 @@ graphify-out/
 # `db:generate` neu geschrieben und dürfen nicht umformatiert werden.
 apps/backend/drizzle/meta/
 
-# Arbeitsverzeichnisse paralleler Sitzungen (Worktrees) - nicht Teil des Repos
-.claude/
+# Versteckte Verzeichnisse im Repo-Root (Werkzeug-Ablagen, Worktrees paralleler
+# Sitzungen) - nicht Teil des Repos; .github bleibt drin.
+/.*/
+!/.github/

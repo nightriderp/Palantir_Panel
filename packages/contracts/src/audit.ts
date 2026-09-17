@@ -3,7 +3,7 @@
  *
  * **Append-only.** Es gibt hier bewusst weder einen Update- noch einen
  * Delete-DTO und keinen Eingabetyp zum Ändern eines Eintrags – auch nicht für
- * Admins, auch nicht „temporär" (CLAUDE.md §2). Ein einmal geschriebener
+ * Admins, auch nicht „temporär" (Entwicklungsregeln §2). Ein einmal geschriebener
  * Eintrag bleibt, wie er ist.
  *
  * Die einzige Ausnahme beim Entfernen ist der rein additive
@@ -28,7 +28,7 @@ export const AUDIT_RETENTION_MONTHS = 24;
  *
  * Der Katalog ist **wachsend**: Jedes Arbeitspaket ergänzt hier additiv die
  * sicherheitsrelevanten Aktionen, die es selbst protokolliert – niemals als
- * Freitext am Aufrufort (CLAUDE.md §5). Das Entfernen oder Umbenennen eines
+ * Freitext am Aufrufort (Entwicklungsregeln §5). Das Entfernen oder Umbenennen eines
  * bestehenden Eintrags ist ein Breaking Change: bereits geschriebene Einträge
  * ließen sich sonst nicht mehr zuordnen, und genau das darf ein append-only Log
  * nicht zulassen.

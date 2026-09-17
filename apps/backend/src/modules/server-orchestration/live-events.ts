@@ -15,7 +15,7 @@
  * nachgebaut wird.
  *
  * Reine Funktionen ohne Datenbank und ohne HTTP: Die Formen sollen ohne
- * laufenden Agent prüfbar sein (CLAUDE.md §4).
+ * laufenden Agent prüfbar sein (Entwicklungsregeln §4).
  */
 
 import {

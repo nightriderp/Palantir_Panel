@@ -16,7 +16,7 @@
  * Absenden.
  *
  * Bewusst rein und ohne React, damit der Wortlaut ohne gerendertes Bauteil
- * prüfbar ist (CLAUDE.md §4) – dieselbe Aufteilung wie bei `nodeSetupGuide.ts`.
+ * prüfbar ist (Entwicklungsregeln §4) – dieselbe Aufteilung wie bei `nodeSetupGuide.ts`.
  *
  * Kein Contract-Feld nötig: `HostNodeDto.hasAgentToken` sagt bereits, ob eine
  * Node ein eigenes Token hat (Gefundene Punkte 57 und 110).
