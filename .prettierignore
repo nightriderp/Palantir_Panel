@@ -37,6 +37,10 @@ graphify-out/
 # `db:generate` neu geschrieben und dürfen nicht umformatiert werden.
 apps/backend/drizzle/meta/
 
+# Von Next.js bei jedem Bau neu geschrieben (seit Next 16 in einer Form, die
+# Prettier umformatieren wuerde).
+apps/frontend/next-env.d.ts
+
 # Versteckte Verzeichnisse im Repo-Root (Werkzeug-Ablagen, Worktrees paralleler
 # Sitzungen) - nicht Teil des Repos; .github bleibt drin.
 /.*/

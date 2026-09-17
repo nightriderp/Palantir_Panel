@@ -371,7 +371,7 @@ export function apiUrl(path: string): string {
  * auf das Präfix `__Host-`), zieht das Backend mit, das Frontend zog nicht mit –
  * jeder zustandsändernde Request wäre an `AUTH_CSRF_INVALID` gescheitert und die
  * Middleware hätte für die Erneuerung kein Token mehr gefunden. Der Re-Export
- * bleibt, damit `client.ts`, `middleware.ts` und die Tests ihren bisherigen
+ * bleibt, damit `client.ts`, `proxy.ts` und die Tests ihren bisherigen
  * Import behalten.
  */
 export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME };
