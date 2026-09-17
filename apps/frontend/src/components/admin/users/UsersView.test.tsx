@@ -35,6 +35,7 @@ const api = vi.hoisted(() => ({
   fetchUserServers: vi.fn(),
   resetUserPassword: vi.fn(),
   approveRegistrationRequest: vi.fn(),
+  deleteUserAsAdmin: vi.fn(),
 }));
 
 const sitzung = vi.hoisted(() => ({ account: null as AccountDto | null }));
@@ -51,6 +52,7 @@ vi.mock('@/lib/api/admin', async (importOriginal) => ({
   fetchUserServers: api.fetchUserServers,
   resetUserPassword: api.resetUserPassword,
   approveRegistrationRequest: api.approveRegistrationRequest,
+  deleteUserAsAdmin: api.deleteUserAsAdmin,
 }));
 
 /** Alle instanzweiten Flags aus – der strengste Fall, wie bei den Server-Tests. */
@@ -415,5 +417,45 @@ describe('UsersView - Owner und Kontingent (Fundpunkt 221)', () => {
     await zeichne();
 
     expect(screen.queryByTitle('Über dem Kontingent')).toBeNull();
+  });
+});
+
+describe('UsersView – Konto löschen mit Besitzübergang (Pflichtenheft §7)', () => {
+  it('zeigt den Knopf nur mit canDelete', async () => {
+    api.fetchRegistrationRequests.mockResolvedValue(
+      ok([eintrag({ permissions: { ...eintrag().permissions, canDelete: false } })]),
+    );
+    await zeichne();
+
+    expect(screen.queryByRole('button', { name: 'Konto löschen' })).toBeNull();
+  });
+
+  it('fragt nach, nennt den Übergang und löscht erst nach abgetipptem Namen', async () => {
+    api.fetchRegistrationRequests.mockResolvedValue(ok([eintrag({ username: 'alex' })]));
+    api.deleteUserAsAdmin.mockResolvedValue(
+      ok({ transferredServerIds: ['srv-1'], toUserId: 'admin-1' }),
+    );
+    await zeichne();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Konto löschen' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /Konto .*Alex.* löschen\?/ }));
+    expect(within(dialog).getByText(/1 Server samt Sicherungen geht an das gewählte Konto über/));
+    // Ohne abgetippten Namen bleibt die Bestätigung gesperrt.
+    expect(
+      within(dialog).getByRole('button', { name: 'Konto löschen' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(api.deleteUserAsAdmin).not.toHaveBeenCalled();
+
+    // Der Anmeldename ist die Bestätigung – wie bei der Selbst-Löschung.
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'alex' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Konto löschen' }));
+
+    // Vorgabe „Ich selbst": kein Zielkonto im Körper, der Administrator übernimmt.
+    await waitFor(() =>
+      expect(api.deleteUserAsAdmin).toHaveBeenCalledWith('user-1', { confirmName: 'alex' }),
+    );
+    expect(await screen.findByText(/wurde gelöscht; 1 Server ist übergegangen/));
   });
 });

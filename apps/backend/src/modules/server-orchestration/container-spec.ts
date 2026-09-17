@@ -90,6 +90,13 @@ export const VIRTUAL_HOST_TARGET_PORT_LABEL = 'palantir.virtualHost.targetPort';
 export interface BuildContainerSpecInput {
   readonly server: ServerRecord;
   readonly definition: GameTypeDefinition;
+  /**
+   * Image des Containers. Der Dienst reicht die am Server **gespeicherte**
+   * Fassung herein (Pflichtenheft §9: ein Server behält sie, bis jemand
+   * „Aktualisieren" drückt); ohne Angabe gilt die Fassung der Definition –
+   * beim Anlegen und für Server, die vor der Spalte `image_ref` entstanden.
+   */
+  readonly image?: string;
   readonly containerName: string;
   readonly dataHostPath: string;
   /**
@@ -154,6 +161,7 @@ function portNummernEnv(
 export function buildContainerSpec({
   server,
   definition,
+  image,
   containerName,
   dataHostPath,
   hostname,
@@ -180,7 +188,7 @@ export function buildContainerSpec({
 
   return {
     name: containerName,
-    image: definition.dockerImage,
+    image: image ?? definition.dockerImage,
     env: {
       ...buildContainerEnv(definition, server.configJson),
       /*

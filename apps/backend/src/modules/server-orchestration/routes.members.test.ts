@@ -27,6 +27,8 @@ const FREMD_ID = '33333333-3333-4333-8333-333333333333';
 const MANAGER_ID = '55555555-5555-4555-8555-555555555555';
 /** Konto, das der Besitzer im Test neu freigibt. */
 const NEU_ID = '66666666-6666-4666-8666-666666666666';
+/** Verwaltungskonto mit `server.manage.any` – darf den Besitzer wechseln (Pflichtenheft §7). */
+const ADMIN_ID = '77777777-7777-4777-8777-777777777777';
 
 const SERVER: ServerRecord = {
   id: SERVER_ID,
@@ -72,6 +74,7 @@ const viewerIds: Record<string, string> = {
   besitzer: OWNER_ID,
   manager: MANAGER_ID,
   fremd: FREMD_ID,
+  admin: ADMIN_ID,
 };
 
 const actors: Record<string, PermissionActor> = {
@@ -89,12 +92,17 @@ const actors: Record<string, PermissionActor> = {
     isOwner: false,
     roles: [{ grantedPermissions: ['server.view.own', 'server.manage.own'] }],
   }),
+  admin: buildPermissionActor({
+    isOwner: false,
+    roles: [{ grantedPermissions: ['server.view.any', 'server.manage.any'] }],
+  }),
 };
 
 /** Mitschrift dessen, was die Routen am Repository aufrufen. */
 interface Aufrufe {
   upsert: { userId: string; level: ServerMemberLevel }[];
   remove: string[];
+  transfer: string[];
 }
 
 /** Was ins Audit-Log ging (Fundpunkt 237). */
@@ -109,13 +117,23 @@ async function buildApp(): Promise<{
   aufrufe: Aufrufe;
   protokoll: Protokollzeile[];
 }> {
-  const aufrufe: Aufrufe = { upsert: [], remove: [] };
+  const aufrufe: Aufrufe = { upsert: [], remove: [], transfer: [] };
   const protokoll: Protokollzeile[] = [];
   const mitglieder = new Map<string, ServerMemberRecord>([[MANAGER_ID, MANAGER]]);
 
   const service = {
     requireServer: async () => SERVER,
     recentCrashCount: () => 0,
+    transferOwnership: async (_serverId: string, newOwnerId: string) => {
+      aufrufe.transfer.push(newOwnerId);
+
+      return {
+        server: { ...SERVER, ownerId: newOwnerId, ownerDisplayName: 'Neuer Besitzer' },
+        previousOwnerId: OWNER_ID,
+        previousOwnerDisplayName: 'Besitzer',
+        newOwnerDisplayName: 'Neuer Besitzer',
+      };
+    },
   } as unknown as ServerOrchestrationService;
 
   const repository = {
@@ -197,7 +215,7 @@ async function buildApp(): Promise<{
 
 async function call(
   app: FastifyInstance,
-  method: 'GET' | 'PUT' | 'DELETE',
+  method: 'GET' | 'PUT' | 'DELETE' | 'POST',
   url: string,
   options: { actor?: string; payload?: unknown } = {},
 ) {
@@ -406,5 +424,60 @@ describe('Mitgliederwechsel im Protokoll (Fundpunkt 237)', () => {
     // Ein abgewiesener Versuch hat nichts geaendert – er gehoert nicht als
     // Aenderung ins Protokoll.
     expect(protokoll).toEqual([]);
+  });
+});
+
+describe('Besitzerwechsel über die Route (Pflichtenheft §7)', () => {
+  it('bleibt dem Besitzer selbst verwehrt – Weitergabe ist Verwaltung', async () => {
+    const { app } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/owner`, {
+      actor: 'besitzer',
+      payload: { newOwnerId: NEU_ID },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('PERMISSION_DENIED');
+  });
+
+  it('lässt server.manage.any den Besitzer wechseln und protokolliert beide Seiten', async () => {
+    const { app, aufrufe, protokoll } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/owner`, {
+      actor: 'admin',
+      payload: { newOwnerId: NEU_ID },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(aufrufe.transfer).toEqual([NEU_ID]);
+    const dto = response.json<{ data: { ownerId: string; ownerDisplayName: string } }>().data;
+    expect(dto.ownerId).toBe(NEU_ID);
+    expect(dto.ownerDisplayName).toBe('Neuer Besitzer');
+    expect(protokoll).toContainEqual({
+      action: 'server.ownerTransferred',
+      targetId: SERVER_ID,
+      metadata: {
+        fromUserId: OWNER_ID,
+        fromDisplayName: 'Besitzer',
+        toUserId: NEU_ID,
+        toDisplayName: 'Neuer Besitzer',
+        anlass: 'einzeln',
+      },
+    });
+  });
+
+  it('weist einen Körper ohne gültige Konto-Id ab', async () => {
+    const { app, aufrufe } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/owner`, {
+      actor: 'admin',
+      payload: { newOwnerId: 'kein-uuid' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(aufrufe.transfer).toEqual([]);
   });
 });

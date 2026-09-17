@@ -10,7 +10,7 @@ import { and, count, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql }
 import type { Database } from '../../db/index.js';
 import { authMethods, sessions } from '../../db/schema/auth.js';
 import { backups } from '../../db/schema/backups.js';
-import { gameServers } from '../../db/schema/server-orchestration.js';
+import { gameServers, serverMembers } from '../../db/schema/server-orchestration.js';
 import { users } from '../../db/schema/users.js';
 import type {
   AuthMethodRecord,
@@ -210,6 +210,37 @@ export function createDrizzleAuthRepository(db: Database): AuthRepository {
       // `backups` hängen dagegen mit RESTRICT daran – der Aufrufer prüft das
       // vorher über `countAccountBlockers` (Audit W2-11).
       await db.delete(users).where(eq(users.id, id));
+    },
+
+    async transferOwnershipAndDeleteUser(userId, toUserId) {
+      return db.transaction(async (tx) => {
+        const uebergeben = await tx
+          .update(gameServers)
+          .set({ ownerId: toUserId, updatedAt: new Date() })
+          .where(eq(gameServers.ownerId, userId))
+          .returning({ id: gameServers.id });
+        const serverIds = uebergeben.map((row) => row.id);
+
+        if (serverIds.length > 0) {
+          // Der Besitzer steht nie in der Mitgliederliste (Pflichtenheft §8).
+          await tx
+            .delete(serverMembers)
+            .where(
+              and(eq(serverMembers.userId, toUserId), inArray(serverMembers.serverId, serverIds)),
+            );
+        }
+
+        const sicherungen = await tx
+          .update(backups)
+          .set({ ownerId: toUserId })
+          .where(eq(backups.ownerId, userId))
+          .returning({ id: backups.id });
+
+        // Kaskaden wie bei `deleteUser`; RESTRICT hält jetzt nichts mehr fest.
+        await tx.delete(users).where(eq(users.id, userId));
+
+        return { serverIds, backupCount: sicherungen.length };
+      });
     },
 
     async countAccountBlockers(userId) {

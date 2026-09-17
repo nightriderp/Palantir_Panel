@@ -46,6 +46,7 @@ import { randomUUID } from 'node:crypto';
 import { type DnsProvider } from './dns/types.js';
 import { type CloneJobProgress, type CloneJobStore, createCloneJobStore } from './clone-jobs.js';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
+import { hasNonGuestRole, isAwaitingApproval } from '../rbac/approval.js';
 
 /**
  * Zuschlag auf die Frist eines `STOP`-Befehls.
@@ -773,6 +774,13 @@ export class ServerOrchestrationService {
     return buildContainerSpec({
       server,
       definition,
+      /*
+       * Die Fassung des Servers, nicht die der Definition (Pflichtenheft §9,
+       * Review 2026-09-16): Ein Server behält sein Image, bis jemand
+       * „Aktualisieren" drückt (`updateServerImage`). Ohne gespeicherte Fassung
+       * – neu angelegt oder vor dieser Spalte entstanden – gilt die Definition.
+       */
+      image: server.imageRef ?? definition.dockerImage,
       containerName: containerNameFor(server.id),
       dataHostPath: dataHostPathFor(server.id),
       // Derselbe Name, den auch der DNS-Eintrag trägt (`provision`) – bei
@@ -1764,6 +1772,68 @@ export class ServerOrchestrationService {
   }
 
   /**
+   * Übernimmt die neue Fassung des Spiel-Images (Pflichtenheft §9, Review
+   * 2026-09-16, Befund 2.9).
+   *
+   * Ein Server behält seine Fassung (`imageRef`) über Starts und Neustarts
+   * hinweg – `containerSpecFor` baut den Container immer mit der gespeicherten
+   * Fassung. Erst dieser Aufruf schreibt die Fassung der Definition an den
+   * Server; danach weicht der Fingerabdruck ab, und `ensureContainerCurrent`
+   * baut den Container neu. Am laufenden Server geschieht das als Stopp +
+   * Start, am gestoppten nur als Neuaufbau ohne Start – ein „Aktualisieren",
+   * das nebenbei hochfährt, wäre eine Überraschung.
+   *
+   * Der Weltstand liegt im Datenvolume (`dataHostPath`), das jeder Neuaufbau
+   * unverändert wieder einhängt; das Image trägt nur Laufzeit und Serverdateien.
+   *
+   * Idempotent: Trägt der Server die Fassung schon, passiert nichts.
+   */
+  async updateServerImage(
+    serverId: string,
+    actorUserId: string,
+  ): Promise<{
+    readonly server: ServerRecord;
+    readonly previousImage: string | null;
+    readonly image: string;
+    readonly restarted: boolean;
+  }> {
+    const server = await this.requireServer(serverId);
+    const definition = this.deps.registry.require(server.gameType);
+    const ziel = definition.dockerImage;
+
+    if (server.imageRef === ziel) {
+      return { server, previousImage: server.imageRef, image: ziel, restarted: false };
+    }
+
+    const lief = server.status === 'running' || server.status === 'starting';
+
+    if (!lief) {
+      // Nur `stopped`, `error` und `crashed` lassen einen Neuaufbau zu; ein
+      // Server mitten im Anlegen oder Stoppen wechselt seine Fassung nicht.
+      if (server.status !== 'stopped' && server.status !== 'error' && server.status !== 'crashed') {
+        throw new ServerOrchestrationError('SERVER_STATE_CONFLICT', undefined, {
+          serverId,
+          status: server.status,
+        });
+      }
+    }
+
+    // Erst die Fassung schreiben: Danach passt der Fingerabdruck nicht mehr,
+    // und der nächste Neuaufbau nimmt genau dieses Image.
+    await this.deps.repository.update(serverId, { imageRef: ziel });
+
+    if (lief) {
+      const neu = await this.restartServer(serverId, actorUserId, { erzwingen: true });
+
+      return { server: neu, previousImage: server.imageRef, image: ziel, restarted: true };
+    }
+
+    const neu = await this.ensureContainerCurrent(await this.requireServer(serverId), definition);
+
+    return { server: neu, previousImage: server.imageRef, image: ziel, restarted: false };
+  }
+
+  /**
    * Löscht einen Server samt Container, DNS-Eintrag und Portzuweisung.
    *
    * Der Container wird zuerst entfernt, der Datensatz zuletzt: Bricht es
@@ -1786,6 +1856,82 @@ export class ServerOrchestrationService {
    * `erzwingen` ist **kein** „Aufräumen überspringen": Ist der Agent erreichbar,
    * läuft der gewöhnliche Weg – geprüft wird die Verbindung, nicht der Wunsch.
    */
+  /**
+   * Besitzer eines Servers wechseln (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * Ein Verwaltungsvorgang (`server.manage.any`, geprüft in der Route), kein
+   * Recht des Besitzers. Das Zielkonto muss freigeschaltet und nicht gesperrt
+   * sein – dieselbe Regel wie beim Anlegen eines Servers; ein Konto, das das
+   * Panel gar nicht benutzen darf, soll keinen Server tragen. Der Owner der
+   * Instanz kann übernehmen wie jedes andere freigeschaltete Konto.
+   *
+   * Meldet danach `server.ownerTransferred` auf dem Listen-Thema: Der Server
+   * bleibt, verschwindet aber aus der Übersicht des alten und erscheint in der
+   * des neuen Besitzers. Der alte Besitzer steht dafür in der Nutzlast neben
+   * den Mitgliedern – er ist keines mehr, soll die Änderung aber sehen.
+   */
+  async transferOwnership(
+    serverId: string,
+    newOwnerId: string,
+  ): Promise<{
+    readonly server: ServerRecord;
+    readonly previousOwnerId: string;
+    readonly previousOwnerDisplayName: string | null;
+    readonly newOwnerDisplayName: string;
+  }> {
+    const server = await this.requireServer(serverId);
+
+    if (server.ownerId === newOwnerId) {
+      throw new ServerOrchestrationError(
+        'TRANSFER_TARGET_INVALID',
+        'Dieses Konto besitzt den Server bereits.',
+        { serverId, newOwnerId },
+      );
+    }
+
+    const candidate = await this.deps.repository.findTransferCandidate(newOwnerId);
+
+    if (candidate === null) {
+      throw new ServerOrchestrationError('USER_NOT_FOUND', undefined, { userId: newOwnerId });
+    }
+
+    if (
+      candidate.banned ||
+      isAwaitingApproval({
+        isOwner: candidate.isOwner,
+        hasNonGuestRole: hasNonGuestRole(candidate.roleNames.map((name) => ({ name }))),
+      })
+    ) {
+      throw new ServerOrchestrationError('TRANSFER_TARGET_INVALID', undefined, {
+        serverId,
+        newOwnerId,
+        banned: candidate.banned,
+      });
+    }
+
+    await this.deps.repository.transferOwner(serverId, newOwnerId);
+
+    const updated = await this.requireServer(serverId);
+    const members = await this.deps.repository.listMembers(serverId);
+
+    this.deps.events.emit('server.ownerTransferred', {
+      serverId,
+      serverName: updated.name,
+      ownerId: newOwnerId,
+      // Der alte Besitzer ist kein Mitglied mehr, soll den Wechsel aber sehen;
+      // der Hub adressiert Besitzer, Mitglieder und `server.view.any`.
+      memberUserIds: [...members.map((member) => member.userId), server.ownerId],
+      detail: null,
+    });
+
+    return {
+      server: updated,
+      previousOwnerId: server.ownerId,
+      previousOwnerDisplayName: server.ownerDisplayName,
+      newOwnerDisplayName: candidate.displayName,
+    };
+  }
+
   async deleteServer(serverId: string, optionen: { erzwingen?: boolean } = {}): Promise<void> {
     const server = await this.requireServer(serverId);
 

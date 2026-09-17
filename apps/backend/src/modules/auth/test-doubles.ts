@@ -29,6 +29,8 @@ import type { ProviderAdapter, ProviderIdentity, ProviderRegistry } from './prov
 /** Gameserver, wie ihn der Fake für die Löschsperre kennt (Audit W2-11). */
 export interface FakeOwnedServer {
   readonly ownerId: string;
+  /** Nur für den Besitzübergang gebraucht – die Löschsperre zählt ohne Id. */
+  readonly id?: string;
 }
 
 /** Sicherung, wie sie der Fake für die Löschsperre kennt (Audit W2-11). */
@@ -245,6 +247,41 @@ export function createFakeAuthRepository(): FakeAuthRepository {
       }
 
       return Promise.resolve();
+    },
+
+    transferOwnershipAndDeleteUser: (userId, toUserId) => {
+      // Übergang zuerst, dann die Löschung – wie die Transaktion im echten
+      // Repository. Danach hält RESTRICT nichts mehr fest.
+      const serverIds: string[] = [];
+
+      ownedServers.forEach((server, index) => {
+        if (server.ownerId === userId) {
+          serverIds.push(server.id ?? `server-${index}`);
+          (server as { ownerId: string }).ownerId = toUserId;
+        }
+      });
+
+      let backupCount = 0;
+
+      for (const backup of ownedBackups) {
+        if (backup.ownerId === userId) {
+          backupCount += 1;
+          (backup as { ownerId: string }).ownerId = toUserId;
+        }
+      }
+
+      // Bildet ON DELETE CASCADE nach (Pflichtenheft §6) – wie `deleteUser`.
+      for (const list of [users, methods, sessions] as { userId?: string; id: string }[][]) {
+        for (let index = list.length - 1; index >= 0; index -= 1) {
+          const row = list[index];
+
+          if (row && (row.id === userId || row.userId === userId)) {
+            list.splice(index, 1);
+          }
+        }
+      }
+
+      return Promise.resolve({ serverIds, backupCount });
     },
 
     countAccountBlockers: (userId) =>

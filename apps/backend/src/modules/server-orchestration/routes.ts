@@ -30,6 +30,7 @@ import {
   scheduleInputSchema,
   updateServerSettingsInputSchema,
   serverMemberInputSchema,
+  transferServerOwnerInputSchema,
 } from '@palantir/validation';
 import { type MultipartFile } from '@fastify/multipart';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
@@ -61,7 +62,9 @@ export type ServerAuditAction =
   | 'server.cloned'
   | 'server.settingsChanged'
   | 'server.memberAdded'
-  | 'server.memberRemoved';
+  | 'server.memberRemoved'
+  | 'server.imageUpdated'
+  | 'server.ownerTransferred';
 
 /**
  * Schmale Sicht auf `AuditService.record()` aus B8.
@@ -814,6 +817,49 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     }
   });
 
+  /**
+   * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9, Review
+   * 2026-09-16). Der Server behält seine Fassung sonst über Neustarts hinweg;
+   * hier wird sie ausdrücklich gewechselt – am laufenden Server als Stopp +
+   * Start, am gestoppten nur als Neuaufbau. Recht wie Starten und Stoppen
+   * (`canUpdate`).
+   */
+  app.post('/api/servers/:id/update', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const viewerId = request.viewerUserId;
+
+      if (viewerId === undefined || viewerId === null) {
+        throw new ServerOrchestrationError('AUTH_REQUIRED');
+      }
+
+      await loadAuthorized(request, id, 'canUpdate');
+
+      const ergebnis = await service.updateServerImage(id, viewerId);
+
+      if (ergebnis.previousImage !== ergebnis.image) {
+        await protokolliere(request, 'server.imageUpdated', id, {
+          from: ergebnis.previousImage,
+          to: ergebnis.image,
+          restarted: ergebnis.restarted,
+        });
+      }
+
+      const context = await dtoContext(request, id);
+
+      return await reply.send(
+        ok(
+          toGameServerDto(ergebnis.server, {
+            ...context,
+            recentCrashCount: service.recentCrashCount(ergebnis.server),
+          }),
+        ),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
   // -- Live-Daten, Konsole, Dateien -------------------------------------------
 
   app.get('/api/servers/:id/stats', async (request, reply) => {
@@ -1247,4 +1293,44 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       }
     },
   );
+
+  // -- Besitzerwechsel (Lastenheft §3.7, Pflichtenheft §7) ---------------------
+
+  /**
+   * Nur mit `canTransferOwnership` (= `server.manage.any`): Auch der Besitzer
+   * selbst gibt seinen Server nicht weiter – Weitergabe ist Verwaltung. Die
+   * Antwort trägt den Server mit dem neuen Besitzer und den Rechten des
+   * Aufrufers, so wie ihn die Detailseite danach zeigt.
+   */
+  app.post('/api/servers/:id/owner', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+
+      await loadAuthorized(request, id, 'canTransferOwnership');
+
+      const input = transferServerOwnerInputSchema.parse(request.body);
+      const ergebnis = await service.transferOwnership(id, input.newOwnerId);
+
+      await protokolliere(request, 'server.ownerTransferred', id, {
+        fromUserId: ergebnis.previousOwnerId,
+        fromDisplayName: ergebnis.previousOwnerDisplayName,
+        toUserId: input.newOwnerId,
+        toDisplayName: ergebnis.newOwnerDisplayName,
+        anlass: 'einzeln',
+      });
+
+      const context = await dtoContext(request, id);
+
+      return await reply.send(
+        ok(
+          toGameServerDto(ergebnis.server, {
+            ...context,
+            recentCrashCount: service.recentCrashCount(ergebnis.server),
+          }),
+        ),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
 }
