@@ -41,6 +41,10 @@ apps/backend/drizzle/meta/
 # Prettier umformatieren wuerde).
 apps/frontend/next-env.d.ts
 
+# Playwright-Ausgaben (Spuren, Berichte) – nur lokal, per .gitignore ausgeschlossen.
+apps/e2e/test-results/
+apps/e2e/playwright-report/
+
 # Versteckte Verzeichnisse im Repo-Root (Werkzeug-Ablagen, Worktrees paralleler
 # Sitzungen) - nicht Teil des Repos; .github bleibt drin.
 /.*/
