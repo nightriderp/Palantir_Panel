@@ -14,7 +14,6 @@
  *   Homeserver ankommen.
  */
 
-import path from 'node:path';
 import {
   type AgentContainerStats,
   type ServerCloneJobDto,
@@ -65,8 +64,6 @@ import {
   LatestQueryCache,
   ServerLoadRegistry,
   type ServerStatsRepository,
-  type StatsSample,
-  toStatsHistoryDto,
 } from './stats-history.js';
 import { type ServerLoadSnapshot } from '../resources/index.js';
 import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.js';
@@ -78,14 +75,6 @@ import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.
  * Eingabe ist der Vertrag, eine zweite Formulierung könnte davon abweichen.
  */
 type WorldImportInput = NonNullable<CreateServerInput['worldImport']>;
-import {
-  effectiveUploadLimitBytes,
-  normalizeRelativePath,
-  parentPathOf,
-  toContainerPath,
-  toServerFileContentDto,
-  toServerFileListDto,
-} from './files.js';
 import {
   type ContainerCreateSpec,
   buildContainerSpec,
@@ -112,6 +101,14 @@ import {
   querySnapshotFromPayload,
 } from './live-events.js';
 import { planReconciliation } from './reconciliation.js';
+import {
+  type ServerFileAccessOptions,
+  type ServerFileUploadOptions,
+  ServerFileService,
+} from './file-service.js';
+import { ServerStatsSampler } from './stats-sampling.js';
+
+export type { ServerFileAccessOptions, ServerFileUploadOptions } from './file-service.js';
 import { type HostNodeRecord, type ServerRecord, type ServerRepository } from './repository.js';
 import { type ServerAutoShutdown } from './types.js';
 import {
@@ -196,15 +193,6 @@ export interface OrchestrationConfig {
 }
 
 /** Was die Datei-Routen aus dem `permissions`-Objekt des Servers mitgeben. */
-export interface ServerFileAccessOptions {
-  /** Darf der Aufrufer schreiben (`canManageFiles`)? Steht so im DTO. */
-  readonly writable: boolean;
-}
-
-export interface ServerFileUploadOptions extends ServerFileAccessOptions {
-  /** Vorhandene Datei am Zielpfad ersetzen; ohne Angabe lehnt der Agent ab. */
-  readonly overwrite?: boolean;
-}
 
 /**
  * Warum ein Server gestoppt wird (Audit event-flow-09).
@@ -375,6 +363,10 @@ export class ServerOrchestrationService {
    * misst.
    */
   private readonly serverLoads: ServerLoadRegistry;
+  /** Datei-Manager (Befund 2.1) – eigene Klasse, hier nur durchgereicht. */
+  private readonly files: ServerFileService;
+  /** Abtastung und Verlauf der Messwerte (Befund 2.1) – ebenso. */
+  private readonly stats: ServerStatsSampler;
 
   constructor(deps: OrchestrationDependencies) {
     this.deps = deps;
@@ -384,6 +376,23 @@ export class ServerOrchestrationService {
       createInlineCapacityReservation(deps.resources, deps.repository, deps.ports);
     this.cloneJobs = createCloneJobStore({ now: this.now });
     this.serverLoads = new ServerLoadRegistry(2 * deps.config.statsSampleIntervalMs);
+    this.files = new ServerFileService({
+      registry: deps.registry,
+      config: deps.config,
+      requireLiveTarget: (serverId) => this.requireLiveTarget(serverId),
+      now: this.now,
+    });
+    this.stats = new ServerStatsSampler({
+      repository: deps.repository,
+      ...(deps.statsHistory === undefined ? {} : { statsHistory: deps.statsHistory }),
+      config: deps.config,
+      log: deps.log,
+      now: this.now,
+      getStats: (serverId) => this.getStats(serverId),
+      latestQuery: this.latestQuery,
+      latestDiskUsage: this.latestDiskUsage,
+      serverLoads: this.serverLoads,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -2594,243 +2603,62 @@ export class ServerOrchestrationService {
   }
 
   // -------------------------------------------------------------------------
-  // Datei-Manager (Arbeitspaket P2, Lastenheft §3.3)
+  // Datei-Manager (Arbeitspaket P2, Lastenheft §3.3) – siehe `file-service.ts`
   // -------------------------------------------------------------------------
   //
-  // Alle Methoden hier nehmen Pfade **relativ zum Datenordner** entgegen – so,
-  // wie das Frontend sie kennt – und übersetzen sie in `files.ts` in absolute
-  // Container-Pfade. Ein Ausbruch aus dem Datenordner scheitert damit schon im
-  // Backend; der Agent prüft dieselbe Grenze noch einmal (`resolveWithinRoot`).
+  // Die Dateioperationen leben seit dem Review 2026-09-16 (Befund 2.1) in
+  // `ServerFileService`; hier bleiben nur die Durchreichungen, damit Routen
+  // und Tests dieselbe Oberfläche behalten.
 
-  /** Verzeichnisinhalt als DTO, samt der geltenden Grenzen. */
-  async listFiles(
+  listFiles(
     serverId: string,
     relativePath: string,
     options: ServerFileAccessOptions,
   ): Promise<ServerFileListDto> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = normalizeRelativePath(relativePath);
-
-    const result = await session.sendCommand(
-      'FILE_LIST',
-      server.id,
-      { containerId, path: toContainerPath(dataRoot, relativ) },
-      { timeoutMs: this.deps.config.fileListTimeoutMs },
-    );
-
-    return toServerFileListDto(server.id, dataRoot, relativ, result.entries, {
-      writable: options.writable,
-      maxUploadBytes: this.maxUploadBytes(),
-    });
+    return this.files.listFiles(serverId, relativePath, options);
   }
 
-  /** Dateiinhalt für den eingebauten Editor. */
-  async readFile(
+  readFile(
     serverId: string,
     relativePath: string,
     options: ServerFileAccessOptions,
   ): Promise<ServerFileContentDto> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = this.requireFilePath(relativePath);
-
-    const result = await session.sendCommand('FILE_READ', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, relativ),
-    });
-    const content = Buffer.from(result.contentBase64, 'base64');
-
-    return toServerFileContentDto(
-      server.id,
-      relativ,
-      content,
-      await this.fileModifiedAt(server.id, relativ),
-      options.writable,
-    );
+    return this.files.readFile(serverId, relativePath, options);
   }
 
-  /**
-   * Datei aus dem Editor zurückschreiben.
-   *
-   * Überschreibt still – anders als {@link uploadFile}. Das ist gewollt: Hier
-   * wird genau die Datei gespeichert, die der Nutzer vorher geöffnet hat.
-   */
-  async writeFile(
+  writeFile(
     serverId: string,
     relativePath: string,
     content: string,
     options: ServerFileAccessOptions,
   ): Promise<ServerFileContentDto> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = this.requireFilePath(relativePath);
-    const inhalt = Buffer.from(content, 'utf8');
-
-    this.assertWithinTransferLimit(inhalt.byteLength);
-
-    await session.sendCommand('FILE_WRITE', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, relativ),
-      contentBase64: inhalt.toString('base64'),
-    });
-
-    return toServerFileContentDto(
-      server.id,
-      relativ,
-      inhalt,
-      await this.fileModifiedAt(server.id, relativ),
-      options.writable,
-    );
+    return this.files.writeFile(serverId, relativePath, content, options);
   }
 
-  /**
-   * Hochgeladene Datei im Zielordner ablegen.
-   *
-   * Einziger Unterschied zu {@link writeFile}: Der Agent prüft den Zielpfad vor
-   * dem Schreiben und lehnt einen belegten Pfad ohne `overwrite` mit
-   * `AGENT_FILE_EXISTS` (409) ab. Ein Upload legt eine neue Datei an – dass
-   * dabei unbemerkt eine gleichnamige verschwindet, wäre Datenverlust ohne
-   * Rückfrage.
-   *
-   * @returns Der Inhalt des Zielordners nach dem Upload.
-   */
-  async uploadFile(
+  uploadFile(
     serverId: string,
     directoryPath: string,
     fileName: string,
     content: Buffer,
     options: ServerFileUploadOptions,
   ): Promise<ServerFileListDto> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const verzeichnis = normalizeRelativePath(directoryPath);
-    const ziel = this.requireFilePath(path.posix.join(verzeichnis, fileName));
-
-    this.assertWithinTransferLimit(content.byteLength);
-
-    await session.sendCommand('FILE_UPLOAD', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, ziel),
-      contentBase64: content.toString('base64'),
-      ...(options.overwrite === undefined ? {} : { overwrite: options.overwrite }),
-    });
-
-    return this.listFiles(server.id, verzeichnis, { writable: options.writable });
+    return this.files.uploadFile(serverId, directoryPath, fileName, content, options);
   }
 
-  /**
-   * Datei oder Verzeichnis entfernen; ein bereits fehlender Pfad ist kein
-   * Fehler.
-   *
-   * **Vorgabe `false`** (Audit contract-drift-03). Der Vertrag zieht die Grenze
-   * ausdrücklich: „Ohne Angabe lehnt der Agent das Löschen eines nicht-leeren
-   * Verzeichnisses ab, damit ein versehentlicher Klick nicht einen ganzen
-   * Datenbaum mitnimmt" (`FileDeleteCommandPayload`). Die bisherige Vorgabe
-   * `true` hob genau diese Schranke wieder auf – ein Klick auf „Löschen" neben
-   * `world/` nahm die ganze Welt mit, ohne dass die Oberfläche den Unterschied
-   * zwischen Datei und Verzeichnis auch nur benannt hätte. Wer einen Baum
-   * löschen will, sagt es jetzt ausdrücklich.
-   */
-  async deleteFile(serverId: string, relativePath: string, recursive = false): Promise<void> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = this.requireFilePath(relativePath);
-
-    await session.sendCommand('FILE_DELETE', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, relativ),
-      recursive,
-    });
+  deleteFile(serverId: string, relativePath: string, recursive = false): Promise<void> {
+    return this.files.deleteFile(serverId, relativePath, recursive);
   }
 
-  /** Eine einzelne Datei zum Herunterladen laden (Grenze: `AGENT_FILE_CHANNEL_MAX_BYTES`). */
-  async downloadFile(
+  downloadFile(
     serverId: string,
     relativePath: string,
   ): Promise<{ fileName: string; content: Buffer }> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = this.requireFilePath(relativePath);
-
-    const result = await session.sendCommand('FILE_READ', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, relativ),
-    });
-
-    return {
-      fileName: path.posix.basename(relativ),
-      content: Buffer.from(result.contentBase64, 'base64'),
-    };
+    return this.files.downloadFile(serverId, relativePath);
   }
 
-  /**
-   * Tatsächlich zulässige Upload-Größe: der kleinere der beiden Werte.
-   *
-   * Öffentlich, weil die Upload-Route dieselbe Zahl als Multipart-Grenze je
-   * Aufruf setzt (Fundpunkt 123) – so puffert das Backend nie mehr, als der
-   * Dienst gleich darauf annehmen würde.
-   */
+  /** Tatsächlich zulässige Upload-Größe; die Upload-Route setzt sie als Multipart-Grenze. */
   maxUploadBytes(): number {
-    return effectiveUploadLimitBytes(this.deps.config.maxUploadBytes);
-  }
-
-  private assertWithinTransferLimit(sizeBytes: number): void {
-    if (sizeBytes > this.maxUploadBytes()) {
-      throw new ServerOrchestrationError(
-        'FILE_TOO_LARGE',
-        'Die Datei überschreitet die zulässige Upload-Größe.',
-        { sizeBytes, maxBytes: this.maxUploadBytes() },
-      );
-    }
-  }
-
-  /** Wie {@link normalizeRelativePath}, lehnt aber zusätzlich die Wurzel ab. */
-  private requireFilePath(relativePath: string): string {
-    const relativ = normalizeRelativePath(relativePath);
-
-    if (relativ === '') {
-      throw new ServerOrchestrationError(
-        'AGENT_INVALID_PATH',
-        'Für diesen Vorgang wird eine Datei benötigt, nicht der Datenordner selbst.',
-      );
-    }
-
-    return relativ;
-  }
-
-  /**
-   * Änderungszeitpunkt einer Datei – aus dem Verzeichnis, in dem sie liegt.
-   *
-   * `FILE_READ` liefert keinen Zeitstempel; der DTO braucht ihn (Anzeige und
-   * Konflikterkennung im Editor). Statt ihn zu erfinden, wird das Verzeichnis
-   * gelistet und der Eintrag herausgesucht. Findet sich keiner – etwa weil die
-   * Datei zwischen beiden Aufrufen verschwindet – bleibt es beim Lesezeitpunkt.
-   */
-  private async fileModifiedAt(serverId: string, relativePath: string): Promise<string> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const elternPfad = parentPathOf(relativePath) ?? '';
-
-    const result = await session.sendCommand(
-      'FILE_LIST',
-      server.id,
-      { containerId, path: toContainerPath(dataRoot, elternPfad) },
-      { timeoutMs: this.deps.config.fileListTimeoutMs },
-    );
-    const name = path.posix.basename(relativePath);
-
-    return (
-      result.entries.find((entry) => entry.name === name)?.modifiedAt ?? this.now().toISOString()
-    );
-  }
-
-  /** Wie {@link requireLiveTarget}, zusätzlich mit dem Datenordner des Spiels. */
-  private async requireFileTarget(serverId: string): Promise<{
-    server: ServerRecord;
-    session: AgentSession;
-    containerId: string;
-    dataRoot: string;
-  }> {
-    const ziel = await this.requireLiveTarget(serverId);
-
-    return {
-      ...ziel,
-      dataRoot: this.deps.registry.require(ziel.server.gameType).dataVolumeContainerPath,
-    };
+    return this.files.maxUploadBytes();
   }
 
   // -------------------------------------------------------------------------
@@ -3126,154 +2954,32 @@ export class ServerOrchestrationService {
   }
 
   // -------------------------------------------------------------------------
+  // Verlauf der Messwerte (Lastenheft §3.3, P5) – siehe `stats-sampling.ts`
+  // -------------------------------------------------------------------------
+  //
+  // Abtastung, Last je Node und Verlauf leben seit dem Review 2026-09-16
+  // (Befund 2.1) in `ServerStatsSampler`; hier bleiben die Durchreichungen für
+  // den Zeitgeber und die Routen.
+
+  sampleServerStats(hostId: string): Promise<readonly string[]> {
+    return this.stats.sampleServerStats(hostId);
+  }
+
+  listServerLoads(): readonly ServerLoadSnapshot[] {
+    return this.stats.listServerLoads();
+  }
+
+  pruneServerStats(): Promise<number> {
+    return this.stats.pruneServerStats();
+  }
+
+  getStatsHistory(serverId: string, windowMinutes: number): Promise<ServerStatsHistoryDto> {
+    return this.stats.getStatsHistory(serverId, windowMinutes);
+  }
+
+  // -------------------------------------------------------------------------
   // Auto-Shutdown
   // -------------------------------------------------------------------------
-
-  // -------------------------------------------------------------------------
-  // Verlauf der Messwerte (Lastenheft §3.3, Arbeitspaket P5)
-  // -------------------------------------------------------------------------
-
-  /**
-   * Hält die Messwerte aller laufenden Server einer Node fest.
-   *
-   * Wird periodisch aufgerufen (`scheduler.ts`) – kein eigener Timer. Ein
-   * Server, dessen Messung scheitert, hält die übrigen nicht auf: Eine Lücke im
-   * Verlauf ist hinnehmbar, ein abgebrochener Durchlauf wäre eine Lücke für
-   * alle.
-   *
-   * Derselbe Durchlauf schreibt den Stand für die Ressourcen-Warnung auf
-   * Server-Ebene mit ({@link listServerLoads}). Nur Server, die hier
-   * tatsächlich gemessen wurden, stehen anschließend darin: Ein gestoppter,
-   * gelöschter oder unmessbarer Server fällt heraus, weil der Stand der Node
-   * vollständig ersetzt wird.
-   */
-  async sampleServerStats(hostId: string): Promise<readonly string[]> {
-    const ablage = this.deps.statsHistory;
-
-    if (ablage === undefined) {
-      return [];
-    }
-
-    const moment = this.now();
-    const abgetastet: string[] = [];
-    const lasten: ServerLoadSnapshot[] = [];
-
-    for (const server of await this.deps.repository.listByHost(hostId)) {
-      if (server.status !== 'running') {
-        continue;
-      }
-
-      try {
-        const stats = await this.getStats(server.id);
-        const abfrage = this.latestQuery.read(server.id, moment);
-        const ramUsedMb = Math.round(stats.memoryUsedBytes / (1024 * 1024));
-        /*
-         * Belegter Plattenplatz des Datenordners (Fundpunkt 168). Das Feld ist
-         * im Vertrag optional: Ein älterer Agent kennt es nicht, und auch ein
-         * neuer lässt es weg, solange er den Ordner noch nicht gemessen hat.
-         *
-         * Fehlt es, bleibt der Wert `null` – „nicht gemessen", **nicht** „null
-         * Bytes belegt". Der Unterschied zählt: `evaluateServerWarnings` lässt
-         * `null` fallen, aus einer 0 rechnete es dagegen „0 % belegt" und
-         * schwiege auch dann, wenn die Platte längst voll wäre.
-         */
-        const diskUsedMb =
-          stats.diskUsedBytes === undefined
-            ? null
-            : Math.round(stats.diskUsedBytes / (1024 * 1024));
-
-        /*
-         * Für den Live-Kanal merken (Fundpunkt 175). Dies ist die **einzige**
-         * Stelle, an der der Plattenplatz überhaupt ankommt: Er hängt an
-         * `GET_STATS` und nicht am Statistik-Strom der Engine. Ohne diese Zeile
-         * bliebe die Kachel „Platte" in der Live-Anzeige dauerhaft leer,
-         * während Verlauf und Ressourcen-Warnung denselben Wert schon führen.
-         */
-        this.latestDiskUsage.remember(server.id, diskUsedMb, moment);
-
-        const probe: StatsSample = {
-          serverId: server.id,
-          recordedAt: moment,
-          cpuPercent: stats.cpuPercent,
-          ramUsedMb,
-          diskUsedMb,
-          pingMs: abfrage.pingMs,
-          playersOnline: abfrage.playersOnline,
-          playersMax: abfrage.playersMax,
-          networkRxBytes: stats.networkRxBytes,
-          networkTxBytes: stats.networkTxBytes,
-        };
-
-        await ablage.insert(probe);
-        abgetastet.push(server.id);
-        lasten.push({
-          serverId: server.id,
-          nodeId: server.hostId,
-          ownerId: server.ownerId,
-          limits: server.resourceLimits,
-          usedRamMb: ramUsedMb,
-        });
-      } catch (error: unknown) {
-        this.deps.log.warn(
-          { serverId: server.id, error: error instanceof Error ? error.message : String(error) },
-          'Messwerte konnten nicht festgehalten werden',
-        );
-      }
-    }
-
-    this.serverLoads.replace(hostId, lasten, moment);
-
-    return abgetastet;
-  }
-
-  /**
-   * Zuletzt gemessene Last aller laufenden Server – die Quelle, aus der der
-   * Zeitgeber die Warnungen auf Server-Ebene rechnet (Lastenheft §3.3).
-   *
-   * Ohne eigene Abfrage: Die Werte stammen aus der Abtastung desselben Takts
-   * (siehe {@link sampleServerStats}). Zu alte Stände fallen weg – ein Server,
-   * den seit zwei Takten niemand gemessen hat, ist kein Warnungsgrund, sondern
-   * ein Messproblem.
-   */
-  listServerLoads(): readonly ServerLoadSnapshot[] {
-    return this.serverLoads.list(this.now());
-  }
-
-  /** Entfernt Stichproben jenseits der Aufbewahrungsfrist (`STATS_HISTORY_RETENTION_HOURS`). */
-  async pruneServerStats(): Promise<number> {
-    const ablage = this.deps.statsHistory;
-
-    if (ablage === undefined) {
-      return 0;
-    }
-
-    const grenze = new Date(
-      this.now().getTime() - this.deps.config.statsHistoryRetentionHours * 60 * 60 * 1000,
-    );
-
-    return ablage.prune(grenze);
-  }
-
-  /**
-   * Verlauf der Messwerte eines Servers (Lastenheft §3.3).
-   *
-   * `windowMinutes` wird an der Aufbewahrungsfrist gekappt: Ein größeres
-   * Fenster brächte nur eine Reihe, die vorne bei der Frist abbricht, und würde
-   * Lücken vortäuschen, die in Wirklichkeit weggeräumte Zeilen sind.
-   */
-  async getStatsHistory(serverId: string, windowMinutes: number): Promise<ServerStatsHistoryDto> {
-    const fenster = Math.min(windowMinutes, this.deps.config.statsHistoryRetentionHours * 60);
-    const ablage = this.deps.statsHistory;
-    const seit = new Date(this.now().getTime() - fenster * 60 * 1000);
-    const proben = ablage === undefined ? [] : await ablage.listSince(serverId, seit);
-
-    return toStatsHistoryDto(
-      serverId,
-      fenster,
-      Math.round(this.deps.config.statsSampleIntervalMs / 1000),
-      proben,
-    );
-  }
 
   /**
    * Prüft alle laufenden Server einer Node auf Inaktivität (Pflichtenheft §9).
