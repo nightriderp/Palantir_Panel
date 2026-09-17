@@ -321,6 +321,20 @@ export function updateServerImage(serverId: string): Promise<ApiResult<GameServe
   return apiRequest<GameServerDto>(serverPath(serverId, '/update'), { method: 'POST' });
 }
 
+/**
+ * Besitzer eines Servers wechseln (Pflichtenheft §7) – nur mit
+ * `permissions.canTransferOwnership`. Antwort: der Server mit neuem Besitzer.
+ */
+export function transferServerOwner(
+  serverId: string,
+  newOwnerId: string,
+): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(serverPath(serverId, '/owner'), {
+    method: 'POST',
+    json: { newOwnerId },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Backups und vollständiger Export (Arbeitspaket B5)
 // ---------------------------------------------------------------------------

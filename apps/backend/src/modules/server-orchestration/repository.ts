@@ -17,7 +17,16 @@ import {
 import { type ServerAutoShutdown, type ServerPortAssignment } from './types.js';
 import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
-import { gameServers, hostNodes, serverMembers, serverPins, users } from '../../db/schema.js';
+import {
+  backups,
+  gameServers,
+  hostNodes,
+  roles,
+  serverMembers,
+  serverPins,
+  userRoles,
+  users,
+} from '../../db/schema.js';
 import { ServerOrchestrationError } from './errors.js';
 
 /** Ein Gameserver, wie ihn der Dienst braucht. */
@@ -114,6 +123,21 @@ export interface ServerMemberRecord {
   readonly addedAt: string;
 }
 
+/**
+ * Ein Konto, das einen Server übernehmen soll (Pflichtenheft §7).
+ *
+ * Nur, was der Dienst für die Eignung braucht: gesperrt, Owner, Rollen. Ob ein
+ * Konto „freigeschaltet" ist, entscheidet dieselbe Regel wie überall
+ * (`rbac/approval.ts`) – aus den Rollennamen, nicht aus einer eigenen Spalte.
+ */
+export interface TransferCandidateRecord {
+  readonly id: string;
+  readonly displayName: string;
+  readonly banned: boolean;
+  readonly isOwner: boolean;
+  readonly roleNames: readonly string[];
+}
+
 export interface ServerRepository {
   findById(id: string): Promise<ServerRecord | null>;
   findByContainerId(containerId: string): Promise<ServerRecord | null>;
@@ -161,6 +185,24 @@ export interface ServerRepository {
   memberLevel(serverId: string, userId: string): Promise<ServerMemberLevel | null>;
   upsertMember(serverId: string, userId: string, level: ServerMemberLevel): Promise<void>;
   removeMember(serverId: string, userId: string): Promise<void>;
+
+  /**
+   * Besitzer eines Servers wechseln (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * In **einer** Transaktion: `owner_id` des Servers, die Sicherungen dieses
+   * Servers (sie gehören zum Server, nicht zum Konto – sonst hielte
+   * `backups.owner_id` mit RESTRICT später die Löschung des alten Besitzers
+   * auf) und die Mitgliedschaft des neuen Besitzers an genau diesem Server:
+   * Der Besitzer steht nie in der Mitgliederliste. Der alte Besitzer wird
+   * **nicht** zum Mitglied – wer den Server weiter bedienen soll, wird vom neuen
+   * Besitzer eingetragen.
+   */
+  transferOwner(serverId: string, newOwnerId: string): Promise<void>;
+  /**
+   * Konto, das einen Server übernehmen soll – oder `null`, wenn es fehlt.
+   * Die Bewertung (gesperrt, wartend, Owner) trifft der Dienst.
+   */
+  findTransferCandidate(userId: string): Promise<TransferCandidateRecord | null>;
 
   /**
    * Anzahl der Server je Besitzer (Gefundener Punkt 90).
@@ -595,6 +637,48 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
       await db
         .delete(serverMembers)
         .where(and(eq(serverMembers.serverId, serverId), eq(serverMembers.userId, userId)));
+    },
+
+    async transferOwner(serverId: string, newOwnerId: string): Promise<void> {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(gameServers)
+          .set({ ownerId: newOwnerId, updatedAt: new Date() })
+          .where(eq(gameServers.id, serverId));
+        await tx.update(backups).set({ ownerId: newOwnerId }).where(eq(backups.serverId, serverId));
+        await tx
+          .delete(serverMembers)
+          .where(and(eq(serverMembers.serverId, serverId), eq(serverMembers.userId, newOwnerId)));
+      });
+    },
+
+    async findTransferCandidate(userId: string): Promise<TransferCandidateRecord | null> {
+      const rows = await db
+        .select({
+          id: users.id,
+          displayName: users.displayName,
+          banned: users.banned,
+          isOwner: users.isOwner,
+          roleName: roles.name,
+        })
+        .from(users)
+        .leftJoin(userRoles, eq(userRoles.userId, users.id))
+        .leftJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(eq(users.id, userId));
+
+      const first = rows[0];
+
+      if (first === undefined) {
+        return null;
+      }
+
+      return {
+        id: first.id,
+        displayName: first.displayName,
+        banned: first.banned,
+        isOwner: first.isOwner,
+        roleNames: rows.flatMap((row) => (row.roleName === null ? [] : [row.roleName])),
+      };
     },
 
     async defaultHost(): Promise<HostNodeRecord | null> {

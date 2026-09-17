@@ -38,6 +38,7 @@ import {
 import type {
   ChangePasswordInput,
   DeleteAccountInput,
+  DeleteUserAsAdminInput,
   DisableTwoFactorInput,
   LinkPasswordInput,
   LoginInput,
@@ -53,7 +54,7 @@ import {
   type RoleRepository,
 } from '../rbac/index.js';
 import { isForeignKeyViolation, isUniqueViolation } from '../../db/errors.js';
-import { toAccountDto, toSessionDto } from './dto.js';
+import { isAwaitingApproval, toAccountDto, toSessionDto } from './dto.js';
 import { AuthError } from './errors.js';
 import { generateTemporaryPassword, hashPassword, verifyPassword } from './passwords.js';
 import type {
@@ -216,7 +217,9 @@ export type AuthAuditAction =
   | 'auth.methodLinked'
   | 'auth.methodUnlinked'
   | 'user.registered'
-  | 'user.deleted';
+  | 'user.deleted'
+  /** Besitzübergang beim Löschen eines Kontos durch einen Administrator (§7). */
+  | 'server.ownerTransferred';
 
 export interface AuthAuditSink {
   record(entry: {
@@ -227,8 +230,9 @@ export interface AuthAuditSink {
      * `null` beim Fehlversuch auf einen Namen, den es nicht gibt: Dann gibt es
      * kein Konto, auf das der Eintrag zeigen koennte - der versuchte Name steht
      * in der Nutzlast. Der DTO fuehrt beide Felder ohnehin als `nullable`.
+     * `server` nur für den Besitzübergang beim Löschen eines Kontos.
      */
-    targetType: 'user' | null;
+    targetType: 'user' | 'server' | null;
     targetId: string | null;
     ipHint: string | null;
     metadata: Record<string, unknown>;
@@ -1522,6 +1526,115 @@ export class AuthService {
     });
 
     return { userId: user.id, temporaryPassword };
+  }
+
+  /**
+   * Löscht ein fremdes Konto und gibt dessen Server und Sicherungen an ein
+   * anderes Konto (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * Reihenfolge der Prüfungen: erst die Rangregel (`requireAdminTargetAllowed`
+   * – Owner nie, Verwaltungskonten nur mit `role.manage`), dann der abgetippte
+   * Name, dann das Zielkonto. Ohne `transferToUserId` übernimmt der
+   * Administrator selbst. Das Zielkonto muss freigeschaltet und nicht gesperrt
+   * sein und darf nicht das gelöschte Konto sein – sonst `TRANSFER_TARGET_INVALID`;
+   * ein Konto, das es nicht gibt, bleibt `USER_NOT_FOUND`.
+   *
+   * Übergang und Löschung laufen in **einer** Transaktion des Repositories.
+   * Läuft für das Konto gerade eine Sicherung, wird wie bei der Selbst-Löschung
+   * gewartet (`ACCOUNT_HAS_BACKUPS`): Ein laufender Vorgang lässt sich nicht
+   * übergeben, er endet.
+   */
+  async deleteUserAsAdmin(
+    actor: PermissionActor,
+    targetUserId: string,
+    input: DeleteUserAsAdminInput,
+    context: AuthAdminAuditContext,
+  ): Promise<{ readonly transferredServerIds: readonly string[]; readonly toUserId: string }> {
+    const user = await this.requireUser(targetUserId);
+    await this.requireAdminTargetAllowed(actor, user);
+
+    const expectedName = user.username ?? user.displayName;
+
+    if (input.confirmName.toLowerCase() !== expectedName.toLowerCase()) {
+      throw new AuthError('AUTH_INVALID_CREDENTIALS', 'Der eingegebene Name stimmt nicht.');
+    }
+
+    const toUserId = input.transferToUserId ?? context.actorId;
+
+    if (toUserId === user.id) {
+      throw new AuthError(
+        'TRANSFER_TARGET_INVALID',
+        'Das gelöschte Konto kann seine Server nicht selbst übernehmen.',
+      );
+    }
+
+    const ziel = await this.repository.findUserById(toUserId);
+
+    if (ziel === null) {
+      throw new AuthError(
+        'USER_NOT_FOUND',
+        'Das Zielkonto für den Besitzübergang existiert nicht.',
+      );
+    }
+
+    const zielRollen = await this.roles.listRolesForUser(ziel.id);
+
+    if (ziel.banned || isAwaitingApproval(ziel, zielRollen)) {
+      throw new AuthError('TRANSFER_TARGET_INVALID');
+    }
+
+    const blocker = await this.repository.countAccountBlockers(user.id);
+
+    if (blocker.activeBackups > 0) {
+      throw new AuthError(
+        'ACCOUNT_HAS_BACKUPS',
+        'Für dieses Konto läuft noch eine Sicherung. Bitte warte, bis sie abgeschlossen ist, und wiederhole den Vorgang.',
+      );
+    }
+
+    const ergebnis = await this.repository.transferOwnershipAndDeleteUser(user.id, ziel.id);
+
+    // Sitzungszeilen sind mit der Kaskade weg – der Aufruf schließt die noch
+    // offenen Live-Kanäle des Kontos (wie bei `deleteAccount`).
+    await this.revokeEverySession(user.id, this.now());
+
+    for (const serverId of ergebnis.serverIds) {
+      await this.audit.record({
+        action: 'server.ownerTransferred',
+        actorId: context.actorId,
+        actorDisplayName: context.displayName,
+        targetType: 'server',
+        targetId: serverId,
+        ipHint: context.ipHint,
+        metadata: {
+          fromUserId: user.id,
+          fromDisplayName: user.displayName,
+          toUserId: ziel.id,
+          toDisplayName: ziel.displayName,
+          anlass: 'kontoLoeschung',
+        },
+      });
+    }
+
+    await this.audit.record({
+      action: 'user.deleted',
+      actorId: context.actorId,
+      actorDisplayName: context.displayName,
+      targetType: null,
+      targetId: null,
+      ipHint: context.ipHint,
+      metadata: {
+        username: user.username,
+        displayName: user.displayName,
+        selbst: false,
+        transferToUserId: ziel.id,
+        transferToDisplayName: ziel.displayName,
+        serverCount: ergebnis.serverIds.length,
+        backupCount: ergebnis.backupCount,
+      },
+    });
+
+    return { transferredServerIds: ergebnis.serverIds, toUserId: ziel.id };
   }
 
   // -- 2FA (TOTP) -----------------------------------------------------------

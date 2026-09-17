@@ -32,6 +32,7 @@ import {
   loginInputSchema,
   registerInputSchema,
   createUserInputSchema,
+  deleteUserAsAdminInputSchema,
   twoFactorInputSchema,
   updateProfileInputSchema,
 } from '@palantir/validation';
@@ -1048,6 +1049,32 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
         );
 
         await reply.send(ok(null));
+      });
+    },
+  );
+
+  /**
+   * Konto löschen mit Besitzübergang (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * Der Körper trägt den abgetippten Namen und optional das Zielkonto; ohne
+   * Angabe übernimmt der Administrator selbst. Antwort: die Ids der übergebenen
+   * Server und das Zielkonto – die Oberfläche nennt danach, wie viele Server
+   * gewandert sind.
+   */
+  app.delete<{ Params: { userId: string } }>(
+    '/auth/admin/users/:userId',
+    { preHandler: requirePermission('user.manage') },
+    async (request, reply) => {
+      await handle(reply, async () => {
+        const input = parseBody(deleteUserAsAdminInputSchema, request.body);
+        const ergebnis = await service.deleteUserAsAdmin(
+          requireActor(request),
+          request.params.userId,
+          input,
+          adminAuditContextOf(request),
+        );
+
+        await reply.send(ok(ergebnis));
       });
     },
   );

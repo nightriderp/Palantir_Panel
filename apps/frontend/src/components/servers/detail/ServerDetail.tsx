@@ -27,9 +27,11 @@ import { useServerLive } from '@/lib/live/useServerLive';
 import { buildServerTabs, resolveServerTab, type ServerTabKey } from '../serverTabs';
 import { LifecycleConfirmDialog } from '../LifecycleConfirmDialog';
 import { useLifecycleActions } from '../useLifecycleActions';
+import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { BackupsTab } from './BackupsTab';
 import { ConsoleTab } from './ConsoleTab';
 import { DetailHeader } from './DetailHeader';
+import { TransferOwnerDialog } from './TransferOwnerDialog';
 import { FilesTab } from './FilesTab';
 import { OverviewTab } from './OverviewTab';
 import { SettingsTab } from './SettingsTab';
@@ -58,6 +60,14 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
 
   const [confirm, setConfirm] = useState<{ action: 'stop' | 'restart' | 'update' } | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  /*
+   * Besitzerwechsel (Pflichtenheft §7): Das DTO sagt, ob der Aufrufer darf;
+   * die Nutzerliste zur Auswahl gibt es aber nur mit `canManageUsers`. Ohne
+   * beides bleibt der Knopf weg, statt in eine leere Auswahl zu führen.
+   */
+  const { user: sitzung } = useSession();
+  const kannBesitzerWechseln = sitzung?.permissions.canManageUsers ?? false;
   const [deleting, setDeleting] = useState(false);
   /** Läuft gerade ein „Aktualisieren" (Pflichtenheft §9)? Sperrt die Kopfzeile wie ein Lifecycle-Befehl. */
   const [updating, setUpdating] = useState(false);
@@ -218,7 +228,22 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
         onOpenSettings={() => selectTab('settings')}
         onDelete={() => setDeleteOpen(true)}
         onCopyAddress={copyAddress}
+        {...(kannBesitzerWechseln ? { onTransferOwner: () => setTransferOpen(true) } : {})}
       />
+
+      {kannBesitzerWechseln ? (
+        <TransferOwnerDialog
+          server={server}
+          open={transferOpen}
+          onClose={() => setTransferOpen(false)}
+          onTransferred={(updated) => {
+            resource.setData(updated);
+            toast.success(
+              `„${updated.name}" gehört jetzt ${updated.ownerDisplayName ?? 'einem anderen Konto'}.`,
+            );
+          }}
+        />
+      ) : null}
 
       {activeTab === null ? (
         <EmptyState
