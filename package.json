@@ -13,6 +13,7 @@
     "lint": "eslint \"*.{js,mjs,cjs,ts,tsx}\" --no-error-on-unmatched-pattern && turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
+    "e2e": "pnpm --filter @palantir/e2e e2e",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,yaml,yml}\"",
     "clean": "turbo run clean && rimraf node_modules"
