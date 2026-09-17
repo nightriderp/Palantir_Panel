@@ -2,7 +2,7 @@
 
 import { type ChatServerEventFrame, type MessageDto } from '@palantir/contracts';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ConfirmDialog, EmptyState, Icon, PageHeader, cn, useToast } from '@/components/shared';
 import { errorText, isAborted } from '@/lib/api/client';
 import {
@@ -108,30 +108,48 @@ export function MessagesView() {
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   // Aktuellen Stand für die Live-Rückrufe und Handler ohne veraltete Closure.
+  // Geschrieben wird nach dem Commit, nicht beim Rendern (React-Compiler-Regel
+  // `refs`); als Layout-Effekt, damit die Refs stehen, bevor die übrigen
+  // Effekte dieser Ansicht – etwa der Sprung aus der Adresszeile – sie lesen.
   const stateRef = useRef(state);
-  stateRef.current = state;
   const activeIdRef = useRef(activeId);
-  activeIdRef.current = activeId;
+  useLayoutEffect(() => {
+    stateRef.current = state;
+    activeIdRef.current = activeId;
+  });
 
   // -- Erstladung der Übersicht ---------------------------------------------
 
-  const reloadConversations = useCallback(async (signal?: AbortSignal) => {
-    setListLoading(true);
-    setListError(null);
-    const result = await fetchConversations(signal);
-    if (result.success) {
-      setState((current) => setConversations(current, result.data));
-    } else if (!isAborted(result)) {
-      setListError(errorText(result));
-    }
-    setListLoading(false);
-  }, []);
+  /** Antwort der Übersicht in den Zustand übernehmen; ein Abbruch ändert nichts. */
+  const applyConversations = useCallback(
+    (result: Awaited<ReturnType<typeof fetchConversations>>) => {
+      if (isAborted(result)) return;
+      if (result.success) {
+        setState((current) => setConversations(current, result.data));
+      } else {
+        setListError(errorText(result));
+      }
+      setListLoading(false);
+    },
+    [],
+  );
 
+  const reloadConversations = useCallback(
+    async (signal?: AbortSignal) => {
+      setListLoading(true);
+      setListError(null);
+      applyConversations(await fetchConversations(signal));
+    },
+    [applyConversations],
+  );
+
+  // Beim ersten Laden steht der Zustand schon auf „lädt" – der Effekt holt nur
+  // die Daten und setzt den Zustand erst in der Antwort, nicht im Effekt selbst.
   useEffect(() => {
     const controller = new AbortController();
-    void reloadConversations(controller.signal);
+    void fetchConversations(controller.signal).then(applyConversations);
     return () => controller.abort();
-  }, [reloadConversations]);
+  }, [applyConversations]);
 
   // -- Verlauf laden ---------------------------------------------------------
 
@@ -256,6 +274,7 @@ export function MessagesView() {
     if (!state.conversations.some((entry) => entry.id === wanted)) return;
 
     jumpedRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Abgleich mit der Adresszeile; das Auswählen lädt den Verlauf nach und meldet den Lesestand, das gehört nicht ins Rendern.
     selectConversation(wanted);
   }, [searchParams, state.conversations, selectConversation]);
 

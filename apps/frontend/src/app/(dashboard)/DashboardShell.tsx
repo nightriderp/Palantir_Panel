@@ -50,11 +50,16 @@ function LiveConnectionBadge() {
 
   const getrennt = connection !== 'open';
 
+  // Sobald die Verbindung wieder steht, ist der Ausfall vorbei – noch im
+  // Rendern zurückgesetzt, damit kein Bild „Ausfall" bei offener Leitung zeigt.
+  const [warGetrennt, setWarGetrennt] = useState(getrennt);
+  if (warGetrennt !== getrennt) {
+    setWarGetrennt(getrennt);
+    if (!getrennt) setAusfallBestaetigt(false);
+  }
+
   useEffect(() => {
-    if (!getrennt) {
-      setAusfallBestaetigt(false);
-      return;
-    }
+    if (!getrennt) return;
 
     const timer = setTimeout(() => setAusfallBestaetigt(true), AUSFALL_SCHWELLE_MS);
     return () => clearTimeout(timer);

@@ -73,11 +73,14 @@ export function DangerConfirmDialog({
   const [kopierstand, setKopierstand] = useState<'ok' | 'fehler' | null>(null);
 
   // Beim Öffnen und Schließen zurücksetzen, damit eine frühere Eingabe nicht
-  // versehentlich die nächste Löschung freischaltet.
-  useEffect(() => {
+  // versehentlich die nächste Löschung freischaltet. Noch während des Renderns
+  // statt in einem Effekt: So steht nie ein Bild mit alter Eingabe.
+  const [zuletzt, setZuletzt] = useState({ open, confirmationPhrase });
+  if (zuletzt.open !== open || zuletzt.confirmationPhrase !== confirmationPhrase) {
+    setZuletzt({ open, confirmationPhrase });
     setTyped('');
     setKopierstand(null);
-  }, [open, confirmationPhrase]);
+  }
 
   /*
    * „Kopiert" verschwindet nach zwei Sekunden wieder. Die Rückmeldung steht

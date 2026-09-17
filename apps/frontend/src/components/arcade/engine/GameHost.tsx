@@ -42,14 +42,32 @@ export function GameHost({ game, onGameOver }: GameHostProps) {
    * unten startete das Spiel neu: Der „Vorbei"-Bildschirm verschwand nach einem
    * Frame, und eine laufende Partie brach ab, sobald die Bestenliste nachlud
    * (Audit-Fundstelle frontend-lib-03). Aufgerufen wird immer die zuletzt
-   * übergebene Fassung.
+   * übergebene Fassung – nachgeführt im Effekt, nicht im Rendern (Regel
+   * `react-hooks/refs`); die Schleife liest die Ref erst Frames später.
    */
   const onGameOverRef = useRef(onGameOver);
-  onGameOverRef.current = onGameOver;
+
+  useEffect(() => {
+    onGameOverRef.current = onGameOver;
+  });
 
   const [phase, setPhase] = useState<GamePhase>('ready');
   const [paused, setPaused] = useState<boolean>(false);
   const [score, setScore] = useState<number>(0);
+
+  /*
+   * Anzeige beim Wechsel des Spiels noch im Rendern zurücksetzen (Muster
+   * „vorheriger Wert im Zustand"). Der Effekt unten legt danach nur noch die
+   * Partie an und startet die Schleife – ohne selbst Zustand zu setzen.
+   */
+  const [angezeigtesSpiel, setAngezeigtesSpiel] = useState(game);
+
+  if (angezeigtesSpiel !== game) {
+    setAngezeigtesSpiel(game);
+    setScore(0);
+    setPhase('ready');
+    setPaused(false);
+  }
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -65,8 +83,10 @@ export function GameHost({ game, onGameOver }: GameHostProps) {
     }
   }, []);
 
+  // Benannter Funktionsausdruck: `tick` plant sich selbst, ohne auf die erst
+  // danach zugewiesene Konstante `loop` zuzugreifen (Regel `immutability`).
   const loop = useCallback(
-    (now: number) => {
+    function tick(now: number): void {
       const state = stateRef.current;
       if (state === null) return;
 
@@ -97,7 +117,7 @@ export function GameHost({ game, onGameOver }: GameHostProps) {
         stopLoop();
         return;
       }
-      rafRef.current = requestAnimationFrame(loop);
+      rafRef.current = requestAnimationFrame(tick);
     },
     [draw, game, stopLoop],
   );
@@ -108,24 +128,32 @@ export function GameHost({ game, onGameOver }: GameHostProps) {
     rafRef.current = requestAnimationFrame(loop);
   }, [loop, stopLoop]);
 
-  const reset = useCallback(() => {
+  /** Neue Partie anlegen und die Schleife starten – nur Refs, kein Zustand. */
+  const startGame = useCallback(() => {
     stateRef.current = game.create();
     scoreRef.current = 0;
     phaseRef.current = 'ready';
     pausedRef.current = false;
-    setScore(0);
-    setPhase('ready');
-    setPaused(false);
     startLoop();
   }, [game, startLoop]);
 
+  /** „Neu"/„Nochmal": Anzeige zurücksetzen und neue Partie anlegen. */
+  const reset = useCallback(() => {
+    setScore(0);
+    setPhase('ready');
+    setPaused(false);
+    startGame();
+  }, [startGame]);
+
   // Neues Spiel nur bei Wechsel des Spiels; Schleife beim Verlassen anhalten.
-  // `reset` und `stopLoop` hängen (seit `onGameOver` in der Ref steckt) allein
-  // an `game` – ein Rendern der Ansicht setzt die Partie also nicht mehr zurück.
+  // `startGame` und `stopLoop` hängen (seit `onGameOver` in der Ref steckt)
+  // allein an `game` – ein Rendern der Ansicht setzt die Partie also nicht
+  // mehr zurück. Der Zustand ist beim Spielwechsel schon im Rendern oben
+  // zurückgesetzt, beim ersten Aufbau steht er ohnehin auf den Startwerten.
   useEffect(() => {
-    reset();
+    startGame();
     return () => stopLoop();
-  }, [reset, stopLoop]);
+  }, [startGame, stopLoop]);
 
   // Beim Verlassen des Tabs automatisch pausieren (kein stilles Weiterspielen).
   useEffect(() => {

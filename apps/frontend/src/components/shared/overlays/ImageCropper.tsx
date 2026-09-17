@@ -72,22 +72,24 @@ export function ImageCropper({
   const [rahmen, setRahmen] = useState({ width: 0, height: 0 });
   const rahmenRef = useRef<HTMLDivElement>(null);
   const zug = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
-  const [quelle, setQuelle] = useState<string | null>(null);
 
-  // Vorschau-Adresse der gewählten Datei; wird beim Wechsel wieder freigegeben.
-  useEffect(() => {
-    const url = URL.createObjectURL(file);
-    setQuelle(url);
+  // Eine neue Datei beginnt von vorn – noch im Rendern, damit das erste Bild
+  // der neuen Vorlage nicht mit dem alten Ausschnitt gezeichnet wird.
+  const [letzteDatei, setLetzteDatei] = useState(file);
+  if (letzteDatei !== file) {
+    setLetzteDatei(file);
     setZoom(1);
     setVersatz({ x: 0, y: 0 });
+  }
 
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  // Das Bild einmal laden – für die Vorschau und später zum Zeichnen.
+  /*
+   * Das Bild einmal laden – für die Vorschau und später zum Zeichnen. Die
+   * Vorschau-Adresse hängt am geladenen Element (`bild.src`) und wird beim
+   * Wechsel der Datei wieder freigegeben; der Zustand ändert sich erst in
+   * den Rückrufen des Ladens, nicht im Effekt selbst.
+   */
   useEffect(() => {
-    if (quelle === null) return;
-
+    const url = URL.createObjectURL(file);
     const element = new Image();
     let abgebrochen = false;
 
@@ -97,12 +99,13 @@ export function ImageCropper({
     element.onerror = () => {
       if (!abgebrochen) setFehler('Diese Datei lässt sich nicht als Bild öffnen.');
     };
-    element.src = quelle;
+    element.src = url;
 
     return () => {
       abgebrochen = true;
+      URL.revokeObjectURL(url);
     };
-  }, [quelle]);
+  }, [file]);
 
   // Maße des Rahmens – Grundlage jeder Umrechnung zwischen Anzeige und Ergebnis.
   useEffect(() => {
@@ -121,7 +124,7 @@ export function ImageCropper({
     beobachter.observe(element);
 
     return () => beobachter.disconnect();
-  }, [quelle]);
+  }, [bild]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
@@ -330,10 +333,10 @@ export function ImageCropper({
             aspect === 1 ? 'rounded-full' : 'rounded-xl',
           )}
         >
-          {quelle === null ? null : (
+          {bild === null ? null : (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={quelle}
+              src={bild.src}
               alt=""
               draggable={false}
               style={{

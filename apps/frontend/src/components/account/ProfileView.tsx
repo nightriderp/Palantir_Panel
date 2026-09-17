@@ -310,10 +310,13 @@ function IdentityHeader({
   const [busy, setBusy] = useState(false);
 
   // Kommt das Konto von außen neu herein (etwa nach einer Verknüpfung), gilt
-  // dessen Name – eine offene Eingabe wäre danach ohnehin veraltet.
-  useEffect(() => {
+  // dessen Name – eine offene Eingabe wäre danach ohnehin veraltet. Abgeleitet
+  // beim Rendern über den zuletzt gesehenen Namen, nicht per Effekt.
+  const [letzterName, setLetzterName] = useState(account.displayName);
+  if (letzterName !== account.displayName) {
+    setLetzterName(account.displayName);
     setName(account.displayName);
-  }, [account.displayName]);
+  }
 
   const getrimmt = name.trim();
   const geaendert = getrimmt !== account.displayName;

@@ -1,7 +1,7 @@
 'use client';
 
 import { type ChatServerEventFrame } from '@palantir/contracts';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { API_BASE_URL } from '../api/client';
 import { reconnectDelayMs } from './backoff';
 import { type LiveConnectionState } from './LiveChannelProvider';
@@ -37,10 +37,10 @@ export function useChatLive(onFrame: (frame: ChatServerEventFrame) => void): Cha
   const [unauthorized, setUnauthorized] = useState(false);
 
   // Der Rückruf wird bei jedem Rendern neu erzeugt; die Verbindung soll deshalb
-  // nicht neu aufgebaut werden. Er liegt in einer Ref und sieht so stets den
-  // aktuellen Stand der Ansicht.
-  const callbackRef = useRef(onFrame);
-  callbackRef.current = onFrame;
+  // nicht neu aufgebaut werden. `useEffectEvent` liefert eine stabile Hülle,
+  // die stets den aktuellen Rückruf der Ansicht aufruft – ohne Ref, die der
+  // React-Compiler beim Rendern nicht beschreiben ließe.
+  const frameEingetroffen = useEffectEvent(onFrame);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -91,7 +91,7 @@ export function useChatLive(onFrame: (frame: ChatServerEventFrame) => void): Cha
       next.onmessage = (event) => {
         if (typeof event.data !== 'string') return;
         const frame = parseChatFrame(event.data);
-        if (frame) callbackRef.current(frame);
+        if (frame) frameEingetroffen(frame);
       };
 
       next.onclose = (event) => {
