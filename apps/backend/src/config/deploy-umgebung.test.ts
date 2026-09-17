@@ -109,8 +109,6 @@ const GEHEIMNISSE = [
   'TWITCH_CLIENT_SECRET',
   'STEAM_API_KEY',
   'AGENT_REGISTRY_TOKEN',
-  'WIREGUARD_VPS_PRIVATE_KEY',
-  'WIREGUARD_HOME_PRIVATE_KEY',
 ] as const;
 
 describe('deploy/vps/docker-compose.yml', () => {
@@ -140,8 +138,6 @@ describe('deploy/vps/docker-compose.yml', () => {
     // Maschine, das frp-Token allein zu frps, die POSTGRES_-Einzelwerte zum
     // Datenbank-Container.
     for (const name of [
-      'WIREGUARD_VPS_PRIVATE_KEY',
-      'WIREGUARD_HOME_PRIVATE_KEY',
       'FRP_TOKEN',
       'POSTGRES_PASSWORD',
       'POSTGRES_USER',

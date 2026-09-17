@@ -395,6 +395,28 @@ export const deleteAccountInputSchema = z
   })
   .strict();
 
+/**
+ * Löschung eines fremden Kontos durch einen Administrator mit Übergang aller
+ * Server und Sicherungen (Lastenheft §3.7, Pflichtenheft §7).
+ *
+ * `transferToUserId` fehlt: Der löschende Administrator übernimmt. Gesetzt:
+ * das genannte Konto – freigeschaltet und nicht gesperrt, sonst
+ * `TRANSFER_TARGET_INVALID`. Der Anzeigename wird wie bei der Selbst-Löschung
+ * abgetippt, damit der Fehlgriff in einer langen Liste nicht das falsche Konto
+ * trifft.
+ */
+export const deleteUserAsAdminInputSchema = z
+  .object({
+    confirmName: z
+      .string()
+      .trim()
+      .min(1, { message: 'Bitte tippe den Namen des Kontos zur Bestätigung ab.' }),
+    transferToUserId: idSchema.optional(),
+  })
+  .strict();
+
+export type DeleteUserAsAdminInput = z.infer<typeof deleteUserAsAdminInputSchema>;
+
 // -- Antwort-Schemas ---------------------------------------------------------
 
 export const sessionPermissionsSchema: z.ZodType<SessionPermissions> = z.object({

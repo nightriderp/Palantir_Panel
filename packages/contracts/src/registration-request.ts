@@ -86,6 +86,13 @@ export interface RegistrationRequestPermissions {
   canBlock: boolean;
   /** Sperre wieder aufheben. Nur bei gesperrten Konten `true`. */
   canUnblock: boolean;
+  /**
+   * Konto löschen, Server und Sicherungen gehen an ein anderes Konto über
+   * (Lastenheft §3.7, Pflichtenheft §7). `false` beim Owner-Konto und bei
+   * Konten mit Verwaltungsrolle, sofern der Aufrufer nicht `role.manage`
+   * besitzt – dieselbe Rangregel wie beim Passwort-Reset.
+   */
+  canDelete: boolean;
 }
 
 /**

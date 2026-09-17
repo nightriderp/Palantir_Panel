@@ -197,6 +197,22 @@ export interface AuthRepository {
    * (`chat/repositories.ts` liest `game_servers`).
    */
   countAccountBlockers(userId: string): Promise<AccountBlockers>;
+  /**
+   * Löscht ein Konto und gibt alles, was daran hängt, an ein anderes Konto
+   * (Lastenheft §3.7, Pflichtenheft §7) – in **einer** Transaktion.
+   *
+   * `game_servers.owner_id` und `backups.owner_id` wandern auf `toUserId`; an
+   * den übernommenen Servern verliert das Zielkonto seine Mitgliedschaft (der
+   * Besitzer steht nie in der Mitgliederliste). Erst danach fällt das Konto,
+   * die Kaskaden (`auth_methods`, `sessions`, `user_roles`) mit ihm. Schlägt ein
+   * Schritt fehl, bleibt alles wie vorher – auch das Konto.
+   *
+   * Liefert die Ids der übergebenen Server für die Audit-Einträge.
+   */
+  transferOwnershipAndDeleteUser(
+    userId: string,
+    toUserId: string,
+  ): Promise<{ readonly serverIds: readonly string[]; readonly backupCount: number }>;
 
   listAuthMethods(userId: string): Promise<AuthMethodRecord[]>;
   findAuthMethod(userId: string, type: AuthMethodType): Promise<AuthMethodRecord | null>;

@@ -82,6 +82,7 @@ export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = [
       'server.failed',
       'server.cloned',
       'server.deleted',
+      'server.ownerTransferred',
     ],
   },
   {

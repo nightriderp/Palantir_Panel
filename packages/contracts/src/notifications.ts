@@ -55,6 +55,12 @@ export const NOTIFIABLE_EVENTS = [
   'server.failed',
   'server.cloned',
   'server.deleted',
+  /**
+   * Besitzer gewechselt (Pflichtenheft §7). Wie die übrigen Listen-Ereignisse
+   * Meldung **und** Auffrischung der Übersicht: Der neue Besitzer soll
+   * erfahren, dass ihm ein Server übertragen wurde.
+   */
+  'server.ownerTransferred',
   'autoShutdown.triggered',
 
   // Backups (B5, Lastenheft §3.3)
@@ -170,6 +176,7 @@ export interface NotificationEventPayloads {
   'server.failed': ServerEventPayload;
   'server.cloned': ServerEventPayload;
   'server.deleted': ServerEventPayload;
+  'server.ownerTransferred': ServerEventPayload;
   'autoShutdown.triggered': ServerEventPayload & {
     /** Leerlaufdauer in Minuten, die zur Abschaltung geführt hat (Pflichtenheft §9). */
     idleMinutes: number;
@@ -463,6 +470,7 @@ export const MUTABLE_NOTIFICATION_EVENTS = [
   'server.failed',
   'server.cloned',
   'server.deleted',
+  'server.ownerTransferred',
   'autoShutdown.triggered',
   'backup.failed',
   'resource.low',

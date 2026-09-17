@@ -61,6 +61,13 @@ export const WEBSOCKET_EVENTS = [
   'server.failed',
   /** Klonen abgeschlossen; der geklonte Server ist angelegt. */
   'server.cloned',
+  /**
+   * Besitzer eines Servers gewechselt (Pflichtenheft §7). Wie `server.created`
+   * Listen-Ereignis des Live-Kanals **und** Meldungsanlass: Der alte Besitzer
+   * verliert den Server aus seiner Übersicht, der neue bekommt ihn und soll es
+   * erfahren. Wer den Wechsel veranlasst hat, steht im Audit-Log.
+   */
+  'server.ownerTransferred',
   // Den Zustandswechsel meldet bereits `server.statusChanged` weiter oben, den
   // Fortschritt beim Klonen `serverClone.progressed` – beide aus F3.
 

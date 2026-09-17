@@ -27,6 +27,7 @@ import {
   type ApproveRegistrationRequestInput,
   type CreateUserInput,
   type DecideQuotaRequestInput,
+  type DeleteUserAsAdminInput,
   type InstanceSettingsInput,
   type QuotaRequestQuery,
   type AuditLogQuery,
@@ -203,6 +204,26 @@ export function resetUserPassword(userId: string): Promise<ApiResult<PasswordRes
 export function resetUserTwoFactor(userId: string): Promise<ApiResult<null>> {
   return apiRequest<null>(`/auth/admin/users/${encodeURIComponent(userId)}/2fa`, {
     method: 'DELETE',
+  });
+}
+
+/** Antwort der Konto-Löschung mit Besitzübergang (Pflichtenheft §7). */
+export interface DeleteUserAsAdminResult {
+  transferredServerIds: string[];
+  toUserId: string;
+}
+
+/**
+ * Konto löschen; Server und Sicherungen gehen an `transferToUserId` oder – ohne
+ * Angabe – an den löschenden Administrator (Lastenheft §3.7).
+ */
+export function deleteUserAsAdmin(
+  userId: string,
+  input: DeleteUserAsAdminInput,
+): Promise<ApiResult<DeleteUserAsAdminResult>> {
+  return apiRequest<DeleteUserAsAdminResult>(`/auth/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+    json: input,
   });
 }
 

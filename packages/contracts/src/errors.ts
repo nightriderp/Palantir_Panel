@@ -261,6 +261,17 @@ export const ERROR_CATALOG = {
       'Diesem Konto gehören noch Sicherungen. Bitte lösche sie zuerst und wiederhole den Vorgang.',
   },
   /**
+   * Zielkonto eines Besitzübergangs taugt nicht (Pflichtenheft §7, Lastenheft
+   * §3.7): gesperrt, noch nicht freigeschaltet, das gelöschte Konto selbst oder
+   * bereits Besitzer des Servers. 400, weil die Anfrage selbst unzulässig ist –
+   * ein Konto, das es gar nicht gibt, bleibt `USER_NOT_FOUND`.
+   */
+  TRANSFER_TARGET_INVALID: {
+    httpStatus: 400,
+    defaultMessage:
+      'Dieses Konto kann die Server nicht übernehmen. Wähle ein freigeschaltetes, nicht gesperrtes Konto.',
+  },
+  /**
    * Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (Pflichtenheft §10).
    * 403: Request ist verstanden und authentifiziert, wird aber wegen eines
    * Limits abgelehnt – ein Retry ohne Änderung hilft nicht.

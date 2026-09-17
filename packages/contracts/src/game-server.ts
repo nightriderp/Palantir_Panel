@@ -27,6 +27,20 @@ export interface GameServerPermissions {
   canManageSchedules: boolean;
   /** Live-Konsole inkl. Befehlseingabe. */
   canUseConsole: boolean;
+  /**
+   * Besitzer des Servers wechseln (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * Nur mit `server.manage.any` – ein Verwaltungsvorgang, kein Recht des
+   * Besitzers: Eine Weitergabe „ins Blaue" durch Nutzer ist nicht vorgesehen,
+   * dafür gibt es die Mitgliederverwaltung.
+   */
+  canTransferOwnership: boolean;
+  /**
+   * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9, Review
+   * 2026-09-16). Ein Server behält seine Fassung, bis jemand mit diesem Recht
+   * „Aktualisieren" drückt – dasselbe Recht wie Starten und Stoppen.
+   */
+  canUpdate: boolean;
 }
 
 /** Ressourcen-Limits eines Servers (Pflichtenheft §6, `GameServer.resourceLimits`). */

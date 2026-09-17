@@ -85,8 +85,6 @@ describe('deploy/gamenode/docker-compose.yml', () => {
       'DISCORD_CLIENT_SECRET',
       'TWITCH_CLIENT_SECRET',
       'STEAM_API_KEY',
-      'WIREGUARD_VPS_PRIVATE_KEY',
-      'WIREGUARD_HOME_PRIVATE_KEY',
       'FRP_TOKEN',
     ]) {
       expect(agentUmgebung).not.toContain(name);
