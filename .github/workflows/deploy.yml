@@ -104,6 +104,37 @@ jobs:
           git --no-pager log -1 --format='  %s%n  von %an am %ad' --date=short "${sha}"
 
       # ----------------------------------------------------------------------
+      # Signatur des Tags (Review 2026-09-16, Befund 8.2). Dieselbe Regel wie in
+      # deploy/gamenode/update.sh: Steht in deploy/allowed_signers ein Schlüssel,
+      # muss das Tag von einem davon signiert sein, sonst bricht der Lauf ab.
+      # Steht dort noch keiner, wird gewarnt und weiter ausgerollt - eine leere
+      # Liste soll die Pipeline nicht stumm anhalten, aber jedes Mal sagen, was
+      # fehlt. Geprüft wird gegen die Liste aus `main`, nicht aus dem Tag-Commit:
+      # Wer ein Tag setzt, kann sonst seinen eigenen Schlüssel mitliefern.
+      - name: Tag-Signatur prüfen
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          liste="$(mktemp)"
+          git show origin/main:deploy/allowed_signers > "${liste}" 2>/dev/null || : > "${liste}"
+
+          if ! grep -Eq '^[[:space:]]*[^#[:space:]]' "${liste}"; then
+            echo "::warning::deploy/allowed_signers auf main enthält keinen Schlüssel - das Tag ${REF_NAME} wird ohne Signaturprüfung ausgerollt (SETUP.md Abschnitt 3.7)."
+            exit 0
+          fi
+
+          # Den Tag selbst holen: der Checkout kennt nur den Commit.
+          git fetch --quiet origin "+refs/tags/${REF_NAME}:refs/tags/${REF_NAME}"
+
+          if git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="${liste}" verify-tag "${REF_NAME}"; then
+            echo "Signatur von ${REF_NAME} geprüft."
+          else
+            echo "::error::${REF_NAME} trägt keine gültige Signatur eines Unterzeichners aus deploy/allowed_signers. Signierte Tags: git tag -s (SETUP.md Abschnitt 3.7)."
+            exit 1
+          fi
+
+      # ----------------------------------------------------------------------
       - name: An GHCR anmelden
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -117,19 +148,26 @@ jobs:
       # scheitert - und jede Gamenode, die neu aufgesetzt wird oder ein
       # `docker compose pull` sieht, zöge einen Agent gegen ein Backend, das der
       # Betreiber gerade zurückdreht.
-      - name: Images für diesen Commit prüfen
+      # Wartet, statt zu scheitern (Review 2026-09-16, Pipeline-Option 2): Wer
+      # das Tag direkt nach dem Merge setzt, war schneller als images.yml. Bis
+      # zu 15 Minuten wird alle 30 s nachgesehen; erst danach ist es ein Fehler.
+      - name: Auf die Images dieses Commits warten
         env:
           SHA: ${{ steps.ziel.outputs.sha }}
           OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
+          frist=$((SECONDS + 15 * 60))
           for image in palantir-backend palantir-frontend palantir-agent; do
             quelle="ghcr.io/${OWNER}/${image}:${SHA}"
-            # Prüft zugleich, dass images.yml für diesen Commit gelaufen ist.
-            if ! docker buildx imagetools inspect "${quelle}" >/dev/null 2>&1; then
-              echo "::error::${quelle} existiert nicht. Ist der Images-Workflow für diesen Commit durchgelaufen?"
-              exit 1
-            fi
+            until docker buildx imagetools inspect "${quelle}" >/dev/null 2>&1; do
+              if (( SECONDS >= frist )); then
+                echo "::error::${quelle} existiert nach 15 Minuten nicht. Ist der Images-Workflow für diesen Commit gescheitert?"
+                exit 1
+              fi
+              echo "  ${image}:${SHA} noch nicht da - warte 30 s"
+              sleep 30
+            done
             echo "  ${image}:${SHA} vorhanden"
           done
 
@@ -211,6 +249,22 @@ jobs:
               --method POST -f ref=refs/heads/prod -f sha="${SHA}" >/dev/null
             echo "Zweig prod angelegt."
           fi
+
+      # Release-Seite mit den Pull-Request-Titeln seit dem letzten Tag
+      # (Review 2026-09-16, Pipeline-Option 6). Nur Anzeige, nichts hängt daran;
+      # scheitert der Schritt, ist trotzdem ausgerollt.
+      - name: Release-Seite anlegen
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "${REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${REF_NAME} gibt es schon."
+            exit 0
+          fi
+          gh release create "${REF_NAME}" --verify-tag --generate-notes --title "${REF_NAME}"
 
       - name: Zusammenfassung
         env:

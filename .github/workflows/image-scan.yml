@@ -1,0 +1,60 @@
+name: Image-Scan
+
+# Wöchentlicher Schwachstellen-Scan der Images, die gerade im Betrieb sind
+# (Review 2026-09-16, Pipeline-Option 3). Der Scan in images.yml sieht ein Image
+# nur einmal, beim Bau; Lücken, die danach bekannt werden, sah bis hierher
+# niemand. Nur Bericht in der Zusammenfassung des Laufs - nichts scheitert, denn
+# gegen eine Lücke im laufenden Image hilft nur ein neuer Bau (Dependabot hebt
+# den Basis-Digest, ein Merge baut neu).
+#
+# Fremde Actions per Commit-SHA gepinnt (Begründung im Kopf von ci.yml).
+
+on:
+  schedule:
+    # Montag 06:30 Europe/Berlin (Sommerzeit); cron läuft in UTC.
+    - cron: '30 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  scan:
+    name: ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [backend, frontend, agent]
+
+    steps:
+      - name: Schwachstellen-Scan von :prod
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/palantir-${{ matrix.app }}:prod
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+          output: trivy.txt
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ergebnis melden
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          {
+            echo "### palantir-${APP}:prod"
+            if [ -s trivy.txt ]; then
+              echo '```'
+              cat trivy.txt
+              echo '```'
+            else
+              echo "Keine Lücke mit verfügbarer Korrektur (CRITICAL, HIGH)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -89,6 +89,73 @@ fi
 
 log "Neuer Stand: ${ausgerollt:0:12} -> ${ziel:0:12}"
 
+# -----------------------------------------------------------------------------
+# Signatur des Versions-Tags (Review 2026-09-16, Befund 8.2)
+# -----------------------------------------------------------------------------
+# Bis hierher war der Zweigname `prod` der einzige Vertrauensanker: Wer den
+# Zweig bewegen konnte - ein uebernommenes GitHub-Konto, ein entwendetes
+# Token -, bekam alle fuenf Minuten beliebigen Code auf die Node, samt
+# Docker-Zugriff. Jetzt muss auf dem Zielcommit ein Versions-Tag `v*` liegen,
+# das mit einem SSH-Schluessel des Betreibers signiert ist (`git tag -s`), und
+# der Schluessel muss in der Liste zugelassener Unterzeichner stehen.
+#
+# Woher die Liste kommt, in dieser Reihenfolge:
+#   1. PALANTIR_ALLOWED_SIGNERS   - fuer Tests und Sonderfaelle,
+#   2. /etc/palantir/allowed_signers - vom Betreiber auf der Node abgelegt;
+#      unabhaengig vom Repository und damit der bevorzugte Anker,
+#   3. deploy/allowed_signers der AKTUELLEN Auscheckung - der Stand, der schon
+#      laeuft und geprueft wurde. Bewusst nicht die Datei aus dem Zielcommit:
+#      Wer das Repository schreiben kann, koennte dort seinen eigenen
+#      Schluessel eintragen.
+#
+# Solange keine Liste einen Schluessel enthaelt, laeuft das Update wie bisher
+# weiter und meldet das bei JEDEM Lauf als Warnung: Eine Node, die nach dem
+# Ausrollen dieser Fassung stumm stehen bliebe, waere schlimmer als eine, die
+# noch ohne Signatur zieht, aber jedes Mal sagt, was fehlt. Sobald ein
+# Schluessel eingetragen ist, gilt die Pruefung hart. Einrichtung: SETUP.md
+# Abschnitt 3.7.
+zugelassene_unterzeichner() {
+  local kandidat
+  for kandidat in "${PALANTIR_ALLOWED_SIGNERS:-}" /etc/palantir/allowed_signers "${REPO_DIR}/deploy/allowed_signers"; do
+    [[ -n "${kandidat}" && -f "${kandidat}" ]] || continue
+    # Eine Zeile mit Schluessel ist eine, die nicht leer ist und nicht mit `#`
+    # beginnt - so, wie OpenSSH die Datei liest.
+    if grep -Eq '^[[:space:]]*[^#[:space:]]' "${kandidat}"; then
+      printf '%s' "${kandidat}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+pruefe_tag_signatur() {
+  local liste tags tag geprueft=''
+
+  if ! liste="$(zugelassene_unterzeichner)"; then
+    log 'WARNUNG: Keine zugelassenen Unterzeichner eingetragen - der Stand wird OHNE Signaturpruefung uebernommen.'
+    log '         Einrichtung: SETUP.md Abschnitt 3.7 (SSH-Schluessel, /etc/palantir/allowed_signers, git tag -s).'
+    return 0
+  fi
+
+  # Tags kommen nicht mit `fetch origin prod` mit; sie werden eigens geholt.
+  git -C "${REPO_DIR}" fetch --quiet --tags origin
+
+  tags="$(git -C "${REPO_DIR}" tag --points-at "${ziel}" 'v*')"
+  [[ -n "${tags}" ]] || fail "Auf ${ziel:0:12} zeigt kein Versions-Tag - ohne Tag gibt es keine Signatur, die sich pruefen liesse."
+
+  for tag in ${tags}; do
+    if git -C "${REPO_DIR}" -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="${liste}" verify-tag "${tag}" >/dev/null 2>&1; then
+      geprueft="${tag}"
+      break
+    fi
+  done
+
+  [[ -n "${geprueft}" ]] || fail "Kein Versions-Tag auf ${ziel:0:12} traegt eine gueltige Signatur eines zugelassenen Unterzeichners (${liste}). Gefunden: ${tags//$'\n'/ }"
+  log "Signatur geprueft: ${geprueft} (Unterzeichner aus ${liste})"
+}
+
+pruefe_tag_signatur
+
 # Ab hier wird die Auscheckung veraendert. Scheitert danach irgendetwas (die
 # Registry ist nicht erreichbar, das Login unter /etc/palantir/docker ist
 # abgelaufen, der neue Agent kommt nicht hoch), muss HEAD zurueck auf den Stand

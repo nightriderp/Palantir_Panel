@@ -6,7 +6,10 @@
 # vorgebaute Binärdateien für glibc mit. Unter musl müsste es aus den Quellen
 # gebaut werden - eine Rust-Toolchain im Image wäre der Preis dafür.
 
-FROM node:24-bookworm-slim AS base
+# Digest-gepinnt (Review 2026-09-16, Befund 8.5): Das Tag `24-bookworm-slim` wandert
+# mit jedem Node-Patch, der Digest nicht. Dependabot zieht ihn nach
+# (`.github/dependabot.yml`, Oekosystem `docker` je App-Verzeichnis).
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH="$PNPM_HOME:$PATH"
 # Die pnpm-Version kommt aus dem Feld "packageManager" der Wurzel-package.json.
