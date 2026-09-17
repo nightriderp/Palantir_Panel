@@ -104,6 +104,37 @@ jobs:
           git --no-pager log -1 --format='  %s%n  von %an am %ad' --date=short "${sha}"
 
       # ----------------------------------------------------------------------
+      # Signatur des Tags (Review 2026-09-16, Befund 8.2). Dieselbe Regel wie in
+      # deploy/gamenode/update.sh: Steht in deploy/allowed_signers ein Schlüssel,
+      # muss das Tag von einem davon signiert sein, sonst bricht der Lauf ab.
+      # Steht dort noch keiner, wird gewarnt und weiter ausgerollt - eine leere
+      # Liste soll die Pipeline nicht stumm anhalten, aber jedes Mal sagen, was
+      # fehlt. Geprüft wird gegen die Liste aus `main`, nicht aus dem Tag-Commit:
+      # Wer ein Tag setzt, kann sonst seinen eigenen Schlüssel mitliefern.
+      - name: Tag-Signatur prüfen
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          liste="$(mktemp)"
+          git show origin/main:deploy/allowed_signers > "${liste}" 2>/dev/null || : > "${liste}"
+
+          if ! grep -Eq '^[[:space:]]*[^#[:space:]]' "${liste}"; then
+            echo "::warning::deploy/allowed_signers auf main enthält keinen Schlüssel - das Tag ${REF_NAME} wird ohne Signaturprüfung ausgerollt (SETUP.md Abschnitt 3.7)."
+            exit 0
+          fi
+
+          # Den Tag selbst holen: der Checkout kennt nur den Commit.
+          git fetch --quiet origin "+refs/tags/${REF_NAME}:refs/tags/${REF_NAME}"
+
+          if git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="${liste}" verify-tag "${REF_NAME}"; then
+            echo "Signatur von ${REF_NAME} geprüft."
+          else
+            echo "::error::${REF_NAME} trägt keine gültige Signatur eines Unterzeichners aus deploy/allowed_signers. Signierte Tags: git tag -s (SETUP.md Abschnitt 3.7)."
+            exit 1
+          fi
+
+      # ----------------------------------------------------------------------
       - name: An GHCR anmelden
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
