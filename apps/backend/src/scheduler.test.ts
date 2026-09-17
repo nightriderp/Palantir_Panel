@@ -217,6 +217,60 @@ describe('Zeitgeber: Auslösen und Überschneidung', () => {
     expect(starts).toBe(2);
   });
 
+  it('lässt eine hängende Aufgabe die übrigen nicht aufhalten (Befund 11.4)', async () => {
+    const timer = manualTimer();
+    const fehler: { task: unknown; message: string }[] = [];
+    let heilGelaufen = 0;
+    let haengtGestartet = 0;
+
+    const recordingLog: SchedulerLogger = {
+      ...silentLog,
+      error: (details, message): void => {
+        fehler.push({ task: details.task, message });
+      },
+    };
+
+    startScheduler({
+      tasks: [
+        {
+          name: 'haengt',
+          run: (): Promise<void> => {
+            haengtGestartet += 1;
+
+            return new Promise<void>(() => undefined);
+          },
+        },
+        {
+          name: 'heil',
+          run: (): Promise<void> => {
+            heilGelaufen += 1;
+
+            return Promise.resolve();
+          },
+        },
+      ],
+      intervalMs: 60_000,
+      log: recordingLog,
+      timer,
+      taskTimeoutMs: 10,
+    });
+
+    // Erster Takt: `haengt` läuft in die Frist, `heil` kommt trotzdem dran.
+    timer.fire();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(heilGelaufen).toBe(1);
+    expect(fehler).toEqual([
+      { task: 'haengt', message: 'Aufgabe des Zeitgebers hängt – der Takt geht ohne sie weiter' },
+    ]);
+
+    // Zweiter Takt: `haengt` läuft noch und wird übersprungen, nicht erneut
+    // gestartet; `heil` läuft wieder.
+    timer.fire();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(haengtGestartet).toBe(1);
+    expect(heilGelaufen).toBe(2);
+  });
+
   it('lässt eine fehlgeschlagene Aufgabe die übrigen nicht aufhalten', async () => {
     const timer = manualTimer();
     const fehler: string[] = [];
