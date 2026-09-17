@@ -16,6 +16,7 @@ import {
   type ReactNode,
 } from 'react';
 import { API_BASE_URL } from '../api/client';
+import { SESSION_RENEWED_EVENT } from '../auth/api';
 import { reconnectDelayMs } from './backoff';
 import {
   CLOSE_CODE_FORBIDDEN,
@@ -189,7 +190,9 @@ export function LiveChannelProvider({ children }: LiveChannelProviderProps) {
         setConnection('closed');
 
         // Ohne gültige Sitzung oder ohne Freischaltung endete jeder weitere
-        // Versuch genauso – das wäre eine Schleife, kein Wiederanlauf.
+        // Versuch genauso – das wäre eine Schleife, kein Wiederanlauf. Erst
+        // ein Anlass von außen (Sitzung erneuert, Tab wieder sichtbar, Netz
+        // wieder da) versucht es erneut, siehe `wiederanlauf()`.
         if (event.code === CLOSE_CODE_UNAUTHORIZED || event.code === CLOSE_CODE_FORBIDDEN) return;
         if (!closedByUsRef.current) scheduleRetry();
       };
@@ -207,10 +210,44 @@ export function LiveChannelProvider({ children }: LiveChannelProviderProps) {
       retryTimerRef.current = setTimeout(connect, delay);
     }
 
+    /**
+     * Wiederanlauf von außen (Review 2026-09-16, Befund 11.7).
+     *
+     * Nach 4401/4403 blieb der Kanal endgültig still – auch dann, wenn die
+     * Sitzung inzwischen erneuert war: Ohne Reload sah die Ansicht nie wieder
+     * ein Live-Ereignis. Dasselbe nach langem Schlaf des Rechners, wenn der
+     * Wiederanlauf mit Backoff gerade in einer langen Pause stand. Deshalb
+     * versucht es der Kanal erneut, sobald das Netz zurück ist, der Tab wieder
+     * sichtbar wird oder die Sitzung erneuert wurde – ohne Wartezeit, und nur,
+     * wenn gerade keine Verbindung steht.
+     */
+    function wiederanlauf() {
+      if (closedByUsRef.current) return;
+      const socket = socketRef.current;
+      if (socket && socket.readyState !== WebSocket.CLOSED) return;
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      attemptRef.current = 0;
+      connect();
+    }
+
+    function beiSichtbarkeit() {
+      if (document.visibilityState === 'visible') wiederanlauf();
+    }
+
+    window.addEventListener('online', wiederanlauf);
+    window.addEventListener(SESSION_RENEWED_EVENT, wiederanlauf);
+    document.addEventListener('visibilitychange', beiSichtbarkeit);
+
     connect();
 
     return () => {
       closedByUsRef.current = true;
+      window.removeEventListener('online', wiederanlauf);
+      window.removeEventListener(SESSION_RENEWED_EVENT, wiederanlauf);
+      document.removeEventListener('visibilitychange', beiSichtbarkeit);
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       stopHeartbeat();
       socketRef.current?.close();

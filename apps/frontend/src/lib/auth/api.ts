@@ -267,10 +267,24 @@ async function tauscheToken(): Promise<boolean> {
   try {
     const erfolg = await sendeErneuerung();
     meldeErgebnis(erfolg);
+    if (erfolg) meldeSitzungErneuert();
     return erfolg;
   } finally {
     loeseSperre();
   }
+}
+
+/**
+ * Name des Fensterereignisses nach einer erfolgreichen Erneuerung der Sitzung
+ * (Review 2026-09-16, Befund 11.7). Die Live-Kanäle hören darauf: Ein Kanal,
+ * den das Backend mit 4401 geschlossen hat, versucht es damit erneut, ohne
+ * dass die Seite neu geladen werden muss.
+ */
+export const SESSION_RENEWED_EVENT = 'palantir:sitzung-erneuert';
+
+function meldeSitzungErneuert(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(SESSION_RENEWED_EVENT));
 }
 
 async function sendeErneuerung(): Promise<boolean> {

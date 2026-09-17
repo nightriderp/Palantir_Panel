@@ -1,5 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SESSION_RENEWED_EVENT } from '../auth/api';
 import { LiveChannelProvider } from './LiveChannelProvider';
 import { PING_INTERVAL_MS, PONG_TIMEOUT_MS } from './serverChannel';
 import { useServerLive } from './useServerLive';
@@ -247,5 +248,61 @@ describe('Endgültige Close-Codes', () => {
     // Ohne gültige Sitzung endete jeder weitere Versuch genauso.
     expect(FakeWebSocket.instanzen).toHaveLength(1);
     expect(screen.getByTestId('verbindung').textContent).toBe('closed');
+  });
+});
+
+describe('Wiederanlauf von außen (Befund 11.7)', () => {
+  function baue() {
+    render(
+      <LiveChannelProvider>
+        <Anzeige />
+      </LiveChannelProvider>,
+    );
+    act(() => aktuelleVerbindung().oeffne());
+    act(() => aktuelleVerbindung().close(4401));
+    expect(FakeWebSocket.instanzen).toHaveLength(1);
+  }
+
+  it('versucht es nach erneuerter Sitzung sofort wieder', () => {
+    baue();
+
+    act(() => {
+      window.dispatchEvent(new Event(SESSION_RENEWED_EVENT));
+    });
+
+    expect(FakeWebSocket.instanzen).toHaveLength(2);
+    expect(screen.getByTestId('verbindung').textContent).toBe('connecting');
+  });
+
+  it('versucht es wieder, wenn der Tab sichtbar wird oder das Netz zurückkommt', () => {
+    baue();
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(FakeWebSocket.instanzen).toHaveLength(2);
+
+    act(() => aktuelleVerbindung().close(4401));
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(FakeWebSocket.instanzen).toHaveLength(3);
+  });
+
+  it('baut keine zweite Verbindung, solange eine steht', () => {
+    render(
+      <LiveChannelProvider>
+        <Anzeige />
+      </LiveChannelProvider>,
+    );
+    act(() => aktuelleVerbindung().oeffne());
+
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+      window.dispatchEvent(new Event(SESSION_RENEWED_EVENT));
+    });
+
+    expect(FakeWebSocket.instanzen).toHaveLength(1);
   });
 });
