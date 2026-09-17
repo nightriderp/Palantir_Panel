@@ -44,6 +44,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@palantir/agent": "workspace:*",
     "@types/gamedig": "^5.0.3",
     "@types/node": "^22.10.5",
     "@types/pg": "^8.23.1",

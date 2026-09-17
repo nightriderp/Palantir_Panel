@@ -5,6 +5,16 @@
   "description": "Palantir Homeserver-Agent (Node/TypeScript)",
   "type": "module",
   "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./connection": {
+      "types": "./dist/connection/index.d.ts",
+      "import": "./dist/connection/index.js"
+    }
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
