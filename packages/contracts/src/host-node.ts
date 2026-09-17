@@ -167,7 +167,36 @@ export interface HostNodeDto {
    * ist wie `false` zu lesen.
    */
   hasAgentToken?: boolean;
+  /**
+   * Was der Agent dieser Node zuletzt über sich gesagt hat (Review
+   * 2026-09-16, Befund 11.3).
+   *
+   * Bis dahin blieb ein Agent mit falscher Protokollversion unsichtbar: Das
+   * Backend schloss die Verbindung mit einem Log-Eintrag, die Node stand
+   * schlicht „offline", und der Agent versuchte es endlos erneut. Hier steht
+   * das letzte `hello` samt Urteil – auch das abgewiesene.
+   *
+   * Optional und `null`-fähig, damit dieser Vertrag für sich stehen kann
+   * (Entwicklungsregeln §3): Fehlt das Feld oder ist es `null`, hat sich seit
+   * dem Start des Backends kein Agent gemeldet. Nicht persistiert – der Agent
+   * meldet sich binnen einer Minute erneut.
+   */
+  agent?: HostNodeAgentInfo | null;
   /** ISO-8601-Zeitstempel. */
   createdAt: string;
   permissions: HostNodePermissions;
+}
+
+/** Letzter Handshake des Agents einer Node (Pflichtenheft §2.2). */
+export interface HostNodeAgentInfo {
+  /** Fassung des Agents, wie er sie im `hello` nennt. */
+  version: string;
+  /** Protokollversion des Agents. */
+  protocolVersion: number;
+  /** Protokollversion, die das Backend erwartet (`AGENT_PROTOCOL_VERSION`). */
+  expectedProtocolVersion: number;
+  /** `false`: Das Backend hat den Handshake wegen der Version abgewiesen. */
+  compatible: boolean;
+  /** Zeitpunkt des Handshakes als ISO-8601. */
+  reportedAt: string;
 }

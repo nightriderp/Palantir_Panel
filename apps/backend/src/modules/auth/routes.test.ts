@@ -362,6 +362,34 @@ describe('Login über HTTP', () => {
     expect(response.json<{ data: { status: string } }>().data.status).toBe('authenticated');
   });
 
+  it('bremst Fehlversuche auf ein Konto auch über wechselnde Adressen (Befund 3.3)', async () => {
+    // Jede Anfrage kommt von einer anderen Adresse – das IP-Limit sieht je
+    // Adresse nur einen Versuch. Bis zum Review 2026-09-16 blieb ein solcher
+    // verteilter Angriff auf ein einzelnes Konto ungebremst.
+    const limit = env.AUTH_RATE_LIMIT_LOGIN_MAX;
+
+    for (let versuch = 0; versuch < limit; versuch += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        remoteAddress: `203.0.113.${String(versuch + 1)}`,
+        payload: { username: 'Spieler', password: 'falsch-aber-lang', altcha: await solveAltcha() },
+      });
+
+      expect(response.statusCode).toBe(401);
+    }
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      remoteAddress: '203.0.113.200',
+      payload: { username: 'spieler', password: PASSWORD, altcha: await solveAltcha() },
+    });
+
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json<{ error: { code: string } }>().error.code).toBe('AUTH_RATE_LIMITED');
+  });
+
   it('antwortet bei falschen Zugangsdaten mit 401 und benanntem Code', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -792,6 +820,34 @@ describe('Zweiter Anmeldeschritt über HTTP (Pflichtenheft §7)', () => {
     });
     expect(sitzung.statusCode).toBe(200);
     expect(sitzung.json<{ data: { account: AccountDto } }>().data.account.username).toBe('spieler');
+  });
+
+  it('bremst das Durchprobieren des Codes je Zwischen-Token (Befund 3.3)', async () => {
+    const { jar } = await registerAccount('spieler');
+    await enableTwoFactor(jar);
+
+    const erster = await login();
+    const token = erster.json<{ data: { twoFactorToken: string } }>().data.twoFactorToken;
+    const limit = env.AUTH_RATE_LIMIT_LOGIN_MAX;
+
+    for (let versuch = 0; versuch < limit; versuch += 1) {
+      await app.inject({
+        method: 'POST',
+        url: '/auth/login/2fa',
+        remoteAddress: `203.0.113.${String(versuch + 1)}`,
+        payload: { twoFactorToken: token, code: '000000' },
+      });
+    }
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/auth/login/2fa',
+      remoteAddress: '203.0.113.200',
+      payload: { twoFactorToken: token, code: '000000' },
+    });
+
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json<{ error: { code: string } }>().error.code).toBe('AUTH_RATE_LIMITED');
   });
 
   it('lehnt einen falschen Code mit 401 und ohne Cookies ab', async () => {

@@ -143,6 +143,25 @@ jobs:
           cache-to: type=gha,scope=${{ steps.image.outputs.name }},mode=max
           provenance: false
 
+      # Schwachstellen-Scan (Review 2026-09-16, Befund 8.6) – hier nur als
+      # Bericht: Spiel-Images tragen Wine, Steam, Java und Proton mit, und ein
+      # Lauf, der an einer Lücke ohne Korrektur scheitert, hielte jedes
+      # Spiel-Update auf. Der Bericht steht in der Zusammenfassung des Laufs;
+      # die Anwendungs-Images (`images.yml`) scheitern dagegen bei kritischen
+      # Lücken mit Korrektur.
+      - name: Schwachstellen-Scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ steps.image.outputs.name }}:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+          output: trivy.txt
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Ergebnis melden
         env:
           OWNER: ${{ github.repository_owner }}
@@ -154,4 +173,12 @@ jobs:
             echo '```'
             echo "ghcr.io/${OWNER}/${NAME}:${FASSUNG}"
             echo '```'
+            if [ -s trivy.txt ]; then
+              echo '<details><summary>Schwachstellen-Scan (CRITICAL, HIGH, mit Korrektur)</summary>'
+              echo
+              echo '```'
+              cat trivy.txt
+              echo '```'
+              echo '</details>'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

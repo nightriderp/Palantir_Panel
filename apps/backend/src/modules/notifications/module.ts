@@ -155,6 +155,11 @@ export interface NotificationModuleOptions {
    * die Oberflaeche bietet ihn dann gar nicht erst an.
    */
   readonly vapid?: { publicKey: string; privateKey: string; subject: string };
+  /**
+   * Nachprüfung der Sitzung am offenen Live-Kanal (Review 2026-09-16,
+   * Befund 3.2); `server.ts` reicht dieselbe Funktion wie an den Chat-Kanal.
+   */
+  isSessionValid?(request: FastifyRequest): Promise<boolean>;
 }
 
 export interface NotificationModule {
@@ -236,6 +241,7 @@ export async function registerNotifications(
     notifications: module.service,
     resolveUserId: options.resolveUserId,
     ...(options.allowedOrigin === undefined ? {} : { allowedOrigin: options.allowedOrigin }),
+    ...(options.isSessionValid === undefined ? {} : { isSessionValid: options.isSessionValid }),
   });
 
   return module;

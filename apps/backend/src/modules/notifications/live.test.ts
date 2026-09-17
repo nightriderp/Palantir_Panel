@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   CLOSE_CODE_TOO_MANY_CONNECTIONS,
+  CLOSE_CODE_UNAUTHORIZED,
   NOTIFICATION_LIVE_MAX_CONNECTIONS_PER_USER,
   createNotificationHub,
   registerNotificationLiveRoute,
@@ -407,5 +408,67 @@ describe('Lebenszeichen des Inbox-Kanals (Fundpunkt 142)', () => {
     // Der Abriss räumt auch im Verteiler auf – sonst bekäme eine tote
     // Verbindung weiter jede Meldung serialisiert.
     expect(hub.connectionCount('user-1')).toBe(0);
+  });
+});
+
+/**
+ * Sitzung über die Verbindungsdauer (Review 2026-09-16, Befund 3.2): Bis dahin
+ * prüfte nur der Handshake, eine abgelaufene Sitzung bekam ihre Meldungen
+ * weiter.
+ */
+describe('Sitzung am offenen Kanal (Befund 3.2)', () => {
+  const PANEL = 'https://panel.example.tld';
+  let app: FastifyInstance | null = null;
+
+  afterEach(async () => {
+    await app?.close();
+    app = null;
+  });
+
+  async function baueApp(isSessionValid: () => Promise<boolean>): Promise<FastifyInstance> {
+    const instance = Fastify({ logger: false });
+
+    await instance.register(websocket);
+
+    registerNotificationLiveRoute(instance, {
+      hub: createNotificationHub(),
+      notifications: { countUnread: async () => 0 } as unknown as NotificationService,
+      resolveUserId: () => 'user-1',
+      allowedOrigin: PANEL,
+      isSessionValid,
+      sessionCheckIntervalMs: 20,
+    });
+
+    await instance.ready();
+
+    return instance;
+  }
+
+  it('schließt mit 4401, sobald die Sitzung nicht mehr gilt', async () => {
+    let gueltig = true;
+    app = await baueApp(async () => gueltig);
+
+    const socket = await app.injectWS('/live/notifications', { headers: { origin: PANEL } });
+    const geschlossen = new Promise<number>((resolve) => {
+      socket.once('close', (code: number) => {
+        resolve(code);
+      });
+    });
+
+    gueltig = false;
+
+    expect(await geschlossen).toBe(CLOSE_CODE_UNAUTHORIZED);
+  });
+
+  it('lässt den Kanal offen, wenn die Prüfung selbst scheitert', async () => {
+    app = await baueApp(async () => {
+      throw new Error('Datenbank kurz weg');
+    });
+
+    const socket = await app.injectWS('/live/notifications', { headers: { origin: PANEL } });
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(socket.readyState).toBe(socket.OPEN);
+    socket.close();
   });
 });

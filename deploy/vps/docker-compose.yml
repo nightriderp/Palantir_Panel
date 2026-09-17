@@ -246,11 +246,23 @@ services:
       - '--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web'
       - '--accesslog=true'
       - '--log.level=INFO'
+      # `/ping` auf dem internen Einstiegspunkt `traefik` (:8080, nicht
+      # veröffentlicht) – nur für den Healthcheck unten (Review 2026-09-16,
+      # Befund 8.3).
+      - '--ping=true'
     ports:
       - '80:80'
       - '443:443'
     volumes:
       - ./letsencrypt:/letsencrypt
+    # `traefik healthcheck` ruft `/ping` auf dem internen Einstiegspunkt auf;
+    # ohne Antwort startet Docker den Proxy neu (Review 2026-09-16, Befund 8.3).
+    healthcheck:
+      test: ['CMD', 'traefik', 'healthcheck', '--ping']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - palantir
 
@@ -528,6 +540,10 @@ services:
       - 'traefik.http.middlewares.palantir-api-secure.headers.referrerPolicy=strict-origin-when-cross-origin'
       - "traefik.http.middlewares.palantir-api-secure.headers.contentSecurityPolicy=default-src 'none'; frame-ancestors 'none'"
       - 'traefik.http.routers.palantir-api.middlewares=palantir-api-secure'
+    # Das Backend schließt auf SIGTERM geordnet mit eigener Frist von 10 s
+    # (`lib/shutdown.ts`); die Docker-Vorgabe ist ebenfalls 10 s, die eigene
+    # Frist griff also nie vor SIGKILL (Review 2026-09-16, Befund 8.4).
+    stop_grace_period: 20s
     healthcheck:
       # Der Check laeuft ueber `node`, nicht ueber curl oder wget: node ist die
       # einzige Laufzeit, die im Image garantiert vorhanden ist. curl liegt zwar
@@ -652,6 +668,14 @@ services:
     volumes:
       - ./frps.toml:/etc/frp/frps.toml:ro
     command: ['-c', '/etc/frp/frps.toml']
+    # Lauscht frps noch auf seinem Steuerport im Tunnel? Das Image ist Alpine,
+    # `nc` das BusyBox-eigene (Review 2026-09-16, Befund 8.3).
+    healthcheck:
+      test: ['CMD', 'nc', '-z', '${WIREGUARD_VPS_IP}', '${FRP_BIND_PORT:-7000}']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   palantir:

@@ -25,6 +25,7 @@ import { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { standardGatewayDesContainers } from '../../config/docker-gateway.js';
 import { env } from '../../config/env.js';
 import { type Database, type DbConnection } from '../../db/client.js';
+import { type PermissionActor } from '../rbac/index.js';
 import { type AgentSessionHandlers } from './agent-gateway.js';
 import { registerAgentRoute } from './agent-route.js';
 import { fakeAgentEnabled, startFakeAgents } from './fake-agent.js';
@@ -137,6 +138,17 @@ export interface ServerOrchestrationOptions {
    * Schnittstelle gereicht.
    */
   readonly audit?: ServerAuditSink;
+  /**
+   * Nachprüfung der Sitzung am offenen Live-Kanal (Review 2026-09-16,
+   * Befund 3.2). `server.ts` reicht dieselbe Funktion wie an den Chat-Kanal;
+   * ohne Angabe bleibt es bei der Prüfung im Handshake.
+   */
+  isSessionValid?(request: FastifyRequest): Promise<boolean>;
+  /**
+   * Frischer Rechte-Akteur für eine offene Live-Verbindung (Befund 3.2) –
+   * derselbe Aufbau wie in `registerRbac()`, nur zur Laufzeit des Kanals.
+   */
+  refreshActor?(request: FastifyRequest): Promise<PermissionActor | null>;
 }
 
 /**
@@ -486,6 +498,9 @@ export function registerServerOrchestration(
     // WebSocket-Handshakes unterliegen nicht CORS, der Schutz hing bisher
     // allein an `SameSite=Lax`.
     allowedOrigin: env.PUBLIC_WEB_URL,
+    // Sitzung und Rollenrechte auch über die Verbindungsdauer (Befund 3.2).
+    ...(options.isSessionValid ? { isSessionValid: options.isSessionValid } : {}),
+    ...(options.refreshActor ? { refreshActor: options.refreshActor } : {}),
   });
 
   app.addHook('onClose', async (): Promise<void> => {
