@@ -117,19 +117,26 @@ jobs:
       # scheitert - und jede Gamenode, die neu aufgesetzt wird oder ein
       # `docker compose pull` sieht, zöge einen Agent gegen ein Backend, das der
       # Betreiber gerade zurückdreht.
-      - name: Images für diesen Commit prüfen
+      # Wartet, statt zu scheitern (Review 2026-09-16, Pipeline-Option 2): Wer
+      # das Tag direkt nach dem Merge setzt, war schneller als images.yml. Bis
+      # zu 15 Minuten wird alle 30 s nachgesehen; erst danach ist es ein Fehler.
+      - name: Auf die Images dieses Commits warten
         env:
           SHA: ${{ steps.ziel.outputs.sha }}
           OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
+          frist=$((SECONDS + 15 * 60))
           for image in palantir-backend palantir-frontend palantir-agent; do
             quelle="ghcr.io/${OWNER}/${image}:${SHA}"
-            # Prüft zugleich, dass images.yml für diesen Commit gelaufen ist.
-            if ! docker buildx imagetools inspect "${quelle}" >/dev/null 2>&1; then
-              echo "::error::${quelle} existiert nicht. Ist der Images-Workflow für diesen Commit durchgelaufen?"
-              exit 1
-            fi
+            until docker buildx imagetools inspect "${quelle}" >/dev/null 2>&1; do
+              if (( SECONDS >= frist )); then
+                echo "::error::${quelle} existiert nach 15 Minuten nicht. Ist der Images-Workflow für diesen Commit gescheitert?"
+                exit 1
+              fi
+              echo "  ${image}:${SHA} noch nicht da - warte 30 s"
+              sleep 30
+            done
             echo "  ${image}:${SHA} vorhanden"
           done
 
@@ -211,6 +218,22 @@ jobs:
               --method POST -f ref=refs/heads/prod -f sha="${SHA}" >/dev/null
             echo "Zweig prod angelegt."
           fi
+
+      # Release-Seite mit den Pull-Request-Titeln seit dem letzten Tag
+      # (Review 2026-09-16, Pipeline-Option 6). Nur Anzeige, nichts hängt daran;
+      # scheitert der Schritt, ist trotzdem ausgerollt.
+      - name: Release-Seite anlegen
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "${REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${REF_NAME} gibt es schon."
+            exit 0
+          fi
+          gh release create "${REF_NAME}" --verify-tag --generate-notes --title "${REF_NAME}"
 
       - name: Zusammenfassung
         env:
