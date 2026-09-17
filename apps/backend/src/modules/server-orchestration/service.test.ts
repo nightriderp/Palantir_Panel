@@ -382,6 +382,33 @@ class FakeRepository implements ServerRepository {
     return Promise.resolve(this.host());
   }
 
+  listPlacementCandidates(): Promise<
+    readonly {
+      id: string;
+      name: string;
+      status: string;
+      totalRamMb: number;
+      allocatedRamMb: number;
+      createdAt: Date;
+    }[]
+  > {
+    const host = this.host();
+    const belegt = [...this.servers.values()]
+      .filter((server) => server.hostId === host.id)
+      .reduce((summe, server) => summe + server.resourceLimits.ramMb, 0);
+
+    return Promise.resolve([
+      {
+        id: host.id,
+        name: host.name,
+        status: host.status,
+        totalRamMb: 32_768,
+        allocatedRamMb: belegt,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ]);
+  }
+
   countHosts(): Promise<number> {
     return Promise.resolve(1);
   }

@@ -257,6 +257,12 @@ function toServerMemberDto(
     level: record.level,
     addedAt: record.addedAt,
     canEdit: permissions.canManageMembers,
+    // Beide Vorgänge hängen heute an `canManageMembers`; getrennt im Vertrag,
+    // damit ein späteres Sonderverbot hier bleibt (Befund 2.2).
+    permissions: {
+      canChangeLevel: permissions.canManageMembers,
+      canRemove: permissions.canManageMembers,
+    },
   };
 }
 

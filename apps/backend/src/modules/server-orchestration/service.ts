@@ -99,6 +99,7 @@ import {
 import { planReconciliation } from './reconciliation.js';
 import { ServerCloneService } from './clone-service.js';
 import { ServerQueryTargets } from './server-query.js';
+import { choosePlacementHost } from './placement.js';
 import { type StartIntent, StartupHealthCheck } from './startup-health.js';
 import { type WorldImportInput, WorldImportTransfer } from './world-import-transfer.js';
 import {
@@ -1119,7 +1120,10 @@ export class ServerOrchestrationService {
    * (`dispatchStart`): Dort geht es nicht darum, eine stillgelegte Node neu zu
    * belegen, sondern einen bereits dort laufenden Server wieder hochzubringen.
    */
-  private assertNodeAcceptsWork(host: HostNodeRecord, intent: 'create' | 'start'): void {
+  private assertNodeAcceptsWork(
+    host: Pick<HostNodeRecord, 'id' | 'name' | 'status'>,
+    intent: 'create' | 'start',
+  ): void {
     if (host.status === 'online') {
       return;
     }
@@ -2817,20 +2821,39 @@ export class ServerOrchestrationService {
       return host;
     }
 
-    const host = await this.deps.repository.defaultHost();
+    const kandidaten = await this.deps.repository.listPlacementCandidates();
 
-    if (host === null) {
+    if (kandidaten.length === 0) {
       throw new ServerOrchestrationError(
         'AGENT_NOT_CONNECTED',
         'Es ist keine Node eingerichtet. Bitte zuerst die Ersteinrichtung ausführen (pnpm --filter @palantir/backend db:seed).',
       );
     }
 
-    // Auch die vorgegebene Node muss annehmen: Ist die einzige Node der
-    // Installation stillgelegt, entsteht hier kein Server (Punkt 109).
-    this.assertNodeAcceptsWork(host, 'create');
+    /*
+     * Platzierungsregel statt „älteste Node" (Review 2026-09-16, Befund 2.3):
+     * die Node mit dem meisten freien RAM unter denen, die Arbeit annehmen;
+     * bei Gleichstand die älteste – mit einer Node also wie bisher.
+     */
+    const wahl = choosePlacementHost(kandidaten);
 
-    return host;
+    if (wahl === null) {
+      // Keine Node nimmt an (Punkt 109): Bei genau einer Node dieselbe Meldung
+      // wie bei ausdrücklicher Wahl, sonst die Sammelmeldung.
+      const einzige = kandidaten.length === 1 ? kandidaten[0] : undefined;
+
+      if (einzige !== undefined) {
+        this.assertNodeAcceptsWork(einzige, 'create');
+      }
+
+      throw new ServerOrchestrationError(
+        'NODE_UNAVAILABLE',
+        'Keine Node nimmt gerade neue Server an – alle sind in Wartung oder nicht erreichbar.',
+        { nodes: kandidaten.map((node) => ({ id: node.id, status: node.status })) },
+      );
+    }
+
+    return { id: wahl.id };
   }
 
   /** Verbindungsadresse eines Servers (Pflichtenheft §13). */
