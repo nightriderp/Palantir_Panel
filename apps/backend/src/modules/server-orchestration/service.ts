@@ -19,7 +19,6 @@ import {
   type ServerCloneJobDto,
   type ServerStatsHistoryDto,
   type AgentEventFrame,
-  type AgentServerQueryTarget,
   type AgentStateReportFrame,
   type ExecConsoleCommandResult,
   type GetLogsCommandResult,
@@ -82,7 +81,7 @@ import {
   buildServerConfig,
   requiresRestartAfterChange,
 } from './game-registry.js';
-import { type HealthProbe, awaitHealthy } from './health-check.js';
+import { type HealthProbe } from './health-check.js';
 import { type PortAllocator, visiblePortOf } from './ports.js';
 import {
   type CapacityReservation,
@@ -99,6 +98,8 @@ import {
 } from './live-events.js';
 import { planReconciliation } from './reconciliation.js';
 import { ServerCloneService } from './clone-service.js';
+import { ServerQueryTargets } from './server-query.js';
+import { type StartIntent, StartupHealthCheck } from './startup-health.js';
 import { type WorldImportInput, WorldImportTransfer } from './world-import-transfer.js';
 import {
   type ServerFileAccessOptions,
@@ -203,14 +204,7 @@ export interface OrchestrationConfig {
  */
 export type StopReason = 'manual' | 'restart' | 'autoShutdown';
 
-/**
- * Warum ein Server gestartet wird (Audit event-flow-09).
- *
- * Reicht bis ans Ende des Health-Checks durch: Ein Neustart meldet dort
- * `server.restarted` statt `server.started` – dieselbe Stelle, dieselbe
- * Bedingung („der Server antwortet"), nur der passendere Name.
- */
-export type StartIntent = 'start' | 'restart';
+export type { StartIntent } from './startup-health.js';
 
 export interface OrchestrationDependencies {
   readonly repository: ServerRepository;
@@ -339,6 +333,10 @@ export class ServerOrchestrationService {
    * Wahrheit über denselben Lauf.
    */
   private readonly clones: ServerCloneService;
+  /** Server-Abfrage des Agents (Befund 2.1) – eigene Klasse. */
+  private readonly queries: ServerQueryTargets;
+  /** Health-Check nach dem Start (Befund 2.1) – eigene Klasse. */
+  private readonly startupHealth: StartupHealthCheck;
   /** Weltdaten-Übernahme beim Anlegen (Befund 2.1) – eigene Klasse. */
   private readonly worldImport: WorldImportTransfer;
   /**
@@ -372,6 +370,27 @@ export class ServerOrchestrationService {
       ...(deps.worldArchives === undefined ? {} : { worldArchives: deps.worldArchives }),
       config: deps.config,
       log: deps.log,
+    });
+    this.queries = new ServerQueryTargets({
+      agents: deps.agents,
+      registry: deps.registry,
+      repository: deps.repository,
+      log: deps.log,
+      antwortetAufAbfragen: (server) => this.antwortetAufAbfragen(server),
+    });
+    this.startupHealth = new StartupHealthCheck({
+      registry: deps.registry,
+      repository: deps.repository,
+      config: deps.config,
+      healthProbe: deps.healthProbe,
+      ...(deps.sleep === undefined ? {} : { sleep: deps.sleep }),
+      now: this.now,
+      log: deps.log,
+      requireServer: (serverId) => this.requireServer(serverId),
+      hostnameFor: (server) => this.hostnameFor(server),
+      antwortetAufAbfragen: (server) => this.antwortetAufAbfragen(server),
+      transition: (server, event) => this.transition(server, event),
+      emitServerEvent: (event, server, extra) => this.emitServerEvent(event, server, extra),
     });
     this.clones = new ServerCloneService({
       repository: deps.repository,
@@ -1188,58 +1207,6 @@ export class ServerOrchestrationService {
    * läuft (der Agent-Befehl ist ein Netz-Roundtrip, der keine Sperre halten soll).
    */
   /**
-   * Ziel für die periodische Server-Abfrage des Agents
-   * (`SET_SERVER_QUERY`, WORK_STATUS.md Gefundener Punkt 74).
-   *
-   * Der Agent kennt keine Spiele und errät nichts: Abfrageart und Port kommen
-   * aus der Spiele-Definition und der Portvergabe. `null`, solange der Server
-   * keinen Container oder keinen primären Port hat – dann gibt es nichts
-   * abzufragen.
-   *
-   * Als Adresse bleibt die Vorgabe des Agents (`127.0.0.1`): Die Portbindung
-   * liegt auf dem Homeserver selbst, im LAN lauscht nichts (Pflichtenheft §18).
-   */
-  private queryTargetFor(server: ServerRecord): AgentServerQueryTarget | null {
-    if (server.dockerContainerId === null) {
-      return null;
-    }
-
-    // Ein Auftrag, der nicht zu erfüllen ist, gehört nicht gestellt: Valheim
-    // ohne `-public 1` beantwortet keine Abfrage, und der Agent liefe alle paar
-    // Sekunden in eine Frist (`antwortetAufAbfragen`).
-    if (!this.antwortetAufAbfragen(server)) {
-      return null;
-    }
-
-    const definition = this.deps.registry.require(server.gameType);
-    // Beide Ports gehen mit: der Host-Port, unter dem der Container
-    // veröffentlicht ist (derselbe Wert wie `hostPort` in `CREATE_CONTAINER`),
-    // und der Port IM Container. Der Agent fragt über das Spielenetz auf dem
-    // Container-Port (Fundpunkt 188) – der Host-Port ist an 127.0.0.1 der Node
-    // gebunden, und das ist nicht das Loopback des Agent-Containers.
-    const primary =
-      server.assignedPorts.find(
-        (zuweisung) => zuweisung.containerPort === definition.query.containerPort,
-      ) ?? server.assignedPorts.find((zuweisung) => zuweisung.primary);
-
-    if (primary === undefined) {
-      return null;
-    }
-
-    return {
-      containerId: server.dockerContainerId,
-      hostPort: primary.publicPort,
-      // Der Port, den die Definition zur Abfrage nennt – bei Valheim der
-      // Abfrage-Port neben dem Spiel-Port (Fundpunkt 196).
-      containerPort: definition.query.containerPort,
-      query:
-        definition.query.kind === 'gamedig'
-          ? { kind: 'gamedig', protocol: definition.query.protocol }
-          : { kind: 'portConnect' },
-    };
-  }
-
-  /**
    * Die Grenzen des Containers auf den Stand des Datensatzes bringen.
    *
    * **Was vorher passierte.** Eine geänderte Zuweisung landete nur in der
@@ -1324,74 +1291,11 @@ export class ServerOrchestrationService {
   }
 
   /**
-   * Periodische Abfrage für einen Server setzen oder beenden.
-   *
-   * `active: false` schickt `target: null` – der Agent stellt die Abfrage dann
-   * ein. Beides ist idempotent und darf wiederholt werden.
-   *
-   * **Scheitert bewusst leise.** Die Abfrage liefert Spielerzahl und
-   * Antwortzeit; sie ist eine Zutat zur Anzeige, kein Teil des Lifecycles. Ein
-   * Serverstart darf nicht daran scheitern, dass der Agent den Zusatzbefehl
-   * nicht annimmt – gemeldet wird er trotzdem, sonst sucht später niemand die
-   * fehlenden Messwerte.
+   * Abfragen einer Node abgleichen – siehe `server-query.ts` (Befund 2.1).
+   * Öffentlich für den Verbindungsaufbau des Agents (`index.ts`).
    */
-  private async applyServerQuery(server: ServerRecord, active: boolean): Promise<void> {
-    const session = this.deps.agents.get(server.hostId);
-
-    if (session === null) {
-      return;
-    }
-
-    const target = active ? this.queryTargetFor(server) : null;
-
-    if (active && target === null) {
-      return;
-    }
-
-    try {
-      await session.sendCommand('SET_SERVER_QUERY', server.id, { serverId: server.id, target });
-    } catch (error: unknown) {
-      this.deps.log.warn(
-        {
-          serverId: server.id,
-          aktiv: active,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Server-Abfrage konnte nicht gesetzt werden',
-      );
-    }
-  }
-
-  /**
-   * Abfragen einer Node **abgleichen** – setzen, was laufen soll, und abräumen,
-   * was nicht mehr laufen soll (Audit event-flow-10).
-   *
-   * Der Aufruf gehört an jeden Verbindungsaufbau des Agents: Er hält seine
-   * Ziele im Arbeitsspeicher und hat sie nach einem Neustart vergessen. Der
-   * Befehl ist idempotent, ein zweites Setzen desselben Ziels also folgenlos.
-   *
-   * **Warum auch die nicht laufenden Server angefasst werden.** Überlebt der
-   * Agent einen Neustart des Backends, behält er seine Ziele. Ging in derselben
-   * Zeit ein Server verloren – abgestürzt, vom Abgleich auf `stopped` gesetzt –,
-   * fragte er dessen toten Port bis zu seinem eigenen Neustart weiter ab und
-   * schickte für jeden Fehlschlag ein `STATS_UPDATE` zurück. Ein `null` je
-   * übrigem Server beendet das in einem Zug; die Rückgabe nennt weiterhin nur
-   * die tatsächlich **gesetzten** Ziele.
-   */
-  async refreshServerQueries(hostId: string): Promise<readonly string[]> {
-    const gesetzt: string[] = [];
-
-    for (const server of await this.deps.repository.listByHost(hostId)) {
-      const aktiv = server.status === 'running' || server.status === 'starting';
-
-      await this.applyServerQuery(server, aktiv);
-
-      if (aktiv) {
-        gesetzt.push(server.id);
-      }
-    }
-
-    return gesetzt;
+  refreshServerQueries(hostId: string): Promise<readonly string[]> {
+    return this.queries.refreshServerQueries(hostId);
   }
 
   private async finishStart(
@@ -1429,7 +1333,7 @@ export class ServerOrchestrationService {
     // Periodische Abfrage einsetzen (Gefundener Punkt 74). Ohne sie meldet der
     // Agent nie ein `STATS_UPDATE` aus der Server-Abfrage, und Spielerzahl,
     // Antwortzeit und der Spieler-Verlauf bleiben dauerhaft leer.
-    await this.applyServerQuery({ ...server, ...started }, true);
+    await this.queries.applyServerQuery({ ...server, ...started }, true);
 
     // Der Health-Check läuft bewusst neben dem Request: Ein Spiel darf beim
     // Hochlauf Minuten brauchen, so lange soll niemand auf eine HTTP-Antwort
@@ -1441,183 +1345,12 @@ export class ServerOrchestrationService {
   }
 
   /**
-   * Wartet auf den Health-Check und schließt den Start ab.
-   *
+   * Health-Check nach dem Start – siehe `startup-health.ts` (Befund 2.1).
    * Öffentlich, damit der Soll/Ist-Abgleich denselben Weg nimmt und nicht eine
    * zweite Auslegung von „läuft" mitbringt.
-   *
-   * Verschwindet der Server währenddessen (gelöscht, während der Check über
-   * Minuten lief – Fundpunkt 127), gibt es keinen Zustand mehr, der
-   * fortzuschreiben wäre: Der Start ist damit schlicht abgebrochen, kein
-   * Fehler. `deleteServer()` lehnt das Löschen im Zustand `starting` zwar ab,
-   * doch der Datensatz kann auch anders verschwinden (Kaskade, Abgleich).
    */
-  async awaitStartupHealth(serverId: string, anlass: StartIntent = 'start'): Promise<void> {
-    try {
-      await this.runStartupHealth(serverId, anlass);
-    } catch (error: unknown) {
-      if (isServerOrchestrationError(error) && error.code === 'SERVER_NOT_FOUND') {
-        this.deps.log.warn(
-          { serverId },
-          'Health-Check abgebrochen – der Server existiert nicht mehr',
-        );
-
-        return;
-      }
-
-      throw error;
-    }
-  }
-
-  private async runStartupHealth(serverId: string, anlass: StartIntent = 'start'): Promise<void> {
-    const server = await this.requireServer(serverId);
-    const definition = this.deps.registry.require(server.gameType);
-    const host = await this.deps.repository.findHost(server.hostId);
-
-    /*
-     * **Geprüft wird der Abfrage-Port, nicht der Spiel-Port** (Fundpunkt 196).
-     *
-     * Bei den meisten Spielen ist das derselbe (Minecraft antwortet auf 25565
-     * auf beides). Valheim nicht: Dort läuft das Spiel auf 2456 und die
-     * Serverliste antwortet auf 2457. Welcher Port gemeint ist, sagt die
-     * Definition über `query.containerPort`; hier wird die öffentliche Nummer
-     * gesucht, die frp diesem Container-Port gegeben hat. Findet sich keine,
-     * bleibt es beim Haupt-Port – so verhält sich jede Definition ohne eigenen
-     * Abfrage-Port wie bisher.
-     */
-    const primary =
-      server.assignedPorts.find(
-        (assignment) => assignment.containerPort === definition.query.containerPort,
-      ) ?? server.assignedPorts.find((assignment) => assignment.primary);
-
-    if (host === null || primary === undefined) {
-      await this.transition(server, {
-        type: 'healthCheckFailed',
-        reason: 'Die Node oder die Portzuweisung des Servers ist unvollständig.',
-      });
-      await this.emitServerEvent('server.failed', serverId, {
-        detail: 'Portzuweisung unvollständig',
-      });
-
-      return;
-    }
-
-    /*
-     * Geprüft wird der Weg der Spieler, nicht die Node im Tunnel (Fundpunkt 183).
-     *
-     * Bis hierher zielte der Check auf `host.wireguardIp` – und das konnte nie
-     * antworten: Der Agent bindet die Spielports auf der Node absichtlich nur an
-     * `127.0.0.1` (hardening.ts, `DEFAULT_HOST_IP`, damit das Heim-LAN sie nicht
-     * sieht), und die WireGuard-Firewall der Node verwirft jede neue
-     * Verbindung aus dem Tunnel. Jeder Start lief so nach
-     * `startupTimeoutSeconds` in `error`, während das Spiel längst lief und
-     * Spieler drauf waren. Aufgefallen beim ersten echten Minecraft-Start am
-     * 2026-09-09.
-     *
-     * Erreichbar ist der Server von hier aus genau dort, wo ihn auch die Spieler
-     * erreichen: auf der öffentlichen Adresse der VPS, hinter frps. Damit prüft
-     * der Check zugleich den Tunnel – ein Server, der auf der Node läuft, aber
-     * durch frp nicht durchkommt, ist für Spieler nicht „running".
-     *
-     * **Mit Hostname-Routing zählt der Name, nicht die Adresse** (Fundpunkt 193).
-     * Dort teilen sich alle Server den Router-Port; auseinandergehalten werden
-     * sie am Namen, den der Client im Handshake mitschickt. Eine Sonde auf
-     * `publicIpv4:25565` schickt die IP als Namen mit, und Infrared weist sie ab
-     * („no proxy with uid <ip>@:25565"), obwohl der Server läuft – jeder Start
-     * liefe in `error`. Deshalb geht die Sonde auf den Hostnamen des Servers:
-     * Er löst über den CNAME auf dieselbe VPS auf, und `gamedig` trägt ihn als
-     * Ziel in den Handshake ein. Damit prüft der Check denselben Weg wie ein
-     * Spieler, Router eingeschlossen.
-     *
-     * **Welche Adresse das ist, sagt `healthCheckHost`** (Fundpunkt 288). Bei
-     * UDP-Spielen ist die öffentliche Adresse der VPS aus dem Backend-Container
-     * heraus die falsche: Das Paket geht hinaus und kommt zurück, aber die
-     * NAT-Schleife des Hosts schreibt den Absender auf das Docker-Gateway um.
-     * `gamedig` verwirft eine UDP-Antwort, deren Absender nicht das Ziel ist –
-     * jeder Versuch endete in „UDP - Timed out", und jeder Start eines
-     * UDP-Spiels lief nach seiner ganzen Frist in `error`, während Spieler
-     * darauf waren. Die Begründung im Langen steht an `HEALTH_CHECK_HOST`.
-     */
-    /*
-     * **Ein Server, den niemand abfragen kann, ist deshalb nicht krank.**
-     *
-     * Valheim mit `-public 0` beantwortet keine A2S-Abfrage (siehe
-     * `antwortetAufAbfragen`). Eine Sonde darauf läuft zwangsläufig in die
-     * Frist, und der Server landete nach zwanzig Minuten in `error`, während
-     * Spieler darauf unterwegs sind. Der Start gilt hier deshalb als geglückt,
-     * sobald der Container läuft – mehr ist über diesen Server nicht in
-     * Erfahrung zu bringen, und die falsche Aussage wäre die schlechtere.
-     *
-     * Der Preis steht in der Beschreibung des Feldes: keine Spielerzahl, kein
-     * Ping, kein automatischer Stopp bei 0 Spielern.
-     */
-    if (!this.antwortetAufAbfragen(server)) {
-      this.deps.log.info(
-        { serverId, gameType: server.gameType },
-        'Start ohne Abfrage bestaetigt - dieser Server beantwortet in seiner Einstellung keine Abfragen',
-      );
-      await this.transition(server, { type: 'healthCheckPassed' });
-      await this.emitServerEvent(
-        anlass === 'restart' ? 'server.restarted' : 'server.started',
-        serverId,
-        { pingMs: null },
-      );
-
-      return;
-    }
-
-    const result = await awaitHealthy({
-      target: {
-        host: definition.supportsVirtualHostRouting
-          ? this.hostnameFor(server)
-          : this.deps.config.healthCheckHost,
-        port: primary.publicPort,
-        query: definition.query,
-      },
-      startupTimeoutMs: definition.startupTimeoutSeconds * 1_000,
-      attemptTimeoutMs: this.deps.config.healthCheckAttemptTimeoutMs,
-      intervalMs: this.deps.config.healthCheckIntervalMs,
-      probe: this.deps.healthProbe,
-      sleep: this.deps.sleep,
-      // Dieselbe Uhr wie der Rest des Dienstes – sonst könnte ein Test die Zeit
-      // stellen und die Startfrist liefe trotzdem gegen die echte Uhr.
-      now: () => this.now().getTime(),
-    });
-
-    // Zwischenzeitlich kann der Server abgestürzt oder gestoppt worden sein.
-    const current = await this.requireServer(serverId);
-
-    if (current.status !== 'starting') {
-      this.deps.log.warn(
-        { serverId, status: current.status },
-        'Health-Check-Ergebnis verworfen – der Server ist nicht mehr im Startvorgang',
-      );
-
-      return;
-    }
-
-    if (result.healthy) {
-      await this.transition(current, { type: 'healthCheckPassed' });
-      /*
-       * Genau eine Meldung je Vorgang (Audit event-flow-09): Beim Neustart
-       * steht hier `server.restarted` („Neustart abgeschlossen – der Server ist
-       * wieder erreichbar"), sonst `server.started`. Beide zu senden wäre für
-       * denselben Vorgang zweimal dieselbe Nachricht.
-       */
-      await this.emitServerEvent(
-        anlass === 'restart' ? 'server.restarted' : 'server.started',
-        serverId,
-        { pingMs: result.pingMs },
-      );
-
-      return;
-    }
-
-    await this.transition(current, {
-      type: 'healthCheckFailed',
-      reason: result.reason ?? 'Der Server war nach dem Start nicht erreichbar.',
-    });
-    await this.emitServerEvent('server.failed', serverId, { detail: result.reason ?? null });
+  awaitStartupHealth(serverId: string, anlass: StartIntent = 'start'): Promise<void> {
+    return this.startupHealth.awaitStartupHealth(serverId, anlass);
   }
 
   /**
@@ -1989,7 +1722,7 @@ export class ServerOrchestrationService {
       // Erst die Abfrage einstellen, dann den Container entfernen: Sonst fragt
       // der Agent weiter einen Port ab, hinter dem nichts mehr steht
       // (Gefundener Punkt 74).
-      await this.applyServerQuery(server, false);
+      await this.queries.applyServerQuery(server, false);
       await this.removeContainer(session, server.id, server.dockerContainerId);
 
       // Id sofort löschen (orchestration-core-03): Bricht ein späterer Schritt
@@ -2979,7 +2712,7 @@ export class ServerOrchestrationService {
     const laeuftJetzt = result.state.status === 'running' || result.state.status === 'starting';
 
     if (liefVorher && !laeuftJetzt) {
-      await this.applyServerQuery(server, false);
+      await this.queries.applyServerQuery(server, false);
     }
 
     return result;
