@@ -18,25 +18,6 @@ export default [
   ...coreWebVitals,
   ...nextTypescript,
   {
-    // eslint-plugin-react-hooks 7 (mit eslint-config-next 16) bringt die Regeln
-    // des React Compilers mit und setzt sie auf `error`. Sie melden Muster, die
-    // hier bewusst so gebaut sind (Refs im Render lesen, setState in Effekten
-    // nach einem Wiederanlauf): 42 Stellen in 26 Dateien beim Umzug auf Next 16.
-    // Bis dahin waren es keine Fehler, und ein Umzug der Laufzeit ist nicht der
-    // Ort, 26 Komponenten umzubauen. Deshalb Warnung statt Fehler – sichtbar
-    // im Lint, nicht blockierend; `rules-of-hooks` und `exhaustive-deps`
-    // bleiben Fehler. Nachziehen als eigenes Paket.
-    rules: {
-      'react-hooks/refs': 'warn',
-      'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/use-memo': 'warn',
-      'react-hooks/immutability': 'warn',
-      'react-hooks/preserve-manual-memoization': 'warn',
-      'react-hooks/purity': 'warn',
-      'react-hooks/globals': 'warn',
-    },
-  },
-  {
     // Konfigurationsdateien liest ihr Werkzeug, importiert wird keine von ihnen.
     // `import/no-anonymous-default-export` will einen benannten Export, damit
     // der Aufrufer beim Importieren einen Namen sieht – hier gibt es keinen

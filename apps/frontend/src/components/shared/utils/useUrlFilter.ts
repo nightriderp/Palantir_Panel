@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 
 /**
  * Filter und Suche in der Adresszeile (Fundpunkt 213).
@@ -24,8 +24,21 @@ import { useCallback, useEffect, useState } from 'react';
  *
  * Der Anfangswert kommt beim ersten Rendern **nicht** aus der Adresse: Server
  * und Browser müssen dasselbe rendern, sonst meckert React über die
- * Hydratation. Der Wert aus der Adresse wird direkt danach nachgezogen.
+ * Hydratation. Die Adresse ist deshalb als externe Quelle angebunden
+ * (`useSyncExternalStore` mit Server-Schnappschuss `null`); React zieht den
+ * Browserwert direkt nach der Hydratation nach. Sobald die Ansicht selbst
+ * einen Wert gesetzt hat, gilt nur noch dieser – ein erneutes Lesen würde
+ * eine gerade getippte Eingabe überschreiben.
  */
+
+function keinAbo(): () => void {
+  return () => {};
+}
+
+function aufDemServer(): null {
+  return null;
+}
+
 export function useUrlFilter<T extends string>(
   /** Name des Abfrageparameters, z. B. `filter` oder `q`. */
   param: string,
@@ -38,22 +51,25 @@ export function useUrlFilter<T extends string>(
    */
   istGueltig: (wert: string) => wert is T,
 ): [T, (wert: T) => void] {
-  const [wert, setWert] = useState<T>(standard);
+  // `null`: Die Ansicht hat noch nichts gesetzt, es gilt die Adresse.
+  const [gesetzt, setGesetzt] = useState<T | null>(null);
 
-  useEffect(() => {
-    const ausAdresse = new URLSearchParams(window.location.search).get(param);
+  const ausAdresse = useSyncExternalStore(
+    keinAbo,
+    () => new URLSearchParams(window.location.search).get(param),
+    aufDemServer,
+  );
 
-    if (ausAdresse !== null && istGueltig(ausAdresse)) {
-      setWert(ausAdresse);
-    }
-    // Absichtlich nur beim ersten Rendern: Danach führt die Ansicht den Wert,
-    // und ein erneutes Lesen würde eine gerade getippte Eingabe überschreiben.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  let wert: T = standard;
+  if (gesetzt !== null) {
+    wert = gesetzt;
+  } else if (ausAdresse !== null && istGueltig(ausAdresse)) {
+    wert = ausAdresse;
+  }
 
   const setzen = useCallback(
     (naechster: T) => {
-      setWert(naechster);
+      setGesetzt(naechster);
 
       const adresse = new URL(window.location.href);
 

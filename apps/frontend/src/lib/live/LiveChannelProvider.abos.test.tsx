@@ -1,5 +1,6 @@
 import { type LiveServerEventFrame, type LiveTopic } from '@palantir/contracts';
 import { act, render, screen } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type LiveChannelApi, LiveChannelProvider, useLiveChannel } from './LiveChannelProvider';
 
@@ -112,16 +113,30 @@ function ereignis(serverId: string): LiveServerEventFrame {
 /** Greift den Kanal aus dem Kontext ab, damit der Test ihn bedienen kann. */
 let kanal: LiveChannelApi | null = null;
 
-function Zapfhahn() {
-  kanal = useLiveChannel();
+/**
+ * Reicht den Kanal nach außen – aus einem Effekt, nicht beim Rendern: Eine
+ * Zuweisung an die modulweite Variable während des Renderns wäre ein
+ * Nebeneffekt, den der React-Compiler nicht zulässt. `render` wickelt die
+ * Effekte in `act`, der Kanal steht also gleich nach `zeichne()` bereit.
+ */
+function Zapfhahn({ melde }: { melde?: (api: LiveChannelApi) => void }) {
+  const api = useLiveChannel();
 
-  return <span data-testid="verbindung">{kanal.connection}</span>;
+  useEffect(() => {
+    melde?.(api);
+  }, [api, melde]);
+
+  return <span data-testid="verbindung">{api.connection}</span>;
+}
+
+function merkeKanal(api: LiveChannelApi): void {
+  kanal = api;
 }
 
 function zeichne() {
   return render(
     <LiveChannelProvider>
-      <Zapfhahn />
+      <Zapfhahn melde={merkeKanal} />
     </LiveChannelProvider>,
   );
 }

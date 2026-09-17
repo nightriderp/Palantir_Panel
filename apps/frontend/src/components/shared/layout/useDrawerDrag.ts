@@ -100,8 +100,14 @@ export function useDrawerDrag({
   const lastX = useRef<number>(0);
   const lastT = useRef<number>(0);
 
+  // `onClose` bekommt bei jedem Rendern eine neue Identität; die Feder soll
+  // trotzdem die aktuelle rufen. Nachgezogen im Layout-Effekt, weil der vor
+  // dem Öffnen/Schließen-Effekt unten läuft und ein Schreiben während des
+  // Renderns vom React-Compiler verboten ist.
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   /** Transform und Schleier auf den aktuellen Stand setzen. */
   const apply = useCallback((): void => {

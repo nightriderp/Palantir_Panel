@@ -1,7 +1,7 @@
 'use client';
 
 import { MESSAGE_REPORT_REASON_MAX_LENGTH, type MessageDto } from '@palantir/contracts';
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { FormModal } from '@/components/shared';
 
 /**
@@ -36,10 +36,14 @@ export function ReportMessageDialog({
   const [reason, setReason] = useState('');
   const fieldId = useId();
 
-  // Bei jedem Öffnen mit leerem Feld beginnen.
-  useEffect(() => {
+  // Bei jedem Öffnen mit leerem Feld beginnen – noch während des Renderns,
+  // damit kein Bild mit dem alten Text dazwischenliegt.
+  const messageId = message?.id ?? null;
+  const [zuletzt, setZuletzt] = useState({ open, messageId });
+  if (zuletzt.open !== open || zuletzt.messageId !== messageId) {
+    setZuletzt({ open, messageId });
     if (open) setReason('');
-  }, [open, message?.id]);
+  }
 
   const trimmed = reason.trim();
 

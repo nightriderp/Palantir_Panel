@@ -27,7 +27,9 @@ export interface SubdomainCheck {
 
 export function useSubdomainCheck(subdomain: string): SubdomainCheck {
   const [result, setResult] = useState<SubdomainAvailabilityDto | null>(null);
-  const [checking, setChecking] = useState(false);
+  // Hat die Anfrage für die aktuelle Subdomain geantwortet? Wird beim
+  // Wechsel unten zurückgesetzt; `checking` ergibt sich daraus.
+  const [beantwortet, setBeantwortet] = useState(false);
 
   const parsed = subdomainSchema.safeParse(subdomain);
   const formatError = parsed.success
@@ -35,21 +37,28 @@ export function useSubdomainCheck(subdomain: string): SubdomainCheck {
     : (parsed.error.issues[0]?.message ?? 'Diese Subdomain ist nicht erlaubt.');
   const normalized = parsed.success ? parsed.data : null;
 
+  // Wechsel der Subdomain während des Renderns verbuchen statt in einem
+  // Effekt: Das alte Ergebnis bleibt sichtbar, bis das neue da ist – nur
+  // eine ungültige Form räumt es ab.
+  const [vorherige, setVorherige] = useState(normalized);
+  if (vorherige !== normalized) {
+    setVorherige(normalized);
+    setBeantwortet(false);
+    if (normalized === null) setResult(null);
+  }
+
+  const checking = normalized !== null && !beantwortet;
+
   useEffect(() => {
-    if (normalized === null) {
-      setResult(null);
-      setChecking(false);
-      return;
-    }
+    if (normalized === null) return;
 
     const controller = new AbortController();
-    setChecking(true);
 
     const timer = setTimeout(() => {
       void checkSubdomain(normalized, controller.signal).then((response) => {
         if (controller.signal.aborted || isAborted(response)) return;
 
-        setChecking(false);
+        setBeantwortet(true);
         if (response.success) {
           setResult(response.data);
           return;
@@ -73,7 +82,6 @@ export function useSubdomainCheck(subdomain: string): SubdomainCheck {
     return () => {
       clearTimeout(timer);
       controller.abort();
-      setChecking(false);
     };
   }, [normalized]);
 
