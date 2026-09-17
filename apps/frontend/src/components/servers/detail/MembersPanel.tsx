@@ -149,7 +149,7 @@ export function MembersPanel({ server }: MembersPanelProps) {
                 </div>
               </div>
 
-              {member.canEdit ? (
+              {(member.permissions?.canChangeLevel ?? member.canEdit) ? (
                 <>
                   <select
                     aria-label={`Stufe von ${member.displayName}`}
@@ -165,9 +165,11 @@ export function MembersPanel({ server }: MembersPanelProps) {
                       </option>
                     ))}
                   </select>
-                  <Button size="sm" variant="danger" onClick={() => setPendingRemove(member)}>
-                    Entfernen
-                  </Button>
+                  {(member.permissions?.canRemove ?? member.canEdit) ? (
+                    <Button size="sm" variant="danger" onClick={() => setPendingRemove(member)}>
+                      Entfernen
+                    </Button>
+                  ) : null}
                 </>
               ) : (
                 <Badge tone="neutral">{LEVEL_LABELS[member.level]}</Badge>

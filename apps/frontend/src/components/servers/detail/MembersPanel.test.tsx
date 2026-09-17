@@ -219,3 +219,18 @@ describe('MembersPanel – Stufe ändern und entziehen', () => {
     ).toBeTruthy();
   });
 });
+
+describe('MembersPanel – Rechte je Vorgang (Befund 2.2)', () => {
+  it('liest permissions vor canEdit: Stufe ja, Entfernen nein', async () => {
+    api.fetchMembers.mockResolvedValue({
+      success: true,
+      data: [mitglied({ canEdit: true, permissions: { canChangeLevel: true, canRemove: false } })],
+      error: null,
+    });
+
+    zeichne(testServer(true));
+
+    expect(await screen.findByLabelText('Stufe von Mitverwalter')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Entfernen' })).toBeNull();
+  });
+});

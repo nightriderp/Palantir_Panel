@@ -239,7 +239,12 @@ async function call(
  * deshalb Feld für Feld, inklusive `canEdit`.
  */
 function erwarteMitgliedsDto(data: unknown, erwartet: ServerMemberDto): void {
-  expect(data).toEqual(erwartet);
+  // `permissions` folgt `canEdit` (Befund 2.2): beide Vorgänge hängen heute an
+  // demselben Recht, das Backend liefert das Objekt immer mit.
+  expect(data).toEqual({
+    ...erwartet,
+    permissions: { canChangeLevel: erwartet.canEdit, canRemove: erwartet.canEdit },
+  });
   expect(typeof (data as ServerMemberDto).canEdit).toBe('boolean');
 }
 

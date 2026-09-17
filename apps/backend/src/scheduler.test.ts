@@ -870,6 +870,10 @@ class SweepRepository implements ServerRepository {
     return Promise.resolve(hostId === HOST.id ? HOST : null);
   }
 
+  listPlacementCandidates(): Promise<never[]> {
+    return Promise.resolve([]);
+  }
+
   defaultHost(): Promise<HostNodeRecord | null> {
     return Promise.resolve(HOST);
   }

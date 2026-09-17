@@ -28,6 +28,7 @@ import {
   users,
 } from '../../db/schema.js';
 import { ServerOrchestrationError } from './errors.js';
+import { type PlacementCandidate } from './placement.js';
 
 /** Ein Gameserver, wie ihn der Dienst braucht. */
 export interface ServerRecord {
@@ -241,6 +242,14 @@ export interface ServerRepository {
    * Ab zwei Nodes wird das gemeinsame Token deshalb abgelehnt.
    */
   countHosts(): Promise<number>;
+  /**
+   * Alle Nodes mit Ausstattung und Belegung – Grundlage der Platzierungsregel
+   * für Server ohne gewählte Node (`placement.ts`, Review 2026-09-16, Befund
+   * 2.3). Belegung ist die Summe der RAM-Kontingente aller dort angelegten
+   * Server, gleich in welchem Zustand (wie `capacity.allocated` in der
+   * Node-Übersicht).
+   */
+  listPlacementCandidates(): Promise<readonly PlacementCandidate[]>;
   findHost(hostId: string): Promise<HostNodeRecord | null>;
   /**
    * Hält den Verbindungszustand einer Node fest, wenn ihr Agent den Handshake
@@ -707,6 +716,35 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
         .limit(1);
 
       return rows[0] ?? null;
+    },
+
+    async listPlacementCandidates(): Promise<readonly PlacementCandidate[]> {
+      // Zwei kleine Abfragen statt eines JSON-Aggregats in SQL: Die
+      // Kontingente liegen als jsonb, und die Summe je Node ist im Code
+      // lesbarer als ein Ausdruck über resource_limits->>'ramMb'.
+      const [nodes, server] = await Promise.all([
+        db
+          .select({
+            id: hostNodes.id,
+            name: hostNodes.name,
+            status: hostNodes.status,
+            totalRamMb: hostNodes.totalRamMb,
+            createdAt: hostNodes.createdAt,
+          })
+          .from(hostNodes)
+          .orderBy(asc(hostNodes.createdAt)),
+        db
+          .select({ hostId: gameServers.hostId, resourceLimits: gameServers.resourceLimits })
+          .from(gameServers),
+      ]);
+
+      const belegt = new Map<string, number>();
+
+      for (const row of server) {
+        belegt.set(row.hostId, (belegt.get(row.hostId) ?? 0) + row.resourceLimits.ramMb);
+      }
+
+      return nodes.map((node) => ({ ...node, allocatedRamMb: belegt.get(node.id) ?? 0 }));
     },
 
     async countHosts(): Promise<number> {
