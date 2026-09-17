@@ -1616,3 +1616,77 @@ describe('Anbieter-Login über HTTP (Pflichtenheft §7)', () => {
     expect(repository.methods.map((method) => method.type).sort()).toEqual(['discord', 'password']);
   });
 });
+
+describe('Konto löschen mit Besitzübergang (Pflichtenheft §7)', () => {
+  it('verlangt eine Anmeldung', async () => {
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/auth/admin/users/00000000-0000-4000-8000-000000000000',
+      headers: { [CSRF_HEADER_NAME]: 'x', cookie: `${CSRF_COOKIE_NAME}=x` },
+      payload: { confirmName: 'x' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('lehnt ein Konto ohne user.manage ab', async () => {
+    const { jar, account } = await registerAccount('spieler');
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/auth/admin/users/${account.id}`,
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '' },
+      payload: { confirmName: 'spieler' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('PERMISSION_DENIED');
+  });
+
+  it('löscht das Konto und gibt dessen Server an den Administrator', async () => {
+    const target = await registerAccount('spieler');
+    const admin = await registerAccount('verwalter');
+    const adminRole = roles.roles.find((role) => role.name === 'Admin');
+    await roles.assignToUser(admin.account.id, adminRole!.id);
+    repository.ownedServers.push({ ownerId: target.account.id, id: 'srv-1' });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/auth/admin/users/${target.account.id}`,
+      headers: {
+        cookie: cookieHeader(admin.jar),
+        [CSRF_HEADER_NAME]: admin.jar[CSRF_COOKIE_NAME] ?? '',
+      },
+      payload: { confirmName: 'spieler' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      response.json<{ data: { toUserId: string; transferredServerIds: string[] } }>().data,
+    ).toEqual({
+      toUserId: admin.account.id,
+      transferredServerIds: ['srv-1'],
+    });
+    expect(repository.users.map((user) => user.id)).toEqual([admin.account.id]);
+    expect(repository.ownedServers[0]?.ownerId).toBe(admin.account.id);
+  });
+
+  it('weist einen Körper mit unbekannten Feldern ab', async () => {
+    const admin = await registerAccount('verwalter');
+    const adminRole = roles.roles.find((role) => role.name === 'Admin');
+    await roles.assignToUser(admin.account.id, adminRole!.id);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/auth/admin/users/${admin.account.id}`,
+      headers: {
+        cookie: cookieHeader(admin.jar),
+        [CSRF_HEADER_NAME]: admin.jar[CSRF_COOKIE_NAME] ?? '',
+      },
+      payload: { confirmName: 'verwalter', force: true },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
+  });
+});

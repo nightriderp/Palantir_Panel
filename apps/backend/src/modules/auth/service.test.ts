@@ -1890,3 +1890,173 @@ describe('Anzeigename aus Provider-Angaben', () => {
     expect(sanitizeDisplayName('a').length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('Löschung durch einen Administrator mit Besitzübergang (Pflichtenheft §7)', () => {
+  /** Ein freigeschaltetes Konto: registriert und mit der Rolle „Nutzer" versehen. */
+  async function freigeschaltet(username: string): Promise<string> {
+    const { account } = await service.register(
+      { username, password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    const nutzer = roles.roles.find((role) => role.name === 'Nutzer');
+    await roles.assignToUser(account.id, nutzer!.id);
+
+    return account.id;
+  }
+
+  function auditVon(adminId: string) {
+    return { actorId: adminId, displayName: 'Verwalter', ipHint: '203.0.113.x' };
+  }
+
+  it('gibt Server und Sicherungen an den Administrator, wenn kein Ziel genannt ist', async () => {
+    const adminId = await freigeschaltet('verwalter');
+    const zielId = await freigeschaltet('spieler');
+    repository.ownedServers.push(
+      { ownerId: zielId, id: 'srv-1' },
+      { ownerId: zielId, id: 'srv-2' },
+    );
+    repository.ownedBackups.push({ ownerId: zielId, status: 'completed' });
+
+    const ergebnis = await service.deleteUserAsAdmin(
+      VOLL_ADMIN,
+      zielId,
+      { confirmName: 'spieler' },
+      auditVon(adminId),
+    );
+
+    expect(ergebnis.toUserId).toBe(adminId);
+    expect([...ergebnis.transferredServerIds].sort()).toEqual(['srv-1', 'srv-2']);
+    expect(repository.users.map((user) => user.id)).toEqual([adminId]);
+    expect(repository.ownedServers.every((server) => server.ownerId === adminId)).toBe(true);
+    expect(repository.ownedBackups[0]?.ownerId).toBe(adminId);
+    expect(revokedUserIds).toContain(zielId);
+
+    const uebergaben = auditEntries.filter((entry) => entry.action === 'server.ownerTransferred');
+    expect(uebergaben.map((entry) => entry.targetId).sort()).toEqual(['srv-1', 'srv-2']);
+    expect(uebergaben[0]?.metadata).toMatchObject({
+      fromUserId: zielId,
+      toUserId: adminId,
+      anlass: 'kontoLoeschung',
+    });
+    const geloescht = auditEntries.find((entry) => entry.action === 'user.deleted');
+    expect(geloescht?.actorId).toBe(adminId);
+    expect(geloescht?.metadata).toMatchObject({ selbst: false, serverCount: 2, backupCount: 1 });
+  });
+
+  it('gibt an ein genanntes, freigeschaltetes Konto', async () => {
+    const adminId = await freigeschaltet('verwalter');
+    const zielId = await freigeschaltet('spieler');
+    const erbeId = await freigeschaltet('erbe');
+    repository.ownedServers.push({ ownerId: zielId, id: 'srv-1' });
+
+    const ergebnis = await service.deleteUserAsAdmin(
+      VOLL_ADMIN,
+      zielId,
+      { confirmName: 'spieler', transferToUserId: erbeId },
+      auditVon(adminId),
+    );
+
+    expect(ergebnis.toUserId).toBe(erbeId);
+    expect(repository.ownedServers[0]?.ownerId).toBe(erbeId);
+  });
+
+  it('lehnt ein wartendes Zielkonto ab und lässt alles stehen', async () => {
+    const adminId = await freigeschaltet('verwalter');
+    const zielId = await freigeschaltet('spieler');
+    const { account: wartend } = await service.register(
+      { username: 'wartend', password: PASSWORD, altcha: ALTCHA },
+      CONTEXT,
+    );
+    repository.ownedServers.push({ ownerId: zielId, id: 'srv-1' });
+
+    await expectErrorCode(
+      service.deleteUserAsAdmin(
+        VOLL_ADMIN,
+        zielId,
+        { confirmName: 'spieler', transferToUserId: wartend.id },
+        auditVon(adminId),
+      ),
+      'TRANSFER_TARGET_INVALID',
+    );
+    expect(repository.users).toHaveLength(3);
+    expect(repository.ownedServers[0]?.ownerId).toBe(zielId);
+  });
+
+  it('lehnt ein gesperrtes Zielkonto ab', async () => {
+    const adminId = await freigeschaltet('verwalter');
+    const zielId = await freigeschaltet('spieler');
+    const erbeId = await freigeschaltet('erbe');
+    const index = repository.users.findIndex((user) => user.id === erbeId);
+    repository.users[index] = { ...repository.users[index]!, banned: true };
+
+    await expectErrorCode(
+      service.deleteUserAsAdmin(
+        VOLL_ADMIN,
+        zielId,
+        { confirmName: 'spieler', transferToUserId: erbeId },
+        auditVon(adminId),
+      ),
+      'TRANSFER_TARGET_INVALID',
+    );
+  });
+
+  it('lehnt das gelöschte Konto selbst als Ziel ab', async () => {
+    const adminId = await freigeschaltet('verwalter');
+    const zielId = await freigeschaltet('spieler');
+
+    await expectErrorCode(
+      service.deleteUserAsAdmin(
+        VOLL_ADMIN,
+        zielId,
+        { confirmName: 'spieler', transferToUserId: zielId },
+        auditVon(adminId),
+      ),
+      'TRANSFER_TARGET_INVALID',
+    );
+  });
+
+  it('meldet ein unbekanntes Zielkonto als USER_NOT_FOUND', async () => {
+    const adminId = await freigeschaltet('verwalter');
+    const zielId = await freigeschaltet('spieler');
+
+    await expectErrorCode(
+      service.deleteUserAsAdmin(
+        VOLL_ADMIN,
+        zielId,
+        { confirmName: 'spieler', transferToUserId: '00000000-0000-4000-8000-000000000000' },
+        auditVon(adminId),
+      ),
+      'USER_NOT_FOUND',
+    );
+  });
+
+  it('schützt das Owner-Konto und verlangt den richtigen Namen', async () => {
+    const adminId = await freigeschaltet('verwalter');
+    const zielId = await freigeschaltet('spieler');
+
+    await expectErrorCode(
+      service.deleteUserAsAdmin(VOLL_ADMIN, zielId, { confirmName: 'falsch' }, auditVon(adminId)),
+      'AUTH_INVALID_CREDENTIALS',
+    );
+
+    await repository.setOwner(zielId);
+
+    await expectErrorCode(
+      service.deleteUserAsAdmin(VOLL_ADMIN, zielId, { confirmName: 'spieler' }, auditVon(adminId)),
+      'AUTH_OWNER_PROTECTED',
+    );
+    expect(repository.users).toHaveLength(2);
+  });
+
+  it('wartet, solange eine Sicherung des Kontos läuft', async () => {
+    const adminId = await freigeschaltet('verwalter');
+    const zielId = await freigeschaltet('spieler');
+    repository.ownedBackups.push({ ownerId: zielId, status: 'running' });
+
+    await expectErrorCode(
+      service.deleteUserAsAdmin(VOLL_ADMIN, zielId, { confirmName: 'spieler' }, auditVon(adminId)),
+      'ACCOUNT_HAS_BACKUPS',
+    );
+    expect(repository.users).toHaveLength(2);
+  });
+});

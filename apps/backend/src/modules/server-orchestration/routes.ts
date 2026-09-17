@@ -30,6 +30,7 @@ import {
   scheduleInputSchema,
   updateServerSettingsInputSchema,
   serverMemberInputSchema,
+  transferServerOwnerInputSchema,
 } from '@palantir/validation';
 import { type MultipartFile } from '@fastify/multipart';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
@@ -61,7 +62,8 @@ export type ServerAuditAction =
   | 'server.cloned'
   | 'server.settingsChanged'
   | 'server.memberAdded'
-  | 'server.memberRemoved';
+  | 'server.memberRemoved'
+  | 'server.ownerTransferred';
 
 /**
  * Schmale Sicht auf `AuditService.record()` aus B8.
@@ -1247,4 +1249,44 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       }
     },
   );
+
+  // -- Besitzerwechsel (Lastenheft §3.7, Pflichtenheft §7) ---------------------
+
+  /**
+   * Nur mit `canTransferOwnership` (= `server.manage.any`): Auch der Besitzer
+   * selbst gibt seinen Server nicht weiter – Weitergabe ist Verwaltung. Die
+   * Antwort trägt den Server mit dem neuen Besitzer und den Rechten des
+   * Aufrufers, so wie ihn die Detailseite danach zeigt.
+   */
+  app.post('/api/servers/:id/owner', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+
+      await loadAuthorized(request, id, 'canTransferOwnership');
+
+      const input = transferServerOwnerInputSchema.parse(request.body);
+      const ergebnis = await service.transferOwnership(id, input.newOwnerId);
+
+      await protokolliere(request, 'server.ownerTransferred', id, {
+        fromUserId: ergebnis.previousOwnerId,
+        fromDisplayName: ergebnis.previousOwnerDisplayName,
+        toUserId: input.newOwnerId,
+        toDisplayName: ergebnis.newOwnerDisplayName,
+        anlass: 'einzeln',
+      });
+
+      const context = await dtoContext(request, id);
+
+      return await reply.send(
+        ok(
+          toGameServerDto(ergebnis.server, {
+            ...context,
+            recentCrashCount: service.recentCrashCount(ergebnis.server),
+          }),
+        ),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
 }

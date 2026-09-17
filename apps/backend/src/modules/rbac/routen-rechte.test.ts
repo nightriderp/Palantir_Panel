@@ -161,6 +161,8 @@ const OHNE_GUARD = new Map<string, Grund>([
   ['GET /api/servers/:id/members', GRUENDE.objektrecht],
   ['PUT /api/servers/:id/members', GRUENDE.objektrecht],
   ['DELETE /api/servers/:id/members/:userId', GRUENDE.objektrecht],
+  // Besitzerwechsel: `canTransferOwnership` aus dem DTO (= server.manage.any).
+  ['POST /api/servers/:id/owner', GRUENDE.objektrecht],
   ['PUT /api/servers/:id/pin', GRUENDE.objektrecht],
   ['DELETE /api/servers/:id/pin', GRUENDE.objektrecht],
   ['GET /api/servers/:id/files', GRUENDE.objektrecht],

@@ -887,6 +887,14 @@ class SweepRepository implements ServerRepository {
   removeMember(): Promise<void> {
     return this.nichtGebraucht('removeMember');
   }
+
+  transferOwner(): Promise<void> {
+    return this.nichtGebraucht('transferOwner');
+  }
+
+  findTransferCandidate(): Promise<null> {
+    return this.nichtGebraucht('findTransferCandidate');
+  }
 }
 
 /** Socket, der jeden Befehl sofort mit Erfolg beantwortet. */

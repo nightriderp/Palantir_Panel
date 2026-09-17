@@ -42,6 +42,12 @@ export interface DetailHeaderProps {
   onOpenSettings: () => void;
   onDelete: () => void;
   onCopyAddress: (address: string) => void;
+  /**
+   * Besitzer wechseln (Pflichtenheft §7). Der Knopf erscheint nur, wenn das
+   * DTO `canTransferOwnership` trägt **und** der Aufrufer die Nutzerliste
+   * lesen darf – ohne sie gäbe es kein Konto zur Auswahl.
+   */
+  onTransferOwner?: () => void;
 }
 
 export function DetailHeader({
@@ -52,6 +58,7 @@ export function DetailHeader({
   onOpenSettings,
   onDelete,
   onCopyAddress,
+  onTransferOwner,
 }: DetailHeaderProps) {
   const meta = serverStatusMeta(server.status);
   const blocked = isLifecycleActionBlocked(server.status) || busy;
@@ -159,6 +166,10 @@ export function DetailHeader({
               disabled={blocked}
               onClick={() => onLifecycle('restart')}
             />
+          ) : null}
+
+          {server.permissions.canTransferOwnership && onTransferOwner ? (
+            <IconButton icon="users" label="Besitzer wechseln" onClick={onTransferOwner} />
           ) : null}
 
           {server.permissions.canDelete ? (
