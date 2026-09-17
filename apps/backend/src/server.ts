@@ -2,6 +2,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyRequest, type RouteOptions } from 'fastify';
+import { sql } from 'drizzle-orm';
 import { env } from './config/env.js';
 import { cookieDomainUmfasstSpielhosts } from './config/cookie-domain.js';
 import { buildLoggerOptions } from './config/logging.js';
@@ -383,7 +384,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     },
   });
 
-  await app.register(registerHealthRoutes);
+  const withDatabase = options.database ?? env.DATABASE_URL !== undefined;
+
+  // Mit Datenbank prüft `/health` sie per `SELECT 1` (Review 2026-09-16,
+  // Befund 8.8); ohne bleibt es beim Prozess-Lebenszeichen.
+  await app.register(
+    registerHealthRoutes,
+    withDatabase
+      ? {
+          probeDatabase: async (): Promise<void> => {
+            await getDb().execute(sql`select 1`);
+          },
+        }
+      : {},
+  );
 
   /*
    * Die fachlichen Module brauchen eine Datenbank. Ohne `DATABASE_URL` werden
@@ -428,8 +442,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       files: 1,
     },
   });
-
-  const withDatabase = options.database ?? env.DATABASE_URL !== undefined;
 
   if (withDatabase) {
     const db = getDb();
