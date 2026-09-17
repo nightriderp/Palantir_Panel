@@ -13,6 +13,7 @@ const SAMPLES: Record<string, NotificationEvent> = {
   'server.failed': serverEvent('server.failed'),
   'server.cloned': serverEvent('server.cloned'),
   'server.deleted': serverEvent('server.deleted'),
+  'server.ownerTransferred': serverEvent('server.ownerTransferred'),
   'autoShutdown.triggered': {
     event: 'autoShutdown.triggered',
     payload: {

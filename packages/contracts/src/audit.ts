@@ -74,6 +74,19 @@ export const AUDIT_ACTIONS = [
   'server.settingsChanged',
   'server.memberAdded',
   'server.memberRemoved',
+  /**
+   * Besitzer eines Servers gewechselt (Lastenheft §3.7, Pflichtenheft §7) –
+   * durch einen Administrator, einzeln oder beim Löschen eines Kontos mit
+   * Übergang aller Server. Alter und neuer Besitzer stehen in den Metadaten;
+   * der Eintrag zeigt auf den Server, denn der bleibt bestehen.
+   */
+  'server.ownerTransferred',
+  /**
+   * Neue Fassung des Spiel-Images übernommen (Pflichtenheft §9). Alte und
+   * neue Fassung stehen in den Metadaten – der Server behält seine Fassung
+   * sonst über Neustarts hinweg, der Wechsel ist deshalb eine Entscheidung.
+   */
+  'server.imageUpdated',
 
   // Backups (B5)
   'backup.created',
