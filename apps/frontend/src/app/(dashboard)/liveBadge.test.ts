@@ -33,6 +33,16 @@ describe('liveAnzeige', () => {
     expect(liveAnzeige('closed', true).title).toContain('veraltet');
   });
 
+  it('hat für die schmale Kopfleiste je Zustand ein eigenes Wort (Befund 12.8)', () => {
+    const woerter = [
+      liveAnzeige('open', false).shortLabel,
+      liveAnzeige('closed', false).shortLabel,
+      liveAnzeige('closed', true).shortLabel,
+    ];
+    expect(new Set(woerter).size).toBe(3);
+    for (const wort of woerter) expect(wort.length).toBeLessThanOrEqual(12);
+  });
+
   it('bleibt bei bestätigtem Ausfall ruhig', () => {
     expect(liveAnzeige('closed', true).pulse).toBe(false);
     expect(liveAnzeige('connecting', false).pulse).toBe(true);

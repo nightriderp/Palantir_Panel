@@ -29,6 +29,85 @@ function tokenVorhanden(name: string): boolean {
 
 const LITERALE_FARBE = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i;
 
+/** Wert eines Tokens – `ink` oder `ink.faint`; nur Hex-Werte, die Flächen mit Alpha bleiben außen vor. */
+function tokenWert(pfad: string): string {
+  const [name, stufe = 'DEFAULT'] = pfad.split('.');
+  const eintrag = palette[name as string];
+  const wert = typeof eintrag === 'string' ? eintrag : (eintrag as Record<string, string>)[stufe];
+  if (typeof wert !== 'string' || !/^#[0-9a-f]{6}$/i.test(wert)) {
+    throw new Error(`Token ${pfad} ist kein Hex-Wert: ${String(wert)}`);
+  }
+  return wert;
+}
+
+/** Relative Leuchtdichte nach WCAG 2.x. */
+function leuchtdichte(hex: string): number {
+  const kanal = (i: number): number => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * kanal(1) + 0.7152 * kanal(3) + 0.0722 * kanal(5);
+}
+
+/** Kontrastverhältnis zweier Farben (1 bis 21). */
+function kontrast(a: string, b: string): number {
+  const la = leuchtdichte(a);
+  const lb = leuchtdichte(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+const FLAECHEN = ['canvas', 'surface', 'surface.muted', 'surface.deep', 'surface.console'];
+/** Fließtext, auch klein – 4,5:1 (WCAG 1.4.3). `ink.disabled` ist ausgenommen: Inaktives darf leiser sein. */
+const TEXT_TOKENS = ['ink', 'ink.muted', 'ink.soft', 'ink.faint'];
+/** Statusfarben stehen als Text in Badges und Meldungen. */
+const STATUS_TOKENS = ['success', 'warning', 'danger', 'caution', 'accent', 'brand.bright'];
+
+/**
+ * Der Nachweis, den es vorher nicht gab (Review 2026-09-16, Befund 12.7): Die
+ * Tokens sind das Design-System; ob sie lesbar sind, prüfte niemand. Fällt ein
+ * Wert unter die Schwelle, wird es hier rot – nicht erst beim Nutzer.
+ */
+describe('Kontrast der Farbtokens (WCAG 1.4.3)', () => {
+  it.each(TEXT_TOKENS)('%s hält 4,5:1 gegen jede Fläche', (token) => {
+    for (const flaeche of FLAECHEN) {
+      expect(
+        kontrast(tokenWert(token), tokenWert(flaeche)),
+        `${token} auf ${flaeche}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it.each(STATUS_TOKENS)('%s hält 4,5:1 gegen jede Fläche', (token) => {
+    for (const flaeche of FLAECHEN) {
+      expect(
+        kontrast(tokenWert(token), tokenWert(flaeche)),
+        `${token} auf ${flaeche}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('die Textstufen bleiben in ihrer Reihenfolge', () => {
+    // Heller machen darf die Hierarchie nicht umkehren – dann sähe Nebensache
+    // wichtiger aus als der Haupttext.
+    const gegenSurface = TEXT_TOKENS.map((token) =>
+      kontrast(tokenWert(token), tokenWert('surface')),
+    );
+    expect(gegenSurface).toEqual([...gegenSurface].sort((a, b) => b - a));
+  });
+
+  it('`brand` als Text erreicht mindestens 3:1 (Bedienelemente, große Schrift)', () => {
+    // Die Markenfarbe steht auf Knöpfen unter weißer Schrift und als Textfarbe
+    // in Initialen und Links – dort mit 3,9:1 auf `surface` unter 4,5. Für
+    // Fließtext gibt es `brand.bright`; hier wird nur der Boden gehalten.
+    for (const flaeche of FLAECHEN) {
+      expect(
+        kontrast(tokenWert('brand'), tokenWert(flaeche)),
+        `brand auf ${flaeche}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
 describe('Farbtokens statt literaler Werte', () => {
   it('MetricRing zeichnet die Ringspur über den Token `line`', () => {
     const { container } = render(<MetricRing label="CPU" value="42 %" percent={42} />);
