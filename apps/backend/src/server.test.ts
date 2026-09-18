@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { env } from './config/env.js';
 import { buildServer } from './server.js';
 
 describe('Backend-Grundgerüst', () => {
@@ -21,4 +22,38 @@ describe('Backend-Grundgerüst', () => {
 
     await app.close();
   });
+
+  /**
+   * Der Preflight muss jede Methode nennen, die die API benutzt. `@fastify/cors`
+   * 11 erlaubt in der Vorgabe nur `GET,HEAD,POST`; nach dem Sprung darauf
+   * scheiterte jeder PUT, PATCH und DELETE aus dem Browser, ohne dass der
+   * Server je eine fehlgeschlagene Anfrage sah. Dieser Test hält die Liste
+   * fest, damit die nächste Fassung des Plugins nicht wieder still etwas
+   * herausnimmt.
+   */
+  it.each(['PUT', 'PATCH', 'DELETE', 'POST'])(
+    'erlaubt %s im CORS-Preflight für das Frontend',
+    async (methode) => {
+      const app = await buildServer({ auth: false });
+      const response = await app.inject({
+        method: 'OPTIONS',
+        url: '/admin/instance-settings',
+        headers: {
+          origin: env.PUBLIC_WEB_URL,
+          'access-control-request-method': methode,
+          'access-control-request-headers': 'content-type,x-csrf-token',
+        },
+      });
+
+      expect(response.statusCode).toBe(204);
+      const erlaubt = String(response.headers['access-control-allow-methods'] ?? '')
+        .split(',')
+        .map((eintrag) => eintrag.trim());
+      expect(erlaubt).toContain(methode);
+      expect(response.headers['access-control-allow-origin']).toBe(env.PUBLIC_WEB_URL);
+      expect(response.headers['access-control-allow-credentials']).toBe('true');
+
+      await app.close();
+    },
+  );
 });
