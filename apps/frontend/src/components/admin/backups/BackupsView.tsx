@@ -105,9 +105,15 @@ function BucketTable({
           <tbody>
             {seite.zeilen.map((bucket) => (
               <tr key={bucket.id ?? bucket.name ?? 'unbekannt'}>
-                <Td className="text-ink">{bucket.name ?? 'Unbekannt'}</Td>
-                <Td className="text-right">{formatNumber(bucket.backupCount)}</Td>
-                <Td className="text-right">{formatBytes(bucket.totalSizeBytes)}</Td>
+                <Td label={nameHeader} className="text-ink">
+                  {bucket.name ?? 'Unbekannt'}
+                </Td>
+                <Td label="Backups" className="text-right">
+                  {formatNumber(bucket.backupCount)}
+                </Td>
+                <Td label="Speicher" className="text-right">
+                  {formatBytes(bucket.totalSizeBytes)}
+                </Td>
               </tr>
             ))}
           </tbody>

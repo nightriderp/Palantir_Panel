@@ -397,7 +397,7 @@ export function UsersView() {
                 ref={highlight.ref(entry.userId)}
                 className={cn(highlight.matches(entry.userId) && 'bg-brand-soft')}
               >
-                <Td>
+                <Td label="Benutzer">
                   <span className="flex items-center gap-2.5">
                     <span
                       aria-hidden
@@ -425,7 +425,7 @@ export function UsersView() {
                     </span>
                   </span>
                 </Td>
-                <Td className="text-ink-muted">
+                <Td label="Rollen" className="text-ink-muted">
                   {/*
                     Fundpunkt 221: Der Owner steht ausserhalb des Rollensystems
                     und trug deshalb das Abzeichen „Gast" - seine eigene Zeile
@@ -439,7 +439,7 @@ export function UsersView() {
                     '—'
                   )}
                 </Td>
-                <Td>
+                <Td label="Zustand">
                   <Badge tone={registrationStatusTone(entry.status)} withDot>
                     {registrationStatusLabel(entry.status)}
                   </Badge>
@@ -449,6 +449,7 @@ export function UsersView() {
                   derselben Grauschrift wie jede andere Zeile.
                 */}
                 <Td
+                  label="Kontingent"
                   className={cn(
                     'whitespace-nowrap font-mono text-xs',
                     quotaExceeded(entry.quota) ? 'font-semibold text-warning' : 'text-ink-muted',
@@ -460,10 +461,10 @@ export function UsersView() {
                 </Td>
                 {/* Serveranzahl aus dem DTO (Gefundener Punkt 90) – vorher
                     filterte die Ansicht dafür die ganze Serverliste im Browser. */}
-                <Td className="whitespace-nowrap font-mono text-xs text-ink-muted">
+                <Td label="Server" className="whitespace-nowrap font-mono text-xs text-ink-muted">
                   {entry.serverCount === undefined ? '—' : formatNumber(entry.serverCount)}
                 </Td>
-                <Td className="whitespace-nowrap text-ink-muted">
+                <Td label="Erstellt" className="whitespace-nowrap text-ink-muted">
                   {formatDate(entry.registeredAt)}
                 </Td>
                 <Td>
