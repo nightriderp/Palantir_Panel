@@ -1,7 +1,7 @@
 /**
  * @palantir/contracts
  *
- * Vertragsgrenze zwischen Backend, Frontend und Agent (Pflichtenheft §4, CLAUDE.md §3).
+ * Vertragsgrenze zwischen Backend, Frontend und Agent (Pflichtenheft §4, Entwicklungsregeln §3).
  *
  * Enthalten sind die paket-übergreifende Basis (Response-Envelope,
  * Fehlercode-Katalog, Benennungsschema der WebSocket-Events), die bereits
@@ -9,7 +9,7 @@
  * Frames, Korrelations-ID-Format). Weitere DTOs (inkl. `permissions`-Objekt aus
  * B2) und die Nutzdaten der einzelnen Agent-Befehle kommen aus den jeweiligen
  * Arbeitspaketen – jeweils über einen eigenen, kleinen PR, niemals nebenbei in
- * einem Feature-PR (CLAUDE.md §6).
+ * einem Feature-PR (Entwicklungsregeln §6).
  *
  * Änderungen sind bevorzugt additiv (neue optionale Felder). Breaking Changes
  * an bestehenden Feldern werden im Commit und PR explizit gekennzeichnet.

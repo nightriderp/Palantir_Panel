@@ -5,7 +5,7 @@
  * `GET/PUT /containers/{id}/archive` an - Inhalte gehen als TAR-Strom rein und
  * raus. Es gibt keinen Endpunkt, der ein Verzeichnis auflistet.
  *
- * Bewusste Entscheidung (CLAUDE.md §1): statt einer neuen Abhaengigkeit
+ * Bewusste Entscheidung (Entwicklungsregeln §1): statt einer neuen Abhaengigkeit
  * (`tar-stream`) oder eines `ls`-Aufrufs im Container steht hier ein kleiner
  * eigener Codec. Ein `ls` im Container waere die schlechtere Loesung, weil es
  * eine Shell im Image voraussetzt - die es bei read-only Root-Filesystem und
@@ -17,7 +17,14 @@
 
 const BLOCK_SIZE = 512;
 
-export type TarEntryType = 'file' | 'directory' | 'symlink';
+/**
+ * `special` fasst zusammen, was weder Datei noch Verzeichnis noch Symlink ist:
+ * Hardlinks (`1`), Geraetedateien (`3`, `4`) und FIFOs (`6`). Vorher galten
+ * sie als `file` mit leerem Inhalt – ein Weltarchiv mit einem Hardlink
+ * erzeugte eine leere Datei statt den Eintrag zu ueberspringen (Review
+ * 2026-09-16, Befund 7.4).
+ */
+export type TarEntryType = 'file' | 'directory' | 'symlink' | 'special';
 
 export interface TarEntry {
   /** Pfad relativ zum Archivwurzelverzeichnis, wie im Archiv hinterlegt. */
@@ -54,7 +61,13 @@ function typAusFlag(flag: string): TarEntryType {
       return 'directory';
     case '2':
       return 'symlink';
+    case '1':
+    case '3':
+    case '4':
+    case '6':
+      return 'special';
     default:
+      // `0`, NUL und `7` (zusammenhaengende Datei) sind gewoehnliche Dateien.
       return 'file';
   }
 }

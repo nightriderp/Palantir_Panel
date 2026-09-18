@@ -2,7 +2,7 @@
  * Lesen hochgeladener Archive (Weltdaten-Uebernahme, Lastenheft §3.3;
  * Arbeitspaket P4).
  *
- * **Warum eine eigene, kleine Umsetzung und keine Bibliothek** (CLAUDE.md §1):
+ * **Warum eine eigene, kleine Umsetzung und keine Bibliothek** (Entwicklungsregeln §1):
  * Gebraucht wird genau eines - "welche Eintraege stehen in diesem Archiv und
  * was ist ihr Inhalt". Fuer `tar.gz` liegt der Codec schon da (`docker/tar.ts`
  * plus `zlib`); es fehlt allein das ZIP-Format, und dafuer reichen die
@@ -13,7 +13,7 @@
  * **Was hier NICHT passiert:** Geschrieben wird nichts. Diese Datei liefert nur
  * die geprueften Eintraege; abgelegt werden sie von der Container-Runtime ueber
  * denselben Archiv-Endpunkt, den auch `FILE_UPLOAD` benutzt. So bleibt der
- * einzige Weg auf das Datenvolume der ueber die Runtime (CLAUDE.md §4).
+ * einzige Weg auf das Datenvolume der ueber die Runtime (Entwicklungsregeln §4).
  *
  * **Sicherheit.** Drei Grenzen, alle bewusst hier und nicht beim Aufrufer:
  *
@@ -135,6 +135,12 @@ export function safeArchivePath(roh: string): string | null {
     return null;
   }
 
+  // Ein NUL im Namen kann aus einem PAX-Datensatz kommen; ein Dateisystem
+  // schneidet dort ab oder lehnt ab – beides ist kein Pfad, den wir anlegen.
+  if (vereinheitlicht.includes('\0')) {
+    return null;
+  }
+
   const teile: string[] = [];
 
   for (const teil of vereinheitlicht.split('/')) {
@@ -218,8 +224,10 @@ function readTarGz(archiv: Buffer, sammler: Sammler, maxExtractedBytes: number):
   }
 
   for (const eintrag of parseTar(roh)) {
-    if (eintrag.type === 'symlink') {
-      // Ein Symlink im Datenordner koennte nach aussen zeigen - siehe Kopf.
+    if (eintrag.type === 'symlink' || eintrag.type === 'special') {
+      // Ein Symlink im Datenordner koennte nach aussen zeigen; Hardlinks,
+      // Geraetedateien und FIFOs haben in einer Spielwelt nichts zu suchen -
+      // siehe Kopf.
       sammler.skip(eintrag.name);
       continue;
     }

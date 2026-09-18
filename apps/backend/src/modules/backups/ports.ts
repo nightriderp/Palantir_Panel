@@ -4,7 +4,7 @@
  * B5 orchestriert nur (STRUKTUR.md, Pflichtenheft §2.3): Es kennt weder den
  * Homeserver noch die Server-Orchestrierung noch die Notification-Engine
  * direkt, sondern spricht ausschließlich über die Schnittstellen in dieser
- * Datei. Das hält die fachlichen Regeln ohne Infrastruktur testbar (CLAUDE.md
+ * Datei. Das hält die fachlichen Regeln ohne Infrastruktur testbar (Entwicklungsregeln
  * §4, analog zum `ContainerRuntime`-Interface des Agents) und vermeidet, dass
  * B5 Tabellen anlegt, die anderen Paketen gehören.
  *
@@ -63,7 +63,7 @@ export interface BackupServerRecord {
    * B5 fragt damit nach {@link GameTypeDefinition.quiesceCommands}: Ein Spiel,
    * das seinen Schreibstopp kennt, wird gesichert, ohne dass die Spieler es
    * merken. Der Spieltyp-Katalog gehoert B3; B5 bekommt die Befehle daraus als
-   * fertige Angabe und legt selbst keine zweite Auslegung an (CLAUDE.md §3).
+   * fertige Angabe und legt selbst keine zweite Auslegung an (Entwicklungsregeln §3).
    */
   readonly gameType: string;
   /** Mitverwalter (`ServerMember`, Pflichtenheft §6) – zählen bei `.own` mit. */
@@ -140,7 +140,7 @@ export interface BackupAgentGateway {
  * `backup.failed` ist ein Benachrichtigungsanlass (Pflichtenheft §14),
  * `backup.progressed` ein reines Live-Ereignis für offene Ansichten
  * (Gefundener Punkt 51). Beide Formen stehen im Vertrag; hier steht nur die
- * Zuordnung Ereignis → Nutzlast, keine zweite Beschreibung (CLAUDE.md §3).
+ * Zuordnung Ereignis → Nutzlast, keine zweite Beschreibung (Entwicklungsregeln §3).
  */
 export interface BackupEventPayloads {
   'backup.failed': NotificationEventPayloads['backup.failed'];

@@ -10,7 +10,7 @@
  * Kapazitätsprüfung aus Pflichtenheft §10 braucht. Diese Datei nutzt sie und
  * legt darüber die **Verwaltungssicht** aus Lastenheft §3.7: der vollständige
  * DTO mit `permissions`, Kapazität und Auslastung. Keine zweite Definition der
- * Bausteine (CLAUDE.md §3).
+ * Bausteine (Entwicklungsregeln §3).
  *
  * **Ergänzungen gegenüber Pflichtenheft §6:** Dort stehen nur `id`,
  * `wireguardIp`, `totalResources` und `status`. Zusätzlich stehen hier `name`
@@ -62,7 +62,7 @@ export interface HostNodeCapacity {
   /**
    * Belegung, gegen die Anlegen und Starten geprüft werden (Fundpunkt 203).
    *
-   * Optional, weil additiv (CLAUDE.md §3): Das Backend füllt das Feld immer,
+   * Optional, weil additiv (Entwicklungsregeln §3): Das Backend füllt das Feld immer,
    * ältere Aufrufer und Testdaten kommen ohne aus. Wer es liest, fällt
    * sinnvollerweise auf `allocated` zurück – das ist die vorsichtigere Zahl.
    */
@@ -92,7 +92,7 @@ export interface HostNodeUsage {
    *   überschätzt eher, was für eine Auslastungsanzeige die richtige Richtung
    *   ist, zeigt aber nicht, was wirklich benutzt wird.
    *
-   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3); fehlt das
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3); fehlt das
    * Feld, ist die Herkunft unbekannt und die Anzeige nennt sie nicht.
    */
   source?: HostNodeUsageSource;
@@ -162,12 +162,41 @@ export interface HostNodeDto {
    * Das Token selbst steht **nie** im DTO; gespeichert ist ohnehin nur sein
    * Hash. Hier steht ausschließlich, ob eines vergeben ist.
    *
-   * Optional, damit dieser Vertrag für sich stehen kann (CLAUDE.md §3): Ein
+   * Optional, damit dieser Vertrag für sich stehen kann (Entwicklungsregeln §3): Ein
    * Konsument, der das Feld nicht kennt, bleibt gültig, und ein fehlender Wert
    * ist wie `false` zu lesen.
    */
   hasAgentToken?: boolean;
+  /**
+   * Was der Agent dieser Node zuletzt über sich gesagt hat (Review
+   * 2026-09-16, Befund 11.3).
+   *
+   * Bis dahin blieb ein Agent mit falscher Protokollversion unsichtbar: Das
+   * Backend schloss die Verbindung mit einem Log-Eintrag, die Node stand
+   * schlicht „offline", und der Agent versuchte es endlos erneut. Hier steht
+   * das letzte `hello` samt Urteil – auch das abgewiesene.
+   *
+   * Optional und `null`-fähig, damit dieser Vertrag für sich stehen kann
+   * (Entwicklungsregeln §3): Fehlt das Feld oder ist es `null`, hat sich seit
+   * dem Start des Backends kein Agent gemeldet. Nicht persistiert – der Agent
+   * meldet sich binnen einer Minute erneut.
+   */
+  agent?: HostNodeAgentInfo | null;
   /** ISO-8601-Zeitstempel. */
   createdAt: string;
   permissions: HostNodePermissions;
+}
+
+/** Letzter Handshake des Agents einer Node (Pflichtenheft §2.2). */
+export interface HostNodeAgentInfo {
+  /** Fassung des Agents, wie er sie im `hello` nennt. */
+  version: string;
+  /** Protokollversion des Agents. */
+  protocolVersion: number;
+  /** Protokollversion, die das Backend erwartet (`AGENT_PROTOCOL_VERSION`). */
+  expectedProtocolVersion: number;
+  /** `false`: Das Backend hat den Handshake wegen der Version abgewiesen. */
+  compatible: boolean;
+  /** Zeitpunkt des Handshakes als ISO-8601. */
+  reportedAt: string;
 }

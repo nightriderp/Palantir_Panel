@@ -9,7 +9,7 @@
  * tatsächlich umsetzt: der Backup-Zeitplan eines Servers. Das vollständige
  * `ScheduleDto` samt CRUD für den Aufgaben-Tab (F3) bringt das Paket mit, das
  * diesen Tab baut – **additiv hier**, nicht als zweite, parallele Struktur
- * (CLAUDE.md §3).
+ * (Entwicklungsregeln §3).
  */
 
 /**

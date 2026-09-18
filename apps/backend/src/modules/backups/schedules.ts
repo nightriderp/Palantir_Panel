@@ -117,7 +117,7 @@ export function createBackupScheduleService(
    * Vorher baute `set()` sein DTO mit fest verdrahtetem `lastBackupId: null`,
    * während `get()` das Feld füllte: Nach dem Speichern zeigte die Oberfläche
    * „noch nie gelaufen“, bis der Nutzer die Seite neu lud. Zwei Formen
-   * derselben Antwort sind eine Fehlerquelle für sich (CLAUDE.md §3).
+   * derselben Antwort sind eine Fehlerquelle für sich (Entwicklungsregeln §3).
    *
    * `stopServer` gehört seit contracts-validation-03 dazu: Der Wert wurde seit
    * jeher gespeichert, aber nie ausgeliefert – ein Formular konnte den

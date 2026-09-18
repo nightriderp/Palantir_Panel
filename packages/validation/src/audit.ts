@@ -2,7 +2,7 @@
  * Zod-Schemas zum Audit-Log (Pflichtenheft §6).
  *
  * Es gibt hier bewusst **kein** Update- oder Delete-Schema: Das Log ist
- * append-only (CLAUDE.md §2). Geprüft werden ausschließlich die Filter der
+ * append-only (Entwicklungsregeln §2). Geprüft werden ausschließlich die Filter der
  * Leseabfrage und die Nutzlast eines neuen Eintrags.
  */
 

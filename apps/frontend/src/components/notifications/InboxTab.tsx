@@ -137,11 +137,14 @@ export function InboxTab({ preferences, onDesktopNotify, onPreferencesChange }: 
    * Der Kanal gehoert dem Rahmen (`NotificationLiveProvider`), damit Glocke und
    * Posteingang sich eine Verbindung teilen. Der Rueckruf wird bei jedem
    * Rendern neu erzeugt und sieht dadurch den aktuellen Filter; die Ref haelt
-   * ihn fest, ohne das Abo jedes Mal neu anzumelden.
+   * ihn fest, ohne das Abo jedes Mal neu anzumelden. Geschrieben wird sie nach
+   * dem Commit, nicht im Rendern – der Kanal ruft ohnehin erst danach.
    */
   const live = useNotificationLive();
   const onLiveRef = useRef(onLive);
-  onLiveRef.current = onLive;
+  useEffect(() => {
+    onLiveRef.current = onLive;
+  }, [onLive]);
 
   const { subscribe, setUnreadCount } = live;
 

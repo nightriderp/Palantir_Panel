@@ -10,6 +10,7 @@ import {
   type ServerCloneJobDto,
   type ServerFileContentDto,
   type ServerFileListDto,
+  type ServerMemberCandidateDto,
   type ServerMemberDto,
   type ServerStatsHistoryDto,
   type SubdomainAvailabilityDto,
@@ -296,6 +297,16 @@ export function fetchMembers(
   return apiRequest<ServerMemberDto[]>(serverPath(serverId, '/members'), { signal });
 }
 
+/** Konten, die der Aufrufer für diesen Server freigeben kann (nur mit `canManageMembers`). */
+export function fetchMemberCandidates(
+  serverId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<ServerMemberCandidateDto[]>> {
+  return apiRequest<ServerMemberCandidateDto[]>(serverPath(serverId, '/members/candidates'), {
+    signal,
+  });
+}
+
 export function addOrUpdateMember(
   serverId: string,
   input: ServerMemberInput,
@@ -309,6 +320,29 @@ export function addOrUpdateMember(
 export function removeMember(serverId: string, userId: string): Promise<ApiResult<null>> {
   return apiRequest<null>(serverPath(serverId, `/members/${encodeURIComponent(userId)}`), {
     method: 'DELETE',
+  });
+}
+
+/**
+ * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9). Am laufenden
+ * Server als Neustart, am gestoppten nur als Neuaufbau ohne Start. Antwort:
+ * der Server mit der neuen Fassung.
+ */
+export function updateServerImage(serverId: string): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(serverPath(serverId, '/update'), { method: 'POST' });
+}
+
+/**
+ * Besitzer eines Servers wechseln (Pflichtenheft §7) – nur mit
+ * `permissions.canTransferOwnership`. Antwort: der Server mit neuem Besitzer.
+ */
+export function transferServerOwner(
+  serverId: string,
+  newOwnerId: string,
+): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(serverPath(serverId, '/owner'), {
+    method: 'POST',
+    json: { newOwnerId },
   });
 }
 

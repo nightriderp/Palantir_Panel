@@ -5,7 +5,7 @@
  * direkt, sondern spricht ausschließlich über die Schnittstellen in dieser
  * Datei. Das hält die fachlichen Regeln (Regelauswertung, Empfängerkreis,
  * Textbildung) ohne Infrastruktur testbar – dieselbe Trennung wie in B5 und
- * beim `ContainerRuntime`-Interface des Agents (CLAUDE.md §4).
+ * beim `ContainerRuntime`-Interface des Agents (Entwicklungsregeln §4).
  *
  * Wer setzt was ein:
  * - {@link RecipientDirectory} – hier über Drizzle umgesetzt (`repository.ts`)
@@ -115,7 +115,7 @@ export interface NotificationTransport {
  *
  * Trägt einen benannten Code aus dem Katalog, damit die Ursache in
  * `notification_deliveries` und am Kanal (`lastFailureCode`) auswertbar bleibt
- * statt als Freitext (CLAUDE.md §5).
+ * statt als Freitext (Entwicklungsregeln §5).
  *
  * Bewusst **kein** `AppError` (Audit W2-9): Der Fehler beantwortet keine
  * HTTP-Anfrage, sondern wird vollständig in `service.ts` ausgewertet, und seine

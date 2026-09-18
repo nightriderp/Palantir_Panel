@@ -2,6 +2,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyRequest, type RouteOptions } from 'fastify';
+import { sql } from 'drizzle-orm';
 import { env } from './config/env.js';
 import { cookieDomainUmfasstSpielhosts } from './config/cookie-domain.js';
 import { buildLoggerOptions } from './config/logging.js';
@@ -94,6 +95,7 @@ import {
   registerServerOrchestration,
 } from './modules/server-orchestration/index.js';
 import { effectiveUploadLimitBytes } from './modules/server-orchestration/files.js';
+import { MAX_AGENT_COMMAND_RESULT_BYTES } from './modules/server-orchestration/agent-frame.js';
 import { registerArcade } from './modules/arcade/index.js';
 import { registerHealthRoutes } from './routes/health.js';
 import {
@@ -233,8 +235,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
    * Der frühere Rückfall auf `origin: false` war damit toter Code und ist
    * entfernt – wer CORS abschalten will, ändert nicht diese Zeile, sondern die
    * Ableitung.
+   *
+   * `methods` steht ausdrücklich da: `@fastify/cors` 11 erlaubt in der Vorgabe
+   * nur noch die „sicheren" Methoden `GET,HEAD,POST` (Fassung 10: auch PUT,
+   * PATCH, DELETE). Nach dem Sprung auf 11 (v1.45.0) scheiterte jeder PUT,
+   * PATCH und DELETE aus dem Browser am Preflight – Schriftwechsel,
+   * Registrierungsschalter, Löschen –, während der Server selbst nichts davon
+   * sah: Der Browser schickt die Anfrage nach einem Preflight ohne die Methode
+   * gar nicht ab. Aufgefallen am Schriftwechsel, drei Fassungen später.
    */
-  await app.register(cors, { origin: [env.PUBLIC_WEB_URL], credentials: true });
+  await app.register(cors, {
+    origin: [env.PUBLIC_WEB_URL],
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  });
 
   /*
    * Reihenfolge ist wichtig: Das Auth-Modul hängt seine `onRequest`-Hooks vor
@@ -383,7 +397,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     },
   });
 
-  await app.register(registerHealthRoutes);
+  const withDatabase = options.database ?? env.DATABASE_URL !== undefined;
+
+  // Mit Datenbank prüft `/health` sie per `SELECT 1` (Review 2026-09-16,
+  // Befund 8.8); ohne bleibt es beim Prozess-Lebenszeichen.
+  await app.register(
+    registerHealthRoutes,
+    withDatabase
+      ? {
+          probeDatabase: async (): Promise<void> => {
+            await getDb().execute(sql`select 1`);
+          },
+        }
+      : {},
+  );
 
   /*
    * Die fachlichen Module brauchen eine Datenbank. Ohne `DATABASE_URL` werden
@@ -398,7 +425,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
    * Datei-Uploads: Datei-Manager (P2, Lastenheft §3.3), Weltdaten-Archive des
    * Wizards (P4) und das Profilbild (Konto-Bereich).
    *
-   * **Neue Abhängigkeit `@fastify/multipart` (CLAUDE.md §1).** Das Frontend
+   * **Neue Abhängigkeit `@fastify/multipart` (Entwicklungsregeln §1).** Das Frontend
    * lädt Dateien als `multipart/form-data` hoch (`uploadFile()` in
    * `lib/api/servers.ts`); Fastify bringt dafür keinen Parser mit, und ein
    * selbst gebauter wäre genau die Sorte Code, die man nicht selbst schreiben
@@ -428,8 +455,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       files: 1,
     },
   });
-
-  const withDatabase = options.database ?? env.DATABASE_URL !== undefined;
 
   if (withDatabase) {
     const db = getDb();
@@ -474,6 +499,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const admin = createAdminModule({
       db,
       onDisabledGameTypesChanged: (ids) => spieleKatalog?.setDisabledGameTypes(ids),
+      // Admin-Bereiche nur innerhalb des Tunnels und nie über dem Router-Port
+      // (Review 2026-09-16, Befund 4.3).
+      portRangeLimits: {
+        tunnelStart: env.GAME_PORT_RANGE_START,
+        tunnelEnd: env.GAME_PORT_RANGE_END,
+        routerPort: env.MINECRAFT_ROUTER_PORT,
+      },
       // Für den Archivlauf: Der Advisory-Lock gehört der Verbindung, die ihn
       // nimmt, und braucht deshalb den Pool selbst (Audit W2-16).
       pool: getPool(),
@@ -550,7 +582,17 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * mit `AUTH_REQUIRED`. Der Agent-Endpunkt ist davon unabhängig, er
      * authentifiziert über das Pre-Shared-Token.
      */
-    await app.register(websocket);
+    /*
+     * Größte Nachricht je WebSocket (Review 2026-09-16, Befund 3.1). Ohne
+     * Angabe gilt die Vorgabe von `ws`: 100 MiB je Frame, und jede eigene
+     * Grenze der Kanäle (8 KiB am Live-Kanal, 1 MiB am Agent-Kanal) griff erst,
+     * nachdem der ganze Frame im Speicher lag. `ws` prüft `maxPayload` beim
+     * Eintreffen der Teilstücke und bricht mit 1009 ab. Die Grenze gilt für
+     * alle WebSocket-Routen dieses Prozesses, deshalb die größte, die ein
+     * Kanal wirklich braucht: das Befehlsergebnis des Agents mit einer
+     * Datei aus dem Datei-Manager (`MAX_AGENT_COMMAND_RESULT_BYTES`).
+     */
+    await app.register(websocket, { options: { maxPayload: MAX_AGENT_COMMAND_RESULT_BYTES } });
 
     /*
      * Schriften-Routen erst hier: `POST /api/admin/fonts` nimmt die Datei als
@@ -569,9 +611,43 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * Ereignis-Senke beim Aufbau gereicht und kennen B6 selbst nicht
      * (WORK_STATUS.md, Gefundene Punkte 34, 62 und 71).
      */
+    /*
+     * Wiederkehrende Sitzungsprüfung an jedem offenen WebSocket (Chat seit
+     * Audit W2-3; Meldungen und Server-Live seit Review 2026-09-16, Befund
+     * 3.2). Sperre und Widerruf schlagen über die Senke oben sofort durch,
+     * diese Prüfung fängt alles Übrige ab (abgelaufene Sitzung, Widerruf ohne
+     * Senke, verpasste Meldung).
+     */
+    const isSessionValid = async (request: FastifyRequest): Promise<boolean> => {
+      const sessionId = request.authSessionId;
+
+      if (!authService || sessionId === null) {
+        return true;
+      }
+
+      try {
+        await authService.resolveSession(sessionId);
+
+        return true;
+      } catch (error: unknown) {
+        /*
+         * Nur ein Urteil von B1 („abgelaufen", „gesperrt") beendet die
+         * Verbindung. Ein Infrastrukturfehler (Datenbank kurz weg) fliegt
+         * weiter und lässt den Kanal offen – die Route behandelt ihn als
+         * „diesmal nichts feststellbar".
+         */
+        if (isAuthError(error)) {
+          return false;
+        }
+
+        throw error;
+      }
+    };
+
     const notifications = await registerNotifications(app, {
       db,
       resolveUserId: (request) => request.authUser?.id ?? null,
+      isSessionValid,
       // Herkunftsprüfung des WebSocket-Handshakes (Audit W2-5,
       // `security-matrix-04`) – dieselbe Adresse wie bei CORS oben.
       allowedOrigin: env.PUBLIC_WEB_URL,
@@ -639,6 +715,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       db,
       agents,
       resolveViewerId: (request) => request.authUser?.id ?? null,
+      isSessionValid,
+      // Rollenrechte am offenen Live-Kanal neu lesen (Befund 3.2) – derselbe
+      // Aufbau wie `resolveActor` in `registerRbac()` oben.
+      refreshActor: async (request) =>
+        authService && request.authUser ? authService.buildActor(request.authUser) : null,
       /*
        * Der öffentliche Port-Pool gehört B8; B3 vergibt keine Ports selbst.
        * Gereicht wird die Fabrik, nicht der fertige Dienst: Die Vergabe eines
@@ -742,36 +823,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
           request.authUser
             ? { id: request.authUser.id, displayName: request.authUser.displayName }
             : null,
-        /*
-         * Wiederkehrende Prüfung am offenen Kanal: Sperre und Widerruf schlagen
-         * über die Senke oben sofort durch, diese Prüfung fängt alles Übrige ab
-         * (abgelaufene Sitzung, Widerruf ohne Senke, verpasste Meldung).
-         */
-        isSessionValid: async (request) => {
-          const sessionId = request.authSessionId;
-
-          if (!authService || sessionId === null) {
-            return true;
-          }
-
-          try {
-            await authService.resolveSession(sessionId);
-
-            return true;
-          } catch (error: unknown) {
-            /*
-             * Nur ein Urteil von B1 („abgelaufen", „gesperrt") beendet die
-             * Verbindung. Ein Infrastrukturfehler (Datenbank kurz weg) fliegt
-             * weiter und lässt den Kanal offen – die Route behandelt ihn als
-             * „diesmal nichts feststellbar".
-             */
-            if (isAuthError(error)) {
-              return false;
-            }
-
-            throw error;
-          }
-        },
+        // Wiederkehrende Prüfung am offenen Kanal – dieselbe wie bei
+        // Meldungen und Server-Live (siehe oben).
+        isSessionValid,
       });
     });
 

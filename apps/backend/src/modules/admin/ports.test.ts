@@ -1,7 +1,7 @@
 import { createPortRangeInputSchema, updatePortRangeInputSchema } from '@palantir/validation';
 import { describe, expect, it } from 'vitest';
 import { createAuditService } from './audit.js';
-import { createPortPoolService, rangesOverlap } from './ports.js';
+import { type PortRangeLimits, createPortPoolService, rangesOverlap } from './ports.js';
 import {
   NODE_ID,
   SERVER_ID,
@@ -18,18 +18,89 @@ const FREMDE_NODE_ID = '44444444-4444-4444-8444-444444444444';
 function build(
   ranges = [portRange()],
   allocations: Parameters<typeof createFakePortPoolRepository>[1] = [],
+  limits?: PortRangeLimits,
 ) {
   const auditRepository = createFakeAuditRepository();
   const repository = createFakePortPoolRepository(ranges, allocations);
   const service = createPortPoolService({
     repository,
     audit: createAuditService(auditRepository),
+    ...(limits ? { limits } : {}),
   });
 
   return { service, repository, auditRepository };
 }
 
+/** Der Tunnel des Betriebs: 25000–25564 getunnelt, 25565 gehört dem Router. */
+const TUNNEL: PortRangeLimits = { tunnelStart: 25_000, tunnelEnd: 25_564, routerPort: 25_565 };
+
 const adminCtx = () => ctxWith(actorWith('address.manage'));
+
+describe('Port-Bereiche gegen Tunnel und Router (Befund 4.3)', () => {
+  const eingabe = (startPort: number, endPort: number) =>
+    createPortRangeInputSchema.parse({ label: 'Probe', startPort, endPort, protocol: 'tcp' });
+
+  it('nimmt einen Bereich innerhalb der getunnelten Ports an', async () => {
+    const { service } = build([], [], TUNNEL);
+
+    await expect(service.createRange(adminCtx(), eingabe(25_100, 25_200))).resolves.toMatchObject({
+      startPort: 25_100,
+      endPort: 25_200,
+    });
+  });
+
+  it('lehnt einen Bereich ab, der aus dem Tunnel herausragt – und sagt warum', async () => {
+    const { service } = build([], [], TUNNEL);
+
+    await expect(service.createRange(adminCtx(), eingabe(24_990, 25_100))).rejects.toMatchObject({
+      code: 'PORT_RANGE_INVALID',
+      message: expect.stringContaining('25000–25564'),
+    });
+    await expect(service.createRange(adminCtx(), eingabe(30_000, 30_100))).rejects.toMatchObject({
+      code: 'PORT_RANGE_INVALID',
+      message: expect.stringContaining('GAME_PORT_RANGE_START/END'),
+    });
+  });
+
+  it('lehnt einen Bereich ab, der den Router-Port enthält', async () => {
+    // Der Router-Port liegt hier bewusst innerhalb des Tunnels, damit allein
+    // die Router-Prüfung greift.
+    const { service } = build([], [], {
+      tunnelStart: 25_000,
+      tunnelEnd: 26_000,
+      routerPort: 25_565,
+    });
+
+    await expect(service.createRange(adminCtx(), eingabe(25_500, 25_600))).rejects.toMatchObject({
+      code: 'PORT_RANGE_INVALID',
+      message: expect.stringContaining('MINECRAFT_ROUTER_PORT'),
+    });
+    await expect(service.createRange(adminCtx(), eingabe(25_565, 25_565))).rejects.toMatchObject({
+      code: 'PORT_RANGE_INVALID',
+    });
+  });
+
+  it('prüft auch das Ändern eines Bereichs gegen den Tunnel', async () => {
+    const bestehend = portRange({ startPort: 25_100, endPort: 25_200, protocol: 'tcp' });
+    const { service } = build([bestehend], [], TUNNEL);
+
+    await expect(
+      service.updateRange(
+        adminCtx(),
+        bestehend.id,
+        updatePortRangeInputSchema.parse({ startPort: 25_100, endPort: 25_600 }),
+      ),
+    ).rejects.toMatchObject({ code: 'PORT_RANGE_INVALID' });
+  });
+
+  it('ohne Grenzen gilt weiter nur 1024–65535', async () => {
+    const { service } = build([]);
+
+    await expect(service.createRange(adminCtx(), eingabe(30_000, 30_100))).resolves.toMatchObject({
+      startPort: 30_000,
+    });
+  });
+});
 
 describe('Port-Bereiche (Pflichtenheft §2.4)', () => {
   it('erkennt Überschneidungen nur innerhalb desselben Protokolls', () => {

@@ -12,7 +12,7 @@
 # ein wartbares Pinning.
 #
 # **Der Pull Request geht durch dieselbe Schwelle wie jeder andere.** `main` ist
-# durch ein Ruleset geschützt (CLAUDE.md §6); ci.yml läuft, jemand sieht sich
+# durch ein Ruleset geschützt (Entwicklungsregeln §6); ci.yml läuft, jemand sieht sich
 # den neuen SHA an und merged. Automatisch wird nichts übernommen.
 version: 2
 
@@ -38,7 +38,7 @@ updates:
           - '*'
     open-pull-requests-limit: 3
     commit-message:
-      # CLAUDE.md §6 verlangt das Kürzel des Arbeitspakets im Betreff.
+      # Entwicklungsregeln §6 verlangt das Kürzel des Arbeitspakets im Betreff.
       prefix: '[ci]'
 
   # ---------------------------------------------------------------------------
@@ -132,3 +132,65 @@ updates:
     ignore:
       - dependency-name: ubuntu
         update-types: ['version-update:semver-major', 'version-update:semver-minor']
+
+  # Digest-Pins der drei Anwendungs-Images (Review 2026-09-16, Befund 8.5).
+  # `node:24-bookworm-slim` steht in jedem Dockerfile mit Digest; ohne diesen
+  # Eintrag bliebe der Digest stehen, bis jemand von Hand nachsieht.
+  - package-ecosystem: docker
+    directory: /apps/backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: '[infra]'
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: docker
+    directory: /apps/frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: '[infra]'
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: docker
+    directory: /apps/agent
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: '[infra]'
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
+
+  # npm-Abhaengigkeiten des Monorepos (Review 2026-09-16, Befund 9.6). Bis
+  # dahin blieben Sicherheitsluecken in Paketen ohne Vorschlag liegen; `pnpm
+  # audit` meldete 14 davon. Wöchentlich, gebündelt nach Art der Anhebung:
+  # Patch- und Nebenfassungen in einem PR, Hauptfassungen einzeln – die
+  # brauchen eine Entscheidung, keinen Klick.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: '[deps]'
+    groups:
+      klein:
+        update-types: ['minor', 'patch']

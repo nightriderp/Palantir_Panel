@@ -3,7 +3,7 @@
  *
  * Dies ist die Vertragsgrenze zwischen Backend (B3) und Homeserver-Agent (A1/A2/A3).
  * Beide Seiten kennen ausschließlich die hier definierten Rahmen ("Frames") –
- * es gibt keine Absprachen am Code vorbei (CLAUDE.md §3).
+ * es gibt keine Absprachen am Code vorbei (Entwicklungsregeln §3).
  *
  * Grundprinzip der Architektur (Pflichtenheft §1, §2.2, §18): Die Verbindung
  * wird **immer vom Agent ausgehend** durch den WireGuard-Tunnel aufgebaut. Der
@@ -18,7 +18,7 @@
  *
  * **Änderungen:** bevorzugt additiv (neue optionale Felder, neue Befehle/Events
  * ans Ende der Listen). Das Entfernen oder Umbenennen bestehender Felder ist ein
- * Breaking Change und im Commit/PR als solcher zu kennzeichnen (CLAUDE.md §3).
+ * Breaking Change und im Commit/PR als solcher zu kennzeichnen (Entwicklungsregeln §3).
  */
 
 import type { ApiResponse } from './envelope.js';
@@ -53,7 +53,7 @@ export type CorrelationId = string;
  * Größeres mit `AGENT_FILE_TOO_LARGE` ab (`jobs/files/inhalt.ts` des Agents).
  * Bis Audit contracts-validation-12 war die Zahl allein im Backend definiert
  * und im Vertrag nur zitiert – änderte das Backend sie, wusste es keine andere
- * Seite (CLAUDE.md §3).
+ * Seite (Entwicklungsregeln §3).
  *
  * Sie ist bewusst **keine** Umgebungsvariable: Eine Protokollgrenze, die je
  * Installation anders wäre, könnte der Agent nicht durchsetzen.

@@ -172,6 +172,17 @@ export function renderNotification(input: NotificationEvent): RenderedNotificati
         subject: null,
       };
 
+    case 'server.ownerTransferred':
+      return {
+        title: `Server »${input.payload.serverName}« hat einen neuen Besitzer`,
+        body: withDetail(
+          'Ein Administrator hat den Server samt Sicherungen übertragen. Wer ihn jetzt besitzt, steht in den Server-Details.',
+          input.payload.detail,
+        ),
+        severity: 'info',
+        subject: serverSubject(input.payload),
+      };
+
     case 'autoShutdown.triggered':
       return {
         title: `Server »${input.payload.serverName}« wurde automatisch abgeschaltet`,

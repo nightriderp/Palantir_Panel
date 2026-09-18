@@ -50,6 +50,34 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
 };
 
 /**
+ * Klassen einer Schaltfläche – auch für Elemente, die keine `<button>` sind.
+ *
+ * Ein Download ist ein `<a download>` und muss es bleiben (der Browser lädt
+ * dann herunter, statt zu navigieren); optisch soll er neben einer
+ * Schaltfläche derselben Größe stehen. Vorher baute die Dateiliste ihre
+ * Gefahren-Schaltfläche mit abgeschriebenen Klassen nach (Review 2026-09-16,
+ * Befund 12.4) – hier ist die eine Quelle dafür.
+ */
+export function buttonClasses(
+  variant: ButtonVariant = 'secondary',
+  size: ButtonSize = 'md',
+  className?: string,
+): string {
+  return cn(
+    'inline-flex items-center justify-center gap-2 rounded-md font-semibold',
+    // Der Druck sitzt auf `:active`, also schon beim Zeiger-Runter statt
+    // erst beim Klick. Wer Bewegung abgeschaltet hat, bekommt nur den
+    // Farbwechsel.
+    'transition-[color,background-color,border-color,transform] duration-100',
+    'active:scale-[0.97] motion-reduce:active:scale-100',
+    'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100',
+    SIZE_CLASSES[size],
+    VARIANT_CLASSES[variant],
+    className,
+  );
+}
+
+/**
  * Schaltfläche des Design-Systems.
  *
  * Die Komponente trifft **keine** Berechtigungsentscheidung. Ob eine Aktion
@@ -74,19 +102,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       type={type}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md font-semibold',
-        // Der Druck sitzt auf `:active`, also schon beim Zeiger-Runter statt
-        // erst beim Klick. Wer Bewegung abgeschaltet hat, bekommt nur den
-        // Farbwechsel.
-        'transition-[color,background-color,border-color,transform] duration-100',
-        'active:scale-[0.97] motion-reduce:active:scale-100',
-        'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100',
-        SIZE_CLASSES[size],
-        VARIANT_CLASSES[variant],
-        fullWidth && 'w-full',
-        className,
-      )}
+      className={buttonClasses(variant, size, cn(fullWidth && 'w-full', className))}
       {...rest}
     >
       {iconLeft ? <Icon name={iconLeft} size={size === 'sm' ? 12 : 14} /> : null}

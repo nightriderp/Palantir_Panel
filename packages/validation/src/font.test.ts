@@ -233,7 +233,7 @@ describe('uploadFontInputSchema', () => {
 
 describe('instanceSettingsInputSchema – additive Erweiterung', () => {
   it('bleibt ohne die Schrift-Felder gültig', () => {
-    // Der Nachweis aus CLAUDE.md §3: Ein Aufrufer, der nur den
+    // Der Nachweis aus Entwicklungsregeln §3: Ein Aufrufer, der nur den
     // Registrierungsschalter kennt, muss weiterhin durchkommen.
     const ergebnis = instanceSettingsInputSchema.safeParse({ selfRegistrationEnabled: true });
 

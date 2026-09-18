@@ -59,7 +59,7 @@ export interface InstanceSettingsDto {
    * Vorgabeschrift als Wert – sonst müsste jede Änderung an der Vorgabe alle
    * Instanzen nachziehen, die sie nie bewusst gewählt haben.
    *
-   * Optional, damit ältere Konsumenten gültig bleiben (CLAUDE.md §3); ein
+   * Optional, damit ältere Konsumenten gültig bleiben (Entwicklungsregeln §3); ein
    * fehlendes Feld ist dasselbe wie `null`.
    */
   uiFontId?: string | null;
@@ -95,7 +95,7 @@ export interface InstanceSettingsDto {
    * Eine Kennung, die es im Katalog nicht (mehr) gibt, ist unschädlich — sie
    * schaltet nichts ab und bleibt stehen, bis jemand sie entfernt.
    *
-   * Optional, damit ältere Konsumenten gültig bleiben (CLAUDE.md §3); ein
+   * Optional, damit ältere Konsumenten gültig bleiben (Entwicklungsregeln §3); ein
    * fehlendes Feld ist dasselbe wie die leere Liste.
    */
   disabledGameTypes?: readonly string[];

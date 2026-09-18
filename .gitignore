@@ -62,18 +62,12 @@ graphify-out/
 # Projektdokumente und Arbeitsunterlagen - bleiben lokal, nicht im Repository.
 # Entscheidung des Betreibers beim Wechsel auf ein oeffentliches Repository:
 # oeffentlich ist der Code, alles Weitere liegt nur auf den Rechnern des Teams.
-# Bereits vorhandene Dateien wurden mit `git rm --cached` ausgetragen und liegen
-# unveraendert weiter auf der Platte. Aus der Git-Historie sind sie inzwischen
-# ebenfalls entfernt (History-Rewrite am 2026-08-31).
-CLAUDE.md
-LASTENHEFT.md
-PFLICHTENHEFT.md
-STRUKTUR.md
-SETUP.md
-WORK_STATUS.md
-SITZUNGS_PROMPTS.md
-NACHARBEIT_PROMPTS.md
-F3_ARBEITSPAKETE.md
+# Im Repo-Root ist README.md die einzige Markdown-Datei; jede andere dort
+# (Lastenheft, Pflichtenheft, Arbeitsstand, Einrichtungsanleitung, Berichte)
+# ist ein Arbeitsdokument. Das Muster deckt auch neue Dokumente ab, ohne dass
+# jemand die Liste pflegen muss.
+/*.md
+!/README.md
 docs/
 deploy/gamenode/wireguard-firewall.md
 
@@ -88,11 +82,12 @@ geheimnisse.md
 stolperpunkte.md
 VERGLEICH_HAFENMEISTER_13_09_2026.md
 
-# Arbeitsverzeichnis paralleler Sitzungen: eigene Worktrees und die lokale
-# Startkonfiguration der Entwicklungsumgebung. Kein Teil des Repositories -
-# .prettierignore fuehrt es aus demselben Grund. Ohne diesen Eintrag taucht ein
-# angelegter Worktree bei allen als untracked auf.
-.claude/
+# Versteckte Verzeichnisse im Repo-Root sind Arbeitsablagen von Werkzeugen
+# (Editor-Einstellungen, Worktrees paralleler Sitzungen, Startkonfiguration der
+# Entwicklungsumgebung). Kein Teil des Repositories - .prettierignore fuehrt sie
+# aus demselben Grund. Einzige Ausnahme ist .github mit den Workflows.
+/.*/
+!/.github/
 
 # Ablage der Entwicklungsmaschine (u. a. Panel-Sicherungen aus PANEL_BACKUP_DIR)
 .dev-data/

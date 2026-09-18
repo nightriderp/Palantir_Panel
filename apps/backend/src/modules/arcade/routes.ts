@@ -2,7 +2,7 @@
  * REST-Routen des Arcade-Moduls (Arbeitspaket F8, Pflichtenheft §5 und §17).
  *
  * Jede Antwort nutzt den Response-Envelope aus §5.1 über `ok()`/`fail()` – kein
- * lokal geformtes Format (CLAUDE.md §3).
+ * lokal geformtes Format (Entwicklungsregeln §3).
  *
  * Der Bereich kennt keine eigene Permission: Spielen und Bestenliste-Ansehen
  * darf jedes angemeldete Konto. Beide Routen brauchen deshalb nur eine Sitzung
@@ -33,7 +33,7 @@ export interface ArcadeRoutesOptions {
 
 /**
  * Wandelt ungültige Eingaben in `VALIDATION_FAILED` – benannter Code, kein
- * Freitext (CLAUDE.md §5). Alles Übrige wird weitergeworfen; ein unerwarteter
+ * Freitext (Entwicklungsregeln §5). Alles Übrige wird weitergeworfen; ein unerwarteter
  * Fehler soll nicht als fachliche Ablehnung erscheinen.
  */
 async function handleError(reply: FastifyReply, error: unknown): Promise<void> {

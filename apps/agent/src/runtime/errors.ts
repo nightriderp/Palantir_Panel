@@ -3,7 +3,7 @@
  *
  * Wie im Fehlercode-Katalog des Backends (Pflichtenheft §5.1) gilt auch hier:
  * **kein Freitext-Fehler**, sondern ein benannter Code aus einem festen,
- * wachsenden Katalog (CLAUDE.md §5).
+ * wachsenden Katalog (Entwicklungsregeln §5).
  *
  * Bewusste Abgrenzung: `ERROR_CATALOG` in `packages/contracts` beschreibt
  * HTTP-Fehler der REST-API. Die Codes hier sind agent-intern und tragen keinen

@@ -666,7 +666,7 @@ export interface AgentContainerStats {
   /**
    * Empfangene und gesendete Pakete seit dem Start des Containers.
    *
-   * Optional, damit dieser Vertrag fuer sich stehen kann (CLAUDE.md §3): Ein
+   * Optional, damit dieser Vertrag fuer sich stehen kann (Entwicklungsregeln §3): Ein
    * Agent, der die Felder nicht kennt, bleibt gueltig – dann fehlen sie, und
    * die Oberflaeche zeigt an ihrer Stelle nichts.
    */
@@ -685,7 +685,7 @@ export interface AgentContainerStats {
    * Bind-Mount, und `blockReadBytes`/`blockWriteBytes` zählen Ein-/Ausgabe,
    * nicht Belegung.
    *
-   * **Optional, damit dieser Vertrag für sich stehen kann** (CLAUDE.md §3):
+   * **Optional, damit dieser Vertrag für sich stehen kann** (Entwicklungsregeln §3):
    * Ein Agent, der das Feld nicht kennt, bleibt gültig – dann fehlt es, und
    * `ServerLiveStats.diskUsedMb` bleibt `null`, so wie bisher immer. Fehlt es,
    * heißt das „nicht gemessen", **nicht** „null Bytes belegt": Aus einer

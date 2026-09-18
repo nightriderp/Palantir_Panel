@@ -190,11 +190,15 @@ export function AuditLogView() {
             <tbody>
               {entries.map((entry) => (
                 <tr key={entry.id}>
-                  <Td className="whitespace-nowrap font-mono text-sm text-ink-faint">
+                  <Td
+                    label="Zeitpunkt"
+                    className="whitespace-nowrap font-mono text-sm text-ink-faint"
+                  >
                     {formatDateTime(entry.timestamp)}
                   </Td>
-                  <Td>{entry.actorDisplayName ?? 'System'}</Td>
+                  <Td label="Nutzer">{entry.actorDisplayName ?? 'System'}</Td>
                   <Td
+                    label="Aktion"
                     className={cn(
                       'whitespace-nowrap font-mono text-sm',
                       isAuditFailure(entry.action) ? 'text-danger' : 'text-ink',
@@ -203,7 +207,7 @@ export function AuditLogView() {
                   >
                     {auditActionCode(entry.action)}
                   </Td>
-                  <Td>
+                  <Td label="Ziel">
                     {entry.targetType ? (
                       <span>
                         {auditTargetTypeLabel(entry.targetType)}
@@ -217,11 +221,15 @@ export function AuditLogView() {
                       '—'
                     )}
                   </Td>
-                  <Td className="whitespace-nowrap font-mono text-sm text-ink-faint">
+                  <Td
+                    label="Herkunft"
+                    className="whitespace-nowrap font-mono text-sm text-ink-faint"
+                  >
                     {entry.ipHint ?? '—'}
                   </Td>
                   <Td
-                    className="max-w-[280px] truncate text-sm text-ink-faint"
+                    label="Details"
+                    className="break-words text-sm text-ink-faint md:max-w-[280px] md:truncate"
                     title={summarizeMetadata(entry.metadata)}
                   >
                     {summarizeMetadata(entry.metadata)}

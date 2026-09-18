@@ -7,7 +7,7 @@
  * Die eigentliche Abfrage macht der Agent (A3); hier steht ausschließlich die
  * **Entscheidung**, ob abgeschaltet wird. Das ist Absicht: Die Regel, wann ein
  * Server als inaktiv gilt, gehört ins Backend, damit sie an einer Stelle steht
- * und ohne laufenden Homeserver prüfbar ist (CLAUDE.md §4).
+ * und ohne laufenden Homeserver prüfbar ist (Entwicklungsregeln §4).
  *
  * Der Zusammenhang zum Lifecycle: `lastStartedAt` wird auch beim automatischen
  * Neustart nach einem Absturz neu gesetzt (siehe `state-machine.ts`). Ein

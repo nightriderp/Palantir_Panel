@@ -128,7 +128,7 @@ export interface ServerStatsHistoryDto {
  *
  * Die Namen stehen zugleich im Katalog `WEBSOCKET_EVENTS` – das
  * `satisfies` erzwingt das beim Übersetzen, damit hier kein Name entsteht, den
- * der Katalog nicht kennt (CLAUDE.md §5).
+ * der Katalog nicht kennt (Entwicklungsregeln §5).
  */
 export const LIVE_SERVER_EVENTS = [
   'server.statusChanged',
@@ -141,6 +141,9 @@ export const LIVE_SERVER_EVENTS = [
   'server.created',
   'server.cloned',
   'server.deleted',
+  // Der Server bleibt, wechselt aber die Übersicht: raus beim alten Besitzer,
+  // rein beim neuen (Pflichtenheft §7).
+  'server.ownerTransferred',
 ] as const satisfies readonly WebSocketEventName[];
 
 /** Ereignisse, die auf {@link LiveServerListTopic} statt auf einem Server ankommen. */
@@ -148,6 +151,7 @@ export const LIVE_SERVER_LIST_EVENTS = [
   'server.created',
   'server.cloned',
   'server.deleted',
+  'server.ownerTransferred',
 ] as const satisfies readonly LiveServerEventName[];
 
 export type LiveServerListEventName = (typeof LIVE_SERVER_LIST_EVENTS)[number];
@@ -221,6 +225,7 @@ export type LiveServerEventPayloads = {
   'server.created': { serverId: string };
   'server.cloned': { serverId: string };
   'server.deleted': { serverId: string };
+  'server.ownerTransferred': { serverId: string };
 };
 
 /** Frame, das der Browser vom Backend empfängt. */

@@ -3,7 +3,7 @@
  *
  * Hier steht bewusst nichts Fachliches – Entitäts- und Request-Schemas bringt
  * jedes Arbeitspaket selbst mit, zusammen mit dem passenden Typ aus
- * `@palantir/contracts` (CLAUDE.md §3).
+ * `@palantir/contracts` (Entwicklungsregeln §3).
  */
 
 import { z } from 'zod';

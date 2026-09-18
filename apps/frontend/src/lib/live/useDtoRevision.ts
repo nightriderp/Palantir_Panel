@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useState } from 'react';
 import { nextRevision } from '../revision';
 
 /**
@@ -19,17 +19,28 @@ import { nextRevision } from '../revision';
  * erhalten. Erst jeder **weitere** Stand – die Antwort einer Lifecycle-Aktion,
  * ein „Nochmal versuchen", ein erneutes Laden – ist jünger als alles, was der
  * Browser bis dahin erfahren hat, und bekommt eine eigene Nummer.
+ *
+ * Der gemerkte Stand liegt im State, nicht in einer Ref: Er wird beim Rendern
+ * gelesen und aus den Props fortgeschrieben, und genau das verbietet der
+ * React-Compiler für Refs. Ein `setState` während des Renderns lässt React die
+ * Komponente sofort noch einmal rechnen – der zweite Durchlauf sieht dann das
+ * bekannte Objekt und gibt die gemerkte Nummer zurück.
  */
 export function useDtoRevision(dto: object | null): number {
-  const gesehen = useRef<{ wert: object | null; revision: number }>({ wert: null, revision: 0 });
+  const [gesehen, setGesehen] = useState<{ wert: object | null; revision: number }>({
+    wert: null,
+    revision: 0,
+  });
 
-  if (dto !== null && dto !== gesehen.current.wert) {
+  if (dto !== null && dto !== gesehen.wert) {
     // Erstes Sehen: 0 (siehe oben). Jeder Folgestand: eigene Nummer.
-    const revision = gesehen.current.wert === null ? 0 : nextRevision();
-    gesehen.current = { wert: dto, revision };
+    const revision = gesehen.wert === null ? 0 : nextRevision();
+    setGesehen({ wert: dto, revision });
+
+    return revision;
   }
 
-  return gesehen.current.revision;
+  return gesehen.revision;
 }
 
 /**
@@ -46,14 +57,16 @@ export function useDtoRevision(dto: object | null): number {
 export function useDtoRevisions<TItem extends { id: string }>(
   items: readonly TItem[],
 ): Record<string, number> {
-  const gesehen = useRef(new Map<string, { wert: TItem; revision: number }>());
-  const ergebnis = useRef<Record<string, number>>({});
+  const [stand, setStand] = useState<{
+    gesehen: Map<string, { wert: TItem; revision: number }>;
+    ergebnis: Record<string, number>;
+  }>(() => ({ gesehen: new Map(), ergebnis: {} }));
 
   const naechste = new Map<string, { wert: TItem; revision: number }>();
-  let geaendert = items.length !== gesehen.current.size;
+  let geaendert = items.length !== stand.gesehen.size;
 
   for (const item of items) {
-    const vorher = gesehen.current.get(item.id);
+    const vorher = stand.gesehen.get(item.id);
 
     if (vorher !== undefined && vorher.wert === item) {
       naechste.set(item.id, vorher);
@@ -68,11 +81,15 @@ export function useDtoRevisions<TItem extends { id: string }>(
   }
 
   if (geaendert) {
-    gesehen.current = naechste;
-    ergebnis.current = Object.fromEntries(
+    // Wie in `useDtoRevision`: Stand während des Renderns fortschreiben, React
+    // rechnet sofort erneut und liefert dann das gemerkte Ergebnis.
+    const ergebnis = Object.fromEntries(
       [...naechste].map(([id, eintrag]) => [id, eintrag.revision]),
     );
+    setStand({ gesehen: naechste, ergebnis });
+
+    return ergebnis;
   }
 
-  return ergebnis.current;
+  return stand.ergebnis;
 }

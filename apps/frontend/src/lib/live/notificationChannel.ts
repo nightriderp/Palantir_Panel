@@ -8,7 +8,7 @@ import {
  * Reine Bausteine des Live-Kanals der Inbox (Pflichtenheft §5.3).
  *
  * Adresse und Frame-Auswertung stehen bewusst getrennt vom Hook: So sind beide
- * ohne WebSocket und ohne React prüfbar (CLAUDE.md §4) – dasselbe Vorgehen wie
+ * ohne WebSocket und ohne React prüfbar (Entwicklungsregeln §4) – dasselbe Vorgehen wie
  * bei `backoff.ts` und `consoleBuffer.ts` aus F3.
  */
 

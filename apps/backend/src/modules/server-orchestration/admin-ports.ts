@@ -67,7 +67,7 @@ export interface BelegungsZeile {
  * (Fundpunkt 203).
  *
  * Ausgelagert und exportiert, damit die Regel ohne laufende Datenbank pruefbar
- * bleibt (CLAUDE.md §4) - sie ist der Grund, warum Uebersicht und
+ * bleibt (Entwicklungsregeln §4) - sie ist der Grund, warum Uebersicht und
  * Kapazitaetsschranke frueher auseinanderliefen.
  *
  * `allocated` zaehlt alle Zustaende. `running` nimmt den RAM nur von den
@@ -272,6 +272,22 @@ export function createAgentNodeConnectionSource(agents: AgentRegistry): NodeConn
   return {
     isConnected(nodeId: string): boolean {
       return agents.get(nodeId) !== null;
+    },
+    // Fassung und Protokollurteil für die Node-Übersicht (Befund 11.3).
+    lastHello(nodeId: string) {
+      const hello = agents.helloOf(nodeId);
+
+      if (hello === null) {
+        return null;
+      }
+
+      return {
+        version: hello.agentVersion,
+        protocolVersion: hello.protocolVersion,
+        expectedProtocolVersion: hello.expectedProtocolVersion,
+        compatible: hello.compatible,
+        reportedAt: hello.reportedAt.toISOString(),
+      };
     },
   };
 }

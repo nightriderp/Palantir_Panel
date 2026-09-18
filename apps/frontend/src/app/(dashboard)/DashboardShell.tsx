@@ -50,21 +50,28 @@ function LiveConnectionBadge() {
 
   const getrennt = connection !== 'open';
 
+  // Sobald die Verbindung wieder steht, ist der Ausfall vorbei – noch im
+  // Rendern zurückgesetzt, damit kein Bild „Ausfall" bei offener Leitung zeigt.
+  const [warGetrennt, setWarGetrennt] = useState(getrennt);
+  if (warGetrennt !== getrennt) {
+    setWarGetrennt(getrennt);
+    if (!getrennt) setAusfallBestaetigt(false);
+  }
+
   useEffect(() => {
-    if (!getrennt) {
-      setAusfallBestaetigt(false);
-      return;
-    }
+    if (!getrennt) return;
 
     const timer = setTimeout(() => setAusfallBestaetigt(true), AUSFALL_SCHWELLE_MS);
     return () => clearTimeout(timer);
   }, [getrennt]);
 
-  const { tone, label, title, pulse } = liveAnzeige(connection, ausfallBestaetigt);
+  const { tone, label, shortLabel, title, pulse } = liveAnzeige(connection, ausfallBestaetigt);
 
+  // Auf dem Telefon ein Wort statt nur des Farbpunkts (Befund 12.8).
   return (
     <span className="flex items-center gap-1.5 text-xs text-ink-faint" title={title}>
       <StatusDot tone={tone} pulse={pulse} />
+      <span className="sm:hidden">{shortLabel}</span>
       <span className="hidden sm:inline">{label}</span>
     </span>
   );

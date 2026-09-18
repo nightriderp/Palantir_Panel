@@ -48,7 +48,7 @@ import {
  * wirkt nur in dieser Datei. Die Kosten des Hashings zu senken, hätte eine Naht
  * in `passwords.ts` gebraucht – die gibt es nicht, und sie nachzurüsten hieße,
  * den Produktivpfad der Passwortprüfung für Tests abzuschwächen oder
- * wegzumocken (CLAUDE.md §2). Der Test soll gerade die echte Kette prüfen.
+ * wegzumocken (Entwicklungsregeln §2). Der Test soll gerade die echte Kette prüfen.
  *
  * 30 s sind großzügig gegenüber dem Gemessenen und fangen einen echten Hänger
  * (nicht aufgelöstes Promise, Deadlock) trotzdem ab, statt ihn laufen zu lassen.
@@ -362,6 +362,34 @@ describe('Login über HTTP', () => {
     expect(response.json<{ data: { status: string } }>().data.status).toBe('authenticated');
   });
 
+  it('bremst Fehlversuche auf ein Konto auch über wechselnde Adressen (Befund 3.3)', async () => {
+    // Jede Anfrage kommt von einer anderen Adresse – das IP-Limit sieht je
+    // Adresse nur einen Versuch. Bis zum Review 2026-09-16 blieb ein solcher
+    // verteilter Angriff auf ein einzelnes Konto ungebremst.
+    const limit = env.AUTH_RATE_LIMIT_LOGIN_MAX;
+
+    for (let versuch = 0; versuch < limit; versuch += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        remoteAddress: `203.0.113.${String(versuch + 1)}`,
+        payload: { username: 'Spieler', password: 'falsch-aber-lang', altcha: await solveAltcha() },
+      });
+
+      expect(response.statusCode).toBe(401);
+    }
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      remoteAddress: '203.0.113.200',
+      payload: { username: 'spieler', password: PASSWORD, altcha: await solveAltcha() },
+    });
+
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json<{ error: { code: string } }>().error.code).toBe('AUTH_RATE_LIMITED');
+  });
+
   it('antwortet bei falschen Zugangsdaten mit 401 und benanntem Code', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -382,7 +410,7 @@ describe('Login über HTTP', () => {
 
   it('lehnt einen Login ohne ALTCHA-Nachweis ab', async () => {
     // Pflichtenheft §7 und §18 verlangen den Spam-Schutz auch beim Login. Ein
-    // stilles Durchwinken wäre ein Auth-Bypass (CLAUDE.md §2).
+    // stilles Durchwinken wäre ein Auth-Bypass (Entwicklungsregeln §2).
     const response = await app.inject({
       method: 'POST',
       url: '/auth/login',
@@ -792,6 +820,34 @@ describe('Zweiter Anmeldeschritt über HTTP (Pflichtenheft §7)', () => {
     });
     expect(sitzung.statusCode).toBe(200);
     expect(sitzung.json<{ data: { account: AccountDto } }>().data.account.username).toBe('spieler');
+  });
+
+  it('bremst das Durchprobieren des Codes je Zwischen-Token (Befund 3.3)', async () => {
+    const { jar } = await registerAccount('spieler');
+    await enableTwoFactor(jar);
+
+    const erster = await login();
+    const token = erster.json<{ data: { twoFactorToken: string } }>().data.twoFactorToken;
+    const limit = env.AUTH_RATE_LIMIT_LOGIN_MAX;
+
+    for (let versuch = 0; versuch < limit; versuch += 1) {
+      await app.inject({
+        method: 'POST',
+        url: '/auth/login/2fa',
+        remoteAddress: `203.0.113.${String(versuch + 1)}`,
+        payload: { twoFactorToken: token, code: '000000' },
+      });
+    }
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/auth/login/2fa',
+      remoteAddress: '203.0.113.200',
+      payload: { twoFactorToken: token, code: '000000' },
+    });
+
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json<{ error: { code: string } }>().error.code).toBe('AUTH_RATE_LIMITED');
   });
 
   it('lehnt einen falschen Code mit 401 und ohne Cookies ab', async () => {
@@ -1558,5 +1614,79 @@ describe('Anbieter-Login über HTTP (Pflichtenheft §7)', () => {
     expect(callback.headers.location).toContain('linked=discord');
     expect(repository.users).toHaveLength(1);
     expect(repository.methods.map((method) => method.type).sort()).toEqual(['discord', 'password']);
+  });
+});
+
+describe('Konto löschen mit Besitzübergang (Pflichtenheft §7)', () => {
+  it('verlangt eine Anmeldung', async () => {
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/auth/admin/users/00000000-0000-4000-8000-000000000000',
+      headers: { [CSRF_HEADER_NAME]: 'x', cookie: `${CSRF_COOKIE_NAME}=x` },
+      payload: { confirmName: 'x' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('lehnt ein Konto ohne user.manage ab', async () => {
+    const { jar, account } = await registerAccount('spieler');
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/auth/admin/users/${account.id}`,
+      headers: { cookie: cookieHeader(jar), [CSRF_HEADER_NAME]: jar[CSRF_COOKIE_NAME] ?? '' },
+      payload: { confirmName: 'spieler' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('PERMISSION_DENIED');
+  });
+
+  it('löscht das Konto und gibt dessen Server an den Administrator', async () => {
+    const target = await registerAccount('spieler');
+    const admin = await registerAccount('verwalter');
+    const adminRole = roles.roles.find((role) => role.name === 'Admin');
+    await roles.assignToUser(admin.account.id, adminRole!.id);
+    repository.ownedServers.push({ ownerId: target.account.id, id: 'srv-1' });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/auth/admin/users/${target.account.id}`,
+      headers: {
+        cookie: cookieHeader(admin.jar),
+        [CSRF_HEADER_NAME]: admin.jar[CSRF_COOKIE_NAME] ?? '',
+      },
+      payload: { confirmName: 'spieler' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      response.json<{ data: { toUserId: string; transferredServerIds: string[] } }>().data,
+    ).toEqual({
+      toUserId: admin.account.id,
+      transferredServerIds: ['srv-1'],
+    });
+    expect(repository.users.map((user) => user.id)).toEqual([admin.account.id]);
+    expect(repository.ownedServers[0]?.ownerId).toBe(admin.account.id);
+  });
+
+  it('weist einen Körper mit unbekannten Feldern ab', async () => {
+    const admin = await registerAccount('verwalter');
+    const adminRole = roles.roles.find((role) => role.name === 'Admin');
+    await roles.assignToUser(admin.account.id, adminRole!.id);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/auth/admin/users/${admin.account.id}`,
+      headers: {
+        cookie: cookieHeader(admin.jar),
+        [CSRF_HEADER_NAME]: admin.jar[CSRF_COOKIE_NAME] ?? '',
+      },
+      payload: { confirmName: 'verwalter', force: true },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
   });
 });

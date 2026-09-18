@@ -7,7 +7,7 @@
  * schlichte Liste öffentlicher Ports – mehr braucht die Oberfläche nicht. Für
  * den Betrieb braucht das Backend jeweils etwas mehr, und dieses Mehr gehört
  * nicht in einen Vertrag, an den sich Frontend und Agent binden würden
- * (CLAUDE.md §3).
+ * (Entwicklungsregeln §3).
  */
 
 import { type AgentPortProtocol } from '@palantir/contracts';

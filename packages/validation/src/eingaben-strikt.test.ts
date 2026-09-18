@@ -19,7 +19,7 @@ import * as schemas from './index.js';
  *
  * **Antworten bleiben absichtlich nachsichtig.** DTO- und Ergebnis-Schemas
  * prüfen, was HEREINKOMMT – von einem Backend, das neuer sein kann als der
- * Leser. Contracts wachsen additiv (CLAUDE.md §3); ein striktes Antwort-Schema
+ * Leser. Contracts wachsen additiv (Entwicklungsregeln §3); ein striktes Antwort-Schema
  * machte aus jedem neuen optionalen Feld einen Fehler beim älteren Gegenüber.
  * Dasselbe gilt für die Nutzlasten und Ergebnisse des Agent-Protokolls: Nach
  * einem Deployment läuft der Agent auf der Gamenode noch bis zu fünf Minuten in

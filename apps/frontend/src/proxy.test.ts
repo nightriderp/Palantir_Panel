@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AUTH_ENDPOINTS, CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from '@/lib/auth/api';
-import { config, middleware } from './middleware';
+import { config, proxy } from './proxy';
 
 /**
  * Umleitungen der Zugriffssperre (Fundpunkt frontend-app-02).
@@ -61,7 +61,7 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
     // Verknüpfung dorthin, die Sperre schickt weiter auf die Übersicht.
     fetchDouble.mockResolvedValue(angemeldet());
 
-    const response = await middleware(
+    const response = await proxy(
       anfrage('https://panel.example/login?error=AUTH_METHOD_ALREADY_LINKED', SITZUNGS_COOKIE),
     );
 
@@ -70,7 +70,7 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
   });
 
   it('behält die Query auch auf dem Weg zur Anmeldung', async () => {
-    const response = await middleware(anfrage('https://panel.example/servers?error=EGAL'));
+    const response = await proxy(anfrage('https://panel.example/servers?error=EGAL'));
 
     expect(ziel(response)).toBe('/login?error=EGAL');
   });
@@ -78,7 +78,7 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
   it('hält ein noch nicht freigeschaltetes Konto mit Query auf dem Wartebildschirm', async () => {
     fetchDouble.mockResolvedValue(angemeldet(true));
 
-    const response = await middleware(
+    const response = await proxy(
       anfrage('https://panel.example/profil?linked=discord', SITZUNGS_COOKIE),
     );
 
@@ -86,7 +86,7 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
   });
 
   it('leitet ohne Query weiterhin ohne Query um', async () => {
-    const response = await middleware(anfrage('https://panel.example/servers'));
+    const response = await proxy(anfrage('https://panel.example/servers'));
 
     expect(ziel(response)).toBe('/login');
   });
@@ -94,7 +94,7 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
   it('lässt eine erlaubte Seite samt Query stehen', async () => {
     fetchDouble.mockResolvedValue(angemeldet());
 
-    const response = await middleware(
+    const response = await proxy(
       anfrage('https://panel.example/profil?linked=discord', SITZUNGS_COOKIE),
     );
 
@@ -104,9 +104,7 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
   it('behandelt eine unerreichbare API als „nicht angemeldet"', async () => {
     fetchDouble.mockRejectedValue(new Error('Netz weg'));
 
-    const response = await middleware(
-      anfrage('https://panel.example/servers?a=1', SITZUNGS_COOKIE),
-    );
+    const response = await proxy(anfrage('https://panel.example/servers?a=1', SITZUNGS_COOKIE));
 
     expect(ziel(response)).toBe('/login?a=1');
   });
@@ -116,7 +114,7 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
     // wäre der Aufruf ein garantierter 403.
     fetchDouble.mockResolvedValue(abgemeldet());
 
-    await middleware(anfrage('https://panel.example/servers', 'palantir_session=egal'));
+    await proxy(anfrage('https://panel.example/servers', 'palantir_session=egal'));
 
     expect(fetchDouble).toHaveBeenCalledTimes(1);
   });
@@ -129,9 +127,7 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
       }),
     );
 
-    const response = await middleware(
-      anfrage('https://panel.example/servers?a=1', SITZUNGS_COOKIE),
-    );
+    const response = await proxy(anfrage('https://panel.example/servers?a=1', SITZUNGS_COOKIE));
 
     // Sitzung gilt wieder: keine Umleitung, aber frische Cookies an der Antwort.
     expect(response.headers.get('location')).toBeNull();
@@ -165,7 +161,7 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
       .mockResolvedValueOnce(abgemeldet())
       .mockResolvedValueOnce(erneuert(['palantir_session=neu']));
 
-    await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
 
     expect(fetchDouble).toHaveBeenCalledTimes(2);
 
@@ -185,7 +181,7 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
         erneuert(['palantir_session=neu; Path=/', 'palantir_refresh=neu; Path=/']),
       );
 
-    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const response = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
     const gesetzt = response.headers.getSetCookie();
 
     expect(gesetzt).toHaveLength(2);
@@ -197,7 +193,7 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
       .mockResolvedValueOnce(abgemeldet())
       .mockResolvedValueOnce(erneuert(['palantir_session=neu'], true));
 
-    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const response = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
 
     expect(ziel(response)).toBe('/pending');
     // Die frischen Cookies gehen trotzdem mit: sonst liefe der nächste Aufruf
@@ -212,9 +208,7 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
       new Response(JSON.stringify({ success: false, data: null }), { status: 401 }),
     );
 
-    const response = await middleware(
-      anfrage('https://panel.example/servers?a=1', SITZUNGS_COOKIE),
-    );
+    const response = await proxy(anfrage('https://panel.example/servers?a=1', SITZUNGS_COOKIE));
 
     expect(ziel(response)).toBe('/login?a=1');
     expect(response.headers.get('set-cookie')).toBeNull();
@@ -223,7 +217,7 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
   it('versucht den Tausch nur bei 401, nicht bei einem Serverfehler', async () => {
     fetchDouble.mockResolvedValue(new Response('kaputt', { status: 500 }));
 
-    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const response = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
 
     expect(fetchDouble).toHaveBeenCalledTimes(1);
     expect(ziel(response)).toBe('/login');
@@ -234,7 +228,7 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
       .mockResolvedValueOnce(abgemeldet())
       .mockResolvedValueOnce(new Response('kein json', { status: 200 }));
 
-    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const response = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
 
     expect(ziel(response)).toBe('/login');
   });
@@ -242,13 +236,13 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
   it('fällt auf die Anmeldung zurück, wenn der Tausch selbst am Netz scheitert', async () => {
     fetchDouble.mockResolvedValueOnce(abgemeldet()).mockRejectedValueOnce(new Error('Netz weg'));
 
-    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const response = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
 
     expect(ziel(response)).toBe('/login');
   });
 
   it('spart den Roundtrip für einen Besucher ganz ohne Cookie', async () => {
-    const response = await middleware(anfrage('https://panel.example/servers'));
+    const response = await proxy(anfrage('https://panel.example/servers'));
 
     expect(fetchDouble).not.toHaveBeenCalled();
     expect(ziel(response)).toBe('/login');
@@ -257,7 +251,7 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
   it('lässt eine gültige Sitzung unangetastet – kein Tausch, keine Cookies', async () => {
     fetchDouble.mockResolvedValue(angemeldet());
 
-    const response = await middleware(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const response = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
 
     expect(fetchDouble).toHaveBeenCalledTimes(1);
     expect(response.headers.get('location')).toBeNull();
@@ -285,7 +279,7 @@ describe('Middleware – Wurzel ohne eigene Seite (Fundpunkt frontend-app-07)', 
   });
 
   it('leitet einen anonymen Besucher der Wurzel zur Anmeldung', async () => {
-    const response = await middleware(anfrage('https://panel.example/'));
+    const response = await proxy(anfrage('https://panel.example/'));
 
     expect(ziel(response)).toBe('/login');
   });
@@ -293,7 +287,7 @@ describe('Middleware – Wurzel ohne eigene Seite (Fundpunkt frontend-app-07)', 
   it('leitet ein wartendes Konto von der Wurzel auf den Wartebildschirm', async () => {
     fetchDouble.mockResolvedValue(angemeldet(true));
 
-    const response = await middleware(anfrage('https://panel.example/', SITZUNGS_COOKIE));
+    const response = await proxy(anfrage('https://panel.example/', SITZUNGS_COOKIE));
 
     expect(ziel(response)).toBe('/pending');
   });
@@ -301,7 +295,7 @@ describe('Middleware – Wurzel ohne eigene Seite (Fundpunkt frontend-app-07)', 
   it('leitet ein freigeschaltetes Konto von der Wurzel auf die Übersicht', async () => {
     fetchDouble.mockResolvedValue(angemeldet());
 
-    const response = await middleware(anfrage('https://panel.example/', SITZUNGS_COOKIE));
+    const response = await proxy(anfrage('https://panel.example/', SITZUNGS_COOKIE));
 
     expect(ziel(response)).toBe('/servers');
   });

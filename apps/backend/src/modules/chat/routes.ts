@@ -14,7 +14,7 @@
  *
  * Es gibt bewusst **keine** Route, die eine Konversation oder einen Verlauf
  * anhand einer Permission statt anhand der Teilnahme herausgibt
- * (Pflichtenheft §15, CLAUDE.md §2).
+ * (Pflichtenheft §15, Entwicklungsregeln §2).
  */
 
 import { fail, httpStatusForErrorCode, ok } from '@palantir/contracts';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Panel, ToggleRow, useToast } from '@/components/shared';
 import {
   type DesktopPermission,
@@ -36,11 +36,9 @@ export interface DesktopToggleProps {
 
 export function DesktopToggle({ preferences, onChange, variant = 'row' }: DesktopToggleProps) {
   const toast = useToast();
-  const [permission, setPermission] = useState<DesktopPermission>('unsupported');
-
-  useEffect(() => {
-    setPermission(desktopPermission());
-  }, []);
+  // Einmal beim Einhängen lesen; die Komponente wird erst im Browser
+  // eingehängt (nach dem Laden der Vorlieben), ein Server-Bild gibt es nicht.
+  const [permission, setPermission] = useState<DesktopPermission>(() => desktopPermission());
 
   async function umschalten(enabled: boolean) {
     if (!enabled) {

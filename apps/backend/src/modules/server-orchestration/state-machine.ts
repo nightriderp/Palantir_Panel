@@ -20,7 +20,7 @@
  *
  * Die Datei kennt weder Datenbank noch Agent: sie bildet einen Zustand auf
  * einen neuen Zustand ab und ist vollständig ohne Infrastruktur testbar
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  */
 
 import {
@@ -106,7 +106,7 @@ export type ServerLifecycleEvent =
  * Route noch ein Dienstpfad löste es je aus – toter Code in der Kernlogik.
  *
  * Entfernt statt angeschlossen, weil weder Lastenheft noch Pflichtenheft ein
- * Quittieren kennen; eine Route dafür wäre ein neues Feature (CLAUDE.md §1).
+ * Quittieren kennen; eine Route dafür wäre ein neues Feature (Entwicklungsregeln §1).
  * Aus `error`/`crashed` führt der Weg weiterhin über einen erneuten Start, und
  * die Absturzhistorie räumt ein bestandener Health-Check ab. Soll das Quittieren
  * kommen, gehört es zuerst ins Lastenheft und dann als Ereignis **mit** Route

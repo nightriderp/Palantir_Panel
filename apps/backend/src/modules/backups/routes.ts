@@ -2,7 +2,7 @@
  * REST-Routen der Backup-Verwaltung (Pflichtenheft §5).
  *
  * Jede Antwort nutzt den Response-Envelope aus §5.1 über `ok()`/`fail()` aus
- * `@palantir/contracts` – kein lokal geformtes Format (CLAUDE.md §3). Der
+ * `@palantir/contracts` – kein lokal geformtes Format (Entwicklungsregeln §3). Der
  * Guard sperrt den groben Zugang; die feine Prüfung (`.own`/`.any` an der
  * konkreten Ressource) macht der Service, damit sie auch für Aufrufer außerhalb
  * des HTTP-Pfads gilt.
@@ -95,7 +95,7 @@ export interface BackupRoutesOptions {
  * Wandelt einen Modulfehler in die Antwort aus Pflichtenheft §5.1.
  *
  * Ungültige Pfad-, Query- oder Körperwerte werden zu `VALIDATION_FAILED` – auch
- * dafür gilt: benannter Code, kein Freitext (CLAUDE.md §5). Alles Übrige wird
+ * dafür gilt: benannter Code, kein Freitext (Entwicklungsregeln §5). Alles Übrige wird
  * weitergeworfen und landet im allgemeinen Fehlerpfad der Anwendung; ein
  * unerwarteter Fehler soll nicht als fachliche Ablehnung erscheinen.
  */

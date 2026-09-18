@@ -3,7 +3,7 @@
  *
  * Das Interface steht bewusst hier und nicht bei der Drizzle-Umsetzung, damit
  * Service und Aufbewahrungsregel ohne laufende Datenbank prüfbar bleiben
- * (CLAUDE.md §4). Es enthält ausschließlich Datenzugriff – jede fachliche Regel
+ * (Entwicklungsregeln §4). Es enthält ausschließlich Datenzugriff – jede fachliche Regel
  * liegt im Service bzw. in `retention.ts`.
  */
 

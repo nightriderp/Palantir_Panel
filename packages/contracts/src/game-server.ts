@@ -7,7 +7,7 @@ import { type ServerStatus } from './server-lifecycle.js';
  *
  * Berechtigungslogik lebt ausschließlich im Backend. Das Frontend zeigt oder
  * versteckt Bedienelemente **nur** anhand dieser Flags und leitet nie selbst
- * etwas aus Rollen ab (CLAUDE.md §3, Pflichtenheft §8).
+ * etwas aus Rollen ab (Entwicklungsregeln §3, Pflichtenheft §8).
  */
 export interface GameServerPermissions {
   /** Server überhaupt sichtbar (Karte, Detailseite). */
@@ -27,6 +27,20 @@ export interface GameServerPermissions {
   canManageSchedules: boolean;
   /** Live-Konsole inkl. Befehlseingabe. */
   canUseConsole: boolean;
+  /**
+   * Besitzer des Servers wechseln (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * Nur mit `server.manage.any` – ein Verwaltungsvorgang, kein Recht des
+   * Besitzers: Eine Weitergabe „ins Blaue" durch Nutzer ist nicht vorgesehen,
+   * dafür gibt es die Mitgliederverwaltung.
+   */
+  canTransferOwnership: boolean;
+  /**
+   * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9, Review
+   * 2026-09-16). Ein Server behält seine Fassung, bis jemand mit diesem Recht
+   * „Aktualisieren" drückt – dasselbe Recht wie Starten und Stoppen.
+   */
+  canUpdate: boolean;
 }
 
 /** Ressourcen-Limits eines Servers (Pflichtenheft §6, `GameServer.resourceLimits`). */
@@ -176,7 +190,7 @@ export interface GameServerDto {
    * Node-Liste aber nicht mit.
    *
    * `null`, wenn der Aufrufer die Node nicht sehen darf – wie bei `hostName`.
-   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3): Fehlt das
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3): Fehlt das
    * Feld, bleibt die Oberfläche bei ihrer bisherigen, unschärferen Auskunft.
    */
   hostStatus?: HostNodeStatus | null;
@@ -193,7 +207,7 @@ export interface GameServerDto {
    *
    * `null`, wenn der Aufrufer die Node nicht sehen darf – wie bei `hostName`
    * und `hostStatus`. Optional, damit der Vertrag für sich stehen kann
-   * (CLAUDE.md §3): Fehlt das Feld, bleibt die Oberfläche bei der Kernzahl.
+   * (Entwicklungsregeln §3): Fehlt das Feld, bleibt die Oberfläche bei der Kernzahl.
    */
   hostCpuCores?: number | null;
   /**

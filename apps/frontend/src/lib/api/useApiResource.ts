@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -45,27 +46,42 @@ export function useApiResource<T>(
   dependencies: readonly unknown[] | null,
 ): ApiResourceState<T> {
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(dependencies !== null);
-  const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
   // Die Ladefunktion wird bei jedem Rendern neu erzeugt; maßgeblich für den
-  // erneuten Lauf sind allein die angegebenen Abhängigkeiten.
+  // erneuten Lauf sind allein die angegebenen Abhängigkeiten. Nachgezogen wird
+  // sie im Layout-Effekt – der läuft vor dem Lade-Effekt, und ein Schreiben
+  // während des Renderns verbietet der React-Compiler.
   const loadRef = useRef(load);
-  loadRef.current = load;
+  useLayoutEffect(() => {
+    loadRef.current = load;
+  });
 
-  const enabled = dependencies !== null;
-  const dependencyKey = enabled ? JSON.stringify(dependencies) : null;
+  /*
+   * Ein Ladelauf ist über seinen Schlüssel identifiziert: Abhängigkeiten plus
+   * Zähler für „nochmal". `null` heißt: gerade nicht laden. Lade- und
+   * Fehlerzustand werden daraus abgeleitet statt im Effekt gesetzt – der
+   * Effekt merkt sich nur, welcher Lauf zuletzt abgeschlossen hat.
+   */
+  const dependencyKey = dependencies === null ? null : JSON.stringify(dependencies);
+  const runKey = dependencyKey === null ? null : `${reloadToken}:${dependencyKey}`;
+
+  const [settled, setSettled] = useState<{ key: string | null; error: string | null } | null>(null);
+
+  // Beim Abschalten wird der letzte Abschluss entwertet: Ein späteres
+  // Wiedereinschalten mit demselben Schlüssel lädt neu und zeigt das auch.
+  // Die Fehlermeldung bleibt derweil stehen, wie bisher.
+  if (runKey === null && settled !== null && settled.key !== null) {
+    setSettled({ key: null, error: settled.error });
+  }
+
+  const loading = runKey !== null && settled?.key !== runKey;
+  const error = loading ? null : (settled?.error ?? null);
 
   useEffect(() => {
-    if (!enabled) {
-      setLoading(false);
-      return;
-    }
+    if (runKey === null) return;
 
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
 
     /*
      * Die Ladefunktion liefert normalerweise auch im Fehlerfall ein Ergebnis
@@ -84,23 +100,22 @@ export function useApiResource<T>(
 
         if (result.success) {
           setData(result.data);
-          setError(null);
+          setSettled({ key: runKey, error: null });
         } else {
-          setError(errorText(result));
+          setSettled({ key: runKey, error: errorText(result) });
         }
       } catch {
         // Abbrüche erzeugen wie bisher keinen Fehlerzustand – die Ansicht wird
         // gerade verlassen oder lädt schon mit neuen Abhängigkeiten.
         if (controller.signal.aborted) return;
-        setError(UNKNOWN_ERROR_MESSAGE);
+        setSettled({ key: runKey, error: UNKNOWN_ERROR_MESSAGE });
       }
-      setLoading(false);
     }
 
     void laden();
 
     return () => controller.abort();
-  }, [enabled, dependencyKey, reloadToken]);
+  }, [runKey]);
 
   const reload = useCallback(() => setReloadToken((token) => token + 1), []);
 

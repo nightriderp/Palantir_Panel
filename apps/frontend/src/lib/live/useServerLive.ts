@@ -88,8 +88,15 @@ export function useServerLive(serverId: string | null): ServerLiveData {
    * `backupId` ab – jeder weitere Konsument (seit event-flow-05 der Reiter
    * „Backups") hätte dieselbe Schutzprüfung mitbringen müssen. Der Hook räumt
    * jetzt selbst auf, statt sie an seine Nutzer zu delegieren.
+   *
+   * Das geschieht beim Rendern, nicht in einem Effekt: Der Wechsel ist aus den
+   * Props ableitbar, und ein `setState` während des Renderns lässt React sofort
+   * mit dem leeren Stand weiterrechnen – so wird der alte Server nie mit den
+   * Daten des neuen gezeichnet.
    */
-  useEffect(() => {
+  const [angezeigterServerId, setAngezeigterServerId] = useState(serverId);
+  if (angezeigterServerId !== serverId) {
+    setAngezeigterServerId(serverId);
     setStatus(null);
     setStatusMessage(null);
     setStatusRevision(0);
@@ -97,7 +104,7 @@ export function useServerLive(serverId: string | null): ServerLiveData {
     setConsoleLines([]);
     setCloneJob(null);
     setBackupProgress(null);
-  }, [serverId]);
+  }
 
   /*
    * Rückblick beim Öffnen laden (Fundpunkt 184).

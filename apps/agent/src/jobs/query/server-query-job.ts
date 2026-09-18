@@ -6,7 +6,7 @@
  * `AgentServerQueryPayload` ans Backend – dort zieht `handleStatsUpdate()` den
  * Aktivitätszeitpunkt nach, auf dem die Auto-Shutdown-Entscheidung beruht.
  *
- * **Bewusste Arbeitsteilung (CLAUDE.md §3/§4):** Dieser Job entscheidet nichts.
+ * **Bewusste Arbeitsteilung (Entwicklungsregeln §3/§4):** Dieser Job entscheidet nichts.
  * Ob ein Server wegen Inaktivität abgeschaltet wird, entscheidet allein
  * `decideAutoShutdown()` im Backend – samt Schonfrist nach dem Start, dem
  * konfigurierbaren Inaktivitäts-Timeout und der Abschaltbarkeit pro Server.

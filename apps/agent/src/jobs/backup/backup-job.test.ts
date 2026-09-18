@@ -663,7 +663,7 @@ describe('DELETE_BACKUP', () => {
 
 describe('Container-Zugriff', () => {
   it('läuft ausschließlich über das ContainerRuntime-Interface', async () => {
-    // CLAUDE.md §4: Der Job kennt keine Docker-API. Geprüft über eine
+    // Entwicklungsregeln §4: Der Job kennt keine Docker-API. Geprüft über eine
     // Attrappe, die nur die beiden erlaubten Methoden anbietet.
     const aufrufe: string[] = [];
     const attrappe = {

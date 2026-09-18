@@ -3,7 +3,7 @@
  *
  * Hier werden die Drizzle-Repositories mit den Diensten verdrahtet. Die Dienste
  * selbst kennen keine Datenbank – deshalb laufen alle Sichtbarkeits- und
- * Moderationsregeln in Tests mit Attrappen (CLAUDE.md §4), und deshalb steht
+ * Moderationsregeln in Tests mit Attrappen (Entwicklungsregeln §4), und deshalb steht
  * diese Verdrahtung an genau einer Stelle.
  *
  * Der Audit-Dienst kommt aus B8 und wird nicht nachgebaut: Jede

@@ -1013,7 +1013,7 @@ describe('Kehraus abgerissener Laeufe (Audit W1-6, bb-03)', () => {
     const danach = await t.repository.findById(lauf.id);
 
     expect(danach?.status).toBe('failed');
-    // Benannter Code aus dem Katalog, kein Freitext (CLAUDE.md §5). Die Ursache
+    // Benannter Code aus dem Katalog, kein Freitext (Entwicklungsregeln §5). Die Ursache
     // liegt beim Panel selbst und nicht beim Homeserver.
     expect(danach?.failureCode).toBe('INTERNAL_ERROR');
     expect(danach?.failureMessage).toContain('Neustart');

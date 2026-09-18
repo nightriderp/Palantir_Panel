@@ -17,7 +17,7 @@
  * {@link AltchaSolutionLedger} sorgt dafür, dass jeder Nachweis genau einmal
  * zählt (siehe {@link verifyAltchaSolution}).
  *
- * Bewusst ohne zusätzliche Abhängigkeit umgesetzt (CLAUDE.md §1) – es sind zwei
+ * Bewusst ohne zusätzliche Abhängigkeit umgesetzt (Entwicklungsregeln §1) – es sind zwei
  * Hashes und ein HMAC aus `node:crypto`.
  */
 

@@ -108,10 +108,13 @@ export function MyBackupsView() {
     user ? [user.id] : null,
   );
 
+  // Vorab aufgelöst, damit die Abhängigkeit unten ein schlichter Wert ist
+  // (`user?.id` in der Liste liest der React-Compiler anders als im Rumpf).
+  const userId = user?.id ?? null;
   const all = useMemo(() => sortByNewest(backups.data ?? []), [backups.data]);
   const ungesichert = useMemo(
-    () => serversWithoutBackup(servers.data ?? [], all, user?.id ?? null),
-    [servers.data, all, user?.id],
+    () => serversWithoutBackup(servers.data ?? [], all, userId),
+    [servers.data, all, userId],
   );
   const summary = useMemo(() => summarizeOwnBackups(all), [all]);
   const visible = useMemo(() => filterByType(all, filter), [all, filter]);

@@ -55,6 +55,7 @@ import {
 } from './mapping.js';
 import { LogLineAssembler, demuxDockerStream, readNdjson } from './stream.js';
 import { type TarFileInput, createTar } from './tar.js';
+import { bereich, fehlerFeld } from '../../log.js';
 
 /**
  * Obergrenze fuer ein **Archiv**, das entpackt werden soll (Audit
@@ -207,7 +208,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
     this.#onStreamError =
       options.onStreamError ??
       ((fehler, kontext) => {
-        console.warn('[runtime] Stream abgebrochen', { fehler, ...kontext });
+        bereich('runtime').warn({ ...kontext, ...fehlerFeld(fehler) }, 'Stream abgebrochen');
       });
   }
 

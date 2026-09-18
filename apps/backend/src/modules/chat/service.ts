@@ -7,7 +7,7 @@
  * (`visibility.ts`) und bricht mit `CONVERSATION_NOT_FOUND` ab, wenn der
  * Aufrufer nicht dazugehört. Es gibt hier keinen zweiten Weg an eine
  * Konversation heran – auch nicht für den Owner (Pflichtenheft §15,
- * CLAUDE.md §2).
+ * Entwicklungsregeln §2).
  *
  * Die Moderation gemeldeter Nachrichten liegt bewusst in einer eigenen Datei
  * (`moderation.ts`), damit die beiden Zugriffswege nicht ineinanderlaufen.

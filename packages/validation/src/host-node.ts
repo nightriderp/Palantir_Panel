@@ -7,7 +7,7 @@
  *
  * `nodeResourcesSchema` stammt aus `resources.ts` (B4) und wird hier nur
  * wiederverwendet: Die Ressourcenmenge einer Node ist dieselbe, egal ob sie
- * geprüft oder verwaltet wird (CLAUDE.md §3).
+ * geprüft oder verwaltet wird (Entwicklungsregeln §3).
  */
 
 import { HOST_NODE_STATUSES } from '@palantir/contracts';

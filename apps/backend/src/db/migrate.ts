@@ -8,7 +8,7 @@ import { closeDb, getDb } from './client.js';
  * (`pnpm --filter @palantir/backend db:migrate`).
  *
  * Schema-Änderungen laufen ausschließlich über diesen Weg – nie manuell an der
- * laufenden Datenbank (CLAUDE.md §4).
+ * laufenden Datenbank (Entwicklungsregeln §4).
  *
  * Das Skript läuft über `tsx` direkt gegen `src/`, damit es unabhängig vom
  * Build-Ergebnis auch beim allerersten Deployment funktioniert.

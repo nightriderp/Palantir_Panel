@@ -42,7 +42,7 @@ import { type GateState, gateRedirect, sessionStateFromEnvelope } from '@/lib/au
  *    Sperre über Requests hinweg hätte die Middleware ohnehin nicht: Sie läuft
  *    ohne gemeinsamen Zustand, unter Umständen in mehreren Instanzen.
  */
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const cookie = request.headers.get('cookie') ?? '';
 
   let state: GateState = { authed: false, awaiting: false };

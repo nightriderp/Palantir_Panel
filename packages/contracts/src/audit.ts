@@ -3,7 +3,7 @@
  *
  * **Append-only.** Es gibt hier bewusst weder einen Update- noch einen
  * Delete-DTO und keinen Eingabetyp zum Ändern eines Eintrags – auch nicht für
- * Admins, auch nicht „temporär" (CLAUDE.md §2). Ein einmal geschriebener
+ * Admins, auch nicht „temporär" (Entwicklungsregeln §2). Ein einmal geschriebener
  * Eintrag bleibt, wie er ist.
  *
  * Die einzige Ausnahme beim Entfernen ist der rein additive
@@ -28,7 +28,7 @@ export const AUDIT_RETENTION_MONTHS = 24;
  *
  * Der Katalog ist **wachsend**: Jedes Arbeitspaket ergänzt hier additiv die
  * sicherheitsrelevanten Aktionen, die es selbst protokolliert – niemals als
- * Freitext am Aufrufort (CLAUDE.md §5). Das Entfernen oder Umbenennen eines
+ * Freitext am Aufrufort (Entwicklungsregeln §5). Das Entfernen oder Umbenennen eines
  * bestehenden Eintrags ist ein Breaking Change: bereits geschriebene Einträge
  * ließen sich sonst nicht mehr zuordnen, und genau das darf ein append-only Log
  * nicht zulassen.
@@ -74,6 +74,19 @@ export const AUDIT_ACTIONS = [
   'server.settingsChanged',
   'server.memberAdded',
   'server.memberRemoved',
+  /**
+   * Besitzer eines Servers gewechselt (Lastenheft §3.7, Pflichtenheft §7) –
+   * durch einen Administrator, einzeln oder beim Löschen eines Kontos mit
+   * Übergang aller Server. Alter und neuer Besitzer stehen in den Metadaten;
+   * der Eintrag zeigt auf den Server, denn der bleibt bestehen.
+   */
+  'server.ownerTransferred',
+  /**
+   * Neue Fassung des Spiel-Images übernommen (Pflichtenheft §9). Alte und
+   * neue Fassung stehen in den Metadaten – der Server behält seine Fassung
+   * sonst über Neustarts hinweg, der Wechsel ist deshalb eine Entscheidung.
+   */
+  'server.imageUpdated',
 
   // Backups (B5)
   'backup.created',

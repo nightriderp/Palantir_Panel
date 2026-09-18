@@ -9,7 +9,7 @@ import { formatTime } from '@/components/shared';
  *
  * Bewusst ein schlichter Linienzug ohne Diagramm-Bibliothek: gezeigt wird der
  * Trend, nicht der exakte Wert – eine zusätzliche Abhängigkeit wäre dafür nicht
- * gerechtfertigt (CLAUDE.md §1).
+ * gerechtfertigt (Entwicklungsregeln §1).
  *
  * **Was der Linienzug bisher verschwieg** (Fundpunkt 222): Es gab weder eine
  * Skala noch einen Zeitbezug – zwei Kurven nebeneinander sahen gleich aus,

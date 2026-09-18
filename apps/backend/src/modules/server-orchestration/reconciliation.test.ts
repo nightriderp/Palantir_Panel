@@ -246,10 +246,61 @@ describe('Ein laufendes Anlegen', () => {
     expect(plan.unchangedServerIds).toEqual(['server-1']);
   });
 
-  it('gilt nach einem Reconnect weiterhin als unterbrochen', () => {
+  it('gilt nach einem Reconnect ohne Zeitstempel weiterhin als unterbrochen', () => {
     const plan = planReconciliation([angelegt], [], 'connected');
 
     expect(plan.actions[0]?.kind).toBe('markCreateInterrupted');
+  });
+
+  describe('Schonfrist nach einem Reconnect (Befund 11.2)', () => {
+    // Der Befehl läuft auf dem Agent weiter, auch wenn die Verbindung abriss:
+    // Ein minutenlanger Image-Zug soll nicht als Abbruch verbucht werden,
+    // solange die CREATE-Frist seit dem Zustandswechsel noch läuft.
+    const jetzt = new Date('2026-09-16T12:10:00.000Z');
+    const frisch = expected({
+      status: 'creating',
+      dockerContainerId: null,
+      statusChangedAt: '2026-09-16T12:08:00.000Z',
+    });
+
+    it('lässt ein junges Anlegen nach dem Reconnect in Ruhe', () => {
+      const plan = planReconciliation([frisch], [], 'connected', {
+        now: jetzt,
+        createGraceMs: 5 * 60_000,
+      });
+
+      expect(plan.actions).toEqual([]);
+      expect(plan.unchangedServerIds).toEqual(['server-1']);
+    });
+
+    it('verbucht den Abbruch, sobald die Frist abgelaufen ist', () => {
+      const plan = planReconciliation([frisch], [], 'connected', {
+        now: jetzt,
+        createGraceMs: 60_000,
+      });
+
+      expect(plan.actions[0]?.kind).toBe('markCreateInterrupted');
+    });
+
+    it('bleibt ohne Frist bei der strengen Lesart', () => {
+      const plan = planReconciliation([frisch], [], 'connected', { now: jetzt });
+
+      expect(plan.actions[0]?.kind).toBe('markCreateInterrupted');
+    });
+
+    it('schont beim getakteten Bericht weiterhin unabhängig vom Alter', () => {
+      const alt = expected({
+        status: 'creating',
+        dockerContainerId: null,
+        statusChangedAt: '2026-09-16T11:00:00.000Z',
+      });
+      const plan = planReconciliation([alt], [], 'requested', {
+        now: jetzt,
+        createGraceMs: 60_000,
+      });
+
+      expect(plan.actions).toEqual([]);
+    });
   });
 
   it('wird ohne Angabe des Anlasses als Reconnect gelesen', () => {

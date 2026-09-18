@@ -26,7 +26,7 @@
  * Begründung an der Runtime.
  *
  * Wie beim Löschen gilt: Die Runtime sagt, **wo** der Datenordner liegt, der
- * Zugriff passiert hier (CLAUDE.md §4).
+ * Zugriff passiert hier (Entwicklungsregeln §4).
  */
 
 import { open, readFile, stat, writeFile } from 'node:fs/promises';

@@ -4,7 +4,7 @@
  * Gegenstück zu `FontDto` und den Format-Grenzen aus `@palantir/contracts`.
  * Backend (Prüfung des Uploads) und Frontend (Formularprüfung im
  * Schrift-Dialog) nutzen dieselben Schemas – kein zweiter, abweichender
- * Regelsatz (CLAUDE.md §3).
+ * Regelsatz (Entwicklungsregeln §3).
  *
  * **Der wichtigste Punkt dieser Datei ist {@link fontFamilyNameSchema}.** Der
  * Familienname landet später in einer erzeugten `@font-face`-Regel, also in

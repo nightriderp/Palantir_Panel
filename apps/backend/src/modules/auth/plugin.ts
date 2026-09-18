@@ -19,7 +19,7 @@
  * Bewusst als normale Funktion statt als Fastify-Plugin – dieselbe Begründung
  * wie bei `registerRbac` in B2: `decorateRequest` wirkt sonst nur im
  * Plugin-Kontext, und `fastify-plugin` als zusätzliche Abhängigkeit wäre dafür
- * nicht gerechtfertigt (CLAUDE.md §1).
+ * nicht gerechtfertigt (Entwicklungsregeln §1).
  */
 
 import fastifyCookie from '@fastify/cookie';

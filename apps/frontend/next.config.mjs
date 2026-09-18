@@ -117,9 +117,6 @@ const nextConfig = {
   reactStrictMode: true,
   // Workspace-Packages werden als TypeScript-Quelle mitkompiliert.
   transpilePackages: ['@palantir/contracts', '@palantir/validation'],
-  eslint: {
-    dirs: ['src'],
-  },
   // Erzeugt unter `.next/standalone` einen eigenständigen Server samt der
   // tatsächlich benötigten Abhängigkeiten. Ohne das müsste das Laufzeit-Image
   // den kompletten node_modules-Baum mitschleppen.

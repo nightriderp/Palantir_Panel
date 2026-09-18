@@ -50,7 +50,7 @@ export { CHAT_LIVE_CLOSE_CODE_TOO_MANY_CONNECTIONS, CHAT_LIVE_CLOSE_CODE_UNAUTHO
  * (`backend-community-visibility-11`).
  *
  * Bewusst eine Konstante und keine Umgebungsvariable: Es gibt keinen
- * Betriebsfall, in dem hier eine andere Zahl gebraucht würde (CLAUDE.md §8).
+ * Betriebsfall, in dem hier eine andere Zahl gebraucht würde (Entwicklungsregeln §8).
  */
 export const CHAT_LIVE_MAX_CONNECTIONS_PER_USER = 10;
 

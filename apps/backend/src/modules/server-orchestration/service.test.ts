@@ -47,9 +47,11 @@ import {
   type CreateServerData,
   type HostNodeRecord,
   type PersistLifecycleData,
+  type ServerMemberCandidateRecord,
   type ServerMemberRecord,
   type ServerRecord,
   type ServerRepository,
+  type TransferCandidateRecord,
   type UpdateServerData,
 } from './repository.js';
 import {
@@ -315,6 +317,10 @@ class FakeRepository implements ServerRepository {
     return karte;
   }
 
+  listMemberCandidates(): Promise<readonly ServerMemberCandidateRecord[]> {
+    return Promise.resolve([]);
+  }
+
   listMembers(serverId: string): Promise<readonly ServerMemberRecord[]> {
     return Promise.resolve(
       [...(this.members.get(serverId) ?? new Map()).entries()].map(([userId, level]) => ({
@@ -346,6 +352,28 @@ class FakeRepository implements ServerRepository {
   }
 
   /**
+   * Konten, die einen Server übernehmen könnten (Pflichtenheft §7). Wer hier
+   * nicht steht, ist der Attrappe unbekannt (`USER_NOT_FOUND`).
+   */
+  readonly candidates = new Map<string, TransferCandidateRecord>();
+
+  transferOwner(serverId: string, newOwnerId: string): Promise<void> {
+    const current = this.servers.get(serverId);
+
+    if (current !== undefined) {
+      this.servers.set(serverId, { ...current, ownerId: newOwnerId });
+    }
+
+    this.members.get(serverId)?.delete(newOwnerId);
+
+    return Promise.resolve();
+  }
+
+  findTransferCandidate(userId: string): Promise<TransferCandidateRecord | null> {
+    return Promise.resolve(this.candidates.get(userId) ?? null);
+  }
+
+  /**
    * Zustand der einen Node (`HostNode.status`) – umstellbar, damit sich eine
    * stillgelegte Node prüfen lässt (Gefundener Punkt 24).
    */
@@ -357,6 +385,33 @@ class FakeRepository implements ServerRepository {
 
   defaultHost(): Promise<HostNodeRecord | null> {
     return Promise.resolve(this.host());
+  }
+
+  listPlacementCandidates(): Promise<
+    readonly {
+      id: string;
+      name: string;
+      status: string;
+      totalRamMb: number;
+      allocatedRamMb: number;
+      createdAt: Date;
+    }[]
+  > {
+    const host = this.host();
+    const belegt = [...this.servers.values()]
+      .filter((server) => server.hostId === host.id)
+      .reduce((summe, server) => summe + server.resourceLimits.ramMb, 0);
+
+    return Promise.resolve([
+      {
+        id: host.id,
+        name: host.name,
+        status: host.status,
+        totalRamMb: 32_768,
+        allocatedRamMb: belegt,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ]);
   }
 
   countHosts(): Promise<number> {
@@ -2067,11 +2122,12 @@ describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
     expect(gestartet.restartRequired).toBe(false);
   });
 
-  it('baut vor dem Start neu, wenn die Definition ein neueres Image nennt', async () => {
+  it('behält beim Neuaufbau die gespeicherte Image-Fassung des Servers (Pflichtenheft §9)', async () => {
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
 
-    // So sieht ein Deployment mit neuer Spiel-Fassung aus.
+    // Der Bauplan ist veraltet (etwa geänderte Härtung), die Fassung nicht:
+    // Der Neuaufbau nimmt das Image des Servers, nicht das der Definition.
     harness.repository.servers.set(created.id, {
       ...harness.repository.servers.get(created.id)!,
       imageRef: 'ghcr.io/test/echo:alt',
@@ -2084,7 +2140,7 @@ describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
     const gestartet = await settle(harness, created.id, ['running']);
 
     expect(harness.socket.commands.map((c) => c.command)).toContain('CREATE');
-    expect(gestartet.imageRef).toBe(TEST_GAME_TYPE.dockerImage);
+    expect(gestartet.imageRef).toBe('ghcr.io/test/echo:alt');
   });
 
   /**
@@ -4980,5 +5036,171 @@ describe('Server einer unerreichbaren Node loeschen (Fundpunkt 226)', () => {
 
     expect(harness.socket.commands.map((c) => c.command)).toContain('DELETE');
     expect(harness.repository.servers.size).toBe(0);
+  });
+});
+
+describe('Image-Fassung je Server (Pflichtenheft §9, Review 2026-09-16)', () => {
+  /** Eine Definition, deren Image sich nach dem Anlegen ändert – wie ein Deployment. */
+  type WandelbareDefinition = { -readonly [K in keyof GameTypeDefinition]: GameTypeDefinition[K] };
+
+  function mitWandelbarerDefinition() {
+    const definition: WandelbareDefinition = { ...TEST_GAME_TYPE };
+    const harness = makeHarness({ gameTypes: [definition] });
+
+    return { harness, definition };
+  }
+
+  it('lässt einen laufenden Server bei neuer Definition unverändert und meldet nur „Update verfügbar"', async () => {
+    const { harness, definition } = mitWandelbarerDefinition();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    definition.dockerImage = 'ghcr.io/test/echo:2';
+    harness.socket.commands.length = 0;
+
+    // Ein Neustart ist kein „Aktualisieren": Der Container wird nicht neu gebaut.
+    await harness.service.restartServer(created.id, OWNER_ID);
+    const neugestartet = await settle(harness, created.id, ['running']);
+
+    expect(harness.socket.commands.map((c) => c.command)).not.toContain('CREATE');
+    expect(neugestartet.imageRef).toBe(TEST_GAME_TYPE.dockerImage);
+  });
+
+  it('übernimmt die neue Fassung am laufenden Server als Stopp, Neuaufbau und Start', async () => {
+    const { harness, definition } = mitWandelbarerDefinition();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    definition.dockerImage = 'ghcr.io/test/echo:2';
+    harness.socket.commands.length = 0;
+
+    const ergebnis = await harness.service.updateServerImage(created.id, OWNER_ID);
+    const aktualisiert = await settle(harness, created.id, ['running']);
+
+    expect(ergebnis.restarted).toBe(true);
+    expect(ergebnis.previousImage).toBe(TEST_GAME_TYPE.dockerImage);
+    expect(ergebnis.image).toBe('ghcr.io/test/echo:2');
+    expect(aktualisiert.imageRef).toBe('ghcr.io/test/echo:2');
+    const befehle = harness.socket.commands.map((c) => c.command);
+    expect(befehle).toContain('STOP');
+    expect(befehle).toContain('CREATE');
+    expect(befehle).toContain('START');
+    // Der Weltstand bleibt: derselbe Datenordner wird wieder eingehängt.
+    const create = harness.socket.commands.find((c) => c.command === 'CREATE');
+    expect(JSON.stringify(create?.payload)).toContain(created.id);
+  });
+
+  it('baut am gestoppten Server nur neu, ohne ihn zu starten', async () => {
+    const { harness, definition } = mitWandelbarerDefinition();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    definition.dockerImage = 'ghcr.io/test/echo:2';
+    harness.socket.commands.length = 0;
+
+    const ergebnis = await harness.service.updateServerImage(created.id, OWNER_ID);
+
+    expect(ergebnis.restarted).toBe(false);
+    expect(ergebnis.server.imageRef).toBe('ghcr.io/test/echo:2');
+    expect(ergebnis.server.status).toBe('stopped');
+    const befehle = harness.socket.commands.map((c) => c.command);
+    expect(befehle).toContain('CREATE');
+    expect(befehle).not.toContain('START');
+  });
+
+  it('tut nichts, wenn der Server die Fassung schon trägt', async () => {
+    const { harness } = mitWandelbarerDefinition();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    harness.socket.commands.length = 0;
+
+    const ergebnis = await harness.service.updateServerImage(created.id, OWNER_ID);
+
+    expect(ergebnis.restarted).toBe(false);
+    expect(harness.socket.commands).toHaveLength(0);
+  });
+});
+
+describe('Besitzerwechsel (Lastenheft §3.7, Pflichtenheft §7)', () => {
+  const NEU = '77777777-7777-4777-8777-777777777777';
+
+  function kandidat(overrides: Partial<TransferCandidateRecord> = {}): TransferCandidateRecord {
+    return {
+      id: NEU,
+      displayName: 'Neuer Besitzer',
+      banned: false,
+      isOwner: false,
+      roleNames: ['Nutzer'],
+      ...overrides,
+    };
+  }
+
+  it('übergibt den Server, streicht die Mitgliedschaft des neuen Besitzers und meldet die Liste', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+    await harness.repository.upsertMember(id, NEU, 'operator');
+    harness.repository.candidates.set(NEU, kandidat());
+
+    const ergebnis = await harness.service.transferOwnership(id, NEU);
+
+    expect(ergebnis.server.ownerId).toBe(NEU);
+    expect(ergebnis.previousOwnerId).toBe(OWNER_ID);
+    expect(ergebnis.newOwnerDisplayName).toBe('Neuer Besitzer');
+    // Der Besitzer steht nie in der Mitgliederliste (Pflichtenheft §8).
+    expect(await harness.repository.memberLevel(id, NEU)).toBeNull();
+
+    const ereignis = harness.emitted.find((eintrag) => eintrag.event === 'server.ownerTransferred');
+    expect(ereignis?.payload).toMatchObject({ serverId: id, ownerId: NEU });
+    // Der alte Besitzer soll den Wechsel in seiner Übersicht sehen.
+    expect(ereignis?.payload.memberUserIds).toContain(OWNER_ID);
+  });
+
+  it('lehnt ein gesperrtes Konto ab', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+    harness.repository.candidates.set(NEU, kandidat({ banned: true }));
+
+    await expect(harness.service.transferOwnership(id, NEU)).rejects.toMatchObject({
+      code: 'TRANSFER_TARGET_INVALID',
+    });
+    expect(harness.repository.servers.get(id)?.ownerId).toBe(OWNER_ID);
+  });
+
+  it('lehnt ein noch nicht freigeschaltetes Konto ab', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+    // Ohne Rolle jenseits von „Gast" wartet das Konto noch (rbac/approval.ts).
+    harness.repository.candidates.set(NEU, kandidat({ roleNames: [] }));
+
+    await expect(harness.service.transferOwnership(id, NEU)).rejects.toMatchObject({
+      code: 'TRANSFER_TARGET_INVALID',
+    });
+  });
+
+  it('lässt den Owner der Instanz übernehmen, auch ohne Rolle', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+    harness.repository.candidates.set(NEU, kandidat({ isOwner: true, roleNames: [] }));
+
+    const ergebnis = await harness.service.transferOwnership(id, NEU);
+
+    expect(ergebnis.server.ownerId).toBe(NEU);
+  });
+
+  it('meldet ein unbekanntes Konto als USER_NOT_FOUND', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+
+    await expect(harness.service.transferOwnership(id, NEU)).rejects.toMatchObject({
+      code: 'USER_NOT_FOUND',
+    });
+  });
+
+  it('lehnt den bisherigen Besitzer als Ziel ab', async () => {
+    const harness = makeHarness();
+    const id = (await harness.service.createServer(createInput(), OWNER_ID)).id;
+
+    await expect(harness.service.transferOwnership(id, OWNER_ID)).rejects.toMatchObject({
+      code: 'TRANSFER_TARGET_INVALID',
+    });
   });
 });

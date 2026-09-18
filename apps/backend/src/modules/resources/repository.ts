@@ -179,7 +179,7 @@ const EMPTY_NODE_USAGE: NodeResourceUsage = {
  *
  * Bewusst kein Schätzwert und keine Hilfstabelle in diesem Paket: eine zweite
  * Quelle für die Server-Belegung wäre genau die Parallelstruktur, die
- * CLAUDE.md §3 ausschließt. Solange dieser Platzhalter im Einsatz ist, greift
+ * Entwicklungsregeln §3 ausschließt. Solange dieser Platzhalter im Einsatz ist, greift
  * die harte Node-Prüfung rechnerisch immer – sie kann nur nichts abziehen, was
  * bereits läuft.
  */

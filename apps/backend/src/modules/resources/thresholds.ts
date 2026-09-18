@@ -14,7 +14,7 @@
  * - **Server:** Verbrauch eines einzelnen Servers gegen sein *eigenes* Limit.
  *
  * Wie `capacity.ts` kennt diese Datei weder Datenbank noch HTTP und ist damit
- * ohne Infrastruktur testbar (CLAUDE.md §4).
+ * ohne Infrastruktur testbar (Entwicklungsregeln §4).
  */
 
 import {

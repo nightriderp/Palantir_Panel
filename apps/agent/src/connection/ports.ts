@@ -5,7 +5,7 @@
  * gegen Doppelausführung ab und reicht sie hier hinein; Ergebnisse und
  * Ereignisse gehen denselben Weg zurück. Die tatsächliche Docker-Ansteuerung
  * liegt hinter `ContainerRuntime` in A2 – und die spricht ausschließlich über
- * den Docker-Socket-Proxy (Pflichtenheft §2.3, §2.5, CLAUDE.md §4).
+ * den Docker-Socket-Proxy (Pflichtenheft §2.3, §2.5, Entwicklungsregeln §4).
  *
  * Dass diese Schnittstelle hier und nicht in `packages/contracts` liegt, ist
  * Absicht: Sie ist agent-intern und überschreitet keine Prozessgrenze. Die

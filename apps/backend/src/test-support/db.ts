@@ -13,9 +13,16 @@
  * - `DATABASE_URL` – die Verbindung zum PostgreSQL-Server, und
  * - `PALANTIR_TEST_DB=1` – die ausdrückliche Freigabe.
  *
- * Fehlt eines von beiden, meldet {@link describeDatenbank} die Suite als
+ * Fehlt die Freigabe, meldet {@link describeDatenbank} die Suite als
  * übersprungen (mit Grund) und öffnet **keine** Verbindung. Auf einem
  * Entwicklungsrechner ohne Postgres bleibt `pnpm test` damit grün.
+ *
+ * Steht die Freigabe, fehlt aber `DATABASE_URL`, ist das ein **Fehler** und
+ * kein Überspringen (Fundpunkt 299, Review 2026-09-16 Befund 7.7): Wer
+ * `PALANTIR_TEST_DB=1` setzt, will die Datenbanktests laufen sehen. Ein Lauf,
+ * der sie dann still übergeht, meldet „grün" für 136 Tests, die nicht gelaufen
+ * sind – lokal passierte genau das, wenn die Variable ohne Verbindung
+ * mitgegeben wurde.
  *
  * ## Warum zwei Schalter und nicht nur `DATABASE_URL`
  *
@@ -108,19 +115,23 @@ export type Freigabe =
  */
 export function pruefeFreigabe(umgebung: NodeJS.ProcessEnv = process.env): Freigabe {
   const url = umgebung.DATABASE_URL?.trim();
+  const freigegeben = umgebung[FREIGABE_VARIABLE] === '1';
 
-  if (url === undefined || url.length === 0) {
-    return {
-      aktiv: false,
-      grund: 'DATABASE_URL ist nicht gesetzt (läuft nur in der CI gegen den Postgres-Dienst)',
-    };
-  }
-
-  if (umgebung[FREIGABE_VARIABLE] !== '1') {
+  if (!freigegeben) {
     return {
       aktiv: false,
       grund: `${FREIGABE_VARIABLE}=1 ist nicht gesetzt – ohne diese Freigabe wird keine Verbindung geöffnet`,
     };
+  }
+
+  if (url === undefined || url.length === 0) {
+    // Ausdrücklich gewollt und trotzdem nicht möglich: laut sein, nicht
+    // überspringen (Fundpunkt 299).
+    throw new Error(
+      `${FREIGABE_VARIABLE}=1 ist gesetzt, aber DATABASE_URL fehlt – die datenbankgestützten Tests ` +
+        'können so nicht laufen. Entweder DATABASE_URL mitgeben (z. B. eine lokale Wegwerf-Datenbank) ' +
+        `oder ${FREIGABE_VARIABLE} weglassen, dann werden sie sichtbar übersprungen.`,
+    );
   }
 
   return { aktiv: true, url };

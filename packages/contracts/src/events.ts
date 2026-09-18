@@ -8,8 +8,8 @@
  *     `triggered`, `registered`, `reported`); Zustandsbeschreibungen wie `low`
  *     nur dort, wo kein Vorgang, sondern ein erreichter Schwellwert gemeldet wird
  *
- * Neue Events werden ausschließlich nach diesem Muster ergänzt (CLAUDE.md §5)
- * und zusätzlich im Katalog in Pflichtenheft §14 nachgetragen (CLAUDE.md §8).
+ * Neue Events werden ausschließlich nach diesem Muster ergänzt (Entwicklungsregeln §5)
+ * und zusätzlich im Katalog in Pflichtenheft §14 nachgetragen (Entwicklungsregeln §8).
  * Diese Liste enthält bewusst nur die im Pflichtenheft bereits genannten Namen.
  */
 
@@ -61,6 +61,13 @@ export const WEBSOCKET_EVENTS = [
   'server.failed',
   /** Klonen abgeschlossen; der geklonte Server ist angelegt. */
   'server.cloned',
+  /**
+   * Besitzer eines Servers gewechselt (Pflichtenheft §7). Wie `server.created`
+   * Listen-Ereignis des Live-Kanals **und** Meldungsanlass: Der alte Besitzer
+   * verliert den Server aus seiner Übersicht, der neue bekommt ihn und soll es
+   * erfahren. Wer den Wechsel veranlasst hat, steht im Audit-Log.
+   */
+  'server.ownerTransferred',
   // Den Zustandswechsel meldet bereits `server.statusChanged` weiter oben, den
   // Fortschritt beim Klonen `serverClone.progressed` – beide aus F3.
 

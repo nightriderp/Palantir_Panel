@@ -10,7 +10,13 @@ import {
   formatNumber,
 } from '@/components/shared';
 import { NodeStatusPill } from './NodeStatusPill';
-import { type NodeMetric, nodeCpuLabel, nodeMetrics, nodeStatusMeta } from './nodeStatus';
+import {
+  type NodeMetric,
+  nodeAgentHint,
+  nodeCpuLabel,
+  nodeMetrics,
+  nodeStatusMeta,
+} from './nodeStatus';
 
 export interface NodeRowProps {
   node: HostNodeDto;
@@ -110,6 +116,7 @@ function MeterBar({ metric }: { metric: NodeMetric }) {
 export function NodeRow({ node, className }: NodeRowProps) {
   const meta = nodeStatusMeta(node.status);
   const balken = nodeMetrics(node);
+  const agent = nodeAgentHint(node);
 
   return (
     <Panel variant="raised" padding="sm" className={cn('flex flex-col gap-3', className)}>
@@ -144,6 +151,7 @@ export function NodeRow({ node, className }: NodeRowProps) {
               {node.lastSeenAt === null ? null : (
                 <> · zuletzt gesehen {formatDateTime(node.lastSeenAt)}</>
               )}
+              {agent === null ? null : <> · {agent.label}</>}
             </div>
           </div>
         </div>
@@ -168,6 +176,16 @@ export function NodeRow({ node, className }: NodeRowProps) {
         <div className="flex items-start gap-2 rounded-lg border border-line bg-fill px-3 py-2 text-sm text-ink-muted">
           <Icon name="warning" size={14} className="mt-0.5 shrink-0 text-warning" />
           <span>{node.statusMessage}</span>
+        </div>
+      ) : null}
+
+      {agent?.warning ? (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-line bg-fill px-3 py-2 text-sm text-ink-muted"
+        >
+          <Icon name="warning" size={14} className="mt-0.5 shrink-0 text-danger" />
+          <span>{agent.warning}</span>
         </div>
       ) : null}
     </Panel>

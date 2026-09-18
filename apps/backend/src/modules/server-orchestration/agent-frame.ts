@@ -49,7 +49,7 @@ import { AGENT_FILE_CHANNEL_MAX_BYTES } from './files.js';
  * (`hello`, `event`, `stateReport`).
  *
  * 1 MiB, bewusst als feste Grenze und nicht als Konfigurationsvariable
- * (CLAUDE.md §8: lieber eine begründete Grenze als ein weiterer Schalter, den
+ * (Entwicklungsregeln §8: lieber eine begründete Grenze als ein weiterer Schalter, den
  * niemand richtig setzt). Der größte reguläre Frame dieser Art ist der
  * Ist-Zustands-Bericht: Ein `AgentContainerState` wiegt als JSON rund 200 Byte,
  * eine Node mit 1000 Containern kommt damit auf etwa 200 KiB. Konsolenzeilen

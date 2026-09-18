@@ -27,7 +27,7 @@ const compose = readFileSync(path.join(repoRoot, 'deploy/gamenode/docker-compose
 /**
  * Liest die Schlüssel eines eingerückten YAML-Mapping-Blocks. Von Hand statt
  * mit einem YAML-Parser: Für den Abgleich zweier Namenslisten lohnt keine neue
- * Abhängigkeit im Agent (CLAUDE.md §1).
+ * Abhängigkeit im Agent (Entwicklungsregeln §1).
  */
 function mappingSchlüssel(quelle: string, beginn: RegExp): string[] {
   const zeilen = quelle.split(/\r?\n/);
@@ -85,8 +85,6 @@ describe('deploy/gamenode/docker-compose.yml', () => {
       'DISCORD_CLIENT_SECRET',
       'TWITCH_CLIENT_SECRET',
       'STEAM_API_KEY',
-      'WIREGUARD_VPS_PRIVATE_KEY',
-      'WIREGUARD_HOME_PRIVATE_KEY',
       'FRP_TOKEN',
     ]) {
       expect(agentUmgebung).not.toContain(name);

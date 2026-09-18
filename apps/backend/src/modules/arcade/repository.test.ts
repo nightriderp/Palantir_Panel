@@ -5,7 +5,7 @@ import { createDrizzleArcadeRepository } from './repository.js';
 /**
  * Audit W2-9 (Fundpunkt 146), abgeschlossen in W3-5: Der Schreibweg warf einen
  * rohen `Error`, wenn `returning()` leer blieb – ein Fehler ohne Code aus dem
- * Katalog (CLAUDE.md §5). Geprüft wird ohne Datenbank: Der Drizzle-Aufrufbaum
+ * Katalog (Entwicklungsregeln §5). Geprüft wird ohne Datenbank: Der Drizzle-Aufrufbaum
  * wird nur so weit nachgebildet, wie das Repository ihn durchläuft (Muster von
  * `server-orchestration/schedule-repository.test.ts`).
  */

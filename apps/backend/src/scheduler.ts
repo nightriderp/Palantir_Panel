@@ -79,7 +79,22 @@ export interface SchedulerOptions {
   readonly log: SchedulerLogger;
   /** Nur für Tests: eigener Zeitgeber statt `setInterval`. */
   readonly timer?: SchedulerTimer;
+  /**
+   * Frist je Aufgabe und Takt; Vorgabe {@link DEFAULT_TASK_TIMEOUT_MS}.
+   *
+   * Läuft eine Aufgabe darüber hinaus, geht der Takt zur nächsten weiter und
+   * protokolliert es. Die Aufgabe selbst läuft weiter – abbrechen lässt sich
+   * ein Promise nicht – und gilt bis zu ihrem Ende als „läuft noch": Sie wird
+   * in den folgenden Takten übersprungen, die übrigen Aufgaben nicht.
+   */
+  readonly taskTimeoutMs?: number;
 }
+
+/**
+ * Eine Minute: länger als jeder Befehl an den Agent (`AGENT_COMMAND_TIMEOUT_MS`
+ * 30 s), kürzer als der Takt einer zweiten Node, die sonst mit wartete.
+ */
+export const DEFAULT_TASK_TIMEOUT_MS = 60_000;
 
 export interface Scheduler {
   /**
@@ -117,34 +132,59 @@ export function startScheduler(options: SchedulerOptions): Scheduler {
   const { log, tasks } = options;
   const timer = options.timer ?? nodeTimer;
 
-  let running = false;
+  const taskTimeoutMs = options.taskTimeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
+  /*
+   * Je Aufgabe, nicht je Durchlauf (Review 2026-09-16, Befund 11.4): Bis dahin
+   * hielt ein einziges Flag den ganzen Takt an. Hing eine Aufgabe – etwa der
+   * Soll/Ist-Abgleich auf einer toten Agent-Verbindung – standen alle neun,
+   * und sichtbar war das nur als Warnung „der vorige Durchlauf läuft noch".
+   */
+  const laufend = new Set<string>();
   let stopped = false;
 
   async function runOnce(): Promise<void> {
-    if (running) {
-      log.warn(
-        { intervalMs: options.intervalMs },
-        'Zeitgeber übersprungen – der vorige Durchlauf läuft noch',
-      );
+    for (const task of tasks) {
+      if (laufend.has(task.name)) {
+        log.warn(
+          { task: task.name, intervalMs: options.intervalMs },
+          'Aufgabe des Zeitgebers übersprungen – der vorige Lauf hängt noch',
+        );
 
-      return;
-    }
+        continue;
+      }
 
-    running = true;
+      laufend.add(task.name);
 
-    try {
-      for (const task of tasks) {
-        try {
-          await task.run();
-        } catch (error: unknown) {
+      const lauf = task
+        .run()
+        .catch((error: unknown) => {
           log.error(
             { task: task.name, error: error instanceof Error ? error.message : String(error) },
             'Aufgabe des Zeitgebers fehlgeschlagen',
           );
+        })
+        .finally(() => {
+          laufend.delete(task.name);
+        });
+
+      let frist: ReturnType<typeof setTimeout> | undefined;
+      const abgelaufen = new Promise<'timeout'>((resolve) => {
+        frist = setTimeout(() => resolve('timeout'), taskTimeoutMs);
+        frist.unref();
+      });
+
+      try {
+        const ausgang = await Promise.race([lauf.then(() => 'fertig' as const), abgelaufen]);
+
+        if (ausgang === 'timeout') {
+          log.error(
+            { task: task.name, timeoutMs: taskTimeoutMs },
+            'Aufgabe des Zeitgebers hängt – der Takt geht ohne sie weiter',
+          );
         }
+      } finally {
+        clearTimeout(frist);
       }
-    } finally {
-      running = false;
     }
   }
 
@@ -709,7 +749,7 @@ export interface DataHousekeeper {
  *
  * **Nicht dabei:** `messages` und `arcade_scores`. Beides sind Inhalte, die
  * Nutzer selbst angelegt haben; wie lange sie bleiben, entscheidet der
- * Betreiber, nicht dieser Kehraus (CLAUDE.md §1). Ebenso wenig das Audit-Log:
+ * Betreiber, nicht dieser Kehraus (Entwicklungsregeln §1). Ebenso wenig das Audit-Log:
  * Seine Archivierung ist ausdrücklich ein Handkommando, damit der Zeitpunkt
  * sichtbar bleibt (`audit-archive.ts`).
  */

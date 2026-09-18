@@ -55,7 +55,7 @@ CREATE INDEX "port_allocations_server_id_idx" ON "port_allocations" USING btree 
 CREATE INDEX "port_allocations_range_id_idx" ON "port_allocations" USING btree ("range_id");--> statement-breakpoint
 CREATE INDEX "port_ranges_protocol_idx" ON "port_ranges" USING btree ("protocol");--> statement-breakpoint
 -- ===========================================================================
--- Unveraenderlichkeit des Audit-Logs (Pflichtenheft §6 und §18, CLAUDE.md §2)
+-- Unveraenderlichkeit des Audit-Logs (Pflichtenheft §6 und §18, Entwicklungsregeln §2)
 -- ===========================================================================
 -- Von Hand ergaenzt: Drizzle Kit erzeugt keine Trigger. Die Regel darf nicht
 -- allein im Anwendungscode stehen - jeder Datenbankzugang, auch ein direkter

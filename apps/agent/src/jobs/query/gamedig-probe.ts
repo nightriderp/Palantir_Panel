@@ -7,7 +7,7 @@
  * Höchstzahl und Antwortzeit. Genau daran hing der Spieler-Verlauf – ohne diese
  * Sonde blieb er dauerhaft leer.
  *
- * **Neue Laufzeit-Abhängigkeit `gamedig`** (CLAUDE.md §1): Sie kommt mit dem
+ * **Neue Laufzeit-Abhängigkeit `gamedig`** (Entwicklungsregeln §1): Sie kommt mit dem
  * ersten echten Spiel (Minecraft, Ausbaustufe 2) dazu, so wie es der
  * Kopfkommentar von `probe.ts` seit Phase 1 vorsieht. `gamedig` spricht die
  * Abfrageprotokolle vieler Spiele; welches gemeint ist, steht als
@@ -16,7 +16,7 @@
  *
  * Die Abfrage-Funktion wird hereingereicht, damit die Zuordnung
  * „gamedig-Antwort → {@link ServerProbeResult}" ohne Netz und ohne laufenden
- * Spielserver prüfbar bleibt (CLAUDE.md §4).
+ * Spielserver prüfbar bleibt (Entwicklungsregeln §4).
  */
 
 import { GameDig, type QueryResult } from 'gamedig';

@@ -3,7 +3,7 @@
  *
  * Hier werden die Drizzle-Repositories mit den Services verdrahtet. Die
  * Services selbst kennen keine Datenbank – deshalb lassen sie sich in Tests mit
- * Attrappen betreiben (CLAUDE.md §4), und deshalb steht diese Verdrahtung an
+ * Attrappen betreiben (Entwicklungsregeln §4), und deshalb steht diese Verdrahtung an
  * genau einer Stelle.
  *
  * Die Anschlusspunkte an andere Arbeitspakete sind optional und haben eine
@@ -28,7 +28,7 @@ import {
   type NodeUsageSource,
   createHostNodeService,
 } from './nodes.js';
-import { type PortPoolService, createPortPoolService } from './ports.js';
+import { type PortPoolService, type PortRangeLimits, createPortPoolService } from './ports.js';
 import {
   createDrizzleInstanceSettingsRepository,
   createInstanceSettingsService,
@@ -92,6 +92,11 @@ export interface AdminModuleOptions {
   readonly storageRemover?: StorageEntryRemover;
   /** Anschluss an B3: bekannte Server für die Bewertung der Datenordner. */
   readonly knownServers?: KnownServerSource;
+  /**
+   * Grenzen für Admin-Port-Bereiche aus Tunnel und Router (Befund 4.3). Ohne
+   * Angabe prüft der Port-Pool nur 1024–65535.
+   */
+  readonly portRangeLimits?: PortRangeLimits;
   /** Anschluss an B3: Anzeigenamen der Server in der Port-Übersicht. */
   readonly serverNames?: () => Promise<ReadonlyMap<string, string>>;
   /** Anschluss an B4: Kontingente für die Spalte in der Nutzerliste (Abgleich 12.1.3). */
@@ -172,6 +177,7 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
       audit:
         connection === db ? audit : createAuditService(createDrizzleAuditLogRepository(connection)),
       ...(options.serverNames ? { serverNames: options.serverNames } : {}),
+      ...(options.portRangeLimits ? { limits: options.portRangeLimits } : {}),
     });
 
   const ports = portPoolFor(db);

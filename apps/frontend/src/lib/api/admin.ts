@@ -27,6 +27,7 @@ import {
   type ApproveRegistrationRequestInput,
   type CreateUserInput,
   type DecideQuotaRequestInput,
+  type DeleteUserAsAdminInput,
   type InstanceSettingsInput,
   type QuotaRequestQuery,
   type AuditLogQuery,
@@ -206,6 +207,26 @@ export function resetUserTwoFactor(userId: string): Promise<ApiResult<null>> {
   });
 }
 
+/** Antwort der Konto-Löschung mit Besitzübergang (Pflichtenheft §7). */
+export interface DeleteUserAsAdminResult {
+  transferredServerIds: string[];
+  toUserId: string;
+}
+
+/**
+ * Konto löschen; Server und Sicherungen gehen an `transferToUserId` oder – ohne
+ * Angabe – an den löschenden Administrator (Lastenheft §3.7).
+ */
+export function deleteUserAsAdmin(
+  userId: string,
+  input: DeleteUserAsAdminInput,
+): Promise<ApiResult<DeleteUserAsAdminResult>> {
+  return apiRequest<DeleteUserAsAdminResult>(`/auth/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+    json: input,
+  });
+}
+
 /**
  * Alle Server der Instanz – für die Adressvergabe (Lastenheft §3.7).
  *
@@ -370,7 +391,7 @@ export function deletePanelBackup(id: string): Promise<ApiResult<null>> {
  * Stand bis dahin zweimal für denselben Endpunkt (`GET /admin/nodes`): einmal
  * hier für die Node-Verwaltung und den Storage-Explorer, einmal in `nodes.ts`
  * für Dashboard und Node-Ansicht. Änderte sich Pfad oder Query, musste es
- * zweimal geschehen (CLAUDE.md §3, keine Parallelstrukturen). Die Definition
+ * zweimal geschehen (Entwicklungsregeln §3, keine Parallelstrukturen). Die Definition
  * liegt jetzt in `nodes.ts` – dort steht auch die Begründung, warum eine
  * Nutzeransicht einen `/admin`-Pfad ruft; hier wird sie nur weitergereicht,
  * damit die bisherigen Aufrufer unverändert aus `@/lib/api/admin` importieren.

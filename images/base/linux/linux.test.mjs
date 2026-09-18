@@ -20,6 +20,31 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * Frist je Skriptlauf – an einer Stelle, über die Umgebung einstellbar
+ * (Fundpunkt 296, Review 2026-09-16 Befund 7.3).
+ *
+ * Vorher standen an jedem Aufruf fest verdrahtete 30 Sekunden. Allein
+ * läuft jedes Skript in Sekundenbruchteilen; unter der Parallelität von
+ * `turbo run test` teilen sich alle Pakete dieselbe Maschine, und eine Frist,
+ * die von der Maschinenlast abhängt, ist keine (Fundpunkte 290, 295). Deshalb
+ * großzügig, und eine gerissene Frist meldet sich als das, was sie ist –
+ * statt als Skript, das nichts ausgibt.
+ */
+const LAUF_FRIST_MS = Number(process.env.PALANTIR_LINUX_TEST_FRIST_MS ?? 120_000);
+
+/** `spawnSync` mit der gemeinsamen Frist; eine gerissene Frist ist ein eigener Fehlschlag. */
+function laufMitFrist(befehl, argumente, optionen = {}) {
+  const ergebnis = spawnSync(befehl, argumente, { ...optionen, timeout: LAUF_FRIST_MS });
+  if (ergebnis.error?.code === 'ETIMEDOUT' || ergebnis.signal === 'SIGTERM') {
+    assert.fail(
+      `${befehl} wurde nach ${LAUF_FRIST_MS} ms abgebrochen (PALANTIR_LINUX_TEST_FRIST_MS). ` +
+        'Die Maschine war vermutlich ausgelastet.',
+    );
+  }
+  return ergebnis;
+}
+
 /** Pfad in der Schreibweise, die eine POSIX-Shell versteht (Windows: `C:\…`). */
 const posix = (pfad) => pfad.replace(/\\/gu, '/');
 
@@ -56,9 +81,8 @@ function datenordner() {
 
 /** Führt ein Stück Shell aus, das die Bibliothek eingebunden hat. */
 function mitBibliothek(ordner, rumpf, umgebung = {}) {
-  return spawnSync('sh', ['-c', `set -eu; . "$1"; ${rumpf}`, '_', PALANTIR_SH], {
+  return laufMitFrist('sh', ['-c', `set -eu; . "$1"; ${rumpf}`, '_', PALANTIR_SH], {
     encoding: 'utf8',
-    timeout: 30_000,
     env: { ...process.env, PALANTIR_DATA_DIR: posix(ordner.daten), ...umgebung },
   });
 }
@@ -130,9 +154,8 @@ describe('palantir.sh – Konsolen-Rohr', nurMitShell, () => {
 describe('console.sh – Anschluss von aussen', nurMitShell, () => {
   /** Ruft `console.sh` mit den übergebenen Argumenten auf. */
   function konsole(ordner, ...argumente) {
-    return spawnSync('sh', [CONSOLE_SH, ...argumente], {
+    return laufMitFrist('sh', [CONSOLE_SH, ...argumente], {
       encoding: 'utf8',
-      timeout: 30_000,
       env: { ...process.env, PALANTIR_DATA_DIR: posix(ordner.daten) },
     });
   }
@@ -161,7 +184,7 @@ describe('console.sh – Anschluss von aussen', nurMitShell, () => {
 
     // Ein Leser muss offen sein - im Betrieb ist das der Server, dessen
     // Standardeingabe am Rohr haengt.
-    const lauf = spawnSync(
+    const lauf = laufMitFrist(
       'sh',
       [
         '-c',
@@ -173,7 +196,7 @@ describe('console.sh – Anschluss von aussen', nurMitShell, () => {
         gelesen,
         CONSOLE_SH,
       ],
-      { encoding: 'utf8', timeout: 30_000 },
+      { encoding: 'utf8' },
     );
 
     assert.equal(lauf.status, 0, `${lauf.stdout}${lauf.stderr}`);
@@ -210,7 +233,7 @@ describe('palantir.sh – Dateien holen', nurMitShell, () => {
     );
     spawnSync('sh', ['-c', 'chmod 0755 "$1"', '_', posix(join(bin, 'curl'))]);
 
-    return spawnSync(
+    return laufMitFrist(
       'sh',
       [
         '-c',
@@ -221,7 +244,6 @@ describe('palantir.sh – Dateien holen', nurMitShell, () => {
       ],
       {
         encoding: 'utf8',
-        timeout: 30_000,
         env: { ...process.env, PALANTIR_DATA_DIR: posix(ordner.daten) },
       },
     );
@@ -299,7 +321,7 @@ describe('palantir.sh – Einstellungen verschmelzen', nurMitShell, () => {
       .map(([schluessel, wert]) => `palantir_eigenschaft "$1" '${schluessel}' '${wert}'`)
       .join('; ');
 
-    const lauf = spawnSync(
+    const lauf = laufMitFrist(
       'sh',
       [
         '-c',
@@ -309,7 +331,7 @@ describe('palantir.sh – Einstellungen verschmelzen', nurMitShell, () => {
         posix(ziel),
         PALANTIR_SH,
       ],
-      { encoding: 'utf8', timeout: 30_000, env: { ...process.env } },
+      { encoding: 'utf8', env: { ...process.env } },
     );
 
     return { lauf, inhalt: lauf.status === 0 ? readFileSync(ziel, 'utf8') : '' };

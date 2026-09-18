@@ -106,6 +106,10 @@ interface AufbauOptionen {
   readonly subscriptionCheckIntervalMs?: number;
   /** Zaehler fuer Konsolenbefehle (Fundpunkt 202) – im Test mit engem Budget. */
   readonly consoleLimiter?: AccountRateLimiter;
+  /** Sitzungsprüfung am offenen Kanal (Befund 3.2). */
+  readonly isSessionValid?: () => Promise<boolean>;
+  /** Frischer Akteur je Abo-Prüfung (Befund 3.2). */
+  readonly refreshActor?: () => Promise<PermissionActor | null>;
 }
 
 let offen: FastifyInstance | null = null;
@@ -161,6 +165,8 @@ async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
       ? {}
       : { subscriptionCheckIntervalMs: optionen.subscriptionCheckIntervalMs }),
     ...(optionen.consoleLimiter === undefined ? {} : { consoleLimiter: optionen.consoleLimiter }),
+    ...(optionen.isSessionValid === undefined ? {} : { isSessionValid: optionen.isSessionValid }),
+    ...(optionen.refreshActor === undefined ? {} : { refreshActor: optionen.refreshActor }),
   });
 
   await app.ready();
@@ -171,6 +177,8 @@ async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
 
 interface Verbindung {
   readonly frames: Record<string, unknown>[];
+  /** Löst mit dem Close-Code auf, sobald das Backend die Verbindung beendet. */
+  readonly geschlossen: Promise<number>;
   send(frame: unknown): void;
   close(): void;
 }
@@ -186,8 +194,15 @@ async function verbinde(app: FastifyInstance, actor = 'besitzer'): Promise<Verbi
     frames.push(JSON.parse(String(data)) as Record<string, unknown>);
   });
 
+  const geschlossen = new Promise<number>((resolve) => {
+    socket.once('close', (code: number) => {
+      resolve(code);
+    });
+  });
+
   return {
     frames,
+    geschlossen,
     send: (frame) => socket.send(JSON.stringify(frame)),
     close: () => socket.close(),
   };
@@ -594,5 +609,98 @@ describe('Listen-Thema (Fundpunkt 173)', () => {
       code: 'VALIDATION_FAILED',
     });
     expect(execConsole).not.toHaveBeenCalled();
+  });
+});
+
+describe('Sitzung und Rollenrechte über die Verbindungsdauer (Befund 3.2)', () => {
+  it('schließt den Kanal mit 4401, sobald die Sitzung nicht mehr gilt', async () => {
+    let gueltig = true;
+    const { app } = await baueApp({
+      subscriptionCheckIntervalMs: 20,
+      isSessionValid: async () => gueltig,
+    });
+
+    const kanal = await verbinde(app);
+    kanal.send({ kind: 'subscribe', topic: { resource: 'server', id: SERVER_ID } });
+    await warteAufFrames(kanal.frames, 1);
+
+    gueltig = false;
+
+    expect(await kanal.geschlossen).toBe(SERVER_LIVE_CLOSE_CODE_UNAUTHORIZED);
+  });
+
+  it('lässt den Kanal offen, wenn die Sitzungsprüfung selbst scheitert', async () => {
+    const { app } = await baueApp({
+      subscriptionCheckIntervalMs: 20,
+      isSessionValid: async () => {
+        throw new Error('Datenbank kurz weg');
+      },
+    });
+
+    const kanal = await verbinde(app);
+    kanal.send({ kind: 'subscribe', topic: { resource: 'server', id: SERVER_ID } });
+    await warteAufFrames(kanal.frames, 1);
+    await kurzWarten(120);
+
+    let offenGeblieben = true;
+    void kanal.geschlossen.then(() => {
+      offenGeblieben = false;
+    });
+    await kurzWarten(20);
+
+    expect(offenGeblieben).toBe(true);
+  });
+
+  it('beendet das Abo, wenn das Rollenrecht während der Verbindung wegfällt', async () => {
+    // Der Admin sieht den Server nur über `server.view.any` – kein Besitz,
+    // keine Mitgliedschaft. Bis zum Review blieb dieses Recht aus dem
+    // Handshake eingefroren.
+    let actor: PermissionActor | null = actors['admin'] ?? null;
+    const { app, hub } = await baueApp({
+      subscriptionCheckIntervalMs: 20,
+      refreshActor: async () => actor,
+    });
+
+    const kanal = await verbinde(app, 'admin');
+    kanal.send({ kind: 'subscribe', topic: { resource: 'server', id: SERVER_ID } });
+    await warteAufFrames(kanal.frames, 1);
+
+    hub.publish('server.statusChanged', {
+      serverId: SERVER_ID,
+      status: 'stopped',
+      statusMessage: null,
+    });
+    await warteAufFrames(kanal.frames, 2);
+    expect(kanal.frames.at(-1)).toMatchObject({ event: 'server.statusChanged' });
+
+    // Die Rolle verliert `server.view.any`.
+    actor = buildPermissionActor({ isOwner: false, roles: [{ grantedPermissions: [] }] });
+    await kurzWarten(120);
+
+    const vorher = kanal.frames.length;
+    hub.publish('server.statusChanged', {
+      serverId: SERVER_ID,
+      status: 'running',
+      statusMessage: null,
+    });
+    await kurzWarten();
+
+    expect(kanal.frames.length).toBe(vorher);
+  });
+
+  it('schließt mit 4403, wenn das Konto nicht mehr freigeschaltet ist', async () => {
+    let actor: PermissionActor | null = actors['besitzer'] ?? null;
+    const { app } = await baueApp({
+      subscriptionCheckIntervalMs: 20,
+      refreshActor: async () => actor,
+    });
+
+    const kanal = await verbinde(app);
+    kanal.send({ kind: 'subscribe', topic: { resource: 'server', id: SERVER_ID } });
+    await warteAufFrames(kanal.frames, 1);
+
+    actor = buildPermissionActor({ isOwner: false, roles: [] });
+
+    expect(await kanal.geschlossen).toBe(SERVER_LIVE_CLOSE_CODE_FORBIDDEN);
   });
 });

@@ -3,7 +3,7 @@
  *
  * Oeffentliche Oberflaeche des Runtime-Moduls. Anderer Agent-Code importiert
  * ausschliesslich von hier und arbeitet gegen das `ContainerRuntime`-Interface -
- * nie direkt gegen die Docker-API oder den Docker-Socket-Proxy (CLAUDE.md §4).
+ * nie direkt gegen die Docker-API oder den Docker-Socket-Proxy (Entwicklungsregeln §4).
  */
 
 export { type ContainerRuntime } from './container-runtime.js';

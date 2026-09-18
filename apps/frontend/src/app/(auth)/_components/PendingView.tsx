@@ -40,24 +40,28 @@ export function PendingView() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [checking, setChecking] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const account = await fetchSession();
-
-      if (!belongsOnPendingScreen(account)) {
-        // Freigeschaltet (oder gesperrt) – die Ansicht hat sich erledigt.
-        router.replace(landingPathForAccount(account));
-        return;
-      }
-      setState({ kind: 'ready', account });
-    } catch (thrown) {
-      if (thrown instanceof AuthRequestError && thrown.code === 'AUTH_REQUIRED') {
-        router.replace(AUTH_ROUTES.login);
-        return;
-      }
-      setState({ kind: 'error', message: messageForThrown(thrown) });
-    }
-  }, [router]);
+  // Als Promise-Kette statt `async`: Der Zustand wird erst in den Rückrufen
+  // gesetzt, wenn die Antwort da ist – nie im Effekt selbst.
+  const load = useCallback(
+    () =>
+      fetchSession()
+        .then((account) => {
+          if (!belongsOnPendingScreen(account)) {
+            // Freigeschaltet (oder gesperrt) – die Ansicht hat sich erledigt.
+            router.replace(landingPathForAccount(account));
+            return;
+          }
+          setState({ kind: 'ready', account });
+        })
+        .catch((thrown: unknown) => {
+          if (thrown instanceof AuthRequestError && thrown.code === 'AUTH_REQUIRED') {
+            router.replace(AUTH_ROUTES.login);
+            return;
+          }
+          setState({ kind: 'error', message: messageForThrown(thrown) });
+        }),
+    [router],
+  );
 
   useEffect(() => {
     void load();

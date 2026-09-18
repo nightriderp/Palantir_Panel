@@ -11,7 +11,7 @@
  * dafür die State Machine und den Agent benutzt. Die Trennung ist Absicht –
  * so ist der heikelste Teil (was passiert mit einem Server, der während der
  * Trennung abgestürzt ist?) ohne Datenbank und ohne Homeserver prüfbar
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  *
  * **Zuordnung Container-Zustand → Lifecycle-Zustand:** Der Agent meldet die
  * beobachtbaren Container-Zustände (`AGENT_CONTAINER_STATUSES`), nicht die
@@ -60,6 +60,26 @@ export interface ExpectedServer {
   readonly status: ServerStatus;
   /** `null`, solange der Container nicht angelegt wurde. */
   readonly dockerContainerId: string | null;
+  /**
+   * Seit wann der Server in seinem Zustand steht (ISO-8601). Optional, damit
+   * bestehende Aufrufer gültig bleiben; ohne Angabe gilt ein `creating` nach
+   * einem Reconnect wie bisher als unterbrochen.
+   */
+  readonly statusChangedAt?: string;
+}
+
+/** Zeitbezug des Abgleichs – nur für die Schonfrist eines laufenden Anlegens. */
+export interface ReconciliationOptions {
+  readonly now?: Date;
+  /**
+   * Wie lange ein `creating` ohne Container nach einem Reconnect noch als
+   * „daran wird gearbeitet" gilt (Review 2026-09-16, Befund 11.2). Sinnvoll ist
+   * die Frist des `CREATE`-Befehls (`AGENT_CREATE_TIMEOUT_MS`): Solange die
+   * läuft, kann der Agent den Befehl noch zu Ende führen – auch über einen
+   * Verbindungsabriss hinweg (`forgetInFlight()` vergisst nur die Markierung,
+   * der Befehl läuft weiter, Fundpunkt 227).
+   */
+  readonly createGraceMs?: number;
 }
 
 /**
@@ -182,6 +202,7 @@ export function planReconciliation(
   expected: readonly ExpectedServer[],
   observed: readonly AgentContainerState[],
   anlass: AgentStateReportReason = 'connected',
+  options: ReconciliationOptions = {},
 ): ReconciliationPlan {
   const byContainerId = new Map<string, AgentContainerState>();
 
@@ -199,7 +220,9 @@ export function planReconciliation(
   const unchangedServerIds: string[] = [];
 
   for (const server of expected) {
-    const action = laeuftGeradeAn(server, anlass) ? null : planForServer(server, byContainerId);
+    const action = laeuftGeradeAn(server, anlass, options)
+      ? null
+      : planForServer(server, byContainerId);
 
     if (action === null) {
       unchangedServerIds.push(server.id);
@@ -239,12 +262,43 @@ export function planReconciliation(
  * das echte Anlegen an dem Zustand, den der Abgleich ihm untergeschoben hatte
  * („Der Zustand des Servers hat sich zwischenzeitlich geändert").
  *
- * Nach einem Reconnect (`connected`) gilt das Gegenteil, und deshalb bleibt es
- * dort beim alten Verhalten: Mit der Verbindung ist auch der Befehl an den
- * Homeserver verloren gegangen – dort arbeitet niemand mehr daran.
+ * Nach einem Reconnect (`connected`) galt bis zum Review 2026-09-16 das
+ * Gegenteil – „mit der Verbindung ist auch der Befehl verloren". Das stimmt
+ * nicht (Fundpunkt 227): Ein Befehl, der auf dem Agent wirklich läuft, läuft
+ * weiter; `forgetInFlight()` vergisst nur die Markierung. Ein minutenlanger
+ * Image-Zug überlebt einen Reconnect, und der `connected`-Bericht sah
+ * `creating` ohne Container und verbuchte den Abbruch – während der Container
+ * gerade entstand (Befund 11.2). Deshalb gilt jetzt auch nach einem Reconnect
+ * eine Schonfrist: Solange die `CREATE`-Frist seit dem Zustandswechsel noch
+ * nicht abgelaufen ist, bleibt der Server unberührt. Erst danach ist das
+ * Anlegen wirklich liegengeblieben.
  */
-function laeuftGeradeAn(server: ExpectedServer, anlass: AgentStateReportReason): boolean {
-  return anlass === 'requested' && server.status === 'creating';
+function laeuftGeradeAn(
+  server: ExpectedServer,
+  anlass: AgentStateReportReason,
+  options: ReconciliationOptions,
+): boolean {
+  if (server.status !== 'creating') {
+    return false;
+  }
+
+  if (anlass === 'requested') {
+    return true;
+  }
+
+  if (server.statusChangedAt === undefined || options.createGraceMs === undefined) {
+    return false;
+  }
+
+  const seit = Date.parse(server.statusChangedAt);
+
+  if (Number.isNaN(seit)) {
+    return false;
+  }
+
+  const jetzt = (options.now ?? new Date()).getTime();
+
+  return jetzt - seit < options.createGraceMs;
 }
 
 function planForServer(

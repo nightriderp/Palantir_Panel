@@ -20,7 +20,7 @@ const migrationPath = path.resolve(
 
 /**
  * Das Audit-Log ist append-only (Lastenheft §4, Pflichtenheft §6 und §18,
- * CLAUDE.md §2). Diese Tests halten die Zusicherung auf allen drei Ebenen fest:
+ * Entwicklungsregeln §2). Diese Tests halten die Zusicherung auf allen drei Ebenen fest:
  * Service, Repository und Datenbank.
  */
 describe('Audit-Log: Unveränderlichkeit', () => {

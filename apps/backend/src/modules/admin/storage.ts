@@ -215,7 +215,7 @@ function bekannterServerZu(
  * Bewertet einen vom Agent gemeldeten Posten.
  *
  * Einzige Stelle, an der entschieden wird, ob etwas gelöscht werden darf – die
- * Regel steht damit genau einmal im Code (CLAUDE.md §4).
+ * Regel steht damit genau einmal im Code (Entwicklungsregeln §4).
  */
 export function classifyEntry(
   entry: AgentStorageEntry,

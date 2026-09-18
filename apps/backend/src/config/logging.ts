@@ -23,7 +23,7 @@
  * Log-Aufrufe, die einen rohen Request, Header oder ein Query-Objekt mitgeben.
  *
  * Reine Werte und Funktionen ohne Fastify- und Umgebungs-Bezug, damit die
- * Schwärzung ohne laufenden Server prüfbar ist (CLAUDE.md §4).
+ * Schwärzung ohne laufenden Server prüfbar ist (Entwicklungsregeln §4).
  */
 
 /** Ersatzwert geschwärzter Felder. Deutsch wie die übrigen Log-Meldungen. */

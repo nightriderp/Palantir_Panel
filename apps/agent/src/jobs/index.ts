@@ -29,7 +29,7 @@
  * Agent (A3); hier steht ausschließlich die Entscheidung."
  *
  * Diese Aufteilung ist kein Zuschnitt aus Bequemlichkeit, sondern folgt
- * CLAUDE.md §3 und §4: Die Regel gehört an eine Stelle und muss ohne laufenden
+ * Entwicklungsregeln §3 und §4: Die Regel gehört an eine Stelle und muss ohne laufenden
  * Homeserver prüfbar sein; die Messung gehört dorthin, wo sie überhaupt möglich
  * ist. Der Agent liefert deshalb die Zahlen, die das Backend nicht selbst
  * erheben kann, und entscheidet nichts.
@@ -179,6 +179,11 @@ export interface AgentJobs {
   readonly rcon: RconConsole;
   /** Beendet alle laufenden Jobs – beim Herunterfahren des Agents. */
   stop(): void;
+  /**
+   * Wie {@link stop}, wartet aber auf laufende Durchgänge (Befund 11.6) –
+   * für das geordnete Herunterfahren.
+   */
+  drain(): Promise<void>;
 }
 
 /** Die Teilmenge der Agent-Konfiguration, die die Jobs brauchen. */
@@ -319,6 +324,10 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     stop: () => {
       query.stopAll();
       scheduler.stopAll();
+    },
+    drain: async () => {
+      query.stopAll();
+      await scheduler.drain();
     },
   };
 }

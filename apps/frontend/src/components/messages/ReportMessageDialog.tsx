@@ -1,8 +1,8 @@
 'use client';
 
 import { MESSAGE_REPORT_REASON_MAX_LENGTH, type MessageDto } from '@palantir/contracts';
-import { useEffect, useId, useState } from 'react';
-import { FormModal } from '@/components/shared';
+import { useState } from 'react';
+import { FormModal, TextAreaField } from '@/components/shared';
 
 /**
  * Melden einer einzelnen Nachricht mit Begründung (Arbeitspaket F5, Lastenheft §3.6).
@@ -34,12 +34,15 @@ export function ReportMessageDialog({
   onSubmit,
 }: ReportMessageDialogProps) {
   const [reason, setReason] = useState('');
-  const fieldId = useId();
 
-  // Bei jedem Öffnen mit leerem Feld beginnen.
-  useEffect(() => {
+  // Bei jedem Öffnen mit leerem Feld beginnen – noch während des Renderns,
+  // damit kein Bild mit dem alten Text dazwischenliegt.
+  const messageId = message?.id ?? null;
+  const [zuletzt, setZuletzt] = useState({ open, messageId });
+  if (zuletzt.open !== open || zuletzt.messageId !== messageId) {
+    setZuletzt({ open, messageId });
     if (open) setReason('');
-  }, [open, message?.id]);
+  }
 
   const trimmed = reason.trim();
 
@@ -66,23 +69,15 @@ export function ReportMessageDialog({
           </blockquote>
         ) : null}
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor={fieldId} className="text-sm text-ink-muted">
-            Begründung
-          </label>
-          <textarea
-            id={fieldId}
-            value={reason}
-            rows={4}
-            maxLength={MESSAGE_REPORT_REASON_MAX_LENGTH}
-            placeholder="Warum meldest du diese Nachricht?"
-            onChange={(event) => setReason(event.target.value)}
-            className="w-full resize-y rounded-md border border-line-strong bg-fill px-3 py-2.5 text-base text-ink outline-none placeholder:text-ink-disabled focus-visible:border-brand"
-          />
-          <span className="self-end text-2xs text-ink-faint">
-            {reason.length} / {MESSAGE_REPORT_REASON_MAX_LENGTH}
-          </span>
-        </div>
+        <TextAreaField
+          label="Begründung"
+          labelAside={`${reason.length} / ${MESSAGE_REPORT_REASON_MAX_LENGTH}`}
+          value={reason}
+          rows={4}
+          maxLength={MESSAGE_REPORT_REASON_MAX_LENGTH}
+          placeholder="Warum meldest du diese Nachricht?"
+          onChange={setReason}
+        />
       </div>
     </FormModal>
   );

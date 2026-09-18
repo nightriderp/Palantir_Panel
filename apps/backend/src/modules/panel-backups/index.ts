@@ -60,7 +60,7 @@ export interface PanelBackupRepository {
 
 /**
  * Der eigentliche Abzug – einspeisbar, damit der Ablauf ohne laufendes
- * `pg_dump` prüfbar bleibt (CLAUDE.md §4).
+ * `pg_dump` prüfbar bleibt (Entwicklungsregeln §4).
  */
 export interface DatabaseDumper {
   /**

@@ -40,7 +40,7 @@ import { AdminError } from './errors.js';
  *
  * Hinter einer Schnittstelle, damit der Ablauf – und vor allem die Reihenfolge
  * „erst schreiben, dann löschen" – ohne Dateisystem prüfbar bleibt
- * (CLAUDE.md §4, analog zum `ContainerRuntime`-Interface des Agents).
+ * (Entwicklungsregeln §4, analog zum `ContainerRuntime`-Interface des Agents).
  */
 export interface AuditArchiveWriter {
   write(fileName: string, entries: readonly AuditEntryRecord[]): Promise<AuditArchiveFile>;

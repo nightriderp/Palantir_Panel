@@ -15,7 +15,7 @@ import {
 /**
  * Speicher-Attrappe statt echter Datenbank: die Regeln des Rollen-Service
  * (Schutzstatus, Namensvergabe, Berechtigungen) sind so ohne laufende
- * PostgreSQL-Instanz prüfbar (CLAUDE.md §4).
+ * PostgreSQL-Instanz prüfbar (Entwicklungsregeln §4).
  */
 function createFakeRoleRepository(): RoleRepository & { rows: RoleRecord[] } {
   const rows: RoleRecord[] = [];

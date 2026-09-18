@@ -4,7 +4,7 @@
  * Enthält ausschließlich Datenzugriff. Die fachliche Zusammenstellung der DTOs
  * (Rangvergabe, „neuer Bestwert", eigene Statistik) liegt in `service.ts`. Die
  * Schnittstelle {@link ArcadeRepository} macht den Service ohne Datenbank
- * testbar (CLAUDE.md §4).
+ * testbar (Entwicklungsregeln §4).
  *
  * Zwei Zusicherungen dieser Schicht (Audit W3-5):
  *  - **Gesperrte Konten zählen nicht mit.** Weder in der Bestenliste noch in der
@@ -108,7 +108,7 @@ function arcadeQueries(db: DbConnection): ArcadeQueries {
         /*
          * `INSERT ... RETURNING` ohne Zeile ist ein Widerspruch und bleibt
          * deshalb ein Serverfehler – aber als benannter Code statt als rohem
-         * `Error` (Audit W2-9, Fundpunkt 146; CLAUDE.md §5). Ein arcade-eigener
+         * `Error` (Audit W2-9, Fundpunkt 146; Entwicklungsregeln §5). Ein arcade-eigener
          * Katalog-Code existiert nicht und wäre für einen Fall, der nie
          * eintreten darf, auch nicht sinnvoll: Die Antwort ist dieselbe 500 wie
          * beim gleichgelagerten Fall in `schedule-repository.ts`.

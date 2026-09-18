@@ -21,6 +21,31 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * Frist je Skriptlauf – an einer Stelle, über die Umgebung einstellbar
+ * (Fundpunkt 296, Review 2026-09-16 Befund 7.3).
+ *
+ * Vorher standen an jedem Aufruf fest verdrahtete 30 Sekunden. Allein
+ * läuft jedes Skript in Sekundenbruchteilen; unter der Parallelität von
+ * `turbo run test` teilen sich alle Pakete dieselbe Maschine, und eine Frist,
+ * die von der Maschinenlast abhängt, ist keine (Fundpunkte 290, 295). Deshalb
+ * großzügig, und eine gerissene Frist meldet sich als das, was sie ist –
+ * statt als Skript, das nichts ausgibt.
+ */
+const LAUF_FRIST_MS = Number(process.env.PALANTIR_JAVA_TEST_FRIST_MS ?? 120_000);
+
+/** `spawnSync` mit der gemeinsamen Frist; eine gerissene Frist ist ein eigener Fehlschlag. */
+function laufMitFrist(befehl, argumente, optionen = {}) {
+  const ergebnis = spawnSync(befehl, argumente, { ...optionen, timeout: LAUF_FRIST_MS });
+  if (ergebnis.error?.code === 'ETIMEDOUT' || ergebnis.signal === 'SIGTERM') {
+    assert.fail(
+      `${befehl} wurde nach ${LAUF_FRIST_MS} ms abgebrochen (PALANTIR_JAVA_TEST_FRIST_MS). ` +
+        'Die Maschine war vermutlich ausgelastet.',
+    );
+  }
+  return ergebnis;
+}
+
 /** Pfad in der Schreibweise, die eine POSIX-Shell versteht (Windows: `C:\…`). */
 const posix = (pfad) => pfad.replace(/\\/gu, '/');
 
@@ -54,7 +79,7 @@ function grenzdatei(inhalt) {
  * die Funktion gesetzt hat.
  */
 function heapBestimmen(grenze) {
-  const ergebnis = spawnSync(
+  const ergebnis = laufMitFrist(
     'sh',
     [
       '-c',
@@ -69,7 +94,6 @@ function heapBestimmen(grenze) {
     ],
     {
       encoding: 'utf8',
-      timeout: 30_000,
       env: { ...process.env, PALANTIR_MEMORY_LIMIT_FILE: grenze },
     },
   );

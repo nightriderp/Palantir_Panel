@@ -44,7 +44,7 @@ export function isStorageEntryKind(value: string): value is StorageEntryKind {
  * Grund, warum ein Eintrag nicht löschbar ist.
  *
  * Benannter Code statt Freitext, damit das Frontend die Erklärung übersetzen
- * und nicht nur durchreichen muss (CLAUDE.md §5).
+ * und nicht nur durchreichen muss (Entwicklungsregeln §5).
  */
 export type StorageDeleteBlockReason =
   /** Datenordner eines noch existierenden Servers (Lastenheft §3.8). */

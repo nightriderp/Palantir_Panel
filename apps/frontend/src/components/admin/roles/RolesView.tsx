@@ -362,6 +362,9 @@ function groupByArea(): Array<{ area: string; permissions: Permission[] }> {
   return order.map((area) => ({ area, permissions: byArea.get(area) ?? [] }));
 }
 
+// Der Katalog ist eine Konstante – einmal je Modul gruppieren statt je Instanz.
+const PERMISSION_GROUPS = groupByArea();
+
 interface PermissionPickerProps {
   selected: readonly Permission[];
   onChange: (permissions: Permission[]) => void;
@@ -376,7 +379,7 @@ interface PermissionPickerProps {
  * Rein darstellend: die Auswahl liegt im aufrufenden Editor.
  */
 function PermissionPicker({ selected, onChange, disabled }: PermissionPickerProps) {
-  const groups = useMemo(groupByArea, []);
+  const groups = PERMISSION_GROUPS;
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
   function toggle(permission: Permission, on: boolean) {

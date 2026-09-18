@@ -554,6 +554,9 @@ describe('Datei-Manager-Routen', () => {
   });
 
   it('meldet einen Ausbruchspfad des Dienstes als AGENT_INVALID_PATH (400)', async () => {
+    // Der Pfad selbst ist unauffaellig – der Agent kann trotzdem ablehnen,
+    // etwa weil dahinter ein Symlink nach aussen liegt. Die Route reicht das
+    // durch.
     const gebaut = await buildApp({
       fehler: new ServerOrchestrationError(
         'AGENT_INVALID_PATH',
@@ -565,12 +568,66 @@ describe('Datei-Manager-Routen', () => {
     const response = await call(
       app,
       'GET',
-      `/api/servers/${SERVER_ID}/files?path=${encodeURIComponent('../../etc/passwd')}`,
+      `/api/servers/${SERVER_ID}/files?path=${encodeURIComponent('welt/link-nach-aussen')}`,
       { actor: 'besitzer' },
     );
 
     expect(response.statusCode).toBe(400);
     expect(response.json<{ error: { code: string } }>().error.code).toBe('AGENT_INVALID_PATH');
+  });
+
+  /**
+   * Erste Linie an der Route (Review 2026-09-16, Befund 7.5): Ausbruchspfade
+   * kommen gar nicht bis zum Dienst. Vorher war das nur ueber den gemockten
+   * Dienstfehler und den Schema-Test in `validation` belegt, nicht an der
+   * Route selbst.
+   */
+  describe.each([
+    ['..-Segment', '../../etc/passwd'],
+    ['absoluter Pfad', '/etc/passwd'],
+    ['Rueckwaertsschraegstrich', 'welt\\..\\..\\weg'],
+  ])('weist %s schon an der Route ab (Befund 7.5)', (_bezeichnung, pfad) => {
+    it('beim Auflisten', async () => {
+      const gebaut = await buildApp();
+      app = gebaut.app;
+
+      const response = await call(
+        app,
+        'GET',
+        `/api/servers/${SERVER_ID}/files?path=${encodeURIComponent(pfad)}`,
+        { actor: 'besitzer' },
+      );
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
+      expect(Object.values(gebaut.aufrufe).flat()).toEqual([]);
+    });
+
+    it('beim Lesen, Schreiben und Loeschen', async () => {
+      const gebaut = await buildApp();
+      app = gebaut.app;
+
+      const lesen = await call(
+        app,
+        'GET',
+        `/api/servers/${SERVER_ID}/files/content?path=${encodeURIComponent(pfad)}`,
+        { actor: 'besitzer' },
+      );
+      const schreiben = await call(app, 'PUT', `/api/servers/${SERVER_ID}/files/content`, {
+        actor: 'besitzer',
+        payload: { path: pfad, content: 'x' },
+      });
+      const loeschen = await call(app, 'DELETE', `/api/servers/${SERVER_ID}/files`, {
+        actor: 'besitzer',
+        payload: { path: pfad },
+      });
+
+      for (const response of [lesen, schreiben, loeschen]) {
+        expect(response.statusCode).toBe(400);
+        expect(response.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
+      }
+      expect(Object.values(gebaut.aufrufe).flat()).toEqual([]);
+    });
   });
 
   it('meldet einen belegten Zielpfad als AGENT_FILE_EXISTS (409)', async () => {

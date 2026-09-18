@@ -88,7 +88,7 @@ export async function resolveAvailableSubdomain(
  * Der lokale Typ kannte weder `fullHostname` noch den Grund `reserved`; das
  * Frontend typisierte die Antwort aber längst als DTO und füllte `fullHostname`
  * von Hand mit `''`. Zwei Formen für dieselbe Antwort – genau die
- * Parallelstruktur, die CLAUDE.md §3 ausschließt.
+ * Parallelstruktur, die Entwicklungsregeln §3 ausschließt.
  *
  * @param baseDomain `PALANTIR_DOMAIN` – nur für `fullHostname`; die Adresse
  *   entsteht mit `buildServerHostname()` aus den Contracts, damit Wizard,

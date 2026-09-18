@@ -50,14 +50,43 @@ export function AdminError({ message, onRetry }: { message: string; onRetry: () 
 }
 
 /**
- * Tabelle mit waagerechtem Scrollen auf schmalen Bildschirmen (Mobile-First,
- * Lastenheft §4). Der Inhalt (`<thead>`/`<tbody>`) kommt von der Ansicht.
+ * Tabelle, die auf schmalen Bildschirmen zu Karten wird (Mobile-First,
+ * Lastenheft §4 „Mobile Nutzung"; Review 2026-09-16, Befund 12.2).
+ *
+ * Ab `md` (768 px) eine gewöhnliche Tabelle mit mindestens 640 px Breite und
+ * waagerechtem Scrollen. Darunter wird jede Zeile ein Block mit einer Zelle je
+ * Zeile, und jede Zelle trägt ihre Spaltenbeschriftung selbst (`label` an
+ * {@link Td}); der Tabellenkopf bleibt nur sichtbar, wenn er Sortierknöpfe
+ * trägt ({@link SortTh}) – reine Beschriftungen stünden dort doppelt.
+ *
+ * Bewusst über das Anzeigeverhalten der bestehenden Tabelle gelöst und nicht
+ * über eine zweite Kartendarstellung je Ansicht: Die sieben Admin-Tabellen
+ * behalten eine Quelle für Reihenfolge, Inhalt und Aktionen je Zeile, und
+ * jsdom-Tests sehen weiter eine Tabelle. Die Umschaltung liegt in den
+ * Klassen, weil `<thead>`, `<tbody>` und `<tr>` von der Ansicht kommen.
+ *
+ * Der Inhalt (`<thead>`/`<tbody>`) kommt von der Ansicht.
  */
 export function AdminTable({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <Panel padding="none" className="overflow-hidden">
       <div className="overflow-x-auto">
-        <table className={cn('w-full min-w-[640px] border-collapse text-base', className)}>
+        <table
+          className={cn(
+            'block w-full border-collapse text-base md:table md:min-w-[640px]',
+            // Kopf: auf schmalen Bildschirmen eine Zeile aus Sortierknöpfen –
+            // ohne Knöpfe ganz weg, sonst stünde dort ein leerer Streifen.
+            '[&_thead]:block md:[&_thead]:table-header-group',
+            '[&_thead:not(:has(button))]:hidden md:[&_thead:not(:has(button))]:table-header-group',
+            '[&_thead_tr]:flex [&_thead_tr]:flex-wrap [&_thead_tr]:gap-x-3 [&_thead_tr]:border-b [&_thead_tr]:border-line [&_thead_tr]:px-3.5 [&_thead_tr]:py-2',
+            'md:[&_thead_tr]:table-row md:[&_thead_tr]:border-0 md:[&_thead_tr]:p-0',
+            // Rumpf: jede Zeile ein Block mit eigenem Trennstrich.
+            '[&_tbody]:block md:[&_tbody]:table-row-group',
+            '[&_tbody_tr]:block [&_tbody_tr]:border-b [&_tbody_tr]:border-line/60 [&_tbody_tr]:px-3.5 [&_tbody_tr]:py-2.5 [&_tbody_tr:last-child]:border-b-0',
+            'md:[&_tbody_tr]:table-row md:[&_tbody_tr]:border-0 md:[&_tbody_tr]:p-0',
+            className,
+          )}
+        >
           {children}
         </table>
       </div>
@@ -65,22 +94,33 @@ export function AdminTable({ children, className }: { children: ReactNode; class
   );
 }
 
-/** Kopfzelle einer {@link AdminTable}. */
+/**
+ * Kopfzelle einer {@link AdminTable}.
+ *
+ * Auf schmalen Bildschirmen versteckt: Dort trägt jede Zelle ihre Beschriftung
+ * selbst ({@link Td} `label`). Nur {@link SortTh} bleibt sichtbar (`mobil`),
+ * weil der Sortierknopf sonst verloren ginge.
+ */
 export function Th({
   children,
   className,
   ariaSort,
+  mobil = false,
 }: {
   children?: ReactNode;
   className?: string;
   /** Sortierzustand dieser Spalte für Vorlesehilfen (Fundpunkt 212). */
   ariaSort?: 'ascending' | 'descending' | 'none';
+  /** Auch auf schmalen Bildschirmen zeigen – für Kopfzellen mit Bedienelement. */
+  mobil?: boolean;
 }) {
   return (
     <th
       aria-sort={ariaSort}
       className={cn(
-        'border-b border-line px-3.5 py-2.5 text-left text-2xs font-semibold uppercase tracking-[0.08em] text-ink-soft',
+        'text-left text-2xs font-semibold uppercase tracking-[0.08em] text-ink-soft',
+        mobil ? 'block py-0.5 md:table-cell' : 'hidden md:table-cell',
+        'md:border-b md:border-line md:px-3.5 md:py-2.5',
         className,
       )}
     >
@@ -113,6 +153,7 @@ export function SortTh({
     <Th
       className={className}
       ariaSort={aktiv ? (richtung === 'asc' ? 'ascending' : 'descending') : 'none'}
+      mobil
     >
       <button
         type="button"
@@ -169,22 +210,46 @@ export function Blaetterleiste({
   );
 }
 
-/** Datenzelle einer {@link AdminTable}. */
+/**
+ * Datenzelle einer {@link AdminTable}.
+ *
+ * `label` ist die Spaltenbeschriftung für schmale Bildschirme: Dort steht sie
+ * links, der Inhalt rechts. Ab `md` verschwindet sie (`display: none`, damit
+ * auch aus dem Zugänglichkeitsbaum – die Kopfzeile übernimmt). Zellen ohne
+ * `label` (Auswahlkästchen, Aktionen) nehmen die ganze Breite; `text-right`
+ * aus `className` wirkt dort weiter.
+ */
 export function Td({
   children,
   className,
   title,
+  label,
 }: {
   children?: ReactNode;
   className?: string;
   title?: string;
+  /** Spaltenbeschriftung, die auf schmalen Bildschirmen an der Zelle steht. */
+  label?: string;
 }) {
   return (
     <td
       title={title}
-      className={cn('border-b border-line/60 px-3.5 py-2.5 align-middle text-ink-muted', className)}
+      className={cn(
+        'text-ink-muted md:table-cell md:border-b md:border-line/60 md:px-3.5 md:py-2.5 md:align-middle',
+        label === undefined ? 'block py-1' : 'flex items-start justify-between gap-3 py-1',
+        className,
+      )}
     >
-      {children}
+      {label === undefined ? (
+        children
+      ) : (
+        <>
+          <span className="shrink-0 pt-0.5 text-2xs uppercase tracking-[0.08em] text-ink-soft md:hidden">
+            {label}
+          </span>
+          <span className="min-w-0 break-words text-right md:contents">{children}</span>
+        </>
+      )}
     </td>
   );
 }

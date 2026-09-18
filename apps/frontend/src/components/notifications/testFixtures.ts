@@ -10,7 +10,7 @@ import {
  *
  * Bewusst klein und ohne Netzwerk: Die reinen Funktionen aus `notificationView`
  * und die Fortschreibung der geladenen Seite lassen sich damit prüfen, ohne das
- * Backend oder einen WebSocket (CLAUDE.md §4).
+ * Backend oder einen WebSocket (Entwicklungsregeln §4).
  */
 
 let counter = 0;

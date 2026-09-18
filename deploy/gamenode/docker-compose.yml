@@ -108,8 +108,25 @@ services:
       - no-new-privileges:true
     mem_limit: ${AGENT_MEM_LIMIT:-512m}
     pids_limit: 512
+    # Der Agent beendet sich auf SIGTERM geordnet (Verbindung schließen,
+    # Runtime trennen); die Docker-Vorgabe von 10 s ist knapp, wenn gerade ein
+    # Befehl läuft (Review 2026-09-16, Befund 8.4).
+    stop_grace_period: 20s
     depends_on:
       - socket-proxy
+    # Der Agent nimmt keine Verbindungen an, also gibt es nichts anzurufen
+    # (Review 2026-09-16, Befund 8.3). Stattdessen schreibt seine
+    # Ereignisschleife alle 30 s ein Lebenszeichen (`apps/agent/src/
+    # lebenszeichen.ts`); ist die Datei älter als 90 s, hängt der Prozess.
+    # Bewusst nicht der Verbindungszustand: Ist die VPS weg, ist der Agent
+    # trotzdem gesund, und ein Neustart änderte daran nichts.
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'test $$(( $$(date +%s) - $$(stat -c %Y /tmp/palantir-agent-alive) )) -lt 90']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       # Kein `env_file: ../../.env` mehr (Audit W2-23, infra-images-03).
       #
@@ -233,6 +250,16 @@ services:
     volumes:
       - ./frpc.toml:/etc/frp/frpc.toml:ro
     command: ['-c', '/etc/frp/frpc.toml']
+    # frpc hat eine Verwaltungsschnittstelle nur auf 127.0.0.1:7400
+    # (`frpc.toml`, `webServer`); `/healthz` antwortet, solange der Prozess
+    # läuft (Review 2026-09-16, Befund 8.3). Das Image ist Alpine, `wget` ist
+    # das BusyBox-eigene.
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:7400/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # --- Hostname-Router --------------------------------------------------------
   # Infrared verteilt EINEN oeffentlichen Port (MINECRAFT_ROUTER_PORT, 25565)
@@ -263,6 +290,10 @@ services:
   # Netz deshalb mit `--ip-range` an - die automatisch vergebenen Adressen der
   # Spielcontainer liegen in der unteren Haelfte, die feste Adresse des Routers
   # ausserhalb davon und kann nie belegt sein.
+  # Kein `healthcheck:`: Das Infrared-Image ist `FROM scratch` – es enthält
+  # außer dem Programm nichts, was Docker aufrufen könnte (Review 2026-09-16,
+  # Befund 8.3). Ob der Router lauscht, sieht man am frpc-Proxy
+  # `hostname-router` (`frpc.toml`) und im Panel am Zustand der Minecraft-Server.
   hostname-router:
     image: haveachin/infrared:${INFRARED_VERSION}@${INFRARED_DIGEST}
     container_name: palantir-hostname-router

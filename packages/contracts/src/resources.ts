@@ -341,7 +341,7 @@ export interface CapacityCheckResult {
    * `allowed` bleibt davon unberührt: Es sagt nur, ob eine **Grenze**
    * überschritten wäre. Wer die Rückfrage stellen will, sieht hier nach.
    *
-   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3) – ein
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3) – ein
    * Ergebnis ohne das Feld hat schlicht nichts anzumerken.
    */
   concerns?: CapacityViolation[];
@@ -392,7 +392,7 @@ export interface ResourceQuotaSlot {
    * zählt auch gestoppte Server. Wer die Zahl anzeigt, kann jetzt dazuschreiben,
    * welche gemeint ist, statt sie zu erraten.
    *
-   * Optional, damit der Vertrag für sich stehen kann (CLAUDE.md §3):
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3):
    * {@link resourceQuotaSlot} füllt das Feld immer, ein von Hand gebauter Slot
    * darf es weglassen – dann nennt die Anzeige die Regel nicht.
    */
@@ -409,7 +409,7 @@ export interface ResourceQuotaSlot {
  * bewusst als benannte Felder (statt als Liste), damit ein fehlender Slot schon
  * beim Übersetzen auffällt.
  *
- * Enthält wie jedes DTO ein `permissions`-Objekt (CLAUDE.md §3, Pflichtenheft
+ * Enthält wie jedes DTO ein `permissions`-Objekt (Entwicklungsregeln §3, Pflichtenheft
  * §5.2): Für das eigene Kontingent ist `canEdit` regelmäßig `false` – das
  * Setzen fremder Kontingente läuft über {@link UserResourceLimitDto} und
  * `user.manage`.

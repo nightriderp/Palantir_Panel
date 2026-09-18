@@ -2,7 +2,7 @@
  * Das `permissions`-Objekt eines Gameservers (Pflichtenheft §5.2, §8).
  *
  * Baut auf `computePermissionFlags()` aus dem RBAC-Modul (B2) auf – keine
- * zweite Rechteberechnung (CLAUDE.md §3, WORK_STATUS „Gefundene Punkte" Nr. 12).
+ * zweite Rechteberechnung (Entwicklungsregeln §3, WORK_STATUS „Gefundene Punkte" Nr. 12).
  *
  * Zwei Achsen greifen ineinander:
  *
@@ -122,6 +122,12 @@ export function computeGameServerPermissions(
     canManageMembers: isOwner
       ? actor.permissions.has('server.manage.own') || actor.permissions.has('server.manage.any')
       : actor.permissions.has('server.manage.any'),
+    // Besitzerwechsel ist Verwaltung, kein Besitzerrecht (Pflichtenheft §7):
+    // auch der Besitzer selbst gibt seinen Server nicht weiter.
+    canTransferOwnership: actor.permissions.has('server.manage.any'),
+    // Eine neue Image-Fassung übernehmen heißt Stopp und Start (Pflichtenheft
+    // §9) – dasselbe Recht wie die beiden.
+    canUpdate: canOperate,
   });
 }
 

@@ -42,7 +42,7 @@ const envVorlage = lies('.env.example');
  *
  * Bewusst von Hand statt mit einem YAML-Parser: Der Zweck des Tests ist eine
  * Abweichung zwischen Schema und Compose-Datei, und dafür lohnt keine neue
- * Abhängigkeit im Backend (CLAUDE.md §1). Gelesen wird alles ab der Zeile mit
+ * Abhängigkeit im Backend (Entwicklungsregeln §1). Gelesen wird alles ab der Zeile mit
  * `beginn` bis zur ersten Zeile, die flacher oder gleich tief eingerückt ist.
  */
 function mappingSchlüssel(quelle: string, beginn: RegExp): string[] {
@@ -109,8 +109,6 @@ const GEHEIMNISSE = [
   'TWITCH_CLIENT_SECRET',
   'STEAM_API_KEY',
   'AGENT_REGISTRY_TOKEN',
-  'WIREGUARD_VPS_PRIVATE_KEY',
-  'WIREGUARD_HOME_PRIVATE_KEY',
 ] as const;
 
 describe('deploy/vps/docker-compose.yml', () => {
@@ -140,8 +138,6 @@ describe('deploy/vps/docker-compose.yml', () => {
     // Maschine, das frp-Token allein zu frps, die POSTGRES_-Einzelwerte zum
     // Datenbank-Container.
     for (const name of [
-      'WIREGUARD_VPS_PRIVATE_KEY',
-      'WIREGUARD_HOME_PRIVATE_KEY',
       'FRP_TOKEN',
       'POSTGRES_PASSWORD',
       'POSTGRES_USER',
@@ -191,7 +187,7 @@ describe('deploy/vps/docker-compose.yml', () => {
 describe('Vorlage der zentralen .env', () => {
   /**
    * Jede Variable, die eine Compose-Datei ohne Vorgabewert einsetzt, muss in
-   * `.env.example` stehen (CLAUDE.md §8). Sonst fehlt sie in der `.env`, die
+   * `.env.example` stehen (Entwicklungsregeln §8). Sonst fehlt sie in der `.env`, die
    * der Betreiber daraus erzeugt: `docker compose` setzt dann einen leeren
    * String ein und meldet das nur als Warnung - beim Image-Tag führt das zu
    * einer ungültigen Referenz und der ganze `up`-Lauf bricht ab

@@ -5,7 +5,7 @@
  * Ereignisses (`resourceOwner`, `serverMembers`) und brauchen keinen
  * Datenbankzugriff. Nur `role` und `allUsers` fragen das
  * {@link RecipientDirectory}. Diese Trennung steht hier als reine Funktion,
- * damit sie ohne Datenbank prüfbar bleibt (CLAUDE.md §4).
+ * damit sie ohne Datenbank prüfbar bleibt (Entwicklungsregeln §4).
  */
 
 import type { NotificationEvent, NotificationRecipientScope } from '@palantir/contracts';
@@ -26,6 +26,9 @@ export function directRecipientsOf(
     return null;
   }
 
+  // Beim Besitzerwechsel steht der alte Besitzer neben den Mitgliedern in der
+  // Nutzlast (B3) – `serverMembers` erreicht damit beide Seiten,
+  // `resourceOwner` nur den neuen Besitzer.
   switch (input.event) {
     case 'server.created':
     case 'server.started':
@@ -35,6 +38,7 @@ export function directRecipientsOf(
     case 'server.failed':
     case 'server.cloned':
     case 'server.deleted':
+    case 'server.ownerTransferred':
     case 'autoShutdown.triggered':
       return scope === 'serverMembers'
         ? [input.payload.ownerId, ...input.payload.memberUserIds]

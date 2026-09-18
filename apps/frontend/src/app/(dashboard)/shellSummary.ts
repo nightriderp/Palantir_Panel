@@ -26,7 +26,7 @@ import {
  * **Kein neuer Endpunkt:** Alle Werte entstehen aus Daten, die es schon gibt –
  * der Serverliste (`GET /servers`), der Node-Liste (`GET /admin/nodes`) und den
  * Live-Messwerten aus dem WebSocket-Kanal. Eine eigene Übersichts-Route hätte
- * eine Contracts-Änderung gebraucht (CLAUDE.md §3); die wäre für eine reine
+ * eine Contracts-Änderung gebraucht (Entwicklungsregeln §3); die wäre für eine reine
  * Zusammenfassung bereits vorhandener Zahlen nicht zu rechtfertigen.
  */
 

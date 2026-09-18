@@ -5,7 +5,7 @@
  * Protokoll-Logik selbst steht in `agent-gateway.ts` und kennt weder Fastify
  * noch `ws` – deshalb liegt hier so wenig wie möglich.
  *
- * **Neue Abhängigkeit `@fastify/websocket`** (CLAUDE.md §1): Das Agent-Protokoll
+ * **Neue Abhängigkeit `@fastify/websocket`** (Entwicklungsregeln §1): Das Agent-Protokoll
  * aus Pflichtenheft §2.2/§5.3 verlangt eine persistente, vom Agent ausgehende
  * WebSocket-Verbindung; Fastify kann WebSockets ohne dieses Plugin nicht
  * annehmen. Es ist das offizielle Fastify-Plugin und setzt auf `ws` auf –
@@ -24,6 +24,7 @@
 // Plugin selbst wird in `server.ts` registriert.
 import { type WebSocket } from '@fastify/websocket';
 import { type FastifyInstance, type FastifyRequest } from 'fastify';
+import { startWebSocketHeartbeat } from '../../lib/ws-heartbeat.js';
 import {
   type AgentGatewayLogger,
   type AgentRegistry,
@@ -221,6 +222,17 @@ export function registerAgentRoute(app: FastifyInstance, options: AgentRouteOpti
 
       options.agents.register(session);
 
+      /*
+       * Ping/Pong vom Backend aus (Review 2026-09-16, Befund 11.1). Der Agent
+       * hat seinen eigenen Wächter, das Backend bis hierher keinen: Eine
+       * halboffene Verbindung über den Tunnel – Homeserver weg, kein FIN –
+       * blieb in der Registry „verbunden", und jeder Befehl lief erst in seine
+       * Frist, statt sofort `AGENT_NOT_CONNECTED` zu melden. Gleicher Helfer
+       * wie beim Live-Kanal der Oberfläche; `terminate()` löst `close` aus und
+       * damit die reguläre Abmeldung unten.
+       */
+      const stopHeartbeat = startWebSocketHeartbeat(socket);
+
       socket.on('message', (data: unknown) => {
         /*
          * Rohpuffer durchreichen, wo es einer ist (Audit security-matrix-07):
@@ -232,6 +244,7 @@ export function registerAgentRoute(app: FastifyInstance, options: AgentRouteOpti
       });
 
       socket.on('close', (code: number, reason: Buffer) => {
+        stopHeartbeat();
         session.handleSocketClosed(code, reason.toString());
         options.agents.unregister(session);
       });
