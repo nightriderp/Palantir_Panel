@@ -146,6 +146,7 @@ export {
   formatDuration,
   formatUptimeClock,
   formatMegabytes,
+  formatMegabytesKurz,
   formatNumber,
   formatPercent,
   formatPing,
