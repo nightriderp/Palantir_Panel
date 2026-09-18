@@ -49,6 +49,12 @@ RUN set -eux; \
 
 # Adresse und Prüfsumme gehören zusammen und werden gemeinsam getauscht.
 #
+# Valve vergibt keine Versionskennung; die Prüfsumme ist der einzige Anker.
+# Damit ein neues Archiv nicht erst den nächsten Bau still scheitern lässt,
+# vergleicht `.github/workflows/image-scan.yml` (Job „SteamCMD-Prüfsumme“) sie
+# wöchentlich mit der Adresse und meldet eine Abweichung vorab (Review
+# 2026-09-16, Befund 9.7).
+#
 # **`chmod` nach dem Auspacken** (Fassung 4, 2026-09-11): Valve gibt seinem
 # Archiv die Rechte `0764` – für „andere" also kein Ausführungsrecht:
 #

@@ -2,7 +2,7 @@
 
 import { type GameServerDto, type ServerConsoleLine } from '@palantir/contracts';
 import { consoleCommandSchema } from '@palantir/validation';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Button, cn, formatTime, useToast } from '@/components/shared';
 import { type LiveConnectionState } from '@/lib/live/LiveChannelProvider';
 
@@ -21,6 +21,24 @@ const SOURCE_CLASSES: Record<ServerConsoleLine['source'], string> = {
   input: 'text-brand',
   system: 'text-ink-faint italic',
 };
+
+/**
+ * Eine Zeile der Konsole – als eigene, gemerkte Komponente (Review 2026-09-16,
+ * Befund 12.9). Der Puffer hält bis zu 500 Zeilen, und jede neue Zeile ließ
+ * vorher alle 500 neu rendern. Eine bestehende Zeile ändert sich nie; `memo`
+ * mit der Zeile als einziger Eigenschaft rendert sie genau einmal.
+ */
+const ConsoleLineRow = memo(function ConsoleLineRow({ line }: { line: ServerConsoleLine }) {
+  return (
+    <div className="flex gap-2.5">
+      <span className="shrink-0 select-none text-ink-disabled">{formatTime(line.timestamp)}</span>
+      <span className={cn('whitespace-pre-wrap break-words', SOURCE_CLASSES[line.source])}>
+        {line.source === 'input' ? <span className="select-none font-bold">&gt; </span> : null}
+        {line.text}
+      </span>
+    </div>
+  );
+});
 
 export interface ConsoleTabProps {
   server: GameServerDto;
@@ -155,21 +173,7 @@ export function ConsoleTab({ server, lines, connection, onSend, onClear }: Conso
                   : 'Der Server läuft nicht – es kommt gerade keine Ausgabe.'}
             </p>
           ) : (
-            lines.map((line) => (
-              <div key={line.id} className="flex gap-2.5">
-                <span className="shrink-0 select-none text-ink-disabled">
-                  {formatTime(line.timestamp)}
-                </span>
-                <span
-                  className={cn('whitespace-pre-wrap break-words', SOURCE_CLASSES[line.source])}
-                >
-                  {line.source === 'input' ? (
-                    <span className="select-none font-bold">&gt; </span>
-                  ) : null}
-                  {line.text}
-                </span>
-              </div>
-            ))
+            lines.map((line) => <ConsoleLineRow key={line.id} line={line} />)
           )}
         </div>
 
