@@ -133,7 +133,7 @@ describe('Auflösung über das Verzeichnis', () => {
     ]);
   });
 
-  it('nimmt den Besitzer bei jeder Rollen-Regel mit (Fundpunkt 296)', async () => {
+  it('nimmt den Besitzer bei jeder Rollen-Regel mit (Fundpunkt 300)', async () => {
     /*
      * `User.isOwner` liegt ausserhalb des Rollensystems und garantiert immer
      * alle Rechte. Ein Besitzer traegt deshalb typischerweise gar keine Rolle -

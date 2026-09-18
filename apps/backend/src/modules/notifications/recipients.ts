@@ -121,7 +121,7 @@ export async function resolveRecipients(
   }
 
   /*
-   * Der Besitzer zaehlt zu jedem Rollen-Kreis dazu (Fundpunkt 296).
+   * Der Besitzer zaehlt zu jedem Rollen-Kreis dazu (Fundpunkt 300).
    *
    * `User.isOwner` liegt ausserhalb des Rollensystems und garantiert immer alle
    * Rechte (Pflichtenheft §6). Ein Besitzer traegt deshalb typischerweise gar
