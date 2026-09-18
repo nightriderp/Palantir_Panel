@@ -184,6 +184,12 @@ export interface NodeResourceUsage {
  * Node-Prüfung greift trotzdem.
  */
 export interface UserResourceLimits {
+  /**
+   * Seit dem 2026-09-18 ohne Wirkung (Betreiber-Entscheidung: RAM ist keine
+   * Kontingentgröße mehr, ein Server nimmt sich, was frei ist). Bleibt im
+   * Vertrag für den Altbestand der Datenbank; das Backend prüft es nicht mehr,
+   * die Oberfläche zeigt es nicht mehr an.
+   */
   maxRamMb: number | null;
   maxConcurrentServers: number | null;
 }
