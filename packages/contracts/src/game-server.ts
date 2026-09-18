@@ -43,7 +43,14 @@ export interface GameServerPermissions {
   canUpdate: boolean;
 }
 
-/** Ressourcen-Limits eines Servers (Pflichtenheft §6, `GameServer.resourceLimits`). */
+/**
+ * Ressourcen-Zuweisung eines Servers (Pflichtenheft §6, `GameServer.resourceLimits`).
+ *
+ * `ramMb` ist seit dem 2026-09-18 eine **weiche** Grenze (Betreiber-Entscheidung):
+ * Der Agent setzt sie als `MemoryReservation`, hart begrenzt ist nur die Node
+ * minus Rücklage. Der Wert kommt aus der Spiele-Definition
+ * (`resourceDefaults.ramMb`); der Nutzer wählt ihn nicht mehr.
+ */
 export interface ServerResourceLimits {
   ramMb: number;
 }
@@ -210,6 +217,17 @@ export interface GameServerDto {
    * (Entwicklungsregeln §3): Fehlt das Feld, bleibt die Oberfläche bei der Kernzahl.
    */
   hostCpuCores?: number | null;
+  /**
+   * Arbeitsspeicher der Node in MiB – Bezugsgröße der RAM-Anzeige.
+   *
+   * Seit dem 2026-09-18 (Betreiber-Entscheidung) ist `resourceLimits.ramMb`
+   * nur noch eine weiche Grenze: Ein Server nimmt sich, was auf der Node frei
+   * ist. Ein Füllstand „belegt von zugewiesen" sagt damit nichts mehr; die
+   * Oberfläche zeigt den Verbrauch als Zahl und den Anteil an der **Node**.
+   * Gleiche Regeln wie `hostCpuCores`: `null` ohne Sicht auf die Node,
+   * optional für ältere Backends.
+   */
+  hostRamMb?: number | null;
   /**
    * Seit wann der Server in seinem jetzigen Zustand ist (ISO-8601).
    *
