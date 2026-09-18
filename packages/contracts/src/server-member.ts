@@ -66,6 +66,29 @@ export interface ServerMemberPermissions {
   canRemove: boolean;
 }
 
+/**
+ * Ein Konto, das der Aufrufer als Mitverwalter freigeben kann.
+ *
+ * Bis hierher verlangte der Dialog „Mitverwalter hinzufügen" die Nutzer-Id –
+ * eine UUID, die niemand auswendig kennt; der Besitzer musste sie sich vom
+ * Betreiber aus der Nutzerverwaltung holen. Jetzt liefert
+ * `GET /api/servers/:id/members/candidates` eine Auswahl: freigeschaltete,
+ * nicht gesperrte Konten, die weder Besitzer noch schon Mitglied dieses
+ * Servers sind. Nur für Aufrufer mit `canManageMembers` am Server – das ist
+ * kein allgemeines Nutzerverzeichnis (vgl. Gefundener Punkt 102 zum Chat),
+ * sondern die Antwort auf die eine Frage „wem kann ich hier Zugriff geben?".
+ */
+export interface ServerMemberCandidateDto {
+  userId: string;
+  displayName: string;
+  /**
+   * Anmeldename, weil der Anzeigename frei wählbar und nicht eindeutig ist –
+   * bei zwei „Chris" entscheidet er. `null` bei Konten ohne Passwort-Login
+   * (nur Discord/Twitch/Steam).
+   */
+  username: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Rangvergleich (ergänzt in B3)
 // ---------------------------------------------------------------------------
