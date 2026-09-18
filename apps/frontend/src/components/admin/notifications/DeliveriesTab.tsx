@@ -57,19 +57,27 @@ export function DeliveriesTab() {
           <tbody>
             {deliveries.map((delivery) => (
               <tr key={delivery.id}>
-                <Td className="whitespace-nowrap font-mono text-sm text-ink-faint">
+                <Td
+                  label="Zeitpunkt"
+                  className="whitespace-nowrap font-mono text-sm text-ink-faint"
+                >
                   {formatDateTime(delivery.deliveredAt ?? delivery.createdAt)}
                 </Td>
-                <Td className="text-ink">{delivery.channelName}</Td>
-                <Td>{notifiableEventLabel(delivery.event)}</Td>
-                <Td>
+                <Td label="Kanal" className="text-ink">
+                  {delivery.channelName}
+                </Td>
+                <Td label="Ereignis">{notifiableEventLabel(delivery.event)}</Td>
+                <Td label="Status">
                   <Badge tone={deliveryStatusTone(delivery.status)}>
                     {deliveryStatusLabel(delivery.status)}
                   </Badge>
                 </Td>
-                <Td className="text-right">{formatNumber(delivery.attempts)}</Td>
+                <Td label="Versuche" className="text-right">
+                  {formatNumber(delivery.attempts)}
+                </Td>
                 <Td
-                  className="max-w-[240px] truncate text-sm text-ink-faint"
+                  label="Fehler"
+                  className="break-words text-sm text-ink-faint md:max-w-[240px] md:truncate"
                   title={delivery.failureMessage ?? undefined}
                 >
                   {delivery.failureMessage ?? delivery.failureCode ?? '—'}

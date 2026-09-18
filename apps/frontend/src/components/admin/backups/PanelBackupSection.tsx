@@ -131,15 +131,21 @@ export function PanelBackupSection() {
           <tbody>
             {backups.map((backup) => (
               <tr key={backup.id}>
-                <Td className="whitespace-nowrap text-ink">{formatDateTime(backup.startedAt)}</Td>
-                <Td className="max-w-xs truncate" title={backup.storagePath ?? undefined}>
+                <Td label="Gestartet" className="whitespace-nowrap text-ink">
+                  {formatDateTime(backup.startedAt)}
+                </Td>
+                <Td
+                  label="Ziel"
+                  className="break-all md:max-w-xs md:truncate"
+                  title={backup.storagePath ?? undefined}
+                >
                   {backup.storagePath ?? '—'}
                 </Td>
-                <Td>{AUSLOESER[backup.trigger]}</Td>
-                <Td className="text-right">
+                <Td label="Auslöser">{AUSLOESER[backup.trigger]}</Td>
+                <Td label="Größe" className="text-right">
                   {backup.status === 'completed' ? formatBytes(backup.sizeBytes) : '—'}
                 </Td>
-                <Td>
+                <Td label="Status">
                   <div className="flex flex-col gap-1">
                     <StatusBadge backup={backup} />
                     {backup.failureMessage === null ? null : (
