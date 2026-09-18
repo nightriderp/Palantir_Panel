@@ -103,6 +103,8 @@ interface Aufrufe {
   upsert: { userId: string; level: ServerMemberLevel }[];
   remove: string[];
   transfer: string[];
+  /** Besitzer-Ids, mit denen die Kandidatenliste abgefragt wurde. */
+  kandidaten: string[];
 }
 
 /** Was ins Audit-Log ging (Fundpunkt 237). */
@@ -117,7 +119,7 @@ async function buildApp(): Promise<{
   aufrufe: Aufrufe;
   protokoll: Protokollzeile[];
 }> {
-  const aufrufe: Aufrufe = { upsert: [], remove: [], transfer: [] };
+  const aufrufe: Aufrufe = { upsert: [], remove: [], transfer: [], kandidaten: [] };
   const protokoll: Protokollzeile[] = [];
   const mitglieder = new Map<string, ServerMemberRecord>([[MANAGER_ID, MANAGER]]);
 
@@ -138,6 +140,14 @@ async function buildApp(): Promise<{
 
   const repository = {
     listMembers: async () => [...mitglieder.values()],
+    listMemberCandidates: async (_serverId: string, ownerId: string) => {
+      aufrufe.kandidaten.push(ownerId);
+
+      return [
+        { userId: NEU_ID, displayName: 'Neues Mitglied', username: 'neu' },
+        { userId: FREMD_ID, displayName: 'Fremder', username: null },
+      ];
+    },
     upsertMember: async (_serverId: string, userId: string, level: ServerMemberLevel) => {
       aufrufe.upsert.push({ userId, level });
       mitglieder.set(userId, {
@@ -324,6 +334,45 @@ describe('Routen der Mitgliederverwaltung', () => {
       canEdit: true,
     });
     expect(aufrufe.upsert).toEqual([{ userId: NEU_ID, level: 'operator' }]);
+  });
+
+  it('liefert dem Besitzer die Konten, die er freigeben kann – ohne sich selbst', async () => {
+    const { app, aufrufe } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'GET', `/api/servers/${SERVER_ID}/members/candidates`);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual([
+      { userId: NEU_ID, displayName: 'Neues Mitglied', username: 'neu' },
+      { userId: FREMD_ID, displayName: 'Fremder', username: null },
+    ]);
+    // Der Besitzer wird im Repository ausgeschlossen – die Route reicht ihn durch.
+    expect(aufrufe.kandidaten).toEqual([OWNER_ID]);
+  });
+
+  it('zeigt die Kandidatenliste keinem Mitglied ohne canManageMembers', async () => {
+    const { app, aufrufe } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'GET', `/api/servers/${SERVER_ID}/members/candidates`, {
+      actor: 'manager',
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error.code).toBe('PERMISSION_DENIED');
+    expect(aufrufe.kandidaten).toEqual([]);
+  });
+
+  it('verrät einem Fremden über die Kandidatenliste nicht einmal den Server', async () => {
+    const { app } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'GET', `/api/servers/${SERVER_ID}/members/candidates`, {
+      actor: 'fremd',
+    });
+
+    expect(response.statusCode).toBe(404);
   });
 
   it('verweigert einem Mitglied ohne canManageMembers das Freigeben', async () => {

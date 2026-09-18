@@ -159,6 +159,7 @@ const OHNE_GUARD = new Map<string, Grund>([
   ['GET /api/servers/:id/stats', GRUENDE.objektrecht],
   ['GET /api/servers/:id/stats/history', GRUENDE.objektrecht],
   ['GET /api/servers/:id/members', GRUENDE.objektrecht],
+  ['GET /api/servers/:id/members/candidates', GRUENDE.objektrecht],
   ['PUT /api/servers/:id/members', GRUENDE.objektrecht],
   ['DELETE /api/servers/:id/members/:userId', GRUENDE.objektrecht],
   // Neue Image-Fassung übernehmen: `canUpdate` aus dem DTO (Pflichtenheft §9).

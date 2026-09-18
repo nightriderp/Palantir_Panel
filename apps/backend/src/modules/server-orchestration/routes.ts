@@ -17,6 +17,7 @@ import {
   type ApiResponse,
   type GameServerPermissions,
   type SchedulePermissions,
+  type ServerMemberCandidateDto,
   type ServerMemberDto,
   type SubdomainAvailabilityDto,
   fail,
@@ -1232,6 +1233,29 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
         const mitglieder = await repository.listMembers(id);
 
         return ok(mitglieder.map((record) => toServerMemberDto(record, dto.permissions)));
+      } catch (error: unknown) {
+        await replyWithError(reply, error);
+
+        return undefined;
+      }
+    },
+  );
+
+  /*
+   * Wem kann ich hier Zugriff geben? (Betreiberwunsch 2026-09-18.) Vorher
+   * verlangte der Dialog die Nutzer-Id als UUID. Die Auswahl gibt es nur für
+   * Aufrufer, die Mitglieder verwalten dürfen – sie ist kein Nutzerverzeichnis
+   * (vgl. Gefundener Punkt 102 zum Chat), sondern die Antwort auf genau diese
+   * Frage für genau diesen Server.
+   */
+  app.get(
+    '/api/servers/:id/members/candidates',
+    async (request, reply): Promise<ApiResponse<ServerMemberCandidateDto[]> | undefined> => {
+      try {
+        const { id } = serverIdParamsSchema.parse(request.params);
+        const { server } = await loadAuthorized(request, id, 'canManageMembers');
+
+        return ok([...(await repository.listMemberCandidates(id, server.ownerId))]);
       } catch (error: unknown) {
         await replyWithError(reply, error);
 

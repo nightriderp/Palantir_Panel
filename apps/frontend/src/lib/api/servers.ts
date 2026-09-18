@@ -10,6 +10,7 @@ import {
   type ServerCloneJobDto,
   type ServerFileContentDto,
   type ServerFileListDto,
+  type ServerMemberCandidateDto,
   type ServerMemberDto,
   type ServerStatsHistoryDto,
   type SubdomainAvailabilityDto,
@@ -294,6 +295,16 @@ export function fetchMembers(
   signal?: AbortSignal,
 ): Promise<ApiResult<ServerMemberDto[]>> {
   return apiRequest<ServerMemberDto[]>(serverPath(serverId, '/members'), { signal });
+}
+
+/** Konten, die der Aufrufer für diesen Server freigeben kann (nur mit `canManageMembers`). */
+export function fetchMemberCandidates(
+  serverId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<ServerMemberCandidateDto[]>> {
+  return apiRequest<ServerMemberCandidateDto[]>(serverPath(serverId, '/members/candidates'), {
+    signal,
+  });
 }
 
 export function addOrUpdateMember(
