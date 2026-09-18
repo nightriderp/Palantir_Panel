@@ -254,11 +254,15 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       </>
     );
 
-  /** Anteil am gebuchten Arbeitsspeicher – Füllstand des Balkens. */
+  /**
+   * Anteil am Arbeitsspeicher der **Node** – Füllstand des Balkens. Die
+   * Zuweisung ist seit dem 2026-09-18 eine weiche Grenze; ein Anteil daran
+   * sagte nichts mehr.
+   */
   const ramAnteil =
-    anzeige?.ramUsedMb == null || server.resourceLimits.ramMb <= 0
+    anzeige?.ramUsedMb == null || server.hostRamMb == null || server.hostRamMb <= 0
       ? null
-      : (anzeige.ramUsedMb / server.resourceLimits.ramMb) * 100;
+      : (anzeige.ramUsedMb / server.hostRamMb) * 100;
 
   /**
    * Die vier Netzwerk-Kurven: Rate statt Summe.
@@ -394,7 +398,6 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       label: 'Ports',
       value: server.assignedPorts.length > 0 ? server.assignedPorts.join(', ') : 'keine',
     },
-    { label: 'Arbeitsspeicher', value: formatMegabytes(server.resourceLimits.ramMb) },
     { label: 'Besitzer', value: server.ownerDisplayName ?? 'nicht sichtbar' },
     { label: 'Mitverwalter', value: String(server.memberCount) },
     { label: 'Angelegt', value: formatDateTime(server.createdAt) },
@@ -665,7 +668,7 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
               samples={history.data.samples}
               metric="ramUsedMb"
               label="Arbeitsspeicher"
-              max={server.resourceLimits.ramMb}
+              max={server.hostRamMb ?? null}
               formatValue={formatMegabytes}
             />
           ) : offeneKachel === 'spieler' ? (

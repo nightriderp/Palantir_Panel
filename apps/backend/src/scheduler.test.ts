@@ -784,6 +784,7 @@ function runningServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
     hostName: HOST.name,
     hostStatus: 'online',
     hostCpuCores: 8,
+    hostRamMb: null,
     name: 'Wüstensturm',
     gameType: TEST_MINECRAFT_GAME_TYPE.id,
     status: 'running',
@@ -1367,9 +1368,11 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
     expect(sink.events).toEqual([]);
   });
 
-  it('meldet einen Server über seinem eigenen Limit an dessen Besitzer', async () => {
-    // Genau der Fall aus Lastenheft §3.3, der bisher fehlte: Die Node hat noch
-    // Luft (keine Node-Warnung), der einzelne Server nicht mehr.
+  it('meldet keinen Server mehr wegen seiner Zuweisung (weiche Grenze, 2026-09-18)', async () => {
+    // Bis dahin: Warnung an den Besitzer, sobald ein Server 90 % seiner
+    // Zuweisung belegte. Die Zuweisung ist jetzt weich – ein Server darf
+    // darueber liegen, solange die Node Platz hat. Was eng wird, meldet die
+    // Node-Warnung aus der Messung.
     const timer = manualTimer();
     const sink = capturingSink();
     const quelle = loadSource([last({ usedRamMb: 3900 })]);
@@ -1384,18 +1387,7 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
     timer.fire();
     await settle();
 
-    expect(sink.events).toHaveLength(1);
-    expect(sink.events[0]?.payload).toMatchObject({
-      scope: 'server',
-      resource: 'ram',
-      nodeId: NODE_ID,
-      serverId: SERVER_ID,
-      // Ohne diesen Eintrag stünde die Warnung nur im Ereignisstrom: Der
-      // Empfängerkreis `resourceOwner` löst sie über `ownerId` auf.
-      ownerId: BESITZER_ID,
-      usedPercent: 95.2,
-      thresholdPercent: 90,
-    });
+    expect(sink.events).toEqual([]);
   });
 
   it('schweigt zu einem Server unter seinem Schwellwert', async () => {
@@ -1477,25 +1469,21 @@ describe('Zeitgeber: Ressourcen-Warnungen', () => {
       await settle();
     }
 
-    expect(sink.events).toHaveLength(2);
-    expect(sink.events.map((eintrag) => eintrag.payload.scope)).toEqual(['node', 'server']);
+    // Nur die Node-Warnung – und die genau einmal, nicht je Takt. Eine
+    // Server-Warnung gegen die Zuweisung gibt es seit der weichen Grenze
+    // (2026-09-18) nicht mehr, auch nicht bei 3900 von 4096 MiB.
+    expect(sink.events).toHaveLength(1);
+    expect(sink.events.map((eintrag) => eintrag.payload.scope)).toEqual(['node']);
 
-    // Wieder unter der Schwelle: keine neue Meldung, aber die Lage gilt als
-    // beendet.
+    // Aenderungen der Server-Last loesen nichts aus.
     quelle.loads = [last()];
     timer.fire();
     await settle();
-
-    expect(sink.events).toHaveLength(2);
-
-    // Erneut darüber – das ist ein neuer Zustandswechsel und wieder eine
-    // Meldung wert.
     quelle.loads = [last({ usedRamMb: 3900 })];
     timer.fire();
     await settle();
 
-    expect(sink.events).toHaveLength(3);
-    expect(sink.events[2]?.payload).toMatchObject({ scope: 'server', ownerId: BESITZER_ID });
+    expect(sink.events).toHaveLength(1);
   });
 });
 

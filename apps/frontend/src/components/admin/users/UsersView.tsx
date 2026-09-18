@@ -29,7 +29,6 @@ import {
   formatDate,
   formatNumber,
   formatServerAddress,
-  quotaCountingLabel,
   serverInitials,
   useHighlight,
   useToast,
@@ -998,22 +997,23 @@ function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () =
   const toast = useToast();
   const canEdit = dto.permissions.canEdit;
 
-  const [ram, setRam] = useState(() => limitToField(dto.limits.maxRamMb));
   const [servers, setServers] = useState(() => limitToField(dto.limits.maxConcurrentServers));
   const [busy, setBusy] = useState(false);
 
-  const hasLimit = dto.limits.maxRamMb !== null || dto.limits.maxConcurrentServers !== null;
+  // RAM ist keine Kontingentgroesse mehr (Betreiber-Entscheidung 2026-09-18):
+  // Ein Server nimmt sich, was auf der Node frei ist. Ein alter Wert bleibt
+  // im Datensatz, wirkt aber nicht – gespeichert wird er nicht mehr mit.
+  const hasLimit = dto.limits.maxConcurrentServers !== null;
 
   async function save() {
-    const fields = [ram, servers];
-    if (fields.some((field) => field.trim() !== '' && Number.isNaN(Number(field)))) {
+    if (servers.trim() !== '' && Number.isNaN(Number(servers))) {
       toast.error('Bitte nur Zahlen eingeben oder das Feld leer lassen.');
       return;
     }
 
     setBusy(true);
     const result = await setUserLimits(dto.userId, {
-      maxRamMb: fieldToLimit(ram),
+      maxRamMb: null,
       maxConcurrentServers: fieldToLimit(servers),
     });
     setBusy(false);
@@ -1042,18 +1042,11 @@ function LimitsForm({ dto, onClose }: { dto: UserResourceLimitDto; onClose: () =
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-ink-faint">
-        Ein leeres Feld bedeutet: kein Limit. Die harte Kapazität der Node greift unabhängig davon.
+        Ein leeres Feld bedeutet: kein Limit. Arbeitsspeicher wird nicht mehr zugeteilt – ein Server
+        nimmt sich, was auf der Node frei ist.
       </p>
 
       <div className="flex flex-col gap-3">
-        <LimitField
-          label="Arbeitsspeicher"
-          unit="MiB"
-          value={ram}
-          usageHint={`belegt: ${dto.usage.runningRamMb} MiB (${quotaCountingLabel('ram')})`}
-          disabled={!canEdit || busy}
-          onChange={setRam}
-        />
         <LimitField
           label="Gleichzeitige Server"
           unit="Anzahl"

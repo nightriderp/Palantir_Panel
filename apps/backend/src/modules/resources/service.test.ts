@@ -151,7 +151,7 @@ function buildService(options?: {
       return options?.node === undefined ? NODE : options.node;
     },
     async listAll() {
-      return [NODE];
+      return options?.node === undefined ? [NODE] : options.node === null ? [] : [options.node];
     },
   };
 
@@ -434,9 +434,10 @@ describe('Kapazitätsprüfung über den Service', () => {
   });
 
   it('wirft RESOURCE_LIMIT_EXCEEDED mit einer Meldung, die die Grenze benennt', async () => {
+    // Nur noch die Anzahl gleichzeitiger Server ist ein Kontingent (2026-09-18).
     const { service } = buildService({
-      limits: { ...NO_USER_RESOURCE_LIMITS, maxRamMb: 4096 },
-      userUsage: { runningRamMb: 4096 },
+      limits: { ...NO_USER_RESOURCE_LIMITS, maxConcurrentServers: 1 },
+      userUsage: { runningServers: 1 },
     });
 
     const error = await service
@@ -454,10 +455,25 @@ describe('Kapazitätsprüfung über den Service', () => {
 
     expect(error.code).toBe('RESOURCE_LIMIT_EXCEEDED');
     expect(error.violations).toHaveLength(1);
-    expect(error.message).toContain('4096 MiB');
+    expect(error.violations[0]?.resource).toBe('servers');
+    expect(error.message).toContain('1');
   });
 
   it('merkt eine volle Node an, statt abzulehnen', async () => {
+    const { service } = buildService({ node: nodeMitMessung({ ramAvailableMb: 768 }) });
+
+    const result = await service.checkStartCapacity({
+      ownerId: USER_ID,
+      nodeId: NODE_ID,
+      requested: { ramMb: 4096, diskMb: 1024 },
+      at: JETZT,
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.concerns?.map((v) => v.scope)).toEqual(['nodeMeasured']);
+  });
+
+  it('merkt die Summe der Buchungen nicht mehr an (weiche Grenze, 2026-09-18)', async () => {
     const { service } = buildService({ nodeUsage: { runningRamMb: 32_000 } });
 
     const result = await service.checkStartCapacity({
@@ -467,7 +483,7 @@ describe('Kapazitätsprüfung über den Service', () => {
     });
 
     expect(result.allowed).toBe(true);
-    expect(result.concerns?.map((v) => v.scope)).toEqual(['node']);
+    expect(result.concerns ?? []).toEqual([]);
   });
 
   /*
@@ -501,11 +517,11 @@ describe('Kapazitätsprüfung über den Service', () => {
         .catch((thrown: unknown) => thrown);
     }
 
-    it('fragt nach, wenn die gebuchte Belegung nicht mehr passt', async () => {
+    it('fragt nicht mehr nach der gebuchten Belegung – nur die Messung zaehlt', async () => {
       const antwort = await starte({ nodeUsage: { runningRamMb: 32_000 } });
 
-      expect(isResourceError(antwort)).toBe(true);
-      expect(isResourceError(antwort) ? antwort.code : null).toBe('RESOURCE_CONFIRMATION_REQUIRED');
+      expect(isResourceError(antwort)).toBe(false);
+      expect(antwort).toMatchObject({ allowed: true });
     });
 
     it('fragt nach, wenn die Messung weniger frei sieht als gebucht', async () => {
@@ -518,7 +534,7 @@ describe('Kapazitätsprüfung über den Service', () => {
     });
 
     it('lässt `force` die Rückfrage übergehen', async () => {
-      const antwort = await starte({ nodeUsage: { runningRamMb: 32_000 }, force: true });
+      const antwort = await starte({ node: nodeMitMessung({ ramAvailableMb: 1024 }), force: true });
 
       expect(isResourceError(antwort)).toBe(false);
       expect(antwort).toMatchObject({ allowed: true });
@@ -528,8 +544,8 @@ describe('Kapazitätsprüfung über den Service', () => {
       // Eine Grenze hat jemand gesetzt; ein Feld in der Anfrage darf sie nicht
       // aufheben, sonst wäre sie keine.
       const antwort = await starte({
-        limits: { ...NO_USER_RESOURCE_LIMITS, maxRamMb: 4096 },
-        userUsage: { runningRamMb: 4096 },
+        limits: { ...NO_USER_RESOURCE_LIMITS, maxConcurrentServers: 1 },
+        userUsage: { runningServers: 1 },
         force: true,
       });
 
@@ -572,22 +588,29 @@ describe('Kapazitätsprüfung über den Service', () => {
     ).rejects.toMatchObject({ code: 'NODE_NOT_FOUND' });
   });
 
-  it('bewertet die Warnlage einer Node auch ohne Serverstart', async () => {
-    const { service } = buildService({ nodeUsage: { runningRamMb: 30_000 } });
+  it('bewertet die Warnlage einer Node auch ohne Serverstart – aus der Messung', async () => {
+    // 30 GiB gemessen belegt (32 768 − 2 768); die Buchungen zaehlen nicht mehr.
+    const { service } = buildService({ node: nodeMitMessung({ ramAvailableMb: 2_768 }) });
 
-    const warnings = await service.evaluateNodeState(NODE_ID, new Date('2026-08-26T12:00:00.000Z'));
+    const warnings = await service.evaluateNodeState(NODE_ID, JETZT);
 
     expect(warnings.map((w) => w.resource)).toEqual(['ram']);
     expect(warnings[0]?.usedPercent).toBe(91.6);
   });
 
   it('sammelt die Warnlage aller Nodes für den Zeitgeber ein', async () => {
-    const { service } = buildService({ nodeUsage: { runningRamMb: 30_000 } });
+    const { service } = buildService({ node: nodeMitMessung({ ramAvailableMb: 2_768 }) });
 
-    const warnings = await service.evaluateAllNodeWarnings(new Date('2026-08-26T12:00:00.000Z'));
+    const warnings = await service.evaluateAllNodeWarnings(JETZT);
 
     expect(warnings.map((w) => w.resource)).toEqual(['ram']);
     expect(warnings[0]).toMatchObject({ scope: 'node', nodeId: NODE_ID, usedPercent: 91.6 });
+  });
+
+  it('warnt ohne Messung nicht, auch wenn viel gebucht ist', async () => {
+    const { service } = buildService({ nodeUsage: { runningRamMb: 30_000 } });
+
+    expect(await service.evaluateAllNodeWarnings(JETZT)).toEqual([]);
   });
 
   it('meldet nichts, solange jede Node unter dem Schwellwert bleibt', async () => {
@@ -618,25 +641,12 @@ describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
     };
   }
 
-  it('misst jeden Server gegen sein eigenes Limit', () => {
+  it('warnt nicht mehr gegen die Zuweisung eines Servers (weiche Grenze, 2026-09-18)', () => {
     const { service } = buildService({});
 
     const warnings = service.evaluateAllServerWarnings([last({ usedRamMb: 3900 })], AT);
 
-    expect(warnings).toEqual([
-      {
-        scope: 'server',
-        resource: 'ram',
-        unit: 'mb',
-        nodeId: NODE_ID,
-        serverId: SERVER_ID,
-        used: 3900,
-        total: 4096,
-        usedPercent: 95.2,
-        thresholdPercent: 90,
-        at: AT.toISOString(),
-      },
-    ]);
+    expect(warnings).toEqual([]);
   });
 
   it('schweigt, solange ein Server unter seinem Schwellwert bleibt', () => {
@@ -655,7 +665,7 @@ describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
     expect(warnings).toEqual([]);
   });
 
-  it('wertet mehrere Server in einem Durchlauf aus', () => {
+  it('liefert auch bei mehreren Servern keine RAM-Warnung mehr', () => {
     const { service } = buildService({});
     const zweiter = 'a1e5b6c2-0000-4000-8000-000000000003';
 
@@ -664,7 +674,7 @@ describe('Ressourcen-Service: Warnungen auf Server-Ebene', () => {
       AT,
     );
 
-    expect(warnings.map((w) => w.serverId)).toEqual([SERVER_ID]);
+    expect(warnings).toEqual([]);
   });
 
   it('warnt nicht mehr wegen CPU – es gibt keine Bezugsgroesse je Server', () => {

@@ -69,28 +69,14 @@ function MeterBar({ metric }: { metric: NodeMetric }) {
       </div>
 
       {/*
-        Unter dem Balken der Rest – und die beiden Sonderfälle:
-
-        Fundpunkt 209: Ist mehr gebucht als vorhanden, stand hier „0 GB frei",
-        dieselbe Auskunft wie bei einer exakt vollen Node. Wie viel zu viel
-        gebucht ist, sagt jetzt der rote Text.
-
-        Fundpunkt 203: Daneben die zweite Zahl, gegen die ein Start tatsächlich
-        geprüft wird – ohne sie wirkte die erste wie eine Absage.
+        Unter dem Balken der gemessene Rest. Die Zusätze „überbucht"
+        (Fundpunkt 209) und „davon laufend" (Fundpunkt 203) sind mit der weichen
+        RAM-Zuweisung (2026-09-18) entfallen – beide verglichen Buchungen.
       */}
       <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-2xs">
-        <span
-          className={
-            metric.overbookedLabel === undefined ? 'text-ink-faint' : 'font-semibold text-danger'
-          }
-        >
-          {metric.percent === null
-            ? 'Keine Angabe'
-            : (metric.overbookedLabel ?? `${metric.freeLabel} frei`)}
+        <span className="text-ink-faint">
+          {metric.percent === null ? 'Keine Angabe' : `${metric.freeLabel} frei`}
         </span>
-        {metric.runningLabel === undefined ? null : (
-          <span className="text-ink-faint">{metric.runningLabel}</span>
-        )}
       </div>
     </div>
   );

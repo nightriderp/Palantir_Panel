@@ -2,7 +2,7 @@
 
 import { type QuotaRequestTrigger, type ResourceQuotaDto } from '@palantir/contracts';
 import { useState, type FormEvent } from 'react';
-import { Button, Modal, TextField, formatMegabytes, useToast } from '@/components/shared';
+import { Button, Modal, TextField, useToast } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
 import { createQuotaRequest } from '@/lib/api/quota-requests';
 
@@ -40,16 +40,15 @@ export function QuotaRequestDialog({
 }) {
   const toast = useToast();
   const kontingent = anlass === 'quota';
-  const [ram, setRam] = useState('');
   const [servers, setServers] = useState('');
   const [reason, setReason] = useState(begruendungsVorschlag);
   const [busy, setBusy] = useState(false);
 
-  const ramWunsch = ram.trim() === '' ? null : Number(ram);
   const serverWunsch = servers.trim() === '' ? null : Number(servers);
   // Nur die Kontingent-Anfrage braucht einen Wunsch; die Kapazitätsmeldung
-  // bittet nicht um eine Zahl (dieselbe Regel wie im Eingabe-Schema).
-  const nichtsGewuenscht = kontingent && ramWunsch === null && serverWunsch === null;
+  // bittet nicht um eine Zahl (dieselbe Regel wie im Eingabe-Schema). RAM ist
+  // seit dem 2026-09-18 keine Kontingentgroesse mehr – nur die Serveranzahl.
+  const nichtsGewuenscht = kontingent && serverWunsch === null;
 
   async function stellen(event: FormEvent) {
     event.preventDefault();
@@ -58,7 +57,6 @@ export function QuotaRequestDialog({
     setBusy(true);
     const result = await createQuotaRequest({
       trigger: anlass,
-      ...(kontingent && ramWunsch !== null ? { requestedRamMb: ramWunsch } : {}),
       ...(kontingent && serverWunsch !== null
         ? { requestedMaxConcurrentServers: serverWunsch }
         : {}),
@@ -95,18 +93,6 @@ export function QuotaRequestDialog({
 
         {kontingent ? (
           <>
-            <TextField
-              label="Arbeitsspeicher (MiB)"
-              hint={
-                quota === null || quota.ram.limit === null
-                  ? 'Aktuell ohne Grenze – hier ist nichts zu beantragen.'
-                  : `Aktuell ${formatMegabytes(quota.ram.limit)}. Leer lassen, wenn es reicht.`
-              }
-              value={ram}
-              onChange={setRam}
-              inputProps={{ inputMode: 'numeric' }}
-            />
-
             <TextField
               label="Gleichzeitige Server"
               hint={
