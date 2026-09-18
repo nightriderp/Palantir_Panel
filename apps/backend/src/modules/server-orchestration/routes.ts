@@ -28,6 +28,7 @@ import {
   consoleCommandSchema,
   createServerInputSchema,
   scheduleInputSchema,
+  serverFilePathSchema,
   updateServerSettingsInputSchema,
   serverMemberInputSchema,
   transferServerOwnerInputSchema,
@@ -230,7 +231,7 @@ async function readUpload(request: FastifyRequest, maxBytes: number): Promise<Fi
   const overwrite = multipartField(datei.fields, 'overwrite');
 
   return {
-    path: multipartField(datei.fields, 'path') ?? '',
+    path: serverFilePathSchema.parse(multipartField(datei.fields, 'path') ?? ''),
     fileName: datei.filename,
     content,
     ...(overwrite === undefined ? {} : { overwrite: overwrite === 'true' }),
@@ -943,7 +944,14 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   // dasselbe Flag – es steht im Vertrag, damit die Oberfläche es nicht selbst
   // herleiten muss.
 
-  const filePathQuerySchema = z.object({ path: z.string().max(4_096) });
+  /*
+   * Der Pfad wird schon an der Route eingesperrt (Review 2026-09-16, Befund
+   * 7.5): kein `..`, kein absoluter Pfad, kein Rueckwaertsschraegstrich. Der
+   * Agent prueft dasselbe noch einmal am Datenordner (`AGENT_INVALID_PATH`) –
+   * die Route ist die erste Linie, der Agent die letzte. Vorher liess die Route
+   * jeden String bis 4096 Zeichen durch und verliess sich auf die zweite.
+   */
+  const filePathQuerySchema = z.object({ path: serverFilePathSchema });
 
   app.get('/api/servers/:id/files', async (request, reply) => {
     try {
@@ -979,7 +987,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
       const input = z
-        .object({ path: z.string().max(4_096), content: z.string() })
+        .object({ path: serverFilePathSchema, content: z.string() })
         .parse(request.body);
 
       const { dto } = await loadAuthorized(request, id, 'canManageFiles');
@@ -1029,7 +1037,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
       const input = z
-        .object({ path: z.string().max(4_096), recursive: z.boolean().optional() })
+        .object({ path: serverFilePathSchema, recursive: z.boolean().optional() })
         .parse(request.body);
 
       await loadAuthorized(request, id, 'canManageFiles');

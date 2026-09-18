@@ -135,6 +135,12 @@ export function safeArchivePath(roh: string): string | null {
     return null;
   }
 
+  // Ein NUL im Namen kann aus einem PAX-Datensatz kommen; ein Dateisystem
+  // schneidet dort ab oder lehnt ab – beides ist kein Pfad, den wir anlegen.
+  if (vereinheitlicht.includes('\0')) {
+    return null;
+  }
+
   const teile: string[] = [];
 
   for (const teil of vereinheitlicht.split('/')) {
@@ -218,8 +224,10 @@ function readTarGz(archiv: Buffer, sammler: Sammler, maxExtractedBytes: number):
   }
 
   for (const eintrag of parseTar(roh)) {
-    if (eintrag.type === 'symlink') {
-      // Ein Symlink im Datenordner koennte nach aussen zeigen - siehe Kopf.
+    if (eintrag.type === 'symlink' || eintrag.type === 'special') {
+      // Ein Symlink im Datenordner koennte nach aussen zeigen; Hardlinks,
+      // Geraetedateien und FIFOs haben in einer Spielwelt nichts zu suchen -
+      // siehe Kopf.
       sammler.skip(eintrag.name);
       continue;
     }

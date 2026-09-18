@@ -39,6 +39,8 @@ const SCHWELLEN = { nodePercent: 90, serverPercent: 90 };
 
 /** Ein Spiel mit genau einem TCP-Port und ohne Hostname-Routing. */
 const SPIEL = createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS).require('test-echo');
+/** Ein Spiel, das dieselbe Nummer fuer TCP und UDP braucht (`protocol: 'both'`). */
+const PAAR_SPIEL = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).require('satisfactory');
 
 function warte(millisekunden: number): Promise<void> {
   return new Promise((fertig) => setTimeout(fertig, millisekunden));
@@ -57,12 +59,16 @@ function portPoolFor(verbindung: DbConnection): PortPoolPort {
 
 describeDatenbank('Portvergabe in der Reservierung', (kontext) => {
   /** Ein ungebundener TCP-Bereich – beide Nodes vergeben daraus. */
-  async function legeBereichAn(vonPort: number, bisPort: number): Promise<void> {
+  async function legeBereichAn(
+    vonPort: number,
+    bisPort: number,
+    protocol: 'tcp' | 'udp' = 'tcp',
+  ): Promise<void> {
     await kontext.db.insert(portRanges).values({
       label: 'Testbereich',
       startPort: vonPort,
       endPort: bisPort,
-      protocol: 'tcp',
+      protocol,
       nodeId: null,
       enabled: true,
     });
@@ -138,6 +144,74 @@ describeDatenbank('Portvergabe in der Reservierung', (kontext) => {
 
     const zeilen = await kontext.roh('select port from port_allocations order by port');
     expect(zeilen.map((zeile) => zeile.port)).toEqual([27_000, 27_001]);
+  });
+
+  it('gibt zwei gleichzeitigen Paar-Vergaben (TCP+UDP) verschiedene Nummern (Befund 4.4/7.6)', async () => {
+    /*
+     * Wie oben, nur mit einem Spiel, das dieselbe Nummer fuer TCP und UDP
+     * braucht. Vorher fing nur die Einzelvergabe die Unique-Verletzung ab; ein
+     * Paar lief mit dem rohen Datenbankfehler auf.
+     */
+    await legeBereichAn(27_000, 27_009, 'tcp');
+    await legeBereichAn(27_000, 27_009, 'udp');
+
+    const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN, portPoolFor);
+    const nutzerA = await legeNutzerAn(kontext.db);
+    const nutzerB = await legeNutzerAn(kontext.db);
+    const nodeA = await legeNodeAn(kontext.db);
+    const nodeB = await legeNodeAn(kontext.db);
+
+    let freigeben: () => void = () => undefined;
+    const gehalten = new Promise<void>((fertig) => {
+      freigeben = () => {
+        fertig();
+      };
+    });
+    let ersterHatVergeben: () => void = () => undefined;
+    const ersteVergabe = new Promise<void>((fertig) => {
+      ersterHatVergeben = () => {
+        fertig();
+      };
+    });
+
+    const erste = reservierung.reserve(anfrage(nutzerA, nodeA), async ({ servers, ports }) => {
+      const server = await servers.create(neuerServer(nutzerA, nodeA, 'paar-eins', PAAR_SPIEL));
+      const zugewiesen = await ports.allocate(server.id, PAAR_SPIEL, {
+        nodeId: nodeA,
+        virtualHostPort: null,
+      });
+
+      ersterHatVergeben();
+      await gehalten;
+
+      return zugewiesen;
+    });
+
+    await ersteVergabe;
+
+    const zweite = reservierung.reserve(anfrage(nutzerB, nodeB), async ({ servers, ports }) => {
+      const server = await servers.create(neuerServer(nutzerB, nodeB, 'paar-zwei', PAAR_SPIEL));
+
+      return ports.allocate(server.id, PAAR_SPIEL, { nodeId: nodeB, virtualHostPort: null });
+    });
+
+    await warte(200);
+    freigeben();
+
+    const [ersteZuweisung, zweiteZuweisung] = await Promise.all([erste, zweite]);
+
+    expect(ersteZuweisung.map((port) => port.publicPort)).toEqual([27_000, 27_000]);
+    expect(zweiteZuweisung.map((port) => port.publicPort)).toEqual([27_001, 27_001]);
+
+    const zeilen = await kontext.roh(
+      'select port, protocol from port_allocations order by port, protocol',
+    );
+    expect(zeilen.map((zeile) => `${String(zeile.port)}/${String(zeile.protocol)}`)).toEqual([
+      '27000/tcp',
+      '27000/udp',
+      '27001/tcp',
+      '27001/udp',
+    ]);
   });
 
   it('lässt nach einem gescheiterten Anlegen keinen vergebenen Port zurück', async () => {
@@ -218,12 +292,17 @@ function anfrage(userId: string, hostId: string): ResourceCheckRequest {
   };
 }
 
-function neuerServer(ownerId: string, hostId: string, subdomain: string): CreateServerData {
+function neuerServer(
+  ownerId: string,
+  hostId: string,
+  subdomain: string,
+  spiel: { readonly id: string } = SPIEL,
+): CreateServerData {
   return {
     ownerId,
     hostId,
     name: subdomain,
-    gameType: SPIEL.id,
+    gameType: spiel.id,
     subdomain,
     assignedPorts: [],
     resourceLimits: { ramMb: 1024 },
