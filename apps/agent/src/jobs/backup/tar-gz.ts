@@ -528,7 +528,10 @@ export async function unpackArchive(archivePath: string, targetDir: string): Pro
       }
 
       await fs.mkdir(path.dirname(ziel), { recursive: true });
-      const datei = await fs.open(ziel, 'w', mode === 0 ? 0o644 : mode & 0o7777);
+      // Nur die Rechte-Bits, nie setuid/setgid/sticky (0o7000): Ein Archiv
+      // von fremder Hand darf im Datenordner keine Datei ablegen, die mit
+      // fremden Rechten laeuft (Review 2026-09-16, Befund 7.4).
+      const datei = await fs.open(ziel, 'w', mode === 0 ? 0o644 : mode & 0o777);
       try {
         let offen = size;
         while (offen > 0) {

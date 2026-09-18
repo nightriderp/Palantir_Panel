@@ -132,17 +132,22 @@ describe('packDirectory() / unpackArchive()', () => {
 });
 
 describe('unpackArchive() – Schutz vor Pfaden nach außen', () => {
-  /** Baut ein TAR mit einem einzelnen, frei wählbaren Eintragsnamen. */
-  async function archivMitEintrag(name: string, inhalt: string): Promise<string> {
+  /** Baut ein TAR mit einem einzelnen, frei wählbaren Eintrag (Name, Typ, Rechte, Linkziel). */
+  async function archivMitEintrag(
+    name: string,
+    inhalt: string,
+    optionen: { flag?: string; mode?: string; linkname?: string } = {},
+  ): Promise<string> {
     const zlib = await import('node:zlib');
     const block = Buffer.alloc(512);
     block.write(name, 0, 100, 'utf8');
-    block.write('0000644\0', 100, 8, 'ascii');
+    block.write(`${optionen.mode ?? '0000644'}\0`, 100, 8, 'ascii');
     block.write('0000000\0', 108, 8, 'ascii');
     block.write('0000000\0', 116, 8, 'ascii');
     block.write(`${inhalt.length.toString(8).padStart(11, '0')}\0`, 124, 12, 'ascii');
     block.write('00000000000\0', 136, 12, 'ascii');
-    block.write('0', 156, 1, 'ascii');
+    block.write(optionen.flag ?? '0', 156, 1, 'ascii');
+    block.write(optionen.linkname ?? '', 157, 100, 'utf8');
     block.write('ustar\0', 257, 6, 'ascii');
     block.write('00', 263, 2, 'ascii');
     block.fill(0x20, 148, 156);
@@ -171,6 +176,39 @@ describe('unpackArchive() – Schutz vor Pfaden nach außen', () => {
   it('lehnt einen absoluten Eintragspfad ab', async () => {
     const boese = await archivMitEintrag('/etc/passwort', 'nein');
     await expect(unpackArchive(boese, ziel)).rejects.toMatchObject({ code: 'INVALID_PATH' });
+  });
+
+  it('lässt einen Symlink mit absolutem Ziel aus und meldet ihn (Befund 7.4)', async () => {
+    const boese = await archivMitEintrag('passwd', '', { flag: '2', linkname: '/etc/passwd' });
+
+    const ergebnis = await unpackArchive(boese, ziel);
+
+    expect(ergebnis.skipped).toEqual(['passwd']);
+    await expect(fs.lstat(path.join(ziel, 'passwd'))).rejects.toThrow();
+  });
+
+  it('lässt einen Symlink aus, dessen relatives Ziel aus dem Zielordner führt', async () => {
+    const boese = await archivMitEintrag('welt/link', '', {
+      flag: '2',
+      linkname: '../../../etc/passwd',
+    });
+
+    const ergebnis = await unpackArchive(boese, ziel);
+
+    expect(ergebnis.skipped).toEqual(['welt/link']);
+    await expect(fs.lstat(path.join(ziel, 'welt', 'link'))).rejects.toThrow();
+  });
+
+  it('streicht setuid/setgid beim Zurückspielen (Befund 7.4)', async () => {
+    // 4755: setuid + rwxr-xr-x. Nach dem Zurückspielen darf nur 755 übrig sein.
+    const archivPfad = await archivMitEintrag('start.sh', 'echo hallo', { mode: '0004755' });
+
+    await unpackArchive(archivPfad, ziel);
+
+    const angaben = await fs.stat(path.join(ziel, 'start.sh'));
+    // Unter Windows kennt das Dateisystem diese Bits nicht; dort ist 0 ohnehin
+    // die Antwort. Unter Linux (CI) ist es die Zusicherung.
+    expect(angaben.mode & 0o7000).toBe(0);
   });
 });
 
