@@ -23,7 +23,14 @@ export const ICON_PATHS = {
   logout: 'M15 4h4v16h-4M10 16l5-4-5-4M15 12H3',
   arrowLeft: 'M19 12H5M11 5l-6 7 6 7',
   arrowRight: 'M5 12h14M13 5l6 7-6 7',
-  restart: 'M4 4v6h6M20 20v-6h-6M5 15a8 8 0 0014-4M19 9a8 8 0 00-14 4',
+  /**
+   * Neustart als EIN Kreis mit einem Pfeilkopf (aus hafenmeister uebernommen).
+   *
+   * Vorher zwei gegenlaeufige Boegen mit zwei Ecken - in 14 Pixeln sah das nach
+   * Gewusel aus und war von „Aktualisieren" nicht zu unterscheiden. Der
+   * geschlossene Ring mit einem Kopf liest sich auch klein als Drehung.
+   */
+  restart: 'M23 4v6h-6M20.49 15a9 9 0 1 1-2.12-9.36L23 10',
   copy: 'M9 9h11v11H9zM5 15V5h11v3',
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
   check: 'M5 12l5 5L19 8',
