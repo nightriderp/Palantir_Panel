@@ -1,3 +1,5 @@
+import { bereich, fehlerFeld } from '../log.js';
+
 /**
  * Job-Scheduler des Agents (Arbeitspaket A3).
  *
@@ -86,7 +88,7 @@ export class JobScheduler {
     this.#onError =
       options.onError ??
       ((jobName, error) => {
-        console.warn('[jobs] Durchgang fehlgeschlagen', { job: jobName, error });
+        bereich('jobs').warn({ job: jobName, ...fehlerFeld(error) }, 'Durchgang fehlgeschlagen');
       });
   }
 
@@ -148,6 +150,25 @@ export class JobScheduler {
     for (const name of [...this.#jobs.keys()]) {
       this.cancel(name);
     }
+  }
+
+  /**
+   * Beendet alle Jobs **und wartet auf die laufenden Durchgänge** (Review
+   * 2026-09-16, Befund 11.6).
+   *
+   * `stopAll()` nimmt nur die Planung zurück; ein Durchgang, der gerade läuft
+   * – etwa eine geplante Sicherung mitten im Packen –, lief bis hierher ins
+   * `process.exit()` und hinterließ ein halbes Archiv. Hier bekommt er die
+   * Gelegenheit, zu Ende zu kommen; wie lange, entscheidet der Aufrufer über
+   * seine Frist.
+   */
+  async drain(): Promise<void> {
+    const laufende = [...this.#jobs.values()]
+      .map((eintrag) => eintrag.laufend)
+      .filter((durchgang): durchgang is Promise<void> => durchgang !== undefined);
+
+    this.stopAll();
+    await Promise.allSettled(laufende);
   }
 
   /** Namen der aktuell angemeldeten Jobs, in Reihenfolge der Anmeldung. */
