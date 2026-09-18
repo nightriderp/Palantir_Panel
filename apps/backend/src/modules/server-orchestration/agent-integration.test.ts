@@ -187,7 +187,11 @@ describe('Agent ↔ Backend über echten WebSocket (Befund 7.1)', () => {
     const runtime = new FakeRuntime();
     const connection = verbindeAgent(url, runtime);
 
-    await warteBis(() => agents.get(HOST_ID) !== null);
+    // Beide Seiten abwarten: Das Backend trägt die Sitzung ein, sobald der
+    // Handshake bei ihm angekommen ist; der Agent meldet sich erst bereit, wenn
+    // seine Bestätigung zurück ist. Dazwischen liegt ein Netz-Umlauf – in der
+    // CI reichte er einmal, um `isReady` noch auf false zu sehen.
+    await warteBis(() => agents.get(HOST_ID) !== null && connection.isReady);
 
     expect(connection.isReady).toBe(true);
     expect(connected).toEqual([HOST_ID]);
