@@ -279,7 +279,9 @@ describe('Agent ↔ Backend über echten WebSocket (Befund 7.1)', () => {
     // Der Agent kommt mit Backoff zurück – und meldet erneut seinen Zustand.
     await warteBis(() => agents.get(HOST_ID) !== null);
     expect(connected).toEqual([HOST_ID, HOST_ID]);
-    expect(runtime.berichte).toBeGreaterThanOrEqual(2);
+    // Der zweite Bericht folgt dem Eintrag der Sitzung um einen Umlauf –
+    // abwarten statt sofort zaehlen (dieselbe Klasse wie beim Handshake).
+    await warteBis(() => runtime.berichte >= 2);
   });
 
   it('weist ein falsches Token ab, ohne dass die Node je als verbunden gilt', async () => {

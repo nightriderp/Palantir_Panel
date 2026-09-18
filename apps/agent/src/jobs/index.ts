@@ -179,6 +179,11 @@ export interface AgentJobs {
   readonly rcon: RconConsole;
   /** Beendet alle laufenden Jobs – beim Herunterfahren des Agents. */
   stop(): void;
+  /**
+   * Wie {@link stop}, wartet aber auf laufende Durchgänge (Befund 11.6) –
+   * für das geordnete Herunterfahren.
+   */
+  drain(): Promise<void>;
 }
 
 /** Die Teilmenge der Agent-Konfiguration, die die Jobs brauchen. */
@@ -319,6 +324,10 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     stop: () => {
       query.stopAll();
       scheduler.stopAll();
+    },
+    drain: async () => {
+      query.stopAll();
+      await scheduler.drain();
     },
   };
 }

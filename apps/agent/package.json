@@ -29,6 +29,7 @@
     "@palantir/validation": "workspace:*",
     "dotenv": "^16.4.7",
     "gamedig": "^5.3.3",
+    "pino": "^10.3.1",
     "ws": "^8.18.0",
     "zod": "^3.24.1"
   },
