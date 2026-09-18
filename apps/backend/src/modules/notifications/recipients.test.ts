@@ -133,6 +133,47 @@ describe('Auflösung über das Verzeichnis', () => {
     ]);
   });
 
+  it('nimmt den Besitzer bei jeder Rollen-Regel mit (Fundpunkt 300)', async () => {
+    /*
+     * `User.isOwner` liegt ausserhalb des Rollensystems und garantiert immer
+     * alle Rechte. Ein Besitzer traegt deshalb typischerweise gar keine Rolle -
+     * auf der Instanz des Betreibers die Rolle "Gast". Die Vorgaberegel fuer
+     * neue Registrierungen richtet sich an die Rolle "Admin", und die hatte
+     * kein einziges Mitglied: Die Meldung erreichte niemanden, und die einzige
+     * Person, die freischalten kann, erfuhr nie davon.
+     */
+    const directory = fakeDirectory({
+      roleMembers: { 'role-1': [MEMBER_A] },
+      ownerUserIds: [OWNER],
+    });
+
+    await expect(resolveRecipients(registration, 'role', 'role-1', directory)).resolves.toEqual([
+      MEMBER_A,
+      OWNER,
+    ]);
+  });
+
+  it('zaehlt den Besitzer nicht doppelt, wenn er die Rolle ohnehin traegt', async () => {
+    const directory = fakeDirectory({
+      roleMembers: { 'role-1': [OWNER, MEMBER_A] },
+      ownerUserIds: [OWNER],
+    });
+
+    await expect(resolveRecipients(registration, 'role', 'role-1', directory)).resolves.toEqual([
+      OWNER,
+      MEMBER_A,
+    ]);
+  });
+
+  it('erreicht auch ohne ein einziges Rollenmitglied den Besitzer', async () => {
+    // Genau die Lage im Betrieb: Regel vorhanden, Rolle leer.
+    const directory = fakeDirectory({ roleMembers: {}, ownerUserIds: [OWNER] });
+
+    await expect(resolveRecipients(registration, 'role', 'role-1', directory)).resolves.toEqual([
+      OWNER,
+    ]);
+  });
+
   /**
    * Ein alter Datensatz ohne Rolle darf still niemanden treffen – ein Fehler
    * würde den auslösenden Vorgang gefährden.

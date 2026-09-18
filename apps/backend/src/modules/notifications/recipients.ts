@@ -120,5 +120,28 @@ export async function resolveRecipients(
     return [];
   }
 
-  return [...new Set(await directory.listUserIdsWithRole(roleId))];
+  /*
+   * Der Besitzer zaehlt zu jedem Rollen-Kreis dazu (Fundpunkt 300).
+   *
+   * `User.isOwner` liegt ausserhalb des Rollensystems und garantiert immer alle
+   * Rechte (Pflichtenheft §6). Ein Besitzer traegt deshalb typischerweise gar
+   * keine Rolle - auf dieser Instanz die Rolle „Gast". Die Vorgaberegeln der
+   * Ersteinrichtung richten sich aber an die Rolle „Admin", und so erreichte
+   * eine neue Registrierung niemanden: Die einzige Person, die freischalten
+   * kann, stand nicht in der Empfaengerliste. Gemeldet vom Betreiber am
+   * 16.09.2026 („ich kriege keine Benachrichtigung, wenn jemand eine Anfrage
+   * schickt"); die Datenbank bestaetigte es - Regel vorhanden, Rolle „Admin"
+   * ohne ein einziges Mitglied.
+   *
+   * Bewusst fuer JEDE Rollen-Regel, nicht nur fuer die der Verwaltung: Der
+   * Besitzer darf alles, was eine Rolle duerfen koennte. Wem das zu viel ist,
+   * bestellt das Ereignis in seinen persoenlichen Einstellungen ab - dieser Weg
+   * steht ihm offen, der umgekehrte (nie erfahren, dass etwas offen ist) nicht.
+   */
+  const [mitRolle, besitzer] = await Promise.all([
+    directory.listUserIdsWithRole(roleId),
+    directory.listOwnerUserIds(),
+  ]);
+
+  return [...new Set([...mitRolle, ...besitzer])];
 }
