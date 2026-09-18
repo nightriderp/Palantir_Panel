@@ -65,11 +65,13 @@ function LiveConnectionBadge() {
     return () => clearTimeout(timer);
   }, [getrennt]);
 
-  const { tone, label, title, pulse } = liveAnzeige(connection, ausfallBestaetigt);
+  const { tone, label, shortLabel, title, pulse } = liveAnzeige(connection, ausfallBestaetigt);
 
+  // Auf dem Telefon ein Wort statt nur des Farbpunkts (Befund 12.8).
   return (
     <span className="flex items-center gap-1.5 text-xs text-ink-faint" title={title}>
       <StatusDot tone={tone} pulse={pulse} />
+      <span className="sm:hidden">{shortLabel}</span>
       <span className="hidden sm:inline">{label}</span>
     </span>
   );

@@ -13,6 +13,7 @@ import {
   ImageCropper,
   PageHeader,
   Panel,
+  TextField,
   formatDate,
   useToast,
 } from '@/components/shared';
@@ -546,16 +547,13 @@ function DeleteAccountPanel({ account }: { account: AccountDto }) {
         message="Dein Konto wird endgültig gelöscht, mit allen Anmeldeverfahren und Rollen. Server, die dir gehören, musst du vorher selbst entfernen."
         extra={
           needsPassword ? (
-            <label className="block text-sm text-ink-muted">
-              Zur Sicherheit dein Passwort:
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
-                className="mt-2 w-full rounded-md border border-line-strong bg-fill px-3 py-2.5 text-base text-ink outline-none focus-visible:border-brand"
-              />
-            </label>
+            <TextField
+              label="Zur Sicherheit dein Passwort:"
+              type="password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+            />
           ) : null
         }
         onConfirm={() => void confirm()}

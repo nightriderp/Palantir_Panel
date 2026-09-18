@@ -64,6 +64,26 @@ function fokussierbareIn(wurzel: HTMLElement): HTMLElement[] {
 }
 
 /**
+ * Liegt dieser Dialog zuoberst?
+ *
+ * Jeder Dialog hört selbst am `document` auf Tastendrücke. Liegen zwei
+ * übereinander (ein `ConfirmDialog` über einem `FormModal`), bekamen beide das
+ * Escape und beide schlossen (Review 2026-09-16, Befund 12.5). Deshalb
+ * antwortet nur der oberste; die anderen lassen die Taste durch.
+ *
+ * Oben ist der letzte Dialog in Dokumentreihenfolge: Ein verschachtelter
+ * Dialog steht hinter seinem Vorfahren, ein späterer Geschwisterdialog hinter
+ * dem früheren – und beide liegen bei gleicher Stapelebene darüber. Bewusst
+ * kein eigener Stapel aus Öffnungsreihenfolge: React lässt die Effekte der
+ * Kinder vor denen der Eltern laufen, der innere Dialog hätte sich also als
+ * Erster eingetragen und läge „unten".
+ */
+function liegtZuoberst(dialog: HTMLElement): boolean {
+  const alle = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+  return alle[alle.length - 1] === dialog;
+}
+
+/**
  * Basis-Dialog des Design-Systems.
  *
  * Verhalten: Escape schließt, Klick auf den Hintergrund schließt, der Fokus
@@ -113,6 +133,9 @@ export function Modal({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
+      // Nur der oberste Dialog antwortet auf die Tastatur (Befund 12.5).
+      if (dialogRef.current !== null && !liegtZuoberst(dialogRef.current)) return;
+
       if (event.key === 'Escape') {
         if (busy) return;
         onClose();

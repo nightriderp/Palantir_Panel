@@ -145,6 +145,58 @@ describe('Modal – Escape (frontend-lib-08)', () => {
   });
 });
 
+describe('Modal – gestapelte Dialoge (Befund 12.5)', () => {
+  it('Escape schließt nur den obersten Dialog', () => {
+    const untenGeschlossen = vi.fn();
+    const obenGeschlossen = vi.fn();
+    render(
+      <Modal open onClose={untenGeschlossen} title="Datei bearbeiten">
+        <p>Editor</p>
+        <ConfirmDialog
+          open
+          onClose={obenGeschlossen}
+          onConfirm={() => undefined}
+          title="Änderungen verwerfen?"
+          message="Der Text ist nicht gespeichert."
+          confirmLabel="Verwerfen"
+        />
+      </Modal>,
+    );
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(obenGeschlossen).toHaveBeenCalledTimes(1);
+    expect(untenGeschlossen).not.toHaveBeenCalled();
+  });
+
+  it('nach dem Schließen des oberen antwortet wieder der untere', () => {
+    const untenGeschlossen = vi.fn();
+    function Stapel() {
+      const [obenOffen, setObenOffen] = useState(true);
+      return (
+        <Modal open onClose={untenGeschlossen} title="Datei bearbeiten">
+          <p>Editor</p>
+          <ConfirmDialog
+            open={obenOffen}
+            onClose={() => setObenOffen(false)}
+            onConfirm={() => undefined}
+            title="Änderungen verwerfen?"
+            message="Der Text ist nicht gespeichert."
+            confirmLabel="Verwerfen"
+          />
+        </Modal>
+      );
+    }
+    render(<Stapel />);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(untenGeschlossen).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(untenGeschlossen).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('ConfirmDialog reicht `busy` an den Dialog durch', () => {
   it('schließt während der laufenden Aktion weder über Escape noch über den Hintergrund', () => {
     const geschlossen = vi.fn();

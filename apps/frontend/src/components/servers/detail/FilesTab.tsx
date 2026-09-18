@@ -14,6 +14,7 @@ import {
   Icon,
   Modal,
   Panel,
+  buttonClasses,
   formatDateTime,
   useToast,
 } from '@/components/shared';
@@ -304,29 +305,26 @@ export function FilesTab({ server }: FilesTabProps) {
                 </span>
 
                 {/*
-                  Die beiden Aktionen als umrandete Chips statt als farbiger
+                  Die beiden Aktionen als Schaltflächen statt als farbiger
                   Text: Zwischen mono-Dateinamen und Zahlen war ein blaues
                   „Herunterladen" nicht als Schaltfläche zu erkennen, und
-                  „Löschen" stand direkt daneben.
+                  „Löschen" stand direkt daneben. Der Download bleibt ein
+                  `<a download>` in der Optik der Schaltfläche (Befund 12.4).
                 */}
                 <span className="flex gap-2 sm:justify-end">
                   {entry.downloadable ? (
                     <a
                       href={fileDownloadUrl(server.id, entry.path)}
-                      className="rounded-md border border-line bg-fill px-2.5 py-1 text-xs text-ink-muted transition-colors hover:text-ink"
+                      className={buttonClasses('secondary', 'sm', 'no-underline')}
                       download
                     >
                       Herunterladen
                     </a>
                   ) : null}
                   {writable ? (
-                    <button
-                      type="button"
-                      onClick={() => setPendingDelete(entry)}
-                      className="rounded-md border border-danger-line bg-danger-soft px-2.5 py-1 text-xs text-danger transition-colors hover:brightness-110"
-                    >
+                    <Button variant="danger" size="sm" onClick={() => setPendingDelete(entry)}>
                       Löschen
-                    </button>
+                    </Button>
                   ) : null}
                 </span>
               </li>
