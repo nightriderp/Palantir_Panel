@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { ContainerRuntimeError } from './errors.js';
 import { type HardeningOptions } from './hardening.js';
+import { speicherPlanungAusNode } from './memory.js';
 import {
   type DockerContainerRuntime,
   createDockerContainerRuntime,
@@ -25,6 +26,8 @@ export interface RuntimeEnv {
    * schlicht nirgends ein.
    */
   readonly AGENT_STEAM_ACCOUNT_DIR?: string;
+  /** Ruecklage der Node in MiB; ohne Angabe 10 %, mindestens 2 GiB (`memory.ts`). */
+  readonly AGENT_NODE_RAM_RESERVE_MB?: number | undefined;
   /**
    * Docker-Netz der Gameserver-Container (security-matrix-02). Ohne Angabe
    * greift `DEFAULT_GAME_NETWORK` aus der Haertung - in keinem Fall `bridge`.
@@ -63,7 +66,12 @@ export function createContainerRuntimeFromEnv(
   // Vorrang: ausdrueckliche Option (Tests) vor Umgebung vor Haertungs-Vorgabe.
   const netz = networkMode ?? env.AGENT_CONTAINER_NETWORK;
 
+  // Weiche Grenze je Server, harte Grenze je Node (Betreiber-Entscheidung
+  // 2026-09-18) – einmal beim Start aus dem Arbeitsspeicher der Node abgeleitet.
+  const speicherPlanung = speicherPlanungAusNode(env.AGENT_NODE_RAM_RESERVE_MB);
+
   const hardening: HardeningOptions = {
+    nodeMemoryHardLimitBytes: speicherPlanung.hardLimitMb * 1024 * 1024,
     // Bind-Mounts sind auf die Palantir-Verzeichnisse begrenzt; Backups werden
     // fuer den Restore ebenfalls gemountet (A3), die Steam-Anmeldung fuer die
     // Spiele, die ohne Konto nicht an ihre Serverdateien kommen.
@@ -98,6 +106,7 @@ export function createContainerRuntimeFromEnv(
   return createDockerContainerRuntime({
     dockerSocketProxyUrl: env.DOCKER_SOCKET_PROXY_URL,
     hardening,
+    speicherPlanung,
     ...(registry === undefined ? {} : { registry }),
     ...rest,
   });

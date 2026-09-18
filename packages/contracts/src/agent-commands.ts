@@ -46,7 +46,15 @@ export interface AgentPortMapping {
  * einzelner Server die Node mitreißt.
  */
 export interface AgentResourceLimits {
-  /** Harte RAM-Grenze in MiB. */
+  /**
+   * RAM-Zuweisung in MiB.
+   *
+   * Seit dem 2026-09-18 (Betreiber-Entscheidung) eine **weiche** Grenze: Der
+   * Agent setzt sie als `MemoryReservation`; hart begrenzt ist nur die Node
+   * minus Rücklage, für alle Container gleich (`apps/agent/src/runtime/memory.ts`).
+   * Ein Server nimmt sich, was frei ist. Das Feld bleibt, weil es das Ziel
+   * ist, auf das der Kernel unter Druck zurückdrängt.
+   */
   readonly memoryMb: number;
   /** Obergrenze für Prozesse/Threads im Container (Fork-Bomb-Schutz). */
   readonly pidsLimit?: number;

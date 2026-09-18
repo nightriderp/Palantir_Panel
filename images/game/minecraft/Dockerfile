@@ -38,7 +38,7 @@
 # **Warum Temurin 25 und nicht 21:** Paper 26.2 verlangt laut
 # `fill.papermc.io/v3/projects/paper/versions/26.2` Java 25 als Mindestfassung;
 # genau die trägt `base/java`.
-ARG BASIS=ghcr.io/nightriderp/palantir-base-java:3
+ARG BASIS=ghcr.io/nightriderp/palantir-base-java:4
 
 # -----------------------------------------------------------------------------
 # Stufe 1: Paper holen und die Prüfsumme prüfen.

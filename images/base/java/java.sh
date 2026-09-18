@@ -106,6 +106,23 @@ java_heap_bestimmen() {
   JAVA_HEAP_MIB=''
   JAVA_RUECKLAGE_MIB=''
 
+  # Vorgabe des Agents (seit 2026-09-18): Der Heap kommt aus dem freien
+  # Speicher der Node zum Startzeitpunkt, nicht aus der cgroup-Grenze – die
+  # steht seit der weichen Zuweisung fuer alle Container auf dem Node-Wert und
+  # sagt nichts mehr ueber diesen Server. Ganze Zahl in MiB, mindestens 512.
+  case "${PALANTIR_JAVA_HEAP_MIB:-}" in
+    '' | *[!0-9]*) ;;
+    *)
+      if [ "$PALANTIR_JAVA_HEAP_MIB" -ge 512 ]; then
+        JAVA_HEAP_MIB="$PALANTIR_JAVA_HEAP_MIB"
+        # shellcheck disable=SC2034  # gelesen im Spiel-Image, siehe unten
+        JAVA_HEAP_ARGUMENTE="-Xms${JAVA_HEAP_MIB}M -Xmx${JAVA_HEAP_MIB}M"
+
+        return 0
+      fi
+      ;;
+  esac
+
   if ! java_grenze="$(speichergrenze_bytes)"; then
     JAVA_HEAP_ARGUMENTE='-XX:MaxRAMPercentage=70'
 

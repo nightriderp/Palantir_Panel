@@ -176,6 +176,8 @@ services:
       AGENT_QUERY_HOST: ${AGENT_QUERY_HOST:-}
       AGENT_DOWNLOAD_BLOCK_MAX_BYTES: ${AGENT_DOWNLOAD_BLOCK_MAX_BYTES}
       AGENT_UPLOAD_ARCHIVE_MAX_BYTES: ${AGENT_UPLOAD_ARCHIVE_MAX_BYTES}
+      # Leer = 10 % der Node, mindestens 2 GiB (runtime/memory.ts).
+      AGENT_NODE_RAM_RESERVE_MB: ${AGENT_NODE_RAM_RESERVE_MB:-}
       # Übersteuert den Wert aus der .env: innerhalb des Compose-Netzes heißt
       # der Proxy `socket-proxy`, nicht 127.0.0.1.
       DOCKER_SOCKET_PROXY_URL: http://socket-proxy:2375
