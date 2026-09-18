@@ -42,6 +42,12 @@ export interface DetailHeaderProps {
   onOpenSettings: () => void;
   onDelete: () => void;
   onCopyAddress: (address: string) => void;
+  /**
+   * Besitzer wechseln (Pflichtenheft §7). Der Knopf erscheint nur, wenn das
+   * DTO `canTransferOwnership` trägt **und** der Aufrufer die Nutzerliste
+   * lesen darf – ohne sie gäbe es kein Konto zur Auswahl.
+   */
+  onTransferOwner?: () => void;
 }
 
 export function DetailHeader({
@@ -52,6 +58,7 @@ export function DetailHeader({
   onOpenSettings,
   onDelete,
   onCopyAddress,
+  onTransferOwner,
 }: DetailHeaderProps) {
   const meta = serverStatusMeta(server.status);
   const blocked = isLifecycleActionBlocked(server.status) || busy;
@@ -61,13 +68,14 @@ export function DetailHeader({
   const address = formatServerAddress(server.address);
 
   /*
-   * Der Knopf erscheint nur am laufenden Server (Fundpunkt 190). Ein
-   * gestoppter braucht ihn nicht: Sein nächster Start baut den Container
-   * ohnehin aus dem heutigen Bauplan – und ein „Aktualisieren", das einen
-   * Server nebenbei hochfährt, wäre eine Überraschung.
+   * Ein Server behält seine Image-Fassung, bis jemand sie übernimmt
+   * (Pflichtenheft §9, Review 2026-09-16) – der Knopf erscheint deshalb in
+   * jedem Zustand, in dem der Wechsel möglich ist: laufend als Neustart,
+   * gestoppt als Neuaufbau ohne Start. Mitten in einem Übergang bleibt er
+   * gesperrt wie die übrigen Aktionen.
    */
-  const canUpdate =
-    server.updateAvailable && server.permissions.canRestart && server.status === 'running';
+  const canUpdate = server.updateAvailable && server.permissions.canUpdate;
+  const updateLaeuftNeu = server.status === 'running' || server.status === 'starting';
 
   return (
     <header className="flex flex-col gap-3 rounded-2xl border border-line bg-hero-gradient p-4.5">
@@ -94,8 +102,8 @@ export function DetailHeader({
               <span
                 title={
                   canUpdate
-                    ? 'Über „Aktualisieren" wird die neue Fassung übernommen.'
-                    : 'Die neue Fassung wird beim nächsten Start übernommen.'
+                    ? 'Über „Aktualisieren" wird die neue Fassung übernommen. Bis dahin läuft der Server auf seiner bisherigen Fassung – auch nach einem Neustart.'
+                    : 'Die neue Fassung übernimmt der Besitzer über „Aktualisieren".'
                 }
               >
                 <Badge tone="warning">Update verfügbar</Badge>
@@ -134,7 +142,11 @@ export function DetailHeader({
               variant="secondary"
               iconLeft="download"
               disabled={blocked}
-              title="Startet den Server neu und übernimmt dabei die neue Fassung."
+              title={
+                updateLaeuftNeu
+                  ? 'Startet den Server neu und übernimmt dabei die neue Fassung.'
+                  : 'Baut den Container mit der neuen Fassung neu, ohne den Server zu starten.'
+              }
               onClick={onUpdate}
             >
               Aktualisieren
@@ -159,6 +171,10 @@ export function DetailHeader({
               disabled={blocked}
               onClick={() => onLifecycle('restart')}
             />
+          ) : null}
+
+          {server.permissions.canTransferOwnership && onTransferOwner ? (
+            <IconButton icon="users" label="Besitzer wechseln" onClick={onTransferOwner} />
           ) : null}
 
           {server.permissions.canDelete ? (

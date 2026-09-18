@@ -18,7 +18,7 @@ import {
  * Reine Logik der Benachrichtigungs-Ansicht (Arbeitspaket F6).
  *
  * Beschriftungen, Filter und die Fortschreibung der geladenen Seite stehen hier
- * ohne React, damit sie prüfbar sind (CLAUDE.md §4). Titel und Text einer
+ * ohne React, damit sie prüfbar sind (Entwicklungsregeln §4). Titel und Text einer
  * Meldung entstehen **nicht** hier: Sie kommen fertig aus dem Backend
  * (`NotificationDto.title`/`body`, Pflichtenheft §5.2) und werden nur angezeigt.
  */
@@ -82,6 +82,7 @@ export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = [
       'server.failed',
       'server.cloned',
       'server.deleted',
+      'server.ownerTransferred',
     ],
   },
   {

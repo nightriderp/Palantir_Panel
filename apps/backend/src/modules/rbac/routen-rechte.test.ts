@@ -159,8 +159,13 @@ const OHNE_GUARD = new Map<string, Grund>([
   ['GET /api/servers/:id/stats', GRUENDE.objektrecht],
   ['GET /api/servers/:id/stats/history', GRUENDE.objektrecht],
   ['GET /api/servers/:id/members', GRUENDE.objektrecht],
+  ['GET /api/servers/:id/members/candidates', GRUENDE.objektrecht],
   ['PUT /api/servers/:id/members', GRUENDE.objektrecht],
   ['DELETE /api/servers/:id/members/:userId', GRUENDE.objektrecht],
+  // Neue Image-Fassung übernehmen: `canUpdate` aus dem DTO (Pflichtenheft §9).
+  ['POST /api/servers/:id/update', GRUENDE.objektrecht],
+  // Besitzerwechsel: `canTransferOwnership` aus dem DTO (= server.manage.any).
+  ['POST /api/servers/:id/owner', GRUENDE.objektrecht],
   ['PUT /api/servers/:id/pin', GRUENDE.objektrecht],
   ['DELETE /api/servers/:id/pin', GRUENDE.objektrecht],
   ['GET /api/servers/:id/files', GRUENDE.objektrecht],

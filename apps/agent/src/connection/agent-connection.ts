@@ -36,6 +36,7 @@ import { ExponentialBackoff, type BackoffOptions } from './backoff.js';
 import { CorrelationStore, type CorrelationStoreOptions } from './correlation-store.js';
 import type { AgentRuntimePort, OutboundEvent } from './ports.js';
 import type { Transport, TransportCloseInfo, TransportFactory } from './transport.js';
+import { alsConnectionLogger, bereich } from '../log.js';
 
 export interface ConnectionLogger {
   debug(message: string, details?: Record<string, unknown>): void;
@@ -44,13 +45,8 @@ export interface ConnectionLogger {
   error(message: string, details?: Record<string, unknown>): void;
 }
 
-/** Voreinstellung: schreibt auf die Konsole, wie das übrige Agent-Grundgerüst. */
-export const consoleLogger: ConnectionLogger = {
-  debug: (message, details) => console.debug(`[agent:connection] ${message}`, details ?? {}),
-  info: (message, details) => console.info(`[agent:connection] ${message}`, details ?? {}),
-  warn: (message, details) => console.warn(`[agent:connection] ${message}`, details ?? {}),
-  error: (message, details) => console.error(`[agent:connection] ${message}`, details ?? {}),
-};
+/** Voreinstellung: das strukturierte Protokoll des Agents, Bereich `connection` (Befund 5.2). */
+export const consoleLogger: ConnectionLogger = alsConnectionLogger(bereich('connection'));
 
 export interface AgentConnectionOptions {
   readonly transportFactory: TransportFactory;
@@ -115,6 +111,12 @@ export class AgentConnection {
    */
   private readonly commandLanes = new Map<string, Promise<void>>();
 
+  /**
+   * Der Agent fährt herunter: Neue Befehle werden abgewiesen, laufende zu Ende
+   * gebracht (Befund 11.6) – siehe {@link drain}.
+   */
+  private draining = false;
+
   constructor(options: AgentConnectionOptions) {
     this.options = options;
     this.log = options.logger ?? consoleLogger;
@@ -140,6 +142,42 @@ export class AgentConnection {
     }
     this.running = true;
     this.openTransport();
+  }
+
+  /**
+   * Geordnetes Herunterfahren, erster Schritt (Review 2026-09-16, Befund 11.6):
+   * Ab jetzt wird kein Befehl mehr angenommen, die laufenden dürfen zu Ende
+   * kommen – und ihre Ergebnisse gehen noch über die stehende Verbindung ans
+   * Backend. Vorher riss `stop()` mitten in einem `CREATE_BACKUP` die
+   * Verbindung ab: Das halbe Archiv blieb liegen, und das Backend erfuhr erst
+   * über den Verbindungsabbruch, dass nichts daraus wurde.
+   *
+   * Wartet höchstens `fristMs`; danach meldet `offen`, wie viele Warteschlangen
+   * noch liefen. Die Verbindung selbst schließt der Aufrufer mit {@link stop}.
+   */
+  async drain(fristMs: number): Promise<{ offen: number }> {
+    this.draining = true;
+    const laufende = [...this.commandLanes.values()];
+
+    if (laufende.length === 0) {
+      return { offen: 0 };
+    }
+
+    let fertig = false;
+    let frist: ReturnType<typeof setTimeout> | undefined;
+
+    await Promise.race([
+      Promise.allSettled(laufende).then(() => {
+        fertig = true;
+      }),
+      new Promise<void>((weiter) => {
+        frist = setTimeout(weiter, fristMs);
+      }),
+    ]);
+
+    if (frist !== undefined) clearTimeout(frist);
+
+    return { offen: fertig ? 0 : this.commandLanes.size };
   }
 
   /** Beendet die Verbindung und unterbindet weitere Wiederverbindungsversuche. */
@@ -372,6 +410,23 @@ export class AgentConnection {
    */
   private dispatchCommand(frame: BackendCommandFrame): void {
     const { correlationId, command } = frame;
+
+    if (this.draining) {
+      // Nicht still verwerfen: Das Backend wartete sonst bis in seine Frist.
+      this.log.warn('Befehl während des Herunterfahrens abgewiesen', { correlationId, command });
+      this.sendFrame({
+        kind: 'commandResult',
+        correlationId,
+        command,
+        result: fail(
+          'AGENT_COMMAND_FAILED',
+          `${command}: Der Agent fährt gerade herunter – nach dem Neustart noch einmal versuchen.`,
+        ),
+        duplicate: false,
+        completedAt: new Date().toISOString(),
+      });
+      return;
+    }
 
     const bereitsErledigt = this.correlations.getCompleted(correlationId);
     if (bereitsErledigt) {

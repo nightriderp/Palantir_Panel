@@ -26,7 +26,7 @@ coverage
 .git
 .gitignore
 .github
-.claude
+**/worktrees
 
 # Dokumentation und Entwurfsmaterial - vergrößern nur den Kontext
 docs

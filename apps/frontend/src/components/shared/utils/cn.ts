@@ -2,7 +2,7 @@
  * Fügt Klassennamen zusammen und wirft falsy Werte weg.
  *
  * Bewusst ohne `clsx`/`tailwind-merge` – das Design-System kommt für diesen
- * kleinen Zweck ohne zusätzliche Abhängigkeit aus (CLAUDE.md §1).
+ * kleinen Zweck ohne zusätzliche Abhängigkeit aus (Entwicklungsregeln §1).
  *
  * Hinweis: es findet **keine** Konfliktauflösung zwischen Tailwind-Klassen statt.
  * Wer eine Token-Klasse einer Komponente überschreiben will, sollte die dafür

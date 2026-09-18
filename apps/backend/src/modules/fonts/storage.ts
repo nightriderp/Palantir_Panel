@@ -4,7 +4,7 @@
  * Eigener Port statt eines `readFile` mitten im Dienst – dieselbe Aufteilung
  * wie bei den Panel-Sicherungen (`panel-backups/files.ts`) und den
  * Audit-Archiven: Die Regeln des Dienstes bleiben ohne Dateisystem prüfbar
- * (CLAUDE.md §4), und alles, was mit Pfaden zu tun hat, steht an genau einer
+ * (Entwicklungsregeln §4), und alles, was mit Pfaden zu tun hat, steht an genau einer
  * Stelle.
  *
  * **Der Dateiname kommt nie vom Hochladenden.** Er wird aus der vom Backend

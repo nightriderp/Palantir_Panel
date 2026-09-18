@@ -131,12 +131,15 @@ export function fakeDirectory(
   options: {
     activeUserIds?: string[];
     roleMembers?: Record<string, string[]>;
+    /** Konten mit Besitzer-Kennzeichen; sie erreichen jede Rollen-Regel. */
+    ownerUserIds?: string[];
     displayNames?: Record<string, string>;
   } = {},
 ): RecipientDirectory {
   return {
     listActiveUserIds: () => Promise.resolve([...(options.activeUserIds ?? [])]),
     listUserIdsWithRole: (roleId) => Promise.resolve([...(options.roleMembers?.[roleId] ?? [])]),
+    listOwnerUserIds: () => Promise.resolve([...(options.ownerUserIds ?? [])]),
     findDisplayNames: (userIds) =>
       Promise.resolve(
         new Map(

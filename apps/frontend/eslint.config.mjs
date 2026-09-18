@@ -1,8 +1,5 @@
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { FlatCompat } from '@eslint/eslintrc';
-
-const compat = new FlatCompat({ baseDirectory: dirname(fileURLToPath(import.meta.url)) });
+import coreWebVitals from 'eslint-config-next/core-web-vitals';
+import nextTypescript from 'eslint-config-next/typescript';
 
 export default [
   {
@@ -17,7 +14,9 @@ export default [
       'next-env.d.ts',
     ],
   },
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+  // Seit eslint-config-next 16 als Flat-Config exportiert – kein FlatCompat mehr.
+  ...coreWebVitals,
+  ...nextTypescript,
   {
     // Konfigurationsdateien liest ihr Werkzeug, importiert wird keine von ihnen.
     // `import/no-anonymous-default-export` will einen benannten Export, damit

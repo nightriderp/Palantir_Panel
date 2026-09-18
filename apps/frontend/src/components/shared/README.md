@@ -1,7 +1,7 @@
 # Shared UI / Design-System (F2)
 
 Gemeinsame Bausteine für alle Frontend-Arbeitspakete. **F3–F11 bauen hierauf auf** –
-bevor eine eigene Variante entsteht, bitte zuerst hier nachsehen ([CLAUDE.md §6](../../../../../CLAUDE.md)).
+bevor eine eigene Variante entsteht, bitte zuerst hier nachsehen ([Entwicklungsregeln §6](../../../../../Entwicklungsregeln)).
 
 Import immer über den Sammelpunkt:
 

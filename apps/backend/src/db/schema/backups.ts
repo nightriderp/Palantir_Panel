@@ -6,7 +6,7 @@
  * als erstes Paket eine geplante Aufgabe braucht (den Backup-Zeitplan); die
  * Tabelle ist trotzdem allgemein nach Pflichtenheft §6 aufgebaut. Andere
  * Aktionen (`restart`, `command`) tragen ihre Auswertung **additiv** nach –
- * keine zweite Zeitplan-Tabelle daneben (CLAUDE.md §3).
+ * keine zweite Zeitplan-Tabelle daneben (Entwicklungsregeln §3).
  */
 
 import {
@@ -208,7 +208,7 @@ export const backups = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp('started_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
-    /** Benannter Code aus `ERROR_CATALOG` bei `status = 'failed'` – nie Freitext (CLAUDE.md §5). */
+    /** Benannter Code aus `ERROR_CATALOG` bei `status = 'failed'` – nie Freitext (Entwicklungsregeln §5). */
     failureCode: text('failure_code').$type<ErrorCode>(),
     failureMessage: text('failure_message'),
   },

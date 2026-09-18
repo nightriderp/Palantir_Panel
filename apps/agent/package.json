@@ -5,6 +5,16 @@
   "description": "Palantir Homeserver-Agent (Node/TypeScript)",
   "type": "module",
   "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./connection": {
+      "types": "./dist/connection/index.d.ts",
+      "import": "./dist/connection/index.js"
+    }
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
@@ -19,6 +29,7 @@
     "@palantir/validation": "workspace:*",
     "dotenv": "^16.4.7",
     "gamedig": "^5.3.3",
+    "pino": "^10.3.1",
     "ws": "^8.18.0",
     "zod": "^3.24.1"
   },
@@ -26,8 +37,8 @@
     "@types/gamedig": "^5.0.3",
     "@types/node": "^22.10.5",
     "@types/ws": "^8.5.13",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.13",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.11"
   }
 }

@@ -5,7 +5,7 @@
  * Administrator entscheidet. Genehmigt er, wird das Kontingent **hier** nicht
  * selbst geschrieben, sondern über den Ressourcen-Dienst gesetzt: Die Regeln,
  * wie ein Kontingent aussieht und was ein Teil-Update bedeutet, stehen dort und
- * sollen nicht ein zweites Mal daneben entstehen (CLAUDE.md §3).
+ * sollen nicht ein zweites Mal daneben entstehen (Entwicklungsregeln §3).
  *
  * Eigenes Modul, weil die Anfrage zwei Seiten hat: Der Nutzer stellt sie, der
  * Administrator bescheidet sie. Sie gehört damit weder allein in B4

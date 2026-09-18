@@ -164,6 +164,48 @@ if [[ -n "${offene_platzhalter}" ]]; then
   fail 'Es wird nichts ausgerollt, solange ein Platzhalter aus der Vorlage in Betrieb ist.'
 fi
 
+# -----------------------------------------------------------------------------
+# 2b. Vertraute Proxys laufen in beiden Schichten gleich (Review 2026-09-16, 4.7)
+# -----------------------------------------------------------------------------
+# `TRAEFIK_TRUSTED_IPS` sagt Traefik, wessen `X-Forwarded-For` es uebernimmt;
+# `TRUSTED_PROXY_ADDRESSES` sagt dem Backend dasselbe fuer die Adressen, die es
+# von Traefik bekommt. Hinter dem Cloudflare-Proxy muessen die Cloudflare-
+# Bereiche in BEIDEN stehen. Fehlen sie im Backend, gilt dort die Cloudflare-
+# Edge als Client, und alle Nutzer teilen sich EIN Login-Rate-Limit - ohne dass
+# irgendetwas rot wird. Bisher hing der Gleichlauf an einem Kommentar in der
+# `.env.example`; hier sieht bei jedem Ausrollen jemand hin.
+#
+# Regel: Jeder Eintrag aus TRAEFIK_TRUSTED_IPS ausser der Vorgabe 127.0.0.1/32
+# muss wortgleich in TRUSTED_PROXY_ADDRESSES stehen. Umgekehrt nicht - das
+# Backend kennt zusaetzlich die Docker-Netze, aus denen Traefik selbst spricht.
+proxys_ohne_gegenstueck() {
+  local traefik backend eintrag
+  traefik="$(env_wert TRAEFIK_TRUSTED_IPS)"
+  backend="$(env_wert TRUSTED_PROXY_ADDRESSES)"
+
+  [[ -n "${traefik}" ]] || return 0
+
+  IFS=',' read -ra eintraege <<<"${traefik}"
+  for eintrag in "${eintraege[@]}"; do
+    eintrag="${eintrag//[[:space:]]/}"
+    [[ -n "${eintrag}" && "${eintrag}" != '127.0.0.1/32' ]] || continue
+    if [[ ",${backend//[[:space:]]/}," != *",${eintrag},"* ]]; then
+      printf '  - %s\n' "${eintrag}"
+    fi
+  done
+}
+
+fehlende_proxys="$(proxys_ohne_gegenstueck)"
+
+if [[ -n "${fehlende_proxys}" ]]; then
+  log 'TRAEFIK_TRUSTED_IPS nennt Bereiche, die TRUSTED_PROXY_ADDRESSES nicht kennt:'
+  printf '%s\n' "${fehlende_proxys}" | while IFS= read -r zeile; do log "${zeile}"; done
+  log '   Traefik uebernaehme deren X-Forwarded-For, das Backend saehe trotzdem die'
+  log '   Proxy-Adresse als Client - alle Nutzer teilten sich ein Rate-Limit.'
+  log '   Dieselben Bereiche in TRUSTED_PROXY_ADDRESSES (Abschnitt 1 der .env) eintragen.'
+  fail 'Es wird nichts ausgerollt, solange die beiden Proxy-Listen auseinanderlaufen.'
+fi
+
 vorher="$(git -C "${REPO_DIR}" rev-parse HEAD)"
 log "Aktueller Stand: ${vorher}"
 

@@ -7,7 +7,7 @@
  * liegt im Service.
  *
  * Fehler tragen ausschließlich benannte Codes aus dem Katalog in
- * `@palantir/contracts` – kein Freitext (CLAUDE.md §5).
+ * `@palantir/contracts` – kein Freitext (Entwicklungsregeln §5).
  */
 
 import {
@@ -32,6 +32,7 @@ import {
   loginInputSchema,
   registerInputSchema,
   createUserInputSchema,
+  deleteUserAsAdminInputSchema,
   twoFactorInputSchema,
   updateProfileInputSchema,
 } from '@palantir/validation';
@@ -253,6 +254,39 @@ function parseBody<TSchema extends z.ZodTypeAny>(
   return parsed.data as z.infer<TSchema>;
 }
 
+/**
+ * Zweite Bremse je Konto (Review 2026-09-16, Befund 3.3).
+ *
+ * Das IP-Limit hält einen einzelnen Rechner auf, nicht einen verteilten
+ * Angriff auf **ein** Konto: Zehn Adressen mit je neun Versuchen probierten
+ * neunzig Passwörter, ohne dass irgendein Zähler ansprang. Deshalb zählt
+ * derselbe Zähler zusätzlich je Zielkonto (beim Login der Benutzername, beim
+ * zweiten Faktor der Zwischen-Token). Gleiches Fenster, gleiches Budget – ein
+ * Konto unter Beschuss ist damit für die Dauer des Fensters auch für seinen
+ * Besitzer gebremst. Das ist gewollt: Besser ein Nutzer wartet eine
+ * Viertelstunde, als dass ein sechsstelliger TOTP-Code durchprobiert wird.
+ */
+function guardAccountAttempt(limiter: RateLimiter, key: string): void {
+  const decision = limiter.consume(key);
+
+  if (!decision.allowed) {
+    throw new AuthError(
+      'AUTH_RATE_LIMITED',
+      `Zu viele Versuche für dieses Konto. Bitte in ${String(decision.retryAfterSeconds)} Sekunden erneut versuchen.`,
+    );
+  }
+}
+
+/** Schlüssel des Konto-Zählers beim Login: der Benutzername, unabhängig von Groß-/Kleinschreibung. */
+function loginAccountKey(username: string): string {
+  return rateLimitKey('login-konto', username.trim().toLowerCase());
+}
+
+/** Schlüssel des Konto-Zählers im zweiten Schritt: der Zwischen-Token steht für genau ein Konto. */
+function twoFactorAccountKey(twoFactorToken: string): string {
+  return rateLimitKey('login-2fa', twoFactorToken);
+}
+
 /** Prüft Rate-Limit und ALTCHA vor Registrierung und Login (Pflichtenheft §7). */
 function guardPublicAttempt(
   request: FastifyRequest,
@@ -466,12 +500,15 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
         options.altchaLedger,
       );
 
+      guardAccountAttempt(options.loginLimiter, loginAccountKey(input.username));
+
       const outcome = await service.login(input, contextOf(request));
 
       if (outcome.session && outcome.result.status === 'authenticated') {
         // Nach erfolgreichem Login das Limit zurücksetzen: ein paar Vertipper
         // sollen nicht dazu führen, dass die nächste Anmeldung blockiert ist.
         options.loginLimiter.reset(rateLimitKey('login', request.ip));
+        options.loginLimiter.reset(loginAccountKey(input.username));
         await issueCookies(reply, outcome.result.account.id, outcome.session, options);
       }
 
@@ -500,6 +537,8 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
         );
       }
 
+      guardAccountAttempt(options.loginLimiter, twoFactorAccountKey(input.twoFactorToken));
+
       const outcome = await service.completeTwoFactorLogin(
         input.twoFactorToken,
         input.code,
@@ -507,6 +546,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       );
 
       options.loginLimiter.reset(rateLimitKey('login', request.ip));
+      options.loginLimiter.reset(twoFactorAccountKey(input.twoFactorToken));
       await issueCookies(reply, outcome.account.id, outcome.session, options);
       await reply.send(ok({ account: outcome.account }));
     });
@@ -1048,6 +1088,32 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
         );
 
         await reply.send(ok(null));
+      });
+    },
+  );
+
+  /**
+   * Konto löschen mit Besitzübergang (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * Der Körper trägt den abgetippten Namen und optional das Zielkonto; ohne
+   * Angabe übernimmt der Administrator selbst. Antwort: die Ids der übergebenen
+   * Server und das Zielkonto – die Oberfläche nennt danach, wie viele Server
+   * gewandert sind.
+   */
+  app.delete<{ Params: { userId: string } }>(
+    '/auth/admin/users/:userId',
+    { preHandler: requirePermission('user.manage') },
+    async (request, reply) => {
+      await handle(reply, async () => {
+        const input = parseBody(deleteUserAsAdminInputSchema, request.body);
+        const ergebnis = await service.deleteUserAsAdmin(
+          requireActor(request),
+          request.params.userId,
+          input,
+          adminAuditContextOf(request),
+        );
+
+        await reply.send(ok(ergebnis));
       });
     },
   );

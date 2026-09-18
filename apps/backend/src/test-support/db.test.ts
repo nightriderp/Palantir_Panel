@@ -54,7 +54,15 @@ describe('pruefeFreigabe', () => {
   it('verlangt beide Schalter', () => {
     expect(pruefeFreigabe({}).aktiv).toBe(false);
     expect(pruefeFreigabe({ DATABASE_URL: 'postgres://x/y' }).aktiv).toBe(false);
-    expect(pruefeFreigabe({ [FREIGABE_VARIABLE]: '1' }).aktiv).toBe(false);
+  });
+
+  it('ist laut statt still, wenn die Freigabe ohne Verbindung gesetzt ist (Fundpunkt 299)', () => {
+    // Vorher: `aktiv: false` mit Grund – und 136 Tests galten als „übersprungen",
+    // obwohl jemand sie ausdrücklich haben wollte.
+    expect(() => pruefeFreigabe({ [FREIGABE_VARIABLE]: '1' })).toThrow(/DATABASE_URL fehlt/);
+    expect(() => pruefeFreigabe({ [FREIGABE_VARIABLE]: '1', DATABASE_URL: '  ' })).toThrow(
+      /DATABASE_URL fehlt/,
+    );
 
     const frei = pruefeFreigabe({ DATABASE_URL: 'postgres://x/y', [FREIGABE_VARIABLE]: '1' });
 

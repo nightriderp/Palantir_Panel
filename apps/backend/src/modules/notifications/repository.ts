@@ -5,7 +5,7 @@
  * Empfängerkreis, Rechteprüfung, Textbildung) liegt in `service.ts`,
  * `recipients.ts` und `messages.ts`. Die Schnittstellen darüber
  * ({@link NotificationRepository}, {@link RecipientDirectory}) machen den
- * Service ohne Datenbank testbar (CLAUDE.md §4).
+ * Service ohne Datenbank testbar (Entwicklungsregeln §4).
  */
 
 import { GUEST_ROLE_NAME } from '@palantir/contracts';
@@ -976,6 +976,15 @@ export function createDrizzleRecipientDirectory(db: Database): RecipientDirector
         .from(userRoles)
         .innerJoin(users, eq(users.id, userRoles.userId))
         .where(and(eq(userRoles.roleId, roleId), eq(users.banned, false)));
+
+      return rows.map((row) => row.id);
+    },
+
+    async listOwnerUserIds() {
+      const rows = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.isOwner, true), eq(users.banned, false)));
 
       return rows.map((row) => row.id);
     },

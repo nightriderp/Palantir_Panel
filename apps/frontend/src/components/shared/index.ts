@@ -15,6 +15,7 @@ export { LogoMark, type LogoMarkProps } from './icons/LogoMark';
 export {
   Button,
   IconButton,
+  buttonClasses,
   type ButtonProps,
   type ButtonSize,
   type ButtonVariant,

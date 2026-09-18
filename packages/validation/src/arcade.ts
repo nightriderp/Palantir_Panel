@@ -4,7 +4,7 @@
  * Gemeinsam genutzt von der Backend-Route (Prüfung des abgesendeten
  * Punktestands) und vom Frontend (Typ des Absende-Aufrufs). Die Spiel-Kennungen
  * und die Punkte-Obergrenze kommen aus `@palantir/contracts` – hier wird der
- * Katalog nicht zweitgeführt (CLAUDE.md §3).
+ * Katalog nicht zweitgeführt (Entwicklungsregeln §3).
  */
 
 import { ARCADE_GAME_IDS, ARCADE_SCORE_MAX } from '@palantir/contracts';

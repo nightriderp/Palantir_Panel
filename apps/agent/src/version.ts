@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { fehlerFeld, log } from './log.js';
 
 /**
  * Ersatzwert, wenn die Paketdatei fehlt oder unbrauchbar ist.
@@ -25,14 +26,15 @@ function fassungLesen(): string {
       return manifest.version;
     }
   } catch (fehler: unknown) {
-    console.warn('[agent] package.json nicht lesbar – Fassung wird als "unbekannt" gemeldet', {
-      fehler: fehler instanceof Error ? fehler.message : String(fehler),
-    });
+    log.warn(
+      fehlerFeld(fehler),
+      'package.json nicht lesbar – Fassung wird als "unbekannt" gemeldet',
+    );
 
     return UNBEKANNT;
   }
 
-  console.warn('[agent] package.json ohne brauchbares Feld "version" – Fassung "unbekannt"');
+  log.warn('package.json ohne brauchbares Feld "version" – Fassung "unbekannt"');
 
   return UNBEKANNT;
 }

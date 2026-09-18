@@ -4,12 +4,14 @@
  * Der Dienst (`service.ts`) kennt ausschließlich diese Schnittstelle und nie
  * Drizzle. Das ist derselbe Schnitt wie bei `RoleRepository` in B2 und hat
  * denselben Grund: Die fachlichen Abläufe – Lifecycle, Crash-Loop, Klonen –
- * sind so ohne laufende Datenbank prüfbar (CLAUDE.md §4).
+ * sind so ohne laufende Datenbank prüfbar (Entwicklungsregeln §4).
  */
 
 import {
+  GUEST_ROLE_NAME,
   type GameConfigValues,
   type HostNodeStatus,
+  type ServerMemberCandidateDto,
   type ServerMemberLevel,
   type ServerResourceLimits,
   type ServerStatus,
@@ -17,8 +19,18 @@ import {
 import { type ServerAutoShutdown, type ServerPortAssignment } from './types.js';
 import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
-import { gameServers, hostNodes, serverMembers, serverPins, users } from '../../db/schema.js';
+import {
+  backups,
+  gameServers,
+  hostNodes,
+  roles,
+  serverMembers,
+  serverPins,
+  userRoles,
+  users,
+} from '../../db/schema.js';
 import { ServerOrchestrationError } from './errors.js';
+import { type PlacementCandidate } from './placement.js';
 
 /** Ein Gameserver, wie ihn der Dienst braucht. */
 export interface ServerRecord {
@@ -114,6 +126,24 @@ export interface ServerMemberRecord {
   readonly addedAt: string;
 }
 
+/** Ein Konto, das als Mitverwalter infrage kommt – Felder wie im Vertrag. */
+export type ServerMemberCandidateRecord = ServerMemberCandidateDto;
+
+/**
+ * Ein Konto, das einen Server übernehmen soll (Pflichtenheft §7).
+ *
+ * Nur, was der Dienst für die Eignung braucht: gesperrt, Owner, Rollen. Ob ein
+ * Konto „freigeschaltet" ist, entscheidet dieselbe Regel wie überall
+ * (`rbac/approval.ts`) – aus den Rollennamen, nicht aus einer eigenen Spalte.
+ */
+export interface TransferCandidateRecord {
+  readonly id: string;
+  readonly displayName: string;
+  readonly banned: boolean;
+  readonly isOwner: boolean;
+  readonly roleNames: readonly string[];
+}
+
 export interface ServerRepository {
   findById(id: string): Promise<ServerRecord | null>;
   findByContainerId(containerId: string): Promise<ServerRecord | null>;
@@ -147,6 +177,16 @@ export interface ServerRepository {
   delete(id: string): Promise<void>;
   listMembers(serverId: string): Promise<readonly ServerMemberRecord[]>;
   /**
+   * Konten, die für diesen Server als Mitverwalter freigegeben werden können
+   * (Betreiberwunsch 2026-09-18): freigeschaltet (Besitzer-Status oder eine
+   * Rolle außer „Gast"), nicht gesperrt, weder Besitzer des Servers noch schon
+   * Mitglied. Sortiert nach Anzeigename.
+   */
+  listMemberCandidates(
+    serverId: string,
+    ownerId: string,
+  ): Promise<readonly ServerMemberCandidateRecord[]>;
+  /**
    * Mitglieder mehrerer Server in **einer** Abfrage (Fundpunkt 231).
    *
    * Die Serverliste baute je Server einen eigenen `listMembers()`-Aufruf: bei
@@ -161,6 +201,24 @@ export interface ServerRepository {
   memberLevel(serverId: string, userId: string): Promise<ServerMemberLevel | null>;
   upsertMember(serverId: string, userId: string, level: ServerMemberLevel): Promise<void>;
   removeMember(serverId: string, userId: string): Promise<void>;
+
+  /**
+   * Besitzer eines Servers wechseln (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * In **einer** Transaktion: `owner_id` des Servers, die Sicherungen dieses
+   * Servers (sie gehören zum Server, nicht zum Konto – sonst hielte
+   * `backups.owner_id` mit RESTRICT später die Löschung des alten Besitzers
+   * auf) und die Mitgliedschaft des neuen Besitzers an genau diesem Server:
+   * Der Besitzer steht nie in der Mitgliederliste. Der alte Besitzer wird
+   * **nicht** zum Mitglied – wer den Server weiter bedienen soll, wird vom neuen
+   * Besitzer eingetragen.
+   */
+  transferOwner(serverId: string, newOwnerId: string): Promise<void>;
+  /**
+   * Konto, das einen Server übernehmen soll – oder `null`, wenn es fehlt.
+   * Die Bewertung (gesperrt, wartend, Owner) trifft der Dienst.
+   */
+  findTransferCandidate(userId: string): Promise<TransferCandidateRecord | null>;
 
   /**
    * Anzahl der Server je Besitzer (Gefundener Punkt 90).
@@ -199,6 +257,14 @@ export interface ServerRepository {
    * Ab zwei Nodes wird das gemeinsame Token deshalb abgelehnt.
    */
   countHosts(): Promise<number>;
+  /**
+   * Alle Nodes mit Ausstattung und Belegung – Grundlage der Platzierungsregel
+   * für Server ohne gewählte Node (`placement.ts`, Review 2026-09-16, Befund
+   * 2.3). Belegung ist die Summe der RAM-Kontingente aller dort angelegten
+   * Server, gleich in welchem Zustand (wie `capacity.allocated` in der
+   * Node-Übersicht).
+   */
+  listPlacementCandidates(): Promise<readonly PlacementCandidate[]>;
   findHost(hostId: string): Promise<HostNodeRecord | null>;
   /**
    * Hält den Verbindungszustand einer Node fest, wenn ihr Agent den Handshake
@@ -536,6 +602,42 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
       }));
     },
 
+    async listMemberCandidates(
+      serverId: string,
+      ownerId: string,
+    ): Promise<readonly ServerMemberCandidateRecord[]> {
+      // Freigeschaltet heißt: Besitzer-Status oder mindestens eine Rolle, die
+      // nicht „Gast" ist (dieselbe Regel wie `isApproved` in rbac/approval.ts).
+      const freigeschaltet = db
+        .select({ userId: userRoles.userId })
+        .from(userRoles)
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(and(eq(userRoles.userId, users.id), ne(roles.name, GUEST_ROLE_NAME)));
+      const schonMitglied = db
+        .select({ userId: serverMembers.userId })
+        .from(serverMembers)
+        .where(and(eq(serverMembers.serverId, serverId), eq(serverMembers.userId, users.id)));
+
+      const rows = await db
+        .select({ userId: users.id, displayName: users.displayName, username: users.username })
+        .from(users)
+        .where(
+          and(
+            eq(users.banned, false),
+            ne(users.id, ownerId),
+            or(eq(users.isOwner, true), sql`exists (${freigeschaltet})`),
+            sql`not exists (${schonMitglied})`,
+          ),
+        )
+        .orderBy(asc(sql`lower(${users.displayName})`), asc(users.id));
+
+      return rows.map((row) => ({
+        userId: row.userId,
+        displayName: row.displayName,
+        username: row.username,
+      }));
+    },
+
     async listMembersOf(
       serverIds: readonly string[],
     ): Promise<ReadonlyMap<string, readonly ServerMemberRecord[]>> {
@@ -597,6 +699,48 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
         .where(and(eq(serverMembers.serverId, serverId), eq(serverMembers.userId, userId)));
     },
 
+    async transferOwner(serverId: string, newOwnerId: string): Promise<void> {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(gameServers)
+          .set({ ownerId: newOwnerId, updatedAt: new Date() })
+          .where(eq(gameServers.id, serverId));
+        await tx.update(backups).set({ ownerId: newOwnerId }).where(eq(backups.serverId, serverId));
+        await tx
+          .delete(serverMembers)
+          .where(and(eq(serverMembers.serverId, serverId), eq(serverMembers.userId, newOwnerId)));
+      });
+    },
+
+    async findTransferCandidate(userId: string): Promise<TransferCandidateRecord | null> {
+      const rows = await db
+        .select({
+          id: users.id,
+          displayName: users.displayName,
+          banned: users.banned,
+          isOwner: users.isOwner,
+          roleName: roles.name,
+        })
+        .from(users)
+        .leftJoin(userRoles, eq(userRoles.userId, users.id))
+        .leftJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(eq(users.id, userId));
+
+      const first = rows[0];
+
+      if (first === undefined) {
+        return null;
+      }
+
+      return {
+        id: first.id,
+        displayName: first.displayName,
+        banned: first.banned,
+        isOwner: first.isOwner,
+        roleNames: rows.flatMap((row) => (row.roleName === null ? [] : [row.roleName])),
+      };
+    },
+
     async defaultHost(): Promise<HostNodeRecord | null> {
       const rows = await db
         .select({
@@ -623,6 +767,35 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
         .limit(1);
 
       return rows[0] ?? null;
+    },
+
+    async listPlacementCandidates(): Promise<readonly PlacementCandidate[]> {
+      // Zwei kleine Abfragen statt eines JSON-Aggregats in SQL: Die
+      // Kontingente liegen als jsonb, und die Summe je Node ist im Code
+      // lesbarer als ein Ausdruck über resource_limits->>'ramMb'.
+      const [nodes, server] = await Promise.all([
+        db
+          .select({
+            id: hostNodes.id,
+            name: hostNodes.name,
+            status: hostNodes.status,
+            totalRamMb: hostNodes.totalRamMb,
+            createdAt: hostNodes.createdAt,
+          })
+          .from(hostNodes)
+          .orderBy(asc(hostNodes.createdAt)),
+        db
+          .select({ hostId: gameServers.hostId, resourceLimits: gameServers.resourceLimits })
+          .from(gameServers),
+      ]);
+
+      const belegt = new Map<string, number>();
+
+      for (const row of server) {
+        belegt.set(row.hostId, (belegt.get(row.hostId) ?? 0) + row.resourceLimits.ramMb);
+      }
+
+      return nodes.map((node) => ({ ...node, allocatedRamMb: belegt.get(node.id) ?? 0 }));
     },
 
     async countHosts(): Promise<number> {

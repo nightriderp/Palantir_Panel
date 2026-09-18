@@ -6,7 +6,10 @@
 # vorgebaute Binärdateien für glibc mit. Unter musl müsste es aus den Quellen
 # gebaut werden - eine Rust-Toolchain im Image wäre der Preis dafür.
 
-FROM node:24-bookworm-slim AS base
+# Digest-gepinnt (Review 2026-09-16, Befund 8.5): Das Tag `24-bookworm-slim` wandert
+# mit jedem Node-Patch, der Digest nicht. Dependabot zieht ihn nach
+# (`.github/dependabot.yml`, Oekosystem `docker` je App-Verzeichnis).
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH="$PNPM_HOME:$PATH"
 # Die pnpm-Version kommt aus dem Feld "packageManager" der Wurzel-package.json.
@@ -32,6 +35,10 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/backend ./apps/backend
+# Der Agent ist Dev-Abhaengigkeit des Backends (Integrationstest, Review
+# 2026-09-16 Befund 7.1); `--filter @palantir/backend...` baut ihn mit, also
+# muessen seine Quellen im Bau-Kontext liegen. In die Laufzeitstufe kommt er nicht.
+COPY apps/agent ./apps/agent
 # `...` baut die Workspace-Abhängigkeiten (contracts, validation) mit.
 RUN pnpm --filter @palantir/backend... build
 

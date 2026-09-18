@@ -73,7 +73,7 @@ export const WORLD_ARCHIVE_MAX_PENDING_PER_OWNER = 2;
  * eingestellten Archivgröße folgt: Bei den vorgegebenen 256 MiB je Archiv sind
  * das 2 GiB für alle wartenden Uploads zusammen – genug für mehrere parallele
  * Migrationen, wenig genug, um eine VPS-Platte nicht zu füllen. Bewusst keine
- * eigene Umgebungsvariable (CLAUDE.md §8): Wer mehr Spielraum braucht, hebt
+ * eigene Umgebungsvariable (Entwicklungsregeln §8): Wer mehr Spielraum braucht, hebt
  * `MAX_WORLD_ARCHIVE_BYTES`, und die Gesamtgrenze zieht mit.
  */
 const WORLD_ARCHIVE_TOTAL_BUDGET_FACTOR = 8;

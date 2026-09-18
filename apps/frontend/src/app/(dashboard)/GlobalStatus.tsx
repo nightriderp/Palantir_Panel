@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { MetricChart, cn } from '@/components/shared';
 import { type StatusMetric, type StatusMetricTone } from './shellSummary';
 import {
@@ -57,37 +57,34 @@ export function GlobalStatus({ metrics }: GlobalStatusProps) {
   const [history, setHistory] = useState<StatusSample[]>([]);
   const [offen, setOffen] = useState<string | null>(null);
 
-  /*
-    Die fertigen Kennzahlen für die Aufzeichnung – über ein Ref, damit der
-    Effekt an den Daten hängt und nicht an jedem Rendern.
-  */
-  const metricsRef = useRef<readonly StatusMetric[]>(metrics);
-  metricsRef.current = metrics;
-
   /**
    * Aufzeichnen, sobald neue Werte da sind.
    *
-   * Der Effekt hängt an `metrics`: Die Liste entsteht bei jedem Abruf der
-   * Shell neu, also läuft er in deren Takt und nicht bei jedem Rendern.
+   * Die Liste entsteht bei jedem Abruf der Shell neu; aufgezeichnet wird also
+   * in deren Takt und nicht bei jedem Rendern – erkannt am Vergleich mit der
+   * zuletzt gesehenen Liste, noch im Rendern statt in einem Effekt.
    */
-  useEffect(() => {
-    if (metrics.length === 0) return;
+  const [zuletzt, setZuletzt] = useState<readonly StatusMetric[] | null>(null);
+  if (zuletzt !== metrics) {
+    setZuletzt(metrics);
 
-    setHistory((bisher) => {
-      const values: Record<string, number> = {};
+    if (metrics.length > 0) {
+      setHistory((bisher) => {
+        const values: Record<string, number> = {};
 
-      for (const metric of metricsRef.current) {
-        /*
-          Nur echte Zahlen. „Unbekannt" wird ausgelassen, nicht als 0
-          eingetragen – sonst zeigte die Kurve einen Einbruch, wo in Wahrheit
-          nur niemand geantwortet hat.
-        */
-        if (typeof metric.numeric === 'number') values[metric.key] = metric.numeric;
-      }
+        for (const metric of metrics) {
+          /*
+            Nur echte Zahlen. „Unbekannt" wird ausgelassen, nicht als 0
+            eingetragen – sonst zeigte die Kurve einen Einbruch, wo in Wahrheit
+            nur niemand geantwortet hat.
+          */
+          if (typeof metric.numeric === 'number') values[metric.key] = metric.numeric;
+        }
 
-      return appendStatusSample(bisher, { ts: Date.now(), values });
-    });
-  }, [metrics]);
+        return appendStatusSample(bisher, { ts: Date.now(), values });
+      });
+    }
+  }
 
   // Solange nichts geladen ist, bleibt die Leiste leer statt „0/0" zu behaupten.
   if (metrics.length === 0) return <div className="flex-1" />;

@@ -14,7 +14,7 @@
  * Abfrage über `gamedig` dazu (WORK_STATUS.md, Gefundener Punkt 60). Welche
  * greift, entscheidet `query.kind` der Spiele-Definition – geraten wird nichts.
  *
- * **Laufzeit-Abhängigkeit `gamedig`** (CLAUDE.md §1): bewusst erst mit dem
+ * **Laufzeit-Abhängigkeit `gamedig`** (Entwicklungsregeln §1): bewusst erst mit dem
  * Spiel eingeführt, das sie braucht, nicht auf Vorrat. Sie spricht die
  * Abfrageprotokolle der Spiele; das Protokoll steht als `protocol` in der
  * Definition.
@@ -123,7 +123,7 @@ export function createPortConnectProbe(): HealthProbe {
  *
  * Bewusst nur die Felder, die hier gebraucht werden – hereingereicht, damit die
  * Zuordnung „Antwort → {@link HealthCheckResult}" ohne Netz und ohne laufenden
- * Spielserver prüfbar bleibt (CLAUDE.md §4).
+ * Spielserver prüfbar bleibt (Entwicklungsregeln §4).
  */
 export type GamedigQuery = (options: {
   type: string;

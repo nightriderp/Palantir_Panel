@@ -8,7 +8,7 @@
  * die vollständige IP werden deshalb nicht gespeichert.
  *
  * Kennt kein Fastify und keine Datenbank; die Eingaben sind reine Strings
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  */
 
 const BROWSERS: readonly (readonly [RegExp, string])[] = [

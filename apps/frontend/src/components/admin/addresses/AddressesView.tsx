@@ -269,10 +269,12 @@ export function AddressesView() {
                 <tbody>
                   {releasable.map((allocation) => (
                     <tr key={allocation.id}>
-                      <Td className="font-mono text-ink">{allocation.port}</Td>
-                      <Td>{allocation.protocol.toUpperCase()}</Td>
-                      <Td>{allocation.serverName ?? '—'}</Td>
-                      <Td className="whitespace-nowrap">
+                      <Td label="Port" className="font-mono text-ink">
+                        {allocation.port}
+                      </Td>
+                      <Td label="Protokoll">{allocation.protocol.toUpperCase()}</Td>
+                      <Td label="Ehemaliger Server">{allocation.serverName ?? '—'}</Td>
+                      <Td label="Seit" className="whitespace-nowrap">
                         {formatDateTime(allocation.allocatedAt)}
                       </Td>
                       <Td className="text-right">
@@ -501,11 +503,15 @@ function ServerAddressTable() {
           <tbody>
             {seite.zeilen.map((server) => (
               <tr key={server.id}>
-                <Td className="text-ink">{server.name}</Td>
-                <Td>{server.gameTypeName}</Td>
-                <Td>{server.hostName ?? '—'}</Td>
-                <Td className="font-mono text-sm">{server.subdomain}</Td>
-                <Td className="font-mono text-sm text-ink-muted">
+                <Td label="Server" className="text-ink">
+                  {server.name}
+                </Td>
+                <Td label="Spiel">{server.gameTypeName}</Td>
+                <Td label="Node">{server.hostName ?? '—'}</Td>
+                <Td label="Subdomain" className="font-mono text-sm">
+                  {server.subdomain}
+                </Td>
+                <Td label="Verbindungsadresse" className="font-mono text-sm text-ink-muted">
                   {formatServerAddress(server.address) ?? 'nicht freigegeben'}
                 </Td>
               </tr>

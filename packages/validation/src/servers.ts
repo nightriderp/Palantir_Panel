@@ -273,6 +273,20 @@ export const scheduleInputSchema = z
 
 export type ScheduleInput = z.infer<typeof scheduleInputSchema>;
 
+/**
+ * Besitzerwechsel eines Servers durch einen Administrator (Pflichtenheft §7).
+ *
+ * Nur die Kennung des neuen Besitzers; ob das Konto freigeschaltet und nicht
+ * gesperrt ist, prüft das Backend (`TRANSFER_TARGET_INVALID`).
+ */
+export const transferServerOwnerInputSchema = z
+  .object({
+    newOwnerId: idSchema,
+  })
+  .strict();
+
+export type TransferServerOwnerInput = z.infer<typeof transferServerOwnerInputSchema>;
+
 export const serverMemberLevelSchema = z.enum(SERVER_MEMBER_LEVELS);
 
 /** Mitverwalter hinzufügen oder seine Stufe ändern (Lastenheft §3.3). */

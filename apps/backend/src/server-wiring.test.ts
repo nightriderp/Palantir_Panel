@@ -89,7 +89,7 @@ describe('buildServer() mit Datenbank', () => {
  * Ohne diese Zusicherung hing deren Ergebnis daran, ob auf der Maschine eine
  * `.env` liegt: Die CI hat keine und blieb grün, während `pnpm test` lokal mit
  * `Method 'GET' already declared for route '/admin/nodes'` scheiterte – also
- * genau die Prüfung, die CLAUDE.md §7 vor jeder „erledigt"-Meldung verlangt.
+ * genau die Prüfung, die Entwicklungsregeln §7 vor jeder „erledigt"-Meldung verlangt.
  */
 describe('buildServer({ database: false }) trotz gesetzter DATABASE_URL', () => {
   it('lässt die datenbankgestützten Routen weg, damit Tests sie mit Attrappen einhängen können', async () => {

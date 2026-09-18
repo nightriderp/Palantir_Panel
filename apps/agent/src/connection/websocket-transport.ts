@@ -44,7 +44,7 @@ export const CLOSE_CODE_UNAUTHORIZED = 4401;
  * Baut eine Transport-Factory für den echten WebSocket.
  *
  * Das Token wird hier verlangt und nicht optional behandelt: Ohne Token gibt es
- * keine Verbindung – auch nicht für lokale Tests (CLAUDE.md §2). Tests nutzen
+ * keine Verbindung – auch nicht für lokale Tests (Entwicklungsregeln §2). Tests nutzen
  * statt dessen ein Testdouble für {@link TransportFactory}.
  */
 export function createWebSocketTransportFactory(

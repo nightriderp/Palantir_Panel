@@ -2,7 +2,7 @@
  * Attrappen für die Tests der Schriftverwaltung (Arbeitspaket S-2).
  *
  * Alle Regeln des Moduls sind ohne PostgreSQL und ohne Platte prüfbar
- * (CLAUDE.md §4) – dafür stehen Repository und Ablage hinter Ports. Die Datei
+ * (Entwicklungsregeln §4) – dafür stehen Repository und Ablage hinter Ports. Die Datei
  * liegt neben dem Modul, wie `admin/test-support.ts`.
  */
 

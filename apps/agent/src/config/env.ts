@@ -231,7 +231,7 @@ export const AGENT_UMGEBUNGSVARIABLEN: readonly string[] = Object.keys(envSchema
  * (`apps/backend/src/config/env.ts`, `leereWerteAlsUngesetzt`); bewusst
  * doppelt statt über ein gemeinsames Paket, weil `packages/contracts` und
  * `packages/validation` die Vertragsgrenze zwischen den Komponenten sind und
- * keine Laufzeit-Hilfsfunktionen aufnehmen (CLAUDE.md §3).
+ * keine Laufzeit-Hilfsfunktionen aufnehmen (Entwicklungsregeln §3).
  */
 export function leereWerteAlsUngesetzt(
   werte: Record<string, string | undefined>,
@@ -248,7 +248,7 @@ export function leereWerteAlsUngesetzt(
  * Liest einen Satz Umgebungswerte gegen das vollständige Schema.
  *
  * Ausgelagert und exportiert, damit die Normalisierung ohne Neuladen des Moduls
- * testbar ist (CLAUDE.md §4).
+ * testbar ist (Entwicklungsregeln §4).
  */
 export function umgebungLesen(
   werte: Record<string, string | undefined>,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 
 /**
  * Sprungziel innerhalb einer Listenansicht (WORK_STATUS.md, Gefundener Punkt
@@ -43,13 +43,28 @@ export const HIGHLIGHT_PARAM = 'highlight';
 /** Rahmen der Hervorhebung: Markenfarbe, wie der Fokusrahmen der Eingabefelder. */
 const HIGHLIGHT_CLASS = 'rounded-2xl ring-2 ring-brand ring-offset-2 ring-offset-canvas';
 
-export function useHighlight(): Highlight {
-  const [id, setId] = useState<string | null>(null);
-  const gescrollt = useRef(false);
+/*
+ * Die Adresszeile ist eine externe Quelle, deshalb `useSyncExternalStore`:
+ * Auf dem Server und beim Hydratisieren gilt `null`, im Browser der Wert aus
+ * der Adresse – ohne Zustand, der erst in einem Effekt nachgezogen wird.
+ * Niemand meldet Änderungen (kein `popstate`-Lauscher), also ist das Abo leer;
+ * gelesen wird der Parameter bei jedem Rendern neu.
+ */
+function keinAbo(): () => void {
+  return () => {};
+}
 
-  useEffect(() => {
-    setId(new URLSearchParams(window.location.search).get(HIGHLIGHT_PARAM));
-  }, []);
+function ausAdresse(): string | null {
+  return new URLSearchParams(window.location.search).get(HIGHLIGHT_PARAM);
+}
+
+function aufDemServer(): null {
+  return null;
+}
+
+export function useHighlight(): Highlight {
+  const id = useSyncExternalStore(keinAbo, ausAdresse, aufDemServer);
+  const gescrollt = useRef(false);
 
   const matches = useCallback((candidate: string) => id !== null && id === candidate, [id]);
 

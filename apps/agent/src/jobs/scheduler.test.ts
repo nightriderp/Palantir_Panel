@@ -3,6 +3,55 @@ import { JobScheduler } from './scheduler.js';
 import { FakeTimers } from './test-timers.js';
 
 describe('JobScheduler', () => {
+  it('drain() wartet auf den laufenden Durchgang und plant keinen neuen (Befund 11.6)', async () => {
+    const timers = new FakeTimers();
+    const scheduler = new JobScheduler({ timers });
+    let gestartet = 0;
+    let beendet = 0;
+    let freigeben: (() => void) | undefined;
+
+    scheduler.every('sicherung', 100, async () => {
+      gestartet += 1;
+      await new Promise<void>((resolve) => {
+        freigeben = resolve;
+      });
+      beendet += 1;
+    });
+
+    await timers.advance(100);
+    expect(gestartet).toBe(1);
+
+    let abgewartet = false;
+    const drain = scheduler.drain().then(() => {
+      abgewartet = true;
+    });
+
+    // Die Planung ist weg, der Durchgang läuft noch – drain() hängt an ihm.
+    expect(scheduler.jobNames).toEqual([]);
+    await timers.advance(0);
+    expect(abgewartet).toBe(false);
+
+    freigeben?.();
+    await drain;
+
+    expect(abgewartet).toBe(true);
+    expect(beendet).toBe(1);
+
+    // Kein zweiter Durchgang mehr, auch nicht nach dem nächsten Takt.
+    await timers.advance(500);
+    expect(gestartet).toBe(1);
+  });
+
+  it('drain() kehrt sofort zurück, wenn nichts läuft', async () => {
+    const timers = new FakeTimers();
+    const scheduler = new JobScheduler({ timers });
+    scheduler.every('ruhig', 1_000, async () => {});
+
+    await scheduler.drain();
+
+    expect(scheduler.jobNames).toEqual([]);
+  });
+
   it('führt einen Job erst nach Ablauf des Intervalls aus', async () => {
     const timers = new FakeTimers();
     const scheduler = new JobScheduler({ timers });

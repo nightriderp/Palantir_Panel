@@ -6,7 +6,7 @@
  * Admins, Owner oder Moderatoren. `message.moderate` kommt in dieser Datei
  * nicht vor und darf hier auch nicht auftauchen: Moderation ist reaktiv und
  * arbeitet ausschließlich auf gemeldeten Einzelnachrichten
- * (`moderation.ts`), nie auf Konversationen (CLAUDE.md §2).
+ * (`moderation.ts`), nie auf Konversationen (Entwicklungsregeln §2).
  *
  * Der Teilnehmerkreis kommt aus zwei Quellen:
  * - `dm` – die beiden Konten in `conversation_participants`

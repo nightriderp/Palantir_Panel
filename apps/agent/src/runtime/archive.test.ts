@@ -25,6 +25,50 @@ function tarGz(dateien: { name: string; content: string; type?: 'file' | 'direct
   );
 }
 
+/**
+ * Ein roher TAR-Eintrag mit frei waehlbarem Typ-Flag – fuer alles, was
+ * `createTar` absichtlich nicht erzeugt (Symlinks, Hardlinks, Geraetedateien,
+ * PAX-Kopfsaetze). Kopfsatz nach USTAR mit gueltiger Pruefsumme.
+ */
+function rohEintrag(
+  name: string,
+  flag: string,
+  inhalt: Buffer = Buffer.alloc(0),
+  linkname = '',
+): Buffer {
+  const kopf = Buffer.alloc(512);
+  kopf.write(name, 0, 100, 'utf8');
+  kopf.write('0000644\0', 100, 8, 'ascii');
+  kopf.write('0000000\0', 108, 8, 'ascii');
+  kopf.write('0000000\0', 116, 8, 'ascii');
+  kopf.write(`${inhalt.length.toString(8).padStart(11, '0')}\0`, 124, 12, 'ascii');
+  kopf.write('00000000000\0', 136, 12, 'ascii');
+  kopf.write(flag, 156, 1, 'ascii');
+  kopf.write(linkname, 157, 100, 'utf8');
+  kopf.write('ustar\0', 257, 6, 'ascii');
+  kopf.write('00', 263, 2, 'ascii');
+  kopf.fill(0x20, 148, 156);
+  let summe = 0;
+  for (const byte of kopf) summe += byte;
+  kopf.write(`${summe.toString(8).padStart(6, '0')}\0 `, 148, 8, 'ascii');
+
+  const fuellung = Buffer.alloc((512 - (inhalt.length % 512)) % 512);
+  return Buffer.concat([kopf, inhalt, fuellung]);
+}
+
+/** Ein tar.gz aus rohen Eintraegen, abgeschlossen mit zwei Nullbloecken. */
+function rohesTarGz(...eintraege: Buffer[]): Buffer {
+  return gzipSync(Buffer.concat([...eintraege, Buffer.alloc(1024)]));
+}
+
+/** Ein PAX-Datensatz `laenge schluessel=wert\n` – die Laenge zaehlt sich selbst mit. */
+function paxDatensatz(schluessel: string, wert: string): Buffer {
+  const rumpf = ` ${schluessel}=${wert}\n`;
+  let laenge = rumpf.length + 1;
+  while (String(laenge).length + rumpf.length !== laenge) laenge += 1;
+  return Buffer.from(`${laenge}${rumpf}`, 'utf8');
+}
+
 /** Minimales ZIP mit Zentralverzeichnis - genau so, wie `readArchive` es liest. */
 function zip(
   dateien: { name: string; content: Buffer; deflate?: boolean }[],
@@ -108,6 +152,102 @@ describe('Pfad-Pruefung', () => {
       expect(safeArchivePath(roh)).toBeNull();
     },
   );
+
+  it('weist einen Namen mit NUL ab (Befund 7.4)', () => {
+    // Aus einem PAX-Datensatz kann ein NUL mitten im Pfad kommen; ein
+    // Dateisystem schneidet dort ab – und aus `welt/x\0/../..` wuerde `welt/x`.
+    expect(safeArchivePath('welt/level.dat\0.txt')).toBeNull();
+  });
+
+  it('weist einen Windows-Ausbruch mit Rueckwaertsschraegstrichen ab', () => {
+    expect(safeArchivePath('..\\..\\Windows\\win.ini')).toBeNull();
+    expect(safeArchivePath('welt\\..\\..\\weg')).toBeNull();
+  });
+});
+
+describe('tar.gz lesen – Sonderdateien und Kopfsatz-Erweiterungen (Befund 7.4)', () => {
+  it('ueberspringt einen Symlink und meldet ihn', () => {
+    const inhalt = readArchive(
+      rohesTarGz(
+        rohEintrag('welt/level.dat', '0', Buffer.from('ok')),
+        rohEintrag('welt/passwd', '2', Buffer.alloc(0), '/etc/passwd'),
+      ),
+    );
+
+    expect(inhalt.entries.map((eintrag) => eintrag.path)).toEqual(['welt/level.dat']);
+    expect(inhalt.skipped).toEqual(['welt/passwd']);
+  });
+
+  it.each([
+    ['Hardlink', '1'],
+    ['Zeichengeraet', '3'],
+    ['Blockgeraet', '4'],
+    ['FIFO', '6'],
+  ])('ueberspringt %s statt eine leere Datei anzulegen', (_bezeichnung, flag) => {
+    const inhalt = readArchive(
+      rohesTarGz(rohEintrag('welt/sonder', flag, Buffer.alloc(0), 'welt/level.dat')),
+    );
+
+    expect(inhalt.entries).toEqual([]);
+    expect(inhalt.skipped).toEqual(['welt/sonder']);
+  });
+
+  it('nimmt eine zusammenhaengende Datei (Flag 7) als Datei', () => {
+    const inhalt = readArchive(rohesTarGz(rohEintrag('welt/alt.dat', '7', Buffer.from('alt'))));
+
+    expect(inhalt.entries.map((eintrag) => eintrag.path)).toEqual(['welt/alt.dat']);
+  });
+
+  it('prueft den Pfad aus einem PAX-Kopfsatz genauso wie den aus dem Kopf', () => {
+    const pax = paxDatensatz('path', '../../etc/cron.d/boese');
+    const inhalt = readArchive(
+      rohesTarGz(
+        rohEintrag('./PaxHeader/harmlos', 'x', pax),
+        rohEintrag('harmlos', '0', Buffer.from('boese')),
+        rohEintrag('welt/level.dat', '0', Buffer.from('ok')),
+      ),
+    );
+
+    expect(inhalt.entries.map((eintrag) => eintrag.path)).toEqual(['welt/level.dat']);
+    expect(inhalt.skipped).toEqual(['../../etc/cron.d/boese']);
+  });
+
+  it('prueft den Pfad aus einem GNU-Langnamen genauso', () => {
+    const langerName = `${'a'.repeat(60)}/../../${'b'.repeat(60)}\0`;
+    const inhalt = readArchive(
+      rohesTarGz(
+        rohEintrag('././@LongLink', 'L', Buffer.from(langerName)),
+        rohEintrag('kurz', '0', Buffer.from('boese')),
+      ),
+    );
+
+    expect(inhalt.entries).toEqual([]);
+    expect(inhalt.skipped).toHaveLength(1);
+  });
+
+  it('ueberspringt einen PAX-Pfad mit NUL statt ihn abzuschneiden', () => {
+    const pax = paxDatensatz('path', 'welt/level.dat\0/../../weg');
+    const inhalt = readArchive(
+      rohesTarGz(rohEintrag('./PaxHeader/x', 'x', pax), rohEintrag('x', '0', Buffer.from('?'))),
+    );
+
+    expect(inhalt.entries).toEqual([]);
+    expect(inhalt.skipped).toHaveLength(1);
+  });
+});
+
+describe('ZIP lesen – Windows-Pfade (Befund 7.4)', () => {
+  it('ueberspringt einen Ausbruch mit Rueckwaertsschraegstrichen', () => {
+    const inhalt = readArchive(
+      zip([
+        { name: '..\\..\\Windows\\win.ini', content: Buffer.from('boese') },
+        { name: 'welt\\level.dat', content: Buffer.from('ok') },
+      ]),
+    );
+
+    expect(inhalt.entries.map((eintrag) => eintrag.path)).toEqual(['welt/level.dat']);
+    expect(inhalt.skipped).toEqual(['..\\..\\Windows\\win.ini']);
+  });
 });
 
 describe('tar.gz lesen', () => {

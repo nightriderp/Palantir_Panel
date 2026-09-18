@@ -214,11 +214,28 @@ export interface PortPoolService {
   removeNodeBinding(ctx: AdminContext, rangeId: string): Promise<void>;
 }
 
+/**
+ * Grenzen, die der Tunnel und der Hostname-Router einem Port-Bereich setzen
+ * (Review 2026-09-16, Befund 4.3).
+ *
+ * frpc tunnelt genau die Ports aus `GAME_PORT_RANGE_START..END`; ein Bereich
+ * außerhalb ergäbe Server, die „laufen", aber von außen nicht erreichbar sind.
+ * `MINECRAFT_ROUTER_PORT` gehört dem Router; läge er in einem Bereich, bekäme
+ * ein Spielserver genau den Port, auf dem der Router lauscht.
+ */
+export interface PortRangeLimits {
+  readonly tunnelStart: number;
+  readonly tunnelEnd: number;
+  readonly routerPort: number;
+}
+
 export interface PortPoolServiceDependencies {
   readonly repository: PortPoolRepository;
   readonly audit: AuditService;
   /** Anzeigenamen der Server für die Übersicht; ohne Angabe bleibt `serverName` leer. */
   readonly serverNames?: () => Promise<ReadonlyMap<string, string>>;
+  /** Ohne Angabe gilt nur 1024–65535 (Tests, die den Tunnel nicht kennen). */
+  readonly limits?: PortRangeLimits;
 }
 
 function requireAddressManage(actor: PermissionActor): void {
@@ -361,6 +378,27 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
       endPort > MAX_PUBLIC_PORT
     ) {
       throw new AdminError('PORT_RANGE_INVALID');
+    }
+
+    const limits = deps.limits;
+    if (limits === undefined) return;
+
+    // Nur Ports, die frpc auch tunnelt (Befund 4.3). Die Meldung nennt den
+    // Grund: „ungültig" allein ließe den Admin raten, warum 1024–65535 nicht
+    // reicht.
+    if (startPort < limits.tunnelStart || endPort > limits.tunnelEnd) {
+      throw new AdminError(
+        'PORT_RANGE_INVALID',
+        `Der Bereich muss innerhalb der getunnelten Ports ${limits.tunnelStart}–${limits.tunnelEnd} liegen ` +
+          '(GAME_PORT_RANGE_START/END) – Ports außerhalb erreicht kein Spieler.',
+      );
+    }
+
+    if (startPort <= limits.routerPort && limits.routerPort <= endPort) {
+      throw new AdminError(
+        'PORT_RANGE_INVALID',
+        `Port ${limits.routerPort} gehört dem Hostname-Router (MINECRAFT_ROUTER_PORT) und darf in keinem Bereich liegen.`,
+      );
     }
   }
 
@@ -616,37 +654,62 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
             const takenUdp = belegt('udp');
 
             for (let index = 0; index < request.count; index += 1) {
-              const found = findFreePortPair(tcpRanges, udpRanges, takenTcp, takenUdp);
+              /*
+               * Dasselbe Rennen wie bei Einzelports (unten), nur mit zwei
+               * Zeilen: Zwischen Auswahl und Einfügen kann eine parallele
+               * Vergabe dieselbe Nummer – für TCP oder UDP – belegt haben.
+               * Vorher lief der rohe Unique-Fehler als HTTP 500 durch (Review
+               * 2026-09-16, Befund 4.4). Jetzt gilt die Nummer als belegt und
+               * das nächste freie Paar wird versucht.
+               *
+               * Beide Zeilen oder keine: Scheitert die zweite am Index, wird
+               * die erste sofort zurückgenommen – sonst wäre sie eine Nummer,
+               * die als vergeben gilt und niemandem gehört. Den Rest räumt bei
+               * einem anderen Fehler der `catch` weiter unten ab.
+               */
+              let paar: [PortAllocationRecord, PortAllocationRecord] | null = null;
 
-              if (!found) {
-                throw new AdminError('PORT_POOL_EXHAUSTED');
+              while (paar === null) {
+                const found = findFreePortPair(tcpRanges, udpRanges, takenTcp, takenUdp);
+
+                if (!found) {
+                  throw new AdminError('PORT_POOL_EXHAUSTED');
+                }
+
+                takenTcp.add(found.port);
+                takenUdp.add(found.port);
+
+                let tcp: PortAllocationRecord | null = null;
+
+                try {
+                  tcp = await deps.repository.insertAllocation({
+                    rangeId: found.tcpRangeId,
+                    port: found.port,
+                    protocol: 'tcp',
+                    serverId,
+                  });
+                  const udp = await deps.repository.insertAllocation({
+                    rangeId: found.udpRangeId,
+                    port: found.port,
+                    protocol: 'udp',
+                    serverId,
+                  });
+                  paar = [tcp, udp];
+                } catch (error) {
+                  if (!isUniqueViolation(error)) {
+                    if (tcp !== null) created.push(tcp);
+                    throw error;
+                  }
+
+                  // Rennen um diese Nummer verloren – die halbe Vergabe zurück,
+                  // dann das nächste Paar.
+                  if (tcp !== null) {
+                    await deps.repository.removeAllocation(tcp.id);
+                  }
+                }
               }
 
-              takenTcp.add(found.port);
-              takenUdp.add(found.port);
-
-              /*
-               * Beide Zeilen oder keine: Scheitert die zweite, wäre die erste
-               * eine Nummer, die als vergeben gilt und niemandem gehört. Der
-               * `catch` weiter unten räumt alles Eingefügte wieder ab –
-               * einschließlich dieser einen.
-               */
-              created.push(
-                await deps.repository.insertAllocation({
-                  rangeId: found.tcpRangeId,
-                  port: found.port,
-                  protocol: 'tcp',
-                  serverId,
-                }),
-              );
-              created.push(
-                await deps.repository.insertAllocation({
-                  rangeId: found.udpRangeId,
-                  port: found.port,
-                  protocol: 'udp',
-                  serverId,
-                }),
-              );
+              created.push(...paar);
             }
 
             continue;

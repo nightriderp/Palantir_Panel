@@ -4,7 +4,7 @@
  * Die Kernentitäten aus Pflichtenheft §6 gehören jeweils in das Arbeitspaket,
  * das sie fachlich verantwortet (B1 `User`/`AuthMethod`/`Session`, B2
  * `Role`/`UserRole`, B3 `GameServer`/`ServerMember`, ...). Jedes Paket bringt
- * seine Tabellen zusammen mit einer eigenen Migration mit (CLAUDE.md §4:
+ * seine Tabellen zusammen mit einer eigenen Migration mit (Entwicklungsregeln §4:
  * Schema-Änderungen ausschließlich über Migrationen).
  *
  * Konvention für neue Tabellen:

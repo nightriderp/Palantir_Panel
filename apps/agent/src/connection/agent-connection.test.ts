@@ -29,7 +29,7 @@ const LAUFENDER_CONTAINER: AgentContainerState = {
 /**
  * Testdouble der Übertragung (Pflichtenheft §2.5): Die Verbindungslogik wird
  * ohne echten Server geprüft – und ohne Auth-Bypass, denn das Token gehört zur
- * WebSocket-Implementierung, nicht hierher (CLAUDE.md §2).
+ * WebSocket-Implementierung, nicht hierher (Entwicklungsregeln §2).
  */
 class FakeTransport implements Transport {
   readonly gesendet: string[] = [];
@@ -587,6 +587,112 @@ describe('Befehle und Korrelations-IDs (Pflichtenheft §2.2)', () => {
     expect(transport.framesVomTyp('commandResult').map((f) => f.duplicate)).toEqual([false, false]);
 
     h.connection.stop();
+  });
+
+  describe('geordnetes Herunterfahren (Befund 11.6)', () => {
+    it('drain() wartet auf laufende Befehle und schickt deren Ergebnis noch ans Backend', async () => {
+      const freigaben: (() => void)[] = [];
+      const h = harness({
+        execute: () =>
+          new Promise<ApiResponse<unknown>>((resolve) => {
+            freigaben.push(() => resolve(ok({ archiv: 'welt.tar.gz' })));
+          }),
+      });
+      h.connection.start();
+      const transport = await verbinden(h);
+
+      transport.empfangen(befehl({ command: 'CREATE_BACKUP' }));
+      await flush();
+      expect(freigaben).toHaveLength(1);
+
+      let ergebnis: { offen: number } | undefined;
+      const drain = h.connection.drain(10_000).then((r) => {
+        ergebnis = r;
+      });
+      await flush();
+      expect(ergebnis).toBeUndefined();
+
+      freigaben[0]?.();
+      await flush();
+      await drain;
+
+      expect(ergebnis).toEqual({ offen: 0 });
+      const antworten = transport.framesVomTyp('commandResult');
+      expect(antworten).toHaveLength(1);
+      expect(antworten[0]?.result).toEqual(ok({ archiv: 'welt.tar.gz' }));
+      expect(transport.geschlossen).toBe(false);
+
+      h.connection.stop();
+    });
+
+    it('weist neue Befehle während des Herunterfahrens ab, statt sie zu beginnen', async () => {
+      const freigaben: (() => void)[] = [];
+      const h = harness({
+        execute: () =>
+          new Promise<ApiResponse<unknown>>((resolve) => {
+            freigaben.push(() => resolve(ok(null)));
+          }),
+      });
+      h.connection.start();
+      const transport = await verbinden(h);
+
+      transport.empfangen(befehl({ command: 'CREATE_BACKUP' }));
+      await flush();
+
+      const drain = h.connection.drain(10_000);
+      transport.empfangen(
+        befehl({
+          correlationId: ANDERE_ID,
+          command: 'START',
+          serverId: '22222222-3333-4444-8555-666666666666',
+        }),
+      );
+      await flush();
+
+      // Nur der erste lief; der zweite bekam sofort eine Absage mit Grund.
+      expect(freigaben).toHaveLength(1);
+      const absage = transport
+        .framesVomTyp('commandResult')
+        .find((frame) => frame.correlationId === ANDERE_ID);
+      expect(absage?.result).toMatchObject({
+        success: false,
+        error: { code: 'AGENT_COMMAND_FAILED' },
+      });
+
+      freigaben[0]?.();
+      await flush();
+      await drain;
+      h.connection.stop();
+    });
+
+    it('drain() gibt nach der Frist auf und meldet, was noch lief', async () => {
+      const h = harness({
+        execute: () => new Promise<ApiResponse<unknown>>(() => undefined),
+      });
+      h.connection.start();
+      const transport = await verbinden(h);
+
+      transport.empfangen(befehl({ command: 'CREATE_BACKUP' }));
+      await flush();
+
+      const drain = h.connection.drain(5_000);
+      await vi.advanceTimersByTimeAsync(4_999);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await drain).toEqual({ offen: 1 });
+
+      h.connection.stop();
+    });
+
+    it('drain() kehrt ohne laufende Befehle sofort zurück', async () => {
+      const h = harness();
+      h.connection.start();
+      await verbinden(h);
+
+      expect(await h.connection.drain(5_000)).toEqual({ offen: 0 });
+
+      h.connection.stop();
+    });
   });
 
   it('führt Befehle für denselben Server nacheinander aus', async () => {

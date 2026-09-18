@@ -15,7 +15,7 @@ import {
   updateServerSettingsInputSchema,
 } from '@palantir/validation';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BACKUP_STATUS_META,
   Badge,
@@ -117,7 +117,11 @@ export function SettingsTab({
   });
   const [cloneError, setCloneError] = useState<string | null>(null);
   const [cloneBusy, setCloneBusy] = useState(false);
-  const [localCloneJob, setLocalCloneJob] = useState<ServerCloneJobDto | null>(null);
+  // Startwert ist der gemerkte Auftrag (event-flow-06): sofort etwas zeigen,
+  // bis die Abfrage unten ihn durch die Wahrheit ersetzt.
+  const [localCloneJob, setLocalCloneJob] = useState<ServerCloneJobDto | null>(() =>
+    rememberedCloneJob(server.id),
+  );
   const [exportBackup, setExportBackup] = useState<BackupDto | null>(null);
   const [exporting, setExporting] = useState(false);
   /**
@@ -146,15 +150,29 @@ export function SettingsTab({
    * mit dem Formular nichts zu tun; zurückgesetzt wird deshalb nur noch beim
    * Wechsel auf einen **anderen** Server.
    *
-   * Der Server steckt in einer Referenz, damit der Effekt beim Aufbau den
-   * aktuellen Stand liest, ohne dass jede Änderung daran ihn erneut auslöst.
+   * Der Wechsel wird noch während des Renderns erkannt (Muster „vorheriger
+   * Wert im Zustand" aus den React-Docs) statt in einem Effekt: So gibt es
+   * keinen Zwischen-Frame mit dem alten Formular, und die Regel
+   * `react-hooks/set-state-in-effect` bleibt eingehalten.
    */
-  const serverRef = useRef(server);
-  serverRef.current = server;
+  const [angezeigteServerId, setAngezeigteServerId] = useState(server.id);
 
-  useEffect(() => {
-    setDraft(toDraft(serverRef.current));
-  }, [server.id]);
+  if (angezeigteServerId !== server.id) {
+    setAngezeigteServerId(server.id);
+    setDraft(toDraft(server));
+  }
+
+  /*
+   * Gemerkten Klon-Auftrag sofort zeigen, sobald die Abfrage unten erneut
+   * ansteht (anderer Server oder Wiederanlauf des Kanals) – dasselbe Muster
+   * wie beim Formular, damit der Effekt selbst keinen Zustand mehr setzt.
+   */
+  const [abfrageStand, setAbfrageStand] = useState({ serverId: server.id, connection });
+
+  if (abfrageStand.serverId !== server.id || abfrageStand.connection !== connection) {
+    setAbfrageStand({ serverId: server.id, connection });
+    setLocalCloneJob((aktuell) => aktuell ?? rememberedCloneJob(server.id));
+  }
 
   /*
    * Klon-Stand nachholen (Fundpunkt event-flow-06).
@@ -175,9 +193,6 @@ export function SettingsTab({
     const gemerkt = rememberedCloneJob(server.id);
 
     if (gemerkt === null) return;
-
-    // Sofort etwas zeigen; die Antwort ersetzt es gleich durch die Wahrheit.
-    setLocalCloneJob((aktuell) => aktuell ?? gemerkt);
 
     let verworfen = false;
 
@@ -330,22 +345,33 @@ export function SettingsTab({
    * Sicherung desselben Servers geht sie nichts an. Gemischt wird in den
    * vorhandenen DTO hinein: Das Ereignis trägt bewusst keine aufrufer-
    * abhängigen Felder, die hier sonst verloren gingen.
+   *
+   * Übernommen wird während des Renderns, sobald ein neues Ereignis oder ein
+   * neuer Export vorliegt – nicht bei jedem Rendern, sonst überschriebe ein
+   * altes Ereignis den frisch per „Stand aktualisieren" geholten DTO.
    */
-  useEffect(() => {
-    if (!backupProgress || backupProgress.backupId !== exportBackup?.id) return;
+  const [uebernommen, setUebernommen] = useState({
+    progress: backupProgress,
+    exportId: exportBackup?.id,
+  });
 
-    setExportBackup((vorher) =>
-      vorher === null
-        ? vorher
-        : {
-            ...vorher,
-            status: backupProgress.status,
-            sizeBytes: backupProgress.sizeBytes,
-            completedAt: backupProgress.completedAt,
-            failureMessage: backupProgress.failureMessage,
-          },
-    );
-  }, [backupProgress, exportBackup?.id]);
+  if (uebernommen.progress !== backupProgress || uebernommen.exportId !== exportBackup?.id) {
+    setUebernommen({ progress: backupProgress, exportId: exportBackup?.id });
+
+    if (backupProgress && backupProgress.backupId === exportBackup?.id) {
+      setExportBackup((vorher) =>
+        vorher === null
+          ? vorher
+          : {
+              ...vorher,
+              status: backupProgress.status,
+              sizeBytes: backupProgress.sizeBytes,
+              completedAt: backupProgress.completedAt,
+              failureMessage: backupProgress.failureMessage,
+            },
+      );
+    }
+  }
 
   async function remove() {
     setDeleting(true);

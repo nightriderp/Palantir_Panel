@@ -1,6 +1,6 @@
 /**
  * `ContainerRuntime` - die einzige Schnittstelle, ueber die Agent-Code Container
- * ansteuert (CLAUDE.md §4, Pflichtenheft §2.5).
+ * ansteuert (Entwicklungsregeln §4, Pflichtenheft §2.5).
  *
  * Verbindlich:
  *   - Kein anderer Agent-Code spricht mit der Docker-API oder dem
@@ -46,7 +46,7 @@
  * `listImages()`/`removeImage()` sind die einzige Ergaenzung aus A3: Der
  * Storage-Explorer (Pflichtenheft §16) braucht Image-Groessen und Nutzungsstatus,
  * und die kommen von der Container-Engine. Sie stehen deshalb hier und nicht im
- * Storage-Job - dieser Weg ist der einzige erlaubte (CLAUDE.md §4).
+ * Storage-Job - dieser Weg ist der einzige erlaubte (Entwicklungsregeln §4).
  */
 
 import { type ArchiveKind } from './archive.js';
@@ -135,7 +135,7 @@ export interface ContainerRuntime {
    *
    * Ergaenzung aus A3: Der Storage-Explorer braucht die Image-Groessen, und
    * Agent-Code darf die Engine nur ueber dieses Interface ansprechen
-   * (CLAUDE.md §4). Der Aufruf ist teurer als die Ordnergroessen - deshalb ist
+   * (Entwicklungsregeln §4). Der Aufruf ist teurer als die Ordnergroessen - deshalb ist
    * er im Scan abschaltbar (`GetStorageBreakdownCommandPayload.includeImages`).
    */
   listImages(): Promise<readonly ContainerImage[]>;
@@ -175,7 +175,7 @@ export interface ContainerRuntime {
    * gerade dann (WORK_STATUS.md, Gefundener Punkt 105).
    *
    * Diese Umsetzung liest nur nach; das Loeschen selbst ist Dateisystemarbeit
-   * und gehoert nicht in die Container-Runtime (CLAUDE.md §4).
+   * und gehoert nicht in die Container-Runtime (Entwicklungsregeln §4).
    */
   dataVolumePaths(containerId: string): Promise<DataVolumePaths>;
 

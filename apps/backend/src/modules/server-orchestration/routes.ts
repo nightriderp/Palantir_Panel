@@ -4,7 +4,7 @@
  * Alle Antworten laufen über `ok()`/`fail()` aus `@palantir/contracts` – der
  * Envelope wird nirgends von Hand gebaut (Pflichtenheft §5.1). Fehler tragen
  * benannte Codes aus dem Katalog; ein Freitext-Fehler kommt hier nicht vor
- * (CLAUDE.md §5).
+ * (Entwicklungsregeln §5).
  *
  * **Berechtigungen:** Der Zugriff läuft über den Guard aus B2
  * (`requirePermission`) für die grobe Schranke und über das `permissions`-Objekt
@@ -17,6 +17,7 @@ import {
   type ApiResponse,
   type GameServerPermissions,
   type SchedulePermissions,
+  type ServerMemberCandidateDto,
   type ServerMemberDto,
   type SubdomainAvailabilityDto,
   fail,
@@ -28,8 +29,10 @@ import {
   consoleCommandSchema,
   createServerInputSchema,
   scheduleInputSchema,
+  serverFilePathSchema,
   updateServerSettingsInputSchema,
   serverMemberInputSchema,
+  transferServerOwnerInputSchema,
 } from '@palantir/validation';
 import { type MultipartFile } from '@fastify/multipart';
 import { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
@@ -61,7 +64,9 @@ export type ServerAuditAction =
   | 'server.cloned'
   | 'server.settingsChanged'
   | 'server.memberAdded'
-  | 'server.memberRemoved';
+  | 'server.memberRemoved'
+  | 'server.imageUpdated'
+  | 'server.ownerTransferred';
 
 /**
  * Schmale Sicht auf `AuditService.record()` aus B8.
@@ -227,7 +232,7 @@ async function readUpload(request: FastifyRequest, maxBytes: number): Promise<Fi
   const overwrite = multipartField(datei.fields, 'overwrite');
 
   return {
-    path: multipartField(datei.fields, 'path') ?? '',
+    path: serverFilePathSchema.parse(multipartField(datei.fields, 'path') ?? ''),
     fileName: datei.filename,
     content,
     ...(overwrite === undefined ? {} : { overwrite: overwrite === 'true' }),
@@ -254,6 +259,12 @@ function toServerMemberDto(
     level: record.level,
     addedAt: record.addedAt,
     canEdit: permissions.canManageMembers,
+    // Beide Vorgänge hängen heute an `canManageMembers`; getrennt im Vertrag,
+    // damit ein späteres Sonderverbot hier bleibt (Befund 2.2).
+    permissions: {
+      canChangeLevel: permissions.canManageMembers,
+      canRemove: permissions.canManageMembers,
+    },
   };
 }
 
@@ -814,6 +825,49 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     }
   });
 
+  /**
+   * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9, Review
+   * 2026-09-16). Der Server behält seine Fassung sonst über Neustarts hinweg;
+   * hier wird sie ausdrücklich gewechselt – am laufenden Server als Stopp +
+   * Start, am gestoppten nur als Neuaufbau. Recht wie Starten und Stoppen
+   * (`canUpdate`).
+   */
+  app.post('/api/servers/:id/update', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const viewerId = request.viewerUserId;
+
+      if (viewerId === undefined || viewerId === null) {
+        throw new ServerOrchestrationError('AUTH_REQUIRED');
+      }
+
+      await loadAuthorized(request, id, 'canUpdate');
+
+      const ergebnis = await service.updateServerImage(id, viewerId);
+
+      if (ergebnis.previousImage !== ergebnis.image) {
+        await protokolliere(request, 'server.imageUpdated', id, {
+          from: ergebnis.previousImage,
+          to: ergebnis.image,
+          restarted: ergebnis.restarted,
+        });
+      }
+
+      const context = await dtoContext(request, id);
+
+      return await reply.send(
+        ok(
+          toGameServerDto(ergebnis.server, {
+            ...context,
+            recentCrashCount: service.recentCrashCount(ergebnis.server),
+          }),
+        ),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
   // -- Live-Daten, Konsole, Dateien -------------------------------------------
 
   app.get('/api/servers/:id/stats', async (request, reply) => {
@@ -891,7 +945,14 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   // dasselbe Flag – es steht im Vertrag, damit die Oberfläche es nicht selbst
   // herleiten muss.
 
-  const filePathQuerySchema = z.object({ path: z.string().max(4_096) });
+  /*
+   * Der Pfad wird schon an der Route eingesperrt (Review 2026-09-16, Befund
+   * 7.5): kein `..`, kein absoluter Pfad, kein Rueckwaertsschraegstrich. Der
+   * Agent prueft dasselbe noch einmal am Datenordner (`AGENT_INVALID_PATH`) –
+   * die Route ist die erste Linie, der Agent die letzte. Vorher liess die Route
+   * jeden String bis 4096 Zeichen durch und verliess sich auf die zweite.
+   */
+  const filePathQuerySchema = z.object({ path: serverFilePathSchema });
 
   app.get('/api/servers/:id/files', async (request, reply) => {
     try {
@@ -927,7 +988,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
       const input = z
-        .object({ path: z.string().max(4_096), content: z.string() })
+        .object({ path: serverFilePathSchema, content: z.string() })
         .parse(request.body);
 
       const { dto } = await loadAuthorized(request, id, 'canManageFiles');
@@ -977,7 +1038,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
       const input = z
-        .object({ path: z.string().max(4_096), recursive: z.boolean().optional() })
+        .object({ path: serverFilePathSchema, recursive: z.boolean().optional() })
         .parse(request.body);
 
       await loadAuthorized(request, id, 'canManageFiles');
@@ -1180,6 +1241,29 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     },
   );
 
+  /*
+   * Wem kann ich hier Zugriff geben? (Betreiberwunsch 2026-09-18.) Vorher
+   * verlangte der Dialog die Nutzer-Id als UUID. Die Auswahl gibt es nur für
+   * Aufrufer, die Mitglieder verwalten dürfen – sie ist kein Nutzerverzeichnis
+   * (vgl. Gefundener Punkt 102 zum Chat), sondern die Antwort auf genau diese
+   * Frage für genau diesen Server.
+   */
+  app.get(
+    '/api/servers/:id/members/candidates',
+    async (request, reply): Promise<ApiResponse<ServerMemberCandidateDto[]> | undefined> => {
+      try {
+        const { id } = serverIdParamsSchema.parse(request.params);
+        const { server } = await loadAuthorized(request, id, 'canManageMembers');
+
+        return ok([...(await repository.listMemberCandidates(id, server.ownerId))]);
+      } catch (error: unknown) {
+        await replyWithError(reply, error);
+
+        return undefined;
+      }
+    },
+  );
+
   app.put(
     '/api/servers/:id/members',
     async (request, reply): Promise<ApiResponse<ServerMemberDto> | undefined> => {
@@ -1247,4 +1331,44 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       }
     },
   );
+
+  // -- Besitzerwechsel (Lastenheft §3.7, Pflichtenheft §7) ---------------------
+
+  /**
+   * Nur mit `canTransferOwnership` (= `server.manage.any`): Auch der Besitzer
+   * selbst gibt seinen Server nicht weiter – Weitergabe ist Verwaltung. Die
+   * Antwort trägt den Server mit dem neuen Besitzer und den Rechten des
+   * Aufrufers, so wie ihn die Detailseite danach zeigt.
+   */
+  app.post('/api/servers/:id/owner', async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+
+      await loadAuthorized(request, id, 'canTransferOwnership');
+
+      const input = transferServerOwnerInputSchema.parse(request.body);
+      const ergebnis = await service.transferOwnership(id, input.newOwnerId);
+
+      await protokolliere(request, 'server.ownerTransferred', id, {
+        fromUserId: ergebnis.previousOwnerId,
+        fromDisplayName: ergebnis.previousOwnerDisplayName,
+        toUserId: input.newOwnerId,
+        toDisplayName: ergebnis.newOwnerDisplayName,
+        anlass: 'einzeln',
+      });
+
+      const context = await dtoContext(request, id);
+
+      return await reply.send(
+        ok(
+          toGameServerDto(ergebnis.server, {
+            ...context,
+            recentCrashCount: service.recentCrashCount(ergebnis.server),
+          }),
+        ),
+      );
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
 }

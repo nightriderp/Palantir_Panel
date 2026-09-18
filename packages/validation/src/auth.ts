@@ -4,7 +4,7 @@
  * Gegenstück zu `AccountDto`, `LoginResult` und den ALTCHA-Typen aus
  * `@palantir/contracts`. Backend (Request-Validierung) und Frontend
  * (Formularprüfung, Antwort-Prüfung) nutzen dieselben Schemas – kein zweiter,
- * abweichender Regelsatz (CLAUDE.md §3).
+ * abweichender Regelsatz (Entwicklungsregeln §3).
  */
 
 import {
@@ -357,7 +357,7 @@ export const createUserInputSchema = z
  * „unverändert", ein ausdrückliches `null` heißt „zurück auf die Vorgabe der
  * Instanz". Ohne diese Unterscheidung könnte eine einmal gewählte Schrift nicht
  * mehr abgewählt werden. Ältere Aufrufer, die nur den Registrierungsschalter
- * kennen, bleiben unverändert gültig (CLAUDE.md §3).
+ * kennen, bleiben unverändert gültig (Entwicklungsregeln §3).
  */
 export const instanceSettingsInputSchema = z
   .object({
@@ -394,6 +394,28 @@ export const deleteAccountInputSchema = z
     password: z.string().min(1).optional(),
   })
   .strict();
+
+/**
+ * Löschung eines fremden Kontos durch einen Administrator mit Übergang aller
+ * Server und Sicherungen (Lastenheft §3.7, Pflichtenheft §7).
+ *
+ * `transferToUserId` fehlt: Der löschende Administrator übernimmt. Gesetzt:
+ * das genannte Konto – freigeschaltet und nicht gesperrt, sonst
+ * `TRANSFER_TARGET_INVALID`. Der Anzeigename wird wie bei der Selbst-Löschung
+ * abgetippt, damit der Fehlgriff in einer langen Liste nicht das falsche Konto
+ * trifft.
+ */
+export const deleteUserAsAdminInputSchema = z
+  .object({
+    confirmName: z
+      .string()
+      .trim()
+      .min(1, { message: 'Bitte tippe den Namen des Kontos zur Bestätigung ab.' }),
+    transferToUserId: idSchema.optional(),
+  })
+  .strict();
+
+export type DeleteUserAsAdminInput = z.infer<typeof deleteUserAsAdminInputSchema>;
 
 // -- Antwort-Schemas ---------------------------------------------------------
 

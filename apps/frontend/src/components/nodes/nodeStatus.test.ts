@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { formatCores, formatMegabytes, percentOf } from '@/components/shared';
 import {
   NODE_EXPLAINERS,
+  nodeAgentHint,
   nodeHasRoomFor,
   nodeMetrics,
   nodeStatusMeta,
@@ -167,7 +168,7 @@ describe('nodeMetrics', () => {
   });
 
   it('faellt ohne capacity.running auf die gebuchte Zahl zurueck', () => {
-    // Aeltere Antworten kennen das Feld nicht (additiv, CLAUDE.md §3).
+    // Aeltere Antworten kennen das Feld nicht (additiv, Entwicklungsregeln §3).
     expect(nodeMetrics(node()).every((m) => m.runningLabel === undefined)).toBe(true);
   });
 
@@ -297,5 +298,34 @@ describe('NODE_EXPLAINERS', () => {
     expect(text).not.toContain('wireguard');
     expect(text).not.toContain('token');
     expect(text).not.toContain('10.10.0');
+  });
+});
+
+describe('nodeAgentHint', () => {
+  const agent = {
+    version: '1.4.2',
+    protocolVersion: 1,
+    expectedProtocolVersion: 1,
+    compatible: true,
+    reportedAt: '2026-09-16T10:00:00.000Z',
+  };
+
+  it('ist null, solange sich kein Agent gemeldet hat', () => {
+    expect(nodeAgentHint(node())).toBeNull();
+    expect(nodeAgentHint(node({ agent: null }))).toBeNull();
+  });
+
+  it('nennt die Fassung ohne Warnung, wenn das Protokoll passt', () => {
+    expect(nodeAgentHint(node({ agent }))).toEqual({ label: 'Agent 1.4.2', warning: null });
+  });
+
+  it('warnt mit beiden Protokollnummern und dem Handgriff, wenn es nicht passt', () => {
+    const hint = nodeAgentHint(
+      node({ agent: { ...agent, protocolVersion: 3, compatible: false } }),
+    );
+
+    expect(hint?.label).toBe('Agent 1.4.2');
+    expect(hint?.warning).toContain('Protokoll 3, erwartet 1');
+    expect(hint?.warning).toContain('aktualisieren');
   });
 });

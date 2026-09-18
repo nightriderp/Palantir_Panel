@@ -126,6 +126,10 @@ export function computeRegistrationRequestPermissions(
     // aussperren lassen (Lastenheft §2).
     canBlock: canManage && !user.isOwner && !user.banned,
     canUnblock: canManage && user.banned,
+    // Die Rangregel (Konten mit Verwaltungsrolle nur mit `role.manage`) prüft
+    // der Auth-Dienst beim Löschen selbst; hier nur, was ohne Rollenabfrage
+    // feststeht. Das Owner-Konto ist nie löschbar (Lastenheft §2).
+    canDelete: canManage && !user.isOwner,
   };
 }
 
@@ -175,14 +179,14 @@ export interface RegistrationRequestService {
  *
  * Bewusst nur diese eine Methode statt des ganzen `ResourceService`: Die
  * Warteliste braucht Kontingente zum Anzeigen und sonst nichts aus B4, und eine
- * eigene Zählung hier wäre die Parallelstruktur, die CLAUDE.md §3 ausschließt.
+ * eigene Zählung hier wäre die Parallelstruktur, die Entwicklungsregeln §3 ausschließt.
  */
 /**
  * Serveranzahl mehrerer Konten - erfuellt von der Server-Orchestrierung (B3).
  *
  * Wie {@link QuotaSummaryReader} bewusst nur diese eine Methode: Die Uebersicht
  * braucht eine Zahl, keine Serverliste, und eine eigene Zaehlung hier waere die
- * Parallelstruktur, die CLAUDE.md §3 ausschliesst.
+ * Parallelstruktur, die Entwicklungsregeln §3 ausschliesst.
  */
 export interface ServerCountReader {
   countServersByOwner(userIds: readonly string[]): Promise<ReadonlyMap<string, number>>;

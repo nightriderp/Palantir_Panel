@@ -5,7 +5,7 @@
  * direkt, sondern spricht ausschließlich über die Schnittstellen in dieser
  * Datei. Das hält die fachlichen Regeln (Regelauswertung, Empfängerkreis,
  * Textbildung) ohne Infrastruktur testbar – dieselbe Trennung wie in B5 und
- * beim `ContainerRuntime`-Interface des Agents (CLAUDE.md §4).
+ * beim `ContainerRuntime`-Interface des Agents (Entwicklungsregeln §4).
  *
  * Wer setzt was ein:
  * - {@link RecipientDirectory} – hier über Drizzle umgesetzt (`repository.ts`)
@@ -40,6 +40,16 @@ export interface RecipientDirectory {
   listActiveUserIds(): Promise<string[]>;
   /** Alle Träger einer Rolle – auch gesperrte bleiben hier außen vor. */
   listUserIdsWithRole(roleId: string): Promise<string[]>;
+  /**
+   * Die Konten mit Besitzer-Kennzeichen (`users.is_owner`).
+   *
+   * Gebraucht bei Regeln an eine **Rolle**: `isOwner` liegt ausserhalb des
+   * Rollensystems und garantiert immer alle Rechte (Pflichtenheft §6) - ein
+   * Besitzer traegt deshalb oft gar keine Rolle. Ohne diesen Nachschlag fiel
+   * genau die Person aus jeder Verwaltungs-Meldung heraus, die als Einzige
+   * immer handeln kann.
+   */
+  listOwnerUserIds(): Promise<string[]>;
   /** Anzeigenamen zu bereits bekannten Konto-Ids (Admin-Ansichten). */
   findDisplayNames(userIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
 }
@@ -105,7 +115,7 @@ export interface NotificationTransport {
  *
  * Trägt einen benannten Code aus dem Katalog, damit die Ursache in
  * `notification_deliveries` und am Kanal (`lastFailureCode`) auswertbar bleibt
- * statt als Freitext (CLAUDE.md §5).
+ * statt als Freitext (Entwicklungsregeln §5).
  *
  * Bewusst **kein** `AppError` (Audit W2-9): Der Fehler beantwortet keine
  * HTTP-Anfrage, sondern wird vollständig in `service.ts` ausgewertet, und seine

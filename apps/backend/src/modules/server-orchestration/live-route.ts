@@ -16,7 +16,7 @@ import {
 } from '../../lib/abuse-limits.js';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
 import { createWebSocketOriginGuard } from '../../lib/ws-origin.js';
-import { requireActor } from '../rbac/index.js';
+import { type PermissionActor, requireActor } from '../rbac/index.js';
 import { type GameRegistry } from './game-registry.js';
 import { type ServerLiveHub } from './live-hub.js';
 import {
@@ -73,6 +73,28 @@ export interface ServerLiveRouteOptions {
   readonly allowedOrigin?: string;
   /** Abstand der wiederkehrenden Abo-Prüfung; Vorgabe 60 s. Nur für Tests gedacht. */
   readonly subscriptionCheckIntervalMs?: number;
+  /**
+   * Gilt die Sitzung hinter dieser Verbindung noch? (Review 2026-09-16,
+   * Befund 3.2.)
+   *
+   * Der Handshake prüft die Sitzung einmal; danach lief der Kanal bis zum
+   * zufälligen Schließen weiter – auch nach Ablauf oder Widerruf der Sitzung.
+   * Der Chat-Kanal fragt seit Audit W2-3 wiederkehrend nach; dieser hier tut
+   * es jetzt im selben Takt wie die Abo-Prüfung. `false` schließt mit 4401.
+   * Ein Fehler beim Nachsehen (Datenbank kurz weg) lässt den Kanal offen.
+   */
+  isSessionValid?(request: FastifyRequest): Promise<boolean>;
+  /**
+   * Frischer Rechte-Akteur für die Verbindung (Befund 3.2).
+   *
+   * `request.permissionActor` stammt aus dem Handshake und friert die
+   * Rollenrechte ein: Wem `server.view.any` entzogen wurde, der sah über den
+   * offenen Kanal weiter jeden Server, weil `pruefeAbos()` nur die
+   * Mitgliedschaft neu las. Mit dieser Funktion wird der Akteur vor jeder
+   * Abo-Prüfung neu gebaut. `null` (Konto weg) schließt mit 4401, ein nicht
+   * mehr freigeschaltetes Konto mit 4403; ein Fehler lässt den alten Stand.
+   */
+  refreshActor?(request: FastifyRequest): Promise<PermissionActor | null>;
   /**
    * Zähler für Konsolenbefehle (Audit 2026-09-10, Fundpunkt 202).
    *
@@ -354,6 +376,48 @@ export function registerServerLiveRoute(
        * gelöschter Server (`isServerOrchestrationError`) nicht.
        */
       async function pruefeAbos(): Promise<void> {
+        // Zuerst die Sitzung (Befund 3.2): Ohne gültige Sitzung gibt es
+        // nichts mehr nachzuprüfen.
+        if (options.isSessionValid !== undefined) {
+          let gueltig = true;
+
+          try {
+            gueltig = await options.isSessionValid(request);
+          } catch {
+            gueltig = true;
+          }
+
+          if (!gueltig) {
+            socket.close(LIVE_CLOSE_CODE_UNAUTHORIZED, 'Sitzung nicht mehr gültig.');
+
+            return;
+          }
+        }
+
+        // Dann die Rollenrechte: `serverDtoFor` rechnet mit
+        // `request.permissionActor`, also wird der hier erneuert.
+        if (options.refreshActor !== undefined) {
+          try {
+            const frisch = await options.refreshActor(request);
+
+            if (frisch === null) {
+              socket.close(LIVE_CLOSE_CODE_UNAUTHORIZED, 'Nicht angemeldet.');
+
+              return;
+            }
+
+            if (!frisch.approved) {
+              socket.close(LIVE_CLOSE_CODE_FORBIDDEN, 'Konto ist nicht mehr freigeschaltet.');
+
+              return;
+            }
+
+            request.permissionActor = frisch;
+          } catch {
+            // Infrastrukturfehler: der alte Stand bleibt bis zum nächsten Takt.
+          }
+        }
+
         for (const serverId of registration.subscribedServerIds()) {
           try {
             const dto = await serverDtoFor(request, serverId);

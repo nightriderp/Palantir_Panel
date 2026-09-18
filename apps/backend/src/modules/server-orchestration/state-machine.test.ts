@@ -1,7 +1,7 @@
 /**
  * Tests der Lifecycle-State-Machine (Pflichtenheft §9).
  *
- * Zwingend laut CLAUDE.md §4 und der Vorgabe des Arbeitspakets – inklusive der
+ * Zwingend laut Entwicklungsregeln §4 und der Vorgabe des Arbeitspakets – inklusive der
  * **unzulässigen** Übergänge und des Crash-Loop-Schutzes.
  */
 

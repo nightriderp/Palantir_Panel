@@ -1,0 +1,27 @@
+# Zugelassene Unterzeichner der Versions-Tags (Review 2026-09-16, Befund 8.2).
+#
+# Format wie OpenSSH `allowed_signers` (siehe ssh-keygen(1), Abschnitt
+# ALLOWED SIGNERS): je Zeile ein Prinzipal, optional Einschraenkungen, dann der
+# oeffentliche Schluessel - genau die Zeile aus der `.pub`-Datei, davor eine
+# E-Mail-Adresse als Name:
+#
+#   betreiber@example.tld namespaces="git" ssh-ed25519 AAAAC3... betreiber@rechner
+#
+# Nur OEFFENTLICHE Schluessel; die Datei ist Teil des oeffentlichen Repositorys.
+#
+# Gelesen wird sie an zwei Stellen: von `.github/workflows/deploy.yml`, bevor ein
+# Tag ausgerollt wird, und von `deploy/gamenode/update.sh` auf der Node - dort
+# aus der bereits laufenden Auscheckung, oder bevorzugt aus
+# /etc/palantir/allowed_signers, wenn der Betreiber sie dort abgelegt hat.
+# Solange hier und dort kein Schluessel steht, warnen beide bei jedem Lauf und
+# ziehen weiter ohne Pruefung; ab dem ersten Schluessel gilt die Pruefung hart.
+#
+# Einrichtung (Betreiber, SETUP.md Abschnitt 3.7):
+#   ssh-keygen -t ed25519 -f ~/.ssh/palantir_release -C "palantir-release"
+#   git config --global gpg.format ssh
+#   git config --global user.signingkey ~/.ssh/palantir_release.pub
+#   git config --global tag.gpgsign true
+#   - dann die Zeile aus ~/.ssh/palantir_release.pub hier eintragen (mit
+#     Prinzipal und namespaces="git" davor) und nach /etc/palantir/allowed_signers
+#     auf die Gamenode kopieren.
+palantir-release namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICN0w7M9LcBc8iAvac39y88xTZKiZtCfniYJHNCBRCGY palantir-release

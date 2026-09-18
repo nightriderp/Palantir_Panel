@@ -28,7 +28,7 @@ export const WS_HEARTBEAT_INTERVAL_MS = 30_000;
  * braucht.
  *
  * Absichtlich schmaler als `ws.WebSocket`: So lässt sich der Zyklus ohne Netz
- * prüfen (CLAUDE.md §4).
+ * prüfen (Entwicklungsregeln §4).
  */
 export interface WebSocketHeartbeatSocket {
   /** Sendet einen Ping-Frame; die Gegenstelle antwortet auf Protokollebene. */

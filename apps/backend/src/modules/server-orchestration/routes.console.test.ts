@@ -5,7 +5,7 @@
  * Ohne Bremse ließ sich der Spielserver im Sekundentakt fernsteuern – auch von
  * einem regulären Mitglied mit `canUseConsole`. Geprüft wird deshalb die
  * Schranke an der Route, nicht der Befehl selbst; der Dienst ist ein Fake ohne
- * Agent und ohne Datenbank (CLAUDE.md §4).
+ * Agent und ohne Datenbank (Entwicklungsregeln §4).
  */
 
 import { type ExecConsoleCommandResult } from '@palantir/contracts';

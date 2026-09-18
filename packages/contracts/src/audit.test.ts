@@ -30,6 +30,8 @@ describe('Audit-Log-Contract (Pflichtenheft §6)', () => {
         'address.portReleased',
         'storage.entryDeleted',
         'audit.archived',
+        // Besitzübergang beim Löschen eines Kontos und einzeln (Pflichtenheft §7)
+        'server.ownerTransferred',
       ]),
     );
   });
@@ -91,7 +93,7 @@ describe('Audit-Log-Contract (Pflichtenheft §6)', () => {
 
   it('bietet im permissions-Objekt keinen Weg zum Ändern oder Löschen (append-only)', () => {
     // Rein typseitige Prüfung: Ein Flag `canEdit`/`canDelete` am Audit-Eintrag
-    // würde hier den Build brechen. Das Log ist append-only (CLAUDE.md §2).
+    // würde hier den Build brechen. Das Log ist append-only (Entwicklungsregeln §2).
     const entry: AuditLogEntryDto = {
       id: '0f2f3f4f-0000-4000-8000-000000000001',
       action: 'audit.archived',

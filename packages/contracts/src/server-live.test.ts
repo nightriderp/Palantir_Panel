@@ -58,6 +58,8 @@ describe('Listen-Thema und Listen-Ereignisse (Fundpunkt 173)', () => {
     expect(isLiveServerListEventName('server.created')).toBe(true);
     expect(isLiveServerListEventName('server.deleted')).toBe(true);
     expect(isLiveServerListEventName('server.cloned')).toBe(true);
+    // Der Server bleibt, wechselt aber die Übersicht (Pflichtenheft §7).
+    expect(isLiveServerListEventName('server.ownerTransferred')).toBe(true);
     expect(isLiveServerListEventName('server.statusChanged')).toBe(false);
     expect(isLiveServerListEventName('backup.progressed')).toBe(false);
   });

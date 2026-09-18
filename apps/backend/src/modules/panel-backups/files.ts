@@ -2,7 +2,7 @@
  * Entfernen abgelegter Abzüge auf der VPS.
  *
  * Eigene, winzige Umsetzung statt eines direkten `rm` im Dienst: So bleibt der
- * Ablauf ohne Dateisystem prüfbar (CLAUDE.md §4) – dieselbe Aufteilung wie beim
+ * Ablauf ohne Dateisystem prüfbar (Entwicklungsregeln §4) – dieselbe Aufteilung wie beim
  * {@link DatabaseDumper}.
  */
 

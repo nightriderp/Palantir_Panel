@@ -11,6 +11,16 @@ import { QuiesceMarker } from './jobs/backup/quiesce-marker.js';
 import { createContainerRuntimeFromEnv } from './runtime/index.js';
 import { env } from './config/env.js';
 import { AGENT_VERSION } from './version.js';
+import { startLebenszeichen } from './lebenszeichen.js';
+import { fehlerFeld, log } from './log.js';
+
+/**
+ * So lange dürfen laufende Befehle und Jobs beim Herunterfahren noch zu Ende
+ * kommen (Review 2026-09-16, Befund 11.6). Unter der `stop_grace_period` des
+ * Agent-Containers (20 s in `deploy/gamenode/docker-compose.yml`) – sonst
+ * käme Dockers SIGKILL vor unserem Ende.
+ */
+const SHUTDOWN_FRIST_MS = 15_000;
 
 /**
  * Einstiegspunkt des Homeserver-Agents.
@@ -24,17 +34,21 @@ import { AGENT_VERSION } from './version.js';
  * Runtime-Ereignisse zurück ins Protokoll.
  */
 function main(): void {
-  console.info('[agent] Start', {
-    nodeEnv: env.NODE_ENV,
-    backendWsUrl: env.AGENT_BACKEND_WS_URL,
-    tokenKonfiguriert: Boolean(env.AGENT_TOKEN),
-  });
+  log.info(
+    {
+      nodeEnv: env.NODE_ENV,
+      backendWsUrl: env.AGENT_BACKEND_WS_URL,
+      tokenKonfiguriert: Boolean(env.AGENT_TOKEN),
+      version: AGENT_VERSION,
+    },
+    'Start',
+  );
 
   if (!env.AGENT_TOKEN) {
     // Kein Verbindungsversuch ohne Pre-Shared-Token – auch nicht "vorläufig"
-    // (Pflichtenheft §2.2, CLAUDE.md §2).
-    console.error(
-      '[agent] AGENT_TOKEN ist nicht gesetzt – ohne Pre-Shared-Token wird keine Verbindung aufgebaut. Wert in der zentralen .env im Repo-Root ergänzen.',
+    // (Pflichtenheft §2.2, Entwicklungsregeln §2).
+    log.error(
+      'AGENT_TOKEN ist nicht gesetzt – ohne Pre-Shared-Token wird keine Verbindung aufgebaut. Wert in der zentralen .env im Repo-Root ergänzen.',
     );
     process.exitCode = 1;
     return;
@@ -52,10 +66,7 @@ function main(): void {
     runtime,
     emit: (event) => halter.verbindung?.sendEvent(event),
     onJobError: (jobName, fehler) => {
-      console.warn('[agent] Job fehlgeschlagen', {
-        job: jobName,
-        fehler: fehler instanceof Error ? fehler.message : String(fehler),
-      });
+      log.warn({ job: jobName, ...fehlerFeld(fehler) }, 'Job fehlgeschlagen');
     },
   });
 
@@ -106,40 +117,78 @@ function main(): void {
     .offeneSchreibstoppsAufheben()
     .then((anzahl) => {
       if (anzahl > 0) {
-        console.warn('[agent] Offene Schreibstopps aufgehoben', { anzahl });
+        log.warn({ anzahl }, 'Offene Schreibstopps aufgehoben');
       }
     })
     .catch((fehler: unknown) => {
-      console.warn('[agent] Offene Schreibstopps konnten nicht aufgehoben werden', {
-        fehler: fehler instanceof Error ? fehler.message : String(fehler),
-      });
+      log.warn(fehlerFeld(fehler), 'Offene Schreibstopps konnten nicht aufgehoben werden');
     });
 
   connection.start();
 
+  // Lebenszeichen für den Docker-Healthcheck (Review 2026-09-16, Befund 8.3):
+  // nur die Ereignisschleife, nicht die Verbindung – siehe `lebenszeichen.ts`.
+  const lebenszeichen = startLebenszeichen({
+    zustand: () => (connection.isReady ? 'verbunden' : 'getrennt'),
+    onError: (fehler) => {
+      log.warn(fehlerFeld(fehler), 'Lebenszeichen konnte nicht geschrieben werden');
+    },
+  });
+
   let beendet = false;
 
+  /**
+   * Geordnetes Ende (Befund 11.6): erst keine neuen Befehle mehr annehmen und
+   * die laufenden – Sicherungen, Uploads, Welt-Importe – zu Ende bringen, dann
+   * Verbindung und Runtime schließen. Vorher riss `stop()` sofort alles ab,
+   * und ein halbes Archiv blieb liegen. Ein zweites Signal beendet sofort.
+   */
   const shutdown = (grund: string, exitCode = 0): void => {
-    // Nur einmal: Eine Ausnahme während des Beendens oder ein zweites Signal
-    // darf den Ablauf nicht erneut anstoßen.
     if (beendet) {
-      return;
+      log.warn({ grund }, 'Zweites Signal – sofortiges Ende');
+      process.exit(exitCode === 0 ? 130 : exitCode);
     }
 
     beendet = true;
-    console.info(`[agent] Beende auf ${grund}`);
-    jobs.stop();
-    runtimeLink.stop();
-    adapter.stop();
-    connection.stop();
-    void runtime
-      .dispose()
-      .catch((fehler: unknown) => {
-        console.error('[agent] Container-Runtime konnte nicht sauber getrennt werden', {
-          fehler: fehler instanceof Error ? fehler.message : String(fehler),
-        });
-      })
-      .finally(() => process.exit(exitCode));
+    log.info({ grund, fristMs: SHUTDOWN_FRIST_MS }, 'Beende – laufende Aufträge werden abgewartet');
+    lebenszeichen.stop();
+
+    void (async () => {
+      let frist: ReturnType<typeof setTimeout> | undefined;
+      const ergebnis = await Promise.race([
+        Promise.all([jobs.drain(), connection.drain(SHUTDOWN_FRIST_MS)]).then(
+          ([, verbindung]) => verbindung,
+        ),
+        new Promise<'frist'>((weiter) => {
+          frist = setTimeout(() => weiter('frist'), SHUTDOWN_FRIST_MS);
+        }),
+      ]);
+      if (frist !== undefined) clearTimeout(frist);
+
+      if (ergebnis === 'frist') {
+        log.warn(
+          { fristMs: SHUTDOWN_FRIST_MS },
+          'Frist verstrichen – laufende Aufträge abgebrochen',
+        );
+      } else if (ergebnis.offen > 0) {
+        log.warn(
+          { offen: ergebnis.offen },
+          'Befehle nicht zu Ende gekommen – Verbindung wird geschlossen',
+        );
+      }
+
+      runtimeLink.stop();
+      adapter.stop();
+      connection.stop();
+
+      try {
+        await runtime.dispose();
+      } catch (fehler: unknown) {
+        log.error(fehlerFeld(fehler), 'Container-Runtime konnte nicht sauber getrennt werden');
+      }
+
+      process.exit(exitCode);
+    })();
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
@@ -151,16 +200,10 @@ function main(): void {
   // meldet. Eine unbehandelte Ausnahme hinterlässt dagegen einen unbekannten
   // Zustand: loggen, geordnet beenden, Neustart dem Container-Betrieb überlassen.
   process.on('unhandledRejection', (grund: unknown) => {
-    console.error('[agent] Unbehandelte Promise-Ablehnung – der Agent läuft weiter', {
-      fehler: grund instanceof Error ? grund.message : String(grund),
-      stack: grund instanceof Error ? grund.stack : undefined,
-    });
+    log.error(fehlerFeld(grund), 'Unbehandelte Promise-Ablehnung – der Agent läuft weiter');
   });
   process.on('uncaughtException', (fehler: Error) => {
-    console.error('[agent] Unbehandelte Ausnahme – der Agent wird beendet', {
-      fehler: fehler.message,
-      stack: fehler.stack,
-    });
+    log.error(fehlerFeld(fehler), 'Unbehandelte Ausnahme – der Agent wird beendet');
     shutdown('uncaughtException', 1);
   });
 }

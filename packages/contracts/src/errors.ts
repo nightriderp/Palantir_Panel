@@ -3,9 +3,9 @@
  *
  * Der Katalog ist bewusst **wachsend**: neue Fehlerfälle werden hier als
  * benannter Code mit HTTP-Status-Zuordnung ergänzt – niemals als Freitext-String
- * am Aufrufort (CLAUDE.md §5). Ergänzungen sind additiv; das Entfernen oder
+ * am Aufrufort (Entwicklungsregeln §5). Ergänzungen sind additiv; das Entfernen oder
  * Umbenennen eines bestehenden Codes ist ein Breaking Change und im Commit/PR
- * als solcher zu kennzeichnen (CLAUDE.md §3).
+ * als solcher zu kennzeichnen (Entwicklungsregeln §3).
  *
  * Der Startsatz stammt aus Pflichtenheft §5.1. Die HTTP-Status-Zuordnung ist
  * dort nicht festgelegt und wird hier definiert (siehe Kommentare je Eintrag).
@@ -259,6 +259,17 @@ export const ERROR_CATALOG = {
     httpStatus: 409,
     defaultMessage:
       'Diesem Konto gehören noch Sicherungen. Bitte lösche sie zuerst und wiederhole den Vorgang.',
+  },
+  /**
+   * Zielkonto eines Besitzübergangs taugt nicht (Pflichtenheft §7, Lastenheft
+   * §3.7): gesperrt, noch nicht freigeschaltet, das gelöschte Konto selbst oder
+   * bereits Besitzer des Servers. 400, weil die Anfrage selbst unzulässig ist –
+   * ein Konto, das es gar nicht gibt, bleibt `USER_NOT_FOUND`.
+   */
+  TRANSFER_TARGET_INVALID: {
+    httpStatus: 400,
+    defaultMessage:
+      'Dieses Konto kann die Server nicht übernehmen. Wähle ein freigeschaltetes, nicht gesperrtes Konto.',
   },
   /**
    * Nutzer-Kontingent oder freie Node-Kapazität reicht nicht (Pflichtenheft §10).

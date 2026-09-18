@@ -49,3 +49,37 @@ describe('NodeRow', () => {
     expect(screen.getByText('Update auf Version 2 läuft.')).toBeTruthy();
   });
 });
+
+describe('NodeRow – Agent-Fassung (Befund 11.3)', () => {
+  const kompatibel = {
+    version: '1.4.2',
+    protocolVersion: 1,
+    expectedProtocolVersion: 1,
+    compatible: true,
+    reportedAt: '2026-09-16T10:00:00.000Z',
+  };
+
+  it('nennt die Fassung des Agents in der Unterzeile', () => {
+    render(<NodeRow node={node({ agent: kompatibel })} />);
+    expect(screen.getByText(/Agent 1\.4\.2/)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('warnt im Klartext, wenn der Agent nicht zur Fassung des Panels passt', () => {
+    render(
+      <NodeRow
+        node={node({
+          status: 'offline',
+          agent: { ...kompatibel, protocolVersion: 2, compatible: false },
+        })}
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toContain('passt nicht');
+    expect(screen.getByRole('alert').textContent).toContain('aktualisieren');
+  });
+
+  it('zeigt ohne Meldung des Agents nichts dazu', () => {
+    const { container } = render(<NodeRow node={node()} />);
+    expect(container.textContent).not.toContain('Agent');
+  });
+});

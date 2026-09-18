@@ -1,0 +1,107 @@
+name: Image-Scan
+
+# Wöchentlicher Schwachstellen-Scan der Images, die gerade im Betrieb sind
+# (Review 2026-09-16, Pipeline-Option 3). Der Scan in images.yml sieht ein Image
+# nur einmal, beim Bau; Lücken, die danach bekannt werden, sah bis hierher
+# niemand. Nur Bericht in der Zusammenfassung des Laufs - nichts scheitert, denn
+# gegen eine Lücke im laufenden Image hilft nur ein neuer Bau (Dependabot hebt
+# den Basis-Digest, ein Merge baut neu).
+#
+# Dazu die SteamCMD-Wache (Review 2026-09-16, Befund 9.7): `images/base/steam`
+# pinnt Valves Tarball per SHA-256 – ohne Versionskennung, weil Valve keine
+# vergibt. Aktualisiert Valve das Archiv, bricht der nächste Bau still an der
+# Prüfsumme, womöglich Wochen später mitten in einem ganz anderen Paket. Hier
+# wird die Prüfsumme wöchentlich gegen die Adresse geprüft und meldet sich vorab.
+#
+# Fremde Actions per Commit-SHA gepinnt (Begründung im Kopf von ci.yml).
+
+on:
+  schedule:
+    # Montag 06:30 Europe/Berlin (Sommerzeit); cron läuft in UTC.
+    - cron: '30 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  scan:
+    name: ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [backend, frontend, agent]
+
+    steps:
+      - name: Schwachstellen-Scan von :prod
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/palantir-${{ matrix.app }}:prod
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+          output: trivy.txt
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ergebnis melden
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          {
+            echo "### palantir-${APP}:prod"
+            if [ -s trivy.txt ]; then
+              echo '```'
+              cat trivy.txt
+              echo '```'
+            else
+              echo "Keine Lücke mit verfügbarer Korrektur (CRITICAL, HIGH)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  steamcmd:
+    name: SteamCMD-Prüfsumme
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prüfsumme des Tarballs mit dem Dockerfile vergleichen
+        run: |
+          set -eu
+          dockerfile=images/base/steam/Dockerfile
+          url="$(sed -nE 's/^ARG STEAMCMD_URL=(.*)$/\1/p' "$dockerfile")"
+          erwartet="$(sed -nE 's/^ARG STEAMCMD_SHA256=(.*)$/\1/p' "$dockerfile")"
+          test -n "$url" && test -n "$erwartet"
+
+          curl --fail --silent --show-error --location --retry 3 --output steamcmd.tar.gz "$url"
+          # Über stdin, nicht über den Dateinamen: GNU sha256sum stellt der Zeile
+          # ein Backslash voran, sobald es den Namen maskiert – dann passte kein Vergleich.
+          ist="$(sha256sum < steamcmd.tar.gz | cut -d' ' -f1)"
+
+          if [ "$ist" = "$erwartet" ]; then
+            echo "SteamCMD unverändert: $ist" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "### SteamCMD hat sich geändert"
+            echo
+            echo "Valve liefert unter \`$url\` ein anderes Archiv als das gepinnte."
+            echo
+            echo "- Dockerfile: \`$erwartet\`"
+            echo "- Jetzt:      \`$ist\`"
+            echo
+            echo "Der nächste Bau von \`base/steam\` scheitert an der Prüfsumme. Nachziehen:"
+            echo "\`STEAMCMD_SHA256\` in \`$dockerfile\` auf den neuen Wert, VERSION erhöhen,"
+            echo "Image bauen (\`gh workflow run game-images.yml -f images=base/steam\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::SteamCMD-Tarball geändert – STEAMCMD_SHA256 in $dockerfile nachziehen (erwartet $erwartet, jetzt $ist)"
+          exit 1

@@ -321,7 +321,7 @@ function NodeRow({
  *
  * Gespeichert ist im Backend nur der Hash; wer das Token hier verliert, muss
  * ein neues erzeugen. Neben dem Token stehen deshalb gleich die beiden Zeilen,
- * die auf der Node in die `.env` gehören (CLAUDE.md §9: mit Pfad und Maschine).
+ * die auf der Node in die `.env` gehören (Entwicklungsregeln §9: mit Pfad und Maschine).
  */
 function AgentTokenDialog({
   nodeName,

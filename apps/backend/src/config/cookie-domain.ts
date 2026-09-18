@@ -14,7 +14,7 @@
  * `localhost:3000` / `localhost:4000`), entfällt das Attribut ganz.
  *
  * Reine Funktionen ohne Fastify/Zod, damit die Ableitung für sich prüfbar ist
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  */
 
 /** Hostname einer Adresse ohne Port; `undefined`, wenn sie nicht lesbar ist. */

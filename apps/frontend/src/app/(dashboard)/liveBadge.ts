@@ -25,6 +25,13 @@ export interface LiveAnzeige {
   tone: Tone;
   /** Kurztext neben dem Punkt. */
   label: string;
+  /**
+   * Ein Wort für die schmale Kopfleiste (Review 2026-09-16, Befund 12.8).
+   *
+   * Auf dem Telefon stand nur der Farbpunkt – Farbe allein trägt keine
+   * Information, wer sie nicht unterscheidet oder den Tooltip nicht sieht.
+   */
+  shortLabel: string;
   /** Erklärung für den Tooltip – was das für die Bedienung heißt. */
   title: string;
   pulse: boolean;
@@ -44,6 +51,7 @@ export function liveAnzeige(
     return {
       tone: 'success',
       label: 'Live verbunden',
+      shortLabel: 'Live',
       title: 'Statusänderungen, Konsole und Messwerte kommen von selbst herein.',
       pulse: true,
     };
@@ -53,6 +61,7 @@ export function liveAnzeige(
     return {
       tone: 'warning',
       label: 'Wird verbunden …',
+      shortLabel: 'Verbindet …',
       title: 'Die Live-Verbindung wird gerade aufgebaut.',
       pulse: true,
     };
@@ -61,6 +70,7 @@ export function liveAnzeige(
   return {
     tone: 'danger',
     label: 'Nicht verbunden',
+    shortLabel: 'Getrennt',
     title:
       'Ohne Live-Verbindung kommen Statusänderungen, Konsole und Messwerte nicht von selbst herein – ' +
       'Bedienen und Laden funktionieren weiter, angezeigte Werte können aber veraltet sein. ' +

@@ -62,12 +62,21 @@ const config: Config = {
           minimize: '#febc2e',
           zoom: '#28c840',
         },
-        /** Textfarben, von kräftig nach zurückhaltend. */
+        /**
+         * Textfarben, von kräftig nach zurückhaltend.
+         *
+         * Jede Stufe außer `disabled` hält 4,5:1 gegen jede Fläche
+         * (`farbtokens.test.tsx`, Review 2026-09-16, Befund 12.7). `soft` und
+         * `faint` standen vorher bei 4,6 bzw. 3,5 auf `surface` – `faint` trägt
+         * Zeitstempel, Größen und Hinweise in kleiner Schrift, also gerade den
+         * Text, der den Kontrast am nötigsten hat. Beide sind deshalb eine
+         * Stufe heller; der Abstand zwischen den Stufen bleibt.
+         */
         ink: {
           DEFAULT: '#e8ebf2',
           muted: '#9aa2b2',
-          soft: '#7e8696',
-          faint: '#6b7283',
+          soft: '#8a92a2',
+          faint: '#7e8696',
           disabled: '#4a505e',
         },
         /** Markenfarbe (Primäraktion, aktive Navigation, Fokus). */

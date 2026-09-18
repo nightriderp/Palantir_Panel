@@ -385,7 +385,7 @@ function FontCard({
  * Dialog zum Hochladen.
  *
  * Die Eingaben werden mit **denselben** Schemas geprüft wie im Backend
- * (`@palantir/validation`) – kein zweiter, abweichender Regelsatz (CLAUDE.md
+ * (`@palantir/validation`) – kein zweiter, abweichender Regelsatz (Entwicklungsregeln
  * §3). Die Regel für den Familiennamen steht ausdrücklich im Formular und nicht
  * erst in der Ablehnung: Dass ein „ß" durchfällt, ist eine überraschende Regel,
  * und sie hat einen Grund, der sich in einem Halbsatz sagen lässt.

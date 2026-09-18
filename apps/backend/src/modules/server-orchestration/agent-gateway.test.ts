@@ -15,6 +15,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type AgentGatewayLogger,
+  type AgentHelloInfo,
   type AgentSessionHandlers,
   type AgentSocket,
   AgentRegistry,
@@ -72,12 +73,14 @@ function makeSession(
   events: AgentEventFrame[];
   connected: string[];
   disconnected: string[];
+  hellos: AgentHelloInfo[];
 } {
   const socket = new FakeSocket();
   const stateReports: AgentStateReportFrame[] = [];
   const events: AgentEventFrame[] = [];
   const connected: string[] = [];
   const disconnected: string[] = [];
+  const hellos: AgentHelloInfo[] = [];
   const ids = overrides.correlationIds ?? ['00000000-0000-4000-8000-000000000001'];
   let index = 0;
 
@@ -97,6 +100,9 @@ function makeSession(
       onDisconnected: (hostId) => {
         disconnected.push(hostId);
       },
+      onHello: (_hostId, info) => {
+        hellos.push(info);
+      },
     },
     log: overrides.log ?? silentLog,
     commandTimeoutMs: 1_000,
@@ -108,7 +114,7 @@ function makeSession(
     newCorrelationId: () => ids[index++] ?? `id-${String(index)}`,
   });
 
-  return { session, socket, stateReports, events, connected, disconnected };
+  return { session, socket, stateReports, events, connected, disconnected, hellos };
 }
 
 /** Zwei Node-Kennungen für die Prüfung aus Punkt 57 – `HostNode.id` ist eine UUID. */
@@ -209,6 +215,47 @@ describe('Handshake (Pflichtenheft §2.2)', () => {
 
     expect(session.isReady).toBe(false);
     expect(socket.closedWith?.code).toBe(CLOSE_CODE_PROTOCOL_MISMATCH);
+  });
+
+  it('meldet auch ein abgewiesenes hello, damit die Node-Übersicht den Grund zeigen kann', () => {
+    // Review 2026-09-16, Befund 11.3: Ein Agent mit falscher Fassung war bis
+    // dahin unsichtbar – nur ein Log-Eintrag, die Node stand „offline".
+    const { session, hellos } = makeSession();
+
+    session.handleMessage(hello(AGENT_PROTOCOL_VERSION + 1));
+
+    expect(hellos).toEqual([
+      {
+        agentVersion: '0.1.0',
+        protocolVersion: AGENT_PROTOCOL_VERSION + 1,
+        expectedProtocolVersion: AGENT_PROTOCOL_VERSION,
+        compatible: false,
+        reportedAt: NOW,
+      },
+    ]);
+  });
+
+  it('meldet ein passendes hello als kompatibel', () => {
+    const { session, hellos } = makeSession();
+
+    session.handleMessage(hello());
+
+    expect(hellos.map((h) => h.compatible)).toEqual([true]);
+  });
+
+  it('merkt sich in der Registry das letzte hello je Node', () => {
+    const registry = new AgentRegistry();
+    const info: AgentHelloInfo = {
+      agentVersion: '1.2.3',
+      protocolVersion: AGENT_PROTOCOL_VERSION,
+      expectedProtocolVersion: AGENT_PROTOCOL_VERSION,
+      compatible: true,
+      reportedAt: NOW,
+    };
+
+    expect(registry.helloOf('host-1')).toBeNull();
+    registry.noteHello('host-1', info);
+    expect(registry.helloOf('host-1')).toEqual(info);
   });
 
   it('nimmt vor dem Handshake keine Befehle an', async () => {

@@ -78,7 +78,7 @@ export interface CreateAgentConnectionOptions extends Omit<
  * Erzeugt die einsatzfertige Verbindung über einen echten WebSocket.
  *
  * Ohne Token wirft die Funktion – es gibt keinen Weg, den Agent ohne
- * Authentifizierung zu verbinden (CLAUDE.md §2).
+ * Authentifizierung zu verbinden (Entwicklungsregeln §2).
  */
 export function createAgentConnection(options: CreateAgentConnectionOptions): AgentConnection {
   const { backendWsUrl, token, ...connectionOptions } = options;

@@ -3,7 +3,7 @@
  *
  * Die Repositories sind bewusst durch schlichte Fakes ersetzt (analog zur
  * Fake-`ContainerRuntime` des Agents) – die Regeln dieses Moduls sollen ohne
- * laufende Datenbank prüfbar sein (CLAUDE.md §4).
+ * laufende Datenbank prüfbar sein (Entwicklungsregeln §4).
  */
 
 import {

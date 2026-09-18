@@ -6,9 +6,9 @@
  * sind die Vereinigung (berechnet im Backend-Modul `rbac`, nicht hier).
  *
  * Der Katalog ist wachsend und wird **additiv** ergänzt: neue Permission hier
- * eintragen und zusätzlich in Pflichtenheft §8 nachtragen (CLAUDE.md §8). Das
+ * eintragen und zusätzlich in Pflichtenheft §8 nachtragen (Entwicklungsregeln §8). Das
  * Entfernen oder Umbenennen einer bestehenden Permission ist ein Breaking
- * Change und im Commit/PR als solcher zu kennzeichnen (CLAUDE.md §3).
+ * Change und im Commit/PR als solcher zu kennzeichnen (Entwicklungsregeln §3).
  *
  * Benennungsschema: `<bereich>.<vorgang>` bzw. `<bereich>.<vorgang>.<geltungsbereich>`,
  * alle Segmente lowerCamelCase, Geltungsbereich ausschließlich `own` oder `any`.

@@ -131,6 +131,14 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
 
   const live = hasLiveStats(server.status) ? stats : null;
 
+  /*
+   * „Jetzt" als Zustand, nicht als `Date.now()` im Rendern: Das Rendern soll
+   * rein bleiben (React-Compiler-Regel `purity`). Die Uhr darunter tickt den
+   * Wert im Sekundentakt weiter; das Alter der letzten Messung rechnet mit
+   * demselben Wert.
+   */
+  const [jetzt, setJetzt] = useState(() => Date.now());
+
   /**
    * Letzte festgehaltene Messung – Ersatz, solange über den Live-Kanal nichts
    * kommt. Nur bei einem Server, der überhaupt Messwerte hat: Bei einem
@@ -144,9 +152,9 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
     const juengste = history.data?.samples.at(-1) ?? null;
     if (juengste === null) return null;
 
-    const alter = Date.now() - new Date(juengste.updatedAt).getTime();
+    const alter = jetzt - new Date(juengste.updatedAt).getTime();
     return Number.isFinite(alter) && alter <= FALLBACK_MAX_AGE_MS ? juengste : null;
-  }, [live, server.status, history.data]);
+  }, [live, server.status, history.data, jetzt]);
 
   /** Was die Kacheln zeigen: der Live-Wert, sonst die letzte Messung. */
   const anzeige = live ?? letzteMessung;
@@ -164,8 +172,6 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
    * springt, ist keine. Der Takt haengt am Zustand - ein gestoppter Server
    * laesst nichts ticken.
    */
-  const [jetzt, setJetzt] = useState(() => Date.now());
-
   useEffect(() => {
     if (server.status !== 'running') return;
 

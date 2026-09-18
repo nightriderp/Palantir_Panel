@@ -11,7 +11,7 @@
  * - `<basis>.any` gilt bei jeder Ressource, `<basis>.own` nur bei eigenen.
  *
  * Diese Datei kennt bewusst weder Datenbank noch HTTP: sie arbeitet auf reinen
- * Werten und ist deshalb vollständig ohne Infrastruktur testbar (CLAUDE.md §4).
+ * Werten und ist deshalb vollständig ohne Infrastruktur testbar (Entwicklungsregeln §4).
  */
 
 import {

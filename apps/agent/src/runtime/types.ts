@@ -266,7 +266,7 @@ export interface WatchOptions {
  * Ergaenzung aus A3: Der Storage-Explorer verlangt die Groessen der Images
  * "inkl. Nutzungsstatus". Der Weg dorthin fuehrt ueber die Container-Engine,
  * und Agent-Code spricht mit ihr ausschliesslich ueber `ContainerRuntime`
- * (CLAUDE.md §4) - deshalb steht der Typ hier und nicht im Storage-Job.
+ * (Entwicklungsregeln §4) - deshalb steht der Typ hier und nicht im Storage-Job.
  */
 export interface ContainerImage {
   /** Image-ID der Engine, z. B. `sha256:abc...`. */

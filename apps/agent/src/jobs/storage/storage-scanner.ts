@@ -18,7 +18,7 @@
  * Backend mit Zeitstempel zwischengespeichert.
  *
  * **Container-Zugriffe laufen ausschließlich über `ContainerRuntime`**
- * (CLAUDE.md §4) – auch der Blick auf die Images (`listImages()`/`removeImage()`,
+ * (Entwicklungsregeln §4) – auch der Blick auf die Images (`listImages()`/`removeImage()`,
  * von A3 additiv am Interface ergänzt).
  */
 
@@ -67,7 +67,7 @@ export interface DiskUsage {
  *
  * Die Messung selbst steht seit Fundpunkt 168 in `directory-size.ts` – dort
  * braucht sie auch der belegte Plattenplatz je Server, und zwei Durchläufe mit
- * unterschiedlichem Verhalten wären eine Parallelstruktur (CLAUDE.md §3).
+ * unterschiedlichem Verhalten wären eine Parallelstruktur (Entwicklungsregeln §3).
  */
 type Baumgroesse = DirectorySize;
 

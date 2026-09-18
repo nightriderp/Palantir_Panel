@@ -170,33 +170,63 @@ sync_database_password
 # 3. WireGuard-Schlüsselpaare (Pflichtenheft §2.1)
 # -----------------------------------------------------------------------------
 
+# Die privaten Schlüssel liegen NICHT in der .env (Pflichtenheft §2.1, Review
+# 2026-09-16, Befund 3.5): Dieselbe .env wird auf VPS und Homeserver
+# eingesetzt - stünden beide Privatschlüssel darin, trüge jede Maschine den
+# Schlüssel der anderen, und eine übernommene VPS könnte sich im Tunnel als
+# Homeserver ausgeben. Jeder Privatschlüssel liegt deshalb nur in
+# wireguard/<seite>.key (0600, Verzeichnis 0700, per .gitignore ausgeschlossen)
+# und von dort in genau einer wg0.conf. In die .env kommen allein die
+# öffentlichen Schlüssel - die braucht die jeweilige Gegenseite als Peer.
+WG_DIR="${REPO_ROOT}/wireguard"
+WG_VPS_KEY_FILE="${WG_DIR}/vps.key"
+WG_HOME_KEY_FILE="${WG_DIR}/home.key"
+
+# wg_private_key SEITE DATEI ENV_PUBLIC -> stellt sicher, dass der
+# Privatschlüssel in DATEI liegt, und trägt den öffentlichen in die .env ein.
+#
+# Übergang für bestehende Installationen: Stand der Privatschlüssel bisher als
+# WIREGUARD_<SEITE>_PRIVATE_KEY in der .env, wird er in die Datei übernommen und
+# in der .env geleert - die Zeile bleibt stehen, damit ein zweiter Lauf sie
+# nicht für "noch nie erzeugt" hält, und der Hinweis unten sagt, dass sie
+# gelöscht werden darf.
+wg_private_key() {
+  local seite="$1" datei="$2" env_public="$3" env_private_alt="$4"
+  local priv pub alt
+
+  mkdir -p "${WG_DIR}"
+  chmod 700 "${WG_DIR}"
+
+  if [[ -s "${datei}" ]]; then
+    info "WireGuard-Schlüssel ${seite} liegt bereits unter ${datei} - bleibt unverändert"
+  else
+    alt="$(get_env_value "${env_private_alt}")"
+    if [[ -n "${alt}" ]]; then
+      (umask 077 && printf '%s\n' "${alt}" >"${datei}")
+      set_env_value "${env_private_alt}" ""
+      warn "WireGuard-Privatschlüssel ${seite} aus der .env nach ${datei} übernommen - die Zeile ${env_private_alt} in der .env ist jetzt leer und kann entfernt werden."
+    else
+      (umask 077 && wg genkey >"${datei}")
+      ok "WireGuard-Schlüsselpaar für ${seite} erzeugt (${datei})"
+    fi
+  fi
+
+  chmod 600 "${datei}"
+  priv="$(<"${datei}")"
+  pub="$(printf '%s' "${priv}" | wg pubkey)"
+  set_env_value "${env_public}" "${pub}"
+}
+
 if command -v wg >/dev/null 2>&1; then
-  if [[ -z "$(get_env_value WIREGUARD_VPS_PRIVATE_KEY)" ]]; then
-    vps_priv="$(wg genkey)"
-    vps_pub="$(printf '%s' "${vps_priv}" | wg pubkey)"
-    set_env_value WIREGUARD_VPS_PRIVATE_KEY "${vps_priv}"
-    set_env_value WIREGUARD_VPS_PUBLIC_KEY "${vps_pub}"
-    ok "WireGuard-Schlüsselpaar für die VPS erzeugt"
-  else
-    info "WireGuard-Schlüssel der VPS bereits gesetzt - bleibt unverändert"
-  fi
+  wg_private_key "der VPS" "${WG_VPS_KEY_FILE}" WIREGUARD_VPS_PUBLIC_KEY WIREGUARD_VPS_PRIVATE_KEY
+  wg_private_key "des Homeservers" "${WG_HOME_KEY_FILE}" WIREGUARD_HOME_PUBLIC_KEY WIREGUARD_HOME_PRIVATE_KEY
 
-  if [[ -z "$(get_env_value WIREGUARD_HOME_PRIVATE_KEY)" ]]; then
-    home_priv="$(wg genkey)"
-    home_pub="$(printf '%s' "${home_priv}" | wg pubkey)"
-    set_env_value WIREGUARD_HOME_PRIVATE_KEY "${home_priv}"
-    set_env_value WIREGUARD_HOME_PUBLIC_KEY "${home_pub}"
-    ok "WireGuard-Schlüsselpaar für den Homeserver erzeugt"
-  else
-    info "WireGuard-Schlüssel des Homeservers bereits gesetzt - bleibt unverändert"
-  fi
-
-  cat <<'HINT'
+  cat <<HINT
 
   Hinweis zur Verteilung der WireGuard-Schlüssel:
-    - WIREGUARD_VPS_PRIVATE_KEY  gehört ausschließlich in /etc/wireguard/wg0.conf auf der VPS
-    - WIREGUARD_HOME_PRIVATE_KEY gehört ausschließlich in /etc/wireguard/wg0.conf des Homeservers
-    - Die jeweils öffentlichen Schlüssel werden auf der Gegenseite als Peer eingetragen.
+    - ${WG_VPS_KEY_FILE}   ist der Privatschlüssel der VPS         -> nur in /etc/wireguard/wg0.conf auf der VPS
+    - ${WG_HOME_KEY_FILE}  ist der Privatschlüssel des Homeservers -> nur in /etc/wireguard/wg0.conf der Gameserver-VM
+    - In der .env stehen nur die öffentlichen Schlüssel; die braucht die jeweilige Gegenseite als Peer.
   Die fertigen wg0.conf werden weiter unten erzeugt (Verzeichnis wireguard/).
 
 HINT
@@ -212,13 +242,20 @@ fi
 # "wireguard/" - sie enthalten private Schlüssel und dürfen NIE ins Repo.
 # Von dort werden sie an ihren jeweiligen Zielort kopiert (Ausgabe unten).
 generate_wireguard_configs() {
-  local wg_dir="${REPO_ROOT}/wireguard"
+  local wg_dir="${WG_DIR}"
   local vps_priv vps_pub home_priv home_pub vps_ip home_ip port keepalive endpoint
 
-  vps_priv="$(get_env_value WIREGUARD_VPS_PRIVATE_KEY)"
-  vps_pub="$(get_env_value WIREGUARD_VPS_PUBLIC_KEY)"
-  home_priv="$(get_env_value WIREGUARD_HOME_PRIVATE_KEY)"
-  home_pub="$(get_env_value WIREGUARD_HOME_PUBLIC_KEY)"
+  # Die Privatschlüssel kommen aus den Schlüsseldateien, nie aus der .env
+  # (Pflichtenheft §2.1); die öffentlichen stehen dort nur zur Ansicht.
+  if [[ ! -s "${WG_VPS_KEY_FILE}" || ! -s "${WG_HOME_KEY_FILE}" ]]; then
+    warn "WireGuard-Schlüssel noch unvollständig - wg0.conf wird noch nicht erzeugt."
+    return 0
+  fi
+
+  vps_priv="$(<"${WG_VPS_KEY_FILE}")"
+  home_priv="$(<"${WG_HOME_KEY_FILE}")"
+  vps_pub="$(printf '%s' "${vps_priv}" | wg pubkey)"
+  home_pub="$(printf '%s' "${home_priv}" | wg pubkey)"
 
   if [[ -z "${vps_priv}" || -z "${vps_pub}" || -z "${home_priv}" || -z "${home_pub}" ]]; then
     warn "WireGuard-Schlüssel noch unvollständig - wg0.conf wird noch nicht erzeugt."

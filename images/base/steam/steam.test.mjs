@@ -18,6 +18,31 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * Frist je Skriptlauf – an einer Stelle, über die Umgebung einstellbar
+ * (Fundpunkt 296, Review 2026-09-16 Befund 7.3).
+ *
+ * Vorher standen an jedem Aufruf fest verdrahtete 30 Sekunden. Allein
+ * läuft jedes Skript in Sekundenbruchteilen; unter der Parallelität von
+ * `turbo run test` teilen sich alle Pakete dieselbe Maschine, und eine Frist,
+ * die von der Maschinenlast abhängt, ist keine (Fundpunkte 290, 295). Deshalb
+ * großzügig, und eine gerissene Frist meldet sich als das, was sie ist –
+ * statt als Skript, das nichts ausgibt.
+ */
+const LAUF_FRIST_MS = Number(process.env.PALANTIR_STEAM_TEST_FRIST_MS ?? 120_000);
+
+/** `spawnSync` mit der gemeinsamen Frist; eine gerissene Frist ist ein eigener Fehlschlag. */
+function laufMitFrist(befehl, argumente, optionen = {}) {
+  const ergebnis = spawnSync(befehl, argumente, { ...optionen, timeout: LAUF_FRIST_MS });
+  if (ergebnis.error?.code === 'ETIMEDOUT' || ergebnis.signal === 'SIGTERM') {
+    assert.fail(
+      `${befehl} wurde nach ${LAUF_FRIST_MS} ms abgebrochen (PALANTIR_STEAM_TEST_FRIST_MS). ` +
+        'Die Maschine war vermutlich ausgelastet.',
+    );
+  }
+  return ergebnis;
+}
+
 /** Pfad in der Schreibweise, die eine POSIX-Shell versteht (Windows: `C:\…`). */
 const posix = (pfad) => pfad.replace(/\\/gu, '/');
 
@@ -90,16 +115,19 @@ function aufbau({ exitCode = 0 } = {}) {
 
 /** Führt Shell aus, die beide Bibliotheken eingebunden hat. */
 function mitBibliothek(ordner, rumpf, extra = {}) {
-  return spawnSync('sh', ['-c', `set -eu; . "$1"; . "$2"; ${rumpf}`, '_', PALANTIR_SH, STEAM_SH], {
-    encoding: 'utf8',
-    timeout: 30_000,
-    env: {
-      ...process.env,
-      PALANTIR_DATA_DIR: posix(ordner.daten),
-      PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
-      ...extra,
+  return laufMitFrist(
+    'sh',
+    ['-c', `set -eu; . "$1"; . "$2"; ${rumpf}`, '_', PALANTIR_SH, STEAM_SH],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PALANTIR_DATA_DIR: posix(ordner.daten),
+        PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+        ...extra,
+      },
     },
-  });
+  );
 }
 
 describe('steam_vorbereiten', nurMitShell, () => {
@@ -317,9 +345,8 @@ describe('palantir-steam-anmelden', nurMitShell, () => {
   }
 
   function anmelden(ordner, argumente = ['nightrider'], extra = {}) {
-    return spawnSync('sh', [WERKZEUG, ...argumente], {
+    return laufMitFrist('sh', [WERKZEUG, ...argumente], {
       encoding: 'utf8',
-      timeout: 30_000,
       env: {
         ...process.env,
         PALANTIR_STEAM_KONTO_DIR: posix(ordner.konto),
@@ -409,9 +436,8 @@ describe('palantir-steam-anmelden: Vorpruefung', nurMitSchreibschutz, () => {
     mkdirSync(join(konto, 'Steam', 'config'), { recursive: true });
     spawnSync('sh', ['-c', 'chmod 0555 "$1"', '_', posix(join(konto, 'Steam', 'config'))]);
 
-    const lauf = spawnSync('sh', [WERKZEUG, 'nightrider'], {
+    const lauf = laufMitFrist('sh', [WERKZEUG, 'nightrider'], {
       encoding: 'utf8',
-      timeout: 30_000,
       env: {
         ...process.env,
         PALANTIR_STEAM_KONTO_DIR: posix(konto),

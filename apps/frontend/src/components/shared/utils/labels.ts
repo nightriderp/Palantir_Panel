@@ -72,6 +72,7 @@ export const NOTIFIABLE_EVENT_LABELS: Record<NotifiableEventName, string> = {
   'server.failed': 'Server im Fehlerzustand',
   'server.cloned': 'Server geklont',
   'server.deleted': 'Server gelöscht',
+  'server.ownerTransferred': 'Besitzer gewechselt',
   'autoShutdown.triggered': 'Automatisch abgeschaltet',
   'backup.failed': 'Backup fehlgeschlagen',
   'resource.low': 'Ressourcen werden knapp',

@@ -16,7 +16,7 @@
  * **Warum der Vertrag hier liegt:** Backend (Upload, Ablage, Auslieferung) und
  * Frontend (Auswahl, erzeugte `@font-face`-Regeln) müssen dieselben Formate,
  * Grenzen und Kennungen kennen – kein zweiter, abweichender Regelsatz
- * (CLAUDE.md §3). Die Eingabeprüfung der Upload-Angaben steht in
+ * (Entwicklungsregeln §3). Die Eingabeprüfung der Upload-Angaben steht in
  * `@palantir/validation` (`font.ts`), nicht hier.
  */
 
@@ -198,7 +198,7 @@ export interface FontPermissions {
  * Eine Schrift, wie sie die Verwaltung und die Auswahl zeigen.
  *
  * Wie jedes DTO vollständig samt `permissions` – keine view-spezifisch
- * zusammengestrichene Sonderform (CLAUDE.md §3).
+ * zusammengestrichene Sonderform (Entwicklungsregeln §3).
  */
 export interface FontDto {
   /**

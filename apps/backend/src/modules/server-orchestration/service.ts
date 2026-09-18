@@ -14,16 +14,13 @@
  *   Homeserver ankommen.
  */
 
-import path from 'node:path';
 import {
   type AgentContainerStats,
   type ServerCloneJobDto,
   type ServerStatsHistoryDto,
   type AgentEventFrame,
-  type AgentServerQueryTarget,
   type AgentStateReportFrame,
   type ExecConsoleCommandResult,
-  type FileExtractCommandResult,
   type GetLogsCommandResult,
   type GameConfigValues,
   type GameTypeDefinition,
@@ -42,10 +39,10 @@ import { type AgentGatewayLogger, type AgentRegistry, type AgentSession } from '
 import { decideAutoShutdown } from './auto-shutdown.js';
 import { type CrashLoopPolicy, evaluateCrashLoop } from './crash-loop.js';
 import { buildServerDnsRecord } from './dns/cloudflare.js';
-import { randomUUID } from 'node:crypto';
 import { type DnsProvider } from './dns/types.js';
-import { type CloneJobProgress, type CloneJobStore, createCloneJobStore } from './clone-jobs.js';
+import { randomUUID } from 'node:crypto';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
+import { hasNonGuestRole, isAwaitingApproval } from '../rbac/approval.js';
 
 /**
  * Zuschlag auf die Frist eines `STOP`-Befehls.
@@ -64,11 +61,9 @@ import {
   LatestQueryCache,
   ServerLoadRegistry,
   type ServerStatsRepository,
-  type StatsSample,
-  toStatsHistoryDto,
 } from './stats-history.js';
 import { type ServerLoadSnapshot } from '../resources/index.js';
-import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.js';
+import { type WorldArchiveStore } from './world-import.js';
 
 /**
  * Verweis auf ein hochgeladenes Weltdaten-Archiv (P4).
@@ -76,15 +71,6 @@ import { type StoredWorldArchive, type WorldArchiveStore } from './world-import.
  * Aus `CreateServerInput` abgeleitet statt eigenständig deklariert – die
  * Eingabe ist der Vertrag, eine zweite Formulierung könnte davon abweichen.
  */
-type WorldImportInput = NonNullable<CreateServerInput['worldImport']>;
-import {
-  effectiveUploadLimitBytes,
-  normalizeRelativePath,
-  parentPathOf,
-  toContainerPath,
-  toServerFileContentDto,
-  toServerFileListDto,
-} from './files.js';
 import {
   type ContainerCreateSpec,
   buildContainerSpec,
@@ -95,7 +81,7 @@ import {
   buildServerConfig,
   requiresRestartAfterChange,
 } from './game-registry.js';
-import { type HealthProbe, awaitHealthy } from './health-check.js';
+import { type HealthProbe } from './health-check.js';
 import { type PortAllocator, visiblePortOf } from './ports.js';
 import {
   type CapacityReservation,
@@ -111,6 +97,19 @@ import {
   querySnapshotFromPayload,
 } from './live-events.js';
 import { planReconciliation } from './reconciliation.js';
+import { ServerCloneService } from './clone-service.js';
+import { ServerQueryTargets } from './server-query.js';
+import { choosePlacementHost } from './placement.js';
+import { type StartIntent, StartupHealthCheck } from './startup-health.js';
+import { type WorldImportInput, WorldImportTransfer } from './world-import-transfer.js';
+import {
+  type ServerFileAccessOptions,
+  type ServerFileUploadOptions,
+  ServerFileService,
+} from './file-service.js';
+import { ServerStatsSampler } from './stats-sampling.js';
+
+export type { ServerFileAccessOptions, ServerFileUploadOptions } from './file-service.js';
 import { type HostNodeRecord, type ServerRecord, type ServerRepository } from './repository.js';
 import { type ServerAutoShutdown } from './types.js';
 import {
@@ -119,7 +118,7 @@ import {
   applyLifecycleEvent,
   assertTransitionAllowed,
 } from './state-machine.js';
-import { normalizeSubdomain, resolveAvailableSubdomain } from './subdomain.js';
+import { resolveAvailableSubdomain } from './subdomain.js';
 
 /** Ereignisse, die der Dienst nach außen meldet (Pflichtenheft §14). */
 export interface OrchestrationEventSink {
@@ -195,15 +194,6 @@ export interface OrchestrationConfig {
 }
 
 /** Was die Datei-Routen aus dem `permissions`-Objekt des Servers mitgeben. */
-export interface ServerFileAccessOptions {
-  /** Darf der Aufrufer schreiben (`canManageFiles`)? Steht so im DTO. */
-  readonly writable: boolean;
-}
-
-export interface ServerFileUploadOptions extends ServerFileAccessOptions {
-  /** Vorhandene Datei am Zielpfad ersetzen; ohne Angabe lehnt der Agent ab. */
-  readonly overwrite?: boolean;
-}
 
 /**
  * Warum ein Server gestoppt wird (Audit event-flow-09).
@@ -215,14 +205,7 @@ export interface ServerFileUploadOptions extends ServerFileAccessOptions {
  */
 export type StopReason = 'manual' | 'restart' | 'autoShutdown';
 
-/**
- * Warum ein Server gestartet wird (Audit event-flow-09).
- *
- * Reicht bis ans Ende des Health-Checks durch: Ein Neustart meldet dort
- * `server.restarted` statt `server.started` – dieselbe Stelle, dieselbe
- * Bedingung („der Server antwortet"), nur der passendere Name.
- */
-export type StartIntent = 'start' | 'restart';
+export type { StartIntent } from './startup-health.js';
 
 export interface OrchestrationDependencies {
   readonly repository: ServerRepository;
@@ -288,15 +271,7 @@ export function dataHostPathFor(serverId: string): string {
   return `/srv/palantir/servers/${serverId}`;
 }
 
-/**
- * Blockgroesse beim Uebertragen eines Weltarchivs an den Agent.
- *
- * Dieselbe Groesse wie beim Herunterladen eines Backups (`DOWNLOAD_CHUNK_BYTES`
- * in B5): 4 MiB roh werden Base64-kodiert zu rund 5,5 MiB JSON - gross genug,
- * dass ein grosses Archiv nicht in Zehntausenden Runden geht, und klein genug,
- * dass ein Block die Verbindung zum Agent nicht fuer andere Befehle blockiert.
- */
-export const WORLD_IMPORT_CHUNK_BYTES = 4 * 1024 * 1024;
+export { WORLD_IMPORT_CHUNK_BYTES } from './world-import-transfer.js';
 
 export class ServerOrchestrationService {
   private readonly deps: OrchestrationDependencies;
@@ -352,13 +327,19 @@ export class ServerOrchestrationService {
    */
   private readonly clockSkew = new ClockSkewMonitor();
   /**
-   * Laufende und kürzlich beendete Klon-Aufträge (P7).
+   * Klon-Aufträge (P7) – Auftragsspeicher und Ablauf in `clone-service.ts`.
    *
    * Im Dienst und nicht in den Abhängigkeiten: Ein Auftrag beschreibt einen
    * Vorgang **dieses** Prozesses; ein zweiter Speicher daneben wäre eine zweite
    * Wahrheit über denselben Lauf.
    */
-  private readonly cloneJobs: CloneJobStore;
+  private readonly clones: ServerCloneService;
+  /** Server-Abfrage des Agents (Befund 2.1) – eigene Klasse. */
+  private readonly queries: ServerQueryTargets;
+  /** Health-Check nach dem Start (Befund 2.1) – eigene Klasse. */
+  private readonly startupHealth: StartupHealthCheck;
+  /** Weltdaten-Übernahme beim Anlegen (Befund 2.1) – eigene Klasse. */
+  private readonly worldImport: WorldImportTransfer;
   /**
    * Zuletzt gemessene Last je laufendem Server – Quelle der Ressourcen-Warnung
    * auf Server-Ebene (Lastenheft §3.3).
@@ -374,6 +355,10 @@ export class ServerOrchestrationService {
    * misst.
    */
   private readonly serverLoads: ServerLoadRegistry;
+  /** Datei-Manager (Befund 2.1) – eigene Klasse, hier nur durchgereicht. */
+  private readonly files: ServerFileService;
+  /** Abtastung und Verlauf der Messwerte (Befund 2.1) – ebenso. */
+  private readonly stats: ServerStatsSampler;
 
   constructor(deps: OrchestrationDependencies) {
     this.deps = deps;
@@ -381,8 +366,66 @@ export class ServerOrchestrationService {
     this.reservation =
       deps.reservation ??
       createInlineCapacityReservation(deps.resources, deps.repository, deps.ports);
-    this.cloneJobs = createCloneJobStore({ now: this.now });
+    this.worldImport = new WorldImportTransfer({
+      agents: deps.agents,
+      ...(deps.worldArchives === undefined ? {} : { worldArchives: deps.worldArchives }),
+      config: deps.config,
+      log: deps.log,
+    });
+    this.queries = new ServerQueryTargets({
+      agents: deps.agents,
+      registry: deps.registry,
+      repository: deps.repository,
+      log: deps.log,
+      antwortetAufAbfragen: (server) => this.antwortetAufAbfragen(server),
+    });
+    this.startupHealth = new StartupHealthCheck({
+      registry: deps.registry,
+      repository: deps.repository,
+      config: deps.config,
+      healthProbe: deps.healthProbe,
+      ...(deps.sleep === undefined ? {} : { sleep: deps.sleep }),
+      now: this.now,
+      log: deps.log,
+      requireServer: (serverId) => this.requireServer(serverId),
+      hostnameFor: (server) => this.hostnameFor(server),
+      antwortetAufAbfragen: (server) => this.antwortetAufAbfragen(server),
+      transition: (server, event) => this.transition(server, event),
+      emitServerEvent: (event, server, extra) => this.emitServerEvent(event, server, extra),
+    });
+    this.clones = new ServerCloneService({
+      repository: deps.repository,
+      agents: deps.agents,
+      events: deps.events,
+      log: deps.log,
+      now: this.now,
+      requireServer: (serverId) => this.requireServer(serverId),
+      createServer: (input, ownerId, clonedFromServerId) =>
+        this.createServerInternal(input, ownerId, clonedFromServerId),
+      dataHostPathFor,
+      markFailed: async (server, reason) => {
+        await this.transition(server, { type: 'failed', reason });
+      },
+      emitServerEvent: (event, server, extra) => this.emitServerEvent(event, server, extra),
+    });
     this.serverLoads = new ServerLoadRegistry(2 * deps.config.statsSampleIntervalMs);
+    this.files = new ServerFileService({
+      registry: deps.registry,
+      config: deps.config,
+      requireLiveTarget: (serverId) => this.requireLiveTarget(serverId),
+      now: this.now,
+    });
+    this.stats = new ServerStatsSampler({
+      repository: deps.repository,
+      ...(deps.statsHistory === undefined ? {} : { statsHistory: deps.statsHistory }),
+      config: deps.config,
+      log: deps.log,
+      now: this.now,
+      getStats: (serverId) => this.getStats(serverId),
+      latestQuery: this.latestQuery,
+      latestDiskUsage: this.latestDiskUsage,
+      serverLoads: this.serverLoads,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -714,7 +757,7 @@ export class ServerOrchestrationService {
       // Antwort. Der Container läuft dafür nicht; geschrieben wird über den
       // Archiv-Endpunkt der Engine, der auch bei gestopptem Container arbeitet.
       if (worldImport !== null) {
-        await this.importWorldData(server, created.containerId, worldImport);
+        await this.worldImport.importWorldData(server, created.containerId, worldImport);
       }
 
       await this.transition(server, { type: 'createSucceeded' });
@@ -773,6 +816,13 @@ export class ServerOrchestrationService {
     return buildContainerSpec({
       server,
       definition,
+      /*
+       * Die Fassung des Servers, nicht die der Definition (Pflichtenheft §9,
+       * Review 2026-09-16): Ein Server behält sein Image, bis jemand
+       * „Aktualisieren" drückt (`updateServerImage`). Ohne gespeicherte Fassung
+       * – neu angelegt oder vor dieser Spalte entstanden – gilt die Definition.
+       */
+      image: server.imageRef ?? definition.dockerImage,
       containerName: containerNameFor(server.id),
       dataHostPath: dataHostPathFor(server.id),
       // Derselbe Name, den auch der DNS-Eintrag trägt (`provision`) – bei
@@ -1070,7 +1120,10 @@ export class ServerOrchestrationService {
    * (`dispatchStart`): Dort geht es nicht darum, eine stillgelegte Node neu zu
    * belegen, sondern einen bereits dort laufenden Server wieder hochzubringen.
    */
-  private assertNodeAcceptsWork(host: HostNodeRecord, intent: 'create' | 'start'): void {
+  private assertNodeAcceptsWork(
+    host: Pick<HostNodeRecord, 'id' | 'name' | 'status'>,
+    intent: 'create' | 'start',
+  ): void {
     if (host.status === 'online') {
       return;
     }
@@ -1158,58 +1211,6 @@ export class ServerOrchestrationService {
    * läuft (der Agent-Befehl ist ein Netz-Roundtrip, der keine Sperre halten soll).
    */
   /**
-   * Ziel für die periodische Server-Abfrage des Agents
-   * (`SET_SERVER_QUERY`, WORK_STATUS.md Gefundener Punkt 74).
-   *
-   * Der Agent kennt keine Spiele und errät nichts: Abfrageart und Port kommen
-   * aus der Spiele-Definition und der Portvergabe. `null`, solange der Server
-   * keinen Container oder keinen primären Port hat – dann gibt es nichts
-   * abzufragen.
-   *
-   * Als Adresse bleibt die Vorgabe des Agents (`127.0.0.1`): Die Portbindung
-   * liegt auf dem Homeserver selbst, im LAN lauscht nichts (Pflichtenheft §18).
-   */
-  private queryTargetFor(server: ServerRecord): AgentServerQueryTarget | null {
-    if (server.dockerContainerId === null) {
-      return null;
-    }
-
-    // Ein Auftrag, der nicht zu erfüllen ist, gehört nicht gestellt: Valheim
-    // ohne `-public 1` beantwortet keine Abfrage, und der Agent liefe alle paar
-    // Sekunden in eine Frist (`antwortetAufAbfragen`).
-    if (!this.antwortetAufAbfragen(server)) {
-      return null;
-    }
-
-    const definition = this.deps.registry.require(server.gameType);
-    // Beide Ports gehen mit: der Host-Port, unter dem der Container
-    // veröffentlicht ist (derselbe Wert wie `hostPort` in `CREATE_CONTAINER`),
-    // und der Port IM Container. Der Agent fragt über das Spielenetz auf dem
-    // Container-Port (Fundpunkt 188) – der Host-Port ist an 127.0.0.1 der Node
-    // gebunden, und das ist nicht das Loopback des Agent-Containers.
-    const primary =
-      server.assignedPorts.find(
-        (zuweisung) => zuweisung.containerPort === definition.query.containerPort,
-      ) ?? server.assignedPorts.find((zuweisung) => zuweisung.primary);
-
-    if (primary === undefined) {
-      return null;
-    }
-
-    return {
-      containerId: server.dockerContainerId,
-      hostPort: primary.publicPort,
-      // Der Port, den die Definition zur Abfrage nennt – bei Valheim der
-      // Abfrage-Port neben dem Spiel-Port (Fundpunkt 196).
-      containerPort: definition.query.containerPort,
-      query:
-        definition.query.kind === 'gamedig'
-          ? { kind: 'gamedig', protocol: definition.query.protocol }
-          : { kind: 'portConnect' },
-    };
-  }
-
-  /**
    * Die Grenzen des Containers auf den Stand des Datensatzes bringen.
    *
    * **Was vorher passierte.** Eine geänderte Zuweisung landete nur in der
@@ -1294,74 +1295,11 @@ export class ServerOrchestrationService {
   }
 
   /**
-   * Periodische Abfrage für einen Server setzen oder beenden.
-   *
-   * `active: false` schickt `target: null` – der Agent stellt die Abfrage dann
-   * ein. Beides ist idempotent und darf wiederholt werden.
-   *
-   * **Scheitert bewusst leise.** Die Abfrage liefert Spielerzahl und
-   * Antwortzeit; sie ist eine Zutat zur Anzeige, kein Teil des Lifecycles. Ein
-   * Serverstart darf nicht daran scheitern, dass der Agent den Zusatzbefehl
-   * nicht annimmt – gemeldet wird er trotzdem, sonst sucht später niemand die
-   * fehlenden Messwerte.
+   * Abfragen einer Node abgleichen – siehe `server-query.ts` (Befund 2.1).
+   * Öffentlich für den Verbindungsaufbau des Agents (`index.ts`).
    */
-  private async applyServerQuery(server: ServerRecord, active: boolean): Promise<void> {
-    const session = this.deps.agents.get(server.hostId);
-
-    if (session === null) {
-      return;
-    }
-
-    const target = active ? this.queryTargetFor(server) : null;
-
-    if (active && target === null) {
-      return;
-    }
-
-    try {
-      await session.sendCommand('SET_SERVER_QUERY', server.id, { serverId: server.id, target });
-    } catch (error: unknown) {
-      this.deps.log.warn(
-        {
-          serverId: server.id,
-          aktiv: active,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Server-Abfrage konnte nicht gesetzt werden',
-      );
-    }
-  }
-
-  /**
-   * Abfragen einer Node **abgleichen** – setzen, was laufen soll, und abräumen,
-   * was nicht mehr laufen soll (Audit event-flow-10).
-   *
-   * Der Aufruf gehört an jeden Verbindungsaufbau des Agents: Er hält seine
-   * Ziele im Arbeitsspeicher und hat sie nach einem Neustart vergessen. Der
-   * Befehl ist idempotent, ein zweites Setzen desselben Ziels also folgenlos.
-   *
-   * **Warum auch die nicht laufenden Server angefasst werden.** Überlebt der
-   * Agent einen Neustart des Backends, behält er seine Ziele. Ging in derselben
-   * Zeit ein Server verloren – abgestürzt, vom Abgleich auf `stopped` gesetzt –,
-   * fragte er dessen toten Port bis zu seinem eigenen Neustart weiter ab und
-   * schickte für jeden Fehlschlag ein `STATS_UPDATE` zurück. Ein `null` je
-   * übrigem Server beendet das in einem Zug; die Rückgabe nennt weiterhin nur
-   * die tatsächlich **gesetzten** Ziele.
-   */
-  async refreshServerQueries(hostId: string): Promise<readonly string[]> {
-    const gesetzt: string[] = [];
-
-    for (const server of await this.deps.repository.listByHost(hostId)) {
-      const aktiv = server.status === 'running' || server.status === 'starting';
-
-      await this.applyServerQuery(server, aktiv);
-
-      if (aktiv) {
-        gesetzt.push(server.id);
-      }
-    }
-
-    return gesetzt;
+  refreshServerQueries(hostId: string): Promise<readonly string[]> {
+    return this.queries.refreshServerQueries(hostId);
   }
 
   private async finishStart(
@@ -1399,7 +1337,7 @@ export class ServerOrchestrationService {
     // Periodische Abfrage einsetzen (Gefundener Punkt 74). Ohne sie meldet der
     // Agent nie ein `STATS_UPDATE` aus der Server-Abfrage, und Spielerzahl,
     // Antwortzeit und der Spieler-Verlauf bleiben dauerhaft leer.
-    await this.applyServerQuery({ ...server, ...started }, true);
+    await this.queries.applyServerQuery({ ...server, ...started }, true);
 
     // Der Health-Check läuft bewusst neben dem Request: Ein Spiel darf beim
     // Hochlauf Minuten brauchen, so lange soll niemand auf eine HTTP-Antwort
@@ -1411,183 +1349,12 @@ export class ServerOrchestrationService {
   }
 
   /**
-   * Wartet auf den Health-Check und schließt den Start ab.
-   *
+   * Health-Check nach dem Start – siehe `startup-health.ts` (Befund 2.1).
    * Öffentlich, damit der Soll/Ist-Abgleich denselben Weg nimmt und nicht eine
    * zweite Auslegung von „läuft" mitbringt.
-   *
-   * Verschwindet der Server währenddessen (gelöscht, während der Check über
-   * Minuten lief – Fundpunkt 127), gibt es keinen Zustand mehr, der
-   * fortzuschreiben wäre: Der Start ist damit schlicht abgebrochen, kein
-   * Fehler. `deleteServer()` lehnt das Löschen im Zustand `starting` zwar ab,
-   * doch der Datensatz kann auch anders verschwinden (Kaskade, Abgleich).
    */
-  async awaitStartupHealth(serverId: string, anlass: StartIntent = 'start'): Promise<void> {
-    try {
-      await this.runStartupHealth(serverId, anlass);
-    } catch (error: unknown) {
-      if (isServerOrchestrationError(error) && error.code === 'SERVER_NOT_FOUND') {
-        this.deps.log.warn(
-          { serverId },
-          'Health-Check abgebrochen – der Server existiert nicht mehr',
-        );
-
-        return;
-      }
-
-      throw error;
-    }
-  }
-
-  private async runStartupHealth(serverId: string, anlass: StartIntent = 'start'): Promise<void> {
-    const server = await this.requireServer(serverId);
-    const definition = this.deps.registry.require(server.gameType);
-    const host = await this.deps.repository.findHost(server.hostId);
-
-    /*
-     * **Geprüft wird der Abfrage-Port, nicht der Spiel-Port** (Fundpunkt 196).
-     *
-     * Bei den meisten Spielen ist das derselbe (Minecraft antwortet auf 25565
-     * auf beides). Valheim nicht: Dort läuft das Spiel auf 2456 und die
-     * Serverliste antwortet auf 2457. Welcher Port gemeint ist, sagt die
-     * Definition über `query.containerPort`; hier wird die öffentliche Nummer
-     * gesucht, die frp diesem Container-Port gegeben hat. Findet sich keine,
-     * bleibt es beim Haupt-Port – so verhält sich jede Definition ohne eigenen
-     * Abfrage-Port wie bisher.
-     */
-    const primary =
-      server.assignedPorts.find(
-        (assignment) => assignment.containerPort === definition.query.containerPort,
-      ) ?? server.assignedPorts.find((assignment) => assignment.primary);
-
-    if (host === null || primary === undefined) {
-      await this.transition(server, {
-        type: 'healthCheckFailed',
-        reason: 'Die Node oder die Portzuweisung des Servers ist unvollständig.',
-      });
-      await this.emitServerEvent('server.failed', serverId, {
-        detail: 'Portzuweisung unvollständig',
-      });
-
-      return;
-    }
-
-    /*
-     * Geprüft wird der Weg der Spieler, nicht die Node im Tunnel (Fundpunkt 183).
-     *
-     * Bis hierher zielte der Check auf `host.wireguardIp` – und das konnte nie
-     * antworten: Der Agent bindet die Spielports auf der Node absichtlich nur an
-     * `127.0.0.1` (hardening.ts, `DEFAULT_HOST_IP`, damit das Heim-LAN sie nicht
-     * sieht), und die WireGuard-Firewall der Node verwirft jede neue
-     * Verbindung aus dem Tunnel. Jeder Start lief so nach
-     * `startupTimeoutSeconds` in `error`, während das Spiel längst lief und
-     * Spieler drauf waren. Aufgefallen beim ersten echten Minecraft-Start am
-     * 2026-09-09.
-     *
-     * Erreichbar ist der Server von hier aus genau dort, wo ihn auch die Spieler
-     * erreichen: auf der öffentlichen Adresse der VPS, hinter frps. Damit prüft
-     * der Check zugleich den Tunnel – ein Server, der auf der Node läuft, aber
-     * durch frp nicht durchkommt, ist für Spieler nicht „running".
-     *
-     * **Mit Hostname-Routing zählt der Name, nicht die Adresse** (Fundpunkt 193).
-     * Dort teilen sich alle Server den Router-Port; auseinandergehalten werden
-     * sie am Namen, den der Client im Handshake mitschickt. Eine Sonde auf
-     * `publicIpv4:25565` schickt die IP als Namen mit, und Infrared weist sie ab
-     * („no proxy with uid <ip>@:25565"), obwohl der Server läuft – jeder Start
-     * liefe in `error`. Deshalb geht die Sonde auf den Hostnamen des Servers:
-     * Er löst über den CNAME auf dieselbe VPS auf, und `gamedig` trägt ihn als
-     * Ziel in den Handshake ein. Damit prüft der Check denselben Weg wie ein
-     * Spieler, Router eingeschlossen.
-     *
-     * **Welche Adresse das ist, sagt `healthCheckHost`** (Fundpunkt 288). Bei
-     * UDP-Spielen ist die öffentliche Adresse der VPS aus dem Backend-Container
-     * heraus die falsche: Das Paket geht hinaus und kommt zurück, aber die
-     * NAT-Schleife des Hosts schreibt den Absender auf das Docker-Gateway um.
-     * `gamedig` verwirft eine UDP-Antwort, deren Absender nicht das Ziel ist –
-     * jeder Versuch endete in „UDP - Timed out", und jeder Start eines
-     * UDP-Spiels lief nach seiner ganzen Frist in `error`, während Spieler
-     * darauf waren. Die Begründung im Langen steht an `HEALTH_CHECK_HOST`.
-     */
-    /*
-     * **Ein Server, den niemand abfragen kann, ist deshalb nicht krank.**
-     *
-     * Valheim mit `-public 0` beantwortet keine A2S-Abfrage (siehe
-     * `antwortetAufAbfragen`). Eine Sonde darauf läuft zwangsläufig in die
-     * Frist, und der Server landete nach zwanzig Minuten in `error`, während
-     * Spieler darauf unterwegs sind. Der Start gilt hier deshalb als geglückt,
-     * sobald der Container läuft – mehr ist über diesen Server nicht in
-     * Erfahrung zu bringen, und die falsche Aussage wäre die schlechtere.
-     *
-     * Der Preis steht in der Beschreibung des Feldes: keine Spielerzahl, kein
-     * Ping, kein automatischer Stopp bei 0 Spielern.
-     */
-    if (!this.antwortetAufAbfragen(server)) {
-      this.deps.log.info(
-        { serverId, gameType: server.gameType },
-        'Start ohne Abfrage bestaetigt - dieser Server beantwortet in seiner Einstellung keine Abfragen',
-      );
-      await this.transition(server, { type: 'healthCheckPassed' });
-      await this.emitServerEvent(
-        anlass === 'restart' ? 'server.restarted' : 'server.started',
-        serverId,
-        { pingMs: null },
-      );
-
-      return;
-    }
-
-    const result = await awaitHealthy({
-      target: {
-        host: definition.supportsVirtualHostRouting
-          ? this.hostnameFor(server)
-          : this.deps.config.healthCheckHost,
-        port: primary.publicPort,
-        query: definition.query,
-      },
-      startupTimeoutMs: definition.startupTimeoutSeconds * 1_000,
-      attemptTimeoutMs: this.deps.config.healthCheckAttemptTimeoutMs,
-      intervalMs: this.deps.config.healthCheckIntervalMs,
-      probe: this.deps.healthProbe,
-      sleep: this.deps.sleep,
-      // Dieselbe Uhr wie der Rest des Dienstes – sonst könnte ein Test die Zeit
-      // stellen und die Startfrist liefe trotzdem gegen die echte Uhr.
-      now: () => this.now().getTime(),
-    });
-
-    // Zwischenzeitlich kann der Server abgestürzt oder gestoppt worden sein.
-    const current = await this.requireServer(serverId);
-
-    if (current.status !== 'starting') {
-      this.deps.log.warn(
-        { serverId, status: current.status },
-        'Health-Check-Ergebnis verworfen – der Server ist nicht mehr im Startvorgang',
-      );
-
-      return;
-    }
-
-    if (result.healthy) {
-      await this.transition(current, { type: 'healthCheckPassed' });
-      /*
-       * Genau eine Meldung je Vorgang (Audit event-flow-09): Beim Neustart
-       * steht hier `server.restarted` („Neustart abgeschlossen – der Server ist
-       * wieder erreichbar"), sonst `server.started`. Beide zu senden wäre für
-       * denselben Vorgang zweimal dieselbe Nachricht.
-       */
-      await this.emitServerEvent(
-        anlass === 'restart' ? 'server.restarted' : 'server.started',
-        serverId,
-        { pingMs: result.pingMs },
-      );
-
-      return;
-    }
-
-    await this.transition(current, {
-      type: 'healthCheckFailed',
-      reason: result.reason ?? 'Der Server war nach dem Start nicht erreichbar.',
-    });
-    await this.emitServerEvent('server.failed', serverId, { detail: result.reason ?? null });
+  awaitStartupHealth(serverId: string, anlass: StartIntent = 'start'): Promise<void> {
+    return this.startupHealth.awaitStartupHealth(serverId, anlass);
   }
 
   /**
@@ -1764,6 +1531,68 @@ export class ServerOrchestrationService {
   }
 
   /**
+   * Übernimmt die neue Fassung des Spiel-Images (Pflichtenheft §9, Review
+   * 2026-09-16, Befund 2.9).
+   *
+   * Ein Server behält seine Fassung (`imageRef`) über Starts und Neustarts
+   * hinweg – `containerSpecFor` baut den Container immer mit der gespeicherten
+   * Fassung. Erst dieser Aufruf schreibt die Fassung der Definition an den
+   * Server; danach weicht der Fingerabdruck ab, und `ensureContainerCurrent`
+   * baut den Container neu. Am laufenden Server geschieht das als Stopp +
+   * Start, am gestoppten nur als Neuaufbau ohne Start – ein „Aktualisieren",
+   * das nebenbei hochfährt, wäre eine Überraschung.
+   *
+   * Der Weltstand liegt im Datenvolume (`dataHostPath`), das jeder Neuaufbau
+   * unverändert wieder einhängt; das Image trägt nur Laufzeit und Serverdateien.
+   *
+   * Idempotent: Trägt der Server die Fassung schon, passiert nichts.
+   */
+  async updateServerImage(
+    serverId: string,
+    actorUserId: string,
+  ): Promise<{
+    readonly server: ServerRecord;
+    readonly previousImage: string | null;
+    readonly image: string;
+    readonly restarted: boolean;
+  }> {
+    const server = await this.requireServer(serverId);
+    const definition = this.deps.registry.require(server.gameType);
+    const ziel = definition.dockerImage;
+
+    if (server.imageRef === ziel) {
+      return { server, previousImage: server.imageRef, image: ziel, restarted: false };
+    }
+
+    const lief = server.status === 'running' || server.status === 'starting';
+
+    if (!lief) {
+      // Nur `stopped`, `error` und `crashed` lassen einen Neuaufbau zu; ein
+      // Server mitten im Anlegen oder Stoppen wechselt seine Fassung nicht.
+      if (server.status !== 'stopped' && server.status !== 'error' && server.status !== 'crashed') {
+        throw new ServerOrchestrationError('SERVER_STATE_CONFLICT', undefined, {
+          serverId,
+          status: server.status,
+        });
+      }
+    }
+
+    // Erst die Fassung schreiben: Danach passt der Fingerabdruck nicht mehr,
+    // und der nächste Neuaufbau nimmt genau dieses Image.
+    await this.deps.repository.update(serverId, { imageRef: ziel });
+
+    if (lief) {
+      const neu = await this.restartServer(serverId, actorUserId, { erzwingen: true });
+
+      return { server: neu, previousImage: server.imageRef, image: ziel, restarted: true };
+    }
+
+    const neu = await this.ensureContainerCurrent(await this.requireServer(serverId), definition);
+
+    return { server: neu, previousImage: server.imageRef, image: ziel, restarted: false };
+  }
+
+  /**
    * Löscht einen Server samt Container, DNS-Eintrag und Portzuweisung.
    *
    * Der Container wird zuerst entfernt, der Datensatz zuletzt: Bricht es
@@ -1786,6 +1615,82 @@ export class ServerOrchestrationService {
    * `erzwingen` ist **kein** „Aufräumen überspringen": Ist der Agent erreichbar,
    * läuft der gewöhnliche Weg – geprüft wird die Verbindung, nicht der Wunsch.
    */
+  /**
+   * Besitzer eines Servers wechseln (Lastenheft §3.7, Pflichtenheft §7).
+   *
+   * Ein Verwaltungsvorgang (`server.manage.any`, geprüft in der Route), kein
+   * Recht des Besitzers. Das Zielkonto muss freigeschaltet und nicht gesperrt
+   * sein – dieselbe Regel wie beim Anlegen eines Servers; ein Konto, das das
+   * Panel gar nicht benutzen darf, soll keinen Server tragen. Der Owner der
+   * Instanz kann übernehmen wie jedes andere freigeschaltete Konto.
+   *
+   * Meldet danach `server.ownerTransferred` auf dem Listen-Thema: Der Server
+   * bleibt, verschwindet aber aus der Übersicht des alten und erscheint in der
+   * des neuen Besitzers. Der alte Besitzer steht dafür in der Nutzlast neben
+   * den Mitgliedern – er ist keines mehr, soll die Änderung aber sehen.
+   */
+  async transferOwnership(
+    serverId: string,
+    newOwnerId: string,
+  ): Promise<{
+    readonly server: ServerRecord;
+    readonly previousOwnerId: string;
+    readonly previousOwnerDisplayName: string | null;
+    readonly newOwnerDisplayName: string;
+  }> {
+    const server = await this.requireServer(serverId);
+
+    if (server.ownerId === newOwnerId) {
+      throw new ServerOrchestrationError(
+        'TRANSFER_TARGET_INVALID',
+        'Dieses Konto besitzt den Server bereits.',
+        { serverId, newOwnerId },
+      );
+    }
+
+    const candidate = await this.deps.repository.findTransferCandidate(newOwnerId);
+
+    if (candidate === null) {
+      throw new ServerOrchestrationError('USER_NOT_FOUND', undefined, { userId: newOwnerId });
+    }
+
+    if (
+      candidate.banned ||
+      isAwaitingApproval({
+        isOwner: candidate.isOwner,
+        hasNonGuestRole: hasNonGuestRole(candidate.roleNames.map((name) => ({ name }))),
+      })
+    ) {
+      throw new ServerOrchestrationError('TRANSFER_TARGET_INVALID', undefined, {
+        serverId,
+        newOwnerId,
+        banned: candidate.banned,
+      });
+    }
+
+    await this.deps.repository.transferOwner(serverId, newOwnerId);
+
+    const updated = await this.requireServer(serverId);
+    const members = await this.deps.repository.listMembers(serverId);
+
+    this.deps.events.emit('server.ownerTransferred', {
+      serverId,
+      serverName: updated.name,
+      ownerId: newOwnerId,
+      // Der alte Besitzer ist kein Mitglied mehr, soll den Wechsel aber sehen;
+      // der Hub adressiert Besitzer, Mitglieder und `server.view.any`.
+      memberUserIds: [...members.map((member) => member.userId), server.ownerId],
+      detail: null,
+    });
+
+    return {
+      server: updated,
+      previousOwnerId: server.ownerId,
+      previousOwnerDisplayName: server.ownerDisplayName,
+      newOwnerDisplayName: candidate.displayName,
+    };
+  }
+
   async deleteServer(serverId: string, optionen: { erzwingen?: boolean } = {}): Promise<void> {
     const server = await this.requireServer(serverId);
 
@@ -1821,7 +1726,7 @@ export class ServerOrchestrationService {
       // Erst die Abfrage einstellen, dann den Container entfernen: Sonst fragt
       // der Agent weiter einen Port ab, hinter dem nichts mehr steht
       // (Gefundener Punkt 74).
-      await this.applyServerQuery(server, false);
+      await this.queries.applyServerQuery(server, false);
       await this.removeContainer(session, server.id, server.dockerContainerId);
 
       // Id sofort löschen (orchestration-core-03): Bricht ein späterer Schritt
@@ -1943,441 +1848,21 @@ export class ServerOrchestrationService {
     return aktualisiert;
   }
 
-  /**
-   * Übernimmt ein hochgeladenes Weltdaten-Archiv in den frischen Datenordner
-   * (Lastenheft §3.3 „Migration von anderen Hosting-Anbietern", P4).
-   *
-   * Das Archiv liegt seit dem Wizard-Schritt auf der VPS (`world-import.ts`)
-   * und wird hier **einmalig** abgeholt. Entpackt wird es auf dem Homeserver:
-   * Der Agent liest es, prüft jeden Eintrag gegen den Datenordner und legt die
-   * Dateien über den Archiv-Endpunkt der Engine ab (`FILE_EXTRACT`). Das
-   * Backend fasst dabei kein Dateisystem an – der einzige Weg auf das
-   * Datenvolume bleibt der Agent (CLAUDE.md §4).
-   */
-  private async importWorldData(
-    server: ServerRecord,
-    containerId: string,
-    worldImport: WorldImportInput,
-  ): Promise<void> {
-    const store = this.deps.worldArchives;
+  // Weltdaten-Übernahme (P4) und Klonen (P7) leben seit dem Review 2026-09-16
+  // (Befund 2.1) in `world-import-transfer.ts` und `clone-service.ts`; hier
+  // bleiben die Durchreichungen für die Routen.
 
-    if (store === undefined) {
-      throw new ServerOrchestrationError(
-        'WORLD_ARCHIVE_NOT_FOUND',
-        'Für Weltdaten-Übernahmen ist kein Zwischenspeicher eingerichtet.',
-        { serverId: server.id },
-      );
-    }
-
-    /*
-     * Der Verweis gilt nur für das Konto, das hochgeladen hat
-     * (orchestration-features-09). `server.ownerId` ist genau dieses Konto: Der
-     * Wizard lädt hoch und legt danach den Server an, und ein geklonter Server
-     * bringt gar keinen `worldImport` mit. Eine fremde `uploadId` sieht damit
-     * aus wie eine abgelaufene.
-     */
-    const archiv = await store.take(worldImport.uploadId, server.ownerId);
-
-    if (archiv === null) {
-      throw new ServerOrchestrationError('WORLD_ARCHIVE_NOT_FOUND', undefined, {
-        serverId: server.id,
-        uploadId: worldImport.uploadId,
-      });
-    }
-
-    try {
-      const grenze = this.deps.config.maxWorldArchiveBytes;
-
-      if (archiv.sizeBytes > grenze) {
-        throw new ServerOrchestrationError(
-          'FILE_TOO_LARGE',
-          `Das Archiv überschreitet die zulässige Größe von ${String(grenze)} Byte.`,
-          { serverId: server.id, sizeBytes: archiv.sizeBytes },
-        );
-      }
-
-      const session = this.deps.agents.require(server.hostId);
-      const ergebnis = await this.sendWorldArchive(session, server, containerId, archiv);
-
-      this.deps.log.info(
-        {
-          serverId: server.id,
-          fileName: worldImport.fileName,
-          sizeBytes: archiv.sizeBytes,
-          fileCount: ergebnis.fileCount,
-          extractedBytes: ergebnis.extractedBytes,
-          skipped: ergebnis.skipped,
-        },
-        'Weltdaten übernommen',
-      );
-    } finally {
-      // Auch nach einem Fehler: Das Archiv gehört dem Nutzer und hat nach dem
-      // Versuch nichts mehr auf der VPS verloren.
-      await archiv.release();
-    }
-  }
-
-  /**
-   * Ein Archiv blockweise an den Agent geben (Gefundener Punkt 106).
-   *
-   * Früher ging es in einem `FILE_EXTRACT` über den Kanal und war damit auf
-   * `AGENT_FILE_CHANNEL_MAX_BYTES` (64 MiB) begrenzt – für die Migration eines
-   * gewachsenen Servers zu wenig. Jetzt fließt es in Blöcken; der Agent hängt
-   * sie auf dem Homeserver aneinander und entpackt beim letzten.
-   *
-   * `transferId` ist die `uploadId` des Zwischenspeichers: Sie ist bereits
-   * eindeutig, und ein zweiter Anlauf desselben Imports trifft damit auf
-   * dieselbe Datei, statt eine weitere anzulegen.
-   */
-  private async sendWorldArchive(
-    session: AgentSession,
-    server: ServerRecord,
-    containerId: string,
-    archiv: StoredWorldArchive,
-  ): Promise<FileExtractCommandResult> {
-    let offset = 0;
-
-    for (;;) {
-      const block = await archiv.read(offset, WORLD_IMPORT_CHUNK_BYTES);
-      // Der letzte Block ist der, nach dem nichts mehr kommt. Ein leeres Archiv
-      // gibt es nicht (der Upload prüft das Format), ein leerer letzter Block
-      // also auch nicht – außer die Datei ist unterwegs geschrumpft.
-      const last = offset + block.byteLength >= archiv.sizeBytes;
-
-      const antwort = await session.sendCommand('UPLOAD_ARCHIVE_BLOCK', server.id, {
-        containerId,
-        transferId: archiv.uploadId,
-        offset,
-        contentBase64: block.toString('base64'),
-        last,
-        // Wurzel des Datenordners – ein Weltarchiv bringt seine eigene
-        // Ordnerstruktur mit.
-        path: '',
-        format: archiv.format,
-      });
-
-      offset += block.byteLength;
-
-      if (antwort.extract !== null) {
-        return antwort.extract;
-      }
-
-      if (block.byteLength === 0) {
-        // Kein Fortschritt und kein Ergebnis: weiterzudrehen hieße, für immer
-        // zu drehen.
-        throw new ServerOrchestrationError(
-          'WORLD_ARCHIVE_INVALID',
-          'Die Übertragung des Archivs endete ohne Ergebnis.',
-          { serverId: server.id, uploadId: archiv.uploadId, offset },
-        );
-      }
-    }
-  }
-
-  /**
-   * Klont einen Server (Pflichtenheft §9, Lastenheft §3.3).
-   *
-   * „Erzeugt einen neuen `GameServer`-Datensatz mit kopierter Konfiguration und
-   * zwingend neuer, eigener Subdomain (gleiche Prüf-/Formatregeln wie bei
-   * Neuerstellung); Weltdaten werden optional mitkopiert, Fortschritt wird im
-   * Frontend angezeigt."
-   *
-   * **Auftrag statt langer Antwort (P7).** Der Aufruf liefert sofort den
-   * `ServerCloneJobDto`; die eigentliche Arbeit läuft im Hintergrund weiter und
-   * meldet sich über `serverClone.progressed`. Vorher gab dieselbe Methode erst
-   * nach dem vollständigen Anlegen einen Serverdatensatz zurück – bei einer
-   * mitkopierten Welt wären das Minuten mit offener Verbindung, und das
-   * Frontend erwartete ohnehin schon den Auftrag.
-   *
-   * Die neue Subdomain ist Pflicht und durchläuft dieselbe Prüfkette –
-   * `createServerInternal()` wird dafür bewusst wiederverwendet. Eine bereits
-   * vergebene Subdomain fällt deshalb **vor** dem Auftrag auf und wird als
-   * Fehler beantwortet, nicht als fehlgeschlagener Auftrag: Ein Auftrag, der
-   * nie eine Chance hatte, wäre nur ein Umweg zur selben Meldung.
-   */
-  async cloneServer(
+  cloneServer(
     sourceServerId: string,
     input: CloneServerInput,
     ownerId: string,
   ): Promise<ServerCloneJobDto> {
-    const source = await this.requireServer(sourceServerId);
-
-    // Vorab dieselbe Prüfung, die `createServerInternal()` gleich noch einmal
-    // macht: Sie ist die einzige, die schon feststeht, bevor irgendetwas läuft.
-    if (await this.deps.repository.isSubdomainTaken(normalizeSubdomain(input.subdomain))) {
-      throw new ServerOrchestrationError('SUBDOMAIN_TAKEN', undefined, {
-        subdomain: input.subdomain,
-      });
-    }
-
-    const job = this.cloneJobs.create({
-      sourceServerId,
-      targetName: input.name,
-      targetSubdomain: input.subdomain,
-      includeWorldData: input.includeWorldData,
-    });
-
-    this.publishCloneJob(job);
-
-    // Bewusst nicht abgewartet: Der Aufrufer bekommt den Auftrag sofort. Der
-    // Hintergrundlauf fängt jeden Fehler selbst ab und schreibt ihn in den
-    // Auftrag; das Netz darunter fängt, was daran vorbeigeht (Fundpunkt 126).
-    fireAndForget(this.runCloneJob(job.id, source, input, ownerId), this.deps.log, {
-      vorgang: 'Klon-Auftrag',
-      serverId: sourceServerId,
-      jobId: job.id,
-    });
-
-    return job;
+    return this.clones.cloneServer(sourceServerId, input, ownerId);
   }
 
   /** Stand eines Klon-Auftrags (Route `GET /api/servers/:id/clone/:jobId`). */
   findCloneJob(sourceServerId: string, jobId: string): ServerCloneJobDto | null {
-    const job = this.cloneJobs.find(jobId);
-
-    // Ein Auftrag an einem anderen Server wird wie ein fehlender gemeldet – die
-    // Antwort soll nicht verraten, was an fremden Servern läuft.
-    return job !== null && job.serverId === sourceServerId ? job : null;
-  }
-
-  /** Meldet den Auftragsstand an den Live-Kanal (Contract `serverClone.progressed`). */
-  private publishCloneJob(job: ServerCloneJobDto): void {
-    this.deps.events.emit('serverClone.progressed', { serverId: job.serverId, job });
-  }
-
-  private advanceCloneJob(jobId: string, progress: CloneJobProgress): void {
-    const job = this.cloneJobs.update(jobId, progress);
-
-    if (job !== null) {
-      this.publishCloneJob(job);
-    }
-  }
-
-  /**
-   * Der eigentliche Klon-Lauf.
-   *
-   * Fehler beenden den Auftrag mit `failed` und einem Text, statt zu werfen:
-   * Auf diesen Aufruf wartet niemand mehr.
-   */
-  private async runCloneJob(
-    jobId: string,
-    source: ServerRecord,
-    input: CloneServerInput,
-    ownerId: string,
-  ): Promise<void> {
-    /*
-     * Der bereits angelegte Zielserver – gebraucht im Fehlerfall (Audit
-     * orchestration-features-04). Bleibt `null`, solange `createServerInternal`
-     * nicht durch ist; scheitert das Anlegen selbst, hat sein Rollback den
-     * Datensatz schon entfernt.
-     */
-    let ziel: ServerRecord | null = null;
-
-    try {
-      this.advanceCloneJob(jobId, {
-        status: 'running',
-        progressPercent: 5,
-        step: 'Server wird angelegt',
-      });
-
-      const clone = await this.createServerInternal(
-        {
-          name: input.name,
-          gameType: source.gameType,
-          subdomain: input.subdomain,
-          hostId: source.hostId,
-          resourceLimits: source.resourceLimits,
-          config: { ...source.configJson },
-          startupParameters: source.startupParameters,
-          autoShutdownEnabled: source.autoShutdown.enabled,
-          worldImport: null,
-        },
-        ownerId,
-        source.id,
-      );
-
-      ziel = clone;
-
-      this.advanceCloneJob(jobId, {
-        targetServerId: clone.id,
-        progressPercent: input.includeWorldData ? 30 : 90,
-        step: input.includeWorldData ? 'Weltdaten werden gesichert' : 'Klon wird abgeschlossen',
-      });
-
-      if (input.includeWorldData) {
-        await this.copyWorldData(
-          jobId,
-          source,
-          await this.requireServer(clone.id),
-          input.stopSourceServer === true,
-        );
-      }
-
-      await this.emitServerEvent('server.cloned', clone, {
-        sourceServerId: source.id,
-        copiedWorldData: input.includeWorldData,
-      });
-
-      const fertig = this.cloneJobs.finish(jobId, 'completed');
-
-      if (fertig !== null) {
-        this.publishCloneJob(fertig);
-      }
-    } catch (error: unknown) {
-      const grund = error instanceof Error ? error.message : 'Unbekannter Fehler.';
-
-      /*
-       * Der Zielserver darf nicht unauffällig stehen bleiben (Audit
-       * orchestration-features-04): Der Klon-Auftrag ist nach 15 Minuten
-       * vergessen, danach deutete nichts mehr darauf hin, dass diesem Server
-       * die Welt fehlt – der Nutzer startet ihn und spielt auf leerer Welt
-       * weiter.
-       */
-      if (ziel !== null) {
-        await this.markCloneTargetFailed(ziel, grund);
-      }
-
-      const gescheitert = this.cloneJobs.finish(jobId, 'failed', grund);
-
-      this.deps.log.error(
-        { jobId, sourceServerId: source.id, targetServerId: ziel?.id ?? null, error: grund },
-        'Klon fehlgeschlagen',
-      );
-
-      if (gescheitert !== null) {
-        this.publishCloneJob(gescheitert);
-      }
-    }
-  }
-
-  /**
-   * Markiert einen Klon, dessen Weltdaten-Übernahme gescheitert ist, als
-   * `error` – mit einem Hinweis, der den Grund benennt.
-   *
-   * Bewusst **kein** Löschen: Auf der Node liegen bereits Container und
-   * Datenordner, und je nachdem, wie weit `RESTORE_BACKUP` gekommen ist, auch
-   * schon Teile der Welt. Sie ungefragt wegzuräumen wäre der schlechtere
-   * Eingriff – dieselbe Begründung wie an `rollbackFailedCreate()`. Der Nutzer
-   * sieht den Fehlerzustand samt Meldung und entscheidet selbst.
-   *
-   * Scheitert das Markieren, bleibt es beim Log: Der Klon-Auftrag ist die
-   * eigentliche Antwort auf den Vorgang, und der wird ohnehin als `failed`
-   * gemeldet.
-   */
-  private async markCloneTargetFailed(clone: ServerRecord, grund: string): Promise<void> {
-    const hinweis = `Die Weltdaten des Ursprungsservers konnten nicht übernommen werden: ${grund} Der Server ist angelegt, seine Welt aber leer.`;
-
-    try {
-      const aktuell = await this.deps.repository.findById(clone.id);
-
-      if (aktuell === null) {
-        return;
-      }
-
-      await this.transition(aktuell, { type: 'failed', reason: hinweis });
-      await this.emitServerEvent('server.failed', aktuell.id, { detail: hinweis });
-    } catch (error: unknown) {
-      this.deps.log.warn(
-        {
-          serverId: clone.id,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Gescheiterter Klon konnte nicht als fehlerhaft markiert werden',
-      );
-    }
-  }
-
-  /**
-   * Kopiert die Weltdaten in den Klon (Lastenheft §3.3, Arbeitspaket P7).
-   *
-   * **Über die vorhandene Backup-Mechanik, nicht über einen neuen Befehl.** Der
-   * Datenordner wird auf dem Homeserver gepackt (`CREATE_BACKUP`), in den
-   * Datenordner des Klons entpackt (`RESTORE_BACKUP`) und das Zwischenarchiv
-   * wieder entfernt (`DELETE_BACKUP`). Alle drei Befehle sind seit A3 umgesetzt;
-   * ein eigener Kopier-Befehl wäre eine vierte Art, dieselbe Dateisystemarbeit
-   * zu beschreiben (CLAUDE.md §3). Der Umweg über das Archiv bringt außerdem die
-   * Prüfsumme mit: `RESTORE_BACKUP` vergleicht sie, bevor es etwas schreibt
-   * (Fundpunkt 99).
-   *
-   * **Der Quellserver wird nicht angehalten.** Er gehört dem Nutzer und läuft
-   * womöglich mit Spielern darauf; ihn für einen Klon abzuschalten wäre ein
-   * Eingriff, um den niemand gebeten hat. Die Kopie entspricht damit einer
-   * Sicherung im laufenden Betrieb – dieselbe Einschränkung, die
-   * `BackupDto.containerStopped` beschreibt.
-   *
-   * Das Zwischenarchiv wird auch dann entfernt, wenn das Zurückspielen
-   * scheitert: Sonst bliebe eine vollständige Kopie der Welt ohne Besitzer auf
-   * der Platte liegen.
-   */
-  private async copyWorldData(
-    jobId: string,
-    source: ServerRecord,
-    clone: ServerRecord,
-    stopSource: boolean,
-  ): Promise<void> {
-    const session = this.deps.agents.require(source.hostId);
-    const archivId = randomUUID();
-
-    /*
-     * `stopContainer` kommt aus der Anfrage (`stopSourceServer`, Gefundener
-     * Punkt 107): Ein laufender Spielserver schreibt weiter in die Dateien, die
-     * gerade gepackt werden, und die Kopie enthielte dann einen halb
-     * geschriebenen Spielstand. Angehalten wird nur auf ausdrücklichen Wunsch –
-     * den Server eines Nutzers ungefragt abzuschalten wäre ein Eingriff, um den
-     * niemand gebeten hat. Der Agent versetzt den Container danach in seinen
-     * vorherigen Zustand zurück (`backup-job.ts`).
-     */
-    const gesichert = await session.sendCommand('CREATE_BACKUP', source.id, {
-      backupId: archivId,
-      serverId: source.id,
-      sourcePath: dataHostPathFor(source.id),
-      ...(source.dockerContainerId === null ? {} : { containerId: source.dockerContainerId }),
-      stopContainer: stopSource,
-    });
-
-    this.advanceCloneJob(jobId, {
-      progressPercent: 60,
-      step: gesichert.containerStopped
-        ? 'Weltdaten werden übertragen (Quellserver angehalten)'
-        : 'Weltdaten werden übertragen',
-      totalBytes: gesichert.sizeBytes,
-    });
-
-    try {
-      await session.sendCommand('RESTORE_BACKUP', clone.id, {
-        backupId: archivId,
-        serverId: clone.id,
-        storagePath: gesichert.storagePath,
-        targetPath: dataHostPathFor(clone.id),
-        expectedChecksum: gesichert.checksumSha256,
-        ...(clone.dockerContainerId === null ? {} : { containerId: clone.dockerContainerId }),
-      });
-    } finally {
-      try {
-        await session.sendCommand('DELETE_BACKUP', source.id, {
-          backupId: archivId,
-          storagePath: gesichert.storagePath,
-        });
-      } catch (error: unknown) {
-        // Ein liegengebliebenes Zwischenarchiv ist ärgerlich, aber kein Grund,
-        // einen sonst gelungenen Klon als gescheitert zu melden. Der
-        // Speicher-Explorer (B8) findet es als verwaisten Posten.
-        this.deps.log.warn(
-          {
-            sourceServerId: source.id,
-            storagePath: gesichert.storagePath,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          'Zwischenarchiv des Klons konnte nicht entfernt werden',
-        );
-      }
-    }
-
-    this.advanceCloneJob(jobId, {
-      progressPercent: 90,
-      step: 'Klon wird abgeschlossen',
-      copiedBytes: gesichert.sizeBytes,
-    });
+    return this.clones.findCloneJob(sourceServerId, jobId);
   }
 
   // -------------------------------------------------------------------------
@@ -2448,243 +1933,62 @@ export class ServerOrchestrationService {
   }
 
   // -------------------------------------------------------------------------
-  // Datei-Manager (Arbeitspaket P2, Lastenheft §3.3)
+  // Datei-Manager (Arbeitspaket P2, Lastenheft §3.3) – siehe `file-service.ts`
   // -------------------------------------------------------------------------
   //
-  // Alle Methoden hier nehmen Pfade **relativ zum Datenordner** entgegen – so,
-  // wie das Frontend sie kennt – und übersetzen sie in `files.ts` in absolute
-  // Container-Pfade. Ein Ausbruch aus dem Datenordner scheitert damit schon im
-  // Backend; der Agent prüft dieselbe Grenze noch einmal (`resolveWithinRoot`).
+  // Die Dateioperationen leben seit dem Review 2026-09-16 (Befund 2.1) in
+  // `ServerFileService`; hier bleiben nur die Durchreichungen, damit Routen
+  // und Tests dieselbe Oberfläche behalten.
 
-  /** Verzeichnisinhalt als DTO, samt der geltenden Grenzen. */
-  async listFiles(
+  listFiles(
     serverId: string,
     relativePath: string,
     options: ServerFileAccessOptions,
   ): Promise<ServerFileListDto> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = normalizeRelativePath(relativePath);
-
-    const result = await session.sendCommand(
-      'FILE_LIST',
-      server.id,
-      { containerId, path: toContainerPath(dataRoot, relativ) },
-      { timeoutMs: this.deps.config.fileListTimeoutMs },
-    );
-
-    return toServerFileListDto(server.id, dataRoot, relativ, result.entries, {
-      writable: options.writable,
-      maxUploadBytes: this.maxUploadBytes(),
-    });
+    return this.files.listFiles(serverId, relativePath, options);
   }
 
-  /** Dateiinhalt für den eingebauten Editor. */
-  async readFile(
+  readFile(
     serverId: string,
     relativePath: string,
     options: ServerFileAccessOptions,
   ): Promise<ServerFileContentDto> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = this.requireFilePath(relativePath);
-
-    const result = await session.sendCommand('FILE_READ', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, relativ),
-    });
-    const content = Buffer.from(result.contentBase64, 'base64');
-
-    return toServerFileContentDto(
-      server.id,
-      relativ,
-      content,
-      await this.fileModifiedAt(server.id, relativ),
-      options.writable,
-    );
+    return this.files.readFile(serverId, relativePath, options);
   }
 
-  /**
-   * Datei aus dem Editor zurückschreiben.
-   *
-   * Überschreibt still – anders als {@link uploadFile}. Das ist gewollt: Hier
-   * wird genau die Datei gespeichert, die der Nutzer vorher geöffnet hat.
-   */
-  async writeFile(
+  writeFile(
     serverId: string,
     relativePath: string,
     content: string,
     options: ServerFileAccessOptions,
   ): Promise<ServerFileContentDto> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = this.requireFilePath(relativePath);
-    const inhalt = Buffer.from(content, 'utf8');
-
-    this.assertWithinTransferLimit(inhalt.byteLength);
-
-    await session.sendCommand('FILE_WRITE', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, relativ),
-      contentBase64: inhalt.toString('base64'),
-    });
-
-    return toServerFileContentDto(
-      server.id,
-      relativ,
-      inhalt,
-      await this.fileModifiedAt(server.id, relativ),
-      options.writable,
-    );
+    return this.files.writeFile(serverId, relativePath, content, options);
   }
 
-  /**
-   * Hochgeladene Datei im Zielordner ablegen.
-   *
-   * Einziger Unterschied zu {@link writeFile}: Der Agent prüft den Zielpfad vor
-   * dem Schreiben und lehnt einen belegten Pfad ohne `overwrite` mit
-   * `AGENT_FILE_EXISTS` (409) ab. Ein Upload legt eine neue Datei an – dass
-   * dabei unbemerkt eine gleichnamige verschwindet, wäre Datenverlust ohne
-   * Rückfrage.
-   *
-   * @returns Der Inhalt des Zielordners nach dem Upload.
-   */
-  async uploadFile(
+  uploadFile(
     serverId: string,
     directoryPath: string,
     fileName: string,
     content: Buffer,
     options: ServerFileUploadOptions,
   ): Promise<ServerFileListDto> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const verzeichnis = normalizeRelativePath(directoryPath);
-    const ziel = this.requireFilePath(path.posix.join(verzeichnis, fileName));
-
-    this.assertWithinTransferLimit(content.byteLength);
-
-    await session.sendCommand('FILE_UPLOAD', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, ziel),
-      contentBase64: content.toString('base64'),
-      ...(options.overwrite === undefined ? {} : { overwrite: options.overwrite }),
-    });
-
-    return this.listFiles(server.id, verzeichnis, { writable: options.writable });
+    return this.files.uploadFile(serverId, directoryPath, fileName, content, options);
   }
 
-  /**
-   * Datei oder Verzeichnis entfernen; ein bereits fehlender Pfad ist kein
-   * Fehler.
-   *
-   * **Vorgabe `false`** (Audit contract-drift-03). Der Vertrag zieht die Grenze
-   * ausdrücklich: „Ohne Angabe lehnt der Agent das Löschen eines nicht-leeren
-   * Verzeichnisses ab, damit ein versehentlicher Klick nicht einen ganzen
-   * Datenbaum mitnimmt" (`FileDeleteCommandPayload`). Die bisherige Vorgabe
-   * `true` hob genau diese Schranke wieder auf – ein Klick auf „Löschen" neben
-   * `world/` nahm die ganze Welt mit, ohne dass die Oberfläche den Unterschied
-   * zwischen Datei und Verzeichnis auch nur benannt hätte. Wer einen Baum
-   * löschen will, sagt es jetzt ausdrücklich.
-   */
-  async deleteFile(serverId: string, relativePath: string, recursive = false): Promise<void> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = this.requireFilePath(relativePath);
-
-    await session.sendCommand('FILE_DELETE', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, relativ),
-      recursive,
-    });
+  deleteFile(serverId: string, relativePath: string, recursive = false): Promise<void> {
+    return this.files.deleteFile(serverId, relativePath, recursive);
   }
 
-  /** Eine einzelne Datei zum Herunterladen laden (Grenze: `AGENT_FILE_CHANNEL_MAX_BYTES`). */
-  async downloadFile(
+  downloadFile(
     serverId: string,
     relativePath: string,
   ): Promise<{ fileName: string; content: Buffer }> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const relativ = this.requireFilePath(relativePath);
-
-    const result = await session.sendCommand('FILE_READ', server.id, {
-      containerId,
-      path: toContainerPath(dataRoot, relativ),
-    });
-
-    return {
-      fileName: path.posix.basename(relativ),
-      content: Buffer.from(result.contentBase64, 'base64'),
-    };
+    return this.files.downloadFile(serverId, relativePath);
   }
 
-  /**
-   * Tatsächlich zulässige Upload-Größe: der kleinere der beiden Werte.
-   *
-   * Öffentlich, weil die Upload-Route dieselbe Zahl als Multipart-Grenze je
-   * Aufruf setzt (Fundpunkt 123) – so puffert das Backend nie mehr, als der
-   * Dienst gleich darauf annehmen würde.
-   */
+  /** Tatsächlich zulässige Upload-Größe; die Upload-Route setzt sie als Multipart-Grenze. */
   maxUploadBytes(): number {
-    return effectiveUploadLimitBytes(this.deps.config.maxUploadBytes);
-  }
-
-  private assertWithinTransferLimit(sizeBytes: number): void {
-    if (sizeBytes > this.maxUploadBytes()) {
-      throw new ServerOrchestrationError(
-        'FILE_TOO_LARGE',
-        'Die Datei überschreitet die zulässige Upload-Größe.',
-        { sizeBytes, maxBytes: this.maxUploadBytes() },
-      );
-    }
-  }
-
-  /** Wie {@link normalizeRelativePath}, lehnt aber zusätzlich die Wurzel ab. */
-  private requireFilePath(relativePath: string): string {
-    const relativ = normalizeRelativePath(relativePath);
-
-    if (relativ === '') {
-      throw new ServerOrchestrationError(
-        'AGENT_INVALID_PATH',
-        'Für diesen Vorgang wird eine Datei benötigt, nicht der Datenordner selbst.',
-      );
-    }
-
-    return relativ;
-  }
-
-  /**
-   * Änderungszeitpunkt einer Datei – aus dem Verzeichnis, in dem sie liegt.
-   *
-   * `FILE_READ` liefert keinen Zeitstempel; der DTO braucht ihn (Anzeige und
-   * Konflikterkennung im Editor). Statt ihn zu erfinden, wird das Verzeichnis
-   * gelistet und der Eintrag herausgesucht. Findet sich keiner – etwa weil die
-   * Datei zwischen beiden Aufrufen verschwindet – bleibt es beim Lesezeitpunkt.
-   */
-  private async fileModifiedAt(serverId: string, relativePath: string): Promise<string> {
-    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
-    const elternPfad = parentPathOf(relativePath) ?? '';
-
-    const result = await session.sendCommand(
-      'FILE_LIST',
-      server.id,
-      { containerId, path: toContainerPath(dataRoot, elternPfad) },
-      { timeoutMs: this.deps.config.fileListTimeoutMs },
-    );
-    const name = path.posix.basename(relativePath);
-
-    return (
-      result.entries.find((entry) => entry.name === name)?.modifiedAt ?? this.now().toISOString()
-    );
-  }
-
-  /** Wie {@link requireLiveTarget}, zusätzlich mit dem Datenordner des Spiels. */
-  private async requireFileTarget(serverId: string): Promise<{
-    server: ServerRecord;
-    session: AgentSession;
-    containerId: string;
-    dataRoot: string;
-  }> {
-    const ziel = await this.requireLiveTarget(serverId);
-
-    return {
-      ...ziel,
-      dataRoot: this.deps.registry.require(ziel.server.gameType).dataVolumeContainerPath,
-    };
+    return this.files.maxUploadBytes();
   }
 
   // -------------------------------------------------------------------------
@@ -2980,154 +2284,32 @@ export class ServerOrchestrationService {
   }
 
   // -------------------------------------------------------------------------
+  // Verlauf der Messwerte (Lastenheft §3.3, P5) – siehe `stats-sampling.ts`
+  // -------------------------------------------------------------------------
+  //
+  // Abtastung, Last je Node und Verlauf leben seit dem Review 2026-09-16
+  // (Befund 2.1) in `ServerStatsSampler`; hier bleiben die Durchreichungen für
+  // den Zeitgeber und die Routen.
+
+  sampleServerStats(hostId: string): Promise<readonly string[]> {
+    return this.stats.sampleServerStats(hostId);
+  }
+
+  listServerLoads(): readonly ServerLoadSnapshot[] {
+    return this.stats.listServerLoads();
+  }
+
+  pruneServerStats(): Promise<number> {
+    return this.stats.pruneServerStats();
+  }
+
+  getStatsHistory(serverId: string, windowMinutes: number): Promise<ServerStatsHistoryDto> {
+    return this.stats.getStatsHistory(serverId, windowMinutes);
+  }
+
+  // -------------------------------------------------------------------------
   // Auto-Shutdown
   // -------------------------------------------------------------------------
-
-  // -------------------------------------------------------------------------
-  // Verlauf der Messwerte (Lastenheft §3.3, Arbeitspaket P5)
-  // -------------------------------------------------------------------------
-
-  /**
-   * Hält die Messwerte aller laufenden Server einer Node fest.
-   *
-   * Wird periodisch aufgerufen (`scheduler.ts`) – kein eigener Timer. Ein
-   * Server, dessen Messung scheitert, hält die übrigen nicht auf: Eine Lücke im
-   * Verlauf ist hinnehmbar, ein abgebrochener Durchlauf wäre eine Lücke für
-   * alle.
-   *
-   * Derselbe Durchlauf schreibt den Stand für die Ressourcen-Warnung auf
-   * Server-Ebene mit ({@link listServerLoads}). Nur Server, die hier
-   * tatsächlich gemessen wurden, stehen anschließend darin: Ein gestoppter,
-   * gelöschter oder unmessbarer Server fällt heraus, weil der Stand der Node
-   * vollständig ersetzt wird.
-   */
-  async sampleServerStats(hostId: string): Promise<readonly string[]> {
-    const ablage = this.deps.statsHistory;
-
-    if (ablage === undefined) {
-      return [];
-    }
-
-    const moment = this.now();
-    const abgetastet: string[] = [];
-    const lasten: ServerLoadSnapshot[] = [];
-
-    for (const server of await this.deps.repository.listByHost(hostId)) {
-      if (server.status !== 'running') {
-        continue;
-      }
-
-      try {
-        const stats = await this.getStats(server.id);
-        const abfrage = this.latestQuery.read(server.id, moment);
-        const ramUsedMb = Math.round(stats.memoryUsedBytes / (1024 * 1024));
-        /*
-         * Belegter Plattenplatz des Datenordners (Fundpunkt 168). Das Feld ist
-         * im Vertrag optional: Ein älterer Agent kennt es nicht, und auch ein
-         * neuer lässt es weg, solange er den Ordner noch nicht gemessen hat.
-         *
-         * Fehlt es, bleibt der Wert `null` – „nicht gemessen", **nicht** „null
-         * Bytes belegt". Der Unterschied zählt: `evaluateServerWarnings` lässt
-         * `null` fallen, aus einer 0 rechnete es dagegen „0 % belegt" und
-         * schwiege auch dann, wenn die Platte längst voll wäre.
-         */
-        const diskUsedMb =
-          stats.diskUsedBytes === undefined
-            ? null
-            : Math.round(stats.diskUsedBytes / (1024 * 1024));
-
-        /*
-         * Für den Live-Kanal merken (Fundpunkt 175). Dies ist die **einzige**
-         * Stelle, an der der Plattenplatz überhaupt ankommt: Er hängt an
-         * `GET_STATS` und nicht am Statistik-Strom der Engine. Ohne diese Zeile
-         * bliebe die Kachel „Platte" in der Live-Anzeige dauerhaft leer,
-         * während Verlauf und Ressourcen-Warnung denselben Wert schon führen.
-         */
-        this.latestDiskUsage.remember(server.id, diskUsedMb, moment);
-
-        const probe: StatsSample = {
-          serverId: server.id,
-          recordedAt: moment,
-          cpuPercent: stats.cpuPercent,
-          ramUsedMb,
-          diskUsedMb,
-          pingMs: abfrage.pingMs,
-          playersOnline: abfrage.playersOnline,
-          playersMax: abfrage.playersMax,
-          networkRxBytes: stats.networkRxBytes,
-          networkTxBytes: stats.networkTxBytes,
-        };
-
-        await ablage.insert(probe);
-        abgetastet.push(server.id);
-        lasten.push({
-          serverId: server.id,
-          nodeId: server.hostId,
-          ownerId: server.ownerId,
-          limits: server.resourceLimits,
-          usedRamMb: ramUsedMb,
-        });
-      } catch (error: unknown) {
-        this.deps.log.warn(
-          { serverId: server.id, error: error instanceof Error ? error.message : String(error) },
-          'Messwerte konnten nicht festgehalten werden',
-        );
-      }
-    }
-
-    this.serverLoads.replace(hostId, lasten, moment);
-
-    return abgetastet;
-  }
-
-  /**
-   * Zuletzt gemessene Last aller laufenden Server – die Quelle, aus der der
-   * Zeitgeber die Warnungen auf Server-Ebene rechnet (Lastenheft §3.3).
-   *
-   * Ohne eigene Abfrage: Die Werte stammen aus der Abtastung desselben Takts
-   * (siehe {@link sampleServerStats}). Zu alte Stände fallen weg – ein Server,
-   * den seit zwei Takten niemand gemessen hat, ist kein Warnungsgrund, sondern
-   * ein Messproblem.
-   */
-  listServerLoads(): readonly ServerLoadSnapshot[] {
-    return this.serverLoads.list(this.now());
-  }
-
-  /** Entfernt Stichproben jenseits der Aufbewahrungsfrist (`STATS_HISTORY_RETENTION_HOURS`). */
-  async pruneServerStats(): Promise<number> {
-    const ablage = this.deps.statsHistory;
-
-    if (ablage === undefined) {
-      return 0;
-    }
-
-    const grenze = new Date(
-      this.now().getTime() - this.deps.config.statsHistoryRetentionHours * 60 * 60 * 1000,
-    );
-
-    return ablage.prune(grenze);
-  }
-
-  /**
-   * Verlauf der Messwerte eines Servers (Lastenheft §3.3).
-   *
-   * `windowMinutes` wird an der Aufbewahrungsfrist gekappt: Ein größeres
-   * Fenster brächte nur eine Reihe, die vorne bei der Frist abbricht, und würde
-   * Lücken vortäuschen, die in Wirklichkeit weggeräumte Zeilen sind.
-   */
-  async getStatsHistory(serverId: string, windowMinutes: number): Promise<ServerStatsHistoryDto> {
-    const fenster = Math.min(windowMinutes, this.deps.config.statsHistoryRetentionHours * 60);
-    const ablage = this.deps.statsHistory;
-    const seit = new Date(this.now().getTime() - fenster * 60 * 1000);
-    const proben = ablage === undefined ? [] : await ablage.listSince(serverId, seit);
-
-    return toStatsHistoryDto(
-      serverId,
-      fenster,
-      Math.round(this.deps.config.statsSampleIntervalMs / 1000),
-      proben,
-    );
-  }
 
   /**
    * Prüft alle laufenden Server einer Node auf Inaktivität (Pflichtenheft §9).
@@ -3331,9 +2513,13 @@ export class ServerOrchestrationService {
         id: server.id,
         status: server.status,
         dockerContainerId: server.dockerContainerId,
+        statusChangedAt: server.statusChangedAt,
       })),
       frame.containers,
       frame.reason,
+      // Ein laufendes Anlegen überlebt einen Reconnect, solange die
+      // `CREATE`-Frist läuft (Review 2026-09-16, Befund 11.2).
+      { createGraceMs: this.deps.config.createTimeoutMs },
     );
 
     this.deps.log.info(
@@ -3530,7 +2716,7 @@ export class ServerOrchestrationService {
     const laeuftJetzt = result.state.status === 'running' || result.state.status === 'starting';
 
     if (liefVorher && !laeuftJetzt) {
-      await this.applyServerQuery(server, false);
+      await this.queries.applyServerQuery(server, false);
     }
 
     return result;
@@ -3635,20 +2821,39 @@ export class ServerOrchestrationService {
       return host;
     }
 
-    const host = await this.deps.repository.defaultHost();
+    const kandidaten = await this.deps.repository.listPlacementCandidates();
 
-    if (host === null) {
+    if (kandidaten.length === 0) {
       throw new ServerOrchestrationError(
         'AGENT_NOT_CONNECTED',
         'Es ist keine Node eingerichtet. Bitte zuerst die Ersteinrichtung ausführen (pnpm --filter @palantir/backend db:seed).',
       );
     }
 
-    // Auch die vorgegebene Node muss annehmen: Ist die einzige Node der
-    // Installation stillgelegt, entsteht hier kein Server (Punkt 109).
-    this.assertNodeAcceptsWork(host, 'create');
+    /*
+     * Platzierungsregel statt „älteste Node" (Review 2026-09-16, Befund 2.3):
+     * die Node mit dem meisten freien RAM unter denen, die Arbeit annehmen;
+     * bei Gleichstand die älteste – mit einer Node also wie bisher.
+     */
+    const wahl = choosePlacementHost(kandidaten);
 
-    return host;
+    if (wahl === null) {
+      // Keine Node nimmt an (Punkt 109): Bei genau einer Node dieselbe Meldung
+      // wie bei ausdrücklicher Wahl, sonst die Sammelmeldung.
+      const einzige = kandidaten.length === 1 ? kandidaten[0] : undefined;
+
+      if (einzige !== undefined) {
+        this.assertNodeAcceptsWork(einzige, 'create');
+      }
+
+      throw new ServerOrchestrationError(
+        'NODE_UNAVAILABLE',
+        'Keine Node nimmt gerade neue Server an – alle sind in Wartung oder nicht erreichbar.',
+        { nodes: kandidaten.map((node) => ({ id: node.id, status: node.status })) },
+      );
+    }
+
+    return { id: wahl.id };
   }
 
   /** Verbindungsadresse eines Servers (Pflichtenheft §13). */

@@ -269,6 +269,60 @@ test('Probelauf deploy.sh', { skip: UEBERSPRINGEN }, async (t) => {
     }
   });
 
+  await t.test('bricht ab, wenn die Proxy-Listen auseinanderlaufen (Review 4.7)', () => {
+    const kasten = sandkasten({
+      env: [
+        'POSTGRES_USER=palantir',
+        'POSTGRES_DB=palantir',
+        'POSTGRES_PASSWORD=geheim',
+        'FRP_TOKEN=geheim',
+        // Traefik vertraut zwei Cloudflare-Bereichen, das Backend kennt nur einen.
+        'TRAEFIK_TRUSTED_IPS=127.0.0.1/32,173.245.48.0/20, 103.21.244.0/22',
+        'TRUSTED_PROXY_ADDRESSES=172.16.0.0/12,173.245.48.0/20',
+        '',
+      ].join('\n'),
+    });
+
+    try {
+      const lauf = ausrollen(kasten, kasten.neu);
+
+      assert.notEqual(lauf.status, 0, 'der Lauf bricht ab');
+      assert.match(lauf.ausgabe, /103\.21\.244\.0\/22/);
+      assert.doesNotMatch(
+        lauf.ausgabe,
+        /- 173\.245\.48\.0\/20/,
+        'der bekannte Bereich wird nicht gemeldet',
+      );
+      assert.equal(
+        git(kasten.repo, 'rev-parse', 'HEAD'),
+        kasten.alt,
+        'die Auscheckung wurde nicht angefasst',
+      );
+    } finally {
+      rmSync(kasten.wurzel, { recursive: true, force: true });
+    }
+  });
+
+  await t.test('laesst gleichlaufende Proxy-Listen und die Vorgabe durch (Review 4.7)', () => {
+    const kasten = sandkasten({
+      env:
+        SAUBERE_ENV +
+        [
+          'TRAEFIK_TRUSTED_IPS=127.0.0.1/32,173.245.48.0/20',
+          'TRUSTED_PROXY_ADDRESSES=172.16.0.0/12,173.245.48.0/20',
+          '',
+        ].join('\n'),
+    });
+
+    try {
+      const lauf = ausrollen(kasten, kasten.neu);
+
+      assert.equal(lauf.status, 0, lauf.ausgabe);
+    } finally {
+      rmSync(kasten.wurzel, { recursive: true, force: true });
+    }
+  });
+
   await t.test('bricht bei einem Platzhalter ab, bevor etwas passiert (Fundpunkt 283)', () => {
     const kasten = sandkasten({
       env: [

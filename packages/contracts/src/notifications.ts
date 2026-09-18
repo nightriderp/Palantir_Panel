@@ -43,7 +43,7 @@ import { type QuotaRequestTrigger } from './quota-request.js';
  * lehnt alles andere mit `NOTIFICATION_EVENT_NOT_NOTIFIABLE` ab.
  *
  * Das `satisfies` erzwingt beim Übersetzen, dass hier kein Name steht, den der
- * Katalog nicht kennt (CLAUDE.md §5).
+ * Katalog nicht kennt (Entwicklungsregeln §5).
  */
 export const NOTIFIABLE_EVENTS = [
   // Server-Lebenszyklus (B3, Pflichtenheft §9)
@@ -55,6 +55,12 @@ export const NOTIFIABLE_EVENTS = [
   'server.failed',
   'server.cloned',
   'server.deleted',
+  /**
+   * Besitzer gewechselt (Pflichtenheft §7). Wie die übrigen Listen-Ereignisse
+   * Meldung **und** Auffrischung der Übersicht: Der neue Besitzer soll
+   * erfahren, dass ihm ein Server übertragen wurde.
+   */
+  'server.ownerTransferred',
   'autoShutdown.triggered',
 
   // Backups (B5, Lastenheft §3.3)
@@ -170,6 +176,7 @@ export interface NotificationEventPayloads {
   'server.failed': ServerEventPayload;
   'server.cloned': ServerEventPayload;
   'server.deleted': ServerEventPayload;
+  'server.ownerTransferred': ServerEventPayload;
   'autoShutdown.triggered': ServerEventPayload & {
     /** Leerlaufdauer in Minuten, die zur Abschaltung geführt hat (Pflichtenheft §9). */
     idleMinutes: number;
@@ -179,7 +186,7 @@ export interface NotificationEventPayloads {
     serverId: string;
     serverName: string;
     ownerId: string;
-    /** Benannter Code aus `ERROR_CATALOG` – nie Freitext (CLAUDE.md §5). */
+    /** Benannter Code aus `ERROR_CATALOG` – nie Freitext (Entwicklungsregeln §5). */
     failureCode: string;
     failureMessage: string | null;
   };
@@ -463,6 +470,7 @@ export const MUTABLE_NOTIFICATION_EVENTS = [
   'server.failed',
   'server.cloned',
   'server.deleted',
+  'server.ownerTransferred',
   'autoShutdown.triggered',
   'backup.failed',
   'resource.low',
@@ -555,7 +563,7 @@ export interface AnnouncementDto extends WithPermissions<AnnouncementPermissions
  *
  * `failed` ist bewusst ein normaler Endzustand und kein Fehler des auslösenden
  * Vorgangs: Ein nicht erreichbarer Discord-Webhook darf einen Serverstart oder
- * ein Backup niemals scheitern lassen (Pflichtenheft §14, CLAUDE.md §5).
+ * ein Backup niemals scheitern lassen (Pflichtenheft §14, Entwicklungsregeln §5).
  */
 export const NOTIFICATION_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
 

@@ -27,6 +27,8 @@ const FREMD_ID = '33333333-3333-4333-8333-333333333333';
 const MANAGER_ID = '55555555-5555-4555-8555-555555555555';
 /** Konto, das der Besitzer im Test neu freigibt. */
 const NEU_ID = '66666666-6666-4666-8666-666666666666';
+/** Verwaltungskonto mit `server.manage.any` – darf den Besitzer wechseln (Pflichtenheft §7). */
+const ADMIN_ID = '77777777-7777-4777-8777-777777777777';
 
 const SERVER: ServerRecord = {
   id: SERVER_ID,
@@ -72,6 +74,7 @@ const viewerIds: Record<string, string> = {
   besitzer: OWNER_ID,
   manager: MANAGER_ID,
   fremd: FREMD_ID,
+  admin: ADMIN_ID,
 };
 
 const actors: Record<string, PermissionActor> = {
@@ -89,12 +92,19 @@ const actors: Record<string, PermissionActor> = {
     isOwner: false,
     roles: [{ grantedPermissions: ['server.view.own', 'server.manage.own'] }],
   }),
+  admin: buildPermissionActor({
+    isOwner: false,
+    roles: [{ grantedPermissions: ['server.view.any', 'server.manage.any'] }],
+  }),
 };
 
 /** Mitschrift dessen, was die Routen am Repository aufrufen. */
 interface Aufrufe {
   upsert: { userId: string; level: ServerMemberLevel }[];
   remove: string[];
+  transfer: string[];
+  /** Besitzer-Ids, mit denen die Kandidatenliste abgefragt wurde. */
+  kandidaten: string[];
 }
 
 /** Was ins Audit-Log ging (Fundpunkt 237). */
@@ -109,17 +119,35 @@ async function buildApp(): Promise<{
   aufrufe: Aufrufe;
   protokoll: Protokollzeile[];
 }> {
-  const aufrufe: Aufrufe = { upsert: [], remove: [] };
+  const aufrufe: Aufrufe = { upsert: [], remove: [], transfer: [], kandidaten: [] };
   const protokoll: Protokollzeile[] = [];
   const mitglieder = new Map<string, ServerMemberRecord>([[MANAGER_ID, MANAGER]]);
 
   const service = {
     requireServer: async () => SERVER,
     recentCrashCount: () => 0,
+    transferOwnership: async (_serverId: string, newOwnerId: string) => {
+      aufrufe.transfer.push(newOwnerId);
+
+      return {
+        server: { ...SERVER, ownerId: newOwnerId, ownerDisplayName: 'Neuer Besitzer' },
+        previousOwnerId: OWNER_ID,
+        previousOwnerDisplayName: 'Besitzer',
+        newOwnerDisplayName: 'Neuer Besitzer',
+      };
+    },
   } as unknown as ServerOrchestrationService;
 
   const repository = {
     listMembers: async () => [...mitglieder.values()],
+    listMemberCandidates: async (_serverId: string, ownerId: string) => {
+      aufrufe.kandidaten.push(ownerId);
+
+      return [
+        { userId: NEU_ID, displayName: 'Neues Mitglied', username: 'neu' },
+        { userId: FREMD_ID, displayName: 'Fremder', username: null },
+      ];
+    },
     upsertMember: async (_serverId: string, userId: string, level: ServerMemberLevel) => {
       aufrufe.upsert.push({ userId, level });
       mitglieder.set(userId, {
@@ -197,7 +225,7 @@ async function buildApp(): Promise<{
 
 async function call(
   app: FastifyInstance,
-  method: 'GET' | 'PUT' | 'DELETE',
+  method: 'GET' | 'PUT' | 'DELETE' | 'POST',
   url: string,
   options: { actor?: string; payload?: unknown } = {},
 ) {
@@ -221,7 +249,12 @@ async function call(
  * deshalb Feld für Feld, inklusive `canEdit`.
  */
 function erwarteMitgliedsDto(data: unknown, erwartet: ServerMemberDto): void {
-  expect(data).toEqual(erwartet);
+  // `permissions` folgt `canEdit` (Befund 2.2): beide Vorgänge hängen heute an
+  // demselben Recht, das Backend liefert das Objekt immer mit.
+  expect(data).toEqual({
+    ...erwartet,
+    permissions: { canChangeLevel: erwartet.canEdit, canRemove: erwartet.canEdit },
+  });
   expect(typeof (data as ServerMemberDto).canEdit).toBe('boolean');
 }
 
@@ -301,6 +334,45 @@ describe('Routen der Mitgliederverwaltung', () => {
       canEdit: true,
     });
     expect(aufrufe.upsert).toEqual([{ userId: NEU_ID, level: 'operator' }]);
+  });
+
+  it('liefert dem Besitzer die Konten, die er freigeben kann – ohne sich selbst', async () => {
+    const { app, aufrufe } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'GET', `/api/servers/${SERVER_ID}/members/candidates`);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toEqual([
+      { userId: NEU_ID, displayName: 'Neues Mitglied', username: 'neu' },
+      { userId: FREMD_ID, displayName: 'Fremder', username: null },
+    ]);
+    // Der Besitzer wird im Repository ausgeschlossen – die Route reicht ihn durch.
+    expect(aufrufe.kandidaten).toEqual([OWNER_ID]);
+  });
+
+  it('zeigt die Kandidatenliste keinem Mitglied ohne canManageMembers', async () => {
+    const { app, aufrufe } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'GET', `/api/servers/${SERVER_ID}/members/candidates`, {
+      actor: 'manager',
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error.code).toBe('PERMISSION_DENIED');
+    expect(aufrufe.kandidaten).toEqual([]);
+  });
+
+  it('verrät einem Fremden über die Kandidatenliste nicht einmal den Server', async () => {
+    const { app } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'GET', `/api/servers/${SERVER_ID}/members/candidates`, {
+      actor: 'fremd',
+    });
+
+    expect(response.statusCode).toBe(404);
   });
 
   it('verweigert einem Mitglied ohne canManageMembers das Freigeben', async () => {
@@ -406,5 +478,60 @@ describe('Mitgliederwechsel im Protokoll (Fundpunkt 237)', () => {
     // Ein abgewiesener Versuch hat nichts geaendert – er gehoert nicht als
     // Aenderung ins Protokoll.
     expect(protokoll).toEqual([]);
+  });
+});
+
+describe('Besitzerwechsel über die Route (Pflichtenheft §7)', () => {
+  it('bleibt dem Besitzer selbst verwehrt – Weitergabe ist Verwaltung', async () => {
+    const { app } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/owner`, {
+      actor: 'besitzer',
+      payload: { newOwnerId: NEU_ID },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe('PERMISSION_DENIED');
+  });
+
+  it('lässt server.manage.any den Besitzer wechseln und protokolliert beide Seiten', async () => {
+    const { app, aufrufe, protokoll } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/owner`, {
+      actor: 'admin',
+      payload: { newOwnerId: NEU_ID },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(aufrufe.transfer).toEqual([NEU_ID]);
+    const dto = response.json<{ data: { ownerId: string; ownerDisplayName: string } }>().data;
+    expect(dto.ownerId).toBe(NEU_ID);
+    expect(dto.ownerDisplayName).toBe('Neuer Besitzer');
+    expect(protokoll).toContainEqual({
+      action: 'server.ownerTransferred',
+      targetId: SERVER_ID,
+      metadata: {
+        fromUserId: OWNER_ID,
+        fromDisplayName: 'Besitzer',
+        toUserId: NEU_ID,
+        toDisplayName: 'Neuer Besitzer',
+        anlass: 'einzeln',
+      },
+    });
+  });
+
+  it('weist einen Körper ohne gültige Konto-Id ab', async () => {
+    const { app, aufrufe } = await buildApp();
+    offen = app;
+
+    const response = await call(app, 'POST', `/api/servers/${SERVER_ID}/owner`, {
+      actor: 'admin',
+      payload: { newOwnerId: 'kein-uuid' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(aufrufe.transfer).toEqual([]);
   });
 });

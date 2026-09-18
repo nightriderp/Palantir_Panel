@@ -13,7 +13,7 @@
  * kurz – sie bleibt trotzdem an einer einzigen, getesteten Stelle.
  *
  * Der Adapter fasst Docker nicht selbst an: Er ruft ausschließlich Methoden des
- * `ContainerRuntime`-Interfaces auf (CLAUDE.md §4, Pflichtenheft §2.3/§2.5).
+ * `ContainerRuntime`-Interfaces auf (Entwicklungsregeln §4, Pflichtenheft §2.3/§2.5).
  */
 
 import {

@@ -2,7 +2,7 @@
  * Fehler der Server-Orchestrierung (B3).
  *
  * Jeder Fehler trägt einen benannten Code aus dem Katalog in
- * `@palantir/contracts` – kein Freitext (CLAUDE.md §5). Routen wandeln ihn über
+ * `@palantir/contracts` – kein Freitext (Entwicklungsregeln §5). Routen wandeln ihn über
  * `replyWithOrchestrationError()` in den Response-Envelope aus
  * Pflichtenheft §5.1 um.
  *

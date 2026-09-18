@@ -17,7 +17,7 @@
  * - `seedRoles()` – Rollen der Ersteinrichtung
  *
  * Der Permission-Katalog selbst steht in `@palantir/contracts`, damit Backend,
- * Frontend und Agent dieselbe Liste sehen (CLAUDE.md §3).
+ * Frontend und Agent dieselbe Liste sehen (Entwicklungsregeln §3).
  */
 
 export { RbacError, isRbacError } from './errors.js';

@@ -594,7 +594,7 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
                         />
                       ) : null}
                     </Td>
-                    <Td className="text-ink">
+                    <Td label="Eintrag" className="text-ink">
                       <div className="flex flex-col">
                         <span>{entry.label}</span>
                         {entry.path ? (
@@ -602,11 +602,13 @@ function NodeStorage({ nodeId }: { nodeId: string }) {
                         ) : null}
                       </div>
                     </Td>
-                    <Td>
+                    <Td label="Kategorie">
                       <Badge tone={KIND_TONES[entry.kind]}>{storageKindLabel(entry.kind)}</Badge>
                     </Td>
-                    <Td className="text-right">{formatBytes(entry.sizeBytes)}</Td>
-                    <Td>{entry.inUse ? 'In Benutzung' : 'Ungenutzt'}</Td>
+                    <Td label="Größe" className="text-right">
+                      {formatBytes(entry.sizeBytes)}
+                    </Td>
+                    <Td label="Status">{entry.inUse ? 'In Benutzung' : 'Ungenutzt'}</Td>
                     <Td className="text-right">
                       {entry.permissions.canDelete ? (
                         <Button

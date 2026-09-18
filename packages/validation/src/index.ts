@@ -7,7 +7,7 @@
  * Enthalten sind bisher die paket-übergreifende Basis (ID-Format, Schema zum
  * Response-Envelope) und die Frame-Schemas des Agent-Protokolls. Fachliche
  * Schemas werden zusammen mit den zugehörigen Typen aus `@palantir/contracts`
- * über eigene, kleine PRs ergänzt (CLAUDE.md §3 und §6).
+ * über eigene, kleine PRs ergänzt (Entwicklungsregeln §3 und §6).
  */
 
 export { type Id, idSchema } from './common.js';
@@ -28,6 +28,7 @@ export {
   type ChangePasswordInput,
   type ConfirmTwoFactorInput,
   type DeleteAccountInput,
+  type DeleteUserAsAdminInput,
   type DisableTwoFactorInput,
   type LinkPasswordInput,
   type LoginInput,
@@ -39,6 +40,7 @@ export {
   changePasswordInputSchema,
   confirmTwoFactorInputSchema,
   deleteAccountInputSchema,
+  deleteUserAsAdminInputSchema,
   disableTwoFactorInputSchema,
   linkPasswordInputSchema,
   passwordResetResultSchema,
@@ -208,6 +210,7 @@ export {
   type CreateServerInput,
   type ScheduleInput,
   type ServerMemberInput,
+  type TransferServerOwnerInput,
   type UpdateServerSettingsInput,
   cloneServerInputSchema,
   consoleCommandSchema,
@@ -223,6 +226,7 @@ export {
   serverResourceLimitsSchema,
   startupParametersSchema,
   subdomainSchema,
+  transferServerOwnerInputSchema,
   updateServerSettingsInputSchema,
   worldImportInputSchema,
 } from './servers.js';

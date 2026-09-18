@@ -39,6 +39,7 @@ const api = vi.hoisted(() => ({
   runLifecycleAction: vi.fn(),
   fetchStatsHistory: vi.fn(),
   deleteServer: vi.fn(),
+  updateServerImage: vi.fn(),
 }));
 
 vi.mock('@/lib/live/LiveChannelProvider', () => ({ useLiveChannel: () => kanal.api }));
@@ -55,6 +56,7 @@ vi.mock('@/lib/api/servers', async (importOriginal) => ({
   runLifecycleAction: api.runLifecycleAction,
   fetchStatsHistory: api.fetchStatsHistory,
   deleteServer: api.deleteServer,
+  updateServerImage: api.updateServerImage,
 }));
 
 const LAEUFT = serverFixture({ id: 'srv-1', name: 'Welt', status: 'running' });
@@ -163,21 +165,20 @@ describe('ServerDetail – Live und REST (event-flow-04)', () => {
 });
 
 /**
- * Aktualisieren (Fundpunkt 190).
+ * Aktualisieren (Fundpunkt 190, geändert im Review 2026-09-16, Pflichtenheft §9).
  *
- * Eine neue Fassung des Spiel-Images greift erst, wenn der Container neu
- * gebaut wird – das tut jeder Start. Sichtbar war das bisher nur als Abzeichen
- * „Update verfügbar"; wer es übernehmen wollte, musste wissen, dass ein
- * Neustart genau das tut.
+ * Ein Server behält seine Image-Fassung, bis der Besitzer sie übernimmt – auch
+ * über Neustarts hinweg. „Aktualisieren" ist deshalb ein eigener Aufruf und
+ * steht am laufenden wie am gestoppten Server.
  */
-describe('ServerDetail – Aktualisieren (Fundpunkt 190)', () => {
+describe('ServerDetail – Aktualisieren (Pflichtenheft §9)', () => {
   const MIT_UPDATE: GameServerDto = { ...LAEUFT, updateAvailable: true };
 
-  it('bietet den Knopf am laufenden Server an und startet dafür neu', async () => {
+  it('fragt am laufenden Server nach und ruft dann den eigenen Aufruf, nicht den Neustart', async () => {
     api.fetchServer.mockResolvedValue({ success: true, data: MIT_UPDATE, error: null });
-    api.runLifecycleAction.mockResolvedValue({
+    api.updateServerImage.mockResolvedValue({
       success: true,
-      data: { ...MIT_UPDATE, status: 'starting' },
+      data: { ...MIT_UPDATE, status: 'starting', updateAvailable: false },
       error: null,
     });
 
@@ -186,28 +187,39 @@ describe('ServerDetail – Aktualisieren (Fundpunkt 190)', () => {
 
     // Erst die Rückfrage – ein Klick darf keine Spielrunde beenden.
     expect(await screen.findByText('Auf die neue Fassung aktualisieren?')).toBeTruthy();
-    expect(api.runLifecycleAction).not.toHaveBeenCalled();
+    expect(api.updateServerImage).not.toHaveBeenCalled();
 
-    // Der Kopf traegt denselben Wortlaut; gemeint ist der in der Rueckfrage.
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Aktualisieren' }),
     );
 
-    await waitFor(() => {
-      expect(api.runLifecycleAction).toHaveBeenCalledWith('srv-1', 'restart', {});
-    });
+    await waitFor(() => expect(api.updateServerImage).toHaveBeenCalledWith('srv-1'));
+    expect(api.runLifecycleAction).not.toHaveBeenCalled();
+    expect(await screen.findByText(/wird auf die neue Fassung gebracht/)).toBeTruthy();
   });
 
-  it('zeigt am gestoppten Server nur den Hinweis – der nächste Start übernimmt', async () => {
+  it('bietet den Knopf auch am gestoppten Server an – der nächste Start übernimmt nichts von allein', async () => {
     api.fetchServer.mockResolvedValue({
       success: true,
       data: { ...MIT_UPDATE, status: 'stopped' },
       error: null,
     });
+    api.updateServerImage.mockResolvedValue({
+      success: true,
+      data: { ...MIT_UPDATE, status: 'stopped', updateAvailable: false },
+      error: null,
+    });
 
     zeichne();
     expect(await screen.findByText('Update verfügbar')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Aktualisieren' }),
+    );
+
+    await waitFor(() => expect(api.updateServerImage).toHaveBeenCalledWith('srv-1'));
+    expect(await screen.findByText(/beim nächsten Start auf der neuen Fassung/)).toBeTruthy();
+    expect(screen.queryByText('Update verfügbar')).toBeNull();
   });
 
   it('bietet den Knopf ohne neue Fassung gar nicht an', async () => {
@@ -215,6 +227,18 @@ describe('ServerDetail – Aktualisieren (Fundpunkt 190)', () => {
     await screen.findByText('Online');
 
     expect(screen.queryByText('Update verfügbar')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
+  });
+
+  it('bietet den Knopf ohne canUpdate nicht an', async () => {
+    api.fetchServer.mockResolvedValue({
+      success: true,
+      data: { ...MIT_UPDATE, permissions: { ...MIT_UPDATE.permissions, canUpdate: false } },
+      error: null,
+    });
+
+    zeichne();
+    expect(await screen.findByText('Update verfügbar')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Aktualisieren' })).toBeNull();
   });
 });

@@ -16,7 +16,7 @@
  * Es entsteht **keine** zweite Kapazitätslogik: geprüft wird weiterhin über B4
  * (`createResourceService` / `checkCapacity`), nur eben gegen die
  * transaktionsgebundenen Repositories. Hier kommt allein der transaktionale
- * Rahmen dazu (CLAUDE.md §3/§4).
+ * Rahmen dazu (Entwicklungsregeln §3/§4).
  *
  * Seit Fundpunkt 135 liegt auch die **Portvergabe** in diesem Rahmen: Der
  * Port-Pool aus B8 wird über dieselbe Transaktion gebaut (`portPoolFor`), und

@@ -5,7 +5,7 @@
  * Ereignisses (`resourceOwner`, `serverMembers`) und brauchen keinen
  * Datenbankzugriff. Nur `role` und `allUsers` fragen das
  * {@link RecipientDirectory}. Diese Trennung steht hier als reine Funktion,
- * damit sie ohne Datenbank prüfbar bleibt (CLAUDE.md §4).
+ * damit sie ohne Datenbank prüfbar bleibt (Entwicklungsregeln §4).
  */
 
 import type { NotificationEvent, NotificationRecipientScope } from '@palantir/contracts';
@@ -26,6 +26,9 @@ export function directRecipientsOf(
     return null;
   }
 
+  // Beim Besitzerwechsel steht der alte Besitzer neben den Mitgliedern in der
+  // Nutzlast (B3) – `serverMembers` erreicht damit beide Seiten,
+  // `resourceOwner` nur den neuen Besitzer.
   switch (input.event) {
     case 'server.created':
     case 'server.started':
@@ -35,6 +38,7 @@ export function directRecipientsOf(
     case 'server.failed':
     case 'server.cloned':
     case 'server.deleted':
+    case 'server.ownerTransferred':
     case 'autoShutdown.triggered':
       return scope === 'serverMembers'
         ? [input.payload.ownerId, ...input.payload.memberUserIds]
@@ -116,5 +120,28 @@ export async function resolveRecipients(
     return [];
   }
 
-  return [...new Set(await directory.listUserIdsWithRole(roleId))];
+  /*
+   * Der Besitzer zaehlt zu jedem Rollen-Kreis dazu (Fundpunkt 300).
+   *
+   * `User.isOwner` liegt ausserhalb des Rollensystems und garantiert immer alle
+   * Rechte (Pflichtenheft §6). Ein Besitzer traegt deshalb typischerweise gar
+   * keine Rolle - auf dieser Instanz die Rolle „Gast". Die Vorgaberegeln der
+   * Ersteinrichtung richten sich aber an die Rolle „Admin", und so erreichte
+   * eine neue Registrierung niemanden: Die einzige Person, die freischalten
+   * kann, stand nicht in der Empfaengerliste. Gemeldet vom Betreiber am
+   * 16.09.2026 („ich kriege keine Benachrichtigung, wenn jemand eine Anfrage
+   * schickt"); die Datenbank bestaetigte es - Regel vorhanden, Rolle „Admin"
+   * ohne ein einziges Mitglied.
+   *
+   * Bewusst fuer JEDE Rollen-Regel, nicht nur fuer die der Verwaltung: Der
+   * Besitzer darf alles, was eine Rolle duerfen koennte. Wem das zu viel ist,
+   * bestellt das Ereignis in seinen persoenlichen Einstellungen ab - dieser Weg
+   * steht ihm offen, der umgekehrte (nie erfahren, dass etwas offen ist) nicht.
+   */
+  const [mitRolle, besitzer] = await Promise.all([
+    directory.listUserIdsWithRole(roleId),
+    directory.listOwnerUserIds(),
+  ]);
+
+  return [...new Set([...mitRolle, ...besitzer])];
 }

@@ -20,7 +20,7 @@
  * Nachbar-Container die Adresse nicht mehr fälschen.
  *
  * Reine Funktionen, damit die Ableitung ohne laufenden Server prüfbar ist
- * (CLAUDE.md §4).
+ * (Entwicklungsregeln §4).
  */
 
 import {
