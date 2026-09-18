@@ -98,6 +98,31 @@ export function formatMegabytes(valueMb: number | null | undefined): string {
   return formatBytes(valueMb * MEBIBYTE);
 }
 
+/**
+ * Speichergröße aus Mebibyte für den engen Platz in einem Ring (`MetricRing`).
+ *
+ * Höchstens zwei geltende Ziffern: `6,1 GB`, `844 MB`, `10 GB`, `1,3 TB`. Die
+ * volle Fassung (`6,11 GB`, drei Ziffern) passte nicht in die 54 px des Rings –
+ * die Einheit rutschte unter die Zahl, auf der Karte stand „6,11" über einem
+ * halben „GB" (Betreiber-Meldung 2026-09-19). Die dritte Ziffer trägt in
+ * einem Ring nichts; wer sie braucht, findet sie im Tooltip.
+ */
+export function formatMegabytesKurz(valueMb: number | null | undefined): string {
+  if (valueMb == null || Number.isNaN(valueMb)) return '—';
+
+  let value = valueMb * MEBIBYTE;
+  let einheit = 0;
+  while (Math.abs(value) >= SCHRITT && einheit < GROESSEN_EINHEITEN.length - 1) {
+    value /= SCHRITT;
+    einheit += 1;
+  }
+
+  // Ab 9,95 rundet die eine Nachkommastelle auf „10,0" – dann lieber „10".
+  const stellen = einheit === 0 || value >= 9.95 ? 0 : 1;
+  const zahl = NUMBER_FORMAT.format(Math.round(value * 10 ** stellen) / 10 ** stellen);
+  return `${zahl} ${GROESSEN_EINHEITEN[einheit]}`;
+}
+
 /** Dauer in Sekunden als `2 h 15 min`; `—` bei fehlender oder negativer Angabe. */
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || Number.isNaN(seconds) || seconds < 0) return '—';

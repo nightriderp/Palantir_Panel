@@ -5,7 +5,16 @@ import { cn } from '../utils/cn';
 export interface MetricRingProps {
   /** Kurzbeschriftung unter dem Ring, z. B. „CPU". */
   label: string;
-  /** Anzeigewert in der Mitte, z. B. `42 %` oder `—`. */
+  /**
+   * Anzeigewert in der Mitte, z. B. `42 %`, `6,1 GB` oder `—`.
+   *
+   * Zahl und Einheit werden am letzten Leerzeichen getrennt und übereinander
+   * gesetzt: Innen bleiben im 54-px-Ring nur rund 40 px frei, und „6,11 GB"
+   * in einer Zeile lief über den Bogen – auf der Karte stand die Zahl über
+   * einem halben „GB" (Betreiber-Meldung 2026-09-19). Größen kommen deshalb
+   * außerdem aus `formatMegabytesKurz`, damit die Zahl höchstens drei
+   * Zeichen hat.
+   */
   value: string;
   /** Füllgrad 0–100. Wird begrenzt; `null` zeichnet nur die Spur. */
   percent: number | null;
@@ -17,6 +26,18 @@ export interface MetricRingProps {
 
 /** Länge des sichtbaren Ringbogens – 3/4 Kreis, der Rest bleibt offen. */
 const ARC_LENGTH = 75;
+
+/**
+ * „6,1 GB" → Zahl `6,1`, Einheit `GB`; „—" oder „42" bleiben ohne Einheit.
+ *
+ * Getrennt wird am letzten Leerzeichen, damit ein Wert wie „1 h 5 min" seine
+ * Zahl behält – im Ring stehen aber ohnehin nur Prozent, Größen und Millisekunden.
+ */
+export function zahlUndEinheit(value: string): { zahl: string; einheit: string | null } {
+  const trenner = value.lastIndexOf(' ');
+  if (trenner <= 0) return { zahl: value, einheit: null };
+  return { zahl: value.slice(0, trenner), einheit: value.slice(trenner + 1) };
+}
 
 /**
  * Ringförmige Kennzahl der `ServerCard` (CPU, RAM, Speicher, Ping).
@@ -46,6 +67,7 @@ export function MetricRing({
   // Ohne Messwert bleibt der Bogen leer und die Zahl grau – „unbekannt" ist
   // nicht dasselbe wie „null".
   const valueTone = percent == null && value === '—' ? 'neutral' : tone;
+  const { zahl, einheit } = zahlUndEinheit(value);
 
   return (
     <div className={cn('flex flex-col items-center gap-1.5', className)} title={title}>
@@ -87,11 +109,14 @@ export function MetricRing({
         </svg>
         <div
           className={cn(
-            'absolute inset-0 flex items-center justify-center font-mono text-base font-bold',
+            'absolute inset-0 flex flex-col items-center justify-center whitespace-nowrap font-mono font-bold leading-none',
             TONE_TEXT_CLASSES[valueTone],
           )}
         >
-          {value}
+          <span className="text-sm">{zahl}</span>
+          {einheit === null ? null : (
+            <span className="mt-px text-3xs tracking-[0.04em] opacity-85">{einheit}</span>
+          )}
         </div>
       </div>
       <div className="text-3xs font-medium uppercase tracking-[0.08em] text-ink-faint">{label}</div>

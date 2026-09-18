@@ -9,6 +9,7 @@ import {
   clampedPercentOf,
   formatCores,
   formatMegabytes,
+  formatMegabytesKurz,
   formatNumber,
   formatPercent,
   formatPing,
@@ -287,7 +288,7 @@ export function ServerCard({
         />
         <MetricRing
           label="RAM"
-          value={formatMegabytes(live?.ramUsedMb)}
+          value={formatMegabytesKurz(live?.ramUsedMb)}
           percent={ramPercent}
           {...(ramPercent === null ? {} : { tone: loadTone(ramPercent) })}
           title={
@@ -303,7 +304,7 @@ export function ServerCard({
         */}
         <MetricRing
           label="Disk"
-          value={formatMegabytes(stats?.diskUsedMb)}
+          value={formatMegabytesKurz(stats?.diskUsedMb)}
           percent={null}
           title="Belegter Platz des Datenordners. Ein Server hat keine feste Platten-Grenze mehr; wie voll die Node ist, steht in der Node-Übersicht."
         />

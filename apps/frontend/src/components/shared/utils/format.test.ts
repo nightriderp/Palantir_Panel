@@ -9,6 +9,7 @@ import {
   formatDuration,
   formatUptimeClock,
   formatMegabytes,
+  formatMegabytesKurz,
   formatPercent,
   formatPing,
   formatPlayers,
@@ -140,6 +141,32 @@ describe('formatUptimeClock', () => {
   it('meldet fehlende und negative Angaben als Strich', () => {
     expect(formatUptimeClock(null)).toBe('—');
     expect(formatUptimeClock(-5)).toBe('—');
+  });
+});
+
+describe('formatMegabytesKurz', () => {
+  it('liefert — für fehlende Angaben', () => {
+    expect(formatMegabytesKurz(null)).toBe('—');
+    expect(formatMegabytesKurz(undefined)).toBe('—');
+  });
+
+  it('rundet auf höchstens zwei geltende Ziffern, damit der Wert in den Ring passt', () => {
+    // 5 830 MiB = 6,11 GB in der vollen Fassung – im Ring nur „6,1 GB".
+    expect(formatMegabytesKurz(5830)).toBe('6,1 GB');
+    expect(formatMegabytesKurz(805)).toBe('844 MB');
+    expect(formatMegabytesKurz(2048)).toBe('2,1 GB');
+    expect(formatMegabytesKurz(2 * 1024 * 1024)).toBe('2,2 TB');
+  });
+
+  it('lässt ab zehn die Nachkommastelle weg, statt „10,0 GB" zu schreiben', () => {
+    expect(formatMegabytesKurz(9536)).toBe('10 GB');
+    expect(formatMegabytesKurz(15_000)).toBe('16 GB');
+  });
+
+  it('bleibt bei jedem Wert unter sieben Zeichen', () => {
+    for (const mb of [1, 12, 123, 805, 1024, 5830, 9536, 15_000, 123_456, 2 * 1024 * 1024]) {
+      expect(formatMegabytesKurz(mb).length).toBeLessThanOrEqual(6);
+    }
   });
 });
 
