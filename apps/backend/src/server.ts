@@ -499,6 +499,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const admin = createAdminModule({
       db,
       onDisabledGameTypesChanged: (ids) => spieleKatalog?.setDisabledGameTypes(ids),
+      // Admin-Bereiche nur innerhalb des Tunnels und nie über dem Router-Port
+      // (Review 2026-09-16, Befund 4.3).
+      portRangeLimits: {
+        tunnelStart: env.GAME_PORT_RANGE_START,
+        tunnelEnd: env.GAME_PORT_RANGE_END,
+        routerPort: env.MINECRAFT_ROUTER_PORT,
+      },
       // Für den Archivlauf: Der Advisory-Lock gehört der Verbindung, die ihn
       // nimmt, und braucht deshalb den Pool selbst (Audit W2-16).
       pool: getPool(),

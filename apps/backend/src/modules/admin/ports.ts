@@ -214,11 +214,28 @@ export interface PortPoolService {
   removeNodeBinding(ctx: AdminContext, rangeId: string): Promise<void>;
 }
 
+/**
+ * Grenzen, die der Tunnel und der Hostname-Router einem Port-Bereich setzen
+ * (Review 2026-09-16, Befund 4.3).
+ *
+ * frpc tunnelt genau die Ports aus `GAME_PORT_RANGE_START..END`; ein Bereich
+ * außerhalb ergäbe Server, die „laufen", aber von außen nicht erreichbar sind.
+ * `MINECRAFT_ROUTER_PORT` gehört dem Router; läge er in einem Bereich, bekäme
+ * ein Spielserver genau den Port, auf dem der Router lauscht.
+ */
+export interface PortRangeLimits {
+  readonly tunnelStart: number;
+  readonly tunnelEnd: number;
+  readonly routerPort: number;
+}
+
 export interface PortPoolServiceDependencies {
   readonly repository: PortPoolRepository;
   readonly audit: AuditService;
   /** Anzeigenamen der Server für die Übersicht; ohne Angabe bleibt `serverName` leer. */
   readonly serverNames?: () => Promise<ReadonlyMap<string, string>>;
+  /** Ohne Angabe gilt nur 1024–65535 (Tests, die den Tunnel nicht kennen). */
+  readonly limits?: PortRangeLimits;
 }
 
 function requireAddressManage(actor: PermissionActor): void {
@@ -361,6 +378,27 @@ export function createPortPoolService(deps: PortPoolServiceDependencies): PortPo
       endPort > MAX_PUBLIC_PORT
     ) {
       throw new AdminError('PORT_RANGE_INVALID');
+    }
+
+    const limits = deps.limits;
+    if (limits === undefined) return;
+
+    // Nur Ports, die frpc auch tunnelt (Befund 4.3). Die Meldung nennt den
+    // Grund: „ungültig" allein ließe den Admin raten, warum 1024–65535 nicht
+    // reicht.
+    if (startPort < limits.tunnelStart || endPort > limits.tunnelEnd) {
+      throw new AdminError(
+        'PORT_RANGE_INVALID',
+        `Der Bereich muss innerhalb der getunnelten Ports ${limits.tunnelStart}–${limits.tunnelEnd} liegen ` +
+          '(GAME_PORT_RANGE_START/END) – Ports außerhalb erreicht kein Spieler.',
+      );
+    }
+
+    if (startPort <= limits.routerPort && limits.routerPort <= endPort) {
+      throw new AdminError(
+        'PORT_RANGE_INVALID',
+        `Port ${limits.routerPort} gehört dem Hostname-Router (MINECRAFT_ROUTER_PORT) und darf in keinem Bereich liegen.`,
+      );
     }
   }
 

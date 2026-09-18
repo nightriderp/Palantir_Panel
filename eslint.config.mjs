@@ -26,9 +26,13 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
-      // `any` ist laut Entwicklungsregeln §4 nur mit Begründung im Kommentar erlaubt –
-      // die Regel bleibt daher als Warnung aktiv statt abgeschaltet.
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // `any` ist laut Entwicklungsregeln §4 nur mit Begründung im Kommentar
+      // erlaubt. Als Fehler, nicht als Warnung: In `apps/*/src` und
+      // `packages/*/src` gibt es kein `any` mehr, die drei begründeten Stellen
+      // (Arcade-Engine) tragen `eslint-disable-next-line` mit Grund. Eine
+      // Warnung hätte das nächste unbegründete `any` still durchgelassen
+      // (Review 2026-09-16, Befund 5.1).
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
