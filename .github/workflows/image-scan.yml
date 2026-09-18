@@ -7,6 +7,12 @@ name: Image-Scan
 # gegen eine Lücke im laufenden Image hilft nur ein neuer Bau (Dependabot hebt
 # den Basis-Digest, ein Merge baut neu).
 #
+# Dazu die SteamCMD-Wache (Review 2026-09-16, Befund 9.7): `images/base/steam`
+# pinnt Valves Tarball per SHA-256 – ohne Versionskennung, weil Valve keine
+# vergibt. Aktualisiert Valve das Archiv, bricht der nächste Bau still an der
+# Prüfsumme, womöglich Wochen später mitten in einem ganz anderen Paket. Hier
+# wird die Prüfsumme wöchentlich gegen die Adresse geprüft und meldet sich vorab.
+#
 # Fremde Actions per Commit-SHA gepinnt (Begründung im Kopf von ci.yml).
 
 on:
@@ -58,3 +64,44 @@ jobs:
               echo "Keine Lücke mit verfügbarer Korrektur (CRITICAL, HIGH)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  steamcmd:
+    name: SteamCMD-Prüfsumme
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prüfsumme des Tarballs mit dem Dockerfile vergleichen
+        run: |
+          set -eu
+          dockerfile=images/base/steam/Dockerfile
+          url="$(sed -nE 's/^ARG STEAMCMD_URL=(.*)$/\1/p' "$dockerfile")"
+          erwartet="$(sed -nE 's/^ARG STEAMCMD_SHA256=(.*)$/\1/p' "$dockerfile")"
+          test -n "$url" && test -n "$erwartet"
+
+          curl --fail --silent --show-error --location --retry 3 --output steamcmd.tar.gz "$url"
+          # Über stdin, nicht über den Dateinamen: GNU sha256sum stellt der Zeile
+          # ein Backslash voran, sobald es den Namen maskiert – dann passte kein Vergleich.
+          ist="$(sha256sum < steamcmd.tar.gz | cut -d' ' -f1)"
+
+          if [ "$ist" = "$erwartet" ]; then
+            echo "SteamCMD unverändert: $ist" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "### SteamCMD hat sich geändert"
+            echo
+            echo "Valve liefert unter \`$url\` ein anderes Archiv als das gepinnte."
+            echo
+            echo "- Dockerfile: \`$erwartet\`"
+            echo "- Jetzt:      \`$ist\`"
+            echo
+            echo "Der nächste Bau von \`base/steam\` scheitert an der Prüfsumme. Nachziehen:"
+            echo "\`STEAMCMD_SHA256\` in \`$dockerfile\` auf den neuen Wert, VERSION erhöhen,"
+            echo "Image bauen (\`gh workflow run game-images.yml -f images=base/steam\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::SteamCMD-Tarball geändert – STEAMCMD_SHA256 in $dockerfile nachziehen (erwartet $erwartet, jetzt $ist)"
+          exit 1
