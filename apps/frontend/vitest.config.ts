@@ -10,9 +10,11 @@ import { defineConfig } from 'vitest/config';
  *   Konsolenpuffer, Formatierungen). Läuft in der Node-Umgebung.
  * - `*.test.tsx` – gerenderte Komponenten mit Testing Library. Läuft in jsdom.
  *
- * Die DOM-Umgebung greift nur für `.tsx` (`environmentMatchGlobs`), damit die
- * vielen Logiktests nicht jedes Mal einen jsdom-Aufbau bezahlen müssen
- * (Arbeitspaket R4, „Gefundene Punkte“ 30).
+ * Die DOM-Umgebung greift nur für `.tsx`, damit die vielen Logiktests nicht
+ * jedes Mal einen jsdom-Aufbau bezahlen müssen (Arbeitspaket R4, „Gefundene
+ * Punkte“ 30). Seit Vitest 4 sind das zwei Projekte in einer Konfiguration
+ * (`test.projects`); `environmentMatchGlobs` gibt es nicht mehr. Beide erben
+ * Alias, JSX-Umsetzung und Setup-Datei von hier (`extends: true`).
  *
  * `esbuild.jsx` ist nötig, weil die `tsconfig.json` für Next.js `preserve`
  * setzt: der Compiler von Next kümmert sich sonst um JSX, im Testlauf gibt es
@@ -33,9 +35,16 @@ export default defineConfig({
     jsxImportSource: 'react',
   },
   test: {
-    environment: 'node',
-    environmentMatchGlobs: [['src/**/*.test.tsx', 'jsdom']],
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     setupFiles: ['./vitest.setup.ts'],
+    projects: [
+      {
+        extends: true,
+        test: { name: 'logik', environment: 'node', include: ['src/**/*.test.ts'] },
+      },
+      {
+        extends: true,
+        test: { name: 'dom', environment: 'jsdom', include: ['src/**/*.test.tsx'] },
+      },
+    ],
   },
 });
