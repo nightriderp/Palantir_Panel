@@ -306,7 +306,10 @@ describeDatenbank('Kapazität gegen PostgreSQL', (kontext) => {
     const reservierung = createDrizzleCapacityReservation(kontext.db, SCHWELLEN, ohnePortvergabe);
     const besitzer = await legeNutzerAn(kontext.db);
     const node = await legeNodeAn(kontext.db, { totalDiskMb: 1_000_000 });
-    await setzeKontingent(kontext.db, besitzer, { maxRamMb: 512 });
+    // Das Kontingent ist seit der weichen RAM-Grenze (2026-09-18) nur noch die
+    // Serveranzahl; `maxRamMb` steht zwar noch in der Tabelle, sperrt aber
+    // nichts mehr. Null erlaubte Server sperren jeden Start.
+    await setzeKontingent(kontext.db, besitzer, { maxRamMb: 512, maxConcurrentServers: 0 });
 
     const server = await legeServerAn(kontext.db, gestoppt(besitzer, node));
 

@@ -191,15 +191,12 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
   }
 
   // --- 1. Nutzer-Kontingent: harte Grenze, ein Administrator hat sie gesetzt.
-  if (
-    userLimits.maxRamMb !== null &&
-    exceeds(userUsage.runningRamMb, requested.ramMb, userLimits.maxRamMb)
-  ) {
-    violations.push(
-      toViolation('user', 'ram', userLimits.maxRamMb, userUsage.runningRamMb, requested.ramMb),
-    );
-  }
-
+  //
+  // Nur noch die Anzahl gleichzeitiger Server (Betreiber-Entscheidung
+  // 2026-09-18, „RAM ist keine Kontingentgroesse mehr"): Die RAM-Zuweisung
+  // eines Servers ist seitdem eine weiche Grenze, ein Server nimmt sich, was
+  // auf der Node frei ist. `maxRamMb` bleibt im Datensatz, wird aber nicht
+  // mehr geprueft.
   if (
     userLimits.maxConcurrentServers !== null &&
     exceeds(userUsage.runningServers, 1, userLimits.maxConcurrentServers)
@@ -210,14 +207,11 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
   }
 
   // --- 2. Zustand der Node: Rückfrage, keine Grenze ------------------------
-
-  // „Es laufen gerade zu viele Server" – die Summe der Zuweisungen über der
-  // Ausstattung der Maschine.
-  if (exceeds(node.usage.runningRamMb, requested.ramMb, node.total.ramMb)) {
-    concerns.push(
-      toViolation('node', 'ram', node.total.ramMb, node.usage.runningRamMb, requested.ramMb),
-    );
-  }
+  //
+  // Nur noch aus der **Messung**: Die Summe der Zuweisungen sagt seit der
+  // weichen Grenze nichts mehr darueber, wie voll die Node ist – ein Server
+  // mit 2 GiB Zuweisung darf 10 GiB belegen. Was zaehlt, ist der gemessene
+  // freie Speicher; ohne Messung gibt es keine Rueckfrage.
 
   /*
    * „Der aktuell frei verfügbare RAM reicht nicht" – gemessen, nicht gebucht.
@@ -248,7 +242,12 @@ export function checkCapacity(input: CapacityCheckInput): CapacityCheckResult {
         nodeId: node.nodeId,
         total: node.total,
         usage: projectUsageAfterStart(node.usage, requested),
-        // Auch die Warnung rechnet mit dem Platz **nach** diesem Start.
+        // Auch die Warnung rechnet mit dem Platz **nach** diesem Start – und
+        // beim RAM mit der Messung plus der Zuweisung des neuen Servers.
+        usedRamMb:
+          node.freeRamMb === null
+            ? null
+            : Math.max(0, node.total.ramMb - node.freeRamMb) + requested.ramMb,
         usedDiskMb: belegterPlatzMb === null ? null : belegterPlatzMb + requested.diskMb,
         thresholdPercent: thresholds.nodePercent,
         ...(input.at ? { at: input.at } : {}),

@@ -41,6 +41,7 @@ function serverMit(gameType: string): ServerRecord {
     hostName: 'Homeserver',
     hostStatus: 'online',
     hostCpuCores: 8,
+    hostRamMb: null,
     subdomain: 'alt',
     assignedPorts: [
       { publicPort: 25_001, containerPort: 25_565, protocol: 'tcp', label: 'Spiel', primary: true },

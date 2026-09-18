@@ -24,9 +24,9 @@ function node(overrides: Partial<HostNodeDto> = {}): HostNodeDto {
     statusMessage: null,
     capacity: { total, allocated, available },
     /*
-     * Die Node misst. Der Platz steht nur noch hier – zugewiesen wird keiner
-     * mehr. Der RAM-Wert weicht bewusst von der Buchung ab: Die Karte rechnet
-     * beim RAM aus `capacity`, und das soll ein Test auch zeigen können.
+     * Die Node misst. RAM wie Platz stehen nur noch hier – zugewiesen wird
+     * beides nicht mehr fest. Der RAM-Wert weicht bewusst von der Buchung ab:
+     * Die Karte rechnet aus der Messung, und das soll ein Test zeigen können.
      */
     usage: {
       cpuPercent: 12,
@@ -91,93 +91,59 @@ describe('formatCores', () => {
 });
 
 /*
- * Fundpunkt 209: Gemessen am Pruefstand stand `allocated 32768` bei `total
- * 28672` - die Karte schrieb "0 B frei", also dieselbe Auskunft wie bei einer
- * exakt vollen Node.
+ * Seit der weichen RAM-Zuweisung (Betreiber-Entscheidung 2026-09-18) zeigt die
+ * Karte beim RAM die Messung, nicht die Buchung: Ein Server darf ueber seiner
+ * Zuweisung liegen, solange die Node Platz hat – die Summe der Buchungen sagt
+ * also nichts mehr darueber, wie voll die Maschine ist. Damit sind auch die
+ * Zusaetze „ueberbucht" (Fundpunkt 209) und „davon laufend" (Fundpunkt 203)
+ * gegenstandslos: Beide verglichen Buchungen.
  */
-describe('nodeMetrics - Ueberbuchung (Fundpunkt 209)', () => {
-  const ueberbucht = node({
-    capacity: {
-      total: { ramMb: 28_672, cpuCores: 8, diskMb: 512_000 },
-      allocated: { ramMb: 32_768 },
-      available: { ramMb: 0 },
-    },
-  });
-
-  it('benennt, um wie viel zu viel gebucht ist', () => {
-    const metrics = nodeMetrics(ueberbucht);
-
-    expect(metrics.find((m) => m.key === 'ram')?.overbookedLabel).toBe('4,29 GB überbucht');
-  });
-
-  it('laesst die Angabe weg, wo nichts ueberbucht ist', () => {
-    const metrics = nodeMetrics(ueberbucht);
-
-    expect(metrics.find((m) => m.key === 'disk')?.overbookedLabel).toBeUndefined();
-    expect(nodeMetrics(node()).every((m) => m.overbookedLabel === undefined)).toBe(true);
-  });
-
-  it('faerbt den ueberbuchten Balken rot', () => {
-    expect(nodeMetrics(ueberbucht).find((m) => m.key === 'ram')?.tone).toBe('danger');
-  });
-});
-
 describe('nodeMetrics', () => {
-  it('rechnet Belegung aus capacity, nicht aus usage', () => {
-    const metrics = nodeMetrics(node());
-    const ram = metrics.find((m) => m.key === 'ram');
-    expect(ram?.percent).toBe(50);
+  it('rechnet die RAM-Belegung aus der Messung, nicht aus capacity', () => {
+    // 15 000 von 16 384 MiB gemessen – gebucht waeren nur 8 192.
+    const ram = nodeMetrics(node()).find((m) => m.key === 'ram');
+    expect(ram?.percent).toBe(92);
+    expect(ram?.tone).toBe('warning');
+    expect(ram?.usedLabel).toBe(formatMegabytes(15_000));
+    expect(ram?.freeLabel).toBe(formatMegabytes(16_384 - 15_000));
+  });
+
+  it('laesst eine ueberbuchte, aber gemessen halbleere Node gruen', () => {
+    const ueberbucht = node({
+      capacity: {
+        total: { ramMb: 28_672, cpuCores: 8, diskMb: 512_000 },
+        allocated: { ramMb: 32_768 },
+        available: { ramMb: 0 },
+      },
+      usage: {
+        cpuPercent: 12,
+        ramUsedMb: 10_000,
+        diskUsedMb: 128_000,
+        sampledAt: '2026-08-27T10:00:00.000Z',
+        source: 'measured',
+      },
+    });
+    const ram = nodeMetrics(ueberbucht).find((m) => m.key === 'ram');
+    expect(ram?.percent).toBe(35);
     expect(ram?.tone).toBe('brand');
   });
 
-  /*
-   * Fundpunkt 203: Der Balken zeigt die gebuchte Zahl, darunter steht die, gegen
-   * die ein Start tatsaechlich geprueft wird. Ohne sie wirkte "2 GiB frei" wie
-   * eine Absage - waehrend die API denselben Server annahm.
-   */
-  it('nennt die laufende Belegung, wenn sie von der gebuchten abweicht', () => {
-    const metrics = nodeMetrics(
-      node({
-        capacity: {
-          total: { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
-          allocated: { ramMb: 26_624 },
-          running: { ramMb: 20_480 },
-          available: { ramMb: 2_048 },
-        },
-      }),
-    );
-
-    expect(metrics.find((m) => m.key === 'ram')?.runningLabel).toBe('davon 21,5 GB laufend');
-    // Bei der Platte zaehlen beide Zahlen ueber alle Zustaende - kein Zusatz.
-    expect(metrics.find((m) => m.key === 'disk')?.runningLabel).toBeUndefined();
+  it('zeigt ohne Messung beim RAM einen Strich, keine Buchung', () => {
+    const ram = nodeMetrics(node({ usage: null })).find((m) => m.key === 'ram');
+    expect(ram?.percent).toBeNull();
+    expect(ram?.usedLabel).toBe('—');
+    expect(ram?.freeLabel).toBe('—');
+    expect(ram?.tone).toBe('neutral');
   });
 
-  it('schweigt, wenn gebucht und laufend uebereinstimmen', () => {
-    const metrics = nodeMetrics(
-      node({
-        capacity: {
-          total: { ramMb: 28_672, cpuCores: 8, diskMb: 2_000_000 },
-          allocated: { ramMb: 20_480 },
-          running: { ramMb: 20_480 },
-          available: { ramMb: 8_192 },
-        },
-      }),
-    );
-
-    expect(metrics.every((m) => m.runningLabel === undefined)).toBe(true);
-  });
-
-  it('faellt ohne capacity.running auf die gebuchte Zahl zurueck', () => {
-    // Aeltere Antworten kennen das Feld nicht (additiv, Entwicklungsregeln §3).
-    expect(nodeMetrics(node()).every((m) => m.runningLabel === undefined)).toBe(true);
-  });
-
-  it('färbt eine fast volle Node rot', () => {
+  it('färbt eine gemessen fast volle Node rot', () => {
     const full = node({
-      capacity: {
-        total: { ramMb: 16384, cpuCores: 8, diskMb: 512_000 },
-        allocated: { ramMb: 16000 },
-        available: { ramMb: 384 },
+      usage: {
+        cpuPercent: 12,
+        ramUsedMb: 16_000,
+        diskUsedMb: 128_000,
+        sampledAt: '2026-08-27T10:00:00.000Z',
+        source: 'measured',
       },
     });
     const ram = nodeMetrics(full).find((m) => m.key === 'ram');
@@ -209,13 +175,13 @@ describe('nodesSummary', () => {
    * „RAM gebucht" zeigt das Vergebene, „Platte frei" das Verbleibende. Die
    * Beschriftung darf deshalb nie ohne den passenden Wert geändert werden.
    */
-  it('nimmt beim RAM das Gebuchte und beim Platz das Freie', () => {
+  it('nimmt beim RAM das Gemessene und beim Platz das Freie', () => {
     const summary = nodesSummary([node(), node({ id: 'n2' })]);
 
     const ram = summary.find((entry) => entry.key === 'ram');
-    expect(ram?.label).toBe('RAM gebucht');
-    // 2 × 8192 MiB vergeben – nicht die 2 × 8192 MiB, die frei sind.
-    expect(ram?.value).toBe(formatMegabytes(2 * 8192));
+    expect(ram?.label).toBe('RAM belegt');
+    // 2 × 15 000 MiB gemessen – nicht die 2 × 8192 MiB, die gebucht sind.
+    expect(ram?.value).toBe(formatMegabytes(2 * 15_000));
 
     const disk = summary.find((entry) => entry.key === 'disk');
     expect(disk?.label).toBe('Platte frei');

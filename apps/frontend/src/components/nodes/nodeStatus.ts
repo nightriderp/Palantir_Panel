@@ -96,26 +96,16 @@ export interface NodeMetric {
   totalLabel: string;
   /** Was davon noch frei ist, z. B. `3,5 GB`. */
   freeLabel: string;
-  /** Füllgrad 0–100; `null`, wenn die Node keine Ausstattung meldet. */
+  /**
+   * Füllgrad 0–100; `null`, wenn die Node keine Ausstattung oder – beim RAM
+   * und bei der Platte – keine Messung meldet.
+   *
+   * Die Zusätze „davon … laufend" (Fundpunkt 203) und „… überbucht"
+   * (Fundpunkt 209) sind seit der weichen RAM-Zuweisung (2026-09-18) entfallen:
+   * Beide verglichen Buchungen, und Buchungen sagen nicht mehr, wie voll die
+   * Node ist.
+   */
   percent: number | null;
-  /**
-   * Zusatz unter dem Balken, z. B. „davon 20 GB laufend" (Fundpunkt 203).
-   *
-   * `undefined`, wenn es nichts zu unterscheiden gibt: bei der Platte zählen
-   * beide Zahlen über alle Zustände, und ohne `capacity.running` fällt die
-   * Anzeige auf die gebuchte Zahl zurück.
-   */
-  runningLabel?: string;
-  /**
-   * Steht anstelle des freien Rests, wenn mehr gebucht ist, als die Node hat –
-   * z. B. „4 GB überbucht" (Fundpunkt 209).
-   *
-   * Der Vertrag klemmt `available` bei null ab, was für sich richtig ist: Ein
-   * negativer freier Rest wäre keine brauchbare Zahl. Nur stand dort dann
-   * „0 GB frei", und das ist etwas anderes als „4 GB zu viel". Die Differenz
-   * lässt sich aus `total` und `allocated` ausrechnen – beide stehen im DTO.
-   */
-  overbookedLabel?: string;
   tone: Tone;
 }
 
@@ -211,18 +201,15 @@ export function nodeAgentHint(node: HostNodeDto): NodeAgentHint | null {
 }
 
 export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
-  const { total, allocated, available } = node.capacity;
-  const running = node.capacity.running ?? allocated;
+  const { total } = node.capacity;
 
-  /** Nur zeigen, wenn beide Zahlen wirklich auseinandergehen. */
-  const laufend = (gebucht: number, laeuft: number, formatiere: (wert: number) => string) =>
-    gebucht === laeuft ? undefined : `davon ${formatiere(laeuft)} laufend`;
-
-  /** „4 GB überbucht", sonst nichts (Fundpunkt 209). */
-  const zuViel = (gebucht: number, gesamt: number, formatiere: (wert: number) => string) =>
-    gebucht > gesamt ? `${formatiere(gebucht - gesamt)} überbucht` : undefined;
-
-  const ramPercent = percentOf(allocated.ramMb, total.ramMb);
+  /*
+   * RAM aus der **Messung** (Betreiber-Entscheidung 2026-09-18): Die
+   * Zuweisungen sind weiche Grenzen; „gebucht" sagte nichts mehr darueber, wie
+   * voll die Maschine ist. Ohne Messung ein Gedankenstrich, keine Buchung.
+   */
+  const ramUsedMb = node.usage?.ramUsedMb ?? null;
+  const ramPercent = ramUsedMb === null ? null : percentOf(ramUsedMb, total.ramMb);
 
   /*
    * Die Platte kommt aus der **Messung**, nicht aus Zuweisungen (siehe
@@ -235,17 +222,11 @@ export function nodeMetrics(node: HostNodeDto): NodeMetric[] {
   return [
     {
       key: 'ram',
-      label: 'RAM gebucht',
-      usedLabel: formatMegabytes(allocated.ramMb),
+      label: 'RAM belegt',
+      usedLabel: formatMegabytes(ramUsedMb),
       totalLabel: formatMegabytes(total.ramMb),
-      freeLabel: formatMegabytes(available.ramMb),
+      freeLabel: formatMegabytes(ramUsedMb === null ? null : total.ramMb - ramUsedMb),
       percent: ramPercent,
-      ...(zuViel(allocated.ramMb, total.ramMb, formatMegabytes) === undefined
-        ? {}
-        : { overbookedLabel: zuViel(allocated.ramMb, total.ramMb, formatMegabytes) }),
-      ...(laufend(allocated.ramMb, running.ramMb, formatMegabytes) === undefined
-        ? {}
-        : { runningLabel: laufend(allocated.ramMb, running.ramMb, formatMegabytes) }),
       tone: toneForFill(ramPercent),
     },
     {
@@ -294,7 +275,8 @@ export interface NodesSummaryEntry {
 export function nodesSummary(nodes: HostNodeDto[]): NodesSummaryEntry[] {
   const online = nodes.filter((node) => node.status === 'online').length;
   const servers = nodes.reduce((sum, node) => sum + node.serverCount, 0);
-  const bookedRamMb = nodes.reduce((sum, node) => sum + node.capacity.allocated.ramMb, 0);
+  // Gemessen belegt ueber die Nodes mit Messwerten (weiche Zuweisung, 2026-09-18).
+  const usedRamMb = nodes.reduce((sum, node) => sum + (node.usage?.ramUsedMb ?? 0), 0);
   /*
    * Freier Platz nur aus den Nodes, die gerade messen. Eine Node ohne Messung
    * geht mit 0 in die Summe – sie hat nicht null frei, sie sagt es nur nicht.
@@ -326,9 +308,9 @@ export function nodesSummary(nodes: HostNodeDto[]): NodesSummaryEntry[] {
     },
     {
       key: 'ram',
-      label: 'RAM gebucht',
-      value: formatMegabytes(bookedRamMb),
-      note: 'Für vorhandene Server fest reserviert.',
+      label: 'RAM belegt',
+      value: formatMegabytes(usedRamMb),
+      note: 'Gemessen auf den Nodes – die Server nehmen sich, was frei ist.',
       tone: 'brand',
     },
     {

@@ -97,6 +97,14 @@ export interface NodeWarningInput {
   readonly total: NodeResources;
   readonly usage: NodeResourceUsage;
   /**
+   * **Gemessen** belegter Arbeitsspeicher der Node in MiB (Gesamt minus
+   * `ramAvailableMb`). Seit die Zuweisung eines Servers nur noch eine weiche
+   * Grenze ist (2026-09-18), ist das die einzige Zahl, die sagt, wie voll die
+   * Node ist – die Summe der Zuweisungen sagt nichts mehr. Ohne Messung gibt
+   * es keine RAM-Warnung.
+   */
+  readonly usedRamMb?: number | null;
+  /**
    * **Gemessener** belegter Platz auf dem Dateisystem der Node, in MiB.
    *
    * `null` heißt „nicht gemessen" – dann gibt es keine Platten-Warnung. Eine
@@ -121,7 +129,9 @@ export interface NodeWarningInput {
 export function evaluateNodeWarnings(input: NodeWarningInput): ResourceLowEvent[] {
   return buildWarnings(
     [
-      { resource: 'ram', used: input.usage.runningRamMb, total: input.total.ramMb },
+      ...(input.usedRamMb === null || input.usedRamMb === undefined
+        ? []
+        : [{ resource: 'ram' as const, used: input.usedRamMb, total: input.total.ramMb }]),
       ...(input.usedDiskMb === null || input.usedDiskMb === undefined
         ? []
         : [{ resource: 'disk' as const, used: input.usedDiskMb, total: input.total.diskMb }]),
@@ -182,11 +192,14 @@ export interface ServerLoadSnapshot {
 
 /** Warnungen auf Server-Ebene: Verbrauch gegen die eigene RAM-Grenze des Servers. */
 export function evaluateServerWarnings(input: ServerWarningInput): ResourceLowEvent[] {
+  /*
+   * Keine Warnung mehr „Server nutzt 90 % seiner Zuweisung" (Betreiber-
+   * Entscheidung 2026-09-18): Die Zuweisung ist eine weiche Grenze, ein Server
+   * darf darueber liegen, solange die Node Platz hat – die Zahl waere ein
+   * Fehlalarm. Was eng wird, meldet die Node-Warnung aus der Messung. Die
+   * Funktion bleibt als Anschluss, damit der Zeitgeber nicht umgebaut wird.
+   */
   const candidates: WarningCandidate[] = [];
-
-  if (input.usedRamMb !== null) {
-    candidates.push({ resource: 'ram', used: input.usedRamMb, total: input.limits.ramMb });
-  }
 
   return buildWarnings(
     candidates,

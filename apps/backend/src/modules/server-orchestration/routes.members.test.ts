@@ -38,6 +38,7 @@ const SERVER: ServerRecord = {
   hostName: 'homeserver',
   hostStatus: 'online',
   hostCpuCores: 8,
+  hostRamMb: null,
   name: 'Testserver',
   gameType: 'test-echo',
   status: 'running',

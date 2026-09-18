@@ -45,7 +45,6 @@ import { useApiResource } from '@/lib/api/useApiResource';
 import { type LiveConnectionState } from '@/lib/live/LiveChannelProvider';
 import { forgetCloneJob, rememberCloneJob, rememberedCloneJob } from '@/lib/live/cloneJobHandle';
 import { ConfigFields } from '../form/ConfigFields';
-import { ResourceFields } from '../form/ResourceFields';
 import { formatBytes } from '../formatDetail';
 import { useSubdomainCheck } from '../useSubdomainCheck';
 import { JobProgress } from './JobProgress';
@@ -407,15 +406,11 @@ export function SettingsTab({
             hint="Die Subdomain steht seit dem Anlegen fest. Für eine andere Adresse einen Klon anlegen."
           />
 
-          <ResourceFields
-            ramMb={draft.resourceLimits.ramMb}
-            onChange={(values) =>
-              setDraft((current) => ({
-                ...current,
-                resourceLimits: { ...current.resourceLimits, ...values },
-              }))
-            }
-          />
+          {/*
+            Kein RAM-Regler mehr (Betreiber-Entscheidung 2026-09-18): Ein Server
+            nimmt sich, was auf der Node frei ist; die Zuweisung aus der
+            Spiele-Vorgabe bleibt als weiche Grenze im Datensatz.
+          */}
 
           <TextField
             label="Startparameter"

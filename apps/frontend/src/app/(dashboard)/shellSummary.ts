@@ -207,13 +207,13 @@ export function buildStatusMetrics({
       format: prozentFormat,
     });
 
-    // RAM ist der **gebuchte** Anteil (Summe der Server-Limits), nicht der
-    // gemessene: er sagt, wie viel Platz für weitere Server bleibt. Buchungen
-    // kennt jede Node, auch eine offline stehende – deshalb geht diese Zahl
-    // bewusst über alle Nodes, anders als CPU und Platte darüber.
-    const ramUsed = nodes.reduce((total, node) => total + node.capacity.allocated.ramMb, 0);
-    const ramTotal = nodes.reduce((total, node) => total + node.capacity.total.ramMb, 0);
-    const ramAnteil = anteil(ramUsed, ramTotal);
+    // RAM ist der **gemessene** Verbrauch (Betreiber-Entscheidung 2026-09-18):
+    // Die Zuweisungen sind weiche Grenzen und sagen nichts mehr darueber, wie
+    // voll eine Maschine ist. Wie CPU und Platte nur ueber Nodes mit Messung.
+    const ramNodes = nodes.filter((node) => node.usage?.ramUsedMb != null);
+    const ramUsed = ramNodes.reduce((total, node) => total + (node.usage?.ramUsedMb ?? 0), 0);
+    const ramTotal = ramNodes.reduce((total, node) => total + node.capacity.total.ramMb, 0);
+    const ramAnteil = ramNodes.length === 0 ? null : anteil(ramUsed, ramTotal);
     metrics.push({
       key: 'ram',
       label: 'RAM',
@@ -225,7 +225,10 @@ export function buildStatusMetrics({
         Zeile Prozente zeigt, nennt der Tooltip auch die absoluten Zahlen -
         sonst wäre mit dem Nenner die Grösse der Instanz verschwunden.
       */
-      note: `Summe des gebuchten Arbeitsspeichers über alle Nodes – gebucht, nicht gemessen. ${formatMegabytes(ramUsed)} von ${formatMegabytes(ramTotal)}.`,
+      note:
+        ramNodes.length === 0
+          ? 'Belegter Arbeitsspeicher – keine Node meldet gerade Messwerte.'
+          : `Belegter Arbeitsspeicher der Nodes mit Messwerten – gemessen, nicht gebucht. ${formatMegabytes(ramUsed)} von ${formatMegabytes(ramTotal)}.`,
       numeric: ramAnteil,
       format: prozentFormat,
     });

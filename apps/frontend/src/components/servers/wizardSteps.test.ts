@@ -41,23 +41,20 @@ const NODE: HostNodeDto = {
 /**
  * Node mit genau den angegebenen freien Werten.
  *
- * RAM kommt aus der freien Zuweisung, der Platz aus der Messung – zugewiesen
- * wird keiner mehr. Ohne `freiDiskMb` bleibt die Node ungemessen.
+ * RAM wie Platz kommen aus der Messung – zugewiesen wird nichts mehr fest
+ * (weiche RAM-Grenze seit 2026-09-18). Ohne Angabe bleibt die Node ungemessen.
  */
 function nodeWithFree(free: { ramMb?: number; freiDiskMb?: number }): HostNodeDto {
   return {
     ...NODE,
-    capacity: {
-      ...NODE.capacity,
-      available: { ramMb: free.ramMb ?? NODE.capacity.available.ramMb },
-    },
     usage:
-      free.freiDiskMb === undefined
+      free.ramMb === undefined && free.freiDiskMb === undefined
         ? NODE.usage
         : {
             cpuPercent: null,
-            ramUsedMb: null,
-            diskUsedMb: NODE.capacity.total.diskMb - free.freiDiskMb,
+            ramUsedMb: free.ramMb === undefined ? null : NODE.capacity.total.ramMb - free.ramMb,
+            diskUsedMb:
+              free.freiDiskMb === undefined ? null : NODE.capacity.total.diskMb - free.freiDiskMb,
             sampledAt: '2026-08-01T10:00:00.000Z',
             source: 'measured',
           },
@@ -230,47 +227,27 @@ describe('quotaBlockReason', () => {
     expect(reason).toContain('2 Server');
   });
 
-  it('rechnet die bereits belegten Ressourcen mit ein', () => {
-    const almostFull = quota({ ram: 8192 }, { ram: 7168 });
-    expect(quotaBlockReason(almostFull, state({ ramMb: 1024 }))).toBeNull();
-    expect(quotaBlockReason(almostFull, state({ ramMb: 2048 }))).toContain('RAM-Kontingent');
-  });
+  /*
+   * RAM ist keine Kontingentgroesse mehr (Betreiber-Entscheidung 2026-09-18):
+   * Die Zuweisung eines Servers ist eine weiche Grenze, ein Server nimmt sich,
+   * was auf der Node frei ist. Ein RAM-Rest im DTO – auch ein aufgebrauchter –
+   * sperrt deshalb nichts mehr.
+   */
+  it('sperrt beim RAM nicht mehr, auch wenn der Rest aufgebraucht ist', () => {
+    expect(
+      quotaBlockReason(quota({ ram: 8192 }, { ram: 7168 }), state({ ramMb: 2048 })),
+    ).toBeNull();
 
-  it('lässt den Rest exakt aufbrauchen, aber nicht überschreiten', () => {
-    const rest = quota({ ram: 8192 }, { ram: 6144 });
-    expect(quotaBlockReason(rest, state({ ramMb: 2048 }))).toBeNull();
-    expect(quotaBlockReason(rest, state({ ramMb: 2049 }))).toContain('RAM-Kontingent');
-  });
-
-  it('meldet ein überzogenes Kontingent, statt einen negativen Rest zu rechnen', () => {
-    // `remaining` ist nie negativ (Contracts); ein bereits überzogenes
-    // Kontingent hat Rest 0 und blockiert damit jeden weiteren Wunsch.
     const over = quota({ ram: 4096 }, { ram: 8192 });
     expect(over.ram.remaining).toBe(0);
-    expect(quotaBlockReason(over, state({ ramMb: 1 }))).toContain('RAM-Kontingent');
+    expect(quotaBlockReason(over, state({ ramMb: 1 }))).toBeNull();
   });
 
-  /*
-   * Fundpunkt 210: Im Kontingent stand „RAM 8 GiB von 16 GiB" unter
-   * „benutzt", ohne zu sagen, welche Server dabei zaehlen. Die Meldung nennt
-   * die Regel jetzt, statt den Nutzer raten zu lassen.
-   */
-  it('nennt beim RAM, dass nur laufende Server zaehlen', () => {
-    const reason = quotaBlockReason(quota({ ram: 8192 }, { ram: 7168 }), state({ ramMb: 2048 }));
+  it('sperrt weiter, wenn die Serveranzahl erschoepft ist – unabhaengig vom RAM', () => {
+    const reason = quotaBlockReason(quota({ servers: 1, ram: 65536 }, { servers: 1 }), state());
 
-    expect(reason).toContain('laufende Server');
-    expect(reason).toContain('1,07 GB frei von 8,59 GB');
-  });
-
-  it('schweigt zur Regel, wenn der Vertrag sie nicht mitliefert', () => {
-    const ohneRegel = quota({ ram: 8192 }, { ram: 7168 });
-    const reason = quotaBlockReason(
-      { ...ohneRegel, ram: { ...ohneRegel.ram, counting: undefined } },
-      state({ ramMb: 2048 }),
-    );
-
-    expect(reason).toContain('RAM-Kontingent');
-    expect(reason).not.toContain('laufende Server');
+    expect(reason).toContain('1 Server');
+    expect(reason).not.toContain('RAM');
   });
 });
 
@@ -284,10 +261,17 @@ describe('nodeBlockReason', () => {
     expect(nodeBlockReason({ ...NODE, status: 'maintenance' }, state())).toContain('Wartung');
   });
 
-  it('meldet zu wenig freien Arbeitsspeicher', () => {
+  it('meldet zu wenig gemessenen freien Arbeitsspeicher', () => {
     expect(nodeBlockReason(nodeWithFree({ ramMb: 1024 }), state({ ramMb: 4096 }))).toContain(
       'Arbeitsspeicher',
     );
+  });
+
+  it('lässt eine ungemessene Node beim RAM durch, statt sie zu sperren', () => {
+    // Die freie Zuweisung sagt seit der weichen Grenze nichts mehr – ohne
+    // Messung gibt es keine Zahl, gegen die der Wizard prüfen dürfte.
+    const ungemessen = { ...NODE, capacity: { ...NODE.capacity, available: { ramMb: 0 } } };
+    expect(nodeBlockReason(ungemessen, state({ ramMb: 4096 }))).toBeNull();
   });
 
   it('meldet zu wenig gemessenen freien Platz für den Schätzwert des Spiels', () => {

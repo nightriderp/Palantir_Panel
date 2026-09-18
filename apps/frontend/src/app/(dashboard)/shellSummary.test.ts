@@ -141,7 +141,7 @@ describe('buildStatusMetrics', () => {
     expect(valueOf(metrics, 'nodes')).toBe('2/3');
   });
 
-  it('zeigt beim RAM den gebuchten, bei der Platte den gemessenen Anteil', () => {
+  it('zeigt RAM und Platte als gemessenen Anteil', () => {
     const metrics = buildStatusMetrics({
       servers: [],
       nodes: [node()],
@@ -149,9 +149,11 @@ describe('buildStatusMetrics', () => {
     });
 
     // Prozent in der Zeile, die absoluten Zahlen im Tooltip (hafenmeister-Stil).
-    expect(valueOf(metrics, 'ram')).toBe('25 %');
+    // Beim RAM zaehlt seit der weichen Zuweisung (2026-09-18) die Messung, nicht
+    // die Buchung: 3 GiB gemessen von 16 GiB.
+    expect(valueOf(metrics, 'ram')).toBe('19 %');
     expect(valueOf(metrics, 'disk')).toBe('20 %');
-    expect(noteHas(metrics, 'ram', '4,29 GB von 17,2 GB')).toBe(true);
+    expect(noteHas(metrics, 'ram', '3,22 GB von 17,2 GB')).toBe(true);
     expect(noteHas(metrics, 'disk', '107 GB von 537 GB')).toBe(true);
   });
 
@@ -217,16 +219,27 @@ describe('buildStatusMetrics', () => {
     expect(valueOf(metrics, 'nodes')).toBe('2/3');
   });
 
-  it('lässt den gebuchten RAM über alle Nodes laufen, auch ohne Messung', () => {
+  it('bildet den RAM wie die Platte nur über Nodes mit Messung', () => {
     const metrics = buildStatusMetrics({
       servers: [],
       nodes: [node({ id: 'n1' }), node({ id: 'n2', status: 'offline', usage: null })],
       statsById: {},
     });
 
-    // Buchungen kennt jede Node – eine fehlende Messung ändert daran nichts.
-    expect(valueOf(metrics, 'ram')).toBe('25 %');
-    expect(noteHas(metrics, 'ram', '8,59 GB von 34,4 GB')).toBe(true);
+    // Die Node ohne Messung steuert weder Zähler noch Nenner bei – sonst
+    // meldete die Leiste freien Speicher, den niemand gemessen hat.
+    expect(valueOf(metrics, 'ram')).toBe('19 %');
+    expect(noteHas(metrics, 'ram', '3,22 GB von 17,2 GB')).toBe(true);
+  });
+
+  it('zeigt beim RAM einen Strich, solange keine Node misst', () => {
+    const metrics = buildStatusMetrics({
+      servers: [],
+      nodes: [node({ usage: null })],
+      statsById: {},
+    });
+
+    expect(valueOf(metrics, 'ram')).toBe('—');
   });
 
   it('blendet Bewegung, Fehler und Updates nur ein, wenn es etwas zu melden gibt', () => {
@@ -327,14 +340,14 @@ describe('Herkunft der Kopfzahlen (Fundpunkt 204)', () => {
     expect(noteHas(metrics, 'cpu', 'gemessen')).toBe(false);
   });
 
-  it('nennt den RAM im Tooltip immer gebucht, weil er nie gemessen ist', () => {
+  it('nennt den RAM im Tooltip gemessen, weil er nicht mehr gebucht wird', () => {
     const metrics = buildStatusMetrics({
       servers: [],
       nodes: [node({ usage: gemessen(102400) })],
       statsById: {},
     });
 
-    expect(noteHas(metrics, 'ram', 'gebucht, nicht gemessen')).toBe(true);
+    expect(noteHas(metrics, 'ram', 'gemessen, nicht gebucht')).toBe(true);
   });
 
   it('laesst die Serverzahlen ohne Herkunftssatz', () => {

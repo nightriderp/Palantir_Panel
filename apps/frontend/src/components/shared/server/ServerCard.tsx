@@ -137,7 +137,16 @@ export function ServerCard({
     live?.cpuPercent == null || server.hostCpuCores == null || server.hostCpuCores <= 0
       ? null
       : Math.min(100, live.cpuPercent / server.hostCpuCores);
-  const ramPercent = clampedPercentOf(live?.ramUsedMb, server.resourceLimits.ramMb);
+  /*
+    RAM als Anteil an der Node, nicht an der Zuweisung (Betreiber-Entscheidung
+    2026-09-18): Die Zuweisung ist eine weiche Grenze, ein Server darf darueber
+    liegen. Gezeigt wird der Verbrauch als Zahl; der Bogen sagt, wie viel von
+    der Maschine das ist – ohne Kenntnis der Node bleibt es bei der Zahl.
+  */
+  const ramPercent =
+    server.hostRamMb == null || server.hostRamMb <= 0
+      ? null
+      : clampedPercentOf(live?.ramUsedMb, server.hostRamMb);
   const pingMs = live?.pingMs ?? null;
 
   const address = formatServerAddress(server.address);
@@ -278,9 +287,14 @@ export function ServerCard({
         />
         <MetricRing
           label="RAM"
-          value={formatPercent(ramPercent)}
+          value={formatMegabytes(live?.ramUsedMb)}
           percent={ramPercent}
-          tone={loadTone(ramPercent)}
+          {...(ramPercent === null ? {} : { tone: loadTone(ramPercent) })}
+          title={
+            ramPercent === null
+              ? 'Belegter Arbeitsspeicher. Die Node ist hier nicht bekannt – ohne sie gibt es keinen Anteil.'
+              : `Belegter Arbeitsspeicher, Anteil an den ${formatMegabytes(server.hostRamMb ?? 0)} der Node – alle Server teilen sie sich.`
+          }
         />
         {/*
           Wie bei der CPU: ohne Zuweisung kein Nenner fuer einen Fuellstand.
