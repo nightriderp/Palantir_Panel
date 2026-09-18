@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { AUTH_ENDPOINTS, CSRF_HEADER_NAME, apiUrl, readCsrfToken } from '@/lib/auth/api';
 import { type GateState, gateRedirect, sessionStateFromEnvelope } from '@/lib/auth/routes';
+import { cspFuerAnfrage, erzeugeNonce } from '@/lib/csp';
+
+/** Kopf, über den die Nonce an die Seite gereicht wird (Next-Konvention). */
+export const NONCE_HEADER_NAME = 'x-nonce';
 
 /**
  * Zugriffssperre für den eingeloggten Bereich.
@@ -43,6 +47,19 @@ import { type GateState, gateRedirect, sessionStateFromEnvelope } from '@/lib/au
  *    ohne gemeinsamen Zustand, unter Umständen in mehreren Instanzen.
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  /*
+   * Content-Security-Policy mit Nonce (Review 2026-09-16, Befunde 3.4/12.3):
+   * eine frische Nonce je Anfrage, in den Anfrage-Kopf (Next.js liest sie von
+   * dort und hängt sie an seine Skripte) und in den Antwort-Kopf (der Browser
+   * setzt sie durch). Auch eine Umleitung trägt den Kopf – ein Browser, der der
+   * Umleitung folgt, bekommt die nächste Seite ohnehin mit eigener Nonce.
+   */
+  const nonce = erzeugeNonce();
+  const csp = cspFuerAnfrage(nonce);
+  const anfrageKoepfe = new Headers(request.headers);
+  anfrageKoepfe.set(NONCE_HEADER_NAME, nonce);
+  anfrageKoepfe.set('Content-Security-Policy', csp);
+
   const cookie = request.headers.get('cookie') ?? '';
 
   let state: GateState = { authed: false, awaiting: false };
@@ -103,10 +120,19 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
      * die Oberfläche ohnehin nicht – `?error=` wird gegen den Fehlercode-Katalog
      * geprüft (`messageForErrorCode`), `?linked=` gegen `AUTH_METHOD_LABEL`.
      */
-    return mitCookies(NextResponse.redirect(url), frischeCookies);
+    return mitCsp(mitCookies(NextResponse.redirect(url), frischeCookies), csp);
   }
 
-  return mitCookies(NextResponse.next(), frischeCookies);
+  return mitCsp(
+    mitCookies(NextResponse.next({ request: { headers: anfrageKoepfe } }), frischeCookies),
+    csp,
+  );
+}
+
+/** Die durchgesetzte Regel an die Antwort hängen. */
+function mitCsp(response: NextResponse, csp: string): NextResponse {
+  response.headers.set('Content-Security-Policy', csp);
+  return response;
 }
 
 /**

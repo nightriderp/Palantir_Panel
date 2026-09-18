@@ -23,67 +23,25 @@ const domain = process.env.PALANTIR_DOMAIN ?? 'palantir.local';
 const apiUrl =
   process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || `https://api.${domain}`;
 
-// Adresse des Live-Kanals (WebSocket). Steht sie nicht in der .env, ergibt sie
-// sich wie im Frontend-Code aus der API-Adresse mit ws:// bzw. wss://.
-const liveWsUrl =
-  process.env.NEXT_PUBLIC_LIVE_WS_URL || apiUrl.replace(/^http/, 'ws').replace(/\/+$/, '');
-
 /**
  * Content-Security-Policy (Audit W2-6, security-matrix-10).
  *
- * Zwei Header, bewusst getrennt:
+ * Hier steht nur der **statische Grundschutz**, der für jede Antwort gilt –
+ * auch für die, die nicht durch `src/proxy.ts` laufen (statische Dateien,
+ * `/fassung`): kein fremder Rahmen (Clickjacking auf „Server löschen"), keine
+ * untergeschobene `<base>`-Adresse, keine Plugins, Formularziele nur die eigene
+ * Herkunft. Bewusst ohne `default-src`: Zwei CSP-Köpfe gelten beide, und ein
+ * `default-src 'self'` hier würde die nonce-tragenden Inline-Skripte der Seiten
+ * blockieren.
  *
- * 1. **Durchgesetzt** wird nur, was nichts brechen kann und trotzdem die
- *    wichtigsten Angriffe abdeckt: kein fremder Rahmen (Clickjacking auf
- *    „Server löschen"), keine untergeschobene `<base>`-Adresse, keine Plugins,
- *    Formularziele nur die eigene Herkunft.
- * 2. **Nur beobachtet** (`Report-Only`) wird die vollständige Regel für das
- *    Laden von Skripten, Stilen, Schriften und Bildern. Next.js liefert seine
- *    Bootstrap-Skripte und Stile inline und ohne Nonce, die Schriften kommen
- *    von der eigenen API-Herkunft (`layout.tsx`), und Profilbilder liegen
- *    auf den CDNs der Anmelde-Anbieter. Eine durchgesetzte Regel würde bei der
- *    kleinsten Auslassung die Oberfläche zerlegen; im Report-Only-Modus meldet
- *    der Browser Verstöße in seiner Konsole, ohne etwas zu blockieren.
- *
- * Der zweite Header wird durchgesetzt, sobald die Meldungen über eine
- * Betriebsphase hinweg leer bleiben (dann `-Report-Only` aus dem Namen nehmen).
+ * Die **vollständige Regel** – Skripte nur mit Nonce, Stile, Schriften, Bilder,
+ * Live-Kanal – setzt `src/proxy.ts` je Anfrage (`lib/csp.ts`). Sie lief bis
+ * zum Review 2026-09-16 (Befunde 3.4/12.3) nur als `Report-Only`, weil Next.js
+ * seine Skripte ohne Nonce in die Seite hängte; seit der Nonce ist sie
+ * durchgesetzt und der Beobachtungs-Kopf entfallen. Eine Regel, die man nur
+ * beobachtet, hält keinen Angriff auf.
  */
 const cspErzwungen = [
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-].join('; ');
-
-const cspBeobachtet = [
-  "default-src 'self'",
-  // `unsafe-inline`/`unsafe-eval`: Next.js hängt seine Hydrations-Skripte ohne
-  // Nonce in die Seite; in der Entwicklung kommt der Refresh-Mechanismus dazu.
-  process.env.NODE_ENV === 'development'
-    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-inline'",
-  /*
-   * Schriften kommen aus der eigenen Instanz (Fundpunkt 151, Arbeitspaket S-3).
-   *
-   * Bis dahin standen hier `https://fonts.googleapis.com` (Stylesheet) und
-   * `https://fonts.gstatic.com` (Schriftdateien): Jeder Seitenaufruf gab damit
-   * die IP-Adresse des Betrachters an einen Dritten weiter. Beide Hosts sind
-   * ersatzlos verschwunden – **das ist der Kern der Änderung.** Solange sie
-   * hier erlaubt blieben, würde eine übersehene `<link>`-Zeile weiterhin
-   * stillschweigend dort laden, und niemand bemerkte es.
-   *
-   * Stattdessen die Herkunft der eigenen API: Von dort kommt das erzeugte
-   * Stylesheet (`/public/fonts.css`) und von dort kommen die Schriftdateien
-   * (`/api/fonts/:id/file`). `'self'` genügt dafür nicht – Panel und API liegen
-   * auf getrennten Subdomains (Pflichtenheft §12.1). Bewusst dieselbe Variable
-   * wie in `connect-src`, damit hier kein zweiter Host von Hand gepflegt wird.
-   */
-  `style-src 'self' 'unsafe-inline' ${apiUrl}`,
-  `font-src 'self' ${apiUrl} data:`,
-  // Profilbilder der Anmelde-Anbieter (Discord/Twitch/Steam-CDN) - deren Hosts
-  // stehen nicht fest, deshalb `https:`.
-  "img-src 'self' data: blob: https:",
-  `connect-src 'self' ${apiUrl} ${liveWsUrl}`,
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
@@ -109,7 +67,6 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Content-Security-Policy', value: cspErzwungen },
-          { key: 'Content-Security-Policy-Report-Only', value: cspBeobachtet },
         ],
       },
     ];

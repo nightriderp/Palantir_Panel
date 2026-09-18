@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AUTH_ENDPOINTS, CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from '@/lib/auth/api';
-import { config, proxy } from './proxy';
+import { NONCE_HEADER_NAME, config, proxy } from './proxy';
 
 /**
  * Umleitungen der Zugriffssperre (Fundpunkt frontend-app-02).
@@ -132,6 +132,67 @@ describe('Middleware – Umleitung behält die Query (Fundpunkt frontend-app-02)
     // Sitzung gilt wieder: keine Umleitung, aber frische Cookies an der Antwort.
     expect(response.headers.get('location')).toBeNull();
     expect(response.headers.get('set-cookie')).toContain('palantir_session=neu');
+  });
+});
+
+/**
+ * Durchgesetzte Content-Security-Policy mit Nonce (Review 2026-09-16, Befunde
+ * 3.4/12.3). Die Regel selbst prüft `lib/csp.test.ts`; hier geht es um die
+ * Verdrahtung: Nonce erzeugt, an die Anfrage gereicht, im Antwort-Kopf
+ * durchgesetzt – auch auf dem Umleitungsweg.
+ */
+describe('Middleware – Content-Security-Policy mit Nonce', () => {
+  function nonceAus(csp: string | null): string | null {
+    return csp?.match(/'nonce-([^']+)'/)?.[1] ?? null;
+  }
+
+  it('setzt auf jede Seite eine durchgesetzte Regel mit Nonce statt unsafe-inline', async () => {
+    fetchDouble.mockResolvedValue(angemeldet());
+
+    const response = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const csp = response.headers.get('content-security-policy');
+
+    expect(csp).not.toBeNull();
+    expect(csp).toContain("script-src 'self' 'nonce-");
+    expect(csp).toContain("'strict-dynamic'");
+    expect(csp?.split('; ').find((teil) => teil.startsWith('script-src'))).not.toContain(
+      'unsafe-inline',
+    );
+    expect(response.headers.get('content-security-policy-report-only')).toBeNull();
+  });
+
+  it('reicht dieselbe Nonce als x-nonce an die Seite weiter', async () => {
+    fetchDouble.mockResolvedValue(angemeldet());
+
+    const response = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const csp = response.headers.get('content-security-policy');
+    // `NextResponse.next({ request })` legt die geänderten Anfrage-Köpfe unter
+    // `x-middleware-request-*` ab – so kommen sie bei der Seite an.
+    const weitergereicht = response.headers.get(`x-middleware-request-${NONCE_HEADER_NAME}`);
+
+    expect(weitergereicht).not.toBeNull();
+    expect(nonceAus(csp)).toBe(weitergereicht);
+  });
+
+  it('erzeugt je Anfrage eine neue Nonce', async () => {
+    fetchDouble.mockResolvedValue(angemeldet());
+
+    const erste = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+    const zweite = await proxy(anfrage('https://panel.example/servers', SITZUNGS_COOKIE));
+
+    const a = nonceAus(erste.headers.get('content-security-policy'));
+    const b = nonceAus(zweite.headers.get('content-security-policy'));
+    expect(a).not.toBeNull();
+    expect(a).not.toBe(b);
+  });
+
+  it('trägt die Regel auch auf einer Umleitung', async () => {
+    fetchDouble.mockResolvedValue(abgemeldet());
+
+    const response = await proxy(anfrage('https://panel.example/servers', 'palantir_session=egal'));
+
+    expect(ziel(response)).toBe('/login');
+    expect(response.headers.get('content-security-policy')).toContain("'nonce-");
   });
 });
 

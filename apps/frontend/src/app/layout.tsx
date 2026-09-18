@@ -2,6 +2,16 @@ import type { Metadata, Viewport } from 'next';
 import { FONT_STYLESHEET_LINK_ATTRIBUTE, fontStylesheetUrl } from '@/lib/api/fonts';
 import './globals.css';
 
+/**
+ * Jede Seite dynamisch rendern: Die Content-Security-Policy trägt eine Nonce je
+ * Anfrage (`src/proxy.ts`, `lib/csp.ts`), und Next.js kann sie nur beim
+ * Rendern zur Anfrage an seine Skripte hängen – eine beim Bau vorgerenderte
+ * Seite hätte keine und würde von ihrer eigenen Regel blockiert. Der
+ * eingeloggte Bereich war ohnehin dynamisch; das hier holt die Anmelde-Seiten
+ * und die Fehlerseiten nach.
+ */
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Palantir',
   description: 'Gameserver-Verwaltung für den eigenen Homeserver',
