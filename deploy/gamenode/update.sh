@@ -138,7 +138,19 @@ pruefe_tag_signatur() {
   fi
 
   # Tags kommen nicht mit `fetch origin prod` mit; sie werden eigens geholt.
-  git -C "${REPO_DIR}" fetch --quiet --tags origin
+  #
+  # `--force`, weil ein Tag auf der Node schon liegen kann, das auf GitHub
+  # spaeter neu gesetzt wurde (etwa beim Umstieg auf signierte Tags): Ohne
+  # `--force` lehnt git das Holen ab ("would clobber existing tag"), und mit
+  # `--quiet` sagte er nicht einmal das - der Lauf brach nach "Neuer Stand"
+  # stumm mit Status 1 ab, bei jedem Lauf, wochenlang (Gamenode 2026-09-19,
+  # haengen geblieben auf v1.44.0). Ein ueberschriebenes Tag ist hier kein
+  # Risiko: Vertrauensanker ist die Signatur, die gleich geprueft wird, nicht
+  # die Unveraenderlichkeit des Tags. Und was schiefgeht, steht jetzt im Journal.
+  local fehler
+  if ! fehler="$(git -C "${REPO_DIR}" fetch --force --tags origin 2>&1 >/dev/null)"; then
+    fail "Tags konnten nicht geholt werden: ${fehler}"
+  fi
 
   tags="$(git -C "${REPO_DIR}" tag --points-at "${ziel}" 'v*')"
   [[ -n "${tags}" ]] || fail "Auf ${ziel:0:12} zeigt kein Versions-Tag - ohne Tag gibt es keine Signatur, die sich pruefen liesse."
