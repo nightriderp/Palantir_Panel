@@ -78,7 +78,7 @@ function grenzdatei(inhalt) {
  * Bindet die Bibliothek ein, ruft `java_heap_bestimmen` auf und liefert, was
  * die Funktion gesetzt hat.
  */
-function heapBestimmen(grenze) {
+function heapBestimmen(grenze, extraEnv = {}) {
   const ergebnis = laufMitFrist(
     'sh',
     [
@@ -94,7 +94,7 @@ function heapBestimmen(grenze) {
     ],
     {
       encoding: 'utf8',
-      env: { ...process.env, PALANTIR_MEMORY_LIMIT_FILE: grenze },
+      env: { ...process.env, PALANTIR_MEMORY_LIMIT_FILE: grenze, ...extraEnv },
     },
   );
 
@@ -130,6 +130,27 @@ describe('java.sh – Heap aus dem RAM-Kontingent', nurMitShell, () => {
       assert.equal(lauf.ruecklage, String(ruecklage));
     });
   }
+
+  it('nimmt die Heap-Vorgabe des Agents vor der cgroup-Grenze (PALANTIR_JAVA_HEAP_MIB)', () => {
+    // Seit der weichen Zuweisung steht die cgroup-Grenze fuer alle Container
+    // auf dem Node-Wert; der Agent rechnet den Heap aus dem freien Speicher.
+    const lauf = heapBestimmen(grenzdatei(16_384 * 1024 * 1024), {
+      PALANTIR_JAVA_HEAP_MIB: '6000',
+    });
+
+    assert.equal(lauf.ausgang, 'grenze');
+    assert.equal(lauf.argumente, '-Xms6000M -Xmx6000M');
+    assert.equal(lauf.heap, '6000');
+    assert.equal(lauf.kontingent, '');
+  });
+
+  it('ignoriert eine unbrauchbare Heap-Vorgabe und rechnet wie bisher', () => {
+    for (const wert of ['abc', '100', '-5', '']) {
+      const lauf = heapBestimmen(grenzdatei(4096 * 1024 * 1024), { PALANTIR_JAVA_HEAP_MIB: wert });
+
+      assert.equal(lauf.argumente, '-Xms3072M -Xmx3072M', `Vorgabe "${wert}"`);
+    }
+  });
 
   it('überlässt der JVM die Rechnung, wenn die angegebene Datei fehlt', () => {
     const lauf = heapBestimmen(posix(join(tmpdir(), 'palantir-java-gibt-es-nicht')));

@@ -24,6 +24,7 @@ import {
   type HardeningOptions,
 } from '../hardening.js';
 import { MAX_EXTRACTED_BYTES, type ArchiveKind, readArchive } from '../archive.js';
+import { type SpeicherPlanung, javaHeapMib } from '../memory.js';
 import { resolveWithinRoot } from '../paths.js';
 import {
   DEFAULT_LOG_TAIL,
@@ -92,6 +93,13 @@ export const DEFAULT_PULL_TIMEOUT_MS = 15 * 60 * 1_000;
 export interface DockerContainerRuntimeOptions {
   readonly client: DockerHttpClient;
   readonly hardening: HardeningOptions;
+  /**
+   * Weiche RAM-Grenze und Heap-Planung (`memory.ts`, Betreiber-Entscheidung
+   * 2026-09-18). Gesetzt, bekommt jeder neue Container `PALANTIR_JAVA_HEAP_MIB`
+   * aus dem gerade freien Speicher der Node; Java-Images lesen die Variable,
+   * alle anderen ignorieren sie. Ohne Angabe bleibt alles wie bisher.
+   */
+  readonly speicherPlanung?: SpeicherPlanung;
   /** Groessenlimit fuer `extractArchive`. Vorgabe: {@link DEFAULT_MAX_ARCHIVE_BYTES}. */
   readonly maxArchiveBytes?: number;
   /** Wird gerufen, wenn ein Hintergrund-Stream unerwartet abbricht. */
@@ -169,6 +177,7 @@ function istAbbruch(fehler: unknown): boolean {
 export class DockerContainerRuntime implements ContainerRuntime {
   readonly #client: DockerHttpClient;
   readonly #hardening: HardeningOptions;
+  readonly #speicherPlanung: SpeicherPlanung | undefined;
   readonly #maxArchiveBytes: number;
   readonly #registry: RegistryCredentials | undefined;
   readonly #pullTimeoutMs: number;
@@ -204,6 +213,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
     this.#registry = options.registry;
     this.#pullTimeoutMs = options.pullTimeoutMs ?? DEFAULT_PULL_TIMEOUT_MS;
     this.#hardening = options.hardening;
+    this.#speicherPlanung = options.speicherPlanung;
     this.#maxArchiveBytes = options.maxArchiveBytes ?? DEFAULT_MAX_ARCHIVE_BYTES;
     this.#onStreamError =
       options.onStreamError ??
@@ -252,8 +262,42 @@ export class DockerContainerRuntime implements ContainerRuntime {
 
   // ---------------------------------------------------------------- Lifecycle-Befehle
 
+  /**
+   * Java-Heap aus dem freien Speicher der Node (`memory.ts`).
+   *
+   * Berechnet beim Anlegen, nicht beim Start: Der Container traegt seine
+   * Umgebung ab dem Anlegen, und ein Neustart soll denselben Heap behalten,
+   * mit dem der Server zuletzt lief. Ein ausdruecklich gesetzter Wert aus dem
+   * Backend hat Vorrang.
+   */
+  async #mitJavaHeap(spec: ContainerSpec): Promise<ContainerSpec> {
+    const planung = this.#speicherPlanung;
+    if (planung === undefined || spec.env['PALANTIR_JAVA_HEAP_MIB'] !== undefined) {
+      return spec;
+    }
+
+    // Die Planung darf einen Start nie verhindern: Scheitert die Zaehlung der
+    // laufenden Container, gilt der Server als einziger – ein grosszuegiger
+    // Heap, den die weiche Grenze notfalls zurueckdraengt.
+    const [verfuegbarMb, container] = await Promise.all([
+      planung.verfuegbarMb(),
+      this.list().catch((): readonly ContainerState[] => []),
+    ]);
+    const laufende = Array.isArray(container)
+      ? container.filter((eintrag) => eintrag.status === 'running').length
+      : 0;
+    const heapMib = javaHeapMib({
+      availableMb: verfuegbarMb,
+      reserveMb: planung.reserveMb,
+      runningContainers: laufende,
+      hardLimitMb: planung.hardLimitMb,
+    });
+
+    return { ...spec, env: { ...spec.env, PALANTIR_JAVA_HEAP_MIB: String(heapMib) } };
+  }
+
   async create(spec: ContainerSpec): Promise<ContainerHandle> {
-    const body = buildCreateContainerBody(spec, this.#hardening);
+    const body = buildCreateContainerBody(await this.#mitJavaHeap(spec), this.#hardening);
 
     const anlegen = async (): Promise<{ Id: string; Warnings?: string[] }> =>
       this.#client.requestJson<{ Id: string; Warnings?: string[] }>('POST', '/containers/create', {

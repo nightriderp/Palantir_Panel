@@ -11,6 +11,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import type { AgentNodeStats } from '@palantir/contracts';
+import { leseVerfuegbarenSpeicherMb } from '../runtime/memory.js';
 
 const BYTES_PER_MB = 1024 * 1024;
 
@@ -41,10 +42,12 @@ export async function readNodeStats(dataDir: string): Promise<AgentNodeStats | n
       // `null` als eine erfundene Null, die wie „keine Last" aussähe.
       cpuLoad1m: process.platform === 'win32' ? null : (os.loadavg()[0] ?? null),
       ramTotalMb: toMb(os.totalmem()),
-      // `freemem` unterschätzt: es zählt reclaimbaren Cache nicht als frei. Das
-      // ist bewusst konservativ – die Kapazitätsprüfung sagt so eher zu wenig
-      // als zu viel zu.
-      ramAvailableMb: toMb(os.freemem()),
+      // `MemAvailable` aus /proc/meminfo statt `freemem`: Letzteres zählt den
+      // Dateicache als belegt und meldete eine fast volle Node, obwohl der
+      // Kernel den Cache jedem neuen Prozess sofort hergibt. Seit die
+      // Zuweisungen weich sind, ist diese Zahl das, was im Panel als
+      // „belegt“ steht – sie soll den echten Verbrauch zeigen (`memory.ts`).
+      ramAvailableMb: await leseVerfuegbarenSpeicherMb(),
       diskTotalMb: toMb(diskTotalBytes),
       diskAvailableMb: toMb(diskAvailableBytes),
       observedAt: new Date().toISOString(),

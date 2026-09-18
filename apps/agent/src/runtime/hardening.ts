@@ -90,6 +90,8 @@ export interface DockerHostConfig {
   readonly PortBindings: Record<string, Array<{ HostIp: string; HostPort: string }>>;
   readonly Memory: number;
   readonly MemorySwap: number;
+  /** Weiche Grenze (Zuweisung des Servers); fehlt, wenn keine harte Node-Grenze bekannt ist. */
+  readonly MemoryReservation?: number;
   readonly PidsLimit: number;
   readonly ReadonlyRootfs: boolean;
   readonly Tmpfs: Record<string, string>;
@@ -123,6 +125,16 @@ export interface HardeningOptions {
    * `AGENT_DATA_DIR`, fuer Restores zusaetzlich `AGENT_BACKUP_DIR`).
    */
   readonly allowedHostRoots: readonly string[];
+  /**
+   * Harte RAM-Grenze je Container in Byte: Node minus Ruecklage (`memory.ts`).
+   *
+   * Gesetzt, wird die Zuweisung des Servers (`resources.memoryMb`) zur
+   * **weichen** Grenze (`MemoryReservation`), und `Memory` steht fuer alle
+   * Container auf diesem Wert (Betreiber-Entscheidung 2026-09-18). Ohne
+   * Angabe bleibt die Zuweisung die harte Grenze – so laufen die Tests, die
+   * die Node nicht kennen.
+   */
+  readonly nodeMemoryHardLimitBytes?: number;
   /**
    * Wurzelverzeichnisse, die **nur lesend** eingehaengt werden duerfen.
    *
@@ -300,7 +312,19 @@ export function buildCreateContainerBody(
     securityOpt.push(`seccomp=${options.seccompProfile}`);
   }
 
-  const memoryBytes = spec.resources.memoryMb * 1024 * 1024;
+  const zuweisungBytes = spec.resources.memoryMb * 1024 * 1024;
+  /*
+   * Weiche Grenze statt harter (Betreiber-Entscheidung 2026-09-18): Die
+   * Zuweisung ist das Ziel, auf das der Kernel den Container unter Druck
+   * zurueckdraengt; hart ist nur die Grenze der Node minus Ruecklage – fuer
+   * alle Container dieselbe. Ein Server darf sich nehmen, was frei ist; keiner
+   * kann die Node umwerfen. Liegt die Zuweisung ueber der harten Grenze, gilt
+   * die Zuweisung – eine Reservierung ueber der Grenze lehnt Docker ab.
+   */
+  const harteGrenzeBytes =
+    options.nodeMemoryHardLimitBytes === undefined
+      ? zuweisungBytes
+      : Math.max(options.nodeMemoryHardLimitBytes, zuweisungBytes);
 
   const labels: Record<string, string> = {
     ...(spec.labels ?? {}),
@@ -330,10 +354,13 @@ export function buildCreateContainerBody(
         bindString(mount, options.allowedHostRoots),
       ),
       PortBindings: portBindings,
-      Memory: memoryBytes,
+      Memory: harteGrenzeBytes,
       // Gleicher Wert wie Memory => kein Swap. Sonst koennte ein Container sein
       // RAM-Limit ueber die Auslagerungsdatei des Hosts umgehen.
-      MemorySwap: memoryBytes,
+      MemorySwap: harteGrenzeBytes,
+      ...(options.nodeMemoryHardLimitBytes === undefined
+        ? {}
+        : { MemoryReservation: zuweisungBytes }),
       /*
        * Kein `NanoCpus`: Die CPU-Zuweisung ist auf Wunsch des Betreibers
        * entfallen. Jeder Container darf alle Kerne der Node sehen, der

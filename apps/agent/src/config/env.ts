@@ -174,6 +174,12 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(512 * 1024 * 1024),
+  /**
+   * Ruecklage der Node in MiB, die kein Spielserver bekommt (Agent, frpc,
+   * Kernel, Dateicache). Ohne Angabe 10 % des Arbeitsspeichers, mindestens
+   * 2 GiB – siehe `runtime/memory.ts`.
+   */
+  AGENT_NODE_RAM_RESERVE_MB: z.coerce.number().int().min(256).optional(),
 });
 
 /**

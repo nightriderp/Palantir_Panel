@@ -67,11 +67,37 @@ describe('Container-Haertung (Pflichtenheft §2.3)', () => {
     }
   });
 
-  it('setzt eine feste RAM-Grenze und deaktiviert Swap', () => {
+  it('setzt ohne Node-Grenze die Zuweisung als harte RAM-Grenze und deaktiviert Swap', () => {
     const body = buildCreateContainerBody(spec({ resources: { memoryMb: 1024 } }), optionen);
     expect(body.HostConfig.Memory).toBe(1024 * 1024 * 1024);
     // Gleicher Wert wie Memory bedeutet: kein Swap - das RAM-Limit ist nicht umgehbar.
     expect(body.HostConfig.MemorySwap).toBe(body.HostConfig.Memory);
+    expect(body.HostConfig).not.toHaveProperty('MemoryReservation');
+  });
+
+  it('macht die Zuweisung zur weichen Grenze, wenn die Node-Grenze bekannt ist', () => {
+    // Betreiber-Entscheidung 2026-09-18: Server nehmen sich, was frei ist; hart
+    // ist nur die Node minus Ruecklage - fuer alle Container dieselbe.
+    const nodeGrenze = 20 * 1024 * 1024 * 1024;
+    const body = buildCreateContainerBody(spec({ resources: { memoryMb: 4096 } }), {
+      ...optionen,
+      nodeMemoryHardLimitBytes: nodeGrenze,
+    });
+
+    expect(body.HostConfig.MemoryReservation).toBe(4096 * 1024 * 1024);
+    expect(body.HostConfig.Memory).toBe(nodeGrenze);
+    expect(body.HostConfig.MemorySwap).toBe(nodeGrenze);
+  });
+
+  it('laesst eine Zuweisung ueber der Node-Grenze nicht unter die Zuweisung fallen', () => {
+    // Docker lehnt eine Reservierung ueber der harten Grenze ab.
+    const body = buildCreateContainerBody(spec({ resources: { memoryMb: 8192 } }), {
+      ...optionen,
+      nodeMemoryHardLimitBytes: 4096 * 1024 * 1024,
+    });
+
+    expect(body.HostConfig.Memory).toBe(8192 * 1024 * 1024);
+    expect(body.HostConfig.MemoryReservation).toBe(8192 * 1024 * 1024);
   });
 
   it('setzt keine CPU-Grenze mehr', () => {
