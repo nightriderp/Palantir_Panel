@@ -229,6 +229,7 @@ class FakeRepository implements ServerRepository {
       hostName: HOST.name,
       hostStatus: 'online',
       hostCpuCores: 8,
+      hostRamMb: null,
       name: data.name,
       gameType: data.gameType,
       status: 'creating',
@@ -3851,7 +3852,10 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
         Promise.resolve({
           userId,
           userDisplayName: 'Besitzer',
-          limits: NO_USER_RESOURCE_LIMITS,
+          // Seit der weichen RAM-Grenze (2026-09-18) serialisiert nur noch die
+          // Anzahl gleichzeitiger Server zwei Starts – die Summe der
+          // Zuweisungen zaehlt nicht mehr.
+          limits: { ...NO_USER_RESOURCE_LIMITS, maxConcurrentServers: 1 },
           updatedAt: null,
         }),
       findManyByUserId: () => Promise.resolve(new Map()),
@@ -3890,7 +3894,7 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
   it('lässt von zwei gleichzeitigen Starts nur einen zu – der andere scheitert deterministisch', async () => {
     const harness = makeHarness({ buildReservation });
 
-    // Zwei gestoppte Server; einzeln würde jeder starten (256 MB ≤ 256 MB frei).
+    // Zwei gestoppte Server; einzeln würde jeder starten (ein Server erlaubt).
     const first = await harness.service.createServer(createInput('server-eins'), OWNER_ID);
     const second = await harness.service.createServer(createInput('server-zwei'), OWNER_ID);
 
@@ -3913,10 +3917,10 @@ describe('Kapazität serialisiert (TOCTOU, WORK_STATUS.md Punkt 98)', () => {
      * hier zwei belegende Server statt einem.
      */
     const error = (rejected[0] as PromiseRejectedResult).reason as { readonly code: string };
-    expect(error.code).toBe('RESOURCE_CONFIRMATION_REQUIRED');
+    expect(error.code).toBe('RESOURCE_LIMIT_EXCEEDED');
 
-    // Genau ein Server belegt jetzt RAM (starting/running) – die Node ist nicht
-    // überbucht.
+    // Genau ein Server laeuft (starting/running) – das Kontingent ist nicht
+    // ueberschritten.
     const consuming = [...harness.repository.servers.values()].filter(
       (s) => s.status === 'starting' || s.status === 'running',
     );

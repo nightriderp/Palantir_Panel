@@ -36,6 +36,7 @@ function serverRecord(overrides: Partial<ServerRecord> & Pick<ServerRecord, 'id'
     hostName: 'homeserver',
     hostStatus: 'online',
     hostCpuCores: 8,
+    hostRamMb: null,
     name: 'Testserver',
     gameType: 'test-echo',
     status: 'running',

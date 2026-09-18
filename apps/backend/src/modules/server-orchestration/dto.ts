@@ -132,6 +132,9 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     // Bezugsgroesse der CPU-Anzeige: `cpuPercent` zaehlt je Kern, ein Anteil
     // entsteht erst mit der Kernzahl der Maschine.
     hostCpuCores: server.hostCpuCores,
+    // Bezugsgroesse der RAM-Anzeige - die Zuweisung ist seit dem 2026-09-18
+    // nur noch eine weiche Grenze, gezeigt wird der Anteil an der Node.
+    hostRamMb: server.hostRamMb,
     // Seit wann dieser Zustand gilt - die Uhr an einem laufenden Uebergang
     // ("Startet ... seit 2:14 min") zaehlt von hier, nicht vom letzten Start.
     statusChangedAt: server.statusChangedAt,

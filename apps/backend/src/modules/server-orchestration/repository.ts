@@ -43,6 +43,8 @@ export interface ServerRecord {
   readonly hostStatus: HostNodeStatus | null;
   /** Kerne der Node – Bezugsgroesse der CPU-Anzeige (`cpuPercent` je Kern). */
   readonly hostCpuCores: number | null;
+  /** Arbeitsspeicher der Node in MiB – Bezugsgroesse der RAM-Anzeige (weiche Zuweisung, 2026-09-18). */
+  readonly hostRamMb: number | null;
   readonly name: string;
   readonly gameType: string;
   readonly status: ServerStatus;
@@ -328,6 +330,7 @@ type ServerJoinRow = {
   hostName: string | null;
   hostStatus: HostNodeStatus | null;
   hostCpuCores: number | null;
+  hostRamMb: number | null;
 };
 
 function toRecord(row: ServerJoinRow): ServerRecord {
@@ -341,6 +344,7 @@ function toRecord(row: ServerJoinRow): ServerRecord {
     hostName: row.hostName,
     hostStatus: row.hostStatus,
     hostCpuCores: row.hostCpuCores,
+    hostRamMb: row.hostRamMb,
     name: server.name,
     gameType: server.gameType,
     status: server.status,
@@ -379,6 +383,10 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
     // CPU-Anzeige - `cpuPercent` zaehlt in Prozent EINES Kerns, ein Anteil
     // entsteht erst mit der Kernzahl der Maschine.
     hostCpuCores: hostNodes.totalCpuCores,
+    // Und der Arbeitsspeicher: Seit die Zuweisung eines Servers nur noch eine
+    // weiche Grenze ist, zeigt die Oberflaeche den Verbrauch als Anteil an der
+    // Node, nicht an der Zuweisung.
+    hostRamMb: hostNodes.totalRamMb,
   };
 
   /**

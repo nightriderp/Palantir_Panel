@@ -131,15 +131,19 @@ function zaehlung(slot: ResourceQuotaSlot): string {
  * Der Rest steht fertig gerechnet im DTO (`ResourceQuotaSlot.remaining`, nie
  * negativ) – hier wird nichts aus Limit und Belegung nachgerechnet. Damit gilt
  * automatisch dieselbe Zählweise wie in der harten Kapazitätsprüfung des
- * Backends: RAM und die Serveranzahl zählen die laufenden Server. Platz und
- * Kerne stehen hier nicht mehr – beides wird nicht mehr zugewiesen.
+ * Backends: Die Serveranzahl zählt die laufenden Server. RAM, Platz und Kerne
+ * stehen hier nicht mehr – nichts davon wird noch fest zugewiesen.
  */
 export function quotaBlockReason(
   quota: ResourceQuotaDto | null,
   state: WizardState,
 ): string | null {
   if (!quota) return null;
-  const { ram, servers } = quota;
+  const { servers } = quota;
+  // Bleibt in der Signatur, damit Aufrufer und Platzprüfung dieselbe Form
+  // behalten; seit dem Wegfall des RAM-Kontingents liest die Prüfung nichts
+  // mehr aus dem Wunsch.
+  void state;
 
   // Der neue Server zählt als einer mehr – bleibt kein Rest, ist Schluss.
   if (servers.remaining !== null && servers.remaining < 1) {
@@ -147,11 +151,8 @@ export function quotaBlockReason(
       servers,
     )}).`;
   }
-  if (ram.remaining !== null && state.ramMb > ram.remaining) {
-    return `RAM-Kontingent: ${formatMegabytes(ram.remaining)} frei von ${formatMegabytes(
-      ram.limit ?? 0,
-    )} (${zaehlung(ram)}) – gebraucht werden ${formatMegabytes(state.ramMb)}.`;
-  }
+  // RAM ist keine Kontingentgroesse mehr (Betreiber-Entscheidung 2026-09-18);
+  // `quota.ram` bleibt im DTO fuer aeltere Backends und wird hier nicht gelesen.
   return null;
 }
 
@@ -174,10 +175,14 @@ export function nodeBlockReason(
       : `„${node.name}" ist gerade nicht erreichbar.`;
   }
 
-  // Die freie Kapazität rechnet B8 bereits aus (`capacity.available`).
-  const free = node.capacity.available;
-  if (state.ramMb > free.ramMb) {
-    return `Auf „${node.name}" sind nur noch ${formatMegabytes(free.ramMb)} Arbeitsspeicher frei.`;
+  // Gemessen, nicht gebucht: Seit der weichen Zuweisung sagt nur die Messung,
+  // was auf der Node frei ist (2026-09-18). Ohne Messung keine Sperre.
+  const gemessenBelegt = node.usage?.ramUsedMb;
+  if (gemessenBelegt != null) {
+    const frei = Math.max(0, node.capacity.total.ramMb - gemessenBelegt);
+    if (state.ramMb > frei) {
+      return `Auf „${node.name}" sind gemessen nur noch ${formatMegabytes(frei)} Arbeitsspeicher frei.`;
+    }
   }
 
   /*
@@ -291,7 +296,6 @@ export function buildSummaryRows(
       value: state.subdomain ? `${state.subdomain}.${baseDomain}` : '—',
     },
     { label: 'Node', value: context.node?.name ?? '—' },
-    { label: 'Arbeitsspeicher', value: formatMegabytes(state.ramMb) },
     { label: 'Speicherplatz', value: `rund ${formatMegabytes(state.diskMb)}` },
     {
       label: 'Automatisch abschalten',

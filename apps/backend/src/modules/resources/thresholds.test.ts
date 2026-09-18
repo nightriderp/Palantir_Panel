@@ -29,7 +29,8 @@ describe('evaluateNodeWarnings', () => {
         runningServers: 4,
         totalServers: 9,
       },
-      // Die Platte kommt aus der Messung, nicht aus Zuweisungen.
+      // RAM und Platte kommen aus der Messung, nicht aus Zuweisungen.
+      usedRamMb: 30_000,
       usedDiskMb: 2_000_000,
       thresholdPercent: 85,
       at: AT,
@@ -59,11 +60,27 @@ describe('evaluateNodeWarnings', () => {
         runningServers: 1,
         totalServers: 1,
       },
+      usedRamMb: 85,
       thresholdPercent: 85,
       at: AT,
     });
 
     expect(warnings.map((w) => w.resource)).toEqual(['ram']);
+  });
+
+  it('warnt beim RAM nur aus der Messung – die Summe der Zuweisungen zaehlt nicht mehr', () => {
+    // Seit der weichen Grenze (2026-09-18) sagt die Buchung nichts ueber die
+    // Belegung; ohne Messung gibt es keine RAM-Warnung.
+    const warnings = evaluateNodeWarnings({
+      nodeId: NODE_ID,
+      total: { ramMb: 100, cpuCores: 8, diskMb: 1000 },
+      usage: { runningRamMb: 99, runningServers: 1, totalServers: 1 },
+      usedRamMb: null,
+      thresholdPercent: 85,
+      at: AT,
+    });
+
+    expect(warnings).toEqual([]);
   });
 
   it('schweigt unterhalb des Schwellwerts', () => {
@@ -75,6 +92,7 @@ describe('evaluateNodeWarnings', () => {
         runningServers: 1,
         totalServers: 1,
       },
+      usedRamMb: 84,
       thresholdPercent: 85,
       at: AT,
     });
@@ -86,7 +104,9 @@ describe('evaluateNodeWarnings', () => {
 describe('evaluateServerWarnings', () => {
   const limits = { ramMb: 4096, diskMb: 20_480 };
 
-  it('misst gegen das eigene Limit des Servers', () => {
+  it('warnt nicht mehr gegen die Zuweisung eines Servers (weiche Grenze, 2026-09-18)', () => {
+    // Ein Server darf ueber seiner Zuweisung liegen, solange die Node Platz
+    // hat – eine Warnung waere ein Fehlalarm. Was eng wird, meldet die Node.
     const warnings = evaluateServerWarnings({
       serverId: SERVER_ID,
       nodeId: NODE_ID,
@@ -96,20 +116,7 @@ describe('evaluateServerWarnings', () => {
       at: AT,
     });
 
-    expect(warnings).toEqual([
-      {
-        scope: 'server',
-        resource: 'ram',
-        unit: 'mb',
-        nodeId: NODE_ID,
-        serverId: SERVER_ID,
-        used: 3900,
-        total: 4096,
-        usedPercent: 95.2,
-        thresholdPercent: 90,
-        at: AT.toISOString(),
-      },
-    ]);
+    expect(warnings).toEqual([]);
   });
 
   it('überspringt Werte, die der Agent nicht liefert', () => {

@@ -47,7 +47,6 @@ import {
 } from './wizardSteps';
 import { QuotaRequestDialog } from './QuotaRequestDialog';
 import { ConfigFields } from './form/ConfigFields';
-import { ResourceFields } from './form/ResourceFields';
 import { useSubdomainCheck } from './useSubdomainCheck';
 
 /**
@@ -162,12 +161,11 @@ function GameTile({
         </span>
 
         {/*
-          RAM ist ein Vorschlag für die Zuweisung, der Platz nur eine Schätzung –
-          zugewiesen wird er nicht mehr. „rund" sagt das, ohne es zu erklären.
+          Nur noch der Platz als Schätzung: RAM wird nicht mehr zugewiesen, ein
+          Server nimmt sich, was auf der Node frei ist (2026-09-18).
         */}
         <span className="text-xs text-ink-faint">
-          Empfohlen: {formatMegabytes(game.resourceDefaults.ramMb)} RAM · rund{' '}
-          {formatMegabytes(game.resourceDefaults.diskMb)} Platz
+          Platzbedarf: rund {formatMegabytes(game.resourceDefaults.diskMb)}
         </span>
       </span>
     </button>
@@ -342,7 +340,11 @@ export function CreateServerWizard() {
                 value: node.id,
                 label:
                   node.status === 'online'
-                    ? `${node.name} · ${formatMegabytes(node.capacity.available.ramMb)} frei`
+                    ? `${node.name} · ${
+                        node.usage?.ramUsedMb == null
+                          ? 'Auslastung unbekannt'
+                          : `${formatMegabytes(Math.max(0, node.capacity.total.ramMb - node.usage.ramUsedMb))} frei`
+                      }`
                     : `${node.name} · ${node.status === 'maintenance' ? 'in Wartung' : 'nicht erreichbar'}`,
                 disabled: node.status !== 'online',
               }))}
@@ -353,8 +355,6 @@ export function CreateServerWizard() {
               }
               error={nodes.error}
             />
-
-            <ResourceFields ramMb={state.ramMb} onChange={(values) => patch(values)} />
           </>
         ) : null}
 

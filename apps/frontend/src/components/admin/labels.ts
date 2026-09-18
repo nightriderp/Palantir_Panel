@@ -22,7 +22,6 @@ import {
   NOTIFIABLE_EVENT_LABELS,
   NOTIFICATION_SEVERITY_LABELS,
   NOTIFICATION_SEVERITY_TONES,
-  formatMegabytes,
   type Tone,
 } from '@/components/shared';
 
@@ -357,7 +356,9 @@ export function quotaLabel(quota: RegistrationRequestQuota | null | undefined): 
     return '—';
   }
 
-  return `${slotLabel(quota.ram, formatMegabytes)} · ${slotLabel(quota.servers, String)}`;
+  // Nur noch die Serveranzahl: RAM ist seit dem 2026-09-18 keine
+  // Kontingentgroesse mehr, `quota.ram` bleibt fuer aeltere Backends im DTO.
+  return `${slotLabel(quota.servers, String)} Server`;
 }
 
 function slotLabel(slot: ResourceQuotaSlot, format: (value: number) => string): string {

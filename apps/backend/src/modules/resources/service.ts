@@ -342,6 +342,15 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
       : gemessen;
   }
 
+  /** Gemessen belegter Arbeitsspeicher – die Grundlage der RAM-Warnung seit der weichen Zuweisung. */
+  function gemesseneRamBelegungMb(node: HostNodeRecord, jetzt: Date): number | null {
+    const gemessen = frischeMessung(node, jetzt);
+
+    return gemessen === null
+      ? null
+      : Math.max(0, node.totalResources.ramMb - gemessen.ramAvailableMb);
+  }
+
   async function buildCheckInput(request: StartCapacityRequest): Promise<CapacityCheckInput> {
     const node = await loadNodeOrFail(request.nodeId);
     const gemessen = frischeMessung(node, request.at ?? new Date());
@@ -506,11 +515,12 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
       const usage = await deps.usage.usageForNode(nodeId);
 
       // Kein Start im Spiel: hier wird die tatsächliche, nicht die
-      // hochgerechnete Belegung bewertet.
+      // hochgerechnete Belegung bewertet – beim RAM aus der Messung.
       return evaluateNodeWarnings({
         nodeId: node.id,
         total: node.totalResources,
         usage,
+        usedRamMb: gemesseneRamBelegungMb(node, at ?? new Date()),
         thresholdPercent: deps.thresholds.nodePercent,
         ...(at ? { at } : {}),
       });
@@ -527,6 +537,7 @@ export function createResourceService(deps: ResourceServiceDependencies): Resour
             nodeId: node.id,
             total: node.totalResources,
             usage: await deps.usage.usageForNode(node.id),
+            usedRamMb: gemesseneRamBelegungMb(node, at ?? new Date()),
             thresholdPercent: deps.thresholds.nodePercent,
             ...(at ? { at } : {}),
           }),
