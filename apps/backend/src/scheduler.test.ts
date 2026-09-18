@@ -41,6 +41,7 @@ import {
   type CreateServerData,
   type HostNodeRecord,
   type PersistLifecycleData,
+  type ServerMemberCandidateRecord,
   type ServerMemberRecord,
   type ServerRecord,
   type ServerRepository,
@@ -924,6 +925,10 @@ class SweepRepository implements ServerRepository {
 
   delete(): Promise<void> {
     return this.nichtGebraucht('delete');
+  }
+
+  listMemberCandidates(): Promise<readonly ServerMemberCandidateRecord[]> {
+    return Promise.resolve([]);
   }
 
   listMembers(): Promise<readonly ServerMemberRecord[]> {

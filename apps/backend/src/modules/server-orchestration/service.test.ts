@@ -47,6 +47,7 @@ import {
   type CreateServerData,
   type HostNodeRecord,
   type PersistLifecycleData,
+  type ServerMemberCandidateRecord,
   type ServerMemberRecord,
   type ServerRecord,
   type ServerRepository,
@@ -314,6 +315,10 @@ class FakeRepository implements ServerRepository {
     }
 
     return karte;
+  }
+
+  listMemberCandidates(): Promise<readonly ServerMemberCandidateRecord[]> {
+    return Promise.resolve([]);
   }
 
   listMembers(serverId: string): Promise<readonly ServerMemberRecord[]> {

@@ -3,6 +3,7 @@
 import {
   SERVER_MEMBER_LEVELS,
   type GameServerDto,
+  type ServerMemberCandidateDto,
   type ServerMemberDto,
   type ServerMemberLevel,
 } from '@palantir/contracts';
@@ -15,11 +16,15 @@ import {
   FormModal,
   Panel,
   SelectField,
-  TextField,
   formatDateTime,
   useToast,
 } from '@/components/shared';
-import { addOrUpdateMember, fetchMembers, removeMember } from '@/lib/api/servers';
+import {
+  addOrUpdateMember,
+  fetchMemberCandidates,
+  fetchMembers,
+  removeMember,
+} from '@/lib/api/servers';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 
@@ -53,6 +58,17 @@ export function MembersPanel({ server }: MembersPanelProps) {
   const members = useApiResource<ServerMemberDto[]>(
     (signal) => fetchMembers(server.id, signal),
     [server.id],
+  );
+
+  /*
+   * Wen kann ich freigeben? Statt der Nutzer-Id (einer UUID, die niemand
+   * auswendig kennt) eine Auswahl aus den freigeschalteten Konten, die noch
+   * keinen Zugriff haben. Nur laden, wenn das Konto Mitglieder verwalten darf
+   * – für alle anderen antwortete das Backend ohnehin mit 403.
+   */
+  const candidates = useApiResource<ServerMemberCandidateDto[]>(
+    (signal) => fetchMemberCandidates(server.id, signal),
+    server.permissions.canManageMembers ? [server.id] : null,
   );
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -89,6 +105,8 @@ export function MembersPanel({ server }: MembersPanelProps) {
     });
     setDialogOpen(false);
     setUserId('');
+    // Das Konto ist jetzt Mitglied und fällt aus der Auswahl.
+    candidates.reload();
     toast.success('Zugriff gespeichert.');
   }
 
@@ -114,8 +132,12 @@ export function MembersPanel({ server }: MembersPanelProps) {
       return;
     }
     members.setData((current) => (current ?? []).filter((entry) => entry.userId !== member.userId));
+    // Das Konto steht wieder zur Auswahl.
+    candidates.reload();
     toast.success('Zugriff entzogen.');
   }
+
+  const auswahl = candidates.data ?? [];
 
   return (
     <Panel variant="plain" className="flex flex-col gap-3">
@@ -183,17 +205,38 @@ export function MembersPanel({ server }: MembersPanelProps) {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         title="Mitverwalter hinzufügen"
-        description="Gib die Nutzer-Id ein und wähle, wie viel diese Person darf."
+        description="Wähle das Konto und dann, wie viel diese Person darf."
         submitLabel="Zugriff geben"
         busy={busy}
         error={formError}
         onSubmit={() => void submit()}
       >
-        <TextField
-          label="Nutzer-Id"
-          placeholder="00000000-0000-4000-8000-000000000000"
+        <SelectField
+          label="Konto"
+          placeholder={
+            candidates.loading
+              ? 'Konten werden geladen …'
+              : auswahl.length === 0
+                ? 'Kein weiteres freigeschaltetes Konto'
+                : 'Konto wählen …'
+          }
           value={userId}
           onChange={setUserId}
+          disabled={candidates.loading || auswahl.length === 0}
+          options={auswahl.map((konto) => ({
+            value: konto.userId,
+            // Der Anzeigename ist frei wählbar und nicht eindeutig – bei zwei
+            // „Chris" entscheidet der Anmeldename in der Klammer.
+            label:
+              konto.username === null
+                ? konto.displayName
+                : `${konto.displayName} (@${konto.username})`,
+          }))}
+          hint={
+            candidates.error
+              ? candidates.error
+              : 'Angeboten werden freigeschaltete Konten, die noch keinen Zugriff auf diesen Server haben.'
+          }
         />
         <SelectField
           label="Stufe"

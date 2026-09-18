@@ -23,6 +23,7 @@ import { MembersPanel } from './MembersPanel';
 
 const api = vi.hoisted(() => ({
   fetchMembers: vi.fn(),
+  fetchMemberCandidates: vi.fn(),
   addOrUpdateMember: vi.fn(),
   removeMember: vi.fn(),
 }));
@@ -30,6 +31,7 @@ const api = vi.hoisted(() => ({
 vi.mock('@/lib/api/servers', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchMembers: api.fetchMembers,
+  fetchMemberCandidates: api.fetchMemberCandidates,
   addOrUpdateMember: api.addOrUpdateMember,
   removeMember: api.removeMember,
 }));
@@ -65,8 +67,17 @@ function zeichne(server: GameServerDto) {
 
 beforeEach(() => {
   api.fetchMembers.mockReset();
+  api.fetchMemberCandidates.mockReset();
   api.addOrUpdateMember.mockReset();
   api.removeMember.mockReset();
+  api.fetchMemberCandidates.mockResolvedValue({
+    success: true,
+    data: [
+      { userId: NEU_ID, displayName: 'Neues Mitglied', username: 'neu' },
+      { userId: '00000000-0000-4000-8000-000000000009', displayName: 'Chris', username: null },
+    ],
+    error: null,
+  });
 
   api.fetchMembers.mockResolvedValue({ success: true, data: [mitglied()], error: null });
 });
@@ -123,8 +134,37 @@ describe('MembersPanel – Freigeben (contract-drift-01)', () => {
   async function oeffneDialog() {
     zeichne(testServer(true));
     fireEvent.click(await screen.findByRole('button', { name: 'Mitverwalter hinzufügen' }));
-    fireEvent.change(screen.getByLabelText('Nutzer-Id'), { target: { value: NEU_ID } });
+    // Die Auswahl kommt vom Backend – warten, bis das Konto wählbar ist.
+    await screen.findByRole('option', { name: 'Neues Mitglied (@neu)' });
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: NEU_ID } });
   }
+
+  it('bietet die freigeschalteten Konten zur Auswahl an statt einer Nutzer-Id', async () => {
+    await oeffneDialog();
+
+    expect(api.fetchMemberCandidates).toHaveBeenCalledWith('srv-1', expect.anything());
+    expect(screen.getByRole('option', { name: 'Neues Mitglied (@neu)' })).toBeTruthy();
+    // Ohne Anmeldenamen steht der Anzeigename allein.
+    expect(screen.getByRole('option', { name: 'Chris' })).toBeTruthy();
+    expect(screen.queryByLabelText('Nutzer-Id')).toBeNull();
+  });
+
+  it('sagt es, wenn kein weiteres Konto freigegeben werden kann', async () => {
+    api.fetchMemberCandidates.mockResolvedValue({ success: true, data: [], error: null });
+    zeichne(testServer(true));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mitverwalter hinzufügen' }));
+
+    const auswahl = (await screen.findByLabelText('Konto')) as HTMLSelectElement;
+    await waitFor(() => expect(auswahl.disabled).toBe(true));
+    expect(screen.getByText('Kein weiteres freigeschaltetes Konto')).toBeTruthy();
+  });
+
+  it('lädt die Auswahl für ein Konto ohne canManageMembers gar nicht', async () => {
+    zeichne(testServer(false));
+    await screen.findByText('Mitverwalter');
+
+    expect(api.fetchMemberCandidates).not.toHaveBeenCalled();
+  });
 
   it('nimmt das eine gelieferte Mitglied in die Liste auf', async () => {
     api.addOrUpdateMember.mockResolvedValue({
@@ -166,7 +206,8 @@ describe('MembersPanel – Freigeben (contract-drift-01)', () => {
   it('prüft die Eingabe, bevor sie das Backend erreicht', async () => {
     zeichne(testServer(true));
     fireEvent.click(await screen.findByRole('button', { name: 'Mitverwalter hinzufügen' }));
-    fireEvent.change(screen.getByLabelText('Nutzer-Id'), { target: { value: 'keine-uuid' } });
+    await screen.findByRole('option', { name: 'Neues Mitglied (@neu)' });
+    // Kein Konto gewählt – der Dialog meldet es, das Backend sieht nichts.
     fireEvent.click(screen.getByRole('button', { name: 'Zugriff geben' }));
 
     await waitFor(() => {

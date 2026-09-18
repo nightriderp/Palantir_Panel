@@ -8,8 +8,10 @@
  */
 
 import {
+  GUEST_ROLE_NAME,
   type GameConfigValues,
   type HostNodeStatus,
+  type ServerMemberCandidateDto,
   type ServerMemberLevel,
   type ServerResourceLimits,
   type ServerStatus,
@@ -124,6 +126,9 @@ export interface ServerMemberRecord {
   readonly addedAt: string;
 }
 
+/** Ein Konto, das als Mitverwalter infrage kommt – Felder wie im Vertrag. */
+export type ServerMemberCandidateRecord = ServerMemberCandidateDto;
+
 /**
  * Ein Konto, das einen Server übernehmen soll (Pflichtenheft §7).
  *
@@ -171,6 +176,16 @@ export interface ServerRepository {
   ): Promise<void>;
   delete(id: string): Promise<void>;
   listMembers(serverId: string): Promise<readonly ServerMemberRecord[]>;
+  /**
+   * Konten, die für diesen Server als Mitverwalter freigegeben werden können
+   * (Betreiberwunsch 2026-09-18): freigeschaltet (Besitzer-Status oder eine
+   * Rolle außer „Gast"), nicht gesperrt, weder Besitzer des Servers noch schon
+   * Mitglied. Sortiert nach Anzeigename.
+   */
+  listMemberCandidates(
+    serverId: string,
+    ownerId: string,
+  ): Promise<readonly ServerMemberCandidateRecord[]>;
   /**
    * Mitglieder mehrerer Server in **einer** Abfrage (Fundpunkt 231).
    *
@@ -584,6 +599,42 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
         displayName: row.displayName,
         level: row.level,
         addedAt: row.addedAt.toISOString(),
+      }));
+    },
+
+    async listMemberCandidates(
+      serverId: string,
+      ownerId: string,
+    ): Promise<readonly ServerMemberCandidateRecord[]> {
+      // Freigeschaltet heißt: Besitzer-Status oder mindestens eine Rolle, die
+      // nicht „Gast" ist (dieselbe Regel wie `isApproved` in rbac/approval.ts).
+      const freigeschaltet = db
+        .select({ userId: userRoles.userId })
+        .from(userRoles)
+        .innerJoin(roles, eq(roles.id, userRoles.roleId))
+        .where(and(eq(userRoles.userId, users.id), ne(roles.name, GUEST_ROLE_NAME)));
+      const schonMitglied = db
+        .select({ userId: serverMembers.userId })
+        .from(serverMembers)
+        .where(and(eq(serverMembers.serverId, serverId), eq(serverMembers.userId, users.id)));
+
+      const rows = await db
+        .select({ userId: users.id, displayName: users.displayName, username: users.username })
+        .from(users)
+        .where(
+          and(
+            eq(users.banned, false),
+            ne(users.id, ownerId),
+            or(eq(users.isOwner, true), sql`exists (${freigeschaltet})`),
+            sql`not exists (${schonMitglied})`,
+          ),
+        )
+        .orderBy(asc(sql`lower(${users.displayName})`), asc(users.id));
+
+      return rows.map((row) => ({
+        userId: row.userId,
+        displayName: row.displayName,
+        username: row.username,
       }));
     },
 
