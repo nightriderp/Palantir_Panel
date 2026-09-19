@@ -892,6 +892,52 @@ describe('Ereignisse Runtime → Protokoll', () => {
     expect(statusEreignisse.at(-1)?.payload).toMatchObject({ containerId, status: 'running' });
   });
 
+  it('drosselt Messwerte, laesst Statuswechsel aber ungebremst durch', async () => {
+    /*
+     * Leistungsbericht 19.09.2026, Punkt 5: Docker schiebt seine Werte
+     * sekuendlich je Container. Ein Messwert ist eine Momentaufnahme - der
+     * naechste ersetzt ihn vollstaendig -, ein Statuswechsel dagegen zaehlt
+     * einzeln.
+     */
+    const eigener = new ContainerRuntimeAdapter({
+      runtime,
+      statsTakt: { minIntervalMs: 60_000, maxIntervalMs: 60_000 },
+    });
+    const gesammelt: OutboundEvent[] = [];
+
+    eigener.start((event) => gesammelt.push(event));
+
+    const fuehreAus = (command: string, payload: unknown) =>
+      eigener.execute({
+        correlationId: CORRELATION_ID,
+        command: command as Parameters<ContainerRuntimeAdapter['execute']>[0]['command'],
+        serverId: SERVER_ID,
+        payload,
+      });
+
+    const angelegt = await fuehreAus('CREATE', CREATE_PAYLOAD);
+
+    if (!isOk(angelegt)) {
+      throw new Error('CREATE ist fehlgeschlagen');
+    }
+
+    const containerId = (angelegt.data as { containerId: string }).containerId;
+
+    await fuehreAus('START', { containerId });
+
+    runtime.setStats(containerId, { cpuPercent: 10 });
+    runtime.setStats(containerId, { cpuPercent: 20 });
+    runtime.setStats(containerId, { cpuPercent: 30 });
+
+    expect(gesammelt.filter((e) => e.event === 'STATS_UPDATE')).toHaveLength(1);
+
+    await fuehreAus('STOP', { containerId });
+
+    expect(gesammelt.filter((e) => e.event === 'STATUS_CHANGED').length).toBeGreaterThan(1);
+
+    eigener.stop();
+  });
+
   it('meldet nach stop() keine Ereignisse mehr', async () => {
     adapter.start((event) => ereignisse.push(event));
     const containerId = await containerAnlegen();
