@@ -5,6 +5,7 @@ import {
   type GetLogsCommandResult,
   type HostNodeDto,
   type GameTypeDto,
+  type GameVersionDto,
   type ResourceQuotaDto,
   type ScheduleDto,
   type ServerCloneJobDto,
@@ -172,6 +173,24 @@ export function deleteServer(
 // ---------------------------------------------------------------------------
 // Anlegen, Klonen, Exportieren
 // ---------------------------------------------------------------------------
+
+/**
+ * Wählbare Spielfassungen eines Spieltyps (Betreiber-Wunsch 19.09.2026).
+ *
+ * Eigener Abruf und nicht Teil der Spieleliste: Er geht beim Hersteller
+ * nachsehen und wird nur gebraucht, wenn jemand tatsächlich wählt.
+ */
+export function fetchGameVersions(
+  gameTypeId: string,
+  signal?: AbortSignal,
+): Promise<ApiResult<GameVersionDto[]>> {
+  return apiRequest<GameVersionDto[]>(
+    `/api/game-types/${encodeURIComponent(gameTypeId)}/versions`,
+    {
+      signal,
+    },
+  );
+}
 
 export function fetchGameTypes(signal?: AbortSignal): Promise<ApiResult<GameTypeDto[]>> {
   return apiRequest<GameTypeDto[]>('/api/game-types', { signal });

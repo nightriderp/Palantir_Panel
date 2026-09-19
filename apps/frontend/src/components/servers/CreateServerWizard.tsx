@@ -5,10 +5,11 @@ import {
   type GameTypeDto,
   type HostNodeDto,
   type ResourceQuotaDto,
+  type GameVersionDto,
 } from '@palantir/contracts';
 import { type CreateServerInput } from '@palantir/validation';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   Button,
@@ -25,6 +26,7 @@ import {
 import {
   createServer,
   fetchGameTypes,
+  fetchGameVersions,
   fetchHostNodes,
   fetchResourceQuota,
   uploadWorldArchive,
@@ -185,6 +187,40 @@ export function CreateServerWizard() {
   /** Offen, solange der Wunsch-Dialog über der Auswahl liegt. */
   const [wunschOffen, setWunschOffen] = useState(false);
 
+  /**
+   * Wählbare Spielfassungen des gewählten Spiels (Betreiber-Wunsch 19.09.2026).
+   *
+   * Eigener Abruf statt eines Feldes an der Spieleliste: Er geht beim
+   * Hersteller nachsehen, und das soll die Auswahl der Spiele nicht aufhalten.
+   * Ohne Wahlmöglichkeit bleibt die Liste leer und die Oberfläche zeigt nichts.
+   */
+  const [fassungen, setFassungen] = useState<GameVersionDto[]>([]);
+
+  useEffect(() => {
+    const gewaehlt = state.gameType;
+    const controller = new AbortController();
+
+    void (async () => {
+      /*
+       * Auch der leere Fall laeuft ueber den Abruf, nicht ueber ein
+       * `setState` gleich im Effekt: Das loeste eine zweite Renderrunde aus,
+       * bevor die erste fertig war (React-Regel „kein setState im Effekt").
+       */
+      const ergebnis =
+        gewaehlt === null ? null : await fetchGameVersions(gewaehlt, controller.signal);
+
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      setFassungen(ergebnis !== null && ergebnis.success ? ergebnis.data : []);
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [state.gameType]);
+
   const spiele = useMemo(
     () => (gameTypes.data ?? []).filter((game) => game.available),
     [gameTypes.data],
@@ -243,6 +279,8 @@ export function CreateServerWizard() {
 
     const input: CreateServerInput = {
       gameType: state.gameType,
+      // Nur mitschicken, wenn gewaehlt: `null` heisst „die Fassung des Images".
+      ...(state.gameVersion === null ? {} : { gameVersion: state.gameVersion }),
       name: state.name.trim(),
       subdomain: state.subdomain.trim().toLowerCase(),
       hostId: state.hostId,
@@ -398,6 +436,24 @@ export function CreateServerWizard() {
         {step === 'options' ? (
           <>
             <h2 className="text-xl font-bold">Optionen</h2>
+
+            {/*
+              Die Spielfassung steht vor den Spiel-Einstellungen: Sie bestimmt,
+              welche Serverdatei geholt wird, und wer eine ältere Welt
+              weiterspielt, wählt sie zuerst (Betreiber-Wunsch 19.09.2026).
+            */}
+            {selectedGame?.supportsVersionChoice && fassungen.length > 0 ? (
+              <SelectField
+                label="Spielfassung"
+                hint="Ohne Wahl nimmt der Server die Fassung, die im Image steckt. Ein Wechsel wirkt beim nächsten Start."
+                value={state.gameVersion ?? ''}
+                onChange={(value) => patch({ gameVersion: value === '' ? null : value })}
+                options={[
+                  { value: '', label: 'Fassung des Images' },
+                  ...fassungen.map((fassung) => ({ value: fassung.id, label: fassung.label })),
+                ]}
+              />
+            ) : null}
 
             {selectedGame ? (
               <ConfigFields

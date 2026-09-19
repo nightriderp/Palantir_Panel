@@ -35,6 +35,13 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
 
 export interface WizardState {
   gameType: string | null;
+  /**
+   * Gewaehlte Spielfassung, z. B. `26.3`; `null` heisst „die des Images".
+   *
+   * Nur Spiele mit `supportsVersionChoice` bieten die Wahl an; bei allen
+   * anderen bleibt das Feld leer und wird nicht mitgeschickt.
+   */
+  gameVersion: string | null;
   name: string;
   subdomain: string;
   hostId: string | null;
@@ -57,6 +64,8 @@ export interface WizardState {
 /** Voreinstellungen, solange kein Spiel gewählt ist. */
 export const INITIAL_WIZARD_STATE: WizardState = {
   gameType: null,
+  /** Gewählte Spielfassung; `null` heißt „die des Images". */
+  gameVersion: null,
   name: '',
   subdomain: '',
   hostId: null,
