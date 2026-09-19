@@ -183,6 +183,20 @@ export const AGENT_COMMANDS = [
    */
   'FILE_EXTRACT',
   /**
+   * Einen Ordner des Datenverzeichnisses packen und blockweise ausliefern
+   * (Betreiber-Wunsch vom 19.09.2026).
+   *
+   * Ergänzung zum Katalog aus Pflichtenheft §5.3, dort nachgetragen. Grund:
+   * `FILE_READ` holt eine Datei in **einem** Frame und ist damit auf
+   * `AGENT_FILE_CHANNEL_MAX_BYTES` begrenzt. Ein Ordner sprengt das – `world/`
+   * wiegt schnell Gigabyte. Deshalb derselbe zweistufige Weg wie beim
+   * Backup-Download: `FILE_ARCHIVE` packt und meldet die Größe,
+   * `FILE_ARCHIVE_BLOCK` liefert Block für Block, und der letzte räumt den
+   * Zwischenstand weg.
+   */
+  'FILE_ARCHIVE',
+  'FILE_ARCHIVE_BLOCK',
+  /**
    * Ein Archiv blockweise auf den Homeserver bringen und am Ende entpacken
    * (WORK_STATUS.md, Gefundener Punkt 106).
    *

@@ -388,6 +388,50 @@ export interface FileExtractCommandPayload {
 }
 
 /**
+ * `FILE_ARCHIVE` – einen Ordner des Datenverzeichnisses zum Herunterladen
+ * packen (Betreiber, 19.09.2026).
+ *
+ * Ausgeführt wird er host-seitig im Job-Modul, wie Auflisten und Lesen: Die
+ * Runtime sagt, **wo** der Datenordner liegt, gepackt wird er dort.
+ *
+ * Einzelne Dateien holt `FILE_READ` in einem Stück; ein Ordner geht so nicht.
+ * `world/` wiegt schnell Gigabyte, und ein Befehls-Frame trägt das nicht –
+ * dieselbe Grenze, an der schon der Backup-Download vorbeigeht. Deshalb
+ * zweistufig, genau wie dort: Dieser Befehl **packt** den Ordner in eine
+ * Datei neben dem Datenverzeichnis und meldet ihre Größe;
+ * {@link FileArchiveBlockCommandPayload} holt sie blockweise ab.
+ *
+ * Der Agent öffnet dafür keinen eigenen Lauscher (Pflichtenheft §18) – das
+ * Backend fragt die Blöcke nach und schreibt sie in seine HTTP-Antwort.
+ *
+ * `path` ist relativ zum Datenordner, `''` ist die Wurzel. Was außerhalb
+ * liegt, wird abgewiesen, nicht gepackt.
+ */
+export interface FileArchiveCommandPayload {
+  readonly containerId: string;
+  /** Zu packender Ordner, relativ zum Datenordner; `''` ist die Wurzel. */
+  readonly path: string;
+}
+
+/**
+ * `FILE_ARCHIVE_BLOCK` – einen Block aus dem gepackten Ordner lesen.
+ *
+ * Aufbau wie beim Backup-Download. Mit dem Block, der `eof` meldet, räumt der
+ * Agent die gepackte Datei weg: Sie ist ein Zwischenstand für genau diesen
+ * Download, kein Archiv, das jemand aufbewahren wollte. Bricht der Download
+ * ab, bleibt sie liegen und fällt der Altersprüfung zum Opfer – ein
+ * Zwischenstand, den niemand mehr abholt, soll den Homeserver nicht füllen.
+ */
+export interface FileArchiveBlockCommandPayload {
+  /** Kennung aus {@link FileArchiveCommandResult}. */
+  readonly transferId: string;
+  /** Leseposition in Byte, beim ersten Block 0. */
+  readonly offset: number;
+  /** Höchstens so viele Byte in diesem Block. */
+  readonly maxBytes: number;
+}
+
+/**
  * Eine zusätzliche Datei, die der Agent **in** das Archiv legt, ohne dass sie
  * im Datenordner liegt (Arbeitspaket P8, Lastenheft §3.3).
  *
@@ -785,6 +829,29 @@ export interface RestoreBackupCommandResult {
 }
 
 /** Ergebnis von `DOWNLOAD_BACKUP` – ein Block, Base64-kodiert wie bei `FILE_READ`. */
+/** Ergebnis von `FILE_ARCHIVE`: Der Ordner liegt gepackt bereit. */
+export interface FileArchiveCommandResult {
+  /** Kennung dieses Transfers; gilt, bis der letzte Block gelesen ist. */
+  readonly transferId: string;
+  /** Vorschlag für den Dateinamen, z. B. `world.tar.gz`. */
+  readonly fileName: string;
+  /** Größe des gepackten Archivs in Byte. */
+  readonly sizeBytes: number;
+}
+
+/** Ergebnis von `FILE_ARCHIVE_BLOCK`; Aufbau wie beim Backup-Download. */
+export interface FileArchiveBlockCommandResult {
+  readonly transferId: string;
+  readonly offset: number;
+  readonly contentBase64: string;
+  /** Tatsächlich gelesene Byte; 0 nur am Ende einer leeren Datei. */
+  readonly bytesRead: number;
+  /** Gesamtgröße des Archivs – dieselbe Zahl wie in `FILE_ARCHIVE`. */
+  readonly totalBytes: number;
+  /** Letzter Block; danach ist die gepackte Datei weg. */
+  readonly eof: boolean;
+}
+
 export interface DownloadBackupCommandResult {
   readonly backupId: string;
   readonly offset: number;
@@ -933,6 +1000,8 @@ export interface AgentCommandPayloads {
   readonly FILE_DELETE: FileDeleteCommandPayload;
   readonly FILE_UPLOAD: FileUploadCommandPayload;
   readonly FILE_EXTRACT: FileExtractCommandPayload;
+  readonly FILE_ARCHIVE: FileArchiveCommandPayload;
+  readonly FILE_ARCHIVE_BLOCK: FileArchiveBlockCommandPayload;
   readonly UPLOAD_ARCHIVE_BLOCK: UploadArchiveBlockCommandPayload;
   readonly CREATE_BACKUP: CreateBackupCommandPayload;
   readonly RESTORE_BACKUP: RestoreBackupCommandPayload;
@@ -960,6 +1029,8 @@ export interface AgentCommandResults {
   readonly FILE_DELETE: null;
   readonly FILE_UPLOAD: null;
   readonly FILE_EXTRACT: FileExtractCommandResult;
+  readonly FILE_ARCHIVE: FileArchiveCommandResult;
+  readonly FILE_ARCHIVE_BLOCK: FileArchiveBlockCommandResult;
   readonly UPLOAD_ARCHIVE_BLOCK: UploadArchiveBlockCommandResult;
   readonly CREATE_BACKUP: CreateBackupCommandResult;
   readonly RESTORE_BACKUP: RestoreBackupCommandResult;
@@ -1006,6 +1077,8 @@ export const IMPLEMENTED_AGENT_COMMANDS = [
   'FILE_DELETE',
   'FILE_UPLOAD',
   'FILE_EXTRACT',
+  'FILE_ARCHIVE',
+  'FILE_ARCHIVE_BLOCK',
   'CREATE_BACKUP',
   'RESTORE_BACKUP',
   'DOWNLOAD_BACKUP',

@@ -72,6 +72,12 @@ const GUELTIGE_NUTZDATEN: Record<ImplementedAgentCommandName, unknown> = {
     contentBase64: EIN_BYTE_BASE64,
     format: 'tar.gz',
   },
+  FILE_ARCHIVE: { containerId: 'c-1', path: 'welt' },
+  FILE_ARCHIVE_BLOCK: {
+    transferId: '11111111-1111-4111-8111-000000000001',
+    offset: 0,
+    maxBytes: 1024,
+  },
   UPLOAD_ARCHIVE_BLOCK: {
     containerId: 'c-1',
     transferId: 'transfer-1',

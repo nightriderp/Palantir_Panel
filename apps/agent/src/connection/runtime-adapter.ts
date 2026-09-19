@@ -24,6 +24,8 @@ import {
   type CreateBackupCommandResult,
   type DeleteBackupCommandPayload,
   type DownloadBackupCommandPayload,
+  type FileArchiveBlockCommandPayload,
+  type FileArchiveCommandPayload,
   type ExecConsoleCommandPayload,
   type FileDeleteCommandPayload,
   type GetStorageBreakdownCommandPayload,
@@ -551,6 +553,19 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
         return this.sichernMitSchreibstopp(payload as CreateBackupCommandPayload);
       case 'RESTORE_BACKUP':
         return this.requireJobs().backups.restoreBackup(payload as RestoreBackupCommandPayload);
+      case 'FILE_ARCHIVE': {
+        /*
+         * Host-seitig wie Auflisten und Lesen (Fundpunkt 276/281): Gepackt
+         * wird der Ordner auf dem Dateisystem, die Runtime sagt nur, wo er
+         * liegt.
+         */
+        const p = payload as FileArchiveCommandPayload;
+        return this.requireJobs().exports.archive(p);
+      }
+      case 'FILE_ARCHIVE_BLOCK': {
+        const p = payload as FileArchiveBlockCommandPayload;
+        return this.requireJobs().exports.archiveBlock(p);
+      }
       case 'DOWNLOAD_BACKUP':
         return this.requireJobs().backups.downloadBackup(payload as DownloadBackupCommandPayload);
       case 'DELETE_BACKUP':
@@ -860,7 +875,7 @@ export class MissingAgentJobsError extends Error {
  * Steht als eigene Liste da und nicht als Negation der Runtime-Befehle: So
  * fällt beim Ergänzen eines Befehls auf, auf welcher Seite er landet.
  */
-export const JOB_COMMANDS: ReadonlySet<AgentCommandName> = new Set([
+export const JOB_COMMANDS: ReadonlySet<ImplementedAgentCommandName> = new Set([
   'CREATE_BACKUP',
   'RESTORE_BACKUP',
   'DOWNLOAD_BACKUP',
@@ -883,6 +898,9 @@ export const JOB_COMMANDS: ReadonlySet<AgentCommandName> = new Set([
   'FILE_READ',
   'FILE_WRITE',
   'FILE_UPLOAD',
+  // Und das Packen eines Ordners zum Herunterladen (Betreiber, 19.09.2026).
+  'FILE_ARCHIVE',
+  'FILE_ARCHIVE_BLOCK',
 ]);
 
 /** Nutzdaten von `CREATE`, wie sie das Schema liefert. */

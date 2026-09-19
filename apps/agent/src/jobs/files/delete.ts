@@ -165,11 +165,20 @@ export async function deleteServerFile(
  * Dieselben drei Schranken wie beim Loeschen: Container-Pfadraum, Host-Pfadraum,
  * und gegen Verknuepfungen.
  */
-export async function listServerDirectory(
+/**
+ * Container-Pfad in den Pfad auf dem Host uebersetzen, mit denselben beiden
+ * Schranken wie ueberall: innerhalb des Datenvolumes und innerhalb des
+ * Agent-Datenverzeichnisses.
+ *
+ * Herausgeloest, weil der Export denselben Weg braucht (`files/export.ts`) und
+ * eine zweite Umrechnung daneben die Sorte Abweichung waere, die niemand
+ * bemerkt, bis sie aus dem Datenordner herausfuehrt.
+ */
+export async function resolveServerHostPath(
   volume: DataVolumePaths,
   ziel: string,
   options: DeleteServerFileOptions = {},
-): Promise<FileEntry[]> {
+): Promise<string> {
   const wurzel = path.posix.normalize(volume.containerPath);
   const imContainer = resolveWithinRoot(wurzel, ziel);
 
@@ -183,6 +192,20 @@ export async function listServerDirectory(
     resolveWithinDirectory(options.allowedRoot, aufDemHost);
     await assertOhnePfadausbruch(options.allowedRoot, aufDemHost);
   }
+
+  return aufDemHost;
+}
+
+export async function listServerDirectory(
+  volume: DataVolumePaths,
+  ziel: string,
+  options: DeleteServerFileOptions = {},
+): Promise<FileEntry[]> {
+  const wurzel = path.posix.normalize(volume.containerPath);
+  // Der Pfad im Container bleibt die Kennung nach aussen; auf dem Host wird
+  // nur gelesen.
+  const imContainer = resolveWithinRoot(wurzel, ziel);
+  const aufDemHost = await resolveServerHostPath(volume, ziel, options);
 
   let roh;
 
@@ -324,6 +347,18 @@ export class ServerFileJob {
     const volume = await this.#runtime.dataVolumePaths(payload.containerId);
 
     return listServerDirectory(volume, payload.path, { allowedRoot: this.#dataDir });
+  }
+
+  /**
+   * Wo ein Pfad des Datei-Managers auf dem Host liegt.
+   *
+   * Dieselbe Aufloesung wie beim Auflisten, nur ohne zu lesen - der Export
+   * braucht den Host-Pfad, um den Ordner zu packen (`files/export.ts`).
+   */
+  async hostPath(payload: { containerId: string; path: string }): Promise<string> {
+    const volume = await this.#runtime.dataVolumePaths(payload.containerId);
+
+    return resolveServerHostPath(volume, payload.path, { allowedRoot: this.#dataDir });
   }
 
   /**
