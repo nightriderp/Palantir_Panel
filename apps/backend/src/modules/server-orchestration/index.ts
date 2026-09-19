@@ -76,6 +76,15 @@ declare module 'fastify' {
 
 export interface ServerOrchestrationOptions {
   readonly db: Database;
+  /**
+   * Adressen der hochgeladenen Spielbilder (Betreiber-Wunsch 19.09.2026).
+   *
+   * Lose gekoppelt und optional: Das Bilder-Modul entsteht erst nach dieser
+   * Registrierung, und ohne Bilder bleibt es bei den Anfangsbuchstaben.
+   */
+  readonly gameTypeImageUrls?: () => Promise<
+    Map<string, { iconUrl: string | null; coverImageUrl: string | null }>
+  >;
   /** Konto des Aufrufers – kommt aus der Sitzung (B1). */
   resolveViewerId(request: FastifyRequest): Promise<string | null> | string | null;
   /**
@@ -493,6 +502,9 @@ export function registerServerOrchestration(
     baseDomain: env.PALANTIR_DOMAIN,
     schedules,
     worldArchives,
+    ...(options.gameTypeImageUrls === undefined
+      ? {}
+      : { gameTypeImageUrls: options.gameTypeImageUrls }),
     ...(options.audit === undefined ? {} : { audit: options.audit }),
   });
 

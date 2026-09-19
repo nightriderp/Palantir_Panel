@@ -112,6 +112,16 @@ export interface ServerRoutesOptions {
   readonly service: ServerOrchestrationService;
   readonly repository: ServerRepository;
   readonly registry: GameRegistry;
+  /**
+   * Adressen der hochgeladenen Spielbilder (Betreiber-Wunsch 19.09.2026).
+   *
+   * Optional und lose gekoppelt: Die Bilder liegen in einem eigenen Modul, das
+   * erst nach dieser Registrierung entsteht. Ohne die Funktion bleibt es bei
+   * den Anfangsbuchstaben, wie bisher.
+   */
+  readonly gameTypeImageUrls?: () => Promise<
+    Map<string, { iconUrl: string | null; coverImageUrl: string | null }>
+  >;
   readonly baseDomain: string;
   /** Geplante Aufgaben des Reiters „Aufgaben" (Lastenheft §3.3). */
   readonly schedules: ServerScheduleService;
@@ -420,7 +430,19 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     try {
       requireActor(request);
 
-      return await reply.send(ok(registry.toDtoList()));
+      const bilder = (await options.gameTypeImageUrls?.()) ?? new Map();
+
+      return await reply.send(
+        ok(
+          registry.toDtoList().map((eintrag) => {
+            const bild = bilder.get(eintrag.id);
+
+            return bild === undefined
+              ? eintrag
+              : { ...eintrag, iconUrl: bild.iconUrl, coverImageUrl: bild.coverImageUrl };
+          }),
+        ),
+      );
     } catch (error: unknown) {
       return replyWithError(reply, error);
     }
