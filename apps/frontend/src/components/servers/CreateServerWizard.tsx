@@ -7,13 +7,14 @@ import {
   type ResourceQuotaDto,
   type GameVersionDto,
 } from '@palantir/contracts';
-import { type CreateServerInput } from '@palantir/validation';
+import { SERVER_RAM_MAX_MB, SERVER_RAM_MIN_MB, type CreateServerInput } from '@palantir/validation';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   Button,
   Icon,
+  NumberField,
   PageHeader,
   SelectField,
   TextField,
@@ -396,6 +397,24 @@ export function CreateServerWizard() {
                     ? subdomain.result.message
                     : 'Kleinbuchstaben, Ziffern und Bindestriche.'
               }
+            />
+
+            {/*
+              Arbeitsspeicher ist wieder wählbar (Betreiber-Wunsch 19.09.2026).
+              Er ist zweierlei: die **weiche Grenze** des Containers – darüber
+              darf ein Server, solange die Node Platz hat – und bei Java-Spielen
+              die Grundlage des Heaps. Beim Heap ist die Zahl verbindlich, und
+              genau deshalb steht sie wieder hier: „Nimm, was frei ist" hat am
+              19.09. einen Server in eine Startschleife geschickt.
+            */}
+            <NumberField
+              label="Arbeitsspeicher (MiB)"
+              value={state.ramMb}
+              onChange={(value) => patch({ ramMb: value ?? SERVER_RAM_MIN_MB })}
+              min={SERVER_RAM_MIN_MB}
+              max={SERVER_RAM_MAX_MB}
+              step={512}
+              hint="Weiche Grenze: Der Server darf darüber hinaus, solange die Node Platz hat. Bei Java-Spielen bestimmt die Zahl den Heap."
             />
 
             <SelectField
