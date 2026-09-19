@@ -22,6 +22,17 @@ export interface DockerInspectResponse {
   readonly RestartCount?: number;
   readonly Config?: { readonly Image?: string; readonly Labels?: Record<string, string> };
   readonly Image?: string;
+  /**
+   * Grenzen des laufenden Containers.
+   *
+   * Gebraucht wird `MemoryReservation` – die **Zuweisung** des Servers, die
+   * beim Anlegen gesetzt wurde. Aus ihr rechnet der Agent beim Start den
+   * Java-Heap, ohne das Panel fragen zu müssen (Betreiber-Wunsch 19.09.2026).
+   */
+  readonly HostConfig?: {
+    readonly Memory?: number;
+    readonly MemoryReservation?: number;
+  };
   readonly State?: {
     readonly Status?: string;
     readonly ExitCode?: number;

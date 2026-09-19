@@ -71,6 +71,25 @@ export function hardMemoryLimitBytes(totalMb: number, reserveMb: number): number
   return Math.max(MIN_JAVA_HEAP_MB, totalMb - reserveMb) * MIB;
 }
 
+/**
+ * Heap aus der **Zuweisung** eines Servers (Betreiber-Wunsch vom 19.09.2026).
+ *
+ * Wer im Panel „8 GB" einstellt, soll 8 GB bekommen – nicht das, was die Node
+ * gerade übrig hat. Der Heap ist die Zuweisung minus einer Rücklage für alles,
+ * was neben dem Heap läuft: Metaspace, Threads, Netty-Puffer. Dieselbe Regel,
+ * die vorher im Image stand – ein Viertel, mindestens 512 MiB, höchstens
+ * 2 GiB.
+ *
+ * Die **weiche Grenze** des Containers bleibt davon unberührt: Ein Server darf
+ * über seine Zuweisung hinaus, solange die Node Platz hat. Nur der Heap hält
+ * sich an die Zahl, und genau das macht ihn vorhersagbar.
+ */
+export function javaHeapAusZuweisungMib(zuweisungMb: number): number {
+  const ruecklage = Math.min(2048, Math.max(512, Math.floor(zuweisungMb / 4)));
+
+  return Math.max(MIN_JAVA_HEAP_MB, zuweisungMb - ruecklage);
+}
+
 export interface JavaHeapInput {
   /** Gemessen frei (MemAvailable) in MiB. */
   readonly availableMb: number;
@@ -81,6 +100,14 @@ export interface JavaHeapInput {
   readonly hardLimitMb: number;
   /** Absolute Obergrenze; ohne Angabe {@link DEFAULT_MAX_JAVA_HEAP_MB}. */
   readonly maxHeapMb?: number;
+  /**
+   * Zuweisung des Servers in MiB, falls eine gesetzt ist.
+   *
+   * Sie hat Vorrang vor der Rechnung aus dem freien Speicher: Wer eine Zahl
+   * einstellt, bekommt sie (Betreiber-Wunsch 19.09.2026). Die Deckel darüber
+   * gelten weiter – eine Zuweisung größer als die Maschine bleibt ein Wunsch.
+   */
+  readonly zuweisungMb?: number;
 }
 
 /**
@@ -99,6 +126,20 @@ export function javaHeapMib(input: JavaHeapInput): number {
   const anteil = Math.floor(frei / teiler);
   const obergrenze = Math.floor(input.hardLimitMb * MAX_JAVA_HEAP_SHARE);
   const deckel = input.maxHeapMb ?? DEFAULT_MAX_JAVA_HEAP_MB;
+
+  /*
+   * Eine Zuweisung schlägt die Rechnung aus dem freien Speicher: Sie ist eine
+   * Ansage des Betreibers, der freie Speicher nur der Zustand der Maschine in
+   * diesem Augenblick. Der Deckel und die harte Grenze bleiben darüber – eine
+   * Zuweisung von 64 GiB auf einer 30-GiB-Node ist ein Wunsch, keine Zahl, an
+   * der die Java-Maschine starten könnte.
+   */
+  if (input.zuweisungMb !== undefined && input.zuweisungMb > 0) {
+    return Math.max(
+      MIN_JAVA_HEAP_MB,
+      Math.min(javaHeapAusZuweisungMib(input.zuweisungMb), obergrenze),
+    );
+  }
 
   return Math.max(MIN_JAVA_HEAP_MB, Math.min(anteil, obergrenze, deckel));
 }

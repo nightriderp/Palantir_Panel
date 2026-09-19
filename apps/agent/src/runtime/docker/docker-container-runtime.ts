@@ -276,7 +276,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
       return spec;
     }
 
-    const heapMib = await this.#heapJetztMib();
+    const heapMib = await this.#heapJetztMib(spec.resources.memoryMb);
 
     return heapMib === null
       ? spec
@@ -287,7 +287,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
    * Heap fuer einen Server, der **jetzt** startet – oder `null`, wenn dieser
    * Agent ohne Speicherplanung laeuft (Tests, fremde Runtime).
    */
-  async #heapJetztMib(): Promise<number | null> {
+  async #heapJetztMib(zuweisungMb?: number): Promise<number | null> {
     const planung = this.#speicherPlanung;
 
     if (planung === undefined) {
@@ -311,7 +311,28 @@ export class DockerContainerRuntime implements ContainerRuntime {
       runningContainers: laufende,
       hardLimitMb: planung.hardLimitMb,
       maxHeapMb: planung.maxHeapMb,
+      ...(zuweisungMb === undefined || zuweisungMb <= 0 ? {} : { zuweisungMb }),
     });
+  }
+
+  /**
+   * Zuweisung eines laufenden Containers in MiB – seine weiche Grenze.
+   *
+   * Steht als `MemoryReservation` am Container, seit die harte Grenze für alle
+   * gleich ist. So gilt beim Start dieselbe Zahl wie beim Anlegen, ohne dass
+   * der Agent das Panel fragen müsste. `undefined`, wenn keine gesetzt ist
+   * (ältere Container) – dann rechnet der Agent wie bisher aus dem freien
+   * Speicher.
+   */
+  async #zuweisungMib(containerId: string): Promise<number | undefined> {
+    try {
+      const antwort = await this.#inspectRoh(containerId);
+      const bytes = antwort.HostConfig?.MemoryReservation ?? 0;
+
+      return bytes > 0 ? Math.floor(bytes / (1024 * 1024)) : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -332,8 +353,19 @@ export class DockerContainerRuntime implements ContainerRuntime {
    * waere der schlechtere Tausch.
    */
   async #schreibeHeapDatei(containerId: string): Promise<void> {
+    // Ohne Speicherplanung gibt es nichts zu schreiben - und vor allem keinen
+    // Grund, die Engine nach dem Container zu fragen.
+    if (this.#speicherPlanung === undefined) {
+      return;
+    }
+
     try {
-      const heapMib = await this.#heapJetztMib();
+      /*
+       * Die Zuweisung steht am Container selbst (`MemoryReservation`, gesetzt
+       * beim Anlegen): So gilt beim Start dieselbe Zahl wie beim Anlegen, ohne
+       * dass der Agent das Panel fragen müsste.
+       */
+      const heapMib = await this.#heapJetztMib(await this.#zuweisungMib(containerId));
 
       if (heapMib === null) {
         return;
