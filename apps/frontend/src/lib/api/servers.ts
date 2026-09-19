@@ -205,8 +205,41 @@ export function fetchGameVersions(
   );
 }
 
+/**
+ * Die Adresse eines Spielbildes an die API binden.
+ *
+ * Das Backend liefert sie als Pfad (`/api/game-types/…/images/icon`), weil es
+ * seine oeffentliche Adresse nicht kennt. Im Browser wird ein solcher Pfad
+ * gegen die **Panel**-Domain aufgeloest - und dort gibt es keine API. Laeuft
+ * das Backend wie im Betrieb unter einer eigenen Subdomain, lief der Abruf
+ * damit ins Leere und die Kachel blieb bei den Anfangsbuchstaben stehen
+ * (Betreiber-Meldung 20.09.2026).
+ *
+ * Profilbilder machen es seit jeher richtig (`avatarUrl()`); die Spielbilder
+ * sind hier nachgezogen. Ist keine eigene API-Adresse gesetzt, bleibt der Pfad
+ * relativ und alles wie bisher.
+ */
+function bildAdresse(pfad: string | null): string | null {
+  if (pfad === null || pfad === '' || !pfad.startsWith('/')) {
+    return pfad;
+  }
+
+  return `${API_BASE_URL}${pfad}`;
+}
+
 export function fetchGameTypes(signal?: AbortSignal): Promise<ApiResult<GameTypeDto[]>> {
-  return apiRequest<GameTypeDto[]>('/api/game-types', { signal });
+  return apiRequest<GameTypeDto[]>('/api/game-types', { signal }).then((ergebnis) =>
+    ergebnis.success
+      ? {
+          ...ergebnis,
+          data: ergebnis.data.map((spiel) => ({
+            ...spiel,
+            iconUrl: bildAdresse(spiel.iconUrl),
+            coverImageUrl: bildAdresse(spiel.coverImageUrl),
+          })),
+        }
+      : ergebnis,
+  );
 }
 
 /**
