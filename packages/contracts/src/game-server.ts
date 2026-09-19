@@ -287,6 +287,26 @@ export interface GameServerDto {
   pendingRestart: boolean;
   /** Für das Image des Spieltyps liegt eine neuere Fassung vor. */
   updateAvailable: boolean;
+  /**
+   * Fassung des Images, mit dem dieser Server laeuft - nur die Marke hinter
+   * dem Doppelpunkt, z. B. `9`.
+   *
+   * Nicht zu verwechseln mit der Spielfassung (`gameVersion`): Das eine ist
+   * die Fassung des Spiels (26.3), das andere die des Images, das es startet.
+   * Beide aendern sich unabhaengig voneinander.
+   *
+   * `null`, solange kein Container existiert oder die Adresse keine Marke
+   * traegt. Additiv und optional, damit aeltere Backends den Vertrag weiter
+   * erfuellen.
+   */
+  imageVersion?: string | null;
+  /**
+   * Neueste Fassung des Images, die diese Instanz anbietet.
+   *
+   * Zusammen mit `imageVersion` beantwortet sie, was hinter „Update
+   * verfuegbar" steckt: von welcher Fassung auf welche.
+   */
+  latestImageVersion?: string | null;
   /** Anzahl der Mitverwalter (`ServerMember`, Pflichtenheft §6). */
   memberCount: number;
   /**

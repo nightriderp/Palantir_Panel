@@ -123,6 +123,15 @@ export interface GameTypeDto {
   resourceDefaults: GameResourceEstimate;
   configFields: GameConfigField[];
   available: boolean;
+  /**
+   * Fassung des Images dieser Vorlage - nur die Marke hinter dem Doppelpunkt,
+   * z. B. `9`.
+   *
+   * Die vollstaendige Adresse bleibt Betriebssache; sichtbar ist die Zahl, an
+   * der sich erkennen laesst, ob ein Server hinterherhinkt. Additiv und
+   * optional.
+   */
+  imageVersion?: string | null;
   /** Grund, wenn `available === false`, z. B. „Kommt in Phase 2". */
   unavailableReason: string | null;
 }
