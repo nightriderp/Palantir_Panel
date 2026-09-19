@@ -119,14 +119,12 @@ function GameTile({
     <button
       type="button"
       onClick={onSelect}
-      disabled={!game.available}
       aria-pressed={selected}
       className={cn(
         'flex items-start gap-3 rounded-2xl border p-3.5 text-left transition-colors',
         selected
           ? 'border-brand bg-brand-soft'
           : 'border-line bg-card-gradient hover:border-line-strong',
-        !game.available && 'cursor-not-allowed opacity-60',
       )}
     >
       {/*
@@ -151,14 +149,7 @@ function GameTile({
       </span>
 
       <span className="flex min-w-0 flex-col gap-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="text-lg font-semibold">{game.name}</span>
-          {!game.available ? <Badge tone="warning">Kommt später</Badge> : null}
-        </span>
-
-        <span className="text-sm text-ink-soft">
-          {game.available ? game.description : (game.unavailableReason ?? game.description)}
-        </span>
+        <span className="text-lg font-semibold">{game.name}</span>
 
         {/*
           Nur noch der Platz als Schätzung: RAM wird nicht mehr zugewiesen, ein
@@ -183,6 +174,17 @@ export function CreateServerWizard() {
   const [uploading, setUploading] = useState(false);
 
   const gameTypes = useApiResource<GameTypeDto[]>((signal) => fetchGameTypes(signal), []);
+
+  /*
+   * Nur freigeschaltete Spiele (Betreiber, 19.09.2026). Vorher standen die
+   * abgeschalteten grau dazwischen und machten aus neunzehn Kacheln eine Liste,
+   * in der man das Gewünschte suchen musste. Was der Administrator nicht
+   * freigegeben hat, taucht hier gar nicht mehr auf.
+   */
+  const spiele = useMemo(
+    () => (gameTypes.data ?? []).filter((game) => game.available),
+    [gameTypes.data],
+  );
   const nodes = useApiResource<HostNodeDto[]>((signal) => fetchHostNodes(signal), []);
   const quota = useApiResource<ResourceQuotaDto>((signal) => fetchResourceQuota(signal), []);
 
@@ -290,9 +292,15 @@ export function CreateServerWizard() {
 
             {gameTypes.loading ? <p className="text-base text-ink-muted">Wird geladen …</p> : null}
             {gameTypes.error ? <p className="text-base text-danger">{gameTypes.error}</p> : null}
+            {!gameTypes.loading && gameTypes.error === null && spiele.length === 0 ? (
+              <p className="text-base text-ink-muted">
+                Zurzeit ist kein Spiel freigeschaltet. Frag den Administrator, welches dazukommen
+                soll.
+              </p>
+            ) : null}
 
             <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3">
-              {(gameTypes.data ?? []).map((game) => (
+              {spiele.map((game) => (
                 <GameTile
                   key={game.id}
                   game={game}

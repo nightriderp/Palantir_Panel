@@ -24,13 +24,18 @@ export const ICON_PATHS = {
   arrowLeft: 'M19 12H5M11 5l-6 7 6 7',
   arrowRight: 'M5 12h14M13 5l6 7-6 7',
   /**
-   * Neustart als EIN Kreis mit einem Pfeilkopf (aus hafenmeister uebernommen).
+   * Neustart als EIN Ring mit einem Pfeilkopf, mittig im 24er-Feld.
    *
-   * Vorher zwei gegenlaeufige Boegen mit zwei Ecken - in 14 Pixeln sah das nach
-   * Gewusel aus und war von „Aktualisieren" nicht zu unterscheiden. Der
-   * geschlossene Ring mit einem Kopf liest sich auch klein als Drehung.
+   * Zwei Anläufe stecken darin. Erst zwei gegenläufige Bögen mit zwei Ecken –
+   * in 14 Pixeln Gewusel, von „Aktualisieren" nicht zu unterscheiden. Dann der
+   * Ring aus hafenmeister, der aber bis `x = 23` reichte und unten nur einen
+   * halben Pixel Luft ließ: Im runden Knopf saß er sichtbar zu weit rechts und
+   * klebte am Rand (Betreiber, 19.09.2026). Jetzt Mittelpunkt (12|12),
+   * Radius 8, Lücke rechts oben, und der Kopf ist ein echter Pfeil aus zwei
+   * Widerhaken statt einer rechtwinkligen Klammer – auch bei 14 Pixeln als
+   * Drehung lesbar.
    */
-  restart: 'M23 4v6h-6M20.49 15a9 9 0 1 1-2.12-9.36L23 10',
+  restart: 'M19.99 12.42A8 8 0 1 1 17.85 6.54M17.54 2.96L17.85 6.54L14.3 5.98',
   copy: 'M9 9h11v11H9zM5 15V5h11v3',
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
   check: 'M5 12l5 5L19 8',
