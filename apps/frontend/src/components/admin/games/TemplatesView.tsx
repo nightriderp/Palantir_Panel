@@ -9,6 +9,7 @@ import { fetchInstanceSettings, updateInstanceSettings } from '@/lib/api/admin';
 import { fetchGameTypes } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
+import { GameImagePicker } from './GameImagePicker';
 
 /**
  * Verwaltung der Spiel-Vorlagen (Wunsch des Betreibers, 2026-09-11).
@@ -162,25 +163,44 @@ export function TemplatesView() {
                   padding="sm"
                   // Ausgeschaltet blasser: Was angeboten wird, soll sich beim
                   // Überfliegen vom Rest abheben.
-                  className={cn('flex items-center gap-3', !an && 'opacity-60')}
+                  className={cn('flex flex-col gap-2', !an && 'opacity-60')}
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-ink" title={spiel.description}>
-                      {spiel.name}
-                    </p>
-                    {hinweis === null ? null : (
-                      <p className="truncate text-xs text-ink-faint" title={hinweis}>
-                        {hinweis}
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className="truncate text-sm font-medium text-ink"
+                        title={spiel.description}
+                      >
+                        {spiel.name}
                       </p>
-                    )}
+                      {hinweis === null ? null : (
+                        <p className="truncate text-xs text-ink-faint" title={hinweis}>
+                          {hinweis}
+                        </p>
+                      )}
+                    </div>
+
+                    <Toggle
+                      label={spiel.name}
+                      checked={an}
+                      disabled={busy !== null || !darfAendern || phasenGesperrt}
+                      onChange={(next) => void umschalten(spiel, next)}
+                    />
                   </div>
 
-                  <Toggle
-                    label={spiel.name}
-                    checked={an}
-                    disabled={busy !== null || !darfAendern || phasenGesperrt}
-                    onChange={(next) => void umschalten(spiel, next)}
-                  />
+                  {/*
+                    Symbol und Kachelbild je Vorlage (Betreiber-Wunsch
+                    19.09.2026). Sie stehen hier und nicht auf einer eigenen
+                    Seite: Wer entscheidet, ob ein Spiel angeboten wird,
+                    entscheidet auch, wie es aussieht.
+                  */}
+                  {darfAendern ? (
+                    <GameImagePicker
+                      game={spiel}
+                      disabled={busy !== null}
+                      onChanged={() => spiele.reload()}
+                    />
+                  ) : null}
                 </Panel>
               );
             })}
