@@ -14,7 +14,11 @@
  */
 
 import path from 'node:path';
-import { type ServerFileContentDto, type ServerFileListDto } from '@palantir/contracts';
+import {
+  type FileArchiveBlockCommandResult,
+  type ServerFileContentDto,
+  type ServerFileListDto,
+} from '@palantir/contracts';
 import { type AgentSession } from './agent-gateway.js';
 import { ServerOrchestrationError } from './errors.js';
 import {
@@ -276,37 +280,70 @@ export class ServerFileService {
 
     const transferId = gepackt.transferId;
 
+    function frageBlock(offset: number) {
+      return session.sendCommand('FILE_ARCHIVE_BLOCK', server.id, {
+        transferId,
+        offset,
+        maxBytes: DIRECTORY_DOWNLOAD_BLOCK_BYTES,
+      });
+    }
+
     async function* bloecke(): AsyncGenerator<Buffer> {
       let offset = 0;
+      /*
+       * Der naechste Block ist schon unterwegs, waehrend dieser noch durch die
+       * Leitung zum Browser laeuft (Leistungsbericht 19.09.2026, Punkt 1.2).
+       * Vorher wartete jede Anfrage erst darauf, dass der vorige Block
+       * vollstaendig ausgeliefert war - bei einem Gigabyte sind das
+       * zweihundertfuenfzig Rundlaeufe nacheinander.
+       *
+       * Genau eine Anfrage im Voraus, nicht mehr: Jede kostet vier Mebibyte
+       * Speicher im Backend, und schon die eine ueberdeckt die Rueckreise.
+       */
+      let offen: Promise<FileArchiveBlockCommandResult> | null = null;
+      let laufend: Promise<FileArchiveBlockCommandResult> = frageBlock(offset);
 
-      for (;;) {
-        const block = await session.sendCommand('FILE_ARCHIVE_BLOCK', server.id, {
-          transferId,
-          offset,
-          maxBytes: DIRECTORY_DOWNLOAD_BLOCK_BYTES,
-        });
+      try {
+        for (;;) {
+          const block = await laufend;
 
-        const bytes = Buffer.from(block.contentBase64, 'base64');
-        offset += block.bytesRead;
+          const bytes = Buffer.from(block.contentBase64, 'base64');
+          offset += block.bytesRead;
 
-        if (bytes.length > 0) {
-          yield bytes;
+          if (!block.eof && block.bytesRead > 0) {
+            laufend = frageBlock(offset);
+            offen = laufend;
+          } else {
+            offen = null;
+          }
+
+          if (bytes.length > 0) {
+            yield bytes;
+          }
+
+          if (block.eof) {
+            return;
+          }
+
+          if (block.bytesRead === 0) {
+            /*
+             * Kein Fortschritt und kein Ende: Weiterfragen liefe endlos. Derselbe
+             * Schutz wie beim Backup-Download.
+             */
+            throw new ServerOrchestrationError(
+              'AGENT_COMMAND_FAILED',
+              'Der Agent liefert keine weiteren Daten, meldet aber kein Ende des Archivs.',
+            );
+          }
         }
-
-        if (block.eof) {
-          return;
-        }
-
-        if (block.bytesRead === 0) {
-          /*
-           * Kein Fortschritt und kein Ende: Weiterfragen liefe endlos. Derselbe
-           * Schutz wie beim Backup-Download.
-           */
-          throw new ServerOrchestrationError(
-            'AGENT_COMMAND_FAILED',
-            'Der Agent liefert keine weiteren Daten, meldet aber kein Ende des Archivs.',
-          );
-        }
+      } finally {
+        /*
+         * Bricht der Browser mitten im Download ab, endet der Generator hier -
+         * die vorausgeschickte Anfrage laeuft aber weiter. Ohne diesen Fang
+         * meldet Node ihren Fehlschlag als unbehandelte Zurueckweisung und
+         * beendet im schlimmsten Fall den Prozess.
+         */
+        offen?.catch(() => undefined);
       }
     }
 

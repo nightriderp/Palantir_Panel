@@ -51,6 +51,20 @@ describe('packDirectory() / unpackArchive()', () => {
     );
   });
 
+  it('packt auf einer niedrigeren Stufe und bleibt entpackbar', async () => {
+    // Der Ordner-Download waehlt Stufe 1, weil Wartezeit dort teurer ist als
+    // Plattenplatz (Leistungsbericht 19.09.2026). Das Archiv muss dabei
+    // dasselbe bleiben - nur eben schneller gepackt.
+    await schreibe('welt/level.dat', 'x'.repeat(5000));
+
+    const gepackt = await packDirectory(quelle, archiv, { level: 1 });
+    expect(gepackt.fileCount).toBe(1);
+
+    const entpackt = await unpackArchive(archiv, ziel);
+    expect(entpackt.fileCount).toBe(1);
+    await expect(lies('welt/level.dat')).resolves.toBe('x'.repeat(5000));
+  });
+
   it('meldet eine SHA-256 des fertigen Archivs', async () => {
     await schreibe('a.txt', 'Inhalt');
     const gepackt = await packDirectory(quelle, archiv);
