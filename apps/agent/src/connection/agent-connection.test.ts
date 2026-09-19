@@ -721,6 +721,87 @@ describe('Befehle und Korrelations-IDs (Pflichtenheft §2.2)', () => {
     h.connection.stop();
   });
 
+  it('lässt Konsole und Dateiliste an einem laufenden Backup vorbei', async () => {
+    /*
+     * Leistungsbericht 19.09.2026, Punkt 2: Ein minutenlanges CREATE_BACKUP
+     * hielt bisher auch die Konsole und den Datei-Manager desselben Servers
+     * auf – von außen sah das aus, als hinge das Panel.
+     */
+    const freigaben: (() => void)[] = [];
+    const h = harness({
+      execute: () =>
+        new Promise<ApiResponse<unknown>>((resolve) => {
+          freigaben.push(() => resolve(ok(null)));
+        }),
+    });
+    h.connection.start();
+    const transport = await verbinden(h);
+
+    transport.empfangen(befehl({ command: 'CREATE_BACKUP' }));
+    transport.empfangen(befehl({ correlationId: ANDERE_ID, command: 'EXEC_CONSOLE' }));
+    await flush();
+
+    expect(freigaben).toHaveLength(2);
+
+    h.connection.stop();
+  });
+
+  it('hält Start und Stopp weiterhin hinter einem laufenden Backup zurück', async () => {
+    /*
+     * Die Gegenprobe zur Nebenspur: Was den Zustand des Containers anfasst,
+     * bleibt in der gemeinsamen Kette. Ein Backup neben einem Stopp sicherte
+     * sonst einen halben Zustand.
+     */
+    const freigaben: (() => void)[] = [];
+    const h = harness({
+      execute: () =>
+        new Promise<ApiResponse<unknown>>((resolve) => {
+          freigaben.push(() => resolve(ok(null)));
+        }),
+    });
+    h.connection.start();
+    const transport = await verbinden(h);
+
+    transport.empfangen(befehl({ command: 'CREATE_BACKUP' }));
+    transport.empfangen(befehl({ correlationId: ANDERE_ID, command: 'STOP' }));
+    await flush();
+
+    expect(freigaben).toHaveLength(1);
+
+    freigaben[0]?.();
+    await flush();
+
+    expect(freigaben).toHaveLength(2);
+
+    h.connection.stop();
+  });
+
+  it('hält zwei Konsoleneingaben desselben Servers in ihrer Reihenfolge', async () => {
+    // Innerhalb der Nebenspur gilt dieselbe Zusicherung wie bisher.
+    const freigaben: (() => void)[] = [];
+    const h = harness({
+      execute: () =>
+        new Promise<ApiResponse<unknown>>((resolve) => {
+          freigaben.push(() => resolve(ok(null)));
+        }),
+    });
+    h.connection.start();
+    const transport = await verbinden(h);
+
+    transport.empfangen(befehl({ command: 'EXEC_CONSOLE' }));
+    transport.empfangen(befehl({ correlationId: ANDERE_ID, command: 'EXEC_CONSOLE' }));
+    await flush();
+
+    expect(freigaben).toHaveLength(1);
+
+    freigaben[0]?.();
+    await flush();
+
+    expect(freigaben).toHaveLength(2);
+
+    h.connection.stop();
+  });
+
   it('lässt Befehle für verschiedene Server nebeneinander laufen', async () => {
     // Ein minutenlanges CREATE_BACKUP darf nicht die Konsole eines anderen
     // Servers blockieren.

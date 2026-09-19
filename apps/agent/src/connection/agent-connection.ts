@@ -90,6 +90,49 @@ const CLOSE_NORMAL = 1000;
 /** Warteschlange für node-weite Befehle ohne zugeordneten Server. */
 const NODE_LANE = '__node__';
 
+/**
+ * Befehle, die neben einem laufenden Vorgang desselben Servers durchkommen
+ * dürfen (Leistungsbericht 19.09.2026, Punkt 2).
+ *
+ * **Warum es diese zweite Spur gibt.** Alle Befehle eines Servers liefen in
+ * einer einzigen Kette. Während ein Backup geschrieben oder ein Ordner gepackt
+ * wurde – Minuten, nicht Sekunden –, warteten auch Konsole, Dateiliste und
+ * Logabruf desselben Servers. Von außen sah das aus, als hinge das Panel;
+ * tatsächlich stand es hinter dem eigenen Download.
+ *
+ * **Warum nur diese.** Hier stehen ausschließlich Befehle, die nichts am
+ * Zustand des Containers ändern. Start, Stopp, Neustart, Löschen, Schreiben
+ * und die Sicherungen bleiben in der gemeinsamen Spur und laufen weiter streng
+ * nacheinander – ein Backup, das neben einem Stopp läuft, sichert einen
+ * halben Zustand.
+ *
+ * `FILE_ARCHIVE_BLOCK` steht bewusst hier und `FILE_ARCHIVE` bewusst nicht:
+ * Das Packen ist die lange Arbeit, das Abholen der Blöcke liest nur eine
+ * fertige Datei.
+ */
+const NEBENSPUR_BEFEHLE: ReadonlySet<string> = new Set([
+  'GET_STATS',
+  'GET_LOGS',
+  'EXEC_CONSOLE',
+  'FILE_LIST',
+  'FILE_READ',
+  'FILE_ARCHIVE_BLOCK',
+]);
+
+/**
+ * Warteschlange, in die dieser Befehl gehört.
+ *
+ * Je Server zwei: die gemeinsame für alles, was den Zustand anfasst, und eine
+ * für die Befehle aus {@link NEBENSPUR_BEFEHLE}. Innerhalb jeder Spur bleibt
+ * die Reihenfolge erhalten – zwei Konsoleneingaben überholen sich also
+ * weiterhin nicht.
+ */
+function spurFuer(frame: BackendCommandFrame): string {
+  const basis = frame.serverId ?? NODE_LANE;
+
+  return NEBENSPUR_BEFEHLE.has(frame.command) ? `${basis}#nebenspur` : basis;
+}
+
 export class AgentConnection {
   private readonly options: AgentConnectionOptions;
   private readonly log: ConnectionLogger;
@@ -484,7 +527,7 @@ export class AgentConnection {
 
   /** Hängt den Befehl an die Warteschlange seines Servers an. */
   private enqueueCommand(frame: BackendCommandFrame): void {
-    const lane = frame.serverId ?? NODE_LANE;
+    const lane = spurFuer(frame);
     const vorgaenger = this.commandLanes.get(lane) ?? Promise.resolve();
     /*
      * Beide Zweige, nicht nur der glückliche (Fundpunkt 227): Wirft irgendetwas
