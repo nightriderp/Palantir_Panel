@@ -141,7 +141,45 @@ describe('java.sh – Heap aus dem RAM-Kontingent', nurMitShell, () => {
     assert.equal(lauf.ausgang, 'grenze');
     assert.equal(lauf.argumente, '-Xms6000M -Xmx6000M');
     assert.equal(lauf.heap, '6000');
-    assert.equal(lauf.kontingent, '');
+    // Seit 19.09.2026 stehen auch hier Zahlen: Vorher schrieb das Startskript
+    // „RAM-Kontingent  MiB, davon 6000 MiB Heap ( MiB Rücklage)".
+    assert.equal(lauf.kontingent, '6000');
+    assert.equal(lauf.ruecklage, '0');
+  });
+
+  /*
+   * Die Datei schlägt die Umgebung (Störung vom 19.09.2026): Die Variable
+   * steht seit dem Anlegen des Containers fest, die Datei schreibt der Agent
+   * vor jedem Start neu. Ein Server, der mit zu grossem Heap hängenblieb,
+   * kommt so ohne Neuaufbau wieder hoch.
+   */
+  it('nimmt die Datei im Datenordner vor der Umgebung', () => {
+    const datei = posix(join(mkdtempSync(join(tmpdir(), 'palantir-heap-')), 'heap.mib'));
+    writeFileSync(datei, '4096', 'utf8');
+
+    const lauf = heapBestimmen(grenzdatei(16_384 * 1024 * 1024), {
+      PALANTIR_JAVA_HEAP_MIB: '20307',
+      PALANTIR_HEAP_DATEI: datei,
+    });
+
+    assert.equal(lauf.argumente, '-Xms4096M -Xmx4096M');
+    assert.equal(lauf.heap, '4096');
+  });
+
+  it('überspringt eine unbrauchbare Datei und nimmt dann die Umgebung', () => {
+    const ordner = mkdtempSync(join(tmpdir(), 'palantir-heap-'));
+
+    for (const inhalt of ['', 'viel', '12abc', '100']) {
+      const datei = posix(join(ordner, 'heap.mib'));
+      writeFileSync(datei, inhalt, 'utf8');
+
+      const lauf = heapBestimmen(grenzdatei(16_384 * 1024 * 1024), {
+        PALANTIR_JAVA_HEAP_MIB: '6000',
+        PALANTIR_HEAP_DATEI: datei,
+      });
+
+      assert.equal(lauf.argumente, '-Xms6000M -Xmx6000M', `Datei "${inhalt}"`);
+    }
   });
 
   it('ignoriert eine unbrauchbare Heap-Vorgabe und rechnet wie bisher', () => {

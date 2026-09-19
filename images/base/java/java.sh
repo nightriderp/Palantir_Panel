@@ -106,15 +106,50 @@ java_heap_bestimmen() {
   JAVA_HEAP_MIB=''
   JAVA_RUECKLAGE_MIB=''
 
-  # Vorgabe des Agents (seit 2026-09-18): Der Heap kommt aus dem freien
-  # Speicher der Node zum Startzeitpunkt, nicht aus der cgroup-Grenze – die
-  # steht seit der weichen Zuweisung fuer alle Container auf dem Node-Wert und
-  # sagt nichts mehr ueber diesen Server. Ganze Zahl in MiB, mindestens 512.
+  # Vorgabe des Agents, erste Quelle: die Datei im Datenordner
+  # (`/data/.palantir/heap.mib`, seit 19.09.2026).
+  #
+  # Warum eine Datei und nicht nur die Umgebung: Eine Umgebungsvariable steht
+  # beim Anlegen des Containers fest und bleibt dort, bis ihn jemand neu
+  # anlegt. Genau daran ist am 19.09.2026 ein Server hängengeblieben – er
+  # startete wieder und wieder mit 20 307 MiB Heap, obwohl der Agent längst
+  # einen gedeckelten Wert berechnete, weil der alte Wert im Container klebte.
+  # Die Datei schreibt der Agent vor **jedem** Start neu; sie gewinnt deshalb
+  # gegen die Umgebung.
+  PALANTIR_HEAP_DATEI="${PALANTIR_HEAP_DATEI:-/data/.palantir/heap.mib}"
+
+  if [ -r "$PALANTIR_HEAP_DATEI" ]; then
+    # Nur die erste Zeile, nur Ziffern – was sonst darin steht, wird verworfen.
+    aus_datei="$(head -n 1 "$PALANTIR_HEAP_DATEI" 2>/dev/null | tr -d '\r\n\t ')"
+
+    case "${aus_datei:-}" in
+      '' | *[!0-9]*) ;;
+      *)
+        if [ "$aus_datei" -ge 512 ]; then
+          JAVA_HEAP_MIB="$aus_datei"
+          JAVA_KONTINGENT_MIB="$aus_datei"
+          JAVA_RUECKLAGE_MIB=0
+          # shellcheck disable=SC2034  # gelesen im Spiel-Image, siehe unten
+          JAVA_HEAP_ARGUMENTE="-Xms${JAVA_HEAP_MIB}M -Xmx${JAVA_HEAP_MIB}M"
+
+          return 0
+        fi
+        ;;
+    esac
+  fi
+
+  # Zweite Quelle: die Umgebung. Sie stammt vom Anlegen des Containers und
+  # bleibt der Rückfall für Container ohne Datei. Ganze Zahl in MiB, mindestens 512.
   case "${PALANTIR_JAVA_HEAP_MIB:-}" in
     '' | *[!0-9]*) ;;
     *)
       if [ "$PALANTIR_JAVA_HEAP_MIB" -ge 512 ]; then
         JAVA_HEAP_MIB="$PALANTIR_JAVA_HEAP_MIB"
+        # Damit das Log des Spiel-Images keine Lücke zeigt: Bis zum 19.09.2026
+        # stand dort „RAM-Kontingent  MiB, davon 20307 MiB Heap ( MiB
+        # Rücklage)" – zwei leere Zahlen, weil dieser Zweig sie nie setzte.
+        JAVA_KONTINGENT_MIB="$PALANTIR_JAVA_HEAP_MIB"
+        JAVA_RUECKLAGE_MIB=0
         # shellcheck disable=SC2034  # gelesen im Spiel-Image, siehe unten
         JAVA_HEAP_ARGUMENTE="-Xms${JAVA_HEAP_MIB}M -Xmx${JAVA_HEAP_MIB}M"
 

@@ -291,7 +291,7 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   name: 'Minecraft (Paper)',
   description:
     'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:7',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:8',
   // Schnellbefehle der Live-Konsole. Nur vollständige Zeilen – `say <Text>`
   // oder `op <Name>` brauchen das Feld. Die Antwort kommt über RCON zurück
   // (`console` unten, P2-9) und steht damit direkt in der Konsole.
