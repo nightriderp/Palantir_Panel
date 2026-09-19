@@ -147,6 +147,8 @@ export {
   formatUptimeClock,
   formatMegabytes,
   formatMegabytesKurz,
+  formatImageUpdate,
+  formatImageVersion,
   formatNumber,
   formatPercent,
   formatPing,

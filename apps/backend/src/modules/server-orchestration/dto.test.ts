@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toGameServerDto } from './dto.js';
 import { ALLE_GAME_TYPE_DEFINITIONS, TEST_GAME_TYPE, createGameRegistry } from './game-registry.js';
 import { type ServerRecord } from './repository.js';
+import { imageVersionLabel } from './image-version.js';
 import { type PermissionActor } from '../rbac/index.js';
 
 /**
@@ -110,6 +111,16 @@ describe('toGameServerDto – unbekannter Spieltyp (Fundpunkt 247)', () => {
     expect(dto.consoleQuickCommands).toEqual([]);
     // Ohne bekannte Definition gibt es keine Soll-Fassung zum Vergleichen.
     expect(dto.updateAvailable).toBe(false);
+  });
+
+  it('zeigt die gefahrene und die angebotene Fassung', () => {
+    const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
+    const dto = toGameServerDto(serverMit(TEST_GAME_TYPE.id), kontext(registry));
+
+    // Der Prueftand faehrt Marke 1; angeboten wird, was in der Definition
+    // steht. Beides zusammen macht den Update-Hinweis erst lesbar.
+    expect(dto.imageVersion).toBe('1');
+    expect(dto.latestImageVersion).toBe(imageVersionLabel(TEST_GAME_TYPE.dockerImage));
   });
 
   it('lässt den Server löschbar – sonst käme man nie an ihn heran', () => {

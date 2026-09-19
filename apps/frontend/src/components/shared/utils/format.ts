@@ -368,3 +368,38 @@ export function formatChatTime(iso: string | null | undefined, jetzt = new Date(
 
   return gleicherTag ? TIME_FORMAT.format(date) : DATE_TIME_FORMAT.format(date);
 }
+
+/**
+ * Beschriftung der Image-Fassung, z. B. „Fassung 9" (Betreiber-Wunsch
+ * 19.09.2026: die Versionierung überall sehen).
+ *
+ * Gemeint ist die Fassung des **Images**, nicht die des Spiels: Das Wort
+ * „Fassung" steht deshalb immer davor. Die Spielfassung erscheint ohne Wort
+ * direkt hinter dem Spielnamen („Minecraft 1.21.4"), beides nebeneinander
+ * bleibt damit auseinanderzuhalten.
+ *
+ * `null`, wenn nichts bekannt ist – dann steht an der Stelle gar nichts,
+ * statt eines Platzhalters, der nichts sagt.
+ */
+export function formatImageVersion(version: string | null | undefined): string | null {
+  return version === null || version === undefined || version === '' ? null : `Fassung ${version}`;
+}
+
+/**
+ * Erklärung zum Hinweis „Update verfügbar": welche Fassung läuft und welche
+ * angeboten wird.
+ *
+ * Bisher sagte der Hinweis nur, dass etwas Neueres da ist. Erst die beiden
+ * Zahlen machen daraus eine Auskunft. Fehlt eine davon, bleibt es beim
+ * bisherigen Text – `null` heißt hier „nichts zu ergänzen".
+ */
+export function formatImageUpdate(
+  current: string | null | undefined,
+  latest: string | null | undefined,
+): string | null {
+  if (!current || !latest || current === latest) {
+    return null;
+  }
+
+  return `Fassung ${current} läuft, angeboten wird ${latest}.`;
+}

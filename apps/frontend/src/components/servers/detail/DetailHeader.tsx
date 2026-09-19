@@ -8,6 +8,8 @@ import {
   IconButton,
   ServerStatusPill,
   StartupProgress,
+  formatImageUpdate,
+  formatImageVersion,
   formatServerAddress,
   isLifecycleActionBlocked,
   serverInitials,
@@ -75,6 +77,8 @@ export function DetailHeader({
    * gesperrt wie die übrigen Aktionen.
    */
   const canUpdate = server.updateAvailable && server.permissions.canUpdate;
+  const fassung = formatImageVersion(server.imageVersion);
+  const updateHinweis = formatImageUpdate(server.imageVersion, server.latestImageVersion);
   const updateLaeuftNeu = server.status === 'running' || server.status === 'starting';
 
   return (
@@ -100,11 +104,14 @@ export function DetailHeader({
             ) : null}
             {server.updateAvailable ? (
               <span
-                title={
+                title={[
+                  updateHinweis,
                   canUpdate
                     ? 'Über „Aktualisieren" wird die neue Fassung übernommen. Bis dahin läuft der Server auf seiner bisherigen Fassung – auch nach einem Neustart.'
-                    : 'Die neue Fassung übernimmt der Besitzer über „Aktualisieren".'
-                }
+                    : 'Die neue Fassung übernimmt der Besitzer über „Aktualisieren".',
+                ]
+                  .filter((teil) => teil !== null)
+                  .join(' ')}
               >
                 <Badge tone="warning">Update verfügbar</Badge>
               </span>
@@ -119,6 +126,10 @@ export function DetailHeader({
             {server.gameVersion === null || server.gameVersion === undefined
               ? ''
               : ` ${server.gameVersion}`}
+            {/* Die Image-Fassung neben der Spielfassung: „Minecraft 1.21.4 ·
+                Fassung 9" beantwortet beide Fragen an einer Stelle
+                (Betreiber-Wunsch 19.09.2026). */}
+            {fassung === null ? '' : ` · ${fassung}`}
             {server.hostName ? ` · ${server.hostName}` : ''}
             {server.ownerDisplayName ? ` · ${server.ownerDisplayName}` : ''}
           </p>

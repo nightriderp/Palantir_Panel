@@ -5,6 +5,8 @@ import {
   formatChatTime,
   formatCores,
   formatDate,
+  formatImageUpdate,
+  formatImageVersion,
   formatDateTime,
   formatDuration,
   formatUptimeClock,
@@ -259,5 +261,27 @@ describe('formatCores', () => {
     // Fundpunkt 220 (UI-35): Die Serverdetails schrieben „1 Kerne".
     expect(formatCores(1)).toBe('1 Kern');
     expect(formatCores(2)).toBe('2 Kerne');
+  });
+});
+
+describe('Image-Fassung', () => {
+  it('setzt das Wort „Fassung" davor, damit die Spielfassung unterscheidbar bleibt', () => {
+    expect(formatImageVersion('9')).toBe('Fassung 9');
+  });
+
+  it('zeigt ohne bekannte Fassung nichts an', () => {
+    expect(formatImageVersion(null)).toBeNull();
+    expect(formatImageVersion(undefined)).toBeNull();
+    expect(formatImageVersion('')).toBeNull();
+  });
+
+  it('nennt beim Update beide Fassungen', () => {
+    expect(formatImageUpdate('7', '9')).toBe('Fassung 7 läuft, angeboten wird 9.');
+  });
+
+  it('ergänzt nichts, wenn eine Zahl fehlt oder beide gleich sind', () => {
+    expect(formatImageUpdate('9', '9')).toBeNull();
+    expect(formatImageUpdate(null, '9')).toBeNull();
+    expect(formatImageUpdate('9', null)).toBeNull();
   });
 });

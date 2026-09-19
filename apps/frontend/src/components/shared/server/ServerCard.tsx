@@ -8,6 +8,8 @@ import { cn } from '../utils/cn';
 import {
   clampedPercentOf,
   formatCores,
+  formatImageUpdate,
+  formatImageVersion,
   formatMegabytes,
   formatMegabytesKurz,
   formatNumber,
@@ -129,6 +131,8 @@ export function ServerCard({
 }: ServerCardProps) {
   const meta = serverStatusMeta(server.status);
   const permissions = server.permissions;
+  const fassung = formatImageVersion(server.imageVersion);
+  const updateHinweis = formatImageUpdate(server.imageVersion, server.latestImageVersion);
   const live = hasLiveStats(server.status) ? (stats ?? null) : null;
 
   /*
@@ -216,6 +220,10 @@ export function ServerCard({
             {server.gameVersion === null || server.gameVersion === undefined
               ? ''
               : ` ${server.gameVersion}`}
+            {/* Die Image-Fassung gehört dorthin, wo auch die Spielfassung
+                steht: Beide beschreiben, was dieser Server fährt
+                (Betreiber-Wunsch 19.09.2026). */}
+            {fassung === null ? '' : ` · ${fassung}`}
             {!isOwn && server.ownerDisplayName ? ` · ${server.ownerDisplayName}` : ''}
           </p>
         </div>
@@ -229,7 +237,12 @@ export function ServerCard({
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           <ServerStatusPill status={server.status} />
           {updateAvailable ? (
-            <Badge tone="warning" title={'Auf der Detailseite über „Aktualisieren" übernehmen.'}>
+            <Badge
+              tone="warning"
+              title={[updateHinweis, 'Auf der Detailseite über „Aktualisieren" übernehmen.']
+                .filter((teil) => teil !== null)
+                .join(' ')}
+            >
               Update verfügbar
             </Badge>
           ) : null}

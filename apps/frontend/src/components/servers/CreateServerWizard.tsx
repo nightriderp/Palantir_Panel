@@ -21,6 +21,7 @@ import {
   ToggleRow,
   cn,
   serverInitials,
+  formatImageVersion,
   formatMegabytes,
   useToast,
 } from '@/components/shared';
@@ -164,8 +165,14 @@ function GameTile({
         )}
       </span>
 
-      <span className="relative flex min-w-0 flex-col gap-1">
+      <span className="relative flex min-w-0 flex-col gap-0.5">
         <span className="text-lg font-semibold">{game.name}</span>
+        {/* Die Fassung des Images auch schon bei der Auswahl
+            (Betreiber-Wunsch 19.09.2026): Wer später auf der Karte „Fassung 8"
+            liest, findet hier, was gerade angeboten wird. */}
+        {formatImageVersion(game.imageVersion) === null ? null : (
+          <span className="text-xs text-ink-faint">{formatImageVersion(game.imageVersion)}</span>
+        )}
       </span>
     </button>
   );
