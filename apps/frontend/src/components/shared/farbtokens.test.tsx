@@ -119,13 +119,13 @@ describe('Farbtokens statt literaler Werte', () => {
     expect(tokenVorhanden('line')).toBe(true);
   });
 
-  it('LogoMark zeichnet das Symbol über den Token `canvas`', () => {
+  it('LogoMark zeichnet das Signet über den Token `canvas`', () => {
     const { container } = render(<LogoMark />);
     const symbol = container.querySelector('path');
 
     expect(symbol).not.toBeNull();
-    expect(symbol?.getAttribute('class')).toContain('stroke-canvas');
-    expect(symbol?.getAttribute('stroke')).toBeNull();
+    expect(symbol?.getAttribute('class')).toContain('fill-canvas');
+    expect(symbol?.getAttribute('fill')).toBeNull();
     expect(tokenVorhanden('canvas')).toBe(true);
   });
 
