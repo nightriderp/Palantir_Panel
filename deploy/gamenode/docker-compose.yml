@@ -149,6 +149,10 @@ services:
       AGENT_BACKEND_WS_URL: ${AGENT_BACKEND_WS_URL}
       AGENT_TOKEN: ${AGENT_TOKEN}
       AGENT_NODE_ID: ${AGENT_NODE_ID}
+      # Ausgerollter Commit (Fundpunkt 318). Setzt update.sh vor `up -d`; steht
+      # er nicht in der Umgebung, kommt ein leerer String an und der Agent
+      # meldet nur die Paketfassung.
+      AGENT_COMMIT: ${AGENT_COMMIT:-}
       AGENT_DATA_DIR: ${AGENT_DATA_DIR}
       AGENT_BACKUP_DIR: ${AGENT_BACKUP_DIR}
       # Ordner mit der Steam-Anmeldung. Er wird hier bewusst NICHT in den
