@@ -77,7 +77,15 @@ function main(): void {
    */
   const quiesceMarker = new QuiesceMarker(path.join(env.AGENT_BACKUP_DIR, '.schreibstopp'));
 
-  const adapter = new ContainerRuntimeAdapter({ runtime, jobs, quiesceMarker });
+  const adapter = new ContainerRuntimeAdapter({
+    runtime,
+    jobs,
+    quiesceMarker,
+    statsTakt: {
+      minIntervalMs: env.AGENT_STATS_MIN_INTERVAL_MS,
+      maxIntervalMs: env.AGENT_STATS_MAX_INTERVAL_MS,
+    },
+  });
 
   const connection = new AgentConnection({
     transportFactory: createWebSocketTransportFactory({

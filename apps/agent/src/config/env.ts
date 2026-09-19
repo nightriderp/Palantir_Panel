@@ -153,6 +153,20 @@ const envSchema = z.object({
   /** Frist einer einzelnen Server-Abfrage, bevor sie als fehlgeschlagen gilt. */
   AGENT_QUERY_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
   /**
+   * Kuerzester Abstand zwischen zwei Messwert-Meldungen desselben Containers
+   * (Leistungsbericht 19.09.2026, Punkt 5).
+   *
+   * Docker schiebt seine Werte ungefaehr sekuendlich; mit der Vorgabe aendert
+   * sich am heutigen Verhalten nichts. Wer eine ruhigere Oberflaeche will,
+   * dreht hier hoch.
+   */
+  AGENT_STATS_MIN_INTERVAL_MS: z.coerce.number().int().min(200).max(60_000).default(1_000),
+  /**
+   * Laengster Abstand, auch wenn sehr viele Container laufen. Zwischen beiden
+   * Werten waechst der Abstand mit der Zahl der laufenden Container.
+   */
+  AGENT_STATS_MAX_INTERVAL_MS: z.coerce.number().int().min(200).max(60_000).default(5_000),
+  /**
    * Nur für Umgebungen, in denen der Agent auf dem Docker-Host selbst läuft
    * und die Host-Ports der Spielcontainer erreicht (z. B. `127.0.0.1` in der
    * Entwicklung). Gesetzt, fragt der Agent `<Adresse>:<Host-Port>` statt den

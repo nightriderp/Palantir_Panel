@@ -175,6 +175,9 @@ services:
       AGENT_SECCOMP_PROFILE_PATH: ${AGENT_SECCOMP_PROFILE_PATH}
       AGENT_QUERY_INTERVAL_SECONDS: ${AGENT_QUERY_INTERVAL_SECONDS}
       AGENT_QUERY_TIMEOUT_MS: ${AGENT_QUERY_TIMEOUT_MS}
+      # Takt der Live-Messwerte (Leistungsbericht 19.09.2026, Punkt 5).
+      AGENT_STATS_MIN_INTERVAL_MS: ${AGENT_STATS_MIN_INTERVAL_MS}
+      AGENT_STATS_MAX_INTERVAL_MS: ${AGENT_STATS_MAX_INTERVAL_MS}
       # Auf einer Node leer: Die Abfrage geht an den Container im Spielenetz
       # (Fundpunkt 188). Der Wert existiert nur fuer Agents auf dem Docker-Host.
       AGENT_QUERY_HOST: ${AGENT_QUERY_HOST:-}

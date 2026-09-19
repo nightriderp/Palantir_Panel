@@ -62,6 +62,7 @@ import {
   type Unsubscribe,
 } from '../runtime/index.js';
 import type { AgentRuntimePort, CommandExecution, OutboundEvent } from './ports.js';
+import { StatsTakt, type StatsTaktOptionen } from './stats-takt.js';
 
 /**
  * Zuordnung der agent-internen Runtime-Fehler auf den API-Fehlercode-Katalog
@@ -113,6 +114,11 @@ const CONTAINER_STATUS_MAP: Record<ContainerState['status'], AgentContainerStatu
 };
 
 export interface RuntimeAdapterOptions {
+  /**
+   * Takt der Live-Messwerte; ohne Angabe die Vorgaben aus `stats-takt.ts`
+   * (Leistungsbericht 19.09.2026, Punkt 5).
+   */
+  readonly statsTakt?: StatsTaktOptionen;
   readonly runtime: ContainerRuntime;
   /**
    * Protokoll des Agents. Ohne Angabe die Konsole - dieselbe Voreinstellung
@@ -178,12 +184,21 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
    * dann mehrfach beim Backend an.
    */
   private readonly liveChannels = new Map<string, Unsubscribe | null>();
+  /**
+   * Takt der Live-Messwerte (Leistungsbericht 19.09.2026, Punkt 5).
+   *
+   * Bis zehn laufende Container bleibt es beim Sekundentakt von Docker, danach
+   * werden die Meldungen gestreckt. Nur Messwerte laufen hier durch;
+   * Statuswechsel, Abstürze und Logzeilen gehen ungebremst raus.
+   */
+  private readonly statsTakt: StatsTakt;
 
   constructor(options: RuntimeAdapterOptions) {
     this.runtime = options.runtime;
     this.jobs = options.jobs;
     this.quiesceMarker = options.quiesceMarker;
     this.log = options.logger ?? consoleLogger;
+    this.statsTakt = new StatsTakt(options.statsTakt ?? {});
   }
 
   /**
@@ -195,6 +210,15 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
       return;
     }
     this.unsubscribe = this.runtime.on((event) => {
+      if (
+        event.type === 'STATS_UPDATE' &&
+        !this.statsTakt.darfSenden(event.stats.containerId, this.liveChannels.size)
+      ) {
+        // Zwischenwert: Der nächste Strom-Tick liegt schon im Anmarsch, und
+        // eine Momentaufnahme ersetzt die vorige vollständig.
+        return;
+      }
+
       emit(toOutboundEvent(event));
     });
   }
@@ -210,6 +234,7 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
       abmelden?.();
     }
     this.liveChannels.clear();
+    this.statsTakt.leeren();
   }
 
   async execute(execution: CommandExecution): Promise<ApiResponse<unknown>> {
@@ -820,6 +845,8 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
    */
   private async closeLiveChannels(containerId: string): Promise<void> {
     this.liveChannels.delete(containerId);
+    // Sonst wuechse die Karte des Takts mit jedem gestoppten Container.
+    this.statsTakt.vergiss(containerId);
     try {
       await this.runtime.unwatch(containerId);
     } catch (fehler) {
