@@ -385,6 +385,9 @@ export const fileArchiveCommandResultSchema = z.object({
   transferId: idSchema,
   fileName: z.string().min(1).max(255),
   sizeBytes: z.number().int().nonnegative(),
+  // Optional, damit ein Agent ohne Strom-Unterstuetzung denselben Vertrag
+  // erfuellt wie bisher.
+  pending: z.boolean().optional(),
 });
 
 export const fileArchiveBlockCommandResultSchema = z.object({
@@ -396,6 +399,7 @@ export const fileArchiveBlockCommandResultSchema = z.object({
   bytesRead: z.number().int().nonnegative(),
   totalBytes: z.number().int().nonnegative(),
   eof: z.boolean(),
+  pending: z.boolean().optional(),
 });
 
 export const downloadBackupCommandResultSchema = z.object({

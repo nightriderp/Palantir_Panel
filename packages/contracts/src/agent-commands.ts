@@ -835,8 +835,27 @@ export interface FileArchiveCommandResult {
   readonly transferId: string;
   /** Vorschlag für den Dateinamen, z. B. `world.tar.gz`. */
   readonly fileName: string;
-  /** Größe des gepackten Archivs in Byte. */
+  /**
+   * Größe des gepackten Archivs in Byte.
+   *
+   * Nur verlässlich, wenn {@link FileArchiveCommandResult.pending} fehlt oder
+   * `false` ist. Packt der Agent noch, steht hier der bisher geschriebene
+   * Stand – eine Zusage über die Endgröße ist das nicht.
+   */
   readonly sizeBytes: number;
+  /**
+   * Der Agent packt noch und liefert trotzdem schon Blöcke.
+   *
+   * Ohne dieses Feld gilt das bisherige Verhalten: Die Antwort kommt erst,
+   * wenn das Archiv vollständig auf der Platte liegt. Dann wartet der
+   * Anfragende bei einem Weltordner Minuten, bevor das erste Byte fließt.
+   *
+   * Mit `true` antwortet der Agent sofort, und
+   * {@link FileArchiveBlockCommandResult.pending} sagt bei jedem Block, ob
+   * weitere folgen. Die Endgröße ist dann erst mit dem letzten Block bekannt,
+   * ein Download kann also keine Gesamtlänge ankündigen.
+   */
+  readonly pending?: boolean;
 }
 
 /** Ergebnis von `FILE_ARCHIVE_BLOCK`; Aufbau wie beim Backup-Download. */
@@ -846,10 +865,25 @@ export interface FileArchiveBlockCommandResult {
   readonly contentBase64: string;
   /** Tatsächlich gelesene Byte; 0 nur am Ende einer leeren Datei. */
   readonly bytesRead: number;
-  /** Gesamtgröße des Archivs – dieselbe Zahl wie in `FILE_ARCHIVE`. */
+  /**
+   * Gesamtgröße des Archivs.
+   *
+   * Bei `pending` der bisher geschriebene Stand, sonst die Endgröße – dieselbe
+   * Zahl wie in `FILE_ARCHIVE`.
+   */
   readonly totalBytes: number;
   /** Letzter Block; danach ist die gepackte Datei weg. */
   readonly eof: boolean;
+  /**
+   * Im Moment sind keine weiteren Bytes da, das Archiv ist aber noch nicht zu
+   * Ende: Der Agent packt weiter.
+   *
+   * Nur so lässt sich „gerade nichts da" von „kaputt" unterscheiden. Ohne das
+   * Feld wäre ein Block mit `bytesRead: 0` und `eof: false` ein Fehler – und
+   * genau das ist er weiterhin, wenn `pending` fehlt. Der Anfragende wartet
+   * kurz und fragt dieselbe Stelle erneut ab.
+   */
+  readonly pending?: boolean;
 }
 
 export interface DownloadBackupCommandResult {
