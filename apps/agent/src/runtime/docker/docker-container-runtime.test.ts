@@ -15,6 +15,9 @@
  * hier sofort auf, statt erst im Betrieb.
  */
 
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, sep } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -290,6 +293,98 @@ describe('START / STOP / RESTART / DELETE', () => {
     expect(aufrufe[0]).toMatchObject({ method: 'DELETE', pfad: '/containers/c-1' });
     expect(aufrufe[0]?.query.get('v')).toBe('false');
     expect(aufrufe[0]?.query.get('force')).toBe('false');
+  });
+});
+
+/*
+ * Der Heap steht seit dem 19.09.2026 in einer Datei im Datenordner, nicht mehr
+ * nur in der Umgebung des Containers: Eine Variable friert beim Anlegen ein,
+ * und genau daran blieb ein Server haengen, der jedes Mal mit 20 307 MiB
+ * startete und vom Kernel beendet wurde. Der Agent schreibt die Datei vor
+ * jedem Start neu.
+ */
+describe('Heap-Datei vor dem Start', () => {
+  let datenordner: string;
+
+  function runtimeMitPlanung(): DockerContainerRuntime {
+    return new DockerContainerRuntime({
+      client: new DockerHttpClient({ baseUrl: PROXY_URL, fetchImpl: stubFetch }),
+      hardening: { allowedHostRoots: [DATEN_WURZEL] },
+      onStreamError: () => undefined,
+      speicherPlanung: {
+        reserveMb: 2_048,
+        hardLimitMb: 28_000,
+        maxHeapMb: 8_192,
+        verfuegbarMb: async () => 26_000,
+      },
+    });
+  }
+
+  /** Inspect mit Label und Mount, damit `dataVolumePaths` einen Pfad findet. */
+  function mitMount(ordner: string): Antwortgeber {
+    return (aufruf) => {
+      if (aufruf.pfad === '/containers/c-1/json') {
+        return json({
+          Id: 'c-1',
+          Config: { Labels: { [PALANTIR_DATA_VOLUME_PATH_LABEL]: '/data' } },
+          Mounts: [{ Destination: '/data', Source: ordner }],
+        });
+      }
+
+      return new Response(null, { status: 204 });
+    };
+  }
+
+  beforeEach(async () => {
+    datenordner = await mkdtemp(join(tmpdir(), 'palantir-heap-runtime-'));
+  });
+
+  afterEach(async () => {
+    await rm(datenordner, { recursive: true, force: true });
+  });
+
+  /*
+   * Nur auf POSIX: `dataVolumePaths` verlangt einen absoluten Unix-Pfad als
+   * Mount-Quelle (so meldet ihn die Engine auf der Node). Ein Windows-Pfad aus
+   * `tmpdir()` faellt dort durch, und ein erfundener Unix-Pfad waere auf
+   * diesem Rechner nicht beschreibbar. Die CI laeuft unter Linux.
+   */
+  const nurPosix = process.platform === 'win32' ? it.skip : it;
+
+  nurPosix('schreibt den gedeckelten Heap vor dem Start in den Datenordner', async () => {
+    antwortgeber = mitMount(datenordner.split(sep).join('/'));
+
+    const eigene = runtimeMitPlanung();
+
+    try {
+      await eigene.start('c-1');
+    } finally {
+      await eigene.dispose();
+    }
+
+    const inhalt = await readFile(join(datenordner, '.palantir', 'heap.mib'), 'utf8');
+
+    // 26 000 frei minus 2 048 Ruecklage waeren 23 952 – der Deckel macht 8 192.
+    expect(inhalt.trim()).toBe('8192');
+    expect(aufrufe.some((aufruf) => aufruf.pfad === '/containers/c-1/start')).toBe(true);
+  });
+
+  it('startet trotzdem, wenn die Datei nicht zu schreiben ist', async () => {
+    // Kein Mount: `dataVolumePaths` wirft, der Start darf daran nicht scheitern.
+    antwortgeber = (aufruf) =>
+      aufruf.pfad === '/containers/c-1/json'
+        ? json({ Id: 'c-1', Config: { Labels: {} } })
+        : new Response(null, { status: 204 });
+
+    const eigene = runtimeMitPlanung();
+
+    try {
+      await expect(eigene.start('c-1')).resolves.toBeUndefined();
+    } finally {
+      await eigene.dispose();
+    }
+
+    expect(aufrufe.some((aufruf) => aufruf.pfad === '/containers/c-1/start')).toBe(true);
   });
 });
 
