@@ -109,7 +109,11 @@ import {
 } from './file-service.js';
 import { ServerStatsSampler } from './stats-sampling.js';
 
-export type { ServerFileAccessOptions, ServerFileUploadOptions } from './file-service.js';
+export type {
+  ServerDirectoryDownload,
+  ServerFileAccessOptions,
+  ServerFileUploadOptions,
+} from './file-service.js';
 import { type HostNodeRecord, type ServerRecord, type ServerRepository } from './repository.js';
 import { type ServerAutoShutdown } from './types.js';
 import {
@@ -169,6 +173,12 @@ export interface OrchestrationConfig {
    * `AGENT_FILE_LIST_TIMEOUT_MS`.
    */
   readonly fileListTimeoutMs: number;
+  /**
+   * Frist für das Packen eines Ordners zum Herunterladen
+   * (`AGENT_DIRECTORY_ARCHIVE_TIMEOUT_MS`). Eigene Zahl, weil hier
+   * tatsächlich gearbeitet wird und nicht nur aufgelistet.
+   */
+  readonly directoryArchiveTimeoutMs: number;
   readonly defaultAutoShutdown: ServerAutoShutdown;
   /**
    * Maximale Upload-Größe pro Datei aus `MAX_UPLOAD_SIZE_BYTES` (Pflichtenheft
@@ -1977,6 +1987,11 @@ export class ServerOrchestrationService {
 
   deleteFile(serverId: string, relativePath: string, recursive = false): Promise<void> {
     return this.files.deleteFile(serverId, relativePath, recursive);
+  }
+
+  /** Ordner als tar.gz öffnen; die Blöcke holt die Route (19.09.2026). */
+  openDirectoryDownload(serverId: string, relativePath: string) {
+    return this.files.openDirectoryDownload(serverId, relativePath);
   }
 
   downloadFile(

@@ -898,6 +898,7 @@ function makeHarness(
       healthCheckAttemptTimeoutMs: 1_000,
       createTimeoutMs: 900_000,
       fileListTimeoutMs: 180_000,
+      directoryArchiveTimeoutMs: 600_000,
       maxUploadBytes: options.maxUploadBytes ?? 2 * 1024 * 1024 * 1024,
       maxWorldArchiveBytes: options.maxWorldArchiveBytes ?? 64 * 1024 * 1024,
       statsHistoryRetentionHours: options.statsHistoryRetentionHours ?? 48,

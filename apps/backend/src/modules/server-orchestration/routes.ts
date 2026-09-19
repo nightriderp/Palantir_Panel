@@ -13,6 +13,7 @@
  * fragt das berechnete Flag ab.
  */
 
+import { Readable } from 'node:stream';
 import {
   type ApiResponse,
   type GameServerPermissions,
@@ -47,7 +48,7 @@ import { type GameRegistry } from './game-registry.js';
 import { type ServerMemberRecord, type ServerRepository } from './repository.js';
 import { type ServerScheduleService, toScheduleDto } from './schedules.js';
 import { type WorldArchiveStore } from './world-import.js';
-import { type ServerOrchestrationService } from './service.js';
+import { type ServerDirectoryDownload, type ServerOrchestrationService } from './service.js';
 import { checkSubdomain } from './subdomain.js';
 
 /**
@@ -1084,6 +1085,83 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     } catch (error: unknown) {
       return replyWithError(reply, error);
     }
+  });
+
+  /**
+   * Einen Ordner als `tar.gz` herunterladen (Betreiber, 19.09.2026).
+   *
+   * Eigene Route neben dem Datei-Download, nicht derselbe Pfad mit einem
+   * Schalter: Was hier passiert, ist ein anderer Vorgang – der Agent packt
+   * erst und liefert dann blockweise, und die Antwort ist ein Strom statt
+   * eines Puffers.
+   *
+   * Der erste Block wird **vor** den Kopfzeilen geholt, wie beim
+   * Backup-Download (Fundpunkt bb-09): Ist der Agent weg oder der Ordner
+   * verschwunden, kommt der Fehler als Envelope – statt als 200 mit leerem
+   * Körper und abgebrochener Verbindung.
+   */
+  app.get('/api/servers/:id/files/download-directory', async (request, reply) => {
+    let download: ServerDirectoryDownload;
+    let bloecke: AsyncGenerator<Buffer>;
+    let ersterBlock: IteratorResult<Buffer>;
+
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+      const query = filePathQuerySchema.parse(request.query);
+
+      await loadAuthorized(request, id, 'canManageFiles');
+
+      download = await service.openDirectoryDownload(id, query.path);
+      bloecke = download.chunks();
+      ersterBlock = await bloecke.next();
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+
+    const erwartet = download.totalBytes;
+    let gesendet = 0;
+
+    const body = Readable.from(
+      (async function* archiv(): AsyncGenerator<Buffer> {
+        try {
+          if (ersterBlock.done) {
+            return;
+          }
+
+          gesendet += ersterBlock.value.length;
+          yield ersterBlock.value;
+
+          for await (const block of bloecke) {
+            gesendet += block.length;
+            yield block;
+          }
+
+          if (gesendet !== erwartet) {
+            throw new ServerOrchestrationError(
+              'AGENT_COMMAND_FAILED',
+              `Das Archiv hat ${String(gesendet)} statt ${String(erwartet)} Bytes geliefert.`,
+            );
+          }
+        } catch (error) {
+          /*
+           * Nach dem ersten Block sind die Kopfzeilen raus; ein zweiter
+           * Antwortversuch ist unmöglich. Die Verbindung bricht ab, der Client
+           * sieht einen unvollständigen Download statt eines stillen 200.
+           */
+          request.log.warn(
+            { err: error, gesendet, erwartet },
+            'Ordner-Download nach Sendebeginn abgebrochen',
+          );
+          reply.raw.destroy();
+        }
+      })(),
+    );
+
+    return await reply
+      .header('content-type', 'application/gzip')
+      .header('content-length', String(erwartet))
+      .header('content-disposition', attachmentContentDisposition(download.fileName))
+      .send(body);
   });
 
   // -- Weltdaten-Übernahme beim Anlegen (Lastenheft §3.3, P4) -----------------

@@ -583,6 +583,17 @@ export function fileDownloadUrl(serverId: string, path: string): string {
 }
 
 /**
+ * Adresse zum Herunterladen eines ganzen Ordners als `tar.gz`
+ * (Betreiber, 19.09.2026).
+ *
+ * Eigene Route, weil dahinter ein anderer Vorgang steht: Der Agent packt den
+ * Ordner erst und liefert ihn dann blockweise.
+ */
+export function directoryDownloadUrl(serverId: string, path: string): string {
+  return `${API_BASE_URL}${serverPath(serverId, '/files/download-directory')}?path=${encodeURIComponent(path)}`;
+}
+
+/**
  * Server an die eigene Übersicht heften bzw. lösen (Gefundener Punkt 50).
  *
  * `PUT`/`DELETE` statt eines Umschalters: Beide führen zum selben Zielzustand,

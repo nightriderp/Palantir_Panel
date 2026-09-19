@@ -327,6 +327,7 @@ export function registerServerOrchestration(
       healthCheckAttemptTimeoutMs: env.HEALTH_CHECK_ATTEMPT_TIMEOUT_MS,
       createTimeoutMs: env.AGENT_CREATE_TIMEOUT_MS,
       fileListTimeoutMs: env.AGENT_FILE_LIST_TIMEOUT_MS,
+      directoryArchiveTimeoutMs: env.AGENT_DIRECTORY_ARCHIVE_TIMEOUT_MS,
       maxUploadBytes: env.MAX_UPLOAD_SIZE_BYTES,
       maxWorldArchiveBytes: env.MAX_WORLD_ARCHIVE_BYTES,
       statsHistoryRetentionHours: env.STATS_HISTORY_RETENTION_HOURS,
