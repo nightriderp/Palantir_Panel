@@ -167,9 +167,28 @@ export const worldImportInputSchema = z
   .strict();
 
 /** Eingaben des „Server erstellen"-Wizards (Lastenheft §3.3). */
+/**
+ * Gewaehlte Spielfassung, z. B. `26.3` (Betreiber-Wunsch vom 19.09.2026).
+ *
+ * Frei getippt waere sie eine Einladung fuer Unsinn im Container-Namen:
+ * Erlaubt sind Ziffern, Buchstaben, Punkt, Bindestrich und Unterstrich - das
+ * deckt jede Kennung ab, die Mojang, Paper oder Fabric vergeben.
+ * `null` heisst „die Fassung des Images", wie bisher.
+ */
+export const gameVersionSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(40, { message: 'Diese Fassungskennung ist zu lang.' })
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u, {
+    message: 'Erlaubt sind Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich.',
+  });
+
 export const createServerInputSchema = z
   .object({
     gameType: z.string().trim().min(1, { message: 'Bitte ein Spiel wählen.' }),
+    /** Spielfassung; ohne Angabe die des Images. */
+    gameVersion: gameVersionSchema.nullish(),
     name: serverNameSchema,
     subdomain: subdomainSchema,
     /** Ziel-Node; das Backend prüft die freie Kapazität erneut. */
@@ -194,6 +213,8 @@ export type CreateServerInput = z.infer<typeof createServerInputSchema>;
 export const updateServerSettingsInputSchema = z
   .object({
     name: serverNameSchema,
+    /** Spielfassung; Wechsel wirkt beim naechsten Start (neuer Container). */
+    gameVersion: gameVersionSchema.nullish(),
     resourceLimits: serverResourceLimitsSchema,
     config: gameConfigValuesSchema,
     startupParameters: startupParametersSchema,

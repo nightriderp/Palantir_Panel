@@ -216,6 +216,7 @@ export {
   consoleCommandSchema,
   createServerInputSchema,
   gameConfigValueSchema,
+  gameVersionSchema,
   gameConfigValuesSchema,
   scheduleActionSchema,
   scheduleInputSchema,

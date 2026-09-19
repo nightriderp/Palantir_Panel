@@ -161,6 +161,14 @@ export interface GameServerDto {
   /** Anzeigename des Spiels, z. B. „Minecraft (Paper)". */
   gameTypeName: string;
   /**
+   * Gewaehlte Spielfassung, z. B. `26.3`; `null` heisst „die des Images".
+   *
+   * Gehoert zum Server, nicht zur Vorlage: Zwei Server desselben Typs duerfen
+   * verschiedene Fassungen fahren (Betreiber-Wunsch vom 19.09.2026). Optional,
+   * damit aeltere Backends den Vertrag weiter erfuellen.
+   */
+  gameVersion?: string | null;
+  /**
    * Schnellbefehle der Live-Konsole aus der Spiele-Definition
    * (`GameTypeDefinition.consoleQuickCommands`). Additiv und optional, damit
    * ältere Backends den DTO weiter liefern; das Backend füllt das Feld immer,

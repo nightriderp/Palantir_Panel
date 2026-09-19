@@ -115,6 +115,7 @@ export function gameType(overrides: Partial<GameTypeDto> = {}): GameTypeDto {
     coverImageUrl: null,
     supportsVirtualHostRouting: false,
     supportsWorldImport: true,
+    supportsVersionChoice: false,
     defaultPorts: [25565],
     resourceDefaults: { ramMb: 2048, diskMb: 10240 },
     configFields: [],

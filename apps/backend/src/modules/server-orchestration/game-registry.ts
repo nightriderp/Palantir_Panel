@@ -3402,6 +3402,7 @@ export function toGameTypeDto(
     coverImageUrl: definition.coverImageUrl,
     supportsVirtualHostRouting: definition.supportsVirtualHostRouting,
     supportsWorldImport: definition.supportsWorldImport,
+    supportsVersionChoice: definition.supportsVersionChoice ?? false,
     // Der DTO zeigt die Ports, die der Spieler kennen muss – die Zuordnung auf
     // Protokoll und Container-Port ist Betriebssache.
     defaultPorts: definition.ports.map((port) => port.containerPort),
