@@ -156,8 +156,19 @@ describe('toServerFileListDto()', () => {
     });
     // Ordner zuerst, deshalb steht `region` vor `level.dat`.
     expect(dto.entries.map((e) => e.path)).toEqual(['welt/region', 'welt/level.dat']);
-    // Ein Verzeichnis ist nicht bearbeitbar.
-    expect(dto.entries[0]).toMatchObject({ editable: false });
+    // Ein Verzeichnis ist nicht bearbeitbar, seit dem 19.09.2026 aber ladbar –
+    // als tar.gz, blockweise vom Agent geholt.
+    expect(dto.entries[0]).toMatchObject({ editable: false, downloadable: true });
+    // Eine Verknüpfung bleibt außen vor: Geladen würde ihr Ziel.
+    expect(
+      toServerFileListDto(
+        SERVER_ID,
+        DATA_ROOT,
+        '',
+        [eintrag({ name: 'logs', path: '/data/logs', type: 'symlink' })],
+        { writable: true, maxUploadBytes: 1_000 },
+      ).entries[0],
+    ).toMatchObject({ downloadable: false });
   });
 
   /*

@@ -174,6 +174,7 @@ const OHNE_GUARD = new Map<string, Grund>([
   ['GET /api/servers/:id/files/content', GRUENDE.objektrecht],
   ['PUT /api/servers/:id/files/content', GRUENDE.objektrecht],
   ['GET /api/servers/:id/files/download', GRUENDE.objektrecht],
+  ['GET /api/servers/:id/files/download-directory', GRUENDE.objektrecht],
   ['GET /api/servers/:id/schedules', GRUENDE.objektrecht],
   ['POST /api/servers/:id/schedules', GRUENDE.objektrecht],
   ['PATCH /api/servers/:id/schedules/:scheduleId', GRUENDE.objektrecht],
