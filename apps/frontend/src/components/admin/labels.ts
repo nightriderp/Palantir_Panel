@@ -90,6 +90,8 @@ const AUDIT_ACTION_LABELS: Partial<Record<AuditAction, string>> = {
   'instance.settingsChanged': 'Instanz-Einstellungen geändert',
   'quotaRequest.approved': 'Anfrage als erledigt beschieden',
   'quotaRequest.rejected': 'Kontingent-Anfrage abgelehnt',
+  'gameRequest.approved': 'Spiel-Wunsch zugesagt',
+  'gameRequest.rejected': 'Spiel-Wunsch abgelehnt',
   'notification.channelChanged': 'Kanal geändert',
   'notification.ruleChanged': 'Regel geändert',
   'notification.announcementChanged': 'Ankündigung geändert',
@@ -120,6 +122,7 @@ const AUDIT_TARGET_TYPE_LABELS: Record<AuditTargetType, string> = {
   message: 'Nachricht',
   instanceSettings: 'Instanz-Einstellungen',
   quotaRequest: 'Kontingent-Anfrage',
+  gameRequest: 'Spiel-Wunsch',
   // Pflichteintrag: Die Zuordnung ist bewusst vollständig (`Record`, nicht
   // `Partial`), damit eine neue Zielart aus den Contracts nicht unbeschriftet
   // durchrutscht. Der Schrift-Vertrag (Lastenheft §3.10) bringt sie mit.
