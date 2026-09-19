@@ -291,6 +291,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
       reserveMb: planung.reserveMb,
       runningContainers: laufende,
       hardLimitMb: planung.hardLimitMb,
+      maxHeapMb: planung.maxHeapMb,
     });
 
     return { ...spec, env: { ...spec.env, PALANTIR_JAVA_HEAP_MIB: String(heapMib) } };

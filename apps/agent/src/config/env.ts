@@ -180,6 +180,7 @@ const envSchema = z.object({
    * 2 GiB – siehe `runtime/memory.ts`.
    */
   AGENT_NODE_RAM_RESERVE_MB: z.coerce.number().int().min(256).optional(),
+  AGENT_JAVA_HEAP_MAX_MIB: z.coerce.number().int().min(1024).optional(),
 });
 
 /**

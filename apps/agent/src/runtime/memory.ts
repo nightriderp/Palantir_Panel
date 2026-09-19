@@ -37,6 +37,26 @@ export const MIN_JAVA_HEAP_MB = 1024;
  */
 export const MAX_JAVA_HEAP_SHARE = 0.75;
 
+/**
+ * Obergrenze des berechneten Heaps in MiB, unabhängig davon, wie leer die Node
+ * gerade ist (Vorgabe 8 GiB).
+ *
+ * **Warum es diese Grenze braucht.** Am 19.09.2026 stand eine leere Node mit
+ * 30 GiB da, der Schlüssel „frei minus Rücklage" ergab 20 307 MiB Heap, und
+ * die Java-Maschine fordert mit `-Xms = -Xmx` und `AlwaysPreTouch` genau so
+ * viel **sofort** an. Der Kernel nahm sie weg, bevor eine Zeile Ausgabe kam;
+ * der Server lief in eine Schleife aus Start und Tod, und das Panel zeigte
+ * „läuft" bei null Last. Vorher hatte derselbe Server mit 7 680 MiB monatelang
+ * gereicht.
+ *
+ * Ein Minecraft-Server gewinnt jenseits von acht Gigabyte kaum noch etwas –
+ * G1 räumt größere Halden nur länger auf. „So viel nehmen, wie gerade frei
+ * ist" war für den Heap die falsche Lesart von „limitless": Die **weiche
+ * Grenze** des Containers darf bis an die Node reichen, der Heap soll es
+ * nicht. Wer mehr braucht, setzt `AGENT_JAVA_HEAP_MAX_MIB` höher.
+ */
+export const DEFAULT_MAX_JAVA_HEAP_MB = 8192;
+
 /** Rücklage der Node in MiB: ausdrücklich gesetzt oder 10 %, mindestens 2 GiB. */
 export function nodeRamReserveMb(totalMb: number, konfiguriert?: number): number {
   if (konfiguriert !== undefined) {
@@ -59,6 +79,8 @@ export interface JavaHeapInput {
   readonly runningContainers: number;
   /** Harte Grenze des Containers in MiB. */
   readonly hardLimitMb: number;
+  /** Absolute Obergrenze; ohne Angabe {@link DEFAULT_MAX_JAVA_HEAP_MB}. */
+  readonly maxHeapMb?: number;
 }
 
 /**
@@ -76,8 +98,9 @@ export function javaHeapMib(input: JavaHeapInput): number {
   const frei = Math.max(0, input.availableMb - input.reserveMb);
   const anteil = Math.floor(frei / teiler);
   const obergrenze = Math.floor(input.hardLimitMb * MAX_JAVA_HEAP_SHARE);
+  const deckel = input.maxHeapMb ?? DEFAULT_MAX_JAVA_HEAP_MB;
 
-  return Math.max(MIN_JAVA_HEAP_MB, Math.min(anteil, obergrenze));
+  return Math.max(MIN_JAVA_HEAP_MB, Math.min(anteil, obergrenze, deckel));
 }
 
 /**
@@ -110,17 +133,23 @@ export function gesamterSpeicherMb(): number {
 export interface SpeicherPlanung {
   readonly reserveMb: number;
   readonly hardLimitMb: number;
+  /** Absolute Obergrenze des Heaps (siehe {@link DEFAULT_MAX_JAVA_HEAP_MB}). */
+  readonly maxHeapMb: number;
   readonly verfuegbarMb: () => Promise<number>;
 }
 
 /** Planung aus der Node ableiten – einmal beim Start des Agents. */
-export function speicherPlanungAusNode(konfigurierteReserveMb?: number): SpeicherPlanung {
+export function speicherPlanungAusNode(
+  konfigurierteReserveMb?: number,
+  konfigurierterHeapDeckelMb?: number,
+): SpeicherPlanung {
   const totalMb = gesamterSpeicherMb();
   const reserveMb = nodeRamReserveMb(totalMb, konfigurierteReserveMb);
 
   return {
     reserveMb,
     hardLimitMb: Math.round(hardMemoryLimitBytes(totalMb, reserveMb) / MIB),
+    maxHeapMb: konfigurierterHeapDeckelMb ?? DEFAULT_MAX_JAVA_HEAP_MB,
     verfuegbarMb: leseVerfuegbarenSpeicherMb,
   };
 }

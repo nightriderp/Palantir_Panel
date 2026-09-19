@@ -28,6 +28,7 @@ export interface RuntimeEnv {
   readonly AGENT_STEAM_ACCOUNT_DIR?: string;
   /** Ruecklage der Node in MiB; ohne Angabe 10 %, mindestens 2 GiB (`memory.ts`). */
   readonly AGENT_NODE_RAM_RESERVE_MB?: number | undefined;
+  readonly AGENT_JAVA_HEAP_MAX_MIB?: number | undefined;
   /**
    * Docker-Netz der Gameserver-Container (security-matrix-02). Ohne Angabe
    * greift `DEFAULT_GAME_NETWORK` aus der Haertung - in keinem Fall `bridge`.
@@ -68,7 +69,10 @@ export function createContainerRuntimeFromEnv(
 
   // Weiche Grenze je Server, harte Grenze je Node (Betreiber-Entscheidung
   // 2026-09-18) – einmal beim Start aus dem Arbeitsspeicher der Node abgeleitet.
-  const speicherPlanung = speicherPlanungAusNode(env.AGENT_NODE_RAM_RESERVE_MB);
+  const speicherPlanung = speicherPlanungAusNode(
+    env.AGENT_NODE_RAM_RESERVE_MB,
+    env.AGENT_JAVA_HEAP_MAX_MIB,
+  );
 
   const hardening: HardeningOptions = {
     nodeMemoryHardLimitBytes: speicherPlanung.hardLimitMb * 1024 * 1024,

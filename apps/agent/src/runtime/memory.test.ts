@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_JAVA_HEAP_MB, hardMemoryLimitBytes, javaHeapMib, nodeRamReserveMb } from './memory.js';
+import {
+  DEFAULT_MAX_JAVA_HEAP_MB,
+  MIN_JAVA_HEAP_MB,
+  hardMemoryLimitBytes,
+  javaHeapMib,
+  nodeRamReserveMb,
+} from './memory.js';
 
 const MIB = 1024 * 1024;
 
@@ -29,13 +35,30 @@ describe('hardMemoryLimitBytes', () => {
 describe('javaHeapMib', () => {
   const node = { reserveMb: 2_363, hardLimitMb: 21_267 };
 
-  it('gibt dem ersten Server auf leerer Node fast alles – bis zur Heap-Obergrenze', () => {
-    expect(javaHeapMib({ ...node, availableMb: 20_000, runningContainers: 0 })).toBe(15_950);
+  /*
+   * Der Deckel ist der Grund, warum es diese Zeilen gibt: Am 19.09.2026 ergab
+   * eine leere 30-GiB-Node 20 307 MiB Heap, und die Java-Maschine starb mit
+   * `AlwaysPreTouch`, bevor sie eine Zeile ausgab. Ohne ausdrückliche Angabe
+   * sind acht Gibibyte Schluss.
+   */
+  it('deckelt den Heap, auch wenn die Node fast leer ist', () => {
+    expect(javaHeapMib({ ...node, availableMb: 20_000, runningContainers: 0 })).toBe(
+      DEFAULT_MAX_JAVA_HEAP_MB,
+    );
+    expect(
+      javaHeapMib({ ...node, availableMb: 20_000, runningContainers: 0, maxHeapMb: 16_384 }),
+    ).toBe(15_950);
   });
 
   it('teilt den Rest mit den laufenden Containern', () => {
+    expect(
+      javaHeapMib({ ...node, availableMb: 14_363, runningContainers: 1, maxHeapMb: 16_384 }),
+    ).toBe(6_000);
+    expect(
+      javaHeapMib({ ...node, availableMb: 14_363, runningContainers: 2, maxHeapMb: 16_384 }),
+    ).toBe(4_000);
+    // Unter dem Deckel ändert er nichts: Der geteilte Rest ist kleiner.
     expect(javaHeapMib({ ...node, availableMb: 14_363, runningContainers: 1 })).toBe(6_000);
-    expect(javaHeapMib({ ...node, availableMb: 14_363, runningContainers: 2 })).toBe(4_000);
   });
 
   it('geht nie unter das Minimum, auch wenn nichts frei ist', () => {
