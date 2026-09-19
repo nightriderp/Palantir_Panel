@@ -265,8 +265,8 @@ describe('formatCores', () => {
 });
 
 describe('Image-Fassung', () => {
-  it('setzt das Wort „Fassung" davor, damit die Spielfassung unterscheidbar bleibt', () => {
-    expect(formatImageVersion('9')).toBe('Fassung 9');
+  it('setzt ein „v" davor, damit die Spielfassung unterscheidbar bleibt', () => {
+    expect(formatImageVersion('9')).toBe('v9');
   });
 
   it('zeigt ohne bekannte Fassung nichts an', () => {
@@ -276,7 +276,7 @@ describe('Image-Fassung', () => {
   });
 
   it('nennt beim Update beide Fassungen', () => {
-    expect(formatImageUpdate('7', '9')).toBe('Fassung 7 läuft, angeboten wird 9.');
+    expect(formatImageUpdate('7', '9')).toBe('v7 läuft, angeboten wird v9.');
   });
 
   it('ergänzt nichts, wenn eine Zahl fehlt oder beide gleich sind', () => {
