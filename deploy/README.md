@@ -378,6 +378,46 @@ Der Workflow wartet auf die Freigabe im Environment, prüft die Signatur, verbin
 der VPS, setzt `PALANTIR_VERSION` auf den Commit-SHA und startet den Stack neu. Danach
 bewegt er den Zweig `prod` auf denselben Commit; das ist das Signal für den Homeserver.
 
+### 7.6 API unter denselben Host legen (empfohlen)
+
+Liegen Panel (`<Domain>`) und API (`api.<Domain>`) auf zwei Hosts, müssen die
+Sitzungs-Cookies für die Elterndomain gelten – und gehen damit auch an
+`<name>.<Domain>`, also an die Spielcontainer. `httpOnly` hält dort nur Skripte ab, nicht
+den Empfänger. Liegt die API unter demselben Host (`<Domain>/api`), leitet das Backend gar
+keine Cookie-Domain mehr ab: Die Cookies sind host-only und erreichen keine Subdomain.
+Nebenbei entfällt CORS als Thema.
+
+Traefik bringt den Weg bereits mit (`palantir-api-pfad`); der alte Host bleibt daneben
+erreichbar, ein Rücksprung braucht also kein erneutes Ausrollen.
+
+**In zwei Schritten umstellen, damit zwischendurch nichts kaputt ist:**
+
+**Schritt 1 – der Browser spricht den neuen Weg an.** Repository-Variable setzen (GitHub,
+_Settings → Variables_): `PUBLIC_API_URL=https://<Domain>/api`. Sie wird beim **Bauen** in
+das Browser-Bundle geschrieben, wirkt also erst mit dem nächsten Image. Danach einmal
+ausrollen. Die Cookies gelten in diesem Zustand noch für die Elterndomain – das
+funktioniert, weil sie auch für den eigenen Host gelten.
+
+**Schritt 2 – die Cookies enger fassen.** Auf der **VPS** in `/opt/palantir/.env`:
+
+```
+PUBLIC_API_URL=https://<Domain>/api
+COOKIE_DOMAIN=
+DISCORD_REDIRECT_URI=https://<Domain>/api/auth/discord/callback
+TWITCH_REDIRECT_URI=https://<Domain>/api/auth/twitch/callback
+```
+
+Dieselben beiden Adressen in der **Discord**- und der **Twitch**-Entwicklerkonsole
+eintragen, bevor ausgerollt wird – sonst schlägt die Anmeldung über beide Anbieter fehl.
+Steam (OpenID 2.0) braucht keinen Eintrag. Danach ausrollen.
+
+**Nach Schritt 2 müssen sich alle offenen Sitzungen einmalig neu anmelden:** Ein Cookie mit
+`Domain`-Attribut und eines ohne gelten dem Browser als verschiedene Cookies.
+
+**Zurück geht es**, indem `PUBLIC_API_URL` und `COOKIE_DOMAIN` wieder auf die alten Werte
+gesetzt werden und die Repository-Variable gelöscht wird – der Host `api.<Domain>` läuft
+durchgehend weiter.
+
 ---
 
 ## 8. Homeserver

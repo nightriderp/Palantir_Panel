@@ -33,6 +33,16 @@ RUN pnpm install --frozen-lockfile
 FROM deps AS build
 ARG PALANTIR_DOMAIN
 ENV PALANTIR_DOMAIN=${PALANTIR_DOMAIN}
+# Adresse der API, wie der Browser sie sieht (Fundpunkt 313).
+#
+# Ohne Angabe leitet `next.config.mjs` daraus `https://api.<PALANTIR_DOMAIN>` ab
+# - zwei Hosts, und damit Sitzungs-Cookies, die fuer die Elterndomain gelten und
+# jede Spiel-Subdomain miterreichen. Wer die API unter denselben Host legt
+# (`https://<Domain>/api`), traegt den Wert hier ein; er wird beim BAUEN in das
+# Browser-Bundle geschrieben, nicht zur Laufzeit gelesen. Eine Aenderung wirkt
+# deshalb erst nach einem Neubau des Images.
+ARG PUBLIC_API_URL
+ENV PUBLIC_API_URL=${PUBLIC_API_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY tsconfig.base.json ./

@@ -82,6 +82,11 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/palantir-${{ matrix.app }}:${{ github.sha }}
           build-args: |
             PALANTIR_DOMAIN=${{ vars.PALANTIR_DOMAIN }}
+            # Nur noetig, wenn die API nicht unter api.<Domain> liegt, sondern
+            # unter demselben Host wie das Panel (Fundpunkt 313). Ist die
+            # Variable nicht gesetzt, bleibt es bei der Ableitung aus der
+            # Domain - der Bau aendert sich dann nicht.
+            PUBLIC_API_URL=${{ vars.PUBLIC_API_URL }}
           # Cache über die Actions-Cache-Schicht. Ohne ihn baut jeder Lauf die
           # pnpm-Installation neu, was den größten Teil der Zeit ausmacht.
           cache-from: type=gha,scope=${{ matrix.app }}
