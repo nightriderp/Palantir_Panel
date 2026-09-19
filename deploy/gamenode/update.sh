@@ -298,6 +298,19 @@ if [[ -n "$(docker ps -aq --filter 'name=^palantir-hostname-router$')" ]]; then
   PROFIL=(--profile hostname-router)
 fi
 
+# Ausgerollter Stand fuer den Agent-Container (Fundpunkt 318).
+#
+# Der Agent meldet im `hello`-Frame bisher nur die Paketfassung - die steht seit
+# jeher auf 0.6.0 und aendert sich mit keinem Release. Von aussen war damit nicht
+# zu sehen, ob eine Node nachgezogen hat; die Node nimmt bewusst keine
+# eingehenden Verbindungen an, also blieb nur das Journal hier. Mit dieser
+# Variablen haengt der Agent den Commit an seine Fassung (`0.6.0+dce821c77236`),
+# und der Stand steht im Panel neben der Node.
+#
+# Die Umgebung der Shell schlaegt beim Ersetzen in der Compose-Datei die
+# --env-file - deshalb genuegt das Export hier, ohne die .env der Node anzufassen.
+export AGENT_COMMIT="${ziel}"
+
 log 'Hole die Images ...'
 docker compose --env-file "${ENV_FILE}" "${PROFIL[@]}" pull --quiet
 

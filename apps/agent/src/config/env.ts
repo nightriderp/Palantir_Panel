@@ -136,6 +136,16 @@ const envSchema = z.object({
    */
   AGENT_SECCOMP_PROFILE_PATH: z.string().min(1).optional(),
   /**
+   * Ausgerollter Commit dieser Node (Fundpunkt 318).
+   *
+   * Gesetzt von `deploy/gamenode/update.sh`, nicht von Hand. Gelesen wird der
+   * Wert in `version.ts` und an die gemeldete Fassung gehängt, damit im Panel
+   * steht, welchen Stand eine Node wirklich fährt. Hier steht er trotzdem: Das
+   * Schema ist die Liste dessen, was der Agent liest, und
+   * `deploy-umgebung.test.ts` prüft die Compose-Datei dagegen.
+   */
+  AGENT_COMMIT: z.string().optional(),
+  /**
    * Abstand der periodischen Server-Abfrage, wenn das Backend im Befehl
    * `SET_SERVER_QUERY` keinen eigenen mitgibt (Pflichtenheft §9).
    */
