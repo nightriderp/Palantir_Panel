@@ -37,8 +37,14 @@ export interface TransportCloseInfo {
 }
 
 export interface Transport {
-  /** Nachricht senden. Wirft nicht; Fehler landen in `onError`. */
-  send(raw: string): void;
+  /**
+   * Nachricht senden. Wirft nicht; Fehler landen in `onError`.
+   *
+   * Rohbytes sind für Dateiblöcke gedacht (Leistungsbericht 19.09.2026,
+   * Punkt 1.3): Sie gehen als Binärframe über dieselbe Leitung, statt als
+   * Base64 im JSON-Text.
+   */
+  send(raw: string | Uint8Array): void;
   /** Verbindung von sich aus beenden. `onClose` folgt. */
   close(code?: number, reason?: string): void;
 }

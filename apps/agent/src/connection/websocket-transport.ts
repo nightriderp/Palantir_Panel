@@ -140,7 +140,7 @@ export function createWebSocketTransportFactory(
     });
 
     return {
-      send(raw: string): void {
+      send(raw: string | Uint8Array): void {
         if (socket.readyState !== WebSocket.OPEN) {
           handlers.onError(new Error('Senden nicht möglich – Verbindung ist nicht offen.'));
           return;

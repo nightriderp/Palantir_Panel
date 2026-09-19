@@ -75,6 +75,13 @@ class FakeRuntime implements AgentRuntimePort {
       return Promise.resolve(ok(STATS));
     }
 
+    if (execution.command === 'FILE_READ') {
+      // Gross genug, dass der Agent ihn als Binaerframe schickt.
+      return Promise.resolve(
+        ok({ contentBase64: GROSSE_DATEI.toString('base64'), encoding: 'base64' }),
+      );
+    }
+
     return Promise.resolve(ok(null));
   }
 
@@ -84,6 +91,9 @@ class FakeRuntime implements AgentRuntimePort {
     return Promise.resolve([CONTAINER]);
   }
 }
+
+/** Inhalt fuer den Dateiblock-Fall; jedes Byte anders, damit ein Versatz auffaellt. */
+const GROSSE_DATEI = Buffer.from(Array.from({ length: 200 * 1024 }, (_wert, index) => index % 256));
 
 interface Aufbau {
   readonly app: FastifyInstance;
@@ -221,6 +231,29 @@ describe('Agent ↔ Backend über echten WebSocket (Befund 7.1)', () => {
       serverId: SERVER_ID,
       payload: { containerId: 'container-1' },
     });
+  });
+
+  it('bringt einen grossen Dateiblock unveraendert als Binaerframe durch', async () => {
+    /*
+     * Leistungsbericht 19.09.2026, Punkt 1.3: Der Block reist als Rohbytes
+     * statt als Base64. Hier laeuft er ueber einen echten WebSocket durch
+     * beide Seiten - Aushandlung im Handshake, Verpacken im Agenten, Lesen im
+     * Backend. Kommt hinten etwas anderes an als vorne hineinging, ist das
+     * Format kaputt.
+     */
+    const { url, agents } = await baueBackend();
+
+    verbindeAgent(url, new FakeRuntime());
+    await warteBis(() => agents.get(HOST_ID) !== null);
+
+    const ergebnis = (await agents.require(HOST_ID).sendCommand('FILE_READ', SERVER_ID, {
+      containerId: 'container-1',
+      path: '/data/welt.dat',
+    })) as unknown as { contentBase64: string; encoding: string };
+
+    expect(Buffer.from(ergebnis.contentBase64, 'base64')).toEqual(GROSSE_DATEI);
+    // Die Felder aus dem Kopf sind mitgekommen.
+    expect(ergebnis.encoding).toBe('base64');
   });
 
   it('liefert den Ist-Zustand auf Anforderung und beim Verbindungsaufbau', async () => {
