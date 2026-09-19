@@ -10,6 +10,7 @@ import {
   type AgentEventFrame,
   type AgentStateReportFrame,
   type BackendToAgentFrame,
+  encodeAgentBinaryFrame,
   httpStatusForErrorCode,
 } from '@palantir/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -184,6 +185,9 @@ describe('Handshake (Pflichtenheft §2.2)', () => {
       kind: 'welcome',
       protocolVersion: AGENT_PROTOCOL_VERSION,
       sentAt: NOW.toISOString(),
+      // Dateibloecke duerfen als Rohbytes kommen (Leistungsbericht
+      // 19.09.2026, Punkt 1.3).
+      binaryResults: true,
     });
     expect(session.isReady).toBe(true);
   });
@@ -504,6 +508,72 @@ describe('Eigene Grenze für Befehlsergebnisse (Audit security-matrix-07)', () =
       completedAt: NOW.toISOString(),
     });
   }
+
+  it('nimmt einen Dateiblock als Binärframe entgegen', async () => {
+    /*
+     * Leistungsbericht 19.09.2026, Punkt 1.3. Der Frame reist als Rohbytes
+     * und muss danach dasselbe Ergebnis liefern wie der Textframe - inklusive
+     * der Felder, die im Kopf mitgekommen sind.
+     */
+    const { session, socket } = makeSession();
+
+    session.handleMessage(hello());
+
+    const offen = session.sendCommand('FILE_READ', SERVER_ID, {
+      containerId: 'c1',
+      path: '/data/welt.dat',
+    });
+
+    const inhalt = Buffer.from([0, 1, 2, 250, 255]);
+
+    session.handleMessage(
+      Buffer.from(
+        encodeAgentBinaryFrame(
+          {
+            kind: 'commandResultBinary',
+            correlationId: KORRELATION,
+            frame: {
+              kind: 'commandResult',
+              correlationId: KORRELATION,
+              command: 'FILE_READ',
+              result: { success: true, data: { encoding: 'base64' }, error: null },
+              duplicate: false,
+              completedAt: NOW.toISOString(),
+            },
+            binaryField: 'contentBase64',
+          },
+          inhalt,
+        ),
+      ),
+    );
+
+    await expect(offen).resolves.toEqual({
+      encoding: 'base64',
+      contentBase64: inhalt.toString('base64'),
+    });
+    expect(socket.closedWith).toBeNull();
+  });
+
+  it('verwirft einen unlesbaren Binärframe, ohne die Verbindung zu beenden', async () => {
+    const { session, socket } = makeSession();
+
+    session.handleMessage(hello());
+
+    const offen = session.sendCommand('FILE_READ', SERVER_ID, {
+      containerId: 'c1',
+      path: '/data/welt.dat',
+    });
+
+    // Kennung stimmt, der Rest ist Unsinn - wie ein Textframe, der kein JSON
+    // ist: verwerfen und weitermachen.
+    session.handleMessage(Buffer.from('PLB1\u0000\u0000\u0000\u0005abcde', 'utf8'));
+
+    expect(socket.closedWith).toBeNull();
+
+    // Der Befehl bleibt offen und läuft danach regulär in seine Frist.
+    session.handleSocketClosed(1000, 'normal');
+    await expect(offen).rejects.toMatchObject({ code: 'AGENT_NOT_CONNECTED' });
+  });
 
   it('deckt eine Datei in voller Größe des Datei-Kanals ab und bleibt unter dem ws-Standard', () => {
     // Base64 bläht um 4/3 auf; darunter wäre ein regulärer Download nicht mehr

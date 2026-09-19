@@ -4,6 +4,7 @@ import {
   type AgentNodeStats,
   type AgentToBackendFrame,
   type ApiResponse,
+  decodeAgentBinaryFrame,
   fail,
   ok,
 } from '@palantir/contracts';
@@ -32,13 +33,18 @@ const LAUFENDER_CONTAINER: AgentContainerState = {
  * WebSocket-Implementierung, nicht hierher (Entwicklungsregeln §2).
  */
 class FakeTransport implements Transport {
-  readonly gesendet: string[] = [];
+  readonly gesendet: (string | Uint8Array)[] = [];
   geschlossen = false;
 
   constructor(readonly handlers: TransportHandlers) {}
 
-  send(raw: string): void {
+  send(raw: string | Uint8Array): void {
     this.gesendet.push(raw);
+  }
+
+  /** Nur die Binärframes – Dateiblöcke gehen als Rohbytes raus. */
+  binaerFrames(): Uint8Array[] {
+    return this.gesendet.filter((eintrag): eintrag is Uint8Array => typeof eintrag !== 'string');
   }
 
   close(code?: number, reason?: string): void {
@@ -63,7 +69,9 @@ class FakeTransport implements Transport {
   }
 
   frames(): AgentToBackendFrame[] {
-    return this.gesendet.map((raw) => JSON.parse(raw) as AgentToBackendFrame);
+    return this.gesendet
+      .filter((eintrag): eintrag is string => typeof eintrag === 'string')
+      .map((raw) => JSON.parse(raw) as AgentToBackendFrame);
   }
 
   framesVomTyp<K extends AgentToBackendFrame['kind']>(
@@ -139,13 +147,14 @@ async function flush(): Promise<void> {
 }
 
 /** Verbindung bis zum abgeschlossenen Handshake bringen. */
-async function verbinden(h: Harness): Promise<FakeTransport> {
+async function verbinden(h: Harness, binaryResults = false): Promise<FakeTransport> {
   const transport = h.aktuellerTransport();
   transport.handlers.onOpen();
   transport.empfangen({
     kind: 'welcome',
     protocolVersion: AGENT_PROTOCOL_VERSION,
     sentAt: new Date().toISOString(),
+    ...(binaryResults ? { binaryResults: true } : {}),
   });
   await flush();
   return transport;
@@ -719,6 +728,78 @@ describe('Befehle und Korrelations-IDs (Pflichtenheft §2.2)', () => {
     expect(freigaben).toHaveLength(2);
 
     h.connection.stop();
+  });
+
+  it('schickt einen großen Dateiblock als Binärframe, wenn das Backend ihn versteht', async () => {
+    /*
+     * Leistungsbericht 19.09.2026, Punkt 1.3: Base64 kostet ein Drittel mehr
+     * Bytes auf der Leitung. Der Block reist deshalb als Rohbytes, sobald das
+     * `welcome` das angekündigt hat.
+     */
+    const inhalt = Buffer.alloc(128 * 1024, 7);
+    const h = harness({
+      execute: () =>
+        Promise.resolve(
+          ok({
+            offset: 0,
+            contentBase64: inhalt.toString('base64'),
+            bytesRead: inhalt.length,
+            totalBytes: inhalt.length,
+            eof: true,
+          }),
+        ),
+    });
+    h.connection.start();
+    const transport = await verbinden(h, true);
+
+    transport.empfangen(befehl({ command: 'FILE_ARCHIVE_BLOCK' }));
+    await flush();
+
+    const binaer = transport.binaerFrames();
+
+    expect(binaer).toHaveLength(1);
+
+    const gelesen = decodeAgentBinaryFrame(binaer[0] ?? new Uint8Array());
+
+    expect(gelesen?.header.correlationId).toBe(CORRELATION_ID);
+    expect(gelesen?.header.binaryField).toBe('contentBase64');
+    expect(Buffer.from(gelesen?.payload ?? new Uint8Array())).toEqual(inhalt);
+
+    // Der Kopf trägt alles Übrige, nur eben ohne die Nutzdaten.
+    const kopf = gelesen?.header.frame as { result: { data: Record<string, unknown> } };
+
+    expect(kopf.result.data.eof).toBe(true);
+    expect(kopf.result.data.contentBase64).toBeUndefined();
+  });
+
+  it('bleibt bei Base64, wenn das Backend keine Binärframes ankündigt', async () => {
+    // Der Normalfall in den Minuten nach einem Deployment.
+    const inhalt = Buffer.alloc(128 * 1024, 7);
+    const h = harness({
+      execute: () => Promise.resolve(ok({ contentBase64: inhalt.toString('base64') })),
+    });
+    h.connection.start();
+    const transport = await verbinden(h);
+
+    transport.empfangen(befehl({ command: 'FILE_ARCHIVE_BLOCK' }));
+    await flush();
+
+    expect(transport.binaerFrames()).toHaveLength(0);
+    expect(transport.framesVomTyp('commandResult')).toHaveLength(1);
+  });
+
+  it('lässt kleine Felder im Textframe, auch wenn Binärframes erlaubt sind', async () => {
+    // Eine Konsolenzeile gewinnt nichts dabei und wäre im Log schwerer zu lesen.
+    const h = harness({
+      execute: () => Promise.resolve(ok({ contentBase64: Buffer.from('kurz').toString('base64') })),
+    });
+    h.connection.start();
+    const transport = await verbinden(h, true);
+
+    transport.empfangen(befehl({ command: 'FILE_READ' }));
+    await flush();
+
+    expect(transport.binaerFrames()).toHaveLength(0);
   });
 
   it('lässt Konsole und Dateiliste an einem laufenden Backup vorbei', async () => {

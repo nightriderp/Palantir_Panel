@@ -28,6 +28,7 @@ import {
   type AgentToBackendFrame,
   type ApiResponse,
   type BackendCommandFrame,
+  encodeAgentBinaryFrame,
   fail,
   isAgentCommandName,
 } from '@palantir/contracts';
@@ -89,6 +90,16 @@ const CLOSE_NORMAL = 1000;
 
 /** Warteschlange für node-weite Befehle ohne zugeordneten Server. */
 const NODE_LANE = '__node__';
+
+/**
+ * Ab dieser Größe geht ein Dateiblock als Rohbytes statt als Base64
+ * (Leistungsbericht 19.09.2026, Punkt 1.3).
+ *
+ * Kleine Felder bleiben im Textframe: Der Gewinn wäre nicht messbar, und ein
+ * Frame, den man im Log lesen kann, ist mehr wert als ein gespartes Kilobyte.
+ * Ein Dateiblock wiegt vier Mebibyte und liegt weit darüber.
+ */
+const BINAER_AB_BYTES = 64 * 1024;
 
 /**
  * Befehle, die neben einem laufenden Vorgang desselben Servers durchkommen
@@ -159,6 +170,13 @@ export class AgentConnection {
    * gebracht (Befund 11.6) – siehe {@link drain}.
    */
   private draining = false;
+  /**
+   * Versteht das Backend Binärframes für Dateiblöcke? Steht im `welcome`.
+   *
+   * Vorgabe `false`: Ein Backend, das das Feld nicht kennt, bekommt weiter
+   * Base64 - der Normalfall in den Minuten nach einem Deployment.
+   */
+  private binaerErgebnisse = false;
 
   constructor(options: AgentConnectionOptions) {
     this.options = options;
@@ -363,7 +381,7 @@ export class AgentConnection {
 
     switch (frame.data.kind) {
       case 'welcome':
-        this.handleWelcome(frame.data.protocolVersion);
+        this.handleWelcome(frame.data.protocolVersion, frame.data.binaryResults === true);
         return;
       case 'command':
         this.dispatchCommand(frame.data);
@@ -374,8 +392,9 @@ export class AgentConnection {
     }
   }
 
-  private handleWelcome(protocolVersion: number): void {
+  private handleWelcome(protocolVersion: number, binaerErgebnisse: boolean): void {
     this.clearHandshakeTimer();
+    this.binaerErgebnisse = binaerErgebnisse;
 
     if (protocolVersion !== AGENT_PROTOCOL_VERSION) {
       // Bewusst kein „irgendwie weitermachen": halb verstandene Befehle sind
@@ -393,7 +412,10 @@ export class AgentConnection {
     // Erst jetzt zurücksetzen: Ein Backend, das annimmt und sofort wieder
     // schließt, soll nicht in eine Schleife ohne Wartezeit führen.
     this.backoff.reset();
-    this.log.info('Handshake abgeschlossen', { protokollVersion: protocolVersion });
+    this.log.info('Handshake abgeschlossen', {
+      protokollVersion: protocolVersion,
+      binaerErgebnisse,
+    });
 
     void this.sendStateReport('connected');
   }
@@ -516,6 +538,9 @@ export class AgentConnection {
    * weiter – er hängt nur nicht mehr an dieser Map.
    */
   private raeumeBefehlsspuren(): void {
+    // Die Fähigkeit gilt je Verbindung: Nach einem Abbruch kann ein Backend
+    // mit anderem Stand antworten.
+    this.binaerErgebnisse = false;
     const spuren = this.commandLanes.size;
     this.commandLanes.clear();
     const laufende = this.correlations.forgetInFlight();
@@ -655,6 +680,14 @@ export class AgentConnection {
       return false;
     }
 
+    const binaer = this.alsBinaerframe(frame);
+
+    if (binaer !== null) {
+      transport.send(binaer);
+
+      return true;
+    }
+
     /*
      * `JSON.stringify` kann werfen (Fundpunkt 227): ein Ergebnis mit einem
      * Ringschluss, ein `BigInt` aus einer Fremdbibliothek. Vorher riss dieser
@@ -675,6 +708,57 @@ export class AgentConnection {
 
     transport.send(roh);
     return true;
+  }
+
+  /**
+   * Einen großen Dateiblock als Binärframe verpacken – oder `null`, wenn
+   * dieser Frame keiner ist (Leistungsbericht 19.09.2026, Punkt 1.3).
+   *
+   * Betroffen ist nur ein erfolgreiches Befehlsergebnis mit einem großen
+   * `contentBase64`. Alles andere geht weiter als Text: Ein Statusbericht
+   * oder eine Konsolenzeile gewinnt nichts dabei und wäre im Log nur schwerer
+   * zu lesen.
+   */
+  private alsBinaerframe(frame: AgentToBackendFrame): Uint8Array | null {
+    if (!this.binaerErgebnisse || frame.kind !== 'commandResult') {
+      return null;
+    }
+
+    const ergebnis = frame.result;
+
+    if (!ergebnis.success || typeof ergebnis.data !== 'object' || ergebnis.data === null) {
+      return null;
+    }
+
+    const daten = ergebnis.data as Record<string, unknown>;
+    const inhalt = daten.contentBase64;
+
+    if (typeof inhalt !== 'string' || inhalt.length < BINAER_AB_BYTES) {
+      return null;
+    }
+
+    const { contentBase64: _weg, ...ohneInhalt } = daten;
+
+    try {
+      return encodeAgentBinaryFrame(
+        {
+          kind: 'commandResultBinary',
+          correlationId: frame.correlationId,
+          frame: { ...frame, result: { ...ergebnis, data: ohneInhalt } },
+          binaryField: 'contentBase64',
+        },
+        Buffer.from(inhalt, 'base64'),
+      );
+    } catch (error: unknown) {
+      // Lieber als Text senden als gar nicht: Der Textweg darunter ist der
+      // bewährte, und ein Block, der nicht ankommt, bricht den Download ab.
+      this.log.warn('Binärframe nicht gebildet – sende als Text', {
+        correlationId: frame.correlationId,
+        fehler: error instanceof Error ? error.message : String(error),
+      });
+
+      return null;
+    }
   }
 
   private clearReconnectTimer(): void {

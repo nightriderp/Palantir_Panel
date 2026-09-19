@@ -23,6 +23,8 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   AGENT_PROTOCOL_VERSION,
+  decodeAgentBinaryFrame,
+  isAgentBinaryFrame,
   type AgentCommandName,
   type AgentCommandPayloads,
   type AgentCommandResultFrame,
@@ -338,11 +340,21 @@ export class AgentSession {
 
     let parsedJson: unknown;
 
-    try {
-      parsedJson = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8'));
-    } catch {
-      this.log.warn({ hostId: this.hostId }, 'Agent-Frame war kein gültiges JSON');
-      return;
+    if (typeof raw !== 'string' && isAgentBinaryFrame(raw)) {
+      const ausBinaer = this.leseBinaerframe(raw);
+
+      if (ausBinaer === null) {
+        return;
+      }
+
+      parsedJson = ausBinaer;
+    } else {
+      try {
+        parsedJson = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8'));
+      } catch {
+        this.log.warn({ hostId: this.hostId }, 'Agent-Frame war kein gültiges JSON');
+        return;
+      }
     }
 
     const kind = frameKindOf(parsedJson);
@@ -500,6 +512,12 @@ export class AgentSession {
       kind: 'welcome',
       protocolVersion: AGENT_PROTOCOL_VERSION,
       sentAt: this.now().toISOString(),
+      /*
+       * Dateiblöcke dürfen als Rohbytes kommen (Leistungsbericht 19.09.2026,
+       * Punkt 1.3). Ein Agent, der das nicht kennt, überliest das Feld und
+       * schickt weiter Base64 - beides versteht die Empfangsseite unten.
+       */
+      binaryResults: true,
     };
 
     this.sendFrame(welcome);
@@ -512,6 +530,64 @@ export class AgentSession {
    * damit im Betrieb ohne Nachrechnen erkennbar ist, ob eine Datei zu groß war
    * oder ein Agent aus der Reihe tanzt.
    */
+  /**
+   * Einen Binärframe in den Textframe zurückverwandeln, den der Rest des
+   * Moduls erwartet (Leistungsbericht 19.09.2026, Punkt 1.3).
+   *
+   * Die Rohbytes wandern in das Feld, das der Kopf benennt. Damit läuft der
+   * Frame danach durch dieselbe Prüfung und dieselbe Verarbeitung wie ein
+   * Textframe - die Ersparnis liegt auf der Leitung, nicht in einem zweiten
+   * Weg durch das Modul.
+   *
+   * `null` heißt „verworfen"; der Aufrufer bricht die Verarbeitung dann ab,
+   * wie bei einem Frame, der kein gültiges JSON war.
+   */
+  private leseBinaerframe(raw: Buffer): unknown {
+    const gelesen = decodeAgentBinaryFrame(raw);
+
+    if (gelesen === null) {
+      this.log.warn({ hostId: this.hostId }, 'Binärframe des Agenten war unlesbar');
+
+      return null;
+    }
+
+    const rumpf = gelesen.header.frame;
+
+    if (typeof rumpf !== 'object' || rumpf === null) {
+      this.log.warn({ hostId: this.hostId }, 'Binärframe des Agenten trug keinen Frame im Kopf');
+
+      return null;
+    }
+
+    const frame = rumpf as { result?: unknown };
+    const ergebnis = frame.result;
+
+    if (
+      typeof ergebnis !== 'object' ||
+      ergebnis === null ||
+      !('data' in ergebnis) ||
+      typeof (ergebnis as { data?: unknown }).data !== 'object' ||
+      (ergebnis as { data?: unknown }).data === null
+    ) {
+      this.log.warn({ hostId: this.hostId }, 'Binärframe des Agenten trug kein Ergebnis mit Daten');
+
+      return null;
+    }
+
+    const daten = (ergebnis as { data: Record<string, unknown> }).data;
+
+    return {
+      ...frame,
+      result: {
+        ...(ergebnis as Record<string, unknown>),
+        data: {
+          ...daten,
+          [gelesen.header.binaryField]: Buffer.from(gelesen.payload).toString('base64'),
+        },
+      },
+    };
+  }
+
   private meldeZuGross(groesseBytes: number, grenzeBytes: number, kind?: string | null): void {
     this.log.error(
       {
