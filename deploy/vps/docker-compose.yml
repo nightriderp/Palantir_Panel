@@ -541,6 +541,39 @@ services:
       - 'traefik.http.middlewares.palantir-api-secure.headers.referrerPolicy=strict-origin-when-cross-origin'
       - "traefik.http.middlewares.palantir-api-secure.headers.contentSecurityPolicy=default-src 'none'; frame-ancestors 'none'"
       - 'traefik.http.routers.palantir-api.middlewares=palantir-api-secure'
+      # Zweiter Weg zur API: gleicher Host wie das Panel, Praefix `/api`
+      # (Fundpunkt 313).
+      #
+      # **Warum.** Solange Panel (`<domain>`) und API (`api.<domain>`) zwei
+      # Hosts sind, muessen die Sitzungs-Cookies fuer die Elterndomain gelten -
+      # und gehen damit auch an `<name>.<domain>`, also an die Spielcontainer.
+      # `httpOnly` haelt dort nur Skripte ab, nicht den Empfaenger: Ein
+      # HTTP-Dienst auf einer Spiel-Subdomain bekaeme sie im Anfragekopf.
+      # Liegen beide auf demselben Host, leitet `cookieDomainAbleiten()` gar
+      # keine Domain mehr ab - die Cookies sind host-only und erreichen keine
+      # Subdomain. Nebenbei entfaellt CORS als Thema (siehe Fundpunkt 302).
+      #
+      # **Beide Wege bleiben nebeneinander bestehen.** Der Umstieg ist eine
+      # Aenderung an der `.env` (PUBLIC_API_URL, COOKIE_DOMAIN, die beiden
+      # REDIRECT_URI) - der alte Host bleibt erreichbar, damit ein Ruecksprung
+      # ohne erneutes Ausrollen geht.
+      #
+      # `!PathPrefix('/api/agent')` aus demselben Grund wie oben (Fundpunkt
+      # 121): Der Agent-Kanal laeuft ausschliesslich ueber den Host-Port an der
+      # Tunnel-Adresse, nie ueber Traefik.
+      #
+      # `priority`: Ohne sie entscheidet die Laenge der Regel. Sie ist hier
+      # ohnehin laenger als die des Web-Routers, aber eine Reihenfolge, an der
+      # die Anmeldung haengt, gehoert hingeschrieben statt ausgerechnet.
+      - 'traefik.http.routers.palantir-api-pfad.rule=Host(`${PALANTIR_DOMAIN}`) && PathPrefix(`/api`) && !PathPrefix(`/api/agent`)'
+      - 'traefik.http.routers.palantir-api-pfad.entrypoints=websecure'
+      - 'traefik.http.routers.palantir-api-pfad.tls.certresolver=letsencrypt'
+      - 'traefik.http.routers.palantir-api-pfad.service=palantir-api'
+      - 'traefik.http.routers.palantir-api-pfad.priority=100'
+      # Das Backend kennt seine Routen ohne Praefix (`/auth/login`, nicht
+      # `/api/auth/login`) - Traefik schneidet es deshalb ab.
+      - 'traefik.http.middlewares.palantir-api-strip.stripprefix.prefixes=/api'
+      - 'traefik.http.routers.palantir-api-pfad.middlewares=palantir-api-strip,palantir-api-secure'
     # Das Backend schließt auf SIGTERM geordnet mit eigener Frist von 10 s
     # (`lib/shutdown.ts`); die Docker-Vorgabe ist ebenfalls 10 s, die eigene
     # Frist griff also nie vor SIGKILL (Review 2026-09-16, Befund 8.4).
