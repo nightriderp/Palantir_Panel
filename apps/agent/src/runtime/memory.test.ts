@@ -61,6 +61,33 @@ describe('javaHeapMib', () => {
     expect(javaHeapMib({ ...node, availableMb: 14_363, runningContainers: 1 })).toBe(6_000);
   });
 
+  /*
+   * Die Zuweisung schlaegt den freien Speicher (Betreiber-Wunsch 19.09.2026):
+   * Wer im Panel eine Zahl einstellt, soll sie bekommen - der freie Speicher
+   * ist nur der Zustand der Maschine in diesem Augenblick.
+   */
+  it('nimmt die Zuweisung, wenn eine gesetzt ist', () => {
+    // 8192 minus ein Viertel (2048, gedeckelt) = 6144.
+    expect(
+      javaHeapMib({ ...node, availableMb: 20_000, runningContainers: 0, zuweisungMb: 8_192 }),
+    ).toBe(6_144);
+    // Kleine Zuweisung: Ruecklage mindestens 512.
+    expect(
+      javaHeapMib({ ...node, availableMb: 20_000, runningContainers: 0, zuweisungMb: 2_048 }),
+    ).toBe(1_536);
+  });
+
+  it('laesst eine Zuweisung nicht ueber die harte Grenze hinaus', () => {
+    // 64 GiB gewuenscht, aber die Node gibt nur 75 % ihrer harten Grenze her.
+    expect(
+      javaHeapMib({ ...node, availableMb: 20_000, runningContainers: 0, zuweisungMb: 65_536 }),
+    ).toBe(15_950);
+  });
+
+  it('rechnet ohne Zuweisung weiter aus dem freien Speicher', () => {
+    expect(javaHeapMib({ ...node, availableMb: 14_363, runningContainers: 1 })).toBe(6_000);
+  });
+
   it('geht nie unter das Minimum, auch wenn nichts frei ist', () => {
     expect(javaHeapMib({ ...node, availableMb: 1_000, runningContainers: 5 })).toBe(
       MIN_JAVA_HEAP_MB,
