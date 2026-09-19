@@ -230,6 +230,30 @@ export function toServerFileEntryDto(
   };
 }
 
+/**
+ * Ordner zuerst, dann alles andere; innerhalb einer Gruppe nach Namen.
+ *
+ * Bis zum 19.09.2026 kam die Liste in der Reihenfolge, die das Dateisystem
+ * ausspuckte (`readdir`) – auf ext4 heißt das: keine. Ordner und Dateien
+ * standen durcheinander, und wer in einem Serververzeichnis `world/` suchte,
+ * las sich durch zwei Dutzend Konfigurationsdateien. Sortiert wird hier, an
+ * der einzigen Stelle, durch die jede Auflistung läuft – nicht in der
+ * Oberfläche, sonst müsste jede Ansicht es wieder selbst tun.
+ *
+ * `localeCompare` mit `numeric`, damit `region10` nach `region9` kommt und
+ * nicht dazwischen, und mit deutscher Sortierung für Umlaute.
+ */
+function nachOrdnernUndNamen(a: ServerFileEntryDto, b: ServerFileEntryDto): number {
+  const ordnerA = a.type === 'directory';
+  const ordnerB = b.type === 'directory';
+
+  if (ordnerA !== ordnerB) {
+    return ordnerA ? -1 : 1;
+  }
+
+  return a.name.localeCompare(b.name, 'de', { numeric: true, sensitivity: 'base' });
+}
+
 export function toServerFileListDto(
   serverId: string,
   dataRoot: string,
@@ -241,7 +265,9 @@ export function toServerFileListDto(
     serverId,
     path: relativePath,
     parentPath: parentPathOf(relativePath),
-    entries: entries.map((entry) => toServerFileEntryDto(dataRoot, entry, limits)),
+    entries: entries
+      .map((entry) => toServerFileEntryDto(dataRoot, entry, limits))
+      .sort(nachOrdnernUndNamen),
     writable: limits.writable,
     maxUploadBytes: limits.maxUploadBytes,
     maxEditableBytes: MAX_EDITABLE_FILE_BYTES,
