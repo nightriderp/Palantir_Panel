@@ -281,6 +281,13 @@
       "when": 1789828786055,
       "tag": "0039_spielfassung",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789837586337,
+      "tag": "0040_spielbilder",
+      "breakpoints": true
     }
   ]
 }

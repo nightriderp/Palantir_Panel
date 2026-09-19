@@ -44,6 +44,9 @@ import {
 } from './modules/admin/instance-settings.js';
 import { createFontModule, registerFontRoutes } from './modules/fonts/index.js';
 import { createGameRequestService } from './modules/game-requests/index.js';
+import { createGameTypeImageService } from './modules/game-type-images/index.js';
+import { createDrizzleGameTypeImageRepository } from './modules/game-type-images/repository.js';
+import { registerGameTypeImageRoutes } from './modules/game-type-images/routes.js';
 import { createDrizzleGameRequestRepository } from './modules/game-requests/repository.js';
 import { registerGameRequestRoutes } from './modules/game-requests/routes.js';
 import { createQuotaRequestService } from './modules/quota-requests/index.js';
@@ -709,6 +712,15 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      */
     let ensureServerChat: ((serverId: string) => Promise<unknown>) | null = null;
 
+    /*
+     * Dieselbe Weiterleitung fuer die Spielbilder: Das Modul dafuer entsteht
+     * weiter unten (es braucht die Registry, die erst hier entsteht), die
+     * Spieleliste fragt aber schon oben danach.
+     */
+    let spielbildAdressen:
+      | (() => Promise<Map<string, { iconUrl: string | null; coverImageUrl: string | null }>>)
+      | null = null;
+
     const {
       service: orchestration,
       schedules: serverSchedules,
@@ -718,6 +730,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       db,
       agents,
       resolveViewerId: (request) => request.authUser?.id ?? null,
+      gameTypeImageUrls: async () => (await spielbildAdressen?.()) ?? new Map(),
       isSessionValid,
       // Rollenrechte am offenen Live-Kanal neu lesen (Befund 3.2) – derselbe
       // Aufbau wie `resolveActor` in `registerRbac()` oben.
@@ -985,6 +998,28 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      */
     await app.register(
       registerResourceRoutes({ resourceLimits: resources, audit: admin.services.audit }),
+    );
+
+    /*
+     * Symbol und Kachelbild der Spieltypen (Betreiber-Wunsch 19.09.2026).
+     * Hochgeladen wird in der Administration, gezeigt werden sie in der
+     * Spielauswahl und auf den Server-Karten.
+     */
+    const spielbilder = createGameTypeImageService({
+      repository: createDrizzleGameTypeImageRepository(db),
+      // Bilder nur fuer Spiele, die es gibt: Ein Tippfehler in der Adresse
+      // legte sonst eine Waise an, die niemand mehr findet.
+      kennt: (gameTypeId) => spieltypen.find(gameTypeId) !== null,
+    });
+
+    // Ab hier kennt die Spieleliste oben die Adressen (siehe Weiterleitung).
+    spielbildAdressen = () => spielbilder.urls();
+
+    await app.register(
+      registerGameTypeImageRoutes({
+        service: spielbilder,
+        actorUserId: (request) => request.authUser?.id ?? null,
+      }),
     );
 
     /*
