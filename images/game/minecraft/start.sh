@@ -299,6 +299,59 @@ if [ "$AUSGABE" = 'fabric' ] || [ "$AUSGABE" = 'neoforge' ]; then
   mkdir -p "${DATENORDNER}/mods"
 fi
 
+# -----------------------------------------------------------------------------
+# Serverdatei von Mojang holen - mit SHA-256 oder SHA-1
+# -----------------------------------------------------------------------------
+#
+# **Warum zwei Verfahren.** Die Bibliothek prueft mit SHA-256; das Verzeichnis
+# von Mojang nennt zu jeder Fassung aber nur SHA-1. Seit die Spielfassung im
+# Panel waehlbar ist (Betreiber-Wunsch vom 19.09.2026), kommt die Adresse samt
+# Pruefsumme je Server aus dem Backend - und dort liegt eben SHA-1 vor. Das
+# Image im Dockerfile bleibt bei SHA-256.
+#
+# Gerechnet wird in beiden Faellen; ohne passende Summe wird die Datei
+# verworfen statt ausgefuehrt. Ein bereits geholter, unveraenderter Server
+# wird nicht erneut geladen.
+vanilla_holen() {
+  ziel="$1"
+
+  if [ -n "${MINECRAFT_VANILLA_SHA256:-}" ]; then
+    palantir_datei_holen "$MINECRAFT_VANILLA_URL" "$MINECRAFT_VANILLA_SHA256" "$ziel"
+
+    return $?
+  fi
+
+  if [ -f "$ziel" ] &&
+    printf '%s  %s\n' "$MINECRAFT_VANILLA_SHA1" "$ziel" | sha1sum --check --status -; then
+    log "Vorhanden und unveraendert: $(basename "$ziel")"
+
+    return 0
+  fi
+
+  log "Hole $(basename "$ziel") ..."
+  rm -f "${ziel}.laedt"
+
+  if ! curl --fail --silent --show-error --location --retry 3 \
+    --output "${ziel}.laedt" "$MINECRAFT_VANILLA_URL"; then
+    rm -f "${ziel}.laedt"
+    log "Der Download ist gescheitert: ${MINECRAFT_VANILLA_URL}"
+
+    return 1
+  fi
+
+  if ! printf '%s  %s\n' "$MINECRAFT_VANILLA_SHA1" "${ziel}.laedt" |
+    sha1sum --check --status -; then
+    rm -f "${ziel}.laedt"
+    log 'Die Pruefsumme passt nicht; die Datei wurde verworfen.'
+
+    return 1
+  fi
+
+  mv "${ziel}.laedt" "$ziel"
+
+  return 0
+}
+
 if [ "$AUSGABE" = 'paper' ]; then
   SERVER_JAR="$PAPER_JAR"
 elif [ "$AUSGABE" = 'fabric' ]; then
@@ -358,10 +411,16 @@ elif [ "$AUSGABE" = 'neoforge' ]; then
     fi
   fi
 else
-  if [ -z "${MINECRAFT_VANILLA_URL:-}" ] || [ -z "${MINECRAFT_VANILLA_SHA256:-}" ]; then
-    log 'Der Ausgabe "vanilla" fehlen MINECRAFT_VANILLA_URL oder MINECRAFT_VANILLA_SHA256.'
-    log 'Beide setzt das Image (Dockerfile); ohne sie ist nicht bestimmbar, welcher'
-    log 'Server geholt werden soll.'
+  if [ -z "${MINECRAFT_VANILLA_URL:-}" ]; then
+    log 'Der Ausgabe "vanilla" fehlt MINECRAFT_VANILLA_URL.'
+    log 'Sie setzt das Image (Dockerfile) oder das Panel je Server; ohne sie ist'
+    log 'nicht bestimmbar, welcher Server geholt werden soll.'
+    exit 78
+  fi
+
+  if [ -z "${MINECRAFT_VANILLA_SHA256:-}" ] && [ -z "${MINECRAFT_VANILLA_SHA1:-}" ]; then
+    log 'Der Ausgabe "vanilla" fehlt die Pruefsumme (MINECRAFT_VANILLA_SHA256'
+    log 'oder MINECRAFT_VANILLA_SHA1). Ohne sie wird nichts ausgefuehrt.'
     exit 78
   fi
 
@@ -372,8 +431,7 @@ else
   # Exit-Code 69 ist `EX_UNAVAILABLE`: Der Server ist in Ordnung, nur die Quelle
   # war nicht zu erreichen oder hat etwas Falsches geliefert. Unterscheidbar von
   # 78 (Konfiguration) und von einem Absturz.
-  if ! palantir_datei_holen \
-    "$MINECRAFT_VANILLA_URL" "$MINECRAFT_VANILLA_SHA256" "$SERVER_JAR"; then
+  if ! vanilla_holen "$SERVER_JAR"; then
     log 'Der Server von Mojang konnte nicht geholt werden. Der Start bricht ab;'
     log 'ein erneuter Start versucht es wieder.'
     exit 69

@@ -524,6 +524,52 @@ describe('start.sh – Paper oder Vanilla', nurMitShell, () => {
     assert.equal(readFileSync(erwartet, 'utf8'), 'nicht wirklich eine Jar');
   });
 
+  /*
+   * Seit die Spielfassung im Panel waehlbar ist (19.09.2026), kommt die
+   * Adresse je Server aus dem Backend - und Mojangs Verzeichnis nennt zu jeder
+   * Fassung nur SHA-1. Das Image im Dockerfile bleibt bei SHA-256.
+   */
+  it('nimmt auch eine SHA-1-Pruefsumme, wie Mojang sie nennt', () => {
+    const ordner = arbeitsordner();
+    curlAttrappe(ordner, 'nicht wirklich eine Jar');
+    const sha1 = createHash('sha1').update('nicht wirklich eine Jar').digest('hex');
+
+    const lauf = starteSkript(ordner, {
+      ...VANILLA_UMGEBUNG,
+      MINECRAFT_VANILLA_VERSION: '26.3',
+      MINECRAFT_VANILLA_SHA1: sha1,
+    });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    const erwartet = posix(join(ordner.daten, '.palantir', 'vanilla', 'minecraft_server-26.3.jar'));
+    assert.deepEqual(lauf.argv.slice(-3), ['-jar', erwartet, '--nogui']);
+  });
+
+  it('startet nicht mit einer Jar, deren SHA-1 nicht passt', () => {
+    const ordner = arbeitsordner();
+    curlAttrappe(ordner, 'etwas ganz anderes');
+
+    const lauf = starteSkript(ordner, {
+      ...VANILLA_UMGEBUNG,
+      MINECRAFT_VANILLA_SHA1: '0'.repeat(40),
+    });
+
+    assert.equal(lauf.status, 69);
+    assert.deepEqual(lauf.argv, []);
+  });
+
+  it('holt eine mit SHA-1 geprüfte Jar beim zweiten Start nicht erneut', () => {
+    const ordner = arbeitsordner();
+    curlAttrappe(ordner, 'nicht wirklich eine Jar');
+    const umgebung = {
+      ...VANILLA_UMGEBUNG,
+      MINECRAFT_VANILLA_SHA1: createHash('sha1').update('nicht wirklich eine Jar').digest('hex'),
+    };
+
+    assert.equal(starteSkript(ordner, umgebung).status, 0);
+    assert.match(starteSkript(ordner, umgebung).stdout, /Vorhanden und unveraendert/u);
+  });
+
   it('lädt beim zweiten Start nicht erneut', () => {
     const ordner = arbeitsordner();
     const summe = curlAttrappe(ordner, 'nicht wirklich eine Jar');
