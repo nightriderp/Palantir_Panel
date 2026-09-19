@@ -1,6 +1,7 @@
 'use client';
 
 import { type GameServerDto, type ServerLiveStats } from '@palantir/contracts';
+import { memo } from 'react';
 import { Icon } from '../icons/Icon';
 import { Button, IconButton } from '../primitives/Button';
 import { Badge, type Tone } from '../primitives/Badge';
@@ -109,7 +110,7 @@ function pingTone(pingMs: number | null): Tone {
  * `permissions`-Objekt des DTO (Pflichtenheft §5.2) – die Karte leitet nichts
  * aus Rollen ab und prüft nichts selbst nach.
  */
-export function ServerCard({
+function ServerCardIntern({
   server,
   stats,
   gameIconUrl = null,
@@ -474,3 +475,17 @@ export function ServerCard({
     </article>
   );
 }
+
+/**
+ * Die Karte zeichnet nur neu, wenn sich ihre eigenen Angaben ändern
+ * (Leistungsbericht 19.09.2026, Punkt 3).
+ *
+ * Die Übersicht bekommt im Sekundentakt Live-Werte. Ohne diese Hülle zeichnete
+ * jede dieser Meldungen **alle** Karten neu – bei zwanzig Servern zwanzig Mal
+ * pro Sekunde, obwohl sich meist eine einzige Zahl geändert hatte.
+ *
+ * Das wirkt nur, solange die Rückruffunktionen von Aufruf zu Aufruf dieselben
+ * bleiben; in der Übersicht hängen sie deshalb an `useCallback`. Ein neu
+ * gebildetes Lambda je Durchlauf machte den Vergleich hier wertlos.
+ */
+export const ServerCard = memo(ServerCardIntern);

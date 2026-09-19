@@ -26,6 +26,7 @@ import {
   type UpdateServerSettingsInput,
 } from '@palantir/validation';
 import { API_BASE_URL, type ApiResult, apiRequest } from './client';
+import { teileAbruf } from './dedupe';
 
 /**
  * REST-Endpunkte rund um Gameserver (Lastenheft §3.3).
@@ -61,8 +62,20 @@ function serverPath(serverId: string, suffix = ''): string {
 // Übersicht und Detail
 // ---------------------------------------------------------------------------
 
+/**
+ * Die Serverliste.
+ *
+ * Geteilt, wenn zwei Stellen sie gleichzeitig holen (Leistungsbericht
+ * 19.09.2026, Punkt 4): Der Rahmen braucht sie fuer Kopf- und Seitenleiste,
+ * die Uebersicht fuer ihre Karten, und beide starten beim Oeffnen der Seite.
+ * Zwei gleiche Anfragen liefern zwei gleiche Antworten - eine genuegt.
+ */
 export function fetchServers(signal?: AbortSignal): Promise<ApiResult<GameServerDto[]>> {
-  return apiRequest<GameServerDto[]>(SERVERS, { signal });
+  return teileAbruf(
+    SERVERS,
+    (geteiltes) => apiRequest<GameServerDto[]>(SERVERS, { signal: geteiltes }),
+    signal,
+  );
 }
 
 /**
