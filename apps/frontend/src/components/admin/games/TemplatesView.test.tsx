@@ -89,6 +89,7 @@ function spiel(overrides: Partial<GameTypeDto> = {}): GameTypeDto {
     coverImageUrl: null,
     supportsVirtualHostRouting: true,
     supportsWorldImport: true,
+    supportsVersionChoice: false,
     defaultPorts: [25_565],
     resourceDefaults: { ramMb: 4096, diskMb: 10_240 },
     configFields: [],

@@ -77,6 +77,28 @@ export interface GameResourceEstimate {
  * (Phase 2/3, Lastenheft §3.5). Das Frontend zeigt ihn dann gesperrt statt ihn
  * zu verstecken, damit erkennbar bleibt, was kommt.
  */
+/**
+ * Eine wählbare Spielfassung (Betreiber-Wunsch vom 19.09.2026).
+ *
+ * Gemeint ist die Fassung des **Spiels**, nicht die des Images: „26.3",
+ * „1.21.4". Bis dahin legte das Image fest, welche Serverdatei es holt; wer
+ * eine ältere Welt weiterspielen wollte, hatte keine Wahl.
+ *
+ * Die Liste kommt vom Hersteller (bei Minecraft aus dem Verzeichnis von
+ * Mojang) und wird vom Backend zwischengespeichert – das Panel kennt keine
+ * fest eingebaute Aufzählung, die zur nächsten Veröffentlichung veraltet.
+ */
+export interface GameVersionDto {
+  /** Kennung beim Hersteller, z. B. `26.3`. */
+  id: string;
+  /** Anzeigename; meist die Kennung, bei der neuesten mit Zusatz. */
+  label: string;
+  /** ISO-8601 der Veröffentlichung; `null`, wenn der Hersteller keins nennt. */
+  releasedAt: string | null;
+  /** Die aktuell neueste Fassung des Herstellers. */
+  latest: boolean;
+}
+
 export interface GameTypeDto {
   id: string;
   name: string;
@@ -89,6 +111,14 @@ export interface GameTypeDto {
   supportsVirtualHostRouting: boolean;
   /** Kann der Wizard bestehende Weltdaten übernehmen (Lastenheft §3.3)? */
   supportsWorldImport: boolean;
+  /**
+   * Lässt sich die Spielfassung wählen (`GET /api/game-types/:id/versions`)?
+   *
+   * `false` heißt: Die Fassung steckt im Image, wie bisher bei allen Spielen.
+   * Angefangen hat es mit Minecraft (Vanilla), wo die Serverdatei ohnehin beim
+   * ersten Start geholt wird – dort kostet die Wahl nur eine andere Adresse.
+   */
+  supportsVersionChoice: boolean;
   defaultPorts: number[];
   resourceDefaults: GameResourceEstimate;
   configFields: GameConfigField[];
@@ -366,6 +396,15 @@ export interface GameTypeDefinition {
   readonly supportsVirtualHostRouting: boolean;
   /** Kann der Wizard bestehende Weltdaten übernehmen (Lastenheft §3.3)? */
   readonly supportsWorldImport: boolean;
+  /**
+   * Laesst dieses Spiel die Fassung waehlen (Betreiber-Wunsch 19.09.2026)?
+   *
+   * Optional und mit Vorgabe `false`: Nur Spiele, deren Serverdatei ohnehin
+   * beim ersten Start geholt wird, koennen eine andere Fassung nehmen - dort
+   * kostet die Wahl nur eine andere Adresse. Wo die Dateien im Image liegen,
+   * bleibt es bei der Fassung des Images.
+   */
+  readonly supportsVersionChoice?: boolean;
   /**
    * Wie die Live-Konsole ihre Befehle an den Server bringt (P2-9). Ohne Angabe
    * `stdin`: `palantir-console` im Container schreibt in die Standardeingabe,

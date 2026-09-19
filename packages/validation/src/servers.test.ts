@@ -12,6 +12,7 @@ import {
   cloneServerInputSchema,
   consoleCommandSchema,
   createServerInputSchema,
+  gameVersionSchema,
   serverFilePathSchema,
   serverNameSchema,
   serverResourceLimitsSchema,
@@ -282,5 +283,45 @@ describe('serverFilePathSchema', () => {
     expect(serverFilePathSchema.safeParse('/etc/passwd').success).toBe(false);
     expect(serverFilePathSchema.safeParse('world/../../etc').success).toBe(false);
     expect(serverFilePathSchema.safeParse('world\\level.dat').success).toBe(false);
+  });
+});
+
+/*
+ * Spielfassung (Betreiber-Wunsch vom 19.09.2026). Die Kennung landet im
+ * Dateinamen der Serverdatei und in der Umgebung des Containers; frei getippt
+ * waere sie eine Einladung fuer Unsinn.
+ */
+describe('gameVersionSchema', () => {
+  it('nimmt Kennungen, wie Hersteller sie vergeben', () => {
+    for (const wert of ['26.3', '1.21.4', '26.2-0.19.5', 'b1.7_01']) {
+      expect(gameVersionSchema.safeParse(wert).success).toBe(true);
+    }
+  });
+
+  it('lehnt Pfade, Leerzeichen und Steuerzeichen ab', () => {
+    for (const wert of ['../latest', 'neue fassung', '-26.3', '', 'x'.repeat(41)]) {
+      expect(gameVersionSchema.safeParse(wert).success).toBe(false);
+    }
+  });
+
+  it('laesst die Fassung beim Anlegen weg oder auf null', () => {
+    const basis = {
+      gameType: 'minecraft-vanilla',
+      name: 'Survival',
+      subdomain: 'survival',
+      hostId: '11111111-1111-4111-8111-000000000001',
+      resourceLimits: { ramMb: 4096, cpuCores: 2, diskMb: 20480 },
+      config: {},
+      startupParameters: '',
+      autoShutdownEnabled: true,
+      worldImport: null,
+    };
+
+    expect(createServerInputSchema.safeParse(basis).success).toBe(true);
+    expect(createServerInputSchema.safeParse({ ...basis, gameVersion: null }).success).toBe(true);
+    expect(createServerInputSchema.safeParse({ ...basis, gameVersion: '26.3' }).success).toBe(true);
+    expect(createServerInputSchema.safeParse({ ...basis, gameVersion: '../x' }).success).toBe(
+      false,
+    );
   });
 });

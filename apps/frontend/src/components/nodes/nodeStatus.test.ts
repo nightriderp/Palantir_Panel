@@ -52,6 +52,7 @@ function gameType(id: string, ramMb: number, diskMb: number, available = true): 
     coverImageUrl: null,
     supportsVirtualHostRouting: false,
     supportsWorldImport: false,
+    supportsVersionChoice: false,
     defaultPorts: [],
     resourceDefaults: { ramMb, diskMb },
     configFields: [],
