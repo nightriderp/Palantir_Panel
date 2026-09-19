@@ -133,6 +133,15 @@ function ServerCardIntern({
   const meta = serverStatusMeta(server.status);
   const permissions = server.permissions;
   const fassung = formatImageVersion(server.imageVersion);
+  /**
+   * Zweite Zeile der Karte: Image-Fassung und – bei fremden Servern – der
+   * Besitzer (Fundpunkt 317). Leer bleibt sie, wenn beides fehlt; dann steht
+   * dort keine leere Zeile herum.
+   */
+  const unterzeile =
+    [fassung, isOwn ? null : (server.ownerDisplayName ?? null)]
+      .filter((teil): teil is string => typeof teil === 'string' && teil !== '')
+      .join(' · ') || null;
   const updateHinweis = formatImageUpdate(server.imageVersion, server.latestImageVersion);
   const live = hasLiveStats(server.status) ? (stats ?? null) : null;
 
@@ -216,17 +225,28 @@ function ServerCardIntern({
 
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-lg font-semibold">{server.name}</h3>
-          <p className="truncate text-sm text-ink-soft">
+          {/*
+            Zwei Zeilen statt einer abgeschnittenen (Fundpunkt 317).
+            Oben, was der Server fährt; darunter, womit und für wen. Vorher
+            stand alles in einer Zeile mit `truncate` – auf einer schmalen
+            Karte verschwanden Fassung und Besitzer dadurch wortlos, und
+            gerade sie soll man sehen. Ohne `truncate` bricht die Zeile
+            stattdessen um; eine Karte darf höher werden, eine Angabe darf
+            nicht verschwinden.
+
+            Der Servername behält sein `truncate`: Er steht im Zweifel
+            mehrfach in der Liste, und ein Name, der über drei Zeilen läuft,
+            schöbe alles andere aus dem Blick.
+          */}
+          <p className="text-sm text-ink-soft">
             {server.gameTypeName}
             {server.gameVersion === null || server.gameVersion === undefined
               ? ''
               : ` ${server.gameVersion}`}
-            {/* Die Image-Fassung gehört dorthin, wo auch die Spielfassung
-                steht: Beide beschreiben, was dieser Server fährt
-                (Betreiber-Wunsch 19.09.2026). */}
-            {fassung === null ? '' : ` · ${fassung}`}
-            {!isOwn && server.ownerDisplayName ? ` · ${server.ownerDisplayName}` : ''}
           </p>
+          {unterzeile === null ? null : (
+            <p className="mt-0.5 text-xs text-ink-faint">{unterzeile}</p>
+          )}
         </div>
 
         {/*

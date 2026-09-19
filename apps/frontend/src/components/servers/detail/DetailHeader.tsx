@@ -78,6 +78,14 @@ export function DetailHeader({
    */
   const canUpdate = server.updateAvailable && server.permissions.canUpdate;
   const fassung = formatImageVersion(server.imageVersion);
+  /**
+   * Zweite Zeile des Kopfes: womit der Server läuft, wo und für wen
+   * (Fundpunkt 317). Fehlt alles davon, entfällt die Zeile.
+   */
+  const betriebszeile =
+    [fassung, server.hostName ?? null, server.ownerDisplayName ?? null]
+      .filter((teil): teil is string => typeof teil === 'string' && teil !== '')
+      .join(' · ') || null;
   const updateHinweis = formatImageUpdate(server.imageVersion, server.latestImageVersion);
   const updateLaeuftNeu = server.status === 'running' || server.status === 'starting';
 
@@ -118,21 +126,22 @@ export function DetailHeader({
             ) : null}
           </div>
 
+          {/*
+            Zwei Zeilen statt einer langen (Fundpunkt 317). Oben das Spiel mit
+            seiner Fassung – sie beantwortet „passt mein Client dazu" und
+            gehört deshalb neben den Namen, nicht in eine Einstellungsseite.
+            Darunter der Betrieb: Image-Fassung, Node, Besitzer. Zu fünft in
+            einer Zeile war das auf schmalen Fenstern nicht mehr zu lesen.
+          */}
           <p className="mt-1 text-sm text-ink-soft">
             {server.gameTypeName}
-            {/* Die Spielfassung direkt am Spiel: Sie beantwortet „passt mein
-                Client dazu" und gehoert deshalb neben den Namen, nicht in eine
-                Einstellungsseite (Betreiber-Wunsch 19.09.2026). */}
             {server.gameVersion === null || server.gameVersion === undefined
               ? ''
               : ` ${server.gameVersion}`}
-            {/* Die Image-Fassung neben der Spielfassung: „Minecraft 1.21.4 ·
-                Fassung 9" beantwortet beide Fragen an einer Stelle
-                (Betreiber-Wunsch 19.09.2026). */}
-            {fassung === null ? '' : ` · ${fassung}`}
-            {server.hostName ? ` · ${server.hostName}` : ''}
-            {server.ownerDisplayName ? ` · ${server.ownerDisplayName}` : ''}
           </p>
+          {betriebszeile === null ? null : (
+            <p className="mt-0.5 text-xs text-ink-faint">{betriebszeile}</p>
+          )}
 
           {server.permissions.canViewAddress && address ? (
             <button

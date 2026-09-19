@@ -370,19 +370,21 @@ export function formatChatTime(iso: string | null | undefined, jetzt = new Date(
 }
 
 /**
- * Beschriftung der Image-Fassung, z. B. „Fassung 9" (Betreiber-Wunsch
- * 19.09.2026: die Versionierung überall sehen).
+ * Beschriftung der Image-Fassung, z. B. „v9" (Betreiber-Wunsch 19.09.2026: die
+ * Versionierung überall sehen; Fundpunkt 317: als Versionsnummer statt als Wort).
  *
- * Gemeint ist die Fassung des **Images**, nicht die des Spiels: Das Wort
- * „Fassung" steht deshalb immer davor. Die Spielfassung erscheint ohne Wort
- * direkt hinter dem Spielnamen („Minecraft 1.21.4"), beides nebeneinander
- * bleibt damit auseinanderzuhalten.
+ * Gemeint ist die Fassung des **Images**, nicht die des Spiels. Das `v` hält
+ * beide auseinander, wo sie nebeneinander stehen: Die Spielfassung erscheint
+ * ohne Vorsatz direkt hinter dem Spielnamen („Minecraft 1.21.4"), die des
+ * Images mit – „Minecraft 1.21.4 · v9". Vorher stand dort das Wort „Fassung";
+ * ausgeschrieben nahm es in der Unterzeile den Platz weg, der zum Abschneiden
+ * führte.
  *
  * `null`, wenn nichts bekannt ist – dann steht an der Stelle gar nichts,
  * statt eines Platzhalters, der nichts sagt.
  */
 export function formatImageVersion(version: string | null | undefined): string | null {
-  return version === null || version === undefined || version === '' ? null : `Fassung ${version}`;
+  return version === null || version === undefined || version === '' ? null : `v${version}`;
 }
 
 /**
@@ -401,5 +403,5 @@ export function formatImageUpdate(
     return null;
   }
 
-  return `Fassung ${current} läuft, angeboten wird ${latest}.`;
+  return `v${current} läuft, angeboten wird v${latest}.`;
 }
