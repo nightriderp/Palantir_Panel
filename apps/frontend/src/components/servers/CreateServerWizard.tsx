@@ -125,12 +125,24 @@ function GameTile({
       onClick={onSelect}
       aria-pressed={selected}
       className={cn(
-        'flex items-start gap-3 rounded-2xl border p-3.5 text-left transition-colors',
+        'relative flex items-start gap-3 overflow-hidden rounded-2xl border p-3.5 text-left transition-colors',
         selected
           ? 'border-brand bg-brand-soft'
           : 'border-line bg-card-gradient hover:border-line-strong',
       )}
     >
+      {/*
+        Das Kachelbild liegt hinter dem Inhalt, gedämpft: Es soll die Kachel
+        kennzeichnen, nicht den Namen unlesbar machen (Betreiber-Wunsch
+        19.09.2026). Ohne Bild bleibt die Kachel wie bisher.
+      */}
+      {game.coverImageUrl === null ? null : (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-25"
+          style={{ backgroundImage: `url(${game.coverImageUrl})` }}
+        />
+      )}
       {/*
         Kachel statt Titelbild-Platzhalter: Ohne hinterlegtes Bild stand hier
         ein 80 Pixel hoher leerer Kasten mit dem Wort „Titelbild" – bei
@@ -142,17 +154,17 @@ function GameTile({
         aria-hidden
         className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-fill font-mono text-sm font-bold text-brand"
       >
-        {game.coverImageUrl ? (
-          /* Die Adresse kommt aus der Spiele-Registry und ist zur Bauzeit unbekannt;
+        {game.iconUrl ? (
+          /* Die Adresse kommt aus der Spieleliste und ist zur Bauzeit unbekannt;
              `next/image` bräuchte dafür eine konfigurierte Domain. */
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={game.coverImageUrl} alt="" className="h-full w-full object-cover" />
+          <img src={game.iconUrl} alt="" className="h-full w-full object-cover" />
         ) : (
           serverInitials(game.name)
         )}
       </span>
 
-      <span className="flex min-w-0 flex-col gap-1">
+      <span className="relative flex min-w-0 flex-col gap-1">
         <span className="text-lg font-semibold">{game.name}</span>
       </span>
     </button>

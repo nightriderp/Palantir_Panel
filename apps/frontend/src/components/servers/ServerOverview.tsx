@@ -1,6 +1,6 @@
 'use client';
 
-import { type GameServerDto } from '@palantir/contracts';
+import { type GameTypeDto, type GameServerDto } from '@palantir/contracts';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -18,7 +18,7 @@ import {
 } from '@/components/shared';
 import { openDirectConversation } from '@/lib/api/chat';
 import { errorText } from '@/lib/api/client';
-import { fetchServers } from '@/lib/api/servers';
+import { fetchGameTypes, fetchServers } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { mergeLiveStatus } from '@/lib/live/mergeLiveStatus';
 import { useDtoRevisions } from '@/lib/live/useDtoRevision';
@@ -62,6 +62,23 @@ export function ServerOverview() {
   const [confirm, setConfirm] = useState<PendingConfirm>(null);
 
   const servers = useApiResource<GameServerDto[]>((signal) => fetchServers(signal), []);
+
+  /*
+   * Die Spieleliste nur wegen der Bilder (Betreiber-Wunsch 19.09.2026): Symbol
+   * und Kachelbild gehoeren zur Vorlage, nicht zum einzelnen Server, und
+   * stehen deshalb nicht im Server-DTO. Ein Abruf je Seitenaufruf, gegen den
+   * die Karten sonst nichts zu zeigen haetten.
+   */
+  const spieltypen = useApiResource<GameTypeDto[]>((signal) => fetchGameTypes(signal), []);
+  const spielBilder = useMemo(() => {
+    const karte = new Map<string, { iconUrl: string | null; coverImageUrl: string | null }>();
+
+    for (const spiel of spieltypen.data ?? []) {
+      karte.set(spiel.id, { iconUrl: spiel.iconUrl, coverImageUrl: spiel.coverImageUrl });
+    }
+
+    return karte;
+  }, [spieltypen.data]);
   const { pinnedIds, isPinned, togglePin } = usePinnedServers(servers.data ?? []);
 
   const list = useMemo(() => servers.data ?? [], [servers.data]);
@@ -252,6 +269,8 @@ export function ServerOverview() {
                 key={server.id}
                 server={server}
                 stats={statsById[server.id] ?? null}
+                gameIconUrl={spielBilder.get(server.gameType)?.iconUrl ?? null}
+                gameCoverUrl={spielBilder.get(server.gameType)?.coverImageUrl ?? null}
                 isOwn={user !== null && server.ownerId === user.id}
                 adminAccess={
                   user !== null && server.ownerId !== user.id && user.permissions.canViewAnyServer

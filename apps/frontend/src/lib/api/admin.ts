@@ -157,6 +157,37 @@ export function fetchGameRequests(
   });
 }
 
+/**
+ * Symbol oder Kachelbild eines Spieltyps setzen (Betreiber-Wunsch 19.09.2026).
+ *
+ * Multipart wie beim Profilbild: Das zugeschnittene Bild kommt als Datei, das
+ * Backend prüft Typ, Größe und die ersten Bytes.
+ */
+export function uploadGameTypeImage(
+  gameTypeId: string,
+  kind: 'icon' | 'cover',
+  file: File,
+): Promise<ApiResult<{ url: string }>> {
+  const form = new FormData();
+  form.append('file', file);
+
+  return apiRequest<{ url: string }>(
+    `/api/admin/game-types/${encodeURIComponent(gameTypeId)}/images/${kind}`,
+    { method: 'POST', body: form },
+  );
+}
+
+/** Bild entfernen – danach stehen wieder die Anfangsbuchstaben. */
+export function removeGameTypeImage(
+  gameTypeId: string,
+  kind: 'icon' | 'cover',
+): Promise<ApiResult<null>> {
+  return apiRequest<null>(
+    `/api/admin/game-types/${encodeURIComponent(gameTypeId)}/images/${kind}`,
+    { method: 'DELETE' },
+  );
+}
+
 export function approveGameRequest(
   id: string,
   input: DecideGameRequestInput = {},

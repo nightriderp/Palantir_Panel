@@ -48,6 +48,15 @@ export interface ServerCardProps {
    * Mockup, das damit sichtbar macht, woher der Einblick kommt.
    */
   adminAccess?: boolean;
+  /**
+   * Bilder des Spieltyps (Betreiber-Wunsch 19.09.2026).
+   *
+   * Kommen vom Aufrufer, nicht aus dem Server-DTO: Sie gehören zur Vorlage,
+   * und die Übersicht kennt die Spieleliste ohnehin. Ohne Bilder bleibt es bei
+   * den Anfangsbuchstaben und der einfarbigen Karte.
+   */
+  gameIconUrl?: string | null;
+  gameCoverUrl?: string | null;
   /** Hinweis „Update verfügbar" über der Statuszeile. */
   updateAvailable?: boolean;
   /** Hinweis „Neustart nötig" über der Statuszeile. */
@@ -101,6 +110,8 @@ function pingTone(pingMs: number | null): Tone {
 export function ServerCard({
   server,
   stats,
+  gameIconUrl = null,
+  gameCoverUrl = null,
   isOwn = false,
   pinned = false,
   adminAccess = false,
@@ -170,12 +181,32 @@ export function ServerCard({
         className,
       )}
     >
-      <header className="flex items-start gap-3">
+      {/*
+        Kachelbild des Spiels als Hintergrund, stark gedaempft (Betreiber-Wunsch
+        19.09.2026): Es soll die Karte kennzeichnen, nicht die Zahlen darauf
+        unlesbar machen. Ohne Bild bleibt die Karte wie bisher.
+      */}
+      {gameCoverUrl === null ? null : (
         <span
           aria-hidden
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-gradient font-mono text-sm font-bold text-canvas"
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-15"
+          style={{ backgroundImage: `url(${gameCoverUrl})` }}
+        />
+      )}
+
+      <header className="relative flex items-start gap-3">
+        <span
+          aria-hidden
+          className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-brand-gradient font-mono text-sm font-bold text-canvas"
         >
-          {serverInitials(server.name)}
+          {gameIconUrl === null || gameIconUrl === undefined ? (
+            serverInitials(server.name)
+          ) : (
+            /* Adresse aus der Spieleliste, zur Bauzeit unbekannt; `next/image`
+               bräuchte dafür eine konfigurierte Domain. */
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={gameIconUrl} alt="" className="h-full w-full object-cover" />
+          )}
         </span>
 
         <div className="min-w-0 flex-1">
