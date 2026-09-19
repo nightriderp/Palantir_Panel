@@ -186,3 +186,12 @@ export {
   isArchiveFormat,
   isImplementedAgentCommand,
 } from './agent-commands.js';
+
+export {
+  AGENT_BINARY_FRAME_MAGIC,
+  type AgentBinaryFrame,
+  type AgentBinaryFrameHeader,
+  decodeAgentBinaryFrame,
+  encodeAgentBinaryFrame,
+  isAgentBinaryFrame,
+} from './agent-binary-frame.js';

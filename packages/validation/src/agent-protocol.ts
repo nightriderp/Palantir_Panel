@@ -51,6 +51,9 @@ export const backendWelcomeFrameSchema = z.object({
   kind: z.literal('welcome'),
   protocolVersion: z.number().int().positive(),
   sentAt: isoTimestampSchema,
+  // Optional: Ein aelteres Backend kuendigt keine Binaerframes an, und der
+  // Agent bleibt dann bei Base64.
+  binaryResults: z.boolean().optional(),
 });
 
 export const backendCommandFrameSchema = z.object({
