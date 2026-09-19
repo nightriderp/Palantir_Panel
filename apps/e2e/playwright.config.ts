@@ -51,6 +51,17 @@ export const backendEnv: Record<string, string> = {
   PUBLIC_API_URL: BACKEND_URL,
   // http statt https im Test – laut Pflichtenheft §7 nur außerhalb der Produktion.
   COOKIE_SECURE: 'false',
+  /**
+   * Leer, also host-only (`auth/plugin.ts` setzt `domain` nur bei nicht-leerem
+   * Wert). Muss hier stehen, obwohl leer: Eine lokale `.env` setzt
+   * `COOKIE_DOMAIN` auf die Betriebsdomain, dotenv lässt bereits gesetzte
+   * Variablen in Ruhe – und ohne diesen Eintrag schriebe das Backend das
+   * Sitzungs-Cookie auf jene Domain, die der Browser unter `127.0.0.1`
+   * verwirft. Die Anmeldung antwortet dann mit 200, das Panel öffnet nie, und
+   * der Test läuft ohne Fehlermeldung auf der Seite in einen Zeitüberlauf.
+   * In der CI gibt es keine `.env`, dort fiel es deshalb nie auf.
+   */
+  COOKIE_DOMAIN: '',
   DEV_FAKE_AGENT: 'true',
   // Alle Spiele freischalten – der Test legt einen Terraria-Server an: kein
   // Pflichtfeld in den Optionen, kleines Kontingent.
