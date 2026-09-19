@@ -465,6 +465,16 @@ export interface BackendWelcomeFrame {
   readonly kind: 'welcome';
   readonly protocolVersion: number;
   readonly sentAt: string;
+  /**
+   * Das Backend versteht Binärframes für Dateiblöcke (Leistungsbericht
+   * 19.09.2026, Punkt 1.3).
+   *
+   * Ohne dieses Feld schickt der Agent seine Blöcke wie bisher als Base64 im
+   * JSON-Frame. Das ist der Normalfall direkt nach einem Deployment: Das
+   * Panel auf der VPS ist neu, der Agent auf der Node zieht erst Minuten
+   * später nach - und umgekehrt genauso.
+   */
+  readonly binaryResults?: boolean;
 }
 
 /** Befehl an den Agent, immer mit Korrelations-ID (Pflichtenheft §2.2). */
