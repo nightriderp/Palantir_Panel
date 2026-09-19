@@ -10,6 +10,8 @@ import {
   type GameVersionDto,
 } from '@palantir/contracts';
 import {
+  SERVER_RAM_MAX_MB,
+  SERVER_RAM_MIN_MB,
   type CloneServerInput,
   type UpdateServerSettingsInput,
   cloneServerInputSchema,
@@ -458,10 +460,26 @@ export function SettingsTab({
           ) : null}
 
           {/*
-            Kein RAM-Regler mehr (Betreiber-Entscheidung 2026-09-18): Ein Server
-            nimmt sich, was auf der Node frei ist; die Zuweisung aus der
-            Spiele-Vorgabe bleibt als weiche Grenze im Datensatz.
+            Arbeitsspeicher wieder wählbar (Betreiber-Wunsch 19.09.2026). Er
+            ist zweierlei: die weiche Grenze des Containers – darüber darf ein
+            Server, solange die Node Platz hat – und bei Java-Spielen die
+            Grundlage des Heaps, wo die Zahl verbindlich ist. Eine Änderung
+            wirkt beim nächsten Start, weil der Container dafür neu gebaut wird.
           */}
+          <NumberField
+            label="Arbeitsspeicher (MiB)"
+            value={draft.resourceLimits.ramMb}
+            onChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                resourceLimits: { ...current.resourceLimits, ramMb: value ?? SERVER_RAM_MIN_MB },
+              }))
+            }
+            min={SERVER_RAM_MIN_MB}
+            max={SERVER_RAM_MAX_MB}
+            step={512}
+            hint="Weiche Grenze, gilt ab dem nächsten Start. Der Server darf darüber hinaus, solange die Node Platz hat; bei Java-Spielen bestimmt die Zahl den Heap."
+          />
 
           <TextField
             label="Startparameter"
