@@ -31,6 +31,23 @@ import { RBAC_GUARD_RECHTE, istRbacGuard } from './guard.js';
  * Werte stellt `afterAll` zurueck.
  */
 
+/**
+ * Frist fuer die Tests dieser Datei (Fundpunkt 312).
+ *
+ * Der erste Test baut den echten Server einmal kalt auf - mit allen Modulen,
+ * damit auch die Routen entstehen, die ohne Datenbank und Auth-Modul fehlen
+ * wuerden. Das dauert auf dem Arbeitsplatz rund 5,6 Sekunden und reisst damit
+ * die Vorgabefrist von vitest (5 s); die fuenf Tests danach laufen ueber
+ * denselben, gemerkten Aufbau und sind in Millisekunden fertig.
+ *
+ * Wie bei den Image-Tests (R-18, Fundpunkte 290 und 295) ist die Frist die
+ * zerbrechliche Stelle, nicht die Logik: Sie haengt an der Maschinenlast - unter
+ * `turbo run test` teilen sich alle Pakete dieselbe - und der Aufbau waechst mit
+ * jeder neuen Route. Deshalb grosszuegig und an einer Stelle, ueber eine
+ * Umgebungsvariable zu verschieben.
+ */
+const AUFBAU_FRIST_MS = Number(process.env.PALANTIR_RBAC_TEST_FRIST_MS ?? 60_000);
+
 /** Die vier Arten, auf die eine Route ohne `preHandler`-Guard geschuetzt ist. */
 const GRUENDE = {
   /**
@@ -300,7 +317,9 @@ afterAll(async () => {
   }
 });
 
-describe('Jede Route deklariert ein Recht (HM-9)', () => {
+// Optionen als ZWEITES Argument: Die Schreibweise `describe(name, fn, optionen)`
+// ist mit Vitest 4 entfallen (R-16 hat das Paket von 2.1.9 auf 4.1.11 gehoben).
+describe('Jede Route deklariert ein Recht (HM-9)', { timeout: AUFBAU_FRIST_MS }, () => {
   it('sammelt ueberhaupt Routen ein', async () => {
     // Absicherung gegen einen stillen Fehlschlag: Griffe das Einsammeln daneben,
     // liefen die Pruefungen darunter ueber eine leere Liste und waeren gruen,
