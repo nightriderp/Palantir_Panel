@@ -151,14 +151,6 @@ function GameTile({
 
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-lg font-semibold">{game.name}</span>
-
-        {/*
-          Nur noch der Platz als Schätzung: RAM wird nicht mehr zugewiesen, ein
-          Server nimmt sich, was auf der Node frei ist (2026-09-18).
-        */}
-        <span className="text-xs text-ink-faint">
-          Platzbedarf: rund {formatMegabytes(game.resourceDefaults.diskMb)}
-        </span>
       </span>
     </button>
   );
