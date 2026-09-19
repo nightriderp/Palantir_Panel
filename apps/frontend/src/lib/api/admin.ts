@@ -16,6 +16,7 @@ import {
   type PortAllocationDto,
   type PortPoolDto,
   type PortRangeDto,
+  type GameRequestDto,
   type QuotaRequestDto,
   type RegistrationRequestDto,
   type RoleDto,
@@ -26,9 +27,11 @@ import {
 import {
   type ApproveRegistrationRequestInput,
   type CreateUserInput,
+  type DecideGameRequestInput,
   type DecideQuotaRequestInput,
   type DeleteUserAsAdminInput,
   type InstanceSettingsInput,
+  type GameRequestQuery,
   type QuotaRequestQuery,
   type AuditLogQuery,
   type BackupOverviewQuery,
@@ -135,6 +138,42 @@ export function fetchQuotaRequests(
   return apiRequest<QuotaRequestDto[]>('/admin/quota-requests', {
     query: { status: query.status },
     signal,
+  });
+}
+
+/**
+ * Offene Spiel-Wünsche (Betreiber, 19.09.2026).
+ *
+ * Wie bei den Kontingent-Anfragen: ohne Filter kommen alle, die Übersicht holt
+ * gezielt die offenen.
+ */
+export function fetchGameRequests(
+  query: GameRequestQuery,
+  signal?: AbortSignal,
+): Promise<ApiResult<GameRequestDto[]>> {
+  return apiRequest<GameRequestDto[]>('/admin/game-requests', {
+    query: { status: query.status },
+    signal,
+  });
+}
+
+export function approveGameRequest(
+  id: string,
+  input: DecideGameRequestInput = {},
+): Promise<ApiResult<GameRequestDto>> {
+  return apiRequest<GameRequestDto>(`/admin/game-requests/${encodeURIComponent(id)}/approve`, {
+    method: 'POST',
+    json: input,
+  });
+}
+
+export function rejectGameRequest(
+  id: string,
+  input: DecideGameRequestInput = {},
+): Promise<ApiResult<GameRequestDto>> {
+  return apiRequest<GameRequestDto>(`/admin/game-requests/${encodeURIComponent(id)}/reject`, {
+    method: 'POST',
+    json: input,
   });
 }
 

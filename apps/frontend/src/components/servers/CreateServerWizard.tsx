@@ -45,6 +45,7 @@ import {
   quotaBlockReason,
   stepBlockReason,
 } from './wizardSteps';
+import { GameRequestDialog } from './GameRequestDialog';
 import { QuotaRequestDialog } from './QuotaRequestDialog';
 import { ConfigFields } from './form/ConfigFields';
 import { useSubdomainCheck } from './useSubdomainCheck';
@@ -181,6 +182,9 @@ export function CreateServerWizard() {
    * in der man das Gewünschte suchen musste. Was der Administrator nicht
    * freigegeben hat, taucht hier gar nicht mehr auf.
    */
+  /** Offen, solange der Wunsch-Dialog über der Auswahl liegt. */
+  const [wunschOffen, setWunschOffen] = useState(false);
+
   const spiele = useMemo(
     () => (gameTypes.data ?? []).filter((game) => game.available),
     [gameTypes.data],
@@ -278,6 +282,8 @@ export function CreateServerWizard() {
 
       <StepIndicator current={step} />
 
+      {wunschOffen ? <GameRequestDialog onClose={() => setWunschOffen(false)} /> : null}
+
       {/*
         Der Schritt steht in einer Karte, die Schrittanzeige darüber frei auf
         der Seite (Vorbild hafenmeister). Ohne Karte verlief der Assistent
@@ -308,6 +314,29 @@ export function CreateServerWizard() {
                   onSelect={() => setState((current) => applyGameType(current, game))}
                 />
               ))}
+
+              {/*
+                Der Weg zu allem, was hier nicht steht (Betreiber, 19.09.2026).
+                Seit abgeschaltete Spiele nicht mehr grau danebenstehen, gäbe es
+                sonst keinen: Wer sein Spiel nicht findet, hätte nur die
+                Auswahl, sich damit abzufinden.
+              */}
+              <button
+                type="button"
+                onClick={() => setWunschOffen(true)}
+                className="flex items-center gap-3 rounded-2xl border border-dashed border-line-strong p-3.5 text-left text-ink-muted transition-colors hover:border-brand hover:text-ink"
+              >
+                <span
+                  aria-hidden
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-fill"
+                >
+                  <Icon name="plus" size={18} />
+                </span>
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="text-lg font-semibold text-ink">Spiel fehlt?</span>
+                  <span className="text-sm">Wünsch es dir bei der Administration.</span>
+                </span>
+              </button>
             </div>
           </>
         ) : null}

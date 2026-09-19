@@ -30,6 +30,7 @@ import { type ApiResult, errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
 import { ApproveDialog } from './ApproveDialog';
+import { GameRequestSection } from './GameRequestSection';
 import { QuotaRequestSection } from './QuotaRequestSection';
 import { registrationStatusLabel, registrationStatusTone } from '../labels';
 
@@ -243,6 +244,8 @@ export function RequestsView() {
       </section>
 
       <QuotaRequestSection />
+
+      <GameRequestSection />
 
       {dialog?.kind === 'approve' ? (
         <ApproveDialog
