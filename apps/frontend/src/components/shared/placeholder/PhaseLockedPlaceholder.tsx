@@ -10,6 +10,15 @@ const PHASE_TEXT: Record<ProjectPhase, string> = {
   3: 'Phase 3 – Erweiterung um weitere Spiele',
 };
 
+/**
+ * Text ohne Phase – für Inhalte, deren Phase vorbei ist, ohne dass es sie gibt.
+ *
+ * Der Phasenplan kennt nur drei Stufen, und alle drei laufen. Eine Seite, die
+ * weiterhin auf „Phase 2" verweist, verspricht damit einen Zeitpunkt in der
+ * Vergangenheit (Fundpunkt 307). Lieber gar kein Termin als ein falscher.
+ */
+const OHNE_PHASE = 'Termin offen';
+
 export interface PhaseLockedPlaceholderProps {
   /** Worum es geht, z. B. „Skins" oder „Arcade-Musik". */
   title: string;
@@ -18,8 +27,13 @@ export interface PhaseLockedPlaceholderProps {
    * nicht wie ein Fehler wirkt.
    */
   description: string;
-  /** Phase, in der der Inhalt fachlich entsteht (Lastenheft §7). */
-  phase: ProjectPhase;
+  /**
+   * Phase, in der der Inhalt fachlich entsteht (Lastenheft §7).
+   *
+   * Weglassen, wenn die genannte Phase verstrichen ist, ohne dass der Inhalt
+   * entstanden ist – dann steht statt der Phase „Termin offen".
+   */
+  phase?: ProjectPhase;
   icon?: IconName;
   /** Zusätzliche Hinweise, z. B. eine Liste geplanter Funktionen. */
   children?: ReactNode;
@@ -61,7 +75,7 @@ export function PhaseLockedPlaceholder({
 
       <p className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-warning-soft px-3 py-1 text-xs font-semibold text-warning">
         <Icon name="clock" size={12} />
-        Kommt später · {PHASE_TEXT[phase]}
+        Kommt später · {phase === undefined ? OHNE_PHASE : PHASE_TEXT[phase]}
       </p>
 
       {children ? (

@@ -107,13 +107,6 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     requires: 'canManageGameTypes',
   },
   {
-    key: 'admin-bilder',
-    label: 'Bilder',
-    icon: 'image',
-    href: '/admin/bilder',
-    requires: 'canManageGameTypes',
-  },
-  {
     key: 'admin-sticker',
     label: 'Sticker',
     icon: 'smile',
