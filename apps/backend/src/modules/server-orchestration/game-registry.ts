@@ -527,6 +527,12 @@ export const MINECRAFT_VANILLA_GAME_TYPE: GameTypeDefinition = {
     'Minecraft-Server, wie Mojang ihn ausliefert – ohne Nachbau, ohne Plugins. Die Serverdateien werden beim ersten Start geholt; der dauert deshalb länger. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
   defaultEnv: { MINECRAFT_EDITION: 'vanilla' },
   /*
+   * Die Serverdatei holt dieses Image ohnehin beim ersten Start; eine andere
+   * Fassung kostet nur eine andere Adresse (Betreiber-Wunsch 19.09.2026).
+   * Paper, Fabric und NeoForge bleiben vorerst bei der Fassung des Images.
+   */
+  supportsVersionChoice: true,
+  /*
    * Wie bei Paper, ohne `tps`: Das ist ein Paper-Befehl, den der Server von
    * Mojang mit „Unknown command" beantwortet. Ein Schnellbefehl, der nichts
    * tut, ist schlechter als keiner.

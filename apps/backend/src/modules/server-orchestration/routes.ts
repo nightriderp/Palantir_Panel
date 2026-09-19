@@ -426,6 +426,39 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
     }
   });
 
+  /**
+   * Wählbare Spielfassungen eines Spieltyps (Betreiber-Wunsch 19.09.2026).
+   *
+   * Eigene Route statt eines Feldes am Spieltyp: Die Liste kommt vom
+   * Hersteller, kostet einen Abruf nach draußen und wird nur gebraucht, wenn
+   * jemand tatsächlich wählt – die Spieleliste selbst soll davon nicht
+   * abhängen. Wo es nichts zu wählen gibt, ist die Antwort leer.
+   */
+  app.get<{ Params: { id: string } }>(
+    '/api/game-types/:id/versions',
+    { preHandler: requireApproved() },
+    async (request, reply) => {
+      try {
+        requireActor(request);
+
+        const versionen = await service.listGameVersions(request.params.id);
+
+        return await reply.send(
+          ok(
+            versionen.map((eintrag) => ({
+              id: eintrag.id,
+              label: eintrag.latest ? `${eintrag.id} (neueste)` : eintrag.id,
+              releasedAt: eintrag.releasedAt,
+              latest: eintrag.latest,
+            })),
+          ),
+        );
+      } catch (error: unknown) {
+        return replyWithError(reply, error);
+      }
+    },
+  );
+
   // -- Serverliste und Detail --------------------------------------------------
 
   app.get('/api/servers', async (request, reply) => {

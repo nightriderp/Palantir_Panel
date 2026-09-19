@@ -118,6 +118,7 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     ownerDisplayName: server.ownerDisplayName,
     gameType: server.gameType,
     gameTypeName: definition.name,
+    gameVersion: server.gameVersion,
     // Immer gesetzt, notfalls leer – das Frontend soll nicht raten müssen.
     consoleQuickCommands: definition.consoleQuickCommands ?? [],
     // Ohne Angabe hat ein Spiel eine Konsole über die Standardeingabe; nur
