@@ -81,6 +81,7 @@ import {
   buildServerConfig,
   requiresRestartAfterChange,
 } from './game-registry.js';
+import { type GameVersionCatalogue, type GameVersionQuelle } from './game-versions.js';
 import { type HealthProbe } from './health-check.js';
 import { type PortAllocator, visiblePortOf } from './ports.js';
 import {
@@ -221,6 +222,13 @@ export interface OrchestrationDependencies {
   readonly repository: ServerRepository;
   readonly agents: AgentRegistry;
   readonly registry: GameRegistry;
+  /**
+   * Wählbare Spielfassungen (Betreiber-Wunsch 19.09.2026).
+   *
+   * Optional: Ohne Katalog bleibt alles wie bisher – jeder Server fährt die
+   * Fassung seines Images.
+   */
+  readonly gameVersions?: GameVersionCatalogue;
   readonly dns: DnsProvider;
   readonly ports: PortAllocator;
   /**
@@ -526,6 +534,52 @@ export class ServerOrchestrationService {
     return server;
   }
 
+  /**
+   * Eine gewählte Spielfassung beim Hersteller nachschlagen.
+   *
+   * `null` heißt „die des Images" – das ist der Regelfall und kein Fehler.
+   * Eine Fassung, die der Hersteller nicht (mehr) führt, ist dagegen einer:
+   * Sonst entstünde ein Server, dessen Oberfläche „26.3" zeigt, während im
+   * Container die Fassung des Images läuft.
+   */
+  private async resolveGameVersion(
+    definition: GameTypeDefinition,
+    versionId: string | null,
+  ): Promise<GameVersionQuelle | null> {
+    if (versionId === null || versionId === '') {
+      return null;
+    }
+
+    if (definition.supportsVersionChoice !== true) {
+      throw new ServerOrchestrationError(
+        'VALIDATION_FAILED',
+        `Für ${definition.name} lässt sich die Spielfassung nicht wählen.`,
+      );
+    }
+
+    const quelle = (await this.deps.gameVersions?.resolve(definition.id, versionId)) ?? null;
+
+    if (quelle === null) {
+      throw new ServerOrchestrationError(
+        'VALIDATION_FAILED',
+        `Die Spielfassung ${versionId} ist beim Hersteller nicht (mehr) zu finden.`,
+      );
+    }
+
+    return quelle;
+  }
+
+  /** Wählbare Fassungen eines Spiels; leer, wo es nichts zu wählen gibt. */
+  async listGameVersions(gameTypeId: string): Promise<readonly GameVersionQuelle[]> {
+    const definition = this.deps.registry.find(gameTypeId);
+
+    if (definition === null || definition.supportsVersionChoice !== true) {
+      return [];
+    }
+
+    return (await this.deps.gameVersions?.list(gameTypeId)) ?? [];
+  }
+
   private async createServerInternal(
     input: CreateServerInput,
     ownerId: string,
@@ -568,6 +622,7 @@ export class ServerOrchestrationService {
     const definition = this.deps.registry.requireSelectable(input.gameType);
     const subdomain = await resolveAvailableSubdomain(input.subdomain, this.deps.repository);
     const host = await this.resolveHost(input.hostId);
+    const fassung = await this.resolveGameVersion(definition, input.gameVersion ?? null);
 
     const resourceLimits: ServerResourceLimits = input.resourceLimits;
 
@@ -625,6 +680,10 @@ export class ServerOrchestrationService {
             hostId: host.id,
             name: input.name,
             gameType: definition.id,
+            gameVersion: fassung?.id ?? null,
+            gameVersionUrl: fassung?.url ?? null,
+            gameVersionHash: fassung?.hash ?? null,
+            gameVersionHashAlgorithm: fassung?.hashAlgorithm ?? null,
             subdomain,
             assignedPorts: [],
             resourceLimits,

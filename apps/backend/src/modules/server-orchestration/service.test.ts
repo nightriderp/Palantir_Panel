@@ -241,6 +241,10 @@ class FakeRepository implements ServerRepository {
       totalUptimeSeconds: 0,
       dockerContainerId: null,
       imageRef: null,
+      gameVersion: null,
+      gameVersionUrl: null,
+      gameVersionHash: null,
+      gameVersionHashAlgorithm: null,
       containerSpecHash: null,
       subdomain: data.subdomain,
       dnsRecordId: null,
@@ -2133,6 +2137,10 @@ describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
     harness.repository.servers.set(created.id, {
       ...harness.repository.servers.get(created.id)!,
       imageRef: 'ghcr.io/test/echo:alt',
+      gameVersion: null,
+      gameVersionUrl: null,
+      gameVersionHash: null,
+      gameVersionHashAlgorithm: null,
       containerSpecHash: 'veraltet',
     });
 

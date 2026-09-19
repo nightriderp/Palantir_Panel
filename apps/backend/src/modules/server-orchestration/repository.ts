@@ -45,6 +45,11 @@ export interface ServerRecord {
   readonly hostCpuCores: number | null;
   /** Arbeitsspeicher der Node in MiB – Bezugsgroesse der RAM-Anzeige (weiche Zuweisung, 2026-09-18). */
   readonly hostRamMb: number | null;
+  /** Gewählte Spielfassung samt Bezugsquelle; `null` heißt „die des Images". */
+  readonly gameVersion: string | null;
+  readonly gameVersionUrl: string | null;
+  readonly gameVersionHash: string | null;
+  readonly gameVersionHashAlgorithm: string | null;
   readonly name: string;
   readonly gameType: string;
   readonly status: ServerStatus;
@@ -77,6 +82,11 @@ export interface CreateServerData {
   readonly hostId: string;
   readonly name: string;
   readonly gameType: string;
+  /** Spielfassung samt Bezugsquelle; ohne Angabe die des Images. */
+  readonly gameVersion?: string | null;
+  readonly gameVersionUrl?: string | null;
+  readonly gameVersionHash?: string | null;
+  readonly gameVersionHashAlgorithm?: string | null;
   readonly subdomain: string;
   readonly assignedPorts: readonly ServerPortAssignment[];
   readonly resourceLimits: ServerResourceLimits;
@@ -97,6 +107,11 @@ export interface UpdateServerData {
   readonly restartRequired?: boolean;
   readonly dockerContainerId?: string | null;
   readonly imageRef?: string | null;
+  /** Spielfassung samt Bezugsquelle; alle vier zusammen oder gar nicht. */
+  readonly gameVersion?: string | null;
+  readonly gameVersionUrl?: string | null;
+  readonly gameVersionHash?: string | null;
+  readonly gameVersionHashAlgorithm?: string | null;
   readonly containerSpecHash?: string | null;
   readonly dnsRecordId?: string | null;
   readonly assignedPorts?: readonly ServerPortAssignment[];
@@ -356,6 +371,10 @@ function toRecord(row: ServerJoinRow): ServerRecord {
     totalUptimeSeconds: server.totalUptimeSeconds,
     dockerContainerId: server.dockerContainerId,
     imageRef: server.imageRef,
+    gameVersion: server.gameVersion,
+    gameVersionUrl: server.gameVersionUrl,
+    gameVersionHash: server.gameVersionHash,
+    gameVersionHashAlgorithm: server.gameVersionHashAlgorithm,
     containerSpecHash: server.containerSpecHash,
     subdomain: server.subdomain,
     dnsRecordId: server.dnsRecordId,
@@ -468,6 +487,10 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
           hostId: data.hostId,
           name: data.name,
           gameType: data.gameType,
+          gameVersion: data.gameVersion ?? null,
+          gameVersionUrl: data.gameVersionUrl ?? null,
+          gameVersionHash: data.gameVersionHash ?? null,
+          gameVersionHashAlgorithm: data.gameVersionHashAlgorithm ?? null,
           subdomain: data.subdomain,
           assignedPorts: [...data.assignedPorts],
           resourceLimits: data.resourceLimits,
@@ -506,6 +529,11 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
       if (data.restartRequired !== undefined) values.restartRequired = data.restartRequired;
       if (data.dockerContainerId !== undefined) values.dockerContainerId = data.dockerContainerId;
       if (data.imageRef !== undefined) values.imageRef = data.imageRef;
+      if (data.gameVersion !== undefined) values.gameVersion = data.gameVersion;
+      if (data.gameVersionUrl !== undefined) values.gameVersionUrl = data.gameVersionUrl;
+      if (data.gameVersionHash !== undefined) values.gameVersionHash = data.gameVersionHash;
+      if (data.gameVersionHashAlgorithm !== undefined)
+        values.gameVersionHashAlgorithm = data.gameVersionHashAlgorithm;
       if (data.containerSpecHash !== undefined) values.containerSpecHash = data.containerSpecHash;
       if (data.dnsRecordId !== undefined) values.dnsRecordId = data.dnsRecordId;
       if (data.assignedPorts !== undefined) values.assignedPorts = [...data.assignedPorts];

@@ -158,6 +158,36 @@ function portNummernEnv(
  * Fassungen desselben Baus wären genau die Art Abweichung, die man erst im
  * Betrieb bemerkt.
  */
+/**
+ * Umgebung für eine gewählte Spielfassung (Betreiber-Wunsch vom 19.09.2026).
+ *
+ * Adresse und Prüfsumme stehen am Server, nicht im Image: Das Startskript holt
+ * die Serverdatei ohnehin beim ersten Start, und mit diesen drei Variablen holt
+ * es eben eine andere. Ohne gewählte Fassung bleibt die Umgebung leer und das
+ * Image nimmt seine eingebaute – **kein** leeres Feld, das den Fingerabdruck
+ * jedes bestehenden Containers änderte (Punkt 114).
+ *
+ * Die Prüfsumme gehört mit in die Umgebung und nicht nur die Adresse: Was
+ * nicht dazu passt, verwirft das Image, statt es auszuführen.
+ */
+function spielfassungEnv(server: ServerRecord): Record<string, string> {
+  const fassung = server.gameVersion;
+  const adresse = server.gameVersionUrl;
+  const summe = server.gameVersionHash;
+
+  if (fassung === null || adresse === null || summe === null) {
+    return {};
+  }
+
+  return {
+    MINECRAFT_VANILLA_VERSION: fassung,
+    MINECRAFT_VANILLA_URL: adresse,
+    ...(server.gameVersionHashAlgorithm === 'sha256'
+      ? { MINECRAFT_VANILLA_SHA256: summe }
+      : { MINECRAFT_VANILLA_SHA1: summe }),
+  };
+}
+
 export function buildContainerSpec({
   server,
   definition,
@@ -200,6 +230,7 @@ export function buildContainerSpec({
         ? {}
         : { [STARTUP_PARAMETERS_ENV]: server.startupParameters.trim() }),
       ...portNummernEnv(definition, server.assignedPorts),
+      ...spielfassungEnv(server),
     },
     command: definition.defaultCommand,
     ports: hostBindings.map((assignment) => ({

@@ -37,6 +37,7 @@ import { DEFAULT_AUTO_SHUTDOWN } from './auto-shutdown.js';
 import { createCloudflareDnsProvider } from './dns/cloudflare.js';
 import { type DnsProvider, createNoopDnsProvider } from './dns/types.js';
 import { type GameRegistry, createGameRegistry } from './game-registry.js';
+import { createMojangVersionCatalogue } from './game-versions.js';
 import { createHealthProbe } from './health-check.js';
 import { type PortPoolPort, createPortAllocator } from './ports.js';
 import { buildResourceService, resourceWarningThresholdsFromEnv } from '../resources/index.js';
@@ -299,6 +300,12 @@ export function registerServerOrchestration(
     repository,
     agents,
     registry,
+    /*
+     * Wählbare Spielfassungen (Betreiber-Wunsch 19.09.2026). Der Katalog holt
+     * sie beim Hersteller und merkt sie sich eine Stunde; ohne Netz bleibt die
+     * Liste leer und jeder Server fährt die Fassung seines Images.
+     */
+    gameVersions: createMojangVersionCatalogue(),
     dns,
     // Port-Pool aus B8 (Pflichtenheft §2.4) - B3 vergibt keine Ports selbst.
     ports: createPortAllocator(options.portPoolFor(options.db)),

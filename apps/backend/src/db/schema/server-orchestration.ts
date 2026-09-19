@@ -101,6 +101,20 @@ export const gameServers = pgTable(
      */
     imageRef: text('image_ref'),
     /**
+     * Gewählte Spielfassung, z. B. `26.3`; `null` heißt „die des Images"
+     * (Betreiber-Wunsch vom 19.09.2026).
+     *
+     * Adresse und Prüfsumme stehen daneben, statt bei jedem Start beim
+     * Hersteller nachgefragt zu werden: Ein Start, der an einem fremden Dienst
+     * hängt, wäre genau dann kaputt, wenn man ihn braucht – und der
+     * Fingerabdruck des Containers bliebe nicht stabil.
+     */
+    gameVersion: text('game_version'),
+    gameVersionUrl: text('game_version_url'),
+    gameVersionHash: text('game_version_hash'),
+    /** `sha1` oder `sha256`; Mojang nennt SHA-1, das Image kann beides. */
+    gameVersionHashAlgorithm: text('game_version_hash_algorithm'),
+    /**
      * Fingerabdruck des Bauplans, mit dem der Container angelegt wurde
      * (WORK_STATUS.md, Punkt 114).
      *
