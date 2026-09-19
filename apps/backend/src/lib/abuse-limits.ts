@@ -81,6 +81,9 @@ export interface AbuseLimit {
  * - `quota.request` – 3/Tag: Eine Kontingent-Anfrage wird von Hand beschieden.
  *   Mehr als drei am Tag sind keine Anfrage mehr, sondern eine Warteschlange
  *   für den Administrator.
+ * - `game.request` – 3/Tag: Wie die Kontingent-Anfrage. Ein Wunsch wird von
+ *   Hand beschieden; wer drei am Tag stellt, schreibt eine Wunschliste, keine
+ *   Bitte.
  * - `arcade.score` – 20/min: Eine Runde dauert Sekunden, nicht Millisekunden.
  *   Hält `arcade_scores` davon ab, im Takt der Schleife zu wachsen
  *   (`backend-community-14`).
@@ -90,6 +93,7 @@ export const ABUSE_LIMITS = {
   'chat.report': { windowSeconds: 60 * 60, maxAttempts: 10 },
   'server.console': { windowSeconds: 60, maxAttempts: 60 },
   'quota.request': { windowSeconds: 24 * 60 * 60, maxAttempts: 3 },
+  'game.request': { windowSeconds: 24 * 60 * 60, maxAttempts: 3 },
   'arcade.score': { windowSeconds: 60, maxAttempts: 20 },
 } as const satisfies Record<string, AbuseLimit>;
 
