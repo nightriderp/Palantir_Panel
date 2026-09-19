@@ -53,7 +53,8 @@ function sitzungMitHandSteuerung() {
         return {
           transferId: 'f1e2d3c4-b5a6-4f7e-8d9c-0a1b2c3d4e5f',
           fileName: 'welt.tar.gz',
-          sizeBytes: 12,
+          sizeBytes: 0,
+          pending: true,
         };
       }
 
@@ -73,6 +74,8 @@ function dienst(session: AgentSession): ServerFileService {
     config: {
       fileListTimeoutMs: 1000,
       directoryArchiveTimeoutMs: 1000,
+      // Kein echtes Warten zwischen zwei Anlaeufen.
+      directoryArchiveRetryMs: 0,
       maxUploadBytes: 1024,
     },
     requireLiveTarget: async () => ({
@@ -142,6 +145,52 @@ describe('Ordner-Download', () => {
 
     expect(teile.map((teil) => teil.length)).toEqual([4, 4, 4]);
     expect(Buffer.concat(teile)).toEqual(Buffer.alloc(12, 7));
+  });
+
+  it('meldet keine Gesamtgröße, solange der Agent noch packt', async () => {
+    const { session } = sitzungMitHandSteuerung();
+    const download = await dienst(session).openDirectoryDownload(SERVER_ID, 'welt');
+
+    // Ohne Endgröße kündigt die Route keine Länge an: Der Download beginnt
+    // dafür sofort statt nach dem vollständigen Packen.
+    expect(download.totalBytes).toBeNull();
+    expect(download.fileName).toBe('welt.tar.gz');
+  });
+
+  it('wartet auf einen Block, der noch nicht geschrieben ist, statt abzubrechen', async () => {
+    const { session, offene, befehle } = sitzungMitHandSteuerung();
+    const download = await dienst(session).openDirectoryDownload(SERVER_ID, 'welt');
+    const bloecke = download.chunks();
+
+    const erster = bloecke.next();
+
+    await durchatmen();
+    // Der Agent packt noch und hat an dieser Stelle nichts.
+    offene[0]?.({
+      transferId: 'f1e2d3c4-b5a6-4f7e-8d9c-0a1b2c3d4e5f',
+      offset: 0,
+      contentBase64: '',
+      bytesRead: 0,
+      totalBytes: 0,
+      eof: false,
+      pending: true,
+    });
+
+    // Die Wiederholung haengt an einem Zeitgeber, nicht nur an der
+    // Ereignisschleife - deshalb hier echtes Warten statt setImmediate.
+    await new Promise((weiter) => setTimeout(weiter, 5));
+
+    // Dieselbe Stelle wird erneut abgefragt, nicht als Fehler gewertet.
+    expect(befehle.filter((name) => name === 'FILE_ARCHIVE_BLOCK').length).toBeGreaterThanOrEqual(
+      2,
+    );
+
+    offene[1]?.(block(0, 4, true, 4));
+
+    const ergebnis = await erster;
+
+    expect(ergebnis.done).toBe(false);
+    expect(ergebnis.value).toEqual(Buffer.alloc(4, 7));
   });
 
   it('lässt die vorausgeschickte Anfrage nicht unbehandelt liegen, wenn der Download abbricht', async () => {
