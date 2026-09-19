@@ -43,6 +43,9 @@ import {
   type InstanceSettingsService,
 } from './modules/admin/instance-settings.js';
 import { createFontModule, registerFontRoutes } from './modules/fonts/index.js';
+import { createGameRequestService } from './modules/game-requests/index.js';
+import { createDrizzleGameRequestRepository } from './modules/game-requests/repository.js';
+import { registerGameRequestRoutes } from './modules/game-requests/routes.js';
 import { createQuotaRequestService } from './modules/quota-requests/index.js';
 import { createDrizzleQuotaRequestRepository } from './modules/quota-requests/repository.js';
 import { registerQuotaRequestRoutes } from './modules/quota-requests/routes.js';
@@ -1002,6 +1005,27 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
            * der Tabelle zu stehen. Hier ohne die spaete Weiterleitung von oben:
            * B6 steht an dieser Stelle laengst.
            */
+          events: notifications.eventSink,
+        }),
+        actorUserId: (request) => request.authUser?.id ?? null,
+      }),
+    );
+
+    /*
+     * Spiel-Wuensche (Betreiber, 19.09.2026). Kein Ressourcen-Dienst dahinter:
+     * Eine Zusage aendert nichts an der Instanz, sie haelt nur fest, dass der
+     * Betreiber das Spiel aufnehmen will. Was sie bewirkt, baut danach ein
+     * Mensch als Image.
+     */
+    await app.register(
+      registerGameRequestRoutes({
+        service: createGameRequestService({
+          repository: createDrizzleGameRequestRepository(db),
+          // Damit der Bescheid dieselbe Spur hinterlaesst wie jede andere
+          // Entscheidung ueber ein fremdes Konto (Pflichtenheft §6).
+          audit: admin.services.audit,
+          // Damit der Wunsch den Betreiber erreicht, statt still in der
+          // Tabelle zu stehen.
           events: notifications.eventSink,
         }),
         actorUserId: (request) => request.authUser?.id ?? null,

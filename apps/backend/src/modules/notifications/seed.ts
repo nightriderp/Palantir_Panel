@@ -78,6 +78,8 @@ export const ADMIN_RULE_EVENTS: readonly NotifiableEventName[] = [
   // Wer den Betreiber um etwas bittet, wartet auf eine Antwort. Ohne diese
   // Regel stand die Anfrage still auf der Admin-Seite, bis jemand nachsah.
   'quotaRequest.created',
+  // Dasselbe für den Spiel-Wunsch: Er steht sonst still in der Tabelle.
+  'gameRequest.created',
 ];
 
 /**
