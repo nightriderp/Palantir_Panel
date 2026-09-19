@@ -39,11 +39,22 @@ const SIGNET_PFAD =
   'M186 225.1A63.9 63.9 0 1 0 186 352.9A63.9 63.9 0 1 0 186 225.1Z';
 
 /**
- * Palantir-Signet: Marken-Verlaufskachel mit dem Signet aus dem Projektlogo.
+ * Kennung des Verlaufs.
  *
- * Wird in der Seitennavigation und auf den Auth-Seiten (F1) verwendet. Das
- * Tab-Icon (`src/app/icon.png`) dreht die beiden Farben um – dunkle Kachel,
- * Signet im Verlauf –, weil bei 16 px sonst zu wenig Kontrast bleibt.
+ * Fest und nicht je Instanz erzeugt: `LogoMark` steht serverseitig gerenderte
+ * Seiten (`not-found.tsx`), dort ist `useId` nicht verfügbar. Zwei Signets auf
+ * einer Seite trügen dieselbe Kennung – unschön, aber folgenlos, weil jede
+ * Instanz denselben Verlauf zeichnet.
+ */
+const VERLAUF_ID = 'palantir-signet-verlauf';
+
+/**
+ * Palantir-Signet aus dem Projektlogo: dunkle Kachel, Signet im Markenverlauf.
+ *
+ * Wird in der Seitennavigation, auf den Auth-Seiten (F1) und auf der 404-Seite
+ * verwendet – dieselbe Gestaltung wie das Tab-Icon (`src/app/icon.png`). Auf
+ * `canvas` als Seitengrund verschwindet die Kachel und das Signet steht frei;
+ * auf `surface-deep` (Navigation, Auth-Spalte) setzt sie sich leicht ab.
  */
 export function LogoMark({ size = 34, className }: LogoMarkProps) {
   const hoehe = Math.round(size * SIGNET_ANTEIL);
@@ -51,7 +62,7 @@ export function LogoMark({ size = 34, className }: LogoMarkProps) {
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-tile bg-brand-gradient',
+        'inline-flex shrink-0 items-center justify-center rounded-tile bg-canvas',
         className,
       )}
       style={{ width: size, height: size }}
@@ -62,13 +73,25 @@ export function LogoMark({ size = 34, className }: LogoMarkProps) {
         viewBox={`0 0 ${SIGNET_BREITE} ${SIGNET_HOEHE}`}
         aria-hidden
       >
-        {/*
-          Das Signet ist in der Farbe des Seitenhintergrunds aus der
-          Verlaufskachel ausgespart – deshalb das Token `canvas` statt eines
-          literalen Hex-Werts (Audit W3-2, frontend-lib-17; Regel aus
-          `tailwind.config.ts`).
-        */}
-        <path d={SIGNET_PFAD} className="fill-canvas" />
+        <defs>
+          {/*
+            Der Verlauf läuft schräg über die Höhe statt über die Diagonale des
+            Signets: Es ist schmal und hoch, diagonal bliebe das Cyan-Ende in
+            der leeren Ecke liegen und das Zeichen wäre durchgehend blau.
+
+            Die Farben kommen als `stop-color` aus den Tokens `brand` und
+            `accent` – dieselben Werte, aus denen `bg-brand-gradient` gebaut
+            ist. SVG-Farbstopps haben keine eigene Utility-Klasse, deshalb die
+            Schreibweise mit `theme()`; ein literaler Hex-Wert im Markup wäre
+            ein Verstoß gegen die Regel aus `tailwind.config.ts` (Audit W3-2,
+            frontend-lib-17).
+          */}
+          <linearGradient id={VERLAUF_ID} x1="0" y1="0" x2="0.35" y2="1">
+            <stop offset="0" className="[stop-color:theme(colors.brand.DEFAULT)]" />
+            <stop offset="1" className="[stop-color:theme(colors.accent)]" />
+          </linearGradient>
+        </defs>
+        <path d={SIGNET_PFAD} fill={`url(#${VERLAUF_ID})`} />
       </svg>
     </span>
   );

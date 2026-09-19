@@ -9,6 +9,8 @@ import { MetricRing } from './server/MetricRing';
  * `tailwind.config.ts` verbietet literale Farbwerte in Komponenten. `MetricRing`
  * und `LogoMark` hielten sich als Einzige nicht daran und schrieben die Werte
  * der Tokens `line` und `canvas` von Hand ab (Audit W3-2, frontend-lib-17).
+ * `LogoMark` zeichnet inzwischen das Signet aus dem Projektlogo und braucht
+ * dafür zusätzlich `brand` und `accent` als Farbstopps des Verlaufs.
  *
  * Der Test hält beide Seiten zusammen: die Klasse, die die Komponente setzt,
  * und den Token, den die Konfiguration dazu führt. Ein Umbenennen des Tokens
@@ -119,14 +121,21 @@ describe('Farbtokens statt literaler Werte', () => {
     expect(tokenVorhanden('line')).toBe(true);
   });
 
-  it('LogoMark zeichnet das Signet über den Token `canvas`', () => {
+  it('LogoMark färbt Kachel und Signet über Tokens', () => {
     const { container } = render(<LogoMark />);
-    const symbol = container.querySelector('path');
+    const kachel = container.firstElementChild;
+    const stopps = container.querySelectorAll('stop');
 
-    expect(symbol).not.toBeNull();
-    expect(symbol?.getAttribute('class')).toContain('fill-canvas');
-    expect(symbol?.getAttribute('fill')).toBeNull();
+    expect(kachel?.getAttribute('class')).toContain('bg-canvas');
+    expect(stopps).toHaveLength(2);
+    // SVG-Farbstopps haben keine Utility-Klasse, deshalb die theme()-Schreibweise.
+    expect(stopps[0]?.getAttribute('class')).toContain('theme(colors.brand.DEFAULT)');
+    expect(stopps[1]?.getAttribute('class')).toContain('theme(colors.accent)');
+    expect(stopps[0]?.getAttribute('stop-color')).toBeNull();
+    expect(stopps[1]?.getAttribute('stop-color')).toBeNull();
     expect(tokenVorhanden('canvas')).toBe(true);
+    expect(tokenVorhanden('brand')).toBe(true);
+    expect(tokenVorhanden('accent')).toBe(true);
   });
 
   it('beide Komponenten kommen ohne literalen Farbwert im Markup aus', () => {
