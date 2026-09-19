@@ -154,9 +154,43 @@ describe('toServerFileListDto()', () => {
       maxUploadBytes: 1_000,
       maxEditableBytes: MAX_EDITABLE_FILE_BYTES,
     });
-    expect(dto.entries.map((e) => e.path)).toEqual(['welt/level.dat', 'welt/region']);
-    // Ein Verzeichnis ist weder bearbeitbar noch einzeln herunterladbar.
-    expect(dto.entries[1]).toMatchObject({ editable: false, downloadable: false });
+    // Ordner zuerst, deshalb steht `region` vor `level.dat`.
+    expect(dto.entries.map((e) => e.path)).toEqual(['welt/region', 'welt/level.dat']);
+    // Ein Verzeichnis ist nicht bearbeitbar.
+    expect(dto.entries[0]).toMatchObject({ editable: false });
+  });
+
+  /*
+   * Vorher kam die Liste in der Reihenfolge des Dateisystems: Ordner und
+   * Dateien durcheinander, und in einem Serververzeichnis suchte man `world/`
+   * zwischen den Konfigurationsdateien.
+   */
+  it('stellt Ordner voran und sortiert innerhalb der Gruppen nach Namen', () => {
+    const dto = toServerFileListDto(
+      SERVER_ID,
+      DATA_ROOT,
+      '',
+      [
+        eintrag({ name: 'server.properties', path: '/data/server.properties' }),
+        eintrag({ name: 'region9', path: '/data/region9', type: 'directory' }),
+        eintrag({ name: 'Bilder', path: '/data/Bilder', type: 'directory' }),
+        eintrag({ name: 'eula.txt', path: '/data/eula.txt' }),
+        eintrag({ name: 'region10', path: '/data/region10', type: 'directory' }),
+        eintrag({ name: 'logs', path: '/data/logs', type: 'symlink' }),
+      ],
+      { writable: true, maxUploadBytes: 1_000 },
+    );
+
+    expect(dto.entries.map((e) => e.name)).toEqual([
+      // Ordner zuerst, „region10" nach „region9" (numerisch, nicht als Text).
+      'Bilder',
+      'region9',
+      'region10',
+      // Dann der Rest, Verknüpfungen zählen dabei wie Dateien.
+      'eula.txt',
+      'logs',
+      'server.properties',
+    ]);
   });
 
   it('meldet nichts als bearbeitbar, wo nicht geschrieben werden darf', () => {
