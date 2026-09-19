@@ -324,6 +324,16 @@ export {
 } from './arcade.js';
 
 export {
+  type CreateGameRequestInput,
+  type DecideGameRequestInput,
+  type GameRequestQuery,
+  createGameRequestInputSchema,
+  decideGameRequestInputSchema,
+  gameRequestQuerySchema,
+  gameRequestStatusSchema,
+} from './game-request.js';
+
+export {
   type CreateQuotaRequestInput,
   type DecideQuotaRequestInput,
   type QuotaRequestQuery,

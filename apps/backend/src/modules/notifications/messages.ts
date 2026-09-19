@@ -287,6 +287,26 @@ export function renderNotification(input: NotificationEvent): RenderedNotificati
       };
     }
 
+    /*
+     * Der Wunsch steht im Titel, nicht erst im Text: Wer die Meldung sieht,
+     * soll ohne Klick wissen, um welches Spiel es geht – das ist die ganze
+     * Entscheidung. Die Begründung kommt darunter, wenn es eine gibt.
+     */
+    case 'gameRequest.created':
+      return {
+        title: `${input.payload.displayName} wünscht sich ${input.payload.game}`,
+        body: withDetail(
+          'Ein Konto bittet um ein Spiel, das es noch nicht gibt.',
+          input.payload.reason,
+        ),
+        severity: 'info',
+        subject: {
+          type: 'user',
+          id: input.payload.userId,
+          displayName: input.payload.displayName,
+        },
+      };
+
     case 'announcement.published':
       return {
         title: input.payload.title,

@@ -114,7 +114,7 @@ export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = [
     // Die Anfrage gehört hierher und nicht zu den Ressourcen-Warnungen: Sie
     // meldet keinen Schwellwert, sondern dass ein Mensch auf eine Antwort
     // wartet – wie eine Registrierung, die freigeschaltet werden will.
-    events: ['user.registered', 'message.reported', 'quotaRequest.created'],
+    events: ['user.registered', 'message.reported', 'quotaRequest.created', 'gameRequest.created'],
   },
   {
     key: 'announcement',

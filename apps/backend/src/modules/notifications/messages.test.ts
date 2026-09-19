@@ -76,6 +76,18 @@ const SAMPLES: Record<string, NotificationEvent> = {
       reason: 'Beleidigung',
     },
   },
+  'gameRequest.created': {
+    event: 'gameRequest.created',
+    payload: {
+      at: '2026-09-19T12:00:00.000Z',
+      actorId: 'usr',
+      gameRequestId: 'req',
+      userId: 'usr',
+      displayName: 'Antragsteller',
+      game: 'Terraria',
+      reason: 'Wir wollen zu dritt bauen.',
+    },
+  },
   'quotaRequest.created': {
     event: 'quotaRequest.created',
     payload: {
@@ -195,6 +207,16 @@ describe('Textbildung (Pflichtenheft §14)', () => {
    * muss sie auseinanderhalten: Der Betreiber tut Verschiedenes, je nachdem ob
    * eine Grenze im Weg steht oder die Maschine voll ist.
    */
+  describe('Spiel-Wunsch', () => {
+    it('nennt das Spiel im Titel und die Begründung im Text', () => {
+      const rendered = renderNotification(SAMPLES['gameRequest.created'] as NotificationEvent);
+
+      expect(rendered.title).toBe('Antragsteller wünscht sich Terraria');
+      expect(rendered.body).toContain('Wir wollen zu dritt bauen.');
+      expect(rendered.subject).toEqual({ type: 'user', id: 'usr', displayName: 'Antragsteller' });
+    });
+  });
+
   describe('Anfrage an die Administration', () => {
     it('nennt bei einer Kontingent-Anfrage den Wunsch und die Begründung', () => {
       const rendered = renderNotification(SAMPLES['quotaRequest.created'] as NotificationEvent);

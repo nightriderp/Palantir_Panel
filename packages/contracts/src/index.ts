@@ -78,6 +78,7 @@ export * from './instance.js';
 // der mitgelieferten und hochgeladenen Schriften.
 export * from './font.js';
 export * from './panel-backup.js';
+export * from './game-request.js';
 export * from './quota-request.js';
 export * from './registration-request.js';
 

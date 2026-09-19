@@ -62,10 +62,10 @@ export function directRecipientsOf(
       return input.payload.ownerId === null ? [] : [input.payload.ownerId];
 
     /*
-     * Diese vier Ereignisse haben keinen Besitzer: Eine neue Registrierung, eine
-     * gemeldete Nachricht, eine systemweite Ankündigung und eine Anfrage an den
-     * Betreiber gehören keiner Ressource eines einzelnen Nutzers. Regeln darauf
-     * nutzen `role` oder `allUsers`.
+     * Diese fünf Ereignisse haben keinen Besitzer: Eine neue Registrierung, eine
+     * gemeldete Nachricht, eine systemweite Ankündigung, eine Anfrage an den
+     * Betreiber und ein Spiel-Wunsch gehören keiner Ressource eines einzelnen
+     * Nutzers. Regeln darauf nutzen `role` oder `allUsers`.
      *
      * Bei der Anfrage ist das besonders zu betonen: Der Antragsteller steht
      * zwar in der Nutzlast, aber er ist nicht der Empfänger – er hat sie
@@ -76,6 +76,7 @@ export function directRecipientsOf(
     case 'message.reported':
     case 'announcement.published':
     case 'quotaRequest.created':
+    case 'gameRequest.created':
       return [];
 
     default: {
