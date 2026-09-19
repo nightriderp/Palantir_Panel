@@ -3,7 +3,7 @@
 import { type GameTypeDto, type InstanceSettingsDto } from '@palantir/contracts';
 import { useState } from 'react';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
-import { PageHeader, Panel, Toggle, cn, useToast } from '@/components/shared';
+import { PageHeader, Panel, Toggle, cn, formatImageVersion, useToast } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
 import { fetchInstanceSettings, updateInstanceSettings } from '@/lib/api/admin';
 import { fetchGameTypes } from '@/lib/api/servers';
@@ -155,6 +155,12 @@ export function TemplatesView() {
                 : an
                   ? null
                   : 'Nicht im Wizard';
+              // Fassung und Hinweis teilen sich eine Zeile: Zwei magere
+              // Zeilen unter dem Namen machten die Kachel hoch, ohne mehr zu
+              // sagen.
+              const unterzeile = [formatImageVersion(spiel.imageVersion), hinweis]
+                .filter((teil) => teil !== null)
+                .join(' · ');
 
               return (
                 <Panel
@@ -173,9 +179,13 @@ export function TemplatesView() {
                       >
                         {spiel.name}
                       </p>
-                      {hinweis === null ? null : (
-                        <p className="truncate text-xs text-ink-faint" title={hinweis}>
-                          {hinweis}
+                      {/* Die Fassung des Images, das diese Vorlage startet
+                          (Betreiber-Wunsch 19.09.2026). Hier ist die Stelle,
+                          an der sich nachsehen lässt, was ein Server nach dem
+                          Aktualisieren bekommt. */}
+                      {unterzeile === '' ? null : (
+                        <p className="truncate text-xs text-ink-faint" title={unterzeile}>
+                          {unterzeile}
                         </p>
                       )}
                     </div>

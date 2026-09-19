@@ -22,6 +22,7 @@ import {
 } from '@palantir/contracts';
 import { type PermissionActor } from '../rbac/index.js';
 import { type GameRegistry } from './game-registry.js';
+import { imageVersionLabel } from './image-version.js';
 import { computeGameServerPermissions } from './permissions.js';
 import { type ServerRecord } from './repository.js';
 
@@ -169,6 +170,13 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     // vergleichen ließe (Fundpunkt 247).
     updateAvailable:
       bekannt === null ? false : updateAvailable(server.imageRef, bekannt.dockerImage),
+    /*
+     * Die beiden Fassungen sagen, was hinter dem Hinweis steckt: Der Server
+     * faehrt die eine, angeboten wird die andere. Ohne bekannte Definition
+     * gibt es keine neueste Fassung, gegen die sich vergleichen liesse.
+     */
+    imageVersion: imageVersionLabel(server.imageRef),
+    latestImageVersion: bekannt === null ? null : imageVersionLabel(bekannt.dockerImage),
     memberCount: context.memberCount,
     pinned: context.pinned ?? false,
     lastStartedAt: server.lastStartedAt,

@@ -32,6 +32,7 @@
 
 import { type GameTypeDefinition, type GameTypeDto } from '@palantir/contracts';
 import { ServerOrchestrationError } from './errors.js';
+import { imageVersionLabel } from './image-version.js';
 
 /**
  * Minimaler Test-Typ für Phase 1.
@@ -3415,6 +3416,9 @@ export function toGameTypeDto(
     resourceDefaults: definition.resourceDefaults,
     configFields: [...definition.configFields],
     available,
+    // Nur die Marke, nicht die vollstaendige Adresse: Die Registry-Adresse ist
+    // Betriebssache, die Zahl dahinter die Antwort auf „welche Fassung?".
+    imageVersion: imageVersionLabel(definition.dockerImage),
     /*
      * Zwei Gründe, zwei Sätze. „Kommt in Ausbaustufe 3" ist eine Zusage,
      * „vom Administrator ausgeschaltet" eine Entscheidung – wer das eine
