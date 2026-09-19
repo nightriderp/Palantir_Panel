@@ -8,6 +8,7 @@
  * umgangen.
  */
 
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { type ContainerRuntime } from '../container-runtime.js';
 import { ContainerRuntimeError, isContainerRuntimeError } from '../errors.js';
@@ -271,9 +272,26 @@ export class DockerContainerRuntime implements ContainerRuntime {
    * Backend hat Vorrang.
    */
   async #mitJavaHeap(spec: ContainerSpec): Promise<ContainerSpec> {
-    const planung = this.#speicherPlanung;
-    if (planung === undefined || spec.env['PALANTIR_JAVA_HEAP_MIB'] !== undefined) {
+    if (spec.env['PALANTIR_JAVA_HEAP_MIB'] !== undefined) {
       return spec;
+    }
+
+    const heapMib = await this.#heapJetztMib();
+
+    return heapMib === null
+      ? spec
+      : { ...spec, env: { ...spec.env, PALANTIR_JAVA_HEAP_MIB: String(heapMib) } };
+  }
+
+  /**
+   * Heap fuer einen Server, der **jetzt** startet – oder `null`, wenn dieser
+   * Agent ohne Speicherplanung laeuft (Tests, fremde Runtime).
+   */
+  async #heapJetztMib(): Promise<number | null> {
+    const planung = this.#speicherPlanung;
+
+    if (planung === undefined) {
+      return null;
     }
 
     // Die Planung darf einen Start nie verhindern: Scheitert die Zaehlung der
@@ -286,15 +304,49 @@ export class DockerContainerRuntime implements ContainerRuntime {
     const laufende = Array.isArray(container)
       ? container.filter((eintrag) => eintrag.status === 'running').length
       : 0;
-    const heapMib = javaHeapMib({
+
+    return javaHeapMib({
       availableMb: verfuegbarMb,
       reserveMb: planung.reserveMb,
       runningContainers: laufende,
       hardLimitMb: planung.hardLimitMb,
       maxHeapMb: planung.maxHeapMb,
     });
+  }
 
-    return { ...spec, env: { ...spec.env, PALANTIR_JAVA_HEAP_MIB: String(heapMib) } };
+  /**
+   * Den Heap fuer den naechsten Start in den Datenordner schreiben
+   * (`.palantir/heap.mib`), damit ihn das Image beim Hochfahren liest.
+   *
+   * **Warum nicht nur die Umgebungsvariable.** Sie steht beim Anlegen des
+   * Containers fest. Am 19.09.2026 hing daran ein Server fest: Er startete
+   * wieder und wieder mit 20 307 MiB Heap und wurde jedes Mal vom Kernel
+   * beendet, obwohl der Agent laengst einen gedeckelten Wert rechnete – der
+   * alte Wert klebte im Container, und „Aktualisieren" baut ihn nur neu, wenn
+   * sich das Image aendert. Die Datei schreibt der Agent vor jedem Start neu;
+   * das Image liest sie mit Vorrang (`images/base/java/java.sh`).
+   *
+   * **Ein Fehlschlag bricht den Start nicht ab.** Faellt das Schreiben aus
+   * (Rechte, Platte voll, Ordner weg), soll der Server trotzdem hochkommen –
+   * dann gilt eben der Wert aus der Umgebung. Ein nicht startender Server
+   * waere der schlechtere Tausch.
+   */
+  async #schreibeHeapDatei(containerId: string): Promise<void> {
+    try {
+      const heapMib = await this.#heapJetztMib();
+
+      if (heapMib === null) {
+        return;
+      }
+
+      const volume = await this.dataVolumePaths(containerId);
+      const ordner = path.join(volume.hostPath, '.palantir');
+
+      await fs.mkdir(ordner, { recursive: true });
+      await fs.writeFile(path.join(ordner, 'heap.mib'), `${String(heapMib)}\n`, 'utf8');
+    } catch {
+      // Absichtlich still: siehe Kopfkommentar.
+    }
   }
 
   async create(spec: ContainerSpec): Promise<ContainerHandle> {
@@ -334,6 +386,11 @@ export class DockerContainerRuntime implements ContainerRuntime {
   }
 
   async start(containerId: string): Promise<void> {
+    // Vor dem Start, nicht danach: Das Image liest die Datei in seinen ersten
+    // Zeilen, und ein Wert von gestern waere genau der Fehler, den sie
+    // beheben soll.
+    await this.#schreibeHeapDatei(containerId);
+
     // 304 = laeuft bereits. Ein START auf einen laufenden Container ist kein
     // Fehler, sondern der erwartete Ausgang bei einem wiederholten Befehl
     // (Pflichtenheft §2.2, Schutz vor Doppelausfuehrung).
