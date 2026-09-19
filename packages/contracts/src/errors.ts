@@ -121,6 +121,27 @@ export const ERROR_CATALOG = {
     httpStatus: 409,
     defaultMessage: 'Diese Kontingent-Anfrage ist bereits entschieden.',
   },
+  /** Spiel-Wunsch existiert nicht oder gehört einem anderen Konto. 404. */
+  GAME_REQUEST_NOT_FOUND: {
+    httpStatus: 404,
+    defaultMessage: 'Diesen Spiel-Wunsch gibt es nicht.',
+  },
+  /**
+   * Es liegt bereits ein offener Wunsch vor (Betreiber, 19.09.2026).
+   *
+   * Wie bei der Kontingent-Anfrage: Zwei offene Wünsche desselben Kontos
+   * ließen den Administrator raten, welcher gilt. Wer den zweiten dringender
+   * findet, zieht den ersten zurück. 409.
+   */
+  GAME_REQUEST_ALREADY_OPEN: {
+    httpStatus: 409,
+    defaultMessage: 'Du hast bereits einen offenen Spiel-Wunsch.',
+  },
+  /** Der Wunsch ist bereits beschieden – beschieden wird genau einmal. 409. */
+  GAME_REQUEST_INVALID_STATE: {
+    httpStatus: 409,
+    defaultMessage: 'Dieser Spiel-Wunsch ist bereits beschieden.',
+  },
   /** Passwort erfüllt die Mindestanforderungen aus Pflichtenheft §7 nicht. 400. */
   AUTH_PASSWORD_TOO_WEAK: {
     httpStatus: 400,

@@ -140,6 +140,16 @@ export const AUDIT_ACTIONS = [
   'quotaRequest.approved',
   'quotaRequest.rejected',
 
+  /**
+   * Bescheid über einen Spiel-Wunsch (Betreiber, 19.09.2026).
+   *
+   * Beide Richtungen stehen im Protokoll, auch die Zusage: Sie ändert für sich
+   * genommen nichts an der Instanz – das Spiel kommt erst, wenn jemand ein
+   * Image baut –, und ohne Eintrag bliebe später offen, wer sie gegeben hat.
+   */
+  'gameRequest.approved',
+  'gameRequest.rejected',
+
   // Benachrichtigungen und Moderation (B6/B7)
   'notification.channelChanged',
   'notification.ruleChanged',
@@ -210,6 +220,7 @@ export const AUDIT_TARGET_TYPES = [
   'instanceSettings',
   /** Kontingent-Anfrage eines Kontos (Audit W2-4). */
   'quotaRequest',
+  'gameRequest',
   /**
    * Schrift der Oberfläche (Lastenheft §3.10).
    *
