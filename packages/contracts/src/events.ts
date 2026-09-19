@@ -44,6 +44,15 @@ export const WEBSOCKET_EVENTS = [
    */
   'quotaRequest.created',
 
+  /**
+   * Ein Konto wünscht sich ein Spiel, das es im Panel nicht gibt
+   * (Betreiber, 19.09.2026).
+   *
+   * Dieselbe Begründung wie oben: Der Wunsch entstünde sonst still in der
+   * Datenbank, und wer fragt, wartet auf eine Antwort.
+   */
+  'gameRequest.created',
+
   // -- Server-Orchestrierung (B3, Pflichtenheft §9 und §13) -------------------
 
   /** Server-Datensatz angelegt und Container auf dem Homeserver erzeugt. */

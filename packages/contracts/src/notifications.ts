@@ -76,6 +76,9 @@ export const NOTIFIABLE_EVENTS = [
   // Kontingent- und Kapazitätsanfragen (Mockup-Abgleich 12.3.1)
   'quotaRequest.created',
 
+  // Spiel-Wünsche (Betreiber, 19.09.2026)
+  'gameRequest.created',
+
   // Systemweite Ankündigungen durch den Admin (Lastenheft §3.6)
   'announcement.published',
 ] as const satisfies readonly WebSocketEventName[];
@@ -233,6 +236,15 @@ export interface NotificationEventPayloads {
     title: string;
     body: string;
     severity: NotificationSeverity;
+  };
+  'gameRequest.created': NotificationEventBase & {
+    gameRequestId: string;
+    userId: string;
+    displayName: string;
+    /** Das gewünschte Spiel, wie der Antragsteller es geschrieben hat. */
+    game: string;
+    /** Begründung; `null`, wenn der Antragsteller keine angegeben hat. */
+    reason: string | null;
   };
   'quotaRequest.created': NotificationEventBase & {
     quotaRequestId: string;
@@ -477,6 +489,7 @@ export const MUTABLE_NOTIFICATION_EVENTS = [
   'user.registered',
   'message.reported',
   'quotaRequest.created',
+  'gameRequest.created',
 ] as const satisfies readonly NotifiableEventName[];
 
 /** Ein Ereignis, das sich abbestellen lässt. */

@@ -81,6 +81,7 @@ export const NOTIFIABLE_EVENT_LABELS: Record<NotifiableEventName, string> = {
   // Deckt beide Sorten ab (`QuotaRequestTrigger`): mehr Kontingent beantragt
   // **und** zu wenig freie Kapazität gemeldet. Eine Regel gilt für beide.
   'quotaRequest.created': 'Anfrage an die Administration',
+  'gameRequest.created': 'Spiel-Wunsch',
   'announcement.published': 'Ankündigung veröffentlicht',
 };
 
