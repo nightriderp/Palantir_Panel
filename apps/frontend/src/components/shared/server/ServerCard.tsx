@@ -199,11 +199,17 @@ function ServerCardIntern({
         Kachelbild des Spiels als Hintergrund, stark gedaempft (Betreiber-Wunsch
         19.09.2026): Es soll die Karte kennzeichnen, nicht die Zahlen darauf
         unlesbar machen. Ohne Bild bleibt die Karte wie bisher.
+
+        Jeder Block darunter traegt `relative`, und zwar aus einem Grund: Ein
+        absolut gesetztes Geschwister liegt ueber allem, was nicht selbst
+        positioniert ist. Ohne das lag der Schleier des Bildes ueber Ringen,
+        Zahlen und Schaltflaechen statt hinter ihnen (Betreiber-Meldung
+        20.09.2026).
       */}
       {gameCoverUrl === null ? null : (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-15"
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-20"
           style={{ backgroundImage: `url(${gameCoverUrl})` }}
         />
       )}
@@ -329,7 +335,7 @@ function ServerCardIntern({
         </p>
       ) : null}
 
-      <div className="flex justify-around">
+      <div className="relative flex justify-around">
         {/*
           Ohne CPU-Zuweisung gibt es keinen Nenner fuer einen Fuellstand: Der
           Container darf alle Kerne der Node sehen, und wieviele das sind, steht
@@ -391,7 +397,7 @@ function ServerCardIntern({
         Chips stehen sie nebeneinander, brechen bei schmalen Kacheln sauber um
         und sparen eine ganze Zeile Höhe.
       */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="relative flex flex-wrap items-center gap-2 text-xs">
         <span className="flex items-center gap-1.5 rounded-md bg-fill px-2.5 py-1.5 text-ink-soft">
           <Icon name="user" size={13} />
           {formatPlayers(live?.playersOnline, live?.playersMax)}
@@ -462,7 +468,7 @@ function ServerCardIntern({
 
       <div className="flex-1" />
 
-      <footer className="flex gap-2 border-t border-line pt-3.5">
+      <footer className="relative flex gap-2 border-t border-line pt-3.5">
         {canUseStartStop ? (
           <Button
             variant={action === 'stop' ? 'danger' : 'success'}
