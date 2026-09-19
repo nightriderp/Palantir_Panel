@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { type GameConfigField, type GameTypeDefinition } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { type ServerOrchestrationError } from './errors.js';
@@ -447,13 +449,21 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
     ).toBe('minecraft-paper');
   });
 
-  it('zeigt auf eine feste Fassung des eigenen Images', () => {
-    // Ein Spiel-Image-Tag wird nie überschrieben (game-images.yml). Wer
-    // `images/game/minecraft/VERSION` erhöht, muss diese Zeile nachziehen – sonst
-    // liefe die Node weiter auf der alten Fassung, ohne dass es auffiele. Der
+  it('zeigt auf die Fassung aus images/game/minecraft/VERSION', () => {
+    // Ein Spiel-Image-Tag wird nie überschrieben (game-images.yml). Bis zum
+    // 2026-09-19 stand hier eine feste Zahl mit der Bitte, sie beim Erhöhen von
+    // `VERSION` nachzuziehen – und genau das blieb bei Fassung 7 aus: Das Image
+    // war gebaut, die Registry zeigte weiter auf 6, im Panel erschien kein
+    // „Update verfügbar". Jetzt liest der Test die Datei; wer sie erhöht, sieht
+    // hier rot, statt dass die Node stumm auf der alten Fassung bleibt. Der
     // Name folgt dem Schema `palantir-<Kategorie>-<Name>` (images/README.md).
+    const fassung = readFileSync(
+      fileURLToPath(new URL('../../../../../images/game/minecraft/VERSION', import.meta.url)),
+      'utf8',
+    ).trim();
+
     expect(MINECRAFT_PAPER_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-minecraft:6',
+      `ghcr.io/nightriderp/palantir-game-minecraft:${fassung}`,
     );
   });
 
