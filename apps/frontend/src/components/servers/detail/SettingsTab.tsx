@@ -7,6 +7,7 @@ import {
   type GameServerDto,
   type GameTypeDto,
   type ServerCloneJobDto,
+  type GameVersionDto,
 } from '@palantir/contracts';
 import {
   type CloneServerInput,
@@ -24,6 +25,7 @@ import {
   FormModal,
   NumberField,
   Panel,
+  SelectField,
   TextField,
   ToggleRow,
   formatDateTime,
@@ -36,6 +38,7 @@ import {
   fetchBackup,
   fetchCloneJob,
   fetchGameTypes,
+  fetchGameVersions,
   startExport,
   updateServerSettings,
 } from '@/lib/api/servers';
@@ -62,6 +65,7 @@ import { MembersPanel } from './MembersPanel';
 function toDraft(server: GameServerDto): UpdateServerSettingsInput {
   return {
     name: server.name,
+    gameVersion: server.gameVersion ?? null,
     resourceLimits: { ...server.resourceLimits },
     config: { ...server.config },
     startupParameters: server.startupParameters,
@@ -385,6 +389,33 @@ export function SettingsTab({
     router.push('/servers');
   }
 
+  /*
+   * Wählbare Spielfassungen (Betreiber-Wunsch 19.09.2026). Geladen wird erst,
+   * wenn jemand die Einstellungen öffnet – der Abruf geht beim Hersteller
+   * nachsehen und gehört nicht in den Weg jeder Detailansicht.
+   */
+  const [fassungen, setFassungen] = useState<GameVersionDto[]>([]);
+
+  useEffect(() => {
+    if (!canEdit) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    void (async () => {
+      const ergebnis = await fetchGameVersions(server.gameType, controller.signal);
+
+      if (!controller.signal.aborted && ergebnis.success) {
+        setFassungen(ergebnis.data);
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [canEdit, server.gameType]);
+
   return (
     <div className="flex flex-col gap-4">
       {canEdit ? (
@@ -405,6 +436,26 @@ export function SettingsTab({
             suffix={`.${BASE_DOMAIN}`}
             hint="Die Subdomain steht seit dem Anlegen fest. Für eine andere Adresse einen Klon anlegen."
           />
+
+          {/*
+            Spielfassung: Der Wechsel wirkt beim nächsten Start, weil der
+            Container dafür neu gebaut wird – die Welt bleibt, sie liegt im
+            Datenordner. Ohne Auswahlmöglichkeit zeigt die Maske nichts.
+          */}
+          {fassungen.length > 0 ? (
+            <SelectField
+              label="Spielfassung"
+              hint="Gilt ab dem nächsten Start. Die Welt bleibt erhalten; prüfe vorher, ob sie zur gewählten Fassung passt."
+              value={draft.gameVersion ?? ''}
+              onChange={(value) =>
+                setDraft((current) => ({ ...current, gameVersion: value === '' ? null : value }))
+              }
+              options={[
+                { value: '', label: 'Fassung des Images' },
+                ...fassungen.map((fassung) => ({ value: fassung.id, label: fassung.label })),
+              ]}
+            />
+          ) : null}
 
           {/*
             Kein RAM-Regler mehr (Betreiber-Entscheidung 2026-09-18): Ein Server

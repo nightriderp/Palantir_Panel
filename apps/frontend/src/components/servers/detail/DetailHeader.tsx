@@ -113,6 +113,12 @@ export function DetailHeader({
 
           <p className="mt-1 text-sm text-ink-soft">
             {server.gameTypeName}
+            {/* Die Spielfassung direkt am Spiel: Sie beantwortet „passt mein
+                Client dazu" und gehoert deshalb neben den Namen, nicht in eine
+                Einstellungsseite (Betreiber-Wunsch 19.09.2026). */}
+            {server.gameVersion === null || server.gameVersion === undefined
+              ? ''
+              : ` ${server.gameVersion}`}
             {server.hostName ? ` · ${server.hostName}` : ''}
             {server.ownerDisplayName ? ` · ${server.ownerDisplayName}` : ''}
           </p>

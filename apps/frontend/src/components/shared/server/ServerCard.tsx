@@ -182,6 +182,9 @@ export function ServerCard({
           <h3 className="truncate text-lg font-semibold">{server.name}</h3>
           <p className="truncate text-sm text-ink-soft">
             {server.gameTypeName}
+            {server.gameVersion === null || server.gameVersion === undefined
+              ? ''
+              : ` ${server.gameVersion}`}
             {!isOwn && server.ownerDisplayName ? ` · ${server.ownerDisplayName}` : ''}
           </p>
         </div>
