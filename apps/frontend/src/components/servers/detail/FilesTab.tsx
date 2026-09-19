@@ -22,6 +22,7 @@ import {
   deleteFile,
   fetchFileContent,
   fetchFileList,
+  directoryDownloadUrl,
   fileDownloadUrl,
   saveFileContent,
   uploadFile,
@@ -314,11 +315,20 @@ export function FilesTab({ server }: FilesTabProps) {
                 <span className="flex gap-2 sm:justify-end">
                   {entry.downloadable ? (
                     <a
-                      href={fileDownloadUrl(server.id, entry.path)}
+                      href={
+                        entry.type === 'directory'
+                          ? directoryDownloadUrl(server.id, entry.path)
+                          : fileDownloadUrl(server.id, entry.path)
+                      }
                       className={buttonClasses('secondary', 'sm', 'no-underline')}
+                      title={
+                        entry.type === 'directory'
+                          ? 'Der Ordner wird auf dem Homeserver gepackt und kommt als tar.gz. Bei vielen Dateien dauert das einen Moment.'
+                          : undefined
+                      }
                       download
                     >
-                      Herunterladen
+                      {entry.type === 'directory' ? 'Als tar.gz' : 'Herunterladen'}
                     </a>
                   ) : null}
                   {writable ? (

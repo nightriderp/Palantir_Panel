@@ -182,6 +182,22 @@ async function buildApp(
 
       return { fileName: options.dateiname ?? 'level.dat', content: Buffer.from('rohdaten') };
     },
+    openDirectoryDownload: async (_id: string, path: string) => {
+      pruefeFehler();
+      aufrufe.download.push(path);
+
+      const stuecke = [Buffer.from('arch'), Buffer.from('iv')];
+
+      return {
+        fileName: options.dateiname ?? 'welt.tar.gz',
+        totalBytes: 6,
+        chunks: async function* bloecke() {
+          for (const stueck of stuecke) {
+            yield stueck;
+          }
+        },
+      };
+    },
   } as unknown as ServerOrchestrationService;
 
   const repository = {
@@ -528,6 +544,49 @@ describe('Datei-Manager-Routen', () => {
     );
     expect(response.rawPayload.toString('utf8')).toBe('rohdaten');
     expect(gebaut.aufrufe.download).toEqual(['welt/level.dat']);
+  });
+
+  /*
+   * Ordner-Download (Betreiber, 19.09.2026): Der Agent packt und liefert
+   * blockweise, die Route schreibt die Blöcke in ihre Antwort. Geprüft wird,
+   * dass daraus ein vollständiges Archiv mit passenden Kopfzeilen wird.
+   */
+  it('liefert einen Ordner als Strom aus Blöcken', async () => {
+    const gebaut = await buildApp();
+    app = gebaut.app;
+
+    const response = await call(
+      app,
+      'GET',
+      `/api/servers/${SERVER_ID}/files/download-directory?path=welt`,
+      { actor: 'besitzer' },
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/gzip');
+    expect(response.headers['content-length']).toBe('6');
+    expect(response.headers['content-disposition']).toBe(
+      `attachment; filename="welt.tar.gz"; filename*=UTF-8''welt.tar.gz`,
+    );
+    expect(response.rawPayload.toString('utf8')).toBe('archiv');
+    expect(gebaut.aufrufe.download).toEqual(['welt']);
+  });
+
+  it('verschweigt den Ordner vor einem fremden Konto', async () => {
+    const gebaut = await buildApp();
+    app = gebaut.app;
+
+    const response = await call(
+      app,
+      'GET',
+      `/api/servers/${SERVER_ID}/files/download-directory?path=welt`,
+      { actor: 'fremd' },
+    );
+
+    // „Nicht gefunden" statt „verboten" – wie überall am Server-Detail: Die
+    // Antwort verrät nicht, dass es den Server gibt.
+    expect(response.statusCode).toBe(404);
+    expect(gebaut.aufrufe.download).toEqual([]);
   });
 
   /**

@@ -220,7 +220,13 @@ export function toServerFileEntryDto(
     sizeBytes: entry.sizeBytes,
     modifiedAt: entry.modifiedAt,
     editable: limits.writable && isEditable(entry),
-    downloadable: entry.type === 'file',
+    /*
+     * Ordner seit dem 19.09.2026 ebenfalls: Sie kommen als tar.gz, blockweise
+     * vom Agent geholt (`FILE_ARCHIVE`). Eine Verknüpfung bleibt außen vor –
+     * geladen würde sonst ihr Ziel, und das liegt womöglich außerhalb des
+     * Datenordners.
+     */
+    downloadable: entry.type === 'file' || entry.type === 'directory',
   };
 }
 

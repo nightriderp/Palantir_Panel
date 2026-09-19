@@ -45,10 +45,38 @@ export interface LiveTarget {
   readonly containerId: string;
 }
 
+/**
+ * Ein geöffneter Ordner-Download: Name, zugesagte Größe und die Blöcke.
+ *
+ * Aufbau wie beim Backup-Download – die Route schreibt die Blöcke in ihre
+ * Antwort, statt das Archiv erst vollständig zu puffern.
+ */
+export interface ServerDirectoryDownload {
+  readonly fileName: string;
+  readonly totalBytes: number;
+  chunks(): AsyncGenerator<Buffer>;
+}
+
+/**
+ * Blockgröße beim Abholen eines gepackten Ordners.
+ *
+ * Vier Mebibyte, wie beim Backup-Download: groß genug, dass ein Gigabyte nicht
+ * in Tausenden Befehlen ankommt, klein genug für den Speicher des Agents.
+ */
+const DIRECTORY_DOWNLOAD_BLOCK_BYTES = 4 * 1024 * 1024;
+
 export interface ServerFileServiceDependencies {
   readonly registry: GameRegistry;
   readonly config: {
     readonly fileListTimeoutMs: number;
+    /**
+     * Frist für das Packen eines Ordners (`FILE_ARCHIVE`).
+     *
+     * Eigene Zahl, weil hier tatsächlich gearbeitet wird: Ein Weltordner mit
+     * zehntausenden Dateien braucht Minuten, während das Auflisten in
+     * Sekunden fertig ist.
+     */
+    readonly directoryArchiveTimeoutMs: number;
     readonly maxUploadBytes: number;
   };
   /** Wie `ServerOrchestrationService.requireLiveTarget` – Server, Sitzung, Container. */
@@ -219,6 +247,70 @@ export class ServerFileService {
       fileName: path.posix.basename(relativ),
       content: Buffer.from(result.contentBase64, 'base64'),
     };
+  }
+
+  /**
+   * Einen Ordner als `tar.gz` zum Herunterladen öffnen (Betreiber, 19.09.2026).
+   *
+   * Zwei Stufen, wie beim Backup-Download: Der Agent packt zuerst und meldet
+   * die Größe, danach holt der Aufrufer Block für Block. Erst dadurch geht ein
+   * Ordner überhaupt durch – eine Datei ist auf die Kanalgrenze begrenzt, ein
+   * Weltordner wiegt ein Vielfaches davon.
+   *
+   * Der Rückgabewert hält die Blöcke bewusst als Generator: Das Archiv fließt
+   * in die HTTP-Antwort, statt vorher vollständig im Speicher zu liegen.
+   */
+  async openDirectoryDownload(
+    serverId: string,
+    relativePath: string,
+  ): Promise<ServerDirectoryDownload> {
+    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
+    const relativ = normalizeRelativePath(relativePath);
+
+    const gepackt = await session.sendCommand(
+      'FILE_ARCHIVE',
+      server.id,
+      { containerId, path: toContainerPath(dataRoot, relativ) },
+      { timeoutMs: this.deps.config.directoryArchiveTimeoutMs },
+    );
+
+    const transferId = gepackt.transferId;
+
+    async function* bloecke(): AsyncGenerator<Buffer> {
+      let offset = 0;
+
+      for (;;) {
+        const block = await session.sendCommand('FILE_ARCHIVE_BLOCK', server.id, {
+          transferId,
+          offset,
+          maxBytes: DIRECTORY_DOWNLOAD_BLOCK_BYTES,
+        });
+
+        const bytes = Buffer.from(block.contentBase64, 'base64');
+        offset += block.bytesRead;
+
+        if (bytes.length > 0) {
+          yield bytes;
+        }
+
+        if (block.eof) {
+          return;
+        }
+
+        if (block.bytesRead === 0) {
+          /*
+           * Kein Fortschritt und kein Ende: Weiterfragen liefe endlos. Derselbe
+           * Schutz wie beim Backup-Download.
+           */
+          throw new ServerOrchestrationError(
+            'AGENT_COMMAND_FAILED',
+            'Der Agent liefert keine weiteren Daten, meldet aber kein Ende des Archivs.',
+          );
+        }
+      }
+    }
+
+    return { fileName: gepackt.fileName, totalBytes: gepackt.sizeBytes, chunks: bloecke };
   }
 
   /**
