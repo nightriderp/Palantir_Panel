@@ -2,7 +2,7 @@
 
 import { type GameTypeDto, type GameServerDto } from '@palantir/contracts';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   ConfirmDialog,
@@ -131,26 +131,39 @@ export function ServerOverview() {
    * Aufruf, bleibt alles stehen und die Meldung erklärt warum – ein Schalter,
    * der etwas anderes zeigt als der Server weiß, wäre schlimmer als keiner.
    */
-  async function anheften(server: GameServerDto): Promise<void> {
-    const aktualisiert = await togglePin(server);
+  /*
+   * Die Rückrufe der Karten hängen an `useCallback` (Leistungsbericht
+   * 19.09.2026, Punkt 3): Die Karte ist memoisiert, und ein bei jedem
+   * Durchlauf neu gebildetes Lambda machte diesen Vergleich wertlos - sie
+   * zeichnete dann bei jeder Live-Meldung trotzdem neu.
+   */
+  const setzeServer = servers.setData;
+  const anheften = useCallback(
+    async (server: GameServerDto): Promise<void> => {
+      const aktualisiert = await togglePin(server);
 
-    if (aktualisiert === null) {
-      toast.error('Die Anheftung konnte nicht gespeichert werden.');
+      if (aktualisiert === null) {
+        toast.error('Die Anheftung konnte nicht gespeichert werden.');
 
-      return;
-    }
+        return;
+      }
 
-    servers.setData((current) =>
-      (current ?? []).map((entry) => (entry.id === aktualisiert.id ? aktualisiert : entry)),
-    );
-  }
+      setzeServer((current) =>
+        (current ?? []).map((entry) => (entry.id === aktualisiert.id ? aktualisiert : entry)),
+      );
+    },
+    [togglePin, toast, setzeServer],
+  );
 
-  function copyAddress(address: string) {
-    void navigator.clipboard
-      .writeText(address)
-      .then(() => toast.success('Adresse kopiert.'))
-      .catch(() => toast.error('Die Adresse konnte nicht kopiert werden.'));
-  }
+  const copyAddress = useCallback(
+    (address: string) => {
+      void navigator.clipboard
+        .writeText(address)
+        .then(() => toast.success('Adresse kopiert.'))
+        .catch(() => toast.error('Die Adresse konnte nicht kopiert werden.'));
+    },
+    [toast],
+  );
 
   /**
    * „Nachricht" auf der Karte eines fremden Servers (Mockup `messageOwner`).
@@ -161,16 +174,46 @@ export function ServerOverview() {
    * der Knopf trotzdem sinnvoll: geschrieben wird an das Konto, nicht an den
    * Namen.
    */
-  function messageOwner(server: GameServerDto) {
-    void openDirectConversation(server.ownerId).then((result) => {
-      if (result.success) {
-        router.push(`/messages?c=${encodeURIComponent(result.data.id)}`);
-        return;
-      }
+  const messageOwner = useCallback(
+    (server: GameServerDto) => {
+      void openDirectConversation(server.ownerId).then((result) => {
+        if (result.success) {
+          router.push(`/messages?c=${encodeURIComponent(result.data.id)}`);
 
-      toast.error(errorText(result));
-    });
-  }
+          return;
+        }
+
+        toast.error(errorText(result));
+      });
+    },
+    [router, toast],
+  );
+
+  const lifecycleRun = lifecycle.run;
+  const anheftenStarten = useCallback(
+    (entry: GameServerDto) => {
+      void anheften(entry);
+    },
+    [anheften],
+  );
+  const starten = useCallback(
+    (entry: GameServerDto) => {
+      void lifecycleRun(entry, 'start');
+    },
+    [lifecycleRun],
+  );
+  const stoppenFragen = useCallback((entry: GameServerDto) => {
+    setConfirm({ action: 'stop', server: entry });
+  }, []);
+  const neustartFragen = useCallback((entry: GameServerDto) => {
+    setConfirm({ action: 'restart', server: entry });
+  }, []);
+  const oeffnen = useCallback(
+    (entry: GameServerDto) => {
+      router.push(`/servers/${entry.id}`);
+    },
+    [router],
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -279,11 +322,11 @@ export function ServerOverview() {
                 updateAvailable={server.updateAvailable}
                 restartRequired={server.pendingRestart}
                 pending={lifecycle.pendingServerId === server.id}
-                onTogglePin={(entry) => void anheften(entry)}
-                onStart={(entry) => void lifecycle.run(entry, 'start')}
-                onStop={(entry) => setConfirm({ action: 'stop', server: entry })}
-                onRestart={(entry) => setConfirm({ action: 'restart', server: entry })}
-                onOpen={(entry) => router.push(`/servers/${entry.id}`)}
+                onTogglePin={anheftenStarten}
+                onStart={starten}
+                onStop={stoppenFragen}
+                onRestart={neustartFragen}
+                onOpen={oeffnen}
                 onCopyAddress={copyAddress}
                 onMessageOwner={messageOwner}
               />
