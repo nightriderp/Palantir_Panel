@@ -1191,7 +1191,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
             yield block;
           }
 
-          if (gesendet !== erwartet) {
+          if (erwartet !== null && gesendet !== erwartet) {
             throw new ServerOrchestrationError(
               'AGENT_COMMAND_FAILED',
               `Das Archiv hat ${String(gesendet)} statt ${String(erwartet)} Bytes geliefert.`,
@@ -1212,11 +1212,20 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       })(),
     );
 
-    return await reply
+    /*
+     * Ohne bekannte Endgröße keine Längenangabe: Der Agent packt noch, während
+     * die ersten Blöcke schon fließen (Leistungsbericht 19.09.2026, Punkt
+     * 1.1). Die Antwort geht dann als Chunked-Strom raus - der Browser zeigt
+     * keinen Fortschritt in Prozent, dafür beginnt der Download sofort statt
+     * erst nach Minuten.
+     */
+    const antwort = reply
       .header('content-type', 'application/gzip')
-      .header('content-length', String(erwartet))
-      .header('content-disposition', attachmentContentDisposition(download.fileName))
-      .send(body);
+      .header('content-disposition', attachmentContentDisposition(download.fileName));
+
+    return await (
+      erwartet === null ? antwort : antwort.header('content-length', String(erwartet))
+    ).send(body);
   });
 
   // -- Weltdaten-Übernahme beim Anlegen (Lastenheft §3.3, P4) -----------------

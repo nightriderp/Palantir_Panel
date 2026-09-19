@@ -57,8 +57,30 @@ export interface LiveTarget {
  */
 export interface ServerDirectoryDownload {
   readonly fileName: string;
-  readonly totalBytes: number;
+  /**
+   * Endgröße des Archivs, oder `null`, solange der Agent noch packt
+   * (Leistungsbericht 19.09.2026, Punkt 1.1).
+   *
+   * `null` heißt für die Route: keine Gesamtlänge ankündigen. Der Download
+   * beginnt dafür sofort, statt erst nach dem vollständigen Packen.
+   */
+  readonly totalBytes: number | null;
   chunks(): AsyncGenerator<Buffer>;
+}
+
+/**
+ * Pause, bevor nach einem Block ohne Daten erneut gefragt wird.
+ *
+ * Kurz genug, dass der Download nicht stockt, lang genug, dass das Warten auf
+ * ein langsames Packen keine Dauerschleife wird.
+ */
+const DIRECTORY_DOWNLOAD_RETRY_MS = 200;
+
+/** Kurze Pause, ohne einen Zeitgeber offen zu lassen. */
+function warte(ms: number): Promise<void> {
+  return new Promise((weiter) => {
+    setTimeout(weiter, ms).unref();
+  });
 }
 
 /**
@@ -81,6 +103,11 @@ export interface ServerFileServiceDependencies {
      * Sekunden fertig ist.
      */
     readonly directoryArchiveTimeoutMs: number;
+    /**
+     * Pause, bevor nach einem Block ohne Daten erneut gefragt wird; ohne
+     * Angabe 200 ms. Tests setzen sie auf 0, damit sie nicht echt warten.
+     */
+    readonly directoryArchiveRetryMs?: number;
     readonly maxUploadBytes: number;
   };
   /** Wie `ServerOrchestrationService.requireLiveTarget` – Server, Sitzung, Container. */
@@ -263,6 +290,11 @@ export class ServerFileService {
    *
    * Der Rückgabewert hält die Blöcke bewusst als Generator: Das Archiv fließt
    * in die HTTP-Antwort, statt vorher vollständig im Speicher zu liegen.
+   *
+   * Meldet der Agent `pending`, packt er noch und liefert trotzdem schon
+   * Blöcke (Leistungsbericht 19.09.2026, Punkt 1.1). Dann steht die Endgröße
+   * erst am Schluss fest, und ein Block ohne Daten ist kein Fehler, sondern
+   * die Aufforderung, es gleich noch einmal zu versuchen.
    */
   async openDirectoryDownload(
     serverId: string,
@@ -279,6 +311,7 @@ export class ServerFileService {
     );
 
     const transferId = gepackt.transferId;
+    const pause = this.deps.config.directoryArchiveRetryMs ?? DIRECTORY_DOWNLOAD_RETRY_MS;
 
     function frageBlock(offset: number) {
       return session.sendCommand('FILE_ARCHIVE_BLOCK', server.id, {
@@ -310,6 +343,20 @@ export class ServerFileService {
           const bytes = Buffer.from(block.contentBase64, 'base64');
           offset += block.bytesRead;
 
+          if (block.pending === true && block.bytesRead === 0) {
+            /*
+             * Der Agent packt noch, an dieser Stelle steht aber noch nichts.
+             * Kurz warten und dieselbe Stelle erneut abfragen - ohne die Pause
+             * würde das Backend den Agent mit Anfragen überziehen, während
+             * gzip arbeitet.
+             */
+            offen = null;
+            await warte(pause);
+            laufend = frageBlock(offset);
+            offen = laufend;
+            continue;
+          }
+
           if (!block.eof && block.bytesRead > 0) {
             laufend = frageBlock(offset);
             offen = laufend;
@@ -327,8 +374,9 @@ export class ServerFileService {
 
           if (block.bytesRead === 0) {
             /*
-             * Kein Fortschritt und kein Ende: Weiterfragen liefe endlos. Derselbe
-             * Schutz wie beim Backup-Download.
+             * Kein Fortschritt, kein Ende und auch kein `pending`:
+             * Weiterfragen liefe endlos. Derselbe Schutz wie beim
+             * Backup-Download.
              */
             throw new ServerOrchestrationError(
               'AGENT_COMMAND_FAILED',
@@ -347,7 +395,12 @@ export class ServerFileService {
       }
     }
 
-    return { fileName: gepackt.fileName, totalBytes: gepackt.sizeBytes, chunks: bloecke };
+    return {
+      fileName: gepackt.fileName,
+      // Packt der Agent noch, ist `sizeBytes` nur ein Zwischenstand.
+      totalBytes: gepackt.pending === true ? null : gepackt.sizeBytes,
+      chunks: bloecke,
+    };
   }
 
   /**

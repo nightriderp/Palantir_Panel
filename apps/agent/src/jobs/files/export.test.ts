@@ -27,6 +27,40 @@ function job(now?: () => Date): DirectoryExportJob {
   });
 }
 
+/**
+ * Holt das ganze Archiv ab und liefert seine Bytes.
+ *
+ * Seit dem Strom-Umbau (Leistungsbericht 19.09.2026, Punkt 1.1) laeuft das
+ * Packen noch, waehrend die ersten Bloecke schon kommen. Ein Block ohne Daten
+ * und mit `pending` heisst deshalb „gleich nochmal", nicht „zu Ende".
+ */
+async function holeAlles(
+  aufgabe: DirectoryExportJob,
+  transferId: string,
+): Promise<{ bytes: Buffer; totalBytes: number }> {
+  const stuecke: Buffer[] = [];
+  let offset = 0;
+
+  for (;;) {
+    const block = await aufgabe.archiveBlock({ transferId, offset, maxBytes: 1024 });
+
+    stuecke.push(Buffer.from(block.contentBase64, 'base64'));
+    offset += block.bytesRead;
+
+    if (block.eof) {
+      return { bytes: Buffer.concat(stuecke), totalBytes: block.totalBytes };
+    }
+
+    // Der Block haelt die eigene Grenze ein, nicht die des Aufrufers.
+    expect(block.bytesRead).toBeLessThanOrEqual(16);
+
+    if (block.bytesRead === 0) {
+      expect(block.pending).toBe(true);
+      await new Promise((weiter) => setTimeout(weiter, 5));
+    }
+  }
+}
+
 beforeEach(async () => {
   arbeit = await mkdtemp(path.join(tmpdir(), 'palantir-export-'));
   quelle = path.join(arbeit, 'daten');
@@ -54,14 +88,13 @@ describe('archiveFileName()', () => {
 });
 
 describe('DirectoryExportJob', () => {
-  it('packt einen Ordner und meldet Größe und Namen', async () => {
+  it('meldet Namen und Kennung sofort, ohne das Packen abzuwarten', async () => {
     const ergebnis = await job().archive({ containerId: 'c-1', path: 'welt' });
 
     expect(ergebnis.fileName).toBe('welt.tar.gz');
-    expect(ergebnis.sizeBytes).toBeGreaterThan(0);
-    await expect(
-      fs.stat(path.join(exportDir, `${ergebnis.transferId}.tar.gz`)),
-    ).resolves.toBeDefined();
+    // Die Groesse steht erst mit dem letzten Block fest (Punkt 1.1).
+    expect(ergebnis.pending).toBe(true);
+    expect(ergebnis.sizeBytes).toBe(0);
   });
 
   it('lehnt eine Datei ab – die kommt einzeln', async () => {
@@ -84,29 +117,11 @@ describe('DirectoryExportJob', () => {
     const aufgabe = job();
     const gepackt = await aufgabe.archive({ containerId: 'c-1', path: 'welt' });
 
-    const stuecke: Buffer[] = [];
-    let offset = 0;
+    const { bytes, totalBytes } = await holeAlles(aufgabe, gepackt.transferId);
 
-    for (;;) {
-      const block = await aufgabe.archiveBlock({
-        transferId: gepackt.transferId,
-        offset,
-        maxBytes: 1024,
-      });
-
-      // Der Block hält die eigene Grenze ein, nicht die des Aufrufers.
-      expect(block.bytesRead).toBeLessThanOrEqual(16);
-      expect(block.totalBytes).toBe(gepackt.sizeBytes);
-
-      stuecke.push(Buffer.from(block.contentBase64, 'base64'));
-      offset += block.bytesRead;
-
-      if (block.eof) break;
-    }
-
-    expect(Buffer.concat(stuecke)).toHaveLength(gepackt.sizeBytes);
+    expect(bytes).toHaveLength(totalBytes);
     // gzip-Kennung: Was hier ankommt, ist ein Archiv und kein Textbrei.
-    expect(Buffer.concat(stuecke).subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
+    expect(bytes.subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
     await expect(fs.stat(path.join(exportDir, `${gepackt.transferId}.tar.gz`))).rejects.toThrow();
   });
 
@@ -135,6 +150,11 @@ describe('DirectoryExportJob', () => {
     const aufgabe = job(() => jetzt);
     const alt = await aufgabe.archive({ containerId: 'c-1', path: 'welt' });
     const altPfad = path.join(exportDir, `${alt.transferId}.tar.gz`);
+
+    // Erst abwarten, bis das Packen durch ist: Sonst schreibt gzip noch,
+    // waehrend der Test die Datei altern laesst.
+    await holeAlles(aufgabe, alt.transferId);
+    await fs.writeFile(altPfad, 'Rest eines abgebrochenen Downloads');
 
     // Datei künstlich altern lassen – ein abgebrochener Download von vorhin.
     const vergangen = new Date(jetzt.getTime() - MAX_EXPORT_AGE_MS - 1_000);
