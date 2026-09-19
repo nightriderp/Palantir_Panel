@@ -334,6 +334,17 @@ export const restoreBackupCommandPayloadSchema = z.object({
   stopTimeoutSeconds: z.number().int().nonnegative().optional(),
 });
 
+export const fileArchiveCommandPayloadSchema = z.object({
+  containerId: containerIdSchema,
+  path: containerPathSchema,
+});
+
+export const fileArchiveBlockCommandPayloadSchema = z.object({
+  transferId: idSchema,
+  offset: z.number().int().nonnegative(),
+  maxBytes: z.number().int().positive(),
+});
+
 export const downloadBackupCommandPayloadSchema = z.object({
   backupId: idSchema,
   storagePath: hostPathSchema,
@@ -368,6 +379,23 @@ export const deleteBackupCommandResultSchema = z.object({
   backupId: idSchema,
   removed: z.boolean(),
   freedBytes: z.number().int().nonnegative(),
+});
+
+export const fileArchiveCommandResultSchema = z.object({
+  transferId: idSchema,
+  fileName: z.string().min(1).max(255),
+  sizeBytes: z.number().int().nonnegative(),
+});
+
+export const fileArchiveBlockCommandResultSchema = z.object({
+  transferId: idSchema,
+  offset: z.number().int().nonnegative(),
+  contentBase64: z
+    .string()
+    .base64({ message: 'contentBase64 ist keine gültige Base64-Kodierung.' }),
+  bytesRead: z.number().int().nonnegative(),
+  totalBytes: z.number().int().nonnegative(),
+  eof: z.boolean(),
 });
 
 export const downloadBackupCommandResultSchema = z.object({
@@ -508,6 +536,8 @@ export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   FILE_DELETE: fileDeleteCommandPayloadSchema,
   FILE_UPLOAD: fileUploadCommandPayloadSchema,
   FILE_EXTRACT: fileExtractCommandPayloadSchema,
+  FILE_ARCHIVE: fileArchiveCommandPayloadSchema,
+  FILE_ARCHIVE_BLOCK: fileArchiveBlockCommandPayloadSchema,
   UPLOAD_ARCHIVE_BLOCK: uploadArchiveBlockCommandPayloadSchema,
   CREATE_BACKUP: createBackupCommandPayloadSchema,
   RESTORE_BACKUP: restoreBackupCommandPayloadSchema,

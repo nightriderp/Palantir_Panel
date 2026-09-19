@@ -38,10 +38,12 @@
 import type { OutboundEvent } from '../connection/ports.js';
 import type { ContainerRuntime } from '../runtime/index.js';
 import type { RconClient } from '../runtime/rcon.js';
+import path from 'node:path';
 import { BackupJob, DEFAULT_DOWNLOAD_BLOCK_MAX_BYTES } from './backup/backup-job.js';
 import { ArchiveUploadJob, DEFAULT_ARCHIVE_UPLOAD_MAX_BYTES } from './files/archive-upload.js';
 import { RconConsole } from './console/rcon-console.js';
 import { ServerFileJob } from './files/delete.js';
+import { DirectoryExportJob } from './files/export.js';
 import { DEFAULT_ROUTER_LISTEN_PORT, HostnameRouterJob } from './router/hostname-routes.js';
 import { createGamedigProbe } from './query/gamedig-probe.js';
 import { createServerProbe, type ServerProbe } from './query/probe.js';
@@ -163,6 +165,8 @@ export interface AgentJobs {
    */
   readonly serverDisk: ServerDiskUsage;
   readonly files: ServerFileJob;
+  /** Ordner packen und blockweise ausliefern (`FILE_ARCHIVE`). */
+  readonly exports: DirectoryExportJob;
   readonly archiveUploads: ArchiveUploadJob;
   /**
    * Routen-Dateien des Hostname-Routers (Pflichtenheft §2.4, §13).
@@ -287,6 +291,20 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
 
   const files = new ServerFileJob({ runtime: options.runtime, dataDir: env.AGENT_DATA_DIR });
 
+  /*
+   * Die Zwischenstaende liegen neben den Sicherungen, nicht im Datenordner
+   * eines Servers: Dort waeren sie fuer den Spielprozess sichtbar und kaemen in
+   * die naechste Sicherung mit hinein. `AGENT_BACKUP_DIR` ist der Ort, der
+   * ohnehin Platz fuer grosse Dateien hat.
+   */
+  const exports = new DirectoryExportJob({
+    exportDir: path.join(env.AGENT_BACKUP_DIR, '.exports'),
+    resolveHostPath: (payload) => files.hostPath(payload),
+    maxBlockBytes:
+      env.AGENT_DOWNLOAD_BLOCK_MAX_BYTES > 0 ? env.AGENT_DOWNLOAD_BLOCK_MAX_BYTES : undefined,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+
   const archiveUploads = new ArchiveUploadJob({
     runtime: options.runtime,
     dataDir: env.AGENT_DATA_DIR,
@@ -318,6 +336,7 @@ export function createAgentJobs(env: JobsEnv, options: CreateAgentJobsOptions): 
     storage,
     serverDisk,
     files,
+    exports,
     archiveUploads,
     router,
     rcon,
