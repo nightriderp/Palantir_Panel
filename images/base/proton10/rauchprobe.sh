@@ -26,10 +26,19 @@ fi
 
 if ! python3 - <<'PY'
 import ast
-import importlib
+import importlib.util
+import os
 import sys
 
 pfad = '/opt/proton/proton'
+
+# **Der Ordner des Skripts gehört an den Anfang des Suchpfads.** Genau das tut
+# CPython, wenn ein Skript aufgerufen wird - und so ruft das Image Proton auch
+# auf (`proton_lauf()` in `proton.sh`: `/opt/proton/proton run …`). Ohne diese
+# Zeile fehlten `filelock`, `protonfixes` und `utilities`: alles Dateien, die
+# neben `proton` liegen und beim echten Aufruf gefunden werden. Der erste Lauf
+# dieser Probe hat sie prompt als fehlend gemeldet.
+sys.path.insert(0, os.path.dirname(pfad))
 
 with open(pfad, encoding='utf-8') as datei:
     baum = ast.parse(datei.read(), filename=pfad)
@@ -43,11 +52,17 @@ for knoten in baum.body:
     elif isinstance(knoten, ast.ImportFrom) and knoten.level == 0 and knoten.module:
         module.add(knoten.module.split('.')[0])
 
+# `find_spec` statt `import_module`: Gefragt ist, ob das Modul da ist - das war
+# der Fehler vom 2026-09-11. Es wirklich zu importieren führte fremden Code aus
+# (`protonfixes/__init__.py`), der beim Laden nach einer Umgebung verlangen
+# kann, die es hier nicht gibt. Die Probe würde dann etwas melden, das mit der
+# Frage nichts zu tun hat.
 fehlend = []
 for name in sorted(module):
     try:
-        importlib.import_module(name)
-    except ImportError:
+        if importlib.util.find_spec(name) is None:
+            fehlend.append(name)
+    except (ImportError, ValueError):
         fehlend.append(name)
 
 if fehlend:
@@ -56,7 +71,7 @@ if fehlend:
     print('Die Standardbibliothek fehlt (python3-minimal statt python3)?', file=sys.stderr)
     raise SystemExit(1)
 
-print('  proton: %d Module auf oberster Ebene, alle importierbar' % len(module))
+print('  proton: %d Module auf oberster Ebene, alle auffindbar' % len(module))
 print('  python %s' % sys.version.split()[0])
 PY
 then
