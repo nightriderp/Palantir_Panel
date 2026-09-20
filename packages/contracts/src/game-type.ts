@@ -132,6 +132,34 @@ export interface GameTypeDto {
    * optional.
    */
   imageVersion?: string | null;
+  /**
+   * Name der Gruppe, unter der dieser Spieltyp mit seinen Geschwistern **eine
+   * gemeinsame Kachel** bekommt – z. B. `Minecraft` für Paper, Vanilla, Fabric
+   * und NeoForge (Betreiber-Wunsch 20.09.2026).
+   *
+   * Der Text ist zugleich der Schlüssel: Spieltypen mit demselben
+   * `variantGroup` gehören zusammen, und der Text steht auf der Kachel. Ein
+   * abgeleiteter Schlüssel („alles vor der Klammer") wäre eine Regel, die beim
+   * ersten Spiel ohne Klammer im Namen bricht.
+   *
+   * **Reine Darstellung.** Der Server wird nach wie vor mit der Kennung einer
+   * Variante angelegt (`minecraft-paper`), nicht mit der Gruppe; nichts
+   * dahinter – Ressourcen-Vorgaben, Fristen, Schnellbefehle – ändert sich.
+   *
+   * Ohne Angabe (`null`) steht der Spieltyp für sich, wie bisher.
+   */
+  variantGroup?: string | null;
+  /**
+   * Name dieser Variante innerhalb der Gruppe, z. B. `Paper`.
+   *
+   * Er steht in der Auswahl unter der Kachel. `name` bleibt daneben der
+   * vollständige Anzeigename („Minecraft (Paper)") und wird überall dort
+   * benutzt, wo keine Gruppe gemeint ist – Serverliste, Detailkopf,
+   * Administration.
+   *
+   * Nur zusammen mit `variantGroup` sinnvoll.
+   */
+  variantLabel?: string | null;
   /** Grund, wenn `available === false`, z. B. „Kommt in Phase 2". */
   unavailableReason: string | null;
 }
@@ -414,6 +442,33 @@ export interface GameTypeDefinition {
    * bleibt es bei der Fassung des Images.
    */
   readonly supportsVersionChoice?: boolean;
+  /**
+   * Gruppe, unter der dieser Spieltyp mit seinen Geschwistern **eine
+   * gemeinsame Kachel** im Wizard bekommt (Betreiber-Wunsch 20.09.2026).
+   *
+   * Minecraft ist der Fall, für den das Feld entstanden ist: Paper, Vanilla,
+   * Fabric und NeoForge sind vier Definitionen auf **einem** Image
+   * (`MINECRAFT_EDITION` wählt die Jar), und im Wizard standen dafür vier
+   * Kacheln nebeneinander – ein Viertel der Auswahl für ein Spiel.
+   *
+   * Die Gruppe ist **Darstellung, kein Zustand**: Ein Server trägt weiterhin
+   * die Kennung einer Variante. Die Wahl fällt deshalb im Schritt „Spiel" und
+   * nicht später – die Varianten unterscheiden sich in
+   * {@link GameTypeDefinition.resourceDefaults} (NeoForge braucht 6 GiB) und in
+   * {@link GameTypeDefinition.startupTimeoutSeconds}, und beides steckt schon
+   * im Formular, bevor der Schritt „Optionen" erreicht ist.
+   *
+   * Der Text ist zugleich der Schlüssel – siehe {@link GameTypeDto.variantGroup}.
+   */
+  readonly variantGroup?: string;
+  /**
+   * Name dieser Variante innerhalb der Gruppe, z. B. `Paper`.
+   *
+   * Nur zusammen mit {@link GameTypeDefinition.variantGroup} sinnvoll; ohne
+   * Gruppe bleibt er ungenutzt. {@link GameTypeDefinition.name} bleibt der
+   * vollständige Anzeigename.
+   */
+  readonly variantLabel?: string;
   /**
    * Wie die Live-Konsole ihre Befehle an den Server bringt (P2-9). Ohne Angabe
    * `stdin`: `palantir-console` im Container schreibt in die Standardeingabe,
