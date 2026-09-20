@@ -130,7 +130,20 @@ export const auditLog = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     action: text('action').$type<AuditAction>().notNull(),
-    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    /*
+     * Bewusst **ohne** Fremdschluessel auf `users` (Betreiber-Meldung
+     * 20.09.2026): Mit `onDelete: 'set null'` versuchte das Loeschen eines
+     * Kontos, diese Spalte zu nullen - und genau das verbietet der
+     * Unveraenderlichkeits-Trigger des Audit-Logs. Ein Konto liess sich damit
+     * gar nicht mehr loeschen, sobald es einen Audit-Eintrag verursacht hatte.
+     *
+     * Die Kennung bleibt jetzt stehen, auch wenn das Konto verschwindet. Das
+     * ist der Zweck eines Audit-Logs: Es haelt fest, was war, nicht was noch
+     * ist. Wer den Eintrag liest, findet den Namen in `actorDisplayName`; die
+     * Kennung ist die Spur, mit der sich mehrere Eintraege desselben Kontos
+     * zusammenbringen lassen.
+     */
+    actorId: uuid('actor_id'),
     actorDisplayName: text('actor_display_name'),
     targetType: text('target_type').$type<AuditTargetType>(),
     targetId: text('target_id'),
