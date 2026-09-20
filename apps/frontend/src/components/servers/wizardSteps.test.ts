@@ -11,7 +11,10 @@ import {
   type WizardContext,
   type WizardState,
   applyGameType,
+  buildGameChoices,
   buildSummaryRows,
+  findGameChoice,
+  variantChoiceLabel,
   defaultConfigValues,
   missingConfigFields,
   nodeBlockReason,
@@ -414,5 +417,129 @@ describe('buildSummaryRows', () => {
       'example.tld',
     );
     expect(rows.find((row) => row.label === 'RCON-Passwort')?.value).toBe('••••••');
+  });
+});
+
+/**
+ * Kacheln der Spielauswahl (Betreiber-Wunsch 20.09.2026).
+ *
+ * Die Gruppe ist reine Darstellung – geprüft wird deshalb, was die Kachel
+ * daraus macht, nicht wie sie es zeichnet.
+ */
+describe('buildGameChoices', () => {
+  const paper = gameType({
+    id: 'minecraft-paper',
+    name: 'Minecraft (Paper)',
+    variantGroup: 'Minecraft',
+    variantLabel: 'Paper',
+  });
+  const vanilla = gameType({
+    id: 'minecraft-vanilla',
+    name: 'Minecraft (Vanilla)',
+    variantGroup: 'Minecraft',
+    variantLabel: 'Vanilla',
+  });
+  const neoforge = gameType({
+    id: 'minecraft-neoforge',
+    name: 'Minecraft (NeoForge)',
+    variantGroup: 'Minecraft',
+    variantLabel: 'NeoForge',
+  });
+  const valheim = gameType({ id: 'valheim', name: 'Valheim' });
+
+  it('macht aus einem Spiel ohne Gruppe eine Kachel unter seinem Namen', () => {
+    expect(buildGameChoices([valheim])).toEqual([
+      { key: 'valheim', label: 'Valheim', variants: [valheim] },
+    ]);
+  });
+
+  it('fasst die Varianten einer Gruppe zu einer Kachel zusammen', () => {
+    const kacheln = buildGameChoices([paper, vanilla, neoforge]);
+
+    expect(kacheln).toHaveLength(1);
+    expect(kacheln[0]?.label).toBe('Minecraft');
+    expect(kacheln[0]?.variants.map((variante) => variante.id)).toEqual([
+      'minecraft-paper',
+      'minecraft-vanilla',
+      'minecraft-neoforge',
+    ]);
+  });
+
+  it('setzt die Gruppe an die Stelle ihres ersten Mitglieds', () => {
+    // Sonst verschöbe sich die Reihenfolge der Registry: Zwischen Paper und
+    // NeoForge stehen dort andere Spiele, und die Gruppe darf deswegen nicht
+    // ans Ende rutschen.
+    const kacheln = buildGameChoices([paper, valheim, neoforge]);
+
+    expect(kacheln.map((kachel) => kachel.key)).toEqual(['Minecraft', 'valheim']);
+  });
+
+  it('lässt eine Gruppe mit einem einzigen Mitglied als gewöhnliche Kachel stehen', () => {
+    // Der Administrator kann Spieltypen abschalten. Bliebe die Kachel eine
+    // Gruppe, trüge sie „Minecraft“ und die Auswahl darunter hätte nichts zu
+    // wählen.
+    const kacheln = buildGameChoices([paper]);
+
+    expect(kacheln).toEqual([
+      { key: 'minecraft-paper', label: 'Minecraft (Paper)', variants: [paper] },
+    ]);
+  });
+});
+
+describe('findGameChoice', () => {
+  const paper = gameType({
+    id: 'minecraft-paper',
+    variantGroup: 'Minecraft',
+    variantLabel: 'Paper',
+  });
+  const vanilla = gameType({
+    id: 'minecraft-vanilla',
+    variantGroup: 'Minecraft',
+    variantLabel: 'Vanilla',
+  });
+  const kacheln = buildGameChoices([paper, vanilla, gameType({ id: 'valheim' })]);
+
+  it('findet die Kachel über eine ihrer Varianten', () => {
+    expect(findGameChoice(kacheln, 'minecraft-vanilla')?.key).toBe('Minecraft');
+  });
+
+  it('gibt ohne Wahl und bei unbekannter Kennung null', () => {
+    expect(findGameChoice(kacheln, null)).toBeNull();
+    expect(findGameChoice(kacheln, 'gibtsnicht')).toBeNull();
+  });
+});
+
+describe('variantChoiceLabel', () => {
+  it('nimmt den kurzen Namen der Variante', () => {
+    expect(variantChoiceLabel(gameType({ variantLabel: 'Paper' }))).toBe('Paper');
+  });
+
+  it('fällt ohne ihn auf den vollständigen Anzeigenamen zurück', () => {
+    expect(variantChoiceLabel(gameType({ name: 'Minecraft (Paper)' }))).toBe('Minecraft (Paper)');
+  });
+});
+
+/**
+ * Der Wechsel der Variante geht durch `applyGameType()` – und muss es auch,
+ * weil die Varianten verschiedene Ressourcen-Vorschläge mitbringen.
+ */
+describe('Wechsel zwischen Varianten einer Gruppe', () => {
+  it('zieht den Ressourcen-Vorschlag der neuen Variante nach', () => {
+    const paper = gameType({
+      id: 'minecraft-paper',
+      resourceDefaults: { ramMb: 2048, diskMb: 10240 },
+    });
+    const neoforge = gameType({
+      id: 'minecraft-neoforge',
+      resourceDefaults: { ramMb: 6144, diskMb: 15360 },
+    });
+
+    const nachPaper = applyGameType(INITIAL_WIZARD_STATE, paper);
+    const nachNeoforge = applyGameType(nachPaper, neoforge);
+
+    expect(nachPaper.ramMb).toBe(2048);
+    expect(nachNeoforge.gameType).toBe('minecraft-neoforge');
+    expect(nachNeoforge.ramMb).toBe(6144);
+    expect(nachNeoforge.diskMb).toBe(15360);
   });
 });

@@ -77,6 +77,94 @@ export const INITIAL_WIZARD_STATE: WizardState = {
   worldImport: null,
 };
 
+/**
+ * Eine Kachel der Spielauswahl (Betreiber-Wunsch 20.09.2026).
+ *
+ * Entweder ein Spiel für sich – dann steht genau ein Eintrag in `variants` –
+ * oder eine Gruppe wie „Minecraft", hinter der Paper, Vanilla, Fabric und
+ * NeoForge stecken. Vier Kacheln für ein Spiel nahmen ein Viertel der Auswahl
+ * ein; ein Spiel ist eine Kachel, die Ausgabe wählt man darunter.
+ *
+ * **Die Gruppe ist Darstellung, kein Zustand.** Gewählt wird immer eine
+ * Variante, und `WizardState.gameType` trägt deren Kennung – alles Nachgelagerte
+ * (Ressourcen-Vorschlag, Startfrist, Schnellbefehle) bleibt unberührt.
+ */
+export interface GameChoice {
+  /** Schlüssel für die Liste; bei einer Gruppe deren Name, sonst die Kennung. */
+  key: string;
+  /** Beschriftung der Kachel: der Gruppenname oder der Name des Spiels. */
+  label: string;
+  /** Die Varianten dahinter, in der Reihenfolge der Registry. */
+  variants: GameTypeDto[];
+}
+
+/**
+ * Spieleliste zu Kacheln zusammenfassen.
+ *
+ * Gruppiert wird nach `variantGroup`; die Stelle der Gruppe ist die ihres
+ * ersten Mitglieds, damit sich die Reihenfolge der Registry nicht verschiebt.
+ *
+ * **Eine Gruppe mit einem Mitglied ist keine Gruppe.** Der Administrator kann
+ * einzelne Spieltypen abschalten, und bei „Minecraft" mit nur noch Paper darin
+ * trüge die Kachel den Gruppennamen, während die Auswahl darunter nichts zu
+ * wählen hätte. Dann steht das Spiel unter seinem eigenen Namen da, wie vor
+ * dieser Änderung.
+ */
+export function buildGameChoices(games: GameTypeDto[]): GameChoice[] {
+  const choices: GameChoice[] = [];
+  const groups = new Map<string, GameChoice>();
+
+  for (const game of games) {
+    const group = game.variantGroup ?? null;
+
+    if (group === null || group === '') {
+      choices.push({ key: game.id, label: game.name, variants: [game] });
+      continue;
+    }
+
+    const vorhanden = groups.get(group);
+
+    if (vorhanden === undefined) {
+      const neu: GameChoice = { key: group, label: group, variants: [game] };
+      groups.set(group, neu);
+      choices.push(neu);
+      continue;
+    }
+
+    vorhanden.variants.push(game);
+  }
+
+  return choices.map((choice) =>
+    choice.variants.length === 1 && choice.variants[0] !== undefined
+      ? { key: choice.variants[0].id, label: choice.variants[0].name, variants: choice.variants }
+      : choice,
+  );
+}
+
+/** Die Kachel, unter der ein gewählter Spieltyp steckt; `null`, wenn keiner gewählt ist. */
+export function findGameChoice(
+  choices: GameChoice[],
+  gameTypeId: string | null,
+): GameChoice | null {
+  if (gameTypeId === null) return null;
+
+  return (
+    choices.find((choice) => choice.variants.some((variant) => variant.id === gameTypeId)) ?? null
+  );
+}
+
+/**
+ * Beschriftung einer Variante in der Auswahl unter der Kachel.
+ *
+ * `variantLabel` ist der kurze Name („Paper"). Fehlt er – ein Spieltyp mit
+ * Gruppe, aber ohne eigenen Namen –, bleibt der vollständige Anzeigename: eine
+ * Zeile, die zu lang ist, ist besser als eine leere.
+ */
+export function variantChoiceLabel(game: GameTypeDto): string {
+  const label = game.variantLabel ?? null;
+  return label === null || label === '' ? game.name : label;
+}
+
 /** Standardwerte des Config-Schemas eines Spieltyps. */
 export function defaultConfigValues(gameType: GameTypeDto): GameConfigValues {
   const values: GameConfigValues = {};

@@ -44,7 +44,11 @@ import {
   type WizardState,
   type WizardStep,
   applyGameType,
+  buildGameChoices,
   buildSummaryRows,
+  findGameChoice,
+  variantChoiceLabel,
+  type GameChoice,
   missingConfigFields,
   quotaBlockReason,
   stepBlockReason,
@@ -112,18 +116,46 @@ function StepIndicator({ current }: { current: WizardStep }) {
 }
 
 function GameTile({
-  game,
-  selected,
+  choice,
+  selectedId,
   onSelect,
 }: {
-  game: GameTypeDto;
-  selected: boolean;
-  onSelect: () => void;
+  choice: GameChoice;
+  selectedId: string | null;
+  onSelect: (game: GameTypeDto) => void;
 }) {
+  const gruppe = choice.variants.length > 1;
+  /*
+   * Symbol, Kachelbild und Fassung kommen von der gewaehlten Variante – und
+   * solange keine gewaehlt ist, von der ersten. Die Ausgaben eines Spiels
+   * teilen sich das Image und damit meist auch die Bilder; wer einer einzelnen
+   * eine eigene Grafik hinterlegt, sieht sie trotzdem, sobald sie gewaehlt ist.
+   */
+  const gewaehlt = choice.variants.find((variant) => variant.id === selectedId) ?? null;
+  const anzeige = gewaehlt ?? choice.variants[0];
+
+  if (anzeige === undefined) {
+    return null;
+  }
+
+  const game = anzeige;
+  const selected = gewaehlt !== null;
+  /*
+   * Zweite Zeile der Kachel. Bei einem einzelnen Spiel steht dort wie bisher
+   * die Fassung des Images; bei einer Gruppe die Zahl der Varianten – und
+   * sobald eine gewaehlt ist, deren Name. Sonst saehe man der Kachel
+   * „Minecraft“ nicht an, ob Paper oder NeoForge dahintersteckt.
+   */
+  const untertitel = gruppe
+    ? gewaehlt === null
+      ? `${String(choice.variants.length)} Varianten`
+      : variantChoiceLabel(gewaehlt)
+    : formatImageVersion(game.imageVersion);
+
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={() => onSelect(anzeige)}
       aria-pressed={selected}
       className={cn(
         'relative flex items-start gap-3 overflow-hidden rounded-2xl border p-3.5 text-left transition-colors',
@@ -177,13 +209,13 @@ function GameTile({
       </span>
 
       <span className="relative flex min-w-0 flex-col gap-0.5">
-        <span className="text-lg font-semibold">{game.name}</span>
+        <span className="text-lg font-semibold">{choice.label}</span>
         {/* Die Fassung des Images auch schon bei der Auswahl
             (Betreiber-Wunsch 19.09.2026): Wer später auf der Karte „Fassung 8"
-            liest, findet hier, was gerade angeboten wird. */}
-        {formatImageVersion(game.imageVersion) === null ? null : (
-          <span className="text-xs text-ink-faint">{formatImageVersion(game.imageVersion)}</span>
-        )}
+            liest, findet hier, was gerade angeboten wird. Bei einer Gruppe
+            steht hier stattdessen, welche Varianten es gibt – ihre Fassung
+            teilen sie sich ohnehin. */}
+        {untertitel === null ? null : <span className="text-xs text-ink-faint">{untertitel}</span>}
       </span>
     </button>
   );
@@ -247,6 +279,18 @@ export function CreateServerWizard() {
   const spiele = useMemo(
     () => (gameTypes.data ?? []).filter((game) => game.available),
     [gameTypes.data],
+  );
+
+  /*
+   * Kacheln der Spielauswahl: Spieltypen derselben Gruppe stehen unter einer
+   * (Betreiber-Wunsch 20.09.2026). Gruppiert wird erst nach dem Filtern – was
+   * der Administrator abgeschaltet hat, soll auch nicht in der Auswahl unter
+   * der Kachel auftauchen.
+   */
+  const auswahlKacheln = useMemo(() => buildGameChoices(spiele), [spiele]);
+  const gewaehlteKachel = useMemo(
+    () => findGameChoice(auswahlKacheln, state.gameType),
+    [auswahlKacheln, state.gameType],
   );
   const nodes = useApiResource<HostNodeDto[]>((signal) => fetchHostNodes(signal), []);
   const quota = useApiResource<ResourceQuotaDto>((signal) => fetchResourceQuota(signal), []);
@@ -367,12 +411,12 @@ export function CreateServerWizard() {
             ) : null}
 
             <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3">
-              {spiele.map((game) => (
+              {auswahlKacheln.map((choice) => (
                 <GameTile
-                  key={game.id}
-                  game={game}
-                  selected={game.id === state.gameType}
-                  onSelect={() => setState((current) => applyGameType(current, game))}
+                  key={choice.key}
+                  choice={choice}
+                  selectedId={state.gameType}
+                  onSelect={(game) => setState((current) => applyGameType(current, game))}
                 />
               ))}
 
@@ -399,6 +443,35 @@ export function CreateServerWizard() {
                 </span>
               </button>
             </div>
+
+            {/*
+              Die Variante gehört in diesen Schritt und nicht zu den Optionen:
+              Sie entscheidet über den RAM-Vorschlag (NeoForge 6 GiB statt der
+              üblichen Vorgabe) und über die Startfrist. `applyGameType()` setzt
+              beides neu – stünde die Wahl weiter hinten, überschriebe ein
+              Wechsel stillschweigend, was der Nutzer im Schritt „Grundlagen"
+              eingestellt hat.
+            */}
+            {gewaehlteKachel !== null && gewaehlteKachel.variants.length > 1 ? (
+              <SelectField
+                label="Variante"
+                hint={selectedGame?.description}
+                value={state.gameType ?? ''}
+                onChange={(value) => {
+                  const variante = gewaehlteKachel.variants.find(
+                    (kandidat) => kandidat.id === value,
+                  );
+
+                  if (variante !== undefined) {
+                    setState((current) => applyGameType(current, variante));
+                  }
+                }}
+                options={gewaehlteKachel.variants.map((variante) => ({
+                  value: variante.id,
+                  label: variantChoiceLabel(variante),
+                }))}
+              />
+            ) : null}
           </>
         ) : null}
 
