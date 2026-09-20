@@ -227,6 +227,17 @@ export interface FontDto {
   format: FontFormat;
   /** Größe der Schriftdatei in Bytes. */
   sizeBytes: number;
+  /**
+   * Diese mitgelieferte Schrift bietet die Instanz gerade nicht an
+   * (Betreiber-Wunsch 20.09.2026).
+   *
+   * Sie steht weiterhin in der Verwaltung, damit sich die Entscheidung
+   * zurücknehmen lässt – in der Auswahl und im erzeugten Stylesheet fehlt
+   * sie. Bei hochgeladenen Schriften immer `false`: Die verschwinden wirklich.
+   *
+   * Optional und additiv; ein fehlendes Feld heißt „wird angeboten".
+   */
+  hidden?: boolean;
   /** ISO-8601 des Hochladens; `null` bei mitgelieferten Schriften. */
   uploadedAt: string | null;
   /**
