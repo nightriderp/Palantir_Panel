@@ -14,8 +14,10 @@ export { LogoMark, type LogoMarkProps } from './icons/LogoMark';
 
 export {
   Button,
+  ButtonLink,
   IconButton,
   buttonClasses,
+  type ButtonLinkProps,
   type ButtonProps,
   type ButtonSize,
   type ButtonVariant,
@@ -33,9 +35,11 @@ export {
   type StatusDotProps,
   type Tone,
 } from './primitives/Badge';
+export { Spinner, type SpinnerProps } from './primitives/Spinner';
 export { MetricTile, Panel, type MetricTileProps, type PanelProps } from './primitives/Panel';
 export { EmptyState, type EmptyStateProps } from './primitives/EmptyState';
 
+export { PageSkeleton, Skeleton, type SkeletonProps } from './feedback/Skeleton';
 export {
   ToastProvider,
   useToast,

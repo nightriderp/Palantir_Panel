@@ -127,7 +127,7 @@ export function NotificationBell() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 z-30 mt-2 max-h-[420px] w-[21rem] overflow-y-auto rounded-lg border border-line bg-surface shadow-lg"
+          className="absolute right-0 z-30 mt-2 max-h-[420px] w-[21rem] animate-materialize overflow-y-auto rounded-lg border border-line bg-surface shadow-panel"
         >
           <p className="border-b border-line px-4 py-3 text-base font-semibold text-ink">
             Benachrichtigungen

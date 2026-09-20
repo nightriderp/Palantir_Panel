@@ -221,7 +221,7 @@ export function RolesView() {
                   <Button onClick={() => setDraft(null)} disabled={busy}>
                     Verwerfen
                   </Button>
-                  <Button variant="primary" onClick={() => void savePermissions()} disabled={busy}>
+                  <Button variant="primary" onClick={() => void savePermissions()} loading={busy}>
                     Speichern
                   </Button>
                 </div>

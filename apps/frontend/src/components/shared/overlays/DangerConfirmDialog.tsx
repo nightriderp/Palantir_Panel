@@ -129,7 +129,7 @@ export function DangerConfirmDialog({
           <Button onClick={onClose} disabled={busy}>
             {cancelLabel}
           </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={busy || !unlocked}>
+          <Button variant="danger" onClick={onConfirm} loading={busy} disabled={!unlocked}>
             {confirmLabel}
           </Button>
         </>

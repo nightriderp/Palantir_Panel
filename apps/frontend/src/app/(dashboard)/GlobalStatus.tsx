@@ -137,7 +137,7 @@ export function GlobalStatus({ metrics }: GlobalStatusProps) {
                 darf nichts abfangen. Ohne das läge es beim Wandern der Maus
                 zwischen zwei Kennzahlen im Weg und flackerte.
               */
-              <div className="pointer-events-none absolute left-0 top-[calc(100%+8px)] z-50 w-60 rounded-xl border border-line bg-surface p-2.5 shadow-lg">
+              <div className="pointer-events-none absolute left-0 top-[calc(100%+8px)] z-50 w-60 rounded-xl border border-line bg-surface p-2.5 shadow-panel">
                 <div className="mb-1.5 flex items-baseline justify-between gap-2">
                   <span className="text-xs font-semibold text-ink">{metric.label}</span>
                   <span className="text-2xs text-ink-faint">{statusSpanLabel(punkte)}</span>

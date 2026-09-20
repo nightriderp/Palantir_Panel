@@ -96,7 +96,7 @@ export function PasswordSection({ account, onChanged }: SectionProps) {
           inputProps={{ required: true }}
         />
         <div>
-          <Button type="submit" variant="primary" disabled={busy}>
+          <Button type="submit" variant="primary" loading={busy}>
             {alreadyHasPassword ? 'Passwort ändern' : 'Passwort einrichten'}
           </Button>
         </div>
@@ -201,7 +201,7 @@ export function TwoFactorSection({ account, onChanged }: SectionProps) {
             inputProps={{ inputMode: 'numeric', required: true }}
           />
           <div>
-            <Button type="submit" variant="danger" disabled={busy}>
+            <Button type="submit" variant="danger" loading={busy}>
               2FA deaktivieren
             </Button>
           </div>
@@ -251,7 +251,7 @@ export function TwoFactorSection({ account, onChanged }: SectionProps) {
             inputProps={{ inputMode: 'numeric', required: true }}
           />
           <div className="flex gap-2.5">
-            <Button type="submit" variant="primary" disabled={busy}>
+            <Button type="submit" variant="primary" loading={busy}>
               Aktivieren
             </Button>
             <Button

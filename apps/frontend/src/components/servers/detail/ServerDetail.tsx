@@ -4,7 +4,7 @@ import { type GameServerDto } from '@palantir/contracts';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Button,
+  ButtonLink,
   ConfirmDialog,
   DangerConfirmDialog,
   EmptyState,
@@ -229,7 +229,7 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
         icon="warning"
         title="Server nicht verfügbar"
         description={resource.error ?? 'Dieser Server existiert nicht oder ist nicht freigegeben.'}
-        action={<Button onClick={() => router.push('/servers')}>Zurück zur Übersicht</Button>}
+        action={<ButtonLink href="/servers">Zurück zur Übersicht</ButtonLink>}
       />
     );
   }
@@ -241,9 +241,9 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
         subtitle="Details und Steuerung"
         className="-mx-5 -mt-5 px-5"
         actions={
-          <Button iconLeft="arrowLeft" onClick={() => router.push('/servers')}>
+          <ButtonLink href="/servers" iconLeft="arrowLeft">
             Zurück zur Übersicht
-          </Button>
+          </ButtonLink>
         }
       />
 

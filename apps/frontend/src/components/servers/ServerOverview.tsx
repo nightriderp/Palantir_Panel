@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
+  ButtonLink,
   ConfirmDialog,
   EmptyState,
   Icon,
@@ -223,9 +224,9 @@ export function ServerOverview() {
         className="-mx-5 -mt-5 px-5"
         actions={
           canCreate ? (
-            <Button variant="primary" iconLeft="plus" onClick={() => router.push('/servers/neu')}>
+            <ButtonLink href="/servers/neu" variant="primary" iconLeft="plus">
               Neuer Server
-            </Button>
+            </ButtonLink>
           ) : undefined
         }
       />
@@ -275,9 +276,9 @@ export function ServerOverview() {
           description="Lege deinen ersten Gameserver an – das dauert nur ein paar Klicks."
           action={
             canCreate ? (
-              <Button variant="primary" iconLeft="plus" onClick={() => router.push('/servers/neu')}>
+              <ButtonLink href="/servers/neu" variant="primary" iconLeft="plus">
                 Neuer Server
-              </Button>
+              </ButtonLink>
             ) : undefined
           }
         />

@@ -44,3 +44,37 @@ describe('SideNavSection – Ziel ist Pflicht (Fundpunkt 159)', () => {
     expect(screen.getByRole('link', { name: /Nachrichten/ }).textContent).toContain('3');
   });
 });
+
+/**
+ * Der Rahmen des aktiven Eintrags darf keinen Platz kosten, den der ruhende
+ * nicht auch belegt.
+ *
+ * Vorher trug nur der aktive Eintrag `border-l-2`. Weil ein Rahmen Breite hat,
+ * rutschte bei jedem Seitenwechsel die Beschriftung der neuen Zeile zwei Pixel
+ * nach rechts und die der alten wieder zurück – auf der meistbenutzten Fläche
+ * der Oberfläche ein sichtbares Zucken. Der Test hält fest, was die Lösung
+ * ausmacht: Die Kante steht an **jedem** Eintrag, ruhend nur durchsichtig.
+ */
+describe('SideNavSection – kein Versatz beim Wechsel des aktiven Eintrags', () => {
+  it('gibt aktivem und ruhendem Eintrag dieselbe Rahmenbreite', () => {
+    render(<SideNavSection items={EINTRAEGE} />);
+
+    const aktiv = screen.getByRole('link', { name: /Übersicht/ });
+    const ruhend = screen.getByRole('link', { name: /Nachrichten/ });
+
+    for (const eintrag of [aktiv, ruhend]) {
+      expect(eintrag.className).toContain('border-l-2');
+    }
+
+    expect(aktiv.className).toContain('border-brand');
+    expect(ruhend.className).toContain('border-transparent');
+  });
+
+  it('blendet den Farbwechsel über, statt ihn zu schalten', () => {
+    render(<SideNavSection items={EINTRAEGE} />);
+
+    expect(screen.getByRole('link', { name: /Nachrichten/ }).className).toContain(
+      'transition-colors',
+    );
+  });
+});

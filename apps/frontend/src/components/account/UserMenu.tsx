@@ -100,7 +100,7 @@ export function UserMenu({ user }: { user: AccountDto | null }) {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 z-30 mt-2 w-60 overflow-hidden rounded-lg border border-line bg-surface shadow-lg"
+          className="absolute right-0 z-30 mt-2 w-60 animate-materialize overflow-hidden rounded-lg border border-line bg-surface shadow-panel"
         >
           <div className="border-b border-line px-4 py-3">
             <p className="truncate text-base font-semibold text-ink">{user.displayName}</p>
