@@ -23,11 +23,15 @@ describe('Adressableitung aus PALANTIR_DOMAIN', () => {
     const e = adressenAbleiten(eingabe({}));
 
     expect(e.PUBLIC_WEB_URL).toBe('https://beispiel.tld');
-    expect(e.PUBLIC_API_URL).toBe('https://api.beispiel.tld');
-    expect(e.COOKIE_DOMAIN).toBe('beispiel.tld');
-    expect(e.DISCORD_REDIRECT_URI).toBe('https://api.beispiel.tld/auth/discord/callback');
-    expect(e.TWITCH_REDIRECT_URI).toBe('https://api.beispiel.tld/auth/twitch/callback');
-    expect(e.STEAM_RETURN_URL).toBe('https://api.beispiel.tld/auth/steam/callback');
+    // Seit dem 20.09.2026 derselbe Host wie das Panel, nur mit Pfad: Zwei
+    // Hosts zwaengen die Cookies auf die Elterndomain und damit an die
+    // Spielcontainer.
+    expect(e.PUBLIC_API_URL).toBe('https://beispiel.tld/api');
+    // Genau das ist der Gewinn: keine abgeleitete Domain, also host-only.
+    expect(e.COOKIE_DOMAIN).toBeUndefined();
+    expect(e.DISCORD_REDIRECT_URI).toBe('https://beispiel.tld/api/auth/discord/callback');
+    expect(e.TWITCH_REDIRECT_URI).toBe('https://beispiel.tld/api/auth/twitch/callback');
+    expect(e.STEAM_RETURN_URL).toBe('https://beispiel.tld/api/auth/steam/callback');
   });
 
   it('ein Domainwechsel zieht jede abgeleitete Adresse mit', () => {
@@ -37,7 +41,6 @@ describe('Adressableitung aus PALANTIR_DOMAIN', () => {
     for (const schlüssel of [
       'PUBLIC_WEB_URL',
       'PUBLIC_API_URL',
-      'COOKIE_DOMAIN',
       'DISCORD_REDIRECT_URI',
       'TWITCH_REDIRECT_URI',
       'STEAM_RETURN_URL',
@@ -45,6 +48,15 @@ describe('Adressableitung aus PALANTIR_DOMAIN', () => {
       expect(nachher[schlüssel]).not.toBe(vorher[schlüssel]);
       expect(nachher[schlüssel]).toContain('andere.example');
     }
+
+    /*
+     * Die Cookie-Domain zieht bewusst NICHT mit: Panel und API liegen seit
+     * dem 20.09.2026 auf demselben Host, und daraus leitet sich keine Domain
+     * ab - die Cookies sind host-only. Ein Domainwechsel aendert daran
+     * nichts, und das ist richtig so.
+     */
+    expect(nachher.COOKIE_DOMAIN).toBeUndefined();
+    expect(vorher.COOKIE_DOMAIN).toBeUndefined();
   });
 
   /**
@@ -96,8 +108,8 @@ describe('Adressableitung aus PALANTIR_DOMAIN', () => {
     expect(normalisiert.COOKIE_DOMAIN).toBe('gesetzt.example');
 
     const e = adressenAbleiten(normalisiert as unknown as Eingabe);
-    expect(e.PUBLIC_API_URL).toBe('https://api.beispiel.tld');
-    expect(e.DISCORD_REDIRECT_URI).toBe('https://api.beispiel.tld/auth/discord/callback');
+    expect(e.PUBLIC_API_URL).toBe('https://beispiel.tld/api');
+    expect(e.DISCORD_REDIRECT_URI).toBe('https://beispiel.tld/api/auth/discord/callback');
     expect(e.COOKIE_DOMAIN).toBe('gesetzt.example');
   });
 

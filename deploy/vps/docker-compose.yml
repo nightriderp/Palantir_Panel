@@ -507,13 +507,19 @@ services:
       - '${WIREGUARD_VPS_IP:-10.10.0.1}:4000:4000'
     labels:
       - 'traefik.enable=true'
-      # `/agent` bewusst ausgenommen (Fundpunkt 121): Der Agent-Kanal läuft nur
-      # über den Host-Port an der Tunnel-Adresse (siehe `ports` oben). Traefik
-      # antwortet auf `/agent` mit 404, statt den WebSocket ans Backend
-      # durchzureichen. Die Negation `!` ist Traefik-v3-Syntax (TRAEFIK_VERSION).
-      - 'traefik.http.routers.palantir-api.rule=Host(`api.${PALANTIR_DOMAIN}`) && !PathPrefix(`/agent`)'
-      - 'traefik.http.routers.palantir-api.entrypoints=websecure'
-      - 'traefik.http.routers.palantir-api.tls.certresolver=letsencrypt'
+      # Den eigenen API-Host (`api.<Domain>`) gibt es nicht mehr (20.09.2026).
+      #
+      # Er war der Grund, warum die Sitzungs-Cookies für die Elterndomain
+      # gelten mussten - und damit auch an die Spielcontainer unter
+      # `<name>.<Domain>` gingen. Seit die API unter `<Domain>/api` erreichbar
+      # ist, braucht es ihn nicht mehr; stehen bleiben hiesse, die alte
+      # Angriffsfläche offen zu lassen, damit niemand sie versehentlich wieder
+      # benutzt.
+      #
+      # Der Dienst selbst bleibt (`services.palantir-api`), der Pfad-Router
+      # weiter unten zeigt darauf. Ein Aufruf von `api.<Domain>` landet jetzt
+      # bei Traefik und endet mit 404; der DNS-Eintrag darf weg, muss aber
+      # nicht.
       - 'traefik.http.services.palantir-api.loadbalancer.server.port=4000'
       # Sicherheits-Header der API (Audit W2-6, security-matrix-10). Bis hierher
       # lieferte weder Traefik noch Fastify einen davon.
@@ -540,7 +546,7 @@ services:
       - 'traefik.http.middlewares.palantir-api-secure.headers.frameDeny=true'
       - 'traefik.http.middlewares.palantir-api-secure.headers.referrerPolicy=strict-origin-when-cross-origin'
       - "traefik.http.middlewares.palantir-api-secure.headers.contentSecurityPolicy=default-src 'none'; frame-ancestors 'none'"
-      - 'traefik.http.routers.palantir-api.middlewares=palantir-api-secure'
+      # (Die Header hängen jetzt allein am Pfad-Router weiter unten.)
       # Zweiter Weg zur API: gleicher Host wie das Panel, Praefix `/api`
       # (Fundpunkt 313).
       #
@@ -553,10 +559,9 @@ services:
       # keine Domain mehr ab - die Cookies sind host-only und erreichen keine
       # Subdomain. Nebenbei entfaellt CORS als Thema (siehe Fundpunkt 302).
       #
-      # **Beide Wege bleiben nebeneinander bestehen.** Der Umstieg ist eine
-      # Aenderung an der `.env` (PUBLIC_API_URL, COOKIE_DOMAIN, die beiden
-      # REDIRECT_URI) - der alte Host bleibt erreichbar, damit ein Ruecksprung
-      # ohne erneutes Ausrollen geht.
+      # **Der einzige Weg, seit dem 20.09.2026.** Der alte Host ist oben
+      # entfernt; ein Ruecksprung braucht jetzt ein Ausrollen und nicht mehr
+      # nur eine Aenderung an der `.env`.
       #
       # `!PathPrefix('/api/agent')` aus demselben Grund wie oben (Fundpunkt
       # 121): Der Agent-Kanal laeuft ausschliesslich ueber den Host-Port an der

@@ -678,7 +678,8 @@ const envSchema = z.object({
   PUBLIC_WEB_URL: z.string().url().optional(),
   /**
    * Öffentliche Adresse der Backend-API.
-   * Ohne Angabe: `https://api.<PALANTIR_DOMAIN>`.
+   * Ohne Angabe: `https://<PALANTIR_DOMAIN>/api` - derselbe Host wie das
+   * Panel, damit die Sitzungs-Cookies host-only bleiben.
    */
   PUBLIC_API_URL: z.string().url().optional(),
 
@@ -912,7 +913,17 @@ export function adressenAbleiten(werte: UmgebungRoh) {
   const domain = werte.PALANTIR_DOMAIN;
 
   const webUrl = ohneSchrägstrich(werte.PUBLIC_WEB_URL ?? `https://${domain}`);
-  const apiUrl = ohneSchrägstrich(werte.PUBLIC_API_URL ?? `https://api.${domain}`);
+  /*
+   * Vorgabe ist der Pfad am Panel-Host, nicht mehr ein eigener API-Host
+   * (20.09.2026, Fundpunkt 313).
+   *
+   * Zwei Hosts zwingen die Sitzungs-Cookies auf die Elterndomain - und damit
+   * auch an die Spielcontainer unter `<name>.<Domain>`. Ein Pfad am selben
+   * Host laesst `cookieDomainAbleiten()` gar keine Domain ableiten: Die
+   * Cookies sind host-only und erreichen keine Subdomain. Eine frische
+   * Instanz steht damit von sich aus richtig.
+   */
+  const apiUrl = ohneSchrägstrich(werte.PUBLIC_API_URL ?? `https://${domain}/api`);
 
   return {
     ...werte,
