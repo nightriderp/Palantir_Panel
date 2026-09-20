@@ -233,6 +233,17 @@ export interface NotificationLiveRouteOptions {
   readonly notifications: NotificationService;
   /** Konto-Id des Aufrufers aus der Sitzung (B1); `null` = nicht angemeldet. */
   resolveUserId(request: FastifyRequest): string | null;
+  /**
+   * Ist das Konto freigeschaltet? (Entscheidung des Betreibers, 2026-09-20.)
+   *
+   * Absichtlich **pflichtig** und nicht optional mit Vorgabe „ja": Wer diesen
+   * Kanal einhaengt, soll die Frage beantworten muessen. Eine Vorgabe haette
+   * genau die Luecke offengehalten, die hier geschlossen wird - ein wartendes
+   * Konto kam ueber den Kanal an seine Inbox, obwohl Lastenheft 3.1 ihm bis
+   * zur Freischaltung jeden Zugriff verwehrt. Der Wert kommt aus B2
+   * (`PermissionActor.approved`); B6 kennt das Rollensystem selbst nicht.
+   */
+  isApproved(request: FastifyRequest): boolean;
   readonly path?: string;
   /**
    * Panel-Adresse (`PUBLIC_WEB_URL`) für die Herkunftsprüfung des
@@ -292,6 +303,20 @@ export function registerNotificationLiveRoute(
 
       if (userId === null) {
         socket.close(CLOSE_CODE_UNAUTHORIZED, 'Nicht angemeldet.');
+
+        return;
+      }
+
+      /*
+       * Freischaltung auch hier, nicht nur an den REST-Routen daneben: Sonst
+       * bliebe der Kanal der offene Nebeneingang zur Inbox.
+       *
+       * Derselbe Schliesscode wie bei „nicht angemeldet". Ein wartendes Konto
+       * erfaehrt seinen Zustand auf dem Wartebildschirm, nicht ueber einen
+       * eigenen Code an einem Kanal, den es nicht sehen soll.
+       */
+      if (!options.isApproved(request)) {
+        socket.close(CLOSE_CODE_UNAUTHORIZED, 'Konto ist noch nicht freigeschaltet.');
 
         return;
       }

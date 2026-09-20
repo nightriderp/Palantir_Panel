@@ -255,7 +255,7 @@ describe('Herkunft des Handshakes (security-matrix-04)', () => {
 
   async function baueApp(
     hub = createNotificationHub(),
-    extras: { heartbeatIntervalMs?: number } = {},
+    extras: { heartbeatIntervalMs?: number; isApproved?: () => boolean } = {},
   ): Promise<FastifyInstance> {
     const app = Fastify({ logger: false });
 
@@ -265,6 +265,7 @@ describe('Herkunft des Handshakes (security-matrix-04)', () => {
       hub,
       notifications: { countUnread: async () => 0 } as unknown as NotificationService,
       resolveUserId: () => 'user-1',
+      isApproved: () => true,
       allowedOrigin: PANEL,
       ...extras,
     });
@@ -380,6 +381,7 @@ describe('Lebenszeichen des Inbox-Kanals (Fundpunkt 142)', () => {
       hub,
       notifications: { countUnread: async () => 0 } as unknown as NotificationService,
       resolveUserId: () => 'user-1',
+      isApproved: () => true,
       allowedOrigin: PANEL,
       // Ohne diesen Takt müsste der Test eine ganze Minute warten.
       heartbeatIntervalMs: 20,
@@ -434,6 +436,7 @@ describe('Sitzung am offenen Kanal (Befund 3.2)', () => {
       hub: createNotificationHub(),
       notifications: { countUnread: async () => 0 } as unknown as NotificationService,
       resolveUserId: () => 'user-1',
+      isApproved: () => true,
       allowedOrigin: PANEL,
       isSessionValid,
       sessionCheckIntervalMs: 20,
@@ -470,5 +473,66 @@ describe('Sitzung am offenen Kanal (Befund 3.2)', () => {
 
     expect(socket.readyState).toBe(socket.OPEN);
     socket.close();
+  });
+});
+
+/**
+ * Freischaltung am Kanal (Entscheidung des Betreibers, 2026-09-20).
+ *
+ * Die REST-Routen der Inbox tragen seit derselben Entscheidung
+ * `requireApproved()`. Bliebe der Kanal offen, waere er der Nebeneingang: Er
+ * traegt dieselben Meldungen, nur ungefragt statt abgerufen.
+ */
+describe('Freischaltung am Inbox-Kanal (Lastenheft 3.1)', () => {
+  const PANEL = 'https://panel.example.tld';
+
+  async function baueApp(approved: boolean): Promise<FastifyInstance> {
+    const app = Fastify({ logger: false });
+
+    await app.register(websocket);
+
+    registerNotificationLiveRoute(app, {
+      hub: createNotificationHub(),
+      notifications: { countUnread: async () => 0 } as unknown as NotificationService,
+      resolveUserId: () => 'user-1',
+      isApproved: () => approved,
+      allowedOrigin: PANEL,
+    });
+
+    await app.ready();
+
+    return app;
+  }
+
+  it('schliesst den Kanal fuer ein wartendes Konto', async () => {
+    const app = await baueApp(false);
+
+    try {
+      const socket = await app.injectWS('/live/notifications', { headers: { origin: PANEL } });
+      const grund = await new Promise<{ code: number; reason: string }>((resolve) => {
+        socket.on('close', (code: number, reason: Buffer) =>
+          resolve({ code, reason: reason.toString() }),
+        );
+      });
+
+      expect(grund.code).toBe(CLOSE_CODE_UNAUTHORIZED);
+      expect(grund.reason).toContain('freigeschaltet');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('laesst ein freigeschaltetes Konto herein', async () => {
+    const app = await baueApp(true);
+
+    try {
+      const socket = await app.injectWS('/live/notifications', { headers: { origin: PANEL } });
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(socket.readyState).toBe(socket.OPEN);
+      socket.close();
+    } finally {
+      await app.close();
+    }
   });
 });

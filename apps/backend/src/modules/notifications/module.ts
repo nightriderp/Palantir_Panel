@@ -211,6 +211,11 @@ export interface RegisterNotificationsOptions extends NotificationModuleOptions 
   /** Konto-Id des Aufrufers aus der Sitzung (B1); `null` = nicht angemeldet. */
   resolveUserId(request: FastifyRequest): string | null;
   /**
+   * Ist das Konto freigeschaltet? Nur fuer den Live-Kanal; die REST-Routen
+   * pruefen es ueber `requireApproved()` aus B2 selbst.
+   */
+  isApproved(request: FastifyRequest): boolean;
+  /**
    * Panel-Adresse (`PUBLIC_WEB_URL`) für die Herkunftsprüfung des
    * WebSocket-Handshakes (Audit W2-5, `security-matrix-04`).
    */
@@ -240,6 +245,7 @@ export async function registerNotifications(
     hub: module.hub,
     notifications: module.service,
     resolveUserId: options.resolveUserId,
+    isApproved: options.isApproved,
     ...(options.allowedOrigin === undefined ? {} : { allowedOrigin: options.allowedOrigin }),
     ...(options.isSessionValid === undefined ? {} : { isSessionValid: options.isSessionValid }),
   });

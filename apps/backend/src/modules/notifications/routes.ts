@@ -30,7 +30,13 @@ import {
 } from '@palantir/validation';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { isRbacError, replyWithErrorCode, requireActor, requirePermission } from '../rbac/index.js';
+import {
+  isRbacError,
+  replyWithErrorCode,
+  requireActor,
+  requireApproved,
+  requirePermission,
+} from '../rbac/index.js';
 import { NotificationError, isNotificationError } from './errors.js';
 import type { NotificationService } from './service.js';
 
@@ -100,20 +106,48 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
 
     // -- Inbox des angemeldeten Kontos --------------------------------------
 
-    app.get('/notifications', async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
-      try {
-        const query = notificationQuerySchema.parse(request.query ?? {});
+    /*
+     * `requireApproved()` auf allem, was hier folgt (Entscheidung des Betreibers,
+     * 2026-09-20).
+     *
+     * Die Inbox war die letzte Ausnahme von Lastenheft §3.1 („bis zur
+     * Freischaltung keinerlei Zugriff auf Funktionen"): Sie hing allein an der
+     * Sitzung, damit eine systemweite Ankündigung ein wartendes Konto erreichen
+     * kann. Diese Begründung trägt nicht mehr – `publishAnnouncement()` stellt
+     * ausdrücklich nur an **freigeschaltete** Konten zu
+     * (`listActiveUserIds()`, Rolle außer „Gast"). Ein wartendes Konto bekam also
+     * ohnehin keine Ankündigung in die Inbox; offen stand nur der Weg zu einer
+     * leeren Liste und zu den Einstellungen daneben.
+     *
+     * Die Oberfläche war nie betroffen: Ein wartendes Konto landet auf
+     * `/pending` und sieht das Dashboard samt Glocke nicht. Geschlossen wird
+     * damit der Weg über die Schnittstelle – derselbe Schritt, den das Arcade
+     * (§3.9) bereits hinter sich hat.
+     *
+     * Was das kostet: Eine Benachrichtigungs-Regel, die ausdrücklich den
+     * Empfängerkreis „Rolle Gast" trägt, kann ihre Meldung zwar weiterhin
+     * zustellen, aber niemand kann sie mehr abrufen. Wer wartende Konten
+     * erreichen will, nutzt den Wartebildschirm oder einen externen Kanal.
+     */
+    app.get(
+      '/notifications',
+      { preHandler: requireApproved() },
+      async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
+        try {
+          const query = notificationQuerySchema.parse(request.query ?? {});
 
-        return ok(await notifications.listInbox(userIdOf(request), query));
-      } catch (error) {
-        await handleError(reply, error);
+          return ok(await notifications.listInbox(userIdOf(request), query));
+        } catch (error) {
+          await handleError(reply, error);
 
-        return undefined;
-      }
-    });
+          return undefined;
+        }
+      },
+    );
 
     app.post(
       '/notifications/read',
+      { preHandler: requireApproved() },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const input = markNotificationsReadInputSchema.parse(request.body ?? {});
@@ -130,6 +164,7 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
 
     app.delete(
       '/notifications/:notificationId',
+      { preHandler: requireApproved() },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const { notificationId } = notificationParamsSchema.parse(request.params);
@@ -155,6 +190,7 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
      */
     app.get(
       '/notifications/preferences',
+      { preHandler: requireApproved() },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           return ok(await notifications.getPreferences(userIdOf(request)));
@@ -168,6 +204,7 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
 
     app.put(
       '/notifications/preferences',
+      { preHandler: requireApproved() },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const input = notificationPreferencesInputSchema.parse(request.body ?? {});
@@ -190,6 +227,7 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
      */
     app.get(
       '/notifications/push/config',
+      { preHandler: requireApproved() },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           userIdOf(request);
@@ -209,6 +247,7 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
      */
     app.post(
       '/notifications/push/subscriptions',
+      { preHandler: requireApproved() },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const input = pushSubscriptionInputSchema.parse(request.body ?? {});
@@ -233,6 +272,7 @@ export function registerNotificationRoutes(options: NotificationRoutesOptions) {
     /* Geraet abmelden. Konto und Adresse muessen zusammenpassen. */
     app.delete(
       '/notifications/push/subscriptions',
+      { preHandler: requireApproved() },
       async (request, reply): Promise<ApiResponse<unknown> | undefined> => {
         try {
           const input = pushUnsubscribeInputSchema.parse(request.body ?? {});

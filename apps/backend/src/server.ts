@@ -653,6 +653,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const notifications = await registerNotifications(app, {
       db,
       resolveUserId: (request) => request.authUser?.id ?? null,
+      /*
+       * Freischaltung fuer den Live-Kanal der Inbox (Entscheidung des
+       * Betreibers, 2026-09-20). Der Actor steht am Request, seit `registerRbac`
+       * oben den `onRequest`-Haken gesetzt hat; fehlt er, gilt das Konto als
+       * nicht freigeschaltet - im Zweifel zu, nicht auf.
+       */
+      isApproved: (request) => request.permissionActor?.approved === true,
       isSessionValid,
       // Herkunftsprüfung des WebSocket-Handshakes (Audit W2-5,
       // `security-matrix-04`) – dieselbe Adresse wie bei CORS oben.

@@ -8,6 +8,7 @@
  * zur Schnittstelle des Moduls.
  */
 
+import { GUEST_ROLE_NAME } from '@palantir/contracts';
 import type {
   NotifiableEventName,
   NotificationEvent,
@@ -59,9 +60,31 @@ export function adminActor(): PermissionActor {
   });
 }
 
-/** Handelnder ohne jedes Recht – für die Prüfung der Guards. */
+/**
+ * Freigeschaltetes Konto ohne jedes Recht – für die Prüfung der Guards.
+ *
+ * Die Rolle trägt keine Permission, aber einen Namen jenseits von „Gast": Damit
+ * gilt das Konto als freigeschaltet (`hasNonGuestRole`) und fällt nur an
+ * `requirePermission()` durch, nicht schon an `requireApproved()`. Vorher stand
+ * hier `roles: []` – das ist die Lage eines **wartenden** Kontos und prüfte
+ * unbemerkt zwei Dinge auf einmal.
+ */
 export function plainActor(): PermissionActor {
-  return buildPermissionActor({ isOwner: false, roles: [] });
+  return buildPermissionActor({
+    isOwner: false,
+    roles: [{ name: 'Nutzer', grantedPermissions: [] }],
+  });
+}
+
+/**
+ * Wartendes Konto: nur die geschützte Systemrolle „Gast", also nicht
+ * freigeschaltet (Lastenheft §3.1).
+ */
+export function guestActor(): PermissionActor {
+  return buildPermissionActor({
+    isOwner: false,
+    roles: [{ name: GUEST_ROLE_NAME, grantedPermissions: [] }],
+  });
 }
 
 export function serverEvent(
