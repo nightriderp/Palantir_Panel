@@ -50,6 +50,7 @@ import {
   buildSummaryRows,
   findGameChoice,
   variantChoiceLabel,
+  variantHint,
   type GameChoice,
   missingConfigFields,
   quotaBlockReason,
@@ -542,7 +543,7 @@ export function CreateServerWizard() {
             {gewaehlteKachel !== null && gewaehlteKachel.variants.length > 1 ? (
               <SelectField
                 label="Variante"
-                hint={selectedGame?.description}
+                hint={variantHint(selectedGame, gewaehlteKachel.variants)}
                 value={state.gameType ?? ''}
                 onChange={(value) => {
                   const variante = gewaehlteKachel.variants.find(

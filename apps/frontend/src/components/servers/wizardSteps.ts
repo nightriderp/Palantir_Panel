@@ -176,6 +176,48 @@ export function variantChoiceLabel(game: GameTypeDto): string {
   return label === null || label === '' ? game.name : label;
 }
 
+/**
+ * Hinweistext unter der Variantenwahl: Beschreibung der Ausgabe – und, wo es
+ * darauf ankommt, ein Satz zur Adressform (Betreiber-Wunsch 20.09.2026).
+ *
+ * **Warum das überhaupt nötig ist.** Unter der Minecraft-Kachel stehen fünf
+ * Ausgaben, und vier davon sind über eine Adresse ohne Portnummer erreichbar
+ * (`supportsVirtualHostRouting`, Pflichtenheft §13). Bedrock ist es nicht – es
+ * spricht UDP auf 19132, und der Hostname-Router vor den Java-Servern greift
+ * dort nicht. Ein Wechsel im Aufklappmenü änderte damit stillschweigend, was
+ * der Spieler später eintippen muss.
+ *
+ * **Nur wenn die Gruppe sich uneinig ist.** Sind alle Ausgaben gleich – wie bei
+ * jedem Spiel ausser Minecraft –, wäre der Satz eine Selbstverständlichkeit,
+ * die man nach dem zweiten Lesen überspringt. Dann steht dort nur die
+ * Beschreibung, wie bisher.
+ *
+ * Der Hinweis nennt **beide** Fälle beim Namen: Wer Bedrock wählt, soll wissen,
+ * dass es hier anders ist als nebenan; wer von Bedrock zurück auf Paper geht,
+ * soll sehen, dass der Port wieder wegfällt.
+ */
+export function variantHint(
+  gewaehlt: GameTypeDto | null,
+  varianten: readonly GameTypeDto[],
+): string | undefined {
+  if (gewaehlt === null) {
+    return undefined;
+  }
+
+  const beschreibung = gewaehlt.description;
+  const formen = new Set(varianten.map((variante) => variante.supportsVirtualHostRouting));
+
+  if (formen.size < 2) {
+    return beschreibung;
+  }
+
+  const adresse = gewaehlt.supportsVirtualHostRouting
+    ? 'Diese Ausgabe ist ohne Portnummer erreichbar – anders als andere Ausgaben dieses Spiels.'
+    : 'Diese Ausgabe braucht eine Portnummer in der Adresse – anders als die übrigen Ausgaben dieses Spiels.';
+
+  return beschreibung === '' ? adresse : `${beschreibung} ${adresse}`;
+}
+
 /** Standardwerte des Config-Schemas eines Spieltyps. */
 export function defaultConfigValues(gameType: GameTypeDto): GameConfigValues {
   const values: GameConfigValues = {};

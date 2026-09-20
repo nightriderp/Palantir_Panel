@@ -17,6 +17,7 @@ import {
   buildSummaryRows,
   findGameChoice,
   variantChoiceLabel,
+  variantHint,
   defaultConfigValues,
   missingConfigFields,
   nodeBlockReason,
@@ -668,5 +669,62 @@ describe('applyGameVariant', () => {
     expect(nachher.ramMb).toBe(2048);
     expect(nachher.ressourcenAngefasst).toBe(false);
     expect(nachher.gameVersion).toBeNull();
+  });
+});
+
+/**
+ * Hinweistext unter der Variantenwahl (Betreiber-Wunsch 20.09.2026).
+ *
+ * Unter der Minecraft-Kachel stehen fünf Ausgaben, und vier davon sind ohne
+ * Portnummer erreichbar. Bedrock ist es nicht – ein Wechsel im Aufklappmenü
+ * änderte damit stillschweigend, was der Spieler später eintippen muss.
+ */
+describe('variantHint', () => {
+  const mitRouting = gameType({
+    id: 'minecraft-paper',
+    description: 'Minecraft auf Basis von Paper.',
+    supportsVirtualHostRouting: true,
+  });
+  const ohneRouting = gameType({
+    id: 'minecraft-bedrock',
+    description: 'Minecraft für Handy und Konsole.',
+    supportsVirtualHostRouting: false,
+  });
+
+  it('nennt nur die Beschreibung, solange alle Ausgaben gleich sind', () => {
+    // Bei jedem Spiel ausser Minecraft ist das der Fall - ein Satz, der immer
+    // gilt, wird nach dem zweiten Lesen übersprungen.
+    const hinweis = variantHint(mitRouting, [
+      mitRouting,
+      gameType({ id: 'minecraft-vanilla', supportsVirtualHostRouting: true }),
+    ]);
+
+    expect(hinweis).toBe('Minecraft auf Basis von Paper.');
+  });
+
+  it('warnt bei der Ausgabe, die eine Portnummer braucht', () => {
+    const hinweis = variantHint(ohneRouting, [mitRouting, ohneRouting]) ?? '';
+
+    expect(hinweis).toContain('Minecraft für Handy und Konsole.');
+    expect(hinweis).toContain('braucht eine Portnummer');
+  });
+
+  it('sagt auch beim Zurückwechseln, dass der Port wieder wegfällt', () => {
+    // Wer von Bedrock zurück auf Paper geht, soll den Unterschied ebenfalls
+    // sehen - sonst stuende der Hinweis nur an einer der beiden Stellen.
+    const hinweis = variantHint(mitRouting, [mitRouting, ohneRouting]) ?? '';
+
+    expect(hinweis).toContain('ohne Portnummer erreichbar');
+  });
+
+  it('gibt ohne gewählte Variante nichts', () => {
+    expect(variantHint(null, [mitRouting, ohneRouting])).toBeUndefined();
+  });
+
+  it('kommt ohne Beschreibung mit dem Hinweis allein aus', () => {
+    const leer = gameType({ id: 'x', description: '', supportsVirtualHostRouting: false });
+    const hinweis = variantHint(leer, [mitRouting, leer]) ?? '';
+
+    expect(hinweis.startsWith('Diese Ausgabe')).toBe(true);
   });
 });
