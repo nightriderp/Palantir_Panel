@@ -170,20 +170,22 @@ describe('createMojangVersionCatalogue', () => {
  * PaperMC (Betreiber-Wunsch 20.09.2026: eine Minecraft-Vorlage für alle
  * Versionen und Ausgaben).
  *
- * Wie bei Mojang gegen eine Attrappe – geprüft wird die Auswertung, nicht die
- * Erreichbarkeit von PaperMC.
+ * Die Attrappe bildet die **v3-Schnittstelle** nach, weil das Image seine Jar
+ * schon von dort holt (`images/game/minecraft/Dockerfile`): Versionen nach
+ * Reihen geordnet, Bauten mit `id`/`channel: 'STABLE'` und einer fertigen
+ * Adresse unter `downloads['server:default']`.
  */
 
-const PAPER_URL = 'https://paper.invalid/v2/projects/paper';
+const PAPER_URL = 'https://paper.invalid/v3/projects/paper';
 
 interface PaperBauVorgabe {
-  readonly build: number;
+  readonly id: number;
   readonly channel: string;
 }
 
 /** Antwortgeber für Projekt und Bauten je Version. */
 function paperAttrappe(
-  versionen: readonly string[],
+  reihen: Readonly<Record<string, readonly string[]>>,
   bauten: Readonly<Record<string, readonly PaperBauVorgabe[]>> = {},
 ) {
   const abrufe: string[] = [];
@@ -193,31 +195,36 @@ function paperAttrappe(
     abrufe.push(url);
 
     if (url === PAPER_URL) {
-      return new Response(JSON.stringify({ versions: versionen }), { status: 200 });
+      return new Response(JSON.stringify({ project: { id: 'paper' }, versions: reihen }), {
+        status: 200,
+      });
     }
 
-    const version = /\/versions\/([^/]+)\/builds$/.exec(url)?.[1];
+    const roh = /\/versions\/([^/]+)\/builds$/.exec(url)?.[1];
 
-    if (version === undefined) {
+    if (roh === undefined) {
       return new Response('nein', { status: 404 });
     }
 
-    const vorgabe = bauten[decodeURIComponent(version)] ?? [{ build: 7, channel: 'default' }];
+    const version = decodeURIComponent(roh);
+    const vorgabe = bauten[version] ?? [{ id: 7, channel: 'STABLE' }];
 
     return new Response(
-      JSON.stringify({
-        builds: vorgabe.map((bau) => ({
-          build: bau.build,
-          time: '2026-09-01T10:00:00.000Z',
+      JSON.stringify(
+        vorgabe.map((bau) => ({
+          id: bau.id,
+          time: '2026-09-01T10:00:00Z',
           channel: bau.channel,
           downloads: {
-            application: {
-              name: `paper-${decodeURIComponent(version)}-${String(bau.build)}.jar`,
-              sha256: `${decodeURIComponent(version)}-${String(bau.build)}-sha256`,
+            'server:default': {
+              name: `paper-${version}-${String(bau.id)}.jar`,
+              size: 64_521_721,
+              checksums: { sha256: `${version}-${String(bau.id)}-sha256` },
+              url: `https://fill-data.invalid/v1/objects/${version}-${String(bau.id)}/paper.jar`,
             },
           },
         })),
-      }),
+      ),
       { status: 200 },
     );
   }) as typeof fetch;
@@ -226,79 +233,93 @@ function paperAttrappe(
 }
 
 describe('createPaperVersionCatalogue', () => {
-  it('führt die neueste Version zuerst – Paper listet aufsteigend', async () => {
-    const { fetchImpl } = paperAttrappe(['1.21.1', '1.21.3', '1.21.4']);
+  it('nimmt die Reihenfolge des Herstellers, quer über die Reihen', async () => {
+    const { fetchImpl } = paperAttrappe({
+      '26.3': ['26.3'],
+      '26.2': ['26.2'],
+      '1.21': ['1.21.11', '1.21.10'],
+    });
     const katalog = createPaperVersionCatalogue({ projectUrl: PAPER_URL, fetchImpl });
 
     const liste = await katalog.list('minecraft-paper');
 
-    expect(liste.map((eintrag) => eintrag.id)).toEqual(['1.21.4', '1.21.3', '1.21.1']);
+    expect(liste.map((eintrag) => eintrag.id)).toEqual(['26.3', '26.2', '1.21.11', '1.21.10']);
     expect(liste[0]?.latest).toBe(true);
     expect(liste[1]?.latest).toBe(false);
   });
 
-  it('setzt Adresse und Prüfsumme aus dem neuesten fertigen Bau zusammen', async () => {
-    const { fetchImpl } = paperAttrappe(['1.21.4'], {
-      '1.21.4': [
-        { build: 10, channel: 'default' },
-        { build: 11, channel: 'default' },
-      ],
-    });
+  it('lässt Vorabversionen draußen', async () => {
+    // `26.3-rc-3` steht im echten Verzeichnis neben `26.3`.
+    const { fetchImpl } = paperAttrappe({ '26.3': ['26.3', '26.3-rc-3'] });
+    const katalog = createPaperVersionCatalogue({ projectUrl: PAPER_URL, fetchImpl });
+
+    expect((await katalog.list('minecraft-paper')).map((eintrag) => eintrag.id)).toEqual(['26.3']);
+  });
+
+  it('nimmt Adresse und Prüfsumme aus dem höchsten fertigen Bau', async () => {
+    const { fetchImpl } = paperAttrappe(
+      { '26.2': ['26.2'] },
+      {
+        '26.2': [
+          { id: 126, channel: 'STABLE' },
+          { id: 121, channel: 'STABLE' },
+        ],
+      },
+    );
     const katalog = createPaperVersionCatalogue({ projectUrl: PAPER_URL, fetchImpl });
 
     const [eintrag] = await katalog.list('minecraft-paper');
 
-    expect(eintrag?.url).toBe(
-      `${PAPER_URL}/versions/1.21.4/builds/11/downloads/paper-1.21.4-11.jar`,
-    );
-    expect(eintrag?.hash).toBe('1.21.4-11-sha256');
+    // Höchste Nummer, nicht letzter Eintrag im Feld.
+    expect(eintrag?.url).toBe('https://fill-data.invalid/v1/objects/26.2-126/paper.jar');
+    expect(eintrag?.hash).toBe('26.2-126-sha256');
     expect(eintrag?.hashAlgorithm).toBe('sha256');
+    expect(eintrag?.releasedAt).toBe('2026-09-01T10:00:00Z');
   });
 
   it('lässt eine Version aus, die nur Vorabbauten hat', async () => {
-    // Ein Server, der ohne Vorwarnung auf `experimental` läuft, ist eine
+    // Ein Server, der ohne Vorwarnung auf einem Vorabbau läuft, ist eine
     // Überraschung, die niemand bestellt hat.
-    const { fetchImpl } = paperAttrappe(['1.21.3', '1.21.4'], {
-      '1.21.4': [{ build: 1, channel: 'experimental' }],
-    });
+    const { fetchImpl } = paperAttrappe(
+      { '26.3': ['26.3'], '26.2': ['26.2'] },
+      { '26.3': [{ id: 1, channel: 'ALPHA' }] },
+    );
     const katalog = createPaperVersionCatalogue({ projectUrl: PAPER_URL, fetchImpl });
 
-    const liste = await katalog.list('minecraft-paper');
-
-    expect(liste.map((eintrag) => eintrag.id)).toEqual(['1.21.3']);
+    expect((await katalog.list('minecraft-paper')).map((eintrag) => eintrag.id)).toEqual(['26.2']);
   });
 
-  it('bietet höchstens MAX_VERSIONS an und nimmt dafür die neuesten', async () => {
-    const alle = Array.from({ length: MAX_VERSIONS + 5 }, (_, index) => `1.20.${String(index)}`);
-    const { fetchImpl } = paperAttrappe(alle);
+  it('bietet höchstens MAX_VERSIONS an und nimmt dafuer die vordersten', async () => {
+    const alle = Array.from({ length: MAX_VERSIONS + 5 }, (_, index) => `26.${String(index)}`);
+    const { fetchImpl } = paperAttrappe({ '26': alle });
     const katalog = createPaperVersionCatalogue({ projectUrl: PAPER_URL, fetchImpl });
 
     const liste = await katalog.list('minecraft-paper');
 
     expect(liste).toHaveLength(MAX_VERSIONS);
-    expect(liste[0]?.id).toBe(`1.20.${String(MAX_VERSIONS + 4)}`);
+    expect(liste[0]?.id).toBe('26.0');
   });
 
-  it('antwortet auf fremde Spieltypen leer', async () => {
-    const { abrufe, fetchImpl } = paperAttrappe(['1.21.4']);
+  it('antwortet auf fremde Spieltypen leer, ohne einen Abruf', async () => {
+    const { abrufe, fetchImpl } = paperAttrappe({ '26.2': ['26.2'] });
     const katalog = createPaperVersionCatalogue({ projectUrl: PAPER_URL, fetchImpl });
 
     expect(await katalog.list('minecraft-vanilla')).toEqual([]);
-    expect(await katalog.resolve('valheim', '1.21.4')).toBeNull();
+    expect(await katalog.resolve('valheim', '26.2')).toBeNull();
     expect(abrufe).toEqual([]);
   });
 
   it('löst eine Version auf und kennt eine unbekannte nicht', async () => {
-    const { fetchImpl } = paperAttrappe(['1.21.4']);
+    const { fetchImpl } = paperAttrappe({ '26.2': ['26.2'] });
     const katalog = createPaperVersionCatalogue({ projectUrl: PAPER_URL, fetchImpl });
 
-    expect((await katalog.resolve('minecraft-paper', '1.21.4'))?.id).toBe('1.21.4');
+    expect((await katalog.resolve('minecraft-paper', '26.2'))?.id).toBe('26.2');
     expect(await katalog.resolve('minecraft-paper', '1.7.10')).toBeNull();
   });
 
   it('holt die Liste nur einmal je Frist', async () => {
     let uhr = 1_000;
-    const { abrufe, fetchImpl } = paperAttrappe(['1.21.4']);
+    const { abrufe, fetchImpl } = paperAttrappe({ '26.2': ['26.2'] });
     const katalog = createPaperVersionCatalogue({
       projectUrl: PAPER_URL,
       fetchImpl,
@@ -320,30 +341,11 @@ describe('createPaperVersionCatalogue', () => {
   it('behält die alte Liste, wenn PaperMC gerade nicht antwortet', async () => {
     let uhr = 1_000;
     let erreichbar = true;
-    const fetchImpl = (async (eingabe: string | URL | Request) => {
-      if (!erreichbar) {
-        return new Response('weg', { status: 503 });
-      }
-
-      const url = String(eingabe);
-
-      if (url === PAPER_URL) {
-        return new Response(JSON.stringify({ versions: ['1.21.4'] }), { status: 200 });
-      }
-
-      return new Response(
-        JSON.stringify({
-          builds: [
-            {
-              build: 3,
-              channel: 'default',
-              downloads: { application: { name: 'paper.jar', sha256: 'summe' } },
-            },
-          ],
-        }),
-        { status: 200 },
-      );
-    }) as typeof fetch;
+    const echt = paperAttrappe({ '26.2': ['26.2'] });
+    const fetchImpl = (async (eingabe: string | URL | Request) =>
+      erreichbar
+        ? echt.fetchImpl(eingabe as string)
+        : new Response('weg', { status: 503 })) as typeof fetch;
 
     const katalog = createPaperVersionCatalogue({
       projectUrl: PAPER_URL,
@@ -362,6 +364,10 @@ describe('createPaperVersionCatalogue', () => {
 
 /**
  * NeoForge liegt als Maven-Ordner, nicht als JSON-Schnittstelle.
+ *
+ * Die Versionen im Test sind die echten aus dem Verzeichnis – samt der
+ * Unordnung dort: `26.1.2.109` steht vor `26.2.0.86`, und `21.1.251` aus der
+ * alten Zählung liegt ganz am Ende.
  */
 
 const NEOFORGE_URL = 'https://neoforge.invalid/releases/net/neoforged/neoforge';
@@ -392,7 +398,8 @@ function neoforgeAttrappe(
       return new Response('nein', { status: 404 });
     }
 
-    const [, version, verfahren] = treffer as unknown as [string, string, string];
+    const version = treffer[1] as string;
+    const verfahren = treffer[2] as string;
 
     if (ohne.has(version)) {
       return new Response('nein', { status: 404 });
@@ -413,51 +420,70 @@ function neoforgeAttrappe(
 }
 
 describe('minecraftVersionAusNeoforge', () => {
-  it('liest die Spielversion aus der NeoForge-Kennung', () => {
-    expect(minecraftVersionAusNeoforge('21.4.96')).toBe('1.21.4');
-    expect(minecraftVersionAusNeoforge('20.6.119')).toBe('1.20.6');
+  it('liest die neue, vierstellige Zählung', () => {
+    // `26.2.0.86` gehört zu Minecraft `26.2` – so steht es im Dockerfile des
+    // Minecraft-Images.
+    expect(minecraftVersionAusNeoforge('26.2.0.86')).toBe('26.2');
+    expect(minecraftVersionAusNeoforge('26.1.2.109')).toBe('26.1');
   });
 
-  it('gibt null, wo das Schema nicht passt', () => {
+  it('liest die alte, dreistellige Zählung', () => {
+    // Vor der Umstellung trug NeoForge die beiden hinteren Stellen von `1.21.1`.
+    expect(minecraftVersionAusNeoforge('21.1.251')).toBe('1.21.1');
+  });
+
+  it('gibt null, wo keines der beiden Schemata passt', () => {
     // Lieber nichts anbieten als eine Spielversion behaupten.
     expect(minecraftVersionAusNeoforge('irgendwas')).toBeNull();
-    expect(minecraftVersionAusNeoforge('21')).toBeNull();
+    expect(minecraftVersionAusNeoforge('26')).toBeNull();
+    expect(minecraftVersionAusNeoforge('26.2.x.86')).toBeNull();
   });
 });
 
 describe('createNeoforgeVersionCatalogue', () => {
   it('bietet Minecraft-Versionen an, nicht NeoForge-Versionen', async () => {
-    const { fetchImpl } = neoforgeAttrappe(['20.6.119', '21.4.96']);
+    const { fetchImpl } = neoforgeAttrappe(['26.1.2.109', '26.2.0.86', '21.1.251']);
     const katalog = createNeoforgeVersionCatalogue({ mavenUrl: NEOFORGE_URL, fetchImpl });
 
     const liste = await katalog.list('minecraft-neoforge');
 
-    expect(liste.map((eintrag) => eintrag.id)).toEqual(['1.21.4', '1.20.6']);
-    expect(liste[0]?.loaderVersion).toBe('21.4.96');
+    expect(liste.map((eintrag) => eintrag.id)).toEqual(['26.2', '26.1', '1.21.1']);
+    expect(liste[0]?.loaderVersion).toBe('26.2.0.86');
   });
 
-  it('nimmt je Spielversion den neuesten Bau', async () => {
-    const { fetchImpl } = neoforgeAttrappe(['21.4.10', '21.4.96']);
+  it('nimmt je Spielversion den höchsten Bau, nicht den letzten im Ordner', async () => {
+    // Der Ordner ist nicht nach Grösse geordnet.
+    const { fetchImpl } = neoforgeAttrappe(['26.2.0.88', '26.2.0.86', '26.2.0.87']);
     const katalog = createNeoforgeVersionCatalogue({ mavenUrl: NEOFORGE_URL, fetchImpl });
 
     const liste = await katalog.list('minecraft-neoforge');
 
     expect(liste).toHaveLength(1);
-    expect(liste[0]?.loaderVersion).toBe('21.4.96');
-    expect(liste[0]?.url).toBe(`${NEOFORGE_URL}/21.4.96/neoforge-21.4.96-installer.jar`);
+    expect(liste[0]?.loaderVersion).toBe('26.2.0.88');
+    expect(liste[0]?.url).toBe(`${NEOFORGE_URL}/26.2.0.88/neoforge-26.2.0.88-installer.jar`);
+  });
+
+  it('ordnet die Spielversionen der Größe nach, nicht als Zeichenkette', async () => {
+    const { fetchImpl } = neoforgeAttrappe(['26.10.0.1', '26.2.0.86']);
+    const katalog = createNeoforgeVersionCatalogue({ mavenUrl: NEOFORGE_URL, fetchImpl });
+
+    expect((await katalog.list('minecraft-neoforge')).map((eintrag) => eintrag.id)).toEqual([
+      '26.10',
+      '26.2',
+    ]);
   });
 
   it('lässt Vorabversionen draußen', async () => {
-    const { fetchImpl } = neoforgeAttrappe(['21.4.96', '21.5.1-beta']);
+    const { fetchImpl } = neoforgeAttrappe(['26.2.0.86', '26.3.0.7-beta']);
     const katalog = createNeoforgeVersionCatalogue({ mavenUrl: NEOFORGE_URL, fetchImpl });
 
-    const liste = await katalog.list('minecraft-neoforge');
-
-    expect(liste.map((eintrag) => eintrag.id)).toEqual(['1.21.4']);
+    expect((await katalog.list('minecraft-neoforge')).map((eintrag) => eintrag.id)).toEqual([
+      '26.2',
+    ]);
   });
 
   it('nimmt sha256, wenn es das gibt', async () => {
-    const { fetchImpl } = neoforgeAttrappe(['21.4.96']);
+    const { fetchImpl } = neoforgeAttrappe(['26.2.0.86']);
     const katalog = createNeoforgeVersionCatalogue({ mavenUrl: NEOFORGE_URL, fetchImpl });
 
     const [eintrag] = await katalog.list('minecraft-neoforge');
@@ -467,7 +493,7 @@ describe('createNeoforgeVersionCatalogue', () => {
   });
 
   it('fällt auf sha1 zurück, wo der Ordner kein sha256 führt', async () => {
-    const { fetchImpl } = neoforgeAttrappe(['21.4.96'], { ohneSha256: true });
+    const { fetchImpl } = neoforgeAttrappe(['26.2.0.86'], { ohneSha256: true });
     const katalog = createNeoforgeVersionCatalogue({ mavenUrl: NEOFORGE_URL, fetchImpl });
 
     const [eintrag] = await katalog.list('minecraft-neoforge');
@@ -478,16 +504,18 @@ describe('createNeoforgeVersionCatalogue', () => {
 
   it('lässt eine Version ohne Prüfsumme aus', async () => {
     // Ohne Prüfsumme könnte das Image nicht verwerfen, was nicht dazu passt.
-    const { fetchImpl } = neoforgeAttrappe(['20.6.119', '21.4.96'], { ohneSumme: ['21.4.96'] });
+    const { fetchImpl } = neoforgeAttrappe(['26.1.2.109', '26.2.0.86'], {
+      ohneSumme: ['26.2.0.86'],
+    });
     const katalog = createNeoforgeVersionCatalogue({ mavenUrl: NEOFORGE_URL, fetchImpl });
 
-    const liste = await katalog.list('minecraft-neoforge');
-
-    expect(liste.map((eintrag) => eintrag.id)).toEqual(['1.20.6']);
+    expect((await katalog.list('minecraft-neoforge')).map((eintrag) => eintrag.id)).toEqual([
+      '26.1',
+    ]);
   });
 
-  it('antwortet auf fremde Spieltypen leer', async () => {
-    const { abrufe, fetchImpl } = neoforgeAttrappe(['21.4.96']);
+  it('antwortet auf fremde Spieltypen leer, ohne einen Abruf', async () => {
+    const { abrufe, fetchImpl } = neoforgeAttrappe(['26.2.0.86']);
     const katalog = createNeoforgeVersionCatalogue({ mavenUrl: NEOFORGE_URL, fetchImpl });
 
     expect(await katalog.list('minecraft-paper')).toEqual([]);
@@ -498,19 +526,28 @@ describe('createNeoforgeVersionCatalogue', () => {
 describe('createVersionCatalogueGroup', () => {
   it('fragt den Katalog, der den Spieltyp kennt', async () => {
     const gruppe = createVersionCatalogueGroup([
-      createMojangVersionCatalogue({ manifestUrl: MANIFEST_URL, ...attrappe(['1.21.4']) }),
-      createPaperVersionCatalogue({ projectUrl: PAPER_URL, ...paperAttrappe(['1.21.3']) }),
-      createNeoforgeVersionCatalogue({ mavenUrl: NEOFORGE_URL, ...neoforgeAttrappe(['21.4.96']) }),
+      createMojangVersionCatalogue({ manifestUrl: MANIFEST_URL, ...attrappe(['26.2']) }),
+      createPaperVersionCatalogue({
+        projectUrl: PAPER_URL,
+        ...paperAttrappe({ '26.3': ['26.3'] }),
+      }),
+      createNeoforgeVersionCatalogue({
+        mavenUrl: NEOFORGE_URL,
+        ...neoforgeAttrappe(['26.2.0.86']),
+      }),
     ]);
 
-    expect((await gruppe.list('minecraft-vanilla'))[0]?.id).toBe('1.21.4');
-    expect((await gruppe.list('minecraft-paper'))[0]?.id).toBe('1.21.3');
-    expect((await gruppe.list('minecraft-neoforge'))[0]?.id).toBe('1.21.4');
+    expect((await gruppe.list('minecraft-vanilla'))[0]?.id).toBe('26.2');
+    expect((await gruppe.list('minecraft-paper'))[0]?.id).toBe('26.3');
+    expect((await gruppe.list('minecraft-neoforge'))[0]?.id).toBe('26.2');
   });
 
   it('bleibt leer, wo kein Katalog zuständig ist', async () => {
     const gruppe = createVersionCatalogueGroup([
-      createPaperVersionCatalogue({ projectUrl: PAPER_URL, ...paperAttrappe(['1.21.3']) }),
+      createPaperVersionCatalogue({
+        projectUrl: PAPER_URL,
+        ...paperAttrappe({ '26.2': ['26.2'] }),
+      }),
     ]);
 
     expect(await gruppe.list('valheim')).toEqual([]);
@@ -519,11 +556,14 @@ describe('createVersionCatalogueGroup', () => {
 
   it('löst über den zuständigen Katalog auf', async () => {
     const gruppe = createVersionCatalogueGroup([
-      createMojangVersionCatalogue({ manifestUrl: MANIFEST_URL, ...attrappe(['1.21.4']) }),
-      createPaperVersionCatalogue({ projectUrl: PAPER_URL, ...paperAttrappe(['1.21.3']) }),
+      createMojangVersionCatalogue({ manifestUrl: MANIFEST_URL, ...attrappe(['26.2']) }),
+      createPaperVersionCatalogue({
+        projectUrl: PAPER_URL,
+        ...paperAttrappe({ '26.3': ['26.3'] }),
+      }),
     ]);
 
-    expect((await gruppe.resolve('minecraft-paper', '1.21.3'))?.hashAlgorithm).toBe('sha256');
-    expect((await gruppe.resolve('minecraft-vanilla', '1.21.4'))?.hashAlgorithm).toBe('sha1');
+    expect((await gruppe.resolve('minecraft-paper', '26.3'))?.hashAlgorithm).toBe('sha256');
+    expect((await gruppe.resolve('minecraft-vanilla', '26.2'))?.hashAlgorithm).toBe('sha1');
   });
 });

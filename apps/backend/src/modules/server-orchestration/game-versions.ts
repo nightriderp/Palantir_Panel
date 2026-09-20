@@ -303,20 +303,21 @@ export function createMojangVersionCatalogue(
 // ---------------------------------------------------------------------------
 
 interface PaperProjekt {
-  readonly versions?: readonly string[];
+  /** Nach Reihe geordnet: `{ "26.3": ["26.3", "26.3-rc-3"], ... }`. */
+  readonly versions?: Readonly<Record<string, readonly string[]>>;
+}
+
+interface PaperDownload {
+  readonly name?: string;
+  readonly url?: string;
+  readonly checksums?: { readonly sha256?: string };
 }
 
 interface PaperBuild {
-  readonly build?: number;
+  readonly id?: number;
   readonly time?: string;
   readonly channel?: string;
-  readonly downloads?: {
-    readonly application?: { readonly name?: string; readonly sha256?: string };
-  };
-}
-
-interface PaperBuilds {
-  readonly builds?: readonly PaperBuild[];
+  readonly downloads?: Readonly<Record<string, PaperDownload>>;
 }
 
 export interface PaperCatalogueOptions extends KatalogGrundOptionen {
@@ -324,22 +325,40 @@ export interface PaperCatalogueOptions extends KatalogGrundOptionen {
   readonly projectUrl?: string;
 }
 
-const PAPER_PROJECT_URL = 'https://api.papermc.io/v2/projects/paper';
+const PAPER_PROJECT_URL = 'https://fill.papermc.io/v3/projects/paper';
 
 const PAPER_GAME_TYPES = new Set(['minecraft-paper']);
 
+/** Der Eintrag, den Paper als Serverdatei führt. */
+const PAPER_DOWNLOAD_SCHLUESSEL = 'server:default';
+
 /**
- * Paper führt seine Versionen aufsteigend und je Version eine Reihe von Bauten.
+ * Eine Vorabversion – Paper hängt `-rc-3`, `-pre-1` und Ähnliches an.
  *
- * **Der Bau zählt, nicht nur die Version.** Eine Paper-Version wie `1.21.4` ist
- * kein fertiges Ding, sondern eine Reihe: Bau 1, 2, 3 … Gewählt wird der
- * neueste im Kanal `default` – das ist der, den Paper selbst als fertig
- * bezeichnet. Gibt es für eine Version nur Vorabbauten (`experimental`), fällt
+ * Gilt genauso für NeoForge (`-beta`). Wer eine Welt auf eine Vorabversion
+ * setzt, tut das mit Absicht; über die Auswahl des Panels soll es nicht aus
+ * Versehen passieren.
+ */
+function istVorab(version: string): boolean {
+  return version.includes('-');
+}
+
+/**
+ * Paper führt seine Versionen nach Reihen und je Version eine Folge von Bauten.
+ *
+ * **Die v3-Schnittstelle, nicht v2.** Das Image holt seine Jar schon von
+ * `fill.papermc.io/v3` (siehe `images/game/minecraft/Dockerfile`); zwei
+ * verschiedene Schnittstellen für dieselbe Sache wären zwei Stellen, die
+ * auseinanderlaufen.
+ *
+ * **Der Bau zählt, nicht nur die Version.** Eine Paper-Version wie `26.2` ist
+ * kein fertiges Ding, sondern eine Folge: Bau 121, 126 … Gewählt wird der
+ * höchste im Kanal `STABLE`. Gibt es für eine Version nur Vorabbauten, fällt
  * sie aus der Liste: Ein Server, der ohne Vorwarnung auf einem Vorabbau läuft,
  * ist eine Überraschung, die niemand bestellt hat.
  *
- * Die Prüfsumme steht mit im Datensatz des Baus (`sha256`), die Adresse setzt
- * sich aus Version, Bau und Dateiname zusammen.
+ * Adresse und Prüfsumme stehen fertig im Datensatz des Baus – die Adresse wird
+ * nicht zusammengesetzt, sondern übernommen.
  */
 export function createPaperVersionCatalogue(
   options: PaperCatalogueOptions = {},
@@ -352,31 +371,43 @@ export function createPaperVersionCatalogue(
     now: options.now ?? ((): number => Date.now()),
     async laden() {
       const projekt = await leser.json<PaperProjekt>(projektUrl);
-      const alle = projekt?.versions ?? [];
+      const reihen = projekt?.versions ?? {};
 
-      if (alle.length === 0) {
+      /*
+       * Die Reihen stehen neueste zuerst, und innerhalb einer Reihe ebenso.
+       * Beides übernimmt die flache Liste, statt selbst zu sortieren: Eine
+       * eigene Ordnung über Versionsnummern müsste raten, wie der Hersteller
+       * zählt, und läge bei der nächsten Umstellung falsch.
+       */
+      const versionen = Object.values(reihen)
+        .flat()
+        .filter((version) => !istVorab(version))
+        .slice(0, MAX_VERSIONS);
+
+      if (versionen.length === 0) {
         return [];
       }
 
-      // Aufsteigend geführt: Die letzten sind die neuesten, und die Liste des
-      // Panels beginnt mit der neuesten.
-      const versionen = alle.slice(-MAX_VERSIONS).reverse();
-
       const aufgeloest = await Promise.all(
         versionen.map(async (version, index): Promise<GameVersionQuelle | null> => {
-          const bauten = await leser.json<PaperBuilds>(
+          const bauten = await leser.json<readonly PaperBuild[]>(
             `${projektUrl}/versions/${encodeURIComponent(version)}/builds`,
           );
 
-          const fertige = (bauten?.builds ?? []).filter((bau) => bau.channel === 'default');
-          const neuester = fertige[fertige.length - 1];
-          const anwendung = neuester?.downloads?.application;
+          if (!Array.isArray(bauten)) {
+            return null;
+          }
 
-          if (
-            neuester?.build === undefined ||
-            anwendung?.name === undefined ||
-            anwendung.sha256 === undefined
-          ) {
+          // Höchste Nummer statt „letzter im Feld": Die Reihenfolge der Antwort
+          // ist nirgends zugesagt, die Nummer dagegen zählt aufwärts.
+          const fertige = bauten
+            .filter((bau) => bau.channel === 'STABLE' && typeof bau.id === 'number')
+            .sort((links, rechts) => (links.id as number) - (rechts.id as number));
+
+          const neuester = fertige[fertige.length - 1];
+          const datei = neuester?.downloads?.[PAPER_DOWNLOAD_SCHLUESSEL];
+
+          if (datei?.url === undefined || datei.checksums?.sha256 === undefined) {
             return null;
           }
 
@@ -384,12 +415,10 @@ export function createPaperVersionCatalogue(
             id: version,
             // Paper nennt kein Datum für die Version, nur für den Bau – und der
             // ist die Datei, die hier tatsächlich geholt wird.
-            releasedAt: neuester.time ?? null,
+            releasedAt: neuester?.time ?? null,
             latest: index === 0,
-            url:
-              `${projektUrl}/versions/${encodeURIComponent(version)}` +
-              `/builds/${String(neuester.build)}/downloads/${encodeURIComponent(anwendung.name)}`,
-            hash: anwendung.sha256,
+            url: datei.url,
+            hash: datei.checksums.sha256,
             hashAlgorithm: 'sha256',
           };
         }),
@@ -414,25 +443,35 @@ const NEOFORGE_MAVEN_URL = 'https://maven.neoforged.net/releases/net/neoforged/n
 const NEOFORGE_GAME_TYPES = new Set(['minecraft-neoforge']);
 
 /**
- * Die Minecraft-Version steckt in der NeoForge-Version.
+ * Die Minecraft-Version steckt in der NeoForge-Version – in zwei Schreibweisen.
  *
- * NeoForge zählt `21.4.96` für Minecraft `1.21.4`, `20.6.119` für `1.20.6`:
- * die ersten beiden Stellen sind Haupt- und Nebenversion des Spiels, mit einer
- * führenden `1`. Das ist keine Vermutung, sondern das erklärte Schema des
- * Projekts – und der Grund, warum der Betreiber hier eine Minecraft-Version
- * wählt und keine NeoForge-Version: Die zweite folgt aus der ersten.
+ * Im Maven-Ordner liegen beide nebeneinander, weil NeoForge die Zählung mit
+ * Minecraft umgestellt hat:
  *
- * `null`, wenn eine Kennung nicht in das Schema passt; dann bleibt sie aussen
- * vor, statt eine Minecraft-Version zu behaupten.
+ * | NeoForge    | Stellen | Minecraft |
+ * | ----------- | ------- | --------- |
+ * | `26.2.0.86` | vier    | `26.2`    |
+ * | `21.1.251`  | drei    | `1.21.1`  |
+ *
+ * Die Stellenzahl unterscheidet sie: Seit Minecraft selbst zweistellig zählt
+ * (`26.2`), hängt NeoForge Fehlerstand und Bau an und kommt auf vier. Vorher
+ * trug es die beiden hinteren Stellen von `1.21.1` und kam auf drei.
+ *
+ * `null`, wenn eine Kennung in keines der beiden Schemata passt; dann bleibt
+ * sie aussen vor, statt eine Minecraft-Version zu behaupten.
  */
 export function minecraftVersionAusNeoforge(neoforge: string): string | null {
-  const treffer = /^(\d+)\.(\d+)\.\d+/.exec(neoforge);
+  const stellen = neoforge.split('.');
 
-  if (treffer === null) {
-    return null;
+  if (stellen.length === 4 && stellen.every((stelle) => /^\d+$/.test(stelle))) {
+    return `${stellen[0] as string}.${stellen[1] as string}`;
   }
 
-  return `1.${treffer[1] as string}.${treffer[2] as string}`;
+  if (stellen.length === 3 && stellen.every((stelle) => /^\d+$/.test(stelle))) {
+    return `1.${stellen[0] as string}.${stellen[1] as string}`;
+  }
+
+  return null;
 }
 
 interface NeoforgeBau {
@@ -448,10 +487,6 @@ interface NeoforgeBau {
  * eine Datei mit genau einer Sorte Element eine Abhängigkeit aufzunehmen wäre
  * unverhältnismässig (Entwicklungsregeln §1: keine neue Bibliothek nebenbei);
  * was nicht in das Schema passt, fällt ohnehin heraus.
- *
- * **Vorabversionen bleiben draussen.** NeoForge hängt `-beta` an, solange eine
- * Reihe nicht fertig ist. Wer eine Welt darauf setzt, tut das mit Absicht –
- * über die Auswahl des Panels soll es nicht aus Versehen passieren.
  *
  * **Die Prüfsumme liegt neben der Datei.** Maven legt sie als eigene kleine
  * Datei ab; `.sha256` bevorzugt, `.sha1` als Rückfall, weil ältere Ordner nur
@@ -492,24 +527,33 @@ export function createNeoforgeVersionCatalogue(
 
       const alle = [...xml.matchAll(/<version>([^<]+)<\/version>/g)]
         .map((treffer) => (treffer[1] ?? '').trim())
-        .filter((version) => version !== '' && !version.includes('-'));
+        .filter((version) => version !== '' && !istVorab(version));
 
       /*
-       * Je Minecraft-Version der neueste NeoForge-Bau. Maven führt aufsteigend,
-       * also gewinnt der letzte Treffer – und die neueste Spielversion steht
-       * am Ende der Datei.
+       * Je Minecraft-Version der höchste NeoForge-Bau. Der Ordner ist nicht
+       * verlässlich geordnet – im echten Verzeichnis steht `26.1.2.109` vor
+       * `26.2.0.86` und `21.1.251` ganz am Ende –, deshalb wird verglichen und
+       * nicht auf die Reihenfolge vertraut.
        */
       const jeSpielversion = new Map<string, NeoforgeBau>();
 
       for (const version of alle) {
         const minecraft = minecraftVersionAusNeoforge(version);
 
-        if (minecraft !== null) {
+        if (minecraft === null) {
+          continue;
+        }
+
+        const bisher = jeSpielversion.get(minecraft);
+
+        if (bisher === undefined || vergleicheVersionen(version, bisher.neoforge) > 0) {
           jeSpielversion.set(minecraft, { neoforge: version, minecraft });
         }
       }
 
-      const bauten = [...jeSpielversion.values()].reverse().slice(0, MAX_VERSIONS);
+      const bauten = [...jeSpielversion.values()]
+        .sort((links, rechts) => vergleicheVersionen(rechts.minecraft, links.minecraft))
+        .slice(0, MAX_VERSIONS);
 
       const aufgeloest = await Promise.all(
         bauten.map(async (bau, index): Promise<GameVersionQuelle | null> => {
@@ -535,4 +579,27 @@ export function createNeoforgeVersionCatalogue(
       return aufgeloest.filter((eintrag): eintrag is GameVersionQuelle => eintrag !== null);
     },
   });
+}
+
+/**
+ * Zwei Versionsnummern der Stelle nach vergleichen.
+ *
+ * `26.2.0.86` ist grösser als `26.1.2.109`, obwohl `109` grösser als `86` ist –
+ * ein Vergleich als Zeichenkette läge hier falsch, und der Maven-Ordner ist
+ * nicht nach Grösse geordnet. Fehlende Stellen zählen als `0`, damit `26.2`
+ * und `26.2.0` gleich sind.
+ */
+function vergleicheVersionen(links: string, rechts: string): number {
+  const a = links.split('.').map((stelle) => Number.parseInt(stelle, 10) || 0);
+  const b = rechts.split('.').map((stelle) => Number.parseInt(stelle, 10) || 0);
+
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    const unterschied = (a[i] ?? 0) - (b[i] ?? 0);
+
+    if (unterschied !== 0) {
+      return unterschied;
+    }
+  }
+
+  return 0;
 }
