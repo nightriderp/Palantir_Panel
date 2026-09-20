@@ -129,18 +129,88 @@ jobs:
           fi
           echo "  ${ziel} ist noch frei"
 
-      - name: Bauen und veröffentlichen
+      # **Erst bauen, dann starten, dann veröffentlichen.**
+      #
+      # Bis hierher baute dieser Schritt und lud im selben Zug hoch – ein Image
+      # bekam sein Versions-Tag, ohne dass je etwas es gestartet hätte. Am
+      # 2026-09-11 kam heraus, was das kostet: `python3-minimal` brachte den
+      # Interpreter ohne Standardbibliothek mit, `proton` scheiterte in Zeile 10
+      # an `import shutil`, und alle sechs Proton-Images hatten seit Tagen
+      # fehlerfrei gebaut. Gelaufen war keines.
+      #
+      # Ein Versions-Tag wird nie überschrieben. Ein Fehlschlag, der es bis in
+      # die Registry schafft, verbrennt also seine Nummer. Deshalb geht der Bau
+      # zuerst nur in den lokalen Docker (`load`), läuft dort durch die
+      # Rauchprobe, und erst danach ein zweites Mal – aus demselben Cache, also
+      # ohne einen einzigen `RUN` noch einmal auszuführen – nach ghcr.io.
+      - name: Bauen
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           # Build-Kontext ist der Ordner des Images: Ein Image hat mit dem
           # Monorepo nichts zu tun und soll auch nichts davon sehen.
           context: ${{ steps.image.outputs.pfad }}
+          load: true
+          tags: palantir-rauchprobe:pruefling
+          cache-from: type=gha,scope=${{ steps.image.outputs.name }}
+          cache-to: type=gha,scope=${{ steps.image.outputs.name }},mode=max
+          provenance: false
+
+      # Startet das gebaute Image unter denselben Bedingungen wie der Agent auf
+      # der Node: als 1000, mit schreibgeschütztem Wurzeldateisystem, ohne
+      # Capabilities, ohne `no-new-privileges`, mit einem Datenordner, der 1000
+      # gehört – und ohne Netz. Ohne Netz ist Absicht: Eine Probe, die etwas
+      # herunterlädt, prüft die Verbindung des Runners mit; eine, die es nicht
+      # kann, prüft das Image.
+      #
+      # Die Standardprobe gilt für jedes Image. Daneben kann ein Image eine
+      # eigene `rauchprobe.sh` in seinem Ordner haben (images/README.md); sie
+      # läuft zusätzlich und unter denselben Bedingungen.
+      - name: Rauchprobe
+        env:
+          PFAD: ${{ steps.image.outputs.pfad }}
+        run: |
+          set -euo pipefail
+
+          # Wie auf der Node: Der Agent legt den Datenordner als 1000 an und
+          # kann ihn niemandem verschenken (Fundpunkt 117).
+          datenordner="$(mktemp -d)"
+          sudo chown 1000:1000 "${datenordner}"
+
+          probe() {
+            docker run --rm \
+              --entrypoint /bin/sh \
+              --network none \
+              --read-only \
+              --tmpfs /tmp:rw,nosuid,nodev,size=64m \
+              --cap-drop ALL \
+              --security-opt no-new-privileges \
+              --user 1000:1000 \
+              --volume "${datenordner}:/data" \
+              --volume "${PWD}/$1:/rauchprobe.sh:ro" \
+              palantir-rauchprobe:pruefling /rauchprobe.sh
+          }
+
+          echo "Standardprobe"
+          probe .github/rauchprobe-standard.sh
+
+          if [ -f "${PFAD}/rauchprobe.sh" ]; then
+            echo "Eigene Probe des Images"
+            probe "${PFAD}/rauchprobe.sh"
+          else
+            echo "::notice::${PFAD} hat keine eigene rauchprobe.sh - es lief nur die Standardprobe."
+          fi
+
+      - name: Veröffentlichen
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ${{ steps.image.outputs.pfad }}
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ steps.image.outputs.name }}:${{ steps.image.outputs.fassung }}
             ghcr.io/${{ github.repository_owner }}/${{ steps.image.outputs.name }}:${{ github.sha }}
+          # Nur lesen: Der Cache steht seit dem Bau oben, ein zweites
+          # `cache-to` schriebe dieselben Schichten noch einmal.
           cache-from: type=gha,scope=${{ steps.image.outputs.name }}
-          cache-to: type=gha,scope=${{ steps.image.outputs.name }},mode=max
           provenance: false
 
       # Schwachstellen-Scan (Review 2026-09-16, Befund 8.6) – hier nur als

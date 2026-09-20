@@ -61,6 +61,7 @@ Ordner `images/game/<name>` mit:
 | `start.sh` (o. ä.)           | Startskript: Einstellungen aus der Umgebung, dann `exec` in den Serverprozess                                                   |
 | `console.sh` (o. ä.)         | Als `/usr/local/bin/palantir-console` verlinkt; muss **ohne Shell** aufrufbar sein (`EXEC_CONSOLE` übergibt eine Argumentliste) |
 | `*.test.mjs`, `package.json` | Tests ohne Docker (`node --test`); die `package.json` bindet sie in `pnpm test` ein und wird nicht ins Image kopiert            |
+| `rauchprobe.sh` (freiwillig) | Zusätzliche Prüfung im **gestarteten** Image, nach der Standardprobe (siehe unten). Kommt nie ins Image                         |
 | `.dockerignore`              | Hält Tests, README und VERSION aus dem Build-Kontext                                                                            |
 | `README.md`                  | Was das Image enthält, welche Variablen es liest, wie man es von Hand prüft                                                     |
 
@@ -75,6 +76,48 @@ Schlüssel in `server.properties`, Heap aus dem Basis-Image, Konsole über ein b
 teilen sich alles außer der Jar, ein Schalter in der Umgebung (`MINECRAFT_EDITION`) wählt aus,
 und im Panel stehen zwei Definitionen darauf. Das lohnt genau dann, wenn sich zwei Spieltypen
 sonst ein abgeschriebenes Startskript teilten — nicht als Regel.
+
+## Rauchprobe
+
+Jedes Image wird nach dem Bau **gestartet**, bevor es ein Versions-Tag bekommt.
+
+Das ist keine Selbstverständlichkeit gewesen: Bis zum 2026-09-20 hat nie etwas
+ein gebautes Image ausgeführt. Der Bau lud im selben Schritt hoch, Trivy sah nur
+das Dateisystem an, und die `*.test.mjs` prüfen Startskripte mit Node ohne
+Docker. Was das kostet, zeigte der 2026-09-11: `python3-minimal` brachte den
+Interpreter ohne Standardbibliothek mit, `proton` scheiterte in Zeile 10 an
+`import shutil` – und alle sechs Proton-Images hatten seit Tagen fehlerfrei
+gebaut. Gelaufen war keines.
+
+Der Ablauf in `spiel-image-bauen.yml` ist deshalb: bauen und in den lokalen
+Docker laden, Probe laufen lassen, **danach** veröffentlichen. Ein Versions-Tag
+wird nie überschrieben – ein Fehlschlag, der es bis in die Registry schafft,
+verbrennt seine Nummer.
+
+Die Probe läuft unter denselben Bedingungen wie ein Server auf der Node: als
+`1000`, mit schreibgeschütztem Wurzeldateisystem, `/tmp` als tmpfs, `CapDrop:
+ALL`, `no-new-privileges`, einem Datenordner, der `1000` gehört – und **ohne
+Netz**. Ohne Netz ist Absicht: Eine Probe, die etwas herunterlädt, prüft die
+Verbindung des Runners mit; eine, die es nicht kann, prüft das Image.
+
+**Die Standardprobe** (`.github/rauchprobe-standard.sh`) gilt für jedes Image
+und prüft die Zusagen von weiter oben: UID 1000, `/data` beschreibbar,
+Wurzeldateisystem nicht, `/tmp` beschreibbar, `palantir-console` ausführbar,
+`palantir.sh` lesbar und syntaktisch heil, `curl`/`unzip`/`xz` vorhanden. Hat das
+Image einen `ENTRYPOINT` (jedes Spiel-Image hat einen), wird dessen Skript auf
+Ausführungsrecht und Syntax geprüft – gestartet wird der Server **nicht**, es
+wird nichts geholt und keine Welt erzeugt.
+
+**Eine eigene `rauchprobe.sh`** im Ordner des Images läuft zusätzlich. Dort
+gehört hin, was nur dieses Image zusagt: `java -version` bei `base/java`, die
+Modulliste von `proton` bei den Proton-Basen, `dotnet --list-runtimes` bei
+`base/dotnet`, die 32-Bit-Auflösung von SteamCMD bei `base/steam`. Fehlt die
+Datei, läuft nur die Standardprobe und der Lauf vermerkt das als Notiz.
+
+Die Datei wird von keinem `COPY` angefasst und landet nie im Image; sie wird
+nach dem Bau von aussen hineingehängt. Aus demselben Grund zählt sie nicht zum
+Bau-Kontext, nach dem `game-images.yml` entscheidet, was neu gebaut wird – eine
+geänderte Probe zwingt also zu keiner `VERSION`-Erhöhung.
 
 ## Bau und Veröffentlichung
 
