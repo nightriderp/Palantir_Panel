@@ -127,7 +127,7 @@ export function AppShell({
         onPointerUp={drag.onPointerUp}
         onPointerCancel={drag.onPointerUp}
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex h-screen w-[250px] shrink-0 touch-pan-y flex-col border-r border-line bg-surface-deep/95 backdrop-blur-[10px] md:static md:translate-x-0 md:bg-surface-deep/65',
+          'rahmenkante-laengs fixed inset-y-0 left-0 z-40 flex h-screen w-[var(--rahmen-seitenleiste)] shrink-0 touch-pan-y flex-col bg-surface-deep/95 backdrop-blur-[10px] md:relative md:translate-x-0 md:bg-surface-deep/65',
           // Der Übergang gilt nur ab `md`: Auf dem Telefon führt die Geste den
           // Transform Bild für Bild selbst, und eine CSS-Dauer daneben würde
           // ihn gegen den Finger verzögern.
@@ -135,7 +135,7 @@ export function AppShell({
           navOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex h-16 items-center justify-between gap-2.5 border-b border-line px-5">
+        <div className="rahmenkante-quer flex h-16 items-center justify-between gap-2.5 px-5">
           <span className="flex items-center gap-2.5">
             <LogoMark />
             <span className="text-2xl font-bold tracking-[0.02em] text-ink">Palantir</span>
@@ -164,7 +164,7 @@ export function AppShell({
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="relative z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-4 border-b border-line bg-surface-deep/75 px-5 py-2">
+        <header className="rahmenkante-quer rahmenkante-quer-versetzt z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-4 bg-surface-deep/75 px-5 py-2">
           <button
             type="button"
             onClick={() => setNavOpen(true)}

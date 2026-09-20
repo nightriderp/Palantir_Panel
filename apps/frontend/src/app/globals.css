@@ -13,6 +13,17 @@
 @layer base {
   :root {
     color-scheme: dark;
+
+    /**
+     * Breite der Seitenleiste – **eine** Quelle für zwei Dinge.
+     *
+     * `AppShell` setzt damit die Spaltenbreite, und die waagerechte
+     * Rahmenkante verschiebt ihren Verlauf um genau diesen Betrag (siehe
+     * `.rahmenkante-quer-versetzt`). Stünde die Zahl zweimal da, liefe die
+     * Linie eines Tages mitten im Kopf auseinander – sichtbar als Farbsprung
+     * an der Kante der Seitenleiste.
+     */
+    --rahmen-seitenleiste: 250px;
   }
 
   html {
@@ -184,5 +195,75 @@
     .border-line-strong {
       border-color: rgba(255, 255, 255, 0.28);
     }
+  }
+}
+
+/**
+ * Die Kanten des Rahmens (Betreiberwunsch 20.09.2026).
+ *
+ * Steht hier und nicht als Utility-Klasse an der Komponente, weil sich beides
+ * nicht als Utility ausdrücken lässt: eine 1px-Fläche statt einer
+ * Rahmenfarbe (ein Verlauf ist keine `border-color`) und eine Maßangabe, die
+ * sich auf das **Fenster** bezieht statt auf das Element.
+ */
+@layer components {
+  /**
+   * Waagerechte Kante: unter dem Kopf der Seitenleiste **und** unter dem der
+   * Inhaltsspalte.
+   *
+   * ⚠️ Beide zusammen sind **eine** Linie, nicht zwei aneinandergesetzte.
+   * Deshalb wird der Verlauf auf Fensterbreite gerechnet
+   * (`background-size: 100vw 1px`) und im rechten Stück um die Breite der
+   * Seitenleiste verschoben; jeder Kopf zeigt damit genau seinen Ausschnitt
+   * aus demselben Verlauf. Zwei eigene Verläufe hätten an der Kante der
+   * Seitenleiste einen sichtbaren Farbsprung ergeben – links wieder Violett,
+   * wo rechts schon Türkis kommt.
+   */
+  .rahmenkante-quer {
+    position: relative;
+  }
+
+  .rahmenkante-quer::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 1px;
+    pointer-events: none;
+    background-image: theme('backgroundImage.chrome-edge-x');
+    background-repeat: no-repeat;
+    background-size: 100vw 1px;
+  }
+
+  /*
+   * Das rechte Stück. Der Versatz gilt erst ab `md`: Darunter ist die
+   * Seitenleiste eine Schublade über dem Inhalt, die Kopfzeile beginnt also
+   * bei null und braucht den Anfang des Verlaufs.
+   */
+  @media (min-width: 768px) {
+    .rahmenkante-quer-versetzt::after {
+      background-position-x: calc(-1 * var(--rahmen-seitenleiste));
+    }
+  }
+
+  /**
+   * Senkrechte Kante rechts an der Seitenleiste. Derselbe Verlauf, nur von
+   * oben nach unten – oben trifft er damit auf das violette Ende der
+   * waagerechten, die Ecke bleibt aus einem Guss.
+   */
+  .rahmenkante-laengs {
+    position: relative;
+  }
+
+  .rahmenkante-laengs::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -1px;
+    bottom: 0;
+    width: 1px;
+    pointer-events: none;
+    background-image: theme('backgroundImage.chrome-edge-y');
   }
 }

@@ -224,6 +224,24 @@ const config: Config = {
          * ohne ihn einzufärben.
          */
         'hero-gradient': 'linear-gradient(180deg, rgba(124,92,255,0.07), rgba(18,20,27,.9))',
+        /**
+         * Die Kanten des Rahmens – Seitenleiste nach rechts, Kopfzeile nach
+         * unten (Betreiberwunsch 20.09.2026).
+         *
+         * Derselbe Verlauf wie Logo-Kachel und Primärknopf, nur sehr leise:
+         * Violett nach Türkis bei 22,5 % Deckkraft. Vorher trugen beide Kanten
+         * `line`, also dieselbe weiße Haarlinie wie jede Karte – bei 7 % war
+         * davon nichts mehr zu sehen, die Seitenleiste ging ohne Kontur in den
+         * Inhalt über.
+         *
+         * ⚠️ Kein Rahmen, sondern eine 1px-Fläche: Eine `border-color` kann
+         * keinen Verlauf tragen. Eingehängt wird sie über die Klassen
+         * `rahmenkante-quer` und `rahmenkante-laengs` in `globals.css` – dort
+         * steht auch, warum die waagerechte Kante über beide Köpfe hinweg
+         * **ein** Verlauf sein muss.
+         */
+        'chrome-edge-x': 'linear-gradient(90deg, rgba(124,92,255,0.225), rgba(34,211,238,0.225))',
+        'chrome-edge-y': 'linear-gradient(180deg, rgba(124,92,255,0.225), rgba(34,211,238,0.225))',
         /** Dezenter Lichtschein hinter dem gesamten Dashboard. */
         'app-glow':
           'radial-gradient(1200px 600px at 80% -10%, rgba(124,92,255,0.10), transparent 60%)',
