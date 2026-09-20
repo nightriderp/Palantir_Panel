@@ -10,7 +10,7 @@ import { fetchGameTypes } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
 import { GameImagePicker } from './GameImagePicker';
-import { buildTemplateGroups, templateVariantLabel } from './templateGroups';
+import { buildTemplateGroups, teilenSichDieVersion, templateVariantLabel } from './templateGroups';
 
 /**
  * Verwaltung der Spiel-Vorlagen (Wunsch des Betreibers, 2026-09-11).
@@ -144,6 +144,13 @@ export function TemplatesView() {
             {buildTemplateGroups(liste).map((karte) => {
               const gruppe = karte.games.length > 1;
               /*
+               * Eine gemeinsame Versionszeile nur, wenn es wirklich eine
+               * gemeinsame Version gibt. Bedrock steht in derselben Gruppe wie
+               * die Java-Ausgaben, laeuft aber aus einem eigenen Image - die
+               * Karte behauptete dessen Version bis hierher einfach mit.
+               */
+              const eineVersion = gruppe && teilenSichDieVersion(karte.games);
+              /*
                * Die Bilder der Karte kommen von der ersten Variante. Sie
                * werden beim Hochladen ohnehin auf alle geschrieben; eine, die
                * abweicht, waere also entweder aelter oder mit Absicht anders.
@@ -186,12 +193,13 @@ export function TemplatesView() {
                     /*
                      * Version und Hinweis teilen sich eine Zeile: Zwei magere
                      * Zeilen unter dem Namen machten die Kachel hoch, ohne
-                     * mehr zu sagen. In einer Gruppe steht die Version nicht
-                     * je Variante - sie teilen sich das Image, und fuenfmal
-                     * dieselbe Zahl sagt nichts.
+                     * mehr zu sagen. Teilen sich die Varianten einer Gruppe
+                     * ein Image, steht die Version nicht je Variante, sondern
+                     * einmal darunter - fuenfmal dieselbe Zahl sagt nichts.
+                     * Teilen sie es nicht, steht sie wieder hier.
                      */
                     const unterzeile = [
-                      gruppe ? null : formatImageVersion(spiel.imageVersion),
+                      eineVersion ? null : formatImageVersion(spiel.imageVersion),
                       hinweis,
                     ]
                       .filter((teil) => teil !== null)
@@ -230,9 +238,9 @@ export function TemplatesView() {
                     );
                   })}
 
-                  {/* Die Version der Gruppe einmal, unter den Schaltern: Die
-                      Varianten teilen sich ein Image. */}
-                  {gruppe && formatImageVersion(erste.imageVersion) !== null ? (
+                  {/* Die Version der Gruppe einmal, unter den Schaltern – aber
+                      nur, wenn die Varianten sich wirklich ein Image teilen. */}
+                  {eineVersion && formatImageVersion(erste.imageVersion) !== null ? (
                     <p className="truncate text-xs text-ink-faint">
                       {formatImageVersion(erste.imageVersion)}
                     </p>

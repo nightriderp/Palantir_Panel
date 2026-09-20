@@ -1,7 +1,7 @@
 import { type GameTypeDto } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { gameType } from '../../servers/testFixtures';
-import { buildTemplateGroups, templateVariantLabel } from './templateGroups';
+import { buildTemplateGroups, teilenSichDieVersion, templateVariantLabel } from './templateGroups';
 
 /**
  * Vorlagen nach Variantengruppe (Betreiber-Wunsch 20.09.2026).
@@ -73,5 +73,34 @@ describe('templateVariantLabel', () => {
 
   it('fällt ohne ihn auf den vollständigen Anzeigenamen zurück', () => {
     expect(templateVariantLabel(VALHEIM)).toBe('Valheim');
+  });
+});
+
+describe('teilenSichDieVersion', () => {
+  it('stimmt zu, wenn alle Varianten dieselbe Image-Version tragen', () => {
+    expect(
+      teilenSichDieVersion([
+        gameType({ id: 'a', imageVersion: '10' }),
+        gameType({ id: 'b', imageVersion: '10' }),
+      ]),
+    ).toBe(true);
+  });
+
+  it('widerspricht, sobald eine abweicht', () => {
+    // Bedrock steht in derselben Gruppe wie die Java-Ausgaben, laeuft aber aus
+    // einem eigenen Image.
+    expect(
+      teilenSichDieVersion([
+        gameType({ id: 'minecraft-paper', imageVersion: '10' }),
+        gameType({ id: 'minecraft-bedrock', imageVersion: '1' }),
+      ]),
+    ).toBe(false);
+  });
+
+  it('behandelt „keine Version" wie eine Version', () => {
+    expect(teilenSichDieVersion([gameType({ id: 'a' }), gameType({ id: 'b' })])).toBe(true);
+    expect(
+      teilenSichDieVersion([gameType({ id: 'a' }), gameType({ id: 'b', imageVersion: '3' })]),
+    ).toBe(false);
   });
 });
