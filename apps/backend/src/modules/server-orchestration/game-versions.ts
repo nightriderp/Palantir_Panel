@@ -12,10 +12,17 @@
  *
  * **Wann das Netz gebraucht wird.** Nur beim Anzeigen der Liste und beim
  * Auswählen einer Version. Danach stehen Adresse und Prüfsumme **am Server**
- * (`game_version_url`, `game_version_hash`), und ein Start braucht Mojang
- * nicht mehr. Das ist Absicht: Ein Start, der an einem fremden Dienst hängt,
- * wäre genau dann kaputt, wenn man ihn braucht – und der Fingerabdruck des
- * Containers bliebe nicht stabil.
+ * (`game_version_url`, `game_version_hash`), und ein Start braucht den
+ * Hersteller nicht mehr. Das ist Absicht: Ein Start, der an einem fremden
+ * Dienst hängt, wäre genau dann kaputt, wenn man ihn braucht – und der
+ * Fingerabdruck des Containers bliebe nicht stabil.
+ *
+ * **Ein Katalog je Hersteller.** Mojang war der erste, Paper und NeoForge
+ * kamen dazu (Betreiber-Wunsch 20.09.2026: eine Minecraft-Vorlage, die alle
+ * Versionen und Ausgaben abdeckt). Sie teilen sich Abruf, Frist und
+ * Zwischenspeicher; verschieden ist allein, wie der Hersteller seine Liste
+ * führt. `createVersionCatalogueGroup()` legt sie nebeneinander und fragt den,
+ * der den Spieltyp kennt.
  */
 
 export interface GameVersionQuelle {
@@ -27,8 +34,20 @@ export interface GameVersionQuelle {
   readonly url: string;
   /** Prüfsumme der Serverdatei. */
   readonly hash: string;
-  /** Verfahren der Prüfsumme – Mojang nennt SHA-1. */
+  /** Verfahren der Prüfsumme – Mojang nennt SHA-1, Paper SHA-256. */
   readonly hashAlgorithm: 'sha1' | 'sha256';
+  /**
+   * Version des Mod-Loaders, wo die Spielversion allein nicht reicht.
+   *
+   * Bei NeoForge wählt der Betreiber eine **Minecraft**-Version; welcher
+   * Loader dazu gehört, ist keine zweite Entscheidung, sondern folgt daraus
+   * (`21.4.96` gehört zu `1.21.4`). Die Adresse oben zeigt auf das
+   * Installationsprogramm dieses Loaders; diese Angabe sagt, welche Version
+   * darin steckt – für die Anzeige und für das Startskript.
+   *
+   * Ohne Angabe ist die Serverdatei für sich vollständig (Mojang, Paper).
+   */
+  readonly loaderVersion?: string;
 }
 
 export interface GameVersionCatalogue {
@@ -50,6 +69,157 @@ export const VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
  */
 export const MAX_VERSIONS = 20;
 
+/** Was jeder Katalog gleich macht: abrufen, warten, Uhr lesen. */
+export interface KatalogGrundOptionen {
+  readonly fetchImpl?: typeof fetch;
+  readonly now?: () => number;
+  /** Frist je Abruf; ein hängender Hersteller darf das Panel nicht blockieren. */
+  readonly timeoutMs?: number;
+}
+
+/**
+ * Abrufer mit Frist, der bei jedem Fehler `null` liefert.
+ *
+ * Netz weg, Frist abgelaufen, Unsinn im Körper: Die Liste bleibt leer, und die
+ * Oberfläche zeigt „keine Auswahl" statt einer Fehlerseite. Ein Hersteller, der
+ * gerade nicht erreichbar ist, darf das Anlegen eines Servers nicht verhindern
+ * – nur die Wahl einer anderen Version.
+ */
+function erstelleLeser(options: KatalogGrundOptionen) {
+  const holen = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 10_000;
+
+  async function leseRoh(url: string): Promise<Response | null> {
+    try {
+      const antwort = await holen(url, { signal: AbortSignal.timeout(timeoutMs) });
+
+      return antwort.ok ? antwort : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return {
+    async json<T>(url: string): Promise<T | null> {
+      const antwort = await leseRoh(url);
+
+      if (antwort === null) {
+        return null;
+      }
+
+      try {
+        return (await antwort.json()) as T;
+      } catch {
+        return null;
+      }
+    },
+
+    async text(url: string): Promise<string | null> {
+      const antwort = await leseRoh(url);
+
+      if (antwort === null) {
+        return null;
+      }
+
+      try {
+        return await antwort.text();
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
+/**
+ * Zwischenspeicher, Frist und die beiden Methoden – für jeden Katalog gleich.
+ *
+ * `laden` holt die Liste beim Hersteller. Der Rest steht hier: eine Stunde
+ * Frist, und wenn ein Abruf scheitert, lieber die alte Liste als gar keine.
+ * Sie ist Minuten alt, nicht falsch.
+ */
+function erstelleKatalog(spec: {
+  readonly gameTypeIds: ReadonlySet<string>;
+  readonly laden: () => Promise<GameVersionQuelle[]>;
+  readonly now: () => number;
+}): GameVersionCatalogue {
+  let zwischenspeicher: { readonly bis: number; readonly eintraege: GameVersionQuelle[] } | null =
+    null;
+
+  async function liste(): Promise<GameVersionQuelle[]> {
+    const gespeichert = zwischenspeicher;
+
+    if (gespeichert !== null && gespeichert.bis > spec.now()) {
+      return gespeichert.eintraege;
+    }
+
+    const eintraege = await spec.laden();
+
+    if (eintraege.length === 0) {
+      return gespeichert?.eintraege ?? [];
+    }
+
+    zwischenspeicher = { bis: spec.now() + VERSION_CACHE_TTL_MS, eintraege };
+
+    return eintraege;
+  }
+
+  return {
+    async list(gameTypeId) {
+      return spec.gameTypeIds.has(gameTypeId) ? liste() : [];
+    },
+
+    async resolve(gameTypeId, versionId) {
+      if (!spec.gameTypeIds.has(gameTypeId)) {
+        return null;
+      }
+
+      return (await liste()).find((eintrag) => eintrag.id === versionId) ?? null;
+    },
+  };
+}
+
+/**
+ * Mehrere Kataloge nebeneinander.
+ *
+ * Jeder kennt seine Spieltypen und antwortet auf alle anderen leer; gefragt
+ * wird der Reihe nach, bis einer etwas liefert. Bewusst kein Verzeichnis
+ * „Spieltyp → Katalog" daneben: Welche Typen ein Katalog bedient, weiß er
+ * selbst am besten, und zwei Orte für dieselbe Zuordnung driften auseinander.
+ */
+export function createVersionCatalogueGroup(
+  kataloge: readonly GameVersionCatalogue[],
+): GameVersionCatalogue {
+  return {
+    async list(gameTypeId) {
+      for (const katalog of kataloge) {
+        const eintraege = await katalog.list(gameTypeId);
+
+        if (eintraege.length > 0) {
+          return eintraege;
+        }
+      }
+
+      return [];
+    },
+
+    async resolve(gameTypeId, versionId) {
+      for (const katalog of kataloge) {
+        const quelle = await katalog.resolve(gameTypeId, versionId);
+
+        if (quelle !== null) {
+          return quelle;
+        }
+      }
+
+      return null;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Mojang – Minecraft (Vanilla)
+// ---------------------------------------------------------------------------
+
 interface MojangManifest {
   readonly latest?: { readonly release?: string };
   readonly versions?: readonly {
@@ -66,13 +236,9 @@ interface MojangVersionDetail {
   };
 }
 
-export interface MojangCatalogueOptions {
+export interface MojangCatalogueOptions extends KatalogGrundOptionen {
   /** Adresse des Verzeichnisses; in Tests eine Attrappe. */
   readonly manifestUrl?: string;
-  readonly fetchImpl?: typeof fetch;
-  readonly now?: () => number;
-  /** Frist je Abruf; ein hängender Hersteller darf das Panel nicht blockieren. */
-  readonly timeoutMs?: number;
 }
 
 const MOJANG_MANIFEST_URL = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
@@ -84,98 +250,356 @@ export function createMojangVersionCatalogue(
   options: MojangCatalogueOptions = {},
 ): GameVersionCatalogue {
   const manifestUrl = options.manifestUrl ?? MOJANG_MANIFEST_URL;
-  const holen = options.fetchImpl ?? fetch;
-  const jetzt = options.now ?? ((): number => Date.now());
-  const timeoutMs = options.timeoutMs ?? 10_000;
+  const leser = erstelleLeser(options);
 
-  let zwischenspeicher: { readonly bis: number; readonly eintraege: GameVersionQuelle[] } | null =
-    null;
+  return erstelleKatalog({
+    gameTypeIds: MOJANG_GAME_TYPES,
+    now: options.now ?? ((): number => Date.now()),
+    async laden() {
+      const manifest = await leser.json<MojangManifest>(manifestUrl);
 
-  async function lese<T>(url: string): Promise<T | null> {
-    try {
-      const antwort = await holen(url, { signal: AbortSignal.timeout(timeoutMs) });
-
-      if (!antwort.ok) {
-        return null;
+      if (manifest === null) {
+        return [];
       }
 
-      return (await antwort.json()) as T;
-    } catch {
-      // Netz weg, Frist abgelaufen, Unsinn im Körper: Die Liste bleibt leer,
-      // und die Oberfläche zeigt „keine Auswahl" statt einer Fehlerseite.
-      return null;
-    }
+      const neueste = manifest.latest?.release ?? null;
+      const releases = (manifest.versions ?? [])
+        .filter((eintrag) => eintrag.type === 'release' && typeof eintrag.id === 'string')
+        .slice(0, MAX_VERSIONS);
+
+      /*
+       * Die Adresse der Serverdatei steht nicht im Verzeichnis, sondern erst im
+       * Datensatz je Version – das sind zwanzig weitere Abrufe. Sie laufen
+       * nebeneinander und nur einmal je Stunde.
+       */
+      const aufgeloest = await Promise.all(
+        releases.map(async (eintrag): Promise<GameVersionQuelle | null> => {
+          const detail =
+            eintrag.url === undefined ? null : await leser.json<MojangVersionDetail>(eintrag.url);
+          const server = detail?.downloads?.server;
+
+          if (server?.url === undefined || server.sha1 === undefined) {
+            return null;
+          }
+
+          return {
+            id: eintrag.id as string,
+            releasedAt: eintrag.releaseTime ?? null,
+            latest: eintrag.id === neueste,
+            url: server.url,
+            hash: server.sha1,
+            hashAlgorithm: 'sha1',
+          };
+        }),
+      );
+
+      return aufgeloest.filter((eintrag): eintrag is GameVersionQuelle => eintrag !== null);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// PaperMC – Minecraft (Paper)
+// ---------------------------------------------------------------------------
+
+interface PaperProjekt {
+  /** Nach Reihe geordnet: `{ "26.3": ["26.3", "26.3-rc-3"], ... }`. */
+  readonly versions?: Readonly<Record<string, readonly string[]>>;
+}
+
+interface PaperDownload {
+  readonly name?: string;
+  readonly url?: string;
+  readonly checksums?: { readonly sha256?: string };
+}
+
+interface PaperBuild {
+  readonly id?: number;
+  readonly time?: string;
+  readonly channel?: string;
+  readonly downloads?: Readonly<Record<string, PaperDownload>>;
+}
+
+export interface PaperCatalogueOptions extends KatalogGrundOptionen {
+  /** Wurzel des Projekts; in Tests eine Attrappe. */
+  readonly projectUrl?: string;
+}
+
+const PAPER_PROJECT_URL = 'https://fill.papermc.io/v3/projects/paper';
+
+const PAPER_GAME_TYPES = new Set(['minecraft-paper']);
+
+/** Der Eintrag, den Paper als Serverdatei führt. */
+const PAPER_DOWNLOAD_SCHLUESSEL = 'server:default';
+
+/**
+ * Eine Vorabversion – Paper hängt `-rc-3`, `-pre-1` und Ähnliches an.
+ *
+ * Gilt genauso für NeoForge (`-beta`). Wer eine Welt auf eine Vorabversion
+ * setzt, tut das mit Absicht; über die Auswahl des Panels soll es nicht aus
+ * Versehen passieren.
+ */
+function istVorab(version: string): boolean {
+  return version.includes('-');
+}
+
+/**
+ * Paper führt seine Versionen nach Reihen und je Version eine Folge von Bauten.
+ *
+ * **Die v3-Schnittstelle, nicht v2.** Das Image holt seine Jar schon von
+ * `fill.papermc.io/v3` (siehe `images/game/minecraft/Dockerfile`); zwei
+ * verschiedene Schnittstellen für dieselbe Sache wären zwei Stellen, die
+ * auseinanderlaufen.
+ *
+ * **Der Bau zählt, nicht nur die Version.** Eine Paper-Version wie `26.2` ist
+ * kein fertiges Ding, sondern eine Folge: Bau 121, 126 … Gewählt wird der
+ * höchste im Kanal `STABLE`. Gibt es für eine Version nur Vorabbauten, fällt
+ * sie aus der Liste: Ein Server, der ohne Vorwarnung auf einem Vorabbau läuft,
+ * ist eine Überraschung, die niemand bestellt hat.
+ *
+ * Adresse und Prüfsumme stehen fertig im Datensatz des Baus – die Adresse wird
+ * nicht zusammengesetzt, sondern übernommen.
+ */
+export function createPaperVersionCatalogue(
+  options: PaperCatalogueOptions = {},
+): GameVersionCatalogue {
+  const projektUrl = options.projectUrl ?? PAPER_PROJECT_URL;
+  const leser = erstelleLeser(options);
+
+  return erstelleKatalog({
+    gameTypeIds: PAPER_GAME_TYPES,
+    now: options.now ?? ((): number => Date.now()),
+    async laden() {
+      const projekt = await leser.json<PaperProjekt>(projektUrl);
+      const reihen = projekt?.versions ?? {};
+
+      /*
+       * Die Reihen stehen neueste zuerst, und innerhalb einer Reihe ebenso.
+       * Beides übernimmt die flache Liste, statt selbst zu sortieren: Eine
+       * eigene Ordnung über Versionsnummern müsste raten, wie der Hersteller
+       * zählt, und läge bei der nächsten Umstellung falsch.
+       */
+      const versionen = Object.values(reihen)
+        .flat()
+        .filter((version) => !istVorab(version))
+        .slice(0, MAX_VERSIONS);
+
+      if (versionen.length === 0) {
+        return [];
+      }
+
+      const aufgeloest = await Promise.all(
+        versionen.map(async (version, index): Promise<GameVersionQuelle | null> => {
+          const bauten = await leser.json<readonly PaperBuild[]>(
+            `${projektUrl}/versions/${encodeURIComponent(version)}/builds`,
+          );
+
+          if (!Array.isArray(bauten)) {
+            return null;
+          }
+
+          // Höchste Nummer statt „letzter im Feld": Die Reihenfolge der Antwort
+          // ist nirgends zugesagt, die Nummer dagegen zählt aufwärts.
+          const fertige = bauten
+            .filter((bau) => bau.channel === 'STABLE' && typeof bau.id === 'number')
+            .sort((links, rechts) => (links.id as number) - (rechts.id as number));
+
+          const neuester = fertige[fertige.length - 1];
+          const datei = neuester?.downloads?.[PAPER_DOWNLOAD_SCHLUESSEL];
+
+          if (datei?.url === undefined || datei.checksums?.sha256 === undefined) {
+            return null;
+          }
+
+          return {
+            id: version,
+            // Paper nennt kein Datum für die Version, nur für den Bau – und der
+            // ist die Datei, die hier tatsächlich geholt wird.
+            releasedAt: neuester?.time ?? null,
+            latest: index === 0,
+            url: datei.url,
+            hash: datei.checksums.sha256,
+            hashAlgorithm: 'sha256',
+          };
+        }),
+      );
+
+      return aufgeloest.filter((eintrag): eintrag is GameVersionQuelle => eintrag !== null);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// NeoForge – Minecraft (NeoForge)
+// ---------------------------------------------------------------------------
+
+export interface NeoforgeCatalogueOptions extends KatalogGrundOptionen {
+  /** Wurzel des Maven-Ordners; in Tests eine Attrappe. */
+  readonly mavenUrl?: string;
+}
+
+const NEOFORGE_MAVEN_URL = 'https://maven.neoforged.net/releases/net/neoforged/neoforge';
+
+const NEOFORGE_GAME_TYPES = new Set(['minecraft-neoforge']);
+
+/**
+ * Die Minecraft-Version steckt in der NeoForge-Version – in zwei Schreibweisen.
+ *
+ * Im Maven-Ordner liegen beide nebeneinander, weil NeoForge die Zählung mit
+ * Minecraft umgestellt hat:
+ *
+ * | NeoForge    | Stellen | Minecraft |
+ * | ----------- | ------- | --------- |
+ * | `26.2.0.86` | vier    | `26.2`    |
+ * | `21.1.251`  | drei    | `1.21.1`  |
+ *
+ * Die Stellenzahl unterscheidet sie: Seit Minecraft selbst zweistellig zählt
+ * (`26.2`), hängt NeoForge Fehlerstand und Bau an und kommt auf vier. Vorher
+ * trug es die beiden hinteren Stellen von `1.21.1` und kam auf drei.
+ *
+ * `null`, wenn eine Kennung in keines der beiden Schemata passt; dann bleibt
+ * sie aussen vor, statt eine Minecraft-Version zu behaupten.
+ */
+export function minecraftVersionAusNeoforge(neoforge: string): string | null {
+  const stellen = neoforge.split('.');
+
+  if (stellen.length === 4 && stellen.every((stelle) => /^\d+$/.test(stelle))) {
+    return `${stellen[0] as string}.${stellen[1] as string}`;
   }
 
-  async function ladeListe(): Promise<GameVersionQuelle[]> {
-    const gespeichert = zwischenspeicher;
+  if (stellen.length === 3 && stellen.every((stelle) => /^\d+$/.test(stelle))) {
+    return `1.${stellen[0] as string}.${stellen[1] as string}`;
+  }
 
-    if (gespeichert !== null && gespeichert.bis > jetzt()) {
-      return gespeichert.eintraege;
+  return null;
+}
+
+interface NeoforgeBau {
+  readonly neoforge: string;
+  readonly minecraft: string;
+}
+
+/**
+ * NeoForge liegt als Maven-Ordner, nicht als JSON-Schnittstelle.
+ *
+ * **Die Versionsliste wird aus dem `maven-metadata.xml` gelesen**, und zwar mit
+ * einem Ausdruck über die `<version>`-Elemente statt mit einem XML-Leser. Für
+ * eine Datei mit genau einer Sorte Element eine Abhängigkeit aufzunehmen wäre
+ * unverhältnismässig (Entwicklungsregeln §1: keine neue Bibliothek nebenbei);
+ * was nicht in das Schema passt, fällt ohnehin heraus.
+ *
+ * **Die Prüfsumme liegt neben der Datei.** Maven legt sie als eigene kleine
+ * Datei ab; `.sha256` bevorzugt, `.sha1` als Rückfall, weil ältere Ordner nur
+ * die kennen.
+ */
+export function createNeoforgeVersionCatalogue(
+  options: NeoforgeCatalogueOptions = {},
+): GameVersionCatalogue {
+  const mavenUrl = options.mavenUrl ?? NEOFORGE_MAVEN_URL;
+  const leser = erstelleLeser(options);
+
+  async function pruefsumme(
+    version: string,
+  ): Promise<{ hash: string; hashAlgorithm: 'sha1' | 'sha256' } | null> {
+    const basis = `${mavenUrl}/${version}/neoforge-${version}-installer.jar`;
+
+    for (const verfahren of ['sha256', 'sha1'] as const) {
+      const roh = await leser.text(`${basis}.${verfahren}`);
+      const summe = roh?.trim().split(/\s+/)[0] ?? '';
+
+      if (/^[0-9a-f]{40,64}$/i.test(summe)) {
+        return { hash: summe.toLowerCase(), hashAlgorithm: verfahren };
+      }
     }
 
-    const manifest = await lese<MojangManifest>(manifestUrl);
+    return null;
+  }
 
-    if (manifest === null) {
-      // Lieber die alte Liste als gar keine: Sie ist Minuten alt, nicht falsch.
-      return gespeichert?.eintraege ?? [];
-    }
+  return erstelleKatalog({
+    gameTypeIds: NEOFORGE_GAME_TYPES,
+    now: options.now ?? ((): number => Date.now()),
+    async laden() {
+      const xml = await leser.text(`${mavenUrl}/maven-metadata.xml`);
 
-    const neueste = manifest.latest?.release ?? null;
-    const releases = (manifest.versions ?? [])
-      .filter((eintrag) => eintrag.type === 'release' && typeof eintrag.id === 'string')
-      .slice(0, MAX_VERSIONS);
+      if (xml === null) {
+        return [];
+      }
 
-    /*
-     * Die Adresse der Serverdatei steht nicht im Verzeichnis, sondern erst im
-     * Datensatz je Version – das sind zwanzig weitere Abrufe. Sie laufen
-     * nebeneinander und nur einmal je Stunde.
-     */
-    const aufgeloest = await Promise.all(
-      releases.map(async (eintrag): Promise<GameVersionQuelle | null> => {
-        const detail =
-          eintrag.url === undefined ? null : await lese<MojangVersionDetail>(eintrag.url);
-        const server = detail?.downloads?.server;
+      const alle = [...xml.matchAll(/<version>([^<]+)<\/version>/g)]
+        .map((treffer) => (treffer[1] ?? '').trim())
+        .filter((version) => version !== '' && !istVorab(version));
 
-        if (server?.url === undefined || server.sha1 === undefined) {
-          return null;
+      /*
+       * Je Minecraft-Version der höchste NeoForge-Bau. Der Ordner ist nicht
+       * verlässlich geordnet – im echten Verzeichnis steht `26.1.2.109` vor
+       * `26.2.0.86` und `21.1.251` ganz am Ende –, deshalb wird verglichen und
+       * nicht auf die Reihenfolge vertraut.
+       */
+      const jeSpielversion = new Map<string, NeoforgeBau>();
+
+      for (const version of alle) {
+        const minecraft = minecraftVersionAusNeoforge(version);
+
+        if (minecraft === null) {
+          continue;
         }
 
-        return {
-          id: eintrag.id as string,
-          releasedAt: eintrag.releaseTime ?? null,
-          latest: eintrag.id === neueste,
-          url: server.url,
-          hash: server.sha1,
-          hashAlgorithm: 'sha1',
-        };
-      }),
-    );
+        const bisher = jeSpielversion.get(minecraft);
 
-    const eintraege = aufgeloest.filter(
-      (eintrag): eintrag is GameVersionQuelle => eintrag !== null,
-    );
-
-    if (eintraege.length > 0) {
-      zwischenspeicher = { bis: jetzt() + VERSION_CACHE_TTL_MS, eintraege };
-    }
-
-    return eintraege;
-  }
-
-  return {
-    async list(gameTypeId) {
-      return MOJANG_GAME_TYPES.has(gameTypeId) ? ladeListe() : [];
-    },
-
-    async resolve(gameTypeId, versionId) {
-      if (!MOJANG_GAME_TYPES.has(gameTypeId)) {
-        return null;
+        if (bisher === undefined || vergleicheVersionen(version, bisher.neoforge) > 0) {
+          jeSpielversion.set(minecraft, { neoforge: version, minecraft });
+        }
       }
 
-      const liste = await ladeListe();
+      const bauten = [...jeSpielversion.values()]
+        .sort((links, rechts) => vergleicheVersionen(rechts.minecraft, links.minecraft))
+        .slice(0, MAX_VERSIONS);
 
-      return liste.find((eintrag) => eintrag.id === versionId) ?? null;
+      const aufgeloest = await Promise.all(
+        bauten.map(async (bau, index): Promise<GameVersionQuelle | null> => {
+          const summe = await pruefsumme(bau.neoforge);
+
+          if (summe === null) {
+            return null;
+          }
+
+          return {
+            id: bau.minecraft,
+            // Maven nennt kein Datum je Version; das Panel zeigt dann keins.
+            releasedAt: null,
+            latest: index === 0,
+            url: `${mavenUrl}/${bau.neoforge}/neoforge-${bau.neoforge}-installer.jar`,
+            hash: summe.hash,
+            hashAlgorithm: summe.hashAlgorithm,
+            loaderVersion: bau.neoforge,
+          };
+        }),
+      );
+
+      return aufgeloest.filter((eintrag): eintrag is GameVersionQuelle => eintrag !== null);
     },
-  };
+  });
+}
+
+/**
+ * Zwei Versionsnummern der Stelle nach vergleichen.
+ *
+ * `26.2.0.86` ist grösser als `26.1.2.109`, obwohl `109` grösser als `86` ist –
+ * ein Vergleich als Zeichenkette läge hier falsch, und der Maven-Ordner ist
+ * nicht nach Grösse geordnet. Fehlende Stellen zählen als `0`, damit `26.2`
+ * und `26.2.0` gleich sind.
+ */
+function vergleicheVersionen(links: string, rechts: string): number {
+  const a = links.split('.').map((stelle) => Number.parseInt(stelle, 10) || 0);
+  const b = rechts.split('.').map((stelle) => Number.parseInt(stelle, 10) || 0);
+
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    const unterschied = (a[i] ?? 0) - (b[i] ?? 0);
+
+    if (unterschied !== 0) {
+      return unterschied;
+    }
+  }
+
+  return 0;
 }

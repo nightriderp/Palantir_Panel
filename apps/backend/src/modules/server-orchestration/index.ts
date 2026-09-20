@@ -38,7 +38,12 @@ import { DEFAULT_AUTO_SHUTDOWN } from './auto-shutdown.js';
 import { createCloudflareDnsProvider } from './dns/cloudflare.js';
 import { type DnsProvider, createNoopDnsProvider } from './dns/types.js';
 import { type GameRegistry, createGameRegistry } from './game-registry.js';
-import { createMojangVersionCatalogue } from './game-versions.js';
+import {
+  createMojangVersionCatalogue,
+  createNeoforgeVersionCatalogue,
+  createPaperVersionCatalogue,
+  createVersionCatalogueGroup,
+} from './game-versions.js';
 import { createHealthProbe } from './health-check.js';
 import { type PortPoolPort, createPortAllocator } from './ports.js';
 import { buildResourceService, resourceWarningThresholdsFromEnv } from '../resources/index.js';
@@ -315,7 +320,11 @@ export function registerServerOrchestration(
      * sie beim Hersteller und merkt sie sich eine Stunde; ohne Netz bleibt die
      * Liste leer und jeder Server fährt die Version seines Images.
      */
-    gameVersions: createMojangVersionCatalogue(),
+    gameVersions: createVersionCatalogueGroup([
+      createMojangVersionCatalogue(),
+      createPaperVersionCatalogue(),
+      createNeoforgeVersionCatalogue(),
+    ]),
     dns,
     // Port-Pool aus B8 (Pflichtenheft §2.4) - B3 vergibt keine Ports selbst.
     ports: createPortAllocator(options.portPoolFor(options.db)),
