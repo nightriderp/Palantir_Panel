@@ -15,9 +15,25 @@ name: Deploy
 # ausgerollten Commit wieder auf und zeigt es im Panel unten links an.
 #
 # In beiden Fällen gilt dieselbe Schranke: Ausgerollt wird nur ein Commit, der
-# auf `main` liegt (also die Prüfungen aus ci.yml gesehen hat) und für den
-# images.yml bereits Images gebaut hat. Ein Tag auf einem Nicht-`main`-Commit
-# oder ohne fertige Images bricht den Lauf ab.
+# auf `main` liegt und für den images.yml bereits Images gebaut hat. Ein Tag auf
+# einem Nicht-`main`-Commit oder ohne fertige Images bricht den Lauf ab.
+#
+# ⚠️ **Was dieser Lauf NICHT prüft: ob ci.yml für den getaggten Commit grün
+# war.** Hier stand dafür „auf `main` liegt (also die Prüfungen aus ci.yml
+# gesehen hat)" – das ist zu viel behauptet. Verlässlich ist nur: Was auf `main`
+# liegt, ist über einen Pull Request gekommen, und der Branch-Schutz hat dessen
+# Lauf **gegen den damaligen Stand von `main`** verlangt. Der Lauf auf dem
+# Merge-Commit selbst ist ein zweiter, eigener Lauf, und niemand hält hier an,
+# bis er durch ist: Wer unmittelbar nach dem Merge taggt, rollt aus, während
+# ci.yml noch läuft – und auch dann, wenn dieser Lauf hinterher rot wird.
+#
+# Solange das so ist, gehört das Warten zum Vorgehen und nicht zum Werkzeug:
+# vor dem Tag nachsehen, dass CI **und** Images für den Commit abgeschlossen und
+# grün sind. Die Prüfung hier nachzuziehen wäre möglich (Ergebnis des
+# CI-Laufs zum SHA abfragen, `actions: read`), verschiebt aber die Bedeutung des
+# Tags: Es wäre dann nicht mehr die Freigabe, sondern ein Wunsch, der auch
+# scheitern kann, weil ein Lauf noch nicht fertig ist. Das ist eine Entscheidung
+# für sich und kein Nebenbei.
 #
 # Der Job gibt `environment: production` an, obwohl dort auf dem Free-Plan kein
 # Pflicht-Reviewer hinterlegt werden kann (das ist eine Frage des Tarifs, nicht
@@ -91,9 +107,12 @@ jobs:
           fi
 
           # Nur Stände von `main` dürfen nach Produktion. Sonst ließe sich ein
-          # beliebiger Commit ausrollen, der nie einen Pull Request und nie die
-          # Prüfungen aus ci.yml gesehen hat - auch nicht über ein Tag auf einem
-          # Nebenzweig.
+          # beliebiger Commit ausrollen, der nie einen Pull Request gesehen hat -
+          # auch nicht über ein Tag auf einem Nebenzweig.
+          #
+          # ⚠️ Diese Zeile prüft die Herkunft, nicht das Ergebnis: dass der
+          # Commit auf `main` liegt, nicht dass ci.yml für ihn grün war. Siehe
+          # den Kopf dieser Datei.
           if ! git merge-base --is-ancestor "${sha}" origin/main; then
             echo "::error::${sha} liegt nicht auf main."
             exit 1
