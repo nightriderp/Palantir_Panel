@@ -10,6 +10,7 @@ import { fetchGameTypes } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
 import { GameImagePicker } from './GameImagePicker';
+import { buildTemplateGroups, templateVariantLabel } from './templateGroups';
 
 /**
  * Verwaltung der Spiel-Vorlagen (Wunsch des Betreibers, 2026-09-11).
@@ -140,73 +141,115 @@ export function TemplatesView() {
            * steht als Titel daran, für den, der sie sucht.
            */
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {liste.map((spiel) => {
-              const an = !ausgeschaltet.has(spiel.id);
+            {buildTemplateGroups(liste).map((karte) => {
+              const gruppe = karte.games.length > 1;
               /*
-               * Die Phasen-Sperre ist keine Entscheidung des Administrators:
-               * Was die Instanz in ihrer Ausbaustufe noch gar nicht anbieten
-               * kann, lässt sich auch nicht einschalten. Der Schalter bleibt
-               * sichtbar, damit die Kachel nicht anders aussieht als die
-               * übrigen – und trägt den Grund darunter.
+               * Die Bilder der Karte kommen von der ersten Variante. Sie
+               * werden beim Hochladen ohnehin auf alle geschrieben; eine, die
+               * abweicht, waere also entweder aelter oder mit Absicht anders.
                */
-              const phasenGesperrt = !spiel.available && an;
-              const hinweis = phasenGesperrt
-                ? (spiel.unavailableReason ?? null)
-                : an
-                  ? null
-                  : 'Nicht im Wizard';
-              // Version und Hinweis teilen sich eine Zeile: Zwei magere
-              // Zeilen unter dem Namen machten die Kachel hoch, ohne mehr zu
-              // sagen.
-              const unterzeile = [formatImageVersion(spiel.imageVersion), hinweis]
-                .filter((teil) => teil !== null)
-                .join(' · ');
+              const erste = karte.games[0] as GameTypeDto;
 
               return (
                 <Panel
-                  key={spiel.id}
+                  key={karte.key}
                   variant="outline"
                   padding="sm"
                   // Ausgeschaltet blasser: Was angeboten wird, soll sich beim
-                  // Überfliegen vom Rest abheben.
-                  className={cn('flex flex-col gap-2', !an && 'opacity-60')}
+                  // Ueberfliegen vom Rest abheben. Bei einer Gruppe zaehlt,
+                  // ob ueberhaupt eine Variante angeboten wird.
+                  className={cn(
+                    'flex flex-col gap-2',
+                    karte.games.every((spiel) => ausgeschaltet.has(spiel.id)) && 'opacity-60',
+                  )}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className="truncate text-sm font-medium text-ink"
-                        title={spiel.description}
-                      >
-                        {spiel.name}
-                      </p>
-                      {/* Die Version des Images, das diese Vorlage startet
-                          (Betreiber-Wunsch 19.09.2026). Hier ist die Stelle,
-                          an der sich nachsehen lässt, was ein Server nach dem
-                          Aktualisieren bekommt. */}
-                      {unterzeile === '' ? null : (
-                        <p className="truncate text-xs text-ink-faint" title={unterzeile}>
-                          {unterzeile}
-                        </p>
-                      )}
-                    </div>
+                  {gruppe ? (
+                    <p className="truncate text-sm font-medium text-ink">{karte.label}</p>
+                  ) : null}
 
-                    <Toggle
-                      label={spiel.name}
-                      checked={an}
-                      disabled={busy !== null || !darfAendern || phasenGesperrt}
-                      onChange={(next) => void umschalten(spiel, next)}
-                    />
-                  </div>
+                  {karte.games.map((spiel) => {
+                    const an = !ausgeschaltet.has(spiel.id);
+                    /*
+                     * Die Phasen-Sperre ist keine Entscheidung des
+                     * Administrators: Was die Instanz in ihrer Ausbaustufe
+                     * noch gar nicht anbieten kann, laesst sich auch nicht
+                     * einschalten. Der Schalter bleibt sichtbar, damit die
+                     * Kachel nicht anders aussieht als die uebrigen - und
+                     * traegt den Grund darunter.
+                     */
+                    const phasenGesperrt = !spiel.available && an;
+                    const hinweis = phasenGesperrt
+                      ? (spiel.unavailableReason ?? null)
+                      : an
+                        ? null
+                        : 'Nicht im Wizard';
+                    /*
+                     * Version und Hinweis teilen sich eine Zeile: Zwei magere
+                     * Zeilen unter dem Namen machten die Kachel hoch, ohne
+                     * mehr zu sagen. In einer Gruppe steht die Version nicht
+                     * je Variante - sie teilen sich das Image, und fuenfmal
+                     * dieselbe Zahl sagt nichts.
+                     */
+                    const unterzeile = [
+                      gruppe ? null : formatImageVersion(spiel.imageVersion),
+                      hinweis,
+                    ]
+                      .filter((teil) => teil !== null)
+                      .join(' · ');
+
+                    return (
+                      <div key={spiel.id} className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={cn(
+                              'truncate text-ink',
+                              gruppe ? 'text-sm' : 'text-sm font-medium',
+                            )}
+                            title={spiel.description}
+                          >
+                            {gruppe ? templateVariantLabel(spiel) : spiel.name}
+                          </p>
+                          {/* Die Version des Images, das diese Vorlage
+                              startet (Betreiber-Wunsch 19.09.2026). Hier ist
+                              die Stelle, an der sich nachsehen laesst, was
+                              ein Server nach dem Aktualisieren bekommt. */}
+                          {unterzeile === '' ? null : (
+                            <p className="truncate text-xs text-ink-faint" title={unterzeile}>
+                              {unterzeile}
+                            </p>
+                          )}
+                        </div>
+
+                        <Toggle
+                          label={spiel.name}
+                          checked={an}
+                          disabled={busy !== null || !darfAendern || phasenGesperrt}
+                          onChange={(next) => void umschalten(spiel, next)}
+                        />
+                      </div>
+                    );
+                  })}
+
+                  {/* Die Version der Gruppe einmal, unter den Schaltern: Die
+                      Varianten teilen sich ein Image. */}
+                  {gruppe && formatImageVersion(erste.imageVersion) !== null ? (
+                    <p className="truncate text-xs text-ink-faint">
+                      {formatImageVersion(erste.imageVersion)}
+                    </p>
+                  ) : null}
 
                   {/*
                     Symbol und Kachelbild je Vorlage (Betreiber-Wunsch
-                    19.09.2026). Sie stehen hier und nicht auf einer eigenen
-                    Seite: Wer entscheidet, ob ein Spiel angeboten wird,
-                    entscheidet auch, wie es aussieht.
+                    19.09.2026), seit dem 20.09.2026 je **Gruppe**: Minecraft
+                    belegte fuenf Karten, und jede wollte dasselbe Bild
+                    einzeln hochgeladen bekommen. Sie stehen hier und nicht
+                    auf einer eigenen Seite: Wer entscheidet, ob ein Spiel
+                    angeboten wird, entscheidet auch, wie es aussieht.
                   */}
                   {darfAendern ? (
                     <GameImagePicker
-                      game={spiel}
+                      game={erste}
+                      weitere={karte.games.slice(1)}
                       disabled={busy !== null}
                       onChanged={() => spiele.reload()}
                     />

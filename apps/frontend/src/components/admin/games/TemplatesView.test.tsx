@@ -4,7 +4,7 @@ import {
   type GlobalPermissions,
   type InstanceSettingsDto,
 } from '@palantir/contracts';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/shared';
 import { TemplatesView } from './TemplatesView';
@@ -252,5 +252,127 @@ describe('Templates: das Angebot der Instanz', () => {
       expect((schalter as HTMLInputElement).disabled).toBe(true);
     }
     expect(screen.getByText(/fehlt dir das Recht/u)).toBeTruthy();
+  });
+});
+
+/**
+ * Varianten eines Spiels auf einer Karte (Betreiber-Wunsch 20.09.2026).
+ *
+ * Minecraft belegte fünf von zwanzig Karten, und jede wollte Symbol und
+ * Kachelbild einzeln hochgeladen bekommen. Geprüft wird die gerenderte Seite
+ * und nicht nur `buildTemplateGroups`: Die Zusage – **ein** Bild-Bereich je
+ * Gruppe, aber **ein Schalter je Ausgabe** – steckt in der Zusammensetzung.
+ */
+
+function ausgabe(label: string, id: string): GameTypeDto {
+  return spiel({
+    id,
+    name: `Minecraft (${label})`,
+    variantGroup: 'Minecraft',
+    variantLabel: label,
+    imageVersion: '10',
+  });
+}
+
+/** Die Karte, in der ein Text steht – die Panels tragen keine Rolle. */
+function karteMit(text: string): HTMLElement {
+  const karte = screen.getByText(text).closest('div.flex.flex-col');
+
+  if (karte === null) {
+    throw new Error(`Keine Karte um „${text}" gefunden.`);
+  }
+
+  return karte as HTMLElement;
+}
+
+describe('Templates: Varianten auf einer Karte', () => {
+  beforeEach(() => {
+    api.fetchGameTypes.mockResolvedValue({
+      success: true,
+      data: [
+        ausgabe('Paper', 'minecraft-paper'),
+        ausgabe('Vanilla', 'minecraft-vanilla'),
+        ausgabe('Fabric', 'minecraft-fabric'),
+        ausgabe('NeoForge', 'minecraft-neoforge'),
+        spiel({ id: 'minecraft-bedrock', name: 'Minecraft (Bedrock)', imageVersion: '1' }),
+        spiel({ id: 'valheim', name: 'Valheim', imageVersion: '1' }),
+      ],
+      error: null,
+    });
+  });
+
+  it('zeigt eine Karte „Minecraft" statt einer je Ausgabe', async () => {
+    zeichne();
+
+    await waitFor(() => {
+      expect(screen.getByText('Minecraft')).toBeTruthy();
+    });
+
+    // Die vollständigen Namen stehen nicht mehr als Überschrift da – in der
+    // Gruppe stehen die kurzen.
+    expect(screen.queryByText('Minecraft (Paper)')).toBeNull();
+    expect(screen.queryByText('Minecraft (NeoForge)')).toBeNull();
+  });
+
+  it('trägt einen Schalter je Ausgabe – das Angebot bleibt einzeln entscheidbar', async () => {
+    zeichne();
+
+    await waitFor(() => {
+      expect(screen.getByText('Minecraft')).toBeTruthy();
+    });
+
+    const karte = karteMit('Minecraft');
+
+    for (const label of ['Paper', 'Vanilla', 'Fabric', 'NeoForge']) {
+      expect(within(karte).getByText(label), label).toBeTruthy();
+    }
+
+    expect(within(karte).getAllByRole('switch')).toHaveLength(4);
+  });
+
+  it('zeigt Symbol und Kachelbild einmal für die ganze Gruppe', async () => {
+    // Der Grund für die Änderung: vorher fünf Karten und damit zehn Uploads
+    // für dasselbe Bild.
+    zeichne();
+
+    await waitFor(() => {
+      expect(screen.getByText('Minecraft')).toBeTruthy();
+    });
+
+    const karte = karteMit('Minecraft');
+
+    expect(within(karte).getAllByText('Symbol')).toHaveLength(1);
+    expect(within(karte).getAllByText('Kachelbild')).toHaveLength(1);
+  });
+
+  it('nennt die Image-Version der Gruppe einmal, nicht je Ausgabe', async () => {
+    zeichne();
+
+    await waitFor(() => {
+      expect(screen.getByText('Minecraft')).toBeTruthy();
+    });
+
+    expect(within(karteMit('Minecraft')).getAllByText('v10.0.0')).toHaveLength(1);
+  });
+
+  it('lässt Spiele ohne Gruppe unverändert', async () => {
+    // Bedrock zeigt auf ein anderes Image und hat darum kein `variantGroup`.
+    zeichne();
+
+    await waitFor(() => {
+      expect(screen.getByText('Minecraft (Bedrock)')).toBeTruthy();
+    });
+
+    expect(screen.getByText('Valheim')).toBeTruthy();
+    expect(within(karteMit('Minecraft (Bedrock)')).getAllByRole('switch')).toHaveLength(1);
+  });
+
+  it('zählt weiterhin Vorlagen und nicht Karten', async () => {
+    // Minecraft ist vier Vorlagen, auch wenn es eine Karte ist.
+    zeichne();
+
+    await waitFor(() => {
+      expect(screen.getByText(/von 6 Vorlagen/u)).toBeTruthy();
+    });
   });
 });
