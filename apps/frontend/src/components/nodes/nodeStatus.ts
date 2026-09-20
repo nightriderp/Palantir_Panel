@@ -162,13 +162,13 @@ export function nodeCpuLabel(node: HostNodeDto): string {
 }
 
 // ---------------------------------------------------------------------------
-// Agent-Fassung
+// Agent-Version
 // ---------------------------------------------------------------------------
 
 export interface NodeAgentHint {
   /** Kurzform für die Unterzeile, z. B. „Agent 1.4.2". */
   label: string;
-  /** Warnung im Klartext, wenn der Agent nicht zu dieser Fassung des Panels passt; sonst `null`. */
+  /** Warnung im Klartext, wenn der Agent nicht zu dieser Version des Panels passt; sonst `null`. */
   warning: string | null;
 }
 
@@ -182,12 +182,12 @@ export interface NodeAgentHint {
  * schauen zu müssen. `null`, solange sich nie ein Agent gemeldet hat.
  *
  * Bei einer Node, die gerade **nicht** online ist, trägt die Zeile zusätzlich
- * den Zeitpunkt der Meldung (Gefundener Punkt 321). Die Fassung stammt dann aus
+ * den Zeitpunkt der Meldung (Gefundener Punkt 321). Die Version stammt dann aus
  * der gespeicherten letzten Meldung, nicht aus einer offenen Verbindung – und
- * eine Fassung ohne Datum wäre in dem Fall irreführend: Sie sagt nicht, ob die
+ * eine Version ohne Datum wäre in dem Fall irreführend: Sie sagt nicht, ob die
  * Node vor fünf Minuten oder vor zwei Wochen zuletzt etwas von sich hören ließ.
  * Genau daran hing der Vorfall vom 15.09.2026, bei dem der Homeserver zwei Tage
- * auf einer alten Fassung stand, ohne dass es jemandem auffiel.
+ * auf einer alten Version stand, ohne dass es jemandem auffiel.
  *
  * Bewusst der absolute Zeitpunkt und keine Angabe wie „vor zwei Tagen": Die
  * Zeile steht neben „zuletzt gesehen" im selben Format, und {@link
@@ -211,7 +211,7 @@ export function nodeAgentHint(node: HostNodeDto): NodeAgentHint | null {
 
   return {
     label,
-    warning: `Der Agent ${agent.version} passt nicht zu dieser Fassung des Panels (Protokoll ${formatNumber(agent.protocolVersion)}, erwartet ${formatNumber(agent.expectedProtocolVersion)}). Bitte den Agent auf dem Homeserver aktualisieren – bis dahin bleibt die Node offline.`,
+    warning: `Der Agent ${agent.version} passt nicht zu dieser Version des Panels (Protokoll ${formatNumber(agent.protocolVersion)}, erwartet ${formatNumber(agent.expectedProtocolVersion)}). Bitte den Agent auf dem Homeserver aktualisieren – bis dahin bleibt die Node offline.`,
   };
 }
 
@@ -453,7 +453,7 @@ export interface NodeExplainer {
  *
  * Bewusst hier als Daten und nicht als Markup in der Ansicht: So stehen sie an
  * einer Stelle, lassen sich prüfen und tauchen im Dialog wie im Seitenkopf in
- * derselben Fassung auf.
+ * derselben Version auf.
  *
  * Keiner dieser Texte nennt Interna – keine Tunnel-Adressen, keine Schlüssel,
  * keine Zugangs-Tokens. Wer eine Node einrichtet, tut das in der

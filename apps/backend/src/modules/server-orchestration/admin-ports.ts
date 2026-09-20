@@ -273,7 +273,7 @@ export function createAgentNodeConnectionSource(agents: AgentRegistry): NodeConn
     isConnected(nodeId: string): boolean {
       return agents.get(nodeId) !== null;
     },
-    // Fassung und Protokollurteil für die Node-Übersicht (Befund 11.3).
+    // Version und Protokollurteil für die Node-Übersicht (Befund 11.3).
     lastHello(nodeId: string) {
       const hello = agents.helloOf(nodeId);
 

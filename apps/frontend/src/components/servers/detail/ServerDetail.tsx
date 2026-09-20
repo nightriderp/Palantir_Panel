@@ -166,7 +166,7 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
   }
 
   /**
-   * Neue Image-Fassung übernehmen (Pflichtenheft §9). Kein Lifecycle-Befehl:
+   * Neue Image-Version übernehmen (Pflichtenheft §9). Kein Lifecycle-Befehl:
    * Das Backend entscheidet, ob es dafür neu startet (laufender Server) oder
    * nur den Container neu baut (gestoppter Server).
    */
@@ -184,8 +184,8 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
     resource.setData(result.data);
     toast.success(
       result.data.status === 'stopped'
-        ? `„${result.data.name}" läuft beim nächsten Start auf der neuen Fassung.`
-        : `„${result.data.name}" wird auf die neue Fassung gebracht.`,
+        ? `„${result.data.name}" läuft beim nächsten Start auf der neuen Version.`
+        : `„${result.data.name}" wird auf die neue Version gebracht.`,
     );
   }
 
@@ -329,7 +329,7 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
       {/*
        * Aktualisieren ist seit dem Review 2026-09-16 kein Neustart mehr,
        * sondern ein eigener Vorgang (Pflichtenheft §9): Der Server behält seine
-       * Fassung, bis der Besitzer sie hier übernimmt.
+       * Version, bis der Besitzer sie hier übernimmt.
        */}
       <ConfirmDialog
         open={confirm !== null}
@@ -404,9 +404,9 @@ const CONFIRM_TEXTS: Record<
       `„${name}" wird heruntergefahren und sofort wieder gestartet. Alle Spieler fliegen dabei kurz heraus.`,
   },
   update: {
-    title: 'Auf die neue Fassung aktualisieren?',
+    title: 'Auf die neue Version aktualisieren?',
     confirmLabel: 'Aktualisieren',
     message: (name) =>
-      `„${name}" läuft danach auf der neuen Fassung. Ein laufender Server wird dafür neu gestartet – alle Spieler fliegen kurz heraus; ein gestoppter wird nur neu gebaut. Die Weltdaten bleiben in beiden Fällen erhalten.`,
+      `„${name}" läuft danach auf der neuen Version. Ein laufender Server wird dafür neu gestartet – alle Spieler fliegen kurz heraus; ein gestoppter wird nur neu gebaut. Die Weltdaten bleiben in beiden Fällen erhalten.`,
   },
 };

@@ -82,8 +82,8 @@ export const AUDIT_ACTIONS = [
    */
   'server.ownerTransferred',
   /**
-   * Neue Fassung des Spiel-Images übernommen (Pflichtenheft §9). Alte und
-   * neue Fassung stehen in den Metadaten – der Server behält seine Fassung
+   * Neue Version des Spiel-Images übernommen (Pflichtenheft §9). Alte und
+   * neue Version stehen in den Metadaten – der Server behält seine Version
    * sonst über Neustarts hinweg, der Wechsel ist deshalb eine Entscheidung.
    */
   'server.imageUpdated',

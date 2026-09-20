@@ -132,12 +132,12 @@ function ServerCardIntern({
 }: ServerCardProps) {
   const meta = serverStatusMeta(server.status);
   const permissions = server.permissions;
-  const fassung = formatImageVersion(server.imageVersion);
+  const version = formatImageVersion(server.imageVersion);
   /**
-   * Besitzer und Image-Fassung stehen **nicht** mehr im Kopf, sondern unten
+   * Besitzer und Image-Version stehen **nicht** mehr im Kopf, sondern unten
    * bei den übrigen Betriebsangaben (Betreiber-Wunsch 20.09.2026).
    *
-   * Der Kopf beantwortet „welcher Server ist das": Name, Spiel, Spielfassung.
+   * Der Kopf beantwortet „welcher Server ist das": Name, Spiel, Spielversion.
    * Wer ihn betreibt und mit welchem Image – das sind Angaben derselben Art
    * wie Node, Spielerzahl und Adresse, und die stehen längst als Chips
    * beieinander. Vorher drängten sie sich in eine zweite Kopfzeile, die je
@@ -236,7 +236,7 @@ function ServerCardIntern({
             Zwei Zeilen statt einer abgeschnittenen (Fundpunkt 317).
             Oben, was der Server fährt; darunter, womit und für wen. Vorher
             stand alles in einer Zeile mit `truncate` – auf einer schmalen
-            Karte verschwanden Fassung und Besitzer dadurch wortlos, und
+            Karte verschwanden Version und Besitzer dadurch wortlos, und
             gerade sie soll man sehen. Ohne `truncate` bricht die Zeile
             stattdessen um; eine Karte darf höher werden, eine Angabe darf
             nicht verschwinden.
@@ -401,7 +401,7 @@ function ServerCardIntern({
           {formatPlayers(live?.playersOnline, live?.playersMax)}
         </span>
         {/*
-          Besitzer und Fassung als Chips neben Node und Adresse
+          Besitzer und Version als Chips neben Node und Adresse
           (Betreiber-Wunsch 20.09.2026): Angaben derselben Art stehen
           beieinander, statt den Kopf der Karte zu verlängern.
         */}
@@ -415,15 +415,15 @@ function ServerCardIntern({
             Node: <span className="text-ink">{server.hostName}</span>
           </span>
         ) : null}
-        {fassung === null ? null : (
+        {version === null ? null : (
           <span
             className="rounded-md bg-fill px-2.5 py-1.5 font-mono text-ink-soft"
             title={
               updateHinweis ??
-              'Fassung des Images, mit dem dieser Server läuft – nicht die Fassung des Spiels.'
+              'Version des Images, mit dem dieser Server läuft – nicht die Version des Spiels.'
             }
           >
-            {fassung}
+            {version}
           </span>
         )}
 

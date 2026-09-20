@@ -8,7 +8,7 @@ import { createHostNodeInputSchema, updateHostNodeInputSchema } from './host-nod
  * Hand gesetzt, von Hand steuerbar ist nur die Wartung. Vorher trug das Schema
  * ein `status`-Feld mit `maintenance`/`offline`, der Kommentar daneben behauptete
  * aber, das Backend lehne genau das ab. Diese Tests halten die neue, ehrliche
- * Fassung fest.
+ * Version fest.
  */
 describe('updateHostNodeInputSchema', () => {
   it('nimmt die Wartung als Ja/Nein entgegen', () => {

@@ -36,8 +36,8 @@ export interface GameServerPermissions {
    */
   canTransferOwnership: boolean;
   /**
-   * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9, Review
-   * 2026-09-16). Ein Server behält seine Fassung, bis jemand mit diesem Recht
+   * Neue Version des Spiel-Images übernehmen (Pflichtenheft §9, Review
+   * 2026-09-16). Ein Server behält seine Version, bis jemand mit diesem Recht
    * „Aktualisieren" drückt – dasselbe Recht wie Starten und Stoppen.
    */
   canUpdate: boolean;
@@ -161,10 +161,10 @@ export interface GameServerDto {
   /** Anzeigename des Spiels, z. B. „Minecraft (Paper)". */
   gameTypeName: string;
   /**
-   * Gewaehlte Spielfassung, z. B. `26.3`; `null` heisst „die des Images".
+   * Gewaehlte Spielversion, z. B. `26.3`; `null` heisst „die des Images".
    *
    * Gehoert zum Server, nicht zur Vorlage: Zwei Server desselben Typs duerfen
-   * verschiedene Fassungen fahren (Betreiber-Wunsch vom 19.09.2026). Optional,
+   * verschiedene Versionen fahren (Betreiber-Wunsch vom 19.09.2026). Optional,
    * damit aeltere Backends den Vertrag weiter erfuellen.
    */
   gameVersion?: string | null;
@@ -285,14 +285,14 @@ export interface GameServerDto {
   dockerContainerId: string | null;
   /** Geänderte Einstellungen greifen erst beim nächsten Neustart. */
   pendingRestart: boolean;
-  /** Für das Image des Spieltyps liegt eine neuere Fassung vor. */
+  /** Für das Image des Spieltyps liegt eine neuere Version vor. */
   updateAvailable: boolean;
   /**
-   * Fassung des Images, mit dem dieser Server laeuft - nur die Marke hinter
+   * Version des Images, mit dem dieser Server laeuft - nur die Marke hinter
    * dem Doppelpunkt, z. B. `9`.
    *
-   * Nicht zu verwechseln mit der Spielfassung (`gameVersion`): Das eine ist
-   * die Fassung des Spiels (26.3), das andere die des Images, das es startet.
+   * Nicht zu verwechseln mit der Spielversion (`gameVersion`): Das eine ist
+   * die Version des Spiels (26.3), das andere die des Images, das es startet.
    * Beide aendern sich unabhaengig voneinander.
    *
    * `null`, solange kein Container existiert oder die Adresse keine Marke
@@ -301,10 +301,10 @@ export interface GameServerDto {
    */
   imageVersion?: string | null;
   /**
-   * Neueste Fassung des Images, die diese Instanz anbietet.
+   * Neueste Version des Images, die diese Instanz anbietet.
    *
    * Zusammen mit `imageVersion` beantwortet sie, was hinter „Update
-   * verfuegbar" steckt: von welcher Fassung auf welche.
+   * verfuegbar" steckt: von welcher Version auf welche.
    */
   latestImageVersion?: string | null;
   /** Anzahl der Mitverwalter (`ServerMember`, Pflichtenheft §6). */

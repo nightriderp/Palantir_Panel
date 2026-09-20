@@ -2132,11 +2132,11 @@ describe('Container neu bauen, wenn er veraltet ist (Punkt 114)', () => {
     expect(gestartet.restartRequired).toBe(false);
   });
 
-  it('behält beim Neuaufbau die gespeicherte Image-Fassung des Servers (Pflichtenheft §9)', async () => {
+  it('behält beim Neuaufbau die gespeicherte Image-Version des Servers (Pflichtenheft §9)', async () => {
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
 
-    // Der Bauplan ist veraltet (etwa geänderte Härtung), die Fassung nicht:
+    // Der Bauplan ist veraltet (etwa geänderte Härtung), die Version nicht:
     // Der Neuaufbau nimmt das Image des Servers, nicht das der Definition.
     harness.repository.servers.set(created.id, {
       ...harness.repository.servers.get(created.id)!,
@@ -5056,7 +5056,7 @@ describe('Server einer unerreichbaren Node loeschen (Fundpunkt 226)', () => {
   });
 });
 
-describe('Image-Fassung je Server (Pflichtenheft §9, Review 2026-09-16)', () => {
+describe('Image-Version je Server (Pflichtenheft §9, Review 2026-09-16)', () => {
   /** Eine Definition, deren Image sich nach dem Anlegen ändert – wie ein Deployment. */
   type WandelbareDefinition = { -readonly [K in keyof GameTypeDefinition]: GameTypeDefinition[K] };
 
@@ -5084,7 +5084,7 @@ describe('Image-Fassung je Server (Pflichtenheft §9, Review 2026-09-16)', () =>
     expect(neugestartet.imageRef).toBe(TEST_GAME_TYPE.dockerImage);
   });
 
-  it('übernimmt die neue Fassung am laufenden Server als Stopp, Neuaufbau und Start', async () => {
+  it('übernimmt die neue Version am laufenden Server als Stopp, Neuaufbau und Start', async () => {
     const { harness, definition } = mitWandelbarerDefinition();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
     await harness.service.startServer(created.id, OWNER_ID);
@@ -5125,7 +5125,7 @@ describe('Image-Fassung je Server (Pflichtenheft §9, Review 2026-09-16)', () =>
     expect(befehle).not.toContain('START');
   });
 
-  it('tut nichts, wenn der Server die Fassung schon trägt', async () => {
+  it('tut nichts, wenn der Server die Version schon trägt', async () => {
     const { harness } = mitWandelbarerDefinition();
     const created = await harness.service.createServer(createInput(), OWNER_ID);
     harness.socket.commands.length = 0;

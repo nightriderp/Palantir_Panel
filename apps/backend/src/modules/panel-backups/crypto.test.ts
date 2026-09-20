@@ -144,12 +144,12 @@ describe('Was beim Öffnen schiefgehen kann', () => {
     await expect(entschluessele(fremd)).rejects.toThrow(/nicht mit dem Kopf/u);
   });
 
-  it('weist eine unbekannte Format-Fassung benannt ab', async () => {
+  it('weist eine unbekannte Format-Version benannt ab', async () => {
     const datei = await verschluessele(Buffer.from('z', 'utf8'));
 
     datei.writeUInt8(99, SICHERUNGS_MAGIE.length);
 
-    await expect(entschluessele(datei)).rejects.toThrow(/Fassung 99/u);
+    await expect(entschluessele(datei)).rejects.toThrow(/Version 99/u);
   });
 
   it('weist das falsche Schlüsselpaar ab', { timeout: 30_000 }, async () => {

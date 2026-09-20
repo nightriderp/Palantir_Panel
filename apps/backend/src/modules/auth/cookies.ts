@@ -26,7 +26,7 @@
  * durch `httpOnly` (kein Zugriff aus Skripten), `SameSite=Lax` (nicht bei
  * fremden Formularen) und die CSRF-Pflicht auf `/auth/refresh` – diese Route
  * ist bewusst **nicht** von der Prüfung ausgenommen. Entscheidung des
- * Betreibers; Abweichung von der ursprünglichen Fassung des Pflichtenhefts §7.
+ * Betreibers; Abweichung von der ursprünglichen Version des Pflichtenhefts §7.
  */
 
 import { CSRF_COOKIE_NAME } from '@palantir/contracts';

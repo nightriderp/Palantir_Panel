@@ -200,7 +200,7 @@ export interface CapacityReservation {
    * `RESOURCE_LIMIT_EXCEEDED` geworfen.
    *
    * `write` erhält den für die Reservierung gültigen {@link ReservationScope} –
-   * bei der Drizzle-Umsetzung die transaktionsgebundenen Fassungen, damit
+   * bei der Drizzle-Umsetzung die transaktionsgebundenen Versionen, damit
    * Prüfung und Schreiben tatsächlich atomar sind.
    */
   reserve<T>(

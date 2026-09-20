@@ -465,7 +465,7 @@ function codeFuerStatus(
     /*
      * Fundpunkt 235: Der Vertrag verspricht `CONTAINER_NOT_RUNNING`, wenn ein
      * Befehl einen laufenden Container braucht und keinen findet - die
-     * Fake-Fassung hielt das ein, die Docker-Fassung nicht. Die Engine meldet
+     * Fake-Version hielt das ein, die Docker-Version nicht. Die Engine meldet
      * genau diesen Fall mit 409 und der Meldung „Container … is not running";
      * daraus wurde hier bisher ein `CONTAINER_STATE_CONFLICT`, und der
      * Konsolenbefehl auf einem gestoppten Server kam im Panel als

@@ -29,7 +29,7 @@ loadDotenv({ path: path.join(repoRoot, '.env') });
  * schickt jeden Satz vorher durch {@link leereWerteAlsUngesetzt}, das dasselbe
  * für **alle** Felder tut. Deshalb verhalten sich auch die Felder mit blankem
  * `.optional()` (`AUDIT_ARCHIVE_DIR`, die OAuth-Variablen) genauso. Diese
- * Fassung hier bleibt, weil sie am Feld sichtbar macht, was gemeint ist, und
+ * Version hier bleibt, weil sie am Feld sichtbar macht, was gemeint ist, und
  * weil ein direkter Aufruf von `envSchema.parse()` sonst anders ausginge.
  */
 const optionalEnvString = (): z.ZodType<string | undefined> =>
@@ -442,8 +442,8 @@ const envSchema = z.object({
   /**
    * Programm für den Abzug; nur nötig, wenn `pg_dump` nicht im `PATH` steht.
    *
-   * Die Fassung muss zur Datenbank passen: Ein älteres `pg_dump` lehnt eine
-   * neuere Serverfassung ab, statt einen halben Abzug zu schreiben.
+   * Die Version muss zur Datenbank passen: Ein älteres `pg_dump` lehnt eine
+   * neuere Serverversion ab, statt einen halben Abzug zu schreiben.
    */
   PG_DUMP_BINARY: optionalEnvString(),
 
@@ -749,7 +749,7 @@ const envSchemaMitPrüfungen = envSchema
      *   Port bekommen, über den das Hostname-Routing aller Minecraft-Server
      *   läuft – danach kollidieren beide, und den Port wieder herauszulösen
      *   hieße, einem laufenden Server die Adresse zu nehmen. Geprüft wird genau
-     *   das: **im** Bereich. Die frühere Fassung verlangte
+     *   das: **im** Bereich. Die frühere Version verlangte
      *   `END < MINECRAFT_ROUTER_PORT` und wies deshalb auch einen Bereich ab,
      *   der vollständig darüber liegt (Fundpunkt 244) – 26000–27999 neben Port
      *   25565 ist kollisionsfrei, das Backend startete trotzdem nicht.

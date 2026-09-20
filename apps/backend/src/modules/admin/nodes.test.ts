@@ -467,7 +467,7 @@ describe('Agent-Token je Node (Gefundener Punkt 57)', () => {
   });
 });
 
-describe('Agent-Fassung der Node (Gefundener Punkt 321)', () => {
+describe('Agent-Version der Node (Gefundener Punkt 321)', () => {
   const GESPEICHERT = {
     version: '0.6.0+9b32bb83df35',
     protocolVersion: 1,
@@ -481,7 +481,7 @@ describe('Agent-Fassung der Node (Gefundener Punkt 321)', () => {
     return node;
   }
 
-  it('nimmt die gespeicherte Fassung, wenn keine Verbindung offen ist', async () => {
+  it('nimmt die gespeicherte Version, wenn keine Verbindung offen ist', async () => {
     /*
      * Der Fall nach jedem Ausrollen: Das Backend ist neu gestartet, die
      * Registry im Arbeitsspeicher ist leer – und ausgerechnet dann sieht man
@@ -498,7 +498,7 @@ describe('Agent-Fassung der Node (Gefundener Punkt 321)', () => {
     });
   });
 
-  it('bevorzugt die offene Verbindung vor der gespeicherten Fassung', async () => {
+  it('bevorzugt die offene Verbindung vor der gespeicherten Version', async () => {
     const live = {
       version: '0.6.0+c07acd2ce532',
       protocolVersion: 1,
@@ -515,7 +515,7 @@ describe('Agent-Fassung der Node (Gefundener Punkt 321)', () => {
     expect(node?.agent).toEqual(live);
   });
 
-  it('urteilt über die Protokollversion nach dieser Fassung des Backends, nicht nach der gespeicherten', async () => {
+  it('urteilt über die Protokollversion nach dieser Version des Backends, nicht nach der gespeicherten', async () => {
     /*
      * Gespeichert ist, was der Agent gesagt hat – nicht das Urteil darüber.
      * Hebt ein Panel-Update die erwartete Protokollversion an, muss eine Node,

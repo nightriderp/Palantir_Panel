@@ -154,7 +154,7 @@ export function AddNodeWizard({
         <p className="text-sm text-ink-soft">
           Die Node ist im Panel angelegt und wartet auf ihren Agenten. Führe die folgenden Schritte
           aus; sobald der Agent verbindet, wechselt die Node hier automatisch auf „online“. Die
-          vollständige Fassung mit allen Begründungen steht in SETUP.md §3.4.
+          vollständige Version mit allen Begründungen steht in SETUP.md §3.4.
         </p>
         <ol className="mt-4 flex flex-col gap-3">
           {steps.map((step, index) => (

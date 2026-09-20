@@ -45,7 +45,7 @@ export interface ServerRecord {
   readonly hostCpuCores: number | null;
   /** Arbeitsspeicher der Node in MiB – Bezugsgroesse der RAM-Anzeige (weiche Zuweisung, 2026-09-18). */
   readonly hostRamMb: number | null;
-  /** Gewählte Spielfassung samt Bezugsquelle; `null` heißt „die des Images". */
+  /** Gewählte Spielversion samt Bezugsquelle; `null` heißt „die des Images". */
   readonly gameVersion: string | null;
   readonly gameVersionUrl: string | null;
   readonly gameVersionHash: string | null;
@@ -82,7 +82,7 @@ export interface CreateServerData {
   readonly hostId: string;
   readonly name: string;
   readonly gameType: string;
-  /** Spielfassung samt Bezugsquelle; ohne Angabe die des Images. */
+  /** Spielversion samt Bezugsquelle; ohne Angabe die des Images. */
   readonly gameVersion?: string | null;
   readonly gameVersionUrl?: string | null;
   readonly gameVersionHash?: string | null;
@@ -107,7 +107,7 @@ export interface UpdateServerData {
   readonly restartRequired?: boolean;
   readonly dockerContainerId?: string | null;
   readonly imageRef?: string | null;
-  /** Spielfassung samt Bezugsquelle; alle vier zusammen oder gar nicht. */
+  /** Spielversion samt Bezugsquelle; alle vier zusammen oder gar nicht. */
   readonly gameVersion?: string | null;
   readonly gameVersionUrl?: string | null;
   readonly gameVersionHash?: string | null;
@@ -141,7 +141,7 @@ export interface HostNodeRecord {
  * (Gefundener Punkt 321).
  *
  * `expectedProtocolVersion` und `compatible` stehen bewusst **nicht** hier: Was
- * das Backend erwartet, ist eine Konstante dieser Fassung des Backends, und ob
+ * das Backend erwartet, ist eine Konstante dieser Version des Backends, und ob
  * beides zusammenpasst, ergibt sich daraus. Beides mitzuschreiben hiesse, nach
  * einem Panel-Update ein veraltetes Urteil aus der Datenbank zu lesen statt des
  * heute gültigen.
@@ -321,7 +321,7 @@ export interface ServerRepository {
    * nachgezogen hat – und fehlte bei einer Node, die gar nicht mehr hochkommt,
    * vollständig. Geschrieben wird auch das `hello` eines wegen der
    * Protokollversion abgewiesenen Agents: Genau dann will der Betreiber
-   * wissen, welche Fassung dort läuft.
+   * wissen, welche Version dort läuft.
    *
    * Älteres wird nicht über Neueres geschrieben (`agent_reported_at`), damit
    * eine verspätet eintreffende Meldung einer alten Sitzung die frische nicht
@@ -355,7 +355,7 @@ export interface ServerRepository {
       diskMb: number;
       /**
        * Momentaufnahme der Auslastung (Gefundener Punkt 96). Optional, weil ein
-       * Agent aelterer Fassung sie nicht mitschickt; dann bleiben die Spalten,
+       * Agent aelterer Version sie nicht mitschickt; dann bleiben die Spalten,
        * wie sie sind.
        */
       usage?: {

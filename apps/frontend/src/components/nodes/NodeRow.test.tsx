@@ -50,7 +50,7 @@ describe('NodeRow', () => {
   });
 });
 
-describe('NodeRow – Agent-Fassung (Befund 11.3)', () => {
+describe('NodeRow – Agent-Version (Befund 11.3)', () => {
   const kompatibel = {
     version: '1.4.2',
     protocolVersion: 1,
@@ -59,13 +59,13 @@ describe('NodeRow – Agent-Fassung (Befund 11.3)', () => {
     reportedAt: '2026-09-16T10:00:00.000Z',
   };
 
-  it('nennt die Fassung des Agents in der Unterzeile', () => {
+  it('nennt die Version des Agents in der Unterzeile', () => {
     render(<NodeRow node={node({ agent: kompatibel })} />);
     expect(screen.getByText(/Agent 1\.4\.2/)).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('warnt im Klartext, wenn der Agent nicht zur Fassung des Panels passt', () => {
+  it('warnt im Klartext, wenn der Agent nicht zur Version des Panels passt', () => {
     render(
       <NodeRow
         node={node({

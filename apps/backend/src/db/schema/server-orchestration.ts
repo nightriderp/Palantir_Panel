@@ -95,13 +95,13 @@ export const gameServers = pgTable(
      * Image, mit dem der Container angelegt wurde (Mockup-Abgleich 3.4).
      *
      * Grundlage für „Update verfügbar": Weicht der Wert vom `dockerImage` der
-     * heutigen Spiel-Definition ab, läuft der Server auf einer älteren Fassung.
+     * heutigen Spiel-Definition ab, läuft der Server auf einer älteren Version.
      * `null` bei Servern ohne Container – und bei allen, die vor dieser Spalte
      * angelegt wurden; für die lässt sich nichts mehr nachträglich feststellen.
      */
     imageRef: text('image_ref'),
     /**
-     * Gewählte Spielfassung, z. B. `26.3`; `null` heißt „die des Images"
+     * Gewählte Spielversion, z. B. `26.3`; `null` heißt „die des Images"
      * (Betreiber-Wunsch vom 19.09.2026).
      *
      * Adresse und Prüfsumme stehen daneben, statt bei jedem Start beim

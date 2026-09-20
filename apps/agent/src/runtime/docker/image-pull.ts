@@ -40,10 +40,10 @@ export interface PullImageOptions {
 }
 
 /**
- * Image-Referenz in Name und Fassung zerlegen.
+ * Image-Referenz in Name und Version zerlegen.
  *
  * `/images/create` erwartet beides getrennt. Der Doppelpunkt einer Portangabe
- * (`registry:5000/bild`) darf dabei nicht als Fassung durchgehen – deshalb wird
+ * (`registry:5000/bild`) darf dabei nicht als Version durchgehen – deshalb wird
  * nur hinter dem letzten `/` gesucht.
  */
 export function splitImageReference(image: string): { name: string; tag: string } {

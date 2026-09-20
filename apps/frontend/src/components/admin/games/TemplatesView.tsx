@@ -155,7 +155,7 @@ export function TemplatesView() {
                 : an
                   ? null
                   : 'Nicht im Wizard';
-              // Fassung und Hinweis teilen sich eine Zeile: Zwei magere
+              // Version und Hinweis teilen sich eine Zeile: Zwei magere
               // Zeilen unter dem Namen machten die Kachel hoch, ohne mehr zu
               // sagen.
               const unterzeile = [formatImageVersion(spiel.imageVersion), hinweis]
@@ -179,7 +179,7 @@ export function TemplatesView() {
                       >
                         {spiel.name}
                       </p>
-                      {/* Die Fassung des Images, das diese Vorlage startet
+                      {/* Die Version des Images, das diese Vorlage startet
                           (Betreiber-Wunsch 19.09.2026). Hier ist die Stelle,
                           an der sich nachsehen lässt, was ein Server nach dem
                           Aktualisieren bekommt. */}

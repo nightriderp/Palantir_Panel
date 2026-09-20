@@ -139,7 +139,7 @@ const envSchema = z.object({
    * Ausgerollter Commit dieser Node (Fundpunkt 318).
    *
    * Gesetzt von `deploy/gamenode/update.sh`, nicht von Hand. Gelesen wird der
-   * Wert in `version.ts` und an die gemeldete Fassung gehängt, damit im Panel
+   * Wert in `version.ts` und an die gemeldete Version gehängt, damit im Panel
    * steht, welchen Stand eine Node wirklich fährt. Hier steht er trotzdem: Das
    * Schema ist die Liste dessen, was der Agent liest, und
    * `deploy-umgebung.test.ts` prüft die Compose-Datei dagegen.

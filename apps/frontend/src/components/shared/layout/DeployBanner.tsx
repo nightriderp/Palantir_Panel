@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button, IconButton } from '../primitives/Button';
 
 export interface DeployBannerProps {
-  /** Fassung, mit der diese Seite ausgeliefert wurde (Server-seitig gesetzt). */
+  /** Version, mit der diese Seite ausgeliefert wurde (Server-seitig gesetzt). */
   current: string;
   /** Abstand zwischen zwei Nachfragen in Millisekunden. */
   intervalMs?: number;
@@ -14,14 +14,14 @@ export interface DeployBannerProps {
 const DEFAULT_INTERVAL_MS = 60_000;
 
 /**
- * Hinweis, dass das Panel inzwischen in einer neueren Fassung ausgeliefert wird.
+ * Hinweis, dass das Panel inzwischen in einer neueren Version ausgeliefert wird.
  *
  * Nach einem Deployment läuft in offenen Browsern weiter das alte Frontend
  * gegen die neue API. Das geht so lange gut, bis ein Feld hinzukommt oder ein
  * Pfad sich ändert – und äußert sich dann als Fehler, den ein Neuladen
  * auflöst, aber niemand darauf kommt. Der Balken sagt es geradeheraus.
  *
- * Der Vergleich läuft über die Fassung, mit der **diese Seite** geladen wurde,
+ * Der Vergleich läuft über die Version, mit der **diese Seite** geladen wurde,
  * gegen die, die der Server gerade ausliefert (`GET /fassung`). Ein Neuladen
  * holt beides in Übereinstimmung.
  *
@@ -29,7 +29,7 @@ const DEFAULT_INTERVAL_MS = 60_000;
  * „Entwicklung", und der Balken erscheint nie.
  */
 export function DeployBanner({ current, intervalMs = DEFAULT_INTERVAL_MS }: DeployBannerProps) {
-  const [neueFassung, setNeueFassung] = useState<string | null>(null);
+  const [neueVersion, setNeueVersion] = useState<string | null>(null);
   const [weggeklickt, setWeggeklickt] = useState<string | null>(null);
 
   useEffect(() => {
@@ -43,11 +43,11 @@ export function DeployBanner({ current, intervalMs = DEFAULT_INTERVAL_MS }: Depl
         const daten = (await antwort.json()) as { release?: unknown };
         const gemeldet = typeof daten.release === 'string' ? daten.release : null;
 
-        // Nur eine *andere* Fassung ist eine Nachricht. Ein Netzfehler oder
+        // Nur eine *andere* Version ist eine Nachricht. Ein Netzfehler oder
         // eine unbrauchbare Antwort ist keine – dann bleibt der Balken weg,
         // statt einen Neustart zu behaupten, den es nicht gab.
         if (!abgebrochen && gemeldet !== null && gemeldet !== current) {
-          setNeueFassung(gemeldet);
+          setNeueVersion(gemeldet);
         }
       } catch {
         // Absicht: Ein misslungener Abruf darf die Seite nicht stören.
@@ -62,10 +62,10 @@ export function DeployBanner({ current, intervalMs = DEFAULT_INTERVAL_MS }: Depl
     };
   }, [current, intervalMs]);
 
-  // Weggeklickt gilt für genau diese Fassung: Erscheint später eine noch
+  // Weggeklickt gilt für genau diese Version: Erscheint später eine noch
   // neuere, meldet sich der Hinweis wieder. Ein „nie wieder" gibt es nicht -
   // eine veraltete Seite bleibt ein Problem, auch wenn man es wegwischt.
-  if (neueFassung === null || weggeklickt === neueFassung) return null;
+  if (neueVersion === null || weggeklickt === neueVersion) return null;
 
   return (
     /*
@@ -84,11 +84,11 @@ export function DeployBanner({ current, intervalMs = DEFAULT_INTERVAL_MS }: Depl
           {/*
             Der pulsierende Punkt ist dieselbe Sprache wie am laufenden Server:
             hier ist gerade etwas passiert. Er ersetzt das Download-Symbol -
-            heruntergeladen wird nichts, die neue Fassung liegt schon bereit.
+            heruntergeladen wird nichts, die neue Version liegt schon bereit.
           */}
           <span className="mt-1 flex h-2 w-2 shrink-0 animate-pulse-dot rounded-full bg-brand shadow-glow" />
           <div className="min-w-0 flex-1">
-            <p className="text-base font-semibold text-ink">Neue Fassung verfügbar</p>
+            <p className="text-base font-semibold text-ink">Neue Version verfügbar</p>
             <p className="mt-1 text-sm text-ink-muted">
               Diese Seite läuft noch mit{' '}
               <span className="rounded bg-fill px-1.5 py-0.5 font-mono text-xs text-ink-soft">
@@ -96,7 +96,7 @@ export function DeployBanner({ current, intervalMs = DEFAULT_INTERVAL_MS }: Depl
               </span>
               , ausgeliefert wird{' '}
               <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-xs text-brand">
-                {neueFassung}
+                {neueVersion}
               </span>
               .
             </p>
@@ -106,7 +106,7 @@ export function DeployBanner({ current, intervalMs = DEFAULT_INTERVAL_MS }: Depl
             label="Hinweis schließen"
             size="sm"
             onClick={() => {
-              setWeggeklickt(neueFassung);
+              setWeggeklickt(neueVersion);
             }}
           />
         </div>
@@ -124,7 +124,7 @@ export function DeployBanner({ current, intervalMs = DEFAULT_INTERVAL_MS }: Depl
             size="sm"
             variant="ghost"
             onClick={() => {
-              setWeggeklickt(neueFassung);
+              setWeggeklickt(neueVersion);
             }}
           >
             Später

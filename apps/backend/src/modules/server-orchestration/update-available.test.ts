@@ -11,11 +11,11 @@ import { updateAvailable } from './dto.js';
 describe('updateAvailable', () => {
   const AKTUELL = 'ghcr.io/palantir/echo:1.28';
 
-  it('meldet eine ältere Fassung', () => {
+  it('meldet eine ältere Version', () => {
     expect(updateAvailable('ghcr.io/palantir/echo:1.27', AKTUELL)).toBe(true);
   });
 
-  it('schweigt bei gleicher Fassung', () => {
+  it('schweigt bei gleicher Version', () => {
     expect(updateAvailable(AKTUELL, AKTUELL)).toBe(false);
   });
 

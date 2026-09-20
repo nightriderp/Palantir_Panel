@@ -69,7 +69,7 @@ export interface FakeAgentOptions {
   now?: () => Date;
 }
 
-/** Protokollfassung, die auch der echte Agent spricht. */
+/** Protokollversion, die auch der echte Agent spricht. */
 const PROTOCOL_VERSION = 1;
 
 /** Version, die die Attrappe über sich selbst meldet – als solche erkennbar. */

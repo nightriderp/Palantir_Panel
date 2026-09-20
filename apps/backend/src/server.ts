@@ -243,12 +243,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
    * Ableitung.
    *
    * `methods` steht ausdrücklich da: `@fastify/cors` 11 erlaubt in der Vorgabe
-   * nur noch die „sicheren" Methoden `GET,HEAD,POST` (Fassung 10: auch PUT,
+   * nur noch die „sicheren" Methoden `GET,HEAD,POST` (Version 10: auch PUT,
    * PATCH, DELETE). Nach dem Sprung auf 11 (v1.45.0) scheiterte jeder PUT,
    * PATCH und DELETE aus dem Browser am Preflight – Schriftwechsel,
    * Registrierungsschalter, Löschen –, während der Server selbst nichts davon
    * sah: Der Browser schickt die Anfrage nach einem Preflight ohne die Methode
-   * gar nicht ab. Aufgefallen am Schriftwechsel, drei Fassungen später.
+   * gar nicht ab. Aufgefallen am Schriftwechsel, drei Versionen später.
    */
   await app.register(cors, {
     origin: [env.PUBLIC_WEB_URL],

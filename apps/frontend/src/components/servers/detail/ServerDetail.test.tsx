@@ -167,7 +167,7 @@ describe('ServerDetail – Live und REST (event-flow-04)', () => {
 /**
  * Aktualisieren (Fundpunkt 190, geändert im Review 2026-09-16, Pflichtenheft §9).
  *
- * Ein Server behält seine Image-Fassung, bis der Besitzer sie übernimmt – auch
+ * Ein Server behält seine Image-Version, bis der Besitzer sie übernimmt – auch
  * über Neustarts hinweg. „Aktualisieren" ist deshalb ein eigener Aufruf und
  * steht am laufenden wie am gestoppten Server.
  */
@@ -186,7 +186,7 @@ describe('ServerDetail – Aktualisieren (Pflichtenheft §9)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Aktualisieren' }));
 
     // Erst die Rückfrage – ein Klick darf keine Spielrunde beenden.
-    expect(await screen.findByText('Auf die neue Fassung aktualisieren?')).toBeTruthy();
+    expect(await screen.findByText('Auf die neue Version aktualisieren?')).toBeTruthy();
     expect(api.updateServerImage).not.toHaveBeenCalled();
 
     fireEvent.click(
@@ -195,7 +195,7 @@ describe('ServerDetail – Aktualisieren (Pflichtenheft §9)', () => {
 
     await waitFor(() => expect(api.updateServerImage).toHaveBeenCalledWith('srv-1'));
     expect(api.runLifecycleAction).not.toHaveBeenCalled();
-    expect(await screen.findByText(/wird auf die neue Fassung gebracht/)).toBeTruthy();
+    expect(await screen.findByText(/wird auf die neue Version gebracht/)).toBeTruthy();
   });
 
   it('bietet den Knopf auch am gestoppten Server an – der nächste Start übernimmt nichts von allein', async () => {
@@ -218,11 +218,11 @@ describe('ServerDetail – Aktualisieren (Pflichtenheft §9)', () => {
     );
 
     await waitFor(() => expect(api.updateServerImage).toHaveBeenCalledWith('srv-1'));
-    expect(await screen.findByText(/beim nächsten Start auf der neuen Fassung/)).toBeTruthy();
+    expect(await screen.findByText(/beim nächsten Start auf der neuen Version/)).toBeTruthy();
     expect(screen.queryByText('Update verfügbar')).toBeNull();
   });
 
-  it('bietet den Knopf ohne neue Fassung gar nicht an', async () => {
+  it('bietet den Knopf ohne neue Version gar nicht an', async () => {
     zeichne();
     await screen.findByText('Online');
 

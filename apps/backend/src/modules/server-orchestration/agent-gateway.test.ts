@@ -222,7 +222,7 @@ describe('Handshake (Pflichtenheft §2.2)', () => {
   });
 
   it('meldet auch ein abgewiesenes hello, damit die Node-Übersicht den Grund zeigen kann', () => {
-    // Review 2026-09-16, Befund 11.3: Ein Agent mit falscher Fassung war bis
+    // Review 2026-09-16, Befund 11.3: Ein Agent mit falscher Version war bis
     // dahin unsichtbar – nur ein Log-Eintrag, die Node stand „offline".
     const { session, hellos } = makeSession();
 

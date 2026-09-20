@@ -312,7 +312,7 @@ export function buildStatusMetrics({
       /*
         Bewusst OHNE `numeric`: Eine Kurve „wie viele Updates lagen in den
         letzten Minuten an" beantwortet keine Frage - die Zahl ändert sich beim
-        Ausrollen einer neuen Image-Fassung, nicht im Messtakt.
+        Ausrollen einer neuen Image-Version, nicht im Messtakt.
       */
       note: 'Server mit verfügbarem Image-Update.',
     });

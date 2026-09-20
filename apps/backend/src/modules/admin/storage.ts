@@ -307,7 +307,7 @@ export function classifyEntry(
        * der Scan liegt gespeichert, und über die Oberfläche gibt es keinen Weg
        * zurück.
        *
-       * Erreichbar wird das, sobald eine spätere Agent-Fassung eine Postenart
+       * Erreichbar wird das, sobald eine spätere Agent-Version eine Postenart
        * ergänzt und das Schema mitzieht, dieser Code aber nicht. Die Zeile ist
        * dann nicht löschbar (`notClearlyOrphaned`) und steht unter `other` –
        * sichtbar, aber ohne Wirkung. Der Rest der Seite bleibt benutzbar.

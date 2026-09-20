@@ -34,7 +34,7 @@ export interface DetailHeaderProps {
   busy: boolean;
   onLifecycle: (action: LifecycleAction) => void;
   /**
-   * Übernimmt die neue Fassung des Images (Fundpunkt 190).
+   * Übernimmt die neue Version des Images (Fundpunkt 190).
    *
    * Getrennt von `onLifecycle`, obwohl derselbe Neustart dahintersteht: Für den
    * Betreiber ist das eine andere Absicht, und die Rückfrage davor nennt einen
@@ -70,19 +70,19 @@ export function DetailHeader({
   const address = formatServerAddress(server.address);
 
   /*
-   * Ein Server behält seine Image-Fassung, bis jemand sie übernimmt
+   * Ein Server behält seine Image-Version, bis jemand sie übernimmt
    * (Pflichtenheft §9, Review 2026-09-16) – der Knopf erscheint deshalb in
    * jedem Zustand, in dem der Wechsel möglich ist: laufend als Neustart,
    * gestoppt als Neuaufbau ohne Start. Mitten in einem Übergang bleibt er
    * gesperrt wie die übrigen Aktionen.
    */
   const canUpdate = server.updateAvailable && server.permissions.canUpdate;
-  const fassung = formatImageVersion(server.imageVersion);
+  const version = formatImageVersion(server.imageVersion);
   /**
    * Betriebsangaben als Chips, nicht als zweite Textzeile (Betreiber-Wunsch
    * 20.09.2026).
    *
-   * Node, Besitzer und Image-Fassung gehören zusammen und haben dieselbe Form
+   * Node, Besitzer und Image-Version gehören zusammen und haben dieselbe Form
    * wie die Adresse darunter. Als aneinandergereihter Text mit Mittelpunkten
    * lasen sie sich wie Kleingedrucktes und brachen auf schmalen Fenstern an
    * beliebiger Stelle um.
@@ -94,7 +94,7 @@ export function DetailHeader({
   }[] = [
     ...(server.hostName ? [{ label: 'Node', wert: server.hostName }] : []),
     ...(server.ownerDisplayName ? [{ label: 'Besitzer', wert: server.ownerDisplayName }] : []),
-    ...(fassung === null ? [] : [{ label: 'Fassung', wert: fassung, mono: true }]),
+    ...(version === null ? [] : [{ label: 'Version', wert: version, mono: true }]),
   ];
   const updateHinweis = formatImageUpdate(server.imageVersion, server.latestImageVersion);
   const updateLaeuftNeu = server.status === 'running' || server.status === 'starting';
@@ -125,8 +125,8 @@ export function DetailHeader({
                 title={[
                   updateHinweis,
                   canUpdate
-                    ? 'Über „Aktualisieren" wird die neue Fassung übernommen. Bis dahin läuft der Server auf seiner bisherigen Fassung – auch nach einem Neustart.'
-                    : 'Die neue Fassung übernimmt der Besitzer über „Aktualisieren".',
+                    ? 'Über „Aktualisieren" wird die neue Version übernommen. Bis dahin läuft der Server auf seiner bisherigen Version – auch nach einem Neustart.'
+                    : 'Die neue Version übernimmt der Besitzer über „Aktualisieren".',
                 ]
                   .filter((teil) => teil !== null)
                   .join(' ')}
@@ -137,8 +137,8 @@ export function DetailHeader({
           </div>
 
           {/*
-            Im Kopf steht, welcher Server das ist: Name, Spiel, Spielfassung.
-            Die Spielfassung beantwortet „passt mein Client dazu" und gehört
+            Im Kopf steht, welcher Server das ist: Name, Spiel, Spielversion.
+            Die Spielversion beantwortet „passt mein Client dazu" und gehört
             deshalb neben den Namen, nicht in eine Einstellungsseite.
           */}
           <p className="mt-1 text-sm text-ink-soft">
@@ -154,7 +154,7 @@ export function DetailHeader({
                 <span
                   key={angabe.label}
                   className="rounded-md bg-fill px-2.5 py-1.5 text-ink-soft"
-                  {...(angabe.label === 'Fassung' && updateHinweis !== null
+                  {...(angabe.label === 'Version' && updateHinweis !== null
                     ? { title: updateHinweis }
                     : {})}
                 >
@@ -194,8 +194,8 @@ export function DetailHeader({
               disabled={blocked}
               title={
                 updateLaeuftNeu
-                  ? 'Startet den Server neu und übernimmt dabei die neue Fassung.'
-                  : 'Baut den Container mit der neuen Fassung neu, ohne den Server zu starten.'
+                  ? 'Startet den Server neu und übernimmt dabei die neue Version.'
+                  : 'Baut den Container mit der neuen Version neu, ohne den Server zu starten.'
               }
               onClick={onUpdate}
             >

@@ -12,7 +12,7 @@
  *
  * Der Fingerabdruck steht bewusst **neben** `imageRef` und ersetzt es nicht:
  * `imageRef` beantwortet die Frage der Oberfläche („läuft der Server auf einer
- * älteren Fassung?", Mockup-Abgleich 3.4) und ist dafür lesbar. Der
+ * älteren Version?", Mockup-Abgleich 3.4) und ist dafür lesbar. Der
  * Fingerabdruck beantwortet die Frage des Lifecycles („muss der Container neu
  * gebaut werden?") und deckt dabei auch Konfiguration, Ports und Grenzen ab.
  */
@@ -25,7 +25,7 @@ import { type ServerRecord } from './repository.js';
 /**
  * Nutzlast des `CREATE`-Befehls.
  *
- * Bewusst der Vertragstyp aus `@palantir/contracts` und keine eigene Fassung:
+ * Bewusst der Vertragstyp aus `@palantir/contracts` und keine eigene Version:
  * Der Bauplan geht genau so an den Agent, und ein zweiter Typ daneben wuerde
  * beim naechsten Feld auseinanderlaufen.
  */
@@ -92,8 +92,8 @@ export interface BuildContainerSpecInput {
   readonly definition: GameTypeDefinition;
   /**
    * Image des Containers. Der Dienst reicht die am Server **gespeicherte**
-   * Fassung herein (Pflichtenheft §9: ein Server behält sie, bis jemand
-   * „Aktualisieren" drückt); ohne Angabe gilt die Fassung der Definition –
+   * Version herein (Pflichtenheft §9: ein Server behält sie, bis jemand
+   * „Aktualisieren" drückt); ohne Angabe gilt die Version der Definition –
    * beim Anlegen und für Server, die vor der Spalte `image_ref` entstanden.
    */
   readonly image?: string;
@@ -155,32 +155,32 @@ function portNummernEnv(
  * Den Bauplan aus Server und Spiel-Definition zusammensetzen.
  *
  * Einzige Quelle für `CREATE` – beim ersten Anlegen wie beim Neuaufbau. Zwei
- * Fassungen desselben Baus wären genau die Art Abweichung, die man erst im
+ * Versionen desselben Baus wären genau die Art Abweichung, die man erst im
  * Betrieb bemerkt.
  */
 /**
- * Umgebung für eine gewählte Spielfassung (Betreiber-Wunsch vom 19.09.2026).
+ * Umgebung für eine gewählte Spielversion (Betreiber-Wunsch vom 19.09.2026).
  *
  * Adresse und Prüfsumme stehen am Server, nicht im Image: Das Startskript holt
  * die Serverdatei ohnehin beim ersten Start, und mit diesen drei Variablen holt
- * es eben eine andere. Ohne gewählte Fassung bleibt die Umgebung leer und das
+ * es eben eine andere. Ohne gewählte Version bleibt die Umgebung leer und das
  * Image nimmt seine eingebaute – **kein** leeres Feld, das den Fingerabdruck
  * jedes bestehenden Containers änderte (Punkt 114).
  *
  * Die Prüfsumme gehört mit in die Umgebung und nicht nur die Adresse: Was
  * nicht dazu passt, verwirft das Image, statt es auszuführen.
  */
-function spielfassungEnv(server: ServerRecord): Record<string, string> {
-  const fassung = server.gameVersion;
+function spielversionEnv(server: ServerRecord): Record<string, string> {
+  const version = server.gameVersion;
   const adresse = server.gameVersionUrl;
   const summe = server.gameVersionHash;
 
-  if (fassung === null || adresse === null || summe === null) {
+  if (version === null || adresse === null || summe === null) {
     return {};
   }
 
   return {
-    MINECRAFT_VANILLA_VERSION: fassung,
+    MINECRAFT_VANILLA_VERSION: version,
     MINECRAFT_VANILLA_URL: adresse,
     ...(server.gameVersionHashAlgorithm === 'sha256'
       ? { MINECRAFT_VANILLA_SHA256: summe }
@@ -230,7 +230,7 @@ export function buildContainerSpec({
         ? {}
         : { [STARTUP_PARAMETERS_ENV]: server.startupParameters.trim() }),
       ...portNummernEnv(definition, server.assignedPorts),
-      ...spielfassungEnv(server),
+      ...spielversionEnv(server),
     },
     command: definition.defaultCommand,
     ports: hostBindings.map((assignment) => ({

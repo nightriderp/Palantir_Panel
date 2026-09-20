@@ -42,7 +42,7 @@ export function GameHost({ game, onGameOver }: GameHostProps) {
    * unten startete das Spiel neu: Der „Vorbei"-Bildschirm verschwand nach einem
    * Frame, und eine laufende Partie brach ab, sobald die Bestenliste nachlud
    * (Audit-Fundstelle frontend-lib-03). Aufgerufen wird immer die zuletzt
-   * übergebene Fassung – nachgeführt im Effekt, nicht im Rendern (Regel
+   * übergebene Version – nachgeführt im Effekt, nicht im Rendern (Regel
    * `react-hooks/refs`); die Schleife liest die Ref erst Frames später.
    */
   const onGameOverRef = useRef(onGameOver);

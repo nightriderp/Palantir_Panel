@@ -222,7 +222,7 @@ describe('createGameTypeImageService', () => {
     await expect(dienst.remove('minecraft-vanilla', 'cover')).resolves.toBeUndefined();
   });
 
-  it('baut die Adresse mit dem Zeitstempel als Fassung', () => {
+  it('baut die Adresse mit dem Zeitstempel als Version', () => {
     expect(gameImageUrl('a b', 'cover', new Date(1_000))).toBe(
       '/api/game-types/a%20b/images/cover?v=1000',
     );

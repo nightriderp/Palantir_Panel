@@ -7,7 +7,7 @@ import { cn } from '../utils/cn';
 /**
  * Formular-Bausteine des Design-Systems (Arbeitspaket R4, „Gefundene Punkte“ 26 und 47).
  *
- * Vorlage war die Fassung, die F3 unter `components/servers/form/Fields.tsx`
+ * Vorlage war die Version, die F3 unter `components/servers/form/Fields.tsx`
  * vorläufig gebaut hatte; ergänzt wurde, was F1 zusätzlich brauchte:
  * Fehlerrahmen am Eingabefeld, `aria-invalid`/`aria-describedby`, freie
  * Eingabe-Attribute (`autoComplete`, `inputMode`, …) und eine zweite

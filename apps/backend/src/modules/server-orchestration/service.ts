@@ -223,10 +223,10 @@ export interface OrchestrationDependencies {
   readonly agents: AgentRegistry;
   readonly registry: GameRegistry;
   /**
-   * Wählbare Spielfassungen (Betreiber-Wunsch 19.09.2026).
+   * Wählbare Spielversionen (Betreiber-Wunsch 19.09.2026).
    *
    * Optional: Ohne Katalog bleibt alles wie bisher – jeder Server fährt die
-   * Fassung seines Images.
+   * Version seines Images.
    */
   readonly gameVersions?: GameVersionCatalogue;
   readonly dns: DnsProvider;
@@ -535,12 +535,12 @@ export class ServerOrchestrationService {
   }
 
   /**
-   * Eine gewählte Spielfassung beim Hersteller nachschlagen.
+   * Eine gewählte Spielversion beim Hersteller nachschlagen.
    *
    * `null` heißt „die des Images" – das ist der Regelfall und kein Fehler.
-   * Eine Fassung, die der Hersteller nicht (mehr) führt, ist dagegen einer:
+   * Eine Version, die der Hersteller nicht (mehr) führt, ist dagegen einer:
    * Sonst entstünde ein Server, dessen Oberfläche „26.3" zeigt, während im
-   * Container die Fassung des Images läuft.
+   * Container die Version des Images läuft.
    */
   private async resolveGameVersion(
     definition: GameTypeDefinition,
@@ -553,7 +553,7 @@ export class ServerOrchestrationService {
     if (definition.supportsVersionChoice !== true) {
       throw new ServerOrchestrationError(
         'VALIDATION_FAILED',
-        `Für ${definition.name} lässt sich die Spielfassung nicht wählen.`,
+        `Für ${definition.name} lässt sich die Spielversion nicht wählen.`,
       );
     }
 
@@ -562,14 +562,14 @@ export class ServerOrchestrationService {
     if (quelle === null) {
       throw new ServerOrchestrationError(
         'VALIDATION_FAILED',
-        `Die Spielfassung ${versionId} ist beim Hersteller nicht (mehr) zu finden.`,
+        `Die Spielversion ${versionId} ist beim Hersteller nicht (mehr) zu finden.`,
       );
     }
 
     return quelle;
   }
 
-  /** Wählbare Fassungen eines Spiels; leer, wo es nichts zu wählen gibt. */
+  /** Wählbare Versionen eines Spiels; leer, wo es nichts zu wählen gibt. */
   async listGameVersions(gameTypeId: string): Promise<readonly GameVersionQuelle[]> {
     const definition = this.deps.registry.find(gameTypeId);
 
@@ -622,7 +622,7 @@ export class ServerOrchestrationService {
     const definition = this.deps.registry.requireSelectable(input.gameType);
     const subdomain = await resolveAvailableSubdomain(input.subdomain, this.deps.repository);
     const host = await this.resolveHost(input.hostId);
-    const fassung = await this.resolveGameVersion(definition, input.gameVersion ?? null);
+    const version = await this.resolveGameVersion(definition, input.gameVersion ?? null);
 
     const resourceLimits: ServerResourceLimits = input.resourceLimits;
 
@@ -680,10 +680,10 @@ export class ServerOrchestrationService {
             hostId: host.id,
             name: input.name,
             gameType: definition.id,
-            gameVersion: fassung?.id ?? null,
-            gameVersionUrl: fassung?.url ?? null,
-            gameVersionHash: fassung?.hash ?? null,
-            gameVersionHashAlgorithm: fassung?.hashAlgorithm ?? null,
+            gameVersion: version?.id ?? null,
+            gameVersionUrl: version?.url ?? null,
+            gameVersionHash: version?.hash ?? null,
+            gameVersionHashAlgorithm: version?.hashAlgorithm ?? null,
             subdomain,
             assignedPorts: [],
             resourceLimits,
@@ -886,9 +886,9 @@ export class ServerOrchestrationService {
       server,
       definition,
       /*
-       * Die Fassung des Servers, nicht die der Definition (Pflichtenheft §9,
+       * Die Version des Servers, nicht die der Definition (Pflichtenheft §9,
        * Review 2026-09-16): Ein Server behält sein Image, bis jemand
-       * „Aktualisieren" drückt (`updateServerImage`). Ohne gespeicherte Fassung
+       * „Aktualisieren" drückt (`updateServerImage`). Ohne gespeicherte Version
        * – neu angelegt oder vor dieser Spalte entstanden – gilt die Definition.
        */
       image: server.imageRef ?? definition.dockerImage,
@@ -1600,12 +1600,12 @@ export class ServerOrchestrationService {
   }
 
   /**
-   * Übernimmt die neue Fassung des Spiel-Images (Pflichtenheft §9, Review
+   * Übernimmt die neue Version des Spiel-Images (Pflichtenheft §9, Review
    * 2026-09-16, Befund 2.9).
    *
-   * Ein Server behält seine Fassung (`imageRef`) über Starts und Neustarts
+   * Ein Server behält seine Version (`imageRef`) über Starts und Neustarts
    * hinweg – `containerSpecFor` baut den Container immer mit der gespeicherten
-   * Fassung. Erst dieser Aufruf schreibt die Fassung der Definition an den
+   * Version. Erst dieser Aufruf schreibt die Version der Definition an den
    * Server; danach weicht der Fingerabdruck ab, und `ensureContainerCurrent`
    * baut den Container neu. Am laufenden Server geschieht das als Stopp +
    * Start, am gestoppten nur als Neuaufbau ohne Start – ein „Aktualisieren",
@@ -1614,7 +1614,7 @@ export class ServerOrchestrationService {
    * Der Weltstand liegt im Datenvolume (`dataHostPath`), das jeder Neuaufbau
    * unverändert wieder einhängt; das Image trägt nur Laufzeit und Serverdateien.
    *
-   * Idempotent: Trägt der Server die Fassung schon, passiert nichts.
+   * Idempotent: Trägt der Server die Version schon, passiert nichts.
    */
   async updateServerImage(
     serverId: string,
@@ -1637,7 +1637,7 @@ export class ServerOrchestrationService {
 
     if (!lief) {
       // Nur `stopped`, `error` und `crashed` lassen einen Neuaufbau zu; ein
-      // Server mitten im Anlegen oder Stoppen wechselt seine Fassung nicht.
+      // Server mitten im Anlegen oder Stoppen wechselt seine Version nicht.
       if (server.status !== 'stopped' && server.status !== 'error' && server.status !== 'crashed') {
         throw new ServerOrchestrationError('SERVER_STATE_CONFLICT', undefined, {
           serverId,
@@ -1646,7 +1646,7 @@ export class ServerOrchestrationService {
       }
     }
 
-    // Erst die Fassung schreiben: Danach passt der Fingerabdruck nicht mehr,
+    // Erst die Version schreiben: Danach passt der Fingerabdruck nicht mehr,
     // und der nächste Neuaufbau nimmt genau dieses Image.
     await this.deps.repository.update(serverId, { imageRef: ziel });
 

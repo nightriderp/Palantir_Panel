@@ -109,11 +109,11 @@ describe('toGameServerDto – unbekannter Spieltyp (Fundpunkt 247)', () => {
 
     expect(dto.supportsConsole).toBe(false);
     expect(dto.consoleQuickCommands).toEqual([]);
-    // Ohne bekannte Definition gibt es keine Soll-Fassung zum Vergleichen.
+    // Ohne bekannte Definition gibt es keine Soll-Version zum Vergleichen.
     expect(dto.updateAvailable).toBe(false);
   });
 
-  it('zeigt die gefahrene und die angebotene Fassung', () => {
+  it('zeigt die gefahrene und die angebotene Version', () => {
     const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
     const dto = toGameServerDto(serverMit(TEST_GAME_TYPE.id), kontext(registry));
 

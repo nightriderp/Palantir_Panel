@@ -27,7 +27,7 @@ function migrationSqlInOrder(): string[] {
 }
 
 /**
- * Die zuletzt eingespielte Fassung eines Fremdschlüssels.
+ * Die zuletzt eingespielte Version eines Fremdschlüssels.
  *
  * Maßgeblich ist nicht, dass eine Löschregel irgendwo einmal vorkam, sondern
  * welche am Ende der Kette steht: Ein späteres `DROP`/`ADD` überschreibt sie.

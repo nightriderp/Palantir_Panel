@@ -153,7 +153,7 @@ describe('formatMegabytesKurz', () => {
   });
 
   it('rundet auf höchstens zwei geltende Ziffern, damit der Wert in den Ring passt', () => {
-    // 5 830 MiB = 6,11 GB in der vollen Fassung – im Ring nur „6,1 GB".
+    // 5 830 MiB = 6,11 GB in der vollen Version – im Ring nur „6,1 GB".
     expect(formatMegabytesKurz(5830)).toBe('6,1 GB');
     expect(formatMegabytesKurz(805)).toBe('844 MB');
     expect(formatMegabytesKurz(2048)).toBe('2,1 GB');
@@ -264,7 +264,7 @@ describe('formatCores', () => {
   });
 });
 
-describe('Image-Fassung', () => {
+describe('Image-Version', () => {
   it('setzt ein „v" davor und schreibt die Marke dreistellig', () => {
     // Betreiber-Wunsch 20.09.2026: die gewohnte Form vX.X.X. Die Zahl selbst
     // bleibt, was die Registry hergibt - nur die Schreibweise ist dreiteilig.
@@ -281,13 +281,13 @@ describe('Image-Fassung', () => {
     expect(formatImageVersion('1.2.3.4')).toBe('v1.2.3.4');
   });
 
-  it('zeigt ohne bekannte Fassung nichts an', () => {
+  it('zeigt ohne bekannte Version nichts an', () => {
     expect(formatImageVersion(null)).toBeNull();
     expect(formatImageVersion(undefined)).toBeNull();
     expect(formatImageVersion('')).toBeNull();
   });
 
-  it('nennt beim Update beide Fassungen', () => {
+  it('nennt beim Update beide Versionen', () => {
     expect(formatImageUpdate('7', '9')).toBe('v7.0.0 läuft, angeboten wird v9.0.0.');
   });
 

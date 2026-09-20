@@ -1406,7 +1406,7 @@ export class AuthService {
    *
    * Zugeschnitten und verkleinert wird im Browser; hier wird nur geprüft, was
    * sich ohne Bildbibliothek prüfen lässt – Typ, Größe und Signatur (siehe
-   * `avatar.ts`). Das Bild ersetzt ein vorhandenes; eine Fassungsgeschichte
+   * `avatar.ts`). Das Bild ersetzt ein vorhandenes; eine Versionsgeschichte
    * gibt es bewusst nicht.
    */
   async setAvatar(userId: string, upload: { mimeType: string; data: Buffer }): Promise<AccountDto> {

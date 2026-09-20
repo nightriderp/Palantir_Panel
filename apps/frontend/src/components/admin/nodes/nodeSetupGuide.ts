@@ -1,6 +1,6 @@
 /**
  * Baut die Schritt-für-Schritt-Anleitung zum Anbinden einer frisch angelegten
- * Node (Lastenheft §3.7, Pflichtenheft §2.2). Die vollständige Fassung mit allen
+ * Node (Lastenheft §3.7, Pflichtenheft §2.2). Die vollständige Version mit allen
  * Begründungen steht in `SETUP.md §3.4`; hier steht die knappe, mit den konkreten
  * Node-Werten gefüllte Kurzfassung für den Wizard.
  *

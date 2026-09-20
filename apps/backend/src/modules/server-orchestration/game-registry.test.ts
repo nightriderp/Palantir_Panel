@@ -345,7 +345,7 @@ describe('Terraria – erstes Spiel ohne Laufzeit-Basis (Anhang A, Phase 3)', ()
     );
   });
 
-  it('zeigt auf eine feste Fassung des eigenen Images', () => {
+  it('zeigt auf eine feste Version des eigenen Images', () => {
     expect(TERRARIA_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-terraria:1');
   });
 
@@ -449,21 +449,21 @@ describe('Minecraft (Paper) – erstes echtes Spiel (Lastenheft §7, Ausbaustufe
     ).toBe('minecraft-paper');
   });
 
-  it('zeigt auf die Fassung aus images/game/minecraft/VERSION', () => {
+  it('zeigt auf die Version aus images/game/minecraft/VERSION', () => {
     // Ein Spiel-Image-Tag wird nie überschrieben (game-images.yml). Bis zum
     // 2026-09-19 stand hier eine feste Zahl mit der Bitte, sie beim Erhöhen von
-    // `VERSION` nachzuziehen – und genau das blieb bei Fassung 7 aus: Das Image
+    // `VERSION` nachzuziehen – und genau das blieb bei Version 7 aus: Das Image
     // war gebaut, die Registry zeigte weiter auf 6, im Panel erschien kein
     // „Update verfügbar". Jetzt liest der Test die Datei; wer sie erhöht, sieht
-    // hier rot, statt dass die Node stumm auf der alten Fassung bleibt. Der
+    // hier rot, statt dass die Node stumm auf der alten Version bleibt. Der
     // Name folgt dem Schema `palantir-<Kategorie>-<Name>` (images/README.md).
-    const fassung = readFileSync(
+    const version = readFileSync(
       fileURLToPath(new URL('../../../../../images/game/minecraft/VERSION', import.meta.url)),
       'utf8',
     ).trim();
 
     expect(MINECRAFT_PAPER_GAME_TYPE.dockerImage).toBe(
-      `ghcr.io/nightriderp/palantir-game-minecraft:${fassung}`,
+      `ghcr.io/nightriderp/palantir-game-minecraft:${version}`,
     );
   });
 
@@ -645,7 +645,7 @@ describe('Factorio und Project Zomboid', () => {
     expect(registry.requireSelectable('project-zomboid').id).toBe('project-zomboid');
   });
 
-  it('zeigen auf feste Fassungen der eigenen Images', () => {
+  it('zeigen auf feste Versionen der eigenen Images', () => {
     expect(FACTORIO_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-factorio:1');
     expect(PROJECT_ZOMBOID_GAME_TYPE.dockerImage).toBe(
       'ghcr.io/nightriderp/palantir-game-projectzomboid:1',
@@ -722,7 +722,7 @@ describe('Factorio und Project Zomboid', () => {
  * Spielerzahl verschieden: Rust ueber A2S, Palworld gar nicht.
  */
 describe('Rust und Palworld', () => {
-  it('sind ab Ausbaustufe 3 auswaehlbar und zeigen auf feste Image-Fassungen', () => {
+  it('sind ab Ausbaustufe 3 auswaehlbar und zeigen auf feste Image-Versionen', () => {
     const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
 
     expect(registry.requireSelectable('rust').id).toBe('rust');
@@ -845,7 +845,7 @@ describe('Minecraft mit Mods: Fabric und NeoForge', () => {
  * Port-Pool nicht vergeben.
  */
 describe('Satisfactory und 7 Days to Die', () => {
-  it('sind ab Ausbaustufe 3 auswaehlbar und zeigen auf feste Image-Fassungen', () => {
+  it('sind ab Ausbaustufe 3 auswaehlbar und zeigen auf feste Image-Versionen', () => {
     const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
 
     expect(registry.requireSelectable('satisfactory').id).toBe('satisfactory');
@@ -913,7 +913,7 @@ describe('Satisfactory und 7 Days to Die', () => {
  * Enshrouded - das erste Spiel unter Proton (Anhang A, Phase 3).
  */
 describe('Enshrouded unter Proton', () => {
-  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Version', () => {
     expect(
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('enshrouded').id,
     ).toBe('enshrouded');
@@ -929,7 +929,7 @@ describe('Enshrouded unter Proton', () => {
   });
 
   it('gibt dem ersten Start Zeit fuer Windows-Dateien und Wine-Prefix', () => {
-    // SteamCMD holt die Windows-Fassung, danach legt Proton ein ganzes
+    // SteamCMD holt die Windows-Version, danach legt Proton ein ganzes
     // Windows-Dateisystem in Miniatur an.
     expect(ENSHROUDED_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(1_800);
   });
@@ -953,7 +953,7 @@ describe('Enshrouded unter Proton', () => {
  * echten Konsole (Anhang A, Phase 3).
  */
 describe('V Rising unter Proton', () => {
-  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Version', () => {
     expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('vrising').id).toBe(
       'vrising',
     );
@@ -1010,7 +1010,7 @@ describe('V Rising unter Proton', () => {
  * Sons of the Forest - drittes Spiel unter Proton (Anhang A, Phase 3).
  */
 describe('Sons of the Forest unter Proton', () => {
-  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Version', () => {
     expect(
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('sonsoftheforest').id,
     ).toBe('sonsoftheforest');
@@ -1061,7 +1061,7 @@ describe('Sons of the Forest unter Proton', () => {
  * Vintage Story - das erste Spiel ohne Steam und ohne Java (Anhang A, Phase 3).
  */
 describe('Vintage Story', () => {
-  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Version', () => {
     expect(
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('vintagestory').id,
     ).toBe('vintagestory');
@@ -1114,7 +1114,7 @@ describe('Vintage Story', () => {
  * Abiotic Factor - viertes Spiel unter Proton (Anhang A, Phase 3).
  */
 describe('Abiotic Factor unter Proton', () => {
-  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Version', () => {
     expect(
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('abioticfactor').id,
     ).toBe('abioticfactor');
@@ -1156,10 +1156,10 @@ describe('Abiotic Factor unter Proton', () => {
 
 /**
  * ARK: Survival Ascended - das groesste Spiel der Liste, auf einer eigenen
- * Proton-Fassung (Anhang A, Phase 3).
+ * Proton-Version (Anhang A, Phase 3).
  */
 describe('ARK: Survival Ascended', () => {
-  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Version', () => {
     expect(
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('arkascended').id,
     ).toBe('arkascended');
@@ -1271,7 +1271,7 @@ describe('Stopp-Befehl', () => {
  * Betreiber selbst mitbringt (Anhang A, Phase 3).
  */
 describe('Assetto Corsa Competizione', () => {
-  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Fassung', () => {
+  it('ist ab Ausbaustufe 3 auswaehlbar und zeigt auf eine feste Image-Version', () => {
     expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('acc').id).toBe(
       'acc',
     );

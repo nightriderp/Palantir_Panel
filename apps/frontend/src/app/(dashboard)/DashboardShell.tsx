@@ -182,13 +182,13 @@ function Shell({ children, versionLabel }: { children: ReactNode; versionLabel: 
         </>
       }
       sidebarFooter={
-        <span title="Aktuelle Fassung" className="font-mono text-xs text-ink-faint">
+        <span title="Aktuelle Version" className="font-mono text-xs text-ink-faint">
           {versionLabel}
         </span>
       }
     >
       {/*
-        Der Hinweis auf eine neue Fassung steht über dem Seiteninhalt und damit
+        Der Hinweis auf eine neue Version steht über dem Seiteninhalt und damit
         auf jeder Seite des Panels – nach einem Deployment läuft im offenen
         Browser sonst altes Frontend gegen neue API weiter.
       */}
