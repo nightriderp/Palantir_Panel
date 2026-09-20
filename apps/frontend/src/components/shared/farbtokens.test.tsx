@@ -97,6 +97,40 @@ describe('Kontrast der Farbtokens (WCAG 1.4.3)', () => {
     expect(gegenSurface).toEqual([...gegenSurface].sort((a, b) => b - a));
   });
 
+  /**
+   * Reihenfolge allein genügt nicht – der Abstand muss auch zu sehen sein.
+   *
+   * Genau daran fehlte es: Nach dem Anheben von Review 2026-09-16 standen
+   * `soft` und `faint` bei 5,43 und 4,64, ein Schritt von 1,17. Formal vier
+   * Textstufen, sichtbar drei – ein Abschnittslabel und ein Zeitstempel sahen
+   * gleich wichtig aus, und die Oberfläche wirkte flach. Der Fall ging durch
+   * jede Prüfung, weil niemand nach dem *Abstand* fragte, nur nach Boden und
+   * Reihenfolge.
+   *
+   * ⚠️ Die Schwelle ist bewusst niedrig angesetzt (1,25). Sie soll nicht eine
+   * bestimmte Rampe festschreiben, sondern verhindern, dass zwei Stufen wieder
+   * zusammenfallen – nach oben ist jeder Abstand recht.
+   */
+  const MINDESTSCHRITT = 1.25;
+
+  it(`zwischen zwei Textstufen liegt mindestens Faktor ${String(MINDESTSCHRITT)}`, () => {
+    const gegenSurface = TEXT_TOKENS.map((token) => ({
+      token,
+      wert: kontrast(tokenWert(token), tokenWert('surface')),
+    }));
+
+    for (let i = 1; i < gegenSurface.length; i += 1) {
+      const heller = gegenSurface[i - 1];
+      const dunkler = gegenSurface[i];
+      if (!heller || !dunkler) throw new Error('Textstufen fehlen');
+
+      expect(
+        heller.wert / dunkler.wert,
+        `${heller.token} (${heller.wert.toFixed(2)}) zu ${dunkler.token} (${dunkler.wert.toFixed(2)})`,
+      ).toBeGreaterThanOrEqual(MINDESTSCHRITT);
+    }
+  });
+
   it('`brand` als Text erreicht mindestens 3:1 (Bedienelemente, große Schrift)', () => {
     // Die Markenfarbe steht auf Knöpfen unter weißer Schrift und als Textfarbe
     // in Initialen und Links – dort mit 3,9:1 auf `surface` unter 4,5. Für
