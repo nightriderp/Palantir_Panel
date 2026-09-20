@@ -139,12 +139,24 @@ export function createFakeFontFileStore(
  * {@link roleSelection}.
  */
 export function fixedSelection(...ids: string[]): FontSelectionSource {
+  const versteckt = new Set<string>();
+
   return {
     selectedFontIds: async () => ids,
     selectedFontRoles: async () => ({
       uiFontId: ids[0] ?? null,
       monospaceFontId: ids[1] ?? null,
     }),
+    // Die Attrappe merkt sich Ausgeblendetes im Speicher: So prüfen Tests das
+    // Zusammenspiel, ohne die Einstellungen der Instanz zu brauchen.
+    hiddenBundledFontIds: async () => [...versteckt],
+    setBundledFontHidden: async (id, hidden) => {
+      if (hidden) {
+        versteckt.add(id);
+      } else {
+        versteckt.delete(id);
+      }
+    },
   };
 }
 
@@ -153,10 +165,20 @@ export function roleSelection(
   uiFontId: string | null,
   monospaceFontId: string | null,
 ): FontSelectionSource {
+  const versteckt = new Set<string>();
+
   return {
     selectedFontIds: async () =>
       [uiFontId, monospaceFontId].filter((id): id is string => id !== null),
     selectedFontRoles: async () => ({ uiFontId, monospaceFontId }),
+    hiddenBundledFontIds: async () => [...versteckt],
+    setBundledFontHidden: async (id, hidden) => {
+      if (hidden) {
+        versteckt.add(id);
+      } else {
+        versteckt.delete(id);
+      }
+    },
   };
 }
 

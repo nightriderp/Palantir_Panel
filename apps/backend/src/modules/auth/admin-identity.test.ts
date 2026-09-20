@@ -185,6 +185,7 @@ beforeEach(async () => {
             selfRegistrationEnabled: true,
             uiFontId: null,
             disabledGameTypes: [],
+            hiddenBundledFonts: [],
             monospaceFontId: null,
             updatedAt: null,
           }),

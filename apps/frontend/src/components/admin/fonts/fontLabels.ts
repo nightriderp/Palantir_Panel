@@ -91,7 +91,6 @@ export function weightRangeLabel(font: FontDto): string {
  */
 export function deleteBlockedReason(font: FontDto, selected: boolean): string | null {
   if (font.permissions.canDelete) return null;
-  if (font.source === 'bundled') return 'Mitgeliefert – nicht löschbar';
   if (selected) return 'Ausgewählt – erst abwählen';
 
   return null;

@@ -101,6 +101,7 @@ async function buildApp(): Promise<FastifyInstance> {
             selfRegistrationEnabled: true,
             uiFontId: null,
             disabledGameTypes: [],
+            hiddenBundledFonts: [],
             monospaceFontId: null,
             updatedAt: null,
           }),

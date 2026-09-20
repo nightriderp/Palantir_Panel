@@ -173,12 +173,53 @@ describe('FontService.list', () => {
     expect(erste?.sizeBytes).toBe(bundled.files.get(ERSTE_MITGELIEFERTE.fileName)?.length);
   });
 
-  it('erlaubt niemandem, eine mitgelieferte Schrift zu löschen – auch dem Owner nicht', async () => {
+  it('lässt eine mitgelieferte Schrift ausblenden, wer Schriften verwalten darf', async () => {
+    /*
+     * Betreiber-Wunsch 20.09.2026. Gelöscht wird dabei nichts - die Datei
+     * liegt im Abbild -, aber die Instanz bietet sie nicht mehr an. Für die
+     * Oberfläche ist es derselbe Knopf, deshalb dasselbe Kennzeichen.
+     */
     const { service } = aufbauen();
 
     const liste = await service.list(contextOf(ownerActor()));
 
-    expect(liste[0]?.permissions.canDelete).toBe(false);
+    expect(liste[0]?.permissions.canDelete).toBe(true);
+    expect(liste[0]?.hidden).toBe(false);
+  });
+
+  it('nimmt eine ausgeblendete Schrift aus dem Stylesheet, lässt sie aber in der Liste', async () => {
+    const { service } = aufbauen();
+
+    await service.remove(ADMIN, ERSTE_MITGELIEFERTE.id);
+
+    const liste = await service.list(ADMIN);
+    const eintrag = liste.find((schrift) => schrift.id === ERSTE_MITGELIEFERTE.id);
+
+    expect(eintrag?.hidden).toBe(true);
+    expect((await service.stylesheet()).css).not.toContain(ERSTE_MITGELIEFERTE.family);
+  });
+
+  it('holt eine ausgeblendete Schrift zurück', async () => {
+    const { service } = aufbauen();
+
+    await service.remove(ADMIN, ERSTE_MITGELIEFERTE.id);
+    await service.restore(ADMIN, ERSTE_MITGELIEFERTE.id);
+
+    const liste = await service.list(ADMIN);
+    const eintrag = liste.find((schrift) => schrift.id === ERSTE_MITGELIEFERTE.id);
+
+    expect(eintrag?.hidden).toBe(false);
+    expect((await service.stylesheet()).css).toContain(ERSTE_MITGELIEFERTE.family);
+  });
+
+  it('blendet keine Schrift aus, die gerade eine Rolle besetzt', async () => {
+    // Sonst stünde die Oberfläche auf einer Schrift, die es im Stylesheet
+    // nicht mehr gibt.
+    const { service } = aufbauen({ gewaehlt: [ERSTE_MITGELIEFERTE.id] });
+
+    expect(await fehlercode(() => service.remove(ADMIN, ERSTE_MITGELIEFERTE.id))).toBe(
+      'FONT_IN_USE',
+    );
   });
 
   it('sperrt den Löschknopf einer gewählten Schrift', async () => {
@@ -387,12 +428,12 @@ describe('FontService.upload', () => {
 });
 
 describe('FontService.remove', () => {
-  it('schützt mitgelieferte Schriften', async () => {
+  it('meldet beim Zurückholen einer hochgeladenen Schrift, dass es nichts zu holen gibt', async () => {
+    // Die ist wirklich weg, samt Datei - da lässt sich nichts ausblenden und
+    // nichts zurückholen.
     const { service } = aufbauen();
 
-    expect(await fehlercode(() => service.remove(ADMIN, ERSTE_MITGELIEFERTE.id))).toBe(
-      'FONT_BUNDLED_PROTECTED',
-    );
+    expect(await fehlercode(() => service.restore(ADMIN, UPLOADED_FONT_ID))).toBe('FONT_NOT_FOUND');
   });
 
   it('meldet eine unbekannte, aber formal mitgelieferte Kennung als nicht vorhanden', async () => {

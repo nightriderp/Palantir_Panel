@@ -103,7 +103,9 @@ function schrift(overrides: Partial<FontDto> = {}): FontDto {
     variable: true,
     weightRange: { min: 300, max: 700 },
     monospace: false,
-    permissions: { canDelete: false },
+    // Seit dem 20.09.2026 laesst sich auch eine mitgelieferte Schrift aus dem
+    // Angebot nehmen - das Backend setzt das Kennzeichen entsprechend.
+    permissions: { canDelete: true },
     ...overrides,
   };
 }
@@ -196,12 +198,15 @@ describe('Schriftliste', () => {
     ).toBe(true);
   });
 
-  it('bietet den Löschknopf nur an, wo canDelete gesetzt ist', async () => {
+  it('bietet den Entfernen-Knopf für beide Herkünfte an', async () => {
+    /*
+     * Seit dem 20.09.2026 lässt sich auch eine mitgelieferte Schrift aus dem
+     * Angebot nehmen. Gelöscht wird dabei nichts - sie liegt im Abbild -,
+     * aber die Instanz bietet sie nicht mehr an.
+     */
     await zeichne();
 
-    // Zwei Schriften, aber nur die hochgeladene ist löschbar.
-    expect(screen.getAllByRole('button', { name: 'Löschen' })).toHaveLength(1);
-    expect(screen.getByText('Mitgeliefert – nicht löschbar')).toBeDefined();
+    expect(screen.getAllByRole('button', { name: 'Entfernen' })).toHaveLength(2);
   });
 
   it('nennt die Auswahl als Grund, wenn eine hochgeladene Schrift gesperrt ist', async () => {
@@ -211,7 +216,7 @@ describe('Schriftliste', () => {
     await zeichne();
 
     expect(await screen.findByText('Ausgewählt – erst abwählen')).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'Löschen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Entfernen' })).toBeNull();
   });
 
   it('bleibt für ein Konto ohne user.manage verschlossen', async () => {
@@ -368,7 +373,10 @@ describe('Fehlermeldungen des Backends', () => {
     api.deleteFont.mockResolvedValue(fehler('FONT_IN_USE'));
     await zeichne();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Löschen' }));
+    // Beide Schriften tragen den Knopf; hier geht es um die hochgeladene.
+    const knoepfe = await screen.findAllByRole('button', { name: 'Entfernen' });
+
+    fireEvent.click(knoepfe[1] as HTMLElement);
 
     const dialog = within(await screen.findByRole('dialog'));
     fireEvent.click(dialog.getByRole('button', { name: 'Endgültig löschen' }));
