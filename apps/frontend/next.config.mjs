@@ -12,16 +12,33 @@ loadDotenv({ path: path.join(repoRoot, '.env') });
 // wie im Backend (`apps/backend/src/config/env.ts`, `adressenAbleiten`).
 const domain = process.env.PALANTIR_DOMAIN ?? 'palantir.local';
 
-// Adresse der Backend-API, wie der Browser sie sieht. Frontend und API liegen
-// auf getrennten Subdomains (`<domain>` bzw. `api.<domain>`), deshalb muss der
-// Wert absolut sein – ein relativer Aufruf landet beim Frontend selbst und endet
-// in einem 404. Die Reihenfolge entspricht der des Backends
+// Adresse der Backend-API, wie der Browser sie sieht. Der Wert ist absolut –
+// ein relativer Aufruf landet sonst beim Frontend selbst und endet in einem 404.
+// Die Reihenfolge entspricht der des Backends
 // (`apps/backend/src/config/env.ts`, `adressenAbleiten`): ein ausdrücklich
 // gesetztes PUBLIC_API_URL gewinnt, sonst wird aus der Domain abgeleitet. Damit
 // trifft es die Entwicklungsumgebung (`http://localhost:4000`) genauso wie die
 // VPS, wo nur PALANTIR_DOMAIN gepflegt wird.
+//
+// ⚠️ **Die Vorgabe ist `https://<domain>/api`, nicht `https://api.<domain>`.**
+// Hier stand das Zweite, und damit wichen Backend und Frontend seit dem
+// 20.09.2026 voneinander ab: Das Backend leitet `https://${domain}/api` ab
+// (`env.ts`, `adressenAbleiten`), und mit demselben Datum ist der eigene
+// API-Router aus `deploy/vps/docker-compose.yml` entfernt worden – API und
+// Panel teilen sich seither einen Host, damit die Sitzungs-Cookies host-only
+// bleiben (`deploy/README.md`, Abschnitt 7.2). Eine Instanz, die
+// `PUBLIC_API_URL` leer lässt – genau das empfiehlt die Anleitung dort –, bekam
+// hier trotzdem `https://api.<domain>` in ihr Browser-Bundle geschrieben: eine
+// Adresse, die niemand mehr bedient. Das Panel hätte auf keinen einzigen
+// API-Aufruf eine Antwort bekommen. Dass es im Betrieb nicht auffiel, liegt
+// allein daran, dass diese Instanz `PUBLIC_API_URL` ausdrücklich setzt.
+//
+// Nebenwirkung, die das Ganze überhaupt ans Licht brachte: Über die Vorgabe
+// liegt die API auf **derselben Herkunft** wie die Seite. Das render-blockende
+// Schrift-Stylesheet (`src/app/layout.tsx`) braucht damit keine zweite
+// Verbindung mehr, bevor der erste Text steht.
 const apiUrl =
-  process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || `https://api.${domain}`;
+  process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || `https://${domain}/api`;
 
 /**
  * Content-Security-Policy (Audit W2-6, security-matrix-10).

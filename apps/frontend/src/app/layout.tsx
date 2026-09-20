@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { FONT_STYLESHEET_LINK_ATTRIBUTE, fontStylesheetUrl } from '@/lib/api/fonts';
+import { fremdeApiHerkunft } from '@/lib/auth/api';
 import './globals.css';
 
 /**
@@ -24,10 +25,31 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const fremdeHerkunft = fremdeApiHerkunft();
+
   // Oberflächensprache ist laut Lastenheft §4 zunächst ausschließlich Deutsch.
   return (
     <html lang="de">
       <head>
+        {/*
+          Verbindung zur API vorziehen – **nur**, wenn sie woanders liegt als
+          die Seite (siehe `fremdeApiHerkunft`).
+
+          Unten steht, warum hier früher kein `preconnect` stand: „Beides kommt
+          jetzt von der API-Herkunft, die die Seite ohnehin gleich anspricht."
+          Das stimmt für gewöhnliche Abrufe – die laufen, wenn die Seite längst
+          steht. Das Schrift-Stylesheet ist der Sonderfall: Es **blockiert das
+          erste Bild**. Liegt die API auf einem zweiten Host, warten DNS, TCP
+          und TLS vor dem ersten sichtbaren Buchstaben, und niemand spricht
+          diesen Host vorher an.
+
+          Im Regelfall – API unter `<Domain>/api` – ist `fremdeHerkunft` `null`
+          und hier steht nichts: Ein `preconnect` auf die eigene Herkunft wäre
+          eine Zeile ohne Wirkung.
+        */}
+        {fremdeHerkunft === null ? null : (
+          <link rel="preconnect" href={fremdeHerkunft} crossOrigin="anonymous" />
+        )}
         {/*
           Schriften der Instanz (Arbeitspaket S-3, Fundpunkt 151).
 
@@ -55,10 +77,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           um das Stylesheet nach einem Upload neu zu holen (`lib/api/fonts.ts`).
         */}
         {/*
-          Kein `preconnect` daneben: Die alten Zeilen brauchten es, weil
-          Stylesheet und Schriftdateien auf zwei fremden Hosts lagen, zu denen
-          erst eine Verbindung entstehen musste. Beides kommt jetzt von der
-          API-Herkunft, die die Seite ohnehin gleich anspricht.
+          Hier stand: „Kein `preconnect` daneben … beides kommt jetzt von der
+          API-Herkunft, die die Seite ohnehin gleich anspricht." Der Satz galt
+          nur, solange man die API-Herkunft gleich anspricht, **bevor** dieser
+          `<link>` das Bild aufhält – und das tut sie nicht. Der `preconnect`
+          steht deshalb wieder oben, aber nur für den Fall, dass die API
+          tatsächlich woanders liegt.
         */}
         <link
           rel="stylesheet"

@@ -25,6 +25,7 @@ import { mergeLiveStatus } from '@/lib/live/mergeLiveStatus';
 import { useDtoRevisions } from '@/lib/live/useDtoRevision';
 import { useServerListLive } from '@/lib/live/useServerLive';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
+import { useShellServers } from '@/app/(dashboard)/ShellDataContext';
 import {
   SERVER_FILTERS,
   SERVER_FILTER_LABELS,
@@ -62,7 +63,22 @@ export function ServerOverview() {
   const [search, setSearch] = useUrlFilter<string>('q', '', istSuchbegriff);
   const [confirm, setConfirm] = useState<PendingConfirm>(null);
 
-  const servers = useApiResource<GameServerDto[]>((signal) => fetchServers(signal), []);
+  /*
+   * Der Rahmen hält dieselbe Liste bereits (Kopfzeile, Seitenleiste). Sie dient
+   * hier als Anfangsbestand: Die Karten stehen sofort, der eigene Abruf läuft
+   * daneben und tauscht still gegen den frischen Stand. Vorher stand an dieser
+   * Stelle bei jedem Aufruf der Seite „Server werden geladen …" – vor Daten,
+   * die die Anwendung schon hatte.
+   *
+   * Geholt wird trotzdem: Die Übersicht braucht den Stand frischer als der
+   * Rahmen und soll sich nicht darauf verlassen, dass er gerade nachgeladen
+   * hat.
+   */
+  const servers = useApiResource<GameServerDto[]>(
+    (signal) => fetchServers(signal),
+    [],
+    useShellServers(),
+  );
 
   /*
    * Die Spieleliste nur wegen der Bilder (Betreiber-Wunsch 19.09.2026): Symbol

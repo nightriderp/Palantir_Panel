@@ -19,6 +19,7 @@ import { DashboardNav } from './DashboardNav';
 import { GlobalStatus } from './GlobalStatus';
 import { AUSFALL_SCHWELLE_MS, liveAnzeige } from './liveBadge';
 import { SessionProvider, useSession } from './SessionProvider';
+import { ShellDataProvider } from './ShellDataContext';
 import {
   buildStatusMetrics,
   ownServersForNav,
@@ -81,6 +82,12 @@ interface ShellData {
   metrics: StatusMetric[];
   ownServers: SidebarServer[];
   unreadMessages: number;
+  /**
+   * Die rohe Serverliste – wird an `ShellDataProvider` weitergereicht, damit
+   * die Serverübersicht darunter nicht bei null anfangen muss
+   * (`ShellDataContext`).
+   */
+  servers: GameServerDto[] | null;
 }
 
 /**
@@ -108,16 +115,26 @@ function useShellData(): ShellData {
     canViewNodes ? [] : null,
   );
   /*
-   * Der Pfad steht bewusst in den Abhaengigkeiten: Der Zaehler soll stimmen,
-   * nachdem in den Nachrichten gelesen wurde, und der Lesezustand aendert sich
-   * ohne Ereignis auf dem Live-Kanal. Beim Verlassen der Ansicht wird deshalb
-   * neu geholt. Eine neu eintreffende Nachricht faellt erst beim naechsten
-   * Seitenwechsel auf - der Chat-Kanal haengt an einer eigenen Verbindung
+   * Der Zaehler soll stimmen, nachdem in den Nachrichten gelesen wurde, und
+   * der Lesezustand aendert sich ohne Ereignis auf dem Live-Kanal. Geholt wird
+   * deshalb beim Betreten und beim Verlassen des Nachrichtenbereichs.
+   *
+   * ⚠️ Hier stand `pathname` – und damit lief bei **jedem** Seitenwechsel im
+   * ganzen Panel eine zusaetzliche Anfrage, auch beim Sprung von der
+   * Serveruebersicht in die Administration, wo sich am Lesezustand nichts
+   * aendern kann. Der Wahrheitsgehalt liegt nicht im Pfad, sondern in der
+   * Frage „ist der Nutzer in den Nachrichten?" – ein Boolescher Wert, der sich
+   * genau zweimal je Besuch aendert. Die Auskunft bleibt dieselbe, die Zahl
+   * der Abrufe faellt von einer je Seitenwechsel auf zwei je Besuch.
+   *
+   * Eine neu eintreffende Nachricht faellt weiterhin erst beim naechsten
+   * Wechsel auf - der Chat-Kanal haengt an einer eigenen Verbindung
    * (`useChatLive`), und eine zweite davon nur fuer den Zaehler waere zu teuer.
    */
+  const imNachrichtenbereich = pathname.startsWith('/messages');
   const conversations = useApiResource<ConversationDto[]>(
     (signal) => fetchConversations(signal),
-    user ? [user.id, pathname] : null,
+    user ? [user.id, imNachrichtenbereich] : null,
   );
 
   const list = useMemo(() => servers.data ?? [], [servers.data]);
@@ -160,13 +177,20 @@ function useShellData(): ShellData {
     [conversations.data],
   );
 
-  return { metrics, ownServers, unreadMessages };
+  return { metrics, ownServers, unreadMessages, servers: servers.data };
 }
 
 /** Innerer Teil – braucht Sitzung und Live-Kanal, liegt deshalb unter beiden. */
 function Shell({ children, versionLabel }: { children: ReactNode; versionLabel: string }) {
   const { user } = useSession();
-  const { metrics, ownServers, unreadMessages } = useShellData();
+  const { metrics, ownServers, unreadMessages, servers } = useShellData();
+
+  /*
+    Nur die Serverliste hängt hier drin, und sie bekommt eine eigene Identität
+    nur dann, wenn sie sich wirklich geändert hat – sonst bekäme jede Seite
+    unter dem Rahmen bei jedem Tick des Live-Kanals einen neuen Kontextwert.
+  */
+  const shellData = useMemo(() => ({ servers }), [servers]);
 
   return (
     <AppShell
@@ -193,7 +217,11 @@ function Shell({ children, versionLabel }: { children: ReactNode; versionLabel: 
         Browser sonst altes Frontend gegen neue API weiter.
       */}
       <DeployBanner current={versionLabel} />
-      {children}
+      {/*
+        Was der Rahmen schon geholt hat, steht der Seite darunter als
+        Anfangsbestand zur Verfügung (`ShellDataContext`).
+      */}
+      <ShellDataProvider value={shellData}>{children}</ShellDataProvider>
     </AppShell>
   );
 }

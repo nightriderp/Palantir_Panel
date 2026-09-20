@@ -358,6 +358,38 @@ export function apiUrl(path: string): string {
 }
 
 /**
+ * Herkunft der API, falls sie **nicht** die der Seite ist – sonst `null`.
+ *
+ * Gebraucht für den `preconnect` im Wurzel-Layout: Das Schrift-Stylesheet
+ * blockiert das erste Bild, und liegt die API auf einer anderen Herkunft,
+ * stehen davor noch DNS-Auflösung, TCP-Verbindung und TLS-Handschlag zu einem
+ * zweiten Host. Der Hinweis bringt den Browser dazu, das vorzuziehen, statt
+ * erst beim Lesen des `<link>` damit anzufangen.
+ *
+ * Seit der Zusammenlegung von Panel und API auf einen Host (20.09.2026) ist
+ * das der **Ausnahmefall** – deshalb `null` im Regelfall, statt einen
+ * wirkungslosen Hinweis auf die eigene Herkunft zu setzen. Verglichen wird
+ * gegen `NEXT_PUBLIC_BASE_DOMAIN`, denn die tatsächliche Herkunft der Seite
+ * steht beim Rendern auf dem Server nicht ohne Weiteres zur Verfügung.
+ *
+ * Gibt auch `null` zurück, wenn eine der beiden Angaben fehlt oder die Adresse
+ * nicht lesbar ist: Ein fehlender Hinweis kostet Zeit, ein falscher öffnet eine
+ * Verbindung ins Leere.
+ */
+export function fremdeApiHerkunft(): string | null {
+  const basis = apiBaseUrl();
+  const domain = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? '';
+  if (basis === '' || domain === '') return null;
+
+  try {
+    const herkunft = new URL(basis).origin;
+    return herkunft === new URL(`https://${domain}`).origin ? null : herkunft;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * CSRF-Token für zustandsändernde Requests (Pflichtenheft §7).
  *
  * Das Backend legt es als lesbares Cookie ab (im Gegensatz zum Refresh-Token,
