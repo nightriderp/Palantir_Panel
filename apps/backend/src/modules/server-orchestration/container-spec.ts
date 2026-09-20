@@ -169,6 +169,18 @@ function portNummernEnv(
  *
  * Die Prüfsumme gehört mit in die Umgebung und nicht nur die Adresse: Was
  * nicht dazu passt, verwirft das Image, statt es auszuführen.
+ *
+ * **Die Namen nennen keine Ausgabe** (seit 20.09.2026, Minecraft-Vorlage für
+ * alle Versionen und Ausgaben). Bis dahin hießen sie `MINECRAFT_VANILLA_*`,
+ * weil Vanilla das einzige Spiel mit wählbarer Version war. Mit Paper und
+ * NeoForge daneben wäre daraus eine Verzweigung hier geworden: Welche der
+ * Variablen gemeint ist, hätte dieser generische Bauplan am Spieltyp ablesen
+ * müssen.
+ *
+ * Stattdessen gilt: `MINECRAFT_SERVER_*` bedeutet immer „die Serverdatei der
+ * Ausgabe, die gerade läuft". Welche das ist, weiß das Startskript ohnehin –
+ * es setzt `MINECRAFT_EDITION` selbst aus. Die eingebauten Vorgaben je Ausgabe
+ * bleiben im Dockerfile; diese Angaben stechen sie.
  */
 function spielversionEnv(server: ServerRecord): Record<string, string> {
   const version = server.gameVersion;
@@ -180,11 +192,11 @@ function spielversionEnv(server: ServerRecord): Record<string, string> {
   }
 
   return {
-    MINECRAFT_VANILLA_VERSION: version,
-    MINECRAFT_VANILLA_URL: adresse,
+    MINECRAFT_SERVER_VERSION: version,
+    MINECRAFT_SERVER_URL: adresse,
     ...(server.gameVersionHashAlgorithm === 'sha256'
-      ? { MINECRAFT_VANILLA_SHA256: summe }
-      : { MINECRAFT_VANILLA_SHA1: summe }),
+      ? { MINECRAFT_SERVER_SHA256: summe }
+      : { MINECRAFT_SERVER_SHA1: summe }),
   };
 }
 

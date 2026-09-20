@@ -618,6 +618,107 @@ describe('start.sh – Paper oder Vanilla', nurMitShell, () => {
  * die der Start einbindet. Die Attrappe `java` gibt ihre Argumente aus; fuer
  * den Installationslauf legt sie die Argumentdatei an.
  */
+/*
+ * Eine gewaehlte Version gilt fuer jede Ausgabe (Betreiber-Wunsch 20.09.2026).
+ *
+ * Bis Fassung 9 konnte nur `vanilla` eine andere Version bekommen, und das
+ * Panel setzte dafuer `MINECRAFT_VANILLA_*`. Jetzt heisst die Wahl
+ * `MINECRAFT_SERVER_*` und meint immer die Serverdatei der laufenden Ausgabe.
+ */
+describe('start.sh - gewaehlte Version', nurMitShell, () => {
+  it('holt fuer Paper die gewaehlte Jar statt der eingebauten', () => {
+    const ordner = arbeitsordner();
+    const summe = curlAttrappe(ordner, 'gewaehltes Paper');
+
+    const lauf = starteSkript(ordner, {
+      EULA: 'true',
+      MINECRAFT_EDITION: 'paper',
+      MINECRAFT_SERVER_VERSION: '26.3',
+      MINECRAFT_SERVER_URL: 'https://beispiel.invalid/paper-26.3.jar',
+      MINECRAFT_SERVER_SHA256: summe,
+    });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    const erwartet = posix(join(ordner.daten, '.palantir', 'paper', 'paper-26.3.jar'));
+    assert.deepEqual(lauf.argv.slice(-3), ['-jar', erwartet, '--nogui']);
+    assert.equal(readFileSync(erwartet, 'utf8'), 'gewaehltes Paper');
+  });
+
+  it('laesst Paper ohne Wahl bei der Jar aus dem Image', () => {
+    const ordner = arbeitsordner();
+    const lauf = starteSkript(ordner, { EULA: 'true', MINECRAFT_EDITION: 'paper' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.deepEqual(lauf.argv.slice(-3), ['-jar', '/opt/palantir/paper.jar', '--nogui']);
+    assert.doesNotMatch(lauf.stdout, /Hole /u);
+  });
+
+  it('sticht bei Vanilla die eingebaute Vorgabe', () => {
+    const ordner = arbeitsordner();
+    const summe = curlAttrappe(ordner, 'gewaehltes Vanilla');
+
+    const lauf = starteSkript(ordner, {
+      ...VANILLA_UMGEBUNG,
+      MINECRAFT_VANILLA_SHA256: '0'.repeat(64),
+      MINECRAFT_SERVER_VERSION: '26.3',
+      MINECRAFT_SERVER_URL: 'https://beispiel.invalid/gewaehlt.jar',
+      MINECRAFT_SERVER_SHA256: summe,
+    });
+
+    // Die Vorgabe traegt eine Pruefsumme, die nicht passt - sie darf gar nicht
+    // erst herangezogen werden.
+    assert.equal(lauf.status, 0, lauf.stderr);
+    const erwartet = posix(join(ordner.daten, '.palantir', 'vanilla', 'minecraft_server-26.3.jar'));
+    assert.deepEqual(lauf.argv.slice(-3), ['-jar', erwartet, '--nogui']);
+  });
+
+  it('nimmt auch bei einer Wahl die SHA-1-Pruefsumme', () => {
+    const ordner = arbeitsordner();
+    curlAttrappe(ordner, 'mit sha1 geprueft');
+    const sha1 = createHash('sha1').update('mit sha1 geprueft').digest('hex');
+
+    const lauf = starteSkript(ordner, {
+      ...VANILLA_UMGEBUNG,
+      MINECRAFT_SERVER_VERSION: '26.3',
+      MINECRAFT_SERVER_URL: 'https://beispiel.invalid/gewaehlt.jar',
+      MINECRAFT_SERVER_SHA1: sha1,
+    });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+  });
+
+  it('startet nicht mit einer gewaehlten Jar, deren Pruefsumme nicht passt', () => {
+    const ordner = arbeitsordner();
+    curlAttrappe(ordner, 'etwas anderes');
+
+    const lauf = starteSkript(ordner, {
+      EULA: 'true',
+      MINECRAFT_EDITION: 'paper',
+      MINECRAFT_SERVER_VERSION: '26.3',
+      MINECRAFT_SERVER_URL: 'https://beispiel.invalid/paper.jar',
+      MINECRAFT_SERVER_SHA256: '0'.repeat(64),
+    });
+
+    assert.notEqual(lauf.status, 0);
+    assert.deepEqual(lauf.argv, []);
+  });
+
+  it('verlangt zu einer gewaehlten Adresse eine Pruefsumme', () => {
+    const ordner = arbeitsordner();
+    curlAttrappe(ordner, 'ungeprueft');
+
+    const lauf = starteSkript(ordner, {
+      EULA: 'true',
+      MINECRAFT_EDITION: 'paper',
+      MINECRAFT_SERVER_URL: 'https://beispiel.invalid/paper.jar',
+    });
+
+    assert.equal(lauf.status, 78);
+    assert.match(lauf.stdout, /Pruefsumme/u);
+    assert.deepEqual(lauf.argv, []);
+  });
+});
+
 describe('start.sh - Mod-Ausgaben', nurMitShell, () => {
   const NEOFORGE = '26.2.0.86';
 
