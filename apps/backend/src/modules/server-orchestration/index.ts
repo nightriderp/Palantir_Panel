@@ -39,6 +39,7 @@ import { createCloudflareDnsProvider } from './dns/cloudflare.js';
 import { type DnsProvider, createNoopDnsProvider } from './dns/types.js';
 import { type GameRegistry, createGameRegistry } from './game-registry.js';
 import {
+  createFabricVersionCatalogue,
   createMojangVersionCatalogue,
   createNeoforgeVersionCatalogue,
   createPaperVersionCatalogue,
@@ -324,6 +325,7 @@ export function registerServerOrchestration(
       createMojangVersionCatalogue(),
       createPaperVersionCatalogue(),
       createNeoforgeVersionCatalogue(),
+      createFabricVersionCatalogue(),
     ]),
     dns,
     // Port-Pool aus B8 (Pflichtenheft §2.4) - B3 vergibt keine Ports selbst.

@@ -1659,13 +1659,10 @@ export const MINECRAFT_FABRIC_GAME_TYPE: GameTypeDefinition = {
   id: 'minecraft-fabric',
   name: 'Minecraft (Fabric)',
   /*
-   * Fabric hat noch keinen Versionskatalog: Die Adresse der Starter-Jar setzt
-   * sich aus drei Fassungen zusammen – Spiel, Loader, Installationsprogramm –
-   * und eine Pruefsumme dazu nennt die Schnittstelle nicht; sie muesste einmal
-   * selbst gerechnet werden. Bis dahin waere eine angebotene Wahl eine Liste
-   * ohne Eintraege. Erbt sonst `true` von Paper.
+   * Fabric hat seit dem 20.09.2026 einen Katalog und erbt die Wahl damit
+   * von Paper. Die Pruefsumme rechnet das Panel selbst - Fabric nennt
+   * keine (`game-versions.ts`).
    */
-  supportsVersionChoice: false,
   description:
     'Minecraft mit dem Mod-Loader Fabric – der leichtere der beiden, mit schneller Unterstützung für neue Spielversionen. Mods gehören in den Ordner „mods" im Datenordner.',
   defaultEnv: { MINECRAFT_EDITION: 'fabric' },

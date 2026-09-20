@@ -81,7 +81,11 @@ import {
   buildServerConfig,
   requiresRestartAfterChange,
 } from './game-registry.js';
-import { type GameVersionCatalogue, type GameVersionQuelle } from './game-versions.js';
+import {
+  type GameVersionCatalogue,
+  type GameVersionEintrag,
+  type GameVersionQuelle,
+} from './game-versions.js';
 import { type HealthProbe } from './health-check.js';
 import { type PortAllocator, visiblePortOf } from './ports.js';
 import {
@@ -570,7 +574,7 @@ export class ServerOrchestrationService {
   }
 
   /** Wählbare Versionen eines Spiels; leer, wo es nichts zu wählen gibt. */
-  async listGameVersions(gameTypeId: string): Promise<readonly GameVersionQuelle[]> {
+  async listGameVersions(gameTypeId: string): Promise<readonly GameVersionEintrag[]> {
     const definition = this.deps.registry.find(gameTypeId);
 
     if (definition === null || definition.supportsVersionChoice !== true) {
