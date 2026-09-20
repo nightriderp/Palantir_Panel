@@ -148,7 +148,12 @@ jobs:
             # Was zählt, ist der Bau-Kontext: die Dateien, die ins Image gehen.
             # README, VERSION, package.json und Tests hält jedes `.dockerignore`
             # heraus (images/README.md) – eine Änderung daran ändert das Image
-            # nicht. Verglichen wird deshalb nicht die Liste geänderter Dateien,
+            # nicht. `rauchprobe.sh` steht aus demselben Grund in der Liste,
+            # obwohl `.dockerignore` sie (noch) nicht führt: Sie wird von keinem
+            # `COPY` angefasst, landet also nie im Image, sondern wird erst nach
+            # dem Bau von aussen hineingehängt. Würde sie hier zählen, zwänge
+            # eine neue oder geänderte Probe zu einer VERSION-Erhöhung für ein
+            # Image, das sich nicht geändert hat. Verglichen wird deshalb nicht die Liste geänderter Dateien,
             # sondern ein Abdruck des Kontexts: Blob-Hashes und Namen relativ
             # zum Image-Ordner. Ein Ordner, der nur verschoben wurde, hat
             # denselben Abdruck wie vorher und wird nicht gebaut – egal, wie
@@ -157,7 +162,7 @@ jobs:
             abdruck() {
               git ls-tree -r "$1" -- "$2/" \
                 | awk -v wurzel="$2/" '{ pfad = $4; sub("^" wurzel, "", pfad); print $3, pfad }' \
-                | { grep -v -E ' (README\.md|VERSION|package\.json|[^ ]*\.test\.mjs)$' || true; } \
+                | { grep -v -E ' (README\.md|VERSION|package\.json|rauchprobe\.sh|[^ ]*\.test\.mjs)$' || true; } \
                 | sort | sha256sum | cut -d' ' -f1
             }
 
