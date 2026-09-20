@@ -70,12 +70,34 @@ const config: Config = {
          * `faint` standen vorher bei 4,6 bzw. 3,5 auf `surface` – `faint` trägt
          * Zeitstempel, Größen und Hinweise in kleiner Schrift, also gerade den
          * Text, der den Kontrast am nötigsten hat. Beide sind deshalb eine
-         * Stufe heller; der Abstand zwischen den Stufen bleibt.
+         * Stufe heller.
+         *
+         * **Vier Stufen, von denen zwei niemand unterscheiden konnte.** Das
+         * Anheben von damals hat `soft` und `faint` aneinandergeschoben: Auf
+         * `surface` standen sie bei 5,43 und 4,64 – ein Schritt von 1,17, und
+         * `muted` darüber lag mit 1,22 kaum besser. Nominell vier Textstufen,
+         * sichtbar drei, und die Oberfläche wirkt dadurch flach: Ein
+         * Abschnittslabel (`soft`) und ein Zeitstempel (`faint`) sahen gleich
+         * wichtig aus. Auffällig wurde das erst im Vergleich mit dem
+         * Schwesterprojekt hafenmeister, dessen Stufen 2,15 / 1,43 / 1,32
+         * auseinanderliegen.
+         *
+         * ⚠️ **Der Weg dahin führt nach oben, nicht nach unten.** `faint` ist
+         * der Boden und bleibt, wo er ist: Die hellste Fläche, gegen die Text
+         * bestehen muss, ist `surface` (#1a1c24, Grund der Popover), und dort
+         * hält #7e8696 genau 4,64. Eine Stufe dunkler wäre unter 4,5.
+         * hafenmeisters schöneres, tieferes Grau (#6b7283) liegt bei 3,53 und
+         * fällt durch AA – es ist deshalb **nicht** übernehmbar. Aufgespreizt
+         * wird also oben: `muted` und `soft` ziehen an, die Schritte stehen
+         * jetzt bei 1,78 / 1,33 / 1,29.
+         *
+         * Die Rampe ist bewusst weiter die Form (R, R+8, R+24) – derselbe
+         * Blaustich wie bisher, nur eine andere Helligkeit.
          */
         ink: {
           DEFAULT: '#e8ebf2',
-          muted: '#9aa2b2',
-          soft: '#8a92a2',
+          muted: '#aab2c2',
+          soft: '#929aaa',
           faint: '#7e8696',
           disabled: '#4a505e',
         },
@@ -113,9 +135,17 @@ const config: Config = {
           DEFAULT: 'rgba(255,255,255,0.07)',
           strong: 'rgba(255,255,255,0.1)',
         },
-        /** Dezente Füllflächen (Sekundär-Buttons, Eingabefelder, Chips). */
+        /**
+         * Dezente Füllflächen (Sekundär-Buttons, Eingabefelder, Chips).
+         *
+         * 4 % statt vormals 3 %: Bei 67 Verwendungen ist das die häufigste
+         * Fläche der Oberfläche überhaupt, und mit 3 % hob sie sich auf einer
+         * Karte praktisch nicht mehr von ihr ab – ein Chip sah aus wie Text
+         * mit Rahmen. hafenmeister führt denselben Wert (`elev`) bei 4 %; ein
+         * Prozentpunkt genügt, damit die Fläche als Fläche liest.
+         */
         fill: {
-          DEFAULT: 'rgba(255,255,255,0.03)',
+          DEFAULT: 'rgba(255,255,255,0.04)',
           strong: 'rgba(255,255,255,0.07)',
         },
       },

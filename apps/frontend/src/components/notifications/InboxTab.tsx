@@ -10,7 +10,6 @@ import {
   SegmentedControl,
   SelectField,
   StatusDot,
-  cn,
   useToast,
 } from '@/components/shared';
 import {
@@ -327,7 +326,7 @@ export function InboxTab({ preferences, onDesktopNotify, onPreferencesChange }: 
           }
         />
       ) : page ? (
-        <div className={cn('overflow-hidden rounded-2xl border border-line bg-surface')}>
+        <div className="overflow-hidden rounded-2xl border border-line bg-card-gradient">
           {page.entries.map((notification) => (
             <NotificationRow
               key={notification.id}

@@ -505,7 +505,7 @@ export function MessagesView() {
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[300px_1fr]">
           <aside
             className={cn(
-              'min-h-0 rounded-2xl border border-line bg-surface p-3',
+              'min-h-0 rounded-2xl border border-line bg-card-gradient p-3',
               activeId ? 'hidden md:block' : 'block',
             )}
           >
@@ -526,7 +526,7 @@ export function MessagesView() {
 
           <section
             className={cn(
-              'min-h-0 overflow-hidden rounded-2xl border border-line bg-surface',
+              'min-h-0 overflow-hidden rounded-2xl border border-line bg-card-gradient',
               activeId ? 'block' : 'hidden md:block',
             )}
           >
