@@ -208,6 +208,19 @@ export const instanceSettings = pgTable(
       .$type<string[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    /**
+     * Kennungen der mitgelieferten Schriften, die die Instanz nicht mehr
+     * anbietet (Betreiber-Wunsch 20.09.2026).
+     *
+     * Dieselbe Bauart wie die Spieltypen darüber, und aus demselben Grund:
+     * Der Katalog der mitgelieferten Schriften steht im Code, nicht in der
+     * Datenbank. Löschen lässt sich dort nichts – die Dateien liegen im
+     * Abbild –, also merkt sich die Instanz, was sie verschweigen soll.
+     */
+    hiddenBundledFonts: jsonb('hidden_bundled_fonts')
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     updatedAt: timestamp('updated_at', { withTimezone: true }),
     /**
      * Wer zuletzt geändert hat – für das Audit-Log ohnehin, hier zur Anzeige.

@@ -294,6 +294,15 @@ export function registerFontRoutes(options: FontRouteOptions) {
         }),
     );
 
+    /**
+     * Schrift entfernen.
+     *
+     * Bei einer hochgeladenen heißt das: Datei und Datensatz sind weg. Bei
+     * einer mitgelieferten heißt es ausblenden – die Datei liegt im Abbild,
+     * und der nächste Start brächte sie zurück (Betreiber-Wunsch
+     * 20.09.2026). Für den Aufrufer ist beides derselbe Knopf; was wirklich
+     * passiert ist, steht im Audit-Log.
+     */
     app.delete(
       '/api/admin/fonts/:id',
       { preHandler: requirePermission('user.manage') },
@@ -301,6 +310,19 @@ export function registerFontRoutes(options: FontRouteOptions) {
         handle(reply, async () => {
           const { id } = fontIdParamsSchema.parse(request.params);
           await service.remove(contextFrom(request), id);
+
+          return null;
+        }),
+    );
+
+    /** Eine ausgeblendete mitgelieferte Schrift wieder anbieten. */
+    app.post(
+      '/api/admin/fonts/:id/restore',
+      { preHandler: requirePermission('user.manage') },
+      async (request, reply) =>
+        handle(reply, async () => {
+          const { id } = fontIdParamsSchema.parse(request.params);
+          await service.restore(contextFrom(request), id);
 
           return null;
         }),

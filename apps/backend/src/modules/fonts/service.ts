@@ -64,6 +64,16 @@ export interface FontSelectionSource {
    * Rolle sie besetzt, weil daraus zwei verschiedene CSS-Variablen werden.
    */
   selectedFontRoles(): Promise<FontRoleSelection>;
+  /**
+   * Mitgelieferte Schriften, die die Instanz nicht mehr anbietet
+   * (Betreiber-Wunsch 20.09.2026).
+   *
+   * Sie liegen im Abbild und lassen sich nicht löschen; die Instanz merkt
+   * sich stattdessen, welche sie verschweigt.
+   */
+  hiddenBundledFontIds(): Promise<readonly string[]>;
+  /** Eine mitgelieferte Schrift aus dem Angebot nehmen (`true`) oder zurückholen. */
+  setBundledFontHidden(id: string, hidden: boolean, actorId: string | null): Promise<void>;
 }
 
 /** Eine Schriftdatei, fertig zum Ausliefern. */
@@ -110,6 +120,11 @@ export interface FontService {
   stylesheet(): Promise<FontStylesheet>;
   upload(ctx: AdminContext, input: UploadFontInput, file: UploadedFile): Promise<FontDto>;
   remove(ctx: AdminContext, id: string): Promise<void>;
+  /**
+   * Eine ausgeblendete mitgelieferte Schrift wieder anbieten
+   * (Betreiber-Wunsch 20.09.2026).
+   */
+  restore(ctx: AdminContext, id: string): Promise<void>;
   /**
    * Gibt es diese Schrift – mit Datei?
    *
@@ -187,7 +202,11 @@ export function resolveWeights(input: UploadFontInput): {
   };
 }
 
-function bundledDto(font: BundledFont, sizeBytes: number): FontDto {
+function bundledDto(
+  font: BundledFont,
+  sizeBytes: number,
+  { hidden, darfVerwalten }: { hidden: boolean; darfVerwalten: boolean },
+): FontDto {
   return {
     id: font.id,
     family: font.family,
@@ -195,14 +214,19 @@ function bundledDto(font: BundledFont, sizeBytes: number): FontDto {
     source: 'bundled',
     format: font.format,
     sizeBytes,
+    hidden,
     uploadedAt: null,
     uploadedByDisplayName: null,
     variable: font.variable,
     weightRange: font.weightRange,
     monospace: font.monospace,
-    // Nie löschbar: Die Datei liegt im Auslieferungsverzeichnis und wäre nach
-    // dem nächsten Aufspielen ohnehin wieder da (`FONT_BUNDLED_PROTECTED`).
-    permissions: { canDelete: false },
+    /*
+     * „Löschen" heißt hier ausblenden (Betreiber-Wunsch 20.09.2026): Die
+     * Datei liegt im Abbild und wäre nach dem nächsten Aufspielen wieder da.
+     * Wer Schriften verwalten darf, darf eine mitgelieferte aus dem Angebot
+     * nehmen - und über denselben Weg zurückholen.
+     */
+    permissions: { canDelete: darfVerwalten },
   };
 }
 
@@ -256,26 +280,44 @@ export function createFontService(deps: FontServiceDependencies): FontService {
     return new Set(await deps.selection.selectedFontIds());
   }
 
+  async function ausgeblendete(): Promise<ReadonlySet<string>> {
+    return new Set(await deps.selection.hiddenBundledFontIds());
+  }
+
   return {
     async list(ctx) {
-      const [mitgeliefert, hochgeladen, selected] = await Promise.all([
+      const [mitgeliefert, hochgeladen, selected, versteckt] = await Promise.all([
         verfuegbareMitgelieferte(),
         deps.repository.list(),
         gewaehlte(),
+        ausgeblendete(),
       ]);
 
+      /*
+       * Ausgeblendete stehen weiter in der Liste, nur gekennzeichnet: Sonst
+       * ließe sich die Entscheidung nicht zurücknehmen - die Schrift wäre aus
+       * der Verwaltung verschwunden, läge aber weiter im Abbild.
+       */
+      const darfVerwalten = hasPermission(ctx.actor, MANAGE_PERMISSION);
+
       return [
-        ...mitgeliefert.map(({ font, sizeBytes }) => bundledDto(font, sizeBytes)),
+        ...mitgeliefert.map(({ font, sizeBytes }) =>
+          bundledDto(font, sizeBytes, { hidden: versteckt.has(font.id), darfVerwalten }),
+        ),
         ...hochgeladen.map((record) => uploadedDto(record, ctx.actor, selected)),
       ];
     },
 
     async stylesheet() {
-      const [mitgeliefert, hochgeladen, auswahl] = await Promise.all([
+      const [alleMitgelieferten, hochgeladen, auswahl, versteckt] = await Promise.all([
         verfuegbareMitgelieferte(),
         deps.repository.list(),
         deps.selection.selectedFontRoles(),
+        ausgeblendete(),
       ]);
+
+      // Was die Instanz nicht anbietet, steht auch nicht im Stylesheet.
+      const mitgeliefert = alleMitgelieferten.filter(({ font }) => !versteckt.has(font.id));
 
       const schriften: StylesheetFont[] = [
         ...mitgeliefert.map(({ font }) => ({
@@ -419,12 +461,44 @@ export function createFontService(deps: FontServiceDependencies): FontService {
       requireManage(ctx.actor);
 
       if (isBundledFontId(id)) {
+        const mitgeliefert = findBundledFont(id);
+
         // Eine formal mitgelieferte, aber unbekannte Kennung ist nicht
         // „geschützt", sondern schlicht nicht vorhanden (Vertrag zu
         // `isBundledFontId`).
-        throw new FontError(
-          findBundledFont(id) === null ? 'FONT_NOT_FOUND' : 'FONT_BUNDLED_PROTECTED',
+        if (mitgeliefert === null) {
+          throw new FontError('FONT_NOT_FOUND');
+        }
+
+        /*
+         * Mitgeliefertes wird ausgeblendet, nicht gelöscht (Betreiber-Wunsch
+         * 20.09.2026): Die Datei liegt im Abbild, und der nächste Start
+         * brächte sie zurück. Der Löschschutz gilt trotzdem - eine Schrift,
+         * die gerade eine Rolle besetzt, verschwindet nicht unter den Füßen
+         * der Oberfläche.
+         */
+        if ((await gewaehlte()).has(id)) {
+          throw new FontError('FONT_IN_USE');
+        }
+
+        await deps.selection.setBundledFontHidden(id, true, ctx.userId);
+
+        await deps.audit.record(
+          entryFor(ctx, {
+            action: 'font.deleted',
+            targetType: 'font',
+            targetId: id,
+            metadata: {
+              family: mitgeliefert.family,
+              label: mitgeliefert.label,
+              format: mitgeliefert.format,
+              // Damit im Log steht, was wirklich passiert ist.
+              art: 'ausgeblendet',
+            },
+          }),
         );
+
+        return;
       }
 
       const record = await deps.repository.findById(id);
@@ -453,6 +527,34 @@ export function createFontService(deps: FontServiceDependencies): FontService {
           targetType: 'font',
           targetId: record.id,
           metadata: { family: record.family, label: record.label, format: record.format },
+        }),
+      );
+    },
+
+    async restore(ctx, id) {
+      requireManage(ctx.actor);
+
+      const mitgeliefert = findBundledFont(id);
+
+      if (mitgeliefert === null) {
+        // Hochgeladene Schriften sind wirklich weg; es gibt nichts
+        // zurückzuholen.
+        throw new FontError('FONT_NOT_FOUND');
+      }
+
+      await deps.selection.setBundledFontHidden(id, false, ctx.userId);
+
+      await deps.audit.record(
+        entryFor(ctx, {
+          action: 'font.uploaded',
+          targetType: 'font',
+          targetId: id,
+          metadata: {
+            family: mitgeliefert.family,
+            label: mitgeliefert.label,
+            format: mitgeliefert.format,
+            art: 'wieder angeboten',
+          },
         }),
       );
     },

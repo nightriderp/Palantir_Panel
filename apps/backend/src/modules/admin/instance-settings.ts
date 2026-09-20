@@ -35,6 +35,8 @@ export const DEFAULT_INSTANCE_SETTINGS = Object.freeze({
   monospaceFontId: null,
   /** Ohne Angabe bietet die Instanz jeden Spieltyp ihrer Ausbaustufe an. */
   disabledGameTypes: [] as readonly string[],
+  /** Ohne Angabe bietet die Instanz jede mitgelieferte Schrift an. */
+  hiddenBundledFonts: [] as readonly string[],
 });
 
 /** Der gespeicherte Zustand – vollständig, nie eine Teilmenge. */
@@ -43,6 +45,7 @@ export interface InstanceSettingsRecord {
   readonly uiFontId: string | null;
   readonly monospaceFontId: string | null;
   readonly disabledGameTypes: readonly string[];
+  readonly hiddenBundledFonts: readonly string[];
   readonly updatedAt: Date | null;
 }
 
@@ -79,6 +82,10 @@ export interface InstanceSettingsService {
   selfRegistrationEnabled(): Promise<boolean>;
   /** Ausgeschaltete Spieltypen – für den Stand beim Hochfahren. */
   disabledGameTypes(): Promise<readonly string[]>;
+  /** Mitgelieferte Schriften, die die Instanz nicht mehr anbietet. */
+  hiddenBundledFontIds(): Promise<readonly string[]>;
+  /** Eine mitgelieferte Schrift aus dem Angebot nehmen (`true`) oder zurückholen. */
+  setBundledFontHidden(id: string, hidden: boolean, actorId: string | null): Promise<void>;
   /**
    * Die gerade gewählten Schrift-Kennungen (ohne `null`).
    *
@@ -117,6 +124,7 @@ export function createDrizzleInstanceSettingsRepository(
         uiFontId: row.uiFontId,
         monospaceFontId: row.monospaceFontId,
         disabledGameTypes: row.disabledGameTypes,
+        hiddenBundledFonts: row.hiddenBundledFonts,
         updatedAt: row.updatedAt,
       };
     },
@@ -127,6 +135,7 @@ export function createDrizzleInstanceSettingsRepository(
         uiFontId: data.uiFontId,
         monospaceFontId: data.monospaceFontId,
         disabledGameTypes: [...data.disabledGameTypes],
+        hiddenBundledFonts: [...data.hiddenBundledFonts],
         updatedAt: new Date(),
         updatedById,
       };
@@ -240,6 +249,12 @@ export function createInstanceSettingsService(
           input.disabledGameTypes === undefined
             ? bisher.disabledGameTypes
             : [...new Set(input.disabledGameTypes)].sort(),
+        // Dieselbe Regel für die ausgeblendeten Schriften: Fehlt das Feld,
+        // bleibt es, wie es war.
+        hiddenBundledFonts:
+          input.hiddenBundledFonts === undefined
+            ? bisher.hiddenBundledFonts
+            : [...new Set(input.hiddenBundledFonts)].sort(),
       };
 
       await deps.repository.save(neu, ctx.userId);
@@ -294,6 +309,41 @@ export function createInstanceSettingsService(
 
     async disabledGameTypes() {
       return (await deps.repository.load()).disabledGameTypes;
+    },
+
+    async hiddenBundledFontIds() {
+      return (await deps.repository.load()).hiddenBundledFonts;
+    },
+
+    /**
+     * Eine mitgelieferte Schrift aus dem Angebot nehmen oder zurückholen
+     * (Betreiber-Wunsch 20.09.2026).
+     *
+     * Ohne Prüfung gegen den Katalog: Den kennt dieses Modul nicht, und eine
+     * Kennung, die es nicht gibt, blendet nichts aus. Geprüft hat der
+     * Aufrufer – der Schriften-Dienst weiß, was es gibt und was gerade in
+     * Benutzung ist.
+     */
+    async setBundledFontHidden(id, hidden, actorId) {
+      const stand = await deps.repository.load();
+      const vorher = new Set(stand.hiddenBundledFonts);
+
+      if (hidden) {
+        vorher.add(id);
+      } else {
+        vorher.delete(id);
+      }
+
+      await deps.repository.save(
+        {
+          selfRegistrationEnabled: stand.selfRegistrationEnabled,
+          uiFontId: stand.uiFontId,
+          monospaceFontId: stand.monospaceFontId,
+          disabledGameTypes: stand.disabledGameTypes,
+          hiddenBundledFonts: [...vorher],
+        },
+        actorId,
+      );
     },
 
     async selectedFontIds() {

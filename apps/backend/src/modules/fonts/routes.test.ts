@@ -411,7 +411,11 @@ describe('POST /api/admin/fonts', () => {
 });
 
 describe('DELETE /api/admin/fonts/:id', () => {
-  it('schützt mitgelieferte Schriften', async () => {
+  it('blendet eine mitgelieferte Schrift aus, statt sie zu löschen', async () => {
+    /*
+     * Betreiber-Wunsch 20.09.2026. Für den Aufrufer ist es derselbe Knopf;
+     * die Datei bleibt im Abbild, die Instanz bietet sie nur nicht mehr an.
+     */
     const app = await buildTestApp();
 
     const antwort = await app.inject({
@@ -420,8 +424,51 @@ describe('DELETE /api/admin/fonts/:id', () => {
       headers: { 'x-test-actor': 'userAdmin' },
     });
 
-    expect(antwort.statusCode).toBe(403);
-    expect(antwort.json().error.code).toBe('FONT_BUNDLED_PROTECTED');
+    expect(antwort.statusCode).toBe(200);
+
+    const liste = await app.inject({
+      method: 'GET',
+      url: '/api/fonts',
+      headers: { 'x-test-actor': 'userAdmin' },
+    });
+
+    const eintrag = liste
+      .json<{ data: { id: string; hidden?: boolean }[] }>()
+      .data.find((schrift) => schrift.id === MITGELIEFERT.id);
+
+    expect(eintrag?.hidden).toBe(true);
+
+    await app.close();
+  });
+
+  it('holt eine ausgeblendete Schrift über /restore zurück', async () => {
+    const app = await buildTestApp();
+
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/fonts/${MITGELIEFERT.id}`,
+      headers: { 'x-test-actor': 'userAdmin' },
+    });
+
+    const zurueck = await app.inject({
+      method: 'POST',
+      url: `/api/admin/fonts/${MITGELIEFERT.id}/restore`,
+      headers: { 'x-test-actor': 'userAdmin' },
+    });
+
+    expect(zurueck.statusCode).toBe(200);
+
+    const liste = await app.inject({
+      method: 'GET',
+      url: '/api/fonts',
+      headers: { 'x-test-actor': 'userAdmin' },
+    });
+
+    const eintrag = liste
+      .json<{ data: { id: string; hidden?: boolean }[] }>()
+      .data.find((schrift) => schrift.id === MITGELIEFERT.id);
+
+    expect(eintrag?.hidden).toBe(false);
 
     await app.close();
   });

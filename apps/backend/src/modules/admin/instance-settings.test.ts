@@ -39,6 +39,7 @@ function createFakeRepository(seed: Partial<InstanceSettingsRecord> = {}): FakeR
     uiFontId: null,
     monospaceFontId: null,
     disabledGameTypes: [],
+    hiddenBundledFonts: [],
     updatedAt: null,
     ...seed,
   };

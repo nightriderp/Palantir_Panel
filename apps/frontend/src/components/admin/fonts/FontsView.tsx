@@ -16,13 +16,20 @@ import {
   SelectField,
   TextField,
   ToggleRow,
+  cn,
   formatBytes,
   formatDateTime,
   useToast,
 } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { fetchInstanceSettings, updateInstanceSettings } from '@/lib/api/admin';
-import { deleteFont, fetchFonts, reloadFontStylesheet, uploadFont } from '@/lib/api/fonts';
+import {
+  deleteFont,
+  fetchFonts,
+  reloadFontStylesheet,
+  restoreFont,
+  uploadFont,
+} from '@/lib/api/fonts';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading, KeyValue } from '../common';
 import {
@@ -134,8 +141,29 @@ export function FontsView() {
       return;
     }
 
-    toast.success(`Schrift „${zuLoeschen.label}" gelöscht.`);
+    toast.success(
+      zuLoeschen.source === 'bundled'
+        ? `Schrift „${zuLoeschen.label}" wird nicht mehr angeboten.`
+        : `Schrift „${zuLoeschen.label}" gelöscht.`,
+    );
     setZuLoeschen(null);
+    fonts.reload();
+    reloadFontStylesheet();
+  }
+
+  /** Eine ausgeblendete mitgelieferte Schrift zurückholen. */
+  async function zurueckholen(font: FontDto) {
+    setBusy(true);
+    const result = await restoreFont(font.id);
+    setBusy(false);
+
+    if (!result.success) {
+      toast.error(fontErrorMessage(result));
+
+      return;
+    }
+
+    toast.success(`Schrift „${font.label}" wird wieder angeboten.`);
     fonts.reload();
     reloadFontStylesheet();
   }
@@ -218,6 +246,7 @@ export function FontsView() {
                 font={font}
                 rollen={rollenVon(font.id, uiFontId, monospaceFontId)}
                 onDelete={() => setZuLoeschen(font)}
+                onRestore={() => void zurueckholen(font)}
               />
             </li>
           ))}
@@ -242,10 +271,18 @@ export function FontsView() {
         <DangerConfirmDialog
           open
           onClose={() => setZuLoeschen(null)}
-          title={`„${zuLoeschen.label}" löschen?`}
+          title={
+            zuLoeschen.source === 'bundled'
+              ? `„${zuLoeschen.label}" aus dem Angebot nehmen?`
+              : `„${zuLoeschen.label}" löschen?`
+          }
           busy={busy}
           onConfirm={() => void loeschenBestaetigen()}
-          message="Die Schriftdatei wird endgültig entfernt. Wer die Oberfläche gerade offen hat, sieht die Schrift bis zum nächsten Laden noch."
+          message={
+            zuLoeschen.source === 'bundled'
+              ? 'Die Schrift steht danach nicht mehr zur Auswahl und fehlt im Stylesheet. Sie liegt weiter in der Instanz und lässt sich jederzeit zurückholen.'
+              : 'Die Schriftdatei wird endgültig entfernt. Wer die Oberfläche gerade offen hat, sieht die Schrift bis zum nächsten Laden noch.'
+          }
         />
       ) : null}
     </div>
@@ -300,10 +337,12 @@ function FontCard({
   font,
   rollen,
   onDelete,
+  onRestore,
 }: {
   font: FontDto;
   rollen: readonly string[];
   onDelete: () => void;
+  onRestore: () => void;
 }) {
   const grund = deleteBlockedReason(font, rollen.length > 0);
 
@@ -318,28 +357,54 @@ function FontCard({
     font.monospace ? 'ui-monospace, monospace' : 'system-ui, sans-serif'
   }`;
 
+  const ausgeblendet = font.hidden === true;
+
+  /*
+   * Die Angaben zur Datei stehen als eine Zeile statt als Raster aus vier
+   * Kästen (Betreiber-Wunsch 20.09.2026: „gerne etwas kompakter").
+   *
+   * Bei acht Schriften waren das acht Karten mit je drei Probezeilen und vier
+   * beschrifteten Feldern – die Seite lief über mehrere Bildschirme, und was
+   * man sucht, ist der Name und wie die Schrift aussieht. Format, Größe und
+   * Gewichte sind Nebensache; sie bleiben lesbar, nehmen aber keine eigene
+   * Zeile mehr.
+   */
+  const angaben = [
+    FONT_FORMAT_LABELS[font.format],
+    formatBytes(font.sizeBytes),
+    weightRangeLabel(font),
+    font.uploadedAt
+      ? `${formatDateTime(font.uploadedAt)}${
+          font.uploadedByDisplayName ? ` von ${font.uploadedByDisplayName}` : ''
+        }`
+      : 'Mit der Instanz ausgeliefert',
+  ];
+
   return (
-    <Panel className="flex flex-col gap-3.5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-lg font-semibold text-ink">{font.label}</span>
-            <Badge tone={font.source === 'bundled' ? 'neutral' : 'brand'}>
-              {FONT_SOURCE_LABELS[font.source]}
-            </Badge>
-            {font.monospace ? <Badge tone="brand">Dicktengleich</Badge> : null}
-            {rollen.map((rolle) => (
-              <Badge key={rolle} tone="success">
-                {rolle}
-              </Badge>
-            ))}
-          </div>
+    <Panel className={cn('flex flex-col gap-2.5 p-3.5', ausgeblendet && 'opacity-60')}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-base font-semibold text-ink">{font.label}</span>
           <span className="font-mono text-xs text-ink-faint">{font.family}</span>
+          <Badge tone={font.source === 'bundled' ? 'neutral' : 'brand'}>
+            {FONT_SOURCE_LABELS[font.source]}
+          </Badge>
+          {font.monospace ? <Badge tone="brand">Dicktengleich</Badge> : null}
+          {ausgeblendet ? <Badge tone="warning">Nicht im Angebot</Badge> : null}
+          {rollen.map((rolle) => (
+            <Badge key={rolle} tone="success">
+              {rolle}
+            </Badge>
+          ))}
         </div>
 
-        {font.permissions.canDelete ? (
+        {ausgeblendet ? (
+          <Button variant="secondary" iconLeft="plus" onClick={onRestore}>
+            Wieder anbieten
+          </Button>
+        ) : font.permissions.canDelete ? (
           <Button variant="danger" iconLeft="trash" onClick={onDelete}>
-            Löschen
+            Entfernen
           </Button>
         ) : grund ? (
           <span className="text-xs text-ink-faint">{grund}</span>
@@ -347,36 +412,24 @@ function FontCard({
       </div>
 
       <div
-        className="rounded-xl border border-line bg-fill px-3.5 py-3"
+        className="rounded-lg border border-line bg-fill px-3 py-2"
         style={{ fontFamily: stapel }}
       >
         {font.monospace ? (
-          <div className="flex flex-col gap-0.5 text-base leading-relaxed">
+          <div className="flex flex-col gap-0.5 text-sm leading-relaxed">
             {PROBE_DICKTENGLEICH.map((zeile) => (
               <span key={zeile}>{zeile}</span>
             ))}
           </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-3xl leading-tight">{PROBETEXT}</span>
-            <span className="text-base">{PROBETEXT}</span>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="text-2xl leading-tight">{PROBETEXT}</span>
             <span className="text-xs">{PROBETEXT}</span>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KeyValue label="Format">{FONT_FORMAT_LABELS[font.format]}</KeyValue>
-        <KeyValue label="Größe">{formatBytes(font.sizeBytes)}</KeyValue>
-        <KeyValue label="Gewichte">{weightRangeLabel(font)}</KeyValue>
-        <KeyValue label="Herkunft">
-          {font.uploadedAt
-            ? `${formatDateTime(font.uploadedAt)}${
-                font.uploadedByDisplayName ? ` von ${font.uploadedByDisplayName}` : ''
-              }`
-            : 'Mit der Instanz ausgeliefert'}
-        </KeyValue>
-      </div>
+      <p className="text-xs text-ink-faint">{angaben.join(' · ')}</p>
     </Panel>
   );
 }
