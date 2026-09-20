@@ -120,6 +120,41 @@ describe('Direktnachrichten öffnen', () => {
     );
   });
 
+  it('lässt ein Konto mit Blick auf alle Server jeden Serverbesitzer anschreiben', async () => {
+    /*
+     * Betreiber-Meldung 20.09.2026: Der Betreiber der Instanz betreibt selbst
+     * keinen Server und war damit in keinem Teilnehmerkreis. Auf jeder
+     * fremden Server-Karte bot die Oberflaeche trotzdem „Nachricht" an, und
+     * der Klick endete in CONVERSATION_RECIPIENT_NOT_ALLOWED.
+     */
+    const dienst = createChatService({
+      repository,
+      users: fakeUserDirectory(NAMEN),
+      // Der Aufrufer (MOD) gehoert zu keinem dieser Server.
+      servers: fakeServerMembership([SERVER, FREMDER_SERVER]),
+    });
+
+    const unterhaltung = await dienst.openDirectConversation(
+      ctxFor(MOD, actorWith('server.view.any')),
+      CHRIS,
+    );
+
+    expect(unterhaltung.type).toBe('dm');
+  });
+
+  it('haelt die Grenze fuer alle anderen', async () => {
+    // Ohne das Recht bleibt es beim bisherigen Kreis: eigene Server.
+    const dienst = createChatService({
+      repository,
+      users: fakeUserDirectory(NAMEN),
+      servers: fakeServerMembership([SERVER, FREMDER_SERVER]),
+    });
+
+    await expect(dienst.openDirectConversation(ctxFor(MOD), CHRIS)).rejects.toThrowError(
+      new ChatError('CONVERSATION_RECIPIENT_NOT_ALLOWED'),
+    );
+  });
+
   it('lehnt ein unbekanntes Konto mit USER_NOT_FOUND ab', async () => {
     await expect(
       chat.openDirectConversation(ctxFor(ALEX), CHRIS.replace('c3', 'ff')),

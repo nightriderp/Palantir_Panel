@@ -111,6 +111,15 @@ export interface ServerMembershipSource {
   listMembers(serverId: string): Promise<readonly ChatServerMember[]>;
   /** Server, bei denen das Konto Besitzer oder Mitglied ist. */
   listServerIdsForUser(userId: string): Promise<readonly string[]>;
+  /**
+   * Besitzer aller Server der Instanz, ohne Doppelte.
+   *
+   * Nur für Konten, die ohnehin jeden Server sehen dürfen: Die Oberfläche
+   * bietet ihnen auf jeder fremden Server-Karte „Nachricht" an, und ohne
+   * diese Liste wäre der Empfänger kein Kandidat für eine neue Unterhaltung
+   * (Betreiber-Meldung 20.09.2026).
+   */
+  listAllServerOwnerIds(): Promise<readonly string[]>;
 }
 
 export interface ChatServerRecord {
