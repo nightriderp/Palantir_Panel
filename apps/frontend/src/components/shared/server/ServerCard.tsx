@@ -134,14 +134,15 @@ function ServerCardIntern({
   const permissions = server.permissions;
   const fassung = formatImageVersion(server.imageVersion);
   /**
-   * Zweite Zeile der Karte: Image-Fassung und – bei fremden Servern – der
-   * Besitzer (Fundpunkt 317). Leer bleibt sie, wenn beides fehlt; dann steht
-   * dort keine leere Zeile herum.
+   * Besitzer und Image-Fassung stehen **nicht** mehr im Kopf, sondern unten
+   * bei den übrigen Betriebsangaben (Betreiber-Wunsch 20.09.2026).
+   *
+   * Der Kopf beantwortet „welcher Server ist das": Name, Spiel, Spielfassung.
+   * Wer ihn betreibt und mit welchem Image – das sind Angaben derselben Art
+   * wie Node, Spielerzahl und Adresse, und die stehen längst als Chips
+   * beieinander. Vorher drängten sie sich in eine zweite Kopfzeile, die je
+   * nach Breite umbrach und den Kopf dreizeilig machte.
    */
-  const unterzeile =
-    [fassung, isOwn ? null : (server.ownerDisplayName ?? null)]
-      .filter((teil): teil is string => typeof teil === 'string' && teil !== '')
-      .join(' · ') || null;
   const updateHinweis = formatImageUpdate(server.imageVersion, server.latestImageVersion);
   const live = hasLiveStats(server.status) ? (stats ?? null) : null;
 
@@ -250,9 +251,6 @@ function ServerCardIntern({
               ? ''
               : ` ${server.gameVersion}`}
           </p>
-          {unterzeile === null ? null : (
-            <p className="mt-0.5 text-xs text-ink-faint">{unterzeile}</p>
-          )}
         </div>
 
         {/*
@@ -402,11 +400,32 @@ function ServerCardIntern({
           <Icon name="user" size={13} />
           {formatPlayers(live?.playersOnline, live?.playersMax)}
         </span>
+        {/*
+          Besitzer und Fassung als Chips neben Node und Adresse
+          (Betreiber-Wunsch 20.09.2026): Angaben derselben Art stehen
+          beieinander, statt den Kopf der Karte zu verlängern.
+        */}
+        {!isOwn && server.ownerDisplayName ? (
+          <span className="min-w-0 rounded-md bg-fill px-2.5 py-1.5 text-ink-soft">
+            Besitzer: <span className="text-ink">{server.ownerDisplayName}</span>
+          </span>
+        ) : null}
         {server.hostName ? (
           <span className="rounded-md bg-fill px-2.5 py-1.5 text-ink-soft">
             Node: <span className="text-ink">{server.hostName}</span>
           </span>
         ) : null}
+        {fassung === null ? null : (
+          <span
+            className="rounded-md bg-fill px-2.5 py-1.5 font-mono text-ink-soft"
+            title={
+              updateHinweis ??
+              'Fassung des Images, mit dem dieser Server läuft – nicht die Fassung des Spiels.'
+            }
+          >
+            {fassung}
+          </span>
+        )}
 
         {showAddress ? (
           onCopyAddress ? (
