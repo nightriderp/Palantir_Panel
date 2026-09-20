@@ -1378,3 +1378,92 @@ describe('Assetto Corsa Competizione: eigenes Archiv', () => {
     expect(ACC_GAME_TYPE.envMapping?.filesSha256).toBe('ACC_ARCHIV_SHA256');
   });
 });
+
+/**
+ * Varianten unter einer Kachel (Betreiber-Wunsch 20.09.2026).
+ *
+ * Die Gruppe ist reine Darstellung: Ein Server traegt weiterhin die Kennung
+ * einer Variante. Getestet wird deshalb genau das, was die Oberflaeche
+ * voraussetzt - und nicht, wie sie es zeichnet.
+ */
+describe('Spieltyp-Varianten unter einer gemeinsamen Kachel', () => {
+  it('fasst die vier Minecraft-Ausgaben unter einer Gruppe zusammen', () => {
+    const ausgaben = [
+      MINECRAFT_PAPER_GAME_TYPE,
+      MINECRAFT_VANILLA_GAME_TYPE,
+      MINECRAFT_FABRIC_GAME_TYPE,
+      MINECRAFT_NEOFORGE_GAME_TYPE,
+    ];
+
+    for (const ausgabe of ausgaben) {
+      expect(ausgabe.variantGroup, ausgabe.id).toBe('Minecraft');
+    }
+
+    expect(ausgaben.map((ausgabe) => ausgabe.variantLabel)).toEqual([
+      'Paper',
+      'Vanilla',
+      'Fabric',
+      'NeoForge',
+    ]);
+  });
+
+  it('nimmt Paper zuerst - die Gruppe waehlt ihre erste Variante vor', () => {
+    const minecraft = ALLE_GAME_TYPE_DEFINITIONS.filter(
+      (definition) => definition.variantGroup === 'Minecraft',
+    );
+
+    expect(minecraft[0]?.id).toBe('minecraft-paper');
+  });
+
+  it('laesst keine Variante ohne Gruppe stehen', () => {
+    // Ein `variantLabel` ohne `variantGroup` waere ein Name, den niemand
+    // anzeigt: Die Oberflaeche gruppiert nach `variantGroup` und holt das
+    // Label erst danach.
+    for (const definition of ALLE_GAME_TYPE_DEFINITIONS) {
+      if (definition.variantLabel === undefined) continue;
+      expect(definition.variantGroup, definition.id).not.toBeUndefined();
+    }
+  });
+
+  it('gibt jeder Gruppe mindestens zwei Varianten mit unterscheidbaren Namen', () => {
+    const gruppen = new Map<string, string[]>();
+
+    for (const definition of ALLE_GAME_TYPE_DEFINITIONS) {
+      const gruppe = definition.variantGroup;
+      if (gruppe === undefined) continue;
+
+      // Ohne eigenen Namen waeren zwei Eintraege der Auswahl nicht zu
+      // unterscheiden - eine Gruppe mit zweimal „Minecraft" darin.
+      expect(definition.variantLabel, definition.id).not.toBeUndefined();
+      gruppen.set(gruppe, [...(gruppen.get(gruppe) ?? []), definition.variantLabel as string]);
+    }
+
+    for (const [gruppe, namen] of gruppen) {
+      // Eine Gruppe mit einem Mitglied ist keine Gruppe: Die Kachel truege
+      // „Minecraft" und die Auswahl darunter haette nichts zu waehlen.
+      expect(namen.length, gruppe).toBeGreaterThan(1);
+      expect(new Set(namen).size, gruppe).toBe(namen.length);
+    }
+  });
+
+  it('behaelt den vollstaendigen Anzeigenamen daneben', () => {
+    // `name` traegt weiterhin „Minecraft (Paper)": Serverliste, Detailkopf und
+    // Administration kennen keine Gruppen und brauchen den ganzen Namen.
+    expect(MINECRAFT_PAPER_GAME_TYPE.name).toBe('Minecraft (Paper)');
+    expect(MINECRAFT_NEOFORGE_GAME_TYPE.name).toBe('Minecraft (NeoForge)');
+  });
+
+  it('reicht Gruppe und Variantenname an den DTO durch', () => {
+    const dto = toGameTypeDto(MINECRAFT_NEOFORGE_GAME_TYPE, 3);
+
+    expect(dto.variantGroup).toBe('Minecraft');
+    expect(dto.variantLabel).toBe('NeoForge');
+  });
+
+  it('setzt am DTO eines Spiels ohne Gruppe beide auf null', () => {
+    const dto = toGameTypeDto(VALHEIM_GAME_TYPE, 3);
+
+    expect(dto.variantGroup).toBeNull();
+    expect(dto.variantLabel).toBeNull();
+  });
+});

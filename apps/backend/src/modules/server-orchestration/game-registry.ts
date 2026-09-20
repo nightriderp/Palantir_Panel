@@ -293,6 +293,16 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   description:
     'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
   dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:9',
+  /*
+   * Eine Kachel fuer alle vier Ausgaben (Betreiber-Wunsch 20.09.2026). Paper
+   * steht zuerst in `GAME_TYPE_DEFINITIONS` und ist damit die Vorauswahl der
+   * Gruppe – die schnellste Ausgabe, und die, die Plugins kann.
+   *
+   * Die drei anderen erben `variantGroup` ueber ihren Spread und setzen nur
+   * `variantLabel` neu.
+   */
+  variantGroup: 'Minecraft',
+  variantLabel: 'Paper',
   // Schnellbefehle der Live-Konsole. Nur vollständige Zeilen – `say <Text>`
   // oder `op <Name>` brauchen das Feld. Die Antwort kommt über RCON zurück
   // (`console` unten, P2-9) und steht damit direkt in der Konsole.
@@ -527,6 +537,7 @@ export const MINECRAFT_VANILLA_GAME_TYPE: GameTypeDefinition = {
   description:
     'Minecraft-Server, wie Mojang ihn ausliefert – ohne Nachbau, ohne Plugins. Die Serverdateien werden beim ersten Start geholt; der dauert deshalb länger. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
   defaultEnv: { MINECRAFT_EDITION: 'vanilla' },
+  variantLabel: 'Vanilla',
   /*
    * Die Serverdatei holt dieses Image ohnehin beim ersten Start; eine andere
    * Fassung kostet nur eine andere Adresse (Betreiber-Wunsch 19.09.2026).
@@ -1641,6 +1652,7 @@ export const MINECRAFT_FABRIC_GAME_TYPE: GameTypeDefinition = {
   description:
     'Minecraft mit dem Mod-Loader Fabric – der leichtere der beiden, mit schneller Unterstützung für neue Spielfassungen. Mods gehören in den Ordner „mods" im Datenordner.',
   defaultEnv: { MINECRAFT_EDITION: 'fabric' },
+  variantLabel: 'Fabric',
   // Wie bei Vanilla ohne `tps`: Das ist ein Paper-Befehl.
   consoleQuickCommands: [
     { label: 'Spieler', command: 'list' },
@@ -1662,6 +1674,7 @@ export const MINECRAFT_NEOFORGE_GAME_TYPE: GameTypeDefinition = {
   description:
     'Minecraft mit dem Mod-Loader NeoForge – der Nachfolger von Forge, den die meisten großen Modpacks verlangen. Der erste Start richtet ihn ein und dauert einige Minuten. Mods gehören in den Ordner „mods" im Datenordner.',
   defaultEnv: { MINECRAFT_EDITION: 'neoforge' },
+  variantLabel: 'NeoForge',
   consoleQuickCommands: [
     { label: 'Spieler', command: 'list' },
     { label: 'Speichern', command: 'save-all' },
@@ -3410,6 +3423,13 @@ export function toGameTypeDto(
     supportsVirtualHostRouting: definition.supportsVirtualHostRouting,
     supportsWorldImport: definition.supportsWorldImport,
     supportsVersionChoice: definition.supportsVersionChoice ?? false,
+    /*
+     * Gruppe und Variantenname gehen unveraendert durch. `undefined` wird zu
+     * `null`: Der DTO faehrt `null` fuer „gibt es nicht", damit die Oberflaeche
+     * nicht zwischen zwei Abwesenheiten unterscheiden muss.
+     */
+    variantGroup: definition.variantGroup ?? null,
+    variantLabel: definition.variantLabel ?? null,
     // Der DTO zeigt die Ports, die der Spieler kennen muss – die Zuordnung auf
     // Protokoll und Container-Port ist Betriebssache.
     defaultPorts: definition.ports.map((port) => port.containerPort),
