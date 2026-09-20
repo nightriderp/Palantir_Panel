@@ -3333,12 +3333,197 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
   phase: 3,
 };
 
+/**
+ * Minecraft: Bedrock Edition – der Server für Handy, Konsole und die
+ * Windows-Ausgabe (Anhang A, Phase 3).
+ *
+ * **Eigener Spieltyp, aber in derselben Gruppe.** Paper, Fabric und NeoForge
+ * sind Nachbauten desselben Servers: dasselbe Protokoll, dieselben
+ * Spielstände, dieselben Spieler. Bedrock ist ein anderes Programm von Mojang
+ * – es spricht UDP statt TCP, legt die Welt anders ab, und ein Java-Spieler
+ * kommt nicht darauf.
+ *
+ * Trotzdem steht es in der Gruppe „Minecraft": Wer im Assistenten Minecraft
+ * sucht, soll alle Ausgaben an einer Stelle finden statt zwei ähnlich
+ * heißende Kacheln nebeneinander. Was die Wahl bedeutet, sagt die
+ * Beschreibung – dort steht ausdrücklich, dass Java-Spieler hier nicht
+ * mitspielen können.
+ *
+ * **Kein Hostname-Routing.** Der Router liest den gewünschten Namen aus dem
+ * Handshake des Java-Protokolls; Bedrock hat davon nichts. Die Adresse behält
+ * ihren Port, und den muss ein Spieler in seiner Serverliste eintragen.
+ */
+export const MINECRAFT_BEDROCK_GAME_TYPE: GameTypeDefinition = {
+  id: 'minecraft-bedrock',
+  name: 'Minecraft (Bedrock)',
+  description:
+    'Minecraft-Server für die Bedrock-Ausgabe: Handy, Konsole und Windows-Edition. Die Serverdateien werden beim ersten Start geholt. Java-Spieler können hier nicht mitspielen, dafür gibt es die Vorlagen der Java-Familie.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraftbedrock:1',
+  variantGroup: 'Minecraft',
+  variantLabel: 'Bedrock',
+  // Vollständige Zeilen, wie sie die Konsole von Bedrock versteht.
+  consoleQuickCommands: [
+    { label: 'Spieler', command: 'list' },
+    { label: 'Speichern', command: 'save hold' },
+    { label: 'Stopp', command: 'stop' },
+  ],
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 19_132,
+      protocol: 'udp',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+  ],
+  configFields: [
+    {
+      key: 'levelName',
+      label: 'Name der Welt',
+      type: 'text',
+      defaultValue: 'Palantir',
+      description:
+        'Legt zugleich den Ordnernamen fest (`worlds/<Name>`). Eine Umbenennung erzeugt beim nächsten Start eine neue, leere Welt – die alte bleibt liegen.',
+      required: true,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'gamemode',
+      label: 'Spielmodus',
+      type: 'select',
+      defaultValue: 'survival',
+      description: 'Gilt für Spieler, die die Welt zum ersten Mal betreten.',
+      required: false,
+      options: ['survival', 'creative', 'adventure'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'difficulty',
+      label: 'Schwierigkeit',
+      type: 'select',
+      defaultValue: 'easy',
+      description: null,
+      required: false,
+      options: ['peaceful', 'easy', 'normal', 'hard'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'allowCheats',
+      label: 'Befehle erlauben',
+      type: 'toggle',
+      defaultValue: 'false',
+      description:
+        'Erlaubt Spielbefehle wie `/gamemode` in der Welt. Schaltet in der Bedrock-Ausgabe zugleich die Errungenschaften ab.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'seed',
+      label: 'Startwert der Welt',
+      type: 'text',
+      defaultValue: '',
+      description: 'Leer lassen für eine zufällige Welt. Gilt nur beim Erzeugen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Maximale Spielerzahl',
+      type: 'number',
+      defaultValue: '10',
+      description: null,
+      required: false,
+      options: [],
+      min: 1,
+      max: 100,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'motd',
+      label: 'Servername in der Liste',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: 'Steht in der Serverliste des Spiels.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    levelName: 'BEDROCK_LEVEL_NAME',
+    gamemode: 'BEDROCK_GAMEMODE',
+    difficulty: 'BEDROCK_DIFFICULTY',
+    allowCheats: 'BEDROCK_ALLOW_CHEATS',
+    seed: 'BEDROCK_SEED',
+    maxPlayers: 'MAX_PLAYERS',
+    motd: 'MOTD',
+  },
+  // Alle sieben liest das Startskript einmalig beim Start aus der Umgebung und
+  // schreibt sie nach `server.properties`.
+  restartRequiredFields: [
+    'levelName',
+    'gamemode',
+    'difficulty',
+    'allowCheats',
+    'seed',
+    'maxPlayers',
+    'motd',
+  ],
+  /*
+   * Bedrock ist genügsamer als die Java-Ausgabe: kein JVM-Heap, der vorab
+   * belegt wird. Zwei Gibibyte tragen eine Welt mit einer Handvoll Spielern;
+   * der Betreiber kann im Assistenten mehr geben.
+   */
+  resourceDefaults: {
+    ramMb: 2_048,
+    diskMb: 5_120,
+  },
+  /*
+   * GameDig kennt das Protokoll (`minecraftbedrock`). Ein Verbindungsversuch
+   * wie bei Terraria hilft hier nicht: Bei UDP beweist er nichts.
+   */
+  query: {
+    kind: 'gamedig',
+    protocol: 'minecraftbedrock',
+    containerPort: 19_132,
+  },
+  console: { kind: 'stdin' },
+  iconUrl: null,
+  coverImageUrl: null,
+  supportsVirtualHostRouting: false,
+  supportsWorldImport: true,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  // Bedrock speichert beim Stoppsignal selbst und beendet sich.
+  stopTimeoutSeconds: 60,
+  // Der erste Start holt neunzig Megabyte und erzeugt danach die Welt.
+  startupTimeoutSeconds: 600,
+  phase: 3,
+};
+
 /** Was das Panel als Vorlage anbietet: echte Spiele, keine Prüfstände. */
 export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_PAPER_GAME_TYPE,
   MINECRAFT_VANILLA_GAME_TYPE,
   MINECRAFT_FABRIC_GAME_TYPE,
   MINECRAFT_NEOFORGE_GAME_TYPE,
+  MINECRAFT_BEDROCK_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TERRARIA_GAME_TYPE,
   FACTORIO_GAME_TYPE,
