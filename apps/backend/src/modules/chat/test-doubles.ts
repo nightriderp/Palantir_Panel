@@ -166,6 +166,10 @@ export function fakeServerMembership(
       }));
     },
 
+    async listAllServerOwnerIds() {
+      return [...new Set(servers.map((server) => server.ownerId))];
+    },
+
     async listServerIdsForUser(userId) {
       return servers
         .filter(

@@ -678,6 +678,12 @@ export function createDrizzleServerMembershipSource(db: Database): ServerMembers
       return rows;
     },
 
+    async listAllServerOwnerIds(): Promise<readonly string[]> {
+      const rows = await db.selectDistinct({ ownerId: gameServers.ownerId }).from(gameServers);
+
+      return rows.map((row) => row.ownerId);
+    },
+
     async listServerIdsForUser(userId: string): Promise<readonly string[]> {
       const rows = await db
         .selectDistinct({ id: gameServers.id })

@@ -21,6 +21,7 @@ import {
 } from '@palantir/contracts';
 import { type MessagePageQuery, type SendMessageInput } from '@palantir/validation';
 import { isUniqueViolation } from '../../db/errors.js';
+import { type PermissionActor, hasPermission } from '../rbac/index.js';
 import { type ChatContext, requireUserId } from './context.js';
 import {
   type ConversationDtoContext,
@@ -217,8 +218,22 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
    * Die Teilnehmerkreise werden frisch gelesen (wie überall im Modul): Wer aus
    * einem Server entfernt wurde, fällt sofort heraus. Ein zwischenzeitlich
    * gelöschter Server liefert kein Audience und wird übersprungen.
+   *
+   * **Wer jeden Server sehen darf, darf jeden Serverbesitzer anschreiben**
+   * (Betreiber-Meldung 20.09.2026). Vorher zählte allein die Mitgliedschaft:
+   * Der Betreiber der Instanz betreibt selbst keinen Server, war also in
+   * keinem Teilnehmerkreis – und bekam auf jeder fremden Server-Karte den
+   * Knopf „Nachricht" angeboten, der dann mit
+   * `CONVERSATION_RECIPIENT_NOT_ALLOWED` abwies. Die Oberfläche versprach
+   * etwas, das das Backend verbot.
+   *
+   * Die Grenze bleibt dieselbe wie bei der Sichtbarkeit der Server: `server.view.any`.
+   * Wer sie nicht hat, sieht weiterhin nur seinen eigenen Kreis.
    */
-  async function directRecipientCandidates(viewerId: string): Promise<readonly string[]> {
+  async function directRecipientCandidates(
+    viewerId: string,
+    actor: PermissionActor,
+  ): Promise<readonly string[]> {
     const serverIds = await servers.listServerIdsForUser(viewerId);
 
     const audiences = (
@@ -236,7 +251,15 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       )
     ).filter((audience) => audience !== null);
 
-    return directRecipientCandidateIds(viewerId, audiences);
+    const ausDenServern = directRecipientCandidateIds(viewerId, audiences);
+
+    if (!hasPermission(actor, 'server.view.any')) {
+      return ausDenServern;
+    }
+
+    const besitzer = await servers.listAllServerOwnerIds();
+
+    return [...new Set([...ausDenServern, ...besitzer])].filter((id) => id !== viewerId);
   }
 
   /** Baut den DTO-Kontext für eine Menge Nachrichten aus Sicht eines Kontos. */
@@ -533,7 +556,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
        * auch wenn der gemeinsame Server später wegfällt – sie steht ohnehin
        * weiter in `listConversations`.
        */
-      const candidateIds = await directRecipientCandidates(viewerId);
+      const candidateIds = await directRecipientCandidates(viewerId, ctx.actor);
 
       if (!candidateIds.includes(recipientId)) {
         throw new ChatError('CONVERSATION_RECIPIENT_NOT_ALLOWED');
@@ -598,7 +621,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
 
     async listDirectMessageRecipients(ctx) {
       const viewerId = requireUserId(ctx);
-      const candidateIds = await directRecipientCandidates(viewerId);
+      const candidateIds = await directRecipientCandidates(viewerId, ctx.actor);
 
       if (candidateIds.length === 0) {
         return [];
