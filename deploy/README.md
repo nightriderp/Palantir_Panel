@@ -199,14 +199,14 @@ CLOUDFLARE_ZONE_ID=<Zone-ID aus der Zonenübersicht>
 ## 5. OAuth-Anbieter
 
 Mindestens **ein** Anbieter muss konfiguriert sein. Die Rückruf-Adressen leiten sich aus
-`PUBLIC_API_URL` ab (Vorgabe `https://api.<PALANTIR_DOMAIN>`) und müssen in der jeweiligen
+`PUBLIC_API_URL` ab (Vorgabe `https://<PALANTIR_DOMAIN>/api`) und müssen in der jeweiligen
 Entwicklerkonsole **exakt** so stehen:
 
 | Anbieter | Variablen                                                            | Rückruf-Adresse                                       |
 | -------- | -------------------------------------------------------------------- | ----------------------------------------------------- |
-| Discord  | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | `https://api.<PALANTIR_DOMAIN>/auth/discord/callback` |
-| Twitch   | `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_REDIRECT_URI`    | `https://api.<PALANTIR_DOMAIN>/auth/twitch/callback`  |
-| Steam    | `STEAM_API_KEY`, `STEAM_RETURN_URL`                                  | `https://api.<PALANTIR_DOMAIN>/auth/steam/callback`   |
+| Discord  | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | `https://<PALANTIR_DOMAIN>/api/auth/discord/callback` |
+| Twitch   | `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_REDIRECT_URI`    | `https://<PALANTIR_DOMAIN>/api/auth/twitch/callback`  |
+| Steam    | `STEAM_API_KEY`, `STEAM_RETURN_URL`                                  | `https://<PALANTIR_DOMAIN>/api/auth/steam/callback`   |
 
 - Discord: Developer Portal → New Application → OAuth2 → Redirects. Angefragt wird nur
   `identify` (optional `email`).
@@ -378,45 +378,34 @@ Der Workflow wartet auf die Freigabe im Environment, prüft die Signatur, verbin
 der VPS, setzt `PALANTIR_VERSION` auf den Commit-SHA und startet den Stack neu. Danach
 bewegt er den Zweig `prod` auf denselben Commit; das ist das Signal für den Homeserver.
 
-### 7.6 API unter denselben Host legen (empfohlen)
+### 7.6 API am Panel-Host (einziger Weg seit dem 20.09.2026)
 
-Liegen Panel (`<Domain>`) und API (`api.<Domain>`) auf zwei Hosts, müssen die
-Sitzungs-Cookies für die Elterndomain gelten – und gehen damit auch an
-`<name>.<Domain>`, also an die Spielcontainer. `httpOnly` hält dort nur Skripte ab, nicht
-den Empfänger. Liegt die API unter demselben Host (`<Domain>/api`), leitet das Backend gar
-keine Cookie-Domain mehr ab: Die Cookies sind host-only und erreichen keine Subdomain.
-Nebenbei entfällt CORS als Thema.
+Die API liegt unter `<Domain>/api`, auf demselben Host wie das Panel. Einen eigenen
+API-Host (`api.<Domain>`) gibt es nicht mehr.
 
-Traefik bringt den Weg bereits mit (`palantir-api-pfad`); der alte Host bleibt daneben
-erreichbar, ein Rücksprung braucht also kein erneutes Ausrollen.
+**Warum.** Zwei Hosts zwingen die Sitzungs-Cookies auf die Elterndomain – und damit gehen
+sie auch an `<name>.<Domain>`, also an die Spielcontainer. `httpOnly` hält dort nur
+Skripte ab, nicht den Empfänger: Ein HTTP-Dienst auf einer Spiel-Subdomain bekäme sie im
+Anfragekopf. Auf einem gemeinsamen Host leitet das Backend gar keine Cookie-Domain mehr
+ab; die Cookies sind host-only. Nebenbei entfällt CORS als Thema.
 
-**In zwei Schritten umstellen, damit zwischendurch nichts kaputt ist:**
+**Was das für eine neue Instanz heißt.** Nichts weiter: `PUBLIC_API_URL` leer lassen, die
+Vorgabe ist `https://<Domain>/api`, und `COOKIE_DOMAIN` bleibt ebenfalls leer. Die
+Rücksprung-Adressen der Anmeldedienste leiten sich daraus ab (Abschnitt 7.2) und müssen so
+in der Discord- und der Twitch-Konsole stehen.
 
-**Schritt 1 – der Browser spricht den neuen Weg an.** Repository-Variable setzen (GitHub,
-_Settings → Variables_): `PUBLIC_API_URL=https://<Domain>/api`. Sie wird beim **Bauen** in
-das Browser-Bundle geschrieben, wirkt also erst mit dem nächsten Image. Danach einmal
-ausrollen. Die Cookies gelten in diesem Zustand noch für die Elterndomain – das
-funktioniert, weil sie auch für den eigenen Host gelten.
+**Was in das Browser-Bundle gehört.** `PUBLIC_API_URL` wird beim **Bauen** in das Bundle
+geschrieben, nicht zur Laufzeit gelesen. Wer die Adresse ändert, setzt deshalb die
+Repository-Variable (GitHub, _Settings → Variables_) **und** rollt neu aus. Eine Änderung
+allein in der `.env` führt zu einer Anmeldung, die mit 200 antwortet und trotzdem nicht
+funktioniert.
 
-**Schritt 2 – die Cookies enger fassen.** Auf der **VPS** in `/opt/palantir/.env`:
-
-```
-PUBLIC_API_URL=https://<Domain>/api
-COOKIE_DOMAIN=
-DISCORD_REDIRECT_URI=https://<Domain>/api/auth/discord/callback
-TWITCH_REDIRECT_URI=https://<Domain>/api/auth/twitch/callback
-```
-
-Dieselben beiden Adressen in der **Discord**- und der **Twitch**-Entwicklerkonsole
-eintragen, bevor ausgerollt wird – sonst schlägt die Anmeldung über beide Anbieter fehl.
-Steam (OpenID 2.0) braucht keinen Eintrag. Danach ausrollen.
-
-**Nach Schritt 2 müssen sich alle offenen Sitzungen einmalig neu anmelden:** Ein Cookie mit
-`Domain`-Attribut und eines ohne gelten dem Browser als verschiedene Cookies.
-
-**Zurück geht es**, indem `PUBLIC_API_URL` und `COOKIE_DOMAIN` wieder auf die alten Werte
-gesetzt werden und die Repository-Variable gelöscht wird – der Host `api.<Domain>` läuft
-durchgehend weiter.
+**Ein eigener API-Host wieder?** Dann braucht es den Router zurück
+(`palantir-api` in `deploy/vps/docker-compose.yml`, entfernt am 20.09.2026), dazu
+`PUBLIC_API_URL`, `COOKIE_DOMAIN` und die beiden `*_REDIRECT_URI` in der `.env` – und die
+Cookies gelten wieder für die Elterndomain. Der empfohlene Weg dafür ist eine Ebene
+tiefer: `panel.<Domain>` und `api.panel.<Domain>`, damit die Spielserver-Hosts daneben
+liegen.
 
 ---
 
@@ -569,7 +558,7 @@ starten. Ohne das Profil ist der Router folgenlos.
 | --------------- | ---------- | ------------------------------------------------------------------------ |
 | Tunnel          | VPS        | `ping -c 3 <WIREGUARD_HOME_IP>` antwortet                                |
 | Dienste         | beide      | `docker ps` zeigt alle Container als `healthy`                           |
-| Backend         | VPS        | `curl -s https://api.<PALANTIR_DOMAIN>/health` liefert `"database":"ok"` |
+| Backend         | VPS        | `curl -s https://<PALANTIR_DOMAIN>/api/health` liefert `"database":"ok"` |
 | Agent           | VPS        | `docker logs palantir-backend 2>&1 \| grep -i 'Agent verbunden'`         |
 | Ausgangsregeln  | Homeserver | `egress-firewall.sh status` zeigt `PALANTIR-EGRESS` an Position 1        |
 | Tunnel-Firewall | Homeserver | `nft list table inet palantir_wg` zeigt die `drop`-Regel                 |
