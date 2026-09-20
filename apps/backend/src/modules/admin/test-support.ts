@@ -164,6 +164,7 @@ export function nodeRecord(overrides: Partial<HostNodeRecord> = {}): HostNodeRec
     statusMessage: null,
     lastSeenAt: new Date('2026-08-26T09:00:00.000Z'),
     hasAgentToken: false,
+    agent: null,
     createdAt: new Date('2026-08-01T00:00:00.000Z'),
     ...overrides,
   };

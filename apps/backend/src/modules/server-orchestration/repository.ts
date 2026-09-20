@@ -136,6 +136,22 @@ export interface HostNodeRecord {
   readonly status: string;
 }
 
+/**
+ * Was ein Agent im `hello` über sich sagt, so viel wie die Zeile davon behält
+ * (Gefundener Punkt 321).
+ *
+ * `expectedProtocolVersion` und `compatible` stehen bewusst **nicht** hier: Was
+ * das Backend erwartet, ist eine Konstante dieser Fassung des Backends, und ob
+ * beides zusammenpasst, ergibt sich daraus. Beides mitzuschreiben hiesse, nach
+ * einem Panel-Update ein veraltetes Urteil aus der Datenbank zu lesen statt des
+ * heute gültigen.
+ */
+export interface AgentHelloRecord {
+  readonly agentVersion: string;
+  readonly protocolVersion: number;
+  readonly reportedAt: Date;
+}
+
 export interface ServerMemberRecord {
   readonly userId: string;
   readonly displayName: string;
@@ -295,6 +311,23 @@ export interface ServerRepository {
    * nur beim Verbinden gesetzt.
    */
   markHostConnected(hostId: string): Promise<void>;
+  /**
+   * Hält fest, was der Agent einer Node im `hello` über sich gesagt hat
+   * (Gefundener Punkt 321).
+   *
+   * Bis hierher lebte die Angabe nur in der `AgentRegistry` im
+   * Arbeitsspeicher. Sie überlebte damit keinen Neustart des Backends – also
+   * keines der Ausrollen, nach dem man gerade nachsehen will, ob die Node
+   * nachgezogen hat – und fehlte bei einer Node, die gar nicht mehr hochkommt,
+   * vollständig. Geschrieben wird auch das `hello` eines wegen der
+   * Protokollversion abgewiesenen Agents: Genau dann will der Betreiber
+   * wissen, welche Fassung dort läuft.
+   *
+   * Älteres wird nicht über Neueres geschrieben (`agent_reported_at`), damit
+   * eine verspätet eintreffende Meldung einer alten Sitzung die frische nicht
+   * verdrängt – dieselbe Überlegung wie bei {@link markHostDisconnected}.
+   */
+  noteAgentHello(hostId: string, hello: AgentHelloRecord): Promise<void>;
   /**
    * @param getrenntSeit Zeitpunkt, zu dem die Trennung bemerkt wurde
    * (Audit event-flow-12). Ist gesetzt, wird `offline` nur geschrieben, solange
@@ -870,6 +903,28 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
           updatedAt: jetzt,
         })
         .where(eq(hostNodes.id, hostId));
+    },
+
+    async noteAgentHello(hostId: string, hello: AgentHelloRecord): Promise<void> {
+      await db
+        .update(hostNodes)
+        .set({
+          agentVersion: hello.agentVersion,
+          agentProtocolVersion: hello.protocolVersion,
+          agentReportedAt: hello.reportedAt,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(hostNodes.id, hostId),
+            /*
+             * Nur vorwärts: Meldet sich ein Agent neu, während die Meldung
+             * einer älteren Sitzung noch unterwegs ist, gewinnt die neuere.
+             * `is null` deckt die erste Meldung überhaupt ab.
+             */
+            sql`(${hostNodes.agentReportedAt} is null or ${hostNodes.agentReportedAt} <= ${hello.reportedAt})`,
+          ),
+        );
     },
 
     async markHostDisconnected(hostId: string, getrenntSeit?: Date): Promise<void> {

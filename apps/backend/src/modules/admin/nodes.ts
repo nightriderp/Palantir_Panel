@@ -16,6 +16,7 @@
  */
 
 import {
+  AGENT_PROTOCOL_VERSION,
   type HostNodeAgentInfo,
   type HostNodeCapacity,
   type HostNodeDto,
@@ -57,6 +58,23 @@ export interface HostNodeRecord {
    * versehentlich in einer Antwort landen.
    */
   readonly hasAgentToken: boolean;
+  /**
+   * Zuletzt gespeicherter Handshake des Agents (Gefundener Punkt 321);
+   * `null`, solange sich nie einer gemeldet hat.
+   *
+   * Der laufende Stand steht in der `AgentRegistry` im Arbeitsspeicher
+   * ({@link NodeConnectionSource.lastHello}) und hat Vorrang. Diese Angabe
+   * springt ein, wenn es dort nichts gibt – nach einem Neustart des Backends
+   * und bei einer Node, die nicht mehr hochkommt.
+   */
+  readonly agent: StoredAgentHello | null;
+}
+
+/** Gespeicherter Handshake, so wie er in der Zeile der Node steht. */
+export interface StoredAgentHello {
+  readonly version: string;
+  readonly protocolVersion: number;
+  readonly reportedAt: Date;
 }
 
 export interface CreateHostNodeData {
@@ -283,6 +301,31 @@ function requireNodeManage(actor: PermissionActor): void {
   }
 }
 
+/**
+ * Den gespeicherten Handshake in die Auskunft der Übersicht übersetzen
+ * (Gefundener Punkt 321).
+ *
+ * `expectedProtocolVersion` und `compatible` kommen **nicht** aus der
+ * Datenbank, sondern aus dieser Fassung des Backends: Gespeichert ist, was der
+ * Agent gesagt hat, nicht das Urteil darüber. Wird das Panel aktualisiert und
+ * die Protokollversion angehoben, gilt sofort das neue Urteil – eine Node mit
+ * altem Agent erscheint dann als unpassend, auch wenn sie sich seitdem nicht
+ * gemeldet hat. Genau das ist die Auskunft, die der Betreiber braucht.
+ */
+function gespeicherterAgent(node: HostNodeRecord): HostNodeAgentInfo | null {
+  if (node.agent === null) {
+    return null;
+  }
+
+  return {
+    version: node.agent.version,
+    protocolVersion: node.agent.protocolVersion,
+    expectedProtocolVersion: AGENT_PROTOCOL_VERSION,
+    compatible: node.agent.protocolVersion === AGENT_PROTOCOL_VERSION,
+    reportedAt: node.agent.reportedAt.toISOString(),
+  };
+}
+
 export function createHostNodeService(deps: HostNodeServiceDependencies): HostNodeService {
   const placements = deps.placements ?? emptyNodePlacementSource();
   const usageSource = deps.usage ?? emptyNodeUsageSource();
@@ -317,7 +360,13 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
       serverCount: placement?.serverCount ?? 0,
       lastSeenAt: node.lastSeenAt?.toISOString() ?? null,
       hasAgentToken: node.hasAgentToken,
-      agent: deps.connections?.lastHello?.(node.id) ?? null,
+      /*
+       * Laufender Handshake zuerst, gespeicherter als Rückfall (Gefundener
+       * Punkt 321). Die Registry weiß es genauer – sie kennt auch einen gerade
+       * abgewiesenen Agent –, aber sie ist leer, sobald das Backend neu
+       * gestartet ist, und bleibt es bei einer Node, die nicht mehr hochkommt.
+       */
+      agent: deps.connections?.lastHello?.(node.id) ?? gespeicherterAgent(node),
       createdAt: node.createdAt.toISOString(),
       permissions,
     };

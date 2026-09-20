@@ -7,6 +7,7 @@ import {
 import {
   type Tone,
   formatCores,
+  formatDateTime,
   formatMegabytes,
   formatNumber,
   formatPercent,
@@ -178,8 +179,19 @@ export interface NodeAgentHint {
  * Ein Agent mit falscher Protokollversion wird vom Backend abgewiesen und
  * versucht es endlos erneut; die Node stand dabei schlicht „offline". Hier
  * bekommt der Betreiber den Grund und den Handgriff – ohne ins Backend-Log
- * schauen zu müssen. `null`, solange sich seit dem Start des Backends kein
- * Agent gemeldet hat.
+ * schauen zu müssen. `null`, solange sich nie ein Agent gemeldet hat.
+ *
+ * Bei einer Node, die gerade **nicht** online ist, trägt die Zeile zusätzlich
+ * den Zeitpunkt der Meldung (Gefundener Punkt 321). Die Fassung stammt dann aus
+ * der gespeicherten letzten Meldung, nicht aus einer offenen Verbindung – und
+ * eine Fassung ohne Datum wäre in dem Fall irreführend: Sie sagt nicht, ob die
+ * Node vor fünf Minuten oder vor zwei Wochen zuletzt etwas von sich hören ließ.
+ * Genau daran hing der Vorfall vom 15.09.2026, bei dem der Homeserver zwei Tage
+ * auf einer alten Fassung stand, ohne dass es jemandem auffiel.
+ *
+ * Bewusst der absolute Zeitpunkt und keine Angabe wie „vor zwei Tagen": Die
+ * Zeile steht neben „zuletzt gesehen" im selben Format, und {@link
+ * formatRelativeTime} hängt an der Uhr des Browsers.
  */
 export function nodeAgentHint(node: HostNodeDto): NodeAgentHint | null {
   const agent = node.agent;
@@ -188,7 +200,10 @@ export function nodeAgentHint(node: HostNodeDto): NodeAgentHint | null {
     return null;
   }
 
-  const label = `Agent ${agent.version}`;
+  const label =
+    node.status === 'online'
+      ? `Agent ${agent.version}`
+      : `Agent ${agent.version}, gemeldet ${formatDateTime(agent.reportedAt)}`;
 
   if (agent.compatible) {
     return { label, warning: null };

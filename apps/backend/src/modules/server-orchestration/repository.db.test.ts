@@ -20,6 +20,8 @@ import {
   legeNutzerAn,
   legeServerAn,
 } from '../../test-support/fixtures.js';
+import { eq } from 'drizzle-orm';
+import { hostNodes } from '../../db/schema.js';
 import { ServerOrchestrationError } from './errors.js';
 import { createDrizzleServerRepository } from './repository.js';
 
@@ -359,6 +361,59 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
 
     expect((await repository.findHost(offline))?.status).toBe('offline');
     expect((await repository.findHost(wartung))?.status).toBe('maintenance');
+  });
+
+  it('schreibt die Agent-Fassung fort und lässt eine ältere Meldung liegen', async () => {
+    /*
+     * Gefundener Punkt 321. Die Bedingung `agent_reported_at <= neu` steht nur
+     * in SQL und kann in keiner Attrappe auffallen – deshalb hier.
+     */
+    const repository = createDrizzleServerRepository(kontext.db);
+    const node = await legeNodeAn(kontext.db);
+
+    const frueh = new Date('2026-09-18T22:14:00.000Z');
+    const spaet = new Date('2026-09-20T01:07:32.000Z');
+
+    await repository.noteAgentHello(node, {
+      agentVersion: '0.6.0+9b32bb83df35',
+      protocolVersion: 1,
+      reportedAt: frueh,
+    });
+    await repository.noteAgentHello(node, {
+      agentVersion: '0.6.0+c07acd2ce532',
+      protocolVersion: 1,
+      reportedAt: spaet,
+    });
+
+    const [neuer] = await kontext.db
+      .select({
+        version: hostNodes.agentVersion,
+        protokoll: hostNodes.agentProtocolVersion,
+        gemeldet: hostNodes.agentReportedAt,
+      })
+      .from(hostNodes)
+      .where(eq(hostNodes.id, node));
+
+    expect(neuer?.version).toBe('0.6.0+c07acd2ce532');
+    expect(neuer?.protokoll).toBe(1);
+    expect(neuer?.gemeldet?.toISOString()).toBe(spaet.toISOString());
+
+    /*
+     * Die verspätete Meldung einer älteren Sitzung darf die frische nicht
+     * verdrängen – dieselbe Überlegung wie beim Trennen einer Node.
+     */
+    await repository.noteAgentHello(node, {
+      agentVersion: '0.6.0+9b32bb83df35',
+      protocolVersion: 1,
+      reportedAt: frueh,
+    });
+
+    const [unveraendert] = await kontext.db
+      .select({ version: hostNodes.agentVersion })
+      .from(hostNodes)
+      .where(eq(hostNodes.id, node));
+
+    expect(unveraendert?.version).toBe('0.6.0+c07acd2ce532');
   });
 
   it('übernimmt gemessene Ressourcen und lässt alte Messwerte stehen, wenn keine mitkommen', async () => {

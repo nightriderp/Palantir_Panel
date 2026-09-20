@@ -59,6 +59,19 @@ function toNodeRecord(row: typeof hostNodes.$inferSelect): HostNodeRecord {
     lastSeenAt: row.lastSeenAt,
     // Nur das Ja/Nein verlässt das Repository, nie der Hash selbst.
     hasAgentToken: row.agentTokenHash !== null,
+    /*
+     * Der zuletzt gespeicherte Handshake (Gefundener Punkt 321). Die drei
+     * Spalten werden gemeinsam geschrieben; fehlt eine, hat sich nie ein Agent
+     * gemeldet, und die Auskunft entfaellt ganz statt halb.
+     */
+    agent:
+      row.agentVersion === null || row.agentProtocolVersion === null || row.agentReportedAt === null
+        ? null
+        : {
+            version: row.agentVersion,
+            protocolVersion: row.agentProtocolVersion,
+            reportedAt: row.agentReportedAt,
+          },
     createdAt: row.createdAt,
   };
 }

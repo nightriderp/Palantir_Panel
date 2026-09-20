@@ -32,6 +32,7 @@ import { fakeAgentEnabled, startFakeAgents } from './fake-agent.js';
 import { AgentRegistry } from './agent-gateway.js';
 import { ServerLiveHub, createLiveFanoutSink } from './live-hub.js';
 import { createAccountRateLimiter } from '../../lib/abuse-limits.js';
+import { fireAndForget } from '../../lib/fire-and-forget.js';
 import { registerServerLiveRoute } from './live-route.js';
 import { DEFAULT_AUTO_SHUTDOWN } from './auto-shutdown.js';
 import { createCloudflareDnsProvider } from './dns/cloudflare.js';
@@ -368,6 +369,25 @@ export function registerServerOrchestration(
     // Fassung und Protokollurteil für die Node-Übersicht (Befund 11.3).
     onHello: (hostId, info) => {
       agents.noteHello(hostId, info);
+
+      /*
+       * Zusätzlich in die Zeile der Node schreiben (Gefundener Punkt 321). Die
+       * Angabe oben lebt nur im Arbeitsspeicher und ist nach dem nächsten
+       * Neustart des Backends weg – ausgerechnet nach einem Ausrollen, wenn
+       * man nachsieht, ob die Node nachgezogen hat. Und eine Node, die nicht
+       * mehr hochkommt, meldet sich nie wieder; dann ist der zuletzt bekannte
+       * Stand die eigentliche Auskunft.
+       *
+       * Nicht abgewartet und mit eigenem Fehlerpfad, aus demselben Grund wie
+       * bei `markHostConnected` unten: Der Handshake darf an einem
+       * Schreibfehler nicht hängen bleiben. Scheitert es, bleibt die Anzeige
+       * beim vorherigen Stand.
+       */
+      fireAndForget(repository.noteAgentHello(hostId, info), log, {
+        vorgang: 'Agent-Fassung festhalten',
+        hostId,
+        agentVersion: info.agentVersion,
+      });
     },
     // Verbindungszustand der Node fortschreiben (Pflichtenheft §6). Bewusst
     // in einem eigenen try/catch: Scheitert das Schreiben, bleibt die Node in
