@@ -4,24 +4,30 @@ import {
   type GlobalPermissions,
   type InstanceSettingsDto,
 } from '@palantir/contracts';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/shared';
-import { gameType } from '../../servers/testFixtures';
 import { TemplatesView } from './TemplatesView';
 
 /**
- * Varianten eines Spiels auf einer Karte (Betreiber-Wunsch 20.09.2026).
+ * Verwaltung der Spiel-Vorlagen (Wunsch des Betreibers, 2026-09-11).
  *
- * Geprüft wird die gerenderte Seite und nicht nur `buildTemplateGroups`: Was
- * hier zählt, ist, dass die Karte **einen** Bild-Bereich für die ganze Gruppe
- * zeigt und trotzdem **einen Schalter je Ausgabe** – das ist die Zusage, und
- * sie steht in der Zusammensetzung, nicht in der Gruppierungsfunktion.
+ * Geprüft wird, was die Ansicht verspricht und was beim nächsten Umbau still
+ * kaputtgehen könnte:
+ *
+ * - Ausschalten schickt den **vollständigen** Zustand. Die Instanz-
+ *   Einstellungen kennen keine Teiländerung; wer hier nur die Spieleliste
+ *   schickte, setzte die Selbstregistrierung nebenbei auf die Vorgabe zurück.
+ * - Ein Spiel, das die Ausbaustufe noch nicht hergibt, lässt sich nicht
+ *   einschalten – das ist keine Entscheidung des Administrators.
+ * - Ohne das Recht, Instanz-Einstellungen zu ändern, sind die Schalter
+ *   gesperrt statt sicher am Backend zu scheitern.
  */
 
 const api = vi.hoisted(() => ({
   fetchGameTypes: vi.fn(),
   fetchInstanceSettings: vi.fn(),
+  updateInstanceSettings: vi.fn(),
 }));
 const sitzung = vi.hoisted(() => ({ account: null as AccountDto | null }));
 
@@ -37,6 +43,7 @@ vi.mock('@/lib/api/servers', async (importOriginal) => ({
 vi.mock('@/lib/api/admin', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchInstanceSettings: api.fetchInstanceSettings,
+  updateInstanceSettings: api.updateInstanceSettings,
 }));
 
 function berechtigungen(overrides: Partial<GlobalPermissions> = {}): GlobalPermissions {
@@ -57,22 +64,208 @@ function berechtigungen(overrides: Partial<GlobalPermissions> = {}): GlobalPermi
   };
 }
 
-const KONTO: AccountDto = {
-  id: 'admin-1',
-  displayName: 'Admina',
-  username: 'admina',
-  isOwner: false,
-  banned: false,
-  awaitingApproval: false,
-  twoFactorEnabled: false,
-  roles: [],
-  authMethods: [],
-  createdAt: '2026-08-01T10:00:00.000Z',
-  permissions: berechtigungen(),
-};
+function konto(permissions: GlobalPermissions): AccountDto {
+  return {
+    id: 'admin-1',
+    displayName: 'Admina',
+    username: 'admina',
+    isOwner: false,
+    banned: false,
+    awaitingApproval: false,
+    twoFactorEnabled: false,
+    roles: [],
+    authMethods: [],
+    createdAt: '2026-08-01T10:00:00.000Z',
+    permissions,
+  };
+}
 
-function minecraft(label: string, id: string): GameTypeDto {
-  return gameType({
+function spiel(overrides: Partial<GameTypeDto> = {}): GameTypeDto {
+  return {
+    id: 'minecraft-paper',
+    name: 'Minecraft (Paper)',
+    description: 'Ein Minecraft-Server.',
+    iconUrl: null,
+    coverImageUrl: null,
+    supportsVirtualHostRouting: true,
+    supportsWorldImport: true,
+    supportsVersionChoice: false,
+    defaultPorts: [25_565],
+    resourceDefaults: { ramMb: 4096, diskMb: 10_240 },
+    configFields: [],
+    available: true,
+    unavailableReason: null,
+    ...overrides,
+  };
+}
+
+function einstellungen(overrides: Partial<InstanceSettingsDto> = {}): InstanceSettingsDto {
+  return {
+    selfRegistrationEnabled: false,
+    uiFontId: null,
+    monospaceFontId: null,
+    disabledGameTypes: [],
+    updatedAt: null,
+    permissions: { canEdit: true },
+    ...overrides,
+  };
+}
+
+function zeichne() {
+  return render(
+    <ToastProvider>
+      <TemplatesView />
+    </ToastProvider>,
+  );
+}
+
+beforeEach(() => {
+  api.fetchGameTypes.mockReset();
+  api.fetchInstanceSettings.mockReset();
+  api.updateInstanceSettings.mockReset();
+
+  sitzung.account = konto(berechtigungen());
+  api.fetchGameTypes.mockResolvedValue({
+    success: true,
+    data: [spiel(), spiel({ id: 'valheim', name: 'Valheim' })],
+    error: null,
+  });
+  api.fetchInstanceSettings.mockResolvedValue({
+    success: true,
+    data: einstellungen(),
+    error: null,
+  });
+  api.updateInstanceSettings.mockImplementation((input: { disabledGameTypes?: string[] }) =>
+    Promise.resolve({
+      success: true,
+      data: einstellungen({ disabledGameTypes: input.disabledGameTypes ?? [] }),
+      error: null,
+    }),
+  );
+});
+
+describe('Templates: das Angebot der Instanz', () => {
+  it('zeigt jede Vorlage mit einem Schalter', async () => {
+    zeichne();
+
+    expect(await screen.findByText('Minecraft (Paper)')).toBeTruthy();
+    expect(screen.getByText('Valheim')).toBeTruthy();
+  });
+
+  it('nennt oben, wie viele Vorlagen angeboten werden', async () => {
+    api.fetchInstanceSettings.mockResolvedValue({
+      success: true,
+      data: einstellungen({ disabledGameTypes: ['valheim'] }),
+      error: null,
+    });
+
+    zeichne();
+
+    expect(await screen.findByText('1 von 2 Vorlagen werden angeboten.')).toBeTruthy();
+  });
+
+  it('schreibt die Beschreibung nicht in die Kachel, sondern daran', async () => {
+    // Mit dreizehn Spielen wurde die Liste laenger als der Bildschirm. Die
+    // Beschreibung braucht niemand beim Umschalten - sie haengt als Titel am
+    // Namen, fuer den, der sie sucht.
+    zeichne();
+
+    const name = await screen.findByText('Minecraft (Paper)');
+
+    expect(screen.queryByText('Ein Minecraft-Server.')).toBeNull();
+    expect(name.getAttribute('title')).toBe('Ein Minecraft-Server.');
+  });
+
+  it('schickt beim Ausschalten den vollständigen Zustand', async () => {
+    api.fetchInstanceSettings.mockResolvedValue({
+      success: true,
+      data: einstellungen({ selfRegistrationEnabled: true }),
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Valheim');
+
+    fireEvent.click(screen.getAllByRole('switch')[1] as HTMLElement);
+
+    await waitFor(() => {
+      expect(api.updateInstanceSettings).toHaveBeenCalledWith({
+        // Ohne diesen Wert schaltete ein Klick hier die Registrierung mit um.
+        selfRegistrationEnabled: true,
+        disabledGameTypes: ['valheim'],
+      });
+    });
+  });
+
+  it('schaltet ein ausgeschaltetes Spiel wieder ein', async () => {
+    api.fetchInstanceSettings.mockResolvedValue({
+      success: true,
+      data: einstellungen({ disabledGameTypes: ['valheim'] }),
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Valheim');
+
+    fireEvent.click(screen.getAllByRole('switch')[1] as HTMLElement);
+
+    await waitFor(() => {
+      expect(api.updateInstanceSettings).toHaveBeenCalledWith({
+        selfRegistrationEnabled: false,
+        disabledGameTypes: [],
+      });
+    });
+  });
+
+  it('lässt ein Spiel der nächsten Ausbaustufe nicht einschalten', async () => {
+    api.fetchGameTypes.mockResolvedValue({
+      success: true,
+      data: [
+        spiel({
+          id: 'valheim',
+          name: 'Valheim',
+          available: false,
+          unavailableReason: 'Kommt in Ausbaustufe 3 (Lastenheft §3.5).',
+        }),
+      ],
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Valheim');
+
+    expect((screen.getAllByRole('switch')[0] as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByText(/Ausbaustufe 3/u)).toBeTruthy();
+  });
+
+  it('sperrt die Schalter ohne das Recht auf die Instanz-Einstellungen', async () => {
+    api.fetchInstanceSettings.mockResolvedValue({
+      success: true,
+      data: einstellungen({ permissions: { canEdit: false } }),
+      error: null,
+    });
+
+    zeichne();
+    await screen.findByText('Valheim');
+
+    for (const schalter of screen.getAllByRole('switch')) {
+      expect((schalter as HTMLInputElement).disabled).toBe(true);
+    }
+    expect(screen.getByText(/fehlt dir das Recht/u)).toBeTruthy();
+  });
+});
+
+/**
+ * Varianten eines Spiels auf einer Karte (Betreiber-Wunsch 20.09.2026).
+ *
+ * Minecraft belegte fünf von zwanzig Karten, und jede wollte Symbol und
+ * Kachelbild einzeln hochgeladen bekommen. Geprüft wird die gerenderte Seite
+ * und nicht nur `buildTemplateGroups`: Die Zusage – **ein** Bild-Bereich je
+ * Gruppe, aber **ein Schalter je Ausgabe** – steckt in der Zusammensetzung.
+ */
+
+function ausgabe(label: string, id: string): GameTypeDto {
+  return spiel({
     id,
     name: `Minecraft (${label})`,
     variantGroup: 'Minecraft',
@@ -81,37 +274,9 @@ function minecraft(label: string, id: string): GameTypeDto {
   });
 }
 
-const SPIELE: GameTypeDto[] = [
-  minecraft('Paper', 'minecraft-paper'),
-  minecraft('Vanilla', 'minecraft-vanilla'),
-  minecraft('Fabric', 'minecraft-fabric'),
-  minecraft('NeoForge', 'minecraft-neoforge'),
-  gameType({ id: 'minecraft-bedrock', name: 'Minecraft (Bedrock)', imageVersion: '1' }),
-  gameType({ id: 'valheim', name: 'Valheim', imageVersion: '1' }),
-];
-
-const EINSTELLUNGEN: InstanceSettingsDto = {
-  selfRegistrationEnabled: true,
-  disabledGameTypes: [],
-  permissions: { canEdit: true },
-} as InstanceSettingsDto;
-
-function zeige(spiele: GameTypeDto[] = SPIELE) {
-  sitzung.account = KONTO;
-  api.fetchGameTypes.mockResolvedValue({ success: true, data: spiele });
-  api.fetchInstanceSettings.mockResolvedValue({ success: true, data: EINSTELLUNGEN });
-
-  return render(
-    <ToastProvider>
-      <TemplatesView />
-    </ToastProvider>,
-  );
-}
-
-/** Die Karte, auf der die Überschrift steht – Panels tragen keine Rolle. */
+/** Die Karte, in der ein Text steht – die Panels tragen keine Rolle. */
 function karteMit(text: string): HTMLElement {
-  const treffer = screen.getByText(text);
-  const karte = treffer.closest('div.flex.flex-col');
+  const karte = screen.getByText(text).closest('div.flex.flex-col');
 
   if (karte === null) {
     throw new Error(`Keine Karte um „${text}" gefunden.`);
@@ -120,26 +285,37 @@ function karteMit(text: string): HTMLElement {
   return karte as HTMLElement;
 }
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
+describe('Templates: Varianten auf einer Karte', () => {
+  beforeEach(() => {
+    api.fetchGameTypes.mockResolvedValue({
+      success: true,
+      data: [
+        ausgabe('Paper', 'minecraft-paper'),
+        ausgabe('Vanilla', 'minecraft-vanilla'),
+        ausgabe('Fabric', 'minecraft-fabric'),
+        ausgabe('NeoForge', 'minecraft-neoforge'),
+        spiel({ id: 'minecraft-bedrock', name: 'Minecraft (Bedrock)', imageVersion: '1' }),
+        spiel({ id: 'valheim', name: 'Valheim', imageVersion: '1' }),
+      ],
+      error: null,
+    });
+  });
 
-describe('TemplatesView – Varianten auf einer Karte', () => {
   it('zeigt eine Karte „Minecraft" statt einer je Ausgabe', async () => {
-    zeige();
+    zeichne();
 
     await waitFor(() => {
       expect(screen.getByText('Minecraft')).toBeTruthy();
     });
 
-    // Die vollständigen Namen der vier Ausgaben stehen nicht mehr als
-    // Überschrift da – in der Gruppe stehen die kurzen.
+    // Die vollständigen Namen stehen nicht mehr als Überschrift da – in der
+    // Gruppe stehen die kurzen.
     expect(screen.queryByText('Minecraft (Paper)')).toBeNull();
     expect(screen.queryByText('Minecraft (NeoForge)')).toBeNull();
   });
 
   it('trägt einen Schalter je Ausgabe – das Angebot bleibt einzeln entscheidbar', async () => {
-    zeige();
+    zeichne();
 
     await waitFor(() => {
       expect(screen.getByText('Minecraft')).toBeTruthy();
@@ -151,14 +327,13 @@ describe('TemplatesView – Varianten auf einer Karte', () => {
       expect(within(karte).getByText(label), label).toBeTruthy();
     }
 
-    // Vier Ausgaben, vier Schalter.
     expect(within(karte).getAllByRole('switch')).toHaveLength(4);
   });
 
   it('zeigt Symbol und Kachelbild einmal für die ganze Gruppe', async () => {
-    // Der Grund für die Änderung: Vorher waren es fünf Karten und damit zehn
-    // Uploads für dasselbe Bild.
-    zeige();
+    // Der Grund für die Änderung: vorher fünf Karten und damit zehn Uploads
+    // für dasselbe Bild.
+    zeichne();
 
     await waitFor(() => {
       expect(screen.getByText('Minecraft')).toBeTruthy();
@@ -171,7 +346,7 @@ describe('TemplatesView – Varianten auf einer Karte', () => {
   });
 
   it('nennt die Image-Version der Gruppe einmal, nicht je Ausgabe', async () => {
-    zeige();
+    zeichne();
 
     await waitFor(() => {
       expect(screen.getByText('Minecraft')).toBeTruthy();
@@ -180,9 +355,9 @@ describe('TemplatesView – Varianten auf einer Karte', () => {
     expect(within(karteMit('Minecraft')).getAllByText('v10.0.0')).toHaveLength(1);
   });
 
-  it('lässt Spiele ohne Gruppe unverändert – Bedrock und Valheim je eigene Karte', async () => {
+  it('lässt Spiele ohne Gruppe unverändert', async () => {
     // Bedrock zeigt auf ein anderes Image und hat darum kein `variantGroup`.
-    zeige();
+    zeichne();
 
     await waitFor(() => {
       expect(screen.getByText('Minecraft (Bedrock)')).toBeTruthy();
@@ -192,10 +367,9 @@ describe('TemplatesView – Varianten auf einer Karte', () => {
     expect(within(karteMit('Minecraft (Bedrock)')).getAllByRole('switch')).toHaveLength(1);
   });
 
-  it('zählt weiterhin jede Vorlage einzeln, nicht die Karten', async () => {
-    // „6 von 6 Vorlagen" – die Zusammenfassung spricht von Vorlagen, und
-    // Minecraft ist vier davon, auch wenn es eine Karte ist.
-    zeige();
+  it('zählt weiterhin Vorlagen und nicht Karten', async () => {
+    // Minecraft ist vier Vorlagen, auch wenn es eine Karte ist.
+    zeichne();
 
     await waitFor(() => {
       expect(screen.getByText(/von 6 Vorlagen/u)).toBeTruthy();
