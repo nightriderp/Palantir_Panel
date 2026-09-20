@@ -245,6 +245,8 @@ importers:
 
   images/base/dotnet: {}
 
+  images/base/dotnet8: {}
+
   images/base/java: {}
 
   images/base/linux: {}

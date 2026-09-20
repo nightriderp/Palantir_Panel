@@ -27,6 +27,7 @@ Härtung des Agents braucht (Pflichtenheft §2.3), und nichts, was nur ein Spiel
 | `base/steam`    | SteamCMD samt 32-Bit-Bibliotheken — mit Abstand die größte Gruppe                                 | vorhanden |
 | `base/dotnet`   | .NET 10 — Vintage Story, andere .NET-Server                                                       | vorhanden |
 | `base/proton`   | Windows-Server unter Proton (samt Xvfb) — Enshrouded, V Rising, Sons of the Forest                | vorhanden |
+| `base/dotnet8`  | .NET 8 — tModLoader; verlangt ausdruecklich 8.0 und rollt nicht auf 10 vor                        | vorhanden |
 | `base/proton10` | Dieselbe Umgebung mit GE-Proton 10 — ARK: Survival Ascended haengt unter 11                       | vorhanden |
 
 **Die Wurzel ist `base/linux`.** Seit dem 10. September 2026 setzen die Laufzeit-Basen darauf
