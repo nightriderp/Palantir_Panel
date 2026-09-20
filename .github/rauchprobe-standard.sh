@@ -105,12 +105,34 @@ else
 fi
 
 # --- Werkzeuge, auf die Startskripte bauen ---------------------------------
+#
+# **Pflicht ist allein `curl`.** Es steckt seit der ersten Fassung in
+# `base/linux`, und jedes Startskript holt damit seine Serverdateien.
+#
+# `unzip` kam mit Fassung 2, `xz` mit Fassung 3. Ein Basis-Image zeigt per
+# `FROM` auf eine feste Fassung der Wurzel und zieht nicht von selbst nach
+# (images/README.md) – `base/java` steht auf `base-linux:1`, `base/steam` auf
+# `:2`, `base/dotnet` auf `:3`. Die beiden zur Pflicht zu machen hieße, Images
+# für ihre Ahnenreihe zu bestrafen.
+#
+# Genau daran ist der erste Lauf dieser Probe gescheitert: `base/proton` steht
+# über `base/steam` auf `base-linux:2` und hat deshalb kein `xz` – völlig zu
+# Recht, denn es packt nichts aus. Gemeldet wird jetzt, was da ist; wer ein
+# Werkzeug wirklich braucht, prüft es in der eigenen `rauchprobe.sh` seines
+# Images.
+vorhanden=''
+
 for werkzeug in curl unzip xz; do
-  if ! command -v "${werkzeug}" >/dev/null 2>&1; then
-    scheitert "${werkzeug} fehlt – base/linux bringt es mit, hier ist es weg."
+  if command -v "${werkzeug}" >/dev/null 2>&1; then
+    vorhanden="${vorhanden}${vorhanden:+, }${werkzeug}"
   fi
 done
-melde "curl, unzip, xz sind da"
+
+if ! command -v curl >/dev/null 2>&1; then
+  scheitert "curl fehlt - ohne es holt kein Startskript seine Serverdateien."
+else
+  melde "Werkzeuge: ${vorhanden}"
+fi
 
 # --- Der Einstiegspunkt eines Spiel-Images ---------------------------------
 # Basis-Images haben bewusst keinen (images/README.md). Ein Spiel-Image hat
