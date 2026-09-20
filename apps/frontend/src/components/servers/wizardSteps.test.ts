@@ -1,4 +1,5 @@
 import {
+  type GameConfigField,
   type HostNodeDto,
   type ResourceKind,
   type ResourceQuotaDto,
@@ -11,6 +12,7 @@ import {
   type WizardContext,
   type WizardState,
   applyGameType,
+  applyGameVariant,
   buildGameChoices,
   buildSummaryRows,
   findGameChoice,
@@ -541,5 +543,130 @@ describe('Wechsel zwischen Varianten einer Gruppe', () => {
     expect(nachNeoforge.gameType).toBe('minecraft-neoforge');
     expect(nachNeoforge.ramMb).toBe(6144);
     expect(nachNeoforge.diskMb).toBe(15360);
+  });
+});
+
+/**
+ * Wechsel der Variante im Schritt „Optionen" (Betreiber-Wunsch 20.09.2026).
+ *
+ * Der Unterschied zu `applyGameType` ist der Grund, warum die Wahl dort stehen
+ * darf: Sie steht neben den Feldern, die sie sonst überschriebe.
+ */
+describe('applyGameVariant', () => {
+  /** Ein Config-Feld, wie der Spieltyp es liefert – nur die Angaben, die zaehlen. */
+  function configField(
+    overrides: Partial<GameConfigField> & Pick<GameConfigField, 'key' | 'defaultValue'>,
+  ): GameConfigField {
+    return {
+      label: overrides.key,
+      type: 'text',
+      description: null,
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+      ...overrides,
+    };
+  }
+
+  const paper = gameType({
+    id: 'minecraft-paper',
+    variantGroup: 'Minecraft',
+    variantLabel: 'Paper',
+    resourceDefaults: { ramMb: 2048, diskMb: 10240 },
+    configFields: [
+      configField({ key: 'maxPlayers', type: 'number', defaultValue: 20 }),
+      configField({ key: 'motd', defaultValue: 'Ein Palantir-Server' }),
+    ],
+  });
+  const neoforge = gameType({
+    id: 'minecraft-neoforge',
+    variantGroup: 'Minecraft',
+    variantLabel: 'NeoForge',
+    resourceDefaults: { ramMb: 6144, diskMb: 15360 },
+    configFields: [
+      configField({ key: 'maxPlayers', type: 'number', defaultValue: 20 }),
+      configField({ key: 'motd', defaultValue: 'Ein Palantir-Server' }),
+    ],
+  });
+
+  it('zieht den Ressourcen-Vorschlag nach, solange niemand ihn angefasst hat', () => {
+    const nachPaper = applyGameType(INITIAL_WIZARD_STATE, paper);
+    const nachNeoforge = applyGameVariant(nachPaper, neoforge);
+
+    expect(nachPaper.ramMb).toBe(2048);
+    expect(nachNeoforge.gameType).toBe('minecraft-neoforge');
+    expect(nachNeoforge.ramMb).toBe(6144);
+    expect(nachNeoforge.diskMb).toBe(15360);
+  });
+
+  it('lässt selbst eingestellte Ressourcen in Ruhe', () => {
+    // Sonst hätte ein Wechsel auf NeoForge stillschweigend 8 GiB auf 6 GiB
+    // gesetzt - genau der Grund, warum die Wahl vorher im Schritt „Spiel" stand.
+    const eigen = {
+      ...applyGameType(INITIAL_WIZARD_STATE, paper),
+      ramMb: 8192,
+      diskMb: 40960,
+      ressourcenAngefasst: true,
+    };
+
+    const nachher = applyGameVariant(eigen, neoforge);
+
+    expect(nachher.ramMb).toBe(8192);
+    expect(nachher.diskMb).toBe(40960);
+  });
+
+  it('behält eingetippte Konfigurationswerte, die es weiter gibt', () => {
+    const mitEingabe = {
+      ...applyGameType(INITIAL_WIZARD_STATE, paper),
+      config: { maxPlayers: 60, motd: 'Unsere Runde' },
+    };
+
+    const nachher = applyGameVariant(mitEingabe, neoforge);
+
+    expect(nachher.config).toEqual({ maxPlayers: 60, motd: 'Unsere Runde' });
+  });
+
+  it('füllt ein Feld, das es nur bei der neuen Variante gibt, mit dessen Vorgabe', () => {
+    const mitExtra = gameType({
+      id: 'minecraft-extra',
+      configFields: [
+        configField({ key: 'maxPlayers', type: 'number', defaultValue: 20 }),
+        configField({ key: 'motd', defaultValue: 'Ein Palantir-Server' }),
+        configField({ key: 'seed', defaultValue: '' }),
+      ],
+    });
+
+    const nachher = applyGameVariant(
+      { ...applyGameType(INITIAL_WIZARD_STATE, paper), config: { maxPlayers: 60 } },
+      mitExtra,
+    );
+
+    expect(nachher.config).toEqual({ maxPlayers: 60, motd: 'Ein Palantir-Server', seed: '' });
+  });
+
+  it('lässt die gewählte Spielversion fallen', () => {
+    // Jede Ausgabe hat ihren eigenen Katalog; eine Version stehenzulassen, die
+    // der neue vielleicht nicht führt, endete beim Anlegen in „nicht (mehr) zu
+    // finden".
+    const mitVersion = { ...applyGameType(INITIAL_WIZARD_STATE, paper), gameVersion: '26.2' };
+
+    expect(applyGameVariant(mitVersion, neoforge).gameVersion).toBeNull();
+  });
+
+  it('ist bei einem anderen Spiel ein Neuanfang - applyGameType setzt alles zurück', () => {
+    const eigen = {
+      ...applyGameType(INITIAL_WIZARD_STATE, paper),
+      ramMb: 8192,
+      ressourcenAngefasst: true,
+      gameVersion: '26.2',
+    };
+
+    const nachher = applyGameType(eigen, gameType({ id: 'valheim' }));
+
+    expect(nachher.ramMb).toBe(2048);
+    expect(nachher.ressourcenAngefasst).toBe(false);
+    expect(nachher.gameVersion).toBeNull();
   });
 });
