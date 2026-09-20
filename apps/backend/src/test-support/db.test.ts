@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { FREIGABE_VARIABLE, istVerbindungsabbruch, pruefeFreigabe } from './db.js';
 
@@ -67,6 +70,50 @@ describe('pruefeFreigabe', () => {
     const frei = pruefeFreigabe({ DATABASE_URL: 'postgres://x/y', [FREIGABE_VARIABLE]: '1' });
 
     expect(frei.aktiv && frei.url).toBe('postgres://x/y');
+  });
+
+  it('nimmt die Verbindung aus der zentralen .env, wenn die Umgebung keine traegt', () => {
+    const datei = path.join(mkdtempSync(path.join(tmpdir(), 'palantir-env-')), '.env');
+
+    writeFileSync(datei, 'DATABASE_URL=postgres://aus-der-datei/x\nANDERES=egal\n', 'utf8');
+
+    /*
+     * Fundpunkt 299: Der Harness liest bewusst nur `process.env`. Stand die
+     * Verbindung allein in der `.env`, entschied die Dateireihenfolge - hatte
+     * im selben Worker vorher eine Datei Backend-Code importiert, war sie
+     * durch dotenv gesetzt und die Suite lief; sonst nicht. Gemessen am
+     * 14.09.2026: zwei von elf Dateien liefen.
+     *
+     * Der Testlauf hier hat eine `.env` im Repo-Wurzelverzeichnis (sonst
+     * liefe kein Backend-Test lokal), und genau die soll jetzt zaehlen.
+     */
+    const ergebnis = pruefeFreigabe({ [FREIGABE_VARIABLE]: '1' }, datei);
+
+    expect(ergebnis.aktiv && ergebnis.url).toBe('postgres://aus-der-datei/x');
+  });
+
+  it('bleibt still, wenn es gar keine .env gibt und die Freigabe fehlt', () => {
+    // Auf einem Rechner ohne Postgres soll `pnpm test` gruen bleiben.
+    const ergebnis = pruefeFreigabe({}, path.join(tmpdir(), 'gibt-es-nicht', '.env'));
+
+    expect(ergebnis.aktiv).toBe(false);
+  });
+
+  it('laesst der Umgebung den Vorrang vor der Datei', () => {
+    // Wer die Variable im Aufruf mitgibt, meint sie auch.
+    const datei = path.join(mkdtempSync(path.join(tmpdir(), 'palantir-env-')), '.env');
+
+    writeFileSync(datei, 'DATABASE_URL=postgres://aus-der-datei/x\n', 'utf8');
+
+    const ergebnis = pruefeFreigabe(
+      {
+        [FREIGABE_VARIABLE]: '1',
+        DATABASE_URL: 'postgres://vorrang/hier',
+      },
+      datei,
+    );
+
+    expect(ergebnis.aktiv && ergebnis.url).toBe('postgres://vorrang/hier');
   });
 
   it('nennt bei jeder Ablehnung einen Grund', () => {

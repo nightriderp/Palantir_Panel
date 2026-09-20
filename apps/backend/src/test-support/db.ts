@@ -65,8 +65,10 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'dotenv';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
@@ -102,6 +104,44 @@ export type RohZeile = Record<string, unknown>;
 /** Führt eine Anweisung aus und liefert die Zeilen. */
 export type Ausfuehren = (sql: string, werte?: readonly unknown[]) => Promise<RohZeile[]>;
 
+/**
+ * `DATABASE_URL` aus der zentralen `.env` lesen – ohne sie in die Umgebung zu
+ * schreiben (Fundpunkt 299).
+ *
+ * **Warum das nötig ist.** Der Harness liest bewusst `process.env` und lädt
+ * nicht `config/env.ts`: Das würde beim bloßen Laden einer Testdatei die ganze
+ * `.env` in die Umgebung schieben und die Testläufe voneinander abhängig
+ * machen. Nur stand die Verbindung damit auch dann nicht bereit, wenn sie in
+ * der `.env` steht – **es sei denn**, im selben Worker lief vorher zufällig
+ * eine Datei, die Backend-Code importiert und dabei dotenv angestoßen hat.
+ *
+ * Gemessen am 14.09.2026: `PALANTIR_TEST_DB=1 pnpm --filter @palantir/backend
+ * test` ließ zwei von elf Datenbank-Dateien laufen und neun nicht – je
+ * nachdem, in welcher Reihenfolge der Worker sie abarbeitete.
+ *
+ * Gelesen wird deshalb die Datei selbst, und nur dieser eine Wert. `parse()`
+ * schreibt nichts in `process.env`; die Entscheidung hängt damit an der
+ * Konfiguration und nicht mehr an der Dateireihenfolge. Eine Variable in der
+ * Umgebung hat weiterhin Vorrang – wer sie im Aufruf mitgibt, meint sie auch.
+ */
+function urlAusZentralerEnv(datei: string = zentraleEnvDatei()): string | undefined {
+  try {
+    return parse(readFileSync(datei, 'utf8')).DATABASE_URL;
+  } catch {
+    // Keine `.env` (CI, frisches Auschecken, Arbeitsordner): Dann zählt
+    // allein die Umgebung.
+    return undefined;
+  }
+}
+
+/** Pfad der zentralen `.env` – dieselbe Datei, die auch `config/env.ts` liest. */
+function zentraleEnvDatei(): string {
+  return path.join(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..'),
+    '.env',
+  );
+}
+
 /** Ergebnis der Freigabeprüfung. */
 export type Freigabe =
   | { readonly aktiv: true; readonly url: string }
@@ -113,8 +153,11 @@ export type Freigabe =
  * Exportiert, damit einzelne Tests dieselbe Entscheidung treffen können, ohne
  * die Bedingungen ein zweites Mal zu formulieren.
  */
-export function pruefeFreigabe(umgebung: NodeJS.ProcessEnv = process.env): Freigabe {
-  const url = umgebung.DATABASE_URL?.trim();
+export function pruefeFreigabe(
+  umgebung: NodeJS.ProcessEnv = process.env,
+  envDatei?: string,
+): Freigabe {
+  const url = (umgebung.DATABASE_URL ?? urlAusZentralerEnv(envDatei))?.trim();
   const freigegeben = umgebung[FREIGABE_VARIABLE] === '1';
 
   if (!freigegeben) {
