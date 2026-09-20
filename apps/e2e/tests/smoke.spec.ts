@@ -133,3 +133,85 @@ test('Anmelden, Server anlegen und starten', async ({ page }, testInfo) => {
   // zeigt „Startet …". Ob das Spiel dann antwortet, kann die Attrappe nicht.
   await expect(page.getByText(/Startet …|Online/).first()).toBeVisible();
 });
+
+/**
+ * Was die Oberfläche über einen Server sagt (Betreiber-Meldungen 19./20.09.2026).
+ *
+ * Drei Angaben sind an einem Tag mehrfach verrutscht: die Fassung des Images,
+ * der Besitzer und die Reihenfolge der Seitenleiste. Jede einzelne ist eine
+ * Zeile Code – und genau deshalb fällt es niemandem auf, wenn eine davon
+ * wieder verschwindet. Hier stehen sie als Erwartung.
+ */
+test('zeigt Version und Besitzer dort, wo sie hingehören', async ({ page }, testInfo) => {
+  const kennung = `${Date.now().toString(36)}${testInfo.project.name === 'mobil' ? 'm' : 'd'}f`;
+  const servername = `E2E Fassung ${kennung}`;
+
+  await alsOwnerAnmelden(page);
+
+  await page.goto('/servers/neu');
+
+  // In der Auswahl trägt jede Kachel die angebotene Fassung.
+  const kachel = page.getByRole('button', { name: /^Terraria/ });
+
+  await expect(kachel).toContainText(/v\d+\.\d+\.\d+/);
+
+  await kachel.click();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByLabel('Servername').fill(servername);
+  await page.getByLabel('Adresse').fill(`e2e-${kennung}`);
+  await page.getByLabel('Node').selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('button', { name: 'Server erstellen' }).click();
+  await expect(page).toHaveURL(/\/servers\/[0-9a-f-]{36}$/);
+
+  /*
+   * Die Fassung steht erst, wenn der Container existiert - vorher hat der
+   * Server keine Image-Adresse, aus der sie sich lesen liesse. Der aktive
+   * Starten-Knopf ist das Zeichen dafuer, dass die Attrappe fertig ist.
+   */
+  await expect(page.getByRole('button', { name: 'Starten' })).toBeEnabled();
+
+  /*
+   * Im Detailkopf stehen die Betriebsangaben als Chips unter dem Namen -
+   * nicht mehr als zweite Textzeile, die auf schmalen Fenstern umbrach.
+   */
+  await expect(page.getByText(/^Node:/)).toBeVisible();
+  await expect(page.getByText(/^Version:/)).toContainText(/v\d+\.\d+\.\d+/);
+});
+
+test('führt die Seitenleiste in der vereinbarten Reihenfolge', async ({ page }, testInfo) => {
+  // Nur einmal prüfen: Auf dem Telefon liegt die Navigation hinter einem
+  // Umschalter, und die Reihenfolge ist dieselbe Liste.
+  test.skip(testInfo.project.name === 'mobil', 'Die Navigation steckt hier hinter dem Menü.');
+
+  await alsOwnerAnmelden(page);
+  await page.goto('/servers');
+
+  const eintraege = page.getByRole('navigation').getByRole('link');
+  const beschriftungen = (await eintraege.allInnerTexts()).map((text) =>
+    text.split('\n')[0]?.trim(),
+  );
+
+  // Erst die Server, dann das Eigene, dann die beiden Posteingänge.
+  const erwartet = [
+    'Übersicht',
+    'Server erstellen',
+    'Meine Backups',
+    'Skins',
+    'Nachrichten',
+    'Benachrichtigungen',
+    'Arcade',
+    'Nodes',
+  ];
+
+  /*
+   * Geprüft wird die Reihenfolge, nicht die Vollständigkeit: Zwei Einträge
+   * hängen an Rechten (`Server erstellen`, `Nodes`) und fehlen einem Konto
+   * ohne sie. Die sichtbaren müssen aber in dieser Folge stehen.
+   */
+  const sichtbar = beschriftungen.filter((text) => text !== undefined && erwartet.includes(text));
+
+  expect(sichtbar).toEqual(erwartet.filter((text) => sichtbar.includes(text)));
+  expect(sichtbar.length).toBeGreaterThanOrEqual(6);
+});
