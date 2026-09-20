@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * Wählbare Spielversionen (Betreiber-Wunsch vom 19.09.2026).
  *
@@ -25,11 +27,28 @@
  * der den Spieltyp kennt.
  */
 
-export interface GameVersionQuelle {
+/**
+ * Was die Auswahlliste braucht – und nur das.
+ *
+ * Getrennt von {@link GameVersionQuelle}, seit Fabric dazugekommen ist: Dort
+ * gibt es die Prüfsumme erst, wenn jemand die Datei geholt und gerechnet hat
+ * (siehe {@link createFabricVersionCatalogue}). Eine Liste von zwanzig
+ * Einträgen hätte zwanzig Downloads gekostet, nur damit jemand ein Aufklappmenü
+ * ansieht. Die Anzeige braucht die Summe nicht; das Anlegen braucht sie.
+ */
+/** SHA-256 als Hex – dasselbe, was `sha256sum` auf der Kommandozeile liefert. */
+function sha256Hex(daten: ArrayBuffer): string {
+  return createHash('sha256').update(Buffer.from(daten)).digest('hex');
+}
+
+export interface GameVersionEintrag {
   /** Kennung beim Hersteller, z. B. `26.3`. */
   readonly id: string;
   readonly releasedAt: string | null;
   readonly latest: boolean;
+}
+
+export interface GameVersionQuelle extends GameVersionEintrag {
   /** Adresse der Serverdatei. */
   readonly url: string;
   /** Prüfsumme der Serverdatei. */
@@ -50,9 +69,22 @@ export interface GameVersionQuelle {
   readonly loaderVersion?: string;
 }
 
+/**
+ * Ein Katalog, dessen Liste die Adressen schon mitbringt.
+ *
+ * Das trifft auf alle zu ausser Fabric: Mojang, Paper und NeoForge nennen die
+ * Pruefsumme in derselben Antwort, aus der die Liste entsteht. Wer einen
+ * solchen Katalog direkt in der Hand hat, kommt an Adresse und Summe auch
+ * ueber `list()` - die Schnittstelle darunter verspricht das nicht, weil
+ * Fabric es nicht halten kann.
+ */
+export interface GameVersionKatalogMitQuellen extends GameVersionCatalogue {
+  list(gameTypeId: string): Promise<readonly GameVersionQuelle[]>;
+}
+
 export interface GameVersionCatalogue {
   /** Alle wählbaren Versionen, neueste zuerst. */
-  list(gameTypeId: string): Promise<readonly GameVersionQuelle[]>;
+  list(gameTypeId: string): Promise<readonly GameVersionEintrag[]>;
   /** Eine Version auflösen; `null`, wenn der Hersteller sie nicht kennt. */
   resolve(gameTypeId: string, versionId: string): Promise<GameVersionQuelle | null>;
 }
@@ -114,6 +146,21 @@ function erstelleLeser(options: KatalogGrundOptionen) {
       }
     },
 
+    /** Rohe Bytes – für Dateien, deren Prüfsumme niemand nennt (Fabric). */
+    async bytes(url: string): Promise<ArrayBuffer | null> {
+      const antwort = await leseRoh(url);
+
+      if (antwort === null) {
+        return null;
+      }
+
+      try {
+        return await antwort.arrayBuffer();
+      } catch {
+        return null;
+      }
+    },
+
     async text(url: string): Promise<string | null> {
       const antwort = await leseRoh(url);
 
@@ -141,7 +188,7 @@ function erstelleKatalog(spec: {
   readonly gameTypeIds: ReadonlySet<string>;
   readonly laden: () => Promise<GameVersionQuelle[]>;
   readonly now: () => number;
-}): GameVersionCatalogue {
+}): GameVersionKatalogMitQuellen {
   let zwischenspeicher: { readonly bis: number; readonly eintraege: GameVersionQuelle[] } | null =
     null;
 
@@ -248,7 +295,7 @@ const MOJANG_GAME_TYPES = new Set(['minecraft-vanilla']);
 
 export function createMojangVersionCatalogue(
   options: MojangCatalogueOptions = {},
-): GameVersionCatalogue {
+): GameVersionKatalogMitQuellen {
   const manifestUrl = options.manifestUrl ?? MOJANG_MANIFEST_URL;
   const leser = erstelleLeser(options);
 
@@ -362,7 +409,7 @@ function istVorab(version: string): boolean {
  */
 export function createPaperVersionCatalogue(
   options: PaperCatalogueOptions = {},
-): GameVersionCatalogue {
+): GameVersionKatalogMitQuellen {
   const projektUrl = options.projectUrl ?? PAPER_PROJECT_URL;
   const leser = erstelleLeser(options);
 
@@ -494,7 +541,7 @@ interface NeoforgeBau {
  */
 export function createNeoforgeVersionCatalogue(
   options: NeoforgeCatalogueOptions = {},
-): GameVersionCatalogue {
+): GameVersionKatalogMitQuellen {
   const mavenUrl = options.mavenUrl ?? NEOFORGE_MAVEN_URL;
   const leser = erstelleLeser(options);
 
@@ -602,4 +649,155 @@ function vergleicheVersionen(links: string, rechts: string): number {
   }
 
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// FabricMC – Minecraft (Fabric)
+// ---------------------------------------------------------------------------
+
+interface FabricSpielversion {
+  readonly version?: string;
+  readonly stable?: boolean;
+}
+
+interface FabricLoader {
+  readonly version?: string;
+  readonly stable?: boolean;
+}
+
+interface FabricInstaller {
+  readonly version?: string;
+  readonly stable?: boolean;
+}
+
+export interface FabricCatalogueOptions extends KatalogGrundOptionen {
+  /** Wurzel der Meta-Schnittstelle; in Tests eine Attrappe. */
+  readonly metaUrl?: string;
+  /** Rechnet die Prüfsumme einer geholten Datei; in Tests eine Attrappe. */
+  readonly digest?: (daten: ArrayBuffer) => string;
+}
+
+const FABRIC_META_URL = 'https://meta.fabricmc.net/v2';
+
+const FABRIC_GAME_TYPES = new Set(['minecraft-fabric']);
+
+/**
+ * Fabric nennt keine Prüfsumme – also rechnen wir sie.
+ *
+ * **Warum das überhaupt geht.** Die Starter-Jar entsteht auf Anfrage aus drei
+ * Fassungen – Spiel, Loader, Installationsprogramm – und ist für dasselbe
+ * Tripel byteweise dieselbe Datei. Nachgemessen am 2026-09-20: zweimal geholt,
+ * zweimal `f1d2bafd…`, und genau diese Summe pinnt das Dockerfile des
+ * Minecraft-Images seit Fassung 6 von Hand. Was dort ein Mensch einmal tut,
+ * tut hier der Katalog.
+ *
+ * **Was das nicht leistet, und das ist der ehrliche Unterschied zu den anderen
+ * drei Katalogen:** Bei Mojang, Paper und NeoForge kommt die Summe vom
+ * Hersteller; sie bestätigt, dass die geholte Datei die gemeinte ist. Hier
+ * kommt sie von uns und bestätigt nur, dass spätere Starts dieselbe Datei
+ * bekommen wie die Wahl. Wäre Fabric im Moment der Wahl unterwandert, fiele
+ * das nicht auf. Der Schutz gilt ab der Wahl, nicht davor – und das ist immer
+ * noch mehr als gar keine Summe, mit der das Image gar nichts verwerfen könnte.
+ *
+ * **Gerechnet wird erst bei der Wahl.** Die Liste kostet einen Abruf; die
+ * Summe kostet 178 KiB. Zwanzig Einträge zu hashen, nur damit jemand ein
+ * Aufklappmenü ansieht, wäre der falsche Tausch – deshalb liefert `list()` nur
+ * {@link GameVersionEintrag}.
+ */
+export function createFabricVersionCatalogue(
+  options: FabricCatalogueOptions = {},
+): GameVersionCatalogue {
+  const metaUrl = options.metaUrl ?? FABRIC_META_URL;
+  const leser = erstelleLeser(options);
+  const jetzt = options.now ?? ((): number => Date.now());
+  const digest = options.digest ?? sha256Hex;
+
+  const liste = erstelleKatalog({
+    gameTypeIds: FABRIC_GAME_TYPES,
+    now: jetzt,
+    async laden() {
+      const spiele = await leser.json<readonly FabricSpielversion[]>(`${metaUrl}/versions/game`);
+
+      if (!Array.isArray(spiele)) {
+        return [];
+      }
+
+      /*
+       * `stable` sagt Fabric selbst – anders als bei Paper und NeoForge muss
+       * das nicht am Namen abgelesen werden. Die Liste steht neueste zuerst.
+       */
+      return spiele
+        .filter(
+          (eintrag): eintrag is { version: string; stable: true } =>
+            eintrag.stable === true && typeof eintrag.version === 'string',
+        )
+        .slice(0, MAX_VERSIONS)
+        .map((eintrag, index) => ({
+          id: eintrag.version,
+          // Die Schnittstelle nennt kein Datum; das Panel zeigt dann keins.
+          releasedAt: null,
+          latest: index === 0,
+          // Ohne Adresse und Summe: Beides entsteht erst in `resolve`.
+          url: '',
+          hash: '',
+          hashAlgorithm: 'sha256' as const,
+        }));
+    },
+  });
+
+  /** Neueste stabile Fassung aus einer Fabric-Liste. */
+  async function neuesteStabile(pfad: string): Promise<string | null> {
+    const eintraege = await leser.json<readonly (FabricLoader | FabricInstaller)[]>(
+      `${metaUrl}/versions/${pfad}`,
+    );
+
+    if (!Array.isArray(eintraege)) {
+      return null;
+    }
+
+    const treffer = eintraege.find(
+      (eintrag) => eintrag.stable === true && typeof eintrag.version === 'string',
+    );
+
+    return treffer?.version ?? null;
+  }
+
+  return {
+    list: liste.list,
+
+    async resolve(gameTypeId, versionId) {
+      const bekannt = await liste.resolve(gameTypeId, versionId);
+
+      if (bekannt === null) {
+        return null;
+      }
+
+      const loader = await neuesteStabile('loader');
+      const installer = await neuesteStabile('installer');
+
+      if (loader === null || installer === null) {
+        return null;
+      }
+
+      const url =
+        `${metaUrl}/versions/loader/${encodeURIComponent(versionId)}` +
+        `/${encodeURIComponent(loader)}/${encodeURIComponent(installer)}/server/jar`;
+
+      const daten = await leser.bytes(url);
+
+      if (daten === null) {
+        return null;
+      }
+
+      return {
+        id: bekannt.id,
+        releasedAt: bekannt.releasedAt,
+        latest: bekannt.latest,
+        url,
+        hash: digest(daten),
+        hashAlgorithm: 'sha256',
+        loaderVersion: loader,
+      };
+    },
+  };
 }

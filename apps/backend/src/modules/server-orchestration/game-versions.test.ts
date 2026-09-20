@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_VERSIONS,
   VERSION_CACHE_TTL_MS,
+  createFabricVersionCatalogue,
   createMojangVersionCatalogue,
   createNeoforgeVersionCatalogue,
   createPaperVersionCatalogue,
@@ -565,5 +566,170 @@ describe('createVersionCatalogueGroup', () => {
 
     expect((await gruppe.resolve('minecraft-paper', '26.3'))?.hashAlgorithm).toBe('sha256');
     expect((await gruppe.resolve('minecraft-vanilla', '26.2'))?.hashAlgorithm).toBe('sha1');
+  });
+});
+
+/**
+ * FabricMC nennt keine Prüfsumme – der Katalog rechnet sie.
+ *
+ * Die Attrappe bildet die drei Listen nach (`game`, `loader`, `installer`) und
+ * liefert unter der zusammengesetzten Adresse eine Datei. Geprüft wird, dass
+ * die Liste **keinen** Abruf der Datei auslöst und die Wahl genau einen.
+ */
+
+const FABRIC_URL = 'https://fabric.invalid/v2';
+
+function fabricAttrappe(
+  spiele: readonly { version: string; stable: boolean }[],
+  options: { readonly ohneDatei?: boolean; readonly inhalt?: string } = {},
+) {
+  const abrufe: string[] = [];
+
+  const fetchImpl = (async (eingabe: string | URL | Request) => {
+    const url = String(eingabe);
+    abrufe.push(url);
+
+    if (url === `${FABRIC_URL}/versions/game`) {
+      return new Response(JSON.stringify(spiele), { status: 200 });
+    }
+
+    if (url === `${FABRIC_URL}/versions/loader`) {
+      return new Response(
+        JSON.stringify([
+          { version: '0.19.6', stable: false },
+          { version: '0.19.5', stable: true },
+        ]),
+        { status: 200 },
+      );
+    }
+
+    if (url === `${FABRIC_URL}/versions/installer`) {
+      return new Response(
+        JSON.stringify([
+          { version: '1.1.3', stable: false },
+          { version: '1.1.2', stable: true },
+        ]),
+        { status: 200 },
+      );
+    }
+
+    if (url.endsWith('/server/jar')) {
+      return options.ohneDatei === true
+        ? new Response('weg', { status: 503 })
+        : new Response(options.inhalt ?? 'eine Starter-Jar', { status: 200 });
+    }
+
+    return new Response('nein', { status: 404 });
+  }) as typeof fetch;
+
+  return { abrufe, fetchImpl };
+}
+
+const STABIL = [
+  { version: '26.3', stable: true },
+  { version: '26.3-rc-3', stable: false },
+  { version: '26.2', stable: true },
+];
+
+describe('createFabricVersionCatalogue', () => {
+  it('nimmt nur, was Fabric selbst stabil nennt', async () => {
+    // Anders als bei Paper und NeoForge muss das nicht am Namen abgelesen
+    // werden - die Schnittstelle sagt es.
+    const { fetchImpl } = fabricAttrappe(STABIL);
+    const katalog = createFabricVersionCatalogue({ metaUrl: FABRIC_URL, fetchImpl });
+
+    const liste = await katalog.list('minecraft-fabric');
+
+    expect(liste.map((eintrag) => eintrag.id)).toEqual(['26.3', '26.2']);
+    expect(liste[0]?.latest).toBe(true);
+  });
+
+  it('holt für die Liste keine einzige Datei', async () => {
+    // Der Grund, warum `list()` nur GameVersionEintrag liefert: Zwanzig
+    // Einträge zu hashen, nur damit jemand ein Aufklappmenü ansieht, wäre der
+    // falsche Tausch.
+    const { abrufe, fetchImpl } = fabricAttrappe(STABIL);
+    const katalog = createFabricVersionCatalogue({ metaUrl: FABRIC_URL, fetchImpl });
+
+    await katalog.list('minecraft-fabric');
+
+    expect(abrufe).toEqual([`${FABRIC_URL}/versions/game`]);
+  });
+
+  it('setzt bei der Wahl die Adresse aus drei Fassungen zusammen', async () => {
+    const { fetchImpl } = fabricAttrappe(STABIL);
+    const katalog = createFabricVersionCatalogue({ metaUrl: FABRIC_URL, fetchImpl });
+
+    const quelle = await katalog.resolve('minecraft-fabric', '26.2');
+
+    expect(quelle?.url).toBe(`${FABRIC_URL}/versions/loader/26.2/0.19.5/1.1.2/server/jar`);
+    expect(quelle?.loaderVersion).toBe('0.19.5');
+  });
+
+  it('nimmt den neuesten stabilen Loader, nicht den neuesten überhaupt', async () => {
+    // `0.19.6` steht in der Attrappe davor, ist aber nicht stabil.
+    const { fetchImpl } = fabricAttrappe(STABIL);
+    const katalog = createFabricVersionCatalogue({ metaUrl: FABRIC_URL, fetchImpl });
+
+    expect((await katalog.resolve('minecraft-fabric', '26.2'))?.loaderVersion).toBe('0.19.5');
+  });
+
+  it('rechnet die Prüfsumme über die geholte Datei', async () => {
+    const { fetchImpl } = fabricAttrappe(STABIL, { inhalt: 'genau diese Bytes' });
+    const katalog = createFabricVersionCatalogue({
+      metaUrl: FABRIC_URL,
+      fetchImpl,
+      digest: (daten) => `gerechnet:${String(new Uint8Array(daten).byteLength)}`,
+    });
+
+    const quelle = await katalog.resolve('minecraft-fabric', '26.2');
+
+    expect(quelle?.hash).toBe(`gerechnet:${String('genau diese Bytes'.length)}`);
+    expect(quelle?.hashAlgorithm).toBe('sha256');
+  });
+
+  it('gibt null, wenn die Datei nicht zu holen ist', async () => {
+    // Ohne Datei keine Summe, ohne Summe keine Quelle: Das Anlegen soll
+    // scheitern, statt einen Server mit ungeprüfter Adresse zu erzeugen.
+    const { fetchImpl } = fabricAttrappe(STABIL, { ohneDatei: true });
+    const katalog = createFabricVersionCatalogue({ metaUrl: FABRIC_URL, fetchImpl });
+
+    expect(await katalog.resolve('minecraft-fabric', '26.2')).toBeNull();
+  });
+
+  it('kennt eine Version nicht, die nicht in der Liste steht', async () => {
+    const { fetchImpl } = fabricAttrappe(STABIL);
+    const katalog = createFabricVersionCatalogue({ metaUrl: FABRIC_URL, fetchImpl });
+
+    expect(await katalog.resolve('minecraft-fabric', '1.7.10')).toBeNull();
+  });
+
+  it('antwortet auf fremde Spieltypen leer, ohne einen Abruf', async () => {
+    const { abrufe, fetchImpl } = fabricAttrappe(STABIL);
+    const katalog = createFabricVersionCatalogue({ metaUrl: FABRIC_URL, fetchImpl });
+
+    expect(await katalog.list('minecraft-paper')).toEqual([]);
+    expect(await katalog.resolve('minecraft-paper', '26.2')).toBeNull();
+    expect(abrufe).toEqual([]);
+  });
+
+  it('holt die Liste nur einmal je Frist', async () => {
+    let uhr = 1_000;
+    const { abrufe, fetchImpl } = fabricAttrappe(STABIL);
+    const katalog = createFabricVersionCatalogue({
+      metaUrl: FABRIC_URL,
+      fetchImpl,
+      now: () => uhr,
+    });
+
+    await katalog.list('minecraft-fabric');
+    await katalog.list('minecraft-fabric');
+
+    expect(abrufe).toHaveLength(1);
+
+    uhr += VERSION_CACHE_TTL_MS + 1;
+    await katalog.list('minecraft-fabric');
+
+    expect(abrufe).toHaveLength(2);
   });
 });
