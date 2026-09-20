@@ -122,7 +122,7 @@ export const deleteCommandPayloadSchema = z.object({
  * `UPDATE_RESOURCES` – die Grenzen eines bestehenden Containers ändern.
  *
  * Dasselbe Grenzen-Schema wie beim Anlegen: Es sind dieselben Werte, nur zu
- * einem späteren Zeitpunkt. Eine eigene, lockerere Fassung hier würde bedeuten,
+ * einem späteren Zeitpunkt. Eine eigene, lockerere Version hier würde bedeuten,
  * dass ein Container nachträglich Werte annehmen kann, mit denen er nie hätte
  * angelegt werden dürfen.
  */

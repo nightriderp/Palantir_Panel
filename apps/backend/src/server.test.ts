@@ -28,7 +28,7 @@ describe('Backend-Grundgerüst', () => {
    * 11 erlaubt in der Vorgabe nur `GET,HEAD,POST`; nach dem Sprung darauf
    * scheiterte jeder PUT, PATCH und DELETE aus dem Browser, ohne dass der
    * Server je eine fehlgeschlagene Anfrage sah. Dieser Test hält die Liste
-   * fest, damit die nächste Fassung des Plugins nicht wieder still etwas
+   * fest, damit die nächste Version des Plugins nicht wieder still etwas
    * herausnimmt.
    */
   it.each(['PUT', 'PATCH', 'DELETE', 'POST'])(

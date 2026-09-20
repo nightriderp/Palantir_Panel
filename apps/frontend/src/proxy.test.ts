@@ -325,7 +325,7 @@ describe('Middleware – Erneuerung des Zugriffs-Tokens', () => {
  *
  * Unter `src/app` liegt keine `page.tsx` mehr: Sie wurde nie gerendert, weil
  * die Sperre jede Anfrage auf `/` weiterleitet, und hielt daneben eine zweite,
- * clientseitige Fassung derselben Entscheidung vor. Damit die Löschung nicht
+ * clientseitige Version derselben Entscheidung vor. Damit die Löschung nicht
  * eines Tages einen 404 hinterlässt, hängen zwei Bedingungen daran: Der Matcher
  * muss `/` erfassen, und `gateRedirect()` muss für `/` in jedem Zustand ein Ziel
  * liefern (dort geprüft). Beides steht hier bzw. in `lib/auth/routes.test.ts`.

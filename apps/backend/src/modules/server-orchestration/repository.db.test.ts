@@ -363,7 +363,7 @@ describeDatenbank('ServerRepository gegen PostgreSQL', (kontext) => {
     expect((await repository.findHost(wartung))?.status).toBe('maintenance');
   });
 
-  it('schreibt die Agent-Fassung fort und lässt eine ältere Meldung liegen', async () => {
+  it('schreibt die Agent-Version fort und lässt eine ältere Meldung liegen', async () => {
     /*
      * Gefundener Punkt 321. Die Bedingung `agent_reported_at <= neu` steht nur
      * in SQL und kann in keiner Attrappe auffallen – deshalb hier.

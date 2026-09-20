@@ -476,7 +476,7 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   /*
    * Konsole über RCON (P2-9) statt über die Standardeingabe: So kommt die
    * Antwort eines Befehls zurück, statt irgendwo im Log zu stehen. Das Image
-   * (ab Fassung 2) schaltet RCON ein und legt bei jedem Start ein neues
+   * (ab Version 2) schaltet RCON ein und legt bei jedem Start ein neues
    * Passwort in den Datenordner; der Port wird nie veröffentlicht und ist nur
    * aus dem Spielenetz zu erreichen – dort nur vom Agent (`egress-firewall.sh`).
    */
@@ -540,8 +540,8 @@ export const MINECRAFT_VANILLA_GAME_TYPE: GameTypeDefinition = {
   variantLabel: 'Vanilla',
   /*
    * Die Serverdatei holt dieses Image ohnehin beim ersten Start; eine andere
-   * Fassung kostet nur eine andere Adresse (Betreiber-Wunsch 19.09.2026).
-   * Paper, Fabric und NeoForge bleiben vorerst bei der Fassung des Images.
+   * Version kostet nur eine andere Adresse (Betreiber-Wunsch 19.09.2026).
+   * Paper, Fabric und NeoForge bleiben vorerst bei der Version des Images.
    */
   supportsVersionChoice: true,
   /*
@@ -588,7 +588,7 @@ export const PRUEFSTAND_GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
  *
  * **Was daran neu ist**, ist nicht das Spiel, sondern woher die Serverdateien
  * kommen: Paper liegt als Jar im Image, Valheim holt SteamCMD bei jedem Start
- * in den Datenordner (`images/base/steam`). Die Fassung des Spiels hängt damit
+ * in den Datenordner (`images/base/steam`). Die Version des Spiels hängt damit
  * an Valve, nicht am Image-Tag – der Preis dafür, dass Gigabyte an Spieldaten
  * nicht in einer Registry liegen (Entscheidung des Betreibers, 2026-09-10).
  *
@@ -966,7 +966,7 @@ export const FACTORIO_GAME_TYPE: GameTypeDefinition = {
     { label: 'Spieler', command: '/players' },
     { label: 'Speichern', command: '/save' },
     { label: 'Admins', command: '/admins' },
-    { label: 'Fassung', command: '/version' },
+    { label: 'Version', command: '/version' },
   ],
   defaultEnv: {},
   ports: [
@@ -1640,17 +1640,17 @@ export const PALWORLD_GAME_TYPE: GameTypeDefinition = {
  * falschen Ordner ist der häufigste Grund, warum „der Server die Mods nicht
  * lädt".
  *
- * **Die Fassung des Loaders steht im Image**, nicht im Panel. Sie muss zur
- * Spielfassung passen und zu den Mods, die der Betreiber einsetzt – eine freie
+ * **Die Version des Loaders steht im Image**, nicht im Panel. Sie muss zur
+ * Spielversion passen und zu den Mods, die der Betreiber einsetzt – eine freie
  * Eingabe wäre eine Einladung zu einem Server, der beim Start mit einem
- * Stapelabzug endet. Wer eine andere braucht, bekommt eine neue Image-Fassung.
+ * Stapelabzug endet. Wer eine andere braucht, bekommt eine neue Image-Version.
  */
 export const MINECRAFT_FABRIC_GAME_TYPE: GameTypeDefinition = {
   ...MINECRAFT_PAPER_GAME_TYPE,
   id: 'minecraft-fabric',
   name: 'Minecraft (Fabric)',
   description:
-    'Minecraft mit dem Mod-Loader Fabric – der leichtere der beiden, mit schneller Unterstützung für neue Spielfassungen. Mods gehören in den Ordner „mods" im Datenordner.',
+    'Minecraft mit dem Mod-Loader Fabric – der leichtere der beiden, mit schneller Unterstützung für neue Spielversionen. Mods gehören in den Ordner „mods" im Datenordner.',
   defaultEnv: { MINECRAFT_EDITION: 'fabric' },
   variantLabel: 'Fabric',
   // Wie bei Vanilla ohne `tps`: Das ist ein Paper-Befehl.
@@ -2010,7 +2010,7 @@ export const ENSHROUDED_GAME_TYPE: GameTypeDefinition = {
   id: 'enshrouded',
   name: 'Enshrouded',
   description:
-    'Enshrouded-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
+    'Enshrouded-Server unter Proton – es gibt nur eine Windows-Version. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
   dockerImage: 'ghcr.io/nightriderp/palantir-game-enshrouded:3',
   defaultEnv: {},
   ports: [
@@ -2145,7 +2145,7 @@ export const VRISING_GAME_TYPE: GameTypeDefinition = {
   id: 'vrising',
   name: 'V Rising',
   description:
-    'V-Rising-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
+    'V-Rising-Server unter Proton – es gibt nur eine Windows-Version. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
   dockerImage: 'ghcr.io/nightriderp/palantir-game-vrising:2',
   defaultEnv: {},
   ports: [
@@ -2317,7 +2317,7 @@ export const SONS_OF_THE_FOREST_GAME_TYPE: GameTypeDefinition = {
   id: 'sonsoftheforest',
   name: 'Sons of the Forest',
   description:
-    'Sons-of-the-Forest-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
+    'Sons-of-the-Forest-Server unter Proton – es gibt nur eine Windows-Version. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
   dockerImage: 'ghcr.io/nightriderp/palantir-game-sonsoftheforest:2',
   defaultEnv: {},
   ports: [
@@ -2631,7 +2631,7 @@ export const ABIOTIC_FACTOR_GAME_TYPE: GameTypeDefinition = {
   id: 'abioticfactor',
   name: 'Abiotic Factor',
   description:
-    'Abiotic-Factor-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
+    'Abiotic-Factor-Server unter Proton – es gibt nur eine Windows-Version. Der erste Start holt die Serverdateien und richtet die Windows-Umgebung ein; das dauert.',
   dockerImage: 'ghcr.io/nightriderp/palantir-game-abioticfactor:2',
   defaultEnv: {},
   ports: [
@@ -2738,7 +2738,7 @@ export const ABIOTIC_FACTOR_GAME_TYPE: GameTypeDefinition = {
 /**
  * ARK: Survival Ascended – das größte Spiel dieser Liste (Anhang A, Phase 3).
  *
- * **Es läuft auf einer eigenen Proton-Fassung.** GE-Proton 11 bleibt beim Start
+ * **Es läuft auf einer eigenen Proton-Version.** GE-Proton 11 bleibt beim Start
  * dieses Servers hängen; das Image steht deshalb auf `base/proton10`
  * (GE-Proton10-34). Entscheidung des Betreibers vom 2026-09-11 – die Alternative
  * wäre gewesen, ARK draußen zu lassen.
@@ -2755,7 +2755,7 @@ export const ARK_ASCENDED_GAME_TYPE: GameTypeDefinition = {
   id: 'arkascended',
   name: 'ARK: Survival Ascended',
   description:
-    'ARK-Server unter Proton – es gibt nur eine Windows-Fassung. Der erste Start holt zweistellig viele Gigabyte und richtet die Windows-Umgebung ein; das dauert eine Weile.',
+    'ARK-Server unter Proton – es gibt nur eine Windows-Version. Der erste Start holt zweistellig viele Gigabyte und richtet die Windows-Umgebung ein; das dauert eine Weile.',
   dockerImage: 'ghcr.io/nightriderp/palantir-game-arkascended:2',
   consoleQuickCommands: [
     { label: 'Spieler', command: 'ListPlayers' },
@@ -3437,7 +3437,7 @@ export function toGameTypeDto(
     configFields: [...definition.configFields],
     available,
     // Nur die Marke, nicht die vollstaendige Adresse: Die Registry-Adresse ist
-    // Betriebssache, die Zahl dahinter die Antwort auf „welche Fassung?".
+    // Betriebssache, die Zahl dahinter die Antwort auf „welche Version?".
     imageVersion: imageVersionLabel(definition.dockerImage),
     /*
      * Zwei Gründe, zwei Sätze. „Kommt in Ausbaustufe 3" ist eine Zusage,

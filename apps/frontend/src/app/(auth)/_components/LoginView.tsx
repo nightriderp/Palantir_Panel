@@ -32,7 +32,7 @@ import { AuthDivider, OAuthButtons } from './OAuthButtons';
  * Der Anmeldeversuch trägt – wie die Registrierung – einen ALTCHA-Nachweis:
  * Pflichtenheft §7 und §18 verlangen den Spam-Schutz für **beide** Formulare,
  * damit hinter dem IP-Rate-Limit eine zweite Schicht steht. Dasselbe Widget wie
- * dort, keine zweite Fassung.
+ * dort, keine zweite Version.
  */
 
 type Step = 'credentials' | 'two-factor';

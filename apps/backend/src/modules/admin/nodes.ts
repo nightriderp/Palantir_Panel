@@ -306,7 +306,7 @@ function requireNodeManage(actor: PermissionActor): void {
  * (Gefundener Punkt 321).
  *
  * `expectedProtocolVersion` und `compatible` kommen **nicht** aus der
- * Datenbank, sondern aus dieser Fassung des Backends: Gespeichert ist, was der
+ * Datenbank, sondern aus dieser Version des Backends: Gespeichert ist, was der
  * Agent gesagt hat, nicht das Urteil darüber. Wird das Panel aktualisiert und
  * die Protokollversion angehoben, gilt sofort das neue Urteil – eine Node mit
  * altem Agent erscheint dann als unpassend, auch wenn sie sich seitdem nicht

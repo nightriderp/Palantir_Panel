@@ -4,7 +4,7 @@
  * Geprüft wird alles, was ohne Docker prüfbar ist: dass eine Route beim
  * Anlegen entsteht und beim Löschen verschwindet, dass ein Container ohne die
  * Labels keine erzeugt, dass der Inhalt genau die Felder trägt, die die
- * gepinnte Infrared-Fassung v1.3.4 liest, und dass ein bösartiger Hostname
+ * gepinnte Infrared-Version v1.3.4 liest, und dass ein bösartiger Hostname
  * weder aus der Datei noch aus dem Verzeichnis ausbricht.
  *
  * **Was hier NICHT geprüft werden kann:** ob Infrared die Datei tatsächlich
@@ -149,7 +149,7 @@ describe('Route anlegen und entfernen', () => {
  * `config.go` und der Tabelle „Proxy Config" in der README des Tags.
  */
 describe('Inhalt der Routen-Datei', () => {
-  it('trägt genau die Felder der gepinnten Fassung', async () => {
+  it('trägt genau die Felder der gepinnten Version', async () => {
     await job().writeFromSpec(spec());
 
     expect(await gelesen()).toEqual({

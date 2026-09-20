@@ -311,7 +311,7 @@ describe('Storage-Explorer: unbekannte Postenart legt die Seite nicht lahm (Fund
   it('zeigt sie als „other" und gesperrt, der Rest der Liste bleibt lesbar', async () => {
     const unbekannt = {
       ...agentEntry({ path: '/srv/palantir/neuartig', serverId: null, inUse: false }),
-      // Eine Fassung des Agents, die dieser Code noch nicht kennt.
+      // Eine Version des Agents, die dieser Code noch nicht kennt.
       kind: 'nochNichtErfunden',
     } as unknown as AgentStorageEntry;
     const backup = agentEntry({

@@ -1,5 +1,5 @@
 /**
- * Die Fassung aus einer Image-Adresse lesen.
+ * Die Version aus einer Image-Adresse lesen.
  *
  * Eigene Datei, weil zwei Stellen sie brauchen, die sich sonst gegenseitig
  * importieren muessten: die Server-DTOs und die Spiele-Registry.

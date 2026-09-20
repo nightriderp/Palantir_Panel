@@ -78,9 +78,9 @@ export interface GameResourceEstimate {
  * zu verstecken, damit erkennbar bleibt, was kommt.
  */
 /**
- * Eine wählbare Spielfassung (Betreiber-Wunsch vom 19.09.2026).
+ * Eine wählbare Spielversion (Betreiber-Wunsch vom 19.09.2026).
  *
- * Gemeint ist die Fassung des **Spiels**, nicht die des Images: „26.3",
+ * Gemeint ist die Version des **Spiels**, nicht die des Images: „26.3",
  * „1.21.4". Bis dahin legte das Image fest, welche Serverdatei es holt; wer
  * eine ältere Welt weiterspielen wollte, hatte keine Wahl.
  *
@@ -95,7 +95,7 @@ export interface GameVersionDto {
   label: string;
   /** ISO-8601 der Veröffentlichung; `null`, wenn der Hersteller keins nennt. */
   releasedAt: string | null;
-  /** Die aktuell neueste Fassung des Herstellers. */
+  /** Die aktuell neueste Version des Herstellers. */
   latest: boolean;
 }
 
@@ -112,9 +112,9 @@ export interface GameTypeDto {
   /** Kann der Wizard bestehende Weltdaten übernehmen (Lastenheft §3.3)? */
   supportsWorldImport: boolean;
   /**
-   * Lässt sich die Spielfassung wählen (`GET /api/game-types/:id/versions`)?
+   * Lässt sich die Spielversion wählen (`GET /api/game-types/:id/versions`)?
    *
-   * `false` heißt: Die Fassung steckt im Image, wie bisher bei allen Spielen.
+   * `false` heißt: Die Version steckt im Image, wie bisher bei allen Spielen.
    * Angefangen hat es mit Minecraft (Vanilla), wo die Serverdatei ohnehin beim
    * ersten Start geholt wird – dort kostet die Wahl nur eine andere Adresse.
    */
@@ -124,7 +124,7 @@ export interface GameTypeDto {
   configFields: GameConfigField[];
   available: boolean;
   /**
-   * Fassung des Images dieser Vorlage - nur die Marke hinter dem Doppelpunkt,
+   * Version des Images dieser Vorlage - nur die Marke hinter dem Doppelpunkt,
    * z. B. `9`.
    *
    * Die vollstaendige Adresse bleibt Betriebssache; sichtbar ist die Zahl, an
@@ -434,12 +434,12 @@ export interface GameTypeDefinition {
   /** Kann der Wizard bestehende Weltdaten übernehmen (Lastenheft §3.3)? */
   readonly supportsWorldImport: boolean;
   /**
-   * Laesst dieses Spiel die Fassung waehlen (Betreiber-Wunsch 19.09.2026)?
+   * Laesst dieses Spiel die Version waehlen (Betreiber-Wunsch 19.09.2026)?
    *
    * Optional und mit Vorgabe `false`: Nur Spiele, deren Serverdatei ohnehin
-   * beim ersten Start geholt wird, koennen eine andere Fassung nehmen - dort
+   * beim ersten Start geholt wird, koennen eine andere Version nehmen - dort
    * kostet die Wahl nur eine andere Adresse. Wo die Dateien im Image liegen,
-   * bleibt es bei der Fassung des Images.
+   * bleibt es bei der Version des Images.
    */
   readonly supportsVersionChoice?: boolean;
   /**

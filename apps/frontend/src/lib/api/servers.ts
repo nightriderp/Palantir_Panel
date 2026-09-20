@@ -188,7 +188,7 @@ export function deleteServer(
 // ---------------------------------------------------------------------------
 
 /**
- * Wählbare Spielfassungen eines Spieltyps (Betreiber-Wunsch 19.09.2026).
+ * Wählbare Spielversionen eines Spieltyps (Betreiber-Wunsch 19.09.2026).
  *
  * Eigener Abruf und nicht Teil der Spieleliste: Er geht beim Hersteller
  * nachsehen und wird nur gebraucht, wenn jemand tatsächlich wählt.
@@ -389,9 +389,9 @@ export function removeMember(serverId: string, userId: string): Promise<ApiResul
 }
 
 /**
- * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9). Am laufenden
+ * Neue Version des Spiel-Images übernehmen (Pflichtenheft §9). Am laufenden
  * Server als Neustart, am gestoppten nur als Neuaufbau ohne Start. Antwort:
- * der Server mit der neuen Fassung.
+ * der Server mit der neuen Version.
  */
 export function updateServerImage(serverId: string): Promise<ApiResult<GameServerDto>> {
   return apiRequest<GameServerDto>(serverPath(serverId, '/update'), { method: 'POST' });

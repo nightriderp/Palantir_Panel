@@ -50,7 +50,7 @@ import {
  * Zahlen nebeneinander zeigt, macht daraus eine Aussage statt eines
  * Widerspruchs.
  *
- * Frühere Fassungen dieses Kommentars behaupteten, `allocated` komme aus
+ * Frühere Versionen dieses Kommentars behaupteten, `allocated` komme aus
  * derselben Rechnung wie `NodeResourceUsage`. Das stimmte nie: `allocated`
  * entsteht in `createServerNodePlacementSource` über alle Zustände,
  * `NodeResourceUsage` in `usage-repository.ts` nur über die laufenden.
@@ -189,7 +189,7 @@ export interface HostNodeDto {
 
 /** Letzter Handshake des Agents einer Node (Pflichtenheft §2.2). */
 export interface HostNodeAgentInfo {
-  /** Fassung des Agents, wie er sie im `hello` nennt. */
+  /** Version des Agents, wie er sie im `hello` nennt. */
   version: string;
   /** Protokollversion des Agents. */
   protocolVersion: number;

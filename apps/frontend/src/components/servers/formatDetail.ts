@@ -5,7 +5,7 @@
  * Cron-Ausdrucks. Byte-Größen und Dauern sind mit F10 ins Design-System gezogen
  * (`formatBytes`, `formatDuration` in `components/shared/utils/format.ts`) und
  * werden von dort re-exportiert, damit die bestehenden Importe unverändert
- * bleiben – keine zweite Fassung daneben („Gefundener Punkt" 67). Datum und
+ * bleiben – keine zweite Version daneben („Gefundener Punkt" 67). Datum und
  * Uhrzeit stehen seit R4 ebenfalls im Design-System.
  * Reine Funktionen, deshalb daneben getestet. Sprache ist Deutsch
  * (Lastenheft §4).

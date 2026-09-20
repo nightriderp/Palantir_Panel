@@ -179,7 +179,7 @@ export const config = {
   // greift die Sperre auf jede echte Seite, ohne den Asset-Auslieferung zu
   // bremsen.
   //
-  // `fassung` ist ausgenommen: Die Route sagt nur, welche Fassung des Panels
+  // `version` ist ausgenommen: Die Route sagt nur, welche Version des Panels
   // gerade ausgeliefert wird (für den Hinweis auf ein Deployment). Sie ist
   // keine Seite, trägt nichts Persönliches – und mit Sperre bekäme der Abruf
   // die Anmeldeseite als HTML zurück statt einer Antwort.

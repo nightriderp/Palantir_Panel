@@ -23,7 +23,7 @@ import * as schemas from './index.js';
  * machte aus jedem neuen optionalen Feld einen Fehler beim älteren Gegenüber.
  * Dasselbe gilt für die Nutzlasten und Ergebnisse des Agent-Protokolls: Nach
  * einem Deployment läuft der Agent auf der Gamenode noch bis zu fünf Minuten in
- * der alten Fassung weiter.
+ * der alten Version weiter.
  */
 
 /** Feld, das in keinem Schema vorkommt. */

@@ -392,11 +392,11 @@ export function SettingsTab({
   }
 
   /*
-   * Wählbare Spielfassungen (Betreiber-Wunsch 19.09.2026). Geladen wird erst,
+   * Wählbare Spielversionen (Betreiber-Wunsch 19.09.2026). Geladen wird erst,
    * wenn jemand die Einstellungen öffnet – der Abruf geht beim Hersteller
    * nachsehen und gehört nicht in den Weg jeder Detailansicht.
    */
-  const [fassungen, setFassungen] = useState<GameVersionDto[]>([]);
+  const [versionen, setVersionen] = useState<GameVersionDto[]>([]);
 
   useEffect(() => {
     if (!canEdit) {
@@ -409,7 +409,7 @@ export function SettingsTab({
       const ergebnis = await fetchGameVersions(server.gameType, controller.signal);
 
       if (!controller.signal.aborted && ergebnis.success) {
-        setFassungen(ergebnis.data);
+        setVersionen(ergebnis.data);
       }
     })();
 
@@ -440,21 +440,21 @@ export function SettingsTab({
           />
 
           {/*
-            Spielfassung: Der Wechsel wirkt beim nächsten Start, weil der
+            Spielversion: Der Wechsel wirkt beim nächsten Start, weil der
             Container dafür neu gebaut wird – die Welt bleibt, sie liegt im
             Datenordner. Ohne Auswahlmöglichkeit zeigt die Maske nichts.
           */}
-          {fassungen.length > 0 ? (
+          {versionen.length > 0 ? (
             <SelectField
-              label="Spielfassung"
-              hint="Gilt ab dem nächsten Start. Die Welt bleibt erhalten; prüfe vorher, ob sie zur gewählten Fassung passt."
+              label="Spielversion"
+              hint="Gilt ab dem nächsten Start. Die Welt bleibt erhalten; prüfe vorher, ob sie zur gewählten Version passt."
               value={draft.gameVersion ?? ''}
               onChange={(value) =>
                 setDraft((current) => ({ ...current, gameVersion: value === '' ? null : value }))
               }
               options={[
-                { value: '', label: 'Fassung des Images' },
-                ...fassungen.map((fassung) => ({ value: fassung.id, label: fassung.label })),
+                { value: '', label: 'Version des Images' },
+                ...versionen.map((version) => ({ value: version.id, label: version.label })),
               ]}
             />
           ) : null}

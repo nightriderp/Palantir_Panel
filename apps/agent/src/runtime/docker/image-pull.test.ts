@@ -32,21 +32,21 @@ function dekodiereWieGo(kopf: string): string {
 }
 
 describe('splitImageReference', () => {
-  it('trennt Name und Fassung', () => {
+  it('trennt Name und Version', () => {
     expect(splitImageReference('itzg/minecraft-server:java21')).toEqual({
       name: 'itzg/minecraft-server',
       tag: 'java21',
     });
   });
 
-  it('nimmt ohne Fassung „latest“', () => {
+  it('nimmt ohne Version „latest“', () => {
     expect(splitImageReference('itzg/minecraft-server')).toEqual({
       name: 'itzg/minecraft-server',
       tag: 'latest',
     });
   });
 
-  it('hält den Doppelpunkt einer Portangabe nicht für eine Fassung', () => {
+  it('hält den Doppelpunkt einer Portangabe nicht für eine Version', () => {
     expect(splitImageReference('registry:5000/palantir/spiel')).toEqual({
       name: 'registry:5000/palantir/spiel',
       tag: 'latest',
@@ -152,7 +152,7 @@ describe('pullImage', () => {
     };
   }
 
-  it('holt Name und Fassung getrennt und ohne Zugangsdaten für öffentliche Images', async () => {
+  it('holt Name und Version getrennt und ohne Zugangsdaten für öffentliche Images', async () => {
     const c = client('{"status":"Pull complete"}');
 
     await pullImage(c as never, 'itzg/minecraft-server:java21', {

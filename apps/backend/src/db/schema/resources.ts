@@ -104,20 +104,20 @@ export const hostNodes = pgTable(
      * Die Angabe kommt aus dem `hello` des Agent-Kanals (B3) und stand bisher
      * nur in einer `Map` im Arbeitsspeicher des Backends. Das reicht für eine
      * laufende Node, versagt aber in genau den beiden Lagen, in denen die
-     * Fassung interessiert: Jedes Ausrollen startet das Backend neu, und
+     * Version interessiert: Jedes Ausrollen startet das Backend neu, und
      * unmittelbar danach – wenn man nachsieht, ob die Node nachgezogen hat –
      * war die Anzeige leer. Und eine Node, die gar nicht mehr hochkommt,
      * schickt nie ein `hello`; ausgerechnet dort fehlte der letzte bekannte
      * Stand, der die Auskunft gewesen wäre (Vorfall vom 15.09.2026: Der
-     * Homeserver hing zwei Tage auf einer alten Fassung).
+     * Homeserver hing zwei Tage auf einer alten Version).
      *
      * `agentReportedAt` gehört zwingend dazu: Erst der Zeitstempel sagt, ob
-     * die Fassung von eben stammt oder von vorletzter Woche. Alle drei Spalten
+     * die Version von eben stammt oder von vorletzter Woche. Alle drei Spalten
      * sind `null`, solange sich nie ein Agent gemeldet hat.
      *
      * Geschrieben wird auch das `hello` eines **abgewiesenen** Agents (falsche
      * Protokollversion) – das ist der Fall, in dem der Betreiber am dringendsten
-     * wissen will, welche Fassung dort läuft.
+     * wissen will, welche Version dort läuft.
      */
     agentVersion: text('agent_version'),
     agentProtocolVersion: integer('agent_protocol_version'),

@@ -205,7 +205,7 @@ describe('Agent ↔ Backend über echten WebSocket (Befund 7.1)', () => {
 
     expect(connection.isReady).toBe(true);
     expect(connected).toEqual([HOST_ID]);
-    // Das Backend kennt Fassung und Protokoll des Agents (Befund 11.3).
+    // Das Backend kennt Version und Protokoll des Agents (Befund 11.3).
     expect(agents.helloOf(HOST_ID)).toMatchObject({
       agentVersion: '0.0.0-test',
       protocolVersion: AGENT_PROTOCOL_VERSION,

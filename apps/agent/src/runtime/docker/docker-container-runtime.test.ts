@@ -627,7 +627,7 @@ describe('EXEC_CONSOLE', () => {
   it('meldet einen gestoppten Container als CONTAINER_NOT_RUNNING (Fundpunkt 235)', async () => {
     /*
      * Der Vertrag (`container-runtime.conformance.ts`, EXEC_CONSOLE) verlangt
-     * genau diesen Code, und die Fake-Fassung hielt ihn ein. Die Docker-Fassung
+     * genau diesen Code, und die Fake-Version hielt ihn ein. Die Docker-Version
      * prueft den Laufzustand nicht selbst - sie deutet die Antwort der Engine,
      * und die lautet 409 mit „is not running". Bis hierher wurde daraus ein
      * `CONTAINER_STATE_CONFLICT`: im Panel ein Zustandsfehler ohne Aussage,

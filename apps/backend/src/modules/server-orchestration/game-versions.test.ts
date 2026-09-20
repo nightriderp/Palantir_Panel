@@ -6,7 +6,7 @@ import {
 } from './game-versions.js';
 
 /**
- * Wählbare Spielfassungen (Betreiber-Wunsch vom 19.09.2026).
+ * Wählbare Spielversionen (Betreiber-Wunsch vom 19.09.2026).
  *
  * Geprüft wird gegen eine Attrappe des Verzeichnisses – kein Abruf nach
  * draußen im Test (Entwicklungsregeln §4): Was hier zählt, ist die Auswertung,
@@ -61,7 +61,7 @@ function attrappe(ids: readonly string[], options: { ohneServerJar?: readonly st
 }
 
 describe('createMojangVersionCatalogue', () => {
-  it('liefert die Fassungen mit Adresse und SHA-1, neueste zuerst', async () => {
+  it('liefert die Versionen mit Adresse und SHA-1, neueste zuerst', async () => {
     const { fetchImpl } = attrappe(['26.3', '26.2', '26.1']);
     const katalog = createMojangVersionCatalogue({ manifestUrl: MANIFEST_URL, fetchImpl });
 
@@ -85,7 +85,7 @@ describe('createMojangVersionCatalogue', () => {
     expect(await katalog.list('minecraft-vanilla')).toHaveLength(MAX_VERSIONS);
   });
 
-  it('überspringt Fassungen ohne Serverdatei, statt die Liste zu verlieren', async () => {
+  it('überspringt Versionen ohne Serverdatei, statt die Liste zu verlieren', async () => {
     const { fetchImpl } = attrappe(['26.3', '26.2'], { ohneServerJar: ['26.2'] });
     const katalog = createMojangVersionCatalogue({ manifestUrl: MANIFEST_URL, fetchImpl });
 
@@ -142,7 +142,7 @@ describe('createMojangVersionCatalogue', () => {
     expect(await katalog.list('minecraft-vanilla')).toHaveLength(1);
   });
 
-  it('kennt keine Fassungen für Spiele, die ihre Dateien im Image tragen', async () => {
+  it('kennt keine Versionen für Spiele, die ihre Dateien im Image tragen', async () => {
     const { abrufe, fetchImpl } = attrappe(['26.3']);
     const katalog = createMojangVersionCatalogue({ manifestUrl: MANIFEST_URL, fetchImpl });
 
@@ -151,7 +151,7 @@ describe('createMojangVersionCatalogue', () => {
     expect(abrufe).toEqual([]);
   });
 
-  it('löst eine Fassung auf und meldet eine unbekannte als null', async () => {
+  it('löst eine Version auf und meldet eine unbekannte als null', async () => {
     const { fetchImpl } = attrappe(['26.3', '26.2']);
     const katalog = createMojangVersionCatalogue({ manifestUrl: MANIFEST_URL, fetchImpl });
 

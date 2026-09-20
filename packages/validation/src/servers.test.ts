@@ -287,7 +287,7 @@ describe('serverFilePathSchema', () => {
 });
 
 /*
- * Spielfassung (Betreiber-Wunsch vom 19.09.2026). Die Kennung landet im
+ * Spielversion (Betreiber-Wunsch vom 19.09.2026). Die Kennung landet im
  * Dateinamen der Serverdatei und in der Umgebung des Containers; frei getippt
  * waere sie eine Einladung fuer Unsinn.
  */
@@ -299,12 +299,12 @@ describe('gameVersionSchema', () => {
   });
 
   it('lehnt Pfade, Leerzeichen und Steuerzeichen ab', () => {
-    for (const wert of ['../latest', 'neue fassung', '-26.3', '', 'x'.repeat(41)]) {
+    for (const wert of ['../latest', 'neue version', '-26.3', '', 'x'.repeat(41)]) {
       expect(gameVersionSchema.safeParse(wert).success).toBe(false);
     }
   });
 
-  it('laesst die Fassung beim Anlegen weg oder auf null', () => {
+  it('laesst die Version beim Anlegen weg oder auf null', () => {
     const basis = {
       gameType: 'minecraft-vanilla',
       name: 'Survival',

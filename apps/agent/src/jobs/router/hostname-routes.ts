@@ -12,7 +12,7 @@
  * Routen-Verzeichnisses und beobachtet den Ordner anschließend mit `fsnotify`.
  * Eine neue Datei wird zur Laufzeit als Route übernommen, eine gelöschte nimmt
  * ihre Route wieder mit (`WatchProxyConfigFolder` bzw. der `Remove`-Zweig in
- * `ProxyConfig.watch`, beides in `config.go` der gepinnten Fassung v1.3.4).
+ * `ProxyConfig.watch`, beides in `config.go` der gepinnten Version v1.3.4).
  * Genau daran hängt dieses Modul: **eine Datei je Server, angelegt beim
  * `CREATE`, entfernt beim `DELETE`.**
  *
@@ -177,7 +177,7 @@ export function routeFromSpec(spec: ContainerSpec): HostnameRoute | null {
 /**
  * Inhalt einer Routen-Datei in dem Format, das Infrared v1.3.4 erwartet.
  *
- * Belegt aus der Fassung selbst: `ProxyConfig` in `config.go` und die Tabelle
+ * Belegt aus der Version selbst: `ProxyConfig` in `config.go` und die Tabelle
  * „Proxy Config" in der README des Tags. Die Felder heißen dort `domainName`,
  * `listenTo`, `proxyTo`, `timeout` und `disconnectMessage`; alles Übrige füllt
  * `DefaultProxyConfig()` auf, weil `LoadFromPath` die geladene Datei über die

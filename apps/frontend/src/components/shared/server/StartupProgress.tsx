@@ -13,7 +13,7 @@ export interface StartupProgressProps {
   note?: string | null;
   /** Zeitpunkt, seit dem der Übergang läuft (ISO). Ohne ihn entfällt die Uhr. */
   since?: string | null;
-  /** Gedrängte Fassung für die Kachel der Übersicht. */
+  /** Gedrängte Version für die Kachel der Übersicht. */
   compact?: boolean;
   className?: string;
 }

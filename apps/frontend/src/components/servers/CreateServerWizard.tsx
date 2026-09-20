@@ -126,7 +126,7 @@ function GameTile({
 }) {
   const gruppe = choice.variants.length > 1;
   /*
-   * Symbol, Kachelbild und Fassung kommen von der gewaehlten Variante – und
+   * Symbol, Kachelbild und Version kommen von der gewaehlten Variante – und
    * solange keine gewaehlt ist, von der ersten. Die Ausgaben eines Spiels
    * teilen sich das Image und damit meist auch die Bilder; wer einer einzelnen
    * eine eigene Grafik hinterlegt, sieht sie trotzdem, sobald sie gewaehlt ist.
@@ -142,7 +142,7 @@ function GameTile({
   const selected = gewaehlt !== null;
   /*
    * Zweite Zeile der Kachel. Bei einem einzelnen Spiel steht dort wie bisher
-   * die Fassung des Images; bei einer Gruppe die Zahl der Varianten – und
+   * die Version des Images; bei einer Gruppe die Zahl der Varianten – und
    * sobald eine gewaehlt ist, deren Name. Sonst saehe man der Kachel
    * „Minecraft“ nicht an, ob Paper oder NeoForge dahintersteckt.
    */
@@ -210,10 +210,10 @@ function GameTile({
 
       <span className="relative flex min-w-0 flex-col gap-0.5">
         <span className="text-lg font-semibold">{choice.label}</span>
-        {/* Die Fassung des Images auch schon bei der Auswahl
-            (Betreiber-Wunsch 19.09.2026): Wer später auf der Karte „Fassung 8"
+        {/* Die Version des Images auch schon bei der Auswahl
+            (Betreiber-Wunsch 19.09.2026): Wer später auf der Karte „Version 8"
             liest, findet hier, was gerade angeboten wird. Bei einer Gruppe
-            steht hier stattdessen, welche Varianten es gibt – ihre Fassung
+            steht hier stattdessen, welche Varianten es gibt – ihre Version
             teilen sie sich ohnehin. */}
         {untertitel === null ? null : <span className="text-xs text-ink-faint">{untertitel}</span>}
       </span>
@@ -243,13 +243,13 @@ export function CreateServerWizard() {
   const [wunschOffen, setWunschOffen] = useState(false);
 
   /**
-   * Wählbare Spielfassungen des gewählten Spiels (Betreiber-Wunsch 19.09.2026).
+   * Wählbare Spielversionen des gewählten Spiels (Betreiber-Wunsch 19.09.2026).
    *
    * Eigener Abruf statt eines Feldes an der Spieleliste: Er geht beim
    * Hersteller nachsehen, und das soll die Auswahl der Spiele nicht aufhalten.
    * Ohne Wahlmöglichkeit bleibt die Liste leer und die Oberfläche zeigt nichts.
    */
-  const [fassungen, setFassungen] = useState<GameVersionDto[]>([]);
+  const [versionen, setVersionen] = useState<GameVersionDto[]>([]);
 
   useEffect(() => {
     const gewaehlt = state.gameType;
@@ -268,7 +268,7 @@ export function CreateServerWizard() {
         return;
       }
 
-      setFassungen(ergebnis !== null && ergebnis.success ? ergebnis.data : []);
+      setVersionen(ergebnis !== null && ergebnis.success ? ergebnis.data : []);
     })();
 
     return () => {
@@ -346,7 +346,7 @@ export function CreateServerWizard() {
 
     const input: CreateServerInput = {
       gameType: state.gameType,
-      // Nur mitschicken, wenn gewaehlt: `null` heisst „die Fassung des Images".
+      // Nur mitschicken, wenn gewaehlt: `null` heisst „die Version des Images".
       ...(state.gameVersion === null ? {} : { gameVersion: state.gameVersion }),
       name: state.name.trim(),
       subdomain: state.subdomain.trim().toLowerCase(),
@@ -552,19 +552,19 @@ export function CreateServerWizard() {
             <h2 className="text-xl font-bold">Optionen</h2>
 
             {/*
-              Die Spielfassung steht vor den Spiel-Einstellungen: Sie bestimmt,
+              Die Spielversion steht vor den Spiel-Einstellungen: Sie bestimmt,
               welche Serverdatei geholt wird, und wer eine ältere Welt
               weiterspielt, wählt sie zuerst (Betreiber-Wunsch 19.09.2026).
             */}
-            {selectedGame?.supportsVersionChoice && fassungen.length > 0 ? (
+            {selectedGame?.supportsVersionChoice && versionen.length > 0 ? (
               <SelectField
-                label="Spielfassung"
-                hint="Ohne Wahl nimmt der Server die Fassung, die im Image steckt. Ein Wechsel wirkt beim nächsten Start."
+                label="Spielversion"
+                hint="Ohne Wahl nimmt der Server die Version, die im Image steckt. Ein Wechsel wirkt beim nächsten Start."
                 value={state.gameVersion ?? ''}
                 onChange={(value) => patch({ gameVersion: value === '' ? null : value })}
                 options={[
-                  { value: '', label: 'Fassung des Images' },
-                  ...fassungen.map((fassung) => ({ value: fassung.id, label: fassung.label })),
+                  { value: '', label: 'Version des Images' },
+                  ...versionen.map((version) => ({ value: version.id, label: version.label })),
                 ]}
               />
             ) : null}

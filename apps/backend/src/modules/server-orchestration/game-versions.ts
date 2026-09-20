@@ -1,9 +1,9 @@
 /**
- * Wählbare Spielfassungen (Betreiber-Wunsch vom 19.09.2026).
+ * Wählbare Spielversionen (Betreiber-Wunsch vom 19.09.2026).
  *
  * **Warum überhaupt.** Bis hierher legte das Image fest, welche Serverdatei
  * ein Spiel holt. Wer eine ältere Welt weiterspielen wollte – Mods, Plugins,
- * eine Fassung, die die Mitspieler haben –, hatte keine Wahl.
+ * eine Version, die die Mitspieler haben –, hatte keine Wahl.
  *
  * **Woher die Liste kommt.** Vom Hersteller, nicht aus einer Aufzählung im
  * Code: Mojang führt sein Verzeichnis unter `piston-meta.mojang.com`, und was
@@ -11,7 +11,7 @@
  * wäre am Tag der nächsten Veröffentlichung veraltet.
  *
  * **Wann das Netz gebraucht wird.** Nur beim Anzeigen der Liste und beim
- * Auswählen einer Fassung. Danach stehen Adresse und Prüfsumme **am Server**
+ * Auswählen einer Version. Danach stehen Adresse und Prüfsumme **am Server**
  * (`game_version_url`, `game_version_hash`), und ein Start braucht Mojang
  * nicht mehr. Das ist Absicht: Ein Start, der an einem fremden Dienst hängt,
  * wäre genau dann kaputt, wenn man ihn braucht – und der Fingerabdruck des
@@ -32,9 +32,9 @@ export interface GameVersionQuelle {
 }
 
 export interface GameVersionCatalogue {
-  /** Alle wählbaren Fassungen, neueste zuerst. */
+  /** Alle wählbaren Versionen, neueste zuerst. */
   list(gameTypeId: string): Promise<readonly GameVersionQuelle[]>;
-  /** Eine Fassung auflösen; `null`, wenn der Hersteller sie nicht kennt. */
+  /** Eine Version auflösen; `null`, wenn der Hersteller sie nicht kennt. */
   resolve(gameTypeId: string, versionId: string): Promise<GameVersionQuelle | null>;
 }
 
@@ -42,11 +42,11 @@ export interface GameVersionCatalogue {
 export const VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /**
- * Wie viele Fassungen das Panel anbietet.
+ * Wie viele Versionen das Panel anbietet.
  *
  * Mojang führt über hundert Ausgaben bis zurück zu 2011. Eine Auswahlliste mit
  * hundert Einträgen ist keine Auswahl mehr; die letzten zwanzig decken die
- * Fassungen ab, für die es Plugins, Mods und Mitspieler gibt.
+ * Versionen ab, für die es Plugins, Mods und Mitspieler gibt.
  */
 export const MAX_VERSIONS = 20;
 
@@ -77,7 +77,7 @@ export interface MojangCatalogueOptions {
 
 const MOJANG_MANIFEST_URL = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
 
-/** Spieltypen, die ihre Fassung von Mojang beziehen. */
+/** Spieltypen, die ihre Version von Mojang beziehen. */
 const MOJANG_GAME_TYPES = new Set(['minecraft-vanilla']);
 
 export function createMojangVersionCatalogue(
@@ -128,7 +128,7 @@ export function createMojangVersionCatalogue(
 
     /*
      * Die Adresse der Serverdatei steht nicht im Verzeichnis, sondern erst im
-     * Datensatz je Fassung – das sind zwanzig weitere Abrufe. Sie laufen
+     * Datensatz je Version – das sind zwanzig weitere Abrufe. Sie laufen
      * nebeneinander und nur einmal je Stunde.
      */
     const aufgeloest = await Promise.all(

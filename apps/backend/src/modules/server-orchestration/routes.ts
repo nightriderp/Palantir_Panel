@@ -464,7 +464,7 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   });
 
   /**
-   * Wählbare Spielfassungen eines Spieltyps (Betreiber-Wunsch 19.09.2026).
+   * Wählbare Spielversionen eines Spieltyps (Betreiber-Wunsch 19.09.2026).
    *
    * Eigene Route statt eines Feldes am Spieltyp: Die Liste kommt vom
    * Hersteller, kostet einen Abruf nach draußen und wird nur gebraucht, wenn
@@ -897,8 +897,8 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   });
 
   /**
-   * Neue Fassung des Spiel-Images übernehmen (Pflichtenheft §9, Review
-   * 2026-09-16). Der Server behält seine Fassung sonst über Neustarts hinweg;
+   * Neue Version des Spiel-Images übernehmen (Pflichtenheft §9, Review
+   * 2026-09-16). Der Server behält seine Version sonst über Neustarts hinweg;
    * hier wird sie ausdrücklich gewechselt – am laufenden Server als Stopp +
    * Start, am gestoppten nur als Neuaufbau. Recht wie Starten und Stoppen
    * (`canUpdate`).

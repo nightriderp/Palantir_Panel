@@ -31,7 +31,7 @@
  *
  * ```
  * Byte 0..15    Magie      "PALANTIR-BACKUP\n" - erkennbar ohne Schlüssel
- * Byte 16       Fassung    1
+ * Byte 16       Version    1
  * Byte 17..18   Länge      Länge des verpackten Schlüssels, 16 Bit, Big Endian
  * ... Länge     Schlüssel  AES-256-Schlüssel, mit RSA-OAEP (SHA-256) verpackt
  * ... 12        IV         Zufallswert für AES-GCM
@@ -80,8 +80,8 @@ import { Transform, type TransformCallback } from 'node:stream';
 /** Erkennungszeichen am Dateianfang – genau 16 Byte. */
 export const SICHERUNGS_MAGIE = Buffer.from('PALANTIR-BACKUP\n', 'ascii');
 
-/** Fassung des Formats; ein Leser weist alles Unbekannte benannt ab. */
-export const SICHERUNGS_FASSUNG = 1;
+/** Version des Formats; ein Leser weist alles Unbekannte benannt ab. */
+export const SICHERUNGS_VERSION = 1;
 
 /** Dateiendung eines verschlüsselten Abzugs. */
 export const VERSCHLUESSELTE_ENDUNG = '.sql.gz.enc';
@@ -93,7 +93,7 @@ const IV_LAENGE = 12;
 const SIEGEL_LAENGE = 16;
 const SCHLUESSEL_LAENGE = 32;
 
-/** Magie + Fassung + Längenfeld – so viel braucht es, um weiterzulesen. */
+/** Magie + Version + Längenfeld – so viel braucht es, um weiterzulesen. */
 const KOPF_ANFANG = SICHERUNGS_MAGIE.length + 1 + 2;
 
 /**
@@ -214,7 +214,7 @@ function baueKopf(verpackterSchluessel: Buffer, iv: Buffer): Buffer {
 
   return Buffer.concat([
     SICHERUNGS_MAGIE,
-    Buffer.from([SICHERUNGS_FASSUNG]),
+    Buffer.from([SICHERUNGS_VERSION]),
     laenge,
     verpackterSchluessel,
     iv,
@@ -240,11 +240,11 @@ function leseKopf(roh: Buffer): Kopf | null {
     );
   }
 
-  const fassung = roh.readUInt8(SICHERUNGS_MAGIE.length);
+  const version = roh.readUInt8(SICHERUNGS_MAGIE.length);
 
-  if (fassung !== SICHERUNGS_FASSUNG) {
+  if (version !== SICHERUNGS_VERSION) {
     throw new Error(
-      `Die Datei trägt Format-Fassung ${String(fassung)}; dieses Panel kennt nur ${String(SICHERUNGS_FASSUNG)}.`,
+      `Die Datei trägt Format-Version ${String(version)}; dieses Panel kennt nur ${String(SICHERUNGS_VERSION)}.`,
     );
   }
 

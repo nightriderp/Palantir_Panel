@@ -159,7 +159,7 @@ export interface AgentSessionHandlers {
    * Der Agent hat sich mit `hello` vorgestellt – **vor** der Entscheidung, ob
    * die Protokollversion passt (Review 2026-09-16, Befund 11.3).
    *
-   * Bis dahin war ein Agent mit falscher Fassung unsichtbar: Log-Eintrag,
+   * Bis dahin war ein Agent mit falscher Version unsichtbar: Log-Eintrag,
    * Verbindung zu, Node „offline", Agent versucht es endlos erneut. Wer die
    * Node-Übersicht baut, kann mit dieser Meldung sagen, *warum* die Node nicht
    * verbunden ist. Optional und synchron; Fehler dürfen den Handshake nicht
@@ -882,7 +882,7 @@ export class AgentRegistry {
    * Letztes `hello` je Node (Review 2026-09-16, Befund 11.3) – auch das
    * abgewiesene. Nur im Arbeitsspeicher, wie alles hier: Der Agent meldet sich
    * binnen einer Minute erneut, und nach einem Neustart des Backends ist eine
-   * alte Fassungsangabe ohnehin nichts wert.
+   * alte Versionsangabe ohnehin nichts wert.
    */
   private readonly hellos = new Map<string, AgentHelloInfo>();
 

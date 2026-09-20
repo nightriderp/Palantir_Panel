@@ -15,7 +15,7 @@
  * Was den Neustart überlebt, sind die Daten im Datenordner – und die zeigt der
  * Server selbst.
  *
- * Bewusst **keine** gemeinsame Fassung mit den Klon-Aufträgen: Die beiden
+ * Bewusst **keine** gemeinsame Version mit den Klon-Aufträgen: Die beiden
  * Speicher teilen zwar die Form, aber nicht den Besitzer (B5 gegen B3), und ein
  * gemeinsamer generischer Speicher hinge zwischen zwei Modulen, ohne einem zu
  * gehören. Die Gemeinsamkeit steht im Vertrag (`ServerJobBase`), wo sie hin

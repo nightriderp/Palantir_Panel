@@ -288,12 +288,12 @@ function NodeRow({
       </p>
 
       {/*
-        Welche Fassung läuft dort? (Gefundener Punkt 321.)
+        Welche Version läuft dort? (Gefundener Punkt 321.)
 
         Die Angabe stand bisher nur in der Nutzeransicht der Nodes – ausgerechnet
         nicht hier, wo der Betreiber nach einem Ausrollen nachsieht, ob die Node
         nachgezogen hat. Bei einer Node, die nicht online ist, trägt der Text den
-        Zeitpunkt der Meldung mit: Eine Fassung von vorletzter Woche ist genau die
+        Zeitpunkt der Meldung mit: Eine Version von vorletzter Woche ist genau die
         Auskunft, die man sucht, wenn ein Homeserver stehengeblieben ist.
       */}
       {agent === null ? null : <p className="mt-1 text-xs text-ink-faint">{agent.label}</p>}

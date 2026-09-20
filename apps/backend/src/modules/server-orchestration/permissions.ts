@@ -125,7 +125,7 @@ export function computeGameServerPermissions(
     // Besitzerwechsel ist Verwaltung, kein Besitzerrecht (Pflichtenheft §7):
     // auch der Besitzer selbst gibt seinen Server nicht weiter.
     canTransferOwnership: actor.permissions.has('server.manage.any'),
-    // Eine neue Image-Fassung übernehmen heißt Stopp und Start (Pflichtenheft
+    // Eine neue Image-Version übernehmen heißt Stopp und Start (Pflichtenheft
     // §9) – dasselbe Recht wie die beiden.
     canUpdate: canOperate,
   });

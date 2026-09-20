@@ -4,7 +4,7 @@ import { afterEach } from 'vitest';
  * Vorbereitung für jeden Testlauf des Frontends.
  *
  * Nach jedem Komponententest wird der gerenderte Baum abgeräumt, sonst sammeln
- * sich mehrere Fassungen derselben Komponente im Dokument und `getByRole`
+ * sich mehrere Versionen derselben Komponente im Dokument und `getByRole`
  * findet plötzlich zwei Treffer.
  *
  * Die Datei gilt für **alle** Tests, auch die reinen Logiktests in der

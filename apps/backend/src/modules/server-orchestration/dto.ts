@@ -47,18 +47,18 @@ export interface ServerDtoContext {
  * Läuft der Server auf einem älteren Image als dem der heutigen Definition?
  *
  * Verglichen wird, womit der Container **angelegt** wurde, gegen das, was die
- * Spiel-Definition jetzt vorsieht. Ändert ein Deployment die Fassung eines
+ * Spiel-Definition jetzt vorsieht. Ändert ein Deployment die Version eines
  * Spiel-Images, fällt das damit auf, ohne die Registry zu fragen: Der
  * Vergleich braucht weder Zugangsdaten noch einen Netzaufruf je Server.
  *
  * Was er **nicht** erkennt: dasselbe Tag mit neuem Inhalt (`:latest` wandert).
  * Dafür wäre ein Digest-Vergleich gegen die Registry nötig – ein eigener
  * Vorgang mit Registry-Zugang, Zwischenspeicher und Frist, kein Nebenprodukt
- * der DTO-Bildung. Die Spiel-Images des Projekts tragen feste Fassungen, damit
+ * der DTO-Bildung. Die Spiel-Images des Projekts tragen feste Versionen, damit
  * greift der Vergleich für den Fall, um den es geht.
  *
  * `null` heißt „kein Container" oder „vor dieser Spalte angelegt" – beides ist
- * keine Aussage über eine ältere Fassung, also `false`.
+ * keine Aussage über eine ältere Version, also `false`.
  */
 export function updateAvailable(imageRef: string | null, definitionImage: string): boolean {
   return imageRef !== null && imageRef !== definitionImage;
@@ -82,7 +82,7 @@ function ersatzDefinition(
 > {
   return {
     name: `Unbekannter Spieltyp (${gameType})`,
-    // Gleich der gespeicherten Fassung zu setzen ist nicht möglich – deshalb
+    // Gleich der gespeicherten Version zu setzen ist nicht möglich – deshalb
     // ein Wert, der nie zu einem Image passt, und `updateAvailable` unten
     // fängt den Fall ausdrücklich ab.
     dockerImage: '',
@@ -166,14 +166,14 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
      */
     dockerContainerId: permissions.canManageSettings ? server.dockerContainerId : null,
     pendingRestart: server.restartRequired,
-    // Ohne bekannte Definition gibt es keine Soll-Fassung, gegen die sich
+    // Ohne bekannte Definition gibt es keine Soll-Version, gegen die sich
     // vergleichen ließe (Fundpunkt 247).
     updateAvailable:
       bekannt === null ? false : updateAvailable(server.imageRef, bekannt.dockerImage),
     /*
-     * Die beiden Fassungen sagen, was hinter dem Hinweis steckt: Der Server
+     * Die beiden Versionen sagen, was hinter dem Hinweis steckt: Der Server
      * faehrt die eine, angeboten wird die andere. Ohne bekannte Definition
-     * gibt es keine neueste Fassung, gegen die sich vergleichen liesse.
+     * gibt es keine neueste Version, gegen die sich vergleichen liesse.
      */
     imageVersion: imageVersionLabel(server.imageRef),
     latestImageVersion: bekannt === null ? null : imageVersionLabel(bekannt.dockerImage),

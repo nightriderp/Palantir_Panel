@@ -311,9 +311,9 @@ export function registerServerOrchestration(
     agents,
     registry,
     /*
-     * Wählbare Spielfassungen (Betreiber-Wunsch 19.09.2026). Der Katalog holt
+     * Wählbare Spielversionen (Betreiber-Wunsch 19.09.2026). Der Katalog holt
      * sie beim Hersteller und merkt sie sich eine Stunde; ohne Netz bleibt die
-     * Liste leer und jeder Server fährt die Fassung seines Images.
+     * Liste leer und jeder Server fährt die Version seines Images.
      */
     gameVersions: createMojangVersionCatalogue(),
     dns,
@@ -366,7 +366,7 @@ export function registerServerOrchestration(
   const agentHandlers: AgentSessionHandlers = {
     onStateReport: (hostId, frame) => service.reconcile(hostId, frame),
     onEvent: (hostId, frame) => service.handleAgentEvent(hostId, frame),
-    // Fassung und Protokollurteil für die Node-Übersicht (Befund 11.3).
+    // Version und Protokollurteil für die Node-Übersicht (Befund 11.3).
     onHello: (hostId, info) => {
       agents.noteHello(hostId, info);
 
@@ -384,7 +384,7 @@ export function registerServerOrchestration(
        * beim vorherigen Stand.
        */
       fireAndForget(repository.noteAgentHello(hostId, info), log, {
-        vorgang: 'Agent-Fassung festhalten',
+        vorgang: 'Agent-Version festhalten',
         hostId,
         agentVersion: info.agentVersion,
       });

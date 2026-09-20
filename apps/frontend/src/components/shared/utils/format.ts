@@ -67,7 +67,7 @@ function mitDreiZiffern(wert: number): string {
  * Herkunft: bis R6 lag diese Funktion bei F3 (`components/servers/formatDetail.ts`),
  * weil nur die Server-Detailansicht Byte-Größen zeigte. Mit F10 (globale Backups,
  * Storage-Explorer) kam der zweite Anzeigeort dazu – deshalb hier im
- * Design-System, statt einer zweiten Fassung daneben („Gefundener Punkt" 67).
+ * Design-System, statt einer zweiten Version daneben („Gefundener Punkt" 67).
  */
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes == null || Number.isNaN(bytes)) return '—';
@@ -102,7 +102,7 @@ export function formatMegabytes(valueMb: number | null | undefined): string {
  * Speichergröße aus Mebibyte für den engen Platz in einem Ring (`MetricRing`).
  *
  * Höchstens zwei geltende Ziffern: `6,1 GB`, `844 MB`, `10 GB`, `1,3 TB`. Die
- * volle Fassung (`6,11 GB`, drei Ziffern) passte nicht in die 54 px des Rings –
+ * volle Version (`6,11 GB`, drei Ziffern) passte nicht in die 54 px des Rings –
  * die Einheit rutschte unter die Zahl, auf der Karte stand „6,11" über einem
  * halben „GB" (Betreiber-Meldung 2026-09-19). Die dritte Ziffer trägt in
  * einem Ring nichts; wer sie braucht, findet sie im Tooltip.
@@ -267,7 +267,7 @@ export function serverInitials(name: string): string {
 /**
  * Datums- und Zeitformate (Arbeitspaket R4, „Gefundene Punkte“ 26).
  *
- * Vorher hatte jede Ansicht ihre eigene Fassung: F1 im Wartebildschirm, F3 in
+ * Vorher hatte jede Ansicht ihre eigene Version: F1 im Wartebildschirm, F3 in
  * `components/servers/formatDetail.ts`. Beide nutzen jetzt diese hier.
  *
  * Eingabe ist immer der ISO-Zeitstempel aus dem DTO; fehlende oder unlesbare
@@ -370,13 +370,13 @@ export function formatChatTime(iso: string | null | undefined, jetzt = new Date(
 }
 
 /**
- * Beschriftung der Image-Fassung, z. B. „v9" (Betreiber-Wunsch 19.09.2026: die
+ * Beschriftung der Image-Version, z. B. „v9" (Betreiber-Wunsch 19.09.2026: die
  * Versionierung überall sehen; Fundpunkt 317: als Versionsnummer statt als Wort).
  *
- * Gemeint ist die Fassung des **Images**, nicht die des Spiels. Das `v` hält
- * beide auseinander, wo sie nebeneinander stehen: Die Spielfassung erscheint
+ * Gemeint ist die Version des **Images**, nicht die des Spiels. Das `v` hält
+ * beide auseinander, wo sie nebeneinander stehen: Die Spielversion erscheint
  * ohne Vorsatz direkt hinter dem Spielnamen („Minecraft 1.21.4"), die des
- * Images mit – „Minecraft 1.21.4 · v9". Vorher stand dort das Wort „Fassung";
+ * Images mit – „Minecraft 1.21.4 · v9". Vorher stand dort das Wort „Version";
  * ausgeschrieben nahm es in der Unterzeile den Platz weg, der zum Abschneiden
  * führte.
  *
@@ -416,7 +416,7 @@ function dreistellig(version: string): string {
 }
 
 /**
- * Erklärung zum Hinweis „Update verfügbar": welche Fassung läuft und welche
+ * Erklärung zum Hinweis „Update verfügbar": welche Version läuft und welche
  * angeboten wird.
  *
  * Bisher sagte der Hinweis nur, dass etwas Neueres da ist. Erst die beiden

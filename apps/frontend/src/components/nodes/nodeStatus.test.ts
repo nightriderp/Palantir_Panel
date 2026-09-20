@@ -282,7 +282,7 @@ describe('nodeAgentHint', () => {
     expect(nodeAgentHint(node({ agent: null }))).toBeNull();
   });
 
-  it('nennt die Fassung ohne Warnung, wenn das Protokoll passt', () => {
+  it('nennt die Version ohne Warnung, wenn das Protokoll passt', () => {
     expect(nodeAgentHint(node({ agent }))).toEqual({ label: 'Agent 1.4.2', warning: null });
   });
 
@@ -298,7 +298,7 @@ describe('nodeAgentHint', () => {
 
   /*
    * Gefundener Punkt 321: Bei einer Node, die nicht online ist, stammt die
-   * Fassung aus der gespeicherten letzten Meldung. Ohne Datum sagt sie nicht,
+   * Version aus der gespeicherten letzten Meldung. Ohne Datum sagt sie nicht,
    * ob die Node vor fünf Minuten oder vor zwei Wochen zuletzt etwas von sich
    * hören ließ – und genau daran hing der Vorfall vom 15.09.2026.
    */

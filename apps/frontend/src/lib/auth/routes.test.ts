@@ -119,7 +119,7 @@ describe('gateRedirect (Zugriffssperre)', () => {
   /*
    * Fundpunkt frontend-app-07: Weil die Wurzel in **jedem** Sitzungszustand
    * weitergeleitet wird, gibt es unter `src/app` bewusst keine `page.tsx` mehr –
-   * sie wurde nie gerendert und hielt eine zweite, clientseitige Fassung dieser
+   * sie wurde nie gerendert und hielt eine zweite, clientseitige Version dieser
    * Entscheidung vor. Fiele einer der drei Fälle hier weg, liefe `/` in einen
    * echten 404. Dieser Test hält die Voraussetzung der Löschung fest.
    */
