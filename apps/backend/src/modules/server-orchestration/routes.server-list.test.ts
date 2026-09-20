@@ -133,7 +133,10 @@ function fakeRepository() {
   };
 }
 
-function buildApp(repository: ReturnType<typeof fakeRepository>): FastifyInstance {
+function buildApp(
+  repository: ReturnType<typeof fakeRepository>,
+  optionen: { mitGlobalemHandler?: boolean } = {},
+): FastifyInstance {
   const service = {
     requireServer: async () => ALEX_EIGEN,
     recentCrashCount: () => 0,
@@ -141,7 +144,9 @@ function buildApp(repository: ReturnType<typeof fakeRepository>): FastifyInstanc
 
   const app = Fastify({ logger: false });
 
-  registerErrorHandler(app);
+  if (optionen.mitGlobalemHandler !== false) {
+    registerErrorHandler(app);
+  }
   registerRbac(app, {
     resolveActor: (request) => {
       const header = request.headers['x-test-actor'];
@@ -202,6 +207,29 @@ let app: FastifyInstance;
 
 afterEach(async () => {
   await app.close();
+});
+
+describe('Zugriffsfehler beantwortet die Route selbst (Betriebsbefund 20.09.2026)', () => {
+  it('antwortet ohne Anmeldung mit AUTH_REQUIRED, auch ohne globalen Handler', async () => {
+    /*
+     * Die Uebersetzung des Moduls kannte nur seine eigenen Fehler. Ein
+     * RbacError - den wirft jede Pruefung auf Anmeldung und Recht - flog
+     * durch bis zum globalen Handler. Nach aussen kam derselbe Code an, im
+     * Log stand aber bei jedem Aufruf ohne Anmeldung eine Warnung samt
+     * Stapelspur.
+     *
+     * Die App hier laeuft bewusst ohne globalen Handler: Faengt die Route
+     * den Fehler nicht selbst, gaebe es statt 401 einen 500.
+     */
+    // Dieselbe Variable wie die uebrigen Faelle: Das afterEach dieser Datei
+    // schliesst sie.
+    app = buildApp(fakeRepository(), { mitGlobalemHandler: false });
+
+    const antwort = await app.inject({ method: 'GET', url: '/api/servers' });
+
+    expect(antwort.statusCode).toBe(401);
+    expect(antwort.json()).toMatchObject({ success: false, error: { code: 'AUTH_REQUIRED' } });
+  });
 });
 
 describe('GET /api/servers – Filter nach Konto (Fundpunkt 138)', () => {

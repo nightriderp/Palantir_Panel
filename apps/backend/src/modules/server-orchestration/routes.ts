@@ -41,7 +41,7 @@ import { toIpHint } from '../auth/request-context.js';
 import { z } from 'zod';
 import { type AccountRateLimiter, accountRateLimit } from '../../lib/abuse-limits.js';
 import { attachmentContentDisposition } from '../../lib/content-disposition.js';
-import { requireActor, requireApproved, requirePermission } from '../rbac/index.js';
+import { isRbacError, requireActor, requireApproved, requirePermission } from '../rbac/index.js';
 import { type ServerDtoContext, toGameServerDto } from './dto.js';
 import { ServerOrchestrationError, isServerOrchestrationError } from './errors.js';
 import { type GameRegistry } from './game-registry.js';
@@ -281,7 +281,22 @@ function toServerMemberDto(
 
 /** Antwortet mit dem Envelope aus §5.1 und dem HTTP-Status des Fehlercodes. */
 async function replyWithError(reply: FastifyReply, error: unknown): Promise<void> {
-  if (isServerOrchestrationError(error)) {
+  /*
+   * Zugriffsfehler gehoeren hierher, nicht in den globalen Handler
+   * (Betriebsbefund 20.09.2026).
+   *
+   * `requireActor` und die Rechtepruefungen werfen einen `RbacError`. Dieses
+   * Modul kannte ihn als einziges nicht - admin, chat und fonts uebersetzen
+   * ihn seit jeher. Der Fehler flog also durch bis zum globalen Handler, und
+   * der schreibt dafuer eine Warnung samt Stapelspur ins Log, weil er eine
+   * Route ohne eigene Uebersetzung vermutet.
+   *
+   * Nach aussen war das folgenlos: Der Handler antwortet mit demselben Code.
+   * Im Log stand aber bei jedem Aufruf ohne Anmeldung eine Warnung - also bei
+   * jedem abgelaufenen Tab, jedem Aufruf vor dem Anmelden. Warnungen, die man
+   * gewohnheitsmaessig uebergeht, verdecken die, auf die es ankommt.
+   */
+  if (isServerOrchestrationError(error) || isRbacError(error)) {
     await reply.status(httpStatusForErrorCode(error.code)).send(fail(error.code, error.message));
 
     return;
