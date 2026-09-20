@@ -101,19 +101,22 @@ describe('CreateServerWizard – Spielauswahl mit Varianten', () => {
     });
   });
 
-  it('bietet die Variantenwahl erst nach dem Klick auf die Kachel', async () => {
+  it('zeigt die Variantenwahl nicht im Schritt „Spiel"', async () => {
+    // Sie steht seit dem 20.09.2026 bei den Optionen, neben der Spielversion.
+    // Hier oben würde sie zwischen Kacheln und „Weiter" stehen und die Auswahl
+    // des Spiels mit einer zweiten Frage vermischen.
     zeige();
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Minecraft/ })).toBeTruthy();
     });
-    expect(variantenfeld()).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /Minecraft/ }));
 
     await waitFor(() => {
-      expect(variantenfeld()).not.toBeNull();
+      expect(screen.getByRole('button', { name: 'Weiter' }).hasAttribute('disabled')).toBe(false);
     });
+    expect(variantenfeld()).toBeNull();
   });
 
   it('wählt beim Klick auf die Kachel die erste Variante vor', async () => {
@@ -124,14 +127,13 @@ describe('CreateServerWizard – Spielauswahl mit Varianten', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /Minecraft/ }));
 
+    // Sichtbar wird die Vorauswahl auf der Kachel: Sonst sähe man ihr nicht an,
+    // welche Ausgabe man gerade weiterträgt.
     await waitFor(() => {
-      expect(variantenfeld()?.value).toBe('minecraft-paper');
+      expect(screen.getByRole('button', { name: /Minecraft/ }).textContent?.includes('Paper')).toBe(
+        true,
+      );
     });
-    // Die Kachel sagt jetzt, welche Ausgabe dahintersteckt – in der Auswahl
-    // darunter steht derselbe Name noch einmal, deshalb nicht `getByText`.
-    expect(screen.getByRole('button', { name: /Minecraft/ }).textContent?.includes('Paper')).toBe(
-      true,
-    );
   });
 
   it('zeigt zu einem Spiel ohne Gruppe keine Variantenwahl', async () => {
@@ -146,37 +148,6 @@ describe('CreateServerWizard – Spielauswahl mit Varianten', () => {
       expect(screen.getByRole('button', { name: 'Weiter' }).hasAttribute('disabled')).toBe(false);
     });
     expect(variantenfeld()).toBeNull();
-  });
-
-  it('nimmt beim Wechsel den Ressourcen-Vorschlag der neuen Variante mit', async () => {
-    // Der Grund, warum die Wahl in diesen Schritt gehört und nicht zu den
-    // Optionen: NeoForge schlägt 6 GiB vor, Paper 2 GiB. Stünde sie hinter dem
-    // Schritt „Grundlagen", überschriebe der Wechsel dort eingestellte Werte.
-    zeige();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Minecraft/ })).toBeTruthy();
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Minecraft/ }));
-
-    await waitFor(() => {
-      expect(variantenfeld()).not.toBeNull();
-    });
-
-    const feld = variantenfeld() as HTMLSelectElement;
-    fireEvent.change(feld, { target: { value: 'minecraft-neoforge' } });
-
-    await waitFor(() => {
-      expect(variantenfeld()?.value).toBe('minecraft-neoforge');
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-
-    await waitFor(() => {
-      expect((screen.getByLabelText('Arbeitsspeicher (MiB)') as HTMLInputElement).value).toBe(
-        '6144',
-      );
-    });
   });
 
   it('lässt eine Gruppe mit nur einer freigeschalteten Ausgabe unter ihrem Namen stehen', async () => {

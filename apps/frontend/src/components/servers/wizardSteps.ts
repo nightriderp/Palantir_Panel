@@ -59,6 +59,16 @@ export interface WizardState {
   autoShutdownEnabled: boolean;
   /** Übernommene Weltdaten (Lastenheft §3.3); `null`, wenn keine gewählt sind. */
   worldImport: { uploadId: string; fileName: string } | null;
+  /**
+   * Hat der Nutzer RAM oder Platzbedarf selbst eingestellt?
+   *
+   * Solange nicht, sind die Werte der Vorschlag des Spiels und dürfen von einem
+   * Wechsel der Variante nachgezogen werden – NeoForge schlägt 6144 MiB vor,
+   * Paper 2048. Hat er sie angefasst, sind es **seine** Werte, und ein Wechsel
+   * fasst sie nicht mehr an (Betreiber-Wunsch 20.09.2026, Variantenwahl im
+   * Schritt „Optionen").
+   */
+  ressourcenAngefasst: boolean;
 }
 
 /** Voreinstellungen, solange kein Spiel gewählt ist. */
@@ -75,6 +85,7 @@ export const INITIAL_WIZARD_STATE: WizardState = {
   startupParameters: '',
   autoShutdownEnabled: true,
   worldImport: null,
+  ressourcenAngefasst: false,
 };
 
 /**
@@ -179,6 +190,11 @@ export function defaultConfigValues(gameType: GameTypeDto): GameConfigValues {
  *
  * Ressourcen und Konfiguration kommen aus der Empfehlung des Spieltyps; was der
  * Nutzer bereits eingetippt hat (Name, Subdomain, Node), bleibt erhalten.
+ *
+ * Ein anderes Spiel ist ein Neuanfang: Auch selbst eingestellte Ressourcen
+ * werden ersetzt, und `ressourcenAngefasst` fängt wieder bei `false` an. Wer
+ * von Minecraft zu Valheim wechselt, will nicht den RAM-Wert von Minecraft
+ * behalten.
  */
 export function applyGameType(state: WizardState, gameType: GameTypeDto): WizardState {
   return {
@@ -188,6 +204,48 @@ export function applyGameType(state: WizardState, gameType: GameTypeDto): Wizard
     diskMb: gameType.resourceDefaults.diskMb,
     config: defaultConfigValues(gameType),
     worldImport: gameType.supportsWorldImport ? state.worldImport : null,
+    ressourcenAngefasst: false,
+    gameVersion: null,
+  };
+}
+
+/**
+ * Zustand auf eine andere **Variante desselben Spiels** umstellen.
+ *
+ * Der Unterschied zu {@link applyGameType} ist kein Feinschliff, sondern der
+ * Grund, warum die Variantenwahl überhaupt in den Schritt „Optionen" darf: Dort
+ * steht sie **neben** den Feldern, die sie sonst überschriebe.
+ *
+ * - **Ressourcen** werden nur nachgezogen, solange der Nutzer sie nicht selbst
+ *   eingestellt hat. Sonst hätte ein Wechsel von Paper auf NeoForge
+ *   stillschweigend seine 8 GiB auf die 6 GiB der Vorgabe gesetzt.
+ * - **Konfigurationswerte bleiben**, soweit die neue Variante dieselben Felder
+ *   kennt – und das tun die vier Minecraft-Ausgaben, sie teilen sich das
+ *   Schema. Wer Spielmodus und Spielerzahl eingestellt hat und dann die Ausgabe
+ *   wechselt, findet sie wieder. Felder, die es nur bei der neuen gibt,
+ *   bekommen ihre Vorgabe; Felder, die es nicht mehr gibt, fallen weg.
+ * - **Die gewählte Spielversion fällt weg.** Jede Ausgabe hat ihren eigenen
+ *   Katalog; `26.2` bei Paper ist nicht dieselbe Zeile wie `26.2` bei Vanilla,
+ *   und eine Version stehenzulassen, die der neue Katalog vielleicht nicht
+ *   führt, endete beim Anlegen in „nicht (mehr) zu finden".
+ */
+export function applyGameVariant(state: WizardState, gameType: GameTypeDto): WizardState {
+  const vorgaben = defaultConfigValues(gameType);
+  const uebernommen: GameConfigValues = {};
+
+  for (const [schluessel, vorgabe] of Object.entries(vorgaben)) {
+    const bisher = state.config[schluessel];
+    uebernommen[schluessel] = bisher === undefined ? vorgabe : bisher;
+  }
+
+  return {
+    ...state,
+    gameType: gameType.id,
+    ramMb: state.ressourcenAngefasst ? state.ramMb : gameType.resourceDefaults.ramMb,
+    diskMb: state.ressourcenAngefasst ? state.diskMb : gameType.resourceDefaults.diskMb,
+    config: uebernommen,
+    worldImport: gameType.supportsWorldImport ? state.worldImport : null,
+    gameVersion: null,
   };
 }
 

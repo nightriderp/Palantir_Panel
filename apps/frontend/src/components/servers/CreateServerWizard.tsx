@@ -44,6 +44,7 @@ import {
   type WizardState,
   type WizardStep,
   applyGameType,
+  applyGameVariant,
   buildGameChoices,
   buildSummaryRows,
   findGameChoice,
@@ -443,35 +444,6 @@ export function CreateServerWizard() {
                 </span>
               </button>
             </div>
-
-            {/*
-              Die Variante gehört in diesen Schritt und nicht zu den Optionen:
-              Sie entscheidet über den RAM-Vorschlag (NeoForge 6 GiB statt der
-              üblichen Vorgabe) und über die Startfrist. `applyGameType()` setzt
-              beides neu – stünde die Wahl weiter hinten, überschriebe ein
-              Wechsel stillschweigend, was der Nutzer im Schritt „Grundlagen"
-              eingestellt hat.
-            */}
-            {gewaehlteKachel !== null && gewaehlteKachel.variants.length > 1 ? (
-              <SelectField
-                label="Variante"
-                hint={selectedGame?.description}
-                value={state.gameType ?? ''}
-                onChange={(value) => {
-                  const variante = gewaehlteKachel.variants.find(
-                    (kandidat) => kandidat.id === value,
-                  );
-
-                  if (variante !== undefined) {
-                    setState((current) => applyGameType(current, variante));
-                  }
-                }}
-                options={gewaehlteKachel.variants.map((variante) => ({
-                  value: variante.id,
-                  label: variantChoiceLabel(variante),
-                }))}
-              />
-            ) : null}
           </>
         ) : null}
 
@@ -513,7 +485,9 @@ export function CreateServerWizard() {
             <NumberField
               label="Arbeitsspeicher (MiB)"
               value={state.ramMb}
-              onChange={(value) => patch({ ramMb: value ?? SERVER_RAM_MIN_MB })}
+              onChange={(value) =>
+                patch({ ramMb: value ?? SERVER_RAM_MIN_MB, ressourcenAngefasst: true })
+              }
               min={SERVER_RAM_MIN_MB}
               max={SERVER_RAM_MAX_MB}
               step={512}
@@ -550,6 +524,40 @@ export function CreateServerWizard() {
         {step === 'options' ? (
           <>
             <h2 className="text-xl font-bold">Optionen</h2>
+
+            {/*
+              Variante und Spielversion stehen beieinander und vor den
+              Spiel-Einstellungen (Betreiber-Wunsch 20.09.2026): Zusammen
+              beantworten sie „was genau", und die Version hängt an der
+              Variante – jede Ausgabe hat ihren eigenen Katalog.
+
+              Dass die Wahl hier stehen darf, ist keine Selbstverständlichkeit:
+              Sie ändert den Ressourcen-Vorschlag (NeoForge 6144 MiB statt 2048)
+              und die Konfigurationswerte, und beides steht schon im Formular.
+              `applyGameVariant()` zieht die Vorgaben deshalb nur nach, solange
+              der Nutzer sie nicht selbst eingestellt hat, und behält seine
+              Eingaben, soweit die neue Ausgabe dieselben Felder kennt.
+            */}
+            {gewaehlteKachel !== null && gewaehlteKachel.variants.length > 1 ? (
+              <SelectField
+                label="Variante"
+                hint={selectedGame?.description}
+                value={state.gameType ?? ''}
+                onChange={(value) => {
+                  const variante = gewaehlteKachel.variants.find(
+                    (kandidat) => kandidat.id === value,
+                  );
+
+                  if (variante !== undefined) {
+                    setState((current) => applyGameVariant(current, variante));
+                  }
+                }}
+                options={gewaehlteKachel.variants.map((variante) => ({
+                  value: variante.id,
+                  label: variantChoiceLabel(variante),
+                }))}
+              />
+            ) : null}
 
             {/*
               Die Spielversion steht vor den Spiel-Einstellungen: Sie bestimmt,
