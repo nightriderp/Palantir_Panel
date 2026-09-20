@@ -294,7 +294,16 @@ describe('Templates: Varianten auf einer Karte', () => {
         ausgabe('Vanilla', 'minecraft-vanilla'),
         ausgabe('Fabric', 'minecraft-fabric'),
         ausgabe('NeoForge', 'minecraft-neoforge'),
-        spiel({ id: 'minecraft-bedrock', name: 'Minecraft (Bedrock)', imageVersion: '1' }),
+        // Bedrock steht seit #605 in derselben Gruppe, laeuft aber aus einem
+        // eigenen Image - genau der Fall, in dem eine gemeinsame Versionszeile
+        // luege.
+        spiel({
+          id: 'minecraft-bedrock',
+          name: 'Minecraft (Bedrock)',
+          variantGroup: 'Minecraft',
+          variantLabel: 'Bedrock',
+          imageVersion: '1',
+        }),
         spiel({ id: 'valheim', name: 'Valheim', imageVersion: '1' }),
       ],
       error: null,
@@ -323,11 +332,11 @@ describe('Templates: Varianten auf einer Karte', () => {
 
     const karte = karteMit('Minecraft');
 
-    for (const label of ['Paper', 'Vanilla', 'Fabric', 'NeoForge']) {
+    for (const label of ['Paper', 'Vanilla', 'Fabric', 'NeoForge', 'Bedrock']) {
       expect(within(karte).getByText(label), label).toBeTruthy();
     }
 
-    expect(within(karte).getAllByRole('switch')).toHaveLength(4);
+    expect(within(karte).getAllByRole('switch')).toHaveLength(5);
   });
 
   it('zeigt Symbol und Kachelbild einmal für die ganze Gruppe', async () => {
@@ -345,7 +354,20 @@ describe('Templates: Varianten auf einer Karte', () => {
     expect(within(karte).getAllByText('Kachelbild')).toHaveLength(1);
   });
 
-  it('nennt die Image-Version der Gruppe einmal, nicht je Ausgabe', async () => {
+  it('nennt die Image-Version einmal, wenn die Gruppe sich ein Image teilt', async () => {
+    // Ohne Bedrock laufen alle vier aus demselben Image - dann sagt eine Zeile
+    // alles, und fünfmal dieselbe Zahl saege nichts.
+    api.fetchGameTypes.mockResolvedValue({
+      success: true,
+      data: [
+        ausgabe('Paper', 'minecraft-paper'),
+        ausgabe('Vanilla', 'minecraft-vanilla'),
+        ausgabe('Fabric', 'minecraft-fabric'),
+        ausgabe('NeoForge', 'minecraft-neoforge'),
+      ],
+      error: null,
+    });
+
     zeichne();
 
     await waitFor(() => {
@@ -355,16 +377,46 @@ describe('Templates: Varianten auf einer Karte', () => {
     expect(within(karteMit('Minecraft')).getAllByText('v10.0.0')).toHaveLength(1);
   });
 
-  it('lässt Spiele ohne Gruppe unverändert', async () => {
-    // Bedrock zeigt auf ein anderes Image und hat darum kein `variantGroup`.
+  it('lässt ein Spiel ohne Gruppe unverändert', async () => {
     zeichne();
 
     await waitFor(() => {
-      expect(screen.getByText('Minecraft (Bedrock)')).toBeTruthy();
+      expect(screen.getByText('Valheim')).toBeTruthy();
     });
 
-    expect(screen.getByText('Valheim')).toBeTruthy();
-    expect(within(karteMit('Minecraft (Bedrock)')).getAllByRole('switch')).toHaveLength(1);
+    expect(within(karteMit('Valheim')).getAllByRole('switch')).toHaveLength(1);
+  });
+
+  it('nimmt Bedrock mit in die Gruppe - fünf Schalter auf einer Karte', async () => {
+    zeichne();
+
+    await waitFor(() => {
+      expect(screen.getByText('Minecraft')).toBeTruthy();
+    });
+
+    const karte = karteMit('Minecraft');
+
+    expect(within(karte).getByText('Bedrock')).toBeTruthy();
+    expect(within(karte).getAllByRole('switch')).toHaveLength(5);
+  });
+
+  it('zeigt die Version je Variante, wenn die Gruppe sich kein Image teilt', async () => {
+    /*
+     * Der Fehler, den das behebt: Die Karte nahm die Version der ersten
+     * Variante und schrieb sie unter alle. Bedrock lief damit sichtbar unter
+     * „v10.0.0", obwohl sein Image auf 1 steht - eine Zahl, die für vier
+     * Vorlagen stimmt und für die fünfte nicht.
+     */
+    zeichne();
+
+    await waitFor(() => {
+      expect(screen.getByText('Minecraft')).toBeTruthy();
+    });
+
+    const karte = karteMit('Minecraft');
+
+    expect(within(karte).getAllByText('v10.0.0')).toHaveLength(4);
+    expect(within(karte).getAllByText('v1.0.0')).toHaveLength(1);
   });
 
   it('zählt weiterhin Vorlagen und nicht Karten', async () => {

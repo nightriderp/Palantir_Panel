@@ -81,3 +81,23 @@ export function templateVariantLabel(game: GameTypeDto): string {
 
   return label === null || label === '' ? game.name : label;
 }
+
+/**
+ * Teilen sich alle Varianten einer Karte dasselbe Image?
+ *
+ * **Warum das die Anzeige entscheidet.** Die vier Java-Ausgaben laufen aus
+ * `palantir-game-minecraft` – eine Version unter den Schaltern sagt dort alles.
+ * Bedrock hat ein eigenes (`palantir-game-minecraftbedrock`), und seit es in
+ * derselben Gruppe steht, behauptete die Karte dessen Version einfach mit: Sie
+ * nahm die der ersten Variante, und das war die der Java-Familie.
+ *
+ * Eine Zahl, die für vier Vorlagen stimmt und für die fünfte nicht, ist
+ * schlimmer als fünf Zahlen – man sieht ihr nicht an, dass sie falsch ist.
+ * Darum: eine gemeinsame Zeile nur, wenn es wirklich eine gemeinsame Version
+ * gibt, sonst je Variante.
+ */
+export function teilenSichDieVersion(games: readonly GameTypeDto[]): boolean {
+  const versionen = new Set(games.map((spiel) => spiel.imageVersion ?? null));
+
+  return versionen.size === 1;
+}
