@@ -1,9 +1,10 @@
 'use client';
 
-import Link from 'next/link';
+import Link, { useLinkStatus } from 'next/link';
 import { type ServerStatus } from '@palantir/contracts';
 import { CountBadge, StatusDot } from '../primitives/Badge';
 import { Icon, type IconName } from '../icons/Icon';
+import { Spinner } from '../primitives/Spinner';
 import { serverStatusMeta } from '../server/serverStatus';
 import { cn } from '../utils/cn';
 
@@ -61,6 +62,47 @@ function SectionHeading({ title, aside }: { title: string; aside?: string }) {
   );
 }
 
+/**
+ * Das Symbol eines Eintrags – oder ein Spinner, solange dessen Seite lädt.
+ *
+ * `useLinkStatus` gibt es nur **innerhalb** eines `<Link>`, deshalb diese
+ * eigene kleine Komponente statt einer Abfrage in der Zeile selbst.
+ *
+ * Sie schließt die letzte Lücke des Seitenwechsels: Das Ladebild
+ * (`(dashboard)/loading.tsx`) sagt „im Inhaltsbereich passiert etwas", aber
+ * nicht, **welcher** Eintrag gerade angeklickt wurde. Der Spinner sitzt an der
+ * Stelle des Symbols und ist damit genau dort, wo der Zeiger gerade war.
+ */
+function EintragSymbol({ icon }: { icon: IconName }) {
+  const { pending } = useLinkStatus();
+
+  return pending ? <Spinner size={16} /> : <Icon name={icon} size={16} />;
+}
+
+/**
+ * Grundoptik jeder Zeile der Seitenleiste – Abschnitte **und** Server.
+ *
+ * ⚠️ `border-l-2` steht in der **Grundlage**, nicht nur am aktiven Eintrag.
+ * Vorher bekam die Kante nur der aktive Eintrag, und weil ein Rahmen Platz
+ * einnimmt, rutschte bei jedem Seitenwechsel die Beschriftung der neuen Zeile
+ * um zwei Pixel nach rechts und die der alten wieder zurück. Auf der
+ * meistbenutzten Fläche der Oberfläche war das ein sichtbares Zucken. Mit der
+ * Kante in der Grundlage und `border-transparent` im Ruhezustand ist der Platz
+ * immer belegt; sichtbar wird nur die Farbe.
+ *
+ * `transition-colors` gehört dazu: Ohne die Angabe springen Text- und
+ * Flächenfarbe hart um, und genau dieses Springen unterscheidet eine
+ * Oberfläche, die reagiert, von einer, die nur umschaltet.
+ */
+const ZEILE_BASIS =
+  'flex items-center gap-2.5 rounded-tile border-l-2 px-2.5 text-base transition-colors';
+
+/** Ruhe- und Hover-Zustand einer nicht aktiven Zeile. */
+const ZEILE_RUHEND = 'border-transparent text-ink-muted hover:bg-fill hover:text-ink';
+
+/** Aktive Zeile: farbige Kante, getönte Fläche. */
+const ZEILE_AKTIV = 'border-brand bg-brand-soft text-white';
+
 export function SideNavSection({ title, titleAside, items, className }: SideNavSectionProps) {
   return (
     <div className={cn('flex flex-col gap-0.5', className)}>
@@ -71,14 +113,9 @@ export function SideNavSection({ title, titleAside, items, className }: SideNavS
           key={item.key}
           href={item.href}
           aria-current={item.active ? 'page' : undefined}
-          className={cn(
-            'flex items-center gap-2.5 rounded-tile px-2.5 py-2.5 text-base',
-            item.active
-              ? 'border-l-2 border-brand bg-brand-soft text-white'
-              : 'text-ink-muted hover:text-ink',
-          )}
+          className={cn(ZEILE_BASIS, 'py-2.5', item.active ? ZEILE_AKTIV : ZEILE_RUHEND)}
         >
-          <Icon name={item.icon} size={16} />
+          <EintragSymbol icon={item.icon} />
           <span className="flex-1 truncate text-left">{item.label}</span>
           {item.badgeCount ? <CountBadge count={item.badgeCount} /> : null}
         </Link>
@@ -130,12 +167,7 @@ export function SideNavServerSection({ title, items, className }: SideNavServerS
             key={item.id}
             href={item.href}
             aria-current={item.active ? 'page' : undefined}
-            className={cn(
-              'flex items-center gap-2.5 rounded-tile px-2.5 py-2 text-base',
-              item.active
-                ? 'border-l-2 border-brand bg-brand-soft text-white'
-                : 'text-ink-muted hover:text-ink',
-            )}
+            className={cn(ZEILE_BASIS, 'py-2', item.active ? ZEILE_AKTIV : ZEILE_RUHEND)}
           >
             <span
               aria-hidden

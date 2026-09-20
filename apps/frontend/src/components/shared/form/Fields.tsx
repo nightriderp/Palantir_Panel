@@ -21,7 +21,7 @@ import { cn } from '../utils/cn';
 
 /** Grundoptik aller Eingabe-Elemente (Text, Zahl, Auswahl). */
 const CONTROL_BASE =
-  'w-full rounded-md border bg-fill px-3 py-2.5 text-base text-ink outline-none placeholder:text-ink-disabled focus-visible:border-brand disabled:cursor-not-allowed disabled:text-ink-disabled';
+  'w-full rounded-md border bg-fill px-3 py-2.5 text-base text-ink outline-none transition-colors placeholder:text-ink-disabled hover:border-ink-disabled focus-visible:border-brand disabled:cursor-not-allowed disabled:text-ink-disabled disabled:hover:border-line-strong';
 
 /** Rahmenfarbe abhängig davon, ob zum Feld ein Fehler gemeldet ist. */
 function controlClasses(error: string | null | undefined, extra?: string): string {

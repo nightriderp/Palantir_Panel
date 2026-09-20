@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   Button,
+  ButtonLink,
   Icon,
   NumberField,
   PageHeader,
@@ -380,9 +381,9 @@ export function CreateServerWizard() {
         subtitle="In wenigen Schritten zum eigenen Gameserver"
         className="-mx-5 -mt-5 px-5"
         actions={
-          <Button iconLeft="arrowLeft" onClick={() => router.push('/servers')}>
+          <ButtonLink href="/servers" iconLeft="arrowLeft">
             Zurück zur Übersicht
-          </Button>
+          </ButtonLink>
         }
       />
 

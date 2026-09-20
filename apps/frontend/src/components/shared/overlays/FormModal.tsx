@@ -66,7 +66,7 @@ export function FormModal({
           <Button onClick={onClose} disabled={busy}>
             {cancelLabel}
           </Button>
-          <Button type="submit" variant="primary" disabled={submitDisabled || busy}>
+          <Button type="submit" variant="primary" loading={busy} disabled={submitDisabled}>
             {submitLabel}
           </Button>
         </div>

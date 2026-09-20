@@ -1,10 +1,10 @@
 'use client';
 
 import { type GameTypeDto, type HostNodeDto } from '@palantir/contracts';
-import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import {
   Button,
+  ButtonLink,
   EmptyState,
   Icon,
   MetricTile,
@@ -44,7 +44,6 @@ export function NodesView() {
 
   const canView = user?.permissions.canViewNodes ?? false;
   const canManage = user?.permissions.canManageNodes ?? false;
-  const router = useRouter();
 
   // Nur laden, wenn das Konto steht und die Sicht erlaubt ist – sonst gar nicht
   // (dependencies === null hält `useApiResource` an).
@@ -68,9 +67,9 @@ export function NodesView() {
         Was ist das?
       </Button>
       {canManage ? (
-        <Button iconLeft="server" onClick={() => router.push('/admin/nodes')}>
+        <ButtonLink href="/admin/nodes" iconLeft="server">
           Nodes verwalten
-        </Button>
+        </ButtonLink>
       ) : null}
     </>
   );

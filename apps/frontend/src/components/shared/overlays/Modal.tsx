@@ -238,7 +238,14 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-fade-up items-end justify-center bg-black/60 p-0 backdrop-blur-[3px] sm:items-center sm:p-5"
+      /*
+        Der Schleier blendet mit eigenem Keyframe auf: Tönung und Weichzeichner
+        ziehen zusammen an. Hier stand `animate-fade-up` – dasselbe Keyframe,
+        das die Dialogfläche benutzt, samt `translateY(8px)`. Ein ganzflächiger
+        Verdunkler, der von unten hereinrutscht, liest sich nicht als Tiefe,
+        sondern als Ruckeln.
+      */
+      className="fixed inset-0 z-50 flex animate-scrim-in items-end justify-center bg-black/60 p-0 backdrop-blur-[3px] sm:items-center sm:p-5"
       // Geschlossen wird erst beim Loslassen – und nur, wenn schon das Drücken
       // auf dem Hintergrund lag (frontend-lib-08).
       onMouseDown={handleBackdropMouseDown}

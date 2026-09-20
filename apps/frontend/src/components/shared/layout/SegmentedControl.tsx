@@ -43,8 +43,11 @@ export function SegmentedControl<TKey extends string = string>({
             aria-pressed={active}
             onClick={() => onChange(item.key)}
             className={cn(
-              'whitespace-nowrap rounded-tile px-4 py-2 text-base font-semibold',
-              active ? 'bg-brand text-white' : 'text-ink-muted hover:text-ink',
+              // Ohne Übergang springt das Segment von durchsichtig auf volles
+              // Brand-Violett – bei einer Leiste, die man reihum durchklickt,
+              // der auffälligste Sprung der ganzen Oberfläche.
+              'whitespace-nowrap rounded-tile px-4 py-2 text-base font-semibold transition-colors',
+              active ? 'bg-brand text-white' : 'text-ink-muted hover:bg-fill-strong hover:text-ink',
             )}
           >
             {item.label}

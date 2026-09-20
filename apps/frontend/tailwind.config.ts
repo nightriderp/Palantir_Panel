@@ -208,16 +208,39 @@ const config: Config = {
           from: { opacity: '0', transform: 'scale(.96)' },
           to: { opacity: '1', transform: 'scale(1)' },
         },
+        /**
+         * Der Schleier hinter einem Modal: Tönung **und** Weichzeichner ziehen
+         * zusammen auf, damit die Tiefe mit der Fläche ankommt statt vor ihr.
+         *
+         * Vorher trug der Schleier `fade-up` – also das Keyframe der Dialog-
+         * Fläche samt `translateY(8px)`. Der Verdunkler rutschte dadurch von
+         * unten herein, was bei einem ganzflächigen Element als Ruckeln
+         * ankommt.
+         *
+         * ⚠️ Der Endwert `blur(3px)` muss zum `backdrop-blur-[3px]` passen,
+         * das derselbe Schleier als Ruhezustand trägt – nach der Animation
+         * übernimmt die Utility-Klasse. Wer den einen Wert ändert, ändert auch
+         * den anderen.
+         */
+        scrimIn: {
+          from: { opacity: '0', backdropFilter: 'blur(0)' },
+          to: { opacity: '1', backdropFilter: 'blur(3px)' },
+        },
         startupSweep: {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(400%)' },
+        },
+        spin: {
+          to: { transform: 'rotate(360deg)' },
         },
       },
       animation: {
         'pulse-dot': 'pulseDot 2s ease-in-out infinite',
         'fade-up': 'fadeUp 0.25s ease',
         materialize: 'materialize 0.18s ease',
+        'scrim-in': 'scrimIn 0.2s ease-out',
         'startup-sweep': 'startupSweep 1.6s linear infinite',
+        spin: 'spin 0.7s linear infinite',
       },
     },
   },

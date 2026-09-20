@@ -202,7 +202,7 @@ export function LoginView() {
             <FormMessage tone={blocking ? 'warning' : 'error'}>{formError}</FormMessage>
           ) : null}
 
-          <Button type="submit" variant="primary" fullWidth disabled={busy}>
+          <Button type="submit" variant="primary" fullWidth loading={busy}>
             {busy ? 'Wird geprüft …' : 'Bestätigen'}
           </Button>
         </form>
@@ -258,7 +258,7 @@ export function LoginView() {
           <FormMessage tone={blocking ? 'warning' : 'error'}>{formError}</FormMessage>
         ) : null}
 
-        <Button type="submit" variant="primary" fullWidth disabled={busy}>
+        <Button type="submit" variant="primary" fullWidth loading={busy}>
           {busy ? 'Wird angemeldet …' : 'Anmelden'}
         </Button>
       </form>

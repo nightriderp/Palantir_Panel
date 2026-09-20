@@ -492,7 +492,8 @@ function ServerCardIntern({
           <Button
             variant={action === 'stop' ? 'danger' : 'success'}
             className="flex-1"
-            disabled={actionBlocked || pending}
+            loading={pending}
+            disabled={actionBlocked}
             title={actionBlocked ? meta.description : undefined}
             onClick={() => (action === 'stop' ? onStop?.(server) : onStart?.(server))}
           >

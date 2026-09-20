@@ -159,7 +159,7 @@ export function RegisterView() {
           <FormMessage tone={blocking ? 'warning' : 'error'}>{formError}</FormMessage>
         ) : null}
 
-        <Button type="submit" variant="primary" fullWidth disabled={busy}>
+        <Button type="submit" variant="primary" fullWidth loading={busy}>
           {busy ? 'Konto wird erstellt …' : 'Registrieren'}
         </Button>
       </form>

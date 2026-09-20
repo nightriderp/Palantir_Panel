@@ -91,14 +91,98 @@
     border: 2px solid #0a0b0f;
   }
 
-  /* Nutzer, die Bewegung reduzieren wollen, bekommen keine Animationen. */
+  /*
+   * Reiner Überblend-Ersatz für `fadeUp`, `materialize` und `scrimIn`, ohne
+   * deren Bewegung. Steht hier statt in `tailwind.config.ts`, weil Tailwind ein
+   * Keyframe nur dann ausgibt, wenn die zugehörige Utility-Klasse irgendwo im
+   * Markup auftaucht – dieses hier benutzt aber ausschließlich der
+   * Reduced-Motion-Block darunter.
+   */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /*
+   * Wer Bewegung im Betriebssystem abgeschaltet hat, bekommt hier keine.
+   *
+   * ⚠️ Bewusst nur `transition-duration` pauschal, **nicht**
+   * `animation-duration`. Hier stand bis zuletzt beides – und damit stand auch
+   * jede Ladeanzeige still: ein eingefrorener Spinner sieht defekt aus, nicht
+   * ruhig, und der Startbalken eines hochfahrenden Servers verlor genau das
+   * Lebenszeichen, für das es ihn gibt. Puls- und Blinkanimationen bleiben aus
+   * demselben Grund unangetastet: Sie bewegen nichts durch den Raum
+   * (nicht-vestibulär) und tragen Bedeutung.
+   *
+   * `!important`, weil die Tailwind-Utilities ihre Dauer direkt am Element
+   * setzen und einen Universalselektor sonst schlagen.
+   */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+    }
+
+    /* Dialoge, Karten und Hinweise blenden nur noch auf, statt hochzuwandern. */
+    .animate-fade-up {
+      animation: fadeIn 0.2s ease !important;
+    }
+
+    /*
+     * Modal- und Popover-Flächen tauchen ohne Aufwachsen und ohne den Zug des
+     * Weichzeichners auf – nur die Deckkraft kommt. Der Ruhe-Weichzeichner der
+     * Schleier-Klasse bleibt: Das hier ist Reduced-*Motion*, nicht
+     * Reduced-Transparency.
+     */
+    .animate-materialize,
+    .animate-scrim-in {
+      animation: fadeIn 0.2s ease !important;
+    }
+
+    /*
+     * Der Laufbalken steht ruhig gefüllt da. Die Auskunft steckt ohnehin im
+     * Text daneben; die Wanderung ist nur das Lebenszeichen.
+     */
+    .animate-startup-sweep {
+      animation: none !important;
+      width: 100%;
+      opacity: 0.5;
+    }
+  }
+
+  /*
+   * Wer Transparenz abschaltet, bekommt keine Glasflächen. Der Weichzeichner
+   * ist der eigentliche Effekt – er fällt weg; die Flächen dahinter sind
+   * ohnehin dunkel, sodass Text lesbar bleibt (Seitenleiste, Modal-Schleier).
+   */
+  @media (prefers-reduced-transparency: reduce) {
+    *,
+    *::before,
+    *::after {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+  }
+
+  /*
+   * Hoher-Kontrast-Modus: Die Haarlinien-Ränder bekommen mehr Kontur, damit
+   * sich Karten und Flächen klar voneinander trennen.
+   *
+   * Ein einziger Wert wirkt überall, wo `border-line` steht – die Tokens in
+   * `tailwind.config.ts` lösen zu genau diesen Farben auf.
+   */
+  @media (prefers-contrast: more) {
+    .border-line {
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    .border-line-strong {
+      border-color: rgba(255, 255, 255, 0.28);
     }
   }
 }
