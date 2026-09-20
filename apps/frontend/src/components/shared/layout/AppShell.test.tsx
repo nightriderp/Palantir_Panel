@@ -72,3 +72,68 @@ describe('AppShell – mobile Schublade', () => {
     expect(istOffen(menue)).toBe(false);
   });
 });
+
+/**
+ * Die Kanten des Rahmens (Betreiberwunsch 20.09.2026).
+ *
+ * Sie tragen den Marken-Verlauf statt der weißen Haarlinie. Der Punkt, der
+ * dabei leicht kaputtgeht: Die waagerechte Kante läuft über **zwei** Elemente
+ * – den Kopf der Seitenleiste (unter dem Logo) und den der Inhaltsspalte –
+ * und muss trotzdem als eine Linie lesen. Das hängt allein daran, dass das
+ * rechte Stück seinen Verlauf um die Breite der Seitenleiste verschiebt.
+ */
+describe('AppShell – Kanten des Rahmens', () => {
+  function rahmen(): { seitenleiste: HTMLElement; kopfLinks: Element; kopfRechts: HTMLElement } {
+    render(
+      <AppShell sidebar={<SideNavSection items={EINTRAEGE} />} topbar={<span>Kopf</span>}>
+        <p>Inhalt</p>
+      </AppShell>,
+    );
+
+    const seitenleiste = screen.getByRole('navigation', { name: 'Hauptnavigation' });
+    const kopfLinks = seitenleiste.firstElementChild;
+    const kopfRechts = screen.getByRole('banner');
+
+    if (kopfLinks === null) throw new Error('Kopf der Seitenleiste fehlt');
+
+    return { seitenleiste, kopfLinks, kopfRechts };
+  }
+
+  it('zeichnet beide Kanten als Verlaufsfläche, nicht als Rahmenfarbe', () => {
+    const { seitenleiste, kopfLinks, kopfRechts } = rahmen();
+
+    // Ein Verlauf kann keine `border-color` sein – deshalb eigene Klassen.
+    expect(seitenleiste.className).toContain('rahmenkante-laengs');
+    expect(kopfLinks.className).toContain('rahmenkante-quer');
+    expect(kopfRechts.className).toContain('rahmenkante-quer');
+
+    // Die alte weiße Haarlinie darf nicht danebenstehen, sonst lägen zwei
+    // Linien übereinander.
+    expect(seitenleiste.className).not.toContain('border-r');
+    expect(kopfLinks.className).not.toContain('border-b');
+    expect(kopfRechts.className).not.toContain('border-b');
+  });
+
+  it('verschiebt nur das rechte Stück der waagerechten Kante', () => {
+    const { kopfLinks, kopfRechts } = rahmen();
+
+    // ⚠️ Ohne den Versatz fängt der Verlauf rechts von vorn an: An der Kante
+    // der Seitenleiste stünde dann wieder Violett, wo schon Türkis kommt –
+    // ein sichtbarer Farbsprung mitten im Kopf.
+    expect(kopfLinks.className).not.toContain('rahmenkante-quer-versetzt');
+    expect(kopfRechts.className).toContain('rahmenkante-quer-versetzt');
+  });
+
+  it('hält die Seitenleiste auch ab `md` positioniert', () => {
+    const { seitenleiste } = rahmen();
+
+    /*
+     * Die Kante hängt als `::after` an der Seitenleiste. Ein `static` Element
+     * ist kein Bezugspunkt: Die Linie würde sich den nächsten positionierten
+     * Vorfahren suchen und quer über die Seite laufen. Deshalb `md:relative`
+     * statt des früheren `md:static` – im Fluss ändert das nichts.
+     */
+    expect(seitenleiste.className).toContain('md:relative');
+    expect(seitenleiste.className).not.toContain('md:static');
+  });
+});
