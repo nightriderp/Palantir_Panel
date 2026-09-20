@@ -136,12 +136,19 @@ export interface FontService {
    */
   stylesheet(): Promise<FontStylesheet>;
   upload(ctx: AdminContext, input: UploadFontInput, file: UploadedFile): Promise<FontDto>;
-  remove(ctx: AdminContext, id: string): Promise<void>;
   /**
-   * Eine ausgeblendete mitgelieferte Schrift wieder anbieten
-   * (Betreiber-Wunsch 20.09.2026).
+   * Eine Schrift löschen – mitgelieferte wie hochgeladene gleich
+   * (Betreiberwunsch 20.09.2026).
+   *
+   * Zwei Schranken, beide für alle Schriften dieselben:
+   * `FONT_LAST_REMAINING`, wenn es die letzte im Angebot ist, und
+   * `FONT_IN_USE`, wenn sie gerade eine Rolle besetzt.
+   *
+   * Ein Zurückholen gibt es nicht mehr. Die frühere `restore`-Methode kam
+   * daher, dass mitgelieferte Schriften nur ausgeblendet wurden; genau diese
+   * Sonderbehandlung ist entfallen.
    */
-  restore(ctx: AdminContext, id: string): Promise<void>;
+  remove(ctx: AdminContext, id: string): Promise<void>;
   /**
    * Gibt es diese Schrift – mit Datei?
    *
@@ -222,7 +229,7 @@ export function resolveWeights(input: UploadFontInput): {
 function bundledDto(
   font: BundledFont,
   sizeBytes: number,
-  { hidden, darfVerwalten }: { hidden: boolean; darfVerwalten: boolean },
+  { darfVerwalten }: { darfVerwalten: boolean },
 ): FontDto {
   return {
     id: font.id,
@@ -231,7 +238,6 @@ function bundledDto(
     source: 'bundled',
     format: font.format,
     sizeBytes,
-    hidden,
     uploadedAt: null,
     uploadedByDisplayName: null,
     variable: font.variable,
@@ -344,6 +350,28 @@ export function createFontService(deps: FontServiceDependencies): FontService {
     };
   }
 
+  /**
+   * Die letzte verbleibende Schrift bleibt (Betreiberwunsch 20.09.2026).
+   *
+   * Gezählt wird, was die Instanz **anbietet** – mitgelieferte ohne die
+   * bereits gelöschten, plus die hochgeladenen. Ohne diese Schranke ließe
+   * sich die Verwaltung leerräumen: keine `@font-face`-Regel mehr, die
+   * Oberfläche auf dem Fallback-Stack des Browsers, und nichts mehr da, aus
+   * dem man sich erholen könnte.
+   *
+   * ⚠️ Geprüft wird **nach** „gibt es die Schrift überhaupt?", nicht davor.
+   * Umgekehrt bekäme eine unbekannte Kennung die Meldung „das ist die letzte
+   * Schrift" – eine Antwort, die mit der Frage nichts zu tun hat. Der
+   * Reihenfolge-Gedanke („sonst hängt die Antwort davon ab, was man zuerst
+   * probiert") trägt hier nicht: Schriftkennungen sind nicht geheim, und
+   * `FONT_NOT_FOUND` gibt es an derselben Route ohnehin.
+   */
+  async function letzteSchriftSchuetzen(): Promise<void> {
+    if ((await angebot()).schriften.length <= 1) {
+      throw new FontError('FONT_LAST_REMAINING');
+    }
+  }
+
   /*
    * Benannt statt direkt zurückgegeben: `roleFile` löst nur die Rolle auf und
    * lässt dann `file` die Arbeit machen. Zwei Wege zu denselben Bytes dürfen
@@ -359,16 +387,21 @@ export function createFontService(deps: FontServiceDependencies): FontService {
       ]);
 
       /*
-       * Ausgeblendete stehen weiter in der Liste, nur gekennzeichnet: Sonst
-       * ließe sich die Entscheidung nicht zurücknehmen - die Schrift wäre aus
-       * der Verwaltung verschwunden, läge aber weiter im Abbild.
+       * Gelöschte Schriften stehen **nicht** mehr in der Liste
+       * (Betreiberwunsch 20.09.2026: „wenn gelöscht dann weg ohne Spuren").
+       *
+       * Hier stand das Gegenteil: Ausgeblendete blieben gekennzeichnet
+       * stehen, damit sich die Entscheidung zurücknehmen ließ. Genau diese
+       * Sonderbehandlung war der Punkt – eine mitgelieferte Schrift verhielt
+       * sich beim Löschen anders als eine hochgeladene. Jetzt verschwinden
+       * beide gleich.
        */
       const darfVerwalten = hasPermission(ctx.actor, MANAGE_PERMISSION);
 
       return [
-        ...mitgeliefert.map(({ font, sizeBytes }) =>
-          bundledDto(font, sizeBytes, { hidden: versteckt.has(font.id), darfVerwalten }),
-        ),
+        ...mitgeliefert
+          .filter(({ font }) => !versteckt.has(font.id))
+          .map(({ font, sizeBytes }) => bundledDto(font, sizeBytes, { darfVerwalten })),
         ...hochgeladen.map((record) => uploadedDto(record, ctx.actor, selected)),
       ];
     },
@@ -538,16 +571,39 @@ export function createFontService(deps: FontServiceDependencies): FontService {
         }
 
         /*
-         * Mitgeliefertes wird ausgeblendet, nicht gelöscht (Betreiber-Wunsch
-         * 20.09.2026): Die Datei liegt im Abbild, und der nächste Start
-         * brächte sie zurück. Der Löschschutz gilt trotzdem - eine Schrift,
-         * die gerade eine Rolle besetzt, verschwindet nicht unter den Füßen
-         * der Oberfläche.
+         * Schon gelöscht ist nicht vorhanden.
+         *
+         * Die Datei liegt zwar weiter im Abbild, `findBundledFont` findet sie
+         * also – für diese Instanz ist die Schrift aber weg, und ein zweites
+         * Löschen trifft ins Leere. Würde hier stillschweigend nochmal
+         * derselbe Merker gesetzt, antwortete die Route mit 204 auf etwas,
+         * das es nicht mehr gibt.
          */
+        if ((await ausgeblendete()).has(id)) {
+          throw new FontError('FONT_NOT_FOUND');
+        }
+
+        await letzteSchriftSchuetzen();
+
+        // Eine Schrift, die gerade eine Rolle besetzt, verschwindet nicht
+        // unter den Füßen der Oberfläche – für mitgelieferte wie für
+        // hochgeladene gleichermaßen.
         if ((await gewaehlte()).has(id)) {
           throw new FontError('FONT_IN_USE');
         }
 
+        /*
+         * ⚠️ Technisch ein Merker, fachlich eine Löschung.
+         *
+         * Die Datei einer mitgelieferten Schrift liegt im Abbild; sie lässt
+         * sich nicht von der Platte nehmen, der nächste Start brächte sie
+         * zurück. Was diese Instanz vergibt, ist deshalb ein dauerhafter
+         * Eintrag in `hiddenBundledFonts` – und den gibt es nur in diese eine
+         * Richtung: Seit dem Wegfall von `restore` wird der Setzer nirgends
+         * mehr mit `false` gerufen. Nach außen ist die Schrift damit weg wie
+         * jede andere: nicht in der Liste, nicht in der Auswahl, nicht im
+         * Stylesheet, kein Weg zurück.
+         */
         await deps.selection.setBundledFontHidden(id, true, ctx.userId);
 
         await deps.audit.record(
@@ -559,8 +615,9 @@ export function createFontService(deps: FontServiceDependencies): FontService {
               family: mitgeliefert.family,
               label: mitgeliefert.label,
               format: mitgeliefert.format,
-              // Damit im Log steht, was wirklich passiert ist.
-              art: 'ausgeblendet',
+              // Damit im Log steht, was wirklich passiert ist: Die Datei
+              // bleibt im Abbild, das Angebot dieser Instanz verliert sie.
+              art: 'aus dem Angebot der Instanz entfernt',
             },
           }),
         );
@@ -573,6 +630,8 @@ export function createFontService(deps: FontServiceDependencies): FontService {
       if (record === null) {
         throw new FontError('FONT_NOT_FOUND');
       }
+
+      await letzteSchriftSchuetzen();
 
       if ((await gewaehlte()).has(id)) {
         throw new FontError('FONT_IN_USE');
@@ -594,34 +653,6 @@ export function createFontService(deps: FontServiceDependencies): FontService {
           targetType: 'font',
           targetId: record.id,
           metadata: { family: record.family, label: record.label, format: record.format },
-        }),
-      );
-    },
-
-    async restore(ctx, id) {
-      requireManage(ctx.actor);
-
-      const mitgeliefert = findBundledFont(id);
-
-      if (mitgeliefert === null) {
-        // Hochgeladene Schriften sind wirklich weg; es gibt nichts
-        // zurückzuholen.
-        throw new FontError('FONT_NOT_FOUND');
-      }
-
-      await deps.selection.setBundledFontHidden(id, false, ctx.userId);
-
-      await deps.audit.record(
-        entryFor(ctx, {
-          action: 'font.uploaded',
-          targetType: 'font',
-          targetId: id,
-          metadata: {
-            family: mitgeliefert.family,
-            label: mitgeliefert.label,
-            format: mitgeliefert.format,
-            art: 'wieder angeboten',
-          },
         }),
       );
     },

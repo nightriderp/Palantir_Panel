@@ -1203,19 +1203,6 @@ export const ERROR_CATALOG = {
     defaultMessage: 'Die Datei ist keine lesbare Schrift oder passt nicht zu ihrer Endung.',
   },
   /**
-   * Versuch, eine mitgelieferte Schrift zu löschen. 403: die Aktion ist
-   * grundsätzlich unzulässig, unabhängig von Berechtigungen – auch der Owner
-   * darf sie nicht, wie bei `ROLE_PROTECTED`.
-   *
-   * Mitgelieferte Schriften liegen im Auslieferungsverzeichnis; ein „Löschen"
-   * hielte nur bis zur nächsten Aktualisierung und ließe die Instanz
-   * zwischenzeitlich ohne garantierte Vorgabeschrift zurück.
-   */
-  FONT_BUNDLED_PROTECTED: {
-    httpStatus: 403,
-    defaultMessage: 'Mitgelieferte Schriften können nicht gelöscht werden.',
-  },
-  /**
    * Die Schrift ist in den Instanz-Einstellungen gewählt. 409: erst eine andere
    * Schrift wählen, dann löschen – wie `NOTIFICATION_CHANNEL_IN_USE`.
    *

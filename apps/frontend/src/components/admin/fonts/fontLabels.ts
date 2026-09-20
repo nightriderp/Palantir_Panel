@@ -57,8 +57,8 @@ const FONT_FEHLERTEXTE: Partial<Record<string, string>> = {
     'Der Inhalt der Datei passt nicht zu ihrer Endung – sie ist keine lesbare Schrift. Bitte lade die Originaldatei der Schrift hoch, nicht ein umbenanntes Archiv.',
   FONT_FAMILY_TAKEN:
     'Diesen Familiennamen gibt es schon. Zwei gleichnamige Schriften würden sich in den erzeugten CSS-Regeln gegenseitig überschreiben – bitte wähle einen anderen Namen.',
-  FONT_BUNDLED_PROTECTED:
-    'Mitgelieferte Schriften lassen sich nicht löschen – sie gehören zur Instanz und wären nach der nächsten Aktualisierung ohnehin wieder da.',
+  FONT_LAST_REMAINING:
+    'Das ist die letzte verbleibende Schrift. Lade zuerst eine weitere hoch, dann lässt sie sich löschen.',
   FONT_IN_USE:
     'Diese Schrift ist gerade ausgewählt. Wähle für ihre Rolle zuerst eine andere Schrift, dann lässt sie sich löschen.',
   FONT_NOT_FOUND:
