@@ -1247,6 +1247,25 @@ export const ERROR_CATALOG = {
     httpStatus: 409,
     defaultMessage: 'Es gibt bereits eine Schrift mit diesem Namen.',
   },
+  /**
+   * Die letzte verbliebene Schrift soll gelöscht werden. 409: Der Zustand
+   * steht der Aktion entgegen, und der Aufrufer räumt ihn aus, indem er eine
+   * weitere Schrift hochlädt – wie `AUTH_METHOD_LAST_REMAINING`.
+   *
+   * Eine Instanz ohne jede Schrift hätte keine `@font-face`-Regel mehr und
+   * fiele auf den Fallback-Stack des Browsers zurück; die Oberfläche sähe auf
+   * jedem Rechner anders aus, und die Schriftverwaltung hätte nichts mehr
+   * anzubieten, aus dem man sich erholen könnte.
+   *
+   * Bewusst nicht `FONT_IN_USE`: Der meint die Auswahl in den Einstellungen
+   * und lässt sich ausräumen, indem man eine andere Schrift wählt. Hier gibt
+   * es keine andere.
+   */
+  FONT_LAST_REMAINING: {
+    httpStatus: 409,
+    defaultMessage:
+      'Die letzte verbleibende Schrift kann nicht gelöscht werden. Lade zuerst eine weitere hoch.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */

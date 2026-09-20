@@ -228,7 +228,7 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     it('vergibt jeden Schrift-Code genau einmal und mit eigener Meldung', () => {
       const fontCodes = ERROR_CODES.filter((code) => code.startsWith('FONT_'));
 
-      expect(fontCodes).toHaveLength(7);
+      expect(fontCodes).toHaveLength(8);
       expect(new Set(fontCodes).size).toBe(fontCodes.length);
       expect(new Set(fontCodes.map(defaultMessageForErrorCode)).size).toBe(fontCodes.length);
     });
