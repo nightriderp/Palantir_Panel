@@ -1,0 +1,14 @@
+-- Konten liessen sich nicht mehr loeschen, sobald sie einen Audit-Eintrag
+-- verursacht hatten (Betreiber-Meldung 20.09.2026).
+--
+-- Der Fremdschluessel auf "users" trug ON DELETE SET NULL. Beim Loeschen eines
+-- Kontos setzte Postgres also "audit_log"."actor_id" auf NULL - ein UPDATE auf
+-- das Audit-Log, und das verbietet der Waechter aus Migration 0005
+-- ausnahmslos. Ergebnis: AUDIT_ENTRY_IMMUTABLE und ein 500, jedes Mal.
+--
+-- Von den beiden moeglichen Wegen - den Waechter aufweichen oder den
+-- Fremdschluessel entfernen - ist der zweite der richtige. Ein Audit-Eintrag
+-- soll sich nie aendern; eine Ausnahme im Waechter waere genau das. Die
+-- Kennung bleibt stattdessen stehen, auch wenn das Konto verschwindet, und der
+-- Anzeigename steht ohnehin als Kopie in derselben Zeile.
+ALTER TABLE "audit_log" DROP CONSTRAINT IF EXISTS "audit_log_actor_id_users_id_fk";

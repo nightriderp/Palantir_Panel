@@ -66,6 +66,34 @@ describeDatenbank('Zusicherungen der Datenbank', (kontext) => {
     expect(zeilen[0]?.action).toBe('auth.loginSucceeded');
   });
 
+  it('lässt ein Konto löschen, das Audit-Einträge verursacht hat', async () => {
+    /*
+     * Betreiber-Meldung 20.09.2026: Das Löschen endete in einem 500. Der
+     * Fremdschlüssel trug ON DELETE SET NULL, das Nullen ist eine Änderung am
+     * Audit-Log, und die verbietet der Wächter - ein Konto mit einer einzigen
+     * Spur im Log liess sich damit nie mehr löschen.
+     *
+     * Seit Migration 0041 gibt es den Fremdschlüssel nicht mehr: Die Kennung
+     * bleibt als Spur stehen, der Eintrag bleibt unangetastet.
+     */
+    const nutzerId = await legeNutzerAn(kontext.db, { displayName: 'Loeschprobe' });
+
+    await kontext.roh(
+      `insert into audit_log (action, actor_id, actor_display_name) values ($1, $2, $3)`,
+      ['auth.loginSucceeded', nutzerId, 'Loeschprobe'],
+    );
+
+    await expect(kontext.roh('delete from users where id = $1', [nutzerId])).resolves.toBeDefined();
+
+    const zeilen = await kontext.roh(
+      'select actor_id, actor_display_name from audit_log where actor_id = $1',
+      [nutzerId],
+    );
+
+    expect(zeilen[0]?.actor_id).toBe(nutzerId);
+    expect(zeilen[0]?.actor_display_name).toBe('Loeschprobe');
+  });
+
   it('verweigert das Löschen eines Audit-Eintrags ohne Archiv-Ausweis', async () => {
     const id = await legeEintragAn(kontext.roh);
 
