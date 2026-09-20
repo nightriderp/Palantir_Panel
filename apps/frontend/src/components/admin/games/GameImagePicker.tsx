@@ -49,10 +49,26 @@ const STELLEN: readonly Stelle[] = [
 
 export function GameImagePicker({
   game,
+  weitere = [],
   disabled,
   onChanged,
 }: {
   game: GameTypeDto;
+  /**
+   * Weitere Vorlagen, die dasselbe Bild bekommen sollen (Betreiber-Wunsch
+   * 20.09.2026).
+   *
+   * Die Templates-Seite fasst Varianten desselben Spiels zu einer Karte
+   * zusammen – Minecraft belegte sonst fünf davon, und jede wollte dasselbe
+   * Bild einzeln hochgeladen bekommen.
+   *
+   * **Gespeichert wird weiterhin je Vorlage.** Das Bild geht nacheinander an
+   * jede Kennung; es gibt keinen Gruppen-Eintrag in der Datenbank. Der Preis
+   * ist sichtbar: Fünf Varianten sind fünf Abrufe. Der Gewinn ist, dass eine
+   * einzelne Variante später ein eigenes Bild bekommen kann, ohne dass dafür
+   * ein Sonderweg nötig wäre.
+   */
+  weitere?: readonly GameTypeDto[];
   disabled: boolean;
   onChanged: () => void;
 }) {
@@ -68,7 +84,26 @@ export function GameImagePicker({
   async function hochladen(stelle: Stelle, datei: File): Promise<void> {
     setAuswahl(null);
     setBusy(stelle.kind);
-    const ergebnis = await uploadGameTypeImage(game.id, stelle.kind, datei);
+    let ergebnis = await uploadGameTypeImage(game.id, stelle.kind, datei);
+
+    /*
+     * Die übrigen Varianten der Gruppe bekommen dieselbe Datei. Nacheinander
+     * und nicht nebeneinander: Der Abruf trägt ein Bild im Körper, und fünf
+     * davon gleichzeitig auf einer Heimleitung sind kein Gewinn.
+     *
+     * Scheitert einer, steht es sofort da – das Bild liegt dann bei einigen
+     * Varianten und bei anderen nicht. Das ist der ehrliche Zustand, und er
+     * lässt sich durch ein zweites Hochladen beheben; eine Umkehr, die bereits
+     * geschriebene Bilder wieder entfernt, wäre bei einem Netzfehler mitten
+     * drin genauso lückenhaft.
+     */
+    for (const andere of weitere) {
+      if (!ergebnis.success) {
+        break;
+      }
+
+      ergebnis = await uploadGameTypeImage(andere.id, stelle.kind, datei);
+    }
     setBusy(null);
 
     if (!ergebnis.success) {
@@ -77,13 +112,26 @@ export function GameImagePicker({
       return;
     }
 
-    toast.success(`${stelle.titel} für „${game.name}" gespeichert.`);
+    toast.success(
+      weitere.length === 0
+        ? `${stelle.titel} für „${game.name}" gespeichert.`
+        : `${stelle.titel} für ${String(weitere.length + 1)} Varianten gespeichert.`,
+    );
     onChanged();
   }
 
   async function entfernen(stelle: Stelle): Promise<void> {
     setBusy(stelle.kind);
-    const ergebnis = await removeGameTypeImage(game.id, stelle.kind);
+    let ergebnis = await removeGameTypeImage(game.id, stelle.kind);
+
+    // Wie beim Hochladen: Was gemeinsam gesetzt wurde, wird gemeinsam entfernt.
+    for (const andere of weitere) {
+      if (!ergebnis.success) {
+        break;
+      }
+
+      ergebnis = await removeGameTypeImage(andere.id, stelle.kind);
+    }
     setBusy(null);
 
     if (!ergebnis.success) {
