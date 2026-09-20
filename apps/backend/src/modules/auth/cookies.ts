@@ -111,7 +111,24 @@ export function setOAuthStateCookie(
   settings: CookieSettings,
 ): void {
   reply.setCookie(OAUTH_STATE_COOKIE_NAME, value, {
-    ...base(settings, '/auth', true),
+    /*
+     * `Path=/`, nicht `/auth` (Fundpunkt 313, im Betrieb aufgefallen).
+     *
+     * Der enge Pfad war die sparsamere Wahl, solange die API unter einem
+     * eigenen Host lag. Seit sie auch unter `<Domain>/api` erreichbar ist,
+     * schneidet Traefik das Praefix ab: Das Backend sieht `/auth/discord/start`
+     * und setzte `Path=/auth` - der Browser steht aber auf
+     * `/api/auth/discord/start`. Beim Rueckweg von Discord auf
+     * `/api/auth/discord/callback` passt der Pfad nicht, das Cookie bleibt
+     * liegen, und der Callback meldet "Login-Vorgang ist ungueltig oder
+     * abgelaufen". Dasselbe traf das Verknuepfen von Discord, Twitch und Steam.
+     *
+     * Ein Backend kann seinen eigenen Praefix nicht kennen - es sieht nur den
+     * gekuerzten Pfad. Deshalb `/`: Der einzige Pfad, der unter jedem Praefix
+     * stimmt. Der Preis ist gering: Das Cookie lebt {@link
+     * OAUTH_STATE_TTL_SECONDS} Sekunden, ist `httpOnly` und signiert.
+     */
+    ...base(settings, '/', true),
     maxAge: OAUTH_STATE_TTL_SECONDS,
     // Signiert, damit ein selbst gesetzter Wert nicht als eigener `state`
     // durchgeht (Pflichtenheft §7).
@@ -136,5 +153,12 @@ export function clearSessionCookies(reply: FastifyReply, settings: CookieSetting
 }
 
 export function clearOAuthStateCookie(reply: FastifyReply, settings: CookieSettings): void {
+  reply.clearCookie(OAUTH_STATE_COOKIE_NAME, base(settings, '/', true));
+  /*
+   * Uebergangsweise auch den alten Pfad raeumen: Ein Browser, der einen
+   * Anmeldeversuch vor dieser Aenderung begonnen hat, traegt das Cookie noch
+   * unter `/auth`. Ohne diese Zeile bliebe es dort bis zum Ablauf liegen -
+   * dieselbe Ueberlegung wie beim Refresh-Token darueber.
+   */
   reply.clearCookie(OAUTH_STATE_COOKIE_NAME, base(settings, '/auth', true));
 }

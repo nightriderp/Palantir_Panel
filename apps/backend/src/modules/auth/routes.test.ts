@@ -1469,6 +1469,16 @@ describe('Anbieter-Login über HTTP (Pflichtenheft §7)', () => {
     expect(state?.httpOnly).toBe(true);
     // Signiert: der Wert trägt einen angehängten HMAC-Anteil.
     expect(state?.value).toContain('.');
+    /*
+     * `Path=/`, nicht `/auth` (Fundpunkt 313, im Betrieb aufgefallen).
+     *
+     * Liegt die API unter einem Präfix (`<Domain>/api`), schneidet Traefik es
+     * ab: Das Backend sieht `/auth/discord/start` und setzte `Path=/auth`, der
+     * Browser steht aber auf `/api/auth/...`. Beim Rückweg passte der Pfad
+     * nicht, das Cookie blieb liegen, und die Anmeldung über Discord, Twitch
+     * und Steam endete mit „Login-Vorgang ist ungültig oder abgelaufen".
+     */
+    expect(state?.path).toBe('/');
   });
 
   it('leitet bei unbekanntem Provider mit Fehlercode ins Frontend zurück', async () => {
