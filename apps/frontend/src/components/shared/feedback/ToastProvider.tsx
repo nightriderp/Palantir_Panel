@@ -70,14 +70,19 @@ const ToastContext = createContext<ToastApi | null>(null);
  *
  * Für eine Erfolgsmeldung sind 2,6 Sekunden richtig – sie bestätigt etwas, das
  * ohnehin auf dem Bildschirm passiert. Eine **Fehlermeldung** ist die einzige
- * Stelle, an der die Begründung steht; sie bleibt deshalb stehen, bis jemand
- * sie wegklickt. Eine Warnung liegt dazwischen.
+ * Stelle, an der die Begründung steht, und bekommt deshalb deutlich mehr Zeit.
+ * Eine Warnung liegt dazwischen.
+ *
+ * Fehler standen bis zum 20.09.2026 unbegrenzt, bis jemand sie wegklickte. Im
+ * Betrieb blieb dadurch ein Streifen am unteren Rand liegen, auch lange
+ * nachdem die Sache erledigt war (Betreiber-Meldung). Zwanzig Sekunden sind
+ * reichlich Zeit zum Lesen – wer länger braucht, hält den Zeiger darauf.
  */
 const VARIANT_DURATION_MS: Record<ToastVariant, number> = {
   info: 2600,
   success: 2600,
   warning: 8000,
-  error: 0,
+  error: 20_000,
 };
 
 /**

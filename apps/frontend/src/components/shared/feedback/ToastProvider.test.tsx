@@ -63,20 +63,31 @@ describe('ToastProvider – Anzeigedauer (Fundpunkt 220)', () => {
     expect(screen.queryByText('Gespeichert.')).toBeNull();
   });
 
-  it('lässt eine Fehlermeldung stehen', () => {
+  it('gibt einer Fehlermeldung viel Zeit, räumt sie aber irgendwann weg', () => {
+    /*
+     * Bis zum 20.09.2026 stand sie unbegrenzt. Im Betrieb blieb dadurch ein
+     * Streifen am unteren Rand liegen, lange nachdem die Sache erledigt war
+     * (Betreiber-Meldung).
+     */
     zeichne();
 
     fireEvent.click(screen.getByRole('button', { name: 'Fehler melden' }));
 
     act(() => {
-      // Weit über jede bisherige Frist hinaus.
-      vi.advanceTimersByTime(60_000);
+      // Lange genug zum Lesen: Nach zehn Sekunden steht sie noch.
+      vi.advanceTimersByTime(10_000);
     });
 
     expect(screen.getByText('Der Homeserver ist nicht verbunden.')).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(11_000);
+    });
+
+    expect(screen.queryByText('Der Homeserver ist nicht verbunden.')).toBeNull();
   });
 
-  it('lässt sich die stehengebliebene Fehlermeldung wegklicken', () => {
+  it('lässt sich eine Fehlermeldung sofort wegklicken', () => {
     zeichne();
 
     fireEvent.click(screen.getByRole('button', { name: 'Fehler melden' }));
