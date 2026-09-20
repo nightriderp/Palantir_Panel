@@ -42,7 +42,13 @@ import { contextFrom } from '../admin/index.js';
 import { isRbacError, replyWithErrorCode, requireActor, requirePermission } from '../rbac/index.js';
 import { FontError, isFontError } from './errors.js';
 import { type FontService, type UploadedFile } from './service.js';
-import { FONT_FILE_ROUTE_PATH, FONT_STYLESHEET_ROUTE_PATH } from './stylesheet.js';
+import {
+  FONT_FILE_ROUTE_PATH,
+  FONT_ROLE_FILE_ROUTE_PATH,
+  FONT_ROLES,
+  FONT_STYLESHEET_ROUTE_PATH,
+  type FontRole,
+} from './stylesheet.js';
 
 const fontIdParamsSchema = z.object({ id: fontIdSchema });
 
@@ -233,6 +239,55 @@ export function registerFontRoutes(options: FontRouteOptions) {
         .header('etag', etag)
         .header('cache-control', 'public, max-age=60, must-revalidate')
         .send(css);
+    });
+
+    /*
+     * Die Schrift einer **Rolle** – dieselben Bytes wie eine Route weiter
+     * unten, nur unter einer Adresse, die feststeht, bevor die Auswahl des
+     * Betreibers bekannt ist.
+     *
+     * Dafür gibt es sie: Das Wurzel-Layout des Frontends kann die beiden
+     * tatsächlich benutzten Schriften damit **vorladen**, ohne vorher die
+     * Instanz-Einstellungen abzufragen. Ohne feste Adresse läuft der Weg
+     * seriell – Dokument, Stylesheet, dann erst die Schriftdatei – und der
+     * Text steht bis dahin in der Ersatzschrift.
+     *
+     * ⚠️ `max-age` bewusst so kurz wie beim Stylesheet und **nie** `immutable`:
+     * Hinter derselben Adresse steckt eine andere Datei, sobald der Betreiber
+     * die Auswahl ändert. Lägen die beiden Fristen auseinander, zeigte die
+     * Oberfläche nach einem Wechsel bis zu einer Stunde die alte Schrift zu
+     * einem neuen Stylesheet. Teuer ist das nicht: Nach Ablauf fragt der
+     * Browser nur nach und bekommt in aller Regel ein leeres 304.
+     */
+    app.get(FONT_ROLE_FILE_ROUTE_PATH, async (request, reply) => {
+      try {
+        const { rolle } = request.params as { rolle?: string };
+
+        // Positivliste statt Schema: Es gibt genau zwei Rollen, und der Wert
+        // landet gleich in einer Suche über die Schriften der Instanz.
+        if (rolle === undefined || !FONT_ROLES.includes(rolle as FontRole)) {
+          throw new FontError('FONT_NOT_FOUND');
+        }
+
+        const datei = await service.roleFile(rolle as FontRole);
+        const etag = `"${datei.fingerprint}"`;
+
+        if (request.headers['if-none-match'] === etag) {
+          await reply.header('etag', etag).status(304).send();
+
+          return;
+        }
+
+        await reply
+          .header('content-type', datei.mimeType)
+          .header('x-content-type-options', 'nosniff')
+          .header('content-disposition', attachmentContentDisposition(datei.fileName))
+          .header('etag', etag)
+          .header('cache-control', 'public, max-age=60, must-revalidate')
+          .send(datei.content);
+      } catch (error: unknown) {
+        await replyWithError(reply, error);
+      }
     });
 
     app.get(FONT_FILE_ROUTE_PATH, async (request, reply) => {

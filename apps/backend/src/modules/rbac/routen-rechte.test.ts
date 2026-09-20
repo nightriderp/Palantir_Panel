@@ -107,13 +107,17 @@ type Grund = (typeof GRUENDE)[keyof typeof GRUENDE];
  *
  * Wer hier etwas ergaenzt, nimmt eine Route aus der Guard-Pflicht - deshalb
  * steht der Grund daneben und nicht in einer Commit-Nachricht. Stand beim
- * Anlegen: 159 Routen (ohne die von Fastify erzeugten `HEAD`), davon 76 hier.
+ * Anlegen: 160 Routen (ohne die von Fastify erzeugten `HEAD`), davon 77 hier.
  */
 const OHNE_GUARD = new Map<string, Grund>([
   // -- oeffentlich ------------------------------------------------------------
   ['GET /health', GRUENDE.oeffentlich],
   ['GET /public/stats', GRUENDE.oeffentlich],
   ['GET /public/fonts.css', GRUENDE.oeffentlich],
+  // Dieselbe Datei wie /api/fonts/:id/file, nur unter der Rolle statt der
+  // Kennung adressiert - damit das Frontend sie vorladen kann, ohne die
+  // Auswahl des Betreibers zu kennen. Eine Schriftdatei ist nichts Geheimes.
+  ['GET /public/fonts/:rolle', GRUENDE.oeffentlich],
   /*
    * Korrigiert: Die Route verlangt eine Sitzung (`requireUserId`), gibt dann
    * aber das Bild jedes Kontos heraus - Profilbilder stehen in Listen, in

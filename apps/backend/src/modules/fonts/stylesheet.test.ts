@@ -31,6 +31,7 @@ import { fontFileName } from './storage.js';
 import {
   MONOSPACE_FONT_CSS_VARIABLE,
   UI_FONT_CSS_VARIABLE,
+  fontRoleHref,
   type StylesheetFont,
   buildFontStylesheet,
   cssQuotedString,
@@ -123,8 +124,54 @@ describe('buildFontStylesheet – Regeln', () => {
 
     for (const font of BUNDLED_FONTS) {
       expect(css).toContain(`font-family:"${font.family}"`);
+    }
+
+    /*
+     * Die Adresse hängt davon ab, ob die Schrift gerade eine Rolle besetzt:
+     * Die beiden gewählten stehen unter ihrer Rollen-Adresse (nur so kann das
+     * Frontend sie vorladen), alle anderen unter ihrer Kennung.
+     */
+    const inRolle = new Set([DEFAULT_UI_FONT_ID, DEFAULT_MONOSPACE_FONT_ID]);
+
+    for (const font of BUNDLED_FONTS.filter((f) => !inRolle.has(f.id))) {
       expect(css).toContain(`url("${fontFileHref(font.id)}")`);
     }
+
+    expect(css).toContain(`url("${fontRoleHref('ui')}")`);
+    expect(css).toContain(`url("${fontRoleHref('mono')}")`);
+  });
+
+  /**
+   * ⚠️ Der Fall, der das Vorladen still teurer machen würde als gar keines.
+   *
+   * Lädt das Frontend `…/public/fonts/ui` vor, während die Regel die Datei
+   * über `…/api/fonts/<Kennung>/file` holt, sind das für den Browser zwei
+   * verschiedene Adressen: Er lädt zweimal und meldet „preloaded but not
+   * used". Der Test hält fest, dass die gewählte Schrift **nicht** mehr unter
+   * ihrer Kennung in der Regel steht.
+   */
+  it('nennt die gewählte Schrift nicht mehr unter ihrer Kennung', () => {
+    const css = buildFontStylesheet(ALLE, {
+      uiFontId: DEFAULT_MONOSPACE_FONT_ID,
+      monospaceFontId: null,
+    });
+
+    expect(css).not.toContain(`url("${fontFileHref(DEFAULT_MONOSPACE_FONT_ID)}")`);
+    expect(css).toContain(`url("${fontRoleHref('ui')}")`);
+  });
+
+  /**
+   * Besetzt eine Schrift beide Rollen, kann sie nur eine Adresse haben – eine
+   * Familie hat genau eine Regel. `ui` gewinnt.
+   */
+  it('gibt einer Schrift in beiden Rollen die ui-Adresse', () => {
+    const css = buildFontStylesheet(ALLE, {
+      uiFontId: DEFAULT_MONOSPACE_FONT_ID,
+      monospaceFontId: DEFAULT_MONOSPACE_FONT_ID,
+    });
+
+    expect(css).toContain(`url("${fontRoleHref('ui')}")`);
+    expect(css).not.toContain(`url("${fontRoleHref('mono')}")`);
   });
 
   it('gibt einer variablen Schrift einen Gewichtsbereich und einer statischen genau ein Gewicht', () => {
@@ -263,18 +310,93 @@ describe('GET /public/fonts.css', () => {
     await app.close();
   });
 
-  it('liefert unter der Adresse aus der erzeugten Regel wirklich die Datei', async () => {
+  it('liefert unter jeder Adresse aus den erzeugten Regeln wirklich eine Datei', async () => {
     const app = await baueApp({ ui: null, mono: null });
 
     const { body } = await app.inject({ method: 'GET', url: '/public/fonts.css' });
-    const adresse = /url\("([^"]+)"\)/.exec(body)?.[1];
+    const adressen = [...body.matchAll(/url\("([^"]+)"\)/g)].map((treffer) => treffer[1]!);
 
-    expect(adresse).toBeDefined();
+    expect(adressen.length).toBeGreaterThan(0);
 
-    const datei = await app.inject({ method: 'GET', url: adresse! });
+    /*
+     * Die Adressen im Stylesheet sind **pfad-relativ** – sie gelten gegen das
+     * Verzeichnis des Stylesheets, nicht gegen die Wurzel. Genau so löst ein
+     * Browser sie auf, und genau so muss der Test sie auflösen; vorher lief
+     * das über Glück beim Normalisieren.
+     */
+    for (const adresse of adressen) {
+      const pfad = new URL(adresse, 'http://test/public/fonts.css').pathname;
+      const datei = await app.inject({ method: 'GET', url: pfad });
 
-    expect(datei.statusCode).toBe(200);
-    expect(datei.headers['content-type']).toBe('font/woff2');
+      expect(datei.statusCode, `${adresse} -> ${pfad}`).toBe(200);
+      expect(datei.headers['content-type']).toBe('font/woff2');
+    }
+
+    // Beide Arten müssen vorkommen: die Rollen-Adressen und mindestens eine
+    // über die Kennung.
+    expect(adressen.some((a) => a.startsWith('fonts/'))).toBe(true);
+    expect(adressen.some((a) => a.startsWith('../api/fonts/'))).toBe(true);
+
+    await app.close();
+  });
+
+  /**
+   * Die Rollen-Adresse ist der Grund für das ganze Paket: Sie steht fest,
+   * bevor die Auswahl bekannt ist, und nur deshalb kann das Frontend die
+   * Schrift vorladen.
+   */
+  it('liefert unter der Rollen-Adresse die gewählte Schrift – und wechselt mit der Auswahl', async () => {
+    const vorgabe = await baueApp({ ui: null, mono: null });
+    const gewaehlt = await baueApp({ ui: 'bundled-jetbrains-mono', mono: null });
+
+    const a = await vorgabe.inject({ method: 'GET', url: '/public/fonts/ui' });
+    const b = await gewaehlt.inject({ method: 'GET', url: '/public/fonts/ui' });
+
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+
+    /*
+     * Am Dateinamen, nicht am ETag: Der Prueflauf liefert fuer jede Schrift
+     * dieselben Attrappen-Bytes (siehe `fontBytes`), der Fingerabdruck waere
+     * also auch dann gleich, wenn die Route die falsche Datei zurueckgaebe.
+     * Der Name kommt dagegen aus der aufgeloesten Schrift.
+     */
+    expect(a.headers['content-disposition']).toContain('space-grotesk.woff2');
+    expect(b.headers['content-disposition']).toContain('jetbrains-mono.woff2');
+
+    await vorgabe.close();
+    await gewaehlt.close();
+  });
+
+  it('lässt die Rollen-Adresse nie als `immutable` zwischenspeichern', async () => {
+    // Hinter derselben Adresse steckt eine andere Datei, sobald der Betreiber
+    // die Auswahl ändert – `immutable` liesse die alte bis zu einem Jahr
+    // stehen. Die Frist passt zu der des Stylesheets, damit beide zusammen
+    // wechseln.
+    const app = await baueApp({ ui: null, mono: null });
+
+    const antwort = await app.inject({ method: 'GET', url: '/public/fonts/mono' });
+
+    expect(antwort.headers['cache-control']).toBe('public, max-age=60, must-revalidate');
+    expect(antwort.headers['cache-control']).not.toContain('immutable');
+
+    const zweite = await app.inject({
+      method: 'GET',
+      url: '/public/fonts/mono',
+      headers: { 'if-none-match': String(antwort.headers.etag) },
+    });
+
+    expect(zweite.statusCode).toBe(304);
+
+    await app.close();
+  });
+
+  it('kennt nur die zwei Rollen', async () => {
+    const app = await baueApp({ ui: null, mono: null });
+
+    const antwort = await app.inject({ method: 'GET', url: '/public/fonts/gibtsnicht' });
+
+    expect(antwort.statusCode).toBe(404);
 
     await app.close();
   });
