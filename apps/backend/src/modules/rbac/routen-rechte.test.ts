@@ -147,17 +147,13 @@ const OHNE_GUARD = new Map<string, Grund>([
   ['POST /auth/avatar', GRUENDE.eigenesKonto],
   ['DELETE /auth/avatar', GRUENDE.eigenesKonto],
   ['GET /me/resource-quota', GRUENDE.eigenesKonto],
-  ['GET /notifications', GRUENDE.eigenesKonto],
-  ['POST /notifications/read', GRUENDE.eigenesKonto],
-  ['DELETE /notifications/:notificationId', GRUENDE.eigenesKonto],
-  ['GET /notifications/preferences', GRUENDE.eigenesKonto],
-  ['PUT /notifications/preferences', GRUENDE.eigenesKonto],
-  // Web-Push: Der oeffentliche Schluessel ist kein Geheimnis, verlangt aber
-  // eine Sitzung - ohne Konto gibt es nichts zu abonnieren. An- und Abmelden
-  // wirken ausschliesslich auf die Geraete des eigenen Kontos.
-  ['GET /notifications/push/config', GRUENDE.nurSitzung],
-  ['POST /notifications/push/subscriptions', GRUENDE.eigenesKonto],
-  ['DELETE /notifications/push/subscriptions', GRUENDE.eigenesKonto],
+  /*
+   * Die acht `/notifications`-Routen standen bis zum 2026-09-20 hier: eigenes
+   * Konto, Sitzung genuegt. Seit der Entscheidung des Betreibers tragen sie
+   * `requireApproved()` und fallen damit unter die Guard-Pflicht - die Liste
+   * wird kuerzer, nicht laenger. Web-Push gehoert dazu: Ein Konto, das keine
+   * Inbox lesen darf, meldet auch kein Geraet dafuer an.
+   */
 
   // -- nur Sitzung ------------------------------------------------------------
   ['GET /api/fonts', GRUENDE.nurSitzung],

@@ -7,6 +7,7 @@ import {
   adminActor,
   fakeDirectory,
   fakeRepository,
+  guestActor,
   plainActor,
   recordingTransport,
   serverEvent,
@@ -19,6 +20,7 @@ import {
 const ADMIN_ID = testId('a');
 const NUTZER_ID = testId('b');
 const FREMDER_ID = testId('c');
+const GAST_ID = testId('d');
 
 /**
  * Fastify-Instanz mit den Benachrichtigungs-Routen.
@@ -47,6 +49,8 @@ async function buildTestApp(seed?: { repository?: FakeRepository }): Promise<{
     admin: { actor: adminActor(), userId: ADMIN_ID },
     nutzer: { actor: plainActor(), userId: NUTZER_ID },
     fremder: { actor: plainActor(), userId: FREMDER_ID },
+    // Registriert, aber noch nicht freigeschaltet (Lastenheft 3.1).
+    gast: { actor: guestActor(), userId: GAST_ID },
   };
 
   function rolleAus(request: { headers: Record<string, unknown> }) {
@@ -368,5 +372,73 @@ describe('Systemweite Ankündigungen', () => {
 
     expect(antwort.statusCode).toBe(400);
     expect(antwort.json().error.code).toBe('VALIDATION_FAILED');
+  });
+});
+
+describe('Inbox nur fuer freigeschaltete Konten (Entscheidung des Betreibers, 2026-09-20)', () => {
+  /*
+   * Bis hierher hing die Inbox allein an der Sitzung - die letzte Ausnahme von
+   * Lastenheft 3.1. Die Begruendung dafuer war, dass eine Ankuendigung ein
+   * wartendes Konto erreichen koennen soll; zugestellt wird sie aber ohnehin nur
+   * an freigeschaltete Konten (`listActiveUserIds`). Geblieben war ein offener
+   * Weg zu einer leeren Liste und zu den Einstellungen daneben.
+   */
+  const WEGE: readonly ['GET' | 'POST' | 'PUT' | 'DELETE', string, unknown][] = [
+    ['GET', '/notifications', undefined],
+    ['POST', '/notifications/read', { ids: [] }],
+    ['DELETE', `/notifications/${testId('e')}`, undefined],
+    ['GET', '/notifications/preferences', undefined],
+    ['PUT', '/notifications/preferences', { mutedEvents: [] }],
+    ['GET', '/notifications/push/config', undefined],
+    [
+      'POST',
+      '/notifications/push/subscriptions',
+      {
+        endpoint: 'https://push.example/abc',
+        keys: { p256dh: 'x'.repeat(87), auth: 'y'.repeat(22) },
+      },
+    ],
+    ['DELETE', '/notifications/push/subscriptions', { endpoint: 'https://push.example/abc' }],
+  ];
+
+  it('weist ein wartendes Konto auf jedem Weg ab', async () => {
+    const { app } = await buildTestApp();
+
+    for (const [method, url, payload] of WEGE) {
+      const antwort = await anfrage(app, method, url, 'gast', payload);
+
+      expect(antwort.statusCode, `${method} ${url}`).toBe(403);
+      expect(antwort.json().error.code, `${method} ${url}`).toBe('PERMISSION_DENIED');
+    }
+  });
+
+  it('laesst ein freigeschaltetes Konto ohne jede Permission weiterhin durch', async () => {
+    /*
+     * Gegenprobe: Die Sperre haengt an der Freischaltung, nicht an einer
+     * Permission. Sonst waere die Inbox versehentlich zur Verwaltungsfunktion
+     * geworden - das Modul kennt nur `notification.manage`, und die traegt ein
+     * gewoehnliches Konto nicht.
+     */
+    const { app } = await buildTestApp();
+
+    for (const url of ['/notifications', '/notifications/preferences']) {
+      const antwort = await anfrage(app, 'GET', url, 'nutzer');
+
+      expect(antwort.statusCode, url).toBe(200);
+    }
+  });
+
+  it('meldet einem nicht angemeldeten Aufrufer weiterhin AUTH_REQUIRED, nicht PERMISSION_DENIED', async () => {
+    /*
+     * Die Reihenfolge zaehlt: Wer gar nicht angemeldet ist, soll das erfahren
+     * und sich anmelden koennen - nicht den Eindruck bekommen, sein Konto sei
+     * gesperrt.
+     */
+    const { app } = await buildTestApp();
+
+    const antwort = await anfrage(app, 'GET', '/notifications/preferences', null);
+
+    expect(antwort.statusCode).toBe(401);
+    expect(antwort.json().error.code).toBe('AUTH_REQUIRED');
   });
 });
