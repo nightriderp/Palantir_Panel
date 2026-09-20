@@ -265,8 +265,20 @@ describe('formatCores', () => {
 });
 
 describe('Image-Fassung', () => {
-  it('setzt ein „v" davor, damit die Spielfassung unterscheidbar bleibt', () => {
-    expect(formatImageVersion('9')).toBe('v9');
+  it('setzt ein „v" davor und schreibt die Marke dreistellig', () => {
+    // Betreiber-Wunsch 20.09.2026: die gewohnte Form vX.X.X. Die Zahl selbst
+    // bleibt, was die Registry hergibt - nur die Schreibweise ist dreiteilig.
+    expect(formatImageVersion('9')).toBe('v9.0.0');
+    expect(formatImageVersion('9.1')).toBe('v9.1.0');
+    expect(formatImageVersion('9.1.2')).toBe('v9.1.2');
+  });
+
+  it('laesst eine Marke in Ruhe, die keine reine Zaehlung ist', () => {
+    // Aus „latest" eine Versionsnummer zu formen hiesse, etwas zu behaupten,
+    // das die Registry nicht hergibt.
+    expect(formatImageVersion('latest')).toBe('vlatest');
+    expect(formatImageVersion('2026-09-20')).toBe('v2026-09-20');
+    expect(formatImageVersion('1.2.3.4')).toBe('v1.2.3.4');
   });
 
   it('zeigt ohne bekannte Fassung nichts an', () => {
@@ -276,7 +288,7 @@ describe('Image-Fassung', () => {
   });
 
   it('nennt beim Update beide Fassungen', () => {
-    expect(formatImageUpdate('7', '9')).toBe('v7 läuft, angeboten wird v9.');
+    expect(formatImageUpdate('7', '9')).toBe('v7.0.0 läuft, angeboten wird v9.0.0.');
   });
 
   it('ergänzt nichts, wenn eine Zahl fehlt oder beide gleich sind', () => {

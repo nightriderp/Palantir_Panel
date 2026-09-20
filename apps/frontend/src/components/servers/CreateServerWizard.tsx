@@ -136,11 +136,15 @@ function GameTile({
         Das Kachelbild liegt hinter dem Inhalt, gedämpft: Es soll die Kachel
         kennzeichnen, nicht den Namen unlesbar machen (Betreiber-Wunsch
         19.09.2026). Ohne Bild bleibt die Kachel wie bisher.
+
+        Vierzig statt fünfundzwanzig Prozent seit dem 20.09.2026 – bei einem
+        Viertel wirkten die Bilder ausgewaschen. Deutlich höher geht nicht:
+        Darüber kämpft der Name mit dem Bild um Aufmerksamkeit.
       */}
       {game.coverImageUrl === null ? null : (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-25"
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-40"
           style={{ backgroundImage: `url(${game.coverImageUrl})` }}
         />
       )}
@@ -151,9 +155,16 @@ function GameTile({
         nicht mehr auf einen Bildschirm. Gibt es ein Bild, sitzt es in
         derselben Kachel.
       */}
+      {/*
+        Das `relative` am Symbol ist kein Schmuck: Ohne Positionierung liegt
+        es UNTER dem absolut gesetzten Kachelbild, und dessen Schleier legte
+        sich darüber – das Symbol wirkte blass und milchig (Betreiber-Meldung
+        20.09.2026). Der Textblock daneben trug das `relative` von Anfang an,
+        deshalb fiel es nur am Symbol auf.
+      */}
       <span
         aria-hidden
-        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-fill font-mono text-sm font-bold text-brand"
+        className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-fill font-mono text-sm font-bold text-brand"
       >
         {game.iconUrl ? (
           /* Die Adresse kommt aus der Spieleliste und ist zur Bauzeit unbekannt;

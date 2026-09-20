@@ -384,7 +384,35 @@ export function formatChatTime(iso: string | null | undefined, jetzt = new Date(
  * statt eines Platzhalters, der nichts sagt.
  */
 export function formatImageVersion(version: string | null | undefined): string | null {
-  return version === null || version === undefined || version === '' ? null : `v${version}`;
+  if (version === null || version === undefined || version === '') {
+    return null;
+  }
+
+  return `v${dreistellig(version)}`;
+}
+
+/**
+ * Eine Marke auf drei Stellen bringen: `9` wird zu `9.0.0`, `9.1` zu `9.1.0`
+ * (Betreiber-Wunsch 20.09.2026).
+ *
+ * Die Images tragen heute einfache Zählnummern; die Zahl bleibt dieselbe, nur
+ * die Schreibweise folgt der gewohnten dreiteiligen Form. Was keine reine
+ * Zählung ist – `latest`, ein Name, ein Datum –, bleibt unangetastet: Daraus
+ * eine Versionsnummer zu formen hieße, etwas zu behaupten, das die Registry
+ * nicht hergibt.
+ */
+function dreistellig(version: string): string {
+  const teile = version.split('.');
+
+  if (teile.length > 3 || !teile.every((teil) => /^\d+$/.test(teil))) {
+    return version;
+  }
+
+  while (teile.length < 3) {
+    teile.push('0');
+  }
+
+  return teile.join('.');
 }
 
 /**
@@ -403,5 +431,5 @@ export function formatImageUpdate(
     return null;
   }
 
-  return `v${current} läuft, angeboten wird v${latest}.`;
+  return `v${dreistellig(current)} läuft, angeboten wird v${dreistellig(latest)}.`;
 }
