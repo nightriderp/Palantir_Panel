@@ -295,4 +295,26 @@ describe('nodeAgentHint', () => {
     expect(hint?.warning).toContain('Protokoll 3, erwartet 1');
     expect(hint?.warning).toContain('aktualisieren');
   });
+
+  /*
+   * Gefundener Punkt 321: Bei einer Node, die nicht online ist, stammt die
+   * Fassung aus der gespeicherten letzten Meldung. Ohne Datum sagt sie nicht,
+   * ob die Node vor fünf Minuten oder vor zwei Wochen zuletzt etwas von sich
+   * hören ließ – und genau daran hing der Vorfall vom 15.09.2026.
+   */
+  it('nennt bei einer Node, die nicht online ist, auch den Zeitpunkt der Meldung', () => {
+    const hint = nodeAgentHint(node({ status: 'offline', agent }));
+
+    expect(hint?.label).toContain('Agent 1.4.2');
+    expect(hint?.label).toContain('gemeldet');
+    expect(hint?.label).toContain('16.09.2026');
+  });
+
+  it('lässt den Zeitpunkt bei einer online stehenden Node weg', () => {
+    expect(nodeAgentHint(node({ status: 'online', agent }))?.label).toBe('Agent 1.4.2');
+  });
+
+  it('nennt den Zeitpunkt auch bei einer Node in Wartung', () => {
+    expect(nodeAgentHint(node({ status: 'maintenance', agent }))?.label).toContain('gemeldet');
+  });
 });

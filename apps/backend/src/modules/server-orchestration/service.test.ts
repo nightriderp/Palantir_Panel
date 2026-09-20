@@ -431,6 +431,10 @@ class FakeRepository implements ServerRepository {
     return Promise.resolve();
   }
 
+  noteAgentHello(): Promise<void> {
+    return Promise.resolve();
+  }
+
   markHostDisconnected(): Promise<void> {
     return Promise.resolve();
   }

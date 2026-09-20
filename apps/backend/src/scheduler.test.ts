@@ -892,6 +892,10 @@ class SweepRepository implements ServerRepository {
     return this.nichtGebraucht('markHostConnected');
   }
 
+  noteAgentHello(): Promise<void> {
+    return this.nichtGebraucht('noteAgentHello');
+  }
+
   markHostDisconnected(): Promise<void> {
     return this.nichtGebraucht('markHostDisconnected');
   }

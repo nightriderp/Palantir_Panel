@@ -466,3 +466,72 @@ describe('Agent-Token je Node (Gefundener Punkt 57)', () => {
     ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
   });
 });
+
+describe('Agent-Fassung der Node (Gefundener Punkt 321)', () => {
+  const GESPEICHERT = {
+    version: '0.6.0+9b32bb83df35',
+    protocolVersion: 1,
+    reportedAt: new Date('2026-09-18T22:14:00.000Z'),
+  };
+
+  async function uebersicht(options: Parameters<typeof build>[0]) {
+    const { service } = options === undefined ? build() : build(options);
+    const [node] = await service.list(ctxWith(actorWith('node.manage')));
+
+    return node;
+  }
+
+  it('nimmt die gespeicherte Fassung, wenn keine Verbindung offen ist', async () => {
+    /*
+     * Der Fall nach jedem Ausrollen: Das Backend ist neu gestartet, die
+     * Registry im Arbeitsspeicher ist leer – und ausgerechnet dann sieht man
+     * nach, ob die Node nachgezogen hat. Vor diesem Punkt stand hier `null`.
+     */
+    const node = await uebersicht({ nodes: [nodeRecord({ agent: GESPEICHERT })] });
+
+    expect(node?.agent).toEqual({
+      version: '0.6.0+9b32bb83df35',
+      protocolVersion: 1,
+      expectedProtocolVersion: 1,
+      compatible: true,
+      reportedAt: '2026-09-18T22:14:00.000Z',
+    });
+  });
+
+  it('bevorzugt die offene Verbindung vor der gespeicherten Fassung', async () => {
+    const live = {
+      version: '0.6.0+c07acd2ce532',
+      protocolVersion: 1,
+      expectedProtocolVersion: 1,
+      compatible: true,
+      reportedAt: '2026-09-20T01:07:32.000Z',
+    };
+
+    const node = await uebersicht({
+      nodes: [nodeRecord({ agent: GESPEICHERT })],
+      connections: { isConnected: () => true, lastHello: () => live },
+    });
+
+    expect(node?.agent).toEqual(live);
+  });
+
+  it('urteilt über die Protokollversion nach dieser Fassung des Backends, nicht nach der gespeicherten', async () => {
+    /*
+     * Gespeichert ist, was der Agent gesagt hat – nicht das Urteil darüber.
+     * Hebt ein Panel-Update die erwartete Protokollversion an, muss eine Node,
+     * die sich seitdem nicht gemeldet hat, sofort als unpassend erscheinen.
+     */
+    const node = await uebersicht({
+      nodes: [nodeRecord({ agent: { ...GESPEICHERT, protocolVersion: 0 } })],
+    });
+
+    expect(node?.agent?.compatible).toBe(false);
+    expect(node?.agent?.expectedProtocolVersion).toBe(1);
+  });
+
+  it('bleibt null, solange sich nie ein Agent gemeldet hat', async () => {
+    const node = await uebersicht({ nodes: [nodeRecord()] });
+
+    expect(node?.agent).toBeNull();
+  });
+});

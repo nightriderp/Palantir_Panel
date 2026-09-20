@@ -19,7 +19,7 @@ import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { deleteNode, fetchNodes, issueNodeAgentToken, updateNode } from '@/lib/api/admin';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { NODE_STATUS_META } from '@/components/nodes/nodeStatus';
+import { NODE_STATUS_META, nodeAgentHint } from '@/components/nodes/nodeStatus';
 import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
 import { AddNodeWizard } from './AddNodeWizard';
 
@@ -230,6 +230,7 @@ function NodeRow({
   onDelete: () => void;
 }) {
   const status = NODE_STATUS_META[node.status];
+  const agent = nodeAgentHint(node);
 
   return (
     <Panel>
@@ -285,6 +286,23 @@ function NodeRow({
           ? `Zuletzt gesehen: ${formatDateTime(node.lastSeenAt)}`
           : 'Noch nie verbunden – der Agent hat sich bisher nicht gemeldet.'}
       </p>
+
+      {/*
+        Welche Fassung läuft dort? (Gefundener Punkt 321.)
+
+        Die Angabe stand bisher nur in der Nutzeransicht der Nodes – ausgerechnet
+        nicht hier, wo der Betreiber nach einem Ausrollen nachsieht, ob die Node
+        nachgezogen hat. Bei einer Node, die nicht online ist, trägt der Text den
+        Zeitpunkt der Meldung mit: Eine Fassung von vorletzter Woche ist genau die
+        Auskunft, die man sucht, wenn ein Homeserver stehengeblieben ist.
+      */}
+      {agent === null ? null : <p className="mt-1 text-xs text-ink-faint">{agent.label}</p>}
+
+      {agent?.warning ? (
+        <p role="alert" className="mt-1 text-xs font-medium text-danger">
+          {agent.warning}
+        </p>
+      ) : null}
 
       {/*
         Woran hängt der Agent dieser Node? Ohne eigenes Token meldet er sich über
