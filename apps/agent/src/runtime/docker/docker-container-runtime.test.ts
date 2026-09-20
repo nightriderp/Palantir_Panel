@@ -1115,6 +1115,69 @@ describe('UPDATE_RESOURCES', () => {
     expect(gesendet).not.toHaveProperty('NanoCpus');
   });
 
+  it('haelt beim Aendern dasselbe Modell wie beim Anlegen: harte Grenze der Node, Zuweisung weich', async () => {
+    /*
+     * Fundpunkt 303. Vorher setzte diese Stelle `Memory` auf die Zuweisung und
+     * liess `MemoryReservation` weg - ein Verschieben des RAM-Reglers machte
+     * die weiche Grenze wieder zu einer harten und die Reservierung zu null.
+     * Der Container lief danach nach dem alten Modell, obwohl die Node laengst
+     * das neue fuhr, und auffallen konnte es nicht: Ein frisch angelegter
+     * Container hatte es richtig.
+     */
+    antwortgeber = () => new Response(null, { status: 200 });
+
+    const runtime = new DockerContainerRuntime({
+      client: new DockerHttpClient({ baseUrl: PROXY_URL, fetchImpl: stubFetch }),
+      hardening: {
+        allowedHostRoots: [DATEN_WURZEL],
+        nodeMemoryHardLimitBytes: 24 * 1024 * 1024 * 1024,
+      },
+      onStreamError: () => undefined,
+    });
+
+    await runtime.updateResources('c-1', { memoryMb: 4096 });
+
+    const gesendet = JSON.parse(aufrufe[0]?.body ?? '{}') as Record<string, number>;
+    expect(gesendet).toMatchObject({
+      Memory: 24 * 1024 * 1024 * 1024,
+      MemorySwap: 24 * 1024 * 1024 * 1024,
+      MemoryReservation: 4096 * 1024 * 1024,
+    });
+  });
+
+  it('laesst die Zuweisung die harte Grenze sein, wenn die Node keine nennt', async () => {
+    // Der Fall der Tests und jeder Runtime ohne Node-Angabe: Verhalten wie vor
+    // Fundpunkt 303, damit die Aenderung nichts mitreisst.
+    antwortgeber = () => new Response(null, { status: 200 });
+
+    await baueRuntime().updateResources('c-1', { memoryMb: 2048 });
+
+    const gesendet = JSON.parse(aufrufe[0]?.body ?? '{}') as Record<string, number>;
+    expect(gesendet.Memory).toBe(2048 * 1024 * 1024);
+    expect(gesendet).not.toHaveProperty('MemoryReservation');
+  });
+
+  it('nimmt die Zuweisung, wenn sie ueber der harten Grenze der Node liegt', async () => {
+    // Docker lehnt eine Reservierung ueber der Grenze ab - dieselbe Regel wie
+    // beim Anlegen (`hardening.ts`).
+    antwortgeber = () => new Response(null, { status: 200 });
+
+    const runtime = new DockerContainerRuntime({
+      client: new DockerHttpClient({ baseUrl: PROXY_URL, fetchImpl: stubFetch }),
+      hardening: {
+        allowedHostRoots: [DATEN_WURZEL],
+        nodeMemoryHardLimitBytes: 1024 * 1024 * 1024,
+      },
+      onStreamError: () => undefined,
+    });
+
+    await runtime.updateResources('c-1', { memoryMb: 4096 });
+
+    const gesendet = JSON.parse(aufrufe[0]?.body ?? '{}') as Record<string, number>;
+    expect(gesendet.Memory).toBe(4096 * 1024 * 1024);
+    expect(gesendet.MemoryReservation).toBe(4096 * 1024 * 1024);
+  });
+
   it('schickt den Fork-Bomb-Schutz mit, statt ihn auf unbegrenzt fallen zu lassen', async () => {
     // Die Engine setzt beim Aktualisieren, was dasteht. Ein ausgelassenes
     // `PidsLimit` hiesse dort „unbegrenzt" – der Schutz waere nach dem ersten

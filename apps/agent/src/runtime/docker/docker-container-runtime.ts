@@ -470,10 +470,26 @@ export class DockerContainerRuntime implements ContainerRuntime {
   }
 
   async updateResources(containerId: string, resources: ResourceLimits): Promise<void> {
-    const memoryBytes = resources.memoryMb * 1024 * 1024;
+    const zuweisungBytes = resources.memoryMb * 1024 * 1024;
 
     /*
-     * Dieselben Felder wie beim Anlegen (`hardening.ts`), aus demselben Grund:
+     * **Dieselbe Rechnung wie beim Anlegen** (`hardening.ts`, Fundpunkt 303):
+     * Die Zuweisung des Servers ist die weiche Grenze (`MemoryReservation`),
+     * hart ist die Grenze der Node minus Ruecklage - fuer alle Container
+     * dieselbe.
+     *
+     * Bis hierher setzte diese Stelle `Memory` auf die Zuweisung und liess
+     * `MemoryReservation` weg. Ein Verschieben des RAM-Reglers machte die
+     * weiche Grenze damit wieder zu einer harten und die Reservierung zu null -
+     * der Container lief danach nach dem alten Modell, obwohl die Node laengst
+     * das neue fuhr. Aufgefallen ist es nicht, weil ein neu angelegter
+     * Container es richtig hatte und nur der spaeter geaenderte nicht.
+     *
+     * Kennt die Runtime die Grenze der Node nicht (die Tests, die ohne Node
+     * laufen), bleibt es wie zuvor: Die Zuweisung ist die harte Grenze, und
+     * eine Reservierung gibt es nicht.
+     *
+     * Die uebrigen Felder aus demselben Grund wie beim Anlegen:
      *
      * - `MemorySwap` gleich `Memory` heisst "kein Swap". Ohne das Feld liesse
      *   die Engine den Container seine RAM-Grenze ueber die Auslagerungsdatei
@@ -485,10 +501,15 @@ export class DockerContainerRuntime implements ContainerRuntime {
      * - `NanoCpus` fehlt aus demselben Grund, aus dem es beim Anlegen fehlt:
      *   Die CPU-Zuweisung ist entfallen, jeder Container sieht alle Kerne.
      */
+    const nodeGrenze = this.#hardening.nodeMemoryHardLimitBytes;
+    const harteGrenzeBytes =
+      nodeGrenze === undefined ? zuweisungBytes : Math.max(nodeGrenze, zuweisungBytes);
+
     await this.#client.requestVoid('POST', `${this.#pfad(containerId)}/update`, {
       body: {
-        Memory: memoryBytes,
-        MemorySwap: memoryBytes,
+        Memory: harteGrenzeBytes,
+        MemorySwap: harteGrenzeBytes,
+        ...(nodeGrenze === undefined ? {} : { MemoryReservation: zuweisungBytes }),
         PidsLimit: resources.pidsLimit ?? DEFAULT_PIDS_LIMIT,
       },
     });
