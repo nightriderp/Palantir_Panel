@@ -44,9 +44,56 @@ export function useApiResource<T>(
    * Ist die Liste `null`, wird gar nicht geladen – etwa solange die Id fehlt.
    */
   dependencies: readonly unknown[] | null,
+  /**
+   * Bereits vorhandener Stand, der gilt, **bis** der eigene Abruf zurück ist.
+   *
+   * Gedacht für Daten, die eine Ebene höher ohnehin schon im Speicher liegen:
+   * Der Rahmen des Dashboards hält die Serverliste für Kopf- und Seitenleiste,
+   * und die Serverübersicht holte dieselbe Liste noch einmal – und zeigte
+   * derweil „Server werden geladen …", obwohl der Inhalt längst da war. Mit
+   * dem Anfangsbestand steht die Ansicht sofort und tauscht still gegen den
+   * frischen Stand, sobald er eintrifft.
+   *
+   * Bewusst **kein Zwischenspeicher im Hook**: Wer den Bestand hat, reicht ihn
+   * herein; der Hook merkt sich nichts über seine Lebensdauer hinaus. Der
+   * Abruf läuft unverändert – `loading` bleibt `true`, solange er läuft.
+   *
+   * ⚠️ Ein später eintreffender Bestand wird mitgenommen. Der Rahmen lädt
+   * selbst asynchron; beim ersten Rendern der Übersicht ist er oft noch `null`
+   * und kommt erst eine Runde später. Ein `useState(anfangsbestand)` hätte ihn
+   * verpasst – deshalb wird er beim Lesen zugemischt, nicht beim Anlegen.
+   */
+  anfangsbestand: T | null = null,
 ): ApiResourceState<T> {
-  const [data, setData] = useState<T | null>(null);
+  const [eigeneDaten, setData] = useState<T | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+
+  /*
+   * Der eigene Stand gewinnt, sobald es einen gibt – auch wenn der Rahmen
+   * danach noch etwas nachschiebt. Sonst könnte eine Aktion, die die Liste
+   * gerade fortgeschrieben hat, von einem älteren Bestand überholt werden.
+   */
+  const data = eigeneDaten ?? anfangsbestand;
+
+  /*
+   * `setData` mit einer Funktion muss auf dem **sichtbaren** Stand aufsetzen,
+   * nicht auf dem eigenen. Sonst liefe eine Aktion auf einer geliehenen Liste
+   * ins Leere: `setData((current) => (current ?? []).map(…))` bekäme `null`,
+   * ergäbe `[]` – und die Übersicht wäre nach einem Klick auf „Starten"
+   * schlagartig leer, bis der Abruf zurückkommt.
+   */
+  const sichtbarRef = useRef(data);
+  useLayoutEffect(() => {
+    sichtbarRef.current = data;
+  });
+
+  const setDataAufSichtbarem = useCallback<Dispatch<SetStateAction<T | null>>>((aktion) => {
+    setData((eigener) =>
+      typeof aktion === 'function'
+        ? (aktion as (vorher: T | null) => T | null)(eigener ?? sichtbarRef.current)
+        : aktion,
+    );
+  }, []);
 
   // Die Ladefunktion wird bei jedem Rendern neu erzeugt; maßgeblich für den
   // erneuten Lauf sind allein die angegebenen Abhängigkeiten. Nachgezogen wird
@@ -131,5 +178,8 @@ export function useApiResource<T>(
    * `reload` und `setData` sind ohnehin stabil (`useCallback` bzw. der Setter
    * aus `useState`); gemerkt wird deshalb nur das umgebende Objekt.
    */
-  return useMemo(() => ({ data, loading, error, reload, setData }), [data, loading, error, reload]);
+  return useMemo(
+    () => ({ data, loading, error, reload, setData: setDataAufSichtbarem }),
+    [data, loading, error, reload, setDataAufSichtbarem],
+  );
 }

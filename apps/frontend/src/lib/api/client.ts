@@ -26,7 +26,7 @@ import { messageForErrorCode } from '@/lib/auth/errors';
  */
 
 /**
- * Basis-Adresse der API, z. B. `https://api.example.tld`.
+ * Basis-Adresse der API, z. B. `https://example.tld/api`.
  *
  * Kommt aus `lib/auth/api.ts` (F1) – die Adresse wird nicht zweimal aus der
  * Umgebung gelesen.

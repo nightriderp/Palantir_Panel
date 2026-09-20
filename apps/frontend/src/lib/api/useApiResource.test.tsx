@@ -160,3 +160,102 @@ describe('useApiResource – abgelehnte Ladefunktion (Fundpunkt frontend-lib-12)
     expect(result.current.data).toBe('inhalt');
   });
 });
+
+/**
+ * Anfangsbestand: Was die Anwendung schon hat, muss sie nicht erst laden
+ * lassen.
+ *
+ * Der Rahmen des Dashboards hält die Serverliste für Kopf- und Seitenleiste,
+ * und `/servers` holte dieselbe Liste noch einmal – mit „Server werden
+ * geladen …" davor, obwohl die Karten längst hätten stehen können.
+ */
+describe('useApiResource – Anfangsbestand aus dem Rahmen', () => {
+  it('zeigt den Bestand sofort, während der eigene Abruf noch läuft', async () => {
+    let aufloesen: ((ergebnis: ApiResult<string>) => void) | null = null;
+    const haengend = new Promise<ApiResult<string>>((r) => {
+      aufloesen = r;
+    });
+
+    const { result } = renderHook(() =>
+      useApiResource<string>(async () => haengend, [], 'geliehen'),
+    );
+
+    // Noch nichts geholt – und trotzdem steht schon etwas da.
+    expect(result.current.data).toBe('geliehen');
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      aufloesen?.(DATEN);
+      await haengend;
+    });
+
+    expect(result.current.data).toBe('inhalt');
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('nimmt einen Bestand mit, der erst später eintrifft', async () => {
+    // Der Rahmen lädt selbst asynchron; beim ersten Rendern der Seite darunter
+    // ist er oft noch leer. Ein `useState(bestand)` hätte ihn verpasst.
+    let aufloesen: ((ergebnis: ApiResult<string>) => void) | null = null;
+    const haengend = new Promise<ApiResult<string>>((r) => {
+      aufloesen = r;
+    });
+
+    const { result, rerender } = renderHook(
+      ({ bestand }: { bestand: string | null }) =>
+        useApiResource<string>(async () => haengend, [], bestand),
+      { initialProps: { bestand: null as string | null } },
+    );
+
+    expect(result.current.data).toBeNull();
+
+    rerender({ bestand: 'nachgereicht' });
+    expect(result.current.data).toBe('nachgereicht');
+
+    await act(async () => {
+      aufloesen?.(DATEN);
+      await haengend;
+    });
+
+    expect(result.current.data).toBe('inhalt');
+  });
+
+  it('der eigene Stand gewinnt gegen einen später nachgeschobenen Bestand', async () => {
+    const { result, rerender } = renderHook(
+      ({ bestand }: { bestand: string | null }) =>
+        useApiResource<string>(async () => DATEN, [], bestand),
+      { initialProps: { bestand: null as string | null } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toBe('inhalt');
+    });
+
+    rerender({ bestand: 'veraltet' });
+    expect(result.current.data).toBe('inhalt');
+  });
+
+  /**
+   * ⚠️ Der Fall, an dem eine naive Umsetzung zerbricht.
+   *
+   * Eine Aktion schreibt die Liste mit `setData((current) => …)` fort. Setzte
+   * das auf dem *eigenen* Stand auf, bekäme sie `null`, solange nur der
+   * geliehene Bestand sichtbar ist – aus `(current ?? []).map(…)` würde `[]`,
+   * und die Übersicht wäre nach einem Klick auf „Starten" schlagartig leer.
+   */
+  it('setData setzt auf dem sichtbaren Stand auf, nicht auf dem eigenen', async () => {
+    const nieFertig = new Promise<ApiResult<string[]>>(() => {});
+
+    const { result } = renderHook(() =>
+      useApiResource<string[]>(async () => nieFertig, [], ['a', 'b']),
+    );
+
+    expect(result.current.data).toEqual(['a', 'b']);
+
+    act(() => {
+      result.current.setData((aktuell) => (aktuell ?? []).map((eintrag) => `${eintrag}!`));
+    });
+
+    expect(result.current.data).toEqual(['a!', 'b!']);
+  });
+});
