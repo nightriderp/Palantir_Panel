@@ -374,6 +374,15 @@ export const instanceSettingsInputSchema = z
      * Obergrenze steht trotzdem da, damit niemand eine Liste ohne Ende schickt.
      */
     disabledGameTypes: z.array(z.string().trim().min(1).max(64)).max(200).optional(),
+    /*
+     * Ausgeblendete mitgelieferte Schriften (Betreiber-Wunsch 20.09.2026).
+     *
+     * Dieselbe Zurückhaltung wie oben: Der Vertrag kennt die Liste der
+     * mitgelieferten Schriften nicht, und eine Kennung, die es nicht gibt,
+     * blendet nichts aus. Die Obergrenze ist kleiner, weil es nur eine
+     * Handvoll mitgelieferte Schriften gibt.
+     */
+    hiddenBundledFonts: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
   })
   .strict();
 

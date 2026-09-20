@@ -99,6 +99,23 @@ export interface InstanceSettingsDto {
    * fehlendes Feld ist dasselbe wie die leere Liste.
    */
   disabledGameTypes?: readonly string[];
+  /**
+   * Mitgelieferte Schriften, die die Instanz nicht mehr anbietet
+   * (Betreiber-Wunsch 20.09.2026).
+   *
+   * **Warum ausgeblendet statt gelöscht.** Die sechs mitgelieferten Schriften
+   * liegen im Abbild, nicht in der Datenbank – löschen ließe sich dort
+   * nichts, und der nächste Start brächte sie zurück. Eine Kennung in dieser
+   * Liste nimmt die Schrift aus der Auswahl und aus dem erzeugten Stylesheet;
+   * sie zu entfernen bringt sie zurück.
+   *
+   * Hochgeladene Schriften stehen hier nie: Die verschwinden wirklich, samt
+   * Datei.
+   *
+   * Optional, damit ältere Konsumenten gültig bleiben; ein fehlendes Feld ist
+   * dasselbe wie die leere Liste.
+   */
+  hiddenBundledFonts?: readonly string[];
   /** ISO-8601 der letzten Änderung; `null`, solange nie etwas geändert wurde. */
   updatedAt: string | null;
   permissions: InstanceSettingsPermissions;
