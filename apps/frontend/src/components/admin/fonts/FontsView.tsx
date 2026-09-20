@@ -16,20 +16,13 @@ import {
   SelectField,
   TextField,
   ToggleRow,
-  cn,
   formatBytes,
   formatDateTime,
   useToast,
 } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { fetchInstanceSettings, updateInstanceSettings } from '@/lib/api/admin';
-import {
-  deleteFont,
-  fetchFonts,
-  reloadFontStylesheet,
-  restoreFont,
-  uploadFont,
-} from '@/lib/api/fonts';
+import { deleteFont, fetchFonts, reloadFontStylesheet, uploadFont } from '@/lib/api/fonts';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading, KeyValue } from '../common';
 import {
@@ -151,23 +144,6 @@ export function FontsView() {
     reloadFontStylesheet();
   }
 
-  /** Eine ausgeblendete mitgelieferte Schrift zurückholen. */
-  async function zurueckholen(font: FontDto) {
-    setBusy(true);
-    const result = await restoreFont(font.id);
-    setBusy(false);
-
-    if (!result.success) {
-      toast.error(fontErrorMessage(result));
-
-      return;
-    }
-
-    toast.success(`Schrift „${font.label}" wird wieder angeboten.`);
-    fonts.reload();
-    reloadFontStylesheet();
-  }
-
   if (!canManage) {
     return (
       <div className="flex flex-col gap-5">
@@ -246,7 +222,6 @@ export function FontsView() {
                 font={font}
                 rollen={rollenVon(font.id, uiFontId, monospaceFontId)}
                 onDelete={() => setZuLoeschen(font)}
-                onRestore={() => void zurueckholen(font)}
               />
             </li>
           ))}
@@ -337,12 +312,10 @@ function FontCard({
   font,
   rollen,
   onDelete,
-  onRestore,
 }: {
   font: FontDto;
   rollen: readonly string[];
   onDelete: () => void;
-  onRestore: () => void;
 }) {
   const grund = deleteBlockedReason(font, rollen.length > 0);
 
@@ -356,8 +329,6 @@ function FontCard({
   const stapel = `"${font.family}", ${
     font.monospace ? 'ui-monospace, monospace' : 'system-ui, sans-serif'
   }`;
-
-  const ausgeblendet = font.hidden === true;
 
   /*
    * Die Angaben zur Datei stehen als eine Zeile statt als Raster aus vier
@@ -381,7 +352,7 @@ function FontCard({
   ];
 
   return (
-    <Panel className={cn('flex flex-col gap-2.5 p-3.5', ausgeblendet && 'opacity-60')}>
+    <Panel className="flex flex-col gap-2.5 p-3.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-base font-semibold text-ink">{font.label}</span>
@@ -390,7 +361,6 @@ function FontCard({
             {FONT_SOURCE_LABELS[font.source]}
           </Badge>
           {font.monospace ? <Badge tone="brand">Dicktengleich</Badge> : null}
-          {ausgeblendet ? <Badge tone="warning">Nicht im Angebot</Badge> : null}
           {rollen.map((rolle) => (
             <Badge key={rolle} tone="success">
               {rolle}
@@ -398,13 +368,15 @@ function FontCard({
           ))}
         </div>
 
-        {ausgeblendet ? (
-          <Button variant="secondary" iconLeft="plus" onClick={onRestore}>
-            Wieder anbieten
-          </Button>
-        ) : font.permissions.canDelete ? (
+        {/*
+          Eine Aktion für alle Schriften (Betreiberwunsch 20.09.2026). Hier
+          stand daneben ein „Wieder anbieten" für ausgeblendete mitgelieferte
+          – genau die Sonderbehandlung, die weg sollte: Gelöscht ist gelöscht,
+          egal woher die Schrift kam.
+        */}
+        {font.permissions.canDelete ? (
           <Button variant="danger" iconLeft="trash" onClick={onDelete}>
-            Entfernen
+            Löschen
           </Button>
         ) : grund ? (
           <span className="text-xs text-ink-faint">{grund}</span>

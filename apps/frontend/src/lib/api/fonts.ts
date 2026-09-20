@@ -129,16 +129,3 @@ export function uploadFont(file: File, fields: UploadFontFields): Promise<ApiRes
 export function deleteFont(id: string): Promise<ApiResult<null>> {
   return apiRequest<null>(`/api/admin/fonts/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
-
-/**
- * Eine ausgeblendete mitgelieferte Schrift wieder anbieten (Betreiber-Wunsch
- * 20.09.2026).
- *
- * Das Gegenstück zu `deleteFont` bei mitgelieferten Schriften: Dort wird
- * nichts gelöscht, sondern verschwiegen – und das lässt sich zurücknehmen.
- */
-export function restoreFont(id: string): Promise<ApiResult<null>> {
-  return apiRequest<null>(`/api/admin/fonts/${encodeURIComponent(id)}/restore`, {
-    method: 'POST',
-  });
-}

@@ -369,18 +369,5 @@ export function registerFontRoutes(options: FontRouteOptions) {
           return null;
         }),
     );
-
-    /** Eine ausgeblendete mitgelieferte Schrift wieder anbieten. */
-    app.post(
-      '/api/admin/fonts/:id/restore',
-      { preHandler: requirePermission('user.manage') },
-      async (request, reply) =>
-        handle(reply, async () => {
-          const { id } = fontIdParamsSchema.parse(request.params);
-          await service.restore(contextFrom(request), id);
-
-          return null;
-        }),
-    );
   };
 }

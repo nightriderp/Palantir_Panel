@@ -185,11 +185,18 @@ export interface FontPermissions {
   /**
    * Darf die Schrift gelöscht werden?
    *
-   * Für mitgelieferte Schriften **nie** `true` – sie liegen im
-   * Auslieferungsverzeichnis und wären nach dem nächsten Aufspielen ohnehin
-   * wieder da (`FONT_BUNDLED_PROTECTED`). Für hochgeladene Schriften zusätzlich
-   * `false`, solange sie in den Instanz-Einstellungen gewählt ist
-   * (`FONT_IN_USE`) – sonst stünde die Oberfläche ohne Schrift da.
+   * **Mitgelieferte und hochgeladene gleich** (Betreiberwunsch 20.09.2026).
+   * Vorher war das Feld bei mitgelieferten Schriften nie `true`, weil sie im
+   * Auslieferungsverzeichnis liegen; sie ließen sich nur ausblenden. Diese
+   * Unterscheidung ist entfallen – gelöscht heißt für beide, dass die
+   * Schrift aus Liste, Auswahl und Stylesheet verschwindet und nicht
+   * zurückkommt.
+   *
+   * `false`, solange die Schrift in den Instanz-Einstellungen gewählt ist
+   * (`FONT_IN_USE`) – sonst stünde die Oberfläche ohne Schrift da. Der
+   * Schutz der **letzten** verbleibenden Schrift (`FONT_LAST_REMAINING`)
+   * hängt dagegen nicht an der einzelnen Schrift, sondern am Bestand; er
+   * steht deshalb nicht in diesem Feld, sondern schlägt beim Löschen zu.
    */
   canDelete: boolean;
 }
@@ -227,17 +234,6 @@ export interface FontDto {
   format: FontFormat;
   /** Größe der Schriftdatei in Bytes. */
   sizeBytes: number;
-  /**
-   * Diese mitgelieferte Schrift bietet die Instanz gerade nicht an
-   * (Betreiber-Wunsch 20.09.2026).
-   *
-   * Sie steht weiterhin in der Verwaltung, damit sich die Entscheidung
-   * zurücknehmen lässt – in der Auswahl und im erzeugten Stylesheet fehlt
-   * sie. Bei hochgeladenen Schriften immer `false`: Die verschwinden wirklich.
-   *
-   * Optional und additiv; ein fehlendes Feld heißt „wird angeboten".
-   */
-  hidden?: boolean;
   /** ISO-8601 des Hochladens; `null` bei mitgelieferten Schriften. */
   uploadedAt: string | null;
   /**

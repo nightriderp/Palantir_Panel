@@ -103,14 +103,19 @@ export interface InstanceSettingsDto {
    * Mitgelieferte Schriften, die die Instanz nicht mehr anbietet
    * (Betreiber-Wunsch 20.09.2026).
    *
-   * **Warum ausgeblendet statt gelöscht.** Die sechs mitgelieferten Schriften
-   * liegen im Abbild, nicht in der Datenbank – löschen ließe sich dort
+   * **Der Merker ist die Löschung.** Die mitgelieferten Schriften liegen im
+   * Abbild, nicht in der Datenbank – von der Platte nehmen ließe sich dort
    * nichts, und der nächste Start brächte sie zurück. Eine Kennung in dieser
-   * Liste nimmt die Schrift aus der Auswahl und aus dem erzeugten Stylesheet;
-   * sie zu entfernen bringt sie zurück.
+   * Liste nimmt die Schrift deshalb dauerhaft aus Liste, Auswahl und
+   * erzeugtem Stylesheet: Nach außen ist sie weg wie jede andere.
    *
-   * Hochgeladene Schriften stehen hier nie: Die verschwinden wirklich, samt
-   * Datei.
+   * ⚠️ Nur in eine Richtung. Bis zum 20.09.2026 ließ sich der Eintrag über
+   * ein „Wieder anbieten" zurücknehmen – genau diese Sonderbehandlung war der
+   * Grund, dass mitgelieferte und hochgeladene Schriften sich beim Löschen
+   * verschieden verhielten. Sie ist entfallen.
+   *
+   * Hochgeladene Schriften stehen hier nie: Bei denen verschwindet die Datei
+   * selbst.
    *
    * Optional, damit ältere Konsumenten gültig bleiben; ein fehlendes Feld ist
    * dasselbe wie die leere Liste.

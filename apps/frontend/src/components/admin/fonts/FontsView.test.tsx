@@ -198,7 +198,7 @@ describe('Schriftliste', () => {
     ).toBe(true);
   });
 
-  it('bietet den Entfernen-Knopf für beide Herkünfte an', async () => {
+  it('bietet denselben Löschknopf für beide Herkünfte an', async () => {
     /*
      * Seit dem 20.09.2026 lässt sich auch eine mitgelieferte Schrift aus dem
      * Angebot nehmen. Gelöscht wird dabei nichts - sie liegt im Abbild -,
@@ -206,7 +206,7 @@ describe('Schriftliste', () => {
      */
     await zeichne();
 
-    expect(screen.getAllByRole('button', { name: 'Entfernen' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Löschen' })).toHaveLength(2);
   });
 
   it('nennt die Auswahl als Grund, wenn eine hochgeladene Schrift gesperrt ist', async () => {
@@ -216,7 +216,7 @@ describe('Schriftliste', () => {
     await zeichne();
 
     expect(await screen.findByText('Ausgewählt – erst abwählen')).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'Entfernen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Löschen' })).toBeNull();
   });
 
   it('bleibt für ein Konto ohne user.manage verschlossen', async () => {
@@ -340,7 +340,7 @@ describe('Fehlermeldungen des Backends', () => {
     ['FONT_FORMAT_UNSUPPORTED', /Dateiformat wird nicht unterstützt/],
     ['FONT_FILE_INVALID', /passt nicht zu ihrer Endung/],
     ['FONT_FAMILY_TAKEN', /Familiennamen gibt es schon/],
-    ['FONT_BUNDLED_PROTECTED', /lassen sich nicht löschen/],
+    ['FONT_LAST_REMAINING', /letzte verbleibende Schrift/],
     ['FONT_IN_USE', /gerade ausgewählt/],
     ['FONT_NOT_FOUND', /gibt es nicht mehr/],
   ];
@@ -374,7 +374,7 @@ describe('Fehlermeldungen des Backends', () => {
     await zeichne();
 
     // Beide Schriften tragen den Knopf; hier geht es um die hochgeladene.
-    const knoepfe = await screen.findAllByRole('button', { name: 'Entfernen' });
+    const knoepfe = await screen.findAllByRole('button', { name: 'Löschen' });
 
     fireEvent.click(knoepfe[1] as HTMLElement);
 

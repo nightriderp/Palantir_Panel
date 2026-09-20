@@ -411,10 +411,13 @@ describe('POST /api/admin/fonts', () => {
 });
 
 describe('DELETE /api/admin/fonts/:id', () => {
-  it('blendet eine mitgelieferte Schrift aus, statt sie zu löschen', async () => {
+  it('löscht eine mitgelieferte Schrift wie jede andere – sie verschwindet aus der Liste', async () => {
     /*
-     * Betreiber-Wunsch 20.09.2026. Für den Aufrufer ist es derselbe Knopf;
-     * die Datei bleibt im Abbild, die Instanz bietet sie nur nicht mehr an.
+     * Betreiberwunsch 20.09.2026: „wenn gelöscht dann weg ohne Spuren".
+     *
+     * Vorher blieb eine mitgelieferte Schrift als ausgeblendeter Eintrag
+     * stehen und ließ sich über `/restore` zurückholen. Diese Route gibt es
+     * nicht mehr; der Test unten hält fest, dass sie auch wirklich weg ist.
      */
     const app = await buildTestApp();
 
@@ -432,16 +435,14 @@ describe('DELETE /api/admin/fonts/:id', () => {
       headers: { 'x-test-actor': 'userAdmin' },
     });
 
-    const eintrag = liste
-      .json<{ data: { id: string; hidden?: boolean }[] }>()
-      .data.find((schrift) => schrift.id === MITGELIEFERT.id);
+    const kennungen = liste.json<{ data: { id: string }[] }>().data.map((schrift) => schrift.id);
 
-    expect(eintrag?.hidden).toBe(true);
+    expect(kennungen).not.toContain(MITGELIEFERT.id);
 
     await app.close();
   });
 
-  it('holt eine ausgeblendete Schrift über /restore zurück', async () => {
+  it('kennt keinen Weg zurück mehr', async () => {
     const app = await buildTestApp();
 
     await app.inject({
@@ -456,19 +457,8 @@ describe('DELETE /api/admin/fonts/:id', () => {
       headers: { 'x-test-actor': 'userAdmin' },
     });
 
-    expect(zurueck.statusCode).toBe(200);
-
-    const liste = await app.inject({
-      method: 'GET',
-      url: '/api/fonts',
-      headers: { 'x-test-actor': 'userAdmin' },
-    });
-
-    const eintrag = liste
-      .json<{ data: { id: string; hidden?: boolean }[] }>()
-      .data.find((schrift) => schrift.id === MITGELIEFERT.id);
-
-    expect(eintrag?.hidden).toBe(false);
+    // Die Route ist mit der Sonderbehandlung entfallen.
+    expect(zurueck.statusCode).toBe(404);
 
     await app.close();
   });

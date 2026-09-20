@@ -175,13 +175,13 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
    * Abgrenzung zu ihm.
    */
   describe('Schrift-Codes (Lastenheft §3.10)', () => {
-    it('ordnet jedem der sechs Fälle seinen Status zu', () => {
+    it('ordnet jedem der sieben Fälle seinen Status zu', () => {
       expect(httpStatusForErrorCode('FONT_NOT_FOUND')).toBe(404);
       expect(httpStatusForErrorCode('FONT_FORMAT_UNSUPPORTED')).toBe(415);
       expect(httpStatusForErrorCode('FONT_FILE_TOO_LARGE')).toBe(413);
       expect(httpStatusForErrorCode('FONT_FILE_INVALID')).toBe(422);
-      expect(httpStatusForErrorCode('FONT_BUNDLED_PROTECTED')).toBe(403);
       expect(httpStatusForErrorCode('FONT_IN_USE')).toBe(409);
+      expect(httpStatusForErrorCode('FONT_LAST_REMAINING')).toBe(409);
       expect(httpStatusForErrorCode('FONT_FAMILY_TAKEN')).toBe(409);
     });
 
@@ -215,12 +215,11 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     });
 
     it('trennt die geschützte mitgelieferte Schrift von der benutzten', () => {
-      // 403: grundsätzlich unzulässig, für jeden (wie ROLE_PROTECTED).
-      // 409: zulässig, aber erst nach einer anderen Auswahl (wie
-      // NOTIFICATION_CHANNEL_IN_USE).
-      expect(httpStatusForErrorCode('ROLE_PROTECTED')).toBe(403);
+      // Beide 409, aber nicht dasselbe: `FONT_IN_USE` räumt man aus, indem
+      // man eine andere Schrift wählt, `FONT_LAST_REMAINING`, indem man eine
+      // hochlädt. Verschiedene Auswege, also verschiedene Meldungen.
       expect(httpStatusForErrorCode('NOTIFICATION_CHANNEL_IN_USE')).toBe(409);
-      expect(defaultMessageForErrorCode('FONT_BUNDLED_PROTECTED')).not.toBe(
+      expect(defaultMessageForErrorCode('FONT_LAST_REMAINING')).not.toBe(
         defaultMessageForErrorCode('FONT_IN_USE'),
       );
     });
@@ -228,7 +227,7 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     it('vergibt jeden Schrift-Code genau einmal und mit eigener Meldung', () => {
       const fontCodes = ERROR_CODES.filter((code) => code.startsWith('FONT_'));
 
-      expect(fontCodes).toHaveLength(8);
+      expect(fontCodes).toHaveLength(7);
       expect(new Set(fontCodes).size).toBe(fontCodes.length);
       expect(new Set(fontCodes.map(defaultMessageForErrorCode)).size).toBe(fontCodes.length);
     });

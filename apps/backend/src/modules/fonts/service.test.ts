@@ -175,44 +175,103 @@ describe('FontService.list', () => {
 
   it('lässt eine mitgelieferte Schrift ausblenden, wer Schriften verwalten darf', async () => {
     /*
-     * Betreiber-Wunsch 20.09.2026. Gelöscht wird dabei nichts - die Datei
-     * liegt im Abbild -, aber die Instanz bietet sie nicht mehr an. Für die
-     * Oberfläche ist es derselbe Knopf, deshalb dasselbe Kennzeichen.
+     * Betreiberwunsch 20.09.2026: mitgelieferte und hochgeladene Schriften
+     * werden beim Löschen gleich behandelt. Für die Oberfläche ist es
+     * derselbe Knopf, deshalb dasselbe Kennzeichen.
      */
     const { service } = aufbauen();
 
     const liste = await service.list(contextOf(ownerActor()));
 
     expect(liste[0]?.permissions.canDelete).toBe(true);
-    expect(liste[0]?.hidden).toBe(false);
   });
 
-  it('nimmt eine ausgeblendete Schrift aus dem Stylesheet, lässt sie aber in der Liste', async () => {
+  /**
+   * Der Kern des Betreiberwunsches vom 20.09.2026: „wenn gelöscht dann weg
+   * ohne Spuren".
+   *
+   * Vorher blieb eine mitgelieferte Schrift nach dem Löschen als
+   * ausgeblendeter Eintrag in der Liste stehen und ließ sich zurückholen –
+   * eine hochgeladene verschwand. Jetzt verschwinden beide.
+   */
+  it('nimmt eine gelöschte mitgelieferte Schrift aus Liste und Stylesheet', async () => {
     const { service } = aufbauen();
 
     await service.remove(ADMIN, ERSTE_MITGELIEFERTE.id);
 
     const liste = await service.list(ADMIN);
-    const eintrag = liste.find((schrift) => schrift.id === ERSTE_MITGELIEFERTE.id);
 
-    expect(eintrag?.hidden).toBe(true);
+    expect(liste.find((schrift) => schrift.id === ERSTE_MITGELIEFERTE.id)).toBeUndefined();
     expect((await service.stylesheet()).css).not.toContain(ERSTE_MITGELIEFERTE.family);
   });
 
-  it('holt eine ausgeblendete Schrift zurück', async () => {
+  it('bringt eine gelöschte Schrift nicht zurück', async () => {
+    // Es gibt keinen Weg zurück mehr – `restore` ist mit der Sonderbehandlung
+    // entfallen. Der Test hält fest, dass auch ein zweiter Lauf nichts
+    // wiederherstellt, sondern schlicht nichts mehr findet.
     const { service } = aufbauen();
 
     await service.remove(ADMIN, ERSTE_MITGELIEFERTE.id);
-    await service.restore(ADMIN, ERSTE_MITGELIEFERTE.id);
 
-    const liste = await service.list(ADMIN);
-    const eintrag = liste.find((schrift) => schrift.id === ERSTE_MITGELIEFERTE.id);
-
-    expect(eintrag?.hidden).toBe(false);
-    expect((await service.stylesheet()).css).toContain(ERSTE_MITGELIEFERTE.family);
+    expect(await fehlercode(() => service.remove(ADMIN, ERSTE_MITGELIEFERTE.id))).toBe(
+      'FONT_NOT_FOUND',
+    );
+    expect((await service.stylesheet()).css).not.toContain(ERSTE_MITGELIEFERTE.family);
   });
 
-  it('blendet keine Schrift aus, die gerade eine Rolle besetzt', async () => {
+  /**
+   * Die letzte verbleibende Schrift bleibt (Betreiberwunsch 20.09.2026).
+   *
+   * Der Aufbau bietet genau zwei Schriften an – eine mitgelieferte und eine
+   * hochgeladene. Nach der ersten Löschung ist nur noch eine übrig, und die
+   * ist geschützt. Ohne die Schranke ließe sich die Verwaltung leerräumen:
+   * keine `@font-face`-Regel mehr, die Oberfläche auf dem Fallback-Stack des
+   * Browsers, und nichts mehr da, aus dem man sich erholen könnte.
+   */
+  it('lässt die letzte verbleibende Schrift nicht löschen', async () => {
+    const { service } = aufbauen();
+
+    await service.remove(ADMIN, ERSTE_MITGELIEFERTE.id);
+
+    expect(await fehlercode(() => service.remove(ADMIN, UPLOADED_FONT_ID))).toBe(
+      'FONT_LAST_REMAINING',
+    );
+
+    // Und sie steht auch wirklich noch im Angebot.
+    const liste = await service.list(ADMIN);
+
+    expect(liste.map((font) => font.id)).toEqual([UPLOADED_FONT_ID]);
+  });
+
+  it('schützt die letzte Schrift unabhängig davon, woher sie kommt', async () => {
+    // ⚠️ Die Schranke hängt am Bestand, nicht an der Herkunft: Bleibt die
+    // mitgelieferte übrig statt der hochgeladenen, gilt sie genauso.
+    const { service } = aufbauen();
+
+    await service.remove(ADMIN, UPLOADED_FONT_ID);
+
+    expect(await fehlercode(() => service.remove(ADMIN, ERSTE_MITGELIEFERTE.id))).toBe(
+      'FONT_LAST_REMAINING',
+    );
+  });
+
+  it('meldet bei einer unbekannten Kennung weiter „nicht vorhanden“', async () => {
+    /*
+     * ⚠️ Die Schranke wird **nach** der Existenzprüfung gezogen. Andersherum
+     * bekäme eine unbekannte Kennung die Meldung „das ist die letzte
+     * Schrift“ – eine Antwort, die mit der Frage nichts zu tun hat. (Genau
+     * so war es beim ersten Bauen, bis dieser Test es zeigte.)
+     */
+    const { service } = aufbauen();
+
+    await service.remove(ADMIN, ERSTE_MITGELIEFERTE.id);
+
+    expect(await fehlercode(() => service.remove(ADMIN, 'bundled-gibt-es-nicht'))).toBe(
+      'FONT_NOT_FOUND',
+    );
+  });
+
+  it('löscht keine Schrift, die gerade eine Rolle besetzt', async () => {
     // Sonst stünde die Oberfläche auf einer Schrift, die es im Stylesheet
     // nicht mehr gibt.
     const { service } = aufbauen({ gewaehlt: [ERSTE_MITGELIEFERTE.id] });
@@ -428,14 +487,6 @@ describe('FontService.upload', () => {
 });
 
 describe('FontService.remove', () => {
-  it('meldet beim Zurückholen einer hochgeladenen Schrift, dass es nichts zu holen gibt', async () => {
-    // Die ist wirklich weg, samt Datei - da lässt sich nichts ausblenden und
-    // nichts zurückholen.
-    const { service } = aufbauen();
-
-    expect(await fehlercode(() => service.restore(ADMIN, UPLOADED_FONT_ID))).toBe('FONT_NOT_FOUND');
-  });
-
   it('meldet eine unbekannte, aber formal mitgelieferte Kennung als nicht vorhanden', async () => {
     const { service } = aufbauen();
 
