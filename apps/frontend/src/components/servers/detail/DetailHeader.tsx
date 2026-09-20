@@ -79,13 +79,23 @@ export function DetailHeader({
   const canUpdate = server.updateAvailable && server.permissions.canUpdate;
   const fassung = formatImageVersion(server.imageVersion);
   /**
-   * Zweite Zeile des Kopfes: womit der Server läuft, wo und für wen
-   * (Fundpunkt 317). Fehlt alles davon, entfällt die Zeile.
+   * Betriebsangaben als Chips, nicht als zweite Textzeile (Betreiber-Wunsch
+   * 20.09.2026).
+   *
+   * Node, Besitzer und Image-Fassung gehören zusammen und haben dieselbe Form
+   * wie die Adresse darunter. Als aneinandergereihter Text mit Mittelpunkten
+   * lasen sie sich wie Kleingedrucktes und brachen auf schmalen Fenstern an
+   * beliebiger Stelle um.
    */
-  const betriebszeile =
-    [fassung, server.hostName ?? null, server.ownerDisplayName ?? null]
-      .filter((teil): teil is string => typeof teil === 'string' && teil !== '')
-      .join(' · ') || null;
+  const betriebsangaben: {
+    readonly label: string;
+    readonly wert: string;
+    readonly mono?: boolean;
+  }[] = [
+    ...(server.hostName ? [{ label: 'Node', wert: server.hostName }] : []),
+    ...(server.ownerDisplayName ? [{ label: 'Besitzer', wert: server.ownerDisplayName }] : []),
+    ...(fassung === null ? [] : [{ label: 'Fassung', wert: fassung, mono: true }]),
+  ];
   const updateHinweis = formatImageUpdate(server.imageVersion, server.latestImageVersion);
   const updateLaeuftNeu = server.status === 'running' || server.status === 'starting';
 
@@ -127,11 +137,9 @@ export function DetailHeader({
           </div>
 
           {/*
-            Zwei Zeilen statt einer langen (Fundpunkt 317). Oben das Spiel mit
-            seiner Fassung – sie beantwortet „passt mein Client dazu" und
-            gehört deshalb neben den Namen, nicht in eine Einstellungsseite.
-            Darunter der Betrieb: Image-Fassung, Node, Besitzer. Zu fünft in
-            einer Zeile war das auf schmalen Fenstern nicht mehr zu lesen.
+            Im Kopf steht, welcher Server das ist: Name, Spiel, Spielfassung.
+            Die Spielfassung beantwortet „passt mein Client dazu" und gehört
+            deshalb neben den Namen, nicht in eine Einstellungsseite.
           */}
           <p className="mt-1 text-sm text-ink-soft">
             {server.gameTypeName}
@@ -139,8 +147,24 @@ export function DetailHeader({
               ? ''
               : ` ${server.gameVersion}`}
           </p>
-          {betriebszeile === null ? null : (
-            <p className="mt-0.5 text-xs text-ink-faint">{betriebszeile}</p>
+
+          {betriebsangaben.length === 0 ? null : (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              {betriebsangaben.map((angabe) => (
+                <span
+                  key={angabe.label}
+                  className="rounded-md bg-fill px-2.5 py-1.5 text-ink-soft"
+                  {...(angabe.label === 'Fassung' && updateHinweis !== null
+                    ? { title: updateHinweis }
+                    : {})}
+                >
+                  {angabe.label}:{' '}
+                  <span className={angabe.mono === true ? 'font-mono text-ink' : 'text-ink'}>
+                    {angabe.wert}
+                  </span>
+                </span>
+              ))}
+            </div>
           )}
 
           {server.permissions.canViewAddress && address ? (
