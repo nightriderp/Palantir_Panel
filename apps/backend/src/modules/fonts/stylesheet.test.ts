@@ -97,6 +97,24 @@ describe('cssQuotedString', () => {
   });
 });
 
+describe('fontFileHref – Adresse der Schriftdatei', () => {
+  it('bleibt relativ zum Stylesheet, damit ein Unterpfad nicht danebengeht', () => {
+    /*
+     * Betreiber-Meldung 20.09.2026: Seit die API auch unter <Domain>/api
+     * erreichbar ist, laedt der Browser das Stylesheet als
+     * <Domain>/api/public/fonts.css. Wurzel-relativ zeigte die Schrift dann
+     * auf <Domain>/api/fonts/..., der vorgeschaltete Server schnitt sein
+     * Praefix ab, und das Backend sah /fonts/... - eine Route, die es nicht
+     * gibt. Jede Schrift kam mit 404 zurueck.
+     */
+    expect(fontFileHref('bundled-chewy')).toBe('../api/fonts/bundled-chewy/file');
+  });
+
+  it('maskiert die Kennung, damit nichts aus der Adresse ausbricht', () => {
+    expect(fontFileHref('a/b')).toBe('../api/fonts/a%2Fb/file');
+  });
+});
+
 describe('buildFontStylesheet – Regeln', () => {
   it('schreibt für jede verfügbare Schrift eine @font-face-Regel', () => {
     const css = buildFontStylesheet(ALLE, { uiFontId: null, monospaceFontId: null });

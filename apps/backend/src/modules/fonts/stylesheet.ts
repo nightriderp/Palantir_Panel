@@ -144,14 +144,30 @@ export function cssUrl(value: string): string {
 /**
  * Adresse, unter der der Browser die Datei einer Schrift holt.
  *
- * Bewusst wurzel-relativ und **nicht** absolut: Das Stylesheet wird von der
- * API-Herkunft ausgeliefert, relative Adressen darin lösen sich also gegen
- * genau diese Herkunft auf. Damit muss das Backend seine eigene öffentliche
- * Adresse für diesen Zweck gar nicht kennen – ein Wert weniger, der falsch
- * konfiguriert sein kann.
+ * **Pfad-relativ zum Stylesheet**, nicht wurzel-relativ und erst recht nicht
+ * absolut. Das Backend muss seine eigene öffentliche Adresse damit weiterhin
+ * nicht kennen – aber es darf auch nicht annehmen, dass es direkt an der
+ * Wurzel einer Domain hängt.
+ *
+ * Genau diese Annahme fiel am 20.09.2026 um: Seit die API auch unter
+ * `<Domain>/api` erreichbar ist, wird das Stylesheet als
+ * `<Domain>/api/public/fonts.css` geladen. Ein wurzel-relatives
+ * `/api/fonts/…` zeigte dann auf `<Domain>/api/fonts/…`, wo der vorgeschaltete
+ * Server sein Präfix abschneidet – und das Backend bekam `/fonts/…` zu sehen,
+ * das es nicht kennt. Ergebnis: 404 für jede Schrift, und die Oberfläche stand
+ * ohne sie da.
+ *
+ * Pfad-relativ stimmt in beiden Welten. Vom Verzeichnis des Stylesheets
+ * (`…/public/`) führt `../api/fonts/…` sowohl unter einer eigenen
+ * API-Herkunft als auch unter einem Unterpfad genau dorthin, wo die Route
+ * wirklich liegt.
  */
 export function fontFileHref(id: string): string {
-  return FONT_FILE_ROUTE_PATH.replace(':id', encodeURIComponent(id));
+  const pfad = FONT_FILE_ROUTE_PATH.replace(':id', encodeURIComponent(id));
+
+  // Aus `/api/fonts/x/file` wird `../api/fonts/x/file`: eine Ebene hoch aus
+  // dem Verzeichnis des Stylesheets, dann den Pfad der Route hinunter.
+  return `..${pfad}`;
 }
 
 /** Ein Gewicht auf den vom Vertrag erlaubten Bereich zurechtstutzen. */
