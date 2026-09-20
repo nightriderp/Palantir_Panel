@@ -45,12 +45,22 @@ export interface PlannedEntry {
   requires?: keyof AccountDto['permissions'];
 }
 
+/**
+ * Hauptnavigation, nach Aufgaben geordnet (Betreiber-Wunsch 20.09.2026).
+ *
+ * Erst die Server: ansehen, anlegen, sichern. Dann das Eigene: Skins. Dann
+ * das, was hereinkommt – Nachrichten und Benachrichtigungen stehen
+ * nebeneinander, weil beides Posteingänge sind und man sie in einem Zug
+ * durchsieht. Arcade als Zeitvertreib danach, Nodes zuletzt: Sie sind
+ * Betriebssache und nur mit Recht überhaupt sichtbar.
+ *
+ * Abweichung vom Zuruf: „Meine Backups" steht hier oben beim Server-Block
+ * statt weiter unten, und die beiden Posteingänge sind nicht durch Arcade
+ * getrennt. Wer eine andere Reihenfolge will, ändert diese Liste – die
+ * Seitenleiste zeigt sie genau so, wie sie hier steht.
+ */
 const MAIN_ENTRIES: PlannedEntry[] = [
   { key: 'servers', label: 'Übersicht', icon: 'grid', href: '/servers' },
-  { key: 'messages', label: 'Nachrichten', icon: 'chat', href: '/messages' },
-  { key: 'skins', label: 'Skins', icon: 'palette', href: '/skins' },
-  { key: 'notifications', label: 'Benachrichtigungen', icon: 'bell', href: '/notifications' },
-  { key: 'nodes', label: 'Nodes', icon: 'server', href: '/nodes', requires: 'canViewNodes' },
   {
     key: 'server-new',
     label: 'Server erstellen',
@@ -59,16 +69,29 @@ const MAIN_ENTRIES: PlannedEntry[] = [
     requires: 'canCreateServer',
   },
   { key: 'my-backups', label: 'Meine Backups', icon: 'database', href: '/my-backups' },
+  { key: 'skins', label: 'Skins', icon: 'palette', href: '/skins' },
+  { key: 'messages', label: 'Nachrichten', icon: 'chat', href: '/messages' },
+  { key: 'notifications', label: 'Benachrichtigungen', icon: 'bell', href: '/notifications' },
   { key: 'arcade', label: 'Arcade', icon: 'gamepad', href: '/arcade' },
+  { key: 'nodes', label: 'Nodes', icon: 'server', href: '/nodes', requires: 'canViewNodes' },
 ];
 
 /**
- * Administration in der Reihenfolge des Mockups.
+ * Administration, in fünf Blöcken (Betreiber-Wunsch 20.09.2026).
  *
- * Drei Einträge kennt das Mockup nicht – **Moderation**, **Ankündigungen** und
- * **Nodes**. Sie stehen deshalb nicht am Ende, sondern jeweils neben dem
- * Eintrag, zu dem sie fachlich gehören: Moderation zu Nutzer und Rollen,
- * Ankündigungen zu den Benachrichtigungs-Regeln, Nodes zum Node-Platz.
+ * Die Reihenfolge des Mockups war über die Zeit gewachsen: Sticker zwischen
+ * Templates und Schriften, Nodes zwischen Backups und Node-Platz, das
+ * Audit-Log mittendrin. Jetzt stehen zusammen, was man zusammen tut:
+ *
+ * 1. **Menschen** – Nutzer, Rollen, Anfragen, Moderation
+ * 2. **Erscheinung** – Templates, Schriften, Sticker, Arcade-Musik
+ * 3. **Mitteilungen** – Ankündigungen, Benachrichtigungs-Regeln
+ * 4. **Betrieb** – Nodes, Node-Platz, Backups, Adressen
+ * 5. **Nachweis** – Audit-Log, ganz zuletzt: Man geht dorthin, wenn etwas
+ *    passiert ist, nicht im Tagesgeschäft.
+ *
+ * Ohne Überschriften, nur als Reihenfolge – eine Seitenleiste mit fünf
+ * Zwischentiteln wäre länger als die Liste selbst.
  *
  * **Exportiert, weil `/admin` dieselbe Liste braucht** (Fundpunkt
  * frontend-app-04): Die Einstiegsseite `AdminLanding` leitet auf den ersten
@@ -93,6 +116,13 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     requires: 'canManageRoles',
   },
   {
+    key: 'admin-requests',
+    label: 'Anfragen',
+    icon: 'inbox',
+    href: '/admin/requests',
+    requires: 'canManageUsers',
+  },
+  {
     key: 'admin-moderation',
     label: 'Moderation',
     icon: 'chat',
@@ -105,6 +135,16 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     icon: 'layers',
     href: '/admin/templates',
     requires: 'canManageGameTypes',
+  },
+  {
+    // Schriften der Oberfläche (S-3). Neben „Nutzer" und „Rollen", weil die
+    // Auswahl in den Instanz-Einstellungen liegt und dieselbe Berechtigung
+    // verlangt wie diese (`user.manage`).
+    key: 'admin-schriften',
+    label: 'Schriften',
+    icon: 'palette',
+    href: '/admin/schriften',
+    requires: 'canManageUsers',
   },
   {
     key: 'admin-sticker',
@@ -121,23 +161,6 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     requires: 'canManageGameTypes',
   },
   {
-    // Schriften der Oberfläche (S-3). Neben „Nutzer" und „Rollen", weil die
-    // Auswahl in den Instanz-Einstellungen liegt und dieselbe Berechtigung
-    // verlangt wie diese (`user.manage`).
-    key: 'admin-schriften',
-    label: 'Schriften',
-    icon: 'palette',
-    href: '/admin/schriften',
-    requires: 'canManageUsers',
-  },
-  {
-    key: 'admin-notifications',
-    label: 'Benachrichtigungs-Regeln',
-    icon: 'bell',
-    href: '/admin/notifications',
-    requires: 'canManageNotifications',
-  },
-  {
     key: 'admin-announcements',
     label: 'Ankündigungen',
     icon: 'send',
@@ -145,25 +168,11 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     requires: 'canManageNotifications',
   },
   {
-    key: 'admin-requests',
-    label: 'Anfragen',
-    icon: 'inbox',
-    href: '/admin/requests',
-    requires: 'canManageUsers',
-  },
-  {
-    key: 'admin-audit',
-    label: 'Audit-Log',
-    icon: 'clipboard',
-    href: '/admin/audit',
-    requires: 'canViewAuditLog',
-  },
-  {
-    key: 'admin-backups',
-    label: 'Backups',
-    icon: 'database',
-    href: '/admin/backups',
-    requires: 'canManageAnyBackup',
+    key: 'admin-notifications',
+    label: 'Benachrichtigungs-Regeln',
+    icon: 'bell',
+    href: '/admin/notifications',
+    requires: 'canManageNotifications',
   },
   {
     key: 'admin-nodes',
@@ -180,11 +189,25 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     requires: 'canViewNodes',
   },
   {
+    key: 'admin-backups',
+    label: 'Backups',
+    icon: 'database',
+    href: '/admin/backups',
+    requires: 'canManageAnyBackup',
+  },
+  {
     key: 'admin-adressen',
     label: 'Adressen',
     icon: 'key',
     href: '/admin/addresses',
     requires: 'canManageAddresses',
+  },
+  {
+    key: 'admin-audit',
+    label: 'Audit-Log',
+    icon: 'clipboard',
+    href: '/admin/audit',
+    requires: 'canViewAuditLog',
   },
 ];
 
