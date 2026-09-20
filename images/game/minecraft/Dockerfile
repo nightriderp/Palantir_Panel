@@ -122,6 +122,16 @@ USER 1000:1000
 #     | jq -r '.versions[] | select(.id == "26.3") | .url')
 #   curl -s "$meta" | jq '.downloads.server, .javaVersion'
 #   curl -sL <url> | sha256sum
+# **Alle drei Bloecke sind Vorgaben, keine Festlegung.** Waehlt der Betreiber
+# im Panel eine Spielversion, schickt das Backend sie als `MINECRAFT_SERVER_URL`,
+# `MINECRAFT_SERVER_SHA256` (oder `_SHA1`) und `MINECRAFT_SERVER_VERSION` mit -
+# ohne Ausgabe im Namen, weil das Startskript ohnehin weiss, welche laeuft. Dann
+# gelten die Vorgaben hier gar nicht mehr; gemischt wird nie, sonst wuerde die
+# Pruefsumme der einen Datei gegen die andere geprueft.
+#
+# Fuer `paper` gibt es unten keine Vorgabe: Die Jar liegt im Image. Eine Wahl
+# bricht das bewusst auf - fuer die Server, die eine andere Version wollen, und
+# nur fuer die.
 ENV MINECRAFT_VANILLA_VERSION=26.2
 ENV MINECRAFT_VANILLA_URL=https://piston-data.mojang.com/v1/objects/823e2250d24b3ddac457a60c92a6a941943fcd6a/server.jar
 ENV MINECRAFT_VANILLA_SHA256=cdacdfb25898de5e4b4b0e5ddcc2722f77067e46605709c2d886c000ebb63ec5

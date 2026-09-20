@@ -312,17 +312,17 @@ fi
 # Gerechnet wird in beiden Faellen; ohne passende Summe wird die Datei
 # verworfen statt ausgefuehrt. Ein bereits geholter, unveraenderter Server
 # wird nicht erneut geladen.
-vanilla_holen() {
+serverdatei_holen() {
   ziel="$1"
 
-  if [ -n "${MINECRAFT_VANILLA_SHA256:-}" ]; then
-    palantir_datei_holen "$MINECRAFT_VANILLA_URL" "$MINECRAFT_VANILLA_SHA256" "$ziel"
+  if [ -n "$SERVER_SHA256" ]; then
+    palantir_datei_holen "$SERVER_URL" "$SERVER_SHA256" "$ziel"
 
     return $?
   fi
 
   if [ -f "$ziel" ] &&
-    printf '%s  %s\n' "$MINECRAFT_VANILLA_SHA1" "$ziel" | sha1sum --check --status -; then
+    printf '%s  %s\n' "$SERVER_SHA1" "$ziel" | sha1sum --check --status -; then
     log "Vorhanden und unveraendert: $(basename "$ziel")"
 
     return 0
@@ -332,14 +332,14 @@ vanilla_holen() {
   rm -f "${ziel}.laedt"
 
   if ! curl --fail --silent --show-error --location --retry 3 \
-    --output "${ziel}.laedt" "$MINECRAFT_VANILLA_URL"; then
+    --output "${ziel}.laedt" "$SERVER_URL"; then
     rm -f "${ziel}.laedt"
-    log "Der Download ist gescheitert: ${MINECRAFT_VANILLA_URL}"
+    log "Der Download ist gescheitert: ${SERVER_URL}"
 
     return 1
   fi
 
-  if ! printf '%s  %s\n' "$MINECRAFT_VANILLA_SHA1" "${ziel}.laedt" |
+  if ! printf '%s  %s\n' "$SERVER_SHA1" "${ziel}.laedt" |
     sha1sum --check --status -; then
     rm -f "${ziel}.laedt"
     log 'Die Pruefsumme passt nicht; die Datei wurde verworfen.'
@@ -352,45 +352,142 @@ vanilla_holen() {
   return 0
 }
 
+# -----------------------------------------------------------------------------
+# Welche Serverdatei: die Vorgabe des Images oder die Wahl des Panels
+# -----------------------------------------------------------------------------
+#
+# Bis zum 20.09.2026 konnte nur die Ausgabe `vanilla` eine andere Version
+# bekommen; das Panel setzte dafuer `MINECRAFT_VANILLA_*`. Seit es eine
+# Minecraft-Vorlage fuer alle Versionen und Ausgaben gibt, heisst die Wahl
+# `MINECRAFT_SERVER_*` und meint immer die Serverdatei der Ausgabe, die gerade
+# laeuft - welche das ist, weiss dieses Skript ohnehin.
+#
+# **Entweder oder, nie gemischt.** Ist eine Adresse gewaehlt, gelten die
+# eingebauten Vorgaben gar nicht mehr. Sonst koennte die Pruefsumme der einen
+# Datei gegen die andere geprueft werden, und der Start scheiterte an einer
+# Datei, die in Ordnung ist.
+if [ -n "${MINECRAFT_SERVER_URL:-}" ]; then
+  SERVER_URL="$MINECRAFT_SERVER_URL"
+  SERVER_SHA256="${MINECRAFT_SERVER_SHA256:-}"
+  SERVER_SHA1="${MINECRAFT_SERVER_SHA1:-}"
+  SERVER_VERSION="${MINECRAFT_SERVER_VERSION:-gewaehlt}"
+  SERVER_GEWAEHLT=1
+else
+  case "$AUSGABE" in
+  vanilla)
+    SERVER_URL="${MINECRAFT_VANILLA_URL:-}"
+    SERVER_SHA256="${MINECRAFT_VANILLA_SHA256:-}"
+    SERVER_SHA1="${MINECRAFT_VANILLA_SHA1:-}"
+    SERVER_VERSION="${MINECRAFT_VANILLA_VERSION:-unbekannt}"
+    ;;
+  fabric)
+    SERVER_URL="${MINECRAFT_FABRIC_URL:-}"
+    SERVER_SHA256="${MINECRAFT_FABRIC_SHA256:-}"
+    SERVER_SHA1=''
+    SERVER_VERSION="${MINECRAFT_FABRIC_VERSION:-unbekannt}"
+    ;;
+  neoforge)
+    SERVER_URL="${MINECRAFT_NEOFORGE_URL:-}"
+    SERVER_SHA256="${MINECRAFT_NEOFORGE_SHA256:-}"
+    SERVER_SHA1=''
+    SERVER_VERSION="${MINECRAFT_NEOFORGE_VERSION:-unbekannt}"
+    ;;
+  *)
+    # Paper liegt im Image; ohne Wahl wird nichts geholt.
+    SERVER_URL=''
+    SERVER_SHA256=''
+    SERVER_SHA1=''
+    SERVER_VERSION='eingebaut'
+    ;;
+  esac
+
+  SERVER_GEWAEHLT=0
+fi
+
+# Eine gewaehlte Version ohne Pruefsumme gibt es nicht: Das Backend liefert
+# beide zusammen oder keins von beidem. Trotzdem geprueft, weil hier die
+# Entscheidung faellt, ob etwas ausgefuehrt wird.
+if [ -n "$SERVER_URL" ] && [ -z "$SERVER_SHA256" ] && [ -z "$SERVER_SHA1" ]; then
+  log "Zur Serverdatei fehlt die Pruefsumme (${SERVER_URL})."
+  log 'Ohne sie wird nichts ausgefuehrt.'
+  exit 78
+fi
+
 if [ "$AUSGABE" = 'paper' ]; then
-  SERVER_JAR="$PAPER_JAR"
+  # Ohne Wahl die Jar aus dem Image: Ein Image-Tag steht dann fuer genau eine
+  # Serverfassung, und der Start braucht dafuer kein Netz (siehe Dockerfile).
+  #
+  # **Mit Wahl ist das aufgebrochen, und zwar mit Absicht** - fuer die Server,
+  # die eine andere Version wollen, und nur fuer die. Der Preis steht im
+  # Dockerfile: Die Datei landet im Datenordner, der erste Start braucht Netz,
+  # und die Serverfassung haengt an der Wahl statt am Tag.
+  if [ "$SERVER_GEWAEHLT" -eq 1 ]; then
+    PAPER_ORDNER="${INTERN}/paper"
+    mkdir -p "$PAPER_ORDNER"
+    SERVER_JAR="${PAPER_ORDNER}/paper-${SERVER_VERSION}.jar"
+
+    if ! serverdatei_holen "$SERVER_JAR"; then
+      log 'Die gewaehlte Paper-Jar konnte nicht geholt werden. Der Start bricht ab;'
+      log 'ein erneuter Start versucht es wieder.'
+      exit 69
+    fi
+  else
+    SERVER_JAR="$PAPER_JAR"
+  fi
 elif [ "$AUSGABE" = 'fabric' ]; then
-  if [ -z "${MINECRAFT_FABRIC_URL:-}" ] || [ -z "${MINECRAFT_FABRIC_SHA256:-}" ]; then
-    log 'Der Ausgabe "fabric" fehlen MINECRAFT_FABRIC_URL oder MINECRAFT_FABRIC_SHA256.'
+  if [ -z "$SERVER_URL" ]; then
+    log 'Der Ausgabe "fabric" fehlt die Adresse der Starter-Jar.'
+    log 'Sie setzt das Image (MINECRAFT_FABRIC_URL) oder das Panel je Server'
+    log '(MINECRAFT_SERVER_URL).'
     exit 78
   fi
 
   FABRIC_ORDNER="${INTERN}/fabric"
   mkdir -p "$FABRIC_ORDNER"
-  SERVER_JAR="${FABRIC_ORDNER}/fabric-server-${MINECRAFT_FABRIC_VERSION:-unbekannt}.jar"
+  SERVER_JAR="${FABRIC_ORDNER}/fabric-server-${SERVER_VERSION}.jar"
 
-  if ! palantir_datei_holen "$MINECRAFT_FABRIC_URL" "$MINECRAFT_FABRIC_SHA256" "$SERVER_JAR"; then
+  if ! serverdatei_holen "$SERVER_JAR"; then
     log 'Die Starter-Jar von Fabric konnte nicht geholt werden.'
     exit 69
   fi
 elif [ "$AUSGABE" = 'neoforge' ]; then
-  if [ -z "${MINECRAFT_NEOFORGE_URL:-}" ] || [ -z "${MINECRAFT_NEOFORGE_SHA256:-}" ]; then
-    log 'Der Ausgabe "neoforge" fehlen MINECRAFT_NEOFORGE_URL oder MINECRAFT_NEOFORGE_SHA256.'
+  if [ -z "$SERVER_URL" ]; then
+    log 'Der Ausgabe "neoforge" fehlt die Adresse des Installationsprogramms.'
+    log 'Sie setzt das Image (MINECRAFT_NEOFORGE_URL) oder das Panel je Server'
+    log '(MINECRAFT_SERVER_URL).'
     exit 78
   fi
 
-  NEOFORGE_FASSUNG="${MINECRAFT_NEOFORGE_VERSION:-unbekannt}"
   NEOFORGE_ORDNER="${INTERN}/neoforge"
+
   # Die Argumentdatei ist zugleich das Zeichen, dass die Installation
   # durchgelaufen ist: Sie entsteht als Letztes.
-  NEOFORGE_ARGUMENTE="${NEOFORGE_ORDNER}/libraries/net/neoforged/neoforge/${NEOFORGE_FASSUNG}/unix_args.txt"
+  #
+  # **Gesucht, nicht ausgerechnet.** Bis Fassung 9 stand ihr Pfad hier als
+  # Zeichenkette, zusammengesetzt aus der Loader-Version - und wer die Version
+  # nicht genau passend zur Adresse mitgab, bekam nach zehn Minuten
+  # Installation ein "Nach der Einrichtung fehlt ...". Seit die Version aus dem
+  # Panel kommen kann, waere das eine Falle mehr: Der Katalog liest die
+  # Loader-Version aus der Adresse, das Skript muesste sie erneut kennen.
+  # Gesucht wird sie stattdessen dort, wo das Installationsprogramm sie
+  # hingelegt hat.
+  neoforge_argumente_suchen() {
+    find "${NEOFORGE_ORDNER}/libraries/net/neoforged/neoforge" \
+      -name unix_args.txt -type f 2>/dev/null | head -n 1
+  }
 
-  if [ ! -f "$NEOFORGE_ARGUMENTE" ]; then
-    NEOFORGE_INSTALLER="${INTERN}/neoforge-installer-${NEOFORGE_FASSUNG}.jar"
+  NEOFORGE_ARGUMENTE="$(neoforge_argumente_suchen)"
 
-    if ! palantir_datei_holen \
-      "$MINECRAFT_NEOFORGE_URL" "$MINECRAFT_NEOFORGE_SHA256" "$NEOFORGE_INSTALLER"; then
+  if [ -z "$NEOFORGE_ARGUMENTE" ]; then
+    NEOFORGE_INSTALLER="${INTERN}/neoforge-installer.jar"
+
+    if ! serverdatei_holen "$NEOFORGE_INSTALLER"; then
       log 'Das Installationsprogramm von NeoForge konnte nicht geholt werden.'
       exit 69
     fi
 
     mkdir -p "$NEOFORGE_ORDNER"
-    log "Richtet NeoForge ${NEOFORGE_FASSUNG} ein – das dauert beim ersten Start einige Minuten ..."
+    log "Richtet NeoForge ${SERVER_VERSION} ein – das dauert beim ersten Start einige Minuten ..."
 
     # Das Installationsprogramm holt den Server von Mojang und die Bibliotheken
     # und legt sie in den genannten Ordner. Es braucht Netz und läuft genau
@@ -403,35 +500,31 @@ elif [ "$AUSGABE" = 'neoforge' ]; then
     fi
 
     rm -f "$NEOFORGE_INSTALLER"
+    NEOFORGE_ARGUMENTE="$(neoforge_argumente_suchen)"
 
-    if [ ! -f "$NEOFORGE_ARGUMENTE" ]; then
-      log "Nach der Einrichtung fehlt ${NEOFORGE_ARGUMENTE}."
-      log 'Passt MINECRAFT_NEOFORGE_VERSION zu MINECRAFT_NEOFORGE_URL?'
+    if [ -z "$NEOFORGE_ARGUMENTE" ]; then
+      log 'Nach der Einrichtung gibt es keine unix_args.txt unter'
+      log "${NEOFORGE_ORDNER}/libraries/net/neoforged/neoforge."
+      log 'Das Installationsprogramm ist durchgelaufen, hat aber nichts abgelegt.'
       exit 69
     fi
   fi
 else
-  if [ -z "${MINECRAFT_VANILLA_URL:-}" ]; then
+  if [ -z "$SERVER_URL" ]; then
     log 'Der Ausgabe "vanilla" fehlt MINECRAFT_VANILLA_URL.'
     log 'Sie setzt das Image (Dockerfile) oder das Panel je Server; ohne sie ist'
     log 'nicht bestimmbar, welcher Server geholt werden soll.'
     exit 78
   fi
 
-  if [ -z "${MINECRAFT_VANILLA_SHA256:-}" ] && [ -z "${MINECRAFT_VANILLA_SHA1:-}" ]; then
-    log 'Der Ausgabe "vanilla" fehlt die Pruefsumme (MINECRAFT_VANILLA_SHA256'
-    log 'oder MINECRAFT_VANILLA_SHA1). Ohne sie wird nichts ausgefuehrt.'
-    exit 78
-  fi
-
   VANILLA_ORDNER="${INTERN}/vanilla"
   mkdir -p "$VANILLA_ORDNER"
-  SERVER_JAR="${VANILLA_ORDNER}/minecraft_server-${MINECRAFT_VANILLA_VERSION:-unbekannt}.jar"
+  SERVER_JAR="${VANILLA_ORDNER}/minecraft_server-${SERVER_VERSION}.jar"
 
   # Exit-Code 69 ist `EX_UNAVAILABLE`: Der Server ist in Ordnung, nur die Quelle
   # war nicht zu erreichen oder hat etwas Falsches geliefert. Unterscheidbar von
   # 78 (Konfiguration) und von einem Absturz.
-  if ! vanilla_holen "$SERVER_JAR"; then
+  if ! serverdatei_holen "$SERVER_JAR"; then
     log 'Der Server von Mojang konnte nicht geholt werden. Der Start bricht ab;'
     log 'ein erneuter Start versucht es wieder.'
     exit 69

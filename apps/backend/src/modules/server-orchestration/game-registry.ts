@@ -292,7 +292,16 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
   name: 'Minecraft (Paper)',
   description:
     'Minecraft-Server auf Basis von Paper – schneller als der Server von Mojang und mit Unterstützung für Plugins. Vor dem ersten Start muss die Endnutzer-Lizenzvereinbarung von Mojang angenommen werden.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:9',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-minecraft:10',
+  /*
+   * Auch Paper laesst die Version waehlen (Betreiber-Wunsch 20.09.2026).
+   *
+   * Ohne Wahl bleibt es bei der Jar im Image – ein Image-Tag steht dann fuer
+   * genau eine Serverfassung und der Start braucht kein Netz. Wer waehlt,
+   * bricht das fuer seinen Server auf: Die Jar kommt dann aus dem Netz in den
+   * Datenordner, geprueft gegen die Pruefsumme aus dem Katalog von PaperMC.
+   */
+  supportsVersionChoice: true,
   /*
    * Eine Kachel fuer alle vier Ausgaben (Betreiber-Wunsch 20.09.2026). Paper
    * steht zuerst in `GAME_TYPE_DEFINITIONS` und ist damit die Vorauswahl der
@@ -541,9 +550,9 @@ export const MINECRAFT_VANILLA_GAME_TYPE: GameTypeDefinition = {
   /*
    * Die Serverdatei holt dieses Image ohnehin beim ersten Start; eine andere
    * Version kostet nur eine andere Adresse (Betreiber-Wunsch 19.09.2026).
-   * Paper, Fabric und NeoForge bleiben vorerst bei der Version des Images.
+   * Seit dem 20.09.2026 gilt das auch fuer Paper und NeoForge und wird von
+   * dort geerbt – Fabric fehlt noch ein Katalog.
    */
-  supportsVersionChoice: true,
   /*
    * Wie bei Paper, ohne `tps`: Das ist ein Paper-Befehl, den der Server von
    * Mojang mit „Unknown command" beantwortet. Ein Schnellbefehl, der nichts
@@ -1649,6 +1658,14 @@ export const MINECRAFT_FABRIC_GAME_TYPE: GameTypeDefinition = {
   ...MINECRAFT_PAPER_GAME_TYPE,
   id: 'minecraft-fabric',
   name: 'Minecraft (Fabric)',
+  /*
+   * Fabric hat noch keinen Versionskatalog: Die Adresse der Starter-Jar setzt
+   * sich aus drei Fassungen zusammen – Spiel, Loader, Installationsprogramm –
+   * und eine Pruefsumme dazu nennt die Schnittstelle nicht; sie muesste einmal
+   * selbst gerechnet werden. Bis dahin waere eine angebotene Wahl eine Liste
+   * ohne Eintraege. Erbt sonst `true` von Paper.
+   */
+  supportsVersionChoice: false,
   description:
     'Minecraft mit dem Mod-Loader Fabric – der leichtere der beiden, mit schneller Unterstützung für neue Spielversionen. Mods gehören in den Ordner „mods" im Datenordner.',
   defaultEnv: { MINECRAFT_EDITION: 'fabric' },
