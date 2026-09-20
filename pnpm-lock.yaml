@@ -265,6 +265,8 @@ importers:
 
   images/game/minecraft: {}
 
+  images/game/minecraftbedrock: {}
+
   images/game/palworld: {}
 
   images/game/projectzomboid: {}
