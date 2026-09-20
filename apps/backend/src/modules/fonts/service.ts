@@ -30,7 +30,13 @@ import { FontError } from './errors.js';
 import { resolveFontUpload } from './format.js';
 import { type FontRepository, type UploadedFontRecord } from './repository.js';
 import { type FontFileStore, fontFileName } from './storage.js';
-import { type FontRoleSelection, type StylesheetFont, buildFontStylesheet } from './stylesheet.js';
+import {
+  type FontRole,
+  type FontRoleSelection,
+  type StylesheetFont,
+  buildFontStylesheet,
+  fontIdForRole,
+} from './stylesheet.js';
 
 /**
  * Berechtigung, die Schriften hochlädt und löscht.
@@ -108,6 +114,17 @@ export interface FontService {
   list(ctx: AdminContext): Promise<FontDto[]>;
   /** Datei einer Schrift; `FONT_NOT_FOUND`, wenn Kennung oder Datei fehlen. */
   file(id: string): Promise<FontFileDownload>;
+  /**
+   * Die Datei der Schrift, die gerade eine **Rolle** besetzt.
+   *
+   * Dieselben Bytes wie {@link file}, nur über eine Adresse erreichbar, die
+   * feststeht, bevor die Auswahl bekannt ist – das Wurzel-Layout des
+   * Frontends lädt darüber vor (`FONT_ROLE_FILE_ROUTE_PATH`).
+   *
+   * Nie `immutable`: Hinter derselben Adresse steckt eine andere Datei,
+   * sobald der Betreiber die Auswahl ändert.
+   */
+  roleFile(rolle: FontRole): Promise<FontFileDownload>;
   /**
    * Die `@font-face`-Regeln aller Schriften und die beiden CSS-Variablen der
    * aktuellen Auswahl – **ohne Handelnden**.
@@ -284,7 +301,55 @@ export function createFontService(deps: FontServiceDependencies): FontService {
     return new Set(await deps.selection.hiddenBundledFontIds());
   }
 
-  return {
+  /**
+   * Was die Instanz gerade anbietet, plus die Auswahl des Betreibers.
+   *
+   * Von {@link FontService.stylesheet} **und** {@link FontService.roleFile}
+   * gebraucht: Beide müssen dieselbe Frage gleich beantworten, sonst zeigte
+   * das Stylesheet auf eine Rollen-Adresse, unter der eine andere Schrift
+   * liegt.
+   */
+  async function angebot(): Promise<{
+    schriften: StylesheetFont[];
+    auswahl: FontRoleSelection;
+  }> {
+    const [alleMitgelieferten, hochgeladen, auswahl, versteckt] = await Promise.all([
+      verfuegbareMitgelieferte(),
+      deps.repository.list(),
+      deps.selection.selectedFontRoles(),
+      ausgeblendete(),
+    ]);
+
+    // Was die Instanz nicht anbietet, steht auch nicht im Stylesheet.
+    const mitgeliefert = alleMitgelieferten.filter(({ font }) => !versteckt.has(font.id));
+
+    return {
+      auswahl,
+      schriften: [
+        ...mitgeliefert.map(({ font }) => ({
+          id: font.id,
+          family: font.family,
+          format: font.format,
+          variable: font.variable,
+          weightRange: font.weightRange,
+        })),
+        ...hochgeladen.map((record) => ({
+          id: record.id,
+          family: record.family,
+          format: record.format,
+          variable: record.variable,
+          weightRange: { min: record.weightMin, max: record.weightMax },
+        })),
+      ],
+    };
+  }
+
+  /*
+   * Benannt statt direkt zurückgegeben: `roleFile` löst nur die Rolle auf und
+   * lässt dann `file` die Arbeit machen. Zwei Wege zu denselben Bytes dürfen
+   * nicht zwei Auslieferungen sein.
+   */
+  const service: FontService = {
     async list(ctx) {
       const [mitgeliefert, hochgeladen, selected, versteckt] = await Promise.all([
         verfuegbareMitgelieferte(),
@@ -309,36 +374,38 @@ export function createFontService(deps: FontServiceDependencies): FontService {
     },
 
     async stylesheet() {
-      const [alleMitgelieferten, hochgeladen, auswahl, versteckt] = await Promise.all([
-        verfuegbareMitgelieferte(),
-        deps.repository.list(),
-        deps.selection.selectedFontRoles(),
-        ausgeblendete(),
-      ]);
-
-      // Was die Instanz nicht anbietet, steht auch nicht im Stylesheet.
-      const mitgeliefert = alleMitgelieferten.filter(({ font }) => !versteckt.has(font.id));
-
-      const schriften: StylesheetFont[] = [
-        ...mitgeliefert.map(({ font }) => ({
-          id: font.id,
-          family: font.family,
-          format: font.format,
-          variable: font.variable,
-          weightRange: font.weightRange,
-        })),
-        ...hochgeladen.map((record) => ({
-          id: record.id,
-          family: record.family,
-          format: record.format,
-          variable: record.variable,
-          weightRange: { min: record.weightMin, max: record.weightMax },
-        })),
-      ];
-
+      const { schriften, auswahl } = await angebot();
       const css = buildFontStylesheet(schriften, auswahl);
 
       return { css, fingerprint: createHash('sha256').update(css).digest('hex') };
+    },
+
+    async roleFile(rolle) {
+      const { schriften, auswahl } = await angebot();
+      const id = fontIdForRole(schriften, auswahl, rolle);
+
+      if (id === null) {
+        // Die Instanz bietet gar keine Schrift mehr an – alle mitgelieferten
+        // ausgeblendet, keine hochgeladen. Dann steht auch im Stylesheet keine
+        // Regel, und das Vorladen im Frontend zeigt ins Leere. 404 ist die
+        // ehrliche Antwort; die Oberfläche fällt auf ihren Fallback-Stack
+        // zurück, wie sie es ohne dieses Feature auch täte.
+        throw new FontError('FONT_NOT_FOUND');
+      }
+
+      const datei = await service.file(id);
+
+      /*
+       * ⚠️ Niemals `immutable`, auch nicht für eine hochgeladene Schrift.
+       *
+       * {@link FontService.file} darf das, weil dort die UUID in der Adresse
+       * steht und dieselbe Adresse für immer dieselben Bytes liefert. Hier
+       * steht die **Rolle** in der Adresse – wählt der Betreiber eine andere
+       * Schrift, liefert dieselbe Adresse etwas anderes. Mit `immutable`
+       * behält jeder Browser die alte Schrift bis zu einem Jahr, und niemand
+       * käme darauf, woran es liegt.
+       */
+      return { ...datei, immutable: false };
     },
 
     async file(id) {
@@ -569,4 +636,6 @@ export function createFontService(deps: FontServiceDependencies): FontService {
       return (await deps.repository.findById(id)) !== null;
     },
   };
+
+  return service;
 }

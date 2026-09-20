@@ -1,5 +1,10 @@
 import type { Metadata, Viewport } from 'next';
-import { FONT_STYLESHEET_LINK_ATTRIBUTE, fontStylesheetUrl } from '@/lib/api/fonts';
+import {
+  FONT_ROLES,
+  FONT_STYLESHEET_LINK_ATTRIBUTE,
+  fontRoleUrl,
+  fontStylesheetUrl,
+} from '@/lib/api/fonts';
 import { fremdeApiHerkunft } from '@/lib/auth/api';
 import './globals.css';
 
@@ -89,6 +94,38 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href={fontStylesheetUrl()}
           {...{ [FONT_STYLESHEET_LINK_ATTRIBUTE]: 'true' }}
         />
+
+        {/*
+          Die zwei tatsächlich benutzten Schriften vorladen.
+
+          Ohne das läuft der Weg zum ersten richtig gesetzten Buchstaben
+          **seriell**: Dokument holen, darin das Stylesheet finden, Stylesheet
+          holen, darin die `@font-face`-Regel lesen, dann erst die Datei holen.
+          Drei Runden nacheinander, und bis zur letzten steht der Text in der
+          Ersatzschrift (`font-display: swap`) und springt danach um. Mit dem
+          Vorladen startet die Schriftdatei zeitgleich mit dem Stylesheet.
+
+          Möglich ist es nur, weil die Adresse die **Rolle** nennt und nicht
+          die Kennung der Schrift: Welche Schrift der Betreiber gewählt hat,
+          weiss diese Seite beim Rendern nicht, und es dafür zu erfragen hätte
+          die Antwort des Dokuments verzögert – also genau das bezahlt, was
+          hier eingespart werden soll.
+
+          ⚠️ `crossOrigin` ist auch dann nötig, wenn die API auf derselben
+          Herkunft liegt. Schriften werden immer im CORS-Modus geholt; ohne das
+          Attribut lädt der Browser die Datei **zweimal** – einmal für das
+          Vorladen, einmal für die Regel – und meldet in der Konsole
+          „preloaded but not used".
+        */}
+        {FONT_ROLES.map((rolle) => (
+          <link
+            key={rolle}
+            rel="preload"
+            as="font"
+            href={fontRoleUrl(rolle)}
+            crossOrigin="anonymous"
+          />
+        ))}
       </head>
       <body className="min-h-screen bg-canvas text-ink antialiased">{children}</body>
     </html>

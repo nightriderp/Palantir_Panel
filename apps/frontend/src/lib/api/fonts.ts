@@ -30,6 +30,30 @@ export function fontStylesheetUrl(): string {
 }
 
 /**
+ * Die zwei Rollen, unter denen eine Schrift in der Oberfläche steht.
+ *
+ * Gegenstück zu `FONT_ROLES` im Backend
+ * (`apps/backend/src/modules/fonts/stylesheet.ts`). Zwei Zeichenketten, die
+ * zusammenpassen müssen – ein Vertragstyp wäre dafür zu viel Apparat, aber
+ * wer die eine Seite ändert, ändert die andere mit.
+ */
+export const FONT_ROLES = ['ui', 'mono'] as const;
+
+export type FontRole = (typeof FONT_ROLES)[number];
+
+/**
+ * Adresse der Schrift einer Rolle – **unabhängig davon, welche Schrift die
+ * Rolle gerade besetzt**.
+ *
+ * Genau das macht sie brauchbar: Das Wurzel-Layout kann sie vorladen, ohne die
+ * Auswahl des Betreibers zu kennen. Über die Kennung ginge das nicht – die
+ * steht erst fest, wenn das Stylesheet gelesen ist.
+ */
+export function fontRoleUrl(rolle: FontRole): string {
+  return apiUrl(`/public/fonts/${rolle}`);
+}
+
+/**
  * Das Stylesheet neu holen, nachdem sich der Bestand geändert hat.
  *
  * Nötig, weil die Antwort eine Minute lang zwischengespeichert werden darf

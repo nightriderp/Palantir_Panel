@@ -51,6 +51,46 @@ export const FONT_STYLESHEET_ROUTE_PATH = '/public/fonts.css';
  */
 export const FONT_FILE_ROUTE_PATH = '/api/fonts/:id/file';
 
+/**
+ * Die beiden Rollen, die eine Schrift in der Oberfläche einnehmen kann.
+ *
+ * Bewusst kein Vertragstyp: Die Rolle erscheint in keinem DTO, sie ist nur der
+ * letzte Wegabschnitt zweier Adressen und die Unterscheidung zweier
+ * CSS-Variablen.
+ */
+export const FONT_ROLES = ['ui', 'mono'] as const;
+
+export type FontRole = (typeof FONT_ROLES)[number];
+
+/**
+ * Adresse der Schrift **einer Rolle** – unabhängig davon, welche Schrift die
+ * Rolle gerade besetzt.
+ *
+ * ⚠️ Das ist der ganze Zweck: Die Adresse steht fest, bevor irgendjemand die
+ * Auswahl des Betreibers kennt. Nur deshalb kann das Wurzel-Layout des
+ * Frontends die beiden benutzten Schriften **vorladen**
+ * (`<link rel="preload" as="font">`), ohne dafür erst die Instanz-
+ * Einstellungen abzufragen. Über die Kennung ginge das nicht: Die steht erst
+ * fest, wenn das Stylesheet gelesen ist – und dann ist der serielle Weg
+ * (Dokument → CSS → Schriftdatei) schon gegangen.
+ *
+ * Unter `/public/`, wie das Stylesheet daneben: ohne Sitzung erreichbar.
+ */
+export const FONT_ROLE_FILE_ROUTE_PATH = '/public/fonts/:rolle';
+
+/**
+ * Adresse, unter der der Browser die Schrift einer Rolle holt – so, wie sie im
+ * Stylesheet steht.
+ *
+ * **Pfad-relativ**, aus demselben Grund wie bei {@link fontFileHref}: Das
+ * Stylesheet liegt unter `…/public/fonts.css`, sein Verzeichnis ist also
+ * `…/public/`. Von dort führt `fonts/ui` genau auf die Route – unter einer
+ * eigenen API-Herkunft ebenso wie unter einem Unterpfad `<Domain>/api`.
+ */
+export function fontRoleHref(rolle: FontRole): string {
+  return FONT_ROLE_FILE_ROUTE_PATH.replace('/public/', '').replace(':rolle', rolle);
+}
+
 /** CSS-Variable der Schrift für Fließtext und Überschriften. */
 export const UI_FONT_CSS_VARIABLE = '--palantir-font-ui';
 
@@ -185,8 +225,12 @@ function gewicht(wert: number): number {
  * `font-display: swap` wie bisher: Der Text steht sofort in der Ersatzschrift
  * und wechselt, sobald die eigene geladen ist – eine Sekunde unsichtbarer Text
  * wäre der schlechtere Tausch.
+ *
+ * Die Adresse kommt von außen, weil die beiden **gewählten** Schriften unter
+ * ihrer Rollen-Adresse ausgeliefert werden und nicht unter ihrer Kennung –
+ * siehe {@link fontRoleHref} und {@link buildFontStylesheet}.
  */
-function fontFaceRegel(font: StylesheetFont): string {
+function fontFaceRegel(font: StylesheetFont, href: string): string {
   const min = gewicht(font.weightRange.min);
   const max = gewicht(font.weightRange.max);
   // Ein Schalter ohne echten Bereich ergäbe `font-weight: 400 400` – dieselbe
@@ -199,9 +243,7 @@ function fontFaceRegel(font: StylesheetFont): string {
     'font-style:normal;',
     `font-weight:${gewichte};`,
     'font-display:swap;',
-    `src:${cssUrl(fontFileHref(font.id))} format(${cssQuotedString(
-      FONT_FORMAT_CATALOG[font.format].cssFormat,
-    )});`,
+    `src:${cssUrl(href)} format(${cssQuotedString(FONT_FORMAT_CATALOG[font.format].cssFormat)});`,
     '}',
   ].join('');
 }
@@ -215,6 +257,19 @@ function fontFaceRegel(font: StylesheetFont): string {
  * auf ihren Fallback-Stack zurückfallen; das wäre dasselbe Ergebnis, nur ohne
  * die mitgelieferte Schrift, die ja vorhanden ist.
  */
+export function fontIdForRole(
+  fonts: readonly StylesheetFont[],
+  selection: FontRoleSelection,
+  rolle: FontRole,
+): string | null {
+  const treffer =
+    rolle === 'ui'
+      ? fuerRolle(fonts, selection.uiFontId, DEFAULT_UI_FONT_ID)
+      : fuerRolle(fonts, selection.monospaceFontId, DEFAULT_MONOSPACE_FONT_ID);
+
+  return treffer?.id ?? null;
+}
+
 function fuerRolle(
   fonts: readonly StylesheetFont[],
   gewaehlt: string | null,
@@ -246,9 +301,34 @@ export function buildFontStylesheet(
     mono === null ? null : `${MONOSPACE_FONT_CSS_VARIABLE}:${cssQuotedString(mono.family)};`,
   ].filter((zeile): zeile is string => zeile !== null);
 
+  /*
+   * Die zwei gewählten Schriften stehen unter ihrer **Rollen-Adresse** in der
+   * Regel, alle anderen unter ihrer Kennung.
+   *
+   * ⚠️ Das muss zu dem passen, was das Wurzel-Layout des Frontends vorlädt.
+   * Lädt es `…/public/fonts/ui` vor, während die Regel die Datei über
+   * `…/api/fonts/<Kennung>/file` holt, sind das für den Browser zwei
+   * verschiedene Adressen: Er lädt die Datei zweimal und meldet in der Konsole
+   * „preloaded but not used". Das Vorladen wäre dann nicht bloß wirkungslos,
+   * sondern teurer als vorher.
+   *
+   * Sonderfall: Besetzt **eine** Schrift beide Rollen (etwa eine dicktengleiche
+   * auch als Fließtext), gewinnt `ui` – eine Familie kann nur eine Regel haben.
+   * Das Frontend lädt dann auch `…/fonts/mono` vor, das niemand benutzt: eine
+   * Datei zu viel, einmalig. Diesen Fall auseinanderzunehmen hieße, dem
+   * Frontend die Auswahl bekanntzumachen – genau das soll die feste Adresse
+   * vermeiden.
+   */
+  const adresse = (font: StylesheetFont): string => {
+    if (ui !== null && font.id === ui.id) return fontRoleHref('ui');
+    if (mono !== null && font.id === mono.id) return fontRoleHref('mono');
+
+    return fontFileHref(font.id);
+  };
+
   return [
     '/* Erzeugt von Palantir. Nicht von Hand ändern – die Auswahl steht in den Instanz-Einstellungen. */',
-    ...fonts.map(fontFaceRegel),
+    ...fonts.map((font) => fontFaceRegel(font, adresse(font))),
     ...(variablen.length > 0 ? [`:root{${variablen.join('')}}`] : []),
     '',
   ].join('\n');

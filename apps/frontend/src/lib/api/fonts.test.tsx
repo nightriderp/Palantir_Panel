@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  FONT_ROLES,
   FONT_STYLESHEET_LINK_ATTRIBUTE,
+  fontRoleUrl,
   fontStylesheetUrl,
   reloadFontStylesheet,
   uploadFont,
@@ -129,5 +131,41 @@ describe('reloadFontStylesheet', () => {
 
   it('tut nichts, wenn es das Stylesheet nicht gibt', () => {
     expect(() => reloadFontStylesheet()).not.toThrow();
+  });
+});
+
+/**
+ * Die Adresse je Schriftrolle.
+ *
+ * Sie ist der ganze Grund, warum das Wurzel-Layout die zwei benutzten
+ * Schriften vorladen kann: Sie steht fest, bevor irgendjemand die Auswahl des
+ * Betreibers kennt. Über die Kennung der Schrift ginge das nicht – die steht
+ * erst fest, wenn das Stylesheet gelesen ist, und dann ist der serielle Weg
+ * (Dokument → CSS → Schriftdatei) schon gegangen.
+ */
+describe('fontRoleUrl', () => {
+  it('kennt genau die zwei Rollen der Oberfläche', () => {
+    expect([...FONT_ROLES]).toEqual(['ui', 'mono']);
+  });
+
+  it('nennt die Rolle, nicht die Kennung der Schrift', () => {
+    for (const rolle of FONT_ROLES) {
+      const adresse = fontRoleUrl(rolle);
+
+      expect(adresse.endsWith(`/public/fonts/${rolle}`)).toBe(true);
+      // Keine Kennung darin – sonst müsste die Seite die Auswahl kennen.
+      expect(adresse).not.toMatch(/\/api\/fonts\//);
+    }
+  });
+
+  it('liegt unter derselben Herkunft wie das Stylesheet', () => {
+    // Beide kommen aus der API. Zeigten sie auseinander, wäre das Vorladen
+    // eine Verbindung zu einem Host, den sonst niemand anspricht.
+    const stylesheet = fontStylesheetUrl();
+    const basis = stylesheet.slice(0, stylesheet.indexOf('/public/'));
+
+    for (const rolle of FONT_ROLES) {
+      expect(fontRoleUrl(rolle).startsWith(basis)).toBe(true);
+    }
   });
 });
