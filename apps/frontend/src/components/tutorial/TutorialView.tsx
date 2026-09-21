@@ -15,7 +15,8 @@ import { FluchtKnopf } from './FluchtKnopf';
 import { useRundgang } from './RundgangProvider';
 import { Quiz } from './Quiz';
 import { Urkunde } from './Urkunde';
-import { QUIZ_FRAGEN, quizPunkte, sichtbareSchritte, type TutorialSchritt } from './inhalt';
+import { sichtbareSchritte, type TutorialSchritt } from './inhalt';
+import { QUIZ_FRAGEN, quizBeantwortet, quizPunkte } from './fragenkatalog';
 import {
   angezeigteGesamt,
   gesamtHinweis,
@@ -84,7 +85,8 @@ export function TutorialView() {
     ueberflogen,
     fluchtversuche,
     quizPunkte: quizPunkte(antworten),
-    quizFragen: QUIZ_FRAGEN.length,
+    quizBeantwortet: quizBeantwortet(antworten),
+    quizGesamt: QUIZ_FRAGEN.length,
   };
 
   function voran(): void {

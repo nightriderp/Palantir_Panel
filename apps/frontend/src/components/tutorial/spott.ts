@@ -164,8 +164,15 @@ export interface Bilanz {
   fluchtversuche: number;
   /** Richtige Antworten im Abschlussquiz. */
   quizPunkte: number;
-  /** Fragen des Abschlussquiz insgesamt. */
-  quizFragen: number;
+  /**
+   * Wie viele Fragen überhaupt beantwortet wurden.
+   *
+   * Seit der Bogen 124 Fragen hat, ist das die eigentliche Aussage: Die Quote
+   * sagt, wie klug jemand ist, diese Zahl sagt, wie stur.
+   */
+  quizBeantwortet: number;
+  /** Der volle Bogen – für „47 von 124". */
+  quizGesamt: number;
 }
 
 export interface Zeugnis {
@@ -187,12 +194,19 @@ export function zeugnis(bilanz: Bilanz): Zeugnis {
   if (bilanz.ueberflogen > 0) wert += 1;
   if (bilanz.ueberflogen > 2) wert += 1;
   if (bilanz.fluchtversuche >= FLUCHT_MAX) wert += 1;
-  if (bilanz.quizFragen > 0 && bilanz.quizPunkte === bilanz.quizFragen) wert -= 1;
+
+  // Wissen zählt erst ab einer Menge, bei der Raten nicht mehr trägt.
+  const quote = bilanz.quizBeantwortet > 0 ? bilanz.quizPunkte / bilanz.quizBeantwortet : 0;
+  if (bilanz.quizBeantwortet >= 10 && quote >= 0.8) wert -= 1;
+
+  // Und dann gibt es noch die, die den ganzen Bogen durchgezogen haben. Denen
+  // ist mit einer Note nicht mehr beizukommen.
+  if (bilanz.quizGesamt > 0 && bilanz.quizBeantwortet >= bilanz.quizGesamt) wert -= 1;
 
   wert = Math.min(5, Math.max(1, wert));
 
   const teile = [
-    `${bilanz.quizPunkte} von ${bilanz.quizFragen} Fragen richtig`,
+    `${bilanz.quizPunkte} von ${bilanz.quizBeantwortet} beantworteten Fragen richtig`,
     bilanz.ueberflogen > 0 ? `${bilanz.ueberflogen}-mal zu früh geklickt` : 'in Ruhe gelesen',
     bilanz.fluchtversuche > 0
       ? `${bilanz.fluchtversuche}-mal nach dem Überspringen-Knopf gegriffen`
@@ -200,6 +214,132 @@ export function zeugnis(bilanz: Bilanz): Zeugnis {
   ];
 
   return { wert, begruendung: `${teile.join(', ')}.` };
+}
+
+/**
+ * Der Ehrentitel für die zurückgelegte Strecke.
+ *
+ * Die Note bewertet, wie jemand durchs Tutorial gegangen ist; dieser Satz
+ * bewertet, wie weit. Beides gehört auf die Urkunde, weil drei Fragen und 124
+ * Fragen nicht dieselbe Leistung sind – auch wenn beide eine Vier ergeben
+ * können.
+ */
+export function ausdauerTitel(beantwortet: number, gesamt: number): string {
+  if (gesamt > 0 && beantwortet >= gesamt) {
+    return 'Vollständig durchgearbeitet. Alle Fragen. Wir hatten nicht damit gerechnet, dass das je vorkommt.';
+  }
+  if (beantwortet >= 75)
+    return 'Über siebzig Fragen. Irgendwann war es kein Quiz mehr, sondern ein Duell.';
+  if (beantwortet >= 45) return 'Fünfundvierzig Fragen. Das war keine Neugier mehr, das war Trotz.';
+  if (beantwortet >= 24) return 'Vierundzwanzig Fragen. Respekt, ehrlich. Ein bisschen Sorge auch.';
+  if (beantwortet >= 12)
+    return 'Ein Dutzend. Du hast gemerkt, dass es weitergeht – und bist geblieben.';
+  if (beantwortet >= 6)
+    return 'Sechs Fragen. Genug, um zu wissen, worauf du dich eingelassen hättest.';
+  if (beantwortet >= 3)
+    return 'Drei Fragen, wie angekündigt. Und dann hast du den Ausgang gefunden. Klug.';
+
+  return 'Nicht mal die drei versprochenen Fragen. Das ist auch eine Aussage.';
+}
+
+/**
+ * Nach so vielen beantworteten Fragen wird nachgefragt, ob das ernst gemeint ist.
+ *
+ * Die Abstände wachsen: Anfangs oft genug, dass es auffällt, später selten
+ * genug, dass es nicht nervt. Wer bei 111 noch da ist, wird nicht mehr durch
+ * eine Rückfrage abzubringen sein – aber eine bekommt er trotzdem.
+ */
+export const NACHFRAGE_SCHWELLEN = [6, 12, 24, 45, 75, 111] as const;
+
+export function nachfrageFaellig(beantwortet: number): boolean {
+  return (NACHFRAGE_SCHWELLEN as readonly number[]).includes(beantwortet);
+}
+
+export interface Nachfrage {
+  titel: string;
+  text: string;
+  /** Beschriftung für „ja, weiter" – wird mit jeder Schwelle kleinlauter. */
+  weiter: string;
+  /** Beschriftung für „nein, raus hier". */
+  raus: string;
+}
+
+const NACHFRAGEN: Record<number, Nachfrage> = {
+  6: {
+    titel: 'Kurze Zwischenfrage.',
+    text: 'Sechs von {gesamt}. Das sind {prozent} Prozent. Wir wollten nur sichergehen, dass du weißt, worauf das hier hinausläuft.',
+    weiter: 'Ich weiß, was ich tue',
+    raus: 'Ich höre auf',
+  },
+  12: {
+    titel: 'Zwölf.',
+    text: 'Du hast ein Dutzend Fragen beantwortet. Es sind {rest} übrig. Das ist keine Drohung, das ist eine Zahl.',
+    weiter: 'Weiter',
+    raus: 'Das reicht mir',
+  },
+  24: {
+    titel: 'Vierundzwanzig. Ernsthaft?',
+    text: 'An dieser Stelle steigen normalerweise alle aus. Du bist nicht normalerweise.',
+    weiter: 'Immer noch weiter',
+    raus: 'Jetzt ist Schluss',
+  },
+  45: {
+    titel: 'Wir müssen reden.',
+    text: 'Fünfundvierzig Fragen. Niemand hat dich dazu gezwungen. Es gibt keinen Preis. Es gab nie einen Preis.',
+    weiter: 'Es gibt keinen Preis. Weiter.',
+    raus: 'Okay, ich gehe',
+  },
+  75: {
+    titel: 'Fünfundsiebzig.',
+    text: 'Deine Urkunde wird das erwähnen. Falls du dich gefragt hast, ob es irgendwo festgehalten wird: ja.',
+    weiter: 'Gut. Weiter.',
+    raus: 'Ich nehme, was ich habe',
+  },
+  111: {
+    titel: 'Es sind nur noch wenige.',
+    text: 'Wir sagen das nicht, um dich zu locken. Wir sagen es, weil wir an dieser Stelle selbst neugierig geworden sind.',
+    weiter: 'Zu Ende bringen',
+    raus: 'Nein, hier höre ich auf',
+  },
+};
+
+export function nachfrage(beantwortet: number, gesamt: number): Nachfrage | null {
+  const vorlage = NACHFRAGEN[beantwortet];
+  if (!vorlage) return null;
+
+  const rest = Math.max(0, gesamt - beantwortet);
+  const prozent = gesamt > 0 ? Math.round((beantwortet / gesamt) * 100) : 0;
+
+  return {
+    ...vorlage,
+    text: vorlage.text
+      .replace('{gesamt}', String(gesamt))
+      .replace('{rest}', String(rest))
+      .replace('{prozent}', String(prozent)),
+  };
+}
+
+const RICHTIG_ZEILEN = [
+  'Richtig.',
+  'Korrekt. Notiert.',
+  'Stimmt. Ärgerlich, oder?',
+  'Richtig – und das ganz ohne Nachschlagen, nehmen wir an.',
+  'Ja. Das war die richtige.',
+] as const;
+
+const FALSCH_ZEILEN = [
+  'Nein.',
+  'Falsch. Aber selbstbewusst falsch.',
+  'Nicht ganz. Also gar nicht.',
+  'Daneben. Passiert den Besten und dir.',
+  'Nein. Wir hatten kurz Hoffnung.',
+] as const;
+
+/** Die Reaktion auf eine Antwort – wie alles hier über einen Zähler, nicht gewürfelt. */
+export function antwortEcho(richtig: boolean, zaehler: number): string {
+  const zeilen = richtig ? RICHTIG_ZEILEN : FALSCH_ZEILEN;
+
+  return zeilen[Math.abs(zaehler) % zeilen.length] ?? zeilen[0];
 }
 
 const NOTENTEXT: Record<number, string> = {

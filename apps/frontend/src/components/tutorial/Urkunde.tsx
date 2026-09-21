@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, ButtonLink, Icon, Panel, formatDate, useToast } from '@/components/shared';
-import { notentext, zeugnis, type Bilanz } from './spott';
+import { ausdauerTitel, notentext, zeugnis, type Bilanz } from './spott';
 
 export interface UrkundeProps {
   /** Anzeigename des Kontos – ohne Konto steht dort ein Platzhalter. */
@@ -29,6 +29,7 @@ export function Urkunde({ name, bilanz, uebersprungen, onNochmal }: UrkundeProps
   const { wert, begruendung } = zeugnis(bilanz);
   const heute = formatDate(new Date().toISOString());
   const note = uebersprungen ? 5 : wert;
+  const ausdauer = ausdauerTitel(bilanz.quizBeantwortet, bilanz.quizGesamt);
 
   const satz = uebersprungen
     ? `${name} hat die Einweisung übersprungen und den Knopf dafür vier Mal jagen müssen. Das ist auch eine Leistung.`
@@ -39,6 +40,7 @@ export function Urkunde({ name, bilanz, uebersprungen, onNochmal }: UrkundeProps
       'URKUNDE',
       satz,
       `Note: ${note} – ${notentext(note)}`,
+      uebersprungen ? '' : ausdauer,
       uebersprungen ? '' : `Begründung: ${begruendung}`,
       `Ausgestellt am ${heute} von einem Panel, das niemand darum gebeten hat.`,
     ]
@@ -69,7 +71,17 @@ export function Urkunde({ name, bilanz, uebersprungen, onNochmal }: UrkundeProps
         </div>
 
         <p className="mt-3 text-base text-ink">{notentext(note)}</p>
-        {uebersprungen ? null : <p className="mt-1 text-sm text-ink-faint">{begruendung}</p>}
+        {uebersprungen ? null : (
+          <>
+            {/*
+              Die Note bewertet das Wie, dieser Satz das Wieviel: Drei Fragen
+              und 124 Fragen sind nicht dieselbe Leistung, auch wenn beide eine
+              Vier ergeben können.
+            */}
+            <p className="mx-auto mt-3 max-w-xl text-base text-ink-muted">{ausdauer}</p>
+            <p className="mt-2 text-sm text-ink-faint">{begruendung}</p>
+          </>
+        )}
 
         <p className="mt-5 text-xs text-ink-faint">
           Ausgestellt am {heute}. Ohne Unterschrift, ohne Siegel, ohne jeden Wert.
