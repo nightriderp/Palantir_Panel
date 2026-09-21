@@ -309,6 +309,13 @@
       "when": 1789867210152,
       "tag": "0043_schriften_ausblenden",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789985351672,
+      "tag": "0044_erfolge_und_titel",
+      "breakpoints": true
     }
   ]
 }

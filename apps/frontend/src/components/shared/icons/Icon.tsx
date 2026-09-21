@@ -73,6 +73,15 @@ export const ICON_PATHS = {
   stop: 'M6 6h12v12H6z',
   download: 'M12 3v12M7 11l5 5 5-5M4 21h16',
   upload: 'M12 21V9M7 13l5-5 5 5M4 3h16',
+  /**
+   * Abzeichen (Betreiber-Wunsch 21.09.2026) – Medaille als Ring mit Band.
+   *
+   * Bewusst eine Medaille und kein Pokal: Ein Pokal steht für den ersten
+   * Platz, hier geht es um etwas Erreichtes, das viele nebeneinander haben
+   * können. Die beiden Bänder laufen von oben in den Ring, damit die Form
+   * auch bei 16 Pixeln noch als Medaille lesbar bleibt.
+   */
+  medal: 'M8 3l2.5 6M16 3l-2.5 6M12 20a5.5 5.5 0 100-11 5.5 5.5 0 000 11z',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

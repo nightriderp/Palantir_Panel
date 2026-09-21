@@ -319,6 +319,41 @@ export function renderNotification(input: NotificationEvent): RenderedNotificati
         },
       };
 
+    /*
+     * Ein Glückwunsch, keine Störung – deshalb `info` und ein Text, der sich
+     * nicht wichtig nimmt. Bei mehreren Abzeichen auf einmal (Nachvergabe)
+     * fasst der Titel zusammen und der Rumpf zählt auf, statt acht Meldungen
+     * nebeneinanderzustellen.
+     */
+    case 'achievement.unlocked': {
+      const namen = input.payload.achievementNames;
+      const mehrere = namen.length > 1;
+      const erstes = namen[0] ?? 'Ein Abzeichen';
+
+      const stufe = input.payload.levelUp
+        ? ` Du bist auf Stufe „${input.payload.levelLabel}" aufgestiegen.`
+        : '';
+
+      return {
+        title: mehrere
+          ? `${String(namen.length)} Abzeichen freigeschaltet`
+          : `Abzeichen freigeschaltet: ${erstes}`,
+        body: `${
+          mehrere ? namen.join(', ') : erstes
+        }.${stufe} Damit hast du ${String(input.payload.unlockedCount)} von ${String(
+          input.payload.totalCount,
+        )} Abzeichen.`,
+        severity: 'info',
+        subject: {
+          type: 'achievement',
+          // Bei mehreren zeigt der Bezug auf das erste; das Sprungziel ist
+          // ohnehin die Seite mit allen.
+          id: input.payload.achievementIds[0] ?? 'unbekannt',
+          displayName: erstes,
+        },
+      };
+    }
+
     default: {
       const exhaustive: never = input;
 

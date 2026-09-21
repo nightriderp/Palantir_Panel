@@ -16,7 +16,7 @@
  *    unabhängige Abfragen aneinanderzureihen (`backend-community-17`).
  */
 
-import { type ArcadeGameId } from '@palantir/contracts';
+import { type AchievementId, type ArcadeGameId } from '@palantir/contracts';
 import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm';
 import type { Database, DbConnection } from '../../db/index.js';
 import { arcadeScores } from '../../db/schema/arcade.js';
@@ -27,6 +27,13 @@ import { ArcadeError } from './errors.js';
 export interface ArcadeLeaderboardRow {
   userId: string;
   displayName: string;
+  /**
+   * Abzeichen, dessen Titel das Konto trägt; `null`, wenn es keinen trägt.
+   *
+   * Bewusst die **Kennung** und nicht der Text: Den Titel dazu kennt der
+   * Katalog in `@palantir/contracts`, und er soll nur an einer Stelle stehen.
+   */
+  titleAchievementId: AchievementId | null;
   bestScore: number;
   /** Zeitpunkt, an dem dieser Bestwert erreicht wurde. */
   achievedAt: Date;
@@ -141,6 +148,7 @@ function arcadeQueries(db: DbConnection): ArcadeQueries {
           .select({
             userId: bestPerUser.userId,
             displayName: users.displayName,
+            titleAchievementId: users.titleAchievementId,
             bestScore: bestPerUser.bestScore,
             achievedAt: bestPerUser.achievedAt,
           })

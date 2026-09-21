@@ -73,6 +73,7 @@ const MAIN_ENTRIES: PlannedEntry[] = [
   { key: 'messages', label: 'Nachrichten', icon: 'chat', href: '/messages' },
   { key: 'notifications', label: 'Benachrichtigungen', icon: 'bell', href: '/notifications' },
   { key: 'arcade', label: 'Arcade', icon: 'gamepad', href: '/arcade' },
+  { key: 'achievements', label: 'Erfolge', icon: 'medal', href: '/erfolge' },
   { key: 'nodes', label: 'Nodes', icon: 'server', href: '/nodes', requires: 'canViewNodes' },
 ];
 

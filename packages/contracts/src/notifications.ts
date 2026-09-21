@@ -81,6 +81,9 @@ export const NOTIFIABLE_EVENTS = [
 
   // Systemweite Ankündigungen durch den Admin (Lastenheft §3.6)
   'announcement.published',
+
+  // Erfolge (Betreiber-Wunsch 21.09.2026)
+  'achievement.unlocked',
 ] as const satisfies readonly WebSocketEventName[];
 
 export type NotifiableEventName = (typeof NOTIFIABLE_EVENTS)[number];
@@ -113,6 +116,15 @@ export const NOTIFICATION_SUBJECT_TYPES = [
   'user',
   'message',
   'announcement',
+  /**
+   * Freigeschaltetes Abzeichen (Betreiber-Wunsch 21.09.2026).
+   *
+   * Der Bezug zeigt nicht auf einen Datensatz, den man aufschlagen könnte,
+   * sondern auf die Erfolgs-Seite – dort steht das Abzeichen im
+   * Zusammenhang mit allen anderen. `id` ist deshalb die Abzeichen-Kennung
+   * und keine UUID; die Oberfläche springt auf `/erfolge`.
+   */
+  'achievement',
 ] as const;
 
 export type NotificationSubjectType = (typeof NOTIFICATION_SUBJECT_TYPES)[number];
@@ -258,6 +270,33 @@ export interface NotificationEventPayloads {
     requestedMaxConcurrentServers: number | null;
     /** Begründung des Antragstellers – der Grund, warum ein Mensch entscheidet. */
     reason: string;
+  };
+  /**
+   * Ein Konto hat Abzeichen freigeschaltet (Betreiber-Wunsch 21.09.2026).
+   *
+   * **Mehrzahl mit Absicht.** Im laufenden Betrieb ist es fast immer eines,
+   * bei der Nachvergabe an bestehende Konten aber gern acht auf einmal. Acht
+   * Meldungen für einen Vorgang wären keine Freude, sondern eine Flut – die
+   * Nutzlast trägt deshalb die ganze Liste, und der Text fasst sie zusammen.
+   *
+   * Die Namen stehen ausgeschrieben dabei, nicht nur die Kennungen: Die
+   * Meldung wird einmal geschrieben und bleibt dann stehen (siehe Kopf von
+   * `messages.ts`) – sie soll auch dann lesbar sein, wenn ein Abzeichen später
+   * umbenannt wird.
+   */
+  'achievement.unlocked': NotificationEventBase & {
+    /** Konto, das die Abzeichen freigeschaltet hat – zugleich der Empfänger. */
+    userId: string;
+    /** Kennungen der neu freigeschalteten Abzeichen, mindestens eine. */
+    achievementIds: readonly string[];
+    /** Namen dazu, in derselben Reihenfolge. */
+    achievementNames: readonly string[];
+    /** Erreichte Stufe nach dieser Freischaltung. */
+    levelLabel: string;
+    /** Ist die Stufe durch diese Freischaltung gestiegen? */
+    levelUp: boolean;
+    unlockedCount: number;
+    totalCount: number;
   };
 }
 
@@ -490,6 +529,13 @@ export const MUTABLE_NOTIFICATION_EVENTS = [
   'message.reported',
   'quotaRequest.created',
   'gameRequest.created',
+  /*
+   * Der Glückwunsch zum Abzeichen gehört ausdrücklich dazu
+   * (Betreiber-Wunsch 21.09.2026): Er ist persönliche Sache und niemandes
+   * Pflichtlektüre. Wer ihn nicht mag, stellt ihn ab – die Abzeichen
+   * bekommt er trotzdem, sie stehen unter `/erfolge`.
+   */
+  'achievement.unlocked',
 ] as const satisfies readonly NotifiableEventName[];
 
 /** Ein Ereignis, das sich abbestellen lässt. */
