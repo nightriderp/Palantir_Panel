@@ -34,8 +34,23 @@ const gelesen = new Set(
   ].map(([, name]) => name as string),
 );
 
-/** Jede Variable, welche die Palette setzt. */
-const vorhanden = new Set(Object.keys(THEMES[0]?.palette ?? {}).map(variablenName));
+/**
+ * Farbstellen, die **nicht** als `--c-…` gelesen werden.
+ *
+ * `selectPfeil` steckt fertig im Hintergrundbild des Auswahlfelds: In eine
+ * `url()`-Datenadresse setzt CSS keine Variablen ein, deshalb baut
+ * `themesCss()` je Theme eine eigene Adresse mit eingebackener Farbe. Der
+ * abgeleitete Weg wird unten eigens geprüft – ausgenommen heißt hier nicht
+ * ungeprüft.
+ */
+const ABGELEITET = new Set(['selectPfeil']);
+
+/** Jede Variable, welche die Palette als Farbe setzt. */
+const vorhanden = new Set(
+  Object.keys(THEMES[0]?.palette ?? {})
+    .filter((schluessel) => !ABGELEITET.has(schluessel))
+    .map(variablenName),
+);
 
 describe('Farbvariablen: Palette und Stylesheets passen zusammen', () => {
   it('jede gelesene Variable hat in der Palette einen Wert', () => {
@@ -56,7 +71,26 @@ describe('Farbvariablen: Palette und Stylesheets passen zusammen', () => {
   it.each(THEMES.map((thema) => [thema.id, thema] as const))(
     'Theme „%s" besetzt jede Farbstelle',
     (_id, thema) => {
-      expect(Object.keys(thema.palette).map(variablenName).sort()).toEqual([...vorhanden].sort());
+      expect(
+        Object.keys(thema.palette)
+          .filter((schluessel) => !ABGELEITET.has(schluessel))
+          .map(variablenName)
+          .sort(),
+      ).toEqual([...vorhanden].sort());
     },
   );
+
+  /*
+   * Die Gegenprobe zur Ausnahme oben: Was nicht als Farbe gelesen wird, muss
+   * über seinen abgeleiteten Weg ankommen. Sonst wäre `ABGELEITET` nur eine
+   * bequeme Art, eine Variable verschwinden zu lassen.
+   */
+  it('liest die abgeleiteten Variablen - Pfeil und Schatten - ebenfalls', () => {
+    const css = `${JSON.stringify(tailwindConfig.theme?.extend ?? {})}\n${AUS_DATEI('../../app/globals.css')}`;
+
+    expect(css, 'Pfeil im Auswahlfeld').toContain('var(--select-pfeil)');
+    for (const name of ['glow', 'panel', 'modal']) {
+      expect(css, `Schatten ${name}`).toContain(`var(--schatten-${name})`);
+    }
+  });
 });

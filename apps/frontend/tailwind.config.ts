@@ -240,13 +240,23 @@ const config: Config = {
         /** Kachel im Kopf der Server-Detailseite. */
         13: '3.25rem', // 52px
       },
+      /**
+       * Schatten sind überall schwarz – nur **wie viel** man von ihnen sieht,
+       * hängt am Theme.
+       *
+       * Auf dunklem Grund fällt ein Schatten kaum auf und darf kräftig sein;
+       * auf hellem Grund wird aus demselben Wert ein dunkler Hof um jedes
+       * Modal. Die Deckkraft kommt deshalb aus einer Variablen, die
+       * `lib/theme/palette.ts` je Theme aus einem Faktor ausrechnet – die
+       * Farbe selbst bleibt, was sie immer war.
+       */
       boxShadow: {
         /** Schein unter der Primäraktion – hebt den einen wichtigen Knopf heraus. */
-        glow: '0 4px 18px rgb(var(--c-brand) / 0.3)',
+        glow: '0 4px 18px rgb(var(--c-brand) / var(--schatten-glow))',
         /** Popover, Dropdown, Toast. */
-        panel: '0 16px 40px rgba(0,0,0,0.5)',
+        panel: '0 16px 40px rgb(0 0 0 / var(--schatten-panel))',
         /** Modal-Dialog. */
-        modal: '0 30px 90px rgba(0,0,0,0.55)',
+        modal: '0 30px 90px rgb(0 0 0 / var(--schatten-modal))',
       },
       backgroundImage: {
         /** Marken-Verlauf: Logo-Kachel, Primär-Button, Server-Initialen. */

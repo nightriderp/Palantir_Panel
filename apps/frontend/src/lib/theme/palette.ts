@@ -38,7 +38,14 @@
 export interface Palette {
   /** Seitenhintergrund. */
   readonly canvas: string;
-  /** Erhabene Flächen: Modals, Popover, Dropdowns. Die **hellste** Fläche. */
+  /**
+   * Erhabene Flächen: Modals, Popover, Dropdowns.
+   *
+   * Die Fläche, die am weitesten **vom Grund weg** liegt – im dunklen Theme
+   * also die hellste, im hellen die hellste ebenfalls (dort ist der Grund
+   * leicht getönt und das Erhabene weiß). Für Text ist sie der Bezugspunkt,
+   * an dem die Rampe gemessen wird.
+   */
   readonly surface: string;
   readonly surfaceMuted: string;
   readonly surfaceDeep: string;
@@ -49,7 +56,17 @@ export interface Palette {
    * überhaupt kein Token, sondern ein literaler Wert im Verlauf.
    */
   readonly surfaceCard: string;
-  /** Grund der Live-Konsole – dunkler als jede Karte. */
+  /**
+   * Grund der Live-Konsole.
+   *
+   * ⚠️ **Folgt der Polarität des Themes, auch wenn Terminals sonst dunkel
+   * sind.** Die Konsole setzt ihre Ausgabe in die Tokens der Anwendung –
+   * `ink.muted` für stdout, `danger` für stderr, `brand` für Eingaben
+   * (`ConsoleTab.tsx`). Ein dunkler Kasten in einem hellen Theme bräuchte
+   * dafür eine eigene, zweite Textrampe; ohne die stünde dunkler Text auf
+   * dunklem Grund. Der Kasten hebt sich stattdessen wie bisher durch seinen
+   * Abstand zur Karte ab, nur eben nach der anderen Seite.
+   */
   readonly surfaceConsole: string;
   /** Haupttext. */
   readonly ink: string;
@@ -83,6 +100,20 @@ export interface Palette {
   readonly overlay: string;
   /** Greifer des Scrollbalkens. */
   readonly scrollbar: string;
+  /**
+   * Der Pfeil im Auswahlfeld (`select`).
+   *
+   * Steckt als SVG in einer `url()`-Datenadresse, und **dorthinein setzt CSS
+   * keine Variablen ein** – der Inhalt ist für den Browser ein eigenes
+   * Dokument. Lange war das die eine Farbe, die kein Theme erreichte.
+   *
+   * Gelöst, indem nicht die Farbe in die Adresse wandert, sondern die fertige
+   * Adresse in die Variable: {@link themesCss} baut je Theme eine eigene
+   * (`--select-pfeil`), mit der Farbe bereits eingebacken. Diese Farbstelle
+   * bekommt deshalb als einzige **kein** `--c-…` – sie wird nicht als Farbe
+   * gelesen, sondern als fertiges Hintergrundbild.
+   */
+  readonly selectPfeil: string;
 }
 
 /** Ein wählbares Aussehen der Oberfläche. */
@@ -108,6 +139,18 @@ export interface Theme {
    * Datumswähler, Autovervollständigung.
    */
   readonly farbschema: 'dark' | 'light';
+  /**
+   * Wie kräftig die Schlagschatten fallen – 1 ist der bisherige Wert.
+   *
+   * **Keine Farbe, deshalb kein Palettenwert.** Schatten sind überall schwarz;
+   * was sich zwischen hell und dunkel unterscheidet, ist allein, wie viel
+   * davon man sieht. Auf dunklem Grund fällt ein Schatten kaum auf und darf
+   * kräftig sein; auf hellem Grund wird aus demselben Wert ein dunkler Hof um
+   * jedes Modal. Ein Faktor genügt: {@link themesCss} rechnet die drei
+   * Deckkräfte daraus aus, damit im Stylesheet gewöhnliche Zahlen stehen und
+   * kein `calc()` in einem Alphawert.
+   */
+  readonly schattenStaerke: number;
   readonly palette: Palette;
 }
 
@@ -120,6 +163,7 @@ export const THEMES: readonly Theme[] = [
     name: 'Standard',
     beschreibung: 'Das gewohnte Panel: tiefes Blauschwarz, Violett und Türkis.',
     farbschema: 'dark',
+    schattenStaerke: 1,
     /*
      * Wertgleich mit dem, was bis zur Umstellung in `tailwind.config.ts`
      * stand. Die Begründungen zu den einzelnen Stufen – warum `ink.faint`
@@ -169,6 +213,7 @@ export const THEMES: readonly Theme[] = [
       danger: '#ff6b6b',
       overlay: '#ffffff',
       scrollbar: '#272c38',
+      selectPfeil: '#9aa2b2',
     },
   },
   {
@@ -176,6 +221,7 @@ export const THEMES: readonly Theme[] = [
     name: 'Schmiedefeuer',
     beschreibung: 'Warmes Halbdunkel, Gold und Glut – Werkstatt statt Rechenzentrum.',
     farbschema: 'dark',
+    schattenStaerke: 1,
     /*
      * Der Gegenentwurf zum Standard: dieselbe Helligkeitsrampe, aber jede
      * Stufe warm statt kühl. Dass die Rampe dieselbe **Form** behält, ist
@@ -221,6 +267,7 @@ export const THEMES: readonly Theme[] = [
       danger: '#ff7a68',
       overlay: '#ffffff',
       scrollbar: '#3a2e1f',
+      selectPfeil: '#9c8a70',
     },
   },
   {
@@ -228,6 +275,7 @@ export const THEMES: readonly Theme[] = [
     name: 'Neonnacht',
     beschreibung: 'Violettes Dunkel, Magenta und Blitzblau – laut, schnell, gezeichnet.',
     farbschema: 'dark',
+    schattenStaerke: 1,
     /*
      * Das lauteste der Themes. Die Marke steht bei 315°, also weit weg von
      * jeder Statusfarbe – in einem Theme, das ohnehin knallt, ist das die
@@ -256,6 +304,7 @@ export const THEMES: readonly Theme[] = [
       danger: '#ff6b6b',
       overlay: '#ffffff',
       scrollbar: '#362a52',
+      selectPfeil: '#a08cc4',
     },
   },
   {
@@ -263,6 +312,7 @@ export const THEMES: readonly Theme[] = [
     name: 'Kanzlei',
     beschreibung: 'Anthrazit und Messing. Sagt wenig, und das in gutem Zwirn.',
     farbschema: 'dark',
+    schattenStaerke: 1,
     /*
      * Der Gegenpol zu Neonnacht: neutrales Anthrazit ohne Farbstich, eine
      * einzige gedeckte Akzentfarbe. Auch hier ist das Messing bewusst dunkler
@@ -291,6 +341,7 @@ export const THEMES: readonly Theme[] = [
       danger: '#eb7070',
       overlay: '#ffffff',
       scrollbar: '#33333a',
+      selectPfeil: '#9a9aa2',
     },
   },
   {
@@ -298,6 +349,7 @@ export const THEMES: readonly Theme[] = [
     name: 'Hyperraum',
     beschreibung: 'Tiefes Marineblau, Azur und Eis – kalt, weit und sehr aufgeräumt.',
     farbschema: 'dark',
+    schattenStaerke: 1,
     /*
      * Kühl wie der Standard, aber ohne dessen Violett: Die Marke steht im
      * Azur (209°), der Grund ist deutlich blauer und tiefer. Damit bleiben die
@@ -325,6 +377,64 @@ export const THEMES: readonly Theme[] = [
       danger: '#ff6b6b',
       overlay: '#ffffff',
       scrollbar: '#2a3a55',
+      selectPfeil: '#8ba2c0',
+    },
+  },
+  {
+    id: 'tageslicht',
+    name: 'Tageslicht',
+    beschreibung: 'Heller Grund, dunkle Schrift – dieselbe Oberfläche bei Tag.',
+    farbschema: 'light',
+    /*
+     * Ein Faktor von 0,28 statt 1: Auf dunklem Grund fällt ein Schatten kaum
+     * auf, auf hellem wird aus demselben Wert ein dunkler Hof um jedes Modal.
+     */
+    schattenStaerke: 0.28,
+    /*
+     * Das erste Theme, das die Polarität dreht – und damit der Nachweis, dass
+     * die Umstellung auf Variablen nicht nur andere Farben, sondern ein
+     * anderes Vorzeichen trägt.
+     *
+     * Drei Dinge kippen mit:
+     *
+     * 1. `overlay` wird schwarz. Trennlinien und Füllflächen sind nichts als
+     *    diese Farbe mit wenigen Prozent – weiße Haarlinien auf weißer Karte
+     *    wären keine.
+     * 2. Text und Statusfarben werden **dunkel**. Ein Grün, das auf Schwarz
+     *    leuchtet, hat auf Weiß keinen Kontrast; die Statusfarben liegen hier
+     *    deshalb im tiefen Bereich. Grün bleibt Grün und Rot bleibt Rot – nur
+     *    eben so, dass man sie lesen kann.
+     * 3. Die Konsole wird hell. Sie setzt ihre Ausgabe in die Tokens der
+     *    Anwendung; ein dunkler Kasten bräuchte eine zweite Textrampe.
+     *
+     * Nebenbei ist es das einzige Theme, in dem der Primärknopf sauber
+     * funktioniert: Marke und Akzent müssen hier **beide** dunkel sein – als
+     * Text auf hellem Grund –, und genau das braucht auch die weiße Schrift,
+     * die auf dem Verlauf steht.
+     */
+    palette: {
+      canvas: '#f2f4f7',
+      surface: '#ffffff',
+      surfaceMuted: '#e9ecf1',
+      surfaceDeep: '#e2e6ed',
+      surfaceCard: '#fafbfc',
+      surfaceConsole: '#eceff4',
+      ink: '#1b2028',
+      inkMuted: '#363e4a',
+      inkSoft: '#4b5462',
+      inkFaint: '#5d6673',
+      inkDisabled: '#949cab',
+      placeholder: '#7b8494',
+      brand: '#4338ca',
+      brandBright: '#372ca8',
+      accent: '#0e6f78',
+      success: '#146c38',
+      warning: '#85590a',
+      caution: '#9a4a12',
+      danger: '#b3261e',
+      overlay: '#000000',
+      scrollbar: '#c3c9d4',
+      selectPfeil: '#5f6875',
     },
   },
 ];
@@ -379,12 +489,54 @@ export function variablenName(schluessel: string): string {
   return `--c-${schluessel.replace(/[A-Z]/g, (buchstabe) => `-${buchstabe.toLowerCase()}`)}`;
 }
 
+/**
+ * Die Deckkraft der drei Schlagschatten im dunklen Theme – der Bezugspunkt.
+ *
+ * `schattenStaerke` eines Themes ist der Faktor darauf. Die Werte sind
+ * dieselben, die vorher fest in `tailwind.config.ts` standen.
+ */
+const SCHATTEN_BASIS = { glow: 0.3, panel: 0.5, modal: 0.55 } as const;
+
+/** Vier Nachkommastellen genügen – und `0.55 * 0.28` soll nicht als `0.15400000000000003` im Stylesheet landen. */
+function alphaWert(zahl: number): string {
+  return String(Math.round(zahl * 10000) / 10000);
+}
+
+/**
+ * Das Hintergrundbild für den Pfeil im Auswahlfeld, mit eingebackener Farbe.
+ *
+ * ⚠️ **Vollständig prozentkodiert, und das ist keine Schönheitsfrage.** Roh
+ * enthielte die Adresse `<`, `>` und `"` – Zeichen, die beim Einbetten in ein
+ * `<style>` maskiert werden könnten und die Regel damit still zerstören
+ * (siehe {@link themesCss}). `encodeURIComponent` lässt nur Buchstaben,
+ * Ziffern, `%`, `.` und `-` übrig; Klammern kommen in diesem SVG nicht vor,
+ * weshalb das `url()` ohne Anführungszeichen auskommt.
+ */
+function selectPfeilAdresse(farbe: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">` +
+    `<path d="M1 2l3 3 3-3" stroke="${farbe}" fill="none" stroke-width="1.4"/></svg>`;
+
+  return `url(data:image/svg+xml,${encodeURIComponent(svg)})`;
+}
+
 function block(selektor: string, thema: Theme): string {
-  const zeilen = Object.entries(thema.palette).map(
-    ([schluessel, wert]) => `${variablenName(schluessel)}:${kanaele(wert)}`,
+  const zeilen = Object.entries(thema.palette)
+    // `selectPfeil` wird nicht als Farbe gelesen, sondern steckt fertig im
+    // Hintergrundbild darunter.
+    .filter(([schluessel]) => schluessel !== 'selectPfeil')
+    .map(([schluessel, wert]) => `${variablenName(schluessel)}:${kanaele(wert)}`);
+
+  const schatten = Object.entries(SCHATTEN_BASIS).map(
+    ([name, basis]) => `--schatten-${name}:${alphaWert(basis * thema.schattenStaerke)}`,
   );
 
-  return `${selektor}{color-scheme:${thema.farbschema};${zeilen.join(';')}}`;
+  return [
+    `${selektor}{color-scheme:${thema.farbschema}`,
+    ...zeilen,
+    ...schatten,
+    `--select-pfeil:${selectPfeilAdresse(thema.palette.selectPfeil)}}`,
+  ].join(';');
 }
 
 /**

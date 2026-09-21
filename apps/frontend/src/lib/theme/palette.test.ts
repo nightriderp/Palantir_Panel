@@ -106,8 +106,56 @@ describe('themesCss', () => {
       expect(block, thema.id).toContain(`color-scheme:${thema.farbschema}`);
 
       for (const [schluessel, wert] of Object.entries(thema.palette)) {
+        // `selectPfeil` ist die Ausnahme: kein `--c-…`, sondern eingebacken
+        // im Hintergrundbild darunter.
+        if (schluessel === 'selectPfeil') continue;
+
         expect(block, `${thema.id} · ${schluessel}`).toContain(
           `${variablenName(schluessel)}:${kanaele(wert)}`,
+        );
+      }
+    }
+  });
+
+  /**
+   * Der Pfeil im Auswahlfeld, je Theme mit eingebackener Farbe.
+   *
+   * Geprüft wird, dass die Farbe wirklich **in** der Adresse steht – als
+   * `%23rrggbb`, denn prozentkodiert ist sie dort. Stünde sie nicht drin,
+   * trüge jedes Theme denselben Pfeil, und im hellen wäre er kaum zu sehen.
+   */
+  it('backt die Pfeilfarbe je Theme in das Hintergrundbild', () => {
+    const bloecke = css.split('\n');
+
+    for (const [i, thema] of THEMES.entries()) {
+      const block = bloecke[i] ?? '';
+      const kodiert = thema.palette.selectPfeil.replace('#', '%23');
+
+      expect(block, thema.id).toContain('--select-pfeil:url(data:image/svg+xml,');
+      expect(block, `${thema.id} · Farbe im Pfeil`).toContain(kodiert);
+    }
+  });
+
+  /**
+   * Die Schattendeckkraft, aus dem Faktor des Themes gerechnet.
+   *
+   * Der Standard muss dabei genau auf den Werten landen, die vorher fest in
+   * `tailwind.config.ts` standen – sonst wäre die Umstellung keine Umstellung,
+   * sondern eine Änderung.
+   */
+  it('rechnet die Schattendeckkraft aus dem Faktor des Themes', () => {
+    const bloecke = css.split('\n');
+    const standard = bloecke[0] ?? '';
+
+    expect(standard).toContain('--schatten-glow:0.3');
+    expect(standard).toContain('--schatten-panel:0.5');
+    expect(standard).toContain('--schatten-modal:0.55');
+
+    for (const [i, thema] of THEMES.entries()) {
+      const block = bloecke[i] ?? '';
+      for (const name of ['glow', 'panel', 'modal']) {
+        expect(block, `${thema.id} · ${name}`).toMatch(
+          new RegExp(`--schatten-${name}:0?\\.?\\d+(;|})`),
         );
       }
     }

@@ -70,17 +70,19 @@
    * Select: eigener Pfeil, weil das Systemsteuerelement nicht zum dunklen
    * Thema passt.
    *
-   * ⚠️ **Die einzige Farbe, die kein Theme erreicht.** Der Pfeil steckt als
-   * SVG in einer `url()`-Datenadresse, und dorthinein setzt CSS keine
-   * Variablen ein – der Inhalt ist für den Browser ein eigenes Dokument. Der
-   * Grauton liegt bewusst nahe bei `ink.soft` und trägt auf jedem dunklen
-   * Grund. Für ein helles Theme wäre er zu hell; dann braucht dieser Pfeil
-   * eine andere Lösung (Maske statt Hintergrundbild), keinen zweiten Wert.
+   * Der Pfeil steckt als SVG in einer `url()`-Datenadresse, und dorthinein
+   * setzt CSS keine Variablen ein – der Inhalt ist für den Browser ein eigenes
+   * Dokument. Lange war das die eine Farbe, die kein Theme erreichte; auf
+   * hellem Grund wäre der alte Grauton kaum noch zu sehen gewesen.
+   *
+   * Gelöst, indem nicht die Farbe in die Adresse wandert, sondern die fertige
+   * Adresse in die Variable: `lib/theme/palette.ts` baut je Theme eine eigene
+   * und backt die Farbe dabei ein.
    */
   select {
     appearance: none;
     -webkit-appearance: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><path d='M1 2l3 3 3-3' stroke='%239aa2b2' fill='none' stroke-width='1.4'/></svg>");
+    background-image: var(--select-pfeil);
     background-repeat: no-repeat;
     background-position: right 10px center;
     padding-right: 28px;

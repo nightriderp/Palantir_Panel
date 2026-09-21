@@ -85,10 +85,14 @@ function farbtonAbstand(a: string, b: string): number {
 /**
  * Alle Flächen, auf denen Text stehen kann.
  *
- * `surface` ist die hellste und damit die schwerste – an ihr entscheidet sich
- * jeder Grenzfall. `surfaceCard` steht mit in der Liste, obwohl es dunkler ist
- * als `surface`: Es ist der Grund jeder Karte, und dass es heute keinen
- * Grenzfall stellt, ist eine Eigenschaft der Werte, nicht der Regel.
+ * Geprüft wird gegen **jede** davon, und das ist seit „Tageslicht" mehr als
+ * Gründlichkeit: In einem dunklen Theme ist die hellste Fläche die schwerste,
+ * in einem hellen die dunkelste. Welche das jeweils ist, muss diese Liste gar
+ * nicht wissen – sie nimmt alle.
+ *
+ * Nur die Rampe weiter unten misst ausdrücklich gegen `surface`: Sie prüft
+ * die Abstände der Textstufen zueinander, und dafür braucht es einen festen
+ * Bezugspunkt, nicht den schwersten.
  */
 const FLAECHEN = [
   'canvas',
