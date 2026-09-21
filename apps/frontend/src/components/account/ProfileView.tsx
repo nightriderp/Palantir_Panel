@@ -32,6 +32,7 @@ import { messageForThrown } from '@/lib/auth/errors';
 import { loadAccount } from '@/lib/api/session';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
+import { AppearancePanel } from './AppearancePanel';
 import { AUTH_METHOD_LABEL, authMethodLabel, linkableProviders, methodDetail } from './methods';
 import { PasswordSection, TwoFactorSection } from './SecuritySections';
 import { SessionsPanel } from './SessionsPanel';
@@ -60,7 +61,7 @@ const RETURN_TO = '/profil';
  * Abschnitte sofort den neuen Stand sehen (etwa „Passwort einrichten" gegenüber
  * „Passwort ändern").
  */
-export function ProfileView() {
+export function ProfileView({ aktivesTheme }: { aktivesTheme: string }) {
   const { data: account, loading, error, setData } = useApiResource(() => loadAccount(), []);
   const toast = useToast();
   const searchParams = useSearchParams();
@@ -163,7 +164,17 @@ export function ProfileView() {
               Anmeldungen, Löschen. Die Sitzungen stehen zwischen Anmeldungen
               und Löschen – sie gehören zur Sicherheit des Kontos, sind aber
               nichts, was man vor dem Anmeldeverfahren sucht.
+
+              Das Erscheinungsbild steht **vor** diesem Block: Es ist eine
+              Vorliebe, keine Sicherheitseinstellung. Zwischen Zwei-Faktor und
+              Konto-Löschung geriete die Farbwahl in eine Reihe von Dingen, bei
+              denen ein Fehlgriff etwas kostet – und wer sein Passwort ändern
+              will, müsste daran vorbeiscrollen.
             */}
+            <section id="erscheinungsbild" className="scroll-mt-24">
+              <AppearancePanel aktiv={aktivesTheme} />
+            </section>
+
             <section id="passwort" className="scroll-mt-24">
               <PasswordSection account={account} onChanged={uebernehmen} />
             </section>

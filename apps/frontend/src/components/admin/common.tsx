@@ -82,7 +82,7 @@ export function AdminTable({ children, className }: { children: ReactNode; class
             'md:[&_thead_tr]:table-row md:[&_thead_tr]:border-0 md:[&_thead_tr]:p-0',
             // Rumpf: jede Zeile ein Block mit eigenem Trennstrich.
             '[&_tbody]:block md:[&_tbody]:table-row-group',
-            '[&_tbody_tr]:block [&_tbody_tr]:border-b [&_tbody_tr]:border-line/60 [&_tbody_tr]:px-3.5 [&_tbody_tr]:py-2.5 [&_tbody_tr:last-child]:border-b-0',
+            '[&_tbody_tr]:block [&_tbody_tr]:border-b [&_tbody_tr]:border-overlay/60 [&_tbody_tr]:px-3.5 [&_tbody_tr]:py-2.5 [&_tbody_tr:last-child]:border-b-0',
             'md:[&_tbody_tr]:table-row md:[&_tbody_tr]:border-0 md:[&_tbody_tr]:p-0',
             className,
           )}
@@ -235,7 +235,7 @@ export function Td({
     <td
       title={title}
       className={cn(
-        'text-ink-muted md:table-cell md:border-b md:border-line/60 md:px-3.5 md:py-2.5 md:align-middle',
+        'text-ink-muted md:table-cell md:border-b md:border-overlay/60 md:px-3.5 md:py-2.5 md:align-middle',
         label === undefined ? 'block py-1' : 'flex items-start justify-between gap-3 py-1',
         className,
       )}

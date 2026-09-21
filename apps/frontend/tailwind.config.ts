@@ -8,6 +8,14 @@ import type { Config } from 'tailwindcss';
  * Ab hier gilt: **kein literaler Farb-/Radius-/Schriftwert mehr in Komponenten** –
  * ausschließlich diese Tokens verwenden, damit F3–F11 dasselbe Bild ergeben.
  *
+ * **Farben stehen seit der Theme-Umstellung nicht mehr hier.** Sie führen auf
+ * CSS-Variablen; die Werte liegen in `src/lib/theme/palette.ts`, je wählbarem
+ * Theme ein Satz. Diese Datei legt damit nur noch fest, *welche* Farbstellen es
+ * gibt und wie sie heißen – nicht mehr, wie sie aussehen. Radien, Abstände und
+ * Schriftgrößen bleiben unverändert hier: Sie sind Struktur, nicht Anstrich,
+ * und ein Theme, das sie verstellte, würde die Oberfläche nicht einfärben,
+ * sondern verrücken.
+ *
  * Mobile-First ist Vorgabe aus dem Lastenheft §4; die Breakpoints bleiben deshalb
  * bewusst auf den Tailwind-Standardwerten (`md` = 768px, `lg` = 1024px), die auch
  * das Mockup verwendet.
@@ -36,18 +44,34 @@ const config: Config = {
     },
     extend: {
       colors: {
+        /**
+         * Jede Farbe führt auf eine CSS-Variable, keine auf einen Wert.
+         *
+         * Die Werte stehen in `src/lib/theme/palette.ts` – je Theme ein Satz,
+         * alle Sätze zugleich im Dokument, wirksam wird einer über `data-theme`
+         * am `<html>`-Element. Für die Komponenten ändert sich dadurch nichts:
+         * Sie schreiben weiter `bg-canvas` und `text-ink`.
+         *
+         * ⚠️ **Die Schreibweise ist Pflicht, nicht Geschmack.** Tailwind hängt
+         * den Alpha-Wert einer Klasse wie `bg-surface/95` an, indem es
+         * `<alpha-value>` ersetzt; dafür muss die Variable die drei Kanäle
+         * **ohne** Klammer tragen (`26 28 36`). Ein `#1a1c24` oder ein
+         * fertiges `rgb(...)` in der Variablen ergäbe eine ungültige Angabe –
+         * und Tailwind ließe die Klasse still weg.
+         */
+
         /** Seitenhintergrund. */
-        canvas: '#0a0b0f',
+        canvas: 'rgb(var(--c-canvas) / <alpha-value>)',
         /** Erhabene Flächen: Modals, Popover, Dropdowns, Select-Optionen. */
         surface: {
-          DEFAULT: '#1a1c24',
-          muted: '#14161d',
-          deep: '#12141b',
+          DEFAULT: 'rgb(var(--c-surface) / <alpha-value>)',
+          muted: 'rgb(var(--c-surface-muted) / <alpha-value>)',
+          deep: 'rgb(var(--c-surface-deep) / <alpha-value>)',
           /**
            * Grund der Live-Konsole – dunkler als jede Karte, damit das
            * Terminalfenster sich von der Seite absetzt.
            */
-          console: '#0c0e13',
+          console: 'rgb(var(--c-surface-console) / <alpha-value>)',
         },
         /**
          * Die drei Ampelpunkte in der Titelzeile der Konsole.
@@ -56,6 +80,12 @@ const config: Config = {
          * Panels: Sie sagen „hier ist ein Terminal", nicht „hier ist ein
          * Fehler". Rot aus `danger` zu nehmen hiesse, dass ein ruhender
          * Konsolenkasten dauerhaft eine Störung anzeigt.
+         *
+         * ⚠️ **Die einzigen Farben, die kein Theme ändert** – und zwar aus
+         * demselben Grund: Sie zitieren ein Fenster. Ein Theme, das sie
+         * einfärbt, nimmt ihnen genau die Aussage, für die sie hier stehen.
+         * Sie sind deshalb literal geblieben, wo alles andere auf eine
+         * Variable zeigt.
          */
         terminal: {
           close: '#ff5f57',
@@ -65,75 +95,80 @@ const config: Config = {
         /**
          * Textfarben, von kräftig nach zurückhaltend.
          *
-         * Jede Stufe außer `disabled` hält 4,5:1 gegen jede Fläche
-         * (`farbtokens.test.tsx`, Review 2026-09-16, Befund 12.7). `soft` und
-         * `faint` standen vorher bei 4,6 bzw. 3,5 auf `surface` – `faint` trägt
-         * Zeitstempel, Größen und Hinweise in kleiner Schrift, also gerade den
-         * Text, der den Kontrast am nötigsten hat. Beide sind deshalb eine
-         * Stufe heller.
+         * Vier Stufen mit fallendem Gewicht: `DEFAULT` trägt den Haupttext,
+         * `muted` den Sekundärtext, `soft` Abschnittslabels, `faint`
+         * Zeitstempel, Größen und Hinweise. `disabled` steht außerhalb der
+         * Rampe – Inaktives darf als Einziges unter 4,5:1 liegen.
          *
-         * **Vier Stufen, von denen zwei niemand unterscheiden konnte.** Das
-         * Anheben von damals hat `soft` und `faint` aneinandergeschoben: Auf
-         * `surface` standen sie bei 5,43 und 4,64 – ein Schritt von 1,17, und
-         * `muted` darüber lag mit 1,22 kaum besser. Nominell vier Textstufen,
-         * sichtbar drei, und die Oberfläche wirkt dadurch flach: Ein
-         * Abschnittslabel (`soft`) und ein Zeitstempel (`faint`) sahen gleich
-         * wichtig aus. Auffällig wurde das erst im Vergleich mit dem
-         * Schwesterprojekt hafenmeister, dessen Stufen 2,15 / 1,43 / 1,32
-         * auseinanderliegen.
-         *
-         * ⚠️ **Der Weg dahin führt nach oben, nicht nach unten.** `faint` ist
-         * der Boden und bleibt, wo er ist: Die hellste Fläche, gegen die Text
-         * bestehen muss, ist `surface` (#1a1c24, Grund der Popover), und dort
-         * hält #7e8696 genau 4,64. Eine Stufe dunkler wäre unter 4,5.
-         * hafenmeisters schöneres, tieferes Grau (#6b7283) liegt bei 3,53 und
-         * fällt durch AA – es ist deshalb **nicht** übernehmbar. Aufgespreizt
-         * wird also oben: `muted` und `soft` ziehen an, die Schritte stehen
-         * jetzt bei 1,78 / 1,33 / 1,29.
-         *
-         * Die Rampe ist bewusst weiter die Form (R, R+8, R+24) – derselbe
-         * Blaustich wie bisher, nur eine andere Helligkeit.
+         * Dass die vier Stufen lesbar **und** voneinander unterscheidbar
+         * bleiben, ist keine Frage des guten Willens mehr: `farbtokens.test.tsx`
+         * rechnet Kontrast und Abstand für **jedes** Theme nach. Womit die
+         * Stufen im Standard besetzt sind und warum gerade so, steht bei den
+         * Werten in `src/lib/theme/palette.ts`.
          */
         ink: {
-          DEFAULT: '#e8ebf2',
-          muted: '#aab2c2',
-          soft: '#929aaa',
-          faint: '#7e8696',
-          disabled: '#4a505e',
+          DEFAULT: 'rgb(var(--c-ink) / <alpha-value>)',
+          muted: 'rgb(var(--c-ink-muted) / <alpha-value>)',
+          soft: 'rgb(var(--c-ink-soft) / <alpha-value>)',
+          faint: 'rgb(var(--c-ink-faint) / <alpha-value>)',
+          disabled: 'rgb(var(--c-ink-disabled) / <alpha-value>)',
         },
-        /** Markenfarbe (Primäraktion, aktive Navigation, Fokus). */
+        /**
+         * Markenfarbe (Primäraktion, aktive Navigation, Fokus).
+         *
+         * `soft` und `line` sind keine eigenen Farben, sondern dieselbe mit
+         * 13 % bzw. 30 % Deckkraft – vorher als ausgeschriebenes `rgba()`
+         * hinterlegt, was bei jeder Änderung der Markenfarbe zweimal
+         * nachgezogen werden musste (und bei einem Theme dreimal je Theme).
+         * Jetzt folgen sie ihr von selbst.
+         */
         brand: {
-          DEFAULT: '#7c5cff',
-          bright: '#9b82ff',
-          soft: 'rgba(124,92,255,0.13)',
-          line: 'rgba(124,92,255,0.3)',
+          DEFAULT: 'rgb(var(--c-brand) / <alpha-value>)',
+          bright: 'rgb(var(--c-brand-bright) / <alpha-value>)',
+          soft: 'rgb(var(--c-brand) / 0.13)',
+          line: 'rgb(var(--c-brand) / 0.3)',
         },
         /** Zweite Markenfarbe, nur im Verlauf und für RAM-Kennzahlen. */
-        accent: '#22d3ee',
+        accent: 'rgb(var(--c-accent) / <alpha-value>)',
         /** Status „läuft" / positiv. */
         success: {
-          DEFAULT: '#3ddc84',
-          soft: 'rgba(61,220,132,0.12)',
-          line: 'rgba(61,220,132,0.3)',
+          DEFAULT: 'rgb(var(--c-success) / <alpha-value>)',
+          soft: 'rgb(var(--c-success) / 0.12)',
+          line: 'rgb(var(--c-success) / 0.3)',
         },
         /** Status „in Arbeit" / Hinweis. */
         warning: {
-          DEFAULT: '#fbbf24',
-          soft: 'rgba(251,191,36,0.12)',
-          line: 'rgba(251,191,36,0.3)',
+          DEFAULT: 'rgb(var(--c-warning) / <alpha-value>)',
+          soft: 'rgb(var(--c-warning) / 0.12)',
+          line: 'rgb(var(--c-warning) / 0.3)',
         },
         /** Status „stoppt" – zwischen Warnung und Gefahr. */
-        caution: '#fb923c',
+        caution: 'rgb(var(--c-caution) / <alpha-value>)',
         /** Status „Fehler"/„abgestürzt" und Gefahrenaktionen. */
         danger: {
-          DEFAULT: '#ff6b6b',
-          soft: 'rgba(255,107,107,0.12)',
-          line: 'rgba(255,107,107,0.3)',
+          DEFAULT: 'rgb(var(--c-danger) / <alpha-value>)',
+          soft: 'rgb(var(--c-danger) / 0.12)',
+          line: 'rgb(var(--c-danger) / 0.3)',
         },
+        /**
+         * Die Grundfarbe aller Auflagen – **selten direkt zu verwenden**.
+         *
+         * Trennlinien (`line`) und dezente Füllflächen (`fill`) sind nichts
+         * als diese Farbe mit wenigen Prozent Deckkraft. Gedacht ist sie
+         * deshalb für die beiden darunter; als Klasse steht sie nur dort, wo
+         * eine Auflage ausdrücklich kräftiger sein soll als die Stufen
+         * hergeben (`border-overlay/60` in der Tabelle der Verwaltung).
+         *
+         * Auf dunklem Grund ist sie weiß, auf hellem müsste sie schwarz sein.
+         * Genau dafür ist sie eine Variable: Stünde hier fest Weiß, wäre jedes
+         * helle Theme ausgeschlossen – weiße Haarlinien auf weißer Karte sind
+         * keine.
+         */
+        overlay: 'rgb(var(--c-overlay) / <alpha-value>)',
         /** Trennlinien und Rahmen. */
         line: {
-          DEFAULT: 'rgba(255,255,255,0.07)',
-          strong: 'rgba(255,255,255,0.1)',
+          DEFAULT: 'rgb(var(--c-overlay) / 0.07)',
+          strong: 'rgb(var(--c-overlay) / 0.1)',
         },
         /**
          * Dezente Füllflächen (Sekundär-Buttons, Eingabefelder, Chips).
@@ -145,8 +180,8 @@ const config: Config = {
          * Prozentpunkt genügt, damit die Fläche als Fläche liest.
          */
         fill: {
-          DEFAULT: 'rgba(255,255,255,0.04)',
-          strong: 'rgba(255,255,255,0.07)',
+          DEFAULT: 'rgb(var(--c-overlay) / 0.04)',
+          strong: 'rgb(var(--c-overlay) / 0.07)',
         },
       },
       /**
@@ -207,7 +242,7 @@ const config: Config = {
       },
       boxShadow: {
         /** Schein unter der Primäraktion – hebt den einen wichtigen Knopf heraus. */
-        glow: '0 4px 18px rgba(124,92,255,0.3)',
+        glow: '0 4px 18px rgb(var(--c-brand) / 0.3)',
         /** Popover, Dropdown, Toast. */
         panel: '0 16px 40px rgba(0,0,0,0.5)',
         /** Modal-Dialog. */
@@ -215,15 +250,26 @@ const config: Config = {
       },
       backgroundImage: {
         /** Marken-Verlauf: Logo-Kachel, Primär-Button, Server-Initialen. */
-        'brand-gradient': 'linear-gradient(135deg,#7c5cff,#22d3ee)',
-        /** Flächenverlauf für Karten und Kennzahlen-Panels. */
-        'card-gradient': 'linear-gradient(180deg, rgba(22,24,32,.9), rgba(18,20,27,.9))',
+        'brand-gradient': 'linear-gradient(135deg,rgb(var(--c-brand)),rgb(var(--c-accent)))',
+        /**
+         * Flächenverlauf für Karten und Kennzahlen-Panels.
+         *
+         * Der obere Stopp ist die einzige Fläche des Systems, die **kein**
+         * eigenes Token hatte: Er lag als `rgba(22,24,32,.9)` nur hier und
+         * traf keinen der `surface`-Werte. Beim Umstellen auf Themes wäre er
+         * damit als Einziger blau geblieben, während die Karte um ihn herum
+         * die Farbe wechselt – er steht deshalb jetzt als `surfaceCard` in der
+         * Palette.
+         */
+        'card-gradient':
+          'linear-gradient(180deg, rgb(var(--c-surface-card) / .9), rgb(var(--c-surface-deep) / .9))',
         /**
          * Kopfkarte der Server-Detailansicht: dieselbe Fläche, oben mit einem
          * Hauch der Markenfarbe – sie hebt den Kopf vom Rest der Seite ab,
          * ohne ihn einzufärben.
          */
-        'hero-gradient': 'linear-gradient(180deg, rgba(124,92,255,0.07), rgba(18,20,27,.9))',
+        'hero-gradient':
+          'linear-gradient(180deg, rgb(var(--c-brand) / 0.07), rgb(var(--c-surface-deep) / .9))',
         /**
          * Die Kanten des Rahmens – Seitenleiste nach rechts, Kopfzeile nach
          * unten (Betreiberwunsch 20.09.2026).
@@ -240,11 +286,13 @@ const config: Config = {
          * steht auch, warum die waagerechte Kante über beide Köpfe hinweg
          * **ein** Verlauf sein muss.
          */
-        'chrome-edge-x': 'linear-gradient(90deg, rgba(124,92,255,0.225), rgba(34,211,238,0.225))',
-        'chrome-edge-y': 'linear-gradient(180deg, rgba(124,92,255,0.225), rgba(34,211,238,0.225))',
+        'chrome-edge-x':
+          'linear-gradient(90deg, rgb(var(--c-brand) / 0.225), rgb(var(--c-accent) / 0.225))',
+        'chrome-edge-y':
+          'linear-gradient(180deg, rgb(var(--c-brand) / 0.225), rgb(var(--c-accent) / 0.225))',
         /** Dezenter Lichtschein hinter dem gesamten Dashboard. */
         'app-glow':
-          'radial-gradient(1200px 600px at 80% -10%, rgba(124,92,255,0.10), transparent 60%)',
+          'radial-gradient(1200px 600px at 80% -10%, rgb(var(--c-brand) / 0.10), transparent 60%)',
       },
       keyframes: {
         pulseDot: { '0%,100%': { opacity: '1' }, '50%': { opacity: '.45' } },

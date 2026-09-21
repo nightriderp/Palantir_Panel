@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { cookies } from 'next/headers';
 import {
   FONT_ROLES,
   FONT_STYLESHEET_LINK_ATTRIBUTE,
@@ -6,6 +7,8 @@ import {
   fontStylesheetUrl,
 } from '@/lib/api/fonts';
 import { fremdeApiHerkunft } from '@/lib/auth/api';
+import { THEME_COOKIE } from '@/lib/theme/cookie';
+import { STANDARD_THEME_ID, themeFuerId, themesCss } from '@/lib/theme/palette';
 import './globals.css';
 
 /**
@@ -23,19 +26,67 @@ export const metadata: Metadata = {
   description: 'Gameserver-Verwaltung für den eigenen Homeserver',
 };
 
+/**
+ * `themeColor` fehlt hier mit Absicht – die Farbe der Browserleiste hängt am
+ * gewählten Theme und steht deshalb als eigenes `<meta>` weiter unten.
+ *
+ * Der vorgesehene Weg wäre `generateViewport()`; der darf zwar `cookies()`
+ * lesen, zwingt die Route dann aber unter eine `<Suspense>`-Grenze um das
+ * ganze Dokument oder unter `instant = false`
+ * (`node_modules/next/dist/docs/01-app/03-api-reference/04-functions/generate-viewport.md`).
+ * Beides ändert das Navigationsverhalten der gesamten Anwendung – ein hoher
+ * Preis für eine Leiste am oberen Bildschirmrand. Ein einzelnes `<meta>` im
+ * `<head>` leistet dasselbe und kostet nichts; doppelt steht es nicht, weil
+ * `themeColor` hier eben fehlt.
+ */
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0a0b0f',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const fremdeHerkunft = fremdeApiHerkunft();
+
+  /*
+   * Das gewählte Theme kommt **mit der Anfrage**, nicht erst mit dem ersten
+   * Skript (`lib/theme/cookie.ts`). Deshalb steht das Attribut schon im
+   * ausgelieferten Dokument und das erste Bild trägt bereits die richtigen
+   * Farben – kein Aufblitzen des Standards bei jedem Aufruf.
+   *
+   * Ein unbekannter Cookie-Wert ergibt den Standard, statt die Seite zu
+   * zerlegen; das Cookie ist von außen beschreibbar.
+   */
+  const thema = themeFuerId((await cookies()).get(THEME_COOKIE)?.value);
 
   // Oberflächensprache ist laut Lastenheft §4 zunächst ausschließlich Deutsch.
   return (
-    <html lang="de">
+    /*
+     * Der Standard trägt **kein** Attribut: Sein Variablensatz steht auf
+     * `:root` und gilt damit auch ohne. So sieht eine Seite ohne jede Wahl
+     * genauso aus wie eine mit ausdrücklich gewähltem Standard – und der
+     * Umschalter im Browser entfernt das Attribut aus demselben Grund, statt
+     * `standard` hineinzuschreiben.
+     */
+    <html lang="de" data-theme={thema.id === STANDARD_THEME_ID ? undefined : thema.id}>
       <head>
+        {/*
+          Die Farbvariablen **aller** Themes – zuerst, damit sie stehen, bevor
+          irgendeine Regel sie liest.
+
+          Als `<style>` und nicht als eigene Datei: Es sind wenige hundert Byte,
+          sie gehören zu genau diesem Dokument (das Attribut am `<html>` und die
+          Werte müssen zusammenpassen), und eine zweite Anfrage vor dem ersten
+          Bild wäre teurer als der Inhalt.
+
+          Die CSP steht dem nicht im Weg: Sie verlangt eine Nonce für *Skripte*;
+          `style-src` lässt `'unsafe-inline'` zu (`lib/csp.ts`), und ein
+          Stylesheet ist kein Skript.
+        */}
+        <style>{themesCss()}</style>
+
+        {/* Farbe der Browserleiste – siehe die Anmerkung an `viewport`. */}
+        <meta name="theme-color" content={thema.palette.canvas} />
+
         {/*
           Verbindung zur API vorziehen – **nur**, wenn sie woanders liegt als
           die Seite (siehe `fremdeApiHerkunft`).
