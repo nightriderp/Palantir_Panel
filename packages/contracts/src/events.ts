@@ -53,6 +53,16 @@ export const WEBSOCKET_EVENTS = [
    */
   'gameRequest.created',
 
+  /**
+   * Ein Konto hat ein Abzeichen freigeschaltet (Betreiber-Wunsch 21.09.2026).
+   *
+   * Die Meldung geht ausschließlich an den, der es geschafft hat – sie ist ein
+   * Glückwunsch, keine Nachricht an die Runde. Wer sie nicht will, schaltet
+   * die Vorgaberegel ab; deshalb läuft sie über die Benachrichtigungen und
+   * nicht als fest verdrahteter Hinweis in der Oberfläche.
+   */
+  'achievement.unlocked',
+
   // -- Server-Orchestrierung (B3, Pflichtenheft §9 und §13) -------------------
 
   /** Server-Datensatz angelegt und Container auf dem Homeserver erzeugt. */

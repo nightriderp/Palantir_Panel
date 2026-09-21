@@ -1253,6 +1253,38 @@ export const ERROR_CATALOG = {
     defaultMessage:
       'Die letzte verbleibende Schrift kann nicht gelöscht werden. Lade zuerst eine weitere hoch.',
   },
+
+  // --- Erfolge und Titel (Betreiber-Wunsch 21.09.2026) ---------------------
+
+  /**
+   * Das Konto will einen Titel tragen, dessen Abzeichen es nicht
+   * freigeschaltet hat. 403.
+   *
+   * Bewusst kein `PERMISSION_DENIED`: Das steht für ein fehlendes Recht aus
+   * dem Rollen-Katalog, und ein Administrator könnte es vergeben. Hier fehlt
+   * kein Recht, sondern eine Leistung – das kann niemand nachreichen, und die
+   * Oberfläche soll auch nicht dazu einladen, danach zu fragen.
+   *
+   * Ein Titel, den der Katalog gar nicht kennt, kommt hier nie an: Den lehnt
+   * schon das Zod-Schema der Route mit `VALIDATION_FAILED` ab.
+   */
+  ACHIEVEMENT_NOT_UNLOCKED: {
+    httpStatus: 403,
+    defaultMessage: 'Dieses Abzeichen hast du noch nicht freigeschaltet.',
+  },
+  /**
+   * Das gewählte Abzeichen ist freigeschaltet, bringt aber gar keinen Titel
+   * mit. 409.
+   *
+   * Getrennt von `ACHIEVEMENT_NOT_UNLOCKED`, weil die Auskunft eine andere
+   * ist: Dort fehlt etwas, das sich verdienen lässt, hier gibt es nichts zu
+   * verdienen. Erreichbar nur über einen Aufruf an der Oberfläche vorbei – die
+   * Auswahlliste enthält ausschließlich Abzeichen mit Titel.
+   */
+  ACHIEVEMENT_WITHOUT_TITLE: {
+    httpStatus: 409,
+    defaultMessage: 'Dieses Abzeichen bringt keinen Titel mit.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */

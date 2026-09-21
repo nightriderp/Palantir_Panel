@@ -73,10 +73,11 @@ const MAIN_ENTRIES: PlannedEntry[] = [
   { key: 'messages', label: 'Nachrichten', icon: 'chat', href: '/messages' },
   { key: 'notifications', label: 'Benachrichtigungen', icon: 'bell', href: '/notifications' },
   { key: 'arcade', label: 'Arcade', icon: 'gamepad', href: '/arcade' },
-  // Die Einweisung steht bewusst hinter dem Zeitvertreib und nicht oben: Wer
-  // das Panel kennt, soll nicht jeden Tag an ihr vorbeiscrollen. Ohne
-  // `requires` – sie erklärt jedem Konto das, was es sehen darf, und lässt den
-  // Rest weg (`components/tutorial/inhalt.ts`).
+  { key: 'achievements', label: 'Erfolge', icon: 'medal', href: '/erfolge' },
+  // Die Einweisung steht bewusst ganz hinten und nicht oben: Wer das Panel
+  // kennt, soll nicht jeden Tag an ihr vorbeiscrollen. Ohne `requires` – sie
+  // erklärt jedem Konto das, was es sehen darf, und lässt den Rest weg
+  // (`components/tutorial/inhalt.ts`).
   { key: 'tutorial', label: 'Tutorial', icon: 'cap', href: '/tutorial' },
   { key: 'nodes', label: 'Nodes', icon: 'server', href: '/nodes', requires: 'canViewNodes' },
 ];

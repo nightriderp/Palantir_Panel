@@ -325,6 +325,12 @@ export {
 } from './arcade.js';
 
 export {
+  type ChooseAchievementTitleInput,
+  achievementIdSchema,
+  chooseAchievementTitleInputSchema,
+} from './achievements.js';
+
+export {
   type CreateGameRequestInput,
   type DecideGameRequestInput,
   type GameRequestQuery,

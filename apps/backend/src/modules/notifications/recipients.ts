@@ -79,6 +79,17 @@ export function directRecipientsOf(
     case 'gameRequest.created':
       return [];
 
+    /*
+     * Ein freigeschaltetes Abzeichen gehört dem, der es geschafft hat – und
+     * zwar ihm allein (Betreiber-Wunsch 21.09.2026). `resourceOwner` und
+     * `serverMembers` treffen deshalb denselben Kreis: Es gibt keinen zweiten.
+     * Eine Regel auf `allUsers` wäre technisch möglich und würde die ganze
+     * Runde über jedes fremde Abzeichen unterrichten; das ist eine
+     * Entscheidung des Betreibers, keine Vorgabe (siehe `seed.ts`).
+     */
+    case 'achievement.unlocked':
+      return [input.payload.userId];
+
     default: {
       const exhaustive: never = input;
 

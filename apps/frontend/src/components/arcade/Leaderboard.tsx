@@ -70,6 +70,14 @@ export function Leaderboard({ data, loading, error, onReload }: LeaderboardProps
               </span>
               <span className="flex-1 truncate text-base text-ink">
                 {entry.displayName}
+                {/*
+                  Der getragene Titel (Betreiber-Wunsch 21.09.2026) – die
+                  einzige Stelle, an der ein Titel fremden Augen begegnet.
+                  Gedämpft gesetzt: Er schmückt den Namen, er ersetzt ihn nicht.
+                */}
+                {entry.title === null ? null : (
+                  <span className="ml-1.5 text-sm text-ink-faint">{entry.title}</span>
+                )}
                 {entry.isCurrentUser ? (
                   <span className="ml-1 text-sm text-brand-bright">· du</span>
                 ) : null}

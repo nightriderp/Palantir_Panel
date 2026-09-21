@@ -125,6 +125,7 @@ const ERWARTETE_ROUTEN = [
   '/admin/users',
   '/arcade',
   '/einstellungen',
+  '/erfolge',
   '/login',
   '/messages',
   '/my-backups',

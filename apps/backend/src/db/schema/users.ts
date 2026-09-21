@@ -17,6 +17,7 @@
  * Token-Felder liegen in `AuthMethod` bzw. `Session` (`schema/auth.ts`).
  */
 
+import { type AchievementId } from '@palantir/contracts';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -95,6 +96,23 @@ export const users = pgTable(
      * einem neuen Bild nicht das alte aus seinem Zwischenspeicher zeigt.
      */
     avatarUpdatedAt: timestamp('avatar_updated_at', { withTimezone: true }),
+    /**
+     * Abzeichen, dessen Titel das Konto neben seinem Anzeigenamen trägt;
+     * `null`, wenn es keinen trägt (Betreiber-Wunsch 21.09.2026).
+     *
+     * Gespeichert wird die **Kennung des Abzeichens**, nicht der Titeltext:
+     * Wird ein Titel im Katalog später umformuliert, trägt das Konto weiter
+     * denselben Titel in neuer Schreibweise – ein gespeicherter Text bliebe
+     * dagegen auf dem alten Stand stehen.
+     *
+     * Bewusst **ohne** Fremdschlüssel auf `user_achievements`: Ein solcher
+     * müsste auf das Paar (Konto, Abzeichen) zeigen und liefe damit im Kreis
+     * zurück auf diese Tabelle. Dass das Konto das Abzeichen wirklich
+     * freigeschaltet hat, prüft der Service bei der Wahl
+     * (`ACHIEVEMENT_NOT_UNLOCKED`). Verlieren kann es das Abzeichen danach
+     * nicht – Abzeichen werden nie entzogen.
+     */
+    titleAchievementId: text('title_achievement_id').$type<AchievementId>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

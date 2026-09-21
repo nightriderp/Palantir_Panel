@@ -166,6 +166,8 @@ function zielLabel(notification: NotificationDto): string {
       return 'Zu den Nutzern';
     case 'message':
       return 'Zur Moderation';
+    case 'achievement':
+      return 'Zu den Erfolgen';
     default:
       return 'Öffnen';
   }

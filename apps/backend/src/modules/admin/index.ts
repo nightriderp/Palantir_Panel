@@ -35,6 +35,7 @@ export {
   type AuditEntryPage,
   type AuditEntryRecord,
   type AuditLogRepository,
+  type AuditObserver,
   type AuditService,
   createAuditService,
   entryFor,
