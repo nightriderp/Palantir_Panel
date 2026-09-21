@@ -15,7 +15,7 @@
  * {@link AchievementQueries.countAuditEntries}.
  */
 
-import { type AchievementId, type AuditAction } from '@palantir/contracts';
+import { type AchievementId, type AuditAction, isAchievementId } from '@palantir/contracts';
 import { and, asc, countDistinct, count, eq, inArray, lt, ne, notInArray, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index.js';
 import { userAchievements } from '../../db/schema/achievements.js';
@@ -41,7 +41,11 @@ export type AuditCountFilter =
 
 /** Datenzugriffe, die die Regeln und der Service brauchen. */
 export interface AchievementQueries {
-  /** Alle freigeschalteten Abzeichen eines Kontos, älteste zuerst. */
+  /**
+   * Alle freigeschalteten Abzeichen eines Kontos, älteste zuerst.
+   *
+   * Nur solche, die der Katalog kennt – siehe die Umsetzung.
+   */
   unlocked(userId: string): Promise<UnlockedAchievement[]>;
   /**
    * Trägt Abzeichen ein und liefert die, die dadurch **neu** entstanden sind.
@@ -139,6 +143,26 @@ export interface AchievementQueries {
 /** Vollständige Schnittstelle des Moduls. */
 export type AchievementRepository = AchievementQueries;
 
+/**
+ * Verwirft Zeilen, deren Kennung der Katalog nicht (mehr) kennt.
+ *
+ * Die Spalte ist nur auf TypeScript-Ebene auf `AchievementId` verengt, die
+ * Datenbank hält schlichten Text. Nimmt eine spätere Fassung ein Abzeichen aus
+ * dem Katalog – so geschehen mit den Verwaltungs-Abzeichen am 21.09.2026 –,
+ * bleiben die bereits vergebenen Zeilen stehen. Ohne diesen Filter zählte
+ * `sammler*` sie weiter mit, während die Übersicht sie nicht mehr zeigt: Der
+ * Bestand liefe zwischen Regel und Anzeige auseinander, und die Sammler-Staffel
+ * fiele eine Stufe zu früh.
+ *
+ * Gelöscht wird die Zeile bewusst nicht. Kehrt das Abzeichen zurück, steht der
+ * ursprüngliche Zeitpunkt wieder da, statt neu zu entstehen.
+ */
+export function nurBekannteAbzeichen(
+  rows: readonly { readonly achievementId: string; readonly unlockedAt: Date }[],
+): UnlockedAchievement[] {
+  return rows.filter((row): row is UnlockedAchievement => isAchievementId(row.achievementId));
+}
+
 /** Drizzle-Umsetzung von {@link AchievementRepository}. */
 export function createDrizzleAchievementRepository(db: Database): AchievementRepository {
   return {
@@ -152,7 +176,7 @@ export function createDrizzleAchievementRepository(db: Database): AchievementRep
         .where(eq(userAchievements.userId, userId))
         .orderBy(asc(userAchievements.unlockedAt));
 
-      return rows;
+      return nurBekannteAbzeichen(rows);
     },
 
     async award(userId, achievementIds) {
