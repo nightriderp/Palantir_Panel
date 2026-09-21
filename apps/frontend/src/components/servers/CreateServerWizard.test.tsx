@@ -167,3 +167,60 @@ describe('CreateServerWizard – Spielauswahl mit Varianten', () => {
     expect(variantenfeld()).toBeNull();
   });
 });
+
+/**
+ * Die Version steht auf jeder Kachel – auch auf einer Gruppe (Fundpunkt 329).
+ *
+ * Zwischen dem 20. und dem 21.09.2026 war sie dort verschwunden: Die
+ * Gruppenkachel zeigte nur die Zahl der Varianten. Der Ende-zu-Ende-Test hielt
+ * die Zusage fest, griff aber nur Terraria – und das war bis dahin keine
+ * Gruppe. Bei Minecraft lief es seit v1.85.0 still.
+ */
+describe('CreateServerWizard – Version auf der Kachel', () => {
+  const mitVersion = [
+    gameType({
+      id: 'minecraft-paper',
+      name: 'Minecraft (Paper)',
+      variantGroup: 'Minecraft',
+      variantLabel: 'Paper',
+      imageVersion: '10',
+    }),
+    gameType({
+      id: 'minecraft-vanilla',
+      name: 'Minecraft (Vanilla)',
+      variantGroup: 'Minecraft',
+      variantLabel: 'Vanilla',
+      imageVersion: '10',
+    }),
+    gameType({ id: 'valheim', name: 'Valheim', imageVersion: '1' }),
+  ];
+
+  it('nennt auf der Gruppenkachel Variantenzahl und Version', async () => {
+    zeige(mitVersion);
+
+    await waitFor(() => {
+      expect(screen.getByText('2 Varianten · v10.0.0')).toBeTruthy();
+    });
+  });
+
+  it('nennt nach der Wahl den Variantennamen und die Version', async () => {
+    zeige(mitVersion);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Minecraft/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Minecraft/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Paper · v10.0.0')).toBeTruthy();
+    });
+  });
+
+  it('lässt ein Spiel ohne Gruppe bei der Version allein', async () => {
+    zeige(mitVersion);
+
+    await waitFor(() => {
+      expect(screen.getByText('v1.0.0')).toBeTruthy();
+    });
+  });
+});
