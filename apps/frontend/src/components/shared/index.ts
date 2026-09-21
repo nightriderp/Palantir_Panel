@@ -102,6 +102,11 @@ export {
 } from './server/serverStatus';
 
 export { AppShell, type AppShellProps } from './layout/AppShell';
+/**
+ * Auch ausserhalb des Rahmens gebraucht: Die Einweisung (`/tutorial`) fragt
+ * damit `(pointer: coarse)` und `(prefers-reduced-motion: reduce)` ab.
+ */
+export { useMediaQuery } from './layout/useDrawerDrag';
 export { PageHeader, type PageHeaderProps } from './layout/PageHeader';
 export { DeployBanner, type DeployBannerProps } from './layout/DeployBanner';
 export {

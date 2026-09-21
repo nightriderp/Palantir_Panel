@@ -1,0 +1,124 @@
+import { type AccountDto, type GlobalPermissions } from '@palantir/contracts';
+import { describe, expect, it } from 'vitest';
+import { QUIZ_FRAGEN, TUTORIAL_SCHRITTE, quizPunkte, sichtbareSchritte } from './inhalt';
+
+/**
+ * Inhalt der Einweisung.
+ *
+ * Geprüft wird vor allem das, was kein Leser merkt und trotzdem wehtut: dass
+ * die Einweisung keinem Konto einen Bereich erklärt, den es gar nicht sehen
+ * darf (Pflichtenheft §5.2), und dass jede Quizfrage genau eine richtige
+ * Antwort hat – bei zweien wäre die Auswertung Glückssache.
+ */
+
+function berechtigungen(overrides: Partial<GlobalPermissions> = {}): GlobalPermissions {
+  return {
+    canCreateServer: false,
+    canViewAnyServer: false,
+    canManageAnyBackup: false,
+    canManageUsers: false,
+    canManageRoles: false,
+    canManageNotifications: false,
+    canViewNodes: false,
+    canManageNodes: false,
+    canManageAddresses: false,
+    canViewAuditLog: false,
+    canModerateMessages: false,
+    canManageGameTypes: false,
+    ...overrides,
+  };
+}
+
+function konto(overrides: Partial<GlobalPermissions> = {}): AccountDto {
+  return {
+    id: 'u-1',
+    displayName: 'Testnutzer',
+    username: 'test',
+    isOwner: false,
+    banned: false,
+    awaitingApproval: false,
+    twoFactorEnabled: false,
+    roles: [],
+    authMethods: [],
+    createdAt: '2026-09-01T10:00:00.000Z',
+    permissions: berechtigungen(overrides),
+  };
+}
+
+describe('Schritte der Einweisung', () => {
+  it('erklärt jeden Bereich mit Erklärung, Spitze und Ziel', () => {
+    for (const schritt of TUTORIAL_SCHRITTE) {
+      expect(schritt.erklaerung.length).toBeGreaterThan(40);
+      expect(schritt.spitze.length).toBeGreaterThan(10);
+      expect(schritt.href.startsWith('/')).toBe(true);
+    }
+  });
+
+  it('vergibt jeden Schlüssel nur einmal', () => {
+    const schluessel = TUTORIAL_SCHRITTE.map((schritt) => schritt.key);
+
+    expect(new Set(schluessel).size).toBe(schluessel.length);
+  });
+
+  it('lässt ohne Konto alles weg, was ein Recht verlangt', () => {
+    const sichtbar = sichtbareSchritte(null);
+
+    expect(sichtbar.every((schritt) => !schritt.requires)).toBe(true);
+    expect(sichtbar.map((schritt) => schritt.key)).not.toContain('nodes');
+  });
+
+  it('zeigt einen Schritt erst mit dem Recht, das er nennt', () => {
+    const ohne = sichtbareSchritte(konto()).map((schritt) => schritt.key);
+    const mit = sichtbareSchritte(konto({ canViewNodes: true })).map((schritt) => schritt.key);
+
+    expect(ohne).not.toContain('nodes');
+    expect(mit).toContain('nodes');
+    expect(mit).not.toContain('admin');
+  });
+});
+
+describe('Abschlussquiz', () => {
+  it('hat je Frage genau eine richtige Antwort', () => {
+    for (const frage of QUIZ_FRAGEN) {
+      expect(frage.antworten.filter((antwort) => antwort.richtig)).toHaveLength(1);
+    }
+  });
+
+  it('begründet jede Antwort, auch die falschen', () => {
+    for (const frage of QUIZ_FRAGEN) {
+      for (const antwort of frage.antworten) {
+        expect(antwort.echo.length).toBeGreaterThan(5);
+      }
+    }
+  });
+
+  it('legt die richtige Antwort nicht immer auf denselben Platz', () => {
+    // Sie stand dreimal oben: Wer „immer die erste" klickt, hätte ein volles
+    // Zeugnis, ohne eine Frage gelesen zu haben.
+    const plaetze = QUIZ_FRAGEN.map((frage) =>
+      frage.antworten.findIndex((antwort) => antwort.richtig),
+    );
+
+    expect(new Set(plaetze).size).toBeGreaterThan(1);
+  });
+
+  it('zählt nur beantwortete Fragen', () => {
+    expect(quizPunkte([null, null, null])).toBe(0);
+  });
+
+  it('zählt jede richtige Antwort einmal', () => {
+    const alleRichtig = QUIZ_FRAGEN.map((frage) =>
+      frage.antworten.findIndex((antwort) => antwort.richtig),
+    );
+
+    expect(quizPunkte(alleRichtig)).toBe(QUIZ_FRAGEN.length);
+  });
+
+  it('gibt für falsche Antworten keinen Punkt', () => {
+    const alleFalsch = QUIZ_FRAGEN.map((frage) =>
+      frage.antworten.findIndex((antwort) => !antwort.richtig),
+    );
+
+    expect(quizPunkte(alleFalsch)).toBe(0);
+  });
+});
