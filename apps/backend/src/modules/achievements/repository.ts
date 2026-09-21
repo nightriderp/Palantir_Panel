@@ -111,6 +111,34 @@ export interface AchievementQueries {
    * sich beide den Platz und beide bekommen das Abzeichen.
    */
   isTopOfLeaderboard(userId: string, gameId: ArcadeGameId): Promise<boolean>;
+  /**
+   * Steht das Konto in **irgendeiner** Bestenliste auf Platz eins?
+   *
+   * Nur für die Nachvergabe: Dort gibt es kein auslösendes Spiel, und wer
+   * irgendwo oben steht, hat das Abzeichen verdient. Im laufenden Betrieb
+   * fragt `isTopOfLeaderboard` gezielt nach dem gerade gespielten Spiel.
+   */
+  isTopOfAnyLeaderboard(userId: string): Promise<boolean>;
+  /**
+   * Gibt es einen Protokolleintrag des Kontos in einem Stundenfenster?
+   *
+   * `fromHour` einschließlich, `toHour` ausschließlich, gerechnet in
+   * `timeZone`. Die Umrechnung übernimmt Postgres (`AT TIME ZONE`) und nicht
+   * der Anwendungscode: Sonst müssten alle Einträge eines Kontos in den
+   * Arbeitsspeicher, nur um eine Stunde daraus abzulesen.
+   *
+   * Nur für die Nachvergabe – im laufenden Betrieb steht die Uhrzeit des
+   * auslösenden Eintrags bereits im Auslöser.
+   */
+  hasAuditEntryAtHour(
+    userId: string,
+    actions: readonly AuditAction[],
+    fromHour: number,
+    toHour: number,
+    timeZone: string,
+  ): Promise<boolean>;
+  /** Konto-Ids aller Konten – Grundmenge der Nachvergabe. */
+  allUserIds(): Promise<string[]>;
   /** Getragener Titel eines Kontos; `null`, wenn es keinen trägt. */
   selectedTitle(userId: string): Promise<AchievementId | null>;
   /** Setzt den getragenen Titel; `null` legt ihn ab. */
@@ -237,6 +265,64 @@ export function createDrizzleAchievementRepository(db: Database): AchievementRep
         .where(gt(bestProKonto.best, eigenerBestwert));
 
       return Number(row?.besser ?? 0) === 0;
+    },
+
+    async isTopOfAnyLeaderboard(userId) {
+      /*
+       * Je Spiel der höchste Bestwert und der eigene Bestwert nebeneinander –
+       * erfüllt ist die Bedingung, sobald irgendwo kein echt größerer Wert
+       * steht. Dieselbe Grundmenge wie die Bestenliste: gesperrte Konten
+       * zählen nicht mit (`backend-community-16`).
+       */
+      const bestProKontoUndSpiel = db
+        .select({
+          gameId: arcadeScores.gameId,
+          userId: arcadeScores.userId,
+          best: sql<number>`max(${arcadeScores.score})`.as('best'),
+        })
+        .from(arcadeScores)
+        .innerJoin(users, eq(users.id, arcadeScores.userId))
+        .where(eq(users.banned, false))
+        .groupBy(arcadeScores.gameId, arcadeScores.userId)
+        .as('best_per_user_game');
+
+      const [row] = await db
+        .select({
+          spitzenplaetze: sql<number>`count(*) filter (
+            where ${bestProKontoUndSpiel.userId} = ${userId}
+              and ${bestProKontoUndSpiel.best} = ${sql`max(${bestProKontoUndSpiel.best}) over (partition by ${bestProKontoUndSpiel.gameId})`}
+          )`,
+        })
+        .from(bestProKontoUndSpiel);
+
+      return Number(row?.spitzenplaetze ?? 0) > 0;
+    },
+
+    async hasAuditEntryAtHour(userId, actions, fromHour, toHour, timeZone) {
+      if (actions.length === 0) return false;
+
+      const stunde = sql`extract(hour from (${auditLog.timestamp} at time zone ${timeZone}))`;
+
+      const [row] = await db
+        .select({ id: auditLog.id })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.actorId, userId),
+            inArray(auditLog.action, [...actions]),
+            sql`${stunde} >= ${fromHour}`,
+            sql`${stunde} < ${toHour}`,
+          ),
+        )
+        .limit(1);
+
+      return row !== undefined;
+    },
+
+    async allUserIds() {
+      const rows = await db.select({ id: users.id }).from(users).orderBy(asc(users.createdAt));
+
+      return rows.map((row) => row.id);
     },
 
     async selectedTitle(userId) {

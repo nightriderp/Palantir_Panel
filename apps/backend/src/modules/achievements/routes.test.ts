@@ -59,6 +59,8 @@ async function buildApp(): Promise<FastifyInstance> {
     },
     evaluate: async () => [],
     evaluateArcade: async () => [],
+    backfillFor: async () => [],
+    backfillAll: async () => new Map(),
   };
 
   const instance = Fastify({ logger: false });

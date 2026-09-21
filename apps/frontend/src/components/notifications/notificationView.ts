@@ -45,7 +45,7 @@ export {
 // ---------------------------------------------------------------------------
 
 export type NotificationGroupKey =
-  'server' | 'autoShutdown' | 'backup' | 'resource' | 'account' | 'announcement';
+  'server' | 'autoShutdown' | 'backup' | 'resource' | 'account' | 'announcement' | 'achievement';
 
 export interface NotificationGroup {
   key: NotificationGroupKey;
@@ -123,6 +123,17 @@ export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = [
     icon: 'bell',
     events: ['announcement.published'],
   },
+  {
+    key: 'achievement',
+    label: 'Erfolge',
+    // Eigene Gruppe und nicht bei „Konten und Moderation": Dort geht es um
+    // Vorgänge, um die sich jemand kümmern muss. Ein Abzeichen ist ein
+    // Glückwunsch – wer die Glückwünsche nicht will, soll sie abschalten
+    // können, ohne die Registrierungen mit abzuschalten.
+    description: 'Du hast ein Abzeichen freigeschaltet.',
+    icon: 'medal',
+    events: ['achievement.unlocked'],
+  },
 ];
 
 const GROUP_BY_EVENT = new Map<NotifiableEventName, NotificationGroup>(
@@ -185,6 +196,14 @@ export function subjectHref(subject: NotificationSubject | null): string | null 
       return withHighlight('/admin/moderation', subject.id);
     case 'announcement':
       return null;
+    /*
+     * Das Abzeichen selbst hat keine Detailseite – gemeint ist die Übersicht,
+     * in der es zwischen allen anderen steht. Deshalb ohne `highlight`: Die
+     * Seite gruppiert nach Rubriken, und das frische Abzeichen ist dort schon
+     * am Zustand seiner Kachel zu erkennen.
+     */
+    case 'achievement':
+      return '/erfolge';
     default:
       return null;
   }

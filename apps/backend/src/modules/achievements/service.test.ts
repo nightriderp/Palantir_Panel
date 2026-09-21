@@ -267,3 +267,183 @@ describe('Vergabe wirft nie', () => {
     await expect(achievements.evaluate(KONTO, 'server.created')).resolves.toEqual([]);
   });
 });
+
+describe('Glückwunsch-Meldung', () => {
+  /** Fängt die Meldungen ab, die der Service auslöst. */
+  function mitSenke(options: FakeOptions = {}) {
+    const gemeldet: { event: string; payload: Record<string, unknown> }[] = [];
+    const repository = fakeAchievementRepository(options);
+    const achievements = createAchievementService({
+      repository,
+      notifications: {
+        emit: (event, payload) => {
+          gemeldet.push({ event, payload: payload as unknown as Record<string, unknown> });
+        },
+      },
+    });
+
+    return { achievements, repository, gemeldet };
+  }
+
+  it('meldet ein frisch freigeschaltetes Abzeichen mit Namen', async () => {
+    const { achievements, gemeldet } = mitSenke();
+
+    await achievements.evaluate(KONTO, 'server.created');
+
+    expect(gemeldet).toHaveLength(1);
+    expect(gemeldet[0]?.event).toBe('achievement.unlocked');
+    expect(gemeldet[0]?.payload).toMatchObject({
+      userId: KONTO,
+      achievementIds: ['grundsteinleger'],
+      achievementNames: ['Grundsteinleger'],
+      unlockedCount: 1,
+    });
+  });
+
+  it('fasst mehrere Abzeichen zu **einer** Meldung zusammen', async () => {
+    /*
+     * Der Fall der Nachvergabe: Acht Meldungen für einen Vorgang wären keine
+     * Freude, sondern eine Flut.
+     */
+    const { achievements, gemeldet } = mitSenke({
+      auditRows: [
+        { id: 'a', action: 'server.created' },
+        { id: 'b', action: 'server.created' },
+        { id: 'c', action: 'server.created' },
+        { id: 'd', action: 'server.created' },
+        { id: 'e', action: 'server.created' },
+        { id: 'f', action: 'backup.restored' },
+      ],
+    });
+
+    const neu = await achievements.backfillFor(KONTO);
+
+    expect(neu.length).toBeGreaterThan(1);
+    expect(gemeldet).toHaveLength(1);
+    expect((gemeldet[0]?.payload.achievementIds as string[]).length).toBe(neu.length);
+  });
+
+  it('meldet gar nichts, wenn nichts freigeschaltet wurde', async () => {
+    const { achievements, gemeldet } = mitSenke({ unlocked: ['grundsteinleger'] });
+
+    await achievements.evaluate(KONTO, 'server.created');
+
+    expect(gemeldet).toEqual([]);
+  });
+
+  it('nennt den Stufenaufstieg nur, wenn die Stufe wirklich gestiegen ist', async () => {
+    // Erstes Abzeichen: Stufe 1 bleibt Stufe 1 (die zweite verlangt zwei).
+    const einzeln = mitSenke();
+    await einzeln.achievements.evaluate(KONTO, 'server.created');
+
+    expect(einzeln.gemeldet[0]?.payload).toMatchObject({ levelUp: false });
+
+    // Zweites Abzeichen daneben: Damit steht der Aufstieg an.
+    const zweites = mitSenke({ unlocked: ['doppelgaenger'] });
+    await zweites.achievements.evaluate(KONTO, 'server.created');
+
+    expect(zweites.gemeldet[0]?.payload).toMatchObject({ levelUp: true, levelLabel: 'Eingelebt' });
+  });
+
+  it('behält das Abzeichen, auch wenn die Meldung scheitert', async () => {
+    // Eine Meldung, die nicht hinausgeht, ist kein Grund, das Abzeichen wieder
+    // einzukassieren.
+    const repository = fakeAchievementRepository();
+    const achievements = createAchievementService({
+      repository,
+      notifications: {
+        emit: () => {
+          throw new Error('Benachrichtigungen kaputt');
+        },
+      },
+    });
+
+    await expect(achievements.evaluate(KONTO, 'server.created')).resolves.toEqual([]);
+    // Vergeben wurde es trotzdem – nur die Rückmeldung ging verloren.
+    expect(repository.vergeben).toContain('grundsteinleger');
+  });
+});
+
+describe('Nachvergabe an bestehende Konten', () => {
+  it('trägt nach, was der Bestand längst hergibt – ohne neues Ereignis', async () => {
+    /*
+     * Der Kern des Betreiber-Wunsches: Wer fünf Server angelegt hat, bevor es
+     * Abzeichen gab, muss keinen sechsten anlegen.
+     */
+    const { achievements } = service({
+      auditRows: Array.from({ length: 5 }, (_, index) => ({
+        id: `server-${String(index)}`,
+        action: 'server.created' as const,
+      })),
+    });
+
+    const neu = await achievements.backfillFor(KONTO);
+
+    expect(neu).toEqual(expect.arrayContaining(['grundsteinleger', 'flottenkommando']));
+  });
+
+  it('zählt den Bestand ohne den „plus eins" des laufenden Betriebs', async () => {
+    // Vier angelegte Server sind vier – nicht fünf. Der Zuschlag gilt nur dem
+    // auslösenden Ereignis, und das gibt es hier nicht.
+    const { achievements } = service({
+      auditRows: Array.from({ length: 4 }, (_, index) => ({
+        id: `server-${String(index)}`,
+        action: 'server.created' as const,
+      })),
+    });
+
+    const neu = await achievements.backfillFor(KONTO);
+
+    expect(neu).toContain('grundsteinleger');
+    expect(neu).not.toContain('flottenkommando');
+  });
+
+  it('vergibt nichts an ein Konto ohne Vorgeschichte', async () => {
+    const { achievements, repository } = service();
+
+    expect(await achievements.backfillFor(KONTO)).toEqual([]);
+    expect(repository.vergeben).toEqual([]);
+  });
+
+  it('übergeht bereits freigeschaltete Abzeichen', async () => {
+    const { achievements } = service({
+      auditRows: [{ id: 'a', action: 'backup.restored' }],
+      unlocked: ['esLiefDochGestern'],
+    });
+
+    expect(await achievements.backfillFor(KONTO)).toEqual([]);
+  });
+
+  it('läuft über alle Konten und meldet je Konto, was dazugekommen ist', async () => {
+    const zweites = '11111111-1111-4111-8111-000000000002';
+    const { achievements } = service({
+      alleKonten: [KONTO, zweites],
+      auditRows: [{ id: 'a', action: 'server.created' }],
+    });
+
+    const ergebnis = await achievements.backfillAll();
+
+    // Die Attrappe führt einen gemeinsamen Bestand – beide Konten erfüllen
+    // dieselbe Bedingung.
+    expect([...ergebnis.keys()]).toEqual([KONTO, zweites]);
+    expect(ergebnis.get(KONTO)).toContain('grundsteinleger');
+  });
+
+  it('bleibt still, wenn es gar keine Konten gibt', async () => {
+    const { achievements } = service({ alleKonten: [] });
+
+    expect((await achievements.backfillAll()).size).toBe(0);
+  });
+
+  it('gibt eine leere Zuordnung zurück, wenn die Kontenliste nicht lesbar ist', async () => {
+    const repository = fakeAchievementRepository();
+    const achievements = createAchievementService({
+      repository: {
+        ...repository,
+        allUserIds: () => Promise.reject(new Error('Datenbank weg')),
+      },
+    });
+
+    expect((await achievements.backfillAll()).size).toBe(0);
+  });
+});

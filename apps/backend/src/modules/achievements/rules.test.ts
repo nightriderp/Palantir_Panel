@@ -25,7 +25,7 @@ const KONTO = '11111111-1111-4111-8111-000000000001';
 /** Führt die Regel eines Abzeichens gegen eine Attrappe aus. */
 function pruefe(
   id: AchievementId,
-  trigger: AchievementTrigger,
+  trigger: AchievementTrigger | null,
   options: FakeOptions = {},
 ): Promise<boolean> {
   return ACHIEVEMENT_RULES[id].check({
@@ -246,5 +246,67 @@ describe('Konto- und Spielhallen-Abzeichen', () => {
 
     expect(await pruefe('spielhallenlegende', imFuehrenden, { topOf: ['kriechpfad'] })).toBe(true);
     expect(await pruefe('spielhallenlegende', imAnderen, { topOf: ['kriechpfad'] })).toBe(false);
+  });
+});
+
+describe('Nachvergabe ohne Auslöser', () => {
+  /**
+   * Die Regel, die alle Regeln zusammenhält.
+   *
+   * Im laufenden Betrieb genügt manchen Bedingungen das Ereignis selbst – „der
+   * Server ist gerade angelegt worden" braucht keine Abfrage. Ohne Auslöser
+   * gilt das nicht mehr: Wer dort ein `true` stehen lässt, verteilt das
+   * Abzeichen beim Nachvergabe-Lauf an **jedes** Konto der Instanz, auch an
+   * die, die nie in die Nähe der Bedingung gekommen sind.
+   *
+   * Genau so ist `eingeworfen` beim Bauen aufgefallen. Dieser Test fängt den
+   * nächsten Fall ab, bevor er jemandem ein Abzeichen schenkt, das er sich
+   * nicht verdient hat.
+   */
+  it('erfüllt kein einziges Abzeichen an einem Konto ohne jede Vorgeschichte', async () => {
+    const leer = fakeAchievementRepository();
+
+    for (const id of ACHIEVEMENT_IDS) {
+      const erfuellt = await ACHIEVEMENT_RULES[id].check({
+        userId: KONTO,
+        trigger: null,
+        queries: leer,
+      });
+
+      expect(erfuellt, `${id} wird ohne Vorgeschichte vergeben`).toBe(false);
+    }
+  });
+
+  it('erfüllt ein Einmal-Abzeichen, sobald der Vorgang im Protokoll steht', async () => {
+    const mitVorgeschichte = { auditRows: [{ id: 'a', action: 'backup.restored' as const }] };
+
+    expect(await pruefe('esLiefDochGestern', null, mitVorgeschichte)).toBe(true);
+    // Ein anderer Vorgang reicht dafür nicht.
+    expect(await pruefe('doppelgaenger', null, mitVorgeschichte)).toBe(false);
+  });
+
+  it('zählt Schwellen ohne den Zuschlag des laufenden Betriebs', async () => {
+    // Vier angelegte Server sind vier, nicht fünf: Der Zuschlag gilt dem
+    // auslösenden Ereignis, und das gibt es hier nicht.
+    expect(
+      await pruefe('flottenkommando', null, { auditRows: eintraege('server.created', 4) }),
+    ).toBe(false);
+    expect(
+      await pruefe('flottenkommando', null, { auditRows: eintraege('server.created', 5) }),
+    ).toBe(true);
+  });
+
+  it('fragt für `nachtschicht` das Protokoll nach der Uhrzeit', async () => {
+    const nachts = {
+      auditRows: eintraege('auth.loginSucceeded', 1),
+      nachtEintrag: true,
+    };
+
+    expect(await pruefe('nachtschicht', null, nachts)).toBe(true);
+    expect(await pruefe('nachtschicht', null, { ...nachts, nachtEintrag: false })).toBe(false);
+  });
+
+  it('nimmt für `spielhallenlegende` jede Bestenliste, nicht eine bestimmte', async () => {
+    expect(await pruefe('spielhallenlegende', null, { topOf: ['blockstapel'] })).toBe(true);
   });
 });

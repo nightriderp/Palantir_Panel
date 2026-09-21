@@ -116,9 +116,20 @@ export function UserMenu({ user }: { user: AccountDto | null }) {
            * Ein Ziel, vier Einstiege: Seit Profil und Einstellungen eine Seite
            * sind (Abgleich 11.1), springen die Punkte in die Abschnitte – so
            * steht es auch im Entwurf.
+           *
+           * „Erfolge" ist die Ausnahme und führt auf eine eigene Seite
+           * (Betreiber-Wunsch 21.09.2026). Es steht trotzdem hier und nicht
+           * nur in der Seitenleiste: Abzeichen, Stufe und Titel gehören zum
+           * eigenen Konto, und hier sucht man, was einem selbst gehört.
            */}
           <nav className="py-1">
             <MenuLink href="/profil" icon="user" label="Profil" onNavigate={() => setOpen(false)} />
+            <MenuLink
+              href="/erfolge"
+              icon="medal"
+              label="Erfolge"
+              onNavigate={() => setOpen(false)}
+            />
             <MenuLink
               href="/profil#passwort"
               icon="lock"

@@ -53,10 +53,21 @@ export type AchievementTrigger =
       readonly gameId: ArcadeGameId;
     };
 
-/** Was eine Regel zur Prüfung in die Hand bekommt. */
+/**
+ * Was eine Regel zur Prüfung in die Hand bekommt.
+ *
+ * **`trigger: null` ist die Nachvergabe** (Betreiber-Wunsch 21.09.2026): Dann
+ * gibt es kein auslösendes Ereignis, sondern nur den gespeicherten Bestand –
+ * die Regel muss ihre Bedingung aus dem beantworten, was ohnehin in der
+ * Datenbank steht.
+ *
+ * Bewusst dieselbe Funktion für beide Fälle statt einer zweiten daneben: Zwei
+ * Bedingungen je Abzeichen könnten auseinanderlaufen, und dann bekäme ein
+ * bestehendes Konto ein Abzeichen, das ein neues nie bekommt (oder umgekehrt).
+ */
 export interface RuleContext {
   readonly userId: string;
-  readonly trigger: AchievementTrigger;
+  readonly trigger: AchievementTrigger | null;
   readonly queries: AchievementQueries;
 }
 
@@ -109,6 +120,23 @@ export const KEINE_HANDGRIFFE: readonly AuditAction[] = ['access.denied', 'auth.
  */
 const INSTANZ_ZEITZONE = 'Europe/Berlin';
 
+/** Beginn und Ende des Nacht-Fensters in Ortszeit (Stunde, Ende ausschließlich). */
+const NACHTSCHICHT_VON = 3;
+const NACHTSCHICHT_BIS = 5;
+
+/**
+ * Aktionen, bei denen `nachtschicht` geprüft wird.
+ *
+ * Bewusst nicht `'jede'`: Die Regel liefe dann bei jedem einzelnen
+ * Protokolleintrag mit, ohne dass das Ergebnis ein anderes wäre. Wer nachts im
+ * Panel ist, meldet sich an.
+ */
+const NACHTSCHICHT_AKTIONEN: readonly AuditAction[] = [
+  'auth.loginSucceeded',
+  'server.created',
+  'backup.created',
+];
+
 const STUNDE_FORMAT = new Intl.DateTimeFormat('de-DE', {
   timeZone: INSTANZ_ZEITZONE,
   hour: 'numeric',
@@ -128,11 +156,21 @@ export function stundeInInstanzZeit(at: Date): number {
   return Number.isNaN(stunde) ? -1 : stunde;
 }
 
-/** Eine Regel, die schon beim ersten Vorkommen ihrer Aktion erfüllt ist. */
+/**
+ * Eine Regel, die schon beim ersten Vorkommen ihrer Aktion erfüllt ist.
+ *
+ * Mit Auslöser braucht sie keine Abfrage – das Ereignis **ist** das erste Mal.
+ * Ohne Auslöser (Nachvergabe) fragt sie, ob es im Protokoll schon einmal
+ * vorkam.
+ */
 function beimErstenMal(...actions: readonly AuditAction[]): AchievementRule {
   return {
     actions,
-    check: () => Promise.resolve(true),
+    async check({ userId, trigger, queries }) {
+      if (trigger !== null) return true;
+
+      return (await queries.countAuditEntries(userId, { include: actions }, null)) >= 1;
+    },
   };
 }
 
@@ -149,10 +187,12 @@ function abDerAnzahl(schwelle: number, ...actions: readonly AuditAction[]): Achi
       const vorher = await queries.countAuditEntries(
         userId,
         { include: actions },
-        trigger.kind === 'audit' ? trigger.entryId : null,
+        trigger?.kind === 'audit' ? trigger.entryId : null,
       );
 
-      return vorher + 1 >= schwelle;
+      // Ohne Auslöser (Nachvergabe) gibt es nichts hinzuzurechnen – dann ist
+      // der gezählte Bestand bereits die vollständige Antwort.
+      return vorher + (trigger === null ? 0 : 1) >= schwelle;
     },
   };
 }
@@ -180,7 +220,15 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
   esLiefDochGestern: beimErstenMal('backup.restored'),
 
   // --- Spielhalle -----------------------------------------------------------
-  eingeworfen: nachJedemSpiel(() => Promise.resolve(true)),
+  eingeworfen: nachJedemSpiel(async ({ userId, trigger, queries }) =>
+    /*
+     * Mit Auslöser ist die Runde gerade gespielt worden – mehr braucht es
+     * nicht. Ohne Auslöser (Nachvergabe) muss die Runde erst nachgewiesen
+     * werden: Ein `true` an dieser Stelle verteilte das Abzeichen sonst an
+     * jedes Konto der Instanz, auch an die, die nie in der Spielhalle waren.
+     */
+    trigger !== null ? true : (await queries.arcadeRoundCount(userId)) >= 1,
+  ),
   alleskoenner: nachJedemSpiel(
     async ({ userId, queries }) =>
       (await queries.arcadeDistinctGames(userId)) >= ARCADE_GAME_IDS.length,
@@ -189,7 +237,11 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
     async ({ userId, queries }) => (await queries.arcadeRoundCount(userId)) >= 25,
   ),
   spielhallenlegende: nachJedemSpiel(async ({ userId, trigger, queries }) =>
-    trigger.kind === 'arcade' ? queries.isTopOfLeaderboard(userId, trigger.gameId) : false,
+    trigger === null
+      ? // Nachvergabe: Es zählt jede Bestenliste, nicht die eines bestimmten
+        // Spiels – wer irgendwo oben steht, hat es verdient.
+        queries.isTopOfAnyLeaderboard(userId)
+      : trigger.kind === 'arcade' && (await queries.isTopOfLeaderboard(userId, trigger.gameId)),
   ),
 
   // --- Konto ----------------------------------------------------------------
@@ -206,19 +258,24 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
   doppeltHaeltBesser: beimErstenMal('auth.twoFactorEnabled'),
   zutrittVerweigert: beimErstenMal('access.denied'),
   nachtschicht: {
-    /*
-     * Es geht um die Uhrzeit, nicht um die Tat – aber bewusst nicht um `'jede'`
-     * Aktion: Die Regel liefe dann bei jedem einzelnen Protokolleintrag mit,
-     * ohne dass das Ergebnis ein anderes wäre. Wer nachts im Panel ist, meldet
-     * sich an.
-     */
-    actions: ['auth.loginSucceeded', 'server.created', 'backup.created'],
-    check: ({ trigger }) => {
-      if (trigger.kind !== 'audit') return Promise.resolve(false);
+    actions: NACHTSCHICHT_AKTIONEN,
+    async check({ userId, trigger, queries }) {
+      if (trigger === null) {
+        // Nachvergabe: Liegt im Protokoll schon ein Eintrag im Fenster?
+        return queries.hasAuditEntryAtHour(
+          userId,
+          NACHTSCHICHT_AKTIONEN,
+          NACHTSCHICHT_VON,
+          NACHTSCHICHT_BIS,
+          INSTANZ_ZEITZONE,
+        );
+      }
+
+      if (trigger.kind !== 'audit') return false;
 
       const stunde = stundeInInstanzZeit(trigger.at);
 
-      return Promise.resolve(stunde >= 3 && stunde < 5);
+      return stunde >= NACHTSCHICHT_VON && stunde < NACHTSCHICHT_BIS;
     },
   },
 
@@ -235,15 +292,15 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
     actions: 'jede',
     exceptActions: KEINE_HANDGRIFFE,
     async check({ userId, trigger, queries }) {
-      if (trigger.kind !== 'audit') return false;
+      if (trigger !== null && trigger.kind !== 'audit') return false;
 
       const vorher = await queries.countAuditEntries(
         userId,
         { exclude: KEINE_HANDGRIFFE },
-        trigger.entryId,
+        trigger === null ? null : trigger.entryId,
       );
 
-      return vorher + 1 >= 50;
+      return vorher + (trigger === null ? 0 : 1) >= 50;
     },
   },
 };

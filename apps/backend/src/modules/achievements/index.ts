@@ -17,7 +17,11 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Database } from '../../db/index.js';
 import { createDrizzleAchievementRepository } from './repository.js';
 import { registerAchievementRoutes } from './routes.js';
-import { type AchievementService, createAchievementService } from './service.js';
+import {
+  type AchievementNotificationSink,
+  type AchievementService,
+  createAchievementService,
+} from './service.js';
 
 export { AchievementError } from './errors.js';
 export {
@@ -38,6 +42,7 @@ export {
 } from './rules.js';
 export {
   type AchievementLogger,
+  type AchievementNotificationSink,
   type AchievementService,
   type AchievementServiceOptions,
   createAchievementService,
@@ -48,6 +53,11 @@ export interface AchievementModuleOptions {
   readonly db: Database;
   /** Konto-Id des Aufrufers (Arbeitspaket B1). */
   resolveUserId(request: FastifyRequest): string | null;
+  /**
+   * Anschluss an B6 für die Glückwunsch-Meldung. Ohne Anschluss werden
+   * Abzeichen vergeben, aber nicht gemeldet.
+   */
+  readonly notifications?: AchievementNotificationSink;
 }
 
 /**
@@ -64,6 +74,7 @@ export async function registerAchievements(
   const achievements = createAchievementService({
     repository: createDrizzleAchievementRepository(options.db),
     logger: app.log,
+    ...(options.notifications ? { notifications: options.notifications } : {}),
   });
 
   await app.register(

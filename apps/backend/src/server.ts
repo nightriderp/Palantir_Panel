@@ -1014,7 +1014,46 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     erfolge = await registerAchievements(app, {
       db,
       resolveUserId: (request) => request.authUser?.id ?? null,
+      /*
+       * Der Glückwunsch läuft über die Benachrichtigungen (B6) und nicht als
+       * fest verdrahteter Hinweis: So steht er in der Inbox, erreicht bei
+       * eingerichtetem Push auch das Telefon – und lässt sich abschalten, wer
+       * ihn nicht mag (Vorgaberegel in `notifications/seed.ts`).
+       */
+      notifications: notifications.eventSink,
     });
+
+    /*
+     * Nachvergabe an bestehende Konten (Betreiber-Wunsch 21.09.2026).
+     *
+     * Die Abzeichen gibt es erst seit heute, die Vorgänge, die sie auslösen,
+     * gibt es seit Monaten. Wer längst fünf Server angelegt hat, soll nicht
+     * einen sechsten anlegen müssen – der Lauf prüft jedes Konto einmal gegen
+     * den gespeicherten Bestand und trägt nach, was fehlt.
+     *
+     * Bewusst **ohne** `await` und damit neben dem Start her: Der Lauf fragt
+     * je Konto ein paar Zählungen ab, und das Panel soll deswegen nicht später
+     * erreichbar sein. Er ist von sich aus wiederholbar – jeder weitere Start
+     * findet nur noch, was seither dazugekommen ist (meist nichts), und ein
+     * neues Abzeichen im Katalog wird beim nächsten Start von allein
+     * nachgereicht.
+     */
+    void erfolge.backfillAll().then(
+      (vergeben) => {
+        if (vergeben.size === 0) return;
+
+        app.log.info(
+          {
+            konten: vergeben.size,
+            abzeichen: [...vergeben.values()].reduce((summe, ids) => summe + ids.length, 0),
+          },
+          'Abzeichen nachgetragen.',
+        );
+      },
+      (error: unknown) => {
+        app.log.warn({ err: error }, 'Nachvergabe der Abzeichen ist gescheitert.');
+      },
+    );
 
     /*
      * Arcade (F8, Pflichtenheft §17). Rein clientseitige Minispiele; das

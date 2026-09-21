@@ -83,6 +83,7 @@ export const NOTIFIABLE_EVENT_LABELS: Record<NotifiableEventName, string> = {
   'quotaRequest.created': 'Anfrage an die Administration',
   'gameRequest.created': 'Spiel-Wunsch',
   'announcement.published': 'Ankündigung veröffentlicht',
+  'achievement.unlocked': 'Abzeichen freigeschaltet',
 };
 
 /** Dringlichkeit einer Meldung – ausgeschrieben, keine Abkürzung. */

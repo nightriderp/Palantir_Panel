@@ -113,6 +113,20 @@ const SAMPLES: Record<string, NotificationEvent> = {
       severity: 'warning',
     },
   },
+  'achievement.unlocked': {
+    event: 'achievement.unlocked',
+    payload: {
+      at: '2026-09-21T12:00:00.000Z',
+      actorId: 'konto-1',
+      userId: 'konto-1',
+      achievementIds: ['grundsteinleger'],
+      achievementNames: ['Grundsteinleger'],
+      levelLabel: 'Neuling',
+      levelUp: false,
+      unlockedCount: 1,
+      totalCount: 20,
+    },
+  },
 };
 
 describe('Textbildung (Pflichtenheft §14)', () => {
@@ -286,5 +300,59 @@ describe('Fehlende Freitextzusaetze (Gefundener Punkt 118)', () => {
     } as Parameters<typeof renderNotification>[0]);
 
     expect(gerendert.body).toContain('Image fehlt.');
+  });
+});
+
+/**
+ * Glückwunsch zum Abzeichen (Betreiber-Wunsch 21.09.2026).
+ *
+ * Der einzige Text des Katalogs, der sich je nach Anzahl anders liest – bei
+ * der Nachvergabe kommen mehrere Abzeichen in **einer** Meldung an.
+ */
+describe('Abzeichen freigeschaltet', () => {
+  it('nennt ein einzelnes Abzeichen beim Namen', () => {
+    const rendered = renderNotification(SAMPLES['achievement.unlocked'] as NotificationEvent);
+
+    expect(rendered.title).toBe('Abzeichen freigeschaltet: Grundsteinleger');
+    expect(rendered.body).toContain('1 von 20');
+    // Ein Glückwunsch ist keine Störung.
+    expect(rendered.severity).toBe('info');
+  });
+
+  it('fasst mehrere zusammen, statt sie einzeln aufzuzählen', () => {
+    const rendered = renderNotification({
+      event: 'achievement.unlocked',
+      payload: {
+        at: '2026-09-21T12:00:00.000Z',
+        actorId: 'konto-1',
+        userId: 'konto-1',
+        achievementIds: ['grundsteinleger', 'doppelgaenger'],
+        achievementNames: ['Grundsteinleger', 'Doppelgänger'],
+        levelLabel: 'Eingelebt',
+        levelUp: true,
+        unlockedCount: 2,
+        totalCount: 20,
+      },
+    });
+
+    expect(rendered.title).toBe('2 Abzeichen freigeschaltet');
+    expect(rendered.body).toContain('Grundsteinleger, Doppelgänger');
+    expect(rendered.body).toContain('Eingelebt');
+  });
+
+  it('erwähnt die Stufe nur, wenn sie gestiegen ist', () => {
+    const rendered = renderNotification(SAMPLES['achievement.unlocked'] as NotificationEvent);
+
+    expect(rendered.body).not.toContain('aufgestiegen');
+  });
+
+  it('verweist auf die Erfolgs-Seite, nicht auf einen Datensatz', () => {
+    const rendered = renderNotification(SAMPLES['achievement.unlocked'] as NotificationEvent);
+
+    expect(rendered.subject).toEqual({
+      type: 'achievement',
+      id: 'grundsteinleger',
+      displayName: 'Grundsteinleger',
+    });
   });
 });
