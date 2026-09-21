@@ -136,8 +136,8 @@ describe('Direktnachrichten', () => {
 
     const resolved = await resolveAudience(audience, conversation);
     const names = new Map([
-      [ALEX, 'Alex'],
-      [BEA, 'Bea'],
+      [ALEX, { displayName: 'Alex', avatarUpdatedAt: null, titleAchievementId: null }],
+      [BEA, { displayName: 'Bea', avatarUpdatedAt: null, titleAchievementId: null }],
     ]);
 
     expect(titleFor(resolved, ALEX, names)).toBe('Bea');

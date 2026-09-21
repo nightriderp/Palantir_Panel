@@ -14,6 +14,7 @@
  */
 
 import {
+  titleForAchievement,
   type GameServerDto,
   type GameServerPermissions,
   type ServerMemberLevel,
@@ -117,6 +118,13 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     name: server.name,
     ownerId: server.ownerId,
     ownerDisplayName: server.ownerDisplayName,
+    // Bild und Titel des Besitzers stehen an der Kachel neben seinem Namen
+    // (Betreiber-Wunsch 21.09.2026); aus der Kennung wird hier der Titeltext.
+    ownerAvatarUpdatedAt: server.ownerAvatarUpdatedAt?.toISOString() ?? null,
+    ownerTitle:
+      server.ownerTitleAchievementId === null
+        ? null
+        : titleForAchievement(server.ownerTitleAchievementId),
     gameType: server.gameType,
     gameTypeName: definition.name,
     gameVersion: server.gameVersion,

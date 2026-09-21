@@ -18,6 +18,7 @@
 import { type ConversationType } from '@palantir/contracts';
 import { ChatError } from './errors.js';
 import {
+  type ChatUserProfile,
   type ChatServerMember,
   type ChatServerRecord,
   type ConversationRecord,
@@ -174,7 +175,7 @@ export function assertMessageParticipant(
 export function titleFor(
   audience: ConversationAudience,
   viewerId: string,
-  displayNames: ReadonlyMap<string, string>,
+  profiles: ReadonlyMap<string, ChatUserProfile>,
 ): string {
   if (audience.conversation.type === 'server_chat') {
     return audience.server?.name ?? 'Gelöschter Server';
@@ -182,7 +183,7 @@ export function titleFor(
 
   const otherId = audience.participantIds.find((id) => id !== viewerId);
 
-  return otherId ? (displayNames.get(otherId) ?? 'Unbekanntes Konto') : 'Unterhaltung';
+  return otherId ? (profiles.get(otherId)?.displayName ?? 'Unbekanntes Konto') : 'Unterhaltung';
 }
 
 /** Teilnehmer außer dem genannten Konto – die Empfänger einer Zustellung. */

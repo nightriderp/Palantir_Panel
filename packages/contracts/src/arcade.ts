@@ -153,6 +153,17 @@ export interface ArcadeLeaderboardEntryDto {
    * Abzeichen jemand gesammelt hat, bleibt seine Sache.
    */
   title: string | null;
+  /**
+   * Zeitstempel des Profilbilds; `null`, wenn das Konto keines hat
+   * (Betreiber-Wunsch 21.09.2026).
+   *
+   * Nicht die fertige Bild-Adresse: Die baut das Frontend aus Konto-Id und
+   * diesem Zeitstempel (`avatarUrl()`), und der Zeitstempel hängt dort an der
+   * Adresse, damit der Browser nach einem neuen Bild nicht das alte aus seinem
+   * Zwischenspeicher zeigt. Das Backend soll nicht anfangen, Adressen des
+   * Frontends zu bauen.
+   */
+  avatarUpdatedAt: string | null;
   bestScore: number;
   /** ISO-8601-Zeitstempel, wann dieser Bestwert erreicht wurde. */
   achievedAt: string;

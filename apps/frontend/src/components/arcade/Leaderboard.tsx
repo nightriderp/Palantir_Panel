@@ -1,7 +1,15 @@
 'use client';
 
 import { type ArcadeLeaderboardDto } from '@palantir/contracts';
-import { Button, EmptyState, Panel, formatDateTime, formatNumber } from '@/components/shared';
+import {
+  Button,
+  EmptyState,
+  Panel,
+  UserLabel,
+  formatDateTime,
+  formatNumber,
+} from '@/components/shared';
+import { avatarUrl } from '@/lib/auth/api';
 
 /**
  * Bestenliste eines Minispiels (Arbeitspaket F8, Lastenheft §3.9 „nutzerbezogen").
@@ -68,20 +76,19 @@ export function Leaderboard({ data, loading, error, onReload }: LeaderboardProps
               <span className="w-6 shrink-0 text-center font-mono text-sm text-ink-soft">
                 {entry.rank}
               </span>
-              <span className="flex-1 truncate text-base text-ink">
-                {entry.displayName}
-                {/*
-                  Der getragene Titel (Betreiber-Wunsch 21.09.2026) – die
-                  einzige Stelle, an der ein Titel fremden Augen begegnet.
-                  Gedämpft gesetzt: Er schmückt den Namen, er ersetzt ihn nicht.
-                */}
-                {entry.title === null ? null : (
-                  <span className="ml-1.5 text-sm text-ink-faint">{entry.title}</span>
-                )}
-                {entry.isCurrentUser ? (
-                  <span className="ml-1 text-sm text-brand-bright">· du</span>
-                ) : null}
-              </span>
+              {/*
+                Bild, Name und Titel als ein Baustein (Betreiber-Wunsch
+                21.09.2026) – dieselbe Darstellung wie im Chat und an den
+                Server-Kacheln. Ohne den gemeinsamen Baustein sähe dieselbe
+                Person an drei Stellen verschieden aus.
+              */}
+              <UserLabel
+                className="flex-1 text-base"
+                avatarSrc={avatarUrl(entry.userId, entry.avatarUpdatedAt)}
+                displayName={entry.displayName}
+                title={entry.title}
+                suffix={entry.isCurrentUser ? '· du' : null}
+              />
               <span
                 className="shrink-0 font-mono text-base text-ink"
                 title={`Erreicht am ${formatDateTime(entry.achievedAt)}`}

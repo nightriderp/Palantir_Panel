@@ -16,6 +16,7 @@ import {
   type AccountRoleSummary,
   type LinkedAuthMethod,
   type SessionDto,
+  titleForAchievement,
 } from '@palantir/contracts';
 import {
   type PermissionActor,
@@ -111,6 +112,12 @@ export function toAccountDto(input: {
     // Nur der Zeitstempel; das Bild selbst liegt hinter `/users/:userId/avatar`
     // und wird vom Browser wie jedes andere Bild geladen.
     avatarUpdatedAt: input.user.avatarUpdatedAt?.toISOString() ?? null,
+    // Aus der gespeicherten Kennung wird hier der Titeltext – der Katalog ist
+    // die eine Stelle dafür (Betreiber-Wunsch 21.09.2026).
+    title:
+      input.user.titleAchievementId === null || input.user.titleAchievementId === undefined
+        ? null
+        : titleForAchievement(input.user.titleAchievementId),
     createdAt: input.user.createdAt.toISOString(),
     permissions: computeGlobalPermissions(input.actor),
   };

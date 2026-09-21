@@ -38,6 +38,8 @@ export {
 export { Spinner, type SpinnerProps } from './primitives/Spinner';
 export { MetricTile, Panel, type MetricTileProps, type PanelProps } from './primitives/Panel';
 export { EmptyState, type EmptyStateProps } from './primitives/EmptyState';
+export { Avatar, type AvatarProps, type AvatarSize } from './primitives/Avatar';
+export { UserLabel, type UserLabelProps } from './primitives/UserLabel';
 
 export { PageSkeleton, Skeleton, type SkeletonProps } from './feedback/Skeleton';
 export {

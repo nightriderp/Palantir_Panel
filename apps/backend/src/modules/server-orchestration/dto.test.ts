@@ -35,6 +35,8 @@ function serverMit(gameType: string): ServerRecord {
     name: 'Alter Server',
     ownerId: OWNER_ID,
     ownerDisplayName: 'Besitzerin',
+    ownerAvatarUpdatedAt: null,
+    ownerTitleAchievementId: null,
     gameType,
     status: 'stopped',
     statusMessage: null,

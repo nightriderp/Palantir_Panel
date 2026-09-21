@@ -25,6 +25,8 @@ function server(overrides: Partial<ServerRecord> = {}): ServerRecord {
     id: 's1',
     ownerId: 'u1',
     ownerDisplayName: 'Ich',
+    ownerAvatarUpdatedAt: null,
+    ownerTitleAchievementId: null,
     hostId: 'n1',
     hostName: 'Homeserver',
     hostStatus: 'online',

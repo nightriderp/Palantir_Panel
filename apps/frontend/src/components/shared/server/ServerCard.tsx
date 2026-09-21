@@ -2,7 +2,9 @@
 
 import { type GameServerDto, type ServerLiveStats } from '@palantir/contracts';
 import { memo } from 'react';
+import { avatarUrl } from '@/lib/auth/api';
 import { Icon } from '../icons/Icon';
+import { Avatar } from '../primitives/Avatar';
 import { Button, IconButton } from '../primitives/Button';
 import { Badge, type Tone } from '../primitives/Badge';
 import { cn } from '../utils/cn';
@@ -406,8 +408,24 @@ function ServerCardIntern({
           beieinander, statt den Kopf der Karte zu verlängern.
         */}
         {!isOwn && server.ownerDisplayName ? (
-          <span className="min-w-0 rounded-md bg-fill px-2.5 py-1.5 text-ink-soft">
-            Besitzer: <span className="text-ink">{server.ownerDisplayName}</span>
+          /*
+            Der Besitzer-Chip trägt jetzt sein Profilbild und seinen Titel
+            (Betreiber-Wunsch 21.09.2026). Das Bild steht **im** Chip und nicht
+            daneben: Der Kopf der Karte ist eine Zeile aus gleichartigen
+            Angaben, und ein Bild davor würde diese Reihe aufbrechen.
+          */
+          <span className="flex min-w-0 items-center gap-1.5 rounded-md bg-fill py-1 pl-1 pr-2.5 text-ink-soft">
+            <Avatar
+              src={avatarUrl(server.ownerId, server.ownerAvatarUpdatedAt)}
+              displayName={server.ownerDisplayName}
+              size="xs"
+            />
+            <span className="min-w-0 truncate text-ink">
+              {server.ownerDisplayName}
+              {server.ownerTitle === null ? null : (
+                <span className="ml-1.5 text-ink-faint">{server.ownerTitle}</span>
+              )}
+            </span>
           </span>
         ) : null}
         {server.hostName ? (
@@ -466,10 +484,25 @@ function ServerCardIntern({
               Admin-Zugriff
             </span>
           ) : (
-            <span className="flex-1 truncate text-xs text-ink-soft">
-              {server.ownerDisplayName
-                ? `${server.ownerDisplayName} · fremder Server`
-                : 'Fremder Server'}
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-ink-soft">
+              {server.ownerDisplayName === null ? (
+                'Fremder Server'
+              ) : (
+                <>
+                  <Avatar
+                    src={avatarUrl(server.ownerId, server.ownerAvatarUpdatedAt)}
+                    displayName={server.ownerDisplayName}
+                    size="xs"
+                  />
+                  <span className="min-w-0 truncate">
+                    {server.ownerDisplayName}
+                    {server.ownerTitle === null ? null : (
+                      <span className="ml-1 text-ink-faint">{server.ownerTitle}</span>
+                    )}
+                    <span className="ml-1 text-ink-faint">· fremder Server</span>
+                  </span>
+                </>
+              )}
             </span>
           )}
           {onMessageOwner ? (

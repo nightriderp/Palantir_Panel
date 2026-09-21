@@ -482,9 +482,9 @@ describeDatenbank('Chat-Repositories gegen PostgreSQL', (kontext) => {
     expect(nachId.get(gast)).toBe(false);
     expect(nachId.get(freigeschaltet)).toBe(true);
 
-    const namen = await directory.displayNames([owner, gast]);
+    const namen = await directory.profiles([owner, gast]);
     expect(namen.size).toBe(2);
-    expect(await directory.displayNames([])).toEqual(new Map());
+    expect(await directory.profiles([])).toEqual(new Map());
   });
 
   it('führt Besitz und Mitgliedschaft ohne Dopplung zusammen', async () => {

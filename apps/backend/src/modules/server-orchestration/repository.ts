@@ -8,6 +8,7 @@
  */
 
 import {
+  type AchievementId,
   GUEST_ROLE_NAME,
   type GameConfigValues,
   type HostNodeStatus,
@@ -37,6 +38,10 @@ export interface ServerRecord {
   readonly id: string;
   readonly ownerId: string;
   readonly ownerDisplayName: string | null;
+  /** Zeitstempel des Profilbilds des Besitzers; `null`, wenn er keines hat. */
+  readonly ownerAvatarUpdatedAt: Date | null;
+  /** Abzeichen, dessen Titel der Besitzer trägt; `null`, wenn er keinen trägt. */
+  readonly ownerTitleAchievementId: AchievementId | null;
   readonly hostId: string;
   readonly hostName: string | null;
   /** Verbindungszustand der Node; `null`, wenn die Node fehlt. */
@@ -375,6 +380,8 @@ function toIso(value: Date | null): string | null {
 type ServerJoinRow = {
   server: typeof gameServers.$inferSelect;
   ownerDisplayName: string | null;
+  ownerAvatarUpdatedAt: Date | null;
+  ownerTitleAchievementId: AchievementId | null;
   hostName: string | null;
   hostStatus: HostNodeStatus | null;
   hostCpuCores: number | null;
@@ -388,6 +395,8 @@ function toRecord(row: ServerJoinRow): ServerRecord {
     id: server.id,
     ownerId: server.ownerId,
     ownerDisplayName: row.ownerDisplayName,
+    ownerAvatarUpdatedAt: row.ownerAvatarUpdatedAt,
+    ownerTitleAchievementId: row.ownerTitleAchievementId,
     hostId: server.hostId,
     hostName: row.hostName,
     hostStatus: row.hostStatus,
@@ -426,6 +435,8 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
   const baseSelect = {
     server: gameServers,
     ownerDisplayName: users.displayName,
+    ownerAvatarUpdatedAt: users.avatarUpdatedAt,
+    ownerTitleAchievementId: users.titleAchievementId,
     hostName: hostNodes.name,
     // Der Zustand der Node kommt aus demselben Join wie ihr Name: Die
     // Detailansicht soll sagen koennen, ob Messwerte fehlen, weil noch nichts
