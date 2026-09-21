@@ -200,6 +200,27 @@ const config: Config = {
        * selbst sind unverändert.
        */
       fontFamily: {
+        /**
+         * Überschriften – die Schrift, mit der ein Theme spricht.
+         *
+         * Drei Stufen im Rückfall, und jede hat einen Grund: Das Theme nennt
+         * eine Familie (`--palantir-font-display`, gesetzt in
+         * `lib/theme/palette.ts`); nennt es keine oder ist die Familie in
+         * dieser Instanz nicht vorhanden, gilt die Schrift des Betreibers
+         * (`--palantir-font-ui`); fehlt auch dessen Stylesheet, bleibt der
+         * Stack darunter.
+         *
+         * **Nur Titel.** Die Fließtextschrift gehört dem Betreiber
+         * (Arbeitspaket S-3) – ein Theme legt seine Schrift auf das, was
+         * ohnehin groß ist, und rührt den Lesetext nicht an.
+         */
+        display: [
+          'var(--palantir-font-display, var(--palantir-font-ui, "Space Grotesk"))',
+          'system-ui',
+          '-apple-system',
+          '"Segoe UI"',
+          'sans-serif',
+        ],
         sans: [
           'var(--palantir-font-ui, "Space Grotesk")',
           'system-ui',

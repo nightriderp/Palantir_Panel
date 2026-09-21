@@ -1,6 +1,6 @@
 # Mitgelieferte Schriften
 
-Diese sechs Schriften werden mit Palantir ausgeliefert. Sie liegen hier als
+Diese dreizehn Schriften werden mit Palantir ausgeliefert. Sie liegen hier als
 `woff2`, jeweils auf die lateinische Zeichenmenge beschränkt (`U+0000–00FF`,
 deutsche Umlaute und ß eingeschlossen).
 
@@ -20,6 +20,22 @@ Zugang zum offenen Internet sieht aus wie eine mit.
 | `bundled-audiowide`      | `audiowide.woff2`      | Audiowide      | 400                              | SIL OFL 1.1 | Brian J. Bonislawsky, Astigmatic   |
 | `bundled-playpen-sans`   | `playpen-sans.woff2`   | Playpen Sans   | variabel, 100–800                | SIL OFL 1.1 | The Playpen Sans Project Authors   |
 | `bundled-henny-penny`    | `henny-penny.woff2`    | Henny Penny    | 400                              | SIL OFL 1.1 | BrownFox                           |
+
+### Anzeigeschriften der Themes
+
+Diese sieben tragen die Überschriften der Themes (siehe
+`apps/frontend/src/lib/theme/palette.ts`). Wählbar sind sie wie jede andere –
+für Lesetext taugt allerdings keine von ihnen.
+
+| Kennung                      | Datei                      | Familie            | Schnitte          | Lizenz      | Urheber                              |
+| ---------------------------- | -------------------------- | ------------------ | ----------------- | ----------- | ------------------------------------ |
+| `bundled-cinzel`             | `cinzel.woff2`             | Cinzel             | variabel, 400–900 | SIL OFL 1.1 | The Cinzel Project Authors           |
+| `bundled-playfair-display`   | `playfair-display.woff2`   | Playfair Display   | variabel, 400–900 | SIL OFL 1.1 | The Playfair Display Project Authors |
+| `bundled-cormorant-garamond` | `cormorant-garamond.woff2` | Cormorant Garamond | variabel, 300–700 | SIL OFL 1.1 | The Cormorant Project Authors        |
+| `bundled-bangers`            | `bangers.woff2`            | Bangers            | 400               | SIL OFL 1.1 | The Bangers Project Authors          |
+| `bundled-russo-one`          | `russo-one.woff2`          | Russo One          | 400               | SIL OFL 1.1 | Jovanny Lemonad                      |
+| `bundled-racing-sans-one`    | `racing-sans-one.woff2`    | Racing Sans One    | 400               | SIL OFL 1.1 | Pablo Impallari                      |
+| `bundled-metamorphous`       | `metamorphous.woff2`       | Metamorphous       | 400               | SIL OFL 1.1 | Sorkin Type Co                       |
 
 Die vollständigen Lizenztexte liegen unter `lizenzen/`. Beide Lizenzen erlauben
 das Mitliefern und Weitergeben ausdrücklich; beide verlangen, dass der
@@ -64,3 +80,10 @@ Beides ist kein Verlust: Wer eine solche Schrift auf **seiner eigenen** Instanz
 benutzen will, lädt sie in der Schriftverwaltung hoch. Genau dafür gibt es den
 Upload. Was der Betreiber für seine Instanz lizenziert, entscheidet er selbst;
 was Palantir an alle ausliefert, muss dafür lizenziert sein.
+
+Dieselbe Überlegung trägt die Anzeigeschriften der Themes: Die Titelschriften
+der Filme, auf die sie anspielen, sind lizenzpflichtig oder als Logo geschützt.
+Mitgeliefert wird deshalb, was frei lizenziert ist und dieselbe Anmutung hat –
+römische Kapitalis statt einer Elbenschrift, eine Comic-Versalschrift statt
+eines Heftlogos. Ein Theme spielt auf eine Stimmung an, es zitiert keine
+Marke.
