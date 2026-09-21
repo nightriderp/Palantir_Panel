@@ -311,7 +311,17 @@ function befehlAusfuehren(befehl, serverId, payload) {
       });
 
     case 'EXEC_CONSOLE': {
-      const eingabe = payload && typeof payload.command === 'string' ? payload.command : '';
+      /*
+       * `command` ist laut Vertrag eine **Liste** von Argumenten, kein String
+       * (`ExecConsoleCommandPayload`). Als String gelesen fiel jeder Befehl
+       * durch und die Konsole antwortete im Video mit „Unknown or incomplete
+       * command" – auf ein schlichtes `list`.
+       */
+      const eingabe = Array.isArray(payload?.command)
+        ? payload.command.join(' ')
+        : typeof payload?.command === 'string'
+          ? payload.command
+          : '';
       return ok({ exitCode: 0, stdout: konsolenAntwort(serverId, eingabe), stderr: '' });
     }
 
@@ -445,6 +455,7 @@ const offeneAusgabe = new Map();
 function konsolenAntwort(serverId, eingabe) {
   const namen = spieler.get(serverId)?.namen ?? [];
   const befehl = eingabe.trim().replace(/^\//, '');
+
   if (befehl === 'list') {
     return `There are ${namen.length} of a max of 20 players online: ${namen.join(', ')}`;
   }
@@ -454,10 +465,20 @@ function konsolenAntwort(serverId, eingabe) {
   if (befehl === 'tps') {
     return 'TPS from last 1m, 5m, 15m: 20.0, 20.0, 19.98';
   }
-  if (befehl.startsWith('whitelist ')) {
-    return `Added ${befehl.split(' ')[2] ?? 'Spieler'} to the whitelist`;
+  if (befehl === 'save-all' || befehl === 'save-all flush') {
+    return 'Saved the game';
   }
-  return `Unknown or incomplete command, see below for error`;
+  if (befehl.startsWith('whitelist')) {
+    const teile = befehl.split(/\s+/);
+    if (teile[1] === 'list')
+      return `There are ${namen.length} whitelisted players: ${namen.join(', ')}`;
+    if (teile[1] === 'add') return `Added ${teile[2] ?? 'Spieler'} to the whitelist`;
+    return 'Whitelist is turned on';
+  }
+  if (befehl === 'stop') {
+    return 'Stopping the server';
+  }
+  return 'Unknown or incomplete command, see below for error';
 }
 
 function dateiliste(pfad) {

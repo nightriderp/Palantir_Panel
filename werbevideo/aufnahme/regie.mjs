@@ -56,6 +56,19 @@ export class Regie {
     this.bilderOrdner = null;
     this.geschrieben = [];
 
+    /**
+     * Bewegungen, die im Hintergrund weiterlaufen, während etwas anderes die
+     * Einzelbilder erzeugt – etwa eine langsame Kamerafahrt unter einer
+     * Titelkarte.
+     *
+     * Der erste Anlauf ließ dafür zwei Aufnahmeschleifen gleichzeitig laufen.
+     * Beide zählten dieselbe Bildnummer hoch und fotografierten übereinander;
+     * im fertigen Clip fehlten Bilder, und das Kodieren brach an der ersten
+     * Lücke ab. Es gibt deshalb genau **eine** Schleife, und alles Bewegte
+     * hängt sich hier ein.
+     */
+    this.hintergrund = [];
+
     this.zustand = {
       kamera: { zoom: 1, x: this.breite / 2, y: this.hoehe / 2 },
       blende: 1,
@@ -91,9 +104,21 @@ export class Regie {
   // Uhr
   // -------------------------------------------------------------------------
 
-  /** Die Seitenzeit anhalten – ab hier bewegt sich nur noch, was wir schalten. */
-  async #uhrAnhalten() {
-    await this.cdp.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
+  /**
+   * Die Seitenzeit anhalten – ab hier bewegt sich nur noch, was wir schalten.
+   *
+   * Mit `gleichstellen` wird sie zugleich auf die echte Uhr gesetzt. Das ist
+   * nötig, weil die virtuelle Uhr langsamer läuft als die Wanduhr: Jedes Bild
+   * stellt sie um 33 ms weiter, das Aufnehmen eines Bildes dauert aber das
+   * Doppelte. Über eine ganze Aufnahme summiert sich das zu Minuten, und das
+   * Panel rechnet seine Zeitangaben gegen diese Uhr – im Bild stand dann
+   * „seit 3:21 min" an einem Server, der eben erst gestartet war.
+   */
+  async #uhrAnhalten({ gleichstellen = false } = {}) {
+    await this.cdp.send('Emulation.setVirtualTimePolicy', {
+      policy: 'pause',
+      ...(gleichstellen ? { initialVirtualTime: Date.now() / 1000 } : {}),
+    });
   }
 
   /** Die Seitenzeit um `ms` weiterstellen und warten, bis die Seite fertig ist. */
@@ -158,12 +183,23 @@ export class Regie {
     this.bilderOrdner = path.join(this.ziel, '.bilder', name);
     fs.rmSync(this.bilderOrdner, { recursive: true, force: true });
     fs.mkdirSync(this.bilderOrdner, { recursive: true });
-    await this.#uhrAnhalten();
+    await this.#uhrAnhalten({ gleichstellen: true });
     process.stdout.write(`\nSzene „${name}" `);
+  }
+
+  /** Hintergrund-Bewegungen um ein Bild weiterstellen. */
+  #hintergrundWeiter() {
+    for (const bewegung of this.hintergrund) {
+      bewegung.verstrichen += BILDDAUER;
+      const t = Math.min(1, bewegung.verstrichen / bewegung.dauer);
+      bewegung.anwenden(bewegung.kurve(t));
+    }
+    this.hintergrund = this.hintergrund.filter((b) => b.verstrichen < b.dauer);
   }
 
   /** Ein Einzelbild: Zustand setzen, Uhr ein Bild weiter, fotografieren. */
   async #bild() {
+    this.#hintergrundWeiter();
     await this.seite.evaluate((z) => window.__regie?.setze(z), this.zustand);
     await this.#uhrWeiter(BILDDAUER);
     const datei = path.join(this.bilderOrdner, String(this.bildNummer).padStart(6, '0') + '.jpeg');
@@ -195,19 +231,38 @@ export class Regie {
    * (`x`/`y`) in Seitenkoordinaten, dazu ein Zoomfaktor.
    */
   async kamera({ auf = null, zoom = 1, dauer = 1200, kurve = auslaufend, rand = 40 } = {}) {
+    await this.kameraFahrtStarten({ auf, zoom, dauer, kurve, rand });
+    await this.halten(dauer);
+  }
+
+  /**
+   * Kamerafahrt anstoßen, ohne selbst Bilder zu erzeugen.
+   *
+   * Für Fahrten, die unter etwas anderem weiterlaufen sollen – eine langsame
+   * Rückfahrt unter der Titelkarte etwa. Die Bilder erzeugt dann das, was
+   * danach kommt.
+   */
+  async kameraFahrtStarten({
+    auf = null,
+    zoom = 1,
+    dauer = 1200,
+    kurve = auslaufend,
+    rand = 40,
+  } = {}) {
     const ziel = await this.#kameraZiel({ auf, zoom, rand });
     const von = { ...this.zustand.kamera };
-    await this.#ueber(
+    this.hintergrund.push({
       dauer,
-      (t) => {
+      verstrichen: 0,
+      kurve,
+      anwenden: (t) => {
         this.zustand.kamera = {
           zoom: mische(von.zoom, ziel.zoom, t),
           x: mische(von.x, ziel.x, t),
           y: mische(von.y, ziel.y, t),
         };
       },
-      kurve,
-    );
+    });
   }
 
   /** Kamera ohne Fahrt setzen (für den ersten Bildausschnitt einer Szene). */
@@ -280,6 +335,68 @@ export class Regie {
     });
   }
 
+  /**
+   * Weich zu einer Stelle rollen.
+   *
+   * Gerollt wird der **nächste rollbare Vorfahre**, nicht das Fenster: Das
+   * Panel hält seinen Inhalt in einem eigenen Bereich, das Fenster selbst
+   * rollt nie. Ein `window.scrollTo` bewegte deshalb gar nichts, und ein Knopf
+   * unterhalb des Bereichs blieb unerreichbar.
+   *
+   * Nur bei Zoom 1 sinnvoll: Unter einer skalierten Seite verschieben sich
+   * Rollweite und Bildausschnitt gegeneinander.
+   */
+  async scrolleZu(ziel, { dauer = 900, abstand = 200 } = {}) {
+    const locator = typeof ziel === 'string' ? this.seite.locator(ziel).first() : ziel;
+    await locator.waitFor({ state: 'attached', timeout: 15_000 });
+
+    const plan = await locator.evaluate((element, luft) => {
+      function rollbarerVorfahre(knoten) {
+        let lauf = knoten.parentElement;
+        while (lauf) {
+          const stil = getComputedStyle(lauf);
+          const rollbar = /(auto|scroll|overlay)/.test(stil.overflowY);
+          if (rollbar && lauf.scrollHeight > lauf.clientHeight + 4) return lauf;
+          lauf = lauf.parentElement;
+        }
+        return document.scrollingElement ?? document.documentElement;
+      }
+
+      const behaelter = rollbarerVorfahre(element);
+      const eigen = behaelter.getBoundingClientRect
+        ? behaelter.getBoundingClientRect()
+        : { top: 0 };
+      const oben = behaelter === document.scrollingElement ? 0 : eigen.top;
+      const r = element.getBoundingClientRect();
+      const ziel = Math.max(
+        0,
+        Math.min(
+          behaelter.scrollTop + (r.top - oben) - luft,
+          behaelter.scrollHeight - behaelter.clientHeight,
+        ),
+      );
+      behaelter.dataset.regieRollt = '1';
+      return { von: behaelter.scrollTop, nach: ziel };
+    }, abstand);
+
+    if (Math.abs(plan.nach - plan.von) < 4) return;
+
+    await this.#ueber(dauer, async (t) => {
+      await this.seite.evaluate(
+        (y) => {
+          const behaelter = document.querySelector('[data-regie-rollt="1"]');
+          if (behaelter) behaelter.scrollTop = y;
+        },
+        mische(plan.von, plan.nach, t),
+      );
+    });
+
+    await this.seite.evaluate(() => {
+      const behaelter = document.querySelector('[data-regie-rollt="1"]');
+      if (behaelter) delete behaelter.dataset.regieRollt;
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Blenden, Titel, Untertitel
   // -------------------------------------------------------------------------
@@ -299,14 +416,19 @@ export class Regie {
   }
 
   /** Titelkarte: kommt, steht, geht. */
-  async titelkarte(zeile, unterzeile = '', { ein = 600, stand = 1600, aus = 500 } = {}) {
-    this.zustand.titel = { zeile, unterzeile, deckkraft: 0 };
+  async titelkarte(
+    zeile,
+    unterzeile = '',
+    { ein = 600, stand = 1600, aus = 500, deckend = false } = {},
+  ) {
+    const karte = (deckkraft) => ({ zeile, unterzeile, deckkraft, deckend });
+    this.zustand.titel = karte(0);
     await this.#ueber(ein, (t) => {
-      this.zustand.titel = { zeile, unterzeile, deckkraft: t };
+      this.zustand.titel = karte(t);
     });
     await this.halten(stand);
     await this.#ueber(aus, (t) => {
-      this.zustand.titel = { zeile, unterzeile, deckkraft: 1 - t };
+      this.zustand.titel = karte(1 - t);
     });
     this.zustand.titel = null;
   }
@@ -407,19 +529,55 @@ export class Regie {
     if (nach > 0) await this.halten(nach);
   }
 
-  /** In ein Feld tippen – Zeichen für Zeichen, mit ungleichmäßigem Takt. */
+  /**
+   * In ein Feld tippen – Zeichen für Zeichen, mit ungleichmäßigem Takt.
+   *
+   * Wird das Feld nicht gefunden, bricht die Aufnahme ab. Hier stand vorher
+   * ein stiller Rückfall („dann eben ohne Klick weitertippen"): Der
+   * Benutzername landete im Nichts, das Formular meldete „Bitte gib deinen
+   * Benutzernamen ein", und im fertigen Clip sah man eine fehlgeschlagene
+   * Anmeldung. Ein Abbruch kostet einen Lauf, ein stiller Fehlgriff kostet
+   * einen Schnitt.
+   */
   async tippe(wahl, text, { proZeichen = 62 } = {}) {
-    const r = await this.rechteck(wahl).catch(() => null);
-    if (r !== null) {
-      await this.zeigerZu(r.x + Math.min(r.breite - 30, 40), r.y + r.hoehe / 2, 450);
-      await this.seite.mouse.click(r.x + Math.min(r.breite - 30, 40), r.y + r.hoehe / 2);
-    }
+    const r = await this.rechteck(wahl);
+    const x = r.x + Math.min(r.breite - 30, 40);
+    const y = r.y + r.hoehe / 2;
+    await this.zeigerZu(x, y, 450);
+    await this.seite.mouse.click(x, y);
     for (const zeichen of text) {
       await this.seite.keyboard.type(zeichen);
       // Menschen tippen nicht im Metronom.
       const takt = proZeichen * (0.62 + Math.random() * 0.85);
       await this.#ueber(takt, () => {}, linear);
     }
+  }
+
+  /**
+   * Einen Eintrag aus einem Auswahlfeld wählen.
+   *
+   * Der Zeiger fährt hin und klickt sichtbar; die Auswahl selbst setzt
+   * Playwright. Das aufgeklappte Menü eines `<select>` zeichnet das
+   * Betriebssystem und nicht die Seite – auf einem Bildschirmfoto wäre es
+   * ohnehin nicht zu sehen.
+   */
+  async waehle(ziel, wert, { hin = 560, nach = 500 } = {}) {
+    const r = await this.rechteck(ziel);
+    const x = r.x + r.breite / 2;
+    const y = r.y + r.hoehe / 2;
+    await this.zeigerZu(x, y, hin);
+    await this.#ueber(
+      360,
+      (t) => {
+        this.zustand.ring = { x, y, radius: 12 + t * 40, deckkraft: 1 - t };
+      },
+      linear,
+    );
+    this.zustand.ring = null;
+
+    const locator = typeof ziel === 'string' ? this.seite.locator(ziel).first() : ziel;
+    await locator.selectOption(wert);
+    if (nach > 0) await this.halten(nach);
   }
 
   // -------------------------------------------------------------------------
@@ -449,12 +607,30 @@ export class Regie {
   async anmelden(benutzer, passwort) {
     await this.imVorlauf(async () => {
       await this.seite.goto(`${this.basis}/login`, { waitUntil: 'domcontentloaded' });
+      await this.seite.waitForTimeout(600);
+      // Wer schon angemeldet ist, sieht den Anmeldebildschirm nie: Das Panel
+      // schickt ihn weiter zur Übersicht. Dann ist hier nichts zu tun.
+      if (/\/servers/.test(this.seite.url())) return;
       await this.seite.getByLabel('Benutzername').fill(benutzer);
       await this.seite.getByLabel('Passwort', { exact: true }).fill(passwort);
       await this.seite.getByText('Sicherheitsprüfung bestanden.').waitFor({ timeout: 40_000 });
       await this.seite.getByRole('button', { name: 'Anmelden' }).click();
       await this.seite.waitForURL(/\/servers/, { timeout: 40_000 });
       await this.seite.waitForTimeout(2500);
+    });
+  }
+
+  /**
+   * Sitzung verwerfen.
+   *
+   * Der Anmeldebildschirm ist nur zu sehen, solange niemand angemeldet ist –
+   * sonst schickt das Panel jeden Aufruf von `/login` weiter zur Übersicht.
+   */
+  async abmelden() {
+    await this.imVorlauf(async () => {
+      await this.ctx.clearCookies();
+      await this.seite.goto(`${this.basis}/login`, { waitUntil: 'domcontentloaded' });
+      await this.seite.waitForTimeout(800);
     });
   }
 
@@ -474,6 +650,21 @@ export class Regie {
   async schnitt() {
     const name = this.szenenName;
     const datei = path.join(this.ziel, `${name}.mp4`);
+
+    /*
+     * Lückenlos? `ffmpeg` hört bei der ersten fehlenden Nummer einfach auf und
+     * schreibt einen kürzeren Clip – mit einer Meldung, die im Rest der
+     * Ausgabe untergeht. Ein abgeschnittener Clip fällt erst im Schnitt auf,
+     * da ist die Bühne längst weitergelaufen.
+     */
+    const vorhanden = fs.readdirSync(this.bilderOrdner).filter((d) => d.endsWith('.jpeg')).length;
+    if (vorhanden !== this.bildNummer) {
+      throw new Error(
+        `Szene „${name}": ${String(this.bildNummer)} Bilder aufgenommen, aber ${String(vorhanden)} auf der Platte. ` +
+          'Läuft eine Bewegung neben der Aufnahmeschleife? Hintergrund-Fahrten gehören in kameraFahrtStarten().',
+      );
+    }
+
     process.stdout.write(` ${this.bildNummer} Bilder → kodiere `);
 
     await neuerLauf(this.ffmpeg, [

@@ -51,7 +51,7 @@ function aufbau() {
       #${KENNUNG} .titel {
         position: absolute; inset: 0; display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 18px;
-        background: radial-gradient(120% 90% at 50% 45%, rgba(12,14,24,.86), rgba(5,6,10,.97));
+        background: radial-gradient(120% 90% at 50% 45%, rgba(10,12,22,.68), rgba(5,6,10,.92));
       }
       #${KENNUNG} .titel .strich {
         width: 74px; height: 4px; border-radius: 2px;
@@ -110,7 +110,13 @@ function aufbau() {
 
     (document.head ?? document.documentElement).appendChild(stil);
     document.documentElement.appendChild(schicht);
-    document.documentElement.style.overflow = 'hidden';
+    /*
+     * Bewusst **kein** `overflow: hidden` auf dem Wurzelelement. Hier stand es
+     * einmal, damit ein Zoom keine Rollbalken erzeugt – und legte damit lange
+     * Formulare lahm: Der Knopf unter dem sichtbaren Bereich war nicht mehr
+     * erreichbar, die Aufnahme lief in den Zeitüberlauf. Die Rollbalken hält
+     * Chromium ohnehin per `--hide-scrollbars` aus dem Bild.
+     */
     document.body.style.transformOrigin = '0 0';
     document.body.style.willChange = 'transform';
     return schicht;
@@ -136,6 +142,11 @@ function aufbau() {
     } else {
       titel.style.display = 'flex';
       titel.style.opacity = String(zustand.titel.deckkraft ?? 1);
+      // Deckend für Tafeln, die für sich stehen (etwa der Platzhalter für
+      // eigenes Spielmaterial): Dahinter soll nichts durchscheinen.
+      titel.style.background = zustand.titel.deckend
+        ? '#05060a'
+        : 'radial-gradient(120% 90% at 50% 45%, rgba(10,12,22,.68), rgba(5,6,10,.92))';
       const h = titel.querySelector('h1');
       const p = titel.querySelector('p');
       h.textContent = zustand.titel.zeile ?? '';

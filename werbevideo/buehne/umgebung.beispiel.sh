@@ -55,3 +55,8 @@ export HEALTH_CHECK_HOST=127.0.0.1
 # Spielports, auf denen die Demo-Node Abfragen beantwortet (Router-Port für
 # Minecraft; weitere durch Komma getrennt).
 export DEMO_SPIELPORTS=25565
+
+# Damit die Konsolenzeilen des Spielservers dieselbe Uhr tragen wie das Panel:
+# Ohne das stand im Video links die Berliner Zeit des Browsers und rechts in
+# derselben Zeile die UTC-Zeit der Demo-Node - zwei Uhren nebeneinander.
+export TZ=Europe/Berlin

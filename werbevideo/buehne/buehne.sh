@@ -56,7 +56,16 @@ case "${1:-start}" in
       starte frontend "$wurzel/apps/frontend" env NODE_ENV=production node "$next_cli" start -p 3000 -H 127.0.0.1
     else
       echo "Kein Produktionsbau vorhanden – starte den Entwicklungsbetrieb. Für Aufnahmen: $0 bauen"
+      # Für die Aufnahme läuft das Frontend als **Produktionsbau**: Der
+    # Entwicklungsbetrieb blendet ein Abzeichen ein, hält eine eigene
+    # Aktualisierungsverbindung offen und baut jede Seite beim ersten Aufruf
+    # neu - im Video sieht man das an hängenden Übergängen.
+    if [ -f "$wurzel/apps/frontend/.next/BUILD_ID" ]; then
+      starte frontend "$wurzel/apps/frontend" env NODE_ENV=production node "$next_cli" start -p 3000 -H 127.0.0.1
+    else
+      echo "Kein Produktionsbau vorhanden - starte den Entwicklungsbetrieb. Für Aufnahmen: $0 bauen"
       starte frontend "$wurzel/apps/frontend" node "$next_cli" dev -p 3000 -H 127.0.0.1
+    fi
     fi
     warte_auf "http://127.0.0.1:3000/login" Frontend 90
     ;;
@@ -77,6 +86,12 @@ case "${1:-start}" in
   bauen)
     # `NODE_ENV` darf hier nicht auf `development` stehen: Next.js baut sonst
     # gegen die Entwicklungsfassung von React und bricht beim Vorrendern ab.
+    ( cd "$wurzel/apps/frontend" && env -u NODE_ENV node "$next_cli" build )
+    ;;
+  bauen)
+    # `NODE_ENV` darf hier nicht auf `development` stehen: Next.js baut sonst
+    # gegen die Entwicklungsfassung von React und bricht beim Vorrendern ab
+    # (`/_global-error`: "Cannot read properties of null (reading 'useContext')").
     ( cd "$wurzel/apps/frontend" && env -u NODE_ENV node "$next_cli" build )
     ;;
   status)
