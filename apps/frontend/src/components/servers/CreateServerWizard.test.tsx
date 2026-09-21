@@ -169,7 +169,7 @@ describe('CreateServerWizard – Spielauswahl mit Varianten', () => {
 });
 
 /**
- * Die Version steht auf jeder Kachel – auch auf einer Gruppe (Fundpunkt 329).
+ * Die Version steht auf jeder Kachel – auch auf einer Gruppe (Fundpunkt 330).
  *
  * Zwischen dem 20. und dem 21.09.2026 war sie dort verschwunden: Die
  * Gruppenkachel zeigte nur die Zahl der Varianten. Der Ende-zu-Ende-Test hielt

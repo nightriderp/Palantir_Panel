@@ -151,7 +151,7 @@ function GameTile({
    * („In der Auswahl trägt jede Kachel die angebotene Fassung"). Zwischen dem
    * 20. und dem 21.09.2026 war sie auf Gruppenkacheln verschwunden: Dort stand
    * nur die Zahl der Varianten. Aufgefallen ist es erst, als Terraria zur
-   * Gruppe wurde – bei Minecraft war es seit v1.85.0 still so (Fundpunkt 329).
+   * Gruppe wurde – bei Minecraft war es seit v1.85.0 still so (Fundpunkt 330).
    *
    * Davor steht, was die Kachel sonst nicht zeigen würde: die Zahl der
    * Varianten, und sobald eine gewählt ist, deren Name. Sonst sähe man der
