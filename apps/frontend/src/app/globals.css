@@ -49,32 +49,6 @@
     @apply outline outline-2 outline-offset-1 outline-brand;
   }
 
-  /**
-   * Überschriften tragen die Anzeigeschrift des Themes.
-   *
-   * Als eine Regel hier und nicht als Utility an jeder Überschrift: Dass ein
-   * Titel die Schrift des Themes trägt, ist eine Entscheidung über die ganze
-   * Oberfläche und keine über einzelne Bausteine – verteilt auf dreißig
-   * Komponenten wäre sie die erste, die jemand beim nächsten Titel vergisst.
-   *
-   * `h1` und `h2` genügen: Das sind Seitentitel und Kartenüberschriften, also
-   * das, was ohnehin groß gesetzt ist. Kleinere Überschriften stehen bei 11–13px
-   * und wären in einer Schmuckschrift nicht mehr zu lesen.
-   *
-   * ⚠️ `legend` steht bewusst **nicht** dabei, obwohl eine davon wie eine
-   * Kartenüberschrift aussieht (`AppearancePanel`). Die übrigen sind winzige
-   * Formularbeschriftungen – in `RolesView` eine Versalzeile bei 10px, die in
-   * einer Zierschrift verschwände. Die eine, die eine Überschrift ist, trägt
-   * `font-display` deshalb selbst.
-   *
-   * Ohne Theme-Wahl löst `font-display` auf die Schrift des Betreibers auf –
-   * diese Regel ändert dann nichts.
-   */
-  h1,
-  h2 {
-    @apply font-display;
-  }
-
   a {
     @apply text-brand;
   }

@@ -94,3 +94,48 @@ describe('Farbvariablen: Palette und Stylesheets passen zusammen', () => {
     }
   });
 });
+
+/**
+ * Die zweite Klammer: Themeschrift und Schriftkatalog.
+ *
+ * Ein Theme nennt seine Schrift als Familiennamen; die Datei dazu liegt im
+ * Katalog des Backends. Läuft beides auseinander – ein Tippfehler, eine
+ * umbenannte Familie, ein entfernter Eintrag –, wird nichts rot: Es entsteht
+ * einfach keine `@font-face`-Übereinstimmung, und die Oberfläche steht in der
+ * Schrift des Betreibers. Das sieht aus wie „dieses Theme bringt eben keine
+ * Schrift mit" – ein gültiger Zustand (Standard und Tageslicht sind so), den
+ * niemand als Fehler liest. Genau deshalb steht die Prüfung hier.
+ *
+ * Geprüft wird gegen die Katalogdatei selbst statt gegen eine hier gepflegte
+ * Liste: Eine Kopie des Katalogs wäre die dritte Stelle, die auseinanderlaufen
+ * kann. Der Katalog liegt im Backend, weil dort die Dateien liegen (siehe
+ * `apps/backend/src/modules/fonts/bundled.ts`); gelesen wird er als **Text**,
+ * nicht importiert – das Frontend hängt nicht vom Backend ab, und das soll
+ * diese Prüfung nicht ändern.
+ *
+ * ⚠️ Der umgekehrte Fall ist **kein** Fehler: Ein Katalogeintrag, den kein
+ * Theme nennt, ist eine Schrift, die der Betreiber wählen kann. Der Katalog
+ * kennt keine zwei Klassen von Schriften.
+ */
+describe('Schriften der Themes', () => {
+  const katalog = AUS_DATEI('../../../../backend/src/modules/fonts/bundled.ts');
+
+  /** Jeder Familienname, den die Katalogdatei führt. */
+  const familien = new Set(
+    [...katalog.matchAll(/family: '([^']+)',/g)].map(([, family]) => family as string),
+  );
+
+  it('liest den Katalog überhaupt - sonst ginge alles Weitere leer durch', () => {
+    // Ein Muster, das nichts mehr trifft, ließe jede Prüfung unten bestehen.
+    expect(familien.size).toBeGreaterThanOrEqual(13);
+    expect(familien.has('Space Grotesk')).toBe(true);
+  });
+
+  it.each(THEMES.map((thema) => [thema.id, thema.schrift] as const))(
+    'Theme „%s" nennt eine Schrift, die der Katalog kennt',
+    (_id, schrift) => {
+      if (schrift === null) return;
+      expect([...familien], `Familie „${schrift}"`).toContain(schrift);
+    },
+  );
+});

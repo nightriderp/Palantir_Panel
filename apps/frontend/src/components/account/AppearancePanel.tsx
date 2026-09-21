@@ -32,13 +32,7 @@ export function AppearancePanel({ aktiv }: { aktiv: string }) {
   return (
     <Panel>
       <fieldset>
-        {/*
-          `font-display` ausdrücklich: Die Regel in `globals.css` fasst `h1`
-          und `h2`, und dies ist eine `legend` – sie sieht aus wie eine
-          Kartenüberschrift, ist aber keine, weil die Auswahl darunter ein
-          Formularfeld ist.
-        */}
-        <legend className="font-display text-xl font-semibold text-ink">Erscheinungsbild</legend>
+        <legend className="text-xl font-semibold text-ink">Erscheinungsbild</legend>
         <p className="mt-0.5 text-sm text-ink-soft">
           Gilt für dieses Gerät und wirkt sofort. Die Wahl ändert nur Farben – wo etwas steht und
           was es bedeutet, bleibt gleich.

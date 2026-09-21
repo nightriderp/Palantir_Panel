@@ -27,14 +27,7 @@ export function EmptyState({ title, description, icon, action, className }: Empt
       )}
     >
       {icon ? <Icon name={icon} size={26} className="mx-auto mb-3.5 text-ink-faint" /> : null}
-      {/*
-        Der Titel trägt die Anzeigeschrift des Themes wie eine Überschrift –
-        er ist keine (`div`), steht aber an derselben Stelle und trägt in den
-        Leerzuständen den Spruch des Themes (`lib/theme/sprueche.ts`). Ihn
-        hier auszulassen hieße, den einen Satz neutral zu setzen, der am
-        meisten vom Theme hat.
-      */}
-      <div className="font-display text-lg font-semibold">{title}</div>
+      <div className="text-lg font-semibold">{title}</div>
       {description ? (
         <p className="mx-auto mt-1.5 max-w-md text-base text-ink-muted">{description}</p>
       ) : null}

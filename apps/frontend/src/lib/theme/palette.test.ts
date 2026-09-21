@@ -83,7 +83,7 @@ describe('Kennungen der Themes', () => {
   });
 });
 
-describe('Anzeigeschrift der Themes', () => {
+describe('Schrift der Themes', () => {
   /**
    * Der Familienname steht **ohne Anführungszeichen** im Stylesheet.
    *
@@ -93,7 +93,7 @@ describe('Anzeigeschrift der Themes', () => {
    * muss (siehe den Test weiter unten). Ein Name mit Ziffer, Komma oder
    * Bindestrich bräuchte Anführungszeichen – und fiele damit still aus.
    */
-  it.each(THEMES.map((thema) => [thema.id, thema.anzeigeSchrift] as const))(
+  it.each(THEMES.map((thema) => [thema.id, thema.schrift] as const))(
     'Theme „%s" nennt einen Namen, der ohne Anführungszeichen gültig ist',
     (_id, schrift) => {
       if (schrift === null) return;
@@ -105,11 +105,12 @@ describe('Anzeigeschrift der Themes', () => {
    * Die Familien kommen aus dem Katalog der mitgelieferten Schriften
    * (`apps/backend/src/modules/fonts/bundled.ts`) – dort liegen die Dateien.
    * Geprüft wird hier nur die Schreibweise: Fehlt eine Familie in der Instanz,
-   * fällt die Überschrift auf die Schrift des Betreibers zurück, und das ist
-   * ein gewollter Zustand, kein Fehler.
+   * fällt die Oberfläche auf die Schrift des Betreibers zurück, und das ist
+   * ein gewollter Zustand, kein Fehler. Dass der Name einen Katalogeintrag
+   * trifft, prüft `variablen.test.ts` gegen die Katalogdatei.
    */
   it('lässt dem Betreiber die Standard-Themes', () => {
-    const ohneEigene = THEMES.filter((thema) => thema.anzeigeSchrift === null).map((t) => t.id);
+    const ohneEigene = THEMES.filter((thema) => thema.schrift === null).map((t) => t.id);
     expect(ohneEigene).toEqual(['standard', 'tageslicht']);
   });
 });
@@ -197,18 +198,18 @@ describe('themesCss', () => {
    *
    * ⚠️ Eine gesetzte, aber leere Variable wäre nicht dasselbe wie eine
    * fehlende: `var(--x, ersatz)` greift den Ersatz nur, wenn die Variable
-   * **gar nicht** gesetzt ist. Ein leeres `--palantir-font-display:` ließe die
-   * Überschriften ohne Schriftangabe zurück.
+   * **gar nicht** gesetzt ist. Ein leeres `--palantir-font-theme:` ließe die
+   * ganze Oberfläche ohne Schriftangabe zurück.
    */
-  it('setzt die Anzeigeschrift nur dort, wo ein Theme eine nennt', () => {
+  it('setzt die Schrift nur dort, wo ein Theme eine nennt', () => {
     const bloecke = css.split('\n');
 
     for (const [i, thema] of THEMES.entries()) {
       const block = bloecke[i] ?? '';
-      if (thema.anzeigeSchrift === null) {
-        expect(block, `${thema.id} darf keine setzen`).not.toContain('--palantir-font-display');
+      if (thema.schrift === null) {
+        expect(block, `${thema.id} darf keine setzen`).not.toContain('--palantir-font-theme');
       } else {
-        expect(block, thema.id).toContain(`--palantir-font-display:${thema.anzeigeSchrift}`);
+        expect(block, thema.id).toContain(`--palantir-font-theme:${thema.schrift}`);
       }
     }
   });

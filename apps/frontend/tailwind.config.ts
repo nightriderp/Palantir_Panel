@@ -201,28 +201,21 @@ const config: Config = {
        */
       fontFamily: {
         /**
-         * Überschriften – die Schrift, mit der ein Theme spricht.
+         * Die Schrift der ganzen Oberfläche.
          *
-         * Drei Stufen im Rückfall, und jede hat einen Grund: Das Theme nennt
-         * eine Familie (`--palantir-font-display`, gesetzt in
-         * `lib/theme/palette.ts`); nennt es keine oder ist die Familie in
-         * dieser Instanz nicht vorhanden, gilt die Schrift des Betreibers
-         * (`--palantir-font-ui`); fehlt auch dessen Stylesheet, bleibt der
-         * Stack darunter.
+         * Drei Stufen, jede mit Grund: Das gewählte Theme bringt eine eigene
+         * mit (`--palantir-font-theme`, gesetzt in `lib/theme/palette.ts`);
+         * bringt es keine – oder ist sie in dieser Instanz nicht vorhanden –,
+         * gilt die Wahl des Betreibers (`--palantir-font-ui`, Arbeitspaket
+         * S-3); fehlt auch dessen Stylesheet, bleibt der Stack darunter.
          *
-         * **Nur Titel.** Die Fließtextschrift gehört dem Betreiber
-         * (Arbeitspaket S-3) – ein Theme legt seine Schrift auf das, was
-         * ohnehin groß ist, und rührt den Lesetext nicht an.
+         * ⚠️ **Die dicktengleiche Rolle bleibt davon unberührt.** Konsole,
+         * Adressen, Portnummern und Punktestände stehen in `font-mono`, und
+         * dort zählt die gleiche Zeichenbreite: Eine Zierschrift ließe jede
+         * Konsolenausgabe spaltenweise verrutschen.
          */
-        display: [
-          'var(--palantir-font-display, var(--palantir-font-ui, "Space Grotesk"))',
-          'system-ui',
-          '-apple-system',
-          '"Segoe UI"',
-          'sans-serif',
-        ],
         sans: [
-          'var(--palantir-font-ui, "Space Grotesk")',
+          'var(--palantir-font-theme, var(--palantir-font-ui, "Space Grotesk"))',
           'system-ui',
           '-apple-system',
           '"Segoe UI"',

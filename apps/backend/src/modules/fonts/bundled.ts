@@ -81,18 +81,20 @@ export interface BundledFont extends BundledFontEntry {
  * an erster Stelle, weil sie die Vorgabe des Design-Systems tragen. Danach
  * folgen Auswahlschriften für den Betreiber.
  *
- * **Die letzte Gruppe sind die Anzeigeschriften der Themes.** Ein Theme nennt
- * in `apps/frontend/src/lib/theme/palette.ts` eine Familie, die es für
- * Überschriften trägt; hier stehen die Dateien dazu. Sie sind für den
- * Betreiber trotzdem wählbar wie jede andere – der Katalog kennt keine zwei
- * Klassen von Schriften, und wer die Oberfläche in Bangers lesen will, darf
- * das. Für Lesetext taugt keine von ihnen, weshalb ein Theme sie auch nur auf
- * Titel legt.
+ * **Die letzte Gruppe sind die Schriften der Themes.** Ein Theme nennt in
+ * `apps/frontend/src/lib/theme/palette.ts` eine Familie, und seit dem
+ * 21.09.2026 trägt die **die ganze Oberfläche**, nicht nur die Titel
+ * (Betreiberwunsch; die Begründung steht dort). Hier stehen die Dateien dazu.
+ * Sie sind für den Betreiber wählbar wie jede andere – der Katalog kennt keine
+ * zwei Klassen von Schriften, und wer die Oberfläche in Bangers lesen will,
+ * darf das.
  *
  * ⚠️ Nennt ein Theme eine Familie, die hier fehlt oder die der Betreiber
- * ausgeblendet hat, entsteht keine `@font-face`-Regel – die Überschrift fällt
+ * ausgeblendet hat, entsteht keine `@font-face`-Regel – die Oberfläche fällt
  * dann auf die Schrift des Betreibers zurück. Das ist gewollt: Der Katalog ist
- * die Quelle, die Themes sind nur Leser.
+ * die Quelle, die Themes sind nur Leser. Weil das aber genauso aussieht wie
+ * „dieses Theme bringt keine Schrift mit", hält eine Prüfung im Frontend die
+ * beiden Seiten zusammen (`lib/theme/variablen.test.ts` liest diese Datei).
  *
  * Alle Dateien liegen im Auslieferungsverzeichnis, ihre Lizenzen unter
  * `assets/fonts/lizenzen/` (Übersicht in `assets/fonts/LIZENZEN.md`).
@@ -155,7 +157,7 @@ const ENTRIES: readonly BundledFontEntry[] = [
     monospace: false,
   },
 
-  // --- Anzeigeschriften der Themes ---------------------------------------
+  // --- Schriften der Themes ----------------------------------------------
   {
     slug: 'cinzel',
     family: 'Cinzel',
