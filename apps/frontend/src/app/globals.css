@@ -75,6 +75,34 @@
     @apply font-display;
   }
 
+  /**
+   * ⚠️ **Außer, wenn die Überschrift klein gesetzt ist.**
+   *
+   * `h2` trägt in diesem Code alles von der 10px-Abschnittsbeschriftung
+   * („Deine Server · 3") bis zum 20px-Kartentitel. Die Regel darüber traf
+   * beide – und eine Zierschrift bei 10px ist keine Überschrift mehr, sondern
+   * ein Fleck. Aufgefallen ist das erst im Browser: Im Quelltext steht überall
+   * dasselbe `<h2>`.
+   *
+   * Die Grenze liegt bei `md` (14px) – darunter greift wieder die Schrift des
+   * Betreibers. Ausgenommen wird über die Größenklasse und nicht in den
+   * Komponenten: Es sind siebzehn Stellen, und die achtzehnte würde den
+   * Zusatz vergessen. `schriftgroessen.test.ts` hält Regel und Skala
+   * zusammen.
+   */
+  h1.text-3xs,
+  h1.text-2xs,
+  h1.text-xs,
+  h1.text-sm,
+  h1.text-base,
+  h2.text-3xs,
+  h2.text-2xs,
+  h2.text-xs,
+  h2.text-sm,
+  h2.text-base {
+    @apply font-sans;
+  }
+
   a {
     @apply text-brand;
   }
