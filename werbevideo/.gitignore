@@ -8,3 +8,7 @@ fassungen/
 
 # Geheimnisse der Aufnahme-Installation – nie im Repository.
 buehne/umgebung.sh
+
+# Die Bildbibliothek des Motion-Videos entsteht aus der laufenden Bühne
+# (node motion/bilder.mjs) und wiegt mehrere Megabyte je Datei.
+motion/bilder/

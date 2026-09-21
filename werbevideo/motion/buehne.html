@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <title>Motion-Bühne</title>
+    <style>
+      /*
+        Die Bühne des Motion-Videos.
+
+        Hier bewegt sich **nichts von selbst**: kein CSS-Übergang, keine
+        Animation. Jedes Einzelbild setzt der Renderer den vollständigen
+        Zustand über `__kino.setze(...)`. Nur so ist die Bewegung exakt
+        gleichmäßig und beliebig wiederholbar - dieselbe Überlegung wie bei der
+        Bildschirmaufnahme.
+      */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      html, body {
+        width: 1920px; height: 1080px; overflow: hidden;
+        background: #05060a;
+        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* --- Grund: dunkel, darüber eingeblendet die helle Fassung ---------- */
+      #grund, #grundHell { position: absolute; inset: 0; }
+      #grund {
+        background:
+          radial-gradient(60% 50% at 50% 115%, rgba(124, 92, 255, 0.55), rgba(5, 6, 10, 0) 70%),
+          radial-gradient(45% 40% at 15% 20%, rgba(53, 200, 255, 0.10), rgba(5, 6, 10, 0) 70%),
+          #05060a;
+      }
+      #grundHell {
+        opacity: 0;
+        background:
+          radial-gradient(70% 60% at 50% 110%, rgba(150, 120, 255, 0.35), rgba(255, 255, 255, 0) 70%),
+          radial-gradient(50% 45% at 80% 10%, rgba(120, 200, 255, 0.20), rgba(255, 255, 255, 0) 70%),
+          #f4f2fb;
+      }
+
+      /* Ein zweiter Schein, der zum Takt atmet. */
+      #glut {
+        position: absolute; left: 50%; top: 108%; width: 1500px; height: 900px;
+        transform: translate(-50%, -50%);
+        background: radial-gradient(closest-side, rgba(140, 108, 255, 0.85), rgba(140, 108, 255, 0) 70%);
+        opacity: 0.5;
+      }
+
+      /* --- Kacheln: Ausschnitte des Panels ------------------------------- */
+      .kachel {
+        position: absolute; left: 0; top: 0;
+        border-radius: 18px;
+        overflow: hidden;
+        background: #0b0d18;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+        will-change: transform, opacity, filter;
+        display: none;
+      }
+      .kachel img { display: block; width: 100%; height: auto; }
+
+      /* --- Scan-Ecken um die Heldenkachel -------------------------------- */
+      #scan { position: absolute; display: none; }
+      #scan i {
+        position: absolute; width: 74px; height: 74px;
+        border: 4px solid #8f6cff;
+        filter: drop-shadow(0 0 14px rgba(143, 108, 255, 0.9));
+      }
+      #scan i:nth-child(1) { left: -4px;  top: -4px;    border-right: 0; border-bottom: 0; border-radius: 16px 0 0 0; }
+      #scan i:nth-child(2) { right: -4px; top: -4px;    border-left: 0;  border-bottom: 0; border-radius: 0 16px 0 0; }
+      #scan i:nth-child(3) { left: -4px;  bottom: -4px; border-right: 0; border-top: 0;    border-radius: 0 0 0 16px; }
+      #scan i:nth-child(4) { right: -4px; bottom: -4px; border-left: 0;  border-top: 0;    border-radius: 0 0 16px 0; }
+
+      /* Markierte Felder auf der Heldenkachel. */
+      .marke {
+        position: absolute; border: 2.5px solid rgba(160, 130, 255, 0.95);
+        border-radius: 10px; background: rgba(140, 108, 255, 0.12);
+        box-shadow: 0 0 22px rgba(140, 108, 255, 0.45);
+        display: none;
+      }
+
+      /* --- Schrift -------------------------------------------------------- */
+      #titel {
+        position: absolute; left: 0; width: 1920px; text-align: center;
+        font-size: 128px; font-weight: 300; letter-spacing: -0.035em; line-height: 1.02;
+        color: #ffffff; white-space: pre; display: none;
+      }
+      #titel .schwanz {
+        background: linear-gradient(90deg, #ffffff 0%, #b79cff 55%, #7c5cff 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      #titel .strich {
+        display: inline-block; width: 6px; height: 0.92em; margin-left: 6px;
+        background: #b79cff; vertical-align: -0.12em;
+        box-shadow: 0 0 18px rgba(183, 156, 255, 0.9);
+      }
+      #zeile {
+        position: absolute; left: 0; width: 1920px; text-align: center;
+        font-size: 34px; font-weight: 400; color: #a9b0cc; letter-spacing: -0.01em;
+        display: none;
+      }
+
+      /* --- Logo ----------------------------------------------------------- */
+      #logo {
+        position: absolute; inset: 0; display: none;
+        flex-direction: column; align-items: center; justify-content: center; gap: 26px;
+      }
+      #logo svg { filter: drop-shadow(0 0 40px rgba(124, 92, 255, 0.55)); }
+      #logo .wort {
+        font-size: 96px; font-weight: 700; letter-spacing: 0.22em;
+        color: #f2f4ff; text-indent: 0.22em;
+      }
+      #logo .unter { font-size: 30px; color: #9aa3c0; letter-spacing: 0.02em; }
+
+      #vignette {
+        position: absolute; inset: 0; pointer-events: none; opacity: 0;
+        background: radial-gradient(120% 90% at 50% 50%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.75) 100%);
+      }
+      #blende { position: absolute; inset: 0; background: #05060a; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="grund"><div id="glut"></div></div>
+    <div id="grundHell"></div>
+    <div id="kacheln"></div>
+    <div id="scan"><i></i><i></i><i></i><i></i></div>
+    <div id="marken"></div>
+    <div id="titel"></div>
+    <div id="zeile"></div>
+    <div id="logo">
+      <svg width="220" height="220" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <circle cx="32" cy="32" r="21" stroke="#f2f4ff" stroke-width="6" />
+        <circle cx="32" cy="32" r="7.5" fill="#f2f4ff" />
+        <path d="M32 0 L35.5 32 L32 64 L28.5 32 Z" fill="#f2f4ff" />
+      </svg>
+      <div class="wort">PALANTIR</div>
+      <div class="unter"></div>
+    </div>
+    <div id="vignette"></div>
+    <div id="blende"></div>
+
+    <script>
+      (() => {
+        const kachelTopf = [];
+        const markenTopf = [];
+        const knoten = {
+          grundHell: document.getElementById('grundHell'),
+          glut: document.getElementById('glut'),
+          kacheln: document.getElementById('kacheln'),
+          scan: document.getElementById('scan'),
+          marken: document.getElementById('marken'),
+          titel: document.getElementById('titel'),
+          zeile: document.getElementById('zeile'),
+          logo: document.getElementById('logo'),
+          vignette: document.getElementById('vignette'),
+          blende: document.getElementById('blende'),
+        };
+
+        /** Kachel-Plätze auf Vorrat: Elemente wandern, sie entstehen nicht neu. */
+        function kachel(index) {
+          while (kachelTopf.length <= index) {
+            const aussen = document.createElement('div');
+            aussen.className = 'kachel';
+            const bild = document.createElement('img');
+            aussen.appendChild(bild);
+            knoten.kacheln.appendChild(aussen);
+            kachelTopf.push({ aussen, bild, quelle: null });
+          }
+          return kachelTopf[index];
+        }
+
+        function marke(index) {
+          while (markenTopf.length <= index) {
+            const element = document.createElement('div');
+            element.className = 'marke';
+            knoten.marken.appendChild(element);
+            markenTopf.push(element);
+          }
+          return markenTopf[index];
+        }
+
+        window.__kino = {
+          /** Den vollständigen Zustand eines Einzelbildes setzen. */
+          setze(z) {
+            knoten.grundHell.style.opacity = String(z.grund?.hell ?? 0);
+            knoten.glut.style.opacity = String(z.grund?.glut ?? 0.5);
+            const glutY = 108 + (z.grund?.glutHub ?? 0);
+            knoten.glut.style.top = `${glutY}%`;
+
+            const liste = z.kacheln ?? [];
+            for (let i = 0; i < Math.max(liste.length, kachelTopf.length); i += 1) {
+              const platz = kachel(i);
+              const k = liste[i];
+              if (!k) {
+                platz.aussen.style.display = 'none';
+                continue;
+              }
+              if (platz.quelle !== k.bild) {
+                platz.bild.src = k.bild;
+                platz.quelle = k.bild;
+              }
+              platz.aussen.style.display = 'block';
+              platz.aussen.style.width = `${k.breite}px`;
+              platz.aussen.style.opacity = String(k.deckkraft ?? 1);
+              platz.aussen.style.filter = k.unschaerfe ? `blur(${k.unschaerfe}px)` : 'none';
+              platz.aussen.style.zIndex = String(k.ebene ?? 1);
+              platz.aussen.style.boxShadow = k.glanz
+                ? `0 40px 110px rgba(0,0,0,.6), 0 0 ${k.glanz * 90}px rgba(124,92,255,${k.glanz * 0.5}), 0 0 0 1px rgba(255,255,255,.08)`
+                : '0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06)';
+              // Von der Mitte aus gerechnet: So bleibt eine Kachel beim
+              // Skalieren an ihrem Platz, statt nach rechts unten zu wandern.
+              platz.aussen.style.transform =
+                `translate(${k.x}px, ${k.y}px) translate(-50%, -50%)` +
+                ` rotate(${k.drehung ?? 0}deg) scale(${k.skala ?? 1})`;
+            }
+
+            if (z.scan && z.scan.deckkraft > 0) {
+              knoten.scan.style.display = 'block';
+              knoten.scan.style.opacity = String(z.scan.deckkraft);
+              knoten.scan.style.left = `${z.scan.x - z.scan.breite / 2}px`;
+              knoten.scan.style.top = `${z.scan.y - z.scan.hoehe / 2}px`;
+              knoten.scan.style.width = `${z.scan.breite}px`;
+              knoten.scan.style.height = `${z.scan.hoehe}px`;
+            } else {
+              knoten.scan.style.display = 'none';
+            }
+
+            const markenListe = z.marken ?? [];
+            for (let i = 0; i < Math.max(markenListe.length, markenTopf.length); i += 1) {
+              const element = marke(i);
+              const m = markenListe[i];
+              if (!m) {
+                element.style.display = 'none';
+                continue;
+              }
+              element.style.display = 'block';
+              element.style.left = `${m.x}px`;
+              element.style.top = `${m.y}px`;
+              element.style.width = `${m.breite}px`;
+              element.style.height = `${m.hoehe}px`;
+              element.style.opacity = String(m.deckkraft ?? 1);
+            }
+
+            if (z.titel && z.titel.text) {
+              const t = z.titel;
+              const gezeigt = Math.max(0, Math.min(t.text.length, Math.round(t.gezeigt ?? t.text.length)));
+              const sichtbar = t.text.slice(0, gezeigt);
+              const schwanz = Math.max(0, Math.min(t.schwanz ?? 3, sichtbar.length));
+              const kopf = sichtbar.slice(0, sichtbar.length - schwanz);
+              const ende = sichtbar.slice(sichtbar.length - schwanz);
+              knoten.titel.style.display = 'block';
+              knoten.titel.style.opacity = String(t.deckkraft ?? 1);
+              knoten.titel.style.top = `${t.y ?? 470}px`;
+              knoten.titel.style.fontSize = `${t.groesse ?? 128}px`;
+              knoten.titel.style.color = t.dunkel ? '#15161f' : '#ffffff';
+              knoten.titel.innerHTML =
+                escape(kopf) +
+                (ende ? `<span class="schwanz">${escape(ende)}</span>` : '') +
+                (t.strich ? '<span class="strich"></span>' : '');
+            } else {
+              knoten.titel.style.display = 'none';
+            }
+
+            if (z.zeile && z.zeile.text) {
+              knoten.zeile.style.display = 'block';
+              knoten.zeile.style.opacity = String(z.zeile.deckkraft ?? 1);
+              knoten.zeile.style.top = `${z.zeile.y ?? 640}px`;
+              knoten.zeile.style.color = z.zeile.dunkel ? '#4a4e63' : '#a9b0cc';
+              knoten.zeile.textContent = z.zeile.text;
+            } else {
+              knoten.zeile.style.display = 'none';
+            }
+
+            if (z.logo && (z.logo.deckkraft ?? 0) > 0) {
+              knoten.logo.style.display = 'flex';
+              knoten.logo.style.opacity = String(z.logo.deckkraft);
+              knoten.logo.style.transform = `scale(${z.logo.skala ?? 1})`;
+              knoten.logo.querySelector('.unter').textContent = z.logo.zeile ?? '';
+              const farbe = z.logo.dunkel ? '#15161f' : '#f2f4ff';
+              knoten.logo.querySelector('.wort').style.color = farbe;
+              for (const teil of knoten.logo.querySelectorAll('svg circle, svg path')) {
+                if (teil.getAttribute('stroke')) teil.setAttribute('stroke', farbe);
+                if (teil.getAttribute('fill') && teil.getAttribute('fill') !== 'none') {
+                  teil.setAttribute('fill', farbe);
+                }
+              }
+              knoten.logo.querySelector('.unter').style.color = z.logo.dunkel ? '#5b6076' : '#9aa3c0';
+            } else {
+              knoten.logo.style.display = 'none';
+            }
+
+            knoten.vignette.style.opacity = String(z.vignette ?? 0);
+            knoten.blende.style.opacity = String(z.blende ?? 0);
+          },
+
+          /** Sind alle Bilder geladen? Vor dem ersten Einzelbild abgefragt. */
+          bilderBereit() {
+            return kachelTopf.every((k) => k.quelle === null || k.bild.complete);
+          },
+        };
+
+        function escape(text) {
+          return text.replace(/[&<>]/g, (z) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[z]);
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -42,8 +42,29 @@ warte_auf() {
   return 1
 }
 
+# Die Adressen der Demo-Server müssen auf diesen Rechner zeigen, sonst fragt
+# der Health-Check des Backends die **echte** Domain im Netz ab und jeder Start
+# hängt in `starting`. Auf einem Wegwerf-Rechner überlebt /etc/hosts einen
+# Neustart nicht immer - deshalb wird der Eintrag bei jedem Start geprüft.
+hosts_sichern() {
+  local domain="${PALANTIR_DOMAIN:-palantir.example}"
+  local namen=("$domain" "router.$domain" "smp.$domain" "creative.$domain" "survival.$domain" "valheim.$domain" "terraria.$domain")
+  local fehlend=()
+  for name in "${namen[@]}"; do
+    grep -qE "^[0-9.]+[[:space:]]+.*\b${name//./\.}\b" /etc/hosts || fehlend+=("$name")
+  done
+  if [ ${#fehlend[@]} -gt 0 ]; then
+    if printf '127.0.0.1 %s\n' "${fehlend[@]}" >> /etc/hosts 2>/dev/null; then
+      echo "/etc/hosts ergänzt: ${fehlend[*]}"
+    else
+      echo "WARNUNG: /etc/hosts fehlt ${fehlend[*]} und ist nicht schreibbar - Server-Starts werden hängen bleiben." >&2
+    fi
+  fi
+}
+
 case "${1:-start}" in
   start)
+    hosts_sichern
     starte backend "$wurzel/apps/backend" node "$tsx_cli" src/index.ts
     warte_auf "http://127.0.0.1:4000/health" Backend
     starte demo-node "$wurzel" node werbevideo/buehne/demo-node.mjs

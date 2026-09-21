@@ -117,6 +117,18 @@ export class Regie {
       reducedMotion: 'no-preference',
     });
     await this.ctx.addInitScript(schichtSkript());
+    /*
+     * Der Rundgang für neue Konten legt sich über die Seite und wäre in jeder
+     * Szene im Bild. Sein Stand liegt im Browserspeicher; hier wird er vor dem
+     * ersten Laden auf „erledigt" gesetzt.
+     */
+    await this.ctx.addInitScript(() => {
+      try {
+        window.localStorage.setItem('palantir.rundgang', 'erledigt');
+      } catch {
+        /* Ohne Speicher bleibt die Führung sichtbar. */
+      }
+    });
     this.seite = await this.ctx.newPage();
     this.cdp = await this.ctx.newCDPSession(this.seite);
     fs.mkdirSync(this.ziel, { recursive: true });
