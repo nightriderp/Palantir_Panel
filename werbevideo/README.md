@@ -67,13 +67,18 @@ cp buehne/umgebung.beispiel.sh buehne/umgebung.sh   # und die Werte darin setzen
 lokal – dieselbe Regel wie für die zentrale `.env` im Repo-Root.
 
 Die Adressen der Demo-Server müssen auf den Aufnahmerechner zeigen; unter Linux
-genügt `/etc/hosts`:
+genügt `/etc/hosts`. Die Namen folgen `PALANTIR_DOMAIN` aus `umgebung.sh` – mit
+`nightriderp.org` also:
 
 ```
-127.0.0.1 palantir.example router.palantir.example
-127.0.0.1 smp.palantir.example creative.palantir.example survival.palantir.example
-127.0.0.1 valheim.palantir.example terraria.palantir.example
+127.0.0.1 nightriderp.org router.nightriderp.org
+127.0.0.1 smp.nightriderp.org creative.nightriderp.org survival.nightriderp.org
+127.0.0.1 valheim.nightriderp.org terraria.nightriderp.org
 ```
+
+Die Einträge gelten nur auf dem Aufnahmerechner; an der echten DNS-Zone ändert
+sich nichts. Der Health-Check des Backends fragt die Server über genau diese
+Namen ab – ohne die Zeilen liefe die Abfrage gegen die echte Adresse.
 
 ## Von null zum fertigen Video
 
@@ -116,11 +121,13 @@ sind auch die Ein- und Ausstiegspunkte je Segment hinterlegt.
 
 ## Zwei Dinge, die vor der Veröffentlichung gehören
 
-1. **Die Domain im Bild.** `PALANTIR_DOMAIN` steht in der Vorlage auf
-   `palantir.example`. Diese Adresse steht im Video an jedem Server. Vor der
-   endgültigen Aufnahme gehört dort eure echte Domain hinein – danach
-   `zuruecksetzen.sh` erneut laufen lassen und die `/etc/hosts`-Zeilen
-   anpassen.
+1. **Die Domain im Bild.** `PALANTIR_DOMAIN` steht im Video an jedem Server.
+   In der Vorlage steht der Platzhalter `palantir.example`; für die
+   ausgelieferten Fassungen ist `nightriderp.org` gesetzt. Beim Wechsel gehören
+   drei Schritte zusammen: Wert in `umgebung.sh`, `/etc/hosts` anpassen und
+   **das Frontend neu bauen** (`./buehne/buehne.sh bauen`) – `NEXT_PUBLIC_BASE_DOMAIN`
+   steckt fest im Bau. Danach neu aufnehmen; die Adresse ist in fast jeder
+   Szene zu sehen.
 2. **Euer Spielmaterial.** Siehe `material/README.md`. Ohne es steht an der
    Stelle eine Tafel.
 
