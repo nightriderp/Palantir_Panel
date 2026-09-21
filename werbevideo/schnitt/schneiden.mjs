@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import ffmpegPfad from 'ffmpeg-static';
 import { neuerLauf } from '../aufnahme/regie.mjs';
 import { erzeugeMusik, schreibeWav } from './musik.mjs';
+import { RAHMEN, zeichneRahmen } from './telefonrahmen.mjs';
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const WURZEL = path.resolve(HIER, '..');
@@ -74,6 +75,7 @@ const FASSUNGEN = {
       { clip: '07-monitoring', von: 0, bis: null },
       { clip: '08-backups', von: 0, bis: null },
       { clip: '09-admin', von: 0, bis: null },
+      { handy: 13.5, von: 0.8 },
       { clip: '10-abspann', von: 0, bis: null },
     ],
   },
@@ -91,6 +93,7 @@ const FASSUNGEN = {
       { clip: '07-monitoring', von: 1.0, bis: 6.0 },
       { clip: '08-backups', von: 3.0, bis: 8.5 },
       { clip: '09-admin', von: 19.5, bis: 25.0 },
+      { handy: 6.5, von: 6.5 },
       { clip: '10-abspann', von: 0, bis: null },
     ],
   },
@@ -127,6 +130,53 @@ async function tafelBauen(datei, sekunden) {
   ]);
 }
 
+/**
+ * Die Handy-Aufnahme in den Telefonrahmen setzen.
+ *
+ * Drei Ebenen: die Fläche, darauf das Video an der Stelle des Bildschirms,
+ * darüber der Rahmen mit dem durchsichtigen Loch. Das Gehäuse deckt so die
+ * geraden Ecken der Aufnahme ab – ein Video hat keine runden Ecken.
+ */
+let rahmenBilder = null;
+
+async function handyBauen(datei, sekunden, von = 0) {
+  const quelle = path.join(CLIPS, '12-handy.mp4');
+  if (!fs.existsSync(quelle)) {
+    throw new Error('Die Handy-Aufnahme fehlt: node aufnahme/aufnehmen.mjs 12-handy');
+  }
+  if (rahmenBilder === null) rahmenBilder = await zeichneRahmen(ARBEIT);
+
+  const x = RAHMEN.links + RAHMEN.gehaeuse;
+  const y = RAHMEN.oben + RAHMEN.gehaeuse;
+
+  await neuerLauf(ffmpeg, [
+    '-y',
+    '-loglevel',
+    'error',
+    '-ss',
+    String(von),
+    '-t',
+    String(sekunden),
+    '-i',
+    quelle,
+    '-i',
+    rahmenBilder.hintergrund,
+    '-i',
+    rahmenBilder.rahmen,
+    '-filter_complex',
+    [
+      `[0:v]scale=${String(RAHMEN.schirm.breite)}:${String(RAHMEN.schirm.hoehe)}[schirm]`,
+      `[1:v][schirm]overlay=${String(x)}:${String(y)}[mit]`,
+      `[mit][2:v]overlay=0:0[voll]`,
+      `[voll]fade=t=in:st=0:d=0.5,fade=t=out:st=${Math.max(0, sekunden - 0.5).toFixed(2)}:d=0.5[aus]`,
+    ].join(';'),
+    '-map',
+    '[aus]',
+    ...KODIERUNG,
+    datei,
+  ]);
+}
+
 /** Euer eigenes Spielmaterial auf Format und Länge bringen. */
 async function gameplayBauen(datei, sekunden, quelle) {
   await neuerLauf(ffmpeg, [
@@ -151,6 +201,11 @@ async function gameplayBauen(datei, sekunden, quelle) {
 
 async function segmentBauen(segment, nummer) {
   const datei = path.join(ARBEIT, `${String(nummer).padStart(2, '0')}.mp4`);
+
+  if (segment.handy !== undefined) {
+    await handyBauen(datei, segment.handy, segment.von ?? 0);
+    return { datei, hinweis: `Telefonrahmen mit 12-handy (${segment.handy} s)` };
+  }
 
   if (segment.luecke !== undefined) {
     const eigenes = ['mp4', 'mov', 'mkv', 'webm']
@@ -216,6 +271,9 @@ async function fassungBauen(name) {
   }
 
   console.log(`\n=== ${fassung.titel} ===`);
+  // Die Rahmenbilder liegen im Arbeitsordner und werden mit ihm gelöscht –
+  // die gemerkten Pfade zeigen sonst beim zweiten Durchlauf ins Leere.
+  rahmenBilder = null;
   fs.rmSync(ARBEIT, { recursive: true, force: true });
   fs.mkdirSync(ARBEIT, { recursive: true });
   fs.mkdirSync(ZIEL, { recursive: true });

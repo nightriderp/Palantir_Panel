@@ -562,6 +562,75 @@ const SZENEN = [
   // -------------------------------------------------------------------------
   {
     /*
+     * Das Panel am Telefon.
+     *
+     * Aufgenommen im Hochformat eines Pixel 7 mit doppelter Bildpunktdichte;
+     * in den Telefonrahmen kommt es später beim Schnitt. Deshalb hat diese
+     * Szene weder Untertitel noch Kamerafahrten – beides säße sonst *im*
+     * Handybildschirm und wäre im fertigen Bild winzig.
+     */
+    name: '12-handy',
+    geraet: 'handy',
+    async vorbereiten(buehne) {
+      const server = await buehne.finde('Freundeskreis SMP');
+      // Die Konsole soll auch am Telefon etwas zu zeigen haben; nach einem
+      // Neustart des Backends ist ihr Verlauf leer.
+      for (const zeile of [
+        'Done (6.913s)! For help, type "help"',
+        'Mika joined the game',
+        'Jonas joined the game',
+        'Lena joined the game',
+        '<Jonas> moin',
+        '<Mika> bin in 5 min da',
+      ]) {
+        await steuere(`/zeile?server=${server.id}&text=${encodeURIComponent(zeile)}`);
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      return { serverId: server.id };
+    },
+    async lauf(r, { serverId }) {
+      await r.gehe('/servers', { warteAuf: 'text=Freundeskreis SMP', beruhigen: 5_000 });
+      await r.aufblenden(500);
+      await r.halten(1_400);
+
+      // Suchen statt scrollen: Am Telefon ist das der kürzere Weg – und es
+      // zeigt nebenbei, dass es die Suche gibt.
+      await r.tippe(r.seite.getByPlaceholder(/Server suchen/i), 'freundes', { proZeichen: 150 });
+
+      // Erst wenn die Liste wirklich nur noch einen Server zeigt, ist der
+      // erste „Verwalten"-Knopf der richtige.
+      await r.warteAuf(
+        () =>
+          [...document.querySelectorAll('button')].filter(
+            (knopf) => knopf.textContent.trim() === 'Verwalten',
+          ).length === 1,
+        { beschreibung: 'Suche filtert auf einen Server' },
+      );
+      await r.halten(900);
+
+      await r.klicke('button:has-text("Verwalten")', { nach: 2_600 });
+
+      // Durch die Detailseite rollen: Messwerte, Spieler, Konsole.
+      await r
+        .scrolleZu('text=Verbundene Spieler', { dauer: 1_100, abstand: 120 })
+        .catch(async () => {
+          await r.halten(600);
+        });
+      await r.halten(1_600);
+      await r.scrolleZu('text=console —', { dauer: 1_100, abstand: 90 });
+      await r.halten(1_400);
+
+      await r.buehne(
+        `/zeile?server=${serverId}&text=${encodeURIComponent('<Lena> bin gleich da')}`,
+      );
+      await r.halten(1_800);
+      await r.abblenden(600);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  {
+    /*
      * Der Platzhalter für euer Spielmaterial.
      *
      * Er wird hier aufgenommen und nicht im Schnitt erzeugt: Der ffmpeg-Bau
@@ -618,36 +687,71 @@ async function main() {
   const buehne = await Buehne.oeffnen();
   const r = await Regie.oeffnen({ ffmpeg });
 
+  /**
+   * Zweite Regie im Hochformat – erst beim Bedarf geöffnet.
+   *
+   * Ein Handy-Bild entsteht nur mit einem Handy-Ansichtsfenster: Das Panel
+   * entscheidet über Medienabfragen, nicht über die Fenstergröße im Schnitt.
+   * Ein herunterskaliertes Desktop-Bild wäre ein anderes Layout.
+   */
+  let handyRegie = null;
+  const regieFuer = async (szene) => {
+    if (szene.geraet !== 'handy') return r;
+    if (handyRegie === null) {
+      /*
+       * Bewusst **ohne** Chromiums Handy-Emulation (`mobil`).
+       *
+       * Mit ihr wertet Chromium die Viewport-Angabe der Seite aus: Das
+       * Ansichtsfenster der Seite war dann 622 statt 412 Punkte breit, während
+       * das Bildschirmfoto weiter 412 Punkte breit entstand. Alles, was mit
+       * Koordinaten rechnet – Kamera, Zeiger, Klickstellen –, lag daneben.
+       * Das mobile Layout hängt ohnehin an der Breite, nicht an der Emulation:
+       * 412 Punkte sind 412 Punkte.
+       */
+      handyRegie = await Regie.oeffnen({
+        ffmpeg,
+        breite: 412,
+        hoehe: 915,
+        bildskala: 2,
+        zeigerArt: 'finger',
+      });
+      await handyRegie.anmelden(KONTO.name, KONTO.passwort);
+    }
+    return handyRegie;
+  };
+
   try {
     await r.anmelden(KONTO.name, KONTO.passwort);
 
     for (const szene of liste) {
       const mitgabe = szene.vorbereiten ? await szene.vorbereiten(buehne) : {};
-      if (szene.abgemeldet === true) await r.abmelden();
+      const regie = await regieFuer(szene);
+      if (szene.abgemeldet === true) await regie.abmelden();
 
-      await r.szene(szene.name);
+      await regie.szene(szene.name);
       try {
-        await szene.lauf(r, mitgabe ?? {});
+        await szene.lauf(regie, mitgabe ?? {});
       } catch (fehler) {
         // Ein Bild vom Moment des Abbruchs: Ohne das rät man beim nächsten
         // Lauf, welcher Knopf ausgegraut war oder welche Meldung im Weg stand.
-        const beleg = `${r.ziel}/abbruch-${szene.name}.png`;
-        await r.seite.screenshot({ path: beleg }).catch(() => {});
+        const beleg = `${regie.ziel}/abbruch-${szene.name}.png`;
+        await regie.seite.screenshot({ path: beleg }).catch(() => {});
         console.error(`\nAbbruch in „${szene.name}" – Bildschirm liegt in ${beleg}`);
         throw fehler;
       }
-      await r.schnitt();
+      await regie.schnitt();
 
       // Die Anmeldeszenen lassen den Browser in einem anderen Zustand zurück,
       // als die folgenden ihn brauchen.
-      if (szene.abgemeldet === true) await r.anmelden(KONTO.name, KONTO.passwort);
+      if (szene.abgemeldet === true) await regie.anmelden(KONTO.name, KONTO.passwort);
     }
   } finally {
     await r.schliessen();
+    await handyRegie?.schliessen();
   }
 
   console.log('\n\nFertige Clips:');
-  for (const clip of r.geschrieben) {
+  for (const clip of [...r.geschrieben, ...(handyRegie?.geschrieben ?? [])]) {
     console.log(`  ${clip.name}  ${(clip.bilder / 30).toFixed(1)} s`);
   }
 }

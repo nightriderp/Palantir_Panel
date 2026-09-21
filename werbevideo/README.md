@@ -28,7 +28,7 @@ Daten.
 | `fassungen/palantir-tour.mp4`    | ~3:07    | Ruhiger Rundgang durch alle Funktionen             |
 | `…-stumm.mp4`                    | dieselbe | Dieselben Schnitte ohne Ton, zum Selbstvertonen    |
 
-Beide entstehen aus denselben elf Clips in `aufnahmen/`. Wer nur eine Szene neu
+Beide entstehen aus denselben zwölf Clips in `aufnahmen/`. Wer nur eine Szene neu
 aufnimmt, schneidet danach neu – der Rest bleibt, wie er war.
 
 ## Aufbau
@@ -48,6 +48,7 @@ aufnahme/    Regie: Kamerafahrten, Zeiger, Einblendungen, Einzelbilder
 schnitt/     Zusammenschnitt
   schneiden.mjs         Schnittlisten beider Fassungen
   musik.mjs             Erzeugt die Musik passend zur Länge
+  telefonrahmen.mjs     Zeichnet den Rahmen für die Handy-Aufnahme
 material/    Euer eigenes Material (Gameplay, eigene Musik) – siehe dort
 ```
 
@@ -79,7 +80,7 @@ genügt `/etc/hosts`:
 ```bash
 ./buehne/buehne.sh bauen          # Produktionsbau des Frontends (einmalig)
 ./buehne/zuruecksetzen.sh         # Datenbank neu + Demo-Zustand (~2 Minuten)
-node aufnahme/aufnehmen.mjs       # alle elf Szenen aufnehmen (~25 Minuten)
+node aufnahme/aufnehmen.mjs       # alle zwölf Szenen aufnehmen (~30 Minuten)
 node schnitt/schneiden.mjs        # beide Fassungen bauen (~3 Minuten)
 ```
 

@@ -84,7 +84,8 @@ function aufbau() {
         box-shadow: 0 0 0 9999px rgba(4,5,10,.55), 0 0 38px rgba(124,92,255,.55);
       }
       #${KENNUNG} .ring {
-        position: absolute; border-radius: 50%; border: 2px solid rgba(124,92,255,.95);
+        position: absolute; border-radius: 50%; border: 3px solid rgba(124,92,255,.95);
+        background: radial-gradient(circle, rgba(124,92,255,.22), rgba(124,92,255,0) 70%);
         transform: translate(-50%, -50%);
       }
       #${KENNUNG} .zeiger { position: absolute; transform: translate(-3px, -2px); }

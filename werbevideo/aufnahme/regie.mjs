@@ -51,6 +51,16 @@ export class Regie {
     this.gueteBild = optionen.gueteBild ?? 94;
     this.ffmpeg = optionen.ffmpeg ?? process.env.FFMPEG ?? 'ffmpeg';
 
+    /**
+     * Bildpunkte je CSS-Punkt. Für die Handy-Aufnahme auf 2 gesetzt: Das Bild
+     * wird später auf die halbe Größe in den Telefonrahmen gesetzt und ist
+     * dadurch überabgetastet – also schärfer als eine 1:1-Aufnahme.
+     */
+    this.bildskala = optionen.bildskala ?? 1;
+    this.mobil = optionen.mobil ?? false;
+    /** `maus` zeichnet einen Mauszeiger, `finger` nur den Tippkreis. */
+    this.zeigerArt = optionen.zeigerArt ?? 'maus';
+
     this.szenenName = null;
     this.bildNummer = 0;
     this.bilderOrdner = null;
@@ -68,6 +78,17 @@ export class Regie {
      * hängt sich hier ein.
      */
     this.hintergrund = [];
+
+    /**
+     * Maße, mit denen die **Seite** rechnet.
+     *
+     * Nicht dasselbe wie `breite`/`hoehe`: Im Handy-Modus wertet Chromium die
+     * Viewport-Angabe der Seite aus, und `window.innerWidth` weicht dann vom
+     * Aufnahmefenster ab (hier 622 statt 412). Die Kamera rechnete mit den
+     * Fenstermaßen und verschob das Bild um über hundert Punkte nach rechts
+     * unten – im fertigen Clip lagen schwarze Balken oben und links.
+     */
+    this.mass = { breite: this.breite, hoehe: this.hoehe };
 
     this.zustand = {
       kamera: { zoom: 1, x: this.breite / 2, y: this.hoehe / 2 },
@@ -87,7 +108,8 @@ export class Regie {
     });
     this.ctx = await this.browser.newContext({
       viewport: { width: this.breite, height: this.hoehe },
-      deviceScaleFactor: 1,
+      deviceScaleFactor: this.bildskala,
+      ...(this.mobil ? { isMobile: true, hasTouch: true } : {}),
       locale: 'de-DE',
       timezoneId: 'Europe/Berlin',
       colorScheme: 'dark',
@@ -177,7 +199,27 @@ export class Regie {
   // Aufnahme
   // -------------------------------------------------------------------------
 
+  /**
+   * Die Maße der Seite übernehmen.
+   *
+   * Nach jedem Seitenwechsel und zu Beginn jeder Szene – eine andere Seite
+   * kann eine andere Viewport-Angabe tragen.
+   */
+  async masseLesen() {
+    const gemessen = await this.seite.evaluate(() => ({
+      breite: window.innerWidth,
+      hoehe: window.innerHeight,
+    }));
+    if (gemessen.breite > 0 && gemessen.hoehe > 0) this.mass = gemessen;
+    // Kamera in Ruhestellung auf die Mitte der Seite setzen.
+    if (this.zustand.kamera.zoom === 1) {
+      this.zustand.kamera = { zoom: 1, x: this.mass.breite / 2, y: this.mass.hoehe / 2 };
+    }
+    return this.mass;
+  }
+
   async szene(name) {
+    await this.masseLesen();
     this.szenenName = name;
     this.bildNummer = 0;
     this.bilderOrdner = path.join(this.ziel, '.bilder', name);
@@ -288,8 +330,8 @@ export class Regie {
   async seitenRechteck(ziel) {
     const r = await this.rechteck(ziel);
     const { zoom, x, y } = this.zustand.kamera;
-    const tx = this.breite / 2 - x * zoom;
-    const ty = this.hoehe / 2 - y * zoom;
+    const tx = this.mass.breite / 2 - x * zoom;
+    const ty = this.mass.hoehe / 2 - y * zoom;
     return {
       x: (r.x - tx) / zoom,
       y: (r.y - ty) / zoom,
@@ -318,14 +360,14 @@ export class Regie {
 
   async #kameraZiel({ auf, zoom, rand }) {
     if (auf === null) {
-      return this.#einfangen({ zoom, x: this.breite / 2, y: this.hoehe / 2 });
+      return this.#einfangen({ zoom, x: this.mass.breite / 2, y: this.mass.hoehe / 2 });
     }
     const rechteck = await this.seitenRechteck(auf);
 
     // Ohne ausdrücklichen Zoom so nah heran, wie das Element es zulässt.
     const passend = Math.min(
-      this.breite / (rechteck.breite + rand * 2),
-      this.hoehe / (rechteck.hoehe + rand * 2),
+      this.mass.breite / (rechteck.breite + rand * 2),
+      this.mass.hoehe / (rechteck.hoehe + rand * 2),
     );
     const z = zoom === 'passend' ? Math.min(2.2, Math.max(1, passend)) : zoom;
     return this.#einfangen({
@@ -509,12 +551,36 @@ export class Regie {
    * Mauszeiger steht auf einem Bildschirmfoto nicht mit drauf.
    */
   async klicke(wahl, { hin = 620, nach = 260 } = {}) {
-    const r = await this.rechteck(wahl);
-    const x = r.x + r.breite / 2;
-    const y = r.y + r.hoehe / 2;
+    const anfang = await this.rechteck(wahl);
 
-    await this.zeigerZu(x, y, hin);
-    await this.halten(120);
+    /*
+     * Am Telefon gibt es keinen Zeiger, der irgendwo herkommt – da erscheint
+     * nur der Tippkreis. Ein Mauspfeil auf einem Handybildschirm sieht falsch
+     * aus, und zwar sofort.
+     */
+    if (this.zeigerArt === 'maus') {
+      await this.zeigerZu(anfang.x + anfang.breite / 2, anfang.y + anfang.hoehe / 2, hin);
+      await this.halten(120);
+    } else {
+      await this.halten(160);
+    }
+
+    /*
+     * **Direkt vor dem Klick noch einmal messen.**
+     *
+     * Zwischen dem Messen und dem Klick vergehen ein paar hundert Millisekunden
+     * Seitenzeit – die Zeigerbewegung. Baut die Oberfläche in dieser Spanne
+     * etwas um (eine Liste füllt sich, eine Karte wächst), liegt unter der
+     * alten Stelle etwas anderes. In der Handy-Szene öffnete der Klick auf das
+     * Suchfeld so das Navigationsmenü.
+     */
+    const jetztHier = await this.rechteck(wahl);
+    const x = jetztHier.x + jetztHier.breite / 2;
+    const y = jetztHier.y + jetztHier.hoehe / 2;
+    if (this.zustand.zeiger !== null && this.zeigerArt === 'maus') {
+      this.zustand.zeiger = { x, y, deckkraft: 1 };
+      await this.seite.mouse.move(x, y);
+    }
 
     // Ring aufziehen, gleichzeitig klicken.
     await this.seite.mouse.click(x, y);
@@ -540,10 +606,19 @@ export class Regie {
    * einen Schnitt.
    */
   async tippe(wahl, text, { proZeichen = 62 } = {}) {
+    const anfang = await this.rechteck(wahl);
+    if (this.zeigerArt === 'maus') {
+      await this.zeigerZu(
+        anfang.x + Math.min(anfang.breite - 30, 40),
+        anfang.y + anfang.hoehe / 2,
+        450,
+      );
+    }
+    // Erneut messen (siehe klicke()): Die Bewegung dauert, die Seite wartet nicht.
     const r = await this.rechteck(wahl);
     const x = r.x + Math.min(r.breite - 30, 40);
     const y = r.y + r.hoehe / 2;
-    await this.zeigerZu(x, y, 450);
+    if (this.zeigerArt !== 'maus') await this.#tippkreis(x, y);
     await this.seite.mouse.click(x, y);
     for (const zeichen of text) {
       await this.seite.keyboard.type(zeichen);
@@ -551,6 +626,18 @@ export class Regie {
       const takt = proZeichen * (0.62 + Math.random() * 0.85);
       await this.#ueber(takt, () => {}, linear);
     }
+  }
+
+  /** Der Kreis, der eine Berührung sichtbar macht. */
+  async #tippkreis(x, y) {
+    await this.#ueber(
+      380,
+      (t) => {
+        this.zustand.ring = { x, y, radius: 10 + t * 38, deckkraft: 1 - t };
+      },
+      linear,
+    );
+    this.zustand.ring = null;
   }
 
   /**
@@ -565,15 +652,8 @@ export class Regie {
     const r = await this.rechteck(ziel);
     const x = r.x + r.breite / 2;
     const y = r.y + r.hoehe / 2;
-    await this.zeigerZu(x, y, hin);
-    await this.#ueber(
-      360,
-      (t) => {
-        this.zustand.ring = { x, y, radius: 12 + t * 40, deckkraft: 1 - t };
-      },
-      linear,
-    );
-    this.zustand.ring = null;
+    if (this.zeigerArt === 'maus') await this.zeigerZu(x, y, hin);
+    await this.#tippkreis(x, y);
 
     const locator = typeof ziel === 'string' ? this.seite.locator(ziel).first() : ziel;
     await locator.selectOption(wert);
@@ -601,6 +681,7 @@ export class Regie {
       }
       await this.seite.waitForTimeout(beruhigen);
     });
+    await this.masseLesen();
   }
 
   /** Anmelden – gehört zum Aufbau, nicht ins Video. */
@@ -614,7 +695,18 @@ export class Regie {
       await this.seite.getByLabel('Benutzername').fill(benutzer);
       await this.seite.getByLabel('Passwort', { exact: true }).fill(passwort);
       await this.seite.getByText('Sicherheitsprüfung bestanden.').waitFor({ timeout: 40_000 });
-      await this.seite.getByRole('button', { name: 'Anmelden' }).click();
+
+      /*
+       * Abgeschickt wird mit der Eingabetaste, nicht mit einem Klick.
+       *
+       * Im Hochformat steht der Knopf unterhalb des sichtbaren Bereichs.
+       * Playwright rollt dorthin – und weil die Seitenzeit hier in kleinen
+       * Schritten mitläuft, rollt die Seite noch, während der Klick gesetzt
+       * wird. Getroffen wird dann das, was gerade darunterliegt
+       * („<main …> intercepts pointer events"). Die Eingabetaste braucht keine
+       * Stelle auf dem Bildschirm.
+       */
+      await this.seite.getByLabel('Passwort', { exact: true }).press('Enter');
       await this.seite.waitForURL(/\/servers/, { timeout: 40_000 });
       await this.seite.waitForTimeout(2500);
     });
@@ -631,6 +723,22 @@ export class Regie {
       await this.ctx.clearCookies();
       await this.seite.goto(`${this.basis}/login`, { waitUntil: 'domcontentloaded' });
       await this.seite.waitForTimeout(800);
+    });
+  }
+
+  /**
+   * Warten, bis eine Bedingung auf der Seite zutrifft.
+   *
+   * Für alles, was die Oberfläche als Folge einer Eingabe neu aufbaut – etwa
+   * eine gefilterte Liste. Ohne dieses Warten klickt die Aufnahme auf den
+   * Stand von vorhin: In der Handy-Szene wurde nach der Suche noch die erste
+   * Karte der **ungefilterten** Liste geöffnet, also der falsche Server.
+   */
+  async warteAuf(bedingung, { frist = 15_000, beschreibung = 'Bedingung' } = {}) {
+    await this.imVorlauf(async () => {
+      await this.seite.waitForFunction(bedingung, null, { timeout: frist }).catch((fehler) => {
+        throw new Error(`${beschreibung} trat nicht ein: ${fehler.message.split('\n')[0]}`);
+      });
     });
   }
 

@@ -526,6 +526,17 @@ function dateiInhalt(pfad) {
 
 let steckplatz = null;
 
+/**
+ * Hat das Backend den Handshake bestätigt?
+ *
+ * Ohne diese Schranke schickte die Node ihre Messwerte auch dann weiter, wenn
+ * die Begrüßung nie ankam: Die Verbindung stand, das Backend verwarf jedes
+ * Frame („Agent-Frame vor dem Handshake verworfen"), und im Panel blieb die
+ * Node auf dem Stand von vorhin – Konsole leer, Messwerte eingefroren. Im
+ * Video fällt das erst auf, wenn der Clip fertig ist.
+ */
+let begruesst = false;
+
 function senden(frame) {
   if (steckplatz && steckplatz.readyState === 1) {
     steckplatz.send(JSON.stringify(frame));
@@ -561,21 +572,75 @@ function ereignis(event, serverId, payload) {
   senden({ kind: 'event', event, serverId, payload, emittedAt: jetzt() });
 }
 
+/** Offener Wiederverbindungs-Versuch, damit nicht mehrere nebeneinander laufen. */
+let neuerVersuch = null;
+
+function spaeterVerbinden() {
+  if (neuerVersuch !== null) return;
+  neuerVersuch = setTimeout(() => {
+    neuerVersuch = null;
+    verbinden();
+  }, 2_000);
+}
+
+/**
+ * Verbindung zum Backend aufbauen.
+ *
+ * Jeder Rückruf prüft zuerst, ob er noch zur **aktuellen** Verbindung gehört.
+ * Ohne diese Prüfung kam es beim Neuaufbau zu einem stillen Fehlschlag: Fällt
+ * das Backend weg, können sich zwei Steckplätze überlappen. Der `hello`-Rahmen
+ * des älteren ging dann über `senden()` an den neueren, der noch gar nicht
+ * offen war – und verschwand. Das Backend wartete auf eine Begrüßung, die nie
+ * kam, verwarf alles Weitere („Agent-Frame vor dem Handshake verworfen"), und
+ * im Panel stand die Node als nicht verbunden: keine Konsole, eingefrorene
+ * Messwerte. Im Video sieht man das erst, wenn der Clip fertig ist.
+ */
 function verbinden() {
   const steck = new WebSocket(BACKEND_WS, { headers: { Authorization: `Bearer ${TOKEN}` } });
   steckplatz = steck;
+  begruesst = false;
+
+  /** Gehört dieser Rückruf noch zur aktuellen Verbindung? */
+  const aktuell = () => steckplatz === steck;
 
   steck.onopen = () => {
-    senden({
-      kind: 'hello',
-      protocolVersion: PROTOKOLL_VERSION,
-      agentVersion: '0.0.0-demo-buehne',
-      ...(NODE_ID === null ? {} : { nodeId: NODE_ID }),
-      sentAt: jetzt(),
-    });
+    if (!aktuell()) {
+      try {
+        steck.close();
+      } catch {
+        /* schon zu */
+      }
+      return;
+    }
+
+    // Ausdrücklich über **diesen** Steckplatz, nicht über `senden()`.
+    steck.send(
+      JSON.stringify({
+        kind: 'hello',
+        protocolVersion: PROTOKOLL_VERSION,
+        agentVersion: '0.0.0-demo-buehne',
+        ...(NODE_ID === null ? {} : { nodeId: NODE_ID }),
+        sentAt: jetzt(),
+      }),
+    );
+
+    // Kommt keine Begrüßung, ist die Verbindung wertlos – dann lieber neu
+    // aufbauen, als stumm daran hängen zu bleiben.
+    setTimeout(() => {
+      if (!begruesst && aktuell()) {
+        console.error('Keine Begrüßung vom Backend – Verbindung wird neu aufgebaut.');
+        try {
+          steck.close();
+        } catch {
+          /* schon zu */
+        }
+      }
+    }, 5_000);
   };
 
   steck.onmessage = (nachricht) => {
+    if (!aktuell()) return;
+
     let frame;
     try {
       frame = JSON.parse(String(nachricht.data));
@@ -584,6 +649,7 @@ function verbinden() {
     }
 
     if (frame.kind === 'welcome') {
+      begruesst = true;
       console.log('Demo-Node verbunden.');
       zustandsbericht('connected');
       return;
@@ -621,8 +687,10 @@ function verbinden() {
   };
 
   steck.onclose = () => {
+    if (!aktuell()) return;
+    begruesst = false;
     console.log('Verbindung getrennt – neuer Versuch in 2 s.');
-    setTimeout(verbinden, 2_000);
+    spaeterVerbinden();
   };
 
   steck.onerror = () => {
@@ -633,6 +701,7 @@ function verbinden() {
 // Messwerte und Abfrageergebnisse im festen Takt – das hält die Ringe und die
 // Spielerzahl im Panel lebendig, auch wenn die Aufnahme gerade nichts steuert.
 setInterval(() => {
+  if (!begruesst) return;
   for (const [serverId, eintrag] of container) {
     if (eintrag.status !== 'running') continue;
     ereignis('STATS_UPDATE', serverId, messwerte(eintrag));
