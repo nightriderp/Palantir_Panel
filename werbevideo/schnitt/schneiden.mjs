@@ -332,8 +332,9 @@ async function fassungBauen(name) {
     '-i',
     musikDatei,
     '-filter_complex',
-    // Etwas leiser als erzeugt und am Ende sauber ausgeblendet.
-    `[1:a]volume=-3dB,afade=t=out:st=${Math.max(0, dauer - 2.5).toFixed(2)}:d=2.5[a]`,
+    // Nur leicht abgesenkt: Das Stück ist ein Opening, kein Teppich – es
+    // darf tragen. Am Ende sauber ausgeblendet.
+    `[1:a]volume=-1dB,afade=t=out:st=${Math.max(0, dauer - 2.5).toFixed(2)}:d=2.5[a]`,
     '-map',
     '0:v',
     '-map',
