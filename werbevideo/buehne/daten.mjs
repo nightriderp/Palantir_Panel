@@ -159,7 +159,14 @@ async function main() {
     }
 
     if (wunsch.spieler.length > 0) {
-      const host = `${wunsch.subdomain}.${DOMAIN}`;
+      /*
+       * Der Hostname kommt aus dem Panel selbst; eine zweite Quelle für
+       * dieselbe Angabe läuft irgendwann auseinander. Ohne gesetztes
+       * `PALANTIR_DOMAIN` stünde hier der Platzhalter aus der Vorlage, und
+       * die Spielabfrage antwortete für einen Namen, den niemand fragt.
+       */
+      const stand = await owner.ruf('GET', `/api/servers/${server.id}`);
+      const host = stand.address?.hostname ?? `${wunsch.subdomain}.${DOMAIN}`;
       await steuere(
         `/spieler?server=${server.id}&namen=${encodeURIComponent(wunsch.spieler.join(','))}` +
           `&host=${encodeURIComponent(host)}&motd=${encodeURIComponent(wunsch.config.motd ?? wunsch.name)}`,

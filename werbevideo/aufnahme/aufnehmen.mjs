@@ -18,7 +18,6 @@ import { PanelClient } from '../buehne/api.mjs';
 
 const API = 'http://127.0.0.1:4000';
 const KONTO = { name: 'mika', passwort: 'Palantir-Demo-2026!' };
-const DOMAIN = process.env.PALANTIR_DOMAIN ?? 'palantir.example';
 
 /** Der Server, den das Video anlegt und startet. */
 const NEUER = { name: 'Survival 2026', adresse: 'survival' };
@@ -293,9 +292,15 @@ const SZENEN = [
     name: '05-starten',
     async vorbereiten(buehne) {
       const server = await buehne.bereitZumStarten();
-      return { serverId: server.id };
+      /*
+       * Die Adresse kommt aus dem Panel, nicht aus einer Umgebungsvariablen.
+       * Ein Aufnahmelauf ohne gesetztes `PALANTIR_DOMAIN` suchte sonst nach
+       * dem Platzhalter aus der Vorlage, während im Bild längst die echte
+       * Domain stand – und brach mitten in der Szene ab.
+       */
+      return { serverId: server.id, adresse: server.address?.hostname ?? null };
     },
-    async lauf(r, { serverId }) {
+    async lauf(r, { serverId, adresse }) {
       await r.gehe(`/servers/${serverId}`, { warteAuf: `text=${NEUER.name}` });
       await r.aufblenden(600);
       await r.untertitelEin('Ein Klick.');
@@ -332,7 +337,7 @@ const SZENEN = [
       // der echten Abfrage des Spielservers – die Demo-Node beantwortet sie
       // auf dem Spielport, das Backend fragt sie von sich aus ab.
       await r.buehne(
-        `/spieler?server=${serverId}&namen=Mika,Jonas&host=${NEUER.adresse}.${DOMAIN}` +
+        `/spieler?server=${serverId}&namen=Mika,Jonas&host=${encodeURIComponent(adresse ?? '')}` +
           `&motd=${encodeURIComponent(NEUER.name)}`,
       );
       await r.kamera({ auf: 'text=Spieler', zoom: 1.6, dauer: 1_100 });
@@ -347,13 +352,11 @@ const SZENEN = [
       await r.halten(3_200);
       await r.untertitelAus();
 
-      await r.kamera({ auf: `text=${NEUER.adresse}.${DOMAIN}`, zoom: 1.8, dauer: 1_100 });
+      await r.kamera({ auf: `text=${adresse}`, zoom: 1.8, dauer: 1_100 });
       await r.untertitelEin('Diese Adresse bekommen die Freunde – sonst nichts.');
-      await r
-        .klicke(`button:has-text("${NEUER.adresse}.${DOMAIN}")`, { nach: 1_200 })
-        .catch(async () => {
-          await r.halten(1_400);
-        });
+      await r.klicke(`button:has-text("${adresse}")`, { nach: 1_200 }).catch(async () => {
+        await r.halten(1_400);
+      });
       await r.untertitelAus();
       await r.zeigerAus();
       await r.kamera({ zoom: 1, dauer: 900 });
