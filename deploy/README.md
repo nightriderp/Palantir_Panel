@@ -371,7 +371,29 @@ git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=deploy/allowed_signers verif
 ### 7.5 Ausrollen
 
 ```bash
-git tag v1.0.0 && git push origin v1.0.0
+git tag -s v1.0.0 -m "<kurz, was drin ist>"
+git cat-file -t v1.0.0   # muss `tag` ausgeben, nicht `commit`
+git push origin v1.0.0
+```
+
+**`-s` ist nicht optional**, sobald in `deploy/allowed_signers` ein Schlüssel steht (7.4).
+Ohne das Flag entsteht ein _leichtgewichtiges_ Tag: ein bloßer Zeiger auf den Commit, ohne
+eigenes Objekt und damit ohne Platz für eine Signatur. Der Deploy-Lauf bricht dann mit
+`cannot verify a non-tag object of type commit` ab – die Meldung sagt nicht „falsch
+unterschrieben", sondern „hier ist nichts zum Prüfen". Die Zeile dazwischen zeigt das vorher
+an: `tag` ist richtig, `commit` ist das leichtgewichtige.
+
+`tag.gpgsign true` aus 7.4 erledigt das `-s` von allein. Die Angabe steht hier trotzdem: Auf
+einem frisch aufgesetzten Rechner ist die Einstellung noch nicht da, und das fällt sonst erst
+am abgebrochenen Deployment auf.
+
+Ein Tag mit demselben Namen **neu** zu setzen verlangt, es vorher zu löschen – auf beiden
+Seiten. `git tag -s` überschreibt kein vorhandenes Tag, sondern bricht mit `already exists`
+ab; der Push schickt danach wieder das alte, und der Lauf scheitert erneut an derselben
+Stelle:
+
+```bash
+git push origin :refs/tags/v1.0.0 && git tag -d v1.0.0
 ```
 
 Der Workflow wartet auf die Freigabe im Environment, prüft die Signatur, verbindet sich mit
