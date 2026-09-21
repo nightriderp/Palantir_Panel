@@ -95,12 +95,25 @@ export interface AchievementRule {
   readonly exceptActions?: readonly AuditAction[];
   /** Zusätzlich nach jedem abgeschickten Arcade-Ergebnis prüfen. */
   readonly onArcadeScore?: true;
+  /**
+   * Hängt am **eigenen Abzeichen-Bestand** statt an einem Vorgang.
+   *
+   * Solche Regeln stehen in keiner Auswahl zu einem Ereignis: Ihr Auslöser ist
+   * die Vergabe selbst. Der Service zieht sie nach, sobald ein Durchgang etwas
+   * freigeschaltet hat (siehe `service.ts`) – und die Nachvergabe prüft sie
+   * ohnehin, weil sie alle Abzeichen als Kandidaten nimmt.
+   *
+   * Ohne diese Kennzeichnung müssten sie `actions: 'jede'` tragen und liefen
+   * dann bei jedem einzelnen Protokolleintrag mit, nur um fast immer „noch
+   * nicht" zu sagen.
+   */
+  readonly meta?: true;
   /** Ist die Bedingung erfüllt? */
   check(ctx: RuleContext): Promise<boolean>;
 }
 
 /**
- * Aktionen, die nicht als „Handgriff" zählen (`hausmeisterei`).
+ * Aktionen, die nicht als „Handgriff" zählen (`vielbeschaeftigt`).
  *
  * `access.denied` hält einen **verhinderten** Vorgang fest, `auth.loginFailed`
  * einen misslungenen – beide entstehen, ohne dass jemand etwas bewirkt hat, und
@@ -203,6 +216,46 @@ function nachJedemSpiel(check: AchievementRule['check']): AchievementRule {
 }
 
 /**
+ * Eine Stufe der Platzierungs-Leiter: „Platz `hoechstens` oder besser".
+ *
+ * Gezählt wird der **beste** Platz über alle Bestenlisten, nicht der im gerade
+ * gespielten Spiel. Wer irgendwo vorne steht, bekommt damit alle Stufen
+ * darunter gleich mit – gewollt, das ist der Witz an der Leiter (Betreiber,
+ * 21.09.2026). Eine Stufe je Spiel wäre die ernsthafte Variante und hätte den
+ * Katalog mit 35 Einträgen geflutet.
+ */
+function abPlatz(hoechstens: number): AchievementRule {
+  return nachJedemSpiel(async ({ userId, queries }) => {
+    const platz = await queries.bestArcadeRank(userId);
+
+    return platz !== null && platz <= hoechstens;
+  });
+}
+
+/** Eine Stufe der Runden-Leiter. Kostet nichts und darf deshalb gestaffelt sein. */
+function abRunden(schwelle: number): AchievementRule {
+  return nachJedemSpiel(
+    async ({ userId, queries }) => (await queries.arcadeRoundCount(userId)) >= schwelle,
+  );
+}
+
+/**
+ * Eine Stufe der Sammler-Leiter: „`schwelle` Abzeichen freigeschaltet".
+ *
+ * Zählt den eigenen Bestand und hängt deshalb an **jeder** Aktion – anders
+ * käme sie nie an, denn ihr Auslöser ist die Vergabe selbst. Dass sie im
+ * selben Durchgang greift, in dem die gezählten Abzeichen entstehen, besorgt
+ * der Nachschlag in `service.ts`.
+ */
+function abAbzeichen(schwelle: number): AchievementRule {
+  return {
+    actions: [],
+    meta: true,
+    check: async ({ userId, queries }) => (await queries.unlocked(userId)).length >= schwelle,
+  };
+}
+
+/**
  * Regeln je Abzeichen – vollständig, der Typ erzwingt es.
  */
 export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
@@ -220,29 +273,35 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
   esLiefDochGestern: beimErstenMal('backup.restored'),
 
   // --- Spielhalle -----------------------------------------------------------
-  eingeworfen: nachJedemSpiel(async ({ userId, trigger, queries }) =>
-    /*
-     * Mit Auslöser ist die Runde gerade gespielt worden – mehr braucht es
-     * nicht. Ohne Auslöser (Nachvergabe) muss die Runde erst nachgewiesen
-     * werden: Ein `true` an dieser Stelle verteilte das Abzeichen sonst an
-     * jedes Konto der Instanz, auch an die, die nie in der Spielhalle waren.
-     */
-    trigger !== null ? true : (await queries.arcadeRoundCount(userId)) >= 1,
-  ),
+  eingeworfen: abRunden(1),
   alleskoenner: nachJedemSpiel(
     async ({ userId, queries }) =>
       (await queries.arcadeDistinctGames(userId)) >= ARCADE_GAME_IDS.length,
   ),
-  hartnaeckig: nachJedemSpiel(
-    async ({ userId, queries }) => (await queries.arcadeRoundCount(userId)) >= 25,
-  ),
-  spielhallenlegende: nachJedemSpiel(async ({ userId, trigger, queries }) =>
-    trigger === null
-      ? // Nachvergabe: Es zählt jede Bestenliste, nicht die eines bestimmten
-        // Spiels – wer irgendwo oben steht, hat es verdient.
-        queries.isTopOfAnyLeaderboard(userId)
-      : trigger.kind === 'arcade' && (await queries.isTopOfLeaderboard(userId, trigger.gameId)),
-  ),
+
+  // --- Platzierungen --------------------------------------------------------
+  platz50: abPlatz(50),
+  platz20: abPlatz(20),
+  platz10: abPlatz(10),
+  platz5: abPlatz(5),
+  platz3: abPlatz(3),
+  platz2: abPlatz(2),
+  spielhallenlegende: abPlatz(1),
+
+  // --- Ausdauer -------------------------------------------------------------
+  runden10: abRunden(10),
+  hartnaeckig: abRunden(25),
+  runden50: abRunden(50),
+  runden100: abRunden(100),
+  runden250: abRunden(250),
+  runden500: abRunden(500),
+  runden1000: abRunden(1000),
+  anmeldung10: abDerAnzahl(10, 'auth.loginSucceeded'),
+  anmeldung50: abDerAnzahl(50, 'auth.loginSucceeded'),
+  anmeldung100: abDerAnzahl(100, 'auth.loginSucceeded'),
+  sammler10: abAbzeichen(10),
+  sammler20: abAbzeichen(20),
+  sammler30: abAbzeichen(30),
 
   // --- Konto ----------------------------------------------------------------
   ersteStunde: {
@@ -279,10 +338,7 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
     },
   },
 
-  // --- Betrieb --------------------------------------------------------------
-  tuersteher: beimErstenMal('user.approved'),
-  schriftsetzer: beimErstenMal('font.uploaded'),
-  hausmeisterei: {
+  vielbeschaeftigt: {
     /*
      * Das einzige Abzeichen mit `'jede'`: Es zählt Handgriffe, nicht bestimmte
      * Vorgänge. Deshalb auch kein `abDerAnzahl` – dessen Positivliste ist
@@ -326,3 +382,11 @@ export function rulesForAuditAction(action: AuditAction): AchievementId[] {
 export function rulesForArcadeScore(): AchievementId[] {
   return REGEL_PAARE.filter(([, regel]) => regel.onArcadeScore === true).map(([id]) => id);
 }
+
+/**
+ * Abzeichen, die am eigenen Bestand hängen – nachzuziehen, sobald etwas
+ * vergeben wurde.
+ */
+export const META_ACHIEVEMENTS: readonly AchievementId[] = REGEL_PAARE.filter(
+  ([, regel]) => regel.meta === true,
+).map(([id]) => id);

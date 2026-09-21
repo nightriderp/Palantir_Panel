@@ -108,6 +108,7 @@ export function createFakeAuthRepository(): FakeAuthRepository {
         isOwner: false,
         banned: false,
         avatarUpdatedAt: null,
+        titleAchievementId: null,
         createdAt: new Date('2026-08-26T10:00:00Z'),
       };
 

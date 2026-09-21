@@ -38,6 +38,7 @@ import type {
   ResolveReportData,
 } from './repository.js';
 import type {
+  ChatUserProfile,
   ChatServerMember,
   ChatServerRecord,
   ChatUserDirectory,
@@ -591,17 +592,33 @@ export function createDrizzleChatUserDirectory(db: Database): ChatUserDirectory 
       };
     },
 
-    async displayNames(userIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    async profiles(userIds: readonly string[]): Promise<ReadonlyMap<string, ChatUserProfile>> {
       if (userIds.length === 0) {
         return new Map();
       }
 
+      // Name, Bild und Titel in einer Abfrage: Sie stehen in derselben Zeile
+      // und werden in derselben Zeile angezeigt (Betreiber-Wunsch 21.09.2026).
       const rows = await db
-        .select({ id: users.id, displayName: users.displayName })
+        .select({
+          id: users.id,
+          displayName: users.displayName,
+          avatarUpdatedAt: users.avatarUpdatedAt,
+          titleAchievementId: users.titleAchievementId,
+        })
         .from(users)
         .where(inArray(users.id, [...userIds]));
 
-      return new Map(rows.map((row) => [row.id, row.displayName]));
+      return new Map(
+        rows.map((row) => [
+          row.id,
+          {
+            displayName: row.displayName,
+            avatarUpdatedAt: row.avatarUpdatedAt,
+            titleAchievementId: row.titleAchievementId,
+          },
+        ]),
+      );
     },
 
     async listByIds(userIds: readonly string[]): Promise<readonly ChatUserRecord[]> {

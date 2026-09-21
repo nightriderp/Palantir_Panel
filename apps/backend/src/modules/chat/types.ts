@@ -1,3 +1,4 @@
+import { type AchievementId } from '@palantir/contracts';
 /**
  * Datensätze und Anschlusspunkte des Chat-Moduls (B7).
  *
@@ -84,11 +85,27 @@ export interface ChatUserRecord {
   readonly approved: boolean;
 }
 
+/**
+ * Das, was eine Zeile über ein Konto anzeigt: Name, Bild, Titel
+ * (Betreiber-Wunsch 21.09.2026).
+ *
+ * Vorher reichte hier der Anzeigename. Seit Profilbild und Titel überall dort
+ * stehen, wo man sich begegnet, kämen sonst zwei weitere Abfragen über
+ * dieselben Konten dazu – für drei Spalten derselben Zeile.
+ */
+export interface ChatUserProfile {
+  readonly displayName: string;
+  /** Zeitstempel des Profilbilds; `null`, wenn das Konto keines hat. */
+  readonly avatarUpdatedAt: Date | null;
+  /** Abzeichen, dessen Titel das Konto trägt; `null`, wenn es keinen trägt. */
+  readonly titleAchievementId: AchievementId | null;
+}
+
 /** Nachschlagen von Konten (Anzeigenamen, Freischaltstand). */
 export interface ChatUserDirectory {
   find(userId: string): Promise<ChatUserRecord | null>;
-  /** Anzeigenamen zu mehreren Konten auf einmal – für Listen. */
-  displayNames(userIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
+  /** Anzeigedaten zu mehreren Konten auf einmal – für Listen. */
+  profiles(userIds: readonly string[]): Promise<ReadonlyMap<string, ChatUserProfile>>;
   /**
    * Konten samt Freischaltstand zu mehreren IDs auf einmal – für das
    * DM-Verzeichnis. Nicht (mehr) vorhandene IDs fehlen im Ergebnis; die

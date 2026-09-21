@@ -104,7 +104,18 @@ export function UserMenu({ user }: { user: AccountDto | null }) {
           className="absolute right-0 z-30 mt-2 w-60 animate-materialize overflow-hidden rounded-lg border border-line bg-surface shadow-panel"
         >
           <div className="border-b border-line px-4 py-3">
-            <p className="truncate text-base font-semibold text-ink">{user.displayName}</p>
+            <p className="truncate text-base font-semibold text-ink">
+              {user.displayName}
+              {/*
+                Der eigene Titel (Betreiber-Wunsch 21.09.2026). Er steht dort,
+                wo andere ihn sehen – in der Bestenliste, im Chat, an der
+                Server-Kachel –, und war bis hierher ausgerechnet dem eigenen
+                Konto nirgends sichtbar.
+              */}
+              {user.title ? (
+                <span className="ml-1.5 text-sm font-normal text-ink-faint">{user.title}</span>
+              ) : null}
+            </p>
             <div className="mt-1 flex items-center gap-2">
               {user.username ? (
                 <span className="truncate text-xs text-ink-faint">@{user.username}</span>

@@ -27,6 +27,7 @@ import type {
   ResolveReportData,
 } from './repository.js';
 import type {
+  ChatUserProfile,
   ChatServerRecord,
   ChatUserDirectory,
   ChatUserRecord,
@@ -82,7 +83,10 @@ export function steppingClock(start = new Date('2026-08-26T12:00:00.000Z')): Clo
 // ---------------------------------------------------------------------------
 
 export function fakeUserDirectory(
-  users: Record<string, Partial<ChatUserRecord> & { displayName: string }>,
+  users: Record<
+    string,
+    Partial<ChatUserRecord> & { displayName: string } & Partial<ChatUserProfile>
+  >,
 ): ChatUserDirectory {
   return {
     async find(userId) {
@@ -98,14 +102,18 @@ export function fakeUserDirectory(
         : null;
     },
 
-    async displayNames(userIds) {
-      const result = new Map<string, string>();
+    async profiles(userIds) {
+      const result = new Map<string, ChatUserProfile>();
 
       for (const userId of userIds) {
         const user = users[userId];
 
         if (user) {
-          result.set(userId, user.displayName);
+          result.set(userId, {
+            displayName: user.displayName,
+            avatarUpdatedAt: user.avatarUpdatedAt ?? null,
+            titleAchievementId: user.titleAchievementId ?? null,
+          });
         }
       }
 

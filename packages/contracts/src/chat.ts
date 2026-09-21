@@ -234,6 +234,24 @@ export interface MessageDto {
    * Konstante verhindert.
    */
   senderDisplayName: string;
+  /**
+   * Zeitstempel des Profilbilds des Absenders; `null`, wenn er keines hat oder
+   * sein Konto gelöscht wurde (Betreiber-Wunsch 21.09.2026).
+   *
+   * Nicht die fertige Bild-Adresse: Die baut das Frontend aus Konto-Id und
+   * diesem Zeitstempel (`avatarUrl()`).
+   */
+  senderAvatarUpdatedAt: string | null;
+  /**
+   * Getragener Titel des Absenders; `null`, wenn er keinen trägt.
+   *
+   * Anders als `senderDisplayName` **nicht** zum Zeitpunkt der Nachricht
+   * festgehalten, sondern der heutige: Der Name gehört zur Nachricht (wer hat
+   * das damals geschrieben), der Titel zur Person (was trägt sie gerade). Wer
+   * seinen Titel wechselt, soll nicht einen Verlauf voller alter Titel hinter
+   * sich herziehen.
+   */
+  senderTitle: string | null;
   /** Inhalt; bei gelöschten Nachrichten leer (`''`). */
   content: string;
   /** ISO-8601-Zeitstempel. */

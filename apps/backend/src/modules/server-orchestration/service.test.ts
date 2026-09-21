@@ -225,6 +225,8 @@ class FakeRepository implements ServerRepository {
       id: nextId(),
       ownerId: data.ownerId,
       ownerDisplayName: 'Besitzer',
+      ownerAvatarUpdatedAt: null,
+      ownerTitleAchievementId: null,
       hostId: data.hostId,
       hostName: HOST.name,
       hostStatus: 'online',

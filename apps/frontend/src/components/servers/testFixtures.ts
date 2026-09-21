@@ -79,6 +79,8 @@ export function server(options: ServerFixtureOptions): GameServerDto {
     name,
     ownerId: options.ownerId ?? 'user-1',
     ownerDisplayName: options.ownerDisplayName ?? 'Alex',
+    ownerAvatarUpdatedAt: null,
+    ownerTitle: null,
     gameType: 'testserver',
     gameTypeName: options.gameTypeName ?? 'Testserver',
     consoleQuickCommands: options.consoleQuickCommands ?? [],

@@ -50,6 +50,8 @@ const FRAME = messageSentFrame(
       id: 'm',
       conversationId: 'c',
       senderId: ALEX,
+      senderAvatarUpdatedAt: null,
+      senderTitle: null,
       senderDisplayName: 'Alex',
       content: 'Hallo',
       createdAt: '2026-08-26T12:00:00.000Z',

@@ -18,6 +18,7 @@ import {
   type MessageDto,
   type MessageReportDto,
   type ReportedMessageDto,
+  titleForAchievement,
 } from '@palantir/contracts';
 import { type PermissionActor } from '../rbac/index.js';
 import {
@@ -26,6 +27,7 @@ import {
   computeMessageReportPermissions,
 } from './permissions.js';
 import {
+  type ChatUserProfile,
   type ChatUserRecord,
   type ConversationRecord,
   type MessageRecord,
@@ -46,17 +48,39 @@ import { type ConversationAudience, titleFor } from './visibility.js';
  * Schreibweisen ließen den Betrachter raten, ob es zwei verschiedene Fälle
  * sind.
  */
-function nameOf(displayNames: ReadonlyMap<string, string>, userId: string | null): string {
+function nameOf(profiles: ReadonlyMap<string, ChatUserProfile>, userId: string | null): string {
   if (userId === null) {
     return DELETED_ACCOUNT_DISPLAY_NAME;
   }
 
-  return displayNames.get(userId) ?? DELETED_ACCOUNT_DISPLAY_NAME;
+  return profiles.get(userId)?.displayName ?? DELETED_ACCOUNT_DISPLAY_NAME;
+}
+
+/**
+ * Bild und Titel eines Kontos für die Anzeige.
+ *
+ * Ein gelöschtes Konto (`userId === null`) und ein unbekanntes liefern beide
+ * nichts – dieselbe Linie wie {@link nameOf}: Wo kein Konto mehr ist, gibt es
+ * auch kein Bild und keinen Titel.
+ */
+function anzeigeOf(
+  profiles: ReadonlyMap<string, ChatUserProfile>,
+  userId: string | null,
+): { senderAvatarUpdatedAt: string | null; senderTitle: string | null } {
+  const profil = userId === null ? undefined : profiles.get(userId);
+
+  return {
+    senderAvatarUpdatedAt: profil?.avatarUpdatedAt?.toISOString() ?? null,
+    senderTitle:
+      profil?.titleAchievementId === null || profil?.titleAchievementId === undefined
+        ? null
+        : titleForAchievement(profil.titleAchievementId),
+  };
 }
 
 export interface MessageDtoContext {
   readonly viewerId: string | null;
-  readonly displayNames: ReadonlyMap<string, string>;
+  readonly profiles: ReadonlyMap<string, ChatUserProfile>;
   /** IDs der Nachrichten, die der Betrachter bereits gemeldet hat. */
   readonly reportedByViewer: ReadonlySet<string>;
 }
@@ -76,7 +100,8 @@ export function toMessageDto(message: MessageRecord, context: MessageDtoContext)
     id: message.id,
     conversationId: message.conversationId,
     senderId: message.senderId,
-    senderDisplayName: nameOf(context.displayNames, message.senderId),
+    senderDisplayName: nameOf(context.profiles, message.senderId),
+    ...anzeigeOf(context.profiles, message.senderId),
     content: isDeleted ? '' : message.content,
     createdAt: message.createdAt.toISOString(),
     deletedAt: message.deletedAt?.toISOString() ?? null,
@@ -124,10 +149,10 @@ export function toConversationDto(
     id: conversation.id,
     type: conversation.type,
     serverId: conversation.serverId,
-    title: titleFor(audience, context.viewerId, context.displayNames),
+    title: titleFor(audience, context.viewerId, context.profiles),
     participants: audience.participantIds.map((userId) => ({
       userId,
-      displayName: nameOf(context.displayNames, userId),
+      displayName: nameOf(context.profiles, userId),
     })),
     lastMessage: context.lastMessage ? toMessageDto(context.lastMessage, context) : null,
     createdAt: conversation.createdAt.toISOString(),
@@ -148,12 +173,12 @@ export function toConversationDto(
 export function toReportedMessageDto(
   report: MessageReportRecord,
   message: MessageRecord,
-  displayNames: ReadonlyMap<string, string>,
+  profiles: ReadonlyMap<string, ChatUserProfile>,
 ): ReportedMessageDto {
   return {
     id: message.id,
     senderId: message.senderId,
-    senderDisplayName: nameOf(displayNames, message.senderId),
+    senderDisplayName: nameOf(profiles, message.senderId),
     content: report.reportedContent,
     createdAt: message.createdAt.toISOString(),
     deletedAt: message.deletedAt?.toISOString() ?? null,
@@ -163,7 +188,7 @@ export function toReportedMessageDto(
 export interface MessageReportDtoContext {
   readonly actor: PermissionActor;
   readonly viewerId: string | null;
-  readonly displayNames: ReadonlyMap<string, string>;
+  readonly profiles: ReadonlyMap<string, ChatUserProfile>;
   readonly message: MessageRecord;
   readonly conversation: ConversationRecord;
 }
@@ -179,18 +204,18 @@ export function toMessageReportDto(
     conversationType: context.conversation.type,
     serverId: context.conversation.serverId,
     reportedById: report.reportedById,
-    reportedByDisplayName: nameOf(context.displayNames, report.reportedById),
+    reportedByDisplayName: nameOf(context.profiles, report.reportedById),
     reason: report.reason,
     status: report.status,
     actionTaken: report.actionTaken,
     moderatorNote: report.moderatorNote,
     resolvedById: report.resolvedById,
     resolvedByDisplayName: report.resolvedById
-      ? nameOf(context.displayNames, report.resolvedById)
+      ? nameOf(context.profiles, report.resolvedById)
       : null,
     resolvedAt: report.resolvedAt?.toISOString() ?? null,
     createdAt: report.createdAt.toISOString(),
-    message: toReportedMessageDto(report, context.message, context.displayNames),
+    message: toReportedMessageDto(report, context.message, context.profiles),
     permissions: computeMessageReportPermissions(context.actor, context.viewerId, report),
   };
 }

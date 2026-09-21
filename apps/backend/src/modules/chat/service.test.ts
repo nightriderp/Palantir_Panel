@@ -820,10 +820,10 @@ describe('sendMessage: Abfragen je Zustellung', () => {
 
     const zaehlendesVerzeichnis = {
       ...echtesVerzeichnis,
-      displayNames: async (userIds: readonly string[]) => {
+      profiles: async (userIds: readonly string[]) => {
         displayNamesAufrufe += 1;
 
-        return echtesVerzeichnis.displayNames(userIds);
+        return echtesVerzeichnis.profiles(userIds);
       },
     };
 

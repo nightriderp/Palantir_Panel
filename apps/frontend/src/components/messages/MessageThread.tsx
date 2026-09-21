@@ -151,8 +151,14 @@ export function MessageThread({
                * also wird sie auch nicht behauptet: jede solche Nachricht
                * bekommt ihre eigene Namenszeile.
                */
-              const showSender =
-                isServerChat &&
+              /*
+               * Erste Nachricht einer Folge desselben Absenders. Dieselbe
+               * Regel wie bisher für die Namenszeile – jetzt auch für das
+               * Profilbild (Betreiber-Wunsch 21.09.2026), und deshalb
+               * unabhängig vom Chat-Typ: In einer DM ist der Name überflüssig,
+               * das Bild aber nicht.
+               */
+              const erstesDerFolge =
                 !mine &&
                 (message.senderId === null || !previous || previous.senderId !== message.senderId);
 
@@ -161,7 +167,8 @@ export function MessageThread({
                   key={message.id}
                   message={message}
                   mine={mine}
-                  showSender={showSender}
+                  showSender={isServerChat && erstesDerFolge}
+                  showAvatar={erstesDerFolge}
                   onReport={onReport}
                   onDelete={onDelete}
                 />

@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACHIEVEMENT_RULES,
   KEINE_HANDGRIFFE,
+  META_ACHIEVEMENTS,
   type AchievementTrigger,
   rulesForArcadeScore,
   rulesForAuditAction,
@@ -58,8 +59,13 @@ describe('Vollständigkeit der Regel-Tabelle', () => {
       const regel = ACHIEVEMENT_RULES[id];
       const hatAuditAusloeser = regel.actions === 'jede' || regel.actions.length > 0;
 
+      /*
+       * Drei Wege, auf denen eine Regel drankommt: ein Protokolleintrag, ein
+       * Arcade-Ergebnis – oder, bei den Bestands-Abzeichen, der Nachschlag des
+       * Service, sobald ein Durchgang etwas vergeben hat.
+       */
       expect(
-        hatAuditAusloeser || regel.onArcadeScore === true,
+        hatAuditAusloeser || regel.onArcadeScore === true || regel.meta === true,
         `${id} könnte nie ausgelöst werden`,
       ).toBe(true);
     }
@@ -68,25 +74,44 @@ describe('Vollständigkeit der Regel-Tabelle', () => {
   it('hängt höchstens ein Abzeichen an **jeder** Aktion – sonst liefe zu viel mit', () => {
     const anJederAktion = ACHIEVEMENT_IDS.filter((id) => ACHIEVEMENT_RULES[id].actions === 'jede');
 
-    expect(anJederAktion).toEqual(['hausmeisterei']);
+    expect(anJederAktion).toEqual(['vielbeschaeftigt']);
+  });
+
+  it('nimmt Bestands-Abzeichen aus den Ereignis-Auswahlen heraus', () => {
+    /*
+     * Sie hängen am eigenen Abzeichen-Bestand, nicht an einem Vorgang. Stünden
+     * sie in einer Auswahl, liefen sie bei jedem Protokolleintrag mit, nur um
+     * fast immer „noch nicht" zu sagen – der Service zieht sie stattdessen
+     * nach, sobald ein Durchgang etwas vergeben hat.
+     */
+    expect(META_ACHIEVEMENTS.length).toBeGreaterThan(0);
+
+    for (const id of META_ACHIEVEMENTS) {
+      expect(rulesForAuditAction('server.created'), id).not.toContain(id);
+      expect(rulesForArcadeScore(), id).not.toContain(id);
+    }
   });
 });
 
 describe('Auswahl der zu prüfenden Regeln', () => {
-  it('wählt zu einer Aktion die Abzeichen, die daran hängen – samt `hausmeisterei`', () => {
+  it('wählt zu einer Aktion die Abzeichen, die daran hängen – samt `vielbeschaeftigt`', () => {
     expect(rulesForAuditAction('backup.restored').sort()).toEqual(
-      ['esLiefDochGestern', 'hausmeisterei'].sort(),
+      ['esLiefDochGestern', 'vielbeschaeftigt'].sort(),
     );
   });
 
-  it('wählt zu einer Aktion ohne eigenes Abzeichen nur `hausmeisterei`', () => {
-    expect(rulesForAuditAction('role.created')).toEqual(['hausmeisterei']);
+  it('wählt zu einer Aktion ohne eigenes Abzeichen nur `vielbeschaeftigt`', () => {
+    expect(rulesForAuditAction('role.created')).toEqual(['vielbeschaeftigt']);
   });
 
-  it('wählt nach einem Arcade-Ergebnis genau die Spielhallen-Abzeichen', () => {
-    expect(rulesForArcadeScore().sort()).toEqual(
-      ['alleskoenner', 'eingeworfen', 'hartnaeckig', 'spielhallenlegende'].sort(),
-    );
+  it('wählt nach einem Arcade-Ergebnis die Spielhallen-, Platzierungs- und Runden-Abzeichen', () => {
+    const nachDemSpiel = rulesForArcadeScore();
+
+    expect(nachDemSpiel).toEqual(expect.arrayContaining(['eingeworfen', 'alleskoenner']));
+    expect(nachDemSpiel).toEqual(expect.arrayContaining(['platz50', 'spielhallenlegende']));
+    expect(nachDemSpiel).toEqual(expect.arrayContaining(['runden10', 'runden1000']));
+    // Anmeldungen hängen am Protokoll, nicht am Spiel.
+    expect(nachDemSpiel).not.toContain('anmeldung10');
   });
 });
 
@@ -152,11 +177,11 @@ describe('Schwellen-Abzeichen', () => {
   });
 });
 
-describe('`hausmeisterei` zählt Handgriffe', () => {
+describe('`vielbeschaeftigt` zählt Handgriffe', () => {
   it('greift beim fünfzigsten protokollierten Handgriff', async () => {
     const neunundvierzig = { auditRows: eintraege('server.settingsChanged', 49) };
 
-    expect(await pruefe('hausmeisterei', auditAuslöser('server.created'), neunundvierzig)).toBe(
+    expect(await pruefe('vielbeschaeftigt', auditAuslöser('server.created'), neunundvierzig)).toBe(
       true,
     );
   });
@@ -169,7 +194,7 @@ describe('`hausmeisterei` zählt Handgriffe', () => {
      */
     const nurAbgewiesene = { auditRows: eintraege('access.denied', 200) };
 
-    expect(await pruefe('hausmeisterei', auditAuslöser('server.created'), nurAbgewiesene)).toBe(
+    expect(await pruefe('vielbeschaeftigt', auditAuslöser('server.created'), nurAbgewiesene)).toBe(
       false,
     );
   });
@@ -181,11 +206,12 @@ describe('`hausmeisterei` zählt Handgriffe', () => {
      * Audit-Log an, um dann „zählt nicht" zu sagen.
      */
     for (const action of KEINE_HANDGRIFFE) {
-      expect(rulesForAuditAction(action)).not.toContain('hausmeisterei');
+      expect(rulesForAuditAction(action)).not.toContain('vielbeschaeftigt');
     }
   });
 
   it('lässt eine Fehlanmeldung ganz ohne Regel durchgehen', () => {
+    // Der billigste Fall: Der Service rührt die Datenbank gar nicht erst an.
     expect(rulesForAuditAction('auth.loginFailed')).toEqual([]);
   });
 });
@@ -220,6 +246,38 @@ describe('Konto- und Spielhallen-Abzeichen', () => {
     expect(await pruefe('ersteStunde', trigger, { registrationRank: 6 })).toBe(false);
   });
 
+  it('lässt den Betreiber aussen vor, der ausserhalb der Wertung steht', async () => {
+    /*
+     * Das Repository gibt dem Owner `MAX_SAFE_INTEGER` statt seines echten
+     * Platzes – sein Konto ist zwangsläufig das erste der Instanz, und „einer
+     * der ersten fünf" wäre für ihn keine Auszeichnung (Betreiber,
+     * 21.09.2026). Die Regel muss das schlicht durchgehen lassen.
+     */
+    const trigger = auditAuslöser('auth.loginSucceeded');
+
+    expect(
+      await pruefe('ersteStunde', trigger, { registrationRank: Number.MAX_SAFE_INTEGER }),
+    ).toBe(false);
+  });
+
+  it('staffelt die Anmeldungen, ohne dass etwas dabei verbraucht wird', async () => {
+    const trigger = auditAuslöser('auth.loginSucceeded');
+    const neun = { auditRows: eintraege('auth.loginSucceeded', 9) };
+
+    // Neun frühere plus die auslösende macht zehn.
+    expect(await pruefe('anmeldung10', trigger, neun)).toBe(true);
+    expect(await pruefe('anmeldung50', trigger, neun)).toBe(false);
+  });
+
+  it('gibt die Runden-Leiter nur bis zur erreichten Stufe', async () => {
+    const arcade: AchievementTrigger = { kind: 'arcade', gameId: 'kriechpfad' };
+    const dreissig = { arcadeRounds: { kriechpfad: 30 } };
+
+    expect(await pruefe('runden10', arcade, dreissig)).toBe(true);
+    expect(await pruefe('hartnaeckig', arcade, dreissig)).toBe(true);
+    expect(await pruefe('runden50', arcade, dreissig)).toBe(false);
+  });
+
   it('verlangt für `alleskoenner` jedes Minispiel', async () => {
     const arcade: AchievementTrigger = { kind: 'arcade', gameId: 'kriechpfad' };
 
@@ -240,12 +298,29 @@ describe('Konto- und Spielhallen-Abzeichen', () => {
     ).toBe(false);
   });
 
-  it('gibt `spielhallenlegende` nur für das Spiel, in dem gerade gespielt wurde', async () => {
-    const imFuehrenden: AchievementTrigger = { kind: 'arcade', gameId: 'kriechpfad' };
-    const imAnderen: AchievementTrigger = { kind: 'arcade', gameId: 'ballwechsel' };
+  it('vergibt die Platzierungs-Leiter nach dem besten Platz über alle Bestenlisten', async () => {
+    /*
+     * Der Witz an der Leiter: Wer irgendwo vorne steht, bekommt alles darunter
+     * gleich mit. Ein Konto auf Platz 3 hat damit auch „Top 50", „Top 20",
+     * „Top 10" und „Top 5" – nur Platz 2 und Platz 1 fehlen ihm noch.
+     */
+    const arcade: AchievementTrigger = { kind: 'arcade', gameId: 'kriechpfad' };
+    const dritter = { bestRank: 3 };
 
-    expect(await pruefe('spielhallenlegende', imFuehrenden, { topOf: ['kriechpfad'] })).toBe(true);
-    expect(await pruefe('spielhallenlegende', imAnderen, { topOf: ['kriechpfad'] })).toBe(false);
+    for (const id of ['platz50', 'platz20', 'platz10', 'platz5', 'platz3'] as const) {
+      expect(await pruefe(id, arcade, dritter), id).toBe(true);
+    }
+
+    expect(await pruefe('platz2', arcade, dritter)).toBe(false);
+    expect(await pruefe('spielhallenlegende', arcade, dritter)).toBe(false);
+  });
+
+  it('gibt einem Konto ohne Platzierung keine einzige Stufe', async () => {
+    const arcade: AchievementTrigger = { kind: 'arcade', gameId: 'kriechpfad' };
+
+    // `bestArcadeRank` liefert `null`, wenn nie gespielt wurde – die unterste
+    // Stufe darf daraus keinen Treffer machen.
+    expect(await pruefe('platz50', arcade)).toBe(false);
   });
 });
 
@@ -306,7 +381,8 @@ describe('Nachvergabe ohne Auslöser', () => {
     expect(await pruefe('nachtschicht', null, { ...nachts, nachtEintrag: false })).toBe(false);
   });
 
-  it('nimmt für `spielhallenlegende` jede Bestenliste, nicht eine bestimmte', async () => {
-    expect(await pruefe('spielhallenlegende', null, { topOf: ['blockstapel'] })).toBe(true);
+  it('nimmt für die Platzierung jede Bestenliste, nicht eine bestimmte', async () => {
+    expect(await pruefe('spielhallenlegende', null, { bestRank: 1 })).toBe(true);
+    expect(await pruefe('platz10', null, { bestRank: 7 })).toBe(true);
   });
 });

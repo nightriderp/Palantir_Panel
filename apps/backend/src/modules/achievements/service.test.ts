@@ -83,7 +83,7 @@ describe('Übersicht', () => {
 
     expect(uebersicht.unlockedCount).toBe(2);
     expect(uebersicht.level.label).toBe('Eingelebt');
-    expect(uebersicht.nextLevel?.label).toBe('Stammgast');
+    expect(uebersicht.nextLevel?.label).toBe('Angekommen');
   });
 
   it('bietet nur Titel aus freigeschalteten Abzeichen an', async () => {
@@ -190,7 +190,7 @@ describe('Vergabe', () => {
   it('prüft bereits freigeschaltete Regeln gar nicht erst nach', async () => {
     // Jede übersprungene Regel spart eine Zählung über dem Audit-Log.
     const { achievements, repository } = service({
-      unlocked: ['grundsteinleger', 'flottenkommando', 'nachtschicht', 'hausmeisterei'],
+      unlocked: ['grundsteinleger', 'flottenkommando', 'nachtschicht', 'vielbeschaeftigt'],
     });
 
     await achievements.evaluate(KONTO, 'server.created');
@@ -212,7 +212,7 @@ describe('Vergabe', () => {
   });
 
   it('schaltet nach einem Arcade-Ergebnis die Spielhallen-Abzeichen frei', async () => {
-    const { achievements } = service({ arcadeRounds: { kriechpfad: 1 }, topOf: ['kriechpfad'] });
+    const { achievements } = service({ arcadeRounds: { kriechpfad: 1 }, bestRank: 1 });
 
     const neu = await achievements.evaluateArcade(KONTO, 'kriechpfad');
 
@@ -445,5 +445,68 @@ describe('Nachvergabe an bestehende Konten', () => {
     });
 
     expect((await achievements.backfillAll()).size).toBe(0);
+  });
+});
+
+describe('Bestands-Abzeichen im selben Durchgang', () => {
+  /**
+   * „Zehn Abzeichen" zählt den eigenen Bestand (Betreiber, 21.09.2026). Wer
+   * zehn auf einmal bekommt, soll das zehnte nicht erst beim nächsten Vorgang
+   * gutgeschrieben bekommen – dafür fasst die Vergabe nach.
+   */
+  it('vergibt das Sammler-Abzeichen zusammen mit den Abzeichen, die es zählt', async () => {
+    const { achievements, repository } = service({
+      // Genug Vorgeschichte, dass die Nachvergabe zweistellig ausfällt.
+      auditRows: [
+        ...Array.from({ length: 25 }, (_, index) => ({
+          id: `s-${String(index)}`,
+          action: 'server.created' as const,
+        })),
+        ...Array.from({ length: 10 }, (_, index) => ({
+          id: `b-${String(index)}`,
+          action: 'backup.created' as const,
+        })),
+        { id: 'r', action: 'backup.restored' as const },
+        { id: 'k', action: 'server.cloned' as const },
+        { id: 'd', action: 'server.deleted' as const },
+        { id: 'm', action: 'server.memberAdded' as const },
+      ],
+      arcadeRounds: { kriechpfad: 60 },
+      bestRank: 1,
+    });
+
+    const neu = await achievements.backfillFor(KONTO);
+
+    expect(neu.length).toBeGreaterThanOrEqual(10);
+    expect(neu).toContain('sammler10');
+    // Der Bestand ist danach wirklich gespeichert, nicht nur gemeldet.
+    expect(repository.vergeben).toContain('sammler10');
+  });
+
+  it('vergibt kein Sammler-Abzeichen, wenn die Schwelle nicht erreicht ist', async () => {
+    const { achievements } = service({ auditRows: [{ id: 'a', action: 'server.created' }] });
+
+    const neu = await achievements.backfillFor(KONTO);
+
+    expect(neu).not.toContain('sammler10');
+  });
+
+  it('greift auch im laufenden Betrieb, nicht nur bei der Nachvergabe', async () => {
+    /*
+     * Ein Konto, dem genau ein Abzeichen zu zehn fehlt: Der auslösende Vorgang
+     * bringt das zehnte, und das Sammler-Abzeichen muss im selben Durchgang
+     * mitkommen.
+     */
+    const zehnErste = ACHIEVEMENTS.slice(0, 10).map((eintrag) => eintrag.id);
+    const { achievements } = service({
+      // Neun davon liegen schon vor; `grundsteinleger` bringt der Vorgang.
+      unlocked: zehnErste.filter((id) => id !== 'grundsteinleger'),
+      auditRows: [],
+    });
+
+    const neu = await achievements.evaluate(KONTO, 'server.created');
+
+    expect(neu).toContain('grundsteinleger');
+    expect(neu).toContain('sammler10');
   });
 });
