@@ -30,9 +30,8 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-  esbuild: {
-    jsx: 'automatic',
-    jsxImportSource: 'react',
+  oxc: {
+    jsx: { runtime: 'automatic', importSource: 'react' },
   },
   test: {
     setupFiles: ['./vitest.setup.ts'],
