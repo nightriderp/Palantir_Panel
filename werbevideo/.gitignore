@@ -1,0 +1,10 @@
+# Laufzeit der Demo-Bühne: Kennungen, Protokolle, gemerkter Node-Zustand.
+buehne/.lauf/
+
+# Aufgenommenes Material. Große Binärdateien gehören nicht ins Repository –
+# das Werkzeug erzeugt sie in Minuten neu (siehe README.md).
+aufnahmen/
+fassungen/
+
+# Geheimnisse der Aufnahme-Installation – nie im Repository.
+buehne/umgebung.sh
