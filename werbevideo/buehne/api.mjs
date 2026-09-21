@@ -19,6 +19,8 @@ export class PanelClient {
     this.basis = basis.replace(/\/$/, '');
     /** @type {Map<string, string>} Cookie-Krug: Name → Wert */
     this.cookies = new Map();
+    /** @type {{username: string, password: string} | null} */
+    this.zugang = null;
   }
 
   get cookieHeader() {
@@ -40,8 +42,30 @@ export class PanelClient {
   /**
    * Ein Aufruf gegen die API. Wirft bei jedem Misserfolg – eine Bühne, die
    * halb aufgebaut ist, fällt im Video auf, ein Abbruch hier nicht.
+   *
+   * **Mit einem Anlauf, die Sitzung zu erneuern.** Ein vollständiger
+   * Aufnahmelauf dauert eine Dreiviertelstunde; das Zugangs-Token lebt
+   * kürzer. Beim ersten Lauf brach die Aufnahme deshalb nach elf Szenen mit
+   * `AUTH_REQUIRED` ab – nicht an einem Fehler im Panel, sondern an einer
+   * abgelaufenen Anmeldung. Kommt eine 401 zurück, wird einmal über
+   * `/auth/refresh` verlängert und der Aufruf wiederholt; klappt auch das
+   * nicht, meldet sich der Klient mit den gemerkten Zugangsdaten neu an.
    */
-  async ruf(methode, pfad, koerper, { roh = false } = {}) {
+  async ruf(methode, pfad, koerper, optionen = {}) {
+    try {
+      return await this.#ruf(methode, pfad, koerper, optionen);
+    } catch (fehler) {
+      if (!String(fehler.message).includes('(401)') || pfad.startsWith('/auth/')) throw fehler;
+
+      const erneuert = await this.#ruf('POST', '/auth/refresh').catch(() => null);
+      if (erneuert === null && this.zugang !== null) {
+        await this.anmelden(this.zugang.username, this.zugang.password).catch(() => null);
+      }
+      return this.#ruf(methode, pfad, koerper, optionen);
+    }
+  }
+
+  async #ruf(methode, pfad, koerper, { roh = false } = {}) {
     const kopf = { Accept: 'application/json' };
     if (this.cookies.size > 0) kopf.Cookie = this.cookieHeader;
     const csrf = this.cookies.get(CSRF_COOKIE);
@@ -108,7 +132,10 @@ export class PanelClient {
   }
 
   async anmelden(username, password) {
-    return this.ruf('POST', '/auth/login', {
+    // Gemerkt für den Fall, dass die Sitzung mitten im Aufnahmelauf abläuft
+    // und auch das Verlängern nicht mehr greift.
+    this.zugang = { username, password };
+    return this.#ruf('POST', '/auth/login', {
       username,
       password,
       altcha: await this.#altcha(),
