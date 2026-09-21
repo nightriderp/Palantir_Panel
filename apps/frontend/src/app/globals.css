@@ -49,60 +49,6 @@
     @apply outline outline-2 outline-offset-1 outline-brand;
   }
 
-  /**
-   * Überschriften tragen die Anzeigeschrift des Themes.
-   *
-   * Als eine Regel hier und nicht als Utility an jeder Überschrift: Dass ein
-   * Titel die Schrift des Themes trägt, ist eine Entscheidung über die ganze
-   * Oberfläche und keine über einzelne Bausteine – verteilt auf dreißig
-   * Komponenten wäre sie die erste, die jemand beim nächsten Titel vergisst.
-   *
-   * `h1` und `h2` genügen: Das sind Seitentitel und Kartenüberschriften, also
-   * das, was ohnehin groß gesetzt ist. Kleinere Überschriften stehen bei 11–13px
-   * und wären in einer Schmuckschrift nicht mehr zu lesen.
-   *
-   * ⚠️ `legend` steht bewusst **nicht** dabei, obwohl eine davon wie eine
-   * Kartenüberschrift aussieht (`AppearancePanel`). Die übrigen sind winzige
-   * Formularbeschriftungen – in `RolesView` eine Versalzeile bei 10px, die in
-   * einer Zierschrift verschwände. Die eine, die eine Überschrift ist, trägt
-   * `font-display` deshalb selbst.
-   *
-   * Ohne Theme-Wahl löst `font-display` auf die Schrift des Betreibers auf –
-   * diese Regel ändert dann nichts.
-   */
-  h1,
-  h2 {
-    @apply font-display;
-  }
-
-  /**
-   * ⚠️ **Außer, wenn die Überschrift klein gesetzt ist.**
-   *
-   * `h2` trägt in diesem Code alles von der 10px-Abschnittsbeschriftung
-   * („Deine Server · 3") bis zum 20px-Kartentitel. Die Regel darüber traf
-   * beide – und eine Zierschrift bei 10px ist keine Überschrift mehr, sondern
-   * ein Fleck. Aufgefallen ist das erst im Browser: Im Quelltext steht überall
-   * dasselbe `<h2>`.
-   *
-   * Die Grenze liegt bei `md` (14px) – darunter greift wieder die Schrift des
-   * Betreibers. Ausgenommen wird über die Größenklasse und nicht in den
-   * Komponenten: Es sind siebzehn Stellen, und die achtzehnte würde den
-   * Zusatz vergessen. `schriftgroessen.test.ts` hält Regel und Skala
-   * zusammen.
-   */
-  h1.text-3xs,
-  h1.text-2xs,
-  h1.text-xs,
-  h1.text-sm,
-  h1.text-base,
-  h2.text-3xs,
-  h2.text-2xs,
-  h2.text-xs,
-  h2.text-sm,
-  h2.text-base {
-    @apply font-sans;
-  }
-
   a {
     @apply text-brand;
   }

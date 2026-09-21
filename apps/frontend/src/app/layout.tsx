@@ -178,6 +178,33 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             crossOrigin="anonymous"
           />
         ))}
+
+        {/*
+          Die Schrift des Themes steht hier **nicht** – gemessen, nicht
+          vermutet.
+
+          Sie besetzt keine der beiden Rollen und hätte eine eigene Zeile über
+          ihre Kennung gebraucht. Naheliegend war das: Seit sie nicht mehr nur
+          Titel trägt, sondern allen Text (`lib/theme/palette.ts`), würde ein
+          spätes Eintreffen die ganze Seite umspringen lassen, nicht nur die
+          Überschriften.
+
+          Gemessen am 21.09.2026 im Produktionsbau, 100 ms Umlaufzeit, je drei
+          Läufe mit Heldenrot (Bangers) und Bambushain (Cormorant Garamond):
+          Die Schrift steht nach 222 ms – **mit wie ohne Vorladezeile**, auf
+          die Millisekunde gleich – und damit rund 190 ms vor dem ersten Bild.
+          Der serielle Weg, gegen den die zwei Zeilen darüber gebaut sind,
+          kostet hier nichts, weil das Stylesheet ohnehin das erste Bild
+          blockiert: Der Browser liest die `@font-face`-Regel, während er noch
+          auf das JavaScript wartet.
+
+          Eine Zeile, die nichts einspart, ist keine harmlose Zeile – sie holt
+          bei jedem Aufruf eine Datei, die sonst der Zwischenspeicher liefern
+          würde, und muss bei jeder Änderung an den Themes mitgepflegt werden.
+          Wer sie doch braucht, misst vorher: `document.fonts.check` gegen
+          `first-contentful-paint`, nicht Resource-Timing – CSS-initiierte
+          Schriftabrufe tauchen dort nicht auf.
+        */}
       </head>
       <body className="min-h-screen bg-canvas text-ink antialiased">
         {/*
