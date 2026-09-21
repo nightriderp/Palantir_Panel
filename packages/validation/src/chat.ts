@@ -153,6 +153,14 @@ export const messageDtoSchema: z.ZodType<MessageDto> = z.object({
   conversationId: idSchema,
   senderId: idSchema.nullable(),
   senderDisplayName: z.string().min(1),
+  /*
+   * Bild und Titel des Absenders (Betreiber-Wunsch 21.09.2026). Ohne die
+   * beiden Zeilen ständen sie zwar im DTO, kämen aber nie im Browser an: Zod
+   * entfernt unbekannte Schlüssel beim Parsen, und der Chat parst jede
+   * Nachricht durch dieses Schema.
+   */
+  senderAvatarUpdatedAt: z.string().datetime({ offset: true }).nullable(),
+  senderTitle: z.string().min(1).nullable(),
   /** Bei gelöschten Nachrichten leer – deshalb ohne `min(1)`. */
   content: z.string(),
   createdAt: z.string().datetime({ offset: true }),

@@ -168,12 +168,12 @@ export function createModerationService(deps: ModerationServiceDependencies): Mo
       (id) => id !== null,
     );
 
-    const displayNames = await users.displayNames([...new Set(userIds)]);
+    const profiles = await users.profiles([...new Set(userIds)]);
 
     return toMessageReportDto(report, {
       actor: ctx.actor,
       viewerId: ctx.userId,
-      displayNames,
+      profiles,
       message,
       conversation,
     });

@@ -14,7 +14,12 @@ import { describe, expect, it } from 'vitest';
 import { messageDtoSchema } from '@palantir/validation';
 import { toMessageDto, toMessageReportDto } from './dto.js';
 import { ALEX, BEA, MOD, actorWith, testId } from './test-doubles.js';
-import type { ConversationRecord, MessageRecord, MessageReportRecord } from './types.js';
+import type {
+  ChatUserProfile,
+  ConversationRecord,
+  MessageRecord,
+  MessageReportRecord,
+} from './types.js';
 
 const ZEITPUNKT = new Date('2026-08-26T12:00:00.000Z');
 const NACHRICHT_ID = testId('e1');
@@ -60,13 +65,13 @@ const KONVERSATION: ConversationRecord = {
   createdAt: ZEITPUNKT,
 };
 
-const OHNE_NAMEN = new Map<string, string>();
+const OHNE_NAMEN = new Map<string, ChatUserProfile>();
 
 describe('Nachricht ohne bestehendes Absender-Konto', () => {
   it('liefert eine leere Kennung, aber den festen Anzeigenamen', () => {
     const dto = toMessageDto(nachricht({ senderId: null }), {
       viewerId: BEA,
-      displayNames: OHNE_NAMEN,
+      profiles: OHNE_NAMEN,
       reportedByViewer: new Set(),
     });
 
@@ -96,7 +101,7 @@ describe('Nachricht ohne bestehendes Absender-Konto', () => {
         deletedById: null,
         deletedByModerator: true,
       }),
-      { viewerId: BEA, displayNames: OHNE_NAMEN, reportedByViewer: new Set() },
+      { viewerId: BEA, profiles: OHNE_NAMEN, reportedByViewer: new Set() },
     );
 
     expect(dto.deletedByModerator).toBe(true);
@@ -111,7 +116,7 @@ describe('Nachricht ohne bestehendes Absender-Konto', () => {
         deletedById: null,
         deletedByModerator: false,
       }),
-      { viewerId: BEA, displayNames: OHNE_NAMEN, reportedByViewer: new Set() },
+      { viewerId: BEA, profiles: OHNE_NAMEN, reportedByViewer: new Set() },
     );
 
     expect(dto.deletedByModerator).toBe(false);
@@ -120,7 +125,7 @@ describe('Nachricht ohne bestehendes Absender-Konto', () => {
   it('lässt die Angabe leer, solange die Nachricht steht', () => {
     const dto = toMessageDto(nachricht({ senderId: null }), {
       viewerId: BEA,
-      displayNames: OHNE_NAMEN,
+      profiles: OHNE_NAMEN,
       reportedByViewer: new Set(),
     });
 
@@ -133,7 +138,7 @@ describe('Meldung ohne bestehendes Melder-Konto', () => {
     const dto = toMessageReportDto(meldung({ reportedById: null }), {
       actor: actorWith('message.moderate'),
       viewerId: MOD,
-      displayNames: OHNE_NAMEN,
+      profiles: OHNE_NAMEN,
       message: nachricht({ senderId: null }),
       conversation: KONVERSATION,
     });

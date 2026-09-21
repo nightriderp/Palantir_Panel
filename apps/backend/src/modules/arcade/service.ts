@@ -84,6 +84,7 @@ function toRankedEntries(
       // Aus der Kennung wird hier der Text: Der Titel steht im Katalog, nicht
       // in der Datenbank – eine spätere Umformulierung wirkt damit sofort.
       title: row.titleAchievementId === null ? null : titleForAchievement(row.titleAchievementId),
+      avatarUpdatedAt: row.avatarUpdatedAt?.toISOString() ?? null,
       bestScore: row.bestScore,
       achievedAt: row.achievedAt.toISOString(),
       isCurrentUser: row.userId === userId,

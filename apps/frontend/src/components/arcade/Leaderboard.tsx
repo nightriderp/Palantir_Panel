@@ -1,7 +1,16 @@
 'use client';
 
 import { type ArcadeLeaderboardDto } from '@palantir/contracts';
-import { Button, EmptyState, Panel, formatDateTime, formatNumber } from '@/components/shared';
+import {
+  Button,
+  EmptyState,
+  Panel,
+  ThemeEmblem,
+  UserLabel,
+  formatDateTime,
+  formatNumber,
+} from '@/components/shared';
+import { avatarUrl } from '@/lib/auth/api';
 
 /**
  * Bestenliste eines Minispiels (Arbeitspaket F8, Lastenheft §3.9 „nutzerbezogen").
@@ -44,7 +53,16 @@ export function Leaderboard({ data, loading, error, onReload }: LeaderboardProps
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-md font-semibold text-ink">Bestenliste</h2>
+        {/*
+          Das Zeichen des gewählten Themes – der einzige Ort im Panel, an dem
+          ein Theme mehr tut, als Farben zu tauschen. Es steht hier und nicht
+          auf jeder Seite: Eine Bestenliste ist der eine Platz, an dem etwas
+          Wappenhaftes nicht deplatziert wirkt.
+        */}
+        <h2 className="flex items-center gap-2 text-md font-semibold text-ink">
+          <ThemeEmblem className="text-brand" />
+          Bestenliste
+        </h2>
         <Button variant="ghost" size="sm" onClick={onReload}>
           Aktualisieren
         </Button>
@@ -68,20 +86,19 @@ export function Leaderboard({ data, loading, error, onReload }: LeaderboardProps
               <span className="w-6 shrink-0 text-center font-mono text-sm text-ink-soft">
                 {entry.rank}
               </span>
-              <span className="flex-1 truncate text-base text-ink">
-                {entry.displayName}
-                {/*
-                  Der getragene Titel (Betreiber-Wunsch 21.09.2026) – die
-                  einzige Stelle, an der ein Titel fremden Augen begegnet.
-                  Gedämpft gesetzt: Er schmückt den Namen, er ersetzt ihn nicht.
-                */}
-                {entry.title === null ? null : (
-                  <span className="ml-1.5 text-sm text-ink-faint">{entry.title}</span>
-                )}
-                {entry.isCurrentUser ? (
-                  <span className="ml-1 text-sm text-brand-bright">· du</span>
-                ) : null}
-              </span>
+              {/*
+                Bild, Name und Titel als ein Baustein (Betreiber-Wunsch
+                21.09.2026) – dieselbe Darstellung wie im Chat und an den
+                Server-Kacheln. Ohne den gemeinsamen Baustein sähe dieselbe
+                Person an drei Stellen verschieden aus.
+              */}
+              <UserLabel
+                className="flex-1 text-base"
+                avatarSrc={avatarUrl(entry.userId, entry.avatarUpdatedAt)}
+                displayName={entry.displayName}
+                title={entry.title}
+                suffix={entry.isCurrentUser ? '· du' : null}
+              />
               <span
                 className="shrink-0 font-mono text-base text-ink"
                 title={`Erreicht am ${formatDateTime(entry.achievedAt)}`}

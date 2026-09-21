@@ -77,6 +77,7 @@ function fakeRepository(options: FakeOptions = {}): FakeRepository {
           userId,
           displayName: displayNames[userId] ?? userId,
           titleAchievementId: titel[userId] ?? null,
+          avatarUpdatedAt: null,
           bestScore: best.score,
           achievedAt: best.at,
         }))

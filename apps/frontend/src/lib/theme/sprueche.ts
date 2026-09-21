@@ -241,6 +241,161 @@ const ABWEICHUNGEN: Record<string, Partial<Record<SpruchSlot, Spruch>>> = {
       text: 'Der Link ist veraltet oder enthält einen Tippfehler. Die Übersicht führt zurück zu deinen Servern.',
     },
   },
+
+  heldenrot: {
+    anmeldung: {
+      titel: 'Der Einsatz wartet',
+      text: 'Melde dich an, um deine Gameserver zu befehligen.',
+    },
+    serverLeer: {
+      titel: 'Noch kein Einsatz',
+      text: 'Stell deinen ersten Gameserver auf – ein paar Klicks, dann steht die Truppe.',
+    },
+    keinTreffer: {
+      titel: 'Niemand gefunden',
+      text: 'Kein Server passt zu dieser Auswahl. Ändere den Filter oder den Suchbegriff.',
+    },
+    sicherungenLeer: {
+      titel: 'Keine Rückversicherung',
+      text: 'Sichere den Server jetzt oder warte auf den nächsten geplanten Lauf.',
+    },
+    meldungenLeer: {
+      titel: 'Die Zentrale meldet nichts',
+      text: 'Serverstatus, Backups und Ankündigungen laufen hier zusammen.',
+    },
+    aufgabenLeer: {
+      titel: 'Kein Auftrag hinterlegt',
+      text: 'Lege zum Beispiel einen nächtlichen Neustart an oder einen Konsolenbefehl zu fester Uhrzeit.',
+    },
+    nichtGefunden: {
+      titel: 'Diese Spur führt ins Nichts',
+      text: 'Der Link ist veraltet oder hat einen Tippfehler. Die Übersicht führt zurück zu deinen Servern.',
+    },
+  },
+
+  kampfgeist: {
+    anmeldung: {
+      titel: 'Bereit fürs Training?',
+      text: 'Melde dich an, um deine Gameserver zu steuern.',
+    },
+    serverLeer: {
+      titel: 'Noch nichts aufgebaut',
+      text: 'Leg deinen ersten Gameserver an – ein paar Klicks, dann geht es los.',
+    },
+    keinTreffer: {
+      titel: 'Kein Gegner in Sicht',
+      text: 'Kein Server passt zu dieser Auswahl. Ändere den Filter oder den Suchbegriff.',
+    },
+    sicherungenLeer: {
+      titel: 'Kein Rückhalt gespeichert',
+      text: 'Sichere den Server jetzt oder warte auf den nächsten geplanten Lauf.',
+    },
+    meldungenLeer: {
+      titel: 'Alles still',
+      text: 'Serverstatus, Backups und Ankündigungen laufen hier zusammen.',
+    },
+    aufgabenLeer: {
+      titel: 'Kein Trainingsplan',
+      text: 'Lege zum Beispiel einen nächtlichen Neustart an oder einen Konsolenbefehl zu fester Uhrzeit.',
+    },
+    nichtGefunden: {
+      titel: 'Daneben gegriffen',
+      text: 'Der Link ist veraltet oder hat einen Tippfehler. Die Übersicht führt zurück zu deinen Servern.',
+    },
+  },
+
+  boxenstopp: {
+    anmeldung: {
+      titel: 'Zurück in der Box',
+      text: 'Melde dich an, um deine Gameserver zu steuern.',
+    },
+    serverLeer: {
+      titel: 'Die Box ist leer',
+      text: 'Stell deinen ersten Gameserver auf die Strecke – ein paar Klicks genügen.',
+    },
+    keinTreffer: {
+      titel: 'Keiner auf der Strecke',
+      text: 'Kein Server passt zu dieser Auswahl. Ändere den Filter oder den Suchbegriff.',
+    },
+    sicherungenLeer: {
+      titel: 'Kein Ersatzteil im Regal',
+      text: 'Sichere den Server jetzt oder warte auf den nächsten geplanten Lauf.',
+    },
+    meldungenLeer: {
+      titel: 'Der Funk ist ruhig',
+      text: 'Serverstatus, Backups und Ankündigungen laufen hier zusammen.',
+    },
+    aufgabenLeer: {
+      titel: 'Kein Boxenstopp geplant',
+      text: 'Lege zum Beispiel einen nächtlichen Neustart an oder einen Konsolenbefehl zu fester Uhrzeit.',
+    },
+    nichtGefunden: {
+      titel: 'Falsche Abzweigung',
+      text: 'Der Link ist veraltet oder hat einen Tippfehler. Die Übersicht führt zurück zu deinen Servern.',
+    },
+  },
+
+  bambushain: {
+    anmeldung: {
+      titel: 'Willkommen im Hain',
+      text: 'Melde dich an, um deine Gameserver zu verwalten.',
+    },
+    serverLeer: {
+      titel: 'Der Hain ist still',
+      text: 'Auch ein Meister fing bei null an: Leg deinen ersten Gameserver an, es dauert ein paar Klicks.',
+    },
+    keinTreffer: {
+      titel: 'Nichts zu finden',
+      text: 'Kein Server passt zu dieser Auswahl. Ändere den Filter oder den Suchbegriff.',
+    },
+    sicherungenLeer: {
+      titel: 'Keine Abschrift im Regal',
+      text: 'Sichere den Server jetzt oder warte auf den nächsten geplanten Lauf.',
+    },
+    meldungenLeer: {
+      titel: 'Es ist ruhig geblieben',
+      text: 'Serverstatus, Backups und Ankündigungen laufen hier zusammen.',
+    },
+    aufgabenLeer: {
+      titel: 'Nichts geübt, nichts geplant',
+      text: 'Lege zum Beispiel einen nächtlichen Neustart an oder einen Konsolenbefehl zu fester Uhrzeit.',
+    },
+    nichtGefunden: {
+      titel: 'Dieser Pfad endet hier',
+      text: 'Der Link ist veraltet oder hat einen Tippfehler. Die Übersicht führt zurück zu deinen Servern.',
+    },
+  },
+
+  drachenfels: {
+    anmeldung: {
+      titel: 'Zurück am Fels',
+      text: 'Melde dich an, um deine Gameserver zu verwalten.',
+    },
+    serverLeer: {
+      titel: 'Noch nichts gezähmt',
+      text: 'Leg deinen ersten Gameserver an – ein paar Klicks, dann hebt er ab.',
+    },
+    keinTreffer: {
+      titel: 'Nichts am Horizont',
+      text: 'Kein Server passt zu dieser Auswahl. Ändere den Filter oder den Suchbegriff.',
+    },
+    sicherungenLeer: {
+      titel: 'Kein Abbild im Nest',
+      text: 'Sichere den Server jetzt oder warte auf den nächsten geplanten Lauf.',
+    },
+    meldungenLeer: {
+      titel: 'Vom Horizont nichts Neues',
+      text: 'Serverstatus, Backups und Ankündigungen laufen hier zusammen.',
+    },
+    aufgabenLeer: {
+      titel: 'Kein Flug geplant',
+      text: 'Lege zum Beispiel einen nächtlichen Neustart an oder einen Konsolenbefehl zu fester Uhrzeit.',
+    },
+    nichtGefunden: {
+      titel: 'Hier ist die Klippe',
+      text: 'Der Link ist veraltet oder hat einen Tippfehler. Die Übersicht führt zurück zu deinen Servern.',
+    },
+  },
 };
 
 /**

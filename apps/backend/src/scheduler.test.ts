@@ -780,6 +780,8 @@ function runningServer(overrides: Partial<ServerRecord> = {}): ServerRecord {
     id: SERVER_ID,
     ownerId: OWNER_ID,
     ownerDisplayName: 'Besitzerin',
+    ownerAvatarUpdatedAt: null,
+    ownerTitleAchievementId: null,
     hostId: HOST.id,
     hostName: HOST.name,
     hostStatus: 'online',

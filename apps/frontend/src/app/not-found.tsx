@@ -21,7 +21,7 @@ import { spruch } from '@/lib/theme/sprueche';
  * weder Zustand noch Sitzung.
  *
  * **Den Spruch holt sie sich selbst.** Der Kontext aus dem Wurzel-Layout
- * (`SpruchProvider`) erreicht sie nicht: Er ist ein Hook, und Hooks gibt es in
+ * (`ThemeProvider`) erreicht sie nicht: Er ist ein Hook, und Hooks gibt es in
  * Server-Komponenten nicht. Statt die Seite dafür zur Client-Komponente zu
  * machen – für eine Überschrift und zwei Links – liest sie dieselbe Quelle
  * direkt, nämlich das Cookie. Dass `not-found` dafür `async` sein darf, steht

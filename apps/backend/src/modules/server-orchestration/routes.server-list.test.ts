@@ -32,6 +32,8 @@ function serverRecord(overrides: Partial<ServerRecord> & Pick<ServerRecord, 'id'
   return {
     ownerId: ALEX_ID,
     ownerDisplayName: 'Alex',
+    ownerAvatarUpdatedAt: null,
+    ownerTitleAchievementId: null,
     hostId: '44444444-4444-4444-8444-444444444444',
     hostName: 'homeserver',
     hostStatus: 'online',
@@ -79,6 +81,8 @@ const BEA_EIGEN = serverRecord({
   subdomain: 'bea-welt',
   ownerId: BEA_ID,
   ownerDisplayName: 'Bea',
+  ownerAvatarUpdatedAt: null,
+  ownerTitleAchievementId: null,
 });
 
 const actors: Record<string, PermissionActor> = {
