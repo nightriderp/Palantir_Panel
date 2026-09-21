@@ -65,6 +65,9 @@ function mitStatus(status: GameServerDto['status']): GameServerDto {
   return { ...LAEUFT, status };
 }
 
+/** Name, an dem der Test das Nachladen nach einem Live-Ereignis erkennt. */
+const NACHGELADEN = 'Welt (nachgeladen)';
+
 function statusFrame(status: GameServerDto['status']): LiveServerEventFrame {
   return {
     kind: 'event',
@@ -95,6 +98,15 @@ beforeEach(() => {
   api.runLifecycleAction.mockReset();
   api.fetchStatsHistory.mockReset();
 
+  /*
+   * Bewusst immer **dasselbe** `LAEUFT`-Objekt: Ein Live-Ereignis lässt die
+   * Ansicht nachladen (Fundpunkt 314), und `useDtoRevision` erkennt einen
+   * neuen Stand allein an der Objekt-Identität. Bei gleicher Identität bleibt
+   * die Nummer, der Live-Status behält den Vorrang, und es ist einerlei, wann
+   * die Antwort landet. Wer hier auf `{ ...LAEUFT }` umstellt, macht die Tests
+   * dieses Blocks von der Reihenfolge zweier Antworten abhängig – siehe den
+   * Fall weiter unten, der genau daran hing (Fundpunkt 327).
+   */
   api.fetchServer.mockResolvedValue({ success: true, data: LAEUFT, error: null });
   // Der Verlauf interessiert hier nicht; ein abgebrochener Aufruf erzeugt
   // bewusst keinen Fehlerzustand in `useApiResource`.
@@ -123,12 +135,36 @@ describe('ServerDetail – Live und REST (event-flow-04)', () => {
       error: null,
     });
 
+    /*
+     * Jedes Live-Ereignis löst ein Nachladen des Datensatzes aus (Fundpunkt
+     * 314). Dieser zweite Abruf ist die eigentliche Stolperstelle dieses Tests
+     * (Fundpunkt 327): Er läuft noch, während der Test schon weiterklickt, und
+     * seine Antwort überschreibt am Ende `resource.data`. Landet sie **nach**
+     * der Lifecycle-Antwort, gewinnt der alte Stand – die Kopfzeile springt auf
+     * „Online", und die Zusicherung unten fällt um. Genau das passierte unter
+     * Last in vollen Läufen, allein ausgeführt dagegen nie.
+     *
+     * Der Abruf bekommt deshalb eine **erkennbare** Antwort, auf die der Test
+     * warten kann: Erst wenn der nachgeladene Name steht, ist nichts mehr
+     * unterwegs, und die Reihenfolge der beiden Antworten ist entschieden.
+     */
+    api.fetchServer
+      .mockResolvedValueOnce({ success: true, data: LAEUFT, error: null })
+      .mockResolvedValue({
+        success: true,
+        data: { ...mitStatus('stopped'), name: NACHGELADEN },
+        error: null,
+      });
+
     zeichne();
     await screen.findByText('Online');
 
     // Der Kanal meldet „gestoppt" – jünger als das geladene DTO, gewinnt also.
     sende(statusFrame('stopped'));
     await screen.findByText('Offline');
+
+    // Nachladen abwarten, bevor es weitergeht (siehe oben).
+    await screen.findAllByText(NACHGELADEN);
 
     fireEvent.click(screen.getByRole('button', { name: 'Starten' }));
 
