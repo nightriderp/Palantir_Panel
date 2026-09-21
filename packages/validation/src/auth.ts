@@ -223,6 +223,12 @@ export const accountDtoSchema: z.ZodType<AccountDto> = z.object({
    * die Oberfläche zeigt dann die Initialen.
    */
   avatarUpdatedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  /*
+   * Der getragene Titel (Betreiber-Wunsch 21.09.2026). Ohne diese Zeile
+   * stünde er zwar im DTO, käme aber nie im Browser an: Zod entfernt
+   * unbekannte Schlüssel beim Parsen.
+   */
+  title: z.string().min(1).nullable().optional(),
   createdAt: z.string().datetime({ offset: true }),
   permissions: globalPermissionsSchema,
 });

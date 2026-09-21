@@ -123,6 +123,19 @@ export interface AccountDto {
    */
   mustChangePassword?: boolean;
   /**
+   * Getragener Titel des eigenen Kontos; `null`, wenn keiner gewählt ist
+   * (Betreiber-Wunsch 21.09.2026).
+   *
+   * Fremde sehen den Titel dort, wo dieses Konto vorkommt – in der
+   * Bestenliste, im Chat, an der Server-Kachel. Ohne dieses Feld sähe man
+   * ausgerechnet den eigenen nirgends, ausser man ruft die Erfolgs-Seite auf.
+   *
+   * Optional, damit der Vertrag für sich stehen kann (Entwicklungsregeln §3):
+   * Ein älterer Aufrufer, der das Feld nicht kennt, zeigt schlicht keinen
+   * Titel.
+   */
+  title?: string | null;
+  /**
    * Wann das Profilbild zuletzt gesetzt wurde (ISO-8601), oder `null`, wenn das
    * Konto keines hat.
    *

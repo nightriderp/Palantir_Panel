@@ -151,6 +151,26 @@ export interface Theme {
    * kein `calc()` in einem Alphawert.
    */
   readonly schattenStaerke: number;
+  /**
+   * Die Schrift der Überschriften – `null` heißt: die des Betreibers.
+   *
+   * **Nur Titel, nie Lesetext.** Eine Schmuckschrift bei 13px ist nicht zu
+   * lesen, und welche Schrift den Fließtext trägt, entscheidet der Betreiber
+   * in der Administration (Arbeitspaket S-3). Ein Theme greift ihm da nicht
+   * hinein; es legt eine zweite Schrift auf das, was ohnehin groß ist.
+   *
+   * Der Wert ist der **Familienname** aus dem Katalog der mitgelieferten
+   * Schriften (`apps/backend/src/modules/fonts/bundled.ts`) – dort liegen die
+   * Dateien, hier steht nur, wer welche trägt. Fehlt die Familie in der
+   * Instanz oder hat der Betreiber sie ausgeblendet, entsteht keine
+   * `@font-face`-Regel und die Überschrift fällt auf seine Schrift zurück.
+   *
+   * ⚠️ **Ohne Anführungszeichen geschrieben.** CSS erlaubt mehrteilige
+   * Familiennamen als Folge von Bezeichnern (`Racing Sans One`), und das
+   * erzeugte Stylesheet muss frei von `"` und `'` bleiben – siehe
+   * {@link themesCss}. `themes.test.ts` hält die Schreibweise fest.
+   */
+  readonly anzeigeSchrift: string | null;
   readonly palette: Palette;
 }
 
@@ -164,6 +184,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Das gewohnte Panel: tiefes Blauschwarz, Violett und Türkis.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: null,
     /*
      * Wertgleich mit dem, was bis zur Umstellung in `tailwind.config.ts`
      * stand. Die Begründungen zu den einzelnen Stufen – warum `ink.faint`
@@ -222,6 +243,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Warmes Halbdunkel, Gold und Glut – Werkstatt statt Rechenzentrum.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Cinzel',
     /*
      * Der Gegenentwurf zum Standard: dieselbe Helligkeitsrampe, aber jede
      * Stufe warm statt kühl. Dass die Rampe dieselbe **Form** behält, ist
@@ -276,6 +298,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Violettes Dunkel, Magenta und Blitzblau – laut, schnell, gezeichnet.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Chewy',
     /*
      * Das lauteste der Themes. Die Marke steht bei 315°, also weit weg von
      * jeder Statusfarbe – in einem Theme, das ohnehin knallt, ist das die
@@ -313,6 +336,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Anthrazit und Messing. Sagt wenig, und das in gutem Zwirn.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Playfair Display',
     /*
      * Der Gegenpol zu Neonnacht: neutrales Anthrazit ohne Farbstich, eine
      * einzige gedeckte Akzentfarbe. Auch hier ist das Messing bewusst dunkler
@@ -350,6 +374,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Tiefes Marineblau, Azur und Eis – kalt, weit und sehr aufgeräumt.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Audiowide',
     /*
      * Kühl wie der Standard, aber ohne dessen Violett: Die Marke steht im
      * Azur (209°), der Grund ist deutlich blauer und tiefer. Damit bleiben die
@@ -390,6 +415,7 @@ export const THEMES: readonly Theme[] = [
      * auf, auf hellem wird aus demselben Wert ein dunkler Hof um jedes Modal.
      */
     schattenStaerke: 0.28,
+    anzeigeSchrift: null,
     /*
      * Das erste Theme, das die Polarität dreht – und damit der Nachweis, dass
      * die Umstellung auf Variablen nicht nur andere Farben, sondern ein
@@ -435,6 +461,187 @@ export const THEMES: readonly Theme[] = [
       overlay: '#000000',
       scrollbar: '#c3c9d4',
       selectPfeil: '#5f6875',
+    },
+  },
+  {
+    id: 'heldenrot',
+    name: 'Heldenrot',
+    beschreibung: 'Stahlblaues Dunkel, Signalrot und ein Blitz Blau – großes Kino.',
+    farbschema: 'dark',
+    schattenStaerke: 1,
+    anzeigeSchrift: 'Bangers',
+    /*
+     * Rot als Marke geht nur, weil es **tiefer** liegt als `danger`. Beide
+     * sind rot; auseinander hält sie die Helligkeit, nicht der Farbton –
+     * dieselbe Mechanik, die in Schmiedefeuer das Kupfer vom Gelb trennt.
+     */
+    palette: {
+      canvas: '#0b0d12',
+      surface: '#1c2029',
+      surfaceMuted: '#151922',
+      surfaceDeep: '#12161e',
+      surfaceCard: '#171b24',
+      surfaceConsole: '#0d0f15',
+      ink: '#eef1f6',
+      inkMuted: '#bcc5d2',
+      inkSoft: '#9aa4b4',
+      inkFaint: '#848ea0',
+      inkDisabled: '#4e5666',
+      placeholder: '#5e6675',
+      brand: '#d1332e',
+      brandBright: '#f4706a',
+      accent: '#63a0ff',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      caution: '#fb923c',
+      danger: '#ff6b6b',
+      overlay: '#ffffff',
+      scrollbar: '#2a303c',
+      selectPfeil: '#9aa4b5',
+    },
+  },
+  {
+    id: 'kampfgeist',
+    name: 'Kampfgeist',
+    beschreibung: 'Warmes Schwarz, Kobalt und Orange – aufgeladen und laut.',
+    farbschema: 'dark',
+    schattenStaerke: 1,
+    anzeigeSchrift: 'Russo One',
+    /*
+     * Das Orange ist der Akzent, nicht die Marke – als Marke läge es einen
+     * Grad neben `caution`, und ein Primärknopf sähe aus wie ein
+     * „stoppt"-Abzeichen. Als Akzent trägt es RAM-Kennzahlen und den
+     * Verlauf; dort steht es nie neben einem Status.
+     */
+    palette: {
+      canvas: '#0c0b0a',
+      surface: '#21201d',
+      surfaceMuted: '#191816',
+      surfaceDeep: '#151413',
+      surfaceCard: '#1b1a18',
+      surfaceConsole: '#0e0d0c',
+      ink: '#f6f2ec',
+      inkMuted: '#cdc6bb',
+      inkSoft: '#a8a196',
+      inkFaint: '#8e877c',
+      inkDisabled: '#575249',
+      placeholder: '#696358',
+      brand: '#3b6bf0',
+      brandBright: '#87abff',
+      accent: '#ff9426',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      caution: '#fb923c',
+      danger: '#ff6b6b',
+      overlay: '#ffffff',
+      scrollbar: '#35322d',
+      selectPfeil: '#a29b90',
+    },
+  },
+  {
+    id: 'boxenstopp',
+    name: 'Boxenstopp',
+    beschreibung: 'Asphalt in der Dämmerung, Neon-Türkis und Abendrot.',
+    farbschema: 'dark',
+    schattenStaerke: 1,
+    anzeigeSchrift: 'Racing Sans One',
+    palette: {
+      canvas: '#0b0a0e',
+      surface: '#1e1d24',
+      surfaceMuted: '#17161c',
+      surfaceDeep: '#131218',
+      surfaceCard: '#19181f',
+      surfaceConsole: '#0d0c10',
+      ink: '#f0f2f4',
+      inkMuted: '#bfc4ca',
+      inkSoft: '#9ba1a9',
+      inkFaint: '#858b94',
+      inkDisabled: '#4f545c',
+      placeholder: '#5f656d',
+      brand: '#17b3a3',
+      brandBright: '#4fd9c9',
+      accent: '#ff7a9c',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      caution: '#fb923c',
+      danger: '#ff6b6b',
+      overlay: '#ffffff',
+      scrollbar: '#2d2c35',
+      selectPfeil: '#9ba1aa',
+    },
+  },
+  {
+    id: 'bambushain',
+    name: 'Bambushain',
+    beschreibung: 'Tuschedunkel, Bambusgrün und ein Schimmer Gold – ruhig und wach.',
+    farbschema: 'dark',
+    schattenStaerke: 1,
+    anzeigeSchrift: 'Cormorant Garamond',
+    /*
+     * ⚠️ Das Grün der Marke liegt bewusst **weit** unterhalb von `success`:
+     * Bambus ist gelbgrün und gedeckt, das „läuft"-Grün leuchtet. Ohne diesen
+     * Abstand sähe ein Primärknopf aus wie ein laufender Server.
+     */
+    palette: {
+      canvas: '#090b09',
+      surface: '#1b201b',
+      surfaceMuted: '#151915',
+      surfaceDeep: '#121612',
+      surfaceCard: '#171b17',
+      surfaceConsole: '#0b0d0b',
+      ink: '#eff2ec',
+      inkMuted: '#c0c8ba',
+      inkSoft: '#9ca699',
+      inkFaint: '#869080',
+      inkDisabled: '#4f574c',
+      placeholder: '#5f6759',
+      brand: '#6a9e24',
+      brandBright: '#a3cf5c',
+      accent: '#e0a63c',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      caution: '#fb923c',
+      danger: '#ff6b6b',
+      overlay: '#ffffff',
+      scrollbar: '#2c322a',
+      selectPfeil: '#99a394',
+    },
+  },
+  {
+    id: 'drachenfels',
+    name: 'Drachenfels',
+    beschreibung: 'Nasser Stein, Nordsee-Blau und Glut aus dem Dunkeln.',
+    farbschema: 'dark',
+    schattenStaerke: 1,
+    anzeigeSchrift: 'Metamorphous',
+    /*
+     * Im Farbton nah an Hyperraum, in der Wirkung weit weg: Der Grund ist
+     * Stein statt Weltraum – entsättigtes Grau statt tiefem Marineblau –,
+     * und der Akzent ist Glut statt Eis.
+     */
+    palette: {
+      canvas: '#0b0c0d',
+      surface: '#20242a',
+      surfaceMuted: '#191c21',
+      surfaceDeep: '#15181c',
+      surfaceCard: '#1b1f24',
+      surfaceConsole: '#0d0e10',
+      ink: '#edf1f3',
+      inkMuted: '#bcc4cb',
+      inkSoft: '#99a2ab',
+      inkFaint: '#838d97',
+      inkDisabled: '#4d555e',
+      placeholder: '#5d656e',
+      brand: '#4d94b8',
+      brandBright: '#8ec4e0',
+      accent: '#e86e45',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      caution: '#fb923c',
+      danger: '#ff6b6b',
+      overlay: '#ffffff',
+      scrollbar: '#2b3037',
+      selectPfeil: '#99a2ac',
     },
   },
 ];
@@ -531,10 +738,22 @@ function block(selektor: string, thema: Theme): string {
     ([name, basis]) => `--schatten-${name}:${alphaWert(basis * thema.schattenStaerke)}`,
   );
 
+  /*
+   * Die Anzeigeschrift nur, wenn das Theme eine nennt. Wer keine hat, setzt
+   * die Variable gar nicht – und das Token in `tailwind.config.ts` fällt über
+   * seinen eigenen Vorgabewert auf die Schrift des Betreibers zurück. Ein
+   * leeres `--palantir-font-display:` täte das **nicht**: Eine gesetzte, aber
+   * leere Variable ist ein Wert, kein fehlender, und `var(x, ersatz)` greift
+   * dann nicht.
+   */
+  const schrift =
+    thema.anzeigeSchrift === null ? [] : [`--palantir-font-display:${thema.anzeigeSchrift}`];
+
   return [
     `${selektor}{color-scheme:${thema.farbschema}`,
     ...zeilen,
     ...schatten,
+    ...schrift,
     `--select-pfeil:${selectPfeilAdresse(thema.palette.selectPfeil)}}`,
   ].join(';');
 }

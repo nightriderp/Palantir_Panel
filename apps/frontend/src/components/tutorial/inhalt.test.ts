@@ -1,14 +1,14 @@
 import { type AccountDto, type GlobalPermissions } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
-import { QUIZ_FRAGEN, TUTORIAL_SCHRITTE, quizPunkte, sichtbareSchritte } from './inhalt';
+import { TUTORIAL_SCHRITTE, sichtbareSchritte } from './inhalt';
 
 /**
  * Inhalt der Einweisung.
  *
  * Geprüft wird vor allem das, was kein Leser merkt und trotzdem wehtut: dass
  * die Einweisung keinem Konto einen Bereich erklärt, den es gar nicht sehen
- * darf (Pflichtenheft §5.2), und dass jede Quizfrage genau eine richtige
- * Antwort hat – bei zweien wäre die Auswertung Glückssache.
+ * darf (Pflichtenheft §5.2). Das Abschlussquiz ist mit dem Katalog nach
+ * `fragenkatalog.ts` gezogen und wird dort geprüft.
  */
 
 function berechtigungen(overrides: Partial<GlobalPermissions> = {}): GlobalPermissions {
@@ -74,51 +74,5 @@ describe('Schritte der Einweisung', () => {
     expect(ohne).not.toContain('nodes');
     expect(mit).toContain('nodes');
     expect(mit).not.toContain('admin');
-  });
-});
-
-describe('Abschlussquiz', () => {
-  it('hat je Frage genau eine richtige Antwort', () => {
-    for (const frage of QUIZ_FRAGEN) {
-      expect(frage.antworten.filter((antwort) => antwort.richtig)).toHaveLength(1);
-    }
-  });
-
-  it('begründet jede Antwort, auch die falschen', () => {
-    for (const frage of QUIZ_FRAGEN) {
-      for (const antwort of frage.antworten) {
-        expect(antwort.echo.length).toBeGreaterThan(5);
-      }
-    }
-  });
-
-  it('legt die richtige Antwort nicht immer auf denselben Platz', () => {
-    // Sie stand dreimal oben: Wer „immer die erste" klickt, hätte ein volles
-    // Zeugnis, ohne eine Frage gelesen zu haben.
-    const plaetze = QUIZ_FRAGEN.map((frage) =>
-      frage.antworten.findIndex((antwort) => antwort.richtig),
-    );
-
-    expect(new Set(plaetze).size).toBeGreaterThan(1);
-  });
-
-  it('zählt nur beantwortete Fragen', () => {
-    expect(quizPunkte([null, null, null])).toBe(0);
-  });
-
-  it('zählt jede richtige Antwort einmal', () => {
-    const alleRichtig = QUIZ_FRAGEN.map((frage) =>
-      frage.antworten.findIndex((antwort) => antwort.richtig),
-    );
-
-    expect(quizPunkte(alleRichtig)).toBe(QUIZ_FRAGEN.length);
-  });
-
-  it('gibt für falsche Antworten keinen Punkt', () => {
-    const alleFalsch = QUIZ_FRAGEN.map((frage) =>
-      frage.antworten.findIndex((antwort) => !antwort.richtig),
-    );
-
-    expect(quizPunkte(alleFalsch)).toBe(0);
   });
 });

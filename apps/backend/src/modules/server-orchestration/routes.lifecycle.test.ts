@@ -57,6 +57,8 @@ const SERVER: ServerRecord = {
   id: SERVER_ID,
   ownerId: BESITZER_ID,
   ownerDisplayName: 'Besitzer',
+  ownerAvatarUpdatedAt: null,
+  ownerTitleAchievementId: null,
   hostId: '44444444-4444-4444-8444-444444444444',
   hostName: 'homeserver',
   hostStatus: 'online',

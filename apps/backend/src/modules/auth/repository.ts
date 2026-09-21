@@ -34,6 +34,7 @@ function toUser(row: UserRow): UserRecord {
     isOwner: row.isOwner,
     banned: row.banned,
     avatarUpdatedAt: row.avatarUpdatedAt,
+    titleAchievementId: row.titleAchievementId,
     createdAt: row.createdAt,
   };
 }

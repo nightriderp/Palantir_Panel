@@ -36,7 +36,7 @@ import {
   withoutNotification,
 } from './notificationView';
 import { type NotificationPreferences, shouldToast } from './preferences';
-import { useSpruch } from '@/lib/theme/SpruchProvider';
+import { useSpruch } from '@/lib/theme/ThemeProvider';
 
 /**
  * Reiter „Inbox" der Benachrichtigungen (Arbeitspaket F6, Lastenheft §3.6).

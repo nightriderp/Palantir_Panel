@@ -791,6 +791,18 @@ export const TERRARIA_GAME_TYPE: GameTypeDefinition = {
   description:
     'Terraria-Server von Re-Logic. Die Serverdateien werden beim ersten Start geholt; die Welt wird beim ersten Start erzeugt, was je nach Größe einige Minuten dauert.',
   dockerImage: 'ghcr.io/nightriderp/palantir-game-terraria:1',
+  /*
+   * Zwei Ausgaben unter einer Kachel (Betreiber-Wunsch 21.09.2026): Terraria
+   * wie Re-Logic es ausliefert, und tModLoader daneben. Der groesste Teil der
+   * Terraria-Server laeuft modded; als zwei Kacheln nebeneinander waere die
+   * Wahl eine Suchaufgabe.
+   *
+   * Anders als bei Minecraft teilen sich die beiden **kein** Image –
+   * tModLoader ist ein eigenes Programm mit eigener Laufzeit. Die Karte in der
+   * Administration zeigt die Image-Version deshalb je Ausgabe (Fundpunkt 328).
+   */
+  variantGroup: 'Terraria',
+  variantLabel: 'Vanilla',
   // Vollständige Zeilen, wie sie die Konsole von Terraria versteht. `say <Text>`
   // braucht eine Eingabe und gehört deshalb ins Feld, nicht auf einen Knopf.
   consoleQuickCommands: [
@@ -945,6 +957,43 @@ export const TERRARIA_GAME_TYPE: GameTypeDefinition = {
   // braucht auf einem Homeserver mehrere Minuten.
   startupTimeoutSeconds: 900,
   phase: 3,
+};
+
+/**
+ * tModLoader – Terraria mit Mod-Loader (Betreiber-Wunsch 21.09.2026).
+ *
+ * **Warum eine eigene Definition und kein Schalter an Terraria.** Bei Minecraft
+ * teilen sich vier Ausgaben ein Image, und ein `MINECRAFT_EDITION` waehlt die
+ * Jar. Hier geht das nicht: tModLoader ist ein eigenes Programm mit eigener
+ * Versionsfolge, eigenem Archiv (61 MiB) und einer eigenen Laufzeit – es
+ * verlangt .NET 8, waehrend `base/dotnet` 10 traegt (`images/base/dotnet8`).
+ * Gemeinsam sind die Welten, das `serverconfig.txt` und die Konsole.
+ *
+ * Im Panel stehen beide unter einer Kachel (`variantGroup: 'Terraria'`).
+ *
+ * **Mehr Speicher als Terraria.** Vanilla kommt mit 2 GiB aus; ein Modpack
+ * nicht. 4 GiB sind die untere Grenze, bei der eine mittlere Sammlung nicht
+ * schon beim Laden klemmt – dieselbe Ueberlegung wie bei NeoForge gegenueber
+ * Paper.
+ *
+ * **Laengere Startfrist: 1200 statt 900 Sekunden.** Der erste Start holt
+ * 61 MiB, packt sie aus und erzeugt danach die Welt; tModLoader laedt
+ * ausserdem jeden Mod beim Start neu. Terraria braucht fuer denselben Weg
+ * ohne Mods schon 900.
+ */
+export const TMODLOADER_GAME_TYPE: GameTypeDefinition = {
+  ...TERRARIA_GAME_TYPE,
+  id: 'tmodloader',
+  name: 'Terraria (tModLoader)',
+  description:
+    'Terraria mit dem Mod-Loader tModLoader. Mods gehören in den Ordner „mods“ im Datenordner; der Server lädt sie beim Start. Das Programm wird beim ersten Start geholt, das dauert länger als bei Terraria.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-tmodloader:1',
+  variantLabel: 'tModLoader',
+  resourceDefaults: {
+    ramMb: 4_096,
+    diskMb: 10_240,
+  },
+  startupTimeoutSeconds: 1_200,
 };
 
 /**
@@ -3540,6 +3589,7 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   MINECRAFT_BEDROCK_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   TERRARIA_GAME_TYPE,
+  TMODLOADER_GAME_TYPE,
   FACTORIO_GAME_TYPE,
   PROJECT_ZOMBOID_GAME_TYPE,
   RUST_GAME_TYPE,

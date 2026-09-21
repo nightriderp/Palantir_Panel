@@ -280,15 +280,15 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       ...new Set([...messages.map((m) => m.senderId), ...extraUserIds].filter((id) => id !== null)),
     ];
 
-    const [displayNames, reportedByViewer] = await Promise.all([
-      users.displayNames(userIds),
+    const [profiles, reportedByViewer] = await Promise.all([
+      users.profiles(userIds),
       repository.reportedMessageIds(
         viewerId,
         messages.map((message) => message.id),
       ),
     ]);
 
-    return { viewerId, displayNames, reportedByViewer };
+    return { viewerId, profiles, reportedByViewer };
   }
 
   /**
@@ -735,7 +735,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
        * einem Server-Chat mit 40 Mitgliedern 80 Abfragen für eine Nachricht.
        * Beide liefern für eine gerade angelegte Nachricht aber für jeden
        * dasselbe:
-       *  - `displayNames` fragt nur nach dem Absender und ist damit unabhängig
+       *  - `profiles` fragt nur nach dem Absender und ist damit unabhängig
        *    vom Empfänger;
        *  - `reportedMessageIds` ist zwingend leer – melden kann niemand eine
        *    Nachricht, die es in diesem Moment erst gibt.
@@ -746,7 +746,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
       // `viewerId` statt `message.senderId`: derselbe Wert – die Nachricht ist
       // gerade eben von diesem Konto entstanden –, aber ohne den `null`-Fall
       // aus Fundpunkt 141, den der Datensatz seit dem `SET NULL` mitbringt.
-      const displayNames = await users.displayNames([viewerId]);
+      const profiles = await users.profiles([viewerId]);
       const reportedByViewer: ReadonlySet<string> = new Set<string>();
 
       /*
@@ -762,7 +762,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
               conversationId,
               message: toMessageDto(message, {
                 viewerId: recipientId,
-                displayNames,
+                profiles,
                 reportedByViewer,
               }),
             },
@@ -771,7 +771,7 @@ export function createChatService(deps: ChatServiceDependencies): ChatService {
         );
       }
 
-      return toMessageDto(message, { viewerId, displayNames, reportedByViewer });
+      return toMessageDto(message, { viewerId, profiles, reportedByViewer });
     },
 
     async deleteOwnMessage(ctx, messageId) {

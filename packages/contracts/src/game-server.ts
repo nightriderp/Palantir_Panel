@@ -156,6 +156,16 @@ export interface GameServerDto {
   ownerId: string;
   /** Anzeigename des Besitzers; `null`, wenn für den Aufrufer nicht sichtbar. */
   ownerDisplayName: string | null;
+  /**
+   * Zeitstempel des Profilbilds des Besitzers; `null`, wenn er keines hat
+   * (Betreiber-Wunsch 21.09.2026).
+   *
+   * Nicht die fertige Bild-Adresse: Die baut das Frontend aus `ownerId` und
+   * diesem Zeitstempel (`avatarUrl()`).
+   */
+  ownerAvatarUpdatedAt: string | null;
+  /** Getragener Titel des Besitzers; `null`, wenn er keinen trägt. */
+  ownerTitle: string | null;
   /** Id der `GameTypeDefinition` (Pflichtenheft §11). */
   gameType: string;
   /** Anzeigename des Spiels, z. B. „Minecraft (Paper)". */

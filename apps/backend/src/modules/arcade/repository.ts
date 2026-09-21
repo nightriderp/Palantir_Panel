@@ -34,6 +34,8 @@ export interface ArcadeLeaderboardRow {
    * Katalog in `@palantir/contracts`, und er soll nur an einer Stelle stehen.
    */
   titleAchievementId: AchievementId | null;
+  /** Zeitstempel des Profilbilds; `null`, wenn das Konto keines hat. */
+  avatarUpdatedAt: Date | null;
   bestScore: number;
   /** Zeitpunkt, an dem dieser Bestwert erreicht wurde. */
   achievedAt: Date;
@@ -149,6 +151,7 @@ function arcadeQueries(db: DbConnection): ArcadeQueries {
             userId: bestPerUser.userId,
             displayName: users.displayName,
             titleAchievementId: users.titleAchievementId,
+            avatarUpdatedAt: users.avatarUpdatedAt,
             bestScore: bestPerUser.bestScore,
             achievedAt: bestPerUser.achievedAt,
           })

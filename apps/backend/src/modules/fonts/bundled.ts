@@ -78,10 +78,24 @@ export interface BundledFont extends BundledFontEntry {
  *
  * Die ersten beiden sind die Schriften, die die Oberfläche bisher zur Laufzeit
  * von Google geladen hat (`apps/frontend/src/app/layout.tsx`) – sie stehen hier
- * an erster Stelle, weil sie die Vorgabe des Design-Systems tragen. Die vier
- * übrigen sind Auswahlschriften für den Betreiber. Alle sechs Dateien liegen im
- * Auslieferungsverzeichnis, ihre Lizenzen unter `assets/fonts/lizenzen/`
- * (Übersicht in `assets/fonts/LIZENZEN.md`).
+ * an erster Stelle, weil sie die Vorgabe des Design-Systems tragen. Danach
+ * folgen Auswahlschriften für den Betreiber.
+ *
+ * **Die letzte Gruppe sind die Anzeigeschriften der Themes.** Ein Theme nennt
+ * in `apps/frontend/src/lib/theme/palette.ts` eine Familie, die es für
+ * Überschriften trägt; hier stehen die Dateien dazu. Sie sind für den
+ * Betreiber trotzdem wählbar wie jede andere – der Katalog kennt keine zwei
+ * Klassen von Schriften, und wer die Oberfläche in Bangers lesen will, darf
+ * das. Für Lesetext taugt keine von ihnen, weshalb ein Theme sie auch nur auf
+ * Titel legt.
+ *
+ * ⚠️ Nennt ein Theme eine Familie, die hier fehlt oder die der Betreiber
+ * ausgeblendet hat, entsteht keine `@font-face`-Regel – die Überschrift fällt
+ * dann auf die Schrift des Betreibers zurück. Das ist gewollt: Der Katalog ist
+ * die Quelle, die Themes sind nur Leser.
+ *
+ * Alle Dateien liegen im Auslieferungsverzeichnis, ihre Lizenzen unter
+ * `assets/fonts/lizenzen/` (Übersicht in `assets/fonts/LIZENZEN.md`).
  */
 const ENTRIES: readonly BundledFontEntry[] = [
   {
@@ -135,6 +149,71 @@ const ENTRIES: readonly BundledFontEntry[] = [
     slug: 'henny-penny',
     family: 'Henny Penny',
     label: 'Henny Penny',
+    format: 'woff2',
+    variable: false,
+    weightRange: { min: 400, max: 400 },
+    monospace: false,
+  },
+
+  // --- Anzeigeschriften der Themes ---------------------------------------
+  {
+    slug: 'cinzel',
+    family: 'Cinzel',
+    label: 'Cinzel',
+    format: 'woff2',
+    variable: true,
+    weightRange: { min: 400, max: 900 },
+    monospace: false,
+  },
+  {
+    slug: 'playfair-display',
+    family: 'Playfair Display',
+    label: 'Playfair Display',
+    format: 'woff2',
+    variable: true,
+    weightRange: { min: 400, max: 900 },
+    monospace: false,
+  },
+  {
+    slug: 'cormorant-garamond',
+    family: 'Cormorant Garamond',
+    label: 'Cormorant Garamond',
+    format: 'woff2',
+    variable: true,
+    weightRange: { min: 300, max: 700 },
+    monospace: false,
+  },
+  {
+    slug: 'bangers',
+    family: 'Bangers',
+    label: 'Bangers',
+    format: 'woff2',
+    variable: false,
+    weightRange: { min: 400, max: 400 },
+    monospace: false,
+  },
+  {
+    slug: 'russo-one',
+    family: 'Russo One',
+    label: 'Russo One',
+    format: 'woff2',
+    variable: false,
+    weightRange: { min: 400, max: 400 },
+    monospace: false,
+  },
+  {
+    slug: 'racing-sans-one',
+    family: 'Racing Sans One',
+    label: 'Racing Sans One',
+    format: 'woff2',
+    variable: false,
+    weightRange: { min: 400, max: 400 },
+    monospace: false,
+  },
+  {
+    slug: 'metamorphous',
+    family: 'Metamorphous',
+    label: 'Metamorphous',
     format: 'woff2',
     variable: false,
     weightRange: { min: 400, max: 400 },

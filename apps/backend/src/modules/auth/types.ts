@@ -6,7 +6,7 @@
  * analog zum `RoleRepository` in B2 und zum `ContainerRuntime` des Agents).
  */
 
-import { type AuthMethodType } from '@palantir/contracts';
+import { type AchievementId, type AuthMethodType } from '@palantir/contracts';
 
 /** Konto, wie es in der Datenbank steht (Entität `User`, Pflichtenheft §6). */
 export interface UserRecord {
@@ -24,6 +24,14 @@ export interface UserRecord {
    * Anmeldung.
    */
   readonly avatarUpdatedAt: Date | null;
+  /**
+   * Abzeichen, dessen Titel das Konto trägt; `null`, wenn es keinen trägt
+   * (Betreiber-Wunsch 21.09.2026).
+   *
+   * Die Kennung, nicht der Text: Den kennt der Katalog in
+   * `@palantir/contracts`, und er soll nur an einer Stelle stehen.
+   */
+  readonly titleAchievementId: AchievementId | null;
   readonly createdAt: Date;
 }
 

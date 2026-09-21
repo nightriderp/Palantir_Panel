@@ -11,6 +11,7 @@
 
 export { Icon, ICON_NAMES, ICON_PATHS, type IconName, type IconProps } from './icons/Icon';
 export { LogoMark, type LogoMarkProps } from './icons/LogoMark';
+export { ThemeEmblem, type ThemeEmblemProps } from './icons/ThemeEmblem';
 
 export {
   Button,
@@ -38,6 +39,8 @@ export {
 export { Spinner, type SpinnerProps } from './primitives/Spinner';
 export { MetricTile, Panel, type MetricTileProps, type PanelProps } from './primitives/Panel';
 export { EmptyState, type EmptyStateProps } from './primitives/EmptyState';
+export { Avatar, type AvatarProps, type AvatarSize } from './primitives/Avatar';
+export { UserLabel, type UserLabelProps } from './primitives/UserLabel';
 
 export { PageSkeleton, Skeleton, type SkeletonProps } from './feedback/Skeleton';
 export {

@@ -4,7 +4,7 @@ import { type ErrorCode } from '@palantir/contracts';
 import { loginInputSchema, twoFactorInputSchema } from '@palantir/validation';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useSpruch } from '@/lib/theme/SpruchProvider';
+import { useSpruch } from '@/lib/theme/ThemeProvider';
 import { useCallback, useState, type FormEvent } from 'react';
 
 import { Button, FormMessage, TextField } from '@/components/shared';

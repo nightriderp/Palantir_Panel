@@ -14,6 +14,8 @@ export function message(overrides: Partial<MessageDto> = {}): MessageDto {
     conversationId: 'c1',
     senderId: 'u2',
     senderDisplayName: 'Femi',
+    senderAvatarUpdatedAt: null,
+    senderTitle: null,
     content: 'Hallo!',
     createdAt: '2026-08-28T10:00:00.000Z',
     deletedAt: null,
