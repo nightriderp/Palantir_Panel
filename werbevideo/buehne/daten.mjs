@@ -222,7 +222,140 @@ async function main() {
     }
   }
 
+  await mitverwalter(owner, held);
+  await nachrichten(held);
+
   console.log('\nBühne steht.');
+}
+
+/**
+ * Zugriffe auf den **Nebenservern** vergeben.
+ *
+ * Zwei Gründe, und beide hängen zusammen:
+ *
+ * 1. Das Panel gibt als Empfänger einer Direktnachricht nur Konten heraus,
+ *    mit denen man ohnehin einen Server teilt – bewusst kein globales
+ *    Nutzerverzeichnis (`/api/chat/recipients`). Ohne gemeinsamen Server
+ *    könnten Mika und Lena einander gar nicht schreiben, und die
+ *    Nachrichtenseite bliebe leer.
+ * 2. Der „Freundeskreis SMP" bleibt trotzdem frei: Dort trägt die Szene
+ *    „09-teilen" den ersten Mitverwalter vor laufender Kamera ein, und eine
+ *    Liste, in der schon jemand steht, erzählt etwas anderes.
+ *
+ * Vergeben wird vom Besitzer der jeweiligen Server – das ist der Held selbst.
+ */
+async function mitverwalter(owner, held) {
+  const konten = await owner.ruf('GET', '/admin/requests?status=approved').catch(() => []);
+  const nach = (name) =>
+    (konten.items ?? konten).find((k) => k.username === name)?.userId ??
+    (konten.items ?? konten).find((k) => k.username === name)?.id;
+
+  const server = await held.ruf('GET', '/api/servers');
+  const finde = (name) => (server.items ?? server).find((s) => s.name === name);
+
+  const wuensche = [
+    { server: 'Creative Bauwelt', konto: 'lena', stufe: 'operator' },
+    { server: 'Terraria Runde', konto: 'jonas', stufe: 'operator' },
+    { server: 'Valheim Abende', konto: 'tim', stufe: 'viewer' },
+  ];
+
+  for (const wunsch of wuensche) {
+    const ziel = finde(wunsch.server);
+    const userId = nach(wunsch.konto);
+    if (ziel === undefined || userId === undefined) {
+      console.warn(`Zugriff übersprungen: ${wunsch.konto} auf ${wunsch.server}`);
+      continue;
+    }
+    await held
+      .ruf('PUT', `/api/servers/${ziel.id}/members`, { userId, level: wunsch.stufe })
+      .then(() => console.log(`Zugriff: ${wunsch.konto} auf ${wunsch.server} (${wunsch.stufe})`))
+      .catch((f) => console.warn(`Zugriff abgelehnt: ${f.message}`));
+  }
+}
+
+/**
+ * Ein paar Direktnachrichten, damit die Seite etwas zu zeigen hat.
+ *
+ * **Warum Direktnachrichten und nicht der Server-Chat.** Der Gruppen-Chat
+ * eines Servers hat als Teilnehmerkreis dessen Mitglieder – und die
+ * Zugriffsliste des SMP ist vor der Aufnahme bewusst leer (die Szene
+ * „09-teilen" trägt den ersten Eintrag selbst ein). Dort könnte nur Mika
+ * schreiben, und ein Verlauf, in dem eine Person mit sich selbst spricht, ist
+ * keine Runde. Eine Direktnachricht braucht keine Mitgliedschaft.
+ *
+ * Geschrieben wird von beiden Seiten: Jede Person meldet sich mit ihrem
+ * eigenen Konto an und schickt ihre eigenen Zeilen. Alles andere stünde im
+ * Verlauf unter dem falschen Namen.
+ */
+async function nachrichten(held) {
+  const wer = await held.ruf('GET', '/api/chat/recipients').catch(() => []);
+  const liste = wer.items ?? wer;
+
+  /*
+   * Der Eintrag trägt `recipientId` und `displayName` – einen Anmeldenamen
+   * gibt er nicht heraus. Für die Anmeldung des Gegenübers steht er deshalb
+   * hier im Verlauf.
+   */
+  const verlaeufe = [
+    {
+      name: 'Jonas',
+      konto: 'jonas',
+      zeilen: [
+        ['mika', 'Server läuft wieder, du kannst rauf'],
+        ['ihn', 'top. lag das an der ram-grenze?'],
+        ['mika', 'jep, 6 GB reichen jetzt'],
+        ['ihn', 'und die kiste am spawn?'],
+        ['mika', 'aus der sicherung von gestern zurückgeholt'],
+      ],
+    },
+    {
+      name: 'Lena',
+      konto: 'lena',
+      zeilen: [
+        ['ihn', 'kannst du mir rechte auf dem smp geben?'],
+        ['mika', 'mach ich – starten und stoppen reicht dir?'],
+        ['ihn', 'perfekt, danke'],
+      ],
+    },
+  ];
+
+  for (const verlauf of verlaeufe) {
+    const empfaenger = liste.find((k) => k.displayName === verlauf.name);
+    if (empfaenger === undefined) {
+      console.warn(`Kein Empfänger „${verlauf.name}" – Verlauf übersprungen.`);
+      continue;
+    }
+
+    const unterhaltung = await held
+      .ruf('POST', '/api/chat/conversations/direct', { recipientId: empfaenger.recipientId })
+      .catch((f) => {
+        console.warn(`Unterhaltung mit ${verlauf.name} abgelehnt: ${f.message}`);
+        return null;
+      });
+    if (unterhaltung === null) continue;
+
+    // Schon bespielt? Dann nicht ein zweites Mal – sonst steht dasselbe
+    // Gespräch beim nächsten Lauf doppelt da.
+    const bestand = await held
+      .ruf('GET', `/api/chat/conversations/${unterhaltung.id}/messages`)
+      .catch(() => ({ messages: [] }));
+    if ((bestand.messages ?? []).length > 0) {
+      console.log(`Vorhanden: Verlauf mit ${verlauf.name}`);
+      continue;
+    }
+
+    const gegenueber = new PanelClient(API);
+    await gegenueber.anmelden(verlauf.konto, HELD.password);
+
+    for (const [absender, text] of verlauf.zeilen) {
+      const client = absender === 'mika' ? held : gegenueber;
+      await client
+        .ruf('POST', `/api/chat/conversations/${unterhaltung.id}/messages`, { content: text })
+        .catch((f) => console.warn(`Nachricht abgelehnt: ${f.message}`));
+      await warte(250);
+    }
+    console.log(`Verlauf angelegt: ${verlauf.name}`);
+  }
 }
 
 main().catch((fehler) => {

@@ -725,7 +725,20 @@ export class Regie {
    * Anmeldung. Ein Abbruch kostet einen Lauf, ein stiller Fehlgriff kostet
    * einen Schnitt.
    */
-  async tippe(wahl, text, { proZeichen = 62 } = {}) {
+  /**
+   * In ein Feld tippen – Zeichen für Zeichen, mit ungleichem Takt.
+   *
+   * `leeren` räumt das Feld vorher aus. Das ist die Vorgabe, weil Felder mit
+   * einer sinnvollen Vorbelegung die Regel sind, nicht die Ausnahme: Der
+   * Zeitplan einer neuen Aufgabe steht schon auf `0 4 * * *`, und das
+   * Angetippte landete dahinter. Heraus kam `0 4 * * *0 4 * * *`, und das
+   * Panel wies die Aufgabe zu Recht ab – im Bild eine rote Fehlermeldung.
+   *
+   * Geleert wird über die Tastatur (alles markieren, überschreiben) und nicht
+   * über `fill()`: Ein `fill()` setzt den Wert in einem Rutsch, ohne dass die
+   * Aufnahme etwas davon sieht.
+   */
+  async tippe(wahl, text, { proZeichen = 62, leeren = true } = {}) {
     const anfang = await this.rechteck(wahl);
     if (this.zeigerArt === 'maus') {
       await this.zeigerZu(
@@ -740,6 +753,17 @@ export class Regie {
     const y = r.y + r.hoehe / 2;
     if (this.zeigerArt !== 'maus') await this.#tippkreis(x, y);
     await this.seite.mouse.click(x, y);
+
+    if (leeren) {
+      const inhalt = await this.#feldInhalt(wahl);
+      if (inhalt !== '') {
+        await this.seite.keyboard.press('ControlOrMeta+a');
+        await this.halten(120);
+        await this.seite.keyboard.press('Backspace');
+        await this.halten(180);
+      }
+    }
+
     for (const zeichen of text) {
       await this.seite.keyboard.type(zeichen);
       // Menschen tippen nicht im Metronom.
@@ -768,6 +792,12 @@ export class Regie {
    * Betriebssystem und nicht die Seite – auf einem Bildschirmfoto wäre es
    * ohnehin nicht zu sehen.
    */
+  /** Was in einem Eingabefeld steht – leer, wenn es keines ist. */
+  async #feldInhalt(wahl) {
+    const locator = typeof wahl === 'string' ? this.seite.locator(wahl).first() : wahl.first();
+    return locator.inputValue().catch(() => '');
+  }
+
   async waehle(ziel, wert, { hin = 560, nach = 500 } = {}) {
     const r = await this.rechteck(ziel);
     const x = r.x + r.breite / 2;

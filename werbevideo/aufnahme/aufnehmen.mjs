@@ -144,19 +144,28 @@ class Buehne {
   }
 
   /**
-   * Den Mitverwalter wieder austragen, damit die Szene ihn eintragen kann.
+   * Die Zugriffsliste leeren, damit die Szene den ersten Eintrag anlegt.
    *
-   * Beim zweiten Lauf stünde er sonst schon in der Liste, die Auswahl „Konto"
-   * wäre leer und die Szene klickte ins Nichts. Rückgängig gemacht wird das
-   * über denselben Weg, den die Oberfläche nimmt – nicht in der Datenbank.
+   * **Alle** Mitverwalter, nicht nur der eine aus der Szene: Beim zweiten Lauf
+   * stünde sonst schon jemand in der Liste, und wer schon Zugriff hat, fällt
+   * aus der Auswahl „Konto". Im ersten Probelauf trug die Szene deshalb den
+   * Owner ein („Chef (@chef)") – ausgerechnet das Konto, das im ganzen Video
+   * nicht vorkommen soll.
+   *
+   * Angesprochen wird über `displayName`: Der Mitglieds-Eintrag des Panels
+   * trägt `userId`, `displayName` und `level` – einen Anmeldenamen hat er
+   * nicht. Der erste Anlauf verglich gegen `username`, traf nie und räumte
+   * folglich nichts ab.
+   *
+   * Ausgetragen wird über denselben Weg, den die Oberfläche nimmt – nicht in
+   * der Datenbank.
    */
   async ohneMitverwalter(serverId) {
     const liste = await this.client.ruf('GET', `/api/servers/${serverId}/members`).catch(() => []);
     for (const eintrag of liste.items ?? liste) {
-      const wer = eintrag.username ?? eintrag.user?.username;
-      if (wer !== MITVERWALTER.username) continue;
-      const id = eintrag.userId ?? eintrag.user?.id ?? eintrag.id;
-      await this.client.ruf('DELETE', `/api/servers/${serverId}/members/${id}`).catch(() => {});
+      await this.client
+        .ruf('DELETE', `/api/servers/${serverId}/members/${eintrag.userId}`)
+        .catch(() => {});
     }
   }
 
@@ -624,26 +633,32 @@ const SZENEN = [
        */
       await r.scrolleZu('[role="tab"]:has-text("Aufgaben")', { dauer: 700, abstand: 220 });
       await r.klicke('[role="tab"]:has-text("Aufgaben")', { nach: 1_400 });
-      await r.untertitelEin('Was regelmäßig passieren soll, macht der Server selbst.');
+      await r.untertitelEin('Was regelmäßig passieren soll, macht der Server von allein.');
       await r.halten(1_600);
       await r.untertitelAus();
 
       await r.klicke('button:has-text("Neue Aufgabe")', { nach: 900 });
-      // Die Felder im Dialog ansprechen, nicht auf der Seite: „Name" gibt es
-      // im Reiter dahinter auch.
+      /*
+       * Die Felder im Dialog ansprechen, nicht auf der Seite: „Name" gibt es
+       * im Reiter dahinter auch.
+       *
+       * Gezeigt wird ein **Neustart**, keine Sicherung. Der Reiter bietet die
+       * Sicherung bewusst nicht an: Der Sicherungs-Zeitplan ist der eine
+       * Zeitplan je Server und wird unter „Sicherungen" gepflegt – zwei Wege
+       * auf dieselbe Zeile hätten zwei Auslegungen desselben Cron-Ausdrucks
+       * zur Folge. Der erste Anlauf wollte trotzdem „Sicherung erstellen"
+       * wählen und ließ am Ende die Vorgabe stehen.
+       */
       const aufgabe = r.seite.getByRole('dialog');
-      await r.tippe(aufgabe.getByLabel('Name'), 'Nächtliche Sicherung');
-      await r
-        .waehle(aufgabe.getByLabel('Aktion'), { label: 'Sicherung erstellen' })
-        .catch(async () => {
-          await r.halten(400);
-        });
-      await r.tippe(aufgabe.getByLabel('Zeitplan (Cron)'), '0 4 * * *', { proZeichen: 90 });
-      await r.halten(600);
-      await r.untertitelEin('Um vier Uhr nachts. Da ist ohnehin niemand wach.');
+      await r.tippe(aufgabe.getByLabel('Name'), 'Nächtlicher Neustart');
+      await r.halten(400);
+      // Das Feld steht schon auf `0 4 * * *`; `tippe` räumt es vorher aus.
+      await r.tippe(aufgabe.getByLabel('Zeitplan (Cron)'), '0 5 * * *', { proZeichen: 110 });
+      await r.halten(700);
+      await r.untertitelEin('Um fünf Uhr früh. Da ist ohnehin niemand wach.');
       await r.halten(1_800);
       await r.untertitelAus();
-      await r.klicke('button:has-text("Anlegen")', { nach: 1_800 });
+      await r.klicke('button:has-text("Anlegen")', { nach: 2_000 });
       await r.zeigerAus();
       await r.schlagwort('Einmal eingestellt.|Nie wieder daran denken.', { stand: 1_300 });
       await r.abblenden(600);
@@ -671,8 +686,23 @@ const SZENEN = [
       await r.gehe('/messages', { warteAuf: 'text=Direktnachrichten und Server-Chats' });
       await r.aufblenden(600);
       await r.untertitelEin('Die Runde redet im Panel – kein zweiter Dienst nötig.');
+      await r.halten(1_600);
+      await r.untertitelAus();
+
+      /*
+       * Eine Unterhaltung öffnen. Ohne das stünde im Bild „Keine Konversation
+       * ausgewählt" – der leere Zustand, während der Untertitel behauptet,
+       * hier werde geredet.
+       */
+      await r
+        .klicke(r.seite.getByText('Jonas', { exact: true }).first(), { nach: 1_600 })
+        .catch(async () => {
+          await r.halten(800);
+        });
+      await r.zeigerAus(300);
       await r.kamera({ zoom: 1.2, dauer: 1_300 });
-      await r.halten(2_000);
+      await r.untertitelEin('Direktnachrichten und ein Chat je Server.');
+      await r.halten(2_200);
       await r.untertitelAus();
       await r.kamera({ zoom: 1, dauer: 700 });
 
@@ -686,17 +716,34 @@ const SZENEN = [
       });
       await r.halten(2_000);
       await r.untertitelAus();
+      await r.kamera({ zoom: 1, dauer: 700 });
 
-      // Kurz wirklich spielen: Ein Standbild der Auswahlseite wäre eine
-      // Behauptung, die bewegte Leinwand ist der Beleg.
-      await r.klicke('button:has-text("Spielen")', { nach: 1_600 }).catch(async () => {
-        await r.halten(800);
+      /*
+       * Kurz wirklich spielen – und zwar **Blockstapel**.
+       *
+       * Ein Standbild der Auswahlseite wäre eine Behauptung, die bewegte
+       * Leinwand ist der Beleg. Gespielt wird aber nicht irgendeines: Der
+       * erste Anlauf nahm die erste Kachel (Kriechpfad) und drehte die Linie
+       * mit `Rechts, Runter, Links` in den eigenen Schweif – nach vier
+       * Sekunden stand „Vorbei · 0 Punkte" im Bild. Bei fallenden Steinen
+       * kann eine feste Tastenfolge in wenigen Sekunden nicht verlieren: Der
+       * Stapel ist leer, und jeder Zug ist gültig.
+       */
+      const blockstapel = r.seite
+        .locator('div')
+        .filter({ hasText: 'Blockstapel' })
+        .locator('button:has-text("Spielen")');
+      await r.klicke(blockstapel.last(), { nach: 1_600 }).catch(async () => {
+        await r.klicke('button:has-text("Spielen")', { nach: 1_600 });
       });
-      for (const taste of ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'ArrowRight']) {
+
+      // Verschieben und drehen – nie nach unten, das beendet nur den Zug
+      // schneller, als die Kamera hinsieht.
+      for (const taste of ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowRight', 'ArrowUp']) {
         await r.seite.keyboard.press(taste).catch(() => {});
-        await r.halten(420);
+        await r.halten(520);
       }
-      await r.halten(900);
+      await r.halten(1_600);
       await r.zeigerAus();
       await r.kamera({ zoom: 1, dauer: 700 });
 
@@ -744,8 +791,26 @@ const SZENEN = [
       const kachel = (name) =>
         r.seite.locator('label:has(input[name="erscheinungsbild"])').filter({ hasText: name });
 
-      for (const name of ['Schmiedefeuer', 'Neonnacht', 'Kanzlei', 'Hyperraum', 'Tageslicht']) {
-        await r.klicke(kachel(name), { hin: 380, nach: 620 }).catch(async () => {
+      /*
+       * Erst nah an die Auswahl, dann wieder zurück.
+       *
+       * Beides hat seinen Grund: Nah sieht man, **was** man wählt (die
+       * Kacheln tragen Namen und Farbtupfer und sind aus der Totale nicht zu
+       * lesen). Weit sieht man, **was passiert** – der Wechsel färbt die
+       * ganze Oberfläche um, Seitenleiste und Kopfzeile eingeschlossen. Aus
+       * der Nahaufnahme allein wirkte es wie eine Auswahl ohne Wirkung.
+       */
+      await r.kamera({ auf: 'text=Erscheinungsbild', zoom: 1.5, dauer: 1_200 });
+      await r.klicke(kachel('Schmiedefeuer'), { hin: 420, nach: 900 }).catch(async () => {
+        await r.halten(600);
+      });
+      await r.klicke(kachel('Neonnacht'), { hin: 380, nach: 900 }).catch(async () => {
+        await r.halten(600);
+      });
+      await r.kamera({ zoom: 1, dauer: 900 });
+
+      for (const name of ['Kanzlei', 'Hyperraum', 'Tageslicht']) {
+        await r.klicke(kachel(name), { hin: 380, nach: 760 }).catch(async () => {
           await r.halten(500);
         });
       }
