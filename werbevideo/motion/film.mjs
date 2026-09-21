@@ -206,8 +206,8 @@ const BEATS = [
     breite: 900,
     y: 700,
     titelY: 250,
-    kopf: 'Sechs Anstriche.',
-    zeile: 'Die Farben ändern sich. Wo etwas steht, nicht.',
+    kopf: 'Elf Anstriche.',
+    zeile: 'Farben und Schrift ändern sich. Wo etwas steht, nicht.',
   },
 ];
 

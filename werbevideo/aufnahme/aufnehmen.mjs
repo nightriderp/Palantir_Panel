@@ -809,14 +809,20 @@ const SZENEN = [
       });
       await r.kamera({ zoom: 1, dauer: 900 });
 
-      for (const name of ['Kanzlei', 'Hyperraum', 'Tageslicht']) {
-        await r.klicke(kachel(name), { hin: 380, nach: 760 }).catch(async () => {
+      /*
+       * Nicht alle elf, sondern die, die am weitesten auseinanderliegen: warm,
+       * kalt, laut, gedeckt – und zum Schluss das helle. Elf Kacheln
+       * durchzuklicken dauert eine halbe Minute und zeigt am Ende dasselbe
+       * wie sechs.
+       */
+      for (const name of ['Kanzlei', 'Heldenrot', 'Bambushain', 'Hyperraum', 'Tageslicht']) {
+        await r.klicke(kachel(name), { hin: 340, nach: 700 }).catch(async () => {
           await r.halten(500);
         });
       }
       await r.zeigerAus(260);
       await r.stoss({ staerke: 0.05 });
-      await r.schlagwort('Sechs Anstriche.|Kein Neuladen.', { stand: 1_200 });
+      await r.schlagwort('Elf Anstriche.|Kein Neuladen.', { stand: 1_200 });
 
       // Zurück auf Standard – die folgenden Szenen sollen aussehen wie alle
       // anderen. Ein Aufnahmelauf, der mitten in „Tageslicht" endet, färbt
@@ -825,7 +831,7 @@ const SZENEN = [
         await r.halten(500);
       });
       await r.zeigerAus();
-      await r.untertitelEin('Die Farben ändern sich. Wo etwas steht, nicht.');
+      await r.untertitelEin('Farben und Schrift ändern sich. Wo etwas steht, nicht.');
       await r.halten(1_900);
       await r.untertitelAus();
       await r.abblenden(600);
