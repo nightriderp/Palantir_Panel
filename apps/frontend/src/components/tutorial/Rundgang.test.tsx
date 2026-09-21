@@ -113,6 +113,10 @@ describe('Rundgang – durchlaufen', () => {
 
     expect(zettel().textContent).toContain('Das war er.');
     expect(screen.getByRole('button', { name: 'Verstanden' })).toBeDefined();
+
+    // Auf der Schlussstation gibt es nichts mehr abzubrechen – und erst recht
+    // keine Rückfrage, ob man wirklich schon gehen will.
+    expect(screen.queryByRole('button', { name: 'Nicht jetzt' })).toBeNull();
   });
 
   it('kommt mit „Zurück" wieder an den Anfang', () => {

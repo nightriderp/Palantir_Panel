@@ -257,13 +257,21 @@ function RundgangLauf({ onBeenden }: { onBeenden: () => void }) {
 
         <div className="mt-4 flex items-center justify-between gap-2">
           {/*
+            Auf der Schlussstation gibt es nichts mehr abzubrechen – „Nicht
+            jetzt" und „Verstanden" täten dasselbe, und die Rückfrage („Es sind
+            noch keine 30 Sekunden") wäre dort schlicht falsch.
+
             `whitespace-nowrap`, weil die zweite Beschriftung länger ist als
             die erste: „Ja, wirklich" brach im schmalen Zettel sonst auf zwei
             Zeilen um und riss die Knopfreihe auseinander.
           */}
-          <Button variant="ghost" size="sm" className="whitespace-nowrap" onClick={abbrechen}>
-            {abbruchGefragt ? 'Ja, wirklich' : 'Nicht jetzt'}
-          </Button>
+          {letzter ? (
+            <span />
+          ) : (
+            <Button variant="ghost" size="sm" className="whitespace-nowrap" onClick={abbrechen}>
+              {abbruchGefragt ? 'Ja, wirklich' : 'Nicht jetzt'}
+            </Button>
+          )}
 
           <div className="flex items-center gap-2">
             {index > 0 ? (
