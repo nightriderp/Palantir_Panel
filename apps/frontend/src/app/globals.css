@@ -12,7 +12,16 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    /*
+     * ⚠️ Hier stand `color-scheme: dark`. Es steht jetzt im erzeugten
+     * Variablenblock jedes Themes (`lib/theme/palette.ts`) – und zwar
+     * zwingend dort, nicht hier: Ein helles Theme braucht `light`, sonst
+     * zeichnet der Browser Datumswähler und Autovervollständigung weiter
+     * dunkel. Bliebe die Angabe zusätzlich hier, stritten zwei Regeln
+     * gleicher Stärke (`:root` gegen `:root`), und welche gewinnt, entschiede
+     * die Reihenfolge der Stylesheets – die zwischen dieser Datei und dem
+     * `<style>` des Layouts nicht zugesichert ist.
+     */
 
     /**
      * Breite der Seitenleiste – **eine** Quelle für zwei Dinge.
@@ -57,11 +66,23 @@
     transform: scale(0.97);
   }
 
-  /* Select: eigener Pfeil, weil das Systemsteuerelement nicht zum dunklen Thema passt. */
+  /*
+   * Select: eigener Pfeil, weil das Systemsteuerelement nicht zum dunklen
+   * Thema passt.
+   *
+   * Der Pfeil steckt als SVG in einer `url()`-Datenadresse, und dorthinein
+   * setzt CSS keine Variablen ein – der Inhalt ist für den Browser ein eigenes
+   * Dokument. Lange war das die eine Farbe, die kein Theme erreichte; auf
+   * hellem Grund wäre der alte Grauton kaum noch zu sehen gewesen.
+   *
+   * Gelöst, indem nicht die Farbe in die Adresse wandert, sondern die fertige
+   * Adresse in die Variable: `lib/theme/palette.ts` baut je Theme eine eigene
+   * und backt die Farbe dabei ein.
+   */
   select {
     appearance: none;
     -webkit-appearance: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><path d='M1 2l3 3 3-3' stroke='%239aa2b2' fill='none' stroke-width='1.4'/></svg>");
+    background-image: var(--select-pfeil);
     background-repeat: no-repeat;
     background-position: right 10px center;
     padding-right: 28px;
@@ -84,11 +105,11 @@
 
   input[type='checkbox'],
   input[type='radio'] {
-    accent-color: #7c5cff;
+    accent-color: rgb(var(--c-brand));
   }
 
   ::placeholder {
-    color: #5a6172;
+    color: rgb(var(--c-placeholder));
   }
 
   ::-webkit-scrollbar {
@@ -97,9 +118,10 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #272c38;
+    background: rgb(var(--c-scrollbar));
     border-radius: 6px;
-    border: 2px solid #0a0b0f;
+    /* Der Rand schneidet den Greifer frei – er trägt deshalb die Seitenfarbe. */
+    border: 2px solid rgb(var(--c-canvas));
   }
 
   /*
@@ -186,14 +208,19 @@
    *
    * Ein einziger Wert wirkt überall, wo `border-line` steht – die Tokens in
    * `tailwind.config.ts` lösen zu genau diesen Farben auf.
+   *
+   * Die Auflage kommt aus derselben Variablen wie die Stufen selbst, nur mit
+   * mehr Deckkraft. Fest gesetztes Weiß wäre hier besonders verkehrt: Ein
+   * helles Theme bekäme ausgerechnet im Hoher-Kontrast-Modus **weniger**
+   * Kontur statt mehr.
    */
   @media (prefers-contrast: more) {
     .border-line {
-      border-color: rgba(255, 255, 255, 0.22);
+      border-color: rgb(var(--c-overlay) / 0.22);
     }
 
     .border-line-strong {
-      border-color: rgba(255, 255, 255, 0.28);
+      border-color: rgb(var(--c-overlay) / 0.28);
     }
   }
 }

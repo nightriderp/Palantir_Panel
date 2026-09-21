@@ -51,7 +51,7 @@ const { ProfileView } = await import('./ProfileView');
 function zeigeProfil(): void {
   render(
     <ToastProvider>
-      <ProfileView />
+      <ProfileView aktivesTheme="standard" />
     </ToastProvider>,
   );
 }

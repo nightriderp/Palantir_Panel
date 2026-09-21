@@ -36,6 +36,7 @@ import {
 import { LifecycleConfirmDialog } from './LifecycleConfirmDialog';
 import { useLifecycleActions } from './useLifecycleActions';
 import { usePinnedServers } from './usePinnedServers';
+import { useSpruch } from '@/lib/theme/SpruchProvider';
 
 /**
  * Serverübersicht (Lastenheft §3.3, Mockup „Übersicht").
@@ -50,6 +51,9 @@ import { usePinnedServers } from './usePinnedServers';
 type PendingConfirm = { action: 'stop' | 'restart'; server: GameServerDto } | null;
 
 export function ServerOverview() {
+  const serverLeer = useSpruch('serverLeer');
+  const keinTreffer = useSpruch('keinTreffer');
+
   const router = useRouter();
   const toast = useToast();
   const { user } = useSession();
@@ -288,8 +292,8 @@ export function ServerOverview() {
       {!servers.loading && !servers.error && grouped.totalCount === 0 ? (
         <EmptyState
           icon="server"
-          title="Noch keine Server"
-          description="Lege deinen ersten Gameserver an – das dauert nur ein paar Klicks."
+          title={serverLeer.titel}
+          description={serverLeer.text}
           action={
             canCreate ? (
               <ButtonLink href="/servers/neu" variant="primary" iconLeft="plus">
@@ -301,11 +305,7 @@ export function ServerOverview() {
       ) : null}
 
       {grouped.totalCount > 0 && grouped.visibleCount === 0 ? (
-        <EmptyState
-          icon="search"
-          title="Kein Treffer"
-          description="Kein Server passt zu dieser Auswahl. Ändere den Filter oder den Suchbegriff."
-        />
+        <EmptyState icon="search" title={keinTreffer.titel} description={keinTreffer.text} />
       ) : null}
 
       {grouped.groups.map((group) => (

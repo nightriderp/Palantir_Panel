@@ -45,7 +45,7 @@ export function NotificationRow({
     <div
       className={cn(
         'flex gap-3 border-b border-line px-4 py-3.5 last:border-b-0',
-        unread && 'bg-brand-soft/40',
+        unread && 'bg-brand/40',
       )}
     >
       <div className="mt-0.5 shrink-0">

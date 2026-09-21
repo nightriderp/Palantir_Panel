@@ -2,6 +2,7 @@ import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import tailwindConfig from '../../../tailwind.config';
+import { THEMES, type Palette } from '@/lib/theme/palette';
 import { LogoMark } from './icons/LogoMark';
 import { MetricRing } from './server/MetricRing';
 
@@ -15,6 +16,13 @@ import { MetricRing } from './server/MetricRing';
  * Der Test hält beide Seiten zusammen: die Klasse, die die Komponente setzt,
  * und den Token, den die Konfiguration dazu führt. Ein Umbenennen des Tokens
  * ließe die Komponente sonst still ungefärbt.
+ *
+ * **Seit der Theme-Umstellung prüft diese Datei zusätzlich jedes Theme.** Die
+ * Kontrastrechnung lief früher gegen die einzige Palette, die es gab; jetzt
+ * ist sie der Türsteher: Ein neues Theme kommt nur herein, wenn sein Text auf
+ * seinen eigenen Flächen lesbar bleibt. Ohne das wäre die Auswahl ein Weg, die
+ * halbe Oberfläche unsichtbar zu machen – freiwillig, aber unwiderruflich für
+ * den, der die Schrift danach nicht mehr findet.
  */
 
 /**
@@ -30,17 +38,6 @@ function tokenVorhanden(name: string): boolean {
 }
 
 const LITERALE_FARBE = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i;
-
-/** Wert eines Tokens – `ink` oder `ink.faint`; nur Hex-Werte, die Flächen mit Alpha bleiben außen vor. */
-function tokenWert(pfad: string): string {
-  const [name, stufe = 'DEFAULT'] = pfad.split('.');
-  const eintrag = palette[name as string];
-  const wert = typeof eintrag === 'string' ? eintrag : (eintrag as Record<string, string>)[stufe];
-  if (typeof wert !== 'string' || !/^#[0-9a-f]{6}$/i.test(wert)) {
-    throw new Error(`Token ${pfad} ist kein Hex-Wert: ${String(wert)}`);
-  }
-  return wert;
-}
 
 /** Relative Leuchtdichte nach WCAG 2.x. */
 function leuchtdichte(hex: string): number {
@@ -58,91 +55,182 @@ function kontrast(a: string, b: string): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
-const FLAECHEN = ['canvas', 'surface', 'surface.muted', 'surface.deep', 'surface.console'];
-/** Fließtext, auch klein – 4,5:1 (WCAG 1.4.3). `ink.disabled` ist ausgenommen: Inaktives darf leiser sein. */
-const TEXT_TOKENS = ['ink', 'ink.muted', 'ink.soft', 'ink.faint'];
+/**
+ * Farbton in Grad (0–360) – Rot 0°, Grün 120°, Blau 240°.
+ *
+ * Nur für die Frage, ob zwei Farben *dieselbe* Farbe meinen. Für alles, was
+ * mit Lesbarkeit zu tun hat, zählt die Leuchtdichte darüber.
+ */
+function farbton(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [
+    number,
+    number,
+    number,
+  ];
+  const max = Math.max(r, g, b);
+  const spanne = max - Math.min(r, g, b);
+  if (spanne === 0) return 0;
+
+  const roh =
+    max === r ? ((g - b) / spanne) % 6 : max === g ? (b - r) / spanne + 2 : (r - g) / spanne + 4;
+  return (((roh * 60) % 360) + 360) % 360;
+}
+
+/** Kürzerer Weg zwischen zwei Farbtönen – über 0° hinweg, nicht drumherum. */
+function farbtonAbstand(a: string, b: string): number {
+  const d = Math.abs(farbton(a) - farbton(b));
+  return Math.min(d, 360 - d);
+}
+
+/**
+ * Alle Flächen, auf denen Text stehen kann.
+ *
+ * Geprüft wird gegen **jede** davon, und das ist seit „Tageslicht" mehr als
+ * Gründlichkeit: In einem dunklen Theme ist die hellste Fläche die schwerste,
+ * in einem hellen die dunkelste. Welche das jeweils ist, muss diese Liste gar
+ * nicht wissen – sie nimmt alle.
+ *
+ * Nur die Rampe weiter unten misst ausdrücklich gegen `surface`: Sie prüft
+ * die Abstände der Textstufen zueinander, und dafür braucht es einen festen
+ * Bezugspunkt, nicht den schwersten.
+ */
+const FLAECHEN = [
+  'canvas',
+  'surface',
+  'surfaceMuted',
+  'surfaceDeep',
+  'surfaceCard',
+  'surfaceConsole',
+] as const satisfies readonly (keyof Palette)[];
+
+/** Fließtext, auch klein – 4,5:1 (WCAG 1.4.3). `inkDisabled` ist ausgenommen: Inaktives darf leiser sein. */
+const TEXT_TOKENS = [
+  'ink',
+  'inkMuted',
+  'inkSoft',
+  'inkFaint',
+] as const satisfies readonly (keyof Palette)[];
+
 /** Statusfarben stehen als Text in Badges und Meldungen. */
-const STATUS_TOKENS = ['success', 'warning', 'danger', 'caution', 'accent', 'brand.bright'];
+const STATUS_TOKENS = [
+  'success',
+  'warning',
+  'danger',
+  'caution',
+  'accent',
+  'brandBright',
+] as const satisfies readonly (keyof Palette)[];
 
 /**
  * Der Nachweis, den es vorher nicht gab (Review 2026-09-16, Befund 12.7): Die
  * Tokens sind das Design-System; ob sie lesbar sind, prüfte niemand. Fällt ein
  * Wert unter die Schwelle, wird es hier rot – nicht erst beim Nutzer.
  */
-describe('Kontrast der Farbtokens (WCAG 1.4.3)', () => {
-  it.each(TEXT_TOKENS)('%s hält 4,5:1 gegen jede Fläche', (token) => {
-    for (const flaeche of FLAECHEN) {
-      expect(
-        kontrast(tokenWert(token), tokenWert(flaeche)),
-        `${token} auf ${flaeche}`,
-      ).toBeGreaterThanOrEqual(4.5);
-    }
-  });
+describe.each(THEMES.map((thema) => [thema.name, thema.palette] as const))(
+  'Kontrast der Farbtokens, Theme „%s" (WCAG 1.4.3)',
+  (_name, farben) => {
+    it.each([...TEXT_TOKENS, ...STATUS_TOKENS])('%s hält 4,5:1 gegen jede Fläche', (token) => {
+      for (const flaeche of FLAECHEN) {
+        expect(
+          kontrast(farben[token], farben[flaeche]),
+          `${token} auf ${flaeche}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    });
 
-  it.each(STATUS_TOKENS)('%s hält 4,5:1 gegen jede Fläche', (token) => {
-    for (const flaeche of FLAECHEN) {
-      expect(
-        kontrast(tokenWert(token), tokenWert(flaeche)),
-        `${token} auf ${flaeche}`,
-      ).toBeGreaterThanOrEqual(4.5);
-    }
-  });
+    it('die Textstufen bleiben in ihrer Reihenfolge', () => {
+      // Heller machen darf die Hierarchie nicht umkehren – dann sähe Nebensache
+      // wichtiger aus als der Haupttext.
+      const gegenSurface = TEXT_TOKENS.map((token) => kontrast(farben[token], farben.surface));
+      expect(gegenSurface).toEqual([...gegenSurface].sort((a, b) => b - a));
+    });
 
-  it('die Textstufen bleiben in ihrer Reihenfolge', () => {
-    // Heller machen darf die Hierarchie nicht umkehren – dann sähe Nebensache
-    // wichtiger aus als der Haupttext.
-    const gegenSurface = TEXT_TOKENS.map((token) =>
-      kontrast(tokenWert(token), tokenWert('surface')),
+    /**
+     * Reihenfolge allein genügt nicht – der Abstand muss auch zu sehen sein.
+     *
+     * Genau daran fehlte es: Nach dem Anheben von Review 2026-09-16 standen
+     * `soft` und `faint` bei 5,43 und 4,64, ein Schritt von 1,17. Formal vier
+     * Textstufen, sichtbar drei – ein Abschnittslabel und ein Zeitstempel sahen
+     * gleich wichtig aus, und die Oberfläche wirkte flach. Der Fall ging durch
+     * jede Prüfung, weil niemand nach dem *Abstand* fragte, nur nach Boden und
+     * Reihenfolge.
+     *
+     * ⚠️ Die Schwelle ist bewusst niedrig angesetzt (1,25). Sie soll nicht eine
+     * bestimmte Rampe festschreiben, sondern verhindern, dass zwei Stufen wieder
+     * zusammenfallen – nach oben ist jeder Abstand recht. Für ein neues Theme
+     * ist sie damit die eigentliche Auflage: Es darf anders aussehen, aber es
+     * muss dieselbe Tiefe haben.
+     */
+    const MINDESTSCHRITT = 1.25;
+
+    it(`zwischen zwei Textstufen liegt mindestens Faktor ${String(MINDESTSCHRITT)}`, () => {
+      const gegenSurface = TEXT_TOKENS.map((token) => ({
+        token,
+        wert: kontrast(farben[token], farben.surface),
+      }));
+
+      for (let i = 1; i < gegenSurface.length; i += 1) {
+        const heller = gegenSurface[i - 1];
+        const dunkler = gegenSurface[i];
+        if (!heller || !dunkler) throw new Error('Textstufen fehlen');
+
+        expect(
+          heller.wert / dunkler.wert,
+          `${heller.token} (${heller.wert.toFixed(2)}) zu ${dunkler.token} (${dunkler.wert.toFixed(2)})`,
+        ).toBeGreaterThanOrEqual(MINDESTSCHRITT);
+      }
+    });
+
+    /**
+     * Ein Theme darf die Stimmung ändern, nicht die Bedeutung.
+     *
+     * Die Markenfarbe steht auf dem Primärknopf, die Statusfarben auf
+     * Abzeichen und in Meldungen – oft nebeneinander auf derselben Karte.
+     * Fallen zwei davon zusammen, liest sich ein „stoppt" wie eine
+     * Hauptaktion, und kein Kontrastwert merkt es: Beide sind für sich
+     * bestens lesbar.
+     *
+     * **Gefunden, nicht ausgedacht.** Die erste Fassung von „Schmiedefeuer"
+     * hatte Marke und `caution` bei 10° Farbtonabstand und Faktor 1,05
+     * Helligkeit – zwei Namen für dieselbe Farbe.
+     *
+     * ⚠️ Geprüft wird Farbton **und** Helligkeit, nicht nur der Farbton. In
+     * einem goldenen oder messingfarbenen Theme liegt die Marke zwangsläufig
+     * neben `warning`; ein tiefes Kupfer und ein blasses Gelb sind trotzdem
+     * ohne Weiteres auseinanderzuhalten. Ein Theme, das den Farbton nicht
+     * hergeben kann, muss die Helligkeit hergeben.
+     */
+    const FARBTON_ABSTAND = 25;
+    const HELLIGKEITS_FAKTOR = 1.5;
+
+    it.each(['success', 'warning', 'caution', 'danger'] as const)(
+      '`brand` ist nicht mit `%s` zu verwechseln',
+      (token) => {
+        const abstand = farbtonAbstand(farben.brand, farben[token]);
+        const faktor = kontrast(farben.brand, farben[token]);
+
+        expect(
+          abstand >= FARBTON_ABSTAND || faktor >= HELLIGKEITS_FAKTOR,
+          `brand (${farbton(farben.brand).toFixed(0)}°) und ${token} ` +
+            `(${farbton(farben[token]).toFixed(0)}°): ${abstand.toFixed(0)}° Abstand, ` +
+            `Faktor ${faktor.toFixed(2)} Helligkeit`,
+        ).toBe(true);
+      },
     );
-    expect(gegenSurface).toEqual([...gegenSurface].sort((a, b) => b - a));
-  });
 
-  /**
-   * Reihenfolge allein genügt nicht – der Abstand muss auch zu sehen sein.
-   *
-   * Genau daran fehlte es: Nach dem Anheben von Review 2026-09-16 standen
-   * `soft` und `faint` bei 5,43 und 4,64, ein Schritt von 1,17. Formal vier
-   * Textstufen, sichtbar drei – ein Abschnittslabel und ein Zeitstempel sahen
-   * gleich wichtig aus, und die Oberfläche wirkte flach. Der Fall ging durch
-   * jede Prüfung, weil niemand nach dem *Abstand* fragte, nur nach Boden und
-   * Reihenfolge.
-   *
-   * ⚠️ Die Schwelle ist bewusst niedrig angesetzt (1,25). Sie soll nicht eine
-   * bestimmte Rampe festschreiben, sondern verhindern, dass zwei Stufen wieder
-   * zusammenfallen – nach oben ist jeder Abstand recht.
-   */
-  const MINDESTSCHRITT = 1.25;
-
-  it(`zwischen zwei Textstufen liegt mindestens Faktor ${String(MINDESTSCHRITT)}`, () => {
-    const gegenSurface = TEXT_TOKENS.map((token) => ({
-      token,
-      wert: kontrast(tokenWert(token), tokenWert('surface')),
-    }));
-
-    for (let i = 1; i < gegenSurface.length; i += 1) {
-      const heller = gegenSurface[i - 1];
-      const dunkler = gegenSurface[i];
-      if (!heller || !dunkler) throw new Error('Textstufen fehlen');
-
-      expect(
-        heller.wert / dunkler.wert,
-        `${heller.token} (${heller.wert.toFixed(2)}) zu ${dunkler.token} (${dunkler.wert.toFixed(2)})`,
-      ).toBeGreaterThanOrEqual(MINDESTSCHRITT);
-    }
-  });
-
-  it('`brand` als Text erreicht mindestens 3:1 (Bedienelemente, große Schrift)', () => {
-    // Die Markenfarbe steht auf Knöpfen unter weißer Schrift und als Textfarbe
-    // in Initialen und Links – dort mit 3,9:1 auf `surface` unter 4,5. Für
-    // Fließtext gibt es `brand.bright`; hier wird nur der Boden gehalten.
-    for (const flaeche of FLAECHEN) {
-      expect(
-        kontrast(tokenWert('brand'), tokenWert(flaeche)),
-        `brand auf ${flaeche}`,
-      ).toBeGreaterThanOrEqual(3);
-    }
-  });
-});
+    it('`brand` als Text erreicht mindestens 3:1 (Bedienelemente, große Schrift)', () => {
+      // Die Markenfarbe steht auf Knöpfen unter weißer Schrift und als Textfarbe
+      // in Initialen und Links – dort mit 3,9:1 auf `surface` unter 4,5. Für
+      // Fließtext gibt es `brand.bright`; hier wird nur der Boden gehalten.
+      for (const flaeche of FLAECHEN) {
+        expect(
+          kontrast(farben.brand, farben[flaeche]),
+          `brand auf ${flaeche}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    });
+  },
+);
 
 describe('Farbtokens statt literaler Werte', () => {
   it('MetricRing zeichnet die Ringspur über den Token `line`', () => {
