@@ -109,8 +109,22 @@ const ZEILE_BASIS =
 /** Ruhe- und Hover-Zustand einer nicht aktiven Zeile. */
 const ZEILE_RUHEND = 'border-transparent text-ink-muted hover:bg-fill hover:text-ink';
 
-/** Aktive Zeile: farbige Kante, getönte Fläche. */
-const ZEILE_AKTIV = 'border-brand bg-brand-soft text-white';
+/**
+ * Aktive Zeile: farbige Kante, getönte Fläche.
+ *
+ * ⚠️ **`text-ink`, nicht `text-white`.** Hier stand Weiß – fest, als einzige
+ * Farbe dieser Datei am Design-System vorbei. Auf dunklem Grund fiel das nie
+ * auf: `bg-brand-soft` ist dort ein dunkles Violett, Weiß darauf hält 17:1.
+ * Im hellen Theme ist dieselbe Fläche ein blasses Lavendel, und Weiß darauf
+ * kommt auf **1,35:1** – die aktive Zeile war praktisch unlesbar.
+ *
+ * Der Kontrast-Test konnte das nicht sehen: Er prüft Tokens gegeneinander,
+ * und `text-white` ist keines. Genau diese Lücke schließt die Regel „keine
+ * literalen Farbwerte in Komponenten" (`tailwind.config.ts`) sonst – sie galt
+ * hier nur nicht, weil Tailwinds eingebautes Weiß nicht wie ein literaler
+ * Wert aussieht.
+ */
+const ZEILE_AKTIV = 'border-brand bg-brand-soft text-ink';
 
 export function SideNavSection({ title, titleAside, items, className }: SideNavSectionProps) {
   return (

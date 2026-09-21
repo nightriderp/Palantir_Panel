@@ -5,7 +5,7 @@ import { THEME_COOKIE } from '@/lib/theme/cookie';
 /**
  * Die 404-Seite ist die einzige Stelle, die ihren Spruch **selbst** aus dem
  * Cookie holt statt aus dem Kontext – sie ist eine Server-Komponente und hat
- * keine Hooks (`lib/theme/SpruchProvider.tsx`).
+ * keine Hooks (`lib/theme/ThemeProvider.tsx`).
  *
  * Genau deshalb steht sie hier: Über HTTP ist sie nicht zu erreichen, weil der
  * Proxy jeden unbekannten Pfad ohne Sitzung auf `/login` umleitet

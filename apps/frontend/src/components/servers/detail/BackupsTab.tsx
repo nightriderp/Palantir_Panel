@@ -33,7 +33,7 @@ import { useApiResource } from '@/lib/api/useApiResource';
 import { formatBytes } from '../formatDetail';
 import { consistencyMeta } from '@/components/my-backups/backupsView';
 import { JobProgress } from './JobProgress';
-import { useSpruch } from '@/lib/theme/SpruchProvider';
+import { useSpruch } from '@/lib/theme/ThemeProvider';
 
 /**
  * Reiter „Backups" der Detailansicht (Lastenheft §3.3).

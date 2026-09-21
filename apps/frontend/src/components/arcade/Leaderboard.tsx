@@ -5,6 +5,7 @@ import {
   Button,
   EmptyState,
   Panel,
+  ThemeEmblem,
   UserLabel,
   formatDateTime,
   formatNumber,
@@ -52,7 +53,16 @@ export function Leaderboard({ data, loading, error, onReload }: LeaderboardProps
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-md font-semibold text-ink">Bestenliste</h2>
+        {/*
+          Das Zeichen des gewählten Themes – der einzige Ort im Panel, an dem
+          ein Theme mehr tut, als Farben zu tauschen. Es steht hier und nicht
+          auf jeder Seite: Eine Bestenliste ist der eine Platz, an dem etwas
+          Wappenhaftes nicht deplatziert wirkt.
+        */}
+        <h2 className="flex items-center gap-2 text-md font-semibold text-ink">
+          <ThemeEmblem className="text-brand" />
+          Bestenliste
+        </h2>
         <Button variant="ghost" size="sm" onClick={onReload}>
           Aktualisieren
         </Button>

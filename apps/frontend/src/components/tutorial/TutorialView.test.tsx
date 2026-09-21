@@ -2,7 +2,8 @@ import { type AccountDto, type GlobalPermissions } from '@palantir/contracts';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/shared';
-import { QUIZ_FRAGEN, sichtbareSchritte } from './inhalt';
+import { sichtbareSchritte } from './inhalt';
+import { QUIZ_FRAGEN, seitenFragen } from './fragenkatalog';
 import { FLUCHT_MAX, LESEZEIT_MIN_MS } from './spott';
 import { TutorialView } from './TutorialView';
 
@@ -169,23 +170,78 @@ describe('Einweisung – Überspringen', () => {
   });
 });
 
-describe('Einweisung – bis zur Urkunde', () => {
-  it('führt durch alle Schritte, das Quiz und endet mit einer Note', () => {
+/** Die drei versprochenen Fragen der ersten Seite richtig beantworten. */
+function ersteSeiteRichtig(): void {
+  for (const frage of seitenFragen(1)) {
+    klick(frage.antworten[frage.richtig] ?? '');
+  }
+}
+
+describe('Einweisung – das Quiz, das nicht aufhört', () => {
+  function bisZumQuiz(): void {
     einweisung();
     klick('Ich bin bereit');
-
     for (let i = 0; i < sichtbareSchritte(konto()).length; i += 1) schrittWeiter();
+  }
 
-    for (const frage of QUIZ_FRAGEN) {
-      const richtig = frage.antworten.find((antwort) => antwort.richtig);
-      klick(richtig?.text ?? '');
-    }
+  it('verspricht zuerst genau drei Fragen', () => {
+    bisZumQuiz();
 
+    expect(screen.getByText(/Drei Fragen\./)).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Auswerten' })).toBeDefined();
+    // Von Seiten ist vor der Enthüllung nirgends die Rede.
+    expect(screen.queryByText(/Seite 1 von/)).toBeNull();
+  });
+
+  it('enthüllt nach dem Auswerten den ganzen Bogen', () => {
+    bisZumQuiz();
+    ersteSeiteRichtig();
     klick('Auswerten');
+
+    expect(screen.getByText(/Geschafft/)).toBeDefined();
+    expect(screen.getByText(/Seite 2 von/)).toBeDefined();
+    // Die Zahl steht im Enthüllungstext – „124 Stück, um genau zu sein".
+    expect(screen.getByText(`${QUIZ_FRAGEN.length} Stück`)).toBeDefined();
+  });
+
+  it('lässt ab der Enthüllung jederzeit aufgeben – und wertet das Erreichte', () => {
+    bisZumQuiz();
+    ersteSeiteRichtig();
+    klick('Auswerten');
+
+    klick('Ich gebe auf');
 
     expect(screen.getByText('Urkunde')).toBeDefined();
     expect(screen.getByText('Kevin')).toBeDefined();
-    expect(screen.getByText('1')).toBeDefined();
-    expect(screen.getByText(/3 von 3 Fragen richtig/)).toBeDefined();
+    expect(screen.getByText(/3 von 3 beantworteten Fragen richtig/)).toBeDefined();
+    expect(screen.getByText(/Drei Fragen, wie angekündigt/)).toBeDefined();
+  });
+
+  it('fragt nach sechs Fragen nach, ob das ernst gemeint ist', () => {
+    bisZumQuiz();
+    ersteSeiteRichtig();
+    klick('Auswerten');
+
+    // Seite 2 und 3 – nach der sechsten Antwort kommt die Rückfrage.
+    for (const frage of seitenFragen(2)) klick(frage.antworten[frage.richtig] ?? '');
+    klick('Nächste Seite');
+    for (const frage of seitenFragen(3)) klick(frage.antworten[frage.richtig] ?? '');
+
+    expect(screen.getByRole('dialog')).toBeDefined();
+    expect(screen.getByText(/Kurze Zwischenfrage/)).toBeDefined();
+  });
+
+  it('beendet das Quiz, wenn man die Rückfrage mit Nein beantwortet', () => {
+    bisZumQuiz();
+    ersteSeiteRichtig();
+    klick('Auswerten');
+    for (const frage of seitenFragen(2)) klick(frage.antworten[frage.richtig] ?? '');
+    klick('Nächste Seite');
+    for (const frage of seitenFragen(3)) klick(frage.antworten[frage.richtig] ?? '');
+
+    klick('Ich höre auf');
+
+    expect(screen.getByText('Urkunde')).toBeDefined();
+    expect(screen.getByText(/Sechs Fragen/)).toBeDefined();
   });
 });
