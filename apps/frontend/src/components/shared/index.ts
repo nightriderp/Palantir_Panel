@@ -11,6 +11,7 @@
 
 export { Icon, ICON_NAMES, ICON_PATHS, type IconName, type IconProps } from './icons/Icon';
 export { LogoMark, type LogoMarkProps } from './icons/LogoMark';
+export { ThemeEmblem, type ThemeEmblemProps } from './icons/ThemeEmblem';
 
 export {
   Button,
