@@ -36,7 +36,7 @@
     "@palantir/validation": "workspace:*",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.2",
-    "fastify": "^5.12.4",
+    "fastify": "^5.12.5",
     "gamedig": "^5.3.3",
     "jose": "^5.9.6",
     "pg": "^8.23.0",
