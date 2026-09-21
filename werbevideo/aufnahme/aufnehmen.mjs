@@ -730,10 +730,10 @@ const SZENEN = [
        * Stapel ist leer, und jeder Zug ist gültig.
        */
       const blockstapel = r.seite
-        .locator('div')
+        .locator('article')
         .filter({ hasText: 'Blockstapel' })
-        .locator('button:has-text("Spielen")');
-      await r.klicke(blockstapel.last(), { nach: 1_600 }).catch(async () => {
+        .getByRole('button', { name: 'Spielen' });
+      await r.klicke(blockstapel, { nach: 1_600 }).catch(async () => {
         await r.klicke('button:has-text("Spielen")', { nach: 1_600 });
       });
 

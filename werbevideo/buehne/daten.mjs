@@ -223,9 +223,45 @@ async function main() {
   }
 
   await mitverwalter(owner, held);
+  await bestenlisten();
   await nachrichten(held);
 
   console.log('\nBühne steht.');
+}
+
+/**
+ * Ein paar Ergebnisse in die Bestenlisten der Arcade.
+ *
+ * Ohne sie steht unter jeder Spielkachel „Noch niemand hat gespielt." und in
+ * der Kopfzeile „Bestleistung: 0" – die Seite sieht dann aus wie ein Teil,
+ * den niemand benutzt. Die Runde spielt aber; das gehört ins Bild.
+ *
+ * Gemeldet wird über denselben Weg wie aus dem Spiel heraus: Das Backend ist
+ * die Stelle, die den Punktestand hält (eine Bestenliste nur im Browser wäre
+ * keine). Jede Person meldet ihre eigenen Ergebnisse – ein Eintrag unter
+ * fremdem Namen ließe sich so gar nicht erzeugen.
+ *
+ * Mika steht bewusst nicht überall oben: Eine Bestenliste, in der das
+ * gefilmte Konto jeden Platz eins hält, wirkt gestellt.
+ */
+async function bestenlisten() {
+  const ergebnisse = [
+    { konto: 'mika', werte: { kriechpfad: 1_480, blockstapel: 6_200, punktejaeger: 3_150 } },
+    { konto: 'jonas', werte: { kriechpfad: 2_010, ballwechsel: 14, steinbrecher: 4_480 } },
+    { konto: 'lena', werte: { blockstapel: 9_350, punktejaeger: 2_620, ballwechsel: 9 } },
+    { konto: 'tim', werte: { steinbrecher: 2_940, kriechpfad: 860 } },
+  ];
+
+  for (const eintrag of ergebnisse) {
+    const client = new PanelClient(API);
+    await client.anmelden(eintrag.konto, HELD.password);
+    for (const [gameId, score] of Object.entries(eintrag.werte)) {
+      await client
+        .ruf('POST', '/arcade/scores', { gameId, score })
+        .catch((f) => console.warn(`Ergebnis abgelehnt (${gameId}): ${f.message}`));
+    }
+    console.log(`Ergebnisse gemeldet: ${eintrag.konto}`);
+  }
 }
 
 /**
