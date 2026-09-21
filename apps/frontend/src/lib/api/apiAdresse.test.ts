@@ -84,6 +84,29 @@ describe('Vorgabe der API-Adresse im Browser-Bundle', () => {
     expect(config.env.NEXT_PUBLIC_API_URL).toBe('http://localhost:4000');
   });
 
+  /*
+   * Die Domain wird zur Bauzeit ins Browser-Bundle eingesetzt. Stünde dort die
+   * Umlaut-Form, schickte der Browser seine Aufrufe trotzdem an die ASCII-Form
+   * und CORS im Backend vergliche zwei verschiedene Zeichenketten – das Panel
+   * bekäme auf keinen einzigen Aufruf eine Antwort. Dieselbe Umrechnung wie in
+   * `apps/backend/src/config/domain-ascii.ts`.
+   */
+  it('setzt eine Umlaut-Domain in die ASCII-Form um', async () => {
+    const config = await ladeConfig({ PALANTIR_DOMAIN: 'müf-it.de' });
+
+    expect(config.env.NEXT_PUBLIC_API_URL).toBe('https://xn--mf-it-kva.de/api');
+    expect(config.env.NEXT_PUBLIC_BASE_DOMAIN).toBe('xn--mf-it-kva.de');
+  });
+
+  it('rechnet auch ein gesetztes PUBLIC_API_URL um', async () => {
+    const config = await ladeConfig({
+      PALANTIR_DOMAIN: 'müf-it.de',
+      PUBLIC_API_URL: 'https://müf-it.de/api',
+    });
+
+    expect(config.env.NEXT_PUBLIC_API_URL).toBe('https://xn--mf-it-kva.de/api');
+  });
+
   it('NEXT_PUBLIC_API_URL sticht PUBLIC_API_URL', async () => {
     const config = await ladeConfig({
       PALANTIR_DOMAIN: 'beispiel.tld',

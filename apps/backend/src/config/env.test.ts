@@ -34,6 +34,56 @@ describe('Adressableitung aus PALANTIR_DOMAIN', () => {
     expect(e.STEAM_RETURN_URL).toBe('https://beispiel.tld/api/auth/steam/callback');
   });
 
+  /*
+   * Eine Umlaut-Domain darf in der `.env` stehen. Sie ist derselbe Name wie
+   * ihre ASCII-Form, aber CORS (`server.ts`), die Traefik-Host-Regel und der
+   * Hostname-Router im Agent vergleichen Zeichenketten – abgeleitet wird
+   * deshalb ausschliesslich die Form, die auch der Browser schickt. Ohne das
+   * griffe nichts davon, und zwar ohne jede Fehlermeldung.
+   */
+  describe('Umlaut-Domain (IDN)', () => {
+    it('leitet jede Adresse in der ASCII-Form ab', () => {
+      const e = adressenAbleiten(eingabe({ PALANTIR_DOMAIN: 'müf-it.de' }));
+
+      expect(e.PALANTIR_DOMAIN).toBe('xn--mf-it-kva.de');
+      expect(e.PUBLIC_WEB_URL).toBe('https://xn--mf-it-kva.de');
+      expect(e.PUBLIC_API_URL).toBe('https://xn--mf-it-kva.de/api');
+      expect(e.DISCORD_REDIRECT_URI).toBe('https://xn--mf-it-kva.de/api/auth/discord/callback');
+      expect(e.TWITCH_REDIRECT_URI).toBe('https://xn--mf-it-kva.de/api/auth/twitch/callback');
+      expect(e.STEAM_RETURN_URL).toBe('https://xn--mf-it-kva.de/api/auth/steam/callback');
+    });
+
+    it('rechnet auch die ausdrücklich gesetzten Werte um', () => {
+      const e = adressenAbleiten(
+        eingabe({
+          PALANTIR_DOMAIN: 'müf-it.de',
+          PUBLIC_WEB_URL: 'https://panel.müf-it.de',
+          PUBLIC_API_URL: 'https://api.panel.müf-it.de',
+          COOKIE_DOMAIN: 'panel.müf-it.de',
+          GAME_ROUTER_HOSTNAME: 'mc.müf-it.de',
+        }),
+      );
+
+      expect(e.PUBLIC_WEB_URL).toBe('https://panel.xn--mf-it-kva.de');
+      expect(e.PUBLIC_API_URL).toBe('https://api.panel.xn--mf-it-kva.de');
+      expect(e.COOKIE_DOMAIN).toBe('panel.xn--mf-it-kva.de');
+      expect(e.GAME_ROUTER_HOSTNAME).toBe('mc.xn--mf-it-kva.de');
+    });
+
+    it('beide Schreibweisen ergeben dieselbe Ableitung', () => {
+      const umlaut = adressenAbleiten(eingabe({ PALANTIR_DOMAIN: 'müf-it.de' }));
+      const ascii = adressenAbleiten(eingabe({ PALANTIR_DOMAIN: 'xn--mf-it-kva.de' }));
+
+      expect(umlaut).toEqual(ascii);
+    });
+
+    it('bricht mit benanntem Wert ab, wenn die Domain unbrauchbar ist', () => {
+      expect(() => adressenAbleiten(eingabe({ PALANTIR_DOMAIN: 'müf it.de/x' }))).toThrow(
+        /PALANTIR_DOMAIN/,
+      );
+    });
+  });
+
   it('ein Domainwechsel zieht jede abgeleitete Adresse mit', () => {
     const vorher = adressenAbleiten(eingabe({}));
     const nachher = adressenAbleiten(eingabe({ PALANTIR_DOMAIN: 'andere.example' }));
