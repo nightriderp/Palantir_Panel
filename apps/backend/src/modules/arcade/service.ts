@@ -20,6 +20,7 @@ import {
   type ArcadeLeaderboardDto,
   type ArcadeLeaderboardEntryDto,
   type ArcadeSubmitResultDto,
+  titleForAchievement,
 } from '@palantir/contracts';
 import type { SubmitArcadeScoreInput } from '@palantir/validation';
 import type { ArcadeLeaderboardRow, ArcadeRepository } from './repository.js';
@@ -38,6 +39,17 @@ export interface ArcadeServiceOptions {
   readonly repository: ArcadeRepository;
   /** Länge der Bestenliste; Standard aus dem Contract. */
   readonly leaderboardLimit?: number;
+  /**
+   * Wird nach einem gespeicherten Versuch gerufen – Anschluss an das
+   * Erfolgs-Modul (Betreiber-Wunsch 21.09.2026).
+   *
+   * Die Arcade weiß nichts von Abzeichen und soll es auch nicht: Sie meldet
+   * nur, dass jemand gespielt hat; was daraus folgt, entscheidet ein anderes
+   * Modul (`server.ts` verbindet beide). Der Aufruf geschieht **nach** der
+   * Transaktion und wird **nicht erwartet** – ein Fehler dort darf weder den
+   * Punktestand zurückrollen noch die Antwort aufhalten.
+   */
+  readonly onScoreSubmitted?: (userId: string, gameId: ArcadeGameId) => void;
 }
 
 /**
@@ -69,6 +81,9 @@ function toRankedEntries(
       rank,
       userId: row.userId,
       displayName: row.displayName,
+      // Aus der Kennung wird hier der Text: Der Titel steht im Katalog, nicht
+      // in der Datenbank – eine spätere Umformulierung wirkt damit sofort.
+      title: row.titleAchievementId === null ? null : titleForAchievement(row.titleAchievementId),
       bestScore: row.bestScore,
       achievedAt: row.achievedAt.toISOString(),
       isCurrentUser: row.userId === userId,
@@ -79,6 +94,23 @@ function toRankedEntries(
 export function createArcadeService(options: ArcadeServiceOptions): ArcadeService {
   const { repository } = options;
   const limit = options.leaderboardLimit ?? ARCADE_LEADERBOARD_LIMIT;
+
+  /**
+   * Meldet den gespielten Versuch weiter, ohne dafür geradezustehen.
+   *
+   * Der Anschluss ist ein Nachgedanke: Der Punktestand steht bereits fest, und
+   * ein Fehler auf der anderen Seite ist kein Grund, dem Spieler sein Ergebnis
+   * als fehlgeschlagen zu melden.
+   */
+  function melden(userId: string, gameId: ArcadeGameId): void {
+    if (!options.onScoreSubmitted) return;
+
+    try {
+      options.onScoreSubmitted(userId, gameId);
+    } catch {
+      // Bewusst still – der Empfänger meldet seine Fehler selbst.
+    }
+  }
 
   return {
     async submitScore(userId, input) {
@@ -100,7 +132,7 @@ export function createArcadeService(options: ArcadeServiceOptions): ArcadeServic
        * Sperrzeile dafür wäre unverhältnismäßig (die Route begrenzt die Rate
        * ohnehin je Konto).
        */
-      return repository.transaction(async (tx) => {
+      const ergebnis = await repository.transaction(async (tx) => {
         const before = await tx.personalStats(userId, input.gameId);
         const inserted = await tx.insertScore({
           userId,
@@ -129,6 +161,12 @@ export function createArcadeService(options: ArcadeServiceOptions): ArcadeServic
           isNewPersonalBest,
         };
       });
+
+      // Erst nach dem Commit: Ein Abzeichen für eine Runde, die am Ende doch
+      // zurückgerollt wurde, wäre eines zu viel.
+      melden(userId, input.gameId);
+
+      return ergebnis;
     },
 
     async getLeaderboard(userId, gameId) {

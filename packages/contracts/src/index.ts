@@ -63,6 +63,11 @@ export * from './auth.js';
 // nutzerbezogene Bestenlisten (Pflichtenheft §17, Lastenheft §3.9).
 export * from './arcade.js';
 
+// Erfolge, Titel und Stufen (Betreiber-Wunsch 21.09.2026): Abzeichen für
+// Vorgänge, die das Panel ohnehin protokolliert, und die daraus abgeleitete
+// Stufenleiter. Kein eigener Punktestand – siehe Kopf von `achievements.ts`.
+export * from './achievements.js';
+
 // Notification-Engine (Arbeitspaket B6): Ereignis-Nutzdaten, Kanäle, Regeln,
 // Inbox, systemweite Ankündigungen und der Live-Kanal der Inbox.
 export * from './notifications.js';

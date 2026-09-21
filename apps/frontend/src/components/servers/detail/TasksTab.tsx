@@ -21,6 +21,7 @@ import { createSchedule, deleteSchedule, fetchSchedules, updateSchedule } from '
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { describeCron } from '../formatDetail';
+import { useSpruch } from '@/lib/theme/SpruchProvider';
 
 /**
  * Reiter „Aufgaben" der Detailansicht (Lastenheft §3.3).
@@ -84,6 +85,8 @@ export interface TasksTabProps {
 }
 
 export function TasksTab({ server }: TasksTabProps) {
+  const aufgabenLeer = useSpruch('aufgabenLeer');
+
   const toast = useToast();
   const schedules = useApiResource<ScheduleDto[]>(
     (signal) => fetchSchedules(server.id, signal),
@@ -212,8 +215,8 @@ export function TasksTab({ server }: TasksTabProps) {
       {!schedules.loading && !schedules.error && list.length === 0 ? (
         <EmptyState
           icon="clock"
-          title="Keine geplanten Aufgaben"
-          description="Lege zum Beispiel einen nächtlichen Neustart oder einen Konsolenbefehl zu fester Uhrzeit an."
+          title={aufgabenLeer.titel}
+          description={aufgabenLeer.text}
           action={
             canManage ? (
               <Button variant="primary" iconLeft="plus" onClick={openNew}>

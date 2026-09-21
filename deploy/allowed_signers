@@ -24,4 +24,4 @@
 #   - dann die Zeile aus ~/.ssh/palantir_release.pub hier eintragen (mit
 #     Prinzipal und namespaces="git" davor) und nach /etc/palantir/allowed_signers
 #     auf die Gamenode kopieren.
-palantir-release namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICN0w7M9LcBc8iAvac39y88xTZKiZtCfniYJHNCBRCGY palantir-release
+# palantir-release namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICN0w7M9LcBc8iAvac39y88xTZKiZtCfniYJHNCBRCGY palantir-release

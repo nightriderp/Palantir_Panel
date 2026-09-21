@@ -125,6 +125,7 @@ const ERWARTETE_ROUTEN = [
   '/admin/users',
   '/arcade',
   '/einstellungen',
+  '/erfolge',
   '/login',
   '/messages',
   '/my-backups',
@@ -137,6 +138,7 @@ const ERWARTETE_ROUTEN = [
   '/servers/[serverId]',
   '/servers/neu',
   '/skins',
+  '/tutorial',
 ];
 
 describe('Routenbaum unter src/app', () => {

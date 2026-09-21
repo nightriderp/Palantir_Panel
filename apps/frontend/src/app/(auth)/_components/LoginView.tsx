@@ -4,6 +4,7 @@ import { type ErrorCode } from '@palantir/contracts';
 import { loginInputSchema, twoFactorInputSchema } from '@palantir/validation';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useSpruch } from '@/lib/theme/SpruchProvider';
 import { useCallback, useState, type FormEvent } from 'react';
 
 import { Button, FormMessage, TextField } from '@/components/shared';
@@ -71,6 +72,12 @@ export function LoginView() {
    */
   const [blocking, setBlocking] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  /*
+   * Vor dem ersten bedingten `return` weiter unten – ein Hook darf nicht
+   * hinter einem Zweig stehen, der ihn manchmal überspringt.
+   */
+  const begruessung = useSpruch('anmeldung');
 
   const handleSolved = useCallback((payload: string | null) => {
     setAltcha(payload);
@@ -220,10 +227,7 @@ export function LoginView() {
 
   return (
     <>
-      <AuthHeading
-        title="Willkommen zurück"
-        description="Melde dich an, um deine Gameserver zu verwalten."
-      />
+      <AuthHeading title={begruessung.titel} description={begruessung.text} />
 
       {providerError ? <FormMessage className="mb-3.5">{providerError}</FormMessage> : null}
 

@@ -69,6 +69,20 @@ export const OWNER_RULE_EVENTS: readonly NotifiableEventName[] = [
   'autoShutdown.triggered',
   // Die Server-Warnung aus B4 trägt den Besitzer in der Nutzlast (Fundpunkt 167).
   'resource.low',
+  /*
+   * Freigeschaltete Abzeichen (Betreiber-Wunsch 21.09.2026) – an den, der sie
+   * geschafft hat.
+   *
+   * Als Vorgabe und nicht als fester Hinweis in der Oberfläche: Ein
+   * Glückwunsch, den man nicht abstellen kann, ist irgendwann eine
+   * Belästigung. Wer sie nicht mag, schaltet diese Regel ab; die Abzeichen
+   * werden trotzdem weiter vergeben und stehen unter `/erfolge`.
+   *
+   * Das Seeding ist idempotent und vergleicht Ereignis **und**
+   * Empfängerkreis – bestehende Installationen bekommen die Regel damit beim
+   * nächsten Start nachgereicht, ohne dass etwas doppelt entsteht.
+   */
+  'achievement.unlocked',
 ];
 
 /** Ereignisse, die die Administration erreichen. */

@@ -146,3 +146,44 @@ describe('Audit-Log: Schreiben und Lesen', () => {
     expect(page.entries).toHaveLength(2);
   });
 });
+
+/**
+ * Beobachter eines geschriebenen Eintrags (Betreiber-Wunsch 21.09.2026).
+ *
+ * Der Anschluss ist bewusst schwach: Er hängt **hinter** dem Anhängen und darf
+ * das Log unter keinen Umständen beeinträchtigen. Genau das halten diese Tests
+ * fest – sonst brächte ein Abzeichen ein Protokoll zu Fall.
+ */
+describe('Audit-Log: Beobachter', () => {
+  it('bekommt den geschriebenen Eintrag samt erzeugter Id', async () => {
+    const gesehen: string[] = [];
+    const service = createAuditService(createFakeAuditRepository(), (entry) => {
+      gesehen.push(`${entry.action}:${entry.id}`);
+    });
+
+    await service.record(auditEntry({ id: 'audit-1', action: 'server.created' }));
+
+    expect(gesehen).toEqual(['server.created:audit-1']);
+  });
+
+  it('lässt den Vorgang gelingen, wenn der Beobachter wirft', async () => {
+    const service = createAuditService(createFakeAuditRepository(), () => {
+      throw new Error('Abzeichen kaputt');
+    });
+
+    // Die Zusicherung, auf der alles ruht: Ein Nachgedanke bringt den Eintrag
+    // nicht zu Fall.
+    await expect(service.record(auditEntry({ action: 'server.created' }))).resolves.toBeUndefined();
+  });
+
+  it('bleibt ohne Beobachter unverändert', async () => {
+    const repository = createFakeAuditRepository();
+    const service = createAuditService(repository);
+
+    await service.record(auditEntry({ action: 'server.created' }));
+
+    expect((await repository.list(auditLogQuerySchema.parse({ limit: 10, offset: 0 }))).total).toBe(
+      1,
+    );
+  });
+});

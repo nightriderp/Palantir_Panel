@@ -33,6 +33,15 @@ export interface SideNavItem {
   active?: boolean;
   /** Zähler rechts im Eintrag (z. B. ungelesene Nachrichten). */
   badgeCount?: number;
+  /**
+   * Marke für den Rundgang (`components/tutorial`), landet als
+   * `data-rundgang` am Link.
+   *
+   * Bewusst ein Attribut und keine Klasse: Der Rundgang leuchtet echte
+   * Bedienelemente an, und er soll sie über etwas finden, das beim Umbauen
+   * mitwandert – eine Gestaltungsklasse wäre beim nächsten Feinschliff weg.
+   */
+  tourId?: string;
 }
 
 export interface SideNavSectionProps {
@@ -112,6 +121,7 @@ export function SideNavSection({ title, titleAside, items, className }: SideNavS
         <Link
           key={item.key}
           href={item.href}
+          data-rundgang={item.tourId}
           aria-current={item.active ? 'page' : undefined}
           className={cn(ZEILE_BASIS, 'py-2.5', item.active ? ZEILE_AKTIV : ZEILE_RUHEND)}
         >

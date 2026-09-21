@@ -1,5 +1,9 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { LogoMark } from '@/components/shared';
+import { THEME_COOKIE } from '@/lib/theme/cookie';
+import { themeFuerId } from '@/lib/theme/palette';
+import { spruch } from '@/lib/theme/sprueche';
 
 /**
  * Eigene 404-Seite (Fundpunkt 218).
@@ -15,19 +19,31 @@ import { LogoMark } from '@/components/shared';
  *
  * Serverseitig gerendert, deshalb ohne `'use client'` – die Seite braucht
  * weder Zustand noch Sitzung.
+ *
+ * **Den Spruch holt sie sich selbst.** Der Kontext aus dem Wurzel-Layout
+ * (`SpruchProvider`) erreicht sie nicht: Er ist ein Hook, und Hooks gibt es in
+ * Server-Komponenten nicht. Statt die Seite dafür zur Client-Komponente zu
+ * machen – für eine Überschrift und zwei Links – liest sie dieselbe Quelle
+ * direkt, nämlich das Cookie. Dass `not-found` dafür `async` sein darf, steht
+ * in `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/not-found.md`
+ * unter „Data Fetching".
+ *
+ * Die Zeile „Fehler 404" darüber bleibt in jedem Theme, wie sie ist: Sie ist
+ * eine technische Angabe und kein Spruch – wer sie in eine Suchmaschine
+ * eingibt oder weitergibt, soll überall dasselbe vorfinden.
  */
-export default function NotFound() {
+export default async function NotFound() {
+  const thema = themeFuerId((await cookies()).get(THEME_COOKIE)?.value);
+  const { titel, text } = spruch(thema.id, 'nichtGefunden');
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-canvas bg-app-glow px-5 text-center">
       <LogoMark size={44} />
 
       <div className="flex flex-col gap-2">
         <p className="font-mono text-sm uppercase tracking-[0.14em] text-ink-faint">Fehler 404</p>
-        <h1 className="text-2xl font-bold text-ink">Diese Seite gibt es nicht</h1>
-        <p className="mx-auto max-w-md text-base text-ink-muted">
-          Vielleicht ist der Link veraltet oder es hat sich ein Tippfehler in die Adresse
-          eingeschlichen. Die Übersicht führt zurück zu deinen Servern.
-        </p>
+        <h1 className="text-2xl font-bold text-ink">{titel}</h1>
+        <p className="mx-auto max-w-md text-base text-ink-muted">{text}</p>
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-3">

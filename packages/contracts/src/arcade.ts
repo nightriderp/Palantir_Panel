@@ -143,6 +143,16 @@ export interface ArcadeLeaderboardEntryDto {
   userId: string;
   /** Anzeigename des Kontos zum Zeitpunkt der Abfrage. */
   displayName: string;
+  /**
+   * Getragener Titel des Kontos; `null`, wenn es keinen trägt
+   * (Betreiber-Wunsch 21.09.2026).
+   *
+   * Die Bestenliste ist die einzige Stelle, an der ein Titel **fremden** Augen
+   * begegnet – deshalb steht er hier und nicht nur im eigenen Profil. Ein Titel
+   * ohne Publikum wäre keiner. Mehr gibt die Zeile auch nicht preis: Welche
+   * Abzeichen jemand gesammelt hat, bleibt seine Sache.
+   */
+  title: string | null;
   bestScore: number;
   /** ISO-8601-Zeitstempel, wann dieser Bestwert erreicht wurde. */
   achievedAt: string;

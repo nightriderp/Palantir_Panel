@@ -50,6 +50,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     resource: true,
     account: true,
     announcement: true,
+    achievement: true,
   },
   desktopEnabled: false,
   startOnUnread: false,

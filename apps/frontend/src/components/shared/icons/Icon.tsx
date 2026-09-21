@@ -73,6 +73,22 @@ export const ICON_PATHS = {
   stop: 'M6 6h12v12H6z',
   download: 'M12 3v12M7 11l5 5 5-5M4 21h16',
   upload: 'M12 21V9M7 13l5-5 5 5M4 3h16',
+  /**
+   * Abzeichen (Betreiber-Wunsch 21.09.2026) – Medaille als Ring mit Band.
+   *
+   * Bewusst eine Medaille und kein Pokal: Ein Pokal steht für den ersten
+   * Platz, hier geht es um etwas Erreichtes, das viele nebeneinander haben
+   * können. Die beiden Bänder laufen von oben in den Ring, damit die Form
+   * auch bei 16 Pixeln noch als Medaille lesbar bleibt.
+   */
+  medal: 'M8 3l2.5 6M16 3l-2.5 6M12 20a5.5 5.5 0 100-11 5.5 5.5 0 000 11z',
+  /**
+   * Doktorhut fuer die Einweisung (`/tutorial`).
+   *
+   * Brett, Kopfband und die Quaste an der rechten Ecke - bei 16 Pixeln traegt
+   * die Quaste die Erkennung: Ohne sie ist der Hut ein Umschlag mit Deckel.
+   */
+  cap: 'M12 4L2 9l10 5 10-5zM6 11.5V17c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-5.5M20 10v5',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;
