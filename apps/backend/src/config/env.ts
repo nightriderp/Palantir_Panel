@@ -7,6 +7,7 @@ import {
   parseSourceAllowlist,
 } from '../modules/server-orchestration/source-allowlist.js';
 import { cookieDomainAbleiten } from './cookie-domain.js';
+import { hostAlsAscii, urlAlsAscii } from './domain-ascii.js';
 
 /**
  * Zentrale `.env` im Repo-Root (Pflichtenheft §12.1): dieselbe Datei wird auf
@@ -910,9 +911,21 @@ if (!parsed.success) {
  */
 export function adressenAbleiten(werte: UmgebungRoh) {
   const ohneSchrägstrich = (url: string): string => url.replace(/\/+$/, '');
-  const domain = werte.PALANTIR_DOMAIN;
+  /*
+   * Erst in die ASCII-Form, dann ableiten (siehe `domain-ascii.ts`): Eine
+   * Umlaut-Domain in der `.env` ist derselbe Name wie ihre Punycode-Form, aber
+   * CORS, die Traefik-Host-Regel und der Hostname-Router im Agent vergleichen
+   * Zeichenketten. Die Umrechnung gehört deshalb vor jede Ableitung und an
+   * genau eine Stelle – sonst trüge ein Teil der abgeleiteten Werte den
+   * Umlaut und ein anderer nicht.
+   */
+  const domain = hostAlsAscii(werte.PALANTIR_DOMAIN, 'PALANTIR_DOMAIN');
 
-  const webUrl = ohneSchrägstrich(werte.PUBLIC_WEB_URL ?? `https://${domain}`);
+  const webUrl = ohneSchrägstrich(
+    werte.PUBLIC_WEB_URL === undefined
+      ? `https://${domain}`
+      : urlAlsAscii(werte.PUBLIC_WEB_URL, 'PUBLIC_WEB_URL'),
+  );
   /*
    * Vorgabe ist der Pfad am Panel-Host, nicht mehr ein eigener API-Host
    * (20.09.2026, Fundpunkt 313).
@@ -923,10 +936,29 @@ export function adressenAbleiten(werte: UmgebungRoh) {
    * Cookies sind host-only und erreichen keine Subdomain. Eine frische
    * Instanz steht damit von sich aus richtig.
    */
-  const apiUrl = ohneSchrägstrich(werte.PUBLIC_API_URL ?? `https://${domain}/api`);
+  const apiUrl = ohneSchrägstrich(
+    werte.PUBLIC_API_URL === undefined
+      ? `https://${domain}/api`
+      : urlAlsAscii(werte.PUBLIC_API_URL, 'PUBLIC_API_URL'),
+  );
 
   return {
     ...werte,
+    /*
+     * Die umgerechnete Form ersetzt die gepflegte: Jeder spätere Leser –
+     * `hostnameFor()` für die Spiel-Subdomains, der Aussteller-Name des
+     * Authenticators, die Warnung zur Cookie-Domain – bekommt denselben Wert,
+     * den auch Traefik und der Browser sehen.
+     */
+    PALANTIR_DOMAIN: domain,
+    /*
+     * Der Router-Hostname ist das Ziel der CNAME-Einträge und landet über den
+     * Agent in der Infrared-Konfiguration, deren Muster nur ASCII zulässt.
+     */
+    GAME_ROUTER_HOSTNAME:
+      werte.GAME_ROUTER_HOSTNAME === undefined
+        ? undefined
+        : hostAlsAscii(werte.GAME_ROUTER_HOSTNAME, 'GAME_ROUTER_HOSTNAME'),
     PUBLIC_WEB_URL: webUrl,
     PUBLIC_API_URL: apiUrl,
     /*
@@ -941,10 +973,22 @@ export function adressenAbleiten(werte: UmgebungRoh) {
      * Panel-Ebene. Wechselt der Wert, gelten die im Browser liegenden Cookies
      * nicht mehr: der Bestand meldet sich einmalig neu an.
      */
-    COOKIE_DOMAIN: werte.COOKIE_DOMAIN ?? cookieDomainAbleiten(webUrl, apiUrl),
-    DISCORD_REDIRECT_URI: werte.DISCORD_REDIRECT_URI ?? `${apiUrl}/auth/discord/callback`,
-    TWITCH_REDIRECT_URI: werte.TWITCH_REDIRECT_URI ?? `${apiUrl}/auth/twitch/callback`,
-    STEAM_RETURN_URL: werte.STEAM_RETURN_URL ?? `${apiUrl}/auth/steam/callback`,
+    COOKIE_DOMAIN:
+      werte.COOKIE_DOMAIN === undefined
+        ? cookieDomainAbleiten(webUrl, apiUrl)
+        : hostAlsAscii(werte.COOKIE_DOMAIN, 'COOKIE_DOMAIN'),
+    DISCORD_REDIRECT_URI:
+      werte.DISCORD_REDIRECT_URI === undefined
+        ? `${apiUrl}/auth/discord/callback`
+        : urlAlsAscii(werte.DISCORD_REDIRECT_URI, 'DISCORD_REDIRECT_URI'),
+    TWITCH_REDIRECT_URI:
+      werte.TWITCH_REDIRECT_URI === undefined
+        ? `${apiUrl}/auth/twitch/callback`
+        : urlAlsAscii(werte.TWITCH_REDIRECT_URI, 'TWITCH_REDIRECT_URI'),
+    STEAM_RETURN_URL:
+      werte.STEAM_RETURN_URL === undefined
+        ? `${apiUrl}/auth/steam/callback`
+        : urlAlsAscii(werte.STEAM_RETURN_URL, 'STEAM_RETURN_URL'),
   };
 }
 

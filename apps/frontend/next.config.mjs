@@ -7,10 +7,42 @@ import { config as loadDotenv } from 'dotenv';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 loadDotenv({ path: path.join(repoRoot, '.env') });
 
+/** Trägt der Wert ausschließlich ASCII-Zeichen? Dann ist nichts umzurechnen. */
+const nurAscii = (wert) => {
+  for (const zeichen of wert) {
+    if ((zeichen.codePointAt(0) ?? 0) > 0x7f) return false;
+  }
+  return true;
+};
+
+/**
+ * Hostname in die ASCII-Form bringen – dieselbe Regel wie im Backend
+ * (`apps/backend/src/config/domain-ascii.ts`, dort steht die ausführliche
+ * Begründung). Kurz: `müf-it.de` und `xn--mf-it-kva.de` sind derselbe Name,
+ * aber der Browser schickt immer die zweite Form, und CORS vergleicht die
+ * Zeichenkette. Stünde im Bundle die Umlaut-Form, käme auf keinen API-Aufruf
+ * eine Antwort.
+ *
+ * Hier bewusst noch einmal ausgeschrieben statt importiert: Diese Datei ist
+ * einfaches ESM, das Node beim Bau lädt – ein Workspace-Package mit
+ * TypeScript-Quelle steht zu diesem Zeitpunkt nicht zur Verfügung. Dieselbe
+ * Doppelung gilt schon für die Ableitung der API-Adresse darunter.
+ *
+ * Ein reiner ASCII-Wert wird unverändert durchgereicht.
+ */
+const alsAscii = (name) => {
+  if (nurAscii(name)) return name;
+  try {
+    return new URL(`https://${name}`).hostname;
+  } catch {
+    throw new Error(`PALANTIR_DOMAIN ist kein gültiger Hostname: „${name}".`);
+  }
+};
+
 // Der Domainname wird ausschließlich über PALANTIR_DOMAIN gepflegt. Alles
 // Abgeleitete folgt daraus, bleibt aber einzeln überschreibbar – dieselbe Regel
 // wie im Backend (`apps/backend/src/config/env.ts`, `adressenAbleiten`).
-const domain = process.env.PALANTIR_DOMAIN ?? 'palantir.local';
+const domain = alsAscii(process.env.PALANTIR_DOMAIN ?? 'palantir.local');
 
 // Adresse der Backend-API, wie der Browser sie sieht. Der Wert ist absolut –
 // ein relativer Aufruf landet sonst beim Frontend selbst und endet in einem 404.
@@ -37,8 +69,15 @@ const domain = process.env.PALANTIR_DOMAIN ?? 'palantir.local';
 // liegt die API auf **derselben Herkunft** wie die Seite. Das render-blockende
 // Schrift-Stylesheet (`src/app/layout.tsx`) braucht damit keine zweite
 // Verbindung mehr, bevor der erste Text steht.
-const apiUrl =
-  process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || `https://${domain}/api`;
+const adresseAlsAscii = (wert) => {
+  if (nurAscii(wert)) return wert;
+  const href = new URL(wert).href;
+  return href.endsWith('/') && !wert.endsWith('/') ? href.slice(0, -1) : href;
+};
+
+const apiUrl = adresseAlsAscii(
+  process.env.NEXT_PUBLIC_API_URL || process.env.PUBLIC_API_URL || `https://${domain}/api`,
+);
 
 /**
  * Content-Security-Policy (Audit W2-6, security-matrix-10).
@@ -103,7 +142,11 @@ const nextConfig = {
     // NEXT_PUBLIC_-Variablen werden zur Bauzeit eingesetzt und müssen daher
     // hier aufgelöst werden – zur Laufzeit ist die zentrale `.env` im Browser
     // nicht verfügbar.
-    NEXT_PUBLIC_BASE_DOMAIN: process.env.NEXT_PUBLIC_BASE_DOMAIN || domain,
+    // Ebenfalls in der ASCII-Form: Der Wert dient nicht nur der Anzeige im
+    // Wizard, sondern in `lib/auth/api.ts` auch dem Vergleich mit der
+    // tatsächlichen Herkunft der Seite. Die Umlaut-Schreibweise entsteht erst
+    // beim Anzeigen (`lib/domain/punycode.ts`).
+    NEXT_PUBLIC_BASE_DOMAIN: alsAscii(process.env.NEXT_PUBLIC_BASE_DOMAIN || domain),
     NEXT_PUBLIC_API_URL: apiUrl,
     // Die angezeigte Version steht bewusst NICHT hier: Sie ist das Versions-Tag
     // des Deployments und existiert zur Bauzeit noch gar nicht (die Images

@@ -1,4 +1,5 @@
 import { type ServerAddress } from '@palantir/contracts';
+import { hostnameAnzeigen } from '@/lib/domain/punycode';
 
 /**
  * Anzeige-Formatierungen des Design-Systems.
@@ -247,10 +248,17 @@ export function formatPing(pingMs: number | null | undefined): string {
  *
  * Ohne Port (Hostname-Routing, initial Minecraft – Pflichtenheft §13) wird nur
  * der Hostname ausgegeben.
+ *
+ * Der Hostname kommt aus dem DTO in der ASCII-Form und wird hier für die
+ * Anzeige zurückverwandelt (`lib/domain/punycode.ts`): Bei einer Umlaut-Domain
+ * steht dort sonst `welt.xn--mf-it-kva.de`. Diese Funktion ist der einzige Weg,
+ * auf dem eine Serveradresse in die Oberfläche gelangt – Kachel, Kopfzeile,
+ * Übersicht und die beiden Verwaltungsansichten rufen alle sie auf.
  */
 export function formatServerAddress(address: ServerAddress | null | undefined): string | null {
   if (!address) return null;
-  return address.port == null ? address.hostname : `${address.hostname}:${address.port}`;
+  const hostname = hostnameAnzeigen(address.hostname);
+  return address.port == null ? hostname : `${hostname}:${address.port}`;
 }
 
 /**
