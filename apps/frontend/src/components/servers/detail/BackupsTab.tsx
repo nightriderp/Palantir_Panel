@@ -33,6 +33,7 @@ import { useApiResource } from '@/lib/api/useApiResource';
 import { formatBytes } from '../formatDetail';
 import { consistencyMeta } from '@/components/my-backups/backupsView';
 import { JobProgress } from './JobProgress';
+import { useSpruch } from '@/lib/theme/SpruchProvider';
 
 /**
  * Reiter „Backups" der Detailansicht (Lastenheft §3.3).
@@ -68,6 +69,8 @@ export interface BackupsTabProps {
 }
 
 export function BackupsTab({ server, backupProgress, restoreJob }: BackupsTabProps) {
+  const sicherungenLeer = useSpruch('sicherungenLeer');
+
   const toast = useToast();
   /**
    * Auftrag aus der eigenen Antwort – bis das erste Ereignis eintrifft.
@@ -241,8 +244,8 @@ export function BackupsTab({ server, backupProgress, restoreJob }: BackupsTabPro
       {!backups.loading && !backups.error && list.length === 0 ? (
         <EmptyState
           icon="database"
-          title="Noch keine Sicherungen"
-          description="Sichere den Server jetzt oder warte auf den nächsten geplanten Lauf."
+          title={sicherungenLeer.titel}
+          description={sicherungenLeer.text}
         />
       ) : null}
 

@@ -36,6 +36,7 @@ import {
   withoutNotification,
 } from './notificationView';
 import { type NotificationPreferences, shouldToast } from './preferences';
+import { useSpruch } from '@/lib/theme/SpruchProvider';
 
 /**
  * Reiter „Inbox" der Benachrichtigungen (Arbeitspaket F6, Lastenheft §3.6).
@@ -82,6 +83,8 @@ export interface InboxTabProps {
 }
 
 export function InboxTab({ preferences, onDesktopNotify, onPreferencesChange }: InboxTabProps) {
+  const meldungenLeer = useSpruch('meldungenLeer');
+
   const router = useRouter();
   const toast = useToast();
 
@@ -318,11 +321,11 @@ export function InboxTab({ preferences, onDesktopNotify, onPreferencesChange }: 
       ) : page && page.entries.length === 0 ? (
         <EmptyState
           icon="bell"
-          title={filter.unreadOnly ? 'Keine ungelesenen Meldungen' : 'Keine Benachrichtigungen'}
+          title={filter.unreadOnly ? 'Keine ungelesenen Meldungen' : meldungenLeer.titel}
           description={
             filter.unreadOnly
               ? 'Sobald etwas Neues eintrifft, erscheint es hier.'
-              : 'Serverstatus, Backups, Ankündigungen und mehr laufen hier zusammen.'
+              : meldungenLeer.text
           }
         />
       ) : page ? (

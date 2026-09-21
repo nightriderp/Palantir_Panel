@@ -8,6 +8,7 @@ import {
 } from '@/lib/api/fonts';
 import { fremdeApiHerkunft } from '@/lib/auth/api';
 import { THEME_COOKIE } from '@/lib/theme/cookie';
+import { SpruchProvider } from '@/lib/theme/SpruchProvider';
 import { STANDARD_THEME_ID, themeFuerId, themesCss } from '@/lib/theme/palette';
 import './globals.css';
 
@@ -178,7 +179,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           />
         ))}
       </head>
-      <body className="min-h-screen bg-canvas text-ink antialiased">{children}</body>
+      <body className="min-h-screen bg-canvas text-ink antialiased">
+        {/*
+          Dieselbe Wahl noch einmal, diesmal für die Texte: Ein paar Sätze der
+          Oberfläche dürfen je nach Theme anders klingen
+          (`lib/theme/sprueche.ts`). Farben löst der Browser über CSS auf,
+          Text muss schon beim Rendern feststehen – deshalb ein Kontext und
+          kein Blick ins Dokument.
+        */}
+        <SpruchProvider themeId={thema.id}>{children}</SpruchProvider>
+      </body>
     </html>
   );
 }
