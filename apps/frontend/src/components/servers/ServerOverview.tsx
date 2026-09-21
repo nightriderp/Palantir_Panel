@@ -36,7 +36,7 @@ import {
 import { LifecycleConfirmDialog } from './LifecycleConfirmDialog';
 import { useLifecycleActions } from './useLifecycleActions';
 import { usePinnedServers } from './usePinnedServers';
-import { useSpruch } from '@/lib/theme/SpruchProvider';
+import { useSpruch } from '@/lib/theme/ThemeProvider';
 
 /**
  * Serverübersicht (Lastenheft §3.3, Mockup „Übersicht").

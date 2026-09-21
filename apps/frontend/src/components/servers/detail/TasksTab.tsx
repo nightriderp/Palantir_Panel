@@ -21,7 +21,7 @@ import { createSchedule, deleteSchedule, fetchSchedules, updateSchedule } from '
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { describeCron } from '../formatDetail';
-import { useSpruch } from '@/lib/theme/SpruchProvider';
+import { useSpruch } from '@/lib/theme/ThemeProvider';
 
 /**
  * Reiter „Aufgaben" der Detailansicht (Lastenheft §3.3).

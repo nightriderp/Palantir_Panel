@@ -1,18 +1,18 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { SpruchProvider, useSpruch } from './SpruchProvider';
+import { ThemeProvider, useSpruch } from './ThemeProvider';
 
 function Probe() {
   const { titel } = useSpruch('serverLeer');
   return <p>{titel}</p>;
 }
 
-describe('SpruchProvider', () => {
+describe('ThemeProvider', () => {
   it('reicht den Text des gewählten Themes durch', () => {
     render(
-      <SpruchProvider themeId="schmiedefeuer">
+      <ThemeProvider themeId="schmiedefeuer">
         <Probe />
-      </SpruchProvider>,
+      </ThemeProvider>,
     );
 
     expect(screen.getByText('Der Amboss ist noch kalt')).toBeTruthy();
@@ -20,9 +20,9 @@ describe('SpruchProvider', () => {
 
   it('gibt beim Standard den neutralen Text', () => {
     render(
-      <SpruchProvider themeId="standard">
+      <ThemeProvider themeId="standard">
         <Probe />
-      </SpruchProvider>,
+      </ThemeProvider>,
     );
 
     expect(screen.getByText('Noch keine Server')).toBeTruthy();
@@ -41,9 +41,9 @@ describe('SpruchProvider', () => {
 
   it('fällt bei unbekannter Kennung auf den neutralen Text zurück', () => {
     render(
-      <SpruchProvider themeId="gibtesnicht">
+      <ThemeProvider themeId="gibtesnicht">
         <Probe />
-      </SpruchProvider>,
+      </ThemeProvider>,
     );
 
     expect(screen.getByText('Noch keine Server')).toBeTruthy();

@@ -5,8 +5,9 @@ import { STANDARD_THEME_ID } from './palette';
 import { spruch, type Spruch, type SpruchSlot } from './sprueche';
 
 /**
- * Reicht das gewählte Theme an die Stellen durch, die einen eigenen Text
- * bekommen dürfen (`lib/theme/sprueche.ts`).
+ * Reicht das gewählte Theme durch den Baum – an die Stellen, die einen
+ * eigenen Text bekommen dürfen (`lib/theme/sprueche.ts`), und an die, die ein
+ * eigenes Emblem zeigen (`components/shared/icons/ThemeEmblem.tsx`).
  *
  * **Warum ein Kontext und nicht das Dokument.** Das Attribut `data-theme` steht
  * am `<html>`-Element und wäre auszulesen – aber erst im Browser. Beim Rendern
@@ -24,10 +25,21 @@ import { spruch, type Spruch, type SpruchSlot } from './sprueche';
  * Das ist kein Umweg, sondern derselbe Weg: Das Cookie ist die Quelle, der
  * Kontext nur die Verteilung für den Client-Teil.
  */
-const SpruchContext = createContext<string>(STANDARD_THEME_ID);
+const ThemeContext = createContext<string>(STANDARD_THEME_ID);
 
-export function SpruchProvider({ themeId, children }: { themeId: string; children: ReactNode }) {
-  return <SpruchContext.Provider value={themeId}>{children}</SpruchContext.Provider>;
+export function ThemeProvider({ themeId, children }: { themeId: string; children: ReactNode }) {
+  return <ThemeContext.Provider value={themeId}>{children}</ThemeContext.Provider>;
+}
+
+/**
+ * Die Kennung des gerade gewählten Themes.
+ *
+ * Für alles, was sich nicht über CSS ausdrücken lässt und deshalb schon beim
+ * Rendern feststehen muss – Text und Emblem. Farben brauchen das nicht, die
+ * löst der Browser über die Variablen auf.
+ */
+export function useThemeId(): string {
+  return useContext(ThemeContext);
 }
 
 /**
@@ -38,5 +50,5 @@ export function SpruchProvider({ themeId, children }: { themeId: string; childre
  * gehen, dass sie außerhalb des Rahmens gerendert wird (Tests, Fehlerseiten).
  */
 export function useSpruch(slot: SpruchSlot): Spruch {
-  return spruch(useContext(SpruchContext), slot);
+  return spruch(useContext(ThemeContext), slot);
 }

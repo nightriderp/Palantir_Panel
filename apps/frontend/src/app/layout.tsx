@@ -8,7 +8,7 @@ import {
 } from '@/lib/api/fonts';
 import { fremdeApiHerkunft } from '@/lib/auth/api';
 import { THEME_COOKIE } from '@/lib/theme/cookie';
-import { SpruchProvider } from '@/lib/theme/SpruchProvider';
+import { ThemeProvider } from '@/lib/theme/ThemeProvider';
 import { STANDARD_THEME_ID, themeFuerId, themesCss } from '@/lib/theme/palette';
 import './globals.css';
 
@@ -187,7 +187,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           Text muss schon beim Rendern feststehen – deshalb ein Kontext und
           kein Blick ins Dokument.
         */}
-        <SpruchProvider themeId={thema.id}>{children}</SpruchProvider>
+        <ThemeProvider themeId={thema.id}>{children}</ThemeProvider>
       </body>
     </html>
   );
