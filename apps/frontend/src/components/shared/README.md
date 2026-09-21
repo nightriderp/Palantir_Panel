@@ -238,6 +238,12 @@ Was dabei **nicht** zu tun ist:
 
 Ein neues Symbol für einen Eintrag kommt nach `icons/Icon.tsx` (24×24, reine Kontur).
 
+**`data-rundgang` nicht entfernen.** Einige Bedienelemente tragen dieses Attribut –
+Navigationseinträge (`SideNavItem.tourId`), der Menü-Knopf, die Glocke, das Kontomenü. Der
+Rundgang beim ersten Besuch (`components/tutorial`) findet seine Stationen darüber. Ein
+Element ohne das Attribut wird stillschweigend übersprungen; der Rundgang bricht also
+nicht, er zeigt nur weniger.
+
 ## Tests
 
 Zwei Arten, getrennt gehalten (siehe [`vitest.config.ts`](../../../vitest.config.ts)):

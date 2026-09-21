@@ -35,6 +35,7 @@ import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { AUTH_METHOD_LABEL, authMethodLabel, linkableProviders, methodDetail } from './methods';
 import { PasswordSection, TwoFactorSection } from './SecuritySections';
 import { SessionsPanel } from './SessionsPanel';
+import { RundgangSection } from '@/components/tutorial/RundgangSection';
 
 /** Rücksprungziel für die Provider-Verknüpfung – muss zur Backend-Allowlist passen. */
 const RETURN_TO = '/profil';
@@ -178,6 +179,15 @@ export function ProfileView() {
 
             <section id="sitzungen" className="scroll-mt-24">
               <SessionsPanel />
+            </section>
+
+            {/*
+              Nach der Sicherheit und vor dem Löschen: Der Rundgang ist keine
+              Kontoeinstellung im engeren Sinn, wird hier aber gesucht – das
+              Kontomenü verweist mit „Rundgang & Tutorial" hierher.
+            */}
+            <section id="rundgang" className="scroll-mt-24">
+              <RundgangSection />
             </section>
 
             <DeleteAccountPanel account={account} />

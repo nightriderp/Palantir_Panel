@@ -12,6 +12,7 @@ import {
   useToast,
 } from '@/components/shared';
 import { FluchtKnopf } from './FluchtKnopf';
+import { useRundgang } from './RundgangProvider';
 import { Quiz } from './Quiz';
 import { Urkunde } from './Urkunde';
 import { QUIZ_FRAGEN, quizPunkte, sichtbareSchritte, type TutorialSchritt } from './inhalt';
@@ -54,6 +55,7 @@ type Phase = 'start' | 'schritt' | 'quiz' | 'urkunde';
 
 export function TutorialView() {
   const { user } = useSession();
+  const rundgang = useRundgang();
 
   const schritte = useMemo(() => sichtbareSchritte(user), [user]);
 
@@ -136,6 +138,13 @@ export function TutorialView() {
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <Button variant="primary" iconRight="arrowRight" onClick={() => setPhase('schritt')}>
                 Ich bin bereit
+              </Button>
+              {/*
+                Für alle, die es eilig haben: der Rundgang zeigt dieselben
+                Bereiche in einer halben Minute, direkt an den echten Knöpfen.
+              */}
+              <Button variant="secondary" iconLeft="play" onClick={rundgang.starten}>
+                Lieber der kurze Rundgang
               </Button>
               <FluchtKnopf onTreffer={ueberspringen} onFlucht={setFluchtversuche} />
             </div>

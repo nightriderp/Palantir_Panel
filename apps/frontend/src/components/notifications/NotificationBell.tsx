@@ -107,6 +107,7 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={() => (open ? setOpen(false) : void oeffnen())}
+        data-rundgang="glocke"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={

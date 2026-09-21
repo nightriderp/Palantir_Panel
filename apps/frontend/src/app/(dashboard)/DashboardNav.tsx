@@ -260,6 +260,9 @@ export function DashboardNav({ user, ownServers, unreadMessages }: DashboardNavP
       href: entry.href,
       active: entry.href === active,
       badgeCount: entry.key === 'messages' ? unreadMessages : undefined,
+      // Ziel des Rundgangs; welche Stationen es gibt, steht in
+      // `components/tutorial/rundgangSchritte.ts`.
+      tourId: `nav-${entry.key}`,
     }));
   }
 

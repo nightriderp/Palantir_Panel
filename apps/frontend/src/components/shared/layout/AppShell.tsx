@@ -168,6 +168,7 @@ export function AppShell({
           <button
             type="button"
             onClick={() => setNavOpen(true)}
+            data-rundgang="menue"
             aria-label="Navigation öffnen"
             aria-expanded={navOpen}
             className="text-ink md:hidden"

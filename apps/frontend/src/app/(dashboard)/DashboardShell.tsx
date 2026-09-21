@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { type ConversationDto, type GameServerDto, type HostNodeDto } from '@palantir/contracts';
 import { AppShell, DeployBanner, StatusDot, ToastProvider } from '@/components/shared';
 import { UserMenu } from '@/components/account/UserMenu';
+import { Rundgang } from '@/components/tutorial/Rundgang';
+import { RundgangProvider } from '@/components/tutorial/RundgangProvider';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { fetchConversations } from '@/lib/api/chat';
 import { fetchNodes } from '@/lib/api/nodes';
@@ -193,36 +195,47 @@ function Shell({ children, versionLabel }: { children: ReactNode; versionLabel: 
   const shellData = useMemo(() => ({ servers }), [servers]);
 
   return (
-    <AppShell
-      sidebar={<DashboardNav user={user} ownServers={ownServers} unreadMessages={unreadMessages} />}
-      topbar={
-        <>
-          <GlobalStatus metrics={metrics} />
-          <div className="flex shrink-0 items-center gap-3">
-            <LiveConnectionBadge />
-            <NotificationBell />
-            <UserMenu user={user} />
-          </div>
-        </>
-      }
-      sidebarFooter={
-        <span title="Aktuelle Version" className="font-mono text-xs text-ink-faint">
-          {versionLabel}
-        </span>
-      }
-    >
-      {/*
-        Der Hinweis auf eine neue Version steht über dem Seiteninhalt und damit
-        auf jeder Seite des Panels – nach einem Deployment läuft im offenen
-        Browser sonst altes Frontend gegen neue API weiter.
-      */}
-      <DeployBanner current={versionLabel} />
-      {/*
-        Was der Rahmen schon geholt hat, steht der Seite darunter als
-        Anfangsbestand zur Verfügung (`ShellDataContext`).
-      */}
-      <ShellDataProvider value={shellData}>{children}</ShellDataProvider>
-    </AppShell>
+    /*
+      Der Rundgang liegt um den ganzen Rahmen: Er leuchtet Einträge der
+      Seitenleiste und Knöpfe der Kopfleiste an und muss beides erreichen. Von
+      selbst geht er nur auf, wenn das Konto geladen ist – vorher hat die
+      Seitenleiste noch keine Einträge, auf die er zeigen könnte.
+    */
+    <RundgangProvider kontoGeladen={user !== null}>
+      <AppShell
+        sidebar={
+          <DashboardNav user={user} ownServers={ownServers} unreadMessages={unreadMessages} />
+        }
+        topbar={
+          <>
+            <GlobalStatus metrics={metrics} />
+            <div className="flex shrink-0 items-center gap-3">
+              <LiveConnectionBadge />
+              <NotificationBell />
+              <UserMenu user={user} />
+            </div>
+          </>
+        }
+        sidebarFooter={
+          <span title="Aktuelle Version" className="font-mono text-xs text-ink-faint">
+            {versionLabel}
+          </span>
+        }
+      >
+        {/*
+          Der Hinweis auf eine neue Version steht über dem Seiteninhalt und
+          damit auf jeder Seite des Panels – nach einem Deployment läuft im
+          offenen Browser sonst altes Frontend gegen neue API weiter.
+        */}
+        <DeployBanner current={versionLabel} />
+        {/*
+          Was der Rahmen schon geholt hat, steht der Seite darunter als
+          Anfangsbestand zur Verfügung (`ShellDataContext`).
+        */}
+        <ShellDataProvider value={shellData}>{children}</ShellDataProvider>
+      </AppShell>
+      <Rundgang />
+    </RundgangProvider>
   );
 }
 
