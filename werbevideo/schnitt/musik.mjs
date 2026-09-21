@@ -183,6 +183,98 @@ const crash = (staerke = 1) => {
   return proben;
 };
 
+/**
+ * Klatschen – die zweite Schicht über der Snare.
+ *
+ * Nicht ein Rauschstoß, sondern **vier kurz nacheinander**: So klingt eine
+ * Gruppe, die zusammen klatscht, und genau daher kommt die Breite. Ein
+ * einzelner Stoß an derselben Stelle wäre nur eine zweite Snare.
+ */
+function clap(staerke = 1) {
+  const dauer = 0.2;
+  const n = Math.round(dauer * ABTASTRATE);
+  const proben = new Float64Array(n);
+  for (const [versatz, gewicht] of [
+    [0, 0.65],
+    [0.009, 0.85],
+    [0.019, 1],
+    [0.03, 0.5],
+  ]) {
+    const teil = rauschen(dauer - versatz, { halbwert: 0.028, hp: 1_400, tp: 7_500 });
+    const ab = Math.round(versatz * ABTASTRATE);
+    for (let i = 0; i < teil.length; i += 1) proben[ab + i] += teil[i] * gewicht;
+  }
+  // Der Nachhall macht aus vier Stößen einen Raum.
+  const schweif = rauschen(dauer, { halbwert: 0.09, hp: 1_800, tp: 6_000 });
+  for (let i = 0; i < n; i += 1) proben[i] = (proben[i] * 0.55 + schweif[i] * 0.3) * staerke;
+  return proben;
+}
+
+/**
+ * Ride – der Beckenschlag, der den Refrain trägt.
+ *
+ * Gegenüber der HiHat länger und tiefer angesetzt: Sie hält den Takt, ohne
+ * ihn zu zerhacken. Die Glocke obendrauf gibt ihr den Anschlagspunkt.
+ */
+function ride(staerke = 1) {
+  const proben = rauschen(0.42, { halbwert: 0.16, hp: 4_200, tp: 14_000 });
+  const n = proben.length;
+  for (let i = 0; i < n; i += 1) {
+    const t = i / ABTASTRATE;
+    // Die Glocke: ein paar feste Teiltöne, kurz angerissen.
+    const glocke =
+      (Math.sin(2 * Math.PI * 2_450 * t) + Math.sin(2 * Math.PI * 3_120 * t) * 0.6) *
+      Math.exp(-t / 0.05);
+    proben[i] = (proben[i] * 0.5 + glocke * 0.22) * staerke;
+  }
+  return proben;
+}
+
+/**
+ * Stab: ein kurzer, harter Akkordschlag.
+ *
+ * Steht auf den Gegenzählzeiten und füllt die Lücken, die der Galopp der
+ * Gitarre lässt. Sehr kurze Hülle – ein langer Akkord an derselben Stelle
+ * verkleistert den Takt, statt ihn zu betonen.
+ */
+function stab(halbtoene, staerke = 1) {
+  const dauer = 0.13;
+  const n = Math.round(dauer * ABTASTRATE);
+  const proben = new Float64Array(n);
+  for (const halbton of halbtoene) {
+    for (const verstimmung of [-0.18, 0, 0.17]) {
+      const f = ton(halbton + 12 + verstimmung);
+      const phase0 = Math.random();
+      for (let i = 0; i < n; i += 1) {
+        const t = i / ABTASTRATE;
+        proben[i] += saege(f * t + phase0) * schlag(t, dauer, 0.002, 0.035);
+      }
+    }
+  }
+  for (let i = 0; i < n; i += 1) proben[i] = Math.tanh(proben[i] * 2.2) * 0.42 * staerke;
+  return proben;
+}
+
+/**
+ * Sub-Drop: ein tiefer Ton, der nach unten wegrutscht.
+ *
+ * Er sitzt **auf** dem ersten Schlag eines Refrains, nicht davor: Er ist der
+ * Aufprall nach dem Anlauf, nicht seine Vorbereitung.
+ */
+function subDrop(staerke = 1) {
+  const dauer = 1.1;
+  const n = Math.round(dauer * ABTASTRATE);
+  const proben = new Float64Array(n);
+  let phase = 0;
+  for (let i = 0; i < n; i += 1) {
+    const t = i / ABTASTRATE;
+    const f = 34 + 86 * Math.exp(-t / 0.12);
+    phase += f / ABTASTRATE;
+    proben[i] = Math.sin(2 * Math.PI * phase) * Math.exp(-t / 0.42) * staerke;
+  }
+  return proben;
+}
+
 function tom(halbton, staerke = 1) {
   const dauer = 0.3;
   const n = Math.round(dauer * ABTASTRATE);
@@ -225,9 +317,42 @@ function gitarrenakkord(halbtoene, dauer, staerke = 1) {
     }
   }
   for (let i = 0; i < n; i += 1) {
-    // Zerre: Das ist der Unterschied zwischen „Fläche" und „Riff".
-    proben[i] = Math.tanh(proben[i] * 1.9) * 0.5 * staerke;
+    /*
+     * Zerre: Das ist der Unterschied zwischen „Fläche" und „Riff".
+     *
+     * Zweistufig – erst weich in die Sättigung, dann noch einmal härter. Eine
+     * einzige starke Stufe macht den Akkord matschig, weil sie alle Teiltöne
+     * gleichzeitig plattdrückt; zwei sanftere lassen den Grundton stehen.
+     */
+    const weich1 = Math.tanh(proben[i] * 2.4);
+    proben[i] = Math.tanh(weich1 * 1.35) * 0.46 * staerke;
   }
+  return proben;
+}
+
+/**
+ * Abgedämpfter Anschlag – der Galopp.
+ *
+ * Dieselben Saiten, aber sehr kurz gehalten und mit angehobenen Mitten: So
+ * klingt eine Hand, die auf den Saiten liegt. Aus gleichmäßigen Achteln wird
+ * damit eine Figur, die nach vorn drückt, statt nur mitzulaufen.
+ */
+function gitarreGedaempft(halbtoene, staerke = 1) {
+  const dauer = 0.1;
+  const n = Math.round(dauer * ABTASTRATE);
+  const proben = new Float64Array(n);
+  for (const halbton of halbtoene.slice(0, 2)) {
+    for (const verstimmung of [-0.1, 0.11]) {
+      const f = ton(halbton + 12 + verstimmung);
+      const phase0 = Math.random();
+      for (let i = 0; i < n; i += 1) {
+        const t = i / ABTASTRATE;
+        proben[i] += saege(f * t + phase0) * schlag(t, dauer, 0.002, 0.026);
+      }
+    }
+  }
+  for (let i = 0; i < n; i += 1) proben[i] = Math.tanh(proben[i] * 2.8) * 0.4 * staerke;
+  hochpass(proben, 260);
   return proben;
 }
 
@@ -243,7 +368,14 @@ function leadnote(halbton, dauer, staerke = 1) {
     const vib = 1 + 0.006 * Math.sin(2 * Math.PI * 5.5 * t) * weich(t / 0.08);
     phase += (grund * vib) / ABTASTRATE;
     const h = huelle(t, dauer, 0.008, Math.min(0.07, dauer / 2.5));
-    proben[i] = (rechteck(phase, 0.42) * 0.45 + saege(phase) * 0.55) * h * staerke;
+    /*
+     * Die Oktave darunter läuft mit – halb so laut und als reiner Sägezahn.
+     * Eine einzelne Stimme geht im Refrain zwischen Gitarre und Becken unter;
+     * zwei Oktaven übereinander setzen sich durch, ohne lauter zu sein.
+     */
+    const oben = rechteck(phase, 0.42) * 0.45 + saege(phase) * 0.55;
+    const unten = saege(phase * 0.5) * 0.42;
+    proben[i] = (oben + unten) * h * staerke;
   }
   return proben;
 }
@@ -305,7 +437,26 @@ function anlauf(dauer, staerke = 1) {
  */
 function planen(sekunden) {
   const abschnitt = 4 * TAKTLAENGE;
-  const muster = ['refrain', 'refrain', 'strophe', 'strophe', 'anlauf', 'refrain', 'bruecke'];
+  /*
+   * Die Folge der Abschnitte.
+   *
+   * Vor **jedem** Refrain steht ein Anlauf – das ist der Grund, warum ein
+   * Refrain als Einsatz wirkt und nicht als Fortsetzung. Die Strophen sind
+   * auf je einen Durchlauf gekürzt: In einem Werbevideo hat niemand Geduld
+   * für acht Takte Leerlauf, und die Brücke liefert die Ruhe, die es dafür
+   * braucht, an der Stelle, an der sie hingehört.
+   */
+  const muster = [
+    'refrain',
+    'refrain',
+    'strophe',
+    'anlauf',
+    'refrain',
+    'strophe',
+    'bruecke',
+    'anlauf',
+    'refrain',
+  ];
   const plan = ['vorspann', 'anlauf'];
   let i = 0;
   // Ein Abschnitt bleibt für den Ausklang reserviert.
@@ -355,20 +506,41 @@ export function erzeugeMusik(sekunden) {
           if (voll && schlagNr === 1) {
             mischeEin(spuren.schlagzeug, zeit + 3 * SECHZEHNTEL, bassdrum(0.7));
           }
-          // Snare auf 2 und 4 – der Rückschlag.
+          /*
+           * Doppelschlag der Bassdrum im Refrain: ein zweiter Tritt eine
+           * Sechzehntel nach der Eins und nach der Drei. Das ist der
+           * Unterschied zwischen „geht" und „drückt" – und er kostet nichts
+           * an Lautstärke, weil er in die Lücke fällt.
+           */
+          if (voll && (schlagNr === 0 || schlagNr === 2)) {
+            mischeEin(spuren.schlagzeug, zeit + SECHZEHNTEL * 2.5, bassdrum(0.55));
+          }
+          // Snare auf 2 und 4 – der Rückschlag. Im Refrain klatscht die Runde
+          // mit: zwei Schichten auf demselben Schlag, breiter als eine.
           if (schlagNr === 1 || schlagNr === 3) {
             mischeEin(spuren.schlagzeug, zeit, snare(voll ? 1 : 0.75));
+            if (voll) mischeEin(spuren.becken, zeit, clap(0.5));
           }
-          // HiHat in Achteln, die Zählzeit betont.
-          for (let achtel = 0; achtel < 2; achtel += 1) {
-            const offen = voll && schlagNr === 3 && achtel === 1;
+          /*
+           * Becken: im Refrain Sechzehntel statt Achtel, dazu die Ride auf
+           * jeder Zählzeit. Doppeltes Tempo im Becken ist der billigste und
+           * wirksamste Weg, einen Takt schneller wirken zu lassen, ohne ihn
+           * schneller zu machen – und das Tempo liegt fest, weil die Schnitte
+           * des Motion-Films daran hängen.
+           */
+          const teilung = voll ? 4 : 2;
+          for (let teil = 0; teil < teilung; teil += 1) {
+            const offen = voll && schlagNr === 3 && teil === teilung - 1;
+            const betont = teil === 0;
             mischeEin(
               spuren.becken,
-              zeit + achtel * ACHTEL,
-              hihat(offen, (achtel === 0 ? 0.5 : 0.3) * (voll ? 1 : 0.75)),
+              zeit + teil * (SCHLAG / teilung),
+              hihat(offen, (betont ? 0.5 : 0.26) * (voll ? 0.9 : 0.75)),
             );
           }
+          if (voll) mischeEin(spuren.becken, zeit, ride(0.3));
         }
+
         // Wirbel am Ende des Abschnitts – das Signal „gleich passiert etwas".
         if (takt === 3 && (art === 'anlauf' || art === 'strophe')) {
           for (let s = 0; s < 8; s += 1) {
@@ -376,10 +548,30 @@ export function erzeugeMusik(sekunden) {
             mischeEin(spuren.schlagzeug, zeit, tom(-17 + s, 0.5 + s * 0.05));
           }
         }
+        /*
+         * Und ein kurzer Snare-Wirbel am Ende jedes zweiten Refrain-Takts.
+         * Vier Abschnitte lang dieselbe Figur ist ein Takt; dieselbe Figur mit
+         * einem Fill alle zwei Takte ist ein Stück.
+         */
+        if (voll && takt % 2 === 1) {
+          for (let s = 0; s < 4; s += 1) {
+            mischeEin(
+              spuren.schlagzeug,
+              taktBeginn + 3 * SCHLAG + s * SECHZEHNTEL,
+              snare(0.3 + s * 0.16),
+            );
+          }
+        }
       }
 
       if ((voll || art === 'bruecke') && takt === 0) {
-        mischeEin(spuren.becken, taktBeginn, crash(voll ? 0.55 : 0.4));
+        mischeEin(spuren.becken, taktBeginn, crash(voll ? 0.7 : 0.4));
+        // Der Aufprall nach dem Anlauf: ein tiefer Ton, der wegrutscht.
+        if (voll) mischeEin(spuren.fx, taktBeginn, subDrop(0.75));
+      }
+      // Ein zweites Becken in der Mitte des Refrains hält ihn wach.
+      if (voll && takt === 2) {
+        mischeEin(spuren.becken, taktBeginn, crash(0.4));
       }
 
       // --- Bass ------------------------------------------------------------
@@ -400,12 +592,24 @@ export function erzeugeMusik(sekunden) {
 
       // --- Gitarre ---------------------------------------------------------
       if (voll) {
-        for (let s = 0; s < 8; s += 1) {
-          mischeEin(
-            spuren.gitarre,
-            taktBeginn + s * ACHTEL,
-            gitarrenakkord(akkord.quinte, ACHTEL * 0.92, s % 2 === 0 ? 1 : 0.7),
-          );
+        /*
+         * Der Galopp: auf jeder Zählzeit ein gehaltener Akkord, danach zwei
+         * kurze abgedämpfte Anschläge. Gleichmäßige Achtel laufen mit; diese
+         * Figur schiebt.
+         */
+        for (let schlagNr = 0; schlagNr < 4; schlagNr += 1) {
+          const zeit = taktBeginn + schlagNr * SCHLAG;
+          mischeEin(spuren.gitarre, zeit, gitarrenakkord(akkord.quinte, ACHTEL * 0.95, 1));
+          mischeEin(spuren.gitarre, zeit + 2 * SECHZEHNTEL, gitarreGedaempft(akkord.quinte, 0.85));
+          mischeEin(spuren.gitarre, zeit + 3 * SECHZEHNTEL, gitarreGedaempft(akkord.quinte, 0.7));
+        }
+        /*
+         * Stabs auf den Gegenzählzeiten – sie füllen genau die Lücken, die
+         * der Galopp offen lässt, und sitzen auf der Und-Zählzeit, wo der
+         * Takt sonst am dünnsten ist.
+         */
+        for (const achtel of [1, 5]) {
+          mischeEin(spuren.gitarre, taktBeginn + achtel * ACHTEL, stab(akkord.akkord, 0.55));
         }
       } else if (art === 'anlauf') {
         mischeEin(spuren.gitarre, taktBeginn, gitarrenakkord(akkord.quinte, TAKTLAENGE * 0.9, 0.5));
@@ -416,7 +620,19 @@ export function erzeugeMusik(sekunden) {
         const zeile = HOOK[takt % HOOK.length];
         zeile.forEach((halbton, s) => {
           if (halbton === null) return;
-          mischeEin(spuren.lead, taktBeginn + s * ACHTEL, leadnote(halbton, ACHTEL * 1.6, 0.5));
+          mischeEin(spuren.lead, taktBeginn + s * ACHTEL, leadnote(halbton, ACHTEL * 1.6, 0.55));
+          /*
+           * Eine zweite Stimme eine Terz darüber, leiser. Welche Terz – große
+           * oder kleine – entscheidet der Akkord: Die Melodie steht in Dur,
+           * über den beiden Mollakkorden muss die Begleitstimme drei statt
+           * vier Halbtöne höher liegen, sonst reibt sie.
+           */
+          const terz = akkord.name.endsWith('m') ? 3 : 4;
+          mischeEin(
+            spuren.lead,
+            taktBeginn + s * ACHTEL,
+            leadnote(halbton + terz, ACHTEL * 1.6, 0.26),
+          );
         });
       } else if (art === 'strophe') {
         const zeile = STROPHE[takt % STROPHE.length];
@@ -458,6 +674,35 @@ export function erzeugeMusik(sekunden) {
     }
   });
 
+  /*
+   * Sidechain: Der Bass geht jedes Mal kurz zurück, wenn die Bassdrum tritt.
+   *
+   * Beide leben im selben Frequenzbereich, und wer sie gleichzeitig laufen
+   * lässt, bekommt keinen doppelten Druck, sondern Matsch – die Begrenzung
+   * am Ende zieht dann *alles* herunter, sobald der Tritt kommt. Hier folgt
+   * die Bass-Lautstärke stattdessen der Hüllkurve der Bassdrum: Sie macht auf
+   * jedem Tritt Platz und kommt sofort wieder. Das ist das Pumpen, an dem man
+   * moderne Produktionen erkennt.
+   *
+   * Der Auslöser ist die Schlagzeugspur selbst, nicht ein zweites Raster:
+   * Damit greift es an jedem Tritt, auch an den Doppelschlägen.
+   */
+  {
+    const fenster = Math.round(0.006 * ABTASTRATE);
+    const huellkurve = new Float64Array(n);
+    let spitze = 0;
+    for (let i = 0; i < n; i += 1) {
+      const wert = Math.abs(spuren.schlagzeug[i]);
+      // Schnell hoch, langsam runter – eine klassische Hüllkurvenverfolgung.
+      spitze = wert > spitze ? wert : spitze * 0.99986;
+      huellkurve[i] = spitze;
+    }
+    for (let i = 0; i < n; i += 1) {
+      const ab = Math.min(1, huellkurve[Math.max(0, i - fenster)] * 1.5);
+      spuren.bass[i] *= 1 - 0.72 * ab;
+    }
+  }
+
   // --- Klangfarbe je Spur ----------------------------------------------------
   tiefpass(spuren.bass, 1_100);
   tiefpass(spuren.gitarre, 6_500);
@@ -486,16 +731,24 @@ export function erzeugeMusik(sekunden) {
     const rand = Math.min(weich(t / einblenden), weich((sekunden - t) / ausblenden));
 
     // Mitte: alles, was Wucht trägt. Seiten: Gitarre und Lead-Echo.
-    const mitte = spuren.schlagzeug[i] * 0.95 + spuren.bass[i] * 0.85 + spuren.streicher[i] * 0.5;
-    const seiteL = spuren.gitarre[i] * 0.6 + spuren.becken[i] * 0.5 + spuren.glocken[i] * 0.45;
-    const seiteR = spuren.gitarre[i] * 0.52 + spuren.becken[i] * 0.55 + spuren.glocken[i] * 0.5;
+    const mitte = spuren.schlagzeug[i] * 1.0 + spuren.bass[i] * 0.9 + spuren.streicher[i] * 0.42;
+    const seiteL = spuren.gitarre[i] * 0.66 + spuren.becken[i] * 0.5 + spuren.glocken[i] * 0.42;
+    const seiteR = spuren.gitarre[i] * 0.58 + spuren.becken[i] * 0.56 + spuren.glocken[i] * 0.46;
 
-    let l = (mitte + seiteL + leadL[i] * 0.55 + spuren.fx[i] * 0.4) * rand;
-    let r = (mitte + seiteR + leadR[i] * 0.55 + spuren.fx[i] * 0.4) * rand;
+    let l = (mitte + seiteL + leadL[i] * 0.58 + spuren.fx[i] * 0.45) * rand;
+    let r = (mitte + seiteR + leadR[i] * 0.58 + spuren.fx[i] * 0.45) * rand;
 
-    // Weiche Begrenzung statt harter Übersteuerung.
-    l = Math.tanh(l * 0.85) * 0.9;
-    r = Math.tanh(r * 0.85) * 0.9;
+    /*
+     * Weiche Begrenzung – bewusst **milde**.
+     *
+     * Der erste Anlauf drückte hier zweistufig auf Lautheit: 3 dB mehr, aber
+     * der Scheitelfaktor fiel von 13 auf 8,7 dB und die gemessene Dichte der
+     * Anschläge *sank*, obwohl im Arrangement mehr Schläge stehen. Das ist
+     * genau der falsche Tausch – plattgedrückt klingt lauter, aber nicht
+     * schneller. Die Energie kommt aus den Noten, nicht aus dem Begrenzer.
+     */
+    l = Math.tanh(l * 0.95) * 0.94;
+    r = Math.tanh(r * 0.95) * 0.94;
 
     links[i] = l;
     rechts[i] = r;
