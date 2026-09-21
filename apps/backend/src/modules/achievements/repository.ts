@@ -15,20 +15,8 @@
  * {@link AchievementQueries.countAuditEntries}.
  */
 
-import { type AchievementId, type ArcadeGameId, type AuditAction } from '@palantir/contracts';
-import {
-  and,
-  asc,
-  countDistinct,
-  count,
-  eq,
-  gt,
-  inArray,
-  lt,
-  ne,
-  notInArray,
-  sql,
-} from 'drizzle-orm';
+import { type AchievementId, type AuditAction } from '@palantir/contracts';
+import { and, asc, countDistinct, count, eq, inArray, lt, ne, notInArray, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index.js';
 import { userAchievements } from '../../db/schema/achievements.js';
 import { arcadeScores } from '../../db/schema/arcade.js';
@@ -103,22 +91,25 @@ export interface AchievementQueries {
   /** Anzahl der verschiedenen Minispiele, die ein Konto gespielt hat. */
   arcadeDistinctGames(userId: string): Promise<number>;
   /**
-   * Steht das Konto in diesem Spiel auf Platz eins?
+   * Bester (kleinster) Platz des Kontos über **alle** Bestenlisten; `null`,
+   * wenn es nie gespielt hat.
    *
-   * Dieselbe Grundmenge wie die Bestenliste selbst: gesperrte Konten zählen
-   * nicht mit (`backend-community-16`). „Platz eins" heißt hier, dass es kein
-   * Konto mit einem **echt größeren** Bestwert gibt – bei Gleichstand teilen
-   * sich beide den Platz und beide bekommen das Abzeichen.
-   */
-  isTopOfLeaderboard(userId: string, gameId: ArcadeGameId): Promise<boolean>;
-  /**
-   * Steht das Konto in **irgendeiner** Bestenliste auf Platz eins?
+   * Eine Abfrage statt zweier Ja/Nein-Fragen: Die Platzierungs-Leiter fragt
+   * dieselbe Zahl siebenmal mit verschiedenen Schwellen ab (Betreiber,
+   * 21.09.2026), und ein Rang beantwortet jede davon.
    *
-   * Nur für die Nachvergabe: Dort gibt es kein auslösendes Spiel, und wer
-   * irgendwo oben steht, hat das Abzeichen verdient. Im laufenden Betrieb
-   * fragt `isTopOfLeaderboard` gezielt nach dem gerade gespielten Spiel.
+   * Gezählt wird nach derselben Regel wie in der Bestenliste selbst
+   * (`ArcadeRepository.rankForScore`): „Anzahl der echt größeren Bestwerte plus
+   * eins", Gleichstand teilt sich den Platz. Gesperrte Konten zählen nicht mit
+   * (`backend-community-16`) – sonst schöbe ein unsichtbares Konto alle anderen
+   * um einen Platz nach unten, und das Abzeichen hinge an jemandem, den
+   * niemand sieht.
+   *
+   * Bewusst über alle Spiele und nicht je Spiel: Wer irgendwo vorne steht, soll
+   * die Leiter hinaufkommen. Eine Stufe je Spiel wäre die ernsthafte Variante
+   * und hätte den Katalog mit fünfunddreißig Einträgen geflutet.
    */
-  isTopOfAnyLeaderboard(userId: string): Promise<boolean>;
+  bestArcadeRank(userId: string): Promise<number | null>;
   /**
    * Gibt es einen Protokolleintrag des Kontos in einem Stundenfenster?
    *
@@ -200,22 +191,30 @@ export function createDrizzleAchievementRepository(db: Database): AchievementRep
 
     async registrationRank(userId) {
       /*
-       * Der Platz ergibt sich aus der Zahl der früher angelegten Konten. Ein
-       * Konto, das es nicht (mehr) gibt, liefert damit `1` – deshalb prüft der
-       * Aufrufer gar nicht erst darauf: Die Regel läuft ohnehin nur für ein
-       * Konto, das eben gerade etwas getan hat.
+       * Der Platz ergibt sich aus der Zahl der früher angelegten Konten.
+       *
+       * **Der Betreiber zählt nicht mit** (Betreiber, 21.09.2026) – weder als
+       * Empfänger noch als besetzter Platz. Sein Konto ist zwangsläufig das
+       * erste der Instanz; „einer der ersten fünf" wäre für ihn keine
+       * Auszeichnung, sondern eine Selbstverständlichkeit, und es nähme den
+       * fünf Leuten, die es betrifft, einen ihrer Plätze weg. Beides steckt in
+       * dieser einen Abfrage: Der Owner bekommt `MAX_SAFE_INTEGER` und ist
+       * damit aus der Wertung, und die Zählung der früheren Konten übergeht
+       * ihn.
        */
       const [eigen] = await db
-        .select({ createdAt: users.createdAt })
+        .select({ createdAt: users.createdAt, isOwner: users.isOwner })
         .from(users)
         .where(eq(users.id, userId));
 
-      if (!eigen) return Number.MAX_SAFE_INTEGER;
+      // Kein Konto (mehr) oder der Betreiber: außerhalb der Wertung. Ein Wert
+      // statt `null`, damit die Regel schlicht vergleichen kann.
+      if (!eigen || eigen.isOwner) return Number.MAX_SAFE_INTEGER;
 
       const [row] = await db
         .select({ frueher: count() })
         .from(users)
-        .where(lt(users.createdAt, eigen.createdAt));
+        .where(and(lt(users.createdAt, eigen.createdAt), eq(users.isOwner, false)));
 
       return Number(row?.frueher ?? 0) + 1;
     },
@@ -238,64 +237,34 @@ export function createDrizzleAchievementRepository(db: Database): AchievementRep
       return Number(row?.anzahl ?? 0);
     },
 
-    async isTopOfLeaderboard(userId, gameId) {
-      const [eigen] = await db
-        .select({ best: sql<number>`max(${arcadeScores.score})` })
-        .from(arcadeScores)
-        .where(and(eq(arcadeScores.userId, userId), eq(arcadeScores.gameId, gameId)));
-
-      const eigenerBestwert = Number(eigen?.best ?? 0);
-
-      if (eigen?.best === null || eigen?.best === undefined) return false;
-
-      const bestProKonto = db
-        .select({
-          userId: arcadeScores.userId,
-          best: sql<number>`max(${arcadeScores.score})`.as('best'),
-        })
-        .from(arcadeScores)
-        .innerJoin(users, eq(users.id, arcadeScores.userId))
-        .where(and(eq(arcadeScores.gameId, gameId), eq(users.banned, false)))
-        .groupBy(arcadeScores.userId)
-        .as('best_per_user');
-
-      const [row] = await db
-        .select({ besser: count() })
-        .from(bestProKonto)
-        .where(gt(bestProKonto.best, eigenerBestwert));
-
-      return Number(row?.besser ?? 0) === 0;
-    },
-
-    async isTopOfAnyLeaderboard(userId) {
+    async bestArcadeRank(userId) {
       /*
-       * Je Spiel der höchste Bestwert und der eigene Bestwert nebeneinander –
-       * erfüllt ist die Bedingung, sobald irgendwo kein echt größerer Wert
-       * steht. Dieselbe Grundmenge wie die Bestenliste: gesperrte Konten
-       * zählen nicht mit (`backend-community-16`).
+       * Je Spiel und Konto der Bestwert, darüber ein `rank()` je Spiel – und
+       * davon der kleinste Wert, der auf dieses Konto entfällt. `rank()` ist
+       * die Wettkampf-Rangvergabe („1, 1, 3") und damit dieselbe Regel, nach
+       * der die Bestenliste ihre Plätze vergibt.
        */
-      const bestProKontoUndSpiel = db
-        .select({
-          gameId: arcadeScores.gameId,
-          userId: arcadeScores.userId,
-          best: sql<number>`max(${arcadeScores.score})`.as('best'),
-        })
-        .from(arcadeScores)
-        .innerJoin(users, eq(users.id, arcadeScores.userId))
-        .where(eq(users.banned, false))
-        .groupBy(arcadeScores.gameId, arcadeScores.userId)
-        .as('best_per_user_game');
-
       const [row] = await db
-        .select({
-          spitzenplaetze: sql<number>`count(*) filter (
-            where ${bestProKontoUndSpiel.userId} = ${userId}
-              and ${bestProKontoUndSpiel.best} = ${sql`max(${bestProKontoUndSpiel.best}) over (partition by ${bestProKontoUndSpiel.gameId})`}
-          )`,
-        })
-        .from(bestProKontoUndSpiel);
+        .select({ platz: sql<number | null>`min(r.rang)` })
+        .from(
+          sql`(
+            select
+              b.user_id,
+              rank() over (partition by b.game_id order by b.best desc) as rang
+            from (
+              select ${arcadeScores.gameId} as game_id,
+                     ${arcadeScores.userId} as user_id,
+                     max(${arcadeScores.score}) as best
+              from ${arcadeScores}
+              join ${users} on ${users.id} = ${arcadeScores.userId}
+              where ${users.banned} = false
+              group by ${arcadeScores.gameId}, ${arcadeScores.userId}
+            ) b
+          ) r`,
+        )
+        .where(sql`r.user_id = ${userId}`);
 
-      return Number(row?.spitzenplaetze ?? 0) > 0;
+      return row?.platz === null || row?.platz === undefined ? null : Number(row.platz);
     },
 
     async hasAuditEntryAtHour(userId, actions, fromHour, toHour, timeZone) {

@@ -15,10 +15,23 @@
  * Konto, sondern nur die Menge der freigeschalteten Abzeichen (siehe
  * {@link levelForUnlocked}).
  *
- * **Warum Schwellen bewusst niedrig bleiben.** Die Instanz hat ein paar Dutzend
- * Konten, keine Tausend. Eine Stufenleiter, die 500 Backups verlangt, wäre für
- * diesen Kreis unerreichbar und damit wirkungslos. Die höchste Schwelle im
- * Katalog liegt deshalb bei 25.
+ * **Nur Admins können keine Abzeichen verdienen** (Betreiber, 21.09.2026). Was
+ * hinter einem Recht aus dem Rollen-Katalog liegt, taugt nicht als Abzeichen:
+ * Ein gewöhnliches Konto käme nie daran, und ein Abzeichen, das man nicht
+ * erreichen kann, ist keine Auszeichnung, sondern eine Auskunft über die eigene
+ * Rolle. Der Katalog hängt deshalb ausschließlich an Vorgängen, die jedem
+ * freigeschalteten Konto offenstehen.
+ *
+ * **Schwellen nur auf Kostenlosem.** Die Staffeln (Runden, Platzierungen,
+ * Anmeldungen) hängen an Vorgängen, die keine Ressourcen verbrauchen. Server,
+ * Klone und Sicherungen kosten Plattenplatz und Rechenzeit auf einem geteilten
+ * Homeserver – dort gibt es je genau ein Abzeichen und keine Leiter, sonst käme
+ * der Farming-Anreiz durch die Hintertür zurück.
+ *
+ * **Die Platzierungs-Leiter ist mit Absicht albern** (Betreiber, 21.09.2026).
+ * Bei einem guten Dutzend Konten ist „unter den besten 50" niemandes Leistung –
+ * genau das ist der Witz, und die Beschreibungen sagen es auch. Wer das nicht
+ * mag, streicht die Rubrik; der Rest des Katalogs hängt nicht daran.
  *
  * **Einmal freigeschaltet, bleibt freigeschaltet.** Abzeichen werden nie wieder
  * entzogen. Das ist keine Nachlässigkeit, sondern notwendig: Die Zählungen
@@ -37,7 +50,14 @@
  * Rubriken des Katalogs – zugleich die Reihenfolge der Abschnitte in der
  * Übersicht (F-Erfolge).
  */
-export const ACHIEVEMENT_CATEGORIES = ['server', 'backup', 'arcade', 'konto', 'betrieb'] as const;
+export const ACHIEVEMENT_CATEGORIES = [
+  'server',
+  'backup',
+  'arcade',
+  'platzierung',
+  'ausdauer',
+  'konto',
+] as const;
 
 export type AchievementCategory = (typeof ACHIEVEMENT_CATEGORIES)[number];
 
@@ -46,8 +66,9 @@ export const ACHIEVEMENT_CATEGORY_LABELS: Record<AchievementCategory, string> = 
   server: 'Server',
   backup: 'Sicherungen',
   arcade: 'Spielhalle',
+  platzierung: 'Platzierungen',
+  ausdauer: 'Ausdauer',
   konto: 'Konto',
-  betrieb: 'Betrieb',
 };
 
 // ---------------------------------------------------------------------------
@@ -80,19 +101,37 @@ export const ACHIEVEMENT_IDS = [
   // Spielhalle (F8)
   'eingeworfen',
   'alleskoenner',
-  'hartnaeckig',
+
+  // Platzierungen – die alberne Leiter (Betreiber, 21.09.2026)
+  'platz50',
+  'platz20',
+  'platz10',
+  'platz5',
+  'platz3',
+  'platz2',
   'spielhallenlegende',
+
+  // Ausdauer – Staffeln auf Vorgänge, die nichts kosten
+  'runden10',
+  'hartnaeckig',
+  'runden50',
+  'runden100',
+  'runden250',
+  'runden500',
+  'runden1000',
+  'anmeldung10',
+  'anmeldung50',
+  'anmeldung100',
+  'vielbeschaeftigt',
+  'sammler10',
+  'sammler20',
+  'sammler30',
 
   // Konto (B1)
   'ersteStunde',
   'doppeltHaeltBesser',
   'zutrittVerweigert',
   'nachtschicht',
-
-  // Betrieb (B8)
-  'tuersteher',
-  'schriftsetzer',
-  'hausmeisterei',
 ] as const;
 
 /** Gültige Abzeichen-Kennung – verhindert Freitext-Strings. */
@@ -237,12 +276,60 @@ export const ACHIEVEMENT_CATALOG: Record<AchievementId, AchievementDefinition> =
     category: 'arcade',
     title: null,
   },
-  hartnaeckig: {
-    id: 'hartnaeckig',
-    name: 'Hartnäckig',
-    description: 'Fünfundzwanzig Runden. Die nächste wird die gute.',
-    hint: 'Spiele insgesamt fünfundzwanzig Runden.',
-    category: 'arcade',
+
+  // --- Platzierungen --------------------------------------------------------
+  /*
+   * Die alberne Leiter. Gezählt wird der **beste** Platz über alle
+   * Bestenlisten: Wer in einem Spiel vorne steht, bekommt alle Stufen darunter
+   * gleich mit. Das ist kein Versehen, sondern der Witz – bei einem Dutzend
+   * Konten ist „Top 50" ohnehin geschenkt.
+   */
+  platz50: {
+    id: 'platz50',
+    name: 'Unter den besten 50',
+    description: 'Top 50! Bei aktuell deutlich weniger als fünfzig Konten. Stark.',
+    hint: 'Stehe in einer Bestenliste unter den ersten fünfzig.',
+    category: 'platzierung',
+    title: null,
+  },
+  platz20: {
+    id: 'platz20',
+    name: 'Unter den besten 20',
+    description: 'Top 20. Das sind immer noch alle.',
+    hint: 'Stehe in einer Bestenliste unter den ersten zwanzig.',
+    category: 'platzierung',
+    title: null,
+  },
+  platz10: {
+    id: 'platz10',
+    name: 'Unter den besten 10',
+    description: 'Top 10. Jetzt wird es langsam knapp.',
+    hint: 'Stehe in einer Bestenliste unter den ersten zehn.',
+    category: 'platzierung',
+    title: null,
+  },
+  platz5: {
+    id: 'platz5',
+    name: 'Unter den besten 5',
+    description: 'Top 5. Hier hört der Spaß auf und die Bestenliste fängt an.',
+    hint: 'Stehe in einer Bestenliste unter den ersten fünf.',
+    category: 'platzierung',
+    title: null,
+  },
+  platz3: {
+    id: 'platz3',
+    name: 'Auf dem Treppchen',
+    description: 'Platz drei oder besser. Das ist tatsächlich etwas.',
+    hint: 'Stehe in einer Bestenliste auf Platz drei oder besser.',
+    category: 'platzierung',
+    title: 'Treppchen',
+  },
+  platz2: {
+    id: 'platz2',
+    name: 'Zweitbester',
+    description: 'Platz zwei oder besser. Der erste ist nur einen Versuch entfernt.',
+    hint: 'Stehe in einer Bestenliste auf Platz zwei oder besser.',
+    category: 'platzierung',
     title: null,
   },
   spielhallenlegende: {
@@ -250,8 +337,129 @@ export const ACHIEVEMENT_CATALOG: Record<AchievementId, AchievementDefinition> =
     name: 'Spielhallenlegende',
     description: 'Platz eins in einer Bestenliste – zumindest für den Moment.',
     hint: 'Stehe in einer Bestenliste auf Platz eins.',
-    category: 'arcade',
+    category: 'platzierung',
     title: 'Spielhallenlegende',
+  },
+
+  // --- Ausdauer -------------------------------------------------------------
+  runden10: {
+    id: 'runden10',
+    name: 'Zehn Runden',
+    description: 'Zehn Runden gespielt. Ein Anfang.',
+    hint: 'Spiele insgesamt zehn Runden.',
+    category: 'ausdauer',
+    title: null,
+  },
+  hartnaeckig: {
+    id: 'hartnaeckig',
+    name: 'Hartnäckig',
+    description: 'Fünfundzwanzig Runden. Die nächste wird die gute.',
+    hint: 'Spiele insgesamt fünfundzwanzig Runden.',
+    category: 'ausdauer',
+    title: null,
+  },
+  runden50: {
+    id: 'runden50',
+    name: 'Fünfzig Runden',
+    description: 'Fünfzig Runden. Das Panel hat übrigens auch andere Seiten.',
+    hint: 'Spiele insgesamt fünfzig Runden.',
+    category: 'ausdauer',
+    title: null,
+  },
+  runden100: {
+    id: 'runden100',
+    name: 'Hundert Runden',
+    description: 'Dreistellig. Respekt, ehrlich.',
+    hint: 'Spiele insgesamt hundert Runden.',
+    category: 'ausdauer',
+    title: 'Dauergast',
+  },
+  runden250: {
+    id: 'runden250',
+    name: 'Zweihundertfünfzig Runden',
+    description: 'Zweihundertfünfzig. Niemand hat das verlangt.',
+    hint: 'Spiele insgesamt zweihundertfünfzig Runden.',
+    category: 'ausdauer',
+    title: null,
+  },
+  runden500: {
+    id: 'runden500',
+    name: 'Fünfhundert Runden',
+    description: 'Fünfhundert Runden. Der Homeserver hat auch Spiele, weißt du.',
+    hint: 'Spiele insgesamt fünfhundert Runden.',
+    category: 'ausdauer',
+    title: null,
+  },
+  runden1000: {
+    id: 'runden1000',
+    name: 'Tausend Runden',
+    description:
+      'Tausend Runden. An diesem Punkt ist es zwischen dir und der Spielhalle persönlich.',
+    hint: 'Spiele insgesamt tausend Runden.',
+    category: 'ausdauer',
+    title: 'Spielhallen-Urgestein',
+  },
+  anmeldung10: {
+    id: 'anmeldung10',
+    name: 'Zehnmal angemeldet',
+    description: 'Zehn Anmeldungen. Du findest hierher.',
+    hint: 'Melde dich zehnmal an.',
+    category: 'ausdauer',
+    title: null,
+  },
+  anmeldung50: {
+    id: 'anmeldung50',
+    name: 'Fünfzigmal angemeldet',
+    description: 'Fünfzig Anmeldungen. Das Lesezeichen sitzt.',
+    hint: 'Melde dich fünfzigmal an.',
+    category: 'ausdauer',
+    title: null,
+  },
+  anmeldung100: {
+    id: 'anmeldung100',
+    name: 'Hundertmal angemeldet',
+    description: 'Hundert Anmeldungen. Willkommen zurück. Schon wieder.',
+    hint: 'Melde dich hundertmal an.',
+    category: 'ausdauer',
+    title: 'Stammgast',
+  },
+  vielbeschaeftigt: {
+    id: 'vielbeschaeftigt',
+    name: 'Vielbeschäftigt',
+    description: 'Fünfzig protokollierte Handgriffe. Du benutzt das Ding wirklich.',
+    hint: 'Hinterlasse fünfzig Einträge im Protokoll.',
+    category: 'ausdauer',
+    title: null,
+  },
+  /*
+   * Abzeichen für Abzeichen – der Gipfel der Sinnlosigkeit und deshalb genau
+   * richtig hier (Betreiber, 21.09.2026). Sie zählen den eigenen Bestand mit,
+   * weshalb die Vergabe nach einem Treffer noch einmal nachfasst (siehe
+   * `service.ts`): Sonst käme „Zehn Abzeichen" erst beim nächsten Vorgang an.
+   */
+  sammler10: {
+    id: 'sammler10',
+    name: 'Zehn Abzeichen',
+    description: 'Zehn Abzeichen gesammelt. Dieses hier ist eines davon.',
+    hint: 'Schalte zehn Abzeichen frei.',
+    category: 'ausdauer',
+    title: null,
+  },
+  sammler20: {
+    id: 'sammler20',
+    name: 'Zwanzig Abzeichen',
+    description: 'Zwanzig Abzeichen. Es gibt ein Abzeichen dafür, Abzeichen zu haben.',
+    hint: 'Schalte zwanzig Abzeichen frei.',
+    category: 'ausdauer',
+    title: null,
+  },
+  sammler30: {
+    id: 'sammler30',
+    name: 'Dreißig Abzeichen',
+    description: 'Dreißig Abzeichen. Wir haben beide zu viel Zeit investiert.',
+    hint: 'Schalte dreißig Abzeichen frei.',
+    category: 'ausdauer',
+    title: 'Sammelwut',
   },
 
   // --- Konto ----------------------------------------------------------------
@@ -288,32 +496,6 @@ export const ACHIEVEMENT_CATALOG: Record<AchievementId, AchievementDefinition> =
     category: 'konto',
     title: 'Nachtschicht',
     secret: true,
-  },
-
-  // --- Betrieb --------------------------------------------------------------
-  tuersteher: {
-    id: 'tuersteher',
-    name: 'Türsteher',
-    description: 'Du hast jemanden hereingelassen – ein Konto freigeschaltet.',
-    hint: 'Schalte ein wartendes Konto frei.',
-    category: 'betrieb',
-    title: null,
-  },
-  schriftsetzer: {
-    id: 'schriftsetzer',
-    name: 'Schriftsetzer',
-    description: 'Eigene Schrift hochgeladen. Das Panel trägt jetzt deine Handschrift.',
-    hint: 'Lade eine eigene Schrift für die Oberfläche hoch.',
-    category: 'betrieb',
-    title: null,
-  },
-  hausmeisterei: {
-    id: 'hausmeisterei',
-    name: 'Hausmeisterei',
-    description: 'Fünfzig protokollierte Handgriffe. Jemand muss den Laden ja zusammenhalten.',
-    hint: 'Hinterlasse fünfzig Einträge im Protokoll.',
-    category: 'betrieb',
-    title: 'Hausmeisterei',
   },
 };
 
@@ -362,15 +544,23 @@ export interface AchievementLevel {
  * müsste. Wer ein Abzeichen bekommt, sieht seine Stufe steigen; wer nichts tut,
  * bleibt stehen. Aufsteigend sortiert; `required: 0` ist der Einstieg, den jedes
  * Konto ohne Zutun hat.
+ *
+ * Die Abstände wachsen nach oben: Die ersten Stufen kommen von allein, weil die
+ * Platzierungs-Leiter geschenkt ist; die letzten verlangen, dass jemand die
+ * Spielhalle wirklich leerspielt. Die höchste Stufe steht bewusst auf
+ * `ACHIEVEMENT_IDS.length` und nicht auf einer festen Zahl – sie rückt mit
+ * jedem neuen Abzeichen von allein nach.
  */
 export const ACHIEVEMENT_LEVELS: readonly AchievementLevel[] = [
   { level: 1, required: 0, label: 'Neuling' },
   { level: 2, required: 2, label: 'Eingelebt' },
-  { level: 3, required: 5, label: 'Stammgast' },
+  { level: 3, required: 5, label: 'Angekommen' },
   { level: 4, required: 9, label: 'Kenner' },
-  { level: 5, required: 13, label: 'Veteran' },
-  { level: 6, required: 17, label: 'Urgestein' },
-  { level: 7, required: ACHIEVEMENT_IDS.length, label: 'Vollständig' },
+  { level: 5, required: 14, label: 'Routiniert' },
+  { level: 6, required: 20, label: 'Veteran' },
+  { level: 7, required: 26, label: 'Urgestein' },
+  { level: 8, required: 31, label: 'Legendär' },
+  { level: 9, required: ACHIEVEMENT_IDS.length, label: 'Vollständig' },
 ];
 
 /** Erreichte Stufe bei `unlockedCount` freigeschalteten Abzeichen. */

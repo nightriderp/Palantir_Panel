@@ -40,6 +40,7 @@ import { AchievementError } from './errors.js';
 import type { AchievementRepository } from './repository.js';
 import {
   ACHIEVEMENT_RULES,
+  META_ACHIEVEMENTS,
   type AchievementTrigger,
   rulesForArcadeScore,
   rulesForAuditAction,
@@ -137,6 +138,16 @@ export interface AchievementServiceOptions {
  * sonst eine Liste je Konto, für immer denselben Inhalt.
  */
 const ALLE_ABZEICHEN: readonly AchievementId[] = ACHIEVEMENTS.map((eintrag) => eintrag.id);
+
+/**
+ * Obergrenze der Vergabe-Durchgänge je Auslöser.
+ *
+ * Mehr als einer wird nur wegen der Abzeichen gebraucht, die den eigenen
+ * Bestand zählen; drei decken auch deren Staffel ab („zehn", „zwanzig",
+ * „dreißig" nacheinander). Die Grenze ist eine Sicherung, nicht die erwartete
+ * Zahl der Runden – im Regelfall endet die Schleife nach dem ersten Durchgang.
+ */
+const MAX_DURCHGAENGE = 3;
 
 /** Baut die Titel-Angabe eines Abzeichens; `null`, wenn es keinen mitbringt. */
 function titleDtoFor(achievementId: AchievementId): AchievementTitleDto | null {
@@ -236,18 +247,50 @@ export function createAchievementService(options: AchievementServiceOptions): Ac
 
     if (offen.length === 0) return [];
 
-    const ergebnisse = await Promise.all(
-      offen.map(async (id) => ({
-        id,
-        erfuellt: await ACHIEVEMENT_RULES[id].check({ userId, trigger, queries: repository }),
-      })),
-    );
+    /*
+     * Mehrere Durchgänge, weil manche Abzeichen den eigenen Bestand zählen
+     * („Zehn Abzeichen", Betreiber 21.09.2026). Wer mit einem Schlag zehn
+     * bekommt, soll das zehnte im selben Vorgang gutgeschrieben bekommen und
+     * nicht erst beim nächsten Serverstart.
+     *
+     * Ein weiterer Durchgang läuft nur, wenn der vorige etwas vergeben hat,
+     * und sieht nur die dann noch offenen Regeln an. Die Schleife endet damit
+     * von allein; `MAX_DURCHGAENGE` ist die Sicherung gegen eine künftige
+     * Regel, die sich selbst erfüllt, ohne je vergeben zu werden.
+     */
+    const vergeben: AchievementId[] = [];
+    let uebrig = offen;
 
-    const faellig = ergebnisse.filter((eintrag) => eintrag.erfuellt).map((eintrag) => eintrag.id);
+    for (let durchgang = 0; durchgang < MAX_DURCHGAENGE && uebrig.length > 0; durchgang += 1) {
+      const ergebnisse = await Promise.all(
+        uebrig.map(async (id) => ({
+          id,
+          erfuellt: await ACHIEVEMENT_RULES[id].check({ userId, trigger, queries: repository }),
+        })),
+      );
 
-    // Kein Schreibaufruf, wenn nichts fällig ist – der Regelfall bei jedem
-    // protokollierten Vorgang.
-    return faellig.length === 0 ? [] : repository.award(userId, faellig);
+      const faellig = ergebnisse.filter((eintrag) => eintrag.erfuellt).map((eintrag) => eintrag.id);
+
+      // Kein Schreibaufruf, wenn nichts fällig ist – der Regelfall bei jedem
+      // protokollierten Vorgang, und zugleich das Ende der Schleife.
+      if (faellig.length === 0) break;
+
+      vergeben.push(...(await repository.award(userId, faellig)));
+
+      for (const id of faellig) bereitsFrei.add(id);
+      uebrig = uebrig.filter((id) => !faellig.includes(id));
+
+      /*
+       * Die Bestands-Abzeichen jetzt dazunehmen: Ihr Auslöser ist genau das,
+       * was dieser Durchgang eben verändert hat. Sie stehen deshalb in keiner
+       * Ereignis-Auswahl und kämen sonst gar nicht vor.
+       */
+      for (const id of META_ACHIEVEMENTS) {
+        if (!bereitsFrei.has(id) && !uebrig.includes(id)) uebrig.push(id);
+      }
+    }
+
+    return vergeben;
   }
 
   /**

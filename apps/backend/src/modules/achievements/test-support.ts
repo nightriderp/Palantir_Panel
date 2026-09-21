@@ -18,12 +18,18 @@ export interface FakeAuditRow {
 export interface FakeOptions {
   /** Protokolleinträge des Kontos – die Grundmenge aller Zählungen. */
   readonly auditRows?: readonly FakeAuditRow[];
-  /** Platz in der Reihenfolge der Registrierungen; Vorgabe: weit hinten. */
+  /**
+   * Platz in der Reihenfolge der Registrierungen; Vorgabe: weit hinten.
+   *
+   * Das echte Repository gibt dem Betreiber `Number.MAX_SAFE_INTEGER` – er
+   * steht ausserhalb der Wertung (Betreiber, 21.09.2026). Ein Test, der das
+   * nachstellt, setzt hier denselben Wert.
+   */
   readonly registrationRank?: number;
   /** Abgesendete Arcade-Versuche je Spiel. */
   readonly arcadeRounds?: Partial<Record<ArcadeGameId, number>>;
-  /** Spiele, in denen das Konto auf Platz eins steht. */
-  readonly topOf?: readonly ArcadeGameId[];
+  /** Bester Platz des Kontos über alle Bestenlisten; ohne Angabe: nie gespielt. */
+  readonly bestRank?: number;
   /** Liegt ein Protokolleintrag im Nacht-Fenster? (Nachvergabe) */
   readonly nachtEintrag?: boolean;
   /** Konten der Instanz – Grundmenge der Nachvergabe. */
@@ -44,7 +50,6 @@ export type FakeAchievementRepository = AchievementRepository & {
 export function fakeAchievementRepository(options: FakeOptions = {}): FakeAchievementRepository {
   const auditRows = options.auditRows ?? [];
   const arcadeRounds = options.arcadeRounds ?? {};
-  const topOf = new Set<ArcadeGameId>(options.topOf ?? []);
   const vergeben: AchievementId[] = [];
   const zugriffe: Record<string, number> = {};
 
@@ -147,16 +152,10 @@ export function fakeAchievementRepository(options: FakeOptions = {}): FakeAchiev
       );
     },
 
-    isTopOfLeaderboard(_userId, gameId): Promise<boolean> {
-      zaehle('isTopOfLeaderboard');
+    bestArcadeRank(): Promise<number | null> {
+      zaehle('bestArcadeRank');
 
-      return Promise.resolve(topOf.has(gameId));
-    },
-
-    isTopOfAnyLeaderboard(): Promise<boolean> {
-      zaehle('isTopOfAnyLeaderboard');
-
-      return Promise.resolve(topOf.size > 0);
+      return Promise.resolve(options.bestRank ?? null);
     },
 
     hasAuditEntryAtHour(_userId, actions): Promise<boolean> {
