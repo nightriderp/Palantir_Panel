@@ -256,7 +256,12 @@ function RundgangLauf({ onBeenden }: { onBeenden: () => void }) {
         ) : null}
 
         <div className="mt-4 flex items-center justify-between gap-2">
-          <Button variant="ghost" size="sm" onClick={abbrechen}>
+          {/*
+            `whitespace-nowrap`, weil die zweite Beschriftung länger ist als
+            die erste: „Ja, wirklich" brach im schmalen Zettel sonst auf zwei
+            Zeilen um und riss die Knopfreihe auseinander.
+          */}
+          <Button variant="ghost" size="sm" className="whitespace-nowrap" onClick={abbrechen}>
             {abbruchGefragt ? 'Ja, wirklich' : 'Nicht jetzt'}
           </Button>
 

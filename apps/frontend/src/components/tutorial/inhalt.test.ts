@@ -92,6 +92,16 @@ describe('Abschlussquiz', () => {
     }
   });
 
+  it('legt die richtige Antwort nicht immer auf denselben Platz', () => {
+    // Sie stand dreimal oben: Wer „immer die erste" klickt, hätte ein volles
+    // Zeugnis, ohne eine Frage gelesen zu haben.
+    const plaetze = QUIZ_FRAGEN.map((frage) =>
+      frage.antworten.findIndex((antwort) => antwort.richtig),
+    );
+
+    expect(new Set(plaetze).size).toBeGreaterThan(1);
+  });
+
   it('zählt nur beantwortete Fragen', () => {
     expect(quizPunkte([null, null, null])).toBe(0);
   });

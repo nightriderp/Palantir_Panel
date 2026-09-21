@@ -163,6 +163,11 @@ export interface QuizFrage {
  *
  * Die falschen Antworten sind die, die im Freundeskreis wirklich vorkommen;
  * die richtige ist jedes Mal die langweilige. Genau darum geht es.
+ *
+ * ⚠️ **Die richtige Antwort steht nicht immer an derselben Stelle.** Sie stand
+ * dreimal oben – wer das merkt, klickt dreimal die erste und hat ein volles
+ * Zeugnis, ohne eine Frage gelesen zu haben. Wer eine Frage ergänzt, mischt
+ * sie bitte ebenfalls dazwischen.
  */
 export const QUIZ_FRAGEN: readonly QuizFrage[] = [
   {
@@ -191,11 +196,6 @@ export const QUIZ_FRAGEN: readonly QuizFrage[] = [
     frage: 'Wofür ist „Meine Backups" da?',
     antworten: [
       {
-        text: 'Sicherungen anlegen, herunterladen und wiederherstellen.',
-        richtig: true,
-        echo: 'Richtig. Und jetzt leg bitte wirklich eine an.',
-      },
-      {
         text: 'Zum Anschauen. Benutzt werden sie nie.',
         richtig: false,
         echo: 'Das ist keine Antwort, das ist ein Geständnis.',
@@ -203,7 +203,12 @@ export const QUIZ_FRAGEN: readonly QuizFrage[] = [
       {
         text: 'Für den Moment, in dem jemand etwas sprengt.',
         richtig: false,
-        echo: 'Inhaltlich nicht falsch. Aber die erste Antwort steht so im Handbuch.',
+        echo: 'Inhaltlich nicht falsch. Aber es gibt eine Antwort, die so im Handbuch steht.',
+      },
+      {
+        text: 'Sicherungen anlegen, herunterladen und wiederherstellen.',
+        richtig: true,
+        echo: 'Richtig. Und jetzt leg bitte wirklich eine an.',
       },
     ],
   },
@@ -212,14 +217,14 @@ export const QUIZ_FRAGEN: readonly QuizFrage[] = [
     frage: 'Wer entscheidet, welche Knöpfe du im Panel überhaupt siehst?',
     antworten: [
       {
-        text: 'Deine Berechtigungen.',
-        richtig: true,
-        echo: 'Richtig. Das Panel zeigt genau das, wofür dein Konto ein Recht hat.',
-      },
-      {
         text: 'Der Zufall.',
         richtig: false,
         echo: 'Bei mancher anderen Software: ja. Hier nicht.',
+      },
+      {
+        text: 'Deine Berechtigungen.',
+        richtig: true,
+        echo: 'Richtig. Das Panel zeigt genau das, wofür dein Konto ein Recht hat.',
       },
       {
         text: 'Der Admin, wenn er gute Laune hat.',
