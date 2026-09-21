@@ -31,13 +31,19 @@ pnpm --filter @palantir/backend db:seed
 
 # Das Owner-Konto registriert sich wie jedes andere und wird anschließend über
 # das Backend-Kommando gehoben – derselbe Weg wie in deploy/README.md §6.
+#
+# **Der Owner wird nie gefilmt.** Er existiert nur, weil irgendwer die übrigen
+# Konten freischalten muss. Vor der Kamera steht ein Konto mit der Rolle
+# „Nutzer": Nur so zeigt das Video das Panel, wie die Runde es wirklich sieht –
+# ohne den Administrationsblock in der Seitenleiste, den außer dem Betreiber
+# niemand zu Gesicht bekommt.
 node -e "
 import('$hier/api.mjs').then(async ({ PanelClient }) => {
   const c = new PanelClient('http://127.0.0.1:4000');
-  await c.registrieren('mika', 'Palantir-Demo-2026!', 'Mika');
+  await c.registrieren('chef', 'Palantir-Demo-2026!', 'Chef');
   console.log('Owner-Konto registriert.');
 });
 "
-pnpm --filter @palantir/backend db:owner mika
+pnpm --filter @palantir/backend db:owner chef
 
 node "$hier/daten.mjs"

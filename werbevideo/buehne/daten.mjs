@@ -6,6 +6,13 @@
  * über den Agent-Weg. Es wird nichts direkt in die Datenbank geschrieben –
  * was im Video zu sehen ist, hat das Panel auch wirklich so erzeugt.
  *
+ * **Zwei Konten mit verschiedenen Aufgaben.** Der Owner (`chef`) kommt vor der
+ * Kamera nie vor; er existiert nur, weil irgendwer die übrigen Konten
+ * freischalten muss. Gefilmt wird `mika` – ein Konto mit der Rolle „Nutzer",
+ * also genau die Sicht, die die Runde auf das Panel hat. Wer mit Owner-Rechten
+ * filmt, zeigt eine Seitenleiste voller Administrationspunkte, die außer dem
+ * Betreiber niemand je sieht.
+ *
  * Der Lauf ist wiederholbar: Was es schon gibt, wird übersprungen.
  */
 
@@ -14,16 +21,18 @@ import { PanelClient } from './api.mjs';
 const API = process.env.DEMO_API ?? 'http://127.0.0.1:4000';
 const STEUER = process.env.DEMO_STEUER ?? 'http://127.0.0.1:4500';
 const DOMAIN = process.env.PALANTIR_DOMAIN ?? 'palantir.example';
-const OWNER = { username: 'mika', password: 'Palantir-Demo-2026!', name: 'Mika' };
+/** Schaltet frei und wird nie gefilmt. */
+const OWNER = { username: 'chef', password: 'Palantir-Demo-2026!', name: 'Chef' };
+
+/** Das Konto vor der Kamera – ein Nutzer wie jeder andere in der Runde. */
+export const HELD = { username: 'mika', password: 'Palantir-Demo-2026!', name: 'Mika' };
 
 /** Die Runde, die im Video zu sehen ist. */
 const FREUNDE = [
+  { username: 'mika', name: 'Mika', rolle: 'Nutzer' },
   { username: 'jonas', name: 'Jonas', rolle: 'Nutzer' },
   { username: 'lena', name: 'Lena', rolle: 'Nutzer' },
-  { username: 'tim', name: 'Tim', rolle: 'Moderator' },
-  // Sara bleibt bewusst unfreigeschaltet: Sie ist die offene Anfrage, die im
-  // Admin-Teil des Videos freigeschaltet wird.
-  { username: 'sara', name: 'Sara', rolle: null },
+  { username: 'tim', name: 'Tim', rolle: 'Nutzer' },
 ];
 
 const SERVER = [
@@ -79,7 +88,7 @@ async function main() {
   const owner = new PanelClient(API);
   await owner.anmelden(OWNER.username, OWNER.password);
   const sitzung = await owner.sitzung();
-  console.log(`Angemeldet als ${sitzung.account?.displayName ?? OWNER.name}.`);
+  console.log(`Freischaltung über ${sitzung.account?.displayName ?? OWNER.name}.`);
 
   // --- Konten ---------------------------------------------------------------
   const rollen = await owner.ruf('GET', '/admin/roles');
@@ -125,17 +134,25 @@ async function main() {
     }
   }
 
-  // --- Server ---------------------------------------------------------------
+  // --- Ab hier spielt der Held --------------------------------------------
+  //
+  // Die Server gehören dem gefilmten Konto, nicht dem Owner. Sonst stünde im
+  // Video „Besitzer: Chef" an jedem Server, den angeblich Mika angelegt hat.
+  const held = new PanelClient(API);
+  await held.anmelden(HELD.username, HELD.password);
+  console.log(`Vor der Kamera: ${HELD.name}.`);
+
+  // Die Node-Liste ist Verwaltungswissen; sie kommt weiter vom Owner.
   const nodes = await owner.ruf('GET', '/admin/nodes');
   const hostId = nodes[0].id;
-  const vorhanden = await owner.ruf('GET', '/api/servers');
+  const vorhanden = await held.ruf('GET', '/api/servers');
   const liste = vorhanden.items ?? vorhanden;
 
   for (const wunsch of SERVER) {
     let server = liste.find((s) => s.name === wunsch.name);
 
     if (!server) {
-      server = await owner.ruf('POST', '/api/servers', {
+      server = await held.ruf('POST', '/api/servers', {
         gameType: wunsch.gameType,
         name: wunsch.name,
         subdomain: wunsch.subdomain,
@@ -151,7 +168,7 @@ async function main() {
       // `creating`); erst danach lässt sich starten.
       for (let i = 0; i < 20; i += 1) {
         await warte(1_000);
-        const stand = await owner.ruf('GET', `/api/servers/${server.id}`);
+        const stand = await held.ruf('GET', `/api/servers/${server.id}`);
         if (stand.status !== 'creating') break;
       }
     } else {
@@ -165,7 +182,7 @@ async function main() {
        * `PALANTIR_DOMAIN` stünde hier der Platzhalter aus der Vorlage, und
        * die Spielabfrage antwortete für einen Namen, den niemand fragt.
        */
-      const stand = await owner.ruf('GET', `/api/servers/${server.id}`);
+      const stand = await held.ruf('GET', `/api/servers/${server.id}`);
       const host = stand.address?.hostname ?? `${wunsch.subdomain}.${DOMAIN}`;
       await steuere(
         `/spieler?server=${server.id}&namen=${encodeURIComponent(wunsch.spieler.join(','))}` +
@@ -174,9 +191,9 @@ async function main() {
     }
 
     if (wunsch.starten) {
-      const stand = await owner.ruf('GET', `/api/servers/${server.id}`);
+      const stand = await held.ruf('GET', `/api/servers/${server.id}`);
       if (stand.status !== 'running' && stand.status !== 'starting') {
-        await owner.ruf('POST', `/api/servers/${server.id}/start`).catch((f) => {
+        await held.ruf('POST', `/api/servers/${server.id}/start`).catch((f) => {
           console.warn(`Start von ${wunsch.name} abgelehnt: ${f.message}`);
         });
         // Die Startausgabe vollständig durchlaufen lassen, damit die Konsole
@@ -190,13 +207,13 @@ async function main() {
   }
 
   // --- Sicherungen ----------------------------------------------------------
-  const nachher = await owner.ruf('GET', '/api/servers');
+  const nachher = await held.ruf('GET', '/api/servers');
   const smp = (nachher.items ?? nachher).find((s) => s.name === 'Freundeskreis SMP');
   if (smp) {
-    const bestand = await owner.ruf('GET', `/servers/${smp.id}/backups`).catch(() => []);
+    const bestand = await held.ruf('GET', `/servers/${smp.id}/backups`).catch(() => []);
     if ((bestand.items ?? bestand).length < 2) {
       for (let i = 0; i < 2; i += 1) {
-        await owner
+        await held
           .ruf('POST', `/servers/${smp.id}/backups`, { stopServer: false })
           .then(() => console.log('Sicherung angestoßen.'))
           .catch((f) => console.warn(`Sicherung abgelehnt: ${f.message}`));
