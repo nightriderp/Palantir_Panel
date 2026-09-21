@@ -159,11 +159,15 @@ jobs:
             # denselben Abdruck wie vorher und wird nicht gebaut – egal, wie
             # git die Umbenennung im Diff darstellt (bei zwei bitgleichen
             # `VERSION`-Dateien rät es die Paarung).
+            # Die Regel steht in `images/bau-kontext.sh` und nicht mehr hier:
+            # `images-version.yml` prueft im Pull Request mit derselben
+            # Definition, ob zu einer Aenderung am Image auch eine neue VERSION
+            # gehoert. Zwei Kopien der Ausnahmeliste liefen auseinander - und in
+            # der gefaehrlichen Richtung waere die Pruefung dann still zu
+            # nachsichtig. Warum welche Datei nicht zaehlt, steht im Kopf des
+            # Skripts.
             abdruck() {
-              git ls-tree -r "$1" -- "$2/" \
-                | awk -v wurzel="$2/" '{ pfad = $4; sub("^" wurzel, "", pfad); print $3, pfad }' \
-                | { grep -v -E ' (README\.md|VERSION|package\.json|rauchprobe\.sh|[^ ]*\.test\.mjs)$' || true; } \
-                | sort | sha256sum | cut -d' ' -f1
+              ./images/bau-kontext.sh "$1" "$2"
             }
 
             # Abdrücke aller Image-Ordner im Vorher-Stand, in jeder Tiefe –

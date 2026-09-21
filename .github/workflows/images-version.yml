@@ -1,0 +1,126 @@
+name: Image-Fassung
+
+# Hält im Pull Request fest, was sonst erst auf `main` auffällt: Wer ein Image
+# ändert, erhöht die Zahl in `images/<Kategorie>/<Name>/VERSION`.
+#
+# **Der Anlass.** Am 21.09.2026 hob Dependabot in #626 den node-Digest im
+# Dockerfile des Minecraft-Testabbilds. Das ist neuer Image-Inhalt, `VERSION`
+# blieb aber auf `2`. Der Pull Request war grün, der Merge ging durch – und
+# erst auf `main` brach `game-images.yml` ab:
+#
+#     ghcr.io/…/palantir-test-minecraft:2 gibt es bereits.
+#     Ein Image-Tag wird nie überschrieben (images/README.md).
+#
+# Der Schritt stand als Hinweis in `.github/dependabot.yml`, war also bekannt –
+# er hing nur an der Aufmerksamkeit dessen, der mergt. Genau das erledigt jetzt
+# dieser Lauf, und zwar **vor** dem Merge.
+#
+# **Warum ein eigener Lauf und kein Schritt in ci.yml.** Er greift nur, wenn
+# sich unter `images/` etwas rührt, und er braucht die ganze Historie
+# (`fetch-depth: 0`), um den Vorher-Stand zu sehen. Beides gehört nicht in die
+# Kette, die bei jedem Frontend-Commit läuft.
+#
+# **Die Regel selbst steht nicht hier.** Was zum Bau-Kontext zählt, entscheidet
+# `images/bau-kontext.sh` – dieselbe Datei, nach der `game-images.yml` auswählt,
+# was gebaut wird. Zwei Kopien derselben Ausnahmeliste würden auseinanderlaufen,
+# und in der gefährlichen Richtung wäre die Prüfung dann still zu nachsichtig.
+#
+# Fremde Actions sind per Commit-SHA gepinnt (Begründung im Kopf von ci.yml).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'images/**'
+
+concurrency:
+  group: images-version-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fassung:
+    name: VERSION zu jeder Image-Änderung
+    runs-on: ubuntu-latest
+    steps:
+      - name: Quellen holen
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Die ganze Historie: Der Abdruck des Vorher-Stands wird über
+          # `git ls-tree` gegen den Basis-Commit gebildet, nicht über den
+          # Arbeitsbaum.
+          fetch-depth: 0
+
+      - name: Fassungen prüfen
+        env:
+          BASIS: ${{ github.event.pull_request.base.sha }}
+          KOPF: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Der gemeinsame Vorfahr, nicht die Spitze des Zielzweigs: Sonst
+          # zählten fremde Änderungen an `images/`, die inzwischen auf `main`
+          # gelandet sind, als Änderung dieses Pull Requests.
+          vergleich="$(git merge-base "${BASIS}" "${KOPF}")"
+          echo "Vergleich gegen ${vergleich}"
+
+          # Jeder Ordner mit Dockerfile im Kopf-Stand ist ein Image.
+          images="$(git ls-tree -r --name-only "${KOPF}" -- images/ \
+            | { grep '/Dockerfile$' || true; } | sed 's#/Dockerfile$##')"
+
+          if [ -z "${images}" ]; then
+            echo "Kein Image im Kopf-Stand – nichts zu prüfen."
+            exit 0
+          fi
+
+          fehlt=''
+
+          for ordner in ${images}; do
+            neu="$(./images/bau-kontext.sh "${KOPF}" "${ordner}")"
+
+            # Ein Image, das es vorher nicht gab, ist neu und bringt seine
+            # erste Fassung mit – da gibt es nichts zu erhöhen.
+            if ! git cat-file -e "${vergleich}:${ordner}/Dockerfile" 2>/dev/null; then
+              echo "  ${ordner}: neu"
+              continue
+            fi
+
+            alt="$(./images/bau-kontext.sh "${vergleich}" "${ordner}")"
+
+            if [ "${alt}" = "${neu}" ]; then
+              echo "  ${ordner}: unverändert"
+              continue
+            fi
+
+            # Der Bau-Kontext hat sich geändert. Dann muss auch die Zahl in
+            # VERSION eine andere sein - verglichen wird der Inhalt, nicht der
+            # Diff: Eine Datei, die hin und zurück geändert wurde, zählt nicht.
+            vorher="$(git show "${vergleich}:${ordner}/VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
+            nachher="$(git show "${KOPF}:${ordner}/VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
+
+            if [ -z "${nachher}" ]; then
+              echo "::error file=${ordner}/VERSION::${ordner}: VERSION fehlt."
+              fehlt="${fehlt}${ordner}"$'\n'
+              continue
+            fi
+
+            if [ "${vorher}" = "${nachher}" ]; then
+              echo "::error file=${ordner}/VERSION::${ordner} wurde geändert, VERSION steht weiter auf ${nachher}. Ein Image-Tag wird nie überschrieben (images/README.md) - die Zahl gehört erhöht, sonst bricht game-images.yml nach dem Merge auf main ab."
+              fehlt="${fehlt}${ordner}"$'\n'
+              continue
+            fi
+
+            echo "  ${ordner}: geändert, VERSION ${vorher} -> ${nachher}"
+          done
+
+          if [ -n "${fehlt}" ]; then
+            echo
+            echo "Zu erhöhen:"
+            printf '%s' "${fehlt}" | sed 's#^#  #'
+            exit 1
+          fi
+
+          echo
+          echo "Alles in Ordnung."
