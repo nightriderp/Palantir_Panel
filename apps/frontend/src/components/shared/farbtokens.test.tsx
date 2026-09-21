@@ -56,6 +56,33 @@ function kontrast(a: string, b: string): number {
 }
 
 /**
+ * Farbton in Grad (0–360) – Rot 0°, Grün 120°, Blau 240°.
+ *
+ * Nur für die Frage, ob zwei Farben *dieselbe* Farbe meinen. Für alles, was
+ * mit Lesbarkeit zu tun hat, zählt die Leuchtdichte darüber.
+ */
+function farbton(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [
+    number,
+    number,
+    number,
+  ];
+  const max = Math.max(r, g, b);
+  const spanne = max - Math.min(r, g, b);
+  if (spanne === 0) return 0;
+
+  const roh =
+    max === r ? ((g - b) / spanne) % 6 : max === g ? (b - r) / spanne + 2 : (r - g) / spanne + 4;
+  return (((roh * 60) % 360) + 360) % 360;
+}
+
+/** Kürzerer Weg zwischen zwei Farbtönen – über 0° hinweg, nicht drumherum. */
+function farbtonAbstand(a: string, b: string): number {
+  const d = Math.abs(farbton(a) - farbton(b));
+  return Math.min(d, 360 - d);
+}
+
+/**
  * Alle Flächen, auf denen Text stehen kann.
  *
  * `surface` ist die hellste und damit die schwerste – an ihr entscheidet sich
@@ -149,6 +176,43 @@ describe.each(THEMES.map((thema) => [thema.name, thema.palette] as const))(
         ).toBeGreaterThanOrEqual(MINDESTSCHRITT);
       }
     });
+
+    /**
+     * Ein Theme darf die Stimmung ändern, nicht die Bedeutung.
+     *
+     * Die Markenfarbe steht auf dem Primärknopf, die Statusfarben auf
+     * Abzeichen und in Meldungen – oft nebeneinander auf derselben Karte.
+     * Fallen zwei davon zusammen, liest sich ein „stoppt" wie eine
+     * Hauptaktion, und kein Kontrastwert merkt es: Beide sind für sich
+     * bestens lesbar.
+     *
+     * **Gefunden, nicht ausgedacht.** Die erste Fassung von „Schmiedefeuer"
+     * hatte Marke und `caution` bei 10° Farbtonabstand und Faktor 1,05
+     * Helligkeit – zwei Namen für dieselbe Farbe.
+     *
+     * ⚠️ Geprüft wird Farbton **und** Helligkeit, nicht nur der Farbton. In
+     * einem goldenen oder messingfarbenen Theme liegt die Marke zwangsläufig
+     * neben `warning`; ein tiefes Kupfer und ein blasses Gelb sind trotzdem
+     * ohne Weiteres auseinanderzuhalten. Ein Theme, das den Farbton nicht
+     * hergeben kann, muss die Helligkeit hergeben.
+     */
+    const FARBTON_ABSTAND = 25;
+    const HELLIGKEITS_FAKTOR = 1.5;
+
+    it.each(['success', 'warning', 'caution', 'danger'] as const)(
+      '`brand` ist nicht mit `%s` zu verwechseln',
+      (token) => {
+        const abstand = farbtonAbstand(farben.brand, farben[token]);
+        const faktor = kontrast(farben.brand, farben[token]);
+
+        expect(
+          abstand >= FARBTON_ABSTAND || faktor >= HELLIGKEITS_FAKTOR,
+          `brand (${farbton(farben.brand).toFixed(0)}°) und ${token} ` +
+            `(${farbton(farben[token]).toFixed(0)}°): ${abstand.toFixed(0)}° Abstand, ` +
+            `Faktor ${faktor.toFixed(2)} Helligkeit`,
+        ).toBe(true);
+      },
+    );
 
     it('`brand` als Text erreicht mindestens 3:1 (Bedienelemente, große Schrift)', () => {
       // Die Markenfarbe steht auf Knöpfen unter weißer Schrift und als Textfarbe

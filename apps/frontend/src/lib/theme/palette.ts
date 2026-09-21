@@ -200,15 +200,131 @@ export const THEMES: readonly Theme[] = [
       inkFaint: '#988565',
       inkDisabled: '#5d4f3c',
       placeholder: '#6e5e46',
-      brand: '#e09a2e',
-      brandBright: '#f5bb57',
+      /*
+       * ⚠️ Die Marke ist **dunkler** als Warnung und Hinweis, nicht nur
+       * anders gefärbt.
+       *
+       * In einem goldenen Theme liegen Marke, `warning` und `caution`
+       * zwangsläufig im selben Farbton – die erste Fassung hatte die Marke bei
+       * 36° und `caution` bei 26°, bei praktisch gleicher Helligkeit (Faktor
+       * 1,05). Ein Primärknopf und ein „stoppt"-Abzeichen waren damit dieselbe
+       * Farbe. Da der Farbton die Identität des Themes ist, trennt hier die
+       * Helligkeit: tiefes Kupfer gegen blasses Gelb und helles Orange.
+       * `themes.test.ts` rechnet beides nach.
+       */
+      brand: '#c47b16',
+      brandBright: '#f0b84e',
       accent: '#ff9a4d',
       success: '#4fd48b',
-      warning: '#f5c542',
-      caution: '#f08a3c',
+      warning: '#f7d979',
+      caution: '#ff9d5c',
       danger: '#ff7a68',
       overlay: '#ffffff',
       scrollbar: '#3a2e1f',
+    },
+  },
+  {
+    id: 'neonnacht',
+    name: 'Neonnacht',
+    beschreibung: 'Violettes Dunkel, Magenta und Blitzblau – laut, schnell, gezeichnet.',
+    farbschema: 'dark',
+    /*
+     * Das lauteste der Themes. Die Marke steht bei 315°, also weit weg von
+     * jeder Statusfarbe – in einem Theme, das ohnehin knallt, ist das die
+     * Bedingung dafür, dass ein rotes Abzeichen noch als Warnung liest und
+     * nicht als Dekoration.
+     */
+    palette: {
+      canvas: '#0a0614',
+      surface: '#1f1634',
+      surfaceMuted: '#18102a',
+      surfaceDeep: '#140d24',
+      surfaceCard: '#1a1230',
+      surfaceConsole: '#0c0718',
+      ink: '#f5edff',
+      inkMuted: '#cdbaec',
+      inkSoft: '#a994d0',
+      inkFaint: '#9280bd',
+      inkDisabled: '#574a72',
+      placeholder: '#67588a',
+      brand: '#f45fd0',
+      brandBright: '#ff8ce4',
+      accent: '#4ee2ff',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      caution: '#fb923c',
+      danger: '#ff6b6b',
+      overlay: '#ffffff',
+      scrollbar: '#362a52',
+    },
+  },
+  {
+    id: 'kanzlei',
+    name: 'Kanzlei',
+    beschreibung: 'Anthrazit und Messing. Sagt wenig, und das in gutem Zwirn.',
+    farbschema: 'dark',
+    /*
+     * Der Gegenpol zu Neonnacht: neutrales Anthrazit ohne Farbstich, eine
+     * einzige gedeckte Akzentfarbe. Auch hier ist das Messing bewusst dunkler
+     * gehalten als Warnung und Hinweis – Messing und Gelb teilen den Farbton
+     * fast auf den Grad.
+     */
+    palette: {
+      canvas: '#0d0d0f',
+      surface: '#212125',
+      surfaceMuted: '#19191c',
+      surfaceDeep: '#161618',
+      surfaceCard: '#1c1c20',
+      surfaceConsole: '#0f0f11',
+      ink: '#f0f0f2',
+      inkMuted: '#c6c6cc',
+      inkSoft: '#a3a3ab',
+      inkFaint: '#8b8b93',
+      inkDisabled: '#55555c',
+      placeholder: '#66666e',
+      brand: '#a8831a',
+      brandBright: '#e0bf5a',
+      accent: '#8fb4d6',
+      success: '#5cc98f',
+      warning: '#f0d060',
+      caution: '#f09c62',
+      danger: '#eb7070',
+      overlay: '#ffffff',
+      scrollbar: '#33333a',
+    },
+  },
+  {
+    id: 'hyperraum',
+    name: 'Hyperraum',
+    beschreibung: 'Tiefes Marineblau, Azur und Eis – kalt, weit und sehr aufgeräumt.',
+    farbschema: 'dark',
+    /*
+     * Kühl wie der Standard, aber ohne dessen Violett: Die Marke steht im
+     * Azur (209°), der Grund ist deutlich blauer und tiefer. Damit bleiben die
+     * beiden kalten Themes auch nebeneinander auseinanderzuhalten.
+     */
+    palette: {
+      canvas: '#040814',
+      surface: '#131d33',
+      surfaceMuted: '#0e1628',
+      surfaceDeep: '#0b1222',
+      surfaceCard: '#101a2e',
+      surfaceConsole: '#050a16',
+      ink: '#e9f2ff',
+      inkMuted: '#b8cce6',
+      inkSoft: '#95accb',
+      inkFaint: '#7e94b4',
+      inkDisabled: '#46556e',
+      placeholder: '#566885',
+      brand: '#4aa8ff',
+      brandBright: '#8ac8ff',
+      accent: '#63f0e0',
+      success: '#4ade80',
+      warning: '#fbbf24',
+      caution: '#fb923c',
+      danger: '#ff6b6b',
+      overlay: '#ffffff',
+      scrollbar: '#2a3a55',
     },
   },
 ];
