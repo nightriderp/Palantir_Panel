@@ -118,6 +118,43 @@ const NEUTRAL: Record<SpruchSlot, Spruch> = {
  * wie es weitergeht, erklärt es der gewitzte auch.
  */
 const ABWEICHUNGEN: Record<string, Partial<Record<SpruchSlot, Spruch>>> = {
+  /*
+   * Tageslicht ist kein Universum, sondern dieselbe Oberfläche bei Tag – der
+   * Ton bleibt deshalb sachlich und nimmt nur das Bild auf, das im Namen
+   * steht. Wer hier landet, hat meist ein helles Zimmer, keinen Wunsch nach
+   * Theater.
+   */
+  tageslicht: {
+    anmeldung: {
+      titel: 'Guten Tag',
+      text: 'Melde dich an, um deine Gameserver zu verwalten.',
+    },
+    serverLeer: {
+      titel: 'Noch nichts angefangen',
+      text: 'Der Tag ist jung: Leg deinen ersten Gameserver an, das dauert nur ein paar Klicks.',
+    },
+    keinTreffer: {
+      titel: 'Nichts im Blick',
+      text: 'Kein Server passt zu dieser Auswahl. Ändere den Filter oder den Suchbegriff.',
+    },
+    sicherungenLeer: {
+      titel: 'Noch nichts abgelegt',
+      text: 'Sichere den Server jetzt oder warte auf den nächsten geplanten Lauf.',
+    },
+    meldungenLeer: {
+      titel: 'Ein ruhiger Tag',
+      text: 'Serverstatus, Backups und Ankündigungen laufen hier zusammen.',
+    },
+    aufgabenLeer: {
+      titel: 'Nichts im Kalender',
+      text: 'Lege zum Beispiel einen nächtlichen Neustart an oder einen Konsolenbefehl zu fester Uhrzeit.',
+    },
+    nichtGefunden: {
+      titel: 'Falsche Tür',
+      text: 'Der Link ist veraltet oder hat einen Tippfehler. Die Übersicht führt zurück zu deinen Servern.',
+    },
+  },
+
   schmiedefeuer: {
     anmeldung: {
       titel: 'Die Esse brennt noch',
@@ -404,6 +441,13 @@ const ABWEICHUNGEN: Record<string, Partial<Record<SpruchSlot, Spruch>>> = {
  * Kennt das Theme die Stelle nicht – oder ist die Kennung unbekannt –, kommt
  * der neutrale Text. Damit kann weder ein neues Theme noch ein von Hand
  * gesetztes Cookie einen leeren Kasten erzeugen.
+ *
+ * **Der Standard bekommt nie etwas anderes**, und das ist keine Lücke in
+ * {@link ABWEICHUNGEN}, sondern die Zeile darüber: Er ist der Zustand einer
+ * Instanz, die nichts ausgewählt hat, und die soll genau so klingen wie vor
+ * der ganzen Theme-Umstellung. Seine Sprüche **sind** die neutralen Texte.
+ * Ein Eintrag für ihn wäre entweder eine Kopie von {@link NEUTRAL} – zwei
+ * Stellen, die auseinanderlaufen können – oder das Ende dieser Zusage.
  */
 export function spruch(themeId: string, slot: SpruchSlot): Spruch {
   if (themeId === STANDARD_THEME_ID) return NEUTRAL[slot];
