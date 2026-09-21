@@ -198,10 +198,10 @@ describe('Einweisung – das Quiz, das nicht aufhört', () => {
     ersteSeiteRichtig();
     klick('Auswerten');
 
-    expect(screen.getByText(/Geschafft/)).toBeDefined();
+    expect(screen.getByText(/Drei Fragen, hatten wir gesagt/)).toBeDefined();
     expect(screen.getByText(/Seite 2 von/)).toBeDefined();
-    // Die Zahl steht im Enthüllungstext – „124 Stück, um genau zu sein".
-    expect(screen.getByText(`${QUIZ_FRAGEN.length} Stück`)).toBeDefined();
+    // Die Zahl ist die Pointe und steht hervorgehoben im Enthüllungstext.
+    expect(screen.getByText(`${QUIZ_FRAGEN.length} Fragen`)).toBeDefined();
   });
 
   it('lässt ab der Enthüllung jederzeit aufgeben – und wertet das Erreichte', () => {

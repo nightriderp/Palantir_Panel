@@ -215,23 +215,24 @@ export function Quiz({ antworten, onAntwort, onFertig }: QuizProps) {
  *
  * Steht nur auf Seite 2 – danach hat es jeder begriffen und die Zeile wäre nur
  * noch im Weg.
+ *
+ * Bewusst kurz und ohne Aufzählung der Themengebiete: Der Witz ist die Wendung
+ * („drei" war die Seitenzahl, nicht die Menge), und eine Liste dahinter nimmt
+ * ihr die Spitze – sie erklärt, was man gleich selbst sieht. Aus demselben
+ * Grund steht hier auch nichts mehr über den Ausstieg: Der Knopf „Ich gebe
+ * auf" steht zwei Zeilen tiefer in der Fußzeile und spricht für sich.
  */
 function Enthuellung({ gesamt }: { gesamt: number }) {
   return (
     <Panel variant="outline" className="flex items-start gap-3 motion-safe:animate-fade-up">
       <Icon name="warning" size={18} className="mt-0.5 shrink-0 text-caution" />
       <div>
-        <div className="text-md font-semibold text-ink">Geschafft! Also … fast.</div>
+        <div className="text-md font-semibold text-ink">Drei Fragen, hatten wir gesagt.</div>
         <p className="mt-1 text-base text-ink-muted">
-          Die drei Fragen zum Panel sind durch, und die waren der ernst gemeinte Teil. Beim
-          Zusammenstellen ist uns dann aufgefallen, dass noch ein paar weitere Fragen herumlagen.{' '}
-          <span className="font-semibold text-ink">{gesamt} Stück</span>, um genau zu sein, auf{' '}
-          {SEITEN_GESAMT} Seiten. Allgemeinbildung, unnützes Wissen, Mittelerde, Dragon Ball, Filme,
-          Serien, Anime, Spiele.
-        </p>
-        <p className="mt-2 text-base text-ink-soft">
-          Du darfst jederzeit aufhören – der Knopf dafür steht unten und ist ernst gemeint. Wie weit
-          du gekommen bist, steht am Ende auf der Urkunde.
+          Die drei sind durch – ernst gemeint, jede einzelne. Nicht ganz so ernst gemeint war das
+          Wort „drei“: Sie standen auf Seite 1 von {SEITEN_GESAMT}. Es warten{' '}
+          <span className="font-semibold text-ink">{gesamt} Fragen</span>, und mit Gameservern hat
+          ab hier keine einzige mehr zu tun.
         </p>
       </div>
     </Panel>
