@@ -283,6 +283,8 @@ importers:
 
   images/game/terraria: {}
 
+  images/game/tmodloader: {}
+
   images/game/valheim: {}
 
   images/game/vintagestory: {}

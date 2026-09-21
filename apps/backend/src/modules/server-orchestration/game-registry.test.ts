@@ -21,6 +21,7 @@ import {
   SDTD_GAME_TYPE,
   SONS_OF_THE_FOREST_GAME_TYPE,
   TERRARIA_GAME_TYPE,
+  TMODLOADER_GAME_TYPE,
   VRISING_GAME_TYPE,
   VALHEIM_GAME_TYPE,
   VINTAGE_STORY_GAME_TYPE,
@@ -1465,5 +1466,68 @@ describe('Spieltyp-Varianten unter einer gemeinsamen Kachel', () => {
 
     expect(dto.variantGroup).toBeNull();
     expect(dto.variantLabel).toBeNull();
+  });
+});
+
+/**
+ * tModLoader – zweite Ausgabe unter der Terraria-Kachel (Betreiber-Wunsch
+ * 21.09.2026).
+ */
+describe('tModLoader', () => {
+  it('zeigt auf die Version aus images/game/tmodloader/VERSION', () => {
+    // Wie bei Minecraft: Wer die Zahl erhöht, sieht hier rot, statt dass die
+    // Node stumm auf dem alten Image bleibt.
+    const version = readFileSync(
+      fileURLToPath(new URL('../../../../../images/game/tmodloader/VERSION', import.meta.url)),
+      'utf8',
+    ).trim();
+
+    expect(TMODLOADER_GAME_TYPE.dockerImage).toBe(
+      `ghcr.io/nightriderp/palantir-game-tmodloader:${version}`,
+    );
+  });
+
+  it('steht mit Terraria unter einer Kachel, aber nicht auf demselben Image', () => {
+    expect(TMODLOADER_GAME_TYPE.variantGroup).toBe('Terraria');
+    expect(TERRARIA_GAME_TYPE.variantGroup).toBe('Terraria');
+    expect(TMODLOADER_GAME_TYPE.variantLabel).toBe('tModLoader');
+    expect(TERRARIA_GAME_TYPE.variantLabel).toBe('Vanilla');
+
+    // Der Unterschied zu den Minecraft-Ausgaben: eigenes Programm, eigenes
+    // Image, eigene Laufzeit.
+    expect(TMODLOADER_GAME_TYPE.dockerImage).not.toBe(TERRARIA_GAME_TYPE.dockerImage);
+  });
+
+  it('erbt Ports, Konsole und Abfrage von Terraria – es sind dieselben Welten', () => {
+    expect(TMODLOADER_GAME_TYPE.ports).toEqual(TERRARIA_GAME_TYPE.ports);
+    expect(TMODLOADER_GAME_TYPE.console).toEqual(TERRARIA_GAME_TYPE.console);
+    expect(TMODLOADER_GAME_TYPE.query).toEqual(TERRARIA_GAME_TYPE.query);
+    expect(TMODLOADER_GAME_TYPE.configFields).toEqual(TERRARIA_GAME_TYPE.configFields);
+  });
+
+  it('schlägt mehr Speicher und eine längere Frist vor als Terraria', () => {
+    // Ein Modpack ist der Grund, warum jemand tModLoader nimmt, und Modpacks
+    // sind hungrig; der erste Start holt ausserdem 61 MiB.
+    expect(TMODLOADER_GAME_TYPE.resourceDefaults.ramMb).toBeGreaterThan(
+      TERRARIA_GAME_TYPE.resourceDefaults.ramMb,
+    );
+    expect(TMODLOADER_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThan(
+      TERRARIA_GAME_TYPE.startupTimeoutSeconds,
+    );
+  });
+
+  it('ist ab Ausbaustufe 3 auswaehlbar', () => {
+    expect(() =>
+      createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('tmodloader'),
+    ).toThrow();
+    expect(
+      createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('tmodloader').id,
+    ).toBe('tmodloader');
+  });
+
+  it('bietet die Wahl der Spielversion nicht an', () => {
+    // Die Version steckt im Image; einen Katalog beim Hersteller gibt es dafür
+    // nicht. Terraria macht es genauso.
+    expect(TMODLOADER_GAME_TYPE.supportsVersionChoice ?? false).toBe(false);
   });
 });

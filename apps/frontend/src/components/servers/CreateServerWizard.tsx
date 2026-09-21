@@ -144,16 +144,31 @@ function GameTile({
   const game = anzeige;
   const selected = gewaehlt !== null;
   /*
-   * Zweite Zeile der Kachel. Bei einem einzelnen Spiel steht dort wie bisher
-   * die Version des Images; bei einer Gruppe die Zahl der Varianten – und
-   * sobald eine gewaehlt ist, deren Name. Sonst saehe man der Kachel
-   * „Minecraft“ nicht an, ob Paper oder NeoForge dahintersteckt.
+   * Zweite Zeile der Kachel.
+   *
+   * **Die Version steht auf jeder Kachel**, auch auf einer Gruppe – das ist
+   * eine Zusage aus Fundpunkt 317, und der Ende-zu-Ende-Test hält sie fest
+   * („In der Auswahl trägt jede Kachel die angebotene Fassung"). Zwischen dem
+   * 20. und dem 21.09.2026 war sie auf Gruppenkacheln verschwunden: Dort stand
+   * nur die Zahl der Varianten. Aufgefallen ist es erst, als Terraria zur
+   * Gruppe wurde – bei Minecraft war es seit v1.85.0 still so (Fundpunkt 329).
+   *
+   * Davor steht, was die Kachel sonst nicht zeigen würde: die Zahl der
+   * Varianten, und sobald eine gewählt ist, deren Name. Sonst sähe man der
+   * Kachel „Minecraft" nicht an, ob Paper oder NeoForge dahintersteckt.
+   *
+   * Gezeigt wird die Version der Variante, die ein Klick wählen würde – also
+   * der gewählten oder der ersten. Bei einer Gruppe mit verschiedenen Images
+   * (Terraria und tModLoader) ist das keine Behauptung über die anderen,
+   * sondern genau die Angabe, die zum nächsten Klick gehört.
    */
-  const untertitel = gruppe
+  const version = formatImageVersion(game.imageVersion);
+  const vorne = gruppe
     ? gewaehlt === null
       ? `${String(choice.variants.length)} Varianten`
       : variantChoiceLabel(gewaehlt)
-    : formatImageVersion(game.imageVersion);
+    : null;
+  const untertitel = [vorne, version].filter((teil) => teil !== null).join(' · ');
 
   return (
     <button
@@ -218,7 +233,7 @@ function GameTile({
             liest, findet hier, was gerade angeboten wird. Bei einer Gruppe
             steht hier stattdessen, welche Varianten es gibt – ihre Version
             teilen sie sich ohnehin. */}
-        {untertitel === null ? null : <span className="text-xs text-ink-faint">{untertitel}</span>}
+        {untertitel === '' ? null : <span className="text-xs text-ink-faint">{untertitel}</span>}
       </span>
     </button>
   );
