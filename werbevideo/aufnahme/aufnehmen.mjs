@@ -454,8 +454,13 @@ const SZENEN = [
       await r.halten(2_000);
       await r.untertitelAus();
 
+      /*
+       * Über die Vorlesebeschriftung angesprochen, nicht über den Platzhalter:
+       * Der Platzhalter wechselt mit dem Zustand („Der Server läuft nicht.",
+       * „Terraria nimmt keine Befehle entgegen.") – die Beschriftung nicht.
+       */
       await r.tippe(
-        r.seite.getByPlaceholder('Befehl eingeben …'),
+        r.seite.getByLabel('Konsolenbefehl'),
         'say Wer die Kiste geleert hat, baut sie wieder auf',
       );
       await r.klicke('button:has-text("Senden")', { nach: 400 });
@@ -580,15 +585,23 @@ const SZENEN = [
       await r.untertitelAus();
 
       await r.klicke('button:has-text("Mitverwalter hinzufügen")', { nach: 900 });
-      await r.waehle(r.seite.getByLabel('Konto'), { label: MITVERWALTER.name }).catch(async () => {
-        // Fällt die Beschriftung anders aus, tut es der zweite Eintrag auch –
-        // der erste ist der Platzhalter „Konto wählen …".
-        await r.waehle(r.seite.getByLabel('Konto'), { index: 1 });
-      });
+      /*
+       * Der Eintrag heißt „Jonas (@jonas)", nicht „Jonas": Anzeigenamen sind
+       * frei wählbar und nicht eindeutig, deshalb steht der Anmeldename in der
+       * Klammer daneben (`MembersPanel.tsx`). Zur Sicherheit drei Anläufe –
+       * der letzte nimmt einfach den ersten echten Eintrag, denn Eintrag 0 ist
+       * der Platzhalter „Konto wählen …".
+       */
+      const dialog = r.seite.getByRole('dialog');
+      const konto = dialog.getByLabel('Konto');
+      await r
+        .waehle(konto, { label: `${MITVERWALTER.name} (@${MITVERWALTER.username})` })
+        .catch(() => r.waehle(konto, { label: MITVERWALTER.name }))
+        .catch(() => r.waehle(konto, { index: 1 }));
       await r.halten(600);
 
       await r.untertitelEin('Drei Stufen: zusehen, bedienen, verwalten.');
-      await r.waehle(r.seite.getByLabel('Stufe'), { label: 'Bedienen' }).catch(async () => {
+      await r.waehle(dialog.getByLabel('Stufe'), { label: 'Bedienen' }).catch(async () => {
         await r.halten(600);
       });
       await r.halten(1_400);
@@ -601,20 +614,31 @@ const SZENEN = [
       await r.untertitelAus();
       await r.zeigerAus();
 
-      // Und was der Server ganz ohne Menschen erledigt.
-      await r.klicke('[role="tab"]:has-text("Aufgaben")', { nach: 1_200 });
+      /*
+       * Und was der Server ganz ohne Menschen erledigt.
+       *
+       * Erst zurück nach oben: Die Zugriffsliste steht weit unten im Reiter
+       * „Einstellungen", und die Reiterleiste liegt von dort aus außerhalb des
+       * Bildes. Der Klick ging ins Leere, die Szene brach am fehlenden Knopf
+       * „Neue Aufgabe" ab.
+       */
+      await r.scrolleZu('[role="tab"]:has-text("Aufgaben")', { dauer: 700, abstand: 220 });
+      await r.klicke('[role="tab"]:has-text("Aufgaben")', { nach: 1_400 });
       await r.untertitelEin('Was regelmäßig passieren soll, macht der Server selbst.');
       await r.halten(1_600);
       await r.untertitelAus();
 
       await r.klicke('button:has-text("Neue Aufgabe")', { nach: 900 });
-      await r.tippe(r.seite.getByLabel('Name'), 'Nächtliche Sicherung');
+      // Die Felder im Dialog ansprechen, nicht auf der Seite: „Name" gibt es
+      // im Reiter dahinter auch.
+      const aufgabe = r.seite.getByRole('dialog');
+      await r.tippe(aufgabe.getByLabel('Name'), 'Nächtliche Sicherung');
       await r
-        .waehle(r.seite.getByLabel('Aktion'), { label: 'Sicherung erstellen' })
+        .waehle(aufgabe.getByLabel('Aktion'), { label: 'Sicherung erstellen' })
         .catch(async () => {
           await r.halten(400);
         });
-      await r.tippe(r.seite.getByLabel('Zeitplan (Cron)'), '0 4 * * *', { proZeichen: 90 });
+      await r.tippe(aufgabe.getByLabel('Zeitplan (Cron)'), '0 4 * * *', { proZeichen: 90 });
       await r.halten(600);
       await r.untertitelEin('Um vier Uhr nachts. Da ist ohnehin niemand wach.');
       await r.halten(1_800);
@@ -638,7 +662,13 @@ const SZENEN = [
      */
     name: '10-drumherum',
     async lauf(r) {
-      await r.gehe('/messages', { warteAuf: 'text=Nachrichten' });
+      /*
+       * Gewartet wird auf den **Untertitel** der Seite, nicht auf ihre
+       * Überschrift: „Nachrichten", „Arcade" und „Erfolge" stehen auf jeder
+       * Seite des Panels in der Seitenleiste. Ein Warten darauf wäre sofort
+       * erfüllt – auch auf der Seite davor.
+       */
+      await r.gehe('/messages', { warteAuf: 'text=Direktnachrichten und Server-Chats' });
       await r.aufblenden(600);
       await r.untertitelEin('Die Runde redet im Panel – kein zweiter Dienst nötig.');
       await r.kamera({ zoom: 1.2, dauer: 1_300 });
@@ -646,7 +676,7 @@ const SZENEN = [
       await r.untertitelAus();
       await r.kamera({ zoom: 1, dauer: 700 });
 
-      await r.gehe('/arcade', { warteAuf: 'text=Arcade' });
+      await r.gehe('/arcade', { warteAuf: 'text=Kleine Spiele für zwischendurch' });
       await r.blitz({ hoehe: 0.5 });
       await r.schlagwort('Der Server startet.|Du hast 40 Sekunden.', { stand: 1_300 });
 
@@ -670,7 +700,9 @@ const SZENEN = [
       await r.zeigerAus();
       await r.kamera({ zoom: 1, dauer: 700 });
 
-      await r.gehe('/erfolge', { warteAuf: 'text=Erfolge' });
+      await r.gehe('/erfolge', {
+        warteAuf: 'text=Abzeichen für das, was du im Panel ohnehin tust',
+      });
       await r.untertitelEin('Und ja: Es gibt Erfolge fürs Hosten.');
       await r.kamera({ zoom: 1.25, dauer: 1_300 });
       await r.halten(2_200);
@@ -703,12 +735,19 @@ const SZENEN = [
       await r.halten(1_600);
       await r.untertitelAus();
 
+      /*
+       * Angesprochen wird die **Kachel** der Auswahl, nicht irgendein Text mit
+       * diesem Wort: Auf dem Profil steht „Standard" auch anderswo, und ein
+       * Treffer daneben klickte ins Leere. Die Kacheln sind die Beschriftungen
+       * der Auswahlknöpfe – daran sind sie sicher zu erkennen.
+       */
+      const kachel = (name) =>
+        r.seite.locator('label:has(input[name="erscheinungsbild"])').filter({ hasText: name });
+
       for (const name of ['Schmiedefeuer', 'Neonnacht', 'Kanzlei', 'Hyperraum', 'Tageslicht']) {
-        await r
-          .klicke(r.seite.getByText(name, { exact: true }), { hin: 380, nach: 620 })
-          .catch(async () => {
-            await r.halten(500);
-          });
+        await r.klicke(kachel(name), { hin: 380, nach: 620 }).catch(async () => {
+          await r.halten(500);
+        });
       }
       await r.zeigerAus(260);
       await r.stoss({ staerke: 0.05 });
@@ -717,11 +756,9 @@ const SZENEN = [
       // Zurück auf Standard – die folgenden Szenen sollen aussehen wie alle
       // anderen. Ein Aufnahmelauf, der mitten in „Tageslicht" endet, färbt
       // sonst jeden späteren Clip um.
-      await r
-        .klicke(r.seite.getByText('Standard', { exact: true }), { hin: 420, nach: 900 })
-        .catch(async () => {
-          await r.halten(500);
-        });
+      await r.klicke(kachel('Standard'), { hin: 420, nach: 900 }).catch(async () => {
+        await r.halten(500);
+      });
       await r.zeigerAus();
       await r.untertitelEin('Die Farben ändern sich. Wo etwas steht, nicht.');
       await r.halten(1_900);

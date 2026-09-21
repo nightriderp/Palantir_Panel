@@ -140,32 +140,41 @@ const FASSUNGEN = {
 
   mix: {
     titel: 'Palantir – Mischung',
+    /*
+     * Die Beats aus `21-koennen` sind hier die Kapitelmarken: Jeder dauert
+     * zwei Takte (2,79 s), der erste beginnt bei 0,26 s. Ein Beat sagt, was
+     * gleich kommt – danach zeigt die Aufnahme, dass es stimmt.
+     */
     segmente: [
-      // Auftakt: der Motion-Vorspann, ohne Abblende ins erste echte Bild.
+      // Auftakt: der Motion-Vorspann.
       { clip: '20-auftakt', von: 0, bis: 12.5 },
 
       // Kapitel 1: anlegen und starten.
-      { clip: '21-koennen', von: 0, bis: 2.8 },
+      { clip: '21-koennen', von: 0, bis: 3.05 },
       { clip: '04-erstellen', von: 1.6, bis: 13.0, tempo: 2 },
       { clip: '04-erstellen', von: 26.0, bis: null },
-      { clip: '21-koennen', von: 2.8, bis: 5.6 },
+      { clip: '21-koennen', von: 3.05, bis: 5.84 },
       { clip: '05-starten', von: 0.6, bis: 9.0 },
       { clip: '05-starten', von: 15.0, bis: 22.0 },
       { luecke: 7 },
 
       // Kapitel 2: im Betrieb.
-      { clip: '21-koennen', von: 5.6, bis: 11.2 },
+      { clip: '21-koennen', von: 5.84, bis: 11.42 },
       { clip: '06-konsole', von: 6.5, bis: 14.0 },
       { clip: '07-monitoring', von: 1.0, bis: 6.5 },
-      { clip: '21-koennen', von: 11.2, bis: 14.0 },
+      { clip: '21-koennen', von: 11.42, bis: 14.21 },
       { clip: '08-backups', von: 3.0, bis: 9.0 },
 
-      // Kapitel 3: teilen, Telefon, Drumherum.
+      // Kapitel 3: teilen und am Telefon.
+      { clip: '21-koennen', von: 14.21, bis: 17.0 },
       { clip: '09-teilen', von: 5.0, bis: 11.0 },
-      { clip: '21-koennen', von: 14.0, bis: 16.8 },
+      { clip: '21-koennen', von: 17.0, bis: 19.79 },
       { handy: 7.0, von: 6.5 },
-      { clip: '21-koennen', von: 19.6, bis: 25.2 },
+
+      // Kapitel 4: das Drumherum und die Themes.
+      { clip: '21-koennen', von: 19.79, bis: 28.16 },
       { clip: '10-drumherum', von: 6.0, bis: 13.0 },
+      { clip: '21-koennen', von: 28.16, bis: 30.95 },
       { clip: '11-themes', von: 4.0, bis: 11.0 },
 
       // Schluss: der helle Teil und der Abbinder – beides aus dem Motion-Film.

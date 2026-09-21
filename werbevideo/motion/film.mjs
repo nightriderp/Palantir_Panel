@@ -99,6 +99,12 @@ const HELD = 6;
 /**
  * Was das Panel kann – ein Beat je Sache.
  *
+ * Jeder Beat dauert genau zwei Takte (2,79 s), der erste beginnt nach der
+ * Aufblende bei 0,26 s. Daraus ergeben sich die Ein- und Ausstiegspunkte, mit
+ * denen die Mischfassung einzelne Beats als Kapitelmarken herausschneidet
+ * (`schnitt/schneiden.mjs`) – wer hier einen Beat einfügt, verschiebt alle
+ * folgenden um 2,79 s und muss die Mischliste nachziehen.
+ *
  * `kopf` steht groß, `zeile` klein darunter. Der Ton ist der abgemachte:
  * frech im Zwischentext, nüchtern in der Sache. Kein Beat behauptet etwas,
  * das die Aufnahmefassung nicht auch wirklich zeigt.
@@ -156,6 +162,14 @@ const BEATS = [
     zeile: 'Auf Knopfdruck oder nach Plan. Auch um drei Uhr nachts.',
   },
   {
+    bild: 'serverseite',
+    breite: 900,
+    y: 700,
+    titelY: 250,
+    kopf: 'Teilen.',
+    zeile: 'Ein Freund darf mithelfen – ohne dein Passwort.',
+  },
+  {
     bild: 'handy-uebersicht',
     breite: 310,
     y: 705,
@@ -186,6 +200,14 @@ const BEATS = [
     titelY: 250,
     kopf: 'Erfolge.',
     zeile: 'Ja, fürs Hosten. Nein, uns ist das nicht peinlich.',
+  },
+  {
+    bild: 'profil',
+    breite: 900,
+    y: 700,
+    titelY: 250,
+    kopf: 'Sechs Anstriche.',
+    zeile: 'Die Farben ändern sich. Wo etwas steht, nicht.',
   },
 ];
 
@@ -320,9 +342,13 @@ const ABSCHNITTE = [
     name: '22-ohne',
     async lauf(k) {
       buehneStellen(k);
-      // Im Hellen stören die dunklen Kacheln; sie treten zurück.
+      /*
+       * Im Hellen treten die Kacheln weit zurück. Sie sind hier Textur, nicht
+       * Inhalt – und ein dunkles Bildschirmfoto auf hellem Grund liest sich
+       * bei zu wenig Unschärfe als grauer Klotz statt als Schemen.
+       */
       for (let i = 0; i < HINTERGRUND.length; i += 1) {
-        k.kachel(i, { deckkraft: HINTERGRUND[i].deckkraft * 0.45, unschaerfe: 8 });
+        k.kachel(i, { deckkraft: HINTERGRUND[i].deckkraft * 0.3, unschaerfe: 13 });
       }
       k.zustand.vignette = 0.12;
 

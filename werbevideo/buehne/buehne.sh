@@ -49,6 +49,17 @@ warte_auf() {
 hosts_sichern() {
   local domain="${PALANTIR_DOMAIN:-palantir.example}"
   local namen=("$domain" "router.$domain" "smp.$domain" "creative.$domain" "survival.$domain" "valheim.$domain" "terraria.$domain")
+
+  # Umlautdomains haben zwei Schreibweisen: die angezeigte (müf-it.de) und die
+  # im DNS übertragene (xn--mf-it-kva.de). Welche von beiden nachgefragt wird,
+  # entscheidet das fragende Programm - der Health-Check des Backends nimmt
+  # die eine, ein Spiel-Client die andere. Beide gehören deshalb in die Datei.
+  local ascii
+  ascii="$(node -e 'process.stdout.write(require("node:url").domainToASCII(process.argv[1]))' "$domain" 2>/dev/null || true)"
+  if [ -n "$ascii" ] && [ "$ascii" != "$domain" ]; then
+    namen+=("$ascii" "router.$ascii" "smp.$ascii" "creative.$ascii" "survival.$ascii" "valheim.$ascii" "terraria.$ascii")
+  fi
+
   local fehlend=()
   for name in "${namen[@]}"; do
     grep -qE "^[0-9.]+[[:space:]]+.*\b${name//./\.}\b" /etc/hosts || fehlend+=("$name")
@@ -77,16 +88,7 @@ case "${1:-start}" in
       starte frontend "$wurzel/apps/frontend" env NODE_ENV=production node "$next_cli" start -p 3000 -H 127.0.0.1
     else
       echo "Kein Produktionsbau vorhanden – starte den Entwicklungsbetrieb. Für Aufnahmen: $0 bauen"
-      # Für die Aufnahme läuft das Frontend als **Produktionsbau**: Der
-    # Entwicklungsbetrieb blendet ein Abzeichen ein, hält eine eigene
-    # Aktualisierungsverbindung offen und baut jede Seite beim ersten Aufruf
-    # neu - im Video sieht man das an hängenden Übergängen.
-    if [ -f "$wurzel/apps/frontend/.next/BUILD_ID" ]; then
-      starte frontend "$wurzel/apps/frontend" env NODE_ENV=production node "$next_cli" start -p 3000 -H 127.0.0.1
-    else
-      echo "Kein Produktionsbau vorhanden - starte den Entwicklungsbetrieb. Für Aufnahmen: $0 bauen"
       starte frontend "$wurzel/apps/frontend" node "$next_cli" dev -p 3000 -H 127.0.0.1
-    fi
     fi
     warte_auf "http://127.0.0.1:3000/login" Frontend 90
     ;;
@@ -103,11 +105,6 @@ case "${1:-start}" in
     # Was jetzt noch auf einem der Ports sitzt, gehört zu einer früheren
     # Aufnahme und wäre beim nächsten Start genau der Doppelgänger von oben.
     for port in "${PORTS[@]}"; do fuser -k "$port/tcp" 2>/dev/null || true; done
-    ;;
-  bauen)
-    # `NODE_ENV` darf hier nicht auf `development` stehen: Next.js baut sonst
-    # gegen die Entwicklungsfassung von React und bricht beim Vorrendern ab.
-    ( cd "$wurzel/apps/frontend" && env -u NODE_ENV node "$next_cli" build )
     ;;
   bauen)
     # `NODE_ENV` darf hier nicht auf `development` stehen: Next.js baut sonst

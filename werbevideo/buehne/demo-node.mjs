@@ -23,7 +23,7 @@ import http from 'node:http';
 import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { domainToASCII, fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 
 const BACKEND_WS = process.env.DEMO_BACKEND_WS ?? 'ws://127.0.0.1:4000/agent';
@@ -69,7 +69,9 @@ function ablageLesen() {
     for (const [id, eintrag] of Object.entries(inhalt.spieler ?? {})) {
       spieler.set(id, eintrag);
       if (eintrag.host) {
-        bespielt.set(eintrag.host, {
+        // Auch hier über die DNS-Form: Eine Ablage von früher kann die
+        // angezeigte Schreibweise enthalten.
+        bespielt.set(hostSchluessel(eintrag.host), {
           serverId: id,
           motd: eintrag.motd ?? 'Palantir',
           max: 20,
@@ -178,6 +180,26 @@ function varIntLesen(puffer, versatz) {
 const bespielt = new Map();
 
 /**
+ * Hostnamen auf eine Schreibweise bringen.
+ *
+ * Eine Domain mit Umlaut (`smp.müf-it.de`) hat zwei gültige Formen: die
+ * angezeigte und die im DNS übertragene (`smp.xn--mf-it-kva.de`). Das Panel
+ * zeigt die erste, ein Minecraft-Client schickt im Handshake die zweite –
+ * unter zwei verschiedenen Schlüsseln fände die Abfrage den Server nicht und
+ * bekäme die Standardantwort statt der MOTD dieses Servers.
+ *
+ * Gerechnet wird deshalb immer mit der DNS-Form. Lässt sich ein Name nicht
+ * umwandeln (leer, offensichtlicher Unsinn), bleibt er, wie er ist – nur
+ * kleingeschrieben.
+ */
+function hostSchluessel(name) {
+  const roh = (name ?? '').trim().toLowerCase();
+  if (roh === '') return '';
+  const ascii = domainToASCII(roh);
+  return ascii === '' ? roh : ascii;
+}
+
+/**
  * Lauscht auf einem Spielport und beantwortet die Serverliste-Abfrage.
  *
  * `gamedig` im Backend fragt genau so: Handshake (Protokollfassung, Adresse,
@@ -221,7 +243,7 @@ function spielportOeffnen(port) {
 
         // Status-Anfrage (leeres Paket 0): antworten.
         if (kennung.wert === 0) {
-          const runde = bespielt.get((adresse ?? '').toLowerCase()) ?? null;
+          const runde = bespielt.get(hostSchluessel(adresse)) ?? null;
           const antwort = {
             version: { name: runde?.version ?? 'Paper 1.21.4', protocol: 769 },
             players: {
@@ -774,7 +796,7 @@ const steuerung = http.createServer((anfrage, antwort) => {
   if (adresse.pathname === '/spieler') {
     const serverId = adresse.searchParams.get('server');
     const namen = (adresse.searchParams.get('namen') ?? '').split(',').filter((n) => n !== '');
-    const host = (adresse.searchParams.get('host') ?? '').toLowerCase();
+    const host = hostSchluessel(adresse.searchParams.get('host'));
     const motd = adresse.searchParams.get('motd') ?? 'Palantir';
     spieler.set(serverId, { namen, host, motd });
     if (host !== '') {

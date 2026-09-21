@@ -83,17 +83,31 @@ lokal – dieselbe Regel wie für die zentrale `.env` im Repo-Root.
 
 Die Adressen der Demo-Server müssen auf den Aufnahmerechner zeigen; unter Linux
 genügt `/etc/hosts`. Die Namen folgen `PALANTIR_DOMAIN` aus `umgebung.sh` – mit
-`nightriderp.org` also:
+`müf-it.de` also:
 
 ```
-127.0.0.1 nightriderp.org router.nightriderp.org
-127.0.0.1 smp.nightriderp.org creative.nightriderp.org survival.nightriderp.org
-127.0.0.1 valheim.nightriderp.org terraria.nightriderp.org
+127.0.0.1 müf-it.de router.müf-it.de
+127.0.0.1 smp.müf-it.de creative.müf-it.de survival.müf-it.de
+127.0.0.1 valheim.müf-it.de terraria.müf-it.de
+127.0.0.1 xn--mf-it-kva.de router.xn--mf-it-kva.de
+127.0.0.1 smp.xn--mf-it-kva.de creative.xn--mf-it-kva.de survival.xn--mf-it-kva.de
+127.0.0.1 valheim.xn--mf-it-kva.de terraria.xn--mf-it-kva.de
 ```
+
+`./buehne/buehne.sh start` legt beide Blöcke bei jedem Start selbst an, falls
+sie fehlen.
+
+**Warum zweimal.** Eine Domain mit Umlaut hat zwei gültige Schreibweisen: die
+angezeigte (`müf-it.de`) und die im DNS übertragene (`xn--mf-it-kva.de`).
+Welche davon nachgefragt wird, entscheidet das fragende Programm – der
+Health-Check des Backends nimmt die eine, ein Spiel-Client die andere. Ein
+Eintrag in `/etc/hosts` wird buchstäblich verglichen und deckt deshalb nur
+genau seine Form ab. Aus demselben Grund rechnet die Demo-Node ihre
+Hostnamen-Zuordnung intern immer in die DNS-Form um; sonst beantwortete sie die
+Abfrage eines Clients mit der Standard-MOTD statt mit der des Servers.
 
 Die Einträge gelten nur auf dem Aufnahmerechner; an der echten DNS-Zone ändert
-sich nichts. Der Health-Check des Backends fragt die Server über genau diese
-Namen ab – ohne die Zeilen liefe die Abfrage gegen die echte Adresse.
+sich nichts.
 
 ## Von null zum fertigen Video
 
@@ -168,11 +182,11 @@ selben Bild nicht zu sehen ist.
 
 1. **Die Domain im Bild.** `PALANTIR_DOMAIN` steht im Video an jedem Server.
    In der Vorlage steht der Platzhalter `palantir.example`; für die
-   ausgelieferten Fassungen ist `nightriderp.org` gesetzt. Beim Wechsel gehören
-   drei Schritte zusammen: Wert in `umgebung.sh`, `/etc/hosts` anpassen und
-   **das Frontend neu bauen** (`./buehne/buehne.sh bauen`) – `NEXT_PUBLIC_BASE_DOMAIN`
-   steckt fest im Bau. Danach neu aufnehmen; die Adresse ist in fast jeder
-   Szene zu sehen.
+   ausgelieferten Fassungen ist `müf-it.de` gesetzt. Beim Wechsel gehören drei
+   Schritte zusammen: Wert in `umgebung.sh` (beide Variablen!), `/etc/hosts`
+   anpassen und **das Frontend neu bauen** (`./buehne/buehne.sh bauen`) –
+   `NEXT_PUBLIC_BASE_DOMAIN` steckt fest im Bau. Danach neu aufnehmen; die
+   Adresse ist in fast jeder Szene zu sehen.
 2. **Euer Spielmaterial.** Siehe `material/README.md`. Ohne es steht an der
    Stelle eine Tafel.
 
