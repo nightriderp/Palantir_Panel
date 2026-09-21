@@ -5,7 +5,9 @@
   "description": "Werkzeug für das Vorstellungsvideo: Demo-Bühne, Aufnahme, Schnitt. Kein Teil der Anwendung – bewusst außerhalb der pnpm-Workspaces, damit es weder gebaut noch in der CI geprüft wird.",
   "scripts": {
     "buehne": "./buehne/buehne.sh",
+    "bilder": "node motion/bilder.mjs",
     "aufnehmen": "node aufnahme/aufnehmen.mjs",
+    "film": "node motion/film.mjs",
     "schneiden": "node schnitt/schneiden.mjs"
   },
   "dependencies": {

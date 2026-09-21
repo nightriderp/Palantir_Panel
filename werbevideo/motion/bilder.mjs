@@ -199,6 +199,24 @@ async function serverAdresse(seite) {
   return antwort;
 }
 
+/**
+ * Die Marke aus dem Repo neben die Bilder legen.
+ *
+ * Der Abbinder des Films zeigt `apps/frontend/public/logo.png` – dieselbe
+ * Datei, die auch das Panel ausliefert, nicht eine nachgezeichnete Kopie. Die
+ * Bühne lädt ihre Bilder über einen `file:`-Pfad aus diesem Ordner; die Datei
+ * muss also hier liegen. Kopiert statt verknüpft, damit der Ordner für sich
+ * vollständig ist.
+ */
+function marke() {
+  const quelle = path.resolve(HIER, '..', '..', 'apps', 'frontend', 'public', 'logo.png');
+  if (!fs.existsSync(quelle)) {
+    console.warn(`Marke nicht gefunden: ${quelle} – der Abbinder bleibt leer.`);
+    return;
+  }
+  fs.copyFileSync(quelle, path.join(ZIEL, 'logo.png'));
+}
+
 async function main() {
   const gewuenscht = process.argv.slice(2);
   const liste =
@@ -209,6 +227,8 @@ async function main() {
   }
 
   fs.mkdirSync(ZIEL, { recursive: true });
+  marke();
+
   const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
     args: ['--hide-scrollbars', '--force-color-profile=srgb', '--font-render-hinting=none'],

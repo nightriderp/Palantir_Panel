@@ -93,6 +93,8 @@ export class Regie {
     this.zustand = {
       kamera: { zoom: 1, x: this.breite / 2, y: this.hoehe / 2 },
       blende: 1,
+      blitz: null,
+      schlagwort: null,
       titel: null,
       untertitel: null,
       zeiger: null,
@@ -524,6 +526,112 @@ export class Regie {
       this.zustand.markierung = { ...markierung, deckkraft: 1 - t };
     });
     this.zustand.markierung = null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Effekte
+  // -------------------------------------------------------------------------
+
+  /**
+   * Kurzer Stoß nach vorn und zurück.
+   *
+   * Der Klick bekommt damit Gewicht, ohne dass der Bildausschnitt wandert:
+   * Die Kamera geht ein Stück heran und sofort wieder auf ihren Stand zurück.
+   */
+  async stoss({ staerke = 0.045, hin = 110, zurueck = 190 } = {}) {
+    const von = { ...this.zustand.kamera };
+    const ziel = this.#einfangen({ ...von, zoom: von.zoom * (1 + staerke) });
+    await this.#ueber(
+      hin,
+      (t) => {
+        this.zustand.kamera = {
+          zoom: mische(von.zoom, ziel.zoom, t),
+          x: mische(von.x, ziel.x, t),
+          y: mische(von.y, ziel.y, t),
+        };
+      },
+      auslaufend,
+    );
+    await this.#ueber(zurueck, (t) => {
+      this.zustand.kamera = {
+        zoom: mische(ziel.zoom, von.zoom, t),
+        x: mische(ziel.x, von.x, t),
+        y: mische(ziel.y, von.y, t),
+      };
+    });
+    this.zustand.kamera = von;
+  }
+
+  /**
+   * Wackeln – für den Moment, in dem etwas anspringt.
+   *
+   * Die Auslenkung folgt zwei überlagerten Schwingungen statt dem Zufall:
+   * So sieht jede Aufnahme gleich aus, und das Bild zittert, statt zu zucken.
+   */
+  async wackeln({ dauer = 420, staerke = 7 } = {}) {
+    const von = { ...this.zustand.kamera };
+    await this.#ueber(
+      dauer,
+      (_t, roh) => {
+        const abklang = 1 - roh;
+        const phase = roh * dauer;
+        this.zustand.kamera = {
+          zoom: von.zoom,
+          x: von.x + Math.sin(phase * 0.09) * staerke * abklang,
+          y: von.y + Math.sin(phase * 0.13 + 1.1) * staerke * 0.7 * abklang,
+        };
+      },
+      linear,
+    );
+    this.zustand.kamera = von;
+  }
+
+  /** Ein heller Schlag über das ganze Bild – der Übergang zwischen zwei Teilen. */
+  async blitz({ farbe = '#ffffff', hoehe = 0.85, ein = 70, aus = 260 } = {}) {
+    await this.#ueber(
+      ein,
+      (t) => {
+        this.zustand.blitz = { farbe, deckkraft: t * hoehe };
+      },
+      linear,
+    );
+    await this.#ueber(aus, (t) => {
+      this.zustand.blitz = { farbe, deckkraft: (1 - t) * hoehe };
+    });
+    this.zustand.blitz = null;
+  }
+
+  /**
+   * Schlagwort: ein großes Wort mitten ins Bild.
+   *
+   * Ein `|` im Text trennt ab, was im Farbverlauf stehen soll –
+   * „Ein Klick.|Mehr nicht." setzt den zweiten Teil farbig.
+   */
+  async schlagwort(text, { ein = 260, stand = 1_100, aus = 240, groesse = 104, y = 380 } = {}) {
+    await this.#ueber(
+      ein,
+      (t) => {
+        this.zustand.schlagwort = {
+          text,
+          groesse,
+          y: y - (1 - t) * 14,
+          skala: mische(1.06, 1, t),
+          deckkraft: t,
+        };
+      },
+      auslaufend,
+    );
+    await this.halten(stand);
+    await this.#ueber(aus, (t) => {
+      this.zustand.schlagwort = {
+        text,
+        groesse,
+        y,
+        skala: mische(1, 1.03, t),
+        deckkraft: 1 - t,
+      };
+    });
+    this.zustand.schlagwort = null;
   }
 
   // -------------------------------------------------------------------------

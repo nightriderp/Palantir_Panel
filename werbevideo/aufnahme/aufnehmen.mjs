@@ -1,5 +1,5 @@
 /**
- * Die Szenen des Videos.
+ * Die Szenen der Aufnahmefassung – die erste der drei Fassungen.
  *
  * Jede Szene ist ein eigener Clip und für sich wiederholbar:
  *
@@ -8,8 +8,21 @@
  *
  * Gezeigt wird ausschließlich, was das Panel wirklich tut. Wo eine Szene
  * einen bestimmten Ausgangszustand braucht (ein Server muss aus sein, ein
- * Konto darf noch nicht freigeschaltet sein), stellt sie ihn **vor** der
+ * Mitverwalter darf noch nicht eingetragen sein), stellt sie ihn **vor** der
  * Aufnahme über die API her – nicht während.
+ *
+ * ---
+ *
+ * **Gefilmt wird ein Konto mit der Rolle „Nutzer".** Kein Owner, kein Admin.
+ * Die Administrationsseiten (Registrierungen freigeben, Rollen, Audit-Log,
+ * Node-Verwaltung) kommen deshalb nirgends vor: Sie sieht außer dem Betreiber
+ * nie jemand, und ein Werbevideo, das mit Owner-Rechten gedreht ist, zeigt
+ * eine Oberfläche, die es für die Zuschauer gar nicht gibt.
+ *
+ * **Der Ton.** Frech in den Zwischentexten, nüchtern in der Sache. Die Regel
+ * ist dieselbe wie bei den Theme-Sprüchen des Panels (`lib/theme/sprueche.ts`):
+ * Ein Scherz steht nur dort, wo ein Missverständnis nichts kostet. Kein
+ * Untertitel behauptet etwas, das im selben Bild nicht zu sehen ist.
  */
 
 import ffmpeg from 'ffmpeg-static';
@@ -21,6 +34,12 @@ const KONTO = { name: 'mika', passwort: 'Palantir-Demo-2026!' };
 
 /** Der Server, den das Video anlegt und startet. */
 const NEUER = { name: 'Survival 2026', adresse: 'survival' };
+
+/** Der Server, an dem Konsole, Messwerte und Sicherungen gezeigt werden. */
+const STAMM = 'Freundeskreis SMP';
+
+/** Wer in der Szene „Teilen" Zugriff bekommt. */
+const MITVERWALTER = { username: 'jonas', name: 'Jonas' };
 
 // ---------------------------------------------------------------------------
 // Bühnenhilfe: Zustand herstellen, bevor die Kamera läuft
@@ -34,6 +53,8 @@ async function steuere(pfad) {
     console.warn('Demo-Node antwortet nicht – läuft sie?');
   });
 }
+
+const warte = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class Buehne {
   static async oeffnen() {
@@ -52,6 +73,17 @@ class Buehne {
     return (await this.server()).find((s) => s.name === name) ?? null;
   }
 
+  /** Wie {@link finde}, bricht aber ab, statt `null` weiterzureichen. */
+  async brauche(name) {
+    const server = await this.finde(name);
+    if (server === null) {
+      throw new Error(
+        `Server „${name}" fehlt. Die Bühne ist nicht aufgebaut: node buehne/daten.mjs`,
+      );
+    }
+    return server;
+  }
+
   /** Server samt Adresse loswerden – der Aufnahmelauf soll bei null anfangen. */
   async entferne(name) {
     const server = await this.finde(name);
@@ -63,7 +95,7 @@ class Buehne {
     await this.client.ruf('DELETE', `/api/servers/${server.id}`).catch(() => {});
     for (let i = 0; i < 30; i += 1) {
       if ((await this.finde(name)) === null) return;
-      await new Promise((r) => setTimeout(r, 1_000));
+      await warte(1_000);
     }
   }
 
@@ -72,7 +104,7 @@ class Buehne {
     while (Date.now() < ende) {
       const stand = await this.client.ruf('GET', `/api/servers/${id}`);
       if (zustaende.includes(stand.status)) return stand;
-      await new Promise((r) => setTimeout(r, 1_000));
+      await warte(1_000);
     }
     throw new Error(`Server ${id} erreichte ${zustaende.join('/')} nicht rechtzeitig.`);
   }
@@ -81,12 +113,21 @@ class Buehne {
   async bereitZumStarten() {
     let server = await this.finde(NEUER.name);
     if (server === null) {
-      const nodes = await this.client.ruf('GET', '/admin/nodes');
+      /*
+       * Die Nutzersicht auf die Nodes, nicht `/admin/nodes`: Das gefilmte
+       * Konto hat die Rolle „Nutzer", und genau diesen Pfad ruft auch der
+       * Assistent im Panel auf (`fetchHostNodes`). Bewusst ohne `/api`.
+       */
+      const nodes = await this.client.ruf('GET', '/nodes/available').catch(() => null);
+      const hostId = (nodes?.items ?? nodes ?? [])[0]?.id;
+      if (hostId === undefined) {
+        throw new Error('Keine Node sichtbar – läuft das Backend mit aufgebauter Bühne?');
+      }
       server = await this.client.ruf('POST', '/api/servers', {
         gameType: 'minecraft-paper',
         name: NEUER.name,
         subdomain: NEUER.adresse,
-        hostId: nodes[0].id,
+        hostId,
         resourceLimits: { ramMb: 4096 },
         config: { eula: true, maxPlayers: 20, motd: 'Survival 2026' },
         startupParameters: '',
@@ -103,44 +144,38 @@ class Buehne {
   }
 
   /**
-   * Sorgt dafür, dass jemand auf Freischaltung wartet.
+   * Den Mitverwalter wieder austragen, damit die Szene ihn eintragen kann.
    *
-   * Die Admin-Szene schaltet ein Konto frei – danach ist es freigeschaltet,
-   * und beim nächsten Lauf stünde die Seite leer da. Rückgängig machen lässt
-   * sich eine Freigabe nicht (und soll es auch nicht), also meldet sich für
-   * den nächsten Lauf die nächste Person aus der Warteliste an.
+   * Beim zweiten Lauf stünde er sonst schon in der Liste, die Auswahl „Konto"
+   * wäre leer und die Szene klickte ins Nichts. Rückgängig gemacht wird das
+   * über denselben Weg, den die Oberfläche nimmt – nicht in der Datenbank.
    */
-  async offeneAnfrage() {
-    const offen = await this.client.ruf('GET', '/admin/requests?status=pending');
-    const wartend = (offen.items ?? offen)[0];
-    if (wartend) return { name: wartend.displayName ?? wartend.username };
-
-    const bekannt = new Set();
-    for (const stand of ['approved', 'pending', 'blocked']) {
-      const antwort = await this.client
-        .ruf('GET', `/admin/requests?status=${stand}`)
-        .catch(() => []);
-      for (const eintrag of antwort.items ?? antwort) bekannt.add(eintrag.username);
+  async ohneMitverwalter(serverId) {
+    const liste = await this.client.ruf('GET', `/api/servers/${serverId}/members`).catch(() => []);
+    for (const eintrag of liste.items ?? liste) {
+      const wer = eintrag.username ?? eintrag.user?.username;
+      if (wer !== MITVERWALTER.username) continue;
+      const id = eintrag.userId ?? eintrag.user?.id ?? eintrag.id;
+      await this.client.ruf('DELETE', `/api/servers/${serverId}/members/${id}`).catch(() => {});
     }
+  }
 
-    const warteliste = [
-      { username: 'nina', name: 'Nina' },
-      { username: 'theo', name: 'Theo' },
-      { username: 'pia', name: 'Pia' },
-      { username: 'ben', name: 'Ben' },
-      { username: 'juli', name: 'Juli' },
-    ];
-    const naechste = warteliste.find((p) => !bekannt.has(p.username));
-    if (!naechste) {
-      throw new Error(
-        'Niemand wartet mehr auf Freischaltung und die Warteliste ist aufgebraucht. ' +
-          'Bühne neu aufsetzen: werbevideo/buehne/zuruecksetzen.sh',
-      );
+  /**
+   * Geplante Aufgaben abräumen.
+   *
+   * Dieselbe Überlegung wie oben: Die Szene legt eine Aufgabe an, und eine
+   * Liste, in der sie schon dreimal steht, erzählt etwas anderes als „so legt
+   * man eine an".
+   */
+  async ohneAufgaben(serverId) {
+    const liste = await this.client
+      .ruf('GET', `/api/servers/${serverId}/schedules`)
+      .catch(() => []);
+    for (const aufgabe of liste.items ?? liste) {
+      await this.client
+        .ruf('DELETE', `/api/servers/${serverId}/schedules/${aufgabe.id}`)
+        .catch(() => {});
     }
-
-    const gast = new PanelClient(API);
-    await gast.registrieren(naechste.username, 'Palantir-Demo-2026!', naechste.name);
-    return { name: naechste.name };
   }
 }
 
@@ -154,7 +189,7 @@ const SZENEN = [
     name: '01-vorspann',
     abgemeldet: true,
     async lauf(r) {
-      await r.gehe('/login', { warteAuf: 'text=Steuere deine Server.' });
+      await r.gehe('/login', { warteAuf: 'text=Palantir' });
       // Bewusst ohne Ziel: eine mittige Rückfahrt. Auf die Schlagzeile am
       // linken Rand gerichtet, schiebt die Randbegrenzung sie aus dem Bild.
       await r.kameraSetzen({ zoom: 1.18 });
@@ -165,11 +200,7 @@ const SZENEN = [
       await r.titelkarte(
         'Palantir',
         'Gameserver für den Freundeskreis – auf eurem eigenen Rechner.',
-        {
-          ein: 900,
-          stand: 2_600,
-          aus: 700,
-        },
+        { ein: 900, stand: 2_600, aus: 700 },
       );
       await r.halten(1_800);
       await r.abblenden(600);
@@ -181,7 +212,7 @@ const SZENEN = [
     name: '02-anmelden',
     abgemeldet: true,
     async lauf(r) {
-      await r.gehe('/login', { warteAuf: 'text=Willkommen zurück' });
+      await r.gehe('/login', { warteAuf: 'form' });
       await r.aufblenden(600);
       await r.kamera({ auf: 'form', zoom: 1.35, dauer: 1_200 });
       await r.untertitelEin('Anmelden – mehr Einrichtung braucht die Runde nicht.');
@@ -203,7 +234,9 @@ const SZENEN = [
       await r.klicke('button:has-text("Anmelden")', { nach: 0 });
       await r.kameraFahrtStarten({ zoom: 1, dauer: 1_400 });
       await r.zeigerAus(400);
-      await r.halten(2_600);
+      await r.halten(2_400);
+      await r.stoss({ staerke: 0.05 });
+      await r.halten(700);
       await r.abblenden(500);
     },
   },
@@ -212,13 +245,12 @@ const SZENEN = [
   {
     name: '03-uebersicht',
     async lauf(r) {
-      await r.gehe('/servers', { warteAuf: 'text=Freundeskreis SMP' });
+      await r.gehe('/servers', { warteAuf: `text=${STAMM}` });
       await r.aufblenden(600);
-      await r.untertitelEin('Alle Server auf einer Seite.');
-      await r.halten(1_400);
-      await r.untertitelAus();
+      await r.schlagwort('Vier Server.|Eine Seite.', { stand: 1_100 });
+      await r.halten(400);
 
-      await r.kamera({ auf: 'text=Freundeskreis SMP', zoom: 1.5, dauer: 1_500 });
+      await r.kamera({ auf: `text=${STAMM}`, zoom: 1.5, dauer: 1_500 });
       await r.untertitelEin('Last, Ping und Spielerzahl kommen live vom Homeserver.');
       await r.halten(2_200);
       await r.untertitelAus();
@@ -281,8 +313,10 @@ const SZENEN = [
       await r.halten(1_600);
       await r.untertitelAus();
       await r.klicke('button:has-text("Server erstellen")', { nach: 0 });
-      await r.halten(3_500);
+      await r.halten(2_600);
       await r.zeigerAus();
+      await r.stoss({ staerke: 0.055 });
+      await r.schlagwort('Kein Ticket.|Kein Warten.', { stand: 1_200 });
       await r.abblenden(600);
     },
   },
@@ -306,6 +340,7 @@ const SZENEN = [
       await r.untertitelEin('Ein Klick.');
       await r.klicke('button:has-text("Starten")', { nach: 0 });
       await r.untertitelAus(260);
+      await r.stoss({ staerke: 0.05 });
 
       // Der Homeserver arbeitet – und die Konsole erzählt davon. Die Zeilen
       // kommen über den Live-Kanal, freigegeben im Takt des Schnitts.
@@ -314,7 +349,7 @@ const SZENEN = [
         .catch(async () => {
           await r.kamera({ zoom: 1.25, dauer: 1_400 });
         });
-      await r.untertitelEin('Der Homeserver zieht das Image und startet den Container.');
+      await r.untertitelEin('Kein Ladebalken. Die echte Ausgabe des Servers.');
       for (let i = 0; i < 6; i += 1) {
         await r.buehne(`/ausgabe?server=${serverId}&anzahl=2`);
         await r.halten(520);
@@ -329,9 +364,8 @@ const SZENEN = [
       await r.untertitelAus();
 
       await r.kamera({ auf: 'text=Online', zoom: 1.8, dauer: 1_200 });
-      await r.untertitelEin('Läuft.');
-      await r.halten(1_600);
-      await r.untertitelAus();
+      await r.blitz({ hoehe: 0.55 });
+      await r.schlagwort('Läuft.', { stand: 900, groesse: 132 });
 
       // Jetzt verbinden sich die Ersten. Die Spielerzahl im Panel stammt aus
       // der echten Abfrage des Spielservers – die Demo-Node beantwortet sie
@@ -349,7 +383,7 @@ const SZENEN = [
         `/zeile?server=${serverId}&text=${encodeURIComponent('Jonas joined the game')}`,
       );
       await r.untertitelEin('Und die Ersten sind drin.');
-      await r.halten(3_200);
+      await r.halten(3_000);
       await r.untertitelAus();
 
       await r.kamera({ auf: `text=${adresse}`, zoom: 1.8, dauer: 1_100 });
@@ -368,18 +402,18 @@ const SZENEN = [
   {
     name: '06-konsole',
     async vorbereiten(buehne) {
-      const server = await buehne.finde('Freundeskreis SMP');
+      const server = await buehne.brauche(STAMM);
       return { serverId: server.id };
     },
     async lauf(r, { serverId }) {
-      await r.gehe(`/servers/${serverId}`, { warteAuf: 'text=Freundeskreis SMP' });
+      await r.gehe(`/servers/${serverId}`, { warteAuf: `text=${STAMM}` });
       await r.aufblenden(600);
 
       // Die Konsole steht weit unten auf der Seite – erst hinrollen.
       await r.scrolleZu('text=console —', { dauer: 900, abstand: 120 });
       await r.kamera({ zoom: 1.15, dauer: 1_000 });
-      await r.untertitelEin('Die Konsole des Servers – im Browser, ohne SSH.');
-      await r.halten(1_600);
+      await r.untertitelEin('Die Konsole des Servers – im Browser. SSH bleibt heute zu.');
+      await r.halten(1_800);
       await r.untertitelAus();
 
       /*
@@ -390,6 +424,8 @@ const SZENEN = [
        */
       await r.klicke('button:has-text("Leeren")', { nach: 500 });
 
+      // Ein Abend auf dem Server. Der Wortwechsel ist der Scherz – die
+      // Technik darunter ist keiner.
       const abend = [
         'Done (6.913s)! For help, type "help"',
         'Mika joined the game',
@@ -398,6 +434,8 @@ const SZENEN = [
         '<Jonas> moin',
         '<Lena> wer hat die kiste am spawn geplündert',
         '<Mika> ich war das nicht',
+        '<Jonas> die kiste war schon leer als ich kam',
+        '<Lena> das ist ein geständnis',
       ];
       for (const zeile of abend) {
         await r.buehne(`/zeile?server=${serverId}&text=${encodeURIComponent(zeile)}`);
@@ -418,10 +456,10 @@ const SZENEN = [
 
       await r.tippe(
         r.seite.getByPlaceholder('Befehl eingeben …'),
-        'say Runde startet in 5 Minuten',
+        'say Wer die Kiste geleert hat, baut sie wieder auf',
       );
       await r.klicke('button:has-text("Senden")', { nach: 400 });
-      await r.halten(1_800);
+      await r.halten(1_600);
       await r.untertitelEin('Jeder Befehl steht später im Protokoll – mit Namen.');
       await r.halten(1_800);
       await r.untertitelAus();
@@ -435,7 +473,7 @@ const SZENEN = [
   {
     name: '07-monitoring',
     async vorbereiten(buehne) {
-      const server = await buehne.finde('Freundeskreis SMP');
+      const server = await buehne.brauche(STAMM);
       return { serverId: server.id };
     },
     async lauf(r, { serverId }) {
@@ -466,7 +504,7 @@ const SZENEN = [
       await r.kamera({ zoom: 1, dauer: 800 });
 
       await r.gehe('/nodes', { warteAuf: 'text=Nodes online' });
-      await r.untertitelEin('Und die Node selbst: was läuft, was noch frei ist.');
+      await r.untertitelEin('Und die Maschine selbst: was läuft, was noch frei ist.');
       await r.halten(2_600);
       await r.untertitelAus();
       await r.abblenden(600);
@@ -477,11 +515,11 @@ const SZENEN = [
   {
     name: '08-backups',
     async vorbereiten(buehne) {
-      const server = await buehne.finde('Freundeskreis SMP');
+      const server = await buehne.brauche(STAMM);
       return { serverId: server.id };
     },
     async lauf(r, { serverId }) {
-      await r.gehe(`/servers/${serverId}`, { warteAuf: 'text=Freundeskreis SMP' });
+      await r.gehe(`/servers/${serverId}`, { warteAuf: `text=${STAMM}` });
       await r.aufblenden(500);
       await r.klicke('[role="tab"]:has-text("Backups")', { nach: 1_400 });
       await r.untertitelEin('Sicherungen: auf Knopfdruck oder nach Zeitplan.');
@@ -489,12 +527,11 @@ const SZENEN = [
       await r.untertitelAus();
 
       await r.klicke('button:has-text("Jetzt sichern")', { nach: 0 });
-      await r.halten(4_000);
+      await r.halten(3_600);
       /*
        * „Unklar" an einer Sicherung heißt im Panel nicht „Prüfsumme fehlt",
        * sondern „im laufenden Betrieb gezogen" – gegenüber „Vollständig" bei
-       * angehaltenem Server. Der Untertitel sagt genau das; vorher stand hier
-       * eine Aussage über Prüfsummen, die das Bild nicht zeigt.
+       * angehaltenem Server. Der Untertitel sagt genau das.
        */
       await r.untertitelEin('Jede Sicherung hält fest, ob der Server dabei lief.');
       await r.halten(2_400);
@@ -510,54 +547,185 @@ const SZENEN = [
         await r.halten(800);
       });
       await r.zeigerAus();
+      await r.schlagwort('Die Welt von gestern.|Eine Minute entfernt.', { stand: 1_300 });
       await r.abblenden(600);
     },
   },
 
   // -------------------------------------------------------------------------
   {
-    name: '09-admin',
+    /*
+     * Teilen statt Passwort weitergeben.
+     *
+     * Das ist die Szene, die früher „Admin, Rollen und Rechte" war – nur aus
+     * der richtigen Sicht. Dass ein Betreiber Rollen vergeben kann,
+     * interessiert die Runde nicht; dass **Mika** einem Freund Zugriff auf
+     * genau einen Server geben kann, ohne ihr Konto herzugeben, schon.
+     */
+    name: '09-teilen',
     async vorbereiten(buehne) {
-      return buehne.offeneAnfrage();
+      const server = await buehne.brauche(STAMM);
+      await buehne.ohneMitverwalter(server.id);
+      await buehne.ohneAufgaben(server.id);
+      return { serverId: server.id };
     },
-    async lauf(r, { name }) {
-      await r.gehe('/admin/requests', { warteAuf: 'text=Registrierungen' });
-      await r.aufblenden(600);
-      await r.untertitelEin('Wer mitspielen will, fragt an.');
-      await r.kamera({ zoom: 1.25, dauer: 1_200 });
-      await r.markiere(r.seite.getByText(name, { exact: true }).first().locator('xpath=../..'));
-      await r.halten(1_600);
-      await r.untertitelAus();
-      await r.markierungAus();
+    async lauf(r, { serverId }) {
+      await r.gehe(`/servers/${serverId}`, { warteAuf: `text=${STAMM}` });
+      await r.aufblenden(500);
+      await r.klicke('[role="tab"]:has-text("Einstellungen")', { nach: 1_200 });
 
-      await r.klicke(r.seite.getByRole('button', { name: /Freigeben/ }).first(), { nach: 900 });
-      await r.untertitelEin('Ohne weitere Auswahl bekommt das Konto die Standardrolle.');
+      await r.scrolleZu('text=Zugriff', { dauer: 900, abstand: 160 });
+      await r.untertitelEin('Ein Freund soll mithelfen – ohne dein Passwort.');
       await r.halten(1_800);
       await r.untertitelAus();
 
-      // Der Dialog ist der zweite Schritt – vorher ist nichts freigeschaltet.
-      await r.klicke(r.seite.getByRole('dialog').getByRole('button', { name: 'Freigeben' }), {
-        nach: 2_000,
+      await r.klicke('button:has-text("Mitverwalter hinzufügen")', { nach: 900 });
+      await r.waehle(r.seite.getByLabel('Konto'), { label: MITVERWALTER.name }).catch(async () => {
+        // Fällt die Beschriftung anders aus, tut es der zweite Eintrag auch –
+        // der erste ist der Platzhalter „Konto wählen …".
+        await r.waehle(r.seite.getByLabel('Konto'), { index: 1 });
       });
-      await r.untertitelEin('Freigeschaltet.');
-      await r.halten(1_500);
+      await r.halten(600);
+
+      await r.untertitelEin('Drei Stufen: zusehen, bedienen, verwalten.');
+      await r.waehle(r.seite.getByLabel('Stufe'), { label: 'Bedienen' }).catch(async () => {
+        await r.halten(600);
+      });
+      await r.halten(1_400);
+      await r.untertitelAus();
+
+      await r.klicke('button:has-text("Zugriff geben")', { nach: 1_600 });
+      await r.stoss({ staerke: 0.045 });
+      await r.untertitelEin('Jonas darf jetzt starten und stoppen. Mehr nicht.');
+      await r.halten(2_200);
       await r.untertitelAus();
       await r.zeigerAus();
-      await r.kamera({ zoom: 1, dauer: 800 });
 
-      await r.gehe('/admin/roles', { warteAuf: 'text=Rollen' });
-      await r.untertitelEin('Rollen entscheiden, wer was darf – Schalter für Schalter.');
+      // Und was der Server ganz ohne Menschen erledigt.
+      await r.klicke('[role="tab"]:has-text("Aufgaben")', { nach: 1_200 });
+      await r.untertitelEin('Was regelmäßig passieren soll, macht der Server selbst.');
+      await r.halten(1_600);
+      await r.untertitelAus();
+
+      await r.klicke('button:has-text("Neue Aufgabe")', { nach: 900 });
+      await r.tippe(r.seite.getByLabel('Name'), 'Nächtliche Sicherung');
+      await r
+        .waehle(r.seite.getByLabel('Aktion'), { label: 'Sicherung erstellen' })
+        .catch(async () => {
+          await r.halten(400);
+        });
+      await r.tippe(r.seite.getByLabel('Zeitplan (Cron)'), '0 4 * * *', { proZeichen: 90 });
+      await r.halten(600);
+      await r.untertitelEin('Um vier Uhr nachts. Da ist ohnehin niemand wach.');
+      await r.halten(1_800);
+      await r.untertitelAus();
+      await r.klicke('button:has-text("Anlegen")', { nach: 1_800 });
+      await r.zeigerAus();
+      await r.schlagwort('Einmal eingestellt.|Nie wieder daran denken.', { stand: 1_300 });
+      await r.abblenden(600);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  {
+    /*
+     * Das Drumherum – der freche Teil.
+     *
+     * Nachrichten, Arcade und Erfolge sind keine Kernfunktionen, und genau
+     * deshalb stehen sie hier: Sie zeigen, dass das Panel für eine Runde
+     * gebaut ist und nicht für ein Rechenzentrum. Der Ton darf hier am
+     * lockersten sein – es wird nichts gestartet, gestoppt oder gelöscht.
+     */
+    name: '10-drumherum',
+    async lauf(r) {
+      await r.gehe('/messages', { warteAuf: 'text=Nachrichten' });
+      await r.aufblenden(600);
+      await r.untertitelEin('Die Runde redet im Panel – kein zweiter Dienst nötig.');
       await r.kamera({ zoom: 1.2, dauer: 1_300 });
-      await r.halten(2_200);
+      await r.halten(2_000);
       await r.untertitelAus();
       await r.kamera({ zoom: 1, dauer: 700 });
 
-      await r.gehe('/admin/audit', { warteAuf: 'text=Audit-Log' });
-      await r.untertitelEin('Und im Protokoll steht, wer was getan hat.');
-      await r.kamera({ zoom: 1.3, dauer: 1_400 });
+      await r.gehe('/arcade', { warteAuf: 'text=Arcade' });
+      await r.blitz({ hoehe: 0.5 });
+      await r.schlagwort('Der Server startet.|Du hast 40 Sekunden.', { stand: 1_300 });
+
+      await r.untertitelEin('Fünf Minispiele. Eigene Bestenliste. Warum? Warum nicht.');
+      await r.kamera({ auf: 'text=Kriechpfad', zoom: 1.4, dauer: 1_200 }).catch(async () => {
+        await r.kamera({ zoom: 1.25, dauer: 1_200 });
+      });
+      await r.halten(2_000);
+      await r.untertitelAus();
+
+      // Kurz wirklich spielen: Ein Standbild der Auswahlseite wäre eine
+      // Behauptung, die bewegte Leinwand ist der Beleg.
+      await r.klicke('button:has-text("Spielen")', { nach: 1_600 }).catch(async () => {
+        await r.halten(800);
+      });
+      for (const taste of ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'ArrowRight']) {
+        await r.seite.keyboard.press(taste).catch(() => {});
+        await r.halten(420);
+      }
+      await r.halten(900);
+      await r.zeigerAus();
+      await r.kamera({ zoom: 1, dauer: 700 });
+
+      await r.gehe('/erfolge', { warteAuf: 'text=Erfolge' });
+      await r.untertitelEin('Und ja: Es gibt Erfolge fürs Hosten.');
+      await r.kamera({ zoom: 1.25, dauer: 1_300 });
       await r.halten(2_200);
       await r.untertitelAus();
-      await r.kamera({ zoom: 1, dauer: 800 });
+      await r.wackeln({ dauer: 380, staerke: 6 });
+      await r.untertitelEin('Nein, das ist uns nicht peinlich.');
+      await r.halten(1_800);
+      await r.untertitelAus();
+      await r.kamera({ zoom: 1, dauer: 700 });
+      await r.abblenden(600);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  {
+    /*
+     * Die Themes.
+     *
+     * Der Wechsel lädt nichts nach: Alle Variablensätze stehen schon im
+     * Dokument, ein Klick setzt `data-theme` um. Deshalb ist diese Szene
+     * bewusst schnell geschnitten – die Umstellung braucht kein Einzelbild
+     * Wartezeit, und genau das soll man sehen.
+     */
+    name: '11-themes',
+    async lauf(r) {
+      await r.gehe('/profil', { warteAuf: 'text=Erscheinungsbild' });
+      await r.aufblenden(600);
+      await r.scrolleZu('text=Erscheinungsbild', { dauer: 800, abstand: 140 });
+      await r.untertitelEin('Wie es aussieht, entscheidet jeder für sich.');
+      await r.halten(1_600);
+      await r.untertitelAus();
+
+      for (const name of ['Schmiedefeuer', 'Neonnacht', 'Kanzlei', 'Hyperraum', 'Tageslicht']) {
+        await r
+          .klicke(r.seite.getByText(name, { exact: true }), { hin: 380, nach: 620 })
+          .catch(async () => {
+            await r.halten(500);
+          });
+      }
+      await r.zeigerAus(260);
+      await r.stoss({ staerke: 0.05 });
+      await r.schlagwort('Sechs Anstriche.|Kein Neuladen.', { stand: 1_200 });
+
+      // Zurück auf Standard – die folgenden Szenen sollen aussehen wie alle
+      // anderen. Ein Aufnahmelauf, der mitten in „Tageslicht" endet, färbt
+      // sonst jeden späteren Clip um.
+      await r
+        .klicke(r.seite.getByText('Standard', { exact: true }), { hin: 420, nach: 900 })
+        .catch(async () => {
+          await r.halten(500);
+        });
+      await r.zeigerAus();
+      await r.untertitelEin('Die Farben ändern sich. Wo etwas steht, nicht.');
+      await r.halten(1_900);
+      await r.untertitelAus();
       await r.abblenden(600);
     },
   },
@@ -575,7 +743,7 @@ const SZENEN = [
     name: '12-handy',
     geraet: 'handy',
     async vorbereiten(buehne) {
-      const server = await buehne.finde('Freundeskreis SMP');
+      const server = await buehne.brauche(STAMM);
       // Die Konsole soll auch am Telefon etwas zu zeigen haben; nach einem
       // Neustart des Backends ist ihr Verlauf leer.
       for (const zeile of [
@@ -587,12 +755,12 @@ const SZENEN = [
         '<Mika> bin in 5 min da',
       ]) {
         await steuere(`/zeile?server=${server.id}&text=${encodeURIComponent(zeile)}`);
-        await new Promise((r) => setTimeout(r, 120));
+        await warte(120);
       }
       return { serverId: server.id };
     },
     async lauf(r, { serverId }) {
-      await r.gehe('/servers', { warteAuf: 'text=Freundeskreis SMP', beruhigen: 5_000 });
+      await r.gehe('/servers', { warteAuf: `text=${STAMM}`, beruhigen: 5_000 });
       await r.aufblenden(500);
       await r.halten(1_400);
 
@@ -640,7 +808,7 @@ const SZENEN = [
      * dieses Werkzeugs bringt keinen Textfilter mit, und die Tafel soll
      * ohnehin dieselbe Schrift tragen wie der Rest des Videos.
      */
-    name: '11-luecke',
+    name: '13-luecke',
     async lauf(r) {
       await r.gehe('/servers', { warteAuf: 'text=Übersicht' });
       // Ohne das bleibt die Schwarzblende liegen – sie wird nach der
@@ -656,9 +824,9 @@ const SZENEN = [
 
   // -------------------------------------------------------------------------
   {
-    name: '10-abspann',
+    name: '14-abspann',
     async lauf(r) {
-      await r.gehe('/servers', { warteAuf: 'text=Freundeskreis SMP' });
+      await r.gehe('/servers', { warteAuf: `text=${STAMM}` });
       await r.kameraSetzen({ zoom: 1.12 });
       await r.aufblenden(700);
       await r.kameraFahrtStarten({ zoom: 1.3, dauer: 6_000 });

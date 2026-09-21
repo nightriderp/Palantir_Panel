@@ -104,11 +104,24 @@
         position: absolute; inset: 0; display: none;
         flex-direction: column; align-items: center; justify-content: center; gap: 26px;
       }
-      #logo svg { filter: drop-shadow(0 0 40px rgba(124, 92, 255, 0.55)); }
-      #logo .wort {
-        font-size: 96px; font-weight: 700; letter-spacing: 0.22em;
-        color: #f2f4ff; text-indent: 0.22em;
+      /*
+       * Die Marke aus dem Repo (`apps/frontend/public/logo.png`), nicht
+       * nachgebaut. Die Datei ist schwarz auf durchsichtigem Grund; auf der
+       * dunklen Bühne wird sie deshalb invertiert – `invert()` lässt den
+       * Alphakanal unberührt, die Ränder bleiben sauber. Auf hellem Grund
+       * steht sie, wie sie ist.
+       */
+      #logo img {
+        width: 760px; height: auto;
+        /*
+         * Der Schein bewusst weit und schwach: Eng gesetzt zeichnet
+         * `drop-shadow` die Silhouette der Marke nach, und aus Kreis und
+         * Schriftzug wird ein grauer Klotz. Weit gestreut liest er sich als
+         * Licht.
+         */
+        filter: invert(1) drop-shadow(0 0 110px rgba(124, 92, 255, 0.38));
       }
+      #logo.dunkel img { filter: none; }
       #logo .unter { font-size: 30px; color: #9aa3c0; letter-spacing: 0.02em; }
 
       #vignette {
@@ -116,6 +129,19 @@
         background: radial-gradient(120% 90% at 50% 50%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.75) 100%);
       }
       #blende { position: absolute; inset: 0; background: #05060a; opacity: 0; }
+
+      /*
+        Der Blitz liegt über allem außer der Schwarzblende: Ein Blitz auf
+        schwarzem Grund ist kein Schnitt, sondern ein Fehler.
+      */
+      #blitz { position: absolute; inset: 0; background: #ffffff; opacity: 0; }
+
+      /*
+        Der Stoß skaliert das **ganze** Bild – deshalb sitzt er am `body` und
+        nicht an einer einzelnen Ebene. Er geht nur nach oben (Faktor ≥ 1);
+        eine Verkleinerung legte Ränder frei, für die es keinen Grund gibt.
+      */
+      body { transform-origin: 960px 540px; }
     </style>
   </head>
   <body>
@@ -127,15 +153,11 @@
     <div id="titel"></div>
     <div id="zeile"></div>
     <div id="logo">
-      <svg width="220" height="220" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-        <circle cx="32" cy="32" r="21" stroke="#f2f4ff" stroke-width="6" />
-        <circle cx="32" cy="32" r="7.5" fill="#f2f4ff" />
-        <path d="M32 0 L35.5 32 L32 64 L28.5 32 Z" fill="#f2f4ff" />
-      </svg>
-      <div class="wort">PALANTIR</div>
+      <img src="bilder/logo.png" alt="" />
       <div class="unter"></div>
     </div>
     <div id="vignette"></div>
+    <div id="blitz"></div>
     <div id="blende"></div>
 
     <script>
@@ -153,6 +175,7 @@
           logo: document.getElementById('logo'),
           vignette: document.getElementById('vignette'),
           blende: document.getElementById('blende'),
+          blitz: document.getElementById('blitz'),
         };
 
         /** Kachel-Plätze auf Vorrat: Elemente wandern, sie entstehen nicht neu. */
@@ -275,26 +298,38 @@
               knoten.logo.style.opacity = String(z.logo.deckkraft);
               knoten.logo.style.transform = `scale(${z.logo.skala ?? 1})`;
               knoten.logo.querySelector('.unter').textContent = z.logo.zeile ?? '';
-              const farbe = z.logo.dunkel ? '#15161f' : '#f2f4ff';
-              knoten.logo.querySelector('.wort').style.color = farbe;
-              for (const teil of knoten.logo.querySelectorAll('svg circle, svg path')) {
-                if (teil.getAttribute('stroke')) teil.setAttribute('stroke', farbe);
-                if (teil.getAttribute('fill') && teil.getAttribute('fill') !== 'none') {
-                  teil.setAttribute('fill', farbe);
-                }
-              }
+              // `dunkel` heißt: dunkle Marke auf hellem Grund – dann bleibt
+              // die Datei unverändert, sonst wird sie invertiert (CSS-Klasse).
+              knoten.logo.classList.toggle('dunkel', z.logo.dunkel === true);
               knoten.logo.querySelector('.unter').style.color = z.logo.dunkel ? '#5b6076' : '#9aa3c0';
             } else {
               knoten.logo.style.display = 'none';
             }
 
             knoten.vignette.style.opacity = String(z.vignette ?? 0);
+
+            const blitz = z.blitz ?? null;
+            knoten.blitz.style.opacity = String(blitz ? (blitz.deckkraft ?? 0) : 0);
+            knoten.blitz.style.background = blitz?.farbe ?? '#ffffff';
+
             knoten.blende.style.opacity = String(z.blende ?? 0);
+
+            // Der Stoß: eine reine Vergrößerung um die Bildmitte.
+            document.body.style.transform = `scale(${z.stoss ?? 1})`;
           },
 
-          /** Sind alle Bilder geladen? Vor dem ersten Einzelbild abgefragt. */
+          /**
+           * Sind alle Bilder geladen? Vor dem ersten Einzelbild abgefragt.
+           *
+           * Die Marke zählt mit: Sie steht zwar erst am Schluss im Bild, wird
+           * aber beim ersten Erscheinen geladen – ohne diese Abfrage fiele
+           * genau das Einzelbild des Abbinders leer aus.
+           */
           bilderBereit() {
-            return kachelTopf.every((k) => k.quelle === null || k.bild.complete);
+            const marke = knoten.logo.querySelector('img');
+            return (
+              kachelTopf.every((k) => k.quelle === null || k.bild.complete) && marke.complete
+            );
           },
         };
 

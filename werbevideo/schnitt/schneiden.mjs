@@ -52,12 +52,35 @@ const KODIERUNG = [
 ];
 
 /**
- * Die Schnittlisten.
+ * Die Schnittlisten – vier Fassungen aus demselben Material.
  *
  * `von`/`bis` in Sekunden im jeweiligen Clip; `bis: null` heißt „bis zum
- * Ende". Die Clips blenden selbst auf und ab – für die lange Fassung reicht
- * deshalb das Aneinanderhängen, für den Trailer werden die Mittelstücke
- * genommen und hart geschnitten.
+ * Ende". Die Clips blenden selbst auf und ab – für die langen Fassungen
+ * reicht deshalb das Aneinanderhängen, für Trailer und Mischung werden die
+ * Mittelstücke genommen und hart geschnitten.
+ *
+ * Besondere Segmente statt `clip`:
+ *
+ * - `{ luecke: 8 }`        – Platz für euer Spielmaterial (oder die Tafel)
+ * - `{ handy: 13, von: 1 }`– die Hochformat-Aufnahme im Telefonrahmen
+ * - `{ …, tempo: 2 }`      – dasselbe Segment im Zeitraffer
+ *
+ * ---
+ *
+ * **Die drei bestellten Videos.**
+ *
+ * 1. `tour` und `trailer` – die Bildschirmaufnahme, lang und kurz. Was das
+ *    Panel tut, aus der Sicht eines Kontos mit der Rolle „Nutzer".
+ * 2. `motion` – der Motion-Film aus `motion/film.mjs`: Standbilder,
+ *    Schnitt auf den Takt, große Schrift. Kein einziges Bild davon ist
+ *    aufgenommen; alles ist inszeniert.
+ * 3. `mix` – beides. Der Motion-Auftakt eröffnet, dann übernimmt echtes
+ *    Panel-Material, der Motion-Abbinder schließt. Die Motion-Abschnitte
+ *    sind die Kapitelmarken, die Aufnahme ist der Beleg.
+ *
+ * Die Zeitangaben stammen aus den Drehbüchern und werden nach dem ersten
+ * vollständigen Aufnahmelauf an den fertigen Clips nachgezogen – ein Segment,
+ * das über das Ende seines Clips hinausgeht, endet schlicht dort.
  */
 const FASSUNGEN = {
   tour: {
@@ -74,9 +97,11 @@ const FASSUNGEN = {
       { clip: '06-konsole', von: 0, bis: null },
       { clip: '07-monitoring', von: 0, bis: null },
       { clip: '08-backups', von: 0, bis: null },
-      { clip: '09-admin', von: 0, bis: null },
+      { clip: '09-teilen', von: 0, bis: null },
+      { clip: '10-drumherum', von: 0, bis: null },
+      { clip: '11-themes', von: 0, bis: null },
       { handy: 13.5, von: 0.8 },
-      { clip: '10-abspann', von: 0, bis: null },
+      { clip: '14-abspann', von: 0, bis: null },
     ],
   },
 
@@ -84,17 +109,68 @@ const FASSUNGEN = {
     titel: 'Palantir – Trailer',
     segmente: [
       { clip: '01-vorspann', von: 0, bis: 7.4 },
-      { clip: '03-uebersicht', von: 0.8, bis: 6.0 },
-      { clip: '04-erstellen', von: 1.6, bis: 7.4 },
+      { clip: '03-uebersicht', von: 0.6, bis: 5.4 },
+      // Das Ausfüllen des Assistenten im Zeitraffer: gehört dazu, aber
+      // niemand will es in Echtzeit sehen.
+      { clip: '04-erstellen', von: 1.6, bis: 13.0, tempo: 2 },
+      { clip: '04-erstellen', von: 26.0, bis: null },
       { clip: '05-starten', von: 0.6, bis: 8.6 },
       { clip: '05-starten', von: 15.0, bis: 21.5 },
       { luecke: 6 },
       { clip: '06-konsole', von: 6.5, bis: 12.5 },
       { clip: '07-monitoring', von: 1.0, bis: 6.0 },
       { clip: '08-backups', von: 3.0, bis: 8.5 },
-      { clip: '09-admin', von: 19.5, bis: 25.0 },
+      { clip: '09-teilen', von: 5.0, bis: 10.0 },
+      { clip: '10-drumherum', von: 6.0, bis: 12.0 },
+      { clip: '11-themes', von: 4.0, bis: 10.5 },
       { handy: 6.5, von: 6.5 },
-      { clip: '10-abspann', von: 0, bis: null },
+      { clip: '14-abspann', von: 0, bis: null },
+    ],
+  },
+
+  motion: {
+    titel: 'Palantir – Motion',
+    segmente: [
+      { clip: '20-auftakt', von: 0, bis: null },
+      { clip: '21-koennen', von: 0, bis: null },
+      { clip: '22-ohne', von: 0, bis: null },
+      { clip: '23-marke', von: 0, bis: null },
+    ],
+  },
+
+  mix: {
+    titel: 'Palantir – Mischung',
+    segmente: [
+      // Auftakt: der Motion-Vorspann, ohne Abblende ins erste echte Bild.
+      { clip: '20-auftakt', von: 0, bis: 12.5 },
+
+      // Kapitel 1: anlegen und starten.
+      { clip: '21-koennen', von: 0, bis: 2.8 },
+      { clip: '04-erstellen', von: 1.6, bis: 13.0, tempo: 2 },
+      { clip: '04-erstellen', von: 26.0, bis: null },
+      { clip: '21-koennen', von: 2.8, bis: 5.6 },
+      { clip: '05-starten', von: 0.6, bis: 9.0 },
+      { clip: '05-starten', von: 15.0, bis: 22.0 },
+      { luecke: 7 },
+
+      // Kapitel 2: im Betrieb.
+      { clip: '21-koennen', von: 5.6, bis: 11.2 },
+      { clip: '06-konsole', von: 6.5, bis: 14.0 },
+      { clip: '07-monitoring', von: 1.0, bis: 6.5 },
+      { clip: '21-koennen', von: 11.2, bis: 14.0 },
+      { clip: '08-backups', von: 3.0, bis: 9.0 },
+
+      // Kapitel 3: teilen, Telefon, Drumherum.
+      { clip: '09-teilen', von: 5.0, bis: 11.0 },
+      { clip: '21-koennen', von: 14.0, bis: 16.8 },
+      { handy: 7.0, von: 6.5 },
+      { clip: '21-koennen', von: 19.6, bis: 25.2 },
+      { clip: '10-drumherum', von: 6.0, bis: 13.0 },
+      { clip: '11-themes', von: 4.0, bis: 11.0 },
+
+      // Schluss: der helle Teil und der Abbinder – beides aus dem Motion-Film.
+      { clip: '22-ohne', von: 0, bis: null },
+      { clip: '23-marke', von: 0, bis: null },
     ],
   },
 };
@@ -109,12 +185,12 @@ const ffmpeg = process.env.FFMPEG ?? ffmpegPfad;
  * Tafel soll dieselbe Schrift tragen wie die Titel des Videos.
  */
 async function tafelBauen(datei, sekunden) {
-  const quelle = path.join(CLIPS, '11-luecke.mp4');
+  const quelle = path.join(CLIPS, '13-luecke.mp4');
   if (!fs.existsSync(quelle)) {
     throw new Error(
       'Die Tafel für die Gameplay-Lücke fehlt. Entweder eigenes Material unter ' +
         'material/gameplay.mp4 ablegen oder die Tafel aufnehmen: ' +
-        'node aufnahme/aufnehmen.mjs 11-luecke',
+        'node aufnahme/aufnehmen.mjs 13-luecke',
     );
   }
   await neuerLauf(ffmpeg, [
@@ -227,6 +303,12 @@ async function segmentBauen(segment, nummer) {
     );
   }
 
+  /*
+   * `tempo` rafft ein Segment. Gedacht für Strecken, die dazugehören, aber
+   * niemanden in Echtzeit interessieren - das Ausfüllen eines Formulars etwa.
+   * Bild für Bild aufgenommen, hier im Zeitraffer gezeigt.
+   */
+  const tempo = segment.tempo ?? 1;
   await neuerLauf(ffmpeg, [
     '-y',
     '-loglevel',
@@ -236,12 +318,15 @@ async function segmentBauen(segment, nummer) {
     ...(segment.bis === null || segment.bis === undefined ? [] : ['-to', String(segment.bis)]),
     '-i',
     quelle,
+    ...(tempo === 1 ? [] : ['-vf', `setpts=PTS/${String(tempo)}`]),
     ...KODIERUNG,
     datei,
   ]);
   return {
     datei,
-    hinweis: `${segment.clip} ${String(segment.von ?? 0)}–${segment.bis === null ? 'Ende' : String(segment.bis)} s`,
+    hinweis:
+      `${segment.clip} ${String(segment.von ?? 0)}–${segment.bis === null ? 'Ende' : String(segment.bis)} s` +
+      (tempo === 1 ? '' : ` (${String(tempo)}x)`),
   };
 }
 

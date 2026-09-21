@@ -61,6 +61,8 @@ export class Kino {
       zeile: null,
       logo: null,
       vignette: 0.25,
+      blitz: null,
+      stoss: 1,
       blende: 1,
     };
 
@@ -169,6 +171,16 @@ export class Kino {
       kacheln,
       grund: { ...this.zustand.grund, glutHub },
     });
+
+    /*
+     * Erst fotografieren, wenn die Bilder wirklich da sind.
+     *
+     * Eine frisch gesetzte Kachel und die Marke sind im Moment des
+     * Zustandswechsels noch leere `<img>`-Knoten. Ohne diese Abfrage fiele
+     * genau das erste Einzelbild nach jedem Wechsel ohne sie aus – im
+     * fertigen Clip ein Zucken von einem Dreißigstel.
+     */
+    await this.seite.waitForFunction(() => window.__kino.bilderBereit(), null, { timeout: 10_000 });
 
     const datei = path.join(this.bilderOrdner, String(this.bildNummer).padStart(6, '0') + '.jpeg');
     await this.seite.screenshot({ path: datei, type: 'jpeg', quality: this.gueteBild });
@@ -320,6 +332,68 @@ export class Kino {
       this.zustand.logo = { deckkraft: t, skala: mische(0.92, 1, t), zeile, dunkel };
     });
     if (halten > 0) await this.halten(halten);
+  }
+
+  // -------------------------------------------------------------------------
+  // Schlag: Stoß, Blitz, harter Wechsel
+  // -------------------------------------------------------------------------
+
+  /**
+   * Zoom-Stoß auf den Takt.
+   *
+   * Schnell hinein, etwas langsamer zurück – genau so sitzt der Schlag auf der
+   * Eins. Andersherum (langsam hinein) wirkt es wie ein Zoom, nicht wie ein
+   * Schnitt.
+   */
+  async stoss({ staerke = 0.05, hin = 100, zurueck = 200 } = {}) {
+    await this.#ueber(hin, (t) => {
+      this.zustand.stoss = 1 + staerke * t;
+    });
+    await this.#ueber(zurueck, (t) => {
+      this.zustand.stoss = 1 + staerke * (1 - t);
+    });
+    this.zustand.stoss = 1;
+  }
+
+  /**
+   * Heller Schlag über das Bild.
+   *
+   * Sehr kurz hinein, deutlich länger hinaus: Das ist der Verlauf, den ein
+   * Blitz im Auge hinterlässt. Gleich lang in beide Richtungen sieht aus wie
+   * eine Überblendung nach Weiß.
+   */
+  async blitz({ farbe = '#ffffff', hoehe = 0.8, ein = 60, aus = 240 } = {}) {
+    await this.#ueber(
+      ein,
+      (t) => {
+        this.zustand.blitz = { farbe, deckkraft: hoehe * t };
+      },
+      linear,
+    );
+    await this.#ueber(aus, (t) => {
+      this.zustand.blitz = { farbe, deckkraft: hoehe * (1 - t) };
+    });
+    this.zustand.blitz = null;
+  }
+
+  /**
+   * Harter Wechsel: Blitz und Stoß auf demselben Schlag.
+   *
+   * Die beiden laufen bewusst übereinander – der Stoß im Hintergrund, während
+   * der Blitz die Bilder darunter verdeckt. Nacheinander abgespielt wären es
+   * zwei Ereignisse statt eines Schnitts.
+   */
+  async schlag({ staerke = 0.06, farbe = '#ffffff', hoehe = 0.85 } = {}) {
+    this.fahrtStarten(
+      300,
+      (t) => {
+        // Hin und zurück in einer Bewegung: erst auf, dann ab.
+        this.zustand.stoss = 1 + staerke * Math.sin(Math.PI * t);
+      },
+      linear,
+    );
+    await this.blitz({ farbe, hoehe });
+    this.zustand.stoss = 1;
   }
 
   async logoAus(dauer = 500) {

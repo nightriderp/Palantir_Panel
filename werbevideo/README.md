@@ -22,14 +22,24 @@ Daten.
 
 ## Was am Ende herauskommt
 
-| Datei                            | Länge    | Inhalt                                             |
-| -------------------------------- | -------- | -------------------------------------------------- |
-| `fassungen/palantir-trailer.mp4` | ~1:08    | Schneller Schnitt für Discord, Startseite, Beitrag |
-| `fassungen/palantir-tour.mp4`    | ~3:07    | Ruhiger Rundgang durch alle Funktionen             |
-| `…-stumm.mp4`                    | dieselbe | Dieselben Schnitte ohne Ton, zum Selbstvertonen    |
+Drei Videos aus demselben Material, dazu je eine stumme Fassung zum
+Selbstvertonen:
 
-Beide entstehen aus denselben zwölf Clips in `aufnahmen/`. Wer nur eine Szene neu
-aufnimmt, schneidet danach neu – der Rest bleibt, wie er war.
+| Datei                            | Länge | Inhalt                                                        |
+| -------------------------------- | ----- | ------------------------------------------------------------- |
+| `fassungen/palantir-trailer.mp4` | ~1:15 | Bildschirmaufnahme, schnell geschnitten                       |
+| `fassungen/palantir-tour.mp4`    | ~4:00 | Bildschirmaufnahme, ruhiger Rundgang durch alle Funktionen    |
+| `fassungen/palantir-motion.mp4`  | ~1:05 | Motion-Film: Standbilder, Schnitt auf den Takt, große Schrift |
+| `fassungen/palantir-mix.mp4`     | ~2:20 | Motion als Rahmen und Kapitelmarken, dazwischen die Aufnahme  |
+| `…-stumm.mp4`                    | je    | Dieselben Schnitte ohne Ton                                   |
+
+Trailer und Tour kommen aus den Szenen in `aufnahme/aufnehmen.mjs`, der
+Motion-Film aus `motion/film.mjs`, die Mischung aus beidem. Wer nur eine Szene
+neu aufnimmt, schneidet danach neu – der Rest bleibt, wie er war.
+
+**Gefilmt wird ein Konto mit der Rolle „Nutzer"** – kein Owner, kein Admin.
+Die Administrationsseiten kommen in keinem der drei Videos vor: Sie sieht außer
+dem Betreiber nie jemand.
 
 ## Aufbau
 
@@ -42,11 +52,16 @@ buehne/      Demo-Bühne: Backend, Frontend, Demo-Node und der Demo-Zustand
   zuruecksetzen.sh      Datenbank neu, Migrationen, Seed, Owner, Demo-Zustand
   api.mjs               API-Client mit ALTCHA-Nachweis und CSRF
 aufnahme/    Regie: Kamerafahrten, Zeiger, Einblendungen, Einzelbilder
-  aufnehmen.mjs         Die Szenen
+  aufnehmen.mjs         Die Szenen der Aufnahmefassung
   regie.mjs             Die Aufnahme-Maschinerie
   schicht.mjs           Kamera und Einblendungen im Browser
+motion/      Der Motion-Film: keine Aufnahme, sondern inszenierte Standbilder
+  bilder.mjs            Legt die Bildbibliothek an (und holt das Logo aus dem Repo)
+  buehne.html           Die Bühne: Kacheln, Schrift, Scan-Ecken, Blitz, Abbinder
+  kino.mjs              Der Renderer – Zustand setzen, fotografieren, weiter
+  film.mjs              Das Drehbuch in vier Abschnitten
 schnitt/     Zusammenschnitt
-  schneiden.mjs         Schnittlisten beider Fassungen
+  schneiden.mjs         Die Schnittlisten aller Fassungen
   musik.mjs             Erzeugt die Musik passend zur Länge
   telefonrahmen.mjs     Zeichnet den Rahmen für die Handy-Aufnahme
 material/    Euer eigenes Material (Gameplay, eigene Musik) – siehe dort
@@ -85,22 +100,33 @@ Namen ab – ohne die Zeilen liefe die Abfrage gegen die echte Adresse.
 ```bash
 ./buehne/buehne.sh bauen          # Produktionsbau des Frontends (einmalig)
 ./buehne/zuruecksetzen.sh         # Datenbank neu + Demo-Zustand (~2 Minuten)
-node aufnahme/aufnehmen.mjs       # alle zwölf Szenen aufnehmen (~30 Minuten)
-node schnitt/schneiden.mjs        # beide Fassungen bauen (~3 Minuten)
+node aufnahme/aufnehmen.mjs       # alle Szenen aufnehmen (~35 Minuten)
+node motion/bilder.mjs            # Bildbibliothek für den Motion-Film (~2 Minuten)
+node motion/film.mjs              # den Motion-Film rendern (~6 Minuten)
+node schnitt/schneiden.mjs        # alle vier Fassungen bauen (~6 Minuten)
 ```
 
-Einzelne Szene wiederholen (etwa nach einer Änderung an der Oberfläche):
+Einzelne Szene oder Fassung wiederholen (etwa nach einer Änderung an der
+Oberfläche):
 
 ```bash
 node aufnahme/aufnehmen.mjs 05-starten
+node motion/film.mjs 21-koennen
 node schnitt/schneiden.mjs trailer
 ```
+
+Der Motion-Film braucht **nur die Bildbibliothek**, keine laufende Bühne – er
+lässt sich also auch dann neu rendern, wenn Backend und Demo-Node aus sind.
+Die Bibliothek selbst braucht sie natürlich.
 
 Bricht eine Szene ab, liegt ein Bildschirmfoto des Moments in
 `aufnahmen/abbruch-<szene>.png` – daraus ist meist sofort zu sehen, welcher
 Knopf ausgegraut war oder welche Meldung im Weg stand.
 
 ## Die Szenen
+
+Bildschirmaufnahme (`aufnahme/aufnehmen.mjs`) – alles aus der Sicht von `mika`,
+Rolle „Nutzer":
 
 | Clip            | Inhalt                                                      |
 | --------------- | ----------------------------------------------------------- |
@@ -109,15 +135,34 @@ Knopf ausgegraut war oder welche Meldung im Weg stand.
 | `03-uebersicht` | Alle Server, Live-Werte, Gesamtstatus                       |
 | `04-erstellen`  | Assistent: Spiel, Name, Adresse, Node, Optionen, EULA       |
 | `05-starten`    | Start, Konsole läuft voll, `Online`, Spieler verbinden sich |
-| `11-luecke`     | Tafel, die den Platz für euer Gameplay hält                 |
 | `06-konsole`    | Live-Konsole, Schnellbefehle, eigener Befehl                |
 | `07-monitoring` | Messwerte, verbundene Spieler, Node-Auslastung              |
 | `08-backups`    | Sicherung anstoßen, Wiederherstellen mit Rückfrage          |
-| `09-admin`      | Anfrage freigeben, Rollen, Audit-Log                        |
-| `10-abspann`    | Schlusstitel                                                |
+| `09-teilen`     | Mitverwalter eintragen, geplante Aufgabe anlegen            |
+| `10-drumherum`  | Nachrichten, Arcade (kurz gespielt), Erfolge                |
+| `11-themes`     | Durch die Themes klicken – ohne Neuladen                    |
+| `12-handy`      | Dasselbe Panel im Hochformat (kommt in den Telefonrahmen)   |
+| `13-luecke`     | Tafel, die den Platz für euer Gameplay hält                 |
+| `14-abspann`    | Schlusstitel                                                |
+
+Motion-Film (`motion/film.mjs`) – inszenierte Standbilder, nichts aufgenommen:
+
+| Abschnitt    | Inhalt                                                       |
+| ------------ | ------------------------------------------------------------ |
+| `20-auftakt` | Getippter Titel, die Streuung rückt heran                    |
+| `21-koennen` | Neun Beats: je eine Sache, je ein Bild, Schnitt auf den Takt |
+| `22-ohne`    | Heller Teil: kein Abo, keine Slot-Preise, keine fremde Firma |
+| `23-marke`   | Abbinder mit dem Logo aus dem Repo                           |
 
 Die Reihenfolge im Video steht in `schnitt/schneiden.mjs` (`FASSUNGEN`); dort
 sind auch die Ein- und Ausstiegspunkte je Segment hinterlegt.
+
+### Der Ton
+
+Frech in den Zwischentexten, nüchtern in der Sache – dieselbe Regel wie bei den
+Theme-Sprüchen des Panels (`lib/theme/sprueche.ts`): Ein Scherz steht nur dort,
+wo ein Missverständnis nichts kostet. Kein Untertitel behauptet etwas, das im
+selben Bild nicht zu sehen ist.
 
 ## Zwei Dinge, die vor der Veröffentlichung gehören
 

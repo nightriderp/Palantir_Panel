@@ -28,6 +28,8 @@ function aufbau() {
   const zustand = {
     kamera: { zoom: 1, x: 0, y: 0 },
     blende: 0,
+    blitz: null,
+    schlagwort: null,
     titel: null,
     untertitel: null,
     zeiger: null,
@@ -48,6 +50,20 @@ function aufbau() {
         overflow: hidden;
       }
       #${KENNUNG} .blende { position: absolute; inset: 0; background: #05060a; }
+      /* Der Blitz an harten Schnitten – hell, kurz, farbig. */
+      #${KENNUNG} .blitz { position: absolute; inset: 0; opacity: 0; }
+      /* Das Schlagwort: groß, fett, mitten ins Bild. */
+      #${KENNUNG} .schlagwort {
+        position: absolute; left: 0; width: 100%; text-align: center;
+        font-size: 104px; font-weight: 700; letter-spacing: -.03em; line-height: 1.05;
+        color: #ffffff; text-shadow: 0 18px 60px rgba(0,0,0,.75), 0 0 48px rgba(124,92,255,.45);
+        display: none;
+      }
+      #${KENNUNG} .schlagwort em {
+        font-style: normal;
+        background: linear-gradient(92deg, #a78bfa, #35c8ff);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
       #${KENNUNG} .titel {
         position: absolute; inset: 0; display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 18px;
@@ -97,12 +113,14 @@ function aufbau() {
     schicht.id = KENNUNG;
     schicht.innerHTML = `
       <div class="markierung" style="display:none"></div>
+      <div class="schlagwort" style="display:none"></div>
       <div class="ring" style="display:none"></div>
       <div class="titel" style="display:none">
         <div class="strich"></div><h1></h1><p></p>
       </div>
       <div class="untertitel" style="display:none"><span class="punkt"></span><span class="text"></span></div>
       <div class="blende" style="opacity:0"></div>
+      <div class="blitz"></div>
       <svg class="zeiger" width="30" height="42" viewBox="0 0 30 42" style="display:none">
         <path d="M4 2 L4 32 L11.5 25 L16.5 37 L21.5 35 L16.5 23.5 L26 23 Z"
               fill="#ffffff" stroke="rgba(8,10,18,.85)" stroke-width="2.2" stroke-linejoin="round"/>
@@ -136,6 +154,33 @@ function aufbau() {
 
     const blende = schicht.querySelector('.blende');
     blende.style.opacity = String(zustand.blende);
+
+    const blitz = schicht.querySelector('.blitz');
+    if (zustand.blitz === null) {
+      blitz.style.opacity = '0';
+    } else {
+      blitz.style.opacity = String(zustand.blitz.deckkraft ?? 0);
+      blitz.style.background = zustand.blitz.farbe ?? '#ffffff';
+    }
+
+    const schlagwort = schicht.querySelector('.schlagwort');
+    if (zustand.schlagwort === null) {
+      schlagwort.style.display = 'none';
+    } else {
+      const w = zustand.schlagwort;
+      schlagwort.style.display = 'block';
+      schlagwort.style.opacity = String(w.deckkraft ?? 1);
+      schlagwort.style.top = `${w.y ?? 380}px`;
+      schlagwort.style.fontSize = `${w.groesse ?? 104}px`;
+      // Beim Einblenden minimal größer: Das Wort kommt auf den Betrachter zu.
+      schlagwort.style.transform = `scale(${w.skala ?? 1})`;
+      // `|` trennt den Teil, der im Farbverlauf steht.
+      const teile = String(w.text ?? '').split('|');
+      schlagwort.innerHTML =
+        teile.length > 1
+          ? `${entschaerfen(teile[0])}<em>${entschaerfen(teile.slice(1).join('|'))}</em>`
+          : entschaerfen(teile[0]);
+    }
 
     const titel = schicht.querySelector('.titel');
     if (zustand.titel === null) {
@@ -204,6 +249,10 @@ function aufbau() {
       markierung.style.height = `${rechteck.hoehe + 20}px`;
       markierung.style.opacity = String(deckkraft ?? 1);
     }
+  }
+
+  function entschaerfen(text) {
+    return String(text).replace(/[&<>]/g, (z) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[z]);
   }
 
   window.__regie = {
