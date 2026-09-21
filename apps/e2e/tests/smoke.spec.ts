@@ -50,10 +50,60 @@ async function warteAufAltcha(page: Page): Promise<void> {
 }
 
 /**
+ * Schlüssel des Rundgang-Stands im `localStorage`.
+ *
+ * Steht hier als Text und nicht als Import: `apps/e2e` hängt nicht an den
+ * Quellen des Frontends. Das Gegenstück ist `RUNDGANG_STORAGE_KEY` in
+ * `apps/frontend/src/components/tutorial/rundgangStand.ts` – wer ihn dort
+ * ändert, ändert ihn hier mit.
+ */
+const RUNDGANG_KEY = 'palantir.rundgang';
+
+/**
+ * Den Rundgang für diesen Browser abschalten.
+ *
+ * Playwright startet jeden Test mit einem leeren Profil, und ein leerer
+ * `localStorage` heißt für das Panel „erster Besuch": Der Rundgang geht auf und
+ * legt sich verdunkelnd über die Seite, wo er jeden Klick abfängt. Für einen
+ * Test, der Server anlegt, ist das genau das, was ein zweiter Besuch auch nicht
+ * mehr sieht – deshalb wird der Stand vor dem ersten Aufruf gesetzt.
+ *
+ * `addInitScript` läuft vor jedem Skript der Seite und bei jeder Navigation,
+ * also auch nach dem Anmelden.
+ */
+async function rundgangAbschalten(page: Page): Promise<void> {
+  await page.addInitScript((schluessel: string) => {
+    /*
+     * Dieser Rumpf läuft im **Browser**, der Rest der Datei in Node. Das
+     * Paket ist auf `types: ["node"]` eingestellt und kennt deshalb kein
+     * `window`; der eng gefasste Zugriff über `globalThis` sagt genau das,
+     * ohne dem ganzen Paket die DOM-Typen unterzuschieben.
+     */
+    const speicher = (globalThis as { localStorage?: Storage }).localStorage;
+
+    try {
+      speicher?.setItem(schluessel, 'erledigt');
+    } catch {
+      // Ohne Speicher geht der Rundgang auf; dann scheitert der Test sichtbar.
+    }
+  }, RUNDGANG_KEY);
+}
+
+/** Ausschnitt des Browser-Speichers, den {@link rundgangAbschalten} braucht. */
+interface Storage {
+  setItem(schluessel: string, wert: string): void;
+}
+
+/**
  * Als Owner anmelden. Gibt es das Konto noch nicht (erster Lauf gegen diese
  * Datenbank), wird es registriert und zum Owner gemacht.
+ *
+ * `rundgang: 'an'` lässt die Einweisung des ersten Besuchs zu – das braucht nur
+ * der Test, der sie selbst prüft.
  */
-async function alsOwnerAnmelden(page: Page): Promise<void> {
+async function alsOwnerAnmelden(page: Page, rundgang: 'an' | 'aus' = 'aus'): Promise<void> {
+  if (rundgang === 'aus') await rundgangAbschalten(page);
+
   await page.goto('/login');
   await page.getByLabel('Benutzername').fill(OWNER.username);
   await page.getByLabel('Passwort', { exact: true }).fill(OWNER.password);
@@ -214,4 +264,38 @@ test('führt die Seitenleiste in der vereinbarten Reihenfolge', async ({ page },
 
   expect(sichtbar).toEqual(erwartet.filter((text) => sichtbar.includes(text)));
   expect(sichtbar.length).toBeGreaterThanOrEqual(6);
+});
+
+/**
+ * Der Rundgang beim ersten Besuch (Arbeitspaket Tutorial).
+ *
+ * Hier und nicht in den Komponententests, weil genau das den Unterschied macht:
+ * Der Rundgang misst echte Elemente im Fenster, und jsdom misst nichts. Geprüft
+ * wird der Ablauf, den ein Konto genau einmal sieht – er geht von selbst auf,
+ * er lässt sich mit Escape verlassen, und danach bleibt er weg.
+ *
+ * Läuft in beiden Projekten: Am Telefon überspringt er die Seitenleiste (sie
+ * liegt als geschlossene Schublade neben dem Bild) und zeigt den Menü-Knopf.
+ */
+test('begrüßt den ersten Besuch mit dem Rundgang – und lässt sich abschütteln', async ({
+  page,
+}) => {
+  await alsOwnerAnmelden(page, 'an');
+
+  const zettel = page.getByRole('dialog', { name: /^Rundgang:/ });
+
+  await expect(zettel).toBeVisible();
+  await expect(zettel).toContainText('Kurz stehen bleiben.');
+
+  // Eine Station weiter: Der Zettel steht dann an einem echten Bedienelement.
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await expect(zettel).not.toContainText('Kurz stehen bleiben.');
+
+  // Escape ist der Ausgang, den es geben muss.
+  await page.keyboard.press('Escape');
+  await expect(zettel).toBeHidden();
+
+  // Und er bleibt weg – auch nach dem nächsten Laden.
+  await page.goto('/servers');
+  await expect(page.getByRole('dialog', { name: /^Rundgang:/ })).toBeHidden();
 });

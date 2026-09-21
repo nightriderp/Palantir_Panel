@@ -70,6 +70,7 @@ export function UserMenu({ user }: { user: AccountDto | null }) {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
+        data-rundgang="konto"
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
@@ -152,6 +153,12 @@ export function UserMenu({ user }: { user: AccountDto | null }) {
               href="/profil#sitzungen"
               icon="clock"
               label="Aktive Sitzungen"
+              onNavigate={() => setOpen(false)}
+            />
+            <MenuLink
+              href="/profil#rundgang"
+              icon="cap"
+              label="Rundgang & Tutorial"
               onNavigate={() => setOpen(false)}
             />
           </nav>
