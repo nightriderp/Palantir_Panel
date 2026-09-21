@@ -73,6 +73,13 @@ export const ICON_PATHS = {
   stop: 'M6 6h12v12H6z',
   download: 'M12 3v12M7 11l5 5 5-5M4 21h16',
   upload: 'M12 21V9M7 13l5-5 5 5M4 3h16',
+  /**
+   * Doktorhut fuer die Einweisung (`/tutorial`).
+   *
+   * Brett, Kopfband und die Quaste an der rechten Ecke - bei 16 Pixeln traegt
+   * die Quaste die Erkennung: Ohne sie ist der Hut ein Umschlag mit Deckel.
+   */
+  cap: 'M12 4L2 9l10 5 10-5zM6 11.5V17c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-5.5M20 10v5',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

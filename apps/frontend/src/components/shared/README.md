@@ -163,6 +163,7 @@ Wissenswertes:
 | `PageHeader`       | Titel, Untertitel, Seitenaktionen                                         |
 | `Tabs`             | Reiter mit Unterstrich, inkl. gesperrtem Zustand samt Begründung          |
 | `SegmentedControl` | Filterumschalter („Alle / Online / Offline“)                              |
+| `useMediaQuery`    | Stand einer Media-Query, z. B. `(pointer: coarse)`                        |
 
 ### Bausteine
 
