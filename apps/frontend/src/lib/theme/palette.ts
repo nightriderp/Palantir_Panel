@@ -151,6 +151,26 @@ export interface Theme {
    * kein `calc()` in einem Alphawert.
    */
   readonly schattenStaerke: number;
+  /**
+   * Die Schrift der Überschriften – `null` heißt: die des Betreibers.
+   *
+   * **Nur Titel, nie Lesetext.** Eine Schmuckschrift bei 13px ist nicht zu
+   * lesen, und welche Schrift den Fließtext trägt, entscheidet der Betreiber
+   * in der Administration (Arbeitspaket S-3). Ein Theme greift ihm da nicht
+   * hinein; es legt eine zweite Schrift auf das, was ohnehin groß ist.
+   *
+   * Der Wert ist der **Familienname** aus dem Katalog der mitgelieferten
+   * Schriften (`apps/backend/src/modules/fonts/bundled.ts`) – dort liegen die
+   * Dateien, hier steht nur, wer welche trägt. Fehlt die Familie in der
+   * Instanz oder hat der Betreiber sie ausgeblendet, entsteht keine
+   * `@font-face`-Regel und die Überschrift fällt auf seine Schrift zurück.
+   *
+   * ⚠️ **Ohne Anführungszeichen geschrieben.** CSS erlaubt mehrteilige
+   * Familiennamen als Folge von Bezeichnern (`Racing Sans One`), und das
+   * erzeugte Stylesheet muss frei von `"` und `'` bleiben – siehe
+   * {@link themesCss}. `themes.test.ts` hält die Schreibweise fest.
+   */
+  readonly anzeigeSchrift: string | null;
   readonly palette: Palette;
 }
 
@@ -164,6 +184,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Das gewohnte Panel: tiefes Blauschwarz, Violett und Türkis.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: null,
     /*
      * Wertgleich mit dem, was bis zur Umstellung in `tailwind.config.ts`
      * stand. Die Begründungen zu den einzelnen Stufen – warum `ink.faint`
@@ -222,6 +243,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Warmes Halbdunkel, Gold und Glut – Werkstatt statt Rechenzentrum.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Cinzel',
     /*
      * Der Gegenentwurf zum Standard: dieselbe Helligkeitsrampe, aber jede
      * Stufe warm statt kühl. Dass die Rampe dieselbe **Form** behält, ist
@@ -276,6 +298,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Violettes Dunkel, Magenta und Blitzblau – laut, schnell, gezeichnet.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Chewy',
     /*
      * Das lauteste der Themes. Die Marke steht bei 315°, also weit weg von
      * jeder Statusfarbe – in einem Theme, das ohnehin knallt, ist das die
@@ -313,6 +336,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Anthrazit und Messing. Sagt wenig, und das in gutem Zwirn.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Playfair Display',
     /*
      * Der Gegenpol zu Neonnacht: neutrales Anthrazit ohne Farbstich, eine
      * einzige gedeckte Akzentfarbe. Auch hier ist das Messing bewusst dunkler
@@ -350,6 +374,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Tiefes Marineblau, Azur und Eis – kalt, weit und sehr aufgeräumt.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Audiowide',
     /*
      * Kühl wie der Standard, aber ohne dessen Violett: Die Marke steht im
      * Azur (209°), der Grund ist deutlich blauer und tiefer. Damit bleiben die
@@ -390,6 +415,7 @@ export const THEMES: readonly Theme[] = [
      * auf, auf hellem wird aus demselben Wert ein dunkler Hof um jedes Modal.
      */
     schattenStaerke: 0.28,
+    anzeigeSchrift: null,
     /*
      * Das erste Theme, das die Polarität dreht – und damit der Nachweis, dass
      * die Umstellung auf Variablen nicht nur andere Farben, sondern ein
@@ -443,6 +469,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Stahlblaues Dunkel, Signalrot und ein Blitz Blau – großes Kino.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Bangers',
     /*
      * Rot als Marke geht nur, weil es **tiefer** liegt als `danger`. Beide
      * sind rot; auseinander hält sie die Helligkeit, nicht der Farbton –
@@ -479,6 +506,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Warmes Schwarz, Kobalt und Orange – aufgeladen und laut.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Russo One',
     /*
      * Das Orange ist der Akzent, nicht die Marke – als Marke läge es einen
      * Grad neben `caution`, und ein Primärknopf sähe aus wie ein
@@ -516,6 +544,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Asphalt in der Dämmerung, Neon-Türkis und Abendrot.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Racing Sans One',
     palette: {
       canvas: '#0b0a0e',
       surface: '#1e1d24',
@@ -547,6 +576,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Tuschedunkel, Bambusgrün und ein Schimmer Gold – ruhig und wach.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Cormorant Garamond',
     /*
      * ⚠️ Das Grün der Marke liegt bewusst **weit** unterhalb von `success`:
      * Bambus ist gelbgrün und gedeckt, das „läuft"-Grün leuchtet. Ohne diesen
@@ -583,6 +613,7 @@ export const THEMES: readonly Theme[] = [
     beschreibung: 'Nasser Stein, Nordsee-Blau und Glut aus dem Dunkeln.',
     farbschema: 'dark',
     schattenStaerke: 1,
+    anzeigeSchrift: 'Metamorphous',
     /*
      * Im Farbton nah an Hyperraum, in der Wirkung weit weg: Der Grund ist
      * Stein statt Weltraum – entsättigtes Grau statt tiefem Marineblau –,
@@ -707,10 +738,22 @@ function block(selektor: string, thema: Theme): string {
     ([name, basis]) => `--schatten-${name}:${alphaWert(basis * thema.schattenStaerke)}`,
   );
 
+  /*
+   * Die Anzeigeschrift nur, wenn das Theme eine nennt. Wer keine hat, setzt
+   * die Variable gar nicht – und das Token in `tailwind.config.ts` fällt über
+   * seinen eigenen Vorgabewert auf die Schrift des Betreibers zurück. Ein
+   * leeres `--palantir-font-display:` täte das **nicht**: Eine gesetzte, aber
+   * leere Variable ist ein Wert, kein fehlender, und `var(x, ersatz)` greift
+   * dann nicht.
+   */
+  const schrift =
+    thema.anzeigeSchrift === null ? [] : [`--palantir-font-display:${thema.anzeigeSchrift}`];
+
   return [
     `${selektor}{color-scheme:${thema.farbschema}`,
     ...zeilen,
     ...schatten,
+    ...schrift,
     `--select-pfeil:${selectPfeilAdresse(thema.palette.selectPfeil)}}`,
   ].join(';');
 }

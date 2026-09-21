@@ -83,6 +83,37 @@ describe('Kennungen der Themes', () => {
   });
 });
 
+describe('Anzeigeschrift der Themes', () => {
+  /**
+   * Der Familienname steht **ohne Anführungszeichen** im Stylesheet.
+   *
+   * CSS erlaubt das: Ein Familienname darf eine Folge von Bezeichnern sein
+   * (`Racing Sans One`). Nötig ist es, weil das erzeugte Stylesheet als
+   * Textknoten in ein `<style>` geht und deshalb frei von `"` und `'` bleiben
+   * muss (siehe den Test weiter unten). Ein Name mit Ziffer, Komma oder
+   * Bindestrich bräuchte Anführungszeichen – und fiele damit still aus.
+   */
+  it.each(THEMES.map((thema) => [thema.id, thema.anzeigeSchrift] as const))(
+    'Theme „%s" nennt einen Namen, der ohne Anführungszeichen gültig ist',
+    (_id, schrift) => {
+      if (schrift === null) return;
+      expect(schrift).toMatch(/^[A-Za-z][A-Za-z ]*[A-Za-z]$/);
+    },
+  );
+
+  /*
+   * Die Familien kommen aus dem Katalog der mitgelieferten Schriften
+   * (`apps/backend/src/modules/fonts/bundled.ts`) – dort liegen die Dateien.
+   * Geprüft wird hier nur die Schreibweise: Fehlt eine Familie in der Instanz,
+   * fällt die Überschrift auf die Schrift des Betreibers zurück, und das ist
+   * ein gewollter Zustand, kein Fehler.
+   */
+  it('lässt dem Betreiber die Standard-Themes', () => {
+    const ohneEigene = THEMES.filter((thema) => thema.anzeigeSchrift === null).map((t) => t.id);
+    expect(ohneEigene).toEqual(['standard', 'tageslicht']);
+  });
+});
+
 describe('themesCss', () => {
   const css = themesCss();
 
@@ -157,6 +188,27 @@ describe('themesCss', () => {
         expect(block, `${thema.id} · ${name}`).toMatch(
           new RegExp(`--schatten-${name}:0?\\.?\\d+(;|})`),
         );
+      }
+    }
+  });
+
+  /**
+   * Nur Themes mit eigener Schrift setzen die Variable.
+   *
+   * ⚠️ Eine gesetzte, aber leere Variable wäre nicht dasselbe wie eine
+   * fehlende: `var(--x, ersatz)` greift den Ersatz nur, wenn die Variable
+   * **gar nicht** gesetzt ist. Ein leeres `--palantir-font-display:` ließe die
+   * Überschriften ohne Schriftangabe zurück.
+   */
+  it('setzt die Anzeigeschrift nur dort, wo ein Theme eine nennt', () => {
+    const bloecke = css.split('\n');
+
+    for (const [i, thema] of THEMES.entries()) {
+      const block = bloecke[i] ?? '';
+      if (thema.anzeigeSchrift === null) {
+        expect(block, `${thema.id} darf keine setzen`).not.toContain('--palantir-font-display');
+      } else {
+        expect(block, thema.id).toContain(`--palantir-font-display:${thema.anzeigeSchrift}`);
       }
     }
   });
