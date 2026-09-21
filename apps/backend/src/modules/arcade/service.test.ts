@@ -1,4 +1,4 @@
-import { type ArcadeGameId } from '@palantir/contracts';
+import { type AchievementId, type ArcadeGameId } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import type { ArcadeQueries, ArcadeRepository } from './repository.js';
 import { createArcadeService } from './service.js';
@@ -16,6 +16,8 @@ interface FakeOptions {
   readonly displayNames?: Record<string, string>;
   /** Konten, die gesperrt sind (Audit W3-5, `backend-community-16`). */
   readonly banned?: readonly string[];
+  /** Getragener Titel je Konto-Id (Betreiber-Wunsch 21.09.2026). */
+  readonly titel?: Record<string, AchievementId>;
 }
 
 type FakeRepository = ArcadeRepository & {
@@ -39,6 +41,7 @@ type FakeRepository = ArcadeRepository & {
 function fakeRepository(options: FakeOptions = {}): FakeRepository {
   const displayNames = options.displayNames ?? {};
   const banned = new Set(options.banned ?? []);
+  const titel: Record<string, AchievementId> = options.titel ?? {};
   const rows: Zeile[] = [];
   const stoerungen = { rankForScore: false };
   let counter = 0;
@@ -73,6 +76,7 @@ function fakeRepository(options: FakeOptions = {}): FakeRepository {
         .map(([userId, best]) => ({
           userId,
           displayName: displayNames[userId] ?? userId,
+          titleAchievementId: titel[userId] ?? null,
           bestScore: best.score,
           achievedAt: best.at,
         }))

@@ -103,6 +103,7 @@ import {
 import { effectiveUploadLimitBytes } from './modules/server-orchestration/files.js';
 import { MAX_AGENT_COMMAND_RESULT_BYTES } from './modules/server-orchestration/agent-frame.js';
 import { registerArcade } from './modules/arcade/index.js';
+import { type AchievementService, registerAchievements } from './modules/achievements/index.js';
 import { registerHealthRoutes } from './routes/health.js';
 import {
   autoShutdownTask,
@@ -502,9 +503,39 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      */
     let spieleKatalog: GameRegistry | null = null;
 
+    /*
+     * Abzeichen (Betreiber-Wunsch 21.09.2026) hängen am Audit-Log, das die
+     * Verwaltung hier gleich aufbaut – und das Erfolgs-Modul selbst entsteht
+     * erst weiter unten, wenn seine Routen an der Reihe sind. Wie beim
+     * Spiele-Katalog darüber löst ein Halter die Reihenfolge auf, die es sonst
+     * nicht geben könnte.
+     *
+     * Solange er leer ist (die ersten Millisekunden des Starts), gehen Einträge
+     * ohne Abzeichen durch. Das ist der richtige Vorrang: Das Protokoll läuft
+     * vom ersten Augenblick an, die Spielerei darf warten.
+     */
+    let erfolge: AchievementService | null = null;
+
     const admin = createAdminModule({
       db,
       onDisabledGameTypesChanged: (ids) => spieleKatalog?.setDisabledGameTypes(ids),
+      /*
+       * Jeder protokollierte Vorgang ist ein möglicher Auslöser für ein
+       * Abzeichen. Bewusst **ohne** `await`: Der Beobachter darf den
+       * protokollierten Vorgang weder aufhalten noch zu Fall bringen
+       * (`AuditObserver`), und der Service verschluckt seine Fehler selbst.
+       *
+       * Einträge ohne Handelnden (Systemvorgänge wie die Archivierung) lösen
+       * nichts aus – es gäbe kein Konto, dem das Abzeichen gehörte.
+       */
+      onAudited: (entry) => {
+        if (entry.actorId === null) return;
+
+        void erfolge?.evaluate(entry.actorId, entry.action, {
+          entryId: entry.id,
+          at: entry.timestamp,
+        });
+      },
       // Admin-Bereiche nur innerhalb des Tunnels und nie über dem Router-Port
       // (Review 2026-09-16, Befund 4.3).
       portRangeLimits: {
@@ -976,6 +1007,16 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     );
 
     /*
+     * Erfolge (Betreiber-Wunsch 21.09.2026) vor der Arcade: Letztere meldet
+     * jedes abgeschickte Ergebnis hierher, und der Halter für das Audit-Log
+     * oben soll so früh wie möglich gefüllt sein.
+     */
+    erfolge = await registerAchievements(app, {
+      db,
+      resolveUserId: (request) => request.authUser?.id ?? null,
+    });
+
+    /*
      * Arcade (F8, Pflichtenheft §17). Rein clientseitige Minispiele; das
      * Backend speichert nur die Punktestände und stellt die nutzerbezogene
      * Bestenliste je Spiel zusammen. Keine eigene Permission – spielen darf
@@ -984,6 +1025,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     await registerArcade(app, {
       db,
       resolveUserId: (request) => request.authUser?.id ?? null,
+      // Dieselbe Linie wie beim Audit-Log: melden, nicht erwarten. Die Arcade
+      // weiß nichts von Abzeichen, sie sagt nur, dass gespielt wurde.
+      onScoreSubmitted: (userId, gameId) => {
+        void erfolge?.evaluateArcade(userId, gameId);
+      },
     });
 
     /*

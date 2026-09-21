@@ -20,7 +20,7 @@ import {
   archiveAuditEntries,
   createGzipArchiveWriter,
 } from './audit-archive.js';
-import { type AuditService, createAuditService } from './audit.js';
+import { type AuditObserver, type AuditService, createAuditService } from './audit.js';
 import {
   type HostNodeService,
   type NodeConnectionSource,
@@ -123,6 +123,15 @@ export interface AdminModuleOptions {
    * Backends (`GameRegistry.setDisabledGameTypes`).
    */
   readonly onDisabledGameTypesChanged?: (ids: readonly string[]) => void;
+  /**
+   * Anschluss an das Erfolgs-Modul (Betreiber-Wunsch 21.09.2026): Wird nach
+   * jedem geschriebenen Protokolleintrag gerufen.
+   *
+   * Optional und mit Absicht ohne Rückgabewert – das Audit-Log erwartet den
+   * Beobachter nicht und lässt sich von seinen Fehlern nicht beirren
+   * (`AuditObserver`). Ohne Anschluss verhält sich das Modul wie zuvor.
+   */
+  readonly onAudited?: AuditObserver;
 }
 
 export interface AdminModule {
@@ -153,7 +162,7 @@ export interface AdminModule {
 export function createAdminModule(options: AdminModuleOptions): AdminModule {
   const { db } = options;
 
-  const audit = createAuditService(createDrizzleAuditLogRepository(db));
+  const audit = createAuditService(createDrizzleAuditLogRepository(db), options.onAudited);
 
   /*
    * Der Port-Pool über einer frei wählbaren Verbindung (Fundpunkt 135).
@@ -175,7 +184,9 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
       // Über dem Pool bleibt es der gemeinsame Dienst des Moduls; über einer
       // Transaktion braucht es einen, der in genau diese schreibt.
       audit:
-        connection === db ? audit : createAuditService(createDrizzleAuditLogRepository(connection)),
+        connection === db
+          ? audit
+          : createAuditService(createDrizzleAuditLogRepository(connection), options.onAudited),
       ...(options.serverNames ? { serverNames: options.serverNames } : {}),
       ...(options.portRangeLimits ? { limits: options.portRangeLimits } : {}),
     });

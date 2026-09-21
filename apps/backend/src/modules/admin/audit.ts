@@ -200,10 +200,43 @@ export function entryFor(
   };
 }
 
-export function createAuditService(repository: AuditLogRepository): AuditService {
+/**
+ * Beobachter eines geschriebenen Protokolleintrags.
+ *
+ * Gedacht für Nachgedanken, die an einem protokollierten Vorgang hängen, ohne
+ * ihn zu verantworten – derzeit die Abzeichen (Betreiber-Wunsch 21.09.2026).
+ *
+ * **Zusicherungen an den Beobachter**, damit das Audit-Log seine eigenen nicht
+ * verliert:
+ *  - Er wird **nach** dem Anhängen aufgerufen und **nicht erwartet**. Ein
+ *    langsamer Beobachter darf den Vorgang nicht aufhalten.
+ *  - Wirft er, wird der Fehler hier gefangen und verworfen. „Keine Aktion ohne
+ *    Protokoll" bleibt damit unberührt: Der Eintrag steht bereits, und ein
+ *    Abzeichen, das sich nicht eintragen ließ, ist kein Grund, dem Nutzer einen
+ *    gelungenen Vorgang als fehlgeschlagen zu melden.
+ *  - Er darf **nicht** in die übergebene Transaktion schreiben. Ein Fehler
+ *    darin würde sie abbrechen, und der Eintrag, dessen Beobachter er ist,
+ *    verschwände mit. Das Erfolgs-Modul hält sich daran und arbeitet
+ *    ausschließlich über den Pool (siehe dessen `repository.ts`).
+ */
+export type AuditObserver = (entry: AuditEntryRecord) => void;
+
+export function createAuditService(
+  repository: AuditLogRepository,
+  onRecorded?: AuditObserver,
+): AuditService {
   return {
     async record(entry, connection) {
-      await repository.append(entry, connection);
+      const geschrieben = await repository.append(entry, connection);
+
+      if (onRecorded) {
+        try {
+          onRecorded(geschrieben);
+        } catch {
+          // Bewusst still: siehe die Zusicherungen bei `AuditObserver`. Der
+          // Beobachter ist selbst dafür zuständig, seine Fehler zu melden.
+        }
+      }
     },
 
     async list(ctx, query) {

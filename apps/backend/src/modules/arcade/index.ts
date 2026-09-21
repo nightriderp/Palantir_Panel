@@ -15,6 +15,7 @@
  * vertikale Scheibe. Vermerkt in WORK_STATUS.md.
  */
 
+import type { ArcadeGameId } from '@palantir/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Database } from '../../db/index.js';
 import { createDrizzleArcadeRepository } from './repository.js';
@@ -37,6 +38,12 @@ export interface ArcadeModuleOptions {
   readonly db: Database;
   /** Konto-Id des Aufrufers (Arbeitspaket B1). */
   resolveUserId(request: FastifyRequest): string | null;
+  /**
+   * Anschluss an das Erfolgs-Modul (Betreiber-Wunsch 21.09.2026) – gerufen,
+   * nachdem ein Versuch gespeichert wurde. Ohne Anschluss verhält sich das
+   * Modul wie zuvor.
+   */
+  readonly onScoreSubmitted?: (userId: string, gameId: ArcadeGameId) => void;
 }
 
 /**
@@ -50,6 +57,7 @@ export async function registerArcade(
 ): Promise<ArcadeService> {
   const arcade = createArcadeService({
     repository: createDrizzleArcadeRepository(options.db),
+    ...(options.onScoreSubmitted ? { onScoreSubmitted: options.onScoreSubmitted } : {}),
   });
 
   await app.register(registerArcadeRoutes({ arcade, resolveUserId: options.resolveUserId }));
