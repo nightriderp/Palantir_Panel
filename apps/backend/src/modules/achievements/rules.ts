@@ -72,6 +72,16 @@ export interface AchievementRule {
    * könnte nie auslösen; das prüft `rules.test.ts`.
    */
   readonly actions: readonly AuditAction[] | 'jede';
+  /**
+   * Nur bei `actions: 'jede'`: Aktionen, die trotzdem nicht auslösen.
+   *
+   * Die Ausnahmen stehen hier und nicht in der Bedingung der Regel, damit
+   * `rulesForAuditAction` sie schon bei der Auswahl beachtet. Sonst liefe bei
+   * jeder Fehlanmeldung erst eine Abfrage an, um dann festzustellen, dass sie
+   * nicht zählt – und das ist genau die Sorte Ereignis, die sich beliebig oft
+   * erzeugen lässt.
+   */
+  readonly exceptActions?: readonly AuditAction[];
   /** Zusätzlich nach jedem abgeschickten Arcade-Ergebnis prüfen. */
   readonly onArcadeScore?: true;
   /** Ist die Bedingung erfüllt? */
@@ -223,9 +233,9 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
      * Negativliste.
      */
     actions: 'jede',
+    exceptActions: KEINE_HANDGRIFFE,
     async check({ userId, trigger, queries }) {
       if (trigger.kind !== 'audit') return false;
-      if (KEINE_HANDGRIFFE.includes(trigger.action)) return false;
 
       const vorher = await queries.countAuditEntries(
         userId,
@@ -241,10 +251,17 @@ export const ACHIEVEMENT_RULES: Record<AchievementId, AchievementRule> = {
 /** Alle Regeln als Paare – eine Stelle für die beiden Auswahlfunktionen. */
 const REGEL_PAARE = Object.entries(ACHIEVEMENT_RULES) as [AchievementId, AchievementRule][];
 
-/** Abzeichen, deren Regel bei dieser Audit-Aktion geprüft werden muss. */
+/**
+ * Abzeichen, deren Regel bei dieser Audit-Aktion geprüft werden muss.
+ *
+ * Eine leere Liste ist ein gültiges Ergebnis und der billigste Fall: Der
+ * Service rührt dann die Datenbank gar nicht erst an.
+ */
 export function rulesForAuditAction(action: AuditAction): AchievementId[] {
-  return REGEL_PAARE.filter(
-    ([, regel]) => regel.actions === 'jede' || regel.actions.includes(action),
+  return REGEL_PAARE.filter(([, regel]) =>
+    regel.actions === 'jede'
+      ? !(regel.exceptActions ?? []).includes(action)
+      : regel.actions.includes(action),
   ).map(([id]) => id);
 }
 

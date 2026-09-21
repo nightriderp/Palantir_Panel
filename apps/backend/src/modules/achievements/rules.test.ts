@@ -174,12 +174,19 @@ describe('`hausmeisterei` zählt Handgriffe', () => {
     );
   });
 
-  it('löst auch nicht aus, wenn der auslösende Eintrag selbst keiner ist', async () => {
-    const fastVoll = { auditRows: eintraege('server.settingsChanged', 49) };
-
+  it('wird bei einem abgewiesenen oder misslungenen Versuch gar nicht erst geprüft', () => {
+    /*
+     * Die Ausnahme greift schon bei der Auswahl und nicht erst in der
+     * Bedingung: Sonst liefe bei jeder Fehlanmeldung eine Zählung über dem
+     * Audit-Log an, um dann „zählt nicht" zu sagen.
+     */
     for (const action of KEINE_HANDGRIFFE) {
-      expect(await pruefe('hausmeisterei', auditAuslöser(action), fastVoll)).toBe(false);
+      expect(rulesForAuditAction(action)).not.toContain('hausmeisterei');
     }
+  });
+
+  it('lässt eine Fehlanmeldung ganz ohne Regel durchgehen', () => {
+    expect(rulesForAuditAction('auth.loginFailed')).toEqual([]);
   });
 });
 
