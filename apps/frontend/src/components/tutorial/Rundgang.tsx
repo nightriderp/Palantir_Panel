@@ -6,6 +6,8 @@ import { useRundgang } from './RundgangProvider';
 import {
   RUNDGANG_SCHRITTE,
   ZETTEL_BREITE,
+  abbruchBeendet,
+  abbruchStufe,
   ausschnittFlaechen,
   istSichtbar,
   naechsterSichtbarer,
@@ -34,8 +36,17 @@ import {
  *
  * Während der Rundgang läuft, nehmen die vier Verdunklungsflächen jeden Klick
  * an: Es soll niemand aus Versehen einen Server starten, während er einen
- * Zettel liest. Escape beendet jederzeit, und der Stand landet im
- * `localStorage` – gezeigt wird der Rundgang von selbst nur beim ersten Mal.
+ * Zettel liest. Der Stand landet im `localStorage` – gezeigt wird der Rundgang
+ * von selbst nur beim ersten Mal.
+ *
+ * **Zwei Ausgänge, und das ist Absicht.** Der Knopf „Nicht jetzt" gibt erst
+ * nach mehreren Klicks nach und wird mit jedem davon frecher – die Leiter
+ * steht als `ABBRUCH_STUFEN` in `rundgangSchritte.ts`, wie lang sie ist,
+ * entscheidet sie dort selbst. Das ist der Scherz, den sich ein Panel für einen
+ * festen Freundeskreis erlauben darf (Lastenheft §1). Escape beendet dagegen
+ * sofort und ohne jede Rückfrage – ein Ding, das sich über die ganze
+ * Anwendung legt, braucht einen Ausgang, der nicht verhandelt, und auf den
+ * verlassen sich Tastaturbedienung und die e2e-Tests.
  */
 
 /** Wie oft die Lage der Ziele neu gemessen wird, solange der Rundgang läuft. */
@@ -97,8 +108,8 @@ export function Rundgang() {
 
 function RundgangLauf({ onBeenden }: { onBeenden: () => void }) {
   const [index, setIndex] = useState(0);
-  /** Der erste Klick auf „Abbrechen" fragt nach. Der zweite beendet. */
-  const [abbruchGefragt, setAbbruchGefragt] = useState(false);
+  /** Wie oft schon auf „Nicht jetzt" geklickt wurde – siehe {@link ABBRUCH_STUFEN}. */
+  const [abbruchKlicks, setAbbruchKlicks] = useState(0);
 
   const schritt = RUNDGANG_SCHRITTE[index];
   const zielName = schritt?.ziel ?? null;
@@ -158,17 +169,20 @@ function RundgangLauf({ onBeenden }: { onBeenden: () => void }) {
       return;
     }
 
-    setAbbruchGefragt(false);
+    // Wer weiterliest, fängt die Leiter beim nächsten Fluchtversuch von vorn
+    // an. Sonst sammelt jemand über elf Stationen hinweg heimlich Klicks und
+    // steht plötzlich ohne Rückfrage draußen.
+    setAbbruchKlicks(0);
     setIndex(naechster);
   }
 
   function abbrechen(): void {
-    if (!abbruchGefragt) {
-      setAbbruchGefragt(true);
+    if (abbruchBeendet(abbruchKlicks)) {
+      onBeenden();
       return;
     }
 
-    onBeenden();
+    setAbbruchKlicks(abbruchKlicks + 1);
   }
 
   if (!schritt) return null;
@@ -176,6 +190,7 @@ function RundgangLauf({ onBeenden }: { onBeenden: () => void }) {
   const flaechen = ausschnittFlaechen(ziel, fenster);
   const platz = zettelPlatz(ziel, fenster, zettelHoehe);
   const letzter = index === RUNDGANG_SCHRITTE.length - 1;
+  const stufe = abbruchStufe(abbruchKlicks);
 
   return (
     <div className="fixed inset-0 z-50" role="presentation">
@@ -249,11 +264,15 @@ function RundgangLauf({ onBeenden }: { onBeenden: () => void }) {
         <h2 className="mt-2 text-md font-bold text-ink">{schritt.titel}</h2>
         <p className="mt-1.5 text-base text-ink-muted">{schritt.text}</p>
 
-        {abbruchGefragt ? (
-          <p className="mt-2 text-sm text-caution">
-            Sicher? Es sind noch keine 30 Sekunden. Nochmal drücken, dann lassen wir dich.
-          </p>
-        ) : null}
+        {/*
+          `aria-live`, weil sich hier Text ändert, ohne dass der Fokus
+          umspringt: Der Knopf bleibt unter dem Finger, nur seine Beschriftung
+          und diese Zeile werden eine Stufe frecher. Ohne Ansage bekäme das
+          niemand mit, der den Zettel vorgelesen bekommt.
+        */}
+        <p aria-live="polite" className="mt-2 text-sm text-caution empty:hidden">
+          {stufe.frage}
+        </p>
 
         <div className="mt-4 flex items-center justify-between gap-2">
           {/*
@@ -261,15 +280,15 @@ function RundgangLauf({ onBeenden }: { onBeenden: () => void }) {
             jetzt" und „Verstanden" täten dasselbe, und die Rückfrage („Es sind
             noch keine 30 Sekunden") wäre dort schlicht falsch.
 
-            `whitespace-nowrap`, weil die zweite Beschriftung länger ist als
-            die erste: „Ja, wirklich" brach im schmalen Zettel sonst auf zwei
-            Zeilen um und riss die Knopfreihe auseinander.
+            `whitespace-nowrap`, weil die Beschriftung mit jeder Stufe wechselt:
+            „Ja, wirklich" brach im schmalen Zettel sonst auf zwei Zeilen um und
+            riss die Knopfreihe auseinander.
           */}
           {letzter ? (
             <span />
           ) : (
             <Button variant="ghost" size="sm" className="whitespace-nowrap" onClick={abbrechen}>
-              {abbruchGefragt ? 'Ja, wirklich' : 'Nicht jetzt'}
+              {stufe.knopf}
             </Button>
           )}
 

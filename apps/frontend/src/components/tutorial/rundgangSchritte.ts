@@ -95,6 +95,79 @@ export const RUNDGANG_SCHRITTE: readonly RundgangSchritt[] = [
   },
 ] as const;
 
+/**
+ * Die Leiter beim Abbrechen: eine Stufe je Klick auf „Nicht jetzt".
+ *
+ * Der Rundgang dauert eine halbe Minute und lässt sich trotzdem nicht in einem
+ * Klick wegwischen – das ist der Witz, und er ist ausdrücklich gewünscht. Der
+ * erste Klick fragt nach, der zweite fragt frecher nach, und irgendwann gibt
+ * der Rundgang zu, dass er beim Zählen gelogen hat.
+ *
+ * Als Daten und nicht als Kaskade von `if`s in der Ansicht, aus dem gleichen
+ * Grund wie bei {@link RUNDGANG_SCHRITTE}: Wer den Ton ändern (oder die Leiter
+ * kürzen) will, ändert dieses Feld und fasst keine Komponente an. Die Länge
+ * ergibt {@link ABBRUCH_KLICKS} – es steht nirgends eine 5 im Code.
+ *
+ * `frage` ist `null`, solange noch gar nicht geklickt wurde: Vor dem ersten
+ * Klick steht keine Rückfrage im Zettel.
+ *
+ * Die Beschriftungen bleiben kurz. Der Zettel ist {@link ZETTEL_BREITE} breit
+ * und teilt sich die Fußzeile mit „Zurück" und „Weiter"; die Eskalation steht
+ * deshalb in `frage`, wo eine ganze Zeile Platz ist, und nicht auf dem Knopf.
+ */
+export interface AbbruchStufe {
+  /** Beschriftung des Knopfs auf dieser Stufe. Kurz halten. */
+  knopf: string;
+  /** Rückfrage über der Knopfreihe, oder `null` vor dem ersten Klick. */
+  frage: string | null;
+}
+
+export const ABBRUCH_STUFEN: readonly AbbruchStufe[] = [
+  {
+    knopf: 'Nicht jetzt',
+    frage: null,
+  },
+  {
+    knopf: 'Ja, wirklich',
+    frage: 'Sicher? Es sind noch keine 30 Sekunden.',
+  },
+  {
+    knopf: 'Ganz sicher',
+    frage: 'Ganz sicher? Die Station mit den Backups rettet dir irgendwann den Abend.',
+  },
+  {
+    knopf: 'Immer noch',
+    frage: 'Absolut sicher? Ich frage auch nur noch ein einziges Mal, versprochen.',
+  },
+  {
+    knopf: 'Endgültig',
+    frage: 'Das mit dem einen Mal war gelogen. Jetzt aber: noch einer, dann bist du raus.',
+  },
+] as const;
+
+/** So viele Klicks kostet der Abbruch insgesamt. Der letzte beendet. */
+export const ABBRUCH_KLICKS = ABBRUCH_STUFEN.length;
+
+/**
+ * Die Stufe zu `klicks` bisherigen Klicks.
+ *
+ * Geklemmt statt ungeprüft indiziert: Der Zähler in der Ansicht wird beim
+ * letzten Klick gar nicht mehr erhöht (da wird beendet), aber ein
+ * Zurücksetzen, das jemand später vergisst, soll hier keine leere Stufe
+ * erzeugen, sondern die letzte.
+ */
+export function abbruchStufe(klicks: number): AbbruchStufe {
+  const index = Math.min(Math.max(0, Math.trunc(klicks)), ABBRUCH_STUFEN.length - 1);
+
+  // Nicht-null: index liegt nach dem Klemmen im Feld, und das Feld ist nie leer.
+  return ABBRUCH_STUFEN[index] as AbbruchStufe;
+}
+
+/** Beendet dieser Klick den Rundgang – oder kommt noch eine Rückfrage? */
+export function abbruchBeendet(klicks: number): boolean {
+  return klicks + 1 >= ABBRUCH_KLICKS;
+}
+
 export interface Rechteck {
   top: number;
   left: number;

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { parseStand, serializeStand } from './rundgangStand';
 import {
+  ABBRUCH_KLICKS,
+  ABBRUCH_STUFEN,
   AUSSCHNITT_LUFT,
   RUNDGANG_SCHRITTE,
+  abbruchBeendet,
+  abbruchStufe,
   ZETTEL_ABSTAND,
   ZETTEL_BREITE,
   ausschnittFlaechen,
@@ -166,5 +170,48 @@ describe('Inhalt des Rundgangs', () => {
     const keys = RUNDGANG_SCHRITTE.map((schritt) => schritt.key);
 
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe('Die Leiter beim Abbrechen', () => {
+  it('kostet fünf Klicks – vier Rückfragen, dann ist man raus', () => {
+    // Der Wunsch war wörtlich „5 mal klicken". Die Zahl steht nur hier im
+    // Test; im Code ergibt sie sich aus der Länge des Feldes.
+    expect(ABBRUCH_KLICKS).toBe(5);
+    expect(ABBRUCH_STUFEN).toHaveLength(5);
+  });
+
+  it('fragt vor dem ersten Klick nichts', () => {
+    expect(abbruchStufe(0).frage).toBeNull();
+    expect(abbruchStufe(0).knopf).toBe('Nicht jetzt');
+  });
+
+  it('hat ab dem ersten Klick auf jeder Stufe eine Rückfrage', () => {
+    for (let klicks = 1; klicks < ABBRUCH_KLICKS; klicks += 1) {
+      expect(abbruchStufe(klicks).frage).toBeTruthy();
+    }
+  });
+
+  it('beschriftet den Knopf auf jeder Stufe anders', () => {
+    const knoepfe = ABBRUCH_STUFEN.map((stufe) => stufe.knopf);
+
+    expect(new Set(knoepfe).size).toBe(knoepfe.length);
+  });
+
+  it('hält die Beschriftungen kurz – der Zettel teilt die Fußzeile mit zwei Knöpfen', () => {
+    for (const stufe of ABBRUCH_STUFEN) {
+      expect(stufe.knopf.length).toBeLessThanOrEqual(12);
+    }
+  });
+
+  it('beendet erst beim letzten Klick', () => {
+    expect(abbruchBeendet(0)).toBe(false);
+    expect(abbruchBeendet(ABBRUCH_KLICKS - 2)).toBe(false);
+    expect(abbruchBeendet(ABBRUCH_KLICKS - 1)).toBe(true);
+  });
+
+  it('klemmt einen Zähler, der über das Feld hinausläuft', () => {
+    expect(abbruchStufe(99)).toBe(ABBRUCH_STUFEN[ABBRUCH_STUFEN.length - 1]);
+    expect(abbruchStufe(-3)).toBe(ABBRUCH_STUFEN[0]);
   });
 });

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Rundgang } from './Rundgang';
 import { RundgangProvider } from './RundgangProvider';
 import { RundgangSection } from './RundgangSection';
+import { ABBRUCH_KLICKS, ABBRUCH_STUFEN, abbruchStufe } from './rundgangSchritte';
 import { RUNDGANG_STORAGE_KEY } from './rundgangStand';
 
 /**
@@ -142,16 +143,45 @@ describe('Rundgang – durchlaufen', () => {
 });
 
 describe('Rundgang – wieder herauskommen', () => {
-  it('fragt beim Abbrechen einmal nach und lässt dann los', () => {
+  it('lässt erst nach fünf Klicks los und wird dabei jedes Mal frecher', () => {
+    panel();
+
+    // Ein Klick je Stufe; die letzte beendet. Der Test geht die Leiter aus
+    // ABBRUCH_STUFEN ab, statt die Beschriftungen abzuschreiben – wer den Ton
+    // ändert, muss ihn nicht an zwei Stellen ändern.
+    for (let klicks = 0; klicks < ABBRUCH_KLICKS - 1; klicks += 1) {
+      const stufe = abbruchStufe(klicks);
+
+      fireEvent.click(screen.getByRole('button', { name: stufe.knopf }));
+
+      const naechste = abbruchStufe(klicks + 1);
+
+      // Rückfrage und Beschriftung sind eine Stufe weitergerückt, der
+      // Rundgang steht aber noch.
+      expect(zettel().textContent).toContain(naechste.frage);
+      expect(screen.getByRole('button', { name: naechste.knopf })).toBeDefined();
+      expect(screen.queryByRole('dialog')).not.toBeNull();
+    }
+
+    const letzte = ABBRUCH_STUFEN[ABBRUCH_STUFEN.length - 1];
+
+    fireEvent.click(screen.getByRole('button', { name: letzte?.knopf }));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(window.localStorage.getItem(RUNDGANG_STORAGE_KEY)).toBe('erledigt');
+  });
+
+  it('setzt die Leiter zurück, wenn man zwischendurch weiterliest', () => {
     panel();
 
     fireEvent.click(screen.getByRole('button', { name: 'Nicht jetzt' }));
+    fireEvent.click(screen.getByRole('button', { name: abbruchStufe(1).knopf }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
-    expect(zettel().textContent).toContain('Sicher?');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Ja, wirklich' }));
-
-    expect(screen.queryByRole('dialog')).toBeNull();
+    // Sonst sammelte jemand über elf Stationen hinweg heimlich Klicks und
+    // stünde beim nächsten Versuch ohne Rückfrage draußen.
+    expect(screen.getByRole('button', { name: 'Nicht jetzt' })).toBeDefined();
+    expect(zettel().textContent).not.toContain(abbruchStufe(1).frage);
   });
 
   it('beendet mit Escape sofort und ohne Rückfrage', () => {
