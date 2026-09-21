@@ -361,3 +361,51 @@ describe('Middleware – Wurzel ohne eigene Seite (Fundpunkt frontend-app-07)', 
     expect(ziel(response)).toBe('/servers');
   });
 });
+
+/**
+ * `/api` gehört dem Backend (Fundpunkt 332).
+ *
+ * Geprüft wird nicht nur der Statuscode, sondern vor allem, dass die
+ * Middleware dafür **nichts tut**: kein Sitzungs-Abruf, keine Umleitung. Genau
+ * diese beiden Schritte machten aus einer falschen Traefik-Regel am 21.09.2026
+ * eine Kaskade – jeder Polling-Aufruf wurde zu einer server-gerenderten Seite,
+ * bis Frontend und Proxy am Speicherlimit starben.
+ */
+describe('Middleware – Aufrufe unter /api', () => {
+  it('antwortet mit 404, statt auf die Anmeldung zu leiten', async () => {
+    const response = await proxy(anfrage('https://panel.example/api/health'));
+
+    expect(response.status).toBe(404);
+    expect(ziel(response)).toBeNull();
+  });
+
+  it('holt dafür keine Sitzung – auch nicht mit Cookie', async () => {
+    fetchDouble.mockResolvedValue(angemeldet());
+
+    const response = await proxy(anfrage('https://panel.example/api/servers', SITZUNGS_COOKIE));
+
+    expect(response.status).toBe(404);
+    expect(fetchDouble).not.toHaveBeenCalled();
+  });
+
+  it('gilt auch für `/api` selbst', async () => {
+    expect((await proxy(anfrage('https://panel.example/api'))).status).toBe(404);
+  });
+
+  it('nennt im Text den wahrscheinlichen Grund', async () => {
+    const response = await proxy(anfrage('https://panel.example/api/health'));
+
+    await expect(response.text()).resolves.toContain('Host-Regel');
+  });
+
+  /*
+   * Gegenprobe: Ein Pfad, der nur mit denselben Zeichen anfängt, gehört der
+   * Oberfläche und muss weiter durch die Sperre laufen.
+   */
+  it('fasst einen Pfad an, der nur ähnlich heißt', async () => {
+    const response = await proxy(anfrage('https://panel.example/apidocs'));
+
+    expect(response.status).not.toBe(404);
+    expect(ziel(response)).toBe('/login');
+  });
+});

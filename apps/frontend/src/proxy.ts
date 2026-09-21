@@ -46,7 +46,51 @@ export const NONCE_HEADER_NAME = 'x-nonce';
  *    Sperre über Requests hinweg hätte die Middleware ohnehin nicht: Sie läuft
  *    ohne gemeinsamen Zustand, unter Umständen in mehreren Instanzen.
  */
+/** Präfix, unter dem ausschließlich das Backend bedient (Pflichtenheft §12.1). */
+const API_PRAEFIX = '/api';
+
+/**
+ * Gehört der Pfad dem Backend?
+ *
+ * Getrennt und exportiert, damit die Regel ohne die Next-Laufzeit prüfbar ist.
+ * `/apidocs` ist ausdrücklich **kein** Treffer – nur `/api` selbst und alles
+ * darunter.
+ */
+export function gehoertDerApi(pfad: string): boolean {
+  return pfad === API_PRAEFIX || pfad.startsWith(`${API_PRAEFIX}/`);
+}
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  /*
+   * Aufrufe unter `/api` beantwortet das Frontend sofort mit 404 (Fundpunkt
+   * 332), bevor irgendetwas Teures passiert.
+   *
+   * Im Normalbetrieb kommt hier nie eine solche Anfrage an: Traefik schneidet
+   * `/api` ab und reicht sie ans Backend (`palantir-api-pfad`, Vorrang 100).
+   * Stimmt die Host-Regel dieses Routers aber einmal nicht – am 21.09.2026 bei
+   * der Domainumstellung eine Viertelstunde lang der Fall –, fällt jeder
+   * API-Aufruf in den Web-Router und landet genau hier.
+   *
+   * Und dann wurde es teuer: Aus einem Polling-Aufruf, der wenige hundert Byte
+   * JSON erwartet, wurde erst ein Sitzungs-Abruf gegen die API (unten) und
+   * danach über `gateRedirect()` eine 307 auf `/login` – also eine
+   * server-gerenderte Seite. Jeder offene Panel-Tab drehte diese Schleife im
+   * Sekundentakt. Das Ergebnis steht im Kernel-Log: sechs OOM-Kills in neun
+   * Minuten, zweimal das Frontend, viermal Traefik – und ein Proxy, der stirbt,
+   * nimmt **alle** Hosts mit, nicht nur den fehlgeleiteten Pfad.
+   *
+   * Der Fehler war die Konfiguration, nicht dieser Pfad. Aber eine
+   * Fehlkonfiguration soll ein 404 ergeben und keine Kaskade. Der Text ist
+   * bewusst sprechend: Wer ihn im Browser oder in einem `curl` sieht, weiss
+   * sofort, dass der API-Router nicht greift.
+   */
+  if (gehoertDerApi(request.nextUrl.pathname)) {
+    return new NextResponse(
+      'Diese Adresse bedient das Backend, nicht das Frontend. Greift sie hier, stimmt die Host-Regel des API-Routers nicht.',
+      { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } },
+    );
+  }
+
   /*
    * Content-Security-Policy mit Nonce (Review 2026-09-16, Befunde 3.4/12.3):
    * eine frische Nonce je Anfrage, in den Anfrage-Kopf (Next.js liest sie von
