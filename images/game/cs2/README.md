@@ -2,11 +2,13 @@
 
 Counter-Strike-2-Server von Valve. Spieltyp-Kennung `cs2`.
 
-| Enthalten   | Version                                          |
-| ----------- | ------------------------------------------------ |
-| Grundlage   | `palantir-base-steam:6`                          |
-| Serverdaten | Anwendung 730, beim ersten Start geholt (~30 GB) |
-| `start.sh`  | Einstiegspunkt                                   |
+| Enthalten          | Version                                          |
+| ------------------ | ------------------------------------------------ |
+| Grundlage          | `palantir-base-steam:6`                          |
+| Serverdaten        | Anwendung 730, beim ersten Start geholt (~30 GB) |
+| MetaMod:Source     | 2.0.0-git1469, beim ersten Start geholt          |
+| CounterStrikeSharp | v1.0.374 mit .NET-Laufzeit, beim ersten Start    |
+| `start.sh`         | Einstiegspunkt                                   |
 
 ## Was die Grundlage war
 
@@ -59,6 +61,8 @@ die eigene Kartenliste (`mg_custom`). Verschmelzen wäre Raterei — die Datei g
 | GSLT                                      | `+sv_setsteamaccount`                                         |
 | Alle Runden spielen                       | `mp_match_can_clinch 0`                                       |
 | GOTV einschalten                          | `tv_enable 1`; `tv_autorecord` bleibt immer `0`               |
+| Plugins laden                             | MetaMod-Zeile in `gameinfo.gi` (siehe unten)                  |
+| Admins (SteamID64)                        | `addons/counterstrikesharp/configs/admins.json`               |
 
 **Spielmodi** — Valve kennt sie nur als zwei Zahlen:
 
@@ -77,6 +81,38 @@ die Startkarte nicht setzen — das kann Valve nicht.
 **Der GSLT ist keine Pflicht.** Ohne ihn läuft der Server, taucht aber nicht im Serverbrowser auf.
 Zu holen unter `steamcommunity.com/dev/managegameservers`, Anwendung 730.
 
+## Plugin-Grundlage
+
+MetaMod:Source lädt Plugins in den Server, CounterStrikeSharp lädt C#-Plugins — fast alles, was
+es für CS2 gibt, baut darauf. Adressen und Prüfsummen stehen im `Dockerfile`; das Startskript
+holt die Archive beim ersten Start in den internen Ordner und verwirft, was nicht zur Summe passt.
+
+**Ausgepackt wird nur bei einer neuen Fassung** (Merkdatei `addons/.palantir-stand`). Die
+`metaplugins.ini` des Betreibers bleibt dabei stehen, `core.json` entsteht einmal aus der
+Vorlage und gehört danach dem Betreiber.
+
+**Die Zeile in `gameinfo.gi` wird bei jedem Start geprüft.** Ein Update von Valve schreibt die
+Datei neu und nimmt sie mit; ohne sie lädt MetaMod nie. Eingetragen wird direkt hinter
+`Game_LowViolence`, nie doppelt.
+
+**„Plugins laden" aus** nimmt nur die Zeile heraus. Das ist der Notausgang, wenn ein CS2-Update
+MetaMod bricht: Der Server läuft ohne Plugins weiter, die Dateien bleiben liegen.
+
+## Admins
+
+SteamID64-Nummern, getrennt durch Komma, Leerzeichen oder Semikolon. Jede bekommt `@css/root`.
+Was keine SteamID64 ist (17 Ziffern, beginnend mit `7656119`), steht im Log und nicht in der
+Datei. **Ist das Feld leer, fasst das Skript `admins.json` nicht an** — für Betreiber, die Gruppen
+und feinere Rechte von Hand pflegen.
+
+## Updates zurückhalten
+
+CounterStrikeSharp bricht nach Updates von Valve regelmässig, bis die Grundlage nachzieht. Auf der
+Templates-Seite kann die Administration deshalb das Update beim Start abschalten
+(`PALANTIR_UPDATES_HALTEN=true`). SteamCMD bleibt dann aus, sofern die Serverdateien schon da
+sind — der allererste Start holt trotzdem. Der Preis: Spieler mit einem neueren Client kommen
+womöglich nicht mehr auf den Server.
+
 ## Ports
 
 | Port  | Protokoll | Zweck                                     |
@@ -89,7 +125,11 @@ Zu holen unter `steamcommunity.com/dev/managegameservers`, Anwendung 730.
 `start.test.mjs` ruft `start.sh` mit `sh` auf, ohne Docker, ohne SteamCMD und ohne CS2. Statt der
 30 GB legt eine `steamcmd.sh`-Attrappe eine Binärdatei ab, die ihre Argumente aufschreibt.
 Geprüft: alle sechs Modi, alle drei Kartenquellen, `palantir.cfg`, die Übersetzung der Schalter,
-`steamclient.so`, `gamemodes_server.txt`, GSLT und Startparameter.
+`steamclient.so`, `gamemodes_server.txt`, GSLT und Startparameter, dazu Plugin-Grundlage, Admins
+und die Update-Sperre. Die Archive baut der Test selbst und legt sie mit passender Summe ab.
+
+Plugin- und Admin-Prüfungen brauchen `tar` mit Laufwerksbuchstaben und werden unter Windows
+übersprungen; in der CI laufen sie.
 
 ## Was noch aussteht
 
@@ -97,5 +137,5 @@ Geprüft: alle sechs Modi, alle drei Kartenquellen, `palantir.cfg`, die Überset
 CS2 unter dem schreibgeschützten Wurzeldateisystem hochkommt und ob die 30 GB in der Startfrist von
 einer Stunde durchgehen, zeigt erst ein Start auf der Node.
 
-**Plugins fehlen noch** — MetaMod, CounterStrikeSharp, Admins und die benannten Plugins kommen in
-einem eigenen Schritt.
+**Die einzelnen Plugins fehlen noch** — MatchZy, SimpleAdmin, WeaponPaints und die übrigen kommen
+in einem eigenen Schritt. Die Grundlage dafür steht.

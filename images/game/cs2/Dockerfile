@@ -17,6 +17,31 @@ RUN chmod 0755 /opt/palantir/start.sh
 
 USER 1000:1000
 
+# Plugin-Grundlage: MetaMod:Source und CounterStrikeSharp.
+#
+# **Die Archive liegen nicht im Image**, wie bei tModLoader: Das Startskript
+# holt sie beim ersten Start in den internen Ordner und prüft sie gegen diese
+# Summen; was nicht passt, wird verworfen statt ausgepackt.
+#
+# CounterStrikeSharp in der Ausgabe **mit Laufzeit**: Sie bringt ihr eigenes
+# .NET mit. Ohne sie bräuchte es `base/dotnet` unter CS2 – ein zweites
+# Grund-Image für ein Plugin.
+#
+# Neue Fassungen holen:
+#
+#   curl -sL https://mms.alliedmods.net/mmsdrop/2.0/mmsource-latest-linux
+#   curl -s https://api.github.com/repos/roflmuffin/CounterStrikeSharp/releases/latest \
+#     | jq -r '.tag_name, (.assets[] | select(.name | test("with-runtime-linux")) | .browser_download_url)'
+#   curl -sL <url> | sha256sum
+#
+# Am 2026-09-22 gegen die Dateien selbst gerechnet.
+ENV CS2_METAMOD_VERSION=2.0.0-git1469
+ENV CS2_METAMOD_URL=https://mms.alliedmods.net/mmsdrop/2.0/mmsource-2.0.0-git1469-linux.tar.gz
+ENV CS2_METAMOD_SHA256=a552e4cb1399ced15a1192880f1f6bdd3d16f930a9cb33bc9e45396a26f177ad
+ENV CS2_CSS_VERSION=v1.0.374
+ENV CS2_CSS_URL=https://github.com/roflmuffin/CounterStrikeSharp/releases/download/v1.0.374/counterstrikesharp-with-runtime-linux-1.0.374.zip
+ENV CS2_CSS_SHA256=22a24aa482e226ad0dcdc72cec03e1927d267eb5a1566094e98809a06dcc6792
+
 # Spiel-Port. Er traegt **beide Protokolle**: UDP fuer das Spiel selbst, TCP
 # fuer die Abfrage. Die Spieltyp-Definition fuehrt ihn deshalb als `both`.
 EXPOSE 27015/udp

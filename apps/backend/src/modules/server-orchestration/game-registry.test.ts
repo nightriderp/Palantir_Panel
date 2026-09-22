@@ -1609,6 +1609,17 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(3_600);
   });
 
+  it('lässt das Update zurückhalten – die Plugins hängen an der Spielversion', () => {
+    expect(CS2_GAME_TYPE.supportsUpdateHold).toBe(true);
+  });
+
+  it('lädt die Plugins ohne Angabe', () => {
+    // Abschalten ist der Notausgang nach einem CS2-Update, nicht der Normalfall.
+    expect(CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'plugins')?.defaultValue).toBe(
+      true,
+    );
+  });
+
   it('ist ab Ausbaustufe 3 auswaehlbar', () => {
     expect(() =>
       createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('cs2'),
