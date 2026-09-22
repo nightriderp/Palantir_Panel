@@ -1613,6 +1613,31 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.supportsUpdateHold).toBe(true);
   });
 
+  it('lässt jedes einzelne Plugin ohne Angabe aus', () => {
+    // Plugins sind eine Entscheidung des Betreibers; ein frischer Server
+    // startet ohne – und damit auch ohne MariaDB.
+    const schalter = CS2_GAME_TYPE.configFields.filter(
+      (feld) => feld.key.startsWith('plugin') && feld.key !== 'plugins',
+    );
+
+    expect(schalter.map((feld) => feld.key)).toEqual([
+      'pluginMatchZy',
+      'pluginSimpleAdmin',
+      'pluginWeaponPaints',
+      'pluginRockTheVote',
+      'pluginRetakes',
+      'pluginSharpTimer',
+      'pluginFakeRcon',
+    ]);
+    expect(schalter.every((feld) => feld.defaultValue === false)).toBe(true);
+  });
+
+  it('führt das Fake-RCON-Passwort als Passwortfeld', () => {
+    expect(CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'fakeRconPassword')?.type).toBe(
+      'password',
+    );
+  });
+
   it('lädt die Plugins ohne Angabe', () => {
     // Abschalten ist der Notausgang nach einem CS2-Update, nicht der Normalfall.
     expect(CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'plugins')?.defaultValue).toBe(
