@@ -56,7 +56,14 @@ export function baueCsp({ nonce, apiUrl, liveWsUrl, entwicklung }: CspOptions): 
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${entwicklung ? " 'unsafe-eval'" : ''}`,
     `style-src 'self' 'unsafe-inline' ${apiUrl}`,
     `font-src 'self' ${apiUrl} data:`,
-    "img-src 'self' data: blob: https:",
+    /*
+     * Die API-Herkunft steht hier aus demselben Grund wie bei `font-src`: Von
+     * dort kommen Profilbilder und die Bilder der Spieltypen. Über `https:`
+     * allein lief das nur, solange API und Oberfläche gemeinsam auf https
+     * liegen – in der Entwicklung (http://localhost:4000) blockte der Browser
+     * jedes dieser Bilder, ohne dass im Panel etwas fehlte außer dem Bild.
+     */
+    `img-src 'self' data: blob: https: ${apiUrl}`,
     `connect-src 'self' ${apiUrl} ${liveWsUrl}`,
     "base-uri 'self'",
     "object-src 'none'",
