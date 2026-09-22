@@ -1,0 +1,53 @@
+# Plugins des CS2-Images (Betreiber-Wunsch 22.09.2026).
+#
+# Eine Zeile je Plugin, durch Leerzeichen getrennt:
+#
+#   name  version  adresse  sha256  zuordnung  ordner
+#
+# zuordnung  Wohin der Inhalt des Archivs gehoert: `quelle=ziel`, mehrere durch
+#            Komma. `quelle` ist ein Pfad im Archiv (`.` fuer die Wurzel),
+#            `ziel` ein Pfad unter `game/csgo`. Die Archive sind nicht einheitlich
+#            gepackt - mal beginnt es bei `addons/`, mal beim Plugin-Ordner.
+# ordner     Die Ordner unter `addons/counterstrikesharp/plugins`, die beim
+#            Abschalten nach `plugins/disabled` wandern (CounterStrikeSharp
+#            ueberspringt diesen Ordner). `-` fuer reine Bibliotheken.
+#
+# Summen am 2026-09-22 gegen die Dateien selbst gerechnet. Neue Fassung:
+#
+#   curl -s https://api.github.com/repos/<besitzer>/<plugin>/releases/latest \
+#     | jq -r '.tag_name, (.assets[] | .browser_download_url)'
+#   curl -sL <url> | sha256sum
+#
+# Wer eine Zeile aendert, erhoeht images/game/cs2/VERSION - sonst bekommt kein
+# Server die neue Fassung.
+
+# Grundlage fuer Menues und Spieler-Einstellungen (NickFox007). WeaponPaints und
+# SimpleAdmin brauchen alle drei; das Skript schaltet sie mit ihnen ein.
+anybaselib 0.9.4 https://github.com/NickFox007/AnyBaseLibCS2/releases/download/0.9.4/AnyBaseLib.zip ab3190f43d7afc95d609bbb755279552fba0283ce0a2681c371601a4bd7867ff addons=addons -
+playersettings 0.9.4 https://github.com/NickFox007/PlayerSettingsCS2/releases/download/0.9.4/PlayerSettings.zip 6d6645f728dbe07ca37264ab55f228ab4dcb3740cba02c52fbb27ef15faed0ac addons=addons PlayerSettings
+menumanager 1.4.1 https://github.com/NickFox007/MenuManagerCS2/releases/download/1.4.1/MenuManager.zip 2ae011c6cebe3ca279d3cb5d15a568f13ae63398be82a98bd65e204a043a13b3 addons=addons MenuManagerCore
+
+# Turniere und Scrims: Ready-System, Knife-Runde, Pausen, Demos.
+matchzy 0.8.15 https://github.com/shobhit-pathak/MatchZy/releases/download/0.8.15/MatchZy-0.8.15.zip 425955d7565df84915dd6002d0a7848546d3859d376cb493f2988ed182586b57 addons=addons MatchZy
+
+# Bann, Kick, Mute, Admin-Menue. Speichert in SQLite, das ist die Vorgabe des Plugins.
+simpleadmin build-1.8.2b https://github.com/daffyyyy/CS2-SimpleAdmin/releases/download/build-1.8.2b/CS2-SimpleAdmin-1.8.2b.zip 3879f74a000582c407f9795be62f718cb1d512e58ba9c81accf12d691696c201 counterstrikesharp=addons/counterstrikesharp CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands,CS2-SimpleAdmin_StealthModule
+
+# Skins, Messer, Handschuhe. Braucht MySQL - das Skript startet dafuer MariaDB im Container.
+weaponpaints build-459 https://github.com/Nereziel/cs2-WeaponPaints/releases/download/build-459/WeaponPaints.zip 147507cdb2d165b1eaf2e62589320778b815e4834fc05ca8d07b3caba8b37cf7 WeaponPaints=addons/counterstrikesharp/plugins/WeaponPaints,gamedata=addons/counterstrikesharp/gamedata WeaponPaints
+
+# Kartenabstimmung. Letzte Fassung von April 2024 - laedt womoeglich nicht mehr.
+rockthevote v1.8.5 https://github.com/abnerfs/cs2-rockthevote/releases/download/v1.8.5/RockTheVote_v1.8.5.zip 9e8d068db569c69dfd726c5623efd0420122e03dca83f04ccdbc6538555d4432 RockTheVote=addons/counterstrikesharp/plugins/RockTheVote RockTheVote
+
+# Retake-Modus.
+retakes 3.1.1 https://github.com/B3none/cs2-retakes/releases/download/3.1.1/RetakesPlugin-3.1.1.zip ccb5dade7a5d445d0a172e68f19cb262de0c2a75639be18f3d892db10be93dff addons=addons RetakesPlugin
+
+# Surf, Bhop, KZ. Der gepflegte Zweig (Letaryat); das Original ist archiviert.
+sharptimer v0.4.0 https://github.com/Letaryat/poor-sharptimer/releases/download/v0.4.0/SharpTimer-v0.4.0.zip 5ae9432ca5a56e7b3c709073686d915326812811a30c382617c0a6f605ec8255 SharpTimer-v0.4.0/addons=addons,SharpTimer-v0.4.0/cfg=cfg SharpTimer
+
+# Von SharpTimer verlangt. Archiviert, aber dort ausdruecklich als Pflicht genannt.
+tags v1.15 https://github.com/CounterStrike2-Plugins-Archive/cs2-tags/releases/download/v1.15/cs2-tags-v1.15.zip 785bc27025e1128960420e698498239706e4a7f95aaa018c04e525f23d456367 plugins=addons/counterstrikesharp/plugins,shared=addons/counterstrikesharp/shared,configs=addons/counterstrikesharp/configs cs2-tags
+
+# RCON im Spiel (fake_rcon_password / fake_rcon). Ein MetaMod-Plugin, kein
+# CounterStrikeSharp-Plugin: Abgeschaltet wird es ueber seine .vdf-Datei.
+fakercon 1.3.2 https://github.com/Salvatore-Als/cs2-fake-rcon/releases/download/1.3.2/linux.tar.gz 2aa22c7e372903d88e5a971a6b443a659296a3b3dbbd07a4d46bf1fbb5320abe addons=addons -

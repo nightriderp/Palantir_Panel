@@ -8,7 +8,10 @@ Counter-Strike-2-Server von Valve. Spieltyp-Kennung `cs2`.
 | Serverdaten        | Anwendung 730, beim ersten Start geholt (~30 GB) |
 | MetaMod:Source     | 2.0.0-git1469, beim ersten Start geholt          |
 | CounterStrikeSharp | v1.0.374 mit .NET-Laufzeit, beim ersten Start    |
+| Plugins            | `plugins.list`, je Schalter beim Start geholt    |
+| MariaDB, jq        | aus Ubuntu, für WeaponPaints bzw. JSON           |
 | `start.sh`         | Einstiegspunkt                                   |
+| `plugins.sh`       | Plugins ein- und ausschalten, MariaDB            |
 
 ## Was die Grundlage war
 
@@ -81,6 +84,11 @@ die Startkarte nicht setzen — das kann Valve nicht.
 **Der GSLT ist keine Pflicht.** Ohne ihn läuft der Server, taucht aber nicht im Serverbrowser auf.
 Zu holen unter `steamcommunity.com/dev/managegameservers`, Anwendung 730.
 
+**Nicht zusammen mit WeaponPaints.** Mit GSLT meldet sich der Server unter dem Steam-Konto des
+Betreibers bei Valve an, und Valve sperrt Tokens von Servern mit Skins. Das Feld bleibt trotzdem
+drin (Entscheidung des Betreibers, 23.09.2026): für einen öffentlichen Server ohne Plugins. Das
+Panel verbietet die Kombination nicht, die Feldbeschreibung warnt.
+
 ## Plugin-Grundlage
 
 MetaMod:Source lädt Plugins in den Server, CounterStrikeSharp lädt C#-Plugins — fast alles, was
@@ -104,6 +112,61 @@ SteamID64-Nummern, getrennt durch Komma, Leerzeichen oder Semikolon. Jede bekomm
 Was keine SteamID64 ist (17 Ziffern, beginnend mit `7656119`), steht im Log und nicht in der
 Datei. **Ist das Feld leer, fasst das Skript `admins.json` nicht an** — für Betreiber, die Gruppen
 und feinere Rechte von Hand pflegen.
+
+## Plugins
+
+Jedes Plugin hat einen eigenen Schalter; ohne Angabe ist keines an. Adresse, Fassung und Prüfsumme
+stehen in `plugins.list` — wer dort eine Zeile ändert, erhöht `VERSION`.
+
+| Schalter     | Plugin                                 | Zieht mit                               |
+| ------------ | -------------------------------------- | --------------------------------------- |
+| MatchZy      | MatchZy 0.8.15                         | —                                       |
+| SimpleAdmin  | CS2-SimpleAdmin build-1.8.2b (SQLite)  | MenuManager, PlayerSettings, AnyBaseLib |
+| WeaponPaints | WeaponPaints build-459                 | dieselben drei, dazu MariaDB            |
+| RockTheVote  | RockTheVote v1.8.5 (April 2024)        | —                                       |
+| Retakes      | RetakesPlugin 3.1.1                    | —                                       |
+| SharpTimer   | SharpTimer v0.4.0 (Zweig von Letaryat) | cs2-tags v1.15                          |
+| Fake RCON    | cs2-fake-rcon 1.3.2 (MetaMod-Plugin)   | —                                       |
+
+**Die Archive sind nicht einheitlich gepackt** — mal beginnt es bei `addons/`, mal beim
+Plugin-Ordner, bei SharpTimer mit einem Versionsordner davor. Die Spalte `zuordnung` in der Liste
+sagt je Plugin, was wohin gehört; fehlt eine Quelle im Archiv, startet der Server nicht und sagt,
+welche.
+
+**Ausgepackt wird nur bei einer neuen Fassung** (Merkdatei je Plugin). Eigene Dateien in einem
+Plugin-Ordner — die Kartenliste von RockTheVote etwa — überleben so jeden Start, aber nicht ein
+Update des Plugins.
+
+**Abschalten verschiebt, statt zu löschen:** nach `plugins/disabled`, den Ordner überspringt
+CounterStrikeSharp. Wieder eingeschaltet, ist alles noch da. Fake RCON ist ein MetaMod-Plugin;
+dort wandert die `.vdf` aus `addons/metamod` heraus.
+
+**Nicht zusammen:** MatchZy und Retakes wollen beide die Runden steuern. Das Skript warnt, verbietet
+es aber nicht.
+
+### WeaponPaints und MariaDB
+
+WeaponPaints kennt nur MySQL. Ist es an, startet das Skript MariaDB im selben Container:
+
+- nur auf `127.0.0.1` — von aussen und von anderen Spielservern nicht erreichbar;
+- Daten unter `.palantir/mariadb`, also mit dem Server gesichert;
+- Passwort einmal erzeugt, in `.palantir/mariadb-passwort`; Benutzer und Datenbank legt
+  `--init-file` bei jedem Start an bzw. zieht sie gerade;
+- klein eingestellt (32 MB Puffer, kein Performance-Schema).
+
+**Das Skript bleibt dann stehen** statt sich durch CS2 zu ersetzen: Nach CS2 fährt es MariaDB
+sauber herunter. Ohne WeaponPaints bleibt alles beim `exec`.
+
+In `WeaponPaints.json` schreibt das Skript nur die fünf Datenbank-Schlüssel; alles andere gehört
+dem Betreiber. `FollowCS2ServerGuidelines` in `core.json` geht auf `false` — **Valve verbietet
+Skins auf Community-Servern**; der Betreiber hat das Risiko für seinen privaten Server bewusst
+gewählt. Mit WeaponPaints aus kommt `true` zurück, aber nur, wenn das Skript es gesetzt hatte.
+
+### Fake RCON
+
+Das Passwort geht als Startparameter `-fakercon` mit, nicht in die Datei, die das Plugin sonst mit
+`changeme` anlegt. Unter vier Zeichen lehnt das Plugin es ab; das Skript lässt es dann weg und
+sagt es im Log.
 
 ## Updates zurückhalten
 
@@ -137,5 +200,11 @@ Plugin- und Admin-Prüfungen brauchen `tar` mit Laufwerksbuchstaben und werden u
 CS2 unter dem schreibgeschützten Wurzeldateisystem hochkommt und ob die 30 GB in der Startfrist von
 einer Stunde durchgehen, zeigt erst ein Start auf der Node.
 
-**Die einzelnen Plugins fehlen noch** — MatchZy, SimpleAdmin, WeaponPaints und die übrigen kommen
-in einem eigenen Schritt. Die Grundlage dafür steht.
+**Kein Plugin ist je in CS2 geladen worden.** Die Tests prüfen, dass jede Datei am richtigen Ort
+liegt — mit Attrappen und einmal von Hand mit allen elf echten Archiven. Ob sie mit dem aktuellen
+CS2-Build und CounterStrikeSharp v1.0.374 laden, zeigt erst `css_plugins list` in der Konsole.
+RockTheVote ist dafür der wackligste Kandidat.
+
+**MariaDB unter schreibgeschütztem Wurzeldateisystem** ist ebenfalls nie gelaufen. Socket, PID
+und Zwischendateien liegen unter `/tmp`, die Daten im Datenordner; was MariaDB sonst noch
+anfassen will, zeigt `.palantir/mariadb.log`.

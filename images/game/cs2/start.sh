@@ -10,9 +10,11 @@
 #      startet CS2 nicht.
 #   3. Plugin-Grundlage: MetaMod:Source und CounterStrikeSharp, dazu die Zeile
 #      in `gameinfo.gi`, ohne die MetaMod nie geladen wird.
-#   4. Admins aus dem Panel nach CounterStrikeSharp.
+#   4. Admins aus dem Panel nach CounterStrikeSharp, dann die einzelnen
+#      Plugins (`plugins.sh`, `plugins.list`).
 #   5. Spielmodus, `gamemodes_server.txt` und `palantir.cfg`.
-#   6. Konsole öffnen und den Server starten.
+#   6. MariaDB, falls WeaponPaints an ist; Konsole öffnen und den Server
+#      starten.
 #
 # **CS2 hat kein RCON.** Valve hat es nie freigeschaltet; die Konsole geht
 # deshalb über die Standardeingabe, wie bei Terraria. Wer RCON im Spiel möchte,
@@ -26,6 +28,14 @@ set -eu
 # Anwendungsnummer des dedizierten Servers bei Valve. Dieselbe wie beim Spiel,
 # und anonym zu holen.
 CS2_ANWENDUNG=730
+
+# Wo `plugins.sh` und `plugins.list` liegen. Im Image neben diesem Skript;
+# die Tests setzen den Ordner des Repos.
+CS2_SKRIPTE="${PALANTIR_CS2_DIR:-/opt/palantir}"
+
+# Gesetzt, sobald MariaDB läuft (nur mit WeaponPaints). Der Start am Ende
+# richtet sich danach.
+DB_PID=''
 
 SERVER="${PALANTIR_DATENORDNER}/server"
 BINAERDATEI="${SERVER}/game/bin/linuxsteamrt64/cs2"
@@ -222,6 +232,22 @@ if ist_an "${CS2_PLUGINS:-true}"; then
   # Bei jedem Start: Ein Update von Valve schreibt `gameinfo.gi` neu und nimmt
   # die Zeile dabei mit.
   gameinfo_eintragen
+
+  # Die einzelnen Plugins. Scheitert eines, startet der Server nicht: Ein
+  # Server, der ohne das gewünschte Admin-Plugin hochkommt, ist schlimmer als
+  # einer, der sagt, was fehlt.
+  . "${CS2_SKRIPTE}/plugins.sh"
+
+  if ! plugins_abgleichen; then
+    log 'Ein Plugin fehlt. Ausschalten oder neu starten - der Download wird dann wiederholt.'
+    exit 69
+  fi
+
+  richtlinie_setzen || exit 69
+
+  if ist_an "${CS2_PLUGIN_WEAPONPAINTS:-}"; then
+    weaponpaints_einrichten || exit 69
+  fi
 else
   gameinfo_austragen
 fi
@@ -412,6 +438,19 @@ if [ -n "${CS2_GSLT:-}" ]; then
   set -- "$@" +sv_setsteamaccount "$CS2_GSLT"
 fi
 
+# Fake RCON liest sein Passwort vom Startparameter `-fakercon`; die Datei, die
+# es sonst anlegt, stünde mit „changeme" im Datenordner. Unter vier Zeichen
+# nimmt das Plugin es nicht an.
+if ist_an "${CS2_PLUGINS:-true}" && ist_an "${CS2_PLUGIN_FAKERCON:-}"; then
+  FAKERCON_PW="${CS2_FAKERCON_PASSWORD:-}"
+
+  if [ "${#FAKERCON_PW}" -ge 4 ]; then
+    set -- "$@" -fakercon "$FAKERCON_PW"
+  else
+    log 'Fake RCON ist an, aber das Passwort fehlt oder hat weniger als 4 Zeichen - RCON bleibt zu.'
+  fi
+fi
+
 if [ -n "${PALANTIR_STARTUP_PARAMETERS:-}" ]; then
   # Absichtlich ohne Anführungszeichen: die Wortzerlegung ist der Zweck.
   # shellcheck disable=SC2086
@@ -419,8 +458,17 @@ if [ -n "${PALANTIR_STARTUP_PARAMETERS:-}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 6. Konsole und Start
+# 6. MariaDB, Konsole und Start
 #
+# MariaDB vor der Konsole: Sonst erbte sie das Rohr der Konsole und hielte es
+# offen, auch wenn CS2 längst beendet ist.
+if ist_an "${CS2_PLUGINS:-true}" && ist_an "${CS2_PLUGIN_WEAPONPAINTS:-}"; then
+  if ! mariadb_starten < /dev/null; then
+    log 'Ohne Datenbank laeuft WeaponPaints nicht. Den Schalter ausschalten, dann startet der Server ohne.'
+    exit 69
+  fi
+fi
+
 # CS2 liest Befehle von der Standardeingabe. Das Rohr legt die Wurzel an;
 # `palantir-console` schreibt hinein.
 palantir_konsole_oeffnen
@@ -429,4 +477,64 @@ log "Startet CS2 (${CS2_GAME_MODE:-competitive}) auf Port ${PORT}"
 
 cd "$SERVER"
 
-exec "$BINAERDATEI" "$@" 0<&3 3>&-
+# Ohne MariaDB ersetzt sich das Skript durch CS2 – das Signal kommt dann
+# direkt an, und es gibt nichts aufzuräumen.
+if [ -z "$DB_PID" ]; then
+  exec "$BINAERDATEI" "$@" 0<&3 3>&-
+fi
+
+# **Mit MariaDB bleibt die Shell stehen**, wie bei tModLoader: Nach CS2 muss
+# die Datenbank sauber herunterfahren, sonst prüft InnoDB beim nächsten Start
+# erst seine Protokolle. Das Signal geht an CS2 weiter; `quit` hat das Panel
+# vorher schon über die Konsole geschickt (`stopCommand`).
+beenden() {
+  UNTERBROCHEN=1
+  log 'Stoppsignal erhalten - reiche es an CS2 weiter.'
+  kill -TERM "${SERVER_PID:-}" 2> /dev/null || true
+}
+
+# Der Fang steht **vor** dem Start: Ein Signal, das in der Lücke dazwischen
+# einträfe, beendete die Shell sonst kommentarlos – und MariaDB liefe weiter.
+trap beenden TERM INT
+
+"$BINAERDATEI" "$@" 0<&3 3>&- &
+SERVER_PID=$!
+
+# `wait` kehrt zurück, sobald ein abgefangenes Signal eintrifft – mit 128 plus
+# Signalnummer, auch wenn der Server noch läuft. Dann wird noch einmal
+# gewartet: Das zweite `wait` liefert den echten Exit-Code, ob der Server noch
+# läuft oder inzwischen fertig ist.
+#
+# **Nicht über `kill -0`** (Fundpunkt 337): Endet der Server, während der Fang
+# läuft, ist er beim Nachsehen schon abgeräumt – die Schleife hielt dann die
+# 143 des unterbrochenen `wait` fest statt der 0 des Servers. Ein sauberer
+# Stopp sah aus wie ein Absturz.
+ERGEBNIS=0
+ERSTER_LAUF=1
+while :; do
+  UNTERBROCHEN=0
+
+  if wait "$SERVER_PID"; then
+    STATUS=0
+  else
+    STATUS=$?
+  fi
+
+  # 127 heisst beim zweiten Mal: schon abgeholt – dann gilt der Wert davor.
+  if [ "$ERSTER_LAUF" = 1 ] || [ "$STATUS" -ne 127 ]; then
+    ERGEBNIS=$STATUS
+  fi
+
+  ERSTER_LAUF=0
+
+  if [ "$UNTERBROCHEN" = 1 ] && [ "$STATUS" -gt 128 ]; then
+    continue
+  fi
+
+  break
+done
+
+log 'CS2 ist beendet - fahre MariaDB herunter.'
+mariadb_stoppen
+
+exit "$ERGEBNIS"

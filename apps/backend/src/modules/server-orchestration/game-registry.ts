@@ -3422,7 +3422,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert. Eigene Karten kommen aus dem Steam-Workshop.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:2',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:3',
   // Vollständige Zeilen, wie sie die Serverkonsole versteht.
   consoleQuickCommands: [
     { label: 'Spieler', command: 'status' },
@@ -3539,8 +3539,14 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       label: 'Game Server Login Token (GSLT)',
       type: 'password',
       defaultValue: '',
+      /*
+       * Bleibt optional, mit Warnung (Entscheidung des Betreibers, 23.09.2026;
+       * Fundpunkt 256). Mit GSLT meldet sich der Server unter dem Steam-Konto
+       * des Betreibers bei Valve an – und Valve sperrt Tokens von Servern mit
+       * Skins, die WeaponPaints nur mit abgeschalteten Richtlinien zeigt.
+       */
       description:
-        'Von steamcommunity.com/dev/managegameservers, Anwendung 730. Ohne ihn läuft der Server, taucht aber nicht im Serverbrowser auf.',
+        'Von steamcommunity.com/dev/managegameservers, Anwendung 730. Ohne ihn läuft der Server, taucht aber nicht im Serverbrowser auf. Nicht zusammen mit WeaponPaints – Valve sperrt Tokens von Servern mit Skins.',
       required: false,
       options: [],
       min: null,
@@ -3599,6 +3605,109 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: null,
       lockedAfterCreate: false,
     },
+    {
+      key: 'pluginMatchZy',
+      label: 'Plugin: MatchZy',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Turniere und Scrims – Ready-System, Messerrunde, Pausen, Demos. Nicht zusammen mit Retakes.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'pluginSimpleAdmin',
+      label: 'Plugin: SimpleAdmin',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Bann, Kick, Mute und ein Admin-Menü (!admin). Speichert in SQLite im Datenordner.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'pluginWeaponPaints',
+      label: 'Plugin: WeaponPaints',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Skins, Messer, Handschuhe (!ws). Startet dafür MariaDB im Container und schaltet FollowCS2ServerGuidelines aus – Valve verbietet Skins auf Community-Servern.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'pluginRockTheVote',
+      label: 'Plugin: RockTheVote',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Kartenabstimmung (!rtv). Letzte Fassung von April 2024 – lädt womöglich nicht mehr.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'pluginRetakes',
+      label: 'Plugin: Retakes',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Retake-Modus: Angreifer verteidigen die gelegte Bombe. Nicht zusammen mit MatchZy.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'pluginSharpTimer',
+      label: 'Plugin: SharpTimer',
+      type: 'toggle',
+      defaultValue: false,
+      description: 'Timer für Surf, Bhop und KZ. Bringt cs2-tags mit.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'pluginFakeRcon',
+      label: 'Plugin: Fake RCON',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'RCON im Spiel über fake_rcon_password / fake_rcon. Braucht das Passwort darunter.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'fakeRconPassword',
+      label: 'Fake-RCON-Passwort',
+      type: 'password',
+      defaultValue: '',
+      description:
+        'Mindestens 4 Zeichen. Wer es kennt, kann den Server aus dem Spiel heraus steuern.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
@@ -3613,6 +3722,14 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     gotv: 'CS2_GOTV',
     plugins: 'CS2_PLUGINS',
     admins: 'CS2_ADMINS',
+    pluginMatchZy: 'CS2_PLUGIN_MATCHZY',
+    pluginSimpleAdmin: 'CS2_PLUGIN_SIMPLEADMIN',
+    pluginWeaponPaints: 'CS2_PLUGIN_WEAPONPAINTS',
+    pluginRockTheVote: 'CS2_PLUGIN_ROCKTHEVOTE',
+    pluginRetakes: 'CS2_PLUGIN_RETAKES',
+    pluginSharpTimer: 'CS2_PLUGIN_SHARPTIMER',
+    pluginFakeRcon: 'CS2_PLUGIN_FAKERCON',
+    fakeRconPassword: 'CS2_FAKERCON_PASSWORD',
   },
   // Alles davon liest der Server beim Start; ein Wechsel im laufenden Betrieb
   // erreicht ihn nicht.
@@ -3629,6 +3746,14 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'gotv',
     'plugins',
     'admins',
+    'pluginMatchZy',
+    'pluginSimpleAdmin',
+    'pluginWeaponPaints',
+    'pluginRockTheVote',
+    'pluginRetakes',
+    'pluginSharpTimer',
+    'pluginFakeRcon',
+    'fakeRconPassword',
   ],
   resourceDefaults: {
     // CS2 selbst braucht wenig Speicher; die Platte ist der Punkt: gut 30 GB

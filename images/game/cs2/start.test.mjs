@@ -112,23 +112,62 @@ function arbeitsordner() {
   );
   spawnSync('sh', ['-c', 'chmod 0755 "$1"', '_', posix(join(vorlage, 'steamcmd.sh'))]);
 
-  return { wurzel, daten, vorlage };
+  // Attrappen für MariaDB. `mariadbd` schreibt auf, womit es gestartet wurde
+  // und was in der Init-Datei stand, und wartet dann auf sein Signal.
+  const bin = join(wurzel, 'bin');
+  mkdirSync(bin);
+  const attrappen = {
+    'mariadb-install-db': [
+      '#!/bin/sh',
+      'for a in "$@"; do case "$a" in --datadir=*) mkdir -p "${a#--datadir=}/mysql";; esac; done',
+      'exit 0',
+    ],
+    mariadbd: [
+      '#!/bin/sh',
+      'if [ -n "${TEST_DB_STIRBT:-}" ]; then exit 1; fi',
+      'protokoll="$PALANTIR_DATA_DIR/mariadbd.args"',
+      'for a in "$@"; do printf "%s\\n" "$a" >> "$protokoll"; case "$a" in --init-file=*) cat "${a#--init-file=}" > "$PALANTIR_DATA_DIR/mariadbd.init";; esac; done',
+      // Erst nach der Init-Datei „bereit" – wie die echte MariaDB, die
+      // `--init-file` abarbeitet, bevor sie Verbindungen annimmt.
+      ': > "$PALANTIR_DATA_DIR/mariadbd.bereit"',
+      'trap \'rm -f "$PALANTIR_DATA_DIR/mariadbd.bereit"; echo gestoppt > "$PALANTIR_DATA_DIR/mariadbd.ende"; exit 0\' TERM',
+      'while :; do sleep 1; done',
+    ],
+    'mariadb-admin': ['#!/bin/sh', 'test -f "$PALANTIR_DATA_DIR/mariadbd.bereit"'],
+  };
+  for (const [name, zeilen] of Object.entries(attrappen)) {
+    writeFileSync(join(bin, name), `${zeilen.join('\n')}\n`);
+    spawnSync('sh', ['-c', 'chmod 0755 "$1"', '_', posix(join(bin, name))]);
+  }
+
+  return { wurzel, daten, vorlage, bin };
 }
 
 function starte(ordner, extra = {}) {
-  const ergebnis = spawnSync('sh', [START_SH], {
-    encoding: 'utf8',
-    timeout: 60_000,
-    env: {
-      ...process.env,
-      PALANTIR_DATA_DIR: posix(ordner.daten),
-      PALANTIR_LIB_DIR: LIB_ORDNER,
-      PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
-      PALANTIR_STARTUP_PARAMETERS: '',
-      CS2_PLUGINS: 'false',
-      ...extra,
+  const ergebnis = spawnSync(
+    'sh',
+    [
+      '-c',
+      'PATH="$(cd "$1" && pwd):$PATH"; export PATH; exec sh "$2"',
+      '_',
+      posix(ordner.bin),
+      START_SH,
+    ],
+    {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: {
+        ...process.env,
+        PALANTIR_DATA_DIR: posix(ordner.daten),
+        PALANTIR_LIB_DIR: LIB_ORDNER,
+        PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+        PALANTIR_STARTUP_PARAMETERS: '',
+        CS2_PLUGINS: 'false',
+        PALANTIR_CS2_DIR: posix(HIER),
+        ...extra,
+      },
     },
-  });
+  );
 
   return {
     ...ergebnis,
@@ -613,5 +652,370 @@ describe('start.sh – Updates zurückhalten', nurMitShell, () => {
     starte(ordner, { PALANTIR_UPDATES_HALTEN: 'false' });
 
     assert.equal(aufrufe(ordner), 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Einzelne Plugins, WeaponPaints mit MariaDB (Betreiber-Wunsch 22.09.2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Kann `jq` hier laufen? Im Image liegt es; auf einem Arbeitsrechner nicht
+ * unbedingt. Die WeaponPaints-Prüfungen schreiben JSON und brauchen es.
+ */
+const JQ_DA = TAR_MIT_LAUFWERK && spawnSync('sh', ['-c', 'command -v jq']).status === 0;
+const nurMitJq = { skip: JQ_DA ? false : 'Kein jq (oder kein tar mit Laufwerk) im PATH.' };
+
+/** Test-Archive je Plugin: Inhalt und Zuordnung wie beim echten Vorbild. */
+const TEST_PLUGINS = {
+  anybaselib: {
+    dateien: { 'addons/counterstrikesharp/shared/AnyBaseLib/AnyBaseLib.dll': 'abl' },
+    zuordnung: 'addons=addons',
+    ordner: '-',
+  },
+  playersettings: {
+    dateien: { 'addons/counterstrikesharp/plugins/PlayerSettings/PlayerSettings.dll': 'ps' },
+    zuordnung: 'addons=addons',
+    ordner: 'PlayerSettings',
+  },
+  menumanager: {
+    dateien: { 'addons/counterstrikesharp/plugins/MenuManagerCore/MenuManagerCore.dll': 'mm' },
+    zuordnung: 'addons=addons',
+    ordner: 'MenuManagerCore',
+  },
+  matchzy: {
+    dateien: { 'addons/counterstrikesharp/plugins/MatchZy/MatchZy.dll': 'mz' },
+    zuordnung: 'addons=addons',
+    ordner: 'MatchZy',
+  },
+  simpleadmin: {
+    dateien: {
+      'counterstrikesharp/plugins/CS2-SimpleAdmin/CS2-SimpleAdmin.dll': 'sa',
+      'counterstrikesharp/plugins/CS2-SimpleAdmin_FunCommands/Fun.dll': 'fun',
+    },
+    zuordnung: 'counterstrikesharp=addons/counterstrikesharp',
+    ordner: 'CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands',
+  },
+  weaponpaints: {
+    dateien: {
+      'WeaponPaints/WeaponPaints.dll': 'wp',
+      'gamedata/weaponpaints.json': '{}',
+    },
+    zuordnung:
+      'WeaponPaints=addons/counterstrikesharp/plugins/WeaponPaints,gamedata=addons/counterstrikesharp/gamedata',
+    ordner: 'WeaponPaints',
+  },
+  retakes: {
+    dateien: { 'addons/counterstrikesharp/plugins/RetakesPlugin/RetakesPlugin.dll': 'rt' },
+    zuordnung: 'addons=addons',
+    ordner: 'RetakesPlugin',
+  },
+  fakercon: {
+    tar: true,
+    dateien: {
+      'addons/fake_rcon/bin/linuxsteamrt64/fake_rcon.so': 'so',
+      'addons/metamod/fake_rcon.vdf': 'vdf',
+    },
+    zuordnung: 'addons=addons',
+    ordner: '-',
+  },
+};
+
+/**
+ * Legt die Grundlage und alle Test-Plugins mit passender Summe ab und
+ * schreibt eine Plugin-Liste dazu. Die Adressen zeigen ins Leere – passt die
+ * Summe, wird nichts geholt.
+ */
+function mitPlugins(ordner, anpassen = {}) {
+  const umgebung = mitGrundlage(ordner);
+  const ablage = join(ordner.daten, '.palantir', 'cs2-plugins');
+  const zeilen = [];
+
+  for (const [name, vorbild] of Object.entries(TEST_PLUGINS)) {
+    const plugin = { ...vorbild, ...(anpassen[name] ?? {}) };
+    let archiv;
+
+    if (plugin.tar) {
+      const quelle = join(ordner.wurzel, `quelle-${name}`);
+      for (const [pfad, inhalt] of Object.entries(plugin.dateien)) {
+        mkdirSync(join(quelle, pfad, '..'), { recursive: true });
+        writeFileSync(join(quelle, pfad), inhalt);
+      }
+      archiv = join(ablage, `${name}.tar.gz`);
+      spawnSync('sh', ['-c', 'cd "$1" && tar -czf "$2" .', '_', posix(quelle), posix(archiv)]);
+    } else {
+      archiv = join(ablage, `${name}.zip`);
+      writeFileSync(archiv, zipOhneKompression(plugin.dateien));
+    }
+
+    const endung = plugin.tar ? 'tar.gz' : 'zip';
+    zeilen.push(
+      `${name} 1 https://beispiel.invalid/${name}.${endung} ${summe(archiv)} ${plugin.zuordnung} ${plugin.ordner}`,
+    );
+  }
+
+  const liste = join(ordner.wurzel, 'plugins.list');
+  writeFileSync(liste, `# Test\n${zeilen.join('\n')}\n`);
+
+  return { ...umgebung, PALANTIR_CS2_PLUGINLISTE: posix(liste) };
+}
+
+const pluginOrdner = (ordner, ...teile) =>
+  csgo(ordner, 'addons', 'counterstrikesharp', 'plugins', ...teile);
+
+describe('start.sh – einzelne Plugins', nurMitTar, () => {
+  it('packt ein eingeschaltetes Plugin aus', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, { ...mitPlugins(ordner), CS2_PLUGIN_MATCHZY: 'true' });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.equal(readFileSync(pluginOrdner(ordner, 'MatchZy', 'MatchZy.dll'), 'utf8'), 'mz');
+  });
+
+  it('lässt ausgeschaltete Plugins weg', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { ...mitPlugins(ordner), CS2_PLUGIN_MATCHZY: 'true' });
+
+    assert.equal(existsSync(pluginOrdner(ordner, 'RetakesPlugin')), false);
+    assert.equal(existsSync(pluginOrdner(ordner, 'WeaponPaints')), false);
+  });
+
+  it('schiebt ein abgeschaltetes Plugin nach disabled und holt es samt eigener Dateien zurück', () => {
+    const ordner = arbeitsordner();
+    const umgebung = mitPlugins(ordner);
+    starte(ordner, { ...umgebung, CS2_PLUGIN_MATCHZY: 'true' });
+    writeFileSync(pluginOrdner(ordner, 'MatchZy', 'eigen.txt'), 'meins');
+
+    starte(ordner, { ...umgebung, CS2_PLUGIN_MATCHZY: 'false' });
+
+    assert.equal(existsSync(pluginOrdner(ordner, 'MatchZy')), false);
+    assert.equal(
+      readFileSync(pluginOrdner(ordner, 'disabled', 'MatchZy', 'eigen.txt'), 'utf8'),
+      'meins',
+    );
+
+    starte(ordner, { ...umgebung, CS2_PLUGIN_MATCHZY: 'true' });
+
+    assert.equal(readFileSync(pluginOrdner(ordner, 'MatchZy', 'eigen.txt'), 'utf8'), 'meins');
+    assert.equal(existsSync(pluginOrdner(ordner, 'disabled', 'MatchZy')), false);
+  });
+
+  it('zieht für SimpleAdmin MenuManager, PlayerSettings und AnyBaseLib nach', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, { ...mitPlugins(ordner), CS2_PLUGIN_SIMPLEADMIN: 'true' });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.ok(existsSync(pluginOrdner(ordner, 'CS2-SimpleAdmin', 'CS2-SimpleAdmin.dll')));
+    assert.ok(existsSync(pluginOrdner(ordner, 'CS2-SimpleAdmin_FunCommands', 'Fun.dll')));
+    assert.ok(existsSync(pluginOrdner(ordner, 'MenuManagerCore', 'MenuManagerCore.dll')));
+    assert.ok(existsSync(pluginOrdner(ordner, 'PlayerSettings', 'PlayerSettings.dll')));
+    assert.ok(
+      existsSync(
+        csgo(ordner, 'addons', 'counterstrikesharp', 'shared', 'AnyBaseLib', 'AnyBaseLib.dll'),
+      ),
+    );
+  });
+
+  it('schaltet die Abhängigkeiten mit ab, wenn sie keiner mehr braucht', () => {
+    const ordner = arbeitsordner();
+    const umgebung = mitPlugins(ordner);
+    starte(ordner, { ...umgebung, CS2_PLUGIN_SIMPLEADMIN: 'true' });
+    starte(ordner, umgebung);
+
+    assert.equal(existsSync(pluginOrdner(ordner, 'MenuManagerCore')), false);
+    assert.equal(existsSync(pluginOrdner(ordner, 'CS2-SimpleAdmin_FunCommands')), false);
+    assert.ok(existsSync(pluginOrdner(ordner, 'disabled', 'MenuManagerCore')));
+  });
+
+  it('startet nicht, wenn ein Archiv anders gepackt ist als eingetragen', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...mitPlugins(ordner, { matchzy: { zuordnung: 'gibtesnicht=addons' } }),
+      CS2_PLUGIN_MATCHZY: 'true',
+    });
+
+    assert.equal(lauf.status, 69);
+    assert.match(lauf.stdout, /fehlt gibtesnicht/u);
+    assert.deepEqual(lauf.argv, []);
+  });
+
+  it('warnt, wenn MatchZy und Retakes gleichzeitig laufen sollen', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...mitPlugins(ordner),
+      CS2_PLUGIN_MATCHZY: 'true',
+      CS2_PLUGIN_RETAKES: 'true',
+    });
+
+    assert.match(lauf.stdout, /MatchZy und Retakes/u);
+  });
+});
+
+describe('start.sh – Fake RCON', nurMitTar, () => {
+  const vdf = (ordner) => csgo(ordner, 'addons', 'metamod', 'fake_rcon.vdf');
+
+  it('legt das MetaMod-Plugin ab und gibt das Passwort als Startparameter mit', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...mitPlugins(ordner),
+      CS2_PLUGIN_FAKERCON: 'true',
+      CS2_FAKERCON_PASSWORD: 'geheim',
+    });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.ok(existsSync(vdf(ordner)));
+    assert.equal(nach(lauf.argv, '-fakercon'), 'geheim');
+  });
+
+  it('lässt ein zu kurzes Passwort weg und sagt es', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...mitPlugins(ordner),
+      CS2_PLUGIN_FAKERCON: 'true',
+      CS2_FAKERCON_PASSWORD: 'abc',
+    });
+
+    assert.equal(nach(lauf.argv, '-fakercon'), null);
+    assert.match(lauf.stdout, /weniger als 4 Zeichen/u);
+  });
+
+  it('nimmt die .vdf beim Abschalten aus dem MetaMod-Ordner', () => {
+    const ordner = arbeitsordner();
+    const umgebung = mitPlugins(ordner);
+    starte(ordner, { ...umgebung, CS2_PLUGIN_FAKERCON: 'true', CS2_FAKERCON_PASSWORD: 'geheim' });
+    const lauf = starte(ordner, umgebung);
+
+    assert.equal(existsSync(vdf(ordner)), false);
+    assert.equal(nach(lauf.argv, '-fakercon'), null);
+  });
+});
+
+describe('start.sh – WeaponPaints und MariaDB', nurMitJq, () => {
+  const core = (ordner) => csgo(ordner, 'addons', 'counterstrikesharp', 'configs', 'core.json');
+  const wpConfig = (ordner) =>
+    csgo(
+      ordner,
+      'addons',
+      'counterstrikesharp',
+      'configs',
+      'plugins',
+      'WeaponPaints',
+      'WeaponPaints.json',
+    );
+  const passwort = (ordner) =>
+    readFileSync(join(ordner.daten, '.palantir', 'mariadb-passwort'), 'utf8');
+
+  it('startet MariaDB nur auf 127.0.0.1 und fährt sie nach CS2 wieder herunter', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, { ...mitPlugins(ordner), CS2_PLUGIN_WEAPONPAINTS: 'true' });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    const argumente = readFileSync(join(ordner.daten, 'mariadbd.args'), 'utf8').split('\n');
+    assert.ok(argumente.includes('--bind-address=127.0.0.1'), argumente.join(' '));
+    assert.equal(readFileSync(join(ordner.daten, 'mariadbd.ende'), 'utf8').trim(), 'gestoppt');
+    // CS2 lief trotzdem – im Hintergrund statt per exec.
+    assert.ok(lauf.argv.includes('-dedicated'));
+  });
+
+  it('legt Benutzer und Datenbank mit dem erzeugten Passwort an und räumt die Init-Datei weg', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { ...mitPlugins(ordner), CS2_PLUGIN_WEAPONPAINTS: 'true' });
+
+    const pw = passwort(ordner);
+    assert.match(pw, /^[0-9a-f]{48}$/u);
+    const init = readFileSync(join(ordner.daten, 'mariadbd.init'), 'utf8');
+    assert.match(init, /CREATE DATABASE IF NOT EXISTS `weaponpaints`/u);
+    assert.ok(init.includes(`IDENTIFIED BY '${pw}'`));
+
+    const argumente = readFileSync(join(ordner.daten, 'mariadbd.args'), 'utf8').split('\n');
+    const initDatei = argumente
+      .find((a) => a.startsWith('--init-file='))
+      ?.slice('--init-file='.length);
+    assert.equal(existsSync(initDatei), false);
+  });
+
+  it('behält das Passwort über Neustarts', () => {
+    const ordner = arbeitsordner();
+    const umgebung = { ...mitPlugins(ordner), CS2_PLUGIN_WEAPONPAINTS: 'true' };
+    starte(ordner, umgebung);
+    const erstes = passwort(ordner);
+    starte(ordner, umgebung);
+
+    assert.equal(passwort(ordner), erstes);
+  });
+
+  it('trägt die Datenbank in die Einstellungen ein und lässt den Rest stehen', () => {
+    const ordner = arbeitsordner();
+    const umgebung = { ...mitPlugins(ordner), CS2_PLUGIN_WEAPONPAINTS: 'true' };
+    starte(ordner, umgebung);
+    const datei = wpConfig(ordner);
+    writeFileSync(datei, JSON.stringify({ SkinsLanguage: 'de', DatabaseHost: 'falsch' }));
+
+    starte(ordner, umgebung);
+
+    const inhalt = JSON.parse(readFileSync(datei, 'utf8'));
+    assert.equal(inhalt.SkinsLanguage, 'de');
+    assert.equal(inhalt.DatabaseHost, '127.0.0.1');
+    assert.equal(inhalt.DatabasePort, 3306);
+    assert.equal(inhalt.DatabaseName, 'weaponpaints');
+    assert.equal(inhalt.DatabasePassword, passwort(ordner));
+  });
+
+  it('legt die gamedata von WeaponPaints dorthin, wo CounterStrikeSharp sie sucht', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { ...mitPlugins(ordner), CS2_PLUGIN_WEAPONPAINTS: 'true' });
+
+    assert.ok(
+      existsSync(csgo(ordner, 'addons', 'counterstrikesharp', 'gamedata', 'weaponpaints.json')),
+    );
+  });
+
+  it('schaltet FollowCS2ServerGuidelines aus – und mit WeaponPaints wieder an', () => {
+    const ordner = arbeitsordner();
+    const umgebung = mitPlugins(ordner);
+    starte(ordner, umgebung);
+    writeFileSync(
+      core(ordner),
+      JSON.stringify({ FollowCS2ServerGuidelines: true, ServerLanguage: 'de' }),
+    );
+
+    starte(ordner, { ...umgebung, CS2_PLUGIN_WEAPONPAINTS: 'true' });
+    assert.equal(JSON.parse(readFileSync(core(ordner), 'utf8')).FollowCS2ServerGuidelines, false);
+
+    starte(ordner, umgebung);
+    const danach = JSON.parse(readFileSync(core(ordner), 'utf8'));
+    assert.equal(danach.FollowCS2ServerGuidelines, true);
+    assert.equal(danach.ServerLanguage, 'de');
+  });
+
+  it('lässt ein von Hand gesetztes false stehen', () => {
+    const ordner = arbeitsordner();
+    const umgebung = mitPlugins(ordner);
+    starte(ordner, umgebung);
+    writeFileSync(core(ordner), JSON.stringify({ FollowCS2ServerGuidelines: false }));
+
+    starte(ordner, umgebung);
+
+    assert.equal(JSON.parse(readFileSync(core(ordner), 'utf8')).FollowCS2ServerGuidelines, false);
+  });
+
+  it('startet ohne WeaponPaints keine Datenbank', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { ...mitPlugins(ordner), CS2_PLUGIN_MATCHZY: 'true' });
+
+    assert.equal(existsSync(join(ordner.daten, 'mariadbd.args')), false);
+  });
+
+  it('startet CS2 nicht, wenn MariaDB nicht hochkommt', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...mitPlugins(ordner),
+      CS2_PLUGIN_WEAPONPAINTS: 'true',
+      TEST_DB_STIRBT: '1',
+    });
+
+    assert.equal(lauf.status, 69);
+    assert.match(lauf.stdout, /MariaDB kommt nicht hoch/u);
+    assert.deepEqual(lauf.argv, []);
   });
 });

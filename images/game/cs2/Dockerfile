@@ -12,7 +12,21 @@ ARG BASIS=ghcr.io/nightriderp/palantir-base-steam:6
 FROM ${BASIS}
 USER root
 
-COPY start.sh /opt/palantir/
+# MariaDB und jq für die Plugins (Betreiber-Wunsch 22.09.2026).
+#
+# - **MariaDB** nur, weil WeaponPaints ausschliesslich MySQL kennt. Sie läuft
+#   nur, wenn das Plugin an ist, und dann nur auf 127.0.0.1 im Container
+#   (`plugins.sh`). Ein zweiter Container je Server wäre die sauberere
+#   Trennung, aber eine eigene Ansteuerung im Agent für ein Skin-Plugin.
+# - **jq**, weil die Plugin-Einstellungen JSON sind. Mit `sed` in JSON zu
+#   schreiben hiesse, sich auf die Einrückung von CounterStrikeSharp zu
+#   verlassen.
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends mariadb-server jq; \
+  rm -rf /var/lib/apt/lists/*
+
+COPY start.sh plugins.sh plugins.list /opt/palantir/
 RUN chmod 0755 /opt/palantir/start.sh
 
 USER 1000:1000
