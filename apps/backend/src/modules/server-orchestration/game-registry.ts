@@ -3397,6 +3397,248 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
 };
 
 /**
+ * Counter-Strike 2 (Betreiber-Wunsch 22.09.2026, Anhang A).
+ *
+ * **CS2 hat kein RCON.** Valve hat es nie freigeschaltet — die Konsole geht
+ * deshalb über die Standardeingabe, wie bei Terraria. Was im Netz als „CS2
+ * RCON" kursiert, ist ein Plugin über MetaMod und gilt für Spieler im Spiel,
+ * nicht für dieses Panel.
+ *
+ * **Der Spielport trägt beide Protokolle.** UDP ist das Spiel, TCP die
+ * Abfrage; beide müssen dieselbe öffentliche Nummer haben, sonst findet der
+ * Client den Server nicht (`protocol: 'both'`, wie bei Satisfactory).
+ *
+ * **Eigene Karten nur noch aus dem Workshop.** Valve hat FastDL abgeschafft;
+ * das Feld `mapSource` wählt zwischen Standardkarte, einer Workshop-Karte und
+ * einer Sammlung. Bei einer Sammlung lässt sich die Startkarte nicht setzen —
+ * das kann Valve nicht.
+ *
+ * **Der GSLT ist kein Pflichtfeld.** Ohne ihn läuft der Server, taucht aber
+ * nicht im Serverbrowser auf. Valve will das künftig erzwingen; bis dahin ist
+ * ein leeres Feld die richtige Vorgabe für einen privaten Server.
+ */
+export const CS2_GAME_TYPE: GameTypeDefinition = {
+  id: 'cs2',
+  name: 'Counter-Strike 2',
+  description:
+    'Counter-Strike-2-Server von Valve. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert. Eigene Karten kommen aus dem Steam-Workshop.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:1',
+  // Vollständige Zeilen, wie sie die Serverkonsole versteht.
+  consoleQuickCommands: [
+    { label: 'Spieler', command: 'status' },
+    { label: 'Karte neu', command: 'mp_restartgame 1' },
+    { label: 'Karten', command: 'ds_workshop_listmaps' },
+    { label: 'Stopp', command: 'quit' },
+  ],
+  defaultEnv: {},
+  ports: [
+    {
+      containerPort: 27_015,
+      protocol: 'both',
+      primary: true,
+      label: 'Spiel-Port',
+    },
+    {
+      containerPort: 27_020,
+      protocol: 'udp',
+      primary: false,
+      label: 'GOTV',
+    },
+  ],
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Ein Palantir-Server',
+      description: 'Steht im Serverbrowser und in der Anzeigetafel.',
+      required: true,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 10,
+      description:
+        'Competitive ist für 10 gedacht, Wingman für 4. Mehr geht, aber bei Competitive fallen dann die Teamfarben weg – das hat Valve so gebaut.',
+      required: true,
+      options: [],
+      min: 2,
+      max: 64,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'gameMode',
+      label: 'Spielmodus',
+      type: 'select',
+      defaultValue: 'competitive',
+      options: ['competitive', 'wingman', 'casual', 'deathmatch', 'armsrace', 'custom'],
+      description:
+        'Bestimmt Regeln, Wirtschaft und Rundenzeiten. „custom“ überlässt alles der eigenen Konfiguration.',
+      required: true,
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'mapSource',
+      label: 'Kartenquelle',
+      type: 'select',
+      defaultValue: 'standard',
+      options: ['standard', 'workshop-map', 'workshop-collection'],
+      description:
+        'Eigene Karten gibt es nur noch über den Steam-Workshop; der alte Weg über FastDL ist von Valve abgeschafft.',
+      required: true,
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'map',
+      label: 'Startkarte',
+      type: 'text',
+      defaultValue: 'de_dust2',
+      description: 'Nur bei der Kartenquelle „standard“.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'workshopId',
+      label: 'Workshop-Nummer',
+      type: 'text',
+      defaultValue: '',
+      description:
+        'Die Zahl aus der Workshop-Adresse – je nach Kartenquelle die einer Karte oder einer Sammlung. Bei einer Sammlung lässt sich die Startkarte nicht wählen, das kann Valve nicht.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'serverPassword',
+      label: 'Server-Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen für einen offenen Server.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'gslt',
+      label: 'Game Server Login Token (GSLT)',
+      type: 'password',
+      defaultValue: '',
+      description:
+        'Von steamcommunity.com/dev/managegameservers, Anwendung 730. Ohne ihn läuft der Server, taucht aber nicht im Serverbrowser auf.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'allRounds',
+      label: 'Alle Runden spielen',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Spielt die volle Rundenzahl, auch wenn eine Seite schon gewonnen hat (mp_match_can_clinch).',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'gotv',
+      label: 'GOTV einschalten',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Zuschauer können dem Spiel folgen. Aufgezeichnet wird nur auf Befehl (tv_record) – automatisches Aufzeichnen legt sonst die Platte voll.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'CS2_HOSTNAME',
+    maxPlayers: 'MAX_PLAYERS',
+    gameMode: 'CS2_GAME_MODE',
+    mapSource: 'CS2_MAP_SOURCE',
+    map: 'CS2_MAP',
+    workshopId: 'CS2_WORKSHOP_ID',
+    serverPassword: 'CS2_PASSWORD',
+    gslt: 'CS2_GSLT',
+    allRounds: 'CS2_ALL_ROUNDS',
+    gotv: 'CS2_GOTV',
+  },
+  // Alles davon liest der Server beim Start; ein Wechsel im laufenden Betrieb
+  // erreicht ihn nicht.
+  restartRequiredFields: [
+    'serverName',
+    'maxPlayers',
+    'gameMode',
+    'mapSource',
+    'map',
+    'workshopId',
+    'serverPassword',
+    'gslt',
+    'allRounds',
+    'gotv',
+  ],
+  resourceDefaults: {
+    // CS2 selbst braucht wenig Speicher; die Platte ist der Punkt: gut 30 GB
+    // Serverdateien plus Workshop-Karten.
+    ramMb: 2_048,
+    diskMb: 40_960,
+  },
+  query: {
+    kind: 'gamedig',
+    protocol: 'counterstrike2',
+    containerPort: 27_015,
+  },
+  // Kein RCON: Valve hat es in CS2 nie freigeschaltet. Der Server liest seine
+  // Befehle von der Standardeingabe.
+  console: { kind: 'stdin' },
+  iconUrl: null,
+  coverImageUrl: null,
+  // Quake-Protokoll auf UDP; ein Hostname-Router davor gibt es nicht.
+  supportsVirtualHostRouting: false,
+  // Es gibt keine Welt zum Übernehmen – Karten kommen aus dem Workshop.
+  supportsWorldImport: false,
+  dataVolumeContainerPath: '/data',
+  readOnlyRootFilesystem: true,
+  tmpfsPaths: ['/tmp'],
+  /*
+   * `quit` vor dem Signal: CS2 schreibt beim Beenden seine Logs und schliesst
+   * eine laufende GOTV-Aufzeichnung ordentlich ab. Ohne den Befehl bliebe eine
+   * angefangene Demo unbrauchbar.
+   */
+  stopCommand: 'quit',
+  stopTimeoutSeconds: 60,
+  /*
+   * Der erste Start holt gut 30 GB. Auf einer Heimleitung ist das die längste
+   * Frist im ganzen Katalog – länger noch als ARK.
+   */
+  startupTimeoutSeconds: 3_600,
+  phase: 3,
+};
+
+/**
  * Minecraft: Bedrock Edition – der Server für Handy, Konsole und die
  * Windows-Ausgabe (Anhang A, Phase 3).
  *
@@ -3603,6 +3845,7 @@ export const GAME_TYPE_DEFINITIONS: readonly GameTypeDefinition[] = [
   ABIOTIC_FACTOR_GAME_TYPE,
   ARK_ASCENDED_GAME_TYPE,
   ACC_GAME_TYPE,
+  CS2_GAME_TYPE,
 ];
 
 /** Prüfstände und echte Spiele zusammen – für die Tests des Backends. */
