@@ -35,6 +35,8 @@ describe('baueCsp', () => {
     expect(csp).toContain("style-src 'self' 'unsafe-inline' https://api.example.test");
     expect(csp).toContain("font-src 'self' https://api.example.test data:");
     expect(csp).toContain("connect-src 'self' https://api.example.test wss://api.example.test");
+    // Bilder der Spieltypen und Profilbilder kommen ebenfalls von der API.
+    expect(csp).toContain("img-src 'self' data: blob: https: https://api.example.test");
   });
 
   it('hält die bisher schon durchgesetzten Grundregeln', () => {
