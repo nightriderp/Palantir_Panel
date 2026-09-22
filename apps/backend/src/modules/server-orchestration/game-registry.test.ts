@@ -1618,3 +1618,49 @@ describe('Counter-Strike 2', () => {
     );
   });
 });
+
+/**
+ * Zurückgehaltene Updates (Betreiber-Wunsch 22.09.2026).
+ */
+describe('GameRegistry – zurückgehaltene Updates', () => {
+  const kann: GameTypeDefinition = { ...VALHEIM_GAME_TYPE, id: 'kann', supportsUpdateHold: true };
+  const kannNicht: GameTypeDefinition = { ...VALHEIM_GAME_TYPE, id: 'kann-nicht' };
+
+  it('hält ohne Angabe nichts zurück', () => {
+    expect(createGameRegistry(3, [kann]).isUpdateHeld('kann')).toBe(false);
+  });
+
+  it('hält zurück, was eingeschaltet ist und es kann', () => {
+    const registry = createGameRegistry(3, [kann, kannNicht]);
+
+    registry.setHeldUpdateGameTypes(['kann']);
+
+    expect(registry.isUpdateHeld('kann')).toBe(true);
+  });
+
+  it('hält bei einem Typ ohne supportsUpdateHold nichts zurück, auch wenn er in der Liste steht', () => {
+    // Sein Image liest die Variable nicht; eine gesetzte Variable baute nur
+    // den Container umsonst neu.
+    const registry = createGameRegistry(3, [kann, kannNicht]);
+
+    registry.setHeldUpdateGameTypes(['kann-nicht']);
+
+    expect(registry.isUpdateHeld('kann-nicht')).toBe(false);
+  });
+
+  it('nimmt eine neue Liste vollständig an', () => {
+    const registry = createGameRegistry(3, [kann]);
+
+    registry.setHeldUpdateGameTypes(['kann']);
+    registry.setHeldUpdateGameTypes([]);
+
+    expect(registry.isUpdateHeld('kann')).toBe(false);
+  });
+
+  it('meldet im DTO, ob der Typ es kann', () => {
+    const dtos = createGameRegistry(3, [kann, kannNicht]).toDtoList();
+
+    expect(dtos.find((dto) => dto.id === 'kann')?.supportsUpdateHold).toBe(true);
+    expect(dtos.find((dto) => dto.id === 'kann-nicht')?.supportsUpdateHold).toBe(false);
+  });
+});

@@ -50,6 +50,20 @@ export type ContainerCreateSpec = CreateCommandPayload;
 export const STARTUP_PARAMETERS_ENV = 'PALANTIR_STARTUP_PARAMETERS';
 
 /**
+ * Hält das Image das Update beim Start zurück (Betreiber-Wunsch 22.09.2026)?
+ *
+ * Gesetzt nur mit dem Wert `true` und nur, wenn der Administrator es für den
+ * Spieltyp eingeschaltet hat (`GameRegistry.isUpdateHeld`). Sonst fehlt die
+ * Variable ganz – aus demselben Grund wie bei den Startparametern: Eine immer
+ * gesetzte Variable änderte den Fingerabdruck jedes bestehenden Containers
+ * (Punkt 114).
+ *
+ * Wirkung erst beim nächsten Start: Der Schalter ändert den Fingerabdruck, und
+ * `ensureContainerCurrent` baut den Container dann neu – die Daten bleiben.
+ */
+export const UPDATES_HALTEN_ENV = 'PALANTIR_UPDATES_HALTEN';
+
+/**
  * Labels für das Hostname-Routing (Pflichtenheft §2.4, §13).
  *
  * Nur gesetzt bei Spieltypen mit `supportsVirtualHostRouting`. Sie tragen die
@@ -107,6 +121,11 @@ export interface BuildContainerSpecInput {
    * genau einer Stelle steht und nicht zwei Aufrufer sie verschieden treffen.
    */
   readonly hostname: string;
+  /**
+   * Update beim Start zurückhalten ({@link UPDATES_HALTEN_ENV})? Der Aufrufer
+   * fragt die Registry (`isUpdateHeld`); ohne Angabe wird nichts zurückgehalten.
+   */
+  readonly updatesHeld?: boolean;
 }
 
 /**
@@ -207,6 +226,7 @@ export function buildContainerSpec({
   containerName,
   dataHostPath,
   hostname,
+  updatesHeld = false,
 }: BuildContainerSpecInput): ContainerCreateSpec {
   const routing = definition.supportsVirtualHostRouting;
 
@@ -243,6 +263,9 @@ export function buildContainerSpec({
         : { [STARTUP_PARAMETERS_ENV]: server.startupParameters.trim() }),
       ...portNummernEnv(definition, server.assignedPorts),
       ...spielversionEnv(server),
+      ...(updatesHeld && definition.supportsUpdateHold === true
+        ? { [UPDATES_HALTEN_ENV]: 'true' }
+        : {}),
     },
     command: definition.defaultCommand,
     ports: hostBindings.map((assignment) => ({

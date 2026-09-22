@@ -209,6 +209,16 @@ export const instanceSettings = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     /**
+     * Kennungen der Spieltypen, deren Server beim Start kein Update holen
+     * (Betreiber-Wunsch 22.09.2026, `InstanceSettingsDto.heldUpdateGameTypes`).
+     *
+     * Dieselbe Bauart wie die ausgeschalteten Spieltypen darüber.
+     */
+    heldUpdateGameTypes: jsonb('held_update_game_types')
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /**
      * Kennungen der mitgelieferten Schriften, die die Instanz nicht mehr
      * anbietet (Betreiber-Wunsch 20.09.2026).
      *

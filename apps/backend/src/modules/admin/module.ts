@@ -124,6 +124,11 @@ export interface AdminModuleOptions {
    */
   readonly onDisabledGameTypesChanged?: (ids: readonly string[]) => void;
   /**
+   * Dasselbe für die Spieltypen mit zurückgehaltenen Updates
+   * (`GameRegistry.setHeldUpdateGameTypes`).
+   */
+  readonly onHeldUpdateGameTypesChanged?: (ids: readonly string[]) => void;
+  /**
    * Anschluss an das Erfolgs-Modul (Betreiber-Wunsch 21.09.2026): Wird nach
    * jedem geschriebenen Protokolleintrag gerufen.
    *
@@ -218,6 +223,9 @@ export function createAdminModule(options: AdminModuleOptions): AdminModule {
     ...(options.fonts ? { fonts: options.fonts } : {}),
     ...(options.onDisabledGameTypesChanged
       ? { onDisabledGameTypesChanged: options.onDisabledGameTypesChanged }
+      : {}),
+    ...(options.onHeldUpdateGameTypesChanged
+      ? { onHeldUpdateGameTypesChanged: options.onHeldUpdateGameTypesChanged }
       : {}),
   });
 

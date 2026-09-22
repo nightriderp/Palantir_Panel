@@ -39,6 +39,7 @@ function createFakeRepository(seed: Partial<InstanceSettingsRecord> = {}): FakeR
     uiFontId: null,
     monospaceFontId: null,
     disabledGameTypes: [],
+    heldUpdateGameTypes: [],
     hiddenBundledFonts: [],
     updatedAt: null,
     ...seed,
@@ -249,5 +250,76 @@ describe('Instanz-Einstellungen: abgeschaltete Spieltypen', () => {
 
     expect(audit.rows).toHaveLength(1);
     expect(audit.rows[0]?.metadata).toEqual({ disabledGameTypes: [] });
+  });
+});
+
+/**
+ * Zurückgehaltene Updates (Betreiber-Wunsch 22.09.2026).
+ *
+ * Dieselben Regeln wie bei den abgeschalteten Spieltypen; geprüft wird vor
+ * allem, dass die beiden Listen einander nicht überschreiben.
+ */
+describe('Instanz-Einstellungen: zurückgehaltene Updates', () => {
+  it('speichert die Liste ohne Dubletten und in fester Reihenfolge', async () => {
+    const { service, repository } = aufbauen();
+
+    const dto = await service.set(ADMIN, {
+      selfRegistrationEnabled: true,
+      heldUpdateGameTypes: ['cs2', 'ark', 'cs2'],
+    });
+
+    expect(repository.stand().heldUpdateGameTypes).toEqual(['ark', 'cs2']);
+    expect(dto.heldUpdateGameTypes).toEqual(['ark', 'cs2']);
+  });
+
+  it('lässt die Liste unberührt, wenn ein Aufrufer das Feld nicht kennt', async () => {
+    // Die Templates-Seite schickt beim Ausschalten eines Spiels nur
+    // `disabledGameTypes` – die Update-Sperre darf dabei nicht verschwinden.
+    const { service, repository } = aufbauen({ heldUpdateGameTypes: ['cs2'] });
+
+    await service.set(ADMIN, { selfRegistrationEnabled: true, disabledGameTypes: ['valheim'] });
+
+    expect(repository.stand().heldUpdateGameTypes).toEqual(['cs2']);
+    expect(repository.stand().disabledGameTypes).toEqual(['valheim']);
+  });
+
+  it('sagt der Registry Bescheid', async () => {
+    const gemeldet: string[][] = [];
+    const service = createInstanceSettingsService({
+      repository: createFakeRepository(),
+      onHeldUpdateGameTypesChanged: (ids) => {
+        gemeldet.push([...ids]);
+      },
+    });
+
+    await service.set(ADMIN, { selfRegistrationEnabled: true, heldUpdateGameTypes: ['cs2'] });
+
+    expect(gemeldet).toEqual([['cs2']]);
+  });
+
+  it('protokolliert die Änderung', async () => {
+    const { service, audit } = aufbauen();
+
+    await service.set(ADMIN, { selfRegistrationEnabled: true, heldUpdateGameTypes: ['cs2'] });
+
+    expect(audit.rows[0]?.metadata).toEqual({ heldUpdateGameTypes: ['cs2'] });
+  });
+
+  it('verliert die Liste nicht, wenn eine Schrift ausgeblendet wird', async () => {
+    const { service, repository } = aufbauen({ heldUpdateGameTypes: ['cs2'] });
+
+    await service.setBundledFontHidden('inter', true, null);
+
+    expect(repository.stand().heldUpdateGameTypes).toEqual(['cs2']);
+  });
+
+  it('verlangt dieselbe Berechtigung wie jede andere Einstellung', async () => {
+    const { service } = aufbauen();
+
+    expect(
+      await fehlercode(() =>
+        service.set(NUTZER, { selfRegistrationEnabled: true, heldUpdateGameTypes: ['cs2'] }),
+      ),
+    ).toBe('PERMISSION_DENIED');
   });
 });

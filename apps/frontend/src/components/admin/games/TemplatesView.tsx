@@ -28,6 +28,11 @@ import { buildTemplateGroups, teilenSichDieVersion, templateVariantLabel } from 
  * den Bestand; sonst hätte der Betreiber einen Server, den er nicht mehr
  * stoppen könnte. Der Hinweis steht auch auf der Seite, damit niemand es
  * ausprobieren muss.
+ *
+ * **Updates zurückhalten** (Betreiber-Wunsch 22.09.2026): Spiele mit Plugins
+ * (`supportsUpdateHold`) tragen einen zweiten Schalter. Ist er an, holen ihre
+ * Server beim Start kein Update – die Plugins hängen an einer bestimmten
+ * Spielversion, und ein Update über Nacht legt sonst den Server lahm.
  */
 export function TemplatesView() {
   const { user, loading } = useSession();
@@ -64,6 +69,7 @@ export function TemplatesView() {
   const liste = spiele.data ?? [];
   const stand = settings.data;
   const ausgeschaltet = new Set(stand?.disabledGameTypes ?? []);
+  const zurueckgehalten = new Set(stand?.heldUpdateGameTypes ?? []);
 
   /*
    * Speichern schickt den vollständigen Zustand – die Instanz-Einstellungen
@@ -99,6 +105,42 @@ export function TemplatesView() {
       an
         ? `${spiel.name} steht wieder zur Auswahl.`
         : `${spiel.name} wird nicht mehr angeboten. Laufende Server bleiben unberührt.`,
+    );
+  }
+
+  /*
+   * Schickt nur die eine Liste. Das Backend lässt ein fehlendes Feld, wie es
+   * war – der Schalter für das Angebot oben geht deshalb nicht verloren, und
+   * umgekehrt.
+   */
+  async function updatesUmschalten(spiel: GameTypeDto, halten: boolean) {
+    if (!stand) return;
+
+    const naechste = new Set(zurueckgehalten);
+    if (halten) {
+      naechste.add(spiel.id);
+    } else {
+      naechste.delete(spiel.id);
+    }
+
+    setBusy(spiel.id);
+    const result = await updateInstanceSettings({
+      selfRegistrationEnabled: stand.selfRegistrationEnabled,
+      heldUpdateGameTypes: [...naechste].sort(),
+    });
+    setBusy(null);
+
+    if (!result.success) {
+      toast.error(errorText(result));
+
+      return;
+    }
+
+    settings.setData(result.data);
+    toast.success(
+      halten
+        ? `${spiel.name}: Server holen beim Start kein Update mehr. Wirkt ab dem nächsten Start.`
+        : `${spiel.name}: Server holen beim Start wieder das Update.`,
     );
   }
 
@@ -206,34 +248,57 @@ export function TemplatesView() {
                       .join(' · ');
 
                     return (
-                      <div key={spiel.id} className="flex items-center gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className={cn(
-                              'truncate text-ink',
-                              gruppe ? 'text-sm' : 'text-sm font-medium',
-                            )}
-                            title={spiel.description}
-                          >
-                            {gruppe ? templateVariantLabel(spiel) : spiel.name}
-                          </p>
-                          {/* Die Version des Images, das diese Vorlage
+                      <div key={spiel.id} className="flex flex-col gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={cn(
+                                'truncate text-ink',
+                                gruppe ? 'text-sm' : 'text-sm font-medium',
+                              )}
+                              title={spiel.description}
+                            >
+                              {gruppe ? templateVariantLabel(spiel) : spiel.name}
+                            </p>
+                            {/* Die Version des Images, das diese Vorlage
                               startet (Betreiber-Wunsch 19.09.2026). Hier ist
                               die Stelle, an der sich nachsehen laesst, was
                               ein Server nach dem Aktualisieren bekommt. */}
-                          {unterzeile === '' ? null : (
-                            <p className="truncate text-xs text-ink-faint" title={unterzeile}>
-                              {unterzeile}
-                            </p>
-                          )}
+                            {unterzeile === '' ? null : (
+                              <p className="truncate text-xs text-ink-faint" title={unterzeile}>
+                                {unterzeile}
+                              </p>
+                            )}
+                          </div>
+
+                          <Toggle
+                            label={spiel.name}
+                            checked={an}
+                            disabled={busy !== null || !darfAendern || phasenGesperrt}
+                            onChange={(next) => void umschalten(spiel, next)}
+                          />
                         </div>
 
-                        <Toggle
-                          label={spiel.name}
-                          checked={an}
-                          disabled={busy !== null || !darfAendern || phasenGesperrt}
-                          onChange={(next) => void umschalten(spiel, next)}
-                        />
+                        {/* Nur bei Spielen, deren Image es kann – ein Schalter,
+                          der nichts bewirkt, wäre schlimmer als keiner. */}
+                        {spiel.supportsUpdateHold === true ? (
+                          <div className="flex items-center gap-3 border-t border-line pt-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs text-ink">Updates zurückhalten</p>
+                              <p className="truncate text-xs text-ink-faint">
+                                {zurueckgehalten.has(spiel.id)
+                                  ? 'Kein Update beim Start – neuere Clients kommen evtl. nicht rein'
+                                  : 'Update bei jedem Start'}
+                              </p>
+                            </div>
+                            <Toggle
+                              label={`${spiel.name}: Updates zurückhalten`}
+                              checked={zurueckgehalten.has(spiel.id)}
+                              disabled={busy !== null || !darfAendern}
+                              onChange={(next) => void updatesUmschalten(spiel, next)}
+                            />
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}

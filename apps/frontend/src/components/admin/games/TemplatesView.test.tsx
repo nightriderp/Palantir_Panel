@@ -428,3 +428,69 @@ describe('Templates: Varianten auf einer Karte', () => {
     });
   });
 });
+
+/**
+ * Updates zurückhalten (Betreiber-Wunsch 22.09.2026).
+ */
+describe('Templates: Updates zurückhalten', () => {
+  const MIT_PLUGINS = spiel({ id: 'cs2', name: 'Counter-Strike 2', supportsUpdateHold: true });
+
+  it('zeigt den Schalter nur bei Spielen, die es können', async () => {
+    api.fetchGameTypes.mockResolvedValue({
+      success: true,
+      data: [MIT_PLUGINS, spiel({ id: 'valheim', name: 'Valheim' })],
+      error: null,
+    });
+
+    zeichne();
+
+    expect(
+      await screen.findByRole('switch', { name: 'Counter-Strike 2: Updates zurückhalten' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('switch', { name: 'Valheim: Updates zurückhalten' })).toBeNull();
+  });
+
+  it('schickt nur die eigene Liste – das Angebot bleibt, wie es war', async () => {
+    api.fetchGameTypes.mockResolvedValue({ success: true, data: [MIT_PLUGINS], error: null });
+    api.updateInstanceSettings.mockResolvedValue({
+      success: true,
+      data: einstellungen({ heldUpdateGameTypes: ['cs2'] }),
+      error: null,
+    });
+
+    zeichne();
+
+    fireEvent.click(
+      await screen.findByRole('switch', { name: 'Counter-Strike 2: Updates zurückhalten' }),
+    );
+
+    await waitFor(() => {
+      expect(api.updateInstanceSettings).toHaveBeenCalledWith({
+        selfRegistrationEnabled: false,
+        heldUpdateGameTypes: ['cs2'],
+      });
+    });
+    expect(
+      (
+        await screen.findByRole('switch', { name: 'Counter-Strike 2: Updates zurückhalten' })
+      ).getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+
+  it('zeigt den gespeicherten Stand', async () => {
+    api.fetchGameTypes.mockResolvedValue({ success: true, data: [MIT_PLUGINS], error: null });
+    api.fetchInstanceSettings.mockResolvedValue({
+      success: true,
+      data: einstellungen({ heldUpdateGameTypes: ['cs2'] }),
+      error: null,
+    });
+
+    zeichne();
+
+    expect(
+      (
+        await screen.findByRole('switch', { name: 'Counter-Strike 2: Updates zurückhalten' })
+      ).getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+});

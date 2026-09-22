@@ -901,6 +901,7 @@ export class ServerOrchestrationService {
       // Derselbe Name, den auch der DNS-Eintrag trägt (`provision`) – bei
       // Hostname-Routing ist er das einzige Unterscheidungsmerkmal am Router.
       hostname: this.hostnameFor(server),
+      updatesHeld: this.deps.registry.isUpdateHeld(definition.id),
     });
   }
 
