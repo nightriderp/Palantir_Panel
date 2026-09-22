@@ -33,6 +33,23 @@
      * an der Kante der Seitenleiste.
      */
     --rahmen-seitenleiste: 250px;
+
+    /**
+     * Stärke der Rahmenkanten – wieder **eine** Quelle für mehrere Stellen.
+     *
+     * Sie steht in der Höhe der waagerechten Kante, in der Breite der
+     * senkrechten, in deren Versatz nach rechts (die Linie soll neben der
+     * Seitenleiste liegen, nicht auf ihr) und in `background-size` der
+     * waagerechten – der Verlauf muss genauso hoch gerechnet werden, wie die
+     * Fläche hoch ist, sonst kachelt er senkrecht weiter.
+     *
+     * 1,5px und nicht 2px (Betreiberwunsch 22.09.2026): Gewünscht war ein
+     * Hauch mehr, keine zweite Linie. Auf einem Bildschirm mit doppelter
+     * Auflösung sind das genau drei Gerätepunkte statt zwei; auf einem
+     * einfachen glättet der Browser, was die Kante weicher und damit
+     * ebenfalls etwas präsenter macht.
+     */
+    --rahmen-kante: 1.5px;
   }
 
   html {
@@ -256,11 +273,11 @@
     right: 0;
     bottom: 0;
     left: 0;
-    height: 1px;
+    height: var(--rahmen-kante);
     pointer-events: none;
     background-image: theme('backgroundImage.chrome-edge-x');
     background-repeat: no-repeat;
-    background-size: 100vw 1px;
+    background-size: 100vw var(--rahmen-kante);
   }
 
   /*
@@ -287,9 +304,9 @@
     content: '';
     position: absolute;
     top: 0;
-    right: -1px;
+    right: calc(-1 * var(--rahmen-kante));
     bottom: 0;
-    width: 1px;
+    width: var(--rahmen-kante);
     pointer-events: none;
     background-image: theme('backgroundImage.chrome-edge-y');
   }

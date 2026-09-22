@@ -298,11 +298,17 @@ const config: Config = {
          * Die Kanten des Rahmens – Seitenleiste nach rechts, Kopfzeile nach
          * unten (Betreiberwunsch 20.09.2026).
          *
-         * Derselbe Verlauf wie Logo-Kachel und Primärknopf, nur sehr leise:
-         * Violett nach Türkis bei 22,5 % Deckkraft. Vorher trugen beide Kanten
+         * Derselbe Verlauf wie Logo-Kachel und Primärknopf, nur leise:
+         * Violett nach Türkis bei 40 % Deckkraft. Vorher trugen beide Kanten
          * `line`, also dieselbe weiße Haarlinie wie jede Karte – bei 7 % war
          * davon nichts mehr zu sehen, die Seitenleiste ging ohne Kontur in den
          * Inhalt über.
+         *
+         * Von 22,5 % auf 40 % angehoben (Betreiberwunsch 22.09.2026): Die
+         * Farbe war richtig, nur blieb die Linie auf einem hellen Schreibtisch
+         * und auf dem Telefon praktisch unsichtbar. Zusammen mit der leicht
+         * größeren Stärke der Kante (`--rahmen-kante` in `globals.css`) steht
+         * sie jetzt da, ohne zum Strich zu werden.
          *
          * ⚠️ Kein Rahmen, sondern eine 1px-Fläche: Eine `border-color` kann
          * keinen Verlauf tragen. Eingehängt wird sie über die Klassen
@@ -311,9 +317,9 @@ const config: Config = {
          * **ein** Verlauf sein muss.
          */
         'chrome-edge-x':
-          'linear-gradient(90deg, rgb(var(--c-brand) / 0.225), rgb(var(--c-accent) / 0.225))',
+          'linear-gradient(90deg, rgb(var(--c-brand) / 0.4), rgb(var(--c-accent) / 0.4))',
         'chrome-edge-y':
-          'linear-gradient(180deg, rgb(var(--c-brand) / 0.225), rgb(var(--c-accent) / 0.225))',
+          'linear-gradient(180deg, rgb(var(--c-brand) / 0.4), rgb(var(--c-accent) / 0.4))',
         /** Dezenter Lichtschein hinter dem gesamten Dashboard. */
         'app-glow':
           'radial-gradient(1200px 600px at 80% -10%, rgb(var(--c-brand) / 0.10), transparent 60%)',
