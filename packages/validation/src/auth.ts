@@ -381,6 +381,12 @@ export const instanceSettingsInputSchema = z
      */
     disabledGameTypes: z.array(z.string().trim().min(1).max(64)).max(200).optional(),
     /*
+     * Spieltypen, deren Server beim Start kein Update holen (Betreiber-Wunsch
+     * 22.09.2026). Dieselbe Zurueckhaltung wie bei den ausgeschalteten: keine
+     * Pruefung gegen den Katalog, eine unbekannte Kennung haelt nichts zurueck.
+     */
+    heldUpdateGameTypes: z.array(z.string().trim().min(1).max(64)).max(200).optional(),
+    /*
      * Ausgeblendete mitgelieferte Schriften (Betreiber-Wunsch 20.09.2026).
      *
      * Dieselbe Zurückhaltung wie oben: Der Vertrag kennt die Liste der

@@ -100,6 +100,29 @@ export interface InstanceSettingsDto {
    */
   disabledGameTypes?: readonly string[];
   /**
+   * Kennungen der Spieltypen, deren Server beim Start **kein Update** holen
+   * (Betreiber-Wunsch 22.09.2026).
+   *
+   * **Warum es das gibt.** SteamCMD-Spiele gleichen ihre Serverdateien bei jedem
+   * Start mit dem Hersteller ab. Fuer die meisten ist das richtig. Bei Spielen
+   * mit Plugins ist es ein Risiko: Die Plugins haengen an einer bestimmten
+   * Version des Spiels, und ein Update ueber Nacht kann einen Server lahmlegen,
+   * bis die Plugin-Grundlage nachzieht. Bei CS2 mit CounterStrikeSharp passiert
+   * das regelmaessig.
+   *
+   * **Nur fuer die Administration**, auf der Karte des Spieltyps in den
+   * Templates – keine Einstellung je Server. Wer Updates zurueckhaelt, nimmt
+   * in Kauf, dass Spieler mit einem neueren Client nicht mehr beitreten
+   * koennen; das ist eine Entscheidung fuer die ganze Instanz.
+   *
+   * Nur Spieltypen mit {@link GameTypeDto.supportsUpdateHold} lesen den Wert;
+   * eine andere Kennung in der Liste ist unschaedlich.
+   *
+   * Optional, damit aeltere Konsumenten gueltig bleiben; ein fehlendes Feld
+   * ist dasselbe wie die leere Liste – also: Updates wie bisher.
+   */
+  heldUpdateGameTypes?: readonly string[];
+  /**
    * Mitgelieferte Schriften, die die Instanz nicht mehr anbietet
    * (Betreiber-Wunsch 20.09.2026).
    *
