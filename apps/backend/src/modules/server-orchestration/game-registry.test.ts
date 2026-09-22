@@ -11,6 +11,7 @@ import {
   MINECRAFT_NEOFORGE_GAME_TYPE,
   ABIOTIC_FACTOR_GAME_TYPE,
   ACC_GAME_TYPE,
+  CS2_GAME_TYPE,
   ARK_ASCENDED_GAME_TYPE,
   ENSHROUDED_GAME_TYPE,
   FACTORIO_GAME_TYPE,
@@ -1529,5 +1530,91 @@ describe('tModLoader', () => {
     // Die Version steckt im Image; einen Katalog beim Hersteller gibt es dafür
     // nicht. Terraria macht es genauso.
     expect(TMODLOADER_GAME_TYPE.supportsVersionChoice ?? false).toBe(false);
+  });
+});
+
+/**
+ * Counter-Strike 2 (Betreiber-Wunsch 22.09.2026).
+ */
+describe('Counter-Strike 2', () => {
+  it('zeigt auf die Version aus images/game/cs2/VERSION', () => {
+    const version = readFileSync(
+      fileURLToPath(new URL('../../../../../images/game/cs2/VERSION', import.meta.url)),
+      'utf8',
+    ).trim();
+
+    expect(CS2_GAME_TYPE.dockerImage).toBe(`ghcr.io/nightriderp/palantir-game-cs2:${version}`);
+  });
+
+  it('spricht über die Standardeingabe – CS2 hat kein RCON', () => {
+    // Valve hat RCON in CS2 nie freigeschaltet. Ein `rcon` hier liesse den
+    // Agent gegen einen Port sprechen, auf dem niemand antwortet.
+    expect(CS2_GAME_TYPE.console).toEqual({ kind: 'stdin' });
+  });
+
+  it('führt den Spielport mit beiden Protokollen', () => {
+    // UDP ist das Spiel, TCP die Abfrage – dieselbe öffentliche Nummer, sonst
+    // findet der Client den Server nicht.
+    const spiel = CS2_GAME_TYPE.ports.find((port) => port.primary);
+
+    expect(spiel?.containerPort).toBe(27_015);
+    expect(spiel?.protocol).toBe('both');
+  });
+
+  it('bringt einen eigenen GOTV-Port mit', () => {
+    expect(CS2_GAME_TYPE.ports.find((port) => port.containerPort === 27_020)?.protocol).toBe('udp');
+  });
+
+  it('reicht jedes Feld an das Image durch', () => {
+    // Ein Feld ohne Umgebungsvariable wäre eines, das im Panel steht und
+    // nichts bewirkt – genau das fiel beim Bauen zweimal auf (Servername,
+    // Spielerzahl).
+    for (const feld of CS2_GAME_TYPE.configFields) {
+      expect(CS2_GAME_TYPE.envMapping?.[feld.key], feld.key).toBeDefined();
+    }
+  });
+
+  it('führt GSLT und Server-Passwort als Passwortfelder', () => {
+    const typ = (key: string) => CS2_GAME_TYPE.configFields.find((feld) => feld.key === key)?.type;
+
+    expect(typ('gslt')).toBe('password');
+    expect(typ('serverPassword')).toBe('password');
+  });
+
+  it('verlangt keinen GSLT – ohne ihn läuft der Server, nur nicht im Browser', () => {
+    const gslt = CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'gslt');
+
+    expect(gslt?.required).toBe(false);
+    expect(gslt?.defaultValue).toBe('');
+  });
+
+  it('bietet alle sechs Spielmodi an', () => {
+    const modus = CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'gameMode');
+
+    expect(modus?.options).toEqual([
+      'competitive',
+      'wingman',
+      'casual',
+      'deathmatch',
+      'armsrace',
+      'custom',
+    ]);
+  });
+
+  it('schickt quit vor dem Signal – sonst bliebe eine laufende Demo kaputt', () => {
+    expect(CS2_GAME_TYPE.stopCommand).toBe('quit');
+  });
+
+  it('gibt dem ersten Start eine Stunde – gut 30 GB über eine Heimleitung', () => {
+    expect(CS2_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(3_600);
+  });
+
+  it('ist ab Ausbaustufe 3 auswaehlbar', () => {
+    expect(() =>
+      createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('cs2'),
+    ).toThrow();
+    expect(createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('cs2').id).toBe(
+      'cs2',
+    );
   });
 });
