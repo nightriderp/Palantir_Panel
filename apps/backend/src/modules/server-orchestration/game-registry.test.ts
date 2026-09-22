@@ -348,7 +348,7 @@ describe('Terraria – erstes Spiel ohne Laufzeit-Basis (Anhang A, Phase 3)', ()
   });
 
   it('zeigt auf eine feste Version des eigenen Images', () => {
-    expect(TERRARIA_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-terraria:1');
+    expect(TERRARIA_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-terraria:2');
   });
 
   it('kommt mit einem Verbindungsversuch als Health-Check aus', () => {
@@ -650,7 +650,7 @@ describe('Factorio und Project Zomboid', () => {
   it('zeigen auf feste Versionen der eigenen Images', () => {
     expect(FACTORIO_GAME_TYPE.dockerImage).toBe('ghcr.io/nightriderp/palantir-game-factorio:1');
     expect(PROJECT_ZOMBOID_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-projectzomboid:1',
+      'ghcr.io/nightriderp/palantir-game-projectzomboid:2',
     );
   });
 
@@ -1068,7 +1068,7 @@ describe('Vintage Story', () => {
       createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('vintagestory').id,
     ).toBe('vintagestory');
     expect(VINTAGE_STORY_GAME_TYPE.dockerImage).toBe(
-      'ghcr.io/nightriderp/palantir-game-vintagestory:1',
+      'ghcr.io/nightriderp/palantir-game-vintagestory:2',
     );
   });
 
