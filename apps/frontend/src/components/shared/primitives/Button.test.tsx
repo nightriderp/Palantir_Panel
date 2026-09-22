@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { Button, ButtonLink, IconButton } from './Button';
+import { Button, ButtonLink, IconButton, buttonClasses } from './Button';
 
 /**
  * Rückmeldung einer laufenden Aktion.
@@ -118,5 +118,50 @@ describe('ButtonLink', () => {
     expect(link.getAttribute('href')).toBe('/servers/neu');
     expect(link.className).toContain('bg-brand-gradient');
     expect(screen.queryByRole('button')).toBeNull();
+  });
+});
+
+/**
+ * Der Verlauf der Primäraktion darf an den Rändern nicht umschlagen.
+ *
+ * Gemessen am gerenderten Knopf lag links eine 1 px türkise Linie
+ * (`rgb(38,205,239)`, die Endfarbe) direkt neben dem violetten Verlaufsanfang
+ * (`rgb(120,98,254)`), rechts dasselbe andersherum. Ursache war die
+ * Vorgabekombination aus `background-origin: padding-box` und
+ * `background-clip: border-box`: Für die Spur des durchsichtigen Rahmens
+ * bleibt kein Verlauf übrig, und ein Hintergrundbild kachelt dort vorgabegemäß
+ * weiter – also mit der gegenüberliegenden Kante.
+ *
+ * Der Test hängt an der Klasse und nicht an Pixeln, weil jsdom nichts malt.
+ * Er hält damit genau das fest, was die Korrektur ausmacht: Wo ein Verlauf auf
+ * einen Rahmen trifft, muss auch der Ursprung die Border-Box sein.
+ */
+describe('Verlauf und Rahmen der Primäraktion', () => {
+  it('rechnet den Verlauf über die Border-Box, nicht über die Padding-Box', () => {
+    const klassen = buttonClasses('primary');
+
+    expect(klassen).toContain('bg-brand-gradient');
+    expect(klassen).toContain('border');
+    expect(klassen).toContain('bg-origin-border');
+  });
+
+  it('gilt auch für den Link, der wie eine Primäraktion aussieht', () => {
+    render(
+      <ButtonLink href="/servers/neu" variant="primary">
+        Neuer Server
+      </ButtonLink>,
+    );
+
+    expect(screen.getByRole('link', { name: /Neuer Server/ }).className).toContain(
+      'bg-origin-border',
+    );
+  });
+
+  it('hängt den Ursprung nicht an Varianten ohne Verlauf', () => {
+    // Eine einfarbige Fläche kachelt nicht sichtbar; die Klasse wäre dort nur
+    // Rauschen im Markup.
+    for (const variante of ['secondary', 'success', 'danger', 'ghost'] as const) {
+      expect(buttonClasses(variante)).not.toContain('bg-origin-border');
+    }
   });
 });

@@ -50,9 +50,24 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
    * Die Primäraktion trägt zusätzlich einen farbigen Schein nach unten. Ohne
    * ihn steht der Verlauf flach in der Fläche; mit ihm hebt sich der eine
    * wichtige Knopf einer Ansicht sichtbar ab.
+   *
+   * `bg-origin-border` ist kein Schmuck, sondern behebt einen sichtbaren
+   * Fehler. Der durchsichtige Rahmen hält diesen Knopf auf dieselbe Größe wie
+   * die anderen Varianten, die einen echten Rahmen tragen – ohne ihn wäre die
+   * Primäraktion in jeder Knopfreihe 2 px kleiner. Nur rechnet CSS den Verlauf
+   * von Haus aus auf die Padding-Box (`background-origin`), malt ihn aber über
+   * die Border-Box (`background-clip`). Für die Rahmenspur bleibt damit kein
+   * Verlauf übrig, und weil ein Hintergrundbild vorgabegemäß kachelt, füllt
+   * CSS sie mit der jeweils gegenüberliegenden Kante: links lag eine 1 px
+   * türkise Linie (die Endfarbe), rechts eine violette (die Startfarbe).
+   * Gemessen am gerenderten Knopf war das kein Hauch, sondern ein voller
+   * Farbsprung – `rgb(38,205,239)` direkt neben `rgb(120,98,254)`.
+   *
+   * Mit `background-origin: border-box` deckt der Verlauf die Rahmenspur mit
+   * ab; es gibt nichts mehr zu kacheln.
    */
   primary:
-    'bg-brand-gradient text-white border border-transparent shadow-glow hover:brightness-110',
+    'bg-brand-gradient bg-origin-border text-white border border-transparent shadow-glow hover:brightness-110',
   secondary: 'bg-fill text-ink border border-line-strong hover:border-ink-disabled',
   success: 'bg-success-soft text-success border border-success-line hover:brightness-110',
   danger: 'bg-danger-soft text-danger border border-danger-line hover:brightness-110',
