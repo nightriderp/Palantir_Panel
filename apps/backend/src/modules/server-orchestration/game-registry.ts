@@ -3422,7 +3422,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert. Eigene Karten kommen aus dem Steam-Workshop.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:2',
   // Vollständige Zeilen, wie sie die Serverkonsole versteht.
   consoleQuickCommands: [
     { label: 'Spieler', command: 'status' },
@@ -3573,6 +3573,32 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: null,
       lockedAfterCreate: false,
     },
+    {
+      key: 'plugins',
+      label: 'Plugins laden',
+      type: 'toggle',
+      defaultValue: true,
+      description:
+        'MetaMod und CounterStrikeSharp. Nach einem CS2-Update brechen sie oft für ein, zwei Tage – dann hier ausschalten, und der Server läuft ohne Plugins weiter.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'admins',
+      label: 'Admins (SteamID64)',
+      type: 'text',
+      defaultValue: '',
+      description:
+        'Durch Komma getrennt, z. B. 76561197960287930. Jeder bekommt volle Rechte in allen Plugins. Leer lassen, wer admins.json lieber von Hand pflegt.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
@@ -3585,6 +3611,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     gslt: 'CS2_GSLT',
     allRounds: 'CS2_ALL_ROUNDS',
     gotv: 'CS2_GOTV',
+    plugins: 'CS2_PLUGINS',
+    admins: 'CS2_ADMINS',
   },
   // Alles davon liest der Server beim Start; ein Wechsel im laufenden Betrieb
   // erreicht ihn nicht.
@@ -3599,6 +3627,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'gslt',
     'allRounds',
     'gotv',
+    'plugins',
+    'admins',
   ],
   resourceDefaults: {
     // CS2 selbst braucht wenig Speicher; die Platte ist der Punkt: gut 30 GB
@@ -3614,6 +3644,13 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   // Kein RCON: Valve hat es in CS2 nie freigeschaltet. Der Server liest seine
   // Befehle von der Standardeingabe.
   console: { kind: 'stdin' },
+  /*
+   * CounterStrikeSharp hängt an den Innereien von CS2 und bricht nach Updates
+   * von Valve regelmässig. Der Administrator kann das Update beim Start deshalb
+   * zurückhalten (Templates-Seite); das Startskript liest
+   * `PALANTIR_UPDATES_HALTEN`.
+   */
+  supportsUpdateHold: true,
   iconUrl: null,
   coverImageUrl: null,
   // Quake-Protokoll auf UDP; ein Hostname-Router davor gibt es nicht.

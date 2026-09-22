@@ -2,14 +2,17 @@
 #
 # Startskript des CS2-Images (`palantir-game-cs2`).
 #
-# Fünf Dinge:
+# Der Reihe nach:
 #
-#   1. Serverdateien über SteamCMD holen (Anwendung 730, anonym).
+#   1. Serverdateien über SteamCMD holen (Anwendung 730, anonym) – ausser der
+#      Administrator hält Updates zurück (`PALANTIR_UPDATES_HALTEN`).
 #   2. `steamclient.so` dorthin legen, wo der Server sie sucht – ohne sie
 #      startet CS2 nicht.
-#   3. `gamemodes_server.txt` anlegen, falls Valve nur die Vorlage mitbringt.
-#   4. Die Felder des Panels in eine eigene `palantir.cfg` schreiben.
-#   5. Konsole öffnen und den Server starten.
+#   3. Plugin-Grundlage: MetaMod:Source und CounterStrikeSharp, dazu die Zeile
+#      in `gameinfo.gi`, ohne die MetaMod nie geladen wird.
+#   4. Admins aus dem Panel nach CounterStrikeSharp.
+#   5. Spielmodus, `gamemodes_server.txt` und `palantir.cfg`.
+#   6. Konsole öffnen und den Server starten.
 #
 # **CS2 hat kein RCON.** Valve hat es nie freigeschaltet; die Konsole geht
 # deshalb über die Standardeingabe, wie bei Terraria. Wer RCON im Spiel möchte,
@@ -34,13 +37,33 @@ log() {
 
 palantir_intern_anlegen
 
+# Schalter aus dem Panel kommen als `true`/`false` an (siehe Abschnitt 5).
+ist_an() {
+  case "${1:-}" in
+    true | 1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # -----------------------------------------------------------------------------
 # 1. Serverdateien
 #
 # Bei jedem Start, wie bei allen SteamCMD-Spielen: Ist alles auf dem Stand,
 # kostet es Sekunden; ist es das nicht, kommt das Update, ohne dass jemand ein
 # neues Image bauen muss.
-steam_app_holen "$CS2_ANWENDUNG" "$SERVER"
+#
+# **Ausser, der Administrator hält Updates zurück** (Templates-Seite,
+# `PALANTIR_UPDATES_HALTEN`). CounterStrikeSharp hängt an den Innereien von
+# CS2; nach einem Update von Valve bricht es regelmässig, bis die Grundlage
+# nachzieht. Dann lieber einen Tag auf der alten Version spielen als gar nicht.
+# Beim allerersten Start wird trotzdem geholt – ohne Dateien gibt es nichts
+# zurückzuhalten.
+if ist_an "${PALANTIR_UPDATES_HALTEN:-}" && [ -f "$BINAERDATEI" ]; then
+  log 'Updates sind zurueckgehalten (Templates-Seite) - SteamCMD bleibt aus.'
+  log 'Spieler mit einem neueren Client kommen dann womoeglich nicht auf den Server.'
+else
+  steam_app_holen "$CS2_ANWENDUNG" "$SERVER"
+fi
 
 if [ ! -f "$BINAERDATEI" ]; then
   log "Nach dem Holen fehlt ${BINAERDATEI}."
@@ -76,7 +99,177 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 3. Spielmodus
+# 3. Plugin-Grundlage
+#
+# MetaMod:Source lädt Plugins in den Server, CounterStrikeSharp ist das
+# Plugin, das C#-Plugins lädt – fast alles, was es für CS2 gibt, baut darauf.
+#
+# **Die Archive liegen nicht im Image**, wie bei tModLoader: Adresse und
+# Prüfsumme setzt das Image, geholt wird beim ersten Start in den internen
+# Ordner. Was nicht zur Summe passt, wird verworfen statt ausgepackt.
+#
+# **Ausgepackt wird nur, wenn sich eine der beiden Fassungen geändert hat**
+# (Merkdatei im Addons-Ordner). Sonst bekäme der Betreiber bei jedem Start
+# seine Änderungen an `metaplugins.ini` überschrieben, und 120 MB würden
+# umsonst geschrieben.
+#
+# **Abschaltbar** (Feld „Plugins laden"): Nach einem CS2-Update, das MetaMod
+# bricht, startet der Server mit Plugins gar nicht. Ohne sie läuft er als
+# gewöhnlicher Server weiter – die Dateien bleiben liegen, nur die Zeile in
+# `gameinfo.gi` fällt weg.
+CSGO="${SERVER}/game/csgo"
+ADDONS="${CSGO}/addons"
+GAMEINFO="${CSGO}/gameinfo.gi"
+METAMOD_ZEILE='			Game	csgo/addons/metamod'
+MERKDATEI="${ADDONS}/.palantir-stand"
+CSS_CONFIGS="${ADDONS}/counterstrikesharp/configs"
+
+# Schreibt eine Datei ueber eine Zwischenkopie im selben Ordner: Ein Abbruch
+# mittendrin liesse sonst eine halbe `gameinfo.gi` zurueck, und CS2 startete
+# gar nicht mehr.
+ersetze_datei() {
+  mv "${1}.palantir" "$1"
+}
+
+gameinfo_eintragen() {
+  if [ ! -f "$GAMEINFO" ]; then
+    log "Hinweis: ${GAMEINFO} fehlt - MetaMod wird nicht geladen."
+
+    return 0
+  fi
+
+  if grep -q 'csgo/addons/metamod' "$GAMEINFO"; then
+    return 0
+  fi
+
+  if ! grep -q 'Game_LowViolence' "$GAMEINFO"; then
+    log 'Hinweis: In gameinfo.gi fehlt die Zeile Game_LowViolence - MetaMod wird nicht geladen.'
+    log 'Valve hat die Datei vermutlich umgebaut; die Plugin-Grundlage muss nachziehen.'
+
+    return 0
+  fi
+
+  # Direkt hinter `Game_LowViolence`, vor `Game csgo`: So beschreibt es
+  # MetaMod selbst, und nur an dieser Stelle wird der Ordner vor dem Spiel
+  # durchsucht.
+  awk -v zeile="$METAMOD_ZEILE" '
+    { print }
+    /Game_LowViolence/ && !erledigt { print zeile; erledigt = 1 }
+  ' "$GAMEINFO" > "${GAMEINFO}.palantir"
+  ersetze_datei "$GAMEINFO"
+  log 'MetaMod in gameinfo.gi eingetragen.'
+}
+
+gameinfo_austragen() {
+  if [ -f "$GAMEINFO" ] && grep -q 'csgo/addons/metamod' "$GAMEINFO"; then
+    grep -v 'csgo/addons/metamod' "$GAMEINFO" > "${GAMEINFO}.palantir" || true
+    ersetze_datei "$GAMEINFO"
+    log 'Plugins sind aus - MetaMod aus gameinfo.gi genommen.'
+  fi
+}
+
+plugin_grundlage_legen() {
+  if [ -z "${CS2_METAMOD_URL:-}" ] || [ -z "${CS2_METAMOD_SHA256:-}" ] ||
+    [ -z "${CS2_CSS_URL:-}" ] || [ -z "${CS2_CSS_SHA256:-}" ]; then
+    log 'Es fehlen Adresse oder Pruefsumme von MetaMod bzw. CounterStrikeSharp. Beides setzt das Image.'
+
+    return 1
+  fi
+
+  ablage="${PALANTIR_INTERN}/cs2-plugins"
+  mkdir -p "$ablage" "$ADDONS"
+
+  palantir_datei_holen "$CS2_METAMOD_URL" "$CS2_METAMOD_SHA256" "${ablage}/metamod.tar.gz" ||
+    return 1
+  palantir_datei_holen "$CS2_CSS_URL" "$CS2_CSS_SHA256" "${ablage}/counterstrikesharp.zip" ||
+    return 1
+
+  stand="${CS2_METAMOD_SHA256} ${CS2_CSS_SHA256}"
+
+  if [ -f "$MERKDATEI" ] && [ "$(cat "$MERKDATEI")" = "$stand" ]; then
+    return 0
+  fi
+
+  log "Packe MetaMod ${CS2_METAMOD_VERSION:-} und CounterStrikeSharp ${CS2_CSS_VERSION:-} aus ..."
+
+  # `metaplugins.ini` gehört nach dem ersten Mal dem Betreiber – dort stehen
+  # MetaMod-Plugins, die er von Hand dazulegt.
+  if [ -f "${ADDONS}/metamod/metaplugins.ini" ]; then
+    cp "${ADDONS}/metamod/metaplugins.ini" "${ablage}/metaplugins.ini.betreiber"
+  fi
+
+  palantir_tar_auspacken "${ablage}/metamod.tar.gz" "$CSGO" || return 1
+  palantir_zip_auspacken "${ablage}/counterstrikesharp.zip" "$CSGO" || return 1
+
+  if [ -f "${ablage}/metaplugins.ini.betreiber" ]; then
+    mv "${ablage}/metaplugins.ini.betreiber" "${ADDONS}/metamod/metaplugins.ini"
+  fi
+
+  printf '%s\n' "$stand" > "$MERKDATEI"
+}
+
+if ist_an "${CS2_PLUGINS:-true}"; then
+  if ! plugin_grundlage_legen; then
+    log 'Die Plugin-Grundlage fehlt. Wer ohne Plugins spielen will, schaltet "Plugins laden" aus.'
+    exit 69
+  fi
+
+  # `core.json` einmal aus der Vorlage - danach gehört sie dem Betreiber.
+  if [ ! -f "${CSS_CONFIGS}/core.json" ] && [ -f "${CSS_CONFIGS}/core.example.json" ]; then
+    cp "${CSS_CONFIGS}/core.example.json" "${CSS_CONFIGS}/core.json"
+  fi
+
+  # Bei jedem Start: Ein Update von Valve schreibt `gameinfo.gi` neu und nimmt
+  # die Zeile dabei mit.
+  gameinfo_eintragen
+else
+  gameinfo_austragen
+fi
+
+# -----------------------------------------------------------------------------
+# 4. Admins
+#
+# SteamID64-Nummern aus dem Panel, getrennt durch Komma, Leerzeichen oder
+# Zeilenumbruch. Jede bekommt `@css/root` – volle Rechte über alle Plugins.
+#
+# **Die Datei gehört dem Panel, sobald das Feld etwas enthält**: Sie wird bei
+# jedem Start neu geschrieben. Ist das Feld leer, fasst das Skript sie nicht an
+# – wer Admins lieber mit Gruppen und feineren Rechten von Hand pflegt, lässt
+# das Feld leer.
+#
+# Nur gültige SteamID64 (17 Ziffern, beginnend mit 7656119). Etwas anderes
+# landet nicht in der Datei: Ein Tippfehler dort würde von CounterStrikeSharp
+# still übergangen, hier steht er wenigstens im Log.
+if ist_an "${CS2_PLUGINS:-true}" && [ -n "${CS2_ADMINS:-}" ]; then
+  mkdir -p "$CSS_CONFIGS"
+  eintraege=''
+
+  # Ohne Dateinamen-Erweiterung: Ein `*` im Feld soll nicht den Ordner auflisten.
+  set -f
+  for kennung in $(printf '%s' "$CS2_ADMINS" | tr ',;' '  '); do
+    case "$kennung" in
+      7656119[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+        if [ -n "$eintraege" ]; then
+          eintraege="${eintraege},"
+        fi
+        eintraege="${eintraege}
+  \"palantir-${kennung}\": { \"identity\": \"${kennung}\", \"immunity\": 100, \"flags\": [\"@css/root\"] }"
+        ;;
+      *)
+        log "Keine SteamID64, uebergangen: ${kennung}"
+        ;;
+    esac
+  done
+  set +f
+
+  if [ -n "$eintraege" ]; then
+    printf '{%s\n}\n' "$eintraege" > "${CSS_CONFIGS}/admins.json"
+    log 'Admins aus dem Panel nach CounterStrikeSharp geschrieben.'
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# 5. Spielmodus
 #
 # CS2 kennt Modi nur als zwei Zahlen. Im Panel stehen Wörter – ein Auswahlfeld
 # mit „0, 1" wäre für den Betreiber nicht zu entziffern. Übersetzt wird hier,
@@ -96,7 +289,7 @@ case "${CS2_GAME_MODE:-competitive}" in
 esac
 
 # -----------------------------------------------------------------------------
-# 4. gamemodes_server.txt
+# gamemodes_server.txt
 #
 # Hier stehen die Spielerzahl je Modus und die eigene Kartenliste. Die Datei
 # gehört dem Betreiber – das Skript legt sie an, wenn es sie nicht gibt, und
@@ -110,7 +303,7 @@ if [ ! -f "$GAMEMODES" ] && [ -f "${GAMEMODES}.example" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 5. palantir.cfg
+# palantir.cfg
 #
 # Die Felder des Panels landen in einer **eigenen** Datei, nicht in der
 # `server.cfg` des Betreibers.
@@ -132,14 +325,7 @@ ZIEL="${CFG_ORDNER}/palantir.cfg"
 # **Schalter kommen als `true`/`false` an**, nicht als Zahlen: Das Panel
 # schreibt jeden Wert mit `String()` in die Umgebung. CS2 will `0` und `1` –
 # und beim Rundenschalter auch noch umgekehrt: „Alle Runden spielen“ an
-# heisst `mp_match_can_clinch 0`. Beides steht hier, an einer Stelle.
-ist_an() {
-  case "${1:-}" in
-    true | 1) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
+# heisst `mp_match_can_clinch 0`. Übersetzt wird mit `ist_an` von oben.
 if ist_an "${CS2_ALL_ROUNDS:-}"; then
   KANN_ENTSCHEIDEN=0
 else
@@ -172,7 +358,7 @@ sauber() {
 } > "$ZIEL"
 
 # -----------------------------------------------------------------------------
-# 6. Startparameter
+# Startparameter
 #
 # Die Reihenfolge ist die, die Valve selbst nennt: erst die Schalter mit
 # Bindestrich, dann die Konsolenbefehle mit Plus.
@@ -233,7 +419,7 @@ if [ -n "${PALANTIR_STARTUP_PARAMETERS:-}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 7. Konsole und Start
+# 6. Konsole und Start
 #
 # CS2 liest Befehle von der Standardeingabe. Das Rohr legt die Wurzel an;
 # `palantir-console` schreibt hinein.

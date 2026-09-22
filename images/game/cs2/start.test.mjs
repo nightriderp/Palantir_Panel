@@ -14,11 +14,20 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { crc32 } from 'node:zlib';
 
 /** Pfad in der Schreibweise, die eine POSIX-Shell versteht (Windows: `C:\…`). */
 const posix = (pfad) => pfad.replace(/\\/gu, '/');
@@ -37,6 +46,30 @@ const LIB_ORDNER = (() => {
 
 const SH_VORHANDEN = spawnSync('sh', ['-c', 'exit 0']).error === undefined;
 const nurMitShell = { skip: SH_VORHANDEN ? false : 'Keine POSIX-Shell (sh) im PATH.' };
+
+/**
+ * Kann `tar` hier mit Pfaden umgehen, die einen Laufwerksbuchstaben tragen?
+ *
+ * Unter Windows nicht: GNU tar haelt das `C:` fuer einen Rechnernamen. Im
+ * Container - und damit in der CI - gibt es keine Laufwerksbuchstaben, dort
+ * laufen diese Pruefungen (dasselbe Muster wie im ACC-Image).
+ */
+const TAR_MIT_LAUFWERK = (() => {
+  if (!SH_VORHANDEN) return false;
+  const ordner = mkdtempSync(join(tmpdir(), 'palantir-tar-'));
+  const lauf = spawnSync('sh', [
+    '-c',
+    'cd "$1" && printf x > a && tar -czf "$1/t.tar.gz" a',
+    '_',
+    posix(ordner),
+  ]);
+  spawnSync('sh', ['-c', 'rm -rf "$1"', '_', posix(ordner)]);
+
+  return lauf.status === 0;
+})();
+const nurMitTar = {
+  skip: TAR_MIT_LAUFWERK ? false : 'tar kommt hier nicht mit Laufwerksbuchstaben zurecht.',
+};
 
 const aufraeumen = [];
 
@@ -68,6 +101,8 @@ function arbeitsordner() {
       '  vorher="$a"',
       'done',
       'mkdir -p "$ziel/game/bin/linuxsteamrt64" "$ziel/game/csgo/cfg"',
+      'echo x >> "$ziel/.steamcmd-aufrufe"',
+      'printf "\\t\\t\\tGame_LowViolence\\tcsgo_lv\\n\\t\\t\\tGame\\tcsgo\\n" > "$ziel/game/csgo/gameinfo.gi"',
       'printf "%s\\n" "#!/bin/sh" "for arg in \\"\\$@\\"; do printf \'argv %s\\\\n\' \\"\\$arg\\"; done" > "$ziel/game/bin/linuxsteamrt64/cs2"',
       'chmod 0755 "$ziel/game/bin/linuxsteamrt64/cs2"',
       'printf "beispiel\\n" > "$ziel/game/csgo/gamemodes_server.txt.example"',
@@ -90,6 +125,7 @@ function starte(ordner, extra = {}) {
       PALANTIR_LIB_DIR: LIB_ORDNER,
       PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
       PALANTIR_STARTUP_PARAMETERS: '',
+      CS2_PLUGINS: 'false',
       ...extra,
     },
   });
@@ -306,5 +342,276 @@ describe('start.sh – Schalter aus dem Panel', nurMitShell, () => {
     starte(ordner);
 
     assert.match(cfg(ordner), /^tv_enable 0$/mu);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plugin-Grundlage, Admins, Update-Sperre (Betreiber-Wunsch 22.09.2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ein Zip ohne Kompression – `zip` gibt es nicht auf jedem Rechner, `unzip`
+ * liegt im Image und in Git für Windows.
+ */
+function zipOhneKompression(dateien) {
+  const lokal = [];
+  const zentral = [];
+  let versatz = 0;
+
+  for (const [name, inhalt] of Object.entries(dateien)) {
+    const n = Buffer.from(name);
+    const d = Buffer.from(inhalt);
+    const pruef = crc32(d);
+    const kopf = Buffer.alloc(30);
+    kopf.writeUInt32LE(0x04034b50, 0);
+    kopf.writeUInt16LE(10, 4);
+    kopf.writeUInt32LE(pruef, 14);
+    kopf.writeUInt32LE(d.length, 18);
+    kopf.writeUInt32LE(d.length, 22);
+    kopf.writeUInt16LE(n.length, 26);
+    lokal.push(kopf, n, d);
+
+    const eintrag = Buffer.alloc(46);
+    eintrag.writeUInt32LE(0x02014b50, 0);
+    eintrag.writeUInt16LE(20, 4);
+    eintrag.writeUInt16LE(10, 6);
+    eintrag.writeUInt32LE(pruef, 16);
+    eintrag.writeUInt32LE(d.length, 20);
+    eintrag.writeUInt32LE(d.length, 24);
+    eintrag.writeUInt16LE(n.length, 28);
+    eintrag.writeUInt32LE(versatz, 42);
+    zentral.push(eintrag, n);
+
+    versatz += kopf.length + n.length + d.length;
+  }
+
+  const verzeichnis = Buffer.concat(zentral);
+  const ende = Buffer.alloc(22);
+  ende.writeUInt32LE(0x06054b50, 0);
+  ende.writeUInt16LE(Object.keys(dateien).length, 8);
+  ende.writeUInt16LE(Object.keys(dateien).length, 10);
+  ende.writeUInt32LE(verzeichnis.length, 12);
+  ende.writeUInt32LE(versatz, 16);
+
+  return Buffer.concat([...lokal, verzeichnis, ende]);
+}
+
+const summe = (pfad) => createHash('sha256').update(readFileSync(pfad)).digest('hex');
+
+/**
+ * Legt beide Archive dorthin, wo `palantir_datei_holen` sie sucht, und gibt
+ * die Umgebung zurück, die das Image sonst setzt. Die Adressen zeigen ins
+ * Leere: Passt die Summe, wird nichts geholt – und genau das soll so sein.
+ */
+function mitGrundlage(ordner, fassung = 'eins') {
+  const ablage = join(ordner.daten, '.palantir', 'cs2-plugins');
+  const quelle = join(ordner.wurzel, `metamod-${fassung}`);
+  mkdirSync(join(quelle, 'addons', 'metamod'), { recursive: true });
+  mkdirSync(ablage, { recursive: true });
+  writeFileSync(join(quelle, 'addons', 'metamod.vdf'), `metamod ${fassung}`);
+  writeFileSync(join(quelle, 'addons', 'metamod', 'metaplugins.ini'), 'vorlage');
+
+  const tar = join(ablage, 'metamod.tar.gz');
+  const lauf = spawnSync('sh', [
+    '-c',
+    'cd "$1" && tar -czf "$2" addons',
+    '_',
+    posix(quelle),
+    posix(tar),
+  ]);
+  assert.equal(lauf.status, 0, String(lauf.stderr));
+
+  const zip = join(ablage, 'counterstrikesharp.zip');
+  writeFileSync(
+    zip,
+    zipOhneKompression({
+      'addons/counterstrikesharp/configs/core.example.json': '{"vorlage":true}',
+      'addons/metamod/counterstrikesharp.vdf': `css ${fassung}`,
+    }),
+  );
+
+  return {
+    CS2_PLUGINS: 'true',
+    CS2_METAMOD_URL: 'https://beispiel.invalid/metamod.tar.gz',
+    CS2_METAMOD_SHA256: summe(tar),
+    CS2_CSS_URL: 'https://beispiel.invalid/css.zip',
+    CS2_CSS_SHA256: summe(zip),
+  };
+}
+
+const csgo = (ordner, ...teile) => join(ordner.daten, 'server', 'game', 'csgo', ...teile);
+
+describe('start.sh – Plugin-Grundlage', nurMitTar, () => {
+  it('packt MetaMod und CounterStrikeSharp aus', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, mitGrundlage(ordner));
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.equal(readFileSync(csgo(ordner, 'addons', 'metamod.vdf'), 'utf8'), 'metamod eins');
+    assert.equal(
+      readFileSync(csgo(ordner, 'addons', 'metamod', 'counterstrikesharp.vdf'), 'utf8'),
+      'css eins',
+    );
+  });
+
+  it('trägt MetaMod direkt hinter Game_LowViolence in gameinfo.gi ein', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, mitGrundlage(ordner));
+
+    const zeilen = readFileSync(csgo(ordner, 'gameinfo.gi'), 'utf8').split('\n');
+    const stelle = zeilen.findIndex((zeile) => zeile.includes('Game_LowViolence'));
+    assert.equal(zeilen[stelle + 1], '\t\t\tGame\tcsgo/addons/metamod');
+  });
+
+  it('trägt sie auch nach dem Update wieder ein – und nie doppelt', () => {
+    // Das Update schreibt gameinfo.gi neu (die Attrappe tut es bei jedem
+    // Start); die Zeile muss danach wieder da sein, aber nur einmal.
+    const ordner = arbeitsordner();
+    const umgebung = mitGrundlage(ordner);
+    starte(ordner, umgebung);
+    starte(ordner, umgebung);
+
+    const inhalt = readFileSync(csgo(ordner, 'gameinfo.gi'), 'utf8');
+    assert.equal(inhalt.split('csgo/addons/metamod').length - 1, 1);
+  });
+
+  it('legt core.json einmal aus der Vorlage an und lässt sie danach stehen', () => {
+    const ordner = arbeitsordner();
+    const umgebung = mitGrundlage(ordner);
+    starte(ordner, umgebung);
+
+    const core = csgo(ordner, 'addons', 'counterstrikesharp', 'configs', 'core.json');
+    assert.equal(readFileSync(core, 'utf8'), '{"vorlage":true}');
+
+    writeFileSync(core, '{"eigen":true}');
+    starte(ordner, umgebung);
+
+    assert.equal(readFileSync(core, 'utf8'), '{"eigen":true}');
+  });
+
+  it('packt eine neue Fassung aus, behält aber die metaplugins.ini des Betreibers', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, mitGrundlage(ordner, 'eins'));
+
+    const ini = csgo(ordner, 'addons', 'metamod', 'metaplugins.ini');
+    writeFileSync(ini, 'eigenes plugin');
+    starte(ordner, mitGrundlage(ordner, 'zwei'));
+
+    assert.equal(readFileSync(csgo(ordner, 'addons', 'metamod.vdf'), 'utf8'), 'metamod zwei');
+    assert.equal(readFileSync(ini, 'utf8'), 'eigenes plugin');
+  });
+
+  it('startet nicht, wenn ein Archiv nicht zur Prüfsumme passt', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, { ...mitGrundlage(ordner), CS2_CSS_SHA256: '0'.repeat(64) });
+
+    assert.equal(lauf.status, 69);
+    assert.match(lauf.stdout, /Plugins laden/u);
+    assert.deepEqual(lauf.argv, []);
+  });
+
+  it('startet nicht, wenn das Image Adresse oder Summe nicht setzt', () => {
+    const lauf = starte(arbeitsordner(), { CS2_PLUGINS: 'true' });
+
+    assert.equal(lauf.status, 69);
+  });
+
+  it('nimmt MetaMod aus gameinfo.gi, wenn die Plugins aus sind', () => {
+    // Der Notausgang nach einem CS2-Update, das MetaMod bricht.
+    const ordner = arbeitsordner();
+    const umgebung = mitGrundlage(ordner);
+    starte(ordner, umgebung);
+
+    // Die Attrappe schreibt gameinfo.gi bei jedem Start neu; hier soll sie
+    // stehen bleiben wie nach einem Start ohne Update.
+    const lauf = starte(ordner, {
+      ...umgebung,
+      CS2_PLUGINS: 'false',
+      PALANTIR_UPDATES_HALTEN: 'true',
+    });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.doesNotMatch(readFileSync(csgo(ordner, 'gameinfo.gi'), 'utf8'), /metamod/u);
+  });
+});
+
+describe('start.sh – Admins', nurMitTar, () => {
+  const admins = (ordner) => csgo(ordner, 'addons', 'counterstrikesharp', 'configs', 'admins.json');
+
+  it('schreibt jede gültige SteamID64 mit vollen Rechten', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, {
+      ...mitGrundlage(ordner),
+      CS2_ADMINS: '76561197960287930, 76561198000000001',
+    });
+
+    const inhalt = JSON.parse(readFileSync(admins(ordner), 'utf8'));
+    assert.deepEqual(Object.keys(inhalt), [
+      'palantir-76561197960287930',
+      'palantir-76561198000000001',
+    ]);
+    assert.deepEqual(inhalt['palantir-76561197960287930'], {
+      identity: '76561197960287930',
+      immunity: 100,
+      flags: ['@css/root'],
+    });
+  });
+
+  it('übergeht, was keine SteamID64 ist, und sagt es im Log', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...mitGrundlage(ordner),
+      CS2_ADMINS: 'STEAM_0:1:1 76561197960287930 "; rm -rf /',
+    });
+
+    assert.match(lauf.stdout, /Keine SteamID64, uebergangen: STEAM_0:1:1/u);
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(admins(ordner), 'utf8'))), [
+      'palantir-76561197960287930',
+    ]);
+  });
+
+  it('lässt eine von Hand gepflegte admins.json in Ruhe, wenn das Feld leer ist', () => {
+    const ordner = arbeitsordner();
+    const umgebung = mitGrundlage(ordner);
+    starte(ordner, umgebung);
+    writeFileSync(admins(ordner), '{"eigen":{}}');
+
+    starte(ordner, { ...umgebung, CS2_ADMINS: '' });
+
+    assert.equal(readFileSync(admins(ordner), 'utf8'), '{"eigen":{}}');
+  });
+});
+
+describe('start.sh – Updates zurückhalten', nurMitShell, () => {
+  const aufrufe = (ordner) => {
+    const datei = join(ordner.daten, 'server', '.steamcmd-aufrufe');
+
+    return existsSync(datei) ? readFileSync(datei, 'utf8').trim().split('\n').length : 0;
+  };
+
+  it('holt beim ersten Start trotzdem – ohne Dateien gibt es nichts zurückzuhalten', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, { PALANTIR_UPDATES_HALTEN: 'true' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.equal(aufrufe(ordner), 1);
+  });
+
+  it('lässt SteamCMD danach aus', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+    const lauf = starte(ordner, { PALANTIR_UPDATES_HALTEN: 'true' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.equal(aufrufe(ordner), 1);
+    assert.match(lauf.stdout, /zurueckgehalten/u);
+  });
+
+  it('holt ohne den Schalter bei jedem Start', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+    starte(ordner, { PALANTIR_UPDATES_HALTEN: 'false' });
+
+    assert.equal(aufrufe(ordner), 2);
   });
 });
