@@ -119,6 +119,15 @@ export interface GameTypeDto {
    * ersten Start geholt wird – dort kostet die Wahl nur eine andere Adresse.
    */
   supportsVersionChoice: boolean;
+  /**
+   * Laesst sich das Update dieses Spieltyps beim Start zurueckhalten
+   * ({@link InstanceSettingsDto.heldUpdateGameTypes})?
+   *
+   * Nur dort sinnvoll, wo Plugins an der Spielversion haengen. Die
+   * Administration zeigt den Schalter nur fuer Spieltypen, die hier `true`
+   * tragen. Optional; ohne Angabe `false`.
+   */
+  supportsUpdateHold?: boolean;
   defaultPorts: number[];
   resourceDefaults: GameResourceEstimate;
   configFields: GameConfigField[];
@@ -442,6 +451,18 @@ export interface GameTypeDefinition {
    * bleibt es bei der Version des Images.
    */
   readonly supportsVersionChoice?: boolean;
+  /**
+   * Kann ein Server dieses Spieltyps auf ein Update beim Start verzichten
+   * (Betreiber-Wunsch 22.09.2026)?
+   *
+   * Das Image muss es koennen: Es liest `PALANTIR_UPDATES_HALTEN` und laesst
+   * dann den Abgleich mit dem Hersteller aus, sofern die Serverdateien schon da
+   * sind. Beim allerersten Start wird trotzdem geholt – ohne Dateien gibt es
+   * nichts zurueckzuhalten.
+   *
+   * Siehe {@link InstanceSettingsDto.heldUpdateGameTypes}.
+   */
+  readonly supportsUpdateHold?: boolean;
   /**
    * Gruppe, unter der dieser Spieltyp mit seinen Geschwistern **eine
    * gemeinsame Kachel** im Wizard bekommt (Betreiber-Wunsch 20.09.2026).
