@@ -3539,8 +3539,14 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       label: 'Game Server Login Token (GSLT)',
       type: 'password',
       defaultValue: '',
+      /*
+       * Bleibt optional, mit Warnung (Entscheidung des Betreibers, 23.09.2026;
+       * Fundpunkt 256). Mit GSLT meldet sich der Server unter dem Steam-Konto
+       * des Betreibers bei Valve an – und Valve sperrt Tokens von Servern mit
+       * Skins, die WeaponPaints nur mit abgeschalteten Richtlinien zeigt.
+       */
       description:
-        'Von steamcommunity.com/dev/managegameservers, Anwendung 730. Ohne ihn läuft der Server, taucht aber nicht im Serverbrowser auf.',
+        'Von steamcommunity.com/dev/managegameservers, Anwendung 730. Ohne ihn läuft der Server, taucht aber nicht im Serverbrowser auf. Nicht zusammen mit WeaponPaints – Valve sperrt Tokens von Servern mit Skins.',
       required: false,
       options: [],
       min: null,

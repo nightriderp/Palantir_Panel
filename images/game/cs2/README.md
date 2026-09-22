@@ -84,6 +84,11 @@ die Startkarte nicht setzen — das kann Valve nicht.
 **Der GSLT ist keine Pflicht.** Ohne ihn läuft der Server, taucht aber nicht im Serverbrowser auf.
 Zu holen unter `steamcommunity.com/dev/managegameservers`, Anwendung 730.
 
+**Nicht zusammen mit WeaponPaints.** Mit GSLT meldet sich der Server unter dem Steam-Konto des
+Betreibers bei Valve an, und Valve sperrt Tokens von Servern mit Skins. Das Feld bleibt trotzdem
+drin (Entscheidung des Betreibers, 23.09.2026): für einen öffentlichen Server ohne Plugins. Das
+Panel verbietet die Kombination nicht, die Feldbeschreibung warnt.
+
 ## Plugin-Grundlage
 
 MetaMod:Source lädt Plugins in den Server, CounterStrikeSharp lädt C#-Plugins — fast alles, was

@@ -1632,6 +1632,12 @@ describe('Counter-Strike 2', () => {
     expect(schalter.every((feld) => feld.defaultValue === false)).toBe(true);
   });
 
+  it('warnt am GSLT vor WeaponPaints – Valve sperrt Tokens von Servern mit Skins', () => {
+    const gslt = CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'gslt');
+
+    expect(gslt?.description).toMatch(/WeaponPaints/u);
+  });
+
   it('führt das Fake-RCON-Passwort als Passwortfeld', () => {
     expect(CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'fakeRconPassword')?.type).toBe(
       'password',
