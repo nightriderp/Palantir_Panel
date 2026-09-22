@@ -3883,6 +3883,22 @@ export interface GameRegistry {
    */
   setDisabledGameTypes(ids: readonly string[]): void;
   /**
+   * Bei welchen Spieltypen der Administrator die Updates zurückhält
+   * (`InstanceSettingsDto.heldUpdateGameTypes`, Betreiber-Wunsch 22.09.2026).
+   *
+   * Aus demselben Grund mitgeteilt wie {@link setDisabledGameTypes}.
+   */
+  setHeldUpdateGameTypes(ids: readonly string[]): void;
+  /**
+   * Soll ein Server dieses Spieltyps beim Start auf das Update verzichten?
+   *
+   * `true` nur, wenn der Administrator es für den Typ eingeschaltet hat
+   * **und** der Typ es kann (`supportsUpdateHold`). Eine Kennung in der Liste,
+   * deren Image die Variable nicht liest, hält nichts zurück – und soll dann
+   * auch nichts an den Container schreiben.
+   */
+  isUpdateHeld(id: string): boolean;
+  /**
    * Definition zu einer Kennung, **ohne** zu werfen (Fundpunkt 247).
    *
    * Für Anzeigen, die einen vorhandenen Server beschreiben: Ein Server in der
@@ -3915,6 +3931,7 @@ export function toGameTypeDto(
     supportsVirtualHostRouting: definition.supportsVirtualHostRouting,
     supportsWorldImport: definition.supportsWorldImport,
     supportsVersionChoice: definition.supportsVersionChoice ?? false,
+    supportsUpdateHold: definition.supportsUpdateHold ?? false,
     /*
      * Gruppe und Variantenname gehen unveraendert durch. `undefined` wird zu
      * `null`: Der DTO faehrt `null` fuer „gibt es nicht", damit die Oberflaeche
@@ -3966,6 +3983,7 @@ export function createGameRegistry(
   // Kennungen, die es im Katalog nicht gibt, stören nicht: Sie schalten nichts
   // ab und bleiben stehen, bis jemand sie in der Verwaltung entfernt.
   let abgeschaltet: ReadonlySet<string> = new Set();
+  let zurueckgehalten: ReadonlySet<string> = new Set();
 
   function require(id: string): GameTypeDefinition {
     const definition = byId.get(id);
@@ -3983,6 +4001,12 @@ export function createGameRegistry(
     find: (id: string) => byId.get(id) ?? null,
     setDisabledGameTypes(ids) {
       abgeschaltet = new Set(ids);
+    },
+    setHeldUpdateGameTypes(ids) {
+      zurueckgehalten = new Set(ids);
+    },
+    isUpdateHeld(id) {
+      return zurueckgehalten.has(id) && byId.get(id)?.supportsUpdateHold === true;
     },
     requireSelectable(id: string): GameTypeDefinition {
       const definition = require(id);

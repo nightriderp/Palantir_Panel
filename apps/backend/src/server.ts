@@ -519,6 +519,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const admin = createAdminModule({
       db,
       onDisabledGameTypesChanged: (ids) => spieleKatalog?.setDisabledGameTypes(ids),
+      onHeldUpdateGameTypesChanged: (ids) => spieleKatalog?.setHeldUpdateGameTypes(ids),
       /*
        * Jeder protokollierte Vorgang ist ein möglicher Auslöser für ein
        * Abzeichen. Bewusst **ohne** `await`: Der Beobachter darf den
@@ -822,6 +823,20 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         app.log.warn(
           { err: error },
           'Abgeschaltete Spieltypen nicht gelesen – vorerst steht jeder Typ zur Auswahl',
+        );
+      });
+
+    // Dieselbe Zurückhaltung für die zurückgehaltenen Updates: Scheitert die
+    // Abfrage, holen die Server ihr Update wie bisher.
+    void admin.instanceSettings
+      .heldUpdateGameTypes()
+      .then((ids) => {
+        spieltypen.setHeldUpdateGameTypes(ids);
+      })
+      .catch((error: unknown) => {
+        app.log.warn(
+          { err: error },
+          'Zurückgehaltene Updates nicht gelesen – vorerst holt jeder Server sein Update',
         );
       });
 

@@ -1,0 +1,1 @@
+ALTER TABLE "instance_settings" ADD COLUMN "held_update_game_types" jsonb DEFAULT '[]'::jsonb NOT NULL;

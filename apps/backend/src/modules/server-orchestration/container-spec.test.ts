@@ -5,6 +5,7 @@ import {
   STARTUP_PARAMETERS_ENV,
   STEAM_KONTO_CONTAINER_PATH,
   STEAM_KONTO_HOST_PATH,
+  UPDATES_HALTEN_ENV,
   VIRTUAL_HOST_HOSTNAME_LABEL,
   VIRTUAL_HOST_TARGET_PORT_LABEL,
   buildContainerSpec,
@@ -406,5 +407,57 @@ describe('Steam-Anmeldung im Bauplan', () => {
     expect(containerSpecFingerprint(spec(MIT_KONTO))).not.toBe(
       containerSpecFingerprint(spec(TEST_GAME_TYPE)),
     );
+  });
+});
+
+/**
+ * Zurückgehaltene Updates (Betreiber-Wunsch 22.09.2026).
+ *
+ * Die Variable gibt es nur, wenn beides stimmt: Der Administrator hat es
+ * eingeschaltet, und das Image kann es. Sonst fehlt sie ganz – eine immer
+ * gesetzte Variable baute jeden bestehenden Container einmal umsonst neu.
+ */
+describe('Zurückgehaltene Updates im Bauplan', () => {
+  const KANN: GameTypeDefinition = {
+    ...TEST_GAME_TYPE,
+    id: 'test-updates-halten',
+    supportsUpdateHold: true,
+  };
+
+  function spec(definition: GameTypeDefinition, updatesHeld?: boolean) {
+    return buildContainerSpec({
+      server: server(),
+      definition,
+      containerName: 'palantir-s1',
+      dataHostPath: '/srv/palantir/s1',
+      hostname: 'mein-server.example.tld',
+      ...(updatesHeld === undefined ? {} : { updatesHeld }),
+    });
+  }
+
+  it('setzt die Variable, wenn zurückgehalten wird und das Image es kann', () => {
+    expect(spec(KANN, true).env[UPDATES_HALTEN_ENV]).toBe('true');
+  });
+
+  it('lässt sie weg, solange nichts zurückgehalten wird', () => {
+    expect(spec(KANN, false).env).not.toHaveProperty(UPDATES_HALTEN_ENV);
+    expect(spec(KANN).env).not.toHaveProperty(UPDATES_HALTEN_ENV);
+  });
+
+  it('lässt sie weg, wenn das Image es nicht kann', () => {
+    expect(spec(TEST_GAME_TYPE, true).env).not.toHaveProperty(UPDATES_HALTEN_ENV);
+  });
+
+  it('ändert den Fingerabdruck – sonst wirkte der Schalter nie', () => {
+    // Erst der geänderte Fingerabdruck lässt `ensureContainerCurrent` den
+    // Container beim nächsten Start neu bauen.
+    expect(containerSpecFingerprint(spec(KANN, true))).not.toBe(
+      containerSpecFingerprint(spec(KANN, false)),
+    );
+  });
+
+  it('lässt den Fingerabdruck ohne Schalter, wie er war', () => {
+    // Bestehende Container sollen durch das neue Feld nicht neu gebaut werden.
+    expect(containerSpecFingerprint(spec(KANN, false))).toBe(containerSpecFingerprint(spec(KANN)));
   });
 });

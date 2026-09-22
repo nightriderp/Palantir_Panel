@@ -35,6 +35,8 @@ export const DEFAULT_INSTANCE_SETTINGS = Object.freeze({
   monospaceFontId: null,
   /** Ohne Angabe bietet die Instanz jeden Spieltyp ihrer Ausbaustufe an. */
   disabledGameTypes: [] as readonly string[],
+  /** Ohne Angabe holt jeder Server beim Start sein Update wie bisher. */
+  heldUpdateGameTypes: [] as readonly string[],
   /** Ohne Angabe bietet die Instanz jede mitgelieferte Schrift an. */
   hiddenBundledFonts: [] as readonly string[],
 });
@@ -45,6 +47,7 @@ export interface InstanceSettingsRecord {
   readonly uiFontId: string | null;
   readonly monospaceFontId: string | null;
   readonly disabledGameTypes: readonly string[];
+  readonly heldUpdateGameTypes: readonly string[];
   readonly hiddenBundledFonts: readonly string[];
   readonly updatedAt: Date | null;
 }
@@ -82,6 +85,8 @@ export interface InstanceSettingsService {
   selfRegistrationEnabled(): Promise<boolean>;
   /** Ausgeschaltete Spieltypen – für den Stand beim Hochfahren. */
   disabledGameTypes(): Promise<readonly string[]>;
+  /** Spieltypen mit zurückgehaltenen Updates – für den Stand beim Hochfahren. */
+  heldUpdateGameTypes(): Promise<readonly string[]>;
   /** Mitgelieferte Schriften, die die Instanz nicht mehr anbietet. */
   hiddenBundledFontIds(): Promise<readonly string[]>;
   /** Eine mitgelieferte Schrift aus dem Angebot nehmen (`true`) oder zurückholen. */
@@ -124,6 +129,7 @@ export function createDrizzleInstanceSettingsRepository(
         uiFontId: row.uiFontId,
         monospaceFontId: row.monospaceFontId,
         disabledGameTypes: row.disabledGameTypes,
+        heldUpdateGameTypes: row.heldUpdateGameTypes,
         hiddenBundledFonts: row.hiddenBundledFonts,
         updatedAt: row.updatedAt,
       };
@@ -135,6 +141,7 @@ export function createDrizzleInstanceSettingsRepository(
         uiFontId: data.uiFontId,
         monospaceFontId: data.monospaceFontId,
         disabledGameTypes: [...data.disabledGameTypes],
+        heldUpdateGameTypes: [...data.heldUpdateGameTypes],
         hiddenBundledFonts: [...data.hiddenBundledFonts],
         updatedAt: new Date(),
         updatedById,
@@ -174,6 +181,12 @@ export interface InstanceSettingsDependencies {
    * optional, damit ein Test die Einstellungen ohne Registry prüfen kann.
    */
   readonly onDisabledGameTypesChanged?: (ids: readonly string[]) => void;
+  /**
+   * Dasselbe für die Spieltypen mit zurückgehaltenen Updates
+   * (`GameRegistry.setHeldUpdateGameTypes`). Ohne den Anschluss wirkte der
+   * Schalter erst nach einem Neustart des Backends.
+   */
+  readonly onHeldUpdateGameTypesChanged?: (ids: readonly string[]) => void;
 }
 
 export function createInstanceSettingsService(
@@ -185,6 +198,7 @@ export function createInstanceSettingsService(
       uiFontId: record.uiFontId,
       monospaceFontId: record.monospaceFontId,
       disabledGameTypes: record.disabledGameTypes,
+      heldUpdateGameTypes: record.heldUpdateGameTypes,
       updatedAt: record.updatedAt?.toISOString() ?? null,
       permissions: { canEdit: hasPermission(actor, 'user.manage') },
     };
@@ -249,6 +263,11 @@ export function createInstanceSettingsService(
           input.disabledGameTypes === undefined
             ? bisher.disabledGameTypes
             : [...new Set(input.disabledGameTypes)].sort(),
+        // Dieselbe Regel für die zurückgehaltenen Updates.
+        heldUpdateGameTypes:
+          input.heldUpdateGameTypes === undefined
+            ? bisher.heldUpdateGameTypes
+            : [...new Set(input.heldUpdateGameTypes)].sort(),
         // Dieselbe Regel für die ausgeblendeten Schriften: Fehlt das Feld,
         // bleibt es, wie es war.
         hiddenBundledFonts:
@@ -263,6 +282,7 @@ export function createInstanceSettingsService(
       // (siehe `GameRegistry.setDisabledGameTypes`); wer sie ändert, sagt es
       // ihr.
       deps.onDisabledGameTypesChanged?.(neu.disabledGameTypes);
+      deps.onHeldUpdateGameTypesChanged?.(neu.heldUpdateGameTypes);
 
       /*
        * Ein Eintrag für die ganze Änderung, nicht je Feld (siehe
@@ -289,6 +309,10 @@ export function createInstanceSettingsService(
         geaendert.disabledGameTypes = neu.disabledGameTypes;
       }
 
+      if (neu.heldUpdateGameTypes.join(',') !== [...bisher.heldUpdateGameTypes].sort().join(',')) {
+        geaendert.heldUpdateGameTypes = neu.heldUpdateGameTypes;
+      }
+
       if (deps.audit && Object.keys(geaendert).length > 0) {
         await deps.audit.record(
           entryFor(ctx, {
@@ -309,6 +333,10 @@ export function createInstanceSettingsService(
 
     async disabledGameTypes() {
       return (await deps.repository.load()).disabledGameTypes;
+    },
+
+    async heldUpdateGameTypes() {
+      return (await deps.repository.load()).heldUpdateGameTypes;
     },
 
     async hiddenBundledFontIds() {
@@ -340,6 +368,7 @@ export function createInstanceSettingsService(
           uiFontId: stand.uiFontId,
           monospaceFontId: stand.monospaceFontId,
           disabledGameTypes: stand.disabledGameTypes,
+          heldUpdateGameTypes: stand.heldUpdateGameTypes,
           hiddenBundledFonts: [...vorher],
         },
         actorId,
