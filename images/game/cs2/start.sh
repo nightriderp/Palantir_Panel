@@ -488,6 +488,7 @@ fi
 # erst seine Protokolle. Das Signal geht an CS2 weiter; `quit` hat das Panel
 # vorher schon über die Konsole geschickt (`stopCommand`).
 beenden() {
+  UNTERBROCHEN=1
   log 'Stoppsignal erhalten - reiche es an CS2 weiter.'
   kill -TERM "${SERVER_PID:-}" 2> /dev/null || true
 }
@@ -499,15 +500,38 @@ trap beenden TERM INT
 "$BINAERDATEI" "$@" 0<&3 3>&- &
 SERVER_PID=$!
 
-# `wait` kehrt zurück, sobald ein abgefangenes Signal eintrifft – auch wenn der
-# Server noch läuft. Deshalb die Schleife.
+# `wait` kehrt zurück, sobald ein abgefangenes Signal eintrifft – mit 128 plus
+# Signalnummer, auch wenn der Server noch läuft. Dann wird noch einmal
+# gewartet: Das zweite `wait` liefert den echten Exit-Code, ob der Server noch
+# läuft oder inzwischen fertig ist.
+#
+# **Nicht über `kill -0`** (Fundpunkt 337): Endet der Server, während der Fang
+# läuft, ist er beim Nachsehen schon abgeräumt – die Schleife hielt dann die
+# 143 des unterbrochenen `wait` fest statt der 0 des Servers. Ein sauberer
+# Stopp sah aus wie ein Absturz.
 ERGEBNIS=0
-while kill -0 "$SERVER_PID" 2> /dev/null; do
+ERSTER_LAUF=1
+while :; do
+  UNTERBROCHEN=0
+
   if wait "$SERVER_PID"; then
-    ERGEBNIS=0
+    STATUS=0
   else
-    ERGEBNIS=$?
+    STATUS=$?
   fi
+
+  # 127 heisst beim zweiten Mal: schon abgeholt – dann gilt der Wert davor.
+  if [ "$ERSTER_LAUF" = 1 ] || [ "$STATUS" -ne 127 ]; then
+    ERGEBNIS=$STATUS
+  fi
+
+  ERSTER_LAUF=0
+
+  if [ "$UNTERBROCHEN" = 1 ] && [ "$STATUS" -gt 128 ]; then
+    continue
+  fi
+
+  break
 done
 
 log 'CS2 ist beendet - fahre MariaDB herunter.'
