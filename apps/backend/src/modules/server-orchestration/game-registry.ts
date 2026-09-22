@@ -790,7 +790,7 @@ export const TERRARIA_GAME_TYPE: GameTypeDefinition = {
   name: 'Terraria',
   description:
     'Terraria-Server von Re-Logic. Die Serverdateien werden beim ersten Start geholt; die Welt wird beim ersten Start erzeugt, was je nach Größe einige Minuten dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-terraria:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-terraria:2',
   /*
    * Zwei Ausgaben unter einer Kachel (Betreiber-Wunsch 21.09.2026): Terraria
    * wie Re-Logic es ausliefert, und tModLoader daneben. Der groesste Teil der
@@ -987,7 +987,7 @@ export const TMODLOADER_GAME_TYPE: GameTypeDefinition = {
   name: 'Terraria (tModLoader)',
   description:
     'Terraria mit dem Mod-Loader tModLoader. Mods gehören in den Ordner „mods“ im Datenordner; der Server lädt sie beim Start. Das Programm wird beim ersten Start geholt, das dauert länger als bei Terraria.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-tmodloader:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-tmodloader:2',
   variantLabel: 'tModLoader',
   resourceDefaults: {
     ramMb: 4_096,
@@ -1194,7 +1194,7 @@ export const PROJECT_ZOMBOID_GAME_TYPE: GameTypeDefinition = {
   name: 'Project Zomboid',
   description:
     'Project-Zomboid-Server. Die Serverdateien holt SteamCMD beim ersten Start; das dauert einige Minuten. Ein Administrator-Passwort ist Pflicht.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-projectzomboid:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-projectzomboid:2',
   consoleQuickCommands: [
     { label: 'Spieler', command: 'players' },
     { label: 'Speichern', command: 'save' },
@@ -2541,7 +2541,7 @@ export const VINTAGE_STORY_GAME_TYPE: GameTypeDefinition = {
   name: 'Vintage Story',
   description:
     'Vintage-Story-Server. Die Serverdateien holt der erste Start beim Hersteller und prüft sie gegen eine feste Prüfsumme; Steam ist nicht beteiligt.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-vintagestory:1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-vintagestory:2',
   consoleQuickCommands: [
     { label: 'Spieler', command: '/list clients' },
     { label: 'Speichern', command: '/autosavenow' },
