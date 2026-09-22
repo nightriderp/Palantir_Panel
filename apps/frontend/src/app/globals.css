@@ -50,6 +50,14 @@
      * ebenfalls etwas präsenter macht.
      */
     --rahmen-kante: 1.5px;
+
+    /**
+     * Die senkrechte Kante an der Seitenleiste eigens etwas schmaler
+     * (Betreiberwunsch 22.09.2026): Mit 1,5px wirkte sie neben der
+     * waagerechten einen Tick zu breit – längs läuft sie über die ganze
+     * Bildschirmhöhe und fällt dadurch stärker ins Auge.
+     */
+    --rahmen-kante-laengs: 1.25px;
   }
 
   html {
@@ -304,9 +312,9 @@
     content: '';
     position: absolute;
     top: 0;
-    right: calc(-1 * var(--rahmen-kante));
+    right: calc(-1 * var(--rahmen-kante-laengs));
     bottom: 0;
-    width: var(--rahmen-kante);
+    width: var(--rahmen-kante-laengs);
     pointer-events: none;
     background-image: theme('backgroundImage.chrome-edge-y');
   }
