@@ -273,15 +273,12 @@ describe('Storage-Explorer: löschbare Posten (Lastenheft §3.8)', () => {
     expect(auditRepository.rows).toEqual([]);
   });
 
-  it('gibt ohne node.manage gar nichts frei', async () => {
+  it('zeigt die Uebersicht ohne node.manage gar nicht erst (Admin-Bereich, Lastenheft §3.8)', async () => {
     const { storage } = buildService({ entries: [backup] });
 
-    const snapshot = await storage.getSnapshot(ctxWith(actorWith('node.view')), NODE_ID);
-    const [entry] = snapshot.breakdown?.entries ?? [];
-
-    expect(entry?.permissions.canView).toBe(true);
-    expect(entry?.permissions.canDelete).toBe(false);
-    expect(entry?.deleteBlockedReason).toBe('permissionMissing');
+    await expect(
+      storage.getSnapshot(ctxWith(actorWith('node.view')), NODE_ID),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
   });
 
   it('lehnt einen unbekannten Posten mit STORAGE_ENTRY_NOT_FOUND ab', async () => {

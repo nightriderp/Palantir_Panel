@@ -57,7 +57,7 @@ import {
   getStorageBreakdownResultSchema,
 } from '@palantir/validation';
 import { z } from 'zod';
-import { type PermissionActor, hasAnyPermission, hasPermission } from '../rbac/index.js';
+import { type PermissionActor, hasPermission } from '../rbac/index.js';
 import { type AuditService, entryFor } from './audit.js';
 import type { AdminContext } from './context.js';
 import { AdminError } from './errors.js';
@@ -381,7 +381,7 @@ function computeEntryPermissions(
   blockedReason: StorageDeleteBlockReason | null,
 ): StorageEntryPermissions {
   return {
-    canView: hasAnyPermission(actor, ['node.view', 'node.manage']),
+    canView: hasPermission(actor, 'node.manage'),
     canDelete: blockedReason === null && hasPermission(actor, 'node.manage'),
   };
 }
@@ -430,7 +430,7 @@ function summarize(entries: readonly StorageEntryDto[]): StorageCategorySummaryD
 
 function computeSnapshotPermissions(actor: PermissionActor): StorageSnapshotPermissions {
   return {
-    canView: hasAnyPermission(actor, ['node.view', 'node.manage']),
+    canView: hasPermission(actor, 'node.manage'),
     canScan: hasPermission(actor, 'node.manage'),
   };
 }
@@ -465,8 +465,13 @@ export interface StorageExplorerDependencies {
   readonly now?: () => Date;
 }
 
+/**
+ * Lesen verlangt dasselbe Recht wie Verwalten: Der Storage-Explorer ist
+ * Admin-Bereich (Lastenheft §3.8), `node.view` traegt schon die Seed-Rolle
+ * „Nutzer" fuer die Node-Auswahl beim Anlegen.
+ */
 function requireStorageRead(actor: PermissionActor): void {
-  if (!hasAnyPermission(actor, ['node.view', 'node.manage'])) {
+  if (!hasPermission(actor, 'node.manage')) {
     throw new AdminError('PERMISSION_DENIED');
   }
 }

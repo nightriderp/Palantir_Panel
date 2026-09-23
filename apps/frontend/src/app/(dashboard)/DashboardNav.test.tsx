@@ -124,3 +124,22 @@ describe('Seitenleiste – normale Nutzer sehen keine Administration', () => {
     expect(screen.queryByText('Administration')).toBeNull();
   });
 });
+
+describe('Seitenleiste – Node-Platz ist Admin-Bereich', () => {
+  function nurNodeAnsicht(): AccountDto {
+    return {
+      ...allmaechtig(),
+      isOwner: false,
+      permissions: berechtigungen({ canViewNodes: true }),
+    };
+  }
+
+  it('zeigt einem Konto mit nur node.view die Nodes, aber nicht den Node-Platz', () => {
+    render(<DashboardNav user={nurNodeAnsicht()} ownServers={[]} unreadMessages={0} />);
+
+    const ziele = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
+
+    expect(ziele).toContain('/nodes');
+    expect(ziele).not.toContain('/admin/storage');
+  });
+});

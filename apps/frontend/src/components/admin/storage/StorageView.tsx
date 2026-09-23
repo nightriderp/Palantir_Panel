@@ -102,7 +102,7 @@ const KIND_TONES: Record<
 
 export function StorageView() {
   const { user } = useSession();
-  const canView = user?.permissions.canViewNodes ?? false;
+  const canView = user?.permissions.canManageNodes ?? false;
 
   const nodes = useApiResource<HostNodeDto[]>((signal) => fetchNodes(signal), canView ? [] : null);
   const [nodeId, setNodeId] = useState<string | null>(null);

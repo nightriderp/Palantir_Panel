@@ -194,7 +194,7 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     label: 'Node-Platz',
     icon: 'database',
     href: '/admin/storage',
-    requires: 'canViewNodes',
+    requires: 'canManageNodes',
   },
   {
     key: 'admin-backups',
