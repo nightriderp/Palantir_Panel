@@ -8,8 +8,8 @@
 #   2. `steamclient.so` dorthin legen, wo CS2 sie sucht.
 #   3. CS2 über Valves eigenen Starter `game/cs2.sh` starten.
 #
-# Einstellungen aus dem Panel (Schritt 2): Servername, Server-Passwort,
-# Spieleranzahl. Sonst nichts – keine Plugins, feste Karte `de_dust2`.
+# Einstellungen aus dem Panel: Servername, Server-Passwort, Spieleranzahl
+# (Schritt 2), Startkarte, Spielmodus, Bots (Schritt 3). Keine Plugins.
 #
 # **Der Port kommt vom Panel** (`CS2_PORT`, Schritt 1.1): dieselbe Nummer, unter
 # der der Server draußen erreichbar ist. CS2 nennt Clients seinen eigenen Port;
@@ -71,20 +71,65 @@ sauber() {
 CFG_ORDNER="${SERVER}/game/csgo/cfg"
 mkdir -p "$CFG_ORDNER"
 
+# Spielmodus: CS2 kennt ihn nur als zwei Zahlen.
+case "${CS2_GAME_MODE:-competitive}" in
+  competitive) SPIEL_TYP=0; SPIEL_MODUS=1 ;;
+  casual) SPIEL_TYP=0; SPIEL_MODUS=0 ;;
+  wingman) SPIEL_TYP=0; SPIEL_MODUS=2 ;;
+  armsrace) SPIEL_TYP=1; SPIEL_MODUS=0 ;;
+  deathmatch) SPIEL_TYP=1; SPIEL_MODUS=2 ;;
+  *)
+    palantir_log "Unbekannter Spielmodus: ${CS2_GAME_MODE}."
+    exit 78
+    ;;
+esac
+
+# Nur Kartennamen, wie sie im Spiel heißen – der Wert landet als Argument
+# hinter `+map`.
+KARTE="${CS2_MAP:-de_dust2}"
+case "$KARTE" in
+  '' | *[!a-z0-9_]*)
+    palantir_log "Ungueltige Karte: ${KARTE}."
+    exit 78
+    ;;
+esac
+
+BOTS="${CS2_BOTS:-0}"
+case "$BOTS" in
+  '' | *[!0-9]*)
+    palantir_log "Ungueltige Bot-Anzahl: ${BOTS}."
+    exit 78
+    ;;
+esac
+
 {
   echo '// Schreibt Palantir bei jedem Start neu - eigene Zeilen gehoeren in server.cfg.'
   printf 'hostname "%s"\n' "$(sauber "${CS2_HOSTNAME:-Palantir CS2}")"
   printf 'sv_password "%s"\n' "$(sauber "${CS2_PASSWORD:-}")"
+  # `normal` heißt: genau so viele Bots, nicht „auffüllen bis".
+  printf 'bot_quota_mode "normal"\n'
+  printf 'bot_quota %s\n' "$BOTS"
 } > "${CFG_ORDNER}/palantir.cfg"
 
-set -- -dedicated -port "$PORT"
+# **Nach der Modus-Konfiguration noch einmal** (Schritt 3). Beim Laden jeder
+# Karte führt CS2 `gamemode_<modus>.cfg` aus, und die setzt unter anderem die
+# Bot-Anzahl – unsere Werte vom Start wären danach überschrieben. Direkt
+# danach sucht CS2 `gamemode_<modus>_server.cfg`, die dafür vorgesehene Stelle
+# für eigene Einstellungen; dort steht nur `exec palantir`. Für alle Modi, damit
+# kein Dateiname falsch geraten sein kann.
+for modus in competitive casual competitive2v2 deathmatch armsrace; do
+  printf '%s\n' '// Schreibt Palantir - fuehrt palantir.cfg nach der Modus-Konfiguration aus.' \
+    'exec palantir' > "${CFG_ORDNER}/gamemode_${modus}_server.cfg"
+done
+
+set -- -dedicated -port "$PORT" +game_type "$SPIEL_TYP" +game_mode "$SPIEL_MODUS"
 
 # Die Spieleranzahl ist ein Startparameter, kein Konsolenbefehl.
 if [ -n "${CS2_MAX_PLAYERS:-}" ]; then
   set -- "$@" -maxplayers "$CS2_MAX_PLAYERS"
 fi
 
-set -- "$@" +map de_dust2 +exec palantir
+set -- "$@" +map "$KARTE" +exec palantir
 
 # -----------------------------------------------------------------------------
 # 4. Start
@@ -97,7 +142,7 @@ set -- "$@" +map de_dust2 +exec palantir
 # CS2 liest Befehle von der Standardeingabe; das Rohr legt die Wurzel an.
 palantir_konsole_oeffnen
 
-palantir_log "Startet CS2 auf de_dust2, Port ${PORT}"
+palantir_log "Startet CS2 (${CS2_GAME_MODE:-competitive}) auf ${KARTE}, Port ${PORT}"
 
 cd "${SERVER}/game"
 

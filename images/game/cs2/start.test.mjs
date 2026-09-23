@@ -132,6 +132,10 @@ describe('start.sh – Basic', nurMitShell, () => {
       '-dedicated',
       '-port',
       '27015',
+      '+game_type',
+      '0',
+      '+game_mode',
+      '1',
       '+map',
       'de_dust2',
       '+exec',
@@ -219,5 +223,75 @@ describe('start.sh – Schritt 2: Name, Passwort, Spieler', nurMitShell, () => {
     const lauf = starte(arbeitsordner());
 
     assert.equal(nach(lauf.argv, '-maxplayers'), null);
+  });
+});
+
+describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
+  const datei = (ordner, name) =>
+    readFileSync(join(ordner.daten, 'server', 'game', 'csgo', 'cfg', name), 'utf8');
+
+  it('übersetzt jeden Modus in Valves zwei Zahlen', () => {
+    const faelle = [
+      ['competitive', '0', '1'],
+      ['casual', '0', '0'],
+      ['wingman', '0', '2'],
+      ['armsrace', '1', '0'],
+      ['deathmatch', '1', '2'],
+    ];
+
+    for (const [modus, typ, nummer] of faelle) {
+      const lauf = starte(arbeitsordner(), { CS2_GAME_MODE: modus });
+
+      assert.equal(lauf.status, 0, `${modus}: ${lauf.stderr}`);
+      assert.equal(nach(lauf.argv, '+game_type'), typ, modus);
+      assert.equal(nach(lauf.argv, '+game_mode'), nummer, modus);
+    }
+  });
+
+  it('startet nicht mit einem Modus, den es nicht gibt', () => {
+    const lauf = starte(arbeitsordner(), { CS2_GAME_MODE: 'battleroyale' });
+
+    assert.equal(lauf.status, 78);
+    assert.deepEqual(lauf.argv, []);
+  });
+
+  it('startet mit der gewählten Karte', () => {
+    const lauf = starte(arbeitsordner(), { CS2_MAP: 'de_mirage' });
+
+    assert.equal(nach(lauf.argv, '+map'), 'de_mirage');
+  });
+
+  it('lehnt eine Karte ab, die kein Kartenname ist', () => {
+    const lauf = starte(arbeitsordner(), { CS2_MAP: 'de_dust2; quit' });
+
+    assert.equal(lauf.status, 78);
+    assert.deepEqual(lauf.argv, []);
+  });
+
+  it('setzt genau so viele Bots wie gewählt – ohne Angabe keine', () => {
+    const mit = arbeitsordner();
+    const ohne = arbeitsordner();
+    starte(mit, { CS2_BOTS: '4' });
+    starte(ohne);
+
+    assert.match(datei(mit, 'palantir.cfg'), /^bot_quota 4$/mu);
+    assert.match(datei(mit, 'palantir.cfg'), /^bot_quota_mode "normal"$/mu);
+    assert.match(datei(ohne, 'palantir.cfg'), /^bot_quota 0$/mu);
+  });
+
+  it('lehnt eine Bot-Anzahl ab, die keine Zahl ist', () => {
+    const lauf = starte(arbeitsordner(), { CS2_BOTS: '4; quit' });
+
+    assert.equal(lauf.status, 78);
+  });
+
+  it('führt palantir.cfg nach jeder Modus-Konfiguration noch einmal aus', () => {
+    // Sonst setzte gamemode_<modus>.cfg beim Kartenladen die Bots zurück.
+    const ordner = arbeitsordner();
+    starte(ordner);
+
+    for (const modus of ['competitive', 'casual', 'competitive2v2', 'deathmatch', 'armsrace']) {
+      assert.match(datei(ordner, `gamemode_${modus}_server.cfg`), /^exec palantir$/mu, modus);
+    }
   });
 });

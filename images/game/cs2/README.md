@@ -14,8 +14,8 @@ vorige auf der Node läuft.
 | ------- | -------------------------------------------------- | ---------------- |
 | 1       | Linux + SteamCMD + CS2, keine Felder, keine Extras | läuft (0.0.1)    |
 | 1.1     | Port drinnen = Port draußen (`CS2_PORT`)           | läuft (0.0.2)    |
-| 2       | Servername, Server-Passwort, Spieleranzahl         | **dieses Image** |
-| 3       | Startkarte, Spielmodus                             | offen            |
+| 2       | Servername, Server-Passwort, Spieleranzahl         | läuft (0.0.3)    |
+| 3       | Startkarte, Spielmodus, Bots                       | **dieses Image** |
 | 4       | Workshop-Karte / -Sammlung                         | offen            |
 | 5       | GOTV, alle Runden spielen, GSLT                    | offen            |
 | 6       | Updates zurückhalten                               | offen            |

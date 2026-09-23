@@ -1545,12 +1545,31 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.dockerImage).toBe(`ghcr.io/nightriderp/palantir-game-cs2:${version}`);
   });
 
-  it('hat in Schritt 2 genau Servername, Passwort und Spieleranzahl', () => {
+  it('hat nach Schritt 3 genau diese Felder', () => {
     expect(CS2_GAME_TYPE.configFields.map((feld) => feld.key)).toEqual([
       'serverName',
       'serverPassword',
       'maxPlayers',
+      'map',
+      'gameMode',
+      'bots',
     ]);
+  });
+
+  it('bietet die neun offiziellen Karten und fünf Modi an, Bots 0 bis 10', () => {
+    const feld = (key: string) => CS2_GAME_TYPE.configFields.find((f) => f.key === key);
+
+    expect(feld('map')?.options).toHaveLength(9);
+    expect(feld('map')?.defaultValue).toBe('de_dust2');
+    expect(feld('gameMode')?.options).toEqual([
+      'competitive',
+      'casual',
+      'wingman',
+      'deathmatch',
+      'armsrace',
+    ]);
+    expect(feld('bots')?.defaultValue).toBe(0);
+    expect(feld('bots')?.max).toBe(10);
   });
 
   it('reicht jedes Feld an das Image durch – ein Feld ohne Variable bewirkt nichts', () => {
