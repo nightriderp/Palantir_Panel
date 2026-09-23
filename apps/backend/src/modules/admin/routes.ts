@@ -403,7 +403,11 @@ export async function registerAdminRoutes(
 
   app.get(
     '/admin/storage/:nodeId',
-    { preHandler: requireAnyPermission('node.view', 'node.manage') },
+    // Nur `node.manage` (Lastenheft §3.8, Katalog: „inklusive Speicherverwaltung"):
+    // Der Schnappschuss nennt die Datenordner aller Server auf der Node. Die
+    // Seed-Rolle „Nutzer" traegt `node.view` fuer die Node-Auswahl und sah
+    // hierueber den Admin-Bereich „Node-Platz".
+    { preHandler: requirePermission('node.manage') },
     async (request, reply) =>
       handle(reply, async () => {
         const { nodeId } = nodeIdParamsSchema.parse(request.params);
