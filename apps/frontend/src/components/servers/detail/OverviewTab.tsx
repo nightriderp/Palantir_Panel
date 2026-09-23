@@ -11,6 +11,8 @@ import {
   formatCores,
   formatDateTime,
   formatDuration,
+  formatImageUpdate,
+  formatImageVersion,
   formatMegabytes,
   formatNumber,
   formatPercent,
@@ -399,6 +401,15 @@ export function OverviewTab({
 
   const detailRows: Array<{ label: string; value: string }> = [
     { label: 'Spiel', value: server.gameTypeName },
+    // Die Image-Version steht nur hier und unter Templates, nicht mehr auf
+    // Karte und Kopf (Betreiber-Wunsch 23.09.2026).
+    {
+      label: 'Image-Version',
+      value:
+        formatImageUpdate(server.imageVersion, server.latestImageVersion) ??
+        formatImageVersion(server.imageVersion) ??
+        '—',
+    },
     { label: 'Node', value: server.hostName ?? 'nicht sichtbar' },
     { label: 'Subdomain', value: server.subdomain },
     {

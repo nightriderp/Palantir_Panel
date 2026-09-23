@@ -169,12 +169,11 @@ describe('CreateServerWizard – Spielauswahl mit Varianten', () => {
 });
 
 /**
- * Die Version steht auf jeder Kachel – auch auf einer Gruppe (Fundpunkt 330).
+ * Keine Image-Version auf den Kacheln (Betreiber-Wunsch 23.09.2026).
  *
- * Zwischen dem 20. und dem 21.09.2026 war sie dort verschwunden: Die
- * Gruppenkachel zeigte nur die Zahl der Varianten. Der Ende-zu-Ende-Test hielt
- * die Zusage fest, griff aber nur Terraria – und das war bis dahin keine
- * Gruppe. Bei Minecraft lief es seit v1.85.0 still.
+ * Fundpunkt 330 hatte sie auf jede Kachel gebracht, auch auf Gruppen. Seit dem
+ * 23.09. steht sie nur noch unter Templates und in den Server-Details: Im
+ * Wizard fragt man nach dem Spiel, nicht nach der Fassung des Images.
  */
 describe('CreateServerWizard – Version auf der Kachel', () => {
   const mitVersion = [
@@ -195,15 +194,16 @@ describe('CreateServerWizard – Version auf der Kachel', () => {
     gameType({ id: 'valheim', name: 'Valheim', imageVersion: '1' }),
   ];
 
-  it('nennt auf der Gruppenkachel Variantenzahl und Version', async () => {
+  it('nennt auf der Gruppenkachel nur die Variantenzahl', async () => {
     zeige(mitVersion);
 
     await waitFor(() => {
-      expect(screen.getByText('2 Varianten · v10.0.0')).toBeTruthy();
+      expect(screen.getByText('2 Varianten')).toBeTruthy();
     });
+    expect(screen.queryByText(/v10\.0\.0/)).toBeNull();
   });
 
-  it('nennt nach der Wahl den Variantennamen und die Version', async () => {
+  it('nennt nach der Wahl nur den Variantennamen', async () => {
     zeige(mitVersion);
 
     await waitFor(() => {
@@ -212,15 +212,17 @@ describe('CreateServerWizard – Version auf der Kachel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Minecraft/ }));
 
     await waitFor(() => {
-      expect(screen.getByText('Paper · v10.0.0')).toBeTruthy();
+      expect(screen.getByText('Paper')).toBeTruthy();
     });
+    expect(screen.queryByText(/v10\.0\.0/)).toBeNull();
   });
 
-  it('lässt ein Spiel ohne Gruppe bei der Version allein', async () => {
+  it('zeigt auch bei einem Spiel ohne Gruppe keine Image-Version', async () => {
     zeige(mitVersion);
 
     await waitFor(() => {
-      expect(screen.getByText('v1.0.0')).toBeTruthy();
+      expect(screen.getByRole('button', { name: /Valheim/ })).toBeTruthy();
     });
+    expect(screen.queryByText('v1.0.0')).toBeNull();
   });
 });

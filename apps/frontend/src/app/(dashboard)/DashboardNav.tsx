@@ -271,6 +271,7 @@ export function DashboardNav({ user, ownServers, unreadMessages }: DashboardNavP
     id: server.id,
     name: server.name,
     initials: server.initials,
+    iconUrl: server.iconUrl,
     status: server.status,
     href: `/servers/${server.id}`,
     active: `/servers/${server.id}` === active,

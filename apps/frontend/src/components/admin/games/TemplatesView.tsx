@@ -3,7 +3,15 @@
 import { type GameTypeDto, type InstanceSettingsDto } from '@palantir/contracts';
 import { useState } from 'react';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
-import { PageHeader, Panel, Toggle, cn, formatImageVersion, useToast } from '@/components/shared';
+import {
+  Icon,
+  PageHeader,
+  Panel,
+  Toggle,
+  cn,
+  formatImageVersion,
+  useToast,
+} from '@/components/shared';
 import { errorText } from '@/lib/api/client';
 import { fetchInstanceSettings, updateInstanceSettings } from '@/lib/api/admin';
 import { fetchGameTypes } from '@/lib/api/servers';
@@ -49,6 +57,19 @@ export function TemplatesView() {
   );
 
   const [busy, setBusy] = useState<string | null>(null);
+  /*
+   * Aufgeklappte Gruppen (Betreiber-Wunsch 23.09.2026): Minecraft stand mit
+   * fuenf Varianten samt Schaltern auf einer Kachel, die dreimal so hoch war
+   * wie die uebrigen. Zu steht nur, wie viele Varianten angeboten werden.
+   */
+  const [offen, setOffen] = useState<ReadonlySet<string>>(new Set());
+  const umklappen = (key: string) =>
+    setOffen((vorher) => {
+      const naechste = new Set(vorher);
+      if (naechste.has(key)) naechste.delete(key);
+      else naechste.add(key);
+      return naechste;
+    });
 
   if (loading) {
     return <AdminLoading label="Templates werden geöffnet …" />;
@@ -213,10 +234,34 @@ export function TemplatesView() {
                   )}
                 >
                   {gruppe ? (
-                    <p className="truncate text-sm font-medium text-ink">{karte.label}</p>
+                    <button
+                      type="button"
+                      aria-expanded={offen.has(karte.key)}
+                      onClick={() => umklappen(karte.key)}
+                      className="flex w-full items-center gap-3 text-left"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-ink">
+                          {karte.label}
+                        </span>
+                        <span className="block truncate text-xs text-ink-faint">
+                          {`${String(karte.games.length)} Varianten · ${String(
+                            karte.games.filter((spiel) => !ausgeschaltet.has(spiel.id)).length,
+                          )} angeboten`}
+                        </span>
+                      </span>
+                      <Icon
+                        name="arrowRight"
+                        size={14}
+                        className={cn(
+                          'shrink-0 text-ink-faint transition-transform',
+                          offen.has(karte.key) && 'rotate-90',
+                        )}
+                      />
+                    </button>
                   ) : null}
 
-                  {karte.games.map((spiel) => {
+                  {(gruppe && !offen.has(karte.key) ? [] : karte.games).map((spiel) => {
                     const an = !ausgeschaltet.has(spiel.id);
                     /*
                      * Die Phasen-Sperre ist keine Entscheidung des

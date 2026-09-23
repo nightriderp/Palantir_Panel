@@ -331,6 +331,7 @@ describe('Templates: Varianten auf einer Karte', () => {
     });
 
     const karte = karteMit('Minecraft');
+    fireEvent.click(within(karte).getByRole('button', { expanded: false }));
 
     for (const label of ['Paper', 'Vanilla', 'Fabric', 'NeoForge', 'Bedrock']) {
       expect(within(karte).getByText(label), label).toBeTruthy();
@@ -377,6 +378,24 @@ describe('Templates: Varianten auf einer Karte', () => {
     expect(within(karteMit('Minecraft')).getAllByText('v10.0.0')).toHaveLength(1);
   });
 
+  it('klappt eine Gruppe erst auf Klick auf (Betreiber-Wunsch 23.09.2026)', async () => {
+    zeichne();
+
+    await waitFor(() => {
+      expect(screen.getByText('Minecraft')).toBeTruthy();
+    });
+
+    const karte = karteMit('Minecraft');
+
+    expect(within(karte).queryAllByRole('switch')).toHaveLength(0);
+    expect(within(karte).getByText('5 Varianten · 5 angeboten')).toBeTruthy();
+
+    fireEvent.click(within(karte).getByRole('button', { expanded: false }));
+
+    expect(within(karte).getAllByRole('switch')).toHaveLength(5);
+    expect(within(karte).getByRole('button', { expanded: true })).toBeTruthy();
+  });
+
   it('lässt ein Spiel ohne Gruppe unverändert', async () => {
     zeichne();
 
@@ -395,6 +414,7 @@ describe('Templates: Varianten auf einer Karte', () => {
     });
 
     const karte = karteMit('Minecraft');
+    fireEvent.click(within(karte).getByRole('button', { expanded: false }));
 
     expect(within(karte).getByText('Bedrock')).toBeTruthy();
     expect(within(karte).getAllByRole('switch')).toHaveLength(5);
@@ -414,6 +434,7 @@ describe('Templates: Varianten auf einer Karte', () => {
     });
 
     const karte = karteMit('Minecraft');
+    fireEvent.click(within(karte).getByRole('button', { expanded: false }));
 
     expect(within(karte).getAllByText('v10.0.0')).toHaveLength(4);
     expect(within(karte).getAllByText('v1.0.0')).toHaveLength(1);

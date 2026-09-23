@@ -2,7 +2,12 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { type ConversationDto, type GameServerDto, type HostNodeDto } from '@palantir/contracts';
+import {
+  type ConversationDto,
+  type GameServerDto,
+  type GameTypeDto,
+  type HostNodeDto,
+} from '@palantir/contracts';
 import { AppShell, DeployBanner, StatusDot, ToastProvider } from '@/components/shared';
 import { UserMenu } from '@/components/account/UserMenu';
 import { Rundgang } from '@/components/tutorial/Rundgang';
@@ -10,7 +15,7 @@ import { RundgangProvider } from '@/components/tutorial/RundgangProvider';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { fetchConversations } from '@/lib/api/chat';
 import { fetchNodes } from '@/lib/api/nodes';
-import { fetchServers } from '@/lib/api/servers';
+import { fetchGameTypes, fetchServers } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { LiveChannelProvider, useLiveChannel } from '@/lib/live/LiveChannelProvider';
 import { NotificationLiveProvider } from '@/lib/live/NotificationLiveProvider';
@@ -112,6 +117,15 @@ function useShellData(): ShellData {
     (signal) => fetchServers(signal),
     user ? [user.id] : null,
   );
+  /*
+   * Nur wegen der Symbole unter „Deine Server": Das Bild gehoert zur Vorlage,
+   * nicht zum Server, und steht deshalb nicht im Server-DTO – wie auf der
+   * Server-Karte (`ServerOverview`).
+   */
+  const gameTypes = useApiResource<GameTypeDto[]>(
+    (signal) => fetchGameTypes(signal),
+    user ? [user.id] : null,
+  );
   const nodes = useApiResource<HostNodeDto[]>(
     (signal) => fetchNodes(signal),
     canViewNodes ? [] : null,
@@ -172,7 +186,14 @@ function useShellData(): ShellData {
     [servers.data, merged, nodes.data, canViewNodes, statsById],
   );
 
-  const ownServers = useMemo(() => ownServersForNav(merged, user?.id ?? null), [merged, user?.id]);
+  const iconByGameType = useMemo(
+    () => new Map((gameTypes.data ?? []).map((spiel) => [spiel.id, spiel.iconUrl] as const)),
+    [gameTypes.data],
+  );
+  const ownServers = useMemo(
+    () => ownServersForNav(merged, user?.id ?? null, iconByGameType),
+    [merged, user?.id, iconByGameType],
+  );
 
   const unreadMessages = useMemo(
     () => (conversations.data ?? []).reduce((total, entry) => total + (entry.unreadCount ?? 0), 0),

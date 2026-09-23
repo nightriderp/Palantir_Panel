@@ -62,6 +62,7 @@ export interface ServerFixtureOptions {
   ownerId?: string;
   status?: ServerStatus;
   subdomain?: string;
+  gameType?: string;
   gameTypeName?: string;
   ownerDisplayName?: string | null;
   hostName?: string | null;
@@ -81,7 +82,7 @@ export function server(options: ServerFixtureOptions): GameServerDto {
     ownerDisplayName: options.ownerDisplayName ?? 'Alex',
     ownerAvatarUpdatedAt: null,
     ownerTitle: null,
-    gameType: 'testserver',
+    gameType: options.gameType ?? 'testserver',
     gameTypeName: options.gameTypeName ?? 'Testserver',
     consoleQuickCommands: options.consoleQuickCommands ?? [],
     supportsConsole: options.supportsConsole ?? true,

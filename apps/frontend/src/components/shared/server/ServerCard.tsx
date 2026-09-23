@@ -12,7 +12,6 @@ import {
   clampedPercentOf,
   formatCores,
   formatImageUpdate,
-  formatImageVersion,
   formatMegabytes,
   formatMegabytesKurz,
   formatNumber,
@@ -134,17 +133,16 @@ function ServerCardIntern({
 }: ServerCardProps) {
   const meta = serverStatusMeta(server.status);
   const permissions = server.permissions;
-  const version = formatImageVersion(server.imageVersion);
   /**
-   * Besitzer und Image-Version stehen **nicht** mehr im Kopf, sondern unten
-   * bei den übrigen Betriebsangaben (Betreiber-Wunsch 20.09.2026).
-   *
-   * Der Kopf beantwortet „welcher Server ist das": Name, Spiel, Spielversion.
-   * Wer ihn betreibt und mit welchem Image – das sind Angaben derselben Art
-   * wie Node, Spielerzahl und Adresse, und die stehen längst als Chips
-   * beieinander. Vorher drängten sie sich in eine zweite Kopfzeile, die je
-   * nach Breite umbrach und den Kopf dreizeilig machte.
+   * Die Versionsnummer der Karte ist die **Spielversion** (Betreiber-Wunsch
+   * 23.09.2026) – sie beantwortet „passt mein Client dazu". Die Image-Version
+   * steht nur noch unter Templates und in den Server-Details; auf der Karte
+   * meldet sie sich allein über „Update verfügbar".
    */
+  const version =
+    server.gameVersion === null || server.gameVersion === undefined || server.gameVersion === ''
+      ? null
+      : server.gameVersion;
   const updateHinweis = formatImageUpdate(server.imageVersion, server.latestImageVersion);
   const live = hasLiveStats(server.status) ? (stats ?? null) : null;
 
@@ -247,12 +245,7 @@ function ServerCardIntern({
             mehrfach in der Liste, und ein Name, der über drei Zeilen läuft,
             schöbe alles andere aus dem Blick.
           */}
-          <p className="text-sm text-ink-soft">
-            {server.gameTypeName}
-            {server.gameVersion === null || server.gameVersion === undefined
-              ? ''
-              : ` ${server.gameVersion}`}
-          </p>
+          <p className="text-sm text-ink-soft">{server.gameTypeName}</p>
         </div>
 
         {/*
@@ -436,10 +429,7 @@ function ServerCardIntern({
         {version === null ? null : (
           <span
             className="rounded-md bg-fill px-2.5 py-1.5 font-mono text-ink-soft"
-            title={
-              updateHinweis ??
-              'Version des Images, mit dem dieser Server läuft – nicht die Version des Spiels.'
-            }
+            title="Version des Spiels"
           >
             {version}
           </span>
