@@ -6,8 +6,8 @@ import { gameType, server } from '../testFixtures';
 import { LiveControlsCard } from './LiveControlsCard';
 
 /**
- * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Karte, Modus, Bots eines
- * laufenden Servers ändern, ohne Neustart.
+ * Steuerung (Betreiber-Wunsch 23.09.2026): Karte, Modus, Bots ändern – bei
+ * laufendem Server sofort, bei ausgeschaltetem für den nächsten Start.
  */
 const api = vi.hoisted(() => ({
   fetchGameTypes: vi.fn(),
@@ -57,7 +57,7 @@ const MIT_LIVE: GameTypeDto = gameType({
 });
 
 function zeichne(
-  status: 'running' | 'stopped',
+  status: 'running' | 'stopped' | 'starting',
   liveValues: Record<string, string | number> | null = null,
 ) {
   const onChanged = vi.fn();
@@ -93,22 +93,35 @@ describe('LiveControlsCard', () => {
     await waitFor(() => {
       expect(api.fetchGameTypes).toHaveBeenCalled();
     });
-    expect(screen.queryByText('Live-Steuerung')).toBeNull();
+    expect(screen.queryByText('Steuerung')).toBeNull();
   });
 
   it('zeigt die Steuerungen ohne die Beschreibungen der Einstellungen', async () => {
     zeichne('running');
 
-    expect(await screen.findByText('Live-Steuerung')).toBeTruthy();
+    expect(await screen.findByText('Steuerung')).toBeTruthy();
     expect(screen.getByText('Karte & Modus')).toBeTruthy();
     expect(screen.queryByText('Beschreibung, die in der Live-Steuerung fehlt.')).toBeNull();
   });
 
-  it('ist gesperrt, solange der Server nicht läuft, und sagt warum', async () => {
-    zeichne('stopped');
+  it('nimmt bei ausgeschaltetem Server Werte für den nächsten Start', async () => {
+    const { onChanged } = zeichne('stopped');
 
-    expect(await screen.findByText(/Geht nur, solange der Server läuft/u)).toBeTruthy();
-    expect(screen.getByText(/Was hier geändert wird, bleibt/u)).toBeTruthy();
+    expect(await screen.findByText(/gelten beim nächsten Start/u)).toBeTruthy();
+    const bots = (await screen.findByRole('spinbutton', { name: 'Bots' })) as HTMLInputElement;
+    fireEvent.change(bots, { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
+
+    await waitFor(() => {
+      expect(api.applyLiveValues).toHaveBeenCalledWith('s1', { bots: 2 });
+    });
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('ist gesperrt, solange der Server startet oder stoppt, und sagt warum', async () => {
+    zeichne('starting');
+
+    expect(await screen.findByText(/startet oder stoppt gerade/u)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Übernehmen' }) as HTMLButtonElement).disabled).toBe(
       true,
     );

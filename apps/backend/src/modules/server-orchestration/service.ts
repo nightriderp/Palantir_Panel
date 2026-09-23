@@ -29,6 +29,7 @@ import {
   type ServerResourceLimits,
   type StopCommandPayload,
   buildServerHostname,
+  isTransitionalServerStatus,
 } from '@palantir/contracts';
 import {
   type CloneServerInput,
@@ -2037,10 +2038,16 @@ export class ServerOrchestrationService {
   }
 
   /**
-   * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Einstellungen eines
-   * laufenden Servers ändern, ohne Neustart.
+   * Steuerung (Betreiber-Wunsch 23.09.2026): Karte, Modus, Bots und Ähnliches
+   * schnell umstellen – bei laufendem Server sofort, ohne Neustart.
    *
-   * Reihenfolge mit Absicht:
+   * **Auch bei ausgeschaltetem Server** (`stopped`, `error`, `crashed`): Dann
+   * gehen die Werte nur in die Einstellungen, und der nächste Start nimmt sie.
+   * Kein Befehl, keine Datei – es läuft ja nichts. Nur in einem Übergang
+   * (`creating`, `starting`, `stopping`) ist es ein Konflikt: Ein Start baut
+   * den Container womöglich schon aus den alten Werten.
+   *
+   * Reihenfolge bei laufendem Server mit Absicht:
    * 1. Prüfen (nur Felder der Live-Steuerung, nur zulässige Werte).
    * 2. Die Datei `liveConfigFile` schreiben – **vor** den Befehlen: Ein
    *    Kartenwechsel führt sie beim Laden aus, sie muss dann schon stimmen.
@@ -2065,18 +2072,20 @@ export class ServerOrchestrationService {
     if ((definition.liveControls ?? []).length === 0) {
       throw new ServerOrchestrationError(
         'CONSOLE_NOT_SUPPORTED',
-        `${definition.name} lässt sich nicht live steuern.`,
+        `${definition.name} hat keine Steuerung.`,
         { serverId },
       );
     }
 
-    if (server.status !== 'running') {
+    if (isTransitionalServerStatus(server.status)) {
       throw new ServerOrchestrationError(
         'SERVER_STATE_CONFLICT',
-        'Live ändern geht nur, solange der Server läuft – die Startwerte stehen in den Einstellungen.',
+        'Der Server startet oder stoppt gerade – bitte gleich noch einmal versuchen.',
         { serverId, status: server.status },
       );
     }
+
+    const laeuft = server.status === 'running';
 
     const neu = pruefeLiveWerte(definition, eingabe);
     const bisher = aktuelleWerte(definition, server.configJson, server.liveValues);
@@ -2089,11 +2098,11 @@ export class ServerOrchestrationService {
     const werte = { ...bisher, ...neu };
     const datei = liveDatei(definition, werte);
 
-    if (datei !== null && definition.liveConfigFile !== undefined) {
+    if (laeuft && datei !== null && definition.liveConfigFile !== undefined) {
       await this.files.writeFileContent(serverId, definition.liveConfigFile, datei);
     }
 
-    for (const zeile of liveBefehle(definition, geaendert, werte)) {
+    for (const zeile of laeuft ? liveBefehle(definition, geaendert, werte) : []) {
       await this.execConsole(serverId, zeile);
     }
 

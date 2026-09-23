@@ -5,6 +5,7 @@ import {
   type GameConfigValues,
   type GameServerDto,
   type GameTypeDto,
+  isTransitionalServerStatus,
 } from '@palantir/contracts';
 import { useMemo, useState } from 'react';
 import { Button, Panel, useToast } from '@/components/shared';
@@ -14,9 +15,10 @@ import { useApiResource } from '@/lib/api/useApiResource';
 import { ConfigFields } from '../form/ConfigFields';
 
 /**
- * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Einstellungen eines laufenden
- * Servers ändern, ohne Neustart – Karte, Modus, Bots und was ein Spiel sonst
- * live anbietet (`GameTypeDto.liveControls`).
+ * Steuerung (Betreiber-Wunsch 23.09.2026): Karte, Modus, Bots und was ein Spiel
+ * sonst anbietet (`GameTypeDto.liveControls`) schnell umstellen – bei laufendem
+ * Server sofort, ohne Neustart; bei ausgeschaltetem gilt es beim nächsten Start.
+ * Gesperrt nur, solange der Server startet oder stoppt.
  *
  * Steht in der Übersicht rechts neben der Konsole: Nach „Übernehmen“ sieht man
  * dort, dass die Karte lädt oder Bots beitreten.
@@ -76,6 +78,7 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
   }
 
   const laeuft = server.status === 'running';
+  const imUebergang = isTransitionalServerStatus(server.status);
   const geaendert = Object.keys(aktuell).filter((key) => entwurf[key] !== aktuell[key]);
   const laedtNeu = steuerungen.some(
     (steuerung) =>
@@ -104,12 +107,18 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
     }
 
     onChanged(ergebnis.data);
-    toast.success(laedtNeu ? 'Übernommen – die Karte wird neu geladen.' : 'Übernommen.');
+    toast.success(
+      !laeuft
+        ? 'Gespeichert – gilt beim nächsten Start.'
+        : laedtNeu
+          ? 'Übernommen – die Karte wird neu geladen.'
+          : 'Übernommen.',
+    );
   }
 
   return (
     <Panel variant="plain">
-      <h3 className="mb-3 text-base font-semibold">Live-Steuerung</h3>
+      <h3 className="mb-3 text-base font-semibold">Steuerung</h3>
 
       <div className="flex flex-col gap-4">
         {steuerungen.map((steuerung) => (
@@ -124,17 +133,20 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
                 setEntwurf((bisher) => ({ ...bisher, [key]: wert }))
               }
               lockAfterCreate={false}
-              disabled={!laeuft || busy}
+              disabled={imUebergang || busy}
               hideHints
             />
           </section>
         ))}
       </div>
 
-      {laeuft ? null : (
+      {imUebergang ? (
         <p className="mt-3 text-sm text-ink-faint">
-          Geht nur, solange der Server läuft. Was hier geändert wird, bleibt – es landet auch in den
-          Einstellungen.
+          Der Server startet oder stoppt gerade – gleich wieder möglich.
+        </p>
+      ) : laeuft ? null : (
+        <p className="mt-3 text-sm text-ink-faint">
+          Der Server ist aus – die Werte gelten beim nächsten Start.
         </p>
       )}
 
@@ -147,7 +159,7 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
       <div className="mt-4 flex justify-end">
         <Button
           variant="primary"
-          disabled={!laeuft || busy || geaendert.length === 0}
+          disabled={imUebergang || busy || geaendert.length === 0}
           onClick={() => void uebernehmen()}
         >
           Übernehmen
