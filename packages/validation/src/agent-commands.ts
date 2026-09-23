@@ -498,10 +498,6 @@ export const removeStorageEntryCommandResultSchema = z.object({
  * den Wert in die Markierungsdatei, und `update.sh` liest ihn dort. Mehr als 40
  * Hex-Zeichen haben darin nichts verloren – kein Pfad, kein Zeilenumbruch,
  * nichts, was eine Shell anders lesen könnte als gemeint.
- *
- * Noch nicht in `AGENT_COMMAND_PAYLOAD_SCHEMAS`: Die Tabelle folgt
- * `IMPLEMENTED_AGENT_COMMANDS`, und dort steht der Befehl erst mit der
- * Umsetzung im Agent.
  */
 export const updateAvailableCommandPayloadSchema = z.object({
   targetCommit: z
@@ -573,6 +569,7 @@ export const AGENT_COMMAND_PAYLOAD_SCHEMAS = {
   GET_STORAGE_BREAKDOWN: getStorageBreakdownPayloadSchema,
   SET_SERVER_QUERY: setServerQueryCommandPayloadSchema,
   REMOVE_STORAGE_ENTRY: removeStorageEntryCommandPayloadSchema,
+  UPDATE_AVAILABLE: updateAvailableCommandPayloadSchema,
 } as const;
 
 /**

@@ -540,7 +540,14 @@ cp /opt/palantir/deploy/gamenode/palantir-egress.service /etc/systemd/system/ &&
 
 Nach jedem Update, das das Regelwerk ändert, `apply` erneut ausführen (idempotent).
 
-### 8.6 Stack und Update-Timer
+### 8.6 Stack und Update-Klingel
+
+Vor dem ersten Start den Anstoß-Ordner anlegen – er ist ein Bind-Mount des Agents, und
+fehlt er, legt Docker ihn als root an:
+
+```bash
+install -d -o 1000 -g 1000 -m 0700 /srv/palantir/update-anstoss
+```
 
 ```bash
 export DOCKER_CONFIG=/etc/palantir/docker && cd /opt/palantir/deploy/gamenode && docker compose --env-file ../../.env up -d
@@ -551,16 +558,23 @@ docker compose --env-file ../../.env logs -f agent
 ```
 
 Erwartet ist eine Zeile über die aufgebaute Verbindung; im Panel wechselt die Node auf
-„Online". Der Timer holt danach alle fünf Minuten den Stand von `prod` und startet den Stack
-neu, wenn er sich geändert hat:
+„Online". Aktualisiert wird die Node ohne Timer: Verbindet sich der Agent mit einem älteren
+Stand als dem des Backends – nach jedem Ausrollen, nach einem Neustart der Node –, schickt
+das Backend `UPDATE_AVAILABLE`. Der Agent legt daraufhin nur
+`/srv/palantir/update-anstoss/anstoss` ab, `palantir-update.path` startet
+`palantir-update.service`, und `update.sh` prüft und zieht wie bisher den signierten Stand
+von `prod`:
 
 ```bash
-cp /opt/palantir/deploy/gamenode/palantir-update.{service,timer} /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now palantir-update.timer
+cp /opt/palantir/deploy/gamenode/palantir-update.{service,path} /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now palantir-update.path
 ```
 
 ```bash
-systemctl list-timers palantir-update.timer
+systemctl status palantir-update.path
 ```
+
+Von Hand anstoßen geht jederzeit: `systemctl start palantir-update.service`; den Verlauf zeigt
+`journalctl -u palantir-update.service`.
 
 ### 8.7 Hostname-Router (optional)
 

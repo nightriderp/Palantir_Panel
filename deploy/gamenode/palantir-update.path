@@ -1,0 +1,41 @@
+# Klingel für die Selbstaktualisierung der Gamenode (Gefundener Punkt 342).
+#
+# Ablageort auf dem Homeserver (in der Gameserver-VM):
+#   /etc/systemd/system/palantir-update.path
+#
+# Ersetzt den früheren Timer, der alle fünf Minuten nachfragte. Jetzt meldet
+# sich das Backend: Verbindet sich der Agent und ist sein Stand älter als der
+# des Backends, schickt es den Agent-Befehl `UPDATE_AVAILABLE`. Der Agent legt
+# daraufhin nur die Datei unten ab - er führt selbst nichts aus. Diese Unit
+# sieht die Datei und startet `palantir-update.service`.
+#
+# Die Datei ist eine Klingel, kein Auftrag: Was installiert wird, entscheidet
+# `update.sh` wie bisher anhand des signierten Versions-Tags auf `prod`. Der
+# Inhalt der Datei (ein Commit) sagt `update.sh` nur, worauf es kurz warten
+# soll, falls die Pipeline `prod` noch nicht umgehängt hat.
+#
+# `update.sh` räumt die Datei gleich zu Beginn weg. Kommt während eines Laufs
+# ein neuer Anstoß, liegt sie danach wieder da, und systemd startet den Dienst
+# nach dessen Ende ein weiteres Mal - kein Anstoß geht verloren.
+#
+# Der Ordner liegt bewusst NICHT unter /run: Er ist ein Bind-Mount des
+# Agent-Containers, und nach einem Neustart der VM legte Docker ihn dort vor
+# jedem anderen als root:root an - der Agent (UID 1000) könnte nicht mehr
+# hineinschreiben. Unter /srv/palantir bleibt er mit seinem Besitzer bestehen.
+#
+# Einrichten (auf dem Homeserver, als root):
+#   install -d -o 1000 -g 1000 -m 0700 /srv/palantir/update-anstoss
+#   cp /opt/palantir/deploy/gamenode/palantir-update.{service,path} /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now palantir-update.path
+
+[Unit]
+Description=Palantir Gamenode aktualisieren, sobald das Backend anklopft
+Documentation=file:///opt/palantir/deploy/README.md
+
+[Path]
+PathExists=/srv/palantir/update-anstoss/anstoss
+Unit=palantir-update.service
+
+[Install]
+WantedBy=paths.target

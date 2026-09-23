@@ -1,12 +1,19 @@
-# Selbstaktualisierung der Gamenode - einmaliger Lauf, angestoßen vom Timer daneben.
+# Selbstaktualisierung der Gamenode - einmaliger Lauf, angestoßen von der
+# Pfad-Unit daneben (`palantir-update.path`), sobald der Agent die Klingel-Datei
+# ablegt (Gefundener Punkt 342). Einen Timer gibt es nicht mehr.
 #
 # Ablageort auf dem Homeserver (in der Gameserver-VM):
 #   /etc/systemd/system/palantir-update.service
 #
-# Einrichten:
-#   sudo cp /opt/palantir/deploy/gamenode/palantir-update.{service,timer} /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now palantir-update.timer
+# Einrichten (als root):
+#   install -d -o 1000 -g 1000 -m 0700 /srv/palantir/update-anstoss
+#   cp /opt/palantir/deploy/gamenode/palantir-update.{service,path} /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now palantir-update.path
+#
+# Der Dienst selbst wird NICHT aktiviert - er hat keinen [Install]-Abschnitt und
+# läuft nur, wenn die Pfad-Unit ihn startet oder jemand
+# `systemctl start palantir-update.service` aufruft.
 
 [Unit]
 Description=Palantir Gamenode aktualisieren
@@ -39,15 +46,17 @@ ExecStart=/opt/palantir/deploy/gamenode/update.sh
 RuntimeDirectory=palantir
 RuntimeDirectoryMode=0755
 # Bleibt bis zum Neustart bestehen, damit ein Lauf von Hand dieselbe Sperrdatei
-# benutzt wie der Timer - sonst liefen beide aneinander vorbei.
+# benutzt wie ein angestoßener - sonst liefen beide aneinander vorbei.
 RuntimeDirectoryPreserve=yes
 
-# Hängt der Lauf (Registry antwortet nicht), soll er abbrechen statt den Timer
-# dauerhaft zu blockieren.
-TimeoutStartSec=900
+# Hängt der Lauf (Registry antwortet nicht), soll er abbrechen statt die
+# Pfad-Unit dauerhaft zu blockieren. 30 Minuten statt vorher 15: Nach einem
+# Anstoß wartet `update.sh` bis zu zehn Minuten darauf, dass die Pipeline den
+# Zweig `prod` umhängt, und erst danach beginnt das eigentliche Update.
+TimeoutStartSec=1800
 
-# Härtung. Das Skript braucht Docker, Git und Schreibrechte im Repo-Verzeichnis -
-# sonst nichts.
+# Härtung. Das Skript braucht Docker, Git und Schreibrechte im Repo-Verzeichnis
+# und im Anstoß-Ordner (dort löscht es die Klingel-Datei) - sonst nichts.
 NoNewPrivileges=true
 PrivateTmp=false
 ProtectSystem=full
@@ -56,7 +65,11 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
-ReadWritePaths=/opt/palantir
+# Das `-` vor dem Anstoß-Ordner: Fehlt er, startet der Dienst trotzdem.
+# Ohne das Zeichen bräche systemd den Lauf beim Einrichten des Namensraums ab,
+# und ein Update von Hand ginge ausgerechnet dann nicht, wenn die Einrichtung
+# unvollständig ist.
+ReadWritePaths=/opt/palantir -/srv/palantir/update-anstoss
 
 StandardOutput=journal
 StandardError=journal

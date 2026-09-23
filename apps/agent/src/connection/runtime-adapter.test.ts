@@ -16,6 +16,7 @@ import {
   RUNTIME_ERROR_CODES,
   type ContainerRuntimeErrorCode,
 } from '../runtime/index.js';
+import { ANSTOSS_DATEI, UpdateAnstoss } from '../update-anstoss.js';
 import {
   ContainerRuntimeAdapter,
   JOB_COMMANDS,
@@ -109,6 +110,7 @@ const GUELTIGE_NUTZDATEN: Record<ImplementedAgentCommandName, unknown> = {
   GET_STORAGE_BREAKDOWN: { includeImages: false },
   SET_SERVER_QUERY: { serverId: SERVER_ID, target: null },
   REMOVE_STORAGE_ENTRY: { kind: 'backup', path: '/srv/palantir/backups/a.tar.gz' },
+  UPDATE_AVAILABLE: { targetCommit: 'a'.repeat(40) },
 };
 
 let runtime: FakeContainerRuntime;
@@ -1095,5 +1097,47 @@ describe('Live-Kanäle (Konsole und Messwerte)', () => {
 
     expect(isOk(await befehl('START', { containerId }))).toBe(true);
     expect((await runtime.inspect(containerId)).status).toBe('running');
+  });
+});
+
+describe('UPDATE_AVAILABLE (Gefundener Punkt 342)', () => {
+  const COMMIT = '0123456789abcdef0123456789abcdef01234567';
+  let ordner: string;
+
+  beforeEach(async () => {
+    ordner = await fs.mkdtemp(path.join(os.tmpdir(), 'palantir-anstoss-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(ordner, { recursive: true, force: true });
+  });
+
+  it('legt nur die Markierungsdatei ab und fasst sonst nichts an', async () => {
+    adapter = new ContainerRuntimeAdapter({ runtime, updateAnstoss: new UpdateAnstoss(ordner) });
+
+    const antwort = await befehl('UPDATE_AVAILABLE', { targetCommit: COMMIT }, null);
+
+    expect(isOk(antwort) ? antwort.data : antwort).toEqual({ signaled: true });
+    // Genau eine Datei, mit genau dem Commit - keine Zwischendatei bleibt liegen.
+    expect(await fs.readdir(ordner)).toEqual([ANSTOSS_DATEI]);
+    expect(await fs.readFile(path.join(ordner, ANSTOSS_DATEI), 'utf8')).toBe(`${COMMIT}
+`);
+    // Keine Container-Arbeit: Der Agent klingelt nur.
+    expect(await runtime.list()).toEqual([]);
+  });
+
+  it('meldet ohne Anstoss-Ordner signaled: false statt eines Fehlers', async () => {
+    const antwort = await befehl('UPDATE_AVAILABLE', { targetCommit: COMMIT }, null);
+
+    expect(isOk(antwort) ? antwort.data : antwort).toEqual({ signaled: false });
+  });
+
+  it('schreibt bei ungueltigem Commit nichts', async () => {
+    adapter = new ContainerRuntimeAdapter({ runtime, updateAnstoss: new UpdateAnstoss(ordner) });
+
+    const antwort = await befehl('UPDATE_AVAILABLE', { targetCommit: '../../etc/passwd' }, null);
+
+    expect(antwort.error?.code).toBe('AGENT_COMMAND_INVALID');
+    expect(await fs.readdir(ordner)).toEqual([]);
   });
 });

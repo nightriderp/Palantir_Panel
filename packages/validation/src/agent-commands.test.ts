@@ -311,6 +311,7 @@ describe('Optionale Felder', () => {
       'GET_STORAGE_BREAKDOWN',
       'SET_SERVER_QUERY',
       'REMOVE_STORAGE_ENTRY',
+      'UPDATE_AVAILABLE',
     ]);
 
     for (const [command, schema] of Object.entries(AGENT_COMMAND_PAYLOAD_SCHEMAS)) {

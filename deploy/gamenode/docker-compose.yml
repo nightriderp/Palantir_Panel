@@ -153,6 +153,11 @@ services:
       # er nicht in der Umgebung, kommt ein leerer String an und der Agent
       # meldet nur die Paketfassung.
       AGENT_COMMIT: ${AGENT_COMMIT:-}
+      # Klingel fuer die Selbstaktualisierung (Gefundener Punkt 342): Hier legt
+      # der Agent auf `UPDATE_AVAILABLE` hin die Datei `anstoss` ab, auf die
+      # `palantir-update.path` auf dem Host wartet. Fest, nicht aus der .env -
+      # die Pfad-Unit nennt denselben Pfad und kann keine .env lesen.
+      AGENT_UPDATE_SIGNAL_DIR: /srv/palantir/update-anstoss
       AGENT_DATA_DIR: ${AGENT_DATA_DIR}
       AGENT_BACKUP_DIR: ${AGENT_BACKUP_DIR}
       # Ordner mit der Steam-Anmeldung. Er wird hier bewusst NICHT in den
@@ -202,6 +207,14 @@ services:
       # `proxies/` eine Routen-Datei je Server an. Der Router selbst haengt
       # dasselbe Verzeichnis nur lesend ein.
       - ${AGENT_ROUTER_DIR:-/srv/palantir/router}:${AGENT_ROUTER_DIR:-/srv/palantir/router}
+      # Anstoss-Ordner fuer Updates (Gefundener Punkt 342), schreibend - aber
+      # nur dieser eine Ordner, und der Agent legt darin nur `anstoss` ab.
+      # Ausfuehren kann er damit nichts: Die Datei ist fuer den Host nur ein
+      # Signal, `update.sh` prueft weiter selbst, was es installiert (signiertes
+      # Tag). Der Ordner muss vor dem Start bestehen und UID 1000 gehoeren
+      # (`install -d -o 1000 -g 1000 -m 0700 /srv/palantir/update-anstoss`),
+      # sonst legt Docker ihn als root an und der Agent kann nicht klingeln.
+      - /srv/palantir/update-anstoss:/srv/palantir/update-anstoss
     # Kein `ports:` - siehe Grundsatz oben.
     networks:
       palantir: {}

@@ -12,6 +12,7 @@ import { createContainerRuntimeFromEnv } from './runtime/index.js';
 import { env } from './config/env.js';
 import { AGENT_VERSION } from './version.js';
 import { startLebenszeichen } from './lebenszeichen.js';
+import { UpdateAnstoss } from './update-anstoss.js';
 import { fehlerFeld, log } from './log.js';
 
 /**
@@ -81,6 +82,10 @@ function main(): void {
     runtime,
     jobs,
     quiesceMarker,
+    // Klingel fuer die Selbstaktualisierung (Gefundener Punkt 342).
+    ...(env.AGENT_UPDATE_SIGNAL_DIR === undefined
+      ? {}
+      : { updateAnstoss: new UpdateAnstoss(env.AGENT_UPDATE_SIGNAL_DIR) }),
     statsTakt: {
       minIntervalMs: env.AGENT_STATS_MIN_INTERVAL_MS,
       maxIntervalMs: env.AGENT_STATS_MAX_INTERVAL_MS,

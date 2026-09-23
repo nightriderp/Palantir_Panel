@@ -83,6 +83,11 @@ x-backend-umgebung: &backend-umgebung
   AGENT_TOKEN: ${AGENT_TOKEN}
   AGENT_SOURCE_ALLOWLIST: ${AGENT_SOURCE_ALLOWLIST}
   AGENT_COMMAND_TIMEOUT_MS: ${AGENT_COMMAND_TIMEOUT_MS}
+  # Eigener Stand des Backends (Gefundener Punkt 342). `deploy.sh` setzt
+  # PALANTIR_VERSION auf den Commit; weicht der Stand eines verbindenden Agents
+  # davon ab, klingelt das Backend bei der Node. Steht dort `prod` (Start von
+  # Hand), sieht das Backend keinen Commit und klingelt nie.
+  PALANTIR_COMMIT: ${PALANTIR_VERSION:-}
   AGENT_CREATE_TIMEOUT_MS: ${AGENT_CREATE_TIMEOUT_MS}
   # Mit Rueckfall, weil bestehende .env-Dateien die Variable nicht kennen: Ohne
   # ihn setzte Compose einen leeren Wert ein, und das Schema laesst nur eine

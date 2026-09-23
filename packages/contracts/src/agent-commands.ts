@@ -1148,19 +1148,8 @@ export const IMPLEMENTED_AGENT_COMMANDS = [
   'SET_SERVER_QUERY',
   'REMOVE_STORAGE_ENTRY',
   'UPLOAD_ARCHIVE_BLOCK',
+  'UPDATE_AVAILABLE',
 ] as const;
-
-/**
- * Befehle, die schon im Protokoll stehen, deren Ausführung aber noch fehlt.
- *
- * Derselbe Weg wie bei WELLE 0 (`FILE_DELETE`/`FILE_UPLOAD`): Erst kommt der
- * Vertrag, dann die Umsetzung in einem eigenen Pull Request. Bis dahin
- * beantwortet der Agent diese Befehle mit `AGENT_COMMAND_NOT_IMPLEMENTED`.
- * `agent-commands.test.ts` verlangt, dass Protokoll, diese Liste und
- * `IMPLEMENTED_AGENT_COMMANDS` genau aufgehen – die Liste ist kein Versteck für
- * vergessene Befehle und verschwindet mit der Umsetzung wieder.
- */
-export const PENDING_AGENT_COMMANDS = ['UPDATE_AVAILABLE'] as const;
 
 export type ImplementedAgentCommandName = (typeof IMPLEMENTED_AGENT_COMMANDS)[number];
 

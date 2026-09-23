@@ -146,6 +146,18 @@ const envSchema = z.object({
    */
   AGENT_COMMIT: z.string().optional(),
   /**
+   * Ordner für die Klingel der Selbstaktualisierung (Gefundener Punkt 342).
+   *
+   * Auf `UPDATE_AVAILABLE` hin legt der Agent hier die Datei `anstoss` ab -
+   * sonst nichts. Der Ordner ist ein Bind-Mount vom Host, auf dem
+   * `palantir-update.path` darauf wartet. Steht fest in
+   * `deploy/gamenode/docker-compose.yml`, nicht in der `.env`: Die Pfad-Unit
+   * nennt denselben Pfad, und eine Unit kann keine `.env` lesen. Ohne Angabe
+   * (Entwicklung, Agent auf dem Docker-Host) meldet der Agent
+   * `signaled: false`.
+   */
+  AGENT_UPDATE_SIGNAL_DIR: z.string().min(1).optional(),
+  /**
    * Abstand der periodischen Server-Abfrage, wenn das Backend im Befehl
    * `SET_SERVER_QUERY` keinen eigenen mitgibt (Pflichtenheft §9).
    */
