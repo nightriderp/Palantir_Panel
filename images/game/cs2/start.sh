@@ -475,12 +475,38 @@ palantir_konsole_oeffnen
 
 log "Startet CS2 (${CS2_GAME_MODE:-competitive}) auf Port ${PORT}"
 
-cd "$SERVER"
+# **Über Valves eigenen Starter `game/cs2.sh`**, aus `game/` heraus.
+#
+# Seit dem Update vom 17.09.2025 (`cs_script`) braucht der Server Bibliotheken,
+# die Valve in `game/bin/linuxsteamrt64` mitliefert – `libv8.so` und andere.
+# Der Starter setzt den Suchpfad dafür; wer die Binärdatei direkt aufruft,
+# bekommt „cannot open shared object file", und der Server ist sofort wieder
+# weg. Genau so stürzte der erste Server auf der Node in Schleife ab, mit und
+# ohne Plugins (joedwards32/CS2 #176, dort seitdem ebenfalls über `cs2.sh`).
+#
+# Fehlt der Starter (ältere Fassung), geht es direkt – dann mit dem Suchpfad
+# von Hand.
+cd "${SERVER}/game"
+
+# Beide Bibliotheksordner: `libserver.so` liegt unter `csgo/bin`, was es nachlaedt
+# (`libv8.so`) unter `bin` - welcher Ordner es bei der naechsten Fassung ist,
+# sagt Valve nicht an.
+LD_LIBRARY_PATH="${SERVER}/game/bin/linuxsteamrt64:${SERVER}/game/csgo/bin/linuxsteamrt64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export LD_LIBRARY_PATH
+
+STARTER="${SERVER}/game/cs2.sh"
+
+if [ -f "$STARTER" ]; then
+  set -- bash "$STARTER" "$@"
+else
+  log "Hinweis: ${STARTER} fehlt - starte die Binaerdatei direkt."
+  set -- "$BINAERDATEI" "$@"
+fi
 
 # Ohne MariaDB ersetzt sich das Skript durch CS2 – das Signal kommt dann
 # direkt an, und es gibt nichts aufzuräumen.
 if [ -z "$DB_PID" ]; then
-  exec "$BINAERDATEI" "$@" 0<&3 3>&-
+  exec "$@" 0<&3 3>&-
 fi
 
 # **Mit MariaDB bleibt die Shell stehen**, wie bei tModLoader: Nach CS2 muss
@@ -497,7 +523,7 @@ beenden() {
 # einträfe, beendete die Shell sonst kommentarlos – und MariaDB liefe weiter.
 trap beenden TERM INT
 
-"$BINAERDATEI" "$@" 0<&3 3>&- &
+"$@" 0<&3 3>&- &
 SERVER_PID=$!
 
 # `wait` kehrt zurück, sobald ein abgefangenes Signal eintrifft – mit 128 plus

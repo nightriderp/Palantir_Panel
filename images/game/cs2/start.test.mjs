@@ -350,6 +350,55 @@ describe('start.sh – steamclient.so und Start', nurMitShell, () => {
   });
 });
 
+describe('start.sh – Valves Starter', nurMitShell, () => {
+  /** Ein `cs2.sh`, das Suchpfad, Arbeitsordner und Argumente aufschreibt. */
+  function mitStarter(ordner) {
+    const game = join(ordner.daten, 'server', 'game');
+    mkdirSync(game, { recursive: true });
+    writeFileSync(
+      join(game, 'cs2.sh'),
+      [
+        '#!/bin/bash',
+        'echo "starter ja"',
+        'echo "ld $LD_LIBRARY_PATH"',
+        'echo "cwd $(pwd)"',
+        'for a in "$@"; do printf "argv %s\\n" "$a"; done',
+        '',
+      ].join('\n'),
+    );
+  }
+
+  it('startet über game/cs2.sh, wenn es ihn gibt', () => {
+    // Seit dem Update vom 17.09.2025 braucht CS2 Bibliotheken aus
+    // game/bin/linuxsteamrt64; der Starter setzt den Suchpfad. Direkt
+    // gestartet war der Server sofort wieder weg.
+    const ordner = arbeitsordner();
+    mitStarter(ordner);
+    const lauf = starte(ordner);
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.match(lauf.stdout, /^starter ja$/mu);
+    assert.ok(lauf.argv.includes('-dedicated'), lauf.argv.join(' '));
+  });
+
+  it('startet aus game/ heraus und mit Valves Bibliotheken im Suchpfad', () => {
+    const ordner = arbeitsordner();
+    mitStarter(ordner);
+    const lauf = starte(ordner);
+
+    assert.match(lauf.stdout, /^cwd .*\/server\/game\r?$/mu);
+    assert.match(lauf.stdout, /^ld [^\n]*\/server\/game\/bin\/linuxsteamrt64/mu);
+  });
+
+  it('startet ohne Starter die Binärdatei direkt und sagt es', () => {
+    const lauf = starte(arbeitsordner());
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.match(lauf.stdout, /cs2\.sh fehlt/u);
+    assert.ok(lauf.argv.includes('-dedicated'), lauf.argv.join(' '));
+  });
+});
+
 describe('start.sh – Schalter aus dem Panel', nurMitShell, () => {
   it('übersetzt „Alle Runden spielen“ in mp_match_can_clinch 0', () => {
     // Umgekehrt: Der Schalter an heisst, das Spiel darf NICHT vorzeitig
