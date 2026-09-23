@@ -162,7 +162,11 @@ export const consoleCommandSchema = z
 export const liveValuesInputSchema = z
   .object({
     values: z
-      .record(z.string().trim().min(1).max(64), z.union([z.string().max(128), z.number().finite()]))
+      .record(
+        z.string().trim().min(1).max(64),
+        // Auswahl, Zahl oder Schalter (CS2 Schritt 5: „Alle Runden spielen“).
+        z.union([z.string().max(128), z.number().finite(), z.boolean()]),
+      )
       .refine((werte) => Object.keys(werte).length >= 1, {
         message: 'Es wurde nichts geändert.',
       })

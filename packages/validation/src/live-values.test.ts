@@ -6,19 +6,21 @@ import { liveValuesInputSchema } from './servers.js';
  * welche Felder live gehen, prüft das Backend gegen die Definition.
  */
 describe('liveValuesInputSchema', () => {
-  it('nimmt Auswahlwerte und Zahlen', () => {
+  it('nimmt Auswahlwerte, Zahlen und Schalter', () => {
     expect(liveValuesInputSchema.safeParse({ values: { map: 'de_mirage', bots: 3 } }).success).toBe(
       true,
     );
+    expect(liveValuesInputSchema.safeParse({ values: { allRounds: true } }).success).toBe(true);
   });
 
   it('lehnt eine leere Änderung ab', () => {
     expect(liveValuesInputSchema.safeParse({ values: {} }).success).toBe(false);
   });
 
-  it('lehnt Wahrheitswerte und Listen ab – live gehen nur Auswahl und Zahl', () => {
-    expect(liveValuesInputSchema.safeParse({ values: { gotv: true } }).success).toBe(false);
+  it('lehnt Listen, Objekte und null ab', () => {
     expect(liveValuesInputSchema.safeParse({ values: { map: ['a'] } }).success).toBe(false);
+    expect(liveValuesInputSchema.safeParse({ values: { map: { a: 1 } } }).success).toBe(false);
+    expect(liveValuesInputSchema.safeParse({ values: { map: null } }).success).toBe(false);
   });
 
   it('lehnt zu lange Werte und zu viele Felder ab', () => {

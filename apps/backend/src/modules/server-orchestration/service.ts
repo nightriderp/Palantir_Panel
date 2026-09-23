@@ -2064,7 +2064,7 @@ export class ServerOrchestrationService {
    */
   async applyLiveValues(
     serverId: string,
-    eingabe: Readonly<Record<string, string | number>>,
+    eingabe: Readonly<Record<string, string | number | boolean>>,
   ): Promise<ServerRecord> {
     const server = await this.requireServer(serverId);
     const definition = this.deps.registry.require(server.gameType);
