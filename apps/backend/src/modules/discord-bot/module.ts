@@ -277,7 +277,7 @@ export async function registerDiscordBotModule(
 
 /**
  * Server, die ein Konto sehen darf – dieselbe Regel wie für die Kanäle
- * (§14a.3): Besitz, Mitgliedschaft oder `server.view.any`.
+ * (§14a.3): Besitz, Mitgliedschaft oder `server.manage.any`.
  */
 async function listServersFor(
   userId: string,

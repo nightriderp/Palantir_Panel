@@ -49,7 +49,7 @@ export interface InteractionContext {
   readonly identity: DiscordIdentityResolver;
   /** Öffentliche Adresse des Panels, für Verweise in Antworten. */
   readonly webUrl: string;
-  /** Server, die ein Konto sehen darf – Besitz, Mitgliedschaft oder `server.view.any`. */
+  /** Server, die ein Konto sehen darf – Besitz, Mitgliedschaft oder `server.manage.any`. */
   readonly listServers?: (userId: string) => Promise<readonly ServerListEntry[]>;
   /**
    * Wer einen Befehl in der Guild auslöst, ist nachweislich Mitglied. Der

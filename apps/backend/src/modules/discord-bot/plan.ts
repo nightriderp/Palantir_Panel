@@ -8,7 +8,7 @@
  * Admin sieht alles, 50 Kanäle je Kategorie – ohne Discord testen.
  *
  * **Wer einen Kanal sieht** (§14a.3): Besitzer und Mitglieder des Servers
- * sowie jedes Konto mit `server.view.any` – jeweils nur, wenn es Discord
+ * sowie jedes Konto mit `server.manage.any` (siehe `DISCORD_ADMIN_PERMISSION`) – jeweils nur, wenn es Discord
  * verknüpft hat, freigeschaltet und nicht gesperrt ist und dem Discord-Server
  * angehört. Diese Vorauswahl trifft der Aufrufer; hier kommen nur noch
  * Discord-Ids an.
@@ -61,7 +61,7 @@ export interface SyncInput {
    * nicht gesperrt **und** Mitglied des Discord-Servers sind.
    */
   readonly discordIdByUser: ReadonlyMap<string, string>;
-  /** Konten mit `server.view.any` (einschließlich Owner). */
+  /** Konten mit `server.manage.any` (einschließlich Owner) – sehen alle Kanäle. */
   readonly adminUserIds: ReadonlySet<string>;
 }
 
