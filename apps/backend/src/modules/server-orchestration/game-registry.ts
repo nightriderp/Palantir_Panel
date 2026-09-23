@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.7',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.8',
   defaultEnv: {},
   ports: [
     {
@@ -3449,7 +3449,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     },
   ],
   // Schritt 2 (23.09.2026): Name, Passwort, Spieler; Schritt 3: Karte, Modus, Bots;
-  // Schritt 4: Workshop-Karte.
+  // Schritt 4: Workshop-Karte; Schritt 5: alle Runden spielen.
   configFields: [
     {
       key: 'serverName',
@@ -3543,6 +3543,21 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: 999_999_999_999,
       lockedAfterCreate: false,
     },
+    {
+      // Schritt 5: `mp_match_can_clinch 0` – sonst endet ein Match, sobald
+      // ein Team uneinholbar vorne liegt (13:x bei zwölf Runden je Hälfte).
+      key: 'allRounds',
+      label: 'Alle Runden spielen',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Das Match läuft über alle Runden, auch wenn ein Team schon uneinholbar vorne liegt.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
@@ -3552,6 +3567,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     gameMode: 'CS2_GAME_MODE',
     bots: 'CS2_BOTS',
     workshopMap: 'CS2_WORKSHOP_MAP',
+    allRounds: 'CS2_ALL_ROUNDS',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
   // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
@@ -3563,6 +3579,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'gameMode',
     'bots',
     'workshopMap',
+    'allRounds',
   ],
   /*
    * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die
@@ -3605,6 +3622,21 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       fields: ['bots'],
       commands: ['bot_quota_mode normal', 'bot_quota {bots}'],
       persist: ['bot_quota_mode normal', 'bot_quota {bots}'],
+    },
+    {
+      /*
+       * Schritt 5. Wirkt sofort, auch im laufenden Match. `persist`, weil
+       * die Modus-Konfiguration beim nächsten Kartenladen den Wert von Valve
+       * setzt (Competitive: 1).
+       */
+      id: 'runden',
+      label: 'Runden',
+      fields: ['allRounds'],
+      commands: ['{allRounds}'],
+      values: {
+        allRounds: { true: 'mp_match_can_clinch 0', false: 'mp_match_can_clinch 1' },
+      },
+      persist: ['{allRounds}'],
     },
   ],
   liveConfigFile: 'server/game/csgo/cfg/palantir_live.cfg',

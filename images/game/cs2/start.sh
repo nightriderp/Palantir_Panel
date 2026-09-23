@@ -11,7 +11,7 @@
 #
 # Einstellungen aus dem Panel: Servername, Server-Passwort, Spieleranzahl
 # (Schritt 2), Startkarte, Spielmodus, Bots (Schritt 3), Workshop-Karte
-# (Schritt 4). Keine Plugins.
+# (Schritt 4), alle Runden spielen (Schritt 5). Keine Plugins.
 #
 # **Der Port kommt vom Panel** (`CS2_PORT`, Schritt 1.1): dieselbe Nummer, unter
 # der der Server draußen erreichbar ist. CS2 nennt Clients seinen eigenen Port;
@@ -113,6 +113,17 @@ if [ "$KARTE" = workshop ] && [ "$WORKSHOP_ID" -eq 0 ]; then
   exit 78
 fi
 
+# **Alle Runden spielen** (Schritt 5): `mp_match_can_clinch 0`. Das Panel
+# schickt `true`/`false`; alles andere ist ein Fehler, kein stilles „aus".
+case "${CS2_ALL_ROUNDS:-false}" in
+  true) CLINCH=0 ;;
+  false) CLINCH=1 ;;
+  *)
+    palantir_log "Ungueltiger Wert fuer alle Runden: ${CS2_ALL_ROUNDS}."
+    exit 78
+    ;;
+esac
+
 BOTS="${CS2_BOTS:-0}"
 case "$BOTS" in
   '' | *[!0-9]*)
@@ -128,6 +139,7 @@ esac
   # `normal` heißt: genau so viele Bots, nicht „auffüllen bis".
   printf 'bot_quota_mode "normal"\n'
   printf 'bot_quota %s\n' "$BOTS"
+  printf 'mp_match_can_clinch %s\n' "$CLINCH"
 } > "${CFG_ORDNER}/palantir.cfg"
 
 # **Nach der Modus-Konfiguration noch einmal** (Schritt 3). Beim Laden jeder

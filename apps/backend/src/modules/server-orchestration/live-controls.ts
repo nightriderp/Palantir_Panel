@@ -41,8 +41,9 @@ function liveFelder(definition: GameTypeDefinition): Map<string, GameConfigField
  * Prüft eine Eingabe gegen die Definition und gibt die bereinigten Werte
  * zurück.
  *
- * **Nur `select` und `number`.** Ein Auswahlwert muss in der Auswahl stehen,
- * eine Zahl ganz sein und in ihren Grenzen liegen. Alles andere – ein
+ * **Nur `select`, `number` und `toggle`.** Ein Auswahlwert muss in der
+ * Auswahl stehen, eine Zahl ganz sein und in ihren Grenzen liegen, ein
+ * Schalter ein Wahrheitswert. Alles andere – ein
  * unbekanntes Feld, ein Freitextfeld, ein Wert außerhalb – ist ein Fehler: Die
  * Werte landen in Konsolenzeilen, und dort hätte ein beliebiger Text Befehle
  * einschleusen können.
@@ -86,6 +87,16 @@ export function pruefeLiveWerte(
               ? ` von ${String(feld.min)} bis ${String(feld.max)}`
               : ''
           } sein.`,
+          { field: key },
+        );
+      }
+    } else if (feld.type === 'toggle') {
+      // Schalter (CS2 Schritt 5): nur ein echter Wahrheitswert. In Befehlen
+      // kommt er als `true`/`false` an und wird über `values` übersetzt.
+      if (typeof wert !== 'boolean') {
+        throw new ServerOrchestrationError(
+          'VALIDATION_FAILED',
+          `${feld.label} ist ein Schalter – nur an oder aus.`,
           { field: key },
         );
       }

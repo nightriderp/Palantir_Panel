@@ -36,7 +36,7 @@ import {
   requiresRestartAfterChange,
   toGameTypeDto,
 } from './game-registry.js';
-import { liveBefehle } from './live-controls.js';
+import { liveBefehle, liveDatei } from './live-controls.js';
 
 const PHASE_2_GAME: GameTypeDefinition = {
   ...TEST_GAME_TYPE,
@@ -1546,7 +1546,7 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.dockerImage).toBe(`ghcr.io/nightriderp/palantir-game-cs2:${version}`);
   });
 
-  it('hat nach Schritt 4 genau diese Felder', () => {
+  it('hat nach Schritt 5 genau diese Felder', () => {
     expect(CS2_GAME_TYPE.configFields.map((feld) => feld.key)).toEqual([
       'serverName',
       'serverPassword',
@@ -1555,6 +1555,7 @@ describe('Counter-Strike 2', () => {
       'gameMode',
       'bots',
       'workshopMap',
+      'allRounds',
     ]);
   });
 
@@ -1616,14 +1617,14 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(3_600);
   });
 
-  it('bietet Karte, Modus und Bots live an – nur Auswahl- und Zahlenfelder', () => {
+  it('bietet Karte, Modus, Bots und Runden an – nur Auswahl, Zahl und Schalter', () => {
     const felder = CS2_GAME_TYPE.liveControls?.flatMap((steuerung) => steuerung.fields) ?? [];
 
-    expect(felder).toEqual(['map', 'gameMode', 'workshopMap', 'bots']);
+    expect(felder).toEqual(['map', 'gameMode', 'workshopMap', 'bots', 'allRounds']);
 
     for (const key of felder) {
       const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === key);
-      expect(['select', 'number'], key).toContain(feld?.type);
+      expect(['select', 'number', 'toggle'], key).toContain(feld?.type);
     }
   });
 
@@ -1659,6 +1660,18 @@ describe('Counter-Strike 2', () => {
         workshopMap: 123,
       }),
     ).toEqual(['game_type 1; game_mode 2', 'host_workshop_map 123']);
+  });
+
+  it('übersetzt „Alle Runden“ in mp_match_can_clinch und hält es über den Kartenwechsel', () => {
+    expect(liveBefehle(CS2_GAME_TYPE, ['allRounds'], { allRounds: true })).toEqual([
+      'mp_match_can_clinch 0',
+    ]);
+    expect(liveBefehle(CS2_GAME_TYPE, ['allRounds'], { allRounds: false })).toEqual([
+      'mp_match_can_clinch 1',
+    ]);
+    expect(liveDatei(CS2_GAME_TYPE, { bots: 2, allRounds: true })).toMatch(
+      /^mp_match_can_clinch 0$/mu,
+    );
   });
 
   it('hält die Bots über einen Kartenwechsel in palantir_live.cfg', () => {
