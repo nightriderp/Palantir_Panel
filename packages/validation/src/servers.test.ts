@@ -18,6 +18,7 @@ import {
   serverResourceLimitsSchema,
   scheduleInputSchema,
   subdomainSchema,
+  updateServerSettingsInputSchema,
 } from './servers.js';
 
 const VALID_ID = '11111111-1111-4111-8111-111111111111';
@@ -166,6 +167,34 @@ describe('createServerInputSchema', () => {
 
   it('lehnt ein leeres Spiel ab', () => {
     expect(createServerInputSchema.safeParse(createInput({ gameType: '  ' })).success).toBe(false);
+  });
+});
+
+describe('updateServerSettingsInputSchema', () => {
+  const einstellungen = {
+    name: 'Survival Runde',
+    resourceLimits: { ramMb: 4096 },
+    config: {},
+    startupParameters: '',
+    autoShutdownEnabled: true,
+    autoShutdownTimeoutMinutes: null,
+  };
+
+  it('lässt den Discord-Konsolen-Schalter weg, ohne ihn zu verlangen', () => {
+    // Wer den Bot nicht kennt, schickt das Feld nicht - der Schalter bleibt dann stehen.
+    const parsed = updateServerSettingsInputSchema.parse(einstellungen);
+    expect(parsed.discordConsoleEnabled).toBeUndefined();
+  });
+
+  it('nimmt den Discord-Konsolen-Schalter als Wahrheitswert an', () => {
+    expect(
+      updateServerSettingsInputSchema.parse({ ...einstellungen, discordConsoleEnabled: true })
+        .discordConsoleEnabled,
+    ).toBe(true);
+    expect(
+      updateServerSettingsInputSchema.safeParse({ ...einstellungen, discordConsoleEnabled: 'ja' })
+        .success,
+    ).toBe(false);
   });
 });
 
