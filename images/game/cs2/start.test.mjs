@@ -11,7 +11,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,6 +35,9 @@ const LIB_ORDNER = (() => {
 
 const SH_VORHANDEN = spawnSync('sh', ['-c', 'exit 0']).error === undefined;
 const nurMitShell = { skip: SH_VORHANDEN ? false : 'Keine POSIX-Shell (sh) im PATH.' };
+const nurMitSignalen = {
+  skip: SH_VORHANDEN && process.platform !== 'win32' ? false : 'Braucht sh und echte Signale.',
+};
 
 const aufraeumen = [];
 
@@ -47,8 +50,9 @@ after(() => {
 /**
  * Arbeitsordner mit SteamCMD-Attrappe.
  *
- * `starter: false` lässt `game/cs2.sh` weg – so sähe ein abgebrochener
- * Download aus.
+ * `starter: false` lässt die Binärdatei weg – so sähe ein abgebrochener
+ * Download aus. Die Attrappe schreibt Arbeitsordner, Suchpfad und Argumente
+ * auf; mit `TEST_SERVER_WARTET` liest sie danach die Konsole, bis `quit` kommt.
  */
 function arbeitsordner({ starter = true } = {}) {
   const wurzel = mkdtempSync(join(tmpdir(), 'palantir-cs2-'));
@@ -68,17 +72,32 @@ function arbeitsordner({ starter = true } = {}) {
     '  vorher="$a"',
     'done',
     'printf "steamcmd %s\\n" "$*"',
-    'mkdir -p "$ziel/game"',
+    'mkdir -p "$ziel/game/bin/linuxsteamrt64"',
   ];
 
   if (starter) {
-    zeilen.push(
-      'printf "%s\\n" "#!/bin/sh" "echo \\"cwd \\$(pwd)\\"" "for arg in \\"\\$@\\"; do printf \'argv %s\\\\n\' \\"\\$arg\\"; done" > "$ziel/game/cs2.sh"',
-    );
+    zeilen.push('cp "$(dirname "$0")/cs2-attrappe" "$ziel/game/bin/linuxsteamrt64/cs2"');
+    zeilen.push('chmod 0755 "$ziel/game/bin/linuxsteamrt64/cs2"');
   }
 
   zeilen.push('exit 0', '');
   writeFileSync(join(vorlage, 'steamcmd.sh'), zeilen.join('\n'));
+  writeFileSync(
+    join(vorlage, 'cs2-attrappe'),
+    [
+      '#!/bin/sh',
+      'echo "cwd $(pwd)"',
+      'echo "ld $LD_LIBRARY_PATH"',
+      'for arg in "$@"; do printf "argv %s\\n" "$arg"; done',
+      'if [ -z "${TEST_SERVER_WARTET:-}" ]; then exit 0; fi',
+      'while IFS= read -r zeile; do',
+      '  printf "stdin %s\\n" "$zeile"',
+      '  if [ "$zeile" = "quit" ]; then exit 0; fi',
+      'done',
+      'exit 0',
+      '',
+    ].join('\n'),
+  );
   spawnSync('sh', ['-c', 'chmod 0755 "$1"', '_', posix(join(vorlage, 'steamcmd.sh'))]);
 
   return { daten, vorlage };
@@ -125,7 +144,7 @@ describe('start.sh – Basic', nurMitShell, () => {
     assert.match(aufruf, /\+force_install_dir \S*\/daten\/server /u);
   });
 
-  it('startet über game/cs2.sh als dedizierter Server auf de_dust2, Port 27015', () => {
+  it('startet als dedizierter Server auf de_dust2, Port 27015', () => {
     const lauf = starte(arbeitsordner());
 
     assert.deepEqual(lauf.argv, [
@@ -152,7 +171,14 @@ describe('start.sh – Basic', nurMitShell, () => {
     assert.equal(nach(lauf.argv, '-port'), '25003');
   });
 
-  it('startet aus game/ heraus – so erwartet es der Starter', () => {
+  it('legt Valves Bibliotheksordner in den Suchpfad – sonst fehlt libv8.so', () => {
+    const lauf = starte(arbeitsordner());
+    const zeile = lauf.zeilen.find((z) => z.startsWith('ld '));
+
+    assert.match(zeile ?? '', /\/daten\/server\/game\/bin\/linuxsteamrt64/u);
+  });
+
+  it('startet aus game/ heraus – wie Valves cs2.sh', () => {
     const lauf = starte(arbeitsordner());
     const zeile = lauf.zeilen.find((z) => z.startsWith('cwd '));
 
@@ -171,7 +197,7 @@ describe('start.sh – Basic', nurMitShell, () => {
     const lauf = starte(arbeitsordner({ starter: false }));
 
     assert.equal(lauf.status, 69);
-    assert.match(lauf.stdout, /cs2\.sh/u);
+    assert.match(lauf.stdout, /linuxsteamrt64\/cs2/u);
     assert.deepEqual(lauf.argv, []);
   });
 });
@@ -293,5 +319,60 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     for (const modus of ['competitive', 'casual', 'competitive2v2', 'deathmatch', 'armsrace']) {
       assert.match(datei(ordner, `gamemode_${modus}_server.cfg`), /^exec palantir$/mu, modus);
     }
+  });
+});
+
+describe('start.sh – Stoppsignal (Schritt 3.1)', nurMitSignalen, () => {
+  function warteAuf(bedingung, meldung) {
+    return new Promise((fertig, scheitern) => {
+      const frist = setTimeout(() => {
+        clearInterval(schauen);
+        scheitern(new Error(meldung()));
+      }, 30_000);
+      const schauen = setInterval(() => {
+        if (bedingung()) {
+          clearTimeout(frist);
+          clearInterval(schauen);
+          fertig();
+        }
+      }, 50);
+    });
+  }
+
+  it('schickt quit in die Konsole und endet mit 0, statt die Frist abzuwarten', async () => {
+    // Vorher war bash (cs2.sh) Prozess 1 und SIGTERM kam nie an – jedes
+    // Stoppen lief in Dockers volle Frist.
+    const ordner = arbeitsordner();
+    let ausgabe = '';
+
+    const lauf = spawn('sh', [START_SH], {
+      env: {
+        ...process.env,
+        PALANTIR_DATA_DIR: posix(ordner.daten),
+        PALANTIR_LIB_DIR: LIB_ORDNER,
+        PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+        TEST_SERVER_WARTET: '1',
+      },
+    });
+    lauf.stdout.on('data', (stueck) => {
+      ausgabe += String(stueck);
+    });
+
+    await warteAuf(
+      () => ausgabe.includes('argv -dedicated'),
+      () => `Server kam nicht hoch: ${ausgabe}`,
+    );
+
+    const beginn = Date.now();
+    lauf.kill('SIGTERM');
+
+    const code = await new Promise((fertig) => {
+      lauf.on('exit', (status) => fertig(status));
+    });
+
+    assert.match(ausgabe, /stdin quit/u);
+    assert.equal(code, 0);
+    // Nicht die 20 Sekunden bis zum Signal an CS2 – quit hat gereicht.
+    assert.ok(Date.now() - beginn < 10_000);
   });
 });
