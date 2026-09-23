@@ -3422,7 +3422,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert. Eigene Karten kommen aus dem Steam-Workshop.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:3',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:4',
   // Vollständige Zeilen, wie sie die Serverkonsole versteht.
   consoleQuickCommands: [
     { label: 'Spieler', command: 'status' },
