@@ -105,6 +105,16 @@ function starte(ordner, extra = {}) {
   };
 }
 
+/** Der Wert, der einem Schalter in der Argumentliste folgt. */
+function nach(argv, schalter) {
+  const stelle = argv.indexOf(schalter);
+
+  return stelle === -1 ? null : (argv[stelle + 1] ?? null);
+}
+
+const cfg = (ordner) =>
+  readFileSync(join(ordner.daten, 'server', 'game', 'csgo', 'cfg', 'palantir.cfg'), 'utf8');
+
 describe('start.sh – Basic', nurMitShell, () => {
   it('holt Anwendung 730 anonym in den Datenordner', () => {
     const lauf = starte(arbeitsordner());
@@ -118,7 +128,15 @@ describe('start.sh – Basic', nurMitShell, () => {
   it('startet über game/cs2.sh als dedizierter Server auf de_dust2, Port 27015', () => {
     const lauf = starte(arbeitsordner());
 
-    assert.deepEqual(lauf.argv, ['-dedicated', '-port', '27015', '+map', 'de_dust2']);
+    assert.deepEqual(lauf.argv, [
+      '-dedicated',
+      '-port',
+      '27015',
+      '+map',
+      'de_dust2',
+      '+exec',
+      'palantir',
+    ]);
   });
 
   it('lauscht auf dem Port, den das Panel vorgibt – der öffentlichen Nummer', () => {
@@ -127,7 +145,7 @@ describe('start.sh – Basic', nurMitShell, () => {
     // still (Node, 23.09.2026).
     const lauf = starte(arbeitsordner(), { CS2_PORT: '25003' });
 
-    assert.deepEqual(lauf.argv, ['-dedicated', '-port', '25003', '+map', 'de_dust2']);
+    assert.equal(nach(lauf.argv, '-port'), '25003');
   });
 
   it('startet aus game/ heraus – so erwartet es der Starter', () => {
@@ -151,5 +169,55 @@ describe('start.sh – Basic', nurMitShell, () => {
     assert.equal(lauf.status, 69);
     assert.match(lauf.stdout, /cs2\.sh/u);
     assert.deepEqual(lauf.argv, []);
+  });
+});
+
+describe('start.sh – Schritt 2: Name, Passwort, Spieler', nurMitShell, () => {
+  it('schreibt Servername und Passwort in palantir.cfg', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { CS2_HOSTNAME: 'Unsere Runde', CS2_PASSWORD: 'geheim' });
+
+    assert.match(cfg(ordner), /^hostname "Unsere Runde"$/mu);
+    assert.match(cfg(ordner), /^sv_password "geheim"$/mu);
+  });
+
+  it('führt palantir.cfg beim Start aus', () => {
+    const lauf = starte(arbeitsordner());
+
+    assert.equal(nach(lauf.argv, '+exec'), 'palantir');
+  });
+
+  it('lässt das Passwort aus der Argumentliste – es stünde sonst in der Prozessliste', () => {
+    const lauf = starte(arbeitsordner(), { CS2_PASSWORD: 'geheim' });
+
+    assert.ok(!lauf.argv.includes('geheim'), lauf.argv.join(' '));
+  });
+
+  it('setzt ohne Passwort ein leeres – jeder mit der Adresse kommt drauf', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+
+    assert.match(cfg(ordner), /^sv_password ""$/mu);
+    assert.match(cfg(ordner), /^hostname "Palantir CS2"$/mu);
+  });
+
+  it('nimmt Anführungszeichen, Semikolon und Umbrüche aus dem Namen – sonst liefe der Rest als Befehl', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { CS2_HOSTNAME: 'Der "beste"; quit\nServer' });
+
+    assert.match(cfg(ordner), /^hostname "Der beste quitServer"$/mu);
+    assert.doesNotMatch(cfg(ordner), /^quit/mu);
+  });
+
+  it('gibt die Spieleranzahl als -maxplayers mit', () => {
+    const lauf = starte(arbeitsordner(), { CS2_MAX_PLAYERS: '12' });
+
+    assert.equal(nach(lauf.argv, '-maxplayers'), '12');
+  });
+
+  it('lässt -maxplayers ohne Angabe weg', () => {
+    const lauf = starte(arbeitsordner());
+
+    assert.equal(nach(lauf.argv, '-maxplayers'), null);
   });
 });
