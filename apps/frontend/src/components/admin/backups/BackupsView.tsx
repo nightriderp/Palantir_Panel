@@ -131,14 +131,18 @@ function BucketTable({
 
 export function BackupsView() {
   const { user } = useSession();
-  const canView = user?.permissions.canManageAnyBackup ?? false;
+  // Zwei Rechte, eine Seite (Fundpunkt 346): Server-Backups aller Nutzer
+  // (`backup.manage.any`) und Sicherungen der Panel-Datenbank
+  // (`panelBackup.manage`). Jeder Teil erscheint nur mit seinem Recht.
+  const canViewAny = user?.permissions.canManageAnyBackup ?? false;
+  const canPanel = user?.permissions.canManagePanelBackups ?? false;
 
   const resource = useApiResource<BackupOverviewDto>(
     (signal) => fetchBackupOverview({}, signal),
-    canView ? [] : null,
+    canViewAny ? [] : null,
   );
 
-  if (!canView) {
+  if (!canViewAny && !canPanel) {
     return (
       <div className="flex flex-col gap-5">
         <PageHeader title="Backups" className="-mx-5 -mt-5 px-5" />
@@ -157,9 +161,9 @@ export function BackupsView() {
         className="-mx-5 -mt-5 px-5"
       />
 
-      <PanelBackupSection />
+      {canPanel ? <PanelBackupSection /> : null}
 
-      {resource.loading ? (
+      {!canViewAny ? null : resource.loading ? (
         <AdminLoading label="Übersicht wird geladen …" />
       ) : resource.error ? (
         <AdminError message={resource.error} onRetry={resource.reload} />

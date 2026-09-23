@@ -41,12 +41,12 @@ import {
 /**
  * Berechtigung, die Schriften hochlädt und löscht.
  *
- * Dieselbe wie für die Instanz-Einstellungen (`/admin/instance-settings`) und
- * damit keine neue im Katalog: Wer die Schrift der Instanz auswählen darf, muss
- * auch die Auswahl füllen können – zwei getrennte Rechte für denselben
- * Vorgang ließen sich nicht sinnvoll unterschiedlich vergeben.
+ * Dieselbe, mit der die Schrift der Instanz ausgewählt wird: Wer die Auswahl
+ * trifft, muss sie auch füllen können. Seit Fundpunkt 346 `instance.manage`
+ * statt `user.manage` – Konten verwalten und die Oberfläche umstellen sind
+ * zwei verschiedene Aufgaben.
  */
-const MANAGE_PERMISSION = 'user.manage' as const;
+const MANAGE_PERMISSION = 'instance.manage' as const;
 
 /** Vorgabegewicht, wenn weder Datei noch Formular etwas hergeben (Vertrag). */
 const DEFAULT_WEIGHT = 400;

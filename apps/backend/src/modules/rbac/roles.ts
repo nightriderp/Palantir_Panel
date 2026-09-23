@@ -10,7 +10,13 @@
  * `ContainerRuntime`-Interface des Agents).
  */
 
-import { GUEST_ROLE_NAME, PERMISSIONS, type Permission, type RoleDto } from '@palantir/contracts';
+import {
+  GUEST_ROLE_NAME,
+  PERMISSIONS,
+  type Permission,
+  type RoleDto,
+  isAdminPermission,
+} from '@palantir/contracts';
 import type { CreateRoleInput, UpdateRoleInput } from '@palantir/validation';
 import { RbacError } from './errors.js';
 import {
@@ -161,18 +167,20 @@ function requireRoleRead(actor: PermissionActor): void {
 }
 
 /**
- * Eine Rolle gilt als privilegiert, wenn ihr Bündel selbst die Rollen- oder
- * Nutzerverwaltung verleiht – wer sie zuweisen kann, kann darüber weitere
- * Rechte (bis zum vollen Katalog) vergeben.
+ * Eine Rolle gilt als privilegiert, sobald ihr Bündel **ein Admin-Recht**
+ * enthält (`PermissionDefinition.area`, Betreiber-Wunsch 23.09.2026).
+ *
+ * Bis dahin zählten nur `role.manage` und `user.manage`. Ein reiner
+ * Konten-Verwalter konnte damit jede andere Rolle vergeben – auch eine mit
+ * Audit-Log, Node-Verwaltung oder Panel-Sicherung, und auch sich selbst.
+ * Jetzt teilt er nur noch Rollen aus, die ausschließlich Nutzerrechte tragen.
  *
  * Exportiert, weil B1 dieselbe Regel für die Admin-Eingriffe an Konten braucht
  * (Fundpunkte 119 und 124): Konten anlegen mit Rollen, Passwort-Reset und
  * 2FA-Abschaltung dürfen die Schranke nicht auf einem zweiten Weg umgehen.
  */
 export function grantsAdministration(role: RoleRecord): boolean {
-  return role.permissions.some(
-    (permission) => permission === 'role.manage' || permission === 'user.manage',
-  );
+  return role.permissions.some((permission) => isAdminPermission(permission));
 }
 
 /**
@@ -230,7 +238,7 @@ function requireRoleWithinActor(actor: PermissionActor, role: RoleRecord): void 
  *    verwaltet, soll die Rolle „Nutzer" austeilen können, ohne selbst Server
  *    anlegen zu dürfen – das ist der Zweck der Delegation und keine
  *    Rechteausweitung: Der Handelnde gewinnt dabei nichts.
- * 2. **Rollen, die selbst Verwaltung verleihen**, brauchen `role.manage` – und
+ * 2. **Rollen mit mindestens einem Admin-Recht** brauchen `role.manage` – und
  *    seit Fundpunkt 196 zusätzlich, dass der Handelnde das Bündel selbst
  *    tragen könnte. Sonst hätte ein Konto mit ausschließlich `role.manage` sich
  *    die vorhandene Rolle „Admin" einfach selbst zuweisen können; die Schranke

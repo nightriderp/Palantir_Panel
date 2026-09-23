@@ -3,6 +3,7 @@
 import {
   PERMISSION_CATALOG,
   PERMISSIONS,
+  areaForPermission,
   type Permission,
   type RoleDto,
 } from '@palantir/contracts';
@@ -347,11 +348,17 @@ function RoleEditor({
   );
 }
 
-/** Bereich (Präfix vor dem ersten Punkt) → seine Permissions, in Katalogreihenfolge. */
-function groupByArea(): Array<{ area: string; permissions: Permission[] }> {
+/**
+ * Bereich (Präfix vor dem ersten Punkt) → seine Permissions, in Katalogreihenfolge.
+ *
+ * Getrennt nach Nutzer- und Admin-Rechten (Betreiber-Wunsch 23.09.2026): Eine
+ * Rolle für gewöhnliche Konten braucht nur den ersten Block. Der zweite steht
+ * darunter und ist als Administration ausgewiesen.
+ */
+function groupByArea(kind: 'user' | 'admin'): Array<{ area: string; permissions: Permission[] }> {
   const order: string[] = [];
   const byArea = new Map<string, Permission[]>();
-  for (const permission of PERMISSIONS) {
+  for (const permission of PERMISSIONS.filter((p) => areaForPermission(p) === kind)) {
     const area = permission.split('.')[0] ?? permission;
     if (!byArea.has(area)) {
       byArea.set(area, []);
@@ -363,7 +370,20 @@ function groupByArea(): Array<{ area: string; permissions: Permission[] }> {
 }
 
 // Der Katalog ist eine Konstante – einmal je Modul gruppieren statt je Instanz.
-const PERMISSION_GROUPS = groupByArea();
+const PERMISSION_SECTIONS = [
+  {
+    kind: 'user',
+    title: 'Nutzerrechte',
+    hint: 'Was ein gewöhnliches Konto für seine eigenen Server braucht.',
+    groups: groupByArea('user'),
+  },
+  {
+    kind: 'admin',
+    title: 'Admin-Rechte',
+    hint: 'Administration und fremde Ressourcen. Normale Nutzer brauchen davon nichts; vergeben darf eine solche Rolle nur, wer „Rollen verwalten" hat und die Rechte selbst trägt.',
+    groups: groupByArea('admin'),
+  },
+] as const;
 
 interface PermissionPickerProps {
   selected: readonly Permission[];
@@ -379,7 +399,6 @@ interface PermissionPickerProps {
  * Rein darstellend: die Auswahl liegt im aufrufenden Editor.
  */
 function PermissionPicker({ selected, onChange, disabled }: PermissionPickerProps) {
-  const groups = PERMISSION_GROUPS;
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
   function toggle(permission: Permission, on: boolean) {
@@ -391,23 +410,31 @@ function PermissionPicker({ selected, onChange, disabled }: PermissionPickerProp
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {groups.map(({ area, permissions }) => (
-        <fieldset key={area} className="flex flex-col gap-2">
-          <legend className="mb-1 text-2xs uppercase tracking-[0.08em] text-ink-soft">
-            {permissionAreaLabel(area)}
-          </legend>
-          {permissions.map((permission) => (
-            <ToggleRow
-              key={permission}
-              title={PERMISSION_CATALOG[permission].description}
-              description={permission}
-              checked={selectedSet.has(permission)}
-              onChange={(on) => toggle(permission, on)}
-              disabled={disabled}
-            />
+    <div className="flex flex-col gap-6">
+      {PERMISSION_SECTIONS.map((section) => (
+        <section key={section.kind} className="flex flex-col gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">{section.title}</h3>
+            <p className="text-xs text-ink-faint">{section.hint}</p>
+          </div>
+          {section.groups.map(({ area, permissions }) => (
+            <fieldset key={area} className="flex flex-col gap-2">
+              <legend className="mb-1 text-2xs uppercase tracking-[0.08em] text-ink-soft">
+                {permissionAreaLabel(area)}
+              </legend>
+              {permissions.map((permission) => (
+                <ToggleRow
+                  key={permission}
+                  title={PERMISSION_CATALOG[permission].description}
+                  description={permission}
+                  checked={selectedSet.has(permission)}
+                  onChange={(on) => toggle(permission, on)}
+                  disabled={disabled}
+                />
+              ))}
+            </fieldset>
           ))}
-        </fieldset>
+        </section>
       ))}
     </div>
   );

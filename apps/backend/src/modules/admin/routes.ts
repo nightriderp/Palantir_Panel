@@ -541,7 +541,7 @@ export async function registerAdminRoutes(
 
   app.get(
     '/admin/instance-settings',
-    { preHandler: requirePermission('user.manage') },
+    { preHandler: requireAnyPermission('instance.manage', 'gametype.manage') },
     async (request, reply) =>
       handle(reply, async () => services.instanceSettings.get(contextFrom(request).actor)),
   );
@@ -553,7 +553,7 @@ export async function registerAdminRoutes(
    */
   app.put(
     '/admin/instance-settings',
-    { preHandler: requirePermission('user.manage') },
+    { preHandler: requireAnyPermission('instance.manage', 'gametype.manage') },
     async (request, reply) =>
       handle(reply, async () => {
         const input = instanceSettingsInputSchema.parse(request.body ?? {});

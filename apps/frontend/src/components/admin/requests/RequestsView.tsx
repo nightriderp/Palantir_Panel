@@ -86,6 +86,8 @@ export function RequestsView() {
   const { user } = useSession();
   const toast = useToast();
   const canManage = user?.permissions.canManageUsers ?? false;
+  // Spiel-Wünsche gehören zum Spieleangebot, nicht zu den Konten (Fundpunkt 346).
+  const canDecideGames = user?.permissions.canManageGameTypes ?? false;
 
   const [status, setStatus] = useState<RegistrationRequestStatus>('pending');
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -111,7 +113,7 @@ export function RequestsView() {
     }
   }
 
-  if (!canManage) {
+  if (!canManage && !canDecideGames) {
     return (
       <div className="flex flex-col gap-5">
         <PageHeader title="Anfragen" className="-mx-5 -mt-5 px-5" />
@@ -134,118 +136,122 @@ export function RequestsView() {
        * die Kontingent-Anfragen. Der Filter gehoert zu den Registrierungen und
        * bleibt deshalb bei ihnen.
        */}
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-md font-semibold text-ink">Registrierungen</h2>
-          <p className="text-sm text-ink-muted">Neue Konten freigeben oder sperren.</p>
-        </div>
+      {canManage ? (
+        <>
+          <section className="flex flex-col gap-3">
+            <div>
+              <h2 className="text-md font-semibold text-ink">Registrierungen</h2>
+              <p className="text-sm text-ink-muted">Neue Konten freigeben oder sperren.</p>
+            </div>
 
-        <SegmentedControl
-          label="Nach Zustand filtern"
-          value={status}
-          onChange={setStatus}
-          items={STATUS_FILTERS.map((key) => ({ key, label: registrationStatusLabel(key) }))}
-        />
+            <SegmentedControl
+              label="Nach Zustand filtern"
+              value={status}
+              onChange={setStatus}
+              items={STATUS_FILTERS.map((key) => ({ key, label: registrationStatusLabel(key) }))}
+            />
 
-        {resource.loading ? (
-          <AdminLoading label="Konten werden geladen …" />
-        ) : resource.error ? (
-          <AdminError message={resource.error} onRetry={resource.reload} />
-        ) : requests.length === 0 ? (
-          <Panel className="text-center text-base text-ink-faint">
-            {status === 'pending'
-              ? 'Keine offenen Anfragen.'
-              : status === 'blocked'
-                ? 'Keine gesperrten Konten.'
-                : 'Keine freigegebenen Konten.'}
-          </Panel>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {requests.map((request) => (
-              <li key={request.userId}>
-                <Panel className="flex flex-col gap-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-soft font-semibold text-brand">
-                        {serverInitials(request.displayName)}
-                      </span>
-                      <div className="flex flex-col">
-                        <span className="text-base font-semibold text-ink">
-                          {request.displayName}
-                        </span>
-                        <span className="text-sm text-ink-faint">
-                          Registriert am {formatDate(request.registeredAt)}
-                        </span>
+            {resource.loading ? (
+              <AdminLoading label="Konten werden geladen …" />
+            ) : resource.error ? (
+              <AdminError message={resource.error} onRetry={resource.reload} />
+            ) : requests.length === 0 ? (
+              <Panel className="text-center text-base text-ink-faint">
+                {status === 'pending'
+                  ? 'Keine offenen Anfragen.'
+                  : status === 'blocked'
+                    ? 'Keine gesperrten Konten.'
+                    : 'Keine freigegebenen Konten.'}
+              </Panel>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {requests.map((request) => (
+                  <li key={request.userId}>
+                    <Panel className="flex flex-col gap-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-soft font-semibold text-brand">
+                            {serverInitials(request.displayName)}
+                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-base font-semibold text-ink">
+                              {request.displayName}
+                            </span>
+                            <span className="text-sm text-ink-faint">
+                              Registriert am {formatDate(request.registeredAt)}
+                            </span>
+                          </div>
+                        </div>
+                        <Badge tone={registrationStatusTone(request.status)} withDot>
+                          {registrationStatusLabel(request.status)}
+                        </Badge>
                       </div>
-                    </div>
-                    <Badge tone={registrationStatusTone(request.status)} withDot>
-                      {registrationStatusLabel(request.status)}
-                    </Badge>
-                  </div>
 
-                  {request.profiles.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {request.profiles.map((profile) => (
-                        <ProfileBadge
-                          key={`${profile.provider}-${profile.linkedAt}`}
-                          profile={profile}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-ink-faint">Keine verknüpften Profile.</p>
-                  )}
+                      {request.profiles.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {request.profiles.map((profile) => (
+                            <ProfileBadge
+                              key={`${profile.provider}-${profile.linkedAt}`}
+                              profile={profile}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-ink-faint">Keine verknüpften Profile.</p>
+                      )}
 
-                  {request.roleNames.length > 0 ? (
-                    <p className="text-sm text-ink-muted">
-                      Rollen: <span className="text-ink">{request.roleNames.join(', ')}</span>
-                    </p>
-                  ) : null}
+                      {request.roleNames.length > 0 ? (
+                        <p className="text-sm text-ink-muted">
+                          Rollen: <span className="text-ink">{request.roleNames.join(', ')}</span>
+                        </p>
+                      ) : null}
 
-                  <div className="flex flex-wrap gap-2">
-                    {request.permissions.canApprove ? (
-                      <Button
-                        variant="success"
-                        iconLeft="check"
-                        onClick={() => setDialog({ kind: 'approve', request })}
-                      >
-                        Freigeben
-                      </Button>
-                    ) : null}
-                    {request.permissions.canBlock ? (
-                      <Button
-                        variant="danger"
-                        iconLeft="lock"
-                        onClick={() => setDialog({ kind: 'block', request })}
-                      >
-                        Sperren
-                      </Button>
-                    ) : null}
-                    {request.permissions.canUnblock ? (
-                      <Button
-                        variant="secondary"
-                        iconLeft="restart"
-                        onClick={() =>
-                          void run(
-                            () => unblockRegistrationRequest(request.userId),
-                            `„${request.displayName}" ist wieder freigeschaltet.`,
-                          )
-                        }
-                      >
-                        Entsperren
-                      </Button>
-                    ) : null}
-                  </div>
-                </Panel>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                      <div className="flex flex-wrap gap-2">
+                        {request.permissions.canApprove ? (
+                          <Button
+                            variant="success"
+                            iconLeft="check"
+                            onClick={() => setDialog({ kind: 'approve', request })}
+                          >
+                            Freigeben
+                          </Button>
+                        ) : null}
+                        {request.permissions.canBlock ? (
+                          <Button
+                            variant="danger"
+                            iconLeft="lock"
+                            onClick={() => setDialog({ kind: 'block', request })}
+                          >
+                            Sperren
+                          </Button>
+                        ) : null}
+                        {request.permissions.canUnblock ? (
+                          <Button
+                            variant="secondary"
+                            iconLeft="restart"
+                            onClick={() =>
+                              void run(
+                                () => unblockRegistrationRequest(request.userId),
+                                `„${request.displayName}" ist wieder freigeschaltet.`,
+                              )
+                            }
+                          >
+                            Entsperren
+                          </Button>
+                        ) : null}
+                      </div>
+                    </Panel>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-      <QuotaRequestSection />
+          <QuotaRequestSection />
+        </>
+      ) : null}
 
-      <GameRequestSection />
+      {canDecideGames ? <GameRequestSection /> : null}
 
       {dialog?.kind === 'approve' ? (
         <ApproveDialog

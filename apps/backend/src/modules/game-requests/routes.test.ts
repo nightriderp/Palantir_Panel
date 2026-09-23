@@ -32,7 +32,7 @@ const actors: Record<string, PermissionActor> = {
   }),
   admin: buildPermissionActor({
     isOwner: false,
-    roles: [{ grantedPermissions: ['user.manage'], name: 'Admin' }],
+    roles: [{ grantedPermissions: ['gametype.manage'], name: 'Admin' }],
   }),
 };
 

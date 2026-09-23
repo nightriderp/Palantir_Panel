@@ -162,7 +162,7 @@ beforeEach(() => {
   api.deleteFont.mockResolvedValue(ok(null));
   api.uploadFont.mockResolvedValue(ok(HOCHGELADEN));
 
-  sitzung.account = konto(berechtigungen({ canManageUsers: true }));
+  sitzung.account = konto(berechtigungen({ canManageInstance: true }));
 });
 
 describe('Schriftliste', () => {

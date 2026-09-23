@@ -73,7 +73,7 @@ function konto(permissions: GlobalPermissions): AccountDto {
 
 /** Alle Flags, an denen ein Eintrag der Administration hängt – aus der Liste selbst. */
 const ADMIN_FLAGS = [
-  ...new Set(ADMIN_ENTRIES.flatMap((entry) => (entry.requires ? [entry.requires] : []))),
+  ...new Set(ADMIN_ENTRIES.flatMap((entry) => (entry.requires ? [entry.requires].flat() : []))),
 ];
 
 /** Konto, dem genau ein einziges Admin-Recht zusteht. */
@@ -99,11 +99,13 @@ describe('AdminLanding – jedes Admin-Flag hat ein Ziel (frontend-app-04)', () 
     expect(screen.queryByText('Kein Zugriff')).toBeNull();
   });
 
-  it('öffnet mit `canManageGameTypes` den ersten Spieltypen-Bereich', () => {
+  it('öffnet mit `canManageGameTypes` den ersten Bereich des Spieleangebots', () => {
+    // Seit Fundpunkt 346 entscheidet dieses Recht die Spiel-Wünsche – die
+    // Anfragen stehen in der Liste vor den Templates.
     sitzung.account = konto(berechtigungen({ canManageGameTypes: true }));
     render(<AdminLanding />);
 
-    expect(router.replace).toHaveBeenCalledWith('/admin/templates');
+    expect(router.replace).toHaveBeenCalledWith('/admin/requests');
     expect(screen.queryByText('Kein Zugriff')).toBeNull();
   });
 

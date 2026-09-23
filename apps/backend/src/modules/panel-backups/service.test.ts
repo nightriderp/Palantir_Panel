@@ -21,7 +21,7 @@ import { pgEnvFromUrl } from './pg-dump.js';
 
 const ADMIN: PermissionActor = {
   isOwner: false,
-  permissions: new Set(['backup.manage.any']),
+  permissions: new Set(['panelBackup.manage']),
   approved: true,
 };
 const NUTZER: PermissionActor = {

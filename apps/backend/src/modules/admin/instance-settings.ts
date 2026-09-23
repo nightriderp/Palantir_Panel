@@ -19,7 +19,7 @@ import { type InstanceSettingsInput } from '@palantir/validation';
 import { eq } from 'drizzle-orm';
 import { type DbConnection } from '../../db/client.js';
 import { instanceSettings } from '../../db/schema.js';
-import { hasPermission, type PermissionActor } from '../rbac/index.js';
+import { hasAnyPermission, hasPermission, type PermissionActor } from '../rbac/index.js';
 import { type AuditService, entryFor } from './audit.js';
 import { type AdminContext } from './context.js';
 import { AdminError } from './errors.js';
@@ -73,7 +73,7 @@ export interface FontDirectory {
 }
 
 export interface InstanceSettingsService {
-  /** Einstellungen samt Rechteblock – verlangt `user.manage`. */
+  /** Einstellungen samt Rechteblock – verlangt `instance.manage` oder `gametype.manage`. */
   get(actor: PermissionActor): Promise<InstanceSettingsDto>;
   set(ctx: AdminContext, input: InstanceSettingsInput): Promise<InstanceSettingsDto>;
   /**
@@ -189,6 +189,15 @@ export interface InstanceSettingsDependencies {
   readonly onHeldUpdateGameTypesChanged?: (ids: readonly string[]) => void;
 }
 
+/**
+ * Wer die Einstellungen lesen und schreiben darf (Fundpunkt 345).
+ *
+ * Zwei Rechte teilen sich einen Datensatz: `instance.manage` für
+ * Selbstregistrierung und Schriften, `gametype.manage` für das Spieleangebot
+ * (Templates). Welche Felder wer ändern darf, prüft `set` je Feld.
+ */
+const SETTINGS_PERMISSIONS = ['instance.manage', 'gametype.manage'] as const;
+
 export function createInstanceSettingsService(
   deps: InstanceSettingsDependencies,
 ): InstanceSettingsService {
@@ -200,12 +209,12 @@ export function createInstanceSettingsService(
       disabledGameTypes: record.disabledGameTypes,
       heldUpdateGameTypes: record.heldUpdateGameTypes,
       updatedAt: record.updatedAt?.toISOString() ?? null,
-      permissions: { canEdit: hasPermission(actor, 'user.manage') },
+      permissions: { canEdit: hasAnyPermission(actor, SETTINGS_PERMISSIONS) },
     };
   }
 
-  function requireUserManage(actor: PermissionActor): void {
-    if (!hasPermission(actor, 'user.manage')) {
+  function requireSettingsAccess(actor: PermissionActor): void {
+    if (!hasAnyPermission(actor, SETTINGS_PERMISSIONS)) {
       throw new AdminError('PERMISSION_DENIED');
     }
   }
@@ -238,13 +247,13 @@ export function createInstanceSettingsService(
 
   return {
     async get(actor) {
-      requireUserManage(actor);
+      requireSettingsAccess(actor);
 
       return toDto(actor, await deps.repository.load());
     },
 
     async set(ctx, input) {
-      requireUserManage(ctx.actor);
+      requireSettingsAccess(ctx.actor);
 
       const bisher = await deps.repository.load();
       const neu: InstanceSettingsSaveData = {
@@ -275,6 +284,28 @@ export function createInstanceSettingsService(
             ? bisher.hiddenBundledFonts
             : [...new Set(input.hiddenBundledFonts)].sort(),
       };
+
+      /*
+       * Der Körper trägt immer den ganzen Stand (PUT). Geprüft wird deshalb,
+       * was sich **bewegt**: Wer nur das Spieleangebot verwaltet, schickt die
+       * Selbstregistrierung unverändert mit und darf das auch.
+       */
+      const liste = (werte: readonly string[]) => [...werte].sort().join(',');
+      const instanzGeaendert =
+        neu.selfRegistrationEnabled !== bisher.selfRegistrationEnabled ||
+        neu.uiFontId !== bisher.uiFontId ||
+        neu.monospaceFontId !== bisher.monospaceFontId ||
+        liste(neu.hiddenBundledFonts) !== liste(bisher.hiddenBundledFonts);
+      const angebotGeaendert =
+        liste(neu.disabledGameTypes) !== liste(bisher.disabledGameTypes) ||
+        liste(neu.heldUpdateGameTypes) !== liste(bisher.heldUpdateGameTypes);
+
+      if (
+        (instanzGeaendert && !hasPermission(ctx.actor, 'instance.manage')) ||
+        (angebotGeaendert && !hasPermission(ctx.actor, 'gametype.manage'))
+      ) {
+        throw new AdminError('PERMISSION_DENIED');
+      }
 
       await deps.repository.save(neu, ctx.userId);
 

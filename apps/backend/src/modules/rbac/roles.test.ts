@@ -302,6 +302,24 @@ describe('Rollen-Service', () => {
     );
   });
 
+  it('verwehrt Nutzerverwaltern jede Rolle mit einem Admin-Recht (Betreiber-Wunsch 23.09.2026)', async () => {
+    // Vorher zaehlten nur role.manage/user.manage. Eine Rolle mit Audit-Log
+    // oder Node-Verwaltung konnte ein reiner Nutzerverwalter vergeben – auch
+    // an sich selbst. Moderator traegt message.moderate und zaehlt jetzt mit.
+    const betrieb = await service.create(vollverwalter, {
+      name: 'Betrieb',
+      permissions: ['node.manage', 'audit.view'],
+    });
+    const moderator = await repository.findByName('Moderator');
+
+    for (const rolle of [betrieb.id, moderator!.id]) {
+      await expectRbacError(
+        service.assignToUser(nutzerverwalter, 'user-1', rolle),
+        'PERMISSION_DENIED',
+      );
+    }
+  });
+
   it('verwehrt auch Rollenverwaltern eine Rolle, die mehr kann als sie selbst', async () => {
     // Fundpunkt 196: Vorher durfte jeder mit role.manage die Rolle „Admin"
     // vergeben – und sich damit den vollen Katalog verschaffen. Jetzt zaehlt,

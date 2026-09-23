@@ -107,6 +107,24 @@ describe('Seitenleiste – Ziel ist Pflicht (Fundpunkt 155)', () => {
   });
 });
 
+describe('Seitenleiste – normale Nutzer sehen keine Administration', () => {
+  it('zeigt einem Konto mit der Rolle „Nutzer" keinen einzigen Admin-Eintrag', () => {
+    // Die Flags, die die Seed-Rolle „Nutzer" ergibt (server.*.own, node.view).
+    const nutzer: AccountDto = {
+      ...allmaechtig(),
+      isOwner: false,
+      permissions: berechtigungen({ canCreateServer: true, canViewNodes: true }),
+    };
+
+    render(<DashboardNav user={nutzer} ownServers={[]} unreadMessages={0} />);
+
+    const ziele = screen.getAllByRole('link').map((link) => link.getAttribute('href') ?? '');
+
+    expect(ziele.filter((ziel) => ziel.startsWith('/admin'))).toEqual([]);
+    expect(screen.queryByText('Administration')).toBeNull();
+  });
+});
+
 describe('Seitenleiste – Node-Platz ist Admin-Bereich', () => {
   function nurNodeAnsicht(): AccountDto {
     return {

@@ -48,7 +48,7 @@ import {
  * für die zweite Rolle eine Proportionalschrift gewählt wird – sie verbietet
  * es aber nicht. Es ist die Instanz des Betreibers.
  *
- * Berechtigung ist `user.manage` (`canManageUsers`) – dieselbe wie für die
+ * Berechtigung ist `instance.manage` (`canManageInstance`) – dieselbe wie für die
  * Instanz-Einstellungen, in denen die Auswahl gespeichert wird.
  */
 
@@ -70,7 +70,7 @@ const PROBE_DICKTENGLEICH = ['0123456789', 'ILil1 O0o Ss5', '10.0.0.14:25565'];
 export function FontsView() {
   const { user } = useSession();
   const toast = useToast();
-  const canManage = user?.permissions.canManageUsers ?? false;
+  const canManage = user?.permissions.canManageInstance ?? false;
 
   const fonts = useApiResource<FontDto[]>((signal) => fetchFonts(signal), canManage ? [] : null);
   const settings = useApiResource<InstanceSettingsDto>(
