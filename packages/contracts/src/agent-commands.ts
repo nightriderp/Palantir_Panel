@@ -694,6 +694,21 @@ export interface RemoveStorageEntryCommandPayload {
   readonly imageId?: string;
 }
 
+/**
+ * `UPDATE_AVAILABLE` – Anstoß zur Selbstaktualisierung der Node (Gefundener
+ * Punkt 342).
+ *
+ * `targetCommit` ist ein Hinweis, kein Auftrag. `update.sh` benutzt ihn nur, um
+ * zu wissen, **worauf es wartet**: Das Backend startet beim Ausrollen neu, bevor
+ * die Pipeline den Zweig `prod` umhängt – der Anstoß kommt also meist ein paar
+ * Minuten zu früh. Installiert wird trotzdem, was auf `prod` liegt und ein
+ * gültig signiertes Versions-Tag trägt, und nie etwas anderes.
+ */
+export interface UpdateAvailableCommandPayload {
+  /** Vollständiger Commit (40 Hex-Zeichen), den das Backend selbst ausgerollt hat. */
+  readonly targetCommit: string;
+}
+
 // ---------------------------------------------------------------------------
 // Ergebnisse je Befehl (das `data`-Feld im Envelope)
 // ---------------------------------------------------------------------------
@@ -935,6 +950,16 @@ export interface DeleteBackupCommandResult {
   readonly freedBytes: number;
 }
 
+/** Ergebnis von `UPDATE_AVAILABLE`. */
+export interface UpdateAvailableCommandResult {
+  /**
+   * `true`, wenn die Markierungsdatei abgelegt wurde. `false`, wenn der Agent
+   * keinen Anstoß-Ordner kennt – etwa in der Entwicklung oder auf einem Agent
+   * direkt auf dem Docker-Host ohne Selbstaktualisierung.
+   */
+  readonly signaled: boolean;
+}
+
 /**
  * Art eines Postens in der Speicherübersicht, so wie der Agent sie erkennen
  * kann (Pflichtenheft §16).
@@ -1044,6 +1069,7 @@ export interface AgentCommandPayloads {
   readonly GET_STORAGE_BREAKDOWN: GetStorageBreakdownCommandPayload;
   readonly SET_SERVER_QUERY: SetServerQueryCommandPayload;
   readonly REMOVE_STORAGE_ENTRY: RemoveStorageEntryCommandPayload;
+  readonly UPDATE_AVAILABLE: UpdateAvailableCommandPayload;
 }
 
 /** Ergebnis je Befehlsname; `null` bei Befehlen ohne Rückgabe. */
@@ -1073,6 +1099,7 @@ export interface AgentCommandResults {
   readonly GET_STORAGE_BREAKDOWN: GetStorageBreakdownCommandResult;
   readonly SET_SERVER_QUERY: SetServerQueryCommandResult;
   readonly REMOVE_STORAGE_ENTRY: RemoveStorageEntryCommandResult;
+  readonly UPDATE_AVAILABLE: UpdateAvailableCommandResult;
 }
 
 /**
@@ -1122,6 +1149,18 @@ export const IMPLEMENTED_AGENT_COMMANDS = [
   'REMOVE_STORAGE_ENTRY',
   'UPLOAD_ARCHIVE_BLOCK',
 ] as const;
+
+/**
+ * Befehle, die schon im Protokoll stehen, deren Ausführung aber noch fehlt.
+ *
+ * Derselbe Weg wie bei WELLE 0 (`FILE_DELETE`/`FILE_UPLOAD`): Erst kommt der
+ * Vertrag, dann die Umsetzung in einem eigenen Pull Request. Bis dahin
+ * beantwortet der Agent diese Befehle mit `AGENT_COMMAND_NOT_IMPLEMENTED`.
+ * `agent-commands.test.ts` verlangt, dass Protokoll, diese Liste und
+ * `IMPLEMENTED_AGENT_COMMANDS` genau aufgehen – die Liste ist kein Versteck für
+ * vergessene Befehle und verschwindet mit der Umsetzung wieder.
+ */
+export const PENDING_AGENT_COMMANDS = ['UPDATE_AVAILABLE'] as const;
 
 export type ImplementedAgentCommandName = (typeof IMPLEMENTED_AGENT_COMMANDS)[number];
 

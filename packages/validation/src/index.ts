@@ -190,6 +190,8 @@ export {
   removableStorageEntryKindSchema,
   removeStorageEntryCommandPayloadSchema,
   removeStorageEntryCommandResultSchema,
+  updateAvailableCommandPayloadSchema,
+  updateAvailableCommandResultSchema,
   restartCommandPayloadSchema,
   setServerQueryCommandPayloadSchema,
   setServerQueryCommandResultSchema,

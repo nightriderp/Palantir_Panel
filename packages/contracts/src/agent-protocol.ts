@@ -217,6 +217,23 @@ export const AGENT_COMMANDS = [
    * Befehl der kürzere Weg, und der Datei-Manager benutzt ihn ohnehin.
    */
   'UPLOAD_ARCHIVE_BLOCK',
+  /**
+   * Der Node sagen, dass ein neuerer Stand ausgerollt ist (Gefundener Punkt 342).
+   *
+   * Ergänzung zum Katalog aus Pflichtenheft §5.3, dort nachgetragen. Bis dahin
+   * fragte die Gamenode alle fünf Minuten per systemd-Timer nach, ob sich der
+   * Zweig `prod` bewegt hat. Jetzt vergleicht das Backend beim Verbinden eines
+   * Agents dessen gemeldeten Stand mit dem eigenen und schickt bei Abweichung
+   * diesen Befehl. Der Agent legt daraufhin **nur** eine Markierungsdatei in
+   * einem mit dem Host geteilten Ordner ab; eine systemd-Pfad-Unit auf der Node
+   * startet damit `update.sh`.
+   *
+   * Der Befehl ist eine Klingel, kein Auftrag: Was installiert wird,
+   * entscheidet weiter allein `update.sh` anhand des signierten Versions-Tags
+   * auf dem Zweig `prod`. Die VPS bekommt damit keinen Weg, Code auf die Node
+   * zu bringen.
+   */
+  'UPDATE_AVAILABLE',
 ] as const;
 
 /** Alle gültigen Befehlsnamen – verhindert Freitext-Befehle. */
