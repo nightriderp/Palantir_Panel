@@ -12,8 +12,8 @@
  * selbst.
  */
 
-import { defaultMessageForErrorCode } from '@palantir/contracts';
-import { ROOT_COMMAND, SUBCOMMAND_ACCOUNT } from './commands.js';
+import { defaultMessageForErrorCode, type ServerStatus } from '@palantir/contracts';
+import { ROOT_COMMAND, SUBCOMMAND_ACCOUNT, SUBCOMMAND_SERVERS } from './commands.js';
 import {
   type Interaction,
   type InteractionResponse,
@@ -37,11 +37,40 @@ export interface DiscordIdentityResolver {
   resolve(discordUserId: string): Promise<LinkedAccount | null>;
 }
 
+/** Ein Server in der Übersicht von `/palantir server` (F12). */
+export interface ServerListEntry {
+  readonly name: string;
+  readonly status: ServerStatus;
+  /** Discord-Kanal des Servers; `null`, solange er nicht angelegt ist. */
+  readonly channelId: string | null;
+}
+
 export interface InteractionContext {
   readonly identity: DiscordIdentityResolver;
   /** Öffentliche Adresse des Panels, für Verweise in Antworten. */
   readonly webUrl: string;
+  /** Server, die ein Konto sehen darf – Besitz, Mitgliedschaft oder `server.view.any`. */
+  readonly listServers?: (userId: string) => Promise<readonly ServerListEntry[]>;
+  /**
+   * Wer einen Befehl in der Guild auslöst, ist nachweislich Mitglied. Der
+   * Abgleich erfährt das sofort, statt es erst bei der nächsten Prüfung
+   * herauszufinden.
+   */
+  readonly onGuildMember?: (discordUserId: string) => void;
 }
+
+/** Discord zeigt höchstens 2000 Zeichen je Nachricht, die Liste bleibt darunter. */
+const MAX_LIST_ENTRIES = 25;
+
+const STATUS_LABELS: Record<ServerStatus, string> = {
+  creating: 'wird angelegt',
+  stopped: 'gestoppt',
+  starting: 'startet',
+  running: 'läuft',
+  stopping: 'stoppt',
+  error: 'Fehler',
+  crashed: 'abgestürzt',
+};
 
 /** Flüchtige Textantwort; niemand wird darin angepingt. */
 export function ephemeral(content: string): InteractionResponse {
@@ -77,12 +106,96 @@ async function handleCommand(
   }
 
   const sub = interaction.data.options?.[0]?.name;
+  const discordUserId = interactionUserId(interaction);
+
+  if (discordUserId && interaction.guild_id) {
+    context.onGuildMember?.(discordUserId);
+  }
 
   if (sub === SUBCOMMAND_ACCOUNT) {
     return accountStatus(interaction, context);
   }
 
+  if (sub === SUBCOMMAND_SERVERS) {
+    return serverList(interaction, context);
+  }
+
   return UNKNOWN;
+}
+
+/**
+ * Gemeinsame Vorprüfung aller Befehle, die ein Konto brauchen: verknüpft,
+ * nicht gesperrt, freigeschaltet. Liefert die Antwort für den Fehlerfall
+ * oder das Konto.
+ */
+async function requireAccount(
+  interaction: Interaction,
+  context: InteractionContext,
+): Promise<{ account: LinkedAccount } | { response: InteractionResponse }> {
+  const discordUserId = interactionUserId(interaction);
+
+  if (!discordUserId) {
+    return { response: UNKNOWN };
+  }
+
+  const account = await context.identity.resolve(discordUserId);
+
+  if (!account) {
+    return {
+      response: ephemeral(
+        `${defaultMessageForErrorCode('DISCORD_NOT_LINKED')}\n${context.webUrl}/profil`,
+      ),
+    };
+  }
+
+  if (account.banned) {
+    return { response: ephemeral(defaultMessageForErrorCode('AUTH_ACCOUNT_BANNED')) };
+  }
+
+  if (!account.approved) {
+    return {
+      response: ephemeral(
+        `Verknüpft mit **${escapeMarkdown(account.displayName)}**, aber das Konto ist noch nicht ` +
+          'freigeschaltet. Sobald ein Administrator es freigibt, stehen dir die Funktionen hier zur Verfügung.',
+      ),
+    };
+  }
+
+  return { account };
+}
+
+/** `/palantir server` (F12). */
+async function serverList(
+  interaction: Interaction,
+  context: InteractionContext,
+): Promise<InteractionResponse> {
+  const ergebnis = await requireAccount(interaction, context);
+
+  if ('response' in ergebnis) {
+    return ergebnis.response;
+  }
+
+  const servers = (await context.listServers?.(ergebnis.account.userId)) ?? [];
+
+  if (servers.length === 0) {
+    return ephemeral(
+      `Du hast noch keinen Server. Anlegen kannst du ihn im Panel: ${context.webUrl}`,
+    );
+  }
+
+  const zeilen = servers
+    .slice(0, MAX_LIST_ENTRIES)
+    .map(
+      (s) =>
+        `• **${escapeMarkdown(s.name)}** – ${STATUS_LABELS[s.status]}` +
+        (s.channelId ? ` – <#${s.channelId}>` : ''),
+    );
+
+  if (servers.length > MAX_LIST_ENTRIES) {
+    zeilen.push(`… und ${String(servers.length - MAX_LIST_ENTRIES)} weitere im Panel.`);
+  }
+
+  return ephemeral(zeilen.join('\n'));
 }
 
 /** `/palantir konto` (F1). */
@@ -90,32 +203,13 @@ async function accountStatus(
   interaction: Interaction,
   context: InteractionContext,
 ): Promise<InteractionResponse> {
-  const discordUserId = interactionUserId(interaction);
+  const ergebnis = await requireAccount(interaction, context);
 
-  if (!discordUserId) {
-    return UNKNOWN;
+  if ('response' in ergebnis) {
+    return ergebnis.response;
   }
 
-  const account = await context.identity.resolve(discordUserId);
-
-  if (!account) {
-    return ephemeral(
-      `${defaultMessageForErrorCode('DISCORD_NOT_LINKED')}\n${context.webUrl}/profil`,
-    );
-  }
-
-  if (account.banned) {
-    return ephemeral(defaultMessageForErrorCode('AUTH_ACCOUNT_BANNED'));
-  }
-
-  if (!account.approved) {
-    return ephemeral(
-      `Verknüpft mit **${escapeMarkdown(account.displayName)}**, aber das Konto ist noch nicht ` +
-        'freigeschaltet. Sobald ein Administrator es freigibt, stehen dir die Funktionen hier zur Verfügung.',
-    );
-  }
-
-  return ephemeral(`Verknüpft mit **${escapeMarkdown(account.displayName)}**.`);
+  return ephemeral(`Verknüpft mit **${escapeMarkdown(ergebnis.account.displayName)}**.`);
 }
 
 /**

@@ -39,6 +39,12 @@ export interface ServerDtoContext {
    * Nachreichen eines Zustands - heften nichts an.
    */
   readonly pinned?: boolean;
+  /**
+   * Verweis auf den Discord-Kanal (Pflichtenheft §14a.4). `undefined` heißt:
+   * Diese Stelle kennt den Bot nicht (etwa der Live-Kanal) – dann fehlt das
+   * Feld im DTO, statt einen vorhandenen Verweis mit `null` zu überschreiben.
+   */
+  readonly discordChannelUrl?: string | null;
   readonly registry: GameRegistry;
   readonly baseDomain: string;
   readonly recentCrashCount: number;
@@ -189,6 +195,9 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     liveValues: server.liveValues ?? null,
     memberCount: context.memberCount,
     pinned: context.pinned ?? false,
+    ...(context.discordChannelUrl === undefined
+      ? {}
+      : { discordChannelUrl: context.discordChannelUrl }),
     lastStartedAt: server.lastStartedAt,
     createdAt: server.createdAt,
     permissions,

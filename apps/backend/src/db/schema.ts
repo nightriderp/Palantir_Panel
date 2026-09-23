@@ -29,3 +29,4 @@ export * from './schema/fonts.js';
 export * from './schema/chat.js';
 export * from './schema/arcade.js';
 export * from './schema/achievements.js';
+export * from './schema/discord-bot.js';

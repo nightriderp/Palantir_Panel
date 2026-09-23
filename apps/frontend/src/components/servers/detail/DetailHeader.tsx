@@ -180,6 +180,19 @@ export function DetailHeader({
           ) : (
             <p className="mt-2 text-xs text-ink-faint">Adresse nicht freigegeben</p>
           )}
+
+          {/* Kanal des Discord-Bots (Pflichtenheft §14a.4); fehlt ohne Bot oder Kanal. */}
+          {server.discordChannelUrl ? (
+            <a
+              href={server.discordChannelUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex w-fit items-center gap-1.5 text-xs text-ink-muted hover:text-ink"
+            >
+              <Icon name="chat" size={11} />
+              In Discord öffnen
+            </a>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 flex-wrap gap-2">

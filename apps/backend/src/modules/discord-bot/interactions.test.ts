@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COMMANDS, ROOT_COMMAND, SUBCOMMAND_ACCOUNT } from './commands.js';
+import { COMMANDS, ROOT_COMMAND, SUBCOMMAND_ACCOUNT, SUBCOMMAND_SERVERS } from './commands.js';
 import {
   type DiscordIdentityResolver,
   escapeMarkdown,
@@ -106,6 +106,71 @@ describe('handleInteraction', () => {
       });
 
       expect(antwort.data?.content).toContain('\\*\\*fett\\*\\* \\`code\\`');
+    });
+  });
+
+  describe('/palantir server (F12)', () => {
+    function serverBefehl(discordUserId: string): Interaction {
+      return {
+        id: 'i2',
+        type: InteractionType.ApplicationCommand,
+        guild_id: 'g',
+        member: { user: { id: discordUserId } },
+        data: { name: ROOT_COMMAND, options: [{ name: SUBCOMMAND_SERVERS, type: 1 }] },
+      };
+    }
+
+    it('listet die Server mit Zustand und Kanal-Verweis', async () => {
+      const antwort = await handleInteraction(serverBefehl('d1'), {
+        identity: resolver({ d1: KONTO }),
+        webUrl: WEB_URL,
+        listServers: async (userId) =>
+          userId === 'u1'
+            ? [
+                { name: 'Survival', status: 'running', channelId: 'k1' },
+                { name: 'Creative', status: 'stopped', channelId: null },
+              ]
+            : [],
+      });
+
+      expect(antwort.data?.flags).toBe(MESSAGE_FLAG_EPHEMERAL);
+      expect(antwort.data?.content).toContain('**Survival** – läuft – <#k1>');
+      expect(antwort.data?.content).toContain('**Creative** – gestoppt');
+    });
+
+    it('verweist ohne Server auf das Panel', async () => {
+      const antwort = await handleInteraction(serverBefehl('d1'), {
+        identity: resolver({ d1: KONTO }),
+        webUrl: WEB_URL,
+        listServers: async () => [],
+      });
+
+      expect(antwort.data?.content).toContain(WEB_URL);
+    });
+
+    it('verlangt ein freigeschaltetes Konto', async () => {
+      const listServers = async () => [
+        { name: 'Geheim', status: 'running' as const, channelId: null },
+      ];
+      const antwort = await handleInteraction(serverBefehl('d1'), {
+        identity: resolver({ d1: { ...KONTO, approved: false } }),
+        webUrl: WEB_URL,
+        listServers,
+      });
+
+      expect(antwort.data?.content).not.toContain('Geheim');
+    });
+
+    it('meldet einen Befehl aus der Guild als Mitgliedschaft', async () => {
+      const gemeldet: string[] = [];
+
+      await handleInteraction(serverBefehl('d1'), {
+        identity: resolver({ d1: KONTO }),
+        webUrl: WEB_URL,
+        onGuildMember: (id) => gemeldet.push(id),
+      });
+
+      expect(gemeldet).toEqual(['d1']);
     });
   });
 

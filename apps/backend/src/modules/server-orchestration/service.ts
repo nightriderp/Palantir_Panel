@@ -480,6 +480,19 @@ export class ServerOrchestrationService {
     return buildServerHostname(server.subdomain, this.deps.config.baseDomain);
   }
 
+  /**
+   * Zuletzt gemeldete Spielerzahl – für die Status-Kachel des Discord-Bots
+   * (Pflichtenheft §14a.5). `null`, wenn das Spiel keine meldet oder der
+   * letzte Stand älter ist als die Frist des Zwischenspeichers.
+   */
+  latestPlayerCount(serverId: string): { online: number; max: number | null } | null {
+    const stand = this.latestQuery.read(serverId, this.now());
+
+    return stand.playersOnline === null
+      ? null
+      : { online: stand.playersOnline, max: stand.playersMax };
+  }
+
   // -------------------------------------------------------------------------
   // Anlegen
   // -------------------------------------------------------------------------
