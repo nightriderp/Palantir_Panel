@@ -10,7 +10,8 @@
 #      als Hauptprozess, damit das Stoppsignal ankommt (Schritt 3.1).
 #
 # Einstellungen aus dem Panel: Servername, Server-Passwort, Spieleranzahl
-# (Schritt 2), Startkarte, Spielmodus, Bots (Schritt 3). Keine Plugins.
+# (Schritt 2), Startkarte, Spielmodus, Bots (Schritt 3), Workshop-Karte
+# (Schritt 4). Keine Plugins.
 #
 # **Der Port kommt vom Panel** (`CS2_PORT`, Schritt 1.1): dieselbe Nummer, unter
 # der der Server draußen erreichbar ist. CS2 nennt Clients seinen eigenen Port;
@@ -95,6 +96,23 @@ case "$KARTE" in
     ;;
 esac
 
+# **Workshop-Karte** (Schritt 4): Karte `workshop` heißt „die Karte mit der
+# Workshop-ID aus CS2_WORKSHOP_MAP" – geladen mit `+host_workshop_map`, das sie
+# beim Start aus dem Steam-Workshop holt. Nur Ziffern, und nicht 0: Ohne ID
+# gäbe es nichts zu laden, und CS2 bliebe ohne Karte stehen.
+WORKSHOP_ID="${CS2_WORKSHOP_MAP:-0}"
+case "$WORKSHOP_ID" in
+  '' | *[!0-9]*)
+    palantir_log "Ungueltige Workshop-ID: ${WORKSHOP_ID}."
+    exit 78
+    ;;
+esac
+
+if [ "$KARTE" = workshop ] && [ "$WORKSHOP_ID" -eq 0 ]; then
+  palantir_log 'Als Startkarte ist "workshop" gewaehlt, aber keine Workshop-ID eingetragen.'
+  exit 78
+fi
+
 BOTS="${CS2_BOTS:-0}"
 case "$BOTS" in
   '' | *[!0-9]*)
@@ -123,9 +141,10 @@ for modus in competitive casual competitive2v2 deathmatch armsrace; do
     'exec palantir' 'exec palantir_live' > "${CFG_ORDNER}/gamemode_${modus}_server.cfg"
 done
 
-# **Live-Werte gelten bis zum Start** (Schritt 3.2). Was im Panel live
-# geändert wurde, schreibt das Backend in `palantir_live.cfg`; ein Start fängt
-# wieder bei den Einstellungen an.
+# **Steuerung** (Schritt 3.2/3.3). Was im Panel bei laufendem Server
+# umgestellt wird, schreibt das Backend in `palantir_live.cfg` – und in die
+# Einstellungen, aus denen dieser Start schon `palantir.cfg` gebaut hat. Die
+# Datei wird deshalb geleert.
 printf '%s\n' '// Schreibt das Panel bei Live-Aenderungen; beim Start geleert.' \
   > "${CFG_ORDNER}/palantir_live.cfg"
 
@@ -136,7 +155,11 @@ if [ -n "${CS2_MAX_PLAYERS:-}" ]; then
   set -- "$@" -maxplayers "$CS2_MAX_PLAYERS"
 fi
 
-set -- "$@" +map "$KARTE" +exec palantir
+if [ "$KARTE" = workshop ]; then
+  set -- "$@" +host_workshop_map "$WORKSHOP_ID" +exec palantir
+else
+  set -- "$@" +map "$KARTE" +exec palantir
+fi
 
 # -----------------------------------------------------------------------------
 # 4. Start – und sauberes Ende (Schritt 3.1)
@@ -173,6 +196,9 @@ ulimit -s 2048 2> /dev/null || true
 # CS2 liest Befehle von der Standardeingabe; das Rohr legt die Wurzel an.
 palantir_konsole_oeffnen
 
+if [ "$KARTE" = workshop ]; then
+  KARTE="Workshop-Karte ${WORKSHOP_ID}"
+fi
 palantir_log "Startet CS2 (${CS2_GAME_MODE:-competitive}) auf ${KARTE}, Port ${PORT}"
 
 cd "${SERVER}/game"
