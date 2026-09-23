@@ -6,7 +6,8 @@
 #
 #   1. Serverdateien über SteamCMD holen (Anwendung 730, anonym).
 #   2. `steamclient.so` dorthin legen, wo CS2 sie sucht.
-#   3. CS2 über Valves eigenen Starter `game/cs2.sh` starten.
+#   3. CS2 starten, wie Valves `game/cs2.sh` es tut – aber mit diesem Skript
+#      als Hauptprozess, damit das Stoppsignal ankommt (Schritt 3.1).
 #
 # Einstellungen aus dem Panel: Servername, Server-Passwort, Spieleranzahl
 # (Schritt 2), Startkarte, Spielmodus, Bots (Schritt 3). Keine Plugins.
@@ -20,7 +21,7 @@ set -eu
 . "${PALANTIR_LIB_DIR:-/opt/palantir/lib}/steam.sh"
 
 SERVER="${PALANTIR_DATENORDNER}/server"
-STARTER="${SERVER}/game/cs2.sh"
+BINAERDATEI="${SERVER}/game/bin/linuxsteamrt64/cs2"
 PORT="${CS2_PORT:-27015}"
 
 palantir_intern_anlegen
@@ -29,8 +30,8 @@ palantir_intern_anlegen
 # 1. Serverdateien – bei jedem Start abgeglichen, wie bei allen SteamCMD-Spielen.
 steam_app_holen 730 "$SERVER"
 
-if [ ! -f "$STARTER" ]; then
-  palantir_log "Nach dem Holen fehlt ${STARTER}."
+if [ ! -f "$BINAERDATEI" ]; then
+  palantir_log "Nach dem Holen fehlt ${BINAERDATEI}."
   palantir_log 'Den Ordner "server" im Datenordner loeschen und neu starten holt alles erneut.'
   exit 69
 fi
@@ -132,13 +133,33 @@ fi
 set -- "$@" +map "$KARTE" +exec palantir
 
 # -----------------------------------------------------------------------------
-# 4. Start
+# 4. Start – und sauberes Ende (Schritt 3.1)
 #
-# **Über `game/cs2.sh`, nicht über die Binärdatei.** Seit dem Update vom
-# 17.09.2025 braucht CS2 Bibliotheken aus seinen eigenen Ordnern (`libv8.so`);
-# den Suchpfad setzt der Starter. Direkt gestartet bricht der Server mit
-# „Unable to load module server" ab – so geschehen im ersten Anlauf.
+# **CS2 direkt, mit dem, was Valves `game/cs2.sh` für einen dedizierten Server
+# tut:** Suchpfad `game/bin/linuxsteamrt64` (dort liegt u. a. `libv8.so`, ohne
+# ihn „Unable to load module server"), Datei- und Stack-Limits, Arbeitsordner
+# `game/`, `ENABLE_PATHMATCH`. Die Vorlage steht bei SteamTracking
+# (`GameTracking-CS2/game/cs2.sh`).
 #
+# **Warum nicht mehr über `cs2.sh`:** Es startet CS2 als Kind und wartet. Mit
+# `exec bash cs2.sh` war `bash` Prozess 1 im Container – und Prozess 1 bekommt
+# SIGTERM nur, wenn er es abfängt. `bash` tat das nicht, CS2 bekam nichts
+# davon mit, und jedes Stoppen lief in Dockers volle Frist (23.09.2026).
+#
+# **Darum bleibt dieses Skript stehen** und fängt das Signal selbst: Erst geht
+# `quit` in die Konsole, damit CS2 sich selbst beendet; tut es das nicht
+# binnen 20 Sekunden, bekommt CS2 das Signal direkt.
+if [ -z "${ENABLE_PATHMATCH:-}" ]; then
+  ENABLE_PATHMATCH=1
+fi
+LD_LIBRARY_PATH="${SERVER}/game/bin/linuxsteamrt64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export LD_LIBRARY_PATH ENABLE_PATHMATCH
+
+# Wie `cs2.sh`. Als gewöhnlicher Benutzer darf das weiche Limit nicht über das
+# harte – dann bleibt es, wie es ist.
+ulimit -n 65535 2> /dev/null || true
+ulimit -s 2048 2> /dev/null || true
+
 # CS2 liest Befehle von der Standardeingabe; das Rohr legt die Wurzel an.
 palantir_konsole_oeffnen
 
@@ -146,4 +167,50 @@ palantir_log "Startet CS2 (${CS2_GAME_MODE:-competitive}) auf ${KARTE}, Port ${P
 
 cd "${SERVER}/game"
 
-exec bash "$STARTER" "$@" 0<&3 3>&-
+beenden() {
+  UNTERBROCHEN=1
+  palantir_log 'Stoppsignal erhalten - schicke "quit" an die Konsole.'
+  printf 'quit\n' >&3 2> /dev/null || true
+  # Beendet sich CS2 nicht selbst, bekommt es das Signal direkt – als Kind
+  # dieses Skripts, nicht als Prozess 1, also kommt es auch an.
+  (
+    sleep 20
+    kill -TERM "${SERVER_PID:-}" 2> /dev/null || true
+  ) &
+}
+
+# Der Fang steht **vor** dem Start: Ein Signal in der Lücke dazwischen
+# beendete die Shell sonst kommentarlos.
+trap beenden TERM INT
+
+"$BINAERDATEI" "$@" 0<&3 3>&- &
+SERVER_PID=$!
+
+# `wait` kehrt beim Signal mit 128+n zurück, auch wenn CS2 noch läuft – dann
+# noch einmal warten; das zweite `wait` liefert den echten Status (Fundpunkt
+# 337, wie bei Terraria und tModLoader).
+ERGEBNIS=0
+ERSTER_LAUF=1
+while :; do
+  UNTERBROCHEN=0
+
+  if wait "$SERVER_PID"; then
+    STATUS=0
+  else
+    STATUS=$?
+  fi
+
+  if [ "$ERSTER_LAUF" = 1 ] || [ "$STATUS" -ne 127 ]; then
+    ERGEBNIS=$STATUS
+  fi
+
+  ERSTER_LAUF=0
+
+  if [ "$UNTERBROCHEN" = 1 ] && [ "$STATUS" -gt 128 ]; then
+    continue
+  fi
+
+  break
+done
+
+exit "$ERGEBNIS"
