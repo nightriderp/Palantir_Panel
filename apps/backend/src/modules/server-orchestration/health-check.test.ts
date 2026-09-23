@@ -347,3 +347,71 @@ describe('awaitHealthy() – Warten auf den Hochlauf', () => {
     expect(slept).toBe(0);
   });
 });
+
+/**
+ * Startfrist nach Aktivität (Betreiber-Wunsch 23.09.2026).
+ */
+describe('awaitHealthy() – Frist nach Aktivität', () => {
+  const target: HealthCheckTarget = { host: '127.0.0.1', port: 1, query: PORT_CONNECT };
+  const nieGesund: HealthProbe = {
+    check: (): Promise<HealthCheckResult> =>
+      Promise.resolve({
+        healthy: false,
+        pingMs: null,
+        playersOnline: null,
+        playersMax: null,
+        reason: 'lädt noch',
+      }),
+  };
+
+  function lauf(
+    progressDeadline: () => number | null,
+    timeoutReason?: (v: string) => string | null,
+  ) {
+    let elapsed = 0;
+
+    return awaitHealthy({
+      target,
+      startupTimeoutMs: 10_000,
+      attemptTimeoutMs: 500,
+      intervalMs: 1_000,
+      probe: nieGesund,
+      progressDeadline,
+      ...(timeoutReason === undefined ? {} : { timeoutReason }),
+      sleep: (ms) => {
+        elapsed += ms;
+
+        return Promise.resolve();
+      },
+      now: () => elapsed,
+    }).then((result) => ({ result, elapsed }));
+  }
+
+  it('wartet über die feste Frist hinaus, solange der Fortschritt sie verschiebt', async () => {
+    const { elapsed } = await lauf(() => 30_000);
+
+    expect(elapsed).toBeGreaterThan(10_000);
+    expect(elapsed).toBeLessThanOrEqual(30_000);
+  });
+
+  it('verkürzt die feste Frist nie', async () => {
+    const { elapsed } = await lauf(() => 2_000);
+
+    expect(elapsed).toBeGreaterThanOrEqual(9_000);
+  });
+
+  it('bleibt ohne Fortschritt bei der festen Frist', async () => {
+    const { elapsed } = await lauf(() => null);
+
+    expect(elapsed).toBeLessThanOrEqual(10_000);
+  });
+
+  it('nimmt den eigenen Text für den Fristablauf', async () => {
+    const { result } = await lauf(
+      () => null,
+      (letzterVersuch) => `Kein Fortschritt. Letzter Versuch: ${letzterVersuch}`,
+    );
+
+    expect(result.reason).toBe('Kein Fortschritt. Letzter Versuch: lädt noch');
+  });
+});

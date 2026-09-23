@@ -257,6 +257,19 @@ export interface AwaitHealthyOptions {
   /** Wartezeit zwischen zwei Versuchen. */
   readonly intervalMs: number;
   readonly probe: HealthProbe;
+  /**
+   * Späteste Frist aus der Konsolenaktivität (`startupProgress`, Betreiber-
+   * Wunsch 23.09.2026), in Millisekunden seit Epoch; `null`, solange kein
+   * Fortschritt kam. Wird vor jeder Prüfung neu gefragt und verschiebt die
+   * Frist **nur nach hinten** – nie vor `startupTimeoutMs`.
+   */
+  readonly progressDeadline?: () => number | null;
+  /**
+   * Eigener Text für den Fristablauf; bekommt den Grund des letzten Versuchs.
+   * `null` heißt: der übliche Text („innerhalb von … Sekunden nicht
+   * erreichbar").
+   */
+  readonly timeoutReason?: (letzterVersuch: string) => string | null;
   /** Wird hereingereicht, damit Tests ohne echte Wartezeit auskommen. */
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => number;
@@ -286,12 +299,18 @@ export async function awaitHealthy(options: AwaitHealthyOptions): Promise<Health
       return last;
     }
 
-    if (now() + options.intervalMs >= deadline) {
+    const frist = Math.max(deadline, options.progressDeadline?.() ?? deadline);
+
+    if (now() + options.intervalMs >= frist) {
+      const letzterVersuch = last.reason ?? 'unbekannt';
+
       return {
         ...last,
-        reason: `Der Server war innerhalb von ${String(
-          Math.round(options.startupTimeoutMs / 1000),
-        )} Sekunden nicht erreichbar. Letzter Versuch: ${last.reason ?? 'unbekannt'}`,
+        reason:
+          options.timeoutReason?.(letzterVersuch) ??
+          `Der Server war innerhalb von ${String(
+            Math.round(options.startupTimeoutMs / 1000),
+          )} Sekunden nicht erreichbar. Letzter Versuch: ${letzterVersuch}`,
       };
     }
 

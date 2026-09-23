@@ -5223,3 +5223,145 @@ describe('Besitzerwechsel (Lastenheft §3.7, Pflichtenheft §7)', () => {
     });
   });
 });
+
+/**
+ * Startfrist nach Aktivität und letzte Konsolenzeile (Betreiber-Wunsch
+ * 23.09.2026).
+ *
+ * Die Sonde schickt bei jeder Prüfung selbst eine Konsolenzeile – so kommt sie
+ * genau dann an, wenn der Server im Zustand `starting` steht, wie im Betrieb.
+ */
+describe('Start: Konsole beobachten', () => {
+  function konsolenSonde(
+    zeileFuer: (versuch: number) => string | null,
+    gesundAb: number | null,
+  ): { probe: HealthProbe; bind: (h: Harness, serverId: string) => void; versuche: () => number } {
+    let harness: Harness | null = null;
+    let serverId = '';
+    let versuche = 0;
+
+    return {
+      bind: (h, id) => {
+        harness = h;
+        serverId = id;
+      },
+      versuche: () => versuche,
+      probe: {
+        check: async (): Promise<HealthCheckResult> => {
+          versuche += 1;
+          const text = zeileFuer(versuche);
+
+          if (harness !== null && text !== null) {
+            await harness.service.handleAgentEvent(HOST.id, {
+              kind: 'event',
+              event: 'LOG_LINE',
+              serverId,
+              payload: {
+                containerId: 'container-1',
+                stream: 'stdout',
+                message: text,
+                timestamp: NOW.toISOString(),
+                at: NOW.toISOString(),
+              },
+              emittedAt: NOW.toISOString(),
+            });
+          }
+
+          const gesund = gesundAb !== null && versuche >= gesundAb;
+
+          return {
+            healthy: gesund,
+            pingMs: gesund ? 5 : null,
+            playersOnline: null,
+            playersMax: null,
+            reason: gesund ? null : 'nicht erreichbar',
+          };
+        },
+      },
+    };
+  }
+
+  // Feste Frist 60 s, Prüfung alle 5 s: ohne Verlängerung höchstens ~12 Versuche.
+  const MIT_FORTSCHRITT: GameTypeDefinition = {
+    ...TEST_GAME_TYPE,
+    startupProgress: { pattern: '^Fortschritt', quietSeconds: 30, maxSeconds: 600 },
+  };
+
+  async function starte(sonde: ReturnType<typeof konsolenSonde>, definition = TEST_GAME_TYPE) {
+    const harness = makeHarness({ probe: sonde.probe, gameTypes: [definition] });
+    const created = await harness.service.createServer(
+      createInput('mein-server', definition),
+      OWNER_ID,
+    );
+    sonde.bind(harness, created.id);
+
+    await harness.service.startServer(created.id, OWNER_ID);
+
+    return settle(harness, created.id, ['running', 'error']);
+  }
+
+  it('nennt die letzte Konsolenzeile in der Fehlermeldung – bei jedem Spiel', async () => {
+    const sonde = konsolenSonde(
+      () => 'FATAL ERROR: CAppSystemDict:Unable to load module server',
+      null,
+    );
+
+    const server = await starte(sonde);
+
+    expect(server.status).toBe('error');
+    expect(server.statusMessage).toContain(
+      'Letzte Konsolenzeile: „FATAL ERROR: CAppSystemDict:Unable to load module server“',
+    );
+  });
+
+  it('läuft ohne startupProgress weiter nach der festen Frist ab', async () => {
+    const sonde = konsolenSonde(() => 'Fortschritt 1 %', 30);
+
+    const server = await starte(sonde);
+
+    expect(server.status).toBe('error');
+    expect(sonde.versuche()).toBeLessThan(30);
+  });
+
+  it('wartet über die feste Frist hinaus, solange Fortschritt kommt', async () => {
+    // Gesund erst beim 30. Versuch – nach 145 s, also weit hinter 60 s.
+    const sonde = konsolenSonde((versuch) => `Fortschritt ${String(versuch)} %`, 30);
+
+    const server = await starte(sonde, MIT_FORTSCHRITT);
+
+    expect(server.status).toBe('running');
+  });
+
+  it('zählt nur Zeilen, die auf das Muster passen', async () => {
+    const sonde = konsolenSonde(() => 'Loaded libtier0.so', 30);
+
+    const server = await starte(sonde, MIT_FORTSCHRITT);
+
+    expect(server.status).toBe('error');
+  });
+
+  it('scheitert, wenn der Fortschritt zu lange ausbleibt – und sagt es', async () => {
+    // Fortschritt bis zum 20. Versuch (95 s), danach nur noch Stille.
+    const sonde = konsolenSonde(
+      (versuch) => (versuch <= 20 ? `Fortschritt ${String(versuch)} %` : null),
+      null,
+    );
+
+    const server = await starte(sonde, MIT_FORTSCHRITT);
+
+    expect(server.status).toBe('error');
+    expect(server.statusMessage).toContain('kein Fortschritt mehr');
+    // 95 s Fortschritt plus 30 s Stille – nicht die ganzen 600 s.
+    expect(sonde.versuche()).toBeLessThan(40);
+  });
+
+  it('gibt spätestens an der Obergrenze auf, auch wenn es weiter vorangeht', async () => {
+    const sonde = konsolenSonde((versuch) => `Fortschritt ${String(versuch)} %`, null);
+
+    const server = await starte(sonde, MIT_FORTSCHRITT);
+
+    expect(server.status).toBe('error');
+    expect(server.statusMessage).toContain('Obergrenze');
+    expect(sonde.versuche()).toBeLessThanOrEqual(121);
+  });
+});
