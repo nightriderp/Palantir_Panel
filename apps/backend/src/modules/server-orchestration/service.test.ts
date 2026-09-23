@@ -5479,9 +5479,26 @@ describe('Live-Steuerung', () => {
     expect(harness.socket.commands).toHaveLength(0);
   });
 
-  it('geht nur, solange der Server läuft', async () => {
+  it('nimmt bei ausgeschaltetem Server nur die Einstellungen – ohne Befehl und Datei', async () => {
     const harness = makeHarness({ gameTypes: [LIVE] });
     const created = await harness.service.createServer(createInput('mein-server', LIVE), OWNER_ID);
+    harness.socket.commands.length = 0;
+
+    await harness.service.applyLiveValues(created.id, { bots: 2, map: 'b' });
+
+    expect(harness.socket.commands).toHaveLength(0);
+    expect((await harness.service.requireServer(created.id)).configJson).toMatchObject({
+      bots: 2,
+      map: 'b',
+    });
+  });
+
+  it('lehnt in einem Übergang ab – ein Start baut womöglich schon', async () => {
+    const harness = makeHarness({ gameTypes: [LIVE] });
+    const created = await harness.service.createServer(createInput('mein-server', LIVE), OWNER_ID);
+    const gespeichert = harness.repository.servers.get(created.id);
+    if (gespeichert === undefined) throw new Error('Server fehlt');
+    harness.repository.servers.set(created.id, { ...gespeichert, status: 'starting' });
 
     await expect(harness.service.applyLiveValues(created.id, { bots: 2 })).rejects.toMatchObject({
       code: 'SERVER_STATE_CONFLICT',

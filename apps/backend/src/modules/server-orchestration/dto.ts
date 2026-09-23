@@ -85,7 +85,12 @@ function ersatzDefinition(
   gameType: string,
 ): Pick<
   GameTypeDefinition,
-  'name' | 'dockerImage' | 'supportsVirtualHostRouting' | 'consoleQuickCommands' | 'console'
+  | 'name'
+  | 'dockerImage'
+  | 'supportsVirtualHostRouting'
+  | 'consoleQuickCommands'
+  | 'console'
+  | 'addressCopyPrefix'
 > {
   return {
     name: `Unbekannter Spieltyp (${gameType})`,
@@ -164,6 +169,10 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
           hostname: buildServerHostname(server.subdomain, context.baseDomain),
           // Bei Hostname-Routing sieht der Spieler keinen Port (§13).
           port: definition.supportsVirtualHostRouting ? null : primaryPort,
+          // Nur fürs Kopieren (CS2: `connect `), die Anzeige bleibt ohne.
+          ...(definition.addressCopyPrefix === undefined
+            ? {}
+            : { copyPrefix: definition.addressCopyPrefix }),
         }
       : null,
     assignedPorts: server.assignedPorts.map((assignment) => assignment.publicPort),
@@ -191,7 +200,7 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
      */
     imageVersion: imageVersionLabel(server.imageRef),
     latestImageVersion: bekannt === null ? null : imageVersionLabel(bekannt.dockerImage),
-    // Live-Steuerung: seit dem Start geänderte Werte, sonst `null`.
+    // Steuerung: nur noch Reste aus v2.4.6; die Werte stehen seitdem in `config`.
     liveValues: server.liveValues ?? null,
     memberCount: context.memberCount,
     pinned: context.pinned ?? false,
