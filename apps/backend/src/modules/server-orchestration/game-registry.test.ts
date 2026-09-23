@@ -1545,9 +1545,26 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.dockerImage).toBe(`ghcr.io/nightriderp/palantir-game-cs2:${version}`);
   });
 
-  it('hat in Schritt 1 keine Einstellungen – die kommen einzeln danach', () => {
-    expect(CS2_GAME_TYPE.configFields).toEqual([]);
-    expect(CS2_GAME_TYPE.envMapping).toEqual({});
+  it('hat in Schritt 2 genau Servername, Passwort und Spieleranzahl', () => {
+    expect(CS2_GAME_TYPE.configFields.map((feld) => feld.key)).toEqual([
+      'serverName',
+      'serverPassword',
+      'maxPlayers',
+    ]);
+  });
+
+  it('reicht jedes Feld an das Image durch – ein Feld ohne Variable bewirkt nichts', () => {
+    for (const feld of CS2_GAME_TYPE.configFields) {
+      expect(CS2_GAME_TYPE.envMapping?.[feld.key], feld.key).toBeDefined();
+    }
+  });
+
+  it('führt das Passwort als Passwortfeld und begrenzt die Spieler auf 2 bis 64', () => {
+    const feld = (key: string) => CS2_GAME_TYPE.configFields.find((f) => f.key === key);
+
+    expect(feld('serverPassword')?.type).toBe('password');
+    expect(feld('maxPlayers')?.min).toBe(2);
+    expect(feld('maxPlayers')?.max).toBe(64);
   });
 
   it('spricht über die Standardeingabe – CS2 hat kein RCON', () => {

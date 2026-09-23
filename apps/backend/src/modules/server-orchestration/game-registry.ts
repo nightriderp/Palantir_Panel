@@ -3415,7 +3415,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.2',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.3',
   defaultEnv: {},
   ports: [
     {
@@ -3435,9 +3435,52 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       envVar: 'CS2_PORT',
     },
   ],
-  configFields: [],
-  envMapping: {},
-  restartRequiredFields: [],
+  // Schritt 2 (23.09.2026): die drei Grundeinstellungen, sonst nichts.
+  configFields: [
+    {
+      key: 'serverName',
+      label: 'Servername',
+      type: 'text',
+      defaultValue: 'Palantir CS2',
+      description: 'So heißt der Server in der Serverliste und im Spiel.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'serverPassword',
+      label: 'Server-Passwort',
+      type: 'password',
+      defaultValue: '',
+      description: 'Leer lassen, dann kommt jeder mit der Adresse drauf.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'maxPlayers',
+      label: 'Spieler höchstens',
+      type: 'number',
+      defaultValue: 10,
+      description: 'Wie viele gleichzeitig spielen dürfen. Bots zählen mit.',
+      required: false,
+      options: [],
+      min: 2,
+      max: 64,
+      lockedAfterCreate: false,
+    },
+  ],
+  envMapping: {
+    serverName: 'CS2_HOSTNAME',
+    serverPassword: 'CS2_PASSWORD',
+    maxPlayers: 'CS2_MAX_PLAYERS',
+  },
+  // CS2 liest alle drei beim Start; im laufenden Betrieb erreicht ihn keins.
+  restartRequiredFields: ['serverName', 'serverPassword', 'maxPlayers'],
   resourceDefaults: {
     // Reichlich bemessen, damit Schritt 1 nicht am Speicher scheitert. Wie
     // viel CS2 wirklich braucht, zeigen die Messwerte, sobald er läuft.

@@ -8,7 +8,8 @@
 #   2. `steamclient.so` dorthin legen, wo CS2 sie sucht.
 #   3. CS2 über Valves eigenen Starter `game/cs2.sh` starten.
 #
-# Keine Einstellungen aus dem Panel, keine Plugins: feste Karte `de_dust2`.
+# Einstellungen aus dem Panel (Schritt 2): Servername, Server-Passwort,
+# Spieleranzahl. Sonst nichts – keine Plugins, feste Karte `de_dust2`.
 #
 # **Der Port kommt vom Panel** (`CS2_PORT`, Schritt 1.1): dieselbe Nummer, unter
 # der der Server draußen erreichbar ist. CS2 nennt Clients seinen eigenen Port;
@@ -53,7 +54,40 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 3. Start
+# 3. Einstellungen aus dem Panel
+#
+# **Name und Passwort in eine eigene Datei**, die CS2 beim Start ausführt
+# (`+exec palantir`). Nicht als Startparameter: Das Passwort stünde sonst in der
+# Prozessliste, und ein Name mit Leerzeichen müsste den Weg durch zwei
+# Starter-Skripte überstehen. Die Datei schreibt das Skript bei jedem Start neu;
+# eigene Zeilen gehören in `server.cfg`.
+#
+# Anführungszeichen und Zeilenumbrüche fallen weg: Sie beendeten den Wert in
+# der Datei, und der Rest liefe als eigener Befehl.
+sauber() {
+  printf '%s' "$1" | tr -d '"\r\n;'
+}
+
+CFG_ORDNER="${SERVER}/game/csgo/cfg"
+mkdir -p "$CFG_ORDNER"
+
+{
+  echo '// Schreibt Palantir bei jedem Start neu - eigene Zeilen gehoeren in server.cfg.'
+  printf 'hostname "%s"\n' "$(sauber "${CS2_HOSTNAME:-Palantir CS2}")"
+  printf 'sv_password "%s"\n' "$(sauber "${CS2_PASSWORD:-}")"
+} > "${CFG_ORDNER}/palantir.cfg"
+
+set -- -dedicated -port "$PORT"
+
+# Die Spieleranzahl ist ein Startparameter, kein Konsolenbefehl.
+if [ -n "${CS2_MAX_PLAYERS:-}" ]; then
+  set -- "$@" -maxplayers "$CS2_MAX_PLAYERS"
+fi
+
+set -- "$@" +map de_dust2 +exec palantir
+
+# -----------------------------------------------------------------------------
+# 4. Start
 #
 # **Über `game/cs2.sh`, nicht über die Binärdatei.** Seit dem Update vom
 # 17.09.2025 braucht CS2 Bibliotheken aus seinen eigenen Ordnern (`libv8.so`);
@@ -67,4 +101,4 @@ palantir_log "Startet CS2 auf de_dust2, Port ${PORT}"
 
 cd "${SERVER}/game"
 
-exec bash "$STARTER" -dedicated -port "$PORT" +map de_dust2 0<&3 3>&-
+exec bash "$STARTER" "$@" 0<&3 3>&-
