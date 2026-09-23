@@ -33,6 +33,8 @@ import {
   type RestoreBackupCommandPayload,
   type SetServerQueryCommandPayload,
   type StopCommandPayload,
+  type UpdateAvailableCommandPayload,
+  type UpdateAvailableCommandResult,
   type UpdateResourcesCommandPayload,
   type UploadArchiveBlockCommandPayload,
   type AgentContainerStatus,
@@ -46,6 +48,7 @@ import {
 import { AGENT_COMMAND_PAYLOAD_SCHEMAS } from '@palantir/validation';
 import type { AgentJobs } from '../jobs/index.js';
 import type { QuiesceMarker } from '../jobs/backup/quiesce-marker.js';
+import type { UpdateAnstoss } from '../update-anstoss.js';
 import {
   mitSchreibstopp,
   offeneSchreibstoppsAufheben,
@@ -145,6 +148,14 @@ export interface RuntimeAdapterOptions {
    * das zweite Netz fuer den Fall, dass der Agent mitten im Fenster stirbt.
    */
   readonly quiesceMarker?: QuiesceMarker;
+  /**
+   * Klingel für die Selbstaktualisierung der Node (Gefundener Punkt 342).
+   *
+   * Ohne Angabe beantwortet der Adapter `UPDATE_AVAILABLE` mit
+   * `signaled: false` - kein Fehler, denn ein Agent in der Entwicklung oder
+   * direkt auf dem Docker-Host hat schlicht keine Selbstaktualisierung.
+   */
+  readonly updateAnstoss?: UpdateAnstoss;
 }
 
 /**
@@ -169,6 +180,7 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
   private readonly runtime: ContainerRuntime;
   private readonly jobs: AgentJobs | undefined;
   private readonly quiesceMarker: QuiesceMarker | undefined;
+  private readonly updateAnstoss: UpdateAnstoss | undefined;
   private readonly log: ConnectionLogger;
   private unsubscribe: Unsubscribe | null = null;
   /**
@@ -197,6 +209,7 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
     this.runtime = options.runtime;
     this.jobs = options.jobs;
     this.quiesceMarker = options.quiesceMarker;
+    this.updateAnstoss = options.updateAnstoss;
     this.log = options.logger ?? consoleLogger;
     this.statsTakt = new StatsTakt(options.statsTakt ?? {});
   }
@@ -605,6 +618,21 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
       case 'SET_SERVER_QUERY': {
         const p = payload as SetServerQueryCommandPayload;
         return this.requireJobs().query.setTarget(p.serverId, p.target);
+      }
+      case 'UPDATE_AVAILABLE': {
+        // Nur die Markierungsdatei - der Agent startet, holt und prüft nichts
+        // selbst (Gefundener Punkt 342). Den Rest erledigt auf dem Host
+        // `palantir-update.path` mit `update.sh`.
+        const p = payload as UpdateAvailableCommandPayload;
+
+        if (this.updateAnstoss === undefined) {
+          return { signaled: false } satisfies UpdateAvailableCommandResult;
+        }
+
+        await this.updateAnstoss.ablegen(p.targetCommit);
+        this.log.info('Update-Anstoss abgelegt', { targetCommit: p.targetCommit.slice(0, 12) });
+
+        return { signaled: true } satisfies UpdateAvailableCommandResult;
       }
     }
   }

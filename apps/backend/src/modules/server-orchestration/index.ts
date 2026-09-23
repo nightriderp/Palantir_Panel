@@ -46,6 +46,7 @@ import {
   createVersionCatalogueGroup,
 } from './game-versions.js';
 import { createHealthProbe } from './health-check.js';
+import { stosseNodeUpdateAn } from './node-update-anstoss.js';
 import { type PortPoolPort, createPortAllocator } from './ports.js';
 import { buildResourceService, resourceWarningThresholdsFromEnv } from '../resources/index.js';
 import { createDrizzleCapacityReservation } from './capacity-reservation.js';
@@ -431,6 +432,28 @@ export function registerServerOrchestration(
         log.error(
           { hostId, error: error instanceof Error ? error.message : String(error) },
           'Server-Abfragen konnten nicht gesetzt werden',
+        );
+      }
+
+      /*
+       * Stand der Node mit dem eigenen vergleichen und bei Abweichung klingeln
+       * (Gefundener Punkt 342). Ersetzt den Timer, mit dem die Node alle fünf
+       * Minuten selbst nachfragte. Das `hello` ist an dieser Stelle schon
+       * vermerkt (`onHello` läuft vor der Anmeldung). Eigenes try/catch wie
+       * oben: Eine ausgebliebene Klingel verschiebt das Update auf die nächste
+       * Verbindung, ein Abbruch kostete die jetzige.
+       */
+      try {
+        await stosseNodeUpdateAn(hostId, {
+          backendCommit: env.PALANTIR_COMMIT,
+          agentVersion: agents.helloOf(hostId)?.agentVersion ?? null,
+          send: (payload) => agents.require(hostId).sendCommand('UPDATE_AVAILABLE', null, payload),
+          log,
+        });
+      } catch (error) {
+        log.warn(
+          { hostId, error: error instanceof Error ? error.message : String(error) },
+          'Update-Anstoss an die Node fehlgeschlagen',
         );
       }
     },

@@ -297,6 +297,6 @@ jobs:
             echo "Commit: \`${SHA}\`"
             echo ""
             echo "- VPS: neu gestartet und als gesund gemeldet"
-            echo "- Gamenode: zieht innerhalb von fünf Minuten selbst nach"
+            echo "- Gamenode: zieht nach, sobald ihr Agent sich neu verbindet (Update-Anstoss vom Backend)"
             echo "- Panel: zeigt \`${REF_NAME}\` unten links in der Seitenleiste"
           } >> "$GITHUB_STEP_SUMMARY"

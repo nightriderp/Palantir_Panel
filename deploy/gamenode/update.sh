@@ -2,7 +2,11 @@
 #
 # Palantir - Selbstaktualisierung der Gamenode.
 #
-# Läuft in der Gameserver-VM, angestoßen vom systemd-Timer daneben.
+# Läuft in der Gameserver-VM, angestoßen von der systemd-Pfad-Unit daneben
+# (`palantir-update.path`) - also dann, wenn das Backend anklopft, weil der
+# Agent einen älteren Stand meldet (Gefundener Punkt 342). Einen Timer, der
+# alle fünf Minuten nachfragt, gibt es nicht mehr. Von Hand aufrufen geht
+# weiterhin: `systemctl start palantir-update.service`.
 #
 # WARUM ZIEHEN STATT SCHICKEN: Pflichtenheft §1 - der Homeserver nimmt zu keinem
 # Zeitpunkt eingehende Verbindungen an, auch nicht aus dem WireGuard-Tunnel. Ein
@@ -30,6 +34,14 @@ COMPOSE_DIR="${REPO_DIR}/deploy/gamenode"
 ENV_FILE="${REPO_DIR}/.env"
 ZWEIG="${PALANTIR_BRANCH:-prod}"
 MARKE="${REPO_DIR}/.deployed-sha"
+# Markierungsdatei, die der Agent auf `UPDATE_AVAILABLE` hin ablegt
+# (Gefundener Punkt 342). Pfad wie in `palantir-update.path` und
+# docker-compose.yml.
+ANSTOSS="${PALANTIR_ANSTOSS_DATEI:-/srv/palantir/update-anstoss/anstoss}"
+# Wie lange ein Anstoß darauf wartet, dass `prod` den angekündigten Stand
+# erreicht, und in welchem Abstand nachgesehen wird (Sekunden).
+ANSTOSS_WARTEN="${PALANTIR_ANSTOSS_WARTEN:-600}"
+ANSTOSS_TAKT="${PALANTIR_ANSTOSS_TAKT:-20}"
 
 log() { printf '[update %s] %s\n' "$(date -u '+%H:%M:%S')" "$1"; }
 fail() {
@@ -55,6 +67,37 @@ sperrpfad() {
 }
 LOCK_FILE="${PALANTIR_LOCK_FILE:-$(sperrpfad)}"
 
+# -----------------------------------------------------------------------------
+# Anstoß abholen (Gefundener Punkt 342)
+# -----------------------------------------------------------------------------
+# Die Markierung verschwindet als Erstes - noch vor der Sperre. Bliebe sie
+# liegen, weil gerade ein Lauf von Hand die Sperre hält, startete die
+# Pfad-Unit den Dienst sofort wieder, und das so lange, bis systemd die
+# Startgrenze zieht und die Unit stilllegt. Ein Anstoß, der WÄHREND dieses
+# Laufs kommt, legt die Datei neu an; die Pfad-Unit startet dann nach dem
+# Ende noch einmal.
+#
+# Der Inhalt ist nur ein Hinweis: der Commit, den das Backend ausgerollt hat.
+# Er entscheidet nichts darüber, was installiert wird - nur, ob sich kurzes
+# Warten auf `prod` lohnt (siehe unten). Angenommen wird ausschließlich ein
+# vollständiger Commit; alles andere gilt als Anstoß ohne Hinweis.
+#
+# Der Ordner gehoert dem Agent (UID 1000), gelesen wird hier als root. Deshalb
+# nur eine gewoehnliche Datei lesen und keinem Symlink folgen - sonst koennte
+# ein uebernommener Agent root eine beliebige Datei vorlesen lassen. Was
+# sonst unter dem Namen liegt (Verzeichnis, FIFO, Symlink), wird ebenfalls
+# entfernt: Die Pfad-Unit sieht auch das als "vorhanden" und liefe sonst in
+# eine Schleife. `rm -rf` folgt keinem Symlink.
+angekuendigt=''
+if [[ -e "${ANSTOSS}" || -L "${ANSTOSS}" ]]; then
+  if [[ -f "${ANSTOSS}" && ! -L "${ANSTOSS}" ]]; then
+    angekuendigt="$(head -c 64 "${ANSTOSS}" 2>/dev/null | tr -d '[:space:]' || true)"
+  fi
+  rm -rf -- "${ANSTOSS}" || log "ACHTUNG: ${ANSTOSS} liess sich nicht entfernen."
+  [[ "${angekuendigt}" =~ ^[0-9a-f]{40}$ ]] || angekuendigt=''
+  log "Anstoss vom Backend${angekuendigt:+ (angekuendigt: ${angekuendigt:0:12})}."
+fi
+
 exec 9>"${LOCK_FILE}"
 flock -n 9 || {
   log 'Ein Lauf ist noch aktiv - übersprungen.'
@@ -78,6 +121,27 @@ ausgerollt="$(cat "${MARKE}" 2>/dev/null || true)"
 log "Pruefe Zweig '${ZWEIG}' ..."
 git -C "${REPO_DIR}" fetch --quiet origin "${ZWEIG}"
 ziel="$(git -C "${REPO_DIR}" rev-parse "origin/${ZWEIG}")"
+
+# Das Backend klopft an, sobald es selbst neu gestartet ist - und das ist beim
+# Ausrollen VOR dem Schritt, in dem die Pipeline `prod` umhängt
+# (.github/workflows/deploy.yml). Ohne Warten fände dieser Lauf "unverändert",
+# und bis zum nächsten Anstoß bliebe die Node stehen. Deshalb: Steht `prod`
+# noch auf dem ausgerollten Stand, obwohl ein anderer angekündigt ist, eine
+# Weile nachsehen. Das ist kein Dauerabfragen - es läuft nur nach einem
+# Anstoß und endet spätestens nach ANSTOSS_WARTEN Sekunden.
+if [[ -n "${angekuendigt}" && "${ziel}" != "${angekuendigt}" && "${ausgerollt}" == "${ziel}" ]]; then
+  log "Warte bis zu ${ANSTOSS_WARTEN} s, bis '${ZWEIG}' auf ${angekuendigt:0:12} steht ..."
+  gewartet=0
+  while [[ "${ziel}" != "${angekuendigt}" && "${gewartet}" -lt "${ANSTOSS_WARTEN}" ]]; do
+    sleep "${ANSTOSS_TAKT}"
+    gewartet=$((gewartet + ANSTOSS_TAKT))
+    git -C "${REPO_DIR}" fetch --quiet origin "${ZWEIG}"
+    ziel="$(git -C "${REPO_DIR}" rev-parse "origin/${ZWEIG}")"
+  done
+  if [[ "${ziel}" != "${angekuendigt}" ]]; then
+    log "'${ZWEIG}' steht nach ${gewartet} s weiter auf ${ziel:0:12} - angekuendigt war ${angekuendigt:0:12}."
+  fi
+fi
 
 # Der übliche Fall: nichts hat sich geändert. Dann wird nichts angefasst - kein
 # Neustart der Container, keine Unterbrechung laufender Gameserver. Geprueft
@@ -235,6 +299,7 @@ pruefe_besitzer() {
 pruefe_besitzer "$(wert_aus_env AGENT_DATA_DIR)" 'Datenordner der Spielserver'
 pruefe_besitzer "$(wert_aus_env AGENT_BACKUP_DIR)" 'Sicherungen der Spielserver'
 pruefe_besitzer "$(wert_aus_env AGENT_ROUTER_DIR)" 'Routen des Hostname-Routers'
+pruefe_besitzer "$(dirname "${ANSTOSS}")" 'Anstoss-Ordner fuer Updates (palantir-update.path)'
 
 # -----------------------------------------------------------------------------
 # Platzhalter-Route des Hostname-Routers (Fundpunkt 191)

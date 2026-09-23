@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { AGENT_COMMANDS } from './agent-protocol.js';
 import {
   IMPLEMENTED_AGENT_COMMANDS,
-  PENDING_AGENT_COMMANDS,
   isImplementedAgentCommand,
   type AgentCommandPayloads,
   type AgentCommandResults,
@@ -37,15 +36,8 @@ describe('Befehls-Nutzdaten (Pflichtenheft §5.3)', () => {
     // von P2, FILE_EXTRACT von P4. Seither ist die Liste wieder vollständig:
     // Ein neuer Befehl ohne Umsetzung fällt hier auf, statt erst im Betrieb als
     // `AGENT_COMMAND_NOT_IMPLEMENTED`.
-    //
-    // Ausgenommen ist nur, was ausdrücklich in PENDING_AGENT_COMMANDS steht –
-    // ein Vertrag, dessen Umsetzung im nächsten Pull Request folgt.
-    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual([
-      ...PENDING_AGENT_COMMANDS,
-    ]);
-    expect(IMPLEMENTED_AGENT_COMMANDS.length + PENDING_AGENT_COMMANDS.length).toBe(
-      AGENT_COMMANDS.length,
-    );
+    expect(AGENT_COMMANDS.filter((command) => !isImplementedAgentCommand(command))).toEqual([]);
+    expect(IMPLEMENTED_AGENT_COMMANDS).toHaveLength(AGENT_COMMANDS.length);
   });
 
   it('kennt die beiden von A3 ergänzten Befehle', () => {

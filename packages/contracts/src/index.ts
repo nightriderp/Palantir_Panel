@@ -124,7 +124,6 @@ export {
   type AgentRconAccess,
   ARCHIVE_FORMATS,
   IMPLEMENTED_AGENT_COMMANDS,
-  PENDING_AGENT_COMMANDS,
   type AgentCommandPayloads,
   type AgentCommandResults,
   type AgentContainerStats,

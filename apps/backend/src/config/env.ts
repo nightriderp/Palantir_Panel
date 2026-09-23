@@ -248,6 +248,26 @@ const envSchema = z.object({
       return z.NEVER;
     }
   }),
+  /**
+   * Eigener ausgerollter Commit (Gefundener Punkt 342).
+   *
+   * Kommt nicht aus der `.env`: `deploy/vps/docker-compose.yml` setzt ihn aus
+   * `PALANTIR_VERSION`, und die steht beim Ausrollen durch `deploy.sh` auf dem
+   * vollständigen Commit. Verbindet sich ein Agent mit einem anderen Stand,
+   * klingelt das Backend mit `UPDATE_AVAILABLE` (`node-update-anstoss.ts`).
+   *
+   * Alles außer einem vollständigen Commit gilt als „unbekannt" - etwa das
+   * Tag `prod` aus der `.env` bei einem Start von Hand oder ein leerer Wert in
+   * der Entwicklung. Dann wird nie geklingelt; kaputt geht dabei nichts.
+   */
+  PALANTIR_COMMIT: z
+    .string()
+    .optional()
+    .transform((wert) => {
+      const commit = wert?.trim().toLowerCase();
+
+      return commit !== undefined && /^[0-9a-f]{40}$/.test(commit) ? commit : undefined;
+    }),
   /** Frist, in der ein Agent-Befehl beantwortet sein muss (§5.3). */
   AGENT_COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   /**
