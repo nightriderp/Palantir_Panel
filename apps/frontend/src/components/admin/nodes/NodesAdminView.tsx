@@ -19,7 +19,7 @@ import { useSession } from '@/app/(dashboard)/SessionProvider';
 import { deleteNode, fetchNodes, issueNodeAgentToken, updateNode } from '@/lib/api/admin';
 import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
-import { NODE_STATUS_META, nodeAgentHint } from '@/components/nodes/nodeStatus';
+import { nodeAgentHint, nodeDisplayMeta } from '@/components/nodes/nodeStatus';
 import { AdminAccessNotice, AdminError, AdminLoading } from '../common';
 import { AddNodeWizard } from './AddNodeWizard';
 
@@ -229,7 +229,8 @@ function NodeRow({
   onIssueToken: () => void;
   onDelete: () => void;
 }) {
-  const status = NODE_STATUS_META[node.status];
+  // Kurz nach einem Update-Anstoss „aktualisiert sich“ statt „Offline“ (Punkt 342).
+  const status = nodeDisplayMeta(node);
   const agent = nodeAgentHint(node);
 
   return (

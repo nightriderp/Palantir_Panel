@@ -1,9 +1,11 @@
 import { type HostNodeStatus } from '@palantir/contracts';
 import { Badge } from '@/components/shared';
-import { nodeStatusMeta } from './nodeStatus';
+import { NODE_UPDATING_META, nodeStatusMeta } from './nodeStatus';
 
 export interface NodeStatusPillProps {
   status: HostNodeStatus;
+  /** Node startet nach einem Update-Anstoß neu (Gefundener Punkt 342). */
+  updating?: boolean;
   className?: string;
 }
 
@@ -15,8 +17,8 @@ export interface NodeStatusPillProps {
  * {@link nodeStatusMeta} – die eine Stelle, an der ein `HostNodeStatus`
  * übersetzt wird.
  */
-export function NodeStatusPill({ status, className }: NodeStatusPillProps) {
-  const meta = nodeStatusMeta(status);
+export function NodeStatusPill({ status, updating = false, className }: NodeStatusPillProps) {
+  const meta = updating ? NODE_UPDATING_META : nodeStatusMeta(status);
   return (
     <Badge tone={meta.tone} withDot pulse={meta.pulse} className={className}>
       <span title={meta.description}>{meta.label}</span>
