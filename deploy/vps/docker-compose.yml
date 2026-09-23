@@ -156,6 +156,13 @@ x-backend-umgebung: &backend-umgebung
   # 18. Schriften der Oberfläche (Abschnitt 18) - wieder ein Pfad des HOSTS, den
   # der Backend-Dienst unten übersteuert.
   FONT_UPLOAD_DIR: ${FONT_UPLOAD_DIR}
+  # 19. Discord-Bot (Abschnitt 19). Die Vorgaben halten das Backend startfaehig,
+  # wenn eine bestehende .env die Variablen noch nicht kennt - ohne Schalter
+  # laedt das Modul nicht.
+  DISCORD_BOT_ENABLED: ${DISCORD_BOT_ENABLED:-false}
+  DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+  DISCORD_PUBLIC_KEY: ${DISCORD_PUBLIC_KEY:-}
+  DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
 
 services:
   # --- Docker-Socket-Proxy für Traefik ---------------------------------------

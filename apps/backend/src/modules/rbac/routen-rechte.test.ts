@@ -98,6 +98,16 @@ const GRUENDE = {
    * Agent-Kanal haengt nicht an einer Sitzung, sondern am Node-Token.
    */
   eigenerKanal: 'eigener Kanal, Anmeldung beim Verbindungsaufbau',
+
+  /**
+   * Aufrufer ist Discord, geprueft ueber dessen Signatur.
+   *
+   * Der Interactions-Endpoint des Bots (Pflichtenheft §14a.2) hat keine
+   * Sitzung: Jede Anfrage traegt eine Ed25519-Signatur, die nur Discord
+   * erzeugen kann. Wer der Nutzer dahinter ist und was er darf, entscheidet
+   * der Handler je Aktion ueber die verknuepfte Discord-Anmeldung.
+   */
+  discordSignatur: 'von Discord signiert, Rechte je Aktion im Handler',
 } as const;
 
 type Grund = (typeof GRUENDE)[keyof typeof GRUENDE];
@@ -113,6 +123,7 @@ const OHNE_GUARD = new Map<string, Grund>([
   // -- oeffentlich ------------------------------------------------------------
   ['GET /health', GRUENDE.oeffentlich],
   ['GET /public/stats', GRUENDE.oeffentlich],
+  ['POST /discord/interactions', GRUENDE.discordSignatur],
   ['GET /public/fonts.css', GRUENDE.oeffentlich],
   // Dieselbe Datei wie /api/fonts/:id/file, nur unter der Rolle statt der
   // Kennung adressiert - damit das Frontend sie vorladen kann, ohne die
@@ -236,6 +247,15 @@ const AUFBAU_UMGEBUNG: Record<string, string> = {
   // erst ein. Verbunden wird beim Aufbau nicht - die Module bauen ihren Zugriff
   // traege auf, und der Server wird nie angefragt.
   DATABASE_URL: 'postgresql://routenabgleich:routenabgleich@127.0.0.1:5432/routenabgleich',
+  // Der Discord-Bot haengt seine Route nur mit Schalter ein. Befehle
+  // registriert er erst beim Lauschen - der Aufbau hier schickt nichts an
+  // Discord.
+  DISCORD_BOT_ENABLED: 'true',
+  DISCORD_BOT_TOKEN: 'testaufbau-bot-token',
+  // Ein echter, aber sonst unbenutzter Ed25519-Schluessel: Der Aufbau importiert ihn.
+  DISCORD_PUBLIC_KEY: '7c642461aa1f479e4d10de6606cd16f4896fcd02c2448a0416475a1594fcc9db',
+  DISCORD_GUILD_ID: '100000000000000000',
+  DISCORD_CLIENT_ID: '100000000000000001',
 };
 
 const vorherigeWerte = new Map<string, string | undefined>();

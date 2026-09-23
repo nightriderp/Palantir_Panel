@@ -59,6 +59,8 @@ import { createPgDumpDumper } from './modules/panel-backups/pg-dump.js';
 import { registerPanelBackupRoutes } from './modules/panel-backups/routes.js';
 import { createPublicStatsService } from './modules/public-stats/index.js';
 import { registerPublicStatsRoutes } from './modules/public-stats/routes.js';
+import { readDiscordBotConfig, registerDiscordBotModule } from './modules/discord-bot/index.js';
+import { createAuthIdentityResolver } from './modules/discord-bot/identity.js';
 import {
   type AuthAuditSink,
   type AuthEventSink,
@@ -1223,6 +1225,25 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     }
 
     await app.register(registerPanelBackupRoutes({ service: panelBackups }));
+
+    /*
+     * Discord-Bot (Lastenheft §3.11, Pflichtenheft §14a). Ohne Schalter bleibt
+     * alles wie bisher; mit Schalter, aber ohne Auth-Modul (nur in Tests
+     * denkbar) gäbe es niemanden, dem ein Discord-Account zuzuordnen wäre.
+     */
+    const discordBotConfig = readDiscordBotConfig(env);
+
+    if (discordBotConfig && authService) {
+      const kontoDienst = authService;
+
+      await registerDiscordBotModule(app, {
+        config: discordBotConfig,
+        identity: createAuthIdentityResolver({
+          repository: createDrizzleAuthRepository(db),
+          buildActor: (user) => kontoDienst.buildActor(user),
+        }),
+      });
+    }
 
     const scheduler = startScheduler({
       intervalMs: env.SCHEDULER_INTERVAL_MS,
