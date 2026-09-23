@@ -15,6 +15,7 @@ import { type GameRegistry } from './game-registry.js';
 import { type HealthProbe, awaitHealthy } from './health-check.js';
 import { type ServerRecord, type ServerRepository } from './repository.js';
 import { type ServerLifecycleEvent } from './state-machine.js';
+import { type StartupActivity } from './startup-activity.js';
 
 export type StartIntent = 'start' | 'restart';
 
@@ -31,6 +32,12 @@ export interface StartupHealthDependencies {
   readonly now: () => Date;
   readonly log: AgentGatewayLogger;
   readonly requireServer: (serverId: string) => Promise<ServerRecord>;
+  /**
+   * Konsolenaktivität während des Starts (Betreiber-Wunsch 23.09.2026): Sie
+   * verschiebt die Frist bei Spielen mit `startupProgress` und liefert die
+   * letzte Konsolenzeile für die Fehlermeldung.
+   */
+  readonly activity: StartupActivity;
   /** Öffentlicher Hostname des Servers – Ziel der Sonde bei Hostname-Routing. */
   readonly hostnameFor: (server: ServerRecord) => string;
   /** Beantwortet dieser Server in seiner Einstellung Abfragen? */
@@ -75,6 +82,9 @@ export class StartupHealthCheck {
       }
 
       throw error;
+    } finally {
+      // Der Stand gehört zu genau diesem Start – auf jedem Weg hinaus verwerfen.
+      this.deps.activity.vergessen(serverId);
     }
   }
 
@@ -171,6 +181,9 @@ export class StartupHealthCheck {
       return;
     }
 
+    const beginn = this.deps.now().getTime();
+    const fortschritt = definition.startupProgress;
+
     const result = await awaitHealthy({
       target: {
         host: definition.supportsVirtualHostRouting
@@ -180,6 +193,38 @@ export class StartupHealthCheck {
         query: definition.query,
       },
       startupTimeoutMs: definition.startupTimeoutSeconds * 1_000,
+      /*
+       * **Startfrist nach Aktivität** (Betreiber-Wunsch 23.09.2026). Solange
+       * die Konsole Fortschritt zeigt, verschiebt sich die Frist – höchstens
+       * bis `maxSeconds` ab Startbeginn. Ohne `startupProgress` bleibt es bei
+       * der festen Frist.
+       */
+      ...(fortschritt === undefined
+        ? {}
+        : {
+            progressDeadline: () => {
+              const am = this.deps.activity.fortschrittAm(serverId);
+
+              return am === null
+                ? null
+                : Math.min(
+                    am + fortschritt.quietSeconds * 1_000,
+                    beginn + fortschritt.maxSeconds * 1_000,
+                  );
+            },
+            timeoutReason: (letzterVersuch: string) => {
+              if (this.deps.activity.fortschrittAm(serverId) === null) {
+                return null;
+              }
+
+              const dauer = this.deps.now().getTime() - beginn;
+
+              return dauer >=
+                fortschritt.maxSeconds * 1_000 - this.deps.config.healthCheckIntervalMs
+                ? `Der Start dauerte länger als die Obergrenze von ${minuten(fortschritt.maxSeconds)}. Letzter Versuch: ${letzterVersuch}`
+                : `In der Konsole kam ${minuten(fortschritt.quietSeconds)} lang kein Fortschritt mehr. Letzter Versuch: ${letzterVersuch}`;
+            },
+          }),
       attemptTimeoutMs: this.deps.config.healthCheckAttemptTimeoutMs,
       intervalMs: this.deps.config.healthCheckIntervalMs,
       probe: this.deps.healthProbe,
@@ -188,6 +233,14 @@ export class StartupHealthCheck {
       // stellen und die Startfrist liefe trotzdem gegen die echte Uhr.
       now: () => this.deps.now().getTime(),
     });
+
+    /*
+     * Die letzte Konsolenzeile gehört in die Fehlermeldung – für jedes Spiel.
+     * Wer „nicht erreichbar" liest, sieht so gleich, ob noch geladen wurde oder
+     * woran der Server hing. Verworfen wird der Stand in
+     * `awaitStartupHealth` – er gehört zu genau diesem Start.
+     */
+    const letzteZeile = this.deps.activity.letzteZeile(serverId);
 
     // Zwischenzeitlich kann der Server abgestürzt oder gestoppt worden sein.
     const current = await this.deps.requireServer(serverId);
@@ -218,10 +271,24 @@ export class StartupHealthCheck {
       return;
     }
 
-    await this.deps.transition(current, {
-      type: 'healthCheckFailed',
-      reason: result.reason ?? 'Der Server war nach dem Start nicht erreichbar.',
-    });
-    await this.deps.emitServerEvent('server.failed', serverId, { detail: result.reason ?? null });
+    const grund = `${result.reason ?? 'Der Server war nach dem Start nicht erreichbar.'}${
+      letzteZeile === null ? '' : ` Letzte Konsolenzeile: „${letzteZeile}“`
+    }`;
+
+    await this.deps.transition(current, { type: 'healthCheckFailed', reason: grund });
+    await this.deps.emitServerEvent('server.failed', serverId, { detail: grund });
   }
+}
+
+/** Sekunden als „N Minuten" bzw. „N Stunden" für eine Fehlermeldung. */
+function minuten(sekunden: number): string {
+  if (sekunden >= 3_600 && sekunden % 3_600 === 0) {
+    const stunden = sekunden / 3_600;
+
+    return stunden === 1 ? 'einer Stunde' : `${String(stunden)} Stunden`;
+  }
+
+  const m = Math.round(sekunden / 60);
+
+  return m === 1 ? 'einer Minute' : `${String(m)} Minuten`;
 }

@@ -3432,7 +3432,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     // Reichlich bemessen, damit Schritt 1 nicht am Speicher scheitert. Wie
     // viel CS2 wirklich braucht, zeigen die Messwerte, sobald er läuft.
     ramMb: 4_096,
-    diskMb: 61_440,
+    // Die Serverdateien sind inzwischen gut 70 GB groß (Konsole, 23.09.2026).
+    diskMb: 102_400,
   },
   query: {
     kind: 'gamedig',
@@ -3450,8 +3451,19 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   // `quit` vor dem Signal: CS2 beendet sich damit selbst und sauber.
   stopCommand: 'quit',
   stopTimeoutSeconds: 60,
-  // Der erste Start holt gut 30 GB; auf der Node dauerte das rund 45 Minuten.
   startupTimeoutSeconds: 3_600,
+  /*
+   * **Startfrist nach Aktivität** (Betreiber-Wunsch 23.09.2026). Der erste
+   * Start holt gut 70 GB; nach einer Stunde stand der Server bei 74 % auf
+   * „Fehler". Solange SteamCMD Fortschritt meldet (`Update state (0x61)
+   * downloading, progress: …`), läuft die Frist nicht ab – bis zu 15 Minuten
+   * Stille, höchstens sechs Stunden insgesamt.
+   */
+  startupProgress: {
+    pattern: 'Update state \\(0x[0-9a-f]+\\)',
+    quietSeconds: 900,
+    maxSeconds: 21_600,
+  },
   phase: 3,
 };
 

@@ -105,6 +105,7 @@ import { planReconciliation } from './reconciliation.js';
 import { ServerCloneService } from './clone-service.js';
 import { ServerQueryTargets } from './server-query.js';
 import { choosePlacementHost } from './placement.js';
+import { StartupActivity } from './startup-activity.js';
 import { type StartIntent, StartupHealthCheck } from './startup-health.js';
 import { type WorldImportInput, WorldImportTransfer } from './world-import-transfer.js';
 import {
@@ -360,6 +361,8 @@ export class ServerOrchestrationService {
   private readonly queries: ServerQueryTargets;
   /** Health-Check nach dem Start (Befund 2.1) – eigene Klasse. */
   private readonly startupHealth: StartupHealthCheck;
+  /** Konsolenaktivität laufender Starts (`startup-activity.ts`). */
+  private readonly startupActivity: StartupActivity;
   /** Weltdaten-Übernahme beim Anlegen (Befund 2.1) – eigene Klasse. */
   private readonly worldImport: WorldImportTransfer;
   /**
@@ -401,6 +404,7 @@ export class ServerOrchestrationService {
       log: deps.log,
       antwortetAufAbfragen: (server) => this.antwortetAufAbfragen(server),
     });
+    this.startupActivity = new StartupActivity(() => this.now().getTime());
     this.startupHealth = new StartupHealthCheck({
       registry: deps.registry,
       repository: deps.repository,
@@ -410,6 +414,7 @@ export class ServerOrchestrationService {
       now: this.now,
       log: deps.log,
       requireServer: (serverId) => this.requireServer(serverId),
+      activity: this.startupActivity,
       hostnameFor: (server) => this.hostnameFor(server),
       antwortetAufAbfragen: (server) => this.antwortetAufAbfragen(server),
       transition: (server, event) => this.transition(server, event),
@@ -2267,6 +2272,21 @@ export class ServerOrchestrationService {
 
     if (line === null) {
       return;
+    }
+
+    /*
+     * Während eines Starts zählt die Zeile auch für die Startfrist und die
+     * Fehlermeldung (`startup-activity.ts`). Nur dann: Ein laufender Server
+     * schreibt ohne Ende, und dafür gibt es keinen Leser.
+     */
+    if (server.status === 'starting') {
+      const fortschritt = this.deps.registry.find(server.gameType)?.startupProgress;
+
+      this.startupActivity.zeile(
+        server.id,
+        line.text,
+        fortschritt === undefined ? null : fortschritt.pattern,
+      );
     }
 
     this.deps.events.emit('server.consoleLineAppended', { serverId: server.id, line });

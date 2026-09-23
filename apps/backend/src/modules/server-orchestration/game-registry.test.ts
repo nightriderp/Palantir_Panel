@@ -1624,3 +1624,43 @@ describe('GameRegistry – zurückgehaltene Updates', () => {
     expect(dtos.find((dto) => dto.id === 'kann-nicht')?.supportsUpdateHold).toBe(false);
   });
 });
+
+/**
+ * Startfrist nach Aktivität (Betreiber-Wunsch 23.09.2026).
+ */
+describe('startupProgress in den Definitionen', () => {
+  const mitFortschritt = ALLE_GAME_TYPE_DEFINITIONS.filter(
+    (definition) => definition.startupProgress !== undefined,
+  );
+
+  it('hat nur Muster, die sich übersetzen lassen', () => {
+    for (const definition of mitFortschritt) {
+      const muster = definition.startupProgress?.pattern;
+
+      if (muster !== undefined) {
+        expect(() => new RegExp(muster, 'u'), definition.id).not.toThrow();
+      }
+    }
+  });
+
+  it('setzt die Obergrenze nie unter die feste Frist', () => {
+    for (const definition of mitFortschritt) {
+      expect(definition.startupProgress?.maxSeconds, definition.id).toBeGreaterThanOrEqual(
+        definition.startupTimeoutSeconds,
+      );
+      expect(definition.startupProgress?.quietSeconds, definition.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('erkennt bei CS2 die Fortschrittszeilen von SteamCMD – und nur die', () => {
+    const muster = new RegExp(CS2_GAME_TYPE.startupProgress?.pattern ?? '(?!)', 'u');
+
+    // Echte Zeilen aus der Konsole vom 23.09.2026.
+    expect(
+      muster.test(
+        '[0m Update state (0x61) downloading, progress: 73.05 (53594894558 / 73370873650)',
+      ),
+    ).toBe(true);
+    expect(muster.test('[palantir] Startet CS2 auf de_dust2, Port 27015')).toBe(false);
+  });
+});
