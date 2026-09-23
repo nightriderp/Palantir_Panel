@@ -64,6 +64,13 @@ export interface ServerResourceLimits {
 export interface ServerAddress {
   hostname: string;
   port: number | null;
+  /**
+   * Text, der beim Kopieren vor die Adresse gehört – bei CS2 `connect `
+   * (`GameTypeDefinition.addressCopyPrefix`). Nur fürs Kopieren, nicht für
+   * die Anzeige. Additiv und optional; fehlt es, wird die Adresse allein
+   * kopiert.
+   */
+  copyPrefix?: string;
 }
 
 /**
@@ -338,11 +345,11 @@ export interface GameServerDto {
    */
   discordConsoleEnabled?: boolean;
   /**
-   * Werte der Live-Steuerung, die seit dem letzten Start geändert wurden
-   * (`GameTypeDto.liveControls`, Betreiber-Wunsch 23.09.2026).
-   *
-   * `null` oder fehlend heißt: Es gelten die Startwerte aus `config`. Ein Start
-   * setzt das Feld zurück. Additiv und optional.
+   * **Veraltet – seit v2.4.9 immer `null`.** Trug in v2.4.6 die Werte der
+   * Steuerung, die seit dem letzten Start geändert wurden. Seitdem schreibt
+   * das Backend sie direkt in `config` (sie sollen Stopp und Neustart
+   * überstehen); ein Rest aus v2.4.6 wandert beim nächsten Umstellen dorthin.
+   * Bleibt additiv im Vertrag, bis niemand es mehr liest.
    */
   liveValues?: GameConfigValues | null;
   /** Anzahl der Mitverwalter (`ServerMember`, Pflichtenheft §6). */
