@@ -3415,7 +3415,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.3',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.4',
   defaultEnv: {},
   ports: [
     {
@@ -3435,7 +3435,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       envVar: 'CS2_PORT',
     },
   ],
-  // Schritt 2 (23.09.2026): die drei Grundeinstellungen, sonst nichts.
+  // Schritt 2 (23.09.2026): Name, Passwort, Spieler; Schritt 3: Karte, Modus, Bots.
   configFields: [
     {
       key: 'serverName',
@@ -3473,14 +3473,63 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: 64,
       lockedAfterCreate: false,
     },
+    {
+      key: 'map',
+      label: 'Startkarte',
+      type: 'select',
+      defaultValue: 'de_dust2',
+      description: 'Die Karte, mit der der Server startet.',
+      required: false,
+      options: [
+        'de_dust2',
+        'de_mirage',
+        'de_inferno',
+        'de_nuke',
+        'de_overpass',
+        'de_ancient',
+        'de_anubis',
+        'de_vertigo',
+        'de_train',
+      ],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'gameMode',
+      label: 'Spielmodus',
+      type: 'select',
+      defaultValue: 'competitive',
+      description: 'Competitive 5 gegen 5, Casual, Wingman 2 gegen 2, Deathmatch oder Arms Race.',
+      required: false,
+      options: ['competitive', 'casual', 'wingman', 'deathmatch', 'armsrace'],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'bots',
+      label: 'Bots',
+      type: 'number',
+      defaultValue: 0,
+      description: 'Wie viele Bots mitspielen. 0 = keine.',
+      required: false,
+      options: [],
+      min: 0,
+      max: 10,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
     serverPassword: 'CS2_PASSWORD',
     maxPlayers: 'CS2_MAX_PLAYERS',
+    map: 'CS2_MAP',
+    gameMode: 'CS2_GAME_MODE',
+    bots: 'CS2_BOTS',
   },
-  // CS2 liest alle drei beim Start; im laufenden Betrieb erreicht ihn keins.
-  restartRequiredFields: ['serverName', 'serverPassword', 'maxPlayers'],
+  // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
+  restartRequiredFields: ['serverName', 'serverPassword', 'maxPlayers', 'map', 'gameMode', 'bots'],
   resourceDefaults: {
     // Reichlich bemessen, damit Schritt 1 nicht am Speicher scheitert. Wie
     // viel CS2 wirklich braucht, zeigen die Messwerte, sobald er läuft.
