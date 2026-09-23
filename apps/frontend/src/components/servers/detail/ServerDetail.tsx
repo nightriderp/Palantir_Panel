@@ -33,6 +33,7 @@ import { ConsoleTab } from './ConsoleTab';
 import { DetailHeader } from './DetailHeader';
 import { TransferOwnerDialog } from './TransferOwnerDialog';
 import { FilesTab } from './FilesTab';
+import { LiveControlsCard } from './LiveControlsCard';
 import { OverviewTab } from './OverviewTab';
 import { SettingsTab } from './SettingsTab';
 import { TasksTab } from './TasksTab';
@@ -298,6 +299,16 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
                     connection={live.connection}
                     onSend={live.sendConsoleCommand}
                     onClear={live.clearConsole}
+                  />
+                ) : null
+              }
+              liveControls={
+                // Dasselbe Recht wie die Konsole – die Live-Steuerung schickt im
+                // Grunde Konsolenbefehle, nur mit geprüften Werten.
+                server.permissions.canUseConsole ? (
+                  <LiveControlsCard
+                    server={server}
+                    onChanged={(liveValues) => resource.setData({ ...server, liveValues })}
                   />
                 ) : null
               }

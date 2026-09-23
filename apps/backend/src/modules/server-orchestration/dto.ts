@@ -185,6 +185,8 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
      */
     imageVersion: imageVersionLabel(server.imageRef),
     latestImageVersion: bekannt === null ? null : imageVersionLabel(bekannt.dockerImage),
+    // Live-Steuerung: seit dem Start geänderte Werte, sonst `null`.
+    liveValues: server.liveValues ?? null,
     memberCount: context.memberCount,
     pinned: context.pinned ?? false,
     lastStartedAt: server.lastStartedAt,

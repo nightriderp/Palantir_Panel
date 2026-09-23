@@ -323,6 +323,13 @@
       "when": 1790113141842,
       "tag": "0045_updates_zurueckhalten",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1790178687549,
+      "tag": "0046_live_werte",
+      "breakpoints": true
     }
   ]
 }

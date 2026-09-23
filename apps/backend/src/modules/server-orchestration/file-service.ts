@@ -204,6 +204,28 @@ export class ServerFileService {
   }
 
   /**
+   * Eine Datei schreiben, ohne danach nachzusehen – für das Backend selbst
+   * (Live-Steuerung, `palantir_live.cfg`), nicht für den Datei-Manager.
+   *
+   * {@link writeFile} fragt nach dem Schreiben das Änderungsdatum ab, weil der
+   * Editor es anzeigt. Hier liest niemand die Antwort; der zweite Befehl an den
+   * Agent wäre nur Last.
+   */
+  async writeFileContent(serverId: string, relativePath: string, content: string): Promise<void> {
+    const { server, session, containerId, dataRoot } = await this.requireFileTarget(serverId);
+    const relativ = this.requireFilePath(relativePath);
+    const inhalt = Buffer.from(content, 'utf8');
+
+    this.assertWithinTransferLimit(inhalt.byteLength);
+
+    await session.sendCommand('FILE_WRITE', server.id, {
+      containerId,
+      path: toContainerPath(dataRoot, relativ),
+      contentBase64: inhalt.toString('base64'),
+    });
+  }
+
+  /**
    * Hochgeladene Datei im Zielordner ablegen.
    *
    * Einziger Unterschied zu {@link writeFile}: Der Agent prüft den Zielpfad vor

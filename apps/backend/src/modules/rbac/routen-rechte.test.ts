@@ -183,6 +183,8 @@ const OHNE_GUARD = new Map<string, Grund>([
   ['POST /api/servers/:id/stop', GRUENDE.objektrecht],
   ['POST /api/servers/:id/restart', GRUENDE.objektrecht],
   ['POST /api/servers/:id/console', GRUENDE.objektrecht],
+  // Live-Steuerung: dasselbe Objektrecht wie die Konsole (`canUseConsole`).
+  ['POST /api/servers/:id/live', GRUENDE.objektrecht],
   ['GET /api/servers/:id/logs', GRUENDE.objektrecht],
   ['GET /api/servers/:id/stats', GRUENDE.objektrecht],
   ['GET /api/servers/:id/stats/history', GRUENDE.objektrecht],

@@ -1,6 +1,7 @@
 import {
   type BackupDto,
   type BackupRestoreJobDto,
+  type GameConfigValues,
   type GameServerDto,
   type GetLogsCommandResult,
   type HostNodeDto,
@@ -345,6 +346,21 @@ export function fetchCloneJob(
  * Das Backend nimmt die Änderung unter `PATCH /api/servers/:id` entgegen – es
  * gibt keine eigene `/settings`-Unterressource.
  */
+/**
+ * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Werte eines laufenden Servers
+ * ändern, ohne Neustart. Nur die geänderten Felder schicken; die Antwort nennt
+ * alle seit dem Start live geänderten Werte.
+ */
+export function applyLiveValues(
+  serverId: string,
+  values: Record<string, string | number>,
+): Promise<ApiResult<{ liveValues: GameConfigValues | null }>> {
+  return apiRequest<{ liveValues: GameConfigValues | null }>(serverPath(serverId, '/live'), {
+    method: 'POST',
+    json: { values },
+  });
+}
+
 export function updateServerSettings(
   serverId: string,
   input: UpdateServerSettingsInput,

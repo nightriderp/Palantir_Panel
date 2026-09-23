@@ -29,6 +29,7 @@ import {
   cloneServerInputSchema,
   consoleCommandSchema,
   createServerInputSchema,
+  liveValuesInputSchema,
   scheduleInputSchema,
   serverFilePathSchema,
   updateServerSettingsInputSchema,
@@ -999,6 +1000,26 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       const input = z.object({ command: consoleCommandSchema }).parse(request.body);
 
       return await reply.send(ok(await service.execConsole(id, input.command)));
+    } catch (error: unknown) {
+      return replyWithError(reply, error);
+    }
+  });
+
+  /*
+   * Live-Steuerung (Betreiber-Wunsch 23.09.2026). Dasselbe Recht und dieselbe
+   * Drossel wie die Konsole – im Grunde schickt sie Konsolenbefehle, nur mit
+   * geprüften Werten.
+   */
+  app.post('/api/servers/:id/live', { preHandler: consoleLimit }, async (request, reply) => {
+    try {
+      const { id } = serverIdParamsSchema.parse(request.params);
+
+      await loadAuthorized(request, id, 'canUseConsole');
+
+      const input = liveValuesInputSchema.parse(request.body);
+      const server = await service.applyLiveValues(id, input.values);
+
+      return await reply.send(ok({ liveValues: server.liveValues ?? null }));
     } catch (error: unknown) {
       return replyWithError(reply, error);
     }

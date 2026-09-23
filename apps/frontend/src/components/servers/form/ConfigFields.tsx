@@ -32,6 +32,11 @@ export interface ConfigFieldsProps {
   disabled?: boolean;
   /** Schlüssel der Pflichtfelder, die noch leer sind. */
   missingKeys?: readonly string[];
+  /**
+   * Beschreibungen weglassen – in der kompakten Live-Steuerung, wo „Die Karte,
+   * mit der der Server startet“ nicht passt.
+   */
+  hideHints?: boolean;
 }
 
 export function ConfigFields({
@@ -41,6 +46,7 @@ export function ConfigFields({
   lockAfterCreate,
   disabled = false,
   missingKeys = [],
+  hideHints = false,
 }: ConfigFieldsProps) {
   if (fields.length === 0) {
     return (
@@ -54,7 +60,11 @@ export function ConfigFields({
     <div className="flex flex-col gap-4">
       {fields.map((field) => {
         const locked = disabled || (lockAfterCreate && field.lockedAfterCreate);
-        const hint = lockAfterCreate && field.lockedAfterCreate ? LOCKED_HINT : field.description;
+        const hint = hideHints
+          ? undefined
+          : lockAfterCreate && field.lockedAfterCreate
+            ? LOCKED_HINT
+            : field.description;
         const error = missingKeys.includes(field.key) ? 'Dieses Feld ist erforderlich.' : null;
         const value = values[field.key];
 
