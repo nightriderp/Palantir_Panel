@@ -129,9 +129,9 @@ export interface GameTypeDto {
    */
   supportsUpdateHold?: boolean;
   /**
-   * Einstellungen, die sich bei laufendem Server ändern lassen
-   * ({@link GameLiveControl}). Optional; ohne Angabe gibt es keine
-   * Live-Steuerung.
+   * Einstellungen, die sich schnell umstellen lassen – bei laufendem Server
+   * sofort, sonst für den nächsten Start ({@link GameLiveControl}). Optional;
+   * ohne Angabe gibt es keine Steuerung.
    */
   liveControls?: GameLiveControl[];
   defaultPorts: number[];
@@ -605,6 +605,31 @@ export interface GameTypeDefinition {
    */
   readonly startupTimeoutSeconds: number;
   /**
+   * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Einstellungen, die sich bei
+   * laufendem Server über die Konsole ändern lassen. Siehe
+   * {@link GameLiveControl}.
+   */
+  readonly liveControls?: readonly GameLiveControl[];
+  /**
+   * Datei relativ zum Datenordner, in die das Backend die Zeilen
+   * {@link GameLiveControl.persist} aller aktuellen Live-Werte schreibt.
+   *
+   * Nötig, wenn das Spiel Einstellungen beim Kartenwechsel zurücksetzt: CS2
+   * führt nach jedem Laden einer Karte seine Modus-Konfiguration aus, und die
+   * setzt etwa die Bot-Anzahl zurück. Das Image führt diese Datei danach aus
+   * und leert sie beim Start – die Werte stehen dann ohnehin in den
+   * Einstellungen.
+   */
+  readonly liveConfigFile?: string;
+  /**
+   * Text vor der Adresse, wenn man sie im Panel kopiert (Betreiber-Wunsch
+   * 23.09.2026) – bei CS2 `connect `, damit sie direkt in die Spielkonsole
+   * passt. Angezeigt wird die Adresse ohne. Landet im DTO als
+   * {@link ServerAddress.copyPrefix}. Optional; ohne Angabe wird die Adresse
+   * allein kopiert.
+   */
+  readonly addressCopyPrefix?: string;
+  /**
    * Startfrist nach Aktivität in der Konsole (Betreiber-Wunsch 23.09.2026).
    *
    * **Warum es das gibt.** Eine feste Frist passt nicht zu Spielen, deren
@@ -623,22 +648,6 @@ export interface GameTypeDefinition {
    * Optional; ohne Angabe gilt allein {@link startupTimeoutSeconds}, wie
    * bisher.
    */
-  /**
-   * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Einstellungen, die sich bei
-   * laufendem Server über die Konsole ändern lassen. Siehe
-   * {@link GameLiveControl}.
-   */
-  readonly liveControls?: readonly GameLiveControl[];
-  /**
-   * Datei relativ zum Datenordner, in die das Backend die Zeilen
-   * {@link GameLiveControl.persist} aller aktuellen Live-Werte schreibt.
-   *
-   * Nötig, wenn das Spiel Einstellungen beim Kartenwechsel zurücksetzt: CS2
-   * führt nach jedem Laden einer Karte seine Modus-Konfiguration aus, und die
-   * setzt etwa die Bot-Anzahl zurück. Das Image führt diese Datei danach aus
-   * und leert sie beim Start – dann gelten wieder die Einstellungen.
-   */
-  readonly liveConfigFile?: string;
   readonly startupProgress?: {
     /**
      * Regulärer Ausdruck (Quelltext ohne Schrägstriche, ohne Flags), auf den
