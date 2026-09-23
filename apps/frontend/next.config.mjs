@@ -144,8 +144,9 @@ const nextConfig = {
     // nicht verfügbar.
     // Ebenfalls in der ASCII-Form: Der Wert dient nicht nur der Anzeige im
     // Wizard, sondern in `lib/auth/api.ts` auch dem Vergleich mit der
-    // tatsächlichen Herkunft der Seite. Die Umlaut-Schreibweise entsteht erst
-    // beim Anzeigen (`lib/domain/punycode.ts`).
+    // tatsächlichen Herkunft der Seite. Auch angezeigt wird sie so: Spieler
+    // tippen die Serveradresse in ihr Spiel, und Spiel-Clients können keine
+    // Umlaut-Domains (Fundpunkt 340).
     NEXT_PUBLIC_BASE_DOMAIN: alsAscii(process.env.NEXT_PUBLIC_BASE_DOMAIN || domain),
     NEXT_PUBLIC_API_URL: apiUrl,
     // Die angezeigte Version steht bewusst NICHT hier: Sie ist das Versions-Tag
