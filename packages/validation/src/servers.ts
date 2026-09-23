@@ -249,6 +249,13 @@ export const updateServerSettingsInputSchema = z
       .min(5, { message: 'Der Timeout beträgt mindestens 5 Minuten.' })
       .max(1440, { message: 'Der Timeout beträgt höchstens 24 Stunden.' })
       .nullable(),
+    /**
+     * Konsolenbefehle über den Discord-Bot erlauben (Pflichtenheft §14a.5,
+     * `GameServerDto.discordConsoleEnabled`). Optional, anders als die übrigen
+     * Felder: Ein Aufrufer, der den Bot nicht kennt, lässt den Schalter damit
+     * unverändert, statt ihn mit jedem Speichern zurückzusetzen.
+     */
+    discordConsoleEnabled: z.boolean().optional(),
   })
   .strict();
 
