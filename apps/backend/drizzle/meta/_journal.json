@@ -337,6 +337,13 @@
       "when": 1790183866793,
       "tag": "0047_discord_bot_kanaele",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790190874573,
+      "tag": "0048_discord_konsole_schalter",
+      "breakpoints": true
     }
   ]
 }

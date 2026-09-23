@@ -73,6 +73,11 @@ function toDraft(server: GameServerDto): UpdateServerSettingsInput {
     startupParameters: server.startupParameters,
     autoShutdownEnabled: server.autoShutdownEnabled,
     autoShutdownTimeoutMinutes: server.autoShutdownTimeoutMinutes,
+    // Nur mitschicken, wenn das Backend den Schalter kennt – sonst bliebe er
+    // beim Speichern unberührt, statt auf einen erfundenen Wert zu springen.
+    ...(server.discordConsoleEnabled === undefined
+      ? {}
+      : { discordConsoleEnabled: server.discordConsoleEnabled }),
   };
 }
 
@@ -509,6 +514,24 @@ export function SettingsTab({
               value={draft.autoShutdownTimeoutMinutes}
               onChange={(value) =>
                 setDraft((current) => ({ ...current, autoShutdownTimeoutMinutes: value }))
+              }
+            />
+          ) : null}
+
+          {/*
+           * Konsole über den Discord-Bot (Pflichtenheft §14a.5). Nur, wenn der
+           * Server einen Discord-Kanal hat und das Spiel eine Konsole kennt;
+           * Vorgabe aus.
+           */}
+          {server.discordChannelUrl &&
+          server.supportsConsole !== false &&
+          draft.discordConsoleEnabled !== undefined ? (
+            <ToggleRow
+              title="Konsolenbefehle über Discord erlauben"
+              description="Wer den Server bedienen darf, kann dann im Discord-Kanal einzelne Konsolenbefehle absetzen. Discord kennt keinen zweiten Faktor – nur einschalten, wenn du das willst."
+              checked={draft.discordConsoleEnabled}
+              onChange={(checked) =>
+                setDraft((current) => ({ ...current, discordConsoleEnabled: checked }))
               }
             />
           ) : null}

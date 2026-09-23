@@ -25,6 +25,10 @@ export interface PanelSourceDeps {
   };
   /** Anzeigename des Spieltyps; `null` für einen unbekannten. */
   readonly gameTypeName: (gameType: string) => string | null;
+  /** Meldet das Spiel Spielernamen und -zahl (Abfrage per `gamedig`)? */
+  readonly supportsPlayers: (gameType: string) => boolean;
+  /** Nimmt das Spiel Konsolenbefehle an? */
+  readonly supportsConsole: (gameType: string) => boolean;
   readonly webUrl: string;
 }
 
@@ -82,5 +86,12 @@ function snapshotOf(server: ServerRecord, deps: PanelSourceDeps): TileSnapshot {
     players: server.status === 'running' ? deps.orchestration.latestPlayerCount(server.id) : null,
     runningSince: server.lastStartedAt ? new Date(server.lastStartedAt) : null,
     panelUrl: `${deps.webUrl}/servers/${server.id}`,
+    controls: {
+      serverId: server.id,
+      status: server.status,
+      consoleEnabled: server.discordConsoleEnabled ?? false,
+      supportsPlayers: deps.supportsPlayers(server.gameType),
+      supportsConsole: deps.supportsConsole(server.gameType),
+    },
   };
 }

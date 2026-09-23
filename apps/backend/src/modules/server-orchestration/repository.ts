@@ -79,6 +79,11 @@ export interface ServerRecord {
   readonly autoShutdown: ServerAutoShutdown;
   readonly restartRequired: boolean;
   /**
+   * Konsole über den Discord-Bot erlaubt (Pflichtenheft §14a.5). Optional,
+   * damit Testdaten ohne das Feld auskommen; fehlt es, gilt `false`.
+   */
+  readonly discordConsoleEnabled?: boolean;
+  /**
    * Werte der Live-Steuerung seit dem letzten Start; fehlt oder `null` heißt,
    * es gelten die Startwerte (`live-controls.ts`).
    */
@@ -115,6 +120,7 @@ export interface UpdateServerData {
   readonly startupParameters?: string;
   readonly autoShutdown?: ServerAutoShutdown;
   readonly restartRequired?: boolean;
+  readonly discordConsoleEnabled?: boolean;
   /** Live-Werte; `null` setzt sie zurück (beim Start). */
   readonly liveValues?: GameConfigValues | null;
   readonly dockerContainerId?: string | null;
@@ -433,6 +439,7 @@ function toRecord(row: ServerJoinRow): ServerRecord {
     startupParameters: server.startupParameters,
     autoShutdown: server.autoShutdown,
     restartRequired: server.restartRequired,
+    discordConsoleEnabled: server.discordConsoleEnabled,
     liveValues: server.liveValues ?? null,
     clonedFromServerId: server.clonedFromServerId,
     createdAt: server.createdAt.toISOString(),
@@ -579,6 +586,9 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
       if (data.startupParameters !== undefined) values.startupParameters = data.startupParameters;
       if (data.autoShutdown !== undefined) values.autoShutdown = data.autoShutdown;
       if (data.restartRequired !== undefined) values.restartRequired = data.restartRequired;
+      if (data.discordConsoleEnabled !== undefined) {
+        values.discordConsoleEnabled = data.discordConsoleEnabled;
+      }
       if (data.liveValues !== undefined) values.liveValues = data.liveValues;
       if (data.dockerContainerId !== undefined) values.dockerContainerId = data.dockerContainerId;
       if (data.imageRef !== undefined) values.imageRef = data.imageRef;

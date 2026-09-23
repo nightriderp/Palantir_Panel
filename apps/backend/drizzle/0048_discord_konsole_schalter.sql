@@ -1,0 +1,1 @@
+ALTER TABLE "game_servers" ADD COLUMN "discord_console_enabled" boolean DEFAULT false NOT NULL;

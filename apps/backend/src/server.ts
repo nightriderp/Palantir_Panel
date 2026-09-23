@@ -62,6 +62,7 @@ import { registerPublicStatsRoutes } from './modules/public-stats/routes.js';
 import { readDiscordBotConfig, registerDiscordBotModule } from './modules/discord-bot/index.js';
 import { createAuthIdentityResolver } from './modules/discord-bot/identity.js';
 import { type DiscordBotModule } from './modules/discord-bot/module.js';
+import { createServerControl } from './modules/discord-bot/control.js';
 import { createPanelSource } from './modules/discord-bot/panel-source.js';
 import {
   createDrizzleDiscordSyncStore,
@@ -1265,12 +1266,42 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
     if (discordBotConfig && authService) {
       const kontoDienst = authService;
+      const kontoRepository = createDrizzleAuthRepository(db);
+      const hatKonsole = (gameType: string): boolean =>
+        (spieltypen.find(gameType)?.console?.kind ?? 'none') !== 'none';
 
       discordBot = await registerDiscordBotModule(app, {
         config: discordBotConfig,
         identity: createAuthIdentityResolver({
-          repository: createDrizzleAuthRepository(db),
+          repository: kontoRepository,
           buildActor: (user) => kontoDienst.buildActor(user),
+        }),
+        // Knöpfe der Kachel (DC-3): dieselben Service-Methoden und dieselbe
+        // Rechte-Rechnung wie die REST-Routen.
+        control: createServerControl({
+          servers: serverRepository,
+          users: kontoRepository,
+          buildActor: (user) => kontoDienst.buildActor(user),
+          supportsConsole: hatKonsole,
+          orchestration: {
+            startServer: (serverId, userId) => orchestration.startServer(serverId, userId),
+            stopServer: (serverId) => orchestration.stopServer(serverId),
+            restartServer: (serverId, userId) => orchestration.restartServer(serverId, userId),
+            execConsole: (serverId, command) => orchestration.execConsole(serverId, command),
+            latestPlayers: (serverId) => orchestration.latestPlayers(serverId),
+            latestPlayerCount: (serverId) => orchestration.latestPlayerCount(serverId),
+          },
+          backups: {
+            createManual: (actor, userId, serverId, user) =>
+              backups.createManual(
+                actor,
+                userId,
+                serverId,
+                { stopServer: false },
+                // Dieselbe Audit-Spur wie die Route (`backup.created`).
+                { actorId: user.id, actorDisplayName: user.displayName, ipHint: null },
+              ),
+          },
         }),
         channels: {
           store: createDrizzleDiscordSyncStore(db),
@@ -1279,6 +1310,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
             accounts: () => loadPanelAccounts(db),
             orchestration,
             gameTypeName: (gameType) => spieltypen.find(gameType)?.name ?? null,
+            supportsPlayers: (gameType) => spieltypen.find(gameType)?.query.kind === 'gamedig',
+            supportsConsole: hatKonsole,
             webUrl: env.PUBLIC_WEB_URL,
           }),
         },

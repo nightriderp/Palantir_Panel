@@ -485,6 +485,15 @@ export class ServerOrchestrationService {
    * (Pflichtenheft §14a.5). `null`, wenn das Spiel keine meldet oder der
    * letzte Stand älter ist als die Frist des Zwischenspeichers.
    */
+  /**
+   * Namen der verbundenen Spieler aus der letzten Abfrage – für den Knopf
+   * „Spieler" des Discord-Bots (F10). Leer, wenn das Spiel keine Namen meldet
+   * oder der Stand zu alt ist; manche Spiele liefern nur einen Ausschnitt.
+   */
+  latestPlayers(serverId: string): readonly string[] {
+    return this.latestQuery.read(serverId, this.now()).players.map((player) => player.name);
+  }
+
   latestPlayerCount(serverId: string): { online: number; max: number | null } | null {
     const stand = this.latestQuery.read(serverId, this.now());
 
@@ -1928,6 +1937,8 @@ export class ServerOrchestrationService {
         graceMinutes: server.autoShutdown.graceMinutes,
       },
       restartRequired: restartRequired ? true : undefined,
+      // Fehlt das Feld (Aufrufer kennt den Bot nicht), bleibt der Schalter stehen.
+      discordConsoleEnabled: input.discordConsoleEnabled,
     });
 
     const aktualisiert = await this.requireServer(serverId);
