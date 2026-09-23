@@ -337,6 +337,14 @@ export interface GameServerDto {
    * dieses Feld nur, ob der Weg über Discord offen ist. Optional wie oben.
    */
   discordConsoleEnabled?: boolean;
+  /**
+   * Werte der Live-Steuerung, die seit dem letzten Start geändert wurden
+   * (`GameTypeDto.liveControls`, Betreiber-Wunsch 23.09.2026).
+   *
+   * `null` oder fehlend heißt: Es gelten die Startwerte aus `config`. Ein Start
+   * setzt das Feld zurück. Additiv und optional.
+   */
+  liveValues?: GameConfigValues | null;
   /** Anzahl der Mitverwalter (`ServerMember`, Pflichtenheft §6). */
   memberCount: number;
   /**

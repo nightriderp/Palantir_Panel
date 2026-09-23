@@ -128,6 +128,12 @@ export interface GameTypeDto {
    * tragen. Optional; ohne Angabe `false`.
    */
   supportsUpdateHold?: boolean;
+  /**
+   * Einstellungen, die sich bei laufendem Server ändern lassen
+   * ({@link GameLiveControl}). Optional; ohne Angabe gibt es keine
+   * Live-Steuerung.
+   */
+  liveControls?: GameLiveControl[];
   defaultPorts: number[];
   resourceDefaults: GameResourceEstimate;
   configFields: GameConfigField[];
@@ -617,6 +623,22 @@ export interface GameTypeDefinition {
    * Optional; ohne Angabe gilt allein {@link startupTimeoutSeconds}, wie
    * bisher.
    */
+  /**
+   * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Einstellungen, die sich bei
+   * laufendem Server über die Konsole ändern lassen. Siehe
+   * {@link GameLiveControl}.
+   */
+  readonly liveControls?: readonly GameLiveControl[];
+  /**
+   * Datei relativ zum Datenordner, in die das Backend die Zeilen
+   * {@link GameLiveControl.persist} aller aktuellen Live-Werte schreibt.
+   *
+   * Nötig, wenn das Spiel Einstellungen beim Kartenwechsel zurücksetzt: CS2
+   * führt nach jedem Laden einer Karte seine Modus-Konfiguration aus, und die
+   * setzt etwa die Bot-Anzahl zurück. Das Image führt diese Datei danach aus
+   * und leert sie beim Start – dann gelten wieder die Einstellungen.
+   */
+  readonly liveConfigFile?: string;
   readonly startupProgress?: {
     /**
      * Regulärer Ausdruck (Quelltext ohne Schrägstriche, ohne Flags), auf den
@@ -634,4 +656,50 @@ export interface GameTypeDefinition {
    * Definitionen späterer Phasen sind sichtbar, aber nicht auswählbar.
    */
   readonly phase: 1 | 2 | 3;
+}
+
+/**
+ * Eine Gruppe von Einstellungen, die sich bei laufendem Server ändern lässt
+ * (Live-Steuerung, Betreiber-Wunsch 23.09.2026).
+ *
+ * Die Einstellungen unter „Einstellungen“ bleiben die **Startwerte**; eine
+ * Live-Änderung gilt bis zum nächsten Start. Die Felder kommen aus
+ * {@link GameTypeDefinition.configFields} – dieselbe Beschriftung, dieselbe
+ * Auswahl, dieselben Grenzen.
+ *
+ * **Nur `select`- und `number`-Felder.** Ihre Werte sind vorab begrenzt; ein
+ * Freitext landete ungeprüft in einer Konsolenzeile.
+ *
+ * Anders als {@link ConsoleQuickCommand} (ein fester Knopf, eine feste Zeile)
+ * nimmt eine Live-Steuerung Werte aus den Einstellungsfeldern, prüft sie und
+ * kann sie über einen Kartenwechsel hinweg halten.
+ */
+export interface GameLiveControl {
+  /** Stabile Kennung, z. B. `karte-modus`. */
+  readonly id: string;
+  /** Überschrift in der Live-Steuerung. */
+  readonly label: string;
+  /** Schlüssel aus `configFields`, die gemeinsam übernommen werden. */
+  readonly fields: readonly string[];
+  /**
+   * Konsolenzeilen, in dieser Reihenfolge geschickt. `{feld}` wird durch den
+   * gewählten Wert ersetzt – oder durch `values[feld][wert]`, wenn es das gibt.
+   */
+  readonly commands: readonly string[];
+  /**
+   * Zeilen, die bis zum nächsten Start gelten sollen, auch über einen
+   * Kartenwechsel hinweg (siehe {@link GameTypeDefinition.liveConfigFile}).
+   * Dieselben Platzhalter wie in `commands`. Ohne Angabe wird nichts abgelegt.
+   */
+  readonly persist?: readonly string[];
+  /**
+   * Übersetzung einzelner Werte in Konsolentext, z. B. Spielmodus
+   * `deathmatch` → `game_type 1; game_mode 2`.
+   */
+  readonly values?: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  /**
+   * Lädt die Übernahme die Karte neu? Die Oberfläche sagt dann dazu, dass
+   * Spieler kurz getrennt werden.
+   */
+  readonly reloadsMap?: boolean;
 }

@@ -151,6 +151,30 @@ export const consoleCommandSchema = z
   });
 
 /**
+ * Eingabe der Live-Steuerung (`GameTypeDto.liveControls`, Betreiber-Wunsch
+ * 23.09.2026): Feld → neuer Wert.
+ *
+ * Hier nur die Form. Welche Felder live gehen und in welchen Grenzen, prüft
+ * das Backend gegen die Definition – nur `select` (Wert aus der Auswahl) und
+ * `number` (ganze Zahl in min/max), damit kein Freitext in eine Konsolenzeile
+ * gelangt.
+ */
+export const liveValuesInputSchema = z
+  .object({
+    values: z
+      .record(z.string().trim().min(1).max(64), z.union([z.string().max(128), z.number().finite()]))
+      .refine((werte) => Object.keys(werte).length >= 1, {
+        message: 'Es wurde nichts geändert.',
+      })
+      .refine((werte) => Object.keys(werte).length <= 20, {
+        message: 'Zu viele Felder auf einmal.',
+      }),
+  })
+  .strict();
+
+export type LiveValuesInput = z.infer<typeof liveValuesInputSchema>;
+
+/**
  * Übernahme bestehender Weltdaten beim Anlegen (Lastenheft §3.3: Migration von
  * anderen Hosting-Anbietern).
  *
