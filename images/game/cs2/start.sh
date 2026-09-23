@@ -157,7 +157,11 @@ export LD_LIBRARY_PATH ENABLE_PATHMATCH
 
 # Wie `cs2.sh`. Als gewöhnlicher Benutzer darf das weiche Limit nicht über das
 # harte – dann bleibt es, wie es ist.
+# `-n` und `-s` stehen nicht in POSIX, `dash` (das `sh` im Image) kennt beide;
+# eine Shell ohne sie scheitert still am `|| true`.
+# shellcheck disable=SC3045
 ulimit -n 65535 2> /dev/null || true
+# shellcheck disable=SC3045
 ulimit -s 2048 2> /dev/null || true
 
 # CS2 liest Befehle von der Standardeingabe; das Rohr legt die Wurzel an.
