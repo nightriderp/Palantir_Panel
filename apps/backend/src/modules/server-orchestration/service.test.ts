@@ -5447,17 +5447,19 @@ describe('Live-Steuerung', () => {
     expect(datei.path).toMatch(/cfg\/live\.cfg$/u);
     expect(Buffer.from(datei.contentBase64, 'base64').toString('utf8')).toMatch(/^bot_quota 4$/mu);
 
-    expect(server.liveValues).toEqual({ bots: 4 });
+    expect(server.configJson.bots).toBe(4);
+    expect(server.liveValues ?? null).toBeNull();
   });
 
-  it('lässt die Einstellungen unberührt – sie bleiben die Startwerte', async () => {
+  it('schreibt die Werte in die Einstellungen, ohne einen Neustart zu verlangen', async () => {
     const { harness, id } = await laufenderServer();
-    const vorher = (await harness.service.requireServer(id)).configJson;
 
     await harness.service.applyLiveValues(id, { map: 'b' });
 
-    expect((await harness.service.requireServer(id)).configJson).toEqual(vorher);
-    expect(vorher.map).toBe('a');
+    const server = await harness.service.requireServer(id);
+    expect(server.configJson.map).toBe('b');
+    // Die Änderung wirkt schon – ein Hinweis „Neustart nötig“ wäre falsch.
+    expect(server.restartRequired).toBe(false);
   });
 
   it('schickt nichts, wenn sich nichts ändert', async () => {
@@ -5486,16 +5488,19 @@ describe('Live-Steuerung', () => {
     });
   });
 
-  it('setzt die Live-Werte beim nächsten Start zurück', async () => {
+  it('behält live Geändertes über Stopp und Start (Betreiber 23.09.2026)', async () => {
     const { harness, id } = await laufenderServer();
-    await harness.service.applyLiveValues(id, { bots: 4 });
+    await harness.service.applyLiveValues(id, { bots: 4, map: 'b' });
 
     await harness.service.stopServer(id);
     await settle(harness, id, ['stopped']);
     await harness.service.startServer(id, OWNER_ID);
     await settle(harness, id, ['running']);
 
-    expect((await harness.service.requireServer(id)).liveValues ?? null).toBeNull();
+    expect((await harness.service.requireServer(id)).configJson).toMatchObject({
+      bots: 4,
+      map: 'b',
+    });
   });
 
   it('meldet ein Spiel ohne Live-Steuerung als nicht steuerbar', async () => {

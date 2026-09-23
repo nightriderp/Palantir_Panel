@@ -21,14 +21,16 @@ import { ConfigFields } from '../form/ConfigFields';
  * Steht in der Übersicht rechts neben der Konsole: Nach „Übernehmen“ sieht man
  * dort, dass die Karte lädt oder Bots beitreten.
  *
- * **Die Einstellungen bleiben die Startwerte.** Was hier geändert wird, gilt
- * bis zum nächsten Start; angezeigt wird, was gerade gilt – live Geändertes vor
- * den Einstellungen, die vor den Vorgaben der Felder.
+ * **Was hier geändert wird, bleibt** – über Stopp und Neustart hinweg
+ * (Betreiber 23.09.2026). Das Backend schreibt die Werte in die Einstellungen;
+ * angezeigt wird deshalb, was dort steht, sonst die Vorgabe des Feldes.
+ * (`liveValues` zählt noch mit: Reste aus v2.4.6, als Live-Werte bis zum
+ * nächsten Start galten.)
  */
 export interface LiveControlsCardProps {
   server: GameServerDto;
-  /** Nach erfolgreicher Übernahme – die Seite übernimmt die neuen Live-Werte. */
-  onChanged: (liveValues: GameConfigValues | null) => void;
+  /** Nach erfolgreicher Übernahme – die Seite übernimmt den neuen Stand. */
+  onChanged: (server: GameServerDto) => void;
 }
 
 export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
@@ -101,7 +103,7 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
       return;
     }
 
-    onChanged(ergebnis.data.liveValues);
+    onChanged(ergebnis.data);
     toast.success(laedtNeu ? 'Übernommen – die Karte wird neu geladen.' : 'Übernommen.');
   }
 
@@ -131,7 +133,8 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
 
       {laeuft ? null : (
         <p className="mt-3 text-sm text-ink-faint">
-          Geht nur, solange der Server läuft. Die Startwerte stehen in den Einstellungen.
+          Geht nur, solange der Server läuft. Was hier geändert wird, bleibt – es landet auch in den
+          Einstellungen.
         </p>
       )}
 

@@ -77,7 +77,11 @@ beforeEach(() => {
   api.applyLiveValues.mockReset();
   api.fetchGameTypes.mockResolvedValue({ success: true, data: [MIT_LIVE], error: null });
   api.applyLiveValues.mockImplementation((_id: string, werte: Record<string, unknown>) =>
-    Promise.resolve({ success: true, data: { liveValues: werte }, error: null }),
+    Promise.resolve({
+      success: true,
+      data: { ...server({ id: 's1', status: 'running' }), config: werte },
+      error: null,
+    }),
   );
 });
 
@@ -104,12 +108,13 @@ describe('LiveControlsCard', () => {
     zeichne('stopped');
 
     expect(await screen.findByText(/Geht nur, solange der Server läuft/u)).toBeTruthy();
+    expect(screen.getByText(/Was hier geändert wird, bleibt/u)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Übernehmen' }) as HTMLButtonElement).disabled).toBe(
       true,
     );
   });
 
-  it('schickt nur, was sich geändert hat, und meldet die neuen Live-Werte', async () => {
+  it('schickt nur, was sich geändert hat, und reicht den neuen Stand weiter', async () => {
     const { onChanged } = zeichne('running');
 
     // Abschnitt und Feld heißen beide „Bots“ – gemeint ist das Eingabefeld.
@@ -120,7 +125,7 @@ describe('LiveControlsCard', () => {
     await waitFor(() => {
       expect(api.applyLiveValues).toHaveBeenCalledWith('s1', { bots: 4 });
     });
-    expect(onChanged).toHaveBeenCalledWith({ bots: 4 });
+    expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ config: { bots: 4 } }));
   });
 
   it('warnt, wenn die Karte neu geladen wird', async () => {

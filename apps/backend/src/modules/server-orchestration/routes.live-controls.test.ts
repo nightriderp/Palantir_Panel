@@ -10,13 +10,14 @@ import { registerErrorHandler } from '../../error-handler.js';
 import { type PermissionActor, registerRbac } from '../rbac/index.js';
 import { buildPermissionActor } from '../rbac/permissions.js';
 import { ALLE_GAME_TYPE_DEFINITIONS, createGameRegistry } from './game-registry.js';
-import { type ServerRecord, type ServerRepository } from './repository.js';
+import { type ServerMemberRecord, type ServerRecord, type ServerRepository } from './repository.js';
 import { registerServerRoutes } from './routes.js';
 import { type ServerOrchestrationService } from './service.js';
 
 const SERVER_ID = '11111111-1111-4111-8111-111111111111';
 const BESITZER_ID = '22222222-2222-4222-8222-222222222222';
 const ZWEITER_ID = '33333333-3333-4333-8333-333333333333';
+const BEDIENER_ID = '55555555-5555-4555-8555-555555555555';
 
 const SERVER: ServerRecord = {
   id: SERVER_ID,
@@ -58,14 +59,19 @@ const SERVER: ServerRecord = {
 };
 
 /**
- * `verwalter` darf die Konsole benutzen (`server.manage.any`), `zuschauer`
- * sieht den Server nur – die Live-Steuerung braucht dasselbe Recht wie die
- * Konsole.
+ * `verwalter` darf Konsole und Einstellungen (`server.manage.any`),
+ * `bediener` ist als Operator eingetragen und darf nur die Konsole,
+ * `zuschauer` sieht den Server nur. Die Live-Steuerung schreibt in die
+ * Einstellungen und braucht deshalb beides.
  */
 const actors: Record<string, PermissionActor> = {
   verwalter: buildPermissionActor({
     isOwner: false,
     roles: [{ grantedPermissions: ['server.view.any', 'server.manage.any'], name: 'Admin' }],
+  }),
+  bediener: buildPermissionActor({
+    isOwner: false,
+    roles: [{ grantedPermissions: ['server.view.own', 'server.manage.own'], name: 'Mitglied' }],
   }),
   zuschauer: buildPermissionActor({
     isOwner: false,
@@ -73,7 +79,20 @@ const actors: Record<string, PermissionActor> = {
   }),
 };
 
-const kontoIds: Record<string, string> = { verwalter: BESITZER_ID, zuschauer: ZWEITER_ID };
+const kontoIds: Record<string, string> = {
+  verwalter: BESITZER_ID,
+  bediener: BEDIENER_ID,
+  zuschauer: ZWEITER_ID,
+};
+
+const MITGLIEDER: readonly ServerMemberRecord[] = [
+  {
+    userId: BEDIENER_ID,
+    displayName: 'Bediener',
+    level: 'operator',
+    addedAt: '2026-08-31T08:00:00.000Z',
+  },
+];
 
 /** Eingaben, die den Dienst tatsächlich erreicht haben. */
 let aufrufe: Record<string, string | number>[] = [];
@@ -93,7 +112,7 @@ function buildApp(): FastifyInstance {
     applyLiveValues: async (_serverId: string, werte: Record<string, string | number>) => {
       aufrufe.push(werte);
 
-      return { ...SERVER, liveValues: werte };
+      return { ...SERVER, configJson: { ...SERVER.configJson, ...werte } };
     },
   } as unknown as ServerOrchestrationService;
 
@@ -118,7 +137,7 @@ function buildApp(): FastifyInstance {
   registerServerRoutes(instance, {
     service,
     repository: {
-      listMembers: async () => [],
+      listMembers: async () => [...MITGLIEDER],
       listPinnedServerIds: async () => new Set<string>(),
     } as unknown as ServerRepository,
     registry: createGameRegistry(1, ALLE_GAME_TYPE_DEFINITIONS),
@@ -158,18 +177,22 @@ function schicke(instance: FastifyInstance, actor: string, payload: unknown) {
 }
 
 describe('POST /api/servers/:id/live', () => {
-  it('reicht die Werte an den Dienst und meldet die Live-Werte zurück', async () => {
+  it('reicht die Werte an den Dienst und antwortet mit dem ganzen Server', async () => {
     const antwort = await schicke(buildApp(), 'verwalter', { values: { bots: 3 } });
 
     expect(antwort.statusCode).toBe(200);
     expect(aufrufe).toEqual([{ bots: 3 }]);
-    expect(antwort.json()).toMatchObject({ success: true, data: { liveValues: { bots: 3 } } });
+    expect(antwort.json()).toMatchObject({
+      success: true,
+      data: { id: SERVER_ID, config: { bots: 3 }, permissions: { canManageSettings: true } },
+    });
   });
 
-  it('verlangt dasselbe Recht wie die Konsole', async () => {
-    const antwort = await schicke(buildApp(), 'zuschauer', { values: { bots: 3 } });
+  it('verlangt Konsole und Einstellungen – die Konsole allein reicht nicht', async () => {
+    const instance = buildApp();
 
-    expect(antwort.statusCode).toBe(403);
+    expect((await schicke(instance, 'bediener', { values: { bots: 3 } })).statusCode).toBe(403);
+    expect((await schicke(instance, 'zuschauer', { values: { bots: 3 } })).statusCode).toBe(403);
     expect(aufrufe).toHaveLength(0);
   });
 

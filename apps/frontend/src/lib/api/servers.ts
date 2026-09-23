@@ -348,14 +348,14 @@ export function fetchCloneJob(
  */
 /**
  * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Werte eines laufenden Servers
- * ändern, ohne Neustart. Nur die geänderten Felder schicken; die Antwort nennt
- * alle seit dem Start live geänderten Werte.
+ * ändern, ohne Neustart. Nur die geänderten Felder schicken; die Werte landen
+ * auch in den Einstellungen, die Antwort ist der ganze Server.
  */
 export function applyLiveValues(
   serverId: string,
   values: Record<string, string | number>,
-): Promise<ApiResult<{ liveValues: GameConfigValues | null }>> {
-  return apiRequest<{ liveValues: GameConfigValues | null }>(serverPath(serverId, '/live'), {
+): Promise<ApiResult<GameServerDto>> {
+  return apiRequest<GameServerDto>(serverPath(serverId, '/live'), {
     method: 'POST',
     json: { values },
   });

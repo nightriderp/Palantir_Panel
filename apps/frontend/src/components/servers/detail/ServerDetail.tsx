@@ -303,13 +303,10 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
                 ) : null
               }
               liveControls={
-                // Dasselbe Recht wie die Konsole – die Live-Steuerung schickt im
-                // Grunde Konsolenbefehle, nur mit geprüften Werten.
-                server.permissions.canUseConsole ? (
-                  <LiveControlsCard
-                    server={server}
-                    onChanged={(liveValues) => resource.setData({ ...server, liveValues })}
-                  />
+                // Konsole und Einstellungen: Die Live-Steuerung schickt
+                // Konsolenbefehle und schreibt die Werte in die Einstellungen.
+                server.permissions.canUseConsole && server.permissions.canManageSettings ? (
+                  <LiveControlsCard server={server} onChanged={(neu) => resource.setData(neu)} />
                 ) : null
               }
             />
