@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { formatCores, formatMegabytes, percentOf } from '@/components/shared';
 import {
   NODE_EXPLAINERS,
+  NODE_UPDATING_META,
   nodeAgentHint,
+  nodeDisplayMeta,
   nodeHasRoomFor,
   nodeMetrics,
   nodeStatusMeta,
@@ -316,5 +318,39 @@ describe('nodeAgentHint', () => {
 
   it('nennt den Zeitpunkt auch bei einer Node in Wartung', () => {
     expect(nodeAgentHint(node({ status: 'maintenance', agent }))?.label).toContain('gemeldet');
+  });
+});
+
+describe('nodeDisplayMeta (Gefundener Punkt 342)', () => {
+  const ANSTOSS = '2026-09-23T16:24:00.000Z';
+  const kurzDanach = new Date('2026-09-23T16:25:30.000Z');
+
+  it('zeigt eine getrennte Node kurz nach dem Anstoss als aktualisierend statt offline', () => {
+    const meta = nodeDisplayMeta(
+      node({ status: 'offline', updateSignaledAt: ANSTOSS }),
+      kurzDanach,
+    );
+
+    expect(meta).toBe(NODE_UPDATING_META);
+    expect(meta.tone).toBe('warning');
+    expect(meta.acceptsStarts).toBe(false);
+  });
+
+  it('bleibt ohne Anstoss beim gewohnten Zustand', () => {
+    expect(nodeDisplayMeta(node({ status: 'offline' }), kurzDanach)).toBe(
+      nodeStatusMeta('offline'),
+    );
+    expect(nodeDisplayMeta(node({ updateSignaledAt: ANSTOSS }), kurzDanach)).toBe(
+      nodeStatusMeta('online'),
+    );
+  });
+
+  it('sagt nach Ablauf der Frist wieder ehrlich offline', () => {
+    expect(
+      nodeDisplayMeta(
+        node({ status: 'offline', updateSignaledAt: ANSTOSS }),
+        new Date('2026-09-23T16:40:00.000Z'),
+      ),
+    ).toBe(nodeStatusMeta('offline'));
   });
 });

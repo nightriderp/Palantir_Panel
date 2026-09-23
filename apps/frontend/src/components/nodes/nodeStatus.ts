@@ -3,6 +3,7 @@ import {
   type GameTypeDto,
   type HostNodeDto,
   type HostNodeStatus,
+  isNodeUpdating,
 } from '@palantir/contracts';
 import {
   type Tone,
@@ -79,6 +80,36 @@ export const NODE_STATUS_META: Record<HostNodeStatus, NodeStatusMeta> = {
 
 export function nodeStatusMeta(status: HostNodeStatus): NodeStatusMeta {
   return NODE_STATUS_META[status];
+}
+
+/**
+ * Eine Node, die nach einem Update-Anstoß gerade neu startet (Gefundener
+ * Punkt 342).
+ *
+ * Kein eigener {@link HostNodeStatus}: Für das Backend ist die Node in der
+ * Zeit schlicht getrennt. Die Anzeige unterscheidet nur, weil „Offline" in
+ * Rot nach einem Ausfall aussieht, obwohl ein geplantes Update läuft. Die
+ * Gameserver-Container gehören nicht zum Update und laufen weiter.
+ */
+export const NODE_UPDATING_META: NodeStatusMeta = {
+  label: 'Aktualisiert sich …',
+  description:
+    'Die Node spielt gerade ein Update ein und verbindet sich danach von selbst wieder, meist nach ein, zwei Minuten. Laufende Server spielen weiter; neue lassen sich erst danach starten.',
+  tone: 'warning',
+  pulse: true,
+  acceptsStarts: false,
+};
+
+/**
+ * Was die Oberfläche für diese Node anzeigt: ihr Zustand – oder, kurz nach
+ * einem Update-Anstoß, „aktualisiert sich". Ob das gilt, entscheidet
+ * `isNodeUpdating` aus dem Vertrag, samt Frist.
+ */
+export function nodeDisplayMeta(
+  node: Pick<HostNodeDto, 'status' | 'updateSignaledAt'>,
+  now: Date = new Date(),
+): NodeStatusMeta {
+  return isNodeUpdating(node, now) ? NODE_UPDATING_META : nodeStatusMeta(node.status);
 }
 
 // ---------------------------------------------------------------------------

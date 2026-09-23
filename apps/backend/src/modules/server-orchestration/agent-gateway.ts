@@ -886,9 +886,33 @@ export class AgentRegistry {
    */
   private readonly hellos = new Map<string, AgentHelloInfo>();
 
-  /** Merkt sich, was ein Agent zuletzt über sich gesagt hat. */
+  /**
+   * Letzter Update-Anstoß je Node (Gefundener Punkt 342), solange sich der
+   * Agent danach noch nicht wieder gemeldet hat. Nur im Arbeitsspeicher wie
+   * die `hello`s: Nach einem Neustart des Backends verbindet sich der Agent
+   * ohnehin neu, und der Anstoß ist erledigt oder wird neu gesendet.
+   */
+  private readonly updateAnstoesse = new Map<string, Date>();
+
+  /**
+   * Merkt sich, was ein Agent zuletzt über sich gesagt hat.
+   *
+   * Ein neues `hello` heißt auch: Der Agent ist nach einem Update-Anstoß
+   * wieder da. Der Anstoß ist damit erledigt.
+   */
   noteHello(hostId: string, info: AgentHelloInfo): void {
     this.hellos.set(hostId, info);
+    this.updateAnstoesse.delete(hostId);
+  }
+
+  /** Merkt sich, dass diese Node gerade zum Update angestoßen wurde. */
+  noteUpdateSignaled(hostId: string, at: Date): void {
+    this.updateAnstoesse.set(hostId, at);
+  }
+
+  /** Offener Update-Anstoß einer Node; `null`, wenn keiner offen ist. */
+  updateSignaledAt(hostId: string): Date | null {
+    return this.updateAnstoesse.get(hostId) ?? null;
   }
 
   /** Letztes `hello` einer Node; `null`, wenn sich seit dem Start keiner gemeldet hat. */

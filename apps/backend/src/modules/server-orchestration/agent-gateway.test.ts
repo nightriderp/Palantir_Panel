@@ -262,6 +262,27 @@ describe('Handshake (Pflichtenheft §2.2)', () => {
     expect(registry.helloOf('host-1')).toEqual(info);
   });
 
+  it('haelt einen Update-Anstoss, bis sich der Agent wieder meldet (Punkt 342)', () => {
+    const registry = new AgentRegistry();
+    const info: AgentHelloInfo = {
+      agentVersion: '0.6.0+ac967c3dea43',
+      protocolVersion: AGENT_PROTOCOL_VERSION,
+      expectedProtocolVersion: AGENT_PROTOCOL_VERSION,
+      compatible: true,
+      reportedAt: NOW,
+    };
+
+    expect(registry.updateSignaledAt('host-1')).toBeNull();
+    registry.noteUpdateSignaled('host-1', NOW);
+    expect(registry.updateSignaledAt('host-1')).toEqual(NOW);
+    // Eine andere Node bleibt unberuehrt.
+    expect(registry.updateSignaledAt('host-2')).toBeNull();
+
+    // Der Agent ist nach dem Neustart wieder da: Anstoss erledigt.
+    registry.noteHello('host-1', info);
+    expect(registry.updateSignaledAt('host-1')).toBeNull();
+  });
+
   it('nimmt vor dem Handshake keine Befehle an', async () => {
     const { session } = makeSession();
 
