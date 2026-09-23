@@ -84,7 +84,7 @@ function arbeitsordner({ starter = true } = {}) {
   return { daten, vorlage };
 }
 
-function starte(ordner) {
+function starte(ordner, extra = {}) {
   const ergebnis = spawnSync('sh', [START_SH], {
     encoding: 'utf8',
     timeout: 60_000,
@@ -93,6 +93,7 @@ function starte(ordner) {
       PALANTIR_DATA_DIR: posix(ordner.daten),
       PALANTIR_LIB_DIR: LIB_ORDNER,
       PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+      ...extra,
     },
   });
   const zeilen = (ergebnis.stdout ?? '').split('\n').map((zeile) => zeile.replace(/\r$/u, ''));
@@ -118,6 +119,15 @@ describe('start.sh – Basic', nurMitShell, () => {
     const lauf = starte(arbeitsordner());
 
     assert.deepEqual(lauf.argv, ['-dedicated', '-port', '27015', '+map', 'de_dust2']);
+  });
+
+  it('lauscht auf dem Port, den das Panel vorgibt – der öffentlichen Nummer', () => {
+    // CS2 nennt Clients seinen eigenen Port. Lauschte er auf 27015, während er
+    // draußen unter 25003 erreichbar ist, scheiterte der Verbindungsaufbau
+    // still (Node, 23.09.2026).
+    const lauf = starte(arbeitsordner(), { CS2_PORT: '25003' });
+
+    assert.deepEqual(lauf.argv, ['-dedicated', '-port', '25003', '+map', 'de_dust2']);
   });
 
   it('startet aus game/ heraus – so erwartet es der Starter', () => {

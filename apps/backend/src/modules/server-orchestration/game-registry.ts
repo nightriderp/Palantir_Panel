@@ -3415,7 +3415,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.1',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.2',
   defaultEnv: {},
   ports: [
     {
@@ -3423,6 +3423,16 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       protocol: 'both',
       primary: true,
       label: 'Spiel-Port',
+      /*
+       * **Drinnen dieselbe Nummer wie draußen** (Schritt 1.1, 23.09.2026). CS2
+       * nennt Clients seine eigene Portnummer; lauschte er auf 27015, während
+       * er draußen unter 25003 erreichbar ist, bricht der Client den
+       * Verbindungsaufbau ab („Verbindung zum Spielserver kann nicht
+       * hergestellt werden"), ohne dass der Server etwas davon ins Log
+       * schreibt. Die Abfrage kam durch – sie meldete Port 27015.
+       */
+      usesPublicPortNumber: true,
+      envVar: 'CS2_PORT',
     },
   ],
   configFields: [],
