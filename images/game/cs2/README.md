@@ -16,8 +16,8 @@ vorige auf der Node läuft.
 | 1.1     | Port drinnen = Port draußen (`CS2_PORT`)           | läuft (0.0.2)    |
 | 2       | Servername, Server-Passwort, Spieleranzahl         | läuft (0.0.3)    |
 | 3       | Startkarte, Spielmodus, Bots                       | läuft (0.0.4)    |
-| 3.1     | Sauber stoppen: Skript als Hauptprozess, `quit`    | **dieses Image** |
-| 3.2     | Karte und Modus live wechseln (im Panel)           | offen            |
+| 3.1     | Sauber stoppen: Skript als Hauptprozess, `quit`    | läuft (0.0.5)    |
+| 3.2     | Live-Steuerung: Karte, Modus, Bots (Panel)         | **dieses Image** |
 | 4       | Workshop-Karte / -Sammlung                         | offen            |
 | 5       | GOTV, alle Runden spielen, GSLT                    | offen            |
 | 6       | Updates zurückhalten                               | offen            |

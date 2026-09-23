@@ -376,3 +376,29 @@ describe('start.sh – Stoppsignal (Schritt 3.1)', nurMitSignalen, () => {
     assert.ok(Date.now() - beginn < 10_000);
   });
 });
+
+describe('start.sh – Schritt 3.2: Live-Werte', nurMitShell, () => {
+  const datei = (ordner, name) =>
+    readFileSync(join(ordner.daten, 'server', 'game', 'csgo', 'cfg', name), 'utf8');
+
+  it('leert palantir_live.cfg beim Start – dann gelten wieder die Einstellungen', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+    writeFileSync(
+      join(ordner.daten, 'server', 'game', 'csgo', 'cfg', 'palantir_live.cfg'),
+      'bot_quota 7\n',
+    );
+
+    starte(ordner);
+
+    assert.doesNotMatch(datei(ordner, 'palantir_live.cfg'), /bot_quota/u);
+  });
+
+  it('führt nach jeder Modus-Konfiguration erst palantir, dann palantir_live aus', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+
+    const inhalt = datei(ordner, 'gamemode_deathmatch_server.cfg');
+    assert.ok(inhalt.indexOf('exec palantir\n') < inhalt.indexOf('exec palantir_live'), inhalt);
+  });
+});

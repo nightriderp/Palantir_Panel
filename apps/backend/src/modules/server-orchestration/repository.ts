@@ -78,6 +78,11 @@ export interface ServerRecord {
   readonly startupParameters: string;
   readonly autoShutdown: ServerAutoShutdown;
   readonly restartRequired: boolean;
+  /**
+   * Werte der Live-Steuerung seit dem letzten Start; fehlt oder `null` heißt,
+   * es gelten die Startwerte (`live-controls.ts`).
+   */
+  readonly liveValues?: GameConfigValues | null;
   readonly clonedFromServerId: string | null;
   readonly createdAt: string;
 }
@@ -110,6 +115,8 @@ export interface UpdateServerData {
   readonly startupParameters?: string;
   readonly autoShutdown?: ServerAutoShutdown;
   readonly restartRequired?: boolean;
+  /** Live-Werte; `null` setzt sie zurück (beim Start). */
+  readonly liveValues?: GameConfigValues | null;
   readonly dockerContainerId?: string | null;
   readonly imageRef?: string | null;
   /** Spielversion samt Bezugsquelle; alle vier zusammen oder gar nicht. */
@@ -426,6 +433,7 @@ function toRecord(row: ServerJoinRow): ServerRecord {
     startupParameters: server.startupParameters,
     autoShutdown: server.autoShutdown,
     restartRequired: server.restartRequired,
+    liveValues: server.liveValues ?? null,
     clonedFromServerId: server.clonedFromServerId,
     createdAt: server.createdAt.toISOString(),
   };
@@ -571,6 +579,7 @@ export function createDrizzleServerRepository(db: DbConnection): ServerRepositor
       if (data.startupParameters !== undefined) values.startupParameters = data.startupParameters;
       if (data.autoShutdown !== undefined) values.autoShutdown = data.autoShutdown;
       if (data.restartRequired !== undefined) values.restartRequired = data.restartRequired;
+      if (data.liveValues !== undefined) values.liveValues = data.liveValues;
       if (data.dockerContainerId !== undefined) values.dockerContainerId = data.dockerContainerId;
       if (data.imageRef !== undefined) values.imageRef = data.imageRef;
       if (data.gameVersion !== undefined) values.gameVersion = data.gameVersion;

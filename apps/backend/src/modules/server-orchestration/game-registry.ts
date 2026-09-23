@@ -3415,7 +3415,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.5',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.6',
   defaultEnv: {},
   ports: [
     {
@@ -3529,7 +3529,45 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     bots: 'CS2_BOTS',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
+  // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
   restartRequiredFields: ['serverName', 'serverPassword', 'maxPlayers', 'map', 'gameMode', 'bots'],
+  /*
+   * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die
+   * Einstellungen bleiben die Startwerte; live geht es über die Konsole.
+   *
+   * Karte und Modus zusammen: Der Modus sind zwei Konsolenwerte, wirksam erst
+   * mit dem nächsten Kartenladen – also `changelevel` gleich hinterher.
+   *
+   * Bots bleiben über einen Kartenwechsel erhalten (`persist`): CS2 führt nach
+   * jedem Laden `gamemode_<modus>.cfg` aus, die die Bot-Anzahl zurücksetzt;
+   * danach laufen `palantir.cfg` (Startwerte) und `palantir_live.cfg`.
+   */
+  liveControls: [
+    {
+      id: 'karte-modus',
+      label: 'Karte & Modus',
+      fields: ['map', 'gameMode'],
+      commands: ['{gameMode}', 'changelevel {map}'],
+      values: {
+        gameMode: {
+          competitive: 'game_type 0; game_mode 1',
+          casual: 'game_type 0; game_mode 0',
+          wingman: 'game_type 0; game_mode 2',
+          deathmatch: 'game_type 1; game_mode 2',
+          armsrace: 'game_type 1; game_mode 0',
+        },
+      },
+      reloadsMap: true,
+    },
+    {
+      id: 'bots',
+      label: 'Bots',
+      fields: ['bots'],
+      commands: ['bot_quota_mode normal', 'bot_quota {bots}'],
+      persist: ['bot_quota_mode normal', 'bot_quota {bots}'],
+    },
+  ],
+  liveConfigFile: 'server/game/csgo/cfg/palantir_live.cfg',
   resourceDefaults: {
     // Reichlich bemessen, damit Schritt 1 nicht am Speicher scheitert. Wie
     // viel CS2 wirklich braucht, zeigen die Messwerte, sobald er läuft.
@@ -3863,6 +3901,9 @@ export function toGameTypeDto(
     supportsWorldImport: definition.supportsWorldImport,
     supportsVersionChoice: definition.supportsVersionChoice ?? false,
     supportsUpdateHold: definition.supportsUpdateHold ?? false,
+    ...(definition.liveControls === undefined
+      ? {}
+      : { liveControls: definition.liveControls.map((steuerung) => ({ ...steuerung })) }),
     /*
      * Gruppe und Variantenname gehen unveraendert durch. `undefined` wird zu
      * `null`: Der DTO faehrt `null` fuer „gibt es nicht", damit die Oberflaeche

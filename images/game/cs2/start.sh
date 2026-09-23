@@ -120,8 +120,14 @@ esac
 # kein Dateiname falsch geraten sein kann.
 for modus in competitive casual competitive2v2 deathmatch armsrace; do
   printf '%s\n' '// Schreibt Palantir - fuehrt palantir.cfg nach der Modus-Konfiguration aus.' \
-    'exec palantir' > "${CFG_ORDNER}/gamemode_${modus}_server.cfg"
+    'exec palantir' 'exec palantir_live' > "${CFG_ORDNER}/gamemode_${modus}_server.cfg"
 done
+
+# **Live-Werte gelten bis zum Start** (Schritt 3.2). Was im Panel live
+# geändert wurde, schreibt das Backend in `palantir_live.cfg`; ein Start fängt
+# wieder bei den Einstellungen an.
+printf '%s\n' '// Schreibt das Panel bei Live-Aenderungen; beim Start geleert.' \
+  > "${CFG_ORDNER}/palantir_live.cfg"
 
 set -- -dedicated -port "$PORT" +game_type "$SPIEL_TYP" +game_mode "$SPIEL_MODUS"
 
