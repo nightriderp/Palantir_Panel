@@ -21,7 +21,9 @@ describe('Permission-Katalog (Pflichtenheft §8)', () => {
         'server.delete.any',
         'backup.manage.own',
         'backup.manage.any',
+        'panelBackup.manage',
         'user.manage',
+        'instance.manage',
         'role.manage',
         'notification.manage',
         'node.view',
@@ -35,9 +37,9 @@ describe('Permission-Katalog (Pflichtenheft §8)', () => {
     );
   });
 
-  it('führt gametype.manage bereits im Katalog, obwohl in Version 1 ungenutzt', () => {
+  it('beschreibt gametype.manage als Recht für das Spieleangebot (Fundpunkt 345)', () => {
     expect(isPermission('gametype.manage')).toBe(true);
-    expect(descriptionForPermission('gametype.manage')).toMatch(/ungenutzt/i);
+    expect(descriptionForPermission('gametype.manage')).toMatch(/Spieleangebot/);
   });
 
   it('hält das Benennungsschema ein (lowerCamelCase-Segmente, Punkt als Trenner)', () => {
