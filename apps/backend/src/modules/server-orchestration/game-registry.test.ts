@@ -1532,9 +1532,8 @@ describe('tModLoader', () => {
     expect(TMODLOADER_GAME_TYPE.supportsVersionChoice ?? false).toBe(false);
   });
 });
-
 /**
- * Counter-Strike 2 (Betreiber-Wunsch 22.09.2026).
+ * Counter-Strike 2 – Schritt 1: nur Basic (Betreiber-Wunsch 23.09.2026).
  */
 describe('Counter-Strike 2', () => {
   it('zeigt auf die Version aus images/game/cs2/VERSION', () => {
@@ -1546,109 +1545,28 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.dockerImage).toBe(`ghcr.io/nightriderp/palantir-game-cs2:${version}`);
   });
 
+  it('hat in Schritt 1 keine Einstellungen – die kommen einzeln danach', () => {
+    expect(CS2_GAME_TYPE.configFields).toEqual([]);
+    expect(CS2_GAME_TYPE.envMapping).toEqual({});
+  });
+
   it('spricht über die Standardeingabe – CS2 hat kein RCON', () => {
-    // Valve hat RCON in CS2 nie freigeschaltet. Ein `rcon` hier liesse den
-    // Agent gegen einen Port sprechen, auf dem niemand antwortet.
     expect(CS2_GAME_TYPE.console).toEqual({ kind: 'stdin' });
   });
 
   it('führt den Spielport mit beiden Protokollen', () => {
-    // UDP ist das Spiel, TCP die Abfrage – dieselbe öffentliche Nummer, sonst
-    // findet der Client den Server nicht.
     const spiel = CS2_GAME_TYPE.ports.find((port) => port.primary);
 
     expect(spiel?.containerPort).toBe(27_015);
     expect(spiel?.protocol).toBe('both');
   });
 
-  it('bringt einen eigenen GOTV-Port mit', () => {
-    expect(CS2_GAME_TYPE.ports.find((port) => port.containerPort === 27_020)?.protocol).toBe('udp');
-  });
-
-  it('reicht jedes Feld an das Image durch', () => {
-    // Ein Feld ohne Umgebungsvariable wäre eines, das im Panel steht und
-    // nichts bewirkt – genau das fiel beim Bauen zweimal auf (Servername,
-    // Spielerzahl).
-    for (const feld of CS2_GAME_TYPE.configFields) {
-      expect(CS2_GAME_TYPE.envMapping?.[feld.key], feld.key).toBeDefined();
-    }
-  });
-
-  it('führt GSLT und Server-Passwort als Passwortfelder', () => {
-    const typ = (key: string) => CS2_GAME_TYPE.configFields.find((feld) => feld.key === key)?.type;
-
-    expect(typ('gslt')).toBe('password');
-    expect(typ('serverPassword')).toBe('password');
-  });
-
-  it('verlangt keinen GSLT – ohne ihn läuft der Server, nur nicht im Browser', () => {
-    const gslt = CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'gslt');
-
-    expect(gslt?.required).toBe(false);
-    expect(gslt?.defaultValue).toBe('');
-  });
-
-  it('bietet alle sechs Spielmodi an', () => {
-    const modus = CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'gameMode');
-
-    expect(modus?.options).toEqual([
-      'competitive',
-      'wingman',
-      'casual',
-      'deathmatch',
-      'armsrace',
-      'custom',
-    ]);
-  });
-
-  it('schickt quit vor dem Signal – sonst bliebe eine laufende Demo kaputt', () => {
+  it('schickt quit vor dem Signal', () => {
     expect(CS2_GAME_TYPE.stopCommand).toBe('quit');
   });
 
   it('gibt dem ersten Start eine Stunde – gut 30 GB über eine Heimleitung', () => {
     expect(CS2_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(3_600);
-  });
-
-  it('lässt das Update zurückhalten – die Plugins hängen an der Spielversion', () => {
-    expect(CS2_GAME_TYPE.supportsUpdateHold).toBe(true);
-  });
-
-  it('lässt jedes einzelne Plugin ohne Angabe aus', () => {
-    // Plugins sind eine Entscheidung des Betreibers; ein frischer Server
-    // startet ohne – und damit auch ohne MariaDB.
-    const schalter = CS2_GAME_TYPE.configFields.filter(
-      (feld) => feld.key.startsWith('plugin') && feld.key !== 'plugins',
-    );
-
-    expect(schalter.map((feld) => feld.key)).toEqual([
-      'pluginMatchZy',
-      'pluginSimpleAdmin',
-      'pluginWeaponPaints',
-      'pluginRockTheVote',
-      'pluginRetakes',
-      'pluginSharpTimer',
-      'pluginFakeRcon',
-    ]);
-    expect(schalter.every((feld) => feld.defaultValue === false)).toBe(true);
-  });
-
-  it('warnt am GSLT vor WeaponPaints – Valve sperrt Tokens von Servern mit Skins', () => {
-    const gslt = CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'gslt');
-
-    expect(gslt?.description).toMatch(/WeaponPaints/u);
-  });
-
-  it('führt das Fake-RCON-Passwort als Passwortfeld', () => {
-    expect(CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'fakeRconPassword')?.type).toBe(
-      'password',
-    );
-  });
-
-  it('lädt die Plugins ohne Angabe', () => {
-    // Abschalten ist der Notausgang nach einem CS2-Update, nicht der Normalfall.
-    expect(CS2_GAME_TYPE.configFields.find((feld) => feld.key === 'plugins')?.defaultValue).toBe(
-      true,
-    );
   });
 
   it('ist ab Ausbaustufe 3 auswaehlbar', () => {

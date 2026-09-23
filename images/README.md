@@ -58,7 +58,7 @@ Ordner `images/game/<name>` mit:
 | Datei                        | Zweck                                                                                                                           |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `Dockerfile`                 | `ARG BASIS=ghcr.io/nightriderp/palantir-base-<laufzeit>:<n>` und `FROM ${BASIS}`; `root` nur im Bau, `USER 1000:1000` am Ende   |
-| `VERSION`                    | Fortlaufende ganze Zahl, beginnt bei `1`                                                                                        |
+| `VERSION`                    | Fortlaufende ganze Zahl ab `1`, oder dreistellig wie `0.0.1` (CS2 seit dem Neuanfang 23.09.2026)                                |
 | `start.sh` (o. ä.)           | Startskript: Einstellungen aus der Umgebung, dann `exec` in den Serverprozess                                                   |
 | `console.sh` (o. ä.)         | Als `/usr/local/bin/palantir-console` verlinkt; muss **ohne Shell** aufrufbar sein (`EXEC_CONSOLE` übergibt eine Argumentliste) |
 | `*.test.mjs`, `package.json` | Tests ohne Docker (`node --test`); die `package.json` bindet sie in `pnpm test` ein und wird nicht ins Image kopiert            |
