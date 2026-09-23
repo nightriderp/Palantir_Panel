@@ -81,9 +81,10 @@ jobs:
 
           # Streng, weil der Wert gleich als Image-Tag verwendet wird. Eine leere
           # oder krumme Datei erzeugte sonst ein Tag wie `…:` oder `…:1.0 `.
-          # images/README.md kennt nur fortlaufende ganze Zahlen.
-          if ! [[ "${fassung}" =~ ^[0-9]+$ ]]; then
-            echo "::error::${pfad}/VERSION ist keine fortlaufende Zahl: '${fassung}'"
+          # Erlaubt: eine ganze Zahl (`7`) oder bis zu drei Stellen mit Punkt
+          # (`0.0.1`) – Letzteres seit dem Neuanfang von CS2 (23.09.2026).
+          if ! [[ "${fassung}" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::${pfad}/VERSION ist weder eine ganze Zahl noch x.y.z: '${fassung}'"
             exit 1
           fi
 

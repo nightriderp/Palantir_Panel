@@ -3397,39 +3397,25 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
 };
 
 /**
- * Counter-Strike 2 (Betreiber-Wunsch 22.09.2026, Anhang A).
+ * Counter-Strike 2 – **Schritt 1 von vorne: nur Basic** (Betreiber-Wunsch
+ * 23.09.2026).
  *
- * **CS2 hat kein RCON.** Valve hat es nie freigeschaltet — die Konsole geht
- * deshalb über die Standardeingabe, wie bei Terraria. Was im Netz als „CS2
- * RCON" kursiert, ist ein Plugin über MetaMod und gilt für Spieler im Spiel,
- * nicht für dieses Panel.
+ * Linux, SteamCMD, CS2 – sonst nichts. Keine Felder, keine Plugins, feste Karte
+ * `de_dust2`. Einstellungen und Plugins kommen danach in kleinen Schritten,
+ * jeweils erst, wenn der vorige auf der Node läuft. Der erste Anlauf (Images 1
+ * bis 4) hat alles auf einmal gebaut und kam nie hoch.
+ *
+ * **CS2 hat kein RCON.** Die Konsole geht über die Standardeingabe.
  *
  * **Der Spielport trägt beide Protokolle.** UDP ist das Spiel, TCP die
- * Abfrage; beide müssen dieselbe öffentliche Nummer haben, sonst findet der
- * Client den Server nicht (`protocol: 'both'`, wie bei Satisfactory).
- *
- * **Eigene Karten nur noch aus dem Workshop.** Valve hat FastDL abgeschafft;
- * das Feld `mapSource` wählt zwischen Standardkarte, einer Workshop-Karte und
- * einer Sammlung. Bei einer Sammlung lässt sich die Startkarte nicht setzen —
- * das kann Valve nicht.
- *
- * **Der GSLT ist kein Pflichtfeld.** Ohne ihn läuft der Server, taucht aber
- * nicht im Serverbrowser auf. Valve will das künftig erzwingen; bis dahin ist
- * ein leeres Feld die richtige Vorgabe für einen privaten Server.
+ * Abfrage; beide brauchen dieselbe öffentliche Nummer (`protocol: 'both'`).
  */
 export const CS2_GAME_TYPE: GameTypeDefinition = {
   id: 'cs2',
   name: 'Counter-Strike 2',
   description:
-    'Counter-Strike-2-Server von Valve. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert. Eigene Karten kommen aus dem Steam-Workshop.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:4',
-  // Vollständige Zeilen, wie sie die Serverkonsole versteht.
-  consoleQuickCommands: [
-    { label: 'Spieler', command: 'status' },
-    { label: 'Karte neu', command: 'mp_restartgame 1' },
-    { label: 'Karten', command: 'ds_workshop_listmaps' },
-    { label: 'Stopp', command: 'quit' },
-  ],
+    'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.1',
   defaultEnv: {},
   ports: [
     {
@@ -3438,364 +3424,33 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       primary: true,
       label: 'Spiel-Port',
     },
-    {
-      containerPort: 27_020,
-      protocol: 'udp',
-      primary: false,
-      label: 'GOTV',
-    },
   ],
-  configFields: [
-    {
-      key: 'serverName',
-      label: 'Servername',
-      type: 'text',
-      defaultValue: 'Ein Palantir-Server',
-      description: 'Steht im Serverbrowser und in der Anzeigetafel.',
-      required: true,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'maxPlayers',
-      label: 'Spieler höchstens',
-      type: 'number',
-      defaultValue: 10,
-      description:
-        'Competitive ist für 10 gedacht, Wingman für 4. Mehr geht, aber bei Competitive fallen dann die Teamfarben weg – das hat Valve so gebaut.',
-      required: true,
-      options: [],
-      min: 2,
-      max: 64,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'gameMode',
-      label: 'Spielmodus',
-      type: 'select',
-      defaultValue: 'competitive',
-      options: ['competitive', 'wingman', 'casual', 'deathmatch', 'armsrace', 'custom'],
-      description:
-        'Bestimmt Regeln, Wirtschaft und Rundenzeiten. „custom“ überlässt alles der eigenen Konfiguration.',
-      required: true,
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'mapSource',
-      label: 'Kartenquelle',
-      type: 'select',
-      defaultValue: 'standard',
-      options: ['standard', 'workshop-map', 'workshop-collection'],
-      description:
-        'Eigene Karten gibt es nur noch über den Steam-Workshop; der alte Weg über FastDL ist von Valve abgeschafft.',
-      required: true,
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'map',
-      label: 'Startkarte',
-      type: 'text',
-      defaultValue: 'de_dust2',
-      description: 'Nur bei der Kartenquelle „standard“.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'workshopId',
-      label: 'Workshop-Nummer',
-      type: 'text',
-      defaultValue: '',
-      description:
-        'Die Zahl aus der Workshop-Adresse – je nach Kartenquelle die einer Karte oder einer Sammlung. Bei einer Sammlung lässt sich die Startkarte nicht wählen, das kann Valve nicht.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'serverPassword',
-      label: 'Server-Passwort',
-      type: 'password',
-      defaultValue: '',
-      description: 'Leer lassen für einen offenen Server.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'gslt',
-      label: 'Game Server Login Token (GSLT)',
-      type: 'password',
-      defaultValue: '',
-      /*
-       * Bleibt optional, mit Warnung (Entscheidung des Betreibers, 23.09.2026;
-       * Fundpunkt 256). Mit GSLT meldet sich der Server unter dem Steam-Konto
-       * des Betreibers bei Valve an – und Valve sperrt Tokens von Servern mit
-       * Skins, die WeaponPaints nur mit abgeschalteten Richtlinien zeigt.
-       */
-      description:
-        'Von steamcommunity.com/dev/managegameservers, Anwendung 730. Ohne ihn läuft der Server, taucht aber nicht im Serverbrowser auf. Nicht zusammen mit WeaponPaints – Valve sperrt Tokens von Servern mit Skins.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'allRounds',
-      label: 'Alle Runden spielen',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Spielt die volle Rundenzahl, auch wenn eine Seite schon gewonnen hat (mp_match_can_clinch).',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'gotv',
-      label: 'GOTV einschalten',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Zuschauer können dem Spiel folgen. Aufgezeichnet wird nur auf Befehl (tv_record) – automatisches Aufzeichnen legt sonst die Platte voll.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'plugins',
-      label: 'Plugins laden',
-      type: 'toggle',
-      defaultValue: true,
-      description:
-        'MetaMod und CounterStrikeSharp. Nach einem CS2-Update brechen sie oft für ein, zwei Tage – dann hier ausschalten, und der Server läuft ohne Plugins weiter.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'admins',
-      label: 'Admins (SteamID64)',
-      type: 'text',
-      defaultValue: '',
-      description:
-        'Durch Komma getrennt, z. B. 76561197960287930. Jeder bekommt volle Rechte in allen Plugins. Leer lassen, wer admins.json lieber von Hand pflegt.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'pluginMatchZy',
-      label: 'Plugin: MatchZy',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Turniere und Scrims – Ready-System, Messerrunde, Pausen, Demos. Nicht zusammen mit Retakes.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'pluginSimpleAdmin',
-      label: 'Plugin: SimpleAdmin',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Bann, Kick, Mute und ein Admin-Menü (!admin). Speichert in SQLite im Datenordner.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'pluginWeaponPaints',
-      label: 'Plugin: WeaponPaints',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Skins, Messer, Handschuhe (!ws). Startet dafür MariaDB im Container und schaltet FollowCS2ServerGuidelines aus – Valve verbietet Skins auf Community-Servern.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'pluginRockTheVote',
-      label: 'Plugin: RockTheVote',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Kartenabstimmung (!rtv). Letzte Fassung von April 2024 – lädt womöglich nicht mehr.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'pluginRetakes',
-      label: 'Plugin: Retakes',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Retake-Modus: Angreifer verteidigen die gelegte Bombe. Nicht zusammen mit MatchZy.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'pluginSharpTimer',
-      label: 'Plugin: SharpTimer',
-      type: 'toggle',
-      defaultValue: false,
-      description: 'Timer für Surf, Bhop und KZ. Bringt cs2-tags mit.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'pluginFakeRcon',
-      label: 'Plugin: Fake RCON',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'RCON im Spiel über fake_rcon_password / fake_rcon. Braucht das Passwort darunter.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      key: 'fakeRconPassword',
-      label: 'Fake-RCON-Passwort',
-      type: 'password',
-      defaultValue: '',
-      description:
-        'Mindestens 4 Zeichen. Wer es kennt, kann den Server aus dem Spiel heraus steuern.',
-      required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-  ],
-  envMapping: {
-    serverName: 'CS2_HOSTNAME',
-    maxPlayers: 'MAX_PLAYERS',
-    gameMode: 'CS2_GAME_MODE',
-    mapSource: 'CS2_MAP_SOURCE',
-    map: 'CS2_MAP',
-    workshopId: 'CS2_WORKSHOP_ID',
-    serverPassword: 'CS2_PASSWORD',
-    gslt: 'CS2_GSLT',
-    allRounds: 'CS2_ALL_ROUNDS',
-    gotv: 'CS2_GOTV',
-    plugins: 'CS2_PLUGINS',
-    admins: 'CS2_ADMINS',
-    pluginMatchZy: 'CS2_PLUGIN_MATCHZY',
-    pluginSimpleAdmin: 'CS2_PLUGIN_SIMPLEADMIN',
-    pluginWeaponPaints: 'CS2_PLUGIN_WEAPONPAINTS',
-    pluginRockTheVote: 'CS2_PLUGIN_ROCKTHEVOTE',
-    pluginRetakes: 'CS2_PLUGIN_RETAKES',
-    pluginSharpTimer: 'CS2_PLUGIN_SHARPTIMER',
-    pluginFakeRcon: 'CS2_PLUGIN_FAKERCON',
-    fakeRconPassword: 'CS2_FAKERCON_PASSWORD',
-  },
-  // Alles davon liest der Server beim Start; ein Wechsel im laufenden Betrieb
-  // erreicht ihn nicht.
-  restartRequiredFields: [
-    'serverName',
-    'maxPlayers',
-    'gameMode',
-    'mapSource',
-    'map',
-    'workshopId',
-    'serverPassword',
-    'gslt',
-    'allRounds',
-    'gotv',
-    'plugins',
-    'admins',
-    'pluginMatchZy',
-    'pluginSimpleAdmin',
-    'pluginWeaponPaints',
-    'pluginRockTheVote',
-    'pluginRetakes',
-    'pluginSharpTimer',
-    'pluginFakeRcon',
-    'fakeRconPassword',
-  ],
+  configFields: [],
+  envMapping: {},
+  restartRequiredFields: [],
   resourceDefaults: {
-    // CS2 selbst braucht wenig Speicher; die Platte ist der Punkt: gut 30 GB
-    // Serverdateien plus Workshop-Karten.
-    ramMb: 2_048,
-    diskMb: 40_960,
+    // Reichlich bemessen, damit Schritt 1 nicht am Speicher scheitert. Wie
+    // viel CS2 wirklich braucht, zeigen die Messwerte, sobald er läuft.
+    ramMb: 4_096,
+    diskMb: 61_440,
   },
   query: {
     kind: 'gamedig',
     protocol: 'counterstrike2',
     containerPort: 27_015,
   },
-  // Kein RCON: Valve hat es in CS2 nie freigeschaltet. Der Server liest seine
-  // Befehle von der Standardeingabe.
   console: { kind: 'stdin' },
-  /*
-   * CounterStrikeSharp hängt an den Innereien von CS2 und bricht nach Updates
-   * von Valve regelmässig. Der Administrator kann das Update beim Start deshalb
-   * zurückhalten (Templates-Seite); das Startskript liest
-   * `PALANTIR_UPDATES_HALTEN`.
-   */
-  supportsUpdateHold: true,
   iconUrl: null,
   coverImageUrl: null,
-  // Quake-Protokoll auf UDP; ein Hostname-Router davor gibt es nicht.
   supportsVirtualHostRouting: false,
-  // Es gibt keine Welt zum Übernehmen – Karten kommen aus dem Workshop.
   supportsWorldImport: false,
   dataVolumeContainerPath: '/data',
   readOnlyRootFilesystem: true,
   tmpfsPaths: ['/tmp'],
-  /*
-   * `quit` vor dem Signal: CS2 schreibt beim Beenden seine Logs und schliesst
-   * eine laufende GOTV-Aufzeichnung ordentlich ab. Ohne den Befehl bliebe eine
-   * angefangene Demo unbrauchbar.
-   */
+  // `quit` vor dem Signal: CS2 beendet sich damit selbst und sauber.
   stopCommand: 'quit',
   stopTimeoutSeconds: 60,
-  /*
-   * Der erste Start holt gut 30 GB. Auf einer Heimleitung ist das die längste
-   * Frist im ganzen Katalog – länger noch als ARK.
-   */
+  // Der erste Start holt gut 30 GB; auf der Node dauerte das rund 45 Minuten.
   startupTimeoutSeconds: 3_600,
   phase: 3,
 };
