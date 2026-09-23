@@ -599,6 +599,37 @@ export interface GameTypeDefinition {
    */
   readonly startupTimeoutSeconds: number;
   /**
+   * Startfrist nach Aktivität in der Konsole (Betreiber-Wunsch 23.09.2026).
+   *
+   * **Warum es das gibt.** Eine feste Frist passt nicht zu Spielen, deren
+   * erster Start einen Download enthält, dessen Dauer niemand kennt: CS2 holt
+   * gut 70 GB, und nach einer Stunde stand der Server auf „Fehler", während
+   * SteamCMD in der Konsole sichtbar weiterlud.
+   *
+   * **Was sich damit ändert.** Solange Konsolenzeilen, die auf `pattern`
+   * passen, im Abstand von höchstens `quietSeconds` kommen, gilt der Start als
+   * im Gang – auch über {@link startupTimeoutSeconds} hinaus. Er scheitert,
+   * wenn der Fortschritt länger als `quietSeconds` ausbleibt (und die
+   * Grundfrist abgelaufen ist) oder spätestens nach `maxSeconds`, damit ein
+   * Server, der sich in einer Schleife von Meldungen verfängt, nicht ewig auf
+   * „startet" steht.
+   *
+   * Optional; ohne Angabe gilt allein {@link startupTimeoutSeconds}, wie
+   * bisher.
+   */
+  readonly startupProgress?: {
+    /**
+     * Regulärer Ausdruck (Quelltext ohne Schrägstriche, ohne Flags), auf den
+     * eine Konsolenzeile passen muss, um als Fortschritt zu zählen – etwa die
+     * Fortschrittszeilen von SteamCMD. Ohne Angabe zählt jede Zeile.
+     */
+    readonly pattern?: string;
+    /** Höchstens so lange ohne Fortschritt, bevor der Start scheitert. */
+    readonly quietSeconds: number;
+    /** Harte Obergrenze für den ganzen Start, gerechnet ab Startbeginn. */
+    readonly maxSeconds: number;
+  };
+  /**
    * Ausbaustufe, ab der dieses Spiel fachlich existiert (Lastenheft §3.5).
    * Definitionen späterer Phasen sind sichtbar, aber nicht auswählbar.
    */
