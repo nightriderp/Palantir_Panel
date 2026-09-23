@@ -127,6 +127,43 @@ describe('liveBefehle', () => {
   });
 });
 
+describe('liveBefehle – Übersetzung mit Platzhaltern', () => {
+  const MIT_ID: GameTypeDefinition = {
+    ...SPIEL,
+    liveControls: [
+      {
+        id: 'karte',
+        label: 'Karte',
+        fields: ['map', 'bots'],
+        commands: ['{map}'],
+        values: { map: { a: 'changelevel a', b: 'lade {bots}' } },
+      },
+    ],
+  };
+
+  it('setzt in einer Übersetzung die nackten Werte ein', () => {
+    expect(liveBefehle(MIT_ID, ['map'], { map: 'b', bots: 7 })).toEqual(['lade 7']);
+    expect(liveBefehle(MIT_ID, ['map'], { map: 'a', bots: 7 })).toEqual(['changelevel a']);
+  });
+
+  it('übersetzt nur eine Ebene – ein Wert mit Klammern bleibt, wie er ist', () => {
+    const tief: GameTypeDefinition = {
+      ...MIT_ID,
+      liveControls: [
+        {
+          id: 'karte',
+          label: 'Karte',
+          fields: ['map', 'mode'],
+          commands: ['{map}'],
+          values: { map: { a: 'x {mode}' }, mode: { eins: 'nicht {map}' } },
+        },
+      ],
+    };
+
+    expect(liveBefehle(tief, ['map'], { map: 'a', mode: 'eins' })).toEqual(['x eins']);
+  });
+});
+
 describe('liveDatei', () => {
   it('enthält die persist-Zeilen mit den geltenden Werten', () => {
     expect(liveDatei(SPIEL, { map: 'a', mode: 'eins', bots: 6 })).toMatch(/^bot_quota 6$/mu);

@@ -3410,12 +3410,25 @@ export const ACC_GAME_TYPE: GameTypeDefinition = {
  * **Der Spielport trägt beide Protokolle.** UDP ist das Spiel, TCP die
  * Abfrage; beide brauchen dieselbe öffentliche Nummer (`protocol: 'both'`).
  */
+/** Die offiziellen Karten des Wettkampf-Pools (Schritt 3). */
+const CS2_KARTEN = [
+  'de_dust2',
+  'de_mirage',
+  'de_inferno',
+  'de_nuke',
+  'de_overpass',
+  'de_ancient',
+  'de_anubis',
+  'de_vertigo',
+  'de_train',
+] as const;
+
 export const CS2_GAME_TYPE: GameTypeDefinition = {
   id: 'cs2',
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.6',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.7',
   defaultEnv: {},
   ports: [
     {
@@ -3435,7 +3448,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       envVar: 'CS2_PORT',
     },
   ],
-  // Schritt 2 (23.09.2026): Name, Passwort, Spieler; Schritt 3: Karte, Modus, Bots.
+  // Schritt 2 (23.09.2026): Name, Passwort, Spieler; Schritt 3: Karte, Modus, Bots;
+  // Schritt 4: Workshop-Karte.
   configFields: [
     {
       key: 'serverName',
@@ -3478,19 +3492,10 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       label: 'Startkarte',
       type: 'select',
       defaultValue: 'de_dust2',
-      description: 'Die Karte, mit der der Server startet.',
+      description:
+        'Die Karte, mit der der Server startet. „workshop“ lädt die Workshop-Karte mit der ID darunter.',
       required: false,
-      options: [
-        'de_dust2',
-        'de_mirage',
-        'de_inferno',
-        'de_nuke',
-        'de_overpass',
-        'de_ancient',
-        'de_anubis',
-        'de_vertigo',
-        'de_train',
-      ],
+      options: [...CS2_KARTEN, 'workshop'],
       min: null,
       max: null,
       lockedAfterCreate: false,
@@ -3519,6 +3524,25 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: 10,
       lockedAfterCreate: false,
     },
+    {
+      /*
+       * Schritt 4: eine Karte aus dem Steam-Workshop. Eine Zahl, kein Text – der
+       * Wert landet in einer Konsolenzeile, und die Steuerung nimmt nur Auswahl
+       * und Zahlen (Freitext könnte Befehle einschleusen). Die Obergrenze liegt
+       * weit über heutigen IDs (zehnstellig) und sicher unter 2^53.
+       */
+      key: 'workshopMap',
+      label: 'Workshop-ID',
+      type: 'number',
+      defaultValue: 0,
+      description:
+        'Die Zahl hinter „?id=“ in der Adresse der Workshop-Seite. Gilt, wenn als Karte „workshop“ gewählt ist.',
+      required: false,
+      options: [],
+      min: 0,
+      max: 999_999_999_999,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
@@ -3527,16 +3551,28 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     map: 'CS2_MAP',
     gameMode: 'CS2_GAME_MODE',
     bots: 'CS2_BOTS',
+    workshopMap: 'CS2_WORKSHOP_MAP',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
   // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
-  restartRequiredFields: ['serverName', 'serverPassword', 'maxPlayers', 'map', 'gameMode', 'bots'],
+  restartRequiredFields: [
+    'serverName',
+    'serverPassword',
+    'maxPlayers',
+    'map',
+    'gameMode',
+    'bots',
+    'workshopMap',
+  ],
   /*
    * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die
    * Einstellungen bleiben die Startwerte; live geht es über die Konsole.
    *
    * Karte und Modus zusammen: Der Modus sind zwei Konsolenwerte, wirksam erst
-   * mit dem nächsten Kartenladen – also `changelevel` gleich hinterher.
+   * mit dem nächsten Kartenladen – also `changelevel` gleich hinterher. Die
+   * Workshop-ID gehört dazu (Schritt 4): Bei Karte `workshop` lädt
+   * `host_workshop_map <ID>` statt `changelevel`, auch nach einem
+   * Moduswechsel.
    *
    * Bots bleiben über einen Kartenwechsel erhalten (`persist`): CS2 führt nach
    * jedem Laden `gamemode_<modus>.cfg` aus, die die Bot-Anzahl zurücksetzt;
@@ -3546,9 +3582,13 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     {
       id: 'karte-modus',
       label: 'Karte & Modus',
-      fields: ['map', 'gameMode'],
-      commands: ['{gameMode}', 'changelevel {map}'],
+      fields: ['map', 'gameMode', 'workshopMap'],
+      commands: ['{gameMode}', '{map}'],
       values: {
+        map: {
+          ...Object.fromEntries(CS2_KARTEN.map((karte) => [karte, `changelevel ${karte}`])),
+          workshop: 'host_workshop_map {workshopMap}',
+        },
         gameMode: {
           competitive: 'game_type 0; game_mode 1',
           casual: 'game_type 0; game_mode 0',

@@ -294,6 +294,31 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.deepEqual(lauf.argv, []);
   });
 
+  it('lädt bei Karte „workshop“ die Workshop-ID statt einer Karte (Schritt 4)', () => {
+    const lauf = starte(arbeitsordner(), { CS2_MAP: 'workshop', CS2_WORKSHOP_MAP: '3070284539' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.equal(nach(lauf.argv, '+host_workshop_map'), '3070284539');
+    assert.equal(nach(lauf.argv, '+map'), null);
+  });
+
+  it('lässt die Workshop-ID liegen, solange eine normale Karte gewählt ist', () => {
+    const lauf = starte(arbeitsordner(), { CS2_MAP: 'de_nuke', CS2_WORKSHOP_MAP: '3070284539' });
+
+    assert.equal(nach(lauf.argv, '+map'), 'de_nuke');
+    assert.equal(nach(lauf.argv, '+host_workshop_map'), null);
+  });
+
+  it('startet nicht mit „workshop“ ohne ID – und nicht mit einer ID, die keine Zahl ist', () => {
+    const ohne = starte(arbeitsordner(), { CS2_MAP: 'workshop', CS2_WORKSHOP_MAP: '0' });
+    const kaputt = starte(arbeitsordner(), { CS2_MAP: 'workshop', CS2_WORKSHOP_MAP: '1; quit' });
+
+    assert.equal(ohne.status, 78);
+    assert.deepEqual(ohne.argv, []);
+    assert.equal(kaputt.status, 78);
+    assert.deepEqual(kaputt.argv, []);
+  });
+
   it('setzt genau so viele Bots wie gewählt – ohne Angabe keine', () => {
     const mit = arbeitsordner();
     const ohne = arbeitsordner();
