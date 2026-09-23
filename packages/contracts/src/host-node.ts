@@ -182,6 +182,20 @@ export interface HostNodeDto {
    * meldet sich binnen einer Minute erneut.
    */
   agent?: HostNodeAgentInfo | null;
+  /**
+   * Zeitpunkt, zu dem das Backend dieser Node zuletzt ein Update angestoßen
+   * hat (`UPDATE_AVAILABLE`, Gefundener Punkt 342), als ISO-8601.
+   *
+   * Nach dem Anstoß startet die Node ihren Stapel neu und ist ein, zwei Minuten
+   * getrennt. Ohne diese Angabe stünde sie in der Zeit schlicht „offline" und
+   * sähe aus wie ein Ausfall. Ob die Oberfläche stattdessen „aktualisiert sich"
+   * zeigt, entscheidet {@link isNodeUpdating} – an einer Stelle, mit Frist.
+   *
+   * `null`, sobald sich der Agent danach wieder meldet, und nach einem
+   * Neustart des Backends (nur im Arbeitsspeicher). Optional, damit dieser
+   * Vertrag für sich stehen kann: Ein fehlendes Feld heißt „kein Anstoß offen".
+   */
+  updateSignaledAt?: string | null;
   /** ISO-8601-Zeitstempel. */
   createdAt: string;
   permissions: HostNodePermissions;
@@ -199,4 +213,42 @@ export interface HostNodeAgentInfo {
   compatible: boolean;
   /** Zeitpunkt des Handshakes als ISO-8601. */
   reportedAt: string;
+}
+
+/**
+ * Wie lange nach einem Update-Anstoß eine getrennte Node als „aktualisiert
+ * sich" gilt (Gefundener Punkt 342).
+ *
+ * 15 Minuten: `update.sh` wartet bis zu zehn Minuten darauf, dass die Pipeline
+ * den Zweig `prod` umhängt, und braucht danach ein, zwei Minuten für Pull und
+ * Neustart. Ist die Node dann immer noch weg, ist etwas schiefgegangen – und
+ * die Oberfläche soll wieder ehrlich „offline" sagen, statt ein hängendes
+ * Update zu verdecken.
+ */
+export const NODE_UPDATE_DISPLAY_WINDOW_MS = 15 * 60 * 1000;
+
+/**
+ * Aktualisiert sich die Node gerade? (Gefundener Punkt 342)
+ *
+ * Nur für eine **getrennte** Node: Ist sie online, ist das Update entweder
+ * durch oder gar nicht nötig gewesen. In Wartung bleibt Wartung – der Zustand
+ * ist vom Betreiber gesetzt und geht vor.
+ */
+export function isNodeUpdating(
+  node: Pick<HostNodeDto, 'status' | 'updateSignaledAt'>,
+  now: Date,
+): boolean {
+  if (node.status !== 'offline' || node.updateSignaledAt == null) {
+    return false;
+  }
+
+  const angestossen = Date.parse(node.updateSignaledAt);
+
+  if (Number.isNaN(angestossen)) {
+    return false;
+  }
+
+  const vergangen = now.getTime() - angestossen;
+
+  return vergangen >= 0 && vergangen <= NODE_UPDATE_DISPLAY_WINDOW_MS;
 }
