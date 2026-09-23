@@ -6,7 +6,7 @@ import {
   type GameServerDto,
   type GameTypeDto,
 } from '@palantir/contracts';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, Panel, useToast } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
 import { applyLiveValues, fetchGameTypes } from '@/lib/api/servers';
@@ -57,13 +57,17 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
   }, [steuerungen, spiel, server.config, server.liveValues]);
 
   const [entwurf, setEntwurf] = useState<GameConfigValues>(aktuell);
+  const [basis, setBasis] = useState<GameConfigValues>(aktuell);
   const [busy, setBusy] = useState(false);
 
   // Kommt ein neuer Stand (Übernahme, Neustart), gilt er – ein alter Entwurf
   // bliebe sonst stehen, obwohl der Server längst etwas anderes spielt.
-  useEffect(() => {
+  // Abgeglichen während des Renderns statt in einem Effekt: So empfiehlt es
+  // React für Zustand, der von Props abhängt, und es gibt keine zweite Runde.
+  if (basis !== aktuell) {
+    setBasis(aktuell);
     setEntwurf(aktuell);
-  }, [aktuell]);
+  }
 
   if (steuerungen.length === 0 || spiel === null) {
     return null;
