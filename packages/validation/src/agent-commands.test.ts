@@ -13,6 +13,7 @@ import {
   getLogsCommandPayloadSchema,
   removeStorageEntryCommandPayloadSchema,
   setServerQueryCommandPayloadSchema,
+  updateAvailableCommandPayloadSchema,
   updateResourcesCommandPayloadSchema,
   restartCommandPayloadSchema,
   stopCommandPayloadSchema,
@@ -541,4 +542,28 @@ describe('Archiv-Übernahme: Pfad-Einsperrung (Audit contracts-validation-13)', 
       ).toBe(false);
     },
   );
+});
+
+describe('UPDATE_AVAILABLE (Gefundener Punkt 342)', () => {
+  const COMMIT = 'a1cebe2d0123456789abcdef0123456789abcdef';
+
+  it('nimmt einen vollständigen Commit an', () => {
+    expect(updateAvailableCommandPayloadSchema.safeParse({ targetCommit: COMMIT }).success).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ['verkürzt', COMMIT.slice(0, 12)],
+    ['in Großbuchstaben', COMMIT.toUpperCase()],
+    ['mit Zeilenumbruch', `${COMMIT}\n`],
+    ['mit Pfad', '../../etc/passwd'],
+    ['leer', ''],
+  ])('lehnt einen Commit %s ab', (_fall, targetCommit) => {
+    expect(updateAvailableCommandPayloadSchema.safeParse({ targetCommit }).success).toBe(false);
+  });
+
+  it('verlangt den Commit', () => {
+    expect(updateAvailableCommandPayloadSchema.safeParse({}).success).toBe(false);
+  });
 });

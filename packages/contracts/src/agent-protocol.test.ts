@@ -21,8 +21,9 @@ describe('Agent-Protokoll – Befehle (Pflichtenheft §5.3)', () => {
     // herunterladen, zweistufig wie der Backup-Download),
     // UPLOAD_ARCHIVE_BLOCK die aus Gefundenem Punkt 106 (dasselbe Archiv,
     // aber blockweise statt in einem Frame) und UPDATE_RESOURCES die für die
-    // nachträglich änderbaren Grenzen eines Containers – alle in Pflichtenheft
-    // §5.3 nachgetragen.
+    // nachträglich änderbaren Grenzen eines Containers, UPDATE_AVAILABLE die
+    // aus Gefundenem Punkt 342 (Anstoß zur Selbstaktualisierung der Node) –
+    // alle in Pflichtenheft §5.3 nachgetragen.
     expect([...AGENT_COMMANDS]).toEqual([
       'CREATE',
       'START',
@@ -49,6 +50,7 @@ describe('Agent-Protokoll – Befehle (Pflichtenheft §5.3)', () => {
       'FILE_ARCHIVE',
       'FILE_ARCHIVE_BLOCK',
       'UPLOAD_ARCHIVE_BLOCK',
+      'UPDATE_AVAILABLE',
     ]);
   });
 

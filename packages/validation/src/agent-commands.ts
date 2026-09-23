@@ -491,6 +491,29 @@ export const removeStorageEntryCommandResultSchema = z.object({
 });
 
 /**
+ * `UPDATE_AVAILABLE` – Anstoß zur Selbstaktualisierung der Node (Gefundener
+ * Punkt 342).
+ *
+ * Streng auf die Form eines vollständigen Commits begrenzt: Der Agent schreibt
+ * den Wert in die Markierungsdatei, und `update.sh` liest ihn dort. Mehr als 40
+ * Hex-Zeichen haben darin nichts verloren – kein Pfad, kein Zeilenumbruch,
+ * nichts, was eine Shell anders lesen könnte als gemeint.
+ *
+ * Noch nicht in `AGENT_COMMAND_PAYLOAD_SCHEMAS`: Die Tabelle folgt
+ * `IMPLEMENTED_AGENT_COMMANDS`, und dort steht der Befehl erst mit der
+ * Umsetzung im Agent.
+ */
+export const updateAvailableCommandPayloadSchema = z.object({
+  targetCommit: z
+    .string()
+    .regex(/^[0-9a-f]{40}$/, { message: 'targetCommit ist kein vollständiger Commit.' }),
+});
+
+export const updateAvailableCommandResultSchema = z.object({
+  signaled: z.boolean(),
+});
+
+/**
  * Nutzlast von `STATS_UPDATE` aus der periodischen Server-Abfrage.
  *
  * Steht hier und nicht in `agent-protocol.ts`, weil sie inhaltlich zur Abfrage
