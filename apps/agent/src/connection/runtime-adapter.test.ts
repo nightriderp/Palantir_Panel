@@ -237,6 +237,37 @@ describe('Befehl → Runtime-Aufruf', () => {
     expect(isOk(antwort)).toBe(true);
     expect(antwort.data).toEqual({ exitCode: 0, stdout: 'pong', stderr: '' });
   });
+
+  it('schickt die Zeile über palantir-console in die Standardeingabe (Fundpunkt 341)', async () => {
+    // Vorher lief `status` als eigenes Programm: „executable file not found".
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    const gesehen: string[][] = [];
+    runtime.setExecHandler((_id, kommando) => {
+      gesehen.push([...kommando]);
+
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+
+    await befehl('EXEC_CONSOLE', { containerId, command: ['status'] });
+
+    expect(gesehen).toEqual([['palantir-console', 'status']]);
+  });
+
+  it('setzt palantir-console nicht doppelt, wenn es jemand selbst tippt', async () => {
+    const containerId = await containerAnlegen();
+    await befehl('START', { containerId });
+    const gesehen: string[][] = [];
+    runtime.setExecHandler((_id, kommando) => {
+      gesehen.push([...kommando]);
+
+      return { exitCode: 0, stdout: '', stderr: '' };
+    });
+
+    await befehl('EXEC_CONSOLE', { containerId, command: ['palantir-console', 'status'] });
+
+    expect(gesehen).toEqual([['palantir-console', 'status']]);
+  });
 });
 
 describe('Nutzdaten-Prüfung', () => {
@@ -466,7 +497,9 @@ describe('STOP mit Stopp-Befehl (Spiele, die bei SIGTERM nicht speichern)', () =
     });
 
     expect(isOk(antwort)).toBe(true);
-    expect(gesehen).toEqual([['save-and-quit']]);
+    // Über die Standardeingabe – vorher lief der Befehl als Programm und kam
+    // nie beim Server an (Fundpunkt 341).
+    expect(gesehen).toEqual([['palantir-console', 'save-and-quit']]);
     expect((await runtime.inspect(containerId)).status).toBe('exited');
     // Das Signal ist nicht mehr nötig - der Server ist schon weg. Die eine
     // Aufrufaufzeichnung stammt aus dem Konsolen-Handler oben.

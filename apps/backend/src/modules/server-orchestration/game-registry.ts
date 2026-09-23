@@ -433,7 +433,7 @@ export const MINECRAFT_PAPER_GAME_TYPE: GameTypeDefinition = {
       type: 'toggle',
       defaultValue: false,
       description:
-        'Lässt nur Spieler auf der Whitelist zu. Die Liste selbst wird in der Konsole gepflegt (`palantir-console whitelist add <Name>`).',
+        'Lässt nur Spieler auf der Whitelist zu. Die Liste selbst wird in der Konsole gepflegt (`whitelist add <Name>`).',
       required: false,
       options: [],
       min: null,
