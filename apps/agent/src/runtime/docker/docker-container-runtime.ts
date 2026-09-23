@@ -446,6 +446,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
       const status = await this.#client.requestVoid('POST', `${this.#pfad(containerId)}/stop`, {
         query: { t: options.timeoutSeconds },
         tolerateStatus: [304],
+        ...fristFuerStopp(options.timeoutSeconds),
       });
       ausgeloest = status !== 304;
     } finally {
@@ -462,6 +463,7 @@ export class DockerContainerRuntime implements ContainerRuntime {
     try {
       await this.#client.requestVoid('POST', `${this.#pfad(containerId)}/restart`, {
         query: { t: options.timeoutSeconds },
+        ...fristFuerStopp(options.timeoutSeconds),
       });
       ausgeloest = true;
     } finally {
@@ -1150,4 +1152,25 @@ export function createDockerContainerRuntime(
       ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
     }),
   });
+}
+
+/**
+ * Wie lange die Anfrage selbst auf `/stop` bzw. `/restart` warten darf.
+ *
+ * Docker antwortet erst, wenn der Container wirklich steht – also bis zu `t`
+ * Sekunden später, wenn er das Signal nicht beachtet. Mit der üblichen Frist
+ * von 30 Sekunden brach die Anfrage bei jedem Spiel mit längerer Kulanzzeit
+ * vorher ab, und der Stopp endete als „Der Docker-Socket-Proxy ist nicht
+ * erreichbar", obwohl Docker ihn gerade ausführte. Aufgefallen bei CS2 (60 s,
+ * 23.09.2026): jedes Stoppen endete im Fehlerzustand.
+ *
+ * Darum: die Kulanzzeit plus ein Nachlauf für das Aufräumen der Engine. Ohne
+ * Kulanzzeit gilt Dockers Vorgabe von 10 Sekunden, und die übliche Frist reicht.
+ */
+const STOPP_NACHLAUF_MS = 30_000;
+
+function fristFuerStopp(timeoutSeconds: number | undefined): { timeoutMs?: number } {
+  return timeoutSeconds === undefined
+    ? {}
+    : { timeoutMs: timeoutSeconds * 1_000 + STOPP_NACHLAUF_MS };
 }

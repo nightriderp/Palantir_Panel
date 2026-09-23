@@ -286,6 +286,55 @@ describe('START / STOP / RESTART / DELETE', () => {
     expect(aufrufe[0]?.query.get('t')).toBe('45');
   });
 
+  describe('wartet beim Stoppen länger als die übliche Frist', () => {
+    /*
+     * Docker antwortet auf `/stop` erst, wenn der Container steht – bis zu `t`
+     * Sekunden. Mit der üblichen Frist brach die Anfrage vorher ab, und jeder
+     * Stopp von CS2 (60 s) endete als „Socket-Proxy nicht erreichbar"
+     * (23.09.2026). Hier: übliche Frist 50 ms, Docker braucht 150 ms.
+     */
+    const langsam = (_input: string, init?: RequestInit): Promise<Response> =>
+      new Promise((fertig, scheitern) => {
+        const zeit = setTimeout(() => {
+          fertig(new Response(null, { status: 204 }));
+        }, 150);
+        init?.signal?.addEventListener('abort', () => {
+          clearTimeout(zeit);
+          scheitern(init.signal?.reason);
+        });
+      });
+
+    function kurzeFrist(): DockerContainerRuntime {
+      return new DockerContainerRuntime({
+        client: new DockerHttpClient({
+          baseUrl: PROXY_URL,
+          fetchImpl: langsam,
+          requestTimeoutMs: 50,
+        }),
+        hardening: { allowedHostRoots: [DATEN_WURZEL] },
+        onStreamError: () => undefined,
+      });
+    }
+
+    it('stop() mit Kulanzzeit', async () => {
+      const r = kurzeFrist();
+      await expect(r.stop('c-1', { timeoutSeconds: 1 })).resolves.toBeUndefined();
+      await r.dispose();
+    });
+
+    it('restart() mit Kulanzzeit', async () => {
+      const r = kurzeFrist();
+      await expect(r.restart('c-1', { timeoutSeconds: 1 })).resolves.toBeUndefined();
+      await r.dispose();
+    });
+
+    it('ohne Kulanzzeit bleibt es bei der üblichen Frist', async () => {
+      const r = kurzeFrist();
+      await expect(r.stop('c-1')).rejects.toThrow(/nicht erreichbar/u);
+      await r.dispose();
+    });
+  });
+
   it('entfernt ohne Volumes und ohne force, solange nichts anderes verlangt ist', async () => {
     antwortgeber = () => new Response(null, { status: 204 });
     await runtime.remove('c-1');
