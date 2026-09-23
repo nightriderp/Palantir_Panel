@@ -1,6 +1,7 @@
 import {
   type AccountDto,
   type AnnouncementDto,
+  type AuditArchiveResultDto,
   type AuditLogPageDto,
   type BackupOverviewDto,
   type PanelBackupDto,
@@ -414,6 +415,15 @@ export function fetchAuditLog(
   signal?: AbortSignal,
 ): Promise<ApiResult<AuditLogPageDto>> {
   return apiRequest<AuditLogPageDto>('/admin/audit', { query, signal });
+}
+
+/**
+ * Archivlauf anstoßen (Pflichtenheft §6): Einträge älter als
+ * `AUDIT_RETENTION_MONTHS` werden exportiert und danach aus der Tabelle
+ * entfernt. Verlangt `audit.manage`.
+ */
+export function archiveAuditLog(): Promise<ApiResult<AuditArchiveResultDto>> {
+  return apiRequest<AuditArchiveResultDto>('/admin/audit/archive', { method: 'POST' });
 }
 
 // ---------------------------------------------------------------------------

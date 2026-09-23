@@ -1,6 +1,7 @@
 import { type AccountDto, type GlobalPermissions } from '@palantir/contracts';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '@/components/shared';
 import { AuditLogView } from './AuditLogView';
 
 /**
@@ -16,7 +17,7 @@ import { AuditLogView } from './AuditLogView';
  * Abfrage landet und nicht wieder ein angehängtes `Z`.
  */
 
-const api = vi.hoisted(() => ({ fetchAuditLog: vi.fn() }));
+const api = vi.hoisted(() => ({ fetchAuditLog: vi.fn(), archiveAuditLog: vi.fn() }));
 const sitzung = vi.hoisted(() => ({ account: null as AccountDto | null }));
 
 vi.mock('@/app/(dashboard)/SessionProvider', () => ({
@@ -26,7 +27,16 @@ vi.mock('@/app/(dashboard)/SessionProvider', () => ({
 vi.mock('@/lib/api/admin', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchAuditLog: api.fetchAuditLog,
+  archiveAuditLog: api.archiveAuditLog,
 }));
+
+function zeichne() {
+  render(
+    <ToastProvider>
+      <AuditLogView />
+    </ToastProvider>,
+  );
+}
 
 function berechtigungen(overrides: Partial<GlobalPermissions> = {}): GlobalPermissions {
   return {
@@ -83,7 +93,7 @@ function letzteAbfrage(): { from?: string; to?: string } {
 
 /** Rendert die Ansicht und setzt beide Datumsfelder auf denselben Tag. */
 async function filtereAufDen(tag: string) {
-  render(<AuditLogView />);
+  zeichne();
 
   fireEvent.change(screen.getByLabelText('Ab'), { target: { value: tag } });
   fireEvent.change(screen.getByLabelText('Bis'), { target: { value: tag } });
@@ -119,7 +129,7 @@ describe('Audit-Log – Tagesgrenzen in der Zeitzone des Browsers (frontend-lib-
   });
 
   it('stellt ohne Datumsangabe gar keine Grenze', async () => {
-    render(<AuditLogView />);
+    zeichne();
 
     await waitFor(() => {
       expect(api.fetchAuditLog).toHaveBeenCalled();
@@ -131,7 +141,7 @@ describe('Audit-Log – Tagesgrenzen in der Zeitzone des Browsers (frontend-lib-
 
   it('bleibt ohne `canViewAuditLog` stumm', () => {
     sitzung.account = konto(berechtigungen());
-    render(<AuditLogView />);
+    zeichne();
 
     expect(screen.getByText('Kein Zugriff'));
     expect(api.fetchAuditLog).not.toHaveBeenCalled();
@@ -173,5 +183,32 @@ describe('Audit-Log in UTC', () => {
 
     expect(letzteAbfrage().from).toBe('2026-09-01T00:00:00.000Z');
     expect(letzteAbfrage().to).toBe('2026-09-01T23:59:59.999Z');
+  });
+});
+
+describe('Audit-Log – Archivlauf aus der Oberfläche (Pflichtenheft §6)', () => {
+  it('zeigt den Knopf nur mit `canArchiveAuditLog`', async () => {
+    zeichne();
+    await waitFor(() => expect(api.fetchAuditLog).toHaveBeenCalled());
+
+    expect(screen.queryByRole('button', { name: 'Alte Einträge archivieren' })).toBeNull();
+  });
+
+  it('fragt nach und stößt den Lauf erst nach der Bestätigung an', async () => {
+    sitzung.account = konto(berechtigungen({ canViewAuditLog: true, canArchiveAuditLog: true }));
+    api.archiveAuditLog.mockResolvedValue({
+      success: true as const,
+      data: { archivedCount: 3, archiveFilePath: '/srv/archiv.gz', archiveSizeBytes: 100 },
+      error: null,
+    });
+    zeichne();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Alte Einträge archivieren' }));
+    expect(api.archiveAuditLog).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archivieren' }));
+
+    await waitFor(() => expect(api.archiveAuditLog).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('3 Einträge archiviert.')).toBeTruthy();
   });
 });

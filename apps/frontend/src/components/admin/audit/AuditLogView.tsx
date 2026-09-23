@@ -2,6 +2,7 @@
 
 import {
   AUDIT_ACTIONS,
+  AUDIT_RETENTION_MONTHS,
   AUDIT_TARGET_TYPES,
   type AuditAction,
   type AuditLogPageDto,
@@ -10,6 +11,7 @@ import {
 import { useMemo, useState } from 'react';
 import {
   Button,
+  DangerConfirmDialog,
   DateField,
   PageHeader,
   Panel,
@@ -19,9 +21,11 @@ import {
   formatDateTime,
   formatNumber,
   startOfDayIso,
+  useToast,
 } from '@/components/shared';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
-import { fetchAuditLog } from '@/lib/api/admin';
+import { archiveAuditLog, fetchAuditLog } from '@/lib/api/admin';
+import { errorText } from '@/lib/api/client';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { AdminAccessNotice, AdminError, AdminLoading, AdminTable, Td, Th } from '../common';
 import { auditActionCode, auditActionLabel, auditTargetTypeLabel, isAuditFailure } from '../labels';
@@ -64,6 +68,12 @@ function formatMetaValue(value: unknown): string {
 export function AuditLogView() {
   const { user } = useSession();
   const canView = user?.permissions.canViewAuditLog ?? false;
+  // Eigenes Recht (`audit.manage`, Gefundener Punkt 46): Lesen und Verkürzen
+  // sind zwei verschiedene Dinge.
+  const canArchive = user?.permissions.canArchiveAuditLog ?? false;
+  const toast = useToast();
+  const [archivFrage, setArchivFrage] = useState(false);
+  const [archiviert, setArchiviert] = useState(false);
 
   const [action, setAction] = useState<AuditAction | ''>('');
   const [targetType, setTargetType] = useState<AuditTargetType | ''>('');
@@ -92,6 +102,25 @@ export function AuditLogView() {
   function withFirstPage(update: () => void) {
     update();
     setOffset(0);
+  }
+
+  async function archivieren() {
+    setArchiviert(true);
+    const result = await archiveAuditLog();
+    setArchiviert(false);
+    setArchivFrage(false);
+
+    if (!result.success) {
+      toast.error(errorText(result));
+      return;
+    }
+
+    toast.success(
+      result.data.archivedCount === 0
+        ? 'Nichts zu archivieren – kein Eintrag ist älter als die Aufbewahrungsfrist.'
+        : `${formatNumber(result.data.archivedCount)} Einträge archiviert.`,
+    );
+    resource.reload();
   }
 
   function resetFilters() {
@@ -123,6 +152,23 @@ export function AuditLogView() {
         title="Audit-Log"
         subtitle="Alle sicherheitsrelevanten Aktionen – unveränderlich und nur einsehbar"
         className="-mx-5 -mt-5 px-5"
+        actions={
+          canArchive ? (
+            <Button variant="secondary" onClick={() => setArchivFrage(true)}>
+              Alte Einträge archivieren
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <DangerConfirmDialog
+        open={archivFrage}
+        onClose={() => setArchivFrage(false)}
+        title="Audit-Log archivieren?"
+        message={`Einträge älter als ${String(AUDIT_RETENTION_MONTHS)} Monate werden in eine Archivdatei auf der VPS exportiert und danach aus dem Log entfernt. Der Lauf selbst steht anschließend im Log.`}
+        confirmLabel="Archivieren"
+        busy={archiviert}
+        onConfirm={() => void archivieren()}
       />
 
       <Panel className="flex flex-col gap-3">
