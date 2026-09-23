@@ -709,7 +709,70 @@ const envSchema = z.object({
   TWITCH_REDIRECT_URI: z.string().optional(),
   STEAM_API_KEY: z.string().optional(),
   STEAM_RETURN_URL: z.string().optional(),
+
+  // -- Discord-Bot (Lastenheft §3.11, Pflichtenheft §14a) ---------------------
+  // Dieselbe Discord-Anwendung wie der Login oben: Die Application-ID ist
+  // `DISCORD_CLIENT_ID`, ein zweiter Wert entfällt. Ohne den Schalter lädt das
+  // Modul gar nicht; mit ihm verlangt die Prüfung unten alle übrigen Werte.
+
+  /** Bot einschalten. Vorgabe `false` – die Instanz läuft ohne Bot unverändert. */
+  DISCORD_BOT_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  /** Token des Bot-Benutzers (Developer Portal > Bot). Geheimnis. */
+  DISCORD_BOT_TOKEN: optionalEnvString(),
+  /** Öffentlicher Schlüssel der Anwendung (General Information), 64 Hex-Zeichen. */
+  DISCORD_PUBLIC_KEY: optionalEnvString(),
+  /** Id des Projekt-Discord-Servers (Rechtsklick auf den Server > „Server-ID kopieren"). */
+  DISCORD_GUILD_ID: optionalEnvString(),
 });
+
+/**
+ * Pflichtwerte des Discord-Bots, wenn er eingeschaltet ist (Pflichtenheft
+ * §14a.1). Unabhängig von `NODE_ENV`: Ein eingeschalteter Bot ohne Token
+ * startete sonst und scheiterte erst beim ersten Befehl, ohne dass jemand es
+ * sieht.
+ */
+function discordBotPrüfen(werte: z.infer<typeof envSchema>, ctx: z.RefinementCtx): void {
+  if (!werte.DISCORD_BOT_ENABLED) {
+    return;
+  }
+
+  const hinweis = ' Wert in der zentralen .env eintragen (siehe .env.example Abschnitt 19).';
+  const pflicht = [
+    'DISCORD_BOT_TOKEN',
+    'DISCORD_PUBLIC_KEY',
+    'DISCORD_GUILD_ID',
+    'DISCORD_CLIENT_ID',
+  ] as const;
+
+  for (const name of pflicht) {
+    if (!werte[name]) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [name],
+        message: `${name} fehlt, obwohl DISCORD_BOT_ENABLED=true ist.${hinweis}`,
+      });
+    }
+  }
+
+  if (werte.DISCORD_PUBLIC_KEY && !/^[0-9a-f]{64}$/i.test(werte.DISCORD_PUBLIC_KEY)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['DISCORD_PUBLIC_KEY'],
+      message: `DISCORD_PUBLIC_KEY muss aus genau 64 Hex-Zeichen bestehen.${hinweis}`,
+    });
+  }
+
+  if (werte.DISCORD_GUILD_ID && !/^\d{17,20}$/.test(werte.DISCORD_GUILD_ID)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['DISCORD_GUILD_ID'],
+      message: `DISCORD_GUILD_ID muss eine Discord-Id aus 17 bis 20 Ziffern sein.${hinweis}`,
+    });
+  }
+}
 
 /**
  * Prüfungen, die mehr als eine Variable brauchen (Audit W2-6,
@@ -787,6 +850,8 @@ const envSchemaMitPrüfungen = envSchema
           'außerhalb liegt (darunter oder darüber, siehe .env.example).',
       });
     }
+
+    discordBotPrüfen(werte, ctx);
 
     if (werte.NODE_ENV !== 'production') {
       return;

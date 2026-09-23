@@ -128,8 +128,18 @@ const PASSWORD_CHANGE_EXEMPT_ROUTES = new Set([
  * ließe; ein Angreifer könnte höchstens einen Login-Versuch mit eigenen
  * Zugangsdaten auslösen. `refresh` ist bewusst **nicht** ausgenommen: der
  * Refresh-Token hängt an einer bestehenden Sitzung.
+ *
+ * `/discord/interactions` (Pflichtenheft §14a.2) ist aus einem anderen Grund
+ * dabei: Aufrufer ist Discord, nicht ein Browser. Es gibt weder Sitzung noch
+ * Cookie, die sich missbrauchen ließen; die Route authentifiziert jede Anfrage
+ * über eine Ed25519-Signatur, die nur Discord erzeugen kann.
  */
-const CSRF_EXEMPT_PATHS = new Set(['/auth/register', '/auth/login', '/auth/login/2fa']);
+const CSRF_EXEMPT_PATHS = new Set([
+  '/auth/register',
+  '/auth/login',
+  '/auth/login/2fa',
+  '/discord/interactions',
+]);
 
 function routePath(request: FastifyRequest): string {
   // `routerPath` ist das Muster der Route (ohne Query); fällt zurück auf die

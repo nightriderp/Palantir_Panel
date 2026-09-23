@@ -629,3 +629,64 @@ describe('Platzhalter aus der Vorlage', () => {
     expect(ergebnis.success).toBe(true);
   });
 });
+
+/**
+ * Pflichtwerte des Discord-Bots (Pflichtenheft §14a.1, §14a.11). Ein
+ * eingeschalteter Bot ohne Token startete sonst und scheiterte erst beim
+ * ersten Befehl, ohne dass es jemand sieht.
+ */
+describe('Discord-Bot', () => {
+  const fehlerPfade = (ergebnis: ReturnType<typeof umgebungLesen>): string[] =>
+    ergebnis.success ? [] : ergebnis.error.issues.map((issue) => issue.path.join('.'));
+
+  const vollständig = {
+    DISCORD_BOT_ENABLED: 'true',
+    DISCORD_BOT_TOKEN: 'bot-token',
+    DISCORD_PUBLIC_KEY: 'a'.repeat(64),
+    DISCORD_GUILD_ID: '123456789012345678',
+    DISCORD_CLIENT_ID: '123456789012345679',
+  };
+
+  it('ist ohne Angabe abgeschaltet und verlangt dann nichts', () => {
+    const ergebnis = umgebungLesen({});
+
+    expect(ergebnis.success).toBe(true);
+    expect(ergebnis.success && ergebnis.data.DISCORD_BOT_ENABLED).toBe(false);
+  });
+
+  it('nimmt eine vollständige Angabe an', () => {
+    const ergebnis = umgebungLesen(vollständig);
+
+    expect(ergebnis.success).toBe(true);
+    expect(ergebnis.success && ergebnis.data.DISCORD_BOT_ENABLED).toBe(true);
+  });
+
+  it('nennt jeden fehlenden Wert, wenn der Schalter an ist', () => {
+    const ergebnis = umgebungLesen({ DISCORD_BOT_ENABLED: 'true' });
+
+    expect(fehlerPfade(ergebnis)).toEqual(
+      expect.arrayContaining([
+        'DISCORD_BOT_TOKEN',
+        'DISCORD_PUBLIC_KEY',
+        'DISCORD_GUILD_ID',
+        'DISCORD_CLIENT_ID',
+      ]),
+    );
+  });
+
+  it('prüft das Format von Schlüssel und Server-Id', () => {
+    const ergebnis = umgebungLesen({
+      ...vollständig,
+      DISCORD_PUBLIC_KEY: 'kein-hex',
+      DISCORD_GUILD_ID: 'mein-server',
+    });
+
+    expect(fehlerPfade(ergebnis)).toEqual(['DISCORD_PUBLIC_KEY', 'DISCORD_GUILD_ID']);
+  });
+
+  it('behandelt leere Werte aus der Vorlage wie fehlende', () => {
+    const ergebnis = umgebungLesen({ ...vollständig, DISCORD_BOT_TOKEN: '' });
+
+    expect(fehlerPfade(ergebnis)).toEqual(['DISCORD_BOT_TOKEN']);
+  });
+});
