@@ -85,6 +85,14 @@ describe('formatServerAddress', () => {
   it('liefert null, wenn keine Adresse freigegeben ist', () => {
     expect(formatServerAddress(null)).toBeNull();
   });
+
+  it('lässt eine Umlaut-Domain in der ASCII-Form – Spiel-Clients können keine Umlaute', () => {
+    // Fundpunkt 340: CS2 verband sich mit `test.müf-it.de:25003` nicht, mit
+    // der ASCII-Form sofort.
+    expect(formatServerAddress({ hostname: 'test.xn--mf-it-kva.de', port: 25003 })).toBe(
+      'test.xn--mf-it-kva.de:25003',
+    );
+  });
 });
 
 describe('serverInitials', () => {

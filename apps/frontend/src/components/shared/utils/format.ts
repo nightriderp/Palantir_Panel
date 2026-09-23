@@ -1,5 +1,4 @@
 import { type ServerAddress } from '@palantir/contracts';
-import { hostnameAnzeigen } from '@/lib/domain/punycode';
 
 /**
  * Anzeige-Formatierungen des Design-Systems.
@@ -249,16 +248,21 @@ export function formatPing(pingMs: number | null | undefined): string {
  * Ohne Port (Hostname-Routing, initial Minecraft – Pflichtenheft §13) wird nur
  * der Hostname ausgegeben.
  *
- * Der Hostname kommt aus dem DTO in der ASCII-Form und wird hier für die
- * Anzeige zurückverwandelt (`lib/domain/punycode.ts`): Bei einer Umlaut-Domain
- * steht dort sonst `welt.xn--mf-it-kva.de`. Diese Funktion ist der einzige Weg,
- * auf dem eine Serveradresse in die Oberfläche gelangt – Kachel, Kopfzeile,
- * Übersicht und die beiden Verwaltungsansichten rufen alle sie auf.
+ * **Der Hostname bleibt in der ASCII-Form** (`welt.xn--mf-it-kva.de`), wie er
+ * aus dem DTO kommt (Fundpunkt 340, 23.09.2026). Bis dahin wurde er hier in
+ * die Umlaut-Schreibweise zurückverwandelt – hübscher, aber nicht verbindbar:
+ * CS2 fand `test.müf-it.de:25003` nicht, `test.xn--mf-it-kva.de:25003` sofort.
+ * Spiel-Clients lösen keine Umlaut-Domains auf, und was hier steht, wird
+ * abgeschrieben und kopiert.
+ *
+ * Diese Funktion ist der einzige Weg, auf dem eine Serveradresse in die
+ * Oberfläche gelangt – Kachel, Kopfzeile, Übersicht und die beiden
+ * Verwaltungsansichten rufen alle sie auf; die Endung im Wizard kommt aus
+ * `BASE_DOMAIN` (`lib/api/session.ts`) und ist ebenfalls ASCII.
  */
 export function formatServerAddress(address: ServerAddress | null | undefined): string | null {
   if (!address) return null;
-  const hostname = hostnameAnzeigen(address.hostname);
-  return address.port == null ? hostname : `${hostname}:${address.port}`;
+  return address.port == null ? address.hostname : `${address.hostname}:${address.port}`;
 }
 
 /**

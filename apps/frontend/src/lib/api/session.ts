@@ -1,7 +1,6 @@
 import { type AccountDto, type SessionDto } from '@palantir/contracts';
 import { fetchSession, listSessions } from '@/lib/auth/api';
 import { AuthRequestError } from '@/lib/auth/errors';
-import { hostnameAnzeigen } from '@/lib/domain/punycode';
 import { type ApiResult } from './client';
 
 /**
@@ -62,12 +61,11 @@ export function loadSessions(): Promise<ApiResult<SessionDto[]>> {
 /**
  * Basis-Domain der Instanz, unter der Server-Subdomains entstehen (§13).
  *
- * In der Schreibweise, die der Betreiber gekauft hat: Die Konfiguration führt
- * den Namen in der ASCII-Form (`xn--mf-it-kva.de`), weil CORS und die
- * Routing-Regeln Zeichenketten vergleichen – angezeigt wird `müf-it.de`.
- * Diese Konstante wird ausschließlich zum Anzeigen benutzt (Wizard,
- * Einstellungen, Vorschau der Subdomain); der Vergleich mit der tatsächlichen
- * Herkunft der Seite in `lib/auth/api.ts` liest die Variable selbst und bleibt
- * damit bei der ASCII-Form.
+ * **In der ASCII-Form** (`xn--mf-it-kva.de`), wie die Konfiguration sie führt
+ * (Fundpunkt 340, 23.09.2026). Die Konstante zeigt die Adresse eines Servers
+ * (Wizard, Einstellungen, Vorschau der Subdomain) – und die tippen Spieler in
+ * ihr Spiel. Spiel-Clients lösen keine Umlaut-Domains auf: CS2 fand
+ * `test.müf-it.de` nicht, `test.xn--mf-it-kva.de` sofort. Bis dahin stand hier
+ * die Umlaut-Schreibweise.
  */
-export const BASE_DOMAIN = hostnameAnzeigen(process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'example.tld');
+export const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'example.tld';
