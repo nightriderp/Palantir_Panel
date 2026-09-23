@@ -1285,6 +1285,64 @@ export const ERROR_CATALOG = {
     httpStatus: 409,
     defaultMessage: 'Dieses Abzeichen bringt keinen Titel mit.',
   },
+
+  // -- Discord-Bot (Lastenheft §3.11, Pflichtenheft §14a) ---------------------
+  // Bis auf `DISCORD_INTERACTION_INVALID` erreichen diese Codes niemanden als
+  // HTTP-Antwort: Discord erwartet auf jede gültige Interaction ein 200, der
+  // Code steht dann in der flüchtigen Textantwort an den Aufrufer. Der Status
+  // ist trotzdem gesetzt, damit dieselben Codes auch aus einer REST-Route
+  // (etwa dem Konsolen-Schalter im Panel) sinnvoll ausgeliefert werden können.
+
+  /**
+   * Anfrage am Interactions-Endpoint ohne gültige Ed25519-Signatur oder mit
+   * einem Zeitstempel älter als fünf Minuten (Pflichtenheft §14a.2). 401 ist
+   * hier Vorgabe von Discord: Der Endpoint muss eine ungültige Signatur so
+   * beantworten, sonst nimmt das Developer Portal die URL nicht an.
+   */
+  DISCORD_INTERACTION_INVALID: {
+    httpStatus: 401,
+    defaultMessage: 'Die Anfrage trägt keine gültige Discord-Signatur.',
+  },
+  /**
+   * Der Discord-Account des Aufrufers ist mit keinem Palantir-Konto verknüpft
+   * (Pflichtenheft §14a.3). 403 statt 401: Anmelden im Sinne von Palantir
+   * kann man sich in Discord nicht – der Ausweg ist die Verknüpfung im Panel.
+   */
+  DISCORD_NOT_LINKED: {
+    httpStatus: 403,
+    defaultMessage:
+      'Dein Discord-Account ist mit keinem Palantir-Konto verknüpft. Verknüpfe ihn im Panel unter Profil > Anmeldeverfahren.',
+  },
+  /**
+   * Zu viele Aktionen eines Discord-Nutzers in kurzer Zeit (Pflichtenheft
+   * §14a.5). Bewusst getrennt von `AUTH_RATE_LIMITED`: Der gilt für Anmeldung
+   * und Registrierung; hier ist der Nutzer bekannt und nur zu schnell.
+   */
+  DISCORD_RATE_LIMITED: {
+    httpStatus: 429,
+    defaultMessage: 'Zu viele Aktionen in kurzer Zeit. Versuche es in einer Minute erneut.',
+  },
+  /**
+   * Die Bestätigung für Stoppen, Neustarten oder Sperren ist älter als 60
+   * Sekunden (Pflichtenheft §14a.5). 409: Die Rückfrage passt nicht mehr zum
+   * Stand – wer sie nach Minuten bestätigt, weiß womöglich nicht mehr, was
+   * gerade läuft.
+   */
+  DISCORD_CONFIRMATION_EXPIRED: {
+    httpStatus: 409,
+    defaultMessage: 'Diese Bestätigung ist abgelaufen. Bitte den Knopf erneut drücken.',
+  },
+  /**
+   * Konsolenbefehle über Discord sind für diesen Server abgeschaltet
+   * (Pflichtenheft §14a.5, Vorgabe aus). 403 und nicht `PERMISSION_DENIED`:
+   * Das Recht hat der Aufrufer, der Server nimmt den Weg nur nicht an. Den
+   * Schalter legt der Besitzer in den Server-Einstellungen um.
+   */
+  DISCORD_CONSOLE_DISABLED: {
+    httpStatus: 403,
+    defaultMessage:
+      'Konsolenbefehle über Discord sind für diesen Server abgeschaltet. Einschalten lässt sich das in den Server-Einstellungen im Panel.',
+  },
 } as const satisfies Record<string, ErrorDefinition>;
 
 /** Alle gültigen Fehlercodes als Typ – verhindert Freitext-Codes. */
