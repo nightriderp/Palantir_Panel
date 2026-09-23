@@ -169,7 +169,7 @@ export function toPanelBackupDto(
     completedAt: record.completedAt?.toISOString() ?? null,
     permissions: {
       // Ein laufender Abzug wird nicht gelöscht – die Datei entsteht gerade.
-      canDelete: record.status !== 'running' && hasPermission(actor, 'backup.manage.any'),
+      canDelete: record.status !== 'running' && hasPermission(actor, 'panelBackup.manage'),
     },
   };
 }
@@ -180,7 +180,9 @@ export function createPanelBackupService(deps: PanelBackupDependencies): PanelBa
   const staleAfterMs = deps.staleAfterMs ?? DEFAULT_PANEL_BACKUP_STALE_AFTER_MS;
 
   function requireBackupManage(actor: PermissionActor): void {
-    if (!hasPermission(actor, 'backup.manage.any')) {
+    // Eigenes Recht seit Fundpunkt 346: Ein Abzug der Panel-Datenbank ist
+    // mehr als die Spielstände fremder Server.
+    if (!hasPermission(actor, 'panelBackup.manage')) {
       throw new PanelBackupError('PERMISSION_DENIED');
     }
   }

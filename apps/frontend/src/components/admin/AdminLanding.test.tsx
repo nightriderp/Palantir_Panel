@@ -73,7 +73,7 @@ function konto(permissions: GlobalPermissions): AccountDto {
 
 /** Alle Flags, an denen ein Eintrag der Administration hängt – aus der Liste selbst. */
 const ADMIN_FLAGS = [
-  ...new Set(ADMIN_ENTRIES.flatMap((entry) => (entry.requires ? [entry.requires] : []))),
+  ...new Set(ADMIN_ENTRIES.flatMap((entry) => (entry.requires ? [entry.requires].flat() : []))),
 ];
 
 /** Konto, dem genau ein einziges Admin-Recht zusteht. */

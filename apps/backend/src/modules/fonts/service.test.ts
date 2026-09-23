@@ -26,7 +26,7 @@ import {
 } from './test-support.js';
 import { fontFileName } from './storage.js';
 
-const ADMIN = contextOf(actorWith('user.manage'), {
+const ADMIN = contextOf(actorWith('instance.manage'), {
   userId: '33333333-3333-4333-8333-333333333333',
   displayName: 'Test-Admin',
   ipHint: '10.0.0.x',

@@ -19,13 +19,19 @@ import {
 } from './instance-settings.js';
 import { actorWith, createFakeAuditRepository } from './test-support.js';
 
-const ADMIN = contextOf(actorWith('user.manage'), {
+const ADMIN = contextOf(actorWith('instance.manage', 'gametype.manage'), {
   userId: '33333333-3333-4333-8333-333333333333',
   displayName: 'Test-Admin',
   ipHint: '10.0.0.x',
 });
 
 const NUTZER = contextOf(actorWith());
+/** Verwaltet nur Konten – seit Fundpunkt 346 kein Zugang zu den Einstellungen mehr. */
+const KONTEN = contextOf(actorWith('user.manage'));
+/** Verwaltet nur das Spieleangebot (Templates). */
+const ANGEBOT = contextOf(actorWith('gametype.manage'));
+/** Verwaltet nur die Instanz (Selbstregistrierung, Schriften). */
+const INSTANZ = contextOf(actorWith('instance.manage'));
 
 const SCHRIFT_ID = '44444444-4444-4444-8444-444444444444';
 
@@ -171,13 +177,47 @@ describe('Instanz-Einstellungen: Audit-Log', () => {
 });
 
 describe('Instanz-Einstellungen: Berechtigungen', () => {
-  it('verlangt user.manage zum Lesen und zum Schreiben', async () => {
+  it('verlangt instance.manage oder gametype.manage zum Lesen und zum Schreiben', async () => {
     const { service } = aufbauen();
 
-    expect(await fehlercode(() => service.get(NUTZER.actor))).toBe('PERMISSION_DENIED');
-    expect(await fehlercode(() => service.set(NUTZER, { selfRegistrationEnabled: false }))).toBe(
-      'PERMISSION_DENIED',
-    );
+    for (const ohne of [NUTZER, KONTEN]) {
+      expect(await fehlercode(() => service.get(ohne.actor))).toBe('PERMISSION_DENIED');
+      expect(await fehlercode(() => service.set(ohne, { selfRegistrationEnabled: false }))).toBe(
+        'PERMISSION_DENIED',
+      );
+    }
+
+    expect((await service.get(ANGEBOT.actor)).permissions.canEdit).toBe(true);
+    expect((await service.get(INSTANZ.actor)).permissions.canEdit).toBe(true);
+  });
+
+  it('lässt mit gametype.manage nur das Spieleangebot ändern (Fundpunkt 345)', async () => {
+    const { service, repository } = aufbauen({ selfRegistrationEnabled: true });
+
+    // Die Selbstregistrierung geht unverändert mit – das ist erlaubt.
+    await service.set(ANGEBOT, { selfRegistrationEnabled: true, disabledGameTypes: ['cs2'] });
+    expect(repository.stand().disabledGameTypes).toEqual(['cs2']);
+
+    expect(
+      await fehlercode(() =>
+        service.set(ANGEBOT, { selfRegistrationEnabled: false, disabledGameTypes: ['cs2'] }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+    expect(repository.stand().selfRegistrationEnabled).toBe(true);
+  });
+
+  it('lässt mit instance.manage nur die Instanz-Felder ändern', async () => {
+    const { service, repository } = aufbauen();
+
+    await service.set(INSTANZ, { selfRegistrationEnabled: false });
+    expect(repository.stand().selfRegistrationEnabled).toBe(false);
+
+    expect(
+      await fehlercode(() =>
+        service.set(INSTANZ, { selfRegistrationEnabled: false, heldUpdateGameTypes: ['cs2'] }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+    expect(repository.stand().heldUpdateGameTypes).toEqual([]);
   });
 
   it('beantwortet die Frage nach der Selbstregistrierung ohne Rechteprüfung', async () => {

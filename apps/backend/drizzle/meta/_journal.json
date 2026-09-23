@@ -344,6 +344,13 @@
       "when": 1790190874573,
       "tag": "0048_discord_konsole_schalter",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1790196179526,
+      "tag": "0049_rechte_aufteilen",
+      "breakpoints": true
     }
   ]
 }

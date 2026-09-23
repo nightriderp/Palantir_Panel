@@ -103,7 +103,7 @@ export function registerGameRequestRoutes(options: GameRequestRouteOptions) {
 
     app.get(
       '/admin/game-requests',
-      { preHandler: requirePermission('user.manage') },
+      { preHandler: requirePermission('gametype.manage') },
       async (request, reply) =>
         handle<GameRequestDto[]>(reply, async () => {
           const query = gameRequestQuerySchema.parse(request.query ?? {});
@@ -114,7 +114,7 @@ export function registerGameRequestRoutes(options: GameRequestRouteOptions) {
 
     app.post<{ Params: { id: string } }>(
       '/admin/game-requests/:id/approve',
-      { preHandler: requirePermission('user.manage') },
+      { preHandler: requirePermission('gametype.manage') },
       async (request, reply) =>
         handle<GameRequestDto>(reply, async () => {
           const { id } = idParamsSchema.parse(request.params);
@@ -132,7 +132,7 @@ export function registerGameRequestRoutes(options: GameRequestRouteOptions) {
 
     app.post<{ Params: { id: string } }>(
       '/admin/game-requests/:id/reject',
-      { preHandler: requirePermission('user.manage') },
+      { preHandler: requirePermission('gametype.manage') },
       async (request, reply) =>
         handle<GameRequestDto>(reply, async () => {
           const { id } = idParamsSchema.parse(request.params);

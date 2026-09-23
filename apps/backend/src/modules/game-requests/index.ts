@@ -119,7 +119,7 @@ export function toGameRequestDto(
     decidedAt: record.decidedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     permissions: {
-      canDecide: offen && hasPermission(actor, 'user.manage'),
+      canDecide: offen && hasPermission(actor, 'gametype.manage'),
       canWithdraw: offen && viewerId === record.userId,
     },
   };
@@ -129,7 +129,9 @@ export function createGameRequestService(deps: GameRequestDependencies): GameReq
   const jetzt = deps.now ?? (() => new Date());
 
   function requireUserManage(actor: PermissionActor): void {
-    if (!hasPermission(actor, 'user.manage')) {
+    // Ein neues Spiel ist eine Frage des Spieleangebots, nicht der Konten
+    // (Fundpunkt 346).
+    if (!hasPermission(actor, 'gametype.manage')) {
       throw new GameRequestError('PERMISSION_DENIED');
     }
   }

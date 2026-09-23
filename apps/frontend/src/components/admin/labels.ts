@@ -140,14 +140,16 @@ export function auditTargetTypeLabel(target: AuditTargetType): string {
 const PERMISSION_AREA_LABELS: Record<string, string> = {
   server: 'Server',
   backup: 'Backups',
+  panelBackup: 'Panel-Sicherung',
   user: 'Nutzer',
+  instance: 'Instanz',
   role: 'Rollen',
   notification: 'Benachrichtigungen',
   node: 'Nodes',
   address: 'Adressen',
   audit: 'Audit-Log',
   message: 'Moderation',
-  gametype: 'Spiele-Definitionen',
+  gametype: 'Spieleangebot',
 };
 
 /** Deutsche Überschrift für die Gruppe eines Permission-Bereichs (Präfix vor dem ersten Punkt). */

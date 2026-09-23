@@ -44,14 +44,14 @@ export function registerPanelBackupRoutes(options: PanelBackupRouteOptions) {
 
     app.get(
       '/admin/panel-backups',
-      { preHandler: requirePermission('backup.manage.any') },
+      { preHandler: requirePermission('panelBackup.manage') },
       async (request, reply) =>
         handle<PanelBackupDto[]>(reply, async () => options.service.list(requireActor(request))),
     );
 
     app.post(
       '/admin/panel-backups',
-      { preHandler: requirePermission('backup.manage.any') },
+      { preHandler: requirePermission('panelBackup.manage') },
       async (request, reply) =>
         handle<PanelBackupDto>(reply, async () =>
           options.service.start(requireActor(request), 'manual'),
@@ -60,7 +60,7 @@ export function registerPanelBackupRoutes(options: PanelBackupRouteOptions) {
 
     app.delete<{ Params: { id: string } }>(
       '/admin/panel-backups/:id',
-      { preHandler: requirePermission('backup.manage.any') },
+      { preHandler: requirePermission('panelBackup.manage') },
       async (request, reply) =>
         handle<null>(reply, async () => {
           const { id } = idParamsSchema.parse(request.params);

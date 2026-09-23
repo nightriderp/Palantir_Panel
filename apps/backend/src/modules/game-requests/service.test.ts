@@ -22,7 +22,7 @@ const FREMD_ID = '11111111-1111-4111-8111-000000000003';
 
 const adminActor = buildPermissionActor({
   isOwner: false,
-  roles: [{ grantedPermissions: ['user.manage'] }],
+  roles: [{ grantedPermissions: ['gametype.manage'] }],
 });
 
 const plainActor = buildPermissionActor({

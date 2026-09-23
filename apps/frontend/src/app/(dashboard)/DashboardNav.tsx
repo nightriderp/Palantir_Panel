@@ -41,8 +41,11 @@ export interface PlannedEntry {
   icon: SideNavItem['icon'];
   /** Route des Eintrags – Pflicht, siehe oben (Fundpunkt 155). */
   href: string;
-  /** Nur zeigen, wenn dieses Flag am Konto gesetzt ist. */
-  requires?: keyof AccountDto['permissions'];
+  /**
+   * Nur zeigen, wenn dieses Flag am Konto gesetzt ist – bei einer Liste
+   * genügt eines davon (eine Seite, die zwei Rechte bedient).
+   */
+  requires?: keyof AccountDto['permissions'] | readonly (keyof AccountDto['permissions'])[];
 }
 
 /**
@@ -126,7 +129,7 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     label: 'Anfragen',
     icon: 'inbox',
     href: '/admin/requests',
-    requires: 'canManageUsers',
+    requires: ['canManageUsers', 'canManageGameTypes'],
   },
   {
     key: 'admin-moderation',
@@ -143,14 +146,13 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     requires: 'canManageGameTypes',
   },
   {
-    // Schriften der Oberfläche (S-3). Neben „Nutzer" und „Rollen", weil die
-    // Auswahl in den Instanz-Einstellungen liegt und dieselbe Berechtigung
-    // verlangt wie diese (`user.manage`).
+    // Schriften der Oberfläche (S-3). Seit Fundpunkt 346 mit eigenem Recht
+    // `instance.manage`, wie die übrigen Instanz-Einstellungen.
     key: 'admin-schriften',
     label: 'Schriften',
     icon: 'palette',
     href: '/admin/schriften',
-    requires: 'canManageUsers',
+    requires: 'canManageInstance',
   },
   {
     key: 'admin-sticker',
@@ -199,7 +201,7 @@ export const ADMIN_ENTRIES: PlannedEntry[] = [
     label: 'Backups',
     icon: 'database',
     href: '/admin/backups',
-    requires: 'canManageAnyBackup',
+    requires: ['canManageAnyBackup', 'canManagePanelBackups'],
   },
   {
     key: 'admin-adressen',
@@ -230,7 +232,11 @@ export function visibleEntries(
   entries: readonly PlannedEntry[],
   user: AccountDto | null,
 ): PlannedEntry[] {
-  return entries.filter((entry) => !entry.requires || (user?.permissions[entry.requires] ?? false));
+  return entries.filter((entry) => {
+    if (!entry.requires) return true;
+    const flags = typeof entry.requires === 'string' ? [entry.requires] : entry.requires;
+    return flags.some((flag) => user?.permissions[flag] ?? false);
+  });
 }
 
 export interface DashboardNavProps {

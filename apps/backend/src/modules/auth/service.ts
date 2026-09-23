@@ -446,7 +446,7 @@ export class AuthService {
    *
    * Das Owner-Konto ändert Passwort und 2FA ausschließlich über die eigenen
    * Routen – kein Admin-Eingriff erreicht es. Ein Konto, dessen Rollen selbst
-   * Rollen- oder Nutzerverwaltung verleihen, darf nur anfassen, wer `role.manage`
+   * ein Admin-Recht verleihen, darf nur anfassen, wer `role.manage`
    * besitzt: dieselbe Regel wie beim Zuweisen solcher Rollen in B2
    * (`requireAssignmentAllowed`). Ohne sie könnte `user.manage` allein jedes
    * Admin-Konto per Passwort-Reset übernehmen.
@@ -471,7 +471,7 @@ export class AuthService {
     if (rollen.some((rolle) => grantsAdministration(rolle))) {
       throw new AuthError(
         'PERMISSION_DENIED',
-        'Konten mit Rollen- oder Nutzerverwaltung darf nur ändern, wer selbst role.manage besitzt.',
+        'Konten mit Admin-Rechten darf nur ändern, wer selbst role.manage besitzt.',
       );
     }
   }
@@ -579,7 +579,7 @@ export class AuthService {
       if (grantsAdministration(rolle) && !hasPermission(actor, 'role.manage')) {
         throw new AuthError(
           'PERMISSION_DENIED',
-          'Rollen mit Rollen- oder Nutzerverwaltung darf nur vergeben, wer selbst role.manage besitzt.',
+          'Rollen mit Admin-Rechten darf nur vergeben, wer selbst role.manage besitzt.',
         );
       }
 

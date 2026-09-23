@@ -330,7 +330,7 @@ export function registerFontRoutes(options: FontRouteOptions) {
 
     app.post(
       '/api/admin/fonts',
-      { preHandler: requirePermission('user.manage') },
+      { preHandler: requirePermission('instance.manage') },
       async (request, reply) =>
         handle(reply, async () => {
           const { file, fields } = await readFontUpload(request);
@@ -360,7 +360,7 @@ export function registerFontRoutes(options: FontRouteOptions) {
      */
     app.delete(
       '/api/admin/fonts/:id',
-      { preHandler: requirePermission('user.manage') },
+      { preHandler: requirePermission('instance.manage') },
       async (request, reply) =>
         handle(reply, async () => {
           const { id } = fontIdParamsSchema.parse(request.params);

@@ -149,6 +149,7 @@ export function UsersView() {
   const { user } = useSession();
   const toast = useToast();
   const canManage = user?.permissions.canManageUsers ?? false;
+  const canManageInstance = user?.permissions.canManageInstance ?? false;
 
   /*
    * „Server einsehen" (Lastenheft §3.7) hängt an `server.view.any`
@@ -190,7 +191,9 @@ export function UsersView() {
    */
   const settings = useApiResource<InstanceSettingsDto>(
     (signal) => fetchInstanceSettings(signal),
-    canManage ? [] : null,
+    // Eigenes Recht seit Fundpunkt 346: Die Selbstregistrierung schaltet, wer
+    // die Instanz verwaltet – nicht jeder, der Konten verwaltet.
+    canManage && canManageInstance ? [] : null,
   );
 
   const filtered = useMemo(() => {

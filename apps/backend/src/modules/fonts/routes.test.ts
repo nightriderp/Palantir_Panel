@@ -34,7 +34,7 @@ async function buildTestApp(gewaehlt: string[] = []): Promise<FastifyInstance> {
   const actors: Record<string, PermissionActor> = {
     owner: ownerActor(),
     nutzer: actorWith(),
-    userAdmin: actorWith('user.manage'),
+    userAdmin: actorWith('instance.manage'),
   };
 
   const app = Fastify({ logger: false });
