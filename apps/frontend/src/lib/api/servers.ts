@@ -353,7 +353,7 @@ export function fetchCloneJob(
  */
 export function applyLiveValues(
   serverId: string,
-  values: Record<string, string | number>,
+  values: Record<string, string | number | boolean>,
 ): Promise<ApiResult<GameServerDto>> {
   return apiRequest<GameServerDto>(serverPath(serverId, '/live'), {
     method: 'POST',

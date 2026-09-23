@@ -100,6 +100,47 @@ describe('pruefeLiveWerte', () => {
   });
 });
 
+describe('pruefeLiveWerte – Schalter', () => {
+  const MIT_SCHALTER: GameTypeDefinition = {
+    ...SPIEL,
+    configFields: [
+      ...SPIEL.configFields,
+      {
+        key: 'alle',
+        label: 'Alle Runden',
+        type: 'toggle',
+        defaultValue: false,
+        description: '',
+        required: false,
+        options: [],
+        min: null,
+        max: null,
+        lockedAfterCreate: false,
+      },
+    ],
+    liveControls: [
+      ...(SPIEL.liveControls ?? []),
+      {
+        id: 'runden',
+        label: 'Runden',
+        fields: ['alle'],
+        commands: ['{alle}'],
+        values: { alle: { true: 'clinch 0', false: 'clinch 1' } },
+      },
+    ],
+  };
+
+  it('nimmt an und aus und übersetzt sie', () => {
+    expect(pruefeLiveWerte(MIT_SCHALTER, { alle: true })).toEqual({ alle: true });
+    expect(liveBefehle(MIT_SCHALTER, ['alle'], { alle: false })).toEqual(['clinch 1']);
+  });
+
+  it('lehnt Text und Zahlen für einen Schalter ab', () => {
+    expect(() => pruefeLiveWerte(MIT_SCHALTER, { alle: 'true' })).toThrow(/an oder aus/u);
+    expect(() => pruefeLiveWerte(MIT_SCHALTER, { alle: 1 })).toThrow(/an oder aus/u);
+  });
+});
+
 describe('aktuelleWerte', () => {
   it('nimmt die Einstellungen, sonst die Vorgabe, und live Geändertes zuletzt', () => {
     expect(aktuelleWerte(SPIEL, { map: 'b' }, { bots: 4 })).toEqual({

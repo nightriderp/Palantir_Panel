@@ -319,6 +319,23 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.deepEqual(kaputt.argv, []);
   });
 
+  it('spielt auf Wunsch alle Runden – ohne Angabe wie Valve (Schritt 5)', () => {
+    const an = arbeitsordner();
+    const aus = arbeitsordner();
+    starte(an, { CS2_ALL_ROUNDS: 'true' });
+    starte(aus);
+
+    assert.match(datei(an, 'palantir.cfg'), /^mp_match_can_clinch 0$/mu);
+    assert.match(datei(aus, 'palantir.cfg'), /^mp_match_can_clinch 1$/mu);
+  });
+
+  it('lehnt einen Wert für „alle Runden“ ab, der weder true noch false ist', () => {
+    const lauf = starte(arbeitsordner(), { CS2_ALL_ROUNDS: 'ja' });
+
+    assert.equal(lauf.status, 78);
+    assert.deepEqual(lauf.argv, []);
+  });
+
   it('setzt genau so viele Bots wie gewählt – ohne Angabe keine', () => {
     const mit = arbeitsordner();
     const ohne = arbeitsordner();

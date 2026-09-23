@@ -86,12 +86,12 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
   );
 
   async function uebernehmen() {
-    const werte: Record<string, string | number> = {};
+    const werte: Record<string, string | number | boolean> = {};
 
     for (const key of geaendert) {
       const wert = entwurf[key];
 
-      if (typeof wert === 'string' || typeof wert === 'number') {
+      if (typeof wert === 'string' || typeof wert === 'number' || typeof wert === 'boolean') {
         werte[key] = wert;
       }
     }

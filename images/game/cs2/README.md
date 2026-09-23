@@ -18,9 +18,11 @@ vorige auf der Node läuft.
 | 3       | Startkarte, Spielmodus, Bots                       | läuft (0.0.4)    |
 | 3.1     | Sauber stoppen: Skript als Hauptprozess, `quit`    | läuft (0.0.5)    |
 | 3.2     | Live-Steuerung: Karte, Modus, Bots (Panel)         | läuft (0.0.6)    |
-| 4       | Workshop-Karte (ID, Start und Steuerung)           | **dieses Image** |
-| 4.1     | Workshop-Sammlung                                  | offen            |
-| 5       | GOTV, alle Runden spielen, GSLT                    | offen            |
+| 4       | Workshop-Karte (ID, Start und Steuerung)           | läuft (0.0.7)    |
+| 4.1     | Workshop-Sammlung                                  | zurückgestellt   |
+| 5       | Alle Runden spielen (Start und Steuerung)          | **dieses Image** |
+| 5.1     | GOTV                                               | offen            |
+| 5.2     | GSLT (optional)                                    | offen            |
 | 6       | Updates zurückhalten                               | offen            |
 | 7       | MetaMod + CounterStrikeSharp                       | offen            |
 | 8       | Admins                                             | offen            |

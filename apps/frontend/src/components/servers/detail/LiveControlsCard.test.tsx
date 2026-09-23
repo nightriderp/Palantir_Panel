@@ -141,6 +141,36 @@ describe('LiveControlsCard', () => {
     expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ config: { bots: 4 } }));
   });
 
+  it('schickt einen Schalter als Wahrheitswert (CS2 Schritt 5)', async () => {
+    api.fetchGameTypes.mockResolvedValue({
+      success: true,
+      data: [
+        gameType({
+          configFields: [
+            feld({
+              key: 'allRounds',
+              label: 'Alle Runden spielen',
+              type: 'toggle',
+              defaultValue: false,
+            }),
+          ],
+          liveControls: [
+            { id: 'runden', label: 'Runden', fields: ['allRounds'], commands: ['{allRounds}'] },
+          ],
+        }),
+      ],
+      error: null,
+    });
+    zeichne('running');
+
+    fireEvent.click(await screen.findByRole('switch', { name: 'Alle Runden spielen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
+
+    await waitFor(() => {
+      expect(api.applyLiveValues).toHaveBeenCalledWith('s1', { allRounds: true });
+    });
+  });
+
   it('warnt, wenn die Karte neu geladen wird', async () => {
     zeichne('running');
 
