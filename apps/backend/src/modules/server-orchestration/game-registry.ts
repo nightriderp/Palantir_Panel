@@ -3568,6 +3568,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     },
   ],
   liveConfigFile: 'server/game/csgo/cfg/palantir_live.cfg',
+  // Kopiert wird `connect <adresse>` – so passt es direkt in die Spielkonsole
+  // (Betreiber-Wunsch 23.09.2026).
+  addressCopyPrefix: 'connect ',
   resourceDefaults: {
     // Reichlich bemessen, damit Schritt 1 nicht am Speicher scheitert. Wie
     // viel CS2 wirklich braucht, zeigen die Messwerte, sobald er läuft.

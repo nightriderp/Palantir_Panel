@@ -48,3 +48,42 @@ describe('DetailHeader – Besitzer wechseln', () => {
     expect(screen.queryByRole('button', { name: 'Besitzer wechseln' })).toBeNull();
   });
 });
+
+describe('DetailHeader – Adresse kopieren', () => {
+  function mitAdresse(copyPrefix?: string) {
+    const onCopyAddress = vi.fn();
+    const server = {
+      ...serverFixture({ id: 'srv-1', permissions: ownerPermissions() }),
+      address: {
+        hostname: 'cs.example.tld',
+        port: 25003,
+        ...(copyPrefix === undefined ? {} : { copyPrefix }),
+      },
+    };
+
+    render(
+      <DetailHeader
+        server={server}
+        busy={false}
+        onLifecycle={() => undefined}
+        onUpdate={() => undefined}
+        onOpenSettings={() => undefined}
+        onDelete={() => undefined}
+        onCopyAddress={onCopyAddress}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle('Adresse kopieren'));
+
+    return onCopyAddress;
+  }
+
+  it('setzt den Vorsatz des Spiels davor (CS2: connect), zeigt ihn aber nicht', () => {
+    expect(mitAdresse('connect ')).toHaveBeenCalledWith('connect cs.example.tld:25003');
+    expect(screen.queryByText(/connect cs/u)).toBeNull();
+  });
+
+  it('kopiert ohne Vorsatz die Adresse allein', () => {
+    expect(mitAdresse()).toHaveBeenCalledWith('cs.example.tld:25003');
+  });
+});

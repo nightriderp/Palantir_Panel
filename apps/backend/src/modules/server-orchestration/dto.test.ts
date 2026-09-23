@@ -138,3 +138,23 @@ describe('toGameServerDto – unbekannter Spieltyp (Fundpunkt 247)', () => {
     expect(dto.gameTypeName).toBe(TEST_GAME_TYPE.name);
   });
 });
+
+describe('toGameServerDto – Adresse kopieren', () => {
+  const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
+
+  it('gibt bei CS2 den Vorsatz „connect “ mit – nur fürs Kopieren', () => {
+    const dto = toGameServerDto(serverMit('cs2'), kontext(registry));
+
+    expect(dto.address).toEqual({
+      hostname: 'alt.example.tld',
+      port: 25_001,
+      copyPrefix: 'connect ',
+    });
+  });
+
+  it('lässt ihn bei Spielen ohne Vorsatz weg', () => {
+    const dto = toGameServerDto(serverMit(TEST_GAME_TYPE.id), kontext(registry));
+
+    expect(dto.address).not.toHaveProperty('copyPrefix');
+  });
+});

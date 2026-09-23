@@ -170,7 +170,7 @@ export function DetailHeader({
           {server.permissions.canViewAddress && address ? (
             <button
               type="button"
-              onClick={() => onCopyAddress(address)}
+              onClick={() => onCopyAddress(`${server.address?.copyPrefix ?? ''}${address}`)}
               title="Adresse kopieren"
               className="mt-2 flex w-fit items-center gap-1.5 rounded border border-line bg-fill px-2.5 py-1.5 font-mono text-xs text-ink-muted"
             >

@@ -449,7 +449,7 @@ function ServerCardIntern({
           onCopyAddress ? (
             <button
               type="button"
-              onClick={() => onCopyAddress(address, server)}
+              onClick={() => onCopyAddress(`${server.address?.copyPrefix ?? ''}${address}`, server)}
               title="Verbindungsadresse kopieren"
               className="flex min-w-0 items-center gap-1.5 rounded-md border border-line bg-fill px-2.5 py-1.5 font-mono text-ink-faint transition-colors hover:text-ink"
             >
