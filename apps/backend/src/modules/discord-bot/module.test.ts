@@ -153,3 +153,69 @@ describe('Befehlsregistrierung', () => {
     await expect(server.listen({ port: 0, host: '127.0.0.1' })).resolves.toBeTypeOf('string');
   });
 });
+
+describe('Knöpfe (DC-3)', () => {
+  it('antwortet sofort und reicht das Ergebnis über den Webhook der Interaction nach', async () => {
+    const request = vi.fn(async () => undefined);
+    const start = vi.fn(async () => undefined);
+    app = Fastify();
+    await registerDiscordBotModule(app, {
+      config: CONFIG,
+      identity: {
+        resolve: async () => ({ userId: 'u1', displayName: 'K', banned: false, approved: true }),
+      },
+      rest: alsRest(request),
+      now: () => NOW_MS,
+      control: {
+        load: async () => ({
+          name: 'S',
+          status: 'stopped',
+          permissions: {
+            canView: true,
+            canViewAddress: true,
+            canStart: true,
+            canStop: true,
+            canRestart: true,
+            canManageSettings: false,
+            canDelete: false,
+            canClone: false,
+            canManageMembers: false,
+            canManageBackups: false,
+            canManageFiles: false,
+            canManageSchedules: false,
+            canUseConsole: false,
+            canTransferOwnership: false,
+            canUpdate: false,
+          },
+          consoleEnabled: false,
+          supportsConsole: false,
+        }),
+        start,
+        stop: async () => undefined,
+        restart: async () => undefined,
+        backup: async () => undefined,
+        players: () => ({ names: [], count: null }),
+        console: async () => ({ stdout: '', stderr: '' }),
+      },
+    });
+
+    const body = JSON.stringify({
+      id: 'i',
+      type: 3,
+      token: 'interaktions-token',
+      member: { user: { id: 'd1' } },
+      data: { custom_id: 'srv:3f2504e0-4f89-41d3-9a0c-0305e82c3301:start' },
+    });
+    const antwort = await app.inject(signiert(body));
+
+    expect(antwort.json()).toEqual({ type: 5, data: { flags: 64 } });
+    await vi.waitFor(() => {
+      expect(request).toHaveBeenCalledWith(
+        'PATCH',
+        `/webhooks/${CONFIG.applicationId}/interaktions-token/messages/@original`,
+        expect.objectContaining({ allowed_mentions: { parse: [] } }),
+      );
+    });
+    expect(start).toHaveBeenCalledWith('3f2504e0-4f89-41d3-9a0c-0305e82c3301', 'u1');
+  });
+});

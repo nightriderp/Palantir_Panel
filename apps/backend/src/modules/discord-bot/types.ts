@@ -58,6 +58,10 @@ export interface Interaction {
     readonly name?: string;
     readonly custom_id?: string;
     readonly options?: readonly CommandOption[];
+    /** Bei einem abgeschickten Modal: die Felder in ihren Zeilen. */
+    readonly components?: readonly {
+      readonly components?: readonly { readonly custom_id?: string; readonly value?: string }[];
+    }[];
   };
 }
 
@@ -68,7 +72,32 @@ export interface InteractionResponse {
     readonly flags?: number;
     /** Keine Erwähnung soll aus einer Bot-Antwort heraus jemanden anpingen. */
     readonly allowed_mentions?: { readonly parse: readonly string[] };
+    /** Knöpfe unter der Antwort oder Felder eines Modals. */
+    readonly components?: readonly unknown[];
+    /** Nur bei einem Modal. */
+    readonly custom_id?: string;
+    readonly title?: string;
   };
+}
+
+/**
+ * Was nach einer verzögerten Antwort nachgereicht wird
+ * (`PATCH /webhooks/{app}/{token}/messages/@original`).
+ */
+export interface FollowUpMessage {
+  readonly content: string;
+  /** Leeres Feld entfernt die Knöpfe einer Rückfrage. */
+  readonly components?: readonly unknown[];
+}
+
+/**
+ * Antwort samt optionaler Nacharbeit. Discord verlangt eine Antwort binnen
+ * drei Sekunden; was länger dauert (Start, Sicherung, Konsole), läuft danach
+ * und ersetzt die vorläufige Antwort mit seinem Ergebnis.
+ */
+export interface InteractionOutcome {
+  readonly response: InteractionResponse;
+  readonly followUp?: () => Promise<FollowUpMessage>;
 }
 
 /** Definition eines Slash-Befehls für die Registrierung. */

@@ -1,9 +1,10 @@
 /**
  * Discord-Bot als Backend-Modul (Lastenheft §3.11, Pflichtenheft §14a).
  *
- * Stand DC-2: Interactions-Endpoint mit Signaturprüfung, Slash-Befehle
+ * Stand DC-3: Interactions-Endpoint mit Signaturprüfung, Slash-Befehle
  * (`/palantir konto`, `/palantir server`), Kanäle je Server mit Kategorie je
- * Besitzer und die Status-Kachel. Knöpfe folgen in DC-3.
+ * Besitzer, die Status-Kachel und ihre Knöpfe (Starten, Stoppen, Neustarten,
+ * Sicherung, Spieler, Konsole).
  *
  * **Kein Response-Envelope an dieser Route (bewusste Abweichung von
  * Pflichtenheft §5.1).** Discord erwartet auf eine gültige Interaction genau
@@ -38,7 +39,9 @@ import {
   type DiscordSyncSource,
   type DiscordSyncStore,
 } from './sync.js';
-import type { Interaction } from './types.js';
+import type { ServerControlPort } from './control.js';
+import { handleControlInteraction } from './controls.js';
+import { type Interaction, type InteractionOutcome, InteractionType } from './types.js';
 
 export const INTERACTIONS_PATH = '/discord/interactions';
 
@@ -60,6 +63,8 @@ export interface DiscordBotModuleOptions {
   /** Uhr für die Signaturprüfung; austauschbar für Tests. */
   readonly now?: () => number;
   /** Kanäle und Kacheln (DC-2). Ohne Angabe bleibt es bei den Befehlen. */
+  /** Knöpfe der Kachel (DC-3). Ohne Angabe beantworten sie nur mit einem Hinweis. */
+  readonly control?: ServerControlPort;
   readonly channels?: {
     readonly store: DiscordSyncStore;
     readonly source: DiscordSyncSource;
@@ -119,6 +124,13 @@ const SYNC_AUDIT_ACTIONS: ReadonlySet<string> = new Set<AuditAction>([
   'role.deleted',
 ]);
 
+/**
+ * Aktionen je Discord-Nutzer (Pflichtenheft §14a.5). Bemessen wie die
+ * Konsole im Panel am gutwilligen Extremfall: Wer zehnmal in einer Minute
+ * startet und stoppt, bedient nicht mehr, er spielt.
+ */
+const ACTION_LIMIT = { windowSeconds: 60, maxAttempts: 10 } as const;
+
 /** Messwerte kommen alle paar Sekunden; die Kachel fragt höchstens einmal je Minute nach. */
 const STATS_TILE_INTERVAL_MS = 60_000;
 
@@ -132,6 +144,7 @@ export async function registerDiscordBotModule(
   const rest = options.rest ?? createDiscordRestClient({ botToken: config.botToken });
   const now = options.now ?? Date.now;
   const ipLimiter = createRateLimiter(IP_LIMIT);
+  const actionLimiter = createRateLimiter(ACTION_LIMIT);
   const sync = options.channels
     ? createDiscordSync({
         rest,
@@ -195,9 +208,44 @@ export async function registerDiscordBotModule(
           .send(fail('VALIDATION_FAILED'));
       }
 
-      const response = await handleInteraction(interaction, context);
+      const istKnopf =
+        interaction.type === InteractionType.MessageComponent ||
+        interaction.type === InteractionType.ModalSubmit;
+      const control = options.control;
+      const ergebnis: InteractionOutcome =
+        istKnopf && control
+          ? await handleControlInteraction(interaction, {
+              identity,
+              control,
+              allowAction: (id) => actionLimiter.consume(id).allowed,
+              now,
+              log: request.log,
+            })
+          : { response: await handleInteraction(interaction, context) };
 
-      return reply.status(200).send(response);
+      await reply.status(200).send(ergebnis.response);
+
+      // Erst nach der Antwort: Discord wartet höchstens drei Sekunden, ein
+      // Start oder eine Sicherung dauert länger.
+      const nacharbeit = ergebnis.followUp;
+      const token = interaction.token;
+
+      if (nacharbeit && token) {
+        fireAndForget(
+          (async () => {
+            const nachricht = await nacharbeit();
+            await rest.request(
+              'PATCH',
+              `/webhooks/${config.applicationId}/${token}/messages/@original`,
+              { ...nachricht, allowed_mentions: { parse: [] } },
+            );
+          })(),
+          request.log,
+          { vorgang: 'Discord-Antwort nachreichen' },
+        );
+      }
+
+      return reply;
     });
   });
 

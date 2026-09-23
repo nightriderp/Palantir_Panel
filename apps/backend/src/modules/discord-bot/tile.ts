@@ -7,11 +7,12 @@
  * werden, nur wenn sich wirklich etwas ändert (Zustand, Spielerzahl, Adresse).
  * Ob das so ist, sagt {@link tileHash}.
  *
- * Knöpfe folgen in DC-3; bis dahin trägt die Kachel keine.
+ * Darunter die Knöpfe (`buttons.ts`), ausgegraut nach Zustand.
  */
 
 import { createHash } from 'node:crypto';
 import type { ServerStatus } from '@palantir/contracts';
+import { type ActionRow, renderControls, type TileControls } from './buttons.js';
 import { escapeMarkdown } from './interactions.js';
 
 export interface TileSnapshot {
@@ -25,6 +26,8 @@ export interface TileSnapshot {
   readonly runningSince: Date | null;
   /** Direktverweis auf den Server im Panel. */
   readonly panelUrl: string;
+  /** Knöpfe unter der Kachel; ohne Angabe keine. */
+  readonly controls?: TileControls;
 }
 
 export interface TileEmbed {
@@ -37,6 +40,7 @@ export interface TileEmbed {
 
 export interface TileMessage {
   readonly embeds: readonly TileEmbed[];
+  readonly components: readonly ActionRow[];
   readonly allowed_mentions: { readonly parse: readonly string[] };
 }
 
@@ -86,6 +90,7 @@ export function renderTile(snapshot: TileSnapshot): TileMessage {
         footer: { text: 'Palantir' },
       },
     ],
+    components: snapshot.controls ? renderControls(snapshot.controls) : [],
     allowed_mentions: { parse: [] },
   };
 }

@@ -140,6 +140,12 @@ export const gameServers = pgTable(
     /** Einstellung geändert, die erst nach einem Neustart wirkt (Lastenheft §3.3). */
     restartRequired: boolean('restart_required').notNull().default(false),
     /**
+     * Konsolenbefehle über den Discord-Bot erlaubt (Pflichtenheft §14a.5).
+     * Vorgabe aus: Ein Befehl in der Konsole ist Fernsteuerung des Servers,
+     * und Discord kennt keinen zweiten Faktor.
+     */
+    discordConsoleEnabled: boolean('discord_console_enabled').notNull().default(false),
+    /**
      * Werte der Live-Steuerung seit dem letzten Start (Betreiber-Wunsch
      * 23.09.2026, `GameTypeDefinition.liveControls`). `null` heißt: Es gelten
      * die Startwerte aus `config_json`. Ein Start setzt die Spalte zurück.

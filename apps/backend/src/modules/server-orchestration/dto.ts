@@ -195,6 +195,7 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
     liveValues: server.liveValues ?? null,
     memberCount: context.memberCount,
     pinned: context.pinned ?? false,
+    discordConsoleEnabled: server.discordConsoleEnabled ?? false,
     ...(context.discordChannelUrl === undefined
       ? {}
       : { discordChannelUrl: context.discordChannelUrl }),
