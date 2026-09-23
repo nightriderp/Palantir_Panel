@@ -535,3 +535,36 @@ describe('Agent-Version der Node (Gefundener Punkt 321)', () => {
     expect(node?.agent).toBeNull();
   });
 });
+
+describe('Update-Anstoss der Node (Gefundener Punkt 342)', () => {
+  async function uebersicht(options: Parameters<typeof build>[0]) {
+    const { service } = options === undefined ? build() : build(options);
+    const [node] = await service.list(ctxWith(actorWith('node.view')));
+
+    return node;
+  }
+
+  it('reicht den offenen Anstoss aus der Verbindungsquelle durch', async () => {
+    const node = await uebersicht({
+      nodes: [nodeRecord()],
+      connections: {
+        isConnected: () => false,
+        updateSignaledAt: () => '2026-09-23T16:24:00.000Z',
+      },
+    });
+
+    expect(node?.updateSignaledAt).toBe('2026-09-23T16:24:00.000Z');
+  });
+
+  it('steht auf null ohne Anstoss oder ohne Quelle', async () => {
+    expect(
+      (
+        await uebersicht({
+          nodes: [nodeRecord()],
+          connections: { isConnected: () => false, updateSignaledAt: () => null },
+        })
+      )?.updateSignaledAt,
+    ).toBeNull();
+    expect((await uebersicht({ nodes: [nodeRecord()] }))?.updateSignaledAt).toBeNull();
+  });
+});

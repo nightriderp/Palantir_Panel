@@ -106,6 +106,7 @@ import { ServerCloneService } from './clone-service.js';
 import { ServerQueryTargets } from './server-query.js';
 import { choosePlacementHost } from './placement.js';
 import { StartupActivity } from './startup-activity.js';
+import { aktuelleWerte, liveBefehle, liveDatei, pruefeLiveWerte } from './live-controls.js';
 import { type StartIntent, StartupHealthCheck } from './startup-health.js';
 import { type WorldImportInput, WorldImportTransfer } from './world-import-transfer.js';
 import {
@@ -1415,6 +1416,12 @@ export class ServerOrchestrationService {
      */
     await this.applyResourceLimits({ ...server, ...started, dockerContainerId: containerId });
 
+    // Live-Werte gelten bis zum Start – danach wieder die Einstellungen
+    // (Live-Steuerung). Die Datei im Datenordner leert das Image selbst.
+    if (server.liveValues !== undefined && server.liveValues !== null) {
+      await this.deps.repository.update(server.id, { liveValues: null });
+    }
+
     try {
       await session.sendCommand('START', server.id, { containerId });
     } catch (error: unknown) {
@@ -2022,6 +2029,71 @@ export class ServerOrchestrationService {
       command: argv,
       ...(rcon === undefined ? {} : { rcon }),
     });
+  }
+
+  /**
+   * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Einstellungen eines
+   * laufenden Servers ändern, ohne Neustart.
+   *
+   * Reihenfolge mit Absicht:
+   * 1. Prüfen (nur Felder der Live-Steuerung, nur zulässige Werte).
+   * 2. Die Datei `liveConfigFile` schreiben – **vor** den Befehlen: Ein
+   *    Kartenwechsel führt sie beim Laden aus, sie muss dann schon stimmen.
+   * 3. Die Konsolenbefehle der betroffenen Steuerungen schicken.
+   * 4. Die Werte am Server festhalten, damit das Panel sie zeigt.
+   *
+   * Die Einstellungen (`config_json`) bleiben unberührt – sie sind die
+   * Startwerte, und ein Start setzt die Live-Werte zurück.
+   */
+  async applyLiveValues(
+    serverId: string,
+    eingabe: Readonly<Record<string, string | number>>,
+  ): Promise<ServerRecord> {
+    const server = await this.requireServer(serverId);
+    const definition = this.deps.registry.require(server.gameType);
+
+    if ((definition.liveControls ?? []).length === 0) {
+      throw new ServerOrchestrationError(
+        'CONSOLE_NOT_SUPPORTED',
+        `${definition.name} lässt sich nicht live steuern.`,
+        { serverId },
+      );
+    }
+
+    if (server.status !== 'running') {
+      throw new ServerOrchestrationError(
+        'SERVER_STATE_CONFLICT',
+        'Live ändern geht nur, solange der Server läuft – die Startwerte stehen in den Einstellungen.',
+        { serverId, status: server.status },
+      );
+    }
+
+    const neu = pruefeLiveWerte(definition, eingabe);
+    const bisher = aktuelleWerte(definition, server.configJson, server.liveValues);
+    const geaendert = Object.keys(neu).filter((key) => neu[key] !== bisher[key]);
+
+    if (geaendert.length === 0) {
+      return server;
+    }
+
+    const werte = { ...bisher, ...neu };
+    const datei = liveDatei(definition, werte);
+
+    if (datei !== null && definition.liveConfigFile !== undefined) {
+      await this.files.writeFileContent(serverId, definition.liveConfigFile, datei);
+    }
+
+    for (const zeile of liveBefehle(definition, geaendert, werte)) {
+      await this.execConsole(serverId, zeile);
+    }
+
+    const liveValues = {
+      ...(server.liveValues ?? {}),
+      ...Object.fromEntries(geaendert.map((key) => [key, neu[key] as string | number])),
+    };
+    await this.deps.repository.update(serverId, { liveValues });
+
+    return this.requireServer(serverId);
   }
 
   // -------------------------------------------------------------------------

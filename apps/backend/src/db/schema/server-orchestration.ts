@@ -139,6 +139,12 @@ export const gameServers = pgTable(
     autoShutdown: jsonb('auto_shutdown').$type<ServerAutoShutdown>().notNull(),
     /** Einstellung geändert, die erst nach einem Neustart wirkt (Lastenheft §3.3). */
     restartRequired: boolean('restart_required').notNull().default(false),
+    /**
+     * Werte der Live-Steuerung seit dem letzten Start (Betreiber-Wunsch
+     * 23.09.2026, `GameTypeDefinition.liveControls`). `null` heißt: Es gelten
+     * die Startwerte aus `config_json`. Ein Start setzt die Spalte zurück.
+     */
+    liveValues: jsonb('live_values').$type<Record<string, string | number | boolean>>(),
 
     /**
      * Herkunft beim Klonen (§9).

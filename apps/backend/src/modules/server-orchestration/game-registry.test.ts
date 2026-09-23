@@ -1613,6 +1613,34 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(3_600);
   });
 
+  it('bietet Karte, Modus und Bots live an – nur Auswahl- und Zahlenfelder', () => {
+    const felder = CS2_GAME_TYPE.liveControls?.flatMap((steuerung) => steuerung.fields) ?? [];
+
+    expect(felder).toEqual(['map', 'gameMode', 'bots']);
+
+    for (const key of felder) {
+      const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === key);
+      expect(['select', 'number'], key).toContain(feld?.type);
+    }
+  });
+
+  it('übersetzt jeden Spielmodus der Auswahl in Konsolenbefehle', () => {
+    const modi = CS2_GAME_TYPE.configFields.find((f) => f.key === 'gameMode')?.options ?? [];
+    const uebersetzung = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'karte-modus')?.values
+      ?.gameMode;
+
+    for (const modus of modi) {
+      expect(uebersetzung?.[modus], modus).toMatch(/^game_type \d; game_mode \d$/u);
+    }
+  });
+
+  it('hält die Bots über einen Kartenwechsel in palantir_live.cfg', () => {
+    expect(CS2_GAME_TYPE.liveConfigFile).toBe('server/game/csgo/cfg/palantir_live.cfg');
+    expect(CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'bots')?.persist).toContain(
+      'bot_quota {bots}',
+    );
+  });
+
   it('ist ab Ausbaustufe 3 auswaehlbar', () => {
     expect(() =>
       createGameRegistry(2, ALLE_GAME_TYPE_DEFINITIONS).requireSelectable('cs2'),

@@ -1,0 +1,1 @@
+ALTER TABLE "game_servers" ADD COLUMN "live_values" jsonb;

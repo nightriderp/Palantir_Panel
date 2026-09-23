@@ -452,12 +452,17 @@ export function registerServerOrchestration(
        * Verbindung, ein Abbruch kostete die jetzige.
        */
       try {
-        await stosseNodeUpdateAn(hostId, {
+        const angestossen = await stosseNodeUpdateAn(hostId, {
           backendCommit: env.PALANTIR_COMMIT,
           agentVersion: agents.helloOf(hostId)?.agentVersion ?? null,
           send: (payload) => agents.require(hostId).sendCommand('UPDATE_AVAILABLE', null, payload),
           log,
         });
+
+        // Fuer die Anzeige „Node aktualisiert sich …", solange sie getrennt ist.
+        if (angestossen) {
+          agents.noteUpdateSignaled(hostId, new Date());
+        }
       } catch (error) {
         log.warn(
           { hostId, error: error instanceof Error ? error.message : String(error) },

@@ -327,8 +327,15 @@
     {
       "idx": 46,
       "version": "7",
-      "when": 1790182822804,
-      "tag": "0046_discord_bot_kanaele",
+      "when": 1790178687549,
+      "tag": "0046_live_werte",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1790183866793,
+      "tag": "0047_discord_bot_kanaele",
       "breakpoints": true
     }
   ]

@@ -15,7 +15,8 @@ import {
   nodeAgentHint,
   nodeCpuLabel,
   nodeMetrics,
-  nodeStatusMeta,
+  NODE_UPDATING_META,
+  nodeDisplayMeta,
 } from './nodeStatus';
 
 export interface NodeRowProps {
@@ -100,7 +101,7 @@ function MeterBar({ metric }: { metric: NodeMetric }) {
  * den Rechten des Betrachters.
  */
 export function NodeRow({ node, className }: NodeRowProps) {
-  const meta = nodeStatusMeta(node.status);
+  const meta = nodeDisplayMeta(node);
   const balken = nodeMetrics(node);
   const agent = nodeAgentHint(node);
 
@@ -147,7 +148,7 @@ export function NodeRow({ node, className }: NodeRowProps) {
         ))}
 
         <div className="flex items-center justify-between gap-3 md:flex-col md:items-end md:gap-1">
-          <NodeStatusPill status={node.status} />
+          <NodeStatusPill status={node.status} updating={meta === NODE_UPDATING_META} />
           <span className="text-2xs text-ink-faint">
             {formatNumber(node.serverCount)} Server · seit {formatDate(node.createdAt)}
           </span>

@@ -276,6 +276,12 @@ export interface NodeConnectionSource {
    * bleiben; `null`, wenn sich seit dem Start des Backends keiner gemeldet hat.
    */
   lastHello?(nodeId: string): HostNodeAgentInfo | null;
+  /**
+   * Zeitpunkt des offenen Update-Anstoßes dieser Node als ISO-8601
+   * (Gefundener Punkt 342); `null`, wenn keiner offen ist. Optional wie
+   * {@link lastHello}.
+   */
+  updateSignaledAt?(nodeId: string): string | null;
 }
 
 export interface HostNodeServiceDependencies {
@@ -367,6 +373,7 @@ export function createHostNodeService(deps: HostNodeServiceDependencies): HostNo
        * gestartet ist, und bleibt es bei einer Node, die nicht mehr hochkommt.
        */
       agent: deps.connections?.lastHello?.(node.id) ?? gespeicherterAgent(node),
+      updateSignaledAt: deps.connections?.updateSignaledAt?.(node.id) ?? null,
       createdAt: node.createdAt.toISOString(),
       permissions,
     };

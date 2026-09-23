@@ -84,6 +84,12 @@ export interface OverviewTabProps {
    * Server-Details die volle Breite ein.
    */
   console?: ReactNode;
+  /**
+   * Live-Steuerung (Betreiber-Wunsch 23.09.2026) – rechts über den
+   * Server-Details, neben der Konsole, in der man die Wirkung sieht. `null`
+   * ohne Recht oder ohne Live-Steuerung des Spiels.
+   */
+  liveControls?: ReactNode;
 }
 
 /**
@@ -98,7 +104,12 @@ const VERLAUFS_KACHELN = ['cpu', 'ram', 'ping', 'spieler'] as const;
 
 type VerlaufsKachel = (typeof VERLAUFS_KACHELN)[number];
 
-export function OverviewTab({ server, stats, console: consolePanel = null }: OverviewTabProps) {
+export function OverviewTab({
+  server,
+  stats,
+  console: consolePanel = null,
+  liveControls = null,
+}: OverviewTabProps) {
   /**
    * Welcher Verlauf offen ist – immer genau einer.
    *
@@ -761,17 +772,20 @@ export function OverviewTab({ server, stats, console: consolePanel = null }: Ove
       >
         {consolePanel === null ? null : <Panel variant="plain">{consolePanel}</Panel>}
 
-        <Panel variant="plain">
-          <h3 className="mb-2 text-base font-semibold">Server-Details</h3>
-          <dl className="divide-y divide-line">
-            {detailRows.map((row) => (
-              <div key={row.label} className="flex justify-between gap-4 py-2">
-                <dt className="text-sm text-ink-soft">{row.label}</dt>
-                <dd className="text-right font-mono text-sm text-ink">{row.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </Panel>
+        <div className="flex flex-col gap-4">
+          {liveControls}
+          <Panel variant="plain">
+            <h3 className="mb-2 text-base font-semibold">Server-Details</h3>
+            <dl className="divide-y divide-line">
+              {detailRows.map((row) => (
+                <div key={row.label} className="flex justify-between gap-4 py-2">
+                  <dt className="text-sm text-ink-soft">{row.label}</dt>
+                  <dd className="text-right font-mono text-sm text-ink">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </Panel>
+        </div>
       </div>
     </div>
   );

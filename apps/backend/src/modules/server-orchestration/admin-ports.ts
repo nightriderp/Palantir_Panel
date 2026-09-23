@@ -289,5 +289,9 @@ export function createAgentNodeConnectionSource(agents: AgentRegistry): NodeConn
         reportedAt: hello.reportedAt.toISOString(),
       };
     },
+    // Offener Update-Anstoß für die Anzeige „aktualisiert sich" (Punkt 342).
+    updateSignaledAt(nodeId: string) {
+      return agents.updateSignaledAt(nodeId)?.toISOString() ?? null;
+    },
   };
 }

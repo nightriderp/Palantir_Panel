@@ -5365,3 +5365,147 @@ describe('Start: Konsole beobachten', () => {
     expect(sonde.versuche()).toBeLessThanOrEqual(121);
   });
 });
+
+/**
+ * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Einstellungen eines laufenden
+ * Servers ändern, ohne Neustart.
+ */
+describe('Live-Steuerung', () => {
+  const LIVE: GameTypeDefinition = {
+    ...TEST_GAME_TYPE,
+    configFields: [
+      {
+        key: 'map',
+        label: 'Startkarte',
+        type: 'select',
+        defaultValue: 'a',
+        description: '',
+        required: false,
+        options: ['a', 'b'],
+        min: null,
+        max: null,
+        lockedAfterCreate: false,
+      },
+      {
+        key: 'bots',
+        label: 'Bots',
+        type: 'number',
+        defaultValue: 0,
+        description: '',
+        required: false,
+        options: [],
+        min: 0,
+        max: 10,
+        lockedAfterCreate: false,
+      },
+    ],
+    liveControls: [
+      {
+        id: 'karte',
+        label: 'Karte',
+        fields: ['map'],
+        commands: ['changelevel {map}'],
+        reloadsMap: true,
+      },
+      {
+        id: 'bots',
+        label: 'Bots',
+        fields: ['bots'],
+        commands: ['bot_quota {bots}'],
+        persist: ['bot_quota {bots}'],
+      },
+    ],
+    liveConfigFile: 'cfg/live.cfg',
+  };
+
+  async function laufenderServer() {
+    const harness = makeHarness({ gameTypes: [LIVE] });
+    const created = await harness.service.createServer(createInput('mein-server', LIVE), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    harness.socket.commands.length = 0;
+
+    return { harness, id: created.id };
+  }
+
+  it('schreibt die Datei, schickt dann die Befehle und merkt sich die Werte', async () => {
+    const { harness, id } = await laufenderServer();
+
+    const server = await harness.service.applyLiveValues(id, { bots: 4 });
+
+    const befehle = harness.socket.commands.filter(
+      (c) => c.command === 'FILE_WRITE' || c.command === 'EXEC_CONSOLE',
+    );
+    // Die Datei zuerst: Ein Kartenwechsel führt sie beim Laden aus.
+    expect(befehle[0]?.command).toBe('FILE_WRITE');
+    expect(befehle[1]).toMatchObject({
+      command: 'EXEC_CONSOLE',
+      payload: { command: ['bot_quota', '4'] },
+    });
+
+    const datei = befehle[0]?.payload as { path: string; contentBase64: string };
+    expect(datei.path).toMatch(/cfg\/live\.cfg$/u);
+    expect(Buffer.from(datei.contentBase64, 'base64').toString('utf8')).toMatch(/^bot_quota 4$/mu);
+
+    expect(server.liveValues).toEqual({ bots: 4 });
+  });
+
+  it('lässt die Einstellungen unberührt – sie bleiben die Startwerte', async () => {
+    const { harness, id } = await laufenderServer();
+    const vorher = (await harness.service.requireServer(id)).configJson;
+
+    await harness.service.applyLiveValues(id, { map: 'b' });
+
+    expect((await harness.service.requireServer(id)).configJson).toEqual(vorher);
+    expect(vorher.map).toBe('a');
+  });
+
+  it('schickt nichts, wenn sich nichts ändert', async () => {
+    const { harness, id } = await laufenderServer();
+
+    await harness.service.applyLiveValues(id, { map: 'a', bots: 0 });
+
+    expect(harness.socket.commands.filter((c) => c.command === 'EXEC_CONSOLE')).toHaveLength(0);
+  });
+
+  it('lehnt einen unzulässigen Wert ab, ohne etwas zu schicken', async () => {
+    const { harness, id } = await laufenderServer();
+
+    await expect(harness.service.applyLiveValues(id, { map: 'b; quit' })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+    });
+    expect(harness.socket.commands).toHaveLength(0);
+  });
+
+  it('geht nur, solange der Server läuft', async () => {
+    const harness = makeHarness({ gameTypes: [LIVE] });
+    const created = await harness.service.createServer(createInput('mein-server', LIVE), OWNER_ID);
+
+    await expect(harness.service.applyLiveValues(created.id, { bots: 2 })).rejects.toMatchObject({
+      code: 'SERVER_STATE_CONFLICT',
+    });
+  });
+
+  it('setzt die Live-Werte beim nächsten Start zurück', async () => {
+    const { harness, id } = await laufenderServer();
+    await harness.service.applyLiveValues(id, { bots: 4 });
+
+    await harness.service.stopServer(id);
+    await settle(harness, id, ['stopped']);
+    await harness.service.startServer(id, OWNER_ID);
+    await settle(harness, id, ['running']);
+
+    expect((await harness.service.requireServer(id)).liveValues ?? null).toBeNull();
+  });
+
+  it('meldet ein Spiel ohne Live-Steuerung als nicht steuerbar', async () => {
+    const harness = makeHarness();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+
+    await expect(harness.service.applyLiveValues(created.id, { bots: 1 })).rejects.toMatchObject({
+      code: 'CONSOLE_NOT_SUPPORTED',
+    });
+  });
+});
