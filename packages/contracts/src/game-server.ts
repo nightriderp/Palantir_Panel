@@ -317,6 +317,26 @@ export interface GameServerDto {
    * verfuegbar" steckt: von welcher Version auf welche.
    */
   latestImageVersion?: string | null;
+  /**
+   * Verweis auf den Kanal dieses Servers im Projekt-Discord
+   * (`https://discord.com/channels/<guild>/<channel>`, Pflichtenheft §14a.4).
+   *
+   * `null`, wenn der Bot abgeschaltet ist oder der Kanal (noch) nicht
+   * existiert. Ob der Aufrufer ihn in Discord sehen kann, sagt das Feld nicht –
+   * das hängt an seiner Verknüpfung und an Discord selbst. Additiv und
+   * optional, damit Backends ohne Bot den Vertrag weiter erfüllen.
+   */
+  discordChannelUrl?: string | null;
+  /**
+   * Nimmt dieser Server Konsolenbefehle über den Discord-Bot an
+   * (Pflichtenheft §14a.5)? Vorgabe `false`; umlegen darf, wer die
+   * Einstellungen des Servers ändern darf.
+   *
+   * Unabhängig von `supportsConsole` und `permissions.canUseConsole`: Die
+   * sagen, ob es eine Konsole gibt und ob der Aufrufer sie bedienen darf,
+   * dieses Feld nur, ob der Weg über Discord offen ist. Optional wie oben.
+   */
+  discordConsoleEnabled?: boolean;
   /** Anzahl der Mitverwalter (`ServerMember`, Pflichtenheft §6). */
   memberCount: number;
   /**

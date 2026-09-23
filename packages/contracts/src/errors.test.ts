@@ -233,6 +233,35 @@ describe('Fehlercode-Katalog (Pflichtenheft §5.1)', () => {
     });
   });
 
+  describe('Discord-Bot (Pflichtenheft §14a)', () => {
+    it('beantwortet eine ungültige Signatur mit 401, wie Discord es verlangt', () => {
+      // Das Developer Portal prüft die Interactions-URL mit einer absichtlich
+      // falschen Signatur und nimmt sie nur an, wenn 401 zurückkommt.
+      expect(httpStatusForErrorCode('DISCORD_INTERACTION_INVALID')).toBe(401);
+    });
+
+    it('trennt den Discord-Rate-Limit vom Anmelde-Rate-Limit', () => {
+      expect(httpStatusForErrorCode('DISCORD_RATE_LIMITED')).toBe(429);
+      expect(defaultMessageForErrorCode('DISCORD_RATE_LIMITED')).not.toBe(
+        defaultMessageForErrorCode('AUTH_RATE_LIMITED'),
+      );
+    });
+
+    it('trennt den abgeschalteten Konsolenweg vom fehlenden Recht', () => {
+      expect(httpStatusForErrorCode('DISCORD_CONSOLE_DISABLED')).toBe(403);
+      expect(defaultMessageForErrorCode('DISCORD_CONSOLE_DISABLED')).not.toBe(
+        defaultMessageForErrorCode('PERMISSION_DENIED'),
+      );
+    });
+
+    it('vergibt jeden Discord-Code genau einmal und mit eigener Meldung', () => {
+      const discordCodes = ERROR_CODES.filter((code) => code.startsWith('DISCORD_'));
+
+      expect(discordCodes).toHaveLength(5);
+      expect(new Set(discordCodes.map(defaultMessageForErrorCode)).size).toBe(discordCodes.length);
+    });
+  });
+
   it('isErrorCode() erkennt unbekannte Codes', () => {
     expect(isErrorCode('SUBDOMAIN_TAKEN')).toBe(true);
     expect(isErrorCode('NICHT_IM_KATALOG')).toBe(false);

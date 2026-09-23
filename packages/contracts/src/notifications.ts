@@ -562,6 +562,15 @@ export function isMutableNotificationEvent(value: string): value is MutableNotif
 export interface NotificationPreferencesDto {
   /** Abbestellte Ereignisse; leer bedeutet „alles wie von den Regeln vorgesehen". */
   mutedEvents: MutableNotificationEvent[];
+  /**
+   * Direktnachrichten des Discord-Bots erhalten (Pflichtenheft §14a.6)?
+   * Vorgabe `true`. Wie `mutedEvents` nur ein Abwählen: Wer in keinem
+   * Empfängerkreis steht, bekommt auch mit `true` nichts.
+   *
+   * Additiv und optional, damit Backends ohne Bot den Vertrag weiter
+   * erfüllen; fehlt das Feld, gilt `true`.
+   */
+  discordDm?: boolean;
   /** ISO-8601-Zeitstempel der letzten Änderung; `null`, solange nichts gesetzt wurde. */
   updatedAt: string | null;
 }
