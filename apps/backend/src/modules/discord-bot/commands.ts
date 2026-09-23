@@ -6,8 +6,7 @@
  * ist damit idempotent, und ein entfernter Befehl verschwindet beim nächsten
  * Start von selbst.
  *
- * DC-1 bringt nur `/palantir konto`; `/palantir server` folgt mit den Kanälen
- * in DC-2.
+ * `/palantir konto` (F1, DC-1) und `/palantir server` (F12, DC-2).
  */
 
 import type { DiscordRestClient } from './rest.js';
@@ -15,6 +14,7 @@ import { type CommandDefinition, CommandOptionType } from './types.js';
 
 export const ROOT_COMMAND = 'palantir';
 export const SUBCOMMAND_ACCOUNT = 'konto';
+export const SUBCOMMAND_SERVERS = 'server';
 
 export const COMMANDS: readonly CommandDefinition[] = [
   {
@@ -27,6 +27,11 @@ export const COMMANDS: readonly CommandDefinition[] = [
         type: CommandOptionType.SubCommand,
         name: SUBCOMMAND_ACCOUNT,
         description: 'Zeigt, mit welchem Palantir-Konto dein Discord verknüpft ist',
+      },
+      {
+        type: CommandOptionType.SubCommand,
+        name: SUBCOMMAND_SERVERS,
+        description: 'Listet deine Server mit Zustand und Kanal',
       },
     ],
   },

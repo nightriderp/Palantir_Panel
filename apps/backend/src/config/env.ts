@@ -746,6 +746,13 @@ const envSchema = z.object({
   DISCORD_PUBLIC_KEY: optionalEnvString(),
   /** Id des Projekt-Discord-Servers (Rechtsklick auf den Server > „Server-ID kopieren"). */
   DISCORD_GUILD_ID: optionalEnvString(),
+  /**
+   * Takt des Vollabgleichs der Discord-Kanäle (Pflichtenheft §14a.4). Änderungen
+   * an Mitgliedern, Rollen und Sperren lösen ohnehin sofort einen Abgleich aus;
+   * der Takt holt nach, was kein Ereignis meldet (neu verknüpft, Beitritt zum
+   * Discord-Server, neuer Anzeigename). Vorgabe 15 Minuten.
+   */
+  DISCORD_BOT_SYNC_INTERVAL_MS: z.coerce.number().int().min(60_000).default(900_000),
 });
 
 /**

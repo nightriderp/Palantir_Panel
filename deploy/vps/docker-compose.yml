@@ -163,6 +163,7 @@ x-backend-umgebung: &backend-umgebung
   DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
   DISCORD_PUBLIC_KEY: ${DISCORD_PUBLIC_KEY:-}
   DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+  DISCORD_BOT_SYNC_INTERVAL_MS: ${DISCORD_BOT_SYNC_INTERVAL_MS:-900000}
 
 services:
   # --- Docker-Socket-Proxy für Traefik ---------------------------------------

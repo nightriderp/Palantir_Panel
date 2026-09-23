@@ -122,6 +122,14 @@ export interface ServerRoutesOptions {
   readonly gameTypeImageUrls?: () => Promise<
     Map<string, { iconUrl: string | null; coverImageUrl: string | null }>
   >;
+  /**
+   * Verweis auf den Discord-Kanal eines Servers (Pflichtenheft §14a.4).
+   *
+   * Lose gekoppelt und optional wie die Spielbilder: Der Discord-Bot entsteht
+   * erst nach dieser Registrierung und ist abschaltbar. Ohne die Funktion
+   * trägt der DTO das Feld nicht.
+   */
+  readonly discordChannelUrl?: (serverId: string) => Promise<string | null>;
   readonly baseDomain: string;
   /** Geplante Aufgaben des Reiters „Aufgaben" (Lastenheft §3.3). */
   readonly schedules: ServerScheduleService;
@@ -384,6 +392,9 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
       registry,
       baseDomain,
       recentCrashCount: 0,
+      ...(options.discordChannelUrl === undefined
+        ? {}
+        : { discordChannelUrl: await options.discordChannelUrl(serverId) }),
     };
   }
 

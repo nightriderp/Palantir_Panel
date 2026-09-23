@@ -61,6 +61,13 @@ import { createPublicStatsService } from './modules/public-stats/index.js';
 import { registerPublicStatsRoutes } from './modules/public-stats/routes.js';
 import { readDiscordBotConfig, registerDiscordBotModule } from './modules/discord-bot/index.js';
 import { createAuthIdentityResolver } from './modules/discord-bot/identity.js';
+import { type DiscordBotModule } from './modules/discord-bot/module.js';
+import { createPanelSource } from './modules/discord-bot/panel-source.js';
+import {
+  createDrizzleDiscordSyncStore,
+  loadPanelAccounts,
+} from './modules/discord-bot/repository.js';
+import { discordSyncTask } from './modules/discord-bot/sync-task.js';
 import {
   type AuthAuditSink,
   type AuthEventSink,
@@ -517,6 +524,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
      * vom ersten Augenblick an, die Spielerei darf warten.
      */
     let erfolge: AchievementService | null = null;
+    /*
+     * Discord-Bot (Pflichtenheft §14a): entsteht erst ganz unten, soll aber
+     * Audit-Einträge und Server-Ereignisse schon von hier an sehen. Bis er
+     * steht, verwirft die Weiterleitung still.
+     */
+    let discordBot: DiscordBotModule | null = null;
 
     const admin = createAdminModule({
       db,
@@ -532,6 +545,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
        * nichts aus – es gäbe kein Konto, dem das Abzeichen gehörte.
        */
       onAudited: (entry) => {
+        // Vor dem Ausstieg unten: Auch Systemvorgänge ändern, wer welchen
+        // Discord-Kanal sieht.
+        discordBot?.observeAudit(entry.action);
+
         if (entry.actorId === null) return;
 
         void erfolge?.evaluate(entry.actorId, entry.action, {
@@ -762,6 +779,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       | (() => Promise<Map<string, { iconUrl: string | null; coverImageUrl: string | null }>>)
       | null = null;
 
+    // Die Orchestrierung meldet Ereignisse ungetypt (`OrchestrationEventSink`);
+    // die Notification-Senke nimmt sie in dieser Form an.
+    const orchestrierungsSenke: { emit(event: string, payload: Record<string, unknown>): void } =
+      notifications.eventSink;
+
     const {
       service: orchestration,
       schedules: serverSchedules,
@@ -772,6 +794,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       agents,
       resolveViewerId: (request) => request.authUser?.id ?? null,
       gameTypeImageUrls: async () => (await spielbildAdressen?.()) ?? new Map(),
+      discordChannelUrl: async (serverId) => (await discordBot?.channelUrl(serverId)) ?? null,
       isSessionValid,
       // Rollenrechte am offenen Live-Kanal neu lesen (Befund 3.2) – derselbe
       // Aufbau wie `resolveActor` in `registerRbac()` oben.
@@ -797,7 +820,14 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
        * dahin wirkungslos, danach legt B3 den Chat mit an.
        */
       ensureServerChat: async (serverId) => ensureServerChat?.(serverId),
-      events: notifications.eventSink,
+      // Der Discord-Bot hört mit: Zustandswechsel frischen seine Kacheln auf,
+      // neue und gelöschte Server stoßen den Kanal-Abgleich an (§14a.5).
+      events: {
+        emit: (event, payload) => {
+          orchestrierungsSenke.emit(event, payload);
+          discordBot?.observeEvent(event, payload);
+        },
+      },
       // Anlegen, Loeschen, Klonen, Einstellungen und Mitglieder stehen im
       // Audit-Katalog und wurden bis Fundpunkt 237 nie geschrieben.
       audit: admin.services.audit,
@@ -1236,12 +1266,22 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     if (discordBotConfig && authService) {
       const kontoDienst = authService;
 
-      await registerDiscordBotModule(app, {
+      discordBot = await registerDiscordBotModule(app, {
         config: discordBotConfig,
         identity: createAuthIdentityResolver({
           repository: createDrizzleAuthRepository(db),
           buildActor: (user) => kontoDienst.buildActor(user),
         }),
+        channels: {
+          store: createDrizzleDiscordSyncStore(db),
+          source: createPanelSource({
+            servers: serverRepository,
+            accounts: () => loadPanelAccounts(db),
+            orchestration,
+            gameTypeName: (gameType) => spieltypen.find(gameType)?.name ?? null,
+            webUrl: env.PUBLIC_WEB_URL,
+          }),
+        },
       });
     }
 
@@ -1288,6 +1328,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
         // Fundpunkte 130 und 131). Eigener Abstand innerhalb des Takts: Hier
         // ist nichts minutengenau fällig.
         backupHousekeepingTask(backups, panelBackups, app.log),
+        // Vollabgleich der Discord-Kanäle im eigenen Takt (§14a.4): holt nach,
+        // was kein Ereignis meldet – ein neu verknüpfter Account, ein Beitritt
+        // zum Discord-Server, ein geänderter Anzeigename.
+        ...(discordBot?.sync
+          ? [discordSyncTask(discordBot.sync, env.DISCORD_BOT_SYNC_INTERVAL_MS, app.log)]
+          : []),
       ],
     });
 

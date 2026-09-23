@@ -1,9 +1,9 @@
 /**
  * Discord-Bot als Backend-Modul (Lastenheft §3.11, Pflichtenheft §14a).
  *
- * Stand DC-1: Interactions-Endpoint mit Signaturprüfung, Registrierung der
- * Slash-Befehle und `/palantir konto`. Kanäle, Kachel und Knöpfe folgen in
- * DC-2 und DC-3.
+ * Stand DC-2: Interactions-Endpoint mit Signaturprüfung, Slash-Befehle
+ * (`/palantir konto`, `/palantir server`), Kanäle je Server mit Kategorie je
+ * Besitzer und die Status-Kachel. Knöpfe folgen in DC-3.
  *
  * **Kein Response-Envelope an dieser Route (bewusste Abweichung von
  * Pflichtenheft §5.1).** Discord erwartet auf eine gültige Interaction genau
@@ -18,15 +18,26 @@
  * Browser, sondern eine Ed25519-Signatur, die nur Discord erzeugen kann.
  */
 
-import { fail, httpStatusForErrorCode } from '@palantir/contracts';
+import { type AuditAction, fail, httpStatusForErrorCode } from '@palantir/contracts';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { fireAndForget } from '../../lib/fire-and-forget.js';
 import { createRateLimiter } from '../auth/rate-limit.js';
 import { registerGuildCommands } from './commands.js';
 import type { DiscordBotConfig } from './config.js';
-import { type DiscordIdentityResolver, handleInteraction } from './interactions.js';
+import {
+  type DiscordIdentityResolver,
+  handleInteraction,
+  type InteractionContext,
+  type ServerListEntry,
+} from './interactions.js';
 import { createDiscordRestClient, type DiscordRestClient } from './rest.js';
 import { importDiscordPublicKey, verifyDiscordSignature } from './signature.js';
+import {
+  createDiscordSync,
+  type DiscordSync,
+  type DiscordSyncSource,
+  type DiscordSyncStore,
+} from './sync.js';
 import type { Interaction } from './types.js';
 
 export const INTERACTIONS_PATH = '/discord/interactions';
@@ -48,11 +59,68 @@ export interface DiscordBotModuleOptions {
   readonly rest?: DiscordRestClient;
   /** Uhr für die Signaturprüfung; austauschbar für Tests. */
   readonly now?: () => number;
+  /** Kanäle und Kacheln (DC-2). Ohne Angabe bleibt es bei den Befehlen. */
+  readonly channels?: {
+    readonly store: DiscordSyncStore;
+    readonly source: DiscordSyncSource;
+  };
 }
 
 export interface DiscordBotModule {
   readonly rest: DiscordRestClient;
+  /** `null` ohne {@link DiscordBotModuleOptions.channels}. */
+  readonly sync: DiscordSync | null;
+  /** Ereignis aus der Server-Orchestrierung; frischt Kacheln auf oder stößt den Abgleich an. */
+  observeEvent(event: string, payload: Record<string, unknown>): void;
+  /** Audit-Eintrag; Rechte- und Mitgliedsänderungen stoßen den Abgleich an. */
+  observeAudit(action: string): void;
+  /** Verweis auf den Kanal eines Servers für „In Discord öffnen"; `null` ohne Kanal. */
+  channelUrl(serverId: string): Promise<string | null>;
 }
+
+/**
+ * Die Zuordnung Server → Kanal wird für die Server-DTOs gebraucht, bei einer
+ * Liste für jeden Server. Kurz zwischengespeichert, damit das keine Abfrage je
+ * Server kostet; ein neu angelegter Kanal erscheint spätestens danach.
+ */
+const CHANNEL_URL_CACHE_MS = 30_000;
+
+/**
+ * Ereignisse, nach denen sich Kanäle ändern können: ein Server kommt, geht
+ * oder wechselt den Besitzer.
+ */
+const SYNC_EVENTS = new Set([
+  'server.created',
+  'server.cloned',
+  'server.deleted',
+  'server.ownerTransferred',
+]);
+
+/**
+ * Audit-Aktionen, nach denen sich ändert, wer welchen Kanal sieht
+ * (Pflichtenheft §14a.4, „Entzug geht vor"). Das Audit-Log ist die eine
+ * Stelle, an der all diese Vorgänge ohnehin vorbeikommen – Mitglieder,
+ * Freischaltung, Sperre, Rollen, Trennen der Discord-Anmeldung, Umbenennen.
+ * Was dort nicht steht (Verknüpfen, neuer Anzeigename), holt der Taktlauf nach.
+ */
+const SYNC_AUDIT_ACTIONS: ReadonlySet<string> = new Set<AuditAction>([
+  'server.memberAdded',
+  'server.memberRemoved',
+  'server.settingsChanged',
+  'server.ownerTransferred',
+  'auth.methodUnlinked',
+  'user.approved',
+  'user.banned',
+  'user.unbanned',
+  'user.roleAssigned',
+  'user.roleRemoved',
+  'user.deleted',
+  'role.updated',
+  'role.deleted',
+]);
+
+/** Messwerte kommen alle paar Sekunden; die Kachel fragt höchstens einmal je Minute nach. */
+const STATS_TILE_INTERVAL_MS = 60_000;
 
 export async function registerDiscordBotModule(
   app: FastifyInstance,
@@ -64,6 +132,22 @@ export async function registerDiscordBotModule(
   const rest = options.rest ?? createDiscordRestClient({ botToken: config.botToken });
   const now = options.now ?? Date.now;
   const ipLimiter = createRateLimiter(IP_LIMIT);
+  const sync = options.channels
+    ? createDiscordSync({
+        rest,
+        guildId: config.guildId,
+        store: options.channels.store,
+        source: options.channels.source,
+        log: app.log,
+      })
+    : null;
+  const channels = options.channels;
+  const context: InteractionContext = {
+    identity,
+    webUrl: config.webUrl,
+    ...(sync ? { onGuildMember: (id: string) => sync.noteMember(id) } : {}),
+    ...(channels ? { listServers: (userId: string) => listServersFor(userId, channels) } : {}),
+  };
 
   await app.register(async (scope) => {
     // Die Signatur gilt dem Rohkörper, Byte für Byte. Der JSON-Parser von
@@ -111,7 +195,7 @@ export async function registerDiscordBotModule(
           .send(fail('VALIDATION_FAILED'));
       }
 
-      const response = await handleInteraction(interaction, { identity, webUrl: config.webUrl });
+      const response = await handleInteraction(interaction, context);
 
       return reply.status(200).send(response);
     });
@@ -124,9 +208,102 @@ export async function registerDiscordBotModule(
     fireAndForget(registerCommandsSafely(rest, config, app.log), app.log, {
       vorgang: 'Discord-Befehle registrieren',
     });
+
+    if (sync) {
+      fireAndForget(sync.run(), app.log, { vorgang: 'Discord-Kanäle abgleichen (Start)' });
+    }
   });
 
-  return { rest };
+  const letzteStatsKachel = new Map<string, number>();
+  let kanalCache: { at: number; urls: Map<string, string> } | null = null;
+
+  async function channelUrl(serverId: string): Promise<string | null> {
+    if (!channels) return null;
+
+    if (!kanalCache || now() - kanalCache.at > CHANNEL_URL_CACHE_MS) {
+      const zuordnung = await channels.store.listServerChannels();
+      kanalCache = {
+        at: now(),
+        urls: new Map(
+          zuordnung.map((z) => [
+            z.serverId,
+            `https://discord.com/channels/${config.guildId}/${z.channelId}`,
+          ]),
+        ),
+      };
+    }
+
+    return kanalCache.urls.get(serverId) ?? null;
+  }
+
+  function tileRefresh(serverId: string): void {
+    if (!sync) return;
+
+    fireAndForget(sync.refreshTiles([serverId]), app.log, {
+      vorgang: 'Discord-Kachel auffrischen',
+      serverId,
+    });
+  }
+
+  return {
+    rest,
+    sync,
+    observeEvent(event, payload) {
+      if (!sync) return;
+
+      const serverId = typeof payload.serverId === 'string' ? payload.serverId : null;
+
+      if (SYNC_EVENTS.has(event)) {
+        sync.request();
+      } else if (event === 'server.statusChanged' && serverId) {
+        tileRefresh(serverId);
+      } else if (event === 'server.statsUpdated' && serverId) {
+        const jetzt = now();
+
+        if (jetzt - (letzteStatsKachel.get(serverId) ?? 0) >= STATS_TILE_INTERVAL_MS) {
+          letzteStatsKachel.set(serverId, jetzt);
+          tileRefresh(serverId);
+        }
+      }
+    },
+    channelUrl,
+    observeAudit(action) {
+      if (sync && SYNC_AUDIT_ACTIONS.has(action)) {
+        sync.request();
+      }
+    },
+  };
+}
+
+/**
+ * Server, die ein Konto sehen darf – dieselbe Regel wie für die Kanäle
+ * (§14a.3): Besitz, Mitgliedschaft oder `server.view.any`.
+ */
+async function listServersFor(
+  userId: string,
+  channels: NonNullable<DiscordBotModuleOptions['channels']>,
+): Promise<ServerListEntry[]> {
+  const [stand, zuordnung] = await Promise.all([
+    channels.source.loadPanelState(),
+    channels.store.listServerChannels(),
+  ]);
+  const snapshots = await channels.source.loadSnapshots(stand.servers.map((s) => s.id));
+  const kanalJeServer = new Map(zuordnung.map((z) => [z.serverId, z.channelId]));
+  const admin = stand.adminUserIds.has(userId);
+
+  return stand.servers
+    .filter(
+      (server) =>
+        admin ||
+        server.ownerId === userId ||
+        (stand.membersByServer.get(server.id) ?? []).includes(userId),
+    )
+    .map((server) => ({
+      name: server.name,
+      status: snapshots.get(server.id)?.status ?? 'stopped',
+      channelId: kanalJeServer.get(server.id) ?? null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
 }
 
 /**

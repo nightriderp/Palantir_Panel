@@ -93,6 +93,14 @@ export interface ServerOrchestrationOptions {
   readonly gameTypeImageUrls?: () => Promise<
     Map<string, { iconUrl: string | null; coverImageUrl: string | null }>
   >;
+  /**
+   * Verweis auf den Discord-Kanal eines Servers (Pflichtenheft §14a.4).
+   *
+   * Lose gekoppelt und optional wie die Spielbilder: Der Discord-Bot entsteht
+   * erst nach dieser Registrierung und ist abschaltbar. Ohne die Funktion
+   * trägt der DTO das Feld nicht.
+   */
+  readonly discordChannelUrl?: (serverId: string) => Promise<string | null>;
   /** Konto des Aufrufers – kommt aus der Sitzung (B1). */
   resolveViewerId(request: FastifyRequest): Promise<string | null> | string | null;
   /**
@@ -559,6 +567,9 @@ export function registerServerOrchestration(
     ...(options.gameTypeImageUrls === undefined
       ? {}
       : { gameTypeImageUrls: options.gameTypeImageUrls }),
+    ...(options.discordChannelUrl === undefined
+      ? {}
+      : { discordChannelUrl: options.discordChannelUrl }),
     ...(options.audit === undefined ? {} : { audit: options.audit }),
   });
 
