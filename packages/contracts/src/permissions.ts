@@ -23,10 +23,21 @@ export type PermissionScope =
   /** Nicht ressourcenbezogen – gilt instanzweit. */
   | 'global';
 
+/**
+ * Bereich einer Permission (Betreiber-Wunsch 23.09.2026).
+ *
+ * `user` – was ein gewöhnliches Konto für seine eigenen Server braucht.
+ * `admin` – alles, was zur Administration gehört oder auf fremde Ressourcen
+ * wirkt. Normale Nutzer brauchen davon nichts; wer eine Rolle mit einem
+ * solchen Recht vergibt, muss `role.manage` haben und das Recht selbst tragen.
+ */
+export type PermissionArea = 'user' | 'admin';
+
 export interface PermissionDefinition {
   /** Beschreibung für den Rollen-Editor (F10) – bewusst deutsch, wie die gesamte Oberfläche. */
   readonly description: string;
   readonly scope: PermissionScope;
+  readonly area: PermissionArea;
 }
 
 /**
@@ -39,39 +50,48 @@ export const PERMISSION_CATALOG = {
   'server.create': {
     description: 'Eigene Gameserver erstellen.',
     scope: 'global',
+    area: 'user',
   },
   'server.view.own': {
     description: 'Eigene Server und Server, bei denen man Mitglied ist, sehen.',
     scope: 'own',
+    area: 'user',
   },
   'server.view.any': {
     description: 'Server aller Nutzer sehen.',
     scope: 'any',
+    area: 'admin',
   },
   'server.manage.own': {
     description:
       'Eigene Server starten, stoppen, neu starten, konfigurieren, klonen sowie Konsole, Dateien, Aufgaben und Mitglieder verwalten.',
     scope: 'own',
+    area: 'user',
   },
   'server.manage.any': {
     description: 'Server aller Nutzer im selben Umfang verwalten.',
     scope: 'any',
+    area: 'admin',
   },
   'server.delete.own': {
     description: 'Eigene Server löschen.',
     scope: 'own',
+    area: 'user',
   },
   'server.delete.any': {
     description: 'Server aller Nutzer löschen.',
     scope: 'any',
+    area: 'admin',
   },
   'backup.manage.own': {
     description: 'Backups eigener Server erstellen, wiederherstellen und löschen.',
     scope: 'own',
+    area: 'user',
   },
   'backup.manage.any': {
     description: 'Backups aller Nutzer einsehen, wiederherstellen und löschen.',
     scope: 'any',
+    area: 'admin',
   },
   /**
    * Getrennt von `backup.manage.any` (Fundpunkt 346): Eine Sicherung der
@@ -81,11 +101,13 @@ export const PERMISSION_CATALOG = {
   'panelBackup.manage': {
     description: 'Sicherungen der Panel-Datenbank anlegen, einsehen und löschen.',
     scope: 'global',
+    area: 'admin',
   },
   'user.manage': {
     description:
       'Nutzerkonten verwalten: Registrierungsanfragen entscheiden, freischalten, sperren, Rollen zuweisen, Kontingente setzen, Passwort zurücksetzen.',
     scope: 'global',
+    area: 'admin',
   },
   /**
    * Getrennt von `user.manage` (Fundpunkt 346, Betreiber-Wunsch 23.09.2026).
@@ -98,30 +120,37 @@ export const PERMISSION_CATALOG = {
     description:
       'Instanz-Einstellungen verwalten: Selbstregistrierung ein- und ausschalten, Schriften der Oberfläche auswählen, hochladen und löschen.',
     scope: 'global',
+    area: 'admin',
   },
   'role.manage': {
     description: 'Rollen anlegen, bearbeiten, löschen und deren Berechtigungen festlegen.',
     scope: 'global',
+    area: 'admin',
   },
   'notification.manage': {
     description: 'Benachrichtigungskanäle und -regeln verwalten.',
     scope: 'global',
+    area: 'admin',
   },
   'node.view': {
     description: 'Nodes mit Status und Auslastung einsehen.',
     scope: 'global',
+    area: 'user',
   },
   'node.manage': {
     description: 'Nodes verwalten, inklusive Speicherverwaltung (Storage-Explorer).',
     scope: 'global',
+    area: 'admin',
   },
   'address.manage': {
     description: 'Öffentliche Port-Bereiche und Port-Zuteilungen verwalten.',
     scope: 'global',
+    area: 'admin',
   },
   'audit.view': {
     description: 'Audit-Log einsehen.',
     scope: 'global',
+    area: 'admin',
   },
   /**
    * Getrennt von `audit.view` (WORK_STATUS.md, Gefundener Punkt 46).
@@ -136,10 +165,12 @@ export const PERMISSION_CATALOG = {
     description:
       'Audit-Log archivieren (Einträge nach Ablauf der Frist exportieren und entfernen).',
     scope: 'global',
+    area: 'admin',
   },
   'message.moderate': {
     description: 'Gemeldete Nachrichten einsehen und moderieren.',
     scope: 'global',
+    area: 'admin',
   },
   /**
    * Seit dem 23.09.2026 das Recht für das **Spieleangebot** (Fundpunkt 345):
@@ -150,6 +181,7 @@ export const PERMISSION_CATALOG = {
     description:
       'Spieleangebot verwalten: Vorlagen ein- und ausschalten, Updates zurückhalten, Bilder, Sticker und Arcade-Musik, Spiel-Anfragen entscheiden.',
     scope: 'global',
+    area: 'admin',
   },
 } as const satisfies Record<string, PermissionDefinition>;
 
@@ -167,6 +199,16 @@ export const PERMISSIONS = Object.keys(PERMISSION_CATALOG) as [Permission, ...Pe
 /** Beschreibung zu einer Permission (Rollen-Editor). */
 export function descriptionForPermission(permission: Permission): string {
   return PERMISSION_CATALOG[permission].description;
+}
+
+/** Bereich einer Permission – Nutzer- oder Admin-Recht. */
+export function areaForPermission(permission: Permission): PermissionArea {
+  return PERMISSION_CATALOG[permission].area;
+}
+
+/** Gehört die Permission zur Administration? */
+export function isAdminPermission(permission: Permission): boolean {
+  return areaForPermission(permission) === 'admin';
 }
 
 /** Geltungsbereich einer Permission. */

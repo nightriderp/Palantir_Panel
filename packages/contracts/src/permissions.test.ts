@@ -3,6 +3,7 @@ import {
   PERMISSION_CATALOG,
   PERMISSIONS,
   SCOPED_PERMISSION_BASES,
+  areaForPermission,
   descriptionForPermission,
   isPermission,
   scopeForPermission,
@@ -40,6 +41,25 @@ describe('Permission-Katalog (Pflichtenheft §8)', () => {
   it('beschreibt gametype.manage als Recht für das Spieleangebot (Fundpunkt 345)', () => {
     expect(isPermission('gametype.manage')).toBe(true);
     expect(descriptionForPermission('gametype.manage')).toMatch(/Spieleangebot/);
+  });
+
+  it('führt als Nutzerrechte nur, was ein Konto für die eigenen Server braucht', () => {
+    expect(PERMISSIONS.filter((p) => areaForPermission(p) === 'user').sort()).toEqual(
+      [
+        'server.create',
+        'server.view.own',
+        'server.manage.own',
+        'server.delete.own',
+        'backup.manage.own',
+        'node.view',
+      ].sort(),
+    );
+  });
+
+  it('zählt jedes Recht auf fremde Ressourcen zur Administration', () => {
+    for (const permission of PERMISSIONS.filter((p) => p.endsWith('.any'))) {
+      expect(areaForPermission(permission), permission).toBe('admin');
+    }
   });
 
   it('hält das Benennungsschema ein (lowerCamelCase-Segmente, Punkt als Trenner)', () => {
