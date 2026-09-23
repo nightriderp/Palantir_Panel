@@ -48,6 +48,7 @@ describe('Permission-Katalog (Pflichtenheft §8)', () => {
       [
         'server.create',
         'server.view.own',
+        'server.view.any',
         'server.manage.own',
         'server.delete.own',
         'backup.manage.own',
@@ -56,8 +57,10 @@ describe('Permission-Katalog (Pflichtenheft §8)', () => {
     );
   });
 
-  it('zählt jedes Recht auf fremde Ressourcen zur Administration', () => {
-    for (const permission of PERMISSIONS.filter((p) => p.endsWith('.any'))) {
+  it('zählt jedes Recht auf fremde Ressourcen zur Administration – außer dem bloßen Ansehen', () => {
+    for (const permission of PERMISSIONS.filter(
+      (p) => p.endsWith('.any') && p !== 'server.view.any',
+    )) {
       expect(areaForPermission(permission), permission).toBe('admin');
     }
   });

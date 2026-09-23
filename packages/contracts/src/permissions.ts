@@ -57,10 +57,15 @@ export const PERMISSION_CATALOG = {
     scope: 'own',
     area: 'user',
   },
+  /**
+   * Nutzerrecht, obwohl `.any` (Betreiber-Wunsch 23.09.2026): Auf der
+   * Instanz sehen sich Freunde gegenseitig die Server an. Sehen ist rein
+   * lesend – verwalten bleibt bei `server.manage.any`, und das ist Admin.
+   */
   'server.view.any': {
-    description: 'Server aller Nutzer sehen.',
+    description: 'Server aller Nutzer sehen (nur ansehen, nicht verwalten).',
     scope: 'any',
-    area: 'admin',
+    area: 'user',
   },
   'server.manage.own': {
     description:
