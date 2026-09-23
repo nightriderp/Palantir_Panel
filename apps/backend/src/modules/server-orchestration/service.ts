@@ -1416,12 +1416,6 @@ export class ServerOrchestrationService {
      */
     await this.applyResourceLimits({ ...server, ...started, dockerContainerId: containerId });
 
-    // Live-Werte gelten bis zum Start – danach wieder die Einstellungen
-    // (Live-Steuerung). Die Datei im Datenordner leert das Image selbst.
-    if (server.liveValues !== undefined && server.liveValues !== null) {
-      await this.deps.repository.update(server.id, { liveValues: null });
-    }
-
     try {
       await session.sendCommand('START', server.id, { containerId });
     } catch (error: unknown) {
@@ -2040,10 +2034,15 @@ export class ServerOrchestrationService {
    * 2. Die Datei `liveConfigFile` schreiben – **vor** den Befehlen: Ein
    *    Kartenwechsel führt sie beim Laden aus, sie muss dann schon stimmen.
    * 3. Die Konsolenbefehle der betroffenen Steuerungen schicken.
-   * 4. Die Werte am Server festhalten, damit das Panel sie zeigt.
+   * 4. Die Werte in die Einstellungen (`config_json`) schreiben.
    *
-   * Die Einstellungen (`config_json`) bleiben unberührt – sie sind die
-   * Startwerte, und ein Start setzt die Live-Werte zurück.
+   * **Live Geändertes bleibt** – über Stopp und Neustart hinweg (Betreiber
+   * 23.09.2026). Deshalb gehen die Werte in die Einstellungen selbst: Der
+   * nächste Start baut den Container aus ihnen (der Fingerabdruck des Bauplans
+   * ändert sich mit), und das Formular zeigt denselben Stand wie die
+   * Live-Steuerung. `restartRequired` bleibt unberührt – die Änderung wirkt ja
+   * schon. `live_values` wird dabei geleert: Ein Rest aus v2.4.6, als Live-Werte
+   * noch bis zum Start galten, wandert mit in die Einstellungen.
    */
   async applyLiveValues(
     serverId: string,
@@ -2087,11 +2086,10 @@ export class ServerOrchestrationService {
       await this.execConsole(serverId, zeile);
     }
 
-    const liveValues = {
-      ...(server.liveValues ?? {}),
-      ...Object.fromEntries(geaendert.map((key) => [key, neu[key] as string | number])),
-    };
-    await this.deps.repository.update(serverId, { liveValues });
+    await this.deps.repository.update(serverId, {
+      configJson: { ...server.configJson, ...(server.liveValues ?? {}), ...neu },
+      liveValues: null,
+    });
 
     return this.requireServer(serverId);
   }

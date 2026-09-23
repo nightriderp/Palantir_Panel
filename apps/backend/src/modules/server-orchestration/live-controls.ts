@@ -2,9 +2,10 @@
  * Live-Steuerung (Betreiber-Wunsch 23.09.2026): Einstellungen bei laufendem
  * Server ändern, ohne Neustart.
  *
- * Die Einstellungen eines Servers bleiben seine **Startwerte**. Was live
- * geändert wird, gilt bis zum nächsten Start und steht bis dahin in
- * `ServerRecord.liveValues`. Welche Felder live gehen und mit welchen
+ * Was live geändert wird, **bleibt** – der Dienst schreibt es in die
+ * Einstellungen, damit es Stopp und Neustart übersteht (Betreiber 23.09.2026).
+ * `ServerRecord.liveValues` trägt nur noch Reste aus v2.4.6, als Live-Werte
+ * bis zum nächsten Start galten. Welche Felder live gehen und mit welchen
  * Konsolenbefehlen, sagt die Definition (`GameTypeDefinition.liveControls`).
  *
  * Hier stehen nur reine Funktionen – prüfen, Befehle bauen, Dateiinhalt bauen.

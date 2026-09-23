@@ -1017,20 +1017,43 @@ export function registerServerRoutes(app: FastifyInstance, options: ServerRoutes
   });
 
   /*
-   * Live-Steuerung (Betreiber-Wunsch 23.09.2026). Dasselbe Recht und dieselbe
-   * Drossel wie die Konsole – im Grunde schickt sie Konsolenbefehle, nur mit
-   * geprüften Werten.
+   * Live-Steuerung (Betreiber-Wunsch 23.09.2026). Dieselbe Drossel wie die
+   * Konsole – im Grunde schickt sie Konsolenbefehle, nur mit geprüften Werten.
+   *
+   * **Zwei Rechte.** Die Werte landen dauerhaft in den Einstellungen (sie
+   * sollen Stopp und Neustart überstehen), deshalb reicht die Konsole allein
+   * nicht: Wer nur bedienen darf, stellt eine Karte um, aber nicht die
+   * Einstellungen des Servers (Betreiber-Entscheidung 23.09.2026).
    */
   app.post('/api/servers/:id/live', { preHandler: consoleLimit }, async (request, reply) => {
     try {
       const { id } = serverIdParamsSchema.parse(request.params);
 
-      await loadAuthorized(request, id, 'canUseConsole');
+      const { dto } = await loadAuthorized(request, id, 'canManageSettings');
+
+      if (!dto.permissions.canUseConsole) {
+        throw new ServerOrchestrationError('PERMISSION_DENIED');
+      }
 
       const input = liveValuesInputSchema.parse(request.body);
       const server = await service.applyLiveValues(id, input.values);
 
-      return await reply.send(ok({ liveValues: server.liveValues ?? null }));
+      // Wie beim Formular: die geänderten Felder, keine Konfigurationskopie.
+      await protokolliere(request, 'server.settingsChanged', id, {
+        felder: ['config'],
+        live: Object.keys(input.values).sort(),
+      });
+
+      const context = await dtoContext(request, id);
+
+      return await reply.send(
+        ok(
+          toGameServerDto(server, {
+            ...context,
+            recentCrashCount: service.recentCrashCount(server),
+          }),
+        ),
+      );
     } catch (error: unknown) {
       return replyWithError(reply, error);
     }
