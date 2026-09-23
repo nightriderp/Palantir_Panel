@@ -312,6 +312,23 @@ describe('Admin-Routen: Envelope und Berechtigungen', () => {
     await app.close();
   });
 
+  it('zeigt den Speicher-Schnappschuss nur mit node.manage, nicht mit node.view', async () => {
+    const app = await buildTestApp();
+
+    // `node.view` traegt die Seed-Rolle „Nutzer" – sie darf Nodes auswaehlen,
+    // aber nicht die Datenordner aller Server im Admin-Bereich „Node-Platz" sehen.
+    const viewer = await get(app, `/admin/storage/${NODE_ID}`, 'nodeViewer');
+
+    expect(viewer.statusCode).toBe(403);
+    expect(viewer.json().error.code).toBe('PERMISSION_DENIED');
+
+    const manager = await get(app, `/admin/storage/${NODE_ID}`, 'nodeAdmin');
+
+    expect(manager.statusCode).not.toBe(403);
+
+    await app.close();
+  });
+
   it('lehnt das Löschen eines aktiven Server-Datenordners auch über die Route ab', async () => {
     const app = await buildTestApp();
 
