@@ -12,7 +12,8 @@ vorige auf der Node läuft.
 
 | Schritt | Inhalt                                             | Stand            |
 | ------- | -------------------------------------------------- | ---------------- |
-| 1       | Linux + SteamCMD + CS2, keine Felder, keine Extras | **dieses Image** |
+| 1       | Linux + SteamCMD + CS2, keine Felder, keine Extras | läuft (0.0.1)    |
+| 1.1     | Port drinnen = Port draußen (`CS2_PORT`)           | **dieses Image** |
 | 2       | Servername, Server-Passwort, Spieleranzahl         | offen            |
 | 3       | Startkarte, Spielmodus                             | offen            |
 | 4       | Workshop-Karte / -Sammlung                         | offen            |
@@ -33,7 +34,7 @@ vorige auf der Node läuft.
 1. SteamCMD holt bzw. aktualisiert die Serverdateien, anonym.
 2. `steamclient.so` nach `~/.steam/sdk64` – ohne sie scheitert die Anmeldung an Steam.
 3. Start über Valves Starter `game/cs2.sh`, aus `game/` heraus:
-   `-dedicated -port 27015 +map de_dust2`.
+   `-dedicated -port <CS2_PORT> +map de_dust2`.
 
 **Warum über `cs2.sh`:** Seit dem Update vom 17.09.2025 braucht CS2 Bibliotheken aus seinen
 eigenen Ordnern (`libv8.so`). Den Suchpfad setzt der Starter; direkt gestartet bricht der Server
@@ -44,6 +45,11 @@ mit „Unable to load module server" ab.
 | Port  | Protokoll | Zweck                                     |
 | ----- | --------- | ----------------------------------------- |
 | 27015 | UDP + TCP | Spiel und Abfrage — eine Nummer für beide |
+
+**Drinnen dieselbe Nummer wie draußen** (Schritt 1.1): Das Panel gibt die öffentliche Nummer als
+`CS2_PORT` herein (`usesPublicPortNumber`), und CS2 lauscht darauf. Mit 27015 drinnen und z. B.
+25003 draußen kam die Abfrage durch, aber jeder Verbindungsaufbau scheiterte still – CS2 nennt
+Clients seinen eigenen Port.
 
 ## Versionen
 

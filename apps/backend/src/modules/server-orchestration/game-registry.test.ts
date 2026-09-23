@@ -1561,6 +1561,14 @@ describe('Counter-Strike 2', () => {
     expect(spiel?.protocol).toBe('both');
   });
 
+  it('lauscht drinnen auf der öffentlichen Nummer und sagt sie dem Image', () => {
+    // Sonst scheitert der Verbindungsaufbau still (Schritt 1.1, 23.09.2026).
+    const spiel = CS2_GAME_TYPE.ports.find((port) => port.primary);
+
+    expect(spiel?.usesPublicPortNumber).toBe(true);
+    expect(spiel?.envVar).toBe('CS2_PORT');
+  });
+
   it('schickt quit vor dem Signal', () => {
     expect(CS2_GAME_TYPE.stopCommand).toBe('quit');
   });

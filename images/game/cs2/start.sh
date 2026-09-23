@@ -8,8 +8,11 @@
 #   2. `steamclient.so` dorthin legen, wo CS2 sie sucht.
 #   3. CS2 über Valves eigenen Starter `game/cs2.sh` starten.
 #
-# Keine Einstellungen aus dem Panel, keine Plugins: feste Karte `de_dust2`,
-# fester Port 27015 im Container.
+# Keine Einstellungen aus dem Panel, keine Plugins: feste Karte `de_dust2`.
+#
+# **Der Port kommt vom Panel** (`CS2_PORT`, Schritt 1.1): dieselbe Nummer, unter
+# der der Server draußen erreichbar ist. CS2 nennt Clients seinen eigenen Port;
+# weicht er vom öffentlichen ab, scheitert der Verbindungsaufbau still.
 set -eu
 
 . "${PALANTIR_LIB_DIR:-/opt/palantir/lib}/palantir.sh"
@@ -17,6 +20,7 @@ set -eu
 
 SERVER="${PALANTIR_DATENORDNER}/server"
 STARTER="${SERVER}/game/cs2.sh"
+PORT="${CS2_PORT:-27015}"
 
 palantir_intern_anlegen
 
@@ -59,8 +63,8 @@ fi
 # CS2 liest Befehle von der Standardeingabe; das Rohr legt die Wurzel an.
 palantir_konsole_oeffnen
 
-palantir_log 'Startet CS2 auf de_dust2, Port 27015'
+palantir_log "Startet CS2 auf de_dust2, Port ${PORT}"
 
 cd "${SERVER}/game"
 
-exec bash "$STARTER" -dedicated -port 27015 +map de_dust2 0<&3 3>&-
+exec bash "$STARTER" -dedicated -port "$PORT" +map de_dust2 0<&3 3>&-
