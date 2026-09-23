@@ -200,10 +200,12 @@ test('zeigt Version und Besitzer dort, wo sie hingehören', async ({ page }, tes
 
   await page.goto('/servers/neu');
 
-  // In der Auswahl trägt jede Kachel die angebotene Fassung.
+  // Die Image-Fassung steht nicht mehr auf der Kachel, nur noch unter
+  // Templates und in den Server-Details (Betreiber-Wunsch 23.09.2026).
   const kachel = page.getByRole('button', { name: /^Terraria/ });
 
-  await expect(kachel).toContainText(/v\d+\.\d+\.\d+/);
+  await expect(kachel).toBeVisible();
+  await expect(kachel).not.toContainText(/v\d+\.\d+\.\d+/);
 
   await kachel.click();
   await page.getByRole('button', { name: 'Weiter' }).click();
@@ -227,7 +229,11 @@ test('zeigt Version und Besitzer dort, wo sie hingehören', async ({ page }, tes
    * nicht mehr als zweite Textzeile, die auf schmalen Fenstern umbrach.
    */
   await expect(page.getByText(/^Node:/)).toBeVisible();
-  await expect(page.getByText(/^Version:/)).toContainText(/v\d+\.\d+\.\d+/);
+  // Der Chip „Version" nennt die Spielversion; die Image-Fassung steht als
+  // eigene Zeile in den Server-Details.
+  await expect(
+    page.locator('dt', { hasText: /^Image-Version$/ }).locator('xpath=following-sibling::dd[1]'),
+  ).toContainText(/v\d+\.\d+\.\d+/);
 });
 
 test('führt die Seitenleiste in der vereinbarten Reihenfolge', async ({ page }, testInfo) => {

@@ -22,7 +22,6 @@ import {
   ToggleRow,
   cn,
   serverInitials,
-  formatImageVersion,
   formatMegabytes,
   useToast,
 } from '@/components/shared';
@@ -162,13 +161,14 @@ function GameTile({
    * (Terraria und tModLoader) ist das keine Behauptung über die anderen,
    * sondern genau die Angabe, die zum nächsten Klick gehört.
    */
-  const version = formatImageVersion(game.imageVersion);
   const vorne = gruppe
     ? gewaehlt === null
       ? `${String(choice.variants.length)} Varianten`
       : variantChoiceLabel(gewaehlt)
     : null;
-  const untertitel = [vorne, version].filter((teil) => teil !== null).join(' · ');
+  // Ohne Image-Version: Die steht nur unter Templates und in den
+  // Server-Details (Betreiber-Wunsch 23.09.2026).
+  const untertitel = vorne ?? '';
 
   return (
     <button

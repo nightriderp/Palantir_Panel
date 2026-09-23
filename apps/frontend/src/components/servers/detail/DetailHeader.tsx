@@ -9,7 +9,6 @@ import {
   ServerStatusPill,
   StartupProgress,
   formatImageUpdate,
-  formatImageVersion,
   formatServerAddress,
   isLifecycleActionBlocked,
   serverInitials,
@@ -77,7 +76,12 @@ export function DetailHeader({
    * gesperrt wie die übrigen Aktionen.
    */
   const canUpdate = server.updateAvailable && server.permissions.canUpdate;
-  const version = formatImageVersion(server.imageVersion);
+  // Spielversion, nicht Image-Version (Betreiber-Wunsch 23.09.2026) – die
+  // Image-Version steht in den Server-Details der Übersicht.
+  const version =
+    server.gameVersion === null || server.gameVersion === undefined || server.gameVersion === ''
+      ? null
+      : server.gameVersion;
   /**
    * Betriebsangaben als Chips, nicht als zweite Textzeile (Betreiber-Wunsch
    * 20.09.2026).
@@ -136,28 +140,14 @@ export function DetailHeader({
             ) : null}
           </div>
 
-          {/*
-            Im Kopf steht, welcher Server das ist: Name, Spiel, Spielversion.
-            Die Spielversion beantwortet „passt mein Client dazu" und gehört
-            deshalb neben den Namen, nicht in eine Einstellungsseite.
-          */}
-          <p className="mt-1 text-sm text-ink-soft">
-            {server.gameTypeName}
-            {server.gameVersion === null || server.gameVersion === undefined
-              ? ''
-              : ` ${server.gameVersion}`}
-          </p>
+          {/* Die Spielversion steht als Chip „Version" gleich darunter,
+              wie auf der Server-Karte (Betreiber-Wunsch 23.09.2026). */}
+          <p className="mt-1 text-sm text-ink-soft">{server.gameTypeName}</p>
 
           {betriebsangaben.length === 0 ? null : (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               {betriebsangaben.map((angabe) => (
-                <span
-                  key={angabe.label}
-                  className="rounded-md bg-fill px-2.5 py-1.5 text-ink-soft"
-                  {...(angabe.label === 'Version' && updateHinweis !== null
-                    ? { title: updateHinweis }
-                    : {})}
-                >
+                <span key={angabe.label} className="rounded-md bg-fill px-2.5 py-1.5 text-ink-soft">
                   {angabe.label}:{' '}
                   <span className={angabe.mono === true ? 'font-mono text-ink' : 'text-ink'}>
                     {angabe.wert}

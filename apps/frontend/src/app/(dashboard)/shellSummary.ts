@@ -326,6 +326,11 @@ export interface SidebarServer {
   name: string;
   /** Kürzel für die Kachel vor dem Namen – dieselbe Bildung wie auf der Karte. */
   initials: string;
+  /**
+   * Hochgeladenes Symbol der Vorlage (Templates) – dasselbe Bild wie auf der
+   * Server-Karte. `null`, solange keins hochgeladen ist; dann bleibt das Kürzel.
+   */
+  iconUrl: string | null;
   status: GameServerDto['status'];
 }
 
@@ -339,6 +344,8 @@ export interface SidebarServer {
 export function ownServersForNav(
   servers: readonly GameServerDto[],
   currentUserId: string | null,
+  /** Symbol je Spieltyp (`GameTypeDto.iconUrl`), Schlüssel ist `gameType`. */
+  iconByGameType: ReadonlyMap<string, string | null> = new Map(),
 ): SidebarServer[] {
   if (currentUserId === null) return [];
 
@@ -348,6 +355,7 @@ export function ownServersForNav(
       id: server.id,
       name: server.name,
       initials: serverInitials(server.name),
+      iconUrl: iconByGameType.get(server.gameType) ?? null,
       status: server.status,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));

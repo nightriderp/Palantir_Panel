@@ -377,6 +377,22 @@ describe('ownServersForNav', () => {
     expect(list.map((entry) => entry.initials)).toEqual(['BA', 'ZE']);
   });
 
+  it('nimmt das hochgeladene Symbol der Vorlage, sonst keins', () => {
+    const list = ownServersForNav(
+      [
+        server({ id: 'a', name: 'Alpha', ownerId: 'user-1', gameType: 'minecraft-paper' }),
+        server({ id: 'b', name: 'Beta', ownerId: 'user-1', gameType: 'cs2' }),
+      ],
+      'user-1',
+      new Map([['minecraft-paper', '/api/game-types/minecraft-paper/images/icon']]),
+    );
+
+    expect(list.map((entry) => entry.iconUrl)).toEqual([
+      '/api/game-types/minecraft-paper/images/icon',
+      null,
+    ]);
+  });
+
   it('liefert nichts, solange kein Konto geladen ist', () => {
     expect(ownServersForNav([server({ id: 'a' })], null)).toEqual([]);
   });

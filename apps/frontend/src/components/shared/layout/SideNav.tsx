@@ -153,6 +153,8 @@ export interface SideNavServerItem {
   name: string;
   /** Kürzel für die Kachel vor dem Namen (`serverInitials`). */
   initials: string;
+  /** Hochgeladenes Symbol der Vorlage; ohne Bild bleibt das Kürzel. */
+  iconUrl?: string | null;
   status: ServerStatus;
   href: string;
   active?: boolean;
@@ -195,9 +197,16 @@ export function SideNavServerSection({ title, items, className }: SideNavServerS
           >
             <span
               aria-hidden
-              className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-sm bg-brand-gradient text-3xs font-bold text-canvas"
+              className="flex h-[22px] w-[22px] shrink-0 items-center justify-center overflow-hidden rounded-sm bg-brand-gradient text-3xs font-bold text-canvas"
             >
-              {item.initials}
+              {item.iconUrl ? (
+                /* Adresse aus der Spieleliste, zur Bauzeit unbekannt – wie auf
+                   der Server-Karte kein `next/image`. */
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.iconUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                item.initials
+              )}
             </span>
             <span className="flex-1 truncate text-left">{item.name}</span>
             <StatusDot tone={meta.tone} pulse={meta.pulse} className="shrink-0" />
