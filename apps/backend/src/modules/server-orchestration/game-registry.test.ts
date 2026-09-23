@@ -36,6 +36,7 @@ import {
   requiresRestartAfterChange,
   toGameTypeDto,
 } from './game-registry.js';
+import { liveBefehle } from './live-controls.js';
 
 const PHASE_2_GAME: GameTypeDefinition = {
   ...TEST_GAME_TYPE,
@@ -1545,7 +1546,7 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.dockerImage).toBe(`ghcr.io/nightriderp/palantir-game-cs2:${version}`);
   });
 
-  it('hat nach Schritt 3 genau diese Felder', () => {
+  it('hat nach Schritt 4 genau diese Felder', () => {
     expect(CS2_GAME_TYPE.configFields.map((feld) => feld.key)).toEqual([
       'serverName',
       'serverPassword',
@@ -1553,13 +1554,15 @@ describe('Counter-Strike 2', () => {
       'map',
       'gameMode',
       'bots',
+      'workshopMap',
     ]);
   });
 
-  it('bietet die neun offiziellen Karten und fünf Modi an, Bots 0 bis 10', () => {
+  it('bietet die neun offiziellen Karten, „workshop“ und fünf Modi an, Bots 0 bis 10', () => {
     const feld = (key: string) => CS2_GAME_TYPE.configFields.find((f) => f.key === key);
 
-    expect(feld('map')?.options).toHaveLength(9);
+    expect(feld('map')?.options).toHaveLength(10);
+    expect(feld('map')?.options).toContain('workshop');
     expect(feld('map')?.defaultValue).toBe('de_dust2');
     expect(feld('gameMode')?.options).toEqual([
       'competitive',
@@ -1616,7 +1619,7 @@ describe('Counter-Strike 2', () => {
   it('bietet Karte, Modus und Bots live an – nur Auswahl- und Zahlenfelder', () => {
     const felder = CS2_GAME_TYPE.liveControls?.flatMap((steuerung) => steuerung.fields) ?? [];
 
-    expect(felder).toEqual(['map', 'gameMode', 'bots']);
+    expect(felder).toEqual(['map', 'gameMode', 'workshopMap', 'bots']);
 
     for (const key of felder) {
       const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === key);
@@ -1632,6 +1635,30 @@ describe('Counter-Strike 2', () => {
     for (const modus of modi) {
       expect(uebersetzung?.[modus], modus).toMatch(/^game_type \d; game_mode \d$/u);
     }
+  });
+
+  it('lädt jede Karte der Auswahl – eine Workshop-Karte über ihre ID (Schritt 4)', () => {
+    const karten = CS2_GAME_TYPE.configFields.find((f) => f.key === 'map')?.options ?? [];
+    const werte = { gameMode: 'casual', workshopMap: 3_070_284_539 };
+
+    for (const karte of karten) {
+      const befehle = liveBefehle(CS2_GAME_TYPE, ['map'], { ...werte, map: karte });
+
+      expect(befehle[0], karte).toBe('game_type 0; game_mode 0');
+      expect(befehle[1], karte).toBe(
+        karte === 'workshop' ? 'host_workshop_map 3070284539' : `changelevel ${karte}`,
+      );
+    }
+  });
+
+  it('lädt nach einem Moduswechsel die Workshop-Karte neu, nicht eine Startkarte', () => {
+    expect(
+      liveBefehle(CS2_GAME_TYPE, ['gameMode'], {
+        map: 'workshop',
+        gameMode: 'deathmatch',
+        workshopMap: 123,
+      }),
+    ).toEqual(['game_type 1; game_mode 2', 'host_workshop_map 123']);
   });
 
   it('hält die Bots über einen Kartenwechsel in palantir_live.cfg', () => {

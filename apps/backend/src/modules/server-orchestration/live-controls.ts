@@ -129,13 +129,31 @@ export function aktuelleWerte(
   return { ...werte, ...(liveValues ?? {}) };
 }
 
-/** `{feld}` in einer Zeile durch den Wert ersetzen – oder durch `values[feld][wert]`. */
+/** `{feld}` durch den nackten Wert ersetzen. */
+function roh(zeile: string, werte: GameConfigValues): string {
+  return zeile.replace(/\{([a-zA-Z0-9_]+)\}/gu, (_, key: string) => {
+    const wert = werte[key];
+
+    return wert === undefined ? '' : String(wert);
+  });
+}
+
+/**
+ * `{feld}` in einer Zeile durch den Wert ersetzen – oder durch
+ * `values[feld][wert]`.
+ *
+ * Eine Übersetzung darf selbst Platzhalter tragen, die dann den nackten Wert
+ * bekommen: CS2 übersetzt die Karte `workshop` in
+ * `host_workshop_map {workshopMap}`. Eine Ebene, nicht mehr – und nur in
+ * Texten aus der Definition, nie in Werten des Nutzers.
+ */
 function einsetzen(zeile: string, steuerung: GameLiveControl, werte: GameConfigValues): string {
   return zeile.replace(/\{([a-zA-Z0-9_]+)\}/gu, (_, key: string) => {
     const wert = werte[key];
     const text = wert === undefined ? '' : String(wert);
+    const uebersetzt = steuerung.values?.[key]?.[text];
 
-    return steuerung.values?.[key]?.[text] ?? text;
+    return uebersetzt === undefined ? text : roh(uebersetzt, werte);
   });
 }
 
