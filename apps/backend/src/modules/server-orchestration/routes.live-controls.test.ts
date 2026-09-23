@@ -95,7 +95,7 @@ const MITGLIEDER: readonly ServerMemberRecord[] = [
 ];
 
 /** Eingaben, die den Dienst tatsächlich erreicht haben. */
-let aufrufe: Record<string, string | number>[] = [];
+let aufrufe: Record<string, string | number | boolean>[] = [];
 
 let app: FastifyInstance;
 
@@ -109,7 +109,10 @@ function buildApp(): FastifyInstance {
   const service = {
     requireServer: async () => SERVER,
     recentCrashCount: () => 0,
-    applyLiveValues: async (_serverId: string, werte: Record<string, string | number>) => {
+    applyLiveValues: async (
+      _serverId: string,
+      werte: Record<string, string | number | boolean>,
+    ) => {
       aufrufe.push(werte);
 
       return { ...SERVER, configJson: { ...SERVER.configJson, ...werte } };
@@ -200,7 +203,7 @@ describe('POST /api/servers/:id/live', () => {
     const instance = buildApp();
 
     expect((await schicke(instance, 'verwalter', { values: {} })).statusCode).toBe(400);
-    expect((await schicke(instance, 'verwalter', { values: { gotv: true } })).statusCode).toBe(400);
+    expect((await schicke(instance, 'verwalter', { values: { map: ['a'] } })).statusCode).toBe(400);
     expect(
       (await schicke(instance, 'verwalter', { values: { bots: 1 }, extra: 1 })).statusCode,
     ).toBe(400);

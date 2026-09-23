@@ -49,7 +49,7 @@ function liveFelder(definition: GameTypeDefinition): Map<string, GameConfigField
  */
 export function pruefeLiveWerte(
   definition: GameTypeDefinition,
-  eingabe: Readonly<Record<string, string | number>>,
+  eingabe: Readonly<Record<string, string | number | boolean>>,
 ): GameConfigValues {
   const felder = liveFelder(definition);
   const ergebnis: GameConfigValues = {};

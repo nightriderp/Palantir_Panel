@@ -668,16 +668,18 @@ export interface GameTypeDefinition {
 }
 
 /**
- * Eine Gruppe von Einstellungen, die sich bei laufendem Server ändern lässt
- * (Live-Steuerung, Betreiber-Wunsch 23.09.2026).
+ * Eine Gruppe von Einstellungen, die sich schnell umstellen lässt – bei
+ * laufendem Server sofort (Steuerung, Betreiber-Wunsch 23.09.2026).
  *
- * Die Einstellungen unter „Einstellungen“ bleiben die **Startwerte**; eine
- * Live-Änderung gilt bis zum nächsten Start. Die Felder kommen aus
- * {@link GameTypeDefinition.configFields} – dieselbe Beschriftung, dieselbe
- * Auswahl, dieselben Grenzen.
+ * Eine Änderung landet seit v2.4.9 in den Einstellungen und bleibt über Stopp und
+ * Neustart; bei ausgeschaltetem Server gilt sie beim nächsten Start. Die
+ * Felder kommen aus {@link GameTypeDefinition.configFields} – dieselbe
+ * Beschriftung, dieselbe Auswahl, dieselben Grenzen.
  *
- * **Nur `select`- und `number`-Felder.** Ihre Werte sind vorab begrenzt; ein
- * Freitext landete ungeprüft in einer Konsolenzeile.
+ * **Nur `select`-, `number`- und `toggle`-Felder.** Ihre Werte sind vorab
+ * begrenzt; ein Freitext landete ungeprüft in einer Konsolenzeile. Ein
+ * Schalter kommt in Befehlen als `true`/`false` an – übersetzt über
+ * {@link GameLiveControl.values}.
  *
  * Anders als {@link ConsoleQuickCommand} (ein fester Knopf, eine feste Zeile)
  * nimmt eine Live-Steuerung Werte aus den Einstellungsfeldern, prüft sie und
