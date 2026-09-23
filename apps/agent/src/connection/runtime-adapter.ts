@@ -489,7 +489,10 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
           return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
         }
 
-        const result = await this.runtime.execConsole(p.containerId, p.command);
+        const result = await this.runtime.execConsole(
+          p.containerId,
+          ueberStandardeingabe(p.command),
+        );
         return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
       }
       case 'FILE_LIST': {
@@ -710,7 +713,7 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
 
     try {
       if (rcon === undefined) {
-        ergebnis = await this.runtime.execConsole(containerId, befehl);
+        ergebnis = await this.runtime.execConsole(containerId, ueberStandardeingabe(befehl));
       } else if (this.jobs === undefined) {
         return notiz('Dieser Agent hat kein Job-Modul, RCON geht nicht.');
       } else {
@@ -772,7 +775,10 @@ export class ContainerRuntimeAdapter implements AgentRuntimePort {
 
     try {
       if (payload.rcon === undefined) {
-        ergebnis = await this.runtime.execConsole(payload.containerId, befehl);
+        ergebnis = await this.runtime.execConsole(
+          payload.containerId,
+          ueberStandardeingabe(befehl),
+        );
       } else if (this.jobs === undefined) {
         return notiz('Dieser Agent hat kein Job-Modul, RCON geht nicht.');
       } else if (serverId === null) {
@@ -947,6 +953,22 @@ type CreatePayload = {
   user?: string;
   stopTimeoutSeconds?: number;
 };
+
+/**
+ * Ein Konsolenbefehl ohne RCON geht über `palantir-console` im Container, das
+ * ihn in die Standardeingabe des Servers schreibt – so beschreibt es der
+ * Vertrag (`StdinConsoleSpec`, `ExecConsoleCommandPayload.rcon`).
+ *
+ * Bis zum 23.09.2026 fehlte genau dieser Zusatz: Die Zeile lief als eigenes
+ * Programm im Container, `status` endete in „exec: "status": executable file
+ * not found", und der Stopp-Befehl erreichte nie einen Server (Fundpunkt 341).
+ * Aufgefallen bei CS2; betroffen waren alle Spiele mit `stdin`-Konsole.
+ *
+ * Wer den Zusatz aus Gewohnheit selbst tippt, bekommt ihn nicht doppelt.
+ */
+function ueberStandardeingabe(befehl: readonly string[]): string[] {
+  return befehl[0] === 'palantir-console' ? [...befehl] : ['palantir-console', ...befehl];
+}
 
 function optionalTimeout(timeoutSeconds: number | undefined): { timeoutSeconds?: number } {
   return timeoutSeconds === undefined ? {} : { timeoutSeconds };
