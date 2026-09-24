@@ -201,6 +201,29 @@ export function DetailHeader({
             <p className="mt-2 text-xs text-ink-faint">Adresse nicht freigegeben</p>
           )}
 
+          {/* Weitere Adressen, etwa GOTV bei CS2 – kopiert wie die Hauptadresse. */}
+          {server.permissions.canViewAddress && server.address?.extra?.length ? (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {server.address.extra.map((weitere) => {
+                const text = `${server.address?.hostname ?? ''}:${String(weitere.port)}`;
+
+                return (
+                  <button
+                    key={weitere.label}
+                    type="button"
+                    onClick={() => onCopyAddress(`${server.address?.copyPrefix ?? ''}${text}`)}
+                    title={`${weitere.label}-Adresse kopieren`}
+                    className="flex w-fit items-center gap-1.5 rounded border border-line bg-fill px-2.5 py-1 font-mono text-xs text-ink-muted"
+                  >
+                    <Icon name="copy" size={11} />
+                    <span className="font-sans text-ink-faint">{weitere.label}:</span>
+                    {text}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
           {/* Kanal des Discord-Bots (Pflichtenheft §14a.4); fehlt ohne Bot oder Kanal. */}
           {server.discordChannelUrl ? (
             <a

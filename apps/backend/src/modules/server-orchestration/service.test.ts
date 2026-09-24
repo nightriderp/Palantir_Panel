@@ -5137,6 +5137,31 @@ describe('Image-Version je Server (Pflichtenheft §9, Review 2026-09-16)', () =>
     expect(ergebnis.restarted).toBe(false);
     expect(harness.socket.commands).toHaveLength(0);
   });
+
+  it('vergibt beim Neuaufbau Ports nach, die die Definition inzwischen mehr führt (CS2 GOTV)', async () => {
+    const { harness, definition } = mitWandelbarerDefinition();
+    const created = await harness.service.createServer(createInput(), OWNER_ID);
+    const hauptport = created.assignedPorts.find((zuweisung) => zuweisung.primary);
+
+    definition.ports = [
+      ...TEST_GAME_TYPE.ports,
+      { containerPort: 27_020, protocol: 'udp', primary: false, label: 'GOTV' },
+    ];
+    definition.dockerImage = 'ghcr.io/test/echo:2';
+    harness.socket.commands.length = 0;
+
+    const ergebnis = await harness.service.updateServerImage(created.id, OWNER_ID);
+    const zuweisungen = ergebnis.server.assignedPorts;
+    const gotv = zuweisungen.filter((zuweisung) => zuweisung.containerPort === 27_020);
+
+    expect(gotv).toHaveLength(1);
+    expect(gotv[0]).toMatchObject({ protocol: 'udp', primary: false, label: 'GOTV' });
+    // Der Hauptport bleibt, wie er war – sonst verschöbe sich die Adresse.
+    expect(zuweisungen.find((zuweisung) => zuweisung.primary)).toEqual(hauptport);
+    // Und der neue Container bekommt ihn.
+    const create = harness.socket.commands.find((c) => c.command === 'CREATE');
+    expect(JSON.stringify(create?.payload)).toContain(String(gotv[0]?.publicPort));
+  });
 });
 
 describe('Besitzerwechsel (Lastenheft §3.7, Pflichtenheft §7)', () => {

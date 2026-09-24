@@ -1031,9 +1031,10 @@ export class ServerOrchestrationService {
    * eine tote Id, an dem er früher dauerhaft hängenblieb.
    */
   private async ensureContainerCurrent(
-    server: ServerRecord,
+    vorher: ServerRecord,
     definition: GameTypeDefinition,
   ): Promise<ServerRecord> {
+    const server = await this.fehlendePortsVergeben(vorher, definition);
     const spec = this.containerSpecFor(server, definition);
     const fingerabdruck = containerSpecFingerprint(spec);
 
@@ -1068,6 +1069,44 @@ export class ServerOrchestrationService {
     });
 
     return this.requireServer(server.id);
+  }
+
+  /**
+   * Ports nachvergeben, die die Definition inzwischen mehr führt als der
+   * Server (CS2 GOTV, 24.09.2026).
+   *
+   * Ports vergibt sonst nur das Anlegen. Bekam ein Spiel später einen weiteren
+   * Port, ging jeder bestehende Server leer aus – still: Der Bauplan übergeht
+   * einen Port ohne Zuweisung, der Fingerabdruck blieb gleich, nichts meldete
+   * etwas. Hier bekommt der Server genau die fehlenden, nie den primären (der
+   * ist seit dem Anlegen da, und ein zweiter würde die Adresse verschieben).
+   * Läuft vor dem Bauplan: Die neue Zuweisung ändert den Fingerabdruck, und der
+   * Container wird mit dem Port neu gebaut.
+   */
+  private async fehlendePortsVergeben(
+    server: ServerRecord,
+    definition: GameTypeDefinition,
+  ): Promise<ServerRecord> {
+    const fehlend = definition.ports.filter(
+      (port) =>
+        !port.primary &&
+        !server.assignedPorts.some((zuweisung) => zuweisung.containerPort === port.containerPort),
+    );
+
+    if (fehlend.length === 0) {
+      return server;
+    }
+
+    const neu = await this.deps.ports.allocate(
+      server.id,
+      { ...definition, ports: fehlend },
+      { nodeId: server.hostId, virtualHostPort: null },
+    );
+    const assignedPorts = [...server.assignedPorts, ...neu];
+
+    await this.deps.repository.update(server.id, { assignedPorts });
+
+    return { ...server, assignedPorts };
   }
 
   // -------------------------------------------------------------------------

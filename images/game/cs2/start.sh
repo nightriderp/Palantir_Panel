@@ -11,7 +11,8 @@
 #
 # Einstellungen aus dem Panel: Servername, Server-Passwort, Spieleranzahl
 # (Schritt 2), Startkarte, Spielmodus, Bots (Schritt 3), Workshop-Karte
-# (Schritt 4), alle Runden spielen (Schritt 5). Keine Plugins.
+# (Schritt 4), alle Runden spielen (Schritt 5), GOTV (Schritt 5.1). Keine
+# Plugins.
 #
 # **Der Port kommt vom Panel** (`CS2_PORT`, Schritt 1.1): dieselbe Nummer, unter
 # der der Server draußen erreichbar ist. CS2 nennt Clients seinen eigenen Port;
@@ -131,6 +132,27 @@ case "${CS2_ALL_ROUNDS:-false}" in
     ;;
 esac
 
+# **GOTV** (Schritt 5.1): der Zuschauerzugang, eigener UDP-Port aus dem Pool –
+# drinnen dieselbe Nummer wie draußen (`CS2_TV_PORT`), aus demselben Grund wie
+# beim Spielport. `tv_enable` muss vor dem ersten Kartenladen stehen, deshalb
+# als Startparameter vor `+map`.
+case "${CS2_GOTV:-false}" in
+  true) GOTV=1 ;;
+  false) GOTV=0 ;;
+  *)
+    palantir_log "Ungueltiger Wert fuer GOTV: ${CS2_GOTV}."
+    exit 78
+    ;;
+esac
+
+TV_PORT="${CS2_TV_PORT:-27020}"
+case "$TV_PORT" in
+  '' | *[!0-9]*)
+    palantir_log "Ungueltiger GOTV-Port: ${TV_PORT}."
+    exit 78
+    ;;
+esac
+
 BOTS="${CS2_BOTS:-0}"
 case "$BOTS" in
   '' | *[!0-9]*)
@@ -143,6 +165,9 @@ esac
   echo '// Schreibt Palantir bei jedem Start neu - eigene Zeilen gehoeren in server.cfg.'
   printf 'hostname "%s"\n' "$(sauber "${CS2_HOSTNAME:-Palantir CS2}")"
   printf 'sv_password "%s"\n' "$(sauber "${CS2_PASSWORD:-}")"
+  # Zuschauer brauchen dasselbe Passwort wie Spieler – sonst sähe über GOTV
+  # jeder mit der Adresse einem geschlossenen Server zu.
+  printf 'tv_password "%s"\n' "$(sauber "${CS2_PASSWORD:-}")"
   # `normal` heißt: genau so viele Bots, nicht „auffüllen bis".
   printf 'bot_quota_mode "normal"\n'
   printf 'bot_quota %s\n' "$BOTS"
@@ -177,6 +202,10 @@ set -- -dedicated -port "$PORT" +game_type "$SPIEL_TYP" +game_mode "$SPIEL_MODUS
 # Die Spieleranzahl ist ein Startparameter, kein Konsolenbefehl.
 if [ -n "${CS2_MAX_PLAYERS:-}" ]; then
   set -- "$@" -maxplayers "$CS2_MAX_PLAYERS"
+fi
+
+if [ "$GOTV" = 1 ]; then
+  set -- "$@" +tv_port "$TV_PORT" +tv_enable 1
 fi
 
 if [ "$KARTE" = workshop ]; then
