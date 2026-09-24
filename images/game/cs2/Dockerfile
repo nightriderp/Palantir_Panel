@@ -11,6 +11,17 @@ ARG BASIS=ghcr.io/nightriderp/palantir-base-steam:6
 FROM ${BASIS}
 USER root
 
+# **ICU für die .NET-Laufzeit von CounterStrikeSharp** (Schritt 7, 24.09.2026).
+# Ohne sie brach CounterStrikeSharp auf der Node beim Laden ab („Couldn't find
+# a valid ICU package …"), und CS2 stürzte mit. Nicht über
+# `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT`: Plugins mit Übersetzungen legen
+# Kulturen wie `de` an und scheitern im Invariant-Modus daran. `libicu74` ist
+# die Fassung von Ubuntu 24.04, auf dem die Basis-Images stehen.
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends libicu74; \
+  rm -rf /var/lib/apt/lists/*
+
 COPY start.sh /opt/palantir/
 RUN chmod 0755 /opt/palantir/start.sh
 
