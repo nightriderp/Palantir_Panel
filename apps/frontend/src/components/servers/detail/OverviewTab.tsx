@@ -781,7 +781,13 @@ export function OverviewTab({
             : 'grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]'
         }
       >
-        {consolePanel === null ? null : <Panel variant="plain">{consolePanel}</Panel>}
+        {/*
+          Ohne eigene Karte drumherum (Betreiber-Wunsch 24.09.2026): Die
+          Konsole bringt ihr Terminalfenster mit Rahmen selbst mit, und eine
+          zweite Kontur mit Innenabstand darum sah nach Rahmen im Rahmen aus –
+          kleiner als die Server-Details daneben, aber genauso eingefasst.
+        */}
+        {consolePanel === null ? null : <div className="min-w-0">{consolePanel}</div>}
 
         <div className="flex flex-col gap-4">
           {liveControls}
