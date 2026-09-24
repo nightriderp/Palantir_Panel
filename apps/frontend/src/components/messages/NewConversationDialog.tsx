@@ -1,10 +1,14 @@
 'use client';
 
-import { type DirectMessageRecipientDto, type GameServerDto } from '@palantir/contracts';
+import {
+  type DirectMessageRecipientDto,
+  type GameServerDto,
+  type GameTypeDto,
+} from '@palantir/contracts';
 import { useMemo, useState } from 'react';
 import { Icon, Modal, SegmentedControl, TextField, cn, serverInitials } from '@/components/shared';
 import { fetchDirectMessageRecipients } from '@/lib/api/chat';
-import { fetchServers } from '@/lib/api/servers';
+import { fetchGameTypes, fetchServers } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 
 /**
@@ -56,6 +60,20 @@ export function NewConversationDialog({
   const recipients = useApiResource<DirectMessageRecipientDto[]>(
     (signal) => fetchDirectMessageRecipients(signal),
     open ? [open] : null,
+  );
+
+  /*
+   * Die Spieleliste nur wegen der Symbole neben den Servern (Betreiber-Wunsch
+   * 24.09.2026): Das Bild gehört zur Vorlage, nicht zum Server. Ohne Bild
+   * bleibt das allgemeine Server-Symbol.
+   */
+  const spieltypen = useApiResource<GameTypeDto[]>(
+    (signal) => fetchGameTypes(signal),
+    open ? [open] : null,
+  );
+  const symbolJeSpiel = useMemo(
+    () => new Map((spieltypen.data ?? []).map((spiel) => [spiel.id, spiel.iconUrl] as const)),
+    [spieltypen.data],
   );
 
   // Das Backend sortiert nicht zu; die Liste steht hier nebeneinander im
@@ -143,6 +161,7 @@ export function NewConversationDialog({
                 <PickRow
                   key={server.id}
                   icon="server"
+                  imageUrl={symbolJeSpiel.get(server.gameType) ?? null}
                   title={server.name}
                   subtitle={server.gameTypeName}
                   disabled={busy}
@@ -164,9 +183,11 @@ interface PickRowProps {
   onClick: () => void;
   initials?: string;
   icon?: 'server';
+  /** Symbol des Spiels; geht dem allgemeinen Symbol vor. */
+  imageUrl?: string | null;
 }
 
-function PickRow({ title, subtitle, disabled, onClick, initials, icon }: PickRowProps) {
+function PickRow({ title, subtitle, disabled, onClick, initials, icon, imageUrl }: PickRowProps) {
   return (
     <li>
       <button
@@ -178,8 +199,17 @@ function PickRow({ title, subtitle, disabled, onClick, initials, icon }: PickRow
           disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-fill',
         )}
       >
-        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft text-2xs font-bold text-brand">
-          {icon ? <Icon name={icon} size={16} /> : initials}
+        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-soft text-2xs font-bold text-brand">
+          {imageUrl ? (
+            /* Adresse aus der Spieleliste, zur Bauzeit unbekannt; `next/image`
+               bräuchte dafür eine konfigurierte Domain. */
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+          ) : icon ? (
+            <Icon name={icon} size={16} />
+          ) : (
+            initials
+          )}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{title}</span>

@@ -1,8 +1,8 @@
 'use client';
 
-import { type ChatServerEventFrame, type MessageDto } from '@palantir/contracts';
+import { type ChatServerEventFrame, type GameTypeDto, type MessageDto } from '@palantir/contracts';
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmDialog, EmptyState, Icon, PageHeader, cn, useToast } from '@/components/shared';
 import { errorText, isAborted } from '@/lib/api/client';
 import {
@@ -17,6 +17,9 @@ import {
 } from '@/lib/api/chat';
 import { useChatLive } from '@/lib/live/useChatLive';
 import { useSession } from '@/app/(dashboard)/SessionProvider';
+import { useShellServers } from '@/app/(dashboard)/ShellDataContext';
+import { fetchGameTypes } from '@/lib/api/servers';
+import { useApiResource } from '@/lib/api/useApiResource';
 import { ConversationList } from './ConversationList';
 import { MessageThread } from './MessageThread';
 import { NewConversationDialog } from './NewConversationDialog';
@@ -106,6 +109,26 @@ export function MessagesView() {
   const [reportError, setReportError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MessageDto | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  /*
+   * Spielsymbole für die Server-Chats in der Liste (Betreiber-Wunsch
+   * 24.09.2026). Die Konversation kennt nur ihre `serverId`; welches Spiel
+   * dahintersteht, weiß die Serverliste des Rahmens, und das Bild dazu die
+   * Spieleliste. Fehlt eines von beiden, bleibt das allgemeine Symbol.
+   */
+  const shellServers = useShellServers();
+  const spieltypen = useApiResource<GameTypeDto[]>((signal) => fetchGameTypes(signal), []);
+  const serverIcons = useMemo(() => {
+    const symbolJeSpiel = new Map(
+      (spieltypen.data ?? []).map((spiel) => [spiel.id, spiel.iconUrl] as const),
+    );
+
+    return new Map(
+      (shellServers ?? []).map(
+        (server) => [server.id, symbolJeSpiel.get(server.gameType) ?? null] as const,
+      ),
+    );
+  }, [shellServers, spieltypen.data]);
 
   // Aktuellen Stand für die Live-Rückrufe und Handler ohne veraltete Closure.
   // Geschrieben wird nach dem Commit, nicht beim Rendern (React-Compiler-Regel
@@ -518,6 +541,7 @@ export function MessagesView() {
               <ConversationList
                 conversations={state.conversations}
                 activeId={activeId}
+                serverIcons={serverIcons}
                 onSelect={(conversation) => selectConversation(conversation.id)}
                 onNew={() => setNewOpen(true)}
               />

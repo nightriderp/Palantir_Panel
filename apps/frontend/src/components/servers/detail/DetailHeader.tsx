@@ -49,6 +49,14 @@ export interface DetailHeaderProps {
    * lesen darf – ohne sie gäbe es kein Konto zur Auswahl.
    */
   onTransferOwner?: () => void;
+  /**
+   * Symbol und Kachelbild des Spiels (Betreiber-Wunsch 24.09.2026), wie auf
+   * der Server-Karte: Beide gehören zur Vorlage, nicht zum Server, und stehen
+   * deshalb nicht im DTO – die Detailseite reicht sie aus der Spieleliste
+   * durch. Ohne Bild bleibt es beim Namenskürzel und dem schlichten Kopf.
+   */
+  gameIconUrl?: string | null;
+  gameCoverUrl?: string | null;
 }
 
 export function DetailHeader({
@@ -60,6 +68,8 @@ export function DetailHeader({
   onDelete,
   onCopyAddress,
   onTransferOwner,
+  gameIconUrl = null,
+  gameCoverUrl = null,
 }: DetailHeaderProps) {
   const meta = serverStatusMeta(server.status);
   const blocked = isLifecycleActionBlocked(server.status) || busy;
@@ -104,13 +114,33 @@ export function DetailHeader({
   const updateLaeuftNeu = server.status === 'running' || server.status === 'starting';
 
   return (
-    <header className="flex flex-col gap-3 rounded-2xl border border-line bg-hero-gradient p-4.5">
-      <div className="flex flex-wrap items-start gap-3.5">
+    <header className="relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-line bg-hero-gradient p-4.5">
+      {/*
+        Kachelbild stark gedämpft und hinter allem, wie auf der Server-Karte:
+        Es kennzeichnet den Kopf, ohne Name, Chips und Schaltflächen zu
+        überdecken. Die Blöcke darunter tragen deshalb `relative`.
+      */}
+      {gameCoverUrl === null ? null : (
         <span
           aria-hidden
-          className="flex h-13 w-13 shrink-0 items-center justify-center rounded-xl bg-brand-gradient font-mono text-xl font-bold text-canvas"
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-20"
+          style={{ backgroundImage: `url(${gameCoverUrl})` }}
+        />
+      )}
+
+      <div className="relative flex flex-wrap items-start gap-3.5">
+        <span
+          aria-hidden
+          className="flex h-13 w-13 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-brand-gradient font-mono text-xl font-bold text-canvas"
         >
-          {serverInitials(server.name)}
+          {gameIconUrl === null ? (
+            serverInitials(server.name)
+          ) : (
+            /* Adresse aus der Spieleliste, zur Bauzeit unbekannt; `next/image`
+               bräuchte dafür eine konfigurierte Domain. */
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={gameIconUrl} alt="" className="h-full w-full object-cover" />
+          )}
         </span>
 
         <div className="min-w-0 flex-1">
@@ -238,6 +268,7 @@ export function DetailHeader({
 
       {meta.transitional ? (
         <StartupProgress
+          className="relative"
           label={meta.label}
           note={server.statusMessage ?? 'Bei größeren Welten kann das einen Moment dauern.'}
           /*
@@ -256,7 +287,7 @@ export function DetailHeader({
       ) : null}
 
       {meta.faulted ? (
-        <p className="rounded border border-danger-line bg-danger-soft px-2.5 py-2 text-sm text-danger">
+        <p className="relative rounded border border-danger-line bg-danger-soft px-2.5 py-2 text-sm text-danger">
           {server.statusMessage ?? meta.description}
         </p>
       ) : null}

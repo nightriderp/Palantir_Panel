@@ -40,6 +40,7 @@ const api = vi.hoisted(() => ({
   fetchStatsHistory: vi.fn(),
   deleteServer: vi.fn(),
   updateServerImage: vi.fn(),
+  fetchGameTypes: vi.fn(),
 }));
 
 vi.mock('@/lib/live/LiveChannelProvider', () => ({ useLiveChannel: () => kanal.api }));
@@ -57,6 +58,7 @@ vi.mock('@/lib/api/servers', async (importOriginal) => ({
   fetchStatsHistory: api.fetchStatsHistory,
   deleteServer: api.deleteServer,
   updateServerImage: api.updateServerImage,
+  fetchGameTypes: api.fetchGameTypes,
 }));
 
 const LAEUFT = serverFixture({ id: 'srv-1', name: 'Welt', status: 'running' });
@@ -97,6 +99,9 @@ beforeEach(() => {
   api.fetchServer.mockReset();
   api.runLifecycleAction.mockReset();
   api.fetchStatsHistory.mockReset();
+  api.fetchGameTypes.mockReset();
+  // Die Spieleliste (nur fuer die Bilder im Kopf) liefert hier nichts.
+  api.fetchGameTypes.mockResolvedValue({ success: true, data: [], error: null });
 
   /*
    * Bewusst immer **dasselbe** `LAEUFT`-Objekt: Ein Live-Ereignis lässt die

@@ -1,6 +1,6 @@
 'use client';
 
-import { type GameServerDto } from '@palantir/contracts';
+import { type GameServerDto, type GameTypeDto } from '@palantir/contracts';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -16,6 +16,7 @@ import {
 import {
   type LifecycleAction,
   deleteServer,
+  fetchGameTypes,
   fetchServer,
   updateServerImage,
 } from '@/lib/api/servers';
@@ -86,6 +87,17 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
   );
   const live = useServerLive(serverId);
   const dtoRevision = useDtoRevision(resource.data);
+  /*
+   * Die Spieleliste nur wegen der Bilder im Kopf (Betreiber-Wunsch
+   * 24.09.2026): Symbol und Kachelbild gehören zur Vorlage, nicht zum Server,
+   * und stehen deshalb nicht im Server-DTO – wie auf der Server-Karte.
+   */
+  const spieltypen = useApiResource<GameTypeDto[]>((signal) => fetchGameTypes(signal), []);
+  const spielBilder = useMemo(() => {
+    const spiel = (spieltypen.data ?? []).find((eintrag) => eintrag.id === resource.data?.gameType);
+
+    return { icon: spiel?.iconUrl ?? null, cover: spiel?.coverImageUrl ?? null };
+  }, [spieltypen.data, resource.data?.gameType]);
 
   const lifecycle = useLifecycleActions((updated) => resource.setData(updated));
 
@@ -256,6 +268,8 @@ export function ServerDetail({ serverId }: ServerDetailProps) {
         onOpenSettings={() => selectTab('settings')}
         onDelete={() => setDeleteOpen(true)}
         onCopyAddress={copyAddress}
+        gameIconUrl={spielBilder.icon}
+        gameCoverUrl={spielBilder.cover}
         {...(kannBesitzerWechseln ? { onTransferOwner: () => setTransferOpen(true) } : {})}
       />
 
