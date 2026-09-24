@@ -1,7 +1,13 @@
 import { type GameTypeDefinition } from '@palantir/contracts';
 import { describe, expect, it } from 'vitest';
 import { TEST_GAME_TYPE } from './game-registry.js';
-import { aktuelleWerte, liveBefehle, liveDatei, pruefeLiveWerte } from './live-controls.js';
+import {
+  aktuelleWerte,
+  liveBefehle,
+  liveBrauchtNeustart,
+  liveDatei,
+  pruefeLiveWerte,
+} from './live-controls.js';
 
 /**
  * Live-Steuerung (Betreiber-Wunsch 23.09.2026): die reinen Funktionen.
@@ -202,6 +208,31 @@ describe('liveBefehle – Übersetzung mit Platzhaltern', () => {
     };
 
     expect(liveBefehle(tief, ['map'], { map: 'a', mode: 'eins' })).toEqual(['x eins']);
+  });
+});
+
+describe('Steuerungen mit Neustart (CS2-Plugins)', () => {
+  const MIT_NEUSTART: GameTypeDefinition = {
+    ...SPIEL,
+    liveControls: [
+      ...(SPIEL.liveControls ?? []),
+      {
+        id: 'plugins',
+        label: 'Plugins',
+        fields: ['extra'],
+        commands: ['nie {extra}'],
+        requiresRestart: true,
+      },
+    ],
+  };
+
+  it('schickt für sie keine Konsolenzeilen', () => {
+    expect(liveBefehle(MIT_NEUSTART, ['extra'], { extra: 'x' })).toEqual([]);
+  });
+
+  it('meldet, dass eine Änderung darin einen Neustart braucht – und sonst nicht', () => {
+    expect(liveBrauchtNeustart(MIT_NEUSTART, ['extra'])).toBe(true);
+    expect(liveBrauchtNeustart(MIT_NEUSTART, ['bots'])).toBe(false);
   });
 });
 

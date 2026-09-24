@@ -112,7 +112,12 @@ export function ConfigFields({
                 error={error}
                 disabled={locked}
                 value={String(value ?? '')}
-                options={field.options.map((option) => ({ value: option, label: option }))}
+                // Anzeigenamen, wo die Definition welche hat (z. B. „MatchZy
+                // (Turniere, Scrims)“ statt `matchzy`); gespeichert wird der Wert.
+                options={field.options.map((option) => ({
+                  value: option,
+                  label: field.optionLabels?.[option] ?? option,
+                }))}
                 onChange={(next) => onChange(field.key, next)}
               />
             );

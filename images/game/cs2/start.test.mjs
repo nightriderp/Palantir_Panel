@@ -817,7 +817,7 @@ describe('start.sh – Schritt 10: MatchZy', nurMitShell, () => {
         ...grundlageArchive(),
         ...pluginListe(),
         CS2_PLUGINS: 'true',
-        CS2_PLUGIN_MATCHZY: 'true',
+        CS2_MODE_PLUGIN: 'matchzy',
       });
       const csgo = join(ordner.daten, 'server', 'game', 'csgo');
 
@@ -841,7 +841,7 @@ describe('start.sh – Schritt 11: Retakes', nurMitShell, () => {
       ...grundlageArchive(),
       ...pluginListe(),
       CS2_PLUGINS: 'true',
-      CS2_PLUGIN_RETAKES: 'true',
+      CS2_MODE_PLUGIN: 'retakes',
     });
     const plugin = join(
       ordner.daten,
@@ -859,17 +859,8 @@ describe('start.sh – Schritt 11: Retakes', nurMitShell, () => {
     assert.ok(existsSync(join(plugin, 'map_config', 'de_dust2.json')));
   });
 
-  it('warnt, wenn MatchZy und Retakes beide an sind – startet aber', nurMitZip, () => {
-    const lauf = starte(arbeitsordner(), {
-      ...grundlageArchive(),
-      ...pluginListe(),
-      CS2_PLUGINS: 'true',
-      CS2_PLUGIN_RETAKES: 'true',
-      CS2_PLUGIN_MATCHZY: 'true',
-    });
-
-    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
-    assert.match(lauf.stdout, /MatchZy und Retakes sind beide an/u);
+  it('startet nicht mit einem Spielmodus-Plugin, das es nicht gibt', () => {
+    assert.equal(starte(arbeitsordner(), { CS2_MODE_PLUGIN: 'beide' }).status, 78);
   });
 });
 

@@ -1,8 +1,10 @@
 'use client';
 
 import {
+  type GameConfigField,
   type GameConfigValue,
   type GameConfigValues,
+  type GameLiveControl,
   type GameServerDto,
   type GameTypeDto,
   isTransitionalServerStatus,
@@ -10,7 +12,7 @@ import {
 import { useMemo, useState } from 'react';
 import { Button, Panel, useToast } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
-import { applyLiveValues, fetchGameTypes } from '@/lib/api/servers';
+import { applyLiveValues, fetchGameTypes, runLifecycleAction } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
 import { ConfigFields } from '../form/ConfigFields';
 
@@ -28,11 +30,55 @@ import { ConfigFields } from '../form/ConfigFields';
  * angezeigt wird deshalb, was dort steht, sonst die Vorgabe des Feldes.
  * (`liveValues` zählt noch mit: Reste aus v2.4.6, als Live-Werte bis zum
  * nächsten Start galten.)
+ *
+ * **Plugins** (24.09.2026, Fundpunkt 361): Abschnitte mit `requiresRestart`
+ * wirken erst mit einem Neustart – bei laufendem Server heißt der Knopf dann
+ * „Übernehmen & neu starten“ und startet nach dem Speichern neu. `collapsible`
+ * zeigt eine Kurzzeile und klappt mit „Anpassen“ auf; `disabledWhen` sperrt
+ * einen Abschnitt mit Hinweis (Bots, solange ein Spielmodus-Plugin sie selbst
+ * verwaltet).
  */
 export interface LiveControlsCardProps {
   server: GameServerDto;
   /** Nach erfolgreicher Übernahme – die Seite übernimmt den neuen Stand. */
   onChanged: (server: GameServerDto) => void;
+}
+
+/** Anzeigename eines Werts: Auswahl über `optionLabels`, sonst der Wert. */
+function wertText(feld: GameConfigField | undefined, wert: GameConfigValue | undefined): string {
+  const text = String(wert ?? '');
+
+  return feld?.optionLabels?.[text] ?? text;
+}
+
+/**
+ * Kurzzeile eines eingeklappten Abschnitts: eingeschaltete Schalter mit ihrem
+ * Namen, Auswahlen mit ihrem Anzeigenamen (außer „keins“), Zahlen mit Namen und
+ * Wert. Ausgeschaltetes fehlt – die Zeile sagt, was an ist.
+ */
+function kurzzeile(
+  steuerung: GameLiveControl,
+  felder: readonly GameConfigField[],
+  werte: GameConfigValues,
+): string {
+  const teile: string[] = [];
+
+  for (const key of steuerung.fields) {
+    const feld = felder.find((f) => f.key === key);
+    const wert = werte[key];
+
+    if (feld === undefined || wert === undefined) continue;
+
+    if (feld.type === 'toggle') {
+      if (wert === true) teile.push(feld.label);
+    } else if (feld.type === 'select') {
+      if (wert !== 'none' && wert !== '') teile.push(wertText(feld, wert));
+    } else if (feld.type === 'number') {
+      teile.push(`${feld.label}: ${String(wert)}`);
+    }
+  }
+
+  return teile.length === 0 ? 'Nichts aktiv' : teile.join(' · ');
 }
 
 export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
@@ -63,6 +109,7 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
   const [entwurf, setEntwurf] = useState<GameConfigValues>(aktuell);
   const [basis, setBasis] = useState<GameConfigValues>(aktuell);
   const [busy, setBusy] = useState(false);
+  const [aufgeklappt, setAufgeklappt] = useState<ReadonlySet<string>>(() => new Set());
 
   // Kommt ein neuer Stand (Übernahme, Neustart), gilt er – ein alter Entwurf
   // bliebe sonst stehen, obwohl der Server längst etwas anderes spielt.
@@ -84,6 +131,39 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
     (steuerung) =>
       steuerung.reloadsMap === true && steuerung.fields.some((key) => geaendert.includes(key)),
   );
+  // Plugins werden beim Start geladen: Läuft der Server, gehört zum Übernehmen
+  // ein Neustart.
+  const mitNeustart =
+    laeuft &&
+    steuerungen.some(
+      (steuerung) =>
+        steuerung.requiresRestart === true &&
+        steuerung.fields.some((key) => geaendert.includes(key)),
+    );
+
+  /** Gesperrt durch `disabledWhen`? Dann der Hinweis, sonst `null`. */
+  function sperrHinweis(steuerung: GameLiveControl): string | null {
+    const bedingung = steuerung.disabledWhen;
+
+    if (bedingung === undefined) return null;
+
+    const wert = entwurf[bedingung.field];
+    if (!bedingung.values.includes(String(wert))) return null;
+
+    const feld = spiel?.configFields.find((f) => f.key === bedingung.field);
+
+    return bedingung.hint.replace('{wert}', wertText(feld, wert));
+  }
+
+  function umschalten(id: string) {
+    setAufgeklappt((bisher) => {
+      const neu = new Set(bisher);
+      if (neu.has(id)) neu.delete(id);
+      else neu.add(id);
+
+      return neu;
+    });
+  }
 
   async function uebernehmen() {
     const werte: Record<string, string | number | boolean> = {};
@@ -107,6 +187,24 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
     }
 
     onChanged(ergebnis.data);
+
+    if (mitNeustart) {
+      setBusy(true);
+      const neustart = await runLifecycleAction(server.id, 'restart');
+      setBusy(false);
+
+      if (!neustart.success) {
+        toast.error(`Gespeichert, aber der Neustart scheiterte: ${errorText(neustart)}`);
+
+        return;
+      }
+
+      onChanged(neustart.data);
+      toast.success('Übernommen – der Server startet neu.');
+
+      return;
+    }
+
     toast.success(
       !laeuft
         ? 'Gespeichert – gilt beim nächsten Start.'
@@ -121,23 +219,58 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
       <h3 className="mb-3 text-base font-semibold">Steuerung</h3>
 
       <div className="flex flex-col gap-4">
-        {steuerungen.map((steuerung) => (
-          <section key={steuerung.id} aria-label={steuerung.label} className="flex flex-col gap-2">
-            <p className="text-xs font-medium tracking-wide text-ink-faint uppercase">
-              {steuerung.label}
-            </p>
-            <ConfigFields
-              fields={spiel.configFields.filter((feld) => steuerung.fields.includes(feld.key))}
-              values={entwurf}
-              onChange={(key: string, wert: GameConfigValue) =>
-                setEntwurf((bisher) => ({ ...bisher, [key]: wert }))
-              }
-              lockAfterCreate={false}
-              disabled={imUebergang || busy}
-              hideHints
-            />
-          </section>
-        ))}
+        {steuerungen.map((steuerung) => {
+          const hinweis = sperrHinweis(steuerung);
+          // Mit ungespeicherten Änderungen bleibt ein Abschnitt offen – sonst
+          // verschwände, was gerade eingestellt wurde.
+          const offen =
+            steuerung.collapsible !== true ||
+            aufgeklappt.has(steuerung.id) ||
+            steuerung.fields.some((key) => geaendert.includes(key));
+
+          return (
+            <section
+              key={steuerung.id}
+              aria-label={steuerung.label}
+              className="flex flex-col gap-2"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium tracking-wide text-ink-faint uppercase">
+                  {steuerung.label}
+                </p>
+                {steuerung.collapsible === true ? (
+                  <button
+                    type="button"
+                    onClick={() => umschalten(steuerung.id)}
+                    aria-expanded={offen}
+                    className="text-xs text-accent hover:underline"
+                  >
+                    {offen ? 'Einklappen' : 'Anpassen'}
+                  </button>
+                ) : null}
+              </div>
+
+              {offen ? (
+                <ConfigFields
+                  fields={spiel.configFields.filter((feld) => steuerung.fields.includes(feld.key))}
+                  values={entwurf}
+                  onChange={(key: string, wert: GameConfigValue) =>
+                    setEntwurf((bisher) => ({ ...bisher, [key]: wert }))
+                  }
+                  lockAfterCreate={false}
+                  disabled={imUebergang || busy || hinweis !== null}
+                  hideHints={steuerung.showHints !== true}
+                />
+              ) : (
+                <p className="truncate text-sm text-ink-muted">
+                  {kurzzeile(steuerung, spiel.configFields, entwurf)}
+                </p>
+              )}
+
+              {hinweis === null ? null : <p className="text-xs text-ink-faint">{hinweis}</p>}
+            </section>
+          );
+        })}
       </div>
 
       {imUebergang ? (
@@ -150,9 +283,16 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
         </p>
       )}
 
-      {laeuft && laedtNeu ? (
+      {laeuft && laedtNeu && !mitNeustart ? (
         <p className="mt-3 text-sm text-warning">
           Die Karte wird neu geladen – verbundene Spieler sind kurz getrennt.
+        </p>
+      ) : null}
+
+      {mitNeustart ? (
+        <p className="mt-3 text-sm text-warning">
+          Plugins werden beim Start geladen – der Server startet dafür neu, verbundene Spieler
+          werden getrennt.
         </p>
       ) : null}
 
@@ -162,7 +302,7 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
           disabled={imUebergang || busy || geaendert.length === 0}
           onClick={() => void uebernehmen()}
         >
-          Übernehmen
+          {mitNeustart ? 'Übernehmen & neu starten' : 'Übernehmen'}
         </Button>
       </div>
     </Panel>

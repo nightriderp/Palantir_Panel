@@ -100,6 +100,16 @@ case "${CS2_PLUGINS:-false}" in
     ;;
 esac
 
+# Spielmodus-Plugin (Auswahl im Panel, Fundpunkt 361): keins, MatchZy oder
+# Retakes – nie zwei. Etwas anderes ist ein Fehler, kein stilles „keins".
+case "${CS2_MODE_PLUGIN:-none}" in
+  none | matchzy | retakes) ;;
+  *)
+    palantir_log "Unbekanntes Spielmodus-Plugin: ${CS2_MODE_PLUGIN}."
+    exit 78
+    ;;
+esac
+
 # Schreibt über eine Zwischenkopie im selben Ordner: Ein Abbruch mittendrin
 # ließe sonst eine halbe `gameinfo.gi` zurück, und CS2 startete gar nicht mehr.
 gameinfo_ersetzen() {
