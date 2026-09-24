@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.16',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.17',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3468,7 +3468,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   ],
   // Schritt 2 (23.09.2026): Name, Passwort, Spieler; Schritt 3: Karte, Modus, Bots;
   // Schritt 4: Workshop-Karte; Schritt 5: alle Runden spielen; Schritt 5.1: GOTV;
-  // Schritt 7: Plugin-Grundlage.
+  // Schritt 7: Plugin-Grundlage; Schritt 8: Admins.
   configFields: [
     {
       key: 'serverName',
@@ -3605,6 +3605,21 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: null,
       lockedAfterCreate: false,
     },
+    {
+      // Schritt 8: nur mit „Plugins laden“. Das Image prüft jede Nummer und
+      // startet bei einer ungültigen nicht.
+      key: 'admins',
+      label: 'Admins (SteamID64)',
+      type: 'text',
+      defaultValue: '',
+      description:
+        'Steam-IDs mit vollen Admin-Rechten, durch Komma getrennt – 17 Ziffern, beginnend mit 7656119 (z. B. über steamid.io). Gilt nur mit „Plugins laden“. Leer lassen, wer die admins.json von Hand pflegt.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
@@ -3617,6 +3632,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     allRounds: 'CS2_ALL_ROUNDS',
     gotv: 'CS2_GOTV',
     plugins: 'CS2_PLUGINS',
+    admins: 'CS2_ADMINS',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
   // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
@@ -3631,6 +3647,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'allRounds',
     'gotv',
     'plugins',
+    'admins',
   ],
   /*
    * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die

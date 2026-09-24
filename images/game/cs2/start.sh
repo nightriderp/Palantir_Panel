@@ -12,7 +12,8 @@
 # Einstellungen aus dem Panel: Servername, Server-Passwort, Spieleranzahl
 # (Schritt 2), Startkarte, Spielmodus, Bots (Schritt 3), Workshop-Karte
 # (Schritt 4), alle Runden spielen (Schritt 5), GOTV (Schritt 5.1),
-# Plugin-Grundlage MetaMod + CounterStrikeSharp (Schritt 7, abschaltbar).
+# Plugin-Grundlage MetaMod + CounterStrikeSharp (Schritt 7, abschaltbar),
+# Admins (Schritt 8).
 #
 # **Der Port kommt vom Panel** (`CS2_PORT`, Schritt 1.1): dieselbe Nummer, unter
 # der der Server draußen erreichbar ist. CS2 nennt Clients seinen eigenen Port;
@@ -180,6 +181,54 @@ grundlage_legen() {
   printf '%s\n' "$stand" > "$MERKDATEI"
 }
 
+# **Admins** (Schritt 8): SteamID64-Nummern aus dem Panel, getrennt durch
+# Komma, Semikolon, Leerzeichen oder Zeilenumbruch. Jede bekommt `@css/root` –
+# volle Rechte über CounterStrikeSharp und seine Plugins.
+#
+# **Die Datei gehört dem Panel, sobald das Feld etwas enthält**: Sie wird bei
+# jedem Start neu geschrieben. Ist das Feld leer, bleibt sie unangetastet – wer
+# Admins mit Gruppen und feineren Rechten von Hand pflegt, lässt es leer.
+#
+# **Nur gültige SteamID64** (17 Ziffern, beginnend mit 7656119). Etwas anderes
+# bricht den Start ab: CounterStrikeSharp überginge einen Tippfehler still, und
+# der Betreiber hielte sich für Admin, ohne es zu sein. Durch die Prüfung kann
+# auch nichts anderes als Ziffern in die JSON-Datei gelangen.
+admins_schreiben() {
+  if [ -z "${CS2_ADMINS:-}" ]; then
+    return 0
+  fi
+
+  admins_eintraege=''
+
+  # Ohne Dateinamen-Erweiterung: Ein `*` im Feld soll nicht den Ordner auflisten.
+  set -f
+  for kennung in $(printf '%s' "$CS2_ADMINS" | tr ',;' '  '); do
+    case "$kennung" in
+      7656119[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+      *)
+        set +f
+        palantir_log "Keine gueltige SteamID64 bei den Admins: ${kennung} (17 Ziffern, beginnt mit 7656119)."
+        exit 78
+        ;;
+    esac
+
+    if [ -n "$admins_eintraege" ]; then
+      admins_eintraege="${admins_eintraege},"
+    fi
+    admins_eintraege="${admins_eintraege}
+  \"palantir-${kennung}\": { \"identity\": \"${kennung}\", \"immunity\": 100, \"flags\": [\"@css/root\"] }"
+  done
+  set +f
+
+  if [ -z "$admins_eintraege" ]; then
+    return 0
+  fi
+
+  mkdir -p "$CSS_CONFIGS"
+  printf '{%s\n}\n' "$admins_eintraege" > "${CSS_CONFIGS}/admins.json"
+  palantir_log 'Admins aus dem Panel nach CounterStrikeSharp geschrieben.'
+}
+
 if [ "$PLUGINS" = 1 ]; then
   if [ -z "${CS2_METAMOD_URL:-}" ] || [ -z "${CS2_METAMOD_SHA256:-}" ] ||
     [ -z "${CS2_CSS_URL:-}" ] || [ -z "${CS2_CSS_SHA256:-}" ]; then
@@ -199,6 +248,7 @@ if [ "$PLUGINS" = 1 ]; then
   fi
 
   gameinfo_eintragen
+  admins_schreiben
 else
   gameinfo_austragen
 fi

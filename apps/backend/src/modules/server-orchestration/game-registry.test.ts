@@ -1546,7 +1546,7 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.dockerImage).toBe(`ghcr.io/nightriderp/palantir-game-cs2:${version}`);
   });
 
-  it('hat nach Schritt 7 genau diese Felder', () => {
+  it('hat nach Schritt 8 genau diese Felder', () => {
     expect(CS2_GAME_TYPE.configFields.map((feld) => feld.key)).toEqual([
       'serverName',
       'serverPassword',
@@ -1558,6 +1558,7 @@ describe('Counter-Strike 2', () => {
       'allRounds',
       'gotv',
       'plugins',
+      'admins',
     ]);
   });
 
