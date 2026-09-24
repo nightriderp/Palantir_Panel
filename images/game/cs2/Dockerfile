@@ -22,7 +22,7 @@ RUN set -eux; \
   apt-get install -y --no-install-recommends libicu74; \
   rm -rf /var/lib/apt/lists/*
 
-COPY start.sh plugins.sh plugins.list /opt/palantir/
+COPY start.sh plugins.sh plugins.list cs2-gamedata.json /opt/palantir/
 RUN chmod 0755 /opt/palantir/start.sh
 
 # **Plugin-Grundlage** (Schritt 7): feste Fassungen mit Prüfsumme. Geholt wird

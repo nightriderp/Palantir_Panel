@@ -241,6 +241,21 @@ if [ "$PLUGINS" = 1 ]; then
     exit 69
   fi
 
+  # **Gamedata-Nachtrag** (24.09.2026). Das CS2-Update 1.41.8.2 (23.09.) hat
+  # Offsets und Signaturen verschoben, auf die CounterStrikeSharp v1.0.374
+  # zeigt – Retakes stürzte beim ersten Teamwechsel ab (`ChangeTeam` liegt
+  # jetzt bei 104 statt 102). Die Korrektur steht auf CounterStrikeSharp
+  # `main` (2f984988), eine Fassung gibt es noch nicht. `cs2-gamedata.json` ist
+  # jene Datei plus der Eintrag `CheckTransmit`, den `main` entfernt hat,
+  # v1.0.374 aber noch braucht. Bei jedem Start, weil ein Auspacken der
+  # Grundlage die Datei zurücksetzt. Weg damit, sobald eine CounterStrikeSharp-
+  # Fassung mit passenden Gamedata im Image steht.
+  GAMEDATA_NACHTRAG="${CS2_SKRIPTE:-/opt/palantir}/cs2-gamedata.json"
+  if [ -f "$GAMEDATA_NACHTRAG" ] && [ -d "${ADDONS}/counterstrikesharp/gamedata" ]; then
+    cp "$GAMEDATA_NACHTRAG" "${ADDONS}/counterstrikesharp/gamedata/gamedata.json"
+    palantir_log 'Gamedata fuer CS2 1.41.8 eingespielt (CounterStrikeSharp main 2f984988).'
+  fi
+
   # `core.json` einmal aus der Vorlage – danach gehört sie dem Betreiber.
   CSS_CONFIGS="${ADDONS}/counterstrikesharp/configs"
   if [ ! -f "${CSS_CONFIGS}/core.json" ] && [ -f "${CSS_CONFIGS}/core.example.json" ]; then
@@ -510,6 +525,15 @@ else
   palantir_log 'Hinweis: stdbuf fehlt - Antworten auf Konsolenbefehle kommen verzoegert.'
   set -- "$BINAERDATEI" "$@"
 fi
+
+# **Eigener Temp-Ordner** (24.09.2026). `/tmp` ist im Container ein tmpfs ohne
+# Ausführrecht (Härtung). .NET packt dort native Bibliotheken aus und lädt sie –
+# SimpleAdmin scheiterte daran („SQLite.Interop.dll: failed to map segment"),
+# Banns und Mutes wurden nicht gespeichert. Der interne Ordner liegt im
+# Datenordner, aus dem CS2 ohnehin ausgeführt wird.
+TMPDIR="${PALANTIR_INTERN}/tmp"
+mkdir -p "$TMPDIR"
+export TMPDIR
 
 # Der Fang steht **vor** dem Start: Ein Signal in der Lücke dazwischen
 # beendete die Shell sonst kommentarlos.
