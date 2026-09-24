@@ -497,6 +497,17 @@ function grundlageArchive(kennung = 'alt') {
   };
 }
 
+describe('Dockerfile – Schritt 7', () => {
+  it('bringt ICU für die .NET-Laufzeit von CounterStrikeSharp mit', () => {
+    // Ohne brach CounterStrikeSharp auf der Node ab, und CS2 stürzte mit.
+    const dockerfile = readFileSync(join(HIER, 'Dockerfile'), 'utf8');
+
+    assert.match(dockerfile, /apt-get install[^\n]*\blibicu\d+/u);
+    // Kein ENV, das den Invariant-Modus einschaltet (der Kommentar darf ihn nennen).
+    assert.doesNotMatch(dockerfile, /^ENV[^\n]*GLOBALIZATION_INVARIANT/mu);
+  });
+});
+
 describe('start.sh – Schritt 7: Plugin-Grundlage', nurMitShell, () => {
   const gameinfo = (ordner) =>
     readFileSync(join(ordner.daten, 'server', 'game', 'csgo', 'gameinfo.gi'), 'utf8');
