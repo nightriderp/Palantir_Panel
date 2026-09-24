@@ -24,6 +24,11 @@ export interface ConversationListProps {
   activeId: string | null;
   onSelect: (conversation: ConversationDto) => void;
   onNew: () => void;
+  /**
+   * Symbol des Spiels je Server-Chat, nach `serverId` (Betreiber-Wunsch
+   * 24.09.2026). Fehlt der Eintrag, bleibt das allgemeine Server-Symbol.
+   */
+  serverIcons?: ReadonlyMap<string, string | null>;
 }
 
 export function ConversationList({
@@ -31,6 +36,7 @@ export function ConversationList({
   activeId,
   onSelect,
   onNew,
+  serverIcons,
 }: ConversationListProps) {
   return (
     <div className="flex h-full flex-col gap-3">
@@ -49,6 +55,10 @@ export function ConversationList({
               const count = unreadOf(conversation);
               const active = conversation.id === activeId;
               const isServer = conversation.type === 'server_chat';
+              const spielSymbol =
+                isServer && conversation.serverId !== null
+                  ? (serverIcons?.get(conversation.serverId) ?? null)
+                  : null;
 
               return (
                 <li key={conversation.id}>
@@ -63,11 +73,16 @@ export function ConversationList({
                   >
                     <span
                       className={cn(
-                        'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-2xs font-bold',
+                        'flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full text-2xs font-bold',
                         isServer ? 'bg-fill-strong text-brand' : 'bg-brand-soft text-brand',
                       )}
                     >
-                      {isServer ? (
+                      {spielSymbol !== null ? (
+                        /* Adresse aus der Spieleliste, zur Bauzeit unbekannt;
+                           `next/image` bräuchte dafür eine konfigurierte Domain. */
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={spielSymbol} alt="" className="h-full w-full object-cover" />
+                      ) : isServer ? (
                         <Icon name="server" size={16} />
                       ) : (
                         serverInitials(conversation.title)

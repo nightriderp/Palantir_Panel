@@ -87,3 +87,46 @@ describe('DetailHeader – Adresse kopieren', () => {
     expect(mitAdresse()).toHaveBeenCalledWith('cs.example.tld:25003');
   });
 });
+
+describe('DetailHeader – Spielbilder', () => {
+  function zeichneMit(bilder: { gameIconUrl?: string | null; gameCoverUrl?: string | null }) {
+    const server = serverFixture({ id: 'srv-1', name: 'Die OGs', permissions: ownerPermissions() });
+
+    return render(
+      <DetailHeader
+        server={server}
+        busy={false}
+        onLifecycle={() => undefined}
+        onUpdate={() => undefined}
+        onOpenSettings={() => undefined}
+        onDelete={() => undefined}
+        onCopyAddress={() => undefined}
+        {...bilder}
+      />,
+    );
+  }
+
+  it('zeigt Symbol und Kachelbild des Spiels, wenn beide bekannt sind', () => {
+    const { container } = zeichneMit({
+      gameIconUrl: 'https://api.example.tld/api/game-types/minecraft/images/icon',
+      gameCoverUrl: 'https://api.example.tld/api/game-types/minecraft/images/cover',
+    });
+
+    const symbol = container.querySelector('img');
+    expect(symbol?.getAttribute('src')).toBe(
+      'https://api.example.tld/api/game-types/minecraft/images/icon',
+    );
+    expect(screen.queryByText('DI')).toBeNull();
+
+    const hintergrund = container.querySelector<HTMLElement>('[style*="background-image"]');
+    expect(hintergrund?.style.backgroundImage).toContain('/images/cover');
+  });
+
+  it('fällt ohne Bilder auf das Namenskürzel zurück', () => {
+    const { container } = zeichneMit({});
+
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('[style*="background-image"]')).toBeNull();
+    expect(screen.getByText('DI')).toBeTruthy();
+  });
+});

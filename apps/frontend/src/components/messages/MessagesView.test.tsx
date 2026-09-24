@@ -46,6 +46,12 @@ vi.mock('@/app/(dashboard)/SessionProvider', () => ({
   useSession: () => ({ user: { id: 'u1' }, loading: false, setUser: vi.fn() }),
 }));
 
+// Die Spieleliste (nur fuer die Symbole der Server-Chats) liefert hier nichts.
+vi.mock('@/lib/api/servers', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  fetchGameTypes: () => Promise.resolve(ok([])),
+}));
+
 vi.mock('@/lib/api/chat', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchConversations: api.fetchConversations,
