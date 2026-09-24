@@ -29,8 +29,9 @@ vorige auf der Node läuft.
 | 6       | Updates zurückhalten (Administration > Templates)       | läuft (0.0.16)   |
 | 7       | MetaMod + CounterStrikeSharp (Schalter)                 | läuft (0.0.15)   |
 | 8       | Admins (SteamID64, `@css/root`)                         | läuft (0.0.17)   |
-| 9       | SimpleAdmin (+ AnyBaseLib, PlayerSettings, MenuManager) | **dieses Image** |
-| 10–15   | je ein Plugin, WeaponPaints mit MariaDB zuletzt         | offen            |
+| 9       | SimpleAdmin (+ AnyBaseLib, PlayerSettings, MenuManager) | läuft (0.0.18)   |
+| 10      | MatchZy (samt `cfg/MatchZy`)                            | **dieses Image** |
+| 11–15   | je ein Plugin, WeaponPaints mit MariaDB zuletzt         | offen            |
 
 ## Was Schritt 1 tut
 
