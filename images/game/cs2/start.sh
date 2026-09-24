@@ -13,7 +13,7 @@
 # (Schritt 2), Startkarte, Spielmodus, Bots (Schritt 3), Workshop-Karte
 # (Schritt 4), alle Runden spielen (Schritt 5), GOTV (Schritt 5.1),
 # Plugin-Grundlage MetaMod + CounterStrikeSharp (Schritt 7, abschaltbar),
-# Admins (Schritt 8).
+# Admins (Schritt 8), einzelne Plugins (ab Schritt 9, `plugins.sh`).
 #
 # **Der Port kommt vom Panel** (`CS2_PORT`, Schritt 1.1): dieselbe Nummer, unter
 # der der Server draußen erreichbar ist. CS2 nennt Clients seinen eigenen Port;
@@ -249,6 +249,16 @@ if [ "$PLUGINS" = 1 ]; then
 
   gameinfo_eintragen
   admins_schreiben
+
+  # Die einzelnen Plugins (ab Schritt 9). Scheitert eines, startet der Server
+  # nicht: Einer, der ohne das gewünschte Admin-Plugin hochkommt, ist schlimmer
+  # als einer, der sagt, was fehlt.
+  . "${CS2_SKRIPTE:-/opt/palantir}/plugins.sh"
+
+  if ! plugins_abgleichen; then
+    palantir_log 'Ein Plugin fehlt. Ausschalten oder neu starten - der Download wird dann wiederholt.'
+    exit 69
+  fi
 else
   gameinfo_austragen
 fi

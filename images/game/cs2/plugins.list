@@ -1,0 +1,32 @@
+# Plugins des CS2-Images – eines nach dem anderen (Schritte 9–15, ab 24.09.2026).
+#
+# Eine Zeile je Plugin, durch Leerzeichen getrennt:
+#
+#   name  version  adresse  sha256  zuordnung  ordner
+#
+# zuordnung  Wohin der Inhalt des Archivs gehört: `quelle=ziel`, mehrere durch
+#            Komma. `quelle` ist ein Pfad im Archiv (`.` für die Wurzel), `ziel`
+#            ein Pfad unter `game/csgo`. Die Archive sind nicht einheitlich
+#            gepackt – mal beginnt es bei `addons/`, mal bei `counterstrikesharp/`.
+# ordner     Die Ordner unter `addons/counterstrikesharp/plugins`, die beim
+#            Abschalten nach `plugins/disabled` wandern (CounterStrikeSharp lädt
+#            dort nichts). `-` für reine Bibliotheken.
+#
+# Summen am 2026-09-24 gegen die Dateien selbst gerechnet. Neue Fassung:
+#
+#   curl -s https://api.github.com/repos/<besitzer>/<plugin>/releases/latest
+#   curl -sL <adresse> | sha256sum
+#
+# Wer eine Zeile ändert, erhöht images/game/cs2/VERSION – sonst bekommt kein
+# Server die neue Fassung.
+
+# Grundlage für Menüs und Spieler-Einstellungen (NickFox007). SimpleAdmin braucht
+# alle drei: MenuManager braucht PlayerSettings, das braucht AnyBaseLib. Kein
+# eigener Schalter – sie gehen mit SimpleAdmin an.
+anybaselib 0.9.4 https://github.com/NickFox007/AnyBaseLibCS2/releases/download/0.9.4/AnyBaseLib.zip ab3190f43d7afc95d609bbb755279552fba0283ce0a2681c371601a4bd7867ff addons=addons -
+playersettings 0.9.4 https://github.com/NickFox007/PlayerSettingsCS2/releases/download/0.9.4/PlayerSettings.zip 6d6645f728dbe07ca37264ab55f228ab4dcb3740cba02c52fbb27ef15faed0ac addons=addons PlayerSettings
+menumanager 1.4.1 https://github.com/NickFox007/MenuManagerCS2/releases/download/1.4.1/MenuManager.zip 2ae011c6cebe3ca279d3cb5d15a568f13ae63398be82a98bd65e204a043a13b3 addons=addons MenuManagerCore
+
+# Schritt 9: Bann, Kick, Mute, Admin-Menü. Speichert in SQLite, das ist die
+# Vorgabe des Plugins.
+simpleadmin build-1.8.2b https://github.com/daffyyyy/CS2-SimpleAdmin/releases/download/build-1.8.2b/CS2-SimpleAdmin-1.8.2b.zip 3879f74a000582c407f9795be62f718cb1d512e58ba9c81accf12d691696c201 counterstrikesharp=addons/counterstrikesharp CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands,CS2-SimpleAdmin_StealthModule
