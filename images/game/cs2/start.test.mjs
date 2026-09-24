@@ -408,6 +408,17 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.equal(starte(arbeitsordner(), { CS2_GOTV: 'true', CS2_TV_PORT: '1; quit' }).status, 78);
   });
 
+  it('weist Teams automatisch zu – ohne Angabe an, abschaltbar (25.09.2026)', () => {
+    const an = arbeitsordner();
+    const aus = arbeitsordner();
+    starte(an);
+    starte(aus, { CS2_AUTO_TEAMS: 'false' });
+
+    assert.match(datei(an, 'palantir.cfg'), /^mp_force_assign_teams 1$/mu);
+    assert.match(datei(aus, 'palantir.cfg'), /^mp_force_assign_teams 0$/mu);
+    assert.equal(starte(arbeitsordner(), { CS2_AUTO_TEAMS: 'ja' }).status, 78);
+  });
+
   it('schaltet den Ruhezustand ab – sonst antwortet die Konsole leer nicht', () => {
     const ordner = arbeitsordner();
     starte(ordner);
@@ -1020,20 +1031,24 @@ describe('start.sh – Bots aus dem Panel mit Spielmodus-Plugin (25.09.2026)', n
     assert.ok(inhalt.indexOf('bot_quota 0') < inhalt.indexOf('exec palantir_bots'));
   });
 
-  it('sagt beim ersten Start mit Retakes, dass die Bots erst ab dem nächsten gelten', () => {
+  it('legt retakes.cfg mit Retakes-Vorgabe und Block an, wenn sie fehlt – auch ohne Retakes', () => {
     const ordner = arbeitsordner();
     const liste = join(ordner.daten, 'leer.list');
     mkdirSync(ordner.daten, { recursive: true });
     writeFileSync(liste, '');
     const lauf = starte(ordner, {
       CS2_PLUGINS: 'true',
-      CS2_MODE_PLUGIN: 'retakes',
+      CS2_MODE_PLUGIN: 'none',
+      CS2_BOTS: '2',
       ...grundlageAttrappe(ordner),
       PALANTIR_CS2_PLUGINLISTE: posix(liste),
     });
 
     assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
-    assert.match(lauf.stdout, /retakes\.cfg gibt es noch nicht/u);
+    const inhalt = readFileSync(cfg(ordner, 'cs2-retakes', 'retakes.cfg'), 'utf8');
+    // Retakes' eigene Vorgabe, danach unser Block.
+    assert.match(inhalt, /^mp_roundtime_defuse 1\.25$/mu);
+    assert.ok(inhalt.indexOf('bot_quota 0') < inhalt.indexOf('exec palantir_bots'));
   });
 
   it('hängt den Block bei MatchZy an Warmup und die Live-Overrides', () => {
@@ -1051,9 +1066,10 @@ describe('start.sh – Bots aus dem Panel mit Spielmodus-Plugin (25.09.2026)', n
     const liste = join(ordner.daten, 'leer.list');
     writeFileSync(liste, '');
 
+    // Auch ohne MatchZy als Modus – es kann im laufenden Betrieb dazukommen.
     const lauf = starte(ordner, {
       CS2_PLUGINS: 'true',
-      CS2_MODE_PLUGIN: 'matchzy',
+      CS2_MODE_PLUGIN: 'none',
       ...grundlageAttrappe(ordner),
       PALANTIR_CS2_PLUGINLISTE: posix(liste),
     });

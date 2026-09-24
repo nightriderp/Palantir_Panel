@@ -364,6 +364,18 @@ case "${CS2_ALL_ROUNDS:-false}" in
     ;;
 esac
 
+# **Teams automatisch zuweisen** (Betreiber 25.09.2026): `mp_force_assign_teams`.
+# Ohne landeten Spieler beim Beitritt und nach einem Kartenwechsel als
+# Zuschauer – Retakes wartete dann mit dem Countdown, bis jemand ein Team wählt.
+case "${CS2_AUTO_TEAMS:-true}" in
+  true) AUTO_TEAMS=1 ;;
+  false) AUTO_TEAMS=0 ;;
+  *)
+    palantir_log "Ungueltiger Wert fuer Teams automatisch: ${CS2_AUTO_TEAMS}."
+    exit 78
+    ;;
+esac
+
 # **GOTV** (Schritt 5.1): der Zuschauerzugang, eigener UDP-Port aus dem Pool –
 # drinnen dieselbe Nummer wie draußen (`CS2_TV_PORT`), aus demselben Grund wie
 # beim Spielport. `tv_enable` muss vor dem ersten Kartenladen stehen, deshalb
@@ -404,6 +416,7 @@ esac
   printf 'bot_quota_mode "normal"\n'
   printf 'bot_quota %s\n' "$BOTS"
   printf 'mp_match_can_clinch %s\n' "$CLINCH"
+  printf 'mp_force_assign_teams %s\n' "$AUTO_TEAMS"
   # Kein Ruhezustand bei leerem Server (24.09.2026): Schlafend beantwortete
   # CS2 Konsolenbefehle aus dem Panel nicht – `mp_match_can_clinch` blieb
   # ohne Antwort, bis ein Spieler den Server weckte. Kostet etwas CPU im
@@ -460,21 +473,25 @@ bots_block_setzen() {
 }
 
 if [ "$PLUGINS" = 1 ]; then
-  case "${CS2_MODE_PLUGIN:-none}" in
-    matchzy)
-      # Warmup hat keine Override-Datei; Live schon – dort gehört es hin.
-      for datei in warmup.cfg live_override.cfg live_wingman_override.cfg; do
-        bots_block_setzen "${CFG_ORDNER}/MatchZy/${datei}" || true
-      done
-      ;;
-    retakes)
-      # Retakes legt seine Datei erst beim ersten Kartenstart an – dann greift
-      # der Block ab dem nächsten Start.
-      if ! bots_block_setzen "${CFG_ORDNER}/cs2-retakes/retakes.cfg"; then
-        palantir_log 'Hinweis: retakes.cfg gibt es noch nicht - Bots aus dem Panel gelten ab dem naechsten Start.'
-      fi
-      ;;
-  esac
+  # **Für alle Spielmodus-Plugins, nicht nur das gewählte** (25.09.2026): Seit
+  # Plugins im laufenden Betrieb umschalten, kann MatchZy oder Retakes später
+  # dazukommen – ihre Dateien brauchen den Block dann schon.
+  #
+  # MatchZy: Warmup hat keine Override-Datei; Live schon – dort gehört es hin.
+  for datei in warmup.cfg live_override.cfg live_wingman_override.cfg; do
+    bots_block_setzen "${CFG_ORDNER}/MatchZy/${datei}" || true
+  done
+
+  # Retakes legt `retakes.cfg` erst beim ersten eigenen Kartenstart an – und
+  # führt sie sofort aus. Fehlt sie, legt das Image sie mit Retakes' eigener
+  # Vorgabe an (`retakes-vorgabe.cfg`, aus 3.1.1); Retakes nimmt dann diese.
+  RETAKES_CFG="${CFG_ORDNER}/cs2-retakes/retakes.cfg"
+  RETAKES_VORGABE="${CS2_SKRIPTE:-/opt/palantir}/retakes-vorgabe.cfg"
+  if [ ! -f "$RETAKES_CFG" ] && [ -f "$RETAKES_VORGABE" ]; then
+    mkdir -p "${CFG_ORDNER}/cs2-retakes"
+    cp "$RETAKES_VORGABE" "$RETAKES_CFG"
+  fi
+  bots_block_setzen "$RETAKES_CFG" || true
 fi
 
 set -- -dedicated -port "$PORT" +game_type "$SPIEL_TYP" +game_mode "$SPIEL_MODUS"

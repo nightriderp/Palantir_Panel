@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.24',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.25',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3603,6 +3603,21 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       lockedAfterCreate: false,
     },
     {
+      // Betreiber 25.09.2026: sonst landen Spieler beim Beitritt und nach einem
+      // Kartenwechsel als Zuschauer (Retakes wartet dann mit dem Countdown).
+      key: 'autoTeams',
+      label: 'Teams automatisch zuweisen',
+      type: 'toggle',
+      defaultValue: true,
+      description:
+        'Spieler landen beim Beitritt und nach einem Kartenwechsel direkt in einem Team, statt erst zuzuschauen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
       key: 'gotv',
       label: 'GOTV (Zuschauen)',
       type: 'toggle',
@@ -3694,6 +3709,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     bots: 'CS2_BOTS',
     workshopMap: 'CS2_WORKSHOP_MAP',
     allRounds: 'CS2_ALL_ROUNDS',
+    autoTeams: 'CS2_AUTO_TEAMS',
     gotv: 'CS2_GOTV',
     plugins: 'CS2_PLUGINS',
     admins: 'CS2_ADMINS',
@@ -3711,6 +3727,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'bots',
     'workshopMap',
     'allRounds',
+    'autoTeams',
     'gotv',
     'plugins',
     'admins',
@@ -3777,6 +3794,19 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
         allRounds: { true: 'mp_match_can_clinch 0', false: 'mp_match_can_clinch 1' },
       },
       persist: ['{allRounds}'],
+    },
+    {
+      // Wirkt ab dem nächsten Beitritt bzw. Kartenwechsel; `persist`, weil die
+      // Modus-Konfiguration beim Kartenladen nachzieht.
+      id: 'teams',
+      label: 'Teams',
+      group: 'Schalter',
+      fields: ['autoTeams'],
+      commands: ['{autoTeams}'],
+      values: {
+        autoTeams: { true: 'mp_force_assign_teams 1', false: 'mp_force_assign_teams 0' },
+      },
+      persist: ['{autoTeams}'],
     },
     {
       /*
