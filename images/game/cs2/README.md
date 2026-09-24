@@ -21,7 +21,8 @@ vorige auf der Node läuft.
 | 4       | Workshop-Karte (ID, Start und Steuerung)            | läuft (0.0.7)    |
 | 4.1     | Workshop-Sammlung                                   | zurückgestellt   |
 | 5       | Alle Runden spielen (Start und Steuerung)           | läuft (0.0.8)    |
-| 5.0.1   | Workshop-Karte beim Start nachladen (Fundpunkt 349) | **dieses Image** |
+| 5.0.1   | Workshop-Karte beim Start nachladen (Fundpunkt 349) | läuft (0.0.9)    |
+| 5.0.2   | Kein Ruhezustand – Konsole antwortet auch leer      | **dieses Image** |
 | 5.1     | GOTV                                                | offen            |
 | 5.2     | GSLT (optional)                                     | offen            |
 | 6       | Updates zurückhalten                                | offen            |
