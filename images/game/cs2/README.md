@@ -26,8 +26,8 @@ vorige auf der Node läuft.
 | 5.0.3   | Zeilenweise Ausgabe – Antworten sofort im Panel     | läuft (0.0.11)   |
 | 5.1     | GOTV (eigener UDP-Port, Passwort wie der Server)    | läuft (0.0.12)   |
 | 5.2     | GSLT (optional)                                     | offen            |
-| 6       | Updates zurückhalten                                | offen            |
-| 7       | MetaMod + CounterStrikeSharp (Schalter)             | **dieses Image** |
+| 6       | Updates zurückhalten (Administration > Templates)   | **dieses Image** |
+| 7       | MetaMod + CounterStrikeSharp (Schalter)             | läuft (0.0.15)   |
 | 8       | Admins                                              | offen            |
 | 9–15    | je ein Plugin, WeaponPaints mit MariaDB zuletzt     | offen            |
 

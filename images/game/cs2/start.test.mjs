@@ -497,6 +497,36 @@ function grundlageArchive(kennung = 'alt') {
   };
 }
 
+describe('start.sh – Schritt 6: Updates zurückhalten', nurMitShell, () => {
+  const steamcmdLief = (lauf) => lauf.zeilen.some((zeile) => zeile.startsWith('steamcmd '));
+
+  it('lässt SteamCMD aus, solange Updates zurückgehalten sind und CS2 schon da ist', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+
+    const lauf = starte(ordner, { PALANTIR_UPDATES_HALTEN: 'true' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.ok(!steamcmdLief(lauf), lauf.stdout);
+    assert.ok(lauf.argv.includes('-dedicated'));
+  });
+
+  it('holt beim allerersten Start trotzdem – ohne Dateien gibt es nichts zurückzuhalten', () => {
+    const lauf = starte(arbeitsordner(), { PALANTIR_UPDATES_HALTEN: 'true' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.ok(steamcmdLief(lauf), lauf.stdout);
+  });
+
+  it('holt ohne den Schalter und bei jedem anderen Wert wie immer', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+
+    assert.ok(steamcmdLief(starte(ordner)));
+    assert.ok(steamcmdLief(starte(ordner, { PALANTIR_UPDATES_HALTEN: 'ja' })));
+  });
+});
+
 describe('Dockerfile – Schritt 7', () => {
   it('bringt ICU für die .NET-Laufzeit von CounterStrikeSharp mit', () => {
     // Ohne brach CounterStrikeSharp auf der Node ab, und CS2 stürzte mit.
