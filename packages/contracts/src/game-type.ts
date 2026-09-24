@@ -38,6 +38,13 @@ export interface GameConfigField {
   defaultValue: GameConfigValue;
   /** Auswahlwerte bei `select`; sonst leer. */
   options: string[];
+  /**
+   * Anzeigenamen für Auswahlwerte, z. B. `{ matchzy: 'MatchZy (Turniere)' }`
+   * (Betreiber-Wunsch 24.09.2026). Gespeichert und geschickt wird weiter der
+   * Wert selbst. Additiv und optional; ohne Eintrag zeigt die Oberfläche den
+   * Wert.
+   */
+  optionLabels?: Record<string, string>;
   /** Untergrenze bei `number`; `null`, wenn unbegrenzt. */
   min: number | null;
   /** Obergrenze bei `number`; `null`, wenn unbegrenzt. */
@@ -724,4 +731,32 @@ export interface GameLiveControl {
    * Spieler kurz getrennt werden.
    */
   readonly reloadsMap?: boolean;
+  /**
+   * **Wirkt erst mit einem Neustart** (CS2-Plugins, 24.09.2026). Keine
+   * Konsolenzeilen; die Werte landen in den Einstellungen, und bei laufendem
+   * Server bietet die Oberfläche „Übernehmen und neu starten“ an. `commands`
+   * bleibt dann leer.
+   */
+  readonly requiresRestart?: boolean;
+  /**
+   * Eingeklappt zeigen, mit einer Kurzzeile der aktuellen Werte und „Anpassen“
+   * zum Aufklappen – für Abschnitte mit vielen Feldern.
+   */
+  readonly collapsible?: boolean;
+  /**
+   * Die Beschreibungen der Felder zeigen. Sonst lässt die Steuerung sie weg,
+   * um kompakt zu bleiben.
+   */
+  readonly showHints?: boolean;
+  /**
+   * Gesperrt, solange ein anderes Feld einen der genannten Werte trägt, mit
+   * Hinweis – z. B. Bots, solange ein Spielmodus-Plugin sie selbst verwaltet.
+   * Verglichen wird als Text (`true`/`false` bei Schaltern). `{wert}` im
+   * Hinweis wird durch den Anzeigenamen des Werts ersetzt.
+   */
+  readonly disabledWhen?: {
+    readonly field: string;
+    readonly values: readonly string[];
+    readonly hint: string;
+  };
 }
