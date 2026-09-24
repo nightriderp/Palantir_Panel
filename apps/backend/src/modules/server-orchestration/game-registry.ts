@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.17',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.18',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3468,7 +3468,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   ],
   // Schritt 2 (23.09.2026): Name, Passwort, Spieler; Schritt 3: Karte, Modus, Bots;
   // Schritt 4: Workshop-Karte; Schritt 5: alle Runden spielen; Schritt 5.1: GOTV;
-  // Schritt 7: Plugin-Grundlage; Schritt 8: Admins.
+  // Schritt 7: Plugin-Grundlage; Schritt 8: Admins; Schritt 9: SimpleAdmin.
   configFields: [
     {
       key: 'serverName',
@@ -3620,6 +3620,21 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: null,
       lockedAfterCreate: false,
     },
+    {
+      // Schritt 9. Die Bibliotheken, die es braucht (MenuManager, PlayerSettings,
+      // AnyBaseLib), schaltet das Image mit ein.
+      key: 'pluginSimpleAdmin',
+      label: 'Plugin: SimpleAdmin',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Bann, Kick, Mute und Admin-Menü im Spiel (!admin). Gilt nur mit „Plugins laden“; Admins kommen aus dem Feld darüber.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
@@ -3633,6 +3648,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     gotv: 'CS2_GOTV',
     plugins: 'CS2_PLUGINS',
     admins: 'CS2_ADMINS',
+    pluginSimpleAdmin: 'CS2_PLUGIN_SIMPLEADMIN',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
   // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
@@ -3648,6 +3664,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'gotv',
     'plugins',
     'admins',
+    'pluginSimpleAdmin',
   ],
   /*
    * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die

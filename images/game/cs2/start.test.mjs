@@ -129,6 +129,7 @@ function starte(ordner, extra = {}) {
       PALANTIR_DATA_DIR: posix(ordner.daten),
       PALANTIR_LIB_DIR: LIB_ORDNER,
       PALANTIR_STEAMCMD_DIR: posix(ordner.vorlage),
+      CS2_SKRIPTE: posix(HIER.replace(/[\\/]$/u, '')),
       ...extra,
     },
   });
@@ -691,6 +692,127 @@ describe('start.sh – Schritt 7: Plugin-Grundlage', nurMitShell, () => {
 
   it('lehnt einen Plugin-Schalter ab, der weder true noch false ist', () => {
     assert.equal(starte(arbeitsordner(), { CS2_PLUGINS: 'ja' }).status, 78);
+  });
+});
+
+/**
+ * Schritt 9: einzelne Plugins. Eine eigene Plugin-Liste mit Archiven, die der
+ * Test baut – gepackt wie die echten (Bibliotheken ab `addons/`, SimpleAdmin ab
+ * `counterstrikesharp/`).
+ */
+function pluginListe() {
+  const wurzel = mkdtempSync(join(tmpdir(), 'palantir-cs2-plugins-'));
+  aufraeumen.push(wurzel);
+  const sh = (befehl) => spawnSync('sh', ['-c', befehl], { cwd: wurzel, encoding: 'utf8' });
+  const css = 'addons/counterstrikesharp';
+
+  sh(
+    [
+      `mkdir -p abl/${css}/shared/AnyBaseLib && echo x > abl/${css}/shared/AnyBaseLib/AnyBaseLib.dll`,
+      `mkdir -p ps/${css}/plugins/PlayerSettings && echo x > ps/${css}/plugins/PlayerSettings/PlayerSettings.dll`,
+      `mkdir -p mm/${css}/plugins/MenuManagerCore && echo x > mm/${css}/plugins/MenuManagerCore/MenuManagerCore.dll`,
+      'mkdir -p sa/counterstrikesharp/plugins/CS2-SimpleAdmin sa/counterstrikesharp/plugins/CS2-SimpleAdmin_FunCommands sa/counterstrikesharp/plugins/CS2-SimpleAdmin_StealthModule',
+      'echo x > sa/counterstrikesharp/plugins/CS2-SimpleAdmin/CS2-SimpleAdmin.dll',
+      'echo x > sa/counterstrikesharp/plugins/CS2-SimpleAdmin_FunCommands/f.dll',
+      'echo x > sa/counterstrikesharp/plugins/CS2-SimpleAdmin_StealthModule/s.dll',
+      '(cd abl && zip -qr ../abl.zip addons) && (cd ps && zip -qr ../ps.zip addons)',
+      '(cd mm && zip -qr ../mm.zip addons) && (cd sa && zip -qr ../sa.zip counterstrikesharp)',
+    ].join(' && '),
+  );
+
+  const summe = (datei) =>
+    createHash('sha256')
+      .update(readFileSync(join(wurzel, datei)))
+      .digest('hex');
+  const adresse = (datei) => `file://${posix(join(wurzel, datei))}`;
+  const zeilen = [
+    `anybaselib 1 ${adresse('abl.zip')} ${summe('abl.zip')} addons=addons -`,
+    `playersettings 1 ${adresse('ps.zip')} ${summe('ps.zip')} addons=addons PlayerSettings`,
+    `menumanager 1 ${adresse('mm.zip')} ${summe('mm.zip')} addons=addons MenuManagerCore`,
+    `simpleadmin 1 ${adresse('sa.zip')} ${summe('sa.zip')} counterstrikesharp=addons/counterstrikesharp CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands,CS2-SimpleAdmin_StealthModule`,
+  ];
+  writeFileSync(join(wurzel, 'plugins.list'), `${zeilen.join('\n')}\n`);
+
+  return { PALANTIR_CS2_PLUGINLISTE: posix(join(wurzel, 'plugins.list')) };
+}
+
+describe('start.sh – Schritt 9: SimpleAdmin', nurMitShell, () => {
+  const plugins = (ordner, ...teile) =>
+    join(ordner.daten, 'server', 'game', 'csgo', 'addons', 'counterstrikesharp', ...teile);
+
+  it('richtet SimpleAdmin samt der drei Bibliotheken ein', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...grundlageArchive(),
+      ...pluginListe(),
+      CS2_PLUGINS: 'true',
+      CS2_PLUGIN_SIMPLEADMIN: 'true',
+    });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    for (const pfad of [
+      ['shared', 'AnyBaseLib', 'AnyBaseLib.dll'],
+      ['plugins', 'PlayerSettings', 'PlayerSettings.dll'],
+      ['plugins', 'MenuManagerCore', 'MenuManagerCore.dll'],
+      ['plugins', 'CS2-SimpleAdmin', 'CS2-SimpleAdmin.dll'],
+      ['plugins', 'CS2-SimpleAdmin_FunCommands', 'f.dll'],
+    ]) {
+      assert.ok(existsSync(plugins(ordner, ...pfad)), pfad.join('/'));
+    }
+  });
+
+  it('schaltet SimpleAdmin ab, ohne etwas zu löschen, und holt es zurück', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const umgebung = { ...grundlageArchive(), ...pluginListe(), CS2_PLUGINS: 'true' };
+    starte(ordner, { ...umgebung, CS2_PLUGIN_SIMPLEADMIN: 'true' });
+    writeFileSync(plugins(ordner, 'plugins', 'CS2-SimpleAdmin', 'eigene.json'), '{}');
+
+    starte(ordner, { ...umgebung, CS2_PLUGIN_SIMPLEADMIN: 'false' });
+
+    assert.ok(!existsSync(plugins(ordner, 'plugins', 'CS2-SimpleAdmin')));
+    assert.ok(existsSync(plugins(ordner, 'plugins', 'disabled', 'CS2-SimpleAdmin', 'eigene.json')));
+    assert.ok(!existsSync(plugins(ordner, 'plugins', 'PlayerSettings')));
+
+    starte(ordner, { ...umgebung, CS2_PLUGIN_SIMPLEADMIN: 'true' });
+
+    assert.ok(existsSync(plugins(ordner, 'plugins', 'CS2-SimpleAdmin', 'eigene.json')));
+  });
+
+  it('startet nicht, wenn die Summe eines Plugins nicht passt', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const liste = pluginListe();
+    const inhalt = readFileSync(liste.PALANTIR_CS2_PLUGINLISTE, 'utf8').replace(
+      /^(simpleadmin \S+ \S+ )\S+/mu,
+      `$1${'0'.repeat(64)}`,
+    );
+    writeFileSync(liste.PALANTIR_CS2_PLUGINLISTE, inhalt);
+
+    const lauf = starte(ordner, {
+      ...grundlageArchive(),
+      ...liste,
+      CS2_PLUGINS: 'true',
+      CS2_PLUGIN_SIMPLEADMIN: 'true',
+    });
+
+    assert.equal(lauf.status, 69);
+    assert.deepEqual(lauf.argv, []);
+  });
+});
+
+describe('plugins.list', () => {
+  it('führt jede Zeile vollständig – Name, Fassung, Adresse, SHA-256, Zuordnung, Ordner', () => {
+    const zeilen = readFileSync(join(HIER, 'plugins.list'), 'utf8')
+      .split('\n')
+      .filter((zeile) => zeile.trim() !== '' && !zeile.startsWith('#'));
+
+    assert.ok(zeilen.length >= 4);
+    for (const zeile of zeilen) {
+      const teile = zeile.split(/\s+/u);
+      assert.equal(teile.length, 6, zeile);
+      assert.match(teile[2] ?? '', /^https:\/\/github\.com\//u, zeile);
+      assert.match(teile[3] ?? '', /^[0-9a-f]{64}$/u, zeile);
+      assert.match(teile[4] ?? '', /=/u, zeile);
+    }
   });
 });
 
