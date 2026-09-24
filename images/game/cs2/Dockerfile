@@ -18,9 +18,16 @@ RUN chmod 0755 /opt/palantir/start.sh
 # erst beim Start und nur, wenn der Schalter an ist – in den Datenordner, nicht
 # ins Image. Summen am 2026-09-24 gegen die Dateien selbst gerechnet; wer eine
 # Fassung ändert, erhöht VERSION.
-ENV CS2_METAMOD_VERSION=2.0.0-git1469 \
-    CS2_METAMOD_URL=https://mms.alliedmods.net/mmsdrop/2.0/mmsource-2.0.0-git1469-linux.tar.gz \
-    CS2_METAMOD_SHA256=a552e4cb1399ced15a1192880f1f6bdd3d16f930a9cb33bc9e45396a26f177ad \
+#
+# **MetaMod bewusst auf git1411** (31.08.2026), den letzten Build vor dem Umbau
+# auf KHook. Ab dem 08.09. lehnt MetaMod Plugins mit Schnittstelle 17 ab, und
+# jedes veröffentlichte CounterStrikeSharp bis v1.0.374 hat 17 – auf der Node:
+# „Plugin uses old SourceHook Metamod build … (17 < 18)" (CounterStrikeSharp
+# Issue #1415). Hochziehen erst zusammen mit einem CounterStrikeSharp, das
+# gegen KHook gebaut ist.
+ENV CS2_METAMOD_VERSION=2.0.0-git1411 \
+    CS2_METAMOD_URL=https://mms.alliedmods.net/mmsdrop/2.0/mmsource-2.0.0-git1411-linux.tar.gz \
+    CS2_METAMOD_SHA256=e3d4c3d457a1c86a5079e8bd8248a4a00361c7d0a3dce7c7e0c4c45458096649 \
     CS2_CSS_VERSION=v1.0.374 \
     CS2_CSS_URL=https://github.com/roflmuffin/CounterStrikeSharp/releases/download/v1.0.374/counterstrikesharp-with-runtime-linux-1.0.374.zip \
     CS2_CSS_SHA256=22a24aa482e226ad0dcdc72cec03e1927d267eb5a1566094e98809a06dcc6792

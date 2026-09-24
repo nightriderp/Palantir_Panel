@@ -471,7 +471,7 @@ const nurMitZip = {
       : 'Braucht sh, zip und unzip.',
 };
 
-function grundlageArchive() {
+function grundlageArchive(kennung = 'alt') {
   const wurzel = mkdtempSync(join(tmpdir(), 'palantir-cs2-grundlage-'));
   aufraeumen.push(wurzel);
   const sh = (befehl) => spawnSync('sh', ['-c', befehl], { cwd: wurzel, encoding: 'utf8' });
@@ -479,6 +479,7 @@ function grundlageArchive() {
   sh(
     'mkdir -p mm/addons/metamod css/addons/counterstrikesharp/configs && ' +
       'echo "; eigene Plugins" > mm/addons/metamod/metaplugins.ini && ' +
+      `echo "${kennung}" > mm/addons/metamod/fassung.txt && ` +
       'echo "{}" > css/addons/counterstrikesharp/configs/core.example.json && ' +
       'tar -czf metamod.tar.gz -C mm addons && (cd css && zip -qr ../css.zip addons)',
   );
@@ -563,6 +564,20 @@ describe('start.sh – Schritt 7: Plugin-Grundlage', nurMitShell, () => {
       assert.equal(readFileSync(ini, 'utf8'), 'addons/meins\n');
     },
   );
+
+  it('räumt bei einem MetaMod-Wechsel Reste der alten Fassung weg', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { ...grundlageArchive(), CS2_PLUGINS: 'true' });
+    const metamod = join(ordner.daten, 'server', 'game', 'csgo', 'addons', 'metamod');
+    writeFileSync(join(metamod, 'rest-der-alten-fassung.so'), 'alt');
+    writeFileSync(join(metamod, 'metaplugins.ini'), 'addons/meins\n');
+
+    // Andere Archive, andere Summen: eine neue Fassung.
+    starte(ordner, { ...grundlageArchive('neu'), CS2_PLUGINS: 'true' });
+
+    assert.ok(!existsSync(join(metamod, 'rest-der-alten-fassung.so')));
+    assert.equal(readFileSync(join(metamod, 'metaplugins.ini'), 'utf8'), 'addons/meins\n');
+  });
 
   it('nimmt MetaMod beim Abschalten wieder aus gameinfo.gi', nurMitZip, () => {
     const ordner = arbeitsordner();

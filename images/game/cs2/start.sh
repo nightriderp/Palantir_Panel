@@ -149,6 +149,12 @@ grundlage_legen() {
     cp "${ADDONS}/metamod/metaplugins.ini" "${ablage}/metaplugins.ini.betreiber"
   fi
 
+  # MetaMod bei einem Fassungswechsel erst wegräumen: Ein älterer Build über
+  # einem neueren ließe dessen zusätzliche Dateien liegen (git1469 → git1411,
+  # 19 MB über 6,9 MB). `metaplugins.ini` ist oben gesichert; eigene
+  # MetaMod-Plugins liegen in eigenen Ordnern unter `addons/`.
+  rm -rf "${ADDONS}/metamod" "${ADDONS}/metamod.vdf" "${ADDONS}/metamod_x64.vdf"
+
   if ! tar -xzf "${ablage}/metamod.tar.gz" -C "$CSGO"; then
     palantir_log 'Das MetaMod-Archiv liess sich nicht auspacken.'
     return 1
