@@ -86,6 +86,35 @@ describe('DetailHeader – Adresse kopieren', () => {
   it('kopiert ohne Vorsatz die Adresse allein', () => {
     expect(mitAdresse()).toHaveBeenCalledWith('cs.example.tld:25003');
   });
+
+  it('zeigt weitere Adressen (GOTV) und kopiert sie mit Vorsatz', () => {
+    const onCopyAddress = vi.fn();
+    const server = {
+      ...serverFixture({ id: 'srv-1', permissions: ownerPermissions() }),
+      address: {
+        hostname: 'cs.example.tld',
+        port: 25003,
+        copyPrefix: 'connect ',
+        extra: [{ label: 'GOTV', port: 25004 }],
+      },
+    };
+
+    render(
+      <DetailHeader
+        server={server}
+        busy={false}
+        onLifecycle={() => undefined}
+        onUpdate={() => undefined}
+        onOpenSettings={() => undefined}
+        onDelete={() => undefined}
+        onCopyAddress={onCopyAddress}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle('GOTV-Adresse kopieren'));
+
+    expect(onCopyAddress).toHaveBeenCalledWith('connect cs.example.tld:25004');
+  });
 });
 
 describe('DetailHeader – Spielbilder', () => {

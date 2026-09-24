@@ -139,6 +139,50 @@ describe('toGameServerDto – unbekannter Spieltyp (Fundpunkt 247)', () => {
   });
 });
 
+describe('toGameServerDto – weitere Adressen (CS2 GOTV)', () => {
+  const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
+
+  function cs2(gotv: boolean): ServerRecord {
+    return {
+      ...serverMit('cs2'),
+      configJson: { gotv },
+      assignedPorts: [
+        {
+          publicPort: 25_003,
+          containerPort: 27_015,
+          protocol: 'tcp',
+          label: 'Spiel-Port',
+          primary: true,
+        },
+        {
+          publicPort: 25_003,
+          containerPort: 27_015,
+          protocol: 'udp',
+          label: 'Spiel-Port',
+          primary: false,
+        },
+        {
+          publicPort: 25_004,
+          containerPort: 27_020,
+          protocol: 'udp',
+          label: 'GOTV',
+          primary: false,
+        },
+      ],
+    } as ServerRecord;
+  }
+
+  it('zeigt GOTV, solange der Schalter an ist', () => {
+    expect(toGameServerDto(cs2(true), kontext(registry)).address?.extra).toEqual([
+      { label: 'GOTV', port: 25_004 },
+    ]);
+  });
+
+  it('lässt GOTV weg, wenn der Schalter aus ist – hinter der Adresse antwortete nichts', () => {
+    expect(toGameServerDto(cs2(false), kontext(registry)).address).not.toHaveProperty('extra');
+  });
+});
+
 describe('toGameServerDto – Adresse kopieren', () => {
   const registry = createGameRegistry(3, ALLE_GAME_TYPE_DEFINITIONS);
 

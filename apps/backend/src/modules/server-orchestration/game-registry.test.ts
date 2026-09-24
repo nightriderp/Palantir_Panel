@@ -1546,7 +1546,7 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.dockerImage).toBe(`ghcr.io/nightriderp/palantir-game-cs2:${version}`);
   });
 
-  it('hat nach Schritt 5 genau diese Felder', () => {
+  it('hat nach Schritt 5.1 genau diese Felder', () => {
     expect(CS2_GAME_TYPE.configFields.map((feld) => feld.key)).toEqual([
       'serverName',
       'serverPassword',
@@ -1556,7 +1556,21 @@ describe('Counter-Strike 2', () => {
       'bots',
       'workshopMap',
       'allRounds',
+      'gotv',
     ]);
+  });
+
+  it('führt GOTV als eigenen UDP-Port, drinnen wie draußen, sichtbar nur mit Schalter', () => {
+    const gotv = CS2_GAME_TYPE.ports.find((port) => port.label === 'GOTV');
+
+    expect(gotv).toMatchObject({
+      containerPort: 27_020,
+      protocol: 'udp',
+      primary: false,
+      usesPublicPortNumber: true,
+      envVar: 'CS2_TV_PORT',
+      extraAddress: { whenConfig: 'gotv' },
+    });
   });
 
   it('bietet die neun offiziellen Karten, „workshop“ und fünf Modi an, Bots 0 bis 10', () => {

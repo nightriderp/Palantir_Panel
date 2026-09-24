@@ -20,6 +20,7 @@ import {
   type ServerMemberLevel,
   buildServerHostname,
   type GameTypeDefinition,
+  type ServerExtraAddress,
 } from '@palantir/contracts';
 import { type PermissionActor } from '../rbac/index.js';
 import { type GameRegistry } from './game-registry.js';
@@ -91,6 +92,7 @@ function ersatzDefinition(
   | 'consoleQuickCommands'
   | 'console'
   | 'addressCopyPrefix'
+  | 'ports'
 > {
   return {
     name: `Unbekannter Spieltyp (${gameType})`,
@@ -101,7 +103,41 @@ function ersatzDefinition(
     supportsVirtualHostRouting: false,
     consoleQuickCommands: [],
     console: { kind: 'none' },
+    ports: [],
   };
+}
+
+/**
+ * Weitere Adressen (CS2 GOTV): Ports mit `extraAddress`, denen der Server eine
+ * Nummer hat – mit `whenConfig` nur, solange der Schalter an ist. Ein Port mit
+ * beiden Protokollen hat zwei Zuweisungen mit derselben Nummer, gezeigt wird
+ * er einmal. Ohne solche Ports fehlt das Feld.
+ */
+function weitereAdressen(
+  definition: Pick<GameTypeDefinition, 'ports'>,
+  server: ServerRecord,
+): { extra?: ServerExtraAddress[] } {
+  const extra: ServerExtraAddress[] = [];
+
+  for (const port of definition.ports) {
+    if (port.extraAddress === undefined) {
+      continue;
+    }
+
+    const schalter = port.extraAddress.whenConfig;
+    if (schalter !== undefined && server.configJson[schalter] !== true) {
+      continue;
+    }
+
+    const zuweisung = server.assignedPorts.find(
+      (eintrag) => eintrag.containerPort === port.containerPort,
+    );
+    if (zuweisung !== undefined) {
+      extra.push({ label: port.label, port: zuweisung.publicPort });
+    }
+  }
+
+  return extra.length === 0 ? {} : { extra };
 }
 
 export function toGameServerDto(server: ServerRecord, context: ServerDtoContext): GameServerDto {
@@ -173,6 +209,7 @@ export function toGameServerDto(server: ServerRecord, context: ServerDtoContext)
           ...(definition.addressCopyPrefix === undefined
             ? {}
             : { copyPrefix: definition.addressCopyPrefix }),
+          ...weitereAdressen(definition, server),
         }
       : null,
     assignedPorts: server.assignedPorts.map((assignment) => assignment.publicPort),

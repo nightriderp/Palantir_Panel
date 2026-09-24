@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.11',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.12',
   defaultEnv: {},
   ports: [
     {
@@ -3447,9 +3447,24 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       usesPublicPortNumber: true,
       envVar: 'CS2_PORT',
     },
+    {
+      /*
+       * Schritt 5.1: GOTV, der Zuschauerzugang. Eigene Nummer aus dem Pool,
+       * nur UDP, drinnen wie draußen (wie der Spielport). Vergeben wird sie
+       * immer – auch bestehende Server bekommen sie beim nächsten Neuaufbau
+       * (`fehlendePortsVergeben`) –, gezeigt wird sie nur mit Schalter.
+       */
+      containerPort: 27_020,
+      protocol: 'udp',
+      primary: false,
+      label: 'GOTV',
+      usesPublicPortNumber: true,
+      envVar: 'CS2_TV_PORT',
+      extraAddress: { whenConfig: 'gotv' },
+    },
   ],
   // Schritt 2 (23.09.2026): Name, Passwort, Spieler; Schritt 3: Karte, Modus, Bots;
-  // Schritt 4: Workshop-Karte; Schritt 5: alle Runden spielen.
+  // Schritt 4: Workshop-Karte; Schritt 5: alle Runden spielen; Schritt 5.1: GOTV.
   configFields: [
     {
       key: 'serverName',
@@ -3558,6 +3573,19 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: null,
       lockedAfterCreate: false,
     },
+    {
+      key: 'gotv',
+      label: 'GOTV (Zuschauen)',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Zuschauer verbinden sich über eine eigene Adresse und sehen das Spiel mit kurzer Verzögerung. Es gilt dasselbe Passwort wie für den Server.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
@@ -3568,6 +3596,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     bots: 'CS2_BOTS',
     workshopMap: 'CS2_WORKSHOP_MAP',
     allRounds: 'CS2_ALL_ROUNDS',
+    gotv: 'CS2_GOTV',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
   // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
@@ -3580,6 +3609,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'bots',
     'workshopMap',
     'allRounds',
+    'gotv',
   ],
   /*
    * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die

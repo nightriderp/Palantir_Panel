@@ -366,6 +366,34 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.deepEqual(kaputt.argv, []);
   });
 
+  it('schaltet GOTV auf dem Port des Panels ein – vor dem ersten Kartenladen (Schritt 5.1)', () => {
+    const lauf = starte(arbeitsordner(), { CS2_GOTV: 'true', CS2_TV_PORT: '25004' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.equal(nach(lauf.argv, '+tv_enable'), '1');
+    assert.equal(nach(lauf.argv, '+tv_port'), '25004');
+    assert.ok(lauf.argv.indexOf('+tv_enable') < lauf.argv.indexOf('+map'));
+  });
+
+  it('lässt GOTV ohne Schalter aus', () => {
+    const lauf = starte(arbeitsordner(), { CS2_TV_PORT: '25004' });
+
+    assert.equal(nach(lauf.argv, '+tv_enable'), null);
+    assert.equal(nach(lauf.argv, '+tv_port'), null);
+  });
+
+  it('gibt GOTV dasselbe Passwort wie dem Server', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { CS2_GOTV: 'true', CS2_PASSWORD: 'geheim' });
+
+    assert.match(datei(ordner, 'palantir.cfg'), /^tv_password "geheim"$/mu);
+  });
+
+  it('startet nicht mit ungültigem GOTV-Schalter oder -Port', () => {
+    assert.equal(starte(arbeitsordner(), { CS2_GOTV: 'ja' }).status, 78);
+    assert.equal(starte(arbeitsordner(), { CS2_GOTV: 'true', CS2_TV_PORT: '1; quit' }).status, 78);
+  });
+
   it('schaltet den Ruhezustand ab – sonst antwortet die Konsole leer nicht', () => {
     const ordner = arbeitsordner();
     starte(ordner);
