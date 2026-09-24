@@ -631,6 +631,64 @@ describe('start.sh – Schritt 7: Plugin-Grundlage', nurMitShell, () => {
     assert.doesNotMatch(gameinfo(ordner), /metamod/u);
   });
 
+  const admins = (ordner) =>
+    join(
+      ordner.daten,
+      'server',
+      'game',
+      'csgo',
+      'addons',
+      'counterstrikesharp',
+      'configs',
+      'admins.json',
+    );
+
+  it('schreibt die Admins aus dem Panel mit vollen Rechten (Schritt 8)', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...grundlageArchive(),
+      CS2_PLUGINS: 'true',
+      CS2_ADMINS: '76561198000000001, 76561198000000002;76561198000000003',
+    });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    const datei = JSON.parse(readFileSync(admins(ordner), 'utf8'));
+    assert.deepEqual(Object.keys(datei), [
+      'palantir-76561198000000001',
+      'palantir-76561198000000002',
+      'palantir-76561198000000003',
+    ]);
+    assert.deepEqual(datei['palantir-76561198000000001'], {
+      identity: '76561198000000001',
+      immunity: 100,
+      flags: ['@css/root'],
+    });
+  });
+
+  it('bricht bei einer ungültigen SteamID64 ab, statt sie still zu übergehen', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...grundlageArchive(),
+      CS2_PLUGINS: 'true',
+      CS2_ADMINS: '76561198000000001, "x": 1',
+    });
+
+    assert.equal(lauf.status, 78);
+    assert.deepEqual(lauf.argv, []);
+    assert.ok(!existsSync(admins(ordner)));
+  });
+
+  it('lässt eine von Hand gepflegte admins.json bei leerem Feld in Ruhe', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const archive = grundlageArchive();
+    starte(ordner, { ...archive, CS2_PLUGINS: 'true' });
+    writeFileSync(admins(ordner), '{ "von-hand": {} }\n');
+
+    starte(ordner, { ...archive, CS2_PLUGINS: 'true', CS2_ADMINS: '' });
+
+    assert.equal(readFileSync(admins(ordner), 'utf8'), '{ "von-hand": {} }\n');
+  });
+
   it('lehnt einen Plugin-Schalter ab, der weder true noch false ist', () => {
     assert.equal(starte(arbeitsordner(), { CS2_PLUGINS: 'ja' }).status, 78);
   });
