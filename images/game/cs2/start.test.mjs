@@ -719,6 +719,8 @@ function pluginListe() {
       '(cd mm && zip -qr ../mm.zip addons) && (cd sa && zip -qr ../sa.zip counterstrikesharp)',
       `mkdir -p mz/${css}/plugins/MatchZy mz/cfg/MatchZy && echo x > mz/${css}/plugins/MatchZy/MatchZy.dll`,
       'echo "// Messerrunde" > mz/cfg/MatchZy/knife.cfg && (cd mz && zip -qr ../mz.zip addons cfg)',
+      `mkdir -p rt/${css}/plugins/RetakesPlugin/map_config && echo x > rt/${css}/plugins/RetakesPlugin/RetakesPlugin.dll`,
+      `echo "{}" > rt/${css}/plugins/RetakesPlugin/map_config/de_dust2.json && (cd rt && zip -qr ../rt.zip addons)`,
     ].join(' && '),
   );
 
@@ -733,6 +735,7 @@ function pluginListe() {
     `menumanager 1 ${adresse('mm.zip')} ${summe('mm.zip')} addons=addons MenuManagerCore`,
     `simpleadmin 1 ${adresse('sa.zip')} ${summe('sa.zip')} counterstrikesharp=addons/counterstrikesharp CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands,CS2-SimpleAdmin_StealthModule`,
     `matchzy 1 ${adresse('mz.zip')} ${summe('mz.zip')} addons=addons,cfg=cfg MatchZy`,
+    `retakes 1 ${adresse('rt.zip')} ${summe('rt.zip')} addons=addons RetakesPlugin`,
   ];
   writeFileSync(join(wurzel, 'plugins.list'), `${zeilen.join('\n')}\n`);
 
@@ -827,6 +830,45 @@ describe('start.sh – Schritt 10: MatchZy', nurMitShell, () => {
       );
     },
   );
+});
+
+describe('start.sh – Schritt 11: Retakes', nurMitShell, () => {
+  it('legt Retakes samt Kartenkonfigurationen ab', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...grundlageArchive(),
+      ...pluginListe(),
+      CS2_PLUGINS: 'true',
+      CS2_PLUGIN_RETAKES: 'true',
+    });
+    const plugin = join(
+      ordner.daten,
+      'server',
+      'game',
+      'csgo',
+      'addons',
+      'counterstrikesharp',
+      'plugins',
+      'RetakesPlugin',
+    );
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.ok(existsSync(join(plugin, 'RetakesPlugin.dll')));
+    assert.ok(existsSync(join(plugin, 'map_config', 'de_dust2.json')));
+  });
+
+  it('warnt, wenn MatchZy und Retakes beide an sind – startet aber', nurMitZip, () => {
+    const lauf = starte(arbeitsordner(), {
+      ...grundlageArchive(),
+      ...pluginListe(),
+      CS2_PLUGINS: 'true',
+      CS2_PLUGIN_RETAKES: 'true',
+      CS2_PLUGIN_MATCHZY: 'true',
+    });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.match(lauf.stdout, /MatchZy und Retakes sind beide an/u);
+  });
 });
 
 describe('plugins.list', () => {

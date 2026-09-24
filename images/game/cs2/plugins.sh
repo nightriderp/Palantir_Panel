@@ -151,6 +151,10 @@ plugins_gewuenscht() {
     gewuenscht="${gewuenscht} matchzy"
   fi
 
+  if [ "${CS2_PLUGIN_RETAKES:-}" = true ]; then
+    gewuenscht="${gewuenscht} retakes"
+  fi
+
   printf '%s\n' "$gewuenscht"
 }
 
@@ -172,6 +176,13 @@ plugins_abgleichen() {
 
   gewuenscht="$(plugins_gewuenscht)"
   fehler=0
+
+  # MatchZy und Retakes wollen beide den Ablauf einer Runde bestimmen. Kein
+  # Abbruch – wie die Schalter zusammenspielen, klärt Fundpunkt 361 –, aber ein
+  # Hinweis, der beim Suchen hilft.
+  if enthalten matchzy "$gewuenscht" && enthalten retakes "$gewuenscht"; then
+    palantir_log 'Hinweis: MatchZy und Retakes sind beide an - beide steuern die Runden und stoeren sich.'
+  fi
 
   # `read` aus einer Datei, nicht aus einer Pipe: In einer Pipe liefe die
   # Schleife in einer Nebenshell, und `fehler` wäre danach wieder 0.
