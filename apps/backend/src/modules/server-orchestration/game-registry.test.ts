@@ -1628,6 +1628,10 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.stopCommand).toBe('quit');
   });
 
+  it('lässt Updates zurückhalten (Schritt 6)', () => {
+    expect(CS2_GAME_TYPE.supportsUpdateHold).toBe(true);
+  });
+
   it('gibt dem ersten Start eine Stunde – gut 30 GB über eine Heimleitung', () => {
     expect(CS2_GAME_TYPE.startupTimeoutSeconds).toBeGreaterThanOrEqual(3_600);
   });

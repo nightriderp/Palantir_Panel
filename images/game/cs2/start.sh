@@ -30,7 +30,19 @@ palantir_intern_anlegen
 
 # -----------------------------------------------------------------------------
 # 1. Serverdateien – bei jedem Start abgeglichen, wie bei allen SteamCMD-Spielen.
-steam_app_holen 730 "$SERVER"
+#
+# **Außer, der Administrator hält Updates zurück** (Schritt 6, Administration >
+# Templates, `PALANTIR_UPDATES_HALTEN`). CounterStrikeSharp hängt an den
+# Innereien von CS2 und bricht nach einem Update von Valve regelmäßig, bis es
+# nachzieht – dann lieber auf der alten Fassung spielen als gar nicht. Beim
+# allerersten Start wird trotzdem geholt: Ohne Dateien gibt es nichts
+# zurückzuhalten. Nur `true` hält zurück; alles andere holt wie immer.
+if [ "${PALANTIR_UPDATES_HALTEN:-}" = true ] && [ -f "$BINAERDATEI" ]; then
+  palantir_log 'Updates zurueckgehalten (Administration > Templates) - SteamCMD bleibt aus.'
+  palantir_log 'Spieler mit einem neueren CS2 kommen dann womoeglich nicht auf den Server.'
+else
+  steam_app_holen 730 "$SERVER"
+fi
 
 if [ ! -f "$BINAERDATEI" ]; then
   palantir_log "Nach dem Holen fehlt ${BINAERDATEI}."
