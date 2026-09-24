@@ -101,6 +101,7 @@ function arbeitsordner({ starter = true } = {}) {
       'echo "cwd $(pwd)"',
       'echo "ld $LD_LIBRARY_PATH"',
       'echo "preload ${LD_PRELOAD:-}"',
+      'echo "tmpdir ${TMPDIR:-}"',
       'echo "stdbuf ${_STDBUF_O:-}"',
       'for arg in "$@"; do printf "argv %s\\n" "$arg"; done',
       // Wie CS2 am Ende des Starts (Fundpunkt 349).
@@ -478,7 +479,8 @@ function grundlageArchive(kennung = 'alt') {
   const sh = (befehl) => spawnSync('sh', ['-c', befehl], { cwd: wurzel, encoding: 'utf8' });
 
   sh(
-    'mkdir -p mm/addons/metamod css/addons/counterstrikesharp/configs && ' +
+    'mkdir -p mm/addons/metamod css/addons/counterstrikesharp/configs css/addons/counterstrikesharp/gamedata && ' +
+      'echo "{}" > css/addons/counterstrikesharp/gamedata/gamedata.json && ' +
       'echo "; eigene Plugins" > mm/addons/metamod/metaplugins.ini && ' +
       `echo "${kennung}" > mm/addons/metamod/fassung.txt && ` +
       'echo "{}" > css/addons/counterstrikesharp/configs/core.example.json && ' +
@@ -868,6 +870,44 @@ describe('start.sh – Schritt 11: Retakes', nurMitShell, () => {
 
     assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
     assert.match(lauf.stdout, /MatchZy und Retakes sind beide an/u);
+  });
+});
+
+describe('start.sh – Nachträge zu Schritt 7 (24.09.2026)', nurMitShell, () => {
+  it('gibt CS2 einen Temp-Ordner im Datenordner – /tmp ist ohne Ausführrecht', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner);
+    const zeile = lauf.zeilen.find((z) => z.startsWith('tmpdir ')) ?? '';
+
+    assert.match(zeile, /\/daten\/\.palantir\/tmp$/u);
+    assert.ok(existsSync(join(ordner.daten, '.palantir', 'tmp')));
+  });
+
+  it('spielt die Gamedata für CS2 1.41.8 über die von CounterStrikeSharp', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, { ...grundlageArchive(), CS2_PLUGINS: 'true' });
+    const ziel = join(
+      ordner.daten,
+      'server',
+      'game',
+      'csgo',
+      'addons',
+      'counterstrikesharp',
+      'gamedata',
+      'gamedata.json',
+    );
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.equal(readFileSync(ziel, 'utf8'), readFileSync(join(HIER, 'cs2-gamedata.json'), 'utf8'));
+  });
+
+  it('führt in cs2-gamedata.json die korrigierten Offsets und CheckTransmit', () => {
+    const daten = JSON.parse(readFileSync(join(HIER, 'cs2-gamedata.json'), 'utf8'));
+
+    assert.equal(daten.CCSPlayerController_ChangeTeam.offsets.linux, 104);
+    assert.equal(daten.CCSPlayerController_Respawn.offsets.linux, 276);
+    // Von main entfernt, von v1.0.374 noch gebraucht.
+    assert.ok(daten.CheckTransmit?.signatures?.linux);
   });
 });
 
