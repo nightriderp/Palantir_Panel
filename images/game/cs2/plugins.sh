@@ -147,6 +147,10 @@ plugins_gewuenscht() {
     gewuenscht="${gewuenscht} simpleadmin anybaselib playersettings menumanager"
   fi
 
+  if [ "${CS2_PLUGIN_MATCHZY:-}" = true ]; then
+    gewuenscht="${gewuenscht} matchzy"
+  fi
+
   printf '%s\n' "$gewuenscht"
 }
 

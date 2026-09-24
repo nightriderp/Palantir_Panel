@@ -717,6 +717,8 @@ function pluginListe() {
       'echo x > sa/counterstrikesharp/plugins/CS2-SimpleAdmin_StealthModule/s.dll',
       '(cd abl && zip -qr ../abl.zip addons) && (cd ps && zip -qr ../ps.zip addons)',
       '(cd mm && zip -qr ../mm.zip addons) && (cd sa && zip -qr ../sa.zip counterstrikesharp)',
+      `mkdir -p mz/${css}/plugins/MatchZy mz/cfg/MatchZy && echo x > mz/${css}/plugins/MatchZy/MatchZy.dll`,
+      'echo "// Messerrunde" > mz/cfg/MatchZy/knife.cfg && (cd mz && zip -qr ../mz.zip addons cfg)',
     ].join(' && '),
   );
 
@@ -730,6 +732,7 @@ function pluginListe() {
     `playersettings 1 ${adresse('ps.zip')} ${summe('ps.zip')} addons=addons PlayerSettings`,
     `menumanager 1 ${adresse('mm.zip')} ${summe('mm.zip')} addons=addons MenuManagerCore`,
     `simpleadmin 1 ${adresse('sa.zip')} ${summe('sa.zip')} counterstrikesharp=addons/counterstrikesharp CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands,CS2-SimpleAdmin_StealthModule`,
+    `matchzy 1 ${adresse('mz.zip')} ${summe('mz.zip')} addons=addons,cfg=cfg MatchZy`,
   ];
   writeFileSync(join(wurzel, 'plugins.list'), `${zeilen.join('\n')}\n`);
 
@@ -797,6 +800,33 @@ describe('start.sh – Schritt 9: SimpleAdmin', nurMitShell, () => {
     assert.equal(lauf.status, 69);
     assert.deepEqual(lauf.argv, []);
   });
+});
+
+describe('start.sh – Schritt 10: MatchZy', nurMitShell, () => {
+  it(
+    'legt Plugin und cfg/MatchZy ab – ohne die Konfigurationen ginge die Messerrunde nicht',
+    nurMitZip,
+    () => {
+      const ordner = arbeitsordner();
+      const lauf = starte(ordner, {
+        ...grundlageArchive(),
+        ...pluginListe(),
+        CS2_PLUGINS: 'true',
+        CS2_PLUGIN_MATCHZY: 'true',
+      });
+      const csgo = join(ordner.daten, 'server', 'game', 'csgo');
+
+      assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+      assert.ok(
+        existsSync(join(csgo, 'addons', 'counterstrikesharp', 'plugins', 'MatchZy', 'MatchZy.dll')),
+      );
+      assert.ok(existsSync(join(csgo, 'cfg', 'MatchZy', 'knife.cfg')));
+      // SimpleAdmin bleibt aus – jedes Plugin hat seinen eigenen Schalter.
+      assert.ok(
+        !existsSync(join(csgo, 'addons', 'counterstrikesharp', 'plugins', 'CS2-SimpleAdmin')),
+      );
+    },
+  );
 });
 
 describe('plugins.list', () => {
