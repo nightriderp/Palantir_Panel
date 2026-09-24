@@ -12,12 +12,14 @@ import { LiveControlsCard } from './LiveControlsCard';
 const api = vi.hoisted(() => ({
   fetchGameTypes: vi.fn(),
   applyLiveValues: vi.fn(),
+  runLifecycleAction: vi.fn(),
 }));
 
 vi.mock('@/lib/api/servers', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   fetchGameTypes: api.fetchGameTypes,
   applyLiveValues: api.applyLiveValues,
+  runLifecycleAction: api.runLifecycleAction,
 }));
 
 function feld(overrides: Partial<GameConfigField> & Pick<GameConfigField, 'key' | 'label'>) {
@@ -75,6 +77,12 @@ function zeichne(
 beforeEach(() => {
   api.fetchGameTypes.mockReset();
   api.applyLiveValues.mockReset();
+  api.runLifecycleAction.mockReset();
+  api.runLifecycleAction.mockResolvedValue({
+    success: true,
+    data: server({ id: 's1', status: 'running' }),
+    error: null,
+  });
   api.fetchGameTypes.mockResolvedValue({ success: true, data: [MIT_LIVE], error: null });
   api.applyLiveValues.mockImplementation((_id: string, werte: Record<string, unknown>) =>
     Promise.resolve({
@@ -168,6 +176,115 @@ describe('LiveControlsCard', () => {
 
     await waitFor(() => {
       expect(api.applyLiveValues).toHaveBeenCalledWith('s1', { allRounds: true });
+    });
+  });
+
+  describe('Plugins (Fundpunkt 361)', () => {
+    const MIT_PLUGINS: GameTypeDto = gameType({
+      configFields: [
+        feld({ key: 'bots', label: 'Bots', type: 'number', defaultValue: 0, min: 0, max: 10 }),
+        feld({ key: 'plugins', label: 'Plugins laden', type: 'toggle', defaultValue: false }),
+        feld({
+          key: 'modePlugin',
+          label: 'Spielmodus-Plugin',
+          defaultValue: 'none',
+          options: ['none', 'matchzy', 'retakes'],
+          optionLabels: { none: 'Keins', matchzy: 'MatchZy (Turniere)', retakes: 'Retakes' },
+        }),
+      ],
+      liveControls: [
+        {
+          id: 'bots',
+          label: 'Bots',
+          fields: ['bots'],
+          commands: ['bot_quota {bots}'],
+          disabledWhen: {
+            field: 'modePlugin',
+            values: ['matchzy', 'retakes'],
+            hint: 'Bots verwaltet {wert} selbst.',
+          },
+        },
+        {
+          id: 'plugins',
+          label: 'Plugins',
+          fields: ['plugins', 'modePlugin'],
+          commands: [],
+          requiresRestart: true,
+          collapsible: true,
+          showHints: true,
+        },
+      ],
+    });
+
+    function mitPlugins(
+      status: 'running' | 'stopped',
+      config: Record<string, string | number | boolean>,
+    ) {
+      api.fetchGameTypes.mockResolvedValue({ success: true, data: [MIT_PLUGINS], error: null });
+      const onChanged = vi.fn();
+      render(
+        <ToastProvider>
+          <LiveControlsCard
+            server={{ ...server({ id: 's1', status }), config }}
+            onChanged={onChanged}
+          />
+        </ToastProvider>,
+      );
+
+      return { onChanged };
+    }
+
+    it('zeigt den Abschnitt eingeklappt mit Kurzzeile und klappt mit „Anpassen“ auf', async () => {
+      mitPlugins('running', { plugins: true, modePlugin: 'retakes' });
+
+      expect(await screen.findByText('Plugins laden · Retakes')).toBeTruthy();
+      expect(screen.queryByRole('combobox', { name: 'Spielmodus-Plugin' })).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Anpassen' }));
+
+      const auswahl = screen.getByRole('combobox', {
+        name: 'Spielmodus-Plugin',
+      }) as HTMLSelectElement;
+      expect(auswahl.value).toBe('retakes');
+      // Anzeigenamen statt der gespeicherten Werte.
+      expect(screen.getByRole('option', { name: 'MatchZy (Turniere)' })).toBeTruthy();
+    });
+
+    it('sperrt die Bots, solange ein Spielmodus-Plugin sie verwaltet, und sagt warum', async () => {
+      mitPlugins('running', { plugins: true, modePlugin: 'retakes', bots: 3 });
+
+      const bots = (await screen.findByRole('spinbutton', { name: 'Bots' })) as HTMLInputElement;
+      expect(bots.disabled).toBe(true);
+      expect(screen.getByText('Bots verwaltet Retakes selbst.')).toBeTruthy();
+    });
+
+    it('übernimmt Plugin-Änderungen am laufenden Server und startet neu', async () => {
+      const { onChanged } = mitPlugins('running', { plugins: true, modePlugin: 'none' });
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anpassen' }));
+      fireEvent.change(screen.getByRole('combobox', { name: 'Spielmodus-Plugin' }), {
+        target: { value: 'matchzy' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Übernehmen & neu starten' }));
+
+      await waitFor(() => {
+        expect(api.runLifecycleAction).toHaveBeenCalledWith('s1', 'restart');
+      });
+      expect(api.applyLiveValues).toHaveBeenCalledWith('s1', { modePlugin: 'matchzy' });
+      expect(onChanged).toHaveBeenCalledTimes(2);
+    });
+
+    it('startet bei ausgeschaltetem Server nicht neu', async () => {
+      mitPlugins('stopped', { plugins: false, modePlugin: 'none' });
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Anpassen' }));
+      fireEvent.click(screen.getByRole('switch', { name: 'Plugins laden' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
+
+      await waitFor(() => {
+        expect(api.applyLiveValues).toHaveBeenCalledWith('s1', { plugins: true });
+      });
+      expect(api.runLifecycleAction).not.toHaveBeenCalled();
     });
   });
 

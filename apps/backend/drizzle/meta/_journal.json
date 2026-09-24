@@ -351,6 +351,13 @@
       "when": 1790196179526,
       "tag": "0049_rechte_aufteilen",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790283216683,
+      "tag": "0050_cs2_spielmodus_plugin",
+      "breakpoints": true
     }
   ]
 }

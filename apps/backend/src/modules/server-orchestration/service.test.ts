@@ -5545,6 +5545,32 @@ describe('Live-Steuerung', () => {
     });
   });
 
+  it('setzt bei Plugin-Abschnitten „Neustart nötig“ statt Befehle zu schicken', async () => {
+    const MIT_NEUSTART: GameTypeDefinition = {
+      ...LIVE,
+      liveControls: [
+        ...(LIVE.liveControls ?? []),
+        { id: 'plugins', label: 'Plugins', fields: ['map'], commands: [], requiresRestart: true },
+      ],
+    };
+    const harness = makeHarness({ gameTypes: [MIT_NEUSTART] });
+    const created = await harness.service.createServer(
+      createInput('mein-server', MIT_NEUSTART),
+      OWNER_ID,
+    );
+    await harness.service.startServer(created.id, OWNER_ID);
+    await settle(harness, created.id, ['running']);
+    harness.socket.commands.length = 0;
+
+    // Nur der Neustart-Abschnitt (die Karte steckt hier in beiden, aber die
+    // Bots-Steuerung ist nicht betroffen).
+    await harness.service.applyLiveValues(created.id, { bots: 3 });
+    expect((await harness.service.requireServer(created.id)).restartRequired).toBe(false);
+
+    await harness.service.applyLiveValues(created.id, { map: 'b' });
+    expect((await harness.service.requireServer(created.id)).restartRequired).toBe(true);
+  });
+
   it('meldet ein Spiel ohne Live-Steuerung als nicht steuerbar', async () => {
     const harness = makeHarness();
     const created = await harness.service.createServer(createInput(), OWNER_ID);

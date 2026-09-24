@@ -1546,7 +1546,7 @@ describe('Counter-Strike 2', () => {
     expect(CS2_GAME_TYPE.dockerImage).toBe(`ghcr.io/nightriderp/palantir-game-cs2:${version}`);
   });
 
-  it('hat nach Schritt 11 genau diese Felder', () => {
+  it('hat nach dem Plugin-Bereich genau diese Felder', () => {
     expect(CS2_GAME_TYPE.configFields.map((feld) => feld.key)).toEqual([
       'serverName',
       'serverPassword',
@@ -1560,9 +1560,39 @@ describe('Counter-Strike 2', () => {
       'plugins',
       'admins',
       'pluginSimpleAdmin',
-      'pluginMatchZy',
-      'pluginRetakes',
+      'modePlugin',
     ]);
+  });
+
+  it('führt MatchZy und Retakes als eine Auswahl – beide zusammen gäbe es nicht', () => {
+    const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === 'modePlugin');
+
+    expect(feld?.type).toBe('select');
+    expect(feld?.options).toEqual(['none', 'matchzy', 'retakes']);
+    expect(feld?.defaultValue).toBe('none');
+    for (const wert of feld?.options ?? []) {
+      expect(feld?.optionLabels?.[wert], wert).toBeTruthy();
+    }
+  });
+
+  it('bietet die Plugins in der Steuerung an – mit Neustart, eingeklappt', () => {
+    const plugins = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'plugins');
+
+    expect(plugins).toMatchObject({
+      fields: ['plugins', 'modePlugin', 'pluginSimpleAdmin'],
+      commands: [],
+      requiresRestart: true,
+      collapsible: true,
+    });
+  });
+
+  it('sperrt die Bots, solange ein Spielmodus-Plugin sie verwaltet', () => {
+    const bots = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'bots');
+
+    expect(bots?.disabledWhen).toMatchObject({
+      field: 'modePlugin',
+      values: ['matchzy', 'retakes'],
+    });
   });
 
   it('führt GOTV als eigenen UDP-Port, drinnen wie draußen, sichtbar nur mit Schalter', () => {
@@ -1643,7 +1673,16 @@ describe('Counter-Strike 2', () => {
   it('bietet Karte, Modus, Bots und Runden an – nur Auswahl, Zahl und Schalter', () => {
     const felder = CS2_GAME_TYPE.liveControls?.flatMap((steuerung) => steuerung.fields) ?? [];
 
-    expect(felder).toEqual(['map', 'gameMode', 'workshopMap', 'bots', 'allRounds']);
+    expect(felder).toEqual([
+      'map',
+      'gameMode',
+      'workshopMap',
+      'bots',
+      'allRounds',
+      'plugins',
+      'modePlugin',
+      'pluginSimpleAdmin',
+    ]);
 
     for (const key of felder) {
       const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === key);

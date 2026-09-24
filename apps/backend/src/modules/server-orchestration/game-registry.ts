@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.21',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.22',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3625,11 +3625,11 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       // Schritt 9. Die Bibliotheken, die es braucht (MenuManager, PlayerSettings,
       // AnyBaseLib), schaltet das Image mit ein.
       key: 'pluginSimpleAdmin',
-      label: 'Plugin: SimpleAdmin',
+      label: 'SimpleAdmin',
       type: 'toggle',
       defaultValue: false,
       description:
-        'Bann, Kick, Mute und Admin-Menü im Spiel (!admin). Gilt nur mit „Plugins laden“; Admins kommen aus dem Feld darüber.',
+        'Bann, Kick, Mute und Admin-Menü im Spiel (!admin). Passt zu jedem Spielmodus-Plugin. Admins kommen aus dem Feld „Admins“.',
       required: false,
       options: [],
       min: null,
@@ -3637,29 +3637,25 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       lockedAfterCreate: false,
     },
     {
-      // Schritt 10.
-      key: 'pluginMatchZy',
-      label: 'Plugin: MatchZy',
-      type: 'toggle',
-      defaultValue: false,
+      /*
+       * Schritte 10/11, seit 24.09.2026 eine Auswahl statt zweier Schalter
+       * (Fundpunkt 361): MatchZy und Retakes steuern beide Runden und Bots und
+       * dürfen nicht zusammen laufen. Eine Auswahl macht das unmöglich; die
+       * Migration 0050 übernimmt die alten Schalter.
+       */
+      key: 'modePlugin',
+      label: 'Spielmodus-Plugin',
+      type: 'select',
+      defaultValue: 'none',
       description:
-        'Turniere und Scrims: Warmup bis alle !ready tippen, Messerrunde, Pausen, Demos. Macht aus jedem Spiel ein Match. Gilt nur mit „Plugins laden“.',
+        'Bestimmt den Spielablauf und verwaltet Runden und Bots selbst – nur eines zur Zeit. MatchZy: Warmup bis alle !ready tippen, Messerrunde, Pausen. Retakes: Die Bombe liegt, ein Team verteidigt.',
       required: false,
-      options: [],
-      min: null,
-      max: null,
-      lockedAfterCreate: false,
-    },
-    {
-      // Schritt 11.
-      key: 'pluginRetakes',
-      label: 'Plugin: Retakes',
-      type: 'toggle',
-      defaultValue: false,
-      description:
-        'Retake-Modus: Die Bombe liegt schon, ein Team verteidigt, das andere holt den Bombenplatz zurück. Nicht zusammen mit MatchZy – beide steuern die Runden. Gilt nur mit „Plugins laden“.',
-      required: false,
-      options: [],
+      options: ['none', 'matchzy', 'retakes'],
+      optionLabels: {
+        none: 'Keins',
+        matchzy: 'MatchZy (Turniere, Scrims)',
+        retakes: 'Retakes',
+      },
       min: null,
       max: null,
       lockedAfterCreate: false,
@@ -3678,8 +3674,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     plugins: 'CS2_PLUGINS',
     admins: 'CS2_ADMINS',
     pluginSimpleAdmin: 'CS2_PLUGIN_SIMPLEADMIN',
-    pluginMatchZy: 'CS2_PLUGIN_MATCHZY',
-    pluginRetakes: 'CS2_PLUGIN_RETAKES',
+    modePlugin: 'CS2_MODE_PLUGIN',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
   // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
@@ -3696,8 +3691,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'plugins',
     'admins',
     'pluginSimpleAdmin',
-    'pluginMatchZy',
-    'pluginRetakes',
+    'modePlugin',
   ],
   /*
    * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die
@@ -3740,6 +3734,13 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       fields: ['bots'],
       commands: ['bot_quota_mode normal', 'bot_quota {bots}'],
       persist: ['bot_quota_mode normal', 'bot_quota {bots}'],
+      // MatchZy und Retakes führen nach jedem Kartenstart ihre eigene
+      // Konfiguration aus (`bot_kick`, `bot_quota 0`) und verwalten Bots selbst.
+      disabledWhen: {
+        field: 'modePlugin',
+        values: ['matchzy', 'retakes'],
+        hint: 'Bots verwaltet {wert} selbst.',
+      },
     },
     {
       /*
@@ -3755,6 +3756,20 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
         allRounds: { true: 'mp_match_can_clinch 0', false: 'mp_match_can_clinch 1' },
       },
       persist: ['{allRounds}'],
+    },
+    {
+      /*
+       * Plugins (24.09.2026, Fundpunkt 361). Werden beim Start geladen –
+       * deshalb `requiresRestart`: keine Konsolenzeilen, die Oberfläche bietet
+       * „Übernehmen und neu starten“. Eingeklappt, weil selten geändert.
+       */
+      id: 'plugins',
+      label: 'Plugins',
+      fields: ['plugins', 'modePlugin', 'pluginSimpleAdmin'],
+      commands: [],
+      requiresRestart: true,
+      collapsible: true,
+      showHints: true,
     },
   ],
   liveConfigFile: 'server/game/csgo/cfg/palantir_live.cfg',

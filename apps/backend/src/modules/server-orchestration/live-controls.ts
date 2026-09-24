@@ -169,8 +169,23 @@ function einsetzen(zeile: string, steuerung: GameLiveControl, werte: GameConfigV
 }
 
 /**
+ * Wirkt eine Änderung erst mit einem Neustart? Ja, sobald ein geändertes Feld
+ * zu einer Steuerung mit `requiresRestart` gehört (CS2-Plugins).
+ */
+export function liveBrauchtNeustart(
+  definition: GameTypeDefinition,
+  geaendert: readonly string[],
+): boolean {
+  return (definition.liveControls ?? []).some(
+    (steuerung) =>
+      steuerung.requiresRestart === true && steuerung.fields.some((key) => geaendert.includes(key)),
+  );
+}
+
+/**
  * Die Konsolenzeilen für eine Änderung: nur für die Steuerungen, in denen sich
- * etwas geändert hat, in der Reihenfolge der Definition.
+ * etwas geändert hat, in der Reihenfolge der Definition. Steuerungen mit
+ * `requiresRestart` schicken nichts – sie wirken erst beim nächsten Start.
  */
 export function liveBefehle(
   definition: GameTypeDefinition,
@@ -180,6 +195,10 @@ export function liveBefehle(
   const zeilen: string[] = [];
 
   for (const steuerung of definition.liveControls ?? []) {
+    if (steuerung.requiresRestart === true) {
+      continue;
+    }
+
     if (!steuerung.fields.some((key) => geaendert.includes(key))) {
       continue;
     }

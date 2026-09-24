@@ -107,7 +107,13 @@ import { ServerCloneService } from './clone-service.js';
 import { ServerQueryTargets } from './server-query.js';
 import { choosePlacementHost } from './placement.js';
 import { StartupActivity } from './startup-activity.js';
-import { aktuelleWerte, liveBefehle, liveDatei, pruefeLiveWerte } from './live-controls.js';
+import {
+  aktuelleWerte,
+  liveBefehle,
+  liveDatei,
+  pruefeLiveWerte,
+  liveBrauchtNeustart,
+} from './live-controls.js';
 import { type StartIntent, StartupHealthCheck } from './startup-health.js';
 import { type WorldImportInput, WorldImportTransfer } from './world-import-transfer.js';
 import {
@@ -2145,9 +2151,15 @@ export class ServerOrchestrationService {
       await this.execConsole(serverId, zeile);
     }
 
+    // Abschnitte, die erst mit einem Neustart wirken (CS2-Plugins): Läuft der
+    // Server, zeigt das Panel „Neustart nötig“ – bis der Neustart kommt, den
+    // die Oberfläche gleich mit anbietet.
+    const brauchtNeustart = laeuft && liveBrauchtNeustart(definition, geaendert);
+
     await this.deps.repository.update(serverId, {
       configJson: { ...server.configJson, ...(server.liveValues ?? {}), ...neu },
       liveValues: null,
+      ...(brauchtNeustart ? { restartRequired: true } : {}),
     });
 
     return this.requireServer(serverId);
