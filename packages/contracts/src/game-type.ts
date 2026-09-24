@@ -773,4 +773,21 @@ export interface GameLiveControl {
     readonly values: readonly string[];
     readonly hint: string;
   };
+  /**
+   * Überschrift, unter der die Oberfläche aufeinanderfolgende Steuerungen
+   * zusammenfasst – z. B. „Schalter“ für „Alle Runden“, MetaMod und
+   * SimpleAdmin in einer Zeile (Betreiber-Wunsch 25.09.2026). Schalter einer
+   * Gruppe stehen nebeneinander. Ohne Angabe eigener Abschnitt mit `label`.
+   */
+  readonly group?: string;
+  /**
+   * Konsolenzeilen nur, solange ein anderes Feld einen der Werte trägt – z. B.
+   * Plugin-Befehle nur mit eingeschalteter Plugin-Grundlage. Sonst werden die
+   * Werte nur gespeichert und gelten beim nächsten Start. Verglichen wird als
+   * Text (`true`/`false` bei Schaltern).
+   */
+  readonly commandsWhen?: {
+    readonly field: string;
+    readonly values: readonly string[];
+  };
 }
