@@ -45,6 +45,20 @@ export interface GameConfigField {
    * Wert.
    */
   optionLabels?: Record<string, string>;
+  /**
+   * Nur zeigen, solange ein anderes Feld einen der genannten Werte trägt – z. B.
+   * die Workshop-ID nur bei Karte `workshop` (Betreiber-Wunsch 25.09.2026).
+   * Verglichen wird als Text. Ein verstecktes Feld behält seinen Wert. Additiv
+   * und optional; ohne Angabe immer sichtbar.
+   */
+  visibleWhen?: { field: string; values: string[] };
+  /**
+   * Zahlenfeld, das auch einen Link annimmt: Die Oberfläche liest die Zahl aus
+   * dem Parameter `param` der Adresse (Steam-Workshop: `?id=…`) und speichert
+   * nur sie. Gespeichert und geprüft wird weiter eine Zahl. Additiv und
+   * optional.
+   */
+  numberFromLink?: { param: string };
   /** Untergrenze bei `number`; `null`, wenn unbegrenzt. */
   min: number | null;
   /** Obergrenze bei `number`; `null`, wenn unbegrenzt. */
