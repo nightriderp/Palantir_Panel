@@ -214,63 +214,107 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
     );
   }
 
+  // Aufeinanderfolgende Steuerungen mit derselben `group` bilden einen Block.
+  const bloecke: { key: string; titel: string; gruppe?: string; steuerungen: GameLiveControl[] }[] =
+    [];
+  for (const steuerung of steuerungen) {
+    const letzter = bloecke.at(-1);
+
+    if (steuerung.group !== undefined && letzter?.gruppe === steuerung.group) {
+      letzter.steuerungen.push(steuerung);
+    } else {
+      bloecke.push({
+        key: steuerung.group ?? steuerung.id,
+        titel: steuerung.group ?? steuerung.label,
+        ...(steuerung.group === undefined ? {} : { gruppe: steuerung.group }),
+        steuerungen: [steuerung],
+      });
+    }
+  }
+
+  /** Felder einer Steuerung – mit eigener Überschrift, oder ohne in einer Gruppe. */
+  function abschnitt(steuerung: GameLiveControl, mitKopf: boolean) {
+    const hinweis = sperrHinweis(steuerung);
+    // Mit ungespeicherten Änderungen bleibt ein Abschnitt offen – sonst
+    // verschwände, was gerade eingestellt wurde.
+    const offen =
+      steuerung.collapsible !== true ||
+      aufgeklappt.has(steuerung.id) ||
+      steuerung.fields.some((key) => geaendert.includes(key));
+
+    if (spiel === null) return null;
+
+    return (
+      <>
+        {mitKopf || steuerung.collapsible === true ? (
+          <div className="flex items-center justify-between gap-2">
+            {mitKopf ? (
+              <p className="text-xs font-medium tracking-wide text-ink-faint uppercase">
+                {steuerung.label}
+              </p>
+            ) : null}
+            {steuerung.collapsible === true ? (
+              <button
+                type="button"
+                onClick={() => umschalten(steuerung.id)}
+                aria-expanded={offen}
+                className="text-xs text-accent hover:underline"
+              >
+                {offen ? 'Einklappen' : 'Anpassen'}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {offen ? (
+          <ConfigFields
+            fields={spiel.configFields.filter((feld) => steuerung.fields.includes(feld.key))}
+            values={entwurf}
+            onChange={(key: string, wert: GameConfigValue) =>
+              setEntwurf((bisher) => ({ ...bisher, [key]: wert }))
+            }
+            lockAfterCreate={false}
+            disabled={imUebergang || busy || hinweis !== null}
+            hideHints={steuerung.showHints !== true}
+          />
+        ) : (
+          <p className="truncate text-sm text-ink-muted">
+            {kurzzeile(steuerung, spiel.configFields, entwurf)}
+          </p>
+        )}
+
+        {hinweis === null ? null : <p className="text-xs text-ink-faint">{hinweis}</p>}
+      </>
+    );
+  }
+
   return (
     <Panel variant="plain">
       <h3 className="mb-3 text-base font-semibold">Steuerung</h3>
 
       <div className="flex flex-col gap-4">
-        {steuerungen.map((steuerung) => {
-          const hinweis = sperrHinweis(steuerung);
-          // Mit ungespeicherten Änderungen bleibt ein Abschnitt offen – sonst
-          // verschwände, was gerade eingestellt wurde.
-          const offen =
-            steuerung.collapsible !== true ||
-            aufgeklappt.has(steuerung.id) ||
-            steuerung.fields.some((key) => geaendert.includes(key));
-
-          return (
-            <section
-              key={steuerung.id}
-              aria-label={steuerung.label}
-              className="flex flex-col gap-2"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium tracking-wide text-ink-faint uppercase">
-                  {steuerung.label}
-                </p>
-                {steuerung.collapsible === true ? (
-                  <button
-                    type="button"
-                    onClick={() => umschalten(steuerung.id)}
-                    aria-expanded={offen}
-                    className="text-xs text-accent hover:underline"
-                  >
-                    {offen ? 'Einklappen' : 'Anpassen'}
-                  </button>
-                ) : null}
-              </div>
-
-              {offen ? (
-                <ConfigFields
-                  fields={spiel.configFields.filter((feld) => steuerung.fields.includes(feld.key))}
-                  values={entwurf}
-                  onChange={(key: string, wert: GameConfigValue) =>
-                    setEntwurf((bisher) => ({ ...bisher, [key]: wert }))
-                  }
-                  lockAfterCreate={false}
-                  disabled={imUebergang || busy || hinweis !== null}
-                  hideHints={steuerung.showHints !== true}
-                />
-              ) : (
-                <p className="truncate text-sm text-ink-muted">
-                  {kurzzeile(steuerung, spiel.configFields, entwurf)}
-                </p>
-              )}
-
-              {hinweis === null ? null : <p className="text-xs text-ink-faint">{hinweis}</p>}
+        {bloecke.map((block) =>
+          block.gruppe === undefined ? (
+            <section key={block.key} aria-label={block.titel} className="flex flex-col gap-2">
+              {abschnitt(block.steuerungen[0] as GameLiveControl, true)}
             </section>
-          );
-        })}
+          ) : (
+            // Gruppe (`group`): eine Überschrift, die Felder nebeneinander –
+            // „Alle Runden“, MetaMod und SimpleAdmin in einer Zeile.
+            <section key={block.key} aria-label={block.titel} className="flex flex-col gap-2">
+              <p className="text-xs font-medium tracking-wide text-ink-faint uppercase">
+                {block.titel}
+              </p>
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
+                {block.steuerungen.map((steuerung) => (
+                  <div key={steuerung.id} className="flex flex-col gap-2">
+                    {abschnitt(steuerung, false)}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ),
+        )}
       </div>
 
       {imUebergang ? (

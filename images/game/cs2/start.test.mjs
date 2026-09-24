@@ -832,6 +832,57 @@ describe('start.sh – Schritt 9: SimpleAdmin', nurMitShell, () => {
   });
 });
 
+describe('start.sh – Plugins im laufenden Betrieb (25.09.2026)', nurMitShell, () => {
+  const csgo = (ordner, ...teile) => join(ordner.daten, 'server', 'game', 'csgo', ...teile);
+
+  it('legt auch nicht gewählte Plugins bereit – unter plugins/disabled', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, { ...grundlageArchive(), ...pluginListe(), CS2_PLUGINS: 'true' });
+    const plugins = csgo(ordner, 'addons', 'counterstrikesharp', 'plugins');
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.ok(existsSync(join(plugins, 'disabled', 'CS2-SimpleAdmin', 'CS2-SimpleAdmin.dll')));
+    assert.ok(existsSync(join(plugins, 'disabled', 'MatchZy', 'MatchZy.dll')));
+    assert.ok(!existsSync(join(plugins, 'MatchZy')));
+  });
+
+  it('schreibt die Befehlsdateien – beide Pfade, Abhängigkeiten zuerst', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { ...grundlageArchive(), ...pluginListe(), CS2_PLUGINS: 'true' });
+    const an = readFileSync(csgo(ordner, 'cfg', 'palantir_plugin_an_simpleadmin.cfg'), 'utf8');
+    const aus = readFileSync(csgo(ordner, 'cfg', 'palantir_plugin_aus_simpleadmin.cfg'), 'utf8');
+
+    assert.ok(
+      an.indexOf('exec palantir_plugin_an_menumanager') < an.indexOf('CS2-SimpleAdmin.dll'),
+    );
+    assert.match(an, /^css_plugins load plugins\/CS2-SimpleAdmin\/CS2-SimpleAdmin\.dll$/mu);
+    assert.match(
+      an,
+      /^css_plugins load plugins\/disabled\/CS2-SimpleAdmin\/CS2-SimpleAdmin\.dll$/mu,
+    );
+    assert.match(
+      aus,
+      /^css_plugins unload plugins\/CS2-SimpleAdmin_FunCommands\/CS2-SimpleAdmin_FunCommands\.dll$/mu,
+    );
+    // Bibliotheken ohne Plugin-Ordner bekommen keine Datei.
+    assert.ok(!existsSync(csgo(ordner, 'cfg', 'palantir_plugin_an_anybaselib.cfg')));
+  });
+
+  it('schreibt die Spielmodus-Dateien – nie zwei zugleich', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { ...grundlageArchive(), ...pluginListe(), CS2_PLUGINS: 'true' });
+    const retakes = readFileSync(csgo(ordner, 'cfg', 'palantir_modus_retakes.cfg'), 'utf8');
+    const keins = readFileSync(csgo(ordner, 'cfg', 'palantir_modus_none.cfg'), 'utf8');
+
+    assert.ok(
+      retakes.indexOf('exec palantir_plugin_aus_matchzy') <
+        retakes.indexOf('exec palantir_plugin_an_retakes'),
+    );
+    assert.match(keins, /exec palantir_plugin_aus_matchzy/u);
+    assert.match(keins, /exec palantir_plugin_aus_retakes/u);
+  });
+});
+
 describe('start.sh – Schritt 10: MatchZy', nurMitShell, () => {
   it(
     'legt Plugin und cfg/MatchZy ab – ohne die Konfigurationen ginge die Messerrunde nicht',

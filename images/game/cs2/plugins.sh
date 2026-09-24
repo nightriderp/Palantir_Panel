@@ -165,7 +165,88 @@ enthalten() {
   esac
 }
 
-# `plugins_abgleichen` – schaltet jedes Plugin aus der Liste ein oder aus.
+# -----------------------------------------------------------------------------
+# Plugins im laufenden Betrieb (Betreiber 25.09.2026)
+# -----------------------------------------------------------------------------
+# CounterStrikeSharp lädt und entlädt Plugins zur Laufzeit
+# (`css_plugins load/unload <pfad>`). Das Panel schickt dafür nur
+# `exec palantir_plugin_an_<name>` bzw. `…_aus_…` und `exec palantir_modus_<wert>`
+# – die Befehle selbst stehen in Dateien, die hier beim Start entstehen. Eine
+# einzige Konsolenzeile wäre für fünf Plugin-Pfade zu lang (CS2 kappt bei gut
+# 500 Zeichen), und nur das Image kennt die Ordner aus `plugins.list`.
+#
+# Jedes Plugin liegt nach dem Start entweder unter `plugins/<ordner>` oder unter
+# `plugins/disabled/<ordner>` – je nachdem, ob es beim Start an war. Die Dateien
+# nennen deshalb beide Pfade; der falsche scheitert harmlos mit „Could not
+# load/unload“ in der Konsole.
+
+# Abhängigkeiten, die mit einem Plugin geladen werden müssen – in dieser
+# Reihenfolge, vor dem Plugin selbst. Dieselben wie in `plugins_gewuenscht`.
+plugin_abhaengigkeiten() {
+  case "$1" in
+    simpleadmin) printf '%s\n' 'playersettings menumanager' ;;
+    *) printf '\n' ;;
+  esac
+}
+
+plugin_befehle_schreiben() {
+  p_name="$1"
+  p_ordner="$2"
+
+  [ "$p_ordner" = '-' ] && return 0
+
+  p_cfg="${CSGO}/cfg"
+  mkdir -p "$p_cfg"
+
+  {
+    echo '// Schreibt Palantir bei jedem Start - Plugin im laufenden Betrieb laden.'
+    for p_dep in $(plugin_abhaengigkeiten "$p_name"); do
+      echo "exec palantir_plugin_an_${p_dep}"
+    done
+    p_alt_ifs="$IFS"
+    IFS=','
+    for p_eins in $p_ordner; do
+      echo "css_plugins load plugins/${p_eins}/${p_eins}.dll"
+      echo "css_plugins load plugins/disabled/${p_eins}/${p_eins}.dll"
+    done
+    IFS="$p_alt_ifs"
+  } > "${p_cfg}/palantir_plugin_an_${p_name}.cfg"
+
+  {
+    echo '// Schreibt Palantir bei jedem Start - Plugin im laufenden Betrieb entladen.'
+    p_alt_ifs="$IFS"
+    IFS=','
+    for p_eins in $p_ordner; do
+      echo "css_plugins unload plugins/${p_eins}/${p_eins}.dll"
+      echo "css_plugins unload plugins/disabled/${p_eins}/${p_eins}.dll"
+    done
+    IFS="$p_alt_ifs"
+  } > "${p_cfg}/palantir_plugin_aus_${p_name}.cfg"
+}
+
+# Spielmodus-Plugin wechseln: das andere entladen, das gewählte laden. Nie zwei.
+modus_befehle_schreiben() {
+  p_cfg="${CSGO}/cfg"
+  mkdir -p "$p_cfg"
+
+  printf '%s\n' '// Schreibt Palantir - kein Spielmodus-Plugin.' \
+    'exec palantir_plugin_aus_matchzy' 'exec palantir_plugin_aus_retakes' \
+    > "${p_cfg}/palantir_modus_none.cfg"
+  printf '%s\n' '// Schreibt Palantir - MatchZy als Spielmodus-Plugin.' \
+    'exec palantir_plugin_aus_retakes' 'exec palantir_plugin_an_matchzy' \
+    > "${p_cfg}/palantir_modus_matchzy.cfg"
+  printf '%s\n' '// Schreibt Palantir - Retakes als Spielmodus-Plugin.' \
+    'exec palantir_plugin_aus_matchzy' 'exec palantir_plugin_an_retakes' \
+    > "${p_cfg}/palantir_modus_retakes.cfg"
+}
+
+# `plugins_abgleichen` – legt jedes Plugin aus der Liste bereit und schaltet es
+# ein oder aus.
+#
+# **Alle werden geholt**, auch nicht gewählte (Betreiber 25.09.2026): Nur was
+# schon ausgepackt liegt, kann das Panel im laufenden Betrieb laden. Nicht
+# gewählte landen gleich unter `plugins/disabled`. Scheitert dabei ein nicht
+# gewähltes, startet der Server trotzdem – es fehlt dann nur zum Umschalten.
 plugins_abgleichen() {
   liste="${PALANTIR_CS2_PLUGINLISTE:-${CS2_SKRIPTE:-/opt/palantir}/plugins.list}"
 
@@ -190,9 +271,16 @@ plugins_abgleichen() {
         fehler=1
       fi
     else
+      if ! plugin_an "$l_name" "$l_adresse" "$l_summe" "$l_zuordnung" "$l_ordner"; then
+        palantir_log "Hinweis: ${l_name} ${l_version} liegt nicht bereit - im laufenden Betrieb nicht zuschaltbar."
+      fi
       plugin_aus "$l_ordner"
     fi
+
+    plugin_befehle_schreiben "$l_name" "$l_ordner"
   done < "$liste"
+
+  modus_befehle_schreiben
 
   return "$fehler"
 }

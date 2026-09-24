@@ -1,5 +1,5 @@
 import { type GameConfigField, type GameTypeDto } from '@palantir/contracts';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@/components/shared';
 import { gameType, server } from '../testFixtures';
@@ -177,6 +177,44 @@ describe('LiveControlsCard', () => {
     await waitFor(() => {
       expect(api.applyLiveValues).toHaveBeenCalledWith('s1', { allRounds: true });
     });
+  });
+
+  it('fasst Steuerungen einer Gruppe unter einer Überschrift zusammen', async () => {
+    api.fetchGameTypes.mockResolvedValue({
+      success: true,
+      data: [
+        gameType({
+          configFields: [
+            feld({
+              key: 'alle',
+              label: 'Alle Runden spielen',
+              type: 'toggle',
+              defaultValue: false,
+            }),
+            feld({ key: 'plugins', label: 'MetaMod', type: 'toggle', defaultValue: false }),
+          ],
+          liveControls: [
+            { id: 'runden', label: 'Runden', group: 'Schalter', fields: ['alle'], commands: [] },
+            {
+              id: 'plugins',
+              label: 'MetaMod',
+              group: 'Schalter',
+              fields: ['plugins'],
+              commands: [],
+              requiresRestart: true,
+            },
+          ],
+        }),
+      ],
+      error: null,
+    });
+    zeichne('running');
+
+    const gruppe = await screen.findByRole('region', { name: 'Schalter' });
+    expect(within(gruppe).getByRole('switch', { name: 'Alle Runden spielen' })).toBeTruthy();
+    expect(within(gruppe).getByRole('switch', { name: 'MetaMod' })).toBeTruthy();
+    // Die einzelnen Überschriften der Steuerungen entfallen in der Gruppe.
+    expect(screen.queryByText('Runden')).toBeNull();
   });
 
   describe('Plugins (Fundpunkt 361)', () => {

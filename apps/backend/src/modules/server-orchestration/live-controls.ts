@@ -203,6 +203,13 @@ export function liveBefehle(
       continue;
     }
 
+    // `commandsWhen`: Befehle nur unter Bedingung – Plugin-Befehle etwa nur,
+    // solange die Plugin-Grundlage an ist. Sonst gilt der Wert erst beim Start.
+    const bedingung = steuerung.commandsWhen;
+    if (bedingung !== undefined && !bedingung.values.includes(String(werte[bedingung.field]))) {
+      continue;
+    }
+
     for (const zeile of steuerung.commands) {
       zeilen.push(einsetzen(zeile, steuerung, werte));
     }

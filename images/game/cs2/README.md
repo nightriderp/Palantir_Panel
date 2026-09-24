@@ -34,7 +34,8 @@ vorige auf der Node läuft.
 | 11      | Retakes (samt Kartenkonfigurationen)                                       | läuft (0.0.20)   |
 | 11.1    | Gamedata für CS2 1.41.8, eigener Temp-Ordner (SimpleAdmin-SQLite)          | läuft (0.0.21)   |
 | 11.2    | Spielmodus-Plugin als Auswahl (MatchZy/Retakes), Plugins in der Steuerung  | läuft (0.0.22)   |
-| 11.3    | Bots aus dem Panel auch mit MatchZy/Retakes                                | **dieses Image** |
+| 11.3    | Bots aus dem Panel auch mit MatchZy/Retakes                                | läuft (0.0.23)   |
+| 11.4    | Plugins ohne Neustart (alle bereitgelegt, `exec`-Dateien je Plugin)        | **dieses Image** |
 | 12      | Fake RCON – übersprungen (SimpleAdmin hat `css_rcon`; 1.3.2 braucht KHook) | –                |
 | 13–15   | je ein Plugin, WeaponPaints mit MariaDB zuletzt                            | offen            |
 

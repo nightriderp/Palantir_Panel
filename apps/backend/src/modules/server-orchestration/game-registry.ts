@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.23',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.24',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3516,6 +3516,19 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
         'Die Karte, mit der der Server startet. „workshop“ lädt die Workshop-Karte mit der ID darunter.',
       required: false,
       options: [...CS2_KARTEN, 'workshop'],
+      // Anzeigenamen (Betreiber 25.09.2026); gespeichert wird der Kartenname.
+      optionLabels: {
+        de_dust2: 'Dust II',
+        de_mirage: 'Mirage',
+        de_inferno: 'Inferno',
+        de_nuke: 'Nuke',
+        de_overpass: 'Overpass',
+        de_ancient: 'Ancient',
+        de_anubis: 'Anubis',
+        de_vertigo: 'Vertigo',
+        de_train: 'Train',
+        workshop: 'Workshop-Karte',
+      },
       min: null,
       max: null,
       lockedAfterCreate: false,
@@ -3528,6 +3541,13 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       description: 'Competitive 5 gegen 5, Casual, Wingman 2 gegen 2, Deathmatch oder Arms Race.',
       required: false,
       options: ['competitive', 'casual', 'wingman', 'deathmatch', 'armsrace'],
+      optionLabels: {
+        competitive: 'Competitive (5 gegen 5)',
+        casual: 'Casual',
+        wingman: 'Wingman (2 gegen 2)',
+        deathmatch: 'Deathmatch',
+        armsrace: 'Arms Race',
+      },
       min: null,
       max: null,
       lockedAfterCreate: false,
@@ -3599,7 +3619,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       // Schritt 7: MetaMod:Source + CounterStrikeSharp. Vorgabe aus – nach einem
       // CS2-Update, das MetaMod bricht, bleibt der Server so startbar.
       key: 'plugins',
-      label: 'Plugins laden (MetaMod + CounterStrikeSharp)',
+      label: 'MetaMod + CounterStrikeSharp',
       type: 'toggle',
       defaultValue: false,
       description:
@@ -3750,6 +3770,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
        */
       id: 'runden',
       label: 'Runden',
+      group: 'Schalter',
       fields: ['allRounds'],
       commands: ['{allRounds}'],
       values: {
@@ -3759,17 +3780,65 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     },
     {
       /*
-       * Plugins (24.09.2026, Fundpunkt 361). Werden beim Start geladen –
-       * deshalb `requiresRestart`: keine Konsolenzeilen, die Oberfläche bietet
-       * „Übernehmen und neu starten“. Eingeklappt, weil selten geändert.
+       * Plugin-Grundlage (24.09.2026). MetaMod hängt sich beim Start in CS2 ein
+       * – deshalb `requiresRestart`: keine Konsolenzeilen, die Oberfläche bietet
+       * „Übernehmen & neu starten“. Als Schalter neben „Alle Runden“
+       * (Betreiber 25.09.2026).
        */
       id: 'plugins',
-      label: 'Plugins',
-      fields: ['plugins', 'modePlugin', 'pluginSimpleAdmin'],
+      label: 'MetaMod',
+      group: 'Schalter',
+      fields: ['plugins'],
       commands: [],
       requiresRestart: true,
-      collapsible: true,
-      showHints: true,
+    },
+    {
+      /*
+       * **Plugins ohne Neustart** (Betreiber 25.09.2026). CounterStrikeSharp
+       * lädt und entlädt einzelne Plugins im laufenden Betrieb
+       * (`css_plugins load/unload`). Das Image legt beim Start alle Plugins
+       * bereit (nicht gewählte unter `plugins/disabled`) und schreibt je Plugin
+       * eine Datei `palantir_plugin_an_<name>.cfg`/`…_aus_…` mit den Befehlen –
+       * eine Konsolenzeile wäre für fünf Plugin-Pfade zu lang. Nur mit
+       * Grundlage (`commandsWhen`).
+       */
+      id: 'simpleadmin',
+      label: 'SimpleAdmin',
+      group: 'Schalter',
+      fields: ['pluginSimpleAdmin'],
+      commands: ['{pluginSimpleAdmin}'],
+      values: {
+        pluginSimpleAdmin: {
+          true: 'exec palantir_plugin_an_simpleadmin',
+          false: 'exec palantir_plugin_aus_simpleadmin',
+        },
+      },
+      commandsWhen: { field: 'plugins', values: ['true'] },
+    },
+    {
+      /*
+       * Spielmodus-Plugin live: altes entladen, neues laden (Dateien
+       * `palantir_modus_<wert>.cfg` aus dem Image), dann die Karte neu laden –
+       * MatchZy und Retakes richten sich beim Kartenstart ein, und danach
+       * gelten unsere Bots und Runden wieder (`gamemode_*_server.cfg`).
+       */
+      id: 'spielmodus-plugin',
+      label: 'Spielmodus-Plugin',
+      fields: ['modePlugin'],
+      commands: ['{modePlugin}', '{map}'],
+      values: {
+        modePlugin: {
+          none: 'exec palantir_modus_none',
+          matchzy: 'exec palantir_modus_matchzy',
+          retakes: 'exec palantir_modus_retakes',
+        },
+        map: {
+          ...Object.fromEntries(CS2_KARTEN.map((karte) => [karte, `changelevel ${karte}`])),
+          workshop: 'host_workshop_map {workshopMap}',
+        },
+      },
+      commandsWhen: { field: 'plugins', values: ['true'] },
+      reloadsMap: true,
     },
   ],
   liveConfigFile: 'server/game/csgo/cfg/palantir_live.cfg',
