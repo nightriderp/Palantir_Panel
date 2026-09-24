@@ -71,6 +71,19 @@ export interface ServerAddress {
    * kopiert.
    */
   copyPrefix?: string;
+  /**
+   * Weitere Adressen unter demselben Hostnamen, etwa GOTV bei CS2
+   * (`GameTypePort.extraAddress`). Kopiert werden sie wie die Hauptadresse,
+   * mit {@link copyPrefix}. Additiv und optional; fehlt es, gibt es keine.
+   */
+  extra?: ServerExtraAddress[];
+}
+
+/** Eine weitere Adresse eines Servers, z. B. `{ label: 'GOTV', port: 25004 }`. */
+export interface ServerExtraAddress {
+  /** Beschriftung aus der Definition, z. B. „GOTV“. */
+  label: string;
+  port: number;
 }
 
 /**
