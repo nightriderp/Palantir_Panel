@@ -36,3 +36,8 @@ simpleadmin build-1.8.2b https://github.com/daffyyyy/CS2-SimpleAdmin/releases/do
 # Live); ohne die fände MatchZy seine Konfigurationen nicht. Der erste Anlauf
 # hatte nur `addons` zugeordnet.
 matchzy 0.8.15 https://github.com/shobhit-pathak/MatchZy/releases/download/0.8.15/MatchZy-0.8.15.zip 425955d7565df84915dd6002d0a7848546d3859d376cb493f2988ed182586b57 addons=addons,cfg=cfg MatchZy
+
+# Schritt 11: Retake-Modus – ein Team verteidigt eine gelegte Bombe. Gebaut gegen
+# CounterStrikeSharp 1.0.371; Kartenkonfigurationen für die offiziellen Karten
+# liegen bei. Steuert wie MatchZy den Rundenablauf (Fundpunkt 361).
+retakes 3.1.1 https://github.com/B3none/cs2-retakes/releases/download/3.1.1/RetakesPlugin-3.1.1.zip ccb5dade7a5d445d0a172e68f19cb262de0c2a75639be18f3d892db10be93dff addons=addons RetakesPlugin

@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.19',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.20',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3469,7 +3469,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   // Schritt 2 (23.09.2026): Name, Passwort, Spieler; Schritt 3: Karte, Modus, Bots;
   // Schritt 4: Workshop-Karte; Schritt 5: alle Runden spielen; Schritt 5.1: GOTV;
   // Schritt 7: Plugin-Grundlage; Schritt 8: Admins; Schritt 9: SimpleAdmin;
-  // Schritt 10: MatchZy.
+  // Schritt 10: MatchZy; Schritt 11: Retakes.
   configFields: [
     {
       key: 'serverName',
@@ -3650,6 +3650,20 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: null,
       lockedAfterCreate: false,
     },
+    {
+      // Schritt 11.
+      key: 'pluginRetakes',
+      label: 'Plugin: Retakes',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Retake-Modus: Die Bombe liegt schon, ein Team verteidigt, das andere holt den Bombenplatz zurück. Nicht zusammen mit MatchZy – beide steuern die Runden. Gilt nur mit „Plugins laden“.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
@@ -3665,6 +3679,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     admins: 'CS2_ADMINS',
     pluginSimpleAdmin: 'CS2_PLUGIN_SIMPLEADMIN',
     pluginMatchZy: 'CS2_PLUGIN_MATCHZY',
+    pluginRetakes: 'CS2_PLUGIN_RETAKES',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
   // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
@@ -3682,6 +3697,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'admins',
     'pluginSimpleAdmin',
     'pluginMatchZy',
+    'pluginRetakes',
   ],
   /*
    * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die
