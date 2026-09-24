@@ -147,6 +147,11 @@ esac
   printf 'bot_quota_mode "normal"\n'
   printf 'bot_quota %s\n' "$BOTS"
   printf 'mp_match_can_clinch %s\n' "$CLINCH"
+  # Kein Ruhezustand bei leerem Server (24.09.2026): Schlafend beantwortete
+  # CS2 Konsolenbefehle aus dem Panel nicht – `mp_match_can_clinch` blieb
+  # ohne Antwort, bis ein Spieler den Server weckte. Kostet etwas CPU im
+  # Leerlauf.
+  printf 'sv_hibernate_when_empty 0\n'
 } > "${CFG_ORDNER}/palantir.cfg"
 
 # **Nach der Modus-Konfiguration noch einmal** (Schritt 3). Beim Laden jeder

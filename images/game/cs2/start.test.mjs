@@ -347,6 +347,13 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.deepEqual(kaputt.argv, []);
   });
 
+  it('schaltet den Ruhezustand ab – sonst antwortet die Konsole leer nicht', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+
+    assert.match(datei(ordner, 'palantir.cfg'), /^sv_hibernate_when_empty 0$/mu);
+  });
+
   it('spielt auf Wunsch alle Runden – ohne Angabe wie Valve (Schritt 5)', () => {
     const an = arbeitsordner();
     const aus = arbeitsordner();
