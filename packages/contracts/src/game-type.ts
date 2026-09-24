@@ -333,6 +333,17 @@ export interface GameTypePort {
    * weitersagt (siehe {@link GameTypePort.usesPublicPortNumber}).
    */
   readonly envVar?: string;
+  /**
+   * **Als eigene Adresse zeigen** (CS2 GOTV, 24.09.2026).
+   *
+   * Ein weiterer Port, mit dem sich Spieler verbinden – bei CS2 der
+   * Zuschauerzugang GOTV. Die Oberfläche zeigt ihn mit {@link label} neben der
+   * Verbindungsadresse ({@link ServerAddress.extra}). Mit `whenConfig` nur,
+   * solange das genannte Einstellungsfeld (ein Schalter) an ist – ein
+   * abgeschalteter Zugang wäre sonst eine Adresse, hinter der nichts antwortet.
+   * Ohne Angabe bleibt der Port unsichtbar, wie bisher (etwa RCON).
+   */
+  readonly extraAddress?: { readonly whenConfig?: string };
 }
 
 /**
