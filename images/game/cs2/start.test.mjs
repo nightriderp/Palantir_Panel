@@ -89,10 +89,13 @@ function arbeitsordner({ starter = true } = {}) {
       'echo "cwd $(pwd)"',
       'echo "ld $LD_LIBRARY_PATH"',
       'for arg in "$@"; do printf "argv %s\\n" "$arg"; done',
+      // Wie CS2 am Ende des Starts (Fundpunkt 349).
+      'if [ -n "${TEST_GC:-}" ]; then echo "[STARTUP] {7.355} activated session on GC"; fi',
       'if [ -z "${TEST_SERVER_WARTET:-}" ]; then exit 0; fi',
       'while IFS= read -r zeile; do',
       '  printf "stdin %s\\n" "$zeile"',
       '  if [ "$zeile" = "quit" ]; then exit 0; fi',
+      '  case "$zeile" in host_workshop_map*) exit 0;; esac',
       'done',
       'exit 0',
       '',
@@ -294,12 +297,37 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.deepEqual(lauf.argv, []);
   });
 
-  it('lädt bei Karte „workshop“ die Workshop-ID statt einer Karte (Schritt 4)', () => {
+  it('startet bei „workshop“ auf de_dust2 – nicht mit +host_workshop_map (Fundpunkt 349)', () => {
     const lauf = starte(arbeitsordner(), { CS2_MAP: 'workshop', CS2_WORKSHOP_MAP: '3070284539' });
 
     assert.equal(lauf.status, 0, lauf.stderr);
-    assert.equal(nach(lauf.argv, '+host_workshop_map'), '3070284539');
-    assert.equal(nach(lauf.argv, '+map'), null);
+    assert.equal(nach(lauf.argv, '+map'), 'de_dust2');
+    assert.equal(nach(lauf.argv, '+host_workshop_map'), null);
+  });
+
+  it('lädt die Workshop-Karte über die Konsole, sobald CS2 bei Steam angemeldet ist', () => {
+    const lauf = starte(arbeitsordner(), {
+      CS2_MAP: 'workshop',
+      CS2_WORKSHOP_MAP: '3070284539',
+      TEST_GC: '1',
+      TEST_SERVER_WARTET: '1',
+    });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.ok(lauf.zeilen.includes('stdin host_workshop_map 3070284539'), lauf.stdout);
+    // Die Ausgabe von CS2 kommt weiter an.
+    assert.ok(lauf.zeilen.includes('[STARTUP] {7.355} activated session on GC'), lauf.stdout);
+  });
+
+  it('schickt ohne Workshop-Karte nichts nach', () => {
+    const lauf = starte(arbeitsordner(), {
+      CS2_MAP: 'de_nuke',
+      CS2_WORKSHOP_MAP: '3070284539',
+      TEST_GC: '1',
+    });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.ok(!lauf.stdout.includes('host_workshop_map'), lauf.stdout);
   });
 
   it('lässt die Workshop-ID liegen, solange eine normale Karte gewählt ist', () => {

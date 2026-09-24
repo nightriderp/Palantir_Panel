@@ -97,9 +97,16 @@ case "$KARTE" in
 esac
 
 # **Workshop-Karte** (Schritt 4): Karte `workshop` heißt „die Karte mit der
-# Workshop-ID aus CS2_WORKSHOP_MAP" – geladen mit `+host_workshop_map`, das sie
-# beim Start aus dem Steam-Workshop holt. Nur Ziffern, und nicht 0: Ohne ID
-# gäbe es nichts zu laden, und CS2 bliebe ohne Karte stehen.
+# Workshop-ID aus CS2_WORKSHOP_MAP". Nur Ziffern, und nicht 0: Ohne ID gäbe es
+# nichts zu laden.
+#
+# **Nicht als Startparameter** (Fundpunkt 349, 24.09.2026). Mit
+# `+host_workshop_map` in der Befehlszeile holte CS2 die Karte vollständig und
+# blieb dann stehen – ohne Meldung, ohne CPU, der Status hing auf „startet".
+# Bekannter CS2-Fehler: auf einer normalen Karte starten, dann wechseln. Das
+# tut dieses Skript: Start auf de_dust2, und sobald CS2 bei Steam angemeldet
+# ist, geht `host_workshop_map` in die Konsole – derselbe Weg wie beim
+# Umstellen im laufenden Betrieb, und der funktioniert.
 WORKSHOP_ID="${CS2_WORKSHOP_MAP:-0}"
 case "$WORKSHOP_ID" in
   '' | *[!0-9]*)
@@ -168,7 +175,7 @@ if [ -n "${CS2_MAX_PLAYERS:-}" ]; then
 fi
 
 if [ "$KARTE" = workshop ]; then
-  set -- "$@" +host_workshop_map "$WORKSHOP_ID" +exec palantir
+  set -- "$@" +map de_dust2 +exec palantir
 else
   set -- "$@" +map "$KARTE" +exec palantir
 fi
@@ -208,10 +215,13 @@ ulimit -s 2048 2> /dev/null || true
 # CS2 liest Befehle von der Standardeingabe; das Rohr legt die Wurzel an.
 palantir_konsole_oeffnen
 
+# Eigene Variable fuer die Meldung - `KARTE` entscheidet unten noch, ob die
+# Workshop-Karte nachgeladen wird.
+KARTE_TEXT="$KARTE"
 if [ "$KARTE" = workshop ]; then
-  KARTE="Workshop-Karte ${WORKSHOP_ID}"
+  KARTE_TEXT="de_dust2, danach Workshop-Karte ${WORKSHOP_ID}"
 fi
-palantir_log "Startet CS2 (${CS2_GAME_MODE:-competitive}) auf ${KARTE}, Port ${PORT}"
+palantir_log "Startet CS2 (${CS2_GAME_MODE:-competitive}) auf ${KARTE_TEXT}, Port ${PORT}"
 
 cd "${SERVER}/game"
 
@@ -227,12 +237,43 @@ beenden() {
   ) &
 }
 
+# Liest die Ausgabe von CS2 mit, reicht jede Zeile weiter und schickt
+# `host_workshop_map`, sobald CS2 seine Sitzung beim Game Coordinator hat – die
+# letzte Startzeile, danach ist Steam bereit. Genau einmal; danach reicht
+# `cat` den Rest durch, damit die Zeilenschleife nicht mitläuft.
+workshop_nachladen() {
+  while IFS= read -r zeile; do
+    printf '%s\n' "$zeile"
+
+    case "$zeile" in
+      *'activated session on GC'*)
+        palantir_log "Steam bereit - lade Workshop-Karte ${WORKSHOP_ID}."
+        printf 'host_workshop_map %s\n' "$WORKSHOP_ID" >&3
+        break
+        ;;
+    esac
+  done
+
+  cat
+}
+
 # Der Fang steht **vor** dem Start: Ein Signal in der Lücke dazwischen
 # beendete die Shell sonst kommentarlos.
 trap beenden TERM INT
 
-"$BINAERDATEI" "$@" 0<&3 3>&- &
-SERVER_PID=$!
+if [ "$KARTE" = workshop ]; then
+  # Nur mit Workshop-Karte läuft die Ausgabe über ein Rohr – der gewöhnliche
+  # Start bleibt, wie er auf der Node bewiesen ist.
+  AUSGABE="${PALANTIR_INTERN}/cs2-ausgabe"
+  rm -f "$AUSGABE"
+  mkfifo -m 600 "$AUSGABE"
+  workshop_nachladen < "$AUSGABE" &
+  "$BINAERDATEI" "$@" 0<&3 3>&- > "$AUSGABE" 2>&1 &
+  SERVER_PID=$!
+else
+  "$BINAERDATEI" "$@" 0<&3 3>&- &
+  SERVER_PID=$!
+fi
 
 # `wait` kehrt beim Signal mit 128+n zurück, auch wenn CS2 noch läuft – dann
 # noch einmal warten; das zweite `wait` liefert den echten Status (Fundpunkt
