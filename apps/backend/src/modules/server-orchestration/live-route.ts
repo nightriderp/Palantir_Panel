@@ -348,7 +348,20 @@ export function registerServerLiveRoute(
               // liefert der Request/Response-Weg die Ausgabe eines Befehls.)
               pushLine(serverId, 'input', `> ${command}`);
               const result = await service.execConsole(serverId, command);
-              pushOutput(serverId, 'stdout', result.stdout);
+
+              /*
+               * **Ohne RCON keine Quittung** (Betreiber 24.09.2026). Über die
+               * Standardeingabe antwortet der Server in der Live-Ausgabe; was
+               * `palantir-console` selbst zurückgibt, ist nur „An den Server
+               * übergeben …“ – in dieser Konsole doppelt. Für den Betreiber,
+               * der auf der Node von Hand `docker exec` tippt, bleibt sie im
+               * Skript. Fehler (Exit-Code ≠ 0, stderr) kommen weiter an; bei
+               * RCON ist stdout die Antwort selbst und bleibt ebenfalls.
+               */
+              const ueberStandardeingabe = registry.require(dto.gameType).console?.kind !== 'rcon';
+              if (!(ueberStandardeingabe && result.exitCode === 0)) {
+                pushOutput(serverId, 'stdout', result.stdout);
+              }
               pushOutput(serverId, 'stderr', result.stderr);
             } catch (error) {
               const message = isServerOrchestrationError(error)
