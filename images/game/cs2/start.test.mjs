@@ -88,6 +88,8 @@ function arbeitsordner({ starter = true } = {}) {
       '#!/bin/sh',
       'echo "cwd $(pwd)"',
       'echo "ld $LD_LIBRARY_PATH"',
+      'echo "preload ${LD_PRELOAD:-}"',
+      'echo "stdbuf ${_STDBUF_O:-}"',
       'for arg in "$@"; do printf "argv %s\\n" "$arg"; done',
       // Wie CS2 am Ende des Starts (Fundpunkt 349).
       'if [ -n "${TEST_GC:-}" ]; then echo "[STARTUP] {7.355} activated session on GC"; fi',
@@ -173,6 +175,23 @@ describe('start.sh – Basic', nurMitShell, () => {
 
     assert.equal(nach(lauf.argv, '-port'), '25003');
   });
+
+  it(
+    'lässt CS2 zeilenweise schreiben – sonst hängen Antworten im Puffer',
+    {
+      skip:
+        spawnSync('sh', ['-c', 'command -v stdbuf']).status === 0 && process.platform !== 'win32'
+          ? false
+          : 'Braucht stdbuf (coreutils unter Linux).',
+    },
+    () => {
+      const lauf = starte(arbeitsordner());
+
+      // stdbuf setzt _STDBUF_O und lädt libstdbuf vor, dann exec auf CS2.
+      assert.ok(lauf.zeilen.includes('stdbuf L'), lauf.stdout);
+      assert.match(lauf.zeilen.find((z) => z.startsWith('preload ')) ?? '', /libstdbuf/u);
+    },
+  );
 
   it('legt Valves Bibliotheksordner in den Suchpfad – sonst fehlt libv8.so', () => {
     const lauf = starte(arbeitsordner());

@@ -262,6 +262,19 @@ workshop_nachladen() {
   cat
 }
 
+# **Zeilenweise schreiben** (24.09.2026). In ein Rohr statt in ein Terminal
+# puffert CS2 seine Ausgabe blockweise: Antworten auf Konsolenbefehle aus dem
+# Panel kamen erst, wenn genug anderes nachdrängte – im Docker-Log standen 25
+# Zeilen mit demselben Zeitstempel, danach minutenlang nichts. `stdbuf` stellt
+# die Ausgabe auf Zeilenpuffer und ersetzt sich per `exec` durch CS2; die
+# Prozessnummer bleibt die von CS2, das Stoppsignal kommt weiter an.
+if command -v stdbuf > /dev/null 2>&1; then
+  set -- stdbuf -oL -eL "$BINAERDATEI" "$@"
+else
+  palantir_log 'Hinweis: stdbuf fehlt - Antworten auf Konsolenbefehle kommen verzoegert.'
+  set -- "$BINAERDATEI" "$@"
+fi
+
 # Der Fang steht **vor** dem Start: Ein Signal in der Lücke dazwischen
 # beendete die Shell sonst kommentarlos.
 trap beenden TERM INT
@@ -273,10 +286,10 @@ if [ "$KARTE" = workshop ]; then
   rm -f "$AUSGABE"
   mkfifo -m 600 "$AUSGABE"
   workshop_nachladen < "$AUSGABE" &
-  "$BINAERDATEI" "$@" 0<&3 3>&- > "$AUSGABE" 2>&1 &
+  "$@" 0<&3 3>&- > "$AUSGABE" 2>&1 &
   SERVER_PID=$!
 else
-  "$BINAERDATEI" "$@" 0<&3 3>&- &
+  "$@" 0<&3 3>&- &
   SERVER_PID=$!
 fi
 
