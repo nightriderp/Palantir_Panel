@@ -11,8 +11,8 @@
 #
 # Einstellungen aus dem Panel: Servername, Server-Passwort, Spieleranzahl
 # (Schritt 2), Startkarte, Spielmodus, Bots (Schritt 3), Workshop-Karte
-# (Schritt 4), alle Runden spielen (Schritt 5), GOTV (Schritt 5.1). Keine
-# Plugins.
+# (Schritt 4), alle Runden spielen (Schritt 5), GOTV (Schritt 5.1),
+# Plugin-Grundlage MetaMod + CounterStrikeSharp (Schritt 7, abschaltbar).
 #
 # **Der Port kommt vom Panel** (`CS2_PORT`, Schritt 1.1): dieselbe Nummer, unter
 # der der Server draußen erreichbar ist. CS2 nennt Clients seinen eigenen Port;
@@ -54,6 +54,135 @@ if [ -f "$STEAMCLIENT" ]; then
   cp -f "$STEAMCLIENT" "${HOME}/.steam/sdk64/steamclient.so"
 else
   palantir_log "Hinweis: ${STEAMCLIENT} fehlt - scheitert die Anmeldung an Steam, liegt es daran."
+fi
+
+# -----------------------------------------------------------------------------
+# 2b. Plugin-Grundlage (Schritt 7)
+#
+# MetaMod:Source lädt Plugins in den Server, CounterStrikeSharp ist das
+# MetaMod-Plugin, das C#-Plugins lädt – fast alles, was es für CS2 gibt, baut
+# darauf. **Hinter einem Schalter** (`CS2_PLUGINS`, Vorgabe aus): Nach einem
+# CS2-Update, das MetaMod bricht, startet der Server mit Plugins gar nicht;
+# ohne läuft er als gewöhnlicher Server weiter. Die Dateien bleiben liegen,
+# nur die Zeile in `gameinfo.gi` fällt weg.
+#
+# **Geholt in den internen Ordner**, geprüft gegen die Summe aus dem Image;
+# was nicht passt, wird verworfen. **Ausgepackt nur bei neuer Fassung**
+# (Merkdatei) – sonst überschriebe jeder Start `metaplugins.ini` und
+# `core.json`, die danach dem Betreiber gehören.
+#
+# Ausgepackt wird MetaMod mit `tar` selbst: `palantir_tar_auspacken` kam erst
+# mit Basis-Linux 3, dieses Image steht auf `base-steam:6` über Linux 2.
+CSGO="${SERVER}/game/csgo"
+ADDONS="${CSGO}/addons"
+GAMEINFO="${CSGO}/gameinfo.gi"
+MERKDATEI="${ADDONS}/.palantir-grundlage"
+
+case "${CS2_PLUGINS:-false}" in
+  true) PLUGINS=1 ;;
+  false) PLUGINS=0 ;;
+  *)
+    palantir_log "Ungueltiger Wert fuer die Plugins: ${CS2_PLUGINS}."
+    exit 78
+    ;;
+esac
+
+# Schreibt über eine Zwischenkopie im selben Ordner: Ein Abbruch mittendrin
+# ließe sonst eine halbe `gameinfo.gi` zurück, und CS2 startete gar nicht mehr.
+gameinfo_ersetzen() {
+  mv "${GAMEINFO}.palantir" "$GAMEINFO"
+}
+
+# Direkt hinter `Game_LowViolence`, vor `Game csgo` – so beschreibt es MetaMod,
+# und nur dort wird der Ordner vor dem Spiel durchsucht. Bei jedem Start: Ein
+# Update von Valve schreibt `gameinfo.gi` neu und nimmt die Zeile mit.
+gameinfo_eintragen() {
+  if [ ! -f "$GAMEINFO" ]; then
+    palantir_log "Hinweis: ${GAMEINFO} fehlt - MetaMod wird nicht geladen."
+    return 0
+  fi
+
+  if grep -q 'csgo/addons/metamod' "$GAMEINFO"; then
+    return 0
+  fi
+
+  if ! grep -q 'Game_LowViolence' "$GAMEINFO"; then
+    palantir_log 'Hinweis: In gameinfo.gi fehlt Game_LowViolence - MetaMod wird nicht geladen.'
+    return 0
+  fi
+
+  awk '
+    { print }
+    /Game_LowViolence/ && !erledigt { print "\t\t\tGame\tcsgo/addons/metamod"; erledigt = 1 }
+  ' "$GAMEINFO" > "${GAMEINFO}.palantir"
+  gameinfo_ersetzen
+  palantir_log 'MetaMod in gameinfo.gi eingetragen.'
+}
+
+gameinfo_austragen() {
+  if [ -f "$GAMEINFO" ] && grep -q 'csgo/addons/metamod' "$GAMEINFO"; then
+    grep -v 'csgo/addons/metamod' "$GAMEINFO" > "${GAMEINFO}.palantir" || true
+    gameinfo_ersetzen
+    palantir_log 'Plugins aus - MetaMod aus gameinfo.gi genommen.'
+  fi
+}
+
+grundlage_legen() {
+  ablage="${PALANTIR_INTERN}/cs2-plugins"
+  mkdir -p "$ablage" "$ADDONS"
+
+  palantir_datei_holen "$CS2_METAMOD_URL" "$CS2_METAMOD_SHA256" "${ablage}/metamod.tar.gz" ||
+    return 1
+  palantir_datei_holen "$CS2_CSS_URL" "$CS2_CSS_SHA256" "${ablage}/counterstrikesharp.zip" ||
+    return 1
+
+  stand="${CS2_METAMOD_SHA256} ${CS2_CSS_SHA256}"
+
+  if [ -f "$MERKDATEI" ] && [ "$(cat "$MERKDATEI")" = "$stand" ]; then
+    return 0
+  fi
+
+  palantir_log "Packe MetaMod ${CS2_METAMOD_VERSION:-} und CounterStrikeSharp ${CS2_CSS_VERSION:-} aus ..."
+
+  # `metaplugins.ini` gehört nach dem ersten Mal dem Betreiber.
+  if [ -f "${ADDONS}/metamod/metaplugins.ini" ]; then
+    cp "${ADDONS}/metamod/metaplugins.ini" "${ablage}/metaplugins.ini.betreiber"
+  fi
+
+  if ! tar -xzf "${ablage}/metamod.tar.gz" -C "$CSGO"; then
+    palantir_log 'Das MetaMod-Archiv liess sich nicht auspacken.'
+    return 1
+  fi
+  palantir_zip_auspacken "${ablage}/counterstrikesharp.zip" "$CSGO" || return 1
+
+  if [ -f "${ablage}/metaplugins.ini.betreiber" ]; then
+    mv "${ablage}/metaplugins.ini.betreiber" "${ADDONS}/metamod/metaplugins.ini"
+  fi
+
+  printf '%s\n' "$stand" > "$MERKDATEI"
+}
+
+if [ "$PLUGINS" = 1 ]; then
+  if [ -z "${CS2_METAMOD_URL:-}" ] || [ -z "${CS2_METAMOD_SHA256:-}" ] ||
+    [ -z "${CS2_CSS_URL:-}" ] || [ -z "${CS2_CSS_SHA256:-}" ]; then
+    palantir_log 'Adresse oder Pruefsumme von MetaMod bzw. CounterStrikeSharp fehlt - das setzt das Image.'
+    exit 69
+  fi
+
+  if ! grundlage_legen; then
+    palantir_log 'Die Plugin-Grundlage fehlt. Wer ohne Plugins spielen will, schaltet sie in den Einstellungen aus.'
+    exit 69
+  fi
+
+  # `core.json` einmal aus der Vorlage – danach gehört sie dem Betreiber.
+  CSS_CONFIGS="${ADDONS}/counterstrikesharp/configs"
+  if [ ! -f "${CSS_CONFIGS}/core.json" ] && [ -f "${CSS_CONFIGS}/core.example.json" ]; then
+    cp "${CSS_CONFIGS}/core.example.json" "${CSS_CONFIGS}/core.json"
+  fi
+
+  gameinfo_eintragen
+else
+  gameinfo_austragen
 fi
 
 # -----------------------------------------------------------------------------

@@ -12,7 +12,15 @@
 
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -72,7 +80,11 @@ function arbeitsordner({ starter = true } = {}) {
     '  vorher="$a"',
     'done',
     'printf "steamcmd %s\\n" "$*"',
-    'mkdir -p "$ziel/game/bin/linuxsteamrt64"',
+    'mkdir -p "$ziel/game/bin/linuxsteamrt64" "$ziel/game/csgo"',
+    // Wie Valves gameinfo.gi: SteamCMD legt sie bei jedem Abgleich neu an.
+    'if [ ! -f "$ziel/game/csgo/gameinfo.gi" ]; then',
+    '  printf "\\t\\tSearchPaths\\n\\t\\t{\\n\\t\\t\\tGame_LowViolence\\tcsgo_lv\\n\\t\\t\\tGame\\tcsgo\\n\\t\\t}\\n" > "$ziel/game/csgo/gameinfo.gi"',
+    'fi',
   ];
 
   if (starter) {
@@ -443,6 +455,128 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     for (const modus of ['competitive', 'casual', 'competitive2v2', 'deathmatch', 'armsrace']) {
       assert.match(datei(ordner, `gamemode_${modus}_server.cfg`), /^exec palantir$/mu, modus);
     }
+  });
+});
+
+/**
+ * Schritt 7: Plugin-Grundlage. Die Archive baut der Test selbst – ein
+ * `.tar.gz` für MetaMod, ein Zip für CounterStrikeSharp – und reicht sie über
+ * `file://` mit ihrer echten Summe herein.
+ */
+const ZIP_VORHANDEN = spawnSync('sh', ['-c', 'command -v zip && command -v unzip']).status === 0;
+const nurMitZip = {
+  skip:
+    SH_VORHANDEN && ZIP_VORHANDEN && process.platform !== 'win32'
+      ? false
+      : 'Braucht sh, zip und unzip.',
+};
+
+function grundlageArchive() {
+  const wurzel = mkdtempSync(join(tmpdir(), 'palantir-cs2-grundlage-'));
+  aufraeumen.push(wurzel);
+  const sh = (befehl) => spawnSync('sh', ['-c', befehl], { cwd: wurzel, encoding: 'utf8' });
+
+  sh(
+    'mkdir -p mm/addons/metamod css/addons/counterstrikesharp/configs && ' +
+      'echo "; eigene Plugins" > mm/addons/metamod/metaplugins.ini && ' +
+      'echo "{}" > css/addons/counterstrikesharp/configs/core.example.json && ' +
+      'tar -czf metamod.tar.gz -C mm addons && (cd css && zip -qr ../css.zip addons)',
+  );
+
+  const summe = (datei) =>
+    createHash('sha256')
+      .update(readFileSync(join(wurzel, datei)))
+      .digest('hex');
+
+  return {
+    CS2_METAMOD_URL: `file://${posix(join(wurzel, 'metamod.tar.gz'))}`,
+    CS2_METAMOD_SHA256: summe('metamod.tar.gz'),
+    CS2_CSS_URL: `file://${posix(join(wurzel, 'css.zip'))}`,
+    CS2_CSS_SHA256: summe('css.zip'),
+  };
+}
+
+describe('start.sh – Schritt 7: Plugin-Grundlage', nurMitShell, () => {
+  const gameinfo = (ordner) =>
+    readFileSync(join(ordner.daten, 'server', 'game', 'csgo', 'gameinfo.gi'), 'utf8');
+
+  it('lässt ohne Schalter alles, wie es ist – kein Download, keine Zeile in gameinfo.gi', () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, { CS2_METAMOD_URL: 'file:///gibt/es/nicht' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.doesNotMatch(gameinfo(ordner), /metamod/u);
+  });
+
+  it('bricht mit 69 ab, wenn die Summe nicht passt – und trägt nichts ein', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const lauf = starte(ordner, {
+      ...grundlageArchive(),
+      CS2_METAMOD_SHA256: '0'.repeat(64),
+      CS2_PLUGINS: 'true',
+    });
+
+    assert.equal(lauf.status, 69);
+    assert.deepEqual(lauf.argv, []);
+  });
+
+  it(
+    'packt die Grundlage aus und trägt MetaMod direkt hinter Game_LowViolence ein',
+    nurMitZip,
+    () => {
+      const ordner = arbeitsordner();
+      const lauf = starte(ordner, { ...grundlageArchive(), CS2_PLUGINS: 'true' });
+      const csgo = join(ordner.daten, 'server', 'game', 'csgo');
+
+      assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+      assert.match(
+        gameinfo(ordner),
+        /Game_LowViolence\tcsgo_lv\n\t\t\tGame\tcsgo\/addons\/metamod\n\t\t\tGame\tcsgo\n/u,
+      );
+      assert.ok(existsSync(join(csgo, 'addons', 'metamod', 'metaplugins.ini')));
+      // core.json einmal aus der Vorlage.
+      assert.ok(existsSync(join(csgo, 'addons', 'counterstrikesharp', 'configs', 'core.json')));
+    },
+  );
+
+  it(
+    'trägt beim zweiten Start nicht doppelt ein und lässt metaplugins.ini dem Betreiber',
+    nurMitZip,
+    () => {
+      const ordner = arbeitsordner();
+      const archive = grundlageArchive();
+      starte(ordner, { ...archive, CS2_PLUGINS: 'true' });
+      const ini = join(
+        ordner.daten,
+        'server',
+        'game',
+        'csgo',
+        'addons',
+        'metamod',
+        'metaplugins.ini',
+      );
+      writeFileSync(ini, 'addons/meins\n');
+
+      starte(ordner, { ...archive, CS2_PLUGINS: 'true' });
+
+      assert.equal(gameinfo(ordner).match(/csgo\/addons\/metamod/gu)?.length, 1);
+      assert.equal(readFileSync(ini, 'utf8'), 'addons/meins\n');
+    },
+  );
+
+  it('nimmt MetaMod beim Abschalten wieder aus gameinfo.gi', nurMitZip, () => {
+    const ordner = arbeitsordner();
+    const archive = grundlageArchive();
+    starte(ordner, { ...archive, CS2_PLUGINS: 'true' });
+
+    const lauf = starte(ordner, { ...archive, CS2_PLUGINS: 'false' });
+
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.doesNotMatch(gameinfo(ordner), /metamod/u);
+  });
+
+  it('lehnt einen Plugin-Schalter ab, der weder true noch false ist', () => {
+    assert.equal(starte(arbeitsordner(), { CS2_PLUGINS: 'ja' }).status, 78);
   });
 });
 

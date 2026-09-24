@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.12',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.13',
   defaultEnv: {},
   ports: [
     {
@@ -3464,7 +3464,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     },
   ],
   // Schritt 2 (23.09.2026): Name, Passwort, Spieler; Schritt 3: Karte, Modus, Bots;
-  // Schritt 4: Workshop-Karte; Schritt 5: alle Runden spielen; Schritt 5.1: GOTV.
+  // Schritt 4: Workshop-Karte; Schritt 5: alle Runden spielen; Schritt 5.1: GOTV;
+  // Schritt 7: Plugin-Grundlage.
   configFields: [
     {
       key: 'serverName',
@@ -3586,6 +3587,21 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: null,
       lockedAfterCreate: false,
     },
+    {
+      // Schritt 7: MetaMod:Source + CounterStrikeSharp. Vorgabe aus – nach einem
+      // CS2-Update, das MetaMod bricht, bleibt der Server so startbar.
+      key: 'plugins',
+      label: 'Plugins laden (MetaMod + CounterStrikeSharp)',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Grundlage für Plugins. Der erste Start damit lädt gut 50 MB nach. Startet der Server nach einem CS2-Update nicht mehr, hier ausschalten.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
   ],
   envMapping: {
     serverName: 'CS2_HOSTNAME',
@@ -3597,6 +3613,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     workshopMap: 'CS2_WORKSHOP_MAP',
     allRounds: 'CS2_ALL_ROUNDS',
     gotv: 'CS2_GOTV',
+    plugins: 'CS2_PLUGINS',
   },
   // CS2 liest alles davon beim Start; im laufenden Betrieb erreicht ihn nichts.
   // Karte, Modus und Bots gehen zusätzlich live (siehe `liveControls`).
@@ -3610,6 +3627,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'workshopMap',
     'allRounds',
     'gotv',
+    'plugins',
   ],
   /*
    * **Live-Steuerung** (Schritt 3.2, Betreiber-Wunsch 23.09.2026). Die
