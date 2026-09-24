@@ -117,12 +117,18 @@ interface AufbauOptionen {
   readonly isSessionValid?: () => Promise<boolean>;
   /** Frischer Akteur je Abo-Prüfung (Befund 3.2). */
   readonly refreshActor?: () => Promise<PermissionActor | null>;
+  /** Spieltyp des Servers – für den Unterschied Standardeingabe/RCON. */
+  readonly gameType?: string;
+  /** Ergebnis von `execConsole`; ohne Angabe `pong` ohne Exit-Code. */
+  readonly konsolenErgebnis?: { stdout: string; stderr: string; exitCode?: number };
 }
 
 let offen: FastifyInstance | null = null;
 
 async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
-  const execConsole = vi.fn(async () => ({ stdout: 'pong', stderr: '' }));
+  const execConsole = vi.fn(
+    async () => optionen.konsolenErgebnis ?? { stdout: 'pong', stderr: '' },
+  );
   const members: ServerMemberRecord[] = [];
 
   const service = {
@@ -131,7 +137,7 @@ async function baueApp(optionen: AufbauOptionen = {}): Promise<Aufbau> {
         throw new Error('unbekannter Server');
       }
 
-      return SERVER;
+      return optionen.gameType === undefined ? SERVER : { ...SERVER, gameType: optionen.gameType };
     },
     recentCrashCount: () => 0,
     execConsole,
@@ -411,6 +417,59 @@ describe('Ist-Stand und Lebenszeichen (event-flow-03)', () => {
     await kurzWarten();
 
     expect(kanal.frames).toHaveLength(0);
+  });
+});
+
+describe('Konsolenbefehl: Quittung von palantir-console (Betreiber 24.09.2026)', () => {
+  async function zeilenNach(optionen: AufbauOptionen): Promise<string[]> {
+    const { app } = await baueApp(optionen);
+    const kanal = await verbinde(app);
+
+    kanal.send({ kind: 'subscribe', topic: { resource: 'server', id: SERVER_ID } });
+    await warteAufFrames(kanal.frames, 1);
+
+    kanal.send({
+      kind: 'consoleCommand',
+      topic: { resource: 'server', id: SERVER_ID },
+      command: 'status',
+    });
+    await warteAufFrames(kanal.frames, 2);
+    await kurzWarten();
+
+    return kanal.frames
+      .filter((frame) => frame.event === 'server.consoleLineAppended')
+      .map((frame) => (frame.data as { line: { text: string } }).line.text);
+  }
+
+  const QUITTUNG = {
+    stdout: 'An den Server übergeben: status\nDie Antwort des Servers steht in der Live-Ausgabe.\n',
+    stderr: '',
+    exitCode: 0,
+  };
+
+  it('lässt sie über die Standardeingabe weg – die Antwort steht in der Live-Ausgabe', async () => {
+    expect(await zeilenNach({ konsolenErgebnis: QUITTUNG })).toEqual(['> status']);
+  });
+
+  it('zeigt einen Fehler der Übergabe weiter an', async () => {
+    const zeilen = await zeilenNach({
+      konsolenErgebnis: { stdout: '', stderr: 'Die Konsole ist nicht erreichbar', exitCode: 1 },
+    });
+
+    expect(zeilen).toEqual(['> status', 'Die Konsole ist nicht erreichbar']);
+  });
+
+  it('zeigt bei RCON die Antwort – dort ist stdout die Antwort selbst', async () => {
+    const zeilen = await zeilenNach({
+      gameType: 'minecraft-paper',
+      konsolenErgebnis: {
+        stdout: 'There are 0 of a max of 20 players online',
+        stderr: '',
+        exitCode: 0,
+      },
+    });
+
+    expect(zeilen).toEqual(['> status', 'There are 0 of a max of 20 players online']);
   });
 });
 
