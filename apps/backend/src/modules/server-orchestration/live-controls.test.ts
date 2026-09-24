@@ -236,6 +236,29 @@ describe('Steuerungen mit Neustart (CS2-Plugins)', () => {
   });
 });
 
+describe('commandsWhen – Befehle nur unter Bedingung', () => {
+  const MIT_BEDINGUNG: GameTypeDefinition = {
+    ...SPIEL,
+    liveControls: [
+      {
+        id: 'karte',
+        label: 'Karte',
+        fields: ['map'],
+        commands: ['changelevel {map}'],
+        commandsWhen: { field: 'bots', values: ['0'] },
+      },
+    ],
+  };
+
+  it('schickt die Befehle, solange die Bedingung gilt', () => {
+    expect(liveBefehle(MIT_BEDINGUNG, ['map'], { map: 'b', bots: 0 })).toEqual(['changelevel b']);
+  });
+
+  it('schickt nichts, wenn sie nicht gilt – der Wert wird nur gespeichert', () => {
+    expect(liveBefehle(MIT_BEDINGUNG, ['map'], { map: 'b', bots: 3 })).toEqual([]);
+  });
+});
+
 describe('liveDatei', () => {
   it('enthält die persist-Zeilen mit den geltenden Werten', () => {
     expect(liveDatei(SPIEL, { map: 'a', mode: 'eins', bots: 6 })).toMatch(/^bot_quota 6$/mu);

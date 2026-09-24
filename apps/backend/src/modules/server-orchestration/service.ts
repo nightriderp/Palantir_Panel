@@ -2147,14 +2147,18 @@ export class ServerOrchestrationService {
       await this.files.writeFileContent(serverId, definition.liveConfigFile, datei);
     }
 
-    for (const zeile of laeuft ? liveBefehle(definition, geaendert, werte) : []) {
+    // Abschnitte, die erst mit einem Neustart wirken (CS2: Plugin-Grundlage):
+    // Läuft der Server, zeigt das Panel „Neustart nötig“ – bis der Neustart
+    // kommt, den die Oberfläche gleich mit anbietet. Dann gehen auch keine
+    // anderen Befehle raus: Der Neustart bringt ohnehin alles mit, und ein
+    // Plugin-Befehl an einen Server ohne Grundlage liefe ins Leere.
+    const brauchtNeustart = laeuft && liveBrauchtNeustart(definition, geaendert);
+
+    for (const zeile of laeuft && !brauchtNeustart
+      ? liveBefehle(definition, geaendert, werte)
+      : []) {
       await this.execConsole(serverId, zeile);
     }
-
-    // Abschnitte, die erst mit einem Neustart wirken (CS2-Plugins): Läuft der
-    // Server, zeigt das Panel „Neustart nötig“ – bis der Neustart kommt, den
-    // die Oberfläche gleich mit anbietet.
-    const brauchtNeustart = laeuft && liveBrauchtNeustart(definition, geaendert);
 
     await this.deps.repository.update(serverId, {
       configJson: { ...server.configJson, ...(server.liveValues ?? {}), ...neu },

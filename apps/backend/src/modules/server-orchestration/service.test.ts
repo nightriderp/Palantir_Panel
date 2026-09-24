@@ -5567,8 +5567,11 @@ describe('Live-Steuerung', () => {
     await harness.service.applyLiveValues(created.id, { bots: 3 });
     expect((await harness.service.requireServer(created.id)).restartRequired).toBe(false);
 
-    await harness.service.applyLiveValues(created.id, { map: 'b' });
+    harness.socket.commands.length = 0;
+    await harness.service.applyLiveValues(created.id, { map: 'b', bots: 5 });
     expect((await harness.service.requireServer(created.id)).restartRequired).toBe(true);
+    // Mit Neustart gehen auch die Befehle anderer Steuerungen nicht raus.
+    expect(harness.socket.commands.filter((c) => c.command === 'EXEC_CONSOLE')).toHaveLength(0);
   });
 
   it('meldet ein Spiel ohne Live-Steuerung als nicht steuerbar', async () => {

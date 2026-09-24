@@ -1575,15 +1575,49 @@ describe('Counter-Strike 2', () => {
     }
   });
 
-  it('bietet die Plugins in der Steuerung an – mit Neustart, eingeklappt', () => {
-    const plugins = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'plugins');
+  it('stellt Alle Runden, MetaMod und SimpleAdmin als Schalterzeile zusammen', () => {
+    const inGruppe = (CS2_GAME_TYPE.liveControls ?? [])
+      .filter((s) => s.group === 'Schalter')
+      .map((s) => s.id);
 
-    expect(plugins).toMatchObject({
-      fields: ['plugins', 'modePlugin', 'pluginSimpleAdmin'],
-      commands: [],
-      requiresRestart: true,
-      collapsible: true,
-    });
+    expect(inGruppe).toEqual(['runden', 'plugins', 'simpleadmin']);
+    // Nur MetaMod braucht einen Neustart.
+    const plugins = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'plugins');
+    expect(plugins).toMatchObject({ fields: ['plugins'], commands: [], requiresRestart: true });
+  });
+
+  it('schaltet Plugins ohne Neustart – nur mit Grundlage, Spielmodus mit Kartenneustart', () => {
+    const mit = { plugins: true, map: 'de_mirage', workshopMap: 0 };
+
+    expect(
+      liveBefehle(CS2_GAME_TYPE, ['pluginSimpleAdmin'], { ...mit, pluginSimpleAdmin: true }),
+    ).toEqual(['exec palantir_plugin_an_simpleadmin']);
+    expect(liveBefehle(CS2_GAME_TYPE, ['modePlugin'], { ...mit, modePlugin: 'retakes' })).toEqual([
+      'exec palantir_modus_retakes',
+      'changelevel de_mirage',
+    ]);
+    expect(
+      liveBefehle(CS2_GAME_TYPE, ['modePlugin'], {
+        ...mit,
+        map: 'workshop',
+        workshopMap: 42,
+        modePlugin: 'none',
+      }),
+    ).toEqual(['exec palantir_modus_none', 'host_workshop_map 42']);
+    // Ohne Grundlage nur speichern.
+    expect(
+      liveBefehle(CS2_GAME_TYPE, ['modePlugin'], { ...mit, plugins: false, modePlugin: 'matchzy' }),
+    ).toEqual([]);
+  });
+
+  it('gibt Karten und Spielmodi Anzeigenamen', () => {
+    const feld = (key: string) => CS2_GAME_TYPE.configFields.find((f) => f.key === key);
+
+    for (const key of ['map', 'gameMode', 'modePlugin']) {
+      for (const wert of feld(key)?.options ?? []) {
+        expect(feld(key)?.optionLabels?.[wert], `${key}=${wert}`).toBeTruthy();
+      }
+    }
   });
 
   it('lässt die Bots auch mit Spielmodus-Plugin einstellen (Betreiber 25.09.2026)', () => {
@@ -1684,8 +1718,8 @@ describe('Counter-Strike 2', () => {
       'bots',
       'allRounds',
       'plugins',
-      'modePlugin',
       'pluginSimpleAdmin',
+      'modePlugin',
     ]);
 
     for (const key of felder) {
