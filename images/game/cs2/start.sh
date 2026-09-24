@@ -429,6 +429,54 @@ done
 printf '%s\n' '// Schreibt das Panel bei Live-Aenderungen; beim Start geleert.' \
   > "${CFG_ORDNER}/palantir_live.cfg"
 
+# **Bots aus dem Panel, auch mit Spielmodus-Plugin** (Betreiber 25.09.2026).
+# MatchZy und Retakes führen nach dem Kartenladen eigene Konfigurationen aus –
+# mit `bot_kick` und `bot_quota 0`, also nach unserer. Ans Ende dieser Dateien
+# kommt deshalb ein markierter Block, der unsere Bots danach wieder setzt:
+# `palantir_bots` (Startwert aus den Einstellungen) und `palantir_live` (was in
+# der Steuerung umgestellt wurde). Bei jedem Start neu geschrieben, nie doppelt.
+{
+  echo '// Schreibt Palantir bei jedem Start neu - Bots aus dem Panel.'
+  printf 'bot_quota_mode "normal"\n'
+  printf 'bot_quota %s\n' "$BOTS"
+} > "${CFG_ORDNER}/palantir_bots.cfg"
+
+BOTS_BLOCK_ANFANG='// >>> Palantir: Bots aus dem Panel (bei jedem Start neu geschrieben)'
+BOTS_BLOCK_ENDE='// <<< Palantir'
+
+bots_block_setzen() {
+  [ -f "$1" ] || return 1
+
+  # Alten Block weg, neuen ans Ende – über eine Zwischendatei, damit ein
+  # Abbruch keine halbe Konfiguration des Plugins hinterlässt.
+  awk -v anfang="$BOTS_BLOCK_ANFANG" -v ende="$BOTS_BLOCK_ENDE" '
+    $0 == anfang { im_block = 1; next }
+    im_block && $0 == ende { im_block = 0; next }
+    !im_block { print }
+  ' "$1" > "${1}.palantir"
+  printf '%s\n' "$BOTS_BLOCK_ANFANG" 'exec palantir_bots' 'exec palantir_live' \
+    "$BOTS_BLOCK_ENDE" >> "${1}.palantir"
+  mv "${1}.palantir" "$1"
+}
+
+if [ "$PLUGINS" = 1 ]; then
+  case "${CS2_MODE_PLUGIN:-none}" in
+    matchzy)
+      # Warmup hat keine Override-Datei; Live schon – dort gehört es hin.
+      for datei in warmup.cfg live_override.cfg live_wingman_override.cfg; do
+        bots_block_setzen "${CFG_ORDNER}/MatchZy/${datei}" || true
+      done
+      ;;
+    retakes)
+      # Retakes legt seine Datei erst beim ersten Kartenstart an – dann greift
+      # der Block ab dem nächsten Start.
+      if ! bots_block_setzen "${CFG_ORDNER}/cs2-retakes/retakes.cfg"; then
+        palantir_log 'Hinweis: retakes.cfg gibt es noch nicht - Bots aus dem Panel gelten ab dem naechsten Start.'
+      fi
+      ;;
+  esac
+fi
+
 set -- -dedicated -port "$PORT" +game_type "$SPIEL_TYP" +game_mode "$SPIEL_MODUS"
 
 # Die Spieleranzahl ist ein Startparameter, kein Konsolenbefehl.

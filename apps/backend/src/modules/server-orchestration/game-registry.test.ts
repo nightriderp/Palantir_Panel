@@ -1586,13 +1586,17 @@ describe('Counter-Strike 2', () => {
     });
   });
 
-  it('sperrt die Bots, solange ein Spielmodus-Plugin sie verwaltet', () => {
+  it('lässt die Bots auch mit Spielmodus-Plugin einstellen (Betreiber 25.09.2026)', () => {
     const bots = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'bots');
 
-    expect(bots?.disabledWhen).toMatchObject({
-      field: 'modePlugin',
-      values: ['matchzy', 'retakes'],
-    });
+    expect(bots?.disabledWhen).toBeUndefined();
+  });
+
+  it('zeigt die Workshop-ID nur bei Karte „workshop“ und nimmt auch Links', () => {
+    const feld = CS2_GAME_TYPE.configFields.find((f) => f.key === 'workshopMap');
+
+    expect(feld?.visibleWhen).toEqual({ field: 'map', values: ['workshop'] });
+    expect(feld?.numberFromLink).toEqual({ param: 'id' });
   });
 
   it('führt GOTV als eigenen UDP-Port, drinnen wie draußen, sichtbar nur mit Schalter', () => {
