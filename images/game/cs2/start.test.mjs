@@ -473,6 +473,31 @@ const nurMitZip = {
       : 'Braucht sh, zip und unzip.',
 };
 
+/**
+ * Grundlage als „schon da“: Archive und Merkdatei mit passenden Summen liegen im
+ * Datenordner, damit `grundlage_legen` nichts holt und nichts auspackt – für
+ * Tests, die ohne zip auskommen sollen.
+ */
+function grundlageAttrappe(ordner) {
+  const ablage = join(ordner.daten, '.palantir', 'cs2-plugins');
+  const addons = join(ordner.daten, 'server', 'game', 'csgo', 'addons');
+  mkdirSync(ablage, { recursive: true });
+  mkdirSync(addons, { recursive: true });
+  writeFileSync(join(ablage, 'metamod.tar.gz'), 'mm');
+  writeFileSync(join(ablage, 'counterstrikesharp.zip'), 'css');
+  const summe = (inhalt) => createHash('sha256').update(inhalt).digest('hex');
+  const mm = summe('mm');
+  const css = summe('css');
+  writeFileSync(join(addons, '.palantir-grundlage'), `${mm} ${css}\n`);
+
+  return {
+    CS2_METAMOD_URL: 'file:///gibt/es/nicht.tar.gz',
+    CS2_METAMOD_SHA256: mm,
+    CS2_CSS_URL: 'file:///gibt/es/nicht.zip',
+    CS2_CSS_SHA256: css,
+  };
+}
+
 function grundlageArchive(kennung = 'alt') {
   const wurzel = mkdtempSync(join(tmpdir(), 'palantir-cs2-grundlage-'));
   aufraeumen.push(wurzel);
@@ -899,6 +924,99 @@ describe('start.sh – Nachträge zu Schritt 7 (24.09.2026)', nurMitShell, () =>
     assert.equal(daten.CCSPlayerController_Respawn.offsets.linux, 276);
     // Von main entfernt, von v1.0.374 noch gebraucht.
     assert.ok(daten.CheckTransmit?.signatures?.linux);
+  });
+});
+
+describe('start.sh – Bots aus dem Panel mit Spielmodus-Plugin (25.09.2026)', nurMitShell, () => {
+  const cfg = (ordner, ...teile) => join(ordner.daten, 'server', 'game', 'csgo', 'cfg', ...teile);
+
+  it('schreibt die Bots aus den Einstellungen nach palantir_bots.cfg', () => {
+    const ordner = arbeitsordner();
+    starte(ordner, { CS2_BOTS: '4' });
+
+    assert.match(readFileSync(cfg(ordner, 'palantir_bots.cfg'), 'utf8'), /^bot_quota 4$/mu);
+  });
+
+  it('hängt den Block an retakes.cfg – genau einmal, auch beim zweiten Start', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+    mkdirSync(cfg(ordner, 'cs2-retakes'), { recursive: true });
+    writeFileSync(cfg(ordner, 'cs2-retakes', 'retakes.cfg'), 'bot_kick\nbot_quota 0\n');
+    const umgebung = { CS2_PLUGINS: 'true', CS2_MODE_PLUGIN: 'retakes', CS2_BOTS: '3' };
+
+    // Ohne Grundlage-Archive scheitert der Start an den Plugins – hier zählt
+    // allein der Block. Deshalb mit leerer Plugin-Liste und vorhandener Grundlage.
+    const liste = join(ordner.daten, 'leer.list');
+    writeFileSync(liste, '');
+    const merk = join(ordner.daten, 'server', 'game', 'csgo', 'addons');
+    mkdirSync(merk, { recursive: true });
+    const lauf1 = starte(ordner, {
+      ...umgebung,
+      ...grundlageAttrappe(ordner),
+      PALANTIR_CS2_PLUGINLISTE: posix(liste),
+    });
+    const lauf2 = starte(ordner, {
+      ...umgebung,
+      ...grundlageAttrappe(ordner),
+      PALANTIR_CS2_PLUGINLISTE: posix(liste),
+    });
+
+    assert.equal(lauf1.status, 0, lauf1.stdout + lauf1.stderr);
+    assert.equal(lauf2.status, 0, lauf2.stdout + lauf2.stderr);
+    const inhalt = readFileSync(cfg(ordner, 'cs2-retakes', 'retakes.cfg'), 'utf8');
+    assert.equal(inhalt.match(/exec palantir_bots/gu)?.length, 1);
+    // Die Zeilen von Retakes bleiben, unser Block kommt danach.
+    assert.ok(inhalt.indexOf('bot_quota 0') < inhalt.indexOf('exec palantir_bots'));
+  });
+
+  it('sagt beim ersten Start mit Retakes, dass die Bots erst ab dem nächsten gelten', () => {
+    const ordner = arbeitsordner();
+    const liste = join(ordner.daten, 'leer.list');
+    mkdirSync(ordner.daten, { recursive: true });
+    writeFileSync(liste, '');
+    const lauf = starte(ordner, {
+      CS2_PLUGINS: 'true',
+      CS2_MODE_PLUGIN: 'retakes',
+      ...grundlageAttrappe(ordner),
+      PALANTIR_CS2_PLUGINLISTE: posix(liste),
+    });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    assert.match(lauf.stdout, /retakes\.cfg gibt es noch nicht/u);
+  });
+
+  it('hängt den Block bei MatchZy an Warmup und die Live-Overrides', () => {
+    const ordner = arbeitsordner();
+    starte(ordner);
+    mkdirSync(cfg(ordner, 'MatchZy'), { recursive: true });
+    for (const datei of [
+      'warmup.cfg',
+      'live_override.cfg',
+      'live_wingman_override.cfg',
+      'live.cfg',
+    ]) {
+      writeFileSync(cfg(ordner, 'MatchZy', datei), 'bot_quota 0\n');
+    }
+    const liste = join(ordner.daten, 'leer.list');
+    writeFileSync(liste, '');
+
+    const lauf = starte(ordner, {
+      CS2_PLUGINS: 'true',
+      CS2_MODE_PLUGIN: 'matchzy',
+      ...grundlageAttrappe(ordner),
+      PALANTIR_CS2_PLUGINLISTE: posix(liste),
+    });
+
+    assert.equal(lauf.status, 0, lauf.stdout + lauf.stderr);
+    for (const datei of ['warmup.cfg', 'live_override.cfg', 'live_wingman_override.cfg']) {
+      assert.match(
+        readFileSync(cfg(ordner, 'MatchZy', datei), 'utf8'),
+        /exec palantir_bots/u,
+        datei,
+      );
+    }
+    // live.cfg gehört MatchZy – dafür gibt es die Override-Datei.
+    assert.doesNotMatch(readFileSync(cfg(ordner, 'MatchZy', 'live.cfg'), 'utf8'), /palantir/u);
   });
 });
 

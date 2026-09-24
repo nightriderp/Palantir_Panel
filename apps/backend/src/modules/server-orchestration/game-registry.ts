@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.22',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.23',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3537,7 +3537,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       label: 'Bots',
       type: 'number',
       defaultValue: 0,
-      description: 'Wie viele Bots mitspielen. 0 = keine.',
+      description:
+        'Wie viele Bots mitspielen. 0 = keine. Gilt auch mit MatchZy oder Retakes – bei MatchZy wartet ein Match aber auf !ready, und Bots tippen es nie (als Admin mit .start erzwingen).',
       required: false,
       options: [],
       min: 0,
@@ -3555,13 +3556,16 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       label: 'Workshop-ID',
       type: 'number',
       defaultValue: 0,
-      description:
-        'Die Zahl hinter „?id=“ in der Adresse der Workshop-Seite. Gilt, wenn als Karte „workshop“ gewählt ist.',
+      description: 'Link zur Workshop-Seite einfügen oder nur die Zahl dahinter (…?id=1234567890).',
       required: false,
       options: [],
       min: 0,
       max: 999_999_999_999,
       lockedAfterCreate: false,
+      // Betreiber-Wunsch 25.09.2026: nur bei Karte „workshop“, und ein Link
+      // geht auch – die Oberfläche liest die Zahl aus `?id=`.
+      visibleWhen: { field: 'map', values: ['workshop'] },
+      numberFromLink: { param: 'id' },
     },
     {
       // Schritt 5: `mp_match_can_clinch 0` – sonst endet ein Match, sobald
@@ -3734,13 +3738,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       fields: ['bots'],
       commands: ['bot_quota_mode normal', 'bot_quota {bots}'],
       persist: ['bot_quota_mode normal', 'bot_quota {bots}'],
-      // MatchZy und Retakes führen nach jedem Kartenstart ihre eigene
-      // Konfiguration aus (`bot_kick`, `bot_quota 0`) und verwalten Bots selbst.
-      disabledWhen: {
-        field: 'modePlugin',
-        values: ['matchzy', 'retakes'],
-        hint: 'Bots verwaltet {wert} selbst.',
-      },
+      // Auch mit MatchZy und Retakes (Betreiber 25.09.2026): Das Image hängt
+      // ans Ende ihrer Konfigurationen `exec palantir_bots` und
+      // `exec palantir_live` – die Werte aus dem Panel gelten danach.
     },
     {
       /*

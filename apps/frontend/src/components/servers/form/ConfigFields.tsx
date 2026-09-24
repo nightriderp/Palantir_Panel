@@ -5,6 +5,7 @@ import {
   type GameConfigValue,
   type GameConfigValues,
 } from '@palantir/contracts';
+import { useState } from 'react';
 import { FieldShell, NumberField, SelectField, TextField, Toggle } from '@/components/shared';
 
 /**
@@ -39,6 +40,76 @@ export interface ConfigFieldsProps {
   hideHints?: boolean;
 }
 
+/**
+ * Zahl aus einer Eingabe, die auch ein Link sein darf (`numberFromLink`): nur
+ * Ziffern → die Zahl; sonst der Parameter `param` der Adresse (Steam-Workshop:
+ * `…?id=3070284539`). `null`, wenn keine Zahl darin steckt.
+ */
+export function zahlAusLink(eingabe: string, param: string): number | null {
+  const text = eingabe.trim();
+
+  if (/^\d+$/u.test(text)) return Number(text);
+
+  const treffer = new RegExp(`[?&]${param}=(\\d+)`, 'u').exec(text);
+
+  return treffer?.[1] === undefined ? null : Number(treffer[1]);
+}
+
+/**
+ * Zahlenfeld, das auch einen Link annimmt (Betreiber-Wunsch 25.09.2026).
+ * Angezeigt wird die gespeicherte Zahl; wer einen Link einfügt, sieht danach
+ * die Zahl daraus. Was keine Zahl enthält, ändert nichts und sagt warum.
+ */
+function LinkZahlFeld({
+  field,
+  value,
+  hint,
+  error,
+  disabled,
+  onChange,
+}: {
+  field: GameConfigField;
+  value: GameConfigValue | undefined;
+  hint: string | undefined;
+  error: string | null;
+  disabled: boolean;
+  onChange: (key: string, value: GameConfigValue) => void;
+}) {
+  const [fehler, setFehler] = useState<string | null>(null);
+  const param = field.numberFromLink?.param ?? 'id';
+
+  return (
+    <TextField
+      label={field.label}
+      hint={hint}
+      error={error ?? fehler}
+      disabled={disabled}
+      value={value === undefined || value === 0 ? '' : String(value)}
+      placeholder={`Link oder Zahl (…?${param}=…)`}
+      inputProps={{ inputMode: 'text', spellCheck: false }}
+      onChange={(eingabe) => {
+        if (eingabe.trim() === '') {
+          setFehler(null);
+          onChange(field.key, 0);
+
+          return;
+        }
+
+        const zahl = zahlAusLink(eingabe, param);
+
+        if (zahl === null) {
+          setFehler(`Kein Link mit „?${param}=“ und keine Zahl.`);
+
+          return;
+        }
+
+        setFehler(null);
+        onChange(field.key, zahl);
+      }}
+    />
+  );
+}
+
 export function ConfigFields({
   fields,
   values,
@@ -59,6 +130,15 @@ export function ConfigFields({
   return (
     <div className="flex flex-col gap-4">
       {fields.map((field) => {
+        // Nur bei bestimmtem Wert eines anderen Felds (`visibleWhen`) – die
+        // Workshop-ID etwa nur bei Karte „workshop“. Der Wert bleibt erhalten.
+        if (
+          field.visibleWhen !== undefined &&
+          !field.visibleWhen.values.includes(String(values[field.visibleWhen.field] ?? ''))
+        ) {
+          return null;
+        }
+
         const locked = disabled || (lockAfterCreate && field.lockedAfterCreate);
         const hint = hideHints
           ? undefined
@@ -82,6 +162,20 @@ export function ConfigFields({
             );
 
           case 'number':
+            if (field.numberFromLink !== undefined) {
+              return (
+                <LinkZahlFeld
+                  key={field.key}
+                  field={field}
+                  value={value}
+                  hint={hint ?? undefined}
+                  error={error}
+                  disabled={locked}
+                  onChange={onChange}
+                />
+              );
+            }
+
             return (
               <NumberField
                 key={field.key}
