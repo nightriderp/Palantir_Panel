@@ -217,6 +217,44 @@ describe('LiveControlsCard', () => {
     expect(screen.queryByText('Runden')).toBeNull();
   });
 
+  it('setzt Schalter einer Gruppe ins Raster, Auswahlfelder darunter (25.09.2026)', async () => {
+    api.fetchGameTypes.mockResolvedValue({
+      success: true,
+      data: [
+        gameType({
+          configFields: [
+            feld({ key: 'muni', label: 'Unendlich Munition', type: 'toggle', defaultValue: false }),
+            feld({
+              key: 'modus',
+              label: 'Spielmodus-Plugin',
+              type: 'select',
+              defaultValue: 'none',
+              options: ['none', 'retakes'],
+            }),
+          ],
+          liveControls: [
+            { id: 'muni', label: 'Munition', group: 'Training', fields: ['muni'], commands: [] },
+            { id: 'modus', label: 'Modus', group: 'Training', fields: ['modus'], commands: [] },
+          ],
+        }),
+      ],
+      error: null,
+    });
+    zeichne('running');
+
+    const gruppe = await screen.findByRole('region', { name: 'Training' });
+    // Der Text steht neben dem Schalter, nicht als eigene Überschrift darüber.
+    expect(within(gruppe).getByText('Unendlich Munition')).toBeTruthy();
+    expect(within(gruppe).getByRole('combobox')).toBeTruthy();
+
+    fireEvent.click(within(gruppe).getByRole('switch', { name: 'Unendlich Munition' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
+
+    await waitFor(() => {
+      expect(api.applyLiveValues).toHaveBeenCalledWith('s1', { muni: true });
+    });
+  });
+
   describe('Plugins (Fundpunkt 361)', () => {
     const MIT_PLUGINS: GameTypeDto = gameType({
       configFields: [

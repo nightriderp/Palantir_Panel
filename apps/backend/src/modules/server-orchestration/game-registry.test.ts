@@ -1557,6 +1557,11 @@ describe('Counter-Strike 2', () => {
       'workshopMap',
       'allRounds',
       'autoTeams',
+      'infiniteAmmo',
+      'allGrenades',
+      'endlessRound',
+      'grenadeCam',
+      'buyAnywhere',
       'gotv',
       'plugins',
       'admins',
@@ -1576,15 +1581,34 @@ describe('Counter-Strike 2', () => {
     }
   });
 
-  it('stellt Alle Runden, MetaMod und SimpleAdmin als Schalterzeile zusammen', () => {
-    const inGruppe = (CS2_GAME_TYPE.liveControls ?? [])
-      .filter((s) => s.group === 'Schalter')
-      .map((s) => s.id);
+  it('ordnet die Steuerung in Spiel, Training und Plugins', () => {
+    const gruppe = (name: string) =>
+      (CS2_GAME_TYPE.liveControls ?? []).filter((s) => s.group === name).map((s) => s.id);
 
-    expect(inGruppe).toEqual(['runden', 'teams', 'plugins', 'simpleadmin']);
+    expect(gruppe('Spiel')).toEqual(['runden', 'teams']);
+    expect(gruppe('Training')).toEqual([
+      'infiniteAmmo',
+      'allGrenades',
+      'endlessRound',
+      'grenadeCam',
+      'buyAnywhere',
+    ]);
+    expect(gruppe('Plugins')).toEqual(['plugins', 'simpleadmin', 'spielmodus-plugin']);
     // Nur MetaMod braucht einen Neustart.
     const plugins = CS2_GAME_TYPE.liveControls?.find((s) => s.id === 'plugins');
     expect(plugins).toMatchObject({ fields: ['plugins'], commands: [], requiresRestart: true });
+  });
+
+  it('schaltet Munition mit sv_cheats ein und startet die Runde nur, wo es nötig ist', () => {
+    expect(liveBefehle(CS2_GAME_TYPE, ['infiniteAmmo'], { infiniteAmmo: true })).toEqual([
+      'sv_cheats 1; sv_infinite_ammo 1',
+    ]);
+    expect(liveBefehle(CS2_GAME_TYPE, ['endlessRound'], { endlessRound: true })).toEqual([
+      'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1',
+      'mp_restartgame 1',
+    ]);
+    // Über Kartenwechsel hinweg ohne Neustart der Runde.
+    expect(liveDatei(CS2_GAME_TYPE, { endlessRound: true })).not.toMatch(/mp_restartgame/u);
   });
 
   it('schaltet Plugins ohne Neustart – nur mit Grundlage, Spielmodus mit Kartenneustart', () => {
@@ -1719,6 +1743,11 @@ describe('Counter-Strike 2', () => {
       'bots',
       'allRounds',
       'autoTeams',
+      'infiniteAmmo',
+      'allGrenades',
+      'endlessRound',
+      'grenadeCam',
+      'buyAnywhere',
       'plugins',
       'pluginSimpleAdmin',
       'modePlugin',
