@@ -457,10 +457,11 @@ esac
   # Aufwärmphase (25.09.2026): Sie beginnt erst, wenn der erste Spieler
   # verbindet – nach dieser Datei; ein `mp_warmup_end` hier liefe ins Leere,
   # und `mp_warmup_online_enabled 0` fror eine schon laufende bei 2:00 ein.
-  # Stattdessen gilt der Server ab einem Spieler als voll und verkürzt auf 1 s.
+  # Stattdessen die kürzeste Aufwärmzeit, die CS2 zulässt (5 s). „Alle
+  # verbunden“ (`mp_endwarmup_player_count 1`) kürzte zwar, schrieb aber jede
+  # Sekunde „Das Spiel beginnt in 1 Sekunden“ in den Chat (v2.4.41).
   if [ "$OHNE_AUFWAERMEN" = 1 ]; then
-    printf 'mp_warmup_pausetimer 0\nmp_endwarmup_player_count 1\n'
-    printf 'mp_warmuptime_all_players_connected 1\n'
+    printf 'mp_warmup_pausetimer 0\nmp_warmuptime 5\n'
   fi
   [ "$OHNE_STANDZEIT" = 1 ] && printf 'mp_freezetime 0\n'
   if [ "$SOFORT_SPAWNEN" = 1 ]; then
@@ -472,7 +473,9 @@ esac
     printf 'mp_maxmoney 60000\nmp_startmoney 60000\nmp_afterroundmoney 60000\n'
   fi
   [ "$UEBUNG" = 1 ] && printf 'exec palantir_uebung_an\n'
-  [ "$NUR_CT" = 1 ] && printf 'mp_humanteam ct\n'
+  # Nur CT wie die Utility-Map: gesperrt auf CT und nach 1 s zugeteilt – ohne
+  # `mp_force_pick_time` kam trotzdem 15 s das Teammenü (v2.4.41).
+  [ "$NUR_CT" = 1 ] && printf 'mp_humanteam ct\nmp_force_pick_time 1\n'
   # Kein Ruhezustand bei leerem Server (24.09.2026): Schlafend beantwortete
   # CS2 Konsolenbefehle aus dem Panel nicht – `mp_match_can_clinch` blieb
   # ohne Antwort, bis ein Spieler den Server weckte. Kostet etwas CPU im

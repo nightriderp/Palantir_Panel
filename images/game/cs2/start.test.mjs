@@ -447,8 +447,9 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     const cfgAn = datei(an, 'palantir.cfg');
     // Nicht mehr `mp_warmup_online_enabled 0` – das fror die Uhr bei 2:00 ein.
     assert.doesNotMatch(cfgAn, /mp_warmup_online_enabled|mp_warmup_end/u);
-    assert.match(cfgAn, /^mp_endwarmup_player_count 1$/mu);
-    assert.match(cfgAn, /^mp_warmuptime_all_players_connected 1$/mu);
+    assert.match(cfgAn, /^mp_warmuptime 5$/mu);
+    // „Alle verbunden“ spammte den Chat (v2.4.41).
+    assert.doesNotMatch(cfgAn, /mp_endwarmup_player_count|all_players_connected/u);
     assert.match(cfgAn, /^mp_freezetime 0$/mu);
     assert.match(cfgAn, /^mp_respawn_on_death_t 1$/mu);
     assert.match(cfgAn, /^mp_respawnwavetime_ct 0$/mu);
@@ -470,6 +471,7 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.match(cfgAn, /^sv_cheats 1$/mu);
     assert.match(cfgAn, /^exec palantir_uebung_an$/mu);
     assert.match(cfgAn, /^mp_humanteam ct$/mu);
+    assert.match(cfgAn, /^mp_force_pick_time 1$/mu);
     assert.doesNotMatch(datei(aus, 'palantir.cfg'), /palantir_uebung|mp_humanteam/u);
 
     const uebungAn = datei(aus, 'palantir_uebung_an.cfg');
