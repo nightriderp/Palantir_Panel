@@ -30,7 +30,7 @@
  * das genau diese Regeln einhält (`MINECRAFT_PAPER_GAME_TYPE` unten).
  */
 
-import { type GameTypeDefinition, type GameTypeDto } from '@palantir/contracts';
+import { type GamePreset, type GameTypeDefinition, type GameTypeDto } from '@palantir/contracts';
 import { ServerOrchestrationError } from './errors.js';
 import { imageVersionLabel } from './image-version.js';
 
@@ -3423,6 +3423,93 @@ const CS2_KARTEN = [
   'de_train',
 ] as const;
 
+/**
+ * Profile (Vorlagen) für CS2 – Betreiber-Wunsch 25.09.2026. Ein Profil setzt
+ * nur Panel-Felder; was es einschaltet, kommt über die Training-Schalter und
+ * das Spielmodus-Plugin. Nicht genannte Felder bleiben, wie sie sind.
+ */
+const TRAINING_AUS = {
+  infiniteAmmo: false,
+  allGrenades: false,
+  endlessRound: false,
+  grenadeCam: false,
+  buyAnywhere: false,
+} as const;
+
+const CS2_PROFILE: GamePreset[] = [
+  {
+    id: 'none',
+    label: 'Kein Profil',
+    description: 'Nichts vorgegeben – alles bleibt, wie eingestellt.',
+    values: {},
+  },
+  {
+    id: 'utility',
+    label: 'Utility-Training',
+    description:
+      'Granaten üben: alle Granaten, unendlich Munition, Granaten-Kamera, endlose Runde, überall kaufen, keine Bots.',
+    values: {
+      gameMode: 'competitive',
+      modePlugin: 'none',
+      bots: 0,
+      infiniteAmmo: true,
+      allGrenades: true,
+      endlessRound: true,
+      grenadeCam: true,
+      buyAnywhere: true,
+    },
+  },
+  {
+    id: 'aim',
+    label: 'Aim-Training',
+    description: 'Deathmatch gegen zehn Bots mit unendlich Munition.',
+    values: {
+      ...TRAINING_AUS,
+      gameMode: 'deathmatch',
+      modePlugin: 'none',
+      bots: 10,
+      infiniteAmmo: true,
+    },
+  },
+  {
+    id: 'retakes',
+    label: 'Retakes',
+    description: 'Retakes-Runden mit Plugin; Bots füllt Retakes selbst auf.',
+    values: {
+      ...TRAINING_AUS,
+      gameMode: 'competitive',
+      plugins: true,
+      modePlugin: 'retakes',
+    },
+  },
+  {
+    id: 'scrim',
+    label: '5v5 Scrim',
+    description: 'Competitive mit MatchZy, alle Runden, keine Bots.',
+    values: {
+      ...TRAINING_AUS,
+      gameMode: 'competitive',
+      plugins: true,
+      modePlugin: 'matchzy',
+      allRounds: true,
+      bots: 0,
+    },
+  },
+  {
+    id: 'showroom',
+    label: 'Waffen ansehen',
+    description: 'In Ruhe kaufen und ansehen: überall kaufen, endlose Runde, keine Bots.',
+    values: {
+      ...TRAINING_AUS,
+      gameMode: 'casual',
+      modePlugin: 'none',
+      bots: 0,
+      endlessRound: true,
+      buyAnywhere: true,
+    },
+  },
+];
+
 export const CS2_GAME_TYPE: GameTypeDefinition = {
   id: 'cs2',
   name: 'Counter-Strike 2',
@@ -3505,6 +3592,21 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       options: [],
       min: 2,
       max: 64,
+      lockedAfterCreate: false,
+    },
+    {
+      // Profil (Vorlage) – siehe `CS2_PROFILE`. Die Oberfläche übernimmt beim
+      // Wählen dessen Werte; das Feld selbst merkt sich nur, welches es war.
+      key: 'preset',
+      label: 'Profil',
+      type: 'select',
+      defaultValue: 'none',
+      description: 'Setzt mehrere Einstellungen auf einmal. Danach frei anpassbar.',
+      required: false,
+      options: CS2_PROFILE.map((profil) => profil.id),
+      optionLabels: Object.fromEntries(CS2_PROFILE.map((profil) => [profil.id, profil.label])),
+      min: null,
+      max: null,
       lockedAfterCreate: false,
     },
     {
@@ -3769,6 +3871,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     maxPlayers: 'CS2_MAX_PLAYERS',
     map: 'CS2_MAP',
     gameMode: 'CS2_GAME_MODE',
+    // Nur zur Auskunft (`docker inspect`) – das Image wertet es nicht aus.
+    preset: 'CS2_PRESET',
     bots: 'CS2_BOTS',
     workshopMap: 'CS2_WORKSHOP_MAP',
     allRounds: 'CS2_ALL_ROUNDS',
@@ -3821,7 +3925,16 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
    * jedem Laden `gamemode_<modus>.cfg` aus, die die Bot-Anzahl zurücksetzt;
    * danach laufen `palantir.cfg` (Startwerte) und `palantir_live.cfg`.
    */
+  presets: CS2_PROFILE,
+  presetField: 'preset',
   liveControls: [
+    {
+      // Ganz oben: Ein Profil setzt die Felder darunter.
+      id: 'profil',
+      label: 'Profil',
+      fields: ['preset'],
+      commands: [],
+    },
     {
       id: 'karte-modus',
       label: 'Karte & Modus',
@@ -4364,6 +4477,15 @@ export function toGameTypeDto(
     ...(definition.liveControls === undefined
       ? {}
       : { liveControls: definition.liveControls.map((steuerung) => ({ ...steuerung })) }),
+    ...(definition.presets === undefined
+      ? {}
+      : {
+          presets: definition.presets.map((profil) => ({
+            ...profil,
+            values: { ...profil.values },
+          })),
+        }),
+    ...(definition.presetField === undefined ? {} : { presetField: definition.presetField }),
     /*
      * Gruppe und Variantenname gehen unveraendert durch. `undefined` wird zu
      * `null`: Der DTO faehrt `null` fuer „gibt es nicht", damit die Oberflaeche

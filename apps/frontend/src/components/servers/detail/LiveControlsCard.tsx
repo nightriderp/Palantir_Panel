@@ -311,6 +311,8 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
             lockAfterCreate={false}
             disabled={imUebergang || busy || hinweis !== null}
             hideHints={steuerung.showHints !== true}
+            presets={spiel.presets ?? []}
+            {...(spiel.presetField === undefined ? {} : { presetField: spiel.presetField })}
           />
         ) : (
           <p className="truncate text-sm text-ink-muted">

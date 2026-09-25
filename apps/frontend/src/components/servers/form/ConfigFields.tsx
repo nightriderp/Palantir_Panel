@@ -4,6 +4,7 @@ import {
   type GameConfigField,
   type GameConfigValue,
   type GameConfigValues,
+  type GamePreset,
 } from '@palantir/contracts';
 import { useState } from 'react';
 import { FieldShell, NumberField, SelectField, TextField, Toggle } from '@/components/shared';
@@ -38,6 +39,24 @@ export interface ConfigFieldsProps {
    * mit der der Server startet“ nicht passt.
    */
   hideHints?: boolean;
+  /**
+   * Profile des Spiels und das Feld, das das aktive trägt
+   * (`GameTypeDto.presets`/`presetField`). Wählt man darin ein Profil, gehen
+   * dessen Werte mit an `onChange` – danach bleibt alles frei anpassbar.
+   */
+  presets?: readonly GamePreset[];
+  presetField?: string;
+}
+
+/** Beschreibung des gewählten Profils – mit „angepasst“, wenn Werte abweichen. */
+function profilHinweis(
+  profil: GamePreset | undefined,
+  values: GameConfigValues,
+): string | undefined {
+  if (profil === undefined) return undefined;
+  const angepasst = Object.entries(profil.values).some(([key, wert]) => values[key] !== wert);
+
+  return angepasst ? `${profil.description} Seitdem angepasst.` : profil.description;
 }
 
 /**
@@ -118,6 +137,8 @@ export function ConfigFields({
   disabled = false,
   missingKeys = [],
   hideHints = false,
+  presets = [],
+  presetField,
 }: ConfigFieldsProps) {
   if (fields.length === 0) {
     return (
@@ -197,12 +218,21 @@ export function ConfigFields({
               />
             );
 
-          case 'select':
+          case 'select': {
+            const istProfil = field.key === presetField;
+
             return (
               <SelectField
                 key={field.key}
                 label={field.label}
-                hint={hint}
+                hint={
+                  istProfil
+                    ? profilHinweis(
+                        presets.find((profil) => profil.id === value),
+                        values,
+                      )
+                    : hint
+                }
                 error={error}
                 disabled={locked}
                 value={String(value ?? '')}
@@ -212,9 +242,18 @@ export function ConfigFields({
                   value: option,
                   label: field.optionLabels?.[option] ?? option,
                 }))}
-                onChange={(next) => onChange(field.key, next)}
+                onChange={(next) => {
+                  if (istProfil) {
+                    const profil = presets.find((eintrag) => eintrag.id === next);
+                    for (const [key, wert] of Object.entries(profil?.values ?? {})) {
+                      onChange(key, wert);
+                    }
+                  }
+                  onChange(field.key, next);
+                }}
               />
             );
+          }
 
           case 'password':
           case 'text':
