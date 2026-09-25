@@ -479,10 +479,13 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
 
     const uebungAn = datei(aus, 'palantir_uebung_an.cfg');
     assert.match(uebungAn, /^mp_timelimit 0$/mu);
-    assert.match(uebungAn, /^bot_stop 1$/mu);
+    // Keine Puppen-Bots mehr, dafür die Übungsbefehle des Plugins (26.09.2026).
+    assert.doesNotMatch(uebungAn, /bot_stop|bot_zombie/u);
+    assert.match(uebungAn, /^palantir_practice 1$/mu);
     assert.match(uebungAn, /^sv_regeneration_force_on 1$/mu);
     const uebungAus = datei(aus, 'palantir_uebung_aus.cfg');
     assert.match(uebungAus, /^bot_stop 0$/mu);
+    assert.match(uebungAus, /^palantir_practice 0$/mu);
     // Was ein Modus selbst setzt, bleibt ihm überlassen.
     assert.doesNotMatch(uebungAus, /mp_free_armor|mp_death_drop_gun|mp_timelimit|mp_limitteams/u);
   });

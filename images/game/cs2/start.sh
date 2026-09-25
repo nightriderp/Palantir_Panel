@@ -443,7 +443,7 @@ esac
   # Training. Unendlich Munition und Granaten-Kamera sind in CS2
   # cheat-geschützt – ohne `sv_cheats 1` wiese der Server sie ab. Ausgeschaltetes
   # schreibt nichts: Dann gelten die Werte der Modus-Konfiguration.
-  # Die Übungs-Einstellungen brauchen es auch (Regeneration, Puppen-Bots).
+  # Die Übungs-Einstellungen brauchen es auch (Regeneration, Ping).
   if [ "$MUNITION" = 1 ] || [ "$GRANATEN_KAMERA" = 1 ] || [ "$UEBUNG" = 1 ]; then
     printf 'sv_cheats 1\n'
   else
@@ -496,7 +496,10 @@ esac
 } > "${CFG_ORDNER}/palantir.cfg"
 
 # **Übungs-Einstellungen** (Betreiber 25.09.2026): die Befehle der Workshop-Map
-# „Dust 2 Utility“, nicht deren Map-Daten. Eigene Dateien, weil das Panel sie
+# „Dust 2 Utility“, nicht deren Map-Daten. Ohne Puppen-Bots (Betreiber 26.09.2026) –
+# statt dessen die Übungsbefehle von Palantirs Plugin (`palantir_practice`:
+# !spawn, !tspawn, !ctspawn, !spawns, !save, !back). `…_aus` setzt `bot_stop`
+# usw. weiter zurück, falls ein Server sie von v2.4.41 bis v2.4.43 noch hat. Eigene Dateien, weil das Panel sie
 # live mit `exec` schaltet – als Konsolenzeile wären sie zu lang.
 #
 # `…_aus` setzt nur zurück, was kein Modus selbst setzt (Valves Grundwerte aus
@@ -519,7 +522,7 @@ esac
     'sv_staminarecoveryrate 0' \
     'sv_enablebunnyhopping 1' 'sv_autobunnyhopping 1' \
     'sv_jump_spam_penalty_time 0' \
-    'bot_stop 1' 'bot_zombie 1' 'bot_dont_shoot 1' 'bot_chatter off'
+    'palantir_practice 1'
 } > "${CFG_ORDNER}/palantir_uebung_an.cfg"
 {
   echo '// Schreibt Palantir bei jedem Start - Uebungs-Einstellungen aus.'
@@ -532,7 +535,8 @@ esac
     'sv_staminarecoveryrate 60' \
     'sv_enablebunnyhopping 0' 'sv_autobunnyhopping 0' \
     'sv_jump_spam_penalty_time 0.015625' \
-    'bot_stop 0' 'bot_zombie 0' 'bot_dont_shoot 0'
+    'bot_stop 0' 'bot_zombie 0' 'bot_dont_shoot 0' \
+    'palantir_practice 0'
 } > "${CFG_ORDNER}/palantir_uebung_aus.cfg"
 
 # **Nach der Modus-Konfiguration noch einmal** (Schritt 3). Beim Laden jeder
