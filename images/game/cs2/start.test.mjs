@@ -299,6 +299,7 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
       ['wingman', '0', '2'],
       ['armsrace', '1', '0'],
       ['deathmatch', '1', '2'],
+      ['custom', '3', '0'],
     ];
 
     for (const [modus, typ, nummer] of faelle) {
@@ -494,7 +495,14 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     const ordner = arbeitsordner();
     starte(ordner);
 
-    for (const modus of ['competitive', 'casual', 'competitive2v2', 'deathmatch', 'armsrace']) {
+    for (const modus of [
+      'competitive',
+      'casual',
+      'competitive2v2',
+      'deathmatch',
+      'armsrace',
+      'custom',
+    ]) {
       assert.match(datei(ordner, `gamemode_${modus}_server.cfg`), /^exec palantir$/mu, modus);
     }
   });

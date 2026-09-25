@@ -1714,7 +1714,7 @@ describe('Counter-Strike 2', () => {
     });
   });
 
-  it('bietet die neun offiziellen Karten, „workshop“ und fünf Modi an, Bots 0 bis 10', () => {
+  it('bietet die neun offiziellen Karten, „workshop“ und sechs Modi an, Bots 0 bis 10', () => {
     const feld = (key: string) => CS2_GAME_TYPE.configFields.find((f) => f.key === key);
 
     expect(feld('map')?.options).toHaveLength(10);
@@ -1726,6 +1726,7 @@ describe('Counter-Strike 2', () => {
       'wingman',
       'deathmatch',
       'armsrace',
+      'custom',
     ]);
     expect(feld('bots')?.defaultValue).toBe(0);
     expect(feld('bots')?.max).toBe(10);

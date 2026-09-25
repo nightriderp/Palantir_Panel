@@ -3515,7 +3515,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.26',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.27',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3640,15 +3640,17 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       label: 'Spielmodus',
       type: 'select',
       defaultValue: 'competitive',
-      description: 'Competitive 5 gegen 5, Casual, Wingman 2 gegen 2, Deathmatch oder Arms Race.',
+      description:
+        'Competitive 5 gegen 5, Casual, Wingman 2 gegen 2, Deathmatch, Arms Race oder Custom (ohne Modus-Regeln, fürs Training).',
       required: false,
-      options: ['competitive', 'casual', 'wingman', 'deathmatch', 'armsrace'],
+      options: ['competitive', 'casual', 'wingman', 'deathmatch', 'armsrace', 'custom'],
       optionLabels: {
         competitive: 'Competitive (5 gegen 5)',
         casual: 'Casual',
         wingman: 'Wingman (2 gegen 2)',
         deathmatch: 'Deathmatch',
         armsrace: 'Arms Race',
+        custom: 'Custom (eigene Regeln)',
       },
       min: null,
       max: null,
@@ -3951,6 +3953,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
           wingman: 'game_type 0; game_mode 2',
           deathmatch: 'game_type 1; game_mode 2',
           armsrace: 'game_type 1; game_mode 0',
+          custom: 'game_type 3; game_mode 0',
         },
       },
       reloadsMap: true,
