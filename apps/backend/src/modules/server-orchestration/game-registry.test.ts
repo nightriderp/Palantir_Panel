@@ -1647,7 +1647,7 @@ describe('Counter-Strike 2', () => {
       'sv_cheats 1; sv_infinite_ammo 1',
     ]);
     expect(liveBefehle(CS2_GAME_TYPE, ['endlessRound'], { endlessRound: true })).toEqual([
-      'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1',
+      'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1; mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1; mp_join_grace_time 3600',
       'mp_restartgame 1',
     ]);
     // Über Kartenwechsel hinweg ohne Neustart der Runde.
