@@ -3455,9 +3455,11 @@ const CS2_PROFILE: GamePreset[] = [
     id: 'utility',
     label: 'Übung / Inspect',
     description:
-      'Üben und Waffen ansehen im Custom-Modus: Einstellungen wie die Workshop-Map „Dust 2 Utility“, Menschen bei CT, neun Puppen-Bots an den Spawns, keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera.',
+      'Üben und Waffen ansehen im Custom-Modus: Einstellungen wie die Workshop-Map „Dust 2 Utility“, Beitritt als CT, neun Puppen-Bots an den Spawns, keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera. Mit MetaMod (Palantirs Plugin).',
     values: {
       gameMode: 'custom',
+      // MetaMod für Palantirs Plugin: Aufwärmphase weg beim Beitritt, CT ohne Sperre.
+      plugins: true,
       modePlugin: 'none',
       // Neun: mit dir zehn – so viele Spieler lässt die Vorgabe zu, und je
       // fünf Spawns hat jede Seite.
@@ -3517,7 +3519,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.33',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.34',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3723,12 +3725,13 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       lockedAfterCreate: false,
     },
     {
+      // Kennung bleibt `ctOnly` (gespeicherte Server); seit 26.09.2026 ohne Sperre.
       key: 'ctOnly',
-      label: 'Nur CT (Menschen)',
+      label: 'Beitritt als CT',
       type: 'toggle',
       defaultValue: false,
       description:
-        'Spieler landen bei CT und können nicht zu T. Zum Wechseln hier ausschalten, dann im Spiel mit M.',
+        'Spieler landen beim Beitritt direkt bei CT; wechseln geht jederzeit mit M. Braucht MetaMod – ohne teilt das Spiel nach 1 s selbst ein Team zu.',
       required: false,
       options: [],
       min: null,
@@ -4085,18 +4088,19 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       persist: ['{practicePack}'],
     },
     {
-      // `mp_humanteam` setzt kein Modus – aus darf `any` festschreiben;
-      // `mp_force_pick_time` setzen alle Valve-Modi auf 15 außer Custom.
-      // Ohne 1 s kam trotz Sperre 15 s das Teammenü (v2.4.41).
+      // Palantirs Plugin setzt Spieler beim Beitritt zu CT (`palantir_join_ct`),
+      // ohne Sperre – `mp_humanteam ct` hielt sie dort fest (v2.4.41/42) und
+      // wird hier auf `any` zurückgenommen. `mp_force_pick_time` setzen alle
+      // Valve-Modi auf 15 außer Custom.
       id: 'ctOnly',
-      label: 'Nur CT (Menschen)',
+      label: 'Beitritt als CT',
       group: 'Training',
       fields: ['ctOnly'],
       commands: ['{ctOnly}'],
       values: {
         ctOnly: {
-          true: 'mp_humanteam ct; mp_force_pick_time 1',
-          false: 'mp_humanteam any; mp_force_pick_time 15',
+          true: 'palantir_join_ct 1; mp_humanteam any; mp_force_pick_time 1',
+          false: 'palantir_join_ct 0; mp_humanteam any; mp_force_pick_time 15',
         },
       },
       persist: ['{ctOnly}'],
@@ -4108,6 +4112,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       // fror die Uhr bei 2:00 ein, „alle verbunden“ spammte den Chat (v2.4.41).
       // Aus stellt die Aufwärmzeit nicht zurück – das tut der Modus beim
       // nächsten Kartenwechsel; `mp_endwarmup_player_count 0` räumt v2.4.41 auf.
+      // Mit MetaMod beendet Palantirs Plugin sie, sobald jemand da ist
+      // (`palantir_skip_warmup`, 26.09.2026).
       id: 'skipWarmup',
       label: 'Aufwärmphase überspringen',
       group: 'Training',
@@ -4115,8 +4121,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       commands: ['{skipWarmup}'],
       values: {
         skipWarmup: {
-          true: 'mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 0; mp_warmuptime 5; mp_warmup_end',
-          false: 'mp_warmup_online_enabled 1; mp_endwarmup_player_count 0',
+          true: 'palantir_skip_warmup 1; mp_warmup_online_enabled 1; mp_warmup_pausetimer 0; mp_endwarmup_player_count 0; mp_warmuptime 5; mp_warmup_end',
+          false: 'palantir_skip_warmup 0; mp_warmup_online_enabled 1; mp_endwarmup_player_count 0',
         },
       },
       persist: ['{skipWarmup}'],

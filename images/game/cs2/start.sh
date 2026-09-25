@@ -284,6 +284,15 @@ if [ "$PLUGINS" = 1 ]; then
     palantir_log 'Ein Plugin fehlt. Ausschalten oder neu starten - der Download wird dann wiederholt.'
     exit 69
   fi
+
+  # **Palantirs eigenes Plugin** (26.09.2026) liegt im Image und ist immer da,
+  # sobald die Grundlage an ist. Es tut nichts, bis das Panel
+  # `palantir_skip_warmup` bzw. `palantir_join_ct` einschaltet.
+  UEBUNG_PLUGIN="${PALANTIR_UEBUNG_PLUGIN:-${CS2_SKRIPTE:-/opt/palantir}/palantir-uebung/PalantirUebung.dll}"
+  if [ -f "$UEBUNG_PLUGIN" ]; then
+    mkdir -p "${ADDONS}/counterstrikesharp/plugins/PalantirUebung"
+    cp "$UEBUNG_PLUGIN" "${ADDONS}/counterstrikesharp/plugins/PalantirUebung/PalantirUebung.dll"
+  fi
 else
   gameinfo_austragen
 fi
@@ -460,8 +469,10 @@ esac
   # Stattdessen die kürzeste Aufwärmzeit, die CS2 zulässt (5 s). „Alle
   # verbunden“ (`mp_endwarmup_player_count 1`) kürzte zwar, schrieb aber jede
   # Sekunde „Das Spiel beginnt in 1 Sekunden“ in den Chat (v2.4.41).
+  # Mit MetaMod beendet Palantirs Plugin sie sofort, sobald jemand da ist
+  # (`palantir_skip_warmup`); die 5 s bleiben für Server ohne Plugins.
   if [ "$OHNE_AUFWAERMEN" = 1 ]; then
-    printf 'mp_warmup_pausetimer 0\nmp_warmuptime 5\n'
+    printf 'mp_warmup_pausetimer 0\nmp_warmuptime 5\npalantir_skip_warmup 1\n'
   fi
   [ "$OHNE_STANDZEIT" = 1 ] && printf 'mp_freezetime 0\n'
   if [ "$SOFORT_SPAWNEN" = 1 ]; then
@@ -473,9 +484,10 @@ esac
     printf 'mp_maxmoney 60000\nmp_startmoney 60000\nmp_afterroundmoney 60000\n'
   fi
   [ "$UEBUNG" = 1 ] && printf 'exec palantir_uebung_an\n'
-  # Nur CT wie die Utility-Map: gesperrt auf CT und nach 1 s zugeteilt – ohne
-  # `mp_force_pick_time` kam trotzdem 15 s das Teammenü (v2.4.41).
-  [ "$NUR_CT" = 1 ] && printf 'mp_humanteam ct\nmp_force_pick_time 1\n'
+  # Beitritt als CT (26.09.2026): Palantirs Plugin setzt Spieler zu CT, ohne
+  # sie dort festzuhalten (`mp_humanteam ct` sperrte T ganz). Ohne Plugins
+  # teilt das Spiel nach 1 s selbst zu.
+  [ "$NUR_CT" = 1 ] && printf 'palantir_join_ct 1\nmp_force_pick_time 1\n'
   # Kein Ruhezustand bei leerem Server (24.09.2026): Schlafend beantwortete
   # CS2 Konsolenbefehle aus dem Panel nicht – `mp_match_can_clinch` blieb
   # ohne Antwort, bis ein Spieler den Server weckte. Kostet etwas CPU im
