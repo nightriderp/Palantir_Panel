@@ -3515,7 +3515,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.27',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.28',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3752,7 +3752,8 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       label: 'Endlos-Runde',
       type: 'toggle',
       defaultValue: false,
-      description: 'Rundenzeit 60 Minuten, die Runde endet nicht durch Siege.',
+      description:
+        'Rundenzeit 60 Minuten, die Runde endet nicht durch Siege. Wer stirbt oder mitten in der Runde beitritt, spawnt sofort.',
       required: false,
       options: [],
       min: null,
@@ -4040,9 +4041,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       commands: ['{endlessRound}', 'mp_restartgame 1'],
       values: {
         endlessRound: {
-          true: 'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1',
+          true: 'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1; mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1; mp_join_grace_time 3600',
           false:
-            'mp_ignore_round_win_conditions 0; mp_roundtime 1.92; mp_roundtime_defuse 1.92; mp_roundtime_hostage 1.92',
+            'mp_ignore_round_win_conditions 0; mp_roundtime 1.92; mp_roundtime_defuse 1.92; mp_roundtime_hostage 1.92; mp_respawn_on_death_ct 0; mp_respawn_on_death_t 0; mp_join_grace_time 0',
         },
       },
       persist: ['{endlessRound}'],

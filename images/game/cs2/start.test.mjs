@@ -440,6 +440,9 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.match(cfgAlle, /^sv_grenade_trajectory_prac_pipreview 1$/mu);
     assert.match(cfgAlle, /^mp_ct_default_grenades "weapon_smokegrenade .*weapon_decoy"$/mu);
     assert.match(cfgAlle, /^mp_ignore_round_win_conditions 1$/mu);
+    // Beitritt mitten in der endlosen Runde: sofort spawnen, nicht zuschauen.
+    assert.match(cfgAlle, /^mp_respawn_on_death_t 1$/mu);
+    assert.match(cfgAlle, /^mp_join_grace_time 3600$/mu);
     assert.match(cfgAlle, /^mp_buy_anywhere 1$/mu);
     assert.match(datei(nurGeld, 'palantir.cfg'), /^sv_cheats 0$/mu);
     assert.doesNotMatch(datei(nichts, 'palantir.cfg'), /sv_infinite_ammo|mp_buy_anywhere/u);

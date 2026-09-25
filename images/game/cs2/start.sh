@@ -457,6 +457,9 @@ esac
   if [ "$ENDLOS" = 1 ]; then
     printf 'mp_roundtime 60\nmp_roundtime_defuse 60\nmp_roundtime_hostage 60\n'
     printf 'mp_ignore_round_win_conditions 1\n'
+    # Sonst bliebe, wer stirbt oder mitten in der Runde beitritt, bis zu einer
+    # Stunde tot und sähe nur die Zuschauerkamera (Betreiber 25.09.2026).
+    printf 'mp_respawn_on_death_ct 1\nmp_respawn_on_death_t 1\nmp_join_grace_time 3600\n'
   fi
   if [ "$KAUFEN" = 1 ]; then
     printf 'mp_buy_anywhere 1\nmp_buytime 9999\n'
