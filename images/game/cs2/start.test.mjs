@@ -419,6 +419,35 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.equal(starte(arbeitsordner(), { CS2_AUTO_TEAMS: 'ja' }).status, 78);
   });
 
+  it('schreibt die Training-Schalter – mit sv_cheats nur, wenn nötig (25.09.2026)', () => {
+    const alle = arbeitsordner();
+    const nurGeld = arbeitsordner();
+    const nichts = arbeitsordner();
+    starte(alle, {
+      CS2_INFINITE_AMMO: 'true',
+      CS2_ALL_GRENADES: 'true',
+      CS2_ENDLESS_ROUND: 'true',
+      CS2_GRENADE_CAM: 'true',
+      CS2_BUY_ANYWHERE: 'true',
+    });
+    starte(nurGeld, { CS2_BUY_ANYWHERE: 'true' });
+    starte(nichts);
+
+    const cfgAlle = datei(alle, 'palantir.cfg');
+    assert.match(cfgAlle, /^sv_cheats 1$/mu);
+    assert.match(cfgAlle, /^sv_infinite_ammo 1$/mu);
+    assert.match(cfgAlle, /^sv_grenade_trajectory_prac_pipreview 1$/mu);
+    assert.match(cfgAlle, /^mp_ct_default_grenades "weapon_smokegrenade .*weapon_decoy"$/mu);
+    assert.match(cfgAlle, /^mp_ignore_round_win_conditions 1$/mu);
+    assert.match(cfgAlle, /^mp_buy_anywhere 1$/mu);
+    assert.match(datei(nurGeld, 'palantir.cfg'), /^sv_cheats 0$/mu);
+    assert.doesNotMatch(datei(nichts, 'palantir.cfg'), /sv_infinite_ammo|mp_buy_anywhere/u);
+  });
+
+  it('lehnt einen Training-Schalter ab, der weder true noch false ist', () => {
+    assert.equal(starte(arbeitsordner(), { CS2_ENDLESS_ROUND: 'ja' }).status, 78);
+  });
+
   it('schaltet den Ruhezustand ab – sonst antwortet die Konsole leer nicht', () => {
     const ordner = arbeitsordner();
     starte(ordner);

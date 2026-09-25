@@ -10,7 +10,7 @@ import {
   isTransitionalServerStatus,
 } from '@palantir/contracts';
 import { useMemo, useState } from 'react';
-import { Button, Panel, useToast } from '@/components/shared';
+import { Button, Panel, Toggle, useToast } from '@/components/shared';
 import { errorText } from '@/lib/api/client';
 import { applyLiveValues, fetchGameTypes, runLifecycleAction } from '@/lib/api/servers';
 import { useApiResource } from '@/lib/api/useApiResource';
@@ -232,6 +232,41 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
     }
   }
 
+  /** Steuerungen einer Gruppe, die nur aus Schaltern bestehen – kommen ins Raster. */
+  function nurSchalter(steuerung: GameLiveControl): boolean {
+    if (spiel === null || steuerung.collapsible === true) return false;
+    const felder = spiel.configFields.filter((feld) => steuerung.fields.includes(feld.key));
+    return felder.length > 0 && felder.every((feld) => feld.type === 'toggle');
+  }
+
+  /**
+   * Schalter links, Text rechts (Betreiber 25.09.2026) – in Gruppen als
+   * zweispaltiges Raster. Die Beschreibung steht als Tooltip am Text.
+   */
+  function schalterZeilen(steuerung: GameLiveControl) {
+    if (spiel === null) return null;
+    const hinweis = sperrHinweis(steuerung);
+
+    return spiel.configFields
+      .filter((feld) => steuerung.fields.includes(feld.key))
+      .map((feld) => (
+        <div key={feld.key} className="flex min-w-0 items-start gap-2.5">
+          <Toggle
+            label={feld.label}
+            checked={entwurf[feld.key] === true}
+            disabled={imUebergang || busy || hinweis !== null}
+            onChange={(wert) => setEntwurf((bisher) => ({ ...bisher, [feld.key]: wert }))}
+          />
+          <div className="min-w-0 pt-0.5">
+            <span className="block text-sm leading-5" title={feld.description ?? undefined}>
+              {feld.label}
+            </span>
+            {hinweis === null ? null : <p className="text-xs text-ink-faint">{hinweis}</p>}
+          </div>
+        </div>
+      ));
+  }
+
   /** Felder einer Steuerung – mit eigener Überschrift, oder ohne in einer Gruppe. */
   function abschnitt(steuerung: GameLiveControl, mitKopf: boolean) {
     const hinweis = sperrHinweis(steuerung);
@@ -299,19 +334,24 @@ export function LiveControlsCard({ server, onChanged }: LiveControlsCardProps) {
               {abschnitt(block.steuerungen[0] as GameLiveControl, true)}
             </section>
           ) : (
-            // Gruppe (`group`): eine Überschrift, die Felder nebeneinander –
-            // „Alle Runden“, MetaMod und SimpleAdmin in einer Zeile.
+            // Gruppe (`group`): eine Überschrift, die Schalter zweispaltig,
+            // alles andere (etwa das Spielmodus-Plugin) darunter in voller Breite.
             <section key={block.key} aria-label={block.titel} className="flex flex-col gap-2">
               <p className="text-xs font-medium tracking-wide text-ink-faint uppercase">
                 {block.titel}
               </p>
-              <div className="flex flex-wrap gap-x-6 gap-y-3">
-                {block.steuerungen.map((steuerung) => (
+              {block.steuerungen.some(nurSchalter) ? (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                  {block.steuerungen.filter(nurSchalter).map(schalterZeilen)}
+                </div>
+              ) : null}
+              {block.steuerungen
+                .filter((steuerung) => !nurSchalter(steuerung))
+                .map((steuerung) => (
                   <div key={steuerung.id} className="flex flex-col gap-2">
                     {abschnitt(steuerung, false)}
                   </div>
                 ))}
-              </div>
             </section>
           ),
         )}

@@ -367,6 +367,24 @@ esac
 # **Teams automatisch zuweisen** (Betreiber 25.09.2026): `mp_force_assign_teams`.
 # Ohne landeten Spieler beim Beitritt und nach einem Kartenwechsel als
 # Zuschauer – Retakes wartete dann mit dem Countdown, bis jemand ein Team wählt.
+# **Training** (Betreiber 25.09.2026): Schalter für Übungsserver. Nur `true`
+# schaltet ein; alles andere außer `false` ist ein Fehler.
+schalter() {
+  case "$2" in
+    true) printf '1' ;;
+    false | '') printf '0' ;;
+    *)
+      palantir_log "Ungueltiger Wert fuer ${1}: ${2}."
+      exit 78
+      ;;
+  esac
+}
+MUNITION="$(schalter 'Unendlich Munition' "${CS2_INFINITE_AMMO:-false}")" || exit 78
+GRANATEN="$(schalter 'Alle Granaten' "${CS2_ALL_GRENADES:-false}")" || exit 78
+ENDLOS="$(schalter 'Endlos-Runde' "${CS2_ENDLESS_ROUND:-false}")" || exit 78
+GRANATEN_KAMERA="$(schalter 'Granaten-Kamera' "${CS2_GRENADE_CAM:-false}")" || exit 78
+KAUFEN="$(schalter 'Ueberall kaufen' "${CS2_BUY_ANYWHERE:-false}")" || exit 78
+
 case "${CS2_AUTO_TEAMS:-true}" in
   true) AUTO_TEAMS=1 ;;
   false) AUTO_TEAMS=0 ;;
@@ -417,6 +435,30 @@ esac
   printf 'bot_quota %s\n' "$BOTS"
   printf 'mp_match_can_clinch %s\n' "$CLINCH"
   printf 'mp_force_assign_teams %s\n' "$AUTO_TEAMS"
+
+  # Training. Unendlich Munition und Granaten-Kamera sind in CS2
+  # cheat-geschützt – ohne `sv_cheats 1` wiese der Server sie ab. Ausgeschaltetes
+  # schreibt nichts: Dann gelten die Werte der Modus-Konfiguration.
+  if [ "$MUNITION" = 1 ] || [ "$GRANATEN_KAMERA" = 1 ]; then
+    printf 'sv_cheats 1\n'
+  else
+    printf 'sv_cheats 0\n'
+  fi
+  [ "$MUNITION" = 1 ] && printf 'sv_infinite_ammo 1\n'
+  [ "$GRANATEN_KAMERA" = 1 ] && printf 'sv_grenade_trajectory_prac_pipreview 1\n'
+  if [ "$GRANATEN" = 1 ]; then
+    printf 'ammo_grenade_limit_total 5\n'
+    printf 'mp_ct_default_grenades "weapon_smokegrenade weapon_flashbang weapon_hegrenade weapon_incgrenade weapon_decoy"\n'
+    printf 'mp_t_default_grenades "weapon_smokegrenade weapon_flashbang weapon_hegrenade weapon_molotov weapon_decoy"\n'
+  fi
+  if [ "$ENDLOS" = 1 ]; then
+    printf 'mp_roundtime 60\nmp_roundtime_defuse 60\nmp_roundtime_hostage 60\n'
+    printf 'mp_ignore_round_win_conditions 1\n'
+  fi
+  if [ "$KAUFEN" = 1 ]; then
+    printf 'mp_buy_anywhere 1\nmp_buytime 9999\n'
+    printf 'mp_maxmoney 60000\nmp_startmoney 60000\nmp_afterroundmoney 60000\n'
+  fi
   # Kein Ruhezustand bei leerem Server (24.09.2026): Schlafend beantwortete
   # CS2 Konsolenbefehle aus dem Panel nicht – `mp_match_can_clinch` blieb
   # ohne Antwort, bis ein Spieler den Server weckte. Kostet etwas CPU im

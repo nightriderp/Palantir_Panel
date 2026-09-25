@@ -3428,7 +3428,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.25',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.26',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3617,6 +3617,69 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       max: null,
       lockedAfterCreate: false,
     },
+    // Training (Betreiber 25.09.2026) – Schalter für Übungsserver.
+    {
+      key: 'infiniteAmmo',
+      label: 'Unendlich Munition',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Nie nachladen, nie leer. Schaltet sv_cheats mit ein – Spieler könnten dann z. B. noclip nutzen.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'allGrenades',
+      label: 'Alle Granaten',
+      type: 'toggle',
+      defaultValue: false,
+      description: 'Jeder spawnt mit Smoke, Flash, HE, Molotov bzw. Brandgranate und Decoy.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'endlessRound',
+      label: 'Endlos-Runde',
+      type: 'toggle',
+      defaultValue: false,
+      description: 'Rundenzeit 60 Minuten, die Runde endet nicht durch Siege.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'grenadeCam',
+      label: 'Granaten-Kamera',
+      type: 'toggle',
+      defaultValue: false,
+      description:
+        'Ein kleines Bild folgt der geworfenen Granate bis zur Landung. Schaltet sv_cheats mit ein.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
+    {
+      key: 'buyAnywhere',
+      label: 'Überall kaufen',
+      type: 'toggle',
+      defaultValue: false,
+      description: 'Überall und jederzeit kaufen, 60.000 $.',
+      required: false,
+      options: [],
+      min: null,
+      max: null,
+      lockedAfterCreate: false,
+    },
     {
       key: 'gotv',
       label: 'GOTV (Zuschauen)',
@@ -3710,6 +3773,11 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     workshopMap: 'CS2_WORKSHOP_MAP',
     allRounds: 'CS2_ALL_ROUNDS',
     autoTeams: 'CS2_AUTO_TEAMS',
+    infiniteAmmo: 'CS2_INFINITE_AMMO',
+    allGrenades: 'CS2_ALL_GRENADES',
+    endlessRound: 'CS2_ENDLESS_ROUND',
+    grenadeCam: 'CS2_GRENADE_CAM',
+    buyAnywhere: 'CS2_BUY_ANYWHERE',
     gotv: 'CS2_GOTV',
     plugins: 'CS2_PLUGINS',
     admins: 'CS2_ADMINS',
@@ -3728,6 +3796,11 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     'workshopMap',
     'allRounds',
     'autoTeams',
+    'infiniteAmmo',
+    'allGrenades',
+    'endlessRound',
+    'grenadeCam',
+    'buyAnywhere',
     'gotv',
     'plugins',
     'admins',
@@ -3787,7 +3860,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
        */
       id: 'runden',
       label: 'Runden',
-      group: 'Schalter',
+      group: 'Spiel',
       fields: ['allRounds'],
       commands: ['{allRounds}'],
       values: {
@@ -3800,13 +3873,92 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       // Modus-Konfiguration beim Kartenladen nachzieht.
       id: 'teams',
       label: 'Teams',
-      group: 'Schalter',
+      group: 'Spiel',
       fields: ['autoTeams'],
       commands: ['{autoTeams}'],
       values: {
         autoTeams: { true: 'mp_force_assign_teams 1', false: 'mp_force_assign_teams 0' },
       },
       persist: ['{autoTeams}'],
+    },
+    /*
+     * Training (Betreiber 25.09.2026). Wirkt sofort; was erst mit der nächsten
+     * Runde greift (Granaten beim Spawn, Rundenzeit, Geld), startet die Runde
+     * gleich neu (`mp_restartgame 1`, nicht in `persist`). Munition und
+     * Granaten-Kamera sind cheat-geschützt und schalten `sv_cheats 1` mit ein;
+     * zurück auf 0 geht es mit dem nächsten Start (`palantir.cfg`).
+     */
+    {
+      id: 'infiniteAmmo',
+      label: 'Unendlich Munition',
+      group: 'Training',
+      fields: ['infiniteAmmo'],
+      commands: ['{infiniteAmmo}'],
+      values: {
+        infiniteAmmo: {
+          true: 'sv_cheats 1; sv_infinite_ammo 1',
+          false: 'sv_infinite_ammo 0',
+        },
+      },
+      persist: ['{infiniteAmmo}'],
+    },
+    {
+      id: 'allGrenades',
+      label: 'Alle Granaten',
+      group: 'Training',
+      fields: ['allGrenades'],
+      commands: ['{allGrenades}', 'mp_restartgame 1'],
+      values: {
+        allGrenades: {
+          true: 'ammo_grenade_limit_total 5; mp_ct_default_grenades "weapon_smokegrenade weapon_flashbang weapon_hegrenade weapon_incgrenade weapon_decoy"; mp_t_default_grenades "weapon_smokegrenade weapon_flashbang weapon_hegrenade weapon_molotov weapon_decoy"',
+          false: 'ammo_grenade_limit_total 4; mp_ct_default_grenades ""; mp_t_default_grenades ""',
+        },
+      },
+      persist: ['{allGrenades}'],
+    },
+    {
+      id: 'endlessRound',
+      label: 'Endlos-Runde',
+      group: 'Training',
+      fields: ['endlessRound'],
+      commands: ['{endlessRound}', 'mp_restartgame 1'],
+      values: {
+        endlessRound: {
+          true: 'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1',
+          false:
+            'mp_ignore_round_win_conditions 0; mp_roundtime 1.92; mp_roundtime_defuse 1.92; mp_roundtime_hostage 1.92',
+        },
+      },
+      persist: ['{endlessRound}'],
+    },
+    {
+      id: 'grenadeCam',
+      label: 'Granaten-Kamera',
+      group: 'Training',
+      fields: ['grenadeCam'],
+      commands: ['{grenadeCam}'],
+      values: {
+        grenadeCam: {
+          true: 'sv_cheats 1; sv_grenade_trajectory_prac_pipreview 1',
+          false: 'sv_grenade_trajectory_prac_pipreview 0',
+        },
+      },
+      persist: ['{grenadeCam}'],
+    },
+    {
+      id: 'buyAnywhere',
+      label: 'Überall kaufen',
+      group: 'Training',
+      fields: ['buyAnywhere'],
+      commands: ['{buyAnywhere}', 'mp_restartgame 1'],
+      values: {
+        buyAnywhere: {
+          true: 'mp_buy_anywhere 1; mp_buytime 9999; mp_maxmoney 60000; mp_startmoney 60000; mp_afterroundmoney 60000',
+          false:
+            'mp_buy_anywhere 0; mp_buytime 20; mp_maxmoney 16000; mp_startmoney 800; mp_afterroundmoney 0',
+        },
+      },
+      persist: ['{buyAnywhere}'],
     },
     {
       /*
@@ -3817,7 +3969,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
        */
       id: 'plugins',
       label: 'MetaMod',
-      group: 'Schalter',
+      group: 'Plugins',
       fields: ['plugins'],
       commands: [],
       requiresRestart: true,
@@ -3834,7 +3986,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
        */
       id: 'simpleadmin',
       label: 'SimpleAdmin',
-      group: 'Schalter',
+      group: 'Plugins',
       fields: ['pluginSimpleAdmin'],
       commands: ['{pluginSimpleAdmin}'],
       values: {
@@ -3854,6 +4006,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
        */
       id: 'spielmodus-plugin',
       label: 'Spielmodus-Plugin',
+      group: 'Plugins',
       fields: ['modePlugin'],
       commands: ['{modePlugin}', '{map}'],
       values: {
