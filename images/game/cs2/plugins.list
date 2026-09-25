@@ -29,7 +29,13 @@ menumanager 1.4.1 https://github.com/NickFox007/MenuManagerCS2/releases/download
 
 # Schritt 9: Bann, Kick, Mute, Admin-Menü. Speichert in SQLite, das ist die
 # Vorgabe des Plugins.
-simpleadmin build-1.8.2b https://github.com/daffyyyy/CS2-SimpleAdmin/releases/download/build-1.8.2b/CS2-SimpleAdmin-1.8.2b.zip 3879f74a000582c407f9795be62f718cb1d512e58ba9c81accf12d691696c201 counterstrikesharp=addons/counterstrikesharp CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands,CS2-SimpleAdmin_StealthModule
+simpleadmin build-1.8.2b https://github.com/daffyyyy/CS2-SimpleAdmin/releases/download/build-1.8.2b/CS2-SimpleAdmin-1.8.2b.zip 3879f74a000582c407f9795be62f718cb1d512e58ba9c81accf12d691696c201 counterstrikesharp=addons/counterstrikesharp CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands
+
+# Stealth-Modul aus demselben Archiv, eigener Schalter (Betreiber 25.09.2026):
+# Es versteckte Admins beim Beitritt („You are hidden now!“ – Zuschauer, kein
+# Team; Vorgabe `HideAdminsOnJoin`). Nur der eigene Ordner – die ganze
+# Zuordnung legte sonst SimpleAdmin wieder in `plugins/`, auch wenn es aus ist.
+stealth build-1.8.2b https://github.com/daffyyyy/CS2-SimpleAdmin/releases/download/build-1.8.2b/CS2-SimpleAdmin-1.8.2b.zip 3879f74a000582c407f9795be62f718cb1d512e58ba9c81accf12d691696c201 counterstrikesharp/plugins/CS2-SimpleAdmin_StealthModule=addons/counterstrikesharp/plugins/CS2-SimpleAdmin_StealthModule CS2-SimpleAdmin_StealthModule
 
 # Schritt 10: Turniere und Scrims – Ready-System, Messerrunde, Pausen, Demos.
 # Das Archiv bringt neben dem Plugin `cfg/MatchZy` mit (Warmup, Messerrunde,

@@ -821,7 +821,8 @@ function pluginListe() {
     `anybaselib 1 ${adresse('abl.zip')} ${summe('abl.zip')} addons=addons -`,
     `playersettings 1 ${adresse('ps.zip')} ${summe('ps.zip')} addons=addons PlayerSettings`,
     `menumanager 1 ${adresse('mm.zip')} ${summe('mm.zip')} addons=addons MenuManagerCore`,
-    `simpleadmin 1 ${adresse('sa.zip')} ${summe('sa.zip')} counterstrikesharp=addons/counterstrikesharp CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands,CS2-SimpleAdmin_StealthModule`,
+    `simpleadmin 1 ${adresse('sa.zip')} ${summe('sa.zip')} counterstrikesharp=addons/counterstrikesharp CS2-SimpleAdmin,CS2-SimpleAdmin_FunCommands`,
+    `stealth 1 ${adresse('sa.zip')} ${summe('sa.zip')} counterstrikesharp/plugins/CS2-SimpleAdmin_StealthModule=addons/counterstrikesharp/plugins/CS2-SimpleAdmin_StealthModule CS2-SimpleAdmin_StealthModule`,
     `matchzy 1 ${adresse('mz.zip')} ${summe('mz.zip')} addons=addons,cfg=cfg MatchZy`,
     `retakes 1 ${adresse('rt.zip')} ${summe('rt.zip')} addons=addons RetakesPlugin`,
   ];
@@ -854,6 +855,40 @@ describe('start.sh – Schritt 9: SimpleAdmin', nurMitShell, () => {
       assert.ok(existsSync(plugins(ordner, ...pfad)), pfad.join('/'));
     }
   });
+
+  it(
+    'lässt das Stealth-Modul aus, bis es gewählt ist – nur mit SimpleAdmin (25.09.2026)',
+    nurMitZip,
+    () => {
+      const ohne = arbeitsordner();
+      const mit = arbeitsordner();
+      const nurStealth = arbeitsordner();
+      const umgebung = { ...grundlageArchive(), ...pluginListe(), CS2_PLUGINS: 'true' };
+      const stealth = ['plugins', 'CS2-SimpleAdmin_StealthModule', 's.dll'];
+
+      starte(ohne, { ...umgebung, CS2_PLUGIN_SIMPLEADMIN: 'true' });
+      starte(mit, { ...umgebung, CS2_PLUGIN_SIMPLEADMIN: 'true', CS2_PLUGIN_STEALTH: 'true' });
+      starte(nurStealth, { ...umgebung, CS2_PLUGIN_STEALTH: 'true' });
+
+      // Sonst „You are hidden now!“ beim Beitritt als Admin.
+      assert.ok(!existsSync(plugins(ohne, ...stealth)));
+      assert.ok(
+        existsSync(plugins(ohne, 'plugins', 'disabled', 'CS2-SimpleAdmin_StealthModule', 's.dll')),
+      );
+      assert.ok(existsSync(plugins(mit, ...stealth)));
+      assert.ok(!existsSync(plugins(nurStealth, ...stealth)));
+      // Das Auspacken des Moduls legt SimpleAdmin nicht wieder aktiv hin.
+      assert.ok(!existsSync(plugins(nurStealth, 'plugins', 'CS2-SimpleAdmin')));
+
+      const aus = readFileSync(
+        join(ohne.daten, 'server', 'game', 'csgo', 'cfg', 'palantir_plugin_aus_simpleadmin.cfg'),
+        'utf8',
+      );
+      assert.ok(
+        aus.indexOf('exec palantir_plugin_aus_stealth') < aus.indexOf('CS2-SimpleAdmin.dll'),
+      );
+    },
+  );
 
   it('schaltet SimpleAdmin ab, ohne etwas zu löschen, und holt es zurück', nurMitZip, () => {
     const ordner = arbeitsordner();
