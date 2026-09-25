@@ -384,24 +384,9 @@ GRANATEN="$(schalter 'Alle Granaten' "${CS2_ALL_GRENADES:-false}")" || exit 78
 ENDLOS="$(schalter 'Endlos-Runde' "${CS2_ENDLESS_ROUND:-false}")" || exit 78
 GRANATEN_KAMERA="$(schalter 'Granaten-Kamera' "${CS2_GRENADE_CAM:-false}")" || exit 78
 KAUFEN="$(schalter 'Ueberall kaufen' "${CS2_BUY_ANYWHERE:-false}")" || exit 78
-
-# **Teams automatisch zuweisen** (Betreiber 25.09.2026). CS2 kennt dafür zwei
-# Werte – `mp_force_assign_teams` aus CS:GO gibt es nicht mehr:
-# - `mp_force_pick_time`: Sekunden im Teammenü, bis das Spiel selbst zuteilt
-#   (Valve: 15).
-# - `mp_join_grace_time`: Sekunden nach Rundenstart, in denen ein Beitritt noch
-#   mitspielt (Valve: 0, höchstens 30). Später heißt: Zuschauer bis Rundenende –
-#   nach einem Karten- oder Moduswechsel ist die Runde meist schon gestartet,
-#   bis man geladen hat.
-# Ein: 1 und 30. Aus: Valves Werte.
-case "${CS2_AUTO_TEAMS:-true}" in
-  true) TEAM_WAHL=1; BEITRITT_FRIST=30 ;;
-  false) TEAM_WAHL=15; BEITRITT_FRIST=0 ;;
-  *)
-    palantir_log "Ungueltiger Wert fuer Teams automatisch: ${CS2_AUTO_TEAMS}."
-    exit 78
-    ;;
-esac
+OHNE_AUFWAERMEN="$(schalter 'Aufwaermphase ueberspringen' "${CS2_SKIP_WARMUP:-false}")" || exit 78
+OHNE_STANDZEIT="$(schalter 'Keine Standzeit' "${CS2_NO_FREEZETIME:-false}")" || exit 78
+SOFORT_SPAWNEN="$(schalter 'Sofort spawnen' "${CS2_INSTANT_RESPAWN:-false}")" || exit 78
 
 # **GOTV** (Schritt 5.1): der Zuschauerzugang, eigener UDP-Port aus dem Pool –
 # drinnen dieselbe Nummer wie draußen (`CS2_TV_PORT`), aus demselben Grund wie
@@ -443,8 +428,6 @@ esac
   printf 'bot_quota_mode "normal"\n'
   printf 'bot_quota %s\n' "$BOTS"
   printf 'mp_match_can_clinch %s\n' "$CLINCH"
-  printf 'mp_force_pick_time %s\n' "$TEAM_WAHL"
-  printf 'mp_join_grace_time %s\n' "$BEITRITT_FRIST"
 
   # Training. Unendlich Munition und Granaten-Kamera sind in CS2
   # cheat-geschützt – ohne `sv_cheats 1` wiese der Server sie ab. Ausgeschaltetes
@@ -464,9 +447,17 @@ esac
   if [ "$ENDLOS" = 1 ]; then
     printf 'mp_roundtime 60\nmp_roundtime_defuse 60\nmp_roundtime_hostage 60\n'
     printf 'mp_ignore_round_win_conditions 1\n'
-    # Sonst bliebe, wer stirbt, bis zu einer Stunde tot und sähe nur die
-    # Zuschauerkamera (Betreiber 25.09.2026).
+  fi
+  # Übung (Betreiber 25.09.2026): keine Aufwärmphase, keine Standzeit, sofort
+  # spawnen – auch wer nach Rundenstart ein Team wählt, statt bis Rundenende
+  # zuzuschauen. Aus schreibt nichts: Dann gilt, was der Modus mitbringt.
+  if [ "$OHNE_AUFWAERMEN" = 1 ]; then
+    printf 'mp_warmup_online_enabled 0\nmp_warmup_end\n'
+  fi
+  [ "$OHNE_STANDZEIT" = 1 ] && printf 'mp_freezetime 0\n'
+  if [ "$SOFORT_SPAWNEN" = 1 ]; then
     printf 'mp_respawn_on_death_ct 1\nmp_respawn_on_death_t 1\n'
+    printf 'mp_respawnwavetime_ct 0\nmp_respawnwavetime_t 0\n'
   fi
   if [ "$KAUFEN" = 1 ]; then
     printf 'mp_buy_anywhere 1\nmp_buytime 9999\n'

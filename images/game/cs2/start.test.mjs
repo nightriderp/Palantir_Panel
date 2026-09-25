@@ -409,21 +409,6 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.equal(starte(arbeitsordner(), { CS2_GOTV: 'true', CS2_TV_PORT: '1; quit' }).status, 78);
   });
 
-  it('weist Teams automatisch zu – ohne Angabe an, abschaltbar (25.09.2026)', () => {
-    const an = arbeitsordner();
-    const aus = arbeitsordner();
-    starte(an);
-    starte(aus, { CS2_AUTO_TEAMS: 'false' });
-
-    // CS2 hat kein `mp_force_assign_teams` – Teammenü-Zeit und Beitrittsfrist.
-    assert.match(datei(an, 'palantir.cfg'), /^mp_force_pick_time 1$/mu);
-    assert.match(datei(an, 'palantir.cfg'), /^mp_join_grace_time 30$/mu);
-    assert.match(datei(aus, 'palantir.cfg'), /^mp_force_pick_time 15$/mu);
-    assert.match(datei(aus, 'palantir.cfg'), /^mp_join_grace_time 0$/mu);
-    assert.doesNotMatch(datei(an, 'palantir.cfg'), /mp_force_assign_teams/u);
-    assert.equal(starte(arbeitsordner(), { CS2_AUTO_TEAMS: 'ja' }).status, 78);
-  });
-
   it('schreibt die Training-Schalter – mit sv_cheats nur, wenn nötig (25.09.2026)', () => {
     const alle = arbeitsordner();
     const nurGeld = arbeitsordner();
@@ -444,11 +429,33 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.match(cfgAlle, /^sv_grenade_trajectory_prac_pipreview 1$/mu);
     assert.match(cfgAlle, /^mp_ct_default_grenades "weapon_smokegrenade .*weapon_decoy"$/mu);
     assert.match(cfgAlle, /^mp_ignore_round_win_conditions 1$/mu);
-    // Beitritt mitten in der endlosen Runde: sofort spawnen, nicht zuschauen.
-    assert.match(cfgAlle, /^mp_respawn_on_death_t 1$/mu);
     assert.match(cfgAlle, /^mp_buy_anywhere 1$/mu);
     assert.match(datei(nurGeld, 'palantir.cfg'), /^sv_cheats 0$/mu);
     assert.doesNotMatch(datei(nichts, 'palantir.cfg'), /sv_infinite_ammo|mp_buy_anywhere/u);
+  });
+
+  it('überspringt Aufwärmphase und Standzeit und lässt sofort spawnen – nur wenn an', () => {
+    const an = arbeitsordner();
+    const aus = arbeitsordner();
+    starte(an, {
+      CS2_SKIP_WARMUP: 'true',
+      CS2_NO_FREEZETIME: 'true',
+      CS2_INSTANT_RESPAWN: 'true',
+    });
+    starte(aus, { CS2_ENDLESS_ROUND: 'true' });
+
+    const cfgAn = datei(an, 'palantir.cfg');
+    assert.match(cfgAn, /^mp_warmup_online_enabled 0$/mu);
+    assert.match(cfgAn, /^mp_warmup_end$/mu);
+    assert.match(cfgAn, /^mp_freezetime 0$/mu);
+    assert.match(cfgAn, /^mp_respawn_on_death_t 1$/mu);
+    assert.match(cfgAn, /^mp_respawnwavetime_ct 0$/mu);
+    // Aus schreibt nichts – Deathmatch respawnt sonst nicht mehr. Endlos-Runde
+    // bringt keinen Respawn mehr mit.
+    const cfgAus = datei(aus, 'palantir.cfg');
+    assert.doesNotMatch(cfgAus, /mp_respawn_on_death|mp_freezetime|mp_warmup/u);
+    // Keine Teamzuweisung mehr – Valves Teammenü.
+    assert.doesNotMatch(cfgAn, /mp_force_pick_time|mp_join_grace_time|mp_force_assign_teams/u);
   });
 
   it('lehnt einen Training-Schalter ab, der weder true noch false ist', () => {
