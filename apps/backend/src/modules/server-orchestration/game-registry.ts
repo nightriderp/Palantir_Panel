@@ -3515,7 +3515,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.28',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.29',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3714,7 +3714,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       type: 'toggle',
       defaultValue: true,
       description:
-        'Spieler landen beim Beitritt und nach einem Kartenwechsel direkt in einem Team, statt erst zuzuschauen.',
+        'Nach einer Sekunde automatisch im Team statt 15 Sekunden Teammenü; wer bis 30 Sekunden nach Rundenstart beitritt, spielt die Runde noch mit.',
       required: false,
       options: [],
       min: null,
@@ -3987,14 +3987,18 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
     },
     {
       // Wirkt ab dem nächsten Beitritt bzw. Kartenwechsel; `persist`, weil die
-      // Modus-Konfiguration beim Kartenladen nachzieht.
+      // Modus-Konfiguration beim Kartenladen `mp_force_pick_time` zurücksetzt.
+      // `mp_force_assign_teams` aus CS:GO gibt es in CS2 nicht (25.09.2026).
       id: 'teams',
       label: 'Teams',
       group: 'Spiel',
       fields: ['autoTeams'],
       commands: ['{autoTeams}'],
       values: {
-        autoTeams: { true: 'mp_force_assign_teams 1', false: 'mp_force_assign_teams 0' },
+        autoTeams: {
+          true: 'mp_force_pick_time 1; mp_join_grace_time 30',
+          false: 'mp_force_pick_time 15; mp_join_grace_time 0',
+        },
       },
       persist: ['{autoTeams}'],
     },
@@ -4041,9 +4045,9 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       commands: ['{endlessRound}', 'mp_restartgame 1'],
       values: {
         endlessRound: {
-          true: 'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1; mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1; mp_join_grace_time 3600',
+          true: 'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1; mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1',
           false:
-            'mp_ignore_round_win_conditions 0; mp_roundtime 1.92; mp_roundtime_defuse 1.92; mp_roundtime_hostage 1.92; mp_respawn_on_death_ct 0; mp_respawn_on_death_t 0; mp_join_grace_time 0',
+            'mp_ignore_round_win_conditions 0; mp_roundtime 1.92; mp_roundtime_defuse 1.92; mp_roundtime_hostage 1.92; mp_respawn_on_death_ct 0; mp_respawn_on_death_t 0',
         },
       },
       persist: ['{endlessRound}'],

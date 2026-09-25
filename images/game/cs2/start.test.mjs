@@ -415,8 +415,12 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     starte(an);
     starte(aus, { CS2_AUTO_TEAMS: 'false' });
 
-    assert.match(datei(an, 'palantir.cfg'), /^mp_force_assign_teams 1$/mu);
-    assert.match(datei(aus, 'palantir.cfg'), /^mp_force_assign_teams 0$/mu);
+    // CS2 hat kein `mp_force_assign_teams` – Teammenü-Zeit und Beitrittsfrist.
+    assert.match(datei(an, 'palantir.cfg'), /^mp_force_pick_time 1$/mu);
+    assert.match(datei(an, 'palantir.cfg'), /^mp_join_grace_time 30$/mu);
+    assert.match(datei(aus, 'palantir.cfg'), /^mp_force_pick_time 15$/mu);
+    assert.match(datei(aus, 'palantir.cfg'), /^mp_join_grace_time 0$/mu);
+    assert.doesNotMatch(datei(an, 'palantir.cfg'), /mp_force_assign_teams/u);
     assert.equal(starte(arbeitsordner(), { CS2_AUTO_TEAMS: 'ja' }).status, 78);
   });
 
@@ -442,7 +446,6 @@ describe('start.sh – Schritt 3: Karte, Modus, Bots', nurMitShell, () => {
     assert.match(cfgAlle, /^mp_ignore_round_win_conditions 1$/mu);
     // Beitritt mitten in der endlosen Runde: sofort spawnen, nicht zuschauen.
     assert.match(cfgAlle, /^mp_respawn_on_death_t 1$/mu);
-    assert.match(cfgAlle, /^mp_join_grace_time 3600$/mu);
     assert.match(cfgAlle, /^mp_buy_anywhere 1$/mu);
     assert.match(datei(nurGeld, 'palantir.cfg'), /^sv_cheats 0$/mu);
     assert.doesNotMatch(datei(nichts, 'palantir.cfg'), /sv_infinite_ammo|mp_buy_anywhere/u);

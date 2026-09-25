@@ -1624,6 +1624,16 @@ describe('Counter-Strike 2', () => {
     });
   });
 
+  it('weist Teams mit CS2-Werten zu – mp_force_assign_teams gibt es nicht', () => {
+    expect(liveBefehle(CS2_GAME_TYPE, ['autoTeams'], { autoTeams: true })).toEqual([
+      'mp_force_pick_time 1; mp_join_grace_time 30',
+    ]);
+    expect(liveDatei(CS2_GAME_TYPE, { autoTeams: false })).toMatch(
+      /^mp_force_pick_time 15; mp_join_grace_time 0$/mu,
+    );
+    expect(JSON.stringify(CS2_GAME_TYPE)).not.toMatch(/mp_force_assign_teams/u);
+  });
+
   it('ordnet die Steuerung in Spiel, Training und Plugins', () => {
     const gruppe = (name: string) =>
       (CS2_GAME_TYPE.liveControls ?? []).filter((s) => s.group === name).map((s) => s.id);
@@ -1647,7 +1657,7 @@ describe('Counter-Strike 2', () => {
       'sv_cheats 1; sv_infinite_ammo 1',
     ]);
     expect(liveBefehle(CS2_GAME_TYPE, ['endlessRound'], { endlessRound: true })).toEqual([
-      'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1; mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1; mp_join_grace_time 3600',
+      'mp_roundtime 60; mp_roundtime_defuse 60; mp_roundtime_hostage 60; mp_ignore_round_win_conditions 1; mp_respawn_on_death_ct 1; mp_respawn_on_death_t 1',
       'mp_restartgame 1',
     ]);
     // Über Kartenwechsel hinweg ohne Neustart der Runde.
