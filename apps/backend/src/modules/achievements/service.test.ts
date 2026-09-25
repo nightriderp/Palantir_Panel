@@ -8,11 +8,25 @@
  */
 
 import { ACHIEVEMENT_IDS, ACHIEVEMENTS } from '@palantir/contracts';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AchievementError } from './errors.js';
 import type { AchievementRepository } from './repository.js';
 import { createAchievementService } from './service.js';
 import { type FakeOptions, fakeAchievementRepository } from './test-support.js';
+
+/*
+ * Feste Uhrzeit (mittags): Ohne `at` prüft `nachtschicht` gegen die echte Uhr –
+ * zwischen drei und fünf Uhr Berliner Zeit schlug die Vergabe sonst an und die
+ * Tests fielen durch. Nur `Date`, damit Promises und Zeitgeber normal laufen.
+ */
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-21T12:00:00Z'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const KONTO = '11111111-1111-4111-8111-000000000001';
 
