@@ -3455,15 +3455,14 @@ const CS2_PROFILE: GamePreset[] = [
     id: 'utility',
     label: 'Übung / Inspect',
     description:
-      'Üben und Waffen ansehen im Custom-Modus: Einstellungen wie die Workshop-Map „Dust 2 Utility“, Beitritt als CT, neun Puppen-Bots an den Spawns, keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera. Mit MetaMod (Palantirs Plugin).',
+      'Üben und Waffen ansehen im Custom-Modus: Einstellungen wie die Workshop-Map „Dust 2 Utility“, Beitritt als CT, keine Bots, keine Aufwärmphase, keine Standzeit, sofort spawnen, endlose Runde, überall kaufen, alle Granaten, unendlich Munition, Granaten-Kamera. Im Chat: !spawn, !tspawn, !ctspawn, !save, !back. Mit MetaMod (Palantirs Plugin).',
     values: {
       gameMode: 'custom',
       // MetaMod für Palantirs Plugin: Aufwärmphase weg beim Beitritt, CT ohne Sperre.
       plugins: true,
       modePlugin: 'none',
-      // Neun: mit dir zehn – so viele Spieler lässt die Vorgabe zu, und je
-      // fünf Spawns hat jede Seite.
-      bots: 9,
+      // Keine Bots (Betreiber 26.09.2026) – zu den Spawns geht es per Chat.
+      bots: 0,
       practicePack: true,
       ctOnly: true,
       skipWarmup: true,
@@ -3519,7 +3518,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
   name: 'Counter-Strike 2',
   description:
     'Counter-Strike-2-Server von Valve, vorerst ohne Einstellungen auf de_dust2. Die Serverdateien werden beim ersten Start geholt – gut 30 GB, das dauert.',
-  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.34',
+  dockerImage: 'ghcr.io/nightriderp/palantir-game-cs2:0.0.35',
   // Schritt 6: Das Startskript liest `PALANTIR_UPDATES_HALTEN` und lässt
   // SteamCMD dann aus (Administration > Templates).
   supportsUpdateHold: true,
@@ -3717,7 +3716,7 @@ export const CS2_GAME_TYPE: GameTypeDefinition = {
       type: 'toggle',
       defaultValue: false,
       description:
-        'Befehle der Workshop-Map „Dust 2 Utility“ für jede Karte: kein Zeitlimit, Leben regeneriert, kein Fallschaden, keine Ausdauer, Bunnyhop, Ping ohne Wartezeit, Flugbahn 8 s, Rüstung, Puppen-Bots (stehen still, schießen nicht). Schaltet sv_cheats ein.',
+        'Befehle der Workshop-Map „Dust 2 Utility“ für jede Karte: kein Zeitlimit, Leben regeneriert, kein Fallschaden, keine Ausdauer, Bunnyhop, Ping ohne Wartezeit, Flugbahn 8 s, Rüstung. Mit MetaMod dazu Chat-Befehle: !spawn, !tspawn <n>, !ctspawn <n>, !spawns, !save, !back. Schaltet sv_cheats ein.',
       required: false,
       options: [],
       min: null,

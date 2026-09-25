@@ -1681,11 +1681,11 @@ describe('Counter-Strike 2', () => {
     expect(liveDatei(CS2_GAME_TYPE, { practicePack: false, ctOnly: false })).toMatch(
       /^exec palantir_uebung_aus$/mu,
     );
-    // Das Übungsprofil läuft im Custom-Modus, mit Puppen-Bots und bei CT.
+    // Das Übungsprofil läuft im Custom-Modus, ohne Bots und bei CT.
     expect(CS2_GAME_TYPE.presets?.find((p) => p.id === 'utility')?.values).toMatchObject({
       gameMode: 'custom',
       plugins: true,
-      bots: 9,
+      bots: 0,
       practicePack: true,
       ctOnly: true,
     });
